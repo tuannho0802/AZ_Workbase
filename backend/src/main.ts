@@ -24,8 +24,15 @@ async function bootstrap() {
 
   // CORS
   app.enableCors({
-    origin: process.env.CORS_ORIGIN || 'http://localhost:3000',
+    origin: [
+      'http://localhost:3000',      // Frontend dev
+      'https://azworkbase.com',     // Production
+    ],
     credentials: true,
+    methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
+    allowedHeaders: ['Content-Type', 'Authorization'],
+    exposedHeaders: ['Authorization'],
+    maxAge: 3600,
   });
 
   // Swagger documentation (Tiếng Việt như yêu cầu)

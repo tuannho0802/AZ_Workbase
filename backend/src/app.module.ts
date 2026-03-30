@@ -4,6 +4,11 @@ import { TypeOrmModule } from '@nestjs/typeorm';
 import { AppController } from './app.controller';
 import { AppService } from './app.service';
 import { getTypeOrmConfig } from './config/database.config';
+import { UsersModule } from './modules/users/users.module';
+import { AuthModule } from './modules/auth/auth.module';
+import { CustomersModule } from './modules/customers/customers.module';
+import { DepartmentsModule } from './modules/departments/departments.module';
+import { DepositsModule } from './modules/deposits/deposits.module';
 
 @Module({
   imports: [
@@ -19,6 +24,13 @@ import { getTypeOrmConfig } from './config/database.config';
       inject: [ConfigService],
       useFactory: getTypeOrmConfig,
     }),
+
+    // Feature Modules
+    UsersModule,
+    AuthModule,
+    DepartmentsModule,
+    CustomersModule,
+    DepositsModule,
   ],
   controllers: [AppController],
   providers: [AppService],
