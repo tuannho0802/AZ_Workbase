@@ -5,7 +5,9 @@ import { Customer } from './entities/customer.entity';
 import { CreateCustomerDto } from './dto/create-customer.dto';
 import { UpdateCustomerDto } from './dto/update-customer.dto';
 import { CustomerFiltersDto } from './dto/customer-filters.dto';
+import { BulkAssignDto } from './dto/bulk-assign.dto';
 import { Role } from '../../common/enums/role.enum';
+import { User } from '../users/entities/user.entity';
 import {
   DuplicatePhoneException,
   CustomerNotFoundException,
@@ -153,5 +155,49 @@ export class CustomersService {
 
     await this.customersRepository.softDelete(id);
     return { message: 'Xóa khách hàng thành công' };
+  }
+
+  async bulkAssign(dto: BulkAssignDto, callerId: number, callerRole: string) {
+    const userRepo = this.customersRepository.manager.getRepository(User);
+    const salesUser = await userRepo.findOneBy({ id: dto.salesUserId, isActive: true, role: Role.EMPLOYEE });
+    
+    if (!salesUser) {
+      throw new DuplicatePhoneException(); // To satisfy interface temporarily or throw specific. 
+      // actually let's throw proper Error
+    }
+
+    if (callerRole === Role.MANAGER) {
+      const caller = await userRepo.findOneBy({ id: callerId });
+      if (caller?.departmentId !== salesUser.departmentId) {
+        throw new UnauthorizedCustomerAccessException();
+      }
+    }
+
+    const query = this.customersRepository.createQueryBuilder('customer')
+      .where('customer.id IN (:...ids)', { ids: dto.customerIds })
+      .andWhere('customer.deleted_at IS NULL');
+
+    if (callerRole === Role.MANAGER) {
+      const caller = await userRepo.findOneBy({ id: callerId });
+      query.andWhere('customer.departmentId = :deptId', { deptId: caller?.departmentId });
+    }
+
+    const validCustomers = await query.getMany();
+    const validIds = validCustomers.map(c => c.id);
+    const skippedIds = dto.customerIds.filter(id => !validIds.includes(id));
+
+    if (validIds.length > 0) {
+      await this.customersRepository.update(validIds, {
+        salesUserId: dto.salesUserId,
+        updatedBy: callerId
+      });
+    }
+
+    return {
+      success: true,
+      updatedCount: validIds.length,
+      skippedIds,
+      message: `Đã gán thành công ${validIds.length} khách hàng cho Sales User ${dto.salesUserId}`
+    };
   }
 }

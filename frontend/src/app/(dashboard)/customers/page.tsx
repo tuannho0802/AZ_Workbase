@@ -1,10 +1,14 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { Table, Card, Tag, App } from 'antd';
+import { Table, Card, Tag, App, Button, Space } from 'antd';
+import { UploadOutlined, UsergroupAddOutlined } from '@ant-design/icons';
 import type { ColumnsType } from 'antd/es/table';
 import { customersApi } from '@/lib/api/customers.api';
 import { Customer } from '@/lib/types/customer.types';
+import { useAuthStore } from '@/lib/stores/auth.store';
+import { ImportExcelModal } from '@/components/customers/ImportExcelModal';
+import { BulkAssignModal } from '@/components/customers/BulkAssignModal';
 import dayjs from 'dayjs';
 
 export default function CustomersPage() {
@@ -14,6 +18,20 @@ export default function CustomersPage() {
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(20);
   const { message } = App.useApp();
+  
+  const { user } = useAuthStore();
+  const [selectedRowKeys, setSelectedRowKeys] = useState<React.Key[]>([]);
+  const [isImportOpen, setIsImportOpen] = useState(false);
+  const [isAssignOpen, setIsAssignOpen] = useState(false);
+
+  const canImport = ['admin', 'manager', 'assistant'].includes(user?.role || '');
+  const canAssign = ['admin', 'manager'].includes(user?.role || '');
+
+  const rowSelection = {
+    selectedRowKeys,
+    onChange: (newKeys: React.Key[]) => setSelectedRowKeys(newKeys),
+    preserveSelectedRowKeys: true,
+  };
 
   const fetchCustomers = async () => {
     setLoading(true);
@@ -123,9 +141,30 @@ export default function CustomersPage() {
     },
   ];
 
+  const renderToolbar = () => (
+    <Space>
+      {canImport && (
+        <Button icon={<UploadOutlined />} onClick={() => setIsImportOpen(true)}>
+          Nhập Excel
+        </Button>
+      )}
+      {canAssign && selectedRowKeys.length > 0 && (
+        <Button 
+          type="primary" 
+          icon={<UsergroupAddOutlined />} 
+          onClick={() => setIsAssignOpen(true)}
+        >
+          Gán cho Sales ({selectedRowKeys.length})
+        </Button>
+      )}
+    </Space>
+  );
+
   return (
-    <Card title="Danh sách khách hàng">
+    <>
+    <Card title="Danh sách khách hàng" extra={renderToolbar()}>
       <Table
+        rowSelection={canAssign ? rowSelection : undefined}
         columns={columns}
         dataSource={customers}
         rowKey="id"
@@ -144,5 +183,22 @@ export default function CustomersPage() {
         }}
       />
     </Card>
+
+    <ImportExcelModal
+      open={isImportOpen}
+      onClose={() => setIsImportOpen(false)}
+      onSuccess={() => fetchCustomers()}
+    />
+
+    <BulkAssignModal
+      open={isAssignOpen}
+      selectedIds={selectedRowKeys as number[]}
+      onClose={() => setIsAssignOpen(false)}
+      onSuccess={() => {
+        setSelectedRowKeys([]);
+        fetchCustomers();
+      }}
+    />
+    </>
   );
 }

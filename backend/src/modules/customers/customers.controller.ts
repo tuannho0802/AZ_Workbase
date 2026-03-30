@@ -1,9 +1,13 @@
-import { Controller, Get, Post, Body, Patch, Param, Delete, Query, UseGuards, Request } from '@nestjs/common';
-import { ApiTags, ApiOperation, ApiResponse, ApiBearerAuth } from '@nestjs/swagger';
+import { Controller, Get, Post, Body, Patch, Param, Delete, Query, UseGuards, Request, UploadedFile, UseInterceptors } from '@nestjs/common';
+import { FileInterceptor } from '@nestjs/platform-express';
+import { ApiTags, ApiOperation, ApiResponse, ApiBearerAuth, ApiConsumes, ApiBody } from '@nestjs/swagger';
 import { CustomersService } from './customers.service';
+import { CustomersImportService } from './customers.import.service';
 import { CreateCustomerDto } from './dto/create-customer.dto';
 import { UpdateCustomerDto } from './dto/update-customer.dto';
 import { CustomerFiltersDto } from './dto/customer-filters.dto';
+import { ImportCustomerDto } from './dto/import-customer.dto';
+import { BulkAssignDto } from './dto/bulk-assign.dto';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { RolesGuard } from '../../common/guards/roles.guard';
 import { Roles } from '../../common/decorators/roles.decorator';
@@ -14,7 +18,27 @@ import { Role } from '../../common/enums/role.enum';
 @UseGuards(JwtAuthGuard, RolesGuard)
 @Controller('customers')
 export class CustomersController {
-  constructor(private readonly customersService: CustomersService) {}
+  constructor(
+    private readonly customersService: CustomersService,
+    private readonly customersImportService: CustomersImportService
+  ) {}
+
+  @Post('import')
+  @Roles(Role.ADMIN, Role.MANAGER, Role.ASSISTANT)
+  @UseInterceptors(FileInterceptor('file'))
+  @ApiOperation({ summary: 'Import dữ liệu khách hàng từ file Excel' })
+  @ApiConsumes('multipart/form-data')
+  @ApiBody({ type: ImportCustomerDto })
+  async importExcel(@UploadedFile() file: Express.Multer.File, @Request() req: any) {
+    return this.customersImportService.importExcel(file, req.user.id);
+  }
+
+  @Patch('bulk-assign')
+  @Roles(Role.ADMIN, Role.MANAGER)
+  @ApiOperation({ summary: 'Bàn giao Khách hàng hàng loạt cho Sales' })
+  async bulkAssign(@Body() dto: BulkAssignDto, @Request() req: any) {
+    return this.customersService.bulkAssign(dto, req.user.id, req.user.role);
+  }
 
   @Post()
   @ApiOperation({ summary: 'Tạo khách hàng mới' })
