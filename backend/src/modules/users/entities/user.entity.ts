@@ -1,5 +1,6 @@
-import { Entity, Column, PrimaryGeneratedColumn, CreateDateColumn, UpdateDateColumn } from 'typeorm';
+import { Entity, Column, PrimaryGeneratedColumn, CreateDateColumn, UpdateDateColumn, ManyToOne, JoinColumn } from 'typeorm';
 import { Role } from '../../../common/enums/role.enum';
+import { Department } from '../../departments/entities/department.entity';
 
 @Entity('users')
 export class User {
@@ -24,6 +25,10 @@ export class User {
 
   @Column({ name: 'department_id', nullable: true })
   departmentId: number;
+
+  @ManyToOne(() => Department)
+  @JoinColumn({ name: 'department_id' })
+  department: Department;
 
   @Column({ name: 'is_active', default: true })
   isActive: boolean;

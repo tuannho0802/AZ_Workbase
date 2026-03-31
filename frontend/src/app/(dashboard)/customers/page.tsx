@@ -1,14 +1,16 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { Table, Card, Tag, App, Button, Space } from 'antd';
-import { UploadOutlined, UsergroupAddOutlined } from '@ant-design/icons';
+import { Table, Card, Tag, App, Button, Space, Row, Col } from 'antd';
+import { UploadOutlined, UsergroupAddOutlined, ReloadOutlined } from '@ant-design/icons';
 import type { ColumnsType } from 'antd/es/table';
 import { customersApi } from '@/lib/api/customers.api';
-import { Customer } from '@/lib/types/customer.types';
+import { Customer, CustomerStats } from '@/lib/types/customer.types';
 import { useAuthStore } from '@/lib/stores/auth.store';
 import { ImportExcelModal } from '@/components/customers/ImportExcelModal';
 import { BulkAssignModal } from '@/components/customers/BulkAssignModal';
+import { StatsCards } from '@/components/customers/StatsCards';
+import { CustomerDetailDrawer } from '@/components/customers/CustomerDetailDrawer';
 import dayjs from 'dayjs';
 
 export default function CustomersPage() {
@@ -23,6 +25,10 @@ export default function CustomersPage() {
   const [selectedRowKeys, setSelectedRowKeys] = useState<React.Key[]>([]);
   const [isImportOpen, setIsImportOpen] = useState(false);
   const [isAssignOpen, setIsAssignOpen] = useState(false);
+  const [stats, setStats] = useState<CustomerStats | null>(null);
+  const [statsLoading, setStatsLoading] = useState(false);
+  const [selectedCustomerId, setSelectedCustomerId] = useState<number | null>(null);
+  const [isDrawerOpen, setIsDrawerOpen] = useState(false);
 
   const canImport = ['admin', 'manager', 'assistant'].includes(user?.role || '');
   const canAssign = ['admin', 'manager'].includes(user?.role || '');
@@ -33,24 +39,29 @@ export default function CustomersPage() {
     preserveSelectedRowKeys: true,
   };
 
+  const fetchStats = async () => {
+    setStatsLoading(true);
+    try {
+      const data = await customersApi.getStats();
+      setStats(data);
+    } catch (error) {
+      console.error('Fetch stats error:', error);
+    } finally {
+      setStatsLoading(false);
+    }
+  };
+
   const fetchCustomers = async () => {
     setLoading(true);
     try {
-      const response = await customersApi.getCustomers({ page, limit: pageSize });
-      
-      console.log('=== FRONTEND DEBUG ===');
-      console.log('API Response:', response);
-      console.log('Customers count:', response.data.length);
-      console.log('Total:', response.total);
-      
+      const response = await customersApi.getCustomers({ 
+        page, 
+        limit: pageSize,
+        // search: ... (will add filter later if needed)
+      });
       setCustomers(response.data);
       setTotal(response.total);
-      
-      if (response.data.length === 0) {
-        message.warning('Không có dữ liệu khách hàng');
-      }
     } catch (error: any) {
-      console.error('Fetch customers error:', error);
       message.error('Không thể tải danh sách khách hàng');
     } finally {
       setLoading(false);
@@ -59,6 +70,7 @@ export default function CustomersPage() {
 
   useEffect(() => {
     fetchCustomers();
+    fetchStats();
   }, [page, pageSize]);
 
   const columns: ColumnsType<Customer> = [
@@ -143,6 +155,9 @@ export default function CustomersPage() {
 
   const renderToolbar = () => (
     <Space>
+      <Button icon={<ReloadOutlined />} onClick={() => { fetchCustomers(); fetchStats(); }}>
+        Làm mới
+      </Button>
       {canImport && (
         <Button icon={<UploadOutlined />} onClick={() => setIsImportOpen(true)}>
           Nhập Excel
@@ -162,6 +177,8 @@ export default function CustomersPage() {
 
   return (
     <>
+    <StatsCards stats={stats} loading={statsLoading} />
+    
     <Card title="Danh sách khách hàng" extra={renderToolbar()}>
       <Table
         rowSelection={canAssign ? rowSelection : undefined}
@@ -170,6 +187,13 @@ export default function CustomersPage() {
         rowKey="id"
         loading={loading}
         scroll={{ x: 1400 }}
+        onRow={(record) => ({
+          onClick: () => {
+            setSelectedCustomerId(record.id);
+            setIsDrawerOpen(true);
+          },
+          style: { cursor: 'pointer' }
+        })}
         pagination={{
           current: page,
           pageSize: pageSize,
@@ -183,6 +207,12 @@ export default function CustomersPage() {
         }}
       />
     </Card>
+
+    <CustomerDetailDrawer
+      open={isDrawerOpen}
+      customerId={selectedCustomerId}
+      onClose={() => setIsDrawerOpen(false)}
+    />
 
     <ImportExcelModal
       open={isImportOpen}

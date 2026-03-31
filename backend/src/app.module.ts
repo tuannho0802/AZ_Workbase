@@ -36,3 +36,4 @@ import { DepositsModule } from './modules/deposits/deposits.module';
   providers: [AppService],
 })
 export class AppModule {}
+// DB Config updated 2026-03-31

@@ -2,12 +2,16 @@ import axios, { AxiosError, InternalAxiosRequestConfig } from 'axios';
 import { showMessage } from '@/components/common/AntdAppProvider';
 import { useAuthStore } from '../stores/auth.store';
 
+const API_BASE_URL = 'http://localhost:3001/api';
+console.log('[Axios] Initializing with Base URL:', API_BASE_URL);
+
 const axiosInstance = axios.create({
-  baseURL: process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001/api',
+  baseURL: API_BASE_URL,
   timeout: 30000,
   headers: {
     'Content-Type': 'application/json',
   },
+  withCredentials: true, // Allow cookies to be sent
 });
 
 // Request interceptor - Add JWT token
@@ -46,6 +50,19 @@ axiosInstance.interceptors.response.use(
 
     // Handle 401 - Token expired
     if (error.response?.status === 401 && !originalRequest._retry) {
+      // REDIRECT GUARD: Don't redirect if already on /login
+      if (typeof window !== 'undefined' && window.location.pathname === '/login') {
+        return Promise.reject(error);
+      }
+
+      const refreshToken = useAuthStore.getState().refreshToken;
+      
+      if (!refreshToken) {
+        useAuthStore.getState().logout();
+        if (window.location.pathname !== '/login') window.location.href = '/login';
+        return Promise.reject(error);
+      }
+
       if (isRefreshing) {
         return new Promise((resolve, reject) => {
           failedQueue.push({ resolve, reject });
@@ -61,18 +78,17 @@ axiosInstance.interceptors.response.use(
       isRefreshing = true;
 
       try {
-        const refreshToken = useAuthStore.getState().refreshToken;
-        if (!refreshToken) {
-          throw new Error('No refresh token');
-        }
-
+        const refreshUrl = `${API_BASE_URL}/auth/refresh`;
+        console.log('[Axios] AUTH REFRESH CALL ->', refreshUrl);
+        
         const response = await axios.post(
-          `${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001/api'}/auth/refresh`,
-          { refreshToken }
+          refreshUrl,
+          { refreshToken },
+          { withCredentials: true }
         );
 
-        const token = response.data.accessToken || response.data.access_token;
-        const newRefToken = response.data.refreshToken || response.data.refresh_token; 
+        const token = response.data.access_token || response.data.accessToken;
+        const newRefToken = response.data.refresh_token || response.data.refreshToken; 
         
         useAuthStore.getState().setTokens(token, newRefToken);
         
@@ -85,16 +101,23 @@ axiosInstance.interceptors.response.use(
         processQueue(refreshError, null);
         isRefreshing = false;
         
+        console.error('[Axios] Refresh failed -> Logging out');
+        // Critical: Clear store and redirect
         useAuthStore.getState().logout();
-        window.location.href = '/login';
+        
+        if (typeof window !== 'undefined' && window.location.pathname !== '/login') {
+          window.location.href = '/login';
+        }
         return Promise.reject(refreshError);
       }
     }
 
     // Handle other errors
     const errorMessage = (error.response?.data as any)?.message || 'Đã có lỗi xảy ra';
-    // Mute network errors from popping up endlessly on page load (optional but safe)
-    if (error.code !== 'ERR_NETWORK') showMessage.error(errorMessage);
+    // Mute network errors from popping up endlessly on page load
+    if (error.code !== 'ERR_NETWORK' && error.response?.status !== 401) {
+      showMessage.error(errorMessage);
+    }
 
     return Promise.reject(error);
   }

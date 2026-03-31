@@ -15,6 +15,15 @@ export class AuthController {
   @ApiResponse({ status: 401, description: 'Tài khoản không tồn tại hoặc mật khẩu sai.' })
   @ApiResponse({ status: 400, description: 'Dữ liệu không hợp lệ (lỗi Email, Password trống).' })
   async login(@Body() loginDto: LoginDto) {
+    console.log('[Auth] Login attempt for:', loginDto.email);
     return this.authService.login(loginDto);
+  }
+
+  @Post('refresh')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Làm mới Access Token', description: 'Sử dụng refresh_token để lấy access_token mới khi token cũ hết hạn.' })
+  async refresh(@Body('refreshToken') refreshToken: string) {
+    console.log('[Auth] Refresh attempt with token:', refreshToken?.substring(0, 20) + '...');
+    return this.authService.refresh(refreshToken);
   }
 }

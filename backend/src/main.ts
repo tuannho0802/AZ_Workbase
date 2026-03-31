@@ -25,8 +25,10 @@ async function bootstrap() {
   // CORS
   app.enableCors({
     origin: [
-      'http://localhost:3000',      // Frontend dev
-      'https://azworkbase.com',     // Production
+      'http://localhost:3000',
+      'http://localhost:3001',
+      'http://127.0.0.1:3000',
+      'https://azworkbase.com',
     ],
     credentials: true,
     methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
@@ -50,3 +52,4 @@ async function bootstrap() {
   console.log(`🚀 Server đang chạy trên cổng ${port}`);
 }
 bootstrap();
+// Last updated: 2026-03-31 10:55

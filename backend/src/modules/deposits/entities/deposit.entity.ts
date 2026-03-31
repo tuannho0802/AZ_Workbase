@@ -1,5 +1,6 @@
 import { Entity, Column, PrimaryGeneratedColumn, ManyToOne, JoinColumn } from 'typeorm';
 import { Customer } from '../../customers/entities/customer.entity';
+import { User } from '../../users/entities/user.entity';
 
 @Entity('deposits')
 export class Deposit {
@@ -15,4 +16,17 @@ export class Deposit {
 
   @Column({ name: 'deposit_date', type: 'date' })
   depositDate: Date;
+
+  @Column({ length: 100, nullable: true })
+  broker: string;
+
+  @Column({ type: 'text', nullable: true })
+  note: string;
+
+  @Column({ name: 'created_by' })
+  createdBy: number;
+
+  @ManyToOne(() => User)
+  @JoinColumn({ name: 'created_by' })
+  createdByUser: User;
 }

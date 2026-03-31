@@ -52,4 +52,29 @@ export class AuthService {
       },
     };
   }
+
+  async refresh(refreshToken: string) {
+    try {
+      const payload = this.jwtService.verify(refreshToken, {
+        secret: this.configService.get<string>('JWT_REFRESH_SECRET'),
+      });
+      
+      const user = await this.usersService.findById(payload.sub);
+      if (!user || !user.isActive) {
+        throw new UnauthorizedException('Tài khoản không hợp lệ hoặc đã bị khóa');
+      }
+
+      const newPayload = { sub: user.id, email: user.email, role: user.role };
+      
+      return {
+        access_token: this.jwtService.sign(newPayload),
+        refresh_token: this.jwtService.sign(newPayload, {
+          secret: this.configService.get<string>('JWT_REFRESH_SECRET') as string,
+          expiresIn: this.configService.get<string>('JWT_REFRESH_EXPIRES_IN') as any,
+        }),
+      };
+    } catch (error) {
+      throw new UnauthorizedException('Phiên đăng nhập đã hết hạn, vui lòng đăng nhập lại');
+    }
+  }
 }

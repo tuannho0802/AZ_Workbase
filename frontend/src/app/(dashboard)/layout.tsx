@@ -15,22 +15,31 @@ export default function DashboardLayout({
   children: React.ReactNode;
 }) {
   const router = useRouter();
-  const { user, isAuthenticated, logout } = useAuthStore();
+  const { user, isAuthenticated, isHydrated, logout } = useAuthStore();
 
   useEffect(() => {
-    if (!isAuthenticated) {
-      router.push('/login');
+    if (isHydrated && !isAuthenticated) {
+      console.log('[Layout] Not authenticated after hydration -> Redirecting to /login');
+      // Force a clean redirect to clear any bad state
+      window.location.href = '/login?from=' + encodeURIComponent(window.location.pathname);
     }
-  }, [isAuthenticated, router]);
+  }, [isAuthenticated, isHydrated]);
 
   const handleLogout = () => {
     logout();
-    Cookies.remove('auth-storage');
-    router.push('/login');
+    window.location.href = '/login';
   };
 
-  if (!isAuthenticated) {
-    return null;
+  // HYDRATION SHIELD: Wait for Zustand to load from cookies
+  if (!isHydrated || !isAuthenticated) {
+    return (
+      <div className="flex h-screen w-screen flex-col items-center justify-center bg-gray-50">
+        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary"></div>
+        <div className="mt-4 text-gray-600 font-medium">
+          {!isHydrated ? 'Đang đồng bộ dữ liệu...' : 'Đang chuyển hướng...'}
+        </div>
+      </div>
+    );
   }
 
   return (
@@ -50,6 +59,12 @@ export default function DashboardLayout({
               label: 'Khách hàng',
               onClick: () => router.push('/customers'),
             },
+            ...(user?.role === 'admin' || user?.role === 'manager' ? [{
+              key: 'users',
+              icon: <UserOutlined />,
+              label: 'Nhân viên',
+              onClick: () => router.push('/users'),
+            }] : []),
           ]}
         />
       </Sider>

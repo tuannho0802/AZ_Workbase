@@ -8,6 +8,8 @@ import { UpdateCustomerDto } from './dto/update-customer.dto';
 import { CustomerFiltersDto } from './dto/customer-filters.dto';
 import { ImportCustomerDto } from './dto/import-customer.dto';
 import { BulkAssignDto } from './dto/bulk-assign.dto';
+import { CreateCustomerNoteDto } from './dto/create-customer-note.dto';
+import { CreateDepositDto } from './dto/create-deposit.dto';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { RolesGuard } from '../../common/guards/roles.guard';
 import { Roles } from '../../common/decorators/roles.decorator';
@@ -22,6 +24,13 @@ export class CustomersController {
     private readonly customersService: CustomersService,
     private readonly customersImportService: CustomersImportService
   ) {}
+
+  @Get('stats')
+  @ApiOperation({ summary: 'Lấy thống kê khách hàng (Option A - Theo quyền)' })
+  async getStats(@Request() req: any) {
+    console.log('[Customers] GetStats requested by user:', req.user.id);
+    return this.customersService.getStats(req.user.id, req.user.role);
+  }
 
   @Post('import')
   @Roles(Role.ADMIN, Role.MANAGER, Role.ASSISTANT)
@@ -57,10 +66,23 @@ export class CustomersController {
 
   @Get(':id')
   @ApiOperation({ summary: 'Lấy thông tin chi tiết khách hàng' })
-  @ApiResponse({ status: 200, description: 'Chi tiết khách hàng (kèm Sales, Department, Deposits)' })
+  @ApiResponse({ status: 200, description: 'Chi tiết khách hàng (kèm Sales, Department, Deposits, Notes)' })
   @ApiResponse({ status: 404, description: 'Không tìm thấy khách hàng hoặc không có quyền xem' })
   findOne(@Request() req: any, @Param('id') id: string) {
     return this.customersService.findOne(+id, req.user.id, req.user.role);
+  }
+
+  @Post(':id/notes')
+  @ApiOperation({ summary: 'Thêm ghi chú khách hàng' })
+  async createNote(@Param('id') id: string, @Body() dto: CreateCustomerNoteDto, @Request() req: any) {
+    return this.customersService.createNote(+id, dto, req.user.id);
+  }
+
+  @Post(':id/deposits')
+  @Roles(Role.ADMIN, Role.MANAGER, Role.ASSISTANT)
+  @ApiOperation({ summary: 'Thêm nạp tiền cho khách hàng' })
+  async createDeposit(@Param('id') id: string, @Body() dto: CreateDepositDto, @Request() req: any) {
+    return this.customersService.createDeposit(+id, dto, req.user.id);
   }
 
   @Patch(':id')

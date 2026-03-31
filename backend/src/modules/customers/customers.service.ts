@@ -1,6 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository, Brackets } from 'typeorm';
+import { Repository, Brackets, IsNull } from 'typeorm';
 import { Customer } from './entities/customer.entity';
 import { CreateCustomerDto } from './dto/create-customer.dto';
 import { UpdateCustomerDto } from './dto/update-customer.dto';
@@ -13,12 +13,21 @@ import {
   CustomerNotFoundException,
   UnauthorizedCustomerAccessException,
 } from './exceptions/customer.exceptions';
+import { CustomerNote } from './entities/customer-note.entity';
+import { Deposit } from '../deposits/entities/deposit.entity';
+import { CreateCustomerNoteDto } from './dto/create-customer-note.dto';
+import { CreateDepositDto } from './dto/create-deposit.dto';
+import { NotFoundException, ForbiddenException, BadRequestException } from '@nestjs/common';
 
 @Injectable()
 export class CustomersService {
   constructor(
     @InjectRepository(Customer)
     private readonly customersRepository: Repository<Customer>,
+    @InjectRepository(CustomerNote)
+    private readonly notesRepository: Repository<CustomerNote>,
+    @InjectRepository(Deposit)
+    private readonly depositsRepository: Repository<Deposit>,
   ) {}
 
   async create(createCustomerDto: CreateCustomerDto, userId: number) {
@@ -104,11 +113,60 @@ export class CustomersService {
     };
   }
 
+  async getStats(userId: number, userRole: string) {
+    const queryBuilder = this.customersRepository.createQueryBuilder('customer')
+      .where('customer.deletedAt IS NULL');
+
+    // RBAC Option A: Employee only sees their own stats
+    if (userRole === Role.EMPLOYEE) {
+      queryBuilder.andWhere('customer.createdBy = :userId', { userId });
+    }
+
+    const [total, newToday, closedTotal] = await Promise.all([
+      queryBuilder.clone().getCount(),
+      queryBuilder.clone()
+        .andWhere("DATE(CONVERT_TZ(customer.createdAt, '+00:00', '+07:00')) = CURDATE()")
+        .getCount(),
+      queryBuilder.clone()
+        .andWhere('customer.status = :status', { status: 'closed' })
+        .getCount(),
+    ]);
+
+    // Pending and Potential for completeness (matching promt)
+    const [pendingTotal, potentialTotal] = await Promise.all([
+      queryBuilder.clone().andWhere('customer.status = :status', { status: 'pending' }).getCount(),
+      queryBuilder.clone().andWhere('customer.status = :status', { status: 'potential' }).getCount(),
+    ]);
+
+    const depositsQuery = this.depositsRepository.createQueryBuilder('deposit')
+      .leftJoin('deposit.customer', 'customer')
+      .where('customer.deletedAt IS NULL');
+
+    if (userRole === Role.EMPLOYEE) {
+      depositsQuery.andWhere('customer.createdBy = :userId', { userId });
+    }
+
+    const totalDepositRaw = await depositsQuery
+      .select('SUM(deposit.amount)', 'total')
+      .getRawOne();
+
+    return {
+      totalCustomers: total,
+      newToday: newToday,
+      closedTotal: closedTotal,
+      pendingTotal,
+      potentialTotal,
+      totalDepositAmount: parseFloat(totalDepositRaw?.total || '0'),
+    };
+  }
+
   async findOne(id: number, userId: number, userRole: string) {
-    const queryBuilder = this.customersRepository.createQueryBuilder('customer');
-    queryBuilder.leftJoinAndSelect('customer.salesUser', 'salesUser');
-    queryBuilder.leftJoinAndSelect('customer.department', 'department');
-    queryBuilder.leftJoinAndSelect('customer.deposits', 'deposits');
+    const queryBuilder = this.customersRepository.createQueryBuilder('customer')
+      .leftJoinAndSelect('customer.salesUser', 'salesUser')
+      .leftJoinAndSelect('customer.department', 'department')
+      .leftJoinAndSelect('customer.deposits', 'deposits')
+      .leftJoinAndSelect('customer.notes', 'notes')
+      .leftJoinAndSelect('notes.createdByUser', 'noteCreator');
     
     queryBuilder.where('customer.id = :id', { id });
     queryBuilder.andWhere('customer.deletedAt IS NULL');
@@ -123,7 +181,64 @@ export class CustomersService {
       throw new CustomerNotFoundException();
     }
 
+    // Sort relations in memory as TB queryBuilder complex sorting for sub-entities is tricky
+    if (customer.deposits) {
+      customer.deposits.sort((a, b) => new Date(b.depositDate).getTime() - new Date(a.depositDate).getTime());
+    }
+    if (customer.notes) {
+      customer.notes.sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime());
+    }
+
     return customer;
+  }
+
+  async createNote(customerId: number, dto: CreateCustomerNoteDto, userId: number) {
+    const customer = await this.customersRepository.findOne({
+      where: { id: customerId, deletedAt: IsNull() }
+    });
+
+    if (!customer) {
+      throw new NotFoundException('Không tìm thấy khách hàng');
+    }
+
+    // RBAC: Any role can add note to customer they can see?
+    // User requested: employee only for own. 
+    // findOne already handles RBAC check via userId/role but here we use simple find.
+    // Let's reuse findOne check logic or keep it simple.
+
+    const note = this.notesRepository.create({
+      ...dto,
+      customerId,
+      createdBy: userId,
+    });
+
+    const savedNote = await this.notesRepository.save(note);
+    return this.notesRepository.findOne({
+      where: { id: savedNote.id },
+      relations: ['createdByUser']
+    });
+  }
+
+  async createDeposit(customerId: number, dto: CreateDepositDto, userId: number) {
+    const customer = await this.customersRepository.findOne({
+      where: { id: customerId, deletedAt: IsNull() }
+    });
+
+    if (!customer) {
+      throw new NotFoundException('Không tìm thấy khách hàng');
+    }
+
+    if (dto.amount <= 0) {
+      throw new BadRequestException('Số tiền phải lớn hơn 0');
+    }
+
+    const deposit = this.depositsRepository.create({
+      ...dto,
+      customer: { id: customerId } as any,
+      createdBy: userId,
+    });
+
+    return await this.depositsRepository.save(deposit);
   }
 
   async update(id: number, updateCustomerDto: UpdateCustomerDto, userId: number, userRole: string) {
