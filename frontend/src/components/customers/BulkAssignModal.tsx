@@ -17,6 +17,19 @@ export const BulkAssignModal: React.FC<BulkAssignModalProps> = ({ open, selected
   const { users: salesUsers, isLoading: usersLoading } = useUsersList('employee');
   const [salesId, setSalesId] = useState<number | null>(null);
 
+  console.log("BulkAssignModal - Raw salesUsers:", salesUsers);
+  console.log("BulkAssignModal - salesUsers type:", typeof salesUsers);
+  console.log("BulkAssignModal - Is Array?", Array.isArray(salesUsers));
+
+  // Debug từng user object
+  salesUsers?.forEach((user: any, index: number) => {
+    console.log(`BulkAssign User ${index}:`, user);
+    console.log(`BulkAssign User ${index} keys:`, Object.keys(user));
+  });
+
+  console.log("Check BulkAssign SalesUsers Array:", salesUsers);
+  console.log("Check BulkAssign SalesUsers length:", salesUsers?.length);
+
   useEffect(() => {
     if (open) {
       setSalesId(null);
@@ -64,7 +77,10 @@ export const BulkAssignModal: React.FC<BulkAssignModalProps> = ({ open, selected
         style={{ width: '100%' }}
         placeholder="Tìm kiếm nhân viên..."
         loading={usersLoading}
-        options={salesUsers.map((u: any) => ({ label: `${u.name}`, value: u.id }))}
+        options={salesUsers?.map((u: any) => ({ 
+          label: u.name, 
+          value: u.id 
+        })) || []}
         value={salesId}
         onChange={val => setSalesId(val)}
         filterOption={(input: string, option: any) => (option?.label ?? '').toLowerCase().includes(input.toLowerCase())}

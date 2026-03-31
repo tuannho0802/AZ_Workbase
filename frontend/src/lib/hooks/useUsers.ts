@@ -20,8 +20,23 @@ export const useUsersList = (role?: string) => {
     staleTime: 10 * 60 * 1000,
   });
 
+  console.log("Raw Data from API:", data);
+  
+  // Xử lý cả trường hợp phân trang và không phân trang
+  let users = [];
+  if (Array.isArray(data)) {
+    users = data;
+  } else if (data?.data && Array.isArray(data.data)) {
+    users = data.data;
+  } else if (data?.users && Array.isArray(data.users)) {
+    users = data.users;
+  }
+  
+  console.log("Processed users array:", users);
+  console.log("Users length:", users.length);
+
   return {
-    users: (data as any[]) ?? [],
+    users,
     isLoading
   };
 };

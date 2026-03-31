@@ -3,12 +3,12 @@
 import { useState, useEffect } from 'react';
 import { Table, Card, Button, Space, Tag, App, Modal, Form, Input, Select, Switch } from 'antd';
 import { UserAddOutlined, EditOutlined, KeyOutlined, ReloadOutlined } from '@ant-design/icons';
+import { useUsersList } from '@/lib/hooks/useUsers';
 import { usersApi } from '@/lib/api/users.api';
 import { useDepartments } from '@/lib/hooks/useDepartments';
 import dayjs from 'dayjs';
 
 export default function UsersPage() {
-  const [users, setUsers] = useState<any[]>([]);
   const [loading, setLoading] = useState(false);
   const [total, setTotal] = useState(0);
   const [page, setPage] = useState(1);
@@ -21,23 +21,18 @@ export default function UsersPage() {
   const [form] = Form.useForm();
   const [resetForm] = Form.useForm();
   const { departments } = useDepartments();
+  
+  // Dùng hook useUsersList để lấy danh sách nhân viên
+  const { users, isLoading: usersLoading } = useUsersList();
 
-  const fetchUsers = async () => {
-    setLoading(true);
-    try {
-      const response = await usersApi.getUsers({ page, limit: pageSize });
-      setUsers(response.data.data);
-      setTotal(response.total);
-    } catch (error) {
-      message.error('Không thể tải danh sách nhân viên');
-    } finally {
-      setLoading(false);
-    }
-  };
+  console.log("UsersPage - Raw users from hook:", users);
+  console.log("UsersPage - users type:", typeof users);
+  console.log("UsersPage - Is Array?", Array.isArray(users));
 
   useEffect(() => {
-    fetchUsers();
-  }, [page, pageSize]);
+    // Hook đã tự load data, không cần fetchUsers thủ công
+    console.log("UsersPage - useEffect triggered");
+  }, []);
 
   const handleSave = async (values: any) => {
     try {
@@ -49,7 +44,7 @@ export default function UsersPage() {
         message.success('Tạo nhân viên thành công');
       }
       setIsModalOpen(false);
-      fetchUsers();
+      // Hook sẽ tự refresh, không cần fetchUsers thủ công
     } catch (error: any) {
       message.error(error.response?.data?.message || 'Có lỗi xảy ra');
     }
@@ -115,7 +110,7 @@ export default function UsersPage() {
       title="Quản lý nhân viên" 
       extra={
         <Space>
-          <Button icon={<ReloadOutlined />} onClick={fetchUsers}>Làm mới</Button>
+          <Button icon={<ReloadOutlined />} onClick={() => window.location.reload()}>Làm mới</Button>
           <Button type="primary" icon={<UserAddOutlined />} onClick={() => { setEditingUser(null); form.resetFields(); setIsModalOpen(true); }}>
             Thêm nhân viên
           </Button>
