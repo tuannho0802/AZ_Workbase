@@ -9,6 +9,7 @@ export const generateTemplateFile = () => {
     'Chiến dịch',
     'Trạng thái',
     'Broker',
+    'Ngày nhập data',
     'Ngày chốt',
     'Ghi chú'
   ];
@@ -21,6 +22,7 @@ export const generateTemplateFile = () => {
     'Sale Mùa Hè',
     'pending',
     'Vndirect',
+    '10/08/2026',
     '15/08/2026',
     'Khách từ file mẫu'
   ];

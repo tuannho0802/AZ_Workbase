@@ -1,7 +1,7 @@
 import { Entity, Column, PrimaryGeneratedColumn, CreateDateColumn, UpdateDateColumn, DeleteDateColumn, ManyToOne, OneToMany, JoinColumn } from 'typeorm';
-import { User } from '../../users/entities/user.entity';
-import { Department } from '../../departments/entities/department.entity';
-import { Deposit } from '../../deposits/entities/deposit.entity';
+import { User } from './user.entity';
+import { Department } from './department.entity';
+import { Deposit } from './deposit.entity';
 import { CustomerNote } from './customer-note.entity';
 
 @Entity('customers')
@@ -66,6 +66,12 @@ export class Customer {
 
   @Column({ name: 'updated_by', nullable: true })
   updatedBy: number;
+
+  @Column({ name: 'input_date', type: 'date' })
+  inputDate: Date;
+
+  @Column({ name: 'assigned_date', type: 'date', nullable: true })
+  assignedDate: Date | null;
 
   @DeleteDateColumn({ name: 'deleted_at', nullable: true })
   deletedAt: Date;

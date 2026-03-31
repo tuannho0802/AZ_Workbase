@@ -9,6 +9,7 @@
     "lint": "eslint"
   },
   "dependencies": {
+    "@tanstack/react-query": "^5.95.2",
     "antd": "^6.3.5",
     "axios": "^1.14.0",
     "dayjs": "^1.11.20",

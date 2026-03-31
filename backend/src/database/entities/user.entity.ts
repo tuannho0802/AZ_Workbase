@@ -1,6 +1,6 @@
 import { Entity, Column, PrimaryGeneratedColumn, CreateDateColumn, UpdateDateColumn, ManyToOne, JoinColumn } from 'typeorm';
-import { Role } from '../../../common/enums/role.enum';
-import { Department } from '../../departments/entities/department.entity';
+import { Role } from '../../common/enums/role.enum';
+import { Department } from './department.entity';
 
 @Entity('users')
 export class User {

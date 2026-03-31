@@ -1,7 +1,7 @@
 import { Injectable, BadRequestException } from '@nestjs/common';
 import { DataSource, In } from 'typeorm';
-import { Customer } from './entities/customer.entity';
-import { User } from '../users/entities/user.entity';
+import { Customer } from '../../database/entities/customer.entity';
+import { User } from '../../database/entities/user.entity';
 import * as XLSX from 'xlsx';
 
 @Injectable()
@@ -141,6 +141,22 @@ export class CustomersImportService {
         }
       }
 
+      // Logic cho Ngày nhập data
+      const rawInputDate = row['ngày nhập data'];
+      let inputDateObj: Date = new Date(new Date().getTime() + (7 * 60 * 60 * 1000)); // Default today UTC+7
+      if (rawInputDate) {
+        const parts = String(rawInputDate).split('/');
+        if (parts.length === 3) {
+          const d = parseInt(parts[0], 10);
+          const m = parseInt(parts[1], 10) - 1;
+          const y = parseInt(parts[2], 10);
+          const parsed = new Date(y, m, d);
+          if (!isNaN(parsed.getTime())) {
+            inputDateObj = parsed;
+          }
+        }
+      }
+
       validCustomers.push({
          name,
          phone: rawPhone,
@@ -150,6 +166,8 @@ export class CustomersImportService {
          status: ['closed', 'pending', 'potential', 'lost', 'inactive'].includes(status) ? status : 'pending',
          broker: broker || null,
          closedDate: closedDateObj,
+         inputDate: inputDateObj,
+         assignedDate: (user.role === 'employee') ? inputDateObj : null, // Nếu sales import thì tự nhận luôn
          note: note || null,
          departmentId: user.departmentId,
          salesUserId: user.id,

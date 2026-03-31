@@ -19,8 +19,18 @@ export const customersApi = {
     return response.data;
   },
 
+  createCustomer: async (data: any): Promise<Customer> => {
+    const response = await axiosInstance.post<Customer>('/customers', data);
+    return response.data;
+  },
+
   getCustomer: async (id: number): Promise<Customer> => {
     const response = await axiosInstance.get(`/customers/${id}`);
+    return response.data;
+  },
+
+  updateCustomer: async (id: number, data: any): Promise<Customer> => {
+    const response = await axiosInstance.patch<Customer>(`/customers/${id}`, data);
     return response.data;
   },
 

@@ -12,6 +12,11 @@ export const usersApi = {
     return response.data;
   },
 
+  getUsersList: async (params?: { role?: string; departmentId?: number }) => {
+    const response = await axiosInstance.get('/users/all', { params });
+    return response.data;
+  },
+
   createUser: async (data: any) => {
     const response = await axiosInstance.post('/users', data);
     return response.data;

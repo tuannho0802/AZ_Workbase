@@ -2,13 +2,14 @@
 
 import { useEffect, useState } from 'react';
 import { Table, Card, Tag, App, Button, Space, Row, Col } from 'antd';
-import { UploadOutlined, UsergroupAddOutlined, ReloadOutlined } from '@ant-design/icons';
+import { UploadOutlined, UsergroupAddOutlined, ReloadOutlined, PlusOutlined } from '@ant-design/icons';
 import type { ColumnsType } from 'antd/es/table';
 import { customersApi } from '@/lib/api/customers.api';
 import { Customer, CustomerStats } from '@/lib/types/customer.types';
 import { useAuthStore } from '@/lib/stores/auth.store';
 import { ImportExcelModal } from '@/components/customers/ImportExcelModal';
 import { BulkAssignModal } from '@/components/customers/BulkAssignModal';
+import { CustomerForm } from '@/components/customers/CustomerForm';
 import { StatsCards } from '@/components/customers/StatsCards';
 import { CustomerDetailDrawer } from '@/components/customers/CustomerDetailDrawer';
 import dayjs from 'dayjs';
@@ -25,6 +26,7 @@ export default function CustomersPage() {
   const [selectedRowKeys, setSelectedRowKeys] = useState<React.Key[]>([]);
   const [isImportOpen, setIsImportOpen] = useState(false);
   const [isAssignOpen, setIsAssignOpen] = useState(false);
+  const [isCreateOpen, setIsCreateOpen] = useState(false);
   const [stats, setStats] = useState<CustomerStats | null>(null);
   const [statsLoading, setStatsLoading] = useState(false);
   const [selectedCustomerId, setSelectedCustomerId] = useState<number | null>(null);
@@ -82,10 +84,17 @@ export default function CustomersPage() {
     },
     {
       title: 'Ngày nhập',
-      dataIndex: 'createdAt',
-      key: 'createdAt',
+      dataIndex: 'inputDate',
+      key: 'inputDate',
       width: 120,
       render: (date) => dayjs(date).format('DD/MM/YYYY'),
+    },
+    {
+      title: 'Ngày nhận KH',
+      dataIndex: 'assignedDate',
+      key: 'assignedDate',
+      width: 120,
+      render: (date) => date ? dayjs(date).format('DD/MM/YYYY') : '-',
     },
     {
       title: 'Họ tên',
@@ -139,10 +148,18 @@ export default function CustomersPage() {
           pending: { color: 'warning', text: 'Chờ xử lý' },
           potential: { color: 'processing', text: 'Tiềm năng' },
           lost: { color: 'error', text: 'Mất' },
+          inactive: { color: 'default', text: 'Ngừng chăm sóc' },
         };
         const { color, text } = config[status] || { color: 'default', text: status };
         return <Tag color={color}>{text}</Tag>;
       },
+    },
+    {
+      title: 'Ngày chốt',
+      dataIndex: 'closedDate',
+      key: 'closedDate',
+      width: 120,
+      render: (date) => date ? dayjs(date).format('DD/MM/YYYY') : '-',
     },
     {
       title: 'Phòng ban',
@@ -157,6 +174,9 @@ export default function CustomersPage() {
     <Space>
       <Button icon={<ReloadOutlined />} onClick={() => { fetchCustomers(); fetchStats(); }}>
         Làm mới
+      </Button>
+      <Button type="primary" icon={<PlusOutlined />} onClick={() => setIsCreateOpen(true)}>
+        Thêm khách hàng
       </Button>
       {canImport && (
         <Button icon={<UploadOutlined />} onClick={() => setIsImportOpen(true)}>
@@ -222,11 +242,20 @@ export default function CustomersPage() {
 
     <BulkAssignModal
       open={isAssignOpen}
-      selectedIds={selectedRowKeys as number[]}
+      selectedRowKeys={selectedRowKeys}
       onClose={() => setIsAssignOpen(false)}
       onSuccess={() => {
         setSelectedRowKeys([]);
         fetchCustomers();
+      }}
+    />
+
+    <CustomerForm
+      open={isCreateOpen}
+      onClose={() => setIsCreateOpen(false)}
+      onSuccess={() => {
+        fetchCustomers();
+        fetchStats();
       }}
     />
     </>

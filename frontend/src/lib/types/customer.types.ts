@@ -45,6 +45,8 @@ export interface Customer {
   };
   status: 'closed' | 'pending' | 'potential' | 'lost' | 'inactive';
   broker?: string;
+  inputDate: string;
+  assignedDate?: string;
   closedDate?: string;
   department: {
     id: number;

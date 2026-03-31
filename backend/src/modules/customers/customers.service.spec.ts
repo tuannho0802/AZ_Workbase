@@ -1,7 +1,7 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { getRepositoryToken } from '@nestjs/typeorm';
 import { CustomersService } from './customers.service';
-import { Customer } from './entities/customer.entity';
+import { Customer } from '../../database/entities/customer.entity';
 import { DuplicatePhoneException, CustomerNotFoundException, UnauthorizedCustomerAccessException } from './exceptions/customer.exceptions';
 import { Role } from '../../common/enums/role.enum';
 

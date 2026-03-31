@@ -1,6 +1,6 @@
-import { Entity, Column, PrimaryGeneratedColumn, ManyToOne, JoinColumn } from 'typeorm';
-import { Customer } from '../../customers/entities/customer.entity';
-import { User } from '../../users/entities/user.entity';
+import { Entity, Column, PrimaryGeneratedColumn, CreateDateColumn, UpdateDateColumn, ManyToOne, JoinColumn } from 'typeorm';
+import { Customer } from './customer.entity';
+import { User } from './user.entity';
 
 @Entity('deposits')
 export class Deposit {

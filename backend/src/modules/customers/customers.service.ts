@@ -1,20 +1,20 @@
 import { Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, Brackets, IsNull } from 'typeorm';
-import { Customer } from './entities/customer.entity';
+import { Customer } from '../../database/entities/customer.entity';
 import { CreateCustomerDto } from './dto/create-customer.dto';
 import { UpdateCustomerDto } from './dto/update-customer.dto';
 import { CustomerFiltersDto } from './dto/customer-filters.dto';
 import { BulkAssignDto } from './dto/bulk-assign.dto';
 import { Role } from '../../common/enums/role.enum';
-import { User } from '../users/entities/user.entity';
+import { User } from '../../database/entities/user.entity';
 import {
   DuplicatePhoneException,
   CustomerNotFoundException,
   UnauthorizedCustomerAccessException,
 } from './exceptions/customer.exceptions';
-import { CustomerNote } from './entities/customer-note.entity';
-import { Deposit } from '../deposits/entities/deposit.entity';
+import { CustomerNote } from '../../database/entities/customer-note.entity';
+import { Deposit } from '../../database/entities/deposit.entity';
 import { CreateCustomerNoteDto } from './dto/create-customer-note.dto';
 import { CreateDepositDto } from './dto/create-deposit.dto';
 import { NotFoundException, ForbiddenException, BadRequestException } from '@nestjs/common';
@@ -30,11 +30,21 @@ export class CustomersService {
     private readonly depositsRepository: Repository<Deposit>,
   ) {}
 
+  private getTodayVn(): Date {
+    const now = new Date();
+    // Offset for UTC+7 (Vietnam time)
+    const vnTime = new Date(now.getTime() + (7 * 60 * 60 * 1000));
+    return vnTime;
+  }
+
   async create(createCustomerDto: CreateCustomerDto, userId: number) {
     try {
+      const today = this.getTodayVn();
       const customer = this.customersRepository.create({
         ...createCustomerDto,
         createdBy: userId,
+        inputDate: createCustomerDto.inputDate ? new Date(createCustomerDto.inputDate) : today,
+        assignedDate: createCustomerDto.salesUserId ? today : null,
       });
       return await this.customersRepository.save(customer);
     } catch (error: any) {
@@ -243,6 +253,22 @@ export class CustomersService {
 
   async update(id: number, updateCustomerDto: UpdateCustomerDto, userId: number, userRole: string) {
     const customer = await this.findOne(id, userId, userRole);
+    const today = this.getTodayVn();
+    const todayStr = today.toISOString().split('T')[0];
+    
+    // Logic cho assignedDate: Tự động set khi salesUserId được gán lần đầu
+    if (updateCustomerDto.salesUserId && 
+        !customer.assignedDate && 
+        !updateCustomerDto.assignedDate) {
+      (updateCustomerDto as any).assignedDate = todayStr;
+    }
+
+    // Logic cho closedDate: Tự động set khi status chuyển sang 'closed' lần đầu
+    if (updateCustomerDto.status === 'closed' && 
+        !customer.closedDate && 
+        !updateCustomerDto.closedDate) {
+      (updateCustomerDto as any).closedDate = todayStr;
+    }
     
     try {
       this.customersRepository.merge(customer, {
@@ -302,10 +328,16 @@ export class CustomersService {
     const skippedIds = dto.customerIds.filter(id => !validIds.includes(id));
 
     if (validIds.length > 0) {
-      await this.customersRepository.update(validIds, {
-        salesUserId: dto.salesUserId,
-        updatedBy: callerId
-      });
+      const today = this.getTodayVn();
+      for (const customer of validCustomers) {
+        // Chỉ set assignedDate nếu nó đang NULL
+        if (!customer.assignedDate) {
+          customer.assignedDate = today;
+        }
+        customer.salesUserId = dto.salesUserId;
+        customer.updatedBy = callerId;
+      }
+      await this.customersRepository.save(validCustomers);
     }
 
     return {

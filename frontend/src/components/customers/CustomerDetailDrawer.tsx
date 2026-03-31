@@ -4,17 +4,23 @@ import { useState, useEffect } from 'react';
 import { 
   Drawer, Tabs, Descriptions, Table, Tag, 
   Button, Form, Input, Select, Switch, Space, App, Typography, List, Divider, Empty,
-  DatePicker, Row, Col, Card
+  DatePicker, Row, Col, Card, Tooltip
 } from 'antd';
 import { 
   InfoCircleOutlined, 
   FileTextOutlined, 
   DollarOutlined, 
   PlusOutlined,
-  HistoryOutlined
+  HistoryOutlined,
+  EditOutlined,
+  SaveOutlined,
+  CloseOutlined,
+  CalendarOutlined
 } from '@ant-design/icons';
 import { Customer, CustomerNote, Deposit } from '@/lib/types/customer.types';
 import { customersApi } from '@/lib/api/customers.api';
+import { useDepartments } from '@/lib/hooks/useDepartments';
+import { useUsers, useUsersList } from '@/lib/hooks/useUsers';
 import dayjs from 'dayjs';
 
 const { TabPane } = Tabs;
@@ -30,10 +36,16 @@ export const CustomerDetailDrawer = ({ open, customerId, onClose }: CustomerDeta
   const [loading, setLoading] = useState(false);
   const [customer, setCustomer] = useState<Customer | null>(null);
   const [activeTab, setActiveTab ] = useState('info');
+  const [isEditing, setIsEditing] = useState(false);
   const { message } = App.useApp();
   const [noteForm] = Form.useForm();
   const [depositForm] = Form.useForm();
+  const [editForm] = Form.useForm();
   const [submitLoading, setSubmitLoading] = useState(false);
+
+  // Hook data for editing
+  const { departments } = useDepartments();
+  const { users: salesUsers } = useUsersList('employee');
 
   const fetchDetail = async () => {
     if (!customerId) return;
@@ -55,8 +67,30 @@ export const CustomerDetailDrawer = ({ open, customerId, onClose }: CustomerDeta
     } else {
       setCustomer(null);
       setActiveTab('info');
+      setIsEditing(false);
     }
   }, [open, customerId]);
+
+  const handleUpdate = async (values: any) => {
+    if (!customerId) return;
+    setSubmitLoading(true);
+    try {
+      const payload = {
+        ...values,
+        inputDate: values.inputDate?.format('YYYY-MM-DD'),
+        assignedDate: values.assignedDate?.format('YYYY-MM-DD') || null,
+        closedDate: values.closedDate?.format('YYYY-MM-DD') || null,
+      };
+      await customersApi.updateCustomer(customerId, payload);
+      message.success('Cập nhật thông tin thành công');
+      setIsEditing(false);
+      fetchDetail();
+    } catch (error) {
+      message.error('Lỗi khi cập nhật thông tin');
+    } finally {
+      setSubmitLoading(false);
+    }
+  };
 
   const handleAddNote = async (values: any) => {
     if (!customerId) return;
@@ -92,25 +126,110 @@ export const CustomerDetailDrawer = ({ open, customerId, onClose }: CustomerDeta
   };
 
   const renderInfo = () => (
-    <Descriptions bordered column={1} size="small">
-      <Descriptions.Item label="Họ tên">{customer?.name}</Descriptions.Item>
-      <Descriptions.Item label="Số điện thoại">{customer?.phone}</Descriptions.Item>
-      <Descriptions.Item label="Email">{customer?.email || '-'}</Descriptions.Item>
-      <Descriptions.Item label="Nguồn">
-        <Tag color="blue">{customer?.source}</Tag>
-      </Descriptions.Item>
-      <Descriptions.Item label="Chiến dịch">{customer?.campaign || '-'}</Descriptions.Item>
-      <Descriptions.Item label="Sales phụ trách">{customer?.salesUser?.name}</Descriptions.Item>
-      <Descriptions.Item label="Phòng ban">{customer?.department?.name}</Descriptions.Item>
-      <Descriptions.Item label="Broker">{customer?.broker || '-'}</Descriptions.Item>
-      <Descriptions.Item label="Ngày chốt">
-        {customer?.closedDate ? dayjs(customer.closedDate).format('DD/MM/YYYY') : '-'}
-      </Descriptions.Item>
-      <Descriptions.Item label="Ghi chú hệ thống">{customer?.note || '-'}</Descriptions.Item>
-      <Descriptions.Item label="Ngày tạo">
-        {dayjs(customer?.createdAt).format('DD/MM/YYYY HH:mm')}
-      </Descriptions.Item>
-    </Descriptions>
+    <div style={{ position: 'relative' }}>
+      {!isEditing ? (
+        <>
+          <div style={{ marginBottom: 16, textAlign: 'right' }}>
+            <Button icon={<EditOutlined />} onClick={() => {
+              setIsEditing(true);
+              editForm.setFieldsValue({
+                ...customer,
+                inputDate: customer?.inputDate ? dayjs(customer.inputDate) : null,
+                assignedDate: customer?.assignedDate ? dayjs(customer.assignedDate) : null,
+                closedDate: customer?.closedDate ? dayjs(customer.closedDate) : null,
+                departmentId: customer?.department?.id,
+                salesUserId: customer?.salesUser?.id,
+              });
+            }}>Chỉnh sửa</Button>
+          </div>
+          <Descriptions bordered column={1} size="small">
+            <Descriptions.Item label="Họ tên">{customer?.name}</Descriptions.Item>
+            <Descriptions.Item label="Số điện thoại">{customer?.phone}</Descriptions.Item>
+            <Descriptions.Item label="Email">{customer?.email || '-'}</Descriptions.Item>
+            <Descriptions.Item label="Nguồn">
+              <Tag color="blue">{customer?.source}</Tag>
+            </Descriptions.Item>
+            <Descriptions.Item label="Chiến dịch">{customer?.campaign || '-'}</Descriptions.Item>
+            <Descriptions.Item label="Sales phụ trách">{customer?.salesUser?.name || '-'}</Descriptions.Item>
+            <Descriptions.Item label="Phòng ban">{customer?.department?.name || '-'}</Descriptions.Item>
+            <Descriptions.Item label="Broker">{customer?.broker || '-'}</Descriptions.Item>
+            <Descriptions.Item label="Ngày nhập data">
+              <Text strong><CalendarOutlined /> {customer?.inputDate ? dayjs(customer.inputDate).format('DD/MM/YYYY') : '-'}</Text>
+            </Descriptions.Item>
+            <Descriptions.Item label="Ngày nhận KH">
+              <Text type="secondary">{customer?.assignedDate ? dayjs(customer.assignedDate).format('DD/MM/YYYY') : '-'}</Text>
+            </Descriptions.Item>
+            <Descriptions.Item label="Ngày chốt">
+              <Tag color="success">{customer?.closedDate ? dayjs(customer.closedDate).format('DD/MM/YYYY') : '-'}</Tag>
+            </Descriptions.Item>
+            <Descriptions.Item label="Ghi chú hệ thống">{customer?.note || '-'}</Descriptions.Item>
+            <Descriptions.Item label="Ngày tạo hệ thống">
+              <Text type="secondary">{dayjs(customer?.createdAt).format('DD/MM/YYYY HH:mm')}</Text>
+            </Descriptions.Item>
+          </Descriptions>
+        </>
+      ) : (
+        <Form form={editForm} layout="vertical" onFinish={handleUpdate}>
+          <Row gutter={16}>
+            <Col span={12}>
+              <Form.Item name="name" label="Họ tên" rules={[{ required: true }]}>
+                <Input />
+              </Form.Item>
+            </Col>
+            <Col span={12}>
+              <Form.Item name="phone" label="SĐT" rules={[{ required: true }]}>
+                <Input />
+              </Form.Item>
+            </Col>
+          </Row>
+          <Row gutter={16}>
+            <Col span={12}>
+              <Form.Item name="departmentId" label="Phòng ban" rules={[{ required: true }]}>
+                <Select options={departments.map((d: any) => ({ label: d.name, value: d.id }))} />
+              </Form.Item>
+            </Col>
+            <Col span={12}>
+              <Form.Item name="salesUserId" label="Sales phụ trách" rules={[{ required: true }]}>
+                <Select options={salesUsers.map((u: any) => ({ label: u.name, value: u.id }))} />
+              </Form.Item>
+            </Col>
+          </Row>
+          <Row gutter={16}>
+            <Col span={8}>
+              <Form.Item name="inputDate" label="Ngày nhập data" rules={[{ required: true }]}>
+                <DatePicker style={{ width: '100%' }} format="DD/MM/YYYY" />
+              </Form.Item>
+            </Col>
+            <Col span={8}>
+              <Form.Item name="assignedDate" label="Ngày nhận KH">
+                <DatePicker style={{ width: '100%' }} format="DD/MM/YYYY" placeholder="Chưa nhận" />
+              </Form.Item>
+            </Col>
+            <Col span={8}>
+              <Form.Item name="closedDate" label="Ngày chốt">
+                <DatePicker style={{ width: '100%' }} format="DD/MM/YYYY" placeholder="Chưa chốt" />
+              </Form.Item>
+            </Col>
+          </Row>
+          <Form.Item name="status" label="Trạng thái">
+            <Select>
+              <Select.Option value="pending">Chờ xử lý</Select.Option>
+              <Select.Option value="potential">Tiềm năng</Select.Option>
+              <Select.Option value="closed">Đã chốt</Select.Option>
+              <Select.Option value="lost">Mất</Select.Option>
+              <Select.Option value="inactive">Ngừng chăm sóc</Select.Option>
+            </Select>
+          </Form.Item>
+          <Form.Item name="note" label="Ghi chú hệ thống">
+            <Input.TextArea rows={2} />
+          </Form.Item>
+          <Space style={{ marginTop: 16, display: 'flex', justifyContent: 'flex-end' }}>
+            <Button icon={<CloseOutlined />} onClick={() => setIsEditing(false)}>Hủy</Button>
+            <Button type="primary" icon={<SaveOutlined />} htmlType="submit" loading={submitLoading}>Lưu thay đổi</Button>
+          </Space>
+        </Form>
+      )}
+    </div>
   );
 
   const renderNotes = () => (

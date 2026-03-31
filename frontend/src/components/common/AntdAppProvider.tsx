@@ -2,6 +2,8 @@
 
 import { App } from 'antd';
 import type { MessageInstance } from 'antd/es/message/interface';
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import { useState } from 'react';
 
 let globalMessage: MessageInstance | undefined;
 
@@ -20,11 +22,15 @@ function AppInjector({ children }: { children: React.ReactNode }) {
 }
 
 export function AntdAppProvider({ children }: { children: React.ReactNode }) {
+  const [queryClient] = useState(() => new QueryClient());
+
   return (
-    <App>
-      <AppInjector>
-        {children}
-      </AppInjector>
-    </App>
+    <QueryClientProvider client={queryClient}>
+      <App>
+        <AppInjector>
+          {children}
+        </AppInjector>
+      </App>
+    </QueryClientProvider>
   );
 }

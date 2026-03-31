@@ -4,11 +4,11 @@ import { useState, useEffect } from 'react';
 import { Table, Card, Button, Space, Tag, App, Modal, Form, Input, Select, Switch } from 'antd';
 import { UserAddOutlined, EditOutlined, KeyOutlined, ReloadOutlined } from '@ant-design/icons';
 import { usersApi } from '@/lib/api/users.api';
-import { departmentsApi } from '@/lib/api'; // Updated to use index.ts
+import { useDepartments } from '@/lib/hooks/useDepartments';
 import dayjs from 'dayjs';
 
 export default function UsersPage() {
-  const [users, setUsers] = useState([]);
+  const [users, setUsers] = useState<any[]>([]);
   const [loading, setLoading] = useState(false);
   const [total, setTotal] = useState(0);
   const [page, setPage] = useState(1);
@@ -20,13 +20,13 @@ export default function UsersPage() {
   const [editingUser, setEditingUser] = useState<any>(null);
   const [form] = Form.useForm();
   const [resetForm] = Form.useForm();
-  const [departments, setDepartments] = useState([]);
+  const { departments } = useDepartments();
 
   const fetchUsers = async () => {
     setLoading(true);
     try {
       const response = await usersApi.getUsers({ page, limit: pageSize });
-      setUsers(response.data);
+      setUsers(response.data.data);
       setTotal(response.total);
     } catch (error) {
       message.error('Không thể tải danh sách nhân viên');
@@ -35,17 +35,8 @@ export default function UsersPage() {
     }
   };
 
-  const fetchDepartments = async () => {
-    // Basic departments fetch if API exists, else empty
-    try {
-      const response = await departmentsApi.getDepartments();
-      setDepartments(response);
-    } catch (error) {}
-  };
-
   useEffect(() => {
     fetchUsers();
-    fetchDepartments();
   }, [page, pageSize]);
 
   const handleSave = async (values: any) => {

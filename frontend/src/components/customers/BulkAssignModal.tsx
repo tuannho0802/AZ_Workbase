@@ -1,56 +1,46 @@
 import React, { useState, useEffect } from 'react';
-import { Modal, Select, Button, notification, message } from 'antd';
+import { Modal, Select, Button, notification, message, Form, App } from 'antd';
 import axiosInstance from '@/lib/api/axios-instance';
+import { useUsersList } from '@/lib/hooks/useUsers';
 
 interface BulkAssignModalProps {
   open: boolean;
-  selectedIds: number[];
+  selectedRowKeys: React.Key[];
   onClose: () => void;
   onSuccess: () => void;
 }
 
-export const BulkAssignModal: React.FC<BulkAssignModalProps> = ({ open, selectedIds, onClose, onSuccess }) => {
-  const [salesUsers, setSalesUsers] = useState<any[]>([]);
-  const [salesId, setSalesId] = useState<number | null>(null);
+export const BulkAssignModal: React.FC<BulkAssignModalProps> = ({ open, selectedRowKeys = [], onClose, onSuccess }) => {
+  const [form] = Form.useForm();
   const [loading, setLoading] = useState(false);
-  const [fetching, setFetching] = useState(false);
+  const { message } = App.useApp();
+  const { users: salesUsers, isLoading: usersLoading } = useUsersList('employee');
+  const [salesId, setSalesId] = useState<number | null>(null);
 
   useEffect(() => {
     if (open) {
       setSalesId(null);
-      fetchSalesUsers();
     }
   }, [open]);
-
-  const fetchSalesUsers = async () => {
-    setFetching(true);
-    try {
-      const res = await axiosInstance.get('/users?role=employee');
-      setSalesUsers(res.data);
-    } catch (e) {
-      message.error('Không lấy được danh sách nhân viên Sales');
-    } finally {
-      setFetching(false);
-    }
-  };
 
   const handleAssign = async () => {
     if (!salesId) return;
     setLoading(true);
     try {
-      const payload = { customerIds: selectedIds, salesUserId: salesId };
+      const payload = { 
+        customerIds: selectedRowKeys, 
+        salesUserId: salesId 
+      };
       const res = await axiosInstance.patch('/customers/bulk-assign', payload);
       const data = res.data;
       
-      const salesName = salesUsers.find(u => u.id === salesId)?.name || 'Nhân viên';
-      notification.success({ message: `✅ Đã gán ${data.updatedCount} khách hàng cho ${salesName}` });
-      if (data.skippedIds && data.skippedIds.length > 0) {
-        notification.warning({ message: `⚠️ ${data.skippedIds.length} khách hàng không thể gán (không đủ quyền)` });
-      }
+      const salesName = salesUsers.find((u: any) => u.id === salesId)?.name || 'Nhân viên';
+      message.success(`✅ Đã gán ${data.updatedCount} khách hàng cho ${salesName}`);
+      
       onSuccess();
       onClose();
     } catch (e: any) {
-      notification.error({ message: 'Lỗi gán khách hàng', description: e.response?.data?.message || 'Có lỗi xảy ra' });
+      message.error(e.response?.data?.message || 'Lỗi gán khách hàng');
     } finally {
       setLoading(false);
     }
@@ -63,21 +53,21 @@ export const BulkAssignModal: React.FC<BulkAssignModalProps> = ({ open, selected
       onCancel={onClose}
       footer={[
         <Button key="cancel" onClick={onClose}>Hủy</Button>,
-        <Button key="submit" type="primary" loading={loading} disabled={!salesId || selectedIds.length === 0} onClick={handleAssign}>Xác nhận gán</Button>
+        <Button key="submit" type="primary" loading={loading} disabled={!salesId || selectedRowKeys.length === 0} onClick={handleAssign}>Xác nhận gán</Button>
       ]}
     >
-      <div className="mb-4">
-        Bạn đang gán <strong>{selectedIds.length}</strong> khách hàng đã chọn.
+      <div style={{ marginBottom: 16 }}>
+        Bạn đang gán <strong>{selectedRowKeys.length}</strong> khách hàng đã chọn.
       </div>
       <Select
         showSearch
         style={{ width: '100%' }}
         placeholder="Tìm kiếm nhân viên..."
-        loading={fetching}
-        options={salesUsers.map(u => ({ label: `${u.name}`, value: u.id }))}
+        loading={usersLoading}
+        options={salesUsers.map((u: any) => ({ label: `${u.name}`, value: u.id }))}
         value={salesId}
         onChange={val => setSalesId(val)}
-        filterOption={(input, option) => (option?.label ?? '').toLowerCase().includes(input.toLowerCase())}
+        filterOption={(input: string, option: any) => (option?.label ?? '').toLowerCase().includes(input.toLowerCase())}
       />
     </Modal>
   );

@@ -1,4 +1,4 @@
-import { IsString, IsNotEmpty, Length, Matches, IsOptional, IsEmail, IsEnum, IsInt } from 'class-validator';
+import { IsString, IsNotEmpty, Length, Matches, IsOptional, IsEmail, IsEnum, IsInt, IsDateString } from 'class-validator';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 
 export class CreateCustomerDto {
@@ -47,6 +47,11 @@ export class CreateCustomerDto {
   @IsNotEmpty({ message: 'Phòng ban là bắt buộc' })
   @IsInt({ message: 'ID phòng ban phải là số nguyên' })
   departmentId: number;
+
+  @ApiPropertyOptional({ example: '2026-03-30', description: 'Ngày nhập data (YYYY-MM-DD)' })
+  @IsOptional()
+  @IsDateString({}, { message: 'Ngày nhập không đúng định dạng YYYY-MM-DD' })
+  inputDate?: string;
 
   @ApiPropertyOptional({ example: 'Khách hàng VIP cần chăm sóc kỹ', description: 'Ghi chú thêm' })
   @IsOptional()

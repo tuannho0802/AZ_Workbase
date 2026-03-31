@@ -16,6 +16,16 @@ import { ResetPasswordDto } from './dto/reset-password.dto';
 export class UsersController {
   constructor(private readonly usersService: UsersService) {}
 
+  @Get('all')
+  @Roles(Role.ADMIN, Role.MANAGER)
+  @ApiOperation({ summary: 'Lấy toàn bộ danh sách nhân viên (Không phân trang)' })
+  async findAllList(
+    @Request() req: any,
+    @Query('role') role?: string,
+  ) {
+    return this.usersService.findEmployees(req.user.id, req.user.role, role);
+  }
+
   @Get()
   @Roles(Role.ADMIN, Role.MANAGER)
   @ApiOperation({ summary: 'Danh sách nhân viên (Phân trang & Filter)' })
