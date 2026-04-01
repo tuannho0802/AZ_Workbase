@@ -19,6 +19,7 @@ interface AuthState {
 // ✅ CRITICAL: Custom cookie storage
 const cookieStorage = {
   getItem: (name: string) => {
+    if (typeof window === 'undefined') return null;
     const value = Cookies.get(name);
     console.log(`[AuthStore] Reading cookie: ${name}, exists: ${!!value}`);
     if (!value) return null;
@@ -30,6 +31,7 @@ const cookieStorage = {
     }
   },
   setItem: (name: string, value: string) => {
+    if (typeof window === 'undefined') return;
     console.log(`[AuthStore] Writing cookie: ${name}`);
     Cookies.set(name, encodeURIComponent(value), { 
       expires: 7, 
@@ -38,6 +40,7 @@ const cookieStorage = {
     });
   },
   removeItem: (name: string) => {
+    if (typeof window === 'undefined') return;
     console.log(`[AuthStore] Removing cookie: ${name}`);
     Cookies.remove(name, { path: '/' });
   },

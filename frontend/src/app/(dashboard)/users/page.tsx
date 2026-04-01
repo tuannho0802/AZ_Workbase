@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { Table, Card, Button, Space, Tag, App, Modal, Form, Input, Select, Switch } from 'antd';
+import { Table, Card, Button, Space, Tag, App, Modal, Form, Input, Select, Switch, Spin } from 'antd';
 import { UserAddOutlined, EditOutlined, KeyOutlined, ReloadOutlined } from '@ant-design/icons';
 import { useUsersList } from '@/lib/hooks/useUsers';
 import { usersApi } from '@/lib/api/users.api';
@@ -28,7 +28,11 @@ export default function UsersPage() {
 
 
   useEffect(() => {
+    console.log("Processed Data for Table:", users);
+    users.forEach((u: any) => console.log(`[USER DB CHECK] ID: ${u.id} - Name: ${u.name} - isActive: ${u.isActive} (${typeof u.isActive}) - Dept:`, u.department));
+  }, [users]);
 
+  useEffect(() => {
     refetch();
   }, [refetch]);
 
@@ -110,9 +114,9 @@ export default function UsersPage() {
     { 
       title: 'Trạng thái', 
       key: 'status', 
-      render: (_: any, record: any) => {
-        const isActive = record.isActive === 1 || record.isActive === true || record.isActive === '1' || record.status === 'active';
-        return <Tag color={isActive ? 'success' : 'error'}>{isActive ? 'Đang hoạt động' : 'Khóa'}</Tag>;
+      dataIndex: 'isActive',
+      render: (val: any) => {
+        return Number(val) === 1 ? <Tag color="green">Đang hoạt động</Tag> : <Tag color="red">Khóa</Tag>;
       }
     },
     {
@@ -156,18 +160,24 @@ export default function UsersPage() {
         </Space>
       }
     >
-      <Table 
-        columns={columns} 
-        dataSource={users} 
-        rowKey="id" 
-        loading={loading}
-        pagination={{
-          current: page,
-          total: total,
-          pageSize: pageSize,
-          onChange: (p, s) => { setPage(p); setPageSize(s); }
-        }}
-      />
+      {usersLoading ? (
+        <div className="flex justify-center items-center my-10 py-10">
+          <Spin size="large" description="Đang nạp dữ liệu..." />
+        </div>
+      ) : (
+        <Table 
+          columns={columns} 
+          dataSource={users} 
+          rowKey="id" 
+          loading={loading}
+          pagination={{
+            current: page,
+            total: total,
+            pageSize: pageSize,
+            onChange: (p, s) => { setPage(p); setPageSize(s); }
+          }}
+        />
+      )}
 
       {/* Modal Thêm/Sửa */}
       <Modal

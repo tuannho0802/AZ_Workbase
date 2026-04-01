@@ -30,8 +30,8 @@ export class UsersService {
 
   async findEmployees(callerId: number, callerRole: string, targetRole?: string): Promise<User[]> {
     const qb = this.usersRepository.createQueryBuilder('user')
-      .where('user.isActive = :isActive', { isActive: true })
-      .select(['user.id', 'user.name', 'user.email', 'user.role', 'user.departmentId']);
+      .leftJoinAndSelect('user.department', 'department')
+      .where('1=1');
       
     if (targetRole) {
       qb.andWhere('user.role = :targetRole', { targetRole });
@@ -48,11 +48,11 @@ export class UsersService {
   }
 
   async findAll(userId: number, userRole: string, options: { role?: string; departmentId?: number; isActive?: boolean; search?: string; page?: number; limit?: number }) {
-    const { role, departmentId, isActive = true, search, page = 1, limit = 20 } = options;
+    const { role, departmentId, isActive, search, page = 1, limit = 20 } = options;
     
     const queryBuilder = this.usersRepository.createQueryBuilder('user')
-      .where('1=1') // boilerplate for andWhere
-      .select(['user.id', 'user.email', 'user.name', 'user.role', 'user.departmentId', 'user.isActive', 'user.lastLoginAt']);
+      .leftJoinAndSelect('user.department', 'department')
+      .where('1=1');
 
     if (userRole === Role.MANAGER) {
       const manager = await this.findById(userId);
