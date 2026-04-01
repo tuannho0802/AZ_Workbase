@@ -83,7 +83,7 @@ axiosInstance.interceptors.response.use(
       const refreshToken = useAuthStore.getState().refreshToken;
       
       if (!refreshToken) {
-        useAuthStore.getState().logout();
+        useAuthStore.getState().logoutLocal();
         if (typeof window !== 'undefined' && !window.location.pathname.includes('/login')) {
           window.location.href = '/login';
         }
@@ -115,8 +115,9 @@ axiosInstance.interceptors.response.use(
         );
 
         const token = response.data.access_token || response.data.accessToken;
-        const newRefToken = response.data.refresh_token || response.data.refreshToken; 
+        const newRefToken = response.data.refresh_token || response.data.refreshToken;
         
+        // ⭐ CRITICAL: Save BOTH tokens to store → Cookie gets updated automatically
         useAuthStore.getState().setTokens(token, newRefToken);
         
         processQueue(null, token);
@@ -129,10 +130,8 @@ axiosInstance.interceptors.response.use(
         isRefreshing = false;
         
         console.error('[Axios] Refresh failed -> Logging out');
-        // Critical: Clear store and redirect
-        useAuthStore.getState().logout();
+        useAuthStore.getState().logoutLocal();
         
-        // ✅ CRITICAL: Chỉ redirect nếu không phải trang login
         if (typeof window !== 'undefined' && !window.location.pathname.includes('/login')) {
           window.location.href = '/login';
         }

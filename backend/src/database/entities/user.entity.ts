@@ -36,6 +36,9 @@ export class User {
   @Column({ name: 'last_login_at', type: 'timestamp', nullable: true })
   lastLoginAt: Date;
 
+  @Column({ name: 'hashed_refresh_token', type: 'text', nullable: true, select: false })
+  hashedRefreshToken: string | null;
+
   @CreateDateColumn({ name: 'created_at' })
   createdAt: Date;
 

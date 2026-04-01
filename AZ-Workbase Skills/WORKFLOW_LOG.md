@@ -51,3 +51,27 @@ Tôi đã đọc toàn bộ source code (local + GitHub `tuannho0802/AZ_Workbase
 - `backend/src/modules/users/users.service.ts` — Remove isActive filter, add leftJoin, preserve password on update
 
 ---
+
+## [2026-04-01 11:06] | Triển khai Refresh Token Rotation | Status: Success
+
+**Actor:** Agent
+
+**Bối cảnh:** Hệ thống trước đó không có DB-side validation cho Refresh Token. Refresh Token bị đánh cắp có thể dùng mãi mãi để lấy Access Token mới.
+
+**Cơ chế đã triển khai (Rotation + Reuse Detection):**
+1. **Login**: Tạo refresh_token → `bcrypt.hash(10)` → Lưu vào `users.hashed_refresh_token` trong DB.
+2. **Refresh**: Verify JWT signature → `bcrypt.compare(tokenGửiLên, DB_hash)` → Nếu khớp: phát cặp mới + cập nhật hash (ROTATION) → Nếu không khớp: xóa hash trong DB + 401 (DETECTION).
+3. **Logout**: `saveRefreshToken(userId, null)` → Vô hiệu hóa hoàn toàn khả năng refresh.
+
+**Files Changed:**
+- `backend/src/database/entities/user.entity.ts` — Thêm cột `hashedRefreshToken` (`type: text, nullable, select: false`)
+- `backend/src/modules/users/users.service.ts` — Thêm `saveRefreshToken()` và `findByIdWithRefreshToken()`
+- `backend/src/modules/auth/auth.service.ts` — Rewrite: `generateTokens()`, `login()`, `refresh()` (Rotation + Detection), `logout()`
+- `backend/src/modules/auth/auth.controller.ts` — Thêm `POST /auth/logout` endpoint (JwtAuthGuard)
+- `frontend/src/lib/stores/auth.store.ts` — `logout()` gọi API backend, `logoutLocal()` dùng cho interceptor
+- `frontend/src/lib/api/axios-instance.ts` — Dùng `logoutLocal()` khi refresh fail, đảm bảo cả 2 tokens được lưu vào Cookie sau rotation
+
+**Security Note — Reuse Detection Flow:**
+Token cũ bị dùng lại → `bcrypt.compare` fail → Log `[SECURITY] Token reuse detected for user ID: X` → `hashedRefreshToken = null` trong DB → Cả người dùng thật và kẻ tấn công đều bị forced logout.
+
+---

@@ -28,6 +28,25 @@ export class UsersService {
     await this.usersRepository.update(id, { lastLoginAt: new Date() });
   }
 
+  async saveRefreshToken(userId: number, token: string | null): Promise<void> {
+    const hashedRefreshToken = token ? await bcrypt.hash(token, 10) : null;
+    // Use query builder to update the field that has select: false
+    await this.usersRepository
+      .createQueryBuilder()
+      .update(User)
+      .set({ hashedRefreshToken })
+      .where('id = :id', { id: userId })
+      .execute();
+  }
+
+  async findByIdWithRefreshToken(id: number): Promise<User | null> {
+    return this.usersRepository
+      .createQueryBuilder('user')
+      .addSelect('user.hashedRefreshToken')
+      .where('user.id = :id', { id })
+      .getOne();
+  }
+
   async findEmployees(callerId: number, callerRole: string, targetRole?: string): Promise<User[]> {
     const qb = this.usersRepository.createQueryBuilder('user')
       .leftJoinAndSelect('user.department', 'department')

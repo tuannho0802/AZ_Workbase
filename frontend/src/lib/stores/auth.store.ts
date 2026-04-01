@@ -2,6 +2,7 @@ import { create } from 'zustand';
 import { persist, createJSONStorage } from 'zustand/middleware';
 import Cookies from 'js-cookie';
 import { User } from '../types/auth.types';
+import axiosInstance from '../api/axios-instance';
 
 interface AuthState {
   user: User | null;
@@ -12,7 +13,8 @@ interface AuthState {
   
   setUser: (user: User) => void;
   setTokens: (accessToken: string, refreshToken: string) => void;
-  logout: () => void;
+  logout: () => Promise<void>;
+  logoutLocal: () => void;
   setHydrated: (state: boolean) => void;
 }
 
@@ -74,8 +76,28 @@ export const useAuthStore = create<AuthState>()(
         console.log('[AUTH STORE] Tokens saved to store');
       },
 
-      logout: () => {
-        console.log('[AUTH STORE] Logout');
+      logout: async () => {
+        console.log('[AUTH STORE] Calling logout API to revoke token in DB...');
+        try {
+          // Revoke refresh token in backend DB
+          await axiosInstance.post('/auth/logout');
+        } catch (e) {
+          // Even if API call fails, clear local state
+          console.warn('[AUTH STORE] Logout API failed (token may already be invalid):', e);
+        } finally {
+          set({
+            user: null,
+            accessToken: null,
+            refreshToken: null,
+            isAuthenticated: false,
+          });
+          console.log('[AUTH STORE] Local session cleared.');
+        }
+      },
+
+      logoutLocal: () => {
+        // Used by axios interceptor for silent forced logout (no API call)
+        console.log('[AUTH STORE] Force logout (local only)');
         set({
           user: null,
           accessToken: null,
