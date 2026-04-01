@@ -1,4 +1,4 @@
-import { Injectable, UnauthorizedException } from '@nestjs/common';
+import { Injectable, UnauthorizedException, ForbiddenException } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import { ConfigService } from '@nestjs/config';
 import * as bcrypt from 'bcrypt';
@@ -15,13 +15,20 @@ export class AuthService {
 
   async login(loginDto: LoginDto) {
     const user = await this.usersService.findByEmail(loginDto.email);
+    console.log("LOGIN ATTEMPT - Raw User from DB:", {
+      id: user?.id,
+      email: user?.email,
+      isActive: user?.isActive,
+      isActiveType: typeof user?.isActive,
+      hasPassword: !!user?.password
+    });
     
     if (!user) {
       throw new UnauthorizedException('Tài khoản không tồn tại');
     }
 
-    if (!user.isActive) {
-      throw new UnauthorizedException('Tài khoản đã bị khóa');
+    if (Number(user.isActive) === 0) {
+      throw new ForbiddenException('Tài khoản bị khóa');
     }
 
     if (!user.password) {
@@ -49,6 +56,7 @@ export class AuthService {
         email: user.email,
         name: user.name,
         role: user.role,
+        isActive: user.isActive,
       },
     };
   }

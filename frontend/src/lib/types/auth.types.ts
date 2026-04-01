@@ -8,6 +8,7 @@ export interface User {
   email: string;
   name: string;
   role: 'admin' | 'manager' | 'assistant' | 'employee';
+  isActive: boolean;
   department?: {
     id: number;
     name: string;

@@ -130,10 +130,12 @@ export class UsersService {
       throw new NotFoundException('Không tìm thấy nhân viên');
     }
 
-    // 2. Nếu có password, hash trước
-    if ((updateDto as any).password) {
+    // 2. Nếu có password, hash trước. Nếu không, XÓA khỏi DTO để tránh Object.assign chép đè chuỗi rỗng
+    if ((updateDto as any).password && (updateDto as any).password.trim() !== '') {
       const bcrypt = require('bcrypt');
       (updateDto as any).password = await bcrypt.hash((updateDto as any).password, 10);
+    } else {
+      delete (updateDto as any).password;
     }
 
     // 3. Merge data

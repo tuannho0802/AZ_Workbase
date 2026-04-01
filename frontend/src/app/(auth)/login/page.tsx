@@ -47,7 +47,14 @@ export default function LoginPage() {
       router.push('/customers');
     } catch (error: any) {
       console.error('[LOGIN] Error:', error);
-      message.error(error.response?.data?.message || 'Đăng nhập thất bại');
+      const status = error.response?.status;
+      if (status === 403) {
+        message.error('Tài khoản của bạn đã bị khóa, vui lòng liên hệ Admin');
+      } else if (status === 401) {
+        message.error('Email hoặc mật khẩu không đúng');
+      } else {
+        message.error(error.response?.data?.message || 'Đăng nhập thất bại');
+      }
     } finally {
       setLoading(false);
     }

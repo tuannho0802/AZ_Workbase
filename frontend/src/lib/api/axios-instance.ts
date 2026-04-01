@@ -18,6 +18,12 @@ const axiosInstance = axios.create({
 // ✅ CRITICAL: Request interceptor với debug
 axiosInstance.interceptors.request.use(
   (config: InternalAxiosRequestConfig) => {
+    // ✅ CRITICAL: Skip token check for auth routes
+    if (config.url?.includes('/auth/login') || config.url?.includes('/auth/register')) {
+      console.log('[AXIOS REQUEST] Auth route detected, skipping token check:', config.url);
+      return config;
+    }
+
     const authState = useAuthStore.getState();
     const token = authState.accessToken;
     
