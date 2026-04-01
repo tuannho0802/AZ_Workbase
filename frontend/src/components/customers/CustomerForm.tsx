@@ -19,18 +19,14 @@ export const CustomerForm: React.FC<CustomerFormProps> = ({ open, onClose, onSuc
   const { departments, isLoading: deptsLoading } = useDepartments();
   const { users: salesUsers, isLoading: usersLoading } = useUsersList('employee');
 
-  console.log("CustomerForm - Raw salesUsers:", salesUsers);
-  console.log("CustomerForm - salesUsers type:", typeof salesUsers);
-  console.log("CustomerForm - Is Array?", Array.isArray(salesUsers));
+
 
   // Debug từng user object
   salesUsers?.forEach((user: any, index: number) => {
-    console.log(`User ${index}:`, user);
-    console.log(`User ${index} keys:`, Object.keys(user));
+
   });
 
-  console.log("Check SalesUsers Array:", salesUsers);
-  console.log("Check SalesUsers length:", salesUsers?.length);
+
 
   const handleSubmit = async (values: any) => {
     setLoading(true);

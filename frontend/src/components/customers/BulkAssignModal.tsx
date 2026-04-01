@@ -17,18 +17,14 @@ export const BulkAssignModal: React.FC<BulkAssignModalProps> = ({ open, selected
   const { users: salesUsers, isLoading: usersLoading } = useUsersList('employee');
   const [salesId, setSalesId] = useState<number | null>(null);
 
-  console.log("BulkAssignModal - Raw salesUsers:", salesUsers);
-  console.log("BulkAssignModal - salesUsers type:", typeof salesUsers);
-  console.log("BulkAssignModal - Is Array?", Array.isArray(salesUsers));
+
 
   // Debug từng user object
   salesUsers?.forEach((user: any, index: number) => {
-    console.log(`BulkAssign User ${index}:`, user);
-    console.log(`BulkAssign User ${index} keys:`, Object.keys(user));
+
   });
 
-  console.log("Check BulkAssign SalesUsers Array:", salesUsers);
-  console.log("Check BulkAssign SalesUsers length:", salesUsers?.length);
+
 
   useEffect(() => {
     if (open) {

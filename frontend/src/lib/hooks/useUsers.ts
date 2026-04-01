@@ -14,13 +14,13 @@ export const useUsers = (role?: string) => {
 };
 
 export const useUsersList = (role?: string) => {
-  const { data, isLoading } = useQuery({
+  const { data, isLoading, refetch } = useQuery({
     queryKey: ['users-list', role],
     queryFn: () => usersApi.getUsersList({ role }),
-    staleTime: 10 * 60 * 1000,
+    refetchOnMount: true,
   });
 
-  console.log("Raw Data from API:", data);
+
   
   // Xử lý cả trường hợp phân trang và không phân trang
   let users = [];
@@ -32,11 +32,11 @@ export const useUsersList = (role?: string) => {
     users = data.users;
   }
   
-  console.log("Processed users array:", users);
-  console.log("Users length:", users.length);
+
 
   return {
     users,
-    isLoading
+    isLoading,
+    refetch
   };
 };

@@ -15,15 +15,32 @@ const axiosInstance = axios.create({
 });
 
 // Request interceptor - Add JWT token
+// ✅ CRITICAL: Request interceptor với debug
 axiosInstance.interceptors.request.use(
   (config: InternalAxiosRequestConfig) => {
-    const token = useAuthStore.getState().accessToken;
+    const authState = useAuthStore.getState();
+    const token = authState.accessToken;
+    
+    console.log('[AXIOS REQUEST] URL:', config.url);
+    console.log('[AXIOS REQUEST] Auth state:', {
+      isAuthenticated: authState.isAuthenticated,
+      hasToken: !!token,
+      tokenPreview: token ? `${token.substring(0, 20)}...` : 'null',
+    });
+
     if (token) {
       config.headers.Authorization = `Bearer ${token}`;
+      console.log('[AXIOS REQUEST] Authorization header SET');
+    } else {
+      console.warn('[AXIOS REQUEST] NO TOKEN - Request will fail!');
     }
+
     return config;
   },
-  (error) => Promise.reject(error)
+  (error) => {
+    console.error('[AXIOS REQUEST] Error:', error);
+    return Promise.reject(error);
+  }
 );
 
 // Response interceptor - Handle errors
@@ -50,8 +67,10 @@ axiosInstance.interceptors.response.use(
 
     // Handle 401 - Token expired
     if (error.response?.status === 401 && !originalRequest._retry) {
-      // REDIRECT GUARD: Don't redirect if already on /login
-      if (typeof window !== 'undefined' && window.location.pathname === '/login') {
+      console.log('[AXIOS] 401 Unauthorized');
+      
+      // ✅ CRITICAL: Prevent loop
+      if (originalRequest.url?.includes('/auth/login')) {
         return Promise.reject(error);
       }
 
@@ -59,7 +78,9 @@ axiosInstance.interceptors.response.use(
       
       if (!refreshToken) {
         useAuthStore.getState().logout();
-        if (window.location.pathname !== '/login') window.location.href = '/login';
+        if (typeof window !== 'undefined' && !window.location.pathname.includes('/login')) {
+          window.location.href = '/login';
+        }
         return Promise.reject(error);
       }
 
@@ -105,7 +126,8 @@ axiosInstance.interceptors.response.use(
         // Critical: Clear store and redirect
         useAuthStore.getState().logout();
         
-        if (typeof window !== 'undefined' && window.location.pathname !== '/login') {
+        // ✅ CRITICAL: Chỉ redirect nếu không phải trang login
+        if (typeof window !== 'undefined' && !window.location.pathname.includes('/login')) {
           window.location.href = '/login';
         }
         return Promise.reject(refreshError);

@@ -17,17 +17,36 @@ export default function LoginPage() {
   const onFinish = async (values: { email: string; password: string }) => {
     setLoading(true);
     try {
+      console.log('[LOGIN] Attempting login...');
       const response = await authApi.login(values);
       
+      console.log('[LOGIN] Response received:', {
+        hasAccessToken: !!response.accessToken,
+        hasRefreshToken: !!response.refreshToken,
+        hasUser: !!response.user,
+        userRole: response.user?.role,
+      });
+
+      // ✅ CRITICAL: Phải gọi CẢ 2 setters
       setUser(response.user);
       setTokens(response.accessToken, response.refreshToken);
       
-      // Đồng bộ vào js-cookie để middleware SSR đọc được ngay
-      Cookies.set('auth-storage', JSON.stringify({ state: { isAuthenticated: true, user: response.user } }), { expires: 7 });
+      // Verify tokens đã lưu
+      const currentState = useAuthStore.getState();
+      console.log('[LOGIN] State after setTokens:', {
+        hasAccessToken: !!currentState.accessToken,
+        hasRefreshToken: !!currentState.refreshToken,
+        isAuthenticated: currentState.isAuthenticated,
+      });
 
       message.success('Đăng nhập thành công!');
+      
+      // Delay 500ms để đảm bảo cookie được ghi
+      await new Promise(resolve => setTimeout(resolve, 500));
+      
       router.push('/customers');
     } catch (error: any) {
+      console.error('[LOGIN] Error:', error);
       message.error(error.response?.data?.message || 'Đăng nhập thất bại');
     } finally {
       setLoading(false);

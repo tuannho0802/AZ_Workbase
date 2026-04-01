@@ -30,9 +30,10 @@ interface CustomerDetailDrawerProps {
   open: boolean;
   customerId: number | null;
   onClose: () => void;
+  onUpdate?: () => void;
 }
 
-export const CustomerDetailDrawer = ({ open, customerId, onClose }: CustomerDetailDrawerProps) => {
+export const CustomerDetailDrawer = ({ open, customerId, onClose, onUpdate }: CustomerDetailDrawerProps) => {
   const [loading, setLoading] = useState(false);
   const [customer, setCustomer] = useState<Customer | null>(null);
   const [activeTab, setActiveTab ] = useState('info');
@@ -99,7 +100,10 @@ export const CustomerDetailDrawer = ({ open, customerId, onClose }: CustomerDeta
       await customersApi.createNote(customerId, values);
       message.success('Đã thêm ghi chú');
       noteForm.resetFields();
-      fetchDetail();
+      await fetchDetail();
+      
+      // ✅ CRITICAL: Notify parent to reload list
+      onUpdate?.();
     } catch (error) {
       message.error('Lỗi khi thêm ghi chú');
     } finally {
@@ -117,7 +121,10 @@ export const CustomerDetailDrawer = ({ open, customerId, onClose }: CustomerDeta
       });
       message.success('Đã nạp tiền thành công');
       depositForm.resetFields();
-      fetchDetail();
+      await fetchDetail();
+      
+      // ✅ CRITICAL: Notify parent to reload list (vì FTD đã thay đổi)
+      onUpdate?.();
     } catch (error) {
       message.error('Lỗi khi nạp tiền');
     } finally {

@@ -8,7 +8,7 @@ interface AuthState {
   accessToken: string | null;
   refreshToken: string | null;
   isAuthenticated: boolean;
-  isHydrated: boolean; // Hydration Shield
+  isHydrated: boolean;
   
   setUser: (user: User) => void;
   setTokens: (accessToken: string, refreshToken: string) => void;
@@ -16,14 +16,13 @@ interface AuthState {
   setHydrated: (state: boolean) => void;
 }
 
-// Custom Cookie Storage for Zustand Persist
+// ✅ CRITICAL: Custom cookie storage
 const cookieStorage = {
   getItem: (name: string) => {
     const value = Cookies.get(name);
     console.log(`[AuthStore] Reading cookie: ${name}, exists: ${!!value}`);
     if (!value) return null;
     try {
-      // js-cookie might already partially decode, let's be safe
       return decodeURIComponent(value);
     } catch (e) {
       console.error(`[AuthStore] Error decoding cookie ${name}:`, e);
@@ -46,7 +45,7 @@ const cookieStorage = {
 
 export const useAuthStore = create<AuthState>()(
   persist(
-    (set, get) => ({
+    (set) => ({
       user: null,
       accessToken: null,
       refreshToken: null,
@@ -54,17 +53,26 @@ export const useAuthStore = create<AuthState>()(
       isHydrated: false,
 
       setUser: (user) => {
-        console.log('[AuthStore] Setting user:', user.email);
+        console.log('[AUTH STORE] Set user:', user.email);
         set({ user, isAuthenticated: true });
       },
       
       setTokens: (accessToken, refreshToken) => {
-        console.log('[AuthStore] Updating tokens');
-        set({ accessToken, refreshToken });
+        console.log('[AUTH STORE] setTokens called');
+        console.log('[AUTH STORE] Access token length:', accessToken?.length || 0);
+        console.log('[AUTH STORE] Refresh token length:', refreshToken?.length || 0);
+        
+        set({ 
+          accessToken, 
+          refreshToken,
+          isAuthenticated: true, // ← CRITICAL: Phải set luôn
+        });
+        
+        console.log('[AUTH STORE] Tokens saved to store');
       },
 
       logout: () => {
-        console.log('[AuthStore] Logout triggered');
+        console.log('[AUTH STORE] Logout');
         set({
           user: null,
           accessToken: null,
@@ -80,7 +88,7 @@ export const useAuthStore = create<AuthState>()(
     }),
     {
       name: 'auth-storage',
-      storage: createJSONStorage(() => cookieStorage),
+      storage: createJSONStorage(() => cookieStorage), // ✅ COOKIE
       onRehydrateStorage: () => (state) => {
         console.log('[AuthStore] onRehydrateStorage called');
         state?.setHydrated(true);

@@ -92,33 +92,59 @@ export class UsersService {
     };
   }
 
-  async create(dto: CreateUserDto) {
-    const existing = await this.findByEmail(dto.email);
+  async create(createDto: CreateUserDto): Promise<User> {
+    // 1. Check email exists
+    const existing = await this.usersRepository.findOne({
+      where: { email: createDto.email },
+    });
+
     if (existing) {
-      throw new ConflictException('Email đã tồn tại trong hệ thống');
+      throw new ConflictException('Email đã tồn tại');
     }
 
-    const hashedPassword = await bcrypt.hash(dto.password, 10);
+    // 2. Hash password
+    const bcrypt = require('bcrypt');
+    const hashedPassword = await bcrypt.hash(createDto.password, 10);
+
+    // 3. Create entity
     const user = this.usersRepository.create({
-      ...dto,
+      ...createDto,
       password: hashedPassword,
     });
 
-    const saved = await this.usersRepository.save(user);
-    const { password, ...result } = saved;
-    return result;
+    // 4. CRITICAL: PHẢI CÓ SAVE()
+    const savedUser = await this.usersRepository.save(user);
+
+    console.log('[DEBUG] New user created:', savedUser.id);
+    
+    return savedUser;
   }
 
-  async update(id: number, dto: UpdateUserDto) {
-    const user = await this.findById(id);
+  async update(id: number, updateDto: UpdateUserDto): Promise<User> {
+    // 1. Tìm user
+    const user = await this.usersRepository.findOne({ 
+      where: { id } 
+    });
+
     if (!user) {
       throw new NotFoundException('Không tìm thấy nhân viên');
     }
 
-    this.usersRepository.merge(user, dto);
-    const saved = await this.usersRepository.save(user);
-    const { password, ...result } = saved;
-    return result;
+    // 2. Nếu có password, hash trước
+    if ((updateDto as any).password) {
+      const bcrypt = require('bcrypt');
+      (updateDto as any).password = await bcrypt.hash((updateDto as any).password, 10);
+    }
+
+    // 3. Merge data
+    Object.assign(user, updateDto);
+
+    // 4. CRITICAL: PHẢI CÓ SAVE()
+    const savedUser = await this.usersRepository.save(user);
+
+    console.log('[DEBUG] User saved to DB:', savedUser.id, '- isActive:', savedUser.isActive);
+    
+    return savedUser;
   }
 
   async resetPassword(id: number, dto: ResetPasswordDto) {

@@ -10,26 +10,41 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
     private configService: ConfigService,
     private usersService: UsersService,
   ) {
+    const secret = configService.get('JWT_SECRET');
+    console.log('[JWT STRATEGY] Initialized with secret length:', secret?.length || 0);
+    
     super({
       jwtFromRequest: ExtractJwt.fromAuthHeaderAsBearerToken(),
       ignoreExpiration: false,
-      secretOrKey: configService.get<string>('JWT_SECRET') as string,
+      secretOrKey: secret,
     });
   }
 
   async validate(payload: any) {
-    console.log('=== JWT PAYLOAD ===');
-    console.log('Payload:', payload);
+    console.log('[JWT STRATEGY] Validating payload:', {
+      sub: payload.sub,
+      email: payload.email,
+      iat: payload.iat,
+      exp: payload.exp,
+    });
 
     const user = await this.usersService.findById(payload.sub);
     
-    console.log('User from DB:', user);
-    console.log('User Role:', user?.role);
-    console.log('===================');
-
     if (!user || !user.isActive) {
-      throw new UnauthorizedException('Tài khoản không tồn tại hoặc đã bị khóa');
+      console.error('[JWT STRATEGY] User not found or inactive:', payload.sub);
+      throw new UnauthorizedException('Phiên đăng nhập không hợp lệ');
     }
-    return { id: user.id, email: user.email, role: user.role };
+
+    console.log('[JWT STRATEGY] User validated:', {
+      id: user.id,
+      email: user.email,
+      role: user.role,
+    });
+
+    return { 
+      id: user.id, 
+      email: user.email, 
+      role: user.role 
+    };
   }
 }

@@ -75,6 +75,13 @@ export default function CustomersPage() {
     fetchStats();
   }, [page, pageSize]);
 
+  // ✅ CRITICAL: Callback để reload table khi drawer thêm deposit/note
+  const handleDrawerUpdate = async () => {
+    console.log('[CUSTOMERS PAGE] Drawer updated, refetching...');
+    await fetchCustomers();
+    await fetchStats();
+  };
+
   const columns: ColumnsType<Customer> = [
     {
       title: 'STT',
@@ -232,6 +239,7 @@ export default function CustomersPage() {
       open={isDrawerOpen}
       customerId={selectedCustomerId}
       onClose={() => setIsDrawerOpen(false)}
+      onUpdate={handleDrawerUpdate}
     />
 
     <ImportExcelModal

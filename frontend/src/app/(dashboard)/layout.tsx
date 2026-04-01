@@ -1,7 +1,7 @@
 'use client';
 
-import { useEffect } from 'react';
-import { useRouter } from 'next/navigation';
+import { useEffect, useState } from 'react';
+import { useRouter, usePathname } from 'next/navigation';
 import { Layout, Menu, Avatar, Dropdown } from 'antd';
 import { LogoutOutlined, UserOutlined, TeamOutlined } from '@ant-design/icons';
 import { useAuthStore } from '@/lib/stores/auth.store';
@@ -15,7 +15,22 @@ export default function DashboardLayout({
   children: React.ReactNode;
 }) {
   const router = useRouter();
+  const pathname = usePathname();
   const { user, isAuthenticated, isHydrated, logout } = useAuthStore();
+  const [selectedKey, setSelectedKey] = useState('customers');
+
+  useEffect(() => {
+    let newKey = 'customers'; // default
+    
+    if (pathname.includes('/users')) {
+      newKey = 'users';
+    } else if (pathname.includes('/customers')) {
+      newKey = 'customers';
+    }
+    
+    setSelectedKey(newKey);
+    console.log('[SIDEBAR] Path:', pathname, '→ Key:', newKey);
+  }, [pathname]); // ← selectedKey KHÔNG được trong deps (gây loop)
 
   useEffect(() => {
     if (isHydrated && !isAuthenticated) {
@@ -51,7 +66,7 @@ export default function DashboardLayout({
         <Menu
           theme="dark"
           mode="inline"
-          defaultSelectedKeys={['customers']}
+          selectedKeys={[selectedKey]}
           items={[
             {
               key: 'customers',

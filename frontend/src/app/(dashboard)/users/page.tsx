@@ -23,30 +23,59 @@ export default function UsersPage() {
   const { departments } = useDepartments();
   
   // Dùng hook useUsersList để lấy danh sách nhân viên
-  const { users, isLoading: usersLoading } = useUsersList();
+  const { users, isLoading: usersLoading, refetch } = useUsersList();
 
-  console.log("UsersPage - Raw users from hook:", users);
-  console.log("UsersPage - users type:", typeof users);
-  console.log("UsersPage - Is Array?", Array.isArray(users));
+
 
   useEffect(() => {
-    // Hook đã tự load data, không cần fetchUsers thủ công
-    console.log("UsersPage - useEffect triggered");
-  }, []);
+
+    refetch();
+  }, [refetch]);
 
   const handleSave = async (values: any) => {
     try {
-      if (editingUser) {
-        await usersApi.updateUser(editingUser.id, values);
-        message.success('Cập nhật nhân viên thành công');
-      } else {
-        await usersApi.createUser(values);
-        message.success('Tạo nhân viên thành công');
+      let payload: any = {};
+      
+      // Fix Role: Ép thành chữ thường để khớp Backend Enum ['admin', 'manager', 'assistant', 'employee']
+      if (values.role) {
+        payload.role = String(values.role).toLowerCase();
       }
-      setIsModalOpen(false);
-      // Hook sẽ tự refresh, không cần fetchUsers thủ công
+      
+      // Fix Department: Ép kiểu sang Number nguyên dương
+      if (values.departmentId) {
+        payload.departmentId = Number(values.departmentId);
+      }
+      
+      // Thêm tên
+      if (values.name) {
+        payload.name = values.name;
+      }
+
+      if (editingUser) {
+        // KHI UPDATE: Bỏ qua email (vì Backend DTO không có), xử lý isActive
+        if (values.isActive !== undefined) {
+          payload.isActive = values.isActive === 1 || values.isActive === true || values.isActive === '1';
+        }
+        
+
+        await usersApi.updateUser(editingUser.id, payload);
+        message.success('Cập nhật nhân viên thành công');
+        setIsModalOpen(false);
+        await refetch();
+      } else {
+        // KHI CREATE: Gửi thêm email và password (những trường CreateUserDto cần)
+        if (values.email) payload.email = values.email;
+        if (values.password) payload.password = values.password;
+        
+
+        await usersApi.createUser(payload);
+        message.success('Tạo nhân viên thành công');
+        setIsModalOpen(false);
+        await refetch();
+      }
     } catch (error: any) {
-      message.error(error.response?.data?.message || 'Có lỗi xảy ra');
+      console.error("Create/Update Error:", error.response?.data);
+      message.error(error.response?.data?.message || 'Có lỗi xảy ra, vui lòng xem F12 Network');
     }
   };
 
@@ -80,8 +109,11 @@ export default function UsersPage() {
     },
     { 
       title: 'Trạng thái', 
-      dataIndex: 'isActive', 
-      render: (active: boolean) => <Tag color={active ? 'success' : 'error'}>{active ? 'Đang hoạt động' : 'Khóa'}</Tag>
+      key: 'status', 
+      render: (_: any, record: any) => {
+        const isActive = record.isActive === 1 || record.isActive === true || record.isActive === '1' || record.status === 'active';
+        return <Tag color={isActive ? 'success' : 'error'}>{isActive ? 'Đang hoạt động' : 'Khóa'}</Tag>;
+      }
     },
     {
       title: 'Thao tác',
@@ -90,7 +122,14 @@ export default function UsersPage() {
         <Space>
           <Button 
             icon={<EditOutlined />} 
-            onClick={() => { setEditingUser(record); form.setFieldsValue(record); setIsModalOpen(true); }}
+            onClick={() => { 
+              setEditingUser(record); 
+              form.setFieldsValue({
+                ...record,
+                departmentId: record.department?.id || record.departmentId
+              }); 
+              setIsModalOpen(true); 
+            }}
           >
             Sửa
           </Button>
@@ -160,7 +199,7 @@ export default function UsersPage() {
           <Form.Item name="departmentId" label="Phòng ban">
             <Select allowClear>
               {departments.map((d: any) => (
-                <Select.Option key={d.id} value={d.id}>{d.name}</Select.Option>
+                <Select.Option key={d.id} value={Number(d.id)}>{d.name}</Select.Option>
               ))}
             </Select>
           </Form.Item>
