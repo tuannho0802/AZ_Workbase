@@ -1,4 +1,6 @@
 import { Entity, Column, PrimaryGeneratedColumn, CreateDateColumn, UpdateDateColumn, OneToMany } from 'typeorm';
+import { BooleanTransformer } from '../transformers/boolean.transformer';
+
 import { Customer } from './customer.entity';
 
 @Entity('departments')
@@ -15,8 +17,9 @@ export class Department {
   @Column({ name: 'manager_user_id', nullable: true })
   managerUserId: number;
 
-  @Column({ name: 'is_active', default: true })
+  @Column({ name: 'is_active', default: true, transformer: new BooleanTransformer() })
   isActive: boolean;
+
 
   @CreateDateColumn({ name: 'created_at' })
   createdAt: Date;

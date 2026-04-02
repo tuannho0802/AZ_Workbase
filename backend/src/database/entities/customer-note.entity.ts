@@ -1,4 +1,6 @@
 import { Entity, Column, PrimaryGeneratedColumn, CreateDateColumn, UpdateDateColumn, ManyToOne, JoinColumn } from 'typeorm';
+import { BooleanTransformer } from '../transformers/boolean.transformer';
+
 import { Customer } from './customer.entity';
 import { User } from './user.entity';
 
@@ -25,8 +27,9 @@ export class CustomerNote {
   })
   noteType: string;
 
-  @Column({ name: 'is_important', default: false })
+  @Column({ name: 'is_important', default: false, transformer: new BooleanTransformer() })
   isImportant: boolean;
+
 
   @Column({ name: 'created_by' })
   createdBy: number;

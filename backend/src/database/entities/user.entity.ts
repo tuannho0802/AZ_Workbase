@@ -1,4 +1,6 @@
 import { Entity, Column, PrimaryGeneratedColumn, CreateDateColumn, UpdateDateColumn, ManyToOne, JoinColumn } from 'typeorm';
+import { BooleanTransformer } from '../transformers/boolean.transformer';
+
 import { Role } from '../../common/enums/role.enum';
 import { Department } from './department.entity';
 
@@ -30,8 +32,9 @@ export class User {
   @JoinColumn({ name: 'department_id' })
   department: Department;
 
-  @Column({ name: 'is_active', default: true })
+  @Column({ name: 'is_active', default: true, transformer: new BooleanTransformer() })
   isActive: boolean;
+
 
   @Column({ name: 'last_login_at', type: 'timestamp', nullable: true })
   lastLoginAt: Date;

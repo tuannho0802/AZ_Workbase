@@ -3,7 +3,6 @@ import { showMessage } from '@/components/common/AntdAppProvider';
 import { useAuthStore } from '../stores/auth.store';
 
 const API_BASE_URL = 'http://localhost:3001/api';
-console.log('[Axios] Initializing with Base URL:', API_BASE_URL);
 
 const axiosInstance = axios.create({
   baseURL: API_BASE_URL,
@@ -15,38 +14,22 @@ const axiosInstance = axios.create({
 });
 
 // Request interceptor - Add JWT token
-// ✅ CRITICAL: Request interceptor với debug
 axiosInstance.interceptors.request.use(
   (config: InternalAxiosRequestConfig) => {
-    // ✅ CRITICAL: Skip token check for auth routes
+    // Skip token check for auth routes
     if (config.url?.includes('/auth/login') || config.url?.includes('/auth/register')) {
-      console.log('[AXIOS REQUEST] Auth route detected, skipping token check:', config.url);
       return config;
     }
 
-    const authState = useAuthStore.getState();
-    const token = authState.accessToken;
-    
-    console.log('[AXIOS REQUEST] URL:', config.url);
-    console.log('[AXIOS REQUEST] Auth state:', {
-      isAuthenticated: authState.isAuthenticated,
-      hasToken: !!token,
-      tokenPreview: token ? `${token.substring(0, 20)}...` : 'null',
-    });
+    const token = useAuthStore.getState().accessToken;
 
     if (token) {
       config.headers.Authorization = `Bearer ${token}`;
-      console.log('[AXIOS REQUEST] Authorization header SET');
-    } else {
-      console.warn('[AXIOS REQUEST] NO TOKEN - Request will fail!');
     }
 
     return config;
   },
-  (error) => {
-    console.error('[AXIOS REQUEST] Error:', error);
-    return Promise.reject(error);
-  }
+  (error) => Promise.reject(error),
 );
 
 // Response interceptor - Handle errors
@@ -73,9 +56,7 @@ axiosInstance.interceptors.response.use(
 
     // Handle 401 - Token expired
     if (error.response?.status === 401 && !originalRequest._retry) {
-      console.log('[AXIOS] 401 Unauthorized');
-      
-      // ✅ CRITICAL: Prevent loop
+      // Prevent loop for login endpoint
       if (originalRequest.url?.includes('/auth/login')) {
         return Promise.reject(error);
       }
@@ -106,7 +87,6 @@ axiosInstance.interceptors.response.use(
 
       try {
         const refreshUrl = `${API_BASE_URL}/auth/refresh`;
-        console.log('[Axios] AUTH REFRESH CALL ->', refreshUrl);
         
         const response = await axios.post(
           refreshUrl,
@@ -128,8 +108,6 @@ axiosInstance.interceptors.response.use(
       } catch (refreshError) {
         processQueue(refreshError, null);
         isRefreshing = false;
-        
-        console.error('[Axios] Refresh failed -> Logging out');
         useAuthStore.getState().logoutLocal();
         
         if (typeof window !== 'undefined' && !window.location.pathname.includes('/login')) {
