@@ -35,13 +35,24 @@ export const CustomerForm: React.FC<CustomerFormProps> = ({ open, onClose, onSuc
         ...values,
         inputDate: values.inputDate.format('YYYY-MM-DD'),
       };
+      console.log('[CUSTOMER FORM] Creating customer:', payload);
       await customersApi.createCustomer(payload);
       message.success('Thêm khách hàng thành công');
       form.resetFields();
       onSuccess();
       onClose();
     } catch (error: any) {
-      message.error(error.response?.data?.message || 'Có lỗi xảy ra khi thêm khách hàng');
+      console.error('Customer create error:', error.response?.data);
+      const errorData = error.response?.data;
+      if (errorData?.message) {
+        if (Array.isArray(errorData.message)) {
+          errorData.message.forEach((msg: string) => message.error(msg));
+        } else {
+          message.error(errorData.message);
+        }
+      } else {
+        message.error('Có lỗi xảy ra khi thêm khách hàng');
+      }
     } finally {
       setLoading(false);
     }

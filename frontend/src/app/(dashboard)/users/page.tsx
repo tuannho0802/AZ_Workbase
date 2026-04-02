@@ -34,48 +34,46 @@ export default function UsersPage() {
 
   const handleSave = async (values: any) => {
     try {
-      let payload: any = {};
+      setLoading(true);
+      let payload: any = {
+        name: values.name,
+        role: String(values.role).toLowerCase(),
+        departmentId: values.departmentId ? Number(values.departmentId) : undefined,
+      };
       
-      // Fix Role: Ép thành chữ thường để khớp Backend Enum ['admin', 'manager', 'assistant', 'employee']
-      if (values.role) {
-        payload.role = String(values.role).toLowerCase();
-      }
-      
-      // Fix Department: Ép kiểu sang Number nguyên dương
-      if (values.departmentId) {
-        payload.departmentId = Number(values.departmentId);
-      }
-      
-      // Thêm tên
-      if (values.name) {
-        payload.name = values.name;
-      }
-
       if (editingUser) {
-        // KHI UPDATE: Bỏ qua email (vì Backend DTO không có), xử lý isActive
-        if (values.isActive !== undefined) {
-          payload.isActive = values.isActive === 1 || values.isActive === true || values.isActive === '1';
-        }
-        
-
+        payload.isActive = values.isActive;
+        console.log('[USERS PAGE] Updating user:', editingUser.id, payload);
         await usersApi.updateUser(editingUser.id, payload);
         message.success('Cập nhật nhân viên thành công');
-        setIsModalOpen(false);
-        await refetch();
       } else {
-        // KHI CREATE: Gửi thêm email và password (những trường CreateUserDto cần)
-        if (values.email) payload.email = values.email;
-        if (values.password) payload.password = values.password;
-        
-
+        payload.email = values.email;
+        payload.password = values.password;
+        payload.isActive = values.isActive ?? true;
+        console.log('[USERS PAGE] Creating user:', payload);
         await usersApi.createUser(payload);
         message.success('Tạo nhân viên thành công');
-        setIsModalOpen(false);
-        await refetch();
       }
+      
+      setIsModalOpen(false);
+      form.resetFields();
+      await refetch();
     } catch (error: any) {
-      console.error("Create/Update Error:", error.response?.data);
-      message.error(error.response?.data?.message || 'Có lỗi xảy ra, vui lòng xem F12 Network');
+      console.error("Create/Update Error Detail:", error.response?.data);
+      const errorData = error.response?.data;
+      
+      if (errorData?.message) {
+        if (Array.isArray(errorData.message)) {
+          // Hiển thị từng lỗi nếu là mảng validation
+          errorData.message.forEach((msg: string) => message.error(msg));
+        } else {
+          message.error(errorData.message);
+        }
+      } else {
+        message.error('Có lỗi xảy ra khi lưu thông tin nhân viên');
+      }
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -183,37 +181,77 @@ export default function UsersPage() {
         onOk={() => form.submit()}
       >
         <Form form={form} layout="vertical" onFinish={handleSave}>
-          <Form.Item name="email" label="Email" rules={[{ required: true, type: 'email' }]}>
-            <Input disabled={!!editingUser} />
+          <Form.Item
+            name="email"
+            label="Email"
+            rules={[
+              { required: !editingUser, message: 'Vui lòng nhập email' },
+              { type: 'email', message: 'Email không hợp lệ' },
+            ]}
+          >
+            <Input disabled={!!editingUser} placeholder="user@azworkbase.com" />
           </Form.Item>
+
+          <Form.Item
+            name="name"
+            label="Họ và tên"
+            rules={[
+              { required: true, message: 'Vui lòng nhập họ tên' },
+              { min: 2, message: 'Họ tên phải có ít nhất 2 ký tự' },
+            ]}
+          >
+            <Input placeholder="Nguyễn Văn A" />
+          </Form.Item>
+
           {!editingUser && (
-            <Form.Item name="password" label="Mật khẩu ban đầu" rules={[{ required: true, min: 6 }]}>
-              <Input.Password />
+            <Form.Item
+              name="password"
+              label="Mật khẩu"
+              rules={[
+                { required: true, message: 'Vui lòng nhập mật khẩu' },
+                { min: 8, message: 'Mật khẩu phải có ít nhất 8 ký tự' },
+                {
+                  pattern: /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[@$!%*?&])[A-Za-z\d@$!%*?&]/,
+                  message: 'Mật khẩu phải có chữ hoa, chữ thường, số và ký tự đặc biệt',
+                },
+              ]}
+            >
+              <Input.Password placeholder="Password@123" />
             </Form.Item>
           )}
-          <Form.Item name="name" label="Họ tên" rules={[{ required: true }]}>
-            <Input />
-          </Form.Item>
-          <Form.Item name="role" label="Chức vụ" rules={[{ required: true }]}>
-            <Select>
+
+          <Form.Item
+            name="role"
+            label="Vai trò"
+            rules={[{ required: true, message: 'Vui lòng chọn vai trò' }]}
+          >
+            <Select placeholder="Chọn vai trò">
               <Select.Option value="admin">Admin</Select.Option>
               <Select.Option value="manager">Manager</Select.Option>
               <Select.Option value="assistant">Assistant</Select.Option>
               <Select.Option value="employee">Employee</Select.Option>
             </Select>
           </Form.Item>
-          <Form.Item name="departmentId" label="Phòng ban">
-            <Select allowClear>
+
+          <Form.Item
+            name="departmentId"
+            label="Phòng ban"
+          >
+            <Select placeholder="Chọn phòng ban" allowClear>
               {departments.map((d: any) => (
                 <Select.Option key={d.id} value={Number(d.id)}>{d.name}</Select.Option>
               ))}
             </Select>
           </Form.Item>
-          {editingUser && (
-            <Form.Item name="isActive" label="Hoạt động" valuePropName="checked">
-              <Switch />
-            </Form.Item>
-          )}
+
+          <Form.Item
+            name="isActive"
+            label="Trạng thái"
+            valuePropName="checked"
+            initialValue={true}
+          >
+            <Switch checkedChildren="Hoạt động" unCheckedChildren="Khóa" />
+          </Form.Item>
         </Form>
       </Modal>
 

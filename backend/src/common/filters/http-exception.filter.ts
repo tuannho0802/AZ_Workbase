@@ -19,10 +19,17 @@ export class AllExceptionsFilter implements ExceptionFilter {
         ? exception.getStatus()
         : HttpStatus.INTERNAL_SERVER_ERROR;
 
-    const message =
-      exception instanceof HttpException
-        ? exception.message
-        : 'Lỗi hệ thống ngoại lệ (Internal server error)';
+    let message: string | string[];
+
+    if (exception instanceof HttpException) {
+      const exceptionResponse = exception.getResponse();
+      message =
+        typeof exceptionResponse === 'object' && 'message' in exceptionResponse
+          ? (exceptionResponse as any).message
+          : exception.message;
+    } else {
+      message = 'Internal server error';
+    }
 
     const errorResponse = {
       statusCode: status,
@@ -33,8 +40,10 @@ export class AllExceptionsFilter implements ExceptionFilter {
     };
 
     // Log error for debugging (Tiếng Việt)
-    console.error('Đã bắt được ngoại lệ:', {
-      ...errorResponse,
+    console.error('[EXCEPTION FILTER] Error:', {
+      status,
+      path: request.url,
+      message,
       stack: exception instanceof Error ? exception.stack : null,
     });
 
