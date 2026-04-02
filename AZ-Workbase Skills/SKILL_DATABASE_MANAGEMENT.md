@@ -487,101 +487,63 @@ export class Customer {
 }
 ```
 
-### 5. Migration Management
+### 5. Migration Management — QUY TRÌNH BẮT BUỘC
 
-**Create Initial Migration:**
-```bash
-npm run typeorm migration:create -- -n InitialSchema
-```
+> [!CAUTION]
+> **NGHIÊM CẤM sửa Schema bằng TablePlus/GUI từ đây về sau.**
+> Mọi thay đổi Schema PHẢI đi qua Migration. Ngoại lệ duy nhất: Sửa data (INSERT/UPDATE/DELETE), không phải cấu trúc bảng.
 
-**Migration File Template:**
+#### Quy trình 3 bước bắt buộc:
+
+**Bước 1 — Sửa Entity trong Code**
 ```typescript
-// migrations/1700000000000-InitialSchema.ts
-import { MigrationInterface, QueryRunner } from 'typeorm';
-
-export class InitialSchema1700000000000 implements MigrationInterface {
-  name = 'InitialSchema1700000000000';
-
-  public async up(queryRunner: QueryRunner): Promise<void> {
-    // Create departments table first (no dependencies)
-    await queryRunner.query(`
-      CREATE TABLE departments (
-        id INT PRIMARY KEY AUTO_INCREMENT,
-        name VARCHAR(100) NOT NULL UNIQUE,
-        description TEXT,
-        manager_user_id INT,
-        is_active BOOLEAN DEFAULT TRUE,
-        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
-      ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
-    `);
-
-    // Create users table
-    await queryRunner.query(`
-      CREATE TABLE users (
-        id INT PRIMARY KEY AUTO_INCREMENT,
-        email VARCHAR(255) UNIQUE NOT NULL,
-        password VARCHAR(255) NOT NULL,
-        name VARCHAR(100) NOT NULL,
-        role ENUM('admin', 'manager', 'assistant', 'employee') NOT NULL DEFAULT 'employee',
-        department_id INT,
-        is_active BOOLEAN DEFAULT TRUE,
-        last_login_at TIMESTAMP NULL,
-        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-        
-        INDEX idx_email (email),
-        INDEX idx_role (role),
-        INDEX idx_department (department_id),
-        
-        FOREIGN KEY (department_id) REFERENCES departments(id) ON DELETE SET NULL
-      ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
-    `);
-
-    // Add foreign key from departments to users (circular dependency)
-    await queryRunner.query(`
-      ALTER TABLE departments
-      ADD CONSTRAINT fk_departments_manager
-      FOREIGN KEY (manager_user_id) REFERENCES users(id) ON DELETE SET NULL;
-    `);
-
-    // Create customers table
-    await queryRunner.query(`
-      CREATE TABLE customers (
-        -- ... (full schema from above)
-      ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
-    `);
-
-    // Create remaining tables...
-  }
-
-  public async down(queryRunner: QueryRunner): Promise<void> {
-    // Drop in reverse order to respect foreign keys
-    await queryRunner.query(`DROP TABLE IF EXISTS audit_logs`);
-    await queryRunner.query(`DROP TABLE IF EXISTS customer_notes`);
-    await queryRunner.query(`DROP TABLE IF EXISTS data_sharing`);
-    await queryRunner.query(`DROP TABLE IF EXISTS deposits`);
-    await queryRunner.query(`DROP TABLE IF EXISTS customers`);
-    await queryRunner.query(`DROP TABLE IF EXISTS refresh_tokens`);
-    await queryRunner.query(`ALTER TABLE departments DROP FOREIGN KEY fk_departments_manager`);
-    await queryRunner.query(`DROP TABLE IF EXISTS users`);
-    await queryRunner.query(`DROP TABLE IF EXISTS departments`);
-  }
-}
+// Sửa file: backend/src/database/entities/*.entity.ts
+// Ví dụ: Thêm cột mới vào user.entity.ts
+@Column({ name: 'new_column', type: 'varchar', nullable: true })
+newColumn: string | null;
 ```
 
-**Run Migration:**
+**Bước 2 — Generate Migration (TypeORM tự so sánh Entity vs DB)**
 ```bash
-# Development
-npm run typeorm migration:run
-
-# Production
-NODE_ENV=production npm run typeorm migration:run
+# Chạy từ thư mục backend/
+npm run migration:generate --name=TenMigration
+# Ví dụ: npm run migration:generate --name=AddHasedRefreshToken
+# File mới sẽ được tạo tại: src/database/migrations/<timestamp>-TenMigration.ts
 ```
 
-**Rollback Migration:**
+**Bước 3 — Chạy Migration (Áp dụng thay đổi vào DB)**
 ```bash
-npm run typeorm migration:revert
+npm run migration:run
+```
+
+#### Các lệnh quan trọng khác:
+```bash
+# Xem trạng thái tất cả migration (đã chạy hay chưa)
+npm run migration:show
+
+# Rollback migration gần nhất
+npm run migration:revert
+
+# Generate với tên cụ thể (Windows)
+npm run migration:generate --name=AddHashedRefreshToken
+```
+
+#### Danh sách Migration hiện tại (Baseline):
+| Timestamp | Tên | Nội dung |
+|---|---|---|
+| `1700000000000` | `InitialSchema` | Tạo tất cả bảng ban đầu |
+| `1710000000000` | `CreateCustomersTable` | Đảm bảo bảng customers tồn tại (IF NOT EXISTS) |
+| `1711883300000` | `AddDateFieldsToCustomers` | Thêm `input_date`, `assigned_date` |
+| `1743472800000` | `AddHashedRefreshTokenToUsers` | Thêm cột `hashed_refresh_token` (Refresh Token Rotation) |
+
+#### Lưu ý quan trọng khi viết Migration thủ công:
+```typescript
+// ✅ LUÔN dùng IF NOT EXISTS để an toàn với môi trường đã có:
+await queryRunner.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS hashed_refresh_token TEXT NULL`);
+
+// ✅ Luôn viết đủ cả up() và down()
+// ✅ Đặt tên file: <timestamp>-<PascalCaseName>.ts
+// ❌ KHÔNG bao giờ sửa file migration đã được chạy
 ```
 
 ### 6. Seed Data Script
