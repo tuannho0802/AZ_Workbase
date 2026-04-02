@@ -820,7 +820,29 @@ Before Production Deployment:
 - [TypeORM Documentation](https://typeorm.io)
 - [Database Indexing Best Practices](https://use-the-index-luke.com)
 
+## 11. Chuẩn hóa Dữ liệu (Boolean Mapping)
+
+MySQL sử dụng `TINYINT(1)` cho kiểu boolean. Để đảm bảo TypeScript nhận đúng giá trị `true/false` từ DB thay vì `0/1`, **bắt buộc** sử dụng `BooleanTransformer`:
+
+```typescript
+import { BooleanTransformer } from '../transformers/boolean.transformer';
+
+@Column({ 
+  type: 'tinyint', 
+  transformer: new BooleanTransformer() 
+})
+isActive: boolean;
+```
+
+## 12. Windows Compatibility (Migration CLI)
+
+Khi chạy lệnh TypeORM CLI trên Windows, không trỏ vào `.bin/typeorm`. Thay vào đó, hãy trỏ trực tiếp vào file logic:
+
+```json
+"typeorm:ts": "ts-node -r tsconfig-paths/register ./node_modules/typeorm/cli.js"
+```
+
 ---
 
-**Skill Version:** 1.0.0  
-**Last Updated:** 2024-01-XX
+**Skill Version:** 1.1.0  
+**Last Updated:** 2026-04-02

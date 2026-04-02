@@ -27,10 +27,6 @@ export default function UsersPage() {
 
 
 
-  useEffect(() => {
-    console.log("Processed Data for Table:", users);
-    users.forEach((u: any) => console.log(`[USER DB CHECK] ID: ${u.id} - Name: ${u.name} - isActive: ${u.isActive} (${typeof u.isActive}) - Dept:`, u.department));
-  }, [users]);
 
   useEffect(() => {
     refetch();

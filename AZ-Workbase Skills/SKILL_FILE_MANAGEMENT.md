@@ -122,7 +122,26 @@ AZ-Workbase/
 
 ---
 
-## 5. CÁCH RA LỆNH CHO AGENT
+## 6. GIAO THỨC LOGGING & ERROR HANDLING (MANDATORY)
+
+### 6.1 Backend Logging (NestJS):
+- **Tuyệt đối KHÔNG** dùng `console.log()` hay `console.warn()`.
+- **BẮT BUỘC** dùng `Logger` từ `@nestjs/common`.
+- Cách khai báo: `private readonly logger = new Logger(AuthService.name);`
+- Cách dùng:
+  - `this.logger.log('User signed in: ' + email);` (Sự kiện bình thường)
+  - `this.logger.warn('[SECURITY] Token reuse detected!');` (Cảnh báo bảo mật)
+  - `this.logger.error('Failed to process payment', error.stack);` (Lỗi hệ thống)
+- **Cấm log chuỗi Token nguyên bản** (Access/Refresh Token) ra console/file log.
+
+### 6.2 Frontend Error Handling (Axios):
+- **Silent Handling**: Các lỗi 401 (Unauthorized) phải được xử lý ngầm (Refresh Token) hoặc chuyển hướng im lặng về trang Login.
+- **Console Cleanup**: Xóa bỏ các dòng log "NO TOKEN", "REQUEST FAILED" rác trong `axios-instance.ts` và Stores.
+- **User Notification**: Chỉ hiện thông báo lỗi (Toast/Message) khi là lỗi mạng thực sự hoặc lỗi 500 từ server mà người dùng cần biết.
+
+---
+
+## 7. CÁCH RA LỆNH CHO AGENT
 
 | Bạn muốn... | Câu lệnh ví dụ |
 |---|---|

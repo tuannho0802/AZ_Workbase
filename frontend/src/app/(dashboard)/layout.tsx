@@ -29,12 +29,10 @@ export default function DashboardLayout({
     }
     
     setSelectedKey(newKey);
-    console.log('[SIDEBAR] Path:', pathname, '→ Key:', newKey);
   }, [pathname]); // ← selectedKey KHÔNG được trong deps (gây loop)
 
   useEffect(() => {
     if (isHydrated && !isAuthenticated) {
-      console.log('[Layout] Not authenticated after hydration -> Redirecting to /login');
       // Force a clean redirect to clear any bad state
       window.location.href = '/login?from=' + encodeURIComponent(window.location.pathname);
     }

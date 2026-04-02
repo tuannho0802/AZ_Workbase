@@ -96,6 +96,11 @@ npm install
 # Tạo file .env.development (xem .env.development.example)
 npm run start:dev       # Chạy trên http://localhost:3001
 # Swagger Docs: http://localhost:3001/api/docs
+
+# Database Migrations
+npm run migration:show    # Xem trạng thái migrations
+npm run migration:run     # Chạy migrations mới
+npm run migration:revert  # Hoàn tác migration gần nhất
 ```
 
 ### 2. Frontend (Next.js)
@@ -106,6 +111,12 @@ npm install
 # NEXT_PUBLIC_API_URL=http://localhost:3001/api
 npm run dev             # Chạy trên http://localhost:3000
 ```
+
+### 🛡️ Security Features
+- **Refresh Token Rotation**: Mỗi khi refresh token được sử dụng, một cặp token mới sẽ được phát và token cũ bị thu hồi.
+- **Reuse Detection**: Nếu một Refresh Token cũ được sử dụng lại (nghi ngờ bị đánh cắp), hệ thống sẽ ngay lập tức thu hồi TOÀN BỘ các phiên đăng nhập của người dùng đó (Single-session enforcement).
+- **Password Hashing**: Sử dụng Bcrypt (10 rounds).
+- **RBAC**: Phân quyền chặt chẽ dựa trên Role và Department.
 
 ### Environment Variables cần thiết (Backend):
 ```env

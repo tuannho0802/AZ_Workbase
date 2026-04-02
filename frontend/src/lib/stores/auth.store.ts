@@ -18,23 +18,19 @@ interface AuthState {
   setHydrated: (state: boolean) => void;
 }
 
-// ✅ CRITICAL: Custom cookie storage
 const cookieStorage = {
   getItem: (name: string) => {
     if (typeof window === 'undefined') return null;
     const value = Cookies.get(name);
-    console.log(`[AuthStore] Reading cookie: ${name}, exists: ${!!value}`);
     if (!value) return null;
     try {
       return decodeURIComponent(value);
     } catch (e) {
-      console.error(`[AuthStore] Error decoding cookie ${name}:`, e);
       return value;
     }
   },
   setItem: (name: string, value: string) => {
     if (typeof window === 'undefined') return;
-    console.log(`[AuthStore] Writing cookie: ${name}`);
     Cookies.set(name, encodeURIComponent(value), { 
       expires: 7, 
       path: '/',
@@ -43,7 +39,6 @@ const cookieStorage = {
   },
   removeItem: (name: string) => {
     if (typeof window === 'undefined') return;
-    console.log(`[AuthStore] Removing cookie: ${name}`);
     Cookies.remove(name, { path: '/' });
   },
 };
@@ -58,32 +53,22 @@ export const useAuthStore = create<AuthState>()(
       isHydrated: false,
 
       setUser: (user) => {
-        console.log('[AUTH STORE] Set user:', user.email);
         set({ user, isAuthenticated: true });
       },
       
       setTokens: (accessToken, refreshToken) => {
-        console.log('[AUTH STORE] setTokens called');
-        console.log('[AUTH STORE] Access token length:', accessToken?.length || 0);
-        console.log('[AUTH STORE] Refresh token length:', refreshToken?.length || 0);
-        
         set({ 
           accessToken, 
           refreshToken,
-          isAuthenticated: true, // ← CRITICAL: Phải set luôn
+          isAuthenticated: true,
         });
-        
-        console.log('[AUTH STORE] Tokens saved to store');
       },
 
       logout: async () => {
-        console.log('[AUTH STORE] Calling logout API to revoke token in DB...');
         try {
-          // Revoke refresh token in backend DB
           await axiosInstance.post('/auth/logout');
         } catch (e) {
-          // Even if API call fails, clear local state
-          console.warn('[AUTH STORE] Logout API failed (token may already be invalid):', e);
+          // Silent catch
         } finally {
           set({
             user: null,
@@ -91,13 +76,10 @@ export const useAuthStore = create<AuthState>()(
             refreshToken: null,
             isAuthenticated: false,
           });
-          console.log('[AUTH STORE] Local session cleared.');
         }
       },
 
       logoutLocal: () => {
-        // Used by axios interceptor for silent forced logout (no API call)
-        console.log('[AUTH STORE] Force logout (local only)');
         set({
           user: null,
           accessToken: null,
@@ -107,15 +89,13 @@ export const useAuthStore = create<AuthState>()(
       },
 
       setHydrated: (state) => {
-        console.log(`[AuthStore] Hydration state -> ${state}`);
         set({ isHydrated: state });
       },
     }),
     {
       name: 'auth-storage',
-      storage: createJSONStorage(() => cookieStorage), // ✅ COOKIE
+      storage: createJSONStorage(() => cookieStorage),
       onRehydrateStorage: () => (state) => {
-        console.log('[AuthStore] onRehydrateStorage called');
         state?.setHydrated(true);
       },
     }

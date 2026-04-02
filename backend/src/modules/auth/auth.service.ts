@@ -1,4 +1,5 @@
-import { Injectable, UnauthorizedException, ForbiddenException } from '@nestjs/common';
+import { Injectable, UnauthorizedException, ForbiddenException, Logger } from '@nestjs/common';
+
 import { JwtService } from '@nestjs/jwt';
 import { ConfigService } from '@nestjs/config';
 import * as bcrypt from 'bcrypt';
@@ -7,7 +8,10 @@ import { LoginDto } from './dto/login.dto';
 
 @Injectable()
 export class AuthService {
+  private readonly logger = new Logger(AuthService.name);
+
   constructor(
+
     private usersService: UsersService,
     private jwtService: JwtService,
     private configService: ConfigService,
@@ -25,13 +29,8 @@ export class AuthService {
 
   async login(loginDto: LoginDto) {
     const user = await this.usersService.findByEmail(loginDto.email);
-    console.log("LOGIN ATTEMPT - Raw User from DB:", {
-      id: user?.id,
-      email: user?.email,
-      isActive: user?.isActive,
-      isActiveType: typeof user?.isActive,
-      hasPassword: !!user?.password
-    });
+    // Removed verbose debug log
+
     
     if (!user) {
       throw new UnauthorizedException('Tài khoản không tồn tại');
@@ -97,7 +96,8 @@ export class AuthService {
 
     if (!isTokenValid) {
       // 🚨 TOKEN RE-USE DETECTED: Thu hồi toàn bộ session ngay lập tức
-      console.warn(`[SECURITY] Token reuse detected for user ID: ${user.id} (${user.email}). Revoking all sessions.`);
+      this.logger.warn(`[SECURITY] Token reuse detected for user ID: ${user.id} (${user.email}). Revoking all sessions.`);
+
       await this.usersService.saveRefreshToken(user.id, null);
       throw new UnauthorizedException('Phát hiện nghi ngờ bảo mật. Toàn bộ phiên đăng nhập đã bị thu hồi. Vui lòng đăng nhập lại');
     }
@@ -106,7 +106,8 @@ export class AuthService {
     const { access_token, refresh_token: new_refresh_token } = await this.generateTokens(user.id, user.email, user.role);
     await this.usersService.saveRefreshToken(user.id, new_refresh_token);
 
-    console.log(`[AUTH] Token rotated successfully for user ID: ${user.id}`);
+    this.logger.log(`[AUTH] Token rotated successfully for user ID: ${user.id}`);
+
 
     return {
       access_token,
@@ -117,6 +118,7 @@ export class AuthService {
   async logout(userId: number): Promise<void> {
     // Thu hồi refresh token trong DB
     await this.usersService.saveRefreshToken(userId, null);
-    console.log(`[AUTH] User ID ${userId} logged out. Refresh token revoked.`);
+    this.logger.log(`[AUTH] User ID ${userId} logged out. Refresh token revoked.`);
+
   }
 }

@@ -75,3 +75,43 @@ Tôi đã đọc toàn bộ source code (local + GitHub `tuannho0802/AZ_Workbase
 Token cũ bị dùng lại → `bcrypt.compare` fail → Log `[SECURITY] Token reuse detected for user ID: X` → `hashedRefreshToken = null` trong DB → Cả người dùng thật và kẻ tấn công đều bị forced logout.
 
 ---
+
+## [2026-04-02 11:55] | Production Hardening & Infrastructure Cleanup | Status: Success
+
+**Actor:** Agent
+
+**Bối cảnh:** Toàn bộ hệ thống AZ-Workbase CRM đã hoàn thiện về mặt tính năng. Đây là giai đoạn tối ưu hóa, chuẩn hóa và dọn dẹp để đưa hệ thống vào trạng thái Production-Ready.
+
+**Các hạng mục đã hoàn thành:**
+
+### 1. 🛡️ Security Hardening (Refresh Token Rotation)
+- **Hoàn thiện Rotation logic**: Đã fix logic xoay vòng Refresh Token trong `AuthService`. Mỗi lần refresh thành công, hash của token cũ trong DB bị ghi đè bằng hash của token mới.
+- **Reuse Detection**: Triển khai cơ chế phát hiện sử dụng lại (Reuse Detection). Nếu một token cũ (đã bị xoay vòng) được gửi lên, hệ thống sẽ xóa `hashedRefreshToken` trong DB, buộc tất cả các phiên đăng nhập hiện tại của người dùng đó phải đăng nhập lại.
+- **BCRYPT Hashing**: Toàn bộ Refresh Token được băm bằng `bcrypt` trước khi lưu trữ để bảo mật tuyệt đối.
+
+### 2. 🗄️ Standardized Migration System (TypeORM)
+- **Fix CLI SyntaxError**: Sửa lỗi `SyntaxError: missing ) after argument list` trên Windows bằng cách cập nhật script `package.json` trỏ thẳng vào `node_modules/typeorm/cli.js`.
+- **Migration-First Policy**: Thiết lập quy tắc thay đổi schema bắt buộc qua migration. Đã tạo migration `1743472800000-AddHashedRefreshTokenToUsers.ts` để đồng bộ DB.
+- **Data Normalization (BooleanTransformer)**: Tạo `BooleanTransformer` để tự động map `TINYINT(1)` (MySQL) sang `boolean` (TypeScript). Đã áp dụng cho `User.isActive`, `Department.isActive`, `CustomerNote.isImportant`.
+
+### 3. 🧹 Cleanup & Observability
+- **Xóa debug logs**: Đã dọn dẹp sạch sẽ toàn bộ `console.log` dư thừa tại:
+    - Frontend: `axios-instance.ts`, `auth.store.ts`, `users/page.tsx`, `layout.tsx`. 
+    - Loại bỏ các dòng log nhạy cảm (Token, User ID, Path tracking).
+- **NestJS Logger**: Thay thế `console.log` ở Backend bằng `Logger` của NestJS (`AuthService`, `UsersService`). Giúp log tập trung, dễ quản lý và chuyên nghiệp hơn.
+
+### 4. 📝 Documentation Update
+- **README.md**: Cập nhật lệnh Migration và sơ lược kiến trúc bảo mật mới.
+- **Skills Folder**: Cập nhật `SKILL_DATABASE_MANAGEMENT.md` và `SKILL_FILE_MANAGEMENT.md` với các quy chuẩn mới về Logging và Migration.
+
+**Files Changed trong phiên này:**
+- `backend/package.json`
+- `backend/src/database/entities/*.entity.ts`
+- `backend/src/modules/auth/auth.service.ts`
+- `backend/src/modules/users/users.service.ts`
+- `frontend/src/lib/api/axios-instance.ts`
+- `frontend/src/lib/stores/auth.store.ts`
+- `frontend/src/app/(dashboard)/users/page.tsx`
+- `frontend/src/app/(dashboard)/layout.tsx`
+
+---

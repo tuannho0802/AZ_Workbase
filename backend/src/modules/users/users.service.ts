@@ -1,4 +1,5 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, Logger } from '@nestjs/common';
+
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { User } from '../../database/entities/user.entity';
@@ -11,7 +12,10 @@ import * as bcrypt from 'bcrypt';
 
 @Injectable()
 export class UsersService {
+  private readonly logger = new Logger(UsersService.name);
+
   constructor(
+
     @InjectRepository(User)
     private usersRepository: Repository<User>,
   ) {}
@@ -134,7 +138,8 @@ export class UsersService {
     // 4. CRITICAL: PHẢI CÓ SAVE()
     const savedUser = await this.usersRepository.save(user);
 
-    console.log('[DEBUG] New user created:', savedUser.id);
+    this.logger.log(`[Users] New user created: ${savedUser.id}`);
+
     
     return savedUser;
   }
@@ -163,7 +168,8 @@ export class UsersService {
     // 4. CRITICAL: PHẢI CÓ SAVE()
     const savedUser = await this.usersRepository.save(user);
 
-    console.log('[DEBUG] User saved to DB:', savedUser.id, '- isActive:', savedUser.isActive);
+    this.logger.log(`[Users] User ID ${savedUser.id} updated. isActive: ${savedUser.isActive}`);
+
     
     return savedUser;
   }
