@@ -20,8 +20,7 @@ jobs:
           server: ${{ secrets.FTP_SERVER }}
           username: ${{ secrets.FTP_USERNAME }}
           password: ${{ secrets.FTP_PASSWORD }}
-          # Đường dẫn thư mục trên server (lấy từ FastPanel)
-          server-dir: /var/www/hv_azacademy_usr/data/www/az-workbase.com/
+          server-dir: /
           # Loại trừ các file không cần thiết để sync nhanh hơn
           exclude: |
             **/.git*
