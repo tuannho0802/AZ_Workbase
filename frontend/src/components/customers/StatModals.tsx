@@ -30,8 +30,8 @@ export const StatModals: React.FC<StatModalsProps> = ({
 }) => {
 
   const renderAuditTrail = (record: Customer | Deposit) => {
-    const creator = (record as any).createdBy?.name || 'Hệ thống';
-    const updater = (record as any).updatedBy?.name;
+    const creator = (record as any).createdBy?.name?.trim() || (record as any).createdBy?.email || 'Hệ thống';
+    const updater = (record as any).updatedBy?.name?.trim() || (record as any).updatedBy?.email;
     const createdAt = dayjs(record.createdAt).format('HH:mm DD/MM/YYYY');
     const updatedAt = (record as any).updatedAt ? dayjs((record as any).updatedAt).format('HH:mm DD/MM/YYYY') : null;
 
@@ -63,7 +63,7 @@ export const StatModals: React.FC<StatModalsProps> = ({
       title: 'Sales',
       dataIndex: 'salesUser',
       key: 'salesUser',
-      render: (val: any) => val?.name || 'Chưa gán',
+      render: (val: any) => val?.name?.trim() || val?.email || 'Chưa gán',
     },
     {
       title: 'Ngày tạo',
@@ -109,14 +109,14 @@ export const StatModals: React.FC<StatModalsProps> = ({
     {
       title: 'Sales',
       key: 'sales',
-      render: (_: any, record: Deposit) => record.customer?.salesUser?.name || 'N/A',
+      render: (_: any, record: Deposit) => record.customer?.salesUser?.name?.trim() || record.customer?.salesUser?.email || 'N/A',
     },
     {
       title: 'Người thực hiện',
       key: 'createdBy',
       render: (_: any, r: Deposit) => r.createdBy ? (
         <Tooltip title={`Ghi lúc: ${dayjs(r.createdAt).format('HH:mm DD/MM/YYYY')}`}>
-          <span>{r.createdBy.name}</span>
+          <span>{r.createdBy.name?.trim() || r.createdBy.email}</span>
         </Tooltip>
       ) : <span style={{ color: '#ccc' }}>—</span>
     },

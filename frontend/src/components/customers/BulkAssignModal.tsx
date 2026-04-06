@@ -74,7 +74,7 @@ export const BulkAssignModal: React.FC<BulkAssignModalProps> = ({ open, selected
         placeholder="Tìm kiếm nhân viên..."
         loading={usersLoading}
         options={salesUsers?.map((u: any) => ({ 
-          label: u.name, 
+          label: u.name?.trim() || u.email, 
           value: u.id 
         })) || []}
         value={salesId}

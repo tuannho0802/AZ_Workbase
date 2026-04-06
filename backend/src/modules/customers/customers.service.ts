@@ -73,8 +73,13 @@ export class CustomersService {
     queryBuilder.where('customer.deletedAt IS NULL');
 
     if (userRole === Role.EMPLOYEE) {
-      console.log('[RBAC] Employee - Filter by createdById');
-      queryBuilder.andWhere('customer.createdById = :userId', { userId });
+      console.log('[RBAC] Employee - Filter by createdById OR salesUserId');
+      queryBuilder.andWhere(
+        new Brackets((qb) => {
+          qb.where('customer.createdById = :userId', { userId })
+            .orWhere('customer.salesUserId = :userId', { userId });
+        }),
+      );
     } else {
       console.log('[RBAC] Admin/Manager - Show ALL customers');
     }
@@ -405,8 +410,12 @@ export class CustomersService {
       .andWhere("DATE(CONVERT_TZ(customer.createdAt, '+00:00', '+07:00')) < CURDATE()");
 
     if (userRole === Role.EMPLOYEE) {
-      todayQuery = todayQuery.andWhere('customer.createdById = :userId', { userId });
-      historyQuery = historyQuery.andWhere('customer.createdById = :userId', { userId });
+      const filter = new Brackets((qb) => {
+        qb.where('customer.createdById = :userId', { userId })
+          .orWhere('customer.salesUserId = :userId', { userId });
+      });
+      todayQuery = todayQuery.andWhere(filter);
+      historyQuery = historyQuery.andWhere(filter);
     }
 
     const [todayList, historyList] = await Promise.all([
@@ -424,7 +433,12 @@ export class CustomersService {
       .where('customer.deletedAt IS NULL');
 
     if (userRole === Role.EMPLOYEE) {
-      queryBuilder.andWhere('customer.createdById = :userId', { userId });
+      queryBuilder.andWhere(
+        new Brackets((qb) => {
+          qb.where('customer.createdById = :userId', { userId })
+            .orWhere('customer.salesUserId = :userId', { userId });
+        }),
+      );
     }
 
     const customers = await queryBuilder.orderBy('customer.createdAt', 'DESC').getMany();
@@ -443,7 +457,12 @@ export class CustomersService {
       .where('customer.deletedAt IS NULL');
 
     if (userRole === Role.EMPLOYEE) {
-      queryBuilder.andWhere('customer.createdById = :userId', { userId });
+      queryBuilder.andWhere(
+        new Brackets((qb) => {
+          qb.where('customer.createdById = :userId', { userId })
+            .orWhere('customer.salesUserId = :userId', { userId });
+        }),
+      );
     }
 
     return await queryBuilder.orderBy('deposit.depositDate', 'DESC').getMany();

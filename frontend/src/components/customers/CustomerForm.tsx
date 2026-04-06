@@ -153,7 +153,7 @@ export const CustomerForm: React.FC<CustomerFormProps> = ({ open, customer, onCl
                 showSearch
                 filterOption={(input, option) => (String(option?.label) ?? '').toLowerCase().includes(input.toLowerCase())}
                 options={salesUsers?.map((u: any) => ({ 
-                  label: u.name, 
+                  label: u.name?.trim() || u.email, 
                   value: u.id 
                 })) || []}
                 allowClear

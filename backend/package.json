@@ -26,7 +26,8 @@
     "migration:show": "npm run typeorm:ts -- migration:show -d src/database/data-source.ts",
     "seed": "ts-node -r tsconfig-paths/register src/database/seeds/initial-data.seed.ts",
     "seed:customers": "ts-node -r tsconfig-paths/register src/database/seeds/customers.seed.ts",
-    "seed:backfill": "ts-node -r tsconfig-paths/register src/database/seeds/backfill-audit-data.ts"
+    "seed:backfill": "ts-node -r tsconfig-paths/register src/database/seeds/backfill-audit-data.ts",
+    "seed:users": "ts-node -r tsconfig-paths/register src/database/seeds/backfill-user-names.ts"
   },
   "dependencies": {
     "@nestjs/common": "^11.0.1",

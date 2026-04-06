@@ -8,6 +8,7 @@ export interface CustomerNote {
   createdByUser?: {
     id: number;
     name: string;
+    email?: string;
   };
   createdAt: string;
 }
@@ -23,6 +24,7 @@ export interface Deposit {
   createdBy?: {
     id: number;
     name: string;
+    email?: string;
   };
   createdAt: string;
   customer?: {
@@ -31,6 +33,7 @@ export interface Deposit {
     phone: string;
     salesUser?: {
       name: string;
+      email?: string;
     };
   };
 }
@@ -54,6 +57,7 @@ export interface Customer {
   salesUser?: {
     id: number;
     name: string;
+    email?: string;
   };
   status: 'closed' | 'pending' | 'potential' | 'lost' | 'inactive';
   broker?: string;
@@ -74,10 +78,12 @@ export interface Customer {
   createdBy?: {
     id: number;
     name: string;
+    email?: string;
   };
   updatedBy?: {
     id: number;
     name: string;
+    email?: string;
   };
   createdAt: string;
   updatedAt: string;
