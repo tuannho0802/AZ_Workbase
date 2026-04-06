@@ -38,6 +38,24 @@ export class CustomersService {
   }
 
   async create(createCustomerDto: CreateCustomerDto, userId: number) {
+    const userRepo = this.customersRepository.manager.getRepository(User);
+    
+    // Default department if missing (required by legacy DB column)
+    if (!createCustomerDto.departmentId) {
+      const creator = await userRepo.findOneBy({ id: userId });
+      createCustomerDto.departmentId = creator?.departmentId || 1;
+    }
+
+    if (createCustomerDto.salesUserId) {
+      const salesUser = await userRepo.findOneBy({ 
+        id: createCustomerDto.salesUserId, 
+        isActive: true 
+      });
+      if (!salesUser) {
+        throw new BadRequestException(`Nhân viên ID ${createCustomerDto.salesUserId} không tồn tại hoặc đã bị khóa`);
+      }
+    }
+
     try {
       const today = this.getTodayVn();
       const customer = this.customersRepository.create({
@@ -305,6 +323,20 @@ export class CustomersService {
     const today = this.getTodayVn();
     const todayStr = today.toISOString().split('T')[0];
     
+    // Step 1: Handle salesUserId assignment explicitly (Case B)
+    if (updateCustomerDto.salesUserId && updateCustomerDto.salesUserId !== customer.salesUserId) {
+      const userRepo = this.customersRepository.manager.getRepository(User);
+      const salesUser = await userRepo.findOneBy({ 
+        id: updateCustomerDto.salesUserId, 
+        isActive: true 
+      });
+      if (!salesUser) {
+        throw new BadRequestException(`Nhân viên ID ${updateCustomerDto.salesUserId} không tồn tại hoặc đã bị khóa`);
+      }
+      customer.salesUser = salesUser;
+      customer.salesUserId = salesUser.id;
+    }
+
     // Logic cho assignedDate: Tự động set khi salesUserId được gán lần đầu
     if (updateCustomerDto.salesUserId && 
         !customer.assignedDate && 
@@ -349,11 +381,10 @@ export class CustomersService {
 
   async bulkAssign(dto: BulkAssignDto, callerId: number, callerRole: string) {
     const userRepo = this.customersRepository.manager.getRepository(User);
-    const salesUser = await userRepo.findOneBy({ id: dto.salesUserId, isActive: true, role: Role.EMPLOYEE });
+    const salesUser = await userRepo.findOneBy({ id: dto.salesUserId, isActive: true });
     
     if (!salesUser) {
-      throw new DuplicatePhoneException(); // To satisfy interface temporarily or throw specific. 
-      // actually let's throw proper Error
+      throw new BadRequestException(`Nhân viên ID ${dto.salesUserId} không tồn tại hoặc đã bị khóa`);
     }
 
     if (callerRole === Role.MANAGER) {

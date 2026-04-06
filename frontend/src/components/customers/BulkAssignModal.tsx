@@ -11,7 +11,6 @@ interface BulkAssignModalProps {
 }
 
 export const BulkAssignModal: React.FC<BulkAssignModalProps> = ({ open, selectedRowKeys = [], onClose, onSuccess }) => {
-  const [form] = Form.useForm();
   const [loading, setLoading] = useState(false);
   const { message } = App.useApp();
   const [selectedUser, setSelectedUser] = useState<any>(null);

@@ -1,6 +1,7 @@
 import { ApiPropertyOptional, PartialType } from '@nestjs/swagger';
 import { CreateCustomerDto } from './create-customer.dto';
-import { IsOptional, IsDateString } from 'class-validator';
+import { IsOptional, IsDateString, IsNumber } from 'class-validator';
+import { Type } from 'class-transformer';
 
 export class UpdateCustomerDto extends PartialType(CreateCustomerDto) {
   @ApiPropertyOptional({ example: '2026-03-30', description: 'Ngày nhập data (YYYY-MM-DD)' })
@@ -17,4 +18,10 @@ export class UpdateCustomerDto extends PartialType(CreateCustomerDto) {
   @IsOptional()
   @IsDateString({}, { message: 'Ngày chốt không đúng định dạng YYYY-MM-DD' })
   closedDate?: string;
+
+  @ApiPropertyOptional({ description: 'ID của nhân viên Sales phụ trách' })
+  @IsOptional()
+  @IsNumber()
+  @Type(() => Number)
+  salesUserId?: number;
 }

@@ -73,8 +73,9 @@ export const SalesUserSelect = ({
         filterOption={false}     // tắt filter mặc định, dùng onSearch
         onSearch={setSearchText}
         onChange={(val) => {
-          const user = users.find(u => u.id === val) ?? null;
-          onChange?.(val ?? null, user);
+          const numericVal = val ? Number(val) : null;
+          const user = users.find(u => u.id === numericVal) ?? null;
+          onChange?.(numericVal, user);
           setSearchText('');     // reset search sau khi chọn
         }}
         onClear={() => onChange?.(null, null)}

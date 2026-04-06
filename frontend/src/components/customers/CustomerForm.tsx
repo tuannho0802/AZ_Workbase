@@ -3,7 +3,6 @@
 import React, { useState, useEffect } from 'react';
 import { Modal, Form, Input, Select, DatePicker, Row, Col, App } from 'antd';
 import { customersApi } from '@/lib/api/customers.api';
-import { useDepartments } from '@/lib/hooks/useDepartments';
 import { SalesUserSelect } from './SalesUserSelect';
 import { Customer } from '@/lib/types/customer.types';
 import dayjs from 'dayjs';
@@ -20,7 +19,6 @@ export const CustomerForm: React.FC<CustomerFormProps> = ({ open, customer, onCl
   const [loading, setLoading] = useState(false);
   const { message } = App.useApp();
   
-  const { departments, isLoading: deptsLoading } = useDepartments();
 
   useEffect(() => {
     if (open) {
@@ -30,7 +28,6 @@ export const CustomerForm: React.FC<CustomerFormProps> = ({ open, customer, onCl
           inputDate: customer.inputDate ? dayjs(customer.inputDate) : dayjs(),
           assignedDate: customer.assignedDate ? dayjs(customer.assignedDate) : null,
           closedDate: customer.closedDate ? dayjs(customer.closedDate) : null,
-          departmentId: customer.department?.id,
           salesUserId: customer.salesUser?.id,
         });
       } else {
@@ -49,6 +46,7 @@ export const CustomerForm: React.FC<CustomerFormProps> = ({ open, customer, onCl
     try {
       const payload = {
         ...values,
+        salesUserId: values.salesUserId ? Number(values.salesUserId) : null,
         inputDate: values.inputDate.format('YYYY-MM-DD'),
         assignedDate: values.assignedDate?.format('YYYY-MM-DD') || null,
         closedDate: values.closedDate?.format('YYYY-MM-DD') || null,
@@ -135,21 +133,9 @@ export const CustomerForm: React.FC<CustomerFormProps> = ({ open, customer, onCl
         </Row>
 
         <Row gutter={16}>
-          <Col span={12}>
-            <Form.Item name="departmentId" label="Phòng ban" rules={[{ required: true }]}>
-              <Select 
-                placeholder="Chọn phòng ban" 
-                loading={deptsLoading}
-                options={departments.map((d: any) => ({ label: d.name, value: d.id }))} 
-              />
-            </Form.Item>
-          </Col>
-          <Col span={12}>
+          <Col span={24}>
             <Form.Item name="salesUserId" label="Sales phụ trách">
-              <SalesUserSelect
-                value={form.getFieldValue('salesUserId')}
-                onChange={(userId) => form.setFieldValue('salesUserId', userId)}
-              />
+              <SalesUserSelect />
             </Form.Item>
           </Col>
         </Row>

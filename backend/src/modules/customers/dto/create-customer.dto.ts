@@ -1,5 +1,6 @@
 import { IsString, IsNotEmpty, Length, Matches, IsOptional, IsEmail, IsEnum, IsInt, IsDateString } from 'class-validator';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
+import { Type } from 'class-transformer';
 
 export class CreateCustomerDto {
   @ApiProperty({ example: 'Nguyễn Văn A', description: 'Họ và tên khách hàng' })
@@ -29,8 +30,9 @@ export class CreateCustomerDto {
   campaign?: string;
 
   @ApiProperty({ example: 2, description: 'ID của nhân viên Sales phụ trách' })
-  @IsNotEmpty({ message: 'Sales phụ trách là bắt buộc' })
+  @IsOptional()
   @IsInt({ message: 'ID Sales phải là số nguyên' })
+  @Type(() => Number)
   salesUserId: number;
 
   @ApiPropertyOptional({ example: 'pending', enum: ['closed', 'pending', 'potential', 'lost', 'inactive'], description: 'Trạng thái khách hàng' })
@@ -44,8 +46,9 @@ export class CreateCustomerDto {
   broker?: string;
 
   @ApiProperty({ example: 1, description: 'ID của phòng ban' })
-  @IsNotEmpty({ message: 'Phòng ban là bắt buộc' })
+  @IsOptional()
   @IsInt({ message: 'ID phòng ban phải là số nguyên' })
+  @Type(() => Number)
   departmentId: number;
 
   @ApiPropertyOptional({ example: '2026-03-30', description: 'Ngày nhập data (YYYY-MM-DD)' })
