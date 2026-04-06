@@ -54,6 +54,7 @@ export interface Customer {
   };
   note?: string;
   latestFTD?: number;
+  totalDeposit30Days?: number;
   notes?: CustomerNote[];
   deposits?: Deposit[];
   createdAt: string;

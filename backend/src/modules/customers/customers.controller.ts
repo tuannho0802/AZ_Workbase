@@ -85,6 +85,19 @@ export class CustomersController {
     return this.customersService.createDeposit(+id, dto, req.user.id);
   }
 
+  @Get(':id/deposits')
+  @ApiOperation({ summary: 'Lấy danh sách nạp tiền (5 bản ghi gần nhất)' })
+  async getDeposits(@Param('id') id: string) {
+    return this.customersService.getDeposits(+id);
+  }
+
+  @Delete('deposits/:id')
+  @Roles(Role.ADMIN, Role.MANAGER)
+  @ApiOperation({ summary: 'Xóa bản ghi nạp tiền' })
+  async deleteDeposit(@Param('id') id: string) {
+    return this.customersService.deleteDeposit(+id);
+  }
+
   @Patch(':id')
   @ApiOperation({ summary: 'Cập nhật thông tin khách hàng' })
   @ApiResponse({ status: 200, description: 'Cập nhật khách hàng thành công' })

@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { Table, Card, Tag, App, Button, Space, Row, Col } from 'antd';
+import { Table, Card, Tag, App, Button, Space, Row, Col, Typography } from 'antd';
 import { UploadOutlined, UsergroupAddOutlined, ReloadOutlined, PlusOutlined } from '@ant-design/icons';
 import type { ColumnsType } from 'antd/es/table';
 import { customersApi } from '@/lib/api/customers.api';
@@ -13,6 +13,8 @@ import { CustomerForm } from '@/components/customers/CustomerForm';
 import { StatsCards } from '@/components/customers/StatsCards';
 import { CustomerDetailDrawer } from '@/components/customers/CustomerDetailDrawer';
 import dayjs from 'dayjs';
+
+const { Text } = Typography;
 
 export default function CustomersPage() {
   const [customers, setCustomers] = useState<Customer[]>([]);
@@ -86,47 +88,35 @@ export default function CustomersPage() {
     {
       title: 'STT',
       key: 'index',
-      width: 60,
+      width: 50,
+      align: 'center',
       render: (_, __, index) => (page - 1) * pageSize + index + 1,
     },
     {
       title: 'Ngày nhập',
       dataIndex: 'inputDate',
       key: 'inputDate',
-      width: 120,
+      width: 110,
       render: (date) => dayjs(date).format('DD/MM/YYYY'),
     },
     {
-      title: 'Ngày nhận KH',
-      dataIndex: 'assignedDate',
-      key: 'assignedDate',
-      width: 120,
-      render: (date) => date ? dayjs(date).format('DD/MM/YYYY') : '-',
-    },
-    {
-      title: 'Họ tên',
+      title: 'Họ và tên',
       dataIndex: 'name',
       key: 'name',
       width: 180,
+      render: (text) => <Text strong>{text}</Text>,
     },
     {
-      title: 'Số điện thoại',
+      title: 'SĐT',
       dataIndex: 'phone',
       key: 'phone',
-      width: 130,
-    },
-    {
-      title: 'Email',
-      dataIndex: 'email',
-      key: 'email',
-      width: 200,
-      render: (email) => email || '-',
+      width: 120,
     },
     {
       title: 'Nguồn',
       dataIndex: 'source',
       key: 'source',
-      width: 110,
+      width: 100,
       render: (source) => {
         const colors: Record<string, string> = {
           Facebook: 'blue',
@@ -138,17 +128,24 @@ export default function CustomersPage() {
       },
     },
     {
+      title: 'UTM (Campaign)',
+      dataIndex: 'campaign',
+      key: 'campaign',
+      width: 150,
+      render: (val) => val || <Text type="secondary">-</Text>,
+    },
+    {
       title: 'Sales',
       dataIndex: ['salesUser', 'name'],
       key: 'salesUser',
       width: 150,
-      render: (val) => val || '-',
+      render: (val) => val || <Text type="secondary">Chưa giao</Text>,
     },
     {
       title: 'Trạng thái',
       dataIndex: 'status',
       key: 'status',
-      width: 120,
+      width: 130,
       render: (status) => {
         const config: Record<string, { color: string; text: string }> = {
           closed: { color: 'success', text: 'Đã chốt' },
@@ -162,18 +159,16 @@ export default function CustomersPage() {
       },
     },
     {
-      title: 'Ngày chốt',
-      dataIndex: 'closedDate',
-      key: 'closedDate',
-      width: 120,
-      render: (date) => date ? dayjs(date).format('DD/MM/YYYY') : '-',
-    },
-    {
-      title: 'Phòng ban',
-      dataIndex: ['department', 'name'],
-      key: 'department',
-      width: 130,
-      render: (val) => val || '-',
+      title: 'Nạp tiền (30 ngày)',
+      dataIndex: 'totalDeposit30Days',
+      key: 'totalDeposit30Days',
+      width: 150,
+      align: 'right',
+      render: (val) => (
+        <Text strong style={{ color: val > 0 ? '#52c41a' : '#bfbfbf' }}>
+          ${(val || 0).toLocaleString(undefined, { minimumFractionDigits: 2 })}
+        </Text>
+      ),
     },
   ];
 
@@ -213,6 +208,8 @@ export default function CustomersPage() {
         dataSource={customers}
         rowKey="id"
         loading={loading}
+        size="middle"
+        bordered
         scroll={{ x: 1400 }}
         onRow={(record) => ({
           onClick: () => {

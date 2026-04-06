@@ -68,7 +68,7 @@ export class CustomersService {
     queryBuilder.leftJoinAndSelect('customer.salesUser', 'salesUser');
     queryBuilder.leftJoinAndSelect('customer.department', 'department');
 
-    queryBuilder.where('customer.deleted_at IS NULL');
+    queryBuilder.where('customer.deletedAt IS NULL');
 
     if (userRole === Role.EMPLOYEE) {
       console.log('[RBAC] Employee - Filter by createdBy');
@@ -109,6 +109,27 @@ export class CustomersService {
     console.log('Query Parameters:', queryBuilder.getParameters());
 
     const [data, total] = await queryBuilder.getManyAndCount();
+
+    // Calculate totalDeposit30Days for the current page of results
+    if (data.length > 0) {
+      const customerIds = data.map(c => c.id);
+      const thirtyDaysAgo = new Date();
+      thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
+      
+      const depositSums = await this.depositsRepository.createQueryBuilder('deposit')
+        .select('deposit.customerId', 'customerId')
+        .addSelect('SUM(deposit.amount)', 'total')
+        .where('deposit.customerId IN (:...customerIds)', { customerIds })
+        .andWhere('deposit.depositDate >= :thirtyDaysAgo', { thirtyDaysAgo })
+        .groupBy('deposit.customerId')
+        .getRawMany();
+
+      const sumMap = new Map(depositSums.map(s => [Number(s.customerId), parseFloat(s.total || '0')]));
+      
+      data.forEach(customer => {
+        (customer as any).totalDeposit30Days = sumMap.get(customer.id) || 0;
+      });
+    }
 
     console.log('Result count:', data.length);
     console.log('Total in DB:', total);
@@ -249,6 +270,23 @@ export class CustomersService {
     });
 
     return await this.depositsRepository.save(deposit);
+  }
+
+  async getDeposits(customerId: number) {
+    return this.depositsRepository.find({
+      where: { customer: { id: customerId } },
+      relations: ['createdByUser'],
+      order: { depositDate: 'DESC', createdAt: 'DESC' },
+      take: 5
+    });
+  }
+
+  async deleteDeposit(id: number) {
+    const deposit = await this.depositsRepository.findOne({ where: { id } });
+    if (!deposit) {
+      throw new NotFoundException('Không tìm thấy bản ghi nạp tiền');
+    }
+    return await this.depositsRepository.remove(deposit);
   }
 
   async update(id: number, updateCustomerDto: UpdateCustomerDto, userId: number, userRole: string) {

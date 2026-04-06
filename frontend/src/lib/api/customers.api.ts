@@ -1,5 +1,5 @@
 import axiosInstance from './axios-instance';
-import { Customer, PaginatedResponse, CustomerStats } from '../types/customer.types';
+import { Customer, PaginatedResponse, CustomerStats, Deposit } from '../types/customer.types';
 
 export const customersApi = {
   getCustomers: async (params?: {
@@ -41,6 +41,16 @@ export const customersApi = {
 
   createDeposit: async (id: number, data: { amount: number; depositDate: string; broker?: string; note?: string }) => {
     const response = await axiosInstance.post(`/customers/${id}/deposits`, data);
+    return response.data;
+  },
+
+  getCustomerDeposits: async (id: number): Promise<Deposit[]> => {
+    const response = await axiosInstance.get(`/customers/${id}/deposits`);
+    return response.data;
+  },
+
+  deleteDeposit: async (id: number) => {
+    const response = await axiosInstance.delete(`/customers/deposits/${id}`);
     return response.data;
   },
 };

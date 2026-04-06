@@ -7,6 +7,9 @@ export class Deposit {
   @PrimaryGeneratedColumn()
   id: number;
 
+  @Column({ name: 'customer_id' })
+  customerId: number;
+
   @ManyToOne(() => Customer, customer => customer.deposits, { onDelete: 'CASCADE' })
   @JoinColumn({ name: 'customer_id' })
   customer: Customer;
@@ -29,4 +32,10 @@ export class Deposit {
   @ManyToOne(() => User)
   @JoinColumn({ name: 'created_by' })
   createdByUser: User;
+
+  @CreateDateColumn({ name: 'created_at' })
+  createdAt: Date;
+
+  @UpdateDateColumn({ name: 'updated_at' })
+  updatedAt: Date;
 }
