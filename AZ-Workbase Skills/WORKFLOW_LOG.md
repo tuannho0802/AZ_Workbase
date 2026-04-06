@@ -115,3 +115,39 @@ Token cũ bị dùng lại → `bcrypt.compare` fail → Log `[SECURITY] Token r
 - `frontend/src/app/(dashboard)/layout.tsx`
 
 ---
+
+## [2026-04-06 13:05] | CRM Standardization & Deposit Module Refactor | Status: Success
+
+**Actor:** Agent
+
+**Bối cảnh:** Cần chuẩn hóa giao diện bảng khách hàng (9 cột) và xử lý triệt để lỗi 500/400 khi thực hiện nghiệp vụ Nạp tiền.
+
+**Các hạng mục đã hoàn thành:**
+
+### 1. 📊 UI Standardization (9-Column Table)
+- **Bảng Khách hàng**: Tái cấu trúc bảng tại `CustomersPage.tsx` để hiển thị đúng 9 cột theo yêu cầu: `STT, Ngày nhập, Họ tên, SĐT, Nguồn, UTM, Sales, Trạng thái, Nạp tiền (30 ngày)`.
+- **UX Optimization**: Loại bỏ cột "Thao tác" dư thừa. Người dùng có thể click vào bất kỳ vị trí nào trên dòng (row) để mở Drawer chi tiết.
+- **Formatting**: Sử dụng `Intl.NumberFormat` để hiển thị tiền tệ (VND) đồng nhất.
+
+### 2. 💰 Deposit Module Hardening
+- **Backend Total Calculation**: Cập nhật `findAll` trong `CustomersService` để tính tổng nạp trong 30 ngày gần nhất bằng sub-query tối ưu (Grouping by customerId).
+- **Fix 400 Error**: Triển khai `sanitizeAmount` tại `DepositForm.tsx` để loại bỏ ký tự định dạng ($, dấu phẩy) trước khi gửi về API.
+- **Fix 500 Error**: 
+    - Thêm `@Column({ name: 'customer_id' }) customerId: number` vào `Deposit` entity để QueryBuilder có thể tham chiếu trực tiếp.
+    - Sửa lỗi mapping property `deleted_at` -> `deletedAt` trong QueryBuilder.
+
+### 3. 🎨 Ant Design 5.x Migration (Final Sweep)
+- **CustomerDetailDrawer.tsx**: Cập nhật `width` -> `size="large"` và refactor `Tabs` sử dụng `items` prop.
+- **CustomerForm.tsx**: Chuyển `destroyOnClose` -> `destroyOnHidden` trong `Modal`.
+- **CustomerNotesTab.tsx**: Chuẩn hóa component `List` của AntD 5.x.
+
+**Files Changed trong phiên này:**
+- `backend/src/database/entities/deposit.entity.ts`
+- `backend/src/modules/customers/customers.service.ts`
+- `frontend/src/app/(dashboard)/customers/page.tsx`
+- `frontend/src/lib/types/customer.types.ts`
+- `frontend/src/components/customers/CustomerDetailDrawer.tsx`
+- `frontend/src/components/customers/DepositForm.tsx`
+- `frontend/src/components/customers/CustomerForm.tsx`
+
+---
