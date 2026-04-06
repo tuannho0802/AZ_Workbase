@@ -90,6 +90,7 @@ export default function CustomersPage() {
       key: 'index',
       width: 50,
       align: 'center',
+      fixed: 'left',
       render: (_, __, index) => (page - 1) * pageSize + index + 1,
     },
     {
@@ -103,7 +104,8 @@ export default function CustomersPage() {
       title: 'Họ và tên',
       dataIndex: 'name',
       key: 'name',
-      width: 180,
+      // [AGENT] Flexible width: removed hardcoded width
+      ellipsis: { showTitle: true },
       render: (text) => <Text strong>{text}</Text>,
     },
     {
@@ -131,21 +133,23 @@ export default function CustomersPage() {
       title: 'UTM (Campaign)',
       dataIndex: 'campaign',
       key: 'campaign',
-      width: 150,
+      width: 120,
+      ellipsis: { showTitle: true },
       render: (val) => val || <Text type="secondary">-</Text>,
     },
     {
       title: 'Sales',
       dataIndex: ['salesUser', 'name'],
       key: 'salesUser',
-      width: 150,
+      width: 130,
+      ellipsis: { showTitle: true },
       render: (val) => val || <Text type="secondary">Chưa giao</Text>,
     },
     {
       title: 'Trạng thái',
       dataIndex: 'status',
       key: 'status',
-      width: 130,
+      width: 110,
       render: (status) => {
         const config: Record<string, { color: string; text: string }> = {
           closed: { color: 'success', text: 'Đã chốt' },
@@ -162,8 +166,9 @@ export default function CustomersPage() {
       title: 'Nạp tiền (30 ngày)',
       dataIndex: 'totalDeposit30Days',
       key: 'totalDeposit30Days',
-      width: 150,
+      width: 130,
       align: 'right',
+      fixed: 'right',
       render: (val) => (
         <Text strong style={{ color: val > 0 ? '#52c41a' : '#bfbfbf' }}>
           ${(val || 0).toLocaleString(undefined, { minimumFractionDigits: 2 })}
@@ -210,7 +215,6 @@ export default function CustomersPage() {
         loading={loading}
         size="middle"
         bordered
-        scroll={{ x: 1400 }}
         onRow={(record) => ({
           onClick: () => {
             setSelectedCustomerId(record.id);

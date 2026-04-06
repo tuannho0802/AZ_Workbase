@@ -2,8 +2,14 @@
 
 import { useEffect, useState } from 'react';
 import { useRouter, usePathname } from 'next/navigation';
-import { Layout, Menu, Avatar, Dropdown } from 'antd';
-import { LogoutOutlined, UserOutlined, TeamOutlined } from '@ant-design/icons';
+import { Layout, Menu, Avatar, Dropdown, Button } from 'antd';
+import { 
+  LogoutOutlined, 
+  UserOutlined, 
+  TeamOutlined,
+  MenuFoldOutlined,
+  MenuUnfoldOutlined 
+} from '@ant-design/icons';
 import { useAuthStore } from '@/lib/stores/auth.store';
 import Cookies from 'js-cookie';
 
@@ -18,6 +24,21 @@ export default function DashboardLayout({
   const pathname = usePathname();
   const { user, isAuthenticated, isHydrated, logout } = useAuthStore();
   const [selectedKey, setSelectedKey] = useState('customers');
+  const [collapsed, setCollapsed] = useState(false);
+
+  // Load sidebar state from localStorage
+  useEffect(() => {
+    const savedState = localStorage.getItem('sidebar_collapsed');
+    if (savedState !== null) {
+      setCollapsed(savedState === 'true');
+    }
+  }, []);
+
+  const handleToggleSidebar = () => {
+    const newState = !collapsed;
+    setCollapsed(newState);
+    localStorage.setItem('sidebar_collapsed', String(newState));
+  };
 
   useEffect(() => {
     let newKey = 'customers'; // default
@@ -57,9 +78,27 @@ export default function DashboardLayout({
 
   return (
     <Layout style={{ minHeight: '100vh' }}>
-      <Sider theme="dark" width={250}>
-        <div className="p-4 text-white text-xl font-bold">
-          AZWorkbase
+      <Sider 
+        theme="dark" 
+        collapsible 
+        collapsed={collapsed} 
+        onCollapse={setCollapsed}
+        width={220}
+        collapsedWidth={64}
+        trigger={null}
+      >
+        <div className="p-4 flex items-center justify-between">
+          {!collapsed && (
+            <div className="text-white text-xl font-bold truncate">
+              AZWorkbase
+            </div>
+          )}
+          <Button
+            type="text"
+            icon={collapsed ? <MenuUnfoldOutlined /> : <MenuFoldOutlined />}
+            onClick={handleToggleSidebar}
+            style={{ color: 'white', marginLeft: collapsed ? 'auto' : 0, marginRight: collapsed ? 'auto' : 0 }}
+          />
         </div>
         <Menu
           theme="dark"
@@ -82,8 +121,8 @@ export default function DashboardLayout({
         />
       </Sider>
 
-      <Layout>
-        <Header className="bg-white px-6 flex justify-between items-center">
+      <Layout style={{ flex: 1, overflow: 'hidden' }}>
+        <Header className="bg-white px-6 flex justify-between items-center shadow-sm">
           <div className="text-lg font-semibold">Quản lý khách hàng</div>
           <Dropdown
             menu={{
@@ -105,8 +144,17 @@ export default function DashboardLayout({
           </Dropdown>
         </Header>
 
-        <Content className="m-6">
-          {children}
+        <Content 
+          className="m-6 overflow-auto" 
+          style={{ 
+            background: '#fff', 
+            borderRadius: '8px',
+            minHeight: '280px'
+          }}
+        >
+          <div style={{ padding: '24px' }}>
+            {children}
+          </div>
         </Content>
       </Layout>
     </Layout>

@@ -61,7 +61,9 @@ export const CustomerNotesTab = ({ customerId, notes, onNoteAdded }: Props) => {
       </Card>
 
       <List
+        itemLayout="horizontal"
         dataSource={notes}
+        locale={{ emptyText: <Empty description="Chưa có ghi chú nào" /> }}
         renderItem={(item: CustomerNote) => (
           <List.Item>
             <List.Item.Meta
@@ -78,8 +80,8 @@ export const CustomerNotesTab = ({ customerId, notes, onNoteAdded }: Props) => {
             />
           </List.Item>
         )}
-        locale={{ emptyText: <Empty description="Chưa có ghi chú nào" /> }}
       />
+
     </div>
   );
 };
