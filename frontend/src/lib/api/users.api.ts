@@ -17,6 +17,11 @@ export const usersApi = {
     return response.data;
   },
 
+  getAllForSelect: async () => {
+    const response = await axiosInstance.get('/users/all');
+    return response.data;
+  },
+
   createUser: async (data: any) => {
     const response = await axiosInstance.post('/users', data);
     return response.data;

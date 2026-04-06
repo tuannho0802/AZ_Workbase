@@ -184,4 +184,41 @@ Token cũ bị dùng lại → `bcrypt.compare` fail → Log `[SECURITY] Token r
 - `frontend/src/components/customers/StatsCards.tsx`
 - `frontend/src/components/customers/StatModals.tsx`
 
+## [2026-04-06 15:30] | Real-time Search Select & User Normalization | Status: Success
+
+**Actor:** Agent
+
+**Bối cảnh:** Sales dropdowns hiển thị trống do thiếu dữ liệu name trong DB. Cần một cơ chế tìm kiếm nhân viên trực quan và tin cậy hơn cho việc gán khách hàng.
+
+**Các hạng mục đã hoàn thành:**
+
+### 1. 🔍 Real-time User Search Select
+- **SalesUserSelect Component**: Phát triển component Select tùy chỉnh với khả năng tìm kiếm realtime theo Tên và Email.
+- **Visual Feedback**: Hiển thị Avatar (màu theo Role), Tag vai trò và Phòng ban ngay trong dropdown.
+- **Preview Card**: Thêm thẻ xem trước thông tin chi tiết (Blue Card) ngay phía dưới Select khi đã chọn nhân viên, giúp xác nhận chính xác đối tượng được gán.
+
+### 2. 🧹 User Data Normalization (Backfill)
+- **Seed Script**: Tạo và thực thi script `backfill-user-names.ts` để gán tên mẫu cho các user 1-5 (Admin, Sales 1, Sales 2, Manager, Manager 2) đang bị trống trong database.
+- **Package Script**: Thêm `npm run seed:users` vào `package.json` backend.
+
+### 3. 🛡️ Robust UI Fallbacks
+- **Universal Fallback**: Cập nhật `CustomerForm`, `BulkAssignModal`, `StatModals` và `CustomerInfoTab` để luôn hiển thị `Email` nếu `Name` bị trống hoặc chỉ chứa khoảng trắng (`u.name?.trim() || u.email`).
+- **Type Safety**: Cập nhật interface `Customer` và các nested user objects trong `customer.types.ts` để bao gồm trường `email`.
+
+### 4. ⚙️ Backend API Refactor
+- **findEmployees**: Nâng cấp service để hỗ trợ tham số `isFullList`. Khi bật, logic sẽ bỏ qua filter theo phòng ban của Manager để trả về toàn bộ danh sách nhân viên đang hoạt động (isActive=true) phục vụ mục đích gán khách hàng linh hoạt.
+
+**Files Changed trong phiên này:**
+- `backend/src/modules/users/users.service.ts`
+- `backend/src/modules/users/users.controller.ts`
+- `backend/src/database/seeds/backfill-user-names.ts`
+- `backend/package.json`
+- `frontend/src/lib/api/users.api.ts`
+- `frontend/src/lib/types/customer.types.ts`
+- `frontend/src/components/customers/SalesUserSelect.tsx` (NEW)
+- `frontend/src/components/customers/CustomerForm.tsx`
+- `frontend/src/components/customers/BulkAssignModal.tsx`
+- `frontend/src/components/customers/StatModals.tsx`
+- `frontend/src/components/customers/CustomerInfoTab.tsx`
+
 ---

@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
-import { Modal, Select, Button, notification, message, Form, App } from 'antd';
+import { Modal, Button, Form, App } from 'antd';
 import axiosInstance from '@/lib/api/axios-instance';
-import { useUsersList } from '@/lib/hooks/useUsers';
+import { SalesUserSelect } from './SalesUserSelect';
 
 interface BulkAssignModalProps {
   open: boolean;
@@ -14,21 +14,11 @@ export const BulkAssignModal: React.FC<BulkAssignModalProps> = ({ open, selected
   const [form] = Form.useForm();
   const [loading, setLoading] = useState(false);
   const { message } = App.useApp();
-  const { users: salesUsers, isLoading: usersLoading } = useUsersList('employee');
-  const [salesId, setSalesId] = useState<number | null>(null);
-
-
-
-  // Debug từng user object
-  salesUsers?.forEach((user: any, index: number) => {
-
-  });
-
-
-
+  const [selectedUser, setSelectedUser] = useState<any>(null);
+  const salesId = selectedUser?.id || null;
   useEffect(() => {
     if (open) {
-      setSalesId(null);
+      setSelectedUser(null);
     }
   }, [open]);
 
@@ -43,7 +33,7 @@ export const BulkAssignModal: React.FC<BulkAssignModalProps> = ({ open, selected
       const res = await axiosInstance.patch('/customers/bulk-assign', payload);
       const data = res.data;
       
-      const salesName = salesUsers.find((u: any) => u.id === salesId)?.name || 'Nhân viên';
+      const salesName = selectedUser?.name || 'Nhân viên';
       message.success(`✅ Đã gán ${data.updatedCount} khách hàng cho ${salesName}`);
       
       onSuccess();
@@ -68,18 +58,9 @@ export const BulkAssignModal: React.FC<BulkAssignModalProps> = ({ open, selected
       <div style={{ marginBottom: 16 }}>
         Bạn đang gán <strong>{selectedRowKeys.length}</strong> khách hàng đã chọn.
       </div>
-      <Select
-        showSearch
-        style={{ width: '100%' }}
-        placeholder="Tìm kiếm nhân viên..."
-        loading={usersLoading}
-        options={salesUsers?.map((u: any) => ({ 
-          label: u.name?.trim() || u.email, 
-          value: u.id 
-        })) || []}
+      <SalesUserSelect
         value={salesId}
-        onChange={val => setSalesId(val)}
-        filterOption={(input: string, option: any) => (option?.label ?? '').toLowerCase().includes(input.toLowerCase())}
+        onChange={(id, user) => setSelectedUser(user)}
       />
     </Modal>
   );

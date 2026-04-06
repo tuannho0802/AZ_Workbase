@@ -51,23 +51,23 @@ export class UsersService {
       .getOne();
   }
 
-  async findEmployees(callerId: number, callerRole: string, targetRole?: string): Promise<User[]> {
+  async findEmployees(callerId: number, callerRole: string, targetRole?: string, isFullList = false): Promise<User[]> {
     const qb = this.usersRepository.createQueryBuilder('user')
       .leftJoinAndSelect('user.department', 'department')
-      .where('1=1');
+      .where('user.isActive = :active', { active: true });
       
     if (targetRole) {
       qb.andWhere('user.role = :targetRole', { targetRole });
     }
 
-    if (callerRole === Role.MANAGER) {
+    if (!isFullList && callerRole === Role.MANAGER) {
       const caller = await this.findById(callerId);
       if (caller?.departmentId) {
         qb.andWhere('user.departmentId = :deptId', { deptId: caller.departmentId });
       }
     }
 
-    return qb.getMany();
+    return qb.orderBy('user.name', 'ASC').getMany();
   }
 
   async findAll(userId: number, userRole: string, options: { role?: string; departmentId?: number; isActive?: boolean; search?: string; page?: number; limit?: number }) {

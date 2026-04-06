@@ -4,7 +4,7 @@ import React, { useState, useEffect } from 'react';
 import { Modal, Form, Input, Select, DatePicker, Row, Col, App } from 'antd';
 import { customersApi } from '@/lib/api/customers.api';
 import { useDepartments } from '@/lib/hooks/useDepartments';
-import { useUsersList } from '@/lib/hooks/useUsers';
+import { SalesUserSelect } from './SalesUserSelect';
 import { Customer } from '@/lib/types/customer.types';
 import dayjs from 'dayjs';
 
@@ -21,7 +21,6 @@ export const CustomerForm: React.FC<CustomerFormProps> = ({ open, customer, onCl
   const { message } = App.useApp();
   
   const { departments, isLoading: deptsLoading } = useDepartments();
-  const { users: salesUsers, isLoading: usersLoading } = useUsersList('employee');
 
   useEffect(() => {
     if (open) {
@@ -147,16 +146,9 @@ export const CustomerForm: React.FC<CustomerFormProps> = ({ open, customer, onCl
           </Col>
           <Col span={12}>
             <Form.Item name="salesUserId" label="Sales phụ trách">
-              <Select 
-                placeholder="Chọn sales" 
-                loading={usersLoading}
-                showSearch
-                filterOption={(input, option) => (String(option?.label) ?? '').toLowerCase().includes(input.toLowerCase())}
-                options={salesUsers?.map((u: any) => ({ 
-                  label: u.name?.trim() || u.email, 
-                  value: u.id 
-                })) || []}
-                allowClear
+              <SalesUserSelect
+                value={form.getFieldValue('salesUserId')}
+                onChange={(userId) => form.setFieldValue('salesUserId', userId)}
               />
             </Form.Item>
           </Col>

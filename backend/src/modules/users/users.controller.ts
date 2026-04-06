@@ -23,7 +23,7 @@ export class UsersController {
     @Request() req: any,
     @Query('role') role?: string,
   ) {
-    return this.usersService.findEmployees(req.user.id, req.user.role, role);
+    return this.usersService.findEmployees(req.user.id, req.user.role, role, true);
   }
 
   @Get()

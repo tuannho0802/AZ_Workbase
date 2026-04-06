@@ -28,7 +28,9 @@ export const CustomerInfoTab = ({ customer, onEdit }: Props) => {
           <Tag color="blue">{customer.source}</Tag>
         </Descriptions.Item>
         <Descriptions.Item label="Chiến dịch">{customer.campaign || '-'}</Descriptions.Item>
-        <Descriptions.Item label="Sales phụ trách">{customer.salesUser?.name || '-'}</Descriptions.Item>
+        <Descriptions.Item label="Sales phụ trách">
+          {customer.salesUser?.name?.trim() || customer.salesUser?.email || '-'}
+        </Descriptions.Item>
         <Descriptions.Item label="Phòng ban">{customer.department?.name || '-'}</Descriptions.Item>
         <Descriptions.Item label="Broker">{customer.broker || '-'}</Descriptions.Item>
         <Descriptions.Item label="Ngày nhập data">
