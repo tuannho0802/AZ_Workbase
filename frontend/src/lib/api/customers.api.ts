@@ -19,6 +19,21 @@ export const customersApi = {
     return response.data;
   },
 
+  getStatsToday: async (): Promise<{ todayList: Customer[]; historyList: Customer[] }> => {
+    const response = await axiosInstance.get('/customers/stats/today');
+    return response.data;
+  },
+
+  getStatsByStatus: async (): Promise<{ closed: Customer[]; notClosed: Customer[] }> => {
+    const response = await axiosInstance.get('/customers/stats/by-status');
+    return response.data;
+  },
+
+  getAllDepositsStats: async (): Promise<Deposit[]> => {
+    const response = await axiosInstance.get('/customers/stats/deposits');
+    return response.data;
+  },
+
   createCustomer: async (data: any): Promise<Customer> => {
     const response = await axiosInstance.post<Customer>('/customers', data);
     return response.data;

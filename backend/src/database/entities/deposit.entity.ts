@@ -27,11 +27,19 @@ export class Deposit {
   note: string;
 
   @Column({ name: 'created_by' })
-  createdBy: number;
+  createdBy_OLD: number;
 
   @ManyToOne(() => User)
   @JoinColumn({ name: 'created_by' })
-  createdByUser: User;
+  createdByUser_OLD: User;
+
+  // New Audit Trail Fields
+  @Column({ name: 'created_by_id', nullable: true })
+  createdById: number;
+
+  @ManyToOne(() => User, { nullable: true, eager: false })
+  @JoinColumn({ name: 'created_by_id' })
+  createdBy: User;
 
   @CreateDateColumn({ name: 'created_at' })
   createdAt: Date;

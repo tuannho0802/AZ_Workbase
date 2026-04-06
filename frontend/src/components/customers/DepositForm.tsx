@@ -55,7 +55,9 @@ export const DepositForm = ({ customerId, onSuccess }: Props) => {
                 style={{ width: '100%' }} 
                 prefix="$" 
                 placeholder="0.00"
-                formatter={(value) => `${value}`.replace(/\B(?=(\d{3})+(?!\d))/g, ',')}
+                precision={2}
+                step={0.01}
+                formatter={(value) => value ? `${value}`.replace(/\B(?=(\d{3})+(?!\d))/g, ',') : ''}
                 parser={(value) => value!.replace(/\$\s?|(,*)/g, '')}
               />
             </Form.Item>

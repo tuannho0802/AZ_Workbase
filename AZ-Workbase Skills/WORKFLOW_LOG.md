@@ -151,3 +151,37 @@ Token cũ bị dùng lại → `bcrypt.compare` fail → Log `[SECURITY] Token r
 - `frontend/src/components/customers/CustomerForm.tsx`
 
 ---
+
+## [2026-04-06 14:50] | Audit Trail Persistence & Dashboard Monitoring | Status: Success
+
+**Actor:** Agent
+
+**Bối cảnh:** Sửa lỗi HTTP 500 khi nạp tiền cho khách cũ, chuẩn hóa tiền tệ hệ thống sang USD ($) và cải thiện khả năng theo dõi dữ liệu tại Dashboard.
+
+**Các hạng mục đã hoàn thành:**
+
+### 1. 🛡️ Audit Trail Persistence Fix (HTTP 500)
+- **CustomersService**: Cập nhật `createDeposit` để populate đồng thời `createdById` (audit mới) và `createdBy_OLD` (cột legacy `NOT NULL`). Điều này giúp tránh lỗi crash khi lưu deposit cho các khách hàng cũ trong DB.
+
+### 2. 📈 Dashboard Statistics Enhancement
+- **Two-Table Today Modal**: Cấu trúc lại Modal "Khách hàng mới hôm nay" thành 2 bảng riêng biệt:
+    - **📅 Hôm nay**: Danh sách khách mới nhập trong ngày hiện tại.
+    - **🕐 Lịch sử**: 50 bản ghi nhập khách gần nhất (không giới hạn ngày) để Sales/Admin dễ dàng theo dõi dòng dữ liệu liên tục.
+- **Backend Data Split**: `getStatsToday` thực hiện 2 query tách biệt (Current Day vs Last 50 History) và trả về object cấu trúc `{ todayList, historyList }`.
+
+### 3. 💵 Currency & Precision Standardization (USD)
+- **USD Transition**: Chuyển đổi toàn bộ hiển thị từ `VND (đ)` sang `USD ($)` tại Stats Cards và tất cả các Modals.
+- **Decimal Support**: Cập nhật `InputNumber` tại `DepositForm.tsx` hỗ trợ 2 chữ số thập phân (`precision={2}`, `step={0.01}`) để phù hợp với giao dịch USD.
+- **Formatting**: Sử dụng locale `en-US` cho các hàm format tiền tệ để hiển thị dấu phẩy ngăn cách hàng nghìn chuẩn quốc tế.
+
+### 4. 🔗 Relation Fix (Sales & Performer N/A)
+- **getAllDepositsStats**: Thêm `leftJoinAndSelect` cho `customer.salesUser` và `deposit.createdBy` để hiển thị chính xác tên nhân viên phụ trách và người thực hiện nạp tiền (thay vì N/A).
+
+**Files Changed trong phiên này:**
+- `backend/src/modules/customers/customers.service.ts`
+- `frontend/src/lib/api/customers.api.ts`
+- `frontend/src/components/customers/DepositForm.tsx`
+- `frontend/src/components/customers/StatsCards.tsx`
+- `frontend/src/components/customers/StatModals.tsx`
+
+---

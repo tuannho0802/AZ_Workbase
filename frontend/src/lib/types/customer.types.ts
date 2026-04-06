@@ -19,8 +19,20 @@ export interface Deposit {
   depositDate: string;
   broker?: string;
   note?: string;
-  createdBy: number;
+  createdById?: number;
+  createdBy?: {
+    id: number;
+    name: string;
+  };
   createdAt: string;
+  customer?: {
+    id: number;
+    name: string;
+    phone: string;
+    salesUser?: {
+      name: string;
+    };
+  };
 }
 
 export interface CustomerStats {
@@ -39,7 +51,7 @@ export interface Customer {
   email?: string;
   source: 'Facebook' | 'TikTok' | 'Google' | 'Instagram' | 'Other';
   campaign?: string;
-  salesUser: {
+  salesUser?: {
     id: number;
     name: string;
   };
@@ -48,7 +60,7 @@ export interface Customer {
   inputDate: string;
   assignedDate?: string;
   closedDate?: string;
-  department: {
+  department?: {
     id: number;
     name: string;
   };
@@ -57,6 +69,16 @@ export interface Customer {
   totalDeposit30Days?: number;
   notes?: CustomerNote[];
   deposits?: Deposit[];
+  createdById?: number;
+  updatedById?: number;
+  createdBy?: {
+    id: number;
+    name: string;
+  };
+  updatedBy?: {
+    id: number;
+    name: string;
+  };
   createdAt: string;
   updatedAt: string;
 }

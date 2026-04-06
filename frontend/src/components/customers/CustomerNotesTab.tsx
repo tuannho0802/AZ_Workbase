@@ -60,27 +60,31 @@ export const CustomerNotesTab = ({ customerId, notes, onNoteAdded }: Props) => {
         </Form>
       </Card>
 
-      <List
-        itemLayout="horizontal"
-        dataSource={notes}
-        locale={{ emptyText: <Empty description="Chưa có ghi chú nào" /> }}
-        renderItem={(item: CustomerNote) => (
-          <List.Item>
-            <List.Item.Meta
-              title={
-                <Space>
-                  <Text strong>{item.createdByUser?.name || 'Hệ thống'}</Text>
-                  <Tag color={item.isImportant ? 'error' : 'default'}>{item.noteType}</Tag>
-                  <Text type="secondary" style={{ fontSize: '12px' }}>
-                    {dayjs(item.createdAt).format('DD/MM/YYYY HH:mm')}
-                  </Text>
-                </Space>
-              }
-              description={<div style={{ whiteSpace: 'pre-wrap', color: '#262626' }}>{item.note}</div>}
-            />
-          </List.Item>
+      <div className="notes-list" style={{ marginTop: 16 }}>
+        {notes.length === 0 ? (
+          <Empty description="Chưa có ghi chú nào" />
+        ) : (
+          notes.map((item: CustomerNote) => (
+            <div key={item.id} style={{ 
+              padding: '12px', 
+              borderBottom: '1px solid #f0f0f0',
+              backgroundColor: item.isImportant ? '#fff1f0' : 'transparent',
+              borderRadius: item.isImportant ? '4px' : '0'
+            }}>
+              <Space style={{ marginBottom: 4 }}>
+                <Text strong>{item.createdByUser?.name || 'Hệ thống'}</Text>
+                <Tag color={item.isImportant ? 'error' : 'default'}>{item.noteType}</Tag>
+                <Text type="secondary" style={{ fontSize: '12px' }}>
+                  {dayjs(item.createdAt).format('DD/MM/YYYY HH:mm')}
+                </Text>
+              </Space>
+              <div style={{ whiteSpace: 'pre-wrap', color: '#262626', fontSize: '14px' }}>
+                {item.note}
+              </div>
+            </div>
+          ))
         )}
-      />
+      </div>
 
     </div>
   );

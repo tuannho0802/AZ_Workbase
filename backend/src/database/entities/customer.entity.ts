@@ -58,14 +58,29 @@ export class Customer {
   note: string;
 
   @Column({ name: 'created_by' })
-  createdBy: number;
+  createdBy_OLD: number;
 
   @ManyToOne(() => User)
   @JoinColumn({ name: 'created_by' })
-  createdByUser: User;
+  createdByUser_OLD: User;
 
   @Column({ name: 'updated_by', nullable: true })
-  updatedBy: number;
+  updatedBy_OLD: number;
+
+  // New Audit Trail Fields
+  @Column({ name: 'created_by_id', nullable: true })
+  createdById: number;
+
+  @ManyToOne(() => User, { nullable: true, eager: false })
+  @JoinColumn({ name: 'created_by_id' })
+  createdBy: User;
+
+  @Column({ name: 'updated_by_id', nullable: true })
+  updatedById: number;
+
+  @ManyToOne(() => User, { nullable: true, eager: false })
+  @JoinColumn({ name: 'updated_by_id' })
+  updatedBy: User;
 
   @Column({ name: 'input_date', type: 'date' })
   inputDate: Date;

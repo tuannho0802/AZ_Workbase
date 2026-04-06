@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { Table, Card, Tag, App, Button, Space, Row, Col, Typography } from 'antd';
+import { Table, Card, Tag, App, Button, Space, Row, Col, Typography, Tooltip } from 'antd';
 import { UploadOutlined, UsergroupAddOutlined, ReloadOutlined, PlusOutlined } from '@ant-design/icons';
 import type { ColumnsType } from 'antd/es/table';
 import { customersApi } from '@/lib/api/customers.api';
@@ -12,6 +12,8 @@ import { BulkAssignModal } from '@/components/customers/BulkAssignModal';
 import { CustomerForm } from '@/components/customers/CustomerForm';
 import { StatsCards } from '@/components/customers/StatsCards';
 import { CustomerDetailDrawer } from '@/components/customers/CustomerDetailDrawer';
+import { StatModals } from '@/components/customers/StatModals';
+import { useCustomersToday, useCustomersByStatus, useAllDepositsStats } from '@/lib/hooks/useCustomerStats';
 import dayjs from 'dayjs';
 
 const { Text } = Typography;
@@ -33,6 +35,12 @@ export default function CustomersPage() {
   const [statsLoading, setStatsLoading] = useState(false);
   const [selectedCustomerId, setSelectedCustomerId] = useState<number | null>(null);
   const [isDrawerOpen, setIsDrawerOpen] = useState(false);
+
+  // States for interactive stats
+  const [modalType, setModalType] = useState<'today' | 'status' | 'deposit' | null>(null);
+  const { data: todayData, isLoading: todayLoading } = useCustomersToday(modalType === 'today');
+  const { data: statusData, isLoading: statusLoadingDetailed } = useCustomersByStatus(modalType === 'status');
+  const { data: depositData, isLoading: depositLoadingdetailed } = useAllDepositsStats(modalType === 'deposit');
 
   const canImport = ['admin', 'manager', 'assistant'].includes(user?.role || '');
   const canAssign = ['admin', 'manager'].includes(user?.role || '');
@@ -61,7 +69,6 @@ export default function CustomersPage() {
       const response = await customersApi.getCustomers({ 
         page, 
         limit: pageSize,
-        // search: ... (will add filter later if needed)
       });
       setCustomers(response.data);
       setTotal(response.total);
@@ -84,6 +91,26 @@ export default function CustomersPage() {
     await fetchStats();
   };
 
+  const renderAuditTrail = (record: Customer) => {
+    const creator = (record as any).createdBy?.name || 'Hệ thống';
+    const updater = (record as any).updatedBy?.name;
+    const createdAt = dayjs(record.createdAt).format('HH:mm DD/MM/YYYY');
+    const updatedAt = (record as any).updatedAt ? dayjs((record as any).updatedAt).format('HH:mm DD/MM/YYYY') : null;
+
+    return (
+      <div style={{ padding: '4px' }}>
+        <div><Text type="secondary" style={{ color: 'rgba(255,255,255,0.65)' }}>Tạo bởi:</Text> <span style={{ color: '#fff' }}>{creator}</span></div>
+        <div style={{ fontSize: '11px', marginBottom: 4 }}>{createdAt}</div>
+        {updater && (
+          <>
+            <div><Text type="secondary" style={{ color: 'rgba(255,255,255,0.65)' }}>Sửa cuối:</Text> <span style={{ color: '#fff' }}>{updater}</span></div>
+            <div style={{ fontSize: '11px' }}>{updatedAt}</div>
+          </>
+        )}
+      </div>
+    );
+  };
+
   const columns: ColumnsType<Customer> = [
     {
       title: 'STT',
@@ -104,9 +131,12 @@ export default function CustomersPage() {
       title: 'Họ và tên',
       dataIndex: 'name',
       key: 'name',
-      // [AGENT] Flexible width: removed hardcoded width
       ellipsis: { showTitle: true },
-      render: (text) => <Text strong>{text}</Text>,
+      render: (text, record) => (
+        <Tooltip title={renderAuditTrail(record)} mouseEnterDelay={0.5}>
+          <Text strong style={{ color: '#1890ff', cursor: 'help' }}>{text}</Text>
+        </Tooltip>
+      ),
     },
     {
       title: 'SĐT',
@@ -204,7 +234,11 @@ export default function CustomersPage() {
 
   return (
     <>
-    <StatsCards stats={stats} loading={statsLoading} />
+    <StatsCards 
+      stats={stats} 
+      loading={statsLoading} 
+      onCardClick={(type) => setModalType(type)}
+    />
     
     <Card title="Danh sách khách hàng" extra={renderToolbar()}>
       <Table
@@ -266,6 +300,23 @@ export default function CustomersPage() {
         fetchCustomers();
         fetchStats();
       }}
+    />
+
+    <StatModals
+      todayVisible={modalType === 'today'}
+      onTodayClose={() => setModalType(null)}
+      todayData={todayData}
+      todayLoading={todayLoading}
+
+      statusVisible={modalType === 'status'}
+      onStatusClose={() => setModalType(null)}
+      statusData={statusData}
+      statusLoading={statusLoadingDetailed}
+
+      depositVisible={modalType === 'deposit'}
+      onDepositClose={() => setModalType(null)}
+      depositData={depositData}
+      depositLoading={depositLoadingdetailed}
     />
     </>
   );

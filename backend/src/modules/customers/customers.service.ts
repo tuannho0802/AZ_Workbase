@@ -42,7 +42,7 @@ export class CustomersService {
       const today = this.getTodayVn();
       const customer = this.customersRepository.create({
         ...createCustomerDto,
-        createdBy: userId,
+        createdById: userId,
         inputDate: createCustomerDto.inputDate ? new Date(createCustomerDto.inputDate) : today,
         assignedDate: createCustomerDto.salesUserId ? today : null,
       });
@@ -67,12 +67,14 @@ export class CustomersService {
 
     queryBuilder.leftJoinAndSelect('customer.salesUser', 'salesUser');
     queryBuilder.leftJoinAndSelect('customer.department', 'department');
+    queryBuilder.leftJoinAndSelect('customer.createdBy', 'creator');
+    queryBuilder.leftJoinAndSelect('customer.updatedBy', 'updater');
 
     queryBuilder.where('customer.deletedAt IS NULL');
 
     if (userRole === Role.EMPLOYEE) {
-      console.log('[RBAC] Employee - Filter by createdBy');
-      queryBuilder.andWhere('customer.createdBy = :userId', { userId });
+      console.log('[RBAC] Employee - Filter by createdById');
+      queryBuilder.andWhere('customer.createdById = :userId', { userId });
     } else {
       console.log('[RBAC] Admin/Manager - Show ALL customers');
     }
@@ -150,7 +152,7 @@ export class CustomersService {
 
     // RBAC Option A: Employee only sees their own stats
     if (userRole === Role.EMPLOYEE) {
-      queryBuilder.andWhere('customer.createdBy = :userId', { userId });
+      queryBuilder.andWhere('customer.createdById = :userId', { userId });
     }
 
     const [total, newToday, closedTotal] = await Promise.all([
@@ -174,7 +176,7 @@ export class CustomersService {
       .where('customer.deletedAt IS NULL');
 
     if (userRole === Role.EMPLOYEE) {
-      depositsQuery.andWhere('customer.createdBy = :userId', { userId });
+      depositsQuery.andWhere('customer.createdById = :userId', { userId });
     }
 
     const totalDepositRaw = await depositsQuery
@@ -197,13 +199,15 @@ export class CustomersService {
       .leftJoinAndSelect('customer.department', 'department')
       .leftJoinAndSelect('customer.deposits', 'deposits')
       .leftJoinAndSelect('customer.notes', 'notes')
-      .leftJoinAndSelect('notes.createdByUser', 'noteCreator');
+      .leftJoinAndSelect('notes.createdByUser', 'noteCreator')
+      .leftJoinAndSelect('customer.createdBy', 'creator')
+      .leftJoinAndSelect('customer.updatedBy', 'updater');
     
     queryBuilder.where('customer.id = :id', { id });
     queryBuilder.andWhere('customer.deletedAt IS NULL');
 
     if (userRole === Role.EMPLOYEE) {
-      queryBuilder.andWhere('customer.createdBy = :userId', { userId });
+      queryBuilder.andWhere('customer.createdById = :userId', { userId });
     }
 
     const customer = await queryBuilder.getOne();
@@ -266,19 +270,21 @@ export class CustomersService {
     const deposit = this.depositsRepository.create({
       ...dto,
       customer: { id: customerId } as any,
-      createdBy: userId,
+      createdById: userId,
+      createdBy_OLD: userId, // ← Populate legacy NOT NULL column
     });
 
     return await this.depositsRepository.save(deposit);
   }
 
   async getDeposits(customerId: number) {
-    return this.depositsRepository.find({
-      where: { customer: { id: customerId } },
-      relations: ['createdByUser'],
-      order: { depositDate: 'DESC', createdAt: 'DESC' },
-      take: 5
-    });
+    return this.depositsRepository.createQueryBuilder('deposit')
+      .where('deposit.customerId = :customerId', { customerId })
+      .leftJoinAndSelect('deposit.createdBy', 'createdBy')
+      .orderBy('deposit.depositDate', 'DESC')
+      .addOrderBy('deposit.createdAt', 'DESC')
+      .take(5)
+      .getMany();
   }
 
   async deleteDeposit(id: number) {
@@ -311,7 +317,7 @@ export class CustomersService {
     try {
       this.customersRepository.merge(customer, {
         ...updateCustomerDto,
-        updatedBy: userId,
+        updatedById: userId,
       });
       return await this.customersRepository.save(customer);
     } catch (error: any) {
@@ -373,7 +379,7 @@ export class CustomersService {
           customer.assignedDate = today;
         }
         customer.salesUserId = dto.salesUserId;
-        customer.updatedBy = callerId;
+        customer.updatedById = callerId;
       }
       await this.customersRepository.save(validCustomers);
     }
@@ -384,5 +390,62 @@ export class CustomersService {
       skippedIds,
       message: `Đã gán thành công ${validIds.length} khách hàng cho Sales User ${dto.salesUserId}`
     };
+  }
+
+  async getStatsToday(userId: number, userRole: string) {
+    const baseQuery = () => this.customersRepository.createQueryBuilder('customer')
+      .leftJoinAndSelect('customer.salesUser', 'salesUser')
+      .leftJoinAndSelect('customer.createdBy', 'createdBy')
+      .where('customer.deletedAt IS NULL');
+
+    let todayQuery = baseQuery()
+      .andWhere("DATE(CONVERT_TZ(customer.createdAt, '+00:00', '+07:00')) = CURDATE()");
+
+    let historyQuery = baseQuery()
+      .andWhere("DATE(CONVERT_TZ(customer.createdAt, '+00:00', '+07:00')) < CURDATE()");
+
+    if (userRole === Role.EMPLOYEE) {
+      todayQuery = todayQuery.andWhere('customer.createdById = :userId', { userId });
+      historyQuery = historyQuery.andWhere('customer.createdById = :userId', { userId });
+    }
+
+    const [todayList, historyList] = await Promise.all([
+      todayQuery.orderBy('customer.createdAt', 'DESC').getMany(),
+      historyQuery.orderBy('customer.createdAt', 'DESC').take(50).getMany()
+    ]);
+
+    return { todayList, historyList };
+  }
+
+  async getStatsByStatus(userId: number, userRole: string) {
+    const queryBuilder = this.customersRepository.createQueryBuilder('customer')
+      .leftJoinAndSelect('customer.salesUser', 'salesUser')
+      .leftJoinAndSelect('customer.createdBy', 'createdBy')
+      .where('customer.deletedAt IS NULL');
+
+    if (userRole === Role.EMPLOYEE) {
+      queryBuilder.andWhere('customer.createdById = :userId', { userId });
+    }
+
+    const customers = await queryBuilder.orderBy('customer.createdAt', 'DESC').getMany();
+    
+    return {
+      closed: customers.filter(c => c.status === 'closed'),
+      notClosed: customers.filter(c => c.status !== 'closed')
+    };
+  }
+
+  async getAllDepositsStats(userId: number, userRole: string) {
+    const queryBuilder = this.depositsRepository.createQueryBuilder('deposit')
+      .leftJoinAndSelect('deposit.customer', 'customer')
+      .leftJoinAndSelect('deposit.createdBy', 'createdBy') // Change alias to match column
+      .leftJoinAndSelect('customer.salesUser', 'salesUser')
+      .where('customer.deletedAt IS NULL');
+
+    if (userRole === Role.EMPLOYEE) {
+      queryBuilder.andWhere('customer.createdById = :userId', { userId });
+    }
+
+    return await queryBuilder.orderBy('deposit.depositDate', 'DESC').getMany();
   }
 }
