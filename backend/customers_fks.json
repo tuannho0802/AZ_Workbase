@@ -1,0 +1,14 @@
+[
+  {
+    "CONSTRAINT_NAME": "FK_customers_created_by",
+    "COLUMN_NAME": "created_by_id",
+    "REFERENCED_TABLE_NAME": "users",
+    "REFERENCED_COLUMN_NAME": "id"
+  },
+  {
+    "CONSTRAINT_NAME": "FK_customers_updated_by",
+    "COLUMN_NAME": "updated_by_id",
+    "REFERENCED_TABLE_NAME": "users",
+    "REFERENCED_COLUMN_NAME": "id"
+  }
+]

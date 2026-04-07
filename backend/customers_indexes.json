@@ -1,0 +1,53 @@
+[
+  {
+    "Table": "customers",
+    "Non_unique": 0,
+    "Key_name": "PRIMARY",
+    "Seq_in_index": 1,
+    "Column_name": "id",
+    "Collation": "A",
+    "Cardinality": 24,
+    "Sub_part": null,
+    "Packed": null,
+    "Null": "",
+    "Index_type": "BTREE",
+    "Comment": "",
+    "Index_comment": "",
+    "Visible": "YES",
+    "Expression": null
+  },
+  {
+    "Table": "customers",
+    "Non_unique": 1,
+    "Key_name": "FK_customers_created_by",
+    "Seq_in_index": 1,
+    "Column_name": "created_by_id",
+    "Collation": "A",
+    "Cardinality": 1,
+    "Sub_part": null,
+    "Packed": null,
+    "Null": "YES",
+    "Index_type": "BTREE",
+    "Comment": "",
+    "Index_comment": "",
+    "Visible": "YES",
+    "Expression": null
+  },
+  {
+    "Table": "customers",
+    "Non_unique": 1,
+    "Key_name": "FK_customers_updated_by",
+    "Seq_in_index": 1,
+    "Column_name": "updated_by_id",
+    "Collation": "A",
+    "Cardinality": 1,
+    "Sub_part": null,
+    "Packed": null,
+    "Null": "YES",
+    "Index_type": "BTREE",
+    "Comment": "",
+    "Index_comment": "",
+    "Visible": "YES",
+    "Expression": null
+  }
+]

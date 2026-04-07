@@ -27,12 +27,12 @@ export class Customer {
   @Column({ length: 100, nullable: true })
   campaign: string;
 
-  @Column({ name: 'sales_user_id' })
-  salesUserId: number;
+  @Column({ name: 'sales_user_id', nullable: true, default: null })
+  salesUserId: number | null;
 
-  @ManyToOne(() => User)
+  @ManyToOne(() => User, { nullable: true, onDelete: 'SET NULL' })
   @JoinColumn({ name: 'sales_user_id' })
-  salesUser: User;
+  salesUser: User | null;
 
   @Column({
     type: 'enum',
@@ -47,12 +47,12 @@ export class Customer {
   @Column({ name: 'closed_date', type: 'date', nullable: true })
   closedDate: Date;
 
-  @Column({ name: 'department_id' })
-  departmentId: number;
+  @Column({ name: 'department_id', nullable: true, default: null })
+  departmentId: number | null;
 
-  @ManyToOne(() => Department)
+  @ManyToOne(() => Department, { nullable: true, onDelete: 'SET NULL' })
   @JoinColumn({ name: 'department_id' })
-  department: Department;
+  department: Department | null;
 
   @Column({ type: 'text', nullable: true })
   note: string;

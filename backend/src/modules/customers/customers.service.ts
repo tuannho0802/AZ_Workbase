@@ -39,12 +39,6 @@ export class CustomersService {
 
   async create(createCustomerDto: CreateCustomerDto, userId: number) {
     const userRepo = this.customersRepository.manager.getRepository(User);
-    
-    // Default department if missing (required by legacy DB column)
-    if (!createCustomerDto.departmentId) {
-      const creator = await userRepo.findOneBy({ id: userId });
-      createCustomerDto.departmentId = creator?.departmentId || 1;
-    }
 
     if (createCustomerDto.salesUserId) {
       const salesUser = await userRepo.findOneBy({ 
@@ -324,7 +318,10 @@ export class CustomersService {
     const todayStr = today.toISOString().split('T')[0];
     
     // Step 1: Handle salesUserId assignment explicitly (Case B)
-    if (updateCustomerDto.salesUserId && updateCustomerDto.salesUserId !== customer.salesUserId) {
+    if (updateCustomerDto.salesUserId === null) {
+      customer.salesUser = null;
+      customer.salesUserId = null;
+    } else if (updateCustomerDto.salesUserId !== undefined && updateCustomerDto.salesUserId !== customer.salesUserId) {
       const userRepo = this.customersRepository.manager.getRepository(User);
       const salesUser = await userRepo.findOneBy({ 
         id: updateCustomerDto.salesUserId, 
@@ -335,6 +332,14 @@ export class CustomersService {
       }
       customer.salesUser = salesUser;
       customer.salesUserId = salesUser.id;
+    }
+
+    // Step 2: Handle departmentId assignment explicitly
+    if (updateCustomerDto.departmentId === null) {
+      customer.department = null;
+      customer.departmentId = null;
+    } else if (updateCustomerDto.departmentId !== undefined) {
+      customer.departmentId = updateCustomerDto.departmentId;
     }
 
     // Logic cho assignedDate: Tự động set khi salesUserId được gán lần đầu

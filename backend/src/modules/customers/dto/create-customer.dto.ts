@@ -33,7 +33,7 @@ export class CreateCustomerDto {
   @IsOptional()
   @IsInt({ message: 'ID Sales phải là số nguyên' })
   @Type(() => Number)
-  salesUserId: number;
+  salesUserId?: number | null;
 
   @ApiPropertyOptional({ example: 'pending', enum: ['closed', 'pending', 'potential', 'lost', 'inactive'], description: 'Trạng thái khách hàng' })
   @IsOptional()
@@ -49,7 +49,7 @@ export class CreateCustomerDto {
   @IsOptional()
   @IsInt({ message: 'ID phòng ban phải là số nguyên' })
   @Type(() => Number)
-  departmentId: number;
+  departmentId?: number | null;
 
   @ApiPropertyOptional({ example: '2026-03-30', description: 'Ngày nhập data (YYYY-MM-DD)' })
   @IsOptional()

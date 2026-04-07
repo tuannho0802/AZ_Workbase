@@ -173,7 +173,9 @@ export default function CustomersPage() {
       key: 'salesUser',
       width: 130,
       ellipsis: { showTitle: true },
-      render: (val) => val || <Text type="secondary">Chưa giao</Text>,
+      render: (_, record) => record.salesUser?.name ?? (
+        <span style={{ color: '#bbb', fontStyle: 'italic' }}>Chưa gán</span>
+      ),
     },
     {
       title: 'Trạng thái',

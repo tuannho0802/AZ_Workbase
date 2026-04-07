@@ -23,5 +23,5 @@ export class UpdateCustomerDto extends PartialType(CreateCustomerDto) {
   @IsOptional()
   @IsNumber()
   @Type(() => Number)
-  salesUserId?: number;
+  salesUserId?: number | null;
 }
