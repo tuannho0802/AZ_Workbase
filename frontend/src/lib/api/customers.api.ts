@@ -7,8 +7,12 @@ export const customersApi = {
     limit?: number;
     search?: string;
     status?: string;
+    source?: string;
     salesUserId?: number;
-    departmentId?: number;
+    sortBy?: string;
+    sortOrder?: 'ASC' | 'DESC';
+    dateFrom?: string;
+    dateTo?: string;
   }): Promise<PaginatedResponse<Customer>> => {
     const response = await axiosInstance.get('/customers', { params });
     return response.data;

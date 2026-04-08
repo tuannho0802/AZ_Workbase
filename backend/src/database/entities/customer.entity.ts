@@ -1,10 +1,17 @@
-import { Entity, Column, PrimaryGeneratedColumn, CreateDateColumn, UpdateDateColumn, DeleteDateColumn, ManyToOne, OneToMany, JoinColumn } from 'typeorm';
+import { Entity, Column, PrimaryGeneratedColumn, CreateDateColumn, UpdateDateColumn, DeleteDateColumn, ManyToOne, OneToMany, JoinColumn, Index } from 'typeorm';
 import { User } from './user.entity';
 import { Department } from './department.entity';
 import { Deposit } from './deposit.entity';
 import { CustomerNote } from './customer-note.entity';
 
 @Entity('customers')
+@Index(['name'])
+@Index(['phone'])
+@Index(['status'])
+@Index(['source'])
+@Index(['inputDate'])
+@Index(['assignedDate'])
+@Index(['createdAt'])
 export class Customer {
   @PrimaryGeneratedColumn()
   id: number;

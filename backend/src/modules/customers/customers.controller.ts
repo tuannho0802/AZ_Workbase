@@ -5,7 +5,7 @@ import { CustomersService } from './customers.service';
 import { CustomersImportService } from './customers.import.service';
 import { CreateCustomerDto } from './dto/create-customer.dto';
 import { UpdateCustomerDto } from './dto/update-customer.dto';
-import { CustomerFiltersDto } from './dto/customer-filters.dto';
+import { CustomerQueryDto } from './dto/customer-query.dto';
 import { ImportCustomerDto } from './dto/import-customer.dto';
 import { BulkAssignDto } from './dto/bulk-assign.dto';
 import { CreateCustomerNoteDto } from './dto/create-customer-note.dto';
@@ -78,8 +78,8 @@ export class CustomersController {
   @Get()
   @ApiOperation({ summary: 'Lấy danh sách khách hàng (có phân quyền)' })
   @ApiResponse({ status: 200, description: 'Trả về danh sách khách hàng và thông tin phân trang' })
-  findAll(@GetUser() user: any, @Query() filtersDto: CustomerFiltersDto) {
-    return this.customersService.findAll(filtersDto, user.id, user.role);
+  findAll(@GetUser() user: any, @Query() queryDto: CustomerQueryDto) {
+    return this.customersService.findAll(queryDto, user.id, user.role);
   }
 
   @Get(':id')

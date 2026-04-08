@@ -5,6 +5,7 @@ import { Customer } from '../../database/entities/customer.entity';
 import { CreateCustomerDto } from './dto/create-customer.dto';
 import { UpdateCustomerDto } from './dto/update-customer.dto';
 import { CustomerFiltersDto } from './dto/customer-filters.dto';
+import { CustomerQueryDto } from './dto/customer-query.dto';
 import { BulkAssignDto } from './dto/bulk-assign.dto';
 import { Role } from '../../common/enums/role.enum';
 import { User } from '../../database/entities/user.entity';
@@ -71,13 +72,19 @@ export class CustomersService {
     }
   }
 
-  async findAll(filtersDto: CustomerFiltersDto, userId: number, userRole: string) {
-    const { page = 1, limit = 20, departmentId, salesUserId, status, search, dateFrom, dateTo } = filtersDto;
-
-    console.log('=== DEBUG CUSTOMERS SERVICE ===');
-    console.log('User ID:', userId);
-    console.log('User Role:', userRole);
-    console.log('Filters:', filtersDto);
+  async findAll(queryDto: CustomerQueryDto, userId: number, userRole: string) {
+    const { 
+      page = 1, 
+      limit = 50, 
+      sortBy = 'createdAt', 
+      sortOrder = 'DESC',
+      search,
+      source,
+      status,
+      salesUserId,
+      dateFrom,
+      dateTo
+    } = queryDto;
 
     const queryBuilder = this.customersRepository.createQueryBuilder('customer');
 
@@ -88,52 +95,70 @@ export class CustomersService {
 
     queryBuilder.where('customer.deletedAt IS NULL');
 
+    // RBAC
     if (userRole === Role.EMPLOYEE) {
-      console.log('[RBAC] Employee - Filter by createdById OR salesUserId');
       queryBuilder.andWhere(
         new Brackets((qb) => {
           qb.where('customer.createdById = :userId', { userId })
             .orWhere('customer.salesUserId = :userId', { userId });
         }),
       );
-    } else {
-      console.log('[RBAC] Admin/Manager - Show ALL customers');
     }
 
-    if (departmentId) {
-      queryBuilder.andWhere('customer.departmentId = :departmentId', { departmentId });
+    // Search
+    if (search) {
+      const searchLower = search.trim().toLowerCase();
+      queryBuilder.andWhere(
+        new Brackets((qb) => {
+          qb.where('LOWER(customer.name) LIKE :search', { search: `%${searchLower}%` })
+            .orWhere('customer.phone LIKE :search', { search: `%${searchLower}%` })
+            .orWhere('LOWER(customer.email) LIKE :search', { search: `%${searchLower}%` })
+            .orWhere('LOWER(customer.campaign) LIKE :search', { search: `%${searchLower}%` });
+        }),
+      );
     }
-    if (salesUserId) {
-      queryBuilder.andWhere('customer.salesUserId = :salesUserId', { salesUserId });
+
+    // Basic Filters
+    if (source) {
+      queryBuilder.andWhere('customer.source = :source', { source });
     }
     if (status) {
       queryBuilder.andWhere('customer.status = :status', { status });
     }
-    if (search) {
-      queryBuilder.andWhere(
-        new Brackets((qb) => {
-          qb.where('customer.name LIKE :search', { search: `%${search}%` })
-            .orWhere('customer.phone LIKE :search', { search: `%${search}%` })
-            .orWhere('customer.email LIKE :search', { search: `%${search}%` });
-        }),
-      );
+    if (salesUserId) {
+      queryBuilder.andWhere('customer.salesUserId = :salesUserId', { salesUserId });
     }
+    
+    // Date Filters
     if (dateFrom) {
-      queryBuilder.andWhere('DATE(customer.createdAt) >= DATE(:dateFrom)', { dateFrom });
+      queryBuilder.andWhere('customer.createdAt >= :dateFrom', { dateFrom });
     }
     if (dateTo) {
-      queryBuilder.andWhere('DATE(customer.createdAt) <= DATE(:dateTo)', { dateTo });
+      queryBuilder.andWhere('customer.createdAt <= :dateTo', { dateTo });
     }
 
-    queryBuilder.orderBy('customer.createdAt', 'DESC');
-    queryBuilder.skip((page - 1) * limit).take(limit);
+    // Sorting
+    // Handle special cases or default
+    if (sortBy === 'name') {
+      queryBuilder.orderBy('customer.name', sortOrder);
+    } else if (sortBy === 'status') {
+      queryBuilder.orderBy('customer.status', sortOrder);
+    } else if (sortBy === 'phone') {
+      queryBuilder.orderBy('customer.phone', sortOrder);
+    } else if (sortBy === 'id') {
+      queryBuilder.orderBy('customer.id', sortOrder);
+    } else if (sortBy === 'inputDate') {
+      queryBuilder.orderBy('customer.inputDate', sortOrder);
+    } else {
+      queryBuilder.orderBy('customer.createdAt', sortOrder);
+    }
 
-    console.log('SQL Query:', queryBuilder.getSql());
-    console.log('Query Parameters:', queryBuilder.getParameters());
+    // Pagination
+    queryBuilder.skip((page - 1) * limit).take(limit);
 
     const [data, total] = await queryBuilder.getManyAndCount();
 
-    // Calculate totalDeposit30Days for the current page of results
+    // Calculate totalDeposit30Days (Post-pagination for performance)
     if (data.length > 0) {
       const customerIds = data.map(c => c.id);
       const thirtyDaysAgo = new Date();
@@ -153,10 +178,6 @@ export class CustomersService {
         (customer as any).totalDeposit30Days = sumMap.get(customer.id) || 0;
       });
     }
-
-    console.log('Result count:', data.length);
-    console.log('Total in DB:', total);
-    console.log('=== END DEBUG ===');
 
     return {
       data,

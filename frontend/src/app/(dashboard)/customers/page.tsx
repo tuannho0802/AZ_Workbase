@@ -1,9 +1,10 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { Table, Card, Tag, App, Button, Space, Row, Col, Typography, Tooltip } from 'antd';
-import { UploadOutlined, UsergroupAddOutlined, ReloadOutlined, PlusOutlined } from '@ant-design/icons';
-import type { ColumnsType } from 'antd/es/table';
+import { Table, Card, Tag, App, Button, Space, Row, Col, Typography, Tooltip, Input, Select, DatePicker } from 'antd';
+import { UploadOutlined, UsergroupAddOutlined, ReloadOutlined, PlusOutlined, SearchOutlined } from '@ant-design/icons';
+import type { ColumnsType, TablePaginationConfig } from 'antd/es/table';
+import type { FilterValue, SorterResult } from 'antd/es/table/interface';
 import { customersApi } from '@/lib/api/customers.api';
 import { Customer, CustomerStats } from '@/lib/types/customer.types';
 import { useAuthStore } from '@/lib/stores/auth.store';
@@ -14,6 +15,8 @@ import { StatsCards } from '@/components/customers/StatsCards';
 import { CustomerDetailDrawer } from '@/components/customers/CustomerDetailDrawer';
 import { StatModals } from '@/components/customers/StatModals';
 import { useCustomersToday, useCustomersByStatus, useAllDepositsStats } from '@/lib/hooks/useCustomerStats';
+import { useDebounce } from '@/lib/hooks/useDebounce';
+import { usersApi } from '@/lib/api/users.api';
 import dayjs from 'dayjs';
 
 const { Text } = Typography;
@@ -36,11 +39,36 @@ export default function CustomersPage() {
   const [selectedCustomerId, setSelectedCustomerId] = useState<number | null>(null);
   const [isDrawerOpen, setIsDrawerOpen] = useState(false);
 
+  // Search & Filter States
+  const [searchText, setSearchText] = useState('');
+  const debouncedSearch = useDebounce(searchText, 500);
+  const [source, setSource] = useState<string | undefined>(undefined);
+  const [status, setStatus] = useState<string | undefined>(undefined);
+  const [salesUserId, setSalesUserId] = useState<number | undefined>(undefined);
+  const [dateRange, setDateRange] = useState<[dayjs.Dayjs | null, dayjs.Dayjs | null] | null>(null);
+  const [sortBy, setSortBy] = useState<string>('createdAt');
+  const [sortOrder, setSortOrder] = useState<'ASC' | 'DESC'>('DESC');
+
   // States for interactive stats
   const [modalType, setModalType] = useState<'today' | 'status' | 'deposit' | null>(null);
   const { data: todayData, isLoading: todayLoading } = useCustomersToday(modalType === 'today');
   const { data: statusData, isLoading: statusLoadingDetailed } = useCustomersByStatus(modalType === 'status');
   const { data: depositData, isLoading: depositLoadingdetailed } = useAllDepositsStats(modalType === 'deposit');
+
+  const [salesUsers, setSalesUsers] = useState<{ id: number; name: string }[]>([]);
+
+  const fetchSalesUsers = async () => {
+    try {
+      const users = await usersApi.getAllForSelect();
+      setSalesUsers(users);
+    } catch (error) {
+      console.error('Fetch sales users error:', error);
+    }
+  };
+
+  useEffect(() => {
+    fetchSalesUsers();
+  }, []);
 
   const canImport = ['admin', 'manager', 'assistant'].includes(user?.role || '');
   const canAssign = ['admin', 'manager'].includes(user?.role || '');
@@ -69,6 +97,14 @@ export default function CustomersPage() {
       const response = await customersApi.getCustomers({ 
         page, 
         limit: pageSize,
+        search: debouncedSearch,
+        source,
+        status,
+        salesUserId,
+        sortBy,
+        sortOrder,
+        dateFrom: dateRange?.[0]?.startOf('day').toISOString(),
+        dateTo: dateRange?.[1]?.endOf('day').toISOString(),
       });
       setCustomers(response.data);
       setTotal(response.total);
@@ -82,7 +118,7 @@ export default function CustomersPage() {
   useEffect(() => {
     fetchCustomers();
     fetchStats();
-  }, [page, pageSize]);
+  }, [page, pageSize, debouncedSearch, source, status, salesUserId, dateRange, sortBy, sortOrder]);
 
   // ✅ CRITICAL: Callback để reload table khi drawer thêm deposit/note
   const handleDrawerUpdate = async () => {
@@ -209,6 +245,83 @@ export default function CustomersPage() {
     },
   ];
 
+  const renderFilters = () => (
+    <Space wrap style={{ marginBottom: 16, width: '100%', justifyContent: 'space-between' }}>
+      <Space wrap>
+        <Input
+          placeholder="Tìm kiếm theo tên, SĐT, UTM..."
+          prefix={<SearchOutlined />}
+          value={searchText}
+          onChange={(e) => setSearchText(e.target.value)}
+          allowClear
+          style={{ width: 300 }}
+        />
+        <Select
+          placeholder="Nguồn"
+          allowClear
+          style={{ width: 140 }}
+          value={source}
+          onChange={setSource}
+          options={[
+            { value: 'Facebook', label: 'Facebook' },
+            { value: 'TikTok', label: 'TikTok' },
+            { value: 'Google', label: 'Google' },
+            { value: 'Instagram', label: 'Instagram' },
+            { value: 'LinkedIn', label: 'LinkedIn' },
+            { value: 'Other', label: 'Khác' },
+          ]}
+        />
+        <Select
+          placeholder="Trạng thái"
+          allowClear
+          style={{ width: 140 }}
+          value={status}
+          onChange={setStatus}
+          options={[
+            { value: 'pending', label: 'Chờ xử lý' },
+            { value: 'potential', label: 'Tiềm năng' },
+            { value: 'closed', label: 'Đã chốt' },
+            { value: 'lost', label: 'Mất' },
+            { value: 'inactive', label: 'Ngừng chăm sóc' },
+          ]}
+        />
+        <Select
+          placeholder="Sales"
+          allowClear
+          showSearch
+          optionFilterProp="label"
+          style={{ width: 160 }}
+          value={salesUserId}
+          onChange={setSalesUserId}
+          options={salesUsers.map(u => ({ value: u.id, label: u.name }))}
+        />
+        <DatePicker.RangePicker
+          value={dateRange}
+          onChange={(dates) => setDateRange(dates as any)}
+          placeholder={['Từ ngày', 'Đến ngày']}
+          style={{ width: 260 }}
+        />
+      </Space>
+    </Space>
+  );
+
+  const handleTableChange = (
+    pagination: TablePaginationConfig,
+    _filters: Record<string, FilterValue | null>,
+    sorter: SorterResult<Customer> | SorterResult<Customer>[]
+  ) => {
+    // Pagination
+    if (pagination.current) setPage(pagination.current);
+    if (pagination.pageSize) setPageSize(pagination.pageSize);
+
+    // Sorting
+    const sorterResult = Array.isArray(sorter) ? sorter[0] : sorter;
+    if (sorterResult.field) {
+      setSortBy(sorterResult.field as string);
+      setSortOrder(sorterResult.order === 'ascend' ? 'ASC' : 'DESC');
+    }
+  };
+
   const renderToolbar = () => (
     <Space>
       <Button icon={<ReloadOutlined />} onClick={() => { fetchCustomers(); fetchStats(); }}>
@@ -243,14 +356,20 @@ export default function CustomersPage() {
     />
     
     <Card title="Danh sách khách hàng" extra={renderToolbar()}>
+      {renderFilters()}
       <Table
         rowSelection={canAssign ? rowSelection : undefined}
-        columns={columns}
+        columns={columns.map(col => ({
+          ...col,
+          sorter: ['name', 'phone', 'status', 'inputDate', 'createdAt'].includes(col.key as string) ? true : false,
+          sortOrder: sortBy === col.key ? (sortOrder === 'ASC' ? 'ascend' : 'descend') : null,
+        }))}
         dataSource={customers}
         rowKey="id"
         loading={loading}
         size="middle"
         bordered
+        onChange={handleTableChange}
         onRow={(record) => ({
           onClick: () => {
             setSelectedCustomerId(record.id);
