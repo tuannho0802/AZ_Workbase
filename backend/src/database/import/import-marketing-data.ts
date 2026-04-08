@@ -7,7 +7,7 @@ import { Deposit } from '../entities/deposit.entity';
 
 interface CSVRow {
   ID: string;
-  Dateinput: string; // DD/MM/YYYY or YYYY-MM-DD
+  Date: string; // The CSV actually uses "Date" not "Dateinput"
   Name: string;
   Phone: string;
   Mail: string;
@@ -40,11 +40,9 @@ async function importMarketingData() {
       process.exit(1);
     }
 
-    let csvFile = fs.readFileSync(csvFilePath, 'utf-8');
-    
-    // Prepend header because the file doesn't have one
-    const header = 'ID,Dateinput,Name,Phone,Mail,Question,UTMSource,UTMCampaign,Status,PreBroker,FTD,Broker,DealDate,CreateUser,CreateDate,Note,Account,Country,Url,IsDup\n';
-    csvFile = header + csvFile;
+    // DO NOT prepend header. The file already has one: 
+    // ID,Date,Name,Phone,Mail,Question,UTMSource,UTMCampaign,Status,PreBroker,FTD,Broker,DealDate,CreateUser,CreateDate,Note,Account,Country,Url,IsDup
+    const csvFile = fs.readFileSync(csvFilePath, 'utf-8');
 
     const parsed = Papa.parse<CSVRow>(csvFile, {
       header: true,
@@ -106,27 +104,34 @@ async function importMarketingData() {
 
         // --- 4. Parse Dates ---
         const parseDate = (dateStr: string): Date | null => {
-          if (!dateStr || dateStr === 'NULL' || dateStr.trim() === '') return null;
+          if (!dateStr || dateStr === 'NULL' || dateStr.trim() === '' || dateStr.includes(':')) return null;
           
+          let d: Date;
           if (dateStr.includes('/')) {
-            const parts = dateStr.split('/'); // DD/MM/YYYY
+            const parts = dateStr.split('/'); // Expected DD/MM/YYYY
             if (parts.length === 3) {
-                const d = new Date(`${parts[2]}-${parts[1]}-${parts[0]}`);
-                if (!isNaN(d.getTime())) return d;
+              const year = parts[2].length === 2 ? `20${parts[2]}` : parts[2];
+              const month = parts[1].padStart(2, '0');
+              const day = parts[0].padStart(2, '0');
+              d = new Date(`${year}-${month}-${day}T00:00:00Z`);
+            } else {
+              d = new Date(dateStr);
             }
+          } else {
+            d = new Date(dateStr);
           }
-          const d = new Date(dateStr);
-          return isNaN(d.getTime()) ? null : d;
+
+          if (isNaN(d.getTime())) return null;
+
+          const currentYear = new Date().getFullYear();
+          if (d.getFullYear() > currentYear + 1 || d.getFullYear() < 2000) {
+            d = new Date();
+          }
+          return d;
         };
 
-        const inputDate = parseDate(row.Dateinput) || new Date();
+        const inputDate = parseDate(row.Date) || new Date();
         const closedDate = status === 'closed' ? (parseDate(row.DealDate) || inputDate) : null;
-
-        // Clamp dates for TIMESTAMP columns (max 2038)
-        const currentYear = new Date().getFullYear();
-        const saferCreatedAt = (inputDate.getFullYear() > 2037 || inputDate.getFullYear() < 2000) 
-            ? new Date() 
-            : inputDate;
 
         // Helper to safely truncate strings
         const truncate = (val: string | undefined, length: number) => {
@@ -136,6 +141,7 @@ async function importMarketingData() {
 
         // --- 5. Create Customer ---
         const customer = queryRunner.manager.create(Customer, {
+          id: parseInt(row.ID) || (i + 1),
           name: truncate(row.Name?.trim() || 'No Name', 100),
           phone: truncate(phone, 20),
           email: truncate((row.Mail && row.Mail !== 'NULL') ? row.Mail.trim() : undefined, 255),
@@ -150,7 +156,7 @@ async function importMarketingData() {
           createdById: 1, 
           createdBy_OLD: 1,
           inputDate: inputDate,
-          createdAt: saferCreatedAt,
+          createdAt: inputDate,
         } as any);
 
         try {
@@ -202,8 +208,8 @@ async function importMarketingData() {
           }
         } catch (err: any) {
           console.error(`❌ Failed to import row ${rowIndex}: "${row.Name}"`);
+          console.error(`   Full Row Data: ${JSON.stringify(row)}`);
           console.error(`   Error: ${err.message}`);
-          console.error(`   Details: ${JSON.stringify(err, null, 2)}`);
           throw err;
         }
       }

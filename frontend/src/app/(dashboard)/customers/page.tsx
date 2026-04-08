@@ -150,7 +150,7 @@ export default function CustomersPage() {
   const columns: ColumnsType<Customer> = [
     {
       title: 'STT',
-      key: 'index',
+      key: 'stt',
       width: 50,
       align: 'center',
       fixed: 'left',
