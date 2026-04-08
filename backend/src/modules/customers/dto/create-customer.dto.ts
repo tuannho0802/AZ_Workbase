@@ -9,15 +9,25 @@ export class CreateCustomerDto {
   @Length(1, 100, { message: 'Họ tên phải từ 1 đến 100 ký tự' })
   name: string;
 
-  @ApiProperty({ example: '0901234567', description: 'Số điện thoại (10 số, bắt đầu bằng 09/08/07/03/05)' })
+  @ApiProperty({ example: '0901234567', description: 'Số điện thoại' })
   @IsNotEmpty({ message: 'Số điện thoại là bắt buộc' })
-  @Matches(/^(09|08|07|03|05)[0-9]{8}$/, { message: 'Số điện thoại không hợp lệ' })
+  @Matches(/^((09|08|07|03|05)[0-9]{8}|MISSING_[0-9]+)$/, { message: 'Số điện thoại không hợp lệ (Ví dụ: 0912345678)' })
   phone: string;
 
   @ApiPropertyOptional({ example: 'nguyenvana@example.com', description: 'Email khách hàng' })
   @IsOptional()
   @IsEmail({}, { message: 'Email không hợp lệ' })
   email?: string;
+
+  @ApiPropertyOptional({ example: '2026-03-30', description: 'Ngày sales nhận khách (YYYY-MM-DD)' })
+  @IsOptional()
+  @IsDateString({}, { message: 'Ngày nhận không đúng định dạng YYYY-MM-DD' })
+  assignedDate?: string;
+
+  @ApiPropertyOptional({ example: '2026-03-30', description: 'Ngày chốt (YYYY-MM-DD)' })
+  @IsOptional()
+  @IsDateString({}, { message: 'Ngày chốt không đúng định dạng YYYY-MM-DD' })
+  closedDate?: string;
 
   @ApiProperty({ example: 'Facebook', enum: ['Facebook', 'TikTok', 'Google', 'Instagram', 'LinkedIn', 'Other'], description: 'Nguồn khách hàng' })
   @IsNotEmpty({ message: 'Nguồn khách hàng là bắt buộc' })

@@ -55,9 +55,13 @@ export class CustomersService {
       const customer = this.customersRepository.create({
         ...createCustomerDto,
         createdById: userId,
+        createdBy_OLD: userId, // ← Populate legacy NOT NULL column
         inputDate: createCustomerDto.inputDate ? new Date(createCustomerDto.inputDate) : today,
-        assignedDate: createCustomerDto.salesUserId ? today : null,
-      });
+        assignedDate: createCustomerDto.assignedDate 
+          ? new Date(createCustomerDto.assignedDate) 
+          : (createCustomerDto.salesUserId ? today : null),
+        closedDate: createCustomerDto.closedDate ? new Date(createCustomerDto.closedDate) : null,
+      } as any);
       return await this.customersRepository.save(customer);
     } catch (error: any) {
       if (error.code === 'ER_DUP_ENTRY') {
@@ -360,7 +364,8 @@ export class CustomersService {
       this.customersRepository.merge(customer, {
         ...updateCustomerDto,
         updatedById: userId,
-      });
+        updatedBy_OLD: userId, // ← Populate legacy nullable or NOT NULL column
+      } as any);
       return await this.customersRepository.save(customer);
     } catch (error: any) {
       if (error.code === 'ER_DUP_ENTRY') {
