@@ -27,7 +27,10 @@
     "seed": "ts-node -r tsconfig-paths/register src/database/seeds/initial-data.seed.ts",
     "seed:customers": "ts-node -r tsconfig-paths/register src/database/seeds/customers.seed.ts",
     "seed:backfill": "ts-node -r tsconfig-paths/register src/database/seeds/backfill-audit-data.ts",
-    "seed:users": "ts-node -r tsconfig-paths/register src/database/seeds/backfill-user-names.ts"
+    "seed:users": "ts-node -r tsconfig-paths/register src/database/seeds/backfill-user-names.ts",
+    "import:clear": "ts-node -r tsconfig-paths/register src/database/import/clear-test-data.ts",
+    "import:data": "ts-node -r tsconfig-paths/register src/database/import/import-marketing-data.ts",
+    "import:full": "npm run import:clear && npm run import:data"
   },
   "dependencies": {
     "@nestjs/common": "^11.0.1",
@@ -43,8 +46,10 @@
     "bcrypt": "^6.0.0",
     "class-transformer": "^0.5.1",
     "class-validator": "^0.14.4",
+    "csv-parser": "^3.2.0",
     "multer": "^2.1.1",
     "mysql2": "^3.20.0",
+    "papaparse": "^5.5.3",
     "passport-jwt": "^4.0.1",
     "reflect-metadata": "^0.2.2",
     "rxjs": "^7.8.1",
@@ -62,6 +67,7 @@
     "@types/jest": "^30.0.0",
     "@types/multer": "^2.1.0",
     "@types/node": "^22.10.7",
+    "@types/papaparse": "^5.5.2",
     "@types/supertest": "^6.0.2",
     "eslint": "^9.18.0",
     "eslint-config-prettier": "^10.0.1",
