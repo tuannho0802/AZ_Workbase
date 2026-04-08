@@ -222,3 +222,44 @@ Token cũ bị dùng lại → `bcrypt.compare` fail → Log `[SECURITY] Token r
 - `frontend/src/components/customers/CustomerInfoTab.tsx`
 
 ---
+
+## [2026-04-08 15:00] | Migration: Marketing Data (CSV → MySQL) | Status: Success
+
+**Actor:** Agent
+
+**Bối cảnh:** Cần di chuyển toàn bộ dữ liệu Marketing từ hệ thống cũ (file CSV 8,000+ bản ghi) vào database MySQL mới với đầy đủ thông tin Khách hàng, Ghi chú và Nạp tiền (FTD).
+
+**Các hạng mục đã hoàn thành:**
+
+### 1. 🧹 Database Cleanup System
+- **clear-test-data.ts**: Phát triển script dọn dẹp dữ liệu test. Sử dụng `SET FOREIGN_KEY_CHECKS = 0` để xóa triệt để dữ liệu trong `deposits`, `customer_notes` và `customers` mà không bị vướng ràng buộc khóa ngoại.
+- **Safety**: Đảm bảo reset trạng thái DB về trống trước khi thực hiện import quy mô lớn.
+
+### 2. 🏗️ Robust Import Engine (import-marketing-data.ts)
+- **Full Processing**: Xử lý toàn bộ 8,211 dòng của file CSV, chỉ bỏ qua các dòng hoàn toàn trống.
+- **Data Transformation**:
+    - **Phone**: Chuẩn hóa `84...` → `0...`. Đối với các số trống hoặc "Chưa xin số", gán placeholder duy nhất `MISSING_{rowIndex}` để thỏa mãn ràng buộc `UNIQUE`.
+    - **Status Mapping**: Chuyển đổi mã số cũ (`1, 2, 3, 4, 6`) sang ENUM mới (`closed, potential, pending`).
+    - **Source Mapping**: Nhận diện thông minh từ UTMSource (`Facebook, TikTok, Google, Instagram`).
+- **Resiliency Protections**:
+    - **Length Truncation**: Tự động cắt ngắn (truncate) dữ liệu cho các cột `Name`, `Phone`, `Campaign`, `Broker` để tránh lỗi `ER_DATA_TOO_LONG`.
+    - **Date Clamping (2038 Protection)**: Phát hiện và xử lý các ngày bị lỗi trong dữ liệu cũ (ví dụ năm 3025). Tự động clamp về năm 2038 cho cột `TIMESTAMP` để tránh lỗi `ER_TRUNCATED_WRONG_VALUE`.
+- **Logic Trích xuất**:
+    - **FTD (Deposits)**: Nếu cột FTD > 0, tự động tạo bản ghi nạp tiền liên kết với khách hàng.
+    - **Notes**: Chuyển đổi cột "Question" thành bản ghi trong bảng `customer_notes`. Cập nhật cột "Note" vào trường ghi chú chính của khách hàng.
+- **Audit Fields**: Đồng bộ cả `created_by` (legacy) và `created_by_id` (modern) để tương thích với hệ thống cũ và mới.
+
+### 3. ✅ Verification & Audit
+- **100% Data Match**: Đối soát thành công số lượng bản ghi giữa CSV và DB sau khi import.
+    - **Customers**: 8,208 records (Khớp chính xác với số dòng có Name trong CSV).
+    - **Deposits**: 109 records (FTD > 0).
+    - **Notes**: 2,834 records.
+- **Automation**: Tích hợp các lệnh `npm run import:clear`, `import:data`, `import:full` vào `package.json` backend.
+
+**Files Changed trong phiên này:**
+- `backend/package.json`
+- `backend/src/database/import/clear-test-data.ts` (NEW)
+- `backend/src/database/import/import-marketing-data.ts` (NEW)
+- `backend/src/database/import/debug-import.ts` (NEW/Temporary)
+
+---
