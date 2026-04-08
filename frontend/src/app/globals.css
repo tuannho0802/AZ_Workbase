@@ -24,3 +24,34 @@ body {
   color: var(--foreground);
   font-family: Arial, Helvetica, sans-serif;
 }
+
+/* CRM Table Responsive Overrides */
+.customer-table {
+  width: 100%;
+  table-layout: auto;
+  overflow-x: auto;
+}
+
+.customer-table th,
+.customer-table td {
+  white-space: normal !important;
+  word-wrap: break-word;
+  padding: 12px 8px;
+  max-width: 200px;
+}
+
+.customer-table td {
+  vertical-align: top;
+}
+
+@media (max-width: 768px) {
+  .customer-table {
+    display: block;
+    overflow-x: scroll;
+  }
+  
+  .customer-table td {
+    font-size: 12px;
+    max-width: 150px;
+  }
+}

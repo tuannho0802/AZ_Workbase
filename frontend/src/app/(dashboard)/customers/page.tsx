@@ -179,6 +179,7 @@ export default function CustomersPage() {
       dataIndex: 'phone',
       key: 'phone',
       width: 120,
+      render: (val) => val ? val : <span style={{ color: '#aaa', fontStyle: 'italic' }}>Chưa có SDT</span>,
     },
     {
       title: 'Nguồn',
@@ -201,7 +202,7 @@ export default function CustomersPage() {
       key: 'campaign',
       width: 120,
       ellipsis: { showTitle: true },
-      render: (val) => val || <Text type="secondary">-</Text>,
+      render: (val) => val ? val : <span style={{ color: '#aaa', fontStyle: 'italic' }}>Chưa có campaign</span>,
     },
     {
       title: 'Sales',
@@ -358,6 +359,7 @@ export default function CustomersPage() {
     <Card title="Danh sách khách hàng" extra={renderToolbar()}>
       {renderFilters()}
       <Table
+        className="customer-table"
         rowSelection={canAssign ? rowSelection : undefined}
         columns={columns.map(col => ({
           ...col,

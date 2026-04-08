@@ -71,25 +71,35 @@ async function importMarketingData() {
         }
 
         // --- 1. Transform Phone ---
-        let phone = row.Phone?.trim();
-        if (!phone || phone === 'Chưa xin số' || phone === 'NULL') {
-          phone = `MISSING_${rowIndex}`;
+        let phone: string | null = row.Phone?.trim() || null;
+        if (!phone || phone === '' || phone === 'Chưa xin số' || phone === 'NULL') {
+          phone = null;
         } else if (phone.startsWith('84')) {
           phone = '0' + phone.substring(2);
         }
+
+        const email: string | null = (row.Mail && row.Mail !== 'NULL') ? row.Mail.trim() : null;
         
-        // Final sanity check for unique constraint (though MISSING_{i} handles most)
-        const checkExisting = await queryRunner.manager.findOne(Customer, { where: { phone } });
-        if (checkExisting) {
-            phone = `MISSING_${rowIndex}_DUP`;
+        // --- 1.5 Duplicate Detection ---
+        const isDupCount = parseInt(row.IsDup || '0');
+        if (isDupCount > 0 && phone) {
+          const existing = await queryRunner.manager.findOne(Customer, {
+            where: { phone }
+          });
+          if (existing) {
+            console.log(`[SKIP] Duplicate: ${row.Name} - ${phone}`);
+            continue;
+          }
         }
 
         // --- 2. Map Status ---
         const statusMap: Record<string, string> = {
+          '0': 'new',
           '1': 'closed',
           '2': 'potential',
           '3': 'pending',
           '4': 'pending',
+          '5': 'rejected',
           '6': 'pending',
         };
         const status = statusMap[row.Status] || 'pending';
@@ -106,36 +116,36 @@ async function importMarketingData() {
         const parseDate = (dateStr: string): Date | null => {
           if (!dateStr || dateStr === 'NULL' || dateStr.trim() === '' || dateStr.includes(':')) return null;
           
-          let d: Date;
           if (dateStr.includes('/')) {
-            const parts = dateStr.split('/'); // Expected DD/MM/YYYY
+            const parts = dateStr.split('/');
             if (parts.length === 3) {
-              const year = parts[2].length === 2 ? `20${parts[2]}` : parts[2];
-              const month = parts[1].padStart(2, '0');
-              const day = parts[0].padStart(2, '0');
-              d = new Date(`${year}-${month}-${day}T00:00:00Z`);
-            } else {
-              d = new Date(dateStr);
+              const day = parseInt(parts[0], 10);
+              const month = parseInt(parts[1], 10);
+              const year = parseInt(parts[2], 10);
+              
+              if (year < 2000 || year > 2100) {
+                console.warn(`Invalid year: ${year} in date: ${dateStr}`);
+                return null;
+              }
+              if (month < 1 || month > 12) return null;
+              if (day < 1 || day > 31) return null;
+              
+              const d = new Date(year, month - 1, day);
+              return isNaN(d.getTime()) ? null : d;
             }
-          } else {
-            d = new Date(dateStr);
           }
-
-          if (isNaN(d.getTime())) return null;
-
-          const currentYear = new Date().getFullYear();
-          if (d.getFullYear() > currentYear + 1 || d.getFullYear() < 2000) {
-            d = new Date();
-          }
-          return d;
+          
+          // Fallback
+          const d = new Date(dateStr);
+          return isNaN(d.getTime()) ? null : d;
         };
 
         const inputDate = parseDate(row.Date) || new Date();
         const closedDate = status === 'closed' ? (parseDate(row.DealDate) || inputDate) : null;
 
         // Helper to safely truncate strings
-        const truncate = (val: string | undefined, length: number) => {
-          if (!val) return undefined;
+        const truncate = (val: string | null | undefined, length: number) => {
+          if (!val) return val;
           return val.length > length ? val.substring(0, length) : val;
         };
 
@@ -144,7 +154,7 @@ async function importMarketingData() {
           id: parseInt(row.ID) || (i + 1),
           name: truncate(row.Name?.trim() || 'No Name', 100),
           phone: truncate(phone, 20),
-          email: truncate((row.Mail && row.Mail !== 'NULL') ? row.Mail.trim() : undefined, 255),
+          email: truncate(email, 255),
           source: source as any,
           campaign: truncate(row.UTMCampaign?.trim() || undefined, 100),
           status: status as any,
@@ -178,27 +188,33 @@ async function importMarketingData() {
           }
 
           // --- 7. Create Deposit if FTD > 0 ---
-          const ftdAmount = parseFloat(row.FTD);
-          if (!isNaN(ftdAmount) && ftdAmount > 0) {
+          const ftdValue = row.FTD?.trim();
+          const ftd = parseFloat(ftdValue || '0');
+
+          if (!isNaN(ftd) && ftd > 0) {
+            const broker = row.Broker?.trim() || row.PreBroker?.trim() || 'Unknown';
+            const depositDate = parseDate(row.DealDate) || inputDate;
+            
             const deposit = queryRunner.manager.create(Deposit, {
               customerId: savedCustomer.id,
-              amount: ftdAmount,
-              depositDate: closedDate || inputDate,
-              broker: row.Broker?.trim() || row.PreBroker?.trim() || undefined,
-              note: 'FTD từ hệ thống cũ',
+              amount: ftd,
+              depositDate: depositDate,
+              broker: broker,
+              note: `FTD từ hệ thống cũ - Import ${new Date().toISOString()}`,
               createdById: 1,
               createdBy_OLD: 1,
             } as any);
 
-            const savedDeposit = await queryRunner.manager.save(deposit);
+            await queryRunner.manager.save(deposit);
             importedDeposits++;
+            console.log(`[FTD] ${savedCustomer.name}: $${ftd} - ${broker}`);
 
             if (ftdSamples.length < 3) {
               ftdSamples.push({
                 name: savedCustomer.name,
                 phone: savedCustomer.phone,
-                amount: ftdAmount,
-                date: (savedDeposit.depositDate as any).toISOString().split('T')[0],
+                amount: ftd,
+                date: depositDate ? depositDate.toISOString().split('T')[0] : 'N/A',
               });
             }
           }
@@ -207,11 +223,13 @@ async function importMarketingData() {
             console.log(`[IMPORT] Progress: ${importedCustomers} customers imported...`);
           }
         } catch (err: any) {
-          console.error(`❌ Failed to import row ${rowIndex}: "${row.Name}"`);
-          console.error(`   Full Row Data: ${JSON.stringify(row)}`);
-          console.error(`   Error: ${err.message}`);
-          throw err;
+          console.error(`❌ Error saving customer ${row.Name}:`, err.message);
+          fs.appendFileSync('./import-errors.log', 
+            `${new Date().toISOString()} - ${row.Name} - ${err.message}\n`
+          );
+          continue;
         }
+
       }
 
       await queryRunner.commitTransaction();

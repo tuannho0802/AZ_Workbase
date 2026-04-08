@@ -19,11 +19,12 @@ export class Customer {
   @Column({ length: 100 })
   name: string;
 
-  @Column({ length: 20, unique: true })
-  phone: string;
+  @Column({ type: 'varchar', length: 20, nullable: true, unique: true })
+  phone: string | null;
 
-  @Column({ length: 255, nullable: true })
-  email: string;
+  @Column({ type: 'varchar', length: 255, nullable: true })
+  email: string | null;
+
 
   @Column({
     type: 'enum',
