@@ -77,7 +77,7 @@ export class CustomersImportService {
         select: ['phone'],
         withDeleted: true
       });
-      existingPhones = new Set(existing.map(c => c.phone));
+      existingPhones = new Set(existing.map(c => c.phone as string));
     }
 
     const validSources = ['Facebook','TikTok','Google','Instagram','LinkedIn','Other'];
