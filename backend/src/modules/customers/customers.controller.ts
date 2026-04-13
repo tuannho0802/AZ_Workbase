@@ -45,9 +45,15 @@ export class CustomersController {
   }
 
   @Get('stats/deposits')
-  @ApiOperation({ summary: 'Lấy danh sách nạp tiền cho Dashboard' })
-  async getAllDepositsStats(@GetUser() user: any) {
-    return this.customersService.getAllDepositsStats(user.id, user.role);
+  @ApiOperation({ summary: 'Lấy danh sách nạp tiền cho Dashboard (hỗ trợ lọc theo ngày)' })
+  async getAllDepositsStats(
+    @GetUser() user: any,
+    @Query('startDate') startDate?: string,
+    @Query('endDate') endDate?: string,
+    @Query('sortBy') sortBy?: string,
+    @Query('sortOrder') sortOrder?: 'ASC' | 'DESC',
+  ) {
+    return this.customersService.getAllDepositsStats(user.id, user.role, startDate, endDate, sortBy, sortOrder);
   }
 
   @Post('import')

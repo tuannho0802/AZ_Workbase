@@ -24,10 +24,15 @@ export const useCustomersByStatus = (enabled: boolean = false) => {
   });
 };
 
-export const useAllDepositsStats = (enabled: boolean = false) => {
+export const useAllDepositsStats = (enabled: boolean = false, params?: { 
+  startDate?: string; 
+  endDate?: string;
+  sortBy?: string;
+  sortOrder?: 'ASC' | 'DESC';
+}) => {
   return useQuery({
-    queryKey: ['all-deposits-stats'],
-    queryFn: () => customersApi.getAllDepositsStats(),
+    queryKey: ['all-deposits-stats', params?.startDate, params?.endDate, params?.sortBy, params?.sortOrder],
+    queryFn: () => customersApi.getAllDepositsStats(params),
     enabled,
   });
 };

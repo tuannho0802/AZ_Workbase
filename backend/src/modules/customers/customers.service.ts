@@ -137,16 +137,37 @@ export class CustomersService {
       queryBuilder.andWhere('customer.createdAt <= :dateTo', { dateTo });
     }
 
+    // Calculate and alias the deposit sum based on date range (or default 30 days)
+    const depositSubQuery = this.depositsRepository.createQueryBuilder('deposit')
+      .select('SUM(deposit.amount)')
+      .where('deposit.customerId = customer.id');
+
+    if (dateFrom) {
+      depositSubQuery.andWhere('deposit.depositDate >= :dateFrom', { dateFrom });
+    }
+    if (dateTo) {
+      depositSubQuery.andWhere('deposit.depositDate <= :dateTo', { dateTo });
+    } else if (!dateFrom) {
+      // Default: 30 days
+      const thirtyDays = new Date();
+      thirtyDays.setDate(thirtyDays.getDate() - 30);
+      const thirtyDaysAgo = thirtyDays.toISOString().split('T')[0];
+      depositSubQuery.andWhere('deposit.depositDate >= :thirtyDaysAgo', { thirtyDaysAgo });
+    }
+
+    queryBuilder.addSelect(`(${depositSubQuery.getQuery()})`, 'totalDepositSum');
+    queryBuilder.setParameters(depositSubQuery.getParameters());
+
     // Sorting
-    // Handle special cases or default
     if (sortBy === 'name') {
       queryBuilder.orderBy('customer.name', sortOrder);
     } else if (sortBy === 'status') {
       queryBuilder.orderBy('customer.status', sortOrder);
     } else if (sortBy === 'phone') {
       queryBuilder.orderBy('customer.phone', sortOrder);
-    } else if (sortBy === 'id') {
-      queryBuilder.orderBy('customer.id', sortOrder);
+    } else if (sortBy === 'totalDeposit30Days') {
+      // Sort by the calculated sum
+      queryBuilder.orderBy('totalDepositSum', sortOrder);
     } else if (sortBy === 'inputDate') {
       queryBuilder.orderBy('customer.inputDate', sortOrder);
     } else {
@@ -156,35 +177,24 @@ export class CustomersService {
     // Pagination
     queryBuilder.skip((page - 1) * limit).take(limit);
 
-    const [data, total] = await queryBuilder.getManyAndCount();
+    // Use getRawAndEntities to get both the entity objects and the calculated virtual column
+    const { entities, raw } = await queryBuilder.getRawAndEntities();
+    const count = await queryBuilder.getCount();
 
-    // Calculate totalDeposit30Days (Post-pagination for performance)
-    if (data.length > 0) {
-      const customerIds = data.map(c => c.id);
-      const thirtyDaysAgo = new Date();
-      thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
-      
-      const depositSums = await this.depositsRepository.createQueryBuilder('deposit')
-        .select('deposit.customerId', 'customerId')
-        .addSelect('SUM(deposit.amount)', 'total')
-        .where('deposit.customerId IN (:...customerIds)', { customerIds })
-        .andWhere('deposit.depositDate >= :thirtyDaysAgo', { thirtyDaysAgo })
-        .groupBy('deposit.customerId')
-        .getRawMany();
-
-      const sumMap = new Map(depositSums.map(s => [Number(s.customerId), parseFloat(s.total || '0')]));
-      
-      data.forEach(customer => {
-        (customer as any).totalDeposit30Days = sumMap.get(customer.id) || 0;
-      });
-    }
+    // Map the raw sum back to each entity
+    entities.forEach((customer, index) => {
+      // raw[index] corresponds to entities[index] because of how getRawAndEntities works with relationships
+      // Find the raw row matching this entity id
+      const rawRow = raw.find(r => r.customer_id === customer.id);
+      (customer as any).totalDeposit30Days = parseFloat(rawRow?.totalDepositSum || '0');
+    });
 
     return {
-      data,
-      total,
+      data: entities,
+      total: count,
       page,
       limit,
-      totalPages: Math.ceil(total / limit),
+      totalPages: Math.ceil(count / limit),
     };
   }
 
@@ -511,10 +521,17 @@ export class CustomersService {
     };
   }
 
-  async getAllDepositsStats(userId: number, userRole: string) {
+  async getAllDepositsStats(
+    userId: number, 
+    userRole: string, 
+    startDate?: string, 
+    endDate?: string,
+    sortBy: string = 'depositDate',
+    sortOrder: 'ASC' | 'DESC' = 'DESC'
+  ) {
     const queryBuilder = this.depositsRepository.createQueryBuilder('deposit')
       .leftJoinAndSelect('deposit.customer', 'customer')
-      .leftJoinAndSelect('deposit.createdBy', 'createdBy') // Change alias to match column
+      .leftJoinAndSelect('deposit.createdBy', 'createdBy')
       .leftJoinAndSelect('customer.salesUser', 'salesUser')
       .where('customer.deletedAt IS NULL');
 
@@ -527,6 +544,18 @@ export class CustomersService {
       );
     }
 
-    return await queryBuilder.orderBy('deposit.depositDate', 'DESC').getMany();
+    // Date range filtering on depositDate
+    if (startDate) {
+      queryBuilder.andWhere('deposit.depositDate >= :startDate', { startDate });
+    }
+    if (endDate) {
+      queryBuilder.andWhere('deposit.depositDate <= :endDate', { endDate });
+    }
+
+    // Dynamic sorting
+    const sortField = sortBy === 'amount' ? 'deposit.amount' : 'deposit.depositDate';
+    queryBuilder.orderBy(sortField, sortOrder);
+
+    return await queryBuilder.getMany();
   }
 }

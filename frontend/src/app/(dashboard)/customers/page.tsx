@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useMemo } from 'react';
 import { Table, Card, Tag, App, Button, Space, Row, Col, Typography, Tooltip, Input, Select, DatePicker } from 'antd';
 import { UploadOutlined, UsergroupAddOutlined, ReloadOutlined, PlusOutlined, SearchOutlined } from '@ant-design/icons';
 import type { ColumnsType, TablePaginationConfig } from 'antd/es/table';
@@ -51,9 +51,21 @@ export default function CustomersPage() {
 
   // States for interactive stats
   const [modalType, setModalType] = useState<'today' | 'status' | 'deposit' | null>(null);
+  const [depositDateRange, setDepositDateRange] = useState<[dayjs.Dayjs | null, dayjs.Dayjs | null] | null>(null);
+  const [depositSortBy, setDepositSortBy] = useState<string>('depositDate');
+  const [depositSortOrder, setDepositSortOrder] = useState<'ASC' | 'DESC'>('DESC');
+  
   const { data: todayData, isLoading: todayLoading } = useCustomersToday(modalType === 'today');
   const { data: statusData, isLoading: statusLoadingDetailed } = useCustomersByStatus(modalType === 'status');
-  const { data: depositData, isLoading: depositLoadingdetailed } = useAllDepositsStats(modalType === 'deposit');
+  const { data: depositData, isLoading: depositLoadingdetailed } = useAllDepositsStats(
+    modalType === 'deposit',
+    {
+      startDate: depositDateRange?.[0]?.format('YYYY-MM-DD') || undefined,
+      endDate: depositDateRange?.[1]?.format('YYYY-MM-DD') || undefined,
+      sortBy: depositSortBy,
+      sortOrder: depositSortOrder,
+    }
+  );
 
   const [salesUsers, setSalesUsers] = useState<{ id: number; name: string }[]>([]);
 
@@ -147,7 +159,7 @@ export default function CustomersPage() {
     );
   };
 
-  const columns: ColumnsType<Customer> = [
+  const columns: ColumnsType<Customer> = useMemo(() => [
     {
       title: 'STT',
       key: 'stt',
@@ -232,19 +244,23 @@ export default function CustomersPage() {
       },
     },
     {
-      title: 'Nạp tiền (30 ngày)',
+      title: dateRange && dateRange[0] && dateRange[1] 
+        ? `Nạp tiền (${dayjs(dateRange[0]).format('DD/MM/YY')} - ${dayjs(dateRange[1]).format('DD/MM/YY')})`
+        : 'Nạp tiền (30 ngày)',
       dataIndex: 'totalDeposit30Days',
       key: 'totalDeposit30Days',
-      width: 130,
+      width: 140,
       align: 'right',
       fixed: 'right',
       render: (val) => (
-        <Text strong style={{ color: val > 0 ? '#52c41a' : '#bfbfbf' }}>
-          ${(val || 0).toLocaleString(undefined, { minimumFractionDigits: 2 })}
-        </Text>
+        <Tooltip title="Tổng tiền nạp trong khoảng thời gian đã chọn">
+          <Text strong style={{ color: val > 0 ? '#52c41a' : '#bfbfbf' }}>
+            ${(val || 0).toLocaleString(undefined, { minimumFractionDigits: 2 })}
+          </Text>
+        </Tooltip>
       ),
     },
-  ];
+  ], [dateRange, page, pageSize]);
 
   const renderFilters = () => (
     <Space wrap style={{ marginBottom: 16, width: '100%', justifyContent: 'space-between' }}>
@@ -363,7 +379,7 @@ export default function CustomersPage() {
         rowSelection={canAssign ? rowSelection : undefined}
         columns={columns.map(col => ({
           ...col,
-          sorter: ['name', 'phone', 'status', 'inputDate', 'createdAt'].includes(col.key as string) ? true : false,
+          sorter: ['name', 'phone', 'status', 'inputDate', 'createdAt', 'totalDeposit30Days'].includes(col.key as string),
           sortOrder: sortBy === col.key ? (sortOrder === 'ASC' ? 'ascend' : 'descend') : null,
         }))}
         dataSource={customers}
@@ -440,6 +456,14 @@ export default function CustomersPage() {
       onDepositClose={() => setModalType(null)}
       depositData={depositData}
       depositLoading={depositLoadingdetailed}
+      depositDateRange={depositDateRange}
+      onDepositDateRangeChange={setDepositDateRange}
+      depositSortBy={depositSortBy}
+      depositSortOrder={depositSortOrder}
+      onDepositSortChange={(field, order) => {
+        setDepositSortBy(field);
+        setDepositSortOrder(order);
+      }}
     />
     </>
   );

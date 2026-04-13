@@ -33,8 +33,13 @@ export const customersApi = {
     return response.data;
   },
 
-  getAllDepositsStats: async (): Promise<Deposit[]> => {
-    const response = await axiosInstance.get('/customers/stats/deposits');
+  getAllDepositsStats: async (params?: { 
+    startDate?: string; 
+    endDate?: string;
+    sortBy?: string;
+    sortOrder?: 'ASC' | 'DESC';
+  }): Promise<Deposit[]> => {
+    const response = await axiosInstance.get('/customers/stats/deposits', { params });
     return response.data;
   },
 
