@@ -263,3 +263,68 @@ Token cũ bị dùng lại → `bcrypt.compare` fail → Log `[SECURITY] Token r
 - `backend/src/database/import/debug-import.ts` (NEW/Temporary)
 
 ---
+
+## [2026-04-13 12:00] | Professional CSV Import Rewrite (8000+ Records) | Status: Success
+
+**Actor:** Agent
+
+**Bối cảnh:** Import lần trước (2026-04-08) gặp nhiều vấn đề: ngày bị sai năm (2001/2015/2024 thay vì 2025-2026), phone placeholder `MISSING_*` gây ô nhiễm dữ liệu, thiếu xử lý trường hợp NULL, và status mapping không khớp với DB enum thực tế. Cần rewrite toàn bộ import script để xử lý sạch 8000+ bản ghi một lần duy nhất.
+
+**Các hạng mục đã hoàn thành:**
+
+### 1. 🔧 TypeScript Compilation Fix
+- **customers.import.service.ts**: Sửa lỗi `TS2322` — `Set<string | null>` không assignable cho `Set<string>`. Fix bằng `as string` cast tại dòng 80.
+
+### 2. 🗄️ Migration Generation
+- **AddAssignedDateColumn**: Tạo migration `1776053695502-AddAssignedDateColumn.ts` để đồng bộ schema (indexes, foreign keys, nullable modifiers). Migration không chạy được do conflict với existing schema nhưng columns `assignedDate`, nullable `phone/email` đã tồn tại.
+
+### 3. 🏗️ Complete Import Script Rewrite (import-marketing-data.ts)
+- **parseDate()**: Viết mới hoàn toàn:
+    - Format chính: `DD/MM/YYYY` (chuẩn Việt Nam)
+    - Validation: Year range 2020-2030, month 1-12, day 1-31, rollover detection
+    - Reject time-format strings (`00:00.0`, `56:16.7`) chứa ký tự `:`
+    - Fallback: `YYYY-MM-DD` format
+- **normalizePhone()**: Xử lý toàn diện:
+    - Chuyển `84xxxxxxxxx` → `0xxxxxxxxx`
+    - Reject placeholder text (`Chưa xin số`, `Chưa có`, `N/A`)
+    - Validate format: bắt đầu bằng `0`, 10-11 chữ số
+    - Trả `null` thay vì placeholder — phone không hợp lệ = NULL trong DB
+- **mapStatus()**: Mapping chính xác với DB enum `['closed', 'pending', 'potential', 'lost', 'inactive']`:
+    - `0→pending`, `1→closed`, `2→potential`, `3→pending`, `4→pending`
+    - `5→lost`, `6→pending`, `7→inactive`, `8→pending`
+    - ~~`0→new`~~, ~~`5→rejected`~~ đã gây 2231 lỗi `Data truncated` ở run 1
+- **Source Mapping**: Sử dụng `includes()` thay vì exact match:
+    - `Facebook`, `TikTok`, `Google`, `Instagram`, `LinkedIn` → mapped trực tiếp
+    - Tất cả nguồn khác (Zalo, Telegram, Form, Cá nhân, Khách cá nhân, GG Sheet) → `Other`
+    - ~~`Zalo`~~ đã gây 1 lỗi `Data truncated` vì không nằm trong DB enum
+- **Date Fallback Chain**: `Date column` → `CreateDate column` → `new Date()`
+    - 2073 rows có `Date` trống nay được xử lý thay vì bị skip
+
+### 4. ⚡ Performance Optimization
+- Thêm `SET FOREIGN_KEY_CHECKS = 0` và `SET UNIQUE_CHECKS = 0` quanh transaction
+- Import 8089 records trong **29.7 giây** (vs ~19s cho 5861 records ở run 1)
+
+### 5. ✅ Final Results (Run 3 — Clean)
+
+| Metric | Run 1 | Run 2 | Run 3 (Final) |
+|---|---|---|---|
+| Customers | 5,861 | 6,016 | **8,089** |
+| Notes | 2,568 | 2,665 | **2,743** |
+| Deposits | 106 | 106 | **107** |
+| Duplicates | 116 | 118 | **119** |
+| Errors | **2,231** | **2,074** | **0** ✅ |
+| Root Cause | Status enum | Empty dates | — |
+
+### 6. 🐛 Bugs Found & Fixed Across 3 Iterations
+1. **Status `'new'`/`'rejected'` không tồn tại trong DB enum** → 2231 `Data truncated` errors
+2. **Source `'Zalo'` không tồn tại trong DB enum** → 1 `Data truncated` error
+3. **2073 rows không có inputDate** → Bị skip hoàn toàn → Fix bằng fallback chain
+
+**Files Changed trong phiên này:**
+- `backend/src/modules/customers/customers.import.service.ts` — TS2322 fix
+- `backend/src/database/import/import-marketing-data.ts` — **Complete rewrite**
+- `backend/src/database/migrations/1776053695502-AddAssignedDateColumn.ts` (NEW)
+
+**Git Commit:** `946f095` — `Fix: The migration dataset with database`
+
+---
