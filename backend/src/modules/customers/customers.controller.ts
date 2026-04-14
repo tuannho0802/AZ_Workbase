@@ -70,7 +70,13 @@ export class CustomersController {
   @Roles(Role.ADMIN, Role.MANAGER)
   @ApiOperation({ summary: 'Bàn giao Khách hàng hàng loạt cho Sales' })
   async bulkAssign(@Body() dto: BulkAssignDto, @GetUser() user: any) {
-    return this.customersService.bulkAssign(dto, user.id, user.role);
+    return this.customersService.bulkAssign(
+      dto.customerIds,
+      dto.salesUserIds,
+      user.id,
+      user.role,
+      dto.reason
+    );
   }
 
   @Get('unassigned')
@@ -78,6 +84,25 @@ export class CustomersController {
   @ApiOperation({ summary: 'Lấy danh sách khách hàng chưa assign (salesUserId IS NULL)' })
   getUnassigned(@GetUser() user: any, @Query() filters: CustomerFiltersDto) {
     return this.customersService.getUnassigned(filters, user.id, user.role, user.departmentId);
+  }
+
+  @Get('assigned')
+  @Roles(Role.ADMIN, Role.MANAGER)
+  @ApiOperation({ summary: 'Lấy danh sách khách hàng đã gán cho Sales' })
+  async getAssigned(
+    @Query('page') page = '1',
+    @Query('limit') limit = '20',
+    @Query('salesUserId') salesUserId?: string,
+    @Query('sourceUserId') sourceUserId?: string,
+    @Query('search') search?: string,
+  ) {
+    return this.customersService.getAssigned({
+      page: parseInt(page, 10),
+      limit: parseInt(limit, 10),
+      salesUserId: salesUserId ? parseInt(salesUserId, 10) : null,
+      sourceUserId: sourceUserId ? parseInt(sourceUserId, 10) : null,
+      search,
+    });
   }
 
   @Post()

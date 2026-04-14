@@ -202,11 +202,13 @@ export class CustomersService {
     const count = await queryBuilder.getCount();
 
     // Map the raw sum back to each entity
-    entities.forEach((customer, index) => {
-      // raw[index] corresponds to entities[index] because of how getRawAndEntities works with relationships
-      // Find the raw row matching this entity id
-      const rawRow = raw.find(r => r.customer_id === customer.id);
-      (customer as any).totalDeposit30Days = parseFloat(rawRow?.totalDepositSum || '0');
+    entities.forEach((customer) => {
+      const rawRow = raw.find(r => (r.customer_id || r.id) === customer.id);
+      if (rawRow) {
+        (customer as any).totalDeposit30Days = parseFloat(rawRow.totalDepositSum || '0');
+      } else {
+        (customer as any).totalDeposit30Days = 0;
+      }
     });
 
     // Populate activeAssignees for 1:N feature
@@ -463,90 +465,92 @@ export class CustomersService {
     return { message: 'Xóa khách hàng thành công' };
   }
 
-  async bulkAssign(dto: BulkAssignDto, callerId: number, callerRole: string) {
+  async bulkAssign(
+    customerIds: number[],
+    salesUserIds: number[],
+    callerId: number,
+    callerRole: string,
+    reason?: string,
+  ) {
     const userRepo = this.customersRepository.manager.getRepository(User);
     
-    // Validate target users
-    const validSalesUsers = [];
-    for (const sid of dto.salesUserIds) {
-      const u = await userRepo.findOneBy({ id: sid, isActive: true });
-      if (!u) throw new BadRequestException(`Nhân viên ID ${sid} không tồn tại hoặc đã bị khóa`);
-      validSalesUsers.push(u);
+    // Validate target users exist and are active
+    const targetUsers = await userRepo.find({
+      where: salesUserIds.map(id => ({ id, isActive: true }))
+    });
+    
+    if (targetUsers.length !== salesUserIds.length) {
+      const foundIds = targetUsers.map(u => u.id);
+      const missing = salesUserIds.filter(id => !foundIds.includes(id));
+      throw new BadRequestException(`Cảnh báo: Một số Sales User không tồn tại hoặc bị khóa: ${missing.join(', ')}`);
     }
 
     if (callerRole === Role.MANAGER) {
       const caller = await userRepo.findOneBy({ id: callerId });
-      // Verify caller department matches target users
-      for (const u of validSalesUsers) {
+      for (const u of targetUsers) {
         if (caller?.departmentId !== u.departmentId) {
           throw new UnauthorizedCustomerAccessException();
         }
       }
     }
 
-    const query = this.customersRepository.createQueryBuilder('customer')
-      .where('customer.id IN (:...ids)', { ids: dto.customerIds })
-      .andWhere('customer.deleted_at IS NULL');
+    const results = { success: 0, failed: 0, errors: [] as string[] };
+    const today = this.getTodayVn();
 
-    if (callerRole === Role.MANAGER) {
-      const caller = await userRepo.findOneBy({ id: callerId });
-      query.andWhere('customer.departmentId = :deptId', { deptId: caller?.departmentId });
-    }
+    for (const customerId of customerIds) {
+      try {
+        const customer = await this.customersRepository.findOne({
+          where: { id: customerId, deletedAt: IsNull() }
+        });
+        
+        if (!customer) {
+          results.errors.push(`Khách hàng ID ${customerId} không tồn tại`);
+          results.failed++;
+          continue;
+        }
 
-    const validCustomers = await query.getMany();
-    const validIds = validCustomers.map(c => c.id);
-    const skippedIds = dto.customerIds.filter(id => !validIds.includes(id));
-
-    let assignedCount = 0;
-
-    if (validIds.length > 0) {
-      const today = this.getTodayVn();
-      for (const customer of validCustomers) {
-        let assignedAtLeastOne = false;
-
-        for (const targetUserId of dto.salesUserIds) {
-          // Check if already assigned actively to this user
+        // 1:N Assignment Logic
+        for (const targetUserId of salesUserIds) {
           const existing = await this.assignmentRepository.findOneBy({
             customerId: customer.id,
             assignedToId: targetUserId,
             status: AssignmentStatus.ACTIVE,
           });
 
-          if (existing) continue; // Skip if already active
-
-          // Create new assignment
-          const assignment = this.assignmentRepository.create({
-            customerId: customer.id,
-            assignedById: callerId,
-            assignedToId: targetUserId,
-            previousAssigneeId: customer.salesUserId || null,
-            status: AssignmentStatus.ACTIVE,
-            reason: dto.reason || 'Bulk assign',
-          });
-          await this.assignmentRepository.save(assignment);
-          assignedAtLeastOne = true;
-          assignedCount++;
+          if (!existing) {
+            await this.assignmentRepository.save(
+              this.assignmentRepository.create({
+                customerId: customer.id,
+                assignedById: callerId,
+                assignedToId: targetUserId,
+                previousAssigneeId: customer.salesUserId || null,
+                status: AssignmentStatus.ACTIVE,
+                reason: reason || 'Bulk assign',
+              })
+            );
+          }
         }
 
-        if (assignedAtLeastOne) {
-          // Keep first assignee as primary for backward compatibility if null
-          if (!customer.salesUserId && dto.salesUserIds.length > 0) {
-            customer.salesUserId = dto.salesUserIds[0];
-          }
+        // Backward compatibility: Set primary owner if none exists
+        if (!customer.salesUserId && salesUserIds.length > 0) {
+          customer.salesUserId = salesUserIds[0];
           if (!customer.assignedDate) {
             customer.assignedDate = today;
           }
           customer.updatedById = callerId;
+          await this.customersRepository.save(customer);
         }
+
+        results.success++;
+      } catch (err: any) {
+        results.errors.push(`Khách hàng ID ${customerId}: ${err.message}`);
+        results.failed++;
       }
-      await this.customersRepository.save(validCustomers);
     }
 
     return {
-      success: true,
-      updatedCount: assignedCount,
-      skippedIds,
-      message: `Đã gán ${assignedCount} lượt cho Sales Users`
+      ...results,
+      message: `Đã xử lý xong gán data. Thành công: ${results.success}, Thất bại: ${results.failed}`
     };
   }
 
@@ -595,8 +599,69 @@ export class CustomersService {
       .skip((page - 1) * limit)
       .take(limit);
 
-    const [data, total] = await qb.getManyAndCount();
-    return { data, total, page, limit, totalPages: Math.ceil(total / limit) };
+    const [customers, total] = await qb.getManyAndCount();
+    return { 
+      customers, 
+      pagination: {
+        page,
+        limit,
+        total,
+        totalPages: Math.ceil(total / limit)
+      }
+    };
+  }
+
+  /** Lịch sử gán data của 1 khách hàng */
+  async getAssigned(params: {
+    page: number;
+    limit: number;
+    salesUserId?: number | null;
+    sourceUserId?: number | null;
+    search?: string;
+  }) {
+    const { page, limit, salesUserId, sourceUserId, search } = params;
+    const skip = (page - 1) * limit;
+
+    const query = this.customersRepository
+      .createQueryBuilder('customer')
+      .leftJoinAndSelect('customer.salesUser', 'salesUser')
+      .leftJoinAndSelect('customer.createdBy', 'createdBy')
+      .where('customer.deletedAt IS NULL')
+      .andWhere('customer.salesUserId IS NOT NULL'); // Đã assign
+
+    if (salesUserId) {
+      query.andWhere('customer.salesUserId = :salesUserId', { salesUserId });
+    }
+
+    if (sourceUserId) {
+      query.andWhere('customer.createdById = :sourceUserId', { sourceUserId });
+    }
+
+    if (search?.trim()) {
+      const s = `%${search.trim().toLowerCase()}%`;
+      query.andWhere(
+        new Brackets((qb) => {
+          qb.where('LOWER(customer.name) LIKE :s', { s })
+            .orWhere('customer.phone LIKE :s', { s });
+        }),
+      );
+    }
+
+    const [customers, total] = await query
+      .orderBy('customer.updatedAt', 'DESC')
+      .skip(skip)
+      .take(limit)
+      .getManyAndCount();
+
+    return {
+      customers,
+      pagination: {
+        page,
+        limit,
+        total,
+        totalPages: Math.ceil(total / limit),
+      },
+    };
   }
 
   /** Lịch sử gán data của 1 khách hàng */

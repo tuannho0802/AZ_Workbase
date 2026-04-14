@@ -44,4 +44,16 @@ export const assignmentsApi = {
     const response = await axiosInstance.get(`/customers/${customerId}/assignment-history`);
     return response.data;
   },
+
+  /** Lấy danh sách khách hàng đã được gán */
+  getAssignedCustomers: async (params: {
+    page?: number;
+    limit?: number;
+    salesUserId?: number;
+    sourceUserId?: number;
+    search?: string;
+  }) => {
+    const response = await axiosInstance.get('/customers/assigned', { params });
+    return response.data;
+  },
 };

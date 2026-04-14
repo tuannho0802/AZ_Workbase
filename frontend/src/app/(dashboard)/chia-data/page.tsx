@@ -1,388 +1,618 @@
 'use client';
 
-import { useState, useEffect, useMemo, useCallback } from 'react';
+import { useState, useCallback, useEffect } from 'react';
 import {
-  Table, Card, Button, Select, Space, Tag, App, Typography, Input, Row, Col,
-  Badge, Empty, Tooltip, Alert, Spin, Statistic,
+  Table, Select, Button, Modal, Tag, Space, Input,
+  Typography, Row, Col, Statistic, Divider, Tabs,
+  Avatar, Tooltip, Badge, Form, App
 } from 'antd';
 import {
-  SwapOutlined, ReloadOutlined, SearchOutlined, UserSwitchOutlined, CheckCircleOutlined,
+  UserAddOutlined, ReloadOutlined, SearchOutlined,
+  CheckCircleOutlined, TeamOutlined
 } from '@ant-design/icons';
-import type { ColumnsType } from 'antd/es/table';
-import { assignmentsApi } from '@/lib/api/assignments.api';
-import { usersApi } from '@/lib/api/users.api';
+import { useRouter } from 'next/navigation';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import axiosInstance from '@/lib/api/axios-instance';
 import { useAuthStore } from '@/lib/stores/auth.store';
-import { Customer } from '@/lib/types/customer.types';
-import { useDebounce } from '@/lib/hooks/useDebounce';
 import dayjs from 'dayjs';
 
-const { Text } = Typography;
+const { Title, Text } = Typography;
 
-const SOURCE_COLORS: Record<string, string> = {
-  Facebook: 'blue', TikTok: 'magenta', Google: 'green',
-  Instagram: 'purple', LinkedIn: 'cyan', Other: 'default',
+// ── TYPES ──────────────────────────────────────────────
+interface Customer {
+  id: number;
+  name: string | null;
+  phone: string | null;
+  source: string | null;
+  campaign: string | null;
+  inputDate: string | null;
+  salesUser: { id: number; name: string } | null;
+  createdBy: { id: number; name: string } | null;
+  updatedAt?: string;
+}
+
+interface User {
+  id: number;
+  name: string;
+  email: string;
+  role: string;
+}
+
+// ── API CALLS (inline để tránh import lỗi) ─────────────
+const api = {
+  getUnassigned: (p: any) => 
+    axiosInstance.get('/customers/unassigned', { params: p }),
+  getAssigned: (p: any) => 
+    axiosInstance.get('/customers/assigned', { params: p }),
+  bulkAssign: (body: any) => 
+    axiosInstance.patch('/customers/bulk-assign', body),
+  getUsers: () => 
+    axiosInstance.get('/users/all'),
 };
 
+// ── MAIN COMPONENT ─────────────────────────────────────
 export default function ChiaDataPage() {
-  const { message } = App.useApp();
-  const { user } = useAuthStore();
+  const qc = useQueryClient();
+  const { message: antdMessage } = App.useApp();
 
-  // ─── State ────────────────────────────────────────────────────────────────
-  const [customers, setCustomers] = useState<Customer[]>([]);
-  const [total, setTotal]         = useState(0);
-  const [loading, setLoading]     = useState(false);
-  const [assigning, setAssigning] = useState(false);
-  const [fetchError, setFetchError] = useState<string | null>(null);
+  // State: filters cho bảng Chưa assign
+  const [unassignedPage, setUnassignedPage] = useState(1);
+  const [unassignedSearch, setUnassignedSearch] = useState('');
+  const [filterSource, setFilterSource] = useState<string | null>(null);
+  const [filterDataOwner, setFilterDataOwner] = useState<number | null>(null);
 
-  const [page, setPage]         = useState(1);
-  const [pageSize, setPageSize] = useState(20);
+  // State: filters cho bảng Đã assign
+  const [assignedPage, setAssignedPage] = useState(1);
+  const [assignedSearch, setAssignedSearch] = useState('');
+  const [filterAssignedTo, setFilterAssignedTo] = useState<number | null>(null);
 
-  const [searchText, setSearchText]     = useState('');
-  const debouncedSearch                  = useDebounce(searchText, 400);
-  const [sourceOwnerId, setSourceOwnerId] = useState<number | undefined>();
-  const [sourceFilter, setSourceFilter]   = useState<string | undefined>();
+  // State: selection + modal
+  const [selectedIds, setSelectedIds] = useState<number[]>([]);
+  const [modalOpen, setModalOpen] = useState(false);
+  const [targetSalesIds, setTargetSalesIds] = useState<number[]>([]);
 
-  const [selectedRowKeys, setSelectedRowKeys] = useState<React.Key[]>([]);
-  const [targetSalesIds, setTargetSalesIds]     = useState<number[]>([]);
+  // Auth State
+  const router = useRouter();
+  const { isAuthenticated, isHydrated } = useAuthStore();
 
-  const [salesUsers, setSalesUsers] = useState<{ id: number; name: string; role: string }[]>([]);
-
-  // ─── Fetch users ──────────────────────────────────────────────────────────
-  const fetchUsers = useCallback(async () => {
-    try {
-      const data = await usersApi.getAllForSelect();
-      setSalesUsers(Array.isArray(data) ? data : []);
-    } catch (err) {
-      console.error('[ChiaData] fetchUsers error:', err);
+  useEffect(() => {
+    if (isHydrated && !isAuthenticated) {
+      router.push('/login');
     }
-  }, []);
+  }, [isHydrated, isAuthenticated, router]);
 
-  // ─── Fetch unassigned ─────────────────────────────────────────────────────
-  const fetchUnassigned = useCallback(async () => {
-    setLoading(true);
-    setFetchError(null);
-    try {
-      const res = await assignmentsApi.getUnassigned({
-        page,
-        limit: pageSize,
-        search: debouncedSearch || undefined,
-        source: sourceFilter || undefined,
-        creatorId: sourceOwnerId,  // filter by Data Owner (creator)
-      });
-      setCustomers(res?.data ?? []);
-      setTotal(res?.total ?? 0);
-    } catch (err: any) {
-      const errMsg = err?.response?.data?.message || err?.message || 'Không thể tải danh sách';
-      setFetchError(errMsg);
-      setCustomers([]);
-      setTotal(0);
-      console.error('[ChiaData] fetchUnassigned error:', err);
-    } finally {
-      setLoading(false);
-    }
-  }, [page, pageSize, debouncedSearch, sourceFilter, sourceOwnerId]);
+  // ── QUERIES ────────────────────────────────────────────
+  const { data: unassignedData, isLoading: loadingUnassigned } = useQuery({
+    queryKey: ['unassigned', unassignedPage, unassignedSearch, 
+                filterSource, filterDataOwner],
+    queryFn: () => api.getUnassigned({
+      page: unassignedPage, limit: 20,
+      search: unassignedSearch || undefined,
+      source: filterSource || undefined,
+      creatorId: filterDataOwner || undefined,
+    }).then(r => r.data),
+    staleTime: 30_000,
+    enabled: isHydrated && isAuthenticated, // Chỉ chạy khi đã nạp xong token
+  });
 
-  useEffect(() => { fetchUsers(); }, [fetchUsers]);
-  useEffect(() => { fetchUnassigned(); }, [fetchUnassigned]);
+  const { data: assignedData, isLoading: loadingAssigned } = useQuery({
+    queryKey: ['assigned', assignedPage, assignedSearch, filterAssignedTo],
+    queryFn: () => api.getAssigned({
+      page: assignedPage, limit: 20,
+      search: assignedSearch || undefined,
+      salesUserId: filterAssignedTo || undefined,
+    }).then(r => r.data),
+    staleTime: 30_000,
+    enabled: isHydrated && isAuthenticated,
+  });
 
-  // ─── Bulk Assign ──────────────────────────────────────────────────────────
-  const handleAssign = async () => {
-    if (!selectedRowKeys.length) return message.warning('Vui lòng chọn ít nhất 1 khách hàng');
-    if (!targetSalesIds.length)  return message.warning('Vui lòng chọn ít nhất 1 Sales nhận data');
+  const { data: usersData } = useQuery({
+    queryKey: ['users-all'],
+    queryFn: () => api.getUsers().then(r => r.data),
+    staleTime: 5 * 60_000,
+    enabled: isHydrated && isAuthenticated,
+  });
 
-    setAssigning(true);
-    try {
-      const result = await assignmentsApi.bulkAssign({
-        customerIds: selectedRowKeys as number[],
-        salesUserIds: targetSalesIds,
-      });
-
-      message.success(`✅ Đã chia ${result.updatedCount} lượt cho Sales thành công!`);
-      setSelectedRowKeys([]);
+  // ── MUTATION: Bulk Assign ───────────────────────────────
+  const { mutate: doAssign, isPending: assigning } = useMutation({
+    mutationFn: () => api.bulkAssign({
+      customerIds: selectedIds,
+      salesUserIds: targetSalesIds,
+      reason: 'Redesigned Chia Data Page Assignment',
+    }).then(r => r.data),
+    onSuccess: (result) => {
+      antdMessage.success(
+        `✅ Đã chia ${result.success} khách cho ${targetSalesIds.length} Sales`
+      );
+      if (result.failed > 0) {
+        antdMessage.warning(`Có ${result.failed} khách không thể chia (đã có sales hoặc lỗi)`);
+      }
+      // Reset và refresh
+      setSelectedIds([]);
       setTargetSalesIds([]);
-      fetchUnassigned();
-    } catch (err: any) {
-      const errMsg = err?.response?.data?.message || err?.message || 'Lỗi không xác định';
-      message.error(`❌ Lỗi khi chia data: ${errMsg}`);
-    } finally {
-      setAssigning(false);
-    }
-  };
+      setModalOpen(false);
+      qc.invalidateQueries({ queryKey: ['unassigned'] });
+      qc.invalidateQueries({ queryKey: ['assigned'] });
+    },
+    onError: (err: any) => {
+      antdMessage.error('Lỗi: ' + (err.response?.data?.message || err.message));
+    },
+  });
 
-  // ─── Columns ──────────────────────────────────────────────────────────────
-  const columns: ColumnsType<Customer> = useMemo(() => [
+  // ── COLUMNS: Bảng Chưa assign ──────────────────────────
+  const unassignedColumns = [
     {
-      title: '#',
-      key: 'stt',
-      width: 52,
-      align: 'center' as const,
-      render: (_: any, __: any, i: number) => (page - 1) * pageSize + i + 1,
+      title: '#', width: 50,
+      render: (_: any, __: any, i: number) =>
+        (unassignedPage - 1) * 20 + i + 1,
     },
     {
-      title: 'Tên khách hàng',
-      dataIndex: 'name',
-      key: 'name',
+      title: 'Tên khách hàng', dataIndex: 'name', width: 200,
+      render: (v: string | null) => v
+        ? <Text strong>{v}</Text>
+        : <Text type="secondary" italic>Chưa có tên</Text>,
+    },
+    {
+      title: 'SĐT', dataIndex: 'phone', width: 130,
+      render: (v: string | null) => v
+        ? v
+        : <Text type="secondary">Chưa có</Text>,
+    },
+    {
+      title: 'Nguồn', dataIndex: 'source', width: 110,
+      render: (v: string | null) => v
+        ? <Tag color="blue">{v}</Tag>
+        : <Text type="secondary">-</Text>,
+    },
+    {
+      title: 'Campaign', dataIndex: 'campaign', width: 160,
       ellipsis: true,
-      render: (name: string) => (
-        <Text strong>{name || <Text type="secondary" italic>Ẩn danh</Text>}</Text>
-      ),
+      render: (v: string | null) => v || '-',
     },
     {
-      title: 'SĐT',
-      dataIndex: 'phone',
-      key: 'phone',
-      width: 130,
-      render: (v: string) => v ?? <Text type="secondary" italic>Chưa có</Text>,
+      title: 'Data Owner', width: 130,
+      render: (_: any, r: Customer) => r.createdBy?.name || 'Admin',
     },
     {
-      title: 'Nguồn',
-      dataIndex: 'source',
-      key: 'source',
-      width: 105,
-      render: (src: string) => (
-        <Tag color={SOURCE_COLORS[src] || 'default'}>{src || '—'}</Tag>
-      ),
+      title: 'Ngày nhập', dataIndex: 'inputDate', width: 110,
+      render: (v: string | null) => v
+        ? dayjs(v).format('DD/MM/YYYY')
+        : '-',
     },
-    {
-      title: 'Campaign',
-      dataIndex: 'campaign',
-      key: 'campaign',
-      width: 130,
-      ellipsis: true,
-      render: (v: string) => v || <Text type="secondary">—</Text>,
-    },
-    {
-      title: 'Data Owner',
-      key: 'owner',
-      width: 150,
-      render: (_: any, record: any) => {
-        const creator = record.createdBy;
-        return creator?.name ?? <Text type="secondary" italic>Hệ thống</Text>;
-      },
-    },
-    {
-      title: 'Ngày nhập',
-      dataIndex: 'inputDate',
-      key: 'inputDate',
-      width: 110,
-      render: (d: string) => d ? dayjs(d).format('DD/MM/YYYY') : '—',
-    },
-  ], [page, pageSize]);
+  ];
 
-  const canAssign = ['admin', 'manager'].includes(user?.role || '');
+  // ── COLUMNS: Bảng Đã assign ────────────────────────────
+  const assignedColumns = [
+    {
+      title: '#', width: 50,
+      render: (_: any, __: any, i: number) =>
+        (assignedPage - 1) * 20 + i + 1,
+    },
+    {
+      title: 'Tên khách hàng', dataIndex: 'name', width: 200,
+      render: (v: string | null) => v || 
+        <Text type="secondary" italic>Chưa có tên</Text>,
+    },
+    {
+      title: 'SĐT', dataIndex: 'phone', width: 130,
+      render: (v: string | null) => v || 
+        <Text type="secondary">Chưa có</Text>,
+    },
+    {
+      title: 'Sales phụ trách', width: 150,
+      render: (_: any, r: Customer) => r.salesUser
+        ? (
+          <Space>
+            <Avatar size="small" style={{ backgroundColor: '#1890ff' }}>
+              {r.salesUser.name?.[0]?.toUpperCase()}
+            </Avatar>
+            {r.salesUser.name}
+          </Space>
+        )
+        : <Text type="secondary">-</Text>,
+    },
+    {
+      title: 'Nguồn', dataIndex: 'source', width: 100,
+      render: (v: string | null) => v
+        ? <Tag color="blue">{v}</Tag> : '-',
+    },
+    {
+      title: 'Data Owner', width: 130,
+      render: (_: any, r: Customer) => r.createdBy?.name || 'Admin',
+    },
+    {
+      title: 'Ngày nhập', dataIndex: 'inputDate', width: 110,
+      render: (v: string | null) => v
+        ? dayjs(v).format('DD/MM/YYYY') : '-',
+    },
+  ];
 
-  // ─── Render ───────────────────────────────────────────────────────────────
+  // ── USER OPTIONS cho Select ────────────────────────────
+  const userOptions = (usersData || []).map((u: User) => ({
+    value: u.id,
+    label: (
+      <Space>
+        <Avatar size="small" style={{ 
+          backgroundColor: u.role === 'admin' ? '#f5222d' 
+            : u.role === 'manager' ? '#1890ff' : '#52c41a' 
+        }}>
+          {u.name?.[0]?.toUpperCase()}
+        </Avatar>
+        <span>{u.name || u.email}</span>
+        <Tag style={{ fontSize: 10 }}>{u.role}</Tag>
+      </Space>
+    ),
+  }));
+
+  // ── RENDER ─────────────────────────────────────────────
+  if (!isHydrated || !isAuthenticated) {
+    return (
+      <div style={{ padding: 40, textAlign: 'center' }}>
+        <Typography.Title level={4}>Đang kiểm tra quyền truy cập...</Typography.Title>
+      </div>
+    );
+  }
+
   return (
-    <div>
-      {/* ── Stats bar ── */}
-      <Row gutter={16} style={{ marginBottom: 16 }}>
-        <Col>
-          <Card size="small" style={{ minWidth: 180 }}>
+    <div style={{ padding: 24 }}>
+      
+      {/* HEADER STATS */}
+      <Row gutter={16} style={{ marginBottom: 24 }}>
+        <Col span={6}>
+          <div style={{ 
+            background: '#fff', padding: 20, borderRadius: 8,
+            border: '1px solid #f0f0f0' 
+          }}>
             <Statistic
               title="Chưa assign"
-              value={total}
-              prefix={<UserSwitchOutlined style={{ color: '#faad14' }} />}
-              styles={{ content: { color: '#faad14', fontSize: 22 } }}
+              value={unassignedData?.pagination?.total ?? 0}
+              prefix={<TeamOutlined style={{ color: '#faad14' }} />}
+              styles={{ content: { color: '#faad14', fontSize: 28 } }}
             />
-          </Card>
+          </div>
         </Col>
-        {selectedRowKeys.length > 0 && (
-          <Col>
-            <Card size="small" style={{ minWidth: 180, borderColor: '#52c41a' }}>
-              <Statistic
-                title="Đã chọn"
-                value={selectedRowKeys.length}
-                prefix={<CheckCircleOutlined style={{ color: '#52c41a' }} />}
-                styles={{ content: { color: '#52c41a', fontSize: 22 } }}
-              />
-            </Card>
-          </Col>
-        )}
+        <Col span={6}>
+          <div style={{ 
+            background: '#fff', padding: 20, borderRadius: 8,
+            border: '1px solid #f0f0f0' 
+          }}>
+            <Statistic
+              title="Đã assign"
+              value={assignedData?.pagination?.total ?? 0}
+              prefix={<CheckCircleOutlined style={{ color: '#52c41a' }} />}
+              styles={{ content: { color: '#52c41a', fontSize: 28 } }}
+            />
+          </div>
+        </Col>
       </Row>
 
-      {/* ── Control Panel ── */}
-      <Card style={{ marginBottom: 16 }}>
-        <Row gutter={[12, 12]} align="bottom">
-          {/* Sales đích */}
-          <Col xs={24} sm={12} md={6}>
-            <div style={{ fontWeight: 600, marginBottom: 4 }}>🎯 Chia cho Sales:</div>
-            <Select
-              mode="multiple"
-              maxTagCount="responsive"
-              style={{ width: '100%' }}
-              placeholder="Chọn các Sales nhận data"
-              value={targetSalesIds}
-              onChange={setTargetSalesIds}
-              showSearch
-              optionFilterProp="label"
-              options={salesUsers.map(u => ({ label: `${u.name} (${u.role})`, value: u.id }))}
-            />
-          </Col>
-
-          {/* Lọc data owner */}
-          <Col xs={24} sm={12} md={5}>
-            <div style={{ fontWeight: 600, marginBottom: 4 }}>👤 Data Owner:</div>
-            <Select
-              style={{ width: '100%' }}
-              placeholder="Tất cả"
-              allowClear
-              showSearch
-              optionFilterProp="label"
-              value={sourceOwnerId}
-              onChange={(v) => { setSourceOwnerId(v); setPage(1); }}
-              options={salesUsers.map(u => ({ label: u.name, value: u.id }))}
-            />
-          </Col>
-
-          {/* Nguồn */}
-          <Col xs={24} sm={12} md={4}>
-            <div style={{ fontWeight: 600, marginBottom: 4 }}>📡 Nguồn:</div>
-            <Select
-              style={{ width: '100%' }}
-              placeholder="Tất cả"
-              allowClear
-              value={sourceFilter}
-              onChange={(v) => { setSourceFilter(v); setPage(1); }}
-              options={[
-                { value: 'Facebook', label: 'Facebook' },
-                { value: 'TikTok', label: 'TikTok' },
-                { value: 'Google', label: 'Google' },
-                { value: 'Instagram', label: 'Instagram' },
-                { value: 'LinkedIn', label: 'LinkedIn' },
-                { value: 'Other', label: 'Khác' },
-              ]}
-            />
-          </Col>
-
-          {/* Tìm kiếm */}
-          <Col xs={24} sm={12} md={5}>
-            <div style={{ fontWeight: 600, marginBottom: 4 }}>🔍 Tìm kiếm:</div>
-            <Input
-              placeholder="Tên, SĐT..."
-              prefix={<SearchOutlined />}
-              value={searchText}
-              onChange={(e) => { setSearchText(e.target.value); setPage(1); }}
-              allowClear
-            />
-          </Col>
-
-          {/* Actions */}
-          <Col xs={24} sm={12} md={4}>
-            <div style={{ display: 'flex', gap: 8 }}>
-              <Button icon={<ReloadOutlined />} onClick={fetchUnassigned} disabled={loading} />
-              <Tooltip
-                title={
-                  !canAssign ? 'Chỉ Admin/Manager mới được chia data'
-                    : !targetSalesIds.length ? 'Chọn Sales nhận data trước'
-                    : !selectedRowKeys.length ? 'Chọn ít nhất 1 khách hàng'
-                    : ''
-                }
+      {/* TABS: 2 bảng */}
+      <Tabs
+        defaultActiveKey="unassigned"
+        items={[
+          {
+            key: 'unassigned',
+            label: (
+              <Badge 
+                count={unassignedData?.pagination?.total ?? 0}
+                overflowCount={9999}
+                color="#faad14"
               >
-                <Button
-                  type="primary"
-                  icon={<SwapOutlined />}
-                  onClick={handleAssign}
-                  loading={assigning}
-                  disabled={!canAssign || !selectedRowKeys.length || !targetSalesIds.length}
-                >
-                  Chia {selectedRowKeys.length > 0 ? `(${selectedRowKeys.length})` : ''}
-                </Button>
-              </Tooltip>
-            </div>
-          </Col>
-        </Row>
+                <span style={{ paddingRight: 8 }}>📋 Chưa assign</span>
+              </Badge>
+            ),
+            children: (
+              <>
+                {/* FILTER ROW */}
+                <Row gutter={12} style={{ marginBottom: 16 }} align="middle">
+                  <Col flex="280px">
+                    <Input
+                      prefix={<SearchOutlined />}
+                      placeholder="Tên, SĐT..."
+                      allowClear
+                      value={unassignedSearch}
+                      onChange={e => {
+                        setUnassignedSearch(e.target.value);
+                        setUnassignedPage(1);
+                      }}
+                    />
+                  </Col>
+                  <Col flex="180px">
+                    <Select
+                      allowClear
+                      placeholder="Nguồn"
+                      style={{ width: '100%' }}
+                      options={['Facebook','TikTok','Google',
+                        'Instagram','Other'].map(s => ({ 
+                          value: s, label: s 
+                        }))}
+                      onChange={v => { 
+                        setFilterSource(v ?? null); 
+                        setUnassignedPage(1); 
+                      }}
+                    />
+                  </Col>
+                  <Col flex="180px">
+                    <Select
+                      allowClear
+                      placeholder="Data Owner"
+                      style={{ width: '100%' }}
+                      options={(usersData || []).map((u: User) => ({
+                        value: u.id,
+                        label: u.name || u.email,
+                      }))}
+                      onChange={v => { 
+                        setFilterDataOwner(v ?? null); 
+                        setUnassignedPage(1); 
+                      }}
+                    />
+                  </Col>
+                  <Col flex="auto" />
+                  {/* NÚT CHIA — chỉ hiện khi đã chọn */}
+                  {selectedIds.length > 0 && (
+                    <Col>
+                      <Button
+                        type="primary"
+                        icon={<UserAddOutlined />}
+                        onClick={() => setModalOpen(true)}
+                        style={{ background: '#1890ff' }}
+                      >
+                        Chia {selectedIds.length} khách →
+                      </Button>
+                    </Col>
+                  )}
+                  <Col>
+                    <Tooltip title="Làm mới">
+                      <Button
+                        icon={<ReloadOutlined />}
+                        onClick={() => 
+                          qc.invalidateQueries({ 
+                            queryKey: ['unassigned'] 
+                          })
+                        }
+                      />
+                    </Tooltip>
+                  </Col>
+                </Row>
 
-        {/* Preview banner */}
-        {selectedRowKeys.length > 0 && targetSalesIds.length > 0 && (
-          <Alert
-            style={{ marginTop: 12 }}
-            type="success"
-            showIcon
-            message={
-              <span>
-                Sẽ chia <strong>{selectedRowKeys.length} khách hàng</strong> cho{' '}
-                <strong style={{ color: '#1890ff' }}>{targetSalesIds.length} Sales</strong>
-              </span>
-            }
-          />
-        )}
-      </Card>
+                {/* SELECTION INFO */}
+                {selectedIds.length > 0 && (
+                  <div style={{
+                    background: '#e6f7ff', border: '1px solid #91d5ff',
+                    borderRadius: 6, padding: '8px 16px',
+                    marginBottom: 12, display: 'flex',
+                    justifyContent: 'space-between', alignItems: 'center'
+                  }}>
+                    <Text>
+                      Đã chọn <Text strong>{selectedIds.length}</Text> khách hàng
+                    </Text>
+                    <Button 
+                      size="small" 
+                      onClick={() => setSelectedIds([])}
+                    >
+                      Bỏ chọn tất cả
+                    </Button>
+                  </div>
+                )}
 
-      {/* ── Table ── */}
-      <Card
+                {/* TABLE */}
+                <Table
+                  rowSelection={{
+                    selectedRowKeys: selectedIds,
+                    onChange: keys => setSelectedIds(keys as number[]),
+                    preserveSelectedRowKeys: true,
+                  }}
+                  columns={unassignedColumns}
+                  dataSource={unassignedData?.customers ?? []}
+                  rowKey="id"
+                  loading={loadingUnassigned}
+                  size="small"
+                  pagination={{
+                    current: unassignedPage,
+                    pageSize: 20,
+                    total: unassignedData?.pagination?.total ?? 0,
+                    onChange: p => setUnassignedPage(p),
+                    showTotal: t => `Tổng ${t.toLocaleString()} khách chưa assign`,
+                    showSizeChanger: false,
+                  }}
+                  locale={{ emptyText: '✅ Không còn khách chưa assign' }}
+                />
+              </>
+            ),
+          },
+          {
+            key: 'assigned',
+            label: (
+              <Badge
+                count={assignedData?.pagination?.total ?? 0}
+                overflowCount={9999}
+                color="#52c41a"
+              >
+                <span style={{ paddingRight: 8 }}>✅ Đã assign</span>
+              </Badge>
+            ),
+            children: (
+              <>
+                {/* FILTER */}
+                <Row gutter={12} style={{ marginBottom: 16 }}>
+                  <Col flex="280px">
+                    <Input
+                      prefix={<SearchOutlined />}
+                      placeholder="Tên, SĐT khách..."
+                      allowClear
+                      value={assignedSearch}
+                      onChange={e => {
+                        setAssignedSearch(e.target.value);
+                        setAssignedPage(1);
+                      }}
+                    />
+                  </Col>
+                  <Col flex="220px">
+                    <Select
+                      allowClear
+                      placeholder="Lọc theo Sales"
+                      style={{ width: '100%' }}
+                      options={(usersData || []).map((u: User) => ({
+                        value: u.id,
+                        label: u.name || u.email,
+                      }))}
+                      onChange={v => {
+                        setFilterAssignedTo(v ?? null);
+                        setAssignedPage(1);
+                      }}
+                    />
+                  </Col>
+                  <Col>
+                    <Tooltip title="Làm mới">
+                      <Button
+                        icon={<ReloadOutlined />}
+                        onClick={() => 
+                          qc.invalidateQueries({ 
+                            queryKey: ['assigned'] 
+                          })
+                        }
+                      />
+                    </Tooltip>
+                  </Col>
+                </Row>
+
+                {/* TABLE */}
+                <Table
+                  columns={assignedColumns}
+                  dataSource={assignedData?.customers ?? []}
+                  rowKey="id"
+                  loading={loadingAssigned}
+                  size="small"
+                  pagination={{
+                    current: assignedPage,
+                    pageSize: 20,
+                    total: assignedData?.pagination?.total ?? 0,
+                    onChange: p => setAssignedPage(p),
+                    showTotal: t => `Tổng ${t.toLocaleString()} khách đã assign`,
+                    showSizeChanger: false,
+                  }}
+                  locale={{ emptyText: 'Chưa có khách nào được assign' }}
+                />
+              </>
+            ),
+          },
+        ]}
+      />
+
+      {/* ── MODAL ASSIGN ─────────────────────────────── */}
+      <Modal
+        open={modalOpen}
         title={
           <Space>
-            <span>📋 Danh sách chưa được assign</span>
-            <Badge count={total} showZero style={{ backgroundColor: '#faad14' }} />
+            <UserAddOutlined style={{ color: '#1890ff' }} />
+            <span>
+              Chia <Text strong style={{ color: '#1890ff' }}>
+                {selectedIds.length}
+              </Text> khách hàng
+            </span>
           </Space>
         }
+        onCancel={() => {
+          setModalOpen(false);
+          setTargetSalesIds([]);
+        }}
+        footer={[
+          <Button 
+            key="cancel" 
+            onClick={() => {
+              setModalOpen(false);
+              setTargetSalesIds([]);
+            }}
+          >
+            Hủy
+          </Button>,
+          <Button
+            key="confirm"
+            type="primary"
+            icon={<UserAddOutlined />}
+            loading={assigning}
+            disabled={targetSalesIds.length === 0}
+            onClick={() => doAssign()}
+          >
+            Xác nhận chia cho {targetSalesIds.length} Sales
+          </Button>,
+        ]}
+        width={560}
+        destroyOnHidden
       >
-        {fetchError && (
-          <Alert
-            type="error"
-            showIcon
-            closable
-            message="Lỗi tải dữ liệu"
-            description={fetchError}
-            style={{ marginBottom: 12 }}
-            onClose={() => setFetchError(null)}
-            action={
-              <Button size="small" onClick={fetchUnassigned}>Thử lại</Button>
-            }
-          />
-        )}
+        <div style={{ padding: '8px 0' }}>
+          {/* Summary */}
+          <div style={{
+            background: '#f6ffed', border: '1px solid #b7eb8f',
+            borderRadius: 6, padding: '10px 16px', marginBottom: 20
+          }}>
+            <Text>
+              Sẽ chia <Text strong>{selectedIds.length}</Text> khách 
+              cho <Text strong>{targetSalesIds.length || '?'}</Text> Sales
+              {targetSalesIds.length > 1 && (
+                <Text type="secondary">
+                  {' '}(mỗi Sales nhận cả {selectedIds.length} khách)
+                </Text>
+              )}
+            </Text>
+          </div>
 
-        <Table
-          rowSelection={
-            canAssign
-              ? {
-                  selectedRowKeys,
-                  onChange: (keys) => setSelectedRowKeys(keys),
-                  preserveSelectedRowKeys: true,
-                }
-              : undefined
-          }
-          columns={columns}
-          dataSource={customers}
-          rowKey="id"
-          loading={loading}
-          size="middle"
-          bordered
-          locale={{
-            emptyText: loading ? (
-              <Spin description="Đang tải..." />
-            ) : fetchError ? (
-              <Empty
-                image={Empty.PRESENTED_IMAGE_SIMPLE}
-                description={
-                  <span>
-                    Lỗi tải dữ liệu.{' '}
-                    <Button type="link" onClick={fetchUnassigned} style={{ padding: 0 }}>
-                      Thử lại
-                    </Button>
-                  </span>
-                }
-              />
-            ) : (
-              <Empty
-                image={Empty.PRESENTED_IMAGE_SIMPLE}
-                description="🎉 Tất cả khách hàng đã được assign"
-              />
-            ),
-          }}
-          pagination={{
-            current: page,
-            pageSize,
-            total,
-            showSizeChanger: true,
-            showTotal: (t) => `Tổng cộng ${t} khách hàng chưa assign`,
-            onChange: (p, ps) => {
-              setPage(p);
-              setPageSize(ps);
-            },
-          }}
-        />
-      </Card>
+          {/* Select Sales */}
+          <div style={{ marginBottom: 8 }}>
+            <Text strong>Chọn Sales nhận data:</Text>
+          </div>
+          <Select
+            mode="multiple"
+            style={{ width: '100%' }}
+            placeholder="Tìm tên hoặc email sales..."
+            value={targetSalesIds}
+            onChange={setTargetSalesIds}
+            options={userOptions}
+            filterOption={(input, option) => {
+              const u = (usersData || []).find(
+                (u: User) => u.id === option?.value
+              );
+              const q = input.toLowerCase();
+              return (
+                u?.name?.toLowerCase().includes(q) ||
+                u?.email?.toLowerCase().includes(q)
+              ) ?? false;
+            }}
+            optionLabelProp="label"
+            showSearch
+            maxTagCount="responsive"
+          />
+
+          {/* Preview Sales được chọn */}
+          {targetSalesIds.length > 0 && (
+            <div style={{ marginTop: 16 }}>
+              <Text type="secondary" style={{ fontSize: 12 }}>
+                Sales sẽ nhận data:
+              </Text>
+              <div style={{ marginTop: 8, display: 'flex', 
+                flexWrap: 'wrap', gap: 8 }}>
+                {targetSalesIds.map(id => {
+                  const u = (usersData || []).find(
+                    (u: User) => u.id === id
+                  );
+                  return u ? (
+                    <Tag 
+                      key={id}
+                      color="blue"
+                      closable
+                      onClose={() => setTargetSalesIds(
+                        prev => prev.filter(x => x !== id)
+                      )}
+                    >
+                      {u.name || u.email}
+                    </Tag>
+                  ) : null;
+                })}
+              </div>
+            </div>
+          )}
+        </div>
+      </Modal>
     </div>
   );
 }
