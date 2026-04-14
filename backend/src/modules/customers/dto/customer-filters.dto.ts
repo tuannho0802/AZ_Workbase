@@ -64,4 +64,10 @@ export class CustomerFiltersDto {
   @IsOptional()
   @IsString()
   dateTo?: string;
+
+  @ApiPropertyOptional({ example: 3, description: 'Lọc theo người tạo (Data Owner) - dùng cho tab Chia Data' })
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  creatorId?: number;
 }

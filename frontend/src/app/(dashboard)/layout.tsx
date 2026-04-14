@@ -8,7 +8,8 @@ import {
   UserOutlined, 
   TeamOutlined,
   MenuFoldOutlined,
-  MenuUnfoldOutlined 
+  MenuUnfoldOutlined,
+  SwapOutlined,
 } from '@ant-design/icons';
 import { useAuthStore } from '@/lib/stores/auth.store';
 import Cookies from 'js-cookie';
@@ -45,12 +46,14 @@ export default function DashboardLayout({
     
     if (pathname.includes('/users')) {
       newKey = 'users';
+    } else if (pathname.includes('/chia-data')) {
+      newKey = 'chia-data';
     } else if (pathname.includes('/customers')) {
       newKey = 'customers';
     }
     
     setSelectedKey(newKey);
-  }, [pathname]); // ← selectedKey KHÔNG được trong deps (gây loop)
+  }, [pathname]);
 
   useEffect(() => {
     if (isHydrated && !isAuthenticated) {
@@ -111,7 +114,13 @@ export default function DashboardLayout({
               label: 'Khách hàng',
               onClick: () => router.push('/customers'),
             },
-            ...(user?.role === 'admin' || user?.role === 'manager' ? [{
+            ...(['admin', 'manager'].includes(user?.role || '') ? [{
+              key: 'chia-data',
+              icon: <SwapOutlined />,
+              label: 'Chia Data',
+              onClick: () => router.push('/chia-data'),
+            }] : []),
+            ...(['admin', 'manager'].includes(user?.role || '') ? [{
               key: 'users',
               icon: <UserOutlined />,
               label: 'Nhân viên',

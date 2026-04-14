@@ -1,5 +1,5 @@
-import { IsArray, ArrayNotEmpty, IsInt, IsNotEmpty } from 'class-validator';
-import { ApiProperty } from '@nestjs/swagger';
+import { IsArray, ArrayNotEmpty, IsInt, IsNotEmpty, IsOptional, IsString } from 'class-validator';
+import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 
 export class BulkAssignDto {
   @ApiProperty({ example: [1, 2, 3], description: 'Danh sách ID khách hàng cần gán' })
@@ -8,8 +8,14 @@ export class BulkAssignDto {
   @IsInt({ each: true })
   customerIds: number[];
 
-  @ApiProperty({ example: 7, description: 'ID của Sales User nhận gán' })
+  @ApiProperty({ example: [5, 7, 9], description: 'Danh sách ID của các Sales User nhận gán' })
   @IsNotEmpty()
-  @IsInt()
-  salesUserId: number;
+  @IsArray()
+  @IsInt({ each: true })
+  salesUserIds: number[];
+
+  @ApiPropertyOptional({ example: 'Chia data từ batch tháng 4', description: 'Lý do gán (tuỳ chọn)' })
+  @IsOptional()
+  @IsString()
+  reason?: string;
 }

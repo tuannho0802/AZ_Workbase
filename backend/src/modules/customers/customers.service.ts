@@ -5,7 +5,6 @@ import { Customer } from '../../database/entities/customer.entity';
 import { CreateCustomerDto } from './dto/create-customer.dto';
 import { UpdateCustomerDto } from './dto/update-customer.dto';
 import { CustomerFiltersDto } from './dto/customer-filters.dto';
-
 import { BulkAssignDto } from './dto/bulk-assign.dto';
 import { Role } from '../../common/enums/role.enum';
 import { User } from '../../database/entities/user.entity';
@@ -16,6 +15,7 @@ import {
 } from './exceptions/customer.exceptions';
 import { CustomerNote } from '../../database/entities/customer-note.entity';
 import { Deposit } from '../../database/entities/deposit.entity';
+import { CustomerAssignment, AssignmentStatus } from '../../database/entities/customer-assignment.entity';
 import { CreateCustomerNoteDto } from './dto/create-customer-note.dto';
 import { CreateDepositDto } from './dto/create-deposit.dto';
 import { NotFoundException, ForbiddenException, BadRequestException } from '@nestjs/common';
@@ -29,6 +29,8 @@ export class CustomersService {
     private readonly notesRepository: Repository<CustomerNote>,
     @InjectRepository(Deposit)
     private readonly depositsRepository: Repository<Deposit>,
+    @InjectRepository(CustomerAssignment)
+    private readonly assignmentRepository: Repository<CustomerAssignment>,
   ) {}
 
   private getTodayVn(): Date {
@@ -106,7 +108,14 @@ export class CustomersService {
       queryBuilder.andWhere(
         new Brackets((qb) => {
           qb.where('customer.createdById = :userId', { userId })
-            .orWhere('customer.salesUserId = :userId', { userId });
+            .orWhere('customer.salesUserId = :userId', { userId })
+            // 1:N Support: User has active assignment
+            .orWhere(
+              'customer.id IN ' +
+              '(SELECT ca.customer_id FROM customer_assignments ca ' +
+              ' WHERE ca.assigned_to_id = :userId AND ca.status = :status)',
+              { userId, status: 'active' }
+            );
         }),
       );
     }
@@ -199,6 +208,28 @@ export class CustomersService {
       const rawRow = raw.find(r => r.customer_id === customer.id);
       (customer as any).totalDeposit30Days = parseFloat(rawRow?.totalDepositSum || '0');
     });
+
+    // Populate activeAssignees for 1:N feature
+    if (entities.length > 0) {
+      const activeAssignments = await this.assignmentRepository.find({
+        where: {
+          customerId: Brackets ? undefined : undefined, 
+        },
+        relations: ['assignedTo'],
+      });
+      // Workaround because Typeorm Brackets isn't accepted directly in where clause like this usually, let's use QueryBuilder
+      const activeAssignmentsQuery = await this.assignmentRepository
+        .createQueryBuilder('assignment')
+        .leftJoinAndSelect('assignment.assignedTo', 'assignedTo')
+        .where('assignment.status = :status', { status: 'active' })
+        .andWhere('assignment.customer_id IN (:...ids)', { ids: entities.map(e => e.id) })
+        .getMany();
+
+      entities.forEach((customer) => {
+        const assignmentsForCustomer = activeAssignmentsQuery.filter(a => a.customerId === customer.id);
+        (customer as any).activeAssignees = assignmentsForCustomer.map(a => a.assignedTo);
+      });
+    }
 
     return {
       data: entities,
@@ -434,16 +465,22 @@ export class CustomersService {
 
   async bulkAssign(dto: BulkAssignDto, callerId: number, callerRole: string) {
     const userRepo = this.customersRepository.manager.getRepository(User);
-    const salesUser = await userRepo.findOneBy({ id: dto.salesUserId, isActive: true });
     
-    if (!salesUser) {
-      throw new BadRequestException(`Nhân viên ID ${dto.salesUserId} không tồn tại hoặc đã bị khóa`);
+    // Validate target users
+    const validSalesUsers = [];
+    for (const sid of dto.salesUserIds) {
+      const u = await userRepo.findOneBy({ id: sid, isActive: true });
+      if (!u) throw new BadRequestException(`Nhân viên ID ${sid} không tồn tại hoặc đã bị khóa`);
+      validSalesUsers.push(u);
     }
 
     if (callerRole === Role.MANAGER) {
       const caller = await userRepo.findOneBy({ id: callerId });
-      if (caller?.departmentId !== salesUser.departmentId) {
-        throw new UnauthorizedCustomerAccessException();
+      // Verify caller department matches target users
+      for (const u of validSalesUsers) {
+        if (caller?.departmentId !== u.departmentId) {
+          throw new UnauthorizedCustomerAccessException();
+        }
       }
     }
 
@@ -460,25 +497,115 @@ export class CustomersService {
     const validIds = validCustomers.map(c => c.id);
     const skippedIds = dto.customerIds.filter(id => !validIds.includes(id));
 
+    let assignedCount = 0;
+
     if (validIds.length > 0) {
       const today = this.getTodayVn();
       for (const customer of validCustomers) {
-        // Chỉ set assignedDate nếu nó đang NULL
-        if (!customer.assignedDate) {
-          customer.assignedDate = today;
+        let assignedAtLeastOne = false;
+
+        for (const targetUserId of dto.salesUserIds) {
+          // Check if already assigned actively to this user
+          const existing = await this.assignmentRepository.findOneBy({
+            customerId: customer.id,
+            assignedToId: targetUserId,
+            status: AssignmentStatus.ACTIVE,
+          });
+
+          if (existing) continue; // Skip if already active
+
+          // Create new assignment
+          const assignment = this.assignmentRepository.create({
+            customerId: customer.id,
+            assignedById: callerId,
+            assignedToId: targetUserId,
+            previousAssigneeId: customer.salesUserId || null,
+            status: AssignmentStatus.ACTIVE,
+            reason: dto.reason || 'Bulk assign',
+          });
+          await this.assignmentRepository.save(assignment);
+          assignedAtLeastOne = true;
+          assignedCount++;
         }
-        customer.salesUserId = dto.salesUserId;
-        customer.updatedById = callerId;
+
+        if (assignedAtLeastOne) {
+          // Keep first assignee as primary for backward compatibility if null
+          if (!customer.salesUserId && dto.salesUserIds.length > 0) {
+            customer.salesUserId = dto.salesUserIds[0];
+          }
+          if (!customer.assignedDate) {
+            customer.assignedDate = today;
+          }
+          customer.updatedById = callerId;
+        }
       }
       await this.customersRepository.save(validCustomers);
     }
 
     return {
       success: true,
-      updatedCount: validIds.length,
+      updatedCount: assignedCount,
       skippedIds,
-      message: `Đã gán thành công ${validIds.length} khách hàng cho Sales User ${dto.salesUserId}`
+      message: `Đã gán ${assignedCount} lượt cho Sales Users`
     };
+  }
+
+  /** Lấy danh sách khách chưa assign (salesUserId IS NULL) */
+  async getUnassigned(
+    filters: CustomerFiltersDto,
+    userId: number,
+    userRole: string,
+    userDepartmentId?: number,
+  ) {
+    const { page = 1, limit = 20, search, source, creatorId } = filters;
+
+    const qb = this.customersRepository.createQueryBuilder('customer')
+      .leftJoinAndSelect('customer.salesUser', 'salesUser')
+      .leftJoinAndSelect('customer.createdBy', 'createdBy')
+      .where('customer.deletedAt IS NULL')
+      .andWhere('customer.salesUserId IS NULL');
+
+    if (userRole === Role.MANAGER && userDepartmentId) {
+      qb.andWhere('customer.departmentId = :deptId', { deptId: userDepartmentId });
+    } else if (userRole === Role.EMPLOYEE) {
+      // Employees cannot use this endpoint (role-guarded in controller), but just in case
+      qb.andWhere('customer.createdById = :userId', { userId });
+    }
+
+    // Optional: filter by data owner (creator)
+    if (creatorId) {
+      qb.andWhere('customer.createdById = :creatorId', { creatorId });
+    }
+
+    if (source) {
+      qb.andWhere('customer.source = :source', { source });
+    }
+
+    if (search) {
+      const s = `%${search.trim().toLowerCase()}%`;
+      qb.andWhere(
+        new Brackets(q =>
+          q.where('LOWER(customer.name) LIKE :s', { s })
+           .orWhere('customer.phone LIKE :s', { s }),
+        ),
+      );
+    }
+
+    qb.orderBy('customer.createdAt', 'DESC')
+      .skip((page - 1) * limit)
+      .take(limit);
+
+    const [data, total] = await qb.getManyAndCount();
+    return { data, total, page, limit, totalPages: Math.ceil(total / limit) };
+  }
+
+  /** Lịch sử gán data của 1 khách hàng */
+  async getAssignmentHistory(customerId: number) {
+    return this.assignmentRepository.find({
+      where: { customerId },
+      relations: ['assignedBy', 'assignedTo', 'previousAssignee', 'reclaimedBy'],
+      order: { assignedAt: 'DESC' },
+    });
   }
 
   async getStatsToday(userId: number, userRole: string) {

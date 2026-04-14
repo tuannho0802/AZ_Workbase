@@ -216,12 +216,36 @@ export default function CustomersPage() {
     },
     {
       title: 'Sales',
-      dataIndex: ['salesUser', 'name'],
+      dataIndex: 'activeAssignees',
       key: 'salesUser',
-      width: 130,
-      render: (_, record) => record.salesUser?.name ?? (
-        <span style={{ color: '#bbb', fontStyle: 'italic' }}>Chưa gán</span>
-      ),
+      width: 160,
+      render: (_, record: any) => {
+        // Fallback for 1:1 legacy if activeAssignees is not populated
+        const assignees = record.activeAssignees?.length > 0 
+          ? record.activeAssignees 
+          : (record.salesUser ? [record.salesUser] : []);
+        
+        if (assignees.length === 0) {
+          return <span style={{ color: '#bbb', fontStyle: 'italic' }}>Chưa gán</span>;
+        }
+
+        if (assignees.length === 1) {
+          return <Tag color="blue">{assignees[0].name}</Tag>;
+        }
+
+        return (
+          <Space size={[0, 4]} wrap>
+            {assignees.slice(0, 2).map((a: any) => (
+              <Tag color="blue" key={a.id}>{a.name}</Tag>
+            ))}
+            {assignees.length > 2 && (
+              <Tooltip title={assignees.map((a: any) => a.name).join(', ')}>
+                <Tag>+{assignees.length - 2}</Tag>
+              </Tooltip>
+            )}
+          </Space>
+        );
+      },
     },
     {
       title: 'Trạng thái',

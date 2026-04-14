@@ -73,6 +73,13 @@ export class CustomersController {
     return this.customersService.bulkAssign(dto, user.id, user.role);
   }
 
+  @Get('unassigned')
+  @Roles(Role.ADMIN, Role.MANAGER)
+  @ApiOperation({ summary: 'Lấy danh sách khách hàng chưa assign (salesUserId IS NULL)' })
+  getUnassigned(@GetUser() user: any, @Query() filters: CustomerFiltersDto) {
+    return this.customersService.getUnassigned(filters, user.id, user.role, user.departmentId);
+  }
+
   @Post()
   @ApiOperation({ summary: 'Tạo khách hàng mới' })
   @ApiResponse({ status: 201, description: 'Khách hàng tạo thành công' })
@@ -113,6 +120,12 @@ export class CustomersController {
   @ApiOperation({ summary: 'Lấy danh sách nạp tiền (5 bản ghi gần nhất)' })
   async getDeposits(@Param('id') id: string) {
     return this.customersService.getDeposits(+id);
+  }
+
+  @Get(':id/assignment-history')
+  @ApiOperation({ summary: 'Lịch sử gán data của 1 khách hàng' })
+  async getAssignmentHistory(@Param('id') id: string) {
+    return this.customersService.getAssignmentHistory(+id);
   }
 
   @Delete('deposits/:id')
