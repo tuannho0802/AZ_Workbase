@@ -102,13 +102,12 @@ export const CustomerForm: React.FC<CustomerFormProps> = ({ open, customer, onCl
           <Col span={12}>
             <Form.Item 
               name="phone" 
-              label="Số điện thoại" 
+              label="Số điện thoại (Tuỳ chọn)" 
               rules={[
-                { required: true, message: 'Vui lòng nhập SĐT' },
                 { pattern: /^(09|08|07|03|05)[0-9]{8}$/, message: 'SĐT không hợp lệ' }
               ]}
             >
-              <Input placeholder="0912345678" />
+              <Input placeholder="Số điện thoại (Không bắt buộc)" />
             </Form.Item>
           </Col>
         </Row>

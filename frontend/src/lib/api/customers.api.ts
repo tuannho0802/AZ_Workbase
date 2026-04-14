@@ -9,7 +9,8 @@ export const customersApi = {
     status?: string;
     source?: string;
     salesUserId?: number;
-    sortBy?: string;
+    departmentId?: number;
+    sortField?: string;
     sortOrder?: 'ASC' | 'DESC';
     dateFrom?: string;
     dateTo?: string;

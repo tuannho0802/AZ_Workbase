@@ -5,7 +5,7 @@ import { Customer } from '../../database/entities/customer.entity';
 import { CreateCustomerDto } from './dto/create-customer.dto';
 import { UpdateCustomerDto } from './dto/update-customer.dto';
 import { CustomerFiltersDto } from './dto/customer-filters.dto';
-import { CustomerQueryDto } from './dto/customer-query.dto';
+
 import { BulkAssignDto } from './dto/bulk-assign.dto';
 import { Role } from '../../common/enums/role.enum';
 import { User } from '../../database/entities/user.entity';
@@ -55,6 +55,7 @@ export class CustomersService {
       const today = this.getTodayVn();
       const customer = this.customersRepository.create({
         ...createCustomerDto,
+        phone: createCustomerDto.phone?.trim() === '' ? null : createCustomerDto.phone,
         createdById: userId,
         createdBy_OLD: userId, // ← Populate legacy NOT NULL column
         inputDate: createCustomerDto.inputDate ? new Date(createCustomerDto.inputDate) : today,
@@ -72,19 +73,20 @@ export class CustomersService {
     }
   }
 
-  async findAll(queryDto: CustomerQueryDto, userId: number, userRole: string) {
+  async findAll(filters: CustomerFiltersDto, userId: number, userRole: string, userDepartmentId?: number) {
     const { 
       page = 1, 
-      limit = 50, 
-      sortBy = 'createdAt', 
+      limit = 20, 
+      sortField = 'createdAt', 
       sortOrder = 'DESC',
       search,
       source,
       status,
       salesUserId,
+      departmentId,
       dateFrom,
       dateTo
-    } = queryDto;
+    } = filters;
 
     const queryBuilder = this.customersRepository.createQueryBuilder('customer');
 
@@ -96,7 +98,11 @@ export class CustomersService {
     queryBuilder.where('customer.deletedAt IS NULL');
 
     // RBAC
-    if (userRole === Role.EMPLOYEE) {
+    if (userRole === Role.MANAGER) {
+      if (userDepartmentId) {
+        queryBuilder.andWhere('customer.departmentId = :userDepartmentId', { userDepartmentId });
+      }
+    } else if (userRole === Role.EMPLOYEE) {
       queryBuilder.andWhere(
         new Brackets((qb) => {
           qb.where('customer.createdById = :userId', { userId })
@@ -127,6 +133,9 @@ export class CustomersService {
     }
     if (salesUserId) {
       queryBuilder.andWhere('customer.salesUserId = :salesUserId', { salesUserId });
+    }
+    if (departmentId) {
+      queryBuilder.andWhere('customer.departmentId = :departmentId', { departmentId });
     }
     
     // Date Filters
@@ -159,17 +168,19 @@ export class CustomersService {
     queryBuilder.setParameters(depositSubQuery.getParameters());
 
     // Sorting
-    if (sortBy === 'name') {
+    if (sortField === 'name') {
       queryBuilder.orderBy('customer.name', sortOrder);
-    } else if (sortBy === 'status') {
+    } else if (sortField === 'status') {
       queryBuilder.orderBy('customer.status', sortOrder);
-    } else if (sortBy === 'phone') {
+    } else if (sortField === 'phone') {
       queryBuilder.orderBy('customer.phone', sortOrder);
-    } else if (sortBy === 'totalDeposit30Days') {
+    } else if (sortField === 'totalDeposit30Days') {
       // Sort by the calculated sum
       queryBuilder.orderBy('totalDepositSum', sortOrder);
-    } else if (sortBy === 'inputDate') {
+    } else if (sortField === 'inputDate') {
       queryBuilder.orderBy('customer.inputDate', sortOrder);
+    } else if (sortField === 'closedDate') {
+      queryBuilder.orderBy('customer.closedDate', sortOrder);
     } else {
       queryBuilder.orderBy('customer.createdAt', sortOrder);
     }
@@ -394,6 +405,7 @@ export class CustomersService {
     try {
       this.customersRepository.merge(customer, {
         ...updateCustomerDto,
+        phone: updateCustomerDto.phone?.trim() === '' ? null : updateCustomerDto.phone,
         updatedById: userId,
         updatedBy_OLD: userId, // ← Populate legacy nullable or NOT NULL column
       } as any);

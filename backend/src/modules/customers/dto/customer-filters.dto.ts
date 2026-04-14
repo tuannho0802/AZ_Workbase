@@ -29,22 +29,38 @@ export class CustomerFiltersDto {
   @IsInt()
   salesUserId?: number;
 
-  @ApiPropertyOptional({ example: 'pending', enum: ['closed', 'pending', 'potential', 'lost', 'inactive'], description: 'Lọc theo trạng thái' })
+  @ApiPropertyOptional({ example: 'createdAt', enum: ['createdAt', 'name', 'status', 'closedDate', 'totalDeposit30Days', 'phone', 'inputDate'] })
   @IsOptional()
-  @IsEnum(['closed', 'pending', 'potential', 'lost', 'inactive'])
+  @IsEnum(['createdAt', 'name', 'status', 'closedDate', 'totalDeposit30Days', 'phone', 'inputDate'])
+  sortField?: string = 'createdAt';
+
+  @ApiPropertyOptional({ example: 'DESC', enum: ['ASC', 'DESC'] })
+  @IsOptional()
+  @IsEnum(['ASC', 'DESC'])
+  sortOrder?: 'ASC' | 'DESC' = 'DESC';
+
+  @ApiPropertyOptional({ example: 'closed' })
+  @IsOptional()
+  @IsString()
   status?: string;
 
-  @ApiPropertyOptional({ example: 'Nguyen', description: 'Tìm kiếm theo tên, SĐT, hoặc Email' })
+  @ApiPropertyOptional({ example: 'Facebook' })
+  @IsOptional()
+  @IsString()
+  source?: string;
+
+
+  @ApiPropertyOptional({ example: 'Nguyen' })
   @IsOptional()
   @IsString()
   search?: string;
 
-  @ApiPropertyOptional({ example: '2024-01-01', description: 'Lọc từ ngày (YYYY-MM-DD)' })
+  @ApiPropertyOptional({ example: '2026-01-01' })
   @IsOptional()
   @IsString()
   dateFrom?: string;
 
-  @ApiPropertyOptional({ example: '2024-12-31', description: 'Lọc tới ngày (YYYY-MM-DD)' })
+  @ApiPropertyOptional({ example: '2026-01-31' })
   @IsOptional()
   @IsString()
   dateTo?: string;

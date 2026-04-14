@@ -2,11 +2,12 @@
 
 import { useEffect, useState, useMemo } from 'react';
 import { Table, Card, Tag, App, Button, Space, Row, Col, Typography, Tooltip, Input, Select, DatePicker } from 'antd';
-import { UploadOutlined, UsergroupAddOutlined, ReloadOutlined, PlusOutlined, SearchOutlined } from '@ant-design/icons';
+import { UploadOutlined, UsergroupAddOutlined, ReloadOutlined, PlusOutlined, SearchOutlined, SortAscendingOutlined, SortDescendingOutlined } from '@ant-design/icons';
 import type { ColumnsType, TablePaginationConfig } from 'antd/es/table';
 import type { FilterValue, SorterResult } from 'antd/es/table/interface';
 import { customersApi } from '@/lib/api/customers.api';
 import { Customer, CustomerStats } from '@/lib/types/customer.types';
+import { useQueryClient } from '@tanstack/react-query';
 import { useAuthStore } from '@/lib/stores/auth.store';
 import { ImportExcelModal } from '@/components/customers/ImportExcelModal';
 import { BulkAssignModal } from '@/components/customers/BulkAssignModal';
@@ -15,19 +16,19 @@ import { StatsCards } from '@/components/customers/StatsCards';
 import { CustomerDetailDrawer } from '@/components/customers/CustomerDetailDrawer';
 import { StatModals } from '@/components/customers/StatModals';
 import { useCustomersToday, useCustomersByStatus, useAllDepositsStats } from '@/lib/hooks/useCustomerStats';
+import { useCustomers } from '@/lib/hooks/useCustomers';
 import { useDebounce } from '@/lib/hooks/useDebounce';
 import { usersApi } from '@/lib/api/users.api';
 import dayjs from 'dayjs';
+import { CustomerFilters } from '@/components/customers/CustomerFilters';
 
 const { Text } = Typography;
 
 export default function CustomersPage() {
-  const [customers, setCustomers] = useState<Customer[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [total, setTotal] = useState(0);
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(20);
   const { message } = App.useApp();
+  const queryClient = useQueryClient();
   
   const { user } = useAuthStore();
   const [selectedRowKeys, setSelectedRowKeys] = useState<React.Key[]>([]);
@@ -45,27 +46,52 @@ export default function CustomersPage() {
   const [source, setSource] = useState<string | undefined>(undefined);
   const [status, setStatus] = useState<string | undefined>(undefined);
   const [salesUserId, setSalesUserId] = useState<number | undefined>(undefined);
-  const [dateRange, setDateRange] = useState<[dayjs.Dayjs | null, dayjs.Dayjs | null] | null>(null);
-  const [sortBy, setSortBy] = useState<string>('createdAt');
+  const [dateFrom, setDateFrom] = useState<dayjs.Dayjs | null>(null);
+  const [dateTo, setDateTo] = useState<dayjs.Dayjs | null>(null);
+  const [sortField, setSortField] = useState<string>('createdAt');
   const [sortOrder, setSortOrder] = useState<'ASC' | 'DESC'>('DESC');
 
   // States for interactive stats
   const [modalType, setModalType] = useState<'today' | 'status' | 'deposit' | null>(null);
-  const [depositDateRange, setDepositDateRange] = useState<[dayjs.Dayjs | null, dayjs.Dayjs | null] | null>(null);
   const [depositSortBy, setDepositSortBy] = useState<string>('depositDate');
   const [depositSortOrder, setDepositSortOrder] = useState<'ASC' | 'DESC'>('DESC');
+  const [dateRange, setDateRange] = useState<[dayjs.Dayjs | null, dayjs.Dayjs | null] | null>(null);
   
+  // ✅ Labels for Deposit Column Header
+  const depositRangeForColumnLabel = useMemo(() => {
+    if (dateFrom && dateTo) {
+      return `${dateFrom.format('DD/MM/YY')} → ${dateTo.format('DD/MM/YY')}`;
+    }
+    return '30 ngày gần nhất';
+  }, [dateFrom, dateTo]);
+
   const { data: todayData, isLoading: todayLoading } = useCustomersToday(modalType === 'today');
   const { data: statusData, isLoading: statusLoadingDetailed } = useCustomersByStatus(modalType === 'status');
   const { data: depositData, isLoading: depositLoadingdetailed } = useAllDepositsStats(
     modalType === 'deposit',
     {
-      startDate: depositDateRange?.[0]?.format('YYYY-MM-DD') || undefined,
-      endDate: depositDateRange?.[1]?.format('YYYY-MM-DD') || undefined,
+      startDate: dateRange?.[0]?.format('YYYY-MM-DD') || dateFrom?.format('YYYY-MM-DD') || undefined,
+      endDate: dateRange?.[1]?.format('YYYY-MM-DD') || dateTo?.format('YYYY-MM-DD') || undefined,
       sortBy: depositSortBy,
       sortOrder: depositSortOrder,
     }
   );
+
+  const { data: customersResponse, isLoading: loading, refetch: refetchCustomers } = useCustomers({
+    page,
+    limit: pageSize,
+    search: debouncedSearch,
+    source,
+    status,
+    salesUserId,
+    sortField,
+    sortOrder,
+    dateFrom: dateFrom?.format('YYYY-MM-DD'),
+    dateTo: dateTo?.format('YYYY-MM-DD'),
+  });
+
+  const customers = customersResponse?.data || [];
+  const total = customersResponse?.total || 0;
 
   const [salesUsers, setSalesUsers] = useState<{ id: number; name: string }[]>([]);
 
@@ -103,39 +129,12 @@ export default function CustomersPage() {
     }
   };
 
-  const fetchCustomers = async () => {
-    setLoading(true);
-    try {
-      const response = await customersApi.getCustomers({ 
-        page, 
-        limit: pageSize,
-        search: debouncedSearch,
-        source,
-        status,
-        salesUserId,
-        sortBy,
-        sortOrder,
-        dateFrom: dateRange?.[0]?.startOf('day').toISOString(),
-        dateTo: dateRange?.[1]?.endOf('day').toISOString(),
-      });
-      setCustomers(response.data);
-      setTotal(response.total);
-    } catch (error: any) {
-      message.error('Không thể tải danh sách khách hàng');
-    } finally {
-      setLoading(false);
-    }
-  };
-
   useEffect(() => {
-    fetchCustomers();
     fetchStats();
-  }, [page, pageSize, debouncedSearch, source, status, salesUserId, dateRange, sortBy, sortOrder]);
+  }, [page, pageSize, debouncedSearch, source, status, salesUserId, dateFrom, dateTo, sortField, sortOrder]);
 
-  // ✅ CRITICAL: Callback để reload table khi drawer thêm deposit/note
   const handleDrawerUpdate = async () => {
-    console.log('[CUSTOMERS PAGE] Drawer updated, refetching...');
-    await fetchCustomers();
+    await refetchCustomers();
     await fetchStats();
   };
 
@@ -209,19 +208,17 @@ export default function CustomersPage() {
       },
     },
     {
-      title: 'UTM (Campaign)',
+      title: 'UTM',
       dataIndex: 'campaign',
       key: 'campaign',
       width: 120,
       ellipsis: { showTitle: true },
-      render: (val) => val ? val : <span style={{ color: '#aaa', fontStyle: 'italic' }}>Chưa có campaign</span>,
     },
     {
       title: 'Sales',
       dataIndex: ['salesUser', 'name'],
       key: 'salesUser',
       width: 130,
-      ellipsis: { showTitle: true },
       render: (_, record) => record.salesUser?.name ?? (
         <span style={{ color: '#bbb', fontStyle: 'italic' }}>Chưa gán</span>
       ),
@@ -244,104 +241,61 @@ export default function CustomersPage() {
       },
     },
     {
-      title: dateRange && dateRange[0] && dateRange[1] 
-        ? `Nạp tiền (${dayjs(dateRange[0]).format('DD/MM/YY')} - ${dayjs(dateRange[1]).format('DD/MM/YY')})`
-        : 'Nạp tiền (30 ngày)',
+      title: () => (
+        <div>
+          <div>Nạp tiền</div>
+          <div style={{ fontSize: '10px', color: '#8c8c8c', fontWeight: 'normal' }}>
+            ({depositRangeForColumnLabel})
+          </div>
+        </div>
+      ),
       dataIndex: 'totalDeposit30Days',
       key: 'totalDeposit30Days',
       width: 140,
       align: 'right',
       fixed: 'right',
       render: (val) => (
-        <Tooltip title="Tổng tiền nạp trong khoảng thời gian đã chọn">
-          <Text strong style={{ color: val > 0 ? '#52c41a' : '#bfbfbf' }}>
-            ${(val || 0).toLocaleString(undefined, { minimumFractionDigits: 2 })}
+        <Tooltip title="Tổng tiền nạp dựa trên khoảng ngày">
+          <Text strong style={{ color: Number(val) > 0 ? '#52c41a' : '#bfbfbf' }}>
+            ${(Number(val) || 0).toLocaleString(undefined, { minimumFractionDigits: 2 })}
           </Text>
         </Tooltip>
       ),
     },
-  ], [dateRange, page, pageSize]);
+  ], [depositRangeForColumnLabel, page, pageSize]);
 
-  const renderFilters = () => (
-    <Space wrap style={{ marginBottom: 16, width: '100%', justifyContent: 'space-between' }}>
-      <Space wrap>
-        <Input
-          placeholder="Tìm kiếm theo tên, SĐT, UTM..."
-          prefix={<SearchOutlined />}
-          value={searchText}
-          onChange={(e) => setSearchText(e.target.value)}
-          allowClear
-          style={{ width: 300 }}
-        />
-        <Select
-          placeholder="Nguồn"
-          allowClear
-          style={{ width: 140 }}
-          value={source}
-          onChange={setSource}
-          options={[
-            { value: 'Facebook', label: 'Facebook' },
-            { value: 'TikTok', label: 'TikTok' },
-            { value: 'Google', label: 'Google' },
-            { value: 'Instagram', label: 'Instagram' },
-            { value: 'LinkedIn', label: 'LinkedIn' },
-            { value: 'Other', label: 'Khác' },
-          ]}
-        />
-        <Select
-          placeholder="Trạng thái"
-          allowClear
-          style={{ width: 140 }}
-          value={status}
-          onChange={setStatus}
-          options={[
-            { value: 'pending', label: 'Chờ xử lý' },
-            { value: 'potential', label: 'Tiềm năng' },
-            { value: 'closed', label: 'Đã chốt' },
-            { value: 'lost', label: 'Mất' },
-            { value: 'inactive', label: 'Ngừng chăm sóc' },
-          ]}
-        />
-        <Select
-          placeholder="Sales"
-          allowClear
-          showSearch
-          optionFilterProp="label"
-          style={{ width: 160 }}
-          value={salesUserId}
-          onChange={setSalesUserId}
-          options={salesUsers.map(u => ({ value: u.id, label: u.name }))}
-        />
-        <DatePicker.RangePicker
-          value={dateRange}
-          onChange={(dates) => setDateRange(dates as any)}
-          placeholder={['Từ ngày', 'Đến ngày']}
-          style={{ width: 260 }}
-        />
-      </Space>
-    </Space>
-  );
+  const handleFiltersChange = (newFilters: any) => {
+    if (newFilters.search !== undefined) setSearchText(newFilters.search);
+    if (newFilters.source !== undefined) setSource(newFilters.source);
+    if (newFilters.status !== undefined) setStatus(newFilters.status);
+    if (newFilters.salesUserId !== undefined) setSalesUserId(newFilters.salesUserId);
+    if (newFilters.dateFrom !== undefined) setDateFrom(newFilters.dateFrom ? dayjs(newFilters.dateFrom) : null);
+    if (newFilters.dateTo !== undefined) setDateTo(newFilters.dateTo ? dayjs(newFilters.dateTo) : null);
+    if (newFilters.page) setPage(newFilters.page);
+  };
 
   const handleTableChange = (
     pagination: TablePaginationConfig,
     _filters: Record<string, FilterValue | null>,
     sorter: SorterResult<Customer> | SorterResult<Customer>[]
   ) => {
-    // Pagination
     if (pagination.current) setPage(pagination.current);
     if (pagination.pageSize) setPageSize(pagination.pageSize);
 
-    // Sorting
     const sorterResult = Array.isArray(sorter) ? sorter[0] : sorter;
-    if (sorterResult.field) {
-      setSortBy(sorterResult.field as string);
+    
+    if (sorterResult.field && sorterResult.order) {
+      setSortField(sorterResult.field as string);
       setSortOrder(sorterResult.order === 'ascend' ? 'ASC' : 'DESC');
+    } else {
+      setSortField('createdAt');
+      setSortOrder('DESC');
     }
   };
 
   const renderToolbar = () => (
     <Space>
-      <Button icon={<ReloadOutlined />} onClick={() => { fetchCustomers(); fetchStats(); }}>
+      <Button icon={<ReloadOutlined />} onClick={() => { refetchCustomers(); fetchStats(); }}>
         Làm mới
       </Button>
       <Button type="primary" icon={<PlusOutlined />} onClick={() => setIsCreateOpen(true)}>
@@ -373,14 +327,25 @@ export default function CustomersPage() {
     />
     
     <Card title="Danh sách khách hàng" extra={renderToolbar()}>
-      {renderFilters()}
+      <CustomerFilters
+        filters={{
+          search: searchText,
+          source,
+          status,
+          salesUserId,
+          dateFrom: dateFrom?.format('YYYY-MM-DD'),
+          dateTo: dateTo?.format('YYYY-MM-DD'),
+        }}
+        salesUsers={salesUsers}
+        onFiltersChange={handleFiltersChange}
+      />
       <Table
         className="customer-table"
         rowSelection={canAssign ? rowSelection : undefined}
         columns={columns.map(col => ({
           ...col,
           sorter: ['name', 'phone', 'status', 'inputDate', 'createdAt', 'totalDeposit30Days'].includes(col.key as string),
-          sortOrder: sortBy === col.key ? (sortOrder === 'ASC' ? 'ascend' : 'descend') : null,
+          sortOrder: sortField === col.key ? (sortOrder === 'ASC' ? 'ascend' : 'descend') : null,
         }))}
         dataSource={customers}
         rowKey="id"
@@ -419,7 +384,7 @@ export default function CustomersPage() {
     <ImportExcelModal
       open={isImportOpen}
       onClose={() => setIsImportOpen(false)}
-      onSuccess={() => fetchCustomers()}
+      onSuccess={() => refetchCustomers()}
     />
 
     <BulkAssignModal
@@ -428,7 +393,7 @@ export default function CustomersPage() {
       onClose={() => setIsAssignOpen(false)}
       onSuccess={() => {
         setSelectedRowKeys([]);
-        fetchCustomers();
+        refetchCustomers();
       }}
     />
 
@@ -436,7 +401,7 @@ export default function CustomersPage() {
       open={isCreateOpen}
       onClose={() => setIsCreateOpen(false)}
       onSuccess={() => {
-        fetchCustomers();
+        refetchCustomers();
         fetchStats();
       }}
     />
@@ -456,8 +421,8 @@ export default function CustomersPage() {
       onDepositClose={() => setModalType(null)}
       depositData={depositData}
       depositLoading={depositLoadingdetailed}
-      depositDateRange={depositDateRange}
-      onDepositDateRangeChange={setDepositDateRange}
+      depositDateRange={dateRange}
+      onDepositDateRangeChange={setDateRange}
       depositSortBy={depositSortBy}
       depositSortOrder={depositSortOrder}
       onDepositSortChange={(field, order) => {
