@@ -10,6 +10,8 @@ import {
   MenuFoldOutlined,
   MenuUnfoldOutlined,
   SwapOutlined,
+  CalendarOutlined,
+  CheckCircleOutlined
 } from '@ant-design/icons';
 import { useAuthStore } from '@/lib/stores/auth.store';
 import Cookies from 'js-cookie';
@@ -50,6 +52,10 @@ export default function DashboardLayout({
       newKey = 'chia-data';
     } else if (pathname.includes('/customers')) {
       newKey = 'customers';
+    } else if (pathname.includes('/nghi-phep')) {
+      newKey = 'nghi-phep';
+    } else if (pathname.includes('/duyet-phep')) {
+      newKey = 'duyet-phep';
     }
     
     setSelectedKey(newKey);
@@ -119,6 +125,18 @@ export default function DashboardLayout({
               icon: <SwapOutlined />,
               label: 'Chia Data',
               onClick: () => router.push('/chia-data'),
+            }] : []),
+            {
+              key: 'nghi-phep',
+              icon: <CalendarOutlined />,
+              label: 'Nghỉ phép',
+              onClick: () => router.push('/nghi-phep'),
+            },
+            ...(['admin', 'manager', 'assistant'].includes(user?.role || '') ? [{
+              key: 'duyet-phep',
+              icon: <CheckCircleOutlined />,
+              label: 'Duyệt phép',
+              onClick: () => router.push('/duyet-phep'),
             }] : []),
             ...(['admin', 'manager'].includes(user?.role || '') ? [{
               key: 'users',

@@ -9,6 +9,7 @@ import { AuthModule } from './modules/auth/auth.module';
 import { CustomersModule } from './modules/customers/customers.module';
 import { DepartmentsModule } from './modules/departments/departments.module';
 import { DepositsModule } from './modules/deposits/deposits.module';
+import { LeaveRequestsModule } from './modules/leave-requests/leave-requests.module';
 
 @Module({
   imports: [
@@ -31,6 +32,7 @@ import { DepositsModule } from './modules/deposits/deposits.module';
     DepartmentsModule,
     CustomersModule,
     DepositsModule,
+    LeaveRequestsModule,
   ],
   controllers: [AppController],
   providers: [AppService],

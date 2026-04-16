@@ -42,6 +42,44 @@ export class User {
   @Column({ name: 'hashed_refresh_token', type: 'text', nullable: true, select: false })
   hashedRefreshToken: string | null;
 
+  @Column({ 
+    name: 'annual_leave_balance',
+    type: 'decimal', 
+    precision: 4, 
+    scale: 1,
+    default: 12.0,
+    comment: 'Số ngày phép năm còn lại' 
+  })
+  annualLeaveBalance: number;
+  
+  @Column({ 
+    name: 'annual_leave_total',
+    type: 'decimal', 
+    precision: 4, 
+    scale: 1,
+    default: 12.0,
+    comment: 'Tổng ngày phép năm ban đầu' 
+  })
+  annualLeaveTotal: number;
+  
+  @Column({ 
+    name: 'compensatory_leave_balance',
+    type: 'decimal', 
+    precision: 4, 
+    scale: 1,
+    default: 0,
+    comment: 'Số ngày nghỉ bù tích lũy' 
+  })
+  compensatoryLeaveBalance: number;
+  
+  @Column({ 
+    name: 'leave_year',
+    type: 'int',
+    default: 2026,
+    comment: 'Năm áp dụng quỹ phép hiện tại' 
+  })
+  leaveYear: number;
+
   @CreateDateColumn({ name: 'created_at' })
   createdAt: Date;
 
