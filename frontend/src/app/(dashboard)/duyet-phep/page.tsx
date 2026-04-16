@@ -15,6 +15,7 @@ export default function ApprovalPage() {
   const [rejectModalOpen, setRejectModalOpen] = useState(false);
   const [selectedRequest, setSelectedRequest] = useState<number | null>(null);
   const [rejectionReason, setRejectionReason] = useState('');
+  const [isProcessing, setIsProcessing] = useState(false);
   
   // Antd Hooks to fix "Static function" warning
   const { message: messageApi, modal } = App.useApp();
@@ -43,13 +44,20 @@ export default function ApprovalPage() {
     modal.confirm({
       title: 'Duyệt đơn nghỉ phép?',
       content: 'Xác nhận duyệt đơn này?',
+      okButtonProps: { loading: isProcessing },
       onOk: async () => {
+        setIsProcessing(true);
         try {
           await leaveRequestsApi.approve(id);
           messageApi.success('Đã duyệt đơn');
-          fetchAllData();
+          await fetchAllData();
         } catch (err: any) {
-          messageApi.error(err.response?.data?.message || 'Duyệt đơn thất bại');
+          // 401s are handled by interceptor, others show error
+          if (err.response?.status !== 401) {
+            messageApi.error(err.response?.data?.message || 'Duyệt đơn thất bại');
+          }
+        } finally {
+          setIsProcessing(false);
         }
       }
     });
@@ -61,15 +69,20 @@ export default function ApprovalPage() {
       return;
     }
     
+    setIsProcessing(true);
     try {
       await leaveRequestsApi.reject(selectedRequest!, rejectionReason);
       messageApi.success('Đã từ chối đơn');
       setRejectModalOpen(false);
       setRejectionReason('');
       setSelectedRequest(null);
-      fetchAllData();
-    } catch (err) {
-      messageApi.error('Từ chối đơn thất bại');
+      await fetchAllData();
+    } catch (err: any) {
+      if (err.response?.status !== 401) {
+        messageApi.error('Từ chối đơn thất bại');
+      }
+    } finally {
+      setIsProcessing(false);
     }
   };
   
@@ -282,6 +295,7 @@ export default function ApprovalPage() {
       <Modal
         title="Từ chối đơn nghỉ phép"
         open={rejectModalOpen}
+        confirmLoading={isProcessing}
         onCancel={() => {
           setRejectModalOpen(false);
           setRejectionReason('');
