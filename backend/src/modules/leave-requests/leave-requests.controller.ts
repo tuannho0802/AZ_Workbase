@@ -13,12 +13,8 @@ export class LeaveRequestsController {
   }
   
   @Get()
-  async findAll(@Request() req, @Query('status') status?: string) {
-    return this.leaveRequestsService.findAll(
-      req.user.id,
-      req.user.role,
-      req.user.departmentId
-    );
+  async findAll(@Request() req) {
+    return this.leaveRequestsService.findAll(req.user.id);
   }
   
   @Get('pending')

@@ -37,12 +37,13 @@ export const leaveRequestsApi = {
   },
   
   async getAll() {
-    const res = await axiosInstance.get('/leave-requests');
+    // Adding timestamp as a query param to bypass potential browser/proxy caching
+    const res = await axiosInstance.get(`/leave-requests?_t=${Date.now()}`);
     return res.data;
   },
   
   async getPending() {
-    const res = await axiosInstance.get('/leave-requests/pending');
+    const res = await axiosInstance.get(`/leave-requests/pending?_t=${Date.now()}`);
     return res.data;
   },
   

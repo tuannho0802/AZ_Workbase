@@ -13,4 +13,4 @@ import { LeaveRequestsController } from './leave-requests.controller';
   providers: [LeaveRequestsService],
   exports: [LeaveRequestsService]
 })
-export class LeaveRequestsModule { }
+export class LeaveRequestsModule {}

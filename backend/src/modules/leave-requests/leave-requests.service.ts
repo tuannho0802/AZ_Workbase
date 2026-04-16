@@ -86,29 +86,14 @@ export class LeaveRequestsService {
   }
   
   /**
-   * Get requests - permission-based
-   * Employee: own requests
-   * Manager: dept requests
-   * Admin: all requests
+   * Get requests for the current user (My Leave Requests)
    */
-  async findAll(userId: number, userRole: string, departmentId: number) {
-    const query = this.leaveRequestRepo
-      .createQueryBuilder('leave')
-      .leftJoinAndSelect('leave.requester', 'requester')
-      .leftJoinAndSelect('leave.approver', 'approver')
-      .orderBy('leave.createdAt', 'DESC');
-    
-    if (userRole === 'admin') {
-      // Admin sees all
-    } else if (userRole === 'manager' || userRole === 'assistant') {
-      // Manager/Assistant see their department
-      query.where('requester.departmentId = :deptId', { deptId: departmentId });
-    } else {
-      // Employee sees only their own
-      query.where('leave.requesterId = :userId', { userId });
-    }
-    
-    return query.getMany();
+  async findAll(userId: number) {
+    return this.leaveRequestRepo.find({
+      where: { requesterId: userId },
+      relations: ['requester', 'approver'],
+      order: { createdAt: 'DESC' }
+    });
   }
   
   /**
