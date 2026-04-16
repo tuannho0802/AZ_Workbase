@@ -120,12 +120,12 @@ export default function DashboardLayout({
               label: 'Khách hàng',
               onClick: () => router.push('/customers'),
             },
-            ...(['admin', 'employee'].includes(user?.role || '') ? [{
+            {
               key: 'chia-data',
               icon: <SwapOutlined />,
               label: 'Chia Data',
               onClick: () => router.push('/chia-data'),
-            }] : []),
+            },
             {
               key: 'nghi-phep',
               icon: <CalendarOutlined />,
@@ -138,12 +138,12 @@ export default function DashboardLayout({
               label: 'Duyệt phép',
               onClick: () => router.push('/duyet-phep'),
             }] : []),
-            ...(['admin', 'manager'].includes(user?.role || '') ? [{
+            {
               key: 'users',
               icon: <UserOutlined />,
               label: 'Nhân viên',
               onClick: () => router.push('/users'),
-            }] : []),
+            },
           ]}
         />
       </Sider>

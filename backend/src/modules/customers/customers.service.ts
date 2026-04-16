@@ -19,6 +19,7 @@ import { CustomerAssignment, AssignmentStatus } from '../../database/entities/cu
 import { CreateCustomerNoteDto } from './dto/create-customer-note.dto';
 import { CreateDepositDto } from './dto/create-deposit.dto';
 import { NotFoundException, ForbiddenException, BadRequestException } from '@nestjs/common';
+import { CustomerAccessHelper } from './helpers/customer-access.helper';
 
 @Injectable()
 export class CustomersService {
@@ -75,7 +76,7 @@ export class CustomersService {
     }
   }
 
-  async findAll(filters: CustomerFiltersDto, userId: number, userRole: string, userDepartmentId?: number) {
+  async findAll(filters: CustomerFiltersDto, userId: number, userRole: string) {
     const { 
       page = 1, 
       limit = 20, 
@@ -100,25 +101,7 @@ export class CustomersService {
     queryBuilder.where('customer.deletedAt IS NULL');
 
     // RBAC
-    if (userRole === Role.MANAGER) {
-      if (userDepartmentId) {
-        queryBuilder.andWhere('customer.departmentId = :userDepartmentId', { userDepartmentId });
-      }
-    } else if (userRole === Role.EMPLOYEE) {
-      queryBuilder.andWhere(
-        new Brackets((qb) => {
-          qb.where('customer.createdById = :userId', { userId })
-            .orWhere('customer.salesUserId = :userId', { userId })
-            // 1:N Support: User has active assignment
-            .orWhere(
-              'customer.id IN ' +
-              '(SELECT ca.customer_id FROM customer_assignments ca ' +
-              ' WHERE ca.assigned_to_id = :userId AND ca.status = :status)',
-              { userId, status: 'active' }
-            );
-        }),
-      );
-    }
+    CustomerAccessHelper.applyExtendedAccessFilter(queryBuilder, userId, userRole);
 
     // Search
     if (search) {
@@ -246,10 +229,8 @@ export class CustomersService {
     const queryBuilder = this.customersRepository.createQueryBuilder('customer')
       .where('customer.deletedAt IS NULL');
 
-    // RBAC Option A: Employee only sees their own stats
-    if (userRole === Role.EMPLOYEE) {
-      queryBuilder.andWhere('customer.createdById = :userId', { userId });
-    }
+    // RBAC
+    CustomerAccessHelper.applyExtendedAccessFilter(queryBuilder, userId, userRole);
 
     const [total, newToday, closedTotal] = await Promise.all([
       queryBuilder.clone().getCount(),
@@ -271,9 +252,7 @@ export class CustomersService {
       .leftJoin('deposit.customer', 'customer')
       .where('customer.deletedAt IS NULL');
 
-    if (userRole === Role.EMPLOYEE) {
-      depositsQuery.andWhere('customer.createdById = :userId', { userId });
-    }
+    CustomerAccessHelper.applyExtendedAccessFilter(depositsQuery, userId, userRole);
 
     const totalDepositRaw = await depositsQuery
       .select('SUM(deposit.amount)', 'total')
@@ -302,9 +281,7 @@ export class CustomersService {
     queryBuilder.where('customer.id = :id', { id });
     queryBuilder.andWhere('customer.deletedAt IS NULL');
 
-    if (userRole === Role.EMPLOYEE) {
-      queryBuilder.andWhere('customer.createdById = :userId', { userId });
-    }
+    CustomerAccessHelper.applyExtendedAccessFilter(queryBuilder, userId, userRole);
 
     const customer = await queryBuilder.getOne();
 
@@ -393,6 +370,11 @@ export class CustomersService {
 
   async update(id: number, updateCustomerDto: UpdateCustomerDto, userId: number, userRole: string) {
     const customer = await this.findOne(id, userId, userRole);
+    
+    if (!CustomerAccessHelper.canUpdate(customer, userId, userRole)) {
+      throw new UnauthorizedCustomerAccessException('Bạn chỉ có quyền cập nhật khách hàng mà bạn sở hữu hoặc được giao.');
+    }
+
     const today = this.getTodayVn();
     const todayStr = today.toISOString().split('T')[0];
     
@@ -452,13 +434,13 @@ export class CustomersService {
   }
 
   async remove(id: number, userId: number, userRole: string) {
-    if (userRole !== Role.ADMIN && userRole !== Role.MANAGER) {
-      throw new UnauthorizedCustomerAccessException();
-    }
-
     const customer = await this.findOne(id, userId, userRole);
     if (!customer) {
       throw new CustomerNotFoundException();
+    }
+
+    if (!CustomerAccessHelper.canDelete(customer, userId, userRole)) {
+      throw new UnauthorizedCustomerAccessException('Chỉ người tạo bản ghi hoặc Admin mới có quyền xóa khách hàng này.');
     }
 
     await this.customersRepository.softDelete(id);
@@ -485,14 +467,8 @@ export class CustomersService {
       throw new BadRequestException(`Cảnh báo: Một số Sales User không tồn tại hoặc bị khóa: ${missing.join(', ')}`);
     }
 
-    if (callerRole === Role.MANAGER) {
-      const caller = await userRepo.findOneBy({ id: callerId });
-      for (const u of targetUsers) {
-        if (caller?.departmentId !== u.departmentId) {
-          throw new UnauthorizedCustomerAccessException();
-        }
-      }
-    }
+    // Removed department check for bulk assign as visibility is strictly owned
+    // Managers and Assistants can assign customers they own to anyone.
 
     const results = { success: 0, failed: 0, errors: [] as string[] };
     const today = this.getTodayVn();
@@ -559,7 +535,6 @@ export class CustomersService {
     filters: CustomerFiltersDto,
     userId: number,
     userRole: string,
-    userDepartmentId?: number,
   ) {
     const { page = 1, limit = 20, search, source, creatorId } = filters;
 
@@ -569,10 +544,7 @@ export class CustomersService {
       .where('customer.deletedAt IS NULL')
       .andWhere('customer.salesUserId IS NULL');
 
-    if (userRole === Role.MANAGER && userDepartmentId) {
-      qb.andWhere('customer.departmentId = :deptId', { deptId: userDepartmentId });
-    } else if (userRole === Role.EMPLOYEE) {
-      // Employees cannot use this endpoint (role-guarded in controller), but just in case
+    if (userRole !== Role.ADMIN) {
       qb.andWhere('customer.createdById = :userId', { userId });
     }
 
@@ -685,14 +657,8 @@ export class CustomersService {
     let historyQuery = baseQuery()
       .andWhere("DATE(CONVERT_TZ(customer.createdAt, '+00:00', '+07:00')) < CURDATE()");
 
-    if (userRole === Role.EMPLOYEE) {
-      const filter = new Brackets((qb) => {
-        qb.where('customer.createdById = :userId', { userId })
-          .orWhere('customer.salesUserId = :userId', { userId });
-      });
-      todayQuery = todayQuery.andWhere(filter);
-      historyQuery = historyQuery.andWhere(filter);
-    }
+    CustomerAccessHelper.applyExtendedAccessFilter(todayQuery, userId, userRole);
+    CustomerAccessHelper.applyExtendedAccessFilter(historyQuery, userId, userRole);
 
     const [todayList, historyList] = await Promise.all([
       todayQuery.orderBy('customer.createdAt', 'DESC').getMany(),
@@ -708,14 +674,7 @@ export class CustomersService {
       .leftJoinAndSelect('customer.createdBy', 'createdBy')
       .where('customer.deletedAt IS NULL');
 
-    if (userRole === Role.EMPLOYEE) {
-      queryBuilder.andWhere(
-        new Brackets((qb) => {
-          qb.where('customer.createdById = :userId', { userId })
-            .orWhere('customer.salesUserId = :userId', { userId });
-        }),
-      );
-    }
+    CustomerAccessHelper.applyExtendedAccessFilter(queryBuilder, userId, userRole);
 
     const customers = await queryBuilder.orderBy('customer.createdAt', 'DESC').getMany();
     
@@ -739,14 +698,7 @@ export class CustomersService {
       .leftJoinAndSelect('customer.salesUser', 'salesUser')
       .where('customer.deletedAt IS NULL');
 
-    if (userRole === Role.EMPLOYEE) {
-      queryBuilder.andWhere(
-        new Brackets((qb) => {
-          qb.where('customer.createdById = :userId', { userId })
-            .orWhere('customer.salesUserId = :userId', { userId });
-        }),
-      );
-    }
+    CustomerAccessHelper.applyExtendedAccessFilter(queryBuilder, userId, userRole);
 
     // Date range filtering on depositDate
     if (startDate) {

@@ -13,7 +13,7 @@ export class CustomerNotFoundException extends NotFoundException {
 }
 
 export class UnauthorizedCustomerAccessException extends ForbiddenException {
-  constructor() {
-    super('Bạn không có quyền truy cập dữ liệu của khách hàng này');
+  constructor(message?: string) {
+    super(message || 'Bạn không có quyền truy cập dữ liệu của khách hàng này');
   }
 }

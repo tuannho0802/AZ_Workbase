@@ -17,7 +17,7 @@ export class UsersController {
   constructor(private readonly usersService: UsersService) {}
 
   @Get('all')
-  @Roles(Role.ADMIN, Role.MANAGER, Role.ASSISTANT)
+  @Roles(Role.ADMIN, Role.MANAGER, Role.ASSISTANT, Role.EMPLOYEE)
   @ApiOperation({ summary: 'Lấy toàn bộ danh sách nhân viên (Không phân trang)' })
   async findAllList(
     @Request() req: any,
@@ -27,7 +27,7 @@ export class UsersController {
   }
 
   @Get()
-  @Roles(Role.ADMIN, Role.MANAGER)
+  @Roles(Role.ADMIN, Role.MANAGER, Role.ASSISTANT, Role.EMPLOYEE)
   @ApiOperation({ summary: 'Danh sách nhân viên (Phân trang & Filter)' })
   async findAll(
     @Request() req: any,

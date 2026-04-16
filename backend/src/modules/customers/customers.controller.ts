@@ -67,7 +67,7 @@ export class CustomersController {
   }
 
   @Patch('bulk-assign')
-  @Roles(Role.ADMIN, Role.MANAGER)
+  @Roles(Role.ADMIN, Role.MANAGER, Role.ASSISTANT, Role.EMPLOYEE)
   @ApiOperation({ summary: 'Bàn giao Khách hàng hàng loạt cho Sales' })
   async bulkAssign(@Body() dto: BulkAssignDto, @GetUser() user: any) {
     return this.customersService.bulkAssign(
@@ -80,14 +80,14 @@ export class CustomersController {
   }
 
   @Get('unassigned')
-  @Roles(Role.ADMIN, Role.MANAGER)
+  @Roles(Role.ADMIN, Role.MANAGER, Role.ASSISTANT, Role.EMPLOYEE)
   @ApiOperation({ summary: 'Lấy danh sách khách hàng chưa assign (salesUserId IS NULL)' })
   getUnassigned(@GetUser() user: any, @Query() filters: CustomerFiltersDto) {
-    return this.customersService.getUnassigned(filters, user.id, user.role, user.departmentId);
+    return this.customersService.getUnassigned(filters, user.id, user.role);
   }
 
   @Get('assigned')
-  @Roles(Role.ADMIN, Role.MANAGER)
+  @Roles(Role.ADMIN, Role.MANAGER, Role.ASSISTANT, Role.EMPLOYEE)
   @ApiOperation({ summary: 'Lấy danh sách khách hàng đã gán cho Sales' })
   async getAssigned(
     @Query('page') page = '1',
@@ -117,7 +117,7 @@ export class CustomersController {
   @ApiOperation({ summary: 'Lấy danh sách khách hàng (có phân quyền)' })
   @ApiResponse({ status: 200, description: 'Trả về danh sách khách hàng và thông tin phân trang' })
   findAll(@GetUser() user: any, @Query() filters: CustomerFiltersDto) {
-    return this.customersService.findAll(filters, user.id, user.role, user.departmentId);
+    return this.customersService.findAll(filters, user.id, user.role);
   }
 
   @Get(':id')
@@ -168,8 +168,8 @@ export class CustomersController {
   }
 
   @Delete(':id')
-  @Roles(Role.ADMIN, Role.MANAGER)
-  @ApiOperation({ summary: 'Xóa mềm khách hàng (Chỉ dành cho Admin và Manager)' })
+  @Roles(Role.ADMIN, Role.MANAGER, Role.ASSISTANT, Role.EMPLOYEE)
+  @ApiOperation({ summary: 'Xóa mềm khách hàng (Admin hoặc Chủ sở hữu)' })
   @ApiResponse({ status: 200, description: 'Đã xóa mềm khách hàng thành công' })
   @ApiResponse({ status: 403, description: 'Chỉ Admin hoặc Manager mới có quyền xóa khách hàng' })
   remove(@GetUser() user: any, @Param('id') id: string) {

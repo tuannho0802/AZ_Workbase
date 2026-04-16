@@ -60,12 +60,7 @@ export class UsersService {
       qb.andWhere('user.role = :targetRole', { targetRole });
     }
 
-    if (!isFullList && callerRole === Role.MANAGER) {
-      const caller = await this.findById(callerId);
-      if (caller?.departmentId) {
-        qb.andWhere('user.departmentId = :deptId', { deptId: caller.departmentId });
-      }
-    }
+    // Visibility logic: All roles can see all users (Department agnostic)
 
     return qb.orderBy('user.name', 'ASC').getMany();
   }
@@ -77,16 +72,7 @@ export class UsersService {
       .leftJoinAndSelect('user.department', 'department')
       .where('1=1');
 
-    if (userRole === Role.MANAGER) {
-      const manager = await this.findById(userId);
-      if (manager?.departmentId) {
-        queryBuilder.andWhere('user.departmentId = :deptId', { deptId: manager.departmentId });
-      } else {
-        return { data: [], total: 0 };
-      }
-    } else if (userRole !== Role.ADMIN) {
-      throw new ForbiddenException('Bạn không có quyền xem danh sách nhân viên');
-    }
+    // Visibility logic: All roles can see all users (Department agnostic)
 
     if (role) {
       queryBuilder.andWhere('user.role = :role', { role });
