@@ -19,19 +19,12 @@ export class LeaveRequestsController {
   
   @Get('pending')
   async findPending(@Request() req) {
-    return this.leaveRequestsService.findPending(
-      req.user.id,
-      req.user.role,
-      req.user.departmentId
-    );
+    return this.leaveRequestsService.findPending(req.user.role);
   }
   
   @Get('history')
   async findHistory(@Request() req) {
-    return this.leaveRequestsService.findHistory(
-      req.user.role,
-      req.user.departmentId
-    );
+    return this.leaveRequestsService.findHistory(req.user.role);
   }
   
   @Patch(':id/approve')

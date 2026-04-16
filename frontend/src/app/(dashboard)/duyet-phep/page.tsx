@@ -120,12 +120,28 @@ export default function ApprovalPage() {
   ];
 
   const pendingColumns = [
-    ...commonColumns,
     {
-      title: 'Ngày tạo',
-      dataIndex: 'createdAt',
-      render: (date: string) => dayjs(date).format('DD/MM HH:mm')
+      title: 'Người gửi',
+      dataIndex: ['requester', 'name'],
+      render: (name: string, record: LeaveRequest) => (
+        <div>
+          <div style={{ fontWeight: 500 }}>{name}</div>
+          <div style={{ fontSize: 12, color: '#888' }}>{record.requester.email}</div>
+        </div>
+      )
     },
+    {
+      title: 'Ngày gửi',
+      dataIndex: 'createdAt',
+      render: (date: string) => dayjs(date).format('DD/MM/YYYY HH:mm')
+    },
+    {
+      title: 'Phòng ban',
+      render: (_: any, record: LeaveRequest) => (
+        <Tag color="blue">{record.requester.department?.name || 'Chưa gán'}</Tag>
+      )
+    },
+    ...commonColumns.slice(1), // Loại phép, Thời gian, Lý do
     {
       title: 'Thao tác',
       render: (_: any, record: LeaveRequest) => (
@@ -155,14 +171,34 @@ export default function ApprovalPage() {
   ];
 
   const historyColumns = [
-    ...commonColumns,
+    {
+      title: 'Người gửi',
+      dataIndex: ['requester', 'name'],
+      render: (name: string, record: LeaveRequest) => (
+        <div>
+          <div style={{ fontWeight: 500 }}>{name}</div>
+          <div style={{ fontSize: 12, color: '#888' }}>{record.requester.email}</div>
+        </div>
+      )
+    },
+    {
+      title: 'Ngày gửi',
+      dataIndex: 'createdAt',
+      render: (date: string) => dayjs(date).format('DD/MM/YYYY')
+    },
+    {
+      title: 'Phòng ban',
+      render: (_: any, record: LeaveRequest) => (
+        <Tag color="blue">{record.requester.department?.name || 'Chưa gán'}</Tag>
+      )
+    },
     {
       title: 'Trạng thái',
       dataIndex: 'status',
       render: (status: string) => {
         const statusMap: Record<string, { text: string; color: string }> = {
-          approved: { text: 'Đã duyệt', color: 'green' },
-          rejected: { text: 'Từ chối', color: 'red' },
+          approved: { text: 'Đã duyệt', color: 'success' },
+          rejected: { text: 'Từ chối', color: 'error' },
           cancelled: { text: 'Đã hủy', color: 'default' }
         };
         const info = statusMap[status] || { text: status, color: 'default' };
@@ -170,21 +206,21 @@ export default function ApprovalPage() {
       }
     },
     {
-      title: 'Chi tiết xử lý',
-      render: (_: any, record: LeaveRequest) => (
-        <div>
-          <div style={{ fontSize: 13 }}>Người duyệt: <b>{record.approver?.name || '-'}</b></div>
-          {record.rejectionReason && (
-            <div style={{ fontSize: 12, color: 'red', fontStyle: 'italic' }}>
-              Lý do: {record.rejectionReason}
-            </div>
-          )}
-          <div style={{ fontSize: 11, color: '#aaa' }}>
-            {record.approvedAt ? dayjs(record.approvedAt).format('DD/MM/YYYY HH:mm') : 
-             record.rejectedAt ? dayjs(record.rejectedAt).format('DD/MM/YYYY HH:mm') : ''}
-          </div>
-        </div>
-      )
+      title: 'Người duyệt',
+      dataIndex: ['approver', 'name'],
+      render: (name: string) => <b>{name || '-'}</b>
+    },
+    {
+      title: 'Ngày xử lý',
+      render: (_: any, record: LeaveRequest) => {
+        const date = record.approvedAt || record.rejectedAt;
+        return date ? dayjs(date).format('DD/MM/YYYY HH:mm') : '-';
+      }
+    },
+    {
+      title: 'Lý do từ chối',
+      dataIndex: 'rejectionReason',
+      render: (reason: string) => reason ? <span style={{ color: '#f5222d', fontStyle: 'italic' }}>{reason}</span> : '-'
     }
   ];
   
@@ -194,7 +230,7 @@ export default function ApprovalPage() {
       label: (
         <span>
           <HourglassOutlined />
-          Chờ duyệt {pendingRequests.length > 0 && <Badge count={pendingRequests.length} offset={[10, -5]} size="small" />}
+          Chờ phê duyệt {pendingRequests.length > 0 && <Badge count={pendingRequests.length} offset={[10, -5]} size="small" />}
         </span>
       ),
       children: (
@@ -213,7 +249,7 @@ export default function ApprovalPage() {
       label: (
         <span>
           <HistoryOutlined />
-          Lịch sử duyệt
+          Lịch sử phê duyệt
         </span>
       ),
       children: (

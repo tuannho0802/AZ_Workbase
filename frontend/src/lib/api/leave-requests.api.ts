@@ -14,6 +14,10 @@ export interface LeaveRequest {
     id: number;
     name: string;
     email: string;
+    department?: {
+      id: number;
+      name: string;
+    };
   };
   approver: {
     id: number;

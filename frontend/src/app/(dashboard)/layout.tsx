@@ -120,7 +120,7 @@ export default function DashboardLayout({
               label: 'Khách hàng',
               onClick: () => router.push('/customers'),
             },
-            ...(['admin', 'manager'].includes(user?.role || '') ? [{
+            ...(['admin', 'employee'].includes(user?.role || '') ? [{
               key: 'chia-data',
               icon: <SwapOutlined />,
               label: 'Chia Data',

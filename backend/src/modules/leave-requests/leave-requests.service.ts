@@ -1,17 +1,16 @@
-import { Injectable, BadRequestException, ForbiddenException, NotFoundException } from '@nestjs/common';
+import { Injectable, BadRequestException, ForbiddenException, NotFoundException, InternalServerErrorException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository, Between, Not } from 'typeorm';
+import { Repository, Between, Not, In } from 'typeorm';
 import { LeaveRequest, LeaveStatus, LeaveType, LeaveDuration } from '../../database/entities/leave-request.entity';
 import { User } from '../../database/entities/user.entity';
+import { Role } from '../../common/enums/role.enum';
 
-interface CreateLeaveRequestDto {
-  leaveType: LeaveType;
-  startDate: string; // YYYY-MM-DD
-  endDate: string;
-  duration: LeaveDuration;
-  reason: string;
-  attachmentUrl?: string;
-}
+const ROLE_PRIORITY: Record<string, number> = {
+  [Role.ADMIN]: 4,
+  [Role.MANAGER]: 3,
+  [Role.ASSISTANT]: 2,
+  [Role.EMPLOYEE]: 1,
+};
 
 @Injectable()
 export class LeaveRequestsService {
@@ -22,12 +21,19 @@ export class LeaveRequestsService {
     @InjectRepository(User)
     private userRepo: Repository<User>,
   ) {}
+
+  private getSubordinateRoles(role: string): string[] {
+    const priority = ROLE_PRIORITY[role] || 0;
+    return Object.entries(ROLE_PRIORITY)
+      .filter(([_, p]) => p < priority)
+      .map(([r, _]) => r);
+  }
   
   /**
    * Create new leave request
    * Validation: Balance check + Conflict check
    */
-  async create(dto: CreateLeaveRequestDto, requesterId: number) {
+  async create(dto: any, requesterId: number) {
     // 1. Validate dates
     const startDate = new Date(dto.startDate);
     const endDate = new Date(dto.endDate);
@@ -43,7 +49,7 @@ export class LeaveRequestsService {
     const conflict = await this.leaveRequestRepo.findOne({
       where: {
         requesterId,
-        status: Not(LeaveStatus.REJECTED) && Not(LeaveStatus.CANCELLED),
+        status: Not(In([LeaveStatus.REJECTED, LeaveStatus.CANCELLED])),
         startDate: Between(startDate, endDate)
       }
     });
@@ -98,44 +104,47 @@ export class LeaveRequestsService {
   
   /**
    * Get pending requests (for approvers)
+   * Priority: Admin (4) > Manager (3) > Assistant (2) > Sales (1)
+   * Cross-department: Enabled
    */
-  async findPending(userId: number, userRole: string, departmentId: number) {
-    const query = this.leaveRequestRepo
+  async findPending(userRole: string) {
+    const subRoles = this.getSubordinateRoles(userRole);
+    if (subRoles.length === 0) return [];
+
+    return this.leaveRequestRepo
       .createQueryBuilder('leave')
       .leftJoinAndSelect('leave.requester', 'requester')
+      .leftJoinAndSelect('requester.department', 'department')
       .where('leave.status = :status', { status: LeaveStatus.PENDING })
-      .orderBy('leave.createdAt', 'ASC');
-    
-    if (userRole !== 'admin') {
-      query.andWhere('requester.departmentId = :deptId', { deptId: departmentId });
-    }
-    
-    return query.getMany();
+      .andWhere('requester.role IN (:...roles)', { roles: subRoles })
+      .orderBy('leave.createdAt', 'DESC')
+      .getMany();
   }
-  
+
   /**
    * Get approval history (Approved/Rejected)
+   * Cross-department: Enabled
    */
-  async findHistory(userRole: string, departmentId: number) {
-    const query = this.leaveRequestRepo
+  async findHistory(userRole: string) {
+    const subRoles = this.getSubordinateRoles(userRole);
+    if (subRoles.length === 0) return [];
+
+    return this.leaveRequestRepo
       .createQueryBuilder('leave')
       .leftJoinAndSelect('leave.requester', 'requester')
+      .leftJoinAndSelect('requester.department', 'department')
       .leftJoinAndSelect('leave.approver', 'approver')
       .where('leave.status IN (:...statuses)', { 
         statuses: [LeaveStatus.APPROVED, LeaveStatus.REJECTED] 
       })
-      .orderBy('leave.updatedAt', 'DESC');
-    
-    if (userRole !== 'admin') {
-      query.andWhere('requester.departmentId = :deptId', { deptId: departmentId });
-    }
-    
-    return query.getMany();
+      .andWhere('requester.role IN (:...roles)', { roles: subRoles })
+      .orderBy('leave.updatedAt', 'DESC')
+      .getMany();
   }
   
   /**
    * Approve request
-   * Permission: Manager (dept), Admin (all)
+   * Permission: Hierarchical check + Department check
    */
   async approve(requestId: number, approverId: number, userRole: string, userDeptId: number) {
     const request = await this.leaveRequestRepo.findOne({
@@ -151,9 +160,12 @@ export class LeaveRequestsService {
       throw new BadRequestException('Can only approve pending requests');
     }
     
-    // Permission check
-    if (userRole !== 'admin' && request.requester.departmentId !== userDeptId) {
-      throw new ForbiddenException('You can only approve requests in your department');
+    // 🔒 Security Check: Hierarchy
+    const requesterPriority = ROLE_PRIORITY[request.requester.role] || 0;
+    const approverPriority = ROLE_PRIORITY[userRole] || 0;
+    
+    if (requesterPriority >= approverPriority) {
+      throw new ForbiddenException('Bạn không có quyền phê duyệt đơn của cấp bậc này');
     }
     
     // Deduct balance
@@ -175,7 +187,6 @@ export class LeaveRequestsService {
   
   /**
    * Reject request
-   * Require rejection reason
    */
   async reject(
     requestId: number, 
@@ -196,14 +207,17 @@ export class LeaveRequestsService {
     if (request.status !== LeaveStatus.PENDING) {
       throw new BadRequestException('Can only reject pending requests');
     }
+
+    // 🔒 Security Check: Hierarchy
+    const requesterPriority = ROLE_PRIORITY[request.requester.role] || 0;
+    const approverPriority = ROLE_PRIORITY[userRole] || 0;
     
-    // Permission check
-    if (userRole !== 'admin' && request.requester.departmentId !== userDeptId) {
-      throw new ForbiddenException('You can only reject requests in your department');
+    if (requesterPriority >= approverPriority) {
+      throw new ForbiddenException('Bạn không có quyền từ chối đơn của cấp bậc này');
     }
     
     if (!rejectionReason || rejectionReason.trim() === '') {
-      throw new BadRequestException('Rejection reason is required');
+      throw new BadRequestException('Vui lòng nhập lý do từ chối');
     }
     
     // Update request
@@ -217,7 +231,6 @@ export class LeaveRequestsService {
   
   /**
    * Cancel request (by requester)
-   * Only pending requests can be cancelled
    */
   async cancel(requestId: number, requesterId: number) {
     const request = await this.leaveRequestRepo.findOne({
@@ -229,7 +242,7 @@ export class LeaveRequestsService {
     }
     
     if (request.status !== LeaveStatus.PENDING) {
-      throw new BadRequestException('Can only cancel pending requests');
+      throw new BadRequestException('Chỉ có thể hủy đơn đang chờ duyệt');
     }
     
     request.status = LeaveStatus.CANCELLED;
@@ -243,10 +256,10 @@ export class LeaveRequestsService {
    */
   private calculateDays(start: Date, end: Date, duration: LeaveDuration): number {
     const diffTime = Math.abs(end.getTime() - start.getTime());
-    const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24)) + 1; // +1 to include both start and end
+    const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24)) + 1;
     
     if (diffDays === 1 && duration !== LeaveDuration.FULL_DAY) {
-      return 0.5; // Half day
+      return 0.5;
     }
     
     return diffDays;
