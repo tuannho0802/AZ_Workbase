@@ -1,48 +1,55 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { Table, Button, Modal, Input, Tag, Space, Badge, App } from 'antd';
-import { CheckOutlined, CloseOutlined } from '@ant-design/icons';
+import { Table, Button, Modal, Input, Tag, Space, Badge, Tabs, message, App } from 'antd';
+import { CheckOutlined, CloseOutlined, HistoryOutlined, HourglassOutlined } from '@ant-design/icons';
 import { leaveRequestsApi, LeaveRequest } from '@/lib/api/leave-requests.api';
 import dayjs from 'dayjs';
 
 const { TextArea } = Input;
 
 export default function ApprovalPage() {
-  const [requests, setRequests] = useState<LeaveRequest[]>([]);
+  const [pendingRequests, setPendingRequests] = useState<LeaveRequest[]>([]);
+  const [historyRequests, setHistoryRequests] = useState<LeaveRequest[]>([]);
   const [loading, setLoading] = useState(false);
   const [rejectModalOpen, setRejectModalOpen] = useState(false);
   const [selectedRequest, setSelectedRequest] = useState<number | null>(null);
   const [rejectionReason, setRejectionReason] = useState('');
-  const { message } = App.useApp();
+  
+  // Antd Hooks to fix "Static function" warning
+  const { message: messageApi, modal } = App.useApp();
   
   useEffect(() => {
-    fetchPendingRequests();
+    fetchAllData();
   }, []);
   
-  const fetchPendingRequests = async () => {
+  const fetchAllData = async () => {
     setLoading(true);
     try {
-      const data = await leaveRequestsApi.getPending();
-      setRequests(data);
+      const [pending, history] = await Promise.all([
+        leaveRequestsApi.getPending(),
+        leaveRequestsApi.getHistory()
+      ]);
+      setPendingRequests(pending);
+      setHistoryRequests(history);
     } catch (err) {
-      message.error('Không thể tải danh sách đơn chờ duyệt');
+      messageApi.error('Không thể tải danh sách đơn nghỉ phép');
     } finally {
       setLoading(false);
     }
   };
   
   const handleApprove = async (id: number) => {
-    Modal.confirm({
+    modal.confirm({
       title: 'Duyệt đơn nghỉ phép?',
       content: 'Xác nhận duyệt đơn này?',
       onOk: async () => {
         try {
           await leaveRequestsApi.approve(id);
-          message.success('Đã duyệt đơn');
-          fetchPendingRequests();
+          messageApi.success('Đã duyệt đơn');
+          fetchAllData();
         } catch (err: any) {
-          message.error(err.message || 'Duyệt đơn thất bại');
+          messageApi.error(err.response?.data?.message || 'Duyệt đơn thất bại');
         }
       }
     });
@@ -50,23 +57,24 @@ export default function ApprovalPage() {
   
   const handleReject = async () => {
     if (!rejectionReason.trim()) {
-      message.warning('Vui lòng nhập lý do từ chối');
+      messageApi.warning('Vui lòng nhập lý do từ chối');
       return;
     }
     
     try {
       await leaveRequestsApi.reject(selectedRequest!, rejectionReason);
-      message.success('Đã từ chối đơn');
+      messageApi.success('Đã từ chối đơn');
       setRejectModalOpen(false);
       setRejectionReason('');
       setSelectedRequest(null);
-      fetchPendingRequests();
+      fetchAllData();
     } catch (err) {
-      message.error('Từ chối đơn thất bại');
+      messageApi.error('Từ chối đơn thất bại');
     }
   };
   
-  const columns = [
+  // Shared Columns
+  const commonColumns = [
     {
       title: 'Nhân viên',
       dataIndex: ['requester', 'name'],
@@ -108,7 +116,11 @@ export default function ApprovalPage() {
       title: 'Lý do',
       dataIndex: 'reason',
       ellipsis: true
-    },
+    }
+  ];
+
+  const pendingColumns = [
+    ...commonColumns,
     {
       title: 'Ngày tạo',
       dataIndex: 'createdAt',
@@ -141,31 +153,93 @@ export default function ApprovalPage() {
       )
     }
   ];
+
+  const historyColumns = [
+    ...commonColumns,
+    {
+      title: 'Trạng thái',
+      dataIndex: 'status',
+      render: (status: string) => {
+        const statusMap: Record<string, { text: string; color: string }> = {
+          approved: { text: 'Đã duyệt', color: 'green' },
+          rejected: { text: 'Từ chối', color: 'red' },
+          cancelled: { text: 'Đã hủy', color: 'default' }
+        };
+        const info = statusMap[status] || { text: status, color: 'default' };
+        return <Tag color={info.color}>{info.text}</Tag>;
+      }
+    },
+    {
+      title: 'Chi tiết xử lý',
+      render: (_: any, record: LeaveRequest) => (
+        <div>
+          <div style={{ fontSize: 13 }}>Người duyệt: <b>{record.approver?.name || '-'}</b></div>
+          {record.rejectionReason && (
+            <div style={{ fontSize: 12, color: 'red', fontStyle: 'italic' }}>
+              Lý do: {record.rejectionReason}
+            </div>
+          )}
+          <div style={{ fontSize: 11, color: '#aaa' }}>
+            {record.approvedAt ? dayjs(record.approvedAt).format('DD/MM/YYYY HH:mm') : 
+             record.rejectedAt ? dayjs(record.rejectedAt).format('DD/MM/YYYY HH:mm') : ''}
+          </div>
+        </div>
+      )
+    }
+  ];
+  
+  const tabItems = [
+    {
+      key: 'pending',
+      label: (
+        <span>
+          <HourglassOutlined />
+          Chờ duyệt {pendingRequests.length > 0 && <Badge count={pendingRequests.length} offset={[10, -5]} size="small" />}
+        </span>
+      ),
+      children: (
+        <Table
+          columns={pendingColumns}
+          dataSource={pendingRequests}
+          rowKey="id"
+          loading={loading}
+          pagination={false}
+          locale={{ emptyText: '✅ Không có đơn chờ duyệt' }}
+        />
+      )
+    },
+    {
+      key: 'history',
+      label: (
+        <span>
+          <HistoryOutlined />
+          Lịch sử duyệt
+        </span>
+      ),
+      children: (
+        <Table
+          columns={historyColumns}
+          dataSource={historyRequests}
+          rowKey="id"
+          loading={loading}
+          pagination={{ pageSize: 10 }}
+          locale={{ emptyText: 'Chưa có lịch sử xử lý' }}
+        />
+      )
+    }
+  ];
   
   return (
     <div className="p-6">
       <div className="flex justify-between items-center mb-6">
-        <h1 className="text-2xl font-bold" style={{ display: 'flex', alignItems: 'center' }}>
-          ✅ Duyệt đơn nghỉ phép
-          {requests.length > 0 && (
-            <Badge count={requests.length} style={{ marginLeft: 16 }} />
-          )}
-        </h1>
+        <h1 className="text-2xl font-bold">✅ Quản lý Nghỉ phép</h1>
       </div>
       
-      <Table
-        columns={columns}
-        dataSource={requests}
-        rowKey="id"
-        loading={loading}
-        pagination={false}
-        locale={{
-          emptyText: (
-            <div style={{ padding: '32px 0', color: '#888' }}>
-              ✅ Không có đơn chờ duyệt
-            </div>
-          )
-        }}
+      <Tabs 
+        defaultActiveKey="pending" 
+        items={tabItems} 
+        type="card"
+        className="bg-white p-4 rounded-lg shadow-sm"
       />
       
       {/* Reject Modal */}

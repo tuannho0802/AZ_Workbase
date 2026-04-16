@@ -46,6 +46,11 @@ export const leaveRequestsApi = {
     const res = await axiosInstance.get(`/leave-requests/pending?_t=${Date.now()}`);
     return res.data;
   },
+
+  async getHistory() {
+    const res = await axiosInstance.get(`/leave-requests/history?_t=${Date.now()}`);
+    return res.data;
+  },
   
   async approve(id: number) {
     const res = await axiosInstance.patch(`/leave-requests/${id}/approve`);

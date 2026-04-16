@@ -114,6 +114,26 @@ export class LeaveRequestsService {
   }
   
   /**
+   * Get approval history (Approved/Rejected)
+   */
+  async findHistory(userRole: string, departmentId: number) {
+    const query = this.leaveRequestRepo
+      .createQueryBuilder('leave')
+      .leftJoinAndSelect('leave.requester', 'requester')
+      .leftJoinAndSelect('leave.approver', 'approver')
+      .where('leave.status IN (:...statuses)', { 
+        statuses: [LeaveStatus.APPROVED, LeaveStatus.REJECTED] 
+      })
+      .orderBy('leave.updatedAt', 'DESC');
+    
+    if (userRole !== 'admin') {
+      query.andWhere('requester.departmentId = :deptId', { deptId: departmentId });
+    }
+    
+    return query.getMany();
+  }
+  
+  /**
    * Approve request
    * Permission: Manager (dept), Admin (all)
    */

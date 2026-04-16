@@ -26,6 +26,14 @@ export class LeaveRequestsController {
     );
   }
   
+  @Get('history')
+  async findHistory(@Request() req) {
+    return this.leaveRequestsService.findHistory(
+      req.user.role,
+      req.user.departmentId
+    );
+  }
+  
   @Patch(':id/approve')
   async approve(@Param('id') id: string, @Request() req) {
     return this.leaveRequestsService.approve(
