@@ -759,6 +759,81 @@ export const CustomerTable: React.FC<CustomerTableProps> = ({
 };
 ```
 
+### 8. Ant Design Best Practices & Gotchas
+
+#### 8.1. Fixing "Static function can not consume context" (CRITICAL)
+Ant Design 5.x uses a CSS-in-JS engine. Static calls like `message.success()` outside of the component lifecycle can't access the theme context (colors, styles) and will trigger a warning. Use the `<App />` component wrapper at the top level and the `App.useApp()` hook inside components.
+
+**Correct Implementation:**
+
+```typescript
+// app/layout.tsx or a dedicated wrapper
+import { App } from 'antd';
+
+export default function Layout({ children }) {
+  return <App>{children}</App>;
+}
+
+// Inside your component
+'use client';
+import { App, Button } from 'antd';
+
+export function ActionButton() {
+  const { message, modal } = App.useApp(); // ✅ This hook provides the context-aware versions
+  
+  const handleAction = () => {
+    message.success('Action completed with proper styling!');
+    modal.confirm({ title: 'Are you sure?' });
+  };
+
+  return <Button onClick={handleAction}>Click Me</Button>;
+}
+```
+
+#### 8.2. Preventing Double Submissions
+Always use a loading state for mutation actions. This prevents users from clicking multiple times during slow network requests, which can lead to duplicate data or 401 Unauthorized race conditions during token refresh.
+
+```typescript
+const [isProcessing, setIsProcessing] = useState(false);
+
+const handleSave = async () => {
+  if (isProcessing) return; // Guard
+  setIsProcessing(true);
+  try {
+    await api.saveData();
+    message.success('Saved!');
+  } catch (err) {
+    // Error handled by interceptor or locally
+  } finally {
+    setIsProcessing(false);
+  }
+};
+
+return (
+  <Button 
+    type="primary" 
+    loading={isProcessing} 
+    disabled={isProcessing} 
+    onClick={handleSave}
+  >
+    Save Changes
+  </Button>
+);
+```
+
+#### 8.3. Table Performance (Scrolling & Sticky)
+For tables with many columns (like Customers list), always use `scroll={{ x: 'max-content' }}` and `sticky` headers for a better user experience.
+
+```typescript
+<Table
+  columns={columns}
+  dataSource={data}
+  scroll={{ x: 1500 }} // Enable horizontal scroll
+  sticky={{ offsetHeader: 64 }} // Keep header visible while scrolling
+  pagination={{ showSizeChanger: true }}
+/>
+```
+
 **Customer Filters Component:**
 
 ```typescript

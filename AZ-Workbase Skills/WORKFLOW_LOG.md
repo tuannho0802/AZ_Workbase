@@ -328,3 +328,46 @@ Token cũ bị dùng lại → `bcrypt.compare` fail → Log `[SECURITY] Token r
 **Git Commit:** `946f095` — `Fix: The migration dataset with database`
 
 ---
+
+## [2026-04-16 14:00] | Hierarchical Leave Approval & Department-Agnostic RBAC | Status: Success
+
+**Actor:** Agent
+
+**Bối cảnh:** Cần triển khai hệ thống duyệt phép theo cấp bậc (không phụ thuộc phòng ban) và chuyển đổi module Khách hàng sang cơ chế phân quyền "Freedom Mode" dựa trên quyền sở hữu (Owner) và bàn giao (Assignee).
+
+**Các hạng mục đã hoàn thành:**
+
+### 1. 🛡️ Hierarchical Leave Approval System
+- **Cơ chế duyệt chéo phòng ban**: Loại bỏ ràng buộc `departmentId` khi duyệt phép. Manager/Assistant có thể duyệt đơn của cấp dưới thuộc bất kỳ phòng ban nào nếu `RolePriority` của người duyệt cao hơn người gửi.
+- **Role Priority Mapping**: `ADMIN: 4, MANAGER: 3, ASSISTANT: 2, EMPLOYEE: 1`. 
+- **Approval Logic**: Query `findPending` và `findHistory` được lọc bằng `CASE WHEN` hoặc logic so sánh Priority trực tiếp trong QueryBuilder.
+- **Ant Design Context Fix**: Giải quyết triệt để lỗi `"Static function can not consume context"` bằng cách sử dụng `App` wrapper và `App.useApp()` hook cho bảng `duyet-phep`.
+- **Double-Submission Prevention**: Thêm trạng thái `isProcessing` và `confirmLoading` cho các nút Duyệt/Từ chối để tránh gửi yêu cầu trùng lặp hoặc gây lỗi 401 khi token đang refresh.
+
+### 2. 🔓 Department-Agnostic Customer RBAC (Freedom Mode)
+- **Ownership & Assignment Model**: Phân quyền khách hàng dựa trên:
+    - **Owner**: Người tạo bản ghi (`createdById`).
+    - **Assignee**: Người được giao xử lý (`salesUserId`).
+- **CustomerAccessHelper**: Triển khai Helper tập trung để áp dụng bộ lọc `Brackets` cho tất cả các query Read/Stats/Update/Delete.
+- **CRUD Permissions**:
+    - **Update**: Cả Owner và Assignee đều có quyền chỉnh sửa, chia data và nạp tiền (Freedom).
+    - **Delete**: Ràng buộc nghiêm ngặt — Chỉ **Owner** hoặc **Admin** mới có quyền xóa khách hàng.
+- **Synchronized Sidebar**:
+    - Mở khóa tab "Khách hàng", "Chia Data" và "Nhân viên" cho TẤT CẢ các Role.
+    - Ẩn tab "Duyệt phép" duy nhất đối với Role `EMPLOYEE`.
+- **Global User Visibility**: Cho phép mọi Role xem danh sách nhân viên (Tab Users) để phục vụ việc tìm kiếm và bàn giao dữ liệu chéo phòng ban.
+
+### 3. 🛠️ Bug Fixes & Refactoring
+- **TypeScript Type Safety**: 
+    - Sửa lỗi mismatch `SelectQueryBuilder<Customer>` vs `SelectQueryBuilder<Deposit>` bằng cách sử dụng Generic type `<any>` trong helper.
+    - Cập nhật `UnauthorizedCustomerAccessException` constructor hỗ trợ truyền message tùy chọn.
+- **Dashboard Synchronization**: Các Badge thống kê tại Dashboard và Trang Khách hàng tự động lọc dữ liệu chuẩn xác theo túi dữ liệu của User đang đăng nhập.
+
+**Files Changed trong phiên này:**
+- `backend/src/modules/leave-requests/leave-requests.service.ts`
+- `backend/src/modules/users/users.service.ts` & `users.controller.ts`
+- `backend/src/modules/customers/customers.service.ts` & `customers.controller.ts`
+- `backend/src/modules/customers/helpers/customer-access.helper.ts` (NEW)
+- `backend/src/modules/customers/exceptions/customer.exceptions.ts`
+- `frontend/src/app/(dashboard)/layout.tsx` (Sidebar sync)
+- `frontend/src/app/(dashboard)/duyet-phep/page.tsx` (Antd Fix + Processing logic)
