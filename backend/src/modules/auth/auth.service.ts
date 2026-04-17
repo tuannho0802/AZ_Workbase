@@ -20,13 +20,21 @@ export class AuthService {
 
   private async generateTokens(userId: number, email: string, role: string) {
     const payload = { sub: userId, email, role };
-    const access_token = this.jwtService.sign(payload);
-    const refresh_token = this.jwtService.sign(payload, {
-      secret: this.configService.get<string>('JWT_REFRESH_SECRET') as string,
-      expiresIn: this.configService.get<string>('JWT_REFRESH_EXPIRES_IN') as any,
-    });
-    return { access_token, refresh_token };
-  }
+
+   // Access token: uses default secret and expiresIn from JwtModule config
+   const access_token = this.jwtService.sign(payload);
+
+   // Refresh token: explicitly provide secret and expiresIn, with fallback values
+   const refreshSecret = this.configService.get<string>('JWT_REFRESH_SECRET') || 'default-refresh-secret';
+   const refreshExpiresIn = this.configService.get<string>('JWT_REFRESH_EXPIRES_IN') || '7d';
+
+   const refresh_token = this.jwtService.sign(payload, {
+    secret: refreshSecret,
+    expiresIn: refreshExpiresIn as any,
+  });
+
+   return { access_token, refresh_token };
+ }
 
   async login(loginDto: LoginDto) {
     const user = await this.usersService.findByEmail(loginDto.email);
