@@ -10,5 +10,6 @@
       "source": "/api/(.*)",
       "destination": "/api/index"
     }
-  ]
+  ],
+  "buildCommand": "cd backend && npm install && npm run build"
 }
