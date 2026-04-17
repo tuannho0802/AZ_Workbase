@@ -78,7 +78,7 @@ export class UsersController {
   @Patch(':id/reset-password')
   @Roles(Role.ADMIN)
   @ApiOperation({ summary: 'Đặt lại mật khẩu nhân viên' })
-  async resetPassword(@Param('id') id: string, @Body() dto: ResetPasswordDto) {
-    return this.usersService.resetPassword(+id, dto);
+  async resetPassword(@Param('id') id: string, @Body() dto: ResetPasswordDto, @Request() req: any) {
+    return this.usersService.resetPassword(+id, dto, req.user.id);
   }
 }

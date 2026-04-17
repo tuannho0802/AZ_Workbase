@@ -403,12 +403,24 @@ export class CustomersService {
       .getMany();
   }
 
-  async deleteDeposit(id: number) {
+  async deleteDeposit(id: number, userId?: number) {
     const deposit = await this.depositsRepository.findOne({ where: { id } });
     if (!deposit) {
       throw new NotFoundException('Không tìm thấy bản ghi nạp tiền');
     }
-    return await this.depositsRepository.remove(deposit);
+    const result = await this.depositsRepository.remove(deposit);
+
+    if (userId) {
+      await this.auditService.logAction(
+        userId,
+        'DELETE_DEPOSIT',
+        'deposit',
+        id,
+        deposit,
+        null,
+      );
+    }
+    return result;
   }
 
   async update(id: number, updateCustomerDto: UpdateCustomerDto, userId: number, userRole: string) {

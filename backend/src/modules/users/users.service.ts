@@ -192,7 +192,7 @@ export class UsersService {
     return savedUser;
   }
 
-  async resetPassword(id: number, dto: ResetPasswordDto) {
+  async resetPassword(id: number, dto: ResetPasswordDto, callerId?: number) {
     const user = await this.findById(id);
     if (!user) {
       throw new NotFoundException('Không tìm thấy nhân viên');
@@ -200,6 +200,17 @@ export class UsersService {
 
     const hashedPassword = await bcrypt.hash(dto.newPassword, 10);
     await this.usersRepository.update(id, { password: hashedPassword });
+
+    if (callerId) {
+      await this.auditService.logAction(
+        callerId,
+        'RESET_PASSWORD',
+        'user',
+        id,
+        null,
+        { targetUserId: id },
+      );
+    }
     
     return { success: true, message: 'Đã đặt lại mật khẩu thành công' };
   }

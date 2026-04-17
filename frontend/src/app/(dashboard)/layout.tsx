@@ -11,7 +11,8 @@ import {
   MenuUnfoldOutlined,
   SwapOutlined,
   CalendarOutlined,
-  CheckCircleOutlined
+  CheckCircleOutlined,
+  FileTextOutlined
 } from '@ant-design/icons';
 import { useAuthStore } from '@/lib/stores/auth.store';
 import Cookies from 'js-cookie';
@@ -48,6 +49,8 @@ export default function DashboardLayout({
     
     if (pathname.includes('/users')) {
       newKey = 'users';
+    } else if (pathname.includes('/audit-logs')) {
+      newKey = 'audit-logs';
     } else if (pathname.includes('/chia-data')) {
       newKey = 'chia-data';
     } else if (pathname.includes('/customers')) {
@@ -137,6 +140,12 @@ export default function DashboardLayout({
               icon: <CheckCircleOutlined />,
               label: 'Duyệt phép',
               onClick: () => router.push('/duyet-phep'),
+            }] : []),
+            ...(['admin', 'manager'].includes(user?.role || '') ? [{
+              key: 'audit-logs',
+              icon: <FileTextOutlined />,
+              label: 'Nhật ký hệ thống',
+              onClick: () => router.push('/audit-logs'),
             }] : []),
             ...(['admin'].includes(user?.role || '') ? [{
               key: 'users',

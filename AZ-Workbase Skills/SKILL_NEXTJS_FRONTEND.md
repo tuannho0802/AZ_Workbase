@@ -1335,3 +1335,55 @@ In the Assignment/Sharing screens (e.g., `/chia-data`), use a specific icon to h
 - **Icon:** `👤` (User icon)
 - **Color:** `green`
 - **Logic:** `isMyPrimary = customer.salesUserId === currentUser.id`
+
+### 14. Audit Tooltip & Data Enrichment (NEW)
+
+**Standard Audit Tooltip UI:**
+When displaying "Created By" or "Updated By" information, use a standardized rich tooltip with `InfoCircleOutlined`. 
+
+**Backend Data Handling:**
+Frontend must handle both `fullName` (preferred) and `name` (legacy fallback) from the user objects.
+
+```tsx
+// Standard renderAuditTrail helper
+const renderAuditTrail = (record: Customer) => {
+  // Debug logs are encouraged during development for verification
+  console.log('Tooltip record:', record); 
+  
+  const creatorName = record.createdBy?.fullName || record.createdBy?.name || 'Không xác định';
+  const updaterName = record.updatedBy?.fullName || record.updatedBy?.name;
+  const createdAt = record.createdAt ? dayjs(record.createdAt).format('HH:mm DD/MM/YYYY') : '—';
+  const updatedAt = record.updatedAt ? dayjs(record.updatedAt).format('HH:mm DD/MM/YYYY') : null;
+
+  return (
+    <div style={{ minWidth: 200, padding: '4px' }}>
+      <div>
+        <strong>Tạo bởi:</strong> {creatorName}
+        <br />
+        <span style={{ fontSize: 12, color: 'rgba(255,255,255,0.65)' }}>{createdAt}</span>
+      </div>
+      <Divider style={{ margin: '8px 0', borderColor: 'rgba(255,255,255,0.2)' }} />
+      {record.updatedBy ? (
+        <div>
+          <strong>Sửa cuối:</strong> {updaterName}
+          <br />
+          <span style={{ fontSize: 12, color: 'rgba(255,255,255,0.65)' }}>{updatedAt}</span>
+        </div>
+      ) : (
+        <div style={{ color: 'rgba(255,255,255,0.45)', fontStyle: 'italic' }}>Chưa có chỉnh sửa</div>
+      )}
+    </div>
+  );
+};
+```
+
+**Type Parity (Interface Consistency):**
+When adding audit fields to types, ensure BOTH global types (`src/lib/types/customer.types.ts`) and any inline types (e.g., in `chia-data/page.tsx`) are updated. Mismatched types are the #1 cause of "Property does not exist" build errors.
+
+**Tooltip Icon Usage:**
+Avoid hardcoded "Admin" labels. Use the `record.createdBy` object populated by the backend. Use `InfoCircleOutlined` for the trigger icon.
+```tsx
+<Tooltip title={renderAuditTrail(record)}>
+  <InfoCircleOutlined style={{ color: '#1890ff', cursor: 'help' }} />
+</Tooltip>
+```

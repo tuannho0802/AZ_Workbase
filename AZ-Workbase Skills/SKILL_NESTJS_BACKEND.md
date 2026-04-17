@@ -911,3 +911,49 @@ if (callerRole !== Role.ADMIN && callerRole !== Role.MANAGER) {
 The `/unassigned` list should include data the user can share to others.
 - **Query Logic:** `(customer.salesUserId IS NULL) OR (customer.salesUserId = :userId)`.
 - **Note:** Admins see all unassigned data + their own. Managers see all data in their department.
+
+### 13. Audit Logging & Data Attribution (NEW)
+
+🚨 **CRITICAL: TypeORM Relation Precedence in Update**
+When updating an entity that has both an ID column (e.g., `updated_by_id`) and a Relation property (e.g., `updatedBy`), TypeORM's `.save()` method may prioritize the loaded relation object over the modified ID property. If the relation was already loaded in memory (e.g., via `findOne`), simply changing the ID might not persist the change.
+
+**Correct Update Pattern:**
+```typescript
+// service.ts
+async update(id: number, dto: any, userId: number) {
+  const record = await this.recordRepository.findOne({ where: { id }, relations: ['updatedBy'] });
+  
+  // 1. Merge DTO (handles raw fields)
+  this.recordRepository.merge(record, dto);
+  
+  // 2. EXPLICITLY set the relation object to ensure persistence
+  // Use a partial object with just the ID
+  record.updatedBy = { id: userId } as User;
+  
+  // 3. Save
+  return await this.recordRepository.save(record);
+}
+```
+
+**Standard Audit Logging Instrumentation:**
+All critical CRUD operations MUST be logged via `AuditService`.
+```typescript
+await this.auditService.logAction(
+  userId,
+  'UPDATE_CUSTOMER', // Action type
+  'customer',        // Table/Entity name
+  record.id,         // Target record ID
+  null,              // Old values (optional)
+  record,            // New values
+);
+```
+
+**Consistent API Aliasing:**
+Always use aliases in `leftJoinAndSelect` that match the entity property name to ensure consistent object hydration and avoid frontend mapping errors.
+```typescript
+// ✅ Good
+queryBuilder.leftJoinAndSelect('customer.updatedBy', 'updatedBy');
+
+// ❌ Bad (might cause frontend to look for record.updater instead of record.updatedBy)
+queryBuilder.leftJoinAndSelect('customer.updatedBy', 'updater');
+```

@@ -156,8 +156,8 @@ export class CustomersController {
   @Delete('deposits/:id')
   @Roles(Role.ADMIN, Role.MANAGER)
   @ApiOperation({ summary: 'Xóa bản ghi nạp tiền' })
-  async deleteDeposit(@Param('id') id: string) {
-    return this.customersService.deleteDeposit(+id);
+  async deleteDeposit(@Param('id') id: string, @GetUser() user: any) {
+    return this.customersService.deleteDeposit(+id, user.id);
   }
 
   @Patch(':id')
