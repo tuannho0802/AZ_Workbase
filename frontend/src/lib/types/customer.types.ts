@@ -8,6 +8,7 @@ export interface CustomerNote {
   createdByUser?: {
     id: number;
     name: string;
+    fullName?: string;
     email?: string;
   };
   createdAt: string;
@@ -24,8 +25,16 @@ export interface Deposit {
   createdBy?: {
     id: number;
     name: string;
+    fullName?: string;
     email?: string;
   };
+  updatedBy?: {
+    id: number;
+    name: string;
+    fullName?: string;
+    email?: string;
+  };
+  updatedAt?: string;
   createdAt: string;
   customer?: {
     id: number;
@@ -57,6 +66,7 @@ export interface Customer {
   salesUser?: {
     id: number;
     name: string;
+    fullName?: string;
     email?: string;
     role?: string;
   };
@@ -80,11 +90,13 @@ export interface Customer {
   createdBy?: {
     id: number;
     name: string;
+    fullName?: string;
     email?: string;
   };
   updatedBy?: {
     id: number;
     name: string;
+    fullName?: string;
     email?: string;
   };
   createdAt: string;

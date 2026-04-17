@@ -8,7 +8,7 @@ import {
 } from 'antd';
 import {
   UserAddOutlined, ReloadOutlined, SearchOutlined,
-  CheckCircleOutlined, TeamOutlined
+  CheckCircleOutlined, TeamOutlined, InfoCircleOutlined
 } from '@ant-design/icons';
 import { useRouter } from 'next/navigation';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
@@ -26,8 +26,10 @@ interface Customer {
   source: string | null;
   campaign: string | null;
   inputDate: string | null;
-  salesUser: { id: number; name: string } | null;
-  createdBy: { id: number; name: string } | null;
+  salesUser: { id: number; name: string; fullName?: string } | null;
+  createdBy: { id: number; name: string; fullName?: string } | null;
+  updatedBy?: { id: number; name: string; fullName?: string } | null;
+  createdAt: string;
   updatedAt?: string;
 }
 
@@ -135,9 +137,44 @@ export default function ChiaDataPage() {
       qc.invalidateQueries({ queryKey: ['assigned'] });
     },
     onError: (err: any) => {
+      console.log('Assignment error:', err);
       antdMessage.error('Lỗi: ' + (err.response?.data?.message || err.message));
     },
   });
+
+  // ── HELPERS ──────────────────────────────────────────
+  const renderAuditTrail = (record: Customer | any) => {
+    console.log('Tooltip record:', record);
+    console.log('Tooltip updatedBy:', record.updatedBy);
+    const creatorName = record.createdBy?.fullName || record.createdBy?.name || 'Không xác định';
+    const updaterName = record.updatedBy?.fullName || record.updatedBy?.name;
+    const createdAt = record.createdAt ? dayjs(record.createdAt).format('HH:mm DD/MM/YYYY') : '—';
+    const updatedAt = record.updatedAt ? dayjs(record.updatedAt).format('HH:mm DD/MM/YYYY') : null;
+
+    return (
+      <div style={{ minWidth: 200, padding: '4px' }}>
+        <div>
+          <strong>Tạo bởi:</strong> {creatorName}
+          <br />
+          <span style={{ fontSize: 12, color: 'rgba(255,255,255,0.65)' }}>
+            {createdAt}
+          </span>
+        </div>
+        <Divider style={{ margin: '8px 0', borderColor: 'rgba(255,255,255,0.2)' }} />
+        {record.updatedBy ? (
+          <div>
+            <strong>Sửa cuối:</strong> {updaterName}
+            <br />
+            <span style={{ fontSize: 12, color: 'rgba(255,255,255,0.65)' }}>
+              {updatedAt}
+            </span>
+          </div>
+        ) : (
+          <div style={{ color: 'rgba(255,255,255,0.45)', fontStyle: 'italic' }}>Chưa có chỉnh sửa</div>
+        )}
+      </div>
+    );
+  };
 
   // ── COLUMNS: Bảng Chưa assign ──────────────────────────
   const unassignedColumns = [
@@ -157,7 +194,14 @@ export default function ChiaDataPage() {
                 <Tag color="green" style={{ margin: 0 }}>👤</Tag>
               </Tooltip>
             )}
-            {v ? <Text strong>{v}</Text> : <Text type="secondary" italic>Chưa có tên</Text>}
+            {v ? (
+              <Space size={4}>
+                <Text strong style={{ color: '#1890ff' }}>{v}</Text>
+                <Tooltip title={renderAuditTrail(r)} mouseEnterDelay={0.3}>
+                  <InfoCircleOutlined style={{ color: '#1890ff', cursor: 'help', fontSize: '12px' }} />
+                </Tooltip>
+              </Space>
+            ) : <Text type="secondary" italic>Chưa có tên</Text>}
           </Space>
         );
       }
@@ -181,7 +225,11 @@ export default function ChiaDataPage() {
     },
     {
       title: 'Người tạo', width: 130,
-      render: (_: any, r: Customer) => r.createdBy?.name || 'Hệ thống',
+      render: (_: any, r: Customer) => (
+        <Tooltip title={renderAuditTrail(r)}>
+          <span style={{ cursor: 'help' }}>{r.createdBy?.name || 'Hệ thống'}</span>
+        </Tooltip>
+      ),
     },
     {
       title: 'Ngày nhập', dataIndex: 'inputDate', width: 110,
@@ -200,8 +248,16 @@ export default function ChiaDataPage() {
     },
     {
       title: 'Tên khách hàng', dataIndex: 'name', width: 200,
-      render: (v: string | null) => v || 
-        <Text type="secondary" italic>Chưa có tên</Text>,
+      render: (v: string | null, r: Customer) => (
+        v ? (
+          <Space size={4}>
+            <Text strong style={{ color: '#1890ff' }}>{v}</Text>
+            <Tooltip title={renderAuditTrail(r)} mouseEnterDelay={0.3}>
+              <InfoCircleOutlined style={{ color: '#1890ff', cursor: 'help', fontSize: '12px' }} />
+            </Tooltip>
+          </Space>
+        ) : <Text type="secondary" italic>Chưa có tên</Text>
+      ),
     },
     {
       title: 'SĐT', dataIndex: 'phone', width: 130,
@@ -238,7 +294,11 @@ export default function ChiaDataPage() {
     },
     {
       title: 'Người tạo', width: 130,
-      render: (_: any, r: Customer) => r.createdBy?.name || 'Hệ thống',
+      render: (_: any, r: Customer) => (
+        <Tooltip title={renderAuditTrail(r)}>
+          <span style={{ cursor: 'help' }}>{r.createdBy?.name || 'Hệ thống'}</span>
+        </Tooltip>
+      ),
     },
     {
       title: 'Ngày nhập', dataIndex: 'inputDate', width: 110,

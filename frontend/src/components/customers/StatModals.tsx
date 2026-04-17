@@ -3,7 +3,7 @@ import { Modal, Table, Tabs, Tag, Typography, Tooltip, Divider, DatePicker, Spac
 import { Customer, Deposit } from '@/lib/types/customer.types';
 import dayjs from 'dayjs';
 import type { Dayjs } from 'dayjs';
-import { UserOutlined, CalendarOutlined, DollarOutlined, FilterOutlined } from '@ant-design/icons';
+import { UserOutlined, CalendarOutlined, DollarOutlined, FilterOutlined, InfoCircleOutlined } from '@ant-design/icons';
 import type { ColumnsType } from 'antd/es/table';
 
 const { Text, Link } = Typography;
@@ -49,15 +49,34 @@ export const StatModals: React.FC<StatModalsProps> = ({
 }) => {
 
   const renderAuditTrail = (record: Customer | Deposit) => {
-    const creator = (record as any).createdBy?.name?.trim() || (record as any).createdBy?.email || 'Hệ thống';
-    const updater = (record as any).updatedBy?.name?.trim() || (record as any).updatedBy?.email;
-    const createdAt = dayjs(record.createdAt).format('HH:mm DD/MM/YYYY');
+    console.log('Tooltip record:', record);
+    console.log('Tooltip updatedBy:', (record as any).updatedBy);
+    const creatorName = (record as any).createdBy?.fullName || (record as any).createdBy?.name || 'Không xác định';
+    const updaterName = (record as any).updatedBy?.fullName || (record as any).updatedBy?.name;
+    const createdAt = record.createdAt ? dayjs(record.createdAt).format('HH:mm DD/MM/YYYY') : '—';
     const updatedAt = (record as any).updatedAt ? dayjs((record as any).updatedAt).format('HH:mm DD/MM/YYYY') : null;
 
     return (
-      <div>
-        <div><Text type="secondary">Tạo bởi:</Text> {creator} ({createdAt})</div>
-        {updater && <div><Text type="secondary">Sửa cuối:</Text> {updater} ({updatedAt})</div>}
+      <div style={{ minWidth: 200, padding: '4px' }}>
+        <div>
+          <strong>Tạo bởi:</strong> {creatorName}
+          <br />
+          <span style={{ fontSize: 12, color: 'rgba(255,255,255,0.65)' }}>
+            {createdAt}
+          </span>
+        </div>
+        <Divider style={{ margin: '8px 0', borderColor: 'rgba(255,255,255,0.2)' }} />
+        {record.updatedBy ? (
+          <div>
+            <strong>Sửa cuối:</strong> {updaterName}
+            <br />
+            <span style={{ fontSize: 12, color: 'rgba(255,255,255,0.65)' }}>
+              {updatedAt}
+            </span>
+          </div>
+        ) : (
+          <div style={{ color: 'rgba(255,255,255,0.45)', fontStyle: 'italic' }}>Chưa có chỉnh sửa</div>
+        )}
       </div>
     );
   };
@@ -68,9 +87,12 @@ export const StatModals: React.FC<StatModalsProps> = ({
       dataIndex: 'name',
       key: 'name',
       render: (text: string, record: Customer) => (
-        <Tooltip title={renderAuditTrail(record)}>
-          <Text strong style={{ color: '#1890ff', cursor: 'help' }}>{text}</Text>
-        </Tooltip>
+        <Space size={4}>
+          <Text strong style={{ color: '#1890ff' }}>{text}</Text>
+          <Tooltip title={renderAuditTrail(record)}>
+            <InfoCircleOutlined style={{ color: '#1890ff', cursor: 'help', fontSize: '12px' }} />
+          </Tooltip>
+        </Space>
       ),
     },
     {

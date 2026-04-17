@@ -20,6 +20,7 @@ import { CreateCustomerNoteDto } from './dto/create-customer-note.dto';
 import { CreateDepositDto } from './dto/create-deposit.dto';
 import { NotFoundException, ForbiddenException, BadRequestException } from '@nestjs/common';
 import { CustomerAccessHelper } from './helpers/customer-access.helper';
+import { AuditService } from '../audit/audit.service';
 
 @Injectable()
 export class CustomersService {
@@ -32,6 +33,7 @@ export class CustomersService {
     private readonly depositsRepository: Repository<Deposit>,
     @InjectRepository(CustomerAssignment)
     private readonly assignmentRepository: Repository<CustomerAssignment>,
+    private readonly auditService: AuditService,
   ) {}
 
   private getTodayVn(): Date {
@@ -67,7 +69,18 @@ export class CustomersService {
           : (createCustomerDto.salesUserId ? today : null),
         closedDate: createCustomerDto.closedDate ? new Date(createCustomerDto.closedDate) : null,
       } as any);
-      return await this.customersRepository.save(customer);
+      const saved = await this.customersRepository.save(customer);
+
+      await this.auditService.logAction(
+        userId,
+        'CREATE_CUSTOMER',
+        'customer',
+        (saved as any).id,
+        null,
+        saved,
+      );
+
+      return saved;
     } catch (error: any) {
       if (error.code === 'ER_DUP_ENTRY') {
         throw new DuplicatePhoneException();
@@ -95,8 +108,8 @@ export class CustomersService {
 
     queryBuilder.leftJoinAndSelect('customer.salesUser', 'salesUser');
     queryBuilder.leftJoinAndSelect('customer.department', 'department');
-    queryBuilder.leftJoinAndSelect('customer.createdBy', 'creator');
-    queryBuilder.leftJoinAndSelect('customer.updatedBy', 'updater');
+    queryBuilder.leftJoinAndSelect('customer.createdBy', 'createdBy');
+    queryBuilder.leftJoinAndSelect('customer.updatedBy', 'updatedBy');
 
     queryBuilder.where('customer.deletedAt IS NULL');
 
@@ -275,8 +288,8 @@ export class CustomersService {
       .leftJoinAndSelect('customer.deposits', 'deposits')
       .leftJoinAndSelect('customer.notes', 'notes')
       .leftJoinAndSelect('notes.createdByUser', 'noteCreator')
-      .leftJoinAndSelect('customer.createdBy', 'creator')
-      .leftJoinAndSelect('customer.updatedBy', 'updater');
+      .leftJoinAndSelect('customer.createdBy', 'createdBy')
+      .leftJoinAndSelect('customer.updatedBy', 'updatedBy');
     
     queryBuilder.where('customer.id = :id', { id });
     queryBuilder.andWhere('customer.deletedAt IS NULL');
@@ -330,8 +343,18 @@ export class CustomersService {
     });
 
     const savedNote = await this.notesRepository.save(note);
+
+    await this.auditService.logAction(
+      userId,
+      'CREATE_NOTE',
+      'customer_note',
+      (savedNote as any).id,
+      null,
+      savedNote,
+    );
+
     return this.notesRepository.findOne({
-      where: { id: savedNote.id },
+      where: { id: (savedNote as any).id },
       relations: ['createdByUser']
     });
   }
@@ -356,7 +379,18 @@ export class CustomersService {
       createdBy_OLD: userId, // ← Populate legacy NOT NULL column
     });
 
-    return await this.depositsRepository.save(deposit);
+    const savedDeposit = await this.depositsRepository.save(deposit);
+
+    await this.auditService.logAction(
+      userId,
+      'CREATE_DEPOSIT',
+      'deposit',
+      (savedDeposit as any).id,
+      null,
+      savedDeposit,
+    );
+
+    return savedDeposit;
   }
 
   async getDeposits(customerId: number) {
@@ -433,7 +467,20 @@ export class CustomersService {
         updatedById: userId,
         updatedBy_OLD: userId, // ← Populate legacy nullable or NOT NULL column
       } as any);
-      return await this.customersRepository.save(customer);
+      
+      // FIX For TypeORM relation precedence: Ensure the actual relation is updated
+      customer.updatedBy = { id: userId } as User;
+      
+      const saved = await this.customersRepository.save(customer);
+      await this.auditService.logAction(
+        userId,
+        'UPDATE_CUSTOMER',
+        'customer',
+        (saved as any).id,
+        null,
+        saved,
+      );
+      return saved;
     } catch (error: any) {
       if (error.code === 'ER_DUP_ENTRY') {
         throw new DuplicatePhoneException();
@@ -453,6 +500,12 @@ export class CustomersService {
     }
 
     await this.customersRepository.softDelete(id);
+    await this.auditService.logAction(
+      userId,
+      'DELETE_CUSTOMER',
+      'customer',
+      id,
+    );
     return { message: 'Xóa khách hàng thành công' };
   }
 
@@ -536,6 +589,15 @@ export class CustomersService {
           await this.customersRepository.save(customer);
         }
 
+        await this.auditService.logAction(
+          callerId,
+          'ASSIGN_CUSTOMER',
+          'customer',
+          customerId,
+          null,
+          { assignedToIds: salesUserIds },
+        );
+
         results.success++;
       } catch (err: any) {
         results.errors.push(`Khách hàng ID ${customerId}: ${err.message}`);
@@ -560,6 +622,7 @@ export class CustomersService {
     const qb = this.customersRepository.createQueryBuilder('customer')
       .leftJoinAndSelect('customer.salesUser', 'salesUser')
       .leftJoinAndSelect('customer.createdBy', 'createdBy')
+      .leftJoinAndSelect('customer.updatedBy', 'updatedBy')
       .where('customer.deletedAt IS NULL');
 
     // Khách hàng chưa có Primary HOẶC người dùng đang là Primary Sales
@@ -677,6 +740,7 @@ export class CustomersService {
     const baseQuery = () => this.customersRepository.createQueryBuilder('customer')
       .leftJoinAndSelect('customer.salesUser', 'salesUser')
       .leftJoinAndSelect('customer.createdBy', 'createdBy')
+      .leftJoinAndSelect('customer.updatedBy', 'updatedBy')
       .where('customer.deletedAt IS NULL');
 
     let todayQuery = baseQuery()

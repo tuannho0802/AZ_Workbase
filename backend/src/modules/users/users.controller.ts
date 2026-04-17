@@ -64,15 +64,15 @@ export class UsersController {
   @Post()
   @Roles(Role.ADMIN)
   @ApiOperation({ summary: 'Tạo nhân viên mới (Chỉ dành cho Admin)' })
-  async create(@Body() dto: CreateUserDto) {
-    return this.usersService.create(dto);
+  async create(@Request() req: any, @Body() dto: CreateUserDto) {
+    return this.usersService.create(dto, req.user.id);
   }
 
   @Patch(':id')
   @Roles(Role.ADMIN)
   @ApiOperation({ summary: 'Cập nhật thông tin nhân viên' })
-  async update(@Param('id') id: string, @Body() dto: UpdateUserDto) {
-    return this.usersService.update(+id, dto);
+  async update(@Param('id') id: string, @Body() dto: UpdateUserDto, @Request() req: any) {
+    return this.usersService.update(+id, dto, req.user.id);
   }
 
   @Patch(':id/reset-password')

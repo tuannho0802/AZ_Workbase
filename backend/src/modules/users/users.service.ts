@@ -9,6 +9,7 @@ import { UpdateUserDto } from './dto/update-user.dto';
 import { ResetPasswordDto } from './dto/reset-password.dto';
 import { ConflictException, NotFoundException, ForbiddenException } from '@nestjs/common';
 import * as bcrypt from 'bcrypt';
+import { AuditService } from '../audit/audit.service';
 
 @Injectable()
 export class UsersService {
@@ -18,6 +19,7 @@ export class UsersService {
 
     @InjectRepository(User)
     private usersRepository: Repository<User>,
+    private readonly auditService: AuditService,
   ) {}
 
   async findByEmail(email: string): Promise<User | null> {
@@ -111,7 +113,7 @@ export class UsersService {
     };
   }
 
-  async create(createDto: CreateUserDto): Promise<User> {
+  async create(createDto: CreateUserDto, creatorId?: number): Promise<User> {
     // 1. Check email exists
     const existing = await this.usersRepository.findOne({
       where: { email: createDto.email },
@@ -134,13 +136,23 @@ export class UsersService {
     // 4. CRITICAL: PHẢI CÓ SAVE()
     const savedUser = await this.usersRepository.save(user);
 
+    if (creatorId) {
+      await this.auditService.logAction(
+        creatorId,
+        'CREATE_USER',
+        'user',
+        (savedUser as any).id,
+        null,
+        savedUser,
+      );
+    }
+
     this.logger.log(`[Users] New user created: ${savedUser.id}`);
 
-    
     return savedUser;
   }
 
-  async update(id: number, updateDto: UpdateUserDto): Promise<User> {
+  async update(id: number, updateDto: UpdateUserDto, callerId?: number): Promise<User> {
     // 1. Tìm user
     const user = await this.usersRepository.findOne({ 
       where: { id } 
@@ -164,9 +176,19 @@ export class UsersService {
     // 4. CRITICAL: PHẢI CÓ SAVE()
     const savedUser = await this.usersRepository.save(user);
 
+    if (callerId) {
+      await this.auditService.logAction(
+        callerId,
+        'UPDATE_USER',
+        'user',
+        (savedUser as any).id,
+        null,
+        savedUser,
+      );
+    }
+
     this.logger.log(`[Users] User ID ${savedUser.id} updated. isActive: ${savedUser.isActive}`);
 
-    
     return savedUser;
   }
 

@@ -71,7 +71,7 @@ export const CustomerDepositTable = ({ customerId, refreshTrigger }: Props) => {
     },
     {
       title: 'Người tạo',
-      dataIndex: ['createdByUser', 'name'],
+      dataIndex: ['createdBy', 'name'],
       key: 'createdBy',
       render: (name: string) => name || 'Hệ thống',
     },

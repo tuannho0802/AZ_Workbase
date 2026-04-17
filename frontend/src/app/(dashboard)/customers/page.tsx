@@ -1,8 +1,8 @@
 'use client';
 
 import { useEffect, useState, useMemo } from 'react';
-import { Table, Card, Tag, App, Button, Space, Row, Col, Typography, Tooltip, Input, Select, DatePicker } from 'antd';
-import { UploadOutlined, UsergroupAddOutlined, ReloadOutlined, PlusOutlined, SearchOutlined, SortAscendingOutlined, SortDescendingOutlined } from '@ant-design/icons';
+import { Table, Card, Tag, App, Button, Space, Row, Col, Typography, Tooltip, Input, Select, DatePicker, Divider } from 'antd';
+import { UploadOutlined, UsergroupAddOutlined, ReloadOutlined, PlusOutlined, SearchOutlined, SortAscendingOutlined, SortDescendingOutlined, InfoCircleOutlined } from '@ant-design/icons';
 import type { ColumnsType, TablePaginationConfig } from 'antd/es/table';
 import type { FilterValue, SorterResult } from 'antd/es/table/interface';
 import { customersApi } from '@/lib/api/customers.api';
@@ -139,20 +139,33 @@ export default function CustomersPage() {
   };
 
   const renderAuditTrail = (record: Customer) => {
-    const creator = (record as any).createdBy?.name || 'Hệ thống';
-    const updater = (record as any).updatedBy?.name;
-    const createdAt = dayjs(record.createdAt).format('HH:mm DD/MM/YYYY');
-    const updatedAt = (record as any).updatedAt ? dayjs((record as any).updatedAt).format('HH:mm DD/MM/YYYY') : null;
+    console.log('Tooltip record:', record);
+    console.log('Tooltip updatedBy:', record.updatedBy);
+    const creatorName = record.createdBy?.fullName || record.createdBy?.name || 'Không xác định';
+    const updaterName = record.updatedBy?.fullName || record.updatedBy?.name;
+    const createdAt = record.createdAt ? dayjs(record.createdAt).format('HH:mm DD/MM/YYYY') : '—';
+    const updatedAt = record.updatedAt ? dayjs(record.updatedAt).format('HH:mm DD/MM/YYYY') : null;
 
     return (
-      <div style={{ padding: '4px' }}>
-        <div><Text type="secondary" style={{ color: 'rgba(255,255,255,0.65)' }}>Tạo bởi:</Text> <span style={{ color: '#fff' }}>{creator}</span></div>
-        <div style={{ fontSize: '11px', marginBottom: 4 }}>{createdAt}</div>
-        {updater && (
-          <>
-            <div><Text type="secondary" style={{ color: 'rgba(255,255,255,0.65)' }}>Sửa cuối:</Text> <span style={{ color: '#fff' }}>{updater}</span></div>
-            <div style={{ fontSize: '11px' }}>{updatedAt}</div>
-          </>
+      <div style={{ minWidth: 200, padding: '4px' }}>
+        <div>
+          <strong>Tạo bởi:</strong> {creatorName}
+          <br />
+          <span style={{ fontSize: 12, color: 'rgba(255,255,255,0.65)' }}>
+            {createdAt}
+          </span>
+        </div>
+        <Divider style={{ margin: '8px 0', borderColor: 'rgba(255,255,255,0.2)' }} />
+        {record.updatedBy ? (
+          <div>
+            <strong>Sửa cuối:</strong> {updaterName}
+            <br />
+            <span style={{ fontSize: 12, color: 'rgba(255,255,255,0.65)' }}>
+              {updatedAt}
+            </span>
+          </div>
+        ) : (
+          <div style={{ color: 'rgba(255,255,255,0.45)', fontStyle: 'italic' }}>Chưa có chỉnh sửa</div>
         )}
       </div>
     );
@@ -180,9 +193,12 @@ export default function CustomersPage() {
       key: 'name',
       ellipsis: { showTitle: true },
       render: (text, record) => (
-        <Tooltip title={renderAuditTrail(record)} mouseEnterDelay={0.5}>
-          <Text strong style={{ color: '#1890ff', cursor: 'help' }}>{text}</Text>
-        </Tooltip>
+        <Space size={4}>
+          <Text strong style={{ color: '#1890ff' }}>{text}</Text>
+          <Tooltip title={renderAuditTrail(record)} mouseEnterDelay={0.3}>
+            <InfoCircleOutlined style={{ color: '#1890ff', cursor: 'pointer', fontSize: '12px' }} />
+          </Tooltip>
+        </Space>
       ),
     },
     {
