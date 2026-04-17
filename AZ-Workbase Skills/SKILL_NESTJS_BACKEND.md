@@ -795,7 +795,27 @@ app.use(
 - Use environment variables for config
 - Document API with Swagger
 
-### 10. Performance Optimization
+### 10. TypeORM Gotchas & Edge Cases
+
+🚨 **CRITICAL: BooleanTransformer with QueryBuilder**
+When using a custom `BooleanTransformer` (e.g. mapping `true/false` to `1/0` for MySQL/SQLite), the Transformer is **NOT** automatically triggered inside `QueryBuilder.where()` bindings.
+
+```typescript
+// BAD: This will fail to filter or throw errors because QueryBuilder passes the JS boolean instead of 1/0.
+const qb = this.repository.createQueryBuilder('user')
+  .where('user.isActive = :active', { active: true }); 
+
+// GOOD: Use Native .find() Object params (Transformers work perfectly here)
+const users = await this.repository.find({
+  where: { isActive: true } 
+});
+
+// ACCEPTABLE (If you MUST use QueryBuilder):
+const qb = this.repository.createQueryBuilder('user')
+  .where('user.isActive = :active', { active: 1 }); // Manually cast to integer 1 or 0
+```
+
+### 11. Performance Optimization
 
 **Query Optimization:**
 ```typescript

@@ -371,3 +371,38 @@ Token cũ bị dùng lại → `bcrypt.compare` fail → Log `[SECURITY] Token r
 - `backend/src/modules/customers/exceptions/customer.exceptions.ts`
 - `frontend/src/app/(dashboard)/layout.tsx` (Sidebar sync)
 - `frontend/src/app/(dashboard)/duyet-phep/page.tsx` (Antd Fix + Processing logic)
+
+---
+
+## [2026-04-17 10:45] | Users Module Security Hardening & TypeORM Dropdown Fix | Status: Success
+
+**Actor:** Agent
+
+**Bối cảnh:** Toàn bộ Module Quản lý Nhân sự (`/users`) đang bị lộ (trước đó Employee/Managers cũng có thể list nhân sự). Màn hình "Chia Data" xuất hiện lỗi 403 Forbidden do API dropdown dùng chung Auth Guard. Ngoài ra Dropdown bị lộ các tài khoản Deactive. Yêu cầu thắt chặt bảo mật Module Users: Chỉ Admin, đồng thời khắc phục rớt API TypeORM và hiển thị Data deactive.
+
+**Các hạng mục đã hoàn thành:**
+
+### 1. 🛡️ Thắt chặt Quyền truy cập Module Nhận sự (CHỈ ADMIN)
+- **Frontend Sidebar (`layout.tsx`)**: Tab "Nhân viên" hoàn toàn bị ẩn với Manager, Assistant, và Employee (`user.role === 'admin'` check).
+- **Frontend Routing Guard (`users/page.tsx`)**: Bổ sung `useEffect` Kick-out. Bất cứ ai thay đổi URL thành `/users` mà không phải Admin sẽ bị dội ngược về `/customers`. Render Lifecycle trả về `null` trong lúc Redirect để chặn lộ giao diện.
+- **Backend Service Defense in Depth (`users.service.ts`)**: Hàm `findOne` chặn toàn bộ request gọi thông tin người khác nếu Role khác Admin. 
+- **Controller Decorators (`users.controller.ts`)**: Thu hẹp toàn bộ CRUD endpoint `@Get`, `@Get(':id')`, `@Post`, `@Patch` về chuẩn `@Roles(Role.ADMIN)`. Nhưng vẫn linh động mở riêng `/users/me` cho mọi user lấy thông tin cá nhân.
+
+### 2. 🔗 Phục hồi chức năng Chia Data Dropdown (`/users/all`)
+- **Fix lỗi 403 Failed to Assign**: Tách riêng Endpoints list `SalesUserSelect` ra khỏi Auth blocks. Restore endpoint `GET /users/all` trở lại `@Roles(Role.ADMIN, Role.MANAGER, Role.ASSISTANT, Role.EMPLOYEE)` để phục vụ thanh thả Dropdown Select Sales.
+
+### 3. 🐛 Fix Bug "TypeORM QueryBuilder ngưng đọc Boolean Transformer"
+- **Nguyên nhân**: Màn dropdown hiện tất cả bao gồm người Mất việc (deactive) thay vì chỉ hiện Account Active. TypeORM `QueryBuilder.where('user.isActive = :active', { active: true })` truyền chuỗi `true` thẳng vào SQLite bypass custom `BooleanTransformer` làm hệ cơ sở dữ liệu ngầm cho vượt qua filter.
+- **Giải pháp**: Xóa cấu trúc `createQueryBuilder`, thay toàn bộ hàm `findEmployees` về hàm Native Repository Find: `this.usersRepository.find({ where: { isActive: true } })`. Bộ lọc của Native Find tự rà trúng Transformer đổi từ JS boolean `true` sang Int `1` của DB.
+
+### 4. 🗃️ Switch Table về Backend Pagination
+- **Chữa Lỗi Ẩn User Tắt Active**: Module Table danh sách `/users` Frontend ban đầu gọi nhầm endpoint `usersApi.getUsersList()` lấy data từ hàm dropdown, vốn đã lock `isActive: true`.
+- Mở lại route trực tiếp về Endpoint Pagination `usersApi.getUsers({ page, limit })`, do backend Controller mặc định không gán `isActive = true` trừ khi có param - do đó Frontend Table tự động load full lịch sử DB hỗ trợ cả các Account "Đã nghỉ việc". Update cột Table mapping màu thẻ "Đang hoạt động" (`green`), và "Không hoạt động" (`default`).
+
+**Files Changed trong phiên này:**
+- `AZ-Workbase Skills/SKILL_NESTJS_BACKEND.md` (Update Bug TypeORM)
+- `frontend/src/app/(dashboard)/layout.tsx` (Menu render root)
+- `frontend/src/app/(dashboard)/users/page.tsx` (Role Guard & Paginated Table hook)
+- `frontend/src/components/customers/SalesUserSelect.tsx` (Placeholder updates)
+- `backend/src/modules/users/users.service.ts` (Deep Guard, FindOne rules, Find vs QB)
+- `backend/src/modules/users/users.controller.ts` (Guards Refactoring)
