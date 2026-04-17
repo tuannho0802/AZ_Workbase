@@ -3,7 +3,7 @@
 import { useState, useEffect } from 'react';
 import { Table, Card, Button, Space, Tag, App, Modal, Form, Input, Select, Switch, Spin } from 'antd';
 import { UserAddOutlined, EditOutlined, KeyOutlined, ReloadOutlined } from '@ant-design/icons';
-import { useUsersList } from '@/lib/hooks/useUsers';
+
 import { useAuthStore } from '@/lib/stores/auth.store';
 import { useRouter } from 'next/navigation';
 import { usersApi } from '@/lib/api/users.api';
@@ -11,6 +11,7 @@ import { useDepartments } from '@/lib/hooks/useDepartments';
 import dayjs from 'dayjs';
 
 export default function UsersPage() {
+  const [users, setUsers] = useState<any[]>([]);
   const [loading, setLoading] = useState(false);
   const [total, setTotal] = useState(0);
   const [page, setPage] = useState(1);
@@ -26,8 +27,21 @@ export default function UsersPage() {
   const { user } = useAuthStore();
   const router = useRouter();
   
-  // Dùng hook useUsersList để lấy danh sách nhân viên
-  const { users, isLoading: usersLoading, refetch } = useUsersList();
+  const fetchUsers = async () => {
+    setLoading(true);
+    try {
+      const res = await usersApi.getUsers({ page, limit: pageSize });
+      if (res && res.data) {
+        setUsers(res.data);
+        setTotal(res.total);
+      }
+    } catch (err) {
+      console.error(err);
+      message.error('Lấy danh sách nhân viên thất bại');
+    } finally {
+      setLoading(false);
+    }
+  };
 
 
 
@@ -39,8 +53,10 @@ export default function UsersPage() {
   }, [user, router, message]);
 
   useEffect(() => {
-    refetch();
-  }, [refetch]);
+    if (user?.role === 'admin') {
+      fetchUsers();
+    }
+  }, [user, page, pageSize]);
 
   const handleSave = async (values: any) => {
     try {
@@ -67,7 +83,7 @@ export default function UsersPage() {
       
       setIsModalOpen(false);
       form.resetFields();
-      await refetch();
+      fetchUsers();
     } catch (error: any) {
       console.error("Create/Update Error Detail:", error.response?.data);
       const errorData = error.response?.data;
@@ -120,7 +136,7 @@ export default function UsersPage() {
       key: 'status', 
       dataIndex: 'isActive',
       render: (val: any) => {
-        return Number(val) === 1 ? <Tag color="green">Đang hoạt động</Tag> : <Tag color="red">Khóa</Tag>;
+        return val ? <Tag color="green">Đang hoạt động</Tag> : <Tag color="red">Không hoạt động</Tag>;
       }
     },
     {
@@ -168,7 +184,7 @@ export default function UsersPage() {
         </Space>
       }
     >
-      {usersLoading ? (
+      {loading && users.length === 0 ? (
         <div className="flex justify-center items-center my-10 py-10">
           <Spin size="large" description="Đang nạp dữ liệu..." />
         </div>
