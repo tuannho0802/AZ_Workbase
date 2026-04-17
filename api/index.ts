@@ -1,4 +1,5 @@
 // api/index.ts
-// Entry point cho Vercel serverless function
-// Import và khởi động ứng dụng NestJS từ backend
-import '../backend/src/main';
+// Chuyển tiếp handler từ backend để tránh lỗi thiếu module ở root
+import handler from '../backend/src/vercel';
+
+export default handler;
