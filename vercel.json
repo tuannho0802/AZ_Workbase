@@ -11,16 +11,5 @@
       "destination": "/api/index"
     }
   ],
-  "buildCommand": "cd backend && npm install && npm run build",
-  "experimentalServices": {
-    "frontend": {
-      "entrypoint": "frontend",
-      "routePrefix": "/",
-      "framework": "nextjs"
-    },
-    "backend": {
-      "entrypoint": "backend",
-      "routePrefix": "/_/backend"
-    }
-  }
+  "buildCommand": "cd backend && npm install && npm run build"
 }
