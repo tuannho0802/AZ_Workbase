@@ -22,14 +22,20 @@ async function bootstrap() {
   // Global exception filter
   app.useGlobalFilters(new AllExceptionsFilter());
 
-  // CORS
+  // CORS: Cho phép origin từ biến môi trường + localhost
+  const allowedOrigins = [
+    'http://localhost:3000',
+    'http://localhost:3001',
+    'http://127.0.0.1:3000',
+  ];
+
+  const frontendUrl = process.env.FRONTEND_URL;
+  if (frontendUrl) {
+    allowedOrigins.push(frontendUrl);
+  }
+
   app.enableCors({
-    origin: [
-      'http://localhost:3000',
-      'http://localhost:3001',
-      'http://127.0.0.1:3000',
-      'https://azworkbase.com',
-    ],
+    origin: allowedOrigins,
     credentials: true,
     methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
     allowedHeaders: ['Content-Type', 'Authorization'],
