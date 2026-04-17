@@ -2,8 +2,7 @@ import axios, { AxiosError, InternalAxiosRequestConfig } from 'axios';
 import { showMessage } from '@/components/common/AntdAppProvider';
 import { useAuthStore } from '../stores/auth.store';
 
-const isProduction = process.env.NODE_ENV === 'production';
-const API_BASE_URL = isProduction ? '/api' : 'http://localhost:3001/api';
+const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001/api';
 
 const axiosInstance = axios.create({
   baseURL: API_BASE_URL,
