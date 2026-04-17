@@ -170,10 +170,13 @@ export class UsersService {
       delete (updateDto as any).password;
     }
 
-    // 3. Merge data
+    // 3. Clone for audit
+    const oldData = { ...user };
+
+    // 4. Merge data
     Object.assign(user, updateDto);
 
-    // 4. CRITICAL: PHẢI CÓ SAVE()
+    // 5. CRITICAL: PHẢI CÓ SAVE()
     const savedUser = await this.usersRepository.save(user);
 
     if (callerId) {
@@ -182,7 +185,7 @@ export class UsersService {
         'UPDATE_USER',
         'user',
         (savedUser as any).id,
-        null,
+        oldData,
         savedUser,
       );
     }

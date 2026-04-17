@@ -17,6 +17,16 @@ export interface AuditLog {
   userAgent: string | null;
   createdAt: string;
   user: AuditUser;
+  targetCustomer?: {
+    id: number;
+    name: string;
+    deletedAt?: string | null;
+  };
+}
+
+export interface AuditSettings {
+  enabled: boolean;
+  retentionDays: number;
 }
 
 export interface AuditFilters {

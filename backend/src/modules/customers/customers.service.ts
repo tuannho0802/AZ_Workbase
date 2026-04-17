@@ -472,6 +472,8 @@ export class CustomersService {
       (updateCustomerDto as any).closedDate = todayStr;
     }
     
+    const oldData = { ...customer };
+    
     try {
       this.customersRepository.merge(customer, {
         ...updateCustomerDto,
@@ -489,7 +491,7 @@ export class CustomersService {
         'UPDATE_CUSTOMER',
         'customer',
         (saved as any).id,
-        null,
+        oldData,
         saved,
       );
       return saved;

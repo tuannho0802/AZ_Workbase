@@ -11,9 +11,11 @@ import { DepartmentsModule } from './modules/departments/departments.module';
 import { DepositsModule } from './modules/deposits/deposits.module';
 import { LeaveRequestsModule } from './modules/leave-requests/leave-requests.module';
 import { AuditModule } from './modules/audit/audit.module';
+import { ScheduleModule } from '@nestjs/schedule';
 
 @Module({
   imports: [
+    ScheduleModule.forRoot(),
     // Configuration module
     ConfigModule.forRoot({
       isGlobal: true,
