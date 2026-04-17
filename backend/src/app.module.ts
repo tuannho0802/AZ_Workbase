@@ -11,7 +11,8 @@ import { DepartmentsModule } from './modules/departments/departments.module';
 import { DepositsModule } from './modules/deposits/deposits.module';
 import { LeaveRequestsModule } from './modules/leave-requests/leave-requests.module';
 import { AuditModule } from './modules/audit/audit.module';
-@Module({
+import { KeepAliveController } from './keep-alive/keep-alive.controller';
+@Module({ 
   imports: [
     // Configuration module
     ConfigModule.forRoot({
@@ -35,7 +36,7 @@ import { AuditModule } from './modules/audit/audit.module';
     LeaveRequestsModule,
     AuditModule,
   ],
-  controllers: [AppController],
+  controllers: [AppController, KeepAliveController],
   providers: [AppService],
 })
 export class AppModule {}
