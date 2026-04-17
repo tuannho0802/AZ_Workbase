@@ -15,7 +15,7 @@ import { ScheduleModule } from '@nestjs/schedule';
 
 @Module({
   imports: [
-    ScheduleModule.forRoot(),
+    // ScheduleModule.forRoot(),
     // Configuration module
     ConfigModule.forRoot({
       isGlobal: true,
