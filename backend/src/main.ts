@@ -49,15 +49,26 @@ async function bootstrap() {
     maxAge: 3600,
   });
 
-  // Swagger documentation (Tiếng Việt như yêu cầu)
+  // backend/src/main.ts (phần Swagger)
   const config = new DocumentBuilder()
     .setTitle('AZWorkbase API')
     .setDescription('Tài liệu API cho Hệ thống quản lý dữ liệu Marketing AZWorkbase')
     .setVersion('1.0')
     .addBearerAuth()
     .build();
+
   const document = SwaggerModule.createDocument(app, config);
-  SwaggerModule.setup('api/docs', app, document);
+
+  // 🔥 Cấu hình Swagger UI tải từ CDN để tránh lỗi 404 trên Vercel
+  SwaggerModule.setup('api/docs', app, document, {
+    customCssUrl: [
+      'https://cdnjs.cloudflare.com/ajax/libs/swagger-ui/5.11.0/swagger-ui.min.css',
+    ],
+    customJs: [
+      'https://cdnjs.cloudflare.com/ajax/libs/swagger-ui/5.11.0/swagger-ui-bundle.js',
+      'https://cdnjs.cloudflare.com/ajax/libs/swagger-ui/5.11.0/swagger-ui-standalone-preset.js',
+    ],
+  });
 
   const port = process.env.PORT || 3001;
   await app.listen(port);
