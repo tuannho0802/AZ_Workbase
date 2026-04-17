@@ -5,7 +5,7 @@ import { AuditLog } from '../../database/entities/audit-log.entity';
 import { Setting } from '../../database/entities/setting.entity';
 import { Customer } from '../../database/entities/customer.entity';
 import { GetAuditLogsDto } from './dto/get-audit-logs.dto';
-import { Cron, CronExpression } from '@nestjs/schedule';
+// import { Cron, CronExpression } from '@nestjs/schedule';
 
 @Injectable()
 export class AuditService {
@@ -166,7 +166,7 @@ export class AuditService {
   }
 
   // Automation
-  @Cron(CronExpression.EVERY_DAY_AT_3AM)
+  // @Cron(CronExpression.EVERY_DAY_AT_3AM)
   async handleCleanupCron() {
     const settings = await this.getCleanupSettings();
     if (!settings.enabled) return;
