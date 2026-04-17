@@ -122,10 +122,17 @@ export default function AuditLogsPage() {
         toDate: dateRange?.[1]?.endOf('day').toISOString(),
       };
       const res = await auditApi.getLogs(filters);
-      setLogs(res.data);
-      setTotal(res.total);
-    } catch {
+      if (res && res.data) {
+        setLogs(res.data);
+        setTotal(res.total || 0);
+      } else {
+        setLogs([]);
+        setTotal(0);
+      }
+    } catch (error) {
+      console.error('Fetch logs error:', error);
       message.error('Không thể tải nhật ký hệ thống');
+      setLogs([]);
     } finally {
       setLoading(false);
     }
@@ -164,6 +171,8 @@ export default function AuditLogsPage() {
   };
 
   const handleBulkDelete = () => {
+    if (selectedRowKeys.length === 0) return;
+
     modal.confirm({
       title: 'Xác nhận xóa hàng loạt',
       icon: <ExclamationCircleOutlined color="red" />,
@@ -175,18 +184,29 @@ export default function AuditLogsPage() {
         </div>
       ),
       onOk: async () => {
-        const input = (document.getElementById('confirm-input') as HTMLInputElement).value;
+        const inputEl = document.getElementById('confirm-input') as HTMLInputElement;
+        const input = inputEl ? inputEl.value : '';
+
         if (input !== 'XÁC NHẬN') {
           message.error('Mã xác nhận không đúng');
           return Promise.reject();
         }
+
         try {
-          await auditApi.bulkDelete(selectedRowKeys as number[]);
-          message.success('Đã xóa thành công');
+          const idsToDelete = [...selectedRowKeys] as number[];
+          await auditApi.bulkDelete(idsToDelete);
+
+          message.success(`Đã xóa thành công ${idsToDelete.length} bản ghi`);
           setSelectedRowKeys([]);
+
+          // Filter logs locally first for immediate UI update and to prevent undefined issues
+          setLogs(prev => prev ? prev.filter(log => !idsToDelete.includes(log.id)) : []);
+
+          // Refresh to sync with server pagination
           fetchLogs();
-        } catch {
-          message.error('Lỗi khi xóa bản ghi');
+        } catch (error) {
+          console.error('Bulk delete error:', error);
+        // Error message is handled by axios interceptor
         }
       }
     });
@@ -211,17 +231,22 @@ export default function AuditLogsPage() {
           message.error('Vui lòng chọn khoảng thời gian');
           return Promise.reject();
         }
-        const input = (document.getElementById('cleanup-confirm') as HTMLInputElement).value;
+
+        const inputEl = document.getElementById('cleanup-confirm') as HTMLInputElement;
+        const input = inputEl ? inputEl.value : '';
+
         if (input !== 'XÁC NHẬN') {
           message.error('Mã xác nhận không đúng');
           return Promise.reject();
         }
+
         try {
           const res = await auditApi.cleanupByRange(range[0].toISOString(), range[1].toISOString());
-          message.success(`Đã dọn dẹp thành công ${res.count} bản ghi`);
+          const count = res?.count ?? 0;
+          message.success(`Đã dọn dẹp thành công ${count} bản ghi`);
           fetchLogs();
-        } catch {
-          message.error('Lỗi khi thực hiện dọn dẹp');
+        } catch (error) {
+          console.error('Cleanup error:', error);
         }
       }
     });
@@ -431,7 +456,7 @@ export default function AuditLogsPage() {
             <Card title="Cài đặt dọn dẹp tự động" style={{ maxWidth: 600, borderRadius: 8 }}>
               <Space orientation={"vertical" as any} size={24} style={{ width: '100%' }}>
                 <Alert
-                  message="Lưu ý về dọn dẹp hệ thống"
+                  title="Lưu ý về dọn dẹp hệ thống"
                   description="Khi bật tự động dọn dẹp, hệ thống sẽ chạy một tiến trình xóa các bản ghi cũ hàng ngày vào lúc 3:00 AM."
                   type="info"
                   showIcon

@@ -1,7 +1,7 @@
 'use client';
 
 import React from 'react';
-import { Table, Tag, Typography, Space, Empty, Card, Badge, Divider, Alert } from 'antd';
+import { Table, Tag, Typography, Space, Empty, Card, Badge, Alert } from 'antd';
 import { ArrowRightOutlined, InfoCircleOutlined, PlusOutlined, DeleteOutlined, EditOutlined } from '@ant-design/icons';
 
 const { Text } = Typography;
