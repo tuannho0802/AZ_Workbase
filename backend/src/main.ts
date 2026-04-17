@@ -7,8 +7,13 @@ import { AllExceptionsFilter } from './common/filters/http-exception.filter';
 async function bootstrap() {
   const app = await NestFactory.create(AppModule);
 
-  // Global prefix
-  app.setGlobalPrefix('api');
+  // 🔥 Xác định môi trường
+  const isVercelProduction = process.env.VERCEL === '1' && process.env.NODE_ENV === 'production';
+
+  // 🔥 Chỉ thêm prefix 'api' khi KHÔNG chạy trên Vercel production
+  if (!isVercelProduction) {
+    app.setGlobalPrefix('api');
+  }
 
   // Global validation pipe
   app.useGlobalPipes(
@@ -22,12 +27,17 @@ async function bootstrap() {
   // Global exception filter
   app.useGlobalFilters(new AllExceptionsFilter());
 
-  // CORS: Cho phép origin từ biến môi trường + localhost
+  // 🔥 CORS: Cho phép origin từ biến môi trường + localhost
   const allowedOrigins = [
     'http://localhost:3000',
     'http://localhost:3001',
     'http://127.0.0.1:3000',
   ];
+
+  const vercelUrl = process.env.VERCEL_URL;
+  if (vercelUrl) {
+    allowedOrigins.push(`https://${vercelUrl}`);
+  }
 
   const frontendUrl = process.env.FRONTEND_URL;
   if (frontendUrl) {
