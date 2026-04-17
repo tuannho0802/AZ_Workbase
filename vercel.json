@@ -8,7 +8,8 @@
     "backend": {
       "entrypoint": "backend",
       "routePrefix": "/api",
-      "includeFiles": "node_modules/**"
+      "includeFiles": "node_modules/**",
+      "excludeFiles": "node_modules/.cache/**"
     }
   }
 }
