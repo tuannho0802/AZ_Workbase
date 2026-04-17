@@ -4,6 +4,8 @@ import { useState, useEffect } from 'react';
 import { Table, Card, Button, Space, Tag, App, Modal, Form, Input, Select, Switch, Spin } from 'antd';
 import { UserAddOutlined, EditOutlined, KeyOutlined, ReloadOutlined } from '@ant-design/icons';
 import { useUsersList } from '@/lib/hooks/useUsers';
+import { useAuthStore } from '@/lib/stores/auth.store';
+import { useRouter } from 'next/navigation';
 import { usersApi } from '@/lib/api/users.api';
 import { useDepartments } from '@/lib/hooks/useDepartments';
 import dayjs from 'dayjs';
@@ -21,12 +23,20 @@ export default function UsersPage() {
   const [form] = Form.useForm();
   const [resetForm] = Form.useForm();
   const { departments } = useDepartments();
+  const { user } = useAuthStore();
+  const router = useRouter();
   
   // Dùng hook useUsersList để lấy danh sách nhân viên
   const { users, isLoading: usersLoading, refetch } = useUsersList();
 
 
 
+  useEffect(() => {
+    if (user && user.role !== 'admin') {
+      message.error("Bạn không có quyền truy cập trang này");
+      router.replace('/customers');
+    }
+  }, [user, router, message]);
 
   useEffect(() => {
     refetch();
@@ -141,6 +151,10 @@ export default function UsersPage() {
       ),
     },
   ];
+
+  if (user && user.role !== 'admin') {
+    return null; // Return null while redirecting
+  }
 
   return (
     <Card 

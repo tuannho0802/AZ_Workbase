@@ -138,12 +138,12 @@ export default function DashboardLayout({
               label: 'Duyệt phép',
               onClick: () => router.push('/duyet-phep'),
             }] : []),
-            {
+            ...(['admin'].includes(user?.role || '') ? [{
               key: 'users',
               icon: <UserOutlined />,
               label: 'Nhân viên',
               onClick: () => router.push('/users'),
-            },
+            }] : []),
           ]}
         />
       </Sider>

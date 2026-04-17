@@ -27,7 +27,7 @@ export class UsersController {
   }
 
   @Get()
-  @Roles(Role.ADMIN, Role.MANAGER, Role.ASSISTANT, Role.EMPLOYEE)
+  @Roles(Role.ADMIN)
   @ApiOperation({ summary: 'Danh sách nhân viên (Phân trang & Filter)' })
   async findAll(
     @Request() req: any,
@@ -46,6 +46,19 @@ export class UsersController {
       page: page ? +page : 1,
       limit: limit ? +limit : 20,
     });
+  }
+
+  @Get('me')
+  @ApiOperation({ summary: 'Lấy thông tin cá nhân của người đang đăng nhập' })
+  async getProfile(@Request() req: any) {
+    return this.usersService.findById(req.user.id);
+  }
+
+  @Get(':id')
+  @Roles(Role.ADMIN)
+  @ApiOperation({ summary: 'Lấy thông tin chi tiết nhân viên theo ID' })
+  async findOne(@Param('id') id: string, @Request() req: any) {
+    return this.usersService.findOne(+id, req.user.id, req.user.role);
   }
 
   @Post()

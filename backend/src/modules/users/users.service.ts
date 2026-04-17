@@ -28,6 +28,17 @@ export class UsersService {
     return this.usersRepository.findOne({ where: { id } });
   }
 
+  async findOne(id: number, currentUserId: number, currentUserRole: string): Promise<User | null> {
+    if (currentUserRole !== Role.ADMIN && id !== currentUserId) {
+      throw new ForbiddenException('Bạn không có quyền xem thông tin nhân viên khác');
+    }
+    const user = await this.usersRepository.findOne({ where: { id }, relations: ['department'] });
+    if (!user) {
+      throw new NotFoundException('Không tìm thấy nhân viên');
+    }
+    return user;
+  }
+
   async updateLastLogin(id: number): Promise<void> {
     await this.usersRepository.update(id, { lastLoginAt: new Date() });
   }
