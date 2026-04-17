@@ -17,16 +17,31 @@ export const getTypeOrmConfig = (configService: ConfigService): TypeOrmModuleOpt
     logging: configService.get('NODE_ENV') === 'development',
   };
 
+  // Cấu hình pool chung (áp dụng cho cả production và development)
+  const poolConfig = {
+    connectionLimit: 10,        // Tối đa 10 connection trong pool
+    connectTimeout: 10000,      // Timeout khi thiết lập kết nối mới (10s)
+    acquireTimeout: 10000,      // Timeout khi lấy connection từ pool (10s)
+    poolPingInterval: 10000,    // Ping database mỗi 10s để giữ kết nối sống
+  };
+
   if (isProduction) {
     const sslCert = configService.get('DB_CA_CERT');
     if (sslCert) {
       return {
         ...baseConfig,
         ssl: { ca: sslCert },
-        extra: { ssl: { ca: sslCert } },
+        extra: {
+          ssl: { ca: sslCert },
+          ...poolConfig,        // Thêm pool config vào extra
+        },
       };
     }
   }
 
-  return baseConfig;
+  // Môi trường development cũng nên dùng pool để tránh quá tải
+  return {
+    ...baseConfig,
+    extra: poolConfig,
+  };
 };
