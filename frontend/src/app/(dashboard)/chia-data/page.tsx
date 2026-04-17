@@ -73,7 +73,7 @@ export default function ChiaDataPage() {
 
   // Auth State
   const router = useRouter();
-  const { isAuthenticated, isHydrated } = useAuthStore();
+  const { user, isAuthenticated, isHydrated } = useAuthStore();
 
   useEffect(() => {
     if (isHydrated && !isAuthenticated) {
@@ -148,9 +148,19 @@ export default function ChiaDataPage() {
     },
     {
       title: 'Tên khách hàng', dataIndex: 'name', width: 200,
-      render: (v: string | null) => v
-        ? <Text strong>{v}</Text>
-        : <Text type="secondary" italic>Chưa có tên</Text>,
+      render: (v: string | null, r: Customer) => {
+        const isMyPrimary = r.salesUser?.id === user?.id;
+        return (
+          <Space>
+            {isMyPrimary && (
+              <Tooltip title="Bạn đang là Sales phụ trách chính">
+                <Tag color="green" style={{ margin: 0 }}>👤</Tag>
+              </Tooltip>
+            )}
+            {v ? <Text strong>{v}</Text> : <Text type="secondary" italic>Chưa có tên</Text>}
+          </Space>
+        );
+      }
     },
     {
       title: 'SĐT', dataIndex: 'phone', width: 130,
@@ -170,8 +180,8 @@ export default function ChiaDataPage() {
       render: (v: string | null) => v || '-',
     },
     {
-      title: 'Data Owner', width: 130,
-      render: (_: any, r: Customer) => r.createdBy?.name || 'Admin',
+      title: 'Người tạo', width: 130,
+      render: (_: any, r: Customer) => r.createdBy?.name || 'Hệ thống',
     },
     {
       title: 'Ngày nhập', dataIndex: 'inputDate', width: 110,
@@ -199,17 +209,27 @@ export default function ChiaDataPage() {
         <Text type="secondary">Chưa có</Text>,
     },
     {
-      title: 'Sales phụ trách', width: 150,
-      render: (_: any, r: Customer) => r.salesUser
-        ? (
-          <Space>
-            <Avatar size="small" style={{ backgroundColor: '#1890ff' }}>
-              {r.salesUser.name?.[0]?.toUpperCase()}
-            </Avatar>
-            {r.salesUser.name}
+      title: 'Sales Phụ trách chính', width: 180,
+      render: (_: any, r: any) => {
+        const primarySales = r.salesUser;
+        const allAssignees = r.activeAssignees || [];
+        const sharedSales = allAssignees.filter((a: any) => a.id !== primarySales?.id);
+
+        if (!primarySales && sharedSales.length === 0) {
+          return <Text type="secondary">-</Text>;
+        }
+
+        return (
+          <Space size={[0, 4]} align="center" wrap>
+            {primarySales ? <Tag color="blue" title="Sales phụ trách chính">{primarySales.name}</Tag> : <Text type="secondary">Chưa có Primary</Text>}
+            {sharedSales.length > 0 && (
+              <Tooltip title={`Sales được chia:\n${sharedSales.map((a: any) => a.name).join(', ')}`}>
+                <Tag color="cyan">+{sharedSales.length}</Tag>
+              </Tooltip>
+            )}
           </Space>
-        )
-        : <Text type="secondary">-</Text>,
+        );
+      },
     },
     {
       title: 'Nguồn', dataIndex: 'source', width: 100,
@@ -217,8 +237,8 @@ export default function ChiaDataPage() {
         ? <Tag color="blue">{v}</Tag> : '-',
     },
     {
-      title: 'Data Owner', width: 130,
-      render: (_: any, r: Customer) => r.createdBy?.name || 'Admin',
+      title: 'Người tạo', width: 130,
+      render: (_: any, r: Customer) => r.createdBy?.name || 'Hệ thống',
     },
     {
       title: 'Ngày nhập', dataIndex: 'inputDate', width: 110,
@@ -264,7 +284,7 @@ export default function ChiaDataPage() {
             border: '1px solid #f0f0f0' 
           }}>
             <Statistic
-              title="Chưa assign"
+              title="Có thể chia"
               value={unassignedData?.pagination?.total ?? 0}
               prefix={<TeamOutlined style={{ color: '#faad14' }} />}
               styles={{ content: { color: '#faad14', fontSize: 28 } }}
@@ -298,7 +318,7 @@ export default function ChiaDataPage() {
                 overflowCount={9999}
                 color="#faad14"
               >
-                <span style={{ paddingRight: 8 }}>📋 Chưa assign</span>
+                <span style={{ paddingRight: 8 }}>📋 Có thể chia</span>
               </Badge>
             ),
             children: (

@@ -1,6 +1,6 @@
 'use client';
 
-import { Descriptions, Tag, Button, Typography } from 'antd';
+import { Descriptions, Tag, Button, Typography, Space } from 'antd';
 import { CalendarOutlined, EditOutlined } from '@ant-design/icons';
 import { Customer } from '@/lib/types/customer.types';
 import dayjs from 'dayjs';
@@ -28,8 +28,35 @@ export const CustomerInfoTab = ({ customer, onEdit }: Props) => {
           <Tag color="blue">{customer.source}</Tag>
         </Descriptions.Item>
         <Descriptions.Item label="Chiến dịch">{customer.campaign || '-'}</Descriptions.Item>
-        <Descriptions.Item label="Sales phụ trách">
-          {customer.salesUser?.name?.trim() || customer.salesUser?.email || '-'}
+        <Descriptions.Item label="Người tạo data">
+          {customer.createdBy?.name || 'Hệ thống'}
+        </Descriptions.Item>
+        <Descriptions.Item label="Sales phụ trách chính">
+          {customer.salesUser ? (
+            <Space>
+              <Text strong>{customer.salesUser.name}</Text>
+              <Tag color="blue">{customer.salesUser.role?.toUpperCase()}</Tag>
+            </Space>
+          ) : (
+            <Text type="secondary" italic>Chưa phân công</Text>
+          )}
+        </Descriptions.Item>
+        <Descriptions.Item label="Sales được chia">
+          {(() => {
+            const primaryId = customer.salesUser?.id;
+            const shared = ((customer as any).activeAssignees || []).filter((a: any) => a.id !== primaryId);
+            if (shared.length === 0) return <Text type="secondary">-</Text>;
+            return (
+              <Space orientation="vertical" size={2}>
+                {shared.map((user: any) => (
+                  <Space key={user.id}>
+                    <Text>{user.name}</Text>
+                    <Tag>{user.role?.toUpperCase()}</Tag>
+                  </Space>
+                ))}
+              </Space>
+            );
+          })()}
         </Descriptions.Item>
         <Descriptions.Item label="Broker">{customer.broker || '-'}</Descriptions.Item>
         <Descriptions.Item label="Ngày nhập data">

@@ -406,3 +406,29 @@ Token cũ bị dùng lại → `bcrypt.compare` fail → Log `[SECURITY] Token r
 - `frontend/src/components/customers/SalesUserSelect.tsx` (Placeholder updates)
 - `backend/src/modules/users/users.service.ts` (Deep Guard, FindOne rules, Find vs QB)
 - `backend/src/modules/users/users.controller.ts` (Guards Refactoring)
+---
+
+### [2026-04-17 11:20] CHUẨN HÓA "PRIMARY SALES" VÀ "SHARED SALES" TOÀN CRM
+
+**Vấn đề:** Khái niệm gán data (Data Owner) bị nhập nhằng, không rõ ai là người chịu trách nhiệm chính (Primary) và ai là người được cộng tác thêm (Shared). Label "Data Owner" gây hiểu lầm giữa người tạo (Creator) và người trực tiếp chăm sóc.
+
+**Giải pháp & Kỹ thuật:**
+1. **Chuẩn hóa Backend Logic:** 
+   - Duy trì `salesUserId` (Primary) và mảng `assignments` (Shared).
+   - Logic `bulkAssign`: Nếu KH chưa có Primary, người được gán đầu tiên sẽ trở thành Primary. Nếu đã có, thì chỉ thêm vào danh sách Shared.
+   - Expand RBAC `/customers/unassigned`: Cho phép Primary Sales nhìn thấy khách mình đang phụ trách trong màn hình chia data để có quyền chủ động chia sẻ data cho người khác.
+2. **UI/UX Refactoring:**
+   - **Label Consistency:** Đổi "Data Owner" hoặc "Người tạo" thành **"Người tạo"** (Hệ thống/Admin). Đổi "Sales" thành **"Sales (Chính + Phụ)"**.
+   - **Visual Hierarchy:** Tại màn hình danh sách, Primary được hiện tên trực tiếp, Shared hiện dưới dạng Badge Tooltip `+N`. Tại Modal Detail, tách rạch ròi 3 dòng: *Người tạo | Phụ trách chính | Sales được chia*.
+   - **User Indicator [👤]:** Thêm icon nhận diện cho Primary Sales khi họ truy cập màn hình `/chia-data` để biết khách nào là "của mình".
+3. **Security Patch:** Thêm logic 403 Forbidden tại `bulkAssign` cấp Backend, chặn đứng hành vi share data của người khác khi không phải là Admin/Manager hoặc Primary/Creator của data đó.
+
+**Files Changed trong phiên này:**
+- `backend/src/database/entities/customer.entity.ts` (Review)
+- `backend/src/modules/customers/customers.service.ts` (Authorize & Unassigned Query Logic)
+- `frontend/src/lib/types/customer.types.ts` (Extending Type System with `role` and `activeAssignees`)
+- `frontend/src/app/(dashboard)/customers/page.tsx` (Table Column UI Refactoring)
+- `frontend/src/app/(dashboard)/chia-data/page.tsx` (Tab Renaming & User Identity)
+- `frontend/src/components/customers/CustomerInfoTab.tsx` (Modal Details Layout Refactoring & Antd Fix)
+
+**Lưu ý Ant Design:** Cập nhật prop `direction` sang `orientation` cho component `<Space />` để tránh Deprecated warnings.

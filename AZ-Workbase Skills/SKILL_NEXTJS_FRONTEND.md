@@ -834,6 +834,13 @@ For tables with many columns (like Customers list), always use `scroll={{ x: 'ma
 />
 ```
 
+#### 8.4. Space Component Deprecation (CRITICAL)
+In recent versions of Ant Design (v6+ preparation), the `direction` prop on the `<Space />` component is deprecated and may be replaced by the `orientation` prop.
+- **BAD:** `<Space direction="vertical" />`
+- **GOOD:** `<Space orientation="vertical" />` (Confirm warning in console before switching)
+
+```
+
 **Customer Filters Component:**
 
 ```typescript
@@ -1309,7 +1316,22 @@ describe('CustomerTable', () => {
 - [React Query](https://tanstack.com/query/latest)
 - [Zustand](https://github.com/pmndrs/zustand)
 
----
+## 13. UI Labeling & Sales Assignment Convention (MANDATORY)
 
-**Skill Version:** 1.0.0  
-**Last Updated:** 2024-01-XX
+To ensure clarity in ownership and data flow, follow these naming conventions across all pages:
+
+### 13.1. User Interaction Labels
+- **BAD:** "Data Owner" (Too vague)
+- **GOOD:** "**Người tạo**" (Reference to the record creator/uploader)
+- **GOOD:** "**Sales Phụ trách chính**" (Reference to the Primary Sales responsible for closing)
+- **GOOD:** "**Sales được chia**" (Reference to Shared Sales assisting with the data)
+
+### 13.2. Visual Hierarchy in Tables
+- Display **Primary Sales** as the main name with a blue background Tag.
+- Display **Shared Sales** as a count badge (e.g., `+2`) with a Tooltip containing the full list of names.
+
+### 13.3. Customer Assignment Indication
+In the Assignment/Sharing screens (e.g., `/chia-data`), use a specific icon to help the user identify their own assigned data.
+- **Icon:** `👤` (User icon)
+- **Color:** `green`
+- **Logic:** `isMyPrimary = customer.salesUserId === currentUser.id`

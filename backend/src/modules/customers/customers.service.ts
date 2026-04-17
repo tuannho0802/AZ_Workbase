@@ -297,6 +297,15 @@ export class CustomersService {
       customer.notes.sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime());
     }
 
+    const activeAssignments = await this.assignmentRepository
+      .createQueryBuilder('assignment')
+      .leftJoinAndSelect('assignment.assignedTo', 'assignedTo')
+      .where('assignment.status = :status', { status: 'active' })
+      .andWhere('assignment.customer_id = :id', { id })
+      .getMany();
+
+    (customer as any).activeAssignees = activeAssignments.map((a) => a.assignedTo);
+
     return customer;
   }
 
@@ -485,6 +494,16 @@ export class CustomersService {
           continue;
         }
 
+        // Authorization check: Must be Admin/Manager OR Primary Sales OR Creator of unassigned data
+        if (callerRole !== Role.ADMIN && callerRole !== Role.MANAGER) {
+          const isUnassignedCreator = (customer.salesUserId === null && customer.createdById === callerId);
+          const isPrimarySales = (customer.salesUserId === callerId);
+
+          if (!isUnassignedCreator && !isPrimarySales) {
+            throw new ForbiddenException(`Bạn không có quyền chia khách hàng ID ${customerId} không thuộc quản lý của bạn.`);
+          }
+        }
+
         // 1:N Assignment Logic
         for (const targetUserId of salesUserIds) {
           const existing = await this.assignmentRepository.findOneBy({
@@ -541,11 +560,20 @@ export class CustomersService {
     const qb = this.customersRepository.createQueryBuilder('customer')
       .leftJoinAndSelect('customer.salesUser', 'salesUser')
       .leftJoinAndSelect('customer.createdBy', 'createdBy')
-      .where('customer.deletedAt IS NULL')
-      .andWhere('customer.salesUserId IS NULL');
+      .where('customer.deletedAt IS NULL');
 
-    if (userRole !== Role.ADMIN) {
-      qb.andWhere('customer.createdById = :userId', { userId });
+    // Khách hàng chưa có Primary HOẶC người dùng đang là Primary Sales
+    qb.andWhere(new Brackets(q => {
+      q.where('customer.salesUserId IS NULL')
+       .orWhere('customer.salesUserId = :userId', { userId });
+    }));
+
+    if (userRole !== Role.ADMIN && userRole !== Role.MANAGER) {
+      // User thường chỉ thấy KH chưa Primary NẾU họ tạo ra, HOẶC KH họ là Primary
+      qb.andWhere(new Brackets(q => {
+        q.where('customer.salesUserId IS NULL AND customer.createdById = :userId', { userId })
+         .orWhere('customer.salesUserId = :userId', { userId });
+      }));
     }
 
     // Optional: filter by data owner (creator)

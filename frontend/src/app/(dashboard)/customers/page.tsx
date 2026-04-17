@@ -215,32 +215,24 @@ export default function CustomersPage() {
       ellipsis: { showTitle: true },
     },
     {
-      title: 'Sales',
-      dataIndex: 'activeAssignees',
+      title: 'Sales (Chính + Phụ)',
       key: 'salesUser',
-      width: 160,
+      width: 180,
       render: (_, record: any) => {
-        // Fallback for 1:1 legacy if activeAssignees is not populated
-        const assignees = record.activeAssignees?.length > 0 
-          ? record.activeAssignees 
-          : (record.salesUser ? [record.salesUser] : []);
+        const primarySales = record.salesUser;
+        const allAssignees = record.activeAssignees || [];
+        const sharedSales = allAssignees.filter((a: any) => a.id !== primarySales?.id);
         
-        if (assignees.length === 0) {
+        if (!primarySales && sharedSales.length === 0) {
           return <span style={{ color: '#bbb', fontStyle: 'italic' }}>Chưa gán</span>;
         }
 
-        if (assignees.length === 1) {
-          return <Tag color="blue">{assignees[0].name}</Tag>;
-        }
-
         return (
-          <Space size={[0, 4]} wrap>
-            {assignees.slice(0, 2).map((a: any) => (
-              <Tag color="blue" key={a.id}>{a.name}</Tag>
-            ))}
-            {assignees.length > 2 && (
-              <Tooltip title={assignees.map((a: any) => a.name).join(', ')}>
-                <Tag>+{assignees.length - 2}</Tag>
+          <Space size={[0, 4]} align="center" wrap>
+            {primarySales ? <Tag color="blue" title="Sales phụ trách chính">{primarySales.name}</Tag> : <span style={{ color: '#bbb', fontStyle: 'italic' }}>Chưa có Primary</span>}
+            {sharedSales.length > 0 && (
+              <Tooltip title={`Sales được chia:\n${sharedSales.map((a: any) => a.name).join(', ')}`}>
+                <Tag color="cyan">+{sharedSales.length}</Tag>
               </Tooltip>
             )}
           </Space>

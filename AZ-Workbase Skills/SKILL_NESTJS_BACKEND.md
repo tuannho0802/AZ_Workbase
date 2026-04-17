@@ -876,5 +876,38 @@ export class DepartmentsModule {}
 
 ---
 
-**Skill Version:** 1.0.0  
-**Last Updated:** 2024-01-XX
+### 12. CRM Sales Assignment & Security Logic (MANDATORY)
+
+Follow these patterns when handling customer data sharing and assignment.
+
+### 12.1. Primary vs Shared Ownership
+- **Primary Sales:** Stored in `customer.salesUserId`. The one person responsible for the customer.
+- **Shared Sales:** Stored in `customer_assignments` table. Multiple people who can assist.
+- **Rule:** If a customer has no Primary Sales, the first person gán (assigned) becomes Primary. If they already have one, new persons are always added as Shared.
+
+### 12.2. Secure Data Sharing (RBAC Expansion)
+Non-admin users (Employee/Assistant) are allowed to share data **ONLY IF** they own it.
+- **Can Share:** 
+  1. The user is the `Primary Sales` of the customer.
+  2. The user is the `Creator` of the customer record AND it is not yet assigned.
+- **Cannot Share:** 
+  1. The user is only a `Shared Sales`.
+  2. The data belongs to someone else.
+
+**Implementation in Service:**
+```typescript
+// Authorization check inside bulkAssign
+if (callerRole !== Role.ADMIN && callerRole !== Role.MANAGER) {
+  const isUnassignedCreator = (customer.salesUserId === null && customer.createdById === callerId);
+  const isPrimarySales = (customer.salesUserId === callerId);
+
+  if (!isUnassignedCreator && !isPrimarySales) {
+    throw new ForbiddenException(`Access Denied`);
+  }
+}
+```
+
+### 12.3. Querying "Shareable" Data
+The `/unassigned` list should include data the user can share to others.
+- **Query Logic:** `(customer.salesUserId IS NULL) OR (customer.salesUserId = :userId)`.
+- **Note:** Admins see all unassigned data + their own. Managers see all data in their department.

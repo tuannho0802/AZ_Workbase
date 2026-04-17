@@ -58,6 +58,7 @@ export interface Customer {
     id: number;
     name: string;
     email?: string;
+    role?: string;
   };
   status: 'closed' | 'pending' | 'potential' | 'lost' | 'inactive';
   broker?: string;
@@ -71,6 +72,7 @@ export interface Customer {
   note?: string;
   latestFTD?: number;
   totalDeposit30Days?: number;
+  activeAssignees?: any[];
   notes?: CustomerNote[];
   deposits?: Deposit[];
   createdById?: number;
