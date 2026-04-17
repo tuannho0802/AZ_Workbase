@@ -1,15 +1,13 @@
 {
-  "functions": {
-    "api/index.ts": {
-      "maxDuration": 10,
-      "memory": 1024
+    "experimentalServices": {
+      "frontend": {
+        "entrypoint": "frontend",
+        "routePrefix": "/",
+        "framework": "nextjs"
+      },
+        "backend": {
+          "entrypoint": "backend",
+          "routePrefix": "/_/backend"
+        }
     }
-  },
-  "rewrites": [
-    {
-      "source": "/api/(.*)",
-      "destination": "/api/index"
-    }
-  ],
-  "buildCommand": "cd backend && npm install && npm run build"
 }
