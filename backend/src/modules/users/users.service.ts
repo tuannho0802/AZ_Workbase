@@ -63,17 +63,16 @@ export class UsersService {
   }
 
   async findEmployees(callerId: number, callerRole: string, targetRole?: string, isFullList = false): Promise<User[]> {
-    const qb = this.usersRepository.createQueryBuilder('user')
-      .leftJoinAndSelect('user.department', 'department')
-      .where('user.isActive = :active', { active: true });
-      
+    const whereCondition: any = { isActive: true };
     if (targetRole) {
-      qb.andWhere('user.role = :targetRole', { targetRole });
+      whereCondition.role = targetRole;
     }
 
-    // Visibility logic: All roles can see all users (Department agnostic)
-
-    return qb.orderBy('user.name', 'ASC').getMany();
+    return this.usersRepository.find({
+      where: whereCondition,
+      relations: ['department'],
+      order: { name: 'ASC' }
+    });
   }
 
   async findAll(userId: number, userRole: string, options: { role?: string; departmentId?: number; isActive?: boolean; search?: string; page?: number; limit?: number }) {

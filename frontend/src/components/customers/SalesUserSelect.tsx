@@ -33,7 +33,7 @@ interface SalesUserSelectProps {
 }
 
 export const SalesUserSelect = ({ 
-  value, onChange, placeholder = 'Tìm kiếm nhân viên...', disabled 
+  value, onChange, placeholder = 'Chọn sales đang hoạt động...', disabled 
 }: SalesUserSelectProps) => {
   const [searchText, setSearchText] = useState('');
 
