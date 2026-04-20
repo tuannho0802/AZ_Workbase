@@ -11,13 +11,35 @@ import * as fs from 'fs';
 async function bootstrap() {
   const app = await NestFactory.create<NestExpressApplication>(AppModule);
 
-  // ✅ Serve static files from public folder
-  const publicPath = join(process.cwd(), 'public');
-  if (fs.existsSync(publicPath)) {
-    app.use(express.static(publicPath));
-    console.log(`[Static] Serving from: ${publicPath}`);
+  // Debug: log process.cwd() để biết path thực tế trên Vercel
+  const cwd = process.cwd();
+  console.log(`[Bootstrap] process.cwd() = ${cwd}`);
+  
+  // Dùng __dirname để tìm public/ tương đối với file compiled
+  // Trên Vercel: __dirname = /var/task/backend/src
+  // public/ nằm ở /var/task/backend/public
+  const publicFromDirname = join(__dirname, '..', 'public');
+  const publicFromCwd = join(cwd, 'public');
+  
+  console.log(`[Static] Trying __dirname path: ${publicFromDirname}`);
+  console.log(`[Static] Trying cwd path: ${publicFromCwd}`);
+
+  // Thử cả 2 path, dùng cái nào tồn tại
+  let publicPath: string | null = null;
+  if (fs.existsSync(publicFromDirname)) {
+    publicPath = publicFromDirname;
+    console.log(`[Static] ✅ Found at __dirname path`);
+  } else if (fs.existsSync(publicFromCwd)) {
+    publicPath = publicFromCwd;
+    console.log(`[Static] ✅ Found at cwd path`);
   } else {
-    console.warn(`[Static] WARNING: public/ not found at ${publicPath}`);
+    console.warn(`[Static] ❌ public/ not found at either path!`);
+  }
+
+  if (publicPath) {
+    // useStaticAssets = NestExpressApplication method, đúng hơn express.static
+    app.useStaticAssets(publicPath);
+    console.log(`[Static] Serving from: ${publicPath}`);
   }
 
   // ✅ Luôn thêm prefix 'api' - KHÔNG cần điều kiện
