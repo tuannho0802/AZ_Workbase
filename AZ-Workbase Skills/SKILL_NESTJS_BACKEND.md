@@ -957,3 +957,91 @@ queryBuilder.leftJoinAndSelect('customer.updatedBy', 'updatedBy');
 // ❌ Bad (might cause frontend to look for record.updater instead of record.updatedBy)
 queryBuilder.leftJoinAndSelect('customer.updatedBy', 'updater');
 ```
+
+---
+
+### 14. Vercel Deployment & Public Assets Management (NEW)
+
+Deploying NestJS to Vercel as a Serverless Function requires specific handling of Entry Points and Static Files.
+
+### 14.1. Entry Point Configuration (vercel.json)
+Always use the source `src/main.ts` as the entry point in `vercel.json` to allow Vercel's `@vercel/node` builder to handle the compilation correctly in an ephemeral environment.
+
+```json
+{
+  "version": 2,
+  "builds": [
+    {
+      "src": "src/main.ts",
+      "use": "@vercel/node",
+      "config": {
+        "includeFiles": ["public/**/*", "dist/public/**/*"]
+      }
+    }
+  ],
+  "routes": [
+    { "src": "/api/(.*)", "dest": "src/main.ts" },
+    { "src": "/(.*)", "dest": "src/main.ts" }
+  ]
+}
+```
+
+### 14.2. Asset Bundling (nest-cli.json)
+Configure NestJS to include the `public` folder in the build artifact (`dist`).
+
+```json
+{
+  "compilerOptions": {
+    "assets": [
+      {
+        "include": "../public/**/*",
+        "outDir": "dist/public",
+        "watchAssets": true
+      }
+    ]
+  }
+}
+```
+
+### 14.3. Robust Static Path Discovery (main.ts)
+Vercel and Local environments have different current working directories relative to the compiled code. Use a dual-path discovery logic to ensure assets are found.
+
+```typescript
+async function bootstrap() {
+  const app = await NestFactory.create<NestExpressApplication>(AppModule);
+
+  const cwd = process.cwd();
+  const publicFromDirname = join(__dirname, '..', 'public');
+  const publicFromCwd = join(cwd, 'public');
+
+  let publicPath: string | null = null;
+  if (fs.existsSync(publicFromDirname)) {
+    publicPath = publicFromDirname;
+  } else if (fs.existsSync(publicFromCwd)) {
+    publicPath = publicFromCwd;
+  }
+
+  if (publicPath) {
+    app.useStaticAssets(publicPath); // Register BEFORE setGlobalPrefix
+    console.log(`[Static] Serving from: ${publicPath}`);
+  }
+
+  app.setGlobalPrefix('api');
+  // ... rest of config
+}
+```
+
+### 14.4. Swagger UI with External Access Token
+To bypass manual login in Swagger UI when it's served on Vercel, use a custom script (`swagger-auth.js`) to read the token from `localStorage`.
+
+```typescript
+// backend/public/swagger-auth.js
+(function() {
+  // Logic to inject token from localStorage into Swagger UI
+})();
+
+// main.ts registration
+SwaggerModule.setup('api/docs', app, document, {
+  customJs: ['/swagger-auth.js'], // Served from public/ via useStaticAssets
+});
+```

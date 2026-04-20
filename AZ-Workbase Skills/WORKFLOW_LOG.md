@@ -432,3 +432,53 @@ Token cũ bị dùng lại → `bcrypt.compare` fail → Log `[SECURITY] Token r
 - `frontend/src/components/customers/CustomerInfoTab.tsx` (Modal Details Layout Refactoring & Antd Fix)
 
 **Lưu ý Ant Design:** Cập nhật prop `direction` sang `orientation` cho component `<Space />` để tránh Deprecated warnings.
+
+---
+
+## [2026-04-20 15:45] | Vercel Deployment & Landing Page Integration | Status: Success
+
+**Actor:** Agent
+
+**Bối cảnh:** Di chuyển Backend NestJS lên Vercel dưới dạng Serverless Function. Xử lý triệt để các vấn đề về phục vụ file tĩnh (CSS/JS/Assets) cho Landing Page `/` và Swagger UI `/api/docs`.
+
+**Các hạng mục đã hoàn thành:**
+
+### 1. 🚀 Vercel Deployment Optimization
+- **Serverless Architecture**: Cấu hình `vercel.json` sử dụng `@vercel/node` với entry point `src/main.ts`.
+- **Static Assets Persistence**: Khắc phục lỗi Vercel không đóng gói thư mục `public/` bằng cách sử dụng `includeFiles` trong `vercel.json` và cấu hình `assets` trong `nest-cli.json` để đồng bộ dữ liệu vào `dist/public`.
+- **Routing**: Phân tách luồng xử lý: `/api/(.*)` cho Backend Logic và `/` cho Landing Page.
+
+### 2. 🏠 Premium Landing Page & Root Handling
+- **Professional UI**: Triển khai trang Landing Page sang trọng tại `/` sử dụng Tailwind CSS, hỗ trợ Responsive và đầy đủ các thành phần (Hero, Features, Contact).
+- **Dynamic Content Removal**: Thay thế phần "Demo Credentials" bằng nút "Contact for Demo" để tăng tính chuyên nghiệp.
+- **Root Logic**: Chỉnh sửa `AppController` để đọc và trả về `index.html` từ thư mục `public` khi người dùng truy cập trang gốc.
+
+### 3. 🔍 Smart Static Discovery (`main.ts`)
+- **Dual-Path Probing**: Cập nhật `main.ts` để tự động dò tìm thư mục `public` tại cả `process.cwd()` (Local) và `__dirname/../public` (Vercel).
+- **Middleware Reordering**: Đăng ký `app.useStaticAssets()` trước khi thiết lập `GlobalPrefix('api')` để đảm bảo các file tĩnh (CSS/Logo/JS) được phục vụ đúng path mà không bị vướng prefix `/api`.
+
+### 4. 🔐 Swagger UI Automation
+- **Auto-Authorization**: Tích hợp `swagger-auth.js` qua `customJs` của Swagger UI. Script này tự động đọc `accessToken` từ `localStorage` (được lưu sau khi đăng nhập ở Landing Page) và gán vào header Authorization của Swagger.
+- **Zero-Touch Config**: Người dùng không cần phải copy-paste token thủ công vào nút "Authorize".
+
+### 5. 🧹 Infrastructure Cleanup
+- **Script Management**: Di chuyển các utility scripts (`check-dates.ts`, `scan-csv.ts`, `verify.ts`) từ thư mục gốc vào `scripts/ts_utility/` để giữ `dist` gọn gàng và tránh lỗi biên dịch của NestJS.
+- **Cross-Platform Compatibility**: Chuẩn hóa `package.json` và `nest-cli.json` để hoạt động ổn định trên cả môi trường Windows (dev) và Linux (Vercel).
+
+**Files Changed trong phiên này:**
+- `backend/vercel.json` (REWRITE)
+- `backend/nest-cli.json` (Assets mapping)
+- `backend/src/main.ts` (Static assets logic + Logger)
+- `backend/src/app.controller.ts` (Landing page handler)
+- `backend/src/app.module.ts` (ServeStatic config)
+- `backend/package.json` (Build scripts optimization)
+- `backend/public/index.html` (Landing page content)
+- `backend/public/swagger-auth.js` (Automation script)
+
+---
+
+## [QUY TRÌNH DEPLOY VERCEL]
+1. `npm run build` để kiểm tra lỗi local.
+2. Đảm bảo `dist/public` có đầy đủ file.
+3. Vercel tự động build từ GitHub.
+4. Kiểm tra Vercel Logs: Tìm `[Static] ✅ Found at __dirname path`.
