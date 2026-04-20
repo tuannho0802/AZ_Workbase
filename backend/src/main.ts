@@ -1,11 +1,16 @@
 import { NestFactory } from '@nestjs/core';
 import { ValidationPipe } from '@nestjs/common';
 import { SwaggerModule, DocumentBuilder } from '@nestjs/swagger';
+import { NestExpressApplication } from '@nestjs/platform-express';
+import { join } from 'path';
 import { AppModule } from './app.module';
 import { AllExceptionsFilter } from './common/filters/http-exception.filter';
 
 async function bootstrap() {
-  const app = await NestFactory.create(AppModule);
+  const app = await NestFactory.create<NestExpressApplication>(AppModule);
+
+  // ✅ Serve static files from public folder
+  app.useStaticAssets(join(process.cwd(), 'public'));
 
   // ✅ Luôn thêm prefix 'api' - KHÔNG cần điều kiện
   app.setGlobalPrefix('api');
@@ -67,6 +72,7 @@ async function bootstrap() {
     customJs: [
       'https://cdnjs.cloudflare.com/ajax/libs/swagger-ui/5.11.0/swagger-ui-bundle.js',
       'https://cdnjs.cloudflare.com/ajax/libs/swagger-ui/5.11.0/swagger-ui-standalone-preset.js',
+      '/swagger-auth.js', // ✅ THÊM DÒNG NÀY – file tĩnh từ thư mục public
     ],
   });
 

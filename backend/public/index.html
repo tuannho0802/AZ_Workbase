@@ -3,39 +3,563 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>AZWorkbase API - Đăng nhập</title>
+  <meta name="description" content="AZWorkbase CRM API - Hệ thống quản lý khách hàng mạnh mẽ cho doanh nghiệp">
+  <title>AZWorkbase API - CRM Platform for Modern Business</title>
+  
+  <!-- Tailwind CSS -->
   <script src="https://cdn.tailwindcss.com"></script>
+  
+  <!-- Custom Tailwind Config -->
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          colors: {
+            primary: {
+              50: '#eff6ff',
+              100: '#dbeafe',
+              500: '#3b82f6',
+              600: '#2563eb',
+              700: '#1d4ed8',
+            }
+          },
+          animation: {
+            'fade-in': 'fadeIn 0.6s ease-out',
+            'slide-up': 'slideUp 0.5s ease-out',
+            'float': 'float 3s ease-in-out infinite',
+          },
+          keyframes: {
+            fadeIn: {
+              '0%': { opacity: '0' },
+              '100%': { opacity: '1' },
+            },
+            slideUp: {
+              '0%': { transform: 'translateY(20px)', opacity: '0' },
+              '100%': { transform: 'translateY(0)', opacity: '1' },
+            },
+            float: {
+              '0%, 100%': { transform: 'translateY(0)' },
+              '50%': { transform: 'translateY(-10px)' },
+            }
+          }
+        }
+      }
+    }
+  </script>
+  
+  <!-- Font Awesome -->
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+  
+  <!-- Custom Styles -->
+  <link rel="stylesheet" href="/styles/landing.css">
 </head>
-<body class="bg-gray-100 flex items-center justify-center min-h-screen">
-  <div class="bg-white p-8 rounded-lg shadow-md w-full max-w-md">
-    <h2 class="text-2xl font-bold mb-6 text-center text-gray-800">🔐 Đăng nhập API</h2>
-    <form id="loginForm" class="space-y-4">
-      <div>
-        <label class="block text-sm font-medium text-gray-700">Email</label>
-        <input type="email" id="email" name="email" required
-               class="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-indigo-500 focus:border-indigo-500">
-      </div>
-      <div>
-        <label class="block text-sm font-medium text-gray-700">Mật khẩu</label>
-        <input type="password" id="password" name="password" required
-               class="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-indigo-500 focus:border-indigo-500">
-      </div>
-      <div id="errorMsg" class="text-red-500 text-sm hidden"></div>
-      <button type="submit"
-              class="w-full bg-indigo-600 text-white py-2 px-4 rounded-md hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2">
-        Đăng nhập
-      </button>
-    </form>
-    <p class="mt-4 text-xs text-gray-500 text-center">Sau khi đăng nhập, bạn sẽ được chuyển đến Swagger UI.</p>
-  </div>
+<body class="bg-gray-50 text-gray-900 font-sans antialiased">
 
+  <!-- Navigation -->
+  <nav class="bg-white shadow-sm sticky top-0 z-50">
+    <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+      <div class="flex justify-between items-center h-16">
+        <!-- Logo -->
+        <div class="flex items-center">
+          <div class="flex-shrink-0 flex items-center space-x-2">
+            <img src="/assets/logo.svg" alt="AZWorkbase Logo" class="h-10 w-10">
+            <span class="text-2xl font-bold bg-gradient-to-r from-blue-600 to-purple-600 bg-clip-text text-transparent">
+              AZWorkbase
+            </span>
+          </div>
+        </div>
+        
+        <!-- Nav Links -->
+        <div class="hidden md:flex items-center space-x-8">
+          <a href="#features" class="text-gray-600 hover:text-gray-900 transition">Tính năng</a>
+          <a href="#endpoints" class="text-gray-600 hover:text-gray-900 transition">API Endpoints</a>
+          <a href="#docs" class="text-gray-600 hover:text-gray-900 transition">Tài liệu</a>
+          <button onclick="scrollToLogin()" class="bg-gradient-to-r from-blue-600 to-purple-600 text-white px-6 py-2 rounded-lg hover:shadow-lg transition transform hover:scale-105">
+            Đăng nhập
+          </button>
+        </div>
+        
+        <!-- Mobile menu button -->
+        <div class="md:hidden">
+          <button onclick="toggleMobileMenu()" class="text-gray-600 hover:text-gray-900">
+            <i class="fas fa-bars text-xl"></i>
+          </button>
+        </div>
+      </div>
+    </div>
+    
+    <!-- Mobile menu -->
+    <div id="mobileMenu" class="hidden md:hidden bg-white border-t">
+      <div class="px-4 py-4 space-y-3">
+        <a href="#features" class="block text-gray-600 hover:text-gray-900">Tính năng</a>
+        <a href="#endpoints" class="block text-gray-600 hover:text-gray-900">API Endpoints</a>
+        <a href="#docs" class="block text-gray-600 hover:text-gray-900">Tài liệu</a>
+        <button onclick="scrollToLogin()" class="w-full bg-gradient-to-r from-blue-600 to-purple-600 text-white px-6 py-2 rounded-lg">
+          Đăng nhập
+        </button>
+      </div>
+    </div>
+  </nav>
+
+  <!-- Hero Section -->
+  <section class="gradient-bg text-white py-20 lg:py-32 animate-fade-in">
+    <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+      <div class="grid md:grid-cols-2 gap-12 items-center">
+        <!-- Left: Text -->
+        <div class="animate-slide-up">
+          <h1 class="text-4xl lg:text-6xl font-bold mb-6 leading-tight">
+            CRM API Platform<br/>
+            <span class="text-blue-200">cho Doanh nghiệp Hiện đại</span>
+          </h1>
+          <p class="text-xl text-blue-100 mb-8 leading-relaxed">
+            Quản lý khách hàng, theo dõi giao dịch, và phân tích dữ liệu với API RESTful mạnh mẽ được xây dựng trên NestJS.
+          </p>
+          
+          <div class="flex flex-col sm:flex-row gap-4">
+            <button onclick="scrollToLogin()" class="bg-white text-purple-600 px-8 py-3 rounded-lg font-semibold hover:shadow-xl transition transform hover:scale-105">
+              Bắt đầu ngay <i class="fas fa-arrow-right ml-2"></i>
+            </button>
+            <a href="#docs" class="glass text-white px-8 py-3 rounded-lg font-semibold text-center hover:bg-white/20 transition">
+              Xem tài liệu <i class="fas fa-book ml-2"></i>
+            </a>
+          </div>
+          
+          <!-- Stats -->
+          <div class="grid grid-cols-3 gap-6 mt-12">
+            <div>
+              <div class="text-3xl font-bold">20+</div>
+              <div class="text-blue-200 text-sm">API Endpoints</div>
+            </div>
+            <div>
+              <div class="text-3xl font-bold">8K+</div>
+              <div class="text-blue-200 text-sm">Customers</div>
+            </div>
+            <div>
+              <div class="text-3xl font-bold">99.9%</div>
+              <div class="text-blue-200 text-sm">Uptime</div>
+            </div>
+          </div>
+        </div>
+        
+        <!-- Right: Illustration/Code Preview -->
+        <div class="hidden md:block animate-float">
+          <div class="relative">
+            <div class="code-block p-6 text-sm relative z-10 shadow-2xl">
+              <div class="flex items-center mb-4">
+                <div class="flex space-x-2">
+                  <div class="w-3 h-3 rounded-full bg-red-500"></div>
+                  <div class="w-3 h-3 rounded-full bg-yellow-500"></div>
+                  <div class="w-3 h-3 rounded-full bg-green-500"></div>
+                </div>
+                <span class="ml-4 text-gray-400 text-xs">Terminal</span>
+              </div>
+              <pre class="text-green-400 font-mono"><code>$ curl -X GET \
+    https://api.azworkbase.com/customers \
+    -H "Authorization: Bearer YOUR_TOKEN"
+  
+  {
+    "data": [
+      {
+        "id": 1,
+        "name": "Nguyễn Văn A",
+        "phone": "0901234567",
+        "status": "closed"
+      }
+    ],
+    "total": 8243
+  }</code></pre>
+            </div>
+            <img src="/assets/api-illustration.svg" alt="API Illustration" class="absolute -bottom-10 -right-10 w-64 h-64 opacity-50 blur-sm z-0">
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Features Section -->
+  <section id="features" class="py-20 bg-white">
+    <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+      <div class="text-center mb-16">
+        <h2 class="text-3xl lg:text-4xl font-bold text-gray-900 mb-4">
+          Tính năng nổi bật
+        </h2>
+        <p class="text-xl text-gray-600 max-w-2xl mx-auto">
+          API được thiết kế để mở rộng, bảo mật và dễ sử dụng
+        </p>
+      </div>
+      
+      <div class="grid md:grid-cols-3 gap-8">
+        <!-- Feature 1 -->
+        <div class="bg-gradient-to-br from-blue-50 to-purple-50 p-8 rounded-xl hover:shadow-xl transition transform hover:scale-105">
+          <div class="w-12 h-12 bg-blue-600 rounded-lg flex items-center justify-center mb-4">
+            <i class="fas fa-shield-alt text-white text-xl"></i>
+          </div>
+          <h3 class="text-xl font-bold mb-3">Bảo mật JWT</h3>
+          <p class="text-gray-600">
+            Xác thực bằng JWT với refresh token, bảo vệ API khỏi truy cập trái phép.
+          </p>
+        </div>
+        
+        <!-- Feature 2 -->
+        <div class="bg-gradient-to-br from-green-50 to-teal-50 p-8 rounded-xl hover:shadow-xl transition transform hover:scale-105">
+          <div class="w-12 h-12 bg-green-600 rounded-lg flex items-center justify-center mb-4">
+            <i class="fas fa-users-cog text-white text-xl"></i>
+          </div>
+          <h3 class="text-xl font-bold mb-3">RBAC</h3>
+          <p class="text-gray-600">
+            Phân quyền theo vai trò (Admin, Manager, Employee) với kiểm soát truy cập chi tiết.
+          </p>
+        </div>
+        
+        <!-- Feature 3 -->
+        <div class="bg-gradient-to-br from-purple-50 to-pink-50 p-8 rounded-xl hover:shadow-xl transition transform hover:scale-105">
+          <div class="w-12 h-12 bg-purple-600 rounded-lg flex items-center justify-center mb-4">
+            <i class="fas fa-database text-white text-xl"></i>
+          </div>
+          <h3 class="text-xl font-bold mb-3">TypeORM + MySQL</h3>
+          <p class="text-gray-600">
+            Database được tối ưu với indexes, soft delete và migration tự động.
+          </p>
+        </div>
+        
+        <!-- Feature 4 -->
+        <div class="bg-gradient-to-br from-orange-50 to-red-50 p-8 rounded-xl hover:shadow-xl transition transform hover:scale-105">
+          <div class="w-12 h-12 bg-orange-600 rounded-lg flex items-center justify-center mb-4">
+            <i class="fas fa-bolt text-white text-xl"></i>
+          </div>
+          <h3 class="text-xl font-bold mb-3">Performance</h3>
+          <p class="text-gray-600">
+            Server-side pagination, caching và query optimization cho 8K+ records.
+          </p>
+        </div>
+        
+        <!-- Feature 5 -->
+        <div class="bg-gradient-to-br from-indigo-50 to-blue-50 p-8 rounded-xl hover:shadow-xl transition transform hover:scale-105">
+          <div class="w-12 h-12 bg-indigo-600 rounded-lg flex items-center justify-center mb-4">
+            <i class="fas fa-file-alt text-white text-xl"></i>
+          </div>
+          <h3 class="text-xl font-bold mb-3">Swagger Docs</h3>
+          <p class="text-gray-600">
+            Tài liệu API tự động với Swagger UI, hỗ trợ test trực tiếp.
+          </p>
+        </div>
+        
+        <!-- Feature 6 -->
+        <div class="bg-gradient-to-br from-yellow-50 to-orange-50 p-8 rounded-xl hover:shadow-xl transition transform hover:scale-105">
+          <div class="w-12 h-12 bg-yellow-600 rounded-lg flex items-center justify-center mb-4">
+            <i class="fas fa-chart-line text-white text-xl"></i>
+          </div>
+          <h3 class="text-xl font-bold mb-3">Analytics</h3>
+          <p class="text-gray-600">
+            Thống kê real-time về khách hàng, giao dịch và hiệu suất sales.
+          </p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- API Endpoints Section -->
+  <section id="endpoints" class="py-20 bg-gray-50">
+    <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+      <div class="text-center mb-16">
+        <h2 class="text-3xl lg:text-4xl font-bold text-gray-900 mb-4">
+          API Endpoints
+        </h2>
+        <p class="text-xl text-gray-600">
+          RESTful API với đầy đủ CRUD operations
+        </p>
+      </div>
+      
+      <div class="grid md:grid-cols-2 gap-6">
+        <!-- Auth Endpoints -->
+        <div class="bg-white p-6 rounded-xl shadow-sm hover:shadow-md transition">
+          <h3 class="text-lg font-bold mb-4 flex items-center">
+            <i class="fas fa-key text-blue-600 mr-2"></i>
+            Authentication
+          </h3>
+          <div class="space-y-3">
+            <div class="flex items-center justify-between py-2 border-b">
+              <span class="method-badge method-post">POST</span>
+              <code class="text-sm text-gray-600 ml-3 flex-1">/api/auth/login</code>
+            </div>
+            <div class="flex items-center justify-between py-2 border-b">
+              <span class="method-badge method-post">POST</span>
+              <code class="text-sm text-gray-600 ml-3 flex-1">/api/auth/refresh</code>
+            </div>
+            <div class="flex items-center justify-between py-2">
+              <span class="method-badge method-get">GET</span>
+              <code class="text-sm text-gray-600 ml-3 flex-1">/api/auth/me</code>
+            </div>
+          </div>
+        </div>
+        
+        <!-- Customers Endpoints -->
+        <div class="bg-white p-6 rounded-xl shadow-sm hover:shadow-md transition">
+          <h3 class="text-lg font-bold mb-4 flex items-center">
+            <i class="fas fa-users text-green-600 mr-2"></i>
+            Customers
+          </h3>
+          <div class="space-y-3">
+            <div class="flex items-center justify-between py-2 border-b">
+              <span class="method-badge method-get">GET</span>
+              <code class="text-sm text-gray-600 ml-3 flex-1">/api/customers</code>
+            </div>
+            <div class="flex items-center justify-between py-2 border-b">
+              <span class="method-badge method-post">POST</span>
+              <code class="text-sm text-gray-600 ml-3 flex-1">/api/customers</code>
+            </div>
+            <div class="flex items-center justify-between py-2 border-b">
+              <span class="method-badge method-patch">PATCH</span>
+              <code class="text-sm text-gray-600 ml-3 flex-1">/api/customers/:id</code>
+            </div>
+            <div class="flex items-center justify-between py-2">
+              <span class="method-badge method-delete">DELETE</span>
+              <code class="text-sm text-gray-600 ml-3 flex-1">/api/customers/:id</code>
+            </div>
+          </div>
+        </div>
+        
+        <!-- Users Endpoints -->
+        <div class="bg-white p-6 rounded-xl shadow-sm hover:shadow-md transition">
+          <h3 class="text-lg font-bold mb-4 flex items-center">
+            <i class="fas fa-user-cog text-purple-600 mr-2"></i>
+            Users
+          </h3>
+          <div class="space-y-3">
+            <div class="flex items-center justify-between py-2 border-b">
+              <span class="method-badge method-get">GET</span>
+              <code class="text-sm text-gray-600 ml-3 flex-1">/api/users</code>
+            </div>
+            <div class="flex items-center justify-between py-2 border-b">
+              <span class="method-badge method-post">POST</span>
+              <code class="text-sm text-gray-600 ml-3 flex-1">/api/users</code>
+            </div>
+            <div class="flex items-center justify-between py-2">
+              <span class="method-badge method-patch">PATCH</span>
+              <code class="text-sm text-gray-600 ml-3 flex-1">/api/users/:id</code>
+            </div>
+          </div>
+        </div>
+        
+        <!-- Stats Endpoints -->
+        <div class="bg-white p-6 rounded-xl shadow-sm hover:shadow-md transition">
+          <h3 class="text-lg font-bold mb-4 flex items-center">
+            <i class="fas fa-chart-bar text-orange-600 mr-2"></i>
+            Statistics
+          </h3>
+          <div class="space-y-3">
+            <div class="flex items-center justify-between py-2 border-b">
+              <span class="method-badge method-get">GET</span>
+              <code class="text-sm text-gray-600 ml-3 flex-1">/api/customers/stats</code>
+            </div>
+            <div class="flex items-center justify-between py-2">
+              <span class="method-badge method-get">GET</span>
+              <code class="text-sm text-gray-600 ml-3 flex-1">/api/customers/:id/deposits</code>
+            </div>
+          </div>
+        </div>
+      </div>
+      
+      <div class="text-center mt-12">
+        <a href="/api/docs" class="inline-flex items-center text-blue-600 hover:text-blue-700 font-semibold">
+          Xem đầy đủ trong Swagger UI 
+          <i class="fas fa-arrow-right ml-2"></i>
+        </a>
+      </div>
+    </div>
+  </section>
+
+  <!-- Login Section -->
+  <section id="login" class="py-20 bg-white">
+    <div class="max-w-md mx-auto px-4">
+      <div class="text-center mb-8">
+        <h2 class="text-3xl font-bold text-gray-900 mb-2">Đăng nhập</h2>
+        <p class="text-gray-600">Truy cập Swagger UI để test API</p>
+      </div>
+      
+      <div class="bg-white p-8 rounded-xl shadow-lg border border-gray-100">
+        <form id="loginForm" class="space-y-5">
+          <div>
+            <label class="block text-sm font-medium text-gray-700 mb-2">
+              <i class="fas fa-envelope text-gray-400 mr-2"></i>Email
+            </label>
+            <input 
+              type="email" 
+              id="email" 
+              name="email" 
+              required
+              placeholder="admin@azworkbase.com"
+              class="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent transition"
+            >
+          </div>
+          
+          <div>
+            <label class="block text-sm font-medium text-gray-700 mb-2">
+              <i class="fas fa-lock text-gray-400 mr-2"></i>Mật khẩu
+            </label>
+            <input 
+              type="password" 
+              id="password" 
+              name="password" 
+              required
+              placeholder="••••••••"
+              class="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent transition"
+            >
+          </div>
+          
+          <div id="errorMsg" class="hidden bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-lg text-sm">
+            <i class="fas fa-exclamation-circle mr-2"></i>
+            <span id="errorText"></span>
+          </div>
+          
+          <button 
+            type="submit"
+            id="submitBtn"
+            class="w-full bg-gradient-to-r from-blue-600 to-purple-600 text-white py-3 px-6 rounded-lg font-semibold hover:shadow-lg transition transform hover:scale-105 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2"
+          >
+            <span id="btnText">Đăng nhập</span>
+            <i id="btnIcon" class="fas fa-arrow-right ml-2"></i>
+          </button>
+        </form>
+        
+        <div class="mt-6 text-center text-sm text-gray-500">
+          <i class="fas fa-info-circle mr-1"></i>
+          Sau khi đăng nhập, bạn sẽ được chuyển đến Swagger UI
+        </div>
+      </div>
+      
+      <!-- Contact for Demo -->
+      <div class="mt-6 bg-blue-50 border border-blue-100 rounded-lg p-4">
+        <div class="text-sm font-medium text-blue-900 mb-2">
+          <i class="fas fa-id-card mr-2"></i>Bạn chưa có tài khoản?
+        </div>
+        <div class="text-sm text-blue-700">
+          Vui lòng liên hệ quản trị viên hoặc gửi yêu cầu tới 
+          <a href="mailto:support@azworkbase.com" class="font-semibold underline hover:text-blue-800">support@azworkbase.com</a> 
+          để được cấp tài khoản Demo và hướng dẫn sử dụng.
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Documentation Section -->
+  <section id="docs" class="py-20 bg-gray-50">
+    <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+      <div class="text-center mb-16">
+        <h2 class="text-3xl lg:text-4xl font-bold text-gray-900 mb-4">
+          Tài liệu & Hỗ trợ
+        </h2>
+        <p class="text-xl text-gray-600">
+          Mọi thứ bạn cần để bắt đầu với AZWorkbase API
+        </p>
+      </div>
+      
+      <div class="grid md:grid-cols-3 gap-8">
+        <a href="/api/docs" class="bg-white p-8 rounded-xl shadow-sm hover:shadow-md transition group">
+          <div class="w-12 h-12 bg-blue-100 rounded-lg flex items-center justify-center mb-4 group-hover:bg-blue-600 transition">
+            <i class="fas fa-book text-blue-600 text-xl group-hover:text-white"></i>
+          </div>
+          <h3 class="text-xl font-bold mb-2">API Documentation</h3>
+          <p class="text-gray-600">Swagger UI với đầy đủ endpoints và schemas</p>
+        </a>
+        
+        <a href="https://github.com/azworkbase" class="bg-white p-8 rounded-xl shadow-sm hover:shadow-md transition group">
+          <div class="w-12 h-12 bg-gray-100 rounded-lg flex items-center justify-center mb-4 group-hover:bg-gray-800 transition">
+            <i class="fab fa-github text-gray-800 text-xl group-hover:text-white"></i>
+          </div>
+          <h3 class="text-xl font-bold mb-2">GitHub Repository</h3>
+          <p class="text-gray-600">Source code, examples và contribution guide</p>
+        </a>
+        
+        <a href="mailto:support@azworkbase.com" class="bg-white p-8 rounded-xl shadow-sm hover:shadow-md transition group">
+          <div class="w-12 h-12 bg-green-100 rounded-lg flex items-center justify-center mb-4 group-hover:bg-green-600 transition">
+            <i class="fas fa-headset text-green-600 text-xl group-hover:text-white"></i>
+          </div>
+          <h3 class="text-xl font-bold mb-2">Support</h3>
+          <p class="text-gray-600">Liên hệ team để được hỗ trợ kỹ thuật</p>
+        </a>
+      </div>
+    </div>
+  </section>
+
+  <!-- Footer -->
+  <footer class="bg-gray-900 text-white py-12">
+    <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+      <div class="grid md:grid-cols-4 gap-8">
+        <div>
+          <h3 class="text-xl font-bold mb-4 bg-gradient-to-r from-blue-400 to-purple-400 bg-clip-text text-transparent">
+            AZWorkbase
+          </h3>
+          <p class="text-gray-400 text-sm">
+            CRM API Platform cho doanh nghiệp hiện đại
+          </p>
+        </div>
+        
+        <div>
+          <h4 class="font-semibold mb-4">Product</h4>
+          <ul class="space-y-2 text-sm text-gray-400">
+            <li><a href="#features" class="hover:text-white transition">Features</a></li>
+            <li><a href="/api/docs" class="hover:text-white transition">API Docs</a></li>
+            <li><a href="#" class="hover:text-white transition">Pricing</a></li>
+          </ul>
+        </div>
+        
+        <div>
+          <h4 class="font-semibold mb-4">Resources</h4>
+          <ul class="space-y-2 text-sm text-gray-400">
+            <li><a href="#" class="hover:text-white transition">Documentation</a></li>
+            <li><a href="#" class="hover:text-white transition">GitHub</a></li>
+            <li><a href="#" class="hover:text-white transition">Support</a></li>
+          </ul>
+        </div>
+        
+        <div>
+          <h4 class="font-semibold mb-4">Company</h4>
+          <ul class="space-y-2 text-sm text-gray-400">
+            <li><a href="#" class="hover:text-white transition">About</a></li>
+            <li><a href="#" class="hover:text-white transition">Contact</a></li>
+            <li><a href="#" class="hover:text-white transition">Privacy</a></li>
+          </ul>
+        </div>
+      </div>
+      
+      <div class="border-t border-gray-800 mt-12 pt-8 flex flex-col md:flex-row justify-between items-center">
+        <p class="text-sm text-gray-400">
+          © 2026 AZWorkbase. All rights reserved.
+        </p>
+        <div class="flex space-x-6 mt-4 md:mt-0">
+          <a href="#" class="text-gray-400 hover:text-white transition">
+            <i class="fab fa-twitter"></i>
+          </a>
+          <a href="#" class="text-gray-400 hover:text-white transition">
+            <i class="fab fa-github"></i>
+          </a>
+          <a href="#" class="text-gray-400 hover:text-white transition">
+            <i class="fab fa-linkedin"></i>
+          </a>
+        </div>
+      </div>
+    </div>
+  </footer>
+
+  <!-- Login Script -->
   <script>
     const form = document.getElementById('loginForm');
     const errorMsg = document.getElementById('errorMsg');
+    const errorText = document.getElementById('errorText');
+    const submitBtn = document.getElementById('submitBtn');
+    const btnText = document.getElementById('btnText');
+    const btnIcon = document.getElementById('btnIcon');
 
     form.addEventListener('submit', async (e) => {
       e.preventDefault();
       errorMsg.classList.add('hidden');
+      
+      // Loading state
+      submitBtn.disabled = true;
+      submitBtn.classList.add('opacity-75', 'cursor-not-allowed');
+      btnText.textContent = 'Đang xử lý...';
+      btnIcon.className = 'fas fa-spinner fa-spin ml-2';
 
       const email = document.getElementById('email').value;
       const password = document.getElementById('password').value;
@@ -53,17 +577,39 @@
           throw new Error(data.message || 'Đăng nhập thất bại');
         }
 
-        // Lưu token vào localStorage (vẫn có ích nếu dùng trình duyệt khác)
-        localStorage.setItem('accessToken', data.access_token);
-        localStorage.setItem('refreshToken', data.refresh_token);
+        // Success (fallback cho api trả về dạng nào: accessToken hay access_token)
+        localStorage.setItem('accessToken', data.accessToken || data.access_token);
+        localStorage.setItem('refreshToken', data.refreshToken || data.refresh_token);
+        
+        btnText.textContent = 'Thành công!';
+        btnIcon.className = 'fas fa-check ml-2';
+        submitBtn.classList.remove('from-blue-600', 'to-purple-600');
+        submitBtn.classList.add('from-green-600', 'to-green-700');
 
-        // Chuyển hướng đến Swagger
-        window.location.href = '/api/docs';
+        setTimeout(() => {
+          window.location.href = '/api/docs';
+        }, 500);
+
       } catch (err) {
-        errorMsg.textContent = err.message;
+        errorText.textContent = err.message;
         errorMsg.classList.remove('hidden');
+        
+        // Reset button
+        submitBtn.disabled = false;
+        submitBtn.classList.remove('opacity-75', 'cursor-not-allowed');
+        btnText.textContent = 'Đăng nhập';
+        btnIcon.className = 'fas fa-arrow-right ml-2';
       }
     });
+
+    function scrollToLogin() {
+      document.getElementById('login').scrollIntoView({ behavior: 'smooth' });
+    }
+
+    function toggleMobileMenu() {
+      const menu = document.getElementById('mobileMenu');
+      menu.classList.toggle('hidden');
+    }
   </script>
 </body>
 </html>
