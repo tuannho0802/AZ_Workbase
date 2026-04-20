@@ -1,4 +1,6 @@
 import { Module } from '@nestjs/common';
+import { ServeStaticModule } from '@nestjs/serve-static';
+import { join } from 'path';
 import { ConfigModule, ConfigService } from '@nestjs/config';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { AppController } from './app.controller';
@@ -35,6 +37,14 @@ import { KeepAliveController } from './keep-alive/keep-alive.controller';
     DepositsModule,
     LeaveRequestsModule,
     AuditModule,
+    ServeStaticModule.forRoot({
+      rootPath: join(process.cwd(), 'public'),
+      serveRoot: '/',
+      exclude: ['/api/(.*)'],
+      serveStaticOptions: {
+        index: ['index.html'],
+      },
+    }),
   ],
   controllers: [AppController, KeepAliveController],
   providers: [AppService],
