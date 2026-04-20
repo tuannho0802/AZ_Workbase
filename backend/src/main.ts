@@ -7,9 +7,13 @@ import { AppModule } from './app.module';
 import { AllExceptionsFilter } from './common/filters/http-exception.filter';
 import * as express from 'express';
 import * as fs from 'fs';
+import compression from 'compression';
 
 async function bootstrap() {
   const app = await NestFactory.create<NestExpressApplication>(AppModule);
+
+  // Compression cho response
+  app.use(compression());
 
   // Debug: log process.cwd() để biết path thực tế trên Vercel
   const cwd = process.cwd();

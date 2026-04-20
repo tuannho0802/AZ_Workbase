@@ -1,4 +1,4 @@
-import { Controller, Get, Post, Body, Patch, Param, Delete, Query, UseGuards, Request } from '@nestjs/common';
+import { Controller, Get, Post, Body, Patch, Param, Delete, Query, UseGuards, Request, UseInterceptors } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiBearerAuth, ApiResponse } from '@nestjs/swagger';
 import { UsersService } from './users.service';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
@@ -8,6 +8,7 @@ import { Role } from '../../common/enums/role.enum';
 import { CreateUserDto } from './dto/create-user.dto';
 import { UpdateUserDto } from './dto/update-user.dto';
 import { ResetPasswordDto } from './dto/reset-password.dto';
+import { CacheControlInterceptor } from '../../common/interceptors/cache-control.interceptor';
 
 @ApiTags('Users')
 @ApiBearerAuth()
@@ -18,6 +19,7 @@ export class UsersController {
 
   @Get('all')
   @Roles(Role.ADMIN, Role.MANAGER, Role.ASSISTANT, Role.EMPLOYEE)
+  @UseInterceptors(new CacheControlInterceptor(60))
   @ApiOperation({ summary: 'Lấy toàn bộ danh sách nhân viên (Không phân trang)' })
   async findAllList(
     @Request() req: any,
@@ -28,6 +30,7 @@ export class UsersController {
 
   @Get()
   @Roles(Role.ADMIN)
+  @UseInterceptors(new CacheControlInterceptor(60))
   @ApiOperation({ summary: 'Danh sách nhân viên (Phân trang & Filter)' })
   async findAll(
     @Request() req: any,

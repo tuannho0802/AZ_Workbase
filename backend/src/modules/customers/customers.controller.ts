@@ -15,6 +15,7 @@ import { RolesGuard } from '../../common/guards/roles.guard';
 import { Roles } from '../../common/decorators/roles.decorator';
 import { Role } from '../../common/enums/role.enum';
 import { GetUser } from '../../common/decorators/get-user.decorator';
+import { CacheControlInterceptor } from '../../common/interceptors/cache-control.interceptor';
 
 @ApiTags('Customers')
 @ApiBearerAuth()
@@ -114,6 +115,7 @@ export class CustomersController {
   }
 
   @Get()
+  @UseInterceptors(new CacheControlInterceptor(30))
   @ApiOperation({ summary: 'Lấy danh sách khách hàng (có phân quyền)' })
   @ApiResponse({ status: 200, description: 'Trả về danh sách khách hàng và thông tin phân trang' })
   findAll(@GetUser() user: any, @Query() filters: CustomerFiltersDto) {

@@ -21,14 +21,15 @@ export const getTypeOrmConfig = (configService: ConfigService): TypeOrmModuleOpt
     // ✅ Tự retry khi mất kết nối lúc khởi động
     retryAttempts: 5,
     retryDelay: 3000,
+    autoLoadEntities: true,
   };
 
   // Pool config dùng chung cho cả môi trường
   // connectTimeout & acquireTimeout giúp không bị treo khi DB vừa wake up
   const poolConfig = {
-    connectionLimit: 5,         // Free tier Aiven chỉ chịu được ~5 connection
-    connectTimeout: 20000,      // 20s - đủ thời gian để Aiven wake up từ idle
-    acquireTimeout: 20000,
+    connectionLimit: 3,         // Giảm từ 5 xuống 3 cho Aiven free tier
+    connectTimeout: 25000,      // 25s - đủ thời gian để Aiven wake up từ idle
+    acquireTimeout: 25000,
     waitForConnections: true,
     queueLimit: 0,
 

@@ -5,7 +5,9 @@
       "src": "src/main.ts",
       "use": "@vercel/node",
       "config": {
-        "includeFiles": ["public/**/*", "dist/public/**/*"]
+        "includeFiles": ["public/**/*", "dist/public/**/*"],
+        "maxLambdaSize": "50mb",
+        "bundle": true
       }
     }
   ],

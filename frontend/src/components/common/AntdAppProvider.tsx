@@ -22,7 +22,16 @@ function AppInjector({ children }: { children: React.ReactNode }) {
 }
 
 export function AntdAppProvider({ children }: { children: React.ReactNode }) {
-  const [queryClient] = useState(() => new QueryClient());
+  const [queryClient] = useState(() => new QueryClient({
+    defaultOptions: {
+      queries: {
+        staleTime: 30000,        // Data được coi là fresh trong 30s
+        gcTime: 5 * 60 * 1000,   // Cache 5 phút
+        retry: 2,
+        refetchOnWindowFocus: false,
+      },
+    },
+  }));
 
   return (
     <QueryClientProvider client={queryClient}>
