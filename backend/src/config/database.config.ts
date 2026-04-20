@@ -2,7 +2,9 @@ import { TypeOrmModuleOptions } from '@nestjs/typeorm';
 import { ConfigService } from '@nestjs/config';
 
 export const getTypeOrmConfig = (configService: ConfigService): TypeOrmModuleOptions => {
-  const isProduction = configService.get('NODE_ENV') === 'production' || configService.get('VERCEL') === '1';
+  const isProduction =
+    configService.get('NODE_ENV') === 'production' ||
+    configService.get('VERCEL') === '1';
 
   const baseConfig: TypeOrmModuleOptions = {
     type: 'mysql',
@@ -15,31 +17,53 @@ export const getTypeOrmConfig = (configService: ConfigService): TypeOrmModuleOpt
     migrations: [__dirname + '/../database/migrations/*{.ts,.js}'],
     synchronize: false,
     logging: configService.get('NODE_ENV') === 'development',
+
+    // ✅ Tự retry khi mất kết nối lúc khởi động
+    retryAttempts: 5,
+    retryDelay: 3000,
   };
 
-  // Cấu hình pool chung (áp dụng cho cả production và development)
+  // Pool config dùng chung cho cả môi trường
+  // connectTimeout & acquireTimeout giúp không bị treo khi DB vừa wake up
   const poolConfig = {
-    connectionLimit: 10,        // Tối đa 10 connection trong pool
-    connectTimeout: 10000,      // Timeout khi thiết lập kết nối mới (10s)
-    acquireTimeout: 10000,      // Timeout khi lấy connection từ pool (10s)
-    poolPingInterval: 10000,    // Ping database mỗi 10s để giữ kết nối sống
+    connectionLimit: 5,         // Free tier Aiven chỉ chịu được ~5 connection
+    connectTimeout: 20000,      // 20s - đủ thời gian để Aiven wake up từ idle
+    acquireTimeout: 20000,
+    waitForConnections: true,
+    queueLimit: 0,
+
+    // ✅ Giữ connection sống - tự ping DB
+    enableKeepAlive: true,
+    keepAliveInitialDelay: 30000, // Bắt đầu keepAlive sau 30s
   };
 
   if (isProduction) {
     const sslCert = configService.get('DB_CA_CERT');
+
+    // Production với SSL cert (Aiven yêu cầu)
     if (sslCert) {
       return {
         ...baseConfig,
         ssl: { ca: sslCert },
         extra: {
           ssl: { ca: sslCert },
-          ...poolConfig,        // Thêm pool config vào extra
+          ...poolConfig,
         },
       };
     }
+
+    // Production không có cert (fallback, không nên xảy ra)
+    return {
+      ...baseConfig,
+      ssl: { rejectUnauthorized: false },
+      extra: {
+        ssl: { rejectUnauthorized: false },
+        ...poolConfig,
+      },
+    };
   }
 
-  // Môi trường development cũng nên dùng pool để tránh quá tải
+  // Development: không cần SSL
   return {
     ...baseConfig,
     extra: poolConfig,
