@@ -5,12 +5,20 @@ import { NestExpressApplication } from '@nestjs/platform-express';
 import { join } from 'path';
 import { AppModule } from './app.module';
 import { AllExceptionsFilter } from './common/filters/http-exception.filter';
+import * as express from 'express';
+import * as fs from 'fs';
 
 async function bootstrap() {
   const app = await NestFactory.create<NestExpressApplication>(AppModule);
 
   // ✅ Serve static files from public folder
-  app.useStaticAssets(join(process.cwd(), 'public'));
+  const publicPath = join(process.cwd(), 'public');
+  if (fs.existsSync(publicPath)) {
+    app.use(express.static(publicPath));
+    console.log(`[Static] Serving from: ${publicPath}`);
+  } else {
+    console.warn(`[Static] WARNING: public/ not found at ${publicPath}`);
+  }
 
   // ✅ Luôn thêm prefix 'api' - KHÔNG cần điều kiện
   app.setGlobalPrefix('api');
