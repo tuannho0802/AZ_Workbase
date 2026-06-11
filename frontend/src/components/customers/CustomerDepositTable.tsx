@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';
-import { Table, Button, Space, Typography, Popconfirm, App } from 'antd';
+import { Table, Button, Space, Typography, Popconfirm, App, Card } from 'antd';
 import { DeleteOutlined, ReloadOutlined } from '@ant-design/icons';
 import { customersApi } from '@/lib/api/customers.api';
 import { Deposit } from '@/lib/types/customer.types';
@@ -46,59 +46,6 @@ export const CustomerDepositTable = ({ customerId, refreshTrigger }: Props) => {
     }
   };
 
-  const columns = [
-    {
-      title: 'Ngày nạp',
-      dataIndex: 'depositDate',
-      key: 'depositDate',
-      render: (date: string) => dayjs(date).format('DD/MM/YYYY'),
-    },
-    {
-      title: 'Số tiền',
-      dataIndex: 'amount',
-      key: 'amount',
-      render: (amount: number) => (
-        <Text strong style={{ color: '#cf1322' }}>
-          ${Number(amount).toLocaleString(undefined, { minimumFractionDigits: 2 })}
-        </Text>
-      ),
-    },
-    {
-      title: 'Sàn',
-      dataIndex: 'broker',
-      key: 'broker',
-      render: (text: string) => text || '-',
-    },
-    {
-      title: 'Người tạo',
-      dataIndex: ['createdBy', 'name'],
-      key: 'createdBy',
-      render: (name: string) => name || 'Hệ thống',
-    },
-    {
-      title: 'Thao tác',
-      key: 'action',
-      width: 80,
-      render: (_: any, record: Deposit) => (
-        <Popconfirm
-          title="Xóa bản ghi"
-          description="Bạn có chắc chắn muốn xóa bản ghi nạp tiền này?"
-          onConfirm={() => handleDelete(record.id)}
-          okText="Xóa"
-          cancelText="Hủy"
-          okButtonProps={{ danger: true }}
-        >
-          <Button 
-            type="text" 
-            danger 
-            icon={<DeleteOutlined />} 
-            size="small"
-          />
-        </Popconfirm>
-      ),
-    },
-  ];
-
   return (
     <div style={{ marginTop: 16 }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
@@ -113,15 +60,52 @@ export const CustomerDepositTable = ({ customerId, refreshTrigger }: Props) => {
           Làm mới
         </Button>
       </div>
-      <Table
-        dataSource={deposits}
-        columns={columns}
-        rowKey="id"
-        pagination={false}
-        loading={loading}
-        size="small"
-        bordered
-      />
+      
+      {loading && deposits.length === 0 ? (
+        <div style={{ padding: '16px 0', textAlign: 'center', color: '#8c8c8c' }}>
+          Đang tải...
+        </div>
+      ) : deposits.length === 0 ? (
+        <div style={{ padding: '16px 0', textAlign: 'center', color: '#8c8c8c' }}>
+          Chưa có giao dịch nạp tiền
+        </div>
+      ) : (
+        deposits.map((record) => (
+          <Card
+            key={record.id}
+            size="small"
+            variant="outlined"
+            style={{ marginBottom: 8 }}
+          >
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
+              <Text strong>{dayjs(record.depositDate).format('DD/MM/YYYY')}</Text>
+              <Text strong style={{ color: '#cf1322' }}>
+                ${Number(record.amount).toLocaleString(undefined, { minimumFractionDigits: 2 })}
+              </Text>
+            </div>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <Text type="secondary" style={{ fontSize: 12 }}>
+                Sàn: {record.broker || '-'} | Tạo bởi: {record.createdBy?.name || 'Hệ thống'}
+              </Text>
+              <Popconfirm
+                title="Xóa bản ghi"
+                description="Bạn có chắc chắn muốn xóa bản ghi nạp tiền này?"
+                onConfirm={() => handleDelete(record.id)}
+                okText="Xóa"
+                cancelText="Hủy"
+                okButtonProps={{ danger: true }}
+              >
+                <Button 
+                  type="text" 
+                  danger 
+                  icon={<DeleteOutlined />} 
+                  size="small"
+                />
+              </Popconfirm>
+            </div>
+          </Card>
+        ))
+      )}
     </div>
   );
 };

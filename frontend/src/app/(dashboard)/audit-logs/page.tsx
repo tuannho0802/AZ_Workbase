@@ -4,7 +4,7 @@ import { useState, useEffect, useCallback } from 'react';
 import {
   Table, Card, Tag, Button, Space, Row, Col, Typography,
   Tooltip, Input, Select, DatePicker, Drawer, App,
-  Badge, Avatar, Divider, Empty, Checkbox, Modal, Switch, InputNumber, Alert, Tabs
+  Badge, Avatar, Divider, Empty, Checkbox, Modal, Switch, InputNumber, Alert, Tabs, Pagination
 } from 'antd';
 import {
   SearchOutlined, ReloadOutlined, InfoCircleOutlined,
@@ -65,7 +65,81 @@ const ROLE_LABELS: Record<string, string> = {
   employee: 'Employee',
 };
 
+const AuditLogMobileCard = ({ record, onShowDetail }: { record: AuditLog; onShowDetail: () => void }) => {
+  const meta = ACTION_META[record.action];
+  const u = record.user;
+  const isCustomer = record.entityType === 'customer';
+  const customer = record.targetCustomer;
+
+  return (
+    <Card
+      size="small"
+      variant="outlined"
+      style={{ marginBottom: 8, cursor: 'pointer' }}
+      onClick={onShowDetail}
+    >
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
+        {meta ? <Tag color={meta.color} style={{ fontSize: 11 }}>{meta.label}</Tag> : <Tag style={{ fontSize: 11 }}>{record.action}</Tag>}
+        <Text type="secondary" style={{ fontSize: 11 }}>
+          {dayjs(record.createdAt).format('HH:mm:ss DD/MM/YYYY')}
+        </Text>
+      </div>
+
+      <div style={{ display: 'flex', alignItems: 'center', marginBottom: 6 }}>
+        {u ? (
+          <Space>
+            <Avatar size={20} icon={<UserOutlined />} style={{ backgroundColor: '#1890ff' }} />
+            <Text strong style={{ fontSize: 12 }}>{u.name}</Text>
+            <Tag color={ROLE_COLORS[u.role] || 'default'} style={{ fontSize: 9, margin: 0, padding: '0 4px', lineHeight: '14px' }}>
+              {ROLE_LABELS[u.role] || u.role}
+            </Tag>
+          </Space>
+        ) : (
+          <Text type="secondary" style={{ fontSize: 12 }}>—</Text>
+        )}
+      </div>
+
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+        <div style={{ display: 'flex', flexDirection: 'column' }}>
+          <Text type="secondary" style={{ fontSize: 10, textTransform: 'uppercase' }}>
+            {ENTITY_TYPE_LABELS[record.entityType] || record.entityType}
+          </Text>
+          {isCustomer ? (
+            customer ? (
+              <Text style={{ fontSize: 12, fontWeight: 500, color: '#1890ff' }}>
+                {customer.name} {customer.deletedAt && '(Đã xóa)'}
+              </Text>
+            ) : (
+              <Text type="secondary" italic style={{ fontSize: 12 }}>(Khách hàng đã xóa)</Text>
+            )
+          ) : (
+            record.entityType !== 'auth' && <Text style={{ fontSize: 12 }}>#{record.entityId}</Text>
+          )}
+        </div>
+        
+        <Button
+          type="text"
+          size="small"
+          icon={<InfoCircleOutlined />}
+          onClick={(e) => {
+            e.stopPropagation();
+            onShowDetail();
+          }}
+        />
+      </div>
+    </Card>
+  );
+};
+
 export default function AuditLogsPage() {
+  const [isMobile, setIsMobile] = useState(false);
+  useEffect(() => {
+    const check = () => setIsMobile(window.innerWidth < 768);
+    check();
+    window.addEventListener('resize', check);
+    return () => window.removeEventListener('resize', check);
+  }, []);
+
   const { user } = useAuthStore();
   const router = useRouter();
   const { message, modal } = App.useApp();
@@ -370,7 +444,7 @@ export default function AuditLogsPage() {
                 >
                   Dọn dẹp theo thời gian
                 </Button>
-                {selectedRowKeys.length > 0 && (
+                {selectedRowKeys.length > 0 && !isMobile && (
                   <Button 
                     type="primary" 
                     danger 
@@ -394,7 +468,7 @@ export default function AuditLogsPage() {
           children: (
             <>
               {/* Filters */}
-              <Card style={{ marginBottom: 16, borderRadius: 8 }}>
+              <Card variant="outlined" style={{ marginBottom: 16, borderRadius: 8 }}>
                 <Row gutter={[12, 12]} align="middle">
                   <Col xs={24} md={6}>
                     <Input placeholder="Tìm tên người thực hiện/khách hàng..." prefix={<SearchOutlined />} 
@@ -421,31 +495,58 @@ export default function AuditLogsPage() {
                 </Row>
               </Card>
 
-              {/* Table */}
-              <Card style={{ borderRadius: 8 }}>
-                <Table<AuditLog>
-                  columns={columns}
-                  dataSource={logs}
-                  rowKey="id"
-                  loading={loading}
-                  size="middle"
-                  rowSelection={rowSelection}
-                  expandable={{
-                    expandedRowRender: (record) => (
-                      <div style={{ padding: '0 48px 16px' }}>
-                        <AuditDiffViewer oldData={record.oldData} newData={record.newData} action={record.action} />
-                      </div>
-                    ),
-                    rowExpandable: (record) => !!(record.oldData || record.newData) || record.action === 'USER_LOGIN',
-                  }}
-                  pagination={{
-                    current: page, pageSize, total, showSizeChanger: true,
-                    pageSizeOptions: ['20', '50', '100'],
-                    showTotal: (t) => `Tổng cộng ${t.toLocaleString()} bản ghi`,
-                    onChange: (p, ps) => { setPage(p); setPageSize(ps); },
-                  }}
-                />
-              </Card>
+              {/* Table / Card List */}
+              {isMobile ? (
+                <div style={{ padding: '0 4px' }}>
+                  {loading && logs.length === 0 ? (
+                    <div style={{ padding: '24px 0', textAlign: 'center', color: '#8c8c8c' }}>Đang tải...</div>
+                  ) : logs.length === 0 ? (
+                    <div style={{ padding: '24px 0', textAlign: 'center', color: '#8c8c8c' }}>Chưa có nhật ký ghi nhận</div>
+                  ) : (
+                    logs.map((record) => (
+                      <AuditLogMobileCard
+                        key={record.id}
+                        record={record}
+                        onShowDetail={() => { setSelectedLog(record); setDrawerOpen(true); }}
+                      />
+                    ))
+                  )}
+                  <Pagination
+                    current={page}
+                    pageSize={pageSize}
+                    total={total}
+                    size="small"
+                    simple
+                    onChange={(p, ps) => { setPage(p); setPageSize(ps || pageSize); }}
+                    style={{ textAlign: 'center', marginTop: 12 }}
+                  />
+                </div>
+              ) : (
+                <Card variant="outlined" style={{ borderRadius: 8 }}>
+                  <Table<AuditLog>
+                    columns={columns}
+                    dataSource={logs}
+                    rowKey="id"
+                    loading={loading}
+                    size="middle"
+                    rowSelection={rowSelection}
+                    expandable={{
+                      expandedRowRender: (record) => (
+                        <div style={{ padding: '0 48px 16px' }}>
+                          <AuditDiffViewer oldData={record.oldData} newData={record.newData} action={record.action} />
+                        </div>
+                      ),
+                      rowExpandable: (record) => !!(record.oldData || record.newData) || record.action === 'USER_LOGIN',
+                    }}
+                    pagination={{
+                      current: page, pageSize, total, showSizeChanger: true,
+                      pageSizeOptions: ['20', '50', '100'],
+                      showTotal: (t) => `Tổng cộng ${t.toLocaleString()} bản ghi`,
+                      onChange: (p, ps) => { setPage(p); setPageSize(ps); },
+                    }}
+                  />
+                </Card>
+              )}
             </>
           )
         },

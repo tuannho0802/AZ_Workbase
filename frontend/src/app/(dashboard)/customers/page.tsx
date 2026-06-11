@@ -82,7 +82,7 @@ const CustomerMobileCard = ({
 }) => (
   <Card
     size="small"
-    bordered
+    variant="outlined"
     style={{ marginBottom: 8, cursor: 'pointer' }}
     onClick={() => onRowClick(record.id)}
   >

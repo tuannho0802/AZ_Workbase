@@ -1,8 +1,14 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { Table, Card, Button, Space, Tag, App, Modal, Form, Input, Select, Switch, Spin } from 'antd';
-import { UserAddOutlined, EditOutlined, KeyOutlined, ReloadOutlined } from '@ant-design/icons';
+import {
+  Table, Card, Button, Space, Tag, App, Modal, Form,
+  Input, Select, Switch, Spin, Typography, Divider, Pagination
+} from 'antd';
+import {
+  UserAddOutlined, EditOutlined, KeyOutlined,
+  ReloadOutlined, MailOutlined, TeamOutlined
+} from '@ant-design/icons';
 
 import { useAuthStore } from '@/lib/stores/auth.store';
 import { useRouter } from 'next/navigation';
@@ -10,14 +16,90 @@ import { usersApi } from '@/lib/api/users.api';
 import { useDepartments } from '@/lib/hooks/useDepartments';
 import dayjs from 'dayjs';
 
+const { Text } = Typography;
+
+const ROLE_COLOR: Record<string, string> = {
+  admin: 'red', manager: 'orange', assistant: 'blue', employee: 'green'
+};
+
+// ── mobile card ──────────────────────────────────────────────────────────────
+function UserMobileCard({
+  record,
+  onEdit,
+  onResetPass,
+}: {
+  record: any;
+  onEdit: (r: any) => void;
+  onResetPass: (r: any) => void;
+}) {
+  return (
+    <Card
+      variant="outlined"
+      style={{ marginBottom: 10 }}
+      styles={{ body: { padding: '12px 14px' } }}
+    >
+      {/* Header */}
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 8 }}>
+        <div>
+          <div style={{ fontWeight: 600, fontSize: 14 }}>{record.name || '—'}</div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 4, marginTop: 2 }}>
+            <MailOutlined style={{ fontSize: 11, color: '#8c8c8c' }} />
+            <Text style={{ fontSize: 12, color: '#8c8c8c' }}>{record.email}</Text>
+          </div>
+        </div>
+        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 4 }}>
+          <Tag color={ROLE_COLOR[record.role] ?? 'default'}>{record.role?.toUpperCase()}</Tag>
+          <Tag color={record.isActive ? 'green' : 'red'}>
+            {record.isActive ? 'Hoạt động' : 'Bị khóa'}
+          </Tag>
+        </div>
+      </div>
+
+      <Divider style={{ margin: '8px 0' }} />
+
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 3, marginBottom: 10 }}>
+        <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+          <TeamOutlined style={{ fontSize: 12, color: '#8c8c8c' }} />
+          <Text style={{ fontSize: 12, color: '#595959' }}>
+            {record.department?.name || 'Chưa có phòng ban'}
+          </Text>
+        </div>
+        <Text style={{ fontSize: 11, color: '#bfbfbf' }}>ID: {record.id}</Text>
+      </div>
+
+      <div style={{ display: 'flex', gap: 8 }}>
+        <Button
+          size="small"
+          icon={<EditOutlined />}
+          style={{ flex: 1 }}
+          onClick={() => onEdit(record)}
+        >
+          Sửa
+        </Button>
+        <Button
+          size="small"
+          icon={<KeyOutlined />}
+          style={{ flex: 1 }}
+          onClick={() => onResetPass(record)}
+        >
+          Reset Pass
+        </Button>
+      </div>
+    </Card>
+  );
+}
+
+// ── main page ────────────────────────────────────────────────────────────────
 export default function UsersPage() {
   const [users, setUsers] = useState<any[]>([]);
   const [loading, setLoading] = useState(false);
   const [total, setTotal] = useState(0);
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(20);
+  const [isMobile, setIsMobile] = useState(false);
+
   const { message, modal } = App.useApp();
-  
+
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [isResetOpen, setIsResetOpen] = useState(false);
   const [editingUser, setEditingUser] = useState<any>(null);
@@ -26,7 +108,14 @@ export default function UsersPage() {
   const { departments } = useDepartments();
   const { user } = useAuthStore();
   const router = useRouter();
-  
+
+  useEffect(() => {
+    const check = () => setIsMobile(window.innerWidth < 768);
+    check();
+    window.addEventListener('resize', check);
+    return () => window.removeEventListener('resize', check);
+  }, []);
+
   const fetchUsers = async () => {
     setLoading(true);
     try {
@@ -43,11 +132,9 @@ export default function UsersPage() {
     }
   };
 
-
-
   useEffect(() => {
     if (user && user.role !== 'admin') {
-      message.error("Bạn không có quyền truy cập trang này");
+      message.error('Bạn không có quyền truy cập trang này');
       router.replace('/customers');
     }
   }, [user, router, message]);
@@ -58,39 +145,48 @@ export default function UsersPage() {
     }
   }, [user, page, pageSize]);
 
+  const openEdit = (record: any) => {
+    setEditingUser(record);
+    form.setFieldsValue({
+      ...record,
+      departmentId: record.department?.id || record.departmentId,
+    });
+    setIsModalOpen(true);
+  };
+
+  const openResetPass = (record: any) => {
+    setEditingUser(record);
+    setIsResetOpen(true);
+  };
+
   const handleSave = async (values: any) => {
     try {
       setLoading(true);
-      let payload: any = {
+      const payload: any = {
         name: values.name,
         role: String(values.role).toLowerCase(),
         departmentId: values.departmentId ? Number(values.departmentId) : undefined,
       };
-      
+
       if (editingUser) {
         payload.isActive = values.isActive;
-        console.log('[USERS PAGE] Updating user:', editingUser.id, payload);
         await usersApi.updateUser(editingUser.id, payload);
         message.success('Cập nhật nhân viên thành công');
       } else {
         payload.email = values.email;
         payload.password = values.password;
         payload.isActive = values.isActive ?? true;
-        console.log('[USERS PAGE] Creating user:', payload);
         await usersApi.createUser(payload);
         message.success('Tạo nhân viên thành công');
       }
-      
+
       setIsModalOpen(false);
       form.resetFields();
       fetchUsers();
     } catch (error: any) {
-      console.error("Create/Update Error Detail:", error.response?.data);
       const errorData = error.response?.data;
-      
       if (errorData?.message) {
         if (Array.isArray(errorData.message)) {
-          // Hiển thị từng lỗi nếu là mảng validation
           errorData.message.forEach((msg: string) => message.error(msg));
         } else {
           message.error(errorData.message);
@@ -118,67 +214,49 @@ export default function UsersPage() {
     { title: 'ID', dataIndex: 'id', key: 'id', width: 60 },
     { title: 'Họ tên', dataIndex: 'name', key: 'name' },
     { title: 'Email', dataIndex: 'email', key: 'email' },
-    { 
-      title: 'Chức vụ', 
-      dataIndex: 'role', 
-      render: (role: string) => {
-        const roles: any = { admin: 'red', manager: 'orange', assistant: 'blue', employee: 'green' };
-        return <Tag color={roles[role]}>{role.toUpperCase()}</Tag>;
-      }
+    {
+      title: 'Chức vụ',
+      dataIndex: 'role',
+      render: (role: string) => (
+        <Tag color={ROLE_COLOR[role] ?? 'default'}>{role?.toUpperCase()}</Tag>
+      )
     },
-    { 
-      title: 'Phòng ban', 
-      dataIndex: ['department', 'name'], 
-      render: (val: any) => val || '-' 
+    {
+      title: 'Phòng ban',
+      dataIndex: ['department', 'name'],
+      render: (val: any) => val || '-'
     },
-    { 
-      title: 'Trạng thái', 
-      key: 'status', 
+    {
+      title: 'Trạng thái',
       dataIndex: 'isActive',
-      render: (val: any) => {
-        return val ? <Tag color="green">Đang hoạt động</Tag> : <Tag color="red">Không hoạt động</Tag>;
-      }
+      render: (val: any) =>
+        val ? <Tag color="green">Đang hoạt động</Tag> : <Tag color="red">Không hoạt động</Tag>
     },
     {
       title: 'Thao tác',
       key: 'action',
       render: (_: any, record: any) => (
         <Space>
-          <Button 
-            icon={<EditOutlined />} 
-            onClick={() => { 
-              setEditingUser(record); 
-              form.setFieldsValue({
-                ...record,
-                departmentId: record.department?.id || record.departmentId
-              }); 
-              setIsModalOpen(true); 
-            }}
-          >
-            Sửa
-          </Button>
-          <Button 
-            icon={<KeyOutlined />} 
-            onClick={() => { setEditingUser(record); setIsResetOpen(true); }}
-          >
-            Reset Pass
-          </Button>
+          <Button icon={<EditOutlined />} onClick={() => openEdit(record)}>Sửa</Button>
+          <Button icon={<KeyOutlined />} onClick={() => openResetPass(record)}>Reset Pass</Button>
         </Space>
       ),
     },
   ];
 
-  if (user && user.role !== 'admin') {
-    return null; // Return null while redirecting
-  }
+  if (user && user.role !== 'admin') return null;
 
   return (
-    <Card 
-      title="Quản lý nhân viên" 
+    <Card
+      title="Quản lý nhân viên"
       extra={
         <Space>
           <Button icon={<ReloadOutlined />} onClick={() => window.location.reload()}>Làm mới</Button>
-          <Button type="primary" icon={<UserAddOutlined />} onClick={() => { setEditingUser(null); form.resetFields(); setIsModalOpen(true); }}>
+          <Button
+            type="primary"
+            icon={<UserAddOutlined />}
+            onClick={() => { setEditingUser(null); form.resetFields(); setIsModalOpen(true); }}
+          >
             Thêm nhân viên
           </Button>
         </Space>
@@ -186,13 +264,39 @@ export default function UsersPage() {
     >
       {loading && users.length === 0 ? (
         <div className="flex justify-center items-center my-10 py-10">
-          <Spin size="large" description="Đang nạp dữ liệu..." />
+          <Spin size="large" />
         </div>
+      ) : isMobile ? (
+        <>
+          {users.length === 0 ? (
+            <div style={{ padding: '24px 0', textAlign: 'center', color: '#8c8c8c' }}>
+              Chưa có nhân viên nào
+            </div>
+          ) : (
+            users.map(u => (
+              <UserMobileCard
+                key={u.id}
+                record={u}
+                onEdit={openEdit}
+                onResetPass={openResetPass}
+              />
+            ))
+          )}
+          <Pagination
+            current={page}
+            pageSize={pageSize}
+            total={total}
+            size="small"
+            simple
+            onChange={p => setPage(p)}
+            style={{ textAlign: 'center', marginTop: 12 }}
+          />
+        </>
       ) : (
-        <Table 
-          columns={columns} 
-          dataSource={users} 
-          rowKey="id" 
+        <Table
+          columns={columns}
+          dataSource={users}
+          rowKey="id"
           loading={loading}
           pagination={{
             current: page,
@@ -263,10 +367,7 @@ export default function UsersPage() {
             </Select>
           </Form.Item>
 
-          <Form.Item
-            name="departmentId"
-            label="Phòng ban"
-          >
+          <Form.Item name="departmentId" label="Phòng ban">
             <Select placeholder="Chọn phòng ban" allowClear>
               {departments.map((d: any) => (
                 <Select.Option key={d.id} value={Number(d.id)}>{d.name}</Select.Option>

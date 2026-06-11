@@ -4,7 +4,7 @@ import { useState, useCallback, useEffect } from 'react';
 import {
   Table, Select, Button, Modal, Tag, Space, Input,
   Typography, Row, Col, Statistic, Divider, Tabs,
-  Avatar, Tooltip, Badge, Form, App
+  Avatar, Tooltip, Badge, Form, App, Card, Pagination
 } from 'antd';
 import {
   UserAddOutlined, ReloadOutlined, SearchOutlined,
@@ -52,8 +52,100 @@ const api = {
     axiosInstance.get('/users/all'),
 };
 
+const UnassignedMobileCard = ({ record, user, renderAuditTrail, onNameClick }: { record: Customer, user: any, renderAuditTrail: (r: any) => React.ReactNode, onNameClick: () => void }) => {
+  const isMyPrimary = record.salesUser?.id === user?.id;
+  return (
+    <Card
+      size="small"
+      variant="outlined"
+      style={{ marginBottom: 8 }}
+    >
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 }}>
+        <Space size={4}>
+          {isMyPrimary && (
+            <Tooltip title="Bạn đang là Sales phụ trách chính">
+              <Tag color="green" style={{ margin: 0 }}>👤</Tag>
+            </Tooltip>
+          )}
+          {record.name ? (
+            <Space size={4}>
+              <Text strong style={{ color: '#1890ff', cursor: 'pointer' }} onClick={onNameClick}>{record.name}</Text>
+              <Tooltip title={renderAuditTrail(record)} mouseEnterDelay={0.3}>
+                <InfoCircleOutlined style={{ color: '#1890ff', cursor: 'help', fontSize: '11px' }} />
+              </Tooltip>
+            </Space>
+          ) : (
+            <Text type="secondary" italic>Chưa có tên</Text>
+          )}
+        </Space>
+        {record.source ? <Tag color="blue">{record.source}</Tag> : <Text type="secondary">-</Text>}
+      </div>
+      <div style={{ display: 'flex', gap: 12, marginBottom: 4, fontSize: 12, color: '#555' }}>
+        <span>📞 {record.phone || 'Chưa có SĐT'}</span>
+        <span>📅 {record.inputDate ? dayjs(record.inputDate).format('DD/MM/YY') : '-'}</span>
+      </div>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: 11, color: '#8c8c8c' }}>
+        <span>UTM: {record.campaign || '-'}</span>
+        <span>Tạo bởi: {record.createdBy?.name || 'Hệ thống'}</span>
+      </div>
+    </Card>
+  );
+};
+
+const AssignedMobileCard = ({ record, renderAuditTrail, onNameClick }: { record: Customer, renderAuditTrail: (r: any) => React.ReactNode, onNameClick: () => void }) => {
+  const primarySales = record.salesUser;
+  const allAssignees = (record as any).activeAssignees || [];
+  const sharedSales = allAssignees.filter((a: any) => a.id !== primarySales?.id);
+
+  return (
+    <Card
+      size="small"
+      variant="outlined"
+      style={{ marginBottom: 8 }}
+    >
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 }}>
+        <Space size={4}>
+          {record.name ? (
+            <Space size={4}>
+              <Text strong style={{ color: '#1890ff', cursor: 'pointer' }} onClick={onNameClick}>{record.name}</Text>
+              <Tooltip title={renderAuditTrail(record)} mouseEnterDelay={0.3}>
+                <InfoCircleOutlined style={{ color: '#1890ff', cursor: 'help', fontSize: '11px' }} />
+              </Tooltip>
+            </Space>
+          ) : (
+            <Text type="secondary" italic>Chưa có tên</Text>
+          )}
+        </Space>
+        {record.source ? <Tag color="blue">{record.source}</Tag> : <Text type="secondary">-</Text>}
+      </div>
+      <div style={{ display: 'flex', gap: 12, marginBottom: 4, fontSize: 12, color: '#555' }}>
+        <span>📞 {record.phone || 'Chưa có SĐT'}</span>
+        <span>📅 {record.inputDate ? dayjs(record.inputDate).format('DD/MM/YY') : '-'}</span>
+      </div>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 }}>
+        <Space size={[0, 4]} align="center" wrap>
+          {primarySales ? <Tag color="blue" style={{ fontSize: 10 }} title="Sales phụ trách chính">{primarySales.name}</Tag> : <Text type="secondary" style={{ fontSize: 10 }}>Chưa có Primary</Text>}
+          {sharedSales.length > 0 && (
+            <Tooltip title={`Sales được chia:\n${sharedSales.map((a: any) => a.name).join(', ')}`}>
+              <Tag color="cyan" style={{ fontSize: 10 }}>+{sharedSales.length}</Tag>
+            </Tooltip>
+          )}
+        </Space>
+        <Text type="secondary" style={{ fontSize: 11 }}>Tạo bởi: {record.createdBy?.name || 'Hệ thống'}</Text>
+      </div>
+    </Card>
+  );
+};
+
 // ── MAIN COMPONENT ─────────────────────────────────────
 export default function ChiaDataPage() {
+  const [isMobile, setIsMobile] = useState(false);
+  useEffect(() => {
+    const check = () => setIsMobile(window.innerWidth < 768);
+    check();
+    window.addEventListener('resize', check);
+    return () => window.removeEventListener('resize', check);
+  }, []);
   const qc = useQueryClient();
   const { message: antdMessage } = App.useApp();
 
@@ -429,7 +521,7 @@ export default function ChiaDataPage() {
                   </Col>
                   <Col flex="auto" />
                   {/* NÚT CHIA — chỉ hiện khi đã chọn */}
-                  {selectedIds.length > 0 && (
+                  {selectedIds.length > 0 && !isMobile && (
                     <Col>
                       <Button
                         type="primary"
@@ -456,7 +548,7 @@ export default function ChiaDataPage() {
                 </Row>
 
                 {/* SELECTION INFO */}
-                {selectedIds.length > 0 && (
+                {selectedIds.length > 0 && !isMobile && (
                   <div style={{
                     background: '#e6f7ff', border: '1px solid #91d5ff',
                     borderRadius: 6, padding: '8px 16px',
@@ -475,28 +567,56 @@ export default function ChiaDataPage() {
                   </div>
                 )}
 
-                {/* TABLE */}
-                <Table
-                  rowSelection={{
-                    selectedRowKeys: selectedIds,
-                    onChange: keys => setSelectedIds(keys as number[]),
-                    preserveSelectedRowKeys: true,
-                  }}
-                  columns={unassignedColumns}
-                  dataSource={unassignedData?.customers ?? []}
-                  rowKey="id"
-                  loading={loadingUnassigned}
-                  size="small"
-                  pagination={{
-                    current: unassignedPage,
-                    pageSize: 20,
-                    total: unassignedData?.pagination?.total ?? 0,
-                    onChange: p => setUnassignedPage(p),
-                    showTotal: t => `Tổng ${t.toLocaleString()} khách chưa assign`,
-                    showSizeChanger: false,
-                  }}
-                  locale={{ emptyText: '✅ Không còn khách chưa assign' }}
-                />
+                {isMobile ? (
+                  <div>
+                    {(unassignedData?.customers ?? []).length === 0 ? (
+                      <div style={{ padding: '24px 0', textAlign: 'center', color: '#8c8c8c' }}>
+                        ✅ Không còn khách chưa assign
+                      </div>
+                    ) : (
+                      (unassignedData?.customers ?? []).map((record: Customer, index: number) => (
+                        <UnassignedMobileCard
+                          key={record.id}
+                          record={record}
+                          user={user}
+                          renderAuditTrail={renderAuditTrail}
+                          onNameClick={() => router.push(`/customers?id=${record.id}`)}
+                        />
+                      ))
+                    )}
+                    <Pagination
+                      current={unassignedPage}
+                      pageSize={20}
+                      total={unassignedData?.pagination?.total ?? 0}
+                      size="small"
+                      simple
+                      onChange={p => setUnassignedPage(p)}
+                      style={{ textAlign: 'center', marginTop: 12 }}
+                    />
+                  </div>
+                ) : (
+                  <Table
+                    rowSelection={{
+                      selectedRowKeys: selectedIds,
+                      onChange: keys => setSelectedIds(keys as number[]),
+                      preserveSelectedRowKeys: true,
+                    }}
+                    columns={unassignedColumns}
+                    dataSource={unassignedData?.customers ?? []}
+                    rowKey="id"
+                    loading={loadingUnassigned}
+                    size="small"
+                    pagination={{
+                      current: unassignedPage,
+                      pageSize: 20,
+                      total: unassignedData?.pagination?.total ?? 0,
+                      onChange: p => setUnassignedPage(p),
+                      showTotal: t => `Tổng ${t.toLocaleString()} khách chưa assign`,
+                      showSizeChanger: false,
+                    }}
+                    locale={{ emptyText: '✅ Không còn khách chưa assign' }}
+                  />
+                )}
               </>
             ),
           },
@@ -556,23 +676,50 @@ export default function ChiaDataPage() {
                   </Col>
                 </Row>
 
-                {/* TABLE */}
-                <Table
-                  columns={assignedColumns}
-                  dataSource={assignedData?.customers ?? []}
-                  rowKey="id"
-                  loading={loadingAssigned}
-                  size="small"
-                  pagination={{
-                    current: assignedPage,
-                    pageSize: 20,
-                    total: assignedData?.pagination?.total ?? 0,
-                    onChange: p => setAssignedPage(p),
-                    showTotal: t => `Tổng ${t.toLocaleString()} khách đã assign`,
-                    showSizeChanger: false,
-                  }}
-                  locale={{ emptyText: 'Chưa có khách nào được assign' }}
-                />
+                {isMobile ? (
+                  <div>
+                    {(assignedData?.customers ?? []).length === 0 ? (
+                      <div style={{ padding: '24px 0', textAlign: 'center', color: '#8c8c8c' }}>
+                        Chưa có khách nào được assign
+                      </div>
+                    ) : (
+                      (assignedData?.customers ?? []).map((record: Customer) => (
+                        <AssignedMobileCard
+                          key={record.id}
+                          record={record}
+                          renderAuditTrail={renderAuditTrail}
+                          onNameClick={() => router.push(`/customers?id=${record.id}`)}
+                        />
+                      ))
+                    )}
+                    <Pagination
+                      current={assignedPage}
+                      pageSize={20}
+                      total={assignedData?.pagination?.total ?? 0}
+                      size="small"
+                      simple
+                      onChange={p => setAssignedPage(p)}
+                      style={{ textAlign: 'center', marginTop: 12 }}
+                    />
+                  </div>
+                ) : (
+                  <Table
+                    columns={assignedColumns}
+                    dataSource={assignedData?.customers ?? []}
+                    rowKey="id"
+                    loading={loadingAssigned}
+                    size="small"
+                    pagination={{
+                      current: assignedPage,
+                      pageSize: 20,
+                      total: assignedData?.pagination?.total ?? 0,
+                      onChange: p => setAssignedPage(p),
+                      showTotal: t => `Tổng ${t.toLocaleString()} khách đã assign`,
+                      showSizeChanger: false,
+                    }}
+                    locale={{ emptyText: 'Chưa có khách nào được assign' }}
+                  />
+                )}
               </>
             ),
           },
