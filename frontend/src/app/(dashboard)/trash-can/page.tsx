@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useCallback } from 'react';
 import {
-  Table, Card, Button, Space, Tag, App, Popconfirm, Input, Typography, Pagination, Row, Col, Badge
+  Table, Card, Button, Space, Tag, App, Popconfirm, Input, Typography, Pagination, Row, Col, Badge, Grid, Tooltip
 } from 'antd';
 import {
   UndoOutlined, DeleteOutlined, ReloadOutlined, SearchOutlined,
@@ -20,10 +20,16 @@ const { Text } = Typography;
 // ── Mobile Card ──────────────────────────────────────────────────────────────
 function TrashMobileCard({
   record,
+  index,
+  page,
+  pageSize,
   onRestore,
   onHardDelete,
 }: {
   record: Customer;
+  index: number;
+  page: number;
+  pageSize: number;
   onRestore: (id: number) => void;
   onHardDelete: (id: number) => void;
 }) {
@@ -31,36 +37,29 @@ function TrashMobileCard({
     <Card
       size="small"
       variant="outlined"
-      style={{ marginBottom: 10 }}
-      styles={{ body: { padding: '12px 14px' } }}
+      style={{ marginBottom: 8 }}
     >
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 8 }}>
-        <div>
-          <Text strong style={{ fontSize: 14, color: '#ff4d4f' }}>{record.name}</Text>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 4, marginTop: 2 }}>
-            <PhoneOutlined style={{ fontSize: 11, color: '#8c8c8c' }} />
-            <Text style={{ fontSize: 12, color: '#8c8c8c' }}>{record.phone || 'Chưa có SĐT'}</Text>
-          </div>
-        </div>
-        {record.source && <Tag color="blue">{record.source}</Tag>}
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 }}>
+        <Space size={4}>
+          <Text type="secondary" style={{ fontSize: 11 }}>#{(page - 1) * pageSize + index + 1}</Text>
+          <Text strong style={{ color: '#ff4d4f' }}>{record.name}</Text>
+        </Space>
+        {record.source ? <Tag color="blue">{record.source}</Tag> : <Text type="secondary">-</Text>}
       </div>
-
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 4, marginBottom: 10, fontSize: 12, color: '#595959' }}>
-        <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
-          <TeamOutlined style={{ fontSize: 12, color: '#8c8c8c' }} />
-          <Text style={{ fontSize: 12 }}>
-            Sales: {record.salesUser ? <Text strong>{record.salesUser.name}</Text> : <Text italic type="secondary">Chưa gán</Text>}
-          </Text>
-        </div>
-        <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
-          <CalendarOutlined style={{ fontSize: 12, color: '#8c8c8c' }} />
-          <Text style={{ fontSize: 12 }}>
-            Đã xóa: <Text type="danger">{record.deletedAt ? dayjs(record.deletedAt).format('DD/MM/YYYY HH:mm') : '—'}</Text>
-          </Text>
-        </div>
+      <div style={{ display: 'flex', gap: 12, marginBottom: 4, fontSize: 12, color: '#555' }}>
+        <span>📞 {record.phone || 'Chưa có SĐT'}</span>
+        <span>📅 {dayjs(record.createdAt).format('DD/MM/YY')}</span>
       </div>
-
-      <div style={{ display: 'flex', gap: 8 }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 }}>
+        <Space size={4}>
+          {record.salesUser ? <Tag color="blue">Sales: {record.salesUser.name}</Tag> : <span style={{ color: '#bbb', fontStyle: 'italic', fontSize: '11px' }}>Chưa có Sales</span>}
+        </Space>
+        <Text style={{ fontSize: 12 }}>
+          Xóa: <Text type="danger">{record.deletedAt ? dayjs(record.deletedAt).format('DD/MM/YY HH:mm') : '—'}</Text>
+        </Text>
+      </div>
+      
+      <div style={{ display: 'flex', gap: 8, marginTop: 8 }}>
         <Popconfirm
           title="Khôi phục khách hàng này?"
           onConfirm={() => onRestore(record.id)}
@@ -74,7 +73,7 @@ function TrashMobileCard({
 
         <Popconfirm
           title="Xóa vĩnh viễn?"
-          description="Hành động này KHÔNG THỂ hoàn tác. Toàn bộ dữ liệu sẽ mất."
+          description="Hành động này KHÔNG THỂ hoàn tác."
           onConfirm={() => onHardDelete(record.id)}
           okText="Xóa vĩnh viễn"
           okButtonProps={{ danger: true }}
@@ -89,8 +88,13 @@ function TrashMobileCard({
   );
 }
 
+const { useBreakpoint } = Grid;
+
 // ── Main Page ────────────────────────────────────────────────────────────────
 export default function TrashCanPage() {
+  const screens = useBreakpoint();
+  const isLaptop = !!(screens.md && !screens.xl); // 768px - 1279px
+
   const [isMobile, setIsMobile] = useState(false);
   const [page, setPage] = useState(1);
   const [pageSize] = useState(20);
@@ -164,78 +168,80 @@ export default function TrashCanPage() {
     {
       title: 'STT',
       key: 'stt',
-      width: 50,
+      width: 55,
       align: 'center' as const,
       render: (_: any, __: any, index: number) => (page - 1) * pageSize + index + 1,
     },
     {
-      title: 'Tên KH',
+      title: 'Họ và tên',
       dataIndex: 'name',
       key: 'name',
-      render: (text: string) => <Text strong>{text}</Text>,
+      onCell: () => ({ className: 'col-name' }),
+      render: (text: string) => <Text strong style={{ color: '#1890ff' }}>{text}</Text>,
     },
     {
       title: 'SĐT',
       dataIndex: 'phone',
       key: 'phone',
-      width: '11%',
+      width: '15%',
       render: (val: string) => val || <span style={{ color: '#aaa', fontStyle: 'italic' }}>Chưa có SĐT</span>,
     },
     {
       title: 'Nguồn',
       dataIndex: 'source',
       key: 'source',
-      width: '8%',
+      width: '12%',
       render: (val: string) => val ? <Tag color="blue">{val}</Tag> : '-',
     },
     {
       title: 'Sales phụ trách',
       key: 'salesUser',
-      width: '15%',
+      width: isLaptop ? '18%' : '20%',
       render: (_: any, record: Customer) => record.salesUser?.name || '-',
     },
     {
       title: 'Ngày tạo',
       dataIndex: 'createdAt',
       key: 'createdAt',
-      width: '10%',
+      width: '12%',
       render: (val: string) => dayjs(val).format('DD/MM/YYYY'),
     },
     {
       title: 'Ngày xóa',
       dataIndex: 'deletedAt',
       key: 'deletedAt',
-      width: '10%',
+      width: '15%',
       render: (val: string) => dayjs(val).format('DD/MM/YYYY HH:mm'),
     },
     {
       title: 'Thao tác',
       key: 'action',
-      width: 200,
+      width: isLaptop ? 80 : 90,
+      align: 'center' as const,
       render: (_: any, record: Customer) => (
-        <Space size={8}>
+        <Space size={0}>
           <Popconfirm
             title="Khôi phục khách hàng này?"
             onConfirm={() => handleRestore(record.id)}
             okText="Khôi phục"
             cancelText="Hủy"
           >
-            <Button type="primary" size="small" icon={<UndoOutlined />}>
-              Khôi phục
-            </Button>
+            <Tooltip title="Khôi phục">
+              <Button type="text" style={{ color: '#1890ff' }} size="small" icon={<UndoOutlined />} />
+            </Tooltip>
           </Popconfirm>
 
           <Popconfirm
             title="Xóa vĩnh viễn?"
-            description="Hành động này KHÔNG THỂ hoàn tác. Toàn bộ dữ liệu sẽ mất."
+            description="Hành động này KHÔNG THỂ hoàn tác."
             onConfirm={() => handleHardDelete(record.id)}
             okText="Xóa vĩnh viễn"
             okButtonProps={{ danger: true }}
             cancelText="Hủy"
           >
-            <Button danger size="small" icon={<DeleteOutlined />}>
-              Xóa vĩnh viễn
-            </Button>
+            <Tooltip title="Xóa vĩnh viễn">
+              <Button type="text" danger size="small" icon={<DeleteOutlined />} />
+            </Tooltip>
           </Popconfirm>
         </Space>
       ),
@@ -280,10 +286,13 @@ export default function TrashCanPage() {
                 Thùng rác trống
               </div>
             ) : (
-              data.map(record => (
+              data.map((record, index) => (
                 <TrashMobileCard
                   key={record.id}
                   record={record}
+                  index={index}
+                  page={page}
+                  pageSize={pageSize}
                   onRestore={handleRestore}
                   onHardDelete={handleHardDelete}
                 />
