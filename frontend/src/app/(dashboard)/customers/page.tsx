@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useState, useMemo } from 'react';
-import { Table, Card, Tag, App, Button, Space, Row, Col, Typography, Tooltip, Input, Select, DatePicker, Divider, Collapse, Pagination } from 'antd';
+import { Table, Card, Tag, App, Button, Space, Row, Col, Typography, Tooltip, Input, Select, DatePicker, Divider, Collapse, Pagination, Grid } from 'antd';
 import { UploadOutlined, UsergroupAddOutlined, ReloadOutlined, PlusOutlined, SearchOutlined, SortAscendingOutlined, SortDescendingOutlined, InfoCircleOutlined } from '@ant-design/icons';
 import type { ColumnsType, TablePaginationConfig } from 'antd/es/table';
 import type { FilterValue, SorterResult } from 'antd/es/table/interface';
@@ -116,7 +116,13 @@ const CustomerMobileCard = ({
   </Card>
 );
 
+const { useBreakpoint } = Grid;
+
 export default function CustomersPage() {
+  const screens = useBreakpoint();
+  const isLaptop = !!(screens.md && !screens.xl); // 768px - 1279px
+  const isDesktop = !!screens.xl; // >= 1280px
+
   const [isMobile, setIsMobile] = useState(false);
   useEffect(() => {
     const check = () => setIsMobile(window.innerWidth < 768);
@@ -275,23 +281,22 @@ export default function CustomersPage() {
     {
       title: 'STT',
       key: 'stt',
-      width: 50,
+      width: 48,
       align: 'center',
-      fixed: 'left',
       render: (_, __, index) => (page - 1) * pageSize + index + 1,
     },
     {
       title: 'Ngày nhập',
       dataIndex: 'inputDate',
       key: 'inputDate',
-      width: 110,
+      width: '9%',
       render: (date) => dayjs(date).format('DD/MM/YYYY'),
     },
     {
       title: 'Họ và tên',
       dataIndex: 'name',
       key: 'name',
-      ellipsis: { showTitle: true },
+      onCell: () => ({ className: 'col-name' }),
       render: (text, record) => (
         <Space size={4}>
           <Text strong style={{ color: '#1890ff' }}>{text}</Text>
@@ -305,34 +310,34 @@ export default function CustomersPage() {
       title: 'SĐT',
       dataIndex: 'phone',
       key: 'phone',
-      width: 120,
+      width: '11%',
       render: (val) => val ? val : <span style={{ color: '#aaa', fontStyle: 'italic' }}>Chưa có SDT</span>,
     },
     {
       title: 'Nguồn',
       dataIndex: 'source',
       key: 'source',
-      width: 100,
+      width: '8%',
       render: (source) => renderSourceTag(source),
     },
     {
       title: 'UTM',
       dataIndex: 'campaign',
       key: 'campaign',
-      width: 120,
+      width: '10%',
       ellipsis: { showTitle: true },
     },
     {
       title: 'Sales (Chính + Phụ)',
       key: 'salesUser',
-      width: 180,
+      width: isLaptop ? '15%' : '17%',
       render: (_, record: any) => renderSalesTag(record),
     },
     {
       title: 'Trạng thái',
       dataIndex: 'status',
       key: 'status',
-      width: 110,
+      width: '10%',
       render: (status) => renderStatusTag(status),
     },
     {
@@ -346,9 +351,8 @@ export default function CustomersPage() {
       ),
       dataIndex: 'totalDeposit30Days',
       key: 'totalDeposit30Days',
-      width: 140,
+      width: '11%',
       align: 'right',
-      fixed: 'right',
       render: (val) => (
         <Tooltip title="Tổng tiền nạp dựa trên khoảng ngày">
           <Text strong style={{ color: Number(val) > 0 ? '#52c41a' : '#bfbfbf' }}>
@@ -357,7 +361,7 @@ export default function CustomersPage() {
         </Tooltip>
       ),
     },
-  ], [depositRangeForColumnLabel, page, pageSize]);
+  ], [isLaptop, depositRangeForColumnLabel, page, pageSize]);
 
   const handleFiltersChange = (newFilters: any) => {
     if (newFilters.search !== undefined) setSearchText(newFilters.search);
@@ -389,16 +393,32 @@ export default function CustomersPage() {
   };
 
   const renderToolbar = () => (
-    <Space className="mobile-toolbar">
-      <Button icon={<ReloadOutlined />} onClick={() => { refetchCustomers(); fetchStats(); }} title="Làm mới">
-        {!isMobile && 'Làm mới'}
+    <Space className="mobile-toolbar" size={isLaptop ? 4 : 8}>
+      <Button 
+        icon={<ReloadOutlined />} 
+        onClick={() => { refetchCustomers(); fetchStats(); }} 
+        title="Làm mới"
+        size={isLaptop ? 'small' : 'middle'}
+      >
+        {!isMobile && !isLaptop && 'Làm mới'}
       </Button>
-      <Button type="primary" icon={<PlusOutlined />} onClick={() => setIsCreateOpen(true)} title="Thêm khách hàng">
-        {!isMobile && 'Thêm khách hàng'}
+      <Button 
+        type="primary" 
+        icon={<PlusOutlined />} 
+        onClick={() => setIsCreateOpen(true)} 
+        title="Thêm khách hàng"
+        size={isLaptop ? 'small' : 'middle'}
+      >
+        {!isMobile && !isLaptop && 'Thêm khách hàng'}
       </Button>
       {canImport && (
-        <Button icon={<UploadOutlined />} onClick={() => setIsImportOpen(true)} title="Nhập Excel">
-          {!isMobile && 'Nhập Excel'}
+        <Button 
+          icon={<UploadOutlined />} 
+          onClick={() => setIsImportOpen(true)} 
+          title="Nhập Excel"
+          size={isLaptop ? 'small' : 'middle'}
+        >
+          {!isMobile && !isLaptop && 'Nhập Excel'}
         </Button>
       )}
       {canAssign && selectedRowKeys.length > 0 && !isMobile && (
@@ -406,8 +426,9 @@ export default function CustomersPage() {
           type="primary" 
           icon={<UsergroupAddOutlined />} 
           onClick={() => setIsAssignOpen(true)}
+          size={isLaptop ? 'small' : 'middle'}
         >
-          Gán cho Sales ({selectedRowKeys.length})
+          {isLaptop ? `Gán (${selectedRowKeys.length})` : `Gán cho Sales (${selectedRowKeys.length})`}
         </Button>
       )}
     </Space>
@@ -499,7 +520,6 @@ export default function CustomersPage() {
           rowKey="id"
           loading={loading}
           size="middle"
-          bordered
           onChange={handleTableChange}
           onRow={(record) => ({
             onClick: () => {

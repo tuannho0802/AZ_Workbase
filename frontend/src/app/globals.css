@@ -28,20 +28,25 @@ body {
 /* CRM Table Responsive Overrides */
 .customer-table {
   width: 100%;
-  table-layout: auto;
-  overflow-x: auto;
 }
 
-.customer-table th,
-.customer-table td {
-  white-space: normal !important;
-  word-wrap: break-word;
-  padding: 12px 8px;
-  max-width: 200px;
+.customer-table .ant-table-content table,
+.customer-table .ant-table-fixed-header table {
+  table-layout: fixed !important;
+  width: 100% !important;
 }
 
-.customer-table td {
+.customer-table .ant-table-cell {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
   vertical-align: top;
+}
+
+/* Riêng cột tên cho phép wrap */
+.customer-table .ant-table-cell.col-name {
+  white-space: normal !important;
+  word-break: break-word !important;
 }
 
 @media (max-width: 768px) {
@@ -65,5 +70,26 @@ body {
   /* Filter area compact & Card body compact on mobile */
   .ant-card-body { 
     padding: 8px !important; 
+  }
+}
+
+/* Laptop */
+@media (min-width: 768px) and (max-width: 1279px) {
+  .customer-table .ant-table-cell {
+    font-size: 12px !important;
+    padding: 8px 6px !important;
+  }
+  .customer-table .ant-tag {
+    font-size: 11px;
+    padding: 0 4px;
+    margin: 0;
+  }
+}
+
+/* Desktop */
+@media (min-width: 1280px) {
+  .customer-table .ant-table-cell {
+    font-size: 13px;
+    padding: 10px 8px;
   }
 }
