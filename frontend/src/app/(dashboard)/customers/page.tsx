@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useState, useMemo } from 'react';
-import { Table, Card, Tag, App, Button, Space, Row, Col, Typography, Tooltip, Input, Select, DatePicker, Divider } from 'antd';
+import { Table, Card, Tag, App, Button, Space, Row, Col, Typography, Tooltip, Input, Select, DatePicker, Divider, Collapse, Pagination } from 'antd';
 import { UploadOutlined, UsergroupAddOutlined, ReloadOutlined, PlusOutlined, SearchOutlined, SortAscendingOutlined, SortDescendingOutlined, InfoCircleOutlined } from '@ant-design/icons';
 import type { ColumnsType, TablePaginationConfig } from 'antd/es/table';
 import type { FilterValue, SorterResult } from 'antd/es/table/interface';
@@ -24,7 +24,107 @@ import { CustomerFilters } from '@/components/customers/CustomerFilters';
 
 const { Text } = Typography;
 
+const renderStatusTag = (status: string) => {
+  const config: Record<string, { color: string; text: string }> = {
+    closed: { color: 'success', text: 'Đã chốt' },
+    pending: { color: 'warning', text: 'Chờ xử lý' },
+    potential: { color: 'processing', text: 'Tiềm năng' },
+    lost: { color: 'error', text: 'Mất' },
+    inactive: { color: 'default', text: 'Ngừng chăm sóc' },
+  };
+  const { color, text } = config[status] || { color: 'default', text: status };
+  return <Tag color={color}>{text}</Tag>;
+};
+
+const renderSourceTag = (source: string) => {
+  const colors: Record<string, string> = {
+    Facebook: 'blue',
+    TikTok: 'magenta',
+    Google: 'green',
+    Instagram: 'purple',
+  };
+  return <Tag color={colors[source] || 'default'}>{source}</Tag>;
+};
+
+const renderSalesTag = (record: any) => {
+  const primarySales = record.salesUser;
+  const allAssignees = record.activeAssignees || [];
+  const sharedSales = allAssignees.filter((a: any) => a.id !== primarySales?.id);
+  
+  if (!primarySales && sharedSales.length === 0) {
+    return <span style={{ color: '#bbb', fontStyle: 'italic', fontSize: '11px' }}>Chưa gán</span>;
+  }
+
+  return (
+    <Space size={[0, 4]} align="center" wrap>
+      {primarySales ? <Tag color="blue" title="Sales phụ trách chính">{primarySales.name}</Tag> : <span style={{ color: '#bbb', fontStyle: 'italic', fontSize: '11px' }}>Chưa có Primary</span>}
+      {sharedSales.length > 0 && (
+        <Tooltip title={`Sales được chia:\n${sharedSales.map((a: any) => a.name).join(', ')}`}>
+          <Tag color="cyan">+{sharedSales.length}</Tag>
+        </Tooltip>
+      )}
+    </Space>
+  );
+};
+
+const CustomerMobileCard = ({ 
+  record, 
+  index, 
+  page, 
+  pageSize, 
+  onRowClick 
+}: { 
+  record: Customer; 
+  index: number; 
+  page: number; 
+  pageSize: number; 
+  onRowClick: (id: number) => void; 
+}) => (
+  <Card
+    size="small"
+    bordered
+    style={{ marginBottom: 8, cursor: 'pointer' }}
+    onClick={() => onRowClick(record.id)}
+  >
+    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 }}>
+      <Space size={4}>
+        <Text type="secondary" style={{ fontSize: 11 }}>#{(page - 1) * pageSize + index + 1}</Text>
+        <Text strong style={{ color: '#1890ff' }}>{record.name}</Text>
+      </Space>
+      {renderStatusTag(record.status)}
+    </div>
+    <div style={{ display: 'flex', gap: 12, marginBottom: 4, fontSize: 12, color: '#555' }}>
+      <span>📞 {record.phone || 'Chưa có SĐT'}</span>
+      <span>📅 {dayjs(record.inputDate).format('DD/MM/YY')}</span>
+    </div>
+    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 }}>
+      <Space size={4}>
+        {renderSourceTag(record.source)}
+        {renderSalesTag(record)}
+      </Space>
+    </div>
+    {record.campaign && (
+      <div style={{ marginBottom: 4 }}>
+        <Text type="secondary" style={{ fontSize: 11 }} ellipsis={{ tooltip: record.campaign }}>UTM: {record.campaign}</Text>
+      </div>
+    )}
+    <div style={{ textAlign: 'right', marginTop: 4 }}>
+      <Text strong style={{ color: Number(record.totalDeposit30Days) > 0 ? '#52c41a' : '#bfbfbf', fontSize: 13 }}>
+        ${(Number(record.totalDeposit30Days) || 0).toLocaleString(undefined, { minimumFractionDigits: 2 })}
+      </Text>
+    </div>
+  </Card>
+);
+
 export default function CustomersPage() {
+  const [isMobile, setIsMobile] = useState(false);
+  useEffect(() => {
+    const check = () => setIsMobile(window.innerWidth < 768);
+    check();
+    window.addEventListener('resize', check);
+    return () => window.removeEventListener('resize', check);
+  }, []);
+
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(20);
   const { message } = App.useApp();
@@ -213,15 +313,7 @@ export default function CustomersPage() {
       dataIndex: 'source',
       key: 'source',
       width: 100,
-      render: (source) => {
-        const colors: Record<string, string> = {
-          Facebook: 'blue',
-          TikTok: 'magenta',
-          Google: 'green',
-          Instagram: 'purple',
-        };
-        return <Tag color={colors[source] || 'default'}>{source}</Tag>;
-      },
+      render: (source) => renderSourceTag(source),
     },
     {
       title: 'UTM',
@@ -234,43 +326,14 @@ export default function CustomersPage() {
       title: 'Sales (Chính + Phụ)',
       key: 'salesUser',
       width: 180,
-      render: (_, record: any) => {
-        const primarySales = record.salesUser;
-        const allAssignees = record.activeAssignees || [];
-        const sharedSales = allAssignees.filter((a: any) => a.id !== primarySales?.id);
-        
-        if (!primarySales && sharedSales.length === 0) {
-          return <span style={{ color: '#bbb', fontStyle: 'italic' }}>Chưa gán</span>;
-        }
-
-        return (
-          <Space size={[0, 4]} align="center" wrap>
-            {primarySales ? <Tag color="blue" title="Sales phụ trách chính">{primarySales.name}</Tag> : <span style={{ color: '#bbb', fontStyle: 'italic' }}>Chưa có Primary</span>}
-            {sharedSales.length > 0 && (
-              <Tooltip title={`Sales được chia:\n${sharedSales.map((a: any) => a.name).join(', ')}`}>
-                <Tag color="cyan">+{sharedSales.length}</Tag>
-              </Tooltip>
-            )}
-          </Space>
-        );
-      },
+      render: (_, record: any) => renderSalesTag(record),
     },
     {
       title: 'Trạng thái',
       dataIndex: 'status',
       key: 'status',
       width: 110,
-      render: (status) => {
-        const config: Record<string, { color: string; text: string }> = {
-          closed: { color: 'success', text: 'Đã chốt' },
-          pending: { color: 'warning', text: 'Chờ xử lý' },
-          potential: { color: 'processing', text: 'Tiềm năng' },
-          lost: { color: 'error', text: 'Mất' },
-          inactive: { color: 'default', text: 'Ngừng chăm sóc' },
-        };
-        const { color, text } = config[status] || { color: 'default', text: status };
-        return <Tag color={color}>{text}</Tag>;
-      },
+      render: (status) => renderStatusTag(status),
     },
     {
       title: () => (
@@ -326,19 +389,19 @@ export default function CustomersPage() {
   };
 
   const renderToolbar = () => (
-    <Space>
-      <Button icon={<ReloadOutlined />} onClick={() => { refetchCustomers(); fetchStats(); }}>
-        Làm mới
+    <Space className="mobile-toolbar">
+      <Button icon={<ReloadOutlined />} onClick={() => { refetchCustomers(); fetchStats(); }} title="Làm mới">
+        {!isMobile && 'Làm mới'}
       </Button>
-      <Button type="primary" icon={<PlusOutlined />} onClick={() => setIsCreateOpen(true)}>
-        Thêm khách hàng
+      <Button type="primary" icon={<PlusOutlined />} onClick={() => setIsCreateOpen(true)} title="Thêm khách hàng">
+        {!isMobile && 'Thêm khách hàng'}
       </Button>
       {canImport && (
-        <Button icon={<UploadOutlined />} onClick={() => setIsImportOpen(true)}>
-          Nhập Excel
+        <Button icon={<UploadOutlined />} onClick={() => setIsImportOpen(true)} title="Nhập Excel">
+          {!isMobile && 'Nhập Excel'}
         </Button>
       )}
-      {canAssign && selectedRowKeys.length > 0 && (
+      {canAssign && selectedRowKeys.length > 0 && !isMobile && (
         <Button 
           type="primary" 
           icon={<UsergroupAddOutlined />} 
@@ -359,51 +422,105 @@ export default function CustomersPage() {
     />
     
     <Card title="Danh sách khách hàng" extra={renderToolbar()}>
-      <CustomerFilters
-        filters={{
-          search: searchText,
-          source,
-          status,
-          salesUserId,
-          dateFrom: dateFrom?.format('YYYY-MM-DD'),
-          dateTo: dateTo?.format('YYYY-MM-DD'),
-        }}
-        salesUsers={salesUsers}
-        onFiltersChange={handleFiltersChange}
-      />
-      <Table
-        className="customer-table"
-        rowSelection={canAssign ? rowSelection : undefined}
-        columns={columns.map(col => ({
-          ...col,
-          sorter: ['name', 'phone', 'status', 'inputDate', 'createdAt', 'totalDeposit30Days'].includes(col.key as string),
-          sortOrder: sortField === col.key ? (sortOrder === 'ASC' ? 'ascend' : 'descend') : null,
-        }))}
-        dataSource={customers}
-        rowKey="id"
-        loading={loading}
-        size="middle"
-        bordered
-        onChange={handleTableChange}
-        onRow={(record) => ({
-          onClick: () => {
-            setSelectedCustomerId(record.id);
-            setIsDrawerOpen(true);
-          },
-          style: { cursor: 'pointer' }
-        })}
-        pagination={{
-          current: page,
-          pageSize: pageSize,
-          total: total,
-          showSizeChanger: true,
-          showTotal: (total) => `Tổng cộng ${total} khách hàng`,
-          onChange: (newPage, newPageSize) => {
-            setPage(newPage);
-            setPageSize(newPageSize);
-          },
-        }}
-      />
+      {isMobile ? (
+        <Collapse 
+          ghost 
+          style={{ marginBottom: 12 }} 
+          items={[
+            { 
+              key: '1', 
+              label: '🔍 Bộ lọc & Tìm kiếm', 
+              children: (
+                <div style={{ marginTop: -8 }}>
+                  <CustomerFilters
+                    filters={{
+                      search: searchText,
+                      source,
+                      status,
+                      salesUserId,
+                      dateFrom: dateFrom?.format('YYYY-MM-DD'),
+                      dateTo: dateTo?.format('YYYY-MM-DD'),
+                    }}
+                    salesUsers={salesUsers}
+                    onFiltersChange={handleFiltersChange}
+                  />
+                </div>
+              )
+            }
+          ]} 
+        />
+      ) : (
+        <CustomerFilters
+          filters={{
+            search: searchText,
+            source,
+            status,
+            salesUserId,
+            dateFrom: dateFrom?.format('YYYY-MM-DD'),
+            dateTo: dateTo?.format('YYYY-MM-DD'),
+          }}
+          salesUsers={salesUsers}
+          onFiltersChange={handleFiltersChange}
+        />
+      )}
+
+      {isMobile ? (
+        <div style={{ padding: '0 4px' }}>
+          {customers.map((record, index) => (
+            <CustomerMobileCard
+              key={record.id}
+              record={record}
+              index={index}
+              page={page}
+              pageSize={pageSize}
+              onRowClick={(id) => { setSelectedCustomerId(id); setIsDrawerOpen(true); }}
+            />
+          ))}
+          <Pagination
+            current={page}
+            pageSize={pageSize}
+            total={total}
+            size="small"
+            simple
+            onChange={(p, ps) => { setPage(p); setPageSize(ps || pageSize); }}
+            style={{ textAlign: 'center', marginTop: 12 }}
+          />
+        </div>
+      ) : (
+        <Table
+          className="customer-table"
+          rowSelection={canAssign ? rowSelection : undefined}
+          columns={columns.map(col => ({
+            ...col,
+            sorter: ['name', 'phone', 'status', 'inputDate', 'createdAt', 'totalDeposit30Days'].includes(col.key as string),
+            sortOrder: sortField === col.key ? (sortOrder === 'ASC' ? 'ascend' : 'descend') : null,
+          }))}
+          dataSource={customers}
+          rowKey="id"
+          loading={loading}
+          size="middle"
+          bordered
+          onChange={handleTableChange}
+          onRow={(record) => ({
+            onClick: () => {
+              setSelectedCustomerId(record.id);
+              setIsDrawerOpen(true);
+            },
+            style: { cursor: 'pointer' }
+          })}
+          pagination={{
+            current: page,
+            pageSize: pageSize,
+            total: total,
+            showSizeChanger: true,
+            showTotal: (total) => `Tổng cộng ${total} khách hàng`,
+            onChange: (newPage, newPageSize) => {
+              setPage(newPage);
+              setPageSize(newPageSize);
+            },
+          }}
+        />
+      )}
     </Card>
 
     <CustomerDetailDrawer

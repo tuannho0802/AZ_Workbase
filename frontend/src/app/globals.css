@@ -54,4 +54,16 @@ body {
     font-size: 12px;
     max-width: 150px;
   }
+
+  /* Toolbar buttons: wrap and tighten gaps on mobile */
+  .mobile-toolbar {
+    flex-wrap: wrap;
+    gap: 6px !important;
+    justify-content: flex-end;
+  }
+  
+  /* Filter area compact & Card body compact on mobile */
+  .ant-card-body { 
+    padding: 8px !important; 
+  }
 }
