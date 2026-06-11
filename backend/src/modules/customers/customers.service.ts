@@ -820,4 +820,70 @@ export class CustomersService {
 
     return await queryBuilder.getMany();
   }
+
+  async getTrash(filters: CustomerFiltersDto) {
+    const { page = 1, limit = 20, search } = filters;
+
+    const qb = this.customersRepository
+      .createQueryBuilder('customer')
+      .withDeleted()                          // ← include soft-deleted rows
+      .leftJoinAndSelect('customer.salesUser', 'salesUser')
+      .leftJoinAndSelect('customer.createdBy', 'createdBy')
+      .where('customer.deletedAt IS NOT NULL'); // ← chỉ lấy đã xóa
+
+    if (search?.trim()) {
+      const s = `%${search.trim().toLowerCase()}%`;
+      qb.andWhere(
+        new Brackets(q =>
+          q.where('LOWER(customer.name) LIKE :s', { s })
+           .orWhere('customer.phone LIKE :s', { s })
+        )
+      );
+    }
+
+    const [data, total] = await qb
+      .orderBy('customer.deletedAt', 'DESC')
+      .skip((page - 1) * limit)
+      .take(limit)
+      .getManyAndCount();
+
+    return { data, total, page, limit, totalPages: Math.ceil(total / limit) };
+  }
+
+  async restore(id: number, adminId: number) {
+    const customer = await this.customersRepository.findOne({
+      where: { id } as any,
+      withDeleted: true,
+    });
+
+    if (!customer) throw new NotFoundException('Không tìm thấy khách hàng trong trash');
+    if (!customer.deletedAt) throw new BadRequestException('Khách hàng này chưa bị xóa');
+
+    await this.customersRepository.restore(id);
+
+    await this.auditService.logAction(
+      adminId, 'RESTORE_CUSTOMER', 'customer', id, null, { restored: true }
+    );
+
+    return { message: 'Khôi phục khách hàng thành công' };
+  }
+
+  async hardDelete(id: number, adminId: number) {
+    const customer = await this.customersRepository.findOne({
+      where: { id } as any,
+      withDeleted: true,
+    });
+
+    if (!customer) throw new NotFoundException('Không tìm thấy khách hàng');
+    if (!customer.deletedAt) throw new BadRequestException('Chỉ có thể hard delete khách hàng đã soft delete trước');
+
+    const snapshot = { ...customer };
+    await this.customersRepository.delete(id); // hard delete
+
+    await this.auditService.logAction(
+      adminId, 'HARD_DELETE_CUSTOMER', 'customer', id, snapshot, null
+    );
+
+    return { message: 'Đã xóa vĩnh viễn khách hàng' };
+  }
 }

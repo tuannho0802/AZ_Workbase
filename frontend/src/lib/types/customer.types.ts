@@ -101,6 +101,7 @@ export interface Customer {
   };
   createdAt: string;
   updatedAt: string;
+  deletedAt?: string;
 }
 
 export interface PaginatedResponse<T> {

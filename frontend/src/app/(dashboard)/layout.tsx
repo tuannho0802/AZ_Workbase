@@ -12,7 +12,8 @@ import {
   SwapOutlined,
   CalendarOutlined,
   CheckCircleOutlined,
-  FileTextOutlined
+  FileTextOutlined,
+  DeleteOutlined
 } from '@ant-design/icons';
 import { useAuthStore } from '@/lib/stores/auth.store';
 import Cookies from 'js-cookie';
@@ -59,6 +60,8 @@ export default function DashboardLayout({
       newKey = 'nghi-phep';
     } else if (pathname.includes('/duyet-phep')) {
       newKey = 'duyet-phep';
+    } else if (pathname.includes('/trash-can')) {
+      newKey = 'trash-can';
     }
     
     setSelectedKey(newKey);
@@ -152,6 +155,12 @@ export default function DashboardLayout({
               icon: <UserOutlined />,
               label: 'Nhân viên',
               onClick: () => router.push('/users'),
+            }] : []),
+            ...(['admin'].includes(user?.role || '') ? [{
+              key: 'trash-can',
+              icon: <DeleteOutlined />,
+              label: 'Thùng rác',
+              onClick: () => router.push('/trash-can'),
             }] : []),
           ]}
         />

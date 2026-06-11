@@ -78,4 +78,19 @@ export const customersApi = {
     const response = await axiosInstance.delete(`/customers/deposits/${id}`);
     return response.data;
   },
+
+  getTrash: async (params?: { page?: number; limit?: number; search?: string }): Promise<PaginatedResponse<Customer>> => {
+    const response = await axiosInstance.get('/customers/trash', { params });
+    return response.data;
+  },
+
+  restoreCustomer: async (id: number) => {
+    const response = await axiosInstance.patch(`/customers/trash/${id}/restore`);
+    return response.data;
+  },
+
+  hardDeleteCustomer: async (id: number) => {
+    const response = await axiosInstance.delete(`/customers/trash/${id}/hard-delete`);
+    return response.data;
+  },
 };

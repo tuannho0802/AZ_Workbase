@@ -122,6 +122,27 @@ export class CustomersController {
     return this.customersService.findAll(filters, user.id, user.role);
   }
 
+  @Get('trash')
+  @Roles(Role.ADMIN)
+  @ApiOperation({ summary: 'Lấy danh sách khách hàng đã xóa mềm' })
+  getTrash(@Query() filters: CustomerFiltersDto) {
+    return this.customersService.getTrash(filters);
+  }
+
+  @Patch('trash/:id/restore')
+  @Roles(Role.ADMIN)
+  @ApiOperation({ summary: 'Khôi phục khách hàng từ trash' })
+  restore(@Param('id') id: string, @GetUser() user: any) {
+    return this.customersService.restore(+id, user.id);
+  }
+
+  @Delete('trash/:id/hard-delete')
+  @Roles(Role.ADMIN)
+  @ApiOperation({ summary: 'Xóa vĩnh viễn khách hàng (Hard Delete)' })
+  hardDelete(@Param('id') id: string, @GetUser() user: any) {
+    return this.customersService.hardDelete(+id, user.id);
+  }
+
   @Get(':id')
   @ApiOperation({ summary: 'Lấy thông tin chi tiết khách hàng' })
   @ApiResponse({ status: 200, description: 'Chi tiết khách hàng (kèm Sales, Department, Deposits, Notes)' })
