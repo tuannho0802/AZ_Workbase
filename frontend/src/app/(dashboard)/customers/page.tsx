@@ -1,8 +1,8 @@
 'use client';
 
 import { useEffect, useState, useMemo } from 'react';
-import { Table, Card, Tag, App, Button, Space, Row, Col, Typography, Tooltip, Input, Select, DatePicker, Divider, Collapse, Pagination, Grid } from 'antd';
-import { UploadOutlined, UsergroupAddOutlined, ReloadOutlined, PlusOutlined, SearchOutlined, SortAscendingOutlined, SortDescendingOutlined, InfoCircleOutlined } from '@ant-design/icons';
+import { Table, Card, Tag, App, Button, Space, Row, Col, Typography, Tooltip, Input, Select, DatePicker, Divider, Collapse, Pagination, Grid, Popconfirm } from 'antd';
+import { UploadOutlined, UsergroupAddOutlined, ReloadOutlined, PlusOutlined, SearchOutlined, SortAscendingOutlined, SortDescendingOutlined, InfoCircleOutlined, DeleteOutlined } from '@ant-design/icons';
 import type { ColumnsType, TablePaginationConfig } from 'antd/es/table';
 import type { FilterValue, SorterResult } from 'antd/es/table/interface';
 import { customersApi } from '@/lib/api/customers.api';
@@ -72,14 +72,25 @@ const CustomerMobileCard = ({
   index, 
   page, 
   pageSize, 
-  onRowClick 
+  onRowClick,
+  user,
+  onDelete
 }: { 
   record: Customer; 
   index: number; 
   page: number; 
   pageSize: number; 
   onRowClick: (id: number) => void; 
-}) => (
+  user: any;
+  onDelete: (id: number) => void;
+}) => {
+  const canDelete =
+    user?.role === 'admin' ||
+    user?.role === 'manager' ||
+    (user?.role === 'assistant' && record.createdBy?.id === user?.id) ||
+    (user?.role === 'employee' && record.createdBy?.id === user?.id);
+
+  return (
   <Card
     size="small"
     variant="outlined"
@@ -108,13 +119,38 @@ const CustomerMobileCard = ({
         <Text type="secondary" style={{ fontSize: 11 }} ellipsis={{ tooltip: record.campaign }}>UTM: {record.campaign}</Text>
       </div>
     )}
-    <div style={{ textAlign: 'right', marginTop: 4 }}>
+    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 4 }}>
+      <div>
+        {canDelete && (
+          <Popconfirm
+            title="Xóa khách hàng"
+            description="Bạn có chắc chắn muốn xóa khách hàng này?"
+            onConfirm={(e) => {
+              e?.stopPropagation();
+              onDelete(record.id);
+            }}
+            onCancel={(e) => e?.stopPropagation()}
+            okText="Xóa"
+            cancelText="Hủy"
+            okButtonProps={{ danger: true }}
+          >
+            <Button
+              type="text"
+              danger
+              icon={<DeleteOutlined />}
+              onClick={(e) => e.stopPropagation()}
+              size="small"
+              title="Xóa khách hàng"
+            />
+          </Popconfirm>
+        )}
+      </div>
       <Text strong style={{ color: Number(record.totalDeposit30Days) > 0 ? '#52c41a' : '#bfbfbf', fontSize: 13 }}>
         ${(Number(record.totalDeposit30Days) || 0).toLocaleString(undefined, { minimumFractionDigits: 2 })}
       </Text>
     </div>
   </Card>
-);
+)};
 
 const { useBreakpoint } = Grid;
 
@@ -244,6 +280,17 @@ export default function CustomersPage() {
     await fetchStats();
   };
 
+  const handleDeleteCustomer = async (id: number) => {
+    try {
+      await customersApi.deleteCustomer(id);
+      message.success('Đã xóa khách hàng');
+      refetchCustomers();
+      fetchStats();
+    } catch (error: any) {
+      message.error(error?.response?.data?.message || 'Lỗi khi xóa khách hàng');
+    }
+  };
+
   const renderAuditTrail = (record: Customer) => {
     console.log('Tooltip record:', record);
     console.log('Tooltip updatedBy:', record.updatedBy);
@@ -361,7 +408,46 @@ export default function CustomersPage() {
         </Tooltip>
       ),
     },
-  ], [isLaptop, depositRangeForColumnLabel, page, pageSize]);
+    {
+      title: 'Thao tác',
+      key: 'action',
+      width: isLaptop ? 60 : 70,
+      align: 'center' as const,
+      render: (_: any, record: Customer) => {
+        const canDelete =
+          user?.role === 'admin' ||
+          user?.role === 'manager' ||
+          (user?.role === 'assistant' && record.createdBy?.id === user?.id) ||
+          (user?.role === 'employee' && record.createdBy?.id === user?.id);
+
+        if (!canDelete) return null;
+
+        return (
+          <Popconfirm
+            title="Xóa khách hàng"
+            description="Bạn có chắc muốn xóa?"
+            onConfirm={(e) => {
+              e?.stopPropagation();
+              handleDeleteCustomer(record.id);
+            }}
+            onCancel={(e) => e?.stopPropagation()}
+            okText="Xóa"
+            cancelText="Hủy"
+            okButtonProps={{ danger: true }}
+          >
+            <Button
+              type="text"
+              danger
+              icon={<DeleteOutlined />}
+              onClick={(e) => e.stopPropagation()}
+              size="small"
+              title="Xóa khách hàng"
+            />
+          </Popconfirm>
+        );
+      },
+    },
+  ], [isLaptop, depositRangeForColumnLabel, page, pageSize, user]);
 
   const handleFiltersChange = (newFilters: any) => {
     if (newFilters.search !== undefined) setSearchText(newFilters.search);
@@ -495,6 +581,8 @@ export default function CustomersPage() {
               page={page}
               pageSize={pageSize}
               onRowClick={(id) => { setSelectedCustomerId(id); setIsDrawerOpen(true); }}
+              user={user}
+              onDelete={handleDeleteCustomer}
             />
           ))}
           <Pagination

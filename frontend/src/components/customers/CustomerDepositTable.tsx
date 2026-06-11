@@ -5,6 +5,7 @@ import { Table, Button, Space, Typography, Popconfirm, App, Card } from 'antd';
 import { DeleteOutlined, ReloadOutlined } from '@ant-design/icons';
 import { customersApi } from '@/lib/api/customers.api';
 import { Deposit } from '@/lib/types/customer.types';
+import { useAuthStore } from '@/lib/stores/auth.store';
 import dayjs from 'dayjs';
 
 const { Text } = Typography;
@@ -18,6 +19,8 @@ export const CustomerDepositTable = ({ customerId, refreshTrigger }: Props) => {
   const [loading, setLoading] = useState(false);
   const [deposits, setDeposits] = useState<Deposit[]>([]);
   const { message } = App.useApp();
+  const { user } = useAuthStore();
+  const canDelete = user?.role === 'admin' || user?.role === 'manager';
 
   const fetchDeposits = useCallback(async () => {
     if (!customerId) return;
@@ -87,21 +90,23 @@ export const CustomerDepositTable = ({ customerId, refreshTrigger }: Props) => {
               <Text type="secondary" style={{ fontSize: 12 }}>
                 Sàn: {record.broker || '-'} | Tạo bởi: {record.createdBy?.name || 'Hệ thống'}
               </Text>
-              <Popconfirm
-                title="Xóa bản ghi"
-                description="Bạn có chắc chắn muốn xóa bản ghi nạp tiền này?"
-                onConfirm={() => handleDelete(record.id)}
-                okText="Xóa"
-                cancelText="Hủy"
-                okButtonProps={{ danger: true }}
-              >
-                <Button 
-                  type="text" 
-                  danger 
-                  icon={<DeleteOutlined />} 
-                  size="small"
-                />
-              </Popconfirm>
+              {canDelete && (
+                <Popconfirm
+                  title="Xóa bản ghi"
+                  description="Bạn có chắc chắn muốn xóa bản ghi nạp tiền này?"
+                  onConfirm={() => handleDelete(record.id)}
+                  okText="Xóa"
+                  cancelText="Hủy"
+                  okButtonProps={{ danger: true }}
+                >
+                  <Button 
+                    type="text" 
+                    danger 
+                    icon={<DeleteOutlined />} 
+                    size="small"
+                  />
+                </Popconfirm>
+              )}
             </div>
           </Card>
         ))

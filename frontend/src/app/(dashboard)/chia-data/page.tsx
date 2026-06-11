@@ -4,11 +4,11 @@ import { useState, useCallback, useEffect } from 'react';
 import {
   Table, Select, Button, Modal, Tag, Space, Input,
   Typography, Row, Col, Statistic, Divider, Tabs,
-  Avatar, Tooltip, Badge, Form, App, Card, Pagination
+  Avatar, Tooltip, Badge, Form, App, Card, Pagination, Popconfirm
 } from 'antd';
 import {
   UserAddOutlined, ReloadOutlined, SearchOutlined,
-  CheckCircleOutlined, TeamOutlined, InfoCircleOutlined
+  CheckCircleOutlined, TeamOutlined, InfoCircleOutlined, DeleteOutlined
 } from '@ant-design/icons';
 import { useRouter } from 'next/navigation';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
@@ -50,10 +50,18 @@ const api = {
     axiosInstance.patch('/customers/bulk-assign', body),
   getUsers: () => 
     axiosInstance.get('/users/all'),
+  deleteCustomer: (id: number) =>
+    axiosInstance.delete('/customers/' + id),
 };
 
-const UnassignedMobileCard = ({ record, user, renderAuditTrail, onNameClick }: { record: Customer, user: any, renderAuditTrail: (r: any) => React.ReactNode, onNameClick: () => void }) => {
+const UnassignedMobileCard = ({ record, user, renderAuditTrail, onNameClick, onDelete }: { record: Customer, user: any, renderAuditTrail: (r: any) => React.ReactNode, onNameClick: () => void, onDelete: (id: number) => void }) => {
   const isMyPrimary = record.salesUser?.id === user?.id;
+  const canDelete =
+    user?.role === 'admin' ||
+    user?.role === 'manager' ||
+    (user?.role === 'assistant' && record.createdBy?.id === user?.id) ||
+    (user?.role === 'employee' && record.createdBy?.id === user?.id);
+
   return (
     <Card
       size="small"
@@ -78,7 +86,22 @@ const UnassignedMobileCard = ({ record, user, renderAuditTrail, onNameClick }: {
             <Text type="secondary" italic>Chưa có tên</Text>
           )}
         </Space>
-        {record.source ? <Tag color="blue">{record.source}</Tag> : <Text type="secondary">-</Text>}
+        <Space size={4}>
+          {record.source ? <Tag color="blue">{record.source}</Tag> : <Text type="secondary">-</Text>}
+          {canDelete && (
+            <Popconfirm
+              title="Xóa khách hàng"
+              description="Bạn có chắc chắn muốn xóa khách hàng này?"
+              onConfirm={(e) => { e?.stopPropagation(); onDelete(record.id); }}
+              onCancel={(e) => e?.stopPropagation()}
+              okText="Xóa"
+              cancelText="Hủy"
+              okButtonProps={{ danger: true }}
+            >
+              <Button type="text" danger icon={<DeleteOutlined />} onClick={(e) => e.stopPropagation()} size="small" />
+            </Popconfirm>
+          )}
+        </Space>
       </div>
       <div style={{ display: 'flex', gap: 12, marginBottom: 4, fontSize: 12, color: '#555' }}>
         <span>📞 {record.phone || 'Chưa có SĐT'}</span>
@@ -92,10 +115,15 @@ const UnassignedMobileCard = ({ record, user, renderAuditTrail, onNameClick }: {
   );
 };
 
-const AssignedMobileCard = ({ record, renderAuditTrail, onNameClick }: { record: Customer, renderAuditTrail: (r: any) => React.ReactNode, onNameClick: () => void }) => {
+const AssignedMobileCard = ({ record, user, renderAuditTrail, onNameClick, onDelete }: { record: Customer, user: any, renderAuditTrail: (r: any) => React.ReactNode, onNameClick: () => void, onDelete: (id: number) => void }) => {
   const primarySales = record.salesUser;
   const allAssignees = (record as any).activeAssignees || [];
   const sharedSales = allAssignees.filter((a: any) => a.id !== primarySales?.id);
+  const canDelete =
+    user?.role === 'admin' ||
+    user?.role === 'manager' ||
+    (user?.role === 'assistant' && record.createdBy?.id === user?.id) ||
+    (user?.role === 'employee' && record.createdBy?.id === user?.id);
 
   return (
     <Card
@@ -116,7 +144,22 @@ const AssignedMobileCard = ({ record, renderAuditTrail, onNameClick }: { record:
             <Text type="secondary" italic>Chưa có tên</Text>
           )}
         </Space>
-        {record.source ? <Tag color="blue">{record.source}</Tag> : <Text type="secondary">-</Text>}
+        <Space size={4}>
+          {record.source ? <Tag color="blue">{record.source}</Tag> : <Text type="secondary">-</Text>}
+          {canDelete && (
+            <Popconfirm
+              title="Xóa khách hàng"
+              description="Bạn có chắc chắn muốn xóa khách hàng này?"
+              onConfirm={(e) => { e?.stopPropagation(); onDelete(record.id); }}
+              onCancel={(e) => e?.stopPropagation()}
+              okText="Xóa"
+              cancelText="Hủy"
+              okButtonProps={{ danger: true }}
+            >
+              <Button type="text" danger icon={<DeleteOutlined />} onClick={(e) => e.stopPropagation()} size="small" />
+            </Popconfirm>
+          )}
+        </Space>
       </div>
       <div style={{ display: 'flex', gap: 12, marginBottom: 4, fontSize: 12, color: '#555' }}>
         <span>📞 {record.phone || 'Chưa có SĐT'}</span>
@@ -234,6 +277,17 @@ export default function ChiaDataPage() {
     },
   });
 
+  const handleDeleteCustomer = async (id: number) => {
+    try {
+      await api.deleteCustomer(id);
+      antdMessage.success('Đã xóa khách hàng');
+      qc.invalidateQueries({ queryKey: ['unassigned'] });
+      qc.invalidateQueries({ queryKey: ['assigned'] });
+    } catch (error: any) {
+      antdMessage.error(error?.response?.data?.message || 'Lỗi khi xóa khách hàng');
+    }
+  };
+
   // ── HELPERS ──────────────────────────────────────────
   const renderAuditTrail = (record: Customer | any) => {
     console.log('Tooltip record:', record);
@@ -329,6 +383,31 @@ export default function ChiaDataPage() {
         ? dayjs(v).format('DD/MM/YYYY')
         : '-',
     },
+    {
+      title: 'Thao tác', width: 60, align: 'center' as const,
+      render: (_: any, r: Customer) => {
+        const canDelete =
+          user?.role === 'admin' ||
+          user?.role === 'manager' ||
+          (user?.role === 'assistant' && r.createdBy?.id === user?.id) ||
+          (user?.role === 'employee' && r.createdBy?.id === user?.id);
+
+        if (!canDelete) return null;
+        return (
+          <Popconfirm
+            title="Xóa khách hàng"
+            description="Bạn có chắc muốn xóa?"
+            onConfirm={(e) => { e?.stopPropagation(); handleDeleteCustomer(r.id); }}
+            onCancel={(e) => e?.stopPropagation()}
+            okText="Xóa"
+            cancelText="Hủy"
+            okButtonProps={{ danger: true }}
+          >
+            <Button type="text" danger icon={<DeleteOutlined />} onClick={(e) => e.stopPropagation()} size="small" />
+          </Popconfirm>
+        );
+      }
+    },
   ];
 
   // ── COLUMNS: Bảng Đã assign ────────────────────────────
@@ -396,6 +475,31 @@ export default function ChiaDataPage() {
       title: 'Ngày nhập', dataIndex: 'inputDate', width: 110,
       render: (v: string | null) => v
         ? dayjs(v).format('DD/MM/YYYY') : '-',
+    },
+    {
+      title: 'Thao tác', width: 60, align: 'center' as const,
+      render: (_: any, r: Customer) => {
+        const canDelete =
+          user?.role === 'admin' ||
+          user?.role === 'manager' ||
+          (user?.role === 'assistant' && r.createdBy?.id === user?.id) ||
+          (user?.role === 'employee' && r.createdBy?.id === user?.id);
+
+        if (!canDelete) return null;
+        return (
+          <Popconfirm
+            title="Xóa khách hàng"
+            description="Bạn có chắc muốn xóa?"
+            onConfirm={(e) => { e?.stopPropagation(); handleDeleteCustomer(r.id); }}
+            onCancel={(e) => e?.stopPropagation()}
+            okText="Xóa"
+            cancelText="Hủy"
+            okButtonProps={{ danger: true }}
+          >
+            <Button type="text" danger icon={<DeleteOutlined />} onClick={(e) => e.stopPropagation()} size="small" />
+          </Popconfirm>
+        );
+      }
     },
   ];
 
@@ -581,6 +685,7 @@ export default function ChiaDataPage() {
                           user={user}
                           renderAuditTrail={renderAuditTrail}
                           onNameClick={() => router.push(`/customers?id=${record.id}`)}
+                          onDelete={handleDeleteCustomer}
                         />
                       ))
                     )}
@@ -687,8 +792,10 @@ export default function ChiaDataPage() {
                         <AssignedMobileCard
                           key={record.id}
                           record={record}
+                          user={user}
                           renderAuditTrail={renderAuditTrail}
                           onNameClick={() => router.push(`/customers?id=${record.id}`)}
+                          onDelete={handleDeleteCustomer}
                         />
                       ))
                     )}
