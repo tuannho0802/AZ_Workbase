@@ -7,7 +7,11 @@ import { Role } from '../../common/enums/role.enum';
 import { CreateUserDto } from './dto/create-user.dto';
 import { UpdateUserDto } from './dto/update-user.dto';
 import { ResetPasswordDto } from './dto/reset-password.dto';
-import { ConflictException, NotFoundException, ForbiddenException } from '@nestjs/common';
+import {
+  ConflictException,
+  NotFoundException,
+  ForbiddenException,
+} from '@nestjs/common';
 import * as bcrypt from 'bcrypt';
 import { AuditService } from '../audit/audit.service';
 
@@ -16,25 +20,39 @@ export class UsersService {
   private readonly logger = new Logger(UsersService.name);
 
   constructor(
-
     @InjectRepository(User)
     private usersRepository: Repository<User>,
     private readonly auditService: AuditService,
   ) {}
 
   async findByEmail(email: string): Promise<User | null> {
-    return this.usersRepository.findOne({ where: { email } });
+    // password có select: false -> phải addSelect thủ công vì chỗ này
+    // (login) là nơi DUY NHẤT thực sự cần đọc password hash để so sánh.
+    return this.usersRepository
+      .createQueryBuilder('user')
+      .addSelect('user.password')
+      .where('user.email = :email', { email })
+      .getOne();
   }
 
   async findById(id: number): Promise<User | null> {
     return this.usersRepository.findOne({ where: { id } });
   }
 
-  async findOne(id: number, currentUserId: number, currentUserRole: string): Promise<User | null> {
+  async findOne(
+    id: number,
+    currentUserId: number,
+    currentUserRole: string,
+  ): Promise<User | null> {
     if (currentUserRole !== Role.ADMIN && id !== currentUserId) {
-      throw new ForbiddenException('Bạn không có quyền xem thông tin nhân viên khác');
+      throw new ForbiddenException(
+        'Bạn không có quyền xem thông tin nhân viên khác',
+      );
     }
-    const user = await this.usersRepository.findOne({ where: { id }, relations: ['department'] });
+    const user = await this.usersRepository.findOne({
+      where: { id },
+      relations: ['department'],
+    });
     if (!user) {
       throw new NotFoundException('Không tìm thấy nhân viên');
     }
@@ -64,7 +82,12 @@ export class UsersService {
       .getOne();
   }
 
-  async findEmployees(callerId: number, callerRole: string, targetRole?: string, isFullList = false): Promise<User[]> {
+  async findEmployees(
+    callerId: number,
+    callerRole: string,
+    targetRole?: string,
+    isFullList = false,
+  ): Promise<User[]> {
     const whereCondition: any = { isActive: true };
     if (targetRole) {
       whereCondition.role = targetRole;
@@ -73,14 +96,33 @@ export class UsersService {
     return this.usersRepository.find({
       where: whereCondition,
       relations: ['department'],
-      order: { name: 'ASC' }
+      order: { name: 'ASC' },
     });
   }
 
-  async findAll(userId: number, userRole: string, options: { role?: string; departmentId?: number; isActive?: boolean; search?: string; page?: number; limit?: number }) {
-    const { role, departmentId, isActive, search, page = 1, limit = 20 } = options;
-    
-    const queryBuilder = this.usersRepository.createQueryBuilder('user')
+  async findAll(
+    userId: number,
+    userRole: string,
+    options: {
+      role?: string;
+      departmentId?: number;
+      isActive?: boolean;
+      search?: string;
+      page?: number;
+      limit?: number;
+    },
+  ) {
+    const {
+      role,
+      departmentId,
+      isActive,
+      search,
+      page = 1,
+      limit = 20,
+    } = options;
+
+    const queryBuilder = this.usersRepository
+      .createQueryBuilder('user')
       .leftJoinAndSelect('user.department', 'department')
       .where('1=1');
 
@@ -90,13 +132,18 @@ export class UsersService {
       queryBuilder.andWhere('user.role = :role', { role });
     }
     if (departmentId) {
-      queryBuilder.andWhere('user.departmentId = :departmentId', { departmentId });
+      queryBuilder.andWhere('user.departmentId = :departmentId', {
+        departmentId,
+      });
     }
     if (isActive !== undefined) {
       queryBuilder.andWhere('user.isActive = :isActive', { isActive });
     }
     if (search) {
-      queryBuilder.andWhere('(user.name LIKE :search OR user.email LIKE :search)', { search: `%${search}%` });
+      queryBuilder.andWhere(
+        '(user.name LIKE :search OR user.email LIKE :search)',
+        { search: `%${search}%` },
+      );
     }
 
     const [data, total] = await queryBuilder
@@ -109,7 +156,7 @@ export class UsersService {
       data,
       total,
       page,
-      limit
+      limit,
     };
   }
 
@@ -152,10 +199,14 @@ export class UsersService {
     return savedUser;
   }
 
-  async update(id: number, updateDto: UpdateUserDto, callerId?: number): Promise<User> {
+  async update(
+    id: number,
+    updateDto: UpdateUserDto,
+    callerId?: number,
+  ): Promise<User> {
     // 1. Tìm user
-    const user = await this.usersRepository.findOne({ 
-      where: { id } 
+    const user = await this.usersRepository.findOne({
+      where: { id },
     });
 
     if (!user) {
@@ -163,9 +214,15 @@ export class UsersService {
     }
 
     // 2. Nếu có password, hash trước. Nếu không, XÓA khỏi DTO để tránh Object.assign chép đè chuỗi rỗng
-    if ((updateDto as any).password && (updateDto as any).password.trim() !== '') {
+    if (
+      (updateDto as any).password &&
+      (updateDto as any).password.trim() !== ''
+    ) {
       const bcrypt = require('bcrypt');
-      (updateDto as any).password = await bcrypt.hash((updateDto as any).password, 10);
+      (updateDto as any).password = await bcrypt.hash(
+        (updateDto as any).password,
+        10,
+      );
     } else {
       delete (updateDto as any).password;
     }
@@ -190,7 +247,9 @@ export class UsersService {
       );
     }
 
-    this.logger.log(`[Users] User ID ${savedUser.id} updated. isActive: ${savedUser.isActive}`);
+    this.logger.log(
+      `[Users] User ID ${savedUser.id} updated. isActive: ${savedUser.isActive}`,
+    );
 
     return savedUser;
   }
@@ -214,7 +273,7 @@ export class UsersService {
         { targetUserId: id },
       );
     }
-    
+
     return { success: true, message: 'Đã đặt lại mật khẩu thành công' };
   }
 }

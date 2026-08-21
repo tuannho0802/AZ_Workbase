@@ -1,4 +1,12 @@
-import { Entity, Column, PrimaryGeneratedColumn, CreateDateColumn, UpdateDateColumn, ManyToOne, JoinColumn } from 'typeorm';
+import {
+  Entity,
+  Column,
+  PrimaryGeneratedColumn,
+  CreateDateColumn,
+  UpdateDateColumn,
+  ManyToOne,
+  JoinColumn,
+} from 'typeorm';
 import { BooleanTransformer } from '../transformers/boolean.transformer';
 
 import { Role } from '../../common/enums/role.enum';
@@ -12,7 +20,12 @@ export class User {
   @Column({ unique: true })
   email: string;
 
-  @Column()
+  // ⚠️ select: false: không bao giờ trả password (kể cả hash) trong các query
+  // mặc định / relations join (vd: customer.createdBy, customer.salesUser...).
+  // Trước đây thiếu dòng này khiến password hash bị lộ ra API mỗi lần load
+  // danh sách khách hàng. Nơi nào cần đọc password (chỉ có login) phải chủ
+  // động .addSelect('user.password') qua query builder - xem UsersService.findByEmail().
+  @Column({ select: false })
   password?: string;
 
   @Column()
@@ -32,51 +45,59 @@ export class User {
   @JoinColumn({ name: 'department_id' })
   department: Department;
 
-  @Column({ name: 'is_active', default: true, transformer: new BooleanTransformer() })
+  @Column({
+    name: 'is_active',
+    default: true,
+    transformer: new BooleanTransformer(),
+  })
   isActive: boolean;
-
 
   @Column({ name: 'last_login_at', type: 'timestamp', nullable: true })
   lastLoginAt: Date;
 
-  @Column({ name: 'hashed_refresh_token', type: 'text', nullable: true, select: false })
+  @Column({
+    name: 'hashed_refresh_token',
+    type: 'text',
+    nullable: true,
+    select: false,
+  })
   hashedRefreshToken: string | null;
 
-  @Column({ 
+  @Column({
     name: 'annual_leave_balance',
-    type: 'decimal', 
-    precision: 4, 
+    type: 'decimal',
+    precision: 4,
     scale: 1,
     default: 12.0,
-    comment: 'Số ngày phép năm còn lại' 
+    comment: 'Số ngày phép năm còn lại',
   })
   annualLeaveBalance: number;
-  
-  @Column({ 
+
+  @Column({
     name: 'annual_leave_total',
-    type: 'decimal', 
-    precision: 4, 
+    type: 'decimal',
+    precision: 4,
     scale: 1,
     default: 12.0,
-    comment: 'Tổng ngày phép năm ban đầu' 
+    comment: 'Tổng ngày phép năm ban đầu',
   })
   annualLeaveTotal: number;
-  
-  @Column({ 
+
+  @Column({
     name: 'compensatory_leave_balance',
-    type: 'decimal', 
-    precision: 4, 
+    type: 'decimal',
+    precision: 4,
     scale: 1,
     default: 0,
-    comment: 'Số ngày nghỉ bù tích lũy' 
+    comment: 'Số ngày nghỉ bù tích lũy',
   })
   compensatoryLeaveBalance: number;
-  
-  @Column({ 
+
+  @Column({
     name: 'leave_year',
     type: 'int',
     default: 2026,
-    comment: 'Năm áp dụng quỹ phép hiện tại' 
+    comment: 'Năm áp dụng quỹ phép hiện tại',
   })
   leaveYear: number;
 
