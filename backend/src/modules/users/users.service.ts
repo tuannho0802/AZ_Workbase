@@ -7,27 +7,30 @@ import { Role } from '../../common/enums/role.enum';
 import { CreateUserDto } from './dto/create-user.dto';
 import { UpdateUserDto } from './dto/update-user.dto';
 import { ResetPasswordDto } from './dto/reset-password.dto';
-import {
-  ConflictException,
-  NotFoundException,
-  ForbiddenException,
-} from '@nestjs/common';
+import { ConflictException, NotFoundException, ForbiddenException } from '@nestjs/common';
 import * as bcrypt from 'bcrypt';
 import { AuditService } from '../audit/audit.service';
+
+/** Loại bỏ field password khỏi object trước khi trả ra API hoặc ghi vào audit log */
+function omitPassword<T extends { password?: unknown }>(obj: T): Omit<T, 'password'> {
+  const clone: any = { ...obj };
+  delete clone.password;
+  return clone;
+}
 
 @Injectable()
 export class UsersService {
   private readonly logger = new Logger(UsersService.name);
 
   constructor(
+
     @InjectRepository(User)
     private usersRepository: Repository<User>,
     private readonly auditService: AuditService,
   ) {}
 
   async findByEmail(email: string): Promise<User | null> {
-    // password có select: false -> phải addSelect thủ công vì chỗ này
-    // (login) là nơi DUY NHẤT thực sự cần đọc password hash để so sánh.
+    // password có select: false trong entity -> phải addSelect thủ công vì cần so khớp lúc login
     return this.usersRepository
       .createQueryBuilder('user')
       .addSelect('user.password')
@@ -39,20 +42,11 @@ export class UsersService {
     return this.usersRepository.findOne({ where: { id } });
   }
 
-  async findOne(
-    id: number,
-    currentUserId: number,
-    currentUserRole: string,
-  ): Promise<User | null> {
+  async findOne(id: number, currentUserId: number, currentUserRole: string): Promise<User | null> {
     if (currentUserRole !== Role.ADMIN && id !== currentUserId) {
-      throw new ForbiddenException(
-        'Bạn không có quyền xem thông tin nhân viên khác',
-      );
+      throw new ForbiddenException('Bạn không có quyền xem thông tin nhân viên khác');
     }
-    const user = await this.usersRepository.findOne({
-      where: { id },
-      relations: ['department'],
-    });
+    const user = await this.usersRepository.findOne({ where: { id }, relations: ['department'] });
     if (!user) {
       throw new NotFoundException('Không tìm thấy nhân viên');
     }
@@ -82,12 +76,7 @@ export class UsersService {
       .getOne();
   }
 
-  async findEmployees(
-    callerId: number,
-    callerRole: string,
-    targetRole?: string,
-    isFullList = false,
-  ): Promise<User[]> {
+  async findEmployees(callerId: number, callerRole: string, targetRole?: string, isFullList = false): Promise<User[]> {
     const whereCondition: any = { isActive: true };
     if (targetRole) {
       whereCondition.role = targetRole;
@@ -96,33 +85,14 @@ export class UsersService {
     return this.usersRepository.find({
       where: whereCondition,
       relations: ['department'],
-      order: { name: 'ASC' },
+      order: { name: 'ASC' }
     });
   }
 
-  async findAll(
-    userId: number,
-    userRole: string,
-    options: {
-      role?: string;
-      departmentId?: number;
-      isActive?: boolean;
-      search?: string;
-      page?: number;
-      limit?: number;
-    },
-  ) {
-    const {
-      role,
-      departmentId,
-      isActive,
-      search,
-      page = 1,
-      limit = 20,
-    } = options;
+  async findAll(userId: number, userRole: string, options: { role?: string; departmentId?: number; isActive?: boolean; search?: string; page?: number; limit?: number }) {
+    const { role, departmentId, isActive, search, page = 1, limit = 20 } = options;
 
-    const queryBuilder = this.usersRepository
-      .createQueryBuilder('user')
+    const queryBuilder = this.usersRepository.createQueryBuilder('user')
       .leftJoinAndSelect('user.department', 'department')
       .where('1=1');
 
@@ -132,18 +102,13 @@ export class UsersService {
       queryBuilder.andWhere('user.role = :role', { role });
     }
     if (departmentId) {
-      queryBuilder.andWhere('user.departmentId = :departmentId', {
-        departmentId,
-      });
+      queryBuilder.andWhere('user.departmentId = :departmentId', { departmentId });
     }
     if (isActive !== undefined) {
       queryBuilder.andWhere('user.isActive = :isActive', { isActive });
     }
     if (search) {
-      queryBuilder.andWhere(
-        '(user.name LIKE :search OR user.email LIKE :search)',
-        { search: `%${search}%` },
-      );
+      queryBuilder.andWhere('(user.name LIKE :search OR user.email LIKE :search)', { search: `%${search}%` });
     }
 
     const [data, total] = await queryBuilder
@@ -156,7 +121,7 @@ export class UsersService {
       data,
       total,
       page,
-      limit,
+      limit
     };
   }
 
@@ -183,6 +148,9 @@ export class UsersService {
     // 4. CRITICAL: PHẢI CÓ SAVE()
     const savedUser = await this.usersRepository.save(user);
 
+    // 5. Không bao giờ echo password hash ra ngoài, kể cả trong audit log
+    const safeUser = omitPassword(savedUser as any);
+
     if (creatorId) {
       await this.auditService.logAction(
         creatorId,
@@ -190,23 +158,19 @@ export class UsersService {
         'user',
         (savedUser as any).id,
         null,
-        savedUser,
+        safeUser,
       );
     }
 
     this.logger.log(`[Users] New user created: ${savedUser.id}`);
 
-    return savedUser;
+    return safeUser as User;
   }
 
-  async update(
-    id: number,
-    updateDto: UpdateUserDto,
-    callerId?: number,
-  ): Promise<User> {
+  async update(id: number, updateDto: UpdateUserDto, callerId?: number): Promise<User> {
     // 1. Tìm user
-    const user = await this.usersRepository.findOne({
-      where: { id },
+    const user = await this.usersRepository.findOne({ 
+      where: { id } 
     });
 
     if (!user) {
@@ -214,15 +178,9 @@ export class UsersService {
     }
 
     // 2. Nếu có password, hash trước. Nếu không, XÓA khỏi DTO để tránh Object.assign chép đè chuỗi rỗng
-    if (
-      (updateDto as any).password &&
-      (updateDto as any).password.trim() !== ''
-    ) {
+    if ((updateDto as any).password && (updateDto as any).password.trim() !== '') {
       const bcrypt = require('bcrypt');
-      (updateDto as any).password = await bcrypt.hash(
-        (updateDto as any).password,
-        10,
-      );
+      (updateDto as any).password = await bcrypt.hash((updateDto as any).password, 10);
     } else {
       delete (updateDto as any).password;
     }
@@ -236,22 +194,24 @@ export class UsersService {
     // 5. CRITICAL: PHẢI CÓ SAVE()
     const savedUser = await this.usersRepository.save(user);
 
+    // 6. Không bao giờ echo password hash ra ngoài, kể cả trong audit log
+    const safeOldData = omitPassword(oldData as any);
+    const safeUser = omitPassword(savedUser as any);
+
     if (callerId) {
       await this.auditService.logAction(
         callerId,
         'UPDATE_USER',
         'user',
         (savedUser as any).id,
-        oldData,
-        savedUser,
+        safeOldData,
+        safeUser,
       );
     }
 
-    this.logger.log(
-      `[Users] User ID ${savedUser.id} updated. isActive: ${savedUser.isActive}`,
-    );
+    this.logger.log(`[Users] User ID ${savedUser.id} updated. isActive: ${savedUser.isActive}`);
 
-    return savedUser;
+    return safeUser as User;
   }
 
   async resetPassword(id: number, dto: ResetPasswordDto, callerId?: number) {
