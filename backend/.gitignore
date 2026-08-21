@@ -1,23 +1,104 @@
-# Dependency directories
+# ==============================
+# Dependencies
+# ==============================
 node_modules/
+.pnp
+.pnp.js
 
+# ==============================
 # Build outputs
+# ==============================
 dist/
-.next/
-out/
 build/
+*.tsbuildinfo
 
+# ==============================
 # Environment variables
+# ==============================
 .env
 .env.local
-.env.development.local  
+.env.development
+.env.development.local
+.env.production
+.env.production.local
+.env.test
+.env.test.local
 .env.aiven
-*.csv
+*.env
 
-# Debug logs
+# ==============================
+# Database dumps / backups (KHÔNG commit dữ liệu thật)
+# ==============================
+*.sql
+*.sql.gz
+*.dump
+*.csv
+*.bak
+
+# ==============================
+# Logs (dễ chứa PII/secret nếu lỡ log ra)
+# ==============================
 *.log
 npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+import_log.txt
+migration_log.txt
+lerna-debug.log*
 
+# ==============================
+# Scratch / debug scripts - không nên commit vào source control
+# Nếu cần giữ script debug, đặt trong thư mục scripts/ và review kỹ trước khi commit
+# ==============================
+test-db.js
+test-debug.js
+tmp_*.js
+tmp_*.ts
+hash.txt
+verify.ts
+check-dates.ts
+scan-csv.ts
+customers_fks.json
+customers_indexes.json
+customers_schema.txt
+deposits_schema.txt
+schema_desc.txt
+
+# ==============================
+# Testing
+# ==============================
+coverage/
+.nyc_output/
+
+# ==============================
+# IDE / Editor
+# ==============================
+.vscode/*
+!.vscode/extensions.json
+.idea/
+*.swp
+*.swo
+*~
+
+# ==============================
 # OS files
+# ==============================
 .DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
 Thumbs.db
+
+# ==============================
+# Vercel
+# ==============================
+.vercel
+
+# ==============================
+# TypeORM / SSL certs (nếu tải CA cert Aiven về local, không commit)
+# ==============================
+*.pem
+ca.pem
