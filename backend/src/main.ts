@@ -66,7 +66,9 @@ async function bootstrap() {
     'http://localhost:3000',
     'http://localhost:3001',
     'http://127.0.0.1:3000',
-    'https://az-workbase.vercel.app', // Thay bằng URL thực tế của bạn
+    'https://az-workbase.vercel.app', // Domain Vercel cũ (giữ lại phòng khi cần)
+    'https://www.azworkbase.com', // Domain chính thức mới
+    'https://azworkbase.com', // Domain không có www (phòng trường hợp DNS không tự redirect)
   ];
 
   const vercelUrl = process.env.VERCEL_URL;
