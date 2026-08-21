@@ -1,16 +1,35 @@
 import { NestFactory } from '@nestjs/core';
 import { ValidationPipe } from '@nestjs/common';
 import { SwaggerModule, DocumentBuilder } from '@nestjs/swagger';
-import { NestExpressApplication } from '@nestjs/platform-express';
+import {
+  NestExpressApplication,
+  ExpressAdapter,
+} from '@nestjs/platform-express';
 import { join } from 'path';
 import { AppModule } from './app.module';
 import { AllExceptionsFilter } from './common/filters/http-exception.filter';
-import * as express from 'express';
+// Dùng cú pháp import = require(...) vì cần GỌI express() để tạo app instance
+// (import * as express chỉ cho phép dùng như namespace, không gọi được như hàm).
+import express = require('express');
 import * as fs from 'fs';
 import compression from 'compression';
 
-async function bootstrap() {
-  const app = await NestFactory.create<NestExpressApplication>(AppModule);
+// ⚠️ Quan trọng cho serverless (Vercel):
+// Trước đây main.ts gọi NestFactory.create() + app.listen() mỗi lần module được
+// load, không có cơ chế tái sử dụng app instance giữa các lần "warm invocation"
+// của cùng 1 container -> làm tăng cold start (phải khởi tạo lại toàn bộ DI
+// container + kết nối DB mỗi lần).
+// Cách sửa: tạo 1 Express instance dùng chung + cache Promise<app> ở module scope.
+// Vì Node.js cache module theo container, các lần gọi tiếp theo trong cùng
+// container sẽ dùng lại app đã khởi tạo thay vì tạo mới.
+const expressServer = express();
+let cachedAppPromise: Promise<NestExpressApplication> | null = null;
+
+async function createApp(): Promise<NestExpressApplication> {
+  const app = await NestFactory.create<NestExpressApplication>(
+    AppModule,
+    new ExpressAdapter(expressServer),
+  );
 
   // Compression cho response
   app.use(compression());
@@ -18,13 +37,13 @@ async function bootstrap() {
   // Debug: log process.cwd() để biết path thực tế trên Vercel
   const cwd = process.cwd();
   console.log(`[Bootstrap] process.cwd() = ${cwd}`);
-  
+
   // Dùng __dirname để tìm public/ tương đối với file compiled
   // Trên Vercel: __dirname = /var/task/backend/src
   // public/ nằm ở /var/task/backend/public
   const publicFromDirname = join(__dirname, '..', 'public');
   const publicFromCwd = join(cwd, 'public');
-  
+
   console.log(`[Static] Trying __dirname path: ${publicFromDirname}`);
   console.log(`[Static] Trying cwd path: ${publicFromCwd}`);
 
@@ -55,7 +74,7 @@ async function bootstrap() {
       whitelist: true,
       forbidNonWhitelisted: true,
       transform: true,
-    })
+    }),
   );
 
   // Global exception filter
@@ -93,7 +112,9 @@ async function bootstrap() {
   // backend/src/main.ts (phần Swagger)
   const config = new DocumentBuilder()
     .setTitle('AZWorkbase API')
-    .setDescription('Tài liệu API cho Hệ thống quản lý dữ liệu Marketing AZWorkbase')
+    .setDescription(
+      'Tài liệu API cho Hệ thống quản lý dữ liệu Marketing AZWorkbase',
+    )
     .setVersion('1.0')
     .addBearerAuth()
     .build();
@@ -112,9 +133,40 @@ async function bootstrap() {
     ],
   });
 
+  await app.init();
+  return app;
+}
+
+/**
+ * Lấy app instance, tạo mới nếu chưa có (cold start), tái sử dụng nếu đã có
+ * (warm invocation) - tránh khởi tạo lại DI container + kết nối DB mỗi request.
+ */
+function getApp(): Promise<NestExpressApplication> {
+  if (!cachedAppPromise) {
+    cachedAppPromise = createApp();
+  }
+  return cachedAppPromise;
+}
+
+// ===== Chạy local / server truyền thống (npm run start:dev, start:prod...) =====
+// Trên Vercel, biến môi trường VERCEL luôn = '1' (đã dùng ở database.config.ts),
+// nên chỉ gọi app.listen() khi KHÔNG chạy trên Vercel.
+async function bootstrap() {
+  const app = await getApp();
   const port = process.env.PORT || 3001;
   await app.listen(port);
   console.log(`🚀 Server đang chạy trên cổng ${port}`);
 }
-bootstrap();
+
+if (process.env.VERCEL !== '1') {
+  bootstrap();
+}
+
+// ===== Handler cho Vercel Serverless Function (@vercel/node) =====
+// @vercel/node nhận diện file có default export dạng (req, res) => và dùng nó
+// làm request handler thay vì phải bind cổng TCP như app.listen().
+export default async function handler(req: any, res: any) {
+  await getApp(); // đảm bảo app đã init (cache theo container)
+  expressServer(req, res);
+}
 // Last updated: 2026-03-31 10:55

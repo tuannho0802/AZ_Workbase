@@ -15,10 +15,17 @@ import {
 } from './exceptions/customer.exceptions';
 import { CustomerNote } from '../../database/entities/customer-note.entity';
 import { Deposit } from '../../database/entities/deposit.entity';
-import { CustomerAssignment, AssignmentStatus } from '../../database/entities/customer-assignment.entity';
+import {
+  CustomerAssignment,
+  AssignmentStatus,
+} from '../../database/entities/customer-assignment.entity';
 import { CreateCustomerNoteDto } from './dto/create-customer-note.dto';
 import { CreateDepositDto } from './dto/create-deposit.dto';
-import { NotFoundException, ForbiddenException, BadRequestException } from '@nestjs/common';
+import {
+  NotFoundException,
+  ForbiddenException,
+  BadRequestException,
+} from '@nestjs/common';
 import { CustomerAccessHelper } from './helpers/customer-access.helper';
 import { AuditService } from '../audit/audit.service';
 
@@ -39,7 +46,7 @@ export class CustomersService {
   private getTodayVn(): Date {
     const now = new Date();
     // Offset for UTC+7 (Vietnam time)
-    const vnTime = new Date(now.getTime() + (7 * 60 * 60 * 1000));
+    const vnTime = new Date(now.getTime() + 7 * 60 * 60 * 1000);
     return vnTime;
   }
 
@@ -47,12 +54,14 @@ export class CustomersService {
     const userRepo = this.customersRepository.manager.getRepository(User);
 
     if (createCustomerDto.salesUserId) {
-      const salesUser = await userRepo.findOneBy({ 
-        id: createCustomerDto.salesUserId, 
-        isActive: true 
+      const salesUser = await userRepo.findOneBy({
+        id: createCustomerDto.salesUserId,
+        isActive: true,
       });
       if (!salesUser) {
-        throw new BadRequestException(`Nhân viên ID ${createCustomerDto.salesUserId} không tồn tại hoặc đã bị khóa`);
+        throw new BadRequestException(
+          `Nhân viên ID ${createCustomerDto.salesUserId} không tồn tại hoặc đã bị khóa`,
+        );
       }
     }
 
@@ -60,14 +69,23 @@ export class CustomersService {
       const today = this.getTodayVn();
       const customer = this.customersRepository.create({
         ...createCustomerDto,
-        phone: createCustomerDto.phone?.trim() === '' ? null : createCustomerDto.phone,
+        phone:
+          createCustomerDto.phone?.trim() === ''
+            ? null
+            : createCustomerDto.phone,
         createdById: userId,
         createdBy_OLD: userId, // ← Populate legacy NOT NULL column
-        inputDate: createCustomerDto.inputDate ? new Date(createCustomerDto.inputDate) : today,
-        assignedDate: createCustomerDto.assignedDate 
-          ? new Date(createCustomerDto.assignedDate) 
-          : (createCustomerDto.salesUserId ? today : null),
-        closedDate: createCustomerDto.closedDate ? new Date(createCustomerDto.closedDate) : null,
+        inputDate: createCustomerDto.inputDate
+          ? new Date(createCustomerDto.inputDate)
+          : today,
+        assignedDate: createCustomerDto.assignedDate
+          ? new Date(createCustomerDto.assignedDate)
+          : createCustomerDto.salesUserId
+            ? today
+            : null,
+        closedDate: createCustomerDto.closedDate
+          ? new Date(createCustomerDto.closedDate)
+          : null,
       } as any);
       const saved = await this.customersRepository.save(customer);
 
@@ -89,42 +107,51 @@ export class CustomersService {
     }
   }
 
-  async findAll(filters: CustomerFiltersDto, userId: number, userRole: string) {
-    const { 
-      page = 1, 
-      limit = 20, 
-      sortField = 'createdAt', 
-      sortOrder = 'DESC',
+  /**
+   * Áp dụng các điều kiện lọc (search/source/status/salesUser/department/date)
+   * dùng chung cho cả query lấy dữ liệu và query đếm số lượng (COUNT).
+   * Tách riêng để tránh lặp code và đảm bảo 2 query luôn đồng bộ điều kiện.
+   */
+  private applyCustomerListFilters(
+    queryBuilder: ReturnType<Repository<Customer>['createQueryBuilder']>,
+    filters: Pick<
+      CustomerFiltersDto,
+      | 'search'
+      | 'source'
+      | 'status'
+      | 'salesUserId'
+      | 'departmentId'
+      | 'dateFrom'
+      | 'dateTo'
+    >,
+  ) {
+    const {
       search,
       source,
       status,
       salesUserId,
       departmentId,
       dateFrom,
-      dateTo
+      dateTo,
     } = filters;
-
-    const queryBuilder = this.customersRepository.createQueryBuilder('customer');
-
-    queryBuilder.leftJoinAndSelect('customer.salesUser', 'salesUser');
-    queryBuilder.leftJoinAndSelect('customer.department', 'department');
-    queryBuilder.leftJoinAndSelect('customer.createdBy', 'createdBy');
-    queryBuilder.leftJoinAndSelect('customer.updatedBy', 'updatedBy');
-
-    queryBuilder.where('customer.deletedAt IS NULL');
-
-    // RBAC
-    CustomerAccessHelper.applyExtendedAccessFilter(queryBuilder, userId, userRole);
 
     // Search
     if (search) {
       const searchLower = search.trim().toLowerCase();
       queryBuilder.andWhere(
         new Brackets((qb) => {
-          qb.where('LOWER(customer.name) LIKE :search', { search: `%${searchLower}%` })
-            .orWhere('customer.phone LIKE :search', { search: `%${searchLower}%` })
-            .orWhere('LOWER(customer.email) LIKE :search', { search: `%${searchLower}%` })
-            .orWhere('LOWER(customer.campaign) LIKE :search', { search: `%${searchLower}%` });
+          qb.where('LOWER(customer.name) LIKE :search', {
+            search: `%${searchLower}%`,
+          })
+            .orWhere('customer.phone LIKE :search', {
+              search: `%${searchLower}%`,
+            })
+            .orWhere('LOWER(customer.email) LIKE :search', {
+              search: `%${searchLower}%`,
+            })
+            .orWhere('LOWER(customer.campaign) LIKE :search', {
+              search: `%${searchLower}%`,
+            });
         }),
       );
     }
@@ -137,12 +164,16 @@ export class CustomersService {
       queryBuilder.andWhere('customer.status = :status', { status });
     }
     if (salesUserId) {
-      queryBuilder.andWhere('customer.salesUserId = :salesUserId', { salesUserId });
+      queryBuilder.andWhere('customer.salesUserId = :salesUserId', {
+        salesUserId,
+      });
     }
     if (departmentId) {
-      queryBuilder.andWhere('customer.departmentId = :departmentId', { departmentId });
+      queryBuilder.andWhere('customer.departmentId = :departmentId', {
+        departmentId,
+      });
     }
-    
+
     // Date Filters
     if (dateFrom) {
       queryBuilder.andWhere('customer.createdAt >= :dateFrom', { dateFrom });
@@ -150,14 +181,61 @@ export class CustomersService {
     if (dateTo) {
       queryBuilder.andWhere('customer.createdAt <= :dateTo', { dateTo });
     }
+  }
+
+  async findAll(filters: CustomerFiltersDto, userId: number, userRole: string) {
+    const {
+      page = 1,
+      limit = 20,
+      sortField = 'createdAt',
+      sortOrder = 'DESC',
+      search,
+      source,
+      status,
+      salesUserId,
+      departmentId,
+      dateFrom,
+      dateTo,
+    } = filters;
+
+    // ===== Query chính: lấy dữ liệu (có joins + subquery deposit) =====
+    const queryBuilder =
+      this.customersRepository.createQueryBuilder('customer');
+
+    queryBuilder.leftJoinAndSelect('customer.salesUser', 'salesUser');
+    queryBuilder.leftJoinAndSelect('customer.department', 'department');
+    queryBuilder.leftJoinAndSelect('customer.createdBy', 'createdBy');
+    queryBuilder.leftJoinAndSelect('customer.updatedBy', 'updatedBy');
+
+    queryBuilder.where('customer.deletedAt IS NULL');
+
+    // RBAC
+    CustomerAccessHelper.applyExtendedAccessFilter(
+      queryBuilder,
+      userId,
+      userRole,
+    );
+
+    this.applyCustomerListFilters(queryBuilder, {
+      search,
+      source,
+      status,
+      salesUserId,
+      departmentId,
+      dateFrom,
+      dateTo,
+    });
 
     // Calculate and alias the deposit sum based on date range (or default 30 days)
-    const depositSubQuery = this.depositsRepository.createQueryBuilder('deposit')
+    const depositSubQuery = this.depositsRepository
+      .createQueryBuilder('deposit')
       .select('SUM(deposit.amount)')
       .where('deposit.customerId = customer.id');
 
     if (dateFrom) {
-      depositSubQuery.andWhere('deposit.depositDate >= :dateFrom', { dateFrom });
+      depositSubQuery.andWhere('deposit.depositDate >= :dateFrom', {
+        dateFrom,
+      });
     }
     if (dateTo) {
       depositSubQuery.andWhere('deposit.depositDate <= :dateTo', { dateTo });
@@ -166,10 +244,15 @@ export class CustomersService {
       const thirtyDays = new Date();
       thirtyDays.setDate(thirtyDays.getDate() - 30);
       const thirtyDaysAgo = thirtyDays.toISOString().split('T')[0];
-      depositSubQuery.andWhere('deposit.depositDate >= :thirtyDaysAgo', { thirtyDaysAgo });
+      depositSubQuery.andWhere('deposit.depositDate >= :thirtyDaysAgo', {
+        thirtyDaysAgo,
+      });
     }
 
-    queryBuilder.addSelect(`(${depositSubQuery.getQuery()})`, 'totalDepositSum');
+    queryBuilder.addSelect(
+      `(${depositSubQuery.getQuery()})`,
+      'totalDepositSum',
+    );
     queryBuilder.setParameters(depositSubQuery.getParameters());
 
     // Sorting
@@ -193,39 +276,68 @@ export class CustomersService {
     // Pagination
     queryBuilder.skip((page - 1) * limit).take(limit);
 
-    // Use getRawAndEntities to get both the entity objects and the calculated virtual column
-    const { entities, raw } = await queryBuilder.getRawAndEntities();
-    const count = await queryBuilder.getCount();
+    // ===== Query đếm: KHÔNG joins, KHÔNG subquery deposit =====
+    // Trước đây COUNT chạy trên cùng queryBuilder có 4 leftJoinAndSelect + subquery
+    // deposit, khiến MySQL phải join/scan nhiều bảng chỉ để đếm số dòng.
+    // Tách riêng giúp câu COUNT nhẹ hơn đáng kể khi dữ liệu lớn dần.
+    const countQueryBuilder = this.customersRepository
+      .createQueryBuilder('customer')
+      .where('customer.deletedAt IS NULL');
+
+    CustomerAccessHelper.applyExtendedAccessFilter(
+      countQueryBuilder,
+      userId,
+      userRole,
+    );
+    this.applyCustomerListFilters(countQueryBuilder, {
+      search,
+      source,
+      status,
+      salesUserId,
+      departmentId,
+      dateFrom,
+      dateTo,
+    });
+
+    // Chạy song song 2 query độc lập thay vì tuần tự -> giảm tổng thời gian chờ
+    const [{ entities, raw }, count] = await Promise.all([
+      queryBuilder.getRawAndEntities(),
+      countQueryBuilder.getCount(),
+    ]);
 
     // Map the raw sum back to each entity
     entities.forEach((customer) => {
-      const rawRow = raw.find(r => (r.customer_id || r.id) === customer.id);
+      const rawRow = raw.find((r) => (r.customer_id || r.id) === customer.id);
       if (rawRow) {
-        (customer as any).totalDeposit30Days = parseFloat(rawRow.totalDepositSum || '0');
+        (customer as any).totalDeposit30Days = parseFloat(
+          rawRow.totalDepositSum || '0',
+        );
       } else {
         (customer as any).totalDeposit30Days = 0;
       }
     });
 
     // Populate activeAssignees for 1:N feature
+    // (Đã xoá 1 query thừa ở đây: trước đây có 1 lần gọi assignmentRepository.find()
+    // với where customerId = undefined -> load TOÀN BỘ bảng customer_assignments
+    // vào RAM mỗi lần gọi API nhưng không hề dùng kết quả đó ở đâu cả.)
     if (entities.length > 0) {
-      const activeAssignments = await this.assignmentRepository.find({
-        where: {
-          customerId: Brackets ? undefined : undefined, 
-        },
-        relations: ['assignedTo'],
-      });
-      // Workaround because Typeorm Brackets isn't accepted directly in where clause like this usually, let's use QueryBuilder
-      const activeAssignmentsQuery = await this.assignmentRepository
+      const activeAssignments = await this.assignmentRepository
         .createQueryBuilder('assignment')
         .leftJoinAndSelect('assignment.assignedTo', 'assignedTo')
         .where('assignment.status = :status', { status: 'active' })
-        .andWhere('assignment.customer_id IN (:...ids)', { ids: entities.map(e => e.id) })
+        .andWhere('assignment.customer_id IN (:...ids)', {
+          ids: entities.map((e) => e.id),
+        })
         .getMany();
 
       entities.forEach((customer) => {
-        const assignmentsForCustomer = activeAssignmentsQuery.filter(a => a.customerId === customer.id);
-        (customer as any).activeAssignees = assignmentsForCustomer.map(a => a.assignedTo);
+        const assignmentsForCustomer = activeAssignments.filter(
+          (a) => a.customerId === customer.id,
+        );
+        (customer as any).activeAssignees = assignmentsForCustomer.map(
+          (a) => a.assignedTo,
+        );
       });
     }
 
@@ -239,33 +351,53 @@ export class CustomersService {
   }
 
   async getStats(userId: number, userRole: string) {
-    const queryBuilder = this.customersRepository.createQueryBuilder('customer')
+    const queryBuilder = this.customersRepository
+      .createQueryBuilder('customer')
       .where('customer.deletedAt IS NULL');
 
     // RBAC
-    CustomerAccessHelper.applyExtendedAccessFilter(queryBuilder, userId, userRole);
+    CustomerAccessHelper.applyExtendedAccessFilter(
+      queryBuilder,
+      userId,
+      userRole,
+    );
 
     const [total, newToday, closedTotal] = await Promise.all([
       queryBuilder.clone().getCount(),
-      queryBuilder.clone()
-        .andWhere("DATE(CONVERT_TZ(customer.createdAt, '+00:00', '+07:00')) = CURDATE()")
+      queryBuilder
+        .clone()
+        .andWhere(
+          "DATE(CONVERT_TZ(customer.createdAt, '+00:00', '+07:00')) = CURDATE()",
+        )
         .getCount(),
-      queryBuilder.clone()
+      queryBuilder
+        .clone()
         .andWhere('customer.status = :status', { status: 'closed' })
         .getCount(),
     ]);
 
     // Pending and Potential for completeness (matching promt)
     const [pendingTotal, potentialTotal] = await Promise.all([
-      queryBuilder.clone().andWhere('customer.status = :status', { status: 'pending' }).getCount(),
-      queryBuilder.clone().andWhere('customer.status = :status', { status: 'potential' }).getCount(),
+      queryBuilder
+        .clone()
+        .andWhere('customer.status = :status', { status: 'pending' })
+        .getCount(),
+      queryBuilder
+        .clone()
+        .andWhere('customer.status = :status', { status: 'potential' })
+        .getCount(),
     ]);
 
-    const depositsQuery = this.depositsRepository.createQueryBuilder('deposit')
+    const depositsQuery = this.depositsRepository
+      .createQueryBuilder('deposit')
       .leftJoin('deposit.customer', 'customer')
       .where('customer.deletedAt IS NULL');
 
-    CustomerAccessHelper.applyExtendedAccessFilter(depositsQuery, userId, userRole);
+    CustomerAccessHelper.applyExtendedAccessFilter(
+      depositsQuery,
+      userId,
+      userRole,
+    );
 
     const totalDepositRaw = await depositsQuery
       .select('SUM(deposit.amount)', 'total')
@@ -282,7 +414,8 @@ export class CustomersService {
   }
 
   async findOne(id: number, userId: number, userRole: string) {
-    const queryBuilder = this.customersRepository.createQueryBuilder('customer')
+    const queryBuilder = this.customersRepository
+      .createQueryBuilder('customer')
       .leftJoinAndSelect('customer.salesUser', 'salesUser')
       .leftJoinAndSelect('customer.department', 'department')
       .leftJoinAndSelect('customer.deposits', 'deposits')
@@ -290,11 +423,15 @@ export class CustomersService {
       .leftJoinAndSelect('notes.createdByUser', 'noteCreator')
       .leftJoinAndSelect('customer.createdBy', 'createdBy')
       .leftJoinAndSelect('customer.updatedBy', 'updatedBy');
-    
+
     queryBuilder.where('customer.id = :id', { id });
     queryBuilder.andWhere('customer.deletedAt IS NULL');
 
-    CustomerAccessHelper.applyExtendedAccessFilter(queryBuilder, userId, userRole);
+    CustomerAccessHelper.applyExtendedAccessFilter(
+      queryBuilder,
+      userId,
+      userRole,
+    );
 
     const customer = await queryBuilder.getOne();
 
@@ -304,10 +441,15 @@ export class CustomersService {
 
     // Sort relations in memory as TB queryBuilder complex sorting for sub-entities is tricky
     if (customer.deposits) {
-      customer.deposits.sort((a, b) => new Date(b.depositDate).getTime() - new Date(a.depositDate).getTime());
+      customer.deposits.sort(
+        (a, b) =>
+          new Date(b.depositDate).getTime() - new Date(a.depositDate).getTime(),
+      );
     }
     if (customer.notes) {
-      customer.notes.sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime());
+      customer.notes.sort(
+        (a, b) => b.createdAt.getTime() - a.createdAt.getTime(),
+      );
     }
 
     const activeAssignments = await this.assignmentRepository
@@ -317,14 +459,20 @@ export class CustomersService {
       .andWhere('assignment.customer_id = :id', { id })
       .getMany();
 
-    (customer as any).activeAssignees = activeAssignments.map((a) => a.assignedTo);
+    (customer as any).activeAssignees = activeAssignments.map(
+      (a) => a.assignedTo,
+    );
 
     return customer;
   }
 
-  async createNote(customerId: number, dto: CreateCustomerNoteDto, userId: number) {
+  async createNote(
+    customerId: number,
+    dto: CreateCustomerNoteDto,
+    userId: number,
+  ) {
     const customer = await this.customersRepository.findOne({
-      where: { id: customerId, deletedAt: IsNull() }
+      where: { id: customerId, deletedAt: IsNull() },
     });
 
     if (!customer) {
@@ -332,7 +480,7 @@ export class CustomersService {
     }
 
     // RBAC: Any role can add note to customer they can see?
-    // User requested: employee only for own. 
+    // User requested: employee only for own.
     // findOne already handles RBAC check via userId/role but here we use simple find.
     // Let's reuse findOne check logic or keep it simple.
 
@@ -355,13 +503,17 @@ export class CustomersService {
 
     return this.notesRepository.findOne({
       where: { id: (savedNote as any).id },
-      relations: ['createdByUser']
+      relations: ['createdByUser'],
     });
   }
 
-  async createDeposit(customerId: number, dto: CreateDepositDto, userId: number) {
+  async createDeposit(
+    customerId: number,
+    dto: CreateDepositDto,
+    userId: number,
+  ) {
     const customer = await this.customersRepository.findOne({
-      where: { id: customerId, deletedAt: IsNull() }
+      where: { id: customerId, deletedAt: IsNull() },
     });
 
     if (!customer) {
@@ -394,7 +546,8 @@ export class CustomersService {
   }
 
   async getDeposits(customerId: number) {
-    return this.depositsRepository.createQueryBuilder('deposit')
+    return this.depositsRepository
+      .createQueryBuilder('deposit')
       .where('deposit.customerId = :customerId', { customerId })
       .leftJoinAndSelect('deposit.createdBy', 'createdBy')
       .orderBy('deposit.depositDate', 'DESC')
@@ -423,28 +576,40 @@ export class CustomersService {
     return result;
   }
 
-  async update(id: number, updateCustomerDto: UpdateCustomerDto, userId: number, userRole: string) {
+  async update(
+    id: number,
+    updateCustomerDto: UpdateCustomerDto,
+    userId: number,
+    userRole: string,
+  ) {
     const customer = await this.findOne(id, userId, userRole);
-    
+
     if (!CustomerAccessHelper.canUpdate(customer, userId, userRole)) {
-      throw new UnauthorizedCustomerAccessException('Bạn chỉ có quyền cập nhật khách hàng mà bạn sở hữu hoặc được giao.');
+      throw new UnauthorizedCustomerAccessException(
+        'Bạn chỉ có quyền cập nhật khách hàng mà bạn sở hữu hoặc được giao.',
+      );
     }
 
     const today = this.getTodayVn();
     const todayStr = today.toISOString().split('T')[0];
-    
+
     // Step 1: Handle salesUserId assignment explicitly (Case B)
     if (updateCustomerDto.salesUserId === null) {
       customer.salesUser = null;
       customer.salesUserId = null;
-    } else if (updateCustomerDto.salesUserId !== undefined && updateCustomerDto.salesUserId !== customer.salesUserId) {
+    } else if (
+      updateCustomerDto.salesUserId !== undefined &&
+      updateCustomerDto.salesUserId !== customer.salesUserId
+    ) {
       const userRepo = this.customersRepository.manager.getRepository(User);
-      const salesUser = await userRepo.findOneBy({ 
-        id: updateCustomerDto.salesUserId, 
-        isActive: true 
+      const salesUser = await userRepo.findOneBy({
+        id: updateCustomerDto.salesUserId,
+        isActive: true,
       });
       if (!salesUser) {
-        throw new BadRequestException(`Nhân viên ID ${updateCustomerDto.salesUserId} không tồn tại hoặc đã bị khóa`);
+        throw new BadRequestException(
+          `Nhân viên ID ${updateCustomerDto.salesUserId} không tồn tại hoặc đã bị khóa`,
+        );
       }
       customer.salesUser = salesUser;
       customer.salesUserId = salesUser.id;
@@ -459,32 +624,39 @@ export class CustomersService {
     }
 
     // Logic cho assignedDate: Tự động set khi salesUserId được gán lần đầu
-    if (updateCustomerDto.salesUserId && 
-        !customer.assignedDate && 
-        !updateCustomerDto.assignedDate) {
+    if (
+      updateCustomerDto.salesUserId &&
+      !customer.assignedDate &&
+      !updateCustomerDto.assignedDate
+    ) {
       (updateCustomerDto as any).assignedDate = todayStr;
     }
 
     // Logic cho closedDate: Tự động set khi status chuyển sang 'closed' lần đầu
-    if (updateCustomerDto.status === 'closed' && 
-        !customer.closedDate && 
-        !updateCustomerDto.closedDate) {
+    if (
+      updateCustomerDto.status === 'closed' &&
+      !customer.closedDate &&
+      !updateCustomerDto.closedDate
+    ) {
       (updateCustomerDto as any).closedDate = todayStr;
     }
-    
+
     const oldData = { ...customer };
-    
+
     try {
       this.customersRepository.merge(customer, {
         ...updateCustomerDto,
-        phone: updateCustomerDto.phone?.trim() === '' ? null : updateCustomerDto.phone,
+        phone:
+          updateCustomerDto.phone?.trim() === ''
+            ? null
+            : updateCustomerDto.phone,
         updatedById: userId,
         updatedBy_OLD: userId, // ← Populate legacy nullable or NOT NULL column
       } as any);
-      
+
       // FIX For TypeORM relation precedence: Ensure the actual relation is updated
       customer.updatedBy = { id: userId } as User;
-      
+
       const saved = await this.customersRepository.save(customer);
       await this.auditService.logAction(
         userId,
@@ -510,7 +682,9 @@ export class CustomersService {
     }
 
     if (!CustomerAccessHelper.canDelete(customer, userId, userRole)) {
-      throw new UnauthorizedCustomerAccessException('Chỉ người tạo bản ghi hoặc Admin mới có quyền xóa khách hàng này.');
+      throw new UnauthorizedCustomerAccessException(
+        'Chỉ người tạo bản ghi hoặc Admin mới có quyền xóa khách hàng này.',
+      );
     }
 
     await this.customersRepository.softDelete(id);
@@ -531,16 +705,18 @@ export class CustomersService {
     reason?: string,
   ) {
     const userRepo = this.customersRepository.manager.getRepository(User);
-    
+
     // Validate target users exist and are active
     const targetUsers = await userRepo.find({
-      where: salesUserIds.map(id => ({ id, isActive: true }))
+      where: salesUserIds.map((id) => ({ id, isActive: true })),
     });
-    
+
     if (targetUsers.length !== salesUserIds.length) {
-      const foundIds = targetUsers.map(u => u.id);
-      const missing = salesUserIds.filter(id => !foundIds.includes(id));
-      throw new BadRequestException(`Cảnh báo: Một số Sales User không tồn tại hoặc bị khóa: ${missing.join(', ')}`);
+      const foundIds = targetUsers.map((u) => u.id);
+      const missing = salesUserIds.filter((id) => !foundIds.includes(id));
+      throw new BadRequestException(
+        `Cảnh báo: Một số Sales User không tồn tại hoặc bị khóa: ${missing.join(', ')}`,
+      );
     }
 
     // Removed department check for bulk assign as visibility is strictly owned
@@ -552,9 +728,9 @@ export class CustomersService {
     for (const customerId of customerIds) {
       try {
         const customer = await this.customersRepository.findOne({
-          where: { id: customerId, deletedAt: IsNull() }
+          where: { id: customerId, deletedAt: IsNull() },
         });
-        
+
         if (!customer) {
           results.errors.push(`Khách hàng ID ${customerId} không tồn tại`);
           results.failed++;
@@ -563,11 +739,14 @@ export class CustomersService {
 
         // Authorization check: Must be Admin/Manager OR Primary Sales OR Creator of unassigned data
         if (callerRole !== Role.ADMIN && callerRole !== Role.MANAGER) {
-          const isUnassignedCreator = (customer.salesUserId === null && customer.createdById === callerId);
-          const isPrimarySales = (customer.salesUserId === callerId);
+          const isUnassignedCreator =
+            customer.salesUserId === null && customer.createdById === callerId;
+          const isPrimarySales = customer.salesUserId === callerId;
 
           if (!isUnassignedCreator && !isPrimarySales) {
-            throw new ForbiddenException(`Bạn không có quyền chia khách hàng ID ${customerId} không thuộc quản lý của bạn.`);
+            throw new ForbiddenException(
+              `Bạn không có quyền chia khách hàng ID ${customerId} không thuộc quản lý của bạn.`,
+            );
           }
         }
 
@@ -588,7 +767,7 @@ export class CustomersService {
                 previousAssigneeId: customer.salesUserId || null,
                 status: AssignmentStatus.ACTIVE,
                 reason: reason || 'Bulk assign',
-              })
+              }),
             );
           }
         }
@@ -621,7 +800,7 @@ export class CustomersService {
 
     return {
       ...results,
-      message: `Đã xử lý xong gán data. Thành công: ${results.success}, Thất bại: ${results.failed}`
+      message: `Đã xử lý xong gán data. Thành công: ${results.success}, Thất bại: ${results.failed}`,
     };
   }
 
@@ -633,24 +812,33 @@ export class CustomersService {
   ) {
     const { page = 1, limit = 20, search, source, creatorId } = filters;
 
-    const qb = this.customersRepository.createQueryBuilder('customer')
+    const qb = this.customersRepository
+      .createQueryBuilder('customer')
       .leftJoinAndSelect('customer.salesUser', 'salesUser')
       .leftJoinAndSelect('customer.createdBy', 'createdBy')
       .leftJoinAndSelect('customer.updatedBy', 'updatedBy')
       .where('customer.deletedAt IS NULL');
 
     // Khách hàng chưa có Primary HOẶC người dùng đang là Primary Sales
-    qb.andWhere(new Brackets(q => {
-      q.where('customer.salesUserId IS NULL')
-       .orWhere('customer.salesUserId = :userId', { userId });
-    }));
+    qb.andWhere(
+      new Brackets((q) => {
+        q.where('customer.salesUserId IS NULL').orWhere(
+          'customer.salesUserId = :userId',
+          { userId },
+        );
+      }),
+    );
 
     if (userRole !== Role.ADMIN && userRole !== Role.MANAGER) {
       // User thường chỉ thấy KH chưa Primary NẾU họ tạo ra, HOẶC KH họ là Primary
-      qb.andWhere(new Brackets(q => {
-        q.where('customer.salesUserId IS NULL AND customer.createdById = :userId', { userId })
-         .orWhere('customer.salesUserId = :userId', { userId });
-      }));
+      qb.andWhere(
+        new Brackets((q) => {
+          q.where(
+            'customer.salesUserId IS NULL AND customer.createdById = :userId',
+            { userId },
+          ).orWhere('customer.salesUserId = :userId', { userId });
+        }),
+      );
     }
 
     // Optional: filter by data owner (creator)
@@ -665,9 +853,10 @@ export class CustomersService {
     if (search) {
       const s = `%${search.trim().toLowerCase()}%`;
       qb.andWhere(
-        new Brackets(q =>
-          q.where('LOWER(customer.name) LIKE :s', { s })
-           .orWhere('customer.phone LIKE :s', { s }),
+        new Brackets((q) =>
+          q
+            .where('LOWER(customer.name) LIKE :s', { s })
+            .orWhere('customer.phone LIKE :s', { s }),
         ),
       );
     }
@@ -677,14 +866,14 @@ export class CustomersService {
       .take(limit);
 
     const [customers, total] = await qb.getManyAndCount();
-    return { 
-      customers, 
+    return {
+      customers,
       pagination: {
         page,
         limit,
         total,
-        totalPages: Math.ceil(total / limit)
-      }
+        totalPages: Math.ceil(total / limit),
+      },
     };
   }
 
@@ -718,8 +907,10 @@ export class CustomersService {
       const s = `%${search.trim().toLowerCase()}%`;
       query.andWhere(
         new Brackets((qb) => {
-          qb.where('LOWER(customer.name) LIKE :s', { s })
-            .orWhere('customer.phone LIKE :s', { s });
+          qb.where('LOWER(customer.name) LIKE :s', { s }).orWhere(
+            'customer.phone LIKE :s',
+            { s },
+          );
         }),
       );
     }
@@ -745,66 +936,95 @@ export class CustomersService {
   async getAssignmentHistory(customerId: number) {
     return this.assignmentRepository.find({
       where: { customerId },
-      relations: ['assignedBy', 'assignedTo', 'previousAssignee', 'reclaimedBy'],
+      relations: [
+        'assignedBy',
+        'assignedTo',
+        'previousAssignee',
+        'reclaimedBy',
+      ],
       order: { assignedAt: 'DESC' },
     });
   }
 
   async getStatsToday(userId: number, userRole: string) {
-    const baseQuery = () => this.customersRepository.createQueryBuilder('customer')
-      .leftJoinAndSelect('customer.salesUser', 'salesUser')
-      .leftJoinAndSelect('customer.createdBy', 'createdBy')
-      .leftJoinAndSelect('customer.updatedBy', 'updatedBy')
-      .where('customer.deletedAt IS NULL');
+    const baseQuery = () =>
+      this.customersRepository
+        .createQueryBuilder('customer')
+        .leftJoinAndSelect('customer.salesUser', 'salesUser')
+        .leftJoinAndSelect('customer.createdBy', 'createdBy')
+        .leftJoinAndSelect('customer.updatedBy', 'updatedBy')
+        .where('customer.deletedAt IS NULL');
 
-    let todayQuery = baseQuery()
-      .andWhere("DATE(CONVERT_TZ(customer.createdAt, '+00:00', '+07:00')) = CURDATE()");
+    let todayQuery = baseQuery().andWhere(
+      "DATE(CONVERT_TZ(customer.createdAt, '+00:00', '+07:00')) = CURDATE()",
+    );
 
-    let historyQuery = baseQuery()
-      .andWhere("DATE(CONVERT_TZ(customer.createdAt, '+00:00', '+07:00')) < CURDATE()");
+    let historyQuery = baseQuery().andWhere(
+      "DATE(CONVERT_TZ(customer.createdAt, '+00:00', '+07:00')) < CURDATE()",
+    );
 
-    CustomerAccessHelper.applyExtendedAccessFilter(todayQuery, userId, userRole);
-    CustomerAccessHelper.applyExtendedAccessFilter(historyQuery, userId, userRole);
+    CustomerAccessHelper.applyExtendedAccessFilter(
+      todayQuery,
+      userId,
+      userRole,
+    );
+    CustomerAccessHelper.applyExtendedAccessFilter(
+      historyQuery,
+      userId,
+      userRole,
+    );
 
     const [todayList, historyList] = await Promise.all([
       todayQuery.orderBy('customer.createdAt', 'DESC').getMany(),
-      historyQuery.orderBy('customer.createdAt', 'DESC').take(50).getMany()
+      historyQuery.orderBy('customer.createdAt', 'DESC').take(50).getMany(),
     ]);
 
     return { todayList, historyList };
   }
 
   async getStatsByStatus(userId: number, userRole: string) {
-    const queryBuilder = this.customersRepository.createQueryBuilder('customer')
+    const queryBuilder = this.customersRepository
+      .createQueryBuilder('customer')
       .leftJoinAndSelect('customer.salesUser', 'salesUser')
       .leftJoinAndSelect('customer.createdBy', 'createdBy')
       .where('customer.deletedAt IS NULL');
 
-    CustomerAccessHelper.applyExtendedAccessFilter(queryBuilder, userId, userRole);
+    CustomerAccessHelper.applyExtendedAccessFilter(
+      queryBuilder,
+      userId,
+      userRole,
+    );
 
-    const customers = await queryBuilder.orderBy('customer.createdAt', 'DESC').getMany();
-    
+    const customers = await queryBuilder
+      .orderBy('customer.createdAt', 'DESC')
+      .getMany();
+
     return {
-      closed: customers.filter(c => c.status === 'closed'),
-      notClosed: customers.filter(c => c.status !== 'closed')
+      closed: customers.filter((c) => c.status === 'closed'),
+      notClosed: customers.filter((c) => c.status !== 'closed'),
     };
   }
 
   async getAllDepositsStats(
-    userId: number, 
-    userRole: string, 
-    startDate?: string, 
+    userId: number,
+    userRole: string,
+    startDate?: string,
     endDate?: string,
     sortBy: string = 'depositDate',
-    sortOrder: 'ASC' | 'DESC' = 'DESC'
+    sortOrder: 'ASC' | 'DESC' = 'DESC',
   ) {
-    const queryBuilder = this.depositsRepository.createQueryBuilder('deposit')
+    const queryBuilder = this.depositsRepository
+      .createQueryBuilder('deposit')
       .leftJoinAndSelect('deposit.customer', 'customer')
       .leftJoinAndSelect('deposit.createdBy', 'createdBy')
       .leftJoinAndSelect('customer.salesUser', 'salesUser')
       .where('customer.deletedAt IS NULL');
 
-    CustomerAccessHelper.applyExtendedAccessFilter(queryBuilder, userId, userRole);
+    CustomerAccessHelper.applyExtendedAccessFilter(
+      queryBuilder,
+      userId,
+      userRole,
+    );
 
     // Date range filtering on depositDate
     if (startDate) {
@@ -815,7 +1035,8 @@ export class CustomersService {
     }
 
     // Dynamic sorting
-    const sortField = sortBy === 'amount' ? 'deposit.amount' : 'deposit.depositDate';
+    const sortField =
+      sortBy === 'amount' ? 'deposit.amount' : 'deposit.depositDate';
     queryBuilder.orderBy(sortField, sortOrder);
 
     return await queryBuilder.getMany();
@@ -826,7 +1047,7 @@ export class CustomersService {
 
     const qb = this.customersRepository
       .createQueryBuilder('customer')
-      .withDeleted()                          // ← include soft-deleted rows
+      .withDeleted() // ← include soft-deleted rows
       .leftJoinAndSelect('customer.salesUser', 'salesUser')
       .leftJoinAndSelect('customer.createdBy', 'createdBy')
       .where('customer.deletedAt IS NOT NULL'); // ← chỉ lấy đã xóa
@@ -834,10 +1055,11 @@ export class CustomersService {
     if (search?.trim()) {
       const s = `%${search.trim().toLowerCase()}%`;
       qb.andWhere(
-        new Brackets(q =>
-          q.where('LOWER(customer.name) LIKE :s', { s })
-           .orWhere('customer.phone LIKE :s', { s })
-        )
+        new Brackets((q) =>
+          q
+            .where('LOWER(customer.name) LIKE :s', { s })
+            .orWhere('customer.phone LIKE :s', { s }),
+        ),
       );
     }
 
@@ -856,13 +1078,20 @@ export class CustomersService {
       withDeleted: true,
     });
 
-    if (!customer) throw new NotFoundException('Không tìm thấy khách hàng trong trash');
-    if (!customer.deletedAt) throw new BadRequestException('Khách hàng này chưa bị xóa');
+    if (!customer)
+      throw new NotFoundException('Không tìm thấy khách hàng trong trash');
+    if (!customer.deletedAt)
+      throw new BadRequestException('Khách hàng này chưa bị xóa');
 
     await this.customersRepository.restore(id);
 
     await this.auditService.logAction(
-      adminId, 'RESTORE_CUSTOMER', 'customer', id, null, { restored: true }
+      adminId,
+      'RESTORE_CUSTOMER',
+      'customer',
+      id,
+      null,
+      { restored: true },
     );
 
     return { message: 'Khôi phục khách hàng thành công' };
@@ -875,13 +1104,21 @@ export class CustomersService {
     });
 
     if (!customer) throw new NotFoundException('Không tìm thấy khách hàng');
-    if (!customer.deletedAt) throw new BadRequestException('Chỉ có thể hard delete khách hàng đã soft delete trước');
+    if (!customer.deletedAt)
+      throw new BadRequestException(
+        'Chỉ có thể hard delete khách hàng đã soft delete trước',
+      );
 
     const snapshot = { ...customer };
     await this.customersRepository.delete(id); // hard delete
 
     await this.auditService.logAction(
-      adminId, 'HARD_DELETE_CUSTOMER', 'customer', id, snapshot, null
+      adminId,
+      'HARD_DELETE_CUSTOMER',
+      'customer',
+      id,
+      snapshot,
+      null,
     );
 
     return { message: 'Đã xóa vĩnh viễn khách hàng' };
