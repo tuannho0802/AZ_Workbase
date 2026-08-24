@@ -57,7 +57,7 @@ export default function InvalidDataReportPage() {
       dataIndex: 'fullName',
       key: 'fullName',
       render: (text, record) => (
-        <Space direction="vertical" size={0}>
+        <Space orientation="vertical" size={0}>
           <Text strong>{text || 'Không có tên'}</Text>
           <Text type="secondary" className="text-xs">{record.email}</Text>
         </Space>

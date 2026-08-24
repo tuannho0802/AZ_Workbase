@@ -13,7 +13,8 @@ import {
   CalendarOutlined,
   CheckCircleOutlined,
   FileTextOutlined,
-  DeleteOutlined
+  DeleteOutlined,
+  WarningOutlined
 } from '@ant-design/icons';
 import { useAuthStore } from '@/lib/stores/auth.store';
 import Cookies from 'js-cookie';
@@ -54,6 +55,11 @@ export default function DashboardLayout({
       newKey = 'audit-logs';
     } else if (pathname.includes('/chia-data')) {
       newKey = 'chia-data';
+    } else if (pathname.includes('/customers/reports/invalid-data')) {
+      // Check TRƯỚC nhánh '/customers' bên dưới, vì
+      // '/customers/reports/invalid-data' cũng match '/customers' ->
+      // nếu để sau, menu sẽ luôn highlight nhầm mục "Khách hàng".
+      newKey = 'invalid-data-report';
     } else if (pathname.includes('/customers')) {
       newKey = 'customers';
     } else if (pathname.includes('/nghi-phep')) {
@@ -126,6 +132,12 @@ export default function DashboardLayout({
               label: 'Khách hàng',
               onClick: () => router.push('/customers'),
             },
+            ...(['admin', 'manager', 'assistant'].includes(user?.role || '') ? [{
+              key: 'invalid-data-report',
+              icon: <WarningOutlined />,
+              label: 'Báo cáo data lỗi',
+              onClick: () => router.push('/customers/reports/invalid-data'),
+            }] : []),
             {
               key: 'chia-data',
               icon: <SwapOutlined />,
