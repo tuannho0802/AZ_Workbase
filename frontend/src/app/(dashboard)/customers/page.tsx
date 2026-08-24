@@ -345,13 +345,14 @@ export default function CustomersPage() {
       title: 'Ngày nhập',
       dataIndex: 'inputDate',
       key: 'inputDate',
-      width: '9%',
+      width: isLaptop ? '7%' : '8%',
       render: (date) => dayjs(date).format('DD/MM/YYYY'),
     },
     {
       title: 'Họ và tên',
       dataIndex: 'name',
       key: 'name',
+      width: isLaptop ? '14%' : '16%',
       onCell: () => ({ className: 'col-name' }),
       render: (text, record) => (
         <Space size={4}>
@@ -366,40 +367,40 @@ export default function CustomersPage() {
       title: 'SĐT',
       dataIndex: 'phone',
       key: 'phone',
-      width: '11%',
+      width: isLaptop ? '8%' : '9%',
       render: (val) => val ? val : <span style={{ color: '#aaa', fontStyle: 'italic' }}>Chưa có SDT</span>,
     },
     {
       title: 'Nguồn',
       dataIndex: 'source',
       key: 'source',
-      width: '8%',
+      width: isLaptop ? '6%' : '7%',
       render: (source) => renderSourceTag(source),
     },
     {
       title: 'UTM',
       dataIndex: 'campaign',
       key: 'campaign',
-      width: '10%',
+      width: isLaptop ? '7%' : '8%',
       ellipsis: { showTitle: true },
     },
     {
       title: 'Sales (Chính + Phụ)',
       key: 'salesUser',
-      width: isLaptop ? '13%' : '15%',
+      width: isLaptop ? '11%' : '13%',
       render: (_, record: any) => renderSalesTag(record),
     },
     {
       title: 'Marketing',
       key: 'marketingUser',
-      width: isLaptop ? '10%' : '12%',
+      width: isLaptop ? '8%' : '9%',
       render: (_, record: any) => renderMarketingTag(record),
     },
     {
       title: 'Trạng thái',
       dataIndex: 'status',
       key: 'status',
-      width: '10%',
+      width: isLaptop ? '8%' : '9%',
       render: (status) => renderStatusTag(status),
     },
     {
@@ -413,7 +414,7 @@ export default function CustomersPage() {
       ),
       dataIndex: 'totalDeposit30Days',
       key: 'totalDeposit30Days',
-      width: '11%',
+      width: isLaptop ? '9%' : '10%',
       align: 'right',
       render: (val) => (
         <Tooltip title="Tổng tiền nạp dựa trên khoảng ngày">

@@ -47,6 +47,7 @@ body {
 .customer-table .ant-table-cell.col-name {
   white-space: normal !important;
   word-break: break-word !important;
+  min-width: 130px;
 }
 
 @media (max-width: 768px) {

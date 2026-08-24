@@ -137,7 +137,7 @@ export class CustomersController {
   }
 
   @Get()
-  @UseInterceptors(new CacheControlInterceptor(30))
+  @UseInterceptors(new CacheControlInterceptor(0, true))
   @ApiOperation({ summary: 'Lấy danh sách khách hàng (có phân quyền)' })
   @ApiResponse({ status: 200, description: 'Trả về danh sách khách hàng và thông tin phân trang' })
   findAll(@GetUser() user: any, @Query() filters: CustomerFiltersDto) {
