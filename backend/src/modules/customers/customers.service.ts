@@ -128,11 +128,23 @@ export class CustomersService {
     const trimmed = search.trim();
     if (!trimmed) return;
 
+    // ⚠️ QUAN TRỌNG: dùng BOOLEAN MODE, KHÔNG dùng NATURAL LANGUAGE MODE.
+    // NATURAL LANGUAGE MODE tách chuỗi thành từ và khớp kiểu OR có trọng số
+    // (relevance) — chỉ cần khớp 1 từ trong chuỗi là ra kết quả, không lọc
+    // theo đúng cụm người dùng gõ. Với cụm nhiều từ như "Nguyễn Văn Haha",
+    // hành vi này khiến kết quả trông như gần như không lọc (bất kỳ dòng nào
+    // chứa "Nguyễn" HOẶC "Văn" HOẶC mảnh trùng khác đều lọt vào). Ngoài ra
+    // còn dính luật ngưỡng 50% (đã kiểm chứng qua tài liệu MySQL chính thức).
+    // BOOLEAN MODE + ép phrase (bọc "...") buộc khớp đúng cụm liên tục, né
+    // được cả 2 vấn đề trên.
+    const safeSearch = trimmed.replace(/"/g, '');
+    const searchPhrase = `"${safeSearch}"`;
+
     queryBuilder.andWhere(
       new Brackets((qb) => {
         qb.where(
-          'MATCH(customer.name, customer.email, customer.campaign) AGAINST(:searchText IN NATURAL LANGUAGE MODE)',
-          { searchText: trimmed },
+          'MATCH(customer.name, customer.email, customer.campaign) AGAINST(:searchPhrase IN BOOLEAN MODE)',
+          { searchPhrase },
         ).orWhere('customer.phone LIKE :phonePrefix', {
           phonePrefix: `${trimmed}%`,
         });
