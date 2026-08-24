@@ -58,6 +58,16 @@ export const CustomerInfoTab = ({ customer, onEdit }: Props) => {
             );
           })()}
         </Descriptions.Item>
+        <Descriptions.Item label="Marketing phụ trách">
+          {customer.marketingUser ? (
+            <Space>
+              <Text strong>{customer.marketingUser.name}</Text>
+              <Tag color="purple">{customer.marketingUser.role?.toUpperCase()}</Tag>
+            </Space>
+          ) : (
+            <Text type="secondary" italic>Chưa phân công</Text>
+          )}
+        </Descriptions.Item>
         <Descriptions.Item label="Broker">{customer.broker || '-'}</Descriptions.Item>
         <Descriptions.Item label="Ngày nhập data">
           <Text strong><CalendarOutlined /> {customer.inputDate ? dayjs(customer.inputDate).format('DD/MM/YYYY') : '-'}</Text>

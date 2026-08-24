@@ -67,6 +67,14 @@ const renderSalesTag = (record: any) => {
   );
 };
 
+const renderMarketingTag = (record: any) => {
+  const marketingUser = record.marketingUser;
+  if (!marketingUser) {
+    return <span style={{ color: '#bbb', fontStyle: 'italic', fontSize: '11px' }}>Chưa gán</span>;
+  }
+  return <Tag color="purple" title="Marketing phụ trách">{marketingUser.name}</Tag>;
+};
+
 const CustomerMobileCard = ({ 
   record, 
   index, 
@@ -109,9 +117,10 @@ const CustomerMobileCard = ({
       <span>📅 {dayjs(record.inputDate).format('DD/MM/YY')}</span>
     </div>
     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 }}>
-      <Space size={4}>
+      <Space size={4} wrap>
         {renderSourceTag(record.source)}
         {renderSalesTag(record)}
+        {renderMarketingTag(record)}
       </Space>
     </div>
     {record.campaign && (
@@ -377,8 +386,14 @@ export default function CustomersPage() {
     {
       title: 'Sales (Chính + Phụ)',
       key: 'salesUser',
-      width: isLaptop ? '15%' : '17%',
+      width: isLaptop ? '13%' : '15%',
       render: (_, record: any) => renderSalesTag(record),
+    },
+    {
+      title: 'Marketing',
+      key: 'marketingUser',
+      width: isLaptop ? '10%' : '12%',
+      render: (_, record: any) => renderMarketingTag(record),
     },
     {
       title: 'Trạng thái',

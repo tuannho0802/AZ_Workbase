@@ -30,6 +30,7 @@ export const CustomerForm: React.FC<CustomerFormProps> = ({ open, customer, onCl
           assignedDate: customer.assignedDate ? dayjs(customer.assignedDate) : null,
           closedDate: customer.closedDate ? dayjs(customer.closedDate) : null,
           salesUserId: customer.salesUser?.id,
+          marketingUserId: customer.marketingUser?.id,
         });
       } else {
         form.resetFields();
@@ -48,6 +49,7 @@ export const CustomerForm: React.FC<CustomerFormProps> = ({ open, customer, onCl
       const payload = {
         ...values,
         salesUserId: values.salesUserId ? Number(values.salesUserId) : null,
+        marketingUserId: values.marketingUserId ? Number(values.marketingUserId) : null,
         inputDate: values.inputDate.format('YYYY-MM-DD'),
         assignedDate: values.assignedDate?.format('YYYY-MM-DD') || null,
         closedDate: values.closedDate?.format('YYYY-MM-DD') || null,
@@ -133,9 +135,22 @@ export const CustomerForm: React.FC<CustomerFormProps> = ({ open, customer, onCl
         </Row>
 
         <Row gutter={16}>
-          <Col span={24}>
+          <Col span={12}>
+            <Form.Item name="campaign" label="UTM">
+              <Input placeholder="Ví dụ: D_T01_BOT_AP" />
+            </Form.Item>
+          </Col>
+        </Row>
+
+        <Row gutter={16}>
+          <Col span={12}>
             <Form.Item name="salesUserId" label="Sales phụ trách">
               <SalesUserSelect />
+            </Form.Item>
+          </Col>
+          <Col span={12}>
+            <Form.Item name="marketingUserId" label="Marketing phụ trách">
+              <SalesUserSelect placeholder="Chọn Marketing đang hoạt động..." />
             </Form.Item>
           </Col>
         </Row>

@@ -12,6 +12,7 @@ import { CustomerNote } from './customer-note.entity';
 @Index(['inputDate'])
 @Index(['assignedDate'])
 @Index(['createdAt'])
+  @Index(['marketingUserId'])
 export class Customer {
   @PrimaryGeneratedColumn()
   id: number;
@@ -41,6 +42,14 @@ export class Customer {
   @ManyToOne(() => User, { nullable: true, onDelete: 'SET NULL' })
   @JoinColumn({ name: 'sales_user_id' })
   salesUser: User | null;
+
+  // User phụ trách Marketing cho khách hàng này (độc lập với Sales phụ trách).
+  @Column({ name: 'marketing_user_id', nullable: true, default: null })
+  marketingUserId: number | null;
+
+  @ManyToOne(() => User, { nullable: true, onDelete: 'SET NULL' })
+  @JoinColumn({ name: 'marketing_user_id' })
+  marketingUser: User | null;
 
   @Column({
     type: 'enum',

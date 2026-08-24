@@ -70,6 +70,13 @@ export interface Customer {
     email?: string;
     role?: string;
   };
+  marketingUser?: {
+    id: number;
+    name: string;
+    fullName?: string;
+    email?: string;
+    role?: string;
+  };
   status: 'closed' | 'pending' | 'potential' | 'lost' | 'inactive';
   broker?: string;
   inputDate: string;

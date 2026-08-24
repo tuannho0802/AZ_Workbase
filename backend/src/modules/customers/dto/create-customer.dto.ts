@@ -45,6 +45,12 @@ export class CreateCustomerDto {
   @Type(() => Number)
   salesUserId?: number | null;
 
+  @ApiPropertyOptional({ example: 3, description: 'ID của nhân viên Marketing phụ trách' })
+  @IsOptional()
+  @IsInt({ message: 'ID Marketing phải là số nguyên' })
+  @Type(() => Number)
+  marketingUserId?: number | null;
+
   @ApiPropertyOptional({ example: 'pending', enum: ['closed', 'pending', 'potential', 'lost', 'inactive'], description: 'Trạng thái khách hàng' })
   @IsOptional()
   @IsEnum(['closed', 'pending', 'potential', 'lost', 'inactive'], { message: 'Trạng thái không hợp lệ' })

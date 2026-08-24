@@ -65,6 +65,18 @@ export class CustomersService {
       }
     }
 
+    if (createCustomerDto.marketingUserId) {
+      const marketingUser = await userRepo.findOneBy({
+        id: createCustomerDto.marketingUserId,
+        isActive: true,
+      });
+      if (!marketingUser) {
+        throw new BadRequestException(
+          `Nhân viên ID ${createCustomerDto.marketingUserId} không tồn tại hoặc đã bị khóa`,
+        );
+      }
+    }
+
     try {
       const today = this.getTodayVn();
       const customer = this.customersRepository.create({
@@ -233,6 +245,7 @@ export class CustomersService {
       this.customersRepository.createQueryBuilder('customer');
 
     queryBuilder.leftJoinAndSelect('customer.salesUser', 'salesUser');
+    queryBuilder.leftJoinAndSelect('customer.marketingUser', 'marketingUser');
     queryBuilder.leftJoinAndSelect('customer.department', 'department');
     queryBuilder.leftJoinAndSelect('customer.createdBy', 'createdBy');
     queryBuilder.leftJoinAndSelect('customer.updatedBy', 'updatedBy');
@@ -447,6 +460,7 @@ export class CustomersService {
     const queryBuilder = this.customersRepository
       .createQueryBuilder('customer')
       .leftJoinAndSelect('customer.salesUser', 'salesUser')
+      .leftJoinAndSelect('customer.marketingUser', 'marketingUser')
       .leftJoinAndSelect('customer.department', 'department')
       .leftJoinAndSelect('customer.deposits', 'deposits')
       .leftJoinAndSelect('customer.notes', 'notes')
@@ -643,6 +657,29 @@ export class CustomersService {
       }
       customer.salesUser = salesUser;
       customer.salesUserId = salesUser.id;
+    }
+
+    // Step 1b: Handle marketingUserId assignment explicitly (giống Step 1,
+    // nhưng độc lập với Sales — Marketing phụ trách là 1 quan hệ riêng)
+    if (updateCustomerDto.marketingUserId === null) {
+      customer.marketingUser = null;
+      customer.marketingUserId = null;
+    } else if (
+      updateCustomerDto.marketingUserId !== undefined &&
+      updateCustomerDto.marketingUserId !== customer.marketingUserId
+    ) {
+      const userRepo = this.customersRepository.manager.getRepository(User);
+      const marketingUser = await userRepo.findOneBy({
+        id: updateCustomerDto.marketingUserId,
+        isActive: true,
+      });
+      if (!marketingUser) {
+        throw new BadRequestException(
+          `Nhân viên ID ${updateCustomerDto.marketingUserId} không tồn tại hoặc đã bị khóa`,
+        );
+      }
+      customer.marketingUser = marketingUser;
+      customer.marketingUserId = marketingUser.id;
     }
 
     // Step 2: Handle departmentId assignment explicitly

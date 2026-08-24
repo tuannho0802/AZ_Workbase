@@ -31,4 +31,10 @@ export class UpdateCustomerDto extends PartialType(CreateCustomerDto) {
   @IsNumber()
   @Type(() => Number)
   salesUserId?: number | null;
+
+  @ApiPropertyOptional({ description: 'ID của nhân viên Marketing phụ trách' })
+  @IsOptional()
+  @IsNumber()
+  @Type(() => Number)
+  marketingUserId?: number | null;
 }
