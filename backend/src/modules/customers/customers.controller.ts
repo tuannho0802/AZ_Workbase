@@ -1,6 +1,7 @@
 import { Controller, Get, Post, Body, Patch, Param, Delete, Query, UseGuards, UploadedFile, UseInterceptors } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { ApiTags, ApiOperation, ApiResponse, ApiBearerAuth, ApiConsumes, ApiBody } from '@nestjs/swagger';
+import 'multer';
 import { CustomersService } from './customers.service';
 import { CustomersImportService } from './customers.import.service';
 import { CreateCustomerDto } from './dto/create-customer.dto';
@@ -55,6 +56,24 @@ export class CustomersController {
     @Query('sortOrder') sortOrder?: 'ASC' | 'DESC',
   ) {
     return this.customersService.getAllDepositsStats(user.id, user.role, startDate, endDate, sortBy, sortOrder);
+  }
+
+  @Get('reports/invalid-input-date')
+  @ApiOperation({
+    summary:
+      'Report: khách hàng có "Ngày nhập data" (inputDate) đang lớn hơn ngày hiện tại (giờ VN) - data cũ nhập sai trước khi có validation chặn ngày tương lai',
+  })
+  async getInvalidInputDateReport(
+    @GetUser() user: any,
+    @Query('page') page?: string,
+    @Query('limit') limit?: string,
+  ) {
+    return this.customersService.getInvalidInputDateReport(
+      user.id,
+      user.role,
+      page ? parseInt(page, 10) : 1,
+      limit ? parseInt(limit, 10) : 20,
+    );
   }
 
   @Post('import')

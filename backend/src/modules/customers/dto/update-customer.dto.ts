@@ -2,6 +2,7 @@ import { ApiPropertyOptional, PartialType } from '@nestjs/swagger';
 import { CreateCustomerDto } from './create-customer.dto';
 import { IsOptional, IsDateString, IsNumber, Matches } from 'class-validator';
 import { Type } from 'class-transformer';
+import { IsNotFutureDateVn } from '../../../common/validators/is-not-future-date-vn.validator';
 
 export class UpdateCustomerDto extends PartialType(CreateCustomerDto) {
   @ApiPropertyOptional({ example: '0901234567', description: 'Số điện thoại' })
@@ -9,9 +10,10 @@ export class UpdateCustomerDto extends PartialType(CreateCustomerDto) {
   @Matches(/^((09|08|07|03|05)[0-9]{8}|MISSING_[0-9]+)$/, { message: 'Số điện thoại không hợp lệ' })
   phone?: string;
 
-  @ApiPropertyOptional({ example: '2026-03-30', description: 'Ngày nhập data (YYYY-MM-DD)' })
+  @ApiPropertyOptional({ example: '2026-03-30', description: 'Ngày nhập data (YYYY-MM-DD). Không được lớn hơn ngày hiện tại (giờ Việt Nam, GMT+7).' })
   @IsOptional()
   @IsDateString({}, { message: 'Ngày nhập không đúng định dạng YYYY-MM-DD' })
+  @IsNotFutureDateVn({ message: 'Ngày nhập data không được lớn hơn ngày hiện tại' })
   inputDate?: string;
 
   @ApiPropertyOptional({ example: '2026-03-30', description: 'Ngày sales nhận khách (YYYY-MM-DD)' })

@@ -5,7 +5,8 @@ import { Modal, Form, Input, Select, DatePicker, Row, Col, App } from 'antd';
 import { customersApi } from '@/lib/api/customers.api';
 import { SalesUserSelect } from './SalesUserSelect';
 import { Customer } from '@/lib/types/customer.types';
-import dayjs from 'dayjs';
+import dayjs, { Dayjs } from 'dayjs';
+import { isFutureVnDate } from '@/lib/utils/date-vn';
 
 interface CustomerFormProps {
   open: boolean;
@@ -141,8 +142,27 @@ export const CustomerForm: React.FC<CustomerFormProps> = ({ open, customer, onCl
 
         <Row gutter={16}>
           <Col span={8}>
-            <Form.Item name="inputDate" label="Ngày nhập data" rules={[{ required: true }]}>
-              <DatePicker style={{ width: '100%' }} format="DD/MM/YYYY" />
+            <Form.Item
+              name="inputDate"
+              label="Ngày nhập data"
+              rules={[
+                { required: true, message: 'Vui lòng chọn ngày nhập data' },
+                {
+                  validator: (_rule, value: Dayjs | null) =>
+                    isFutureVnDate(value)
+                      ? Promise.reject(new Error('Ngày nhập data không được lớn hơn ngày hiện tại'))
+                      : Promise.resolve(),
+                },
+              ]}
+            >
+              {/* disabledDate: chặn chọn ngày tương lai (so với chuẩn GMT+7,
+                  đồng bộ với validation phía BE) ngay trên UI, thay vì để
+                  người dùng chọn xong mới báo lỗi. */}
+              <DatePicker
+                style={{ width: '100%' }}
+                format="DD/MM/YYYY"
+                disabledDate={(current) => isFutureVnDate(current)}
+              />
             </Form.Item>
           </Col>
           <Col span={8}>

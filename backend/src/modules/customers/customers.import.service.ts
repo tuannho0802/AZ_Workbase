@@ -3,6 +3,8 @@ import { DataSource, In } from 'typeorm';
 import { Customer } from '../../database/entities/customer.entity';
 import { User } from '../../database/entities/user.entity';
 import * as XLSX from 'xlsx';
+import 'multer';
+import { todayVnStr } from '../../common/utils/date-vn.util';
 
 @Injectable()
 export class CustomersImportService {
@@ -82,6 +84,15 @@ export class CustomersImportService {
 
     const validSources = ['Facebook','TikTok','Google','Instagram','LinkedIn','Other'];
 
+    // ⚠️ TỐI ƯU: trước đây check trùng SĐT trong chính file dùng
+    // `validCustomers.some(c => c.phone === rawPhone)` bên trong vòng lặp
+    // chính -> với N dòng, đây là vòng lặp lồng nhau O(N²) (so từng dòng
+    // với tất cả dòng đã xử lý trước đó). File tối đa 1000 dòng nên không
+    // đến mức treo server, nhưng là loop thừa không cần thiết -> đổi sang
+    // tra cứu bằng Set (O(1) mỗi lần check) để không phải duyệt lại mảng.
+    const phonesInValidCustomers = new Set<string>();
+    const todayStr = todayVnStr();
+
     for (let i = 0; i < normalizedData.length; i++) {
       const row = normalizedData[i];
       const rowNum = i + 2; 
@@ -114,7 +125,7 @@ export class CustomersImportService {
         continue;
       }
       
-      const isDuplicateInFile = validCustomers.some(c => c.phone === rawPhone);
+      const isDuplicateInFile = phonesInValidCustomers.has(rawPhone);
       if (isDuplicateInFile) {
         errors.push({ row: rowNum, phone: rawPhone, name, reason: 'Số điện thoại bị trùng lặp trong chính file tải lên' });
         skipCount++;
@@ -157,6 +168,21 @@ export class CustomersImportService {
         }
       }
 
+      // Không cho phép "Ngày nhập data" lớn hơn ngày hiện tại (giờ VN,
+      // GMT+7) — cùng quy tắc áp dụng cho form thêm/sửa thủ công.
+      const inputDateStr = inputDateObj.toISOString().split('T')[0];
+      if (inputDateStr > todayStr) {
+        errors.push({
+          row: rowNum,
+          phone: rawPhone,
+          name,
+          reason: `Ngày nhập data (${rawInputDate || inputDateStr}) không được lớn hơn ngày hiện tại`,
+        });
+        skipCount++;
+        continue;
+      }
+
+      phonesInValidCustomers.add(rawPhone);
       validCustomers.push({
          name,
          phone: rawPhone,

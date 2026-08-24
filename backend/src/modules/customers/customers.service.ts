@@ -27,6 +27,7 @@ import {
 } from '@nestjs/common';
 import { CustomerAccessHelper } from './helpers/customer-access.helper';
 import { AuditService } from '../audit/audit.service';
+import { todayVnStr } from '../../common/utils/date-vn.util';
 
 @Injectable()
 export class CustomersService {
@@ -1245,5 +1246,48 @@ export class CustomersService {
     );
 
     return { message: 'Đã xóa vĩnh viễn khách hàng' };
+  }
+
+  /**
+   * Report: liệt kê các khách hàng có "Ngày nhập data" (inputDate) đang VI
+   * PHẠM quy tắc "không được ở tương lai" — tức là data cũ được nhập TRƯỚC
+   * khi có validation này (hoặc nhập qua đường khác không qua DTO), nên
+   * đang tồn tại inputDate > ngày hiện tại (giờ VN).
+   *
+   * Tận dụng index sẵn có `@Index(['inputDate'])` trên customer.entity.ts
+   * -> so sánh trực tiếp trong SQL (customer.inputDate > CURDATE dạng VN),
+   * không load toàn bộ bảng vào RAM rồi filter bằng JS.
+   */
+  async getInvalidInputDateReport(
+    userId: number,
+    userRole: string,
+    page = 1,
+    limit = 20,
+  ) {
+    const todayStr = todayVnStr();
+
+    const qb = this.customersRepository
+      .createQueryBuilder('customer')
+      .leftJoinAndSelect('customer.salesUser', 'salesUser')
+      .leftJoinAndSelect('customer.createdBy', 'createdBy')
+      .where('customer.deletedAt IS NULL')
+      .andWhere('customer.inputDate > :todayStr', { todayStr });
+
+    CustomerAccessHelper.applyExtendedAccessFilter(qb, userId, userRole);
+
+    const [data, total] = await qb
+      .orderBy('customer.inputDate', 'DESC')
+      .skip((page - 1) * limit)
+      .take(limit)
+      .getManyAndCount();
+
+    return {
+      data,
+      total,
+      page,
+      limit,
+      totalPages: Math.ceil(total / limit),
+      checkedAgainst: todayStr,
+    };
   }
 }

@@ -34,6 +34,19 @@ export const customersApi = {
     return response.data;
   },
 
+  /**
+   * Report data cũ đang vi phạm quy tắc "Ngày nhập data không được ở
+   * tương lai" (inputDate > hôm nay theo giờ VN) — hữu ích để rà soát các
+   * bản ghi nhập sai từ trước khi có validation này.
+   */
+  getInvalidInputDateReport: async (params?: {
+    page?: number;
+    limit?: number;
+  }): Promise<PaginatedResponse<Customer> & { checkedAgainst: string }> => {
+    const response = await axiosInstance.get('/customers/reports/invalid-input-date', { params });
+    return response.data;
+  },
+
   getAllDepositsStats: async (params?: { 
     startDate?: string; 
     endDate?: string;
