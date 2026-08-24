@@ -85,10 +85,9 @@ export class UsersController {
   }
 
   @Get(':id/profile')
-  @Roles(Role.ADMIN)
-  @ApiOperation({ summary: 'Lấy danh sách Fanpage/Group (profile) của nhân viên (Chỉ Admin)' })
-  async getUserProfile(@Param('id') id: string) {
-    return this.usersService.getProfile(+id);
+  @ApiOperation({ summary: 'Lấy danh sách Fanpage/Group (profile) của nhân viên. Admin xem được của bất kỳ ai, role khác chỉ xem được của chính mình' })
+  async getUserProfile(@Param('id') id: string, @Request() req: any) {
+    return this.usersService.getProfile(+id, req.user.id, req.user.role);
   }
 
   @Put(':id/profile')

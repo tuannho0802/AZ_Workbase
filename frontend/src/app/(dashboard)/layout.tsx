@@ -14,7 +14,8 @@ import {
   CheckCircleOutlined,
   FileTextOutlined,
   DeleteOutlined,
-  WarningOutlined
+  WarningOutlined,
+  ProfileOutlined
 } from '@ant-design/icons';
 import { useAuthStore } from '@/lib/stores/auth.store';
 import Cookies from 'js-cookie';
@@ -51,6 +52,8 @@ export default function DashboardLayout({
     
     if (pathname.includes('/users')) {
       newKey = 'users';
+    } else if (pathname.includes('/profile')) {
+      newKey = 'profile';
     } else if (pathname.includes('/audit-logs')) {
       newKey = 'audit-logs';
     } else if (pathname.includes('/chia-data')) {
@@ -143,6 +146,14 @@ export default function DashboardLayout({
               icon: <CalendarOutlined />,
               label: 'Nghỉ phép',
               onClick: () => router.push('/nghi-phep'),
+            },
+            {
+              // All Roles: user tự xem profile (Fanpage/Group) của chính mình.
+              // Admin xem/sửa được của tất cả (xem thêm ProfilePage - AdminProfileManager).
+              key: 'profile',
+              icon: <ProfileOutlined />,
+              label: 'Profile',
+              onClick: () => router.push('/profile'),
             },
             ...(['admin', 'manager', 'assistant'].includes(user?.role || '') ? [{
               key: 'duyet-phep',

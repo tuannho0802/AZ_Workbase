@@ -36,4 +36,23 @@ export const usersApi = {
     const response = await axiosInstance.patch(`/users/${id}/reset-password`, data);
     return response.data;
   },
+
+  // Profile (Fanpage/Group links user quản lý)
+  // - GET: Admin xem được của bất kỳ ai, role khác chỉ xem được của chính mình (BE tự check)
+  // - PUT: Chỉ Admin được sửa (Only Admin CRUD)
+  getUserProfile: async (id: number): Promise<{ id: number; profile: ManagedLink[] }> => {
+    const response = await axiosInstance.get(`/users/${id}/profile`);
+    return response.data;
+  },
+
+  updateUserProfile: async (id: number, profile: ManagedLink[]): Promise<{ id: number; profile: ManagedLink[] }> => {
+    const response = await axiosInstance.put(`/users/${id}/profile`, { profile });
+    return response.data;
+  },
 };
+
+export interface ManagedLink {
+  type: 'fanpage' | 'group';
+  name: string;
+  url: string;
+}

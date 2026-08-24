@@ -242,11 +242,20 @@ export class UsersService {
   /**
    * Lấy danh sách Fanpage/Group (profile) của 1 user.
    * ⚠️ profile có select: false trong entity -> phải addSelect thủ công.
-   * Chỉ Admin được gọi (enforced ở controller qua @Roles(Role.ADMIN)).
+   * Quyền: Admin xem được profile của BẤT KỲ user nào. Non-admin chỉ xem
+   * được profile của CHÍNH MÌNH (id === currentUserId) - enforced ở đây
+   * vì controller không còn @Roles(Role.ADMIN) trên endpoint GET nữa
+   * (đã mở cho all roles ở mức route, self-check nằm ở service).
    */
   async getProfile(
     id: number,
+    currentUserId: number,
+    currentUserRole: string,
   ): Promise<{ id: number; profile: ManagedLink[] }> {
+    if (currentUserRole !== Role.ADMIN && id !== currentUserId) {
+      throw new ForbiddenException('Bạn chỉ có thể xem profile của chính mình');
+    }
+
     const user = await this.usersRepository
       .createQueryBuilder('user')
       .addSelect('user.profile')
