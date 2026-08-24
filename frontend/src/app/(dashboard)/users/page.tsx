@@ -164,6 +164,7 @@ export default function UsersPage() {
       setLoading(true);
       const payload: any = {
         name: values.name,
+        phone: values.phone || undefined,
         role: String(values.role).toLowerCase(),
         departmentId: values.departmentId ? Number(values.departmentId) : undefined,
       };
@@ -335,6 +336,19 @@ export default function UsersPage() {
             ]}
           >
             <Input placeholder="Nguyễn Văn A" />
+          </Form.Item>
+
+          <Form.Item
+            name="phone"
+            label="Số điện thoại"
+            rules={[
+              {
+                pattern: /^(09|08|07|03|05)[0-9]{8}$/,
+                message: 'Số điện thoại không hợp lệ',
+              },
+            ]}
+          >
+            <Input placeholder="0901234567" />
           </Form.Item>
 
           {!editingUser && (

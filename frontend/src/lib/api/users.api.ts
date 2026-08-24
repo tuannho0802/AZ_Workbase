@@ -22,6 +22,18 @@ export const usersApi = {
     return response.data;
   },
 
+  // Thông tin cá nhân đầy đủ của user đang đăng nhập (All roles)
+  getMe: async (): Promise<UserDetail> => {
+    const response = await axiosInstance.get('/users/me');
+    return response.data;
+  },
+
+  // Thông tin chi tiết 1 user theo id (Chỉ Admin)
+  getUserDetail: async (id: number): Promise<UserDetail> => {
+    const response = await axiosInstance.get(`/users/${id}`);
+    return response.data;
+  },
+
   createUser: async (data: any) => {
     const response = await axiosInstance.post('/users', data);
     return response.data;
@@ -55,4 +67,20 @@ export interface ManagedLink {
   type: 'fanpage' | 'group';
   name: string;
   url: string;
+}
+
+export interface UserDetail {
+  id: number;
+  email: string;
+  name: string;
+  phone: string | null;
+  role: string;
+  isActive: boolean;
+  lastLoginAt: string | null;
+  annualLeaveBalance: number;
+  annualLeaveTotal: number;
+  compensatoryLeaveBalance: number;
+  leaveYear: number;
+  createdAt: string;
+  department?: { id: number; name: string } | null;
 }
