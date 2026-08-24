@@ -11,6 +11,13 @@ export class CreateUserDto {
   @MinLength(2, { message: 'Tên phải có ít nhất 2 ký tự' })
   name: string;
 
+  @ApiProperty({ example: '0901234567', required: false })
+  @IsOptional()
+  @Matches(/^(09|08|07|03|05)[0-9]{8}$/, {
+    message: 'Số điện thoại không hợp lệ',
+  })
+  phone?: string;
+
   @ApiProperty({ 
     example: 'Password@123',
     description: 'Mật khẩu (ít nhất 8 ký tự, có chữ hoa, chữ thường, số, ký tự đặc biệt)'
