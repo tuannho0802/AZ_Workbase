@@ -974,8 +974,11 @@ export class CustomersService {
       userRole,
     );
 
+    // ⚠️ Giới hạn (take) để tránh load toàn bộ bảng vào RAM khi 1 ngày có
+    // quá nhiều khách hàng mới (ví dụ sau khi import hàng loạt). Trước đây
+    // todayList không có take() nào, sẽ phình to dần theo lượng data nhập vào.
     const [todayList, historyList] = await Promise.all([
-      todayQuery.orderBy('customer.createdAt', 'DESC').getMany(),
+      todayQuery.orderBy('customer.createdAt', 'DESC').take(500).getMany(),
       historyQuery.orderBy('customer.createdAt', 'DESC').take(50).getMany(),
     ]);
 
@@ -983,26 +986,51 @@ export class CustomersService {
   }
 
   async getStatsByStatus(userId: number, userRole: string) {
-    const queryBuilder = this.customersRepository
-      .createQueryBuilder('customer')
-      .leftJoinAndSelect('customer.salesUser', 'salesUser')
-      .leftJoinAndSelect('customer.createdBy', 'createdBy')
-      .where('customer.deletedAt IS NULL');
+    // ⚠️ Trước đây hàm này load TOÀN BỘ customer (mọi status) + join salesUser
+    // + createdBy vào RAM rồi mới .filter() bằng JS để tách closed/notClosed.
+    // Càng nhiều khách hàng, query này càng chậm tuyến tính vì phải kéo hết
+    // dữ liệu về app server dù chỉ cần 2 danh sách.
+    // Sửa: lọc status ngay trong SQL (tận dụng idx_status đã có sẵn) + giới
+    // hạn số dòng trả về (take) để tránh phình to vô hạn theo thời gian,
+    // đồng thời chạy song song 2 query thay vì 1 query lớn rồi tách đôi.
+    const baseQuery = () =>
+      this.customersRepository
+        .createQueryBuilder('customer')
+        .leftJoinAndSelect('customer.salesUser', 'salesUser')
+        .leftJoinAndSelect('customer.createdBy', 'createdBy')
+        .where('customer.deletedAt IS NULL');
+
+    const closedQuery = baseQuery().andWhere('customer.status = :status', {
+      status: 'closed',
+    });
+    const notClosedQuery = baseQuery().andWhere('customer.status != :status', {
+      status: 'closed',
+    });
 
     CustomerAccessHelper.applyExtendedAccessFilter(
-      queryBuilder,
+      closedQuery,
+      userId,
+      userRole,
+    );
+    CustomerAccessHelper.applyExtendedAccessFilter(
+      notClosedQuery,
       userId,
       userRole,
     );
 
-    const customers = await queryBuilder
-      .orderBy('customer.createdAt', 'DESC')
-      .getMany();
+    const STATS_ROW_CAP = 1000;
+    const [closed, notClosed] = await Promise.all([
+      closedQuery
+        .orderBy('customer.createdAt', 'DESC')
+        .take(STATS_ROW_CAP)
+        .getMany(),
+      notClosedQuery
+        .orderBy('customer.createdAt', 'DESC')
+        .take(STATS_ROW_CAP)
+        .getMany(),
+    ]);
 
-    return {
-      closed: customers.filter((c) => c.status === 'closed'),
-      notClosed: customers.filter((c) => c.status !== 'closed'),
-    };
+    return { closed, notClosed };
   }
 
   async getAllDepositsStats(
@@ -1039,7 +1067,13 @@ export class CustomersService {
       sortBy === 'amount' ? 'deposit.amount' : 'deposit.depositDate';
     queryBuilder.orderBy(sortField, sortOrder);
 
-    return await queryBuilder.getMany();
+    // ⚠️ Giới hạn số dòng trả về: trước đây .getMany() không có take(), nên
+    // khi bảng deposits lớn dần (không lọc theo ngày), API Dashboard này sẽ
+    // load toàn bộ deposits + join customer/createdBy/salesUser vào RAM mỗi
+    // lần gọi. Cap lại để tránh phình to vô hạn; nếu cần xem hết, nên lọc
+    // theo startDate/endDate thay vì bỏ trống.
+    const DEPOSITS_ROW_CAP = 1000;
+    return await queryBuilder.take(DEPOSITS_ROW_CAP).getMany();
   }
 
   async getTrash(filters: CustomerFiltersDto) {
