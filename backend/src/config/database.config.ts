@@ -16,7 +16,9 @@ export const getTypeOrmConfig = (configService: ConfigService): TypeOrmModuleOpt
     entities: [__dirname + '/../**/*.entity{.ts,.js}'],
     migrations: [__dirname + '/../database/migrations/*{.ts,.js}'],
     synchronize: false,
-    logging: configService.get('NODE_ENV') === 'development',
+    // Chỉ log lỗi/cảnh báo, không log toàn bộ SQL query để tránh spam log
+    logging: ['error', 'warn'],
+    maxQueryExecutionTime: 1000, // Log cảnh báo nếu query chạy quá 1s (slow query)
 
     // ✅ Tự retry khi mất kết nối lúc khởi động
     retryAttempts: 5,
