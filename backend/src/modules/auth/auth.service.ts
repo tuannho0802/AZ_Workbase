@@ -65,7 +65,7 @@ export class AuthService {
     await this.usersService.updateLastLogin(user.id);
 
     // Log đăng nhập thành công
-    await this.auditService.logAction(
+    this.auditService.logActionAsync(
       user.id,
       'USER_LOGIN',
       'auth',

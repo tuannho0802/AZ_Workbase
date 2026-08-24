@@ -1,6 +1,7 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, LessThan, In, Between } from 'typeorm';
+import { waitUntil } from '@vercel/functions';
 import { AuditLog } from '../../database/entities/audit-log.entity';
 import { Setting } from '../../database/entities/setting.entity';
 import { Customer } from '../../database/entities/customer.entity';
@@ -39,6 +40,50 @@ export class AuditService {
       userAgent,
     });
     return await this.auditLogRepository.save(auditLog);
+  }
+
+  /**
+   * Ghi audit log dạng "fire-and-forget": KHÔNG chặn response chính.
+   * Dùng waitUntil() của Vercel (@vercel/functions) thay vì bỏ await "tay
+   * không" — waitUntil() đảm bảo Vercel giữ function sống đủ lâu để tác vụ
+   * này chạy xong trước khi tắt, trong khi vẫn trả response cho client ngay
+   * lập tức, không cần chờ ghi log.
+   *
+   * Đánh đổi: nếu ghi log thất bại (hiếm), sẽ KHÔNG tự động retry (khác với
+   * hàng đợi thật như BullMQ/QStash) — chỉ log lỗi ra console để theo dõi,
+   * và không làm fail request chính đã trả về rồi.
+   *
+   * Dùng hàm này ở các call site ghi audit log cho các thao tác CRUD thông
+   * thường (create/update/delete...). Với các trường hợp CẦN đảm bảo log đã
+   * ghi xong trước khi trả kết quả (nếu có), vẫn dùng `await logAction(...)`.
+   */
+  logActionAsync(
+    userId: number,
+    action: string,
+    entityType: string,
+    entityId: number,
+    oldData?: any,
+    newData?: any,
+    ipAddress?: string,
+    userAgent?: string,
+  ): void {
+    const task = this.logAction(
+      userId,
+      action,
+      entityType,
+      entityId,
+      oldData,
+      newData,
+      ipAddress,
+      userAgent,
+    ).catch((error: any) => {
+      this.logger.error(
+        `Ghi audit log thất bại (action=${action}, entityType=${entityType}, entityId=${entityId}): ${error?.message}`,
+        error?.stack,
+      );
+    });
+
+    waitUntil(task);
   }
 
   async getLogs(filters: GetAuditLogsDto) {

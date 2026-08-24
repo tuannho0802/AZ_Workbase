@@ -88,7 +88,7 @@ export class CustomersService {
       } as any);
       const saved = await this.customersRepository.save(customer);
 
-      await this.auditService.logAction(
+      this.auditService.logActionAsync(
         userId,
         'CREATE_CUSTOMER',
         'customer',
@@ -104,6 +104,40 @@ export class CustomersService {
       }
       throw error;
     }
+  }
+
+  /**
+   * ⚠️ TỐI ƯU TÌM KIẾM (thay thế cho LIKE '%x%'):
+   * Trước đây search dùng `LOWER(customer.name) LIKE '%x%'` (và tương tự cho
+   * email/campaign) — có % ở ĐẦU chuỗi nên MySQL không thể dùng bất kỳ index
+   * nào, luôn phải full table scan. Càng nhiều khách hàng, search càng chậm.
+   *
+   * Sửa: dùng FULLTEXT index (parser `ngram`, đã tạo qua migration
+   * AddFulltextSearchToCustomers) cho name/email/campaign — ngram cho phép
+   * khớp cả theo từ lẫn giữa từ, gần với hành vi cũ nhất trong khi vẫn dùng
+   * được index thật. Riêng SĐT đổi sang "bắt đầu bằng" (không còn % ở đầu)
+   * để tận dụng index B-tree có sẵn trên cột phone.
+   *
+   * Đánh đổi đã thống nhất với người dùng: không còn tìm SĐT theo số ở giữa
+   * hay 4 số cuối, chỉ tìm theo đầu số.
+   */
+  private applyCustomerSearch(
+    queryBuilder: ReturnType<Repository<Customer>['createQueryBuilder']>,
+    search: string,
+  ) {
+    const trimmed = search.trim();
+    if (!trimmed) return;
+
+    queryBuilder.andWhere(
+      new Brackets((qb) => {
+        qb.where(
+          'MATCH(customer.name, customer.email, customer.campaign) AGAINST(:searchText IN NATURAL LANGUAGE MODE)',
+          { searchText: trimmed },
+        ).orWhere('customer.phone LIKE :phonePrefix', {
+          phonePrefix: `${trimmed}%`,
+        });
+      }),
+    );
   }
 
   /**
@@ -136,23 +170,7 @@ export class CustomersService {
 
     // Search
     if (search) {
-      const searchLower = search.trim().toLowerCase();
-      queryBuilder.andWhere(
-        new Brackets((qb) => {
-          qb.where('LOWER(customer.name) LIKE :search', {
-            search: `%${searchLower}%`,
-          })
-            .orWhere('customer.phone LIKE :search', {
-              search: `%${searchLower}%`,
-            })
-            .orWhere('LOWER(customer.email) LIKE :search', {
-              search: `%${searchLower}%`,
-            })
-            .orWhere('LOWER(customer.campaign) LIKE :search', {
-              search: `%${searchLower}%`,
-            });
-        }),
-      );
+      this.applyCustomerSearch(queryBuilder, search);
     }
 
     // Basic Filters
@@ -491,7 +509,7 @@ export class CustomersService {
 
     const savedNote = await this.notesRepository.save(note);
 
-    await this.auditService.logAction(
+    this.auditService.logActionAsync(
       userId,
       'CREATE_NOTE',
       'customer_note',
@@ -532,7 +550,7 @@ export class CustomersService {
 
     const savedDeposit = await this.depositsRepository.save(deposit);
 
-    await this.auditService.logAction(
+    this.auditService.logActionAsync(
       userId,
       'CREATE_DEPOSIT',
       'deposit',
@@ -563,7 +581,7 @@ export class CustomersService {
     const result = await this.depositsRepository.remove(deposit);
 
     if (userId) {
-      await this.auditService.logAction(
+      this.auditService.logActionAsync(
         userId,
         'DELETE_DEPOSIT',
         'deposit',
@@ -657,7 +675,7 @@ export class CustomersService {
       customer.updatedBy = { id: userId } as User;
 
       const saved = await this.customersRepository.save(customer);
-      await this.auditService.logAction(
+      this.auditService.logActionAsync(
         userId,
         'UPDATE_CUSTOMER',
         'customer',
@@ -687,7 +705,7 @@ export class CustomersService {
     }
 
     await this.customersRepository.softDelete(id);
-    await this.auditService.logAction(
+    this.auditService.logActionAsync(
       userId,
       'DELETE_CUSTOMER',
       'customer',
@@ -862,20 +880,19 @@ export class CustomersService {
       }
 
       // Bước 6: Ghi audit log cho từng customer thành công - vẫn 1 dòng log
-      // / customer y hệt bản gốc, nhưng chạy song song (Promise.all) thay
-      // vì tuần tự từng cái một.
-      await Promise.all(
-        authorizedCustomers.map((customer) =>
-          this.auditService.logAction(
-            callerId,
-            'ASSIGN_CUSTOMER',
-            'customer',
-            customer.id,
-            null,
-            { assignedToIds: salesUserIds },
-          ),
-        ),
-      );
+      // / customer y hệt bản gốc. Dùng logActionAsync() (fire-and-forget qua
+      // waitUntil()) thay vì await Promise.all(...) — response không còn
+      // phải chờ ghi xong audit log cho toàn bộ customer trong batch.
+      authorizedCustomers.forEach((customer) => {
+        this.auditService.logActionAsync(
+          callerId,
+          'ASSIGN_CUSTOMER',
+          'customer',
+          customer.id,
+          null,
+          { assignedToIds: salesUserIds },
+        );
+      });
 
       results.success += authorizedCustomers.length;
     }
@@ -933,14 +950,7 @@ export class CustomersService {
     }
 
     if (search) {
-      const s = `%${search.trim().toLowerCase()}%`;
-      qb.andWhere(
-        new Brackets((q) =>
-          q
-            .where('LOWER(customer.name) LIKE :s', { s })
-            .orWhere('customer.phone LIKE :s', { s }),
-        ),
-      );
+      this.applyCustomerSearch(qb, search);
     }
 
     qb.orderBy('customer.createdAt', 'DESC')
@@ -986,15 +996,7 @@ export class CustomersService {
     }
 
     if (search?.trim()) {
-      const s = `%${search.trim().toLowerCase()}%`;
-      query.andWhere(
-        new Brackets((qb) => {
-          qb.where('LOWER(customer.name) LIKE :s', { s }).orWhere(
-            'customer.phone LIKE :s',
-            { s },
-          );
-        }),
-      );
+      this.applyCustomerSearch(query, search);
     }
 
     const [customers, total] = await query
@@ -1169,14 +1171,7 @@ export class CustomersService {
       .where('customer.deletedAt IS NOT NULL'); // ← chỉ lấy đã xóa
 
     if (search?.trim()) {
-      const s = `%${search.trim().toLowerCase()}%`;
-      qb.andWhere(
-        new Brackets((q) =>
-          q
-            .where('LOWER(customer.name) LIKE :s', { s })
-            .orWhere('customer.phone LIKE :s', { s }),
-        ),
-      );
+      this.applyCustomerSearch(qb, search);
     }
 
     const [data, total] = await qb
@@ -1201,7 +1196,7 @@ export class CustomersService {
 
     await this.customersRepository.restore(id);
 
-    await this.auditService.logAction(
+    this.auditService.logActionAsync(
       adminId,
       'RESTORE_CUSTOMER',
       'customer',
@@ -1228,7 +1223,7 @@ export class CustomersService {
     const snapshot = { ...customer };
     await this.customersRepository.delete(id); // hard delete
 
-    await this.auditService.logAction(
+    this.auditService.logActionAsync(
       adminId,
       'HARD_DELETE_CUSTOMER',
       'customer',

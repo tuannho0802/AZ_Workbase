@@ -152,7 +152,7 @@ export class UsersService {
     const safeUser = omitPassword(savedUser as any);
 
     if (creatorId) {
-      await this.auditService.logAction(
+      this.auditService.logActionAsync(
         creatorId,
         'CREATE_USER',
         'user',
@@ -199,7 +199,7 @@ export class UsersService {
     const safeUser = omitPassword(savedUser as any);
 
     if (callerId) {
-      await this.auditService.logAction(
+      this.auditService.logActionAsync(
         callerId,
         'UPDATE_USER',
         'user',
@@ -224,7 +224,7 @@ export class UsersService {
     await this.usersRepository.update(id, { password: hashedPassword });
 
     if (callerId) {
-      await this.auditService.logAction(
+      this.auditService.logActionAsync(
         callerId,
         'RESET_PASSWORD',
         'user',
