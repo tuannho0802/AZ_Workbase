@@ -117,8 +117,12 @@ export class AuditService {
   // Cleanup Settings
   async getCleanupSettings() {
     try {
-      const enabled = await this.settingRepository.findOne({ where: { key: 'audit_cleanup_enabled' } });
-      const retentionDays = await this.settingRepository.findOne({ where: { key: 'audit_retention_days' } });
+      // Trước đây 2 query chạy tuần tự (chờ query 1 xong mới bắt đầu query 2)
+      // dù không phụ thuộc nhau -> chạy song song để giảm ~50% thời gian chờ.
+      const [enabled, retentionDays] = await Promise.all([
+        this.settingRepository.findOne({ where: { key: 'audit_cleanup_enabled' } }),
+        this.settingRepository.findOne({ where: { key: 'audit_retention_days' } }),
+      ]);
 
       return {
         enabled: enabled?.value === 'true',
@@ -134,8 +138,11 @@ export class AuditService {
   }
 
   async updateCleanupSettings(enabled: boolean, retentionDays: number, adminId: number) {
-    await this.settingRepository.save({ key: 'audit_cleanup_enabled', value: String(enabled) });
-    await this.settingRepository.save({ key: 'audit_retention_days', value: String(retentionDays) });
+    // 2 dòng setting độc lập nhau (key khác nhau) -> ghi song song thay vì tuần tự.
+    await Promise.all([
+      this.settingRepository.save({ key: 'audit_cleanup_enabled', value: String(enabled) }),
+      this.settingRepository.save({ key: 'audit_retention_days', value: String(retentionDays) }),
+    ]);
 
     await this.logAction(adminId, 'UPDATE_AUDIT_SETTINGS', 'setting', 0, null, { enabled, retentionDays });
     return { success: true };
