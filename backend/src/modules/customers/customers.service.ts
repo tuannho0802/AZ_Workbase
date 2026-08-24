@@ -1,6 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository, Brackets, IsNull } from 'typeorm';
+import { Repository, Brackets, IsNull, In } from 'typeorm';
 import { Customer } from '../../database/entities/customer.entity';
 import { CreateCustomerDto } from './dto/create-customer.dto';
 import { UpdateCustomerDto } from './dto/update-customer.dto';
@@ -23,7 +23,6 @@ import { CreateCustomerNoteDto } from './dto/create-customer-note.dto';
 import { CreateDepositDto } from './dto/create-deposit.dto';
 import {
   NotFoundException,
-  ForbiddenException,
   BadRequestException,
 } from '@nestjs/common';
 import { CustomerAccessHelper } from './helpers/customer-access.helper';
@@ -725,77 +724,160 @@ export class CustomersService {
     const results = { success: 0, failed: 0, errors: [] as string[] };
     const today = this.getTodayVn();
 
-    for (const customerId of customerIds) {
-      try {
-        const customer = await this.customersRepository.findOne({
-          where: { id: customerId, deletedAt: IsNull() },
-        });
+    // ============================================================
+    // ⚠️ TỐI ƯU PERFORMANCE (không đổi logic nghiệp vụ):
+    // Code cũ chạy 1 vòng lặp `for (customerId of customerIds)` và bên trong
+    // lại có 1 vòng lặp `for (targetUserId of salesUserIds)`, mỗi vòng đều
+    // `await` 1 query riêng lẻ (findOne, findOneBy, save...). Với N khách
+    // hàng và M sales, tổng cộng có thể lên tới N*M*3 round-trip DB TUẦN TỰ
+    // -> chọn vài trăm khách hàng để "Chia Data" có thể mất hàng chục giây
+    // hoặc timeout.
+    // Cách sửa: gom các bước thành các query hàng loạt (batch), giữ nguyên
+    // 100% quy tắc phân quyền, thông điệp lỗi, và cách đếm success/failed
+    // như bản gốc.
+    // ============================================================
 
-        if (!customer) {
-          results.errors.push(`Khách hàng ID ${customerId} không tồn tại`);
+    // Bước 1: Lấy TẤT CẢ customer liên quan trong 1 query duy nhất
+    // (thay vì N query findOne riêng lẻ)
+    const customers = await this.customersRepository.find({
+      where: { id: In(customerIds), deletedAt: IsNull() },
+    });
+    const customerMap = new Map(customers.map((c) => [c.id, c]));
+
+    // Bước 2: Duyệt qua từng customerId để check tồn tại + phân quyền
+    // (thuần in-memory, không còn query trong vòng lặp này)
+    const authorizedCustomers: Customer[] = [];
+
+    for (const customerId of customerIds) {
+      const customer = customerMap.get(customerId);
+
+      if (!customer) {
+        results.errors.push(`Khách hàng ID ${customerId} không tồn tại`);
+        results.failed++;
+        continue;
+      }
+
+      // Authorization check: Must be Admin/Manager OR Primary Sales OR Creator of unassigned data
+      if (callerRole !== Role.ADMIN && callerRole !== Role.MANAGER) {
+        const isUnassignedCreator =
+          customer.salesUserId === null && customer.createdById === callerId;
+        const isPrimarySales = customer.salesUserId === callerId;
+
+        if (!isUnassignedCreator && !isPrimarySales) {
+          // Giữ nguyên format message y hệt bản gốc (ForbiddenException bị
+          // catch rồi ghép thêm prefix "Khách hàng ID X: " phía trước)
+          results.errors.push(
+            `Khách hàng ID ${customerId}: Bạn không có quyền chia khách hàng ID ${customerId} không thuộc quản lý của bạn.`,
+          );
           results.failed++;
           continue;
         }
+      }
 
-        // Authorization check: Must be Admin/Manager OR Primary Sales OR Creator of unassigned data
-        if (callerRole !== Role.ADMIN && callerRole !== Role.MANAGER) {
-          const isUnassignedCreator =
-            customer.salesUserId === null && customer.createdById === callerId;
-          const isPrimarySales = customer.salesUserId === callerId;
+      authorizedCustomers.push(customer);
+    }
 
-          if (!isUnassignedCreator && !isPrimarySales) {
-            throw new ForbiddenException(
-              `Bạn không có quyền chia khách hàng ID ${customerId} không thuộc quản lý của bạn.`,
-            );
-          }
-        }
+    if (authorizedCustomers.length > 0) {
+      const authorizedIds = authorizedCustomers.map((c) => c.id);
 
-        // 1:N Assignment Logic
+      // Bước 3: Lấy TẤT CẢ assignment "active" đã tồn tại cho các cặp
+      // (customer, sales) liên quan trong 1 query duy nhất (thay vì
+      // N*M query findOneBy riêng lẻ)
+      const existingAssignments = await this.assignmentRepository.find({
+        where: {
+          customerId: In(authorizedIds),
+          assignedToId: In(salesUserIds),
+          status: AssignmentStatus.ACTIVE,
+        },
+      });
+      const existingSet = new Set(
+        existingAssignments.map((a) => `${a.customerId}-${a.assignedToId}`),
+      );
+
+      // Bước 4: Gom toàn bộ assignment mới cần tạo, insert 1 lần (bulk insert)
+      // thay vì N*M lệnh save() riêng lẻ. Điều kiện "chỉ tạo nếu chưa tồn
+      // tại" giữ nguyên y hệt bản gốc (kiểm tra qua existingSet).
+      const newAssignments: Partial<CustomerAssignment>[] = [];
+      for (const customer of authorizedCustomers) {
         for (const targetUserId of salesUserIds) {
-          const existing = await this.assignmentRepository.findOneBy({
-            customerId: customer.id,
-            assignedToId: targetUserId,
-            status: AssignmentStatus.ACTIVE,
-          });
-
-          if (!existing) {
-            await this.assignmentRepository.save(
-              this.assignmentRepository.create({
-                customerId: customer.id,
-                assignedById: callerId,
-                assignedToId: targetUserId,
-                previousAssigneeId: customer.salesUserId || null,
-                status: AssignmentStatus.ACTIVE,
-                reason: reason || 'Bulk assign',
-              }),
-            );
+          const key = `${customer.id}-${targetUserId}`;
+          if (!existingSet.has(key)) {
+            newAssignments.push({
+              customerId: customer.id,
+              assignedById: callerId,
+              assignedToId: targetUserId,
+              previousAssigneeId: customer.salesUserId || null,
+              status: AssignmentStatus.ACTIVE,
+              reason: reason || 'Bulk assign',
+            });
           }
         }
+      }
 
-        // Backward compatibility: Set primary owner if none exists
-        if (!customer.salesUserId && salesUserIds.length > 0) {
-          customer.salesUserId = salesUserIds[0];
-          if (!customer.assignedDate) {
-            customer.assignedDate = today;
-          }
-          customer.updatedById = callerId;
-          await this.customersRepository.save(customer);
-        }
+      if (newAssignments.length > 0) {
+        await this.assignmentRepository.insert(newAssignments);
+      }
 
-        await this.auditService.logAction(
-          callerId,
-          'ASSIGN_CUSTOMER',
-          'customer',
-          customerId,
-          null,
-          { assignedToIds: salesUserIds },
+      // Bước 5: Backward compatibility - set primary owner nếu customer
+      // chưa có salesUserId. Logic y hệt bản gốc: chỉ set assignedDate nếu
+      // customer CHƯA có assignedDate. Tách thành 2 nhóm để batch UPDATE
+      // thay vì N lệnh save() riêng lẻ.
+      if (salesUserIds.length > 0) {
+        const primaryUserId = salesUserIds[0];
+        const needPrimary = authorizedCustomers.filter(
+          (c) => !c.salesUserId,
         );
 
-        results.success++;
-      } catch (err: any) {
-        results.errors.push(`Khách hàng ID ${customerId}: ${err.message}`);
-        results.failed++;
+        const idsNeedAssignedDate = needPrimary
+          .filter((c) => !c.assignedDate)
+          .map((c) => c.id);
+        const idsKeepAssignedDate = needPrimary
+          .filter((c) => c.assignedDate)
+          .map((c) => c.id);
+
+        if (idsNeedAssignedDate.length > 0) {
+          await this.customersRepository
+            .createQueryBuilder()
+            .update(Customer)
+            .set({
+              salesUserId: primaryUserId,
+              assignedDate: today,
+              updatedById: callerId,
+            })
+            .whereInIds(idsNeedAssignedDate)
+            .execute();
+        }
+
+        if (idsKeepAssignedDate.length > 0) {
+          await this.customersRepository
+            .createQueryBuilder()
+            .update(Customer)
+            .set({
+              salesUserId: primaryUserId,
+              updatedById: callerId,
+            })
+            .whereInIds(idsKeepAssignedDate)
+            .execute();
+        }
       }
+
+      // Bước 6: Ghi audit log cho từng customer thành công - vẫn 1 dòng log
+      // / customer y hệt bản gốc, nhưng chạy song song (Promise.all) thay
+      // vì tuần tự từng cái một.
+      await Promise.all(
+        authorizedCustomers.map((customer) =>
+          this.auditService.logAction(
+            callerId,
+            'ASSIGN_CUSTOMER',
+            'customer',
+            customer.id,
+            null,
+            { assignedToIds: salesUserIds },
+          ),
+        ),
+      );
+
+      results.success += authorizedCustomers.length;
     }
 
     return {

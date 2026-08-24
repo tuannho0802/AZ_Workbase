@@ -129,6 +129,9 @@ export class LeaveRequestsService {
     const subRoles = this.getSubordinateRoles(userRole);
     if (subRoles.length === 0) return [];
 
+    // ⚠️ Trước đây không có take()/skip() nào - số đơn phép đã duyệt/từ chối
+    // sẽ tích luỹ vô hạn theo thời gian sử dụng. Cap lại 200 bản ghi gần
+    // nhất để tránh phình to dần mà không đổi contract (vẫn trả về mảng).
     return this.leaveRequestRepo
       .createQueryBuilder('leave')
       .leftJoinAndSelect('leave.requester', 'requester')
@@ -139,6 +142,7 @@ export class LeaveRequestsService {
       })
       .andWhere('requester.role IN (:...roles)', { roles: subRoles })
       .orderBy('leave.updatedAt', 'DESC')
+      .take(200)
       .getMany();
   }
   

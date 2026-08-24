@@ -41,13 +41,18 @@ export class UsersController {
     @Query('page') page?: number,
     @Query('limit') limit?: number,
   ) {
+    // ⚠️ Trước đây limit không qua validation nào (raw query param), client
+    // có thể gọi ?limit=999999 để kéo toàn bộ bảng users. Clamp về tối đa
+    // 100 mà không đổi hành vi với các giá trị limit hợp lệ (<=100).
+    const safeLimit = limit ? Math.min(Math.max(+limit, 1), 100) : 20;
+
     return this.usersService.findAll(req.user.id, req.user.role, {
       role,
       departmentId,
       isActive,
       search,
       page: page ? +page : 1,
-      limit: limit ? +limit : 20,
+      limit: safeLimit,
     });
   }
 
