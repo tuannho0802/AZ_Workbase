@@ -4,9 +4,11 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { User } from '../../database/entities/user.entity';
 import { Role } from '../../common/enums/role.enum';
+import { ManagedLink } from '../../common/types/managed-link.type';
 import { CreateUserDto } from './dto/create-user.dto';
 import { UpdateUserDto } from './dto/update-user.dto';
 import { ResetPasswordDto } from './dto/reset-password.dto';
+import { UpdateUserProfileDto } from './dto/update-user-profile.dto';
 import { ConflictException, NotFoundException, ForbiddenException } from '@nestjs/common';
 import * as bcrypt from 'bcrypt';
 import { AuditService } from '../audit/audit.service';
@@ -235,5 +237,76 @@ export class UsersService {
     }
 
     return { success: true, message: 'Đã đặt lại mật khẩu thành công' };
+  }
+
+  /**
+   * Lấy danh sách Fanpage/Group (profile) của 1 user.
+   * ⚠️ profile có select: false trong entity -> phải addSelect thủ công.
+   * Chỉ Admin được gọi (enforced ở controller qua @Roles(Role.ADMIN)).
+   */
+  async getProfile(
+    id: number,
+  ): Promise<{ id: number; profile: ManagedLink[] }> {
+    const user = await this.usersRepository
+      .createQueryBuilder('user')
+      .addSelect('user.profile')
+      .where('user.id = :id', { id })
+      .getOne();
+
+    if (!user) {
+      throw new NotFoundException('Không tìm thấy nhân viên');
+    }
+
+    return { id: user.id, profile: user.profile ?? [] };
+  }
+
+  /**
+   * Thay thế (replace) toàn bộ profile của 1 user bằng danh sách link mới.
+   * Chỉ Admin được gọi (enforced ở controller qua @Roles(Role.ADMIN)).
+   */
+  async updateProfile(
+    id: number,
+    dto: UpdateUserProfileDto,
+    callerId?: number,
+  ): Promise<{ id: number; profile: ManagedLink[] }> {
+    const existing = await this.usersRepository
+      .createQueryBuilder('user')
+      .addSelect('user.profile')
+      .where('user.id = :id', { id })
+      .getOne();
+
+    if (!existing) {
+      throw new NotFoundException('Không tìm thấy nhân viên');
+    }
+
+    const oldProfile = existing.profile ?? [];
+    const newProfile = dto.profile;
+
+    // CRITICAL: dùng update() thay vì save(entity) vì `profile` là select:false -
+    // nếu load entity không addSelect rồi save(), TypeORM có thể ghi đè profile
+    // thành NULL do field không nằm trong entity đã load.
+    await this.usersRepository
+      .createQueryBuilder()
+      .update(User)
+      .set({ profile: newProfile })
+      .where('id = :id', { id })
+      .execute();
+
+    if (callerId) {
+      this.auditService.logActionAsync(
+        callerId,
+        'UPDATE_USER_PROFILE',
+        'user',
+        id,
+        { profile: oldProfile },
+        { profile: newProfile },
+      );
+    }
+
+    this.logger.log(
+      `[Users] Profile updated for user ID ${id} by admin ${callerId}`,
+    );
+
+    return { id, profile: newProfile };
   }
 }

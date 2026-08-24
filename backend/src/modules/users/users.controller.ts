@@ -1,4 +1,4 @@
-import { Controller, Get, Post, Body, Patch, Param, Delete, Query, UseGuards, Request, UseInterceptors } from '@nestjs/common';
+import { Controller, Get, Post, Put, Body, Patch, Param, Delete, Query, UseGuards, Request, UseInterceptors } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiBearerAuth, ApiResponse } from '@nestjs/swagger';
 import { UsersService } from './users.service';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
@@ -8,6 +8,7 @@ import { Role } from '../../common/enums/role.enum';
 import { CreateUserDto } from './dto/create-user.dto';
 import { UpdateUserDto } from './dto/update-user.dto';
 import { ResetPasswordDto } from './dto/reset-password.dto';
+import { UpdateUserProfileDto } from './dto/update-user-profile.dto';
 import { CacheControlInterceptor } from '../../common/interceptors/cache-control.interceptor';
 
 @ApiTags('Users')
@@ -81,6 +82,20 @@ export class UsersController {
   @ApiOperation({ summary: 'Cập nhật thông tin nhân viên' })
   async update(@Param('id') id: string, @Body() dto: UpdateUserDto, @Request() req: any) {
     return this.usersService.update(+id, dto, req.user.id);
+  }
+
+  @Get(':id/profile')
+  @Roles(Role.ADMIN)
+  @ApiOperation({ summary: 'Lấy danh sách Fanpage/Group (profile) của nhân viên (Chỉ Admin)' })
+  async getUserProfile(@Param('id') id: string) {
+    return this.usersService.getProfile(+id);
+  }
+
+  @Put(':id/profile')
+  @Roles(Role.ADMIN)
+  @ApiOperation({ summary: 'Cập nhật (thay thế toàn bộ) danh sách Fanpage/Group của nhân viên (Chỉ Admin)' })
+  async updateProfile(@Param('id') id: string, @Body() dto: UpdateUserProfileDto, @Request() req: any) {
+    return this.usersService.updateProfile(+id, dto, req.user.id);
   }
 
   @Patch(':id/reset-password')
