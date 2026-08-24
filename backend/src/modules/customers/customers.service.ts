@@ -1258,9 +1258,10 @@ export class CustomersService {
    * -> so sánh trực tiếp trong SQL (customer.inputDate > CURDATE dạng VN),
    * không load toàn bộ bảng vào RAM rồi filter bằng JS.
    */
-  async getInvalidInputDateReport(
+  async getInvalidDataReport(
     userId: number,
     userRole: string,
+    invalidType: string = 'future_date',
     page = 1,
     limit = 20,
   ) {
@@ -1270,8 +1271,17 @@ export class CustomersService {
       .createQueryBuilder('customer')
       .leftJoinAndSelect('customer.salesUser', 'salesUser')
       .leftJoinAndSelect('customer.createdBy', 'createdBy')
-      .where('customer.deletedAt IS NULL')
-      .andWhere('customer.inputDate > :todayStr', { todayStr });
+      .where('customer.deletedAt IS NULL');
+
+    if (invalidType === 'future_date') {
+      qb.andWhere('customer.inputDate > :todayStr', { todayStr });
+    } else if (invalidType === 'missing_phone') {
+      qb.andWhere('(customer.phone IS NULL OR customer.phone = \'\')');
+    } else if (invalidType === 'missing_email') {
+      qb.andWhere('(customer.email IS NULL OR customer.email = \'\')');
+    } else {
+      qb.andWhere('customer.inputDate > :todayStr', { todayStr });
+    }
 
     CustomerAccessHelper.applyExtendedAccessFilter(qb, userId, userRole);
 
@@ -1288,6 +1298,7 @@ export class CustomersService {
       limit,
       totalPages: Math.ceil(total / limit),
       checkedAgainst: todayStr,
+      invalidType,
     };
   }
 }

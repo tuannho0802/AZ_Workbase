@@ -39,11 +39,12 @@ export const customersApi = {
    * tương lai" (inputDate > hôm nay theo giờ VN) — hữu ích để rà soát các
    * bản ghi nhập sai từ trước khi có validation này.
    */
-  getInvalidInputDateReport: async (params?: {
+  getInvalidDataReport: async (params?: {
+    invalidType?: string;
     page?: number;
     limit?: number;
-  }): Promise<PaginatedResponse<Customer> & { checkedAgainst: string }> => {
-    const response = await axiosInstance.get('/customers/reports/invalid-input-date', { params });
+  }): Promise<PaginatedResponse<Customer> & { checkedAgainst: string; invalidType: string }> => {
+    const response = await axiosInstance.get('/customers/reports/invalid-data', { params });
     return response.data;
   },
 

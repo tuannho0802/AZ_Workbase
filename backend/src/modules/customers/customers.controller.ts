@@ -58,19 +58,21 @@ export class CustomersController {
     return this.customersService.getAllDepositsStats(user.id, user.role, startDate, endDate, sortBy, sortOrder);
   }
 
-  @Get('reports/invalid-input-date')
+  @Get('reports/invalid-data')
   @ApiOperation({
     summary:
-      'Report: khách hàng có "Ngày nhập data" (inputDate) đang lớn hơn ngày hiện tại (giờ VN) - data cũ nhập sai trước khi có validation chặn ngày tương lai',
+      'Report: khách hàng có data không hợp lệ (Ngày nhập sai, thiếu SĐT, thiếu Email, v.v.)',
   })
-  async getInvalidInputDateReport(
+  async getInvalidDataReport(
     @GetUser() user: any,
+    @Query('invalidType') invalidType?: string,
     @Query('page') page?: string,
     @Query('limit') limit?: string,
   ) {
-    return this.customersService.getInvalidInputDateReport(
+    return this.customersService.getInvalidDataReport(
       user.id,
       user.role,
+      invalidType,
       page ? parseInt(page, 10) : 1,
       limit ? parseInt(limit, 10) : 20,
     );
