@@ -41,6 +41,12 @@ body {
   text-overflow: ellipsis;
   white-space: nowrap;
   vertical-align: top;
+  padding: 8px 10px !important;
+  line-height: 1.4;
+}
+
+.customer-table .ant-table-thead > tr > th {
+  padding: 8px 10px !important;
 }
 
 /* Riêng cột tên cho phép wrap */
@@ -76,9 +82,10 @@ body {
 
 /* Laptop */
 @media (min-width: 768px) and (max-width: 1279px) {
-  .customer-table .ant-table-cell {
+  .customer-table .ant-table-cell,
+  .customer-table .ant-table-thead > tr > th {
     font-size: 12px !important;
-    padding: 8px 6px !important;
+    padding: 6px 6px !important;
   }
   .customer-table .ant-tag {
     font-size: 11px;
@@ -89,8 +96,9 @@ body {
 
 /* Desktop */
 @media (min-width: 1280px) {
-  .customer-table .ant-table-cell {
+  .customer-table .ant-table-cell,
+  .customer-table .ant-table-thead > tr > th {
     font-size: 13px;
-    padding: 10px 8px;
+    padding: 7px 10px !important;
   }
 }

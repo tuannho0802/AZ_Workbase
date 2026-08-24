@@ -623,7 +623,7 @@ export default function CustomersPage() {
           dataSource={customers}
           rowKey="id"
           loading={loading}
-          size="middle"
+          size="small"
           onChange={handleTableChange}
           onRow={(record) => ({
             onClick: () => {
