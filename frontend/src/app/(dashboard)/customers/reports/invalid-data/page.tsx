@@ -54,8 +54,8 @@ export default function InvalidDataReportPage() {
   const columns: ColumnsType<Customer> = [
     {
       title: 'Khách hàng',
-      dataIndex: 'fullName',
-      key: 'fullName',
+      dataIndex: 'name',
+      key: 'name',
       render: (text, record) => (
         <Space orientation="vertical" size={0}>
           <Text strong>{text || 'Không có tên'}</Text>
@@ -83,7 +83,7 @@ export default function InvalidDataReportPage() {
       title: 'Sales',
       dataIndex: 'salesUser',
       key: 'salesUser',
-      render: (_, record) => record.salesUser?.fullName || '-',
+      render: (_, record) => record.salesUser?.name || '-',
     },
   ];
 

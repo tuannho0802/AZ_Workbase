@@ -59,9 +59,10 @@ export class CustomersController {
   }
 
   @Get('reports/invalid-data')
+  @Roles(Role.ADMIN)
   @ApiOperation({
     summary:
-      'Report: khách hàng có data không hợp lệ (Ngày nhập sai, thiếu SĐT, thiếu Email, v.v.)',
+      'Report: khách hàng có data không hợp lệ (Ngày nhập sai, thiếu SĐT, thiếu Email, v.v.) - CHỈ ADMIN',
   })
   async getInvalidDataReport(
     @GetUser() user: any,

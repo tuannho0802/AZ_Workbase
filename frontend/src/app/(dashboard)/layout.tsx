@@ -132,12 +132,6 @@ export default function DashboardLayout({
               label: 'Khách hàng',
               onClick: () => router.push('/customers'),
             },
-            ...(['admin', 'manager', 'assistant'].includes(user?.role || '') ? [{
-              key: 'invalid-data-report',
-              icon: <WarningOutlined />,
-              label: 'Báo cáo data lỗi',
-              onClick: () => router.push('/customers/reports/invalid-data'),
-            }] : []),
             {
               key: 'chia-data',
               icon: <SwapOutlined />,
@@ -173,6 +167,15 @@ export default function DashboardLayout({
               icon: <DeleteOutlined />,
               label: 'Thùng rác',
               onClick: () => router.push('/trash-can'),
+            }] : []),
+            // Đặt cuối cùng trong sidebar theo yêu cầu; CHỈ admin thấy được
+            // (khớp với BE: @Roles(Role.ADMIN) trên GET reports/invalid-data
+            // — ẩn ở đây chỉ để UX gọn, còn chặn thật sự vẫn nằm ở BE).
+            ...(['admin'].includes(user?.role || '') ? [{
+              key: 'invalid-data-report',
+              icon: <WarningOutlined />,
+              label: 'Báo cáo data lỗi',
+              onClick: () => router.push('/customers/reports/invalid-data'),
             }] : []),
           ]}
         />
