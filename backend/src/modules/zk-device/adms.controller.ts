@@ -84,9 +84,10 @@ export class AdmsController {
         }
       }
       // table khác (OPERLOG, USER, OPTIONS...) - chỉ ACK, chưa xử lý.
-    } catch (err) {
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : String(err);
       this.logger.error(
-        `[ADMS] Lỗi xử lý push (SN=${sn}, table=${table}): ${err?.message ?? err}`,
+        `[ADMS] Lỗi xử lý push (SN=${sn}, table=${table}): ${message}`,
       );
       // Không throw - vẫn ACK OK bên dưới để tránh máy gửi lại vô hạn.
     }
