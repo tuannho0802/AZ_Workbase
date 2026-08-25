@@ -1,6 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { zkDeviceApi } from '../api/zk-device.api';
-import { AttendanceLogQuery } from '../types/zk-device.types';
+import { AttendanceLogQuery, AttendanceSummaryQuery } from '../types/zk-device.types';
 
 export const useDeviceStatus = () => {
   return useQuery({
@@ -56,5 +56,12 @@ export const useAttendanceLogs = (query: AttendanceLogQuery) => {
   return useQuery({
     queryKey: ['zk-attendance-logs', query],
     queryFn: () => zkDeviceApi.getAttendanceLogs(query),
+  });
+};
+
+export const useAttendanceSummary = (query: AttendanceSummaryQuery) => {
+  return useQuery({
+    queryKey: ['zk-attendance-summary', query],
+    queryFn: () => zkDeviceApi.getAttendanceSummary(query),
   });
 };

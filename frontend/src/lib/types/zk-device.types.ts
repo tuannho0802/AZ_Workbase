@@ -54,3 +54,39 @@ export interface PaginatedAttendanceLogs {
   limit: number;
   totalPages: number;
 }
+
+export type AttendanceStatus =
+  | 'on_time'
+  | 'late'
+  | 'early_leave'
+  | 'late_and_early'
+  | 'missing_checkout';
+
+export interface AttendanceSummaryRow {
+  userId: number;
+  userName: string;
+  date: string; // YYYY-MM-DD (giờ VN)
+  checkIn: string;
+  checkOut: string | null;
+  workHours: number | null;
+  isLate: boolean;
+  isEarlyLeave: boolean;
+  status: AttendanceStatus;
+  logCount: number;
+}
+
+export interface AttendanceSummaryQuery {
+  page?: number;
+  limit?: number;
+  userId?: number;
+  from?: string;
+  to?: string;
+}
+
+export interface PaginatedAttendanceSummary {
+  data: AttendanceSummaryRow[];
+  total: number;
+  page: number;
+  limit: number;
+  totalPages: number;
+}

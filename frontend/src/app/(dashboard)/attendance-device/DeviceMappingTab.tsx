@@ -13,7 +13,7 @@ import { useUsersList } from '@/lib/hooks/useUsers';
 import { DeviceUser } from '@/lib/types/zk-device.types';
 
 export default function DeviceMappingTab() {
-  const { message } = App.useApp();
+  const { message, modal } = App.useApp();
   const { data: deviceUsers, isLoading, isError, error } = useDeviceUsers();
   const { users } = useUsersList();
   const mapMutation = useMapDeviceUser();
@@ -55,7 +55,7 @@ export default function DeviceMappingTab() {
   const handleSync = () => {
     syncMutation.mutate(undefined, {
       onSuccess: (summary) => {
-        Modal.success({
+        modal.success({
           title: 'Đồng bộ hoàn tất',
           content: (
             <div>

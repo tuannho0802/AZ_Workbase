@@ -15,6 +15,7 @@ import { ApiTags, ApiOperation, ApiBearerAuth } from '@nestjs/swagger';
 import { ZkDeviceService } from './zk-device.service';
 import { MapDeviceUserDto } from './dto/map-device-user.dto';
 import { QueryAttendanceLogDto } from './dto/query-attendance-log.dto';
+import { QueryAttendanceSummaryDto } from './dto/query-attendance-summary.dto';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { RolesGuard } from '../../common/guards/roles.guard';
 import { Roles } from '../../common/decorators/roles.decorator';
@@ -75,6 +76,15 @@ export class ZkDeviceController {
   })
   async getAttendanceLogs(@Query() query: QueryAttendanceLogDto) {
     return this.zkDeviceService.getAttendanceLogs(query);
+  }
+
+  @Get('attendance-summary')
+  @ApiOperation({
+    summary:
+      'Bảng chấm công tổng hợp theo ngày (giờ vào/giờ ra/đi muộn/về sớm), tính theo giờ VN (GMT+7)',
+  })
+  async getAttendanceSummary(@Query() query: QueryAttendanceSummaryDto) {
+    return this.zkDeviceService.getAttendanceSummary(query);
   }
 
   @Post('sync')

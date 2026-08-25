@@ -6,6 +6,7 @@ import { User } from '../../database/entities/user.entity';
 import { AttendanceLog } from '../../database/entities/attendance-log.entity';
 import { AttendanceSource } from '../../common/enums/attendance-source.enum';
 import { QueryAttendanceLogDto } from './dto/query-attendance-log.dto';
+import { QueryAttendanceSummaryDto } from './dto/query-attendance-summary.dto';
 
 // node-zklib chưa có type definition chính thức -> import kiểu require,
 // coi là "any" (tsconfig của project đã bật noImplicitAny: false).
@@ -200,6 +201,126 @@ export class ZkDeviceService {
     return { data, total, page, limit, totalPages: Math.ceil(total / limit) };
   }
 
+  // Giờ vào chuẩn / giờ tan ca chuẩn của công ty, theo giờ Việt Nam (GMT+7).
+  private static readonly WORK_START_MINUTES = 9 * 60; // 09:00 - sau mốc này mới tính đi muộn
+  private static readonly WORK_END_MINUTES = 18 * 60; // 18:00 - trước mốc này mới tính về sớm
+  private static readonly VN_OFFSET_MS = 7 * 60 * 60 * 1000; // GMT+7, không có DST nên offset cố định
+
+  /**
+   * Bảng chấm công tổng hợp theo ngày: mỗi dòng = 1 nhân viên trong 1 ngày,
+   * gộp từ nhiều lượt quẹt thô trong attendance_logs.
+   * - Giờ vào = lượt quẹt SỚM NHẤT trong ngày (giờ VN).
+   * - Giờ ra = lượt quẹt MUỘN NHẤT trong ngày (giờ VN) - chỉ tính nếu ngày đó
+   *   có từ 2 lượt quẹt trở lên (1 lượt duy nhất không đủ để suy ra giờ ra
+   *   thật, tránh báo sai "về sớm" khi thực ra chỉ là thiếu quẹt ra).
+   * - Đi muộn: giờ vào > 09:00. Về sớm: giờ ra < 18:00 (từ 18:00 trở đi luôn
+   *   tính đúng giờ, không có khái niệm "về muộn").
+   * Việc gộp/tính toán làm ở tầng ứng dụng (không dùng CONVERT_TZ của MySQL)
+   * để không phụ thuộc session timezone của DB, luôn đúng theo giờ VN.
+   */
+  async getAttendanceSummary(query: QueryAttendanceSummaryDto) {
+    const { page = 1, limit = 31, userId, from, to } = query;
+    const { VN_OFFSET_MS, WORK_START_MINUTES, WORK_END_MINUTES } =
+      ZkDeviceService;
+
+    const qb = this.attendanceLogRepo
+      .createQueryBuilder('log')
+      .leftJoinAndSelect('log.matchedUser', 'matchedUser')
+      .where('log.matchedUserId IS NOT NULL') // chỉ tổng hợp log đã khớp nhân viên
+      .orderBy('log.recordTime', 'ASC');
+
+    if (userId) {
+      qb.andWhere('log.matchedUserId = :userId', { userId });
+    }
+    // Lọc theo ngày VN -> quy đổi mốc 00:00/23:59 giờ VN sang giờ chuẩn để so
+    // đúng với recordTime (đã được lưu là instant chuẩn, xem ingestPushAttendance).
+    if (from) {
+      qb.andWhere('log.recordTime >= :from', {
+        from: new Date(`${from}T00:00:00+07:00`),
+      });
+    }
+    if (to) {
+      qb.andWhere('log.recordTime <= :to', {
+        to: new Date(`${to}T23:59:59+07:00`),
+      });
+    }
+
+    const logs = await qb.getMany();
+
+    type DayGroup = {
+      userId: number;
+      userName: string;
+      date: string;
+      checkIn: Date;
+      checkOut: Date;
+      logCount: number;
+    };
+    const groups = new Map<string, DayGroup>();
+
+    for (const log of logs) {
+      const vnTime = new Date(log.recordTime.getTime() + VN_OFFSET_MS);
+      const dateKey = vnTime.toISOString().slice(0, 10); // YYYY-MM-DD theo giờ VN
+      const key = `${log.matchedUserId}_${dateKey}`;
+      const existing = groups.get(key);
+      if (!existing) {
+        groups.set(key, {
+          userId: log.matchedUserId as number,
+          userName: log.matchedUser?.name ?? '(Không rõ tên)',
+          date: dateKey,
+          checkIn: log.recordTime,
+          checkOut: log.recordTime,
+          logCount: 1,
+        });
+      } else {
+        if (log.recordTime < existing.checkIn) existing.checkIn = log.recordTime;
+        if (log.recordTime > existing.checkOut) existing.checkOut = log.recordTime;
+        existing.logCount++;
+      }
+    }
+
+    const minutesOfDayVN = (d: Date) => {
+      const vn = new Date(d.getTime() + VN_OFFSET_MS);
+      return vn.getUTCHours() * 60 + vn.getUTCMinutes();
+    };
+
+    const results = Array.from(groups.values())
+      .map((g) => {
+        const hasCheckout = g.logCount > 1;
+        const isLate = minutesOfDayVN(g.checkIn) > WORK_START_MINUTES;
+        const isEarlyLeave = hasCheckout && minutesOfDayVN(g.checkOut) < WORK_END_MINUTES;
+
+        let status: 'on_time' | 'late' | 'early_leave' | 'late_and_early' | 'missing_checkout';
+        if (!hasCheckout) status = 'missing_checkout';
+        else if (isLate && isEarlyLeave) status = 'late_and_early';
+        else if (isLate) status = 'late';
+        else if (isEarlyLeave) status = 'early_leave';
+        else status = 'on_time';
+
+        const workHours = hasCheckout
+          ? Math.round(((g.checkOut.getTime() - g.checkIn.getTime()) / 3600000) * 100) / 100
+          : null;
+
+        return {
+          userId: g.userId,
+          userName: g.userName,
+          date: g.date,
+          checkIn: g.checkIn,
+          checkOut: hasCheckout ? g.checkOut : null,
+          workHours,
+          isLate,
+          isEarlyLeave: hasCheckout ? isEarlyLeave : false,
+          status,
+          logCount: g.logCount,
+        };
+      })
+      .sort((a, b) => b.date.localeCompare(a.date) || a.userName.localeCompare(b.userName));
+
+    const total = results.length;
+    const data = results.slice((page - 1) * limit, (page - 1) * limit + limit);
+
+    return { data, total, page, limit, totalPages: Math.ceil(total / limit) };
+  }
+
   /**
    * Đồng bộ toàn bộ log chấm công từ máy về DB.
    * An toàn để gọi lặp lại nhiều lần: nhờ ràng buộc UNIQUE
@@ -337,7 +458,12 @@ export class ZkDeviceService {
         const [deviceUserId, dateTime, status, verify] = parts;
         if (!deviceUserId || !dateTime) return null; // dòng hỏng/không đủ field bắt buộc -> bỏ qua, không throw (tránh máy gửi lại vô hạn)
 
-        const recordTime = new Date(dateTime.replace(' ', 'T'));
+        // Máy được cấu hình TimeZone=7 (GMT+7) ở handshake -> dateTime máy gửi
+        // LUÔN là giờ địa phương Việt Nam, không phải UTC. Phải ghi rõ offset
+        // "+07:00" khi parse, nếu không JS sẽ hiểu theo giờ của server chạy
+        // Node (vd server chạy UTC thì lệch mất 7 tiếng) -> sai toàn bộ tính
+        // toán đi muộn/về sớm sau này.
+        const recordTime = new Date(`${dateTime.replace(' ', 'T')}+07:00`);
         if (Number.isNaN(recordTime.getTime())) return null;
 
         return {

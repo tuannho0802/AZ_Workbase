@@ -5,6 +5,8 @@ import {
   SyncSummary,
   AttendanceLogQuery,
   PaginatedAttendanceLogs,
+  AttendanceSummaryQuery,
+  PaginatedAttendanceSummary,
 } from '../types/zk-device.types';
 
 export const zkDeviceApi = {
@@ -40,6 +42,13 @@ export const zkDeviceApi = {
     params?: AttendanceLogQuery,
   ): Promise<PaginatedAttendanceLogs> => {
     const response = await axiosInstance.get('/zk-device/attendance-logs', { params });
+    return response.data;
+  },
+
+  getAttendanceSummary: async (
+    params?: AttendanceSummaryQuery,
+  ): Promise<PaginatedAttendanceSummary> => {
+    const response = await axiosInstance.get('/zk-device/attendance-summary', { params });
     return response.data;
   },
 };

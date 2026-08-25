@@ -4,6 +4,7 @@ import { Tabs, Card, Badge, Space, Typography } from 'antd';
 import { ApiOutlined } from '@ant-design/icons';
 import { useDeviceStatus } from '@/lib/hooks/useZkDevice';
 import DeviceMappingTab from './DeviceMappingTab';
+import AttendanceSummaryTab from './AttendanceSummaryTab';
 import AttendanceLogsTab from './AttendanceLogsTab';
 
 const { Title } = Typography;
@@ -34,7 +35,7 @@ export default function AttendanceDevicePage() {
 
       <Card>
         <Tabs
-          defaultActiveKey="mapping"
+          defaultActiveKey="summary"
           items={[
             {
               key: 'mapping',
@@ -42,8 +43,13 @@ export default function AttendanceDevicePage() {
               children: <DeviceMappingTab />,
             },
             {
-              key: 'logs',
+              key: 'summary',
               label: 'Bảng chấm công',
+              children: <AttendanceSummaryTab />,
+            },
+            {
+              key: 'logs',
+              label: 'Logs chấm công',
               children: <AttendanceLogsTab />,
             },
           ]}
