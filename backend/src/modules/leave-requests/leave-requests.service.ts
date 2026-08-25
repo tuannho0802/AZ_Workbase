@@ -94,19 +94,21 @@ export class LeaveRequestsService {
   /**
    * Lấy các đơn nghỉ phép ĐÃ DUYỆT có khoảng ngày giao với [from, to].
    * Dùng để dựng bảng "Tổng hợp chấm công" theo tháng (đánh dấu X/2, KL...).
-   * Cùng logic phân quyền với findHistory: chỉ thấy đơn của các role
-   * "cấp dưới" theo ROLE_PRIORITY.
+   *
+   * KHÔNG lọc theo role/cấp bậc (khác findHistory/findPending): bảng tổng
+   * hợp hiển thị TOÀN BỘ nhân viên trả về từ useUsersList() (không lọc role),
+   * và getAttendanceSummary() cũng không lọc role. Nếu áp lại logic "chỉ thấy
+   * cấp dưới" ở đây (bản cũ dùng getSubordinateRoles), người xem sẽ bị thiếu
+   * dấu nghỉ phép (X/2, KL, P) cho chính role của họ và các role cao hơn -
+   * vd Admin xem bảng sẽ không thấy đơn nghỉ đã duyệt của chính "Admin" hay
+   * của Manager cùng cấp/khác nhánh, dù dòng nhân viên đó vẫn hiện trên bảng.
    */
-  async findApprovedInRange(from: string, to: string, userRole: string) {
-    const subRoles = this.getSubordinateRoles(userRole);
-    if (subRoles.length === 0) return [];
-
+  async findApprovedInRange(from: string, to: string) {
     return this.leaveRequestRepo
       .createQueryBuilder('leave')
       .leftJoinAndSelect('leave.requester', 'requester')
       .leftJoinAndSelect('requester.department', 'department')
       .where('leave.status = :status', { status: LeaveStatus.APPROVED })
-      .andWhere('requester.role IN (:...roles)', { roles: subRoles })
       // Giao khoảng ngày: đơn nghỉ có startDate <= to AND endDate >= from
       .andWhere('leave.startDate <= :to', { to })
       .andWhere('leave.endDate >= :from', { from })

@@ -31,13 +31,14 @@ export class LeaveRequestsController {
   async findApprovedInRange(
     @Query('from') from: string,
     @Query('to') to: string,
-    @Request() req,
   ) {
     const dateRegex = /^\d{4}-\d{2}-\d{2}$/;
     if (!from || !to || !dateRegex.test(from) || !dateRegex.test(to)) {
       throw new BadRequestException('from/to phải theo định dạng YYYY-MM-DD');
     }
-    return this.leaveRequestsService.findApprovedInRange(from, to, req.user.role);
+    // Không lọc theo role của người gọi - xem comment ở service. Route này
+    // chỉ phục vụ bảng tổng hợp chấm công nội bộ (đã có JwtAuthGuard ở class).
+    return this.leaveRequestsService.findApprovedInRange(from, to);
   }
   
   @Patch(':id/approve')
