@@ -165,12 +165,71 @@ export class ZkDeviceService {
   }
 
   /**
+   * ⚠️ Bug thực tế đã phát hiện (25/08): `matchedUserId` trước đây CHỈ được
+   * gán 1 LẦN DUY NHẤT, tại đúng thời điểm 1 dòng log được ghi vào DB (dù từ
+   * PULL hay PUSH) - dựa trên mapping (`users.zk_device_user_id`) đang có TẠI
+   * THỜI ĐIỂM ĐÓ. Nếu 1 nhân viên được map SAU KHI log của họ đã tồn tại
+   * trong DB (thứ tự bình thường: máy đẩy log suốt cả tháng trước khi admin
+   * kịp map hết người), các log cũ đó bị "đông cứng" mãi mãi ở
+   * matched_user_id = NULL, KHÔNG tự cập nhật dù mapping đã có sau đó - và vì
+   * getAttendanceSummary() chỉ lấy log matched_user_id IS NOT NULL, log của
+   * người đó biến mất khỏi bảng tổng hợp dù dữ liệu thô vẫn còn nguyên trong
+   * attendance_logs (đúng hiện tượng "Logs chấm công có nhưng Tổng hợp
+   * không").
+   *
+   * Sửa: quét lại TOÀN BỘ log đang NULL, so với mapping HIỆN TẠI (không phải
+   * mapping tại thời điểm ghi log), gán lại nếu khớp. Gọi hàm này ở 2 chỗ:
+   * (1) ngay sau khi mapUser() lưu 1 mapping mới - có hiệu lực tức thì, không
+   * cần đợi lần sync kế tiếp; (2) đầu mỗi lần syncNow() - để phòng trường hợp
+   * ADMS Push ghi log trong lúc mapping vừa được xoá/đổi (unmapUser rồi map
+   * lại người khác vào đúng deviceUserId đó).
+   */
+  async rematchUnmatchedLogs(): Promise<number> {
+    const mappedUsers = await this.userRepo.find({
+      where: { zkDeviceUserId: Not(IsNull()) },
+      select: ['id', 'zkDeviceUserId'],
+    });
+
+    if (mappedUsers.length === 0) return 0;
+
+    let totalUpdated = 0;
+    // Chạy từng mapping riêng (không gộp 1 câu UPDATE ... CASE WHEN) để đơn
+    // giản, dễ đọc log, và số lượng mapping (vài chục nhân viên) quá nhỏ để
+    // lo ngại hiệu năng N câu UPDATE riêng lẻ.
+    for (const user of mappedUsers) {
+      const result = await this.attendanceLogRepo
+        .createQueryBuilder()
+        .update(AttendanceLog)
+        .set({ matchedUserId: user.id })
+        .where('device_user_id = :deviceUserId', {
+          deviceUserId: user.zkDeviceUserId,
+        })
+        .andWhere('matched_user_id IS NULL')
+        .execute();
+      totalUpdated += result.affected ?? 0;
+    }
+
+    if (totalUpdated > 0) {
+      this.logger.log(
+        `[Rematch] Đã khớp lại ${totalUpdated} log trước đó chưa map được nhân viên, theo mapping hiện tại.`,
+      );
+    }
+
+    return totalUpdated;
+  }
+
+  /**
    * Gán deviceUserId (mã user trên máy) cho 1 nhân viên trong hệ thống.
    */
   async mapUser(userId: number, deviceUserId: string): Promise<User> {
     const user = await this.userRepo.findOneByOrFail({ id: userId });
     user.zkDeviceUserId = deviceUserId;
-    return this.userRepo.save(user);
+    const saved = await this.userRepo.save(user);
+    // Có hiệu lực ngay: log cũ của người này (nếu có, đang NULL) được khớp
+    // lại luôn, không cần đợi lần sync kế tiếp - xem giải thích ở
+    // rematchUnmatchedLogs().
+    await this.rematchUnmatchedLogs();
+    return saved;
   }
 
   /**
@@ -407,6 +466,10 @@ export class ZkDeviceService {
     }
     this.isSyncing = true;
     const startedAt = new Date();
+
+    // Khớp lại các log cũ đang NULL trước, phòng trường hợp mapping vừa đổi
+    // (unmap/map lại) kể từ lần đồng bộ trước - xem rematchUnmatchedLogs().
+    await this.rematchUnmatchedLogs();
 
     const zk = this.createClient();
     try {

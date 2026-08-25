@@ -63,6 +63,16 @@ export class ZkDeviceController {
     return this.zkDeviceService.mapUser(dto.userId, dto.deviceUserId);
   }
 
+  @Post('rematch')
+  @ApiOperation({
+    summary:
+      'Quét lại toàn bộ log chấm công đang chưa khớp nhân viên (matched_user_id NULL), khớp lại theo mapping hiện tại - dùng khi vừa map thêm người nhưng chưa muốn/chưa thể chạy đồng bộ đầy đủ (không cần kết nối máy chấm công, chỉ đọc/ghi DB)',
+  })
+  async rematch() {
+    const updated = await this.zkDeviceService.rematchUnmatchedLogs();
+    return { updated };
+  }
+
   @Delete('map-user/:userId')
   @ApiOperation({ summary: 'Gỡ mapping của 1 nhân viên (map nhầm) - không đụng log đã đồng bộ' })
   async unmapUser(@Param('userId', ParseIntPipe) userId: number) {
