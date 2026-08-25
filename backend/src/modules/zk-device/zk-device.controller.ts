@@ -104,8 +104,32 @@ export class ZkDeviceController {
    * catch (err) mặc định có kiểu `unknown` (strict mode) nên KHÔNG được
    * truy cập err.message trực tiếp - phải kiểm tra instanceof Error trước.
    * Gom vào 1 hàm dùng chung để không lặp lại logic này ở từng nơi.
+   *
+   * ⚠️ Lỗi từ node-zklib là class `ZKError` riêng, KHÔNG kế thừa `Error`
+   * chuẩn của JS (this.err/this.command/this.ip là field tự định nghĩa) -
+   * nên `instanceof Error` luôn false với lỗi loại này, rơi vào
+   * `String(err)` cho ra "[object Object]" vô nghĩa. Nhận diện thêm hình
+   * dạng ZKError (có field `err` lồng bên trong) để lấy đúng message/code
+   * thật, giúp debug được (vd ECONNREFUSED, ETIMEDOUT, sai comm key...).
    */
   private getErrorMessage(err: unknown): string {
-    return err instanceof Error ? err.message : String(err);
+    if (err instanceof Error) return err.message;
+    if (
+      typeof err === 'object' &&
+      err !== null &&
+      'err' in err &&
+      typeof (err as { err?: unknown }).err === 'object'
+    ) {
+      const inner = (err as { err: { message?: string; code?: string } }).err;
+      return [inner.code, inner.message].filter(Boolean).join(' - ') || String(err);
+    }
+    if (typeof err === 'object' && err !== null) {
+      try {
+        return JSON.stringify(err);
+      } catch {
+        return String(err);
+      }
+    }
+    return String(err);
   }
 }

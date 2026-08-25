@@ -68,21 +68,21 @@ export class ZkDeviceService {
   }
 
   /**
-   * "Comm Key" (mật khẩu giao thức TCP của máy, đặt trong menu máy: Cài đặt
-   * kết nối > Comm Key / Mật khẩu liên kết). node-zklib mặc định dùng 0
-   * (KHÔNG mật khẩu) nếu không truyền gì.
+   * ⚠️ ĐÃ THỬ NHƯNG KHÔNG DÙNG ĐƯỢC: gói "node-zklib" v1.3.0 (bản đang cài
+   * trong package.json) có constructor CHỈ nhận 4 tham số
+   * (ip, port, timeout, inport) - không có tham số Comm Key/password nào cả,
+   * khác với tài liệu của 1 số bản fork cùng tên. Máy chấm công ĐANG YÊU CẦU
+   * Comm Key sẽ luôn từ chối kết nối từ thư viện này, không có cách nào gửi
+   * mật khẩu qua được ở phiên bản hiện tại.
    *
-   * ⚠️ QUAN TRỌNG khi dùng port-forward (cách A - lộ cổng 8818 ra Internet
-   * qua router): cổng TCP này sẽ được BẤT KỲ AI trên Internet gọi thẳng tới
-   * bằng giao thức ZK (không đi qua API /zk-device/sync có JWT của hệ thống
-   * này) nếu họ biết được IP:port. Đặt Comm Key trên máy + set biến này
-   * KHỚP giá trị đó là lớp bảo vệ DUY NHẤT ở tầng thiết bị lúc này - nếu để
-   * mặc định 0, bất kỳ ai cũng đọc được toàn bộ log/user trên máy thẳng qua
-   * cổng đó mà không cần đăng nhập hệ thống.
+   * => Quyết định hiện tại: giữ Comm Key = 0 trên máy chấm công (không đặt
+   * mật khẩu ở tầng giao thức TCP). Cổng 18818 sau port-forward do đó KHÔNG
+   * có lớp xác thực nào ở tầng thiết bị - đây là đánh đổi đã được xác nhận
+   * chấp nhận, không phải thiếu sót. Nếu sau này cần bật lại Comm Key, phải
+   * đổi sang thư viện khác có hỗ trợ thật (vd tự triển khai theo
+   * https://github.com/adrobinoga/zk-protocol) trước, không chỉ đặt biến
+   * môi trường suông như trước đây.
    */
-  private get deviceCommKey(): number {
-    return Number(this.configService.get('ZK_DEVICE_COMM_KEY') || 0);
-  }
 
   /**
    * Endpoint ADMS Push (POST /iclock/cdata) không có xác thực nào từ phía máy
@@ -99,14 +99,9 @@ export class ZkDeviceService {
   private createClient() {
     const timeoutMs = 10000;
     const udpInPort = 4000;
-    return new ZKLib(
-      this.deviceIp,
-      this.devicePort,
-      timeoutMs,
-      udpInPort,
-      this.deviceCommKey,
-      'tcp',
-    );
+    // node-zklib v1.3.0 chỉ nhận đúng 4 tham số này - xem giải thích ở
+    // getter phía trên vì sao không có tham số Comm Key.
+    return new ZKLib(this.deviceIp, this.devicePort, timeoutMs, udpInPort);
   }
 
   /**

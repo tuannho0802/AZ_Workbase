@@ -23,8 +23,8 @@ import ZKLib = require('node-zklib');
 
 // ====== CẤU HÌNH - LẤY TỪ MENU "Ethernet" TRÊN MÁY THẬT ======
 // Máy: Ronald Jack RJ-TX300, SN: 8116250900075
-const DEVICE_IP = process.env.ZK_IP || '192.168.110.231'; // Địa chỉ IP trên máy
-const DEVICE_PORT = Number(process.env.ZK_PORT || 8812); // ⚠️ Cổng liên kết TCP = 8818 (KHÔNG phải 4370 mặc định!)
+const DEVICE_IP = process.env.ZK_IP || '192.168.110.230'; // Địa chỉ IP trên máy
+const DEVICE_PORT = Number(process.env.ZK_PORT || 8818); // ⚠️ Cổng liên kết TCP = 8818 (KHÔNG phải 4370 mặc định!)
 const TIMEOUT_MS = 10000; // timeout kết nối
 const UDP_IN_PORT = 4000; // cổng phản hồi (giữ mặc định)
 // Lưu ý: máy chạy script này phải cùng dải mạng 192.168.110.x
