@@ -72,7 +72,7 @@ async function createApp(): Promise<NestExpressApplication> {
   // luôn nhận 404 vì gọi sai đường dẫn thật (/iclock/cdata thay vì
   // /api/iclock/cdata) mà không có cách nào tự sửa từ phía máy.
   app.setGlobalPrefix('api', {
-    exclude: [{ path: 'iclock/(.*)', method: RequestMethod.ALL }],
+    exclude: [{ path: 'iclock/*path', method: RequestMethod.ALL }],
   });
 
   // 🔌 ADMS Push (máy chấm công): body-parser mặc định của Nest chỉ hiểu
