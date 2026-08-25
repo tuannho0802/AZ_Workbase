@@ -384,35 +384,45 @@ export class ZkDeviceService {
       const CHUNK_SIZE = 500;
       for (let i = 0; i < records.length; i += CHUNK_SIZE) {
         const chunk = records.slice(i, i + CHUNK_SIZE);
-        const values = chunk.map((rec) => {
+        const rows = chunk.map((rec) => {
           const matchedUserId = userIdByDeviceUserId.get(rec.deviceUserId) ?? null;
           if (matchedUserId) {
             matchedToUser++;
           } else {
             unmatchedSet.add(rec.deviceUserId);
           }
-          return {
-            deviceSerialNumber: this.deviceSerial,
-            deviceUserId: rec.deviceUserId,
-            userSn: rec.userSn,
-            recordTime: new Date(rec.recordTime),
+          return [
+            this.deviceSerial,
+            rec.deviceUserId,
+            rec.userSn,
+            new Date(rec.recordTime),
             matchedUserId,
-            source: AttendanceSource.DEVICE_PULL,
-          };
+            AttendanceSource.DEVICE_PULL,
+          ];
         });
 
-        const result = await this.attendanceLogRepo
-          .createQueryBuilder()
-          .insert()
-          .into(AttendanceLog)
-          .values(values)
-          .orIgnore() // INSERT IGNORE - bỏ qua record đã có (trùng unique key)
-          .execute();
-
-        // MySQL driver: raw.affectedRows đếm cả record bị ignore lẫn record
-        // mới insert nên KHÔNG dùng affectedRows để suy ra số insert mới
-        // chính xác 100%; ta chấp nhận đây là con số ước lượng cho log.
-        insertedNew += result.identifiers.filter((x) => x?.id).length;
+        // ⚠️ KHÔNG dùng QueryBuilder .insert().orIgnore() ở đây (đã thử,
+        // xem lịch sử sửa lỗi): khi 1 lô ghi có cả dòng mới lẫn dòng bị
+        // "IGNORE" do trùng khoá unique, TypeORM cố đọc lại `id` tự tăng
+        // vừa sinh cho TỪNG entity theo đúng thứ tự liên tục để gán ngược
+        // vào object - nhưng vì có dòng bị bỏ qua (không thực sự insert)
+        // nên bị lệch số, ném lỗi "Cannot update entity because entity id
+        // is not set in the entity." (bug đã biết của TypeORM với
+        // insert+orIgnore+cột tự tăng trên MySQL, không phải lỗi kết nối
+        // hay dữ liệu). Dùng raw SQL "INSERT IGNORE" qua queryRunner để né
+        // hẳn cơ chế map-lại-entity đó - đồng thời affectedRows của
+        // "INSERT IGNORE" trên MySQL CHỈ đếm dòng thực sự được insert (dòng
+        // bị ignore không tính), nên insertedNew ở đây chính xác 100%,
+        // không còn là số ước lượng như cách cũ.
+        const placeholders = rows.map(() => '(?, ?, ?, ?, ?, ?)').join(', ');
+        const flatParams = rows.flat();
+        const rawResult = (await this.attendanceLogRepo.manager.query(
+          `INSERT IGNORE INTO attendance_logs
+             (device_serial_number, device_user_id, user_sn, record_time, matched_user_id, source)
+           VALUES ${placeholders}`,
+          flatParams,
+        )) as { affectedRows?: number };
+        insertedNew += rawResult?.affectedRows ?? 0;
       }
 
       const finishedAt = new Date();
@@ -500,17 +510,42 @@ export class ZkDeviceService {
 
     if (values.length === 0) return 0;
 
-    const result = await this.attendanceLogRepo
-      .createQueryBuilder()
-      .insert()
-      .into(AttendanceLog)
-      .values(values)
-      .orIgnore() // INSERT IGNORE - máy gửi lại log cũ (do mất mạng/timeout) sẽ tự bị bỏ qua, không nhân đôi
-      .execute();
+    // ⚠️ Dùng raw SQL INSERT IGNORE thay vì QueryBuilder .insert().orIgnore()
+    // - cùng lý do đã ghi chú chi tiết ở syncNow(): TypeORM lỗi khi đọc lại
+    // id tự tăng cho lô có dòng bị IGNORE do trùng khoá unique. Với ADMS
+    // Push, máy RẤT HAY gửi lại log cũ (mất mạng/timeout) nên trường hợp
+    // trùng khoá xảy ra thường xuyên - nếu không sửa, endpoint này sẽ crash
+    // âm thầm mỗi khi máy gửi lại log cũ.
+    // ⚠️ manager.query() trả THẲNG object ResultSetHeader cho INSERT, KHÔNG
+    // phải mảng - xem chú thích chi tiết ngay tại chỗ gọi bên dưới.
+    const placeholders = values.map(() => '(?, ?, ?, ?, ?, ?, ?, ?)').join(', ');
+    const flatParams = values.flatMap((v) => [
+      v.deviceSerialNumber,
+      v.deviceUserId,
+      v.userSn,
+      v.recordTime,
+      v.statusCode,
+      v.verifyMode,
+      v.matchedUserId,
+      v.source,
+    ]);
+    // ⚠️ manager.query() (useStructuredResult mặc định false) trả THẲNG
+    // result.raw - với INSERT, driver mysql2 trả raw là 1 object
+    // ResultSetHeader DUY NHẤT (không phải mảng [rows, fields]). KHÔNG được
+    // destructure `const [rawResult] = ...` ở đây (object không có
+    // Symbol.iterator -> ném "is not iterable" ngay request ADMS Push đầu
+    // tiên) - phải gán trực tiếp, giống cách đã làm đúng ở syncNow() phía
+    // trên.
+    const rawResult = (await this.attendanceLogRepo.manager.query(
+      `INSERT IGNORE INTO attendance_logs
+         (device_serial_number, device_user_id, user_sn, record_time, status_code, verify_mode, matched_user_id, source)
+       VALUES ${placeholders}`,
+      flatParams,
+    )) as { affectedRows?: number };
+    const insertedCount = rawResult?.affectedRows ?? 0;
 
-    const insertedCount = result.identifiers.filter((x) => x?.id).length;
     this.logger.log(
-      `[ADMS Push] SN=${deviceSerialNumber}: nhận ${lines.length} dòng, ghi mới ~${insertedCount}.`,
+      `[ADMS Push] SN=${deviceSerialNumber}: nhận ${lines.length} dòng, ghi mới ${insertedCount}.`,
     );
     return insertedCount;
   }
