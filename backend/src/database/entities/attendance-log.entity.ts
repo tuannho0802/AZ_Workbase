@@ -68,7 +68,7 @@ export class AttendanceLog {
   })
   userSn: number | null;
 
-  @Column({ name: 'record_time', type: 'timestamp' })
+  @Column({ name: 'record_time', type: 'datetime' })
   recordTime: Date;
 
   @Column({

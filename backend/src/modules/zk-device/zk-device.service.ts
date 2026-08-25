@@ -230,7 +230,6 @@ export class ZkDeviceService {
   // Giờ vào chuẩn / giờ tan ca chuẩn của công ty, theo giờ Việt Nam (GMT+7).
   private static readonly WORK_START_MINUTES = 9 * 60; // 09:00 - sau mốc này mới tính đi muộn
   private static readonly WORK_END_MINUTES = 18 * 60; // 18:00 - trước mốc này mới tính về sớm
-  private static readonly VN_OFFSET_MS = 7 * 60 * 60 * 1000; // GMT+7, không có DST nên offset cố định
 
   /**
    * ⚠️ Bug thực tế đã phát hiện: máy chấm công đôi khi sinh ra NHIỀU dòng log
@@ -279,7 +278,7 @@ export class ZkDeviceService {
    */
   async getAttendanceSummary(query: QueryAttendanceSummaryDto) {
     const { page = 1, limit = 31, userId, from, to } = query;
-    const { VN_OFFSET_MS, WORK_START_MINUTES, WORK_END_MINUTES, DUPLICATE_TAP_GAP_MS } =
+    const { WORK_START_MINUTES, WORK_END_MINUTES, DUPLICATE_TAP_GAP_MS } =
       ZkDeviceService;
 
     const qb = this.attendanceLogRepo
@@ -291,16 +290,17 @@ export class ZkDeviceService {
     if (userId) {
       qb.andWhere('log.matchedUserId = :userId', { userId });
     }
-    // Lọc theo ngày VN -> quy đổi mốc 00:00/23:59 giờ VN sang giờ chuẩn để so
-    // đúng với recordTime (đã được lưu là instant chuẩn, xem ingestPushAttendance).
+    // Lọc theo ngày VN -> recordTime giờ được lưu NGUYÊN VĂN giờ VN (không
+    // offset - xem decode-device-time.util.ts), nên chỉ cần parse thẳng
+    // chuỗi "YYYY-MM-DDTHH:mm:ss" KHÔNG kèm hậu tố timezone nào.
     if (from) {
       qb.andWhere('log.recordTime >= :from', {
-        from: new Date(`${from}T00:00:00+07:00`),
+        from: new Date(`${from}T00:00:00`),
       });
     }
     if (to) {
       qb.andWhere('log.recordTime <= :to', {
-        to: new Date(`${to}T23:59:59+07:00`),
+        to: new Date(`${to}T23:59:59`),
       });
     }
 
@@ -332,8 +332,9 @@ export class ZkDeviceService {
       }
       lastKeptTapByUser.set(matchedUserId, log.recordTime);
 
-      const vnTime = new Date(log.recordTime.getTime() + VN_OFFSET_MS);
-      const dateKey = vnTime.toISOString().slice(0, 10); // YYYY-MM-DD theo giờ VN
+      // recordTime đã là giờ VN nguyên văn (local getter) - lấy ngày trực
+      // tiếp, KHÔNG qua toISOString()/offset nào (xem decode-device-time.util.ts).
+      const dateKey = `${log.recordTime.getFullYear()}-${String(log.recordTime.getMonth() + 1).padStart(2, '0')}-${String(log.recordTime.getDate()).padStart(2, '0')}`;
       const key = `${matchedUserId}_${dateKey}`;
       const existing = groups.get(key);
       if (!existing) {
@@ -352,10 +353,9 @@ export class ZkDeviceService {
       }
     }
 
-    const minutesOfDayVN = (d: Date) => {
-      const vn = new Date(d.getTime() + VN_OFFSET_MS);
-      return vn.getUTCHours() * 60 + vn.getUTCMinutes();
-    };
+    // recordTime đã là giờ VN nguyên văn -> đọc thẳng local getter, KHÔNG
+    // qua offset/UTC nào (xem decode-device-time.util.ts).
+    const minutesOfDayVN = (d: Date) => d.getHours() * 60 + d.getMinutes();
 
     const results = Array.from(groups.values())
       .map((g) => {
@@ -451,12 +451,13 @@ export class ZkDeviceService {
 
             // ⚠️ KHÔNG dùng `new Date(rec.recordTime)` trực tiếp - Date do
             // node-zklib trả về lệch giờ nếu server không chạy GMT+7 (bug đã
-            // phát hiện qua test-connection.ts, gây "chấm công lệch giờ" trên
-            // UI production). Phải giải mã lại đúng giờ VN rồi tự quy đổi
-            // UTC - xem decode-device-time.util.ts.
+            // phát hiện qua test-connection.ts). Phải giải mã lại đúng 6 con
+            // số máy đã ghi rồi LƯU NGUYÊN VĂN (không quy đổi UTC nào cả -
+            // xem decode-device-time.util.ts để hiểu vì sao đây là cách đúng
+            // và không phụ thuộc múi giờ server).
             let recordTime: Date;
             try {
-              recordTime = decodeDeviceLocalTime(rec.recordTime).correctUtcDate;
+              recordTime = decodeDeviceLocalTime(rec.recordTime).vnLocalDate;
             } catch {
               invalidTimeCount++;
               return null; // dòng log hỏng ở tầng giao thức -> bỏ qua, không làm crash cả lượt sync
@@ -572,12 +573,12 @@ export class ZkDeviceService {
         const [deviceUserId, dateTime, status, verify] = parts;
         if (!deviceUserId || !dateTime) return null; // dòng hỏng/không đủ field bắt buộc -> bỏ qua, không throw (tránh máy gửi lại vô hạn)
 
-        // Máy được cấu hình TimeZone=7 (GMT+7) ở handshake -> dateTime máy gửi
-        // LUÔN là giờ địa phương Việt Nam, không phải UTC. Phải ghi rõ offset
-        // "+07:00" khi parse, nếu không JS sẽ hiểu theo giờ của server chạy
-        // Node (vd server chạy UTC thì lệch mất 7 tiếng) -> sai toàn bộ tính
-        // toán đi muộn/về sớm sau này.
-        const recordTime = new Date(`${dateTime.replace(' ', 'T')}+07:00`);
+        // Máy gửi dateTime dạng "YYYY-MM-DD HH:mm:ss" - đây LÀ giờ Việt Nam
+        // thật (đã xác nhận qua đối chiếu CSV), KHÔNG cần và KHÔNG được gắn
+        // thêm hậu tố "+07:00"/"Z" nào - parse trực tiếp để 6 con số đó trở
+        // thành các thành phần "local" của Date, giữ nguyên nguyên tắc đối
+        // xứng local-constructor/local-getter (xem decode-device-time.util.ts).
+        const recordTime = new Date(dateTime.replace(' ', 'T'));
         if (Number.isNaN(recordTime.getTime())) return null;
 
         return {

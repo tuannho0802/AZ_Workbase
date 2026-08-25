@@ -165,9 +165,8 @@ async function main(): Promise<void> {
                     'userSn',
                     'deviceUserId (PIN)',
                     'ip',
-                    'gio_may_ghi_VN (SU THAT - dung de doi chieu)',
-                    'utc_dung_sau_quy_doi (tham khao, se ghi vao DB)',
-                    'raw_date_iso_tu_node-zklib (CHI DE DEBUG - co the SAI neu chay tren server khac GMT+7)',
+                    'gio_may_ghi_VN (SU THAT - se luu NGUYEN VAN vao DB, khong quy doi)',
+                    'raw_date_iso_tu_node-zklib (CHI DE DEBUG - KHONG dung lam can cu, xem decode-device-time.util.ts)',
                 ],
                 records.map((r) => {
                     try {
@@ -177,7 +176,6 @@ async function main(): Promise<void> {
                             r.deviceUserId,
                             r.ip,
                             decoded.vnLocalDisplay,
-                            decoded.correctUtcIso,
                             (r.recordTime as Date).toISOString(),
                         ];
                     } catch (decodeErr: any) {
@@ -186,7 +184,7 @@ async function main(): Promise<void> {
                         // dòng log bị hỏng ở tầng giao thức (phục vụ đúng mục đích
                         // kiểm tra toàn vẹn dữ liệu, không phải để giấu đi).
                         invalidCount++;
-                        return [r.userSn, r.deviceUserId, r.ip, 'INVALID', 'INVALID', String(decodeErr?.message ?? decodeErr)];
+                        return [r.userSn, r.deviceUserId, r.ip, 'INVALID', String(decodeErr?.message ?? decodeErr)];
                     }
                 }),
             );
@@ -198,7 +196,7 @@ async function main(): Promise<void> {
                 "   -> Mở cột 'gio_may_ghi_VN' để đối chiếu với giờ quẹt thẻ THẬT (vd hỏi trực tiếp nhân viên hoặc xem camera).",
             );
             console.log(
-                "   -> Cột 'utc_dung_sau_quy_doi' là giá trị ĐÃ SỬA - từ khi vá lỗi, ZkDeviceService.syncNow() ghi đúng giá trị này vào DB (không còn phụ thuộc múi giờ server nữa). Cột cuối chỉ còn để debug/đối chiếu lịch sử.",
+                "   -> Giá trị này được ghi NGUYÊN VĂN vào cột record_time (DATETIME) trong DB - không quy đổi UTC/offset nào. Cột cuối chỉ còn để debug/đối chiếu lịch sử.",
             );
         } catch (e: any) {
             console.log('⚠️  Không lấy được getAttendances():', e.message);
