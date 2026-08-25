@@ -68,6 +68,23 @@ export class ZkDeviceService {
   }
 
   /**
+   * "Comm Key" (mật khẩu giao thức TCP của máy, đặt trong menu máy: Cài đặt
+   * kết nối > Comm Key / Mật khẩu liên kết). node-zklib mặc định dùng 0
+   * (KHÔNG mật khẩu) nếu không truyền gì.
+   *
+   * ⚠️ QUAN TRỌNG khi dùng port-forward (cách A - lộ cổng 8818 ra Internet
+   * qua router): cổng TCP này sẽ được BẤT KỲ AI trên Internet gọi thẳng tới
+   * bằng giao thức ZK (không đi qua API /zk-device/sync có JWT của hệ thống
+   * này) nếu họ biết được IP:port. Đặt Comm Key trên máy + set biến này
+   * KHỚP giá trị đó là lớp bảo vệ DUY NHẤT ở tầng thiết bị lúc này - nếu để
+   * mặc định 0, bất kỳ ai cũng đọc được toàn bộ log/user trên máy thẳng qua
+   * cổng đó mà không cần đăng nhập hệ thống.
+   */
+  private get deviceCommKey(): number {
+    return Number(this.configService.get('ZK_DEVICE_COMM_KEY') || 0);
+  }
+
+  /**
    * Endpoint ADMS Push (POST /iclock/cdata) không có xác thực nào từ phía máy
    * (không có JWT/API key - đây là giới hạn của giao thức ADMS gốc). Bù lại,
    * chỉ chấp nhận ghi dữ liệu nếu SN gửi lên khớp đúng serial máy đã cấu hình
@@ -82,7 +99,14 @@ export class ZkDeviceService {
   private createClient() {
     const timeoutMs = 10000;
     const udpInPort = 4000;
-    return new ZKLib(this.deviceIp, this.devicePort, timeoutMs, udpInPort, 0, 'tcp');
+    return new ZKLib(
+      this.deviceIp,
+      this.devicePort,
+      timeoutMs,
+      udpInPort,
+      this.deviceCommKey,
+      'tcp',
+    );
   }
 
   /**
