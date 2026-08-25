@@ -8,6 +8,7 @@ import {
   JoinColumn,
 } from 'typeorm';
 import { BooleanTransformer } from '../transformers/boolean.transformer';
+import { ManagedLink } from '../../common/types/managed-link.type';
 
 import { Role } from '../../common/enums/role.enum';
 import { Department } from './department.entity';
@@ -30,6 +31,21 @@ export class User {
 
   @Column()
   name: string;
+
+  @Column({
+    type: 'varchar',
+    length: 20,
+    nullable: true,
+  })
+  phone: string | null;
+
+  @Column({
+    type: 'json',
+    nullable: true,
+    comment:
+      "Danh sách link Fanpage/Group user quản lý - [{type,name,url}]. Only Admin CRUD.",
+  })
+  profile: ManagedLink[] | null;
 
   @Column({
     name: 'zk_device_user_id',

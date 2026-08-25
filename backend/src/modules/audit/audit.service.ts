@@ -6,7 +6,10 @@ import { AuditLog } from '../../database/entities/audit-log.entity';
 import { Setting } from '../../database/entities/setting.entity';
 import { Customer } from '../../database/entities/customer.entity';
 import { GetAuditLogsDto } from './dto/get-audit-logs.dto';
-// import { Cron, CronExpression } from '@nestjs/schedule';
+// ⚠️ KHÔNG dùng @nestjs/schedule - app chạy trên Vercel serverless, không có
+// process nào sống đủ lâu để cron tự kích hoạt. handleCleanupCron() bên dưới
+// vẫn giữ lại nhưng chỉ gọi được thủ công (qua 1 endpoint admin sau này),
+// không tự chạy.
 
 @Injectable()
 export class AuditService {

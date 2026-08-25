@@ -68,6 +68,14 @@ async function createApp(): Promise<NestExpressApplication> {
   // ✅ Luôn thêm prefix 'api' - KHÔNG cần điều kiện
   app.setGlobalPrefix('api');
 
+  // 🔌 ADMS Push (máy chấm công): body-parser mặc định của Nest chỉ hiểu
+  // application/json và x-www-form-urlencoded. Máy gửi log dạng text/plain
+  // (đôi khi thiếu hẳn Content-Type) nên cần parser text riêng cho đúng route
+  // này - `type: () => true` ép parse MỌI content-type thành string, tránh
+  // req.body rỗng/undefined bất kể máy gửi header gì.
+  // Đăng ký TRƯỚC app.init() để middleware này chạy trước khi Nest routing xử lý.
+  app.use('/api/iclock/cdata', express.text({ type: () => true, limit: '2mb' }));
+
   // Global validation pipe
   app.useGlobalPipes(
     new ValidationPipe({

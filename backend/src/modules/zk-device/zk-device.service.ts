@@ -2,7 +2,6 @@ import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, IsNull, Not } from 'typeorm';
-import { Cron } from '@nestjs/schedule';
 import { User } from '../../database/entities/user.entity';
 import { AttendanceLog } from '../../database/entities/attendance-log.entity';
 import { AttendanceSource } from '../../common/enums/attendance-source.enum';
@@ -64,6 +63,18 @@ export class ZkDeviceService {
   private get deviceSerial(): string {
     // Số sê-ri in trên nhãn máy - dùng làm khóa dedupe khi có nhiều máy sau này.
     return this.configService.get<string>('ZK_DEVICE_SERIAL') || '8116250900075';
+  }
+
+  /**
+   * Endpoint ADMS Push (POST /iclock/cdata) không có xác thực nào từ phía máy
+   * (không có JWT/API key - đây là giới hạn của giao thức ADMS gốc). Bù lại,
+   * chỉ chấp nhận ghi dữ liệu nếu SN gửi lên khớp đúng serial máy đã cấu hình
+   * - chặn request giả mạo/quét cổng ngẫu nhiên ghi rác vào bảng attendance_logs.
+   * Vẫn LUÔN trả "OK" cho mọi SN (kể cả không khớp) để không làm máy lạ hiểu
+   * nhầm là lỗi rồi gửi lại liên tục.
+   */
+  isKnownDeviceSerial(sn: string | undefined): boolean {
+    return !!sn && sn === this.deviceSerial;
   }
 
   private createClient() {
@@ -239,16 +250,68 @@ export class ZkDeviceService {
   }
 
   /**
-   * Tự động đồng bộ định kỳ mỗi 15 phút.
-   * Có thể tắt bằng cách comment decorator @Cron này nếu muốn chỉ sync thủ công.
+   * Ghi nhận các dòng ATTLOG máy tự đẩy lên qua ADMS Push (POST /iclock/cdata).
+   * Gọi bởi AdmsController - xem đó để biết định dạng request/response đúng
+   * chuẩn giao thức ZKTeco (sai định dạng response sẽ khiến máy gửi lại vô hạn).
+   *
+   * Mỗi dòng ATTLOG cách nhau bởi \t (tab), theo thứ tự:
+   *   PIN \t DateTime \t Status \t VerifyMode \t Workcode \t Reserved \t Reserved
+   * PIN = deviceUserId (mã user trên máy, KHÔNG phải id trong hệ thống).
+   *
+   * An toàn để gọi lặp lại: máy có thể gửi lại log chưa được ACK (mất mạng,
+   * timeout...) - nhờ UNIQUE (device_serial_number, device_user_id, record_time)
+   * trên bảng attendance_logs, dòng đã tồn tại sẽ tự bị bỏ qua (INSERT IGNORE).
    */
-  @Cron('0 */15 * * * *') // mỗi 15 phút
-  async handleScheduledSync(): Promise<void> {
-    try {
-      this.logger.log('Bắt đầu đồng bộ định kỳ với máy chấm công...');
-      await this.syncNow();
-    } catch (err) {
-      this.logger.error(`Đồng bộ định kỳ thất bại: ${err?.message ?? err}`);
-    }
+  async ingestPushAttendance(deviceSerialNumber: string, rawBody: string): Promise<number> {
+    if (!rawBody?.trim()) return 0;
+
+    const lines = rawBody.split('\n').map((l) => l.trim()).filter(Boolean);
+    if (lines.length === 0) return 0;
+
+    const mappedUsers = await this.userRepo.find({
+      where: { zkDeviceUserId: Not(IsNull()) },
+      select: ['id', 'zkDeviceUserId'],
+    });
+    const userIdByDeviceUserId = new Map(
+      mappedUsers.map((u) => [u.zkDeviceUserId as string, u.id]),
+    );
+
+    const values = lines
+      .map((line) => {
+        const parts = line.split('\t');
+        const [deviceUserId, dateTime, status, verify] = parts;
+        if (!deviceUserId || !dateTime) return null; // dòng hỏng/không đủ field bắt buộc -> bỏ qua, không throw (tránh máy gửi lại vô hạn)
+
+        const recordTime = new Date(dateTime.replace(' ', 'T'));
+        if (Number.isNaN(recordTime.getTime())) return null;
+
+        return {
+          deviceSerialNumber,
+          deviceUserId,
+          userSn: null,
+          recordTime,
+          statusCode: status ?? null,
+          verifyMode: verify ?? null,
+          matchedUserId: userIdByDeviceUserId.get(deviceUserId) ?? null,
+          source: AttendanceSource.DEVICE_PUSH,
+        };
+      })
+      .filter((v): v is NonNullable<typeof v> => v !== null);
+
+    if (values.length === 0) return 0;
+
+    const result = await this.attendanceLogRepo
+      .createQueryBuilder()
+      .insert()
+      .into(AttendanceLog)
+      .values(values)
+      .orIgnore() // INSERT IGNORE - máy gửi lại log cũ (do mất mạng/timeout) sẽ tự bị bỏ qua, không nhân đôi
+      .execute();
+
+    const insertedCount = result.identifiers.filter((x) => x?.id).length;
+    this.logger.log(
+      `[ADMS Push] SN=${deviceSerialNumber}: nhận ${lines.length} dòng, ghi mới ~${insertedCount}.`,
+    );
+    return insertedCount;
   }
 }

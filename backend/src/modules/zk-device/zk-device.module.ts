@@ -4,11 +4,12 @@ import { User } from '../../database/entities/user.entity';
 import { AttendanceLog } from '../../database/entities/attendance-log.entity';
 import { ZkDeviceService } from './zk-device.service';
 import { ZkDeviceController } from './zk-device.controller';
+import { AdmsController } from './adms.controller';
 
 @Module({
   imports: [TypeOrmModule.forFeature([User, AttendanceLog])],
-  controllers: [ZkDeviceController],
+  controllers: [ZkDeviceController, AdmsController],
   providers: [ZkDeviceService],
   exports: [ZkDeviceService],
 })
-export class ZkDeviceModule {}
+export class ZkDeviceModule { }
