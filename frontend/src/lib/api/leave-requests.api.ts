@@ -55,7 +55,15 @@ export const leaveRequestsApi = {
     const res = await axiosInstance.get(`/leave-requests/history?_t=${Date.now()}`);
     return res.data;
   },
-  
+
+  /** Đơn nghỉ đã duyệt trong khoảng ngày, dùng cho bảng Tổng hợp chấm công theo tháng */
+  async getApprovedInRange(from: string, to: string) {
+    const res = await axiosInstance.get('/leave-requests/approved-range', {
+      params: { from, to },
+    });
+    return res.data as LeaveRequest[];
+  },
+
   async approve(id: number) {
     const res = await axiosInstance.patch(`/leave-requests/${id}/approve`);
     return res.data;

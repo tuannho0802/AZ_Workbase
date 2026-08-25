@@ -4,6 +4,16 @@ import { App } from 'antd';
 import type { MessageInstance } from 'antd/es/message/interface';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { useState } from 'react';
+import dayjs from 'dayjs';
+import 'dayjs/locale/vi';
+
+// ⚠️ Set locale tiếng Việt cho dayjs 1 lần duy nhất ở đây. Đặt trong module
+// 'use client' (chạy trên browser) chứ không phải layout.tsx (server
+// component) - nếu đặt ở server component, bundle dayjs phía client sẽ
+// không nhận được locale này. Trước đây thiếu dòng này nên format 'dddd'
+// (tên thứ trong tuần) tự hiện tiếng Anh (Friday, Thursday...) thay vì
+// tiếng Việt (Thứ Sáu, Thứ Năm...).
+dayjs.locale('vi');
 
 let globalMessage: MessageInstance | undefined;
 

@@ -92,6 +92,29 @@ export class LeaveRequestsService {
   }
   
   /**
+   * Lấy các đơn nghỉ phép ĐÃ DUYỆT có khoảng ngày giao với [from, to].
+   * Dùng để dựng bảng "Tổng hợp chấm công" theo tháng (đánh dấu X/2, KL...).
+   * Cùng logic phân quyền với findHistory: chỉ thấy đơn của các role
+   * "cấp dưới" theo ROLE_PRIORITY.
+   */
+  async findApprovedInRange(from: string, to: string, userRole: string) {
+    const subRoles = this.getSubordinateRoles(userRole);
+    if (subRoles.length === 0) return [];
+
+    return this.leaveRequestRepo
+      .createQueryBuilder('leave')
+      .leftJoinAndSelect('leave.requester', 'requester')
+      .leftJoinAndSelect('requester.department', 'department')
+      .where('leave.status = :status', { status: LeaveStatus.APPROVED })
+      .andWhere('requester.role IN (:...roles)', { roles: subRoles })
+      // Giao khoảng ngày: đơn nghỉ có startDate <= to AND endDate >= from
+      .andWhere('leave.startDate <= :to', { to })
+      .andWhere('leave.endDate >= :from', { from })
+      .orderBy('leave.startDate', 'ASC')
+      .getMany();
+  }
+
+  /**
    * Get requests for the current user (My Leave Requests)
    */
   async findAll(userId: number) {

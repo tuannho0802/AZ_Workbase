@@ -20,6 +20,23 @@ const STATUS_CONFIG: Record<AttendanceStatus, { text: string; color: string }> =
   missing_checkout: { text: 'Thiếu chấm ra', color: 'default' },
 };
 
+// dayjs locale 'vi' trả tên thứ viết thường ("thứ sáu") - viết hoa chữ đầu cho đẹp
+const capitalize = (s: string) => (s ? s.charAt(0).toUpperCase() + s.slice(1) : s);
+
+// Chọn nhanh khoảng ngày thay vì phải bấm 2 lần trên lịch - đỡ mất công chọn
+const RANGE_PRESETS = [
+  { label: 'Hôm nay', value: [dayjs(), dayjs()] as [Dayjs, Dayjs] },
+  { label: 'Tuần này', value: [dayjs().startOf('week'), dayjs()] as [Dayjs, Dayjs] },
+  { label: 'Tháng này', value: [dayjs().startOf('month'), dayjs()] as [Dayjs, Dayjs] },
+  {
+    label: 'Tháng trước',
+    value: [
+      dayjs().subtract(1, 'month').startOf('month'),
+      dayjs().subtract(1, 'month').endOf('month'),
+    ] as [Dayjs, Dayjs],
+  },
+];
+
 export default function AttendanceSummaryTab() {
   const { users } = useUsersList();
   const [page, setPage] = useState(1);
@@ -35,24 +52,31 @@ export default function AttendanceSummaryTab() {
     to: range?.[1]?.format('YYYY-MM-DD'),
   });
 
+  // Tổng width các cột cố định dưới đây = 150+180+110+110+110+160 = 820px,
+  // kết hợp tableLayout 'fixed' để mỗi cột giữ đúng tỉ lệ, không bị dồn
+  // trống lệch nhau giữa các cột như trước (cột "Nhân viên" trước đây
+  // không có width cố định nên chiếm hết phần dư, đẩy layout lệch).
   const columns = [
     {
       title: 'Ngày',
       dataIndex: 'date',
       key: 'date',
       width: 150,
-      render: (v: string) => dayjs(v).format('dddd, DD/MM/YYYY'),
+      render: (v: string) => capitalize(dayjs(v).format('dddd, DD/MM/YYYY')),
     },
     {
       title: 'Nhân viên',
       dataIndex: 'userName',
       key: 'userName',
+      width: 180,
+      ellipsis: true,
     },
     {
       title: 'Giờ vào',
       dataIndex: 'checkIn',
       key: 'checkIn',
       width: 110,
+      align: 'center' as const,
       render: (v: string, r: AttendanceSummaryRow) => (
         <span style={{ color: r.isLate ? '#fa8c16' : undefined, fontWeight: r.isLate ? 600 : undefined }}>
           {dayjs(v).format('HH:mm:ss')}
@@ -64,6 +88,7 @@ export default function AttendanceSummaryTab() {
       dataIndex: 'checkOut',
       key: 'checkOut',
       width: 110,
+      align: 'center' as const,
       render: (v: string | null, r: AttendanceSummaryRow) =>
         v ? (
           <span style={{ color: r.isEarlyLeave ? '#faad14' : undefined, fontWeight: r.isEarlyLeave ? 600 : undefined }}>
@@ -80,6 +105,7 @@ export default function AttendanceSummaryTab() {
       dataIndex: 'workHours',
       key: 'workHours',
       width: 110,
+      align: 'center' as const,
       render: (v: number | null) => (v != null ? `${v}h` : '—'),
     },
     {
@@ -87,6 +113,7 @@ export default function AttendanceSummaryTab() {
       dataIndex: 'status',
       key: 'status',
       width: 160,
+      align: 'center' as const,
       render: (v: AttendanceStatus) => (
         <Tag color={STATUS_CONFIG[v]?.color}>{STATUS_CONFIG[v]?.text || v}</Tag>
       ),
@@ -112,6 +139,7 @@ export default function AttendanceSummaryTab() {
         <RangePicker
           value={range}
           allowClear={false}
+          presets={RANGE_PRESETS}
           onChange={(v) => {
             if (v && v[0] && v[1]) {
               setRange(v as [Dayjs, Dayjs]);
@@ -129,6 +157,8 @@ export default function AttendanceSummaryTab() {
         loading={isLoading}
         columns={columns}
         dataSource={data?.data || []}
+        bordered
+        tableLayout="fixed"
         pagination={{
           current: page,
           pageSize: limit,

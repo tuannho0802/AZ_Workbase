@@ -15,6 +15,19 @@ const SOURCE_LABEL: Record<string, { text: string; color: string }> = {
   device_pull: { text: 'Đồng bộ thủ công', color: 'purple' },
 };
 
+const RANGE_PRESETS = [
+  { label: 'Hôm nay', value: [dayjs(), dayjs()] as [Dayjs, Dayjs] },
+  { label: 'Tuần này', value: [dayjs().startOf('week'), dayjs()] as [Dayjs, Dayjs] },
+  { label: 'Tháng này', value: [dayjs().startOf('month'), dayjs()] as [Dayjs, Dayjs] },
+  {
+    label: 'Tháng trước',
+    value: [
+      dayjs().subtract(1, 'month').startOf('month'),
+      dayjs().subtract(1, 'month').endOf('month'),
+    ] as [Dayjs, Dayjs],
+  },
+];
+
 export default function AttendanceLogsTab() {
   const { users } = useUsersList();
   const [page, setPage] = useState(1);
@@ -99,6 +112,7 @@ export default function AttendanceLogsTab() {
         />
         <RangePicker
           value={range}
+          presets={RANGE_PRESETS}
           onChange={(v) => {
             setRange(v as [Dayjs, Dayjs] | null);
             setPage(1);

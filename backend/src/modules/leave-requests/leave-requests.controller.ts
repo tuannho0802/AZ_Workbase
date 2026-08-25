@@ -1,4 +1,4 @@
-import { Controller, Get, Post, Patch, Body, Param, UseGuards, Request, Query } from '@nestjs/common';
+import { Controller, Get, Post, Patch, Body, Param, UseGuards, Request, Query, BadRequestException } from '@nestjs/common';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { LeaveRequestsService } from './leave-requests.service';
 
@@ -25,6 +25,19 @@ export class LeaveRequestsController {
   @Get('history')
   async findHistory(@Request() req) {
     return this.leaveRequestsService.findHistory(req.user.role);
+  }
+
+  @Get('approved-range')
+  async findApprovedInRange(
+    @Query('from') from: string,
+    @Query('to') to: string,
+    @Request() req,
+  ) {
+    const dateRegex = /^\d{4}-\d{2}-\d{2}$/;
+    if (!from || !to || !dateRegex.test(from) || !dateRegex.test(to)) {
+      throw new BadRequestException('from/to phải theo định dạng YYYY-MM-DD');
+    }
+    return this.leaveRequestsService.findApprovedInRange(from, to, req.user.role);
   }
   
   @Patch(':id/approve')

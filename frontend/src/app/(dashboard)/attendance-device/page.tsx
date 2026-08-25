@@ -5,6 +5,7 @@ import { ApiOutlined } from '@ant-design/icons';
 import { useDeviceStatus } from '@/lib/hooks/useZkDevice';
 import DeviceMappingTab from './DeviceMappingTab';
 import AttendanceSummaryTab from './AttendanceSummaryTab';
+import AttendanceMonthlyTab from './AttendanceMonthlyTab';
 import AttendanceLogsTab from './AttendanceLogsTab';
 
 const { Title } = Typography;
@@ -46,6 +47,11 @@ export default function AttendanceDevicePage() {
               key: 'summary',
               label: 'Bảng chấm công',
               children: <AttendanceSummaryTab />,
+            },
+            {
+              key: 'monthly',
+              label: 'Tổng hợp chấm công',
+              children: <AttendanceMonthlyTab />,
             },
             {
               key: 'logs',
