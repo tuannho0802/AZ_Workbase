@@ -36,6 +36,15 @@ export class User {
   phone: string | null;
 
   @Column({
+    name: 'zk_device_user_id',
+    type: 'varchar',
+    length: 50,
+    nullable: true,
+    comment: 'Mã "User ID" trên máy chấm công (khác uid nội bộ của máy) - dùng để map log chấm công về đúng nhân viên',
+  })
+  zkDeviceUserId: string | null;
+
+  @Column({
     type: 'enum',
     enum: Role,
     default: Role.EMPLOYEE,

@@ -13,6 +13,7 @@ import { DepartmentsModule } from './modules/departments/departments.module';
 import { DepositsModule } from './modules/deposits/deposits.module';
 import { LeaveRequestsModule } from './modules/leave-requests/leave-requests.module';
 import { AuditModule } from './modules/audit/audit.module';
+import { ZkDeviceModule } from './modules/zk-device/zk-device.module';
 import { KeepAliveController } from './keep-alive/keep-alive.controller';
 @Module({ 
   imports: [
@@ -21,6 +22,8 @@ import { KeepAliveController } from './keep-alive/keep-alive.controller';
       isGlobal: true,
       envFilePath: ['.env.development', '.env'],
     }),
+
+
 
     // Database connection using config service
     TypeOrmModule.forRootAsync({
@@ -37,6 +40,7 @@ import { KeepAliveController } from './keep-alive/keep-alive.controller';
     DepositsModule,
     LeaveRequestsModule,
     AuditModule,
+    ZkDeviceModule,
     ServeStaticModule.forRoot({
       rootPath: join(process.cwd(), 'public'),
       serveRoot: '/',
