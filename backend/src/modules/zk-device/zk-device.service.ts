@@ -7,6 +7,7 @@ import { AttendanceLog } from '../../database/entities/attendance-log.entity';
 import { AttendanceSource } from '../../common/enums/attendance-source.enum';
 import { QueryAttendanceLogDto } from './dto/query-attendance-log.dto';
 import { QueryAttendanceSummaryDto } from './dto/query-attendance-summary.dto';
+import { decodeDeviceLocalTime } from '../../integrations/zk-device/decode-device-time.util';
 
 // node-zklib chưa có type definition chính thức -> import kiểu require,
 // coi là "any" (tsconfig của project đã bật noImplicitAny: false).
@@ -24,7 +25,12 @@ export interface DeviceUser {
 interface DeviceAttendanceRecord {
   userSn: number;
   deviceUserId: string;
-  recordTime: string; // ISO string do node-zklib trả về
+  // ⚠️ Thực chất là 1 object `Date` do node-zklib tự parse (KHÔNG phải string
+  // dù tên field dễ gây hiểu lầm) - nhưng Date này lệch giờ nếu tiến trình
+  // Node không chạy múi giờ GMT+7 (xem decode-device-time.util.ts). TUYỆT ĐỐI
+  // không gọi .toISOString()/new Date(rec.recordTime) trực tiếp trên field
+  // này - luôn phải đi qua decodeDeviceLocalTime() trước.
+  recordTime: Date;
   ip: string;
 }
 
@@ -35,6 +41,7 @@ export interface SyncSummary {
   insertedNew: number;
   matchedToUser: number;
   unmatchedDeviceUserIds: string[];
+  invalidTimeCount: number;
 }
 
 @Injectable()
@@ -226,12 +233,45 @@ export class ZkDeviceService {
   private static readonly VN_OFFSET_MS = 7 * 60 * 60 * 1000; // GMT+7, không có DST nên offset cố định
 
   /**
+   * ⚠️ Bug thực tế đã phát hiện: máy chấm công đôi khi sinh ra NHIỀU dòng log
+   * trải dài tới hàng chục phút chỉ cho ĐÚNG 1 LƯỢT "có mặt" thật của nhân
+   * viên (vd cảm biến đọc lại/retry, người dùng quẹt lại vì đèn báo không rõ,
+   * hoặc đứng gần máy quẹt nhầm nhiều lần trong lúc chờ). Ví dụ THẬT lấy trực
+   * tiếp từ máy (nhân viên mã 44, cùng 1 buổi):
+   *   16:19:54 → 16:27:41 → 16:27:46 → 17:06:20
+   * Toàn bộ 4 lượt quẹt này cách nhau chưa tới 1 tiếng, rõ ràng là CÙNG 1 lượt
+   * có mặt bị nhân bản (không có chuyện ra rồi vào lại 4 lần trong 47 phút).
+   *
+   * Ngưỡng cũ (2 PHÚT) chỉ gộp được cặp 16:27:41/16:27:46 (cách 5 giây) - còn
+   * 16:19:54 và 17:06:20 vẫn bị tính là 2 mốc riêng biệt -> hệ thống hiểu
+   * nhầm 16:19:54 = giờ vào, 17:06:20 = giờ ra -> ra "ca làm" dài 46 phút, gắn
+   * cờ "về sớm" hoàn toàn vô lý -> đây chính là nguyên nhân UI hiển thị chấm
+   * công rất lệch mà không phải do sai giờ (giờ mỗi dòng log đã đúng, đã xác
+   * nhận qua CSV đối chiếu - decode-device-time.util.ts hoạt động đúng).
+   *
+   * => Nới ngưỡng lên 2 TIẾNG: các lượt quẹt liên tiếp CÙNG 1 nhân viên cách
+   * nhau dưới 2 tiếng được coi là 1 lượt có mặt duy nhất (giữ lại lượt quẹt
+   * ĐẦU TIÊN của cụm). Một ca làm việc thật (vào buổi sáng, ra cuối ngày)
+   * luôn cách nhau nhiều hơn 2 tiếng nên KHÔNG bị gộp nhầm; chỉ những lượt
+   * quẹt sát nhau bất thường trong cùng 1 lần "có mặt" mới bị gộp. Đánh đổi
+   * đã biết: nếu công ty có quy trình quẹt ra/vào ăn trưa cách nhau DƯỚI 2
+   * tiếng, buổi trưa đó sẽ bị gộp chung với buổi sáng (không tách được nghỉ
+   * trưa) - chấp nhận được vì hệ thống hiện chưa có khái niệm "nhiều ca/ngày".
+   * CHỈ áp dụng cho bảng tổng hợp (getAttendanceSummary) - KHÔNG xoá/ẩn dữ
+   * liệu thô ở getAttendanceLogs()/bảng attendance_logs, để vẫn giữ nguyên
+   * lịch sử quẹt thật phục vụ tra soát khi cần.
+   */
+  private static readonly DUPLICATE_TAP_GAP_MS = 2 * 60 * 60 * 1000; // 2 tiếng
+
+  /**
    * Bảng chấm công tổng hợp theo ngày: mỗi dòng = 1 nhân viên trong 1 ngày,
    * gộp từ nhiều lượt quẹt thô trong attendance_logs.
-   * - Giờ vào = lượt quẹt SỚM NHẤT trong ngày (giờ VN).
+   * - Giờ vào = lượt quẹt SỚM NHẤT trong ngày (giờ VN), sau khi đã gộp các
+   *   lượt quẹt liên tiếp quá gần nhau (xem DUPLICATE_TAP_GAP_MS ở trên).
    * - Giờ ra = lượt quẹt MUỘN NHẤT trong ngày (giờ VN) - chỉ tính nếu ngày đó
-   *   có từ 2 lượt quẹt trở lên (1 lượt duy nhất không đủ để suy ra giờ ra
-   *   thật, tránh báo sai "về sớm" khi thực ra chỉ là thiếu quẹt ra).
+   *   có từ 2 lượt quẹt (đã gộp trùng) trở lên (1 lượt duy nhất không đủ để
+   *   suy ra giờ ra thật, tránh báo sai "về sớm" khi thực ra chỉ là thiếu
+   *   quẹt ra).
    * - Đi muộn: giờ vào > 09:00. Về sớm: giờ ra < 18:00 (từ 18:00 trở đi luôn
    *   tính đúng giờ, không có khái niệm "về muộn").
    * Việc gộp/tính toán làm ở tầng ứng dụng (không dùng CONVERT_TZ của MySQL)
@@ -239,7 +279,7 @@ export class ZkDeviceService {
    */
   async getAttendanceSummary(query: QueryAttendanceSummaryDto) {
     const { page = 1, limit = 31, userId, from, to } = query;
-    const { VN_OFFSET_MS, WORK_START_MINUTES, WORK_END_MINUTES } =
+    const { VN_OFFSET_MS, WORK_START_MINUTES, WORK_END_MINUTES, DUPLICATE_TAP_GAP_MS } =
       ZkDeviceService;
 
     const qb = this.attendanceLogRepo
@@ -276,14 +316,29 @@ export class ZkDeviceService {
     };
     const groups = new Map<string, DayGroup>();
 
+    // logs đã ORDER BY recordTime ASC ở query -> chỉ cần nhớ lượt quẹt được
+    // GIỮ LẠI gần nhất của từng nhân viên để so khoảng cách, không cần sort
+    // lại theo từng người.
+    const lastKeptTapByUser = new Map<number, Date>();
+
     for (const log of logs) {
+      const matchedUserId = log.matchedUserId as number;
+      const lastKept = lastKeptTapByUser.get(matchedUserId);
+      if (lastKept && log.recordTime.getTime() - lastKept.getTime() < DUPLICATE_TAP_GAP_MS) {
+        // Quẹt liên tiếp quá gần lượt trước đó của CHÍNH người này -> coi là
+        // quẹt lặp/retry của cùng 1 lần chấm công, KHÔNG tính thêm - xem giải
+        // thích DUPLICATE_TAP_GAP_MS ở trên.
+        continue;
+      }
+      lastKeptTapByUser.set(matchedUserId, log.recordTime);
+
       const vnTime = new Date(log.recordTime.getTime() + VN_OFFSET_MS);
       const dateKey = vnTime.toISOString().slice(0, 10); // YYYY-MM-DD theo giờ VN
-      const key = `${log.matchedUserId}_${dateKey}`;
+      const key = `${matchedUserId}_${dateKey}`;
       const existing = groups.get(key);
       if (!existing) {
         groups.set(key, {
-          userId: log.matchedUserId as number,
+          userId: matchedUserId,
           userName: log.matchedUser?.name ?? '(Không rõ tên)',
           date: dateKey,
           checkIn: log.recordTime,
@@ -380,49 +435,78 @@ export class ZkDeviceService {
       const unmatchedSet = new Set<string>();
       let insertedNew = 0;
       let matchedToUser = 0;
+      let invalidTimeCount = 0;
 
       const CHUNK_SIZE = 500;
       for (let i = 0; i < records.length; i += CHUNK_SIZE) {
         const chunk = records.slice(i, i + CHUNK_SIZE);
-        const rows = chunk.map((rec) => {
-          const matchedUserId = userIdByDeviceUserId.get(rec.deviceUserId) ?? null;
-          if (matchedUserId) {
-            matchedToUser++;
-          } else {
-            unmatchedSet.add(rec.deviceUserId);
-          }
-          return [
-            this.deviceSerial,
-            rec.deviceUserId,
-            rec.userSn,
-            new Date(rec.recordTime),
-            matchedUserId,
-            AttendanceSource.DEVICE_PULL,
-          ];
-        });
+        const values = chunk
+          .map((rec) => {
+            const matchedUserId = userIdByDeviceUserId.get(rec.deviceUserId) ?? null;
+            if (matchedUserId) {
+              matchedToUser++;
+            } else {
+              unmatchedSet.add(rec.deviceUserId);
+            }
 
-        // ⚠️ KHÔNG dùng QueryBuilder .insert().orIgnore() ở đây (đã thử,
-        // xem lịch sử sửa lỗi): khi 1 lô ghi có cả dòng mới lẫn dòng bị
-        // "IGNORE" do trùng khoá unique, TypeORM cố đọc lại `id` tự tăng
-        // vừa sinh cho TỪNG entity theo đúng thứ tự liên tục để gán ngược
-        // vào object - nhưng vì có dòng bị bỏ qua (không thực sự insert)
-        // nên bị lệch số, ném lỗi "Cannot update entity because entity id
-        // is not set in the entity." (bug đã biết của TypeORM với
-        // insert+orIgnore+cột tự tăng trên MySQL, không phải lỗi kết nối
-        // hay dữ liệu). Dùng raw SQL "INSERT IGNORE" qua queryRunner để né
-        // hẳn cơ chế map-lại-entity đó - đồng thời affectedRows của
-        // "INSERT IGNORE" trên MySQL CHỈ đếm dòng thực sự được insert (dòng
-        // bị ignore không tính), nên insertedNew ở đây chính xác 100%,
-        // không còn là số ước lượng như cách cũ.
-        const placeholders = rows.map(() => '(?, ?, ?, ?, ?, ?)').join(', ');
-        const flatParams = rows.flat();
-        const rawResult = (await this.attendanceLogRepo.manager.query(
-          `INSERT IGNORE INTO attendance_logs
-             (device_serial_number, device_user_id, user_sn, record_time, matched_user_id, source)
-           VALUES ${placeholders}`,
-          flatParams,
-        )) as { affectedRows?: number };
-        insertedNew += rawResult?.affectedRows ?? 0;
+            // ⚠️ KHÔNG dùng `new Date(rec.recordTime)` trực tiếp - Date do
+            // node-zklib trả về lệch giờ nếu server không chạy GMT+7 (bug đã
+            // phát hiện qua test-connection.ts, gây "chấm công lệch giờ" trên
+            // UI production). Phải giải mã lại đúng giờ VN rồi tự quy đổi
+            // UTC - xem decode-device-time.util.ts.
+            let recordTime: Date;
+            try {
+              recordTime = decodeDeviceLocalTime(rec.recordTime).correctUtcDate;
+            } catch {
+              invalidTimeCount++;
+              return null; // dòng log hỏng ở tầng giao thức -> bỏ qua, không làm crash cả lượt sync
+            }
+
+            return {
+              deviceSerialNumber: this.deviceSerial,
+              deviceUserId: rec.deviceUserId,
+              userSn: rec.userSn,
+              recordTime,
+              matchedUserId,
+              source: AttendanceSource.DEVICE_PULL,
+            };
+          })
+          .filter((v): v is NonNullable<typeof v> => v !== null);
+
+        if (values.length === 0) continue;
+
+        const result = await this.attendanceLogRepo
+          .createQueryBuilder()
+          .insert()
+          .into(AttendanceLog)
+          .values(values)
+          .orIgnore() // INSERT IGNORE - bỏ qua record đã có (trùng unique key)
+          // ⚠️ FIX BUG: mặc định TypeORM cố ghi lại các cột do DB tự sinh
+          // (ở đây là `synced_at` - CreateDateColumn) NGƯỢC LẠI vào từng object
+          // trong `values` sau khi insert. Với MySQL, khi insert HÀNG LOẠT
+          // (nhiều dòng/1 câu lệnh) + INSERT IGNORE, MySQL driver CHỈ trả về
+          // đúng 1 `insertId` (dòng đầu tiên được chèn) - không có insertId
+          // riêng cho từng dòng. TypeORM cố map lại id cho từng dòng, dòng nào
+          // không map được id -> ném lỗi "Cannot update entity because entity
+          // id is not set in the entity." (chính là lỗi 503 gặp phải). Tắt cơ
+          // chế ghi-lại-vào-entity này vì ta không cần nó (chỉ cần đếm số dòng
+          // insert thành công qua affectedRows bên dưới, không cần id trả về).
+          .updateEntity(false)
+          .execute();
+
+        // ⚠️ KHÔNG dùng result.identifiers (luôn rỗng vì đã tắt updateEntity ở
+        // trên, và trước đây cũng không đáng tin với bulk INSERT IGNORE).
+        // `raw.affectedRows` của mysql2 driver với INSERT IGNORE CHỈ đếm đúng
+        // số dòng THẬT SỰ được insert (dòng bị bỏ qua do trùng key KHÔNG được
+        // tính) - đây là hành vi chuẩn của MySQL, dùng số này là chính xác
+        // 100%, không còn là "ước lượng" như trước.
+        insertedNew += result.raw?.affectedRows ?? 0;
+      }
+
+      if (invalidTimeCount > 0) {
+        this.logger.warn(
+          `Có ${invalidTimeCount} dòng log không giải mã được giờ (NaN) - đã bỏ qua, không ghi vào DB.`,
+        );
       }
 
       const finishedAt = new Date();
@@ -433,6 +517,7 @@ export class ZkDeviceService {
         insertedNew,
         matchedToUser,
         unmatchedDeviceUserIds: Array.from(unmatchedSet),
+        invalidTimeCount,
       };
 
       this.logger.log(
@@ -510,42 +595,23 @@ export class ZkDeviceService {
 
     if (values.length === 0) return 0;
 
-    // ⚠️ Dùng raw SQL INSERT IGNORE thay vì QueryBuilder .insert().orIgnore()
-    // - cùng lý do đã ghi chú chi tiết ở syncNow(): TypeORM lỗi khi đọc lại
-    // id tự tăng cho lô có dòng bị IGNORE do trùng khoá unique. Với ADMS
-    // Push, máy RẤT HAY gửi lại log cũ (mất mạng/timeout) nên trường hợp
-    // trùng khoá xảy ra thường xuyên - nếu không sửa, endpoint này sẽ crash
-    // âm thầm mỗi khi máy gửi lại log cũ.
-    // ⚠️ manager.query() trả THẲNG object ResultSetHeader cho INSERT, KHÔNG
-    // phải mảng - xem chú thích chi tiết ngay tại chỗ gọi bên dưới.
-    const placeholders = values.map(() => '(?, ?, ?, ?, ?, ?, ?, ?)').join(', ');
-    const flatParams = values.flatMap((v) => [
-      v.deviceSerialNumber,
-      v.deviceUserId,
-      v.userSn,
-      v.recordTime,
-      v.statusCode,
-      v.verifyMode,
-      v.matchedUserId,
-      v.source,
-    ]);
-    // ⚠️ manager.query() (useStructuredResult mặc định false) trả THẲNG
-    // result.raw - với INSERT, driver mysql2 trả raw là 1 object
-    // ResultSetHeader DUY NHẤT (không phải mảng [rows, fields]). KHÔNG được
-    // destructure `const [rawResult] = ...` ở đây (object không có
-    // Symbol.iterator -> ném "is not iterable" ngay request ADMS Push đầu
-    // tiên) - phải gán trực tiếp, giống cách đã làm đúng ở syncNow() phía
-    // trên.
-    const rawResult = (await this.attendanceLogRepo.manager.query(
-      `INSERT IGNORE INTO attendance_logs
-         (device_serial_number, device_user_id, user_sn, record_time, status_code, verify_mode, matched_user_id, source)
-       VALUES ${placeholders}`,
-      flatParams,
-    )) as { affectedRows?: number };
-    const insertedCount = rawResult?.affectedRows ?? 0;
+    const result = await this.attendanceLogRepo
+      .createQueryBuilder()
+      .insert()
+      .into(AttendanceLog)
+      .values(values)
+      .orIgnore() // INSERT IGNORE - máy gửi lại log cũ (do mất mạng/timeout) sẽ tự bị bỏ qua, không nhân đôi
+      // Cùng lý do như syncNow(): tắt updateEntity để tránh lỗi "Cannot update
+      // entity because entity id is not set" khi máy gửi BÙ nhiều dòng ATTLOG
+      // trong 1 lần POST (sau khi mất mạng) -> đây là insert hàng loạt, dính
+      // đúng bug TypeORM + MySQL + INSERT IGNORE đã giải thích ở syncNow().
+      .updateEntity(false)
+      .execute();
 
+    // affectedRows của MySQL với INSERT IGNORE chỉ đếm dòng THẬT SỰ mới insert.
+    const insertedCount = result.raw?.affectedRows ?? 0;
     this.logger.log(
-      `[ADMS Push] SN=${deviceSerialNumber}: nhận ${lines.length} dòng, ghi mới ${insertedCount}.`,
+      `[ADMS Push] SN=${deviceSerialNumber}: nhận ${lines.length} dòng, ghi mới ~${insertedCount}.`,
     );
     return insertedCount;
   }

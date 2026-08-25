@@ -67,6 +67,11 @@ export default function DeviceMappingTab() {
                   Mã user trên máy chưa map: {summary.unmatchedDeviceUserIds.join(', ')}
                 </p>
               )}
+              {summary.invalidTimeCount > 0 && (
+                <p style={{ color: '#faad14' }}>
+                  ⚠️ {summary.invalidTimeCount} dòng log không giải mã được giờ (dữ liệu hỏng ở tầng giao thức) - đã bỏ qua, không ghi vào DB.
+                </p>
+              )}
             </div>
           ),
         });

@@ -22,6 +22,7 @@ export interface SyncSummary {
   insertedNew: number;
   matchedToUser: number;
   unmatchedDeviceUserIds: string[];
+  invalidTimeCount: number;
 }
 
 export interface AttendanceLog {
