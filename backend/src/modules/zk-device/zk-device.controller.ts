@@ -2,7 +2,11 @@ import {
   Controller,
   Get,
   Post,
+  Delete,
   Body,
+  Param,
+  ParseIntPipe,
+  Query,
   UseGuards,
   HttpException,
   HttpStatus,
@@ -10,6 +14,7 @@ import {
 import { ApiTags, ApiOperation, ApiBearerAuth } from '@nestjs/swagger';
 import { ZkDeviceService } from './zk-device.service';
 import { MapDeviceUserDto } from './dto/map-device-user.dto';
+import { QueryAttendanceLogDto } from './dto/query-attendance-log.dto';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { RolesGuard } from '../../common/guards/roles.guard';
 import { Roles } from '../../common/decorators/roles.decorator';
@@ -30,7 +35,7 @@ export class ZkDeviceController {
       return await this.zkDeviceService.getStatus();
     } catch (err) {
       throw new HttpException(
-        `Không kết nối được tới máy chấm công: ${err?.message ?? err}`,
+        `Không kết nối được tới máy chấm công: ${this.getErrorMessage(err)}`,
         HttpStatus.SERVICE_UNAVAILABLE,
       );
     }
@@ -45,7 +50,7 @@ export class ZkDeviceController {
       return await this.zkDeviceService.getDeviceUsers();
     } catch (err) {
       throw new HttpException(
-        `Không lấy được danh sách user từ máy: ${err?.message ?? err}`,
+        `Không lấy được danh sách user từ máy: ${this.getErrorMessage(err)}`,
         HttpStatus.SERVICE_UNAVAILABLE,
       );
     }
@@ -57,6 +62,21 @@ export class ZkDeviceController {
     return this.zkDeviceService.mapUser(dto.userId, dto.deviceUserId);
   }
 
+  @Delete('map-user/:userId')
+  @ApiOperation({ summary: 'Gỡ mapping của 1 nhân viên (map nhầm) - không đụng log đã đồng bộ' })
+  async unmapUser(@Param('userId', ParseIntPipe) userId: number) {
+    return this.zkDeviceService.unmapUser(userId);
+  }
+
+  @Get('attendance-logs')
+  @ApiOperation({
+    summary:
+      'Danh sách log chấm công đã đồng bộ (đọc-only), lọc theo nhân viên/khoảng ngày/trạng thái khớp',
+  })
+  async getAttendanceLogs(@Query() query: QueryAttendanceLogDto) {
+    return this.zkDeviceService.getAttendanceLogs(query);
+  }
+
   @Post('sync')
   @ApiOperation({ summary: 'Kích hoạt đồng bộ log chấm công ngay lập tức (thủ công)' })
   async syncNow() {
@@ -64,9 +84,18 @@ export class ZkDeviceController {
       return await this.zkDeviceService.syncNow();
     } catch (err) {
       throw new HttpException(
-        `Đồng bộ thất bại: ${err?.message ?? err}`,
+        `Đồng bộ thất bại: ${this.getErrorMessage(err)}`,
         HttpStatus.SERVICE_UNAVAILABLE,
       );
     }
+  }
+
+  /**
+   * catch (err) mặc định có kiểu `unknown` (strict mode) nên KHÔNG được
+   * truy cập err.message trực tiếp - phải kiểm tra instanceof Error trước.
+   * Gom vào 1 hàm dùng chung để không lặp lại logic này ở từng nơi.
+   */
+  private getErrorMessage(err: unknown): string {
+    return err instanceof Error ? err.message : String(err);
   }
 }

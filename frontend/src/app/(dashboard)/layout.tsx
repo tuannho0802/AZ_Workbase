@@ -15,7 +15,8 @@ import {
   FileTextOutlined,
   DeleteOutlined,
   WarningOutlined,
-  ProfileOutlined
+  ProfileOutlined,
+  ClockCircleOutlined
 } from '@ant-design/icons';
 import { useAuthStore } from '@/lib/stores/auth.store';
 import Cookies from 'js-cookie';
@@ -71,6 +72,8 @@ export default function DashboardLayout({
       newKey = 'duyet-phep';
     } else if (pathname.includes('/trash-can')) {
       newKey = 'trash-can';
+    } else if (pathname.includes('/attendance-device')) {
+      newKey = 'attendance-device';
     }
     
     setSelectedKey(newKey);
@@ -178,6 +181,13 @@ export default function DashboardLayout({
               icon: <DeleteOutlined />,
               label: 'Thùng rác',
               onClick: () => router.push('/trash-can'),
+            }] : []),
+            // Chỉ admin - khớp @Roles(Role.ADMIN) trên toàn bộ ZkDeviceController ở BE.
+            ...(['admin'].includes(user?.role || '') ? [{
+              key: 'attendance-device',
+              icon: <ClockCircleOutlined />,
+              label: 'Máy chấm công',
+              onClick: () => router.push('/attendance-device'),
             }] : []),
             // Đặt cuối cùng trong sidebar theo yêu cầu; CHỈ admin thấy được
             // (khớp với BE: @Roles(Role.ADMIN) trên GET reports/invalid-data

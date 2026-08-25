@@ -1,10 +1,11 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, IsNull, Not } from 'typeorm';
 import { User } from '../../database/entities/user.entity';
 import { AttendanceLog } from '../../database/entities/attendance-log.entity';
 import { AttendanceSource } from '../../common/enums/attendance-source.enum';
+import { QueryAttendanceLogDto } from './dto/query-attendance-log.dto';
 
 // node-zklib chưa có type definition chính thức -> import kiểu require,
 // coi là "any" (tsconfig của project đã bật noImplicitAny: false).
@@ -143,6 +144,60 @@ export class ZkDeviceService {
     const user = await this.userRepo.findOneByOrFail({ id: userId });
     user.zkDeviceUserId = deviceUserId;
     return this.userRepo.save(user);
+  }
+
+  /**
+   * Gỡ mapping của 1 nhân viên (vd map nhầm mã user trên máy).
+   * CHỈ xoá liên kết trong hệ thống (users.zk_device_user_id = null) -
+   * KHÔNG đụng gì tới data/log đã đồng bộ từ máy (giữ nguyên
+   * attendance_logs.matched_user_id của các log cũ, đúng nguyên tắc 1 chiều
+   * không sửa data máy). Log mới đồng bộ sau khi gỡ map sẽ tự thành
+   * "chưa khớp" (matchedUserId = null) vì map không còn tồn tại.
+   */
+  async unmapUser(userId: number): Promise<User> {
+    const user = await this.userRepo.findOneBy({ id: userId });
+    if (!user) {
+      throw new NotFoundException(`Không tìm thấy nhân viên id=${userId}`);
+    }
+    user.zkDeviceUserId = null;
+    return this.userRepo.save(user);
+  }
+
+  /**
+   * Danh sách log chấm công (đọc-only, phục vụ UI xem bảng chấm công).
+   * Đây vẫn là luồng 1 chiều thuần đọc: không có hàm nào ở đây ghi/sửa lại
+   * bảng attendance_logs ngoài syncNow()/ingestPushAttendance() (2 nguồn từ
+   * máy) - API này chỉ SELECT.
+   */
+  async getAttendanceLogs(query: QueryAttendanceLogDto) {
+    const { page = 1, limit = 20, userId, matched, from, to } = query;
+
+    const qb = this.attendanceLogRepo
+      .createQueryBuilder('log')
+      .leftJoinAndSelect('log.matchedUser', 'matchedUser')
+      .orderBy('log.recordTime', 'DESC');
+
+    if (userId) {
+      qb.andWhere('log.matchedUserId = :userId', { userId });
+    }
+    if (matched === 'matched') {
+      qb.andWhere('log.matchedUserId IS NOT NULL');
+    } else if (matched === 'unmatched') {
+      qb.andWhere('log.matchedUserId IS NULL');
+    }
+    if (from) {
+      qb.andWhere('log.recordTime >= :from', { from: `${from} 00:00:00` });
+    }
+    if (to) {
+      qb.andWhere('log.recordTime <= :to', { to: `${to} 23:59:59` });
+    }
+
+    const [data, total] = await qb
+      .skip((page - 1) * limit)
+      .take(limit)
+      .getManyAndCount();
+
+    return { data, total, page, limit, totalPages: Math.ceil(total / limit) };
   }
 
   /**
