@@ -11,7 +11,6 @@ import { BooleanTransformer } from '../transformers/boolean.transformer';
 
 import { Role } from '../../common/enums/role.enum';
 import { Department } from './department.entity';
-import { ManagedLink } from '../../common/types/managed-link.type';
 
 @Entity('users')
 export class User {
@@ -32,15 +31,13 @@ export class User {
   @Column()
   name: string;
 
-  @Column({ type: 'varchar', length: 20, nullable: true })
-  phone: string | null;
-
   @Column({
     name: 'zk_device_user_id',
     type: 'varchar',
     length: 50,
     nullable: true,
-    comment: 'Mã "User ID" trên máy chấm công (khác uid nội bộ của máy) - dùng để map log chấm công về đúng nhân viên',
+    comment:
+      'Mã "User ID" trên máy chấm công (khác uid nội bộ của máy) - dùng để map log chấm công về đúng nhân viên',
   })
   zkDeviceUserId: string | null;
 
@@ -57,17 +54,6 @@ export class User {
   @ManyToOne(() => Department)
   @JoinColumn({ name: 'department_id' })
   department: Department;
-
-  // ⚠️ select: false: giống pattern của `password` ở trên — dữ liệu này
-  // (danh sách link Fanpage/Group mà user quản lý) chỉ Admin được xem/sửa
-  // (yêu cầu nghiệp vụ "Only Admin CRUD"). Nếu không có select: false, các
-  // query dùng cho mọi role (vd findEmployees() phục vụ dropdown chọn Sales
-  // trong form khách hàng, hay findAll()) sẽ vô tình trả kèm profile ra
-  // ngoài cho cả non-admin. Muốn đọc phải chủ động
-  // .addSelect('user.profile') ở đúng những chỗ đã xác nhận caller là Admin
-  // (xem UsersService.getProfile/updateProfile).
-  @Column({ type: 'json', nullable: true, select: false })
-  profile: ManagedLink[] | null;
 
   @Column({
     name: 'is_active',
