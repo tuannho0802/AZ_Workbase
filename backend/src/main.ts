@@ -1,5 +1,5 @@
 import { NestFactory } from '@nestjs/core';
-import { ValidationPipe } from '@nestjs/common';
+import { ValidationPipe, RequestMethod } from '@nestjs/common';
 import { SwaggerModule, DocumentBuilder } from '@nestjs/swagger';
 import {
   NestExpressApplication,
@@ -65,8 +65,15 @@ async function createApp(): Promise<NestExpressApplication> {
     console.log(`[Static] Serving from: ${publicPath}`);
   }
 
-  // ✅ Luôn thêm prefix 'api' - KHÔNG cần điều kiện
-  app.setGlobalPrefix('api');
+  // ✅ Luôn thêm prefix 'api' - TRỪ nhóm route /iclock/* (ADMS Push).
+  // Lý do: máy chấm công ZKTeco gọi CỨNG đường dẫn /iclock/cdata theo đúng
+  // giao thức gốc - menu cấu hình trên máy chỉ nhập được host+port, không có
+  // chỗ nào để thêm prefix "/api". Nếu để prefix áp cả vào route này, máy sẽ
+  // luôn nhận 404 vì gọi sai đường dẫn thật (/iclock/cdata thay vì
+  // /api/iclock/cdata) mà không có cách nào tự sửa từ phía máy.
+  app.setGlobalPrefix('api', {
+    exclude: [{ path: 'iclock/(.*)', method: RequestMethod.ALL }],
+  });
 
   // 🔌 ADMS Push (máy chấm công): body-parser mặc định của Nest chỉ hiểu
   // application/json và x-www-form-urlencoded. Máy gửi log dạng text/plain
@@ -74,7 +81,8 @@ async function createApp(): Promise<NestExpressApplication> {
   // này - `type: () => true` ép parse MỌI content-type thành string, tránh
   // req.body rỗng/undefined bất kể máy gửi header gì.
   // Đăng ký TRƯỚC app.init() để middleware này chạy trước khi Nest routing xử lý.
-  app.use('/api/iclock/cdata', express.text({ type: () => true, limit: '2mb' }));
+  // ⚠️ Path KHÔNG có prefix /api (xem lý do ở setGlobalPrefix bên trên).
+  app.use('/iclock/cdata', express.text({ type: () => true, limit: '2mb' }));
 
   // Global validation pipe
   app.useGlobalPipes(

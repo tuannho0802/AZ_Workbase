@@ -13,8 +13,8 @@ import { ZkDeviceService } from './zk-device.service';
  *   config dạng key=value). Sai định dạng (kể cả JSON-wrap "OK" thành "\"OK\"")
  *   sẽ khiến máy hiểu là lỗi và gửi lại log liên tục, có thể gây trùng lặp
  *   hoặc treo hàng đợi gửi dữ liệu của máy.
- * - Route thật (do app.setGlobalPrefix('api')) là /api/iclock/... — PHẢI cấu
- *   hình đúng đường dẫn này trên máy, không phải /iclock/... trần.
+ * - Route thật là /iclock/... (KHÔNG có prefix /api - đã loại trừ riêng
+ *   trong main.ts vì máy gọi cứng đường dẫn này, không cấu hình được prefix).
  *
  * Tham khảo giao thức chính thức: "Attendance PUSH Communication Protocol"
  * (ZKTeco), 3 endpoint chuẩn: GET/POST /iclock/cdata, GET /iclock/getrequest.
