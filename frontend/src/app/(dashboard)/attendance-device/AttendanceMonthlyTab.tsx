@@ -31,6 +31,19 @@ const MARK_COLOR: Record<DayMark, string> = {
   KL: '#cf1322',
 };
 
+// Giờ vào/ra chuẩn - PHẢI khớp WORK_START_MINUTES/WORK_END_MINUTES bên
+// backend (zk-device.service.ts). Chỉ dùng để tính SỐ PHÚT trễ/sớm hiển thị
+// trong "Ghi chú" - việc "có tính là trễ/sớm hay không" vẫn lấy từ cờ
+// isLate/isEarlyLeave do backend trả về (nguồn xác thực duy nhất).
+const WORK_START_MINUTES = 9 * 60; // 09:00
+const WORK_END_MINUTES = 18 * 60; // 18:00
+
+interface LateEarlyEntry {
+  dateStr: string; // DD/MM
+  time: string; // HH:mm
+  minutes: number; // số phút trễ (đi trễ) hoặc số phút sớm (về sớm)
+}
+
 interface EmployeeMonthRow {
   userId: number;
   userName: string;
@@ -40,6 +53,8 @@ interface EmployeeMonthRow {
   actualWorkDays: number;
   paidLeaveDays: number;
   unpaidLeaveDays: number;
+  lateEntries: LateEarlyEntry[];
+  earlyEntries: LateEarlyEntry[];
 }
 
 export default function AttendanceMonthlyTab() {
@@ -94,17 +109,44 @@ export default function AttendanceMonthlyTab() {
         actualWorkDays: standardWorkDays,
         paidLeaveDays: 0,
         unpaidLeaveDays: 0,
+        lateEntries: [],
+        earlyEntries: [],
       });
     }
 
     // Đánh dấu 'X' từ dữ liệu chấm công thật - chỉ mang tính hiển thị trực
     // quan (đi làm ngày nào), KHÔNG dùng để tính cột "Ngày công thực tế"
     // (cột đó tính bằng Ngày công chuẩn trừ đi ngày nghỉ, xem bên dưới).
+    // Đồng thời gom lại từng lần đi trễ/về sớm trong tháng cho cột "Ghi chú"
+    // (theo đúng mẫu bảng chấm công - liệt kê ngày/giờ + số phút trễ/sớm).
     for (const r of attendanceData?.data || []) {
       const row = map.get(r.userId);
       if (!row) continue;
       const day = dayjs(r.date).date();
       if (!row.days[day]) row.days[day] = 'X';
+
+      if (r.isLate && r.checkIn) {
+        const checkIn = dayjs(r.checkIn);
+        const minutesLate = checkIn.hour() * 60 + checkIn.minute() - WORK_START_MINUTES;
+        if (minutesLate > 0) {
+          row.lateEntries.push({
+            dateStr: checkIn.format('DD/MM'),
+            time: checkIn.format('HH:mm'),
+            minutes: minutesLate,
+          });
+        }
+      }
+      if (r.isEarlyLeave && r.checkOut) {
+        const checkOut = dayjs(r.checkOut);
+        const minutesEarly = WORK_END_MINUTES - (checkOut.hour() * 60 + checkOut.minute());
+        if (minutesEarly > 0) {
+          row.earlyEntries.push({
+            dateStr: checkOut.format('DD/MM'),
+            time: checkOut.format('HH:mm'),
+            minutes: minutesEarly,
+          });
+        }
+      }
     }
 
     // Áp đơn nghỉ đã duyệt lên đúng các ngày giao với tháng đang xem.
@@ -133,6 +175,13 @@ export default function AttendanceMonthlyTab() {
         else row.paidLeaveDays += fraction;
         cursor = cursor.add(1, 'day');
       }
+    }
+
+    // Log chấm công không đảm bảo đến theo thứ tự ngày (đến từ query đã sort
+    // theo recordTime ASC rồi gom nhóm) - sắp lại theo ngày cho dễ đọc.
+    for (const row of map.values()) {
+      row.lateEntries.sort((a, b) => a.dateStr.localeCompare(b.dateStr));
+      row.earlyEntries.sort((a, b) => a.dateStr.localeCompare(b.dateStr));
     }
 
     return Array.from(map.values()).sort((a, b) => a.userName.localeCompare(b.userName));
@@ -237,6 +286,63 @@ export default function AttendanceMonthlyTab() {
       fixed: 'right',
       align: 'center',
       render: (v: number | null) => (v != null ? v : '—'),
+    },
+    {
+      title: 'Ghi chú',
+      key: 'notes',
+      width: 260,
+      fixed: 'right',
+      // Cột này thường dài hơn hẳn các cột số khác (nhiều dòng đi trễ/về
+      // sớm) - nếu để mặc định, 1 dòng nhiều ghi chú sẽ kéo cả hàng cao vọt
+      // lên, đồng thời 1 cột KHÔNG fixed đứng sau 2 cột fixed:'right' khác
+      // (actualWorkDays, annualLeaveBalance) khiến antd render lệch/che
+      // (đúng lỗi trong ảnh bạn gửi). Fix: (1) fixed:'right' luôn cho cột
+      // này để nhất quán với 2 cột fixed phía trước, (2) giới hạn chiều cao
+      // + cuộn dọc riêng bên trong ô để không đội chiều cao cả hàng.
+      onCell: () => ({ style: { verticalAlign: 'top', padding: '8px 12px' } }),
+      render: (_: unknown, record: EmployeeMonthRow) => {
+        if (!record.lateEntries.length && !record.earlyEntries.length) return null;
+        const totalLate = record.lateEntries.reduce((sum, e) => sum + e.minutes, 0);
+        const totalEarly = record.earlyEntries.reduce((sum, e) => sum + e.minutes, 0);
+        return (
+          <div
+            style={{
+              fontSize: 12,
+              lineHeight: 1.7,
+              textAlign: 'left',
+              maxHeight: 120,
+              overflowY: 'auto',
+            }}
+          >
+            {record.lateEntries.length > 0 && (
+              <div>
+                <Text style={{ color: MARK_COLOR['X/2'] }} strong>
+                  Đi trễ:
+                </Text>
+                {record.lateEntries.map((e, i) => (
+                  <div key={i}>
+                    {e.dateStr} {e.time} (+{e.minutes} phút)
+                  </div>
+                ))}
+                <div>Tổng trễ: {totalLate} phút</div>
+              </div>
+            )}
+            {record.earlyEntries.length > 0 && (
+              <div style={{ marginTop: record.lateEntries.length ? 4 : 0 }}>
+                <Text style={{ color: MARK_COLOR['1/2K'] }} strong>
+                  Về sớm:
+                </Text>
+                {record.earlyEntries.map((e, i) => (
+                  <div key={i}>
+                    {e.dateStr} {e.time} (-{e.minutes} phút)
+                  </div>
+                ))}
+                <div>Tổng sớm: {totalEarly} phút</div>
+              </div>
+            )}
+          </div>
+        );
+      },
     },
   ];
 
