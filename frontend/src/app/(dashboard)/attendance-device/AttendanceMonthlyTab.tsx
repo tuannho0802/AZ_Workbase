@@ -45,7 +45,13 @@ interface LateEarlyEntry {
 }
 
 interface EmployeeMonthRow {
-  userId: number;
+  // rowKey duy nhất cho cả dòng đã map (userId thật) và chưa map
+  // (deviceUserId) - dùng làm rowKey của Table, tránh trùng khi nhiều
+  // deviceUserId khác nhau đều có userId=null.
+  key: string;
+  userId: number | null;
+  deviceUserId: string | null; // chỉ có giá trị khi isMapped=false
+  isMapped: boolean;
   userName: string;
   departmentName: string;
   annualLeaveBalance: number | null;
@@ -101,7 +107,10 @@ export default function AttendanceMonthlyTab() {
     const map = new Map<number, EmployeeMonthRow>();
     for (const u of employeeList) {
       map.set(u.id, {
+        key: `u-${u.id}`,
         userId: u.id,
+        deviceUserId: null,
+        isMapped: true,
         userName: u.name,
         departmentName: u.department?.name || '—',
         annualLeaveBalance: u.annualLeaveBalance ?? null,
@@ -114,16 +123,62 @@ export default function AttendanceMonthlyTab() {
       });
     }
 
+    // Dòng riêng cho các deviceUserId CHƯA map với nhân viên hệ thống -
+    // trước đây các log này bị lọc bỏ hoàn toàn ở backend
+    // (WHERE matched_user_id IS NOT NULL), giờ backend đã trả về kèm
+    // isMapped=false + userName lấy từ tên đăng ký TRÊN MÁY (cache) - hiển
+    // thị riêng ra đây, có màu khác, để dễ nhận biết và biết cần map ai.
+    const unmappedMap = new Map<string, EmployeeMonthRow>();
+
     // Đánh dấu 'X' từ dữ liệu chấm công thật - chỉ mang tính hiển thị trực
     // quan (đi làm ngày nào), KHÔNG dùng để tính cột "Ngày công thực tế"
-    // (cột đó tính bằng Ngày công chuẩn trừ đi ngày nghỉ, xem bên dưới).
-    // Đồng thời gom lại từng lần đi trễ/về sớm trong tháng cho cột "Ghi chú"
-    // (theo đúng mẫu bảng chấm công - liệt kê ngày/giờ + số phút trễ/sớm).
+    // của user ĐÃ map (cột đó tính bằng Ngày công chuẩn trừ đi ngày nghỉ,
+    // xem bên dưới). Đồng thời gom lại từng lần đi trễ/về sớm trong tháng
+    // cho cột "Ghi chú" (theo đúng mẫu bảng chấm công - liệt kê ngày/giờ +
+    // số phút trễ/sớm).
     for (const r of attendanceData?.data || []) {
-      const row = map.get(r.userId);
-      if (!row) continue;
+      let row: EmployeeMonthRow | undefined;
+
+      if (r.isMapped && r.userId != null) {
+        row = map.get(r.userId);
+        if (!row) continue; // bị lọc theo Select "Lọc theo nhân viên" ở trên
+      } else {
+        // Chưa map - lấy hoặc tạo mới dòng theo deviceUserId. Nếu người
+        // dùng đang lọc theo 1 nhân viên cụ thể (userId !== undefined), ẩn
+        // luôn các dòng chưa map để không gây nhiễu bảng đang lọc theo 1
+        // người.
+        if (userId) continue;
+        const key = `d-${r.deviceUserId}`;
+        row = unmappedMap.get(key);
+        if (!row) {
+          row = {
+            key,
+            userId: null,
+            deviceUserId: r.deviceUserId,
+            isMapped: false,
+            userName: r.userName,
+            departmentName: 'Chưa map với nhân viên',
+            annualLeaveBalance: null,
+            days: {},
+            actualWorkDays: 0,
+            paidLeaveDays: 0,
+            unpaidLeaveDays: 0,
+            lateEntries: [],
+            earlyEntries: [],
+          };
+          unmappedMap.set(key, row);
+        }
+      }
+
       const day = dayjs(r.date).date();
-      if (!row.days[day]) row.days[day] = 'X';
+      if (!row.days[day]) {
+        row.days[day] = 'X';
+        // Dòng chưa map không có khái niệm "ngày công chuẩn trừ nghỉ phép"
+        // (không phải nhân viên hệ thống, không có đơn nghỉ) - đếm trực
+        // tiếp số ngày CÓ chấm công làm "Ngày công thực tế" cho dễ hiểu,
+        // thay vì luôn hiện 1 con số cố định vô nghĩa.
+        if (!row.isMapped) row.actualWorkDays += 1;
+      }
 
       if (r.isLate && r.checkIn) {
         const checkIn = dayjs(r.checkIn);
@@ -151,7 +206,9 @@ export default function AttendanceMonthlyTab() {
 
     // Áp đơn nghỉ đã duyệt lên đúng các ngày giao với tháng đang xem.
     // Nghỉ phép được ưu tiên hiển thị hơn dấu 'X' chấm công (1 ngày không
-    // thể vừa "đi làm" vừa "nghỉ" trên cùng 1 ô).
+    // thể vừa "đi làm" vừa "nghỉ" trên cùng 1 ô). CHỈ áp cho user ĐÃ map
+    // (unmappedMap không có khái niệm nghỉ phép vì không phải nhân viên hệ
+    // thống thật).
     for (const leave of leaveData || []) {
       const row = map.get(leave.requester.id);
       if (!row) continue;
@@ -179,12 +236,19 @@ export default function AttendanceMonthlyTab() {
 
     // Log chấm công không đảm bảo đến theo thứ tự ngày (đến từ query đã sort
     // theo recordTime ASC rồi gom nhóm) - sắp lại theo ngày cho dễ đọc.
-    for (const row of map.values()) {
+    const allRows = [...map.values(), ...unmappedMap.values()];
+    for (const row of allRows) {
       row.lateEntries.sort((a, b) => a.dateStr.localeCompare(b.dateStr));
       row.earlyEntries.sort((a, b) => a.dateStr.localeCompare(b.dateStr));
     }
 
-    return Array.from(map.values()).sort((a, b) => a.userName.localeCompare(b.userName));
+    // Nhân viên đã map hiện trước (sắp theo tên), user chưa map dồn xuống
+    // cuối bảng (sắp theo tên/UID trên máy) - để không xáo trộn danh sách
+    // nhân viên quen thuộc, đồng thời vẫn thấy rõ ai cần được map.
+    return [
+      ...Array.from(map.values()).sort((a, b) => a.userName.localeCompare(b.userName)),
+      ...Array.from(unmappedMap.values()).sort((a, b) => a.userName.localeCompare(b.userName)),
+    ];
   }, [users, userId, attendanceData, leaveData, standardWorkDays, monthStart, monthEnd]);
 
   const dayColumns: ColumnsType<EmployeeMonthRow> = useMemo(() => {
@@ -230,11 +294,21 @@ export default function AttendanceMonthlyTab() {
     },
     {
       title: 'Họ và tên',
-      dataIndex: 'userName',
       key: 'userName',
-      width: 170,
+      width: 190,
       fixed: 'left',
       ellipsis: true,
+      render: (_: unknown, record: EmployeeMonthRow) =>
+        record.isMapped ? (
+          record.userName
+        ) : (
+          <span title={`Chưa map - mã máy: ${record.deviceUserId}`}>
+            <span style={{ color: '#d46b08' }}>{record.userName}</span>{' '}
+            <Tag color="orange" style={{ marginLeft: 2 }}>
+              chưa map
+            </Tag>
+          </span>
+        ),
     },
     {
       title: 'Vị trí',
@@ -243,6 +317,8 @@ export default function AttendanceMonthlyTab() {
       width: 110,
       fixed: 'left',
       ellipsis: true,
+      render: (v: string, record: EmployeeMonthRow) =>
+        record.isMapped ? v : <span style={{ color: '#d46b08' }}>{v}</span>,
     },
     {
       title: 'Ngày trong tháng',
@@ -382,7 +458,7 @@ export default function AttendanceMonthlyTab() {
       </Space>
 
       <Table<EmployeeMonthRow>
-        rowKey="userId"
+        rowKey="key"
         loading={attendanceLoading || leaveLoading || usersLoading}
         columns={columns}
         dataSource={rows}

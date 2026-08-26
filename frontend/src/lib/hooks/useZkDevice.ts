@@ -45,9 +45,25 @@ export const useSyncDeviceNow = () => {
   return useMutation({
     mutationFn: zkDeviceApi.syncNow,
     onSuccess: () => {
-      // Sync xong -> danh sách log chấm công và trạng thái map đều có thể đổi
+      // Sync xong -> log chấm công, trạng thái map, VÀ bảng tổng hợp/bảng
+      // chấm công đều có thể đổi. Trước đây thiếu invalidate
+      // 'zk-attendance-summary' - đây chính là 1 phần nguyên nhân "lệch pha"
+      // dữ liệu hiển thị: sync xong nhưng tab Tổng hợp/Bảng chấm công vẫn
+      // hiện dữ liệu cache cũ cho tới khi người dùng tự đổi filter/F5.
       queryClient.invalidateQueries({ queryKey: ['zk-attendance-logs'] });
+      queryClient.invalidateQueries({ queryKey: ['zk-attendance-summary'] });
       queryClient.invalidateQueries({ queryKey: ['zk-device-users'] });
+    },
+  });
+};
+
+export const useRematchDeviceLogs = () => {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: zkDeviceApi.rematch,
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['zk-attendance-logs'] });
+      queryClient.invalidateQueries({ queryKey: ['zk-attendance-summary'] });
     },
   });
 };

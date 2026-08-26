@@ -38,6 +38,11 @@ export const zkDeviceApi = {
     return response.data;
   },
 
+  rematch: async (): Promise<{ updated: number }> => {
+    const response = await axiosInstance.post('/zk-device/rematch');
+    return response.data;
+  },
+
   getAttendanceLogs: async (
     params?: AttendanceLogQuery,
   ): Promise<PaginatedAttendanceLogs> => {

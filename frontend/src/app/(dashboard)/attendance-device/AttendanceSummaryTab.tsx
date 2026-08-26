@@ -66,10 +66,20 @@ export default function AttendanceSummaryTab() {
     },
     {
       title: 'Nhân viên',
-      dataIndex: 'userName',
       key: 'userName',
       width: 180,
       ellipsis: true,
+      render: (_: unknown, r: AttendanceSummaryRow) =>
+        r.isMapped ? (
+          r.userName
+        ) : (
+          <span title={`Chưa map - mã máy: ${r.deviceUserId}`}>
+            <span style={{ color: '#d46b08' }}>{r.userName}</span>{' '}
+            <Tag color="orange" style={{ marginLeft: 2 }}>
+              chưa map
+            </Tag>
+          </span>
+        ),
     },
     {
       title: 'Giờ vào',
@@ -153,7 +163,9 @@ export default function AttendanceSummaryTab() {
       </Space>
 
       <Table
-        rowKey={(r: AttendanceSummaryRow) => `${r.userId}_${r.date}`}
+        rowKey={(r: AttendanceSummaryRow) =>
+          r.isMapped ? `u${r.userId}_${r.date}` : `d${r.deviceUserId}_${r.date}`
+        }
         loading={isLoading}
         columns={columns}
         dataSource={data?.data || []}

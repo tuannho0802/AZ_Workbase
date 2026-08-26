@@ -8,6 +8,7 @@ import {
   useMapDeviceUser,
   useUnmapDeviceUser,
   useSyncDeviceNow,
+  useRematchDeviceLogs,
 } from '@/lib/hooks/useZkDevice';
 import { useUsersList } from '@/lib/hooks/useUsers';
 import { DeviceUser } from '@/lib/types/zk-device.types';
@@ -19,6 +20,7 @@ export default function DeviceMappingTab() {
   const mapMutation = useMapDeviceUser();
   const unmapMutation = useUnmapDeviceUser();
   const syncMutation = useSyncDeviceNow();
+  const rematchMutation = useRematchDeviceLogs();
 
   const [mappingTarget, setMappingTarget] = useState<DeviceUser | null>(null);
   const [selectedUserId, setSelectedUserId] = useState<number | null>(null);
@@ -55,25 +57,59 @@ export default function DeviceMappingTab() {
   const handleSync = () => {
     syncMutation.mutate(undefined, {
       onSuccess: (summary) => {
-        modal.success({
-          title: 'Đồng bộ hoàn tất',
-          content: (
-            <div>
-              <p>Tổng log đọc được từ máy: {summary.totalFetchedFromDevice}</p>
-              <p>Ghi mới: {summary.insertedNew}</p>
-              <p>Đã khớp nhân viên: {summary.matchedToUser}</p>
-              {summary.unmatchedDeviceUserIds.length > 0 && (
-                <p>
-                  Mã user trên máy chưa map: {summary.unmatchedDeviceUserIds.join(', ')}
-                </p>
-              )}
-              {summary.invalidTimeCount > 0 && (
-                <p style={{ color: '#faad14' }}>
-                  ⚠️ {summary.invalidTimeCount} dòng log không giải mã được giờ (dữ liệu hỏng ở tầng giao thức) - đã bỏ qua, không ghi vào DB.
-                </p>
-              )}
-            </div>
-          ),
+        // Gọi thêm rematch NGAY sau khi sync xong - đây chính là bước bị
+        // thiếu trước đây gây "lệch pha" dữ liệu hiển thị: sync có thể kéo
+        // về log của user VỪA được map (hoặc unmap/map lại) nhưng nếu không
+        // rematch lại, log của những user đó có thể vẫn kẹt ở trạng thái map
+        // cũ. syncNow() ở backend đã tự rematch ở ĐẦU quy trình (trước khi
+        // tải log mới), nên gọi thêm ở đây là bước rematch THỨ 2, sau khi có
+        // dữ liệu mới nhất - vô hại nếu không có gì để khớp lại (trả về
+        // updated: 0), nhưng đảm bảo không sót trường hợp nào.
+        rematchMutation.mutate(undefined, {
+          onSuccess: (rematchResult) => {
+            modal.success({
+              title: 'Đồng bộ hoàn tất',
+              content: (
+                <div>
+                  <p>Tổng log đọc được từ máy: {summary.totalFetchedFromDevice}</p>
+                  <p>Ghi mới: {summary.insertedNew}</p>
+                  <p>Đã khớp nhân viên: {summary.matchedToUser}</p>
+                  {rematchResult.updated > 0 && (
+                    <p style={{ color: '#1677ff' }}>
+                      Khớp lại thêm {rematchResult.updated} log cũ (trước đây chưa map được, giờ đã có mapping) - Bảng chấm công/Tổng hợp chấm công đã được cập nhật.
+                    </p>
+                  )}
+                  {summary.unmatchedDeviceUserIds.length > 0 && (
+                    <p>
+                      Mã user trên máy vẫn còn chưa map: {summary.unmatchedDeviceUserIds.join(', ')}
+                    </p>
+                  )}
+                  {summary.invalidTimeCount > 0 && (
+                    <p style={{ color: '#faad14' }}>
+                      ⚠️ {summary.invalidTimeCount} dòng log không giải mã được giờ (dữ liệu hỏng ở tầng giao thức) - đã bỏ qua, không ghi vào DB.
+                    </p>
+                  )}
+                </div>
+              ),
+            });
+          },
+          onError: () => {
+            // Rematch lỗi không nên che mất việc sync đã thành công - vẫn
+            // báo kết quả sync, chỉ thêm cảnh báo nhỏ về việc rematch thất bại.
+            modal.success({
+              title: 'Đồng bộ hoàn tất',
+              content: (
+                <div>
+                  <p>Tổng log đọc được từ máy: {summary.totalFetchedFromDevice}</p>
+                  <p>Ghi mới: {summary.insertedNew}</p>
+                  <p>Đã khớp nhân viên: {summary.matchedToUser}</p>
+                  <p style={{ color: '#faad14' }}>
+                    ⚠️ Bước khớp lại mapping sau đồng bộ bị lỗi - có thể cần bấm "Đồng bộ ngay" thêm 1 lần nữa.
+                  </p>
+                </div>
+              ),
+            });
+          },
         });
       },
       onError: (err: any) => {

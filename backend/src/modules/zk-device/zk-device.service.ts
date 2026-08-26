@@ -1,9 +1,10 @@
 import { Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository, IsNull, Not } from 'typeorm';
+import { Repository, IsNull, Not, In } from 'typeorm';
 import { User } from '../../database/entities/user.entity';
 import { AttendanceLog } from '../../database/entities/attendance-log.entity';
+import { ZkDeviceUserCache } from '../../database/entities/zk-device-user-cache.entity';
 import { AttendanceSource } from '../../common/enums/attendance-source.enum';
 import { QueryAttendanceLogDto } from './dto/query-attendance-log.dto';
 import { QueryAttendanceSummaryDto } from './dto/query-attendance-summary.dto';
@@ -57,6 +58,8 @@ export class ZkDeviceService {
     private readonly userRepo: Repository<User>,
     @InjectRepository(AttendanceLog)
     private readonly attendanceLogRepo: Repository<AttendanceLog>,
+    @InjectRepository(ZkDeviceUserCache)
+    private readonly deviceUserCacheRepo: Repository<ZkDeviceUserCache>,
   ) {}
 
   private get deviceIp(): string {
@@ -131,6 +134,27 @@ export class ZkDeviceService {
   }
 
   /**
+   * Lưu lại (cache) tên user đăng ký TRÊN MÁY vào DB - xem giải thích đầy đủ
+   * ở ZkDeviceUserCache entity. Gọi mỗi khi có 1 lần đọc `zk.getUsers()`
+   * thành công (LAN/VPN) - getDeviceUsers() và syncNow().
+   */
+  private async upsertDeviceUserCache(deviceUsers: DeviceUser[]): Promise<void> {
+    if (deviceUsers.length === 0) return;
+    const values = deviceUsers.map((du) => ({
+      deviceSerialNumber: this.deviceSerial,
+      deviceUserId: du.userId,
+      name: du.name?.trim() || `UID ${du.userId}`,
+    }));
+    await this.deviceUserCacheRepo
+      .createQueryBuilder()
+      .insert()
+      .into(ZkDeviceUserCache)
+      .values(values)
+      .orUpdate(['name'], ['device_serial_number', 'device_user_id'])
+      .execute();
+  }
+
+  /**
    * Lấy danh sách user đăng ký trên máy, kèm cờ đã map hay chưa với
    * nhân viên trong hệ thống (users.zk_device_user_id).
    */
@@ -142,6 +166,8 @@ export class ZkDeviceService {
       await zk.createSocket();
       const result = await zk.getUsers();
       const deviceUsers: DeviceUser[] = result?.data ?? [];
+
+      await this.upsertDeviceUserCache(deviceUsers);
 
       const mappedUsers = await this.userRepo.find({
         where: { zkDeviceUserId: Not(IsNull()) },
@@ -283,7 +309,37 @@ export class ZkDeviceService {
       .take(limit)
       .getManyAndCount();
 
-    return { data, total, page, limit, totalPages: Math.ceil(total / limit) };
+    // Gắn thêm tên user TRÊN MÁY (từ cache) cho các log CHƯA khớp nhân viên
+    // hệ thống - để UI hiển thị tên thật thay vì chỉ trơ mã UID số.
+    const unmatchedDeviceUserIds = Array.from(
+      new Set(data.filter((l) => !l.matchedUserId).map((l) => l.deviceUserId)),
+    );
+    const deviceNameByUserId = await this.getDeviceUserNameMap(unmatchedDeviceUserIds);
+    const enriched = data.map((log) => ({
+      ...log,
+      deviceUserName: log.matchedUserId
+        ? null
+        : (deviceNameByUserId.get(log.deviceUserId) ?? null),
+    }));
+
+    return { data: enriched, total, page, limit, totalPages: Math.ceil(total / limit) };
+  }
+
+  /**
+   * Tra tên user TRÊN MÁY (từ cache, không gọi trực tiếp máy) cho 1 danh
+   * sách deviceUserId - dùng ở getAttendanceLogs()/getAttendanceSummary() để
+   * hiển thị tên thay vì trơ mã UID cho các log CHƯA map với nhân viên hệ
+   * thống. Trả về Map rỗng nếu danh sách rỗng (tránh query DB thừa).
+   */
+  private async getDeviceUserNameMap(deviceUserIds: string[]): Promise<Map<string, string>> {
+    if (deviceUserIds.length === 0) return new Map();
+    const cached = await this.deviceUserCacheRepo.find({
+      where: {
+        deviceSerialNumber: this.deviceSerial,
+        deviceUserId: In(deviceUserIds),
+      },
+    });
+    return new Map(cached.map((c) => [c.deviceUserId, c.name]));
   }
 
   // Giờ vào chuẩn / giờ tan ca chuẩn của công ty, theo giờ Việt Nam (GMT+7).
@@ -343,9 +399,14 @@ export class ZkDeviceService {
     const qb = this.attendanceLogRepo
       .createQueryBuilder('log')
       .leftJoinAndSelect('log.matchedUser', 'matchedUser')
-      .where('log.matchedUserId IS NOT NULL') // chỉ tổng hợp log đã khớp nhân viên
       .orderBy('log.recordTime', 'ASC');
 
+    // ⚠️ Trước đây có `.where('log.matchedUserId IS NOT NULL')` ở đây - chỉ
+    // tổng hợp log ĐÃ khớp nhân viên hệ thống. Bỏ điều kiện này: log của
+    // user CHƯA map (matchedUserId NULL) giờ vẫn được tổng hợp, chỉ khác là
+    // nhóm theo deviceUserId thay vì matchedUserId (xem groupKey bên dưới) -
+    // để admin nhìn thấy NGAY có bao nhiêu người đang chấm công nhưng chưa
+    // được map, thay vì biến mất hoàn toàn khỏi bảng tổng hợp.
     if (userId) {
       qb.andWhere('log.matchedUserId = :userId', { userId });
     }
@@ -365,9 +426,20 @@ export class ZkDeviceService {
 
     const logs = await qb.getMany();
 
+    // Tên user TRÊN MÁY (từ cache) cho các deviceUserId CHƯA map - dùng làm
+    // tên hiển thị thay vì trơ mã UID.
+    const unmatchedDeviceUserIds = Array.from(
+      new Set(logs.filter((l) => !l.matchedUserId).map((l) => l.deviceUserId)),
+    );
+    const deviceNameByUserId = await this.getDeviceUserNameMap(unmatchedDeviceUserIds);
+
     type DayGroup = {
-      userId: number;
+      // userId = null nghĩa là group này thuộc 1 deviceUserId CHƯA map với
+      // nhân viên hệ thống nào - xem isMapped/deviceUserId bên dưới.
+      userId: number | null;
       userName: string;
+      isMapped: boolean;
+      deviceUserId: string;
       date: string;
       checkIn: Date;
       checkOut: Date;
@@ -376,30 +448,42 @@ export class ZkDeviceService {
     const groups = new Map<string, DayGroup>();
 
     // logs đã ORDER BY recordTime ASC ở query -> chỉ cần nhớ lượt quẹt được
-    // GIỮ LẠI gần nhất của từng nhân viên để so khoảng cách, không cần sort
-    // lại theo từng người.
-    const lastKeptTapByUser = new Map<number, Date>();
+    // GIỮ LẠI gần nhất của TỪNG groupKey (nhân viên đã map HOẶC deviceUserId
+    // chưa map) để so khoảng cách, không cần sort lại theo từng người.
+    // ⚠️ groupKey = 'u<matchedUserId>' cho log đã map, 'd<deviceUserId>' cho
+    // log CHƯA map - KHÔNG dùng chung 1 namespace số nguyên như trước (chỉ
+    // matchedUserId), để nhiều deviceUserId chưa map khác nhau không bị gộp
+    // nhầm vào cùng 1 nhóm.
+    const lastKeptTapByGroup = new Map<string, Date>();
 
     for (const log of logs) {
-      const matchedUserId = log.matchedUserId as number;
-      const lastKept = lastKeptTapByUser.get(matchedUserId);
+      const groupKey = log.matchedUserId
+        ? `u${log.matchedUserId}`
+        : `d${log.deviceUserId}`;
+
+      const lastKept = lastKeptTapByGroup.get(groupKey);
       if (lastKept && log.recordTime.getTime() - lastKept.getTime() < DUPLICATE_TAP_GAP_MS) {
-        // Quẹt liên tiếp quá gần lượt trước đó của CHÍNH người này -> coi là
-        // quẹt lặp/retry của cùng 1 lần chấm công, KHÔNG tính thêm - xem giải
-        // thích DUPLICATE_TAP_GAP_MS ở trên.
+        // Quẹt liên tiếp quá gần lượt trước đó của CHÍNH người/mã này -> coi
+        // là quẹt lặp/retry của cùng 1 lần chấm công, KHÔNG tính thêm - xem
+        // giải thích DUPLICATE_TAP_GAP_MS ở trên.
         continue;
       }
-      lastKeptTapByUser.set(matchedUserId, log.recordTime);
+      lastKeptTapByGroup.set(groupKey, log.recordTime);
 
       // recordTime đã là giờ VN nguyên văn (local getter) - lấy ngày trực
       // tiếp, KHÔNG qua toISOString()/offset nào (xem decode-device-time.util.ts).
       const dateKey = `${log.recordTime.getFullYear()}-${String(log.recordTime.getMonth() + 1).padStart(2, '0')}-${String(log.recordTime.getDate()).padStart(2, '0')}`;
-      const key = `${matchedUserId}_${dateKey}`;
+      const key = `${groupKey}_${dateKey}`;
       const existing = groups.get(key);
       if (!existing) {
+        const isMapped = !!log.matchedUserId;
         groups.set(key, {
-          userId: matchedUserId,
-          userName: log.matchedUser?.name ?? '(Không rõ tên)',
+          userId: log.matchedUserId ?? null,
+          userName: isMapped
+            ? (log.matchedUser?.name ?? '(Không rõ tên)')
+            : (deviceNameByUserId.get(log.deviceUserId) ?? `UID ${log.deviceUserId}`),
+          isMapped,
+          deviceUserId: log.deviceUserId,
           date: dateKey,
           checkIn: log.recordTime,
           checkOut: log.recordTime,
@@ -436,6 +520,8 @@ export class ZkDeviceService {
         return {
           userId: g.userId,
           userName: g.userName,
+          isMapped: g.isMapped,
+          deviceUserId: g.deviceUserId,
           date: g.date,
           checkIn: g.checkIn,
           checkOut: hasCheckout ? g.checkOut : null,
@@ -446,7 +532,12 @@ export class ZkDeviceService {
           logCount: g.logCount,
         };
       })
-      .sort((a, b) => b.date.localeCompare(a.date) || a.userName.localeCompare(b.userName));
+      .sort(
+        (a, b) =>
+          b.date.localeCompare(a.date) ||
+          Number(b.isMapped) - Number(a.isMapped) || // đã map hiện trước, chưa map dồn xuống dưới
+          a.userName.localeCompare(b.userName),
+      );
 
     const total = results.length;
     const data = results.slice((page - 1) * limit, (page - 1) * limit + limit);
@@ -478,6 +569,7 @@ export class ZkDeviceService {
       const usersResult = await zk.getUsers();
       const deviceUsers: DeviceUser[] = usersResult?.data ?? [];
       this.logger.log(`Đọc được ${deviceUsers.length} user từ máy.`);
+      await this.upsertDeviceUserCache(deviceUsers);
 
       const mappedUsers = await this.userRepo.find({
         where: { zkDeviceUserId: Not(IsNull()) },
