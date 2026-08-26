@@ -1,7 +1,7 @@
 'use client';
 
 import { useMemo, useState } from 'react';
-import { Table, DatePicker, Select, Space, Tag, Typography } from 'antd';
+import { Table, DatePicker, Select, Space, Tag, Typography, Tooltip } from 'antd';
 import dayjs, { Dayjs } from 'dayjs';
 import { useQuery } from '@tanstack/react-query';
 import type { ColumnsType } from 'antd/es/table';
@@ -29,6 +29,21 @@ const MARK_COLOR: Record<DayMark, string> = {
   '1/2K': '#d4380d',
   P: '#08979c',
   KL: '#cf1322',
+};
+
+// Chỉ dùng để hiển thị lý do dễ đọc khi hover vào ô có đơn nghỉ - KHÔNG phải
+// nguồn xác thực (nguồn thật là leaveType/duration từ leave-requests.api.ts).
+const LEAVE_TYPE_LABEL: Record<string, string> = {
+  annual: 'Phép năm',
+  sick: 'Nghỉ ốm',
+  maternity: 'Thai sản',
+  unpaid: 'Không lương',
+  compensatory: 'Nghỉ bù',
+};
+const LEAVE_DURATION_LABEL: Record<string, string> = {
+  full_day: 'Cả ngày',
+  half_day_am: 'Nửa ngày sáng',
+  half_day_pm: 'Nửa ngày chiều',
 };
 
 // Giờ vào/ra chuẩn - PHẢI khớp WORK_START_MINUTES/WORK_END_MINUTES bên
@@ -61,6 +76,11 @@ interface EmployeeMonthRow {
   departmentName: string;
   annualLeaveBalance: number | null;
   days: Partial<Record<number, DayMark>>;
+  // Lý do CỤ THỂ cho từng ô ngày (vd "Thiếu chấm công ra", "Chỉ làm 3.2h -
+  // dưới 4.5h chuẩn nửa ngày", "Đơn nghỉ đã duyệt: Khám bệnh"...) - hiện khi
+  // hover vào ô, để không phải đoán vì sao ra dấu 1/2K/KL/X/2 (yêu cầu từ
+  // phản hồi thực tế: nhìn thấy 1/2K mà không biết lý do gì).
+  dayReasons: Partial<Record<number, string>>;
   actualWorkDays: number;
   paidLeaveDays: number;
   unpaidLeaveDays: number;
@@ -121,6 +141,7 @@ export default function AttendanceMonthlyTab() {
         departmentName: u.department?.name || '—',
         annualLeaveBalance: u.annualLeaveBalance ?? null,
         days: {},
+        dayReasons: {},
         // Tính lại ở bước cuối (xem "Tính lại actualWorkDays..." bên dưới) -
         // dựa trên dữ liệu chấm công/nghỉ phép THẬT, không gán cứng theo
         // Ngày công chuẩn nữa (bug đã phát hiện: nhân viên đã map luôn ra
@@ -174,6 +195,7 @@ export default function AttendanceMonthlyTab() {
             departmentName: 'Chưa map với nhân viên',
             annualLeaveBalance: null,
             days: {},
+            dayReasons: {},
             actualWorkDays: 0,
             paidLeaveDays: 0,
             unpaidLeaveDays: 0,
@@ -195,9 +217,23 @@ export default function AttendanceMonthlyTab() {
         // ĐÃ DUYỆT (vòng lặp `leaveData` bên dưới, chạy SAU vòng này) sẽ ĐÈ
         // LÊN giá trị suy luận ở đây - đơn nghỉ luôn là nguồn xác thực cao
         // hơn (kể cả khi là nghỉ HƯỞNG LƯƠNG, dù có chấm công ngắn cũng vậy).
-        const isHalfByAttendance =
-          r.status === 'missing_checkout' || (r.workHours != null && r.workHours < 4.5);
-        row.days[day] = isHalfByAttendance ? '1/2K' : 'X';
+        const checkInStr = r.checkIn ? dayjs(r.checkIn).format('HH:mm') : '?';
+        const checkOutStr = r.checkOut ? dayjs(r.checkOut).format('HH:mm') : null;
+
+        if (r.status === 'missing_checkout') {
+          row.days[day] = '1/2K';
+          row.dayReasons[day] =
+            `Thiếu chấm công ra - chỉ có giờ vào lúc ${checkInStr}, chưa quẹt ra lần nào trong ngày.`;
+        } else if (r.workHours != null && r.workHours < 4.5) {
+          row.days[day] = '1/2K';
+          row.dayReasons[day] =
+            `Chỉ làm ${r.workHours.toFixed(1)}h (${checkInStr} → ${checkOutStr}) - dưới 4.5h chuẩn nửa ngày.`;
+        } else {
+          row.days[day] = 'X';
+          row.dayReasons[day] = checkOutStr
+            ? `Vào: ${checkInStr}, Ra: ${checkOutStr}${r.workHours != null ? ` (${r.workHours.toFixed(1)}h)` : ''}`
+            : `Vào: ${checkInStr}`;
+        }
       }
 
       if (r.isLate && r.checkIn) {
@@ -242,11 +278,18 @@ export default function AttendanceMonthlyTab() {
       const isUnpaid = leave.leaveType === 'unpaid';
       const mark: DayMark = isHalf ? (isUnpaid ? '1/2K' : 'X/2') : isUnpaid ? 'KL' : 'P';
       const fraction = isHalf ? 0.5 : 1;
+      const leaveReason = [
+        `Đơn nghỉ đã duyệt: ${LEAVE_TYPE_LABEL[leave.leaveType] || leave.leaveType} (${LEAVE_DURATION_LABEL[leave.duration] || leave.duration})`,
+        leave.reason?.trim() ? `Lý do: ${leave.reason.trim()}` : null,
+      ]
+        .filter(Boolean)
+        .join(' — ');
 
       let cursor = rangeStart;
       while (!cursor.isAfter(rangeEnd, 'day')) {
         const day = cursor.date();
         row.days[day] = mark;
+        row.dayReasons[day] = leaveReason; // đè lên lý do suy luận từ chấm công (nếu có) - đơn nghỉ là nguồn xác thực cao hơn
         if (isUnpaid) row.unpaidLeaveDays += fraction;
         else row.paidLeaveDays += fraction;
         cursor = cursor.add(1, 'day');
@@ -267,6 +310,7 @@ export default function AttendanceMonthlyTab() {
         const isSunday = monthStart.date(d).day() === 0;
         if (isSunday) continue; // Chủ nhật không phải ngày công chuẩn - không tính vắng
         row.days[d] = 'KL';
+        row.dayReasons[d] = 'Không có dữ liệu chấm công và không có đơn nghỉ nào được duyệt - vắng không phép.';
         row.unpaidLeaveDays += 1;
       }
     }
@@ -337,10 +381,20 @@ export default function AttendanceMonthlyTab() {
         render: (_: unknown, record: EmployeeMonthRow) => {
           const mark = record.days[d];
           if (!mark) return null;
+          const reason = record.dayReasons[d];
           return (
-            <span style={{ color: MARK_COLOR[mark], fontWeight: 600 }} title={MARK_LABEL[mark]}>
-              {mark}
-            </span>
+            <Tooltip
+              title={
+                <div>
+                  <div style={{ fontWeight: 600 }}>{MARK_LABEL[mark]}</div>
+                  {reason && <div style={{ marginTop: 2 }}>{reason}</div>}
+                </div>
+              }
+            >
+              <span style={{ color: MARK_COLOR[mark], fontWeight: 600, cursor: 'default' }}>
+                {mark}
+              </span>
+            </Tooltip>
           );
         },
       });
