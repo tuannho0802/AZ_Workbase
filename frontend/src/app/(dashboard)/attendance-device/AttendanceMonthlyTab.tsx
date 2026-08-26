@@ -121,7 +121,11 @@ export default function AttendanceMonthlyTab() {
         departmentName: u.department?.name || '—',
         annualLeaveBalance: u.annualLeaveBalance ?? null,
         days: {},
-        actualWorkDays: standardWorkDays,
+        // Tính lại ở bước cuối (xem "Tính lại actualWorkDays..." bên dưới) -
+        // dựa trên dữ liệu chấm công/nghỉ phép THẬT, không gán cứng theo
+        // Ngày công chuẩn nữa (bug đã phát hiện: nhân viên đã map luôn ra
+        // đúng 1 số cố định dù có/không đi làm thật).
+        actualWorkDays: 0,
         paidLeaveDays: 0,
         unpaidLeaveDays: 0,
         lateEntries: [],
@@ -136,12 +140,11 @@ export default function AttendanceMonthlyTab() {
     // thị riêng ra đây, có màu khác, để dễ nhận biết và biết cần map ai.
     const unmappedMap = new Map<string, EmployeeMonthRow>();
 
-    // Đánh dấu 'X' từ dữ liệu chấm công thật - chỉ mang tính hiển thị trực
-    // quan (đi làm ngày nào), KHÔNG dùng để tính cột "Ngày công thực tế"
-    // của user ĐÃ map (cột đó tính bằng Ngày công chuẩn trừ đi ngày nghỉ,
-    // xem bên dưới). Đồng thời gom lại từng lần đi trễ/về sớm trong tháng
-    // cho cột "Ghi chú" (theo đúng mẫu bảng chấm công - liệt kê ngày/giờ +
-    // số phút trễ/sớm).
+    // Đánh dấu 'X' từ dữ liệu chấm công thật (đi làm ngày nào) - dùng CẢ để
+    // hiển thị trực quan LẪN để tính "Ngày công thực tế" (xem bước tính
+    // WORK_CREDIT ở cuối, sau khi đã áp nghỉ phép đè lên). Đồng thời gom lại
+    // từng lần đi trễ/về sớm trong tháng cho cột "Ghi chú" (theo đúng mẫu
+    // bảng chấm công - liệt kê ngày/giờ + số phút trễ/sớm).
     for (const r of attendanceData?.data || []) {
       let row: EmployeeMonthRow | undefined;
 
@@ -184,11 +187,6 @@ export default function AttendanceMonthlyTab() {
       const day = dayjs(r.date).date();
       if (!row.days[day]) {
         row.days[day] = 'X';
-        // Dòng chưa map không có khái niệm "ngày công chuẩn trừ nghỉ phép"
-        // (không phải nhân viên hệ thống, không có đơn nghỉ) - đếm trực
-        // tiếp số ngày CÓ chấm công làm "Ngày công thực tế" cho dễ hiểu,
-        // thay vì luôn hiện 1 con số cố định vô nghĩa.
-        if (!row.isMapped) row.actualWorkDays += 1;
       }
 
       if (r.isLate && r.checkIn) {
@@ -238,7 +236,6 @@ export default function AttendanceMonthlyTab() {
       while (!cursor.isAfter(rangeEnd, 'day')) {
         const day = cursor.date();
         row.days[day] = mark;
-        row.actualWorkDays -= fraction;
         if (isUnpaid) row.unpaidLeaveDays += fraction;
         else row.paidLeaveDays += fraction;
         cursor = cursor.add(1, 'day');
@@ -248,6 +245,34 @@ export default function AttendanceMonthlyTab() {
     // Log chấm công không đảm bảo đến theo thứ tự ngày (đến từ query đã sort
     // theo recordTime ASC rồi gom nhóm) - sắp lại theo ngày cho dễ đọc.
     const allRows = [...map.values(), ...unmappedMap.values()];
+
+    // Tính lại "Ngày công thực tế" từ đúng dấu NGÀY CUỐI CÙNG của từng ô
+    // (row.days) - SAU khi cả 2 vòng lặp trên đã chạy xong, để không đếm
+    // nhầm ngày vừa có chấm công (X) vừa trùng đơn nghỉ đã duyệt (nghỉ phép
+    // ghi đè X ở bước trên, nên chỉ cần đếm theo dấu CUỐI CÙNG là chính xác,
+    // không cần cộng/trừ rải rác qua nhiều bước như bản cũ - đúng nguyên
+    // nhân bug "nhân viên đã map luôn ra cố định = Ngày công chuẩn" trước
+    // đây: bản cũ gán actualWorkDays = standardWorkDays rồi chỉ trừ ngày
+    // nghỉ, KHÔNG hề dựa vào dấu X thật - nhân viên có đi làm hay không vẫn
+    // ra cùng 1 số).
+    // Quy tắc tính công: X (đi làm thật) = 1 công; X/2 (nghỉ nửa ngày HƯỞNG
+    // LƯƠNG) = 0.5 công; P (nghỉ phép hưởng lương cả ngày) = 1 công; 1/2K và
+    // KL (nghỉ KHÔNG LƯƠNG) = 0 công (đúng bản chất "không lương" - không
+    // tính là ngày công); không có dấu gì = 0 công (vắng không phép).
+    const WORK_CREDIT: Record<DayMark, number> = {
+      X: 1,
+      'X/2': 0.5,
+      P: 1,
+      '1/2K': 0,
+      KL: 0,
+    };
+    for (const row of allRows) {
+      row.actualWorkDays = Object.values(row.days).reduce(
+        (sum, mark) => sum + (mark ? WORK_CREDIT[mark] : 0),
+        0,
+      );
+    }
+
     for (const row of allRows) {
       row.lateEntries.sort((a, b) => a.dateStr.localeCompare(b.dateStr));
       row.earlyEntries.sort((a, b) => a.dateStr.localeCompare(b.dateStr));
