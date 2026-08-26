@@ -19,6 +19,17 @@ export interface SyncSummary {
   startedAt: string;
   finishedAt: string;
   totalFetchedFromDevice: number;
+  // Khoảng ngày đã lọc để ghi vào DB (null = không giới hạn). CHỈ ảnh hưởng
+  // bước match/insert, KHÔNG giảm được thời gian tải từ máy (xem backend).
+  fromDate: string | null;
+  toDate: string | null;
+  recordsInRange: number;
+  // Số log THẬT SỰ máy báo có (qua getInfo().logCounts) - null nếu không lấy được.
+  expectedLogCount: number | null;
+  // true nếu sau khi đã thử lại vẫn có thể thiếu data - cần hiển thị cảnh báo rõ cho admin.
+  partialFetch: boolean;
+  fetchAttempts: number;
+  fetchWarning: string | null;
   insertedNew: number;
   matchedToUser: number;
   unmatchedDeviceUserIds: string[];

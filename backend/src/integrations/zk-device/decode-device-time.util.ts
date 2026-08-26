@@ -133,3 +133,37 @@ export function toNaiveApiString(d: Date): string {
     d.getHours(),
   )}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
 }
+
+/**
+ * Dựng mốc ĐẦU ngày (00:00:00.000) từ chuỗi "YYYY-MM-DD" bằng constructor
+ * LOCAL - CÙNG nguyên tắc với `vnLocalDate` ở trên (`new Date(y, m, d, ...)`,
+ * KHÔNG dùng `new Date("YYYY-MM-DD")` hay `Date.UTC(...)`) - để so sánh
+ * trực tiếp `<`/`>` được với `recordTime` (cũng local-constructed) mà không
+ * lệch theo múi giờ tiến trình Node đang chạy (dev máy VN vs Vercel UTC).
+ * Dùng cho lọc khoảng ngày khi đồng bộ (`syncNow({ from, to })`).
+ */
+export function parseLocalDateStart(isoDate: string): Date {
+  const [y, m, d] = isoDate.split('-').map(Number);
+  return new Date(y, m - 1, d, 0, 0, 0, 0);
+}
+
+/** Tương tự parseLocalDateStart nhưng lấy mốc CUỐI ngày (23:59:59.999), bao gồm cả ngày đó. */
+export function parseLocalDateEnd(isoDate: string): Date {
+  const [y, m, d] = isoDate.split('-').map(Number);
+  return new Date(y, m - 1, d, 23, 59, 59, 999);
+}
+
+/**
+ * Chuỗi "YYYY-MM-DD" của "hôm nay" theo giờ VN (GMT+7) - KHÔNG phụ thuộc
+ * múi giờ server (dùng getUTC* trên epoch đã cộng sẵn 7h, không phải local
+ * getter, để luôn đúng dù server chạy UTC (Vercel) hay giờ VN (local)).
+ * Dùng riêng cho endpoint cron "sync-today" - nơi không có input ngày từ
+ * người dùng để tự suy luận theo cách local-constructor như các hàm trên.
+ */
+export function getVnTodayIsoDate(): string {
+  const vn = new Date(Date.now() + 7 * 60 * 60 * 1000);
+  const y = vn.getUTCFullYear();
+  const m = pad(vn.getUTCMonth() + 1);
+  const d = pad(vn.getUTCDate());
+  return `${y}-${m}-${d}`;
+}

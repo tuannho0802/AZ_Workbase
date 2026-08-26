@@ -11,6 +11,8 @@ import { QueryAttendanceSummaryDto } from './dto/query-attendance-summary.dto';
 import {
   decodeDeviceLocalTime,
   toNaiveApiString,
+  parseLocalDateStart,
+  parseLocalDateEnd,
 } from '../../integrations/zk-device/decode-device-time.util';
 import { readAttendanceLogsSequential } from '../../integrations/zk-device/sequential-attendance-reader.util';
 
@@ -43,6 +45,16 @@ export interface SyncSummary {
   startedAt: Date;
   finishedAt: Date;
   totalFetchedFromDevice: number;
+  // ⚠️ Khoảng ngày đã lọc để GHI VÀO DB (nếu có yêu cầu) - null nghĩa là
+  // không giới hạn ở phía đó. LƯU Ý QUAN TRỌNG: đây CHỈ giới hạn bước
+  // match/insert vào DB, KHÔNG giảm được thời gian tải từ máy - giao thức
+  // ZKTeco gốc không hỗ trợ xin log theo khoảng ngày, máy luôn trả về TOÀN
+  // BỘ bảng log mỗi lần yêu cầu (xem readAttendanceLogsSequential()).
+  fromDate: string | null;
+  toDate: string | null;
+  // Số log rơi vào đúng khoảng [fromDate, toDate] trong tổng số fetch được -
+  // đây là số THẬT SỰ được đưa vào bước match/insert bên dưới.
+  recordsInRange: number;
   // Số log THẬT SỰ máy báo có (qua zk.getInfo().logCounts) - dùng để đối
   // chiếu xem lần fetch này có bị thiếu hay không. null nếu không lấy được
   // getInfo() (vd máy không hỗ trợ / lỗi kết nối lúc gọi).
@@ -639,8 +651,18 @@ export class ZkDeviceService {
    * (tối đa MAX_SYNC_ATTEMPTS lần, mỗi lần dùng 1 kết nối MỚI) cho tới khi
    * fetch đủ số lượng khớp `logCounts` VÀ không có `err` - đảm bảo production
    * luôn lấy đủ dữ liệu y hệt local trước khi coi là xong.
+   *
+   * ⚠️ VỀ THAM SỐ `range` (khoảng ngày, tuỳ chọn): CHỈ giới hạn bước
+   * match-với-nhân-viên + ghi vào DB (`attendance_logs`) - KHÔNG giảm được
+   * thời gian/dung lượng TẢI TỪ MÁY. Giao thức ZKTeco gốc (`CMD_DATA_WRRQ` +
+   * `GET_ATTENDANCE_LOGS`) không có khái niệm "xin log từ ngày X" - máy luôn
+   * trả về TOÀN BỘ bảng log mỗi lần yêu cầu, bất kể sau đó ta lọc gì. Lợi ích
+   * thật của `range` là: (1) giảm số dòng cần decode/match/INSERT vào DB -
+   * nhanh hơn đáng kể khi chỉ cần "hôm nay" thay vì toàn bộ lịch sử, (2)
+   * response trả về gọn hơn. KHÔNG giúp giảm rủi ro timeout khi tải từ máy
+   * (vấn đề đó đã được xử lý riêng bởi `readAttendanceLogsSequential` ở trên).
    */
-  async syncNow(): Promise<SyncSummary> {
+  async syncNow(range?: { from?: Date; to?: Date }): Promise<SyncSummary> {
     if (this.isSyncing) {
       throw new Error('Đang có 1 lượt đồng bộ khác chạy, vui lòng thử lại sau.');
     }
@@ -768,16 +790,42 @@ export class ZkDeviceService {
         mappedUsers.map((u) => [u.zkDeviceUserId as string, u.id]),
       );
 
+      // Decode giờ 1 LẦN cho toàn bộ records fetch được (dù có lọc range hay
+      // không), rồi tái sử dụng kết quả decode này cho cả bước lọc range lẫn
+      // bước insert bên dưới - tránh decode trùng lặp 2 lần/dòng.
+      let invalidTimeCount = 0;
+      const decoded: { rec: DeviceAttendanceRecord; time: Date | null }[] = records.map(
+        (rec) => {
+          try {
+            return { rec, time: decodeDeviceLocalTime(rec.recordTime).vnLocalDate };
+          } catch {
+            invalidTimeCount++;
+            return { rec, time: null }; // dòng log hỏng ở tầng giao thức -> bỏ qua sau
+          }
+        },
+      );
+
+      // Lọc theo khoảng ngày yêu cầu (nếu có) - xem giải thích ở docblock
+      // phía trên: chỉ giới hạn bước match/insert bên dưới, KHÔNG ảnh hưởng
+      // gì tới `records`/`totalFetchedFromDevice` (vẫn là số THẬT đã tải).
+      const inRange = decoded.filter(({ time }) => {
+        if (time === null) return true; // để đếm invalidTimeCount & bỏ qua như cũ, không lọc nhầm ở đây
+        if (range?.from && time < range.from) return false;
+        if (range?.to && time > range.to) return false;
+        return true;
+      });
+
       const unmatchedSet = new Set<string>();
       let insertedNew = 0;
       let matchedToUser = 0;
-      let invalidTimeCount = 0;
 
       const CHUNK_SIZE = 500;
-      for (let i = 0; i < records.length; i += CHUNK_SIZE) {
-        const chunk = records.slice(i, i + CHUNK_SIZE);
+      for (let i = 0; i < inRange.length; i += CHUNK_SIZE) {
+        const chunk = inRange.slice(i, i + CHUNK_SIZE);
         const values = chunk
-          .map((rec) => {
+          .map(({ rec, time }) => {
+            if (time === null) return null; // giờ hỏng - đã đếm ở invalidTimeCount, bỏ qua không insert
+
             const matchedUserId = userIdByDeviceUserId.get(rec.deviceUserId) ?? null;
             if (matchedUserId) {
               matchedToUser++;
@@ -785,25 +833,11 @@ export class ZkDeviceService {
               unmatchedSet.add(rec.deviceUserId);
             }
 
-            // ⚠️ KHÔNG dùng `new Date(rec.recordTime)` trực tiếp - Date do
-            // node-zklib trả về lệch giờ nếu server không chạy GMT+7 (bug đã
-            // phát hiện qua test-connection.ts). Phải giải mã lại đúng 6 con
-            // số máy đã ghi rồi LƯU NGUYÊN VĂN (không quy đổi UTC nào cả -
-            // xem decode-device-time.util.ts để hiểu vì sao đây là cách đúng
-            // và không phụ thuộc múi giờ server).
-            let recordTime: Date;
-            try {
-              recordTime = decodeDeviceLocalTime(rec.recordTime).vnLocalDate;
-            } catch {
-              invalidTimeCount++;
-              return null; // dòng log hỏng ở tầng giao thức -> bỏ qua, không làm crash cả lượt sync
-            }
-
             return {
               deviceSerialNumber: this.deviceSerial,
               deviceUserId: rec.deviceUserId,
               userSn: rec.userSn,
-              recordTime,
+              recordTime: time,
               matchedUserId,
               source: AttendanceSource.DEVICE_PULL,
             };
@@ -851,6 +885,9 @@ export class ZkDeviceService {
         startedAt,
         finishedAt,
         totalFetchedFromDevice: records.length,
+        fromDate: range?.from ? toNaiveApiString(range.from).slice(0, 10) : null,
+        toDate: range?.to ? toNaiveApiString(range.to).slice(0, 10) : null,
+        recordsInRange: inRange.length,
         expectedLogCount,
         partialFetch,
         fetchAttempts: attempt,
@@ -862,7 +899,7 @@ export class ZkDeviceService {
       };
 
       this.logger.log(
-        `Đồng bộ xong: fetched=${summary.totalFetchedFromDevice}, insertedNew~=${summary.insertedNew}, matched=${summary.matchedToUser}, unmatchedUsers=${summary.unmatchedDeviceUserIds.length}, partialFetch=${partialFetch}`,
+        `Đồng bộ xong: fetched=${summary.totalFetchedFromDevice}, inRange=${summary.recordsInRange}, insertedNew~=${summary.insertedNew}, matched=${summary.matchedToUser}, unmatchedUsers=${summary.unmatchedDeviceUserIds.length}, partialFetch=${partialFetch}`,
       );
 
       return summary;

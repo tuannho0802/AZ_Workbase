@@ -33,8 +33,9 @@ export const zkDeviceApi = {
     return response.data;
   },
 
-  syncNow: async (): Promise<SyncSummary> => {
-    const response = await axiosInstance.post('/zk-device/sync');
+  /** payload rỗng/undefined = đồng bộ toàn bộ (như cũ). Truyền from/to (YYYY-MM-DD) để chỉ đồng bộ 1 khoảng ngày - nhẹ hơn, nhanh hơn. */
+  syncNow: async (payload?: { from?: string; to?: string }): Promise<SyncSummary> => {
+    const response = await axiosInstance.post('/zk-device/sync', payload || {});
     return response.data;
   },
 

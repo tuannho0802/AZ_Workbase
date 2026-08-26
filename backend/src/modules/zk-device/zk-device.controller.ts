@@ -17,6 +17,11 @@ import { MapDeviceUserDto } from './dto/map-device-user.dto';
 import { QueryAttendanceLogDto } from './dto/query-attendance-log.dto';
 import { QueryAttendanceSummaryDto } from './dto/query-attendance-summary.dto';
 import { CleanupAttendanceLogsDto } from './dto/cleanup-attendance-logs.dto';
+import { SyncAttendanceDto } from './dto/sync-attendance.dto';
+import {
+  parseLocalDateStart,
+  parseLocalDateEnd,
+} from '../../integrations/zk-device/decode-device-time.util';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { RolesGuard } from '../../common/guards/roles.guard';
 import { Roles } from '../../common/decorators/roles.decorator';
@@ -108,10 +113,16 @@ export class ZkDeviceController {
   }
 
   @Post('sync')
-  @ApiOperation({ summary: 'Kích hoạt đồng bộ log chấm công ngay lập tức (thủ công)' })
-  async syncNow() {
+  @ApiOperation({
+    summary:
+      'Kích hoạt đồng bộ log chấm công ngay lập tức (thủ công). Có thể truyền from/to (YYYY-MM-DD) để chỉ đồng bộ 1 khoảng ngày - giúp nhẹ hơn/nhanh hơn cho các lần sync định kỳ, thay vì luôn quét lại toàn bộ lịch sử. Bỏ trống from/to = đồng bộ toàn bộ như trước.',
+  })
+  async syncNow(@Body() dto: SyncAttendanceDto) {
     try {
-      return await this.zkDeviceService.syncNow();
+      return await this.zkDeviceService.syncNow({
+        from: dto.from ? parseLocalDateStart(dto.from) : undefined,
+        to: dto.to ? parseLocalDateEnd(dto.to) : undefined,
+      });
     } catch (err) {
       throw new HttpException(
         `Đồng bộ thất bại: ${this.getErrorMessage(err)}`,
