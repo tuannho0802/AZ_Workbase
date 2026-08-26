@@ -9,6 +9,7 @@ import { AttendanceSource } from '../../common/enums/attendance-source.enum';
 import { QueryAttendanceLogDto } from './dto/query-attendance-log.dto';
 import { QueryAttendanceSummaryDto } from './dto/query-attendance-summary.dto';
 import { decodeDeviceLocalTime } from '../../integrations/zk-device/decode-device-time.util';
+import { readAttendanceLogsSequential } from '../../integrations/zk-device/sequential-attendance-reader.util';
 
 // node-zklib chưa có type definition chính thức -> import kiểu require,
 // coi là "any" (tsconfig của project đã bật noImplicitAny: false).
@@ -643,14 +644,33 @@ export class ZkDeviceService {
           deviceUsers = usersResult?.data ?? [];
           await this.upsertDeviceUserCache(deviceUsers);
 
-          const logsResult = await zk.getAttendances((received: number, total: number) => {
-            if (total > 0 && received % 1000 === 0) {
-              this.logger.debug(`[Lần ${attempt}] Đang tải log: ${received}/${total}`);
-            }
-          });
-          records = logsResult?.data ?? [];
+          // ⚠️ THAY ĐỔI QUAN TRỌNG: KHÔNG dùng zk.getAttendances() gốc của
+          // node-zklib nữa (bắn hết ~7 chunk cùng lúc trên 1 kết nối - gây
+          // nghẽn/rớt 2 gói cuối khi qua kết nối xa như Vercel -> IP public
+          // port-forward tại nhà, đã xác nhận qua log thực tế luôn dừng ở
+          // đúng 1 điểm cố định). Dùng bản đọc TUẦN TỰ tự viết (xem
+          // sequential-attendance-reader.util.ts) - xin xong 1 chunk mới xin
+          // chunk tiếp theo, có retry RIÊNG cho từng chunk lẻ. Đã đối chiếu
+          // 100% khớp nội dung với bản gốc qua script zk:test-sequential
+          // trước khi đưa vào đây.
+          let libErr: Error | null = null;
+          try {
+            records = await readAttendanceLogsSequential(
+              zk.zklibTcp,
+              ({ receivedBytes, totalBytes }) => {
+                if (totalBytes > 0 && receivedBytes % 65472 < 100) {
+                  this.logger.debug(
+                    `[Lần ${attempt}] Đang tải log: ${receivedBytes}/${totalBytes} byte`,
+                  );
+                }
+              },
+            );
+          } catch (err) {
+            libErr = err as Error;
+            records = [];
+          }
 
-          const hasLibError = !!logsResult?.err;
+          const hasLibError = !!libErr;
           const countMismatch =
             expectedLogCount != null && records.length < expectedLogCount;
 
@@ -662,7 +682,7 @@ export class ZkDeviceService {
 
           partialFetch = true;
           fetchWarning = hasLibError
-            ? `Lỗi khi nhận dữ liệu từ máy: ${logsResult.err.message}`
+            ? `Lỗi khi nhận dữ liệu từ máy: ${libErr!.message}`
             : `Chỉ nhận được ${records.length}/${expectedLogCount} log máy báo có`;
           this.logger.warn(
             `[Lần ${attempt}/${ZkDeviceService.MAX_SYNC_ATTEMPTS}] Fetch chưa đủ: ${fetchWarning}`,
@@ -683,6 +703,14 @@ export class ZkDeviceService {
           await new Promise((r) => setTimeout(r, ZkDeviceService.SYNC_RETRY_DELAY_MS));
         }
       }
+
+      // ⚠️ FIX BUG off-by-one: khi vòng lặp for chạy HẾT cả MAX_SYNC_ATTEMPTS
+      // lần mà không lần nào break (fetch đủ), `attempt++` vẫn chạy thêm 1
+      // lần cuối trước khi điều kiện `attempt <= MAX` sai và thoát vòng lặp -
+      // nên biến `attempt` lúc này bị lố lên 1 so với số lần THẬT SỰ đã chạy.
+      // Ví dụ MAX=4, chạy đủ 4 lần không break -> attempt thành 5. Kẹp lại
+      // đúng giá trị thật để báo cáo (log + SyncSummary) không bị sai số.
+      attempt = Math.min(attempt, ZkDeviceService.MAX_SYNC_ATTEMPTS);
 
       this.logger.log(
         partialFetch
