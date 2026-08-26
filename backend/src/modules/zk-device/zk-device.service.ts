@@ -151,6 +151,15 @@ export class ZkDeviceService {
       .into(ZkDeviceUserCache)
       .values(values)
       .orUpdate(['name'], ['device_serial_number', 'device_user_id'])
+      // ⚠️ FIX BUG (đúng nguyên nhân lỗi "Cannot update entity because entity
+      // id is not set in the entity" khi mở tab Mapping nhân viên): mặc định
+      // TypeORM cố ghi lại id do DB tự sinh vào TỪNG object trong `values`
+      // sau khi insert/upsert hàng loạt. Với MySQL, insert NHIỀU dòng/1 câu
+      // lệnh chỉ trả về ĐÚNG 1 insertId (dòng đầu) - TypeORM không map được
+      // id cho các dòng còn lại -> ném lỗi này. Đã tắt ở syncNow()/
+      // ingestPushAttendance() nhưng quên áp dụng ở đây (hàm mới thêm sau) -
+      // đây chính là chỗ còn sót gây lỗi khi mở tab "Mapping nhân viên".
+      .updateEntity(false)
       .execute();
   }
 
@@ -309,17 +318,14 @@ export class ZkDeviceService {
       .take(limit)
       .getManyAndCount();
 
-    // Gắn thêm tên user TRÊN MÁY (từ cache) cho các log CHƯA khớp nhân viên
-    // hệ thống - để UI hiển thị tên thật thay vì chỉ trơ mã UID số.
-    const unmatchedDeviceUserIds = Array.from(
-      new Set(data.filter((l) => !l.matchedUserId).map((l) => l.deviceUserId)),
-    );
-    const deviceNameByUserId = await this.getDeviceUserNameMap(unmatchedDeviceUserIds);
+    // Gắn thêm tên user TRÊN MÁY (từ cache) cho MỌI log - không chỉ log
+    // CHƯA khớp - để UI (tab "Logs chấm công") không bao giờ phải hiện trơ
+    // mã UID, kể cả khi cần fallback hiển thị tên máy cho log đã khớp.
+    const allDeviceUserIds = Array.from(new Set(data.map((l) => l.deviceUserId)));
+    const deviceNameByUserId = await this.getDeviceUserNameMap(allDeviceUserIds);
     const enriched = data.map((log) => ({
       ...log,
-      deviceUserName: log.matchedUserId
-        ? null
-        : (deviceNameByUserId.get(log.deviceUserId) ?? null),
+      deviceUserName: deviceNameByUserId.get(log.deviceUserId) ?? null,
     }));
 
     return { data: enriched, total, page, limit, totalPages: Math.ceil(total / limit) };
@@ -426,12 +432,12 @@ export class ZkDeviceService {
 
     const logs = await qb.getMany();
 
-    // Tên user TRÊN MÁY (từ cache) cho các deviceUserId CHƯA map - dùng làm
-    // tên hiển thị thay vì trơ mã UID.
-    const unmatchedDeviceUserIds = Array.from(
-      new Set(logs.filter((l) => !l.matchedUserId).map((l) => l.deviceUserId)),
-    );
-    const deviceNameByUserId = await this.getDeviceUserNameMap(unmatchedDeviceUserIds);
+    // Tên user TRÊN MÁY (từ cache) cho MỌI deviceUserId xuất hiện trong log -
+    // không chỉ user CHƯA map: user ĐÃ map cũng cần tên này để UI hiển thị
+    // phụ đề "(tên trên máy)" dưới tên nhân viên hệ thống (yêu cầu từ tab
+    // "Tổng hợp chấm công" - vd "Admin" kèm "(TuanIT)" bên dưới).
+    const allDeviceUserIds = Array.from(new Set(logs.map((l) => l.deviceUserId)));
+    const deviceNameByUserId = await this.getDeviceUserNameMap(allDeviceUserIds);
 
     type DayGroup = {
       // userId = null nghĩa là group này thuộc 1 deviceUserId CHƯA map với
@@ -440,6 +446,11 @@ export class ZkDeviceService {
       userName: string;
       isMapped: boolean;
       deviceUserId: string;
+      // Tên user đăng ký TRÊN MÁY (từ cache) - có giá trị cho CẢ user đã map
+      // lẫn chưa map (khác `userName`: với user đã map, `userName` là tên hệ
+      // thống, còn field này luôn là tên trên máy, dùng làm phụ đề ở UI).
+      // null nếu cache chưa có tên (vd user đã bị xoá khỏi máy từ trước).
+      deviceUserName: string | null;
       date: string;
       checkIn: Date;
       checkOut: Date;
@@ -484,6 +495,7 @@ export class ZkDeviceService {
             : (deviceNameByUserId.get(log.deviceUserId) ?? `UID ${log.deviceUserId}`),
           isMapped,
           deviceUserId: log.deviceUserId,
+          deviceUserName: deviceNameByUserId.get(log.deviceUserId) ?? null,
           date: dateKey,
           checkIn: log.recordTime,
           checkOut: log.recordTime,
@@ -522,6 +534,7 @@ export class ZkDeviceService {
           userName: g.userName,
           isMapped: g.isMapped,
           deviceUserId: g.deviceUserId,
+          deviceUserName: g.deviceUserName,
           date: g.date,
           checkIn: g.checkIn,
           checkOut: hasCheckout ? g.checkOut : null,

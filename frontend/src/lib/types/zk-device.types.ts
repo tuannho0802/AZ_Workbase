@@ -35,7 +35,7 @@ export interface AttendanceLog {
   verifyMode: string | null;
   matchedUserId: number | null;
   matchedUser: { id: number; name: string } | null;
-  deviceUserName: string | null; // tên trên máy (từ cache) - chỉ có giá trị khi CHƯA khớp nhân viên
+  deviceUserName: string | null; // tên trên máy (từ cache) - có cho MỌI log, kể cả đã khớp nhân viên
   source: 'device_pull' | 'device_push';
   syncedAt: string;
 }
@@ -69,6 +69,11 @@ export interface AttendanceSummaryRow {
   userName: string; // tên nhân viên nếu đã map, hoặc tên/UID trên máy nếu chưa map
   isMapped: boolean;
   deviceUserId: string; // mã user trên máy - luôn có, kể cả khi đã map
+  // Tên đăng ký TRÊN MÁY (từ cache) - có giá trị cho CẢ user đã map lẫn chưa
+  // map (khác `userName`: với user đã map, `userName` là tên hệ thống, còn
+  // field này luôn là tên trên máy - dùng làm phụ đề "(tên trên máy)" ở UI).
+  // null nếu cache chưa có tên (vd user đã bị xoá khỏi máy từ trước).
+  deviceUserName: string | null;
   date: string; // YYYY-MM-DD (giờ VN)
   checkIn: string;
   checkOut: string | null;

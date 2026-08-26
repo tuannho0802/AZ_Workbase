@@ -60,7 +60,9 @@ export default function AttendanceLogsTab() {
         r.matchedUser ? (
           <Tag color="green">{r.matchedUser.name}</Tag>
         ) : (
-          <Tag color="orange">Chưa khớp (mã máy: {r.deviceUserId})</Tag>
+          <Tag color="orange">
+            Chưa khớp: {r.deviceUserName || `UID ${r.deviceUserId}`}
+          </Tag>
         ),
     },
     {

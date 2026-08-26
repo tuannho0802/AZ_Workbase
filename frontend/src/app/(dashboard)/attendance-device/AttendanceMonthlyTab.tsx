@@ -51,6 +51,11 @@ interface EmployeeMonthRow {
   key: string;
   userId: number | null;
   deviceUserId: string | null; // chỉ có giá trị khi isMapped=false
+  // Tên đăng ký TRÊN MÁY (từ cache) - có cho CẢ dòng đã map (dùng làm phụ đề
+  // "(tên trên máy)" dưới tên nhân viên hệ thống) lẫn chưa map (dùng thẳng
+  // làm userName - xem chỗ tạo unmappedMap bên dưới). null nếu cache chưa có
+  // tên (vd log rất cũ, user đã bị xoá khỏi máy từ trước khi cache ra đời).
+  deviceUserName: string | null;
   isMapped: boolean;
   userName: string;
   departmentName: string;
@@ -110,6 +115,7 @@ export default function AttendanceMonthlyTab() {
         key: `u-${u.id}`,
         userId: u.id,
         deviceUserId: null,
+        deviceUserName: null,
         isMapped: true,
         userName: u.name,
         departmentName: u.department?.name || '—',
@@ -142,6 +148,10 @@ export default function AttendanceMonthlyTab() {
       if (r.isMapped && r.userId != null) {
         row = map.get(r.userId);
         if (!row) continue; // bị lọc theo Select "Lọc theo nhân viên" ở trên
+        // Ghi lại tên trên máy làm phụ đề - chỉ cần gán 1 lần (đủ dùng, dù
+        // lý thuyết 1 nhân viên có thể có nhiều deviceUserId lịch sử do đổi
+        // mapping - trường hợp hiếm, không đáng xử lý thêm cho tab tổng hợp).
+        if (!row.deviceUserName && r.deviceUserName) row.deviceUserName = r.deviceUserName;
       } else {
         // Chưa map - lấy hoặc tạo mới dòng theo deviceUserId. Nếu người
         // dùng đang lọc theo 1 nhân viên cụ thể (userId !== undefined), ẩn
@@ -155,6 +165,7 @@ export default function AttendanceMonthlyTab() {
             key,
             userId: null,
             deviceUserId: r.deviceUserId,
+            deviceUserName: r.deviceUserName,
             isMapped: false,
             userName: r.userName,
             departmentName: 'Chưa map với nhân viên',
@@ -300,7 +311,19 @@ export default function AttendanceMonthlyTab() {
       ellipsis: true,
       render: (_: unknown, record: EmployeeMonthRow) =>
         record.isMapped ? (
-          record.userName
+          record.deviceUserName ? (
+            // Đã map + biết tên trên máy - hiện tên hệ thống, kèm phụ đề tên
+            // trên máy bên dưới (vd "Admin" / "(TuanIT)") để admin dễ đối
+            // chiếu đang map đúng người trên máy hay không.
+            <span title={`Đã map với "${record.deviceUserName}" trên máy`}>
+              <div>{record.userName}</div>
+              <div style={{ fontSize: 12, color: '#bfbfbf', fontWeight: 400 }}>
+                ({record.deviceUserName})
+              </div>
+            </span>
+          ) : (
+            record.userName
+          )
         ) : (
           <span title={`Chưa map - mã máy: ${record.deviceUserId}`}>
             <span style={{ color: '#d46b08' }}>{record.userName}</span>{' '}
