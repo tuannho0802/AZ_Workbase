@@ -39,6 +39,18 @@ export interface SyncSummary {
   startedAt: Date;
   finishedAt: Date;
   totalFetchedFromDevice: number;
+  // Số log THẬT SỰ máy báo có (qua zk.getInfo().logCounts) - dùng để đối
+  // chiếu xem lần fetch này có bị thiếu hay không. null nếu không lấy được
+  // getInfo() (vd máy không hỗ trợ / lỗi kết nối lúc gọi).
+  expectedLogCount: number | null;
+  // true nếu SAU KHI đã thử lại đủ MAX_SYNC_ATTEMPTS lần vẫn không fetch đủ
+  // (records.length < expectedLogCount) hoặc thư viện báo lỗi giữa chừng -
+  // admin cần biết để không tin nhầm vào 1 con số bị cắt cụt.
+  partialFetch: boolean;
+  // Số lần đã thử fetch thực tế trong lượt sync này (1 = thành công ngay từ đầu).
+  fetchAttempts: number;
+  // Mô tả lỗi/lý do thiếu data của LẦN THỬ CUỐI CÙNG, null nếu fetch đủ.
+  fetchWarning: string | null;
   insertedNew: number;
   matchedToUser: number;
   unmatchedDeviceUserIds: string[];
@@ -558,11 +570,32 @@ export class ZkDeviceService {
     return { data, total, page, limit, totalPages: Math.ceil(total / limit) };
   }
 
+  // Số lần thử lại tối đa khi fetch từ máy bị thiếu/lỗi giữa chừng (xem giải
+  // thích SYNC_RETRY_DELAY_MS bên dưới). Đặt vừa phải để không vượt quá thời
+  // gian chạy tối đa của Vercel serverless function.
+  private static readonly MAX_SYNC_ATTEMPTS = 4;
+  private static readonly SYNC_RETRY_DELAY_MS = 2000;
+
   /**
    * Đồng bộ toàn bộ log chấm công từ máy về DB.
    * An toàn để gọi lặp lại nhiều lần: nhờ ràng buộc UNIQUE
    * (device_serial_number, user_sn) trên bảng attendance_logs,
    * log đã tồn tại sẽ tự bị bỏ qua (INSERT IGNORE), không nhân đôi dữ liệu.
+   *
+   * ⚠️ BUG THẬT ĐÃ PHÁT HIỆN: thư viện `node-zklib` có 1 timeout CỨNG 10 giây
+   * cho MỖI gói dữ liệu nhận về (xem zklibtcp.js). Nếu 1 gói tới chậm hơn 10s
+   * - hoàn toàn có thể xảy ra khi server (Vercel, ở xa) gọi qua IP public
+   * port-forward từ router thay vì LAN nội bộ - thư viện KHÔNG throw lỗi, mà
+   * âm thầm trả về `{ data: <phần đã nhận được>, err: Error }`. Code cũ chỉ
+   * đọc `.data`, không hề kiểm tra `.err` -> sync "thành công" nhưng thiếu
+   * data mà không ai biết (đúng triệu chứng: local 9976 log, production có
+   * lúc chỉ 3273, có lúc 9820, không cố định).
+   *
+   * Cách sửa: gọi `zk.getInfo()` lấy `logCounts` (số log THẬT SỰ đang có trên
+   * máy - nguồn đối chiếu tuyệt đối, không suy luận), rồi lặp lại việc fetch
+   * (tối đa MAX_SYNC_ATTEMPTS lần, mỗi lần dùng 1 kết nối MỚI) cho tới khi
+   * fetch đủ số lượng khớp `logCounts` VÀ không có `err` - đảm bảo production
+   * luôn lấy đủ dữ liệu y hệt local trước khi coi là xong.
    */
   async syncNow(): Promise<SyncSummary> {
     if (this.isSyncing) {
@@ -571,18 +604,91 @@ export class ZkDeviceService {
     this.isSyncing = true;
     const startedAt = new Date();
 
-    // Khớp lại các log cũ đang NULL trước, phòng trường hợp mapping vừa đổi
-    // (unmap/map lại) kể từ lần đồng bộ trước - xem rematchUnmatchedLogs().
-    await this.rematchUnmatchedLogs();
-
-    const zk = this.createClient();
     try {
-      await zk.createSocket();
+      // Khớp lại các log cũ đang NULL trước, phòng trường hợp mapping vừa đổi
+      // (unmap/map lại) kể từ lần đồng bộ trước - xem rematchUnmatchedLogs().
+      await this.rematchUnmatchedLogs();
 
-      const usersResult = await zk.getUsers();
-      const deviceUsers: DeviceUser[] = usersResult?.data ?? [];
-      this.logger.log(`Đọc được ${deviceUsers.length} user từ máy.`);
-      await this.upsertDeviceUserCache(deviceUsers);
+      // Bước 1: hỏi máy "tổng cộng có bao nhiêu log" - đây là con số THẬT,
+      // dùng để biết fetch sau đó có bị thiếu hay không, KHÔNG suy đoán.
+      let expectedLogCount: number | null = null;
+      try {
+        const zkInfo = this.createClient();
+        try {
+          await zkInfo.createSocket();
+          const info = await zkInfo.getInfo();
+          expectedLogCount = info?.logCounts ?? null;
+        } finally {
+          await this.safeDisconnect(zkInfo);
+        }
+      } catch (err) {
+        // Không lấy được getInfo() cũng không sao - vẫn tiếp tục sync bình
+        // thường, chỉ là mất khả năng đối chiếu đủ/thiếu (partialFetch sẽ chỉ
+        // còn dựa vào cờ `err` của getAttendances(), không dựa được vào số đếm).
+        this.logger.warn(`Không lấy được getInfo() để đối chiếu: ${(err as Error).message}`);
+      }
+
+      let deviceUsers: DeviceUser[] = [];
+      let records: DeviceAttendanceRecord[] = [];
+      let partialFetch = false;
+      let fetchWarning: string | null = null;
+      let attempt = 0;
+
+      for (attempt = 1; attempt <= ZkDeviceService.MAX_SYNC_ATTEMPTS; attempt++) {
+        const zk = this.createClient();
+        try {
+          await zk.createSocket();
+
+          const usersResult = await zk.getUsers();
+          deviceUsers = usersResult?.data ?? [];
+          await this.upsertDeviceUserCache(deviceUsers);
+
+          const logsResult = await zk.getAttendances((received: number, total: number) => {
+            if (total > 0 && received % 1000 === 0) {
+              this.logger.debug(`[Lần ${attempt}] Đang tải log: ${received}/${total}`);
+            }
+          });
+          records = logsResult?.data ?? [];
+
+          const hasLibError = !!logsResult?.err;
+          const countMismatch =
+            expectedLogCount != null && records.length < expectedLogCount;
+
+          if (!hasLibError && !countMismatch) {
+            partialFetch = false;
+            fetchWarning = null;
+            break; // Fetch đủ, không cần thử lại nữa
+          }
+
+          partialFetch = true;
+          fetchWarning = hasLibError
+            ? `Lỗi khi nhận dữ liệu từ máy: ${logsResult.err.message}`
+            : `Chỉ nhận được ${records.length}/${expectedLogCount} log máy báo có`;
+          this.logger.warn(
+            `[Lần ${attempt}/${ZkDeviceService.MAX_SYNC_ATTEMPTS}] Fetch chưa đủ: ${fetchWarning}`,
+          );
+        } catch (err) {
+          partialFetch = true;
+          fetchWarning = (err as Error).message;
+          this.logger.warn(
+            `[Lần ${attempt}/${ZkDeviceService.MAX_SYNC_ATTEMPTS}] Lỗi kết nối: ${fetchWarning}`,
+          );
+        } finally {
+          await this.safeDisconnect(zk);
+        }
+
+        if (attempt < ZkDeviceService.MAX_SYNC_ATTEMPTS) {
+          // Nghỉ 1 nhịp trước khi thử lại - tránh dí liên tục vào máy ngay
+          // sau khi vừa timeout (dễ làm máy càng phản hồi chậm hơn).
+          await new Promise((r) => setTimeout(r, ZkDeviceService.SYNC_RETRY_DELAY_MS));
+        }
+      }
+
+      this.logger.log(
+        partialFetch
+          ? `⚠️ Sync xong sau ${attempt} lần thử NHƯNG VẪN CÓ THỂ THIẾU DATA: ${fetchWarning}`
+          : `Đọc được ${records.length} log chấm công từ máy (khớp kỳ vọng ${expectedLogCount ?? '(không rõ)'}) sau ${attempt} lần thử.`,
+      );
 
       const mappedUsers = await this.userRepo.find({
         where: { zkDeviceUserId: Not(IsNull()) },
@@ -591,14 +697,6 @@ export class ZkDeviceService {
       const userIdByDeviceUserId = new Map(
         mappedUsers.map((u) => [u.zkDeviceUserId as string, u.id]),
       );
-
-      const logsResult = await zk.getAttendances((received: number, total: number) => {
-        if (total > 0 && received % 1000 === 0) {
-          this.logger.debug(`Đang tải log: ${received}/${total}`);
-        }
-      });
-      const records: DeviceAttendanceRecord[] = logsResult?.data ?? [];
-      this.logger.log(`Đọc được ${records.length} log chấm công từ máy.`);
 
       const unmatchedSet = new Set<string>();
       let insertedNew = 0;
@@ -683,6 +781,10 @@ export class ZkDeviceService {
         startedAt,
         finishedAt,
         totalFetchedFromDevice: records.length,
+        expectedLogCount,
+        partialFetch,
+        fetchAttempts: attempt,
+        fetchWarning,
         insertedNew,
         matchedToUser,
         unmatchedDeviceUserIds: Array.from(unmatchedSet),
@@ -690,12 +792,11 @@ export class ZkDeviceService {
       };
 
       this.logger.log(
-        `Đồng bộ xong: fetched=${summary.totalFetchedFromDevice}, insertedNew~=${summary.insertedNew}, matched=${summary.matchedToUser}, unmatchedUsers=${summary.unmatchedDeviceUserIds.length}`,
+        `Đồng bộ xong: fetched=${summary.totalFetchedFromDevice}, insertedNew~=${summary.insertedNew}, matched=${summary.matchedToUser}, unmatchedUsers=${summary.unmatchedDeviceUserIds.length}, partialFetch=${partialFetch}`,
       );
 
       return summary;
     } finally {
-      await this.safeDisconnect(zk);
       this.isSyncing = false;
     }
   }
