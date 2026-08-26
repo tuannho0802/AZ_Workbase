@@ -186,7 +186,18 @@ export default function AttendanceMonthlyTab() {
 
       const day = dayjs(r.date).date();
       if (!row.days[day]) {
-        row.days[day] = 'X';
+        // Suy luận "nghỉ nửa ngày KHÔNG LƯƠNG" (1/2K) TỪ CHÍNH dữ liệu chấm
+        // công thật, không cần đơn nghỉ - áp dụng khi: (a) có giờ vào nhưng
+        // CHƯA có giờ ra (status='missing_checkout' - không rõ có làm đủ
+        // ngày hay bỏ về giữa chừng, nên tính thận trọng là nửa ngày), hoặc
+        // (b) có đủ giờ vào/ra nhưng tổng giờ làm < 4.5 tiếng (nửa ca chuẩn
+        // 9 tiếng/ngày). Chỉ là giá trị MẶC ĐỊNH: nếu ngày này có đơn nghỉ
+        // ĐÃ DUYỆT (vòng lặp `leaveData` bên dưới, chạy SAU vòng này) sẽ ĐÈ
+        // LÊN giá trị suy luận ở đây - đơn nghỉ luôn là nguồn xác thực cao
+        // hơn (kể cả khi là nghỉ HƯỞNG LƯƠNG, dù có chấm công ngắn cũng vậy).
+        const isHalfByAttendance =
+          r.status === 'missing_checkout' || (r.workHours != null && r.workHours < 4.5);
+        row.days[day] = isHalfByAttendance ? '1/2K' : 'X';
       }
 
       if (r.isLate && r.checkIn) {
@@ -239,6 +250,24 @@ export default function AttendanceMonthlyTab() {
         if (isUnpaid) row.unpaidLeaveDays += fraction;
         else row.paidLeaveDays += fraction;
         cursor = cursor.add(1, 'day');
+      }
+    }
+
+    // Suy luận "nghỉ không lương cả ngày" (KL) khi VẮNG KHÔNG PHÉP - ngày làm
+    // việc (không phải Chủ nhật) đã trôi qua (KHÔNG đánh dấu ngày tương lai -
+    // nhân viên chưa có cơ hội chấm công) mà không có dấu gì (không chấm
+    // công, không đơn nghỉ nào che phủ) -> mặc định là vắng không lý do,
+    // tính không lương. CHỈ áp cho user ĐÃ map (unmappedMap không có khái
+    // niệm "phải đi làm" vì chưa xác định là nhân viên hệ thống nào).
+    const today = dayjs();
+    const lastDayToCheck = today.isBefore(monthEnd) ? today.date() : daysInMonth;
+    for (const row of map.values()) {
+      for (let d = 1; d <= lastDayToCheck; d++) {
+        if (row.days[d]) continue; // đã có dấu (X, nghỉ phép, hoặc suy luận 1/2K ở trên)
+        const isSunday = monthStart.date(d).day() === 0;
+        if (isSunday) continue; // Chủ nhật không phải ngày công chuẩn - không tính vắng
+        row.days[d] = 'KL';
+        row.unpaidLeaveDays += 1;
       }
     }
 

@@ -1,14 +1,15 @@
 'use client';
 
 import { useState } from 'react';
-import { Table, Select, DatePicker, Space, Tag, Button } from 'antd';
-import { ReloadOutlined } from '@ant-design/icons';
+import { Table, Select, DatePicker, Space, Tag, Button, Modal, App, Typography } from 'antd';
+import { ReloadOutlined, DeleteOutlined } from '@ant-design/icons';
 import dayjs, { Dayjs } from 'dayjs';
-import { useAttendanceLogs } from '@/lib/hooks/useZkDevice';
+import { useAttendanceLogs, useCleanupAttendanceLogs } from '@/lib/hooks/useZkDevice';
 import { useUsersList } from '@/lib/hooks/useUsers';
 import { AttendanceLog } from '@/lib/types/zk-device.types';
 
 const { RangePicker } = DatePicker;
+const { Text } = Typography;
 
 const SOURCE_LABEL: Record<string, { text: string; color: string }> = {
   device_push: { text: 'Máy tự đẩy', color: 'blue' },
@@ -29,12 +30,19 @@ const RANGE_PRESETS = [
 ];
 
 export default function AttendanceLogsTab() {
+  const { message } = App.useApp();
   const { users } = useUsersList();
   const [page, setPage] = useState(1);
   const [limit, setLimit] = useState(20);
   const [userId, setUserId] = useState<number | undefined>(undefined);
   const [matched, setMatched] = useState<'matched' | 'unmatched' | undefined>(undefined);
   const [range, setRange] = useState<[Dayjs, Dayjs] | null>(null);
+
+  const [cleanupOpen, setCleanupOpen] = useState(false);
+  const [cleanupDate, setCleanupDate] = useState<Dayjs | null>(
+    dayjs().subtract(6, 'month').startOf('month'),
+  );
+  const cleanupMutation = useCleanupAttendanceLogs();
 
   const { data, isLoading, refetch, isFetching } = useAttendanceLogs({
     page,
@@ -123,7 +131,69 @@ export default function AttendanceLogsTab() {
         <Button icon={<ReloadOutlined />} onClick={() => refetch()} loading={isFetching}>
           Tải lại
         </Button>
+        <Button
+          danger
+          icon={<DeleteOutlined />}
+          onClick={() => setCleanupOpen(true)}
+        >
+          Dọn dẹp log cũ
+        </Button>
       </Space>
+
+      <Modal
+        title="Dọn dẹp log chấm công cũ"
+        open={cleanupOpen}
+        onCancel={() => setCleanupOpen(false)}
+        confirmLoading={cleanupMutation.isPending}
+        okText="Xoá vĩnh viễn"
+        okButtonProps={{ danger: true, disabled: !cleanupDate }}
+        onOk={() => {
+          if (!cleanupDate) return;
+          const olderThan = cleanupDate.format('YYYY-MM-DD');
+          Modal.confirm({
+            title: 'Xác nhận lần cuối',
+            content: (
+              <>
+                Xoá <Text strong>vĩnh viễn</Text> toàn bộ log chấm công trước ngày{' '}
+                <Text strong>{cleanupDate.format('DD/MM/YYYY')}</Text>? Thao tác này{' '}
+                <Text strong type="danger">
+                  không thể hoàn tác
+                </Text>
+                .
+              </>
+            ),
+            okText: 'Tôi hiểu, xoá luôn',
+            okButtonProps: { danger: true },
+            cancelText: 'Huỷ',
+            onOk: async () => {
+              try {
+                const res = await cleanupMutation.mutateAsync(olderThan);
+                message.success(`Đã xoá vĩnh viễn ${res.deleted} dòng log cũ hơn ${res.olderThan}.`);
+                setCleanupOpen(false);
+              } catch (err: any) {
+                message.error(
+                  `Dọn dẹp thất bại: ${err?.response?.data?.message || err?.message || 'Lỗi không xác định'}`,
+                );
+              }
+            },
+          });
+        }}
+      >
+        <Space direction="vertical" style={{ width: '100%' }}>
+          <Text>
+            Xoá vĩnh viễn mọi log chấm công có thời gian <Text strong>trước</Text> ngày chọn bên
+            dưới. Dùng khi bảng log đã tích luỹ quá lâu, chiếm nhiều dung lượng DB.
+          </Text>
+          <Text type="danger">⚠️ Không thể hoàn tác - hãy chắc chắn trước khi xoá.</Text>
+          <DatePicker
+            style={{ width: '100%' }}
+            value={cleanupDate}
+            onChange={setCleanupDate}
+            format="DD/MM/YYYY"
+            placeholder="Xoá log trước ngày..."
+          />
+        </Space>
+      </Modal>
 
       <Table
         rowKey="id"

@@ -81,3 +81,16 @@ export const useAttendanceSummary = (query: AttendanceSummaryQuery) => {
     queryFn: () => zkDeviceApi.getAttendanceSummary(query),
   });
 };
+
+export const useCleanupAttendanceLogs = () => {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (olderThan: string) => zkDeviceApi.cleanupAttendanceLogs(olderThan),
+    onSuccess: () => {
+      // Xoá xong -> danh sách log + bảng tổng hợp đều có thể đổi (log cũ bị
+      // xoá sẽ không còn xuất hiện) - invalidate cả 2 để UI cập nhật ngay.
+      queryClient.invalidateQueries({ queryKey: ['zk-attendance-logs'] });
+      queryClient.invalidateQueries({ queryKey: ['zk-attendance-summary'] });
+    },
+  });
+};

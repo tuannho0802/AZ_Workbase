@@ -16,6 +16,7 @@ import { ZkDeviceService } from './zk-device.service';
 import { MapDeviceUserDto } from './dto/map-device-user.dto';
 import { QueryAttendanceLogDto } from './dto/query-attendance-log.dto';
 import { QueryAttendanceSummaryDto } from './dto/query-attendance-summary.dto';
+import { CleanupAttendanceLogsDto } from './dto/cleanup-attendance-logs.dto';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { RolesGuard } from '../../common/guards/roles.guard';
 import { Roles } from '../../common/decorators/roles.decorator';
@@ -86,6 +87,15 @@ export class ZkDeviceController {
   })
   async getAttendanceLogs(@Query() query: QueryAttendanceLogDto) {
     return this.zkDeviceService.getAttendanceLogs(query);
+  }
+
+  @Delete('attendance-logs/cleanup')
+  @ApiOperation({
+    summary:
+      'Dọn dẹp (xoá vĩnh viễn) log chấm công cũ hơn 1 mốc ngày - dùng khi bảng attendance_logs đã tích luỹ quá lâu, chiếm nhiều dung lượng DB. KHÔNG THỂ HOÀN TÁC.',
+  })
+  async cleanupAttendanceLogs(@Query() query: CleanupAttendanceLogsDto) {
+    return this.zkDeviceService.cleanupOldLogs(query.olderThan);
   }
 
   @Get('attendance-summary')

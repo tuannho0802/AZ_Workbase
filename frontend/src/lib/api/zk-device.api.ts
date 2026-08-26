@@ -56,4 +56,15 @@ export const zkDeviceApi = {
     const response = await axiosInstance.get('/zk-device/attendance-summary', { params });
     return response.data;
   },
+
+  // Xoá vĩnh viễn log chấm công cũ hơn `olderThan` (YYYY-MM-DD) - KHÔNG THỂ
+  // HOÀN TÁC, dùng để dọn dẹp bảng attendance_logs khi đã tích luỹ quá lâu.
+  cleanupAttendanceLogs: async (
+    olderThan: string,
+  ): Promise<{ deleted: number; olderThan: string }> => {
+    const response = await axiosInstance.delete('/zk-device/attendance-logs/cleanup', {
+      params: { olderThan },
+    });
+    return response.data;
+  },
 };

@@ -355,6 +355,32 @@ export class ZkDeviceService {
   }
 
   /**
+   * Xoá vĩnh viễn log chấm công cũ hơn `olderThan` - dùng khi bảng
+   * `attendance_logs` đã tích luỹ quá lâu, chiếm nhiều dung lượng DB.
+   * KHÔNG THỂ HOÀN TÁC - controller đã bắt buộc `olderThan` tường minh (xem
+   * CleanupAttendanceLogsDto) để tránh gọi nhầm không truyền tham số.
+   *
+   * Dùng DELETE thô (không qua `softRemove`/entity) vì bảng này không có
+   * soft-delete, và số dòng xoá có thể rất lớn (hàng chục nghìn log) -
+   * `createQueryBuilder().delete()` sinh đúng 1 câu SQL, không load từng
+   * entity vào RAM trước như `remove()` sẽ làm.
+   */
+  async cleanupOldLogs(olderThan: string): Promise<{ deleted: number; olderThan: string }> {
+    const result = await this.attendanceLogRepo
+      .createQueryBuilder()
+      .delete()
+      .from(AttendanceLog)
+      .where('record_time < :olderThan', { olderThan: `${olderThan} 00:00:00` })
+      .execute();
+
+    const deleted = result.affected ?? 0;
+    this.logger.warn(
+      `[Cleanup] Đã xoá vĩnh viễn ${deleted} dòng attendance_logs cũ hơn ${olderThan}.`,
+    );
+    return { deleted, olderThan };
+  }
+
+  /**
    * Tra tên user TRÊN MÁY (từ cache, không gọi trực tiếp máy) cho 1 danh
    * sách deviceUserId - dùng ở getAttendanceLogs()/getAttendanceSummary() để
    * hiển thị tên thay vì trơ mã UID cho các log CHƯA map với nhân viên hệ
