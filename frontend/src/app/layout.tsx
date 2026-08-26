@@ -7,6 +7,10 @@ import { AntdAppProvider } from '@/components/common/AntdAppProvider';
 export const metadata = {
   title: 'AZWorkbase',
   description: 'Hệ thống quản lý khách hàng',
+  icons: {
+    icon: '/favicon.ico',
+    apple: '/apple-icon.png',
+  },
 };
 
 export default function RootLayout({
