@@ -60,14 +60,23 @@ const RECORD_PACKET_SIZE = 40;
 
 // Rộng rãi hơn timeout 10s "cứng" của node-zklib gốc - đường WAN chậm hơn
 // LAN nhiều, cần chấp nhận độ trễ cao hơn TRƯỚC KHI coi là mất gói thật sự.
-const CHUNK_TIMEOUT_MS = 15000;
+// Cho phép override qua tham số (mặc định giữ nguyên) - phục vụ viết test tự
+// động (giả lập "mất gói" mà không phải chờ thật 15s mỗi lần chạy test).
+const DEFAULT_CHUNK_TIMEOUT_MS = 15000;
 
 // Số lần thử lại CHO 1 CHUNK LẺ khi timeout/mất gói - độc lập với retry ở
 // tầng ZkDeviceService.syncNow() (retry cả LƯỢT sync, tốn kém hơn nhiều vì
 // phải tạo lại kết nối + phiên làm việc từ đầu). Retry ở đây rẻ hơn: chỉ
 // xin lại đúng chunk bị thiếu, giữ nguyên phiên kết nối hiện tại.
-const CHUNK_MAX_RETRIES = 3;
-const CHUNK_RETRY_DELAY_MS = 500;
+const DEFAULT_CHUNK_MAX_RETRIES = 3;
+const DEFAULT_CHUNK_RETRY_DELAY_MS = 500;
+
+/** Tham số tinh chỉnh tuỳ chọn - KHÔNG truyền gì thì hành vi y hệt trước đây. */
+export interface SequentialReadOptions {
+  chunkTimeoutMs?: number;
+  chunkMaxRetries?: number;
+  chunkRetryDelayMs?: number;
+}
 
 export interface SequentialReadProgress {
   receivedBytes: number;
@@ -115,7 +124,7 @@ function sendChunkRequest(zklibTcp: any, start: number, size: number): void {
  * dùng chung state với các chunk khác), có timeout RIÊNG, và listener được
  * gỡ (`removeListener`) ngay khi xong - không rò rỉ qua các lần gọi kế tiếp.
  */
-function receiveOneChunk(socket: Socket, expectedSize: number): Promise<Buffer> {
+function receiveOneChunk(socket: Socket, expectedSize: number, timeoutMs: number): Promise<Buffer> {
   return new Promise((resolve, reject) => {
     let totalBuffer = Buffer.from([]);
     let realTotalBuffer = Buffer.from([]);
@@ -150,7 +159,7 @@ function receiveOneChunk(socket: Socket, expectedSize: number): Promise<Buffer> 
             `Timeout khi chờ chunk (đã nhận ${realTotalBuffer.length}/${expectedSize} byte)`,
           ),
         );
-      }, CHUNK_TIMEOUT_MS);
+      }, timeoutMs);
     };
 
     const onClose = () => {
@@ -201,21 +210,22 @@ async function fetchOneChunkWithRetry(
   zklibTcp: any,
   start: number,
   size: number,
+  opts: Required<SequentialReadOptions>,
 ): Promise<Buffer> {
   let lastErr: Error | null = null;
-  for (let attempt = 1; attempt <= CHUNK_MAX_RETRIES; attempt++) {
+  for (let attempt = 1; attempt <= opts.chunkMaxRetries; attempt++) {
     try {
       sendChunkRequest(zklibTcp, start, size);
-      return await receiveOneChunk(zklibTcp.socket, size);
+      return await receiveOneChunk(zklibTcp.socket, size, opts.chunkTimeoutMs);
     } catch (err) {
       lastErr = err as Error;
-      if (attempt < CHUNK_MAX_RETRIES) {
-        await new Promise((r) => setTimeout(r, CHUNK_RETRY_DELAY_MS));
+      if (attempt < opts.chunkMaxRetries) {
+        await new Promise((r) => setTimeout(r, opts.chunkRetryDelayMs));
       }
     }
   }
   throw new Error(
-    `Không tải được chunk [start=${start}, size=${size}] sau ${CHUNK_MAX_RETRIES} lần thử: ${lastErr?.message}`,
+    `Không tải được chunk [start=${start}, size=${size}] sau ${opts.chunkMaxRetries} lần thử: ${lastErr?.message}`,
   );
 }
 
@@ -233,10 +243,16 @@ async function fetchOneChunkWithRetry(
 export async function readAttendanceLogsSequential(
   zklibTcp: any,
   onProgress?: (p: SequentialReadProgress) => void,
+  options?: SequentialReadOptions,
 ): Promise<SequentialAttendanceRecord[]> {
   if (!zklibTcp?.socket) {
     throw new Error('zklibTcp.socket chưa kết nối - phải gọi zk.createSocket() trước');
   }
+  const opts: Required<SequentialReadOptions> = {
+    chunkTimeoutMs: options?.chunkTimeoutMs ?? DEFAULT_CHUNK_TIMEOUT_MS,
+    chunkMaxRetries: options?.chunkMaxRetries ?? DEFAULT_CHUNK_MAX_RETRIES,
+    chunkRetryDelayMs: options?.chunkRetryDelayMs ?? DEFAULT_CHUNK_RETRY_DELAY_MS,
+  };
 
   // Bước 1: dọn buffer phiên cũ trên máy - giống hệt getAttendances() gốc
   // (đảm bảo máy không còn "nhớ" 1 yêu cầu đọc dữ liệu dở dang trước đó).
@@ -281,7 +297,7 @@ export async function readAttendanceLogsSequential(
       const start = isLastChunk ? numberChunks * MAX_CHUNK : i * MAX_CHUNK;
       const size = isLastChunk ? remain : MAX_CHUNK;
 
-      const chunkPayload = await fetchOneChunkWithRetry(zklibTcp, start, size);
+      const chunkPayload = await fetchOneChunkWithRetry(zklibTcp, start, size, opts);
       replyData = Buffer.concat([replyData, chunkPayload]);
       onProgress?.({ receivedBytes: replyData.length, totalBytes: totalSize });
     }
