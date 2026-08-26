@@ -38,6 +38,35 @@
  * Dùng chung cho `integrations/zk-device/test-connection.ts` (script test
  * tay) và `modules/zk-device/zk-device.service.ts` (`syncNow()`, nguồn
  * DEVICE_PULL) để 2 nơi không lệch logic với nhau.
+ *
+ * ⚠️ BUG THẬT ĐÃ PHÁT HIỆN (26/08) - LỚP THỨ 2, RIÊNG BIỆT VỚI PIPELINE Ở
+ * TRÊN: nguyên tắc "local getter/constructor" ở trên chỉ đúng cho pipeline
+ * NỘI BỘ trong 1 tiến trình (decode -> lưu DB -> đọc lại DB), KHÔNG tự động
+ * đúng khi giá trị `Date` này bị SERIALIZE RA JSON để trả qua API HTTP.
+ * `JSON.stringify(date)`/`res.json({checkIn: date})` LUÔN gọi
+ * `Date.prototype.toJSON()` -> `.toISOString()` (chuẩn UTC, luôn có hậu tố
+ * "Z") - bước này ĐỌC EPOCH THẬT của Date (không phải "local getter"), mà
+ * epoch thật lại phụ thuộc múi giờ tiến trình lúc constructor chạy (xem giải
+ * thích ở trên). Kết quả: cùng 1 giá trị "09:16" máy báo, backend chạy ở máy
+ * dev đặt múi giờ VN sẽ trả ra JSON "...T02:16:00Z" (lùi 7h), còn backend
+ * chạy trên Vercel (mặc định UTC) trả ra JSON "...T09:16:00Z" (giữ nguyên số).
+ * Frontend (`dayjs(value)` không có `.utc()`) thấy hậu tố "Z" sẽ tự quy đổi
+ * UTC -> giờ trình duyệt (VN, +7h) khi format - với giá trị từ máy dev VN,
+ * 2 lần lệch (backend lùi 7h, frontend tiến 7h) TÌNH CỜ triệt tiêu nhau nên
+ * "trông có vẻ đúng"; với giá trị từ Vercel, chỉ còn ĐÚNG 1 lần lệch (frontend)
+ * -> lộ ra sai +7h y hệt triệu chứng "Đi trễ (+422 phút)" đã gặp. Đã tái hiện
+ * bằng thực nghiệm (Node với TZ=UTC vs TZ=Asia/Ho_Chi_Minh) trước khi sửa.
+ *
+ * => SỬA: KHÔNG bao giờ để 1 `Date` object mang ý nghĩa "giờ VN naive" (kiểu
+ * `vnLocalDate` ở dưới, hoặc bất kỳ Date nào đọc thẳng từ cột `record_time`)
+ * bị serialize ra API qua con đường JSON.stringify() mặc định. Luôn format
+ * tường minh bằng `toNaiveApiString()` (hàm mới thêm dưới đây) THÀNH CHUỖI
+ * KHÔNG có hậu tố "Z"/offset nào trước khi trả ra response - để frontend
+ * (`dayjs(chuỗi)` không có "Z") parse thẳng làm giờ local, không tự quy đổi
+ * gì thêm - đối xứng ĐÚNG với cách `new Date("YYYY-MM-DD HH:mm:ss")` (không
+ * "Z") luôn được V8 hiểu là giờ local bất kể tiến trình chạy múi giờ gì (đã
+ * verify thực nghiệm) - nhờ vậy khớp đúng dù chạy ở local hay production,
+ * không còn phụ thuộc TZ hệ điều hành của bất kỳ máy nào ở cả 2 đầu.
  */
 
 export interface DecodedDeviceTime {
@@ -47,6 +76,9 @@ export interface DecodedDeviceTime {
    * Date object mang ĐÚNG 6 con số máy đã ghi ở dạng "local" (xem giải thích
    * ở đầu file) - đây là giá trị DUY NHẤT dùng để ghi vào cột `recordTime`
    * (DATETIME). KHÔNG gọi .toISOString()/.getUTCHours() trên giá trị này.
+   * KHÔNG trả trực tiếp giá trị này (hay bất kỳ Date nào đọc lại từ cột
+   * `record_time`) ra API - luôn đi qua `toNaiveApiString()` trước (xem cảnh
+   * báo BUG LỚP 2 ở đầu file).
    */
   vnLocalDate: Date;
 }
@@ -80,4 +112,24 @@ export function decodeDeviceLocalTime(zkDate: Date): DecodedDeviceTime {
   const vnLocalDate = new Date(y, mo, d, h, mi, s);
 
   return { vnLocalDisplay, vnLocalDate };
+}
+
+/**
+ * Format 1 `Date` đang mang "6 con số giờ VN naive" (đọc bằng local getter -
+ * `vnLocalDate` ở trên, hoặc bất kỳ Date nào TypeORM trả về từ cột
+ * `record_time`/tương đương) thành chuỗi "YYYY-MM-DDTHH:mm:ss" - CỐ TÌNH
+ * KHÔNG có hậu tố "Z"/offset nào - để trả ra API JSON an toàn.
+ *
+ * DÙNG HÀM NÀY (không phải trả thẳng object `Date`) ở MỌI response API có
+ * field mang ý nghĩa "giờ VN của máy chấm công" (`checkIn`/`checkOut` của
+ * getAttendanceSummary(), `recordTime` của getAttendanceLogs()...) - xem giải
+ * thích đầy đủ ở cảnh báo BUG LỚP 2 đầu file. KHÔNG dùng cho các Date mang ý
+ * nghĩa "mốc thời gian thật" khác (vd `syncedAt`/`startedAt`/`finishedAt` -
+ * những field này được tạo bằng `new Date()` thường, epoch của chúng vốn đã
+ * đúng thật, serialize UTC bình thường qua .toISOString() không có vấn đề gì).
+ */
+export function toNaiveApiString(d: Date): string {
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(
+    d.getHours(),
+  )}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
 }

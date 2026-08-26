@@ -8,7 +8,10 @@ import { ZkDeviceUserCache } from '../../database/entities/zk-device-user-cache.
 import { AttendanceSource } from '../../common/enums/attendance-source.enum';
 import { QueryAttendanceLogDto } from './dto/query-attendance-log.dto';
 import { QueryAttendanceSummaryDto } from './dto/query-attendance-summary.dto';
-import { decodeDeviceLocalTime } from '../../integrations/zk-device/decode-device-time.util';
+import {
+  decodeDeviceLocalTime,
+  toNaiveApiString,
+} from '../../integrations/zk-device/decode-device-time.util';
 import { readAttendanceLogsSequential } from '../../integrations/zk-device/sequential-attendance-reader.util';
 
 // node-zklib chưa có type definition chính thức -> import kiểu require,
@@ -336,8 +339,15 @@ export class ZkDeviceService {
     // mã UID, kể cả khi cần fallback hiển thị tên máy cho log đã khớp.
     const allDeviceUserIds = Array.from(new Set(data.map((l) => l.deviceUserId)));
     const deviceNameByUserId = await this.getDeviceUserNameMap(allDeviceUserIds);
+    // ⚠️ QUAN TRỌNG: `log.recordTime` là Date mang "6 con số giờ VN naive"
+    // (xem decode-device-time.util.ts) - KHÔNG được trả thẳng object Date ra
+    // JSON (Date.toJSON()/.toISOString() phụ thuộc múi giờ tiến trình lúc
+    // decode, gây lệch +7h khác nhau giữa local/Vercel - bug thật đã phát
+    // hiện 26/08). Luôn format qua toNaiveApiString() thành chuỗi KHÔNG có
+    // hậu tố "Z" trước khi trả ra, để khớp đúng dù chạy ở đâu.
     const enriched = data.map((log) => ({
       ...log,
+      recordTime: toNaiveApiString(log.recordTime),
       deviceUserName: deviceNameByUserId.get(log.deviceUserId) ?? null,
     }));
 
@@ -542,6 +552,12 @@ export class ZkDeviceService {
           ? Math.round(((g.checkOut.getTime() - g.checkIn.getTime()) / 3600000) * 100) / 100
           : null;
 
+        // ⚠️ checkIn/checkOut là Date mang "giờ VN naive" (từ log.recordTime)
+        // - PHẢI format qua toNaiveApiString() trước khi trả ra API, cùng lý
+        // do đã giải thích ở getAttendanceLogs()/decode-device-time.util.ts
+        // (bug +7h lệch giữa local/Vercel đã phát hiện 26/08). Nếu trả thẳng
+        // Date object, NestJS sẽ tự gọi .toISOString() (có hậu tố "Z") khiến
+        // frontend tự quy đổi UTC->local thêm 1 lần nữa, gây lệch giờ.
         return {
           userId: g.userId,
           userName: g.userName,
@@ -549,8 +565,8 @@ export class ZkDeviceService {
           deviceUserId: g.deviceUserId,
           deviceUserName: g.deviceUserName,
           date: g.date,
-          checkIn: g.checkIn,
-          checkOut: hasCheckout ? g.checkOut : null,
+          checkIn: toNaiveApiString(g.checkIn),
+          checkOut: hasCheckout ? toNaiveApiString(g.checkOut) : null,
           workHours,
           isLate,
           isEarlyLeave: hasCheckout ? isEarlyLeave : false,
