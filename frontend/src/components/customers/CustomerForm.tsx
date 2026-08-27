@@ -50,11 +50,14 @@ export const CustomerForm: React.FC<CustomerFormProps> = ({ open, customer, onCl
         form.setFieldsValue({
           status: 'pending',
           inputDate: dayjs(),
-          source: 'Facebook'
+          // Mặc định nguồn đầu tiên đang MỞ thay vì hardcode 'Facebook' -
+          // nếu admin đã khoá/xoá Facebook, hardcode sẽ trỏ vào 1 option
+          // không còn tồn tại trong dropdown.
+          source: sources[0]?.name,
         });
       }
     }
-  }, [open, customer, form]);
+  }, [open, customer, form, sources]);
 
   const handleSubmit = async (values: any) => {
     setLoading(true);

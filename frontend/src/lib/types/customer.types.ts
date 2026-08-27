@@ -61,7 +61,10 @@ export interface Customer {
   name: string;
   phone: string;
   email?: string;
-  source: 'Facebook' | 'TikTok' | 'Google' | 'Instagram' | 'Other';
+  // Nguồn giờ là free-text quản lý qua bảng media_sources (không còn ENUM
+  // cứng ở DB) - xem media-sources.api.ts. Giữ string thay vì union cứng để
+  // không lệch với dữ liệu thật (vd admin thêm "Zalo" sẽ không khớp type cũ).
+  source: string;
   campaign?: string;
   salesUser?: {
     id: number;

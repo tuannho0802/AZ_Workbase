@@ -16,6 +16,7 @@ import axiosInstance from '@/lib/api/axios-instance';
 import { useAuthStore } from '@/lib/stores/auth.store';
 import dayjs from 'dayjs';
 import { CustomerDetailDrawer } from '@/components/customers/CustomerDetailDrawer';
+import { useMediaSources } from '@/lib/hooks/useMediaSources';
 
 const { Title, Text } = Typography;
 
@@ -192,6 +193,11 @@ export default function ChiaDataPage() {
   }, []);
   const qc = useQueryClient();
   const { message: antdMessage } = App.useApp();
+
+  // Danh sách nguồn cho dropdown filter - lấy TẤT CẢ (kể cả đã khoá), vì
+  // khách hàng cũ vẫn có thể mang 1 nguồn đã bị khoá sau này, khác với form
+  // thêm khách hàng mới (chỉ cho chọn nguồn đang mở - xem CustomerForm.tsx).
+  const { sources: allMediaSources } = useMediaSources(false);
 
   // State: filters cho bảng Chưa assign
   const [unassignedPage, setUnassignedPage] = useState(1);
@@ -603,10 +609,9 @@ export default function ChiaDataPage() {
                       allowClear
                       placeholder="Nguồn"
                       style={{ width: '100%' }}
-                      options={['Facebook','TikTok','Google',
-                        'Instagram','Other'].map(s => ({ 
-                          value: s, label: s 
-                        }))}
+                      options={allMediaSources.map(s => ({
+                        value: s.name, label: s.name
+                      }))}
                       onChange={v => { 
                         setFilterSource(v ?? null); 
                         setUnassignedPage(1); 
