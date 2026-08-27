@@ -5,6 +5,7 @@ import { Modal, Form, Input, Select, DatePicker, Row, Col, App, Tag } from 'antd
 import { customersApi } from '@/lib/api/customers.api';
 import { useMediaSources } from '@/lib/hooks/useMediaSources';
 import { SalesUserSelect } from './SalesUserSelect';
+import { SourceTag } from './SourceTag';
 import { Customer } from '@/lib/types/customer.types';
 import dayjs, { Dayjs } from 'dayjs';
 import { isFutureVnDate } from '@/lib/utils/date-vn';
@@ -25,18 +26,22 @@ export const CustomerForm: React.FC<CustomerFormProps> = ({ open, customer, onCl
   // nguồn mới mà không sửa code. Giờ lấy động từ /media-sources (chỉ nguồn
   // đang MỞ - activeOnly=true) - quản lý tại trang /nguon-media.
   const { sources } = useMediaSources(true);
+  // Dùng chung <SourceTag> cho label của từng option - cùng 1 nguồn màu dữ
+  // liệu với mọi nơi khác hiển thị nguồn (bảng khách hàng, Chia Data, Thùng
+  // rác...), tránh mỗi chỗ tự vẽ Tag riêng rồi lệch màu nhau.
   const sourceOptions: { label: React.ReactNode; value: string; disabled?: boolean }[] =
-    sources.map((s) => ({ label: s.name, value: s.name }));
+    sources.map((s) => ({ label: <SourceTag source={s.name} />, value: s.name }));
   // Nếu đang SỬA 1 khách hàng có source đã bị KHOÁ/xoá khỏi danh sách đang
   // mở kể từ lúc tạo, vẫn cần hiện đúng giá trị đó (không để field trông
   // như trống/lỗi) - thêm nó vào options dưới dạng 1 lựa chọn riêng, gắn
-  // Tag "Đã khoá" thay vì nối chữ vào label, và disable để không ai chọn
-  // lại nguồn đã khoá cho khách hàng khác (chỉ giữ hiển thị cho khách này).
+  // thêm Tag "Đã khoá" bên cạnh SourceTag, và disable để không ai chọn lại
+  // nguồn đã khoá cho khách hàng khác (chỉ giữ hiển thị cho khách này).
   if (customer?.source && !sourceOptions.some((o) => o.value === customer.source)) {
     sourceOptions.push({
       label: (
         <span>
-          {customer.source} <Tag color="default" style={{ marginLeft: 4 }}>Đã khoá</Tag>
+          <SourceTag source={customer.source} />
+          <Tag color="default" style={{ marginLeft: 4 }}>Đã khoá</Tag>
         </span>
       ),
       value: customer.source,
