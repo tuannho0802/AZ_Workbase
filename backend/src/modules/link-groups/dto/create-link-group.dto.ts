@@ -24,4 +24,10 @@ export class CreateLinkGroupDto {
   @IsInt()
   @Type(() => Number)
   sortOrder?: number;
+
+  @ApiPropertyOptional({ example: 3, description: 'ID của "Quản lý chính" cho nhóm này (chỉ admin được set)' })
+  @IsOptional()
+  @IsInt({ message: 'ID Quản lý chính phải là số nguyên' })
+  @Type(() => Number)
+  primaryManagerId?: number | null;
 }

@@ -4,6 +4,7 @@ import { Repository } from 'typeorm';
 import { LinkGroup } from '../../database/entities/link-group.entity';
 import { LinkCategory } from '../../database/entities/link-category.entity';
 import { CustomerGroupMembership } from '../../database/entities/customer-group-membership.entity';
+import { User } from '../../database/entities/user.entity';
 import { CreateLinkGroupDto } from './dto/create-link-group.dto';
 import { UpdateLinkGroupDto } from './dto/update-link-group.dto';
 
@@ -16,11 +17,18 @@ export class LinkGroupsService {
     private readonly categoryRepo: Repository<LinkCategory>,
     @InjectRepository(CustomerGroupMembership)
     private readonly membershipRepo: Repository<CustomerGroupMembership>,
+    @InjectRepository(User)
+    private readonly userRepo: Repository<User>,
   ) {}
 
   /**
    * @param categoryId lọc theo 1 category cụ thể (optional).
    * @param activeOnly true = chỉ trả group CHƯA ẩn (isActive=true).
+   *
+   * ⚠️ Endpoint public cho MỌI user đã đăng nhập (dùng cho checklist "tham
+   * gia nhóm" khi tạo/sửa khách hàng) - KHÔNG áp permission theo
+   * primary/secondary manager ở đây. Muốn xem CHỈ nhóm mình quản lý, dùng
+   * `LinkGroupManagersService.listManagedByMe()` (GET /link-groups/managed-by-me).
    */
   async findAll(categoryId?: number, activeOnly = false): Promise<LinkGroup[]> {
     return this.groupRepo.find({
@@ -28,9 +36,17 @@ export class LinkGroupsService {
         ...(categoryId != null ? { categoryId } : {}),
         ...(activeOnly ? { isActive: true } : {}),
       },
-      relations: ['category'],
+      relations: ['category', 'primaryManager', 'secondaryManagers', 'secondaryManagers.user'],
       order: { sortOrder: 'ASC', id: 'ASC' },
     });
+  }
+
+  private async validatePrimaryManagerId(primaryManagerId: number | null | undefined): Promise<void> {
+    if (primaryManagerId == null) return; // null/undefined = không gán hoặc bỏ gán, hợp lệ
+    const user = await this.userRepo.findOneBy({ id: primaryManagerId, isActive: true });
+    if (!user) {
+      throw new BadRequestException(`Nhân viên ID ${primaryManagerId} không tồn tại hoặc đã bị khóa`);
+    }
   }
 
   async create(dto: CreateLinkGroupDto): Promise<LinkGroup> {
@@ -46,11 +62,14 @@ export class LinkGroupsService {
       throw new ConflictException(`Nhóm "${dto.name}" đã tồn tại trong category "${category.name}"`);
     }
 
+    await this.validatePrimaryManagerId(dto.primaryManagerId);
+
     const created = this.groupRepo.create({
       categoryId: dto.categoryId,
       name: dto.name,
       url: dto.url,
       sortOrder: dto.sortOrder ?? 0,
+      primaryManagerId: dto.primaryManagerId ?? null,
     });
     return this.groupRepo.save(created);
   }
@@ -72,6 +91,10 @@ export class LinkGroupsService {
     }
     if (dto.url !== undefined) group.url = dto.url;
     if (dto.sortOrder !== undefined) group.sortOrder = dto.sortOrder;
+    if (dto.primaryManagerId !== undefined) {
+      await this.validatePrimaryManagerId(dto.primaryManagerId);
+      group.primaryManagerId = dto.primaryManagerId;
+    }
 
     return this.groupRepo.save(group);
   }

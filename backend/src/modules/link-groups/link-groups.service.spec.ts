@@ -5,6 +5,7 @@ import { LinkGroupsService } from './link-groups.service';
 import { LinkGroup } from '../../database/entities/link-group.entity';
 import { LinkCategory } from '../../database/entities/link-category.entity';
 import { CustomerGroupMembership } from '../../database/entities/customer-group-membership.entity';
+import { User } from '../../database/entities/user.entity';
 
 describe('LinkGroupsService', () => {
   let service: LinkGroupsService;
@@ -22,6 +23,9 @@ describe('LinkGroupsService', () => {
   const mockMembershipRepo = {
     count: jest.fn(),
   };
+  const mockUserRepo = {
+    findOneBy: jest.fn(),
+  };
 
   beforeEach(async () => {
     jest.clearAllMocks();
@@ -32,6 +36,7 @@ describe('LinkGroupsService', () => {
         { provide: getRepositoryToken(LinkGroup), useValue: mockGroupRepo },
         { provide: getRepositoryToken(LinkCategory), useValue: mockCategoryRepo },
         { provide: getRepositoryToken(CustomerGroupMembership), useValue: mockMembershipRepo },
+        { provide: getRepositoryToken(User), useValue: mockUserRepo },
       ],
     }).compile();
 
@@ -39,14 +44,14 @@ describe('LinkGroupsService', () => {
   });
 
   describe('findAll', () => {
-    it('không truyền filter -> lấy TẤT CẢ group, kèm relation category, sắp theo sortOrder', async () => {
+    it('không truyền filter -> lấy TẤT CẢ group, kèm relation category + quản lý chính/phụ, sắp theo sortOrder', async () => {
       mockGroupRepo.find.mockResolvedValue([{ id: 1, name: 'Nhóm A' }]);
 
       const result = await service.findAll();
 
       expect(mockGroupRepo.find).toHaveBeenCalledWith({
         where: {},
-        relations: ['category'],
+        relations: ['category', 'primaryManager', 'secondaryManagers', 'secondaryManagers.user'],
         order: { sortOrder: 'ASC', id: 'ASC' },
       });
       expect(result).toEqual([{ id: 1, name: 'Nhóm A' }]);
@@ -59,7 +64,7 @@ describe('LinkGroupsService', () => {
 
       expect(mockGroupRepo.find).toHaveBeenCalledWith({
         where: { categoryId: 2 },
-        relations: ['category'],
+        relations: ['category', 'primaryManager', 'secondaryManagers', 'secondaryManagers.user'],
         order: { sortOrder: 'ASC', id: 'ASC' },
       });
     });
@@ -71,7 +76,7 @@ describe('LinkGroupsService', () => {
 
       expect(mockGroupRepo.find).toHaveBeenCalledWith({
         where: { isActive: true },
-        relations: ['category'],
+        relations: ['category', 'primaryManager', 'secondaryManagers', 'secondaryManagers.user'],
         order: { sortOrder: 'ASC', id: 'ASC' },
       });
     });
@@ -83,7 +88,7 @@ describe('LinkGroupsService', () => {
 
       expect(mockGroupRepo.find).toHaveBeenCalledWith({
         where: { categoryId: 2, isActive: true },
-        relations: ['category'],
+        relations: ['category', 'primaryManager', 'secondaryManagers', 'secondaryManagers.user'],
         order: { sortOrder: 'ASC', id: 'ASC' },
       });
     });
@@ -94,16 +99,16 @@ describe('LinkGroupsService', () => {
       mockCategoryRepo.findOne.mockResolvedValue({ id: 1, name: 'Zalo' });
       mockGroupRepo.findOne.mockResolvedValue(null);
       mockGroupRepo.create.mockReturnValue({
-        categoryId: 1, name: 'Nhóm Sales HN', url: 'https://zalo.me/g/abc', sortOrder: 0,
+        categoryId: 1, name: 'Nhóm Sales HN', url: 'https://zalo.me/g/abc', sortOrder: 0, primaryManagerId: null,
       });
       mockGroupRepo.save.mockResolvedValue({
-        id: 10, categoryId: 1, name: 'Nhóm Sales HN', url: 'https://zalo.me/g/abc', sortOrder: 0,
+        id: 10, categoryId: 1, name: 'Nhóm Sales HN', url: 'https://zalo.me/g/abc', sortOrder: 0, primaryManagerId: null,
       });
 
       const result = await service.create({ categoryId: 1, name: 'Nhóm Sales HN', url: 'https://zalo.me/g/abc' });
 
       expect(mockGroupRepo.create).toHaveBeenCalledWith({
-        categoryId: 1, name: 'Nhóm Sales HN', url: 'https://zalo.me/g/abc', sortOrder: 0,
+        categoryId: 1, name: 'Nhóm Sales HN', url: 'https://zalo.me/g/abc', sortOrder: 0, primaryManagerId: null,
       });
       expect(result.id).toBe(10);
     });
@@ -124,6 +129,32 @@ describe('LinkGroupsService', () => {
       await expect(
         service.create({ categoryId: 1, name: 'Nhóm Sales HN', url: 'https://zalo.me/g/xyz' }),
       ).rejects.toThrow(ConflictException);
+      expect(mockGroupRepo.save).not.toHaveBeenCalled();
+    });
+
+    it('tạo group kèm primaryManagerId hợp lệ - có validate user tồn tại + active', async () => {
+      mockCategoryRepo.findOne.mockResolvedValue({ id: 1, name: 'Zalo' });
+      mockGroupRepo.findOne.mockResolvedValue(null);
+      mockUserRepo.findOneBy.mockResolvedValue({ id: 7, isActive: true });
+      mockGroupRepo.create.mockImplementation((v) => v);
+      mockGroupRepo.save.mockImplementation((g) => Promise.resolve({ id: 10, ...g }));
+
+      const result = await service.create({
+        categoryId: 1, name: 'Nhóm Sales HN', url: 'https://zalo.me/g/abc', primaryManagerId: 7,
+      });
+
+      expect(mockUserRepo.findOneBy).toHaveBeenCalledWith({ id: 7, isActive: true });
+      expect(result.primaryManagerId).toBe(7);
+    });
+
+    it('ném BadRequestException nếu primaryManagerId không tồn tại/đã khoá', async () => {
+      mockCategoryRepo.findOne.mockResolvedValue({ id: 1, name: 'Zalo' });
+      mockGroupRepo.findOne.mockResolvedValue(null);
+      mockUserRepo.findOneBy.mockResolvedValue(null);
+
+      await expect(
+        service.create({ categoryId: 1, name: 'X', url: 'https://x.com', primaryManagerId: 999 }),
+      ).rejects.toThrow(BadRequestException);
       expect(mockGroupRepo.save).not.toHaveBeenCalled();
     });
   });
@@ -152,6 +183,38 @@ describe('LinkGroupsService', () => {
 
       expect(result.url).toBe('https://new.com');
       expect(result.name).toBe('Nhóm A');
+    });
+
+    it('gán primaryManagerId hợp lệ - có validate user tồn tại + active', async () => {
+      const group = { id: 1, categoryId: 1, name: 'Nhóm A', url: 'https://a.com', sortOrder: 0, primaryManagerId: null };
+      mockGroupRepo.findOne.mockResolvedValue(group);
+      mockUserRepo.findOneBy.mockResolvedValue({ id: 7, isActive: true });
+      mockGroupRepo.save.mockImplementation((g) => Promise.resolve(g));
+
+      const result = await service.update(1, { primaryManagerId: 7 });
+
+      expect(mockUserRepo.findOneBy).toHaveBeenCalledWith({ id: 7, isActive: true });
+      expect(result.primaryManagerId).toBe(7);
+    });
+
+    it('cho phép bỏ gán primaryManagerId bằng null - KHÔNG cần validate user', async () => {
+      const group = { id: 1, categoryId: 1, name: 'Nhóm A', url: 'https://a.com', sortOrder: 0, primaryManagerId: 7 };
+      mockGroupRepo.findOne.mockResolvedValue(group);
+      mockGroupRepo.save.mockImplementation((g) => Promise.resolve(g));
+
+      const result = await service.update(1, { primaryManagerId: null });
+
+      expect(mockUserRepo.findOneBy).not.toHaveBeenCalled();
+      expect(result.primaryManagerId).toBeNull();
+    });
+
+    it('ném BadRequestException nếu primaryManagerId mới không tồn tại/đã khoá', async () => {
+      const group = { id: 1, categoryId: 1, name: 'Nhóm A', url: 'https://a.com', sortOrder: 0, primaryManagerId: null };
+      mockGroupRepo.findOne.mockResolvedValue(group);
+      mockUserRepo.findOneBy.mockResolvedValue(null);
+
+      await expect(service.update(1, { primaryManagerId: 999 })).rejects.toThrow(BadRequestException);
+      expect(mockGroupRepo.save).not.toHaveBeenCalled();
     });
   });
 
