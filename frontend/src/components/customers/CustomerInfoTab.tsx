@@ -3,6 +3,7 @@
 import { Descriptions, Tag, Button, Typography, Space } from 'antd';
 import { CalendarOutlined, EditOutlined } from '@ant-design/icons';
 import { Customer } from '@/lib/types/customer.types';
+import { SourceTag } from './SourceTag';
 import dayjs from 'dayjs';
 
 const { Text } = Typography;
@@ -25,7 +26,7 @@ export const CustomerInfoTab = ({ customer, onEdit }: Props) => {
         <Descriptions.Item label="Số điện thoại">{customer.phone}</Descriptions.Item>
         <Descriptions.Item label="Email">{customer.email || '-'}</Descriptions.Item>
         <Descriptions.Item label="Nguồn">
-          <Tag color="blue">{customer.source}</Tag>
+          <SourceTag source={customer.source} />
         </Descriptions.Item>
         <Descriptions.Item label="Chiến dịch">{customer.campaign || '-'}</Descriptions.Item>
         <Descriptions.Item label="Người tạo data">

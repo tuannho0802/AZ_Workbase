@@ -17,6 +17,7 @@ import { useAuthStore } from '@/lib/stores/auth.store';
 import dayjs from 'dayjs';
 import { CustomerDetailDrawer } from '@/components/customers/CustomerDetailDrawer';
 import { useMediaSources } from '@/lib/hooks/useMediaSources';
+import { SourceTag } from '@/components/customers/SourceTag';
 
 const { Title, Text } = Typography;
 
@@ -89,7 +90,7 @@ const UnassignedMobileCard = ({ record, user, renderAuditTrail, onNameClick, onD
           )}
         </Space>
         <Space size={4}>
-          {record.source ? <Tag color="blue">{record.source}</Tag> : <Text type="secondary">-</Text>}
+          {record.source ? <SourceTag source={record.source} /> : <Text type="secondary">-</Text>}
           {canDelete && (
             <Popconfirm
               title="Xóa khách hàng"
@@ -147,7 +148,7 @@ const AssignedMobileCard = ({ record, user, renderAuditTrail, onNameClick, onDel
           )}
         </Space>
         <Space size={4}>
-          {record.source ? <Tag color="blue">{record.source}</Tag> : <Text type="secondary">-</Text>}
+          {record.source ? <SourceTag source={record.source} /> : <Text type="secondary">-</Text>}
           {canDelete && (
             <Popconfirm
               title="Xóa khách hàng"
@@ -372,7 +373,7 @@ export default function ChiaDataPage() {
     {
       title: 'Nguồn', dataIndex: 'source', width: 110,
       render: (v: string | null) => v
-        ? <Tag color="blue">{v}</Tag>
+        ? <SourceTag source={v} />
         : <Text type="secondary">-</Text>,
     },
     {
@@ -472,7 +473,7 @@ export default function ChiaDataPage() {
     {
       title: 'Nguồn', dataIndex: 'source', width: 100,
       render: (v: string | null) => v
-        ? <Tag color="blue">{v}</Tag> : '-',
+        ? <SourceTag source={v} /> : '-',
     },
     {
       title: 'Người tạo', width: 130,

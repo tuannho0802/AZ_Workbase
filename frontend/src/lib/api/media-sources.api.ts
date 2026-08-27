@@ -3,6 +3,7 @@ import axiosInstance from './axios-instance';
 export interface MediaSource {
   id: number;
   name: string;
+  color: string;
   isLocked: boolean;
   sortOrder: number;
   createdAt: string;
@@ -18,12 +19,12 @@ export const mediaSourcesApi = {
     return response.data;
   },
 
-  create: async (data: { name: string; sortOrder?: number }): Promise<MediaSource> => {
+  create: async (data: { name: string; color?: string; sortOrder?: number }): Promise<MediaSource> => {
     const response = await axiosInstance.post<MediaSource>('/media-sources', data);
     return response.data;
   },
 
-  update: async (id: number, data: { name?: string; sortOrder?: number }): Promise<MediaSource> => {
+  update: async (id: number, data: { name?: string; color?: string; sortOrder?: number }): Promise<MediaSource> => {
     const response = await axiosInstance.patch<MediaSource>(`/media-sources/${id}`, data);
     return response.data;
   },

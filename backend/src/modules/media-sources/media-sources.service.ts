@@ -34,6 +34,7 @@ export class MediaSourcesService {
         }
         const created = this.mediaSourceRepo.create({
             name: dto.name,
+            color: dto.color ?? '#1677ff',
             sortOrder: dto.sortOrder ?? 0,
         });
         return this.mediaSourceRepo.save(created);
@@ -59,6 +60,9 @@ export class MediaSourcesService {
             // hiếm khi cần đổi sau khi đã có dữ liệu dùng nó (nên "Khoá" + tạo
             // nguồn mới thường hợp lý hơn "Đổi tên" nếu nguồn đã có nhiều customer).
             source.name = dto.name;
+        }
+        if (dto.color !== undefined) {
+            source.color = dto.color;
         }
         if (dto.sortOrder !== undefined) {
             source.sortOrder = dto.sortOrder;

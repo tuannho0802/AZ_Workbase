@@ -25,6 +25,7 @@ export class CreateMediaSources1777700000000 implements MigrationInterface {
         CREATE TABLE \`media_sources\` (
           \`id\` int NOT NULL AUTO_INCREMENT,
           \`name\` varchar(100) NOT NULL,
+          \`color\` varchar(20) NOT NULL DEFAULT '#1677ff',
           \`is_locked\` tinyint NOT NULL DEFAULT 0,
           \`sort_order\` int NOT NULL DEFAULT 0,
           \`created_at\` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
@@ -35,12 +36,25 @@ export class CreateMediaSources1777700000000 implements MigrationInterface {
       `);
 
       // Seed đúng các giá trị ENUM cũ, để mọi customer hiện có vẫn khớp với
-      // 1 dòng hợp lệ trong bảng mới (không mất/lệch dữ liệu hiển thị).
+      // 1 dòng hợp lệ trong bảng mới (không mất/lệch dữ liệu hiển thị). Gán
+      // sẵn màu thương hiệu quen thuộc cho từng nguồn gốc thay vì để mặc
+      // định trùng màu - dễ phân biệt ngay khi mới cài đặt.
       await queryRunner.query(`
-        INSERT INTO \`media_sources\` (\`name\`, \`sort_order\`) VALUES
-        ('Facebook', 1), ('TikTok', 2), ('Google', 3),
-        ('Instagram', 4), ('LinkedIn', 5), ('Other', 6);
+        INSERT INTO \`media_sources\` (\`name\`, \`color\`, \`sort_order\`) VALUES
+        ('Facebook', '#1877F2', 1), ('TikTok', '#000000', 2), ('Google', '#EA4335', 3),
+        ('Instagram', '#E1306C', 4), ('LinkedIn', '#0A66C2', 5), ('Other', '#8c8c8c', 6);
       `);
+    } else {
+      // Bảng đã tồn tại (migration này từng chạy trước khi thêm yêu cầu
+      // màu) - vá thêm cột `color` nếu chưa có, để lệnh `up` này idempotent,
+      // chạy lại an toàn dù DB đang ở trạng thái nào giữa 2 nhánh trên.
+      const hasColor = await queryRunner.hasColumn('media_sources', 'color');
+      if (!hasColor) {
+        await queryRunner.query(`
+          ALTER TABLE \`media_sources\`
+          ADD COLUMN \`color\` varchar(20) NOT NULL DEFAULT '#1677ff' AFTER \`name\`;
+        `);
+      }
     }
 
     // Đổi cột source từ ENUM cứng -> VARCHAR tự do. Dùng CHANGE COLUMN thay

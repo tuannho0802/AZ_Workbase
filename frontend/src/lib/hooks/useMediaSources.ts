@@ -35,7 +35,7 @@ export const useCreateMediaSource = () => {
 export const useUpdateMediaSource = () => {
   const invalidate = useInvalidateMediaSources();
   return useMutation({
-    mutationFn: ({ id, data }: { id: number; data: { name?: string; sortOrder?: number } }) =>
+    mutationFn: ({ id, data }: { id: number; data: { name?: string; color?: string; sortOrder?: number } }) =>
       mediaSourcesApi.update(id, data),
     onSuccess: invalidate,
   });

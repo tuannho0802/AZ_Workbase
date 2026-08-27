@@ -61,13 +61,23 @@ describe('MediaSourcesService', () => {
     describe('create', () => {
         it('tạo nguồn mới thành công khi tên chưa tồn tại', async () => {
             mockMediaSourceRepo.findOne.mockResolvedValue(null);
-            mockMediaSourceRepo.create.mockReturnValue({ name: 'Zalo', sortOrder: 0 });
-            mockMediaSourceRepo.save.mockResolvedValue({ id: 7, name: 'Zalo', sortOrder: 0 });
+            mockMediaSourceRepo.create.mockReturnValue({ name: 'Zalo', color: '#1677ff', sortOrder: 0 });
+            mockMediaSourceRepo.save.mockResolvedValue({ id: 7, name: 'Zalo', color: '#1677ff', sortOrder: 0 });
 
             const result = await service.create({ name: 'Zalo' });
 
-            expect(mockMediaSourceRepo.create).toHaveBeenCalledWith({ name: 'Zalo', sortOrder: 0 });
-            expect(result).toEqual({ id: 7, name: 'Zalo', sortOrder: 0 });
+            expect(mockMediaSourceRepo.create).toHaveBeenCalledWith({ name: 'Zalo', color: '#1677ff', sortOrder: 0 });
+            expect(result).toEqual({ id: 7, name: 'Zalo', color: '#1677ff', sortOrder: 0 });
+        });
+
+        it('cho phép truyền màu tuỳ chỉnh khi tạo', async () => {
+            mockMediaSourceRepo.findOne.mockResolvedValue(null);
+            mockMediaSourceRepo.create.mockReturnValue({ name: 'Zalo', color: '#0068FF', sortOrder: 0 });
+            mockMediaSourceRepo.save.mockResolvedValue({ id: 7, name: 'Zalo', color: '#0068FF', sortOrder: 0 });
+
+            await service.create({ name: 'Zalo', color: '#0068FF' });
+
+            expect(mockMediaSourceRepo.create).toHaveBeenCalledWith({ name: 'Zalo', color: '#0068FF', sortOrder: 0 });
         });
 
         it('ném ConflictException nếu tên nguồn đã tồn tại', async () => {
@@ -94,13 +104,24 @@ describe('MediaSourcesService', () => {
         });
 
         it('cho phép đổi sortOrder mà không cần đổi tên', async () => {
-            const source = { id: 1, name: 'Facebook', sortOrder: 0 };
+            const source = { id: 1, name: 'Facebook', color: '#1877F2', sortOrder: 0 };
             mockMediaSourceRepo.findOne.mockResolvedValue(source);
             mockMediaSourceRepo.save.mockImplementation((s) => Promise.resolve(s));
 
             const result = await service.update(1, { sortOrder: 5 });
 
             expect(result.sortOrder).toBe(5);
+            expect(result.name).toBe('Facebook');
+        });
+
+        it('cho phép đổi màu mà không cần đổi tên', async () => {
+            const source = { id: 1, name: 'Facebook', color: '#1877F2', sortOrder: 0 };
+            mockMediaSourceRepo.findOne.mockResolvedValue(source);
+            mockMediaSourceRepo.save.mockImplementation((s) => Promise.resolve(s));
+
+            const result = await service.update(1, { color: '#0068FF' });
+
+            expect(result.color).toBe('#0068FF');
             expect(result.name).toBe('Facebook');
         });
     });

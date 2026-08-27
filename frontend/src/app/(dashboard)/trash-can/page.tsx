@@ -13,6 +13,7 @@ import { useRouter } from 'next/navigation';
 import { customersApi } from '@/lib/api/customers.api';
 import { Customer } from '@/lib/types/customer.types';
 import { useDebounce } from '@/lib/hooks/useDebounce';
+import { SourceTag } from '@/components/customers/SourceTag';
 import dayjs from 'dayjs';
 
 const { Text } = Typography;
@@ -44,7 +45,7 @@ function TrashMobileCard({
           <Text type="secondary" style={{ fontSize: 11 }}>#{(page - 1) * pageSize + index + 1}</Text>
           <Text strong style={{ color: '#ff4d4f' }}>{record.name}</Text>
         </Space>
-        {record.source ? <Tag color="blue">{record.source}</Tag> : <Text type="secondary">-</Text>}
+        {record.source ? <SourceTag source={record.source} /> : <Text type="secondary">-</Text>}
       </div>
       <div style={{ display: 'flex', gap: 12, marginBottom: 4, fontSize: 12, color: '#555' }}>
         <span>📞 {record.phone || 'Chưa có SĐT'}</span>

@@ -22,6 +22,7 @@ import { useDebounce } from '@/lib/hooks/useDebounce';
 import { usersApi } from '@/lib/api/users.api';
 import dayjs from 'dayjs';
 import { CustomerFilters } from '@/components/customers/CustomerFilters';
+import { SourceTag } from '@/components/customers/SourceTag';
 
 const { Text } = Typography;
 
@@ -35,16 +36,6 @@ const renderStatusTag = (status: string) => {
   };
   const { color, text } = config[status] || { color: 'default', text: status };
   return <Tag color={color}>{text}</Tag>;
-};
-
-const renderSourceTag = (source: string) => {
-  const colors: Record<string, string> = {
-    Facebook: 'blue',
-    TikTok: 'magenta',
-    Google: 'green',
-    Instagram: 'purple',
-  };
-  return <Tag color={colors[source] || 'default'}>{source}</Tag>;
 };
 
 const renderSalesTag = (record: any) => {
@@ -119,7 +110,7 @@ const CustomerMobileCard = ({
     </div>
     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 }}>
       <Space size={4} wrap>
-        {renderSourceTag(record.source)}
+        <SourceTag source={record.source} />
         {renderSalesTag(record)}
         {renderMarketingTag(record)}
       </Space>
@@ -404,7 +395,7 @@ function CustomersPageContent() {
       dataIndex: 'source',
       key: 'source',
       width: isLaptop ? '6%' : '7%',
-      render: (source) => renderSourceTag(source),
+      render: (source) => <SourceTag source={source} />,
     },
     {
       title: 'UTM',

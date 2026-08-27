@@ -15,6 +15,7 @@ import {
   Popconfirm,
   Typography,
   Alert,
+  ColorPicker,
 } from 'antd';
 import {
   PlusOutlined,
@@ -64,12 +65,13 @@ export default function MediaSourcesPage() {
   const openCreateModal = () => {
     setEditingSource(null);
     form.resetFields();
+    form.setFieldsValue({ color: '#1677ff' });
     setModalOpen(true);
   };
 
   const openEditModal = (source: MediaSource) => {
     setEditingSource(source);
-    form.setFieldsValue({ name: source.name, sortOrder: source.sortOrder });
+    form.setFieldsValue({ name: source.name, color: source.color, sortOrder: source.sortOrder });
     setModalOpen(true);
   };
 
@@ -125,6 +127,13 @@ export default function MediaSourcesPage() {
       title: 'Tên nguồn',
       dataIndex: 'name',
       key: 'name',
+      // Hiển thị dạng Tag tô đúng màu đã lưu, thay vì chữ thường - để admin
+      // thấy ngay màu nào đang gắn với nguồn nào trong chính bảng quản lý.
+      render: (name: string, record: MediaSource) => (
+        <Tag color={record.color} style={{ marginRight: 0 }}>
+          {name}
+        </Tag>
+      ),
     },
     {
       title: 'Thứ tự hiển thị',
@@ -224,6 +233,21 @@ export default function MediaSourcesPage() {
             ]}
           >
             <Input placeholder="Ví dụ: Zalo" />
+          </Form.Item>
+          <Form.Item
+            name="color"
+            label="Màu hiển thị"
+            rules={[{ required: true, message: 'Vui lòng chọn màu' }]}
+            // ColorPicker của antd bắn ra 1 object Color qua onChange, không
+            // phải string - getValueFromEvent quy về hex string ngay tại
+            // Form.Item để phần còn lại của form (submit, setFieldsValue khi
+            // mở lại modal) chỉ cần làm việc với string, khỏi phải convert
+            // rải rác nhiều chỗ.
+            getValueFromEvent={(color) =>
+              typeof color === 'string' ? color : color?.toHexString?.() ?? color
+            }
+          >
+            <ColorPicker showText format="hex" />
           </Form.Item>
           <Form.Item name="sortOrder" label="Thứ tự hiển thị (số nhỏ hơn hiện trước)">
             <InputNumber style={{ width: '100%' }} min={0} placeholder="0" />
