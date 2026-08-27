@@ -2,13 +2,17 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   linkCategoriesApi,
   linkGroupsApi,
+  linkGroupManagersApi,
   customerGroupMembershipsApi,
   LinkCategory,
   LinkGroup,
+  GroupManagersResult,
 } from '../api/link-groups.api';
 
 const CATEGORY_KEY = ['link-categories'];
 const GROUP_KEY = ['link-groups'];
+const MANAGED_BY_ME_KEY = ['link-groups', 'managed-by-me'];
+const groupManagersKey = (groupId: number) => ['link-groups', groupId, 'managers'];
 
 // ⚠️ QUAN TRỌNG - nguồn gốc bug infinite loop ở CustomerForm.tsx:
 // TRƯỚC ĐÂY các hook dưới đây fallback bằng `data ?? []` - literal `[]` này
@@ -22,6 +26,7 @@ const GROUP_KEY = ['link-groups'];
 // nguyên 1 reference duy nhất suốt vòng đời app khi chưa có data thật.
 const EMPTY_LINK_CATEGORIES: LinkCategory[] = [];
 const EMPTY_LINK_GROUPS: LinkGroup[] = [];
+const EMPTY_GROUP_MANAGERS: GroupManagersResult[] = [];
 
 /** activeOnly=true -> chỉ category chưa khoá (dùng để lọc theo nguồn khi tạo/sửa khách hàng) */
 export const useLinkCategories = (activeOnly = false) => {
@@ -108,8 +113,13 @@ export const useCreateLinkGroup = () => {
 export const useUpdateLinkGroup = () => {
   const invalidate = useInvalidateGroups();
   return useMutation({
-    mutationFn: ({ id, data }: { id: number; data: { name?: string; url?: string; sortOrder?: number } }) =>
-      linkGroupsApi.update(id, data),
+    mutationFn: ({
+      id,
+      data,
+    }: {
+      id: number;
+      data: { name?: string; url?: string; sortOrder?: number; primaryManagerId?: number | null };
+    }) => linkGroupsApi.update(id, data),
     onSuccess: invalidate,
   });
 };
@@ -136,5 +146,66 @@ export const useSetGroupMembership = () => {
   return useMutation({
     mutationFn: ({ customerId, groupId, joined }: { customerId: number; groupId: number; joined: boolean }) =>
       customerGroupMembershipsApi.setMembership(customerId, groupId, joined),
+  });
+};
+
+// ── Quản lý chính/phụ theo từng LinkGroup ──
+
+/**
+ * Danh sách nhóm mà user hiện tại được xem trong tính năng "Quản lý nhóm
+ * liên kết" - admin thấy TẤT CẢ, user thường CHỈ thấy nhóm mình là Quản lý
+ * chính hoặc phụ. Dùng cho trang "Nhóm tôi quản lý".
+ */
+export const useManagedByMe = () => {
+  const { data, isLoading, isError, error, refetch } = useQuery({
+    queryKey: MANAGED_BY_ME_KEY,
+    queryFn: () => linkGroupManagersApi.listManagedByMe(),
+    staleTime: 30 * 1000,
+  });
+
+  return {
+    groups: (data as GroupManagersResult[]) ?? EMPTY_GROUP_MANAGERS,
+    isLoading,
+    isError,
+    error,
+    refetch,
+  };
+};
+
+/** Xem quản lý chính/phụ của 1 group cụ thể - dùng trong modal quản lý */
+export const useGroupManagers = (groupId: number | undefined) => {
+  const { data, isLoading, isError, error } = useQuery({
+    queryKey: groupId != null ? groupManagersKey(groupId) : ['link-groups', 'managers', 'disabled'],
+    queryFn: () => linkGroupManagersApi.getManagers(groupId as number),
+    enabled: groupId != null,
+    staleTime: 15 * 1000,
+  });
+
+  return { managers: data as GroupManagersResult | undefined, isLoading, isError, error };
+};
+
+export const useAddSecondaryManager = () => {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ groupId, userId }: { groupId: number; userId: number }) =>
+      linkGroupManagersApi.addSecondaryManager(groupId, userId),
+    onSuccess: (_data, variables) => {
+      queryClient.invalidateQueries({ queryKey: MANAGED_BY_ME_KEY });
+      queryClient.invalidateQueries({ queryKey: GROUP_KEY });
+      queryClient.invalidateQueries({ queryKey: groupManagersKey(variables.groupId) });
+    },
+  });
+};
+
+export const useRemoveSecondaryManager = () => {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ groupId, userId }: { groupId: number; userId: number }) =>
+      linkGroupManagersApi.removeSecondaryManager(groupId, userId),
+    onSuccess: (_data, variables) => {
+      queryClient.invalidateQueries({ queryKey: MANAGED_BY_ME_KEY });
+      queryClient.invalidateQueries({ queryKey: GROUP_KEY });
+      queryClient.invalidateQueries({ queryKey: groupManagersKey(variables.groupId) });
+    },
   });
 };

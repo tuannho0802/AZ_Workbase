@@ -18,6 +18,11 @@ export interface LinkGroup {
   isActive: boolean;
   sortOrder: number;
   category?: LinkCategory;
+  // "Quản lý chính" - chỉ admin gán/đổi được (PATCH /link-groups/:id).
+  primaryManagerId?: number | null;
+  primaryManager?: { id: number; name: string; email: string } | null;
+  // "Quản lý phụ" - quản lý qua GroupManagersModal (endpoint /link-groups/:id/managers riêng).
+  secondaryManagers?: { user: { id: number; name: string; email: string } }[];
   createdAt: string;
   updatedAt: string;
 }
@@ -31,6 +36,26 @@ export interface GroupMembershipRow {
   groupUrl: string;
   joined: boolean;
   joinedAt: string | null;
+}
+
+// ── Quản lý chính/phụ theo từng LinkGroup ──
+// Khớp với `GroupManagersResult` bên backend (LinkGroupManagersService).
+export interface GroupManagerUser {
+  id: number;
+  name: string;
+  email: string;
+  role: string;
+}
+
+export interface SecondaryManagerUser extends GroupManagerUser {
+  addedAt: string;
+}
+
+export interface GroupManagersResult {
+  groupId: number;
+  groupName: string;
+  primaryManager: GroupManagerUser | null;
+  secondaryManagers: SecondaryManagerUser[];
 }
 
 export const linkCategoriesApi = {
@@ -83,12 +108,22 @@ export const linkGroupsApi = {
     return response.data;
   },
 
-  create: async (data: { categoryId: number; name: string; url: string; sortOrder?: number }): Promise<LinkGroup> => {
+  create: async (data: {
+    categoryId: number;
+    name: string;
+    url: string;
+    sortOrder?: number;
+    // ID "Quản lý chính" - chỉ admin được set (khớp CreateLinkGroupDto ở BE).
+    primaryManagerId?: number | null;
+  }): Promise<LinkGroup> => {
     const response = await axiosInstance.post<LinkGroup>('/link-groups', data);
     return response.data;
   },
 
-  update: async (id: number, data: { name?: string; url?: string; sortOrder?: number }): Promise<LinkGroup> => {
+  update: async (
+    id: number,
+    data: { name?: string; url?: string; sortOrder?: number; primaryManagerId?: number | null },
+  ): Promise<LinkGroup> => {
     const response = await axiosInstance.patch<LinkGroup>(`/link-groups/${id}`, data);
     return response.data;
   },
@@ -105,6 +140,40 @@ export const linkGroupsApi = {
 
   remove: async (id: number): Promise<{ deleted: true }> => {
     const response = await axiosInstance.delete<{ deleted: true }>(`/link-groups/${id}`);
+    return response.data;
+  },
+};
+
+export const linkGroupManagersApi = {
+  /**
+   * Danh sách nhóm mà user hiện tại được xem trong tính năng "Quản lý nhóm
+   * liên kết" - admin thấy TẤT CẢ, user thường CHỈ thấy nhóm mình là Quản
+   * lý chính hoặc phụ. Khớp GET /link-groups/managed-by-me ở BE.
+   */
+  listManagedByMe: async (): Promise<GroupManagersResult[]> => {
+    const response = await axiosInstance.get<GroupManagersResult[]>('/link-groups/managed-by-me');
+    return response.data;
+  },
+
+  /** Xem quản lý chính/phụ của 1 group - BE tự chặn 403 nếu không liên quan */
+  getManagers: async (groupId: number): Promise<GroupManagersResult> => {
+    const response = await axiosInstance.get<GroupManagersResult>(`/link-groups/${groupId}/managers`);
+    return response.data;
+  },
+
+  /** Thêm 1 Quản lý phụ - chỉ admin hoặc chính Quản lý chính của nhóm đó */
+  addSecondaryManager: async (groupId: number, userId: number): Promise<GroupManagersResult> => {
+    const response = await axiosInstance.post<GroupManagersResult>(`/link-groups/${groupId}/managers`, {
+      userId,
+    });
+    return response.data;
+  },
+
+  /** Gỡ 1 Quản lý phụ - chỉ admin hoặc chính Quản lý chính của nhóm đó */
+  removeSecondaryManager: async (groupId: number, userId: number): Promise<GroupManagersResult> => {
+    const response = await axiosInstance.delete<GroupManagersResult>(
+      `/link-groups/${groupId}/managers/${userId}`,
+    );
     return response.data;
   },
 };

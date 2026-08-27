@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
+import { useQuery } from '@tanstack/react-query';
 import {
   Table,
   Button,
@@ -15,6 +16,7 @@ import {
   Popconfirm,
   Typography,
   ColorPicker,
+  Select,
 } from 'antd';
 import {
   PlusOutlined,
@@ -23,6 +25,8 @@ import {
   UnlockOutlined,
   DeleteOutlined,
   LinkOutlined,
+  TeamOutlined,
+  CrownOutlined,
 } from '@ant-design/icons';
 import { useAuthStore } from '@/lib/stores/auth.store';
 import {
@@ -40,8 +44,16 @@ import {
   useDeleteLinkGroup,
 } from '@/lib/hooks/useLinkGroups';
 import { LinkCategory, LinkGroup } from '@/lib/api/link-groups.api';
+import { usersApi } from '@/lib/api/users.api';
+import { GroupManagersModal } from '@/components/link-groups/GroupManagersModal';
 
 const { Title, Text } = Typography;
+
+interface UserOption {
+  id: number;
+  name: string;
+  email: string;
+}
 
 export default function LinkGroupsAdminPage() {
   const { message } = App.useApp();
@@ -59,6 +71,15 @@ export default function LinkGroupsAdminPage() {
 
   const { categories, isLoading: loadingCategories } = useLinkCategories(false);
   const { groups, isLoading: loadingGroups } = useAllLinkGroups();
+
+  // Dùng để chọn "Quản lý chính" trong form Thêm/Sửa nhóm - endpoint mở
+  // cho mọi role đã đăng nhập nên gọi thẳng không cần check role ở đây.
+  const { data: users } = useQuery<UserOption[]>({
+    queryKey: ['users-for-select'],
+    queryFn: () => usersApi.getAllForSelect(),
+    staleTime: 5 * 60 * 1000,
+  });
+  const userOptions = (users ?? []).map((u) => ({ value: u.id, label: u.name || u.email }));
 
   const createCategoryMutation = useCreateLinkCategory();
   const updateCategoryMutation = useUpdateLinkCategory();
@@ -153,9 +174,17 @@ export default function LinkGroupsAdminPage() {
   const openEditGroup = (group: LinkGroup) => {
     setEditingGroup(group);
     setGroupCategoryId(group.categoryId);
-    groupForm.setFieldsValue({ name: group.name, url: group.url, sortOrder: group.sortOrder });
+    groupForm.setFieldsValue({
+      name: group.name,
+      url: group.url,
+      sortOrder: group.sortOrder,
+      primaryManagerId: group.primaryManager?.id ?? null,
+    });
     setGroupModalOpen(true);
   };
+
+  // ── Modal xem/quản lý Quản lý phụ của 1 nhóm ──
+  const [managingGroup, setManagingGroup] = useState<{ id: number; name: string } | null>(null);
 
   const handleSubmitGroup = async () => {
     try {
@@ -233,13 +262,41 @@ export default function LinkGroupsAdminPage() {
         group.isActive ? <Tag color="green">Đang hiện</Tag> : <Tag color="red">Đã ẩn</Tag>,
     },
     {
+      title: 'Quản lý chính/phụ',
+      key: 'managers',
+      width: 220,
+      render: (_: any, group: LinkGroup) => (
+        <Space size={4} wrap>
+          {group.primaryManager ? (
+            <Tag color="gold" icon={<CrownOutlined />}>
+              {group.primaryManager.name}
+            </Tag>
+          ) : (
+            <Text type="secondary" style={{ fontSize: 12 }}>
+              Chưa gán chính
+            </Text>
+          )}
+          {(group.secondaryManagers?.length ?? 0) > 0 && (
+            <Tag color="blue">+{group.secondaryManagers!.length} phụ</Tag>
+          )}
+        </Space>
+      ),
+    },
+    {
       title: 'Thao tác',
       key: 'action',
-      width: 260,
+      width: 320,
       render: (_: any, group: LinkGroup) => (
         <Space>
           <Button size="small" icon={<EditOutlined />} onClick={() => openEditGroup(group)}>
             Sửa
+          </Button>
+          <Button
+            size="small"
+            icon={<TeamOutlined />}
+            onClick={() => setManagingGroup({ id: group.id, name: group.name })}
+          >
+            Quản lý phụ
           </Button>
           <Button size="small" onClick={() => handleToggleActiveGroup(group)}>
             {group.isActive ? 'Ẩn' : 'Hiện lại'}
@@ -421,8 +478,30 @@ export default function LinkGroupsAdminPage() {
           <Form.Item name="sortOrder" label="Thứ tự hiển thị trong category">
             <InputNumber style={{ width: '100%' }} min={0} placeholder="0" />
           </Form.Item>
+          <Form.Item
+            name="primaryManagerId"
+            label="Quản lý chính"
+            tooltip="Người chịu trách nhiệm chính cho nhóm này - chỉ admin gán/đổi được. Có thể thêm nhiều Quản lý phụ sau khi tạo, qua nút 'Quản lý phụ'."
+          >
+            <Select
+              allowClear
+              showSearch
+              placeholder="Chưa gán ai làm Quản lý chính"
+              options={userOptions}
+              filterOption={(input, option) =>
+                (option?.label as string)?.toLowerCase().includes(input.toLowerCase())
+              }
+            />
+          </Form.Item>
         </Form>
       </Modal>
+
+      <GroupManagersModal
+        open={!!managingGroup}
+        onClose={() => setManagingGroup(null)}
+        groupId={managingGroup?.id ?? null}
+        groupName={managingGroup?.name}
+      />
     </div>
   );
 }

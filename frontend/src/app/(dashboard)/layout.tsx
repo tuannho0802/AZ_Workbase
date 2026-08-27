@@ -18,7 +18,8 @@ import {
   ProfileOutlined,
   ClockCircleOutlined,
   TagsOutlined,
-  ApartmentOutlined
+  ApartmentOutlined,
+  UsergroupAddOutlined
 } from '@ant-design/icons';
 import { useAuthStore } from '@/lib/stores/auth.store';
 import Cookies from 'js-cookie';
@@ -79,6 +80,11 @@ export default function DashboardLayout({
       // nguyên default 'customers' -> sidebar luôn sáng nhầm "Khách hàng"
       // dù đang đứng ở trang /nguon-media (đúng bug trong ảnh bạn gửi).
       newKey = 'nguon-media';
+    } else if (pathname.includes('/nhom-toi-quan-ly')) {
+      // Check TRƯỚC '/nhom-lien-ket' bên dưới, vì '/nhom-toi-quan-ly' không
+      // chứa '/nhom-lien-ket' nên thứ tự không bắt buộc, nhưng đặt cùng chỗ
+      // cho dễ theo dõi 2 route liên quan nhau.
+      newKey = 'nhom-toi-quan-ly';
     } else if (pathname.includes('/nhom-lien-ket')) {
       newKey = 'nhom-lien-ket';
     } else if (pathname.includes('/attendance-device')) {
@@ -166,6 +172,16 @@ export default function DashboardLayout({
               icon: <ProfileOutlined />,
               label: 'Profile',
               onClick: () => router.push('/profile'),
+            },
+            {
+              // All Roles - khớp GET /link-groups/managed-by-me ở BE (không
+              // gắn @Roles). BE tự lọc: user thường chỉ thấy nhóm mình được
+              // gán Quản lý chính/phụ, admin thấy tất cả - nên menu hiển thị
+              // cho mọi role, KHÔNG cần gate ở đây.
+              key: 'nhom-toi-quan-ly',
+              icon: <UsergroupAddOutlined />,
+              label: 'Nhóm tôi quản lý',
+              onClick: () => router.push('/nhom-toi-quan-ly'),
             },
             ...(['admin', 'manager', 'assistant'].includes(user?.role || '') ? [{
               key: 'duyet-phep',
