@@ -9,6 +9,7 @@ import { UpdateCustomerDto } from './dto/update-customer.dto';
 import { CustomerFiltersDto } from './dto/customer-filters.dto';
 import { ImportCustomerDto } from './dto/import-customer.dto';
 import { BulkAssignDto } from './dto/bulk-assign.dto';
+import { UpdateAssignmentDto } from './dto/update-assignment.dto';
 import { CreateCustomerNoteDto } from './dto/create-customer-note.dto';
 import { CreateDepositDto } from './dto/create-deposit.dto';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
@@ -126,6 +127,28 @@ export class CustomersController {
       sourceUserId: sourceUserId ? parseInt(sourceUserId, 10) : null,
       search,
     });
+  }
+
+  @Patch('assignments/:id')
+  @Roles(Role.ADMIN, Role.MANAGER, Role.ASSISTANT, Role.EMPLOYEE)
+  @ApiOperation({
+    summary: 'Sửa 1 lượt gán data (đổi người nhận hoặc lý do) - quyền kiểm tra chi tiết trong service',
+  })
+  async updateAssignment(
+    @Param('id') id: string,
+    @Body() dto: UpdateAssignmentDto,
+    @GetUser() user: any,
+  ) {
+    return this.customersService.updateAssignment(+id, dto, user.id, user.role);
+  }
+
+  @Patch('assignments/:id/reclaim')
+  @Roles(Role.ADMIN, Role.MANAGER, Role.ASSISTANT, Role.EMPLOYEE)
+  @ApiOperation({
+    summary: 'Thu hồi 1 lượt gán data - quyền kiểm tra chi tiết trong service',
+  })
+  async reclaimAssignment(@Param('id') id: string, @GetUser() user: any) {
+    return this.customersService.reclaimAssignment(+id, user.id, user.role);
   }
 
   @Post()

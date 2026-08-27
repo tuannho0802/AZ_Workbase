@@ -5,7 +5,7 @@ import { Customer } from '../../database/entities/customer.entity';
 import { CreateCustomerDto } from './dto/create-customer.dto';
 import { UpdateCustomerDto } from './dto/update-customer.dto';
 import { CustomerFiltersDto } from './dto/customer-filters.dto';
-import { BulkAssignDto } from './dto/bulk-assign.dto';
+import { UpdateAssignmentDto } from './dto/update-assignment.dto';
 import { Role } from '../../common/enums/role.enum';
 import { User } from '../../database/entities/user.entity';
 import {
@@ -1078,6 +1078,186 @@ export class CustomersService {
       ],
       order: { assignedAt: 'DESC' },
     });
+  }
+
+  /**
+   * Kiểm tra quyền sửa/thu hồi 1 assignment: Admin/Manager luôn được, hoặc
+   * chính người đã tạo ra assignment đó (assignedById).
+   */
+  private canModifyAssignment(
+    assignment: CustomerAssignment,
+    callerId: number,
+    callerRole: string,
+  ): boolean {
+    if (callerRole === Role.ADMIN || callerRole === Role.MANAGER) return true;
+    return assignment.assignedById === callerId;
+  }
+
+  /**
+   * Sửa 1 lượt gán data đang ACTIVE: đổi người nhận (assignedToId) và/hoặc
+   * lý do (reason) NGAY TRÊN dòng assignment hiện có - không tạo dòng mới,
+   * không cần thu hồi trước.
+   *
+   * Khi đổi người nhận: ghi lại người cũ vào previousAssigneeId (như 1 lượt
+   * chuyển giao), và nếu assignment này đang là chủ sở hữu chính của khách
+   * hàng (customer.salesUserId), cập nhật luôn customer.salesUserId theo
+   * người mới để giữ đồng bộ.
+   */
+  async updateAssignment(
+    assignmentId: number,
+    dto: UpdateAssignmentDto,
+    callerId: number,
+    callerRole: string,
+  ) {
+    const assignment = await this.assignmentRepository.findOne({
+      where: { id: assignmentId },
+      relations: ['customer'],
+    });
+    if (!assignment) {
+      throw new NotFoundException('Không tìm thấy lượt gán data');
+    }
+    if (assignment.status !== AssignmentStatus.ACTIVE) {
+      throw new BadRequestException(
+        'Chỉ có thể sửa lượt gán đang ở trạng thái active (chưa bị thu hồi/chuyển giao)',
+      );
+    }
+    if (!this.canModifyAssignment(assignment, callerId, callerRole)) {
+      throw new UnauthorizedCustomerAccessException(
+        'Bạn không có quyền sửa lượt gán data này - chỉ Admin/Manager hoặc chính người đã tạo lượt gán mới được sửa.',
+      );
+    }
+
+    const oldData = { ...assignment };
+
+    if (dto.reason !== undefined) {
+      assignment.reason = dto.reason;
+    }
+
+    if (
+      dto.assignedToId !== undefined &&
+      dto.assignedToId !== assignment.assignedToId
+    ) {
+      const userRepo = this.customersRepository.manager.getRepository(User);
+      const newUser = await userRepo.findOneBy({
+        id: dto.assignedToId,
+        isActive: true,
+      });
+      if (!newUser) {
+        throw new BadRequestException(
+          `Nhân viên ID ${dto.assignedToId} không tồn tại hoặc đã bị khóa`,
+        );
+      }
+
+      // Không cho đổi sang người ĐÃ có 1 lượt gán active KHÁC cho CHÍNH
+      // khách hàng này (tránh 2 dòng active trùng cặp customer/assignedTo).
+      const duplicate = await this.assignmentRepository.findOne({
+        where: {
+          customerId: assignment.customerId,
+          assignedToId: dto.assignedToId,
+          status: AssignmentStatus.ACTIVE,
+        },
+      });
+      if (duplicate) {
+        throw new BadRequestException(
+          `Nhân viên ID ${dto.assignedToId} đã có 1 lượt gán active khác cho khách hàng này rồi`,
+        );
+      }
+
+      const oldAssignedToId = assignment.assignedToId;
+      assignment.previousAssigneeId = oldAssignedToId;
+      assignment.assignedToId = dto.assignedToId;
+      assignment.assignedTo = newUser;
+
+      const customer = assignment.customer;
+      if (customer.salesUserId === oldAssignedToId) {
+        customer.salesUserId = dto.assignedToId;
+        customer.updatedById = callerId;
+        await this.customersRepository.save(customer);
+      }
+    }
+
+    const saved = await this.assignmentRepository.save(assignment);
+
+    this.auditService.logActionAsync(
+      callerId,
+      'UPDATE_ASSIGNMENT',
+      'customer_assignment',
+      assignment.id,
+      oldData,
+      saved,
+    );
+
+    return saved;
+  }
+
+  /**
+   * Thu hồi (reclaim) 1 lượt gán data đang ACTIVE - chuyển status sang
+   * RECLAIMED, ghi lại reclaimedAt/reclaimedById (giữ nguyên dòng làm lịch
+   * sử/audit trail, KHÔNG xoá cứng).
+   *
+   * Xử lý customer.salesUserId (chủ sở hữu chính) sau khi thu hồi:
+   * - Nếu người vừa bị thu hồi KHÔNG phải chủ sở hữu chính hiện tại -> không
+   *   đổi gì (khách hàng vẫn có người khác đang là chủ sở hữu chính).
+   * - Nếu người vừa bị thu hồi ĐÚNG là chủ sở hữu chính, và khách hàng còn
+   *   assignee active khác -> chuyển chủ sở hữu chính sang assignee active
+   *   được gán SỚM NHẤT còn lại (để salesUserId luôn phản ánh đúng 1 người
+   *   đang thực sự phụ trách, không bị "treo" vào người đã bị thu hồi).
+   * - Nếu đây là assignee active DUY NHẤT -> set salesUserId = NULL (khách
+   *   hàng quay lại trạng thái "chưa gán").
+   */
+  async reclaimAssignment(
+    assignmentId: number,
+    callerId: number,
+    callerRole: string,
+  ) {
+    const assignment = await this.assignmentRepository.findOne({
+      where: { id: assignmentId },
+      relations: ['customer'],
+    });
+    if (!assignment) {
+      throw new NotFoundException('Không tìm thấy lượt gán data');
+    }
+    if (assignment.status !== AssignmentStatus.ACTIVE) {
+      throw new BadRequestException(
+        'Lượt gán này đã được thu hồi hoặc chuyển giao trước đó rồi',
+      );
+    }
+    if (!this.canModifyAssignment(assignment, callerId, callerRole)) {
+      throw new UnauthorizedCustomerAccessException(
+        'Bạn không có quyền thu hồi lượt gán data này - chỉ Admin/Manager hoặc chính người đã tạo lượt gán mới được thu hồi.',
+      );
+    }
+
+    assignment.status = AssignmentStatus.RECLAIMED;
+    assignment.reclaimedAt = new Date();
+    assignment.reclaimedById = callerId;
+    await this.assignmentRepository.save(assignment);
+
+    const customer = assignment.customer;
+    if (customer.salesUserId === assignment.assignedToId) {
+      const remainingActive = await this.assignmentRepository.find({
+        where: {
+          customerId: assignment.customerId,
+          status: AssignmentStatus.ACTIVE,
+        },
+        order: { assignedAt: 'ASC' },
+      });
+      customer.salesUserId =
+        remainingActive.length > 0 ? remainingActive[0].assignedToId : null;
+      customer.updatedById = callerId;
+      await this.customersRepository.save(customer);
+    }
+
+    this.auditService.logActionAsync(
+      callerId,
+      'RECLAIM_ASSIGNMENT',
+      'customer_assignment',
+      assignment.id,
+      { status: AssignmentStatus.ACTIVE },
+      { status: AssignmentStatus.RECLAIMED },
+    );
+
+    return { message: 'Đã thu hồi lượt gán data thành công' };
   }
 
   async getStatsToday(userId: number, userRole: string) {
