@@ -16,7 +16,8 @@ import {
   DeleteOutlined,
   WarningOutlined,
   ProfileOutlined,
-  ClockCircleOutlined
+  ClockCircleOutlined,
+  TagsOutlined
 } from '@ant-design/icons';
 import { useAuthStore } from '@/lib/stores/auth.store';
 import Cookies from 'js-cookie';
@@ -181,6 +182,15 @@ export default function DashboardLayout({
               icon: <DeleteOutlined />,
               label: 'Thùng rác',
               onClick: () => router.push('/trash-can'),
+            }] : []),
+            // Quản lý danh sách nguồn khách hàng (CRUD + khoá/mở khoá) -
+            // chỉ admin, khớp @Roles(Role.ADMIN) trên các thao tác ghi của
+            // MediaSourcesController ở BE.
+            ...(['admin'].includes(user?.role || '') ? [{
+              key: 'nguon-media',
+              icon: <TagsOutlined />,
+              label: 'Quản lý nguồn',
+              onClick: () => router.push('/nguon-media'),
             }] : []),
             // Chỉ admin - khớp @Roles(Role.ADMIN) trên toàn bộ ZkDeviceController ở BE.
             ...(['admin'].includes(user?.role || '') ? [{

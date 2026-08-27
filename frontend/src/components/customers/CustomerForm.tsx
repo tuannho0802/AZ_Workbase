@@ -3,6 +3,7 @@
 import React, { useState, useEffect } from 'react';
 import { Modal, Form, Input, Select, DatePicker, Row, Col, App } from 'antd';
 import { customersApi } from '@/lib/api/customers.api';
+import { useMediaSources } from '@/lib/hooks/useMediaSources';
 import { SalesUserSelect } from './SalesUserSelect';
 import { Customer } from '@/lib/types/customer.types';
 import dayjs, { Dayjs } from 'dayjs';
@@ -19,7 +20,19 @@ export const CustomerForm: React.FC<CustomerFormProps> = ({ open, customer, onCl
   const [form] = Form.useForm();
   const [loading, setLoading] = useState(false);
   const { message } = App.useApp();
-  
+  // ⚠️ Trước đây danh sách "Nguồn" hardcode cứng trong component
+  // (Facebook/TikTok/Google/Instagram/Other) - admin không có cách nào thêm
+  // nguồn mới mà không sửa code. Giờ lấy động từ /media-sources (chỉ nguồn
+  // đang MỞ - activeOnly=true) - quản lý tại trang /nguon-media.
+  const { sources } = useMediaSources(true);
+  const sourceOptions = sources.map((s) => ({ label: s.name, value: s.name }));
+  // Nếu đang SỬA 1 khách hàng có source đã bị KHOÁ/xoá khỏi danh sách đang
+  // mở kể từ lúc tạo, vẫn cần hiện đúng giá trị đó (không để field trông
+  // như trống/lỗi) - thêm nó vào options dưới dạng 1 lựa chọn riêng.
+  if (customer?.source && !sourceOptions.some((o) => o.value === customer.source)) {
+    sourceOptions.push({ label: `${customer.source} (đã khoá)`, value: customer.source });
+  }
+
 
   useEffect(() => {
     if (open) {
@@ -123,13 +136,7 @@ export const CustomerForm: React.FC<CustomerFormProps> = ({ open, customer, onCl
           </Col>
           <Col span={12}>
             <Form.Item name="source" label="Nguồn" rules={[{ required: true }]}>
-              <Select options={[
-                { label: 'Facebook', value: 'Facebook' },
-                { label: 'TikTok', value: 'TikTok' },
-                { label: 'Google', value: 'Google' },
-                { label: 'Instagram', value: 'Instagram' },
-                { label: 'Khác', value: 'Other' },
-              ]} />
+              <Select options={sourceOptions} placeholder="Chọn nguồn" />
             </Form.Item>
           </Col>
         </Row>
