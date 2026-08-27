@@ -16,7 +16,8 @@ import {
   InfoCircleOutlined,
   FileTextOutlined,
   DollarOutlined,
-  UsergroupAddOutlined
+  UsergroupAddOutlined,
+  ApartmentOutlined
 } from '@ant-design/icons';
 import { Customer } from '@/lib/types/customer.types';
 import { customersApi } from '@/lib/api/customers.api';
@@ -24,6 +25,7 @@ import { CustomerDepositTable } from './CustomerDepositTable';
 import { CustomerInfoTab } from './CustomerInfoTab';
 import { CustomerNotesTab } from './CustomerNotesTab';
 import { CustomerAssignmentsTab } from './CustomerAssignmentsTab';
+import { CustomerGroupMembershipsTab } from './CustomerGroupMembershipsTab';
 import { DepositForm } from './DepositForm';
 import { CustomerForm } from './CustomerForm';
 
@@ -157,6 +159,13 @@ export const CustomerDetailDrawer = ({ open, customerId, onClose, onUpdate }: Cu
                     onUpdate?.();
                   }}
                 />
+              ) : null
+            },
+            {
+              key: 'groups',
+              label: (<span><ApartmentOutlined />Nhóm</span>),
+              children: customerId ? (
+                <CustomerGroupMembershipsTab customerId={customerId} />
               ) : null
             }
           ]}

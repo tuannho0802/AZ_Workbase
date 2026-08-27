@@ -1,0 +1,428 @@
+'use client';
+
+import { useEffect, useState } from 'react';
+import { useRouter } from 'next/navigation';
+import {
+  Table,
+  Button,
+  Tag,
+  Space,
+  Modal,
+  Form,
+  Input,
+  InputNumber,
+  App,
+  Popconfirm,
+  Typography,
+  ColorPicker,
+} from 'antd';
+import {
+  PlusOutlined,
+  EditOutlined,
+  LockOutlined,
+  UnlockOutlined,
+  DeleteOutlined,
+  LinkOutlined,
+} from '@ant-design/icons';
+import { useAuthStore } from '@/lib/stores/auth.store';
+import {
+  useLinkCategories,
+  useCreateLinkCategory,
+  useUpdateLinkCategory,
+  useLockLinkCategory,
+  useUnlockLinkCategory,
+  useDeleteLinkCategory,
+  useAllLinkGroups,
+  useCreateLinkGroup,
+  useUpdateLinkGroup,
+  useActivateLinkGroup,
+  useDeactivateLinkGroup,
+  useDeleteLinkGroup,
+} from '@/lib/hooks/useLinkGroups';
+import { LinkCategory, LinkGroup } from '@/lib/api/link-groups.api';
+
+const { Title, Text } = Typography;
+
+export default function LinkGroupsAdminPage() {
+  const { message } = App.useApp();
+  const router = useRouter();
+  const user = useAuthStore((s) => s.user);
+
+  // Chỉ admin được vào trang này (khớp @Roles(Role.ADMIN) trên các thao tác
+  // ghi ở BE) - chặn ở đây chỉ để UX gọn, chặn thật sự vẫn nằm ở BE, giống
+  // pattern trang "Quản lý nguồn" (/nguon-media).
+  useEffect(() => {
+    if (user && user.role !== 'admin') {
+      router.replace('/customers');
+    }
+  }, [user, router]);
+
+  const { categories, isLoading: loadingCategories } = useLinkCategories(false);
+  const { groups, isLoading: loadingGroups } = useAllLinkGroups();
+
+  const createCategoryMutation = useCreateLinkCategory();
+  const updateCategoryMutation = useUpdateLinkCategory();
+  const lockCategoryMutation = useLockLinkCategory();
+  const unlockCategoryMutation = useUnlockLinkCategory();
+  const deleteCategoryMutation = useDeleteLinkCategory();
+
+  const createGroupMutation = useCreateLinkGroup();
+  const updateGroupMutation = useUpdateLinkGroup();
+  const activateGroupMutation = useActivateLinkGroup();
+  const deactivateGroupMutation = useDeactivateLinkGroup();
+  const deleteGroupMutation = useDeleteLinkGroup();
+
+  // ── Modal Category ──
+  const [categoryModalOpen, setCategoryModalOpen] = useState(false);
+  const [editingCategory, setEditingCategory] = useState<LinkCategory | null>(null);
+  const [categoryForm] = Form.useForm();
+
+  const openCreateCategory = () => {
+    setEditingCategory(null);
+    categoryForm.resetFields();
+    categoryForm.setFieldsValue({ color: '#1677ff' });
+    setCategoryModalOpen(true);
+  };
+
+  const openEditCategory = (category: LinkCategory) => {
+    setEditingCategory(category);
+    categoryForm.setFieldsValue({
+      name: category.name,
+      color: category.color,
+      sortOrder: category.sortOrder,
+    });
+    setCategoryModalOpen(true);
+  };
+
+  const handleSubmitCategory = async () => {
+    try {
+      const values = await categoryForm.validateFields();
+      if (editingCategory) {
+        updateCategoryMutation.mutate(
+          { id: editingCategory.id, data: values },
+          {
+            onSuccess: () => {
+              message.success('Đã cập nhật category');
+              setCategoryModalOpen(false);
+            },
+            onError: (err: any) => message.error(err?.response?.data?.message || 'Cập nhật thất bại'),
+          },
+        );
+      } else {
+        createCategoryMutation.mutate(values, {
+          onSuccess: () => {
+            message.success('Đã thêm category mới');
+            setCategoryModalOpen(false);
+          },
+          onError: (err: any) => message.error(err?.response?.data?.message || 'Thêm category thất bại'),
+        });
+      }
+    } catch {
+      // lỗi validate form - antd tự hiển thị
+    }
+  };
+
+  const handleToggleLockCategory = (category: LinkCategory) => {
+    const mutation = category.isLocked ? unlockCategoryMutation : lockCategoryMutation;
+    mutation.mutate(category.id, {
+      onSuccess: () => message.success(category.isLocked ? 'Đã mở khoá' : 'Đã khoá category'),
+      onError: (err: any) => message.error(err?.response?.data?.message || 'Thao tác thất bại'),
+    });
+  };
+
+  const handleDeleteCategory = (category: LinkCategory) => {
+    deleteCategoryMutation.mutate(category.id, {
+      onSuccess: () => message.success(`Đã xoá category "${category.name}"`),
+      onError: (err: any) => message.error(err?.response?.data?.message || 'Xoá thất bại'),
+    });
+  };
+
+  // ── Modal Group ──
+  const [groupModalOpen, setGroupModalOpen] = useState(false);
+  const [editingGroup, setEditingGroup] = useState<LinkGroup | null>(null);
+  const [groupCategoryId, setGroupCategoryId] = useState<number | null>(null);
+  const [groupForm] = Form.useForm();
+
+  const openCreateGroup = (categoryId: number) => {
+    setEditingGroup(null);
+    setGroupCategoryId(categoryId);
+    groupForm.resetFields();
+    setGroupModalOpen(true);
+  };
+
+  const openEditGroup = (group: LinkGroup) => {
+    setEditingGroup(group);
+    setGroupCategoryId(group.categoryId);
+    groupForm.setFieldsValue({ name: group.name, url: group.url, sortOrder: group.sortOrder });
+    setGroupModalOpen(true);
+  };
+
+  const handleSubmitGroup = async () => {
+    try {
+      const values = await groupForm.validateFields();
+      if (editingGroup) {
+        updateGroupMutation.mutate(
+          { id: editingGroup.id, data: values },
+          {
+            onSuccess: () => {
+              message.success('Đã cập nhật nhóm');
+              setGroupModalOpen(false);
+            },
+            onError: (err: any) => message.error(err?.response?.data?.message || 'Cập nhật thất bại'),
+          },
+        );
+      } else if (groupCategoryId) {
+        createGroupMutation.mutate(
+          { ...values, categoryId: groupCategoryId },
+          {
+            onSuccess: () => {
+              message.success('Đã thêm nhóm mới');
+              setGroupModalOpen(false);
+            },
+            onError: (err: any) => message.error(err?.response?.data?.message || 'Thêm nhóm thất bại'),
+          },
+        );
+      }
+    } catch {
+      // lỗi validate form - antd tự hiển thị
+    }
+  };
+
+  const handleToggleActiveGroup = (group: LinkGroup) => {
+    const mutation = group.isActive ? deactivateGroupMutation : activateGroupMutation;
+    mutation.mutate(group.id, {
+      onSuccess: () => message.success(group.isActive ? 'Đã ẩn nhóm' : 'Đã hiện lại nhóm'),
+      onError: (err: any) => message.error(err?.response?.data?.message || 'Thao tác thất bại'),
+    });
+  };
+
+  const handleDeleteGroup = (group: LinkGroup) => {
+    deleteGroupMutation.mutate(group.id, {
+      onSuccess: () => message.success(`Đã xoá nhóm "${group.name}"`),
+      onError: (err: any) => message.error(err?.response?.data?.message || 'Xoá thất bại'),
+    });
+  };
+
+  const groupColumns = [
+    {
+      title: 'Tên nhóm',
+      dataIndex: 'name',
+      key: 'name',
+    },
+    {
+      title: 'URL',
+      dataIndex: 'url',
+      key: 'url',
+      render: (url: string) => (
+        <a href={url} target="_blank" rel="noopener noreferrer">
+          <LinkOutlined /> {url}
+        </a>
+      ),
+    },
+    {
+      title: 'Thứ tự',
+      dataIndex: 'sortOrder',
+      key: 'sortOrder',
+      width: 90,
+    },
+    {
+      title: 'Trạng thái',
+      key: 'status',
+      width: 130,
+      render: (_: any, group: LinkGroup) =>
+        group.isActive ? <Tag color="green">Đang hiện</Tag> : <Tag color="red">Đã ẩn</Tag>,
+    },
+    {
+      title: 'Thao tác',
+      key: 'action',
+      width: 260,
+      render: (_: any, group: LinkGroup) => (
+        <Space>
+          <Button size="small" icon={<EditOutlined />} onClick={() => openEditGroup(group)}>
+            Sửa
+          </Button>
+          <Button size="small" onClick={() => handleToggleActiveGroup(group)}>
+            {group.isActive ? 'Ẩn' : 'Hiện lại'}
+          </Button>
+          <Popconfirm
+            title={`Xoá nhóm "${group.name}"?`}
+            description="Chỉ xoá được nếu chưa có khách hàng nào có dữ liệu join gắn với nhóm này."
+            onConfirm={() => handleDeleteGroup(group)}
+          >
+            <Button size="small" danger icon={<DeleteOutlined />}>
+              Xoá
+            </Button>
+          </Popconfirm>
+        </Space>
+      ),
+    },
+  ];
+
+  const categoryColumns = [
+    {
+      title: 'Category (nền tảng)',
+      dataIndex: 'name',
+      key: 'name',
+      render: (name: string, record: LinkCategory) => <Tag color={record.color}>{name}</Tag>,
+    },
+    {
+      title: 'Số nhóm',
+      key: 'groupCount',
+      width: 100,
+      render: (_: any, record: LinkCategory) =>
+        groups.filter((g) => g.categoryId === record.id).length,
+    },
+    {
+      title: 'Thứ tự',
+      dataIndex: 'sortOrder',
+      key: 'sortOrder',
+      width: 90,
+    },
+    {
+      title: 'Trạng thái',
+      key: 'status',
+      width: 130,
+      render: (_: any, record: LinkCategory) =>
+        record.isLocked ? <Tag color="red">Đã khoá</Tag> : <Tag color="green">Đang mở</Tag>,
+    },
+    {
+      title: 'Thao tác',
+      key: 'action',
+      width: 340,
+      render: (_: any, record: LinkCategory) => (
+        <Space>
+          <Button size="small" icon={<PlusOutlined />} onClick={() => openCreateGroup(record.id)}>
+            Thêm nhóm
+          </Button>
+          <Button size="small" icon={<EditOutlined />} onClick={() => openEditCategory(record)}>
+            Sửa
+          </Button>
+          <Button
+            size="small"
+            icon={record.isLocked ? <UnlockOutlined /> : <LockOutlined />}
+            onClick={() => handleToggleLockCategory(record)}
+          >
+            {record.isLocked ? 'Mở khoá' : 'Khoá'}
+          </Button>
+          <Popconfirm
+            title={`Xoá category "${record.name}"?`}
+            description="Chỉ xoá được nếu chưa có nhóm nào thuộc category này."
+            onConfirm={() => handleDeleteCategory(record)}
+          >
+            <Button size="small" danger icon={<DeleteOutlined />}>
+              Xoá
+            </Button>
+          </Popconfirm>
+        </Space>
+      ),
+    },
+  ];
+
+  return (
+    <div style={{ padding: 24 }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
+        <div>
+          <Title level={4} style={{ margin: 0 }}>
+            Quản lý nhóm liên kết (Zalo/Facebook/Threads...)
+          </Title>
+          <Text type="secondary">
+            Category là nền tảng (Zalo, Facebook, Instagram, Threads...). Mỗi Category có nhiều Group
+            (nhóm cụ thể, mỗi nhóm 1 URL riêng). Tên Category nên đặt TRÙNG với tên trong "Quản lý
+            nguồn" để checklist "đã join nhóm" tự lọc đúng khi thêm khách hàng theo nguồn tương ứng.
+          </Text>
+        </div>
+        <Button type="primary" icon={<PlusOutlined />} onClick={openCreateCategory}>
+          Thêm category mới
+        </Button>
+      </div>
+
+      <Table
+        rowKey="id"
+        loading={loadingCategories || loadingGroups}
+        columns={categoryColumns}
+        dataSource={categories}
+        pagination={false}
+        expandable={{
+          expandedRowRender: (record: LinkCategory) => (
+            <Table
+              rowKey="id"
+              size="small"
+              columns={groupColumns}
+              dataSource={groups.filter((g) => g.categoryId === record.id)}
+              pagination={false}
+              locale={{ emptyText: 'Chưa có nhóm nào - bấm "Thêm nhóm" ở dòng category để tạo mới' }}
+            />
+          ),
+        }}
+      />
+
+      <Modal
+        title={editingCategory ? `Sửa category "${editingCategory.name}"` : 'Thêm category mới'}
+        open={categoryModalOpen}
+        onCancel={() => setCategoryModalOpen(false)}
+        onOk={handleSubmitCategory}
+        confirmLoading={createCategoryMutation.isPending || updateCategoryMutation.isPending}
+      >
+        <Form form={categoryForm} layout="vertical">
+          <Form.Item
+            name="name"
+            label="Tên category"
+            rules={[
+              { required: true, message: 'Vui lòng nhập tên category' },
+              { max: 100, message: 'Tên tối đa 100 ký tự' },
+            ]}
+          >
+            <Input placeholder="Ví dụ: Zalo" />
+          </Form.Item>
+          <Form.Item
+            name="color"
+            label="Màu hiển thị"
+            rules={[{ required: true, message: 'Vui lòng chọn màu' }]}
+            getValueFromEvent={(color) =>
+              typeof color === 'string' ? color : color?.toHexString?.() ?? color
+            }
+          >
+            <ColorPicker showText format="hex" />
+          </Form.Item>
+          <Form.Item name="sortOrder" label="Thứ tự hiển thị (số nhỏ hơn hiện trước)">
+            <InputNumber style={{ width: '100%' }} min={0} placeholder="0" />
+          </Form.Item>
+        </Form>
+      </Modal>
+
+      <Modal
+        title={editingGroup ? `Sửa nhóm "${editingGroup.name}"` : 'Thêm nhóm mới'}
+        open={groupModalOpen}
+        onCancel={() => setGroupModalOpen(false)}
+        onOk={handleSubmitGroup}
+        confirmLoading={createGroupMutation.isPending || updateGroupMutation.isPending}
+      >
+        <Form form={groupForm} layout="vertical">
+          <Form.Item
+            name="name"
+            label="Tên nhóm"
+            rules={[
+              { required: true, message: 'Vui lòng nhập tên nhóm' },
+              { max: 255, message: 'Tên tối đa 255 ký tự' },
+            ]}
+          >
+            <Input placeholder="Ví dụ: Nhóm Zalo Sales Hà Nội" />
+          </Form.Item>
+          <Form.Item
+            name="url"
+            label="URL nhóm"
+            rules={[
+              { required: true, message: 'Vui lòng nhập URL' },
+              { type: 'url', message: 'URL không hợp lệ' },
+            ]}
+          >
+            <Input placeholder="https://zalo.me/g/abcxyz" />
+          </Form.Item>
+          <Form.Item name="sortOrder" label="Thứ tự hiển thị trong category">
+            <InputNumber style={{ width: '100%' }} min={0} placeholder="0" />
+          </Form.Item>
+        </Form>
+      </Modal>
+    </div>
+  );
+}

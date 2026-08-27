@@ -17,7 +17,8 @@ import {
   WarningOutlined,
   ProfileOutlined,
   ClockCircleOutlined,
-  TagsOutlined
+  TagsOutlined,
+  ApartmentOutlined
 } from '@ant-design/icons';
 import { useAuthStore } from '@/lib/stores/auth.store';
 import Cookies from 'js-cookie';
@@ -78,6 +79,8 @@ export default function DashboardLayout({
       // nguyên default 'customers' -> sidebar luôn sáng nhầm "Khách hàng"
       // dù đang đứng ở trang /nguon-media (đúng bug trong ảnh bạn gửi).
       newKey = 'nguon-media';
+    } else if (pathname.includes('/nhom-lien-ket')) {
+      newKey = 'nhom-lien-ket';
     } else if (pathname.includes('/attendance-device')) {
       newKey = 'attendance-device';
     }
@@ -196,6 +199,15 @@ export default function DashboardLayout({
               icon: <TagsOutlined />,
               label: 'Quản lý nguồn',
               onClick: () => router.push('/nguon-media'),
+            }] : []),
+            // Category (Zalo/FB/Threads...) -> Group (nhóm cụ thể, 1 URL
+            // riêng) -> checklist "đã join" theo customer. Chỉ admin - khớp
+            // @Roles(Role.ADMIN) trên các thao tác ghi ở LinkGroupsModule.
+            ...(['admin'].includes(user?.role || '') ? [{
+              key: 'nhom-lien-ket',
+              icon: <ApartmentOutlined />,
+              label: 'Quản lý nhóm liên kết',
+              onClick: () => router.push('/nhom-lien-ket'),
             }] : []),
             // Chỉ admin - khớp @Roles(Role.ADMIN) trên toàn bộ ZkDeviceController ở BE.
             ...(['admin'].includes(user?.role || '') ? [{
