@@ -2,6 +2,8 @@ import React, { useState, useEffect } from 'react';
 import { Row, Col, Input, Select, DatePicker, Space } from 'antd';
 import { SearchOutlined } from '@ant-design/icons';
 import dayjs, { Dayjs } from 'dayjs';
+import { useMediaSources } from '@/lib/hooks/useMediaSources';
+import { SourceTag } from './SourceTag';
 
 interface CustomerFiltersProps {
   filters: {
@@ -24,6 +26,14 @@ export const CustomerFilters: React.FC<CustomerFiltersProps> = ({
   const [fromDate, setFromDate] = useState<Dayjs | null>(filters.dateFrom ? dayjs(filters.dateFrom) : null);
   const [toDate, setToDate] = useState<Dayjs | null>(filters.dateTo ? dayjs(filters.dateTo) : null);
   const [searchText, setSearchText] = useState(filters.search || '');
+  // ⚠️ FIX: trước đây dropdown "Nguồn" hardcode cứng 6 giá trị cố định
+  // (Facebook/TikTok/Google/Instagram/LinkedIn/Other) - cùng loại bug đã
+  // sửa ở customers/page.tsx, chia-data/page.tsx: khi admin thêm 1 nguồn
+  // mới ở /nguon-media, dropdown lọc NÀY không hề biết tới nguồn đó (không
+  // lọc được), và không phản ánh đúng khi nguồn đã bị đổi tên/khoá. Đổi
+  // sang lấy động từ bảng media_sources (activeOnly=false, giống SourceTag,
+  // để dropdown vẫn hiện được các nguồn cũ dùng cho khách hàng cũ dù đã khoá).
+  const { sources: allMediaSources } = useMediaSources(false);
 
   // Sync temp dates if filters change externally (e.g. clear all)
   useEffect(() => {
@@ -111,14 +121,10 @@ export const CustomerFilters: React.FC<CustomerFiltersProps> = ({
             style={{ width: '100%' }}
             value={filters.source}
             onChange={(val) => onFiltersChange({ ...filters, source: val, page: 1 })}
-            options={[
-              { value: 'Facebook', label: 'Facebook' },
-              { value: 'TikTok', label: 'TikTok' },
-              { value: 'Google', label: 'Google' },
-              { value: 'Instagram', label: 'Instagram' },
-              { value: 'LinkedIn', label: 'LinkedIn' },
-              { value: 'Other', label: 'Khác' },
-            ]}
+            options={allMediaSources.map((s) => ({
+              value: s.name,
+              label: <SourceTag source={s.name} />,
+            }))}
           />
         </Col>
 

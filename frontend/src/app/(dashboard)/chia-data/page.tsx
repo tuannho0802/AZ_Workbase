@@ -611,7 +611,7 @@ export default function ChiaDataPage() {
                       placeholder="Nguồn"
                       style={{ width: '100%' }}
                       options={allMediaSources.map(s => ({
-                        value: s.name, label: s.name
+                        value: s.name, label: <SourceTag source={s.name} />
                       }))}
                       onChange={v => { 
                         setFilterSource(v ?? null); 

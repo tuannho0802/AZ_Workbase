@@ -192,7 +192,7 @@ export default function TrashCanPage() {
       dataIndex: 'source',
       key: 'source',
       width: '12%',
-      render: (val: string) => val ? <Tag color="blue">{val}</Tag> : '-',
+      render: (val: string) => val ? <SourceTag source={val} /> : '-',
     },
     {
       title: 'Sales phụ trách',
