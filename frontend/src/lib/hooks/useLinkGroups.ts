@@ -64,6 +64,23 @@ export const useAllLinkGroups = () => {
   return { groups: (data as LinkGroup[]) ?? EMPTY_LINK_GROUPS, isLoading };
 };
 
+/**
+ * Lấy TẤT CẢ group đang ACTIVE, không lọc theo category - dùng cho picker
+ * "Tham gia nhóm" ở form khách hàng (KHÔNG còn bắt buộc trùng category với
+ * Nguồn nữa - xem GroupPickerModal.tsx). Khác `useLinkGroups(categoryId,...)`
+ * ở chỗ hook đó CHỦ ĐỘNG tắt query khi `categoryId` là `undefined` (theo
+ * đúng mục đích cũ: chỉ tải khi đã xác định được category tương ứng) - hook
+ * này thì LUÔN fetch, không phụ thuộc category nào cả.
+ */
+export const useAllActiveLinkGroups = () => {
+  const { data, isLoading, isError, error } = useQuery({
+    queryKey: [...GROUP_KEY, 'all-active'],
+    queryFn: () => linkGroupsApi.getAll(undefined, true),
+    staleTime: 60 * 1000,
+  });
+  return { groups: (data as LinkGroup[]) ?? EMPTY_LINK_GROUPS, isLoading, isError, error };
+};
+
 function useInvalidateCategories() {
   const queryClient = useQueryClient();
   return () => queryClient.invalidateQueries({ queryKey: CATEGORY_KEY });

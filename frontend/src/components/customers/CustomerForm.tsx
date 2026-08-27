@@ -1,14 +1,15 @@
 'use client';
 
 import React, { useState, useEffect, useMemo } from 'react';
-import { Modal, Form, Input, Select, DatePicker, Row, Col, App, Tag, Checkbox, Typography, Spin, Space } from 'antd';
-import { LinkOutlined } from '@ant-design/icons';
+import { Modal, Form, Input, Select, DatePicker, Row, Col, App, Tag, Typography, Button } from 'antd';
+import { PlusOutlined } from '@ant-design/icons';
 import { customersApi } from '@/lib/api/customers.api';
 import { useMediaSources } from '@/lib/hooks/useMediaSources';
-import { useLinkCategories, useLinkGroups } from '@/lib/hooks/useLinkGroups';
+import { useAllActiveLinkGroups } from '@/lib/hooks/useLinkGroups';
 import { customerGroupMembershipsApi } from '@/lib/api/link-groups.api';
 import { SalesUserSelect } from './SalesUserSelect';
 import { SourceTag } from './SourceTag';
+import { GroupPickerModal } from './GroupPickerModal';
 import { Customer } from '@/lib/types/customer.types';
 import dayjs, { Dayjs } from 'dayjs';
 import { isFutureVnDate } from '@/lib/utils/date-vn';
@@ -32,71 +33,54 @@ export const CustomerForm: React.FC<CustomerFormProps> = ({ open, customer, onCl
   // đang MỞ - activeOnly=true) - quản lý tại trang /nguon-media.
   const { sources } = useMediaSources(true);
 
-  // ── Checklist "Tham gia nhóm" theo Nguồn đã chọn ──────────────────────────
-  // Category (Zalo/FB/Threads...) khớp theo TÊN với Nguồn (media source) -
-  // 2 bảng độc lập nhau ở BE, khớp bằng tên là quy ước phía FE (xem ghi chú
-  // ở trang /nhom-lien-ket). "Nguồn" đổi -> checklist nhóm đổi theo ngay.
-  const sourceValue = Form.useWatch('source', form);
-  const { categories: linkCategories } = useLinkCategories(false);
-  const matchedCategory = useMemo(
-    () => linkCategories.find((c) => c.name.trim().toLowerCase() === (sourceValue || '').trim().toLowerCase()),
-    [linkCategories, sourceValue],
-  );
-  const { groups: joinableGroups, isLoading: loadingJoinableGroups } = useLinkGroups(matchedCategory?.id, true);
+  // ── "Tham gia nhóm" - chọn TỰ DO, KHÔNG còn ràng buộc trùng Category với
+  // Nguồn đã chọn nữa. Trước đây bắt buộc trùng tên (Nguồn "Facebook" chỉ
+  // chọn được nhóm thuộc category "Facebook") - đã bỏ vì không đúng thực tế
+  // (khách đến từ Facebook vẫn có thể được mời vào nhóm Zalo để chăm sóc) và
+  // Backend cũng không hề bắt buộc quan hệ này (đã kiểm tra
+  // `CustomerGroupMembershipsService.setMembership()` - chỉ validate
+  // customer/group tồn tại, không check chéo category/source nào) - xem
+  // thêm ghi chú ở `GroupPickerModal.tsx`.
+  //
+  // UI: field trông như 1 Select đã đóng (hiện Tag tên các nhóm đã chọn),
+  // bấm vào mở `GroupPickerModal` - modal phụ để chọn nhóm giữa TẤT CẢ nhóm
+  // đang active, không giới hạn category nào.
+  const { groups: allGroups, isLoading: loadingAllGroups } = useAllActiveLinkGroups();
+  const groupById = useMemo(() => new Map(allGroups.map((g) => [g.id, g])), [allGroups]);
+
+  // Trạng thái checkbox NGƯỜI DÙNG đang chọn (cả 2 chế độ tạo mới/sửa).
+  const [checkedGroupIds, setCheckedGroupIds] = useState<Set<number>>(new Set());
+  const [pickerOpen, setPickerOpen] = useState(false);
 
   // Trạng thái "đã join" THẬT SỰ đang lưu trong DB (chỉ có ý nghĩa khi SỬA
   // khách hàng đã tồn tại) - dùng để biết group nào cần gọi API đổi trạng
   // thái khi lưu (bỏ qua group không đổi gì, tránh gọi API thừa).
   const [savedJoinedGroupIds, setSavedJoinedGroupIds] = useState<Set<number>>(new Set());
-  // Trạng thái checkbox NGƯỜI DÙNG đang chọn trên UI (cả 2 chế độ tạo mới/sửa).
-  const [checkedGroupIds, setCheckedGroupIds] = useState<Set<number>>(new Set());
 
-  // Khi SỬA: nạp toàn bộ membership hiện có của khách hàng 1 lần khi mở modal.
+  // Khi SỬA: nạp toàn bộ membership hiện có của khách hàng 1 lần khi mở modal,
+  // rồi dùng THẲNG làm trạng thái checkbox ban đầu - không cần lọc theo
+  // category nào nữa (khác bản cũ), nên không còn nguy cơ vòng lặp vô hạn
+  // đã từng gặp phải khi đồng bộ theo category đổi liên tục.
   useEffect(() => {
     if (open && customer) {
       customerGroupMembershipsApi
         .getForCustomer(customer.id)
         .then((rows) => {
-          setSavedJoinedGroupIds(new Set(rows.filter((r) => r.joined).map((r) => r.groupId)));
+          const joined = new Set(rows.filter((r) => r.joined).map((r) => r.groupId));
+          setSavedJoinedGroupIds(joined);
+          setCheckedGroupIds(joined);
         })
         .catch(() => {
           // Không chặn việc sửa khách hàng chỉ vì lấy checklist nhóm lỗi -
           // im lặng bỏ qua, checklist sẽ hiện rỗng (an toàn, không mất dữ liệu).
           setSavedJoinedGroupIds(new Set());
+          setCheckedGroupIds(new Set());
         });
     } else if (open && !customer) {
       setSavedJoinedGroupIds(new Set());
+      setCheckedGroupIds(new Set());
     }
   }, [open, customer]);
-
-  // Khi category khớp với Nguồn THAY ĐỔI (đổi Nguồn, hoặc vừa mở modal) ->
-  // đồng bộ lại checkbox theo đúng trạng thái đã lưu của category đó.
-  //
-  // ⚠️ Bug infinite loop đã từng xảy ra ở đây: `joinableGroups` (từ
-  // useLinkGroups) trước đây fallback `data ?? []` - literal `[]` này là 1
-  // ARRAY MỚI mỗi lần render khi data chưa có (vd category chưa xác định),
-  // khiến effect này (phụ thuộc `joinableGroups`) chạy lại MỖI RENDER, bên
-  // trong lại setState -> re-render -> `[]` mới lại được tạo -> lặp vô hạn.
-  // Đã fix ở NGUỒN (useLinkGroups.ts dùng 1 EMPTY_ARRAY hằng số dùng chung).
-  // Giữ thêm guard này ở đây làm lớp phòng thủ thứ 2: dùng functional update
-  // + so sánh nội dung, trả về ĐÚNG reference cũ (`prev`) khi tập hợp không
-  // đổi gì - React sẽ tự bail-out (không re-render) khi updater trả về cùng
-  // reference, chặn đứng vòng lặp dù có hook nào khác sau này lại tái phạm
-  // lỗi tương tự (không phụ thuộc join JS reference đến từ ngoài).
-  useEffect(() => {
-    const idsInThisCategory = new Set(joinableGroups.map((g) => g.id));
-    const nextIds = matchedCategory
-      ? new Set([...savedJoinedGroupIds].filter((id) => idsInThisCategory.has(id)))
-      : new Set<number>();
-
-    setCheckedGroupIds((prev) => {
-      if (prev.size === nextIds.size && [...prev].every((id) => nextIds.has(id))) {
-        return prev; // không đổi gì -> trả nguyên reference cũ để React bail-out
-      }
-      return nextIds;
-    });
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [matchedCategory?.id, joinableGroups, savedJoinedGroupIds]);
 
   // Dùng chung <SourceTag> cho label của từng option - cùng 1 nguồn màu dữ
   // liệu với mọi nơi khác hiển thị nguồn (bảng khách hàng, Chia Data, Thùng
@@ -120,7 +104,6 @@ export const CustomerForm: React.FC<CustomerFormProps> = ({ open, customer, onCl
       disabled: true,
     });
   }
-
 
   useEffect(() => {
     if (open) {
@@ -170,13 +153,15 @@ export const CustomerForm: React.FC<CustomerFormProps> = ({ open, customer, onCl
         message.success('Thêm khách hàng thành công');
       }
 
-      // Áp dụng checklist "tham gia nhóm" - CHỈ với các group đang hiện
-      // trong checklist (thuộc category khớp Nguồn hiện tại), và CHỈ gọi
-      // API cho group nào có THAY ĐỔI so với trạng thái đã lưu - tránh gọi
-      // thừa cho những group người dùng không đụng tới.
-      const membershipChanges = joinableGroups
-        .filter((g) => checkedGroupIds.has(g.id) !== savedJoinedGroupIds.has(g.id))
-        .map((g) => ({ groupId: g.id, joined: checkedGroupIds.has(g.id) }));
+      // Áp dụng lựa chọn "tham gia nhóm" - CHỈ gọi API cho group nào có THAY
+      // ĐỔI so với trạng thái đã lưu, tránh gọi thừa cho group người dùng
+      // không đụng tới. Không còn giới hạn theo "joinableGroups" (category
+      // khớp Nguồn) như bản cũ - checkedGroupIds giờ có thể là BẤT KỲ group
+      // active nào, lấy trực tiếp từ GroupPickerModal.
+      const allGroupIds = new Set([...checkedGroupIds, ...savedJoinedGroupIds]);
+      const membershipChanges = Array.from(allGroupIds)
+        .filter((groupId) => checkedGroupIds.has(groupId) !== savedJoinedGroupIds.has(groupId))
+        .map((groupId) => ({ groupId, joined: checkedGroupIds.has(groupId) }));
 
       if (membershipChanges.length > 0) {
         try {
@@ -190,7 +175,7 @@ export const CustomerForm: React.FC<CustomerFormProps> = ({ open, customer, onCl
           message.warning('Đã lưu khách hàng nhưng có lỗi khi cập nhật checklist tham gia nhóm - vào tab "Nhóm" trong chi tiết khách hàng để kiểm tra lại.');
         }
       }
-      
+
       onSuccess();
       onClose();
     } catch (error: any) {
@@ -263,39 +248,68 @@ export const CustomerForm: React.FC<CustomerFormProps> = ({ open, customer, onCl
             </Form.Item>
           </Col>
           <Col span={12}>
-            <Form.Item label="Tham gia nhóm" tooltip="Chỉ hiện các nhóm thuộc Category trùng tên với Nguồn đã chọn ở trên. Quản lý Category/Group tại 'Quản lý nhóm liên kết'.">
-              {!sourceValue ? (
-                <Text type="secondary" style={{ fontSize: 12 }}>Chọn Nguồn trước để xem danh sách nhóm</Text>
-              ) : loadingJoinableGroups ? (
-                <Spin size="small" />
-              ) : !matchedCategory ? (
-                <Text type="secondary" style={{ fontSize: 12 }}>
-                  Chưa có Category nào tên trùng "{sourceValue}" trong Quản lý nhóm liên kết
-                </Text>
-              ) : joinableGroups.length === 0 ? (
-                <Text type="secondary" style={{ fontSize: 12 }}>
-                  Category "{matchedCategory.name}" chưa có nhóm nào đang hiện
-                </Text>
-              ) : (
-                <div style={{ maxHeight: 110, overflowY: 'auto', border: '1px solid #d9d9d9', borderRadius: 6, padding: 8 }}>
-                  <Checkbox.Group
-                    style={{ width: '100%' }}
-                    value={[...checkedGroupIds]}
-                    onChange={(vals) => setCheckedGroupIds(new Set(vals as number[]))}
-                  >
-                    <Space direction="vertical" size={4} style={{ width: '100%' }}>
-                      {joinableGroups.map((g) => (
-                        <Checkbox key={g.id} value={g.id}>
-                          <Text>{g.name}</Text>
-                          <a href={g.url} target="_blank" rel="noopener noreferrer" onClick={(e) => e.stopPropagation()} style={{ marginLeft: 6, fontSize: 12 }}>
-                            <LinkOutlined />
-                          </a>
-                        </Checkbox>
-                      ))}
-                    </Space>
-                  </Checkbox.Group>
-                </div>
-              )}
+            <Form.Item
+              label="Tham gia nhóm"
+              tooltip="Chọn TỰ DO trong mọi nhóm đang hoạt động, không cần trùng Category với Nguồn đã chọn ở trên. Quản lý Category/Group tại 'Quản lý nhóm liên kết'."
+            >
+              {/* Field trông như 1 Select đã đóng - bấm vào (hoặc bấm nút
+                  "Chọn nhóm") để mở GroupPickerModal, KHÔNG dùng antd
+                  <Select> thật vì danh sách nhóm cần hiện theo từng cụm
+                  category + có ô tìm kiếm riêng, antd Select mặc định không
+                  hỗ trợ tốt kiểu bố cục phân nhóm 2 cấp này. */}
+              <div
+                onClick={() => setPickerOpen(true)}
+                style={{
+                  minHeight: 32,
+                  border: '1px solid #d9d9d9',
+                  borderRadius: 6,
+                  padding: '4px 11px',
+                  cursor: 'pointer',
+                  display: 'flex',
+                  flexWrap: 'wrap',
+                  gap: 4,
+                  alignItems: 'center',
+                }}
+              >
+                {loadingAllGroups ? (
+                  <Text type="secondary" style={{ fontSize: 12 }}>Đang tải danh sách nhóm...</Text>
+                ) : checkedGroupIds.size === 0 ? (
+                  <Text type="secondary">Bấm để chọn nhóm tham gia...</Text>
+                ) : (
+                  [...checkedGroupIds].map((id) => {
+                    const g = groupById.get(id);
+                    return (
+                      <Tag
+                        key={id}
+                        color={g?.category?.color ?? 'default'}
+                        closable
+                        onClose={(e) => {
+                          e.preventDefault();
+                          e.stopPropagation();
+                          setCheckedGroupIds((prev) => {
+                            const next = new Set(prev);
+                            next.delete(id);
+                            return next;
+                          });
+                        }}
+                      >
+                        {g?.name ?? `Nhóm #${id}`}
+                      </Tag>
+                    );
+                  })
+                )}
+                <Button
+                  type="text"
+                  size="small"
+                  icon={<PlusOutlined />}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setPickerOpen(true);
+                  }}
+                >
+                  Chọn nhóm
+                </Button>
+              </div>
             </Form.Item>
           </Col>
         </Row>
@@ -366,6 +380,18 @@ export const CustomerForm: React.FC<CustomerFormProps> = ({ open, customer, onCl
           <Input.TextArea rows={3} placeholder="Ghi chú quan trọng về khách hàng..." />
         </Form.Item>
       </Form>
+
+      <GroupPickerModal
+        open={pickerOpen}
+        loading={loadingAllGroups}
+        allGroups={allGroups}
+        value={checkedGroupIds}
+        onOk={(next) => {
+          setCheckedGroupIds(next);
+          setPickerOpen(false);
+        }}
+        onCancel={() => setPickerOpen(false)}
+      />
     </Modal>
   );
 };
