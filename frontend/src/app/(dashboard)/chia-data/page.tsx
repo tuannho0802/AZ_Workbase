@@ -706,6 +706,21 @@ export default function ChiaDataPage() {
                       onChange: keys => setSelectedIds(keys as number[]),
                       preserveSelectedRowKeys: true,
                     }}
+                    onRow={(record: Customer) => ({
+                      onClick: (e: React.MouseEvent<HTMLElement>) => {
+                        const target = e.target as HTMLElement;
+                        // Bỏ qua nếu click TRÚNG checkbox hoặc nút Xoá - để
+                        // chính rowSelection/Popconfirm tự xử lý, tránh bị
+                        // double-toggle (chọn rồi tự bỏ chọn ngay lập tức).
+                        if (target.closest('.ant-checkbox-wrapper') || target.closest('button')) return;
+                        setSelectedIds(prev =>
+                          prev.includes(record.id)
+                            ? prev.filter(id => id !== record.id)
+                            : [...prev, record.id]
+                        );
+                      },
+                      style: { cursor: 'pointer' },
+                    })}
                     columns={unassignedColumns}
                     dataSource={unassignedData?.customers ?? []}
                     rowKey="id"
@@ -811,6 +826,16 @@ export default function ChiaDataPage() {
                   </div>
                 ) : (
                   <Table
+                    onRow={(record: Customer) => ({
+                      onClick: (e: React.MouseEvent<HTMLElement>) => {
+                        const target = e.target as HTMLElement;
+                        // Bỏ qua nếu click TRÚNG nút Xoá - không mở nhầm
+                        // drawer khi người dùng chỉ muốn xoá.
+                        if (target.closest('button')) return;
+                        router.push(`/customers?id=${record.id}`);
+                      },
+                      style: { cursor: 'pointer' },
+                    })}
                     columns={assignedColumns}
                     dataSource={assignedData?.customers ?? []}
                     rowKey="id"

@@ -1,10 +1,11 @@
 'use client';
 
-import { useEffect, useState, useMemo } from 'react';
+import { useEffect, useState, useMemo, Suspense } from 'react';
 import { Table, Card, Tag, App, Button, Space, Row, Col, Typography, Tooltip, Input, Select, DatePicker, Divider, Collapse, Pagination, Grid, Popconfirm } from 'antd';
 import { UploadOutlined, UsergroupAddOutlined, ReloadOutlined, PlusOutlined, SearchOutlined, SortAscendingOutlined, SortDescendingOutlined, InfoCircleOutlined, DeleteOutlined } from '@ant-design/icons';
 import type { ColumnsType, TablePaginationConfig } from 'antd/es/table';
 import type { FilterValue, SorterResult } from 'antd/es/table/interface';
+import { useSearchParams, useRouter, usePathname } from 'next/navigation';
 import { customersApi } from '@/lib/api/customers.api';
 import { Customer, CustomerStats } from '@/lib/types/customer.types';
 import { useQueryClient } from '@tanstack/react-query';
@@ -163,7 +164,11 @@ const CustomerMobileCard = ({
 
 const { useBreakpoint } = Grid;
 
-export default function CustomersPage() {
+// ⚠️ Đổi tên function chính từ export default -> nội bộ, để bọc Suspense bên
+// ngoài (bắt buộc với useSearchParams() trong Next.js App Router, nếu không
+// `next build` sẽ báo lỗi "useSearchParams() should be wrapped in a suspense
+// boundary" và build production trên Vercel sẽ fail).
+function CustomersPageContent() {
   const screens = useBreakpoint();
   const isLaptop = !!(screens.md && !screens.xl); // 768px - 1279px
   const isDesktop = !!screens.xl; // >= 1280px
@@ -189,6 +194,30 @@ export default function CustomersPage() {
   const [stats, setStats] = useState<CustomerStats | null>(null);
   const [statsLoading, setStatsLoading] = useState(false);
   const [selectedCustomerId, setSelectedCustomerId] = useState<number | null>(null);
+
+  // ── FIX BUG THẬT: mở drawer chi tiết khi được điều hướng từ trang khác ──
+  // (vd /chia-data -> router.push(`/customers?id=${record.id}`)) - trước đây
+  // trang này hoàn toàn KHÔNG đọc query param `id`, nên người dùng bấm vào
+  // tên khách hàng ở /chia-data chỉ bị đưa về danh sách trống trơn, không hề
+  // thấy drawer/tab "Gán data" + nút Sửa/Thu hồi nào - đây chính là lý do
+  // "UI chưa có nút để thao tác" dù code các nút đó đã viết xong và đúng.
+  const searchParams = useSearchParams();
+  const router = useRouter();
+  const pathname = usePathname();
+  useEffect(() => {
+    const idParam = searchParams.get('id');
+    if (idParam) {
+      const parsedId = Number(idParam);
+      if (!Number.isNaN(parsedId)) {
+        setSelectedCustomerId(parsedId);
+      }
+      // Xoá param khỏi URL sau khi đã dùng xong - tránh việc bấm "Làm mới"
+      // trang hoặc back/forward lại tự mở nhầm đúng khách hàng đó lần nữa.
+      router.replace(pathname);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   const [isDrawerOpen, setIsDrawerOpen] = useState(false);
 
   // Search & Filter States
@@ -704,5 +733,15 @@ export default function CustomersPage() {
       }}
     />
     </>
+  );
+}
+
+// Wrapper bắt buộc cho useSearchParams() trong Next.js App Router - nếu
+// không có Suspense bọc ngoài, `next build` sẽ lỗi và chặn deploy Vercel.
+export default function CustomersPage() {
+  return (
+    <Suspense fallback={null}>
+      <CustomersPageContent />
+    </Suspense>
   );
 }
