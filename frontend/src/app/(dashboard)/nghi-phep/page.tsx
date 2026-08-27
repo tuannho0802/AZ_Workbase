@@ -279,13 +279,16 @@ export default function LeaveRequestsPage() {
             label="Loại phép"
             rules={[{ required: true, message: 'Vui lòng chọn loại phép' }]}
           >
-            <Select placeholder="Chọn loại phép">
-              <Select.Option value="annual">Phép năm</Select.Option>
-              <Select.Option value="sick">Nghỉ ốm</Select.Option>
-              <Select.Option value="maternity">Thai sản</Select.Option>
-              <Select.Option value="unpaid">Không lương</Select.Option>
-              <Select.Option value="compensatory">Nghỉ bù</Select.Option>
-            </Select>
+            <Select
+              placeholder="Chọn loại phép"
+              options={[
+                { value: 'annual', label: 'Phép năm' },
+                { value: 'sick', label: 'Nghỉ ốm' },
+                { value: 'maternity', label: 'Thai sản' },
+                { value: 'unpaid', label: 'Không lương' },
+                { value: 'compensatory', label: 'Nghỉ bù' },
+              ]}
+            />
           </Form.Item>
 
           <Form.Item
@@ -305,11 +308,13 @@ export default function LeaveRequestsPage() {
             label="Thời lượng"
             initialValue="full_day"
           >
-            <Select>
-              <Select.Option value="full_day">Cả ngày</Select.Option>
-              <Select.Option value="half_day_am">Nửa ngày (Sáng)</Select.Option>
-              <Select.Option value="half_day_pm">Nửa ngày (Chiều)</Select.Option>
-            </Select>
+            <Select
+              options={[
+                { value: 'full_day', label: 'Cả ngày' },
+                { value: 'half_day_am', label: 'Nửa ngày (Sáng)' },
+                { value: 'half_day_pm', label: 'Nửa ngày (Chiều)' },
+              ]}
+            />
           </Form.Item>
 
           <Form.Item

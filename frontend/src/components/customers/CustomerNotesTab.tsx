@@ -43,12 +43,15 @@ export const CustomerNotesTab = ({ customerId, notes, onNoteAdded }: Props) => {
           </Form.Item>
           <Space>
             <Form.Item name="noteType" initialValue="general" style={{ marginBottom: 0 }}>
-              <Select style={{ width: 120 }}>
-                <Select.Option value="general">Chung</Select.Option>
-                <Select.Option value="call">Cuộc gọi</Select.Option>
-                <Select.Option value="meeting">Cuộc họp</Select.Option>
-                <Select.Option value="follow_up">Theo dõi</Select.Option>
-              </Select>
+              <Select
+                style={{ width: 120 }}
+                options={[
+                  { value: 'general', label: 'Chung' },
+                  { value: 'call', label: 'Cuộc gọi' },
+                  { value: 'meeting', label: 'Cuộc họp' },
+                  { value: 'follow_up', label: 'Theo dõi' },
+                ]}
+              />
             </Form.Item>
             <Form.Item name="isImportant" valuePropName="checked" style={{ marginBottom: 0 }}>
               <Switch checkedChildren="🔥" unCheckedChildren="Bình thường" />

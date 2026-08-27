@@ -220,7 +220,7 @@ export default function DeviceMappingTab() {
           type="error"
           showIcon
           style={{ marginBottom: 16 }}
-          message="Không lấy được danh sách user từ máy chấm công"
+          title="Không lấy được danh sách user từ máy chấm công"
           description={(error as any)?.response?.data?.message || (error as any)?.message}
         />
       )}

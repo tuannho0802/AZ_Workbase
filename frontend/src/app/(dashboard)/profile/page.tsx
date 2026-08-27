@@ -126,10 +126,13 @@ function ManagedLinksEditor({
                   rules={[{ required: true, message: 'Chọn loại' }]}
                   initialValue="fanpage"
                 >
-                  <Select style={{ width: 110 }}>
-                    <Select.Option value="fanpage">Fanpage</Select.Option>
-                    <Select.Option value="group">Group</Select.Option>
-                  </Select>
+                  <Select
+                    style={{ width: 110 }}
+                    options={[
+                      { value: 'fanpage', label: 'Fanpage' },
+                      { value: 'group', label: 'Group' },
+                    ]}
+                  />
                 </Form.Item>
                 <Form.Item
                   {...restField}

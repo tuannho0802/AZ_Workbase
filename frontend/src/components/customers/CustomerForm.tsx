@@ -214,13 +214,15 @@ export const CustomerForm: React.FC<CustomerFormProps> = ({ open, customer, onCl
         </Row>
 
         <Form.Item name="status" label="Trạng thái">
-          <Select>
-            <Select.Option value="pending">Chờ xử lý</Select.Option>
-            <Select.Option value="potential">Tiềm năng</Select.Option>
-            <Select.Option value="closed">Đã chốt</Select.Option>
-            <Select.Option value="lost">Mất</Select.Option>
-            <Select.Option value="inactive">Ngừng chăm sóc</Select.Option>
-          </Select>
+          <Select
+            options={[
+              { value: 'pending', label: 'Chờ xử lý' },
+              { value: 'potential', label: 'Tiềm năng' },
+              { value: 'closed', label: 'Đã chốt' },
+              { value: 'lost', label: 'Mất' },
+              { value: 'inactive', label: 'Ngừng chăm sóc' },
+            ]}
+          />
         </Form.Item>
 
         <Form.Item name="note" label="Ghi chú">

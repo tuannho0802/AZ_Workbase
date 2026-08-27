@@ -373,20 +373,23 @@ export default function UsersPage() {
             label="Vai trò"
             rules={[{ required: true, message: 'Vui lòng chọn vai trò' }]}
           >
-            <Select placeholder="Chọn vai trò">
-              <Select.Option value="admin">Admin</Select.Option>
-              <Select.Option value="manager">Manager</Select.Option>
-              <Select.Option value="assistant">Assistant</Select.Option>
-              <Select.Option value="employee">Employee</Select.Option>
-            </Select>
+            <Select
+              placeholder="Chọn vai trò"
+              options={[
+                { value: 'admin', label: 'Admin' },
+                { value: 'manager', label: 'Manager' },
+                { value: 'assistant', label: 'Assistant' },
+                { value: 'employee', label: 'Employee' },
+              ]}
+            />
           </Form.Item>
 
           <Form.Item name="departmentId" label="Phòng ban">
-            <Select placeholder="Chọn phòng ban" allowClear>
-              {departments.map((d: any) => (
-                <Select.Option key={d.id} value={Number(d.id)}>{d.name}</Select.Option>
-              ))}
-            </Select>
+            <Select
+              placeholder="Chọn phòng ban"
+              allowClear
+              options={departments.map((d: any) => ({ value: Number(d.id), label: d.name }))}
+            />
           </Form.Item>
 
           <Form.Item

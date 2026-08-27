@@ -211,7 +211,7 @@ export default function MediaSourcesPage() {
             type="warning"
             showIcon
             style={{ marginBottom: 16 }}
-            message="Đổi tên KHÔNG cập nhật lại các khách hàng cũ đang dùng tên nguồn hiện tại - họ vẫn giữ nguyên tên cũ."
+            title="Đổi tên KHÔNG cập nhật lại các khách hàng cũ đang dùng tên nguồn hiện tại - họ vẫn giữ nguyên tên cũ."
           />
         )}
         <Form form={form} layout="vertical">

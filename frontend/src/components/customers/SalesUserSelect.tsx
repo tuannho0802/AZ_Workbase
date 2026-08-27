@@ -85,19 +85,24 @@ export const SalesUserSelect = ({
           isLoading ? 'Đang tải...' : 'Không tìm thấy nhân viên'
         }
         optionLabelProp="label"  // hiện label đơn giản khi đã chọn
-      >
-        {filteredOptions.map(user => (
-          <Select.Option 
-            key={user.id} 
-            value={user.id}
-            label={user.name || user.email}  // text hiện trong input sau khi chọn
-          >
-            {/* Dropdown item — hiện đầy đủ thông tin */}
+        // options + optionRender thay cho <Select.Option> (deprecated ở antd
+        // 6). "label" giữ text đơn giản hiện trong ô khi đã chọn (nhờ
+        // optionLabelProp ở trên); optionRender mới là nơi vẽ đầy đủ
+        // avatar/tag/email cho từng dòng trong dropdown khi đang mở.
+        options={filteredOptions.map(user => ({
+          key: user.id,
+          value: user.id,
+          label: user.name || user.email,
+          user,
+        }))}
+        optionRender={(option) => {
+          const user = (option.data as { user: UserOption }).user;
+          return (
             <Space align="center">
-              <Avatar 
-                size="small" 
+              <Avatar
+                size="small"
                 icon={<UserOutlined />}
-                style={{ 
+                style={{
                   backgroundColor: roleColor[user.role] ?? '#ccc',
                   flexShrink: 0
                 }}
@@ -109,8 +114,8 @@ export const SalesUserSelect = ({
                   <Text strong style={{ fontSize: 13 }}>
                     {user.name || '(Chưa đặt tên)'}
                   </Text>
-                  <Tag 
-                    color={roleColor[user.role]} 
+                  <Tag
+                    color={roleColor[user.role]}
                     style={{ marginLeft: 6, fontSize: 10 }}
                   >
                     {user.role}
@@ -122,9 +127,10 @@ export const SalesUserSelect = ({
                 </Text>
               </div>
             </Space>
-          </Select.Option>
-        ))}
-      </Select>
+          );
+        }}
+      />
+      {/* filteredOptions render moved into `options` + `optionRender` above */}
 
       {/* --- PREVIEW CARD — hiện khi đã chọn user --- */}
       {selectedUser && (

@@ -108,7 +108,7 @@ export const AuditDiffViewer: React.FC<AuditDiffViewerProps> = ({ oldData, newDa
   }).filter(Boolean);
 
   if (diffs.length === 0) {
-    if (action === 'USER_LOGIN') return <Alert message="Đăng nhập thành công" type="info" showIcon />;
+    if (action === 'USER_LOGIN') return <Alert title="Đăng nhập thành công" type="info" showIcon />;
     return <Empty description="Dữ liệu chính không thay đổi (có thể chỉ cập nhật quan hệ ẩn)" />;
   }
 
