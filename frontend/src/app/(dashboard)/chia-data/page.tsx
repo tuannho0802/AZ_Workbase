@@ -15,6 +15,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import axiosInstance from '@/lib/api/axios-instance';
 import { useAuthStore } from '@/lib/stores/auth.store';
 import dayjs from 'dayjs';
+import { CustomerDetailDrawer } from '@/components/customers/CustomerDetailDrawer';
 
 const { Title, Text } = Typography;
 
@@ -206,6 +207,10 @@ export default function ChiaDataPage() {
   // State: selection + modal
   const [selectedIds, setSelectedIds] = useState<number[]>([]);
   const [modalOpen, setModalOpen] = useState(false);
+  // Drawer chi tiết khách hàng (dùng chung CustomerDetailDrawer đã có sẵn
+  // tab "Gán data" - Sửa/Thu hồi/Gán thêm) - mở NGAY TẠI trang này, không
+  // điều hướng sang /customers nữa, theo đúng yêu cầu.
+  const [detailCustomerId, setDetailCustomerId] = useState<number | null>(null);
   const [targetSalesIds, setTargetSalesIds] = useState<number[]>([]);
 
   // Auth State
@@ -809,7 +814,7 @@ export default function ChiaDataPage() {
                           record={record}
                           user={user}
                           renderAuditTrail={renderAuditTrail}
-                          onNameClick={() => router.push(`/customers?id=${record.id}`)}
+                          onNameClick={() => setDetailCustomerId(record.id)}
                           onDelete={handleDeleteCustomer}
                         />
                       ))
@@ -832,7 +837,7 @@ export default function ChiaDataPage() {
                         // Bỏ qua nếu click TRÚNG nút Xoá - không mở nhầm
                         // drawer khi người dùng chỉ muốn xoá.
                         if (target.closest('button')) return;
-                        router.push(`/customers?id=${record.id}`);
+                        setDetailCustomerId(record.id);
                       },
                       style: { cursor: 'pointer' },
                     })}
@@ -972,6 +977,21 @@ export default function ChiaDataPage() {
           )}
         </div>
       </Modal>
+
+      {/* ── DRAWER CHI TIẾT / QUẢN LÝ GÁN DATA ────────────────
+          Dùng chung CustomerDetailDrawer (đã có tab "Gán data" với đủ
+          Sửa/Thu hồi/Gán thêm) - mở NGAY tại trang này, không rời trang. */}
+      <CustomerDetailDrawer
+        open={detailCustomerId !== null}
+        customerId={detailCustomerId}
+        onClose={() => setDetailCustomerId(null)}
+        onUpdate={() => {
+          // Sửa/Thu hồi/Gán thêm có thể làm khách hàng chuyển giữa 2 tab
+          // (vd thu hồi hết -> rơi về "Có thể chia") nên refetch cả 2.
+          qc.invalidateQueries({ queryKey: ['unassigned'] });
+          qc.invalidateQueries({ queryKey: ['assigned'] });
+        }}
+      />
     </div>
   );
 }
