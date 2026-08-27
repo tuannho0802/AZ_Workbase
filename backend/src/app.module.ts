@@ -15,6 +15,7 @@ import { LeaveRequestsModule } from './modules/leave-requests/leave-requests.mod
 import { AuditModule } from './modules/audit/audit.module';
 import { ZkDeviceModule } from './modules/zk-device/zk-device.module';
 import { MediaSourcesModule } from './modules/media-sources/media-sources.module';
+import { LinkGroupsModule } from './modules/link-groups/link-groups.module';
 import { KeepAliveController } from './keep-alive/keep-alive.controller';
 @Module({ 
   imports: [
@@ -43,6 +44,7 @@ import { KeepAliveController } from './keep-alive/keep-alive.controller';
     AuditModule,
     ZkDeviceModule,
     MediaSourcesModule,
+    LinkGroupsModule,
     ServeStaticModule.forRoot({
       rootPath: join(process.cwd(), 'public'),
       serveRoot: '/',
