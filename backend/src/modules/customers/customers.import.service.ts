@@ -2,6 +2,7 @@ import { Injectable, BadRequestException } from '@nestjs/common';
 import { DataSource, In } from 'typeorm';
 import { Customer } from '../../database/entities/customer.entity';
 import { User } from '../../database/entities/user.entity';
+import { MediaSource } from '../../database/entities/media-source.entity';
 import * as XLSX from 'xlsx';
 import 'multer';
 import { todayVnStr } from '../../common/utils/date-vn.util';
@@ -82,7 +83,15 @@ export class CustomersImportService {
       existingPhones = new Set(existing.map(c => c.phone as string));
     }
 
-    const validSources = ['Facebook','TikTok','Google','Instagram','LinkedIn','Other'];
+    // ⚠️ Trước đây là mảng hardcode `['Facebook','TikTok',...]` - không biết
+    // gì về các nguồn admin tự thêm qua /nguon-media. Giờ lấy TÊN SỐNG từ
+    // bảng media_sources (không cần thêm code mỗi lần admin thêm nguồn mới).
+    // Fallback về "Other" khi nguồn trong file không khớp/rỗng - "Other"
+    // luôn tồn tại vì được seed sẵn (xem migration CreateMediaSources), trừ
+    // khi admin lỡ xoá nó, nên giữ nguyên logic fallback cứng "Other" ở đây
+    // cho an toàn thay vì fallback theo dữ liệu động dễ vỡ khi bảng rỗng.
+    const mediaSourceRepo = this.dataSource.getRepository(MediaSource);
+    const validSources = (await mediaSourceRepo.find({ select: ['name'] })).map((s) => s.name);
 
     // ⚠️ TỐI ƯU: trước đây check trùng SĐT trong chính file dùng
     // `validCustomers.some(c => c.phone === rawPhone)` bên trong vòng lặp

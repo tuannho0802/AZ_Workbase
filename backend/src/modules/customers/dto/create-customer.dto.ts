@@ -29,9 +29,15 @@ export class CreateCustomerDto {
   @IsDateString({}, { message: 'Ngày chốt không đúng định dạng YYYY-MM-DD' })
   closedDate?: string;
 
-  @ApiProperty({ example: 'Facebook', enum: ['Facebook', 'TikTok', 'Google', 'Instagram', 'LinkedIn', 'Other'], description: 'Nguồn khách hàng' })
+  // ⚠️ Trước đây validate cứng bằng @IsEnum([...]) - chặn luôn mọi nguồn
+  // admin tự thêm qua CRUD /media-sources vì DTO không biết tới nguồn mới.
+  // Giờ chỉ validate là chuỗi hợp lệ; việc "nguồn này có tồn tại/có đang bị
+  // khoá không" được CustomersService kiểm tra khi tạo (xem create() - đối
+  // chiếu với bảng media_sources, cho thông báo lỗi rõ ràng hơn nếu sai).
+  @ApiProperty({ example: 'Facebook', description: 'Tên nguồn khách hàng - phải khớp 1 nguồn đang mở trong Quản lý nguồn (/nguon-media)' })
   @IsNotEmpty({ message: 'Nguồn khách hàng là bắt buộc' })
-  @IsEnum(['Facebook', 'TikTok', 'Google', 'Instagram', 'LinkedIn', 'Other'], { message: 'Nguồn khách hàng không hợp lệ' })
+  @IsString({ message: 'Nguồn khách hàng phải là chuỗi' })
+  @Length(1, 100, { message: 'Tên nguồn tối đa 100 ký tự' })
   source: string;
 
   @ApiPropertyOptional({ example: 'Chiến dịch Mùa Hè', description: 'Tên chiến dịch' })

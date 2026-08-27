@@ -27,10 +27,12 @@ export class Customer {
   email: string | null;
 
 
-  @Column({
-    type: 'enum',
-    enum: ['Facebook', 'TikTok', 'Google', 'Instagram', 'LinkedIn', 'Other'],
-  })
+  // ⚠️ Trước đây là `type: 'enum', enum: [...]` cứng ở tầng DB - admin
+  // không thể tự thêm nguồn mới vì MySQL sẽ từ chối giá trị ngoài danh sách
+  // enum. Đã chuyển sang varchar tự do (xem migration CreateMediaSources) -
+  // danh sách nguồn hợp lệ giờ quản lý ở bảng `media_sources` (CRUD được),
+  // không còn ràng buộc cứng ở cột này.
+  @Column({ type: 'varchar', length: 100 })
   source: string;
 
   @Column({ length: 100, nullable: true })
