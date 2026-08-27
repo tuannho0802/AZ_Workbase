@@ -73,6 +73,11 @@ export default function DashboardLayout({
       newKey = 'duyet-phep';
     } else if (pathname.includes('/trash-can')) {
       newKey = 'trash-can';
+    } else if (pathname.includes('/nguon-media')) {
+      // Thiếu nhánh này khiến pathname rơi qua hết mọi else-if rồi giữ
+      // nguyên default 'customers' -> sidebar luôn sáng nhầm "Khách hàng"
+      // dù đang đứng ở trang /nguon-media (đúng bug trong ảnh bạn gửi).
+      newKey = 'nguon-media';
     } else if (pathname.includes('/attendance-device')) {
       newKey = 'attendance-device';
     }
