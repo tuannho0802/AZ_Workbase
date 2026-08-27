@@ -151,6 +151,7 @@ export const CustomerDetailDrawer = ({ open, customerId, onClose, onUpdate }: Cu
               children: customerId ? (
                 <CustomerAssignmentsTab
                   customerId={customerId}
+                  primarySalesUserId={customer?.salesUser?.id ?? null}
                   onUpdate={() => {
                     fetchDetail();
                     onUpdate?.();

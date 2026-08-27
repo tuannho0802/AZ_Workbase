@@ -32,6 +32,7 @@ const { Text } = Typography;
 
 interface Props {
   customerId: number;
+  primarySalesUserId?: number | null; // ai đang là Sales phụ trách chính (customer.salesUser.id) - dùng để đánh dấu/khoá option trong modal Gán thêm
   onUpdate?: () => void; // gọi khi có thay đổi (gán mới/sửa/thu hồi) - để drawer cha refetch lại customer.salesUser
 }
 
@@ -47,7 +48,7 @@ const STATUS_TAG: Record<AssignmentHistory['status'], { color: string; label: st
   reclaimed: { color: 'default', label: 'Đã thu hồi' },
 };
 
-export const CustomerAssignmentsTab = ({ customerId, onUpdate }: Props) => {
+export const CustomerAssignmentsTab = ({ customerId, primarySalesUserId, onUpdate }: Props) => {
   const { message } = App.useApp();
   const { user: currentUser } = useAuthStore();
   const [loading, setLoading] = useState(false);
@@ -153,6 +154,38 @@ export const CustomerAssignmentsTab = ({ customerId, onUpdate }: Props) => {
       setAddSubmitting(false);
     }
   };
+
+  // ── Trạng thái từng user để hiển thị tag + khoá option trong modal "Gán
+  // thêm Sales" - tránh chọn nhầm người đã có assignment (chính hoặc đã
+  // được chia), gây lỗi 400 từ backend hoặc gán trùng vô nghĩa.
+  const activeAssigneeIds = new Set(
+    history.filter((a) => a.status === 'active').map((a) => a.assignedToId),
+  );
+
+  type AddUserStatus = 'primary' | 'assigned' | 'available';
+
+  const getUserStatus = (userId: number): AddUserStatus => {
+    if (primarySalesUserId != null && userId === primarySalesUserId) return 'primary';
+    if (activeAssigneeIds.has(userId)) return 'assigned';
+    return 'available';
+  };
+
+  const STATUS_OPTION_TAG: Record<AddUserStatus, { color: string; label: string }> = {
+    primary: { color: 'gold', label: 'Sales chính' },
+    assigned: { color: 'orange', label: 'Đã gán' },
+    available: { color: 'green', label: 'Chưa gán' },
+  };
+
+  const addModalOptions = users.map((u) => {
+    const status = getUserStatus(u.id);
+    return {
+      value: u.id,
+      label: u.name || u.email, // dùng cho hiển thị tag ĐÃ CHỌN gọn gàng (không kèm status tag)
+      email: u.email,
+      status,
+      disabled: status !== 'available',
+    };
+  });
 
   const columns = [
     {
@@ -283,10 +316,25 @@ export const CustomerAssignmentsTab = ({ customerId, onUpdate }: Props) => {
           placeholder="Tìm tên hoặc email sales..."
           value={addSalesIds}
           onChange={setAddSalesIds}
-          options={users.map((u) => ({ value: u.id, label: u.name || u.email }))}
-          filterOption={(input, option) =>
-            (option?.label as string)?.toLowerCase().includes(input.toLowerCase())
-          }
+          options={addModalOptions}
+          optionRender={(option) => {
+            const status = option.data.status as AddUserStatus;
+            return (
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8 }}>
+                <span>{option.data.label}</span>
+                <Tag color={STATUS_OPTION_TAG[status].color} style={{ marginRight: 0 }}>
+                  {STATUS_OPTION_TAG[status].label}
+                </Tag>
+              </div>
+            );
+          }}
+          filterOption={(input, option) => {
+            const q = input.toLowerCase();
+            return (
+              !!option?.label?.toString().toLowerCase().includes(q) ||
+              !!option?.email?.toLowerCase?.().includes(q)
+            );
+          }}
           showSearch
           maxTagCount="responsive"
         />
