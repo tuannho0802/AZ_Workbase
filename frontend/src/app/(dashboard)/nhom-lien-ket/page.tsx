@@ -485,12 +485,12 @@ export default function LinkGroupsAdminPage() {
           >
             <Select
               allowClear
-              showSearch
+              showSearch={{
+                filterOption: (input, option) =>
+                  (option?.label as string)?.toLowerCase().includes(input.toLowerCase()),
+              }}
               placeholder="Chưa gán ai làm Quản lý chính"
               options={userOptions}
-              filterOption={(input, option) =>
-                (option?.label as string)?.toLowerCase().includes(input.toLowerCase())
-              }
             />
           </Form.Item>
         </Form>

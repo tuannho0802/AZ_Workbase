@@ -1,9 +1,10 @@
 'use client';
 
 import { useEffect, useState, useMemo } from 'react';
-import { App, Spin, Empty, Switch, Tag, Typography, List, Avatar } from 'antd';
+import { App, Spin, Empty, Switch, Tag, Typography, Avatar } from 'antd';
 import { LinkOutlined, CheckCircleFilled } from '@ant-design/icons';
 import { customerGroupMembershipsApi, GroupMembershipRow } from '@/lib/api/link-groups.api';
+import { SimpleList } from '@/components/common/SimpleList';
 
 const { Text, Link: TypoLink } = Typography;
 
@@ -105,39 +106,33 @@ export const CustomerGroupMembershipsTab = ({ customerId }: Props) => {
           <Tag color={group.categoryColor} style={{ fontSize: 13, padding: '4px 10px', marginBottom: 8 }}>
             {group.categoryName}
           </Tag>
-          <List
+          <SimpleList
             bordered
             dataSource={group.rows}
-            renderItem={(row) => (
-              <List.Item
-                actions={[
-                  <Switch
-                    key="toggle"
-                    checked={row.joined}
-                    loading={savingGroupId === row.groupId}
-                    onChange={(checked) => handleToggle(row, checked)}
-                    checkedChildren="Đã join"
-                    unCheckedChildren="Chưa join"
-                  />,
-                ]}
-              >
-                <List.Item.Meta
-                  avatar={
-                    row.joined ? (
-                      <Avatar style={{ backgroundColor: '#52c41a' }} icon={<CheckCircleFilled />} />
-                    ) : (
-                      <Avatar style={{ backgroundColor: '#d9d9d9' }} />
-                    )
-                  }
-                  title={<Text strong>{row.groupName}</Text>}
-                  description={
-                    <TypoLink href={row.groupUrl} target="_blank" rel="noopener noreferrer">
-                      <LinkOutlined /> {row.groupUrl}
-                    </TypoLink>
-                  }
-                />
-              </List.Item>
-            )}
+            rowKey={(row) => row.groupId}
+            renderMeta={(row) => ({
+              avatar: row.joined ? (
+                <Avatar style={{ backgroundColor: '#52c41a' }} icon={<CheckCircleFilled />} />
+              ) : (
+                <Avatar style={{ backgroundColor: '#d9d9d9' }} />
+              ),
+              title: <Text strong>{row.groupName}</Text>,
+              description: (
+                <TypoLink href={row.groupUrl} target="_blank" rel="noopener noreferrer">
+                  <LinkOutlined /> {row.groupUrl}
+                </TypoLink>
+              ),
+            })}
+            renderActions={(row) => [
+              <Switch
+                key="toggle"
+                checked={row.joined}
+                loading={savingGroupId === row.groupId}
+                onChange={(checked) => handleToggle(row, checked)}
+                checkedChildren="Đã join"
+                unCheckedChildren="Chưa join"
+              />,
+            ]}
           />
         </div>
       ))}

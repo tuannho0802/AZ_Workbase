@@ -282,11 +282,11 @@ export const CustomerAssignmentsTab = ({ customerId, primarySalesUserId, onUpdat
         <Form form={editForm} layout="vertical">
           <Form.Item name="assignedToId" label="Người nhận" rules={[{ required: true }]}>
             <Select
-              showSearch
+              showSearch={{
+                filterOption: (input, option) =>
+                  (option?.label as string)?.toLowerCase().includes(input.toLowerCase()),
+              }}
               options={users.map((u) => ({ value: u.id, label: u.name || u.email }))}
-              filterOption={(input, option) =>
-                (option?.label as string)?.toLowerCase().includes(input.toLowerCase())
-              }
             />
           </Form.Item>
           <Form.Item name="reason" label="Lý do">
@@ -328,14 +328,15 @@ export const CustomerAssignmentsTab = ({ customerId, primarySalesUserId, onUpdat
               </div>
             );
           }}
-          filterOption={(input, option) => {
-            const q = input.toLowerCase();
-            return (
-              !!option?.label?.toString().toLowerCase().includes(q) ||
-              !!option?.email?.toLowerCase?.().includes(q)
-            );
+          showSearch={{
+            filterOption: (input, option) => {
+              const q = input.toLowerCase();
+              return (
+                !!option?.label?.toString().toLowerCase().includes(q) ||
+                !!option?.email?.toLowerCase?.().includes(q)
+              );
+            },
           }}
-          showSearch
           maxTagCount="responsive"
         />
         <div style={{ marginTop: 16, marginBottom: 8 }}>

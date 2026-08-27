@@ -64,14 +64,15 @@ export const SalesUserSelect = ({
     <div className="sales-user-select-container">
       {/* --- SELECT COMBOBOX --- */}
       <Select
-        showSearch
         allowClear
         value={value ?? null}
         placeholder={placeholder}
         disabled={disabled}
         loading={isLoading}
-        filterOption={false}     // tắt filter mặc định, dùng onSearch
-        onSearch={setSearchText}
+        showSearch={{
+          filterOption: false, // tắt filter mặc định, dùng onSearch
+          onSearch: setSearchText,
+        }}
         onChange={(val) => {
           const numericVal = val ? Number(val) : null;
           const user = users.find(u => u.id === numericVal) ?? null;

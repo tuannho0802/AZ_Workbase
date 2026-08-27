@@ -116,12 +116,13 @@ export const BulkAssignModal: React.FC<BulkAssignModalProps> = ({
         onChange={setSalesUserIds}
         loading={loadingUsers}
         options={users.map((u) => ({ value: u.id, label: u.name || u.email }))}
-        filterOption={(input, option) => {
-          const u = users.find((u) => u.id === option?.value);
-          const q = input.toLowerCase();
-          return (u?.name?.toLowerCase().includes(q) || u?.email?.toLowerCase().includes(q)) ?? false;
+        showSearch={{
+          filterOption: (input, option) => {
+            const u = users.find((u) => u.id === option?.value);
+            const q = input.toLowerCase();
+            return (u?.name?.toLowerCase().includes(q) || u?.email?.toLowerCase().includes(q)) ?? false;
+          },
         }}
-        showSearch
         maxTagCount="responsive"
       />
       {salesUserIds.length > 1 && (

@@ -938,18 +938,19 @@ export default function ChiaDataPage() {
             value={targetSalesIds}
             onChange={setTargetSalesIds}
             options={userOptions}
-            filterOption={(input, option) => {
-              const u = (usersData || []).find(
-                (u: User) => u.id === option?.value
-              );
-              const q = input.toLowerCase();
-              return (
-                u?.name?.toLowerCase().includes(q) ||
-                u?.email?.toLowerCase().includes(q)
-              ) ?? false;
+            showSearch={{
+              filterOption: (input, option) => {
+                const u = (usersData || []).find(
+                  (u: User) => u.id === option?.value
+                );
+                const q = input.toLowerCase();
+                return (
+                  u?.name?.toLowerCase().includes(q) ||
+                  u?.email?.toLowerCase().includes(q)
+                ) ?? false;
+              },
             }}
             optionLabelProp="label"
-            showSearch
             maxTagCount="responsive"
           />
 

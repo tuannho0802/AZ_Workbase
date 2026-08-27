@@ -1,13 +1,14 @@
 'use client';
 
 import { useState } from 'react';
-import { Modal, List, Avatar, Tag, Select, Button, Typography, App, Popconfirm } from 'antd';
+import { Modal, Avatar, Tag, Select, Button, Typography, App, Popconfirm } from 'antd';
 import { UserOutlined, DeleteOutlined, PlusOutlined, CrownOutlined } from '@ant-design/icons';
 import { useQuery } from '@tanstack/react-query';
 import { useAuthStore } from '@/lib/stores/auth.store';
 import { usersApi } from '@/lib/api/users.api';
 import { useGroupManagers, useAddSecondaryManager, useRemoveSecondaryManager } from '@/lib/hooks/useLinkGroups';
 import { getApiErrorMessage } from '@/lib/utils/error-message.util';
+import { SimpleList } from '@/components/common/SimpleList';
 
 const { Text } = Typography;
 
@@ -117,56 +118,52 @@ export const GroupManagersModal = ({ open, onClose, groupId, groupName }: Props)
       <div style={{ marginBottom: 8 }}>
         <Text strong>Quản lý phụ ({managers?.secondaryManagers.length ?? 0}):</Text>
       </div>
-      <List
+      <SimpleList
         loading={isLoading}
         size="small"
         dataSource={managers?.secondaryManagers ?? []}
-        locale={{ emptyText: 'Chưa có Quản lý phụ nào' }}
-        renderItem={(m) => (
-          <List.Item
-            actions={
-              canEdit
-                ? [
-                    <Popconfirm
-                      key="remove"
-                      title={`Gỡ "${m.name}" khỏi Quản lý phụ?`}
-                      onConfirm={() => handleRemove(m.id, m.name)}
-                      okText="Gỡ"
-                      cancelText="Huỷ"
-                    >
-                      <Button
-                        size="small"
-                        danger
-                        type="text"
-                        icon={<DeleteOutlined />}
-                        loading={removeMutation.isPending && removeMutation.variables?.userId === m.id}
-                      />
-                    </Popconfirm>,
-                  ]
-                : []
-            }
-          >
-            <List.Item.Meta
-              avatar={<Avatar size="small" icon={<UserOutlined />} />}
-              title={m.name}
-              description={m.email}
-            />
-          </List.Item>
-        )}
+        rowKey={(m) => m.id}
+        emptyText="Chưa có Quản lý phụ nào"
+        renderMeta={(m) => ({
+          avatar: <Avatar size="small" icon={<UserOutlined />} />,
+          title: m.name,
+          description: m.email,
+        })}
+        renderActions={(m) =>
+          canEdit
+            ? [
+                <Popconfirm
+                  key="remove"
+                  title={`Gỡ "${m.name}" khỏi Quản lý phụ?`}
+                  onConfirm={() => handleRemove(m.id, m.name)}
+                  okText="Gỡ"
+                  cancelText="Huỷ"
+                >
+                  <Button
+                    size="small"
+                    danger
+                    type="text"
+                    icon={<DeleteOutlined />}
+                    loading={removeMutation.isPending && removeMutation.variables?.userId === m.id}
+                  />
+                </Popconfirm>,
+              ]
+            : []
+        }
       />
 
       {canEdit ? (
         <div style={{ marginTop: 16, display: 'flex', gap: 8 }}>
           <Select
-            showSearch
+            showSearch={{
+              filterOption: (input, option) =>
+                (option?.label as string)?.toLowerCase().includes(input.toLowerCase()),
+            }}
             style={{ flex: 1 }}
             placeholder="Chọn nhân viên để thêm làm Quản lý phụ"
             value={selectedUserId}
             onChange={setSelectedUserId}
             options={availableOptions}
-            filterOption={(input, option) =>
-              (option?.label as string)?.toLowerCase().includes(input.toLowerCase())
-            }
             notFoundContent="Không còn ai để thêm"
           />
           <Button

@@ -3,7 +3,7 @@
 import { useState, useEffect } from 'react';
 import {
   Card, Table, Button, Space, Tag, App, Form,
-  Input, Select, Spin, Typography, Empty, List, Avatar, Tooltip,
+  Input, Select, Spin, Typography, Empty, Avatar, Tooltip,
   Descriptions, Divider, Drawer, Row, Col,
 } from 'antd';
 import {
@@ -16,6 +16,7 @@ import dayjs from 'dayjs';
 
 import { useAuthStore } from '@/lib/stores/auth.store';
 import { usersApi, ManagedLink, UserDetail } from '@/lib/api/users.api';
+import { SimpleList } from '@/components/common/SimpleList';
 
 const { Text, Title, Link: TypoLink } = Typography;
 
@@ -40,47 +41,34 @@ function getInitials(name?: string) {
 
 // ── Danh sách link đọc (read-only) ─────────────────────────────────────────
 function ManagedLinksReadOnly({ links }: { links: ManagedLink[] }) {
-  if (!links || links.length === 0) {
-    return (
-      <Empty
-        description="Chưa có Fanpage/Group nào được gán"
-        image={Empty.PRESENTED_IMAGE_SIMPLE}
-        style={{ padding: '16px 0' }}
-      />
-    );
-  }
-
   return (
-    <List
-      itemLayout="horizontal"
-      dataSource={links}
-      renderItem={(link) => (
-        <List.Item>
-          <List.Item.Meta
-            avatar={
-              <Avatar
-                icon={link.type === 'fanpage' ? <FacebookOutlined /> : <TeamOutlined />}
-                style={{
-                  backgroundColor: link.type === 'fanpage' ? '#1877f2' : '#52c41a',
-                }}
-              />
-            }
-            title={
-              <Space>
-                <Text strong>{link.name}</Text>
-                <Tag color={link.type === 'fanpage' ? 'blue' : 'green'}>
-                  {LINK_TYPE_LABEL[link.type] ?? link.type}
-                </Tag>
-              </Space>
-            }
-            description={
-              <TypoLink href={link.url} target="_blank" rel="noopener noreferrer">
-                <LinkOutlined /> {link.url}
-              </TypoLink>
-            }
+    <SimpleList
+      dataSource={links ?? []}
+      rowKey={(link) => `${link.type}-${link.url}`}
+      emptyText="Chưa có Fanpage/Group nào được gán"
+      renderMeta={(link) => ({
+        avatar: (
+          <Avatar
+            icon={link.type === 'fanpage' ? <FacebookOutlined /> : <TeamOutlined />}
+            style={{
+              backgroundColor: link.type === 'fanpage' ? '#1877f2' : '#52c41a',
+            }}
           />
-        </List.Item>
-      )}
+        ),
+        title: (
+          <Space>
+            <Text strong>{link.name}</Text>
+            <Tag color={link.type === 'fanpage' ? 'blue' : 'green'}>
+              {LINK_TYPE_LABEL[link.type] ?? link.type}
+            </Tag>
+          </Space>
+        ),
+        description: (
+          <TypoLink href={link.url} target="_blank" rel="noopener noreferrer">
+            <LinkOutlined /> {link.url}
+          </TypoLink>
+        ),
+      })}
     />
   );
 }
@@ -439,10 +427,10 @@ function AdminProfileManager() {
         <Drawer
           title="Profile nhân viên"
           placement="right"
-          width="100%"
+          size="100%"
           open={drawerOpen}
           onClose={() => setDrawerOpen(false)}
-          destroyOnClose
+          destroyOnHidden
         >
           {selectedUserId && (
             <ProfilePortal userId={selectedUserId} canEditLinks />
