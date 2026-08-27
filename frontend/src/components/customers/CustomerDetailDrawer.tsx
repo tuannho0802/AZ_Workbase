@@ -15,13 +15,15 @@ import {
   ReloadOutlined,
   InfoCircleOutlined,
   FileTextOutlined,
-  DollarOutlined
+  DollarOutlined,
+  UsergroupAddOutlined
 } from '@ant-design/icons';
 import { Customer } from '@/lib/types/customer.types';
 import { customersApi } from '@/lib/api/customers.api';
 import { CustomerDepositTable } from './CustomerDepositTable';
 import { CustomerInfoTab } from './CustomerInfoTab';
 import { CustomerNotesTab } from './CustomerNotesTab';
+import { CustomerAssignmentsTab } from './CustomerAssignmentsTab';
 import { DepositForm } from './DepositForm';
 import { CustomerForm } from './CustomerForm';
 
@@ -141,6 +143,19 @@ export const CustomerDetailDrawer = ({ open, customerId, onClose, onUpdate }: Cu
                     refreshTrigger={depositRefreshTrigger} 
                   />
                 </>
+              ) : null
+            },
+            {
+              key: 'assignments',
+              label: (<span><UsergroupAddOutlined />Gán data</span>),
+              children: customerId ? (
+                <CustomerAssignmentsTab
+                  customerId={customerId}
+                  onUpdate={() => {
+                    fetchDetail();
+                    onUpdate?.();
+                  }}
+                />
               ) : null
             }
           ]}

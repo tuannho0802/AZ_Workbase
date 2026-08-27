@@ -45,6 +45,24 @@ export const assignmentsApi = {
     return response.data;
   },
 
+  /**
+   * Sửa 1 lượt gán đang active (đổi người nhận và/hoặc lý do). Để trống field
+   * nào thì giữ nguyên field đó - KHÔNG cần gửi đủ cả 2.
+   */
+  updateAssignment: async (
+    assignmentId: number,
+    data: { assignedToId?: number; reason?: string },
+  ): Promise<AssignmentHistory> => {
+    const response = await axiosInstance.patch(`/customers/assignments/${assignmentId}`, data);
+    return response.data;
+  },
+
+  /** Thu hồi 1 lượt gán đang active - KHÔNG THỂ HOÀN TÁC (đổi status sang reclaimed) */
+  reclaimAssignment: async (assignmentId: number): Promise<{ message: string }> => {
+    const response = await axiosInstance.patch(`/customers/assignments/${assignmentId}/reclaim`);
+    return response.data;
+  },
+
   /** Lấy danh sách khách hàng đã được gán */
   getAssignedCustomers: async (params: {
     page?: number;
