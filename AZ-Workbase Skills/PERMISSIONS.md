@@ -85,7 +85,7 @@
 > Chú thích: ✅ = đã khớp đúng rule ở mục 1. ⚠️ = chưa rà soát/chưa khớp — cần 1 phiên riêng để sửa.
 > 🟦 = có mô hình quyền riêng theo chủ đích (xem mục 1.6), không thuộc thang ✅/⚠️ thông thường.
 
-### 2.1. Khách hàng / Chia Data (`modules/customers`) — ⚠️ KHỚP MỘT PHẦN (endpoint chính ✅, 6 sub-resource ⚠️ MỚI PHÁT HIỆN 2026-08-28)
+### 2.1. Khách hàng / Chia Data (`modules/customers`) — ✅ ĐÃ KHỚP (6 sub-resource đã vá xong)
 
 | Hành động | File chịu trách nhiệm |
 |---|---|
@@ -96,60 +96,50 @@
 | FE — nút Xoá | `chia-data/page.tsx`, `customers/page.tsx`: `canDelete = user?.role === 'admin'` |
 | Spec test khoá hành vi | `customer-access.helper.spec.ts`, phần mở rộng trong `customers.service.spec.ts` |
 
-**🚨 MỚI PHÁT HIỆN (2026-08-28, đối chiếu trực tiếp từng dòng theo yêu cầu chủ dự án) — 6 endpoint
-sub-resource của Customer KHÔNG hề đi qua `CustomerAccessHelper.applyViewFilter()`, dù cùng nằm trên
-`CustomersController`/module liên quan. Các endpoint này nhận thẳng `customerId` từ URL rồi query DB mà
-KHÔNG kiểm tra customer đó có thuộc phạm vi Xem/Sửa của người gọi hay không — nghĩa là **BẤT KỲ role nào
-đã đăng nhập (kể cả Employee) đều thao tác được trên customer ID bất kỳ**, không riêng gì data của mình.
-Đây là lỗ hổng thật (không phải suy đoán), phá vỡ nguyên tắc "1 nguồn áp filter duy nhất" mà chính bảng
-trên mô tả — nguồn đó trên thực tế CHỈ được áp cho `findAll/findOne/update/remove`, không áp cho các
-endpoint dưới đây:**
+**✅ ĐÃ VÁ (2026-08-28, đối chiếu trực tiếp từng dòng code, xác nhận sau khi merge) — cả 6 endpoint
+sub-resource phát hiện thiếu filter ở lần rà soát trước đã được sửa:**
 
-| Endpoint | File/hàm | Vấn đề cụ thể | Mức độ |
-|---|---|---|---|
-| `POST /customers/:id/notes` | `customers.service.ts` → `createNote()` | Không `@Roles`, không check sở hữu. Có comment sẵn trong code do dev tự nhận biết thiếu: *"findOne already handles RBAC check via userId/role but here we use simple find"* — nhưng chưa fix | Trung bình — ghi chú không nhạy cảm bằng dữ liệu tài chính, nhưng vẫn là ghi đè lên customer không thuộc phạm vi |
-| `GET /customers/:id/deposits` | `customers.service.ts` → `getDeposits()` | Không `@Roles`, không check sở hữu — bất kỳ role nào cũng xem được lịch sử nạp tiền (dữ liệu tài chính) của customer bất kỳ | **Cao** — lộ dữ liệu tài chính |
-| `POST /customers/:id/deposits` | `customers.controller.ts` (`@Roles(ADMIN, MANAGER, ASSISTANT)`) | Có `@Roles` ở tầng role nhưng KHÔNG check sở hữu trong service → Manager tạo được deposit cho customer NGOÀI phòng ban mình quản lý. Đồng thời loại hẳn Employee dù có thể đang là sales chính của customer đó | Trung bình |
-| `DELETE /customers/deposits/:id` | `customers.controller.ts` (`@Roles(ADMIN, MANAGER)`) | **Vi phạm trực tiếp rule cốt lõi mục 1**: "Xoá luôn = `role === ADMIN`, không ngoại lệ" — Manager không bao giờ được phép xoá bất kỳ thứ gì, kể cả xoá 1 bản ghi deposit. Cũng không check sở hữu | **Nghiêm trọng nhất** — phá thẳng rule Xoá |
-| `GET /customers/:id/assignment-history` | `customers.service.ts` → `getAssignmentHistory()` | Không `@Roles`, không check sở hữu — ai cũng xem được lịch sử gán/thu hồi sales của customer bất kỳ | Trung bình |
-| `GET /customers/:id/group-memberships`, `PATCH /customers/:id/group-memberships/:groupId` | `customer-group-memberships.controller.ts` (module riêng, cùng base path `customers`) | Chỉ có `JwtAuthGuard`, **KHÔNG có `RolesGuard`/`@Roles` nào cả**, không check sở hữu — ai đăng nhập cũng xem/sửa được checklist "đã join nhóm" của customer bất kỳ | Trung bình |
-
-**Chưa sửa code trong phiên này — theo đúng yêu cầu (chỉ cập nhật tài liệu).** Hướng sửa đề xuất: cả 6
-endpoint đều cần gọi `CustomerAccessHelper.applyViewFilter()` (hoặc tối thiểu 1 bước gọi lại `findOne()`
-hiện có của `CustomersService`, vốn đã áp đúng filter) làm cổng gác TRƯỚC khi đọc/ghi sub-resource — đúng
-pattern đã dùng cho `update()`/`remove()`. Riêng `DELETE /customers/deposits/:id` bắt buộc đổi
-`@Roles(ADMIN, MANAGER)` → `@Roles(ADMIN)` ngay khi sửa, vì đây là vi phạm rule Xoá, không phải thiếu
-sót filter phạm vi thông thường.
-
-
-
-Hiện trạng thực tế (đọc trực tiếp `users.controller.ts`):
-
-| Endpoint | Guard hiện tại | Đúng theo rule mục 1 phải là |
+| Endpoint | File/hàm | Đã sửa thành |
 |---|---|---|
-| `GET /users/all` | `ADMIN, MANAGER, ASSISTANT, EMPLOYEE` (mọi role, dùng cho dropdown chọn user) | ✅ Đã đúng — endpoint chỉ trả tên/id rút gọn, không nhạy cảm |
-| `GET /users` (danh sách phân trang, đầy đủ thông tin) | `@Roles(ADMIN)` | `ADMIN, ASSISTANT` toàn bộ; `MANAGER` chỉ phòng ban quản lý |
-| `GET /users/:id` | `@Roles(ADMIN)` | Như trên |
-| `GET /users/me` | Không giới hạn role (tự xem bản thân) | ✅ Đúng |
-| `GET /users/pending-approvals` | `ADMIN, ASSISTANT` | ✅ Đúng phần này, còn thiếu nhánh `MANAGER` (chỉ user đăng ký vào phòng ban mình quản lý) |
-| `POST /users` (tạo mới) | `@Roles(ADMIN)` | `ADMIN, ASSISTANT` toàn quyền; `MANAGER` chỉ tạo trong phòng ban mình quản lý |
-| `PATCH /users/:id` (sửa thông tin) | `@Roles(ADMIN)` | Như trên |
-| `PATCH /users/:id/approve`, `.../reject` | `ADMIN, ASSISTANT` | ✅ Đúng phần Assistant/Admin, thiếu nhánh Manager (chỉ duyệt được nếu TRÙNG phòng ban mình quản lý — xem mục 2.8, rule đã chốt) |
-| `PATCH /users/:id/reset-password` | `@Roles(ADMIN)` | `ADMIN, ASSISTANT` toàn quyền; `MANAGER` chỉ trong phòng ban quản lý |
-| `GET /users/:id/profile` | `@Roles(ADMIN)` | `ADMIN, ASSISTANT` xem mọi người; `MANAGER` chỉ phòng ban quản lý; mọi role tự xem bản thân |
+| `POST /customers/:id/notes` | `createNote()` | Gọi `assertCustomerAccessible(customerId, userId, userRole)` trước khi ghi |
+| `GET /customers/:id/deposits` | `getDeposits()` | Gọi `assertCustomerAccessible()` trước khi đọc |
+| `POST /customers/:id/deposits` | `createDeposit()` | Gọi `assertCustomerAccessible()` — Manager không còn tạo được deposit ngoài phòng ban quản lý |
+| `DELETE /customers/deposits/:id` | Controller | Đổi `@Roles(ADMIN, MANAGER)` → `@Roles(Role.ADMIN)` — đúng rule Xoá tuyệt đối ở mục 1 |
+| `GET /customers/:id/assignment-history` | `getAssignmentHistory()` | Gọi `assertCustomerAccessible()` |
+| `GET/PATCH /customers/:id/group-memberships*` | `customer-group-memberships.service.ts` | Thêm `assertCustomerAccessible()` riêng (dùng `customerRepo.createQueryBuilder()` + `CustomerAccessHelper.applyViewFilter()`) — có spec test riêng khoá hành vi (`customer-group-memberships.service.spec.ts`) |
 
-**Kết luận:** Module này đang **CHẶT HƠN** mức cần thiết (chỉ Admin, chưa mở cho Assistant/Manager theo
-đúng rule mới) — không phải lỗ hổng bảo mật, nhưng KHÔNG khớp yêu cầu nghiệp vụ hiện tại. → **Cần 1
-phiên riêng: tạo `UsersAccessHelper` (pattern giống `CustomerAccessHelper`) và áp dụng lại toàn bộ.**
+Toàn bộ 6 điểm trên giờ đi qua đúng "1 nguồn áp filter duy nhất" (`assertCustomerAccessible`/
+`applyViewFilter`), không còn endpoint nào bỏ sót.
 
-### 2.3. Máy chấm công (`modules/zk-device`) — ⚠️ CHƯA KHỚP
+### 2.2. Nhân viên (`modules/users`) — ✅ ĐÃ KHỚP
 
-Toàn bộ `zk-device.controller.ts` hiện khoá cứng `@Roles(Role.ADMIN)` **ở mức class** (mọi endpoint: xem
-trạng thái máy, map user, đồng bộ log, xem bảng công, kể cả xoá log `cleanup`...). Theo rule mới,
-Assistant phải thao tác được ngang Admin (trừ riêng endpoint xoá log), Manager giới hạn xem/thao tác
-chấm công của nhân viên thuộc phòng ban mình quản lý. `zk-device-cron.controller.ts` (nội bộ, cron job
-gọi) và `adms.controller.ts` (`/iclock/*`, máy chấm công gọi thẳng qua giao thức riêng — KHÔNG qua JWT,
-không áp RBAC người dùng được) không thuộc phạm vi rule này. **Chưa thực hiện — cần 1 phiên riêng.**
+Đối chiếu trực tiếp `users.controller.ts` + `UsersAccessHelper` (`helpers/users-access.helper.ts`,
+pattern giống hệt `CustomerAccessHelper`):
+
+| Endpoint | Guard hiện tại |
+|---|---|
+| `GET /users/all` (dropdown rút gọn) | `ADMIN, MANAGER, ASSISTANT, EMPLOYEE` — ✅ đúng, không nhạy cảm |
+| `GET /users` (danh sách đầy đủ) | `ADMIN, ASSISTANT, MANAGER` + `UsersAccessHelper.applyViewFilter()` (Manager chỉ thấy phòng ban mình quản lý + chính mình) |
+| `GET /users/:id` | Như trên |
+| `GET /users/me` | Không giới hạn role (tự xem bản thân) — ✅ đúng |
+| `GET /users/pending-approvals` | `ADMIN, ASSISTANT, MANAGER` — Manager chỉ thấy user đăng ký vào phòng ban mình quản lý (`getManagedDepartmentIds`) |
+| `POST /users` (tạo mới) | `ADMIN, ASSISTANT, MANAGER` — Manager chỉ tạo được trong phòng ban mình quản lý |
+| `PATCH /users/:id` (sửa) | `ADMIN, ASSISTANT, MANAGER` + `UsersAccessHelper.canManageUser()` |
+| `PATCH /users/:id/approve`, `.../reject` | `ADMIN, ASSISTANT, MANAGER` — Manager chỉ duyệt/từ chối đúng phòng ban mình quản lý (khớp rule §2.8) |
+| `PATCH /users/:id/reset-password` | `ADMIN, ASSISTANT, MANAGER` + `canManageUser()` |
+| `GET/PUT /users/:id/profile` | `ADMIN, ASSISTANT, MANAGER` + `canManageUser()`; role khác chỉ tự xem/sửa của chính mình |
+
+Không có endpoint Xoá user (đúng thiết kế — chỉ có `isActive=false` qua `update()`). Spec test:
+`users.service.spec.ts` (278 dòng, cover đủ approve/reject/create/update/resetPassword theo từng role).
+
+### 2.3. Máy chấm công (`modules/zk-device`) — ✅ ĐÃ KHỚP
+
+Đối chiếu trực tiếp `zk-device.controller.ts`: `@Roles(ADMIN, ASSISTANT, MANAGER)` áp ở mức class, Manager
+bị giới hạn theo phòng ban ngay trong từng service method (`mapUser`, `unmapUser`, `getAttendanceLogs`,
+`getAttendanceSummary` — lọc theo `matchedUser.departmentId IN (:...deptIds)`). Riêng
+`DELETE /attendance-logs/cleanup` (xoá vĩnh viễn log) tách decorator riêng `@Roles(Role.ADMIN)` — đúng
+rule Xoá tuyệt đối. `zk-device-cron.controller.ts` (nội bộ) và `adms.controller.ts` (`/iclock/*`, máy
+chấm công gọi thẳng, không qua JWT) không thuộc phạm vi rule RBAC người dùng.
 
 ### 2.4. Nhóm liên kết (`modules/link-groups`) — ✅ ĐÃ KHỚP (CRUD chung) / 🟦 Quản lý chính-phụ (mô hình riêng, không đổi)
 
