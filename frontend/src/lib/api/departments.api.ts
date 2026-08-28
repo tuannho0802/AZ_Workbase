@@ -12,7 +12,14 @@ export const departmentsApi = {
     const response = await axiosInstance.get<Department[]>('/departments');
     return response.data;
   },
-  
+
+  // Danh sách công khai (KHÔNG cần token) - chỉ id/name, dùng cho form đăng
+  // ký tài khoản mới (trang /register, chưa đăng nhập).
+  getPublic: async (): Promise<Pick<Department, 'id' | 'name'>[]> => {
+    const response = await axiosInstance.get('/departments/public');
+    return response.data;
+  },
+
   getById: async (id: number): Promise<Department> => {
     const response = await axiosInstance.get<Department>(`/departments/${id}`);
     return response.data;

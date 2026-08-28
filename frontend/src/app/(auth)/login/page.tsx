@@ -3,10 +3,12 @@
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { Form, Input, Button, Card, App } from 'antd';
+import { isAxiosError } from 'axios';
 import { UserOutlined, LockOutlined } from '@ant-design/icons';
+import Link from 'next/link';
 import { authApi } from '@/lib/api/auth.api';
 import { useAuthStore } from '@/lib/stores/auth.store';
-import Cookies from 'js-cookie';
+import { getApiErrorMessage } from '@/lib/utils/error-message.util';
 
 export default function LoginPage() {
   const [loading, setLoading] = useState(false);
@@ -45,15 +47,20 @@ export default function LoginPage() {
       await new Promise(resolve => setTimeout(resolve, 500));
       
       router.push('/customers');
-    } catch (error: any) {
+    } catch (error) {
       console.error('[LOGIN] Error:', error);
-      const status = error.response?.status;
+      const status = isAxiosError(error) ? error.response?.status : undefined;
+      // ⚠️ 403 giờ có 3 trường hợp khác nhau: tài khoản bị khóa, đang chờ
+      // duyệt (self-register), hoặc bị từ chối - xem AuthService.login() BE.
+      // Thay vì chỉ hiện toast chung chung, điều hướng sang trang trạng thái
+      // riêng, hiển thị ĐÚNG NGUYÊN VĂN message thật từ backend cho từng case.
       if (status === 403) {
-        message.error('Tài khoản của bạn đã bị khóa, vui lòng liên hệ Admin');
+        const backendMessage = getApiErrorMessage(error, 'Tài khoản của bạn hiện chưa thể đăng nhập.');
+        router.push(`/account-status?message=${encodeURIComponent(backendMessage)}`);
       } else if (status === 401) {
         message.error('Email hoặc mật khẩu không đúng');
       } else {
-        message.error(error.response?.data?.message || 'Đăng nhập thất bại');
+        message.error(getApiErrorMessage(error, 'Đăng nhập thất bại'));
       }
     } finally {
       setLoading(false);
@@ -112,6 +119,10 @@ export default function LoginPage() {
               Đăng nhập
             </Button>
           </Form.Item>
+
+          <div style={{ textAlign: 'center' }}>
+            <Link href="/register">Chưa có tài khoản? Đăng ký ngay</Link>
+          </div>
         </Form>
       </Card>
     </div>
