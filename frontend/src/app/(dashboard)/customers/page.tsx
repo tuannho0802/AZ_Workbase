@@ -84,11 +84,8 @@ const CustomerMobileCard = ({
   user: any;
   onDelete: (id: number) => void;
 }) => {
-  const canDelete =
-    user?.role === 'admin' ||
-    user?.role === 'manager' ||
-    (user?.role === 'assistant' && record.createdBy?.id === user?.id) ||
-    (user?.role === 'employee' && record.createdBy?.id === user?.id);
+  // ⚠️ CHỈ Admin được xoá - Assistant/Manager/Employee đều KHÔNG được (kể cả với data của chính mình)
+  const canDelete = user?.role === 'admin';
 
   return (
   <Card
@@ -450,11 +447,8 @@ function CustomersPageContent() {
       width: isLaptop ? 60 : 70,
       align: 'center' as const,
       render: (_: any, record: Customer) => {
-        const canDelete =
-          user?.role === 'admin' ||
-          user?.role === 'manager' ||
-          (user?.role === 'assistant' && record.createdBy?.id === user?.id) ||
-          (user?.role === 'employee' && record.createdBy?.id === user?.id);
+        // ⚠️ CHỈ Admin được xoá - Assistant/Manager/Employee đều KHÔNG được (kể cả với data của chính mình)
+  const canDelete = user?.role === 'admin';
 
         if (!canDelete) return null;
 

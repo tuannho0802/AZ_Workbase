@@ -41,6 +41,13 @@ interface User {
   name: string;
   email: string;
   role: string;
+  department?: { id: number; name: string } | null;
+}
+
+interface Department {
+  id: number;
+  name: string;
+  managerUserId: number | null;
 }
 
 // ── API CALLS (inline để tránh import lỗi) ─────────────
@@ -53,17 +60,20 @@ const api = {
     axiosInstance.patch('/customers/bulk-assign', body),
   getUsers: () => 
     axiosInstance.get('/users/all'),
+  // Cần để tính đúng "phòng ban Manager đang quản lý" (department.managerUserId
+  // === user.id) - dùng lọc dropdown "Data Owner"/"Lọc theo Sales" cho khớp
+  // ĐÚNG phạm vi Manager được XEM (xem CustomerAccessHelper.applyViewFilter ở
+  // BE - Manager chỉ xem được KH thuộc phòng ban mà mình là manager_user_id,
+  // KHÔNG phải phòng ban mà bản thân Manager trực thuộc).
+  getDepartments: () =>
+    axiosInstance.get('/departments'),
   deleteCustomer: (id: number) =>
     axiosInstance.delete('/customers/' + id),
 };
 
 const UnassignedMobileCard = ({ record, user, renderAuditTrail, onNameClick, onDelete }: { record: Customer, user: any, renderAuditTrail: (r: any) => React.ReactNode, onNameClick: () => void, onDelete: (id: number) => void }) => {
   const isMyPrimary = record.salesUser?.id === user?.id;
-  const canDelete =
-    user?.role === 'admin' ||
-    user?.role === 'manager' ||
-    (user?.role === 'assistant' && record.createdBy?.id === user?.id) ||
-    (user?.role === 'employee' && record.createdBy?.id === user?.id);
+  const canDelete = user?.role === 'admin';
 
   return (
     <Card
@@ -122,11 +132,7 @@ const AssignedMobileCard = ({ record, user, renderAuditTrail, onNameClick, onDel
   const primarySales = record.salesUser;
   const allAssignees = (record as any).activeAssignees || [];
   const sharedSales = allAssignees.filter((a: any) => a.id !== primarySales?.id);
-  const canDelete =
-    user?.role === 'admin' ||
-    user?.role === 'manager' ||
-    (user?.role === 'assistant' && record.createdBy?.id === user?.id) ||
-    (user?.role === 'employee' && record.createdBy?.id === user?.id);
+  const canDelete = user?.role === 'admin';
 
   return (
     <Card
@@ -258,6 +264,13 @@ export default function ChiaDataPage() {
   const { data: usersData } = useQuery({
     queryKey: ['users-all'],
     queryFn: () => api.getUsers().then(r => r.data),
+    staleTime: 5 * 60_000,
+    enabled: isHydrated && isAuthenticated,
+  });
+
+  const { data: departmentsData } = useQuery({
+    queryKey: ['departments-all'],
+    queryFn: () => api.getDepartments().then(r => r.data),
     staleTime: 5 * 60_000,
     enabled: isHydrated && isAuthenticated,
   });
@@ -398,11 +411,7 @@ export default function ChiaDataPage() {
     {
       title: 'Thao tác', width: 60, align: 'center' as const,
       render: (_: any, r: Customer) => {
-        const canDelete =
-          user?.role === 'admin' ||
-          user?.role === 'manager' ||
-          (user?.role === 'assistant' && r.createdBy?.id === user?.id) ||
-          (user?.role === 'employee' && r.createdBy?.id === user?.id);
+        const canDelete = user?.role === 'admin';
 
         if (!canDelete) return null;
         return (
@@ -491,11 +500,7 @@ export default function ChiaDataPage() {
     {
       title: 'Thao tác', width: 60, align: 'center' as const,
       render: (_: any, r: Customer) => {
-        const canDelete =
-          user?.role === 'admin' ||
-          user?.role === 'manager' ||
-          (user?.role === 'assistant' && r.createdBy?.id === user?.id) ||
-          (user?.role === 'employee' && r.createdBy?.id === user?.id);
+        const canDelete = user?.role === 'admin';
 
         if (!canDelete) return null;
         return (
@@ -515,7 +520,34 @@ export default function ChiaDataPage() {
     },
   ];
 
-  // ── USER OPTIONS cho Select ────────────────────────────
+  // ── Phạm vi XEM theo role - dùng để lọc dropdown "Data Owner"/"Lọc theo
+  // Sales" cho khớp ĐÚNG với những gì BE thực sự trả về (CustomerAccessHelper.
+  // applyViewFilter). KHÔNG dùng cho "Chọn Sales nhận data" ở modal Chia data -
+  // chỗ đó BE CỐ Ý cho phép gán cho bất kỳ ai đang active, không giới hạn
+  // phòng ban (xem comment "Removed department check for bulk assign" ở
+  // customers.service.ts) nên giữ nguyên userOptions đầy đủ cho modal đó.
+  const managedDepartmentIds = ((departmentsData || []) as Department[])
+    .filter((d) => d.managerUserId === user?.id)
+    .map((d) => d.id);
+
+  const viewScopeUsers: User[] = (() => {
+    if (user?.role === 'admin' || user?.role === 'assistant') {
+      return usersData || [];
+    }
+    if (user?.role === 'manager') {
+      return (usersData || []).filter(
+        (u: User) => u.id === user?.id || (u.department?.id != null && managedDepartmentIds.includes(u.department.id)),
+      );
+    }
+    // Employee: phạm vi xem chỉ có chính mình -> dropdown lọc theo
+    // "Data Owner"/"Sales" chỉ còn đúng 1 lựa chọn hợp lý là bản thân, nên
+    // ẨN LUÔN 2 dropdown này ở phần RENDER (xem isMobile/không isMobile bên
+    // dưới) thay vì hiện dropdown chỉ có 1 option gây rối mắt.
+    return [];
+  })();
+
+  // ── USER OPTIONS cho Select "Chọn Sales nhận data" (modal Chia data) -
+  // giữ nguyên FULL list mọi role, khớp đúng BE (xem ghi chú ở trên).
   const userOptions = (usersData || []).map((u: User) => ({
     value: u.id,
     label: (
@@ -530,6 +562,12 @@ export default function ChiaDataPage() {
         <Tag style={{ fontSize: 10 }}>{u.role}</Tag>
       </Space>
     ),
+  }));
+
+  // Options cho 2 dropdown filter theo phạm vi xem (Data Owner / Lọc theo Sales)
+  const viewScopeUserOptions = viewScopeUsers.map((u: User) => ({
+    value: u.id,
+    label: u.name || u.email,
   }));
 
   // ── RENDER ─────────────────────────────────────────────
@@ -619,21 +657,20 @@ export default function ChiaDataPage() {
                       }}
                     />
                   </Col>
-                  <Col flex="180px">
-                    <Select
-                      allowClear
-                      placeholder="Data Owner"
-                      style={{ width: '100%' }}
-                      options={(usersData || []).map((u: User) => ({
-                        value: u.id,
-                        label: u.name || u.email,
-                      }))}
-                      onChange={v => { 
-                        setFilterDataOwner(v ?? null); 
-                        setUnassignedPage(1); 
-                      }}
-                    />
-                  </Col>
+                  {user?.role !== 'employee' && (
+                    <Col flex="180px">
+                      <Select
+                        allowClear
+                        placeholder="Data Owner"
+                        style={{ width: '100%' }}
+                        options={viewScopeUserOptions}
+                        onChange={v => { 
+                          setFilterDataOwner(v ?? null); 
+                          setUnassignedPage(1); 
+                        }}
+                      />
+                    </Col>
+                  )}
                   <Col flex="auto" />
                   {/* NÚT CHIA — chỉ hiện khi đã chọn */}
                   {selectedIds.length > 0 && !isMobile && (
@@ -778,21 +815,20 @@ export default function ChiaDataPage() {
                       }}
                     />
                   </Col>
-                  <Col flex="220px">
-                    <Select
-                      allowClear
-                      placeholder="Lọc theo Sales"
-                      style={{ width: '100%' }}
-                      options={(usersData || []).map((u: User) => ({
-                        value: u.id,
-                        label: u.name || u.email,
-                      }))}
-                      onChange={v => {
-                        setFilterAssignedTo(v ?? null);
-                        setAssignedPage(1);
-                      }}
-                    />
-                  </Col>
+                  {user?.role !== 'employee' && (
+                    <Col flex="220px">
+                      <Select
+                        allowClear
+                        placeholder="Lọc theo Sales"
+                        style={{ width: '100%' }}
+                        options={viewScopeUserOptions}
+                        onChange={v => {
+                          setFilterAssignedTo(v ?? null);
+                          setAssignedPage(1);
+                        }}
+                      />
+                    </Col>
+                  )}
                   <Col>
                     <Tooltip title="Làm mới">
                       <Button
