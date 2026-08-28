@@ -1,98 +1,142 @@
-<p align="center">
-  <a href="http://nestjs.com/" target="blank"><img src="https://nestjs.com/img/logo-small.svg" width="120" alt="Nest Logo" /></a>
-</p>
+# AZ-Workbase — Backend (NestJS API)
 
-[circleci-image]: https://img.shields.io/circleci/build/github/nestjs/nest/master?token=abc123def456
-[circleci-url]: https://circleci.com/gh/nestjs/nest
+> API server cho hệ thống quản lý dữ liệu Marketing & Khách hàng AZ-Workbase.
+> Xem tài liệu tổng quan toàn dự án (kiến trúc, frontend...) tại [`../README.md`](../README.md).
+> Xem quy tắc phân quyền chi tiết tại [`../AZ-Workbase Skills/PERMISSIONS.md`](../AZ-Workbase%20Skills/PERMISSIONS.md).
 
-  <p align="center">A progressive <a href="http://nodejs.org" target="_blank">Node.js</a> framework for building efficient and scalable server-side applications.</p>
-    <p align="center">
-<a href="https://www.npmjs.com/~nestjscore" target="_blank"><img src="https://img.shields.io/npm/v/@nestjs/core.svg" alt="NPM Version" /></a>
-<a href="https://www.npmjs.com/~nestjscore" target="_blank"><img src="https://img.shields.io/npm/l/@nestjs/core.svg" alt="Package License" /></a>
-<a href="https://www.npmjs.com/~nestjscore" target="_blank"><img src="https://img.shields.io/npm/dm/@nestjs/common.svg" alt="NPM Downloads" /></a>
-<a href="https://circleci.com/gh/nestjs/nest" target="_blank"><img src="https://img.shields.io/circleci/build/github/nestjs/nest/master" alt="CircleCI" /></a>
-<a href="https://discord.gg/G7Qnnhy" target="_blank"><img src="https://img.shields.io/badge/discord-online-brightgreen.svg" alt="Discord"/></a>
-<a href="https://opencollective.com/nest#backer" target="_blank"><img src="https://opencollective.com/nest/backers/badge.svg" alt="Backers on Open Collective" /></a>
-<a href="https://opencollective.com/nest#sponsor" target="_blank"><img src="https://opencollective.com/nest/sponsors/badge.svg" alt="Sponsors on Open Collective" /></a>
-  <a href="https://paypal.me/kamilmysliwiec" target="_blank"><img src="https://img.shields.io/badge/Donate-PayPal-ff3f59.svg" alt="Donate us"/></a>
-    <a href="https://opencollective.com/nest#sponsor"  target="_blank"><img src="https://img.shields.io/badge/Support%20us-Open%20Collective-41B883.svg" alt="Support us"></a>
-  <a href="https://twitter.com/nestframework" target="_blank"><img src="https://img.shields.io/twitter/follow/nestframework.svg?style=social&label=Follow" alt="Follow us on Twitter"></a>
-</p>
-  <!--[![Backers on Open Collective](https://opencollective.com/nest/backers/badge.svg)](https://opencollective.com/nest#backer)
-  [![Sponsors on Open Collective](https://opencollective.com/nest/sponsors/badge.svg)](https://opencollective.com/nest#sponsor)-->
+Stack: **NestJS 10+** · **TypeORM** · **MySQL 8** · **JWT (Passport)** · Deploy dạng **Vercel Serverless
+Function** (xem `vercel.json`, `src/main.ts`).
 
-## Description
+---
 
-[Nest](https://github.com/nestjs/nest) framework TypeScript starter repository.
-
-## Project setup
+## 1. Cài đặt & chạy local
 
 ```bash
-$ npm install
+npm install
+
+# Tạo file .env.development (không commit) với tối thiểu các biến sau:
+NODE_ENV=development
+PORT=3001
+DB_HOST=localhost
+DB_PORT=3306
+DB_USERNAME=root
+DB_PASSWORD=your_password
+DB_DATABASE=az_workbase
+JWT_SECRET=your-jwt-secret
+JWT_EXPIRES_IN=1h
+JWT_REFRESH_SECRET=your-refresh-secret
+JWT_REFRESH_EXPIRES_IN=7d
+CORS_ORIGIN=http://localhost:3000
+
+npm run start:dev       # http://localhost:3001, hot reload
+# Swagger (API docs tự sinh từ decorator): http://localhost:3001/api/docs
 ```
 
-## Compile and run the project
+### Database Migrations (BẮT BUỘC — không sửa schema DB thủ công)
 
 ```bash
-# development
-$ npm run start
-
-# watch mode
-$ npm run start:dev
-
-# production mode
-$ npm run start:prod
+npm run migration:show                          # Xem migration nào đã/chưa chạy
+npm run migration:run                            # Chạy các migration mới
+npm run migration:revert                         # Hoàn tác migration gần nhất
+npm run migration:generate --name=TenMigration    # Tự sinh migration từ thay đổi entity (kiểm tra kỹ output trước khi commit)
 ```
 
-## Run tests
+Mọi migration nằm ở `src/database/migrations/`, đặt tên theo timestamp tăng dần
+(`<epoch_ms>-MoTaNgan.ts`). Xem `AZ-Workbase Skills/SKILL_DATABASE_MANAGEMENT.md` để biết quy ước chi
+tiết (idempotent bằng `hasColumn`/`hasTable`, luôn viết cả `up()` lẫn `down()`...).
+
+### Test
 
 ```bash
-# unit tests
-$ npm run test
-
-# e2e tests
-$ npm run test:e2e
-
-# test coverage
-$ npm run test:cov
+npm run test          # Unit test (Jest) — chạy TRƯỚC khi commit bất kỳ thay đổi logic nào
+npm run test:watch
+npm run test:cov
+npm run test:e2e
 ```
 
-## Deployment
+Quy ước: mỗi service quan trọng có file `*.service.spec.ts` cạnh nó (mock Repository qua
+`getRepositoryToken`), logic phân quyền thuần (không phụ thuộc DB) tách ra `helpers/*.helper.ts` kèm
+`*.helper.spec.ts` riêng để test nhanh, không cần mock TypeORM — xem
+`modules/customers/helpers/customer-access.helper.spec.ts` và
+`modules/link-groups/helpers/link-group-access.helper.spec.ts` làm ví dụ mẫu.
 
-When you're ready to deploy your NestJS application to production, there are some key steps you can take to ensure it runs as efficiently as possible. Check out the [deployment documentation](https://docs.nestjs.com/deployment) for more information.
+---
 
-If you are looking for a cloud-based platform to deploy your NestJS application, check out [Mau](https://mau.nestjs.com), our official platform for deploying NestJS applications on AWS. Mau makes deployment straightforward and fast, requiring just a few simple steps:
+## 2. Cấu trúc thư mục
 
-```bash
-$ npm install -g @nestjs/mau
-$ mau deploy
+```
+backend/src/
+├── common/
+│   ├── decorators/      # @Roles(), @GetUser()
+│   ├── enums/            # Role, AssignmentStatus, ApprovalStatus, AttendanceSource...
+│   ├── filters/           # Global exception filter (chuẩn hoá response lỗi)
+│   ├── guards/            # JwtAuthGuard, RolesGuard
+│   ├── interceptors/       # CacheControlInterceptor (revalidate qua ETag, KHÔNG cache mù cho resource hay đổi)
+│   └── utils/              # date-vn.util.ts (giờ Việt Nam, xem lưu ý §4)
+├── config/
+│   └── database.config.ts  # Cấu hình TypeORM (đọc từ biến môi trường)
+├── database/
+│   ├── entities/            # ⭐ ĐỌC TRƯỚC khi sửa bất kỳ field nào ở Frontend
+│   ├── migrations/          # Toàn bộ thay đổi schema — xem mục 1
+│   └── seeds/, import/       # Script seed dữ liệu mẫu, import Excel/CSV marketing data
+├── integrations/
+│   └── zk-device/            # Giao thức TCP thô của máy chấm công ZKTeco (KHÔNG qua NestJS DI, chạy độc lập)
+├── modules/                  # 1 module = 1 domain nghiệp vụ, xem bảng mục 3
+├── app.controller.ts          # Landing page tại "/"
+└── main.ts                    # Bootstrap: CORS, Swagger, ValidationPipe, cache Express app cho Vercel serverless
 ```
 
-With Mau, you can deploy your application in just a few clicks, allowing you to focus on building features rather than managing infrastructure.
+---
 
-## Resources
+## 3. Danh sách module (`src/modules/`)
 
-Check out a few resources that may come in handy when working with NestJS:
+| Module | Mô tả | Trạng thái RBAC (xem PERMISSIONS.md) |
+|---|---|---|
+| `auth/` | Đăng nhập, đăng ký (`register`), JWT access + refresh token rotation, reuse detection | ✅ |
+| `users/` | CRUD nhân viên, Profile cá nhân, duyệt/từ chối tài khoản đăng ký mới | ⚠️ §2.2 — hiện `ADMIN`-only cho phần lớn endpoint, cần mở cho Assistant/Manager |
+| `customers/` | CRUD khách hàng, Chia Data, Gán/Thu hồi (assignment), ghi chú, Deposit (nạp tiền), import Excel | ✅ §2.1 — đã chuẩn, dùng làm pattern mẫu cho các module khác |
+| `departments/` | Quản lý phòng ban — `manager_user_id` dùng làm mốc scope RBAC cho Manager ở mọi module khác | ⚠️ chưa rà soát kỹ |
+| `deposits/` | Chỉ có `deposits.module.ts` — logic nạp tiền thực tế nằm trong `customers/` (deposit gắn với 1 customer cụ thể) | — |
+| `leave-requests/` | Xin nghỉ phép, duyệt chéo phòng ban theo `RolePriority` (không dùng `@Roles`) | ⚠️ §2.6 — cần xác nhận lại rule duyệt |
+| `link-groups/` | Category/Group liên kết (Zalo/FB/Threads...), checklist khách hàng đã-join, **Quản lý chính/phụ theo từng Group** (mô hình quyền riêng) | 🟦 §2.4 — phần CRUD chung ⚠️, phần Quản lý chính/phụ đã đúng thiết kế |
+| `media-sources/` | Danh mục "Nguồn" (Facebook/TikTok/Google...) cho form khách hàng | ⚠️ §2.5 |
+| `zk-device/` | Đồng bộ chấm công: kéo chủ động qua TCP (`zk-device.controller.ts`), nhận đẩy tự động từ máy (`adms.controller.ts`, giao thức ADMS Push — máy gọi thẳng, KHÔNG qua JWT), cron đồng bộ định kỳ (`zk-device-cron.controller.ts`) | ⚠️ §2.3 |
+| `audit/` | Nhật ký audit log (ai làm gì, khi nào) | ⚠️ §2.7 — cần xác nhận Assistant có nên xem được không |
 
-- Visit the [NestJS Documentation](https://docs.nestjs.com) to learn more about the framework.
-- For questions and support, please visit our [Discord channel](https://discord.gg/G7Qnnhy).
-- To dive deeper and get more hands-on experience, check out our official video [courses](https://courses.nestjs.com/).
-- Deploy your application to AWS with the help of [NestJS Mau](https://mau.nestjs.com) in just a few clicks.
-- Visualize your application graph and interact with the NestJS application in real-time using [NestJS Devtools](https://devtools.nestjs.com).
-- Need help with your project (part-time to full-time)? Check out our official [enterprise support](https://enterprise.nestjs.com).
-- To stay in the loop and get updates, follow us on [X](https://x.com/nestframework) and [LinkedIn](https://linkedin.com/company/nestjs).
-- Looking for a job, or have a job to offer? Check out our official [Jobs board](https://jobs.nestjs.com).
+---
 
-## Support
+## 4. Các quy ước quan trọng cần biết trước khi sửa code
 
-Nest is an MIT-licensed open source project. It can grow thanks to the sponsors and support by the amazing backers. If you'd like to join them, please [read more here](https://docs.nestjs.com/support).
+- **Giờ Việt Nam (GMT+7) lưu "nguyên văn", KHÔNG quy đổi UTC.** `record_time` (chấm công) và các cột
+  ngày-giờ liên quan lưu đúng 6 con số local (năm/tháng/ngày/giờ/phút/giây) đọc trực tiếp từ nguồn (máy
+  chấm công hoặc giờ hệ thống VN), bất kể server chạy múi giờ gì. Lý do: `node-zklib` giải mã giờ bằng
+  `new Date(y,m,d,h,mi,s)` — phụ thuộc múi giờ TIẾN TRÌNH đang chạy, gây lệch giờ nếu quy đổi UTC trên
+  server không đặt GMT+7 (bug đã xảy ra thật, xem `integrations/zk-device/decode-device-time.util.ts` để
+  hiểu chi tiết + cách vá).
+- **Đọc log chấm công lớn qua WAN phải TUẦN TỰ, không bắn hết chunk cùng lúc** —
+  `integrations/zk-device/sequential-attendance-reader.util.ts` thay thế `zk.getAttendances()` gốc của
+  `node-zklib` (bắn hết request đồng thời, dễ rớt gói/timeout qua kết nối chậm) bằng cách xin từng
+  chunk, có retry riêng cho từng chunk. Có bộ test giả lập giao thức thật ở
+  `integrations/zk-device/__tests__/` — chạy `npm test -- sequential-attendance-reader` trước khi sửa
+  gì liên quan tới đọc log chấm công.
+- **Cache-Control cho resource hay bị sửa dùng `no-cache` (revalidate qua ETag), KHÔNG dùng `max-age`
+  mù.** Xem `common/interceptors/cache-control.interceptor.ts` — từng có bug data mới sửa không hiện
+  trên UI cho tới khi hard-refresh, do cache `max-age=30` phục vụ response cũ dù đã sửa xong.
+- **`Cannot update entity because entity id is not set`** khi bulk-insert kèm `.orIgnore()` — TypeORM cố
+  refetch giá trị cột generated (`@CreateDateColumn`...) sau insert, vỡ khi có row bị ignore do trùng
+  key (MySQL không trả insertId liên tục). Luôn thêm `.updateEntity(false)` vào
+  `createQueryBuilder().insert()...` khi dùng kèm `.orIgnore()` cho bulk insert — xem
+  `zk-device.service.ts` (`syncNow()`, `ingestPushAttendance()`) làm ví dụ.
+- **RBAC**: đọc `AZ-Workbase Skills/PERMISSIONS.md` TRƯỚC khi thêm bất kỳ `@Roles()` mới nào — không tự
+  suy đoán rule, không copy decorator từ module khác nếu chưa xác nhận module đó đã khớp rule hiện hành.
 
-## Stay in touch
+---
 
-- Author - [Kamil Myśliwiec](https://twitter.com/kammysliwiec)
-- Website - [https://nestjs.com](https://nestjs.com/)
-- Twitter - [@nestframework](https://twitter.com/nestframework)
+## 5. Deploy
 
-## License
+Deploy dạng Vercel Serverless Function (xem `vercel.json`, `src/main.ts` — Express app được cache theo
+container để tránh cold start lặp lại DI container mỗi request). Đường dẫn ADMS Push (`/iclock/cdata`)
+KHÔNG có prefix `/api` vì máy chấm công gọi cứng đường dẫn gốc, không cấu hình được prefix.
 
-Nest is [MIT licensed](https://github.com/nestjs/nest/blob/master/LICENSE).
+Biến môi trường production cần thêm (ngoài các biến local ở mục 1): `VERCEL_URL`, `FRONTEND_URL` (CORS
+whitelist động).

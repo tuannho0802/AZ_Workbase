@@ -67,22 +67,24 @@ AZ-Workbase/
 ├── frontend/                       # Next.js 14 App
 │   ├── src/
 │   │   ├── app/
-│   │   │   ├── (auth)/login/       # Trang đăng nhập
+│   │   │   ├── (auth)/login/       # Trang đăng nhập, đăng ký (register/), trạng thái chờ duyệt (account-status/)
 │   │   │   └── (dashboard)/        # Các trang sau login
 │   │   │       ├── layout.tsx      # Sidebar + Auth guard
-│   │   │       ├── customers/      # Quản lý khách hàng
-│   │   │       ├── users/          # Quản lý nhân viên
-│   │   │       └── settings/       # Cài đặt
+│   │   │       ├── customers/, chia-data/, trash-can/   # Khách hàng, chia data, thùng rác
+│   │   │       ├── users/          # Quản lý nhân viên + duyệt tài khoản đăng ký mới
+│   │   │       ├── profile/, nghi-phep/, duyet-phep/     # Profile, xin/duyệt nghỉ phép
+│   │   │       ├── nguon-media/, nhom-lien-ket/, nhom-toi-quan-ly/  # Nguồn, Category/Group liên kết, nhóm mình quản lý
+│   │   │       ├── attendance-device/   # Máy chấm công
+│   │   │       └── audit-logs/          # Nhật ký audit log
 │   │   ├── components/
-│   │   │   ├── common/             # Shared components (AntdProvider...)
-│   │   │   └── customers/          # Customer-specific components
+│   │   │   ├── common/             # Shared components (AntdAppProvider, SimpleList...)
+│   │   │   ├── customers/          # Customer-specific components
+│   │   │   └── link-groups/        # GroupManagersModal...
 │   │   ├── lib/
-│   │   │   ├── api/                # Axios instance + API methods
+│   │   │   ├── api/                # Axios instance + API methods (1 file / module BE)
 │   │   │   │   ├── axios-instance.ts   # ⭐ Interceptors, token attaching
-│   │   │   │   ├── auth.api.ts
-│   │   │   │   ├── users.api.ts
-│   │   │   │   └── customers.api.ts
-│   │   │   ├── hooks/              # React Query hooks (useUsers, useCustomers...)
+│   │   │   │   ├── auth.api.ts, users.api.ts, customers.api.ts, link-groups.api.ts, media-sources.api.ts...
+│   │   │   ├── hooks/              # React Query hooks (useUsers, useCustomers, useLinkGroups...)
 │   │   │   ├── stores/             # Zustand stores
 │   │   │   │   └── auth.store.ts   # ⭐ JWT token + Cookie persistence
 │   │   │   └── types/              # TypeScript interfaces
@@ -151,12 +153,19 @@ CORS_ORIGIN=http://localhost:3000
 
 ## 🔐 Phân quyền (RBAC)
 
-| Role | Quyền hạn |
-|---|---|
-| `admin` | Toàn quyền: CRUD users, customers, departments, deposits |
-| `manager` | Xem và quản lý nhân viên/khách hàng trong phòng ban của mình |
-| `assistant` | Xem và cập nhật khách hàng được giao |
-| `employee` | Xem và cập nhật khách hàng của cá nhân |
+> **Nguồn chân lý đầy đủ:** [`AZ-Workbase Skills/PERMISSIONS.md`](<./AZ-Workbase%20Skills/PERMISSIONS.md>)
+> — bảng dưới đây chỉ là tóm tắt nhanh, có thay đổi rule luôn sửa ở file PERMISSIONS.md trước.
+
+| Role | Xem (View) | Sửa (Create/Update) | Xoá |
+|---|---|---|---|
+| `admin` | Toàn bộ, mọi phòng ban | Toàn bộ | ✅ |
+| `assistant` | Toàn bộ, **bất chấp phòng ban** (ngang admin) | Toàn bộ (ngang admin) | ❌ — chỉ khác admin đúng 1 điểm này |
+| `manager` | Chỉ phòng ban **mình đang quản lý** (`department.manager_user_id = mình`) | Chỉ phòng ban mình quản lý | ❌ |
+| `employee` | Chỉ dữ liệu của **bản thân** (tự tạo / sales chính / đang được gán) | Chỉ dữ liệu của bản thân | ❌ |
+
+Rule áp dụng thống nhất cho **mọi module** (khách hàng, chấm công, quản lý nhân viên, khoá tài khoản,
+đổi mật khẩu, nhóm liên kết...) — không có ngoại lệ ngầm định theo module. Trạng thái rà soát/khớp rule
+của từng module cụ thể xem PERMISSIONS.md mục 2.
 
 ---
 
@@ -179,19 +188,27 @@ Agent đã được trang bị bộ Skills tại thư mục `AZ-Workbase Skills/
 2. **Kiểm tra DTO** — Không gửi field không được khai báo.
 3. **Không xóa Hash mật khẩu** — Chỉ hash nếu có password mới.
 4. **Không auto-commit** — Luôn để người dùng review trước khi git commit.
+5. **Đọc `PERMISSIONS.md` trước khi thêm/sửa bất kỳ `@Roles()` hoặc điều kiện ẩn/hiện UI theo role nào**
+   — không tự suy đoán rule, không copy decorator từ module khác nếu chưa xác nhận module đó đã khớp.
 
 ---
 
-## 📌 API Endpoints chính
+## 📌 Module & API chính
 
-| Method | Path | Mô tả | Auth |
-|---|---|---|---|
-| POST | `/api/auth/login` | Đăng nhập | Public |
-| POST | `/api/auth/refresh` | Làm mới token | Public |
-| GET | `/api/users/all` | Lấy tất cả nhân viên | Admin, Manager |
-| GET | `/api/users` | Danh sách nhân viên có phân trang | Admin, Manager |
-| POST | `/api/users` | Tạo nhân viên mới | Admin |
-| PATCH | `/api/users/:id` | Cập nhật nhân viên | Admin |
-| GET | `/api/customers` | Danh sách khách hàng | Admin, Manager, Employee |
-| POST | `/api/customers` | Tạo khách hàng mới | All Logged In |
-| GET | `/api/departments` | Danh sách phòng ban | All Logged In |
+> Danh sách đầy đủ + chi tiết request/response: Swagger tại `http://localhost:3001/api/docs` (local)
+> hoặc domain backend + `/api/docs` (production). Bảng dưới đây chỉ liệt kê nhóm endpoint chính.
+
+| Module | Base path | Mô tả ngắn |
+|---|---|---|
+| Auth | `/api/auth/*` | `login`, `register`, `refresh` — JWT access + refresh token rotation |
+| Users | `/api/users/*` | CRUD nhân viên, profile, duyệt/từ chối tài khoản đăng ký mới |
+| Customers | `/api/customers/*` | CRUD khách hàng, chia data, gán/thu hồi, ghi chú, deposit, import Excel |
+| Departments | `/api/departments/*` | Quản lý phòng ban |
+| Leave Requests | `/api/leave-requests/*` | Xin nghỉ phép, duyệt đơn |
+| Link Groups | `/api/link-categories/*`, `/api/link-groups/*` | Category/Group liên kết, checklist đã-join, quản lý chính/phụ theo group |
+| Media Sources | `/api/media-sources/*` | Danh mục "Nguồn" khách hàng |
+| ZK Device | `/api/zk-device/*`, `/iclock/*` | Đồng bộ chấm công (kéo chủ động + nhận đẩy tự động ADMS) |
+| Audit | `/api/audit-logs/*` | Nhật ký audit log |
+
+Xem chi tiết cấu trúc từng module tại [`backend/README.md`](./backend/README.md) và
+[`frontend/README.md`](./frontend/README.md).
