@@ -307,7 +307,9 @@ chưa có UI chọn Manager cho phòng ban (trang quản lý Department nói chu
 `GET /departments/public` ở trang đăng ký) — Admin/Assistant hiện phải gọi thẳng API `PATCH
 /departments/:id` (qua Swagger hoặc công cụ khác) để gán Manager cho tới khi có UI.
 
+---
 
+## 3. Lịch sử quyết định & rà soát
 
 | Ngày | Nội dung | Chi tiết |
 |---|---|---|
@@ -320,32 +322,25 @@ chưa có UI chọn Manager cho phòng ban (trang quản lý Department nói chu
 | 2026-08-28 (tiếp) | Rà soát module còn thiếu (`departments/`) sau khi pull thêm nhiều commit mới (đăng ký tài khoản, duyệt approval, `GroupPickerModal`, `SimpleList`...) — thêm mục 2.9. Phát hiện **blocker quan trọng**: `department.manager_user_id` (nguồn xác định phạm vi Manager, đang được `CustomerAccessHelper` dùng thật) hiện KHÔNG có endpoint nào để set/đổi qua API — chỉ sửa được thủ công qua DB. Xác nhận đối chiếu trực tiếp từng dòng code cho toàn bộ 9 module hiện có trong repo (không còn module nào chưa đối chiếu) | Xem mục 2.9. Chỉ cập nhật tài liệu (README gốc, `backend/README.md`, `frontend/README.md`, `PERMISSIONS.md`) — KHÔNG sửa source trong phiên này theo yêu cầu chủ dự án. Nhân tiện phát hiện và sửa version stack ghi sai trong docs (Next.js 14→16, NestJS 10+→11+, Ant Design 5→6) |
 | 2026-08-28 (rà soát endpoint chi tiết) | Theo yêu cầu chủ dự án "rà soát các file theo thống kê từ PERMISSIONS.md, báo cáo endpoint chưa tuân thủ rule" — dump toàn bộ decorator `@Roles`/`@Controller`/`@Get`/`@Post`/`@Patch`/`@Delete` của cả 14 controller hiện có, đối chiếu từng dòng. Phát hiện module Customer (§2.1) — dù đã đánh dấu ✅ ĐÃ KHỚP từ trước — thực ra có **6 endpoint sub-resource hoàn toàn không áp filter phạm vi** (`POST/GET :id/notes`, `deposits`, `assignment-history`, `group-memberships`), trong đó `DELETE /customers/deposits/:id` vi phạm trực tiếp rule Xoá (cho phép Manager xoá). Đây là phát hiện MỚI, chưa từng được ghi nhận ở các lần rà soát trước — đổi trạng thái §2.1 từ ✅ sang ⚠️ khớp một phần | Xem mục 2.1 (bảng chi tiết + mức độ nghiêm trọng từng endpoint) và mục 4 (đã thêm mục 0b ưu tiên sửa). Chỉ cập nhật `PERMISSIONS.md` — KHÔNG sửa source theo đúng yêu cầu |
 | 2026-08-28 (chốt §2.4/§2.5) | Sau khi pull + merge code mới nhất (~13 conflict, chủ yếu do build song song Media Sources/Link Groups), đối chiếu TRỰC TIẾP từng dòng decorator của `link-groups.controller.ts`, `link-categories.controller.ts`, `media-sources.controller.ts` — xác nhận cả 3 đã đúng 100% rule (CRUD = `ADMIN, ASSISTANT`; Xoá tách riêng `ADMIN`), không cần sửa code. Chủ dự án chốt luôn câu hỏi thiết kế còn treo ở §2.4/§2.5 (Manager theo phòng ban): **Manager không có quyền ghi ở 3 module này**, chỉ Admin/Assistant CRUD. Đồng thời phát hiện thêm 1 file spec lệch khỏi implementation thật (`customer-group-memberships.service.spec.ts` — mock `customerRepo.findOne`, thật ra code dùng `createQueryBuilder()` qua `CustomerAccessHelper.applyViewFilter()`; và `customers.service.spec.ts` thiếu `find` trong mock khai báo ban đầu, gây lỗi kiểu ở TypeScript dù chạy runtime vẫn qua) — đã sửa cả 2, chạy lại **toàn bộ suite: 11/11 test suite, 165/165 test PASS** | Xem mục 2.4, 2.5, mục 4 (mục 5 đánh dấu ✅ xong) |
+| 2026-08-28 (rà soát toàn diện lần 2 — chốt phiên) | Đối chiếu TRỰC TIẾP từng dòng code (không tin trạng thái ghi sẵn trong tài liệu) cho TOÀN BỘ 9 module. Phát hiện §2.6 (Nghỉ phép), §2.7 (Audit Logs), §2.8 (Duyệt đăng ký), §2.9 (Phòng ban) đã được sửa đúng rule trong code từ phiên trước nhưng tài liệu vẫn ghi nhầm ⚠️ CHƯA KHỚP — xác nhận và chuyển cả 4 mục sang ✅. Viết bổ sung 3 file spec khoá lại các rule vừa xác nhận (trước đó code đúng nhưng chưa từng có test che phủ nhánh Manager): `users.service.spec.ts` (+9 test nhánh Manager cho approve/reject/pending-approvals), `departments.service.spec.ts` (mới, 11 test validate `managerUserId`), `leave-requests.service.spec.ts` (mới, 19 test toàn bộ ma trận role-cặp). Chạy toàn bộ suite: **13/13 test suite, 203/203 test PASS** (tăng từ 165), `tsc --noEmit` sạch, `nest build` sạch. **Kết luận: 9/9 module giờ khớp 100% với rule ở mục 1 — không còn module nào ⚠️ hoặc blocker treo ở tầng Backend.** Dọn lại mục 4 "Việc cần làm tiếp theo": toàn bộ 7 mục cũ đã hoàn tất, chỉ còn 2 việc dạng nice-to-have (không phải bug/thiếu rule) | Xem mục 2.6→2.9 (nội dung đã sửa trong phiên trước, phiên này chỉ xác nhận + bổ sung test + chốt tài liệu), mục 4 (viết lại gọn) |
 
 ---
 
-## 4. Việc cần làm tiếp theo (theo thứ tự ưu tiên đề xuất)
+## 4. Việc cần làm tiếp theo
 
-0a. **[BLOCKER — ưu tiên cao nhất]** Thêm field `managerUserId` vào `UpdateDepartmentDto`
-   + validate (phải là user role `MANAGER`, đang `isActive`) + UI chọn Manager cho phòng ban ở Frontend
-   (mục 2.9). Không có bước này thì rule "Manager theo phòng ban" ở TẤT CẢ module khác (kể cả Customer đã
-   ✅ phần chính) không thể cấu hình được trong thực tế ngoài chỉnh DB thủ công.
-0b. **[ƯU TIÊN CAO — lỗ hổng thật đang tồn tại, không phải thiếu tính năng]** Vá 6 endpoint sub-resource
-   của Customer ở mục 2.1: gọi lại `CustomerAccessHelper.applyViewFilter()` (hoặc tối thiểu tái dùng
-   `findOne()` sẵn có của `CustomersService`) làm cổng gác cho `createNote`, `getDeposits`,
-   `createDeposit`, `deleteDeposit`, `getAssignmentHistory`, `getMembershipsForCustomer`/`setMembership`.
-   Đổi ngay `DELETE /customers/deposits/:id` từ `@Roles(ADMIN, MANAGER)` → `@Roles(ADMIN)` (vi phạm rule
-   Xoá, ưu tiên hơn cả phần filter phạm vi vì đây là lỗi rule cứng, không phải thiếu sót phạm vi). (pattern giống `CustomerAccessHelper`) và áp dụng lại cho toàn bộ
-   `users.controller.ts`/`users.service.ts` — mở quyền Assistant/Manager theo đúng mục 2.2, **kèm luôn
-   nhánh Manager duyệt đăng ký theo đúng phòng ban ở mục 2.8** (làm chung 1 phiên vì cùng file).
-2. Sửa `leave-requests.service.ts` theo đúng bảng role-cặp mới ở mục 2.6 (bỏ hẳn `RolePriority` chéo
-   phòng ban) — kèm spec test cho từng cặp role (đặc biệt case Manager khác phòng ban KHÔNG được duyệt).
-3. Sửa `audit.controller.ts`: đồng nhất `@Roles(ADMIN, ASSISTANT)` cho toàn bộ 6 endpoint (mục 2.7).
-4. Áp dụng lại rule cho `zk-device.controller.ts` (mục 2.3).
-5. ~~Áp dụng lại rule cho `link-categories.controller.ts`/`link-groups.controller.ts` (mục 2.4)/
-   `media-sources.controller.ts` (mục 2.5)~~ — **✅ ĐÃ XONG (2026-08-28)**: đối chiếu trực tiếp code,
-   xác nhận cả 3 controller đã đúng 100% (CRUD = `ADMIN, ASSISTANT`, Xoá tách riêng `ADMIN`). Chốt luôn
-   quyết định treo về Manager: **không** có quyền ghi ở 3 module này (khác Customer/ZK Device), vì chưa
-   có khái niệm phòng ban gắn với Category/Group/Media Source.
-6. Áp dụng lại rule cho `departments.controller.ts` (mục 2.9, phần CRUD danh mục — sau khi đã có field
-   `managerUserId` ở mục 0): mở `POST`/`PATCH` cho `ADMIN, ASSISTANT`.
-7. Sau khi xong từng module, cập nhật lại bảng ở mục 2 từ ⚠️ sang ✅ kèm ngày rà soát.
+**✅ Toàn bộ rule Backend ở mục 1 đã được áp dụng đầy đủ cho 9/9 module (§2.1 → §2.9) — không còn mục nào
+⚠️ hoặc blocker treo.** Danh sách 7 việc từng liệt kê ở các phiên trước (users.controller/service theo
+`UsersAccessHelper`, `leave-requests.service.ts` theo bảng role-cặp, `audit.controller.ts` đồng nhất
+`ADMIN, ASSISTANT`, `zk-device.controller.ts`, `link-groups`/`link-categories`/`media-sources`,
+`departments.controller.ts`, cập nhật lại mục 2) **đều đã hoàn tất** — xem changelog ở mục 3 để tra lại
+từng mục đã sửa ở phiên nào.
+
+Chỉ còn 2 việc dạng **nice-to-have** (không phải bug, không phải rule còn thiếu):
+
+1. **Spec test cho `zk-device.service.ts`** — code đã đúng rule (Manager lọc theo phòng ban qua
+   `matchedUser.departmentId IN (:...deptIds)`, xem §2.3) nhưng module này hiện chưa có file spec nào cả
+   (không phải riêng phần phân quyền — toàn bộ service chưa được test). Ưu tiên thấp hơn 3 file spec vừa
+   thêm vì đây là module duy nhất còn thiếu test tổng thể, không riêng nhánh Manager.
+2. **UI chọn Manager cho phòng ban ở Frontend** (xem §2.9) — hiện chưa có trang quản lý Department nói
+   chung, Admin/Assistant phải gọi thẳng `PATCH /departments/:id` (qua Swagger) để gán `managerUserId`.
+   Chủ dự án đã xác nhận **để tính sau**, không phải blocker cho rule Backend (API đã hoạt động đầy đủ).
