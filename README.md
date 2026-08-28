@@ -24,10 +24,10 @@
 ```
 AZ-Workbase/
 │
-├── backend/                        # NestJS API Server
+├── backend/                        # NestJS API Server (deploy: Vercel Serverless Function)
 │   ├── src/
 │   │   ├── common/
-│   │   │   ├── decorators/         # @Roles()
+│   │   │   ├── decorators/         # @Roles(), @GetUser()
 │   │   │   ├── enums/              # Role enum
 │   │   │   ├── filters/            # Global exception filter
 │   │   │   └── guards/             # JwtAuthGuard, RolesGuard
@@ -36,19 +36,32 @@ AZ-Workbase/
 │   │   ├── database/
 │   │   │   ├── entities/           # ⭐ Luôn đọc trước khi sửa Frontend
 │   │   │   │   ├── user.entity.ts
-│   │   │   │   ├── customer.entity.ts
+│   │   │   │   ├── customer.entity.ts, customer-assignment.entity.ts, customer-note.entity.ts, customer-group-membership.entity.ts
 │   │   │   │   ├── department.entity.ts
 │   │   │   │   ├── deposit.entity.ts
-│   │   │   │   └── customer-note.entity.ts
-│   │   │   ├── migrations/         # Schema migrations
-│   │   │   └── seeds/              # Dữ liệu mẫu
+│   │   │   │   ├── leave-request.entity.ts
+│   │   │   │   ├── link-category.entity.ts, link-group.entity.ts, link-group-secondary-manager.entity.ts
+│   │   │   │   ├── media-source.entity.ts
+│   │   │   │   ├── attendance-log.entity.ts, zk-device-user-cache.entity.ts
+│   │   │   │   ├── audit-log.entity.ts
+│   │   │   │   └── setting.entity.ts
+│   │   │   ├── migrations/         # Schema migrations (bắt buộc, không sửa DB thủ công)
+│   │   │   └── seeds/              # Dữ liệu mẫu / import script
+│   │   ├── integrations/
+│   │   │   └── zk-device/          # Kết nối trực tiếp máy chấm công ZKTeco (giao thức TCP thô)
 │   │   ├── modules/
-│   │   │   ├── auth/               # Login, JWT, Refresh Token
-│   │   │   ├── users/              # CRUD nhân viên (RBAC)
-│   │   │   ├── customers/          # CRUD khách hàng
-│   │   │   ├── departments/        # Quản lý phòng ban
-│   │   │   └── deposits/           # Quản lý nạp tiền
-│   │   └── main.ts                 # Bootstrap (CORS, Swagger, Pipes)
+│   │   │   ├── auth/               # Login, JWT, Refresh Token rotation
+│   │   │   ├── users/              # CRUD nhân viên, Profile cá nhân (RBAC — xem PERMISSIONS.md §2.2)
+│   │   │   ├── customers/          # CRUD khách hàng, Chia Data, Gán/Thu hồi (RBAC — xem PERMISSIONS.md §2.1, ĐÃ CHUẨN)
+│   │   │   ├── departments/        # Quản lý phòng ban (manager_user_id dùng cho scope RBAC)
+│   │   │   ├── deposits/           # Quản lý nạp tiền (FTD) của khách
+│   │   │   ├── leave-requests/     # Xin nghỉ phép + duyệt theo cấp bậc
+│   │   │   ├── link-groups/        # Category/Group liên kết (Zalo/FB/Threads...) + checklist đã-join
+│   │   │   ├── media-sources/      # Danh mục "Nguồn" (Facebook/TikTok/Google...) cho form khách hàng
+│   │   │   ├── zk-device/          # Đồng bộ chấm công từ máy ZKTeco (pull + ADMS push)
+│   │   │   └── audit/              # Nhật ký audit log (ai làm gì, khi nào)
+│   │   ├── app.controller.ts       # Landing page tại "/"
+│   │   └── main.ts                 # Bootstrap (CORS, Swagger, Pipes) + Vercel serverless handler
 │   └── .env.development            # ⚠️ Không commit
 │
 ├── frontend/                       # Next.js 14 App
