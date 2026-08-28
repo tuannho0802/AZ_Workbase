@@ -1,6 +1,6 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { getRepositoryToken } from '@nestjs/typeorm';
-import { NotFoundException, BadRequestException } from '@nestjs/common';
+import { NotFoundException, BadRequestException, ForbiddenException } from '@nestjs/common';
 import { UsersService } from './users.service';
 import { User } from '../../database/entities/user.entity';
 import { Department } from '../../database/entities/department.entity';
@@ -163,6 +163,34 @@ describe('UsersService - Approval workflow (đăng ký công khai chờ duyệt)
         }),
       );
     });
+
+    // ── PERMISSIONS.md mục 2.8: Manager chỉ thấy user đăng ký vào ĐÚNG
+    // phòng ban mình quản lý - khoá lại hành vi này bằng spec, trước đây
+    // code đã đúng nhưng hoàn toàn chưa có test nào che phủ nhánh Manager.
+    it('MANAGER: chỉ lọc user đăng ký vào phòng ban mình quản lý (departmentId IN managedIds)', async () => {
+      mockDepartmentsRepo.find.mockResolvedValue([{ id: 2 }, { id: 5 }]);
+      mockUsersRepo.find.mockResolvedValue([]);
+
+      await service.findPendingApprovals(7, Role.MANAGER);
+
+      expect(mockDepartmentsRepo.find).toHaveBeenCalledWith(
+        expect.objectContaining({ where: { managerUserId: 7 } }),
+      );
+      expect(mockUsersRepo.find).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: { approvalStatus: ApprovalStatus.PENDING, departmentId: expect.anything() },
+        }),
+      );
+    });
+
+    it('MANAGER chưa quản lý phòng ban nào: trả về [] NGAY, không gọi usersRepository.find (tránh lộ toàn bộ danh sách)', async () => {
+      mockDepartmentsRepo.find.mockResolvedValue([]);
+
+      const result = await service.findPendingApprovals(7, Role.MANAGER);
+
+      expect(result).toEqual([]);
+      expect(mockUsersRepo.find).not.toHaveBeenCalled();
+    });
   });
 
   describe('approveUser - Duyệt tài khoản', () => {
@@ -228,6 +256,45 @@ describe('UsersService - Approval workflow (đăng ký công khai chờ duyệt)
 
       expect((result as any).password).toBeUndefined();
     });
+
+    // ── PERMISSIONS.md mục 2.8: Manager chỉ duyệt được tài khoản đăng ký
+    // ĐÚNG phòng ban mình quản lý - trước đây code đã đúng nhưng chưa có
+    // spec nào khoá lại hành vi này (kể cả 3 case: đúng phòng ban / sai
+    // phòng ban / đổi departmentId sang phòng ban không quản lý).
+    it('MANAGER duyệt user đăng ký ĐÚNG phòng ban mình quản lý -> thành công', async () => {
+      mockUsersRepo.findOne.mockResolvedValue({ ...pendingUser(), departmentId: 2 });
+      mockDepartmentsRepo.find.mockResolvedValue([{ id: 2 }]);
+      mockUsersRepo.save.mockImplementation((u: any) => Promise.resolve(u));
+
+      const result = await service.approveUser(10, 7, Role.MANAGER);
+
+      expect(result.approvalStatus).toBe(ApprovalStatus.APPROVED);
+    });
+
+    it('MANAGER duyệt user đăng ký SAI phòng ban (không quản lý) -> ForbiddenException, KHÔNG được save', async () => {
+      mockUsersRepo.findOne.mockResolvedValue({ ...pendingUser(), departmentId: 99 });
+      mockDepartmentsRepo.find.mockResolvedValue([{ id: 2 }]); // chỉ quản lý phòng 2, không phải 99
+
+      await expect(service.approveUser(10, 7, Role.MANAGER)).rejects.toThrow(ForbiddenException);
+      expect(mockUsersRepo.save).not.toHaveBeenCalled();
+    });
+
+    it('MANAGER duyệt đúng phòng ban NHƯNG override sang phòng ban không quản lý -> ForbiddenException', async () => {
+      mockUsersRepo.findOne.mockResolvedValue({ ...pendingUser(), departmentId: 2 });
+      mockDepartmentsRepo.find.mockResolvedValue([{ id: 2 }]); // chỉ quản lý phòng 2
+
+      await expect(
+        service.approveUser(10, 7, Role.MANAGER, { departmentId: 99 }),
+      ).rejects.toThrow(ForbiddenException);
+      expect(mockUsersRepo.save).not.toHaveBeenCalled();
+    });
+
+    it('MANAGER duyệt user CHƯA có departmentId (đăng ký không chọn phòng ban) -> ForbiddenException (không có gì để đối chiếu quyền quản lý)', async () => {
+      mockUsersRepo.findOne.mockResolvedValue({ ...pendingUser(), departmentId: null });
+      mockDepartmentsRepo.find.mockResolvedValue([{ id: 2 }]);
+
+      await expect(service.approveUser(10, 7, Role.MANAGER)).rejects.toThrow(ForbiddenException);
+    });
   });
 
   describe('rejectUser - Từ chối tài khoản', () => {
@@ -273,6 +340,28 @@ describe('UsersService - Approval workflow (đăng ký công khai chờ duyệt)
       expect(mockUsersRepo.save).toHaveBeenCalledWith(
         expect.objectContaining({ rejectionReason: null }),
       );
+    });
+
+    // ── PERMISSIONS.md mục 2.8: cùng rule với approveUser - Manager chỉ từ
+    // chối được tài khoản đăng ký đúng phòng ban mình quản lý.
+    it('MANAGER từ chối user đăng ký ĐÚNG phòng ban mình quản lý -> thành công', async () => {
+      mockUsersRepo.findOne.mockResolvedValue({ ...pendingUser(), departmentId: 2 });
+      mockDepartmentsRepo.find.mockResolvedValue([{ id: 2 }]);
+      mockUsersRepo.save.mockImplementation((u: any) => Promise.resolve(u));
+
+      const result = await service.rejectUser(11, 7, Role.MANAGER, 'Không đủ hồ sơ');
+
+      expect(result.approvalStatus).toBe(ApprovalStatus.REJECTED);
+    });
+
+    it('MANAGER từ chối user đăng ký SAI phòng ban (không quản lý) -> ForbiddenException, KHÔNG được save', async () => {
+      mockUsersRepo.findOne.mockResolvedValue({ ...pendingUser(), departmentId: 99 });
+      mockDepartmentsRepo.find.mockResolvedValue([{ id: 2 }]);
+
+      await expect(service.rejectUser(11, 7, Role.MANAGER, 'lý do')).rejects.toThrow(
+        ForbiddenException,
+      );
+      expect(mockUsersRepo.save).not.toHaveBeenCalled();
     });
   });
 });
