@@ -19,6 +19,20 @@ export class DepartmentsService {
     });
   }
 
+  /**
+   * Danh sách phòng ban PUBLIC (không cần đăng nhập) - dùng cho form đăng ký
+   * tài khoản công khai (POST /auth/register). Chỉ trả id/name - KHÔNG trả
+   * các field khác (createdAt, isActive...) để không lộ thừa dữ liệu nội bộ
+   * qua 1 endpoint không yêu cầu xác thực.
+   */
+  async findAllPublic(): Promise<{ id: number; name: string }[]> {
+    return this.departmentRepository.find({
+      where: { isActive: true },
+      order: { name: 'ASC' },
+      select: ['id', 'name'],
+    });
+  }
+
   async findOne(id: number) {
     const department = await this.departmentRepository.findOne({ where: { id } });
     if (!department) {

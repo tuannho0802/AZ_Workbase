@@ -10,13 +10,22 @@ import { Role } from '../../common/enums/role.enum';
 import { CacheControlInterceptor } from '../../common/interceptors/cache-control.interceptor';
 
 @ApiTags('Departments')
-@ApiBearerAuth()
-@Controller('departments')
-@UseGuards(JwtAuthGuard, RolesGuard)
+  @Controller('departments')
 export class DepartmentsController {
   constructor(private readonly departmentsService: DepartmentsService) {}
 
+  @Get('public')
+  @ApiOperation({
+    summary:
+      'Danh sách phòng ban (công khai, KHÔNG cần đăng nhập) - chỉ id/name, dùng cho form đăng ký tài khoản',
+  })
+  findAllPublic() {
+    return this.departmentsService.findAllPublic();
+  }
+
   @Get()
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @ApiBearerAuth()
   @UseInterceptors(new CacheControlInterceptor(300))
   @ApiOperation({ summary: 'Lấy danh sách phòng ban đang hoạt động' })
   findAll() {
@@ -24,12 +33,16 @@ export class DepartmentsController {
   }
 
   @Get(':id')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @ApiBearerAuth()
   @ApiOperation({ summary: 'Lấy chi tiết phòng ban' })
   findOne(@Param('id', ParseIntPipe) id: number) {
     return this.departmentsService.findOne(id);
   }
 
   @Post()
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @ApiBearerAuth()
   @Roles(Role.ADMIN)
   @ApiOperation({ summary: 'Tạo phòng ban mới (Chỉ Admin)' })
   create(@Body() dto: CreateDepartmentDto) {
@@ -37,6 +50,8 @@ export class DepartmentsController {
   }
 
   @Patch(':id')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @ApiBearerAuth()
   @Roles(Role.ADMIN)
   @ApiOperation({ summary: 'Cập nhật phòng ban (Chỉ Admin)' })
   update(@Param('id', ParseIntPipe) id: number, @Body() dto: UpdateDepartmentDto) {
