@@ -20,7 +20,10 @@ export const CustomerDepositTable = ({ customerId, refreshTrigger }: Props) => {
   const [deposits, setDeposits] = useState<Deposit[]>([]);
   const { message } = App.useApp();
   const { user } = useAuthStore();
-  const canDelete = user?.role === 'admin' || user?.role === 'manager';
+  // Khớp PERMISSIONS.md §2.1: DELETE /customers/deposits/:id đã siết
+  // @Roles(Role.ADMIN) - trước đây FE cho cả Manager thấy nút Xoá (SAI, sẽ
+  // bấm vào là dính 403 vì BE đã chặn từ lâu, chỉ FE quên cập nhật theo).
+  const canDelete = user?.role === 'admin';
 
   const fetchDeposits = useCallback(async () => {
     if (!customerId) return;

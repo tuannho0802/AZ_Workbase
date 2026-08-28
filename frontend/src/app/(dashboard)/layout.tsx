@@ -189,13 +189,19 @@ export default function DashboardLayout({
               label: 'Duyệt phép',
               onClick: () => router.push('/duyet-phep'),
             }] : []),
-            ...(['admin', 'manager'].includes(user?.role || '') ? [{
+            // Khớp PERMISSIONS.md §2.7: CHỈ admin/assistant - Manager 403
+            // tuyệt đối (không có ngoại lệ theo phòng ban, khác các module
+            // khác). Trước đây để 'manager' ở đây là SAI.
+            ...(['admin', 'assistant'].includes(user?.role || '') ? [{
               key: 'audit-logs',
               icon: <FileTextOutlined />,
               label: 'Nhật ký hệ thống',
               onClick: () => router.push('/audit-logs'),
             }] : []),
-            ...(['admin'].includes(user?.role || '') ? [{
+            // Khớp PERMISSIONS.md §2.2: GET/POST /users đã là
+            // @Roles(ADMIN, ASSISTANT, MANAGER) + BE tự lọc theo phòng ban
+            // cho Manager - trước đây chỉ để 'admin' ở đây là lỗi thời.
+            ...(['admin', 'assistant', 'manager'].includes(user?.role || '') ? [{
               key: 'users',
               icon: <UserOutlined />,
               label: 'Nhân viên',
@@ -208,25 +214,29 @@ export default function DashboardLayout({
               onClick: () => router.push('/trash-can'),
             }] : []),
             // Quản lý danh sách nguồn khách hàng (CRUD + khoá/mở khoá) -
-            // chỉ admin, khớp @Roles(Role.ADMIN) trên các thao tác ghi của
-            // MediaSourcesController ở BE.
-            ...(['admin'].includes(user?.role || '') ? [{
+            // khớp PERMISSIONS.md §2.5: admin/assistant CRUD (Assistant
+            // không Xoá); Manager KHÔNG có quyền ghi ở module này (quyết
+            // định chốt riêng, module chưa gắn khái niệm phòng ban).
+            ...(['admin', 'assistant'].includes(user?.role || '') ? [{
               key: 'nguon-media',
               icon: <TagsOutlined />,
               label: 'Quản lý nguồn',
               onClick: () => router.push('/nguon-media'),
             }] : []),
             // Category (Zalo/FB/Threads...) -> Group (nhóm cụ thể, 1 URL
-            // riêng) -> checklist "đã join" theo customer. Chỉ admin - khớp
-            // @Roles(Role.ADMIN) trên các thao tác ghi ở LinkGroupsModule.
-            ...(['admin'].includes(user?.role || '') ? [{
+            // riêng) -> checklist "đã join" theo customer. Khớp
+            // PERMISSIONS.md §2.4: admin/assistant CRUD (Assistant không
+            // Xoá); Manager KHÔNG có quyền ghi ở module này (cùng lý do
+            // §2.5 - chưa gắn khái niệm phòng ban).
+            ...(['admin', 'assistant'].includes(user?.role || '') ? [{
               key: 'nhom-lien-ket',
               icon: <ApartmentOutlined />,
               label: 'Quản lý nhóm liên kết',
               onClick: () => router.push('/nhom-lien-ket'),
             }] : []),
-            // Chỉ admin - khớp @Roles(Role.ADMIN) trên toàn bộ ZkDeviceController ở BE.
-            ...(['admin'].includes(user?.role || '') ? [{
+            // Khớp PERMISSIONS.md §2.3: admin/assistant/manager (Manager bị
+            // BE tự giới hạn theo phòng ban ở từng service method).
+            ...(['admin', 'assistant', 'manager'].includes(user?.role || '') ? [{
               key: 'attendance-device',
               icon: <ClockCircleOutlined />,
               label: 'Máy chấm công',

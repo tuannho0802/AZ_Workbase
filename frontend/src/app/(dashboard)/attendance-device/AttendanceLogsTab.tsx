@@ -7,6 +7,7 @@ import dayjs, { Dayjs } from 'dayjs';
 import { useAttendanceLogs, useCleanupAttendanceLogs } from '@/lib/hooks/useZkDevice';
 import { useUsersList } from '@/lib/hooks/useUsers';
 import { AttendanceLog } from '@/lib/types/zk-device.types';
+import { useAuthStore } from '@/lib/stores/auth.store';
 
 const { RangePicker } = DatePicker;
 const { Text } = Typography;
@@ -32,6 +33,11 @@ const RANGE_PRESETS = [
 export default function AttendanceLogsTab() {
   const { message } = App.useApp();
   const { users } = useUsersList();
+  // Trang "Máy chấm công" giờ mở cho admin/assistant/manager (khớp
+  // PERMISSIONS.md §2.3), nhưng riêng DỌN DẸP LOG (hard-delete vĩnh viễn)
+  // vẫn tách decorator @Roles(Role.ADMIN) ở BE - ẩn nút này với
+  // assistant/manager để không hiện 1 nút bấm vào chắc chắn dính 403.
+  const isAdmin = useAuthStore((s) => s.user?.role) === 'admin';
   const [page, setPage] = useState(1);
   const [limit, setLimit] = useState(20);
   const [userId, setUserId] = useState<number | undefined>(undefined);
@@ -131,13 +137,15 @@ export default function AttendanceLogsTab() {
         <Button icon={<ReloadOutlined />} onClick={() => refetch()} loading={isFetching}>
           Tải lại
         </Button>
-        <Button
-          danger
-          icon={<DeleteOutlined />}
-          onClick={() => setCleanupOpen(true)}
-        >
-          Dọn dẹp log cũ
-        </Button>
+        {isAdmin && (
+          <Button
+            danger
+            icon={<DeleteOutlined />}
+            onClick={() => setCleanupOpen(true)}
+          >
+            Dọn dẹp log cũ
+          </Button>
+        )}
       </Space>
 
       <Modal

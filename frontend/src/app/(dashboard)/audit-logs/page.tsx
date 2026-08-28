@@ -143,7 +143,13 @@ export default function AuditLogsPage() {
   const { user } = useAuthStore();
   const router = useRouter();
   const { message, modal } = App.useApp();
-  const isAdmin = user?.role === 'admin';
+  // Đổi tên biến giữ nguyên "isAdmin" để không phải sửa lại 6 chỗ dùng bên
+  // dưới, nhưng ý nghĩa giờ khớp đúng PERMISSIONS.md §2.7: audit log (xem +
+  // xoá/dọn dẹp) là admin+assistant NGANG NHAU (không có phân biệt, không
+  // có ngoại lệ theo phòng ban) - Manager/Employee bị chặn hoàn toàn (403),
+  // không phải "xem được nhưng không xoá được" như rule Xoá mặc định ở các
+  // module khác.
+  const isAdmin = user?.role === 'admin' || user?.role === 'assistant';
 
   // ── State ──────────────────────────────────────────────────────────────
   const [logs, setLogs] = useState<AuditLog[]>([]);
@@ -170,7 +176,10 @@ export default function AuditLogsPage() {
 
   // ── Effects ────────────────────────────────────────────────────────────
   useEffect(() => {
-    if (user && !['admin', 'manager'].includes(user.role)) {
+    // Khớp PERMISSIONS.md §2.7: CHỈ admin/assistant - Manager 403 tuyệt đối
+    // (không có ngoại lệ theo phòng ban cho module này, khác Customer/Users/
+    // ZK Device). Trước đây gate này cho Manager vào - SAI, đã sửa.
+    if (user && !['admin', 'assistant'].includes(user.role)) {
       message.warning('Bạn không có quyền truy cập trang này');
       router.replace('/customers');
     }
@@ -596,7 +605,7 @@ export default function AuditLogsPage() {
         open={drawerOpen}
         onClose={() => { setDrawerOpen(false); setSelectedLog(null); }}
         size={640 as any}
-        destroyOnClose
+        destroyOnHidden
       >
         {selectedLog && (
           <div style={{ padding: 16 }}>

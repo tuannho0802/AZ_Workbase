@@ -42,14 +42,18 @@ export default function MediaSourcesPage() {
   const router = useRouter();
   const user = useAuthStore((s) => s.user);
 
-  // ⚠️ Chỉ admin được vào trang này (khớp @Roles(Role.ADMIN) trên các thao
-  // tác ghi ở BE) - chặn ở đây chỉ để UX gọn, chặn thật sự vẫn nằm ở BE,
-  // giống pattern "Báo cáo data lỗi"/"Máy chấm công" đã làm trong layout.tsx.
+  // Khớp PERMISSIONS.md §2.5 (đối chiếu trực tiếp code 2026-08-28):
+  // create/update/lock/unlock đã là @Roles(ADMIN, ASSISTANT) - Manager
+  // KHÔNG có quyền ghi ở module này (quyết định chốt riêng, khác Customer/
+  // ZK Device - module chưa có khái niệm phòng ban gắn với Media Source).
+  // remove (Xoá) tách riêng @Roles(ADMIN) - xem canDelete bên dưới.
   useEffect(() => {
-    if (user && user.role !== 'admin') {
+    if (user && !['admin', 'assistant'].includes(user.role)) {
       router.replace('/customers');
     }
   }, [user, router]);
+
+  const canDelete = user?.role === 'admin';
 
   const { sources, isLoading } = useMediaSources(false);
   const createMutation = useCreateMediaSource();
@@ -168,15 +172,17 @@ export default function MediaSourcesPage() {
           >
             {record.isLocked ? 'Mở khoá' : 'Khoá'}
           </Button>
-          <Popconfirm
-            title={`Xoá nguồn "${record.name}"?`}
-            description="Chỉ xoá được nếu chưa có khách hàng nào đang dùng nguồn này."
-            onConfirm={() => handleDelete(record)}
-          >
-            <Button size="small" danger icon={<DeleteOutlined />}>
-              Xoá
-            </Button>
-          </Popconfirm>
+          {canDelete && (
+            <Popconfirm
+              title={`Xoá nguồn "${record.name}"?`}
+              description="Chỉ xoá được nếu chưa có khách hàng nào đang dùng nguồn này."
+              onConfirm={() => handleDelete(record)}
+            >
+              <Button size="small" danger icon={<DeleteOutlined />}>
+                Xoá
+              </Button>
+            </Popconfirm>
+          )}
         </Space>
       ),
     },

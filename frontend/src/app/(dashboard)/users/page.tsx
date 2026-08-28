@@ -135,13 +135,15 @@ export default function UsersPage() {
     }
   };
 
-  // ⚠️ Trang này giờ cho phép cả ADMIN lẫn ASSISTANT truy cập (trước đây chỉ
-  // Admin) - vì Assistant cũng được phép duyệt tài khoản tự đăng ký (đúng
-  // theo @Roles(Role.ADMIN, Role.ASSISTANT) ở BE cho 3 endpoint pending-
-  // approvals/approve/reject). Assistant KHÔNG có quyền gọi GET /users (danh
-  // sách toàn bộ nhân viên - vẫn Admin-only) nên chỉ thấy tab "Chờ duyệt".
-  const canAccessPage = user?.role === 'admin' || user?.role === 'assistant';
-  const isAdmin = user?.role === 'admin';
+  // Khớp PERMISSIONS.md §2.2 (đối chiếu trực tiếp code 2026-08-28):
+  // GET/POST /users đã là @Roles(ADMIN, ASSISTANT, MANAGER) + BE tự lọc
+  // theo phòng ban cho Manager (UsersAccessHelper.applyViewFilter) - KHÔNG
+  // còn là Admin-only như comment cũ ở đây từng ghi (đã lỗi thời, gây bug:
+  // Manager/Assistant bị chặn nhầm khỏi tab "Danh sách nhân viên" dù BE đã
+  // cho phép từ trước). Đặt tên lại cho đúng ý nghĩa thay vì giữ "isAdmin"
+  // gây hiểu lầm.
+  const canAccessPage = ['admin', 'assistant', 'manager'].includes(user?.role || '');
+  const canSeeFullList = canAccessPage;
 
   useEffect(() => {
     if (user && !canAccessPage) {
@@ -151,17 +153,18 @@ export default function UsersPage() {
   }, [user, canAccessPage, router, message]);
 
   useEffect(() => {
-    if (isAdmin) {
+    if (canSeeFullList) {
       fetchUsers();
     }
-  }, [isAdmin, page, pageSize]);
+  }, [canSeeFullList, page, pageSize]);
 
-  // Assistant không có quyền xem "Danh sách nhân viên" (GET /users là
-  // Admin-only) - tab đó sẽ không tồn tại trong tabItems, nên mặc định đẩy
-  // Assistant sang tab "Chờ duyệt đăng ký" luôn thay vì tab 'list' rỗng.
+  // Trước đây đẩy về tab "Chờ duyệt" cho MỌI role không phải Admin - giờ
+  // Assistant/Manager cũng thấy được tab "Danh sách nhân viên" nên chỉ cần
+  // đẩy về khi thực sự không xem được tab list (về lý thuyết không còn xảy
+  // ra nữa vì canAccessPage đã lọc từ trước, giữ lại cho chắc/phòng hờ).
   useEffect(() => {
-    if (user && !isAdmin) setActiveTab('pending');
-  }, [user, isAdmin]);
+    if (user && !canSeeFullList) setActiveTab('pending');
+  }, [user, canSeeFullList]);
 
   const openEdit = (record: any) => {
     setEditingUser(record);
@@ -310,11 +313,10 @@ export default function UsersPage() {
     )
   );
 
-  // Assistant không có quyền GET /users (Admin-only ở BE) nên tab "Danh sách
-  // nhân viên" chỉ tồn tại với Admin - Assistant chỉ thấy đúng 1 tab "Chờ
-  // duyệt đăng ký".
+  // Admin/Assistant/Manager đều thấy tab "Danh sách nhân viên" (khớp
+  // PERMISSIONS.md §2.2 - GET /users không còn Admin-only).
   const tabItems = [
-    ...(isAdmin
+    ...(canSeeFullList
       ? [
           {
             key: 'list',
@@ -339,10 +341,10 @@ export default function UsersPage() {
       title="Quản lý nhân viên"
       extra={
         // Nút "Làm mới"/"Thêm nhân viên" chỉ liên quan tab danh sách nhân
-        // viên (Admin) - ẩn khi đang ở tab "Chờ duyệt" hoặc với Assistant
-        // (không có tab list) để tránh gây nhầm lẫn (bấm "Thêm nhân viên"
-        // trong lúc đang xem danh sách chờ duyệt sẽ không hợp ngữ cảnh).
-        isAdmin && activeTab === 'list' ? (
+        // viên - ẩn khi đang ở tab "Chờ duyệt" hoặc khi role không xem được
+        // tab list, để tránh gây nhầm lẫn (bấm "Thêm nhân viên" trong lúc
+        // đang xem danh sách chờ duyệt sẽ không hợp ngữ cảnh).
+        canSeeFullList && activeTab === 'list' ? (
           <Space>
             <Button icon={<ReloadOutlined />} onClick={() => window.location.reload()}>Làm mới</Button>
             <Button

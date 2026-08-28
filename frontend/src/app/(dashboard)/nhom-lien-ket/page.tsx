@@ -60,14 +60,18 @@ export default function LinkGroupsAdminPage() {
   const router = useRouter();
   const user = useAuthStore((s) => s.user);
 
-  // Chỉ admin được vào trang này (khớp @Roles(Role.ADMIN) trên các thao tác
-  // ghi ở BE) - chặn ở đây chỉ để UX gọn, chặn thật sự vẫn nằm ở BE, giống
-  // pattern trang "Quản lý nguồn" (/nguon-media).
+  // Khớp PERMISSIONS.md §2.4 (đối chiếu trực tiếp code 2026-08-28): CRUD
+  // Category/Group đã là @Roles(ADMIN, ASSISTANT) - Manager KHÔNG có quyền
+  // ghi ở module này (quyết định chốt riêng, module chưa có khái niệm
+  // phòng ban gắn với Category/Group). Delete tách riêng @Roles(ADMIN) -
+  // xem canDelete ở các chỗ render nút Xoá bên dưới.
   useEffect(() => {
-    if (user && user.role !== 'admin') {
+    if (user && !['admin', 'assistant'].includes(user.role)) {
       router.replace('/customers');
     }
   }, [user, router]);
+
+  const canDelete = user?.role === 'admin';
 
   const { categories, isLoading: loadingCategories } = useLinkCategories(false);
   const { groups, isLoading: loadingGroups } = useAllLinkGroups();
@@ -301,15 +305,17 @@ export default function LinkGroupsAdminPage() {
           <Button size="small" onClick={() => handleToggleActiveGroup(group)}>
             {group.isActive ? 'Ẩn' : 'Hiện lại'}
           </Button>
-          <Popconfirm
-            title={`Xoá nhóm "${group.name}"?`}
-            description="Chỉ xoá được nếu chưa có khách hàng nào có dữ liệu join gắn với nhóm này."
-            onConfirm={() => handleDeleteGroup(group)}
-          >
-            <Button size="small" danger icon={<DeleteOutlined />}>
-              Xoá
-            </Button>
-          </Popconfirm>
+          {canDelete && (
+            <Popconfirm
+              title={`Xoá nhóm "${group.name}"?`}
+              description="Chỉ xoá được nếu chưa có khách hàng nào có dữ liệu join gắn với nhóm này."
+              onConfirm={() => handleDeleteGroup(group)}
+            >
+              <Button size="small" danger icon={<DeleteOutlined />}>
+                Xoá
+              </Button>
+            </Popconfirm>
+          )}
         </Space>
       ),
     },
@@ -361,15 +367,17 @@ export default function LinkGroupsAdminPage() {
           >
             {record.isLocked ? 'Mở khoá' : 'Khoá'}
           </Button>
-          <Popconfirm
-            title={`Xoá category "${record.name}"?`}
-            description="Chỉ xoá được nếu chưa có nhóm nào thuộc category này."
-            onConfirm={() => handleDeleteCategory(record)}
-          >
-            <Button size="small" danger icon={<DeleteOutlined />}>
-              Xoá
-            </Button>
-          </Popconfirm>
+          {canDelete && (
+            <Popconfirm
+              title={`Xoá category "${record.name}"?`}
+              description="Chỉ xoá được nếu chưa có nhóm nào thuộc category này."
+              onConfirm={() => handleDeleteCategory(record)}
+            >
+              <Button size="small" danger icon={<DeleteOutlined />}>
+                Xoá
+              </Button>
+            </Popconfirm>
+          )}
         </Space>
       ),
     },
