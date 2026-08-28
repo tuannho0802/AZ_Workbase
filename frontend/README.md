@@ -5,7 +5,7 @@
 > Xem quy tắc phân quyền chi tiết tại [`../AZ-Workbase Skills/PERMISSIONS.md`](../AZ-Workbase%20Skills/PERMISSIONS.md)
 > — mọi ẩn/hiện UI theo role đều phải khớp tài liệu đó (BE luôn là nơi chặn thật, FE chỉ ẩn cho gọn mắt).
 
-Stack: **Next.js 14 (App Router)** · **Ant Design 5** · **TanStack Query (React Query)** · **Zustand** ·
+Stack: **Next.js 16 (App Router)** · **Ant Design 6** · **TanStack Query (React Query)** · **Zustand** ·
 Deploy: **Vercel** (`output: 'standalone'`).
 
 ---
@@ -97,5 +97,5 @@ trọng cần built + click-through thủ công trước khi bàn giao.
 ## 5. Học Next.js / Ant Design
 
 - [Next.js Documentation](https://nextjs.org/docs)
-- [Ant Design 5 Documentation](https://ant.design/components/overview)
+- [Ant Design 6 Documentation](https://ant.design/components/overview)
 - [TanStack Query Documentation](https://tanstack.com/query/latest)

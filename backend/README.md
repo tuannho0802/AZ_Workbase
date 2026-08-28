@@ -4,8 +4,8 @@
 > Xem tài liệu tổng quan toàn dự án (kiến trúc, frontend...) tại [`../README.md`](../README.md).
 > Xem quy tắc phân quyền chi tiết tại [`../AZ-Workbase Skills/PERMISSIONS.md`](../AZ-Workbase%20Skills/PERMISSIONS.md).
 
-Stack: **NestJS 10+** · **TypeORM** · **MySQL 8** · **JWT (Passport)** · Deploy dạng **Vercel Serverless
-Function** (xem `vercel.json`, `src/main.ts`).
+Stack: **NestJS 11+** · **TypeORM 0.3.x** · **MySQL 8** · **JWT (Passport)** · Deploy dạng **Vercel
+Serverless Function** (xem `vercel.json`, `src/main.ts`).
 
 ---
 
@@ -95,7 +95,7 @@ backend/src/
 | `auth/` | Đăng nhập, đăng ký (`register`), JWT access + refresh token rotation, reuse detection | ✅ |
 | `users/` | CRUD nhân viên, Profile cá nhân, duyệt/từ chối tài khoản đăng ký mới | ⚠️ §2.2 — hiện `ADMIN`-only cho phần lớn endpoint, cần mở cho Assistant/Manager |
 | `customers/` | CRUD khách hàng, Chia Data, Gán/Thu hồi (assignment), ghi chú, Deposit (nạp tiền), import Excel | ✅ §2.1 — đã chuẩn, dùng làm pattern mẫu cho các module khác |
-| `departments/` | Quản lý phòng ban — `manager_user_id` dùng làm mốc scope RBAC cho Manager ở mọi module khác | ⚠️ chưa rà soát kỹ |
+| `departments/` | Quản lý phòng ban — `manager_user_id` dùng làm mốc scope RBAC cho Manager ở mọi module khác | ⚠️🚨 §2.9 — CRUD đang `ADMIN`-only (cần mở `ASSISTANT`); **blocker**: không có endpoint nào để set `manager_user_id`, chỉ sửa được qua DB thủ công |
 | `deposits/` | Chỉ có `deposits.module.ts` — logic nạp tiền thực tế nằm trong `customers/` (deposit gắn với 1 customer cụ thể) | — |
 | `leave-requests/` | Xin nghỉ phép, duyệt chéo phòng ban theo `RolePriority` (không dùng `@Roles`) | ⚠️ §2.6 — cần xác nhận lại rule duyệt |
 | `link-groups/` | Category/Group liên kết (Zalo/FB/Threads...), checklist khách hàng đã-join, **Quản lý chính/phụ theo từng Group** (mô hình quyền riêng) | 🟦 §2.4 — phần CRUD chung ⚠️, phần Quản lý chính/phụ đã đúng thiết kế |

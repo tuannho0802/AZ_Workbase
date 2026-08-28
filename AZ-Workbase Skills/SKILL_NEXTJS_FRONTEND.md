@@ -21,7 +21,7 @@ frontend/
 │   ├── images/
 │   └── icons/
 ├── src/
-│   ├── app/                      # Next.js 14 App Router
+│   ├── app/                      # Next.js 16 App Router
 │   │   ├── (auth)/
 │   │   │   ├── login/
 │   │   │   │   └── page.tsx
@@ -762,7 +762,7 @@ export const CustomerTable: React.FC<CustomerTableProps> = ({
 ### 8. Ant Design Best Practices & Gotchas
 
 #### 8.1. Fixing "Static function can not consume context" (CRITICAL)
-Ant Design 5.x uses a CSS-in-JS engine. Static calls like `message.success()` outside of the component lifecycle can't access the theme context (colors, styles) and will trigger a warning. Use the `<App />` component wrapper at the top level and the `App.useApp()` hook inside components.
+Ant Design 6.x (nâng cấp từ 5.x — vẫn đúng nguyên tắc dưới đây) dùng CSS-in-JS engine. Static calls like `message.success()` outside of the component lifecycle can't access the theme context (colors, styles) and will trigger a warning. Use the `<App />` component wrapper at the top level and the `App.useApp()` hook inside components.
 
 **Correct Implementation:**
 

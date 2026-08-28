@@ -1,7 +1,7 @@
 # AZ-Workbase CRM System
 
 > **Hệ thống Quản lý Dữ liệu Marketing & Khách hàng cho doanh nghiệp.**
-> Stack: **Next.js 14** (Frontend) + **NestJS** (Backend) + **MySQL** (Database)
+> Stack: **Next.js 16** (Frontend) + **NestJS 11** (Backend) + **MySQL** (Database)
 
 ---
 
@@ -9,11 +9,11 @@
 
 | Layer | Technology | Version | Port |
 |---|---|---|---|
-| Frontend | Next.js (App Router) | 14+ | 3000 |
-| UI Library | Ant Design | 5.x | — |
+| Frontend | Next.js (App Router) | 16.x | 3000 |
+| UI Library | Ant Design | 6.x | — |
 | State | Zustand + React Query | Latest | — |
-| Backend | NestJS (TypeScript) | 10+ | 3001 |
-| ORM | TypeORM | Latest | — |
+| Backend | NestJS (TypeScript) | 11+ | 3001 |
+| ORM | TypeORM | 0.3.x | — |
 | Database | MySQL | 8.x | 3306 |
 | Auth | JWT (Passport) + Bcrypt | — | — |
 
@@ -64,7 +64,7 @@ AZ-Workbase/
 │   │   └── main.ts                 # Bootstrap (CORS, Swagger, Pipes) + Vercel serverless handler
 │   └── .env.development            # ⚠️ Không commit
 │
-├── frontend/                       # Next.js 14 App
+├── frontend/                       # Next.js 16 App
 │   ├── src/
 │   │   ├── app/
 │   │   │   ├── (auth)/login/       # Trang đăng nhập, đăng ký (register/), trạng thái chờ duyệt (account-status/)

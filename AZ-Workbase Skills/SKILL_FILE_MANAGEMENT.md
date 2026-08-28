@@ -98,7 +98,7 @@ AZ-Workbase/
 │   │       └── deposits/           # Quản lý nạp tiền
 │   └── .env.development            # Config môi trường dev
 │
-├── frontend/                       # Next.js 14 App (Port 3000)
+├── frontend/                       # Next.js 16 App (Port 3000)
 │   ├── src/
 │   │   ├── app/
 │   │   │   ├── (auth)/login/       # Trang đăng nhập

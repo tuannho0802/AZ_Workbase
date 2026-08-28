@@ -5,8 +5,10 @@
 > Nếu code hiện tại (BE hoặc FE) khác với tài liệu này → **tài liệu này đúng, code là bug cần sửa**,
 > trừ khi tài liệu chưa được cập nhật theo quyết định nghiệp vụ mới nhất (luôn hỏi lại nếu nghi ngờ).
 >
-> **Cập nhật lần cuối:** 2026-08-28 (rà soát toàn bộ module hiện có trong repo + chốt rule cụ thể cho
-> Nghỉ phép/Audit Logs/Duyệt đăng ký — đối chiếu trực tiếp với code, không suy đoán từ tên file/commit)
+> **Cập nhật lần cuối:** 2026-08-28 (rà soát bổ sung — pull thêm các commit mới về đăng ký tài khoản/
+> approval workflow/UI mới, đối chiếu nốt module `departments/` còn thiếu (mục 2.9) và toàn bộ 9 module
+> hiện có trong repo giờ đã được đối chiếu trực tiếp với code, không còn module nào bỏ sót; phát hiện 1
+> blocker quan trọng về việc gán Manager cho phòng ban — xem mục 2.9 và mục 4.0)
 > **Người xác nhận rule:** Chủ dự án (qua chat trực tiếp với Agent)
 
 ---
@@ -206,9 +208,43 @@ code — cần: (1) thêm `MANAGER` vào `@Roles()` của `PATCH /users/:id/appr
 `departmentId` của user đang chờ duyệt phải khớp phòng ban manager đó quản lý — nếu không khớp thì trả
 403 (endpoint approve/reject) hoặc loại khỏi danh sách (endpoint pending-approvals).**
 
----
+### 2.9. Phòng ban (`modules/departments`) — ⚠️ CHƯA KHỚP + 🚨 PHÁT HIỆN CHẶN TOÀN BỘ RULE "MANAGER THEO PHÒNG BAN"
 
-## 3. Lịch sử các lần rà soát rule này
+Hiện trạng thực tế (đọc trực tiếp `departments.controller.ts`, `departments.service.ts`, 2 DTO):
+
+| Endpoint | Guard hiện tại | Đúng theo rule mục 1 phải là |
+|---|---|---|
+| `GET /departments/public` | Không cần đăng nhập (chỉ trả `id`, `name`) — dùng cho dropdown ở trang tự đăng ký (`POST /auth/register`) | ✅ Đúng, cố ý mở công khai, không đổi |
+| `GET /departments` (danh sách đang hoạt động) | Mọi role đã đăng nhập (không có `@Roles`) | ✅ Đúng — đây là danh mục tham chiếu, không phải dữ liệu cần phân quyền xem, giống cách `GET /link-groups` đang mở cho mọi user (xem mục 2.4) |
+| `GET /departments/:id` | Mọi role đã đăng nhập | ✅ Đúng, cùng lý do trên |
+| `POST /departments` (tạo mới) | `@Roles(ADMIN)` | `ADMIN, ASSISTANT` toàn quyền theo rule mục 1 (Manager không quản trị danh mục phòng ban nói chung, vì bản thân phòng ban không phải "dữ liệu của phòng ban họ quản lý") |
+| `PATCH /departments/:id` (sửa) | `@Roles(ADMIN)` | Như trên — `ADMIN, ASSISTANT` |
+| Xoá phòng ban | **KHÔNG TỒN TẠI endpoint xoá** (không có `@Delete` nào trong controller) | Không cần sửa gì thêm — không có gì để giới hạn theo rule "chỉ Admin xoá" |
+
+**🚨 Phát hiện quan trọng — ảnh hưởng tới TOÀN BỘ rule "Manager chỉ thấy/thao tác phòng ban mình quản
+lý" ở mọi module khác (Customer §2.1, Users §2.2 dự kiến, Leave Requests §2.6, và bất kỳ module tương
+lai nào dùng lại pattern này):**
+
+- Cột `department.manager_user_id` (field `managerUserId` trên entity `Department`) là **nguồn chân lý
+  duy nhất** xác định "Manager X đang quản lý phòng ban nào" — được `CustomerAccessHelper` (mục 2.1) và
+  `customers.service.ts` (`bulkAssign`, dòng ~797 + ~1168) dùng trực tiếp để tính phạm vi Manager.
+- **Nhưng cả `CreateDepartmentDto` lẫn `UpdateDepartmentDto` đều KHÔNG có field `managerUserId`** — nghĩa
+  là hiện tại **KHÔNG có bất kỳ endpoint API nào cho phép gán/đổi "Manager quản lý phòng ban nào"**. Đã
+  rà toàn bộ repo (`grep managerUserId` trên cả `backend/src` và `frontend/src`) — chỉ có 2 nơi ĐỌC field
+  này (`customers.service.ts` và FE `chia-data/page.tsx` để tính "phòng ban Manager đang quản lý"), không
+  có nơi nào GHI. Seed data (`database/seeds/`) cũng không set field này.
+- **Kết luận:** để rule "Manager theo phòng ban" ở mục 1 hoạt động được trên thực tế (không chỉ đúng trên
+  giấy), field `managerUserId` hiện tại **chỉ có thể set thủ công qua DB** (SQL trực tiếp hoặc tool quản
+  trị DB ngoài app) — chưa có UI/API chính thức nào trong hệ thống để Admin làm việc này. Đây là điểm
+  **chặn (blocker) ưu tiên cao nhất**, vì thiếu nó thì toàn bộ phần "giới hạn theo phòng ban" của
+  Manager ở MỌI module (kể cả module đã ✅ như Customer) đều không thể vận hành đúng trong môi trường
+  thực tế nếu Admin không tự tay chỉnh DB. **Chưa sửa code — cần: (1) thêm field `managerUserId` (kiểu
+  `number | null`, optional) vào `UpdateDepartmentDto`, (2) thêm validate user được gán phải có
+  `role === MANAGER` và đang `isActive`, (3) thêm UI chọn Manager trong form Sửa phòng ban ở
+  Frontend (hiện Frontend còn chưa có cả trang quản lý Department nào — chỉ dùng `GET /departments/public`
+  ở trang đăng ký).**
+
+
 
 | Ngày | Nội dung | Chi tiết |
 |---|---|---|
@@ -218,11 +254,16 @@ code — cần: (1) thêm `MANAGER` vào `@Roles()` của `PATCH /users/:id/appr
 | 2026-04-24 | Ban hành rule tổng chính thức, rà soát riêng module Customer/Chia Data khớp 100% | Xem mục 2.1 |
 | 2026-08-28 | Rà soát lại toàn bộ repo sau khi có thêm nhiều module mới (đăng ký/duyệt tài khoản, Media Sources, Quản lý chính/phụ Link Group) — đối chiếu TRỰC TIẾP với code hiện tại (không suy đoán) | Cập nhật mục 2.1 → 2.8, phát hiện thêm 2 module mới chưa khớp (Media Sources §2.5, Audit Logs §2.7 cần xác nhận lại), xác nhận tính năng "Quản lý chính/phụ" Link Group (§2.4) đã đúng mô hình quyền riêng theo chủ đích |
 | 2026-08-28 | Chốt rule cụ thể cho 3 mục còn treo: duyệt nghỉ phép (§2.6 — thay hẳn cơ chế `RolePriority` chéo phòng ban bằng bảng role-cặp cụ thể, Manager bắt buộc cùng phòng ban với Employee), Audit Logs (§2.7 — chỉ Admin+Assistant, Manager/Employee 403 tuyệt đối, không có ngoại lệ theo phòng ban), duyệt đăng ký tài khoản (§2.8 — thêm nhánh Manager nhưng bắt buộc trùng phòng ban quản lý) | Cả 3 mục chuyển từ "cần hỏi lại chủ dự án" sang "đã chốt rule, chưa sửa code" — ưu tiên implement ở phiên tiếp theo, xem mục 4 |
+| 2026-08-28 (tiếp) | Rà soát module còn thiếu (`departments/`) sau khi pull thêm nhiều commit mới (đăng ký tài khoản, duyệt approval, `GroupPickerModal`, `SimpleList`...) — thêm mục 2.9. Phát hiện **blocker quan trọng**: `department.manager_user_id` (nguồn xác định phạm vi Manager, đang được `CustomerAccessHelper` dùng thật) hiện KHÔNG có endpoint nào để set/đổi qua API — chỉ sửa được thủ công qua DB. Xác nhận đối chiếu trực tiếp từng dòng code cho toàn bộ 9 module hiện có trong repo (không còn module nào chưa đối chiếu) | Xem mục 2.9. Chỉ cập nhật tài liệu (README gốc, `backend/README.md`, `frontend/README.md`, `PERMISSIONS.md`) — KHÔNG sửa source trong phiên này theo yêu cầu chủ dự án. Nhân tiện phát hiện và sửa version stack ghi sai trong docs (Next.js 14→16, NestJS 10+→11+, Ant Design 5→6) |
 
 ---
 
 ## 4. Việc cần làm tiếp theo (theo thứ tự ưu tiên đề xuất)
 
+0. **[BLOCKER — ưu tiên cao nhất, làm TRƯỚC mục 1]** Thêm field `managerUserId` vào `UpdateDepartmentDto`
+   + validate (phải là user role `MANAGER`, đang `isActive`) + UI chọn Manager cho phòng ban ở Frontend
+   (mục 2.9). Không có bước này thì rule "Manager theo phòng ban" ở TẤT CẢ module khác (kể cả Customer đã
+   ✅) không thể cấu hình được trong thực tế ngoài chỉnh DB thủ công.
 1. Tạo `UsersAccessHelper` (pattern giống `CustomerAccessHelper`) và áp dụng lại cho toàn bộ
    `users.controller.ts`/`users.service.ts` — mở quyền Assistant/Manager theo đúng mục 2.2, **kèm luôn
    nhánh Manager duyệt đăng ký theo đúng phòng ban ở mục 2.8** (làm chung 1 phiên vì cùng file).
@@ -233,4 +274,6 @@ code — cần: (1) thêm `MANAGER` vào `@Roles()` của `PATCH /users/:id/appr
 5. Áp dụng lại rule cho `link-categories.controller.ts`/`link-groups.controller.ts` (mục 2.4, phần CRUD
    chung) và `media-sources.controller.ts` (mục 2.5) — tách riêng hành động Xoá khỏi các hành động Sửa
    khác.
-6. Sau khi xong từng module, cập nhật lại bảng ở mục 2 từ ⚠️ sang ✅ kèm ngày rà soát.
+6. Áp dụng lại rule cho `departments.controller.ts` (mục 2.9, phần CRUD danh mục — sau khi đã có field
+   `managerUserId` ở mục 0): mở `POST`/`PATCH` cho `ADMIN, ASSISTANT`.
+7. Sau khi xong từng module, cập nhật lại bảng ở mục 2 từ ⚠️ sang ✅ kèm ngày rà soát.

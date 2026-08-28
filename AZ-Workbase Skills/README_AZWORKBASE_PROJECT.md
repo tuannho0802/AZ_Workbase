@@ -1,5 +1,20 @@
 # 🏢 AZWorkbase - All-in-One Management System
 
+> ⚠️ **TÀI LIỆU LỊCH SỬ — KHÔNG PHẢN ÁNH TIẾN ĐỘ HIỆN TẠI.** Đây là bản kế hoạch/roadmap GỐC từ lúc khởi
+> tạo dự án (roadmap 4 tuần MVP, các mục checklist `[ ]` bên dưới chưa được cập nhật theo tiến độ thật —
+> ví dụ mục "Phase 2 (Deferred)" liệt kê Leave Request Management/Project Management, nhưng thực tế module
+> Nghỉ phép (`leave-requests/`) đã được triển khai từ lâu, cùng nhiều module khác không có trong roadmap
+> gốc này: `departments/`, `link-groups/` (Category/Group liên kết + Quản lý chính-phụ), `media-sources/`,
+> `zk-device/` (chấm công), `audit/`). Version stack liệt kê ở mục "Tech Stack Details" bên dưới (Next.js
+> 14+, Ant Design 5.x, Nest.js 10+) cũng đã lỗi thời — xem version thực tế tại `package.json` của từng
+> project hoặc [`../README.md`](../README.md).
+>
+> **Giữ lại file này chỉ để tham khảo lịch sử/ý định thiết kế ban đầu.** Để biết trạng thái hiện tại của
+> dự án, luôn đọc: [`../README.md`](../README.md) (tổng quan + cấu trúc thư mục thật),
+> [`../backend/README.md`](../backend/README.md), [`../frontend/README.md`](../frontend/README.md), và
+> [`PERMISSIONS.md`](./PERMISSIONS.md) (rule phân quyền — nguồn chân lý duy nhất, cập nhật liên tục theo
+> từng lần rà soát code thật).
+
 ## 📋 Project Overview
 
 **Purpose:** Enterprise management system for employee, project, and customer data management  
