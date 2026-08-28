@@ -4,6 +4,7 @@ import { NotFoundException, BadRequestException } from '@nestjs/common';
 import { UsersService } from './users.service';
 import { User } from '../../database/entities/user.entity';
 import { AuditService } from '../audit/audit.service';
+import { DepartmentsService } from '../departments/departments.service';
 import { Role } from '../../common/enums/role.enum';
 import { ApprovalStatus } from '../../common/enums/approval-status.enum';
 
@@ -20,6 +21,9 @@ describe('UsersService - Approval workflow (đăng ký công khai chờ duyệt)
     logAction: jest.fn(),
     logActionAsync: jest.fn(),
   };
+  const mockDepartmentsService = {
+    findOne: jest.fn(),
+  };
 
   beforeEach(async () => {
     jest.clearAllMocks();
@@ -29,6 +33,7 @@ describe('UsersService - Approval workflow (đăng ký công khai chờ duyệt)
         UsersService,
         { provide: getRepositoryToken(User), useValue: mockUsersRepo },
         { provide: AuditService, useValue: mockAuditService },
+        { provide: DepartmentsService, useValue: mockDepartmentsService },
       ],
     }).compile();
 
@@ -68,6 +73,7 @@ describe('UsersService - Approval workflow (đăng ký công khai chờ duyệt)
     it('lưu đúng phone/departmentId khi có truyền vào, null/undefined khi không', async () => {
       mockUsersRepo.create.mockImplementation((input: any) => input);
       mockUsersRepo.save.mockImplementation((entity: any) => Promise.resolve(entity));
+      mockDepartmentsService.findOne.mockResolvedValue({ id: 3, name: 'Kinh doanh', isActive: true });
 
       await service.createPendingRegistration({
         name: 'B',
@@ -80,6 +86,57 @@ describe('UsersService - Approval workflow (đăng ký công khai chờ duyệt)
       expect(mockUsersRepo.create).toHaveBeenCalledWith(
         expect.objectContaining({ phone: '0912345678', departmentId: 3 }),
       );
+    });
+
+    it('KHÔNG gọi kiểm tra department nếu không truyền departmentId (tránh gọi thừa)', async () => {
+      mockUsersRepo.create.mockImplementation((input: any) => input);
+      mockUsersRepo.save.mockImplementation((entity: any) => Promise.resolve(entity));
+
+      await service.createPendingRegistration({
+        name: 'C',
+        email: 'c@example.com',
+        password: 'hash',
+      });
+
+      expect(mockDepartmentsService.findOne).not.toHaveBeenCalled();
+    });
+
+    it('⚠️ KIỂM TRA TÍNH THỐNG NHẤT DỮ LIỆU: ném lỗi nếu departmentId không tồn tại (endpoint công khai, ai cũng gửi được ID bịa)', async () => {
+      mockDepartmentsService.findOne.mockRejectedValue(
+        new NotFoundException('Không tìm thấy phòng ban với ID 999'),
+      );
+
+      await expect(
+        service.createPendingRegistration({
+          name: 'D',
+          email: 'd@example.com',
+          password: 'hash',
+          departmentId: 999,
+        }),
+      ).rejects.toThrow(NotFoundException);
+
+      // Không được lưu user khi department không hợp lệ - phải fail SỚM,
+      // trước khi chạm tới usersRepository.save().
+      expect(mockUsersRepo.save).not.toHaveBeenCalled();
+    });
+
+    it('⚠️ ném BadRequestException nếu departmentId tồn tại nhưng đã bị vô hiệu hoá (isActive=false) - không cho "lách" qua phòng ban không hiện trong danh sách công khai', async () => {
+      mockDepartmentsService.findOne.mockResolvedValue({
+        id: 5,
+        name: 'Phòng đã đóng',
+        isActive: false,
+      });
+
+      await expect(
+        service.createPendingRegistration({
+          name: 'E',
+          email: 'e@example.com',
+          password: 'hash',
+          departmentId: 5,
+        }),
+      ).rejects.toThrow(BadRequestException);
+
+      expect(mockUsersRepo.save).not.toHaveBeenCalled();
     });
   });
 

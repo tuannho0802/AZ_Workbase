@@ -13,6 +13,7 @@ import { ConflictException, NotFoundException, ForbiddenException, BadRequestExc
 import * as bcrypt from 'bcrypt';
 import { AuditService } from '../audit/audit.service';
 import { ApprovalStatus } from '../../common/enums/approval-status.enum';
+import { DepartmentsService } from '../departments/departments.service';
 
 /** Loại bỏ field password khỏi object trước khi trả ra API hoặc ghi vào audit log */
 function omitPassword<T extends { password?: unknown }>(obj: T): Omit<T, 'password'> {
@@ -30,6 +31,7 @@ export class UsersService {
     @InjectRepository(User)
     private usersRepository: Repository<User>,
     private readonly auditService: AuditService,
+    private readonly departmentsService: DepartmentsService,
   ) {}
 
   async findByEmail(email: string): Promise<User | null> {
@@ -335,6 +337,24 @@ export class UsersService {
     phone?: string;
     departmentId?: number;
   }): Promise<User> {
+    // ⚠️ KIỂM TRA TÍNH THỐNG NHẤT DỮ LIỆU: đây là endpoint CÔNG KHAI, ai
+    // cũng gọi được (không cần token) - nếu không validate, 1 người bất kỳ
+    // có thể gửi `departmentId` bịa (vd 999999) và:
+    //  1) Nếu cột department_id có ràng buộc FK (đúng như user.entity.ts đang
+    //     khai báo @ManyToOne + @JoinColumn) -> insert sẽ ném lỗi FK thô ở
+    //     tầng DB (QueryFailedError), trả về 500 khó hiểu thay vì 400 rõ ràng.
+    //  2) Nếu lỡ gửi ID của 1 phòng ban đã bị vô hiệu hoá (isActive=false,
+    //     không hiện trong danh sách công khai GET /departments/public) thì
+    //     vẫn có thể "lách" gán vào phòng ban đó dù nó không được phép chọn.
+    // Nên phải xác nhận phòng ban vừa TỒN TẠI vừa ĐANG ACTIVE trước khi lưu,
+    // khớp đúng với danh sách mà form đăng ký công khai đang hiển thị.
+    if (data.departmentId != null) {
+      const department = await this.departmentsService.findOne(data.departmentId);
+      if (!department.isActive) {
+        throw new BadRequestException('Phòng ban này hiện không khả dụng để đăng ký');
+      }
+    }
+
     const user = this.usersRepository.create({
       name: data.name,
       email: data.email,
