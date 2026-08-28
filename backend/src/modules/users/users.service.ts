@@ -3,6 +3,7 @@ import { Injectable, Logger } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { User } from '../../database/entities/user.entity';
+import { Department } from '../../database/entities/department.entity';
 import { Role } from '../../common/enums/role.enum';
 import { ManagedLink } from '../../common/types/managed-link.type';
 import { CreateUserDto } from './dto/create-user.dto';
@@ -14,6 +15,7 @@ import * as bcrypt from 'bcrypt';
 import { AuditService } from '../audit/audit.service';
 import { ApprovalStatus } from '../../common/enums/approval-status.enum';
 import { DepartmentsService } from '../departments/departments.service';
+import { UsersAccessHelper } from './helpers/users-access.helper';
 
 /** Loại bỏ field password khỏi object trước khi trả ra API hoặc ghi vào audit log */
 function omitPassword<T extends { password?: unknown }>(obj: T): Omit<T, 'password'> {
@@ -30,6 +32,8 @@ export class UsersService {
 
     @InjectRepository(User)
     private usersRepository: Repository<User>,
+    @InjectRepository(Department)
+    private departmentsRepository: Repository<Department>,
     private readonly auditService: AuditService,
     private readonly departmentsService: DepartmentsService,
   ) {}
@@ -48,12 +52,24 @@ export class UsersService {
   }
 
   async findOne(id: number, currentUserId: number, currentUserRole: string): Promise<User | null> {
-    if (currentUserRole !== Role.ADMIN && id !== currentUserId) {
-      throw new ForbiddenException('Bạn không có quyền xem thông tin nhân viên khác');
-    }
     const user = await this.usersRepository.findOne({ where: { id }, relations: ['department'] });
     if (!user) {
       throw new NotFoundException('Không tìm thấy nhân viên');
+    }
+    // ⚠️ FIX PERMISSIONS.md mục 2.2: trước đây CHỈ Admin/chính mình xem
+    // được (Assistant/Manager bị chặn dù đã đúng @Roles ở controller) -
+    // giờ dùng chung UsersAccessHelper: Assistant xem mọi người ngang
+    // Admin; Manager xem được user trong phòng ban mình quản lý + chính
+    // mình; Employee chỉ xem chính mình.
+    const allowed = await UsersAccessHelper.canManageUser(
+      this.departmentsRepository,
+      user.id,
+      user.departmentId,
+      currentUserId,
+      currentUserRole,
+    );
+    if (!allowed) {
+      throw new ForbiddenException('Bạn không có quyền xem thông tin nhân viên này');
     }
     return user;
   }
