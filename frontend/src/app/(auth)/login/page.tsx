@@ -46,7 +46,7 @@ export default function LoginPage() {
       // Delay 500ms để đảm bảo cookie được ghi
       await new Promise(resolve => setTimeout(resolve, 500));
       
-      router.push('/customers');
+      router.push('/');
     } catch (error) {
       console.error('[LOGIN] Error:', error);
       const status = isAxiosError(error) ? error.response?.status : undefined;

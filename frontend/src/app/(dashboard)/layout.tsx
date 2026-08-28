@@ -3,25 +3,15 @@
 import { useEffect, useState } from 'react';
 import { useRouter, usePathname } from 'next/navigation';
 import { Layout, Menu, Avatar, Dropdown, Button } from 'antd';
-import { 
-  LogoutOutlined, 
-  UserOutlined, 
-  TeamOutlined,
+import {
+  LogoutOutlined,
+  UserOutlined,
   MenuFoldOutlined,
   MenuUnfoldOutlined,
-  SwapOutlined,
-  CalendarOutlined,
-  CheckCircleOutlined,
-  FileTextOutlined,
-  DeleteOutlined,
-  WarningOutlined,
-  ProfileOutlined,
-  ClockCircleOutlined,
-  TagsOutlined,
-  ApartmentOutlined,
-  UsergroupAddOutlined
+  HomeOutlined,
 } from '@ant-design/icons';
 import { useAuthStore } from '@/lib/stores/auth.store';
+import { getVisibleNavItems } from '@/lib/nav-config';
 import Cookies from 'js-cookie';
 
 const { Header, Content, Sider } = Layout;
@@ -53,8 +43,13 @@ export default function DashboardLayout({
 
   useEffect(() => {
     let newKey = 'customers'; // default
-    
-    if (pathname.includes('/users')) {
+
+    if (pathname === '/') {
+      // Trang chủ mới - phải check TRƯỚC mọi nhánh includes() bên dưới vì
+      // '/' không match includes() của bất kỳ path con nào, nhưng cũng
+      // không được rơi vào default 'customers' (sẽ sáng nhầm menu).
+      newKey = 'home';
+    } else if (pathname.includes('/users')) {
       newKey = 'users';
     } else if (pathname.includes('/profile')) {
       newKey = 'profile';
@@ -148,109 +143,20 @@ export default function DashboardLayout({
           selectedKeys={[selectedKey]}
           items={[
             {
-              key: 'customers',
-              icon: <TeamOutlined />,
-              label: 'Khách hàng',
-              onClick: () => router.push('/customers'),
+              key: 'home',
+              icon: <HomeOutlined />,
+              label: 'Trang chủ',
+              onClick: () => router.push('/'),
             },
-            {
-              key: 'chia-data',
-              icon: <SwapOutlined />,
-              label: 'Chia Data',
-              onClick: () => router.push('/chia-data'),
-            },
-            {
-              key: 'nghi-phep',
-              icon: <CalendarOutlined />,
-              label: 'Nghỉ phép',
-              onClick: () => router.push('/nghi-phep'),
-            },
-            {
-              // All Roles: user tự xem profile (Fanpage/Group) của chính mình.
-              // Admin xem/sửa được của tất cả (xem thêm ProfilePage - AdminProfileManager).
-              key: 'profile',
-              icon: <ProfileOutlined />,
-              label: 'Profile',
-              onClick: () => router.push('/profile'),
-            },
-            {
-              // All Roles - khớp GET /link-groups/managed-by-me ở BE (không
-              // gắn @Roles). BE tự lọc: user thường chỉ thấy nhóm mình được
-              // gán Quản lý chính/phụ, admin thấy tất cả - nên menu hiển thị
-              // cho mọi role, KHÔNG cần gate ở đây.
-              key: 'nhom-toi-quan-ly',
-              icon: <UsergroupAddOutlined />,
-              label: 'Nhóm tôi quản lý',
-              onClick: () => router.push('/nhom-toi-quan-ly'),
-            },
-            ...(['admin', 'manager', 'assistant'].includes(user?.role || '') ? [{
-              key: 'duyet-phep',
-              icon: <CheckCircleOutlined />,
-              label: 'Duyệt phép',
-              onClick: () => router.push('/duyet-phep'),
-            }] : []),
-            // Khớp PERMISSIONS.md §2.7: CHỈ admin/assistant - Manager 403
-            // tuyệt đối (không có ngoại lệ theo phòng ban, khác các module
-            // khác). Trước đây để 'manager' ở đây là SAI.
-            ...(['admin', 'assistant'].includes(user?.role || '') ? [{
-              key: 'audit-logs',
-              icon: <FileTextOutlined />,
-              label: 'Nhật ký hệ thống',
-              onClick: () => router.push('/audit-logs'),
-            }] : []),
-            // Khớp PERMISSIONS.md §2.2: GET/POST /users đã là
-            // @Roles(ADMIN, ASSISTANT, MANAGER) + BE tự lọc theo phòng ban
-            // cho Manager - trước đây chỉ để 'admin' ở đây là lỗi thời.
-            ...(['admin', 'assistant', 'manager'].includes(user?.role || '') ? [{
-              key: 'users',
-              icon: <UserOutlined />,
-              label: 'Nhân viên',
-              onClick: () => router.push('/users'),
-            }] : []),
-            ...(['admin'].includes(user?.role || '') ? [{
-              key: 'trash-can',
-              icon: <DeleteOutlined />,
-              label: 'Thùng rác',
-              onClick: () => router.push('/trash-can'),
-            }] : []),
-            // Quản lý danh sách nguồn khách hàng (CRUD + khoá/mở khoá) -
-            // khớp PERMISSIONS.md §2.5: admin/assistant CRUD (Assistant
-            // không Xoá); Manager KHÔNG có quyền ghi ở module này (quyết
-            // định chốt riêng, module chưa gắn khái niệm phòng ban).
-            ...(['admin', 'assistant'].includes(user?.role || '') ? [{
-              key: 'nguon-media',
-              icon: <TagsOutlined />,
-              label: 'Quản lý nguồn',
-              onClick: () => router.push('/nguon-media'),
-            }] : []),
-            // Category (Zalo/FB/Threads...) -> Group (nhóm cụ thể, 1 URL
-            // riêng) -> checklist "đã join" theo customer. Khớp
-            // PERMISSIONS.md §2.4: admin/assistant CRUD (Assistant không
-            // Xoá); Manager KHÔNG có quyền ghi ở module này (cùng lý do
-            // §2.5 - chưa gắn khái niệm phòng ban).
-            ...(['admin', 'assistant'].includes(user?.role || '') ? [{
-              key: 'nhom-lien-ket',
-              icon: <ApartmentOutlined />,
-              label: 'Quản lý nhóm liên kết',
-              onClick: () => router.push('/nhom-lien-ket'),
-            }] : []),
-            // Khớp PERMISSIONS.md §2.3: admin/assistant/manager (Manager bị
-            // BE tự giới hạn theo phòng ban ở từng service method).
-            ...(['admin', 'assistant', 'manager'].includes(user?.role || '') ? [{
-              key: 'attendance-device',
-              icon: <ClockCircleOutlined />,
-              label: 'Máy chấm công',
-              onClick: () => router.push('/attendance-device'),
-            }] : []),
-            // Đặt cuối cùng trong sidebar theo yêu cầu; CHỈ admin thấy được
-            // (khớp với BE: @Roles(Role.ADMIN) trên GET reports/invalid-data
-            // — ẩn ở đây chỉ để UX gọn, còn chặn thật sự vẫn nằm ở BE).
-            ...(['admin'].includes(user?.role || '') ? [{
-              key: 'invalid-data-report',
-              icon: <WarningOutlined />,
-              label: 'Báo cáo data lỗi',
-              onClick: () => router.push('/customers/reports/invalid-data'),
-            }] : []),
+            // Toàn bộ mục còn lại lấy từ nav-config.tsx - CÙNG 1 nguồn với
+            // trang chủ (/) - sửa role-gate hay thêm/bớt mục chỉ cần sửa 1
+            // chỗ duy nhất, không lệch giữa sidebar và trang chủ.
+            ...getVisibleNavItems(user?.role).map((item) => ({
+              key: item.key,
+              icon: item.icon,
+              label: item.label,
+              onClick: () => router.push(item.path),
+            })),
           ]}
         />
       </Sider>
