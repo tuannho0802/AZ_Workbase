@@ -2,12 +2,25 @@ import { Controller, Post, Body, HttpCode, HttpStatus, UseGuards, Request } from
 import { ApiTags, ApiOperation, ApiResponse, ApiBearerAuth } from '@nestjs/swagger';
 import { AuthService } from './auth.service';
 import { LoginDto } from './dto/login.dto';
+import { RegisterDto } from './dto/register.dto';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 
 @ApiTags('Auth')
 @Controller('auth')
 export class AuthController {
   constructor(private readonly authService: AuthService) {}
+
+  @Post('register')
+  @HttpCode(HttpStatus.CREATED)
+  @ApiOperation({
+    summary:
+      'Đăng ký tài khoản (công khai, không cần đăng nhập) - tài khoản tạo ra sẽ ở trạng thái CHỜ DUYỆT, cần Admin/Assistant duyệt mới đăng nhập được',
+  })
+  @ApiResponse({ status: 201, description: 'Đăng ký thành công, đang chờ duyệt.' })
+  @ApiResponse({ status: 409, description: 'Email đã được đăng ký.' })
+  async register(@Body() dto: RegisterDto) {
+    return this.authService.register(dto);
+  }
 
   @Post('login')
   @HttpCode(HttpStatus.OK)

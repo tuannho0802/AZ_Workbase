@@ -11,6 +11,7 @@ import { BooleanTransformer } from '../transformers/boolean.transformer';
 import { ManagedLink } from '../../common/types/managed-link.type';
 
 import { Role } from '../../common/enums/role.enum';
+import { ApprovalStatus } from '../../common/enums/approval-status.enum';
 import { Department } from './department.entity';
 
 @Entity('users')
@@ -77,6 +78,33 @@ export class User {
     transformer: new BooleanTransformer(),
   })
   isActive: boolean;
+
+  /**
+   * Trạng thái duyệt tài khoản - chỉ có ý nghĩa với tài khoản tạo qua
+   * POST /auth/register (tự đăng ký công khai). Tài khoản Admin tạo qua
+   * "Thêm nhân viên" mặc định 'approved' luôn (xem UsersService.create),
+   * không cần qua bước chờ.
+   */
+  @Column({
+    name: 'approval_status',
+    type: 'enum',
+    enum: ApprovalStatus,
+    default: ApprovalStatus.APPROVED,
+  })
+  approvalStatus: ApprovalStatus;
+
+  @Column({ name: 'approved_by_id', nullable: true })
+  approvedById: number | null;
+
+  @ManyToOne(() => User, { nullable: true })
+  @JoinColumn({ name: 'approved_by_id' })
+  approvedBy: User | null;
+
+  @Column({ name: 'approved_at', type: 'timestamp', nullable: true })
+  approvedAt: Date | null;
+
+  @Column({ name: 'rejection_reason', type: 'varchar', length: 255, nullable: true })
+  rejectionReason: string | null;
 
   @Column({ name: 'last_login_at', type: 'timestamp', nullable: true })
   lastLoginAt: Date;

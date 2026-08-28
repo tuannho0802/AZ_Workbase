@@ -9,9 +9,10 @@ import { CreateUserDto } from './dto/create-user.dto';
 import { UpdateUserDto } from './dto/update-user.dto';
 import { ResetPasswordDto } from './dto/reset-password.dto';
 import { UpdateUserProfileDto } from './dto/update-user-profile.dto';
-import { ConflictException, NotFoundException, ForbiddenException } from '@nestjs/common';
+import { ConflictException, NotFoundException, ForbiddenException, BadRequestException } from '@nestjs/common';
 import * as bcrypt from 'bcrypt';
 import { AuditService } from '../audit/audit.service';
+import { ApprovalStatus } from '../../common/enums/approval-status.enum';
 
 /** Loại bỏ field password khỏi object trước khi trả ra API hoặc ghi vào audit log */
 function omitPassword<T extends { password?: unknown }>(obj: T): Omit<T, 'password'> {
@@ -317,5 +318,122 @@ export class UsersService {
     );
 
     return { id, profile: newProfile };
+  }
+
+  /**
+   * Tạo user từ luồng TỰ ĐĂNG KÝ (AuthService.register) - KHÁC với create()
+   * ở trên (dùng cho Admin tự thêm nhân viên, mặc định approved luôn).
+   * Ở đây role LUÔN là EMPLOYEE, approvalStatus LUÔN là PENDING - hardcode
+   * cứng, không nhận role/approvalStatus từ tham số, để không có đường nào
+   * (kể cả lỗi lập trình sau này gọi nhầm) vô tình tạo tài khoản đã duyệt
+   * sẵn hoặc có quyền cao hơn EMPLOYEE qua đường tự đăng ký công khai.
+   */
+  async createPendingRegistration(data: {
+    name: string;
+    email: string;
+    password: string; // đã hash sẵn từ AuthService
+    phone?: string;
+    departmentId?: number;
+  }): Promise<User> {
+    const user = this.usersRepository.create({
+      name: data.name,
+      email: data.email,
+      password: data.password,
+      phone: data.phone ?? null,
+      departmentId: data.departmentId ?? undefined,
+      role: Role.EMPLOYEE,
+      approvalStatus: ApprovalStatus.PENDING,
+      isActive: true,
+    });
+    return this.usersRepository.save(user);
+  }
+
+  /**
+   * Danh sách tài khoản đang chờ duyệt - dùng cho màn "Nhân viên" (badge số
+   * lượng chờ duyệt + tab riêng). Không phân trang vì số lượng chờ duyệt tại
+   * 1 thời điểm thường nhỏ, nếu sau này lớn dần có thể thêm phân trang.
+   */
+  async findPendingApprovals(): Promise<User[]> {
+    return this.usersRepository.find({
+      where: { approvalStatus: ApprovalStatus.PENDING },
+      relations: ['department'],
+      order: { createdAt: 'ASC' },
+    });
+  }
+
+  /**
+   * Duyệt 1 tài khoản tự đăng ký. Chỉ Admin/Assistant được gọi (enforced ở
+   * controller qua @Roles). Có thể đổi role/phòng ban lúc duyệt (thường hữu
+   * ích hơn là duyệt xong phải vào sửa lại lần nữa) - để trống thì giữ
+   * nguyên EMPLOYEE + phòng ban đã chọn lúc đăng ký.
+   */
+  async approveUser(
+    id: number,
+    approverId: number,
+    overrides?: { role?: string; departmentId?: number },
+  ): Promise<User> {
+    const user = await this.usersRepository.findOne({ where: { id } });
+    if (!user) {
+      throw new NotFoundException('Không tìm thấy tài khoản');
+    }
+    if (user.approvalStatus !== ApprovalStatus.PENDING) {
+      throw new BadRequestException('Tài khoản này không ở trạng thái chờ duyệt');
+    }
+
+    user.approvalStatus = ApprovalStatus.APPROVED;
+    user.approvedById = approverId;
+    user.approvedAt = new Date();
+    user.rejectionReason = null;
+    if (overrides?.role) user.role = overrides.role;
+    if (overrides?.departmentId !== undefined) user.departmentId = overrides.departmentId;
+
+    const saved = await this.usersRepository.save(user);
+
+    this.auditService.logActionAsync(
+      approverId,
+      'APPROVE_USER',
+      'user',
+      id,
+      null,
+      { role: saved.role, departmentId: saved.departmentId },
+    );
+    this.logger.log(`[Users] User ID ${id} approved by ${approverId}`);
+
+    return omitPassword(saved as any) as User;
+  }
+
+  /**
+   * Từ chối 1 tài khoản tự đăng ký. KHÔNG xoá tài khoản (giữ lại lịch sử +
+   * lý do từ chối) - chỉ chuyển approvalStatus sang REJECTED, chặn đăng nhập
+   * vĩnh viễn (khác PENDING - có thể duyệt sau, REJECTED thì không tự động
+   * "chuyển lại" được, cần admin sửa tay qua update() nếu muốn đảo ngược).
+   */
+  async rejectUser(id: number, approverId: number, reason?: string): Promise<User> {
+    const user = await this.usersRepository.findOne({ where: { id } });
+    if (!user) {
+      throw new NotFoundException('Không tìm thấy tài khoản');
+    }
+    if (user.approvalStatus !== ApprovalStatus.PENDING) {
+      throw new BadRequestException('Tài khoản này không ở trạng thái chờ duyệt');
+    }
+
+    user.approvalStatus = ApprovalStatus.REJECTED;
+    user.approvedById = approverId;
+    user.approvedAt = new Date();
+    user.rejectionReason = reason?.trim() || null;
+
+    const saved = await this.usersRepository.save(user);
+
+    this.auditService.logActionAsync(
+      approverId,
+      'REJECT_USER',
+      'user',
+      id,
+      null,
+      { reason: saved.rejectionReason },
+    );
+    this.logger.log(`[Users] User ID ${id} rejected by ${approverId}`);
+
+    return omitPassword(saved as any) as User;
   }
 }

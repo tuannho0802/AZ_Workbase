@@ -9,6 +9,8 @@ import { CreateUserDto } from './dto/create-user.dto';
 import { UpdateUserDto } from './dto/update-user.dto';
 import { ResetPasswordDto } from './dto/reset-password.dto';
 import { UpdateUserProfileDto } from './dto/update-user-profile.dto';
+import { ApproveUserDto } from './dto/approve-user.dto';
+import { RejectUserDto } from './dto/reject-user.dto';
 import { CacheControlInterceptor } from '../../common/interceptors/cache-control.interceptor';
 
 @ApiTags('Users')
@@ -63,11 +65,32 @@ export class UsersController {
     return this.usersService.findById(req.user.id);
   }
 
+  @Get('pending-approvals')
+  @Roles(Role.ADMIN, Role.ASSISTANT)
+  @ApiOperation({ summary: 'Danh sách tài khoản tự đăng ký đang chờ duyệt (Admin/Assistant)' })
+  async getPendingApprovals() {
+    return this.usersService.findPendingApprovals();
+  }
+
   @Get(':id')
   @Roles(Role.ADMIN)
   @ApiOperation({ summary: 'Lấy thông tin chi tiết nhân viên theo ID' })
   async findOne(@Param('id') id: string, @Request() req: any) {
     return this.usersService.findOne(+id, req.user.id, req.user.role);
+  }
+
+  @Patch(':id/approve')
+  @Roles(Role.ADMIN, Role.ASSISTANT)
+  @ApiOperation({ summary: 'Duyệt tài khoản tự đăng ký (Admin/Assistant)' })
+  async approveUser(@Param('id') id: string, @Body() dto: ApproveUserDto, @Request() req: any) {
+    return this.usersService.approveUser(+id, req.user.id, dto);
+  }
+
+  @Patch(':id/reject')
+  @Roles(Role.ADMIN, Role.ASSISTANT)
+  @ApiOperation({ summary: 'Từ chối tài khoản tự đăng ký (Admin/Assistant)' })
+  async rejectUser(@Param('id') id: string, @Body() dto: RejectUserDto, @Request() req: any) {
+    return this.usersService.rejectUser(+id, req.user.id, dto.reason);
   }
 
   @Post()
