@@ -38,40 +38,47 @@ export class LinkCategoriesController {
 
   @Post()
   @UseGuards(RolesGuard)
-  @Roles(Role.ADMIN)
-  @ApiOperation({ summary: 'Tạo category mới (chỉ admin)' })
+  @Roles(Role.ADMIN, Role.ASSISTANT)
+  @ApiOperation({ summary: 'Tạo category mới (Admin, Assistant)' })
   async create(@Body() dto: CreateLinkCategoryDto) {
     return this.categoriesService.create(dto);
   }
 
   @Patch(':id')
   @UseGuards(RolesGuard)
-  @Roles(Role.ADMIN)
-  @ApiOperation({ summary: 'Sửa tên/màu/thứ tự category (chỉ admin)' })
+  @Roles(Role.ADMIN, Role.ASSISTANT)
+  @ApiOperation({ summary: 'Sửa tên/màu/thứ tự category (Admin, Assistant)' })
   async update(@Param('id', ParseIntPipe) id: number, @Body() dto: UpdateLinkCategoryDto) {
     return this.categoriesService.update(id, dto);
   }
 
   @Patch(':id/lock')
   @UseGuards(RolesGuard)
-  @Roles(Role.ADMIN)
-  @ApiOperation({ summary: 'Khoá category (chỉ admin)' })
+  @Roles(Role.ADMIN, Role.ASSISTANT)
+  @ApiOperation({ summary: 'Khoá category (Admin, Assistant)' })
   async lock(@Param('id', ParseIntPipe) id: number) {
     return this.categoriesService.setLocked(id, true);
   }
 
   @Patch(':id/unlock')
   @UseGuards(RolesGuard)
-  @Roles(Role.ADMIN)
-  @ApiOperation({ summary: 'Mở khoá category (chỉ admin)' })
+  @Roles(Role.ADMIN, Role.ASSISTANT)
+  @ApiOperation({ summary: 'Mở khoá category (Admin, Assistant)' })
   async unlock(@Param('id', ParseIntPipe) id: number) {
     return this.categoriesService.setLocked(id, false);
   }
 
+  // FIX PERMISSIONS.md mục 1 (quy tắc Xoá) + mục 2.4: Xoá luôn tách riêng,
+  // CHỈ Admin, không có ngoại lệ cho Assistant - khác với các hành động
+  // sửa/khoá-mở ở trên. Module này CHƯA có khái niệm phòng ban gắn với
+  // Category/Group (doc mục 2.4 ghi "cần bàn thêm hướng thiết kế nếu muốn
+  // áp dụng") nên KHÔNG mở thêm cho Manager ở đây - chỉ mở phần chắc chắn
+  // đúng rule (Assistant = Admin trừ Xoá), để tránh tự quyết thay chủ dự án
+  // 1 quyết định thiết kế còn treo.
   @Delete(':id')
   @UseGuards(RolesGuard)
   @Roles(Role.ADMIN)
-  @ApiOperation({ summary: 'Xoá category - chỉ được nếu chưa có group nào (chỉ admin)' })
+  @ApiOperation({ summary: 'Xoá category - chỉ được nếu chưa có group nào (chỉ Admin)' })
   async remove(@Param('id', ParseIntPipe) id: number) {
     return this.categoriesService.remove(id);
   }

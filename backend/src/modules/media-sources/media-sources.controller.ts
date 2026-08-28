@@ -40,40 +40,43 @@ export class MediaSourcesController {
 
     @Post()
     @UseGuards(RolesGuard)
-    @Roles(Role.ADMIN)
-    @ApiOperation({ summary: 'Tạo nguồn mới (chỉ admin)' })
+    @Roles(Role.ADMIN, Role.ASSISTANT)
+    @ApiOperation({ summary: 'Tạo nguồn mới (Admin, Assistant)' })
     async create(@Body() dto: CreateMediaSourceDto) {
         return this.mediaSourcesService.create(dto);
     }
 
     @Patch(':id')
     @UseGuards(RolesGuard)
-    @Roles(Role.ADMIN)
-    @ApiOperation({ summary: 'Sửa tên/thứ tự nguồn (chỉ admin)' })
+    @Roles(Role.ADMIN, Role.ASSISTANT)
+    @ApiOperation({ summary: 'Sửa tên/thứ tự nguồn (Admin, Assistant)' })
     async update(@Param('id', ParseIntPipe) id: number, @Body() dto: UpdateMediaSourceDto) {
         return this.mediaSourcesService.update(id, dto);
     }
 
     @Patch(':id/lock')
     @UseGuards(RolesGuard)
-    @Roles(Role.ADMIN)
-    @ApiOperation({ summary: 'Khoá nguồn - ẩn khỏi dropdown thêm khách hàng mới (chỉ admin)' })
+    @Roles(Role.ADMIN, Role.ASSISTANT)
+    @ApiOperation({ summary: 'Khoá nguồn - ẩn khỏi dropdown thêm khách hàng mới (Admin, Assistant)' })
     async lock(@Param('id', ParseIntPipe) id: number) {
         return this.mediaSourcesService.setLocked(id, true);
     }
 
     @Patch(':id/unlock')
     @UseGuards(RolesGuard)
-    @Roles(Role.ADMIN)
-    @ApiOperation({ summary: 'Mở khoá nguồn (chỉ admin)' })
+    @Roles(Role.ADMIN, Role.ASSISTANT)
+    @ApiOperation({ summary: 'Mở khoá nguồn (Admin, Assistant)' })
     async unlock(@Param('id', ParseIntPipe) id: number) {
         return this.mediaSourcesService.setLocked(id, false);
     }
 
+    // FIX PERMISSIONS.md mục 1 (quy tắc Xoá) + mục 2.5: tách riêng Xoá, CHỈ
+    // Admin - cùng lý do với link-categories/link-groups (chưa có khái niệm
+    // phòng ban cho Media Source nên không mở thêm cho Manager ở đây).
     @Delete(':id')
     @UseGuards(RolesGuard)
     @Roles(Role.ADMIN)
-    @ApiOperation({ summary: 'Xoá nguồn - chỉ được nếu chưa có khách hàng nào dùng (chỉ admin)' })
+    @ApiOperation({ summary: 'Xoá nguồn - chỉ được nếu chưa có khách hàng nào dùng (chỉ Admin)' })
     async remove(@Param('id', ParseIntPipe) id: number) {
         return this.mediaSourcesService.remove(id);
     }

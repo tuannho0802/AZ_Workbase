@@ -42,40 +42,43 @@ export class LinkGroupsController {
 
   @Post()
   @UseGuards(RolesGuard)
-  @Roles(Role.ADMIN)
-  @ApiOperation({ summary: 'Tạo nhóm mới (chỉ admin)' })
+  @Roles(Role.ADMIN, Role.ASSISTANT)
+  @ApiOperation({ summary: 'Tạo nhóm mới (Admin, Assistant)' })
   async create(@Body() dto: CreateLinkGroupDto) {
     return this.groupsService.create(dto);
   }
 
   @Patch(':id')
   @UseGuards(RolesGuard)
-  @Roles(Role.ADMIN)
-  @ApiOperation({ summary: 'Sửa tên/url/thứ tự nhóm (chỉ admin)' })
+  @Roles(Role.ADMIN, Role.ASSISTANT)
+  @ApiOperation({ summary: 'Sửa tên/url/thứ tự nhóm (Admin, Assistant)' })
   async update(@Param('id', ParseIntPipe) id: number, @Body() dto: UpdateLinkGroupDto) {
     return this.groupsService.update(id, dto);
   }
 
   @Patch(':id/deactivate')
   @UseGuards(RolesGuard)
-  @Roles(Role.ADMIN)
-  @ApiOperation({ summary: 'Ẩn nhóm khỏi checklist (chỉ admin)' })
+  @Roles(Role.ADMIN, Role.ASSISTANT)
+  @ApiOperation({ summary: 'Ẩn nhóm khỏi checklist (Admin, Assistant)' })
   async deactivate(@Param('id', ParseIntPipe) id: number) {
     return this.groupsService.setActive(id, false);
   }
 
   @Patch(':id/activate')
   @UseGuards(RolesGuard)
-  @Roles(Role.ADMIN)
-  @ApiOperation({ summary: 'Hiện lại nhóm (chỉ admin)' })
+  @Roles(Role.ADMIN, Role.ASSISTANT)
+  @ApiOperation({ summary: 'Hiện lại nhóm (Admin, Assistant)' })
   async activate(@Param('id', ParseIntPipe) id: number) {
     return this.groupsService.setActive(id, true);
   }
 
+  // FIX PERMISSIONS.md mục 1 (quy tắc Xoá) + mục 2.4: tách riêng Xoá, CHỈ
+  // Admin - xem giải thích tương tự ở link-categories.controller.ts (chưa
+  // có khái niệm phòng ban cho Group nên không mở thêm cho Manager ở đây).
   @Delete(':id')
   @UseGuards(RolesGuard)
   @Roles(Role.ADMIN)
-  @ApiOperation({ summary: 'Xoá nhóm - chỉ được nếu chưa có customer nào có dữ liệu join (chỉ admin)' })
+  @ApiOperation({ summary: 'Xoá nhóm - chỉ được nếu chưa có customer nào có dữ liệu join (chỉ Admin)' })
   async remove(@Param('id', ParseIntPipe) id: number) {
     return this.groupsService.remove(id);
   }
