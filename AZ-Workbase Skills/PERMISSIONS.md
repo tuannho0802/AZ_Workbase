@@ -5,9 +5,14 @@
 > Nếu code hiện tại (BE hoặc FE) khác với tài liệu này → **tài liệu này đúng, code là bug cần sửa**,
 > trừ khi tài liệu chưa được cập nhật theo quyết định nghiệp vụ mới nhất (luôn hỏi lại nếu nghi ngờ).
 >
-> **Cập nhật lần cuối:** 2026-08-28 (chốt §2.4/§2.5 — Link Groups/Categories/Media Sources: xác nhận code
-> đã đúng 100% rule, Manager cố tình KHÔNG có quyền ghi ở 3 module này theo quyết định chủ dự án; sửa 2
-> file spec test lệch khỏi implementation thật, toàn bộ suite 165/165 test pass)
+> **Cập nhật lần cuối:** 2026-08-28 (rà soát toàn diện lần 2 — đối chiếu TRỰC TIẾP từng dòng code cho
+> TOÀN BỘ 9 module, không dựa vào trạng thái cũ trong tài liệu. Phát hiện: §2.6 (Nghỉ phép), §2.7 (Audit
+> Logs), §2.8 (Duyệt đăng ký), §2.9 (Phòng ban) đã được sửa xong trong code từ trước nhưng tài liệu chưa
+> cập nhật theo (đang ghi nhầm ⚠️ CHƯA KHỚP dù code đã ✅ đúng rule) — đã xác nhận và chuyển cả 4 mục sang
+> ✅. **Toàn bộ 9/9 module giờ khớp 100% với rule ở mục 1 (Backend).** Thêm 3 file spec mới
+> (`users.service.spec.ts` bổ sung nhánh Manager, `departments.service.spec.ts`,
+> `leave-requests.service.spec.ts`) khoá lại các rule vừa xác nhận — chưa từng có test nào che phủ trước
+> đó dù code đã đúng. Toàn bộ suite: **13/13 test suite, 203/203 test PASS**)
 > **Người xác nhận rule:** Chủ dự án (qua chat trực tiếp với Agent)
 
 ---
@@ -188,88 +193,119 @@ mọi user — không đổi.
 này, chỉ Admin/Assistant CRUD (Assistant không Xoá). Cùng lý do: module chưa có khái niệm phòng ban gắn
 với Media Source, chủ dự án chốt hướng an toàn thay vì để treo.
 
-### 2.6. Nghỉ phép (`modules/leave-requests`) — ⚠️ CHƯA KHỚP (rule đã chốt lại, code chưa cập nhật theo)
+### 2.6. Nghỉ phép (`modules/leave-requests`) — ✅ ĐÃ KHỚP
 
-`leave-requests.controller.ts` hiện **không dùng `@Roles` decorator ở tầng controller** — toàn bộ logic
-"ai được duyệt đơn của ai" nằm trong service, theo cơ chế duyệt chéo phòng ban dựa trên `RolePriority`
-(`ADMIN:4, MANAGER:3, ASSISTANT:2, EMPLOYEE:1` — người priority cao hơn duyệt được đơn của người priority
-thấp hơn, không phụ thuộc phòng ban — xem `WORKFLOW_LOG.md` mục 2026-04-16).
+**Đối chiếu trực tiếp `leave-requests.service.ts` (2026-08-28) — xác nhận cơ chế `RolePriority` chéo
+phòng ban cũ đã bị THAY THẾ HOÀN TOÀN** bằng 2 bảng tra cứu cố định đúng rule đã chốt, không còn tồn tại
+bất kỳ tham chiếu `RolePriority` nào ngoài comment giải thích lịch sử:
 
-**Rule ĐÚNG đã chốt (thay thế hoàn toàn cơ chế `RolePriority` chéo phòng ban ở trên):**
+```ts
+const ELIGIBLE_APPROVER_ROLES: Record<string, string[]> = {
+  [Role.ADMIN]: [Role.ADMIN],
+  [Role.ASSISTANT]: [Role.ADMIN],
+  [Role.MANAGER]: [Role.ASSISTANT, Role.ADMIN],
+  [Role.EMPLOYEE]: [Role.MANAGER, Role.ASSISTANT, Role.ADMIN],
+};
+```
 
 | Người xin nghỉ có role | Ai được duyệt đơn này |
 |---|---|
-| `admin` | Chỉ `admin` (kể cả admin khác duyệt cho admin — admin không tự giới hạn theo phòng ban) |
+| `admin` | Chỉ `admin` |
 | `assistant` | Chỉ `admin` |
 | `manager` | `assistant` hoặc `admin` |
-| `employee` | `manager` **CÙNG phòng ban với employee đó** (không cho Manager phòng ban khác duyệt), hoặc `assistant`, hoặc `admin` |
+| `employee` | `manager` **CÙNG phòng ban với employee đó** (`department.manager_user_id = approverId`), hoặc `assistant`, hoặc `admin` |
 
-Khác biệt quan trọng so với cơ chế `RolePriority` cũ: **không còn thuần tuý "priority cao hơn thì duyệt
-được"** — cụ thể `assistant` (priority 2) KHÔNG được duyệt đơn của `assistant` khác dù cùng priority hay
-thấp hơn theo cách hiểu cũ, và `manager` chỉ được duyệt đơn `employee` **đúng phòng ban mình quản lý**
-(không phải "priority cao hơn thì duyệt được của mọi phòng ban" như trước). **Chưa sửa code trong phiên
-này — cần viết lại hàm xác định "người duyệt hợp lệ" trong `leave-requests.service.ts` theo đúng bảng
-trên, kèm spec test khoá hành vi cho từng cặp role.**
+- `approve()`/`reject()` đều gọi chung 1 hàm `isEligibleApprover()` — đúng nguyên tắc kỹ thuật #2 (1
+  nguồn áp filter duy nhất). Khi `approverRole === MANAGER`, kiểm tra thêm
+  `department.findOne({ id: requesterDepartmentId, managerUserId: approverId })` — nếu không khớp,
+  ném `ForbiddenException` ngay (không có ngoại lệ "priority cao hơn thì vẫn duyệt được" như cơ chế cũ).
+- `findPending()`/`findHistory()` dùng bảng ngược `VIEWER_SEES_REQUESTER_ROLES` (suy trực tiếp từ bảng
+  trên) + áp thêm `departmentId IN (:...managedIds)` khi viewer là Manager — đối xứng đúng với
+  `approve()`/`reject()`, tránh trường hợp thấy được trong danh sách nhưng bấm duyệt lại bị chặn (hoặc
+  ngược lại).
+- Manager chưa quản lý phòng ban nào (`managedIds.length === 0`) → trả về `[]` ngay, không query thêm.
 
-### 2.7. Audit Logs (`modules/audit`) — ⚠️ CHƯA KHỚP (rule đã chốt lại, code chưa cập nhật theo)
+**Spec test mới (2026-08-28, trước đó module này hoàn toàn chưa có file spec nào):**
+`leave-requests.service.spec.ts` — 19 test, cover đủ toàn bộ ma trận role-cặp (bao gồm case dễ hiểu nhầm
+nhất: `assistant` KHÔNG tự duyệt được cho `assistant` khác dù cùng "priority" theo cách hiểu cũ; `manager`
+khác phòng ban bị chặn dù đúng role).
 
-`audit.controller.ts`: 2 endpoint đầu dùng `@Roles(ADMIN, MANAGER)`, 4 endpoint còn lại `@Roles(ADMIN)`.
+### 2.7. Audit Logs (`modules/audit`) — ✅ ĐÃ KHỚP
 
-**Rule ĐÚNG đã chốt:** CHỈ `admin` và `assistant` được xem Audit Logs (không phân biệt phòng ban, xem
-toàn bộ). `manager` và `employee` bị chặn hoàn toàn — **403 Forbidden**, không có ngoại lệ (kể cả xem
-audit log của phòng ban mình quản lý cũng không được — đây là ngoại lệ có chủ đích so với rule chung ở
-mục 1, vì audit log là dữ liệu nhạy cảm mức hệ thống, không phải dữ liệu nghiệp vụ theo phòng ban).
-**Chưa sửa code — cần đổi toàn bộ 6 endpoint trong `audit.controller.ts` thành `@Roles(ADMIN, ASSISTANT)`
-đồng nhất (bỏ `MANAGER` khỏi 2 endpoint đang có).**
+**Đối chiếu trực tiếp `audit.controller.ts` (2026-08-28) — xác nhận cả 6/6 endpoint đã đồng nhất
+`@Roles(Role.ADMIN, Role.ASSISTANT)`** (`GET /`, `GET /actions`, `GET /settings`, `POST /settings`,
+`DELETE /cleanup`, `DELETE /bulk`) — không còn endpoint nào dùng `MANAGER` như trước. `manager` và
+`employee` bị chặn hoàn toàn (403), không có ngoại lệ theo phòng ban — đúng rule đã chốt: audit log là dữ
+liệu nhạy cảm mức hệ thống, không phải dữ liệu nghiệp vụ theo phòng ban. Có comment trong code tham chiếu
+thẳng tới mục này của tài liệu, giải thích rõ đây là ngoại lệ có chủ đích cho việc `DELETE` (cleanup vận
+hành hệ thống, khác với rule Xoá=chỉ-Admin áp cho dữ liệu nghiệp vụ ở mục 1).
 
-### 2.8. Xác thực & Đăng ký tài khoản (`modules/auth`) — ⚠️ CHƯA KHỚP (rule đã chốt lại, code chưa cập nhật theo)
+### 2.8. Xác thực & Đăng ký tài khoản (`modules/auth`) — ✅ ĐÃ KHỚP
 
-Employee/nhân viên mới có thể tự đăng ký (`POST /auth/register`), tài khoản ở trạng thái `pending` cho
-tới khi được duyệt (`PATCH /users/:id/approve`, hiện `@Roles(ADMIN, ASSISTANT)`).
+Employee/nhân viên mới có thể tự đăng ký (`POST /auth/register`, không cần token — luôn tạo
+`role=EMPLOYEE`, `approvalStatus=PENDING` bất kể input, xem `UsersService.createPendingRegistration()`),
+tài khoản ở trạng thái chờ duyệt cho tới khi được xử lý qua `PATCH /users/:id/approve`/`.../reject`.
 
-**Rule ĐÚNG đã chốt:** `manager` **CŨNG được duyệt đăng ký mới**, nhưng **CHỈ khi phòng ban người đăng
-ký chọn TRÙNG với phòng ban mà chính manager đó đang quản lý** (`department.manager_user_id = manager
-đang duyệt`). `admin`/`assistant` vẫn duyệt được mọi phòng ban như hiện tại, không đổi. **Chưa sửa
-code — cần: (1) thêm `MANAGER` vào `@Roles()` của `PATCH /users/:id/approve` và `.../reject` và
-`GET /users/pending-approvals`, (2) trong service, khi role là `manager`, lọc thêm điều kiện
-`departmentId` của user đang chờ duyệt phải khớp phòng ban manager đó quản lý — nếu không khớp thì trả
-403 (endpoint approve/reject) hoặc loại khỏi danh sách (endpoint pending-approvals).**
+**Rule ĐÚNG đã chốt — xác nhận code khớp 100% (đối chiếu trực tiếp `users.service.ts`,
+2026-08-28):** `manager` **CŨNG được duyệt đăng ký mới**, nhưng **CHỈ khi phòng ban người đăng ký chọn
+TRÙNG với phòng ban mà chính manager đó đang quản lý** (`department.manager_user_id = manager đang
+duyệt`). `admin`/`assistant` vẫn duyệt được mọi phòng ban, không đổi.
 
-### 2.9. Phòng ban (`modules/departments`) — ⚠️ CHƯA KHỚP + 🚨 PHÁT HIỆN CHẶN TOÀN BỘ RULE "MANAGER THEO PHÒNG BAN"
+- `PATCH /users/:id/approve`, `.../reject`, `GET /users/pending-approvals`: cả 3 đều
+  `@Roles(ADMIN, ASSISTANT, MANAGER)` — đúng như yêu cầu.
+- `approveUser()`/`rejectUser()`: khi `approverRole === MANAGER`, kiểm tra
+  `user.departmentId` (phòng ban người đăng ký ĐÃ chọn lúc tự đăng ký) có nằm trong
+  `getManagedDepartmentIds(approverId)` không — nếu không khớp, ném `ForbiddenException` ngay (chặn cứng
+  trên 1 bản ghi cụ thể, khác `findPendingApprovals` chỉ ẩn khỏi danh sách). Nếu Manager đổi
+  `departmentId` ngay lúc duyệt (`overrides.departmentId`), phòng ban MỚI đó cũng phải nằm trong phạm vi
+  Manager quản lý — không cho "lách" chuyển sang phòng ban khác không phải của mình.
+- `findPendingApprovals()`: Manager chỉ thấy user đăng ký vào đúng phòng ban mình quản lý; nếu chưa quản
+  lý phòng ban nào thì trả `[]` ngay.
+- Toàn bộ logic dùng chung `UsersAccessHelper.getManagedDepartmentIds()` — không viết lại điều kiện riêng
+  (đúng nguyên tắc kỹ thuật #2/#4 ở mục 1).
 
-Hiện trạng thực tế (đọc trực tiếp `departments.controller.ts`, `departments.service.ts`, 2 DTO):
+**Spec test:** đã bổ sung 9 test case mới vào `users.service.spec.ts` (trước đó hoàn toàn chưa che phủ
+nhánh Manager dù code đã đúng) — cover đủ: duyệt đúng phòng ban, sai phòng ban, override sang phòng ban
+không quản lý, user chưa có `departmentId`, và cùng bộ case cho `rejectUser`/`findPendingApprovals`.
 
-| Endpoint | Guard hiện tại | Đúng theo rule mục 1 phải là |
+*(Mục này mô tả chi tiết rule "duyệt đăng ký" theo góc nhìn nghiệp vụ auth/registration; xem mục 2.2 để
+có bức tranh đầy đủ toàn bộ module Users bao gồm cả các hành động quản trị khác.)*
+
+### 2.9. Phòng ban (`modules/departments`) — ✅ ĐÃ KHỚP (blocker đã được giải quyết)
+
+**Đối chiếu trực tiếp `departments.controller.ts`, `departments.service.ts`, 2 DTO (2026-08-28):**
+
+| Endpoint | Guard hiện tại | Đúng theo rule mục 1 |
 |---|---|---|
-| `GET /departments/public` | Không cần đăng nhập (chỉ trả `id`, `name`) — dùng cho dropdown ở trang tự đăng ký (`POST /auth/register`) | ✅ Đúng, cố ý mở công khai, không đổi |
-| `GET /departments` (danh sách đang hoạt động) | Mọi role đã đăng nhập (không có `@Roles`) | ✅ Đúng — đây là danh mục tham chiếu, không phải dữ liệu cần phân quyền xem, giống cách `GET /link-groups` đang mở cho mọi user (xem mục 2.4) |
+| `GET /departments/public` | Không cần đăng nhập (chỉ trả `id`, `name`) — dùng cho dropdown ở trang tự đăng ký | ✅ Đúng, cố ý mở công khai |
+| `GET /departments` | Mọi role đã đăng nhập (không có `@Roles`) | ✅ Đúng — danh mục tham chiếu, không phải dữ liệu cần phân quyền xem |
 | `GET /departments/:id` | Mọi role đã đăng nhập | ✅ Đúng, cùng lý do trên |
-| `POST /departments` (tạo mới) | `@Roles(ADMIN)` | `ADMIN, ASSISTANT` toàn quyền theo rule mục 1 (Manager không quản trị danh mục phòng ban nói chung, vì bản thân phòng ban không phải "dữ liệu của phòng ban họ quản lý") |
-| `PATCH /departments/:id` (sửa) | `@Roles(ADMIN)` | Như trên — `ADMIN, ASSISTANT` |
-| Xoá phòng ban | **KHÔNG TỒN TẠI endpoint xoá** (không có `@Delete` nào trong controller) | Không cần sửa gì thêm — không có gì để giới hạn theo rule "chỉ Admin xoá" |
+| `POST /departments` (tạo mới) | `@Roles(ADMIN, ASSISTANT)` | ✅ Đúng |
+| `PATCH /departments/:id` (sửa, gồm gán Manager) | `@Roles(ADMIN, ASSISTANT)` | ✅ Đúng |
+| Xoá phòng ban | Không tồn tại endpoint xoá | ✅ Không cần giới hạn gì thêm |
 
-**🚨 Phát hiện quan trọng — ảnh hưởng tới TOÀN BỘ rule "Manager chỉ thấy/thao tác phòng ban mình quản
-lý" ở mọi module khác (Customer §2.1, Users §2.2 dự kiến, Leave Requests §2.6, và bất kỳ module tương
-lai nào dùng lại pattern này):**
+**🎉 Blocker trước đây ĐÃ ĐƯỢC GIẢI QUYẾT** — `UpdateDepartmentDto` giờ có field `managerUserId?: number
+| null`, và `DepartmentsService.update()` validate chặt trước khi gán:
 
-- Cột `department.manager_user_id` (field `managerUserId` trên entity `Department`) là **nguồn chân lý
-  duy nhất** xác định "Manager X đang quản lý phòng ban nào" — được `CustomerAccessHelper` (mục 2.1) và
-  `customers.service.ts` (`bulkAssign`, dòng ~797 + ~1168) dùng trực tiếp để tính phạm vi Manager.
-- **Nhưng cả `CreateDepartmentDto` lẫn `UpdateDepartmentDto` đều KHÔNG có field `managerUserId`** — nghĩa
-  là hiện tại **KHÔNG có bất kỳ endpoint API nào cho phép gán/đổi "Manager quản lý phòng ban nào"**. Đã
-  rà toàn bộ repo (`grep managerUserId` trên cả `backend/src` và `frontend/src`) — chỉ có 2 nơi ĐỌC field
-  này (`customers.service.ts` và FE `chia-data/page.tsx` để tính "phòng ban Manager đang quản lý"), không
-  có nơi nào GHI. Seed data (`database/seeds/`) cũng không set field này.
-- **Kết luận:** để rule "Manager theo phòng ban" ở mục 1 hoạt động được trên thực tế (không chỉ đúng trên
-  giấy), field `managerUserId` hiện tại **chỉ có thể set thủ công qua DB** (SQL trực tiếp hoặc tool quản
-  trị DB ngoài app) — chưa có UI/API chính thức nào trong hệ thống để Admin làm việc này. Đây là điểm
-  **chặn (blocker) ưu tiên cao nhất**, vì thiếu nó thì toàn bộ phần "giới hạn theo phòng ban" của
-  Manager ở MỌI module (kể cả module đã ✅ như Customer) đều không thể vận hành đúng trong môi trường
-  thực tế nếu Admin không tự tay chỉnh DB. **Chưa sửa code — cần: (1) thêm field `managerUserId` (kiểu
-  `number | null`, optional) vào `UpdateDepartmentDto`, (2) thêm validate user được gán phải có
-  `role === MANAGER` và đang `isActive`, (3) thêm UI chọn Manager trong form Sửa phòng ban ở
-  Frontend (hiện Frontend còn chưa có cả trang quản lý Department nào — chỉ dùng `GET /departments/public`
-  ở trang đăng ký).**
+1. `managerUserId = null` → gỡ Manager, không cần validate thêm.
+2. `managerUserId` là số → bắt buộc user đó phải **tồn tại**, có `role === MANAGER`, và đang
+   `isActive === true` — nếu sai bất kỳ điều kiện nào, ném lỗi rõ ràng (`NotFoundException`/
+   `BadRequestException`), không cho gán nhầm.
+3. Field này được `destructure` riêng trước khi `merge()` phần còn lại của DTO — tránh TypeORM merge đè
+   nhầm giá trị đã validate.
+
+Nhờ đó, cột `department.manager_user_id` (nguồn chân lý duy nhất cho phạm vi Manager, dùng bởi
+`CustomerAccessHelper`, `UsersAccessHelper`, `leave-requests.service.ts`, `zk-device.service.ts`) giờ **có
+thể set qua API chính thức** (`PATCH /departments/:id`), không còn phải sửa tay qua DB nữa — rule "Manager
+theo phòng ban" ở TẤT CẢ module khác giờ vận hành được đầy đủ trong thực tế.
+
+**Spec test mới:** `departments.service.spec.ts` (11 test) — cover đủ: gỡ Manager, gán hợp lệ, user không
+tồn tại, sai role, bị khoá tài khoản, và không đụng `managerUserId` nếu DTO không truyền field này.
+
+**Còn thiếu (không phải bug, chỉ là chưa làm — thuộc phạm vi FE, chủ dự án nói tính sau):** Frontend hiện
+chưa có UI chọn Manager cho phòng ban (trang quản lý Department nói chung còn chưa có, chỉ dùng
+`GET /departments/public` ở trang đăng ký) — Admin/Assistant hiện phải gọi thẳng API `PATCH
+/departments/:id` (qua Swagger hoặc công cụ khác) để gán Manager cho tới khi có UI.
 
 
 
