@@ -64,7 +64,7 @@ function AccountStatusContent() {
   return (
     <div className="min-h-screen flex items-center justify-center bg-gray-100 px-4">
       <Card className="w-full max-w-md" style={{ textAlign: 'center' }}>
-        <Space direction="vertical" size="large" style={{ width: '100%' }}>
+        <Space orientation ="vertical" size="large" style={{ width: '100%' }}>
           {config.icon}
           <div>
             <Title level={3} style={{ color: config.color, marginBottom: 8 }}>
