@@ -8,6 +8,7 @@ import { CustomerFiltersDto } from './dto/customer-filters.dto';
 import { UpdateAssignmentDto } from './dto/update-assignment.dto';
 import { Role } from '../../common/enums/role.enum';
 import { User } from '../../database/entities/user.entity';
+import { Department } from '../../database/entities/department.entity';
 import {
   DuplicatePhoneException,
   CustomerNotFoundException,
@@ -253,7 +254,7 @@ export class CustomersService {
     queryBuilder.where('customer.deletedAt IS NULL');
 
     // RBAC
-    CustomerAccessHelper.applyExtendedAccessFilter(
+    CustomerAccessHelper.applyViewFilter(
       queryBuilder,
       userId,
       userRole,
@@ -327,7 +328,7 @@ export class CustomersService {
       .createQueryBuilder('customer')
       .where('customer.deletedAt IS NULL');
 
-    CustomerAccessHelper.applyExtendedAccessFilter(
+    CustomerAccessHelper.applyViewFilter(
       countQueryBuilder,
       userId,
       userRole,
@@ -399,7 +400,7 @@ export class CustomersService {
       .where('customer.deletedAt IS NULL');
 
     // RBAC
-    CustomerAccessHelper.applyExtendedAccessFilter(
+    CustomerAccessHelper.applyViewFilter(
       queryBuilder,
       userId,
       userRole,
@@ -436,7 +437,7 @@ export class CustomersService {
       .leftJoin('deposit.customer', 'customer')
       .where('customer.deletedAt IS NULL');
 
-    CustomerAccessHelper.applyExtendedAccessFilter(
+    CustomerAccessHelper.applyViewFilter(
       depositsQuery,
       userId,
       userRole,
@@ -471,7 +472,7 @@ export class CustomersService {
     queryBuilder.where('customer.id = :id', { id });
     queryBuilder.andWhere('customer.deletedAt IS NULL');
 
-    CustomerAccessHelper.applyExtendedAccessFilter(
+    CustomerAccessHelper.applyViewFilter(
       queryBuilder,
       userId,
       userRole,
@@ -628,11 +629,11 @@ export class CustomersService {
   ) {
     const customer = await this.findOne(id, userId, userRole);
 
-    if (!CustomerAccessHelper.canUpdate(customer, userId, userRole)) {
-      throw new UnauthorizedCustomerAccessException(
-        'Bạn chỉ có quyền cập nhật khách hàng mà bạn sở hữu hoặc được giao.',
-      );
-    }
+    // Không cần check quyền sửa riêng ở đây: findOne() ở trên đã áp dụng
+    // CustomerAccessHelper.applyViewFilter() - nếu user không có quyền
+    // XEM khách hàng này, findOne() đã ném CustomerNotFoundException rồi,
+    // code sẽ không chạy tới được dòng này. Với app này, phạm vi Xem và
+    // phạm vi Sửa là một (xem chú thích đầu file customer-access.helper.ts).
 
     const today = this.getTodayVn();
     const todayStr = today.toISOString().split('T')[0];
@@ -750,7 +751,7 @@ export class CustomersService {
 
     if (!CustomerAccessHelper.canDelete(customer, userId, userRole)) {
       throw new UnauthorizedCustomerAccessException(
-        'Chỉ người tạo bản ghi hoặc Admin mới có quyền xóa khách hàng này.',
+        'Chỉ Admin mới có quyền xóa khách hàng.',
       );
     }
 
@@ -789,6 +790,20 @@ export class CustomersService {
     // Removed department check for bulk assign as visibility is strictly owned
     // Managers and Assistants can assign customers they own to anyone.
 
+    // Nếu người gọi là MANAGER, lấy 1 LẦN DUY NHẤT danh sách phòng ban mà
+    // họ quản lý (department.manager_user_id = callerId) để kiểm tra
+    // trong vòng lặp bên dưới - KHÔNG query lại cho từng customer (tránh
+    // lặp lại đúng lỗi N+1 mà phần tối ưu batch bên dưới đang cố tránh).
+    let callerManagedDepartmentIds: number[] = [];
+    if (callerRole === Role.MANAGER) {
+      const departmentRepo = this.customersRepository.manager.getRepository(Department);
+      const managed = await departmentRepo.find({
+        where: { managerUserId: callerId },
+        select: ['id'],
+      });
+      callerManagedDepartmentIds = managed.map((d) => d.id);
+    }
+
     const results = { success: 0, failed: 0, errors: [] as string[] };
     const today = this.getTodayVn();
 
@@ -825,8 +840,29 @@ export class CustomersService {
         continue;
       }
 
-      // Authorization check: Must be Admin/Manager OR Primary Sales OR Creator of unassigned data
-      if (callerRole !== Role.ADMIN && callerRole !== Role.MANAGER) {
+      // Authorization check theo đúng bảng phân quyền (xem
+      // CustomerAccessHelper): Admin/Assistant được gán mọi khách hàng;
+      // Manager chỉ được gán khách hàng thuộc phòng ban mình quản lý.
+      // Employee: GIỮ NGUYÊN quy tắc gốc chặt hơn 1 chút so với phạm vi
+      // xem/sửa thông thường - chỉ được khởi tạo gán khi khách hàng CHƯA
+      // có ai (customer.salesUserId === null) và chính họ là người tạo,
+      // HOẶC khi chính họ đang là sales chính hiện tại (re-delegate lead
+      // của mình cho đồng nghiệp) - KHÔNG cho phép "giật" 1 khách hàng đã
+      // thuộc về người khác chỉ vì họ là người tạo ra data ban đầu.
+      if (callerRole === Role.ADMIN || callerRole === Role.ASSISTANT) {
+        // Được phép, không cần kiểm tra thêm.
+      } else if (callerRole === Role.MANAGER) {
+        if (
+          customer.departmentId == null ||
+          !callerManagedDepartmentIds.includes(customer.departmentId)
+        ) {
+          results.errors.push(
+            `Khách hàng ID ${customerId}: Bạn không có quyền chia khách hàng ID ${customerId} không thuộc quản lý của bạn.`,
+          );
+          results.failed++;
+          continue;
+        }
+      } else {
         const isUnassignedCreator =
           customer.salesUserId === null && customer.createdById === callerId;
         const isPrimarySales = customer.salesUserId === callerId;
@@ -978,8 +1014,24 @@ export class CustomersService {
       }),
     );
 
-    if (userRole !== Role.ADMIN && userRole !== Role.MANAGER) {
-      // User thường chỉ thấy KH chưa Primary NẾU họ tạo ra, HOẶC KH họ là Primary
+    if (userRole === Role.ADMIN || userRole === Role.ASSISTANT) {
+      // Xem toàn bộ pool chưa gán - không lọc gì thêm.
+    } else if (userRole === Role.MANAGER) {
+      // Chỉ thấy KH chưa Primary trong phạm vi phòng ban mình quản lý,
+      // HOẶC KH mà chính mình đang là Primary (không phân biệt phòng ban -
+      // họ đã là chủ sở hữu chính thì luôn thấy được, giống mọi role khác).
+      qb.andWhere(
+        new Brackets((q) => {
+          q.where(
+            'customer.salesUserId IS NULL AND customer.department_id IN ' +
+            '(SELECT d.id FROM departments d WHERE d.manager_user_id = :userId)',
+            { userId },
+          ).orWhere('customer.salesUserId = :userId', { userId });
+        }),
+      );
+    } else {
+    // Employee (và role lạ khác): chỉ thấy KH chưa Primary NẾU họ tạo
+    // ra, HOẶC KH họ là Primary.
       qb.andWhere(
         new Brackets((q) => {
           q.where(
@@ -1019,15 +1071,17 @@ export class CustomersService {
     };
   }
 
-  /** Lịch sử gán data của 1 khách hàng */
+  /** Danh sách khách hàng ĐÃ assign (tab "Đã assign" ở trang Chia Data) */
   async getAssigned(params: {
     page: number;
     limit: number;
     salesUserId?: number | null;
     sourceUserId?: number | null;
     search?: string;
+    userId: number;
+    userRole: string;
   }) {
-    const { page, limit, salesUserId, sourceUserId, search } = params;
+    const { page, limit, salesUserId, sourceUserId, search, userId, userRole } = params;
     const skip = (page - 1) * limit;
 
     const query = this.customersRepository
@@ -1036,6 +1090,15 @@ export class CustomersService {
       .leftJoinAndSelect('customer.createdBy', 'createdBy')
       .where('customer.deletedAt IS NULL')
       .andWhere('customer.salesUserId IS NOT NULL'); // Đã assign
+
+    // ⚠️ Trước đây hàm này KHÔNG nhận userId/userRole và KHÔNG áp bất kỳ
+    // bộ lọc phân quyền nào - mọi role (kể cả Employee) đều thấy TOÀN BỘ
+    // khách hàng đã assign của TẤT CẢ mọi người, bất kể phòng ban/chủ sở
+    // hữu. Đây đúng là nguyên nhân bug trong ảnh: 1 Employee đăng nhập
+    // nhưng thấy cả data của Sales User khác, Manager, Admin. Thêm dòng
+    // dưới để áp đúng CustomerAccessHelper.applyViewFilter() giống mọi
+    // endpoint list khách hàng khác (findAll, getStats...).
+    CustomerAccessHelper.applyViewFilter(query, userId, userRole);
 
     if (salesUserId) {
       query.andWhere('customer.salesUserId = :salesUserId', { salesUserId });
@@ -1081,15 +1144,32 @@ export class CustomersService {
   }
 
   /**
-   * Kiểm tra quyền sửa/thu hồi 1 assignment: Admin/Manager luôn được, hoặc
-   * chính người đã tạo ra assignment đó (assignedById).
+   * Kiểm tra quyền sửa/thu hồi 1 assignment theo đúng bảng phân quyền:
+   * - Admin/Assistant: luôn được (CRUD toàn bộ, trừ xoá khách hàng).
+   * - Manager: CHỈ được nếu khách hàng của assignment này thuộc phòng ban
+   *   mình quản lý (trước đây Manager được bypass hoàn toàn không phân
+   *   biệt phòng ban - sai so với yêu cầu "CRUD data của phòng ban mình
+   *   quản lý", không phải CRUD ALL).
+   * - Employee: chỉ khi chính họ là người tạo ra assignment đó
+   *   (assignedById) - giữ nguyên hành vi gốc.
    */
-  private canModifyAssignment(
+  private async canModifyAssignment(
     assignment: CustomerAssignment,
     callerId: number,
     callerRole: string,
-  ): boolean {
-    if (callerRole === Role.ADMIN || callerRole === Role.MANAGER) return true;
+  ): Promise<boolean> {
+    if (callerRole === Role.ADMIN || callerRole === Role.ASSISTANT) return true;
+
+    if (callerRole === Role.MANAGER) {
+      const deptId = assignment.customer?.departmentId;
+      if (deptId == null) return false;
+      const departmentRepo = this.customersRepository.manager.getRepository(Department);
+      const managed = await departmentRepo.exists({
+        where: { id: deptId, managerUserId: callerId },
+      });
+      return managed;
+    }
+
     return assignment.assignedById === callerId;
   }
 
@@ -1121,7 +1201,7 @@ export class CustomersService {
         'Chỉ có thể sửa lượt gán đang ở trạng thái active (chưa bị thu hồi/chuyển giao)',
       );
     }
-    if (!this.canModifyAssignment(assignment, callerId, callerRole)) {
+    if (!(await this.canModifyAssignment(assignment, callerId, callerRole))) {
       throw new UnauthorizedCustomerAccessException(
         'Bạn không có quyền sửa lượt gán data này - chỉ Admin/Manager hoặc chính người đã tạo lượt gán mới được sửa.',
       );
@@ -1222,7 +1302,7 @@ export class CustomersService {
         'Lượt gán này đã được thu hồi hoặc chuyển giao trước đó rồi',
       );
     }
-    if (!this.canModifyAssignment(assignment, callerId, callerRole)) {
+    if (!(await this.canModifyAssignment(assignment, callerId, callerRole))) {
       throw new UnauthorizedCustomerAccessException(
         'Bạn không có quyền thu hồi lượt gán data này - chỉ Admin/Manager hoặc chính người đã tạo lượt gán mới được thu hồi.',
       );
@@ -1277,12 +1357,12 @@ export class CustomersService {
       "DATE(CONVERT_TZ(customer.createdAt, '+00:00', '+07:00')) < CURDATE()",
     );
 
-    CustomerAccessHelper.applyExtendedAccessFilter(
+    CustomerAccessHelper.applyViewFilter(
       todayQuery,
       userId,
       userRole,
     );
-    CustomerAccessHelper.applyExtendedAccessFilter(
+    CustomerAccessHelper.applyViewFilter(
       historyQuery,
       userId,
       userRole,
@@ -1321,12 +1401,12 @@ export class CustomersService {
       status: 'closed',
     });
 
-    CustomerAccessHelper.applyExtendedAccessFilter(
+    CustomerAccessHelper.applyViewFilter(
       closedQuery,
       userId,
       userRole,
     );
-    CustomerAccessHelper.applyExtendedAccessFilter(
+    CustomerAccessHelper.applyViewFilter(
       notClosedQuery,
       userId,
       userRole,
@@ -1362,7 +1442,7 @@ export class CustomersService {
       .leftJoinAndSelect('customer.salesUser', 'salesUser')
       .where('customer.deletedAt IS NULL');
 
-    CustomerAccessHelper.applyExtendedAccessFilter(
+    CustomerAccessHelper.applyViewFilter(
       queryBuilder,
       userId,
       userRole,
@@ -1500,7 +1580,7 @@ export class CustomersService {
       qb.andWhere('customer.inputDate > :todayStr', { todayStr });
     }
 
-    CustomerAccessHelper.applyExtendedAccessFilter(qb, userId, userRole);
+    CustomerAccessHelper.applyViewFilter(qb, userId, userRole);
 
     const [data, total] = await qb
       .orderBy('customer.inputDate', 'DESC')

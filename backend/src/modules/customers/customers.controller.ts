@@ -112,8 +112,9 @@ export class CustomersController {
 
   @Get('assigned')
   @Roles(Role.ADMIN, Role.MANAGER, Role.ASSISTANT, Role.EMPLOYEE)
-  @ApiOperation({ summary: 'Lấy danh sách khách hàng đã gán cho Sales' })
+  @ApiOperation({ summary: 'Lấy danh sách khách hàng đã gán cho Sales (có phân quyền theo role)' })
   async getAssigned(
+    @GetUser() user: any,
     @Query('page') page = '1',
     @Query('limit') limit = '20',
     @Query('salesUserId') salesUserId?: string,
@@ -126,6 +127,8 @@ export class CustomersController {
       salesUserId: salesUserId ? parseInt(salesUserId, 10) : null,
       sourceUserId: sourceUserId ? parseInt(sourceUserId, 10) : null,
       search,
+      userId: user.id,
+      userRole: user.role,
     });
   }
 
@@ -236,10 +239,10 @@ export class CustomersController {
   }
 
   @Delete(':id')
-  @Roles(Role.ADMIN, Role.MANAGER, Role.ASSISTANT, Role.EMPLOYEE)
-  @ApiOperation({ summary: 'Xóa mềm khách hàng (Admin hoặc Chủ sở hữu)' })
+  @Roles(Role.ADMIN)
+  @ApiOperation({ summary: 'Xóa mềm khách hàng - CHỈ ADMIN (Assistant/Manager/Employee không có quyền xoá)' })
   @ApiResponse({ status: 200, description: 'Đã xóa mềm khách hàng thành công' })
-  @ApiResponse({ status: 403, description: 'Chỉ Admin hoặc Manager mới có quyền xóa khách hàng' })
+  @ApiResponse({ status: 403, description: 'Chỉ Admin mới có quyền xóa khách hàng' })
   remove(@GetUser() user: any, @Param('id') id: string) {
     return this.customersService.remove(+id, user.id, user.role);
   }
