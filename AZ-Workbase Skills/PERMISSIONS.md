@@ -5,10 +5,9 @@
 > Nếu code hiện tại (BE hoặc FE) khác với tài liệu này → **tài liệu này đúng, code là bug cần sửa**,
 > trừ khi tài liệu chưa được cập nhật theo quyết định nghiệp vụ mới nhất (luôn hỏi lại nếu nghi ngờ).
 >
-> **Cập nhật lần cuối:** 2026-08-28 (rà soát bổ sung — pull thêm các commit mới về đăng ký tài khoản/
-> approval workflow/UI mới, đối chiếu nốt module `departments/` còn thiếu (mục 2.9) và toàn bộ 9 module
-> hiện có trong repo giờ đã được đối chiếu trực tiếp với code, không còn module nào bỏ sót; phát hiện 1
-> blocker quan trọng về việc gán Manager cho phòng ban — xem mục 2.9 và mục 4.0)
+> **Cập nhật lần cuối:** 2026-08-28 (phát hiện thêm 6 endpoint sub-resource của module Customer — vốn
+> được đánh dấu ✅ ĐÃ KHỚP — thực ra KHÔNG áp filter phạm vi, xem mục 2.1 và mục 4.0b; riêng
+> `DELETE /customers/deposits/:id` vi phạm trực tiếp rule Xoá vì cho phép cả Manager)
 > **Người xác nhận rule:** Chủ dự án (qua chat trực tiếp với Agent)
 
 ---
@@ -86,7 +85,7 @@
 > Chú thích: ✅ = đã khớp đúng rule ở mục 1. ⚠️ = chưa rà soát/chưa khớp — cần 1 phiên riêng để sửa.
 > 🟦 = có mô hình quyền riêng theo chủ đích (xem mục 1.6), không thuộc thang ✅/⚠️ thông thường.
 
-### 2.1. Khách hàng / Chia Data (`modules/customers`) — ✅ ĐÃ KHỚP
+### 2.1. Khách hàng / Chia Data (`modules/customers`) — ⚠️ KHỚP MỘT PHẦN (endpoint chính ✅, 6 sub-resource ⚠️ MỚI PHÁT HIỆN 2026-08-28)
 
 | Hành động | File chịu trách nhiệm |
 |---|---|
@@ -97,7 +96,32 @@
 | FE — nút Xoá | `chia-data/page.tsx`, `customers/page.tsx`: `canDelete = user?.role === 'admin'` |
 | Spec test khoá hành vi | `customer-access.helper.spec.ts`, phần mở rộng trong `customers.service.spec.ts` |
 
-### 2.2. Users / Profile (`modules/users`) — ⚠️ CHƯA KHỚP
+**🚨 MỚI PHÁT HIỆN (2026-08-28, đối chiếu trực tiếp từng dòng theo yêu cầu chủ dự án) — 6 endpoint
+sub-resource của Customer KHÔNG hề đi qua `CustomerAccessHelper.applyViewFilter()`, dù cùng nằm trên
+`CustomersController`/module liên quan. Các endpoint này nhận thẳng `customerId` từ URL rồi query DB mà
+KHÔNG kiểm tra customer đó có thuộc phạm vi Xem/Sửa của người gọi hay không — nghĩa là **BẤT KỲ role nào
+đã đăng nhập (kể cả Employee) đều thao tác được trên customer ID bất kỳ**, không riêng gì data của mình.
+Đây là lỗ hổng thật (không phải suy đoán), phá vỡ nguyên tắc "1 nguồn áp filter duy nhất" mà chính bảng
+trên mô tả — nguồn đó trên thực tế CHỈ được áp cho `findAll/findOne/update/remove`, không áp cho các
+endpoint dưới đây:**
+
+| Endpoint | File/hàm | Vấn đề cụ thể | Mức độ |
+|---|---|---|---|
+| `POST /customers/:id/notes` | `customers.service.ts` → `createNote()` | Không `@Roles`, không check sở hữu. Có comment sẵn trong code do dev tự nhận biết thiếu: *"findOne already handles RBAC check via userId/role but here we use simple find"* — nhưng chưa fix | Trung bình — ghi chú không nhạy cảm bằng dữ liệu tài chính, nhưng vẫn là ghi đè lên customer không thuộc phạm vi |
+| `GET /customers/:id/deposits` | `customers.service.ts` → `getDeposits()` | Không `@Roles`, không check sở hữu — bất kỳ role nào cũng xem được lịch sử nạp tiền (dữ liệu tài chính) của customer bất kỳ | **Cao** — lộ dữ liệu tài chính |
+| `POST /customers/:id/deposits` | `customers.controller.ts` (`@Roles(ADMIN, MANAGER, ASSISTANT)`) | Có `@Roles` ở tầng role nhưng KHÔNG check sở hữu trong service → Manager tạo được deposit cho customer NGOÀI phòng ban mình quản lý. Đồng thời loại hẳn Employee dù có thể đang là sales chính của customer đó | Trung bình |
+| `DELETE /customers/deposits/:id` | `customers.controller.ts` (`@Roles(ADMIN, MANAGER)`) | **Vi phạm trực tiếp rule cốt lõi mục 1**: "Xoá luôn = `role === ADMIN`, không ngoại lệ" — Manager không bao giờ được phép xoá bất kỳ thứ gì, kể cả xoá 1 bản ghi deposit. Cũng không check sở hữu | **Nghiêm trọng nhất** — phá thẳng rule Xoá |
+| `GET /customers/:id/assignment-history` | `customers.service.ts` → `getAssignmentHistory()` | Không `@Roles`, không check sở hữu — ai cũng xem được lịch sử gán/thu hồi sales của customer bất kỳ | Trung bình |
+| `GET /customers/:id/group-memberships`, `PATCH /customers/:id/group-memberships/:groupId` | `customer-group-memberships.controller.ts` (module riêng, cùng base path `customers`) | Chỉ có `JwtAuthGuard`, **KHÔNG có `RolesGuard`/`@Roles` nào cả**, không check sở hữu — ai đăng nhập cũng xem/sửa được checklist "đã join nhóm" của customer bất kỳ | Trung bình |
+
+**Chưa sửa code trong phiên này — theo đúng yêu cầu (chỉ cập nhật tài liệu).** Hướng sửa đề xuất: cả 6
+endpoint đều cần gọi `CustomerAccessHelper.applyViewFilter()` (hoặc tối thiểu 1 bước gọi lại `findOne()`
+hiện có của `CustomersService`, vốn đã áp đúng filter) làm cổng gác TRƯỚC khi đọc/ghi sub-resource — đúng
+pattern đã dùng cho `update()`/`remove()`. Riêng `DELETE /customers/deposits/:id` bắt buộc đổi
+`@Roles(ADMIN, MANAGER)` → `@Roles(ADMIN)` ngay khi sửa, vì đây là vi phạm rule Xoá, không phải thiếu
+sót filter phạm vi thông thường.
+
+
 
 Hiện trạng thực tế (đọc trực tiếp `users.controller.ts`):
 
@@ -255,16 +279,22 @@ lai nào dùng lại pattern này):**
 | 2026-08-28 | Rà soát lại toàn bộ repo sau khi có thêm nhiều module mới (đăng ký/duyệt tài khoản, Media Sources, Quản lý chính/phụ Link Group) — đối chiếu TRỰC TIẾP với code hiện tại (không suy đoán) | Cập nhật mục 2.1 → 2.8, phát hiện thêm 2 module mới chưa khớp (Media Sources §2.5, Audit Logs §2.7 cần xác nhận lại), xác nhận tính năng "Quản lý chính/phụ" Link Group (§2.4) đã đúng mô hình quyền riêng theo chủ đích |
 | 2026-08-28 | Chốt rule cụ thể cho 3 mục còn treo: duyệt nghỉ phép (§2.6 — thay hẳn cơ chế `RolePriority` chéo phòng ban bằng bảng role-cặp cụ thể, Manager bắt buộc cùng phòng ban với Employee), Audit Logs (§2.7 — chỉ Admin+Assistant, Manager/Employee 403 tuyệt đối, không có ngoại lệ theo phòng ban), duyệt đăng ký tài khoản (§2.8 — thêm nhánh Manager nhưng bắt buộc trùng phòng ban quản lý) | Cả 3 mục chuyển từ "cần hỏi lại chủ dự án" sang "đã chốt rule, chưa sửa code" — ưu tiên implement ở phiên tiếp theo, xem mục 4 |
 | 2026-08-28 (tiếp) | Rà soát module còn thiếu (`departments/`) sau khi pull thêm nhiều commit mới (đăng ký tài khoản, duyệt approval, `GroupPickerModal`, `SimpleList`...) — thêm mục 2.9. Phát hiện **blocker quan trọng**: `department.manager_user_id` (nguồn xác định phạm vi Manager, đang được `CustomerAccessHelper` dùng thật) hiện KHÔNG có endpoint nào để set/đổi qua API — chỉ sửa được thủ công qua DB. Xác nhận đối chiếu trực tiếp từng dòng code cho toàn bộ 9 module hiện có trong repo (không còn module nào chưa đối chiếu) | Xem mục 2.9. Chỉ cập nhật tài liệu (README gốc, `backend/README.md`, `frontend/README.md`, `PERMISSIONS.md`) — KHÔNG sửa source trong phiên này theo yêu cầu chủ dự án. Nhân tiện phát hiện và sửa version stack ghi sai trong docs (Next.js 14→16, NestJS 10+→11+, Ant Design 5→6) |
+| 2026-08-28 (rà soát endpoint chi tiết) | Theo yêu cầu chủ dự án "rà soát các file theo thống kê từ PERMISSIONS.md, báo cáo endpoint chưa tuân thủ rule" — dump toàn bộ decorator `@Roles`/`@Controller`/`@Get`/`@Post`/`@Patch`/`@Delete` của cả 14 controller hiện có, đối chiếu từng dòng. Phát hiện module Customer (§2.1) — dù đã đánh dấu ✅ ĐÃ KHỚP từ trước — thực ra có **6 endpoint sub-resource hoàn toàn không áp filter phạm vi** (`POST/GET :id/notes`, `deposits`, `assignment-history`, `group-memberships`), trong đó `DELETE /customers/deposits/:id` vi phạm trực tiếp rule Xoá (cho phép Manager xoá). Đây là phát hiện MỚI, chưa từng được ghi nhận ở các lần rà soát trước — đổi trạng thái §2.1 từ ✅ sang ⚠️ khớp một phần | Xem mục 2.1 (bảng chi tiết + mức độ nghiêm trọng từng endpoint) và mục 4 (đã thêm mục 0b ưu tiên sửa). Chỉ cập nhật `PERMISSIONS.md` — KHÔNG sửa source theo đúng yêu cầu |
 
 ---
 
 ## 4. Việc cần làm tiếp theo (theo thứ tự ưu tiên đề xuất)
 
-0. **[BLOCKER — ưu tiên cao nhất, làm TRƯỚC mục 1]** Thêm field `managerUserId` vào `UpdateDepartmentDto`
+0a. **[BLOCKER — ưu tiên cao nhất]** Thêm field `managerUserId` vào `UpdateDepartmentDto`
    + validate (phải là user role `MANAGER`, đang `isActive`) + UI chọn Manager cho phòng ban ở Frontend
    (mục 2.9). Không có bước này thì rule "Manager theo phòng ban" ở TẤT CẢ module khác (kể cả Customer đã
-   ✅) không thể cấu hình được trong thực tế ngoài chỉnh DB thủ công.
-1. Tạo `UsersAccessHelper` (pattern giống `CustomerAccessHelper`) và áp dụng lại cho toàn bộ
+   ✅ phần chính) không thể cấu hình được trong thực tế ngoài chỉnh DB thủ công.
+0b. **[ƯU TIÊN CAO — lỗ hổng thật đang tồn tại, không phải thiếu tính năng]** Vá 6 endpoint sub-resource
+   của Customer ở mục 2.1: gọi lại `CustomerAccessHelper.applyViewFilter()` (hoặc tối thiểu tái dùng
+   `findOne()` sẵn có của `CustomersService`) làm cổng gác cho `createNote`, `getDeposits`,
+   `createDeposit`, `deleteDeposit`, `getAssignmentHistory`, `getMembershipsForCustomer`/`setMembership`.
+   Đổi ngay `DELETE /customers/deposits/:id` từ `@Roles(ADMIN, MANAGER)` → `@Roles(ADMIN)` (vi phạm rule
+   Xoá, ưu tiên hơn cả phần filter phạm vi vì đây là lỗi rule cứng, không phải thiếu sót phạm vi). (pattern giống `CustomerAccessHelper`) và áp dụng lại cho toàn bộ
    `users.controller.ts`/`users.service.ts` — mở quyền Assistant/Manager theo đúng mục 2.2, **kèm luôn
    nhánh Manager duyệt đăng ký theo đúng phòng ban ở mục 2.8** (làm chung 1 phiên vì cùng file).
 2. Sửa `leave-requests.service.ts` theo đúng bảng role-cặp mới ở mục 2.6 (bỏ hẳn `RolePriority` chéo
