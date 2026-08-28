@@ -12,6 +12,8 @@ import {
 } from '@ant-design/icons';
 import { useAuthStore } from '@/lib/stores/auth.store';
 import { getVisibleNavItems } from '@/lib/nav-config';
+import { useSidebarBadgeCounts } from '@/lib/hooks/useSidebarBadgeCounts';
+import { CountBadge } from '@/components/common/CountBadge';
 import Cookies from 'js-cookie';
 
 const { Header, Content, Sider } = Layout;
@@ -26,6 +28,7 @@ export default function DashboardLayout({
   const { user, isAuthenticated, isHydrated, logout } = useAuthStore();
   const [selectedKey, setSelectedKey] = useState('customers');
   const [collapsed, setCollapsed] = useState(false);
+  const badgeCounts = useSidebarBadgeCounts(user?.role);
 
   // Load sidebar state from localStorage
   useEffect(() => {
@@ -154,7 +157,11 @@ export default function DashboardLayout({
             ...getVisibleNavItems(user?.role).map((item) => ({
               key: item.key,
               icon: item.icon,
-              label: item.label,
+              label: (
+                <CountBadge count={badgeCounts[item.key]}>
+                  {item.label}
+                </CountBadge>
+              ),
               onClick: () => router.push(item.path),
             })),
           ]}

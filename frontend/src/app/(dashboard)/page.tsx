@@ -5,6 +5,8 @@ import { Typography, Row, Col, Card } from 'antd';
 import { RightOutlined } from '@ant-design/icons';
 import { useAuthStore } from '@/lib/stores/auth.store';
 import { getVisibleNavItems } from '@/lib/nav-config';
+import { useSidebarBadgeCounts } from '@/lib/hooks/useSidebarBadgeCounts';
+import { CountBadge } from '@/components/common/CountBadge';
 
 const { Title, Text, Paragraph } = Typography;
 
@@ -18,6 +20,7 @@ const ROLE_LABEL: Record<string, string> = {
 export default function HomePage() {
   const router = useRouter();
   const user = useAuthStore((s) => s.user);
+  const badgeCounts = useSidebarBadgeCounts(user?.role);
 
   // Cùng 1 danh sách + role-gate với Sidebar (lib/nav-config.tsx) - "sidebar
   // có gì thì trang chủ có đó" theo đúng yêu cầu, không định nghĩa lại.
@@ -53,9 +56,11 @@ export default function HomePage() {
                   {item.icon}
                 </div>
                 <div style={{ flex: 1, minWidth: 0 }}>
-                  <Text strong style={{ fontSize: 15 }}>
-                    {item.label}
-                  </Text>
+                  <CountBadge count={badgeCounts[item.key]}>
+                    <Text strong style={{ fontSize: 15 }}>
+                      {item.label}
+                    </Text>
+                  </CountBadge>
                   <Paragraph
                     type="secondary"
                     style={{ margin: '4px 0 0', fontSize: 13 }}
