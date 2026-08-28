@@ -49,6 +49,22 @@ export const usersApi = {
     return response.data;
   },
 
+  // ── Duyệt đăng ký tài khoản mới (Admin/Assistant) ──────────────────────
+  getPendingApprovals: async (): Promise<PendingUser[]> => {
+    const response = await axiosInstance.get('/users/pending-approvals');
+    return response.data;
+  },
+
+  approveUser: async (id: number, data: { role?: string; departmentId?: number }) => {
+    const response = await axiosInstance.patch(`/users/${id}/approve`, data);
+    return response.data;
+  },
+
+  rejectUser: async (id: number, data: { reason?: string }) => {
+    const response = await axiosInstance.patch(`/users/${id}/reject`, data);
+    return response.data;
+  },
+
   // Profile (Fanpage/Group links user quản lý)
   // - GET: Admin xem được của bất kỳ ai, role khác chỉ xem được của chính mình (BE tự check)
   // - PUT: Chỉ Admin được sửa (Only Admin CRUD)
@@ -81,6 +97,18 @@ export interface UserDetail {
   annualLeaveTotal: number;
   compensatoryLeaveBalance: number;
   leaveYear: number;
+  createdAt: string;
+  department?: { id: number; name: string } | null;
+}
+
+// Tài khoản tự đăng ký đang chờ duyệt (role LUÔN là 'employee' - hardcode ở
+// BE, xem UsersService.createPendingRegistration()).
+export interface PendingUser {
+  id: number;
+  name: string;
+  email: string;
+  phone: string | null;
+  role: string;
   createdAt: string;
   department?: { id: number; name: string } | null;
 }

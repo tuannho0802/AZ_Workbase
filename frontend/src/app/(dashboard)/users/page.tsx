@@ -3,7 +3,7 @@
 import { useState, useEffect } from 'react';
 import {
   Table, Card, Button, Space, Tag, App, Modal, Form,
-  Input, Select, Switch, Spin, Typography, Divider, Pagination
+  Input, Select, Switch, Spin, Typography, Divider, Pagination, Tabs, Badge
 } from 'antd';
 import {
   UserAddOutlined, EditOutlined, KeyOutlined,
@@ -14,6 +14,7 @@ import { useAuthStore } from '@/lib/stores/auth.store';
 import { useRouter } from 'next/navigation';
 import { usersApi } from '@/lib/api/users.api';
 import { useDepartments } from '@/lib/hooks/useDepartments';
+import { PendingApprovalsTab } from './PendingApprovalsTab';
 import dayjs from 'dayjs';
 
 const { Text } = Typography;
@@ -108,6 +109,7 @@ export default function UsersPage() {
   const { departments } = useDepartments();
   const { user } = useAuthStore();
   const router = useRouter();
+  const [pendingCount, setPendingCount] = useState(0);
 
   useEffect(() => {
     const check = () => setIsMobile(window.innerWidth < 768);
@@ -132,18 +134,26 @@ export default function UsersPage() {
     }
   };
 
+  // ⚠️ Trang này giờ cho phép cả ADMIN lẫn ASSISTANT truy cập (trước đây chỉ
+  // Admin) - vì Assistant cũng được phép duyệt tài khoản tự đăng ký (đúng
+  // theo @Roles(Role.ADMIN, Role.ASSISTANT) ở BE cho 3 endpoint pending-
+  // approvals/approve/reject). Assistant KHÔNG có quyền gọi GET /users (danh
+  // sách toàn bộ nhân viên - vẫn Admin-only) nên chỉ thấy tab "Chờ duyệt".
+  const canAccessPage = user?.role === 'admin' || user?.role === 'assistant';
+  const isAdmin = user?.role === 'admin';
+
   useEffect(() => {
-    if (user && user.role !== 'admin') {
+    if (user && !canAccessPage) {
       message.error('Bạn không có quyền truy cập trang này');
       router.replace('/customers');
     }
-  }, [user, router, message]);
+  }, [user, canAccessPage, router, message]);
 
   useEffect(() => {
-    if (user?.role === 'admin') {
+    if (isAdmin) {
       fetchUsers();
     }
-  }, [user, page, pageSize]);
+  }, [isAdmin, page, pageSize]);
 
   const openEdit = (record: any) => {
     setEditingUser(record);
