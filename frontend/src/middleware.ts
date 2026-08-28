@@ -40,5 +40,11 @@ export function middleware(request: NextRequest) {
 }
 
 export const config = {
-  matcher: ['/((?!login|api|_next/static|_next/image|favicon.ico|robots.txt).*)'],
+  // ⚠️ register và account-status PHẢI ở đây, giống login: cả 2 trang này
+  // đều cần truy cập được khi CHƯA đăng nhập (đăng ký tài khoản mới; xem
+  // trạng thái tài khoản sau khi login thất bại vì đang chờ duyệt/bị từ
+  // chối/bị khoá - xem login/page.tsx dòng router.push('/account-status?...')).
+  // Thiếu 2 route này khiến middleware redirect chúng về /login ngay lập
+  // tức, y hệt lỗi 307 khi bấm "Đăng ký ngay" mà không cần đăng nhập trước.
+  matcher: ['/((?!login|register|account-status|api|_next/static|_next/image|favicon.ico|robots.txt).*)'],
 };

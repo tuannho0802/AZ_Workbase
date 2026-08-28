@@ -110,6 +110,7 @@ export default function UsersPage() {
   const { user } = useAuthStore();
   const router = useRouter();
   const [pendingCount, setPendingCount] = useState(0);
+  const [activeTab, setActiveTab] = useState<string>('list');
 
   useEffect(() => {
     const check = () => setIsMobile(window.innerWidth < 768);
@@ -154,6 +155,13 @@ export default function UsersPage() {
       fetchUsers();
     }
   }, [isAdmin, page, pageSize]);
+
+  // Assistant không có quyền xem "Danh sách nhân viên" (GET /users là
+  // Admin-only) - tab đó sẽ không tồn tại trong tabItems, nên mặc định đẩy
+  // Assistant sang tab "Chờ duyệt đăng ký" luôn thay vì tab 'list' rỗng.
+  useEffect(() => {
+    if (user && !isAdmin) setActiveTab('pending');
+  }, [user, isAdmin]);
 
   const openEdit = (record: any) => {
     setEditingUser(record);
@@ -255,68 +263,100 @@ export default function UsersPage() {
     },
   ];
 
-  if (user && user.role !== 'admin') return null;
+  const userListContent = (
+    loading && users.length === 0 ? (
+      <div className="flex justify-center items-center my-10 py-10">
+        <Spin size="large" />
+      </div>
+    ) : isMobile ? (
+      <>
+        {users.length === 0 ? (
+          <div style={{ padding: '24px 0', textAlign: 'center', color: '#8c8c8c' }}>
+            Chưa có nhân viên nào
+          </div>
+        ) : (
+          users.map(u => (
+            <UserMobileCard
+              key={u.id}
+              record={u}
+              onEdit={openEdit}
+              onResetPass={openResetPass}
+            />
+          ))
+        )}
+        <Pagination
+          current={page}
+          pageSize={pageSize}
+          total={total}
+          size="small"
+          simple
+          onChange={p => setPage(p)}
+          style={{ textAlign: 'center', marginTop: 12 }}
+        />
+      </>
+    ) : (
+      <Table
+        columns={columns}
+        dataSource={users}
+        rowKey="id"
+        loading={loading}
+        pagination={{
+          current: page,
+          total: total,
+          pageSize: pageSize,
+          onChange: (p, s) => { setPage(p); setPageSize(s); }
+        }}
+      />
+    )
+  );
+
+  // Assistant không có quyền GET /users (Admin-only ở BE) nên tab "Danh sách
+  // nhân viên" chỉ tồn tại với Admin - Assistant chỉ thấy đúng 1 tab "Chờ
+  // duyệt đăng ký".
+  const tabItems = [
+    ...(isAdmin
+      ? [
+          {
+            key: 'list',
+            label: 'Danh sách nhân viên',
+            children: userListContent,
+          },
+        ]
+      : []),
+    {
+      key: 'pending',
+      label: (
+        <Badge count={pendingCount} offset={[10, 0]} size="small">
+          <span>Chờ duyệt đăng ký</span>
+        </Badge>
+      ),
+      children: <PendingApprovalsTab onCountChange={setPendingCount} />,
+    },
+  ];
 
   return (
     <Card
       title="Quản lý nhân viên"
       extra={
-        <Space>
-          <Button icon={<ReloadOutlined />} onClick={() => window.location.reload()}>Làm mới</Button>
-          <Button
-            type="primary"
-            icon={<UserAddOutlined />}
-            onClick={() => { setEditingUser(null); form.resetFields(); setIsModalOpen(true); }}
-          >
-            Thêm nhân viên
-          </Button>
-        </Space>
+        // Nút "Làm mới"/"Thêm nhân viên" chỉ liên quan tab danh sách nhân
+        // viên (Admin) - ẩn khi đang ở tab "Chờ duyệt" hoặc với Assistant
+        // (không có tab list) để tránh gây nhầm lẫn (bấm "Thêm nhân viên"
+        // trong lúc đang xem danh sách chờ duyệt sẽ không hợp ngữ cảnh).
+        isAdmin && activeTab === 'list' ? (
+          <Space>
+            <Button icon={<ReloadOutlined />} onClick={() => window.location.reload()}>Làm mới</Button>
+            <Button
+              type="primary"
+              icon={<UserAddOutlined />}
+              onClick={() => { setEditingUser(null); form.resetFields(); setIsModalOpen(true); }}
+            >
+              Thêm nhân viên
+            </Button>
+          </Space>
+        ) : undefined
       }
     >
-      {loading && users.length === 0 ? (
-        <div className="flex justify-center items-center my-10 py-10">
-          <Spin size="large" />
-        </div>
-      ) : isMobile ? (
-        <>
-          {users.length === 0 ? (
-            <div style={{ padding: '24px 0', textAlign: 'center', color: '#8c8c8c' }}>
-              Chưa có nhân viên nào
-            </div>
-          ) : (
-            users.map(u => (
-              <UserMobileCard
-                key={u.id}
-                record={u}
-                onEdit={openEdit}
-                onResetPass={openResetPass}
-              />
-            ))
-          )}
-          <Pagination
-            current={page}
-            pageSize={pageSize}
-            total={total}
-            size="small"
-            simple
-            onChange={p => setPage(p)}
-            style={{ textAlign: 'center', marginTop: 12 }}
-          />
-        </>
-      ) : (
-        <Table
-          columns={columns}
-          dataSource={users}
-          rowKey="id"
-          loading={loading}
-          pagination={{
-            current: page,
-            total: total,
-            pageSize: pageSize,
-            onChange: (p, s) => { setPage(p); setPageSize(s); }
-          }}
-        />
-      )}
+      <Tabs activeKey={activeTab} onChange={setActiveTab} items={tabItems} />
 
       {/* Modal Thêm/Sửa */}
       <Modal
