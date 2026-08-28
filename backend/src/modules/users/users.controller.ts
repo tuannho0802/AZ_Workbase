@@ -32,7 +32,7 @@ export class UsersController {
   }
 
   @Get()
-  @Roles(Role.ADMIN)
+  @Roles(Role.ADMIN, Role.ASSISTANT, Role.MANAGER)
   @UseInterceptors(new CacheControlInterceptor(60))
   @ApiOperation({ summary: 'Danh sách nhân viên (Phân trang & Filter)' })
   async findAll(
@@ -66,64 +66,64 @@ export class UsersController {
   }
 
   @Get('pending-approvals')
-  @Roles(Role.ADMIN, Role.ASSISTANT)
-  @ApiOperation({ summary: 'Danh sách tài khoản tự đăng ký đang chờ duyệt (Admin/Assistant)' })
-  async getPendingApprovals() {
-    return this.usersService.findPendingApprovals();
+  @Roles(Role.ADMIN, Role.ASSISTANT, Role.MANAGER)
+  @ApiOperation({ summary: 'Danh sách tài khoản tự đăng ký đang chờ duyệt (Admin/Assistant toàn bộ, Manager chỉ phòng ban mình quản lý)' })
+  async getPendingApprovals(@Request() req: any) {
+    return this.usersService.findPendingApprovals(req.user.id, req.user.role);
   }
 
   @Get(':id')
-  @Roles(Role.ADMIN)
+  @Roles(Role.ADMIN, Role.ASSISTANT, Role.MANAGER)
   @ApiOperation({ summary: 'Lấy thông tin chi tiết nhân viên theo ID' })
   async findOne(@Param('id') id: string, @Request() req: any) {
     return this.usersService.findOne(+id, req.user.id, req.user.role);
   }
 
   @Patch(':id/approve')
-  @Roles(Role.ADMIN, Role.ASSISTANT)
-  @ApiOperation({ summary: 'Duyệt tài khoản tự đăng ký (Admin/Assistant)' })
+  @Roles(Role.ADMIN, Role.ASSISTANT, Role.MANAGER)
+  @ApiOperation({ summary: 'Duyệt tài khoản tự đăng ký (Admin/Assistant toàn bộ, Manager chỉ đúng phòng ban mình quản lý)' })
   async approveUser(@Param('id') id: string, @Body() dto: ApproveUserDto, @Request() req: any) {
-    return this.usersService.approveUser(+id, req.user.id, dto);
+    return this.usersService.approveUser(+id, req.user.id, req.user.role, dto);
   }
 
   @Patch(':id/reject')
-  @Roles(Role.ADMIN, Role.ASSISTANT)
-  @ApiOperation({ summary: 'Từ chối tài khoản tự đăng ký (Admin/Assistant)' })
+  @Roles(Role.ADMIN, Role.ASSISTANT, Role.MANAGER)
+  @ApiOperation({ summary: 'Từ chối tài khoản tự đăng ký (Admin/Assistant toàn bộ, Manager chỉ đúng phòng ban mình quản lý)' })
   async rejectUser(@Param('id') id: string, @Body() dto: RejectUserDto, @Request() req: any) {
-    return this.usersService.rejectUser(+id, req.user.id, dto.reason);
+    return this.usersService.rejectUser(+id, req.user.id, req.user.role, dto.reason);
   }
 
   @Post()
-  @Roles(Role.ADMIN)
-  @ApiOperation({ summary: 'Tạo nhân viên mới (Chỉ dành cho Admin)' })
+  @Roles(Role.ADMIN, Role.ASSISTANT, Role.MANAGER)
+  @ApiOperation({ summary: 'Tạo nhân viên mới (Admin/Assistant toàn quyền, Manager chỉ trong phòng ban mình quản lý)' })
   async create(@Request() req: any, @Body() dto: CreateUserDto) {
-    return this.usersService.create(dto, req.user.id);
+    return this.usersService.create(dto, req.user.id, req.user.role);
   }
 
   @Patch(':id')
-  @Roles(Role.ADMIN)
+  @Roles(Role.ADMIN, Role.ASSISTANT, Role.MANAGER)
   @ApiOperation({ summary: 'Cập nhật thông tin nhân viên' })
   async update(@Param('id') id: string, @Body() dto: UpdateUserDto, @Request() req: any) {
-    return this.usersService.update(+id, dto, req.user.id);
+    return this.usersService.update(+id, dto, req.user.id, req.user.role);
   }
 
   @Get(':id/profile')
-  @ApiOperation({ summary: 'Lấy danh sách Fanpage/Group (profile) của nhân viên. Admin xem được của bất kỳ ai, role khác chỉ xem được của chính mình' })
+  @ApiOperation({ summary: 'Lấy danh sách Fanpage/Group (profile) của nhân viên. Admin/Assistant xem được của bất kỳ ai, Manager trong phòng ban quản lý, role khác chỉ xem được của chính mình' })
   async getUserProfile(@Param('id') id: string, @Request() req: any) {
     return this.usersService.getProfile(+id, req.user.id, req.user.role);
   }
 
   @Put(':id/profile')
-  @Roles(Role.ADMIN)
-  @ApiOperation({ summary: 'Cập nhật (thay thế toàn bộ) danh sách Fanpage/Group của nhân viên (Chỉ Admin)' })
+  @Roles(Role.ADMIN, Role.ASSISTANT, Role.MANAGER)
+  @ApiOperation({ summary: 'Cập nhật (thay thế toàn bộ) danh sách Fanpage/Group của nhân viên (Admin/Assistant toàn bộ, Manager trong phòng ban quản lý)' })
   async updateProfile(@Param('id') id: string, @Body() dto: UpdateUserProfileDto, @Request() req: any) {
-    return this.usersService.updateProfile(+id, dto, req.user.id);
+    return this.usersService.updateProfile(+id, dto, req.user.id, req.user.role);
   }
 
   @Patch(':id/reset-password')
-  @Roles(Role.ADMIN)
-  @ApiOperation({ summary: 'Đặt lại mật khẩu nhân viên' })
+  @Roles(Role.ADMIN, Role.ASSISTANT, Role.MANAGER)
+  @ApiOperation({ summary: 'Đặt lại mật khẩu nhân viên (Admin/Assistant toàn bộ, Manager trong phòng ban quản lý)' })
   async resetPassword(@Param('id') id: string, @Body() dto: ResetPasswordDto, @Request() req: any) {
-    return this.usersService.resetPassword(+id, dto, req.user.id);
+    return this.usersService.resetPassword(+id, dto, req.user.id, req.user.role);
   }
 }

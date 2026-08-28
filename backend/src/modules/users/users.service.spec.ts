@@ -3,6 +3,7 @@ import { getRepositoryToken } from '@nestjs/typeorm';
 import { NotFoundException, BadRequestException } from '@nestjs/common';
 import { UsersService } from './users.service';
 import { User } from '../../database/entities/user.entity';
+import { Department } from '../../database/entities/department.entity';
 import { AuditService } from '../audit/audit.service';
 import { DepartmentsService } from '../departments/departments.service';
 import { Role } from '../../common/enums/role.enum';
@@ -24,6 +25,14 @@ describe('UsersService - Approval workflow (đăng ký công khai chờ duyệt)
   const mockDepartmentsService = {
     findOne: jest.fn(),
   };
+  // FIX: UsersService giờ inject thêm DepartmentRepository (dùng bởi
+  // UsersAccessHelper.getManagedDepartmentIds/canManageUser - PERMISSIONS.md
+  // mục 2.2/2.8) - trước đây spec này thiếu mock nên toàn bộ suite fail khi
+  // Nest không resolve được dependency thứ 2 của constructor.
+  const mockDepartmentsRepo = {
+    find: jest.fn(),
+    findOne: jest.fn(),
+  };
 
   beforeEach(async () => {
     jest.clearAllMocks();
@@ -32,6 +41,7 @@ describe('UsersService - Approval workflow (đăng ký công khai chờ duyệt)
       providers: [
         UsersService,
         { provide: getRepositoryToken(User), useValue: mockUsersRepo },
+        { provide: getRepositoryToken(Department), useValue: mockDepartmentsRepo },
         { provide: AuditService, useValue: mockAuditService },
         { provide: DepartmentsService, useValue: mockDepartmentsService },
       ],
@@ -144,7 +154,7 @@ describe('UsersService - Approval workflow (đăng ký công khai chờ duyệt)
     it('chỉ lọc theo approvalStatus=PENDING, sắp xếp cũ nhất trước (FIFO)', async () => {
       mockUsersRepo.find.mockResolvedValue([]);
 
-      await service.findPendingApprovals();
+      await service.findPendingApprovals(1, Role.ADMIN);
 
       expect(mockUsersRepo.find).toHaveBeenCalledWith(
         expect.objectContaining({
@@ -168,7 +178,7 @@ describe('UsersService - Approval workflow (đăng ký công khai chờ duyệt)
     it('ném NotFoundException nếu không tìm thấy user', async () => {
       mockUsersRepo.findOne.mockResolvedValue(null);
 
-      await expect(service.approveUser(999, 1)).rejects.toThrow(NotFoundException);
+      await expect(service.approveUser(999, 1, Role.ADMIN)).rejects.toThrow(NotFoundException);
     });
 
     it('ném BadRequestException nếu user không ở trạng thái PENDING (vd đã approved/rejected từ trước)', async () => {
@@ -177,14 +187,14 @@ describe('UsersService - Approval workflow (đăng ký công khai chờ duyệt)
         approvalStatus: ApprovalStatus.APPROVED,
       });
 
-      await expect(service.approveUser(10, 1)).rejects.toThrow(BadRequestException);
+      await expect(service.approveUser(10, 1, Role.ADMIN)).rejects.toThrow(BadRequestException);
     });
 
     it('chuyển approvalStatus sang APPROVED, ghi approvedById/approvedAt, KHÔNG đổi role nếu không truyền override', async () => {
       mockUsersRepo.findOne.mockResolvedValue(pendingUser());
       mockUsersRepo.save.mockImplementation((u: any) => Promise.resolve(u));
 
-      const result = await service.approveUser(10, 5);
+      const result = await service.approveUser(10, 5, Role.ADMIN);
 
       expect(result.approvalStatus).toBe(ApprovalStatus.APPROVED);
       expect(mockUsersRepo.save).toHaveBeenCalledWith(
@@ -201,7 +211,7 @@ describe('UsersService - Approval workflow (đăng ký công khai chờ duyệt)
       mockUsersRepo.findOne.mockResolvedValue(pendingUser());
       mockUsersRepo.save.mockImplementation((u: any) => Promise.resolve(u));
 
-      await service.approveUser(10, 5, { role: Role.MANAGER, departmentId: 2 });
+      await service.approveUser(10, 5, Role.ADMIN, { role: Role.MANAGER, departmentId: 2 });
 
       expect(mockUsersRepo.save).toHaveBeenCalledWith(
         expect.objectContaining({ role: Role.MANAGER, departmentId: 2 }),
@@ -214,7 +224,7 @@ describe('UsersService - Approval workflow (đăng ký công khai chờ duyệt)
         Promise.resolve({ ...u, password: 'hash-bi-lo' }),
       );
 
-      const result = await service.approveUser(10, 5);
+      const result = await service.approveUser(10, 5, Role.ADMIN);
 
       expect((result as any).password).toBeUndefined();
     });
@@ -230,7 +240,7 @@ describe('UsersService - Approval workflow (đăng ký công khai chờ duyệt)
     it('ném NotFoundException nếu không tìm thấy user', async () => {
       mockUsersRepo.findOne.mockResolvedValue(null);
 
-      await expect(service.rejectUser(999, 1, 'lý do')).rejects.toThrow(NotFoundException);
+      await expect(service.rejectUser(999, 1, Role.ADMIN, 'lý do')).rejects.toThrow(NotFoundException);
     });
 
     it('ném BadRequestException nếu user không ở trạng thái PENDING', async () => {
@@ -239,14 +249,14 @@ describe('UsersService - Approval workflow (đăng ký công khai chờ duyệt)
         approvalStatus: ApprovalStatus.REJECTED,
       });
 
-      await expect(service.rejectUser(11, 1, 'lý do')).rejects.toThrow(BadRequestException);
+      await expect(service.rejectUser(11, 1, Role.ADMIN, 'lý do')).rejects.toThrow(BadRequestException);
     });
 
     it('chuyển approvalStatus sang REJECTED, lưu đúng lý do (trim khoảng trắng)', async () => {
       mockUsersRepo.findOne.mockResolvedValue(pendingUser());
       mockUsersRepo.save.mockImplementation((u: any) => Promise.resolve(u));
 
-      const result = await service.rejectUser(11, 5, '  Không hợp lệ  ');
+      const result = await service.rejectUser(11, 5, Role.ADMIN, '  Không hợp lệ  ');
 
       expect(result.approvalStatus).toBe(ApprovalStatus.REJECTED);
       expect(mockUsersRepo.save).toHaveBeenCalledWith(
@@ -258,7 +268,7 @@ describe('UsersService - Approval workflow (đăng ký công khai chờ duyệt)
       mockUsersRepo.findOne.mockResolvedValue(pendingUser());
       mockUsersRepo.save.mockImplementation((u: any) => Promise.resolve(u));
 
-      await service.rejectUser(11, 5, '   ');
+      await service.rejectUser(11, 5, Role.ADMIN, '   ');
 
       expect(mockUsersRepo.save).toHaveBeenCalledWith(
         expect.objectContaining({ rejectionReason: null }),

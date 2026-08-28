@@ -8,6 +8,7 @@ import {
   ParseIntPipe,
   Query,
   UseGuards,
+  Request,
   HttpException,
   HttpStatus,
 } from '@nestjs/common';
@@ -31,7 +32,10 @@ import { Role } from '../../common/enums/role.enum';
 @ApiBearerAuth()
 @Controller('zk-device')
 @UseGuards(JwtAuthGuard, RolesGuard)
-@Roles(Role.ADMIN)
+// FIX PERMISSIONS.md mục 2.3: Assistant thao tác ngang Admin (trừ riêng
+// xoá log - xem @Roles(ADMIN) riêng ở cleanupAttendanceLogs()); Manager bị
+// giới hạn theo phòng ban mình quản lý ngay trong từng service method.
+@Roles(Role.ADMIN, Role.ASSISTANT, Role.MANAGER)
 export class ZkDeviceController {
   constructor(private readonly zkDeviceService: ZkDeviceService) {}
 
@@ -65,8 +69,8 @@ export class ZkDeviceController {
 
   @Post('map-user')
   @ApiOperation({ summary: 'Map 1 nhân viên trong hệ thống với mã user trên máy chấm công' })
-  async mapUser(@Body() dto: MapDeviceUserDto) {
-    return this.zkDeviceService.mapUser(dto.userId, dto.deviceUserId);
+  async mapUser(@Body() dto: MapDeviceUserDto, @Request() req: any) {
+    return this.zkDeviceService.mapUser(dto.userId, dto.deviceUserId, req.user.id, req.user.role);
   }
 
   @Post('rematch')
@@ -81,8 +85,8 @@ export class ZkDeviceController {
 
   @Delete('map-user/:userId')
   @ApiOperation({ summary: 'Gỡ mapping của 1 nhân viên (map nhầm) - không đụng log đã đồng bộ' })
-  async unmapUser(@Param('userId', ParseIntPipe) userId: number) {
-    return this.zkDeviceService.unmapUser(userId);
+  async unmapUser(@Param('userId', ParseIntPipe) userId: number, @Request() req: any) {
+    return this.zkDeviceService.unmapUser(userId, req.user.id, req.user.role);
   }
 
   @Get('attendance-logs')
@@ -90,14 +94,18 @@ export class ZkDeviceController {
     summary:
       'Danh sách log chấm công đã đồng bộ (đọc-only), lọc theo nhân viên/khoảng ngày/trạng thái khớp',
   })
-  async getAttendanceLogs(@Query() query: QueryAttendanceLogDto) {
-    return this.zkDeviceService.getAttendanceLogs(query);
+  async getAttendanceLogs(@Query() query: QueryAttendanceLogDto, @Request() req: any) {
+    return this.zkDeviceService.getAttendanceLogs(query, req.user.id, req.user.role);
   }
 
+  // FIX PERMISSIONS.md mục 1 (quy tắc Xoá) + mục 2.3: xoá log chấm công là
+  // hành động Xoá thật (vĩnh viễn, không hoàn tác) - phải tách riêng khỏi
+  // @Roles cấp class, khoá cứng CHỈ Admin, không có ngoại lệ cho Assistant.
   @Delete('attendance-logs/cleanup')
+  @Roles(Role.ADMIN)
   @ApiOperation({
     summary:
-      'Dọn dẹp (xoá vĩnh viễn) log chấm công cũ hơn 1 mốc ngày - dùng khi bảng attendance_logs đã tích luỹ quá lâu, chiếm nhiều dung lượng DB. KHÔNG THỂ HOÀN TÁC.',
+      'Dọn dẹp (xoá vĩnh viễn) log chấm công cũ hơn 1 mốc ngày - dùng khi bảng attendance_logs đã tích luỹ quá lâu, chiếm nhiều dung lượng DB. KHÔNG THỂ HOÀN TÁC. Chỉ Admin.',
   })
   async cleanupAttendanceLogs(@Query() query: CleanupAttendanceLogsDto) {
     return this.zkDeviceService.cleanupOldLogs(query.olderThan);
@@ -108,8 +116,8 @@ export class ZkDeviceController {
     summary:
       'Bảng chấm công tổng hợp theo ngày (giờ vào/giờ ra/đi muộn/về sớm), tính theo giờ VN (GMT+7)',
   })
-  async getAttendanceSummary(@Query() query: QueryAttendanceSummaryDto) {
-    return this.zkDeviceService.getAttendanceSummary(query);
+  async getAttendanceSummary(@Query() query: QueryAttendanceSummaryDto, @Request() req: any) {
+    return this.zkDeviceService.getAttendanceSummary(query, req.user.id, req.user.role);
   }
 
   @Post('sync')
