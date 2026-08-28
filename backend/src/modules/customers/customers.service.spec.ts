@@ -35,6 +35,11 @@ describe('CustomersService', () => {
     createQueryBuilder: jest.fn(),
     merge: jest.fn(),
     softDelete: jest.fn(),
+    // Dùng trong bulkAssign() để lấy batch customer theo customerIds - khai
+    // báo sẵn ở đây (thay vì gán runtime trong describe('bulkAssign') như
+    // bản cũ) để type suy luận từ object literal này đã có sẵn `find`, tránh
+    // lỗi TS2339 ở các test bên dưới gọi mockCustomerRepo.find.mockResolvedValue().
+    find: jest.fn(),
     // customersRepository.manager.getRepository(User) được dùng trong
     // create()/updateAssignment() để validate salesUserId/assignedToId -
     // mock rỗng, gán return value cụ thể trong từng describe() cần dùng.
@@ -509,7 +514,6 @@ describe('CustomersService', () => {
         return mockUserRepoForBulk;
       });
       mockUserRepoForBulk.find.mockResolvedValue([{ id: 5, isActive: true }]);
-      mockCustomerRepo.find = jest.fn();
       mockAssignmentRepo.find.mockResolvedValue([]); // không có assignment active trùng sẵn
       (mockAssignmentRepo as any).insert = jest.fn().mockResolvedValue({});
       mockCustomerRepo.createQueryBuilder.mockReturnValue({
