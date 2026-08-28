@@ -1,7 +1,7 @@
 import { Injectable, Logger } from '@nestjs/common';
 
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { Repository, In } from 'typeorm';
 import { User } from '../../database/entities/user.entity';
 import { Department } from '../../database/entities/department.entity';
 import { Role } from '../../common/enums/role.enum';
@@ -117,7 +117,13 @@ export class UsersService {
       .leftJoinAndSelect('user.department', 'department')
       .where('1=1');
 
-    // Visibility logic: All roles can see all users (Department agnostic)
+    // ⚠️ FIX PERMISSIONS.md mục 2.2: trước đây có comment "Visibility logic:
+    // All roles can see all users (Department agnostic)" - KHÔNG áp filter
+    // gì cả, mọi role đã đăng nhập (kể cả Employee) thấy được toàn bộ danh
+    // sách phân trang đầy đủ thông tin. Giờ dùng UsersAccessHelper: Admin/
+    // Assistant thấy tất cả; Manager chỉ phòng ban mình quản lý (+ chính
+    // mình); Employee chỉ chính mình.
+    UsersAccessHelper.applyViewFilter(queryBuilder, userId, userRole);
 
     if (role) {
       queryBuilder.andWhere('user.role = :role', { role });
@@ -146,7 +152,11 @@ export class UsersService {
     };
   }
 
-  async create(createDto: CreateUserDto, creatorId?: number): Promise<User> {
+  async create(
+    createDto: CreateUserDto,
+    creatorId: number,
+    creatorRole: string,
+  ): Promise<User> {
     // 1. Check email exists
     const existing = await this.usersRepository.findOne({
       where: { email: createDto.email },
@@ -154,6 +164,28 @@ export class UsersService {
 
     if (existing) {
       throw new ConflictException('Email đã tồn tại');
+    }
+
+    // ⚠️ FIX PERMISSIONS.md mục 2.2: Manager chỉ được tạo user TRONG phòng
+    // ban mình quản lý - bắt buộc phải truyền departmentId (không cho để
+    // trống rồi mặc định) và departmentId đó phải nằm trong danh sách phòng
+    // ban mà chính Manager này đang là `manager_user_id`. Admin/Assistant
+    // không bị giới hạn (tạo được ở bất kỳ phòng ban nào, kể cả không chọn).
+    if (creatorRole === Role.MANAGER) {
+      if (createDto.departmentId == null) {
+        throw new ForbiddenException(
+          'Bạn phải chọn phòng ban khi tạo nhân viên mới (chỉ tạo được trong phòng ban mình quản lý)',
+        );
+      }
+      const managedIds = await UsersAccessHelper.getManagedDepartmentIds(
+        this.departmentsRepository,
+        creatorId,
+      );
+      if (!managedIds.includes(createDto.departmentId)) {
+        throw new ForbiddenException(
+          'Bạn chỉ được tạo nhân viên trong phòng ban mình đang quản lý',
+        );
+      }
     }
 
     // 2. Hash password
@@ -188,7 +220,12 @@ export class UsersService {
     return safeUser as User;
   }
 
-  async update(id: number, updateDto: UpdateUserDto, callerId?: number): Promise<User> {
+  async update(
+    id: number,
+    updateDto: UpdateUserDto,
+    callerId: number,
+    callerRole: string,
+  ): Promise<User> {
     // 1. Tìm user
     const user = await this.usersRepository.findOne({ 
       where: { id } 
@@ -196,6 +233,40 @@ export class UsersService {
 
     if (!user) {
       throw new NotFoundException('Không tìm thấy nhân viên');
+    }
+
+    // ⚠️ FIX PERMISSIONS.md mục 2.2: trước đây endpoint khoá cứng
+    // @Roles(ADMIN) ở controller nên không cần check gì thêm ở đây - giờ mở
+    // cho Assistant/Manager, phải tự gác bằng canManageUser dựa trên phòng
+    // ban HIỆN TẠI của user (trước khi bị sửa).
+    const allowed = await UsersAccessHelper.canManageUser(
+      this.departmentsRepository,
+      user.id,
+      user.departmentId,
+      callerId,
+      callerRole,
+    );
+    if (!allowed) {
+      throw new ForbiddenException('Bạn không có quyền sửa thông tin nhân viên này');
+    }
+
+    // Nếu Manager đổi departmentId sang phòng ban KHÁC, phòng ban mới đó
+    // cũng phải nằm trong phạm vi Manager quản lý - tránh Manager "chuyển"
+    // 1 nhân viên đang quản lý được sang phòng ban mình không hề quản lý.
+    if (
+      callerRole === Role.MANAGER &&
+      updateDto.departmentId != null &&
+      updateDto.departmentId !== user.departmentId
+    ) {
+      const managedIds = await UsersAccessHelper.getManagedDepartmentIds(
+        this.departmentsRepository,
+        callerId,
+      );
+      if (!managedIds.includes(updateDto.departmentId)) {
+        throw new ForbiddenException(
+          'Bạn chỉ được chuyển nhân viên sang phòng ban mình đang quản lý',
+        );
+      }
     }
 
     // 2. Nếu có password, hash trước. Nếu không, XÓA khỏi DTO để tránh Object.assign chép đè chuỗi rỗng
@@ -235,10 +306,28 @@ export class UsersService {
     return safeUser as User;
   }
 
-  async resetPassword(id: number, dto: ResetPasswordDto, callerId?: number) {
+  async resetPassword(
+    id: number,
+    dto: ResetPasswordDto,
+    callerId: number,
+    callerRole: string,
+  ) {
     const user = await this.findById(id);
     if (!user) {
       throw new NotFoundException('Không tìm thấy nhân viên');
+    }
+
+    // ⚠️ FIX PERMISSIONS.md mục 2.2: endpoint trước đây @Roles(ADMIN) riêng,
+    // giờ mở Assistant/Manager - gác lại đúng phạm vi bằng canManageUser.
+    const allowed = await UsersAccessHelper.canManageUser(
+      this.departmentsRepository,
+      user.id,
+      user.departmentId,
+      callerId,
+      callerRole,
+    );
+    if (!allowed) {
+      throw new ForbiddenException('Bạn không có quyền đặt lại mật khẩu của nhân viên này');
     }
 
     const hashedPassword = await bcrypt.hash(dto.newPassword, 10);
@@ -261,18 +350,34 @@ export class UsersService {
   /**
    * Lấy danh sách Fanpage/Group (profile) của 1 user.
    * ⚠️ profile có select: false trong entity -> phải addSelect thủ công.
-   * Quyền: Admin xem được profile của BẤT KỲ user nào. Non-admin chỉ xem
-   * được profile của CHÍNH MÌNH (id === currentUserId) - enforced ở đây
-   * vì controller không còn @Roles(Role.ADMIN) trên endpoint GET nữa
-   * (đã mở cho all roles ở mức route, self-check nằm ở service).
+   * Quyền (FIX PERMISSIONS.md mục 2.2): trước đây chỉ check
+   * `role !== ADMIN && id !== currentUserId` -> Assistant/Manager bị chặn
+   * xem profile người khác dù đúng rule phải xem được (Assistant ngang
+   * Admin, Manager trong phòng ban quản lý). Giờ dùng chung canManageUser -
+   * cần biết departmentId của user mục tiêu trước khi check.
    */
   async getProfile(
     id: number,
     currentUserId: number,
     currentUserRole: string,
   ): Promise<{ id: number; profile: ManagedLink[] }> {
-    if (currentUserRole !== Role.ADMIN && id !== currentUserId) {
-      throw new ForbiddenException('Bạn chỉ có thể xem profile của chính mình');
+    const target = await this.usersRepository.findOne({
+      where: { id },
+      select: ['id', 'departmentId'],
+    });
+    if (!target) {
+      throw new NotFoundException('Không tìm thấy nhân viên');
+    }
+
+    const allowed = await UsersAccessHelper.canManageUser(
+      this.departmentsRepository,
+      target.id,
+      target.departmentId,
+      currentUserId,
+      currentUserRole,
+    );
+    if (!allowed) {
+      throw new ForbiddenException('Bạn không có quyền xem profile của nhân viên này');
     }
 
     const user = await this.usersRepository
@@ -290,12 +395,15 @@ export class UsersService {
 
   /**
    * Thay thế (replace) toàn bộ profile của 1 user bằng danh sách link mới.
-   * Chỉ Admin được gọi (enforced ở controller qua @Roles(Role.ADMIN)).
+   * FIX PERMISSIONS.md mục 2.2: trước đây chỉ Admin (enforced qua
+   * @Roles(ADMIN) ở controller, không check gì ở service) - giờ controller
+   * mở thêm Assistant/Manager, phải tự gác bằng canManageUser ở đây.
    */
   async updateProfile(
     id: number,
     dto: UpdateUserProfileDto,
-    callerId?: number,
+    callerId: number,
+    callerRole: string,
   ): Promise<{ id: number; profile: ManagedLink[] }> {
     const existing = await this.usersRepository
       .createQueryBuilder('user')
@@ -305,6 +413,17 @@ export class UsersService {
 
     if (!existing) {
       throw new NotFoundException('Không tìm thấy nhân viên');
+    }
+
+    const allowed = await UsersAccessHelper.canManageUser(
+      this.departmentsRepository,
+      existing.id,
+      existing.departmentId,
+      callerId,
+      callerRole,
+    );
+    if (!allowed) {
+      throw new ForbiddenException('Bạn không có quyền sửa profile của nhân viên này');
     }
 
     const oldProfile = existing.profile ?? [];
@@ -332,7 +451,7 @@ export class UsersService {
     }
 
     this.logger.log(
-      `[Users] Profile updated for user ID ${id} by admin ${callerId}`,
+      `[Users] Profile updated for user ID ${id} by ${callerId}`,
     );
 
     return { id, profile: newProfile };
@@ -388,24 +507,48 @@ export class UsersService {
    * Danh sách tài khoản đang chờ duyệt - dùng cho màn "Nhân viên" (badge số
    * lượng chờ duyệt + tab riêng). Không phân trang vì số lượng chờ duyệt tại
    * 1 thời điểm thường nhỏ, nếu sau này lớn dần có thể thêm phân trang.
+   *
+   * FIX PERMISSIONS.md mục 2.8: Admin/Assistant thấy TẤT CẢ (không đổi).
+   * Manager CHỈ thấy tài khoản đăng ký vào ĐÚNG phòng ban mình đang quản lý
+   * (`department.manager_user_id = viewerId`) - loại khỏi danh sách nếu
+   * không khớp, không phải báo lỗi (đây là danh sách, không phải hành động
+   * trên 1 bản ghi cụ thể).
    */
-  async findPendingApprovals(): Promise<User[]> {
+  async findPendingApprovals(viewerId: number, viewerRole: string): Promise<User[]> {
+    const where: any = { approvalStatus: ApprovalStatus.PENDING };
+
+    if (viewerRole === Role.MANAGER) {
+      const managedIds = await UsersAccessHelper.getManagedDepartmentIds(
+        this.departmentsRepository,
+        viewerId,
+      );
+      if (managedIds.length === 0) {
+        return []; // Manager chưa quản lý phòng ban nào -> không có gì để duyệt
+      }
+      where.departmentId = In(managedIds);
+    }
+
     return this.usersRepository.find({
-      where: { approvalStatus: ApprovalStatus.PENDING },
+      where,
       relations: ['department'],
       order: { createdAt: 'ASC' },
     });
   }
 
   /**
-   * Duyệt 1 tài khoản tự đăng ký. Chỉ Admin/Assistant được gọi (enforced ở
-   * controller qua @Roles). Có thể đổi role/phòng ban lúc duyệt (thường hữu
-   * ích hơn là duyệt xong phải vào sửa lại lần nữa) - để trống thì giữ
-   * nguyên EMPLOYEE + phòng ban đã chọn lúc đăng ký.
+   * Duyệt 1 tài khoản tự đăng ký. Admin/Assistant duyệt được mọi phòng ban
+   * (không đổi). FIX PERMISSIONS.md mục 2.8: Manager CHỈ duyệt được nếu
+   * phòng ban NGƯỜI ĐĂNG KÝ đã chọn (departmentId hiện tại của user, TRƯỚC
+   * khi áp overrides) trùng đúng phòng ban mình đang quản lý - nếu không
+   * khớp, trả 403 (khác findPendingApprovals chỉ ẩn khỏi danh sách, ở đây
+   * là hành động trực tiếp trên 1 bản ghi cụ thể nên phải chặn cứng).
+   * Nếu Manager có đổi departmentId lúc duyệt (overrides.departmentId),
+   * phòng ban MỚI đó cũng phải nằm trong phạm vi Manager quản lý.
    */
   async approveUser(
     id: number,
     approverId: number,
+    approverRole: string,
     overrides?: { role?: string; departmentId?: number },
   ): Promise<User> {
     const user = await this.usersRepository.findOne({ where: { id } });
@@ -414,6 +557,23 @@ export class UsersService {
     }
     if (user.approvalStatus !== ApprovalStatus.PENDING) {
       throw new BadRequestException('Tài khoản này không ở trạng thái chờ duyệt');
+    }
+
+    if (approverRole === Role.MANAGER) {
+      const managedIds = await UsersAccessHelper.getManagedDepartmentIds(
+        this.departmentsRepository,
+        approverId,
+      );
+      if (user.departmentId == null || !managedIds.includes(user.departmentId)) {
+        throw new ForbiddenException(
+          'Bạn chỉ được duyệt tài khoản đăng ký vào phòng ban mình đang quản lý',
+        );
+      }
+      if (overrides?.departmentId != null && !managedIds.includes(overrides.departmentId)) {
+        throw new ForbiddenException(
+          'Bạn chỉ được chuyển tài khoản này sang phòng ban mình đang quản lý',
+        );
+      }
     }
 
     user.approvalStatus = ApprovalStatus.APPROVED;
@@ -443,14 +603,34 @@ export class UsersService {
    * lý do từ chối) - chỉ chuyển approvalStatus sang REJECTED, chặn đăng nhập
    * vĩnh viễn (khác PENDING - có thể duyệt sau, REJECTED thì không tự động
    * "chuyển lại" được, cần admin sửa tay qua update() nếu muốn đảo ngược).
+   *
+   * FIX PERMISSIONS.md mục 2.8: cùng rule với approveUser() - Manager chỉ
+   * từ chối được tài khoản đăng ký vào đúng phòng ban mình quản lý.
    */
-  async rejectUser(id: number, approverId: number, reason?: string): Promise<User> {
+  async rejectUser(
+    id: number,
+    approverId: number,
+    approverRole: string,
+    reason?: string,
+  ): Promise<User> {
     const user = await this.usersRepository.findOne({ where: { id } });
     if (!user) {
       throw new NotFoundException('Không tìm thấy tài khoản');
     }
     if (user.approvalStatus !== ApprovalStatus.PENDING) {
       throw new BadRequestException('Tài khoản này không ở trạng thái chờ duyệt');
+    }
+
+    if (approverRole === Role.MANAGER) {
+      const managedIds = await UsersAccessHelper.getManagedDepartmentIds(
+        this.departmentsRepository,
+        approverId,
+      );
+      if (user.departmentId == null || !managedIds.includes(user.departmentId)) {
+        throw new ForbiddenException(
+          'Bạn chỉ được từ chối tài khoản đăng ký vào phòng ban mình đang quản lý',
+        );
+      }
     }
 
     user.approvalStatus = ApprovalStatus.REJECTED;

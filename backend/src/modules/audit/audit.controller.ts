@@ -16,44 +16,48 @@ export class AuditController {
   constructor(private readonly auditService: AuditService) {}
 
   @Get()
-  @Roles(Role.ADMIN, Role.MANAGER)
+  @Roles(Role.ADMIN, Role.ASSISTANT)
   @ApiOperation({ summary: 'Lấy danh sách nhật ký hành động' })
   async getLogs(@Query() filters: GetAuditLogsDto) {
     return this.auditService.getLogs(filters);
   }
 
   @Get('actions')
-  @Roles(Role.ADMIN, Role.MANAGER)
+  @Roles(Role.ADMIN, Role.ASSISTANT)
   @ApiOperation({ summary: 'Lấy danh sách bộ lọc hành động' })
   async getActions() {
     return this.auditService.getDistinctActions();
   }
 
-  // --- CLEANUP & SETTINGS (ADMIN ONLY) ---
+  // --- CLEANUP & SETTINGS — PERMISSIONS.md mục 2.7: đồng nhất ADMIN,
+  // ASSISTANT cho toàn bộ 6 endpoint của module này (kể cả cleanup/xoá) -
+  // ngoại lệ có chủ đích so với rule Xoá=chỉ-Admin chung, vì đây là thao tác
+  // dọn dẹp vận hành hệ thống, không phải xoá dữ liệu nghiệp vụ. Manager/
+  // Employee bị chặn hoàn toàn (403), không có ngoại lệ theo phòng ban.
 
   @Get('settings')
-  @Roles(Role.ADMIN)
+  @Roles(Role.ADMIN, Role.ASSISTANT)
   @ApiOperation({ summary: 'Lấy cấu hình dọn dẹp nhật ký' })
   async getSettings() {
     return this.auditService.getCleanupSettings();
   }
 
   @Post('settings')
-  @Roles(Role.ADMIN)
+  @Roles(Role.ADMIN, Role.ASSISTANT)
   @ApiOperation({ summary: 'Cập nhật cấu hình dọn dẹp' })
   async updateSettings(@Body() dto: UpdateAuditSettingsDto, @Req() req: any) {
     return this.auditService.updateCleanupSettings(dto.enabled, dto.retentionDays, req.user.id);
   }
 
   @Delete('cleanup')
-  @Roles(Role.ADMIN)
+  @Roles(Role.ADMIN, Role.ASSISTANT)
   @ApiOperation({ summary: 'Xóa nhật ký theo khoảng ngày' })
   async cleanup(@Query() dto: CleanupAuditLogsDto, @Req() req: any) {
     return this.auditService.cleanupByDateRange(dto.from, dto.to, req.user.id);
   }
 
   @Delete('bulk')
-  @Roles(Role.ADMIN)
+  @Roles(Role.ADMIN, Role.ASSISTANT)
   @ApiOperation({ summary: 'Xóa nhật ký hàng loạt theo ID' })
   async bulkDelete(@Body() dto: BulkDeleteAuditLogsDto, @Req() req: any) {
     return this.auditService.bulkDelete(dto.ids, req.user.id);

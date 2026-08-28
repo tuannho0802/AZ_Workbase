@@ -1,10 +1,12 @@
-import { Injectable, Logger, NotFoundException } from '@nestjs/common';
+import { Injectable, Logger, NotFoundException, ForbiddenException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, IsNull, Not, In } from 'typeorm';
 import { User } from '../../database/entities/user.entity';
 import { AttendanceLog } from '../../database/entities/attendance-log.entity';
 import { ZkDeviceUserCache } from '../../database/entities/zk-device-user-cache.entity';
+import { Department } from '../../database/entities/department.entity';
+import { Role } from '../../common/enums/role.enum';
 import { AttendanceSource } from '../../common/enums/attendance-source.enum';
 import { QueryAttendanceLogDto } from './dto/query-attendance-log.dto';
 import { QueryAttendanceSummaryDto } from './dto/query-attendance-summary.dto';
@@ -88,7 +90,23 @@ export class ZkDeviceService {
     private readonly attendanceLogRepo: Repository<AttendanceLog>,
     @InjectRepository(ZkDeviceUserCache)
     private readonly deviceUserCacheRepo: Repository<ZkDeviceUserCache>,
+    @InjectRepository(Department)
+    private readonly departmentRepo: Repository<Department>,
   ) {}
+
+  /**
+   * PERMISSIONS.md mục 2.3: danh sách id phòng ban mà `managerId` đang là
+   * `manager_user_id` - dùng để giới hạn phạm vi Manager xem/thao tác chấm
+   * công CHỈ trong phòng ban mình quản lý (không phải phòng ban mình *thuộc
+   * về*). Cùng pattern với UsersAccessHelper/CustomerAccessHelper.
+   */
+  private async getManagedDepartmentIds(managerId: number): Promise<number[]> {
+    const depts = await this.departmentRepo.find({
+      where: { managerUserId: managerId },
+      select: ['id'],
+    });
+    return depts.map((d) => d.id);
+  }
 
   private get deviceIp(): string {
     // Fallback về IP thực tế đã xác nhận hoạt động, để dev vẫn chạy được
@@ -283,9 +301,27 @@ export class ZkDeviceService {
 
   /**
    * Gán deviceUserId (mã user trên máy) cho 1 nhân viên trong hệ thống.
+   * FIX PERMISSIONS.md mục 2.3: Admin/Assistant map được cho bất kỳ nhân
+   * viên nào (không đổi). Manager CHỈ map được cho nhân viên thuộc phòng
+   * ban mình đang quản lý.
    */
-  async mapUser(userId: number, deviceUserId: string): Promise<User> {
+  async mapUser(
+    userId: number,
+    deviceUserId: string,
+    callerId: number,
+    callerRole: string,
+  ): Promise<User> {
     const user = await this.userRepo.findOneByOrFail({ id: userId });
+
+    if (callerRole === Role.MANAGER) {
+      const managedIds = await this.getManagedDepartmentIds(callerId);
+      if (user.departmentId == null || !managedIds.includes(user.departmentId)) {
+        throw new ForbiddenException(
+          'Bạn chỉ được map chấm công cho nhân viên trong phòng ban mình đang quản lý',
+        );
+      }
+    }
+
     user.zkDeviceUserId = deviceUserId;
     const saved = await this.userRepo.save(user);
     // Có hiệu lực ngay: log cũ của người này (nếu có, đang NULL) được khớp
@@ -302,12 +338,23 @@ export class ZkDeviceService {
    * attendance_logs.matched_user_id của các log cũ, đúng nguyên tắc 1 chiều
    * không sửa data máy). Log mới đồng bộ sau khi gỡ map sẽ tự thành
    * "chưa khớp" (matchedUserId = null) vì map không còn tồn tại.
+   * FIX PERMISSIONS.md mục 2.3: cùng rule phòng ban với mapUser() ở trên.
    */
-  async unmapUser(userId: number): Promise<User> {
+  async unmapUser(userId: number, callerId: number, callerRole: string): Promise<User> {
     const user = await this.userRepo.findOneBy({ id: userId });
     if (!user) {
       throw new NotFoundException(`Không tìm thấy nhân viên id=${userId}`);
     }
+
+    if (callerRole === Role.MANAGER) {
+      const managedIds = await this.getManagedDepartmentIds(callerId);
+      if (user.departmentId == null || !managedIds.includes(user.departmentId)) {
+        throw new ForbiddenException(
+          'Bạn chỉ được gỡ map chấm công của nhân viên trong phòng ban mình đang quản lý',
+        );
+      }
+    }
+
     user.zkDeviceUserId = null;
     return this.userRepo.save(user);
   }
@@ -318,7 +365,7 @@ export class ZkDeviceService {
    * bảng attendance_logs ngoài syncNow()/ingestPushAttendance() (2 nguồn từ
    * máy) - API này chỉ SELECT.
    */
-  async getAttendanceLogs(query: QueryAttendanceLogDto) {
+  async getAttendanceLogs(query: QueryAttendanceLogDto, viewerId: number, viewerRole: string) {
     const { page = 1, limit = 20, userId, matched, from, to } = query;
 
     const qb = this.attendanceLogRepo
@@ -339,6 +386,21 @@ export class ZkDeviceService {
     }
     if (to) {
       qb.andWhere('log.recordTime <= :to', { to: `${to} 23:59:59` });
+    }
+
+    // ⚠️ FIX PERMISSIONS.md mục 2.3: Manager chỉ xem log ĐÃ khớp với nhân
+    // viên thuộc phòng ban mình quản lý - không xác định được phòng ban của
+    // log CHƯA khớp (chỉ có deviceUserId thô) nên loại hẳn khỏi kết quả,
+    // tránh Manager thấy log của nhân viên ngoài phạm vi.
+    if (viewerRole === Role.MANAGER) {
+      const managedIds = await this.getManagedDepartmentIds(viewerId);
+      if (managedIds.length === 0) {
+        return { data: [], total: 0, page, limit, totalPages: 0 };
+      }
+      qb.andWhere('log.matchedUserId IS NOT NULL').andWhere(
+        'matchedUser.departmentId IN (:...deptIds)',
+        { deptIds: managedIds },
+      );
     }
 
     const [data, total] = await qb
@@ -458,7 +520,7 @@ export class ZkDeviceService {
    * Việc gộp/tính toán làm ở tầng ứng dụng (không dùng CONVERT_TZ của MySQL)
    * để không phụ thuộc session timezone của DB, luôn đúng theo giờ VN.
    */
-  async getAttendanceSummary(query: QueryAttendanceSummaryDto) {
+  async getAttendanceSummary(query: QueryAttendanceSummaryDto, viewerId: number, viewerRole: string) {
     const { page = 1, limit = 31, userId, from, to } = query;
     const { WORK_START_MINUTES, WORK_END_MINUTES, DUPLICATE_TAP_GAP_MS } =
       ZkDeviceService;
@@ -489,6 +551,20 @@ export class ZkDeviceService {
       qb.andWhere('log.recordTime <= :to', {
         to: new Date(`${to}T23:59:59`),
       });
+    }
+
+    // ⚠️ FIX PERMISSIONS.md mục 2.3: Manager chỉ xem bảng tổng hợp của nhân
+    // viên ĐÃ khớp và thuộc phòng ban mình quản lý - khác Admin/Assistant
+    // (không đổi, vẫn thấy cả log chưa map để biết ai chưa được map).
+    if (viewerRole === Role.MANAGER) {
+      const managedIds = await this.getManagedDepartmentIds(viewerId);
+      if (managedIds.length === 0) {
+        return { data: [], total: 0, page, limit, totalPages: 0 };
+      }
+      qb.andWhere('log.matchedUserId IS NOT NULL').andWhere(
+        'matchedUser.departmentId IN (:...deptIds)',
+        { deptIds: managedIds },
+      );
     }
 
     const logs = await qb.getMany();
