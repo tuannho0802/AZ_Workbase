@@ -5,9 +5,9 @@
 > Nếu code hiện tại (BE hoặc FE) khác với tài liệu này → **tài liệu này đúng, code là bug cần sửa**,
 > trừ khi tài liệu chưa được cập nhật theo quyết định nghiệp vụ mới nhất (luôn hỏi lại nếu nghi ngờ).
 >
-> **Cập nhật lần cuối:** 2026-08-28 (phát hiện thêm 6 endpoint sub-resource của module Customer — vốn
-> được đánh dấu ✅ ĐÃ KHỚP — thực ra KHÔNG áp filter phạm vi, xem mục 2.1 và mục 4.0b; riêng
-> `DELETE /customers/deposits/:id` vi phạm trực tiếp rule Xoá vì cho phép cả Manager)
+> **Cập nhật lần cuối:** 2026-08-28 (chốt §2.4/§2.5 — Link Groups/Categories/Media Sources: xác nhận code
+> đã đúng 100% rule, Manager cố tình KHÔNG có quyền ghi ở 3 module này theo quyết định chủ dự án; sửa 2
+> file spec test lệch khỏi implementation thật, toàn bộ suite 165/165 test pass)
 > **Người xác nhận rule:** Chủ dự án (qua chat trực tiếp với Agent)
 
 ---
@@ -151,19 +151,28 @@ chấm công của nhân viên thuộc phòng ban mình quản lý. `zk-device-c
 gọi) và `adms.controller.ts` (`/iclock/*`, máy chấm công gọi thẳng qua giao thức riêng — KHÔNG qua JWT,
 không áp RBAC người dùng được) không thuộc phạm vi rule này. **Chưa thực hiện — cần 1 phiên riêng.**
 
-### 2.4. Nhóm liên kết (`modules/link-groups`) — 🟦 hỗn hợp: CRUD chung ⚠️ chưa khớp / Quản lý chính-phụ 🟦 mô hình riêng
+### 2.4. Nhóm liên kết (`modules/link-groups`) — ✅ ĐÃ KHỚP (CRUD chung) / 🟦 Quản lý chính-phụ (mô hình riêng, không đổi)
 
 - `link-categories.controller.ts`, `link-groups.controller.ts` (CRUD Category/Group nói chung — tạo,
-  sửa, khoá/mở, xoá): toàn bộ đang khoá `@Roles(Role.ADMIN)`. Theo rule mục 1, Assistant phải CRUD được
-  ngang Admin (trừ riêng **Xoá** — phải tách thành `role === ADMIN` độc lập, không gộp chung decorator
-  với các hành động sửa khác). Manager theo rule cần giới hạn theo phòng ban — module này hiện **chưa
-  có khái niệm phòng ban gắn với Category/Group**, cần bàn thêm hướng thiết kế nếu muốn áp dụng.
-  **Chưa thực hiện — cần 1 phiên riêng.**
+  sửa, khoá/mở): **✅ đối chiếu trực tiếp từng dòng decorator, xác nhận đúng 100%** — toàn bộ mutation
+  (`create`, `update`, `lock`/`unlock`, `activate`/`deactivate`) đã là `@Roles(ADMIN, ASSISTANT)`; riêng
+  `Delete` đã tách decorator độc lập `@Roles(ADMIN)`, không gộp chung với các hành động sửa khác — đúng
+  rule Xoá ở mục 1.
+  **Quyết định đã chốt (chủ dự án, 2026-08-28):** Manager **KHÔNG** có quyền ghi ở module này (không
+  giống Customer/ZK Device — Manager không bị giới hạn theo phòng ban ở đây, mà bị loại hẳn khỏi quyền
+  ghi). Lý do: module này chưa có khái niệm phòng ban gắn với Category/Group (câu hỏi thiết kế treo từ
+  trước) — thay vì chờ thiết kế xong mới xử lý, chủ dự án chốt luôn hướng an toàn: chỉ Admin/Assistant
+  được CRUD, Manager chỉ có quyền Xem (giống Employee, qua `GET /link-groups` mở cho mọi user đã đăng
+  nhập — xem gạch đầu dòng tiếp theo). Nếu sau này có nhu cầu phân quyền Category/Group theo phòng ban,
+  cần 1 quyết định thiết kế riêng, không suy ra ngầm từ rule mục 1.
 - `GET /link-groups` (danh sách group cho checklist "tham gia nhóm" khi tạo/sửa khách hàng): **cố ý mở
   cho MỌI user đã đăng nhập**, không áp rule mục 1 — đây là dữ liệu tham chiếu (danh mục), không phải
   dữ liệu cần phân quyền xem. Không đổi.
-- `customer-group-memberships.controller.ts` (checklist khách hàng đã-join nhóm nào): theo hướng
-  self-view cho Employee, ✅ đúng hướng.
+- `customer-group-memberships.controller.ts` (checklist khách hàng đã-join nhóm nào): ✅ đã áp
+  `CustomerAccessHelper.applyViewFilter()` qua `assertCustomerAccessible()` (xem mục 2.1) — đúng hướng
+  self-view/phòng ban theo đúng phạm vi Customer liên quan. Spec test đã cập nhật khớp implementation
+  thật (`customer-group-memberships.service.spec.ts` — trước đó mock sai `findOne`, nay dùng đúng
+  `createQueryBuilder`).
 - **`link-group-managers.controller.ts` + `link-group-managers.service.ts` (MỚI — "Quản lý chính/phụ"
   theo từng Group cụ thể) — 🟦 mô hình quyền riêng theo chủ đích, xem mục 1.6:**
   - `GET /link-groups/managed-by-me`: Admin thấy TẤT CẢ group; user thường CHỈ thấy group mình là quản
@@ -178,12 +187,16 @@ không áp RBAC người dùng được) không thuộc phạm vi rule này. **C
     công quản lý, tương đương "bỏ gán sales" ở Customer, nên quản lý chính (dù không phải Admin) vẫn
     được phép gỡ quản lý phụ mà không vi phạm rule "Employee không bao giờ được xoá".
 
-### 2.5. Nguồn Media (`modules/media-sources`) — ⚠️ CHƯA KHỚP
+### 2.5. Nguồn Media (`modules/media-sources`) — ✅ ĐÃ KHỚP
 
-Cùng pattern với 2.4 (CRUD Category chung): `media-sources.controller.ts` toàn bộ mutation (`create`,
-`update`, `lock`, `unlock`, `remove`) đang khoá `@Roles(Role.ADMIN)`. `GET /media-sources` (danh sách để
-chọn "Nguồn" khi tạo khách hàng) cố ý mở cho mọi user — không đổi. Theo rule mới, Assistant cần CRUD
-ngang Admin (trừ xoá). **Chưa thực hiện — cần 1 phiên riêng.**
+**Đối chiếu trực tiếp từng dòng decorator, xác nhận đúng 100%** — `media-sources.controller.ts`: toàn bộ
+mutation (`create`, `update`, `lock`, `unlock`) đã là `@Roles(ADMIN, ASSISTANT)`; `remove` (Xoá) đã tách
+riêng `@Roles(ADMIN)`. `GET /media-sources` (danh sách để chọn "Nguồn" khi tạo khách hàng) cố ý mở cho
+mọi user — không đổi.
+
+**Quyết định đã chốt (chủ dự án, 2026-08-28):** giống hệt §2.4 — Manager **KHÔNG** có quyền ghi ở module
+này, chỉ Admin/Assistant CRUD (Assistant không Xoá). Cùng lý do: module chưa có khái niệm phòng ban gắn
+với Media Source, chủ dự án chốt hướng an toàn thay vì để treo.
 
 ### 2.6. Nghỉ phép (`modules/leave-requests`) — ⚠️ CHƯA KHỚP (rule đã chốt lại, code chưa cập nhật theo)
 
@@ -280,6 +293,7 @@ lai nào dùng lại pattern này):**
 | 2026-08-28 | Chốt rule cụ thể cho 3 mục còn treo: duyệt nghỉ phép (§2.6 — thay hẳn cơ chế `RolePriority` chéo phòng ban bằng bảng role-cặp cụ thể, Manager bắt buộc cùng phòng ban với Employee), Audit Logs (§2.7 — chỉ Admin+Assistant, Manager/Employee 403 tuyệt đối, không có ngoại lệ theo phòng ban), duyệt đăng ký tài khoản (§2.8 — thêm nhánh Manager nhưng bắt buộc trùng phòng ban quản lý) | Cả 3 mục chuyển từ "cần hỏi lại chủ dự án" sang "đã chốt rule, chưa sửa code" — ưu tiên implement ở phiên tiếp theo, xem mục 4 |
 | 2026-08-28 (tiếp) | Rà soát module còn thiếu (`departments/`) sau khi pull thêm nhiều commit mới (đăng ký tài khoản, duyệt approval, `GroupPickerModal`, `SimpleList`...) — thêm mục 2.9. Phát hiện **blocker quan trọng**: `department.manager_user_id` (nguồn xác định phạm vi Manager, đang được `CustomerAccessHelper` dùng thật) hiện KHÔNG có endpoint nào để set/đổi qua API — chỉ sửa được thủ công qua DB. Xác nhận đối chiếu trực tiếp từng dòng code cho toàn bộ 9 module hiện có trong repo (không còn module nào chưa đối chiếu) | Xem mục 2.9. Chỉ cập nhật tài liệu (README gốc, `backend/README.md`, `frontend/README.md`, `PERMISSIONS.md`) — KHÔNG sửa source trong phiên này theo yêu cầu chủ dự án. Nhân tiện phát hiện và sửa version stack ghi sai trong docs (Next.js 14→16, NestJS 10+→11+, Ant Design 5→6) |
 | 2026-08-28 (rà soát endpoint chi tiết) | Theo yêu cầu chủ dự án "rà soát các file theo thống kê từ PERMISSIONS.md, báo cáo endpoint chưa tuân thủ rule" — dump toàn bộ decorator `@Roles`/`@Controller`/`@Get`/`@Post`/`@Patch`/`@Delete` của cả 14 controller hiện có, đối chiếu từng dòng. Phát hiện module Customer (§2.1) — dù đã đánh dấu ✅ ĐÃ KHỚP từ trước — thực ra có **6 endpoint sub-resource hoàn toàn không áp filter phạm vi** (`POST/GET :id/notes`, `deposits`, `assignment-history`, `group-memberships`), trong đó `DELETE /customers/deposits/:id` vi phạm trực tiếp rule Xoá (cho phép Manager xoá). Đây là phát hiện MỚI, chưa từng được ghi nhận ở các lần rà soát trước — đổi trạng thái §2.1 từ ✅ sang ⚠️ khớp một phần | Xem mục 2.1 (bảng chi tiết + mức độ nghiêm trọng từng endpoint) và mục 4 (đã thêm mục 0b ưu tiên sửa). Chỉ cập nhật `PERMISSIONS.md` — KHÔNG sửa source theo đúng yêu cầu |
+| 2026-08-28 (chốt §2.4/§2.5) | Sau khi pull + merge code mới nhất (~13 conflict, chủ yếu do build song song Media Sources/Link Groups), đối chiếu TRỰC TIẾP từng dòng decorator của `link-groups.controller.ts`, `link-categories.controller.ts`, `media-sources.controller.ts` — xác nhận cả 3 đã đúng 100% rule (CRUD = `ADMIN, ASSISTANT`; Xoá tách riêng `ADMIN`), không cần sửa code. Chủ dự án chốt luôn câu hỏi thiết kế còn treo ở §2.4/§2.5 (Manager theo phòng ban): **Manager không có quyền ghi ở 3 module này**, chỉ Admin/Assistant CRUD. Đồng thời phát hiện thêm 1 file spec lệch khỏi implementation thật (`customer-group-memberships.service.spec.ts` — mock `customerRepo.findOne`, thật ra code dùng `createQueryBuilder()` qua `CustomerAccessHelper.applyViewFilter()`; và `customers.service.spec.ts` thiếu `find` trong mock khai báo ban đầu, gây lỗi kiểu ở TypeScript dù chạy runtime vẫn qua) — đã sửa cả 2, chạy lại **toàn bộ suite: 11/11 test suite, 165/165 test PASS** | Xem mục 2.4, 2.5, mục 4 (mục 5 đánh dấu ✅ xong) |
 
 ---
 
@@ -301,9 +315,11 @@ lai nào dùng lại pattern này):**
    phòng ban) — kèm spec test cho từng cặp role (đặc biệt case Manager khác phòng ban KHÔNG được duyệt).
 3. Sửa `audit.controller.ts`: đồng nhất `@Roles(ADMIN, ASSISTANT)` cho toàn bộ 6 endpoint (mục 2.7).
 4. Áp dụng lại rule cho `zk-device.controller.ts` (mục 2.3).
-5. Áp dụng lại rule cho `link-categories.controller.ts`/`link-groups.controller.ts` (mục 2.4, phần CRUD
-   chung) và `media-sources.controller.ts` (mục 2.5) — tách riêng hành động Xoá khỏi các hành động Sửa
-   khác.
+5. ~~Áp dụng lại rule cho `link-categories.controller.ts`/`link-groups.controller.ts` (mục 2.4)/
+   `media-sources.controller.ts` (mục 2.5)~~ — **✅ ĐÃ XONG (2026-08-28)**: đối chiếu trực tiếp code,
+   xác nhận cả 3 controller đã đúng 100% (CRUD = `ADMIN, ASSISTANT`, Xoá tách riêng `ADMIN`). Chốt luôn
+   quyết định treo về Manager: **không** có quyền ghi ở 3 module này (khác Customer/ZK Device), vì chưa
+   có khái niệm phòng ban gắn với Category/Group/Media Source.
 6. Áp dụng lại rule cho `departments.controller.ts` (mục 2.9, phần CRUD danh mục — sau khi đã có field
    `managerUserId` ở mục 0): mở `POST`/`PATCH` cho `ADMIN, ASSISTANT`.
 7. Sau khi xong từng module, cập nhật lại bảng ở mục 2 từ ⚠️ sang ✅ kèm ngày rà soát.
