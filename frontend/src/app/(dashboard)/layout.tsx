@@ -11,12 +11,23 @@ import {
   HomeOutlined,
 } from '@ant-design/icons';
 import { useAuthStore } from '@/lib/stores/auth.store';
-import { getVisibleNavItems } from '@/lib/nav-config';
+import { getVisibleNavItems, NAV_ITEMS } from '@/lib/nav-config';
 import { useSidebarBadgeCounts } from '@/lib/hooks/useSidebarBadgeCounts';
 import { CountBadge } from '@/components/common/CountBadge';
 import Cookies from 'js-cookie';
 
-const { Header, Content, Sider } = Layout;
+const { Header, Content, Sider, Footer } = Layout;
+
+// Nhãn hiển thị ở Header ứng với từng `selectedKey` - dùng LẠI đúng
+// `label` đã khai báo ở nav-config.tsx (1 nguồn duy nhất, xem giải thích ở
+// đầu file đó) thay vì viết lại 1 bảng tên trang riêng dễ bị lệch theo thời
+// gian. Chỉ thêm 2 key không có trong NAV_ITEMS: 'home' (mục Trang chủ gắn
+// cứng ở Sider, không qua nav-config) và 'invalid-data-report' (đã có sẵn
+// trong NAV_ITEMS nên tự động lấy được, không cần khai riêng).
+const PAGE_TITLES: Record<string, string> = {
+  home: 'Trang chủ',
+  ...Object.fromEntries(NAV_ITEMS.map((item) => [item.key, item.label])),
+};
 
 export default function DashboardLayout({
   children,
@@ -169,8 +180,30 @@ export default function DashboardLayout({
       </Sider>
 
       <Layout style={{ flex: 1, overflow: 'hidden' }}>
-        <Header className="bg-white px-6 flex justify-between items-center shadow-sm">
-          <div className="text-lg font-semibold">Quản lý khách hàng</div>
+        <Header
+          className="flex justify-between items-center"
+          // ⚠️ Bug đã fix: AntD Layout.Header mặc định nền TỐI (#001529) dù
+          // Sider để theme="dark" - Header không tự "ăn theo" theme đó. Trước
+          // đây chỉ set `className="bg-white ..."` (Tailwind utility) nhưng
+          // CSS do AntD tự inject (@ant-design/cssinjs) có thể nạp SAU
+          // Tailwind trong <head>, cùng độ ưu tiên -> quy tắc nạp sau thắng ->
+          // nền vẫn tối, trong khi chữ không set màu riêng nên ăn theo mặc
+          // định (đen) -> chữ đen trên nền tối, gần như không đọc được. Dùng
+          // inline `style` ở đây để CHẮC CHẮN thắng mọi CSS injected khác,
+          // không phụ thuộc thứ tự nạp stylesheet.
+          style={{
+            background: '#fff',
+            color: '#1f2937',
+            paddingInline: 24,
+            borderBottom: '1px solid #f0f0f0',
+            boxShadow: '0 1px 4px rgba(0,0,0,0.04)',
+          }}
+        >
+          <div className="flex items-center gap-2" style={{ color: '#1f2937' }}>
+            <span className="text-lg font-semibold" style={{ color: '#1f2937' }}>
+              {PAGE_TITLES[selectedKey] ?? 'AZWorkbase'}
+            </span>
+          </div>
           <Dropdown
             menu={{
               items: [
@@ -183,10 +216,10 @@ export default function DashboardLayout({
               ],
             }}
           >
-            <div className="flex items-center gap-2 cursor-pointer">
+            <div className="flex items-center gap-2 cursor-pointer" style={{ color: '#1f2937' }}>
               <Avatar icon={<UserOutlined />} />
-              <span>{user?.name}</span>
-              <span className="text-gray-500 text-sm">({user?.role})</span>
+              <span style={{ color: '#1f2937' }}>{user?.name}</span>
+              <span style={{ color: '#8c8c8c', fontSize: 13 }}>({user?.role})</span>
             </div>
           </Dropdown>
         </Header>
@@ -203,6 +236,18 @@ export default function DashboardLayout({
             {children}
           </div>
         </Content>
+
+        <Footer
+          style={{
+            textAlign: 'center',
+            background: 'transparent',
+            color: '#8c8c8c',
+            fontSize: 13,
+            padding: '12px 24px 20px',
+          }}
+        >
+          AZWorkbase © {new Date().getFullYear()} — Hệ thống quản lý dữ liệu Marketing &amp; Khách hàng
+        </Footer>
       </Layout>
     </Layout>
   );
