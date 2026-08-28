@@ -201,32 +201,31 @@ export class CustomersController {
 
   @Post(':id/notes')
   @ApiOperation({ summary: 'Thêm ghi chú khách hàng' })
-  async createNote(@Param('id') id: string, @Body() dto: CreateCustomerNoteDto, @GetUser('id') userId: number) {
-    return this.customersService.createNote(+id, dto, userId);
+  async createNote(@Param('id') id: string, @Body() dto: CreateCustomerNoteDto, @GetUser() user: any) {
+    return this.customersService.createNote(+id, dto, user.id, user.role);
   }
 
   @Post(':id/deposits')
-  @Roles(Role.ADMIN, Role.MANAGER, Role.ASSISTANT)
-  @ApiOperation({ summary: 'Thêm nạp tiền cho khách hàng' })
-  async createDeposit(@Param('id') id: string, @Body() dto: CreateDepositDto, @GetUser('id') userId: number) {
-    return this.customersService.createDeposit(+id, dto, userId);
+  @ApiOperation({ summary: 'Thêm nạp tiền cho khách hàng - phạm vi kiểm tra trong service (giống findOne)' })
+  async createDeposit(@Param('id') id: string, @Body() dto: CreateDepositDto, @GetUser() user: any) {
+    return this.customersService.createDeposit(+id, dto, user.id, user.role);
   }
 
   @Get(':id/deposits')
   @ApiOperation({ summary: 'Lấy danh sách nạp tiền (5 bản ghi gần nhất)' })
-  async getDeposits(@Param('id') id: string) {
-    return this.customersService.getDeposits(+id);
+  async getDeposits(@Param('id') id: string, @GetUser() user: any) {
+    return this.customersService.getDeposits(+id, user.id, user.role);
   }
 
   @Get(':id/assignment-history')
   @ApiOperation({ summary: 'Lịch sử gán data của 1 khách hàng' })
-  async getAssignmentHistory(@Param('id') id: string) {
-    return this.customersService.getAssignmentHistory(+id);
+  async getAssignmentHistory(@Param('id') id: string, @GetUser() user: any) {
+    return this.customersService.getAssignmentHistory(+id, user.id, user.role);
   }
 
   @Delete('deposits/:id')
-  @Roles(Role.ADMIN, Role.MANAGER)
-  @ApiOperation({ summary: 'Xóa bản ghi nạp tiền' })
+  @Roles(Role.ADMIN)
+  @ApiOperation({ summary: 'Xóa bản ghi nạp tiền - CHỈ ADMIN (đúng rule Xoá ở PERMISSIONS.md mục 1, không có ngoại lệ cho Manager)' })
   async deleteDeposit(@Param('id') id: string, @GetUser() user: any) {
     return this.customersService.deleteDeposit(+id, user.id);
   }

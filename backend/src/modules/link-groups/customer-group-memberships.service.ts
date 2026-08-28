@@ -4,6 +4,7 @@ import { Repository } from 'typeorm';
 import { CustomerGroupMembership } from '../../database/entities/customer-group-membership.entity';
 import { LinkGroup } from '../../database/entities/link-group.entity';
 import { Customer } from '../../database/entities/customer.entity';
+import { CustomerAccessHelper } from '../customers/helpers/customer-access.helper';
 
 export interface GroupMembershipRow {
   categoryId: number;
@@ -28,12 +29,45 @@ export class CustomerGroupMembershipsService {
   ) {}
 
   /**
+   * Cổng gác quyền - dùng CHUNG `CustomerAccessHelper.applyViewFilter()` với
+   * module Customers (theo PERMISSIONS.md mục 1, quy tắc #2: "1 nguồn áp
+   * filter duy nhất"). ⚠️ FIX PERMISSIONS.md mục 2.1/4.0b: trước đây 2
+   * endpoint của controller này chỉ có `JwtAuthGuard`, KHÔNG check sở hữu -
+   * ai đăng nhập cũng xem/sửa được checklist "đã join nhóm" của customer
+   * bất kỳ, không riêng phạm vi của mình.
+   */
+  private async assertCustomerAccessible(
+    customerId: number,
+    userId: number,
+    userRole: string,
+  ): Promise<void> {
+    const qb = this.customerRepo
+      .createQueryBuilder('customer')
+      .select('customer.id')
+      .where('customer.id = :id', { id: customerId })
+      .andWhere('customer.deletedAt IS NULL');
+
+    CustomerAccessHelper.applyViewFilter(qb, userId, userRole);
+
+    const found = await qb.getOne();
+    if (!found) {
+      throw new NotFoundException('Không tìm thấy khách hàng');
+    }
+  }
+
+  /**
    * Trả về TOÀN BỘ group đang active (kèm category), ghép với trạng thái
    * "đã join" của 1 customer cụ thể - dùng LEFT JOIN nên group nào customer
    * CHƯA có row membership vẫn hiện ra với joined=false (thay vì bị thiếu
    * khỏi danh sách) - đúng ý UI "checklist đầy đủ mọi nhóm, tick được ngay".
    */
-  async getMembershipsForCustomer(customerId: number): Promise<GroupMembershipRow[]> {
+  async getMembershipsForCustomer(
+    customerId: number,
+    userId: number,
+    userRole: string,
+  ): Promise<GroupMembershipRow[]> {
+    await this.assertCustomerAccessible(customerId, userId, userRole);
+
     const customer = await this.customerRepo.findOne({ where: { id: customerId } });
     if (!customer) {
       throw new NotFoundException('Không tìm thấy khách hàng');
@@ -86,7 +120,10 @@ export class CustomerGroupMembershipsService {
     groupId: number,
     joined: boolean,
     userId: number,
+    userRole: string,
   ): Promise<CustomerGroupMembership> {
+    await this.assertCustomerAccessible(customerId, userId, userRole);
+
     const [customer, group] = await Promise.all([
       this.customerRepo.findOne({ where: { id: customerId } }),
       this.groupRepo.findOne({ where: { id: groupId } }),

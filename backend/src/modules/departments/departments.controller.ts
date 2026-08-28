@@ -43,8 +43,8 @@ export class DepartmentsController {
   @Post()
   @UseGuards(JwtAuthGuard, RolesGuard)
   @ApiBearerAuth()
-  @Roles(Role.ADMIN)
-  @ApiOperation({ summary: 'Tạo phòng ban mới (Chỉ Admin)' })
+  @Roles(Role.ADMIN, Role.ASSISTANT)
+  @ApiOperation({ summary: 'Tạo phòng ban mới (Admin, Assistant)' })
   create(@Body() dto: CreateDepartmentDto) {
     return this.departmentsService.create(dto);
   }
@@ -52,8 +52,8 @@ export class DepartmentsController {
   @Patch(':id')
   @UseGuards(JwtAuthGuard, RolesGuard)
   @ApiBearerAuth()
-  @Roles(Role.ADMIN)
-  @ApiOperation({ summary: 'Cập nhật phòng ban (Chỉ Admin)' })
+  @Roles(Role.ADMIN, Role.ASSISTANT)
+  @ApiOperation({ summary: 'Cập nhật phòng ban, bao gồm gán Manager quản lý (Admin, Assistant)' })
   update(@Param('id', ParseIntPipe) id: number, @Body() dto: UpdateDepartmentDto) {
     return this.departmentsService.update(id, dto);
   }

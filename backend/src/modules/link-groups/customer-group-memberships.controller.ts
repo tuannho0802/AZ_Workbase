@@ -30,8 +30,8 @@ export class CustomerGroupMembershipsController {
   // trách" vì các sub-resource khác của customer hiện tại cũng chưa làm vậy).
   @Get(':id/group-memberships')
   @ApiOperation({ summary: 'Checklist toàn bộ nhóm (theo category) + trạng thái đã join của customer này' })
-  async getMemberships(@Param('id', ParseIntPipe) id: number) {
-    return this.membershipsService.getMembershipsForCustomer(id);
+  async getMemberships(@Param('id', ParseIntPipe) id: number, @GetUser() user: any) {
+    return this.membershipsService.getMembershipsForCustomer(id, user.id, user.role);
   }
 
   @Patch(':id/group-memberships/:groupId')
@@ -40,8 +40,8 @@ export class CustomerGroupMembershipsController {
     @Param('id', ParseIntPipe) id: number,
     @Param('groupId', ParseIntPipe) groupId: number,
     @Body() dto: SetMembershipDto,
-    @GetUser('id') userId: number,
+    @GetUser() user: any,
   ) {
-    return this.membershipsService.setMembership(id, groupId, dto.joined, userId);
+    return this.membershipsService.setMembership(id, groupId, dto.joined, user.id, user.role);
   }
 }

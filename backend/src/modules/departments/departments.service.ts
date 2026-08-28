@@ -1,7 +1,9 @@
-import { Injectable, NotFoundException, ConflictException } from '@nestjs/common';
+import { Injectable, NotFoundException, ConflictException, BadRequestException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { Department } from '../../database/entities/department.entity';
+import { User } from '../../database/entities/user.entity';
+import { Role } from '../../common/enums/role.enum';
 import { CreateDepartmentDto } from './dto/create-department.dto';
 import { UpdateDepartmentDto } from './dto/update-department.dto';
 
@@ -10,6 +12,8 @@ export class DepartmentsService {
   constructor(
     @InjectRepository(Department)
     private readonly departmentRepository: Repository<Department>,
+    @InjectRepository(User)
+    private readonly userRepository: Repository<User>,
   ) {}
 
   async findAll() {
@@ -61,7 +65,39 @@ export class DepartmentsService {
       }
     }
 
-    this.departmentRepository.merge(department, dto);
+    // ⚠️ FIX PERMISSIONS.md mục 2.9 (blocker): trước đây KHÔNG có endpoint
+    // nào cho phép gán "Manager quản lý phòng ban nào" - managerUserId chỉ
+    // sửa được thủ công qua DB. Đây là field CHỦ ĐỘNG dùng bởi
+    // CustomerAccessHelper (và các module khác) để tính phạm vi Manager -
+    // validate chặt: user được gán PHẢI có role MANAGER và đang active,
+    // tránh gán nhầm 1 Employee/Admin làm "manager_user_id" khiến toàn bộ
+    // rule phân quyền theo phòng ban bị sai lệch ở MỌI module liên quan.
+    if (dto.managerUserId !== undefined) {
+      if (dto.managerUserId === null) {
+        department.managerUserId = null as any;
+      } else {
+        const managerCandidate = await this.userRepository.findOne({
+          where: { id: dto.managerUserId },
+        });
+        if (!managerCandidate) {
+          throw new NotFoundException('Không tìm thấy user để gán làm Manager phòng ban');
+        }
+        if (managerCandidate.role !== Role.MANAGER) {
+          throw new BadRequestException(
+            'Chỉ có thể gán user có vai trò Manager làm người quản lý phòng ban',
+          );
+        }
+        if (!managerCandidate.isActive) {
+          throw new BadRequestException(
+            'Không thể gán Manager đang bị khoá tài khoản (isActive = false)',
+          );
+        }
+        department.managerUserId = dto.managerUserId;
+      }
+    }
+
+    const { managerUserId, ...rest } = dto;
+    this.departmentRepository.merge(department, rest);
     return await this.departmentRepository.save(department);
   }
 }

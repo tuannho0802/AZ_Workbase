@@ -457,6 +457,36 @@ export class CustomersService {
     };
   }
 
+  /**
+   * Cổng gác quyền dùng CHUNG cho các sub-resource (note, deposit,
+   * assignment-history, group-memberships) - đảm bảo dùng ĐÚNG 1 nguồn
+   * filter với findOne()/findAll() (gọi thẳng CustomerAccessHelper.
+   * applyViewFilter(), không viết điều kiện phân quyền riêng dễ lệch nhau)
+   * theo PERMISSIONS.md mục 1, quy tắc kỹ thuật #2. Chỉ SELECT id (không
+   * load quan hệ) để nhẹ - ném CustomerNotFoundException nếu customer
+   * không tồn tại HOẶC không thuộc phạm vi Xem của người gọi (403/404 gộp
+   * làm 1, không lộ thông tin "có tồn tại nhưng không có quyền" - đúng
+   * pattern findOne() đang dùng).
+   */
+  private async assertCustomerAccessible(
+    customerId: number,
+    userId: number,
+    userRole: string,
+  ): Promise<void> {
+    const qb = this.customersRepository
+      .createQueryBuilder('customer')
+      .select('customer.id')
+      .where('customer.id = :id', { id: customerId })
+      .andWhere('customer.deletedAt IS NULL');
+
+    CustomerAccessHelper.applyViewFilter(qb, userId, userRole);
+
+    const found = await qb.getOne();
+    if (!found) {
+      throw new CustomerNotFoundException();
+    }
+  }
+
   async findOne(id: number, userId: number, userRole: string) {
     const queryBuilder = this.customersRepository
       .createQueryBuilder('customer')
@@ -515,19 +545,12 @@ export class CustomersService {
     customerId: number,
     dto: CreateCustomerNoteDto,
     userId: number,
+    userRole: string,
   ) {
-    const customer = await this.customersRepository.findOne({
-      where: { id: customerId, deletedAt: IsNull() },
-    });
-
-    if (!customer) {
-      throw new NotFoundException('Không tìm thấy khách hàng');
-    }
-
-    // RBAC: Any role can add note to customer they can see?
-    // User requested: employee only for own.
-    // findOne already handles RBAC check via userId/role but here we use simple find.
-    // Let's reuse findOne check logic or keep it simple.
+    // ⚠️ FIX PERMISSIONS.md mục 2.1/4.0b: trước đây chỉ query đơn giản
+    // (không qua CustomerAccessHelper) - BẤT KỲ role nào đăng nhập cũng
+    // ghi note được vào customer bất kỳ, không riêng phạm vi của mình.
+    await this.assertCustomerAccessible(customerId, userId, userRole);
 
     const note = this.notesRepository.create({
       ...dto,
@@ -556,7 +579,16 @@ export class CustomersService {
     customerId: number,
     dto: CreateDepositDto,
     userId: number,
+    userRole: string,
   ) {
+    // ⚠️ FIX PERMISSIONS.md mục 2.1/4.0b: trước đây chỉ check tồn tại,
+    // KHÔNG check phạm vi -> Manager tạo được deposit cho customer NGOÀI
+    // phòng ban mình quản lý. Dùng chung cổng gác với findOne(), đồng thời
+    // giờ cho phép Employee gọi endpoint này (trước đây bị loại hẳn khỏi
+    // @Roles dù có thể đang là sales chính của customer đó) - phạm vi thực
+    // tế vẫn bị giới hạn đúng bởi assertCustomerAccessible ngay dưới đây.
+    await this.assertCustomerAccessible(customerId, userId, userRole);
+
     const customer = await this.customersRepository.findOne({
       where: { id: customerId, deletedAt: IsNull() },
     });
@@ -590,7 +622,12 @@ export class CustomersService {
     return savedDeposit;
   }
 
-  async getDeposits(customerId: number) {
+  async getDeposits(customerId: number, userId: number, userRole: string) {
+    // ⚠️ FIX PERMISSIONS.md mục 2.1/4.0b: trước đây KHÔNG check phạm vi -
+    // bất kỳ role nào cũng xem được lịch sử nạp tiền (dữ liệu tài chính)
+    // của customer bất kỳ. Mức độ nghiêm trọng: Cao.
+    await this.assertCustomerAccessible(customerId, userId, userRole);
+
     return this.depositsRepository
       .createQueryBuilder('deposit')
       .where('deposit.customerId = :customerId', { customerId })
@@ -1130,7 +1167,11 @@ export class CustomersService {
   }
 
   /** Lịch sử gán data của 1 khách hàng */
-  async getAssignmentHistory(customerId: number) {
+  async getAssignmentHistory(customerId: number, userId: number, userRole: string) {
+    // ⚠️ FIX PERMISSIONS.md mục 2.1/4.0b: trước đây KHÔNG check phạm vi -
+    // ai cũng xem được lịch sử gán/thu hồi sales của customer bất kỳ.
+    await this.assertCustomerAccessible(customerId, userId, userRole);
+
     return this.assignmentRepository.find({
       where: { customerId },
       relations: [
