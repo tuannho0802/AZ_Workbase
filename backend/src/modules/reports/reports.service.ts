@@ -200,7 +200,7 @@ export class ReportsService {
    * createdAt.
    */
   async getCustomerReport(query: QueryReportDto, viewerId: number, viewerRole: string) {
-    const { from, to } = this.resolveRange(query);
+    const { from, to, fromUtc, toUtc } = this.resolveRange(query);
 
     // ── totalCustomers + closedCustomers (cùng 1 bảng customers) ──
     const mainQb = this.customerRepo
@@ -209,28 +209,38 @@ export class ReportsService {
       .leftJoin('customer.department', 'department');
     CustomerAccessHelper.applyViewFilter(mainQb, viewerId, viewerRole);
 
+    // ⚠️ FIX bug lệch giờ: `customer.createdAt` là cột datetime DO DB TỰ SINH
+    // (CreateDateColumn, đã xác nhận là UTC THẬT - xem giải thích đầy đủ ở
+    // resolveRange() phía trên) -> PHẢI lọc bằng `createdFrom`/`createdTo`
+    // (UTC). `customer.closedDate` là cột `date` do NGƯỜI DÙNG tự chọn qua
+    // date-picker (không có giờ/múi giờ) -> vẫn dùng `closedFrom`/`closedTo`
+    // (naive, = from/to). 2 cặp tham số TÁCH RIÊNG (không dùng chung
+    // :from/:to như bản trước) vì bản chất 2 cột hoàn toàn khác nhau.
     const buildMainSelect = (qb: typeof mainQb) =>
       qb
         .addSelect(
-          `SUM(CASE WHEN customer.createdAt BETWEEN :from AND :to THEN 1 ELSE 0 END)`,
+          `SUM(CASE WHEN customer.createdAt BETWEEN :createdFrom AND :createdTo THEN 1 ELSE 0 END)`,
           'totalCustomers',
         )
         .addSelect(
-          `SUM(CASE WHEN customer.status = 'closed' AND customer.closedDate BETWEEN :from AND :to THEN 1 ELSE 0 END)`,
+          `SUM(CASE WHEN customer.status = 'closed' AND customer.closedDate BETWEEN :closedFrom AND :closedTo THEN 1 ELSE 0 END)`,
           'closedCustomers',
         )
-        .setParameters({ from, to });
+        .setParameters({ createdFrom: fromUtc, createdTo: toUtc, closedFrom: from, closedTo: to });
 
     // ── joinedGroupCustomers (join thêm bảng customer_group_memberships,
     // KHÔNG có relation OneToMany sẵn trên Customer entity nên join thủ
     // công qua điều kiện, không qua tên relation) ──
+    // ⚠️ FIX bug lệch giờ tương tự: `membership.joined_at` là cột `timestamp`
+    // (MySQL tự quy đổi theo session timezone = UTC cả lúc ghi lẫn đọc) ->
+    // PHẢI dùng `fromUtc`/`toUtc`, KHÔNG dùng `from`/`to` (naive) như bản cũ.
     const buildJoinedSelect = (qb: any) =>
       qb
         .innerJoin(
           CustomerGroupMembership,
           'membership',
-          'membership.customer_id = customer.id AND membership.joined = true AND membership.joined_at BETWEEN :from AND :to',
-          { from, to },
+          'membership.customer_id = customer.id AND membership.joined = true AND membership.joined_at BETWEEN :joinedFrom AND :joinedTo',
+          { joinedFrom: fromUtc, joinedTo: toUtc },
         )
         .addSelect('COUNT(DISTINCT customer.id)', 'joinedGroupCustomers');
 
