@@ -1,6 +1,6 @@
 'use client';
 
-import { Card, Statistic, Empty, Typography, Alert } from 'antd';
+import { Card, Statistic, Typography, Alert } from 'antd';
 import { DollarOutlined } from '@ant-design/icons';
 import { useRevenueReport } from '@/lib/hooks/useReports';
 import { ReportQuery, RevenuePersonalRow, RevenueDepartmentRow } from '@/lib/types/reports.types';

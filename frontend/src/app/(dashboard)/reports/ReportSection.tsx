@@ -6,7 +6,16 @@ import type { ColumnsType } from 'antd/es/table';
 import { BarChartOutlined, PieChartOutlined, TableOutlined } from '@ant-design/icons';
 import { ReportChart, ChartType, ChartSeries } from './ReportChart';
 
-interface ReportSectionProps<T extends Record<string, unknown>> {
+// ⚠️ T extends object (không phải Record<string, unknown>) - khớp đúng
+// constraint của ReportChart.tsx bên cạnh. ReportSection không hề dùng
+// index-access T[key] ở đâu trong thân hàm (chỉ truyền data/nameKey/series
+// xuống ReportChart), nên Record<string, unknown> là thừa và còn SAI: các
+// interface như CustomerPersonalRow/RevenuePersonalRow (reports.types.ts)
+// không có index signature -> TS2344 "does not satisfy the constraint"
+// dù mọi field đều tương thích 100% - đây là quirk của TS: interface
+// không tự thoả Record<string, K> trừ khi khai báo index signature rõ
+// ràng, khác với type alias. object là constraint đúng và đủ ở đây.
+interface ReportSectionProps<T extends object> {
   data: T[];
   loading: boolean;
   rowKey: string;
@@ -75,7 +84,7 @@ const CHART_TYPE_OPTIONS: { label: ReactNode; value: ChartType }[] = [
  * và chọn "Tròn", cần chọn thêm CHỈ 1 chỉ số để vẽ (Pie không vẽ được nhiều
  * chỉ số chồng nhau - khác Cột dọc/ngang vẽ song song được).
  */
-export function ReportSection<T extends Record<string, unknown>>({
+export function ReportSection<T extends object>({
   data,
   loading,
   rowKey,
