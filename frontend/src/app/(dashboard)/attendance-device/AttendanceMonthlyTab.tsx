@@ -594,8 +594,7 @@ export default function AttendanceMonthlyTab() {
           />
           <Select
             allowClear
-            showSearch
-            optionFilterProp="label"
+            showSearch={{ optionFilterProp: 'label' }}
             placeholder="Lọc theo nhân viên"
             style={{ width: 220 }}
             value={userId}
@@ -605,6 +604,25 @@ export default function AttendanceMonthlyTab() {
           <Text>
             Ngày công chuẩn tháng {month.format('MM/YYYY')}: <Text strong>{standardWorkDays}</Text>
           </Text>
+          <Button
+            icon={<FileExcelOutlined />}
+            loading={exportMutation.isPending}
+            onClick={() => {
+              // Tên file theo đúng format yêu cầu: "TongHopChamCong DD-MM-YY -
+              // DD-MM-YY.xlsx" (xem buildExportFilename() ở
+              // attendance-export.api.ts, tự dựng lại từ `month` theo đúng
+              // công thức backend dùng - không cần đọc header response).
+              exportMutation.mutate(
+                { month: month.format('YYYY-MM'), rows: buildExportRows() },
+                {
+                  onError: (err: any) =>
+                    message.error(err?.response?.data?.message || 'Xuất Excel thất bại'),
+                },
+              );
+            }}
+          >
+            Xuất Excel
+          </Button>
         </Space>
 
         <Space size={4} wrap>

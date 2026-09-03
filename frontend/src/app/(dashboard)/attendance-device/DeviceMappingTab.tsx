@@ -255,8 +255,7 @@ export default function DeviceMappingTab() {
         <Select
           style={{ width: '100%' }}
           placeholder="Chọn nhân viên trong hệ thống"
-          showSearch
-          optionFilterProp="label"
+          showSearch={{ optionFilterProp: 'label' }}
           value={selectedUserId ?? undefined}
           onChange={(val) => setSelectedUserId(val)}
           options={(users || []).map((u: any) => ({

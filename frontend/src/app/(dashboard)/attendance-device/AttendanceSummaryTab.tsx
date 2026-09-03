@@ -1,99 +1,98 @@
 'use client';
 
 import { useState } from 'react';
-import { Table, Select, DatePicker, Space, Tag, Button, Modal, App, Typography } from 'antd';
-import { ReloadOutlined, DeleteOutlined, FileExcelOutlined } from '@ant-design/icons';
+import { Table, Select, DatePicker, Space, Tag, Button, Tooltip, App } from 'antd';
+import { ReloadOutlined, FileExcelOutlined } from '@ant-design/icons';
 import dayjs, { Dayjs } from 'dayjs';
-import { useAttendanceLogs, useCleanupAttendanceLogs, useExportAttendanceLogs } from '@/lib/hooks/useZkDevice';
+import { useAttendanceSummary, useExportAttendanceSummary } from '@/lib/hooks/useZkDevice';
 import { useUsersList } from '@/lib/hooks/useUsers';
-import { AttendanceLog } from '@/lib/types/zk-device.types';
-import { useAuthStore } from '@/lib/stores/auth.store';
+import { AttendanceStatus, AttendanceSummaryRow } from '@/lib/types/zk-device.types';
 
 const { RangePicker } = DatePicker;
-const { Text } = Typography;
 
-const SOURCE_LABEL: Record<string, { text: string; color: string }> = {
-  device_push: { text: 'Máy tự đẩy', color: 'blue' },
-  device_pull: { text: 'Đồng bộ thủ công', color: 'purple' },
+// Khớp đúng quy định: sau 9h00 tính đi muộn, trước 18h00 tính về sớm,
+// từ 18h00 trở đi luôn tính tan ca đúng giờ.
+const STATUS_CONFIG: Record<AttendanceStatus, { text: string; color: string }> = {
+  on_time: { text: 'Đúng giờ', color: 'green' },
+  late: { text: 'Đi muộn', color: 'orange' },
+  early_leave: { text: 'Về sớm', color: 'gold' },
+  late_and_early: { text: 'Đi muộn & về sớm', color: 'red' },
+  missing_checkout: { text: 'Thiếu chấm ra', color: 'default' },
 };
 
-const RANGE_PRESETS = [
-  { label: 'Hôm nay', value: [dayjs(), dayjs()] as [Dayjs, Dayjs] },
-  { label: 'Tuần này', value: [dayjs().startOf('week'), dayjs()] as [Dayjs, Dayjs] },
-  { label: 'Tháng này', value: [dayjs().startOf('month'), dayjs()] as [Dayjs, Dayjs] },
-  {
-    label: 'Tháng trước',
-    value: [
-      dayjs().subtract(1, 'month').startOf('month'),
-      dayjs().subtract(1, 'month').endOf('month'),
-    ] as [Dayjs, Dayjs],
-  },
-];
-
-export default function AttendanceLogsTab() {
+export default function AttendanceSummaryTab() {
   const { message } = App.useApp();
   const { users } = useUsersList();
-  // Trang "Máy chấm công" giờ mở cho admin/assistant/manager (khớp
-  // PERMISSIONS.md §2.3), nhưng riêng DỌN DẸP LOG (hard-delete vĩnh viễn)
-  // vẫn tách decorator @Roles(Role.ADMIN) ở BE - ẩn nút này với
-  // assistant/manager để không hiện 1 nút bấm vào chắc chắn dính 403.
-  const isAdmin = useAuthStore((s) => s.user?.role) === 'admin';
   const [page, setPage] = useState(1);
-  const [limit, setLimit] = useState(20);
+  const [limit, setLimit] = useState(31);
   const [userId, setUserId] = useState<number | undefined>(undefined);
-  const [matched, setMatched] = useState<'matched' | 'unmatched' | undefined>(undefined);
-  const [range, setRange] = useState<[Dayjs, Dayjs] | null>(null);
+  const [range, setRange] = useState<[Dayjs, Dayjs]>([dayjs().startOf('month'), dayjs()]);
 
-  const [cleanupOpen, setCleanupOpen] = useState(false);
-  const [cleanupDate, setCleanupDate] = useState<Dayjs | null>(
-    dayjs().subtract(6, 'month').startOf('month'),
-  );
-  const cleanupMutation = useCleanupAttendanceLogs();
-  const exportMutation = useExportAttendanceLogs();
+  const exportMutation = useExportAttendanceSummary();
 
-  const { data, isLoading, refetch, isFetching } = useAttendanceLogs({
+  const { data, isLoading, refetch, isFetching } = useAttendanceSummary({
     page,
     limit,
     userId,
-    matched,
     from: range?.[0]?.format('YYYY-MM-DD'),
     to: range?.[1]?.format('YYYY-MM-DD'),
   });
 
   const columns = [
     {
-      title: 'Thời gian',
-      dataIndex: 'recordTime',
-      key: 'recordTime',
-      render: (v: string) => dayjs(v).format('DD/MM/YYYY HH:mm:ss'),
-      width: 170,
+      title: 'Ngày',
+      dataIndex: 'date',
+      key: 'date',
+      width: 150,
+      render: (v: string) => dayjs(v).format('dddd, DD/MM/YYYY'),
     },
     {
       title: 'Nhân viên',
-      key: 'matchedUser',
-      render: (_: any, r: AttendanceLog) =>
-        r.matchedUser ? (
-          <Tag color="green">{r.matchedUser.name}</Tag>
-        ) : (
-          <Tag color="orange">
-            Chưa khớp: {r.deviceUserName || `UID ${r.deviceUserId}`}
-          </Tag>
-        ),
+      dataIndex: 'userName',
+      key: 'userName',
     },
     {
-      title: 'Nguồn',
-      dataIndex: 'source',
-      key: 'source',
-      width: 140,
-      render: (v: string) => (
-        <Tag color={SOURCE_LABEL[v]?.color}>{SOURCE_LABEL[v]?.text || v}</Tag>
+      title: 'Giờ vào',
+      dataIndex: 'checkIn',
+      key: 'checkIn',
+      width: 110,
+      render: (v: string, r: AttendanceSummaryRow) => (
+        <span style={{ color: r.isLate ? '#fa8c16' : undefined, fontWeight: r.isLate ? 600 : undefined }}>
+          {dayjs(v).format('HH:mm:ss')}
+        </span>
       ),
     },
     {
-      title: 'Mã máy',
-      dataIndex: 'deviceSerialNumber',
-      key: 'deviceSerialNumber',
+      title: 'Giờ ra',
+      dataIndex: 'checkOut',
+      key: 'checkOut',
+      width: 110,
+      render: (v: string | null, r: AttendanceSummaryRow) =>
+        v ? (
+          <span style={{ color: r.isEarlyLeave ? '#faad14' : undefined, fontWeight: r.isEarlyLeave ? 600 : undefined }}>
+            {dayjs(v).format('HH:mm:ss')}
+          </span>
+        ) : (
+          <Tooltip title="Chỉ có 1 lượt quẹt trong ngày, chưa xác định được giờ ra thật">
+            <span style={{ color: '#bfbfbf' }}>—</span>
+          </Tooltip>
+        ),
+    },
+    {
+      title: 'Tổng giờ làm',
+      dataIndex: 'workHours',
+      key: 'workHours',
+      width: 110,
+      render: (v: number | null) => (v != null ? `${v}h` : '—'),
+    },
+    {
+      title: 'Trạng thái',
+      dataIndex: 'status',
+      key: 'status',
       width: 160,
+      render: (v: AttendanceStatus) => (
+        <Tag color={STATUS_CONFIG[v]?.color}>{STATUS_CONFIG[v]?.text || v}</Tag>
+      ),
     },
   ];
 
@@ -102,8 +101,7 @@ export default function AttendanceLogsTab() {
       <Space wrap style={{ marginBottom: 12 }}>
         <Select
           allowClear
-          showSearch
-          optionFilterProp="label"
+          showSearch={{ optionFilterProp: 'label' }}
           placeholder="Lọc theo nhân viên"
           style={{ width: 220 }}
           value={userId}
@@ -113,26 +111,14 @@ export default function AttendanceLogsTab() {
           }}
           options={(users || []).map((u: any) => ({ value: u.id, label: u.name }))}
         />
-        <Select
-          allowClear
-          placeholder="Trạng thái khớp"
-          style={{ width: 160 }}
-          value={matched}
-          onChange={(v) => {
-            setMatched(v);
-            setPage(1);
-          }}
-          options={[
-            { value: 'matched', label: 'Đã khớp' },
-            { value: 'unmatched', label: 'Chưa khớp' },
-          ]}
-        />
         <RangePicker
           value={range}
-          presets={RANGE_PRESETS}
+          allowClear={false}
           onChange={(v) => {
-            setRange(v as [Dayjs, Dayjs] | null);
-            setPage(1);
+            if (v && v[0] && v[1]) {
+              setRange(v as [Dayjs, Dayjs]);
+              setPage(1);
+            }
           }}
         />
         <Button icon={<ReloadOutlined />} onClick={() => refetch()} loading={isFetching}>
@@ -143,12 +129,10 @@ export default function AttendanceLogsTab() {
           loading={exportMutation.isPending}
           onClick={() => {
             // Xuất Excel theo ĐÚNG bộ lọc đang áp dụng trên bảng (nhân
-            // viên/trạng thái khớp/khoảng ngày) - "y chang bảng gốc" đúng
-            // yêu cầu, không phải xuất toàn bộ dữ liệu không lọc.
+            // viên/khoảng ngày) - "y chang bảng gốc" đúng yêu cầu.
             exportMutation.mutate(
               {
                 userId,
-                matched,
                 from: range?.[0]?.format('YYYY-MM-DD'),
                 to: range?.[1]?.format('YYYY-MM-DD'),
               },
@@ -161,74 +145,18 @@ export default function AttendanceLogsTab() {
         >
           Xuất Excel
         </Button>
-        {isAdmin && (
-          <Button
-            danger
-            icon={<DeleteOutlined />}
-            onClick={() => setCleanupOpen(true)}
-          >
-            Dọn dẹp log cũ
-          </Button>
-        )}
       </Space>
 
-      <Modal
-        title="Dọn dẹp log chấm công cũ"
-        open={cleanupOpen}
-        onCancel={() => setCleanupOpen(false)}
-        confirmLoading={cleanupMutation.isPending}
-        okText="Xoá vĩnh viễn"
-        okButtonProps={{ danger: true, disabled: !cleanupDate }}
-        onOk={() => {
-          if (!cleanupDate) return;
-          const olderThan = cleanupDate.format('YYYY-MM-DD');
-          Modal.confirm({
-            title: 'Xác nhận lần cuối',
-            content: (
-              <>
-                Xoá <Text strong>vĩnh viễn</Text> toàn bộ log chấm công trước ngày{' '}
-                <Text strong>{cleanupDate.format('DD/MM/YYYY')}</Text>? Thao tác này{' '}
-                <Text strong type="danger">
-                  không thể hoàn tác
-                </Text>
-                .
-              </>
-            ),
-            okText: 'Tôi hiểu, xoá luôn',
-            okButtonProps: { danger: true },
-            cancelText: 'Huỷ',
-            onOk: async () => {
-              try {
-                const res = await cleanupMutation.mutateAsync(olderThan);
-                message.success(`Đã xoá vĩnh viễn ${res.deleted} dòng log cũ hơn ${res.olderThan}.`);
-                setCleanupOpen(false);
-              } catch (err: any) {
-                message.error(
-                  `Dọn dẹp thất bại: ${err?.response?.data?.message || err?.message || 'Lỗi không xác định'}`,
-                );
-              }
-            },
-          });
-        }}
-      >
-        <Space direction="vertical" style={{ width: '100%' }}>
-          <Text>
-            Xoá vĩnh viễn mọi log chấm công có thời gian <Text strong>trước</Text> ngày chọn bên
-            dưới. Dùng khi bảng log đã tích luỹ quá lâu, chiếm nhiều dung lượng DB.
-          </Text>
-          <Text type="danger">⚠️ Không thể hoàn tác - hãy chắc chắn trước khi xoá.</Text>
-          <DatePicker
-            style={{ width: '100%' }}
-            value={cleanupDate}
-            onChange={setCleanupDate}
-            format="DD/MM/YYYY"
-            placeholder="Xoá log trước ngày..."
-          />
-        </Space>
-      </Modal>
-
       <Table
-        rowKey="id"
+        // ⚠️ Không dùng thẳng `${r.userId}_${r.date}` - nhiều device user
+        // CHƯA MAP đều có userId=null, nếu cùng ngày sẽ ra key trùng
+        // (vd "null_2026-08-25") -> React cảnh báo duplicate key, dòng có
+        // thể bị mất/nhân đôi khi render. Dùng deviceUserId (luôn có, kể cả
+        // chưa map) làm phần phân biệt cho nhánh chưa map - giống pattern
+        // đã dùng ở AttendanceMonthlyTab.tsx (rowKey `u-${id}` / `d-${deviceUserId}`).
+        rowKey={(r: AttendanceSummaryRow) =>
+          r.isMapped ? `u-${r.userId}_${r.date}` : `d-${r.deviceUserId}_${r.date}`
+        }
         loading={isLoading}
         columns={columns}
         dataSource={data?.data || []}

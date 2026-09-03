@@ -102,8 +102,7 @@ export default function AttendanceLogsTab() {
       <Space wrap style={{ marginBottom: 12 }}>
         <Select
           allowClear
-          showSearch
-          optionFilterProp="label"
+          showSearch={{ optionFilterProp: 'label' }}
           placeholder="Lọc theo nhân viên"
           style={{ width: 220 }}
           value={userId}
