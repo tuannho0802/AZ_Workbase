@@ -18,6 +18,7 @@ import { ZkDeviceModule } from './modules/zk-device/zk-device.module';
 import { AttendanceExportModule } from './modules/attendance-export/attendance-export.module';
 import { MediaSourcesModule } from './modules/media-sources/media-sources.module';
 import { LinkGroupsModule } from './modules/link-groups/link-groups.module';
+import { ReportsModule } from './modules/reports/reports.module';
 import { KeepAliveController } from './keep-alive/keep-alive.controller';
 @Module({ 
   imports: [
@@ -61,6 +62,7 @@ import { KeepAliveController } from './keep-alive/keep-alive.controller';
     AttendanceExportModule,
     MediaSourcesModule,
     LinkGroupsModule,
+    ReportsModule,
     ServeStaticModule.forRoot({
       rootPath: join(process.cwd(), 'public'),
       serveRoot: '/',
