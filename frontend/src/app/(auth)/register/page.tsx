@@ -9,8 +9,18 @@ import Link from 'next/link';
 import { authApi } from '@/lib/api/auth.api';
 import { departmentsApi } from '@/lib/api/departments.api';
 import { getApiErrorMessage } from '@/lib/utils/error-message.util';
+import { TurnstileWidget } from '@/components/auth/TurnstileWidget';
 
-const { Title, Paragraph } = Typography;
+const { Title, Paragraph, Text } = Typography;
+
+// Site key CÔNG KHAI (khác secret key ở BE, an toàn khi lộ ra Frontend - đây
+// là cách Cloudflare Turnstile hoạt động, giống reCAPTCHA site key). Nếu
+// chưa cấu hình (vd môi trường dev chưa có key thật từ Cloudflare Dashboard),
+// component TurnstileWidget không render - form gửi kèm 1 token giả cố định
+// để không chặn hẳn luồng dev local; BE tự "PASS" xác minh khi thiếu
+// TURNSTILE_SECRET_KEY (xem TurnstileService) nên 2 bên khớp nhau.
+const TURNSTILE_SITE_KEY = process.env.NEXT_PUBLIC_TURNSTILE_SITE_KEY;
+const DEV_BYPASS_TOKEN = 'local-dev-bypass-not-verified';
 
 interface RegisterFormValues {
   name: string;
@@ -19,10 +29,14 @@ interface RegisterFormValues {
   confirmPassword: string;
   phone?: string;
   departmentId?: number;
+  // Honeypot - KHÔNG hiển thị cho người dùng, field ẩn hoàn toàn (xem JSX
+  // bên dưới). Người dùng thật không bao giờ chạm tới field này.
+  website?: string;
 }
 
 export default function RegisterPage() {
   const [loading, setLoading] = useState(false);
+  const [turnstileToken, setTurnstileToken] = useState('');
   const router = useRouter();
   const { message } = App.useApp();
   const [form] = Form.useForm<RegisterFormValues>();
@@ -36,6 +50,14 @@ export default function RegisterPage() {
   });
 
   const onFinish = async (values: RegisterFormValues) => {
+    // Turnstile bắt buộc phải có token (thật hoặc bypass dev) trước khi gửi
+    // - chặn sớm ở Frontend để không tốn round-trip nếu người dùng bỏ qua
+    // widget (vd JS bị chặn 1 phần). BE vẫn tự kiểm tra lại, đây chỉ là UX.
+    if (TURNSTILE_SITE_KEY && !turnstileToken) {
+      message.error('Vui lòng hoàn tất xác minh "Tôi không phải rô bốt" trước khi đăng ký.');
+      return;
+    }
+
     setLoading(true);
     try {
       const res = await authApi.register({
@@ -44,6 +66,8 @@ export default function RegisterPage() {
         password: values.password,
         phone: values.phone || undefined,
         departmentId: values.departmentId,
+        turnstileToken: TURNSTILE_SITE_KEY ? turnstileToken : DEV_BYPASS_TOKEN,
+        website: values.website, // honeypot - luôn rỗng với người dùng thật
       });
       // Không có token trả về (đúng thiết kế BE - tài khoản đang chờ duyệt),
       // nên chuyển sang trang thông báo trạng thái thay vì vào thẳng hệ thống.
@@ -69,6 +93,21 @@ export default function RegisterPage() {
         </div>
 
         <Form form={form} name="register" onFinish={onFinish} autoComplete="off" layout="vertical">
+          {/* ── Honeypot chống bot: ẩn hoàn toàn khỏi người dùng thật (kể cả
+              screen reader qua aria-hidden), nhưng bot điền form tự động
+              (thường quét toàn bộ input trong DOM, không phân biệt hiển thị
+              hay không) vẫn "thấy" và điền vào. Có giá trị = chắc chắn bot,
+              xem AuthService.register(). Đặt tên field như thật ("website")
+              để bot không đoán được đây là bẫy. */}
+          <div
+            aria-hidden="true"
+            style={{ position: 'absolute', left: '-9999px', top: '-9999px', height: 0, width: 0, overflow: 'hidden' }}
+          >
+            <Form.Item name="website" label="Website">
+              <Input tabIndex={-1} autoComplete="off" />
+            </Form.Item>
+          </div>
+
           <Form.Item
             label="Họ và tên"
             name="name"
@@ -149,6 +188,24 @@ export default function RegisterPage() {
           >
             <Input.Password prefix={<LockOutlined />} placeholder="Nhập lại mật khẩu" size="large" />
           </Form.Item>
+
+          {TURNSTILE_SITE_KEY ? (
+            <Form.Item style={{ marginBottom: 12 }}>
+              <TurnstileWidget
+                siteKey={TURNSTILE_SITE_KEY}
+                onVerify={setTurnstileToken}
+                onExpire={() => setTurnstileToken('')}
+                onError={() => setTurnstileToken('')}
+              />
+            </Form.Item>
+          ) : (
+            <Form.Item style={{ marginBottom: 12 }}>
+              <Text type="warning" style={{ fontSize: 12 }}>
+                ⚠️ Turnstile site key chưa được cấu hình (NEXT_PUBLIC_TURNSTILE_SITE_KEY) - bỏ qua
+                bước xác minh, chỉ nên xảy ra ở môi trường dev.
+              </Text>
+            </Form.Item>
+          )}
 
           <Form.Item style={{ marginBottom: 12 }}>
             <Button type="primary" htmlType="submit" loading={loading} size="large" block>
