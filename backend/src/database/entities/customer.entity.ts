@@ -13,6 +13,9 @@ import { CustomerNote } from './customer-note.entity';
 @Index(['assignedDate'])
 @Index(['createdAt'])
   @Index(['marketingUserId'])
+@Index(['closedDate'])
+@Index(['departmentId'])
+@Index(['salesUserId'])
 export class Customer {
   @PrimaryGeneratedColumn()
   id: number;

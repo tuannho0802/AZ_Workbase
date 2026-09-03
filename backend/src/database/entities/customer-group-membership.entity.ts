@@ -43,6 +43,7 @@ export class CustomerGroupMembership {
     joined: boolean;
 
     @Column({ name: 'joined_at', type: 'timestamp', nullable: true })
+    @Index()
     joinedAt: Date | null;
 
     // Nhân viên nào là người TOGGLE trạng thái này gần nhất - phục vụ truy vết

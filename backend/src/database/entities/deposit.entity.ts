@@ -4,6 +4,7 @@ import { User } from './user.entity';
 import { DecimalTransformer } from '../transformers/decimal.transformer';
 
 @Entity('deposits')
+  @Index(['depositDate'])
 export class Deposit {
   @PrimaryGeneratedColumn()
   id: number;
