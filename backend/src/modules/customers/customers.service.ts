@@ -20,6 +20,7 @@ import {
   CustomerAssignment,
   AssignmentStatus,
 } from '../../database/entities/customer-assignment.entity';
+import { CustomerGroupMembership } from '../../database/entities/customer-group-membership.entity';
 import { CreateCustomerNoteDto } from './dto/create-customer-note.dto';
 import { CreateDepositDto } from './dto/create-deposit.dto';
 import {
@@ -41,6 +42,8 @@ export class CustomersService {
     private readonly depositsRepository: Repository<Deposit>,
     @InjectRepository(CustomerAssignment)
     private readonly assignmentRepository: Repository<CustomerAssignment>,
+    @InjectRepository(CustomerGroupMembership)
+    private readonly customerGroupMembershipRepository: Repository<CustomerGroupMembership>,
     private readonly auditService: AuditService,
   ) {}
 
@@ -182,6 +185,7 @@ export class CustomersService {
       | 'departmentId'
       | 'dateFrom'
       | 'dateTo'
+      | 'joinedGroups'
     >,
   ) {
     const {
@@ -192,6 +196,7 @@ export class CustomersService {
       departmentId,
       dateFrom,
       dateTo,
+      joinedGroups,
     } = filters;
 
     // Search
@@ -224,6 +229,23 @@ export class CustomersService {
     if (dateTo) {
       queryBuilder.andWhere('customer.createdAt <= :dateTo', { dateTo });
     }
+
+    // "Đã joined nhóm liên kết" - dùng EXISTS/NOT EXISTS thay vì JOIN để
+    // không nhân bản dòng customer (1 customer có thể join nhiều nhóm cùng
+    // lúc - nếu JOIN thẳng vào customer_group_memberships, 1 customer sẽ
+    // xuất hiện lặp lại N lần theo N nhóm đã join, làm sai cả phân trang
+    // lẫn COUNT). EXISTS chỉ trả về true/false, không nhân dòng.
+    if (joinedGroups === 'joined') {
+      queryBuilder.andWhere(
+        'EXISTS (SELECT 1 FROM customer_group_memberships cgm ' +
+        'WHERE cgm.customer_id = customer.id AND cgm.joined = true)',
+      );
+    } else if (joinedGroups === 'not_joined') {
+      queryBuilder.andWhere(
+        'NOT EXISTS (SELECT 1 FROM customer_group_memberships cgm ' +
+        'WHERE cgm.customer_id = customer.id AND cgm.joined = true)',
+      );
+    }
   }
 
   async findAll(filters: CustomerFiltersDto, userId: number, userRole: string) {
@@ -239,6 +261,7 @@ export class CustomersService {
       departmentId,
       dateFrom,
       dateTo,
+      joinedGroups,
     } = filters;
 
     // ===== Query chính: lấy dữ liệu (có joins + subquery deposit) =====
@@ -268,6 +291,7 @@ export class CustomersService {
       departmentId,
       dateFrom,
       dateTo,
+      joinedGroups,
     });
 
     // Calculate and alias the deposit sum based on date range (or default 30 days)
@@ -341,6 +365,7 @@ export class CustomersService {
       departmentId,
       dateFrom,
       dateTo,
+      joinedGroups,
     });
 
     // Chạy song song 2 query độc lập thay vì tuần tự -> giảm tổng thời gian chờ
@@ -382,6 +407,29 @@ export class CustomersService {
         (customer as any).activeAssignees = assignmentsForCustomer.map(
           (a) => a.assignedTo,
         );
+      });
+
+      // "Đã joined nhóm" cho cột hiển thị trên bảng danh sách - 1 query
+      // GROUP BY duy nhất cho CẢ TRANG (không phải N query/khách hàng),
+      // cùng nguyên tắc với activeAssignees ở trên.
+      const joinedCountsRaw = await this.customerGroupMembershipRepository
+        .createQueryBuilder('cgm')
+        .select('cgm.customer_id', 'customerId')
+        .addSelect('COUNT(*)', 'joinedCount')
+        .where('cgm.customer_id IN (:...ids)', {
+          ids: entities.map((e) => e.id),
+        })
+        .andWhere('cgm.joined = true')
+        .groupBy('cgm.customer_id')
+        .getRawMany();
+
+      const joinedCountByCustomerId = new Map(
+        joinedCountsRaw.map((r) => [Number(r.customerId), Number(r.joinedCount)]),
+      );
+
+      entities.forEach((customer) => {
+        (customer as any).joinedGroupsCount =
+          joinedCountByCustomerId.get(customer.id) ?? 0;
       });
     }
 

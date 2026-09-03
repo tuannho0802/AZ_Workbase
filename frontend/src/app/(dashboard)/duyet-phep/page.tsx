@@ -195,7 +195,7 @@ export default function ApprovalPage() {
       ]);
       setPendingRequests(pending);
       setHistoryRequests(history);
-    } catch (err) {
+    } catch {
       messageApi.error('Không thể tải danh sách đơn nghỉ phép');
     } finally {
       setLoading(false);

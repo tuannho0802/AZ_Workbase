@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import {
-  Table, Button, Modal, Form, Select, DatePicker, Input, Tag, Space, App, Card, Divider, Typography
+  Table, Button, Modal, Form, Select, DatePicker, Input, Tag, App, Card, Divider, Typography
 } from 'antd';
 import { PlusOutlined, CloseCircleOutlined, CalendarOutlined, FileTextOutlined, UserOutlined } from '@ant-design/icons';
 import { leaveRequestsApi, LeaveRequest } from '@/lib/api/leave-requests.api';
@@ -121,7 +121,7 @@ export default function LeaveRequestsPage() {
     try {
       const data = await leaveRequestsApi.getAll();
       setRequests(data);
-    } catch (err) {
+    } catch {
       message.error('Không thể tải danh sách đơn nghỉ phép');
     } finally {
       setLoading(false);
@@ -158,7 +158,7 @@ export default function LeaveRequestsPage() {
           await leaveRequestsApi.cancel(id);
           message.success('Đã hủy đơn');
           fetchRequests();
-        } catch (err) {
+        } catch {
           message.error('Hủy đơn thất bại');
         }
       }

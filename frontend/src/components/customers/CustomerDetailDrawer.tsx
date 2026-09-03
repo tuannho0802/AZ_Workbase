@@ -53,7 +53,7 @@ export const CustomerDetailDrawer = ({ open, customerId, onClose, onUpdate }: Cu
     try {
       const data = await customersApi.getCustomer(customerId);
       setCustomer(data);
-    } catch (error) {
+    } catch {
       message.error('Không thể lấy thông tin khách hàng');
       onClose();
     } finally {

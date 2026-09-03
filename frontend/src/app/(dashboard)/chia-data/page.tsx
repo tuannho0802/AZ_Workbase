@@ -1,10 +1,10 @@
 'use client';
 
-import { useState, useCallback, useEffect } from 'react';
+import { useState, useEffect } from 'react';
 import {
   Table, Select, Button, Modal, Tag, Space, Input,
   Typography, Row, Col, Statistic, Divider, Tabs,
-  Avatar, Tooltip, Badge, Form, App, Card, Pagination, Popconfirm
+  Avatar, Tooltip, Badge, App, Card, Pagination, Popconfirm
 } from 'antd';
 import {
   UserAddOutlined, ReloadOutlined, SearchOutlined,
@@ -19,7 +19,7 @@ import { CustomerDetailDrawer } from '@/components/customers/CustomerDetailDrawe
 import { useMediaSources } from '@/lib/hooks/useMediaSources';
 import { SourceTag } from '@/components/customers/SourceTag';
 
-const { Title, Text } = Typography;
+const { Text } = Typography;
 
 // ── TYPES ──────────────────────────────────────────────
 interface Customer {
@@ -726,7 +726,7 @@ export default function ChiaDataPage() {
                         ✅ Không còn khách chưa assign
                       </div>
                     ) : (
-                      (unassignedData?.customers ?? []).map((record: Customer, index: number) => (
+                      (unassignedData?.customers ?? []).map((record: Customer) => (
                         <UnassignedMobileCard
                           key={record.id}
                           record={record}

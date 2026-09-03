@@ -71,4 +71,13 @@ export class CustomerFiltersDto {
   @Type(() => Number)
   @IsInt()
   creatorId?: number;
+
+  @ApiPropertyOptional({
+    example: 'joined',
+    enum: ['joined', 'not_joined'],
+    description: 'Lọc theo trạng thái "đã join ít nhất 1 nhóm liên kết" (Zalo/FB/Threads...). joined = đã join >=1 nhóm, not_joined = chưa join nhóm nào.',
+  })
+  @IsOptional()
+  @IsEnum(['joined', 'not_joined'])
+  joinedGroups?: 'joined' | 'not_joined';
 }

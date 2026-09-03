@@ -15,7 +15,6 @@ import { useAuthStore } from '@/lib/stores/auth.store';
 import { getVisibleNavItems, NAV_ITEMS } from '@/lib/nav-config';
 import { useSidebarBadgeCounts } from '@/lib/hooks/useSidebarBadgeCounts';
 import { CountBadge } from '@/components/common/CountBadge';
-import Cookies from 'js-cookie';
 import dayjs from 'dayjs';
 import 'dayjs/locale/vi';
 import Image from 'next/image';

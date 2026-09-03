@@ -15,7 +15,6 @@ import { useRouter } from 'next/navigation';
 import { usersApi } from '@/lib/api/users.api';
 import { useDepartments } from '@/lib/hooks/useDepartments';
 import { PendingApprovalsTab } from './PendingApprovalsTab';
-import dayjs from 'dayjs';
 
 const { Text } = Typography;
 
@@ -99,7 +98,7 @@ export default function UsersPage() {
   const [pageSize, setPageSize] = useState(20);
   const [isMobile, setIsMobile] = useState(false);
 
-  const { message, modal } = App.useApp();
+  const { message } = App.useApp();
 
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [isResetOpen, setIsResetOpen] = useState(false);

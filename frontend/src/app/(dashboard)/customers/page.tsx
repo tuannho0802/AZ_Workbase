@@ -1,14 +1,13 @@
 'use client';
 
 import { useEffect, useState, useMemo, Suspense } from 'react';
-import { Table, Card, Tag, App, Button, Space, Row, Col, Typography, Tooltip, Input, Select, DatePicker, Divider, Collapse, Pagination, Grid, Popconfirm } from 'antd';
-import { UploadOutlined, UsergroupAddOutlined, ReloadOutlined, PlusOutlined, SearchOutlined, SortAscendingOutlined, SortDescendingOutlined, InfoCircleOutlined, DeleteOutlined } from '@ant-design/icons';
+import { Table, Card, Tag, App, Button, Space, Typography, Tooltip, Divider, Collapse, Pagination, Grid, Popconfirm } from 'antd';
+import { UploadOutlined, UsergroupAddOutlined, ReloadOutlined, PlusOutlined, InfoCircleOutlined, DeleteOutlined } from '@ant-design/icons';
 import type { ColumnsType, TablePaginationConfig } from 'antd/es/table';
 import type { FilterValue, SorterResult } from 'antd/es/table/interface';
 import { useSearchParams, useRouter, usePathname } from 'next/navigation';
 import { customersApi } from '@/lib/api/customers.api';
 import { Customer, CustomerStats } from '@/lib/types/customer.types';
-import { useQueryClient } from '@tanstack/react-query';
 import { useAuthStore } from '@/lib/stores/auth.store';
 import { ImportExcelModal } from '@/components/customers/ImportExcelModal';
 import { BulkAssignModal } from '@/components/customers/BulkAssignModal';
@@ -159,7 +158,6 @@ const { useBreakpoint } = Grid;
 function CustomersPageContent() {
   const screens = useBreakpoint();
   const isLaptop = !!(screens.md && !screens.xl); // 768px - 1279px
-  const isDesktop = !!screens.xl; // >= 1280px
 
   const [isMobile, setIsMobile] = useState(false);
   useEffect(() => {
@@ -172,7 +170,6 @@ function CustomersPageContent() {
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(20);
   const { message } = App.useApp();
-  const queryClient = useQueryClient();
   
   const { user } = useAuthStore();
   const [selectedRowKeys, setSelectedRowKeys] = useState<React.Key[]>([]);

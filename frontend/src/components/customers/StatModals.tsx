@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useMemo } from 'react';
 import { Modal, Table, Tabs, Tag, Typography, Tooltip, Divider, DatePicker, Space, Statistic } from 'antd';
 import { Customer, Deposit } from '@/lib/types/customer.types';
 import dayjs from 'dayjs';

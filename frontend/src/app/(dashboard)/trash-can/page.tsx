@@ -2,11 +2,10 @@
 
 import { useState, useEffect, useCallback } from 'react';
 import {
-  Table, Card, Button, Space, Tag, App, Popconfirm, Input, Typography, Pagination, Row, Col, Badge, Grid, Tooltip
+  Table, Card, Button, Space, Tag, App, Popconfirm, Input, Typography, Pagination, Badge, Grid, Tooltip
 } from 'antd';
 import {
-  UndoOutlined, DeleteOutlined, ReloadOutlined, SearchOutlined,
-  UserOutlined, PhoneOutlined, CalendarOutlined, TeamOutlined
+  UndoOutlined, DeleteOutlined, ReloadOutlined, SearchOutlined
 } from '@ant-design/icons';
 import { useAuthStore } from '@/lib/stores/auth.store';
 import { useRouter } from 'next/navigation';
@@ -134,7 +133,7 @@ export default function TrashCanPage() {
       });
       setData(res.data || []);
       setTotal(res.total || 0);
-    } catch (error) {
+    } catch {
       message.error('Lấy danh sách thùng rác thất bại');
     } finally {
       setLoading(false);
