@@ -1,10 +1,12 @@
 'use client';
 
-import { Table, Card, Statistic, Empty, Typography, Alert } from 'antd';
+import { Card, Statistic, Empty, Typography, Alert } from 'antd';
 import { DollarOutlined } from '@ant-design/icons';
 import { useRevenueReport } from '@/lib/hooks/useReports';
 import { ReportQuery, RevenuePersonalRow, RevenueDepartmentRow } from '@/lib/types/reports.types';
 import { getApiErrorMessage } from '@/lib/utils/error-message.util';
+import { ReportSection } from './ReportSection';
+import { CHART_COLORS } from './ReportChart';
 import PeriodSelector from './PeriodSelector';
 
 const { Title } = Typography;
@@ -13,6 +15,18 @@ const { Title } = Typography;
  * kiểu hiển thị tiền trong toàn app, không tạo thêm quy ước riêng ở đây. */
 const formatUsd = (value: number) =>
   new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(value);
+
+/** Bản RÚT GỌN cho nhãn trục biểu đồ (vd "$1.2K") - khác formatUsd() dùng ở
+ * bảng/tooltip (cần đủ số chi tiết), trục cần ngắn để không đè nhãn lên nhau. */
+const formatUsdCompact = (value: number) =>
+  new Intl.NumberFormat('en-US', {
+    style: 'currency',
+    currency: 'USD',
+    notation: 'compact',
+    maximumFractionDigits: 1,
+  }).format(value);
+
+const REVENUE_SERIES = [{ key: 'amount', label: 'Doanh thu', color: CHART_COLORS[0] }];
 
 interface Props {
   query: ReportQuery;
@@ -78,29 +92,34 @@ export default function RevenueReportTab({ query, onQueryChange }: Props) {
       )}
 
       <Title level={5}>Theo cá nhân</Title>
-      <Table
-        rowKey="userId"
-        loading={isLoading}
-        columns={personalColumns}
-        dataSource={data?.personal || []}
-        pagination={false}
-        size="small"
-        style={{ marginBottom: 24 }}
-        locale={{ emptyText: <Empty description="Không có doanh thu trong kỳ này" image={Empty.PRESENTED_IMAGE_SIMPLE} /> }}
-      />
+      <div style={{ marginBottom: 24 }}>
+        <ReportSection<RevenuePersonalRow>
+          rowKey="userId"
+          loading={isLoading}
+          columns={personalColumns}
+          data={data?.personal || []}
+          nameKey="userName"
+          series={REVENUE_SERIES}
+          valueFormatter={formatUsd}
+          axisFormatter={formatUsdCompact}
+          emptyText="Không có doanh thu trong kỳ này"
+        />
+      </div>
 
       {/* Theo phòng ban - Employee không có mục này (BE trả null) */}
       {data?.department != null && (
         <>
           <Title level={5}>Theo phòng ban</Title>
-          <Table
+          <ReportSection<RevenueDepartmentRow>
             rowKey="departmentId"
             loading={isLoading}
             columns={departmentColumns}
-            dataSource={data.department}
-            pagination={false}
-            size="small"
-            locale={{ emptyText: <Empty description="Không có doanh thu trong kỳ này" image={Empty.PRESENTED_IMAGE_SIMPLE} /> }}
+            data={data.department}
+            nameKey="departmentName"
+            series={REVENUE_SERIES}
+            valueFormatter={formatUsd}
+            axisFormatter={formatUsdCompact}
+            emptyText="Không có doanh thu trong kỳ này"
           />
         </>
       )}

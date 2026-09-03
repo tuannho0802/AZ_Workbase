@@ -1,13 +1,25 @@
 'use client';
 
-import { Table, Card, Statistic, Row, Col, Empty, Typography, Alert } from 'antd';
+import { Card, Statistic, Row, Col, Typography, Alert } from 'antd';
 import { TeamOutlined, CheckCircleOutlined, UsergroupAddOutlined } from '@ant-design/icons';
 import { useCustomerReport } from '@/lib/hooks/useReports';
 import { ReportQuery, CustomerPersonalRow, CustomerDepartmentRow } from '@/lib/types/reports.types';
 import { getApiErrorMessage } from '@/lib/utils/error-message.util';
+import { ReportSection } from './ReportSection';
+import { CHART_COLORS } from './ReportChart';
 import PeriodSelector from './PeriodSelector';
 
 const { Title } = Typography;
+
+const formatCount = (value: number) => value.toLocaleString('vi-VN');
+
+// 3 chỉ số cùng lúc (khác Doanh thu chỉ có 1 series) - Cột dọc/ngang vẽ
+// song song cả 3, riêng Tròn phải chọn 1 trong 3 (xem ReportSection.tsx).
+const CUSTOMER_SERIES = [
+  { key: 'totalCustomers', label: 'Tổng data', color: CHART_COLORS[0] },
+  { key: 'closedCustomers', label: 'Đã chốt', color: CHART_COLORS[1] },
+  { key: 'joinedGroupCustomers', label: 'Đã join nhóm', color: CHART_COLORS[2] },
+];
 
 interface Props {
   query: ReportQuery;
@@ -113,29 +125,32 @@ export default function CustomerReportTab({ query, onQueryChange }: Props) {
       )}
 
       <Title level={5}>Theo cá nhân</Title>
-      <Table
-        rowKey="userId"
-        loading={isLoading}
-        columns={personalColumns}
-        dataSource={data?.personal || []}
-        pagination={false}
-        size="small"
-        style={{ marginBottom: 24 }}
-        locale={{ emptyText: <Empty description="Không có data trong kỳ này" image={Empty.PRESENTED_IMAGE_SIMPLE} /> }}
-      />
+      <div style={{ marginBottom: 24 }}>
+        <ReportSection<CustomerPersonalRow>
+          rowKey="userId"
+          loading={isLoading}
+          columns={personalColumns}
+          data={data?.personal || []}
+          nameKey="userName"
+          series={CUSTOMER_SERIES}
+          valueFormatter={formatCount}
+          emptyText="Không có data trong kỳ này"
+        />
+      </div>
 
       {/* Theo phòng ban - Employee không có mục này (BE trả null) */}
       {data?.department != null && (
         <>
           <Title level={5}>Theo phòng ban</Title>
-          <Table
+          <ReportSection<CustomerDepartmentRow>
             rowKey="departmentId"
             loading={isLoading}
             columns={departmentColumns}
-            dataSource={data.department}
-            pagination={false}
-            size="small"
-            locale={{ emptyText: <Empty description="Không có data trong kỳ này" image={Empty.PRESENTED_IMAGE_SIMPLE} /> }}
+            data={data.department}
+            nameKey="departmentName"
+            series={CUSTOMER_SERIES}
+            valueFormatter={formatCount}
+            emptyText="Không có data trong kỳ này"
           />
         </>
       )}
