@@ -1,4 +1,4 @@
-import { Injectable, UnauthorizedException, ForbiddenException, ConflictException, BadRequestException, Logger } from '@nestjs/common';
+import { Injectable, UnauthorizedException, ForbiddenException, ConflictException, Logger } from '@nestjs/common';
 
 import { JwtService } from '@nestjs/jwt';
 import { ConfigService } from '@nestjs/config';
@@ -8,7 +8,6 @@ import { LoginDto } from './dto/login.dto';
 import { RegisterDto } from './dto/register.dto';
 import { AuditService } from '../audit/audit.service';
 import { ApprovalStatus } from '../../common/enums/approval-status.enum';
-import { TurnstileService } from './turnstile.service';
 
 @Injectable()
 export class AuthService {
@@ -19,7 +18,6 @@ export class AuthService {
     private jwtService: JwtService,
     private configService: ConfigService,
     private auditService: AuditService,
-    private turnstileService: TurnstileService,
   ) {}
 
   private async generateTokens(userId: number, email: string, role: string) {
@@ -116,24 +114,34 @@ export class AuthService {
    * KHÔNG trả về access_token/refresh_token (khác login()) - tài khoản chưa
    * được duyệt thì chưa nên đăng nhập được, kể cả ngay sau khi đăng ký.
    *
-   * ── 3 lớp chống bot spam (cộng dồn, không thay thế nhau) ──
-   * 1. Rate-limit theo IP - chặn ở tầng Guard/Controller (`ThrottlerGuard` +
+   * ── Chống bot spam đăng ký ──
+   * 1. Vercel BotID (thay cho Cloudflare Turnstile cũ) - chặn ở TẦNG PROXY,
+   *    TRƯỚC KHI request chạm tới backend này. Frontend gọi route nội bộ
+   *    `POST /api/auth/register` trên chính domain Next.js (Vercel), route
+   *    đó gọi `checkBotId()` (package `botid`) rồi mới forward sang backend
+   *    NestJS này nếu là người thật - xem
+   *    `frontend/src/app/api/auth/register/route.ts` +
+   *    `frontend/src/app/layout.tsx` (`<BotIdClient>`) +
+   *    `frontend/next.config.js` (`withBotId`). Backend KHÔNG tự verify lại
+   *    BotID (không có cách nào gọi `checkBotId()` từ ngoài ngữ cảnh
+   *    server Next.js) - đây là khác biệt quan trọng so với Turnstile cũ
+   *    (BE tự gọi siteverify, verify được cả khi ai đó gọi thẳng backend).
+   *    ⚠️ Vì backend này có domain public riêng (xem `backend/vercel.json`),
+   *    về lý thuyết vẫn có thể bị gọi thẳng bỏ qua route BotID ở Frontend -
+   *    2 lớp dưới đây (rate-limit + honeypot) là lưới chặn còn lại cho
+   *    trường hợp đó, không phụ thuộc BotID.
+   * 2. Rate-limit theo IP - chặn ở tầng Guard/Controller (`ThrottlerGuard` +
    *    `@Throttle` trong `auth.controller.ts`), KHÔNG chạy tới đây nếu đã bị
    *    chặn - không cần xử lý gì thêm trong service này.
-   * 2. Honeypot (`dto.website`) - kiểm tra ĐẦU TIÊN trong service vì rẻ nhất
+   * 3. Honeypot (`dto.website`) - kiểm tra ĐẦU TIÊN trong service vì rẻ nhất
    *    (không gọi mạng, không đụng DB). Nếu có giá trị -> chắc chắn là bot
    *    (form thật ẩn field này, người dùng thật không bao giờ điền được) ->
    *    trả về Y HỆT response thành công nhưng KHÔNG tạo tài khoản thật, để
    *    bot không biết đã bị phát hiện (tránh bot thích nghi/thử lại field
    *    khác).
-   * 3. Cloudflare Turnstile - kiểm tra SAU honeypot (honeypot đã lọc được 1
-   *    phần bot rẻ nhất trước khi tốn round-trip gọi Cloudflare). Nếu token
-   *    không hợp lệ -> từ chối thật (400), không giả vờ thành công vì đây là
-   *    lỗi có thể xảy ra với người dùng thật (token hết hạn, JS bị chặn...)
-   *    - cần cho họ biết để thử lại, khác hẳn honeypot (chắc chắn 100% là bot).
    */
   async register(dto: RegisterDto, clientIp?: string) {
-    // 1. Honeypot: bot điền -> giả vờ thành công, không làm gì thêm.
+    // Honeypot: bot điền -> giả vờ thành công, không làm gì thêm.
     if (dto.website && dto.website.trim().length > 0) {
       this.logger.warn(
         `[Auth] Honeypot triggered - nghi ngờ bot đăng ký với email "${dto.email}" từ IP ${clientIp ?? 'unknown'}. Bỏ qua, không tạo tài khoản.`,
@@ -142,16 +150,6 @@ export class AuthService {
         message: 'Đăng ký thành công. Tài khoản của bạn đang chờ Admin/Assistant duyệt trước khi có thể đăng nhập.',
         userId: 0,
       };
-    }
-
-    // 2. Cloudflare Turnstile: token không hợp lệ -> từ chối thật, cho người
-    // dùng biết để thử lại (khác honeypot, không giả vờ thành công ở đây vì
-    // đây là case có thể xảy ra với người dùng thật, không chỉ bot).
-    const isHuman = await this.turnstileService.verify(dto.turnstileToken, clientIp);
-    if (!isHuman) {
-      throw new BadRequestException(
-        'Xác minh chống bot thất bại. Vui lòng tải lại trang và thử đăng ký lại.',
-      );
     }
 
     const existing = await this.usersService.findByEmail(dto.email);

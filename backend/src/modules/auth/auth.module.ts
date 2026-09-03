@@ -7,7 +7,6 @@ import { AuthService } from './auth.service';
 import { AuthController } from './auth.controller';
 import { UsersModule } from '../users/users.module';
 import { JwtStrategy } from './strategies/jwt.strategy';
-import { TurnstileService } from './turnstile.service';
 
 @Module({
   imports: [
@@ -40,7 +39,7 @@ import { TurnstileService } from './turnstile.service';
     ]),
   ],
   controllers: [AuthController],
-  providers: [AuthService, JwtStrategy, TurnstileService],
+  providers: [AuthService, JwtStrategy],
   exports: [AuthService],
 })
 export class AuthModule { }

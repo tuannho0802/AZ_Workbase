@@ -11,10 +11,10 @@ export interface RegisterDto {
   password: string;
   phone?: string;
   departmentId?: number;
-  // ── Chống bot spam đăng ký - xem register/page.tsx + TurnstileWidget.tsx ──
-  /** Token từ widget Cloudflare Turnstile - BE bắt buộc phải có (xem TurnstileService). */
-  turnstileToken: string;
-  /** Honeypot - PHẢI luôn rỗng khi gửi từ người dùng thật, field bị ẩn hoàn toàn khỏi UI. */
+  // Honeypot - PHẢI luôn rỗng khi gửi từ người dùng thật, field bị ẩn hoàn toàn khỏi UI.
+  // (Chống bot spam đăng ký - lớp "human challenge" giờ là Vercel BotID ở
+  // route `/api/auth/register`, không còn field token nào cần gửi kèm từ
+  // form nữa - khác Cloudflare Turnstile cũ.)
   website?: string;
 }
 

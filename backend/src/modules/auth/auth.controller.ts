@@ -24,10 +24,10 @@ export class AuthController {
   @Throttle({ default: { limit: 5, ttl: 600_000 } })
   @ApiOperation({
     summary:
-      'Đăng ký tài khoản (công khai, không cần đăng nhập) - tài khoản tạo ra sẽ ở trạng thái CHỜ DUYỆT, cần Admin/Assistant duyệt mới đăng nhập được. Có rate-limit theo IP + yêu cầu xác minh Cloudflare Turnstile + honeypot chống bot.',
+      'Đăng ký tài khoản (công khai, không cần đăng nhập) - tài khoản tạo ra sẽ ở trạng thái CHỜ DUYỆT, cần Admin/Assistant duyệt mới đăng nhập được. Có rate-limit theo IP + honeypot chống bot; Frontend còn có lớp Vercel BotID chặn trước khi request tới được endpoint này.',
   })
   @ApiResponse({ status: 201, description: 'Đăng ký thành công, đang chờ duyệt.' })
-  @ApiResponse({ status: 400, description: 'Xác minh Turnstile thất bại hoặc dữ liệu không hợp lệ.' })
+  @ApiResponse({ status: 400, description: 'Dữ liệu không hợp lệ.' })
   @ApiResponse({ status: 409, description: 'Email đã được đăng ký.' })
   @ApiResponse({ status: 429, description: 'Quá nhiều lần đăng ký từ IP này, vui lòng thử lại sau.' })
   async register(@Body() dto: RegisterDto, @Req() req: any) {

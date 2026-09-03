@@ -1,5 +1,5 @@
 import { Test, TestingModule } from '@nestjs/testing';
-import { ConflictException, ForbiddenException, UnauthorizedException, BadRequestException } from '@nestjs/common';
+import { ConflictException, ForbiddenException, UnauthorizedException } from '@nestjs/common';
 import * as bcrypt from 'bcrypt';
 import { AuthService } from './auth.service';
 import { UsersService } from '../users/users.service';
@@ -7,7 +7,6 @@ import { AuditService } from '../audit/audit.service';
 import { JwtService } from '@nestjs/jwt';
 import { ConfigService } from '@nestjs/config';
 import { ApprovalStatus } from '../../common/enums/approval-status.enum';
-import { TurnstileService } from './turnstile.service';
 
 describe('AuthService - Đăng ký công khai + chặn đăng nhập chưa duyệt', () => {
   let service: AuthService;
@@ -21,14 +20,9 @@ describe('AuthService - Đăng ký công khai + chặn đăng nhập chưa duy�
   const mockJwtService = { sign: jest.fn().mockReturnValue('fake-jwt-token') };
   const mockConfigService = { get: jest.fn().mockReturnValue('fake-secret') };
   const mockAuditService = { logActionAsync: jest.fn() };
-  // Mặc định giả lập Turnstile LUÔN pass - các test không liên quan tới
-  // Turnstile/honeypot không cần quan tâm cơ chế này, tránh phải lặp lại
-  // `turnstileToken` giả ở mọi test case đăng ký cũ.
-  const mockTurnstileService = { verify: jest.fn().mockResolvedValue(true) };
 
   beforeEach(async () => {
     jest.clearAllMocks();
-    mockTurnstileService.verify.mockResolvedValue(true);
 
     const module: TestingModule = await Test.createTestingModule({
       providers: [
@@ -37,7 +31,6 @@ describe('AuthService - Đăng ký công khai + chặn đăng nhập chưa duy�
         { provide: JwtService, useValue: mockJwtService },
         { provide: ConfigService, useValue: mockConfigService },
         { provide: AuditService, useValue: mockAuditService },
-        { provide: TurnstileService, useValue: mockTurnstileService },
       ],
     }).compile();
 
@@ -57,7 +50,6 @@ describe('AuthService - Đăng ký công khai + chặn đăng nhập chưa duy�
           name: 'A',
           email: 'a@example.com',
           password: '123456',
-          turnstileToken: 'valid-token',
         } as any),
       ).rejects.toThrow(ConflictException);
 
@@ -77,7 +69,6 @@ describe('AuthService - Đăng ký công khai + chặn đăng nhập chưa duy�
         name: 'A',
         email: 'a@example.com',
         password: 'MatKhau123',
-        turnstileToken: 'valid-token',
       } as any);
 
       const savedArg = mockUsersService.createPendingRegistration.mock.calls[0][0];
@@ -97,7 +88,6 @@ describe('AuthService - Đăng ký công khai + chặn đăng nhập chưa duy�
         name: 'A',
         email: 'a@example.com',
         password: '123456',
-        turnstileToken: 'valid-token',
       } as any);
 
       expect(result).not.toHaveProperty('access_token');
@@ -111,13 +101,11 @@ describe('AuthService - Đăng ký công khai + chặn đăng nhập chưa duy�
         name: 'Bot Fake',
         email: 'bot@example.com',
         password: '123456',
-        turnstileToken: 'valid-token',
         website: 'http://spam.example.com',
       } as any);
 
       expect(mockUsersService.findByEmail).not.toHaveBeenCalled();
       expect(mockUsersService.createPendingRegistration).not.toHaveBeenCalled();
-      expect(mockTurnstileService.verify).not.toHaveBeenCalled();
       expect(result.message).toMatch(/chờ.*duyệt/i);
     });
 
@@ -133,40 +121,11 @@ describe('AuthService - Đăng ký công khai + chặn đăng nhập chưa duy�
         name: 'Real User',
         email: 'real-user@example.com',
         password: '123456',
-        turnstileToken: 'valid-token',
         website: '   ',
       } as any);
 
       expect(mockUsersService.createPendingRegistration).toHaveBeenCalled();
       expect(result.userId).toBe(6);
-    });
-
-    it('Turnstile xác minh thất bại -> ném BadRequestException, KHÔNG tạo tài khoản', async () => {
-      mockTurnstileService.verify.mockResolvedValue(false);
-      mockUsersService.findByEmail.mockResolvedValue(null);
-
-      await expect(
-        service.register({
-          name: 'A',
-          email: 'a@example.com',
-          password: '123456',
-          turnstileToken: 'invalid-token',
-        } as any),
-      ).rejects.toThrow(BadRequestException);
-
-      expect(mockUsersService.createPendingRegistration).not.toHaveBeenCalled();
-    });
-
-    it('Turnstile được gọi kèm đúng token và IP truyền vào', async () => {
-      mockUsersService.findByEmail.mockResolvedValue(null);
-      mockUsersService.createPendingRegistration.mockResolvedValue({ id: 5, email: 'a@example.com', name: 'A' });
-
-      await service.register(
-        { name: 'A', email: 'a@example.com', password: '123456', turnstileToken: 'tok-abc' } as any,
-        '1.2.3.4',
-      );
-
-      expect(mockTurnstileService.verify).toHaveBeenCalledWith('tok-abc', '1.2.3.4');
     });
   });
 

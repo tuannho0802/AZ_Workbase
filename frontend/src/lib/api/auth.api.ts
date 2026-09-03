@@ -11,11 +11,35 @@ export const authApi = {
     };
   },
 
-  // Đăng ký công khai - KHÔNG trả token (tài khoản ở trạng thái chờ duyệt,
-  // xem AuthService.register() ở BE). Response chỉ có message + userId.
+  // Đăng ký công khai - gọi route nội bộ `/api/auth/register` (Next.js Route
+  // Handler trên CHÍNH domain Frontend, KHÔNG phải backend NestJS trực
+  // tiếp) - route đó tự forward sang backend sau khi qua Vercel BotID. Vì
+  // vậy KHÔNG dùng `axiosInstance` ở đây (baseURL của nó trỏ thẳng ra
+  // backend NestJS, `NEXT_PUBLIC_API_URL`, sẽ bỏ qua lớp BotID) - dùng
+  // `fetch` với URL tương đối để chắc chắn gọi đúng route cùng domain, nơi
+  // `<BotIdClient>` (root layout) đã gắn challenge vào request.
   register: async (data: RegisterDto): Promise<RegisterResponse> => {
-    const response = await axiosInstance.post('/auth/register', data);
-    return response.data;
+    const response = await fetch('/api/auth/register', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(data),
+    });
+
+    const body = await response.json().catch(() => ({}));
+
+    if (!response.ok) {
+      // Ném lỗi theo đúng hình dạng mà `getApiErrorMessage()` (dùng khắp
+      // Frontend cho lỗi axios) đã hỗ trợ đọc `error.response.data.message`
+      // - giữ nguyên hành vi hiển thị lỗi ở `register/page.tsx` dù không
+      // còn dùng axios cho riêng request này.
+      const error = new Error(body?.message || 'Đăng ký thất bại') as Error & {
+        response?: { data?: unknown; status?: number };
+      };
+      error.response = { data: body, status: response.status };
+      throw error;
+    }
+
+    return body;
   },
 
   logout: async (): Promise<void> => {

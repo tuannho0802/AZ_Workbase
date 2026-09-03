@@ -1,4 +1,6 @@
 /** @type {import('next').NextConfig} */
+const { withBotId } = require('botid/next/config');
+
 const nextConfig = {
   // Tối ưu bundle size
   experimental: {
@@ -31,4 +33,12 @@ const nextConfig = {
   },
   allowedDevOrigins: ['localhost', '127.0.0.1', '[::1]'],
 };
-module.exports = nextConfig;
+
+// FIX: thay thế Cloudflare Turnstile bằng Vercel BotID - `withBotId` gắn
+// thêm rewrite ở tầng edge để script chống bot được phục vụ CHÍNH từ domain
+// của mình (không phải domain bên thứ 3 như Cloudflare) - tránh bị
+// ad-blocker/extension chặn nhầm là script "bên thứ 3 theo dõi". Chỉ hoạt
+// động khi deploy trên Vercel (dev local vẫn chạy được bình thường, BotID
+// tự nhận biết môi trường dev - xem `checkBotId()` ở
+// `frontend/src/app/api/auth/register/route.ts`).
+module.exports = withBotId(nextConfig);
