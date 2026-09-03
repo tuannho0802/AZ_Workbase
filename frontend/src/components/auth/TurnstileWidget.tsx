@@ -16,6 +16,13 @@ interface TurnstileApi {
   render: (container: string | HTMLElement, options: TurnstileRenderOptions) => string;
   reset: (widgetId?: string) => void;
   remove: (widgetId?: string) => void;
+  /**
+   * Theo doc chính thức (mục "Advanced SPA implementation"): `window.turnstile`
+   * có thể đã tồn tại (script đã load xong) nhưng CHƯA hoàn tất khởi tạo nội
+   * bộ ngay lập tức - gọi `.render()` quá sớm có thể fail âm thầm. `.ready()`
+   * đảm bảo callback chỉ chạy khi thực sự sẵn sàng render.
+   */
+  ready: (callback: () => void) => void;
 }
 
 // Khai báo kiểu cho `window.turnstile` - script Cloudflare tự gắn global này
@@ -56,17 +63,28 @@ export function TurnstileWidget({ siteKey, onVerify, onExpire, onError }: Turnst
   useEffect(() => {
     if (!scriptReady || !window.turnstile || widgetIdRef.current) return;
 
-    widgetIdRef.current = window.turnstile.render(`#${containerId}`, {
-      sitekey: siteKey,
-      callback: onVerify,
-      'expired-callback': () => {
-        onVerify('');
-        onExpire?.();
-      },
-      'error-callback': () => {
-        onVerify('');
-        onError?.();
-      },
+    // window.turnstile.ready() theo đúng khuyến nghị chính thức (mục
+    // "Advanced SPA implementation" trong doc) - tránh race condition hiếm
+    // gặp: script đã bắn xong sự kiện load (onReady=true) nhưng object
+    // `window.turnstile` bên trong CHƯA hoàn tất init, khiến .render() gọi
+    // quá sớm bị bỏ qua âm thầm (không lỗi, không log, chỉ đơn giản là
+    // KHÔNG render - rất khó debug nếu gặp phải). Bọc trong .ready() đảm
+    // bảo callback chỉ chạy đúng lúc thư viện thực sự sẵn sàng.
+    window.turnstile.ready(() => {
+      if (widgetIdRef.current || !window.turnstile) return; // đã render trong lúc chờ .ready() (StrictMode double-effect)
+
+      widgetIdRef.current = window.turnstile.render(`#${containerId}`, {
+        sitekey: siteKey,
+        callback: onVerify,
+        'expired-callback': () => {
+          onVerify('');
+          onExpire?.();
+        },
+        'error-callback': () => {
+          onVerify('');
+          onError?.();
+        },
+      });
     });
 
     return () => {
@@ -81,7 +99,15 @@ export function TurnstileWidget({ siteKey, onVerify, onExpire, onError }: Turnst
   return (
     <>
       <Script
-        src="https://challenges.cloudflare.com/turnstile/v0/api.js"
+        // ?render=explicit theo đúng doc chính thức cho luồng "Explicit
+        // rendering" (SPA) - tắt cơ chế TỰ QUÉT DOM tìm class `cf-turnstile`
+        // (implicit rendering, dùng cho site HTML tĩnh). Component này chủ
+        // động gọi `.render()` bằng tay ở trên nên không cần/không nên để
+        // Turnstile tự quét - dù container hiện tại không mang class đó nên
+        // về mặt thực tế 2 cách chạy giống nhau, thêm query param này để
+        // khớp đúng 100% pattern SPA chính thức, tránh phụ thuộc hành vi
+        // ngầm định không được doc đảm bảo lâu dài.
+        src="https://challenges.cloudflare.com/turnstile/v0/api.js?render=explicit"
         strategy="afterInteractive"
         onReady={() => setScriptReady(true)}
       />
