@@ -48,10 +48,22 @@ export async function POST(request: NextRequest) {
         return NextResponse.json({ message: 'Dữ liệu gửi lên không hợp lệ.' }, { status: 400 });
     }
 
-    // Chuyển tiếp IP client thật cho backend dùng để rate-limit theo IP (xem
-    // `ThrottlerGuard` + `trust proxy` ở `backend/src/main.ts`) - nếu không
-    // forward, backend sẽ thấy IP của chính route trung gian này (chung cho
-    // mọi người dùng gọi qua Frontend), làm rate-limit theo IP mất tác dụng.
+    // ⚠️ FIX BUG THẬT (2026-09-03): trước đây forward qua header CHUẨN
+    // `x-forwarded-for` - nhưng tài liệu Vercel xác nhận: "If you are trying
+    // to use Vercel behind a proxy, we currently overwrite the
+    // X-Forwarded-For header and do not forward external IPs" (chống IP
+    // spoofing, không có ngoại lệ trừ gói Enterprise). Route này gọi TỪ 1
+    // project Vercel (Frontend) SANG project Vercel khác (Backend) - đúng
+    // kịch bản "Vercel đứng sau proxy" - nên giá trị ta tự gắn vào
+    // `x-forwarded-for` bị Vercel ÂM THẦM GHI ĐÈ trước khi backend nhận
+    // được, khiến rate-limit theo IP ở backend mất tác dụng (mọi người dùng
+    // qua route này bị tính chung 1 "IP" - dẫn tới lỗi thật: đổi IP/dùng VPN
+    // vẫn dính 429 vì IP thật chưa từng tới được backend).
+    //
+    // Đổi sang header TÊN RIÊNG (không phải tên chuẩn) - Vercel chỉ can
+    // thiệp các header thuộc họ x-forwarded-*/x-real-ip, không đụng tới
+    // header tự đặt tên. Backend đọc đúng header này qua
+    // `ThrottlerBehindProxyGuard` (xem throttler-behind-proxy.guard.ts).
     const forwardedFor = request.headers.get('x-forwarded-for');
     const clientIp = forwardedFor?.split(',')[0]?.trim();
 
@@ -61,7 +73,7 @@ export async function POST(request: NextRequest) {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
-                ...(clientIp ? { 'x-forwarded-for': clientIp } : {}),
+                ...(clientIp ? { 'x-az-client-ip': clientIp } : {}),
             },
             body: JSON.stringify(body),
         });

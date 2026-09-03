@@ -1,10 +1,11 @@
 import { Controller, Post, Body, HttpCode, HttpStatus, UseGuards, Request, Req } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiResponse, ApiBearerAuth } from '@nestjs/swagger';
-import { ThrottlerGuard, Throttle } from '@nestjs/throttler';
+import { Throttle } from '@nestjs/throttler';
 import { AuthService } from './auth.service';
 import { LoginDto } from './dto/login.dto';
 import { RegisterDto } from './dto/register.dto';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
+import { ThrottlerBehindProxyGuard } from '../../common/guards/throttler-behind-proxy.guard';
 
 @ApiTags('Auth')
 @Controller('auth')
@@ -14,13 +15,21 @@ export class AuthController {
   @Post('register')
   @HttpCode(HttpStatus.CREATED)
   // ⚠️ Rate-limit theo IP - 1 trong 3 lớp chống bot spam đăng ký (cộng dồn
-  // với Honeypot + Cloudflare Turnstile, cả 3 đều bắt buộc phải cùng đúng -
-  // xem AuthService.register()). 5 lần/10 phút/IP: đủ rộng rãi cho người
-  // thật (kể cả nhiều người cùng đăng ký chung 1 IP văn phòng/NAT), nhưng
-  // chặn được spam bot dồn dập. CHỈ gắn guard này ở đúng route này - KHÔNG
-  // bind ThrottlerGuard làm APP_GUARD toàn cục (xem giải thích trong
-  // `app.module.ts`).
-  @UseGuards(ThrottlerGuard)
+  // với Honeypot + Vercel BotID ở route trung gian phía FE, cả 3 đều bắt
+  // buộc phải cùng đúng - xem AuthService.register()). 5 lần/10 phút/IP: đủ
+  // rộng rãi cho người thật (kể cả nhiều người cùng đăng ký chung 1 IP văn
+  // phòng/NAT), nhưng chặn được spam bot dồn dập. CHỈ gắn guard này ở đúng
+  // route này - KHÔNG bind ThrottlerGuard làm APP_GUARD toàn cục (xem giải
+  // thích trong `app.module.ts`).
+  //
+  // ⚠️ Dùng `ThrottlerBehindProxyGuard` (đọc header `x-az-client-ip`) THAY
+  // CHO `ThrottlerGuard` gốc (đọc `req.ip`) - xem giải thích đầy đủ trong
+  // throttler-behind-proxy.guard.ts. FE và BE là 2 Vercel project tách
+  // riêng, `req.ip` ở đây bị Vercel edge ghi đè thành IP nội bộ của FE cho
+  // MỌI người dùng đi qua route BotID trung gian - dùng `ThrottlerGuard`
+  // gốc sẽ coi tất cả là chung 1 IP (đúng bug thật đã xảy ra: người dùng
+  // thật bị 429 hàng loạt, đổi IP/dùng WARP vẫn dính).
+  @UseGuards(ThrottlerBehindProxyGuard)
   @Throttle({ default: { limit: 5, ttl: 600_000 } })
   @ApiOperation({
     summary:
