@@ -10,6 +10,7 @@ import { useAttendanceSummary, useExportMonthlyAttendance } from '@/lib/hooks/us
 import { useUsersList } from '@/lib/hooks/useUsers';
 import { leaveRequestsApi } from '@/lib/api/leave-requests.api';
 import type { ExportMonthlyRow } from '@/lib/api/attendance-export.api';
+import ExportMonthModal from './ExportMonthModal';
 
 const { Text } = Typography;
 
@@ -96,6 +97,7 @@ export default function AttendanceMonthlyTab() {
   const [userId, setUserId] = useState<number | undefined>(undefined);
   const { users, isLoading: usersLoading } = useUsersList();
   const exportMutation = useExportMonthlyAttendance();
+  const [exportModalOpen, setExportModalOpen] = useState(false);
 
   const monthStart = month.startOf('month');
   const monthEnd = month.endOf('month');
@@ -607,19 +609,7 @@ export default function AttendanceMonthlyTab() {
           <Button
             icon={<FileExcelOutlined />}
             loading={exportMutation.isPending}
-            onClick={() => {
-              // Tên file theo đúng format yêu cầu: "TongHopChamCong DD-MM-YY -
-              // DD-MM-YY.xlsx" (xem buildExportFilename() ở
-              // attendance-export.api.ts, tự dựng lại từ `month` theo đúng
-              // công thức backend dùng - không cần đọc header response).
-              exportMutation.mutate(
-                { month: month.format('YYYY-MM'), rows: buildExportRows() },
-                {
-                  onError: (err: any) =>
-                    message.error(err?.response?.data?.message || 'Xuất Excel thất bại'),
-                },
-              );
-            }}
+            onClick={() => setExportModalOpen(true)}
           >
             Xuất Excel
           </Button>
@@ -633,6 +623,28 @@ export default function AttendanceMonthlyTab() {
           ))}
         </Space>
       </Space>
+
+      <ExportMonthModal
+        open={exportModalOpen}
+        loading={exportMutation.isPending}
+        month={month}
+        employeeCount={rows.length}
+        onCancel={() => setExportModalOpen(false)}
+        onConfirm={() => {
+          // Tên file theo đúng format yêu cầu: "TongHopChamCong DD-MM-YY -
+          // DD-MM-YY.xlsx" (xem buildExportFilename() ở
+          // attendance-export.api.ts, tự dựng lại từ `month` theo đúng
+          // công thức backend dùng - không cần đọc header response).
+          exportMutation.mutate(
+            { month: month.format('YYYY-MM'), rows: buildExportRows() },
+            {
+              onSuccess: () => setExportModalOpen(false),
+              onError: (err: any) =>
+                message.error(err?.response?.data?.message || 'Xuất Excel thất bại'),
+            },
+          );
+        }}
+      />
 
       <Table<EmployeeMonthRow>
         rowKey="key"
