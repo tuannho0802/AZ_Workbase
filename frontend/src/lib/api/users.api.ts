@@ -65,25 +65,10 @@ export const usersApi = {
     return response.data;
   },
 
-  // Profile (Fanpage/Group links user quản lý)
-  // - GET: Admin xem được của bất kỳ ai, role khác chỉ xem được của chính mình (BE tự check)
-  // - PUT: Chỉ Admin được sửa (Only Admin CRUD)
-  getUserProfile: async (id: number): Promise<{ id: number; profile: ManagedLink[] }> => {
-    const response = await axiosInstance.get(`/users/${id}/profile`);
-    return response.data;
-  },
-
-  updateUserProfile: async (id: number, profile: ManagedLink[]): Promise<{ id: number; profile: ManagedLink[] }> => {
-    const response = await axiosInstance.put(`/users/${id}/profile`, { profile });
-    return response.data;
-  },
+  // ⚠️ getUserProfile/updateUserProfile (Fanpage/Group thủ công) ĐÃ BỊ XOÁ -
+  // dùng linkGroupManagersApi.listManagedByMe() (link-groups.api.ts) thay
+  // thế, tự động lấy từ dữ liệu Quản lý chính/phụ đã gán cho LinkGroup.
 };
-
-export interface ManagedLink {
-  type: 'fanpage' | 'group';
-  name: string;
-  url: string;
-}
 
 export interface UserDetail {
   id: number;

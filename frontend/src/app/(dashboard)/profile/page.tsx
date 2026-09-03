@@ -1,24 +1,26 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import {
-  Card, Table, Button, Space, Tag, App, Form,
-  Input, Select, Spin, Typography, Empty, Avatar, Tooltip,
+  Card, Table, Button, Space, Tag, App,
+  Spin, Typography, Avatar,
   Descriptions, Divider, Drawer, Row, Col,
 } from 'antd';
 import {
-  PlusOutlined, DeleteOutlined, SaveOutlined,
-  FacebookOutlined, TeamOutlined, LinkOutlined, ReloadOutlined,
+  ReloadOutlined,
   MailOutlined, PhoneOutlined, ApartmentOutlined, ClockCircleOutlined,
   CalendarOutlined, UserOutlined, EyeOutlined,
+  LinkOutlined, CrownOutlined, TeamOutlined, ArrowRightOutlined,
 } from '@ant-design/icons';
+import Link from 'next/link';
 import dayjs from 'dayjs';
 
 import { useAuthStore } from '@/lib/stores/auth.store';
-import { usersApi, ManagedLink, UserDetail } from '@/lib/api/users.api';
+import { usersApi, UserDetail } from '@/lib/api/users.api';
+import { useManagedByMe, useAllLinkGroups } from '@/lib/hooks/useLinkGroups';
 import { SimpleList } from '@/components/common/SimpleList';
 
-const { Text, Title, Link: TypoLink } = Typography;
+const { Text, Title } = Typography;
 
 const ROLE_COLOR: Record<string, string> = {
   admin: 'red', manager: 'orange', assistant: 'blue', employee: 'green',
@@ -28,164 +30,75 @@ const ROLE_LABEL: Record<string, string> = {
   admin: 'Admin', manager: 'Manager', assistant: 'Assistant', employee: 'Employee',
 };
 
-const LINK_TYPE_LABEL: Record<string, string> = {
-  fanpage: 'Fanpage',
-  group: 'Group',
-};
-
 function getInitials(name?: string) {
   if (!name) return '?';
   const parts = name.trim().split(/\s+/);
   return parts[parts.length - 1]?.[0]?.toUpperCase() ?? '?';
 }
 
-// ── Danh sách link đọc (read-only) ─────────────────────────────────────────
-function ManagedLinksReadOnly({ links }: { links: ManagedLink[] }) {
+interface ManagedGroupRow {
+  groupId: number;
+  groupName: string;
+  url?: string;
+  categoryName?: string;
+  categoryColor?: string;
+  isPrimary: boolean;
+}
+
+// ── Danh sách nhóm (Fanpage/Group) mà 1 user đang là Quản lý chính/phụ ──────
+// ⚠️ Đã bỏ hẳn Form.List chỉnh sửa thủ công (nhập tay URL) - dữ liệu này giờ
+// HOÀN TOÀN tự động, lấy từ `LinkGroup.primaryManagerId` +
+// `LinkGroupSecondaryManager` (xem GET /link-groups/managed-by-me). Muốn
+// đổi ai quản lý nhóm nào -> vào trang "Nhóm tôi quản lý" (hoặc trang Admin
+// "Quản lý nhóm liên kết" nếu là gán cho người khác), KHÔNG sửa trực tiếp ở
+// đây nữa - tránh 2 nơi cùng sửa 1 dữ liệu dễ lệch nhau.
+function ManagedGroupsSection({ groups }: { groups: ManagedGroupRow[] }) {
   return (
     <SimpleList
-      dataSource={links ?? []}
-      rowKey={(link) => `${link.type}-${link.url}`}
-      emptyText="Chưa có Fanpage/Group nào được gán"
-      renderMeta={(link) => ({
+      dataSource={groups}
+      rowKey={(g) => g.groupId}
+      emptyText="Chưa được gán làm Quản lý chính/phụ của nhóm nào"
+      renderMeta={(g) => ({
         avatar: (
           <Avatar
-            icon={link.type === 'fanpage' ? <FacebookOutlined /> : <TeamOutlined />}
-            style={{
-              backgroundColor: link.type === 'fanpage' ? '#1877f2' : '#52c41a',
-            }}
+            icon={g.isPrimary ? <CrownOutlined /> : <TeamOutlined />}
+            style={{ backgroundColor: g.isPrimary ? '#faad14' : '#1677ff' }}
           />
         ),
         title: (
-          <Space>
-            <Text strong>{link.name}</Text>
-            <Tag color={link.type === 'fanpage' ? 'blue' : 'green'}>
-              {LINK_TYPE_LABEL[link.type] ?? link.type}
-            </Tag>
+          <Space wrap>
+            <Text strong>{g.groupName}</Text>
+            {g.categoryName && <Tag color={g.categoryColor}>{g.categoryName}</Tag>}
+            {g.isPrimary ? (
+              <Tag color="gold">Quản lý chính</Tag>
+            ) : (
+              <Tag color="blue">Quản lý phụ</Tag>
+            )}
           </Space>
         ),
-        description: (
-          <TypoLink href={link.url} target="_blank" rel="noopener noreferrer">
-            <LinkOutlined /> {link.url}
-          </TypoLink>
-        ),
+        description: g.url ? (
+          <a href={g.url} target="_blank" rel="noopener noreferrer">
+            <LinkOutlined /> {g.url}
+          </a>
+        ) : undefined,
       })}
     />
   );
 }
 
-// ── Danh sách link editable (Form.List - chỉ Admin) ─────────────────────────
-function ManagedLinksEditor({
-  initialLinks,
-  onSave,
-  saving,
-}: {
-  initialLinks: ManagedLink[];
-  onSave: (links: ManagedLink[]) => void;
-  saving: boolean;
-}) {
-  const [form] = Form.useForm();
-
-  useEffect(() => {
-    form.setFieldsValue({ profile: initialLinks || [] });
-  }, [initialLinks, form]);
-
-  return (
-    <Form form={form} layout="vertical" onFinish={(values) => onSave(values.profile || [])}>
-      <Form.List name="profile">
-        {(fields, { add, remove }) => (
-          <>
-            {fields.length === 0 && (
-              <Empty
-                description="Chưa có link nào. Bấm 'Thêm link' để bắt đầu."
-                image={Empty.PRESENTED_IMAGE_SIMPLE}
-                style={{ marginBottom: 16 }}
-              />
-            )}
-            {fields.map(({ key, name, ...restField }) => (
-              <Space
-                key={key}
-                align="baseline"
-                wrap
-                style={{ display: 'flex', marginBottom: 8, width: '100%' }}
-              >
-                <Form.Item
-                  {...restField}
-                  name={[name, 'type']}
-                  rules={[{ required: true, message: 'Chọn loại' }]}
-                  initialValue="fanpage"
-                >
-                  <Select
-                    style={{ width: 110 }}
-                    options={[
-                      { value: 'fanpage', label: 'Fanpage' },
-                      { value: 'group', label: 'Group' },
-                    ]}
-                  />
-                </Form.Item>
-                <Form.Item
-                  {...restField}
-                  name={[name, 'name']}
-                  rules={[{ required: true, message: 'Nhập tên' }]}
-                >
-                  <Input placeholder="Tên hiển thị" style={{ width: 180 }} />
-                </Form.Item>
-                <Form.Item
-                  {...restField}
-                  name={[name, 'url']}
-                  rules={[
-                    { required: true, message: 'Nhập URL' },
-                    { type: 'url', message: 'URL không hợp lệ' },
-                  ]}
-                >
-                  <Input placeholder="https://facebook.com/..." style={{ width: 240 }} />
-                </Form.Item>
-                <Tooltip title="Xoá link này">
-                  <Button
-                    danger
-                    type="text"
-                    icon={<DeleteOutlined />}
-                    onClick={() => remove(name)}
-                  />
-                </Tooltip>
-              </Space>
-            ))}
-            <Form.Item>
-              <Button
-                type="dashed"
-                onClick={() => add({ type: 'fanpage', name: '', url: '' })}
-                icon={<PlusOutlined />}
-                block
-              >
-                Thêm link
-              </Button>
-            </Form.Item>
-          </>
-        )}
-      </Form.List>
-      <Form.Item style={{ marginBottom: 0, textAlign: 'right' }}>
-        <Button type="primary" icon={<SaveOutlined />} htmlType="submit" loading={saving}>
-          Lưu thay đổi
-        </Button>
-      </Form.Item>
-    </Form>
-  );
-}
-
 // ── Trang Profile kiểu "cổng thông tin" cho 1 user ──────────────────────────
-function ProfilePortal({
-  userId,
-  canEditLinks,
-}: {
-  userId: number;
-  canEditLinks: boolean;
-}) {
+function ProfilePortal({ userId }: { userId: number }) {
   const { message } = App.useApp();
   const { user: currentUser } = useAuthStore();
   const [loadingDetail, setLoadingDetail] = useState(true);
-  const [loadingLinks, setLoadingLinks] = useState(true);
-  const [saving, setSaving] = useState(false);
   const [detail, setDetail] = useState<UserDetail | null>(null);
-  const [links, setLinks] = useState<ManagedLink[]>([]);
+
+  // GET /link-groups/managed-by-me: admin trả TOÀN BỘ nhóm trong hệ thống
+  // (không chỉ của admin) -> phải tự lọc ở client theo đúng userId đang xem
+  // (áp dụng luôn cho cả trường hợp tự xem mình - vô hại vì lúc đó mọi dòng
+  // trả về vốn đã thuộc về mình sẵn). Giống hệt cách /nhom-toi-quan-ly làm.
+  const { groups: managedGroups, isLoading: loadingManaged, refetch: refetchManaged } = useManagedByMe();
+  const { groups: allGroups, isLoading: loadingAllGroups } = useAllLinkGroups();
 
   const isSelf = currentUser?.id === userId;
 
@@ -202,46 +115,33 @@ function ProfilePortal({
     }
   };
 
-  const fetchLinks = async () => {
-    setLoadingLinks(true);
-    try {
-      const res = await usersApi.getUserProfile(userId);
-      setLinks(res.profile || []);
-    } catch (err) {
-      console.error(err);
-      message.error('Lấy danh sách Fanpage/Group thất bại');
-    } finally {
-      setLoadingLinks(false);
-    }
-  };
-
   useEffect(() => {
     fetchDetail();
-    fetchLinks();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [userId]);
 
-  const handleSaveLinks = async (newLinks: ManagedLink[]) => {
-    setSaving(true);
-    try {
-      await usersApi.updateUserProfile(userId, newLinks);
-      setLinks(newLinks);
-      message.success('Đã cập nhật Fanpage/Group');
-    } catch (error: any) {
-      const errorData = error.response?.data;
-      if (errorData?.message) {
-        if (Array.isArray(errorData.message)) {
-          errorData.message.forEach((msg: string) => message.error(msg));
-        } else {
-          message.error(errorData.message);
-        }
-      } else {
-        message.error('Có lỗi xảy ra khi lưu Fanpage/Group');
-      }
-    } finally {
-      setSaving(false);
-    }
-  };
+  const groupRows: ManagedGroupRow[] = useMemo(() => {
+    const detailById = new Map(allGroups.map((g) => [g.id, g]));
+    return managedGroups
+      .filter(
+        (mg) =>
+          mg.primaryManager?.id === userId ||
+          mg.secondaryManagers.some((m) => m.id === userId),
+      )
+      .map((mg) => {
+        const groupDetail = detailById.get(mg.groupId);
+        return {
+          groupId: mg.groupId,
+          groupName: mg.groupName,
+          url: groupDetail?.url,
+          categoryName: groupDetail?.category?.name,
+          categoryColor: groupDetail?.category?.color,
+          isPrimary: mg.primaryManager?.id === userId,
+        };
+      });
+  }, [managedGroups, allGroups, userId]);
+
+  const loadingGroups = loadingManaged || loadingAllGroups;
 
   if (loadingDetail || !detail) {
     return (
@@ -303,17 +203,32 @@ function ProfilePortal({
       </Descriptions>
 
       <Divider titlePlacement="left" style={{ marginTop: 32 }}>
-        Fanpage / Group quản lý
+        <Space>
+          Fanpage / Group đang quản lý
+        </Space>
       </Divider>
 
-      {loadingLinks ? (
+      <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 8 }}>
+        <Space>
+          <Button size="small" icon={<ReloadOutlined />} onClick={() => refetchManaged()}>
+            Tải lại
+          </Button>
+          {isSelf && (
+            <Link href="/nhom-toi-quan-ly">
+              <Button size="small" type="link" icon={<ArrowRightOutlined />}>
+                Quản lý Quản lý phụ tại &quot;Nhóm tôi quản lý&quot;
+              </Button>
+            </Link>
+          )}
+        </Space>
+      </div>
+
+      {loadingGroups ? (
         <div className="flex justify-center items-center my-6 py-6">
           <Spin />
         </div>
-      ) : canEditLinks ? (
-        <ManagedLinksEditor initialLinks={links} onSave={handleSaveLinks} saving={saving} />
       ) : (
-        <ManagedLinksReadOnly links={links} />
+        <ManagedGroupsSection groups={groupRows} />
       )}
     </div>
   );
@@ -432,9 +347,7 @@ function AdminProfileManager() {
           onClose={() => setDrawerOpen(false)}
           destroyOnHidden
         >
-          {selectedUserId && (
-            <ProfilePortal userId={selectedUserId} canEditLinks />
-          )}
+          {selectedUserId && <ProfilePortal userId={selectedUserId} />}
         </Drawer>
       </Card>
     );
@@ -484,9 +397,9 @@ function AdminProfileManager() {
       <Col span={15}>
         <Card title="Profile chi tiết">
           {selectedUserId ? (
-            <ProfilePortal userId={selectedUserId} canEditLinks />
+            <ProfilePortal userId={selectedUserId} />
           ) : (
-            <Empty description="Chọn 1 nhân viên bên trái để xem Profile" />
+            <Text type="secondary">Chọn 1 nhân viên bên trái để xem Profile</Text>
           )}
         </Card>
       </Col>
@@ -506,7 +419,7 @@ export default function ProfilePage() {
 
   return (
     <Card title="Profile của tôi">
-      <ProfilePortal userId={user.id} canEditLinks={false} />
+      <ProfilePortal userId={user.id} />
     </Card>
   );
 }
