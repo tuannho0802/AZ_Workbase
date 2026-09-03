@@ -1,5 +1,6 @@
-import { Controller, Post, Body, HttpCode, HttpStatus, UseGuards, Request } from '@nestjs/common';
+import { Controller, Post, Body, HttpCode, HttpStatus, UseGuards, Request, Req } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiResponse, ApiBearerAuth } from '@nestjs/swagger';
+import { ThrottlerGuard, Throttle } from '@nestjs/throttler';
 import { AuthService } from './auth.service';
 import { LoginDto } from './dto/login.dto';
 import { RegisterDto } from './dto/register.dto';
@@ -12,14 +13,27 @@ export class AuthController {
 
   @Post('register')
   @HttpCode(HttpStatus.CREATED)
+  // ⚠️ Rate-limit theo IP - 1 trong 3 lớp chống bot spam đăng ký (cộng dồn
+  // với Honeypot + Cloudflare Turnstile, cả 3 đều bắt buộc phải cùng đúng -
+  // xem AuthService.register()). 5 lần/10 phút/IP: đủ rộng rãi cho người
+  // thật (kể cả nhiều người cùng đăng ký chung 1 IP văn phòng/NAT), nhưng
+  // chặn được spam bot dồn dập. CHỈ gắn guard này ở đúng route này - KHÔNG
+  // bind ThrottlerGuard làm APP_GUARD toàn cục (xem giải thích trong
+  // `app.module.ts`).
+  @UseGuards(ThrottlerGuard)
+  @Throttle({ default: { limit: 5, ttl: 600_000 } })
   @ApiOperation({
     summary:
-      'Đăng ký tài khoản (công khai, không cần đăng nhập) - tài khoản tạo ra sẽ ở trạng thái CHỜ DUYỆT, cần Admin/Assistant duyệt mới đăng nhập được',
+      'Đăng ký tài khoản (công khai, không cần đăng nhập) - tài khoản tạo ra sẽ ở trạng thái CHỜ DUYỆT, cần Admin/Assistant duyệt mới đăng nhập được. Có rate-limit theo IP + yêu cầu xác minh Cloudflare Turnstile + honeypot chống bot.',
   })
   @ApiResponse({ status: 201, description: 'Đăng ký thành công, đang chờ duyệt.' })
+  @ApiResponse({ status: 400, description: 'Xác minh Turnstile thất bại hoặc dữ liệu không hợp lệ.' })
   @ApiResponse({ status: 409, description: 'Email đã được đăng ký.' })
-  async register(@Body() dto: RegisterDto) {
-    return this.authService.register(dto);
+  @ApiResponse({ status: 429, description: 'Quá nhiều lần đăng ký từ IP này, vui lòng thử lại sau.' })
+  async register(@Body() dto: RegisterDto, @Req() req: any) {
+    // `req.ip` chỉ đúng IP thật (thay vì IP proxy) nhờ `trust proxy` đã bật
+    // trong main.ts - xem comment ở đó để biết vì sao bắt buộc phải có.
+    return this.authService.register(dto, req.ip);
   }
 
   @Post('login')

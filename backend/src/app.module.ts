@@ -3,6 +3,7 @@ import { ServeStaticModule } from '@nestjs/serve-static';
 import { join } from 'path';
 import { ConfigModule, ConfigService } from '@nestjs/config';
 import { TypeOrmModule } from '@nestjs/typeorm';
+import { ThrottlerModule } from '@nestjs/throttler';
 import { AppController } from './app.controller';
 import { AppService } from './app.service';
 import { getTypeOrmConfig } from './config/database.config';
@@ -26,7 +27,20 @@ import { KeepAliveController } from './keep-alive/keep-alive.controller';
       envFilePath: ['.env.development', '.env'],
     }),
 
-
+    // ⚠️ Chỉ IMPORT ở đây để đăng ký ThrottlerStorage dùng chung toàn app -
+    // KHÔNG bind ThrottlerGuard làm APP_GUARD toàn cục (sẽ áp rate-limit lên
+    // MỌI endpoint, kể cả những nơi không cần/không được yêu cầu). Guard chỉ
+    // được gắn thủ công ở đúng 1 chỗ cần chống spam: `POST /auth/register`
+    // (xem `@UseGuards(ThrottlerGuard)` + `@Throttle(...)` trong
+    // `auth.controller.ts`). Cấu hình `default` dưới đây chỉ là fallback
+    // KHÔNG thực sự áp dụng ở đâu cả trừ khi 1 route tự gắn guard.
+    ThrottlerModule.forRoot([
+      {
+        name: 'default',
+        ttl: 60_000,
+        limit: 1000,
+      },
+    ]),
 
     // Database connection using config service
     TypeOrmModule.forRootAsync({

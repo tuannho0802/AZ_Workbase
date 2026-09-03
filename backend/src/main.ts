@@ -31,6 +31,17 @@ async function createApp(): Promise<NestExpressApplication> {
     new ExpressAdapter(expressServer),
   );
 
+  // ⚠️ BẮT BUỘC cho rate-limit theo IP (ThrottlerGuard, xem
+  // modules/auth/auth.controller.ts): app chạy sau reverse proxy (Vercel edge)
+  // - Express mặc định KHÔNG tin header `X-Forwarded-For`, nên `req.ip` luôn
+  // trả về IP nội bộ của proxy (GIỐNG NHAU cho MỌI request thật) thay vì IP
+  // client thật. Nếu thiếu dòng này, rate-limit theo IP sẽ hoàn toàn sai:
+  // hoặc gộp tất cả người dùng chung 1 "IP", hoặc luôn thấy IP rỗng/không ổn
+  // định. `trust proxy: 1` báo Express tin đúng 1 lớp proxy phía trước (khớp
+  // hạ tầng Vercel - request luôn qua đúng 1 lớp edge trước khi tới hàm
+  // serverless), lấy IP thật từ `X-Forwarded-For` do Vercel tự gắn.
+  expressServer.set('trust proxy', 1);
+
   // Compression cho response
   app.use(compression());
 

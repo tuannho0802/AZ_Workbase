@@ -1,4 +1,4 @@
-import { IsEmail, IsString, MinLength, IsOptional, IsInt, Matches } from 'class-validator';
+import { IsEmail, IsString, MinLength, IsOptional, IsInt, Matches, IsNotEmpty, MaxLength } from 'class-validator';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { Type } from 'class-transformer';
 
@@ -44,4 +44,27 @@ export class RegisterDto {
   @IsInt()
   @Type(() => Number)
   departmentId?: number;
+
+  // ── Chống bot spam đăng ký (không liên quan tới nghiệp vụ, xem AuthService.register) ──
+
+  @ApiProperty({
+    description:
+      'Token xác minh từ widget Cloudflare Turnstile ở Frontend (bắt buộc). Backend gọi ' +
+      'siteverify để xác nhận token thật trước khi tạo tài khoản - xem TurnstileService.',
+  })
+  @IsString()
+  @IsNotEmpty({ message: 'Thiếu xác minh Turnstile - vui lòng tải lại trang và thử lại' })
+  turnstileToken: string;
+
+  @ApiPropertyOptional({
+    description:
+      'Honeypot - trường bẫy bot, PHẢI luôn rỗng khi gửi từ người dùng thật. Frontend ẩn ' +
+      'field này bằng CSS (không dùng display:none để tránh 1 số bot bỏ qua field ẩn kiểu ' +
+      'đó); bot điền form tự động (autofill mọi input thấy được trong DOM) thường điền cả ' +
+      'field này -> có giá trị = chắc chắn là bot, xem AuthService.register().',
+  })
+  @IsOptional()
+  @IsString()
+  @MaxLength(200)
+  website?: string;
 }

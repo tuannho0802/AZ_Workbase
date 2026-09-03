@@ -1,4 +1,4 @@
-import { Injectable, UnauthorizedException, ForbiddenException, ConflictException, Logger } from '@nestjs/common';
+import { Injectable, UnauthorizedException, ForbiddenException, ConflictException, BadRequestException, Logger } from '@nestjs/common';
 
 import { JwtService } from '@nestjs/jwt';
 import { ConfigService } from '@nestjs/config';
@@ -8,6 +8,7 @@ import { LoginDto } from './dto/login.dto';
 import { RegisterDto } from './dto/register.dto';
 import { AuditService } from '../audit/audit.service';
 import { ApprovalStatus } from '../../common/enums/approval-status.enum';
+import { TurnstileService } from './turnstile.service';
 
 @Injectable()
 export class AuthService {
@@ -18,6 +19,7 @@ export class AuthService {
     private jwtService: JwtService,
     private configService: ConfigService,
     private auditService: AuditService,
+    private turnstileService: TurnstileService,
   ) {}
 
   private async generateTokens(userId: number, email: string, role: string) {
@@ -113,8 +115,45 @@ export class AuthService {
    *
    * KHÔNG trả về access_token/refresh_token (khác login()) - tài khoản chưa
    * được duyệt thì chưa nên đăng nhập được, kể cả ngay sau khi đăng ký.
+   *
+   * ── 3 lớp chống bot spam (cộng dồn, không thay thế nhau) ──
+   * 1. Rate-limit theo IP - chặn ở tầng Guard/Controller (`ThrottlerGuard` +
+   *    `@Throttle` trong `auth.controller.ts`), KHÔNG chạy tới đây nếu đã bị
+   *    chặn - không cần xử lý gì thêm trong service này.
+   * 2. Honeypot (`dto.website`) - kiểm tra ĐẦU TIÊN trong service vì rẻ nhất
+   *    (không gọi mạng, không đụng DB). Nếu có giá trị -> chắc chắn là bot
+   *    (form thật ẩn field này, người dùng thật không bao giờ điền được) ->
+   *    trả về Y HỆT response thành công nhưng KHÔNG tạo tài khoản thật, để
+   *    bot không biết đã bị phát hiện (tránh bot thích nghi/thử lại field
+   *    khác).
+   * 3. Cloudflare Turnstile - kiểm tra SAU honeypot (honeypot đã lọc được 1
+   *    phần bot rẻ nhất trước khi tốn round-trip gọi Cloudflare). Nếu token
+   *    không hợp lệ -> từ chối thật (400), không giả vờ thành công vì đây là
+   *    lỗi có thể xảy ra với người dùng thật (token hết hạn, JS bị chặn...)
+   *    - cần cho họ biết để thử lại, khác hẳn honeypot (chắc chắn 100% là bot).
    */
-  async register(dto: RegisterDto) {
+  async register(dto: RegisterDto, clientIp?: string) {
+    // 1. Honeypot: bot điền -> giả vờ thành công, không làm gì thêm.
+    if (dto.website && dto.website.trim().length > 0) {
+      this.logger.warn(
+        `[Auth] Honeypot triggered - nghi ngờ bot đăng ký với email "${dto.email}" từ IP ${clientIp ?? 'unknown'}. Bỏ qua, không tạo tài khoản.`,
+      );
+      return {
+        message: 'Đăng ký thành công. Tài khoản của bạn đang chờ Admin/Assistant duyệt trước khi có thể đăng nhập.',
+        userId: 0,
+      };
+    }
+
+    // 2. Cloudflare Turnstile: token không hợp lệ -> từ chối thật, cho người
+    // dùng biết để thử lại (khác honeypot, không giả vờ thành công ở đây vì
+    // đây là case có thể xảy ra với người dùng thật, không chỉ bot).
+    const isHuman = await this.turnstileService.verify(dto.turnstileToken, clientIp);
+    if (!isHuman) {
+      throw new BadRequestException(
+        'Xác minh chống bot thất bại. Vui lòng tải lại trang và thử đăng ký lại.',
+      );
+    }
+
     const existing = await this.usersService.findByEmail(dto.email);
     if (existing) {
       throw new ConflictException('Email đã được đăng ký');
