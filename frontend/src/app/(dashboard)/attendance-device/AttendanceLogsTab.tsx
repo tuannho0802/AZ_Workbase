@@ -8,6 +8,7 @@ import { useAttendanceLogs, useCleanupAttendanceLogs, useExportAttendanceLogs } 
 import { useUsersList } from '@/lib/hooks/useUsers';
 import { AttendanceLog } from '@/lib/types/zk-device.types';
 import { useAuthStore } from '@/lib/stores/auth.store';
+import ExportPeriodModal from './ExportPeriodModal';
 
 const { RangePicker } = DatePicker;
 const { Text } = Typography;
@@ -48,6 +49,7 @@ export default function AttendanceLogsTab() {
   const [cleanupDate, setCleanupDate] = useState<Dayjs | null>(
     dayjs().subtract(6, 'month').startOf('month'),
   );
+  const [exportModalOpen, setExportModalOpen] = useState(false);
   const cleanupMutation = useCleanupAttendanceLogs();
   const exportMutation = useExportAttendanceLogs();
 
@@ -140,23 +142,7 @@ export default function AttendanceLogsTab() {
         <Button
           icon={<FileExcelOutlined />}
           loading={exportMutation.isPending}
-          onClick={() => {
-            // Xuất Excel theo ĐÚNG bộ lọc đang áp dụng trên bảng (nhân
-            // viên/trạng thái khớp/khoảng ngày) - "y chang bảng gốc" đúng
-            // yêu cầu, không phải xuất toàn bộ dữ liệu không lọc.
-            exportMutation.mutate(
-              {
-                userId,
-                matched,
-                from: range?.[0]?.format('YYYY-MM-DD'),
-                to: range?.[1]?.format('YYYY-MM-DD'),
-              },
-              {
-                onError: (err: any) =>
-                  message.error(err?.response?.data?.message || 'Xuất Excel thất bại'),
-              },
-            );
-          }}
+          onClick={() => setExportModalOpen(true)}
         >
           Xuất Excel
         </Button>
@@ -225,6 +211,32 @@ export default function AttendanceLogsTab() {
           />
         </Space>
       </Modal>
+
+      <ExportPeriodModal
+        open={exportModalOpen}
+        loading={exportMutation.isPending}
+        defaultRange={range}
+        onCancel={() => setExportModalOpen(false)}
+        onConfirm={(confirmedRange) => {
+          // Chỉ export ĐÚNG khoảng ngày đã xác nhận trong Modal - KHÔNG còn
+          // khả năng "xuất toàn bộ" nếu người dùng chưa chọn ngày ở filter
+          // trên bảng (đúng yêu cầu: luôn phải qua bước xác nhận Period).
+          // Vẫn giữ userId/matched theo filter hiện tại trên bảng cho tiện.
+          exportMutation.mutate(
+            {
+              userId,
+              matched,
+              from: confirmedRange[0].format('YYYY-MM-DD'),
+              to: confirmedRange[1].format('YYYY-MM-DD'),
+            },
+            {
+              onSuccess: () => setExportModalOpen(false),
+              onError: (err: any) =>
+                message.error(err?.response?.data?.message || 'Xuất Excel thất bại'),
+            },
+          );
+        }}
+      />
 
       <Table
         rowKey="id"

@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Post, Query, Request, Res, UseGuards } from '@nestjs/common';
+import { Body, Controller, Get, Post, Query, Request, Res, UseGuards, BadRequestException } from '@nestjs/common';
 import type { Response } from 'express';
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { AttendanceExportService } from './attendance-export.service';
@@ -43,6 +43,13 @@ export class AttendanceExportController {
     @Request() req: any,
     @Res() res: Response,
   ) {
+    // ⚠️ Bắt buộc chọn khoảng ngày khi export - KHÔNG cho export "toàn bộ
+    // data" không giới hạn (đúng yêu cầu đã chốt: luôn phải xác nhận Period
+    // qua Modal ở FE trước khi gọi API này; chặn LẶP LẠI ở đây để không phụ
+    // thuộc hoàn toàn vào FE - ai gọi thẳng API cũng bị chặn y hệt).
+    if (!query.from || !query.to) {
+      throw new BadRequestException('Phải chọn khoảng thời gian (from, to) trước khi xuất Excel');
+    }
     const { buffer, filename } = await this.exportService.exportAttendanceLogs(
       query,
       req.user.id,
@@ -58,6 +65,9 @@ export class AttendanceExportController {
     @Request() req: any,
     @Res() res: Response,
   ) {
+    if (!query.from || !query.to) {
+      throw new BadRequestException('Phải chọn khoảng thời gian (from, to) trước khi xuất Excel');
+    }
     const { buffer, filename } = await this.exportService.exportAttendanceSummary(
       query,
       req.user.id,

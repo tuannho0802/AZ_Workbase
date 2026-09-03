@@ -8,6 +8,7 @@ import {
   UpdateDateColumn
 } from 'typeorm';
 import { User } from './user.entity';
+import { DecimalTransformer } from '../transformers/decimal.transformer';
 
 export enum LeaveType {
   ANNUAL = 'annual',         // Phép năm
@@ -84,7 +85,10 @@ export class LeaveRequest {
     type: 'decimal', 
     precision: 4, 
     scale: 1,
-    comment: 'Tổng số ngày nghỉ (tính cả 0.5 cho half day)' 
+    comment: 'Tổng số ngày nghỉ (tính cả 0.5 cho half day)',
+    // ⚠️ BẮT BUỘC - xem decimal.transformer.ts. Thiếu nó, giá trị đọc từ DB
+    // là STRING dù type khai TS là number.
+    transformer: new DecimalTransformer(),
   })
   totalDays: number;
   

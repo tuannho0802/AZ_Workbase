@@ -7,6 +7,7 @@ import dayjs, { Dayjs } from 'dayjs';
 import { useAttendanceSummary, useExportAttendanceSummary } from '@/lib/hooks/useZkDevice';
 import { useUsersList } from '@/lib/hooks/useUsers';
 import { AttendanceStatus, AttendanceSummaryRow } from '@/lib/types/zk-device.types';
+import ExportPeriodModal from './ExportPeriodModal';
 
 const { RangePicker } = DatePicker;
 
@@ -27,6 +28,7 @@ export default function AttendanceSummaryTab() {
   const [limit, setLimit] = useState(31);
   const [userId, setUserId] = useState<number | undefined>(undefined);
   const [range, setRange] = useState<[Dayjs, Dayjs]>([dayjs().startOf('month'), dayjs()]);
+  const [exportModalOpen, setExportModalOpen] = useState(false);
 
   const exportMutation = useExportAttendanceSummary();
 
@@ -127,25 +129,32 @@ export default function AttendanceSummaryTab() {
         <Button
           icon={<FileExcelOutlined />}
           loading={exportMutation.isPending}
-          onClick={() => {
-            // Xuất Excel theo ĐÚNG bộ lọc đang áp dụng trên bảng (nhân
-            // viên/khoảng ngày) - "y chang bảng gốc" đúng yêu cầu.
-            exportMutation.mutate(
-              {
-                userId,
-                from: range?.[0]?.format('YYYY-MM-DD'),
-                to: range?.[1]?.format('YYYY-MM-DD'),
-              },
-              {
-                onError: (err: any) =>
-                  message.error(err?.response?.data?.message || 'Xuất Excel thất bại'),
-              },
-            );
-          }}
+          onClick={() => setExportModalOpen(true)}
         >
           Xuất Excel
         </Button>
       </Space>
+
+      <ExportPeriodModal
+        open={exportModalOpen}
+        loading={exportMutation.isPending}
+        defaultRange={range}
+        onCancel={() => setExportModalOpen(false)}
+        onConfirm={(confirmedRange) => {
+          exportMutation.mutate(
+            {
+              userId,
+              from: confirmedRange[0].format('YYYY-MM-DD'),
+              to: confirmedRange[1].format('YYYY-MM-DD'),
+            },
+            {
+              onSuccess: () => setExportModalOpen(false),
+              onError: (err: any) =>
+                message.error(err?.response?.data?.message || 'Xuất Excel thất bại'),
+            },
+          );
+        }}
+      />
 
       <Table
         // ⚠️ Không dùng thẳng `${r.userId}_${r.date}` - nhiều device user

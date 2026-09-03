@@ -8,6 +8,7 @@ import {
   JoinColumn,
 } from 'typeorm';
 import { BooleanTransformer } from '../transformers/boolean.transformer';
+import { DecimalTransformer } from '../transformers/decimal.transformer';
 import { ManagedLink } from '../../common/types/managed-link.type';
 
 import { Role } from '../../common/enums/role.enum';
@@ -124,6 +125,11 @@ export class User {
     scale: 1,
     default: 12.0,
     comment: 'Số ngày phép năm còn lại',
+    // ⚠️ BẮT BUỘC có transformer này - xem giải thích chi tiết ở
+    // decimal-column.transformer.ts. Thiếu nó, giá trị đọc từ DB là STRING
+    // ("12.0") dù type khai TS là number - đã từng gây lỗi 400 khi export
+    // Excel ("annualLeaveBalance must be a number").
+    transformer: new DecimalTransformer(),
   })
   annualLeaveBalance: number;
 

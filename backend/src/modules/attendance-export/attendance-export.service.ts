@@ -22,11 +22,6 @@ const WEEKDAY_FULL_VN = [
 ];
 const WEEKDAY_SHORT_VN = ['CN', 'T2', 'T3', 'T4', 'T5', 'T6', 'T7'];
 
-const SOURCE_LABEL: Record<string, string> = {
-  device_push: 'Máy tự đẩy',
-  device_pull: 'Đồng bộ thủ công',
-};
-
 const STATUS_LABEL: Record<string, string> = {
   on_time: 'Đúng giờ',
   late: 'Đi muộn',
@@ -110,8 +105,14 @@ export class AttendanceExportService {
   }
 
   // ─────────────────────────────────────────────────────────────────────
-  // Tab "Logs chấm công" - export y chang bảng gốc (Thời gian/Nhân viên/
-  // Nguồn/Mã máy), chỉ khác .csv ở chỗ có style/border/cột-rộng đàng hoàng.
+  // Tab "Logs chấm công" - CHỈ xuất đúng 2 cột dữ liệu THUẦN máy chấm công
+  // thật sự ghi nhận: Thời gian + Tên user TRÊN MÁY (deviceUserName) -
+  // KHÔNG hiện tên user đã map trong hệ thống, KHÔNG hiện cột "Trạng thái
+  // khớp"/"Nguồn"/"Mã máy" - vì đây phải là export đối chiếu dữ liệu GỐC
+  // từ thiết bị, việc khớp/map với nhân viên hệ thống là suy luận thêm ở
+  // tầng ứng dụng, không phải dữ liệu máy tự báo ra (đúng yêu cầu nghiệp
+  // vụ đã chốt lại - trước đó cột "Nhân viên" từng lẫn tên hệ thống khi đã
+  // khớp, gây khó đối chiếu ngược lại với chính máy chấm công).
   // ─────────────────────────────────────────────────────────────────────
   async exportAttendanceLogs(
     query: QueryAttendanceLogDto,
@@ -129,10 +130,7 @@ export class AttendanceExportService {
 
     sheet.columns = [
       { header: 'Thời gian', key: 'time', width: 20 },
-      { header: 'Nhân viên', key: 'employee', width: 26 },
-      { header: 'Trạng thái khớp', key: 'matchStatus', width: 16 },
-      { header: 'Nguồn', key: 'source', width: 18 },
-      { header: 'Mã máy', key: 'device', width: 20 },
+      { header: 'Nhân viên (tên trên máy)', key: 'employee', width: 28 },
     ];
     this.styleHeaderRow(sheet.getRow(1));
     sheet.views = [{ state: 'frozen', ySplit: 1 }];
@@ -140,18 +138,11 @@ export class AttendanceExportService {
     for (const log of data as any[]) {
       const row = sheet.addRow({
         time: this.naiveToVnDisplay(log.recordTime),
-        employee: log.matchedUser
-          ? log.matchedUser.name
-          : `Chưa khớp: ${log.deviceUserName || `UID ${log.deviceUserId}`}`,
-        matchStatus: log.matchedUser ? 'Đã khớp' : 'Chưa khớp',
-        source: SOURCE_LABEL[log.source] || log.source,
-        device: log.deviceSerialNumber || '—',
+        // Luôn lấy tên THÔ do máy báo về, BẤT KỂ đã khớp với hệ thống hay
+        // chưa - không rẽ nhánh theo log.matchedUser như trước đây nữa.
+        employee: log.deviceUserName || `UID ${log.deviceUserId}`,
       });
       row.eachCell((cell) => (cell.border = THIN_BORDER));
-      if (!log.matchedUser) {
-        row.getCell('employee').font = { color: { argb: 'FFD46B08' } };
-        row.getCell('matchStatus').font = { color: { argb: 'FFD46B08' }, bold: true };
-      }
     }
 
     return {
@@ -192,7 +183,7 @@ export class AttendanceExportService {
       const dow = this.weekdayOfIso(r.date);
       const row = sheet.addRow({
         date: `${WEEKDAY_FULL_VN[dow]}, ${this.isoDateToVn(r.date)}`,
-        employee: r.isMapped ? r.userName : `${r.userName} (chưa map)`,
+        employee: r.isMapped ? r.userName : `${r.userName}`,
         checkIn: this.naiveToVnDisplay(r.checkIn, false).split(' ')[1] ?? '—',
         checkOut: r.checkOut ? this.naiveToVnDisplay(r.checkOut, false).split(' ')[1] : '—',
         workHours: r.workHours != null ? `${r.workHours}h` : '—',

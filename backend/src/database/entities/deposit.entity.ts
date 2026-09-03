@@ -1,6 +1,7 @@
-  import { Entity, Column, PrimaryGeneratedColumn, CreateDateColumn, UpdateDateColumn, ManyToOne, JoinColumn } from 'typeorm';
+import { Entity, Column, PrimaryGeneratedColumn, CreateDateColumn, UpdateDateColumn, ManyToOne, JoinColumn } from 'typeorm';
 import { Customer } from './customer.entity';
 import { User } from './user.entity';
+import { DecimalTransformer } from '../transformers/decimal.transformer';
 
 @Entity('deposits')
 export class Deposit {
@@ -14,7 +15,14 @@ export class Deposit {
   @JoinColumn({ name: 'customer_id' })
   customer: Customer;
 
-  @Column({ type: 'decimal', precision: 15, scale: 2 })
+  @Column({
+    type: 'decimal',
+    precision: 15,
+    scale: 2,
+    // ⚠️ BẮT BUỘC - xem decimal.transformer.ts. Thiếu nó, giá trị đọc từ DB
+    // là STRING dù type khai TS là number.
+    transformer: new DecimalTransformer(),
+  })
   amount: number;
 
   @Column({ name: 'deposit_date', type: 'date' })
