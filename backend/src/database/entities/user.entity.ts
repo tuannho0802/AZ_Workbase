@@ -9,7 +9,6 @@ import {
 } from 'typeorm';
 import { BooleanTransformer } from '../transformers/boolean.transformer';
 import { DecimalTransformer } from '../transformers/decimal.transformer';
-import { ManagedLink } from '../../common/types/managed-link.type';
 
 import { Role } from '../../common/enums/role.enum';
 import { ApprovalStatus } from '../../common/enums/approval-status.enum';
@@ -41,13 +40,13 @@ export class User {
   })
   phone: string | null;
 
-  @Column({
-    type: 'json',
-    nullable: true,
-    comment:
-      "Danh sách link Fanpage/Group user quản lý - [{type,name,url}]. Only Admin CRUD.",
-  })
-  profile: ManagedLink[] | null;
+  // ⚠️ Cột `profile` (JSON thủ công lưu URL Fanpage/Group) ĐÃ BỊ XOÁ - xem
+  // migration 1778100000000-DropUserProfileColumn.ts. Thay thế bằng dữ liệu
+  // TÍNH TOÁN ĐỘNG từ `LinkGroup.primaryManagerId` (Quản lý chính) +
+  // `LinkGroupSecondaryManager` (Quản lý phụ) - không cần cột riêng trên
+  // User nữa, tránh trùng lặp dữ liệu. Xem
+  // `LinkGroupManagersService.listManagedByMe()` để lấy danh sách nhóm 1
+  // user đang quản lý (chính hoặc phụ).
 
   @Column({
     name: 'zk_device_user_id',

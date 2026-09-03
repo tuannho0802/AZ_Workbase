@@ -5,11 +5,9 @@ import { Repository, In } from 'typeorm';
 import { User } from '../../database/entities/user.entity';
 import { Department } from '../../database/entities/department.entity';
 import { Role } from '../../common/enums/role.enum';
-import { ManagedLink } from '../../common/types/managed-link.type';
 import { CreateUserDto } from './dto/create-user.dto';
 import { UpdateUserDto } from './dto/update-user.dto';
 import { ResetPasswordDto } from './dto/reset-password.dto';
-import { UpdateUserProfileDto } from './dto/update-user-profile.dto';
 import { ConflictException, NotFoundException, ForbiddenException, BadRequestException } from '@nestjs/common';
 import * as bcrypt from 'bcrypt';
 import { AuditService } from '../audit/audit.service';
@@ -347,115 +345,9 @@ export class UsersService {
     return { success: true, message: 'Đã đặt lại mật khẩu thành công' };
   }
 
-  /**
-   * Lấy danh sách Fanpage/Group (profile) của 1 user.
-   * ⚠️ profile có select: false trong entity -> phải addSelect thủ công.
-   * Quyền (FIX PERMISSIONS.md mục 2.2): trước đây chỉ check
-   * `role !== ADMIN && id !== currentUserId` -> Assistant/Manager bị chặn
-   * xem profile người khác dù đúng rule phải xem được (Assistant ngang
-   * Admin, Manager trong phòng ban quản lý). Giờ dùng chung canManageUser -
-   * cần biết departmentId của user mục tiêu trước khi check.
-   */
-  async getProfile(
-    id: number,
-    currentUserId: number,
-    currentUserRole: string,
-  ): Promise<{ id: number; profile: ManagedLink[] }> {
-    const target = await this.usersRepository.findOne({
-      where: { id },
-      select: ['id', 'departmentId'],
-    });
-    if (!target) {
-      throw new NotFoundException('Không tìm thấy nhân viên');
-    }
-
-    const allowed = await UsersAccessHelper.canManageUser(
-      this.departmentsRepository,
-      target.id,
-      target.departmentId,
-      currentUserId,
-      currentUserRole,
-    );
-    if (!allowed) {
-      throw new ForbiddenException('Bạn không có quyền xem profile của nhân viên này');
-    }
-
-    const user = await this.usersRepository
-      .createQueryBuilder('user')
-      .addSelect('user.profile')
-      .where('user.id = :id', { id })
-      .getOne();
-
-    if (!user) {
-      throw new NotFoundException('Không tìm thấy nhân viên');
-    }
-
-    return { id: user.id, profile: user.profile ?? [] };
-  }
-
-  /**
-   * Thay thế (replace) toàn bộ profile của 1 user bằng danh sách link mới.
-   * FIX PERMISSIONS.md mục 2.2: trước đây chỉ Admin (enforced qua
-   * @Roles(ADMIN) ở controller, không check gì ở service) - giờ controller
-   * mở thêm Assistant/Manager, phải tự gác bằng canManageUser ở đây.
-   */
-  async updateProfile(
-    id: number,
-    dto: UpdateUserProfileDto,
-    callerId: number,
-    callerRole: string,
-  ): Promise<{ id: number; profile: ManagedLink[] }> {
-    const existing = await this.usersRepository
-      .createQueryBuilder('user')
-      .addSelect('user.profile')
-      .where('user.id = :id', { id })
-      .getOne();
-
-    if (!existing) {
-      throw new NotFoundException('Không tìm thấy nhân viên');
-    }
-
-    const allowed = await UsersAccessHelper.canManageUser(
-      this.departmentsRepository,
-      existing.id,
-      existing.departmentId,
-      callerId,
-      callerRole,
-    );
-    if (!allowed) {
-      throw new ForbiddenException('Bạn không có quyền sửa profile của nhân viên này');
-    }
-
-    const oldProfile = existing.profile ?? [];
-    const newProfile = dto.profile;
-
-    // CRITICAL: dùng update() thay vì save(entity) vì `profile` là select:false -
-    // nếu load entity không addSelect rồi save(), TypeORM có thể ghi đè profile
-    // thành NULL do field không nằm trong entity đã load.
-    await this.usersRepository
-      .createQueryBuilder()
-      .update(User)
-      .set({ profile: newProfile })
-      .where('id = :id', { id })
-      .execute();
-
-    if (callerId) {
-      this.auditService.logActionAsync(
-        callerId,
-        'UPDATE_USER_PROFILE',
-        'user',
-        id,
-        { profile: oldProfile },
-        { profile: newProfile },
-      );
-    }
-
-    this.logger.log(
-      `[Users] Profile updated for user ID ${id} by ${callerId}`,
-    );
-
-    return { id, profile: newProfile };
-  }
+  // ⚠️ Method getProfile()/updateProfile() (Fanpage/Group thủ công) ĐÃ BỊ
+  // XOÁ - xem user.entity.ts + users.controller.ts. Dùng
+  // `LinkGroupManagersService.listManagedByMe()` thay thế.
 
   /**
    * Tạo user từ luồng TỰ ĐĂNG KÝ (AuthService.register) - KHÁC với create()

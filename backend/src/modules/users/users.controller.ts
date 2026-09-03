@@ -1,4 +1,4 @@
-import { Controller, Get, Post, Put, Body, Patch, Param, Delete, Query, UseGuards, Request, UseInterceptors } from '@nestjs/common';
+import { Controller, Get, Post, Body, Patch, Param, Delete, Query, UseGuards, Request, UseInterceptors } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiBearerAuth, ApiResponse } from '@nestjs/swagger';
 import { UsersService } from './users.service';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
@@ -8,7 +8,6 @@ import { Role } from '../../common/enums/role.enum';
 import { CreateUserDto } from './dto/create-user.dto';
 import { UpdateUserDto } from './dto/update-user.dto';
 import { ResetPasswordDto } from './dto/reset-password.dto';
-import { UpdateUserProfileDto } from './dto/update-user-profile.dto';
 import { ApproveUserDto } from './dto/approve-user.dto';
 import { RejectUserDto } from './dto/reject-user.dto';
 import { CacheControlInterceptor } from '../../common/interceptors/cache-control.interceptor';
@@ -107,18 +106,11 @@ export class UsersController {
     return this.usersService.update(+id, dto, req.user.id, req.user.role);
   }
 
-  @Get(':id/profile')
-  @ApiOperation({ summary: 'Lấy danh sách Fanpage/Group (profile) của nhân viên. Admin/Assistant xem được của bất kỳ ai, Manager trong phòng ban quản lý, role khác chỉ xem được của chính mình' })
-  async getUserProfile(@Param('id') id: string, @Request() req: any) {
-    return this.usersService.getProfile(+id, req.user.id, req.user.role);
-  }
-
-  @Put(':id/profile')
-  @Roles(Role.ADMIN, Role.ASSISTANT, Role.MANAGER)
-  @ApiOperation({ summary: 'Cập nhật (thay thế toàn bộ) danh sách Fanpage/Group của nhân viên (Admin/Assistant toàn bộ, Manager trong phòng ban quản lý)' })
-  async updateProfile(@Param('id') id: string, @Body() dto: UpdateUserProfileDto, @Request() req: any) {
-    return this.usersService.updateProfile(+id, dto, req.user.id, req.user.role);
-  }
+  // ⚠️ Endpoint GET/PUT `:id/profile` (Fanpage/Group thủ công) ĐÃ BỊ XOÁ -
+  // xem user.entity.ts. Trang Profile giờ dùng
+  // `GET /link-groups/managed-by-me` (LinkGroupManagersController) để lấy
+  // danh sách nhóm user đang là Quản lý chính/phụ - tự động, không cần
+  // nhập tay, không cần endpoint riêng ở đây nữa.
 
   @Patch(':id/reset-password')
   @Roles(Role.ADMIN, Role.ASSISTANT, Role.MANAGER)
