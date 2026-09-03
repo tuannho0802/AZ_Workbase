@@ -13,6 +13,7 @@ export interface CustomerFilterParams {
   search?: string;
   dateFrom?: string;
   dateTo?: string;
+  joinedGroups?: 'joined' | 'not_joined';
 }
 
 export const useCustomers = (params: CustomerFilterParams) => {

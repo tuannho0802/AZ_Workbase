@@ -93,6 +93,10 @@ export interface Customer {
   latestFTD?: number;
   totalDeposit30Days?: number;
   activeAssignees?: any[];
+  // Số nhóm liên kết (Zalo/Telegram...) khách hàng ĐÃ join - tính batch 1
+  // query/trang ở backend (customers.service.ts findAll()), KHÔNG phải
+  // N+1 query. Chỉ có mặt khi backend trả kèm (luôn có ở findAll()).
+  joinedGroupsCount?: number;
   notes?: CustomerNote[];
   deposits?: Deposit[];
   createdById?: number;

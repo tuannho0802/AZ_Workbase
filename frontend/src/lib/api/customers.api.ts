@@ -14,6 +14,7 @@ export const customersApi = {
     sortOrder?: 'ASC' | 'DESC';
     dateFrom?: string;
     dateTo?: string;
+    joinedGroups?: 'joined' | 'not_joined';
   }): Promise<PaginatedResponse<Customer>> => {
     const response = await axiosInstance.get('/customers', { params });
     return response.data;

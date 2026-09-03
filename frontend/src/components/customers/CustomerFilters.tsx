@@ -13,6 +13,7 @@ interface CustomerFiltersProps {
     salesUserId?: number;
     dateFrom?: string;
     dateTo?: string;
+    joinedGroups?: 'joined' | 'not_joined';
   };
   salesUsers: { id: number; name: string }[];
   onFiltersChange: (newFilters: any) => void;
@@ -157,6 +158,21 @@ export const CustomerFilters: React.FC<CustomerFiltersProps> = ({
             value={filters.salesUserId}
             onChange={(val) => onFiltersChange({ ...filters, salesUserId: val, page: 1 })}
             options={salesUsers.map(u => ({ value: u.id, label: u.name }))}
+          />
+        </Col>
+
+        <Col xs={24} sm={12} md={4}>
+          <label className="block text-sm font-medium mb-1">Đã joined nhóm</label>
+          <Select
+            placeholder="Tất cả"
+            allowClear
+            style={{ width: '100%' }}
+            value={filters.joinedGroups}
+            onChange={(val) => onFiltersChange({ ...filters, joinedGroups: val, page: 1 })}
+            options={[
+              { value: 'joined', label: 'Đã joined ít nhất 1 nhóm' },
+              { value: 'not_joined', label: 'Chưa joined nhóm nào' },
+            ]}
           />
         </Col>
 

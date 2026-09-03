@@ -213,6 +213,7 @@ function CustomersPageContent() {
   const [salesUserId, setSalesUserId] = useState<number | undefined>(undefined);
   const [dateFrom, setDateFrom] = useState<dayjs.Dayjs | null>(null);
   const [dateTo, setDateTo] = useState<dayjs.Dayjs | null>(null);
+  const [joinedGroups, setJoinedGroups] = useState<'joined' | 'not_joined' | undefined>(undefined);
   const [sortField, setSortField] = useState<string>('createdAt');
   const [sortOrder, setSortOrder] = useState<'ASC' | 'DESC'>('DESC');
 
@@ -253,6 +254,7 @@ function CustomersPageContent() {
     sortOrder,
     dateFrom: dateFrom?.format('YYYY-MM-DD'),
     dateTo: dateTo?.format('YYYY-MM-DD'),
+    joinedGroups,
   });
 
   const customers = customersResponse?.data || [];
@@ -418,6 +420,19 @@ function CustomersPageContent() {
       render: (status) => renderStatusTag(status),
     },
     {
+      title: 'Đã joined nhóm',
+      dataIndex: 'joinedGroupsCount',
+      key: 'joinedGroupsCount',
+      width: isLaptop ? '7%' : '8%',
+      align: 'center',
+      render: (count: number | undefined) =>
+        count && count > 0 ? (
+          <Tag color="green">{count} nhóm</Tag>
+        ) : (
+          <Tag color="default">Chưa join</Tag>
+        ),
+    },
+    {
       title: () => (
         <div>
           <div>Nạp tiền</div>
@@ -483,6 +498,7 @@ function CustomersPageContent() {
     if (newFilters.salesUserId !== undefined) setSalesUserId(newFilters.salesUserId);
     if (newFilters.dateFrom !== undefined) setDateFrom(newFilters.dateFrom ? dayjs(newFilters.dateFrom) : null);
     if (newFilters.dateTo !== undefined) setDateTo(newFilters.dateTo ? dayjs(newFilters.dateTo) : null);
+    if (newFilters.joinedGroups !== undefined) setJoinedGroups(newFilters.joinedGroups);
     if (newFilters.page) setPage(newFilters.page);
   };
 
@@ -574,6 +590,7 @@ function CustomersPageContent() {
                       salesUserId,
                       dateFrom: dateFrom?.format('YYYY-MM-DD'),
                       dateTo: dateTo?.format('YYYY-MM-DD'),
+                      joinedGroups,
                     }}
                     salesUsers={salesUsers}
                     onFiltersChange={handleFiltersChange}
@@ -592,6 +609,7 @@ function CustomersPageContent() {
             salesUserId,
             dateFrom: dateFrom?.format('YYYY-MM-DD'),
             dateTo: dateTo?.format('YYYY-MM-DD'),
+            joinedGroups,
           }}
           salesUsers={salesUsers}
           onFiltersChange={handleFiltersChange}
