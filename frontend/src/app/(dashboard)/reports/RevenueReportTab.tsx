@@ -1,9 +1,10 @@
 'use client';
 
-import { Table, Card, Statistic, Row, Col, Empty, Typography, Alert } from 'antd';
+import { Table, Card, Statistic, Empty, Typography, Alert } from 'antd';
 import { DollarOutlined } from '@ant-design/icons';
 import { useRevenueReport } from '@/lib/hooks/useReports';
 import { ReportQuery, RevenuePersonalRow, RevenueDepartmentRow } from '@/lib/types/reports.types';
+import { getApiErrorMessage } from '@/lib/utils/error-message.util';
 import PeriodSelector from './PeriodSelector';
 
 const { Title } = Typography;
@@ -59,7 +60,7 @@ export default function RevenueReportTab({ query, onQueryChange }: Props) {
           showIcon
           style={{ marginBottom: 16 }}
           message="Không tải được báo cáo doanh thu"
-          description={(error as any)?.response?.data?.message || (error as any)?.message}
+          description={getApiErrorMessage(error, 'Đã có lỗi xảy ra, vui lòng thử lại')}
         />
       )}
 

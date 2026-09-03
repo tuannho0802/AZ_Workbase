@@ -43,7 +43,7 @@ export default function PeriodSelector({ value, onChange, resolvedPeriod }: Peri
   const picker = value.period === 'month' ? 'month' : value.period === 'quarter' ? 'quarter' : value.period === 'year' ? 'year' : 'date';
 
   return (
-    <Space direction="vertical" size={6}>
+    <Space orientation="vertical" size={6}>
       <Space wrap>
         <Select
           style={{ width: 140 }}

@@ -13,6 +13,7 @@ import {
   ApartmentOutlined,
   ClockCircleOutlined,
   WarningOutlined,
+  BarChartOutlined,
 } from '@ant-design/icons';
 
 export interface NavItem {
@@ -77,6 +78,17 @@ export const NAV_ITEMS: NavItem[] = [
     description: 'Các nhóm liên kết bạn là quản lý chính/phụ',
     icon: <UsergroupAddOutlined />,
     path: '/nhom-toi-quan-ly',
+    roles: null,
+  },
+  {
+    key: 'reports',
+    label: 'Báo cáo doanh số',
+    description: 'Doanh thu và data khách hàng theo Cá nhân/Phòng ban/Tổng tất cả',
+    icon: <BarChartOutlined />,
+    path: '/reports',
+    // role nào cũng xem được (khớp @Roles(ADMIN, ASSISTANT, MANAGER, EMPLOYEE)
+    // ở reports.controller.ts) - phạm vi dữ liệu thật do BE tự khoanh vùng
+    // theo role, không cần ẩn mục này với ai.
     roles: null,
   },
   {

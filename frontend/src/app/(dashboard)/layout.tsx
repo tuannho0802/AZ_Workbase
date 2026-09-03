@@ -152,6 +152,8 @@ export default function DashboardLayout({
       newKey = 'nhom-lien-ket';
     } else if (pathname.includes('/attendance-device')) {
       newKey = 'attendance-device';
+    } else if (pathname.includes('/reports')) {
+      newKey = 'reports';
     }
     
     setSelectedKey(newKey);
