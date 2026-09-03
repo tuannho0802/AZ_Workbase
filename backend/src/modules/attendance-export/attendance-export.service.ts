@@ -183,7 +183,7 @@ export class AttendanceExportService {
       const dow = this.weekdayOfIso(r.date);
       const row = sheet.addRow({
         date: `${WEEKDAY_FULL_VN[dow]}, ${this.isoDateToVn(r.date)}`,
-        employee: r.isMapped ? r.userName : `${r.userName}`,
+        employee: r.userName,
         checkIn: this.naiveToVnDisplay(r.checkIn, false).split(' ')[1] ?? '—',
         checkOut: r.checkOut ? this.naiveToVnDisplay(r.checkOut, false).split(' ')[1] : '—',
         workHours: r.workHours != null ? `${r.workHours}h` : '—',

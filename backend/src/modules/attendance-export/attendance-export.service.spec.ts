@@ -52,14 +52,14 @@ describe('AttendanceExportService', () => {
       );
     });
 
-    it('sinh file xlsx đúng header và đúng dữ liệu (kể cả log chưa khớp nhân viên)', async () => {
+    it('sinh file xlsx đúng header và đúng dữ liệu - CHỈ 2 cột, luôn dùng tên trên máy bất kể đã khớp hệ thống hay chưa', async () => {
       mockZkDeviceService.getAttendanceLogs.mockResolvedValue({
         data: [
           {
             recordTime: '2026-08-25T09:14:34',
             matchedUser: { id: 1, name: 'Admin' },
             deviceUserId: '44',
-            deviceUserName: null,
+            deviceUserName: 'Tuanit',
             source: 'device_pull',
             deviceSerialNumber: 'ABC123',
           },
@@ -86,18 +86,22 @@ describe('AttendanceExportService', () => {
       const sheet = wb.getWorksheet('Logs chấm công');
       expect(sheet).toBeDefined();
 
-      // Header đúng thứ tự cột đã khai báo trong service
+      // ⚠️ CHỈ đúng 2 cột - đã bỏ "Trạng thái khớp"/"Nguồn"/"Mã máy" theo
+      // yêu cầu nghiệp vụ (export phải là dữ liệu THUẦN từ máy, không lẫn
+      // suy luận khớp/map ở tầng ứng dụng).
       expect(sheet!.getRow(1).getCell(1).value).toBe('Thời gian');
-      expect(sheet!.getRow(1).getCell(2).value).toBe('Nhân viên');
+      expect(sheet!.getRow(1).getCell(2).value).toBe('Nhân viên (tên trên máy)');
+      expect(sheet!.getRow(1).getCell(3).value).toBeNull();
 
-      // Dòng 1: log đã khớp -> hiện tên nhân viên hệ thống
+      // Dòng 1: log ĐÃ khớp hệ thống -> VẪN hiện tên trên máy (Tuanit),
+      // KHÔNG hiện tên hệ thống (Admin) - đúng yêu cầu "không hiện tên user
+      // của hệ thống".
       expect(sheet!.getRow(2).getCell(1).value).toBe('25/08/2026 09:14:34');
-      expect(sheet!.getRow(2).getCell(2).value).toBe('Admin');
-      expect(sheet!.getRow(2).getCell(3).value).toBe('Đã khớp');
+      expect(sheet!.getRow(2).getCell(2).value).toBe('Tuanit');
 
-      // Dòng 2: log CHƯA khớp -> hiện tên trên máy (từ cache), kèm nhãn UID
-      expect(sheet!.getRow(3).getCell(2).value).toBe('Chưa khớp: Thuyvy');
-      expect(sheet!.getRow(3).getCell(3).value).toBe('Chưa khớp');
+      // Dòng 2: log CHƯA khớp -> cũng chỉ hiện tên trên máy, KHÔNG còn tiền
+      // tố "Chưa khớp:" như bản cũ (không còn phân biệt khớp/chưa khớp).
+      expect(sheet!.getRow(3).getCell(2).value).toBe('Thuyvy');
     });
 
     it('đặt tên file "ToanBo" khi không có filter from/to', async () => {
@@ -108,7 +112,7 @@ describe('AttendanceExportService', () => {
       expect(filename).toBe('LogsChamCong ToanBo.xlsx');
     });
 
-    it('hiện "UID <mã>" khi log chưa khớp VÀ chưa có tên cache', async () => {
+    it('hiện "UID <mã>" khi log chưa có tên trên máy (deviceUserName null)', async () => {
       mockZkDeviceService.getAttendanceLogs.mockResolvedValue({
         data: [
           {
@@ -126,7 +130,7 @@ describe('AttendanceExportService', () => {
       const wb = await loadWorkbook(buffer);
       const sheet = wb.getWorksheet('Logs chấm công');
 
-      expect(sheet!.getRow(2).getCell(2).value).toBe('Chưa khớp: UID 77');
+      expect(sheet!.getRow(2).getCell(2).value).toBe('UID 77');
     });
   });
 
@@ -143,7 +147,7 @@ describe('AttendanceExportService', () => {
       );
     });
 
-    it('sinh file xlsx đúng dữ liệu (đã map lẫn chưa map)', async () => {
+    it('sinh file xlsx đúng dữ liệu (đã map lẫn chưa map) - cột Nhân viên CHỈ hiện userName thuần, KHÔNG còn hậu tố "(chưa map)"', async () => {
       mockZkDeviceService.getAttendanceSummary.mockResolvedValue({
         data: [
           {
@@ -190,8 +194,9 @@ describe('AttendanceExportService', () => {
       expect(sheet!.getRow(2).getCell(5).value).toBe('8.5h');
       expect(sheet!.getRow(2).getCell(6).value).toBe('Đi muộn');
 
-      // Dòng chưa map: tên có hậu tố "(chưa map)", chưa checkout -> '—'
-      expect(sheet!.getRow(3).getCell(2).value).toBe('Thuyvy (chưa map)');
+      // Dòng chưa map: chỉ hiện tên thuần (không còn hậu tố "(chưa map)"
+      // như bản cũ), chưa checkout -> '—'
+      expect(sheet!.getRow(3).getCell(2).value).toBe('Thuyvy');
       expect(sheet!.getRow(3).getCell(4).value).toBe('—');
       expect(sheet!.getRow(3).getCell(5).value).toBe('—');
     });

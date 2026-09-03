@@ -9,10 +9,8 @@ import { CustomersService } from './customers.service';
 import { Customer } from '../../database/entities/customer.entity';
 import { CustomerNote } from '../../database/entities/customer-note.entity';
 import { Deposit } from '../../database/entities/deposit.entity';
-import {
-  CustomerAssignment,
-  AssignmentStatus,
-} from '../../database/entities/customer-assignment.entity';
+import { CustomerAssignment, AssignmentStatus } from '../../database/entities/customer-assignment.entity';
+import { CustomerGroupMembership } from '../../database/entities/customer-group-membership.entity';
 import { AuditService } from '../audit/audit.service';
 import {
   DuplicatePhoneException,
@@ -52,6 +50,14 @@ describe('CustomersService', () => {
     find: jest.fn(),
     save: jest.fn(),
   };
+  // ⚠️ Provider thứ 5 trong constructor CustomersService (thêm sau khi tính
+  // năng "checklist tham gia nhóm liên kết" ra đời) - trước đây file test
+  // này thiếu hẳn mock cho nó, khiến NestJS không dựng nổi TestingModule
+  // (lỗi "Nest can't resolve dependencies... CustomerGroupMembershipRepository")
+  // -> TOÀN BỘ test trong file đều fail ngay ở bước khởi tạo module, không
+  // liên quan gì tới logic nghiệp vụ nào. Không method nào trong service
+  // đang được test ở đây thực sự gọi tới repo này, nên object rỗng là đủ.
+  const mockGroupMembershipRepo = {};
   const mockAuditService = {
     logAction: jest.fn(),
     logActionAsync: jest.fn(),
@@ -69,6 +75,10 @@ describe('CustomersService', () => {
         {
           provide: getRepositoryToken(CustomerAssignment),
           useValue: mockAssignmentRepo,
+        },
+        {
+          provide: getRepositoryToken(CustomerGroupMembership),
+          useValue: mockGroupMembershipRepo,
         },
         { provide: AuditService, useValue: mockAuditService },
       ],
