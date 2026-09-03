@@ -282,6 +282,15 @@ function CustomersPageContent() {
     selectedRowKeys,
     onChange: (newKeys: React.Key[]) => setSelectedRowKeys(newKeys),
     preserveSelectedRowKeys: true,
+    // ⚠️ FIX bug checkbox bị đè/cắt ở cột đầu bảng: globals.css ép
+    // `table-layout: fixed !important` cho .customer-table - dưới layout
+    // fixed, CỘT NÀO KHÔNG khai báo width sẽ bị co gần bằng 0 nếu tổng các
+    // cột còn lại (STT 48px + 9 cột %  + Thao tác 60-70px) đã gần lấp đầy
+    // 100%. Cột checkbox do antd tự chèn thêm (rowSelection) vốn không có
+    // width khai báo -> đúng nguyên nhân checkbox bị bóp méo/chồng lên
+    // nhau trong ảnh. Khai báo cứng columnWidth để nó luôn có chỗ đứng
+    // riêng, không bị các cột khác giành mất.
+    columnWidth: 38,
   };
 
   const fetchStats = async () => {
@@ -353,7 +362,7 @@ function CustomersPageContent() {
     {
       title: 'STT',
       key: 'stt',
-      width: 48,
+      width: 36,
       align: 'center',
       render: (_, __, index) => (page - 1) * pageSize + index + 1,
     },
