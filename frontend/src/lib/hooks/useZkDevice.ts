@@ -1,5 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { zkDeviceApi } from '../api/zk-device.api';
+import { attendanceExportApi } from '../api/attendance-export.api';
 import { AttendanceLogQuery, AttendanceSummaryQuery } from '../types/zk-device.types';
 
 export const useDeviceStatus = () => {
@@ -93,4 +94,19 @@ export const useCleanupAttendanceLogs = () => {
       queryClient.invalidateQueries({ queryKey: ['zk-attendance-summary'] });
     },
   });
+};
+
+// 3 hook export Excel - không cần invalidate gì (chỉ tải file xuống, không
+// đổi dữ liệu) - dùng useMutation chỉ để có sẵn isPending/error nhất quán
+// với các action khác trong trang, không phải vì cần cache.
+export const useExportAttendanceLogs = () => {
+  return useMutation({ mutationFn: attendanceExportApi.exportLogs });
+};
+
+export const useExportAttendanceSummary = () => {
+  return useMutation({ mutationFn: attendanceExportApi.exportSummary });
+};
+
+export const useExportMonthlyAttendance = () => {
+  return useMutation({ mutationFn: attendanceExportApi.exportMonthly });
 };

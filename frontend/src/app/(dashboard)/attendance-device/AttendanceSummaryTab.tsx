@@ -1,29 +1,22 @@
 'use client';
 
 import { useState } from 'react';
-import { Table, Select, DatePicker, Space, Tag, Button, Tooltip } from 'antd';
-import { ReloadOutlined } from '@ant-design/icons';
+import { Table, Select, DatePicker, Space, Tag, Button, Modal, App, Typography } from 'antd';
+import { ReloadOutlined, DeleteOutlined, FileExcelOutlined } from '@ant-design/icons';
 import dayjs, { Dayjs } from 'dayjs';
-import { useAttendanceSummary } from '@/lib/hooks/useZkDevice';
+import { useAttendanceLogs, useCleanupAttendanceLogs, useExportAttendanceLogs } from '@/lib/hooks/useZkDevice';
 import { useUsersList } from '@/lib/hooks/useUsers';
-import { AttendanceStatus, AttendanceSummaryRow } from '@/lib/types/zk-device.types';
+import { AttendanceLog } from '@/lib/types/zk-device.types';
+import { useAuthStore } from '@/lib/stores/auth.store';
 
 const { RangePicker } = DatePicker;
+const { Text } = Typography;
 
-// Khớp đúng quy định: sau 9h00 tính đi muộn, trước 18h00 tính về sớm,
-// từ 18h00 trở đi luôn tính tan ca đúng giờ.
-const STATUS_CONFIG: Record<AttendanceStatus, { text: string; color: string }> = {
-  on_time: { text: 'Đúng giờ', color: 'green' },
-  late: { text: 'Đi muộn', color: 'orange' },
-  early_leave: { text: 'Về sớm', color: 'gold' },
-  late_and_early: { text: 'Đi muộn & về sớm', color: 'red' },
-  missing_checkout: { text: 'Thiếu chấm ra', color: 'default' },
+const SOURCE_LABEL: Record<string, { text: string; color: string }> = {
+  device_push: { text: 'Máy tự đẩy', color: 'blue' },
+  device_pull: { text: 'Đồng bộ thủ công', color: 'purple' },
 };
 
-// dayjs locale 'vi' trả tên thứ viết thường ("thứ sáu") - viết hoa chữ đầu cho đẹp
-const capitalize = (s: string) => (s ? s.charAt(0).toUpperCase() + s.slice(1) : s);
-
-// Chọn nhanh khoảng ngày thay vì phải bấm 2 lần trên lịch - đỡ mất công chọn
 const RANGE_PRESETS = [
   { label: 'Hôm nay', value: [dayjs(), dayjs()] as [Dayjs, Dayjs] },
   { label: 'Tuần này', value: [dayjs().startOf('week'), dayjs()] as [Dayjs, Dayjs] },
@@ -37,96 +30,70 @@ const RANGE_PRESETS = [
   },
 ];
 
-export default function AttendanceSummaryTab() {
+export default function AttendanceLogsTab() {
+  const { message } = App.useApp();
   const { users } = useUsersList();
+  // Trang "Máy chấm công" giờ mở cho admin/assistant/manager (khớp
+  // PERMISSIONS.md §2.3), nhưng riêng DỌN DẸP LOG (hard-delete vĩnh viễn)
+  // vẫn tách decorator @Roles(Role.ADMIN) ở BE - ẩn nút này với
+  // assistant/manager để không hiện 1 nút bấm vào chắc chắn dính 403.
+  const isAdmin = useAuthStore((s) => s.user?.role) === 'admin';
   const [page, setPage] = useState(1);
-  const [limit, setLimit] = useState(31);
+  const [limit, setLimit] = useState(20);
   const [userId, setUserId] = useState<number | undefined>(undefined);
-  const [range, setRange] = useState<[Dayjs, Dayjs]>([dayjs().startOf('month'), dayjs()]);
+  const [matched, setMatched] = useState<'matched' | 'unmatched' | undefined>(undefined);
+  const [range, setRange] = useState<[Dayjs, Dayjs] | null>(null);
 
-  const { data, isLoading, refetch, isFetching } = useAttendanceSummary({
+  const [cleanupOpen, setCleanupOpen] = useState(false);
+  const [cleanupDate, setCleanupDate] = useState<Dayjs | null>(
+    dayjs().subtract(6, 'month').startOf('month'),
+  );
+  const cleanupMutation = useCleanupAttendanceLogs();
+  const exportMutation = useExportAttendanceLogs();
+
+  const { data, isLoading, refetch, isFetching } = useAttendanceLogs({
     page,
     limit,
     userId,
+    matched,
     from: range?.[0]?.format('YYYY-MM-DD'),
     to: range?.[1]?.format('YYYY-MM-DD'),
   });
 
-  // Tổng width các cột cố định dưới đây = 150+180+110+110+110+160 = 820px,
-  // kết hợp tableLayout 'fixed' để mỗi cột giữ đúng tỉ lệ, không bị dồn
-  // trống lệch nhau giữa các cột như trước (cột "Nhân viên" trước đây
-  // không có width cố định nên chiếm hết phần dư, đẩy layout lệch).
   const columns = [
     {
-      title: 'Ngày',
-      dataIndex: 'date',
-      key: 'date',
-      width: 150,
-      render: (v: string) => capitalize(dayjs(v).format('dddd, DD/MM/YYYY')),
+      title: 'Thời gian',
+      dataIndex: 'recordTime',
+      key: 'recordTime',
+      render: (v: string) => dayjs(v).format('DD/MM/YYYY HH:mm:ss'),
+      width: 170,
     },
     {
       title: 'Nhân viên',
-      key: 'userName',
-      width: 180,
-      ellipsis: true,
-      render: (_: unknown, r: AttendanceSummaryRow) =>
-        r.isMapped ? (
-          r.userName
+      key: 'matchedUser',
+      render: (_: any, r: AttendanceLog) =>
+        r.matchedUser ? (
+          <Tag color="green">{r.matchedUser.name}</Tag>
         ) : (
-          <span title={`Chưa map - mã máy: ${r.deviceUserId}`}>
-            <span style={{ color: '#d46b08' }}>{r.userName}</span>{' '}
-            <Tag color="orange" style={{ marginLeft: 2 }}>
-              chưa map
-            </Tag>
-          </span>
+          <Tag color="orange">
+            Chưa khớp: {r.deviceUserName || `UID ${r.deviceUserId}`}
+          </Tag>
         ),
     },
     {
-      title: 'Giờ vào',
-      dataIndex: 'checkIn',
-      key: 'checkIn',
-      width: 110,
-      align: 'center' as const,
-      render: (v: string, r: AttendanceSummaryRow) => (
-        <span style={{ color: r.isLate ? '#fa8c16' : undefined, fontWeight: r.isLate ? 600 : undefined }}>
-          {dayjs(v).format('HH:mm:ss')}
-        </span>
+      title: 'Nguồn',
+      dataIndex: 'source',
+      key: 'source',
+      width: 140,
+      render: (v: string) => (
+        <Tag color={SOURCE_LABEL[v]?.color}>{SOURCE_LABEL[v]?.text || v}</Tag>
       ),
     },
     {
-      title: 'Giờ ra',
-      dataIndex: 'checkOut',
-      key: 'checkOut',
-      width: 110,
-      align: 'center' as const,
-      render: (v: string | null, r: AttendanceSummaryRow) =>
-        v ? (
-          <span style={{ color: r.isEarlyLeave ? '#faad14' : undefined, fontWeight: r.isEarlyLeave ? 600 : undefined }}>
-            {dayjs(v).format('HH:mm:ss')}
-          </span>
-        ) : (
-          <Tooltip title="Chỉ có 1 lượt quẹt trong ngày, chưa xác định được giờ ra thật">
-            <span style={{ color: '#bfbfbf' }}>—</span>
-          </Tooltip>
-        ),
-    },
-    {
-      title: 'Tổng giờ làm',
-      dataIndex: 'workHours',
-      key: 'workHours',
-      width: 110,
-      align: 'center' as const,
-      render: (v: number | null) => (v != null ? `${v}h` : '—'),
-    },
-    {
-      title: 'Trạng thái',
-      dataIndex: 'status',
-      key: 'status',
+      title: 'Mã máy',
+      dataIndex: 'deviceSerialNumber',
+      key: 'deviceSerialNumber',
       width: 160,
-      align: 'center' as const,
-      render: (v: AttendanceStatus) => (
-        <Tag color={STATUS_CONFIG[v]?.color}>{STATUS_CONFIG[v]?.text || v}</Tag>
-      ),
     },
   ];
 
@@ -146,31 +113,125 @@ export default function AttendanceSummaryTab() {
           }}
           options={(users || []).map((u: any) => ({ value: u.id, label: u.name }))}
         />
+        <Select
+          allowClear
+          placeholder="Trạng thái khớp"
+          style={{ width: 160 }}
+          value={matched}
+          onChange={(v) => {
+            setMatched(v);
+            setPage(1);
+          }}
+          options={[
+            { value: 'matched', label: 'Đã khớp' },
+            { value: 'unmatched', label: 'Chưa khớp' },
+          ]}
+        />
         <RangePicker
           value={range}
-          allowClear={false}
           presets={RANGE_PRESETS}
           onChange={(v) => {
-            if (v && v[0] && v[1]) {
-              setRange(v as [Dayjs, Dayjs]);
-              setPage(1);
-            }
+            setRange(v as [Dayjs, Dayjs] | null);
+            setPage(1);
           }}
         />
         <Button icon={<ReloadOutlined />} onClick={() => refetch()} loading={isFetching}>
           Tải lại
         </Button>
+        <Button
+          icon={<FileExcelOutlined />}
+          loading={exportMutation.isPending}
+          onClick={() => {
+            // Xuất Excel theo ĐÚNG bộ lọc đang áp dụng trên bảng (nhân
+            // viên/trạng thái khớp/khoảng ngày) - "y chang bảng gốc" đúng
+            // yêu cầu, không phải xuất toàn bộ dữ liệu không lọc.
+            exportMutation.mutate(
+              {
+                userId,
+                matched,
+                from: range?.[0]?.format('YYYY-MM-DD'),
+                to: range?.[1]?.format('YYYY-MM-DD'),
+              },
+              {
+                onError: (err: any) =>
+                  message.error(err?.response?.data?.message || 'Xuất Excel thất bại'),
+              },
+            );
+          }}
+        >
+          Xuất Excel
+        </Button>
+        {isAdmin && (
+          <Button
+            danger
+            icon={<DeleteOutlined />}
+            onClick={() => setCleanupOpen(true)}
+          >
+            Dọn dẹp log cũ
+          </Button>
+        )}
       </Space>
 
+      <Modal
+        title="Dọn dẹp log chấm công cũ"
+        open={cleanupOpen}
+        onCancel={() => setCleanupOpen(false)}
+        confirmLoading={cleanupMutation.isPending}
+        okText="Xoá vĩnh viễn"
+        okButtonProps={{ danger: true, disabled: !cleanupDate }}
+        onOk={() => {
+          if (!cleanupDate) return;
+          const olderThan = cleanupDate.format('YYYY-MM-DD');
+          Modal.confirm({
+            title: 'Xác nhận lần cuối',
+            content: (
+              <>
+                Xoá <Text strong>vĩnh viễn</Text> toàn bộ log chấm công trước ngày{' '}
+                <Text strong>{cleanupDate.format('DD/MM/YYYY')}</Text>? Thao tác này{' '}
+                <Text strong type="danger">
+                  không thể hoàn tác
+                </Text>
+                .
+              </>
+            ),
+            okText: 'Tôi hiểu, xoá luôn',
+            okButtonProps: { danger: true },
+            cancelText: 'Huỷ',
+            onOk: async () => {
+              try {
+                const res = await cleanupMutation.mutateAsync(olderThan);
+                message.success(`Đã xoá vĩnh viễn ${res.deleted} dòng log cũ hơn ${res.olderThan}.`);
+                setCleanupOpen(false);
+              } catch (err: any) {
+                message.error(
+                  `Dọn dẹp thất bại: ${err?.response?.data?.message || err?.message || 'Lỗi không xác định'}`,
+                );
+              }
+            },
+          });
+        }}
+      >
+        <Space direction="vertical" style={{ width: '100%' }}>
+          <Text>
+            Xoá vĩnh viễn mọi log chấm công có thời gian <Text strong>trước</Text> ngày chọn bên
+            dưới. Dùng khi bảng log đã tích luỹ quá lâu, chiếm nhiều dung lượng DB.
+          </Text>
+          <Text type="danger">⚠️ Không thể hoàn tác - hãy chắc chắn trước khi xoá.</Text>
+          <DatePicker
+            style={{ width: '100%' }}
+            value={cleanupDate}
+            onChange={setCleanupDate}
+            format="DD/MM/YYYY"
+            placeholder="Xoá log trước ngày..."
+          />
+        </Space>
+      </Modal>
+
       <Table
-        rowKey={(r: AttendanceSummaryRow) =>
-          r.isMapped ? `u${r.userId}_${r.date}` : `d${r.deviceUserId}_${r.date}`
-        }
+        rowKey="id"
         loading={isLoading}
         columns={columns}
         dataSource={data?.data || []}
-        bordered
-        tableLayout="fixed"
         pagination={{
           current: page,
           pageSize: limit,

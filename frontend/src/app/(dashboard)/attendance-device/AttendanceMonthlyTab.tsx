@@ -1,13 +1,15 @@
 'use client';
 
 import { useMemo, useState } from 'react';
-import { Table, DatePicker, Select, Space, Tag, Typography, Tooltip } from 'antd';
+import { Table, DatePicker, Select, Space, Tag, Typography, Tooltip, Button, App } from 'antd';
+import { FileExcelOutlined } from '@ant-design/icons';
 import dayjs, { Dayjs } from 'dayjs';
 import { useQuery } from '@tanstack/react-query';
 import type { ColumnsType } from 'antd/es/table';
-import { useAttendanceSummary } from '@/lib/hooks/useZkDevice';
+import { useAttendanceSummary, useExportMonthlyAttendance } from '@/lib/hooks/useZkDevice';
 import { useUsersList } from '@/lib/hooks/useUsers';
 import { leaveRequestsApi } from '@/lib/api/leave-requests.api';
+import type { ExportMonthlyRow } from '@/lib/api/attendance-export.api';
 
 const { Text } = Typography;
 
@@ -89,9 +91,11 @@ interface EmployeeMonthRow {
 }
 
 export default function AttendanceMonthlyTab() {
+  const { message } = App.useApp();
   const [month, setMonth] = useState<Dayjs>(dayjs().startOf('month'));
   const [userId, setUserId] = useState<number | undefined>(undefined);
   const { users, isLoading: usersLoading } = useUsersList();
+  const exportMutation = useExportMonthlyAttendance();
 
   const monthStart = month.startOf('month');
   const monthEnd = month.endOf('month');
@@ -359,6 +363,30 @@ export default function AttendanceMonthlyTab() {
       ...Array.from(unmappedMap.values()).sort((a, b) => a.userName.localeCompare(b.userName)),
     ];
   }, [users, userId, attendanceData, leaveData, standardWorkDays, monthStart, monthEnd]);
+
+  // Chuyển `rows` (state UI - `days`/`dayReasons` là 2 map riêng, tiện cho
+  // việc render từng ô) sang đúng shape DTO backend cần (`days` là 1 mảng
+  // gộp {day, mark, reason}) - CHỈ transform format, không tính toán lại gì
+  // (đảm bảo Excel xuất ra "y chang" đang hiển thị, đúng yêu cầu kiến trúc
+  // đã ghi trong attendance-export.service.ts).
+  const buildExportRows = (): ExportMonthlyRow[] =>
+    rows.map((r) => ({
+      userName: r.userName,
+      departmentName: r.departmentName,
+      days: Object.entries(r.days)
+        .filter(([, mark]) => !!mark)
+        .map(([day, mark]) => ({
+          day: Number(day),
+          mark: mark as ExportMonthlyRow['days'][number]['mark'],
+          reason: r.dayReasons[Number(day)],
+        })),
+      actualWorkDays: r.actualWorkDays,
+      paidLeaveDays: r.paidLeaveDays,
+      unpaidLeaveDays: r.unpaidLeaveDays,
+      annualLeaveBalance: r.annualLeaveBalance,
+      lateEntries: r.lateEntries,
+      earlyEntries: r.earlyEntries,
+    }));
 
   const dayColumns: ColumnsType<EmployeeMonthRow> = useMemo(() => {
     const cols: ColumnsType<EmployeeMonthRow> = [];

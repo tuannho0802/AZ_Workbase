@@ -2,9 +2,9 @@
 
 import { useState } from 'react';
 import { Table, Select, DatePicker, Space, Tag, Button, Modal, App, Typography } from 'antd';
-import { ReloadOutlined, DeleteOutlined } from '@ant-design/icons';
+import { ReloadOutlined, DeleteOutlined, FileExcelOutlined } from '@ant-design/icons';
 import dayjs, { Dayjs } from 'dayjs';
-import { useAttendanceLogs, useCleanupAttendanceLogs } from '@/lib/hooks/useZkDevice';
+import { useAttendanceLogs, useCleanupAttendanceLogs, useExportAttendanceLogs } from '@/lib/hooks/useZkDevice';
 import { useUsersList } from '@/lib/hooks/useUsers';
 import { AttendanceLog } from '@/lib/types/zk-device.types';
 import { useAuthStore } from '@/lib/stores/auth.store';
@@ -49,6 +49,7 @@ export default function AttendanceLogsTab() {
     dayjs().subtract(6, 'month').startOf('month'),
   );
   const cleanupMutation = useCleanupAttendanceLogs();
+  const exportMutation = useExportAttendanceLogs();
 
   const { data, isLoading, refetch, isFetching } = useAttendanceLogs({
     page,
@@ -136,6 +137,29 @@ export default function AttendanceLogsTab() {
         />
         <Button icon={<ReloadOutlined />} onClick={() => refetch()} loading={isFetching}>
           Tải lại
+        </Button>
+        <Button
+          icon={<FileExcelOutlined />}
+          loading={exportMutation.isPending}
+          onClick={() => {
+            // Xuất Excel theo ĐÚNG bộ lọc đang áp dụng trên bảng (nhân
+            // viên/trạng thái khớp/khoảng ngày) - "y chang bảng gốc" đúng
+            // yêu cầu, không phải xuất toàn bộ dữ liệu không lọc.
+            exportMutation.mutate(
+              {
+                userId,
+                matched,
+                from: range?.[0]?.format('YYYY-MM-DD'),
+                to: range?.[1]?.format('YYYY-MM-DD'),
+              },
+              {
+                onError: (err: any) =>
+                  message.error(err?.response?.data?.message || 'Xuất Excel thất bại'),
+              },
+            );
+          }}
+        >
+          Xuất Excel
         </Button>
         {isAdmin && (
           <Button
