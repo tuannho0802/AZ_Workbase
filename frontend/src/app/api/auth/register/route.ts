@@ -8,6 +8,26 @@ import { checkBotId } from 'botid/server';
 // không chỉ ở client.
 const BACKEND_API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001/api';
 
+// ⚠️ BẮT BUỘC đi kèm 1 Custom Rule ở Vercel Firewall (project BACKEND):
+// path = /api/auth/register AND header "x-az-internal-secret" = đúng giá
+// trị này -> action "bypass". Nếu thiếu rule đó, header này vô nghĩa (BE
+// vẫn bị "Bot Protection: Challenge" chặn y hệt cũ) - xem hướng dẫn tạo rule
+// qua `vercel firewall rules add` (không cần vào Dashboard) kèm theo PR này.
+//
+// Vì sao cần thêm lớp này: request từ route trung gian này (server gọi
+// server, không phải trình duyệt thật) bị Vercel Firewall - Bot Protection
+// (setting "Challenge requests from non-browser sources", tầng edge, ĐỘC
+// LẬP với code NestJS) tự động Challenge - 1 serverless function không chạy
+// được JS challenge nên request luôn thất bại ở đây, bất kể BotID/honeypot/
+// rate-limit ở tầng ứng dụng có đúng hay không. KHÔNG tắt hẳn Bot Protection
+// (giữ nguyên bảo vệ cho các request khác) - chỉ mở đúng 1 khe hẹp cho CHÍNH
+// route này bằng 1 secret chỉ 2 phía (route.ts + Firewall Rule) biết.
+//
+// Biến môi trường server-only (KHÔNG thêm tiền tố NEXT_PUBLIC_) - không lộ
+// ra bundle client. Thiếu biến này -> không gắn header -> request vẫn bị
+// Challenge như trước khi có rule (an toàn theo hướng "fail closed").
+const INTERNAL_BYPASS_SECRET = process.env.FIREWALL_BYPASS_SECRET;
+
 /**
  * Route nội bộ (chạy trên chính domain Next.js/Vercel của Frontend) đứng
  * giữa form đăng ký và backend NestJS thật - đây là lớp thay thế Cloudflare
@@ -74,6 +94,11 @@ export async function POST(request: NextRequest) {
             headers: {
                 'Content-Type': 'application/json',
                 ...(clientIp ? { 'x-az-client-ip': clientIp } : {}),
+                // Xem giải thích đầy đủ ở khai báo INTERNAL_BYPASS_SECRET phía
+                // trên - khớp đúng Custom Rule Firewall ở project backend.
+                ...(INTERNAL_BYPASS_SECRET
+                    ? { 'x-az-internal-secret': INTERNAL_BYPASS_SECRET }
+                    : {}),
             },
             body: JSON.stringify(body),
         });
