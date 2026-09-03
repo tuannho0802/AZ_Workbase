@@ -14,6 +14,7 @@ import { DepositsModule } from './modules/deposits/deposits.module';
 import { LeaveRequestsModule } from './modules/leave-requests/leave-requests.module';
 import { AuditModule } from './modules/audit/audit.module';
 import { ZkDeviceModule } from './modules/zk-device/zk-device.module';
+import { AttendanceExportModule } from './modules/attendance-export/attendance-export.module';
 import { MediaSourcesModule } from './modules/media-sources/media-sources.module';
 import { LinkGroupsModule } from './modules/link-groups/link-groups.module';
 import { KeepAliveController } from './keep-alive/keep-alive.controller';
@@ -43,6 +44,7 @@ import { KeepAliveController } from './keep-alive/keep-alive.controller';
     LeaveRequestsModule,
     AuditModule,
     ZkDeviceModule,
+    AttendanceExportModule,
     MediaSourcesModule,
     LinkGroupsModule,
     ServeStaticModule.forRoot({
