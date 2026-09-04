@@ -78,6 +78,7 @@ export const NAV_ITEMS: NavItem[] = [
     icon: <CalendarOutlined />,
     path: '/nghi-phep',
     roles: null,
+    permission: 'leave_requests.request',
   },
   {
     key: 'profile',
@@ -112,7 +113,8 @@ export const NAV_ITEMS: NavItem[] = [
     description: 'Duyệt/từ chối đơn nghỉ phép của nhân viên',
     icon: <CheckCircleOutlined />,
     path: '/duyet-phep',
-    roles: ['admin', 'manager', 'assistant'],
+    roles: null,
+    permission: 'leave_requests.view',
   },
   {
     key: 'audit-logs',

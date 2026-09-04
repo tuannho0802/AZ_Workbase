@@ -1,11 +1,13 @@
 'use client';
 
 import { useState, useEffect } from 'react';
+import { useRouter } from 'next/navigation';
 import {
   Table, Button, Modal, Form, Select, DatePicker, Input, Tag, App, Card, Divider, Typography
 } from 'antd';
 import { PlusOutlined, CloseCircleOutlined, CalendarOutlined, FileTextOutlined, UserOutlined } from '@ant-design/icons';
 import { leaveRequestsApi, LeaveRequest } from '@/lib/api/leave-requests.api';
+import { useMyPermissions } from '@/lib/hooks/useMyPermissions';
 import dayjs from 'dayjs';
 
 const { RangePicker } = DatePicker;
@@ -104,6 +106,11 @@ export default function LeaveRequestsPage() {
   const [isMobile, setIsMobile] = useState(false);
   const [form] = Form.useForm();
   const { message } = App.useApp();
+  const router = useRouter();
+  const { can, isLoading: permissionsLoading } = useMyPermissions();
+
+  // Quyền: request = xem + tạo đơn của bản thân; view = xem thêm đơn người khác (không liên quan trang này)
+  const canRequest = can('leave_requests.request');
 
   useEffect(() => {
     const check = () => setIsMobile(window.innerWidth < 768);
@@ -113,8 +120,15 @@ export default function LeaveRequestsPage() {
   }, []);
 
   useEffect(() => {
-    fetchRequests();
-  }, []);
+    if (!permissionsLoading && !canRequest) {
+      message.warning('Bạn không có quyền truy cập trang này');
+      router.replace('/customers');
+      return;
+    }
+    if (!permissionsLoading && canRequest) {
+      fetchRequests();
+    }
+  }, [canRequest, permissionsLoading]);
 
   const fetchRequests = async () => {
     setLoading(true);

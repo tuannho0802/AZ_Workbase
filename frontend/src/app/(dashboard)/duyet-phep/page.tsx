@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
+import { useRouter } from 'next/navigation';
 import {
   Table, Card, Button, Space, Tag, Badge, Tabs, Modal, Input, App, Typography, Divider
 } from 'antd';
@@ -9,6 +10,7 @@ import {
   UserOutlined, CalendarOutlined, ClockCircleOutlined
 } from '@ant-design/icons';
 import { leaveRequestsApi, LeaveRequest } from '@/lib/api/leave-requests.api';
+import { useMyPermissions } from '@/lib/hooks/useMyPermissions';
 import dayjs from 'dayjs';
 
 const { TextArea } = Input;
@@ -174,6 +176,14 @@ export default function ApprovalPage() {
 
   // Antd Hooks to fix "Static function" warning
   const { message: messageApi, modal } = App.useApp();
+  const router = useRouter();
+  const { can, isLoading: permissionsLoading } = useMyPermissions();
+
+  // Phân biệt quyền:
+  // view = xem lịch sử duyệt (của người khác)
+  // approve = xem danh sách chờ + có nút duyệt/từ chối
+  const canView = can('leave_requests.view');
+  const canApprove = can('leave_requests.approve');
 
   useEffect(() => {
     const check = () => setIsMobile(window.innerWidth < 768);
@@ -183,23 +193,26 @@ export default function ApprovalPage() {
   }, []);
 
   useEffect(() => {
+    if (permissionsLoading) return;
+    // Cần ít nhất 1 trong 2 quyền mới vào được trang này
+    if (!canView && !canApprove) {
+      messageApi.warning('Bạn không có quyền truy cập trang này');
+      router.replace('/customers');
+      return;
+    }
     fetchAllData();
-  }, []);
+  }, [canView, canApprove, permissionsLoading]);
 
+  // Tách riêng: 403 ở 1 api không kill api kia
   const fetchAllData = async () => {
     setLoading(true);
-    try {
-      const [pending, history] = await Promise.all([
-        leaveRequestsApi.getPending(),
-        leaveRequestsApi.getHistory()
-      ]);
-      setPendingRequests(pending);
-      setHistoryRequests(history);
-    } catch {
-      messageApi.error('Không thể tải danh sách đơn nghỉ phép');
-    } finally {
-      setLoading(false);
-    }
+    const results = await Promise.allSettled([
+      canApprove ? leaveRequestsApi.getPending() : Promise.resolve([]),
+      canView ? leaveRequestsApi.getHistory() : Promise.resolve([]),
+    ]);
+    if (results[0].status === 'fulfilled') setPendingRequests(results[0].value as LeaveRequest[]);
+    if (results[1].status === 'fulfilled') setHistoryRequests(results[1].value as LeaveRequest[]);
+    setLoading(false);
   };
 
   const handleApprove = async (id: number) => {
@@ -306,7 +319,7 @@ export default function ApprovalPage() {
         </Space>
       )
     }
-  ];
+  ].filter((col: any) => canApprove || col.title !== 'Thao tác');
 
   const historyColumns = [
     {
@@ -378,7 +391,7 @@ export default function ApprovalPage() {
 
   // ── tab items ─────────────────────────────────────────────────────────────
   const tabItems = [
-    {
+    canApprove ? {
       key: 'pending',
       label: (
         <span>
@@ -412,8 +425,8 @@ export default function ApprovalPage() {
           locale={{ emptyText: '✅ Không có đơn chờ duyệt' }}
         />
       )
-    },
-    {
+    } : null,
+    canView ? {
       key: 'history',
       label: (
         <span>
@@ -441,8 +454,8 @@ export default function ApprovalPage() {
           locale={{ emptyText: 'Chưa có lịch sử xử lý' }}
         />
       )
-    }
-  ];
+    } : null,
+  ].filter(Boolean) as any[];
 
   return (
     <div className="p-6">

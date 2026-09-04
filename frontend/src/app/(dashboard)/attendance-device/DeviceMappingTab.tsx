@@ -197,9 +197,9 @@ export default function DeviceMappingTab() {
       width: 220,
       render: (_: any, record: DeviceUser) => (
         <Space>
-          <Button size="small" icon={<LinkOutlined />} onClick={() => handleOpenMap(record)}>
+          {canManage && <Button size="small" icon={<LinkOutlined />} onClick={() => handleOpenMap(record)}>
             {record.mappedUserId ? 'Đổi mapping' : 'Gán nhân viên'}
-          </Button>
+          </Button>}
           {canManage && record.mappedUserId && (
             <Popconfirm
               title="Gỡ mapping nhân viên này?"
@@ -214,7 +214,7 @@ export default function DeviceMappingTab() {
         </Space>
       ),
     },
-  ];
+  ].filter((col: any) => canManage || col.key !== 'action');
 
   return (
     <div>
