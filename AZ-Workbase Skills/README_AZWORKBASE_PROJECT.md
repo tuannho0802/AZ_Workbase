@@ -739,6 +739,27 @@ export default function () {
 Run: `k6 run load-test.js`
 
 ---
+## 🚀 Vercel Deployment Workflow
+
+> 💡 **Lưu ý:** Dự án đã được cấu hình **Ignored Build Step** trên Vercel (kiểm tra từ khóa `[deploy]`).
+
+### 📌 Quy trình Push Code
+
+* **Khi push bình thường (Không muốn deploy):**  
+  Commit như bình thường, Vercel sẽ tự động bỏ qua lượt build này:
+  ```bash
+  git commit -m "fix typo in docs"
+  git push origin main
+  ```
+
+### 🚀 Khi muốn push và TỰ ĐỘNG DEPLOY ngay:
+
+Kèm thêm từ khóa `[deploy]` vào bất kỳ vị trí nào trong commit message:
+
+```bash
+git commit -m "update homepage [deploy]"
+git push origin main
+````
 
 ## 🐛 Common Issues & Solutions
 
