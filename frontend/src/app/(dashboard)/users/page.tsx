@@ -14,6 +14,7 @@ import { useAuthStore } from '@/lib/stores/auth.store';
 import { useRouter } from 'next/navigation';
 import { usersApi } from '@/lib/api/users.api';
 import { useMyPermissions } from '@/lib/hooks/useMyPermissions';
+import { useRoles } from '@/lib/hooks/useRoles';
 import { useDepartments } from '@/lib/hooks/useDepartments';
 import { PendingApprovalsTab } from './PendingApprovalsTab';
 
@@ -26,10 +27,12 @@ const ROLE_COLOR: Record<string, string> = {
 // ── mobile card ──────────────────────────────────────────────────────────────
 function UserMobileCard({
   record,
+  roleMap,
   onEdit,
   onResetPass,
 }: {
   record: any;
+  roleMap: Map<string, string>;
   onEdit: (r: any) => void;
   onResetPass: (r: any) => void;
 }) {
@@ -54,7 +57,7 @@ function UserMobileCard({
           </div>
         </div>
         <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 4 }}>
-          <Tag color={ROLE_COLOR[record.role] ?? 'default'}>{record.role?.toUpperCase()}</Tag>
+          <Tag color={ROLE_COLOR[record.role] ?? 'default'}>{roleMap.get(record.role) || record.role?.toUpperCase()}</Tag>
           <Tag color={record.isActive ? 'green' : 'red'}>
             {record.isActive ? 'Hoạt động' : 'Bị khóa'}
           </Tag>
@@ -147,7 +150,11 @@ export default function UsersPage() {
   // Manager/Assistant bị chặn nhầm khỏi tab "Danh sách nhân viên" dù BE đã
   // cho phép từ trước). Đặt tên lại cho đúng ý nghĩa thay vì giữ "isAdmin"
   const { can, isLoading: permissionsLoading } = useMyPermissions();
+  const { roles } = useRoles();
+  const roleOptions = (roles || []).map(r => ({ value: r.code, label: r.name }));
+  const roleMap = new Map((roles || []).map(r => [r.code, r.name]));
   const canAccessPage = can('users.view');
+  const canManage = can('users.manage');
   const canSeeFullList = canAccessPage;
 
   useEffect(() => {
@@ -256,7 +263,7 @@ export default function UsersPage() {
       title: 'Chức vụ',
       dataIndex: 'role',
       render: (role: string) => (
-        <Tag color={ROLE_COLOR[role] ?? 'default'}>{role?.toUpperCase()}</Tag>
+        <Tag color={ROLE_COLOR[role] ?? 'default'}>{roleMap.get(role) || role?.toUpperCase()}</Tag>
       )
     },
     {
@@ -280,7 +287,7 @@ export default function UsersPage() {
         </Space>
       ),
     },
-  ];
+  ].filter((c: any) => canManage || c.key !== 'action');
 
   const userListContent = (
     loading && users.length === 0 ? (
@@ -298,6 +305,7 @@ export default function UsersPage() {
             <UserMobileCard
               key={u.id}
               record={u}
+              roleMap={roleMap}
               onEdit={openEdit}
               onResetPass={openResetPass}
             />
@@ -363,13 +371,15 @@ export default function UsersPage() {
         canSeeFullList && activeTab === 'list' ? (
           <Space>
             <Button icon={<ReloadOutlined />} onClick={() => window.location.reload()}>Làm mới</Button>
-            <Button
-              type="primary"
-              icon={<UserAddOutlined />}
-              onClick={() => { setEditingUser(null); form.resetFields(); setIsModalOpen(true); }}
-            >
-              Thêm nhân viên
-            </Button>
+            {canManage && (
+              <Button
+                type="primary"
+                icon={<UserAddOutlined />}
+                onClick={() => { setEditingUser(null); form.resetFields(); setIsModalOpen(true); }}
+              >
+                Thêm nhân viên
+              </Button>
+            )}
           </Space>
         ) : undefined
       }

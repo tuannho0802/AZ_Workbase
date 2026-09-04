@@ -12,6 +12,7 @@ import {
   useRematchDeviceLogs,
 } from '@/lib/hooks/useZkDevice';
 import { useUsersList } from '@/lib/hooks/useUsers';
+import { useMyPermissions } from '@/lib/hooks/useMyPermissions';
 import { DeviceUser } from '@/lib/types/zk-device.types';
 
 const { RangePicker } = DatePicker;
@@ -41,6 +42,8 @@ function presetToRange(preset: Exclude<SyncPreset, 'custom' | 'all'>): { from: s
 }
 
 export default function DeviceMappingTab() {
+  const { can } = useMyPermissions();
+  const canManage = can('attendance.manage');
   const { message, modal } = App.useApp();
   const { data: deviceUsers, isLoading, isError, error } = useDeviceUsers();
   const { users } = useUsersList();
@@ -197,7 +200,7 @@ export default function DeviceMappingTab() {
           <Button size="small" icon={<LinkOutlined />} onClick={() => handleOpenMap(record)}>
             {record.mappedUserId ? 'Đổi mapping' : 'Gán nhân viên'}
           </Button>
-          {record.mappedUserId && (
+          {canManage && record.mappedUserId && (
             <Popconfirm
               title="Gỡ mapping nhân viên này?"
               description="Log chấm công cũ đã đồng bộ vẫn giữ nguyên, chỉ log mới sau khi gỡ sẽ thành chưa khớp."
@@ -226,14 +229,14 @@ export default function DeviceMappingTab() {
       )}
 
       <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 12 }}>
-        <Button
-          type="primary"
-          icon={<SyncOutlined spin={syncMutation.isPending} />}
-          loading={syncMutation.isPending}
-          onClick={() => setSyncModalOpen(true)}
-        >
+        {canManage && <Button
+            type="primary"
+            icon={<SyncOutlined spin={syncMutation.isPending} />}
+            loading={syncMutation.isPending}
+            onClick={() => setSyncModalOpen(true)}
+          >
           Đồng bộ ngay
-        </Button>
+          </Button>}
       </div>
 
       <Table

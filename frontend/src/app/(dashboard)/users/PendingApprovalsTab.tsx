@@ -9,16 +9,12 @@ import { CheckOutlined, CloseOutlined, MailOutlined, PhoneOutlined } from '@ant-
 import dayjs from 'dayjs';
 import { usersApi, PendingUser } from '@/lib/api/users.api';
 import { useDepartments } from '@/lib/hooks/useDepartments';
+import { useRoles } from '@/lib/hooks/useRoles';
 import { getApiErrorMessage } from '@/lib/utils/error-message.util';
 
 const { Text, Paragraph } = Typography;
 
-const ROLE_OPTIONS = [
-  { value: 'admin', label: 'Admin' },
-  { value: 'manager', label: 'Manager' },
-  { value: 'assistant', label: 'Assistant' },
-  { value: 'employee', label: 'Employee' },
-];
+
 
 interface Props {
   onCountChange?: (count: number) => void;
@@ -28,6 +24,9 @@ export const PendingApprovalsTab = ({ onCountChange }: Props) => {
   const { message } = App.useApp();
   const queryClient = useQueryClient();
   const { departments } = useDepartments();
+  const { roles } = useRoles();
+  const roleOptions = (roles || []).map((r: any) => ({ value: r.code, label: r.name }));
+  const roleMap = new Map((roles || []).map((r: any) => [r.code, r.name]));
 
   const [approving, setApproving] = useState<PendingUser | null>(null);
   const [approveForm] = Form.useForm();
@@ -179,7 +178,7 @@ export const PendingApprovalsTab = ({ onCountChange }: Props) => {
         </Paragraph>
         <Form form={approveForm} layout="vertical">
           <Form.Item name="role" label="Vai trò" rules={[{ required: true, message: 'Vui lòng chọn vai trò' }]}>
-            <Select options={ROLE_OPTIONS} />
+            <Select options={roleOptions} />
           </Form.Item>
           <Form.Item name="departmentId" label="Phòng ban">
             <Select
