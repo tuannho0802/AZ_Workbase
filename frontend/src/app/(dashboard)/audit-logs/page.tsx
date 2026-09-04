@@ -227,7 +227,15 @@ export default function AuditLogsPage() {
   }, [page, pageSize, search, filterAction, filterEntityType, dateRange, message]);
 
   useEffect(() => {
-    if (user && ['admin', 'manager'].includes(user.role)) {
+    // ⚠️ FIX BUG THẬT (rà soát UI Permission): trước đây check cứng
+    // ['admin','manager'] - lệch với chính đoạn code fix ngay phía trên
+    // (dòng 187, đã đổi đúng sang `can('audit.view')`, Manager PHẢI bị chặn
+    // theo PERMISSIONS.md §2.7). Hậu quả thực tế của bug cũ: nếu Admin cấp
+    // audit.view cho Assistant/role tuỳ chỉnh, trang qua được redirect-gate
+    // nhưng KHÔNG BAO GIỜ fetch được log (điều kiện ở đây vẫn false mãi) -
+    // trang trống vĩnh viễn dù có quyền. Dùng lại đúng 1 nguồn permission
+    // duy nhất cho cả 2 chỗ.
+    if (user && can('audit.view')) {
       fetchLogs(page, pageSize);
     }
   }, [page, pageSize, fetchLogs, user]);
