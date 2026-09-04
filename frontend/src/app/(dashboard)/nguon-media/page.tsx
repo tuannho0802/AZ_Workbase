@@ -56,7 +56,7 @@ export default function MediaSourcesPage() {
     }
   }, [user, router]);
 
-  const canDelete = user?.role === 'admin';
+  const canDelete = can('media_sources.delete');
 
   const { sources, isLoading } = useMediaSources(false);
   const createMutation = useCreateMediaSource();

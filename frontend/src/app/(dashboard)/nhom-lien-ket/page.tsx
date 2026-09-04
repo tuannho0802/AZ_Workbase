@@ -74,7 +74,7 @@ export default function LinkGroupsAdminPage() {
     }
   }, [user, router]);
 
-  const canDelete = user?.role === 'admin';
+  const canDelete = can('link_groups.delete');
 
   const { categories, isLoading: loadingCategories } = useLinkCategories(false);
   const { groups, isLoading: loadingGroups } = useAllLinkGroups();

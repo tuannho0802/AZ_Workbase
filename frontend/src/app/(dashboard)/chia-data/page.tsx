@@ -17,6 +17,7 @@ import { useAuthStore } from '@/lib/stores/auth.store';
 import dayjs from 'dayjs';
 import { CustomerDetailDrawer } from '@/components/customers/CustomerDetailDrawer';
 import { useMediaSources } from '@/lib/hooks/useMediaSources';
+import { useMyPermissions } from '@/lib/hooks/useMyPermissions';
 import { SourceTag } from '@/components/customers/SourceTag';
 
 const { Text } = Typography;
@@ -73,7 +74,14 @@ const api = {
 
 const UnassignedMobileCard = ({ record, user, renderAuditTrail, onNameClick, onDelete }: { record: Customer, user: any, renderAuditTrail: (r: any) => React.ReactNode, onNameClick: () => void, onDelete: (id: number) => void }) => {
   const isMyPrimary = record.salesUser?.id === user?.id;
-  const canDelete = user?.role === 'admin';
+  // ⚠️ FIX BUG THẬT (rà soát permission): trước đây hardcode
+  // `user?.role === 'admin'` - nếu Admin sau này cấp `customers.delete` cho
+  // role khác qua trang Phân quyền, role đó vẫn KHÔNG thấy nút Xoá dù BE đã
+  // cho phép (thiếu tính năng). Ngược lại nếu Admin THU HỒI quyền xoá của
+  // chính role admin (hiếm nhưng hệ thống cho phép), nút vẫn hiện ra và bấm
+  // sẽ dính 403 - đúng lỗi user yêu cầu rà soát. Dùng `can()` động thay thế.
+  const { can } = useMyPermissions();
+  const canDelete = can('customers.delete');
 
   return (
     <Card
@@ -132,7 +140,8 @@ const AssignedMobileCard = ({ record, user, renderAuditTrail, onNameClick, onDel
   const primarySales = record.salesUser;
   const allAssignees = (record as any).activeAssignees || [];
   const sharedSales = allAssignees.filter((a: any) => a.id !== primarySales?.id);
-  const canDelete = user?.role === 'admin';
+  const { can } = useMyPermissions();
+  const canDelete = can('customers.delete');
 
   return (
     <Card
@@ -229,6 +238,10 @@ export default function ChiaDataPage() {
   // Auth State
   const router = useRouter();
   const { user, isAuthenticated, isHydrated } = useAuthStore();
+  // ⚠️ FIX BUG THẬT (rà soát permission): thay `user?.role === 'admin'` cứng
+  // bằng permission động - xem giải thích chi tiết ở UnassignedMobileCard.
+  const { can } = useMyPermissions();
+  const canDeleteCustomer = can('customers.delete');
 
   useEffect(() => {
     if (isHydrated && !isAuthenticated) {
@@ -411,9 +424,7 @@ export default function ChiaDataPage() {
     {
       title: 'Thao tác', width: 60, align: 'center' as const,
       render: (_: any, r: Customer) => {
-        const canDelete = user?.role === 'admin';
-
-        if (!canDelete) return null;
+        if (!canDeleteCustomer) return null;
         return (
           <Popconfirm
             title="Xóa khách hàng"
@@ -500,9 +511,7 @@ export default function ChiaDataPage() {
     {
       title: 'Thao tác', width: 60, align: 'center' as const,
       render: (_: any, r: Customer) => {
-        const canDelete = user?.role === 'admin';
-
-        if (!canDelete) return null;
+        if (!canDeleteCustomer) return null;
         return (
           <Popconfirm
             title="Xóa khách hàng"

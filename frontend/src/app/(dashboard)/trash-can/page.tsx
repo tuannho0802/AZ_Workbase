@@ -8,6 +8,7 @@ import {
   UndoOutlined, DeleteOutlined, ReloadOutlined, SearchOutlined
 } from '@ant-design/icons';
 import { useAuthStore } from '@/lib/stores/auth.store';
+import { useMyPermissions } from '@/lib/hooks/useMyPermissions';
 import { useRouter } from 'next/navigation';
 import { customersApi } from '@/lib/api/customers.api';
 import { Customer } from '@/lib/types/customer.types';
@@ -107,6 +108,15 @@ export default function TrashCanPage() {
   const { message } = App.useApp();
   const { user } = useAuthStore();
   const router = useRouter();
+  // ⚠️ FIX BUG THẬT (rà soát permission): trước đây gate cứng
+  // `user.role !== 'admin'` ở cả 3 chỗ (redirect, fetch guard, render guard)
+  // - trang này thực ra được BE bảo vệ bởi `customers.trash_manage` (xem
+  // @RequirePermission('customers.trash_manage') ở customers.controller.ts,
+  // 3 endpoint GET trash/restore/hard-delete), KHÔNG khoá cứng theo role. Nếu
+  // Admin cấp quyền này cho role khác qua trang Phân quyền, role đó vẫn bị
+  // chặn nhầm ở FE dù BE đã cho phép.
+  const { can, isLoading: permissionsLoading } = useMyPermissions();
+  const canAccessTrash = can('customers.trash_manage');
 
   useEffect(() => {
     const check = () => setIsMobile(window.innerWidth < 768);
@@ -116,14 +126,14 @@ export default function TrashCanPage() {
   }, []);
 
   useEffect(() => {
-    if (user && user.role !== 'admin') {
+    if (!permissionsLoading && user && !canAccessTrash) {
       message.error('Bạn không có quyền truy cập trang này');
       router.replace('/customers');
     }
-  }, [user, router, message]);
+  }, [user, canAccessTrash, permissionsLoading, router, message]);
 
   const fetchTrash = useCallback(async () => {
-    if (!user || user.role !== 'admin') return;
+    if (!user || !canAccessTrash) return;
     setLoading(true);
     try {
       const res = await customersApi.getTrash({
@@ -138,7 +148,7 @@ export default function TrashCanPage() {
     } finally {
       setLoading(false);
     }
-  }, [page, pageSize, debouncedSearch, user, message]);
+  }, [page, pageSize, debouncedSearch, user, canAccessTrash, message]);
 
   useEffect(() => {
     fetchTrash();
@@ -248,7 +258,8 @@ export default function TrashCanPage() {
     },
   ];
 
-  if (user && user.role !== 'admin') return null;
+  if (permissionsLoading) return null;
+  if (user && !canAccessTrash) return null;
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
