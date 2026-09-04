@@ -23,8 +23,8 @@ export function useSidebarBadgeCounts(): Record<string, number> {
   const { can, isLoading } = useMyPermissions();
   
   // Disable fetches until permissions are loaded
-  const canSeeInvalidData = !isLoading && can('customers.manage'); 
-  const canSeeTrash = !isLoading && can('customers.delete');
+  const canSeeInvalidData = !isLoading && can('customers.invalid_report'); 
+  const canSeeTrash = !isLoading && can('customers.trash_manage');
   const canSeePendingUsers = !isLoading && can('users.manage');
   const canApproveLeave = !isLoading && can('leave_requests.approve');
   const canRequestLeave = !isLoading && can('leave_requests.request');
