@@ -31,15 +31,21 @@ import { RequirePermission } from '../../common/decorators/require-permission.de
 @ApiBearerAuth()
 @Controller('zk-device')
   @UseGuards(JwtAuthGuard, PermissionGuard)
-// FIX PERMISSIONS.md mục 2.3: Assistant thao tác ngang Admin (trừ riêng
-// xoá log - xem @RequirePermission('attendance.delete') riêng ở
-// cleanupAttendanceLogs()); Manager bị giới hạn theo phòng ban mình quản lý
-// ngay trong từng service method.
-@RequirePermission('attendance.manage')
+  // FIX (2026-09-04): trước đây gắn `@RequirePermission('attendance.manage')`
+  // Ở CẤP CLASS - khiến CẢ những route THUẦN ĐỌC (status, danh sách log, bảng
+  // tổng hợp...) cũng đòi `attendance.manage`, trong khi những route đó đã có
+  // permission `attendance.view` RIÊNG (seed sẵn từ đầu, tách biệt với
+  // `attendance.manage` - xem migration `AddCustomRbacSystem`) nhưng chưa
+  // từng được gắn vào route nào. Hậu quả thực tế: 1 role chỉ được cấp
+  // `attendance.view` (không có `attendance.manage`) vẫn bị 403 ngay khi vào
+  // trang - dù đúng ra phải xem được dữ liệu sẵn có, chỉ không được đồng
+  // bộ/map/sync. Bỏ hẳn default ở cấp class - mỗi route giờ khai báo ĐÚNG
+  // permission của mình (không có route nào "trần" nữa).
 export class ZkDeviceController {
   constructor(private readonly zkDeviceService: ZkDeviceService) {}
 
   @Get('status')
+  @RequirePermission('attendance.view')
   @ApiOperation({ summary: 'Kiểm tra nhanh tình trạng kết nối tới máy chấm công' })
   async getStatus() {
     try {
@@ -53,6 +59,7 @@ export class ZkDeviceController {
   }
 
   @Get('device-users')
+  @RequirePermission('attendance.view')
   @ApiOperation({
     summary: 'Danh sách user đăng ký trên máy chấm công, kèm trạng thái đã map với nhân viên hệ thống hay chưa',
   })
@@ -68,12 +75,14 @@ export class ZkDeviceController {
   }
 
   @Post('map-user')
+  @RequirePermission('attendance.manage')
   @ApiOperation({ summary: 'Map 1 nhân viên trong hệ thống với mã user trên máy chấm công' })
   async mapUser(@Body() dto: MapDeviceUserDto, @Request() req: any) {
     return this.zkDeviceService.mapUser(dto.userId, dto.deviceUserId, req.user.id, req.user.role);
   }
 
   @Post('rematch')
+  @RequirePermission('attendance.manage')
   @ApiOperation({
     summary:
       'Quét lại toàn bộ log chấm công đang chưa khớp nhân viên (matched_user_id NULL), khớp lại theo mapping hiện tại - dùng khi vừa map thêm người nhưng chưa muốn/chưa thể chạy đồng bộ đầy đủ (không cần kết nối máy chấm công, chỉ đọc/ghi DB)',
@@ -84,12 +93,14 @@ export class ZkDeviceController {
   }
 
   @Delete('map-user/:userId')
+  @RequirePermission('attendance.manage')
   @ApiOperation({ summary: 'Gỡ mapping của 1 nhân viên (map nhầm) - không đụng log đã đồng bộ' })
   async unmapUser(@Param('userId', ParseIntPipe) userId: number, @Request() req: any) {
     return this.zkDeviceService.unmapUser(userId, req.user.id, req.user.role);
   }
 
   @Get('attendance-logs')
+  @RequirePermission('attendance.view')
   @ApiOperation({
     summary:
       'Danh sách log chấm công đã đồng bộ (đọc-only), lọc theo nhân viên/khoảng ngày/trạng thái khớp',
@@ -112,6 +123,7 @@ export class ZkDeviceController {
   }
 
   @Get('attendance-summary')
+  @RequirePermission('attendance.view')
   @ApiOperation({
     summary:
       'Bảng chấm công tổng hợp theo ngày (giờ vào/giờ ra/đi muộn/về sớm), tính theo giờ VN (GMT+7)',
@@ -121,6 +133,7 @@ export class ZkDeviceController {
   }
 
   @Post('sync')
+  @RequirePermission('attendance.manage')
   @ApiOperation({
     summary:
       'Kích hoạt đồng bộ log chấm công ngay lập tức (thủ công). Có thể truyền from/to (YYYY-MM-DD) để chỉ đồng bộ 1 khoảng ngày - giúp nhẹ hơn/nhanh hơn cho các lần sync định kỳ, thay vì luôn quét lại toàn bộ lịch sử. Bỏ trống from/to = đồng bộ toàn bộ như trước.',
