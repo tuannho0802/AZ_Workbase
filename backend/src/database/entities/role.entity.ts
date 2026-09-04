@@ -38,7 +38,7 @@ export class RoleEntity {
   @Column({ length: 100 })
   name: string;
 
-  @Column({ length: 255, nullable: true })
+  @Column({ type: 'varchar', length: 255, nullable: true })
   description: string | null;
 
   @Column({ name: 'is_system', default: false })

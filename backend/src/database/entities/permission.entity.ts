@@ -27,7 +27,7 @@ export class Permission {
   @Column({ name: 'supports_scope', default: true })
   supportsScope: boolean;
 
-  @Column({ length: 255, nullable: true })
+  @Column({ type: 'varchar', length: 255, nullable: true })
   description: string | null;
 
   @OneToMany(() => RolePermission, (rp) => rp.permission)
