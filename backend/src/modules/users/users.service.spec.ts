@@ -4,6 +4,7 @@ import { NotFoundException, BadRequestException, ForbiddenException, ConflictExc
 import { UsersService } from './users.service';
 import { User } from '../../database/entities/user.entity';
 import { Department } from '../../database/entities/department.entity';
+import { RoleEntity } from '../../database/entities/role.entity';
 import { AuditService } from '../audit/audit.service';
 import { DepartmentsService } from '../departments/departments.service';
 import { Role } from '../../common/enums/role.enum';
@@ -43,6 +44,18 @@ describe('UsersService - Approval workflow (đăng ký công khai chờ duyệt)
     find: jest.fn(),
     findOne: jest.fn(),
   };
+  // FIX: UsersService giờ inject thêm RoleEntityRepository (dùng bởi
+  // validateRoleExists() - PERMISSIONS.md "role must be one of the
+  // following values" bug fix) - spec này thiếu mock nên TOÀN BỘ suite
+  // (kể cả các test không liên quan gì tới role) fail ngay từ bước
+  // `Test.createTestingModule().compile()`, trước khi chạy tới bất kỳ
+  // `it()` nào - Nest không resolve được dependency thứ 3 của constructor.
+  // Mặc định `exists` trả `true` (role hợp lệ) để các test cũ (không nhắm
+  // vào hành vi validate role) không bị ảnh hưởng ngoài ý muốn; test riêng
+  // cho hành vi validate role đặt `mockResolvedValueOnce(false)`.
+  const mockRoleRepo = {
+    exists: jest.fn().mockResolvedValue(true),
+  };
 
   beforeEach(async () => {
     jest.clearAllMocks();
@@ -51,12 +64,14 @@ describe('UsersService - Approval workflow (đăng ký công khai chờ duyệt)
     mockEmployeeCodeQueryBuilder.select.mockReturnThis();
     mockEmployeeCodeQueryBuilder.where.mockReturnThis();
     mockEmployeeCodeQueryBuilder.getRawOne.mockResolvedValue({ maxNum: null });
+    mockRoleRepo.exists.mockResolvedValue(true);
 
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         UsersService,
         { provide: getRepositoryToken(User), useValue: mockUsersRepo },
         { provide: getRepositoryToken(Department), useValue: mockDepartmentsRepo },
+        { provide: getRepositoryToken(RoleEntity), useValue: mockRoleRepo },
         { provide: AuditService, useValue: mockAuditService },
         { provide: DepartmentsService, useValue: mockDepartmentsService },
       ],
