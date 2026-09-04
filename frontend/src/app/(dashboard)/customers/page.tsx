@@ -19,6 +19,7 @@ import { useCustomersToday, useCustomersByStatus, useAllDepositsStats } from '@/
 import { useCustomers } from '@/lib/hooks/useCustomers';
 import { useDebounce } from '@/lib/hooks/useDebounce';
 import { usersApi } from '@/lib/api/users.api';
+import { useMyPermissions } from '@/lib/hooks/useMyPermissions';
 import dayjs from 'dayjs';
 import { CustomerFilters } from '@/components/customers/CustomerFilters';
 import { SourceTag } from '@/components/customers/SourceTag';
@@ -72,7 +73,7 @@ const CustomerMobileCard = ({
   page, 
   pageSize, 
   onRowClick,
-  user,
+  canDelete,
   onDelete
 }: { 
   record: Customer; 
@@ -80,12 +81,9 @@ const CustomerMobileCard = ({
   page: number; 
   pageSize: number; 
   onRowClick: (id: number) => void; 
-  user: any;
+  canDelete: boolean;
   onDelete: (id: number) => void;
 }) => {
-  // ⚠️ CHỈ Admin được xoá - Assistant/Manager/Employee đều KHÔNG được (kể cả với data của chính mình)
-  const canDelete = user?.role === 'admin';
-
   return (
   <Card
     size="small"
@@ -172,6 +170,7 @@ function CustomersPageContent() {
   const { message } = App.useApp();
   
   const { user } = useAuthStore();
+  const { can } = useMyPermissions();
   const [selectedRowKeys, setSelectedRowKeys] = useState<React.Key[]>([]);
   const [isImportOpen, setIsImportOpen] = useState(false);
   const [isAssignOpen, setIsAssignOpen] = useState(false);
@@ -275,8 +274,16 @@ function CustomersPageContent() {
     fetchSalesUsers();
   }, []);
 
-  const canImport = ['admin', 'manager', 'assistant'].includes(user?.role || '');
-  const canAssign = ['admin', 'manager'].includes(user?.role || '');
+  // ⚠️ FIX BUG THẬT (rà soát UI Permission): trước đây liệt kê cứng
+  // ['admin','manager','assistant'] - lệch hẳn với BE (đã dùng
+  // @RequirePermission('customers.import')/('customers.assign') từ lâu).
+  // Nếu Admin đổi ma trận quyền qua trang "Phân quyền" (vd rút quyền
+  // customers.assign khỏi Manager, hoặc cấp cho 1 role tuỳ chỉnh mới), 2
+  // nút này vẫn hiện/ẩn sai cho tới khi có người nhớ sửa lại danh sách cứng
+  // ở đây - đúng loại lỗi "UI và API lệch nhau" đã cảnh báo ở nav-config.tsx.
+  const canImport = can('customers.import');
+  const canAssign = can('customers.assign');
+  const canDeleteCustomer = can('customers.delete');
 
   const rowSelection = {
     selectedRowKeys,
@@ -468,10 +475,7 @@ function CustomersPageContent() {
       width: isLaptop ? 60 : 70,
       align: 'center' as const,
       render: (_: any, record: Customer) => {
-        // ⚠️ CHỈ Admin được xoá - Assistant/Manager/Employee đều KHÔNG được (kể cả với data của chính mình)
-  const canDelete = user?.role === 'admin';
-
-        if (!canDelete) return null;
+        if (!canDeleteCustomer) return null;
 
         return (
           <Popconfirm
@@ -635,7 +639,7 @@ function CustomersPageContent() {
               page={page}
               pageSize={pageSize}
               onRowClick={(id) => { setSelectedCustomerId(id); setIsDrawerOpen(true); }}
-              user={user}
+              canDelete={canDeleteCustomer}
               onDelete={handleDeleteCustomer}
             />
           ))}
