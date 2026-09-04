@@ -14,6 +14,7 @@ import {
   ClockCircleOutlined,
   WarningOutlined,
   BarChartOutlined,
+  CrownOutlined,
 } from '@ant-design/icons';
 
 export interface NavItem {
@@ -169,7 +170,35 @@ export const NAV_ITEMS: NavItem[] = [
     path: '/customers/reports/invalid-data',
     roles: ['admin'],
   },
+  {
+    key: 'phan-quyen',
+    label: 'Phân quyền',
+    description: 'Tạo Role tuỳ chỉnh, chỉnh ma trận quyền theo permission',
+    icon: <CrownOutlined />,
+    path: '/phan-quyen',
+    // ⚠️ Mục DUY NHẤT dùng `permission` động thay vì `roles` tĩnh - đây
+    // CHÍNH LÀ mục "Admin tự tuỳ chỉnh phân quyền" nên tự nó cũng phải tuân
+    // thủ đúng nguyên tắc mà nó quản lý: hiện/ẩn theo permission THẬT
+    // (`roles.view`) do PermissionGuard enforce ở BE (roles.controller.ts),
+    // không hardcode danh sách role ở đây. Nếu sau này Admin gán "roles.view"
+    // cho 1 role tuỳ chỉnh, mục này tự hiện ra - không cần sửa code.
+    roles: null,
+    permission: 'roles.view',
+  },
 ];
 
-export const getVisibleNavItems = (role: string | undefined) =>
-  NAV_ITEMS.filter((item) => !item.roles || item.roles.includes(role || ''));
+/**
+ * @param role role hiện tại (dùng cho các mục CHƯA migrate, field `roles` tĩnh).
+ * @param can hàm kiểm tra permission động từ `useMyPermissions()` - dùng cho
+ * các mục ĐÃ khai báo `permission` (xem giải thích ở field đó). Optional để
+ * không phá vỡ chỗ gọi cũ chưa kịp truyền vào - khi đó mục nào có
+ * `permission` sẽ mặc định ẨN (an toàn - "không biết thì không hiện", tránh
+ * lộ mục ra trong lúc `useMyPermissions()` đang loading).
+ */
+export const getVisibleNavItems = (
+  role: string | undefined,
+  can?: (permissionKey: string) => boolean,
+) =>
+  NAV_ITEMS.filter((item) =>
+    item.permission ? !!can?.(item.permission) : !item.roles || item.roles.includes(role || ''),
+  );

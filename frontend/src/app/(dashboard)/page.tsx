@@ -5,6 +5,7 @@ import { Typography, Row, Col, Card } from 'antd';
 import { RightOutlined } from '@ant-design/icons';
 import { useAuthStore } from '@/lib/stores/auth.store';
 import { getVisibleNavItems } from '@/lib/nav-config';
+import { useMyPermissions } from '@/lib/hooks/useMyPermissions';
 import { useSidebarBadgeCounts } from '@/lib/hooks/useSidebarBadgeCounts';
 import { CountBadge } from '@/components/common/CountBadge';
 
@@ -20,11 +21,12 @@ const ROLE_LABEL: Record<string, string> = {
 export default function HomePage() {
   const router = useRouter();
   const user = useAuthStore((s) => s.user);
+  const { can } = useMyPermissions();
   const badgeCounts = useSidebarBadgeCounts(user?.role);
 
   // Cùng 1 danh sách + role-gate với Sidebar (lib/nav-config.tsx) - "sidebar
   // có gì thì trang chủ có đó" theo đúng yêu cầu, không định nghĩa lại.
-  const items = getVisibleNavItems(user?.role);
+  const items = getVisibleNavItems(user?.role, can);
 
   return (
     <div>

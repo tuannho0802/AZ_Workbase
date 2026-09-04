@@ -13,6 +13,7 @@ import {
 } from '@ant-design/icons';
 import { useAuthStore } from '@/lib/stores/auth.store';
 import { getVisibleNavItems, NAV_ITEMS } from '@/lib/nav-config';
+import { useMyPermissions } from '@/lib/hooks/useMyPermissions';
 import { useSidebarBadgeCounts } from '@/lib/hooks/useSidebarBadgeCounts';
 import { CountBadge } from '@/components/common/CountBadge';
 import dayjs from 'dayjs';
@@ -80,6 +81,7 @@ export default function DashboardLayout({
   const router = useRouter();
   const pathname = usePathname();
   const { user, isAuthenticated, isHydrated, logout } = useAuthStore();
+  const { can } = useMyPermissions();
   const [selectedKey, setSelectedKey] = useState('customers');
   const [collapsed, setCollapsed] = useState(false);
   const badgeCounts = useSidebarBadgeCounts(user?.role);
@@ -221,7 +223,7 @@ export default function DashboardLayout({
             // Toàn bộ mục còn lại lấy từ nav-config.tsx - CÙNG 1 nguồn với
             // trang chủ (/) - sửa role-gate hay thêm/bớt mục chỉ cần sửa 1
             // chỗ duy nhất, không lệch giữa sidebar và trang chủ.
-            ...getVisibleNavItems(user?.role).map((item) => ({
+            ...getVisibleNavItems(user?.role, can).map((item) => ({
               key: item.key,
               icon: item.icon,
               label: (
