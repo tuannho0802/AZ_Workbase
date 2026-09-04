@@ -12,9 +12,8 @@ import {
 } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiBearerAuth, ApiQuery } from '@nestjs/swagger';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
-import { RolesGuard } from '../../common/guards/roles.guard';
-import { Roles } from '../../common/decorators/roles.decorator';
-import { Role } from '../../common/enums/role.enum';
+import { PermissionGuard } from '../../common/guards/permission.guard';
+import { RequirePermission } from '../../common/decorators/require-permission.decorator';
 import { LinkCategoriesService } from './link-categories.service';
 import { CreateLinkCategoryDto } from './dto/create-link-category.dto';
 import { UpdateLinkCategoryDto } from './dto/update-link-category.dto';
@@ -37,32 +36,32 @@ export class LinkCategoriesController {
   }
 
   @Post()
-  @UseGuards(RolesGuard)
-  @Roles(Role.ADMIN, Role.ASSISTANT)
+  @UseGuards(PermissionGuard)
+  @RequirePermission('link_groups.manage')
   @ApiOperation({ summary: 'Tạo category mới (Admin, Assistant)' })
   async create(@Body() dto: CreateLinkCategoryDto) {
     return this.categoriesService.create(dto);
   }
 
   @Patch(':id')
-  @UseGuards(RolesGuard)
-  @Roles(Role.ADMIN, Role.ASSISTANT)
+  @UseGuards(PermissionGuard)
+  @RequirePermission('link_groups.manage')
   @ApiOperation({ summary: 'Sửa tên/màu/thứ tự category (Admin, Assistant)' })
   async update(@Param('id', ParseIntPipe) id: number, @Body() dto: UpdateLinkCategoryDto) {
     return this.categoriesService.update(id, dto);
   }
 
   @Patch(':id/lock')
-  @UseGuards(RolesGuard)
-  @Roles(Role.ADMIN, Role.ASSISTANT)
+  @UseGuards(PermissionGuard)
+  @RequirePermission('link_groups.manage')
   @ApiOperation({ summary: 'Khoá category (Admin, Assistant)' })
   async lock(@Param('id', ParseIntPipe) id: number) {
     return this.categoriesService.setLocked(id, true);
   }
 
   @Patch(':id/unlock')
-  @UseGuards(RolesGuard)
-  @Roles(Role.ADMIN, Role.ASSISTANT)
+  @UseGuards(PermissionGuard)
+  @RequirePermission('link_groups.manage')
   @ApiOperation({ summary: 'Mở khoá category (Admin, Assistant)' })
   async unlock(@Param('id', ParseIntPipe) id: number) {
     return this.categoriesService.setLocked(id, false);
@@ -76,8 +75,8 @@ export class LinkCategoriesController {
   // đúng rule (Assistant = Admin trừ Xoá), để tránh tự quyết thay chủ dự án
   // 1 quyết định thiết kế còn treo.
   @Delete(':id')
-  @UseGuards(RolesGuard)
-  @Roles(Role.ADMIN)
+  @UseGuards(PermissionGuard)
+  @RequirePermission('link_groups.delete')
   @ApiOperation({ summary: 'Xoá category - chỉ được nếu chưa có group nào (chỉ Admin)' })
   async remove(@Param('id', ParseIntPipe) id: number) {
     return this.categoriesService.remove(id);

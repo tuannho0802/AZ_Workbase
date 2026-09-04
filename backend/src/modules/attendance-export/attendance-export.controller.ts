@@ -6,9 +6,8 @@ import { QueryAttendanceLogDto } from '../zk-device/dto/query-attendance-log.dto
 import { QueryAttendanceSummaryDto } from '../zk-device/dto/query-attendance-summary.dto';
 import { ExportMonthlyAttendanceDto } from './dto/export-monthly-attendance.dto';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
-import { RolesGuard } from '../../common/guards/roles.guard';
-import { Roles } from '../../common/decorators/roles.decorator';
-import { Role } from '../../common/enums/role.enum';
+import { PermissionGuard } from '../../common/guards/permission.guard';
+import { RequirePermission } from '../../common/decorators/require-permission.decorator';
 
 const XLSX_CONTENT_TYPE =
   'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
@@ -16,13 +15,14 @@ const XLSX_CONTENT_TYPE =
 @ApiTags('Xuất Excel chấm công')
 @ApiBearerAuth()
 @Controller('attendance-export')
-@UseGuards(JwtAuthGuard, RolesGuard)
+  @UseGuards(JwtAuthGuard, PermissionGuard)
 // Khớp đúng phạm vi truy cập trang "/attendance-device" (PERMISSIONS.md mục
 // 2.3) - ai xem được tab nào thì export được đúng tab đó; Manager tự động bị
 // giới hạn đúng phòng ban mình quản lý NGAY TRONG zk-device.service.ts (2
 // endpoint logs/summary export đều gọi lại đúng service đó, không lặp lại
-// logic phân quyền ở đây).
-@Roles(Role.ADMIN, Role.ASSISTANT, Role.MANAGER)
+// logic phân quyền ở đây). Dùng `attendance.view` (không phải `.manage`) vì
+// đây thuần là xuất/đọc dữ liệu, không sửa/xoá gì.
+@RequirePermission('attendance.view')
 export class AttendanceExportController {
   constructor(private readonly exportService: AttendanceExportService) {}
 

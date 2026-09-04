@@ -12,9 +12,8 @@ import {
 } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiBearerAuth, ApiQuery } from '@nestjs/swagger';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
-import { RolesGuard } from '../../common/guards/roles.guard';
-import { Roles } from '../../common/decorators/roles.decorator';
-import { Role } from '../../common/enums/role.enum';
+import { PermissionGuard } from '../../common/guards/permission.guard';
+import { RequirePermission } from '../../common/decorators/require-permission.decorator';
 import { LinkGroupsService } from './link-groups.service';
 import { CreateLinkGroupDto } from './dto/create-link-group.dto';
 import { UpdateLinkGroupDto } from './dto/update-link-group.dto';
@@ -41,32 +40,32 @@ export class LinkGroupsController {
   }
 
   @Post()
-  @UseGuards(RolesGuard)
-  @Roles(Role.ADMIN, Role.ASSISTANT)
+  @UseGuards(PermissionGuard)
+  @RequirePermission('link_groups.manage')
   @ApiOperation({ summary: 'Tạo nhóm mới (Admin, Assistant)' })
   async create(@Body() dto: CreateLinkGroupDto) {
     return this.groupsService.create(dto);
   }
 
   @Patch(':id')
-  @UseGuards(RolesGuard)
-  @Roles(Role.ADMIN, Role.ASSISTANT)
+  @UseGuards(PermissionGuard)
+  @RequirePermission('link_groups.manage')
   @ApiOperation({ summary: 'Sửa tên/url/thứ tự nhóm (Admin, Assistant)' })
   async update(@Param('id', ParseIntPipe) id: number, @Body() dto: UpdateLinkGroupDto) {
     return this.groupsService.update(id, dto);
   }
 
   @Patch(':id/deactivate')
-  @UseGuards(RolesGuard)
-  @Roles(Role.ADMIN, Role.ASSISTANT)
+  @UseGuards(PermissionGuard)
+  @RequirePermission('link_groups.manage')
   @ApiOperation({ summary: 'Ẩn nhóm khỏi checklist (Admin, Assistant)' })
   async deactivate(@Param('id', ParseIntPipe) id: number) {
     return this.groupsService.setActive(id, false);
   }
 
   @Patch(':id/activate')
-  @UseGuards(RolesGuard)
-  @Roles(Role.ADMIN, Role.ASSISTANT)
+  @UseGuards(PermissionGuard)
+  @RequirePermission('link_groups.manage')
   @ApiOperation({ summary: 'Hiện lại nhóm (Admin, Assistant)' })
   async activate(@Param('id', ParseIntPipe) id: number) {
     return this.groupsService.setActive(id, true);
@@ -76,8 +75,8 @@ export class LinkGroupsController {
   // Admin - xem giải thích tương tự ở link-categories.controller.ts (chưa
   // có khái niệm phòng ban cho Group nên không mở thêm cho Manager ở đây).
   @Delete(':id')
-  @UseGuards(RolesGuard)
-  @Roles(Role.ADMIN)
+  @UseGuards(PermissionGuard)
+  @RequirePermission('link_groups.delete')
   @ApiOperation({ summary: 'Xoá nhóm - chỉ được nếu chưa có customer nào có dữ liệu join (chỉ Admin)' })
   async remove(@Param('id', ParseIntPipe) id: number) {
     return this.groupsService.remove(id);

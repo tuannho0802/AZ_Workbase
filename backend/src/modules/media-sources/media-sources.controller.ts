@@ -12,9 +12,8 @@ import {
 } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiBearerAuth, ApiQuery } from '@nestjs/swagger';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
-import { RolesGuard } from '../../common/guards/roles.guard';
-import { Roles } from '../../common/decorators/roles.decorator';
-import { Role } from '../../common/enums/role.enum';
+import { PermissionGuard } from '../../common/guards/permission.guard';
+import { RequirePermission } from '../../common/decorators/require-permission.decorator';
 import { MediaSourcesService } from './media-sources.service';
 import { CreateMediaSourceDto } from './dto/create-media-source.dto';
 import { UpdateMediaSourceDto } from './dto/update-media-source.dto';
@@ -39,32 +38,32 @@ export class MediaSourcesController {
     }
 
     @Post()
-    @UseGuards(RolesGuard)
-    @Roles(Role.ADMIN, Role.ASSISTANT)
+    @UseGuards(PermissionGuard)
+    @RequirePermission('media_sources.manage')
     @ApiOperation({ summary: 'Tạo nguồn mới (Admin, Assistant)' })
     async create(@Body() dto: CreateMediaSourceDto) {
         return this.mediaSourcesService.create(dto);
     }
 
     @Patch(':id')
-    @UseGuards(RolesGuard)
-    @Roles(Role.ADMIN, Role.ASSISTANT)
+    @UseGuards(PermissionGuard)
+    @RequirePermission('media_sources.manage')
     @ApiOperation({ summary: 'Sửa tên/thứ tự nguồn (Admin, Assistant)' })
     async update(@Param('id', ParseIntPipe) id: number, @Body() dto: UpdateMediaSourceDto) {
         return this.mediaSourcesService.update(id, dto);
     }
 
     @Patch(':id/lock')
-    @UseGuards(RolesGuard)
-    @Roles(Role.ADMIN, Role.ASSISTANT)
+    @UseGuards(PermissionGuard)
+    @RequirePermission('media_sources.manage')
     @ApiOperation({ summary: 'Khoá nguồn - ẩn khỏi dropdown thêm khách hàng mới (Admin, Assistant)' })
     async lock(@Param('id', ParseIntPipe) id: number) {
         return this.mediaSourcesService.setLocked(id, true);
     }
 
     @Patch(':id/unlock')
-    @UseGuards(RolesGuard)
-    @Roles(Role.ADMIN, Role.ASSISTANT)
+    @UseGuards(PermissionGuard)
+    @RequirePermission('media_sources.manage')
     @ApiOperation({ summary: 'Mở khoá nguồn (Admin, Assistant)' })
     async unlock(@Param('id', ParseIntPipe) id: number) {
         return this.mediaSourcesService.setLocked(id, false);
@@ -74,8 +73,8 @@ export class MediaSourcesController {
     // Admin - cùng lý do với link-categories/link-groups (chưa có khái niệm
     // phòng ban cho Media Source nên không mở thêm cho Manager ở đây).
     @Delete(':id')
-    @UseGuards(RolesGuard)
-    @Roles(Role.ADMIN)
+    @UseGuards(PermissionGuard)
+    @RequirePermission('media_sources.delete')
     @ApiOperation({ summary: 'Xoá nguồn - chỉ được nếu chưa có khách hàng nào dùng (chỉ Admin)' })
     async remove(@Param('id', ParseIntPipe) id: number) {
         return this.mediaSourcesService.remove(id);

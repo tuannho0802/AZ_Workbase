@@ -2,9 +2,8 @@ import { Controller, Get, Post, Body, Patch, Param, Delete, Query, UseGuards, Re
 import { ApiTags, ApiOperation, ApiBearerAuth, ApiResponse } from '@nestjs/swagger';
 import { UsersService } from './users.service';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
-import { RolesGuard } from '../../common/guards/roles.guard';
-import { Roles } from '../../common/decorators/roles.decorator';
-import { Role } from '../../common/enums/role.enum';
+import { PermissionGuard } from '../../common/guards/permission.guard';
+import { RequirePermission } from '../../common/decorators/require-permission.decorator';
 import { CreateUserDto } from './dto/create-user.dto';
 import { UpdateUserDto } from './dto/update-user.dto';
 import { ResetPasswordDto } from './dto/reset-password.dto';
@@ -14,13 +13,16 @@ import { CacheControlInterceptor } from '../../common/interceptors/cache-control
 
 @ApiTags('Users')
 @ApiBearerAuth()
-@UseGuards(JwtAuthGuard, RolesGuard)
+  @UseGuards(JwtAuthGuard, PermissionGuard)
 @Controller('users')
 export class UsersController {
   constructor(private readonly usersService: UsersService) {}
 
   @Get('all')
-  @Roles(Role.ADMIN, Role.MANAGER, Role.ASSISTANT, Role.EMPLOYEE)
+    // KHÔNG gắn @RequirePermission - endpoint này CỐ TÌNH mở cho MỌI role đã
+    // đăng nhập (dùng để đổ dropdown chọn nhân viên ở khắp nơi trong app,
+    // không phải màn quản trị nhân sự) - khớp hành vi cũ (@Roles liệt kê đủ cả
+    // 4 role = tương đương không giới hạn gì).
   @UseInterceptors(new CacheControlInterceptor(60))
   @ApiOperation({ summary: 'Lấy toàn bộ danh sách nhân viên (Không phân trang)' })
   async findAllList(
@@ -31,7 +33,7 @@ export class UsersController {
   }
 
   @Get()
-  @Roles(Role.ADMIN, Role.ASSISTANT, Role.MANAGER)
+  @RequirePermission('users.manage')
   @UseInterceptors(new CacheControlInterceptor(60))
   @ApiOperation({ summary: 'Danh sách nhân viên (Phân trang & Filter)' })
   async findAll(
@@ -65,42 +67,42 @@ export class UsersController {
   }
 
   @Get('pending-approvals')
-  @Roles(Role.ADMIN, Role.ASSISTANT, Role.MANAGER)
+  @RequirePermission('users.manage')
   @ApiOperation({ summary: 'Danh sách tài khoản tự đăng ký đang chờ duyệt (Admin/Assistant toàn bộ, Manager chỉ phòng ban mình quản lý)' })
   async getPendingApprovals(@Request() req: any) {
     return this.usersService.findPendingApprovals(req.user.id, req.user.role);
   }
 
   @Get(':id')
-  @Roles(Role.ADMIN, Role.ASSISTANT, Role.MANAGER)
+  @RequirePermission('users.manage')
   @ApiOperation({ summary: 'Lấy thông tin chi tiết nhân viên theo ID' })
   async findOne(@Param('id') id: string, @Request() req: any) {
     return this.usersService.findOne(+id, req.user.id, req.user.role);
   }
 
   @Patch(':id/approve')
-  @Roles(Role.ADMIN, Role.ASSISTANT, Role.MANAGER)
+  @RequirePermission('users.manage')
   @ApiOperation({ summary: 'Duyệt tài khoản tự đăng ký (Admin/Assistant toàn bộ, Manager chỉ đúng phòng ban mình quản lý)' })
   async approveUser(@Param('id') id: string, @Body() dto: ApproveUserDto, @Request() req: any) {
     return this.usersService.approveUser(+id, req.user.id, req.user.role, dto);
   }
 
   @Patch(':id/reject')
-  @Roles(Role.ADMIN, Role.ASSISTANT, Role.MANAGER)
+  @RequirePermission('users.manage')
   @ApiOperation({ summary: 'Từ chối tài khoản tự đăng ký (Admin/Assistant toàn bộ, Manager chỉ đúng phòng ban mình quản lý)' })
   async rejectUser(@Param('id') id: string, @Body() dto: RejectUserDto, @Request() req: any) {
     return this.usersService.rejectUser(+id, req.user.id, req.user.role, dto.reason);
   }
 
   @Post()
-  @Roles(Role.ADMIN, Role.ASSISTANT, Role.MANAGER)
+  @RequirePermission('users.manage')
   @ApiOperation({ summary: 'Tạo nhân viên mới (Admin/Assistant toàn quyền, Manager chỉ trong phòng ban mình quản lý)' })
   async create(@Request() req: any, @Body() dto: CreateUserDto) {
     return this.usersService.create(dto, req.user.id, req.user.role);
   }
 
   @Patch(':id')
-  @Roles(Role.ADMIN, Role.ASSISTANT, Role.MANAGER)
+  @RequirePermission('users.manage')
   @ApiOperation({ summary: 'Cập nhật thông tin nhân viên' })
   async update(@Param('id') id: string, @Body() dto: UpdateUserDto, @Request() req: any) {
     return this.usersService.update(+id, dto, req.user.id, req.user.role);
@@ -113,7 +115,7 @@ export class UsersController {
   // nhập tay, không cần endpoint riêng ở đây nữa.
 
   @Patch(':id/reset-password')
-  @Roles(Role.ADMIN, Role.ASSISTANT, Role.MANAGER)
+  @RequirePermission('users.manage')
   @ApiOperation({ summary: 'Đặt lại mật khẩu nhân viên (Admin/Assistant toàn bộ, Manager trong phòng ban quản lý)' })
   async resetPassword(@Param('id') id: string, @Body() dto: ResetPasswordDto, @Request() req: any) {
     return this.usersService.resetPassword(+id, dto, req.user.id, req.user.role);

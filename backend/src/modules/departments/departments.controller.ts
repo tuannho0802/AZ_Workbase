@@ -4,9 +4,8 @@ import { DepartmentsService } from './departments.service';
 import { CreateDepartmentDto } from './dto/create-department.dto';
 import { UpdateDepartmentDto } from './dto/update-department.dto';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
-import { RolesGuard } from '../../common/guards/roles.guard';
-import { Roles } from '../../common/decorators/roles.decorator';
-import { Role } from '../../common/enums/role.enum';
+import { PermissionGuard } from '../../common/guards/permission.guard';
+import { RequirePermission } from '../../common/decorators/require-permission.decorator';
 import { CacheControlInterceptor } from '../../common/interceptors/cache-control.interceptor';
 
 @ApiTags('Departments')
@@ -24,7 +23,10 @@ export class DepartmentsController {
   }
 
   @Get()
-  @UseGuards(JwtAuthGuard, RolesGuard)
+  // Không cần @RequirePermission - mở cho mọi role đã đăng nhập (dùng làm
+  // danh mục tham chiếu ở nhiều nơi, không phải màn quản trị) - khớp hành vi
+  // cũ (JwtAuthGuard+RolesGuard nhưng không có @Roles nào = không giới hạn).
+  @UseGuards(JwtAuthGuard)
   @ApiBearerAuth()
   @UseInterceptors(new CacheControlInterceptor(300))
   @ApiOperation({ summary: 'Lấy danh sách phòng ban đang hoạt động' })
@@ -33,7 +35,7 @@ export class DepartmentsController {
   }
 
   @Get(':id')
-  @UseGuards(JwtAuthGuard, RolesGuard)
+  @UseGuards(JwtAuthGuard)
   @ApiBearerAuth()
   @ApiOperation({ summary: 'Lấy chi tiết phòng ban' })
   findOne(@Param('id', ParseIntPipe) id: number) {
@@ -41,18 +43,18 @@ export class DepartmentsController {
   }
 
   @Post()
-  @UseGuards(JwtAuthGuard, RolesGuard)
+  @UseGuards(JwtAuthGuard, PermissionGuard)
   @ApiBearerAuth()
-  @Roles(Role.ADMIN, Role.ASSISTANT)
+  @RequirePermission('departments.manage')
   @ApiOperation({ summary: 'Tạo phòng ban mới (Admin, Assistant)' })
   create(@Body() dto: CreateDepartmentDto) {
     return this.departmentsService.create(dto);
   }
 
   @Patch(':id')
-  @UseGuards(JwtAuthGuard, RolesGuard)
+  @UseGuards(JwtAuthGuard, PermissionGuard)
   @ApiBearerAuth()
-  @Roles(Role.ADMIN, Role.ASSISTANT)
+  @RequirePermission('departments.manage')
   @ApiOperation({ summary: 'Cập nhật phòng ban, bao gồm gán Manager quản lý (Admin, Assistant)' })
   update(@Param('id', ParseIntPipe) id: number, @Body() dto: UpdateDepartmentDto) {
     return this.departmentsService.update(id, dto);

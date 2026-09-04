@@ -24,18 +24,18 @@ import {
   parseLocalDateEnd,
 } from '../../integrations/zk-device/decode-device-time.util';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
-import { RolesGuard } from '../../common/guards/roles.guard';
-import { Roles } from '../../common/decorators/roles.decorator';
-import { Role } from '../../common/enums/role.enum';
+import { PermissionGuard } from '../../common/guards/permission.guard';
+import { RequirePermission } from '../../common/decorators/require-permission.decorator';
 
 @ApiTags('ZK Device (Máy chấm công)')
 @ApiBearerAuth()
 @Controller('zk-device')
-@UseGuards(JwtAuthGuard, RolesGuard)
+  @UseGuards(JwtAuthGuard, PermissionGuard)
 // FIX PERMISSIONS.md mục 2.3: Assistant thao tác ngang Admin (trừ riêng
-// xoá log - xem @Roles(ADMIN) riêng ở cleanupAttendanceLogs()); Manager bị
-// giới hạn theo phòng ban mình quản lý ngay trong từng service method.
-@Roles(Role.ADMIN, Role.ASSISTANT, Role.MANAGER)
+// xoá log - xem @RequirePermission('attendance.delete') riêng ở
+// cleanupAttendanceLogs()); Manager bị giới hạn theo phòng ban mình quản lý
+// ngay trong từng service method.
+@RequirePermission('attendance.manage')
 export class ZkDeviceController {
   constructor(private readonly zkDeviceService: ZkDeviceService) {}
 
@@ -100,9 +100,9 @@ export class ZkDeviceController {
 
   // FIX PERMISSIONS.md mục 1 (quy tắc Xoá) + mục 2.3: xoá log chấm công là
   // hành động Xoá thật (vĩnh viễn, không hoàn tác) - phải tách riêng khỏi
-  // @Roles cấp class, khoá cứng CHỈ Admin, không có ngoại lệ cho Assistant.
+  // permission cấp class, khoá cứng CHỈ Admin, không có ngoại lệ cho Assistant.
   @Delete('attendance-logs/cleanup')
-  @Roles(Role.ADMIN)
+  @RequirePermission('attendance.delete')
   @ApiOperation({
     summary:
       'Dọn dẹp (xoá vĩnh viễn) log chấm công cũ hơn 1 mốc ngày - dùng khi bảng attendance_logs đã tích luỹ quá lâu, chiếm nhiều dung lượng DB. KHÔNG THỂ HOÀN TÁC. Chỉ Admin.',
