@@ -146,13 +146,15 @@ export default function AuditLogsPage() {
   const { user } = useAuthStore();
   const router = useRouter();
   const { message, modal } = App.useApp();
-  // Đổi tên biến giữ nguyên "isAdmin" để không phải sửa lại 6 chỗ dùng bên
-  // dưới, nhưng ý nghĩa giờ khớp đúng PERMISSIONS.md §2.7: audit log (xem +
-  // xoá/dọn dẹp) là admin+assistant NGANG NHAU (không có phân biệt, không
-  // có ngoại lệ theo phòng ban) - Manager/Employee bị chặn hoàn toàn (403),
-  // không phải "xem được nhưng không xoá được" như rule Xoá mặc định ở các
-  // module khác.
-  const isAdmin = user?.role === 'admin' || user?.role === 'assistant';
+  // ⚠️ FIX BUG THẬT (rà soát permission): trước đây hardcode
+  // `role==='admin'||'assistant'` với lý do "seed mặc định audit.manage chỉ
+  // cấp cho 2 role này, không phân biệt gì thêm". Nhưng đây CHÍNH LÀ module
+  // Admin có thể đổi qua trang Phân quyền - nếu Admin thu hồi `audit.manage`
+  // của assistant (chỉ giữ `audit.view`), assistant vẫn thấy nút xoá/dọn dẹp
+  // do hardcode không biết, bấm vào sẽ dính 403 (đúng lỗi cần tránh). Đổi
+  // sang permission ĐỘNG, tách đúng 2 quyền theo BE (`audit.view` khác
+  // `audit.manage` - xem audit.controller.ts).
+  const canManageAudit = can('audit.manage');
 
   // ── State ──────────────────────────────────────────────────────────────
   const [logs, setLogs] = useState<AuditLog[]>([]);
@@ -190,10 +192,10 @@ export default function AuditLogsPage() {
 
   useEffect(() => {
     auditApi.getActions().then(setAvailableActions).catch(() => {});
-    if (isAdmin) {
+    if (canManageAudit) {
       auditApi.getSettings().then(setSettings).catch(() => {});
     }
-  }, [isAdmin]);
+  }, [canManageAudit]);
 
   const fetchLogs = useCallback(async (pg = page, ps = pageSize) => {
     setLoading(true);
@@ -430,7 +432,7 @@ export default function AuditLogsPage() {
     },
   ];
 
-  const rowSelection = isAdmin ? {
+  const rowSelection = canManageAudit ? {
     selectedRowKeys,
     onChange: (keys: React.Key[]) => setSelectedRowKeys(keys),
   } : undefined;
@@ -447,7 +449,7 @@ export default function AuditLogsPage() {
         </Col>
         <Col>
           <Space>
-            {isAdmin && (
+            {canManageAudit && (
               <>
                 <Button 
                   danger 
@@ -562,7 +564,7 @@ export default function AuditLogsPage() {
             </>
           )
         },
-        ...(isAdmin ? [{
+        ...(canManageAudit ? [{
           key: '2',
           label: <span><SettingOutlined /> Cài đặt dọn dẹp</span>,
           children: (

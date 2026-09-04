@@ -11,6 +11,7 @@ import { usersApi, PendingUser } from '@/lib/api/users.api';
 import { useDepartments } from '@/lib/hooks/useDepartments';
 import { useRoles } from '@/lib/hooks/useRoles';
 import { getApiErrorMessage } from '@/lib/utils/error-message.util';
+import { useMyPermissions } from '@/lib/hooks/useMyPermissions';
 
 const { Text, Paragraph } = Typography;
 
