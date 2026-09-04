@@ -124,7 +124,11 @@ export const NAV_ITEMS: NavItem[] = [
     description: 'Lịch sử thao tác toàn hệ thống',
     icon: <FileTextOutlined />,
     path: '/audit-logs',
-    roles: ['admin', 'assistant'],
+    // Khớp @RequirePermission('audit.view') ở audit.controller.ts (rà soát
+    // permission UI - trước đây `roles: ['admin','assistant']` tĩnh, BE đã
+    // migrate hoàn toàn sang permission động từ lâu, nav-config quên theo).
+    roles: null,
+    permission: 'audit.view',
   },
   {
     key: 'users',
@@ -132,7 +136,9 @@ export const NAV_ITEMS: NavItem[] = [
     description: 'Quản lý tài khoản, duyệt đăng ký mới',
     icon: <UserOutlined />,
     path: '/users',
-    roles: ['admin', 'assistant', 'manager'],
+    // Khớp @RequirePermission('users.view') ở users.controller.ts.
+    roles: null,
+    permission: 'users.view',
   },
   {
     key: 'trash-can',
@@ -152,7 +158,9 @@ export const NAV_ITEMS: NavItem[] = [
     description: 'Danh sách nguồn khách hàng (Facebook, TikTok...)',
     icon: <TagsOutlined />,
     path: '/nguon-media',
-    roles: ['admin', 'assistant'],
+    // Khớp @RequirePermission('media_sources.view') ở media-sources.controller.ts.
+    roles: null,
+    permission: 'media_sources.view',
   },
   {
     key: 'nhom-lien-ket',
@@ -160,7 +168,10 @@ export const NAV_ITEMS: NavItem[] = [
     description: 'Category và nhóm Zalo/FB/Threads...',
     icon: <ApartmentOutlined />,
     path: '/nhom-lien-ket',
-    roles: ['admin', 'assistant'],
+    // Khớp @RequirePermission('link_groups.view') ở link-categories.controller.ts
+    // + link-groups.controller.ts.
+    roles: null,
+    permission: 'link_groups.view',
   },
   {
     key: 'attendance-device',
@@ -177,7 +188,9 @@ export const NAV_ITEMS: NavItem[] = [
     description: 'Khách hàng bị nhập liệu sai/thiếu thông tin',
     icon: <WarningOutlined />,
     path: '/customers/reports/invalid-data',
-    roles: ['admin'],
+    // Khớp @RequirePermission('customers.invalid_report') ở customers.controller.ts.
+    roles: null,
+    permission: 'customers.invalid_report',
   },
   {
     key: 'phan-quyen',
