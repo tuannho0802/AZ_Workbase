@@ -33,7 +33,7 @@ export class UsersController {
   }
 
   @Get()
-  @RequirePermission('users.manage')
+  @RequirePermission('users.view')
   @UseInterceptors(new CacheControlInterceptor(60))
   @ApiOperation({ summary: 'Danh sách nhân viên (Phân trang & Filter)' })
   async findAll(
@@ -74,7 +74,7 @@ export class UsersController {
   }
 
   @Get(':id')
-  @RequirePermission('users.manage')
+  @RequirePermission('users.view')
   @ApiOperation({ summary: 'Lấy thông tin chi tiết nhân viên theo ID' })
   async findOne(@Param('id') id: string, @Request() req: any) {
     return this.usersService.findOne(+id, req.user.id, req.user.role);

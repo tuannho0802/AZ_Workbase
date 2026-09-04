@@ -6,6 +6,7 @@ import { Tabs, Card, Badge, Space, Typography } from 'antd';
 import { ApiOutlined } from '@ant-design/icons';
 import { useAuthStore } from '@/lib/stores/auth.store';
 import { useDeviceStatus } from '@/lib/hooks/useZkDevice';
+import { useMyPermissions } from '@/lib/hooks/useMyPermissions';
 import DeviceMappingTab from './DeviceMappingTab';
 import AttendanceSummaryTab from './AttendanceSummaryTab';
 import AttendanceMonthlyTab from './AttendanceMonthlyTab';
@@ -17,17 +18,13 @@ export default function AttendanceDevicePage() {
   const { data: status, isLoading: statusLoading, isError: statusError } = useDeviceStatus();
   const user = useAuthStore((s) => s.user);
   const router = useRouter();
+  const { can, isLoading: permissionsLoading } = useMyPermissions();
 
-  // Trước đây trang này không có gate riêng nào - chỉ ẩn ở sidebar (Employee
-  // gõ thẳng URL vẫn vào được, các API bên trong mới trả 403 rời rạc từng
-  // chỗ). Khớp PERMISSIONS.md §2.3: admin/assistant/manager (Manager bị BE
-  // tự giới hạn theo phòng ban ở từng service method, không cần lọc gì
-  // thêm ở FE).
   useEffect(() => {
-    if (user && !['admin', 'assistant', 'manager'].includes(user.role)) {
+    if (!permissionsLoading && !can('attendance.view')) {
       router.replace('/customers');
     }
-  }, [user, router]);
+  }, [can, permissionsLoading, router]);
 
   return (
     <div>

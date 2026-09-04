@@ -15,14 +15,14 @@ export class AuditController {
   constructor(private readonly auditService: AuditService) {}
 
   @Get()
-  @RequirePermission('audit.manage')
+  @RequirePermission('audit.view')
   @ApiOperation({ summary: 'Lấy danh sách nhật ký hành động' })
   async getLogs(@Query() filters: GetAuditLogsDto) {
     return this.auditService.getLogs(filters);
   }
 
   @Get('actions')
-  @RequirePermission('audit.manage')
+  @RequirePermission('audit.view')
   @ApiOperation({ summary: 'Lấy danh sách bộ lọc hành động' })
   async getActions() {
     return this.auditService.getDistinctActions();
@@ -36,7 +36,7 @@ export class AuditController {
   // qua trang Phân quyền) bị chặn hoàn toàn (403).
 
   @Get('settings')
-  @RequirePermission('audit.manage')
+  @RequirePermission('audit.view')
   @ApiOperation({ summary: 'Lấy cấu hình dọn dẹp nhật ký' })
   async getSettings() {
     return this.auditService.getCleanupSettings();

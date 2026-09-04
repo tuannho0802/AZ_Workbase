@@ -13,6 +13,7 @@ import {
 import { useAuthStore } from '@/lib/stores/auth.store';
 import { useRouter } from 'next/navigation';
 import { usersApi } from '@/lib/api/users.api';
+import { useMyPermissions } from '@/lib/hooks/useMyPermissions';
 import { useDepartments } from '@/lib/hooks/useDepartments';
 import { PendingApprovalsTab } from './PendingApprovalsTab';
 
@@ -145,16 +146,16 @@ export default function UsersPage() {
   // còn là Admin-only như comment cũ ở đây từng ghi (đã lỗi thời, gây bug:
   // Manager/Assistant bị chặn nhầm khỏi tab "Danh sách nhân viên" dù BE đã
   // cho phép từ trước). Đặt tên lại cho đúng ý nghĩa thay vì giữ "isAdmin"
-  // gây hiểu lầm.
-  const canAccessPage = ['admin', 'assistant', 'manager'].includes(user?.role || '');
+  const { can, isLoading: permissionsLoading } = useMyPermissions();
+  const canAccessPage = can('users.view');
   const canSeeFullList = canAccessPage;
 
   useEffect(() => {
-    if (user && !canAccessPage) {
+    if (!permissionsLoading && user && !canAccessPage) {
       message.error('Bạn không có quyền truy cập trang này');
       router.replace('/customers');
     }
-  }, [user, canAccessPage, router, message]);
+  }, [user, canAccessPage, router, message, permissionsLoading]);
 
   useEffect(() => {
     if (canSeeFullList) {

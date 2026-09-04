@@ -29,6 +29,8 @@ export class MediaSourcesController {
     // này để load dropdown "Nguồn" khi thêm khách hàng (không chỉ admin).
     // Quyền CRUD/khoá-mở mới giới hạn admin (xem các endpoint bên dưới).
     @Get()
+    @UseGuards(PermissionGuard)
+    @RequirePermission('media_sources.view')
     @ApiOperation({
         summary: 'Lấy danh sách nguồn. activeOnly=true để chỉ lấy nguồn đang mở (dùng cho dropdown thêm khách hàng).',
     })

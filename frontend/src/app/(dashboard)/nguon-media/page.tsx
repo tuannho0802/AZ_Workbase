@@ -34,10 +34,13 @@ import {
   useDeleteMediaSource,
 } from '@/lib/hooks/useMediaSources';
 import { MediaSource } from '@/lib/api/media-sources.api';
+import { useMyPermissions } from '@/lib/hooks/useMyPermissions';
 
 const { Title, Text } = Typography;
 
 export default function MediaSourcesPage() {
+  const { can, isLoading: permissionsLoading } = useMyPermissions();
+
   const { message } = App.useApp();
   const router = useRouter();
   const user = useAuthStore((s) => s.user);
@@ -48,7 +51,7 @@ export default function MediaSourcesPage() {
   // ZK Device - module chưa có khái niệm phòng ban gắn với Media Source).
   // remove (Xoá) tách riêng @Roles(ADMIN) - xem canDelete bên dưới.
   useEffect(() => {
-    if (user && !['admin', 'assistant'].includes(user.role)) {
+    if (!permissionsLoading && user && !can('media_sources.view')) {
       router.replace('/customers');
     }
   }, [user, router]);

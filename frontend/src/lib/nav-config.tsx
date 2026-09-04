@@ -160,7 +160,8 @@ export const NAV_ITEMS: NavItem[] = [
     description: 'Mapping nhân viên, bảng chấm công, log',
     icon: <ClockCircleOutlined />,
     path: '/attendance-device',
-    roles: ['admin', 'assistant', 'manager'],
+    roles: null,
+    permission: 'attendance.view',
   },
   {
     key: 'invalid-data-report',

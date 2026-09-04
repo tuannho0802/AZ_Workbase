@@ -26,6 +26,8 @@ export class LinkGroupsController {
   constructor(private readonly groupsService: LinkGroupsService) {}
 
   @Get()
+  @UseGuards(PermissionGuard)
+  @RequirePermission('link_groups.view')
   @ApiOperation({ summary: 'Lấy danh sách nhóm, lọc theo categoryId/activeOnly (mọi role đã đăng nhập)' })
   @ApiQuery({ name: 'categoryId', required: false, type: Number })
   @ApiQuery({ name: 'activeOnly', required: false, type: Boolean })

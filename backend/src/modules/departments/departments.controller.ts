@@ -23,13 +23,11 @@ export class DepartmentsController {
   }
 
   @Get()
-  // Không cần @RequirePermission - mở cho mọi role đã đăng nhập (dùng làm
-  // danh mục tham chiếu ở nhiều nơi, không phải màn quản trị) - khớp hành vi
-  // cũ (JwtAuthGuard+RolesGuard nhưng không có @Roles nào = không giới hạn).
-  @UseGuards(JwtAuthGuard)
+  @UseGuards(JwtAuthGuard, PermissionGuard)
   @ApiBearerAuth()
+  @RequirePermission('departments.view')
   @UseInterceptors(new CacheControlInterceptor(300))
-  @ApiOperation({ summary: 'Lấy danh sách phòng ban đang hoạt động' })
+  @ApiOperation({ summary: 'Danh sách tất cả phòng ban' })
   findAll() {
     return this.departmentsService.findAll();
   }

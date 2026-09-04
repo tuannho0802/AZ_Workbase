@@ -19,6 +19,7 @@ import { auditApi } from '@/lib/api/audit.api';
 import { AuditLog, AuditFilters, AuditSettings } from '@/lib/types/audit.types';
 import dayjs from 'dayjs';
 import { AuditDiffViewer } from '@/components/audit/AuditDiffViewer';
+import { useMyPermissions } from '@/lib/hooks/useMyPermissions';
 
 const { Text, Title, Link } = Typography;
 const { RangePicker } = DatePicker;
@@ -132,6 +133,8 @@ const AuditLogMobileCard = ({ record, onShowDetail }: { record: AuditLog; onShow
 };
 
 export default function AuditLogsPage() {
+  const { can, isLoading: permissionsLoading } = useMyPermissions();
+
   const [isMobile, setIsMobile] = useState(false);
   useEffect(() => {
     const check = () => setIsMobile(window.innerWidth < 768);
@@ -179,7 +182,7 @@ export default function AuditLogsPage() {
     // Khớp PERMISSIONS.md §2.7: CHỈ admin/assistant - Manager 403 tuyệt đối
     // (không có ngoại lệ theo phòng ban cho module này, khác Customer/Users/
     // ZK Device). Trước đây gate này cho Manager vào - SAI, đã sửa.
-    if (user && !['admin', 'assistant'].includes(user.role)) {
+    if (!permissionsLoading && user && !can('audit.view')) {
       message.warning('Bạn không có quyền truy cập trang này');
       router.replace('/customers');
     }

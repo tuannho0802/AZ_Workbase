@@ -158,6 +158,7 @@ export class CustomersController {
   }
 
   @Post()
+  @RequirePermission('customers.manage')
   @ApiOperation({ summary: 'Tạo khách hàng mới' })
   @ApiResponse({ status: 201, description: 'Khách hàng tạo thành công' })
   @ApiResponse({ status: 400, description: 'Lỗi validation hoặc trùng số điện thoại' })
@@ -205,24 +206,28 @@ export class CustomersController {
   }
 
   @Post(':id/notes')
+  @RequirePermission('customers.note')
   @ApiOperation({ summary: 'Thêm ghi chú khách hàng' })
   async createNote(@Param('id') id: string, @Body() dto: CreateCustomerNoteDto, @GetUser() user: any) {
     return this.customersService.createNote(+id, dto, user.id, user.role);
   }
 
   @Post(':id/deposits')
+  @RequirePermission('customers.manage')
   @ApiOperation({ summary: 'Thêm nạp tiền cho khách hàng - phạm vi kiểm tra trong service (giống findOne)' })
   async createDeposit(@Param('id') id: string, @Body() dto: CreateDepositDto, @GetUser() user: any) {
     return this.customersService.createDeposit(+id, dto, user.id, user.role);
   }
 
   @Get(':id/deposits')
+  @RequirePermission('customers.view')
   @ApiOperation({ summary: 'Lấy danh sách nạp tiền (5 bản ghi gần nhất)' })
   async getDeposits(@Param('id') id: string, @GetUser() user: any) {
     return this.customersService.getDeposits(+id, user.id, user.role);
   }
 
   @Get(':id/assignment-history')
+  @RequirePermission('customers.view')
   @ApiOperation({ summary: 'Lịch sử gán data của 1 khách hàng' })
   async getAssignmentHistory(@Param('id') id: string, @GetUser() user: any) {
     return this.customersService.getAssignmentHistory(+id, user.id, user.role);
@@ -236,6 +241,7 @@ export class CustomersController {
   }
 
   @Patch(':id')
+  @RequirePermission('customers.manage')
   @ApiOperation({ summary: 'Cập nhật thông tin khách hàng' })
   @ApiResponse({ status: 200, description: 'Cập nhật khách hàng thành công' })
   update(@GetUser() user: any, @Param('id') id: string, @Body() updateCustomerDto: UpdateCustomerDto) {

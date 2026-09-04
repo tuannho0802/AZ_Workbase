@@ -29,6 +29,8 @@ export class LinkCategoriesController {
   // dropdown khi tạo Group / xem checklist join-nhóm của khách hàng. Quyền
   // CRUD/khoá-mở mới giới hạn admin (các endpoint bên dưới).
   @Get()
+  @UseGuards(PermissionGuard)
+  @RequirePermission('link_groups.view')
   @ApiOperation({ summary: 'Lấy danh sách category. activeOnly=true để chỉ lấy category đang mở.' })
   @ApiQuery({ name: 'activeOnly', required: false, type: Boolean })
   async findAll(@Query('activeOnly') activeOnly?: string) {

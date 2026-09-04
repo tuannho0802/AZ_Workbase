@@ -27,6 +27,10 @@ const RESOURCE_LABEL: Record<string, string> = {
   reports: 'Báo cáo',
   users: 'Nhân viên',
   roles: 'Phân quyền',
+  departments: 'Phòng ban',
+  link_groups: 'Nhóm liên kết',
+  media_sources: 'Nguồn Media',
+  audit: 'Nhật ký hệ thống',
 };
 
 const SCOPE_LABEL: Record<PermissionScope, string> = {

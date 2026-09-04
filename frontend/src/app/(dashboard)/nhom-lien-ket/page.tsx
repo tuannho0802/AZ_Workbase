@@ -46,6 +46,7 @@ import {
 import { LinkCategory, LinkGroup } from '@/lib/api/link-groups.api';
 import { usersApi } from '@/lib/api/users.api';
 import { GroupManagersModal } from '@/components/link-groups/GroupManagersModal';
+import { useMyPermissions } from '@/lib/hooks/useMyPermissions';
 
 const { Title, Text } = Typography;
 
@@ -56,6 +57,8 @@ interface UserOption {
 }
 
 export default function LinkGroupsAdminPage() {
+  const { can, isLoading: permissionsLoading } = useMyPermissions();
+
   const { message } = App.useApp();
   const router = useRouter();
   const user = useAuthStore((s) => s.user);
@@ -66,7 +69,7 @@ export default function LinkGroupsAdminPage() {
   // phòng ban gắn với Category/Group). Delete tách riêng @Roles(ADMIN) -
   // xem canDelete ở các chỗ render nút Xoá bên dưới.
   useEffect(() => {
-    if (user && !['admin', 'assistant'].includes(user.role)) {
+    if (!permissionsLoading && user && !can('link_groups.view')) {
       router.replace('/customers');
     }
   }, [user, router]);
