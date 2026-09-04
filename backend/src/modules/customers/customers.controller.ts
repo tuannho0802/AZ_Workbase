@@ -13,7 +13,8 @@ import { UpdateAssignmentDto } from './dto/update-assignment.dto';
 import { CreateCustomerNoteDto } from './dto/create-customer-note.dto';
 import { CreateDepositDto } from './dto/create-deposit.dto';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
-import { RolesGuard } from '../../common/guards/roles.guard';
+import { PermissionGuard } from '../../common/guards/permission.guard';
+import { RequirePermission } from '../../common/decorators/require-permission.decorator';
 import { Roles } from '../../common/decorators/roles.decorator';
 import { Role } from '../../common/enums/role.enum';
 import { GetUser } from '../../common/decorators/get-user.decorator';
@@ -21,7 +22,7 @@ import { CacheControlInterceptor } from '../../common/interceptors/cache-control
 
 @ApiTags('Customers')
 @ApiBearerAuth()
-@UseGuards(JwtAuthGuard, RolesGuard)
+  @UseGuards(JwtAuthGuard, PermissionGuard)
 @Controller('customers')
 export class CustomersController {
   constructor(
@@ -30,24 +31,28 @@ export class CustomersController {
   ) {}
 
   @Get('stats')
+  @RequirePermission('customers.view')
   @ApiOperation({ summary: 'Lấy thống kê khách hàng (Option A - Theo quyền)' })
   async getStats(@GetUser() user: any) {
     return this.customersService.getStats(user.id, user.role);
   }
 
   @Get('stats/today')
+  @RequirePermission('customers.view')
   @ApiOperation({ summary: 'Lấy danh sách khách hàng mới hôm nay' })
   async getStatsToday(@GetUser() user: any) {
     return this.customersService.getStatsToday(user.id, user.role);
   }
 
   @Get('stats/by-status')
+  @RequirePermission('customers.view')
   @ApiOperation({ summary: 'Lấy danh sách khách hàng theo trạng thái chốt' })
   async getStatsByStatus(@GetUser() user: any) {
     return this.customersService.getStatsByStatus(user.id, user.role);
   }
 
   @Get('stats/deposits')
+  @RequirePermission('customers.view')
   @ApiOperation({ summary: 'Lấy danh sách nạp tiền cho Dashboard (hỗ trợ lọc theo ngày)' })
   async getAllDepositsStats(
     @GetUser() user: any,
@@ -60,7 +65,7 @@ export class CustomersController {
   }
 
   @Get('reports/invalid-data')
-  @Roles(Role.ADMIN)
+  @RequirePermission('customers.invalid_report')
   @ApiOperation({
     summary:
       'Report: khách hàng có data không hợp lệ (Ngày nhập sai, thiếu SĐT, thiếu Email, v.v.) - CHỈ ADMIN',
@@ -81,7 +86,7 @@ export class CustomersController {
   }
 
   @Post('import')
-  @Roles(Role.ADMIN, Role.MANAGER, Role.ASSISTANT)
+  @RequirePermission('customers.import')
   @UseInterceptors(FileInterceptor('file'))
   @ApiOperation({ summary: 'Import dữ liệu khách hàng từ file Excel' })
   @ApiConsumes('multipart/form-data')
@@ -91,7 +96,7 @@ export class CustomersController {
   }
 
   @Patch('bulk-assign')
-  @Roles(Role.ADMIN, Role.MANAGER, Role.ASSISTANT, Role.EMPLOYEE)
+  @RequirePermission('customers.assign')
   @ApiOperation({ summary: 'Bàn giao Khách hàng hàng loạt cho Sales' })
   async bulkAssign(@Body() dto: BulkAssignDto, @GetUser() user: any) {
     return this.customersService.bulkAssign(
@@ -104,14 +109,14 @@ export class CustomersController {
   }
 
   @Get('unassigned')
-  @Roles(Role.ADMIN, Role.MANAGER, Role.ASSISTANT, Role.EMPLOYEE)
+  @RequirePermission('customers.view')
   @ApiOperation({ summary: 'Lấy danh sách khách hàng chưa assign (salesUserId IS NULL)' })
   getUnassigned(@GetUser() user: any, @Query() filters: CustomerFiltersDto) {
     return this.customersService.getUnassigned(filters, user.id, user.role);
   }
 
   @Get('assigned')
-  @Roles(Role.ADMIN, Role.MANAGER, Role.ASSISTANT, Role.EMPLOYEE)
+  @RequirePermission('customers.view')
   @ApiOperation({ summary: 'Lấy danh sách khách hàng đã gán cho Sales (có phân quyền theo role)' })
   async getAssigned(
     @GetUser() user: any,
@@ -133,7 +138,7 @@ export class CustomersController {
   }
 
   @Patch('assignments/:id')
-  @Roles(Role.ADMIN, Role.MANAGER, Role.ASSISTANT, Role.EMPLOYEE)
+  @RequirePermission('customers.assign')
   @ApiOperation({
     summary: 'Sửa 1 lượt gán data (đổi người nhận hoặc lý do) - quyền kiểm tra chi tiết trong service',
   })
@@ -146,7 +151,7 @@ export class CustomersController {
   }
 
   @Patch('assignments/:id/reclaim')
-  @Roles(Role.ADMIN, Role.MANAGER, Role.ASSISTANT, Role.EMPLOYEE)
+  @RequirePermission('customers.assign')
   @ApiOperation({
     summary: 'Thu hồi 1 lượt gán data - quyền kiểm tra chi tiết trong service',
   })
@@ -163,6 +168,7 @@ export class CustomersController {
   }
 
   @Get()
+  @RequirePermission('customers.view')
   @UseInterceptors(new CacheControlInterceptor(0, true))
   @ApiOperation({ summary: 'Lấy danh sách khách hàng (có phân quyền)' })
   @ApiResponse({ status: 200, description: 'Trả về danh sách khách hàng và thông tin phân trang' })
@@ -171,27 +177,28 @@ export class CustomersController {
   }
 
   @Get('trash')
-  @Roles(Role.ADMIN)
+  @RequirePermission('customers.trash_manage')
   @ApiOperation({ summary: 'Lấy danh sách khách hàng đã xóa mềm' })
   getTrash(@Query() filters: CustomerFiltersDto) {
     return this.customersService.getTrash(filters);
   }
 
   @Patch('trash/:id/restore')
-  @Roles(Role.ADMIN)
+  @RequirePermission('customers.trash_manage')
   @ApiOperation({ summary: 'Khôi phục khách hàng từ trash' })
   restore(@Param('id') id: string, @GetUser() user: any) {
     return this.customersService.restore(+id, user.id);
   }
 
   @Delete('trash/:id/hard-delete')
-  @Roles(Role.ADMIN)
+  @RequirePermission('customers.trash_manage')
   @ApiOperation({ summary: 'Xóa vĩnh viễn khách hàng (Hard Delete)' })
   hardDelete(@Param('id') id: string, @GetUser() user: any) {
     return this.customersService.hardDelete(+id, user.id);
   }
 
   @Get(':id')
+  @RequirePermission('customers.view')
   @ApiOperation({ summary: 'Lấy thông tin chi tiết khách hàng' })
   @ApiResponse({ status: 200, description: 'Chi tiết khách hàng (kèm Sales, Department, Deposits, Notes)' })
   @ApiResponse({ status: 404, description: 'Không tìm thấy khách hàng hoặc không có quyền xem' })
