@@ -5,13 +5,10 @@
 > Nếu code hiện tại (BE hoặc FE) khác với tài liệu này → **tài liệu này đúng, code là bug cần sửa**,
 > trừ khi tài liệu chưa được cập nhật theo quyết định nghiệp vụ mới nhất (luôn hỏi lại nếu nghi ngờ).
 >
-> **Cập nhật lần cuối:** 2026-08-28 (thêm mục 1.7 + 2.10 — tài liệu hoá hệ thống Permission tuỳ chỉnh
-> (Dynamic RBAC: `RoleEntity`/`Permission`/`RolePermission`, `PermissionGuard`, trang `/phan-quyen`) vừa
-> hoàn thành. **QUAN TRỌNG:** cơ chế mới này hiện CHỈ enforce cho đúng module `roles`/`permissions` —
-> 9 module còn lại (2.1→2.9) VẪN dùng `@Roles()` tĩnh y hệt trước, CHƯA migrate. Đọc kỹ mục 1.7 để không
-> hiểu nhầm phạm vi áp dụng. Đã verify: backend `tsc`/`nest build` sạch, **272/272 test pass** (18 suite,
-> tăng từ 203 — thêm `roles.service.spec.ts`, `permissions.service.spec.ts`, và các spec module Reports/
-> Attendance-export mới không thuộc phạm vi tài liệu này); frontend `tsc`/`next build` sạch.
+> **Cập nhật lần cuối:** 2026-09-04 (migrate TOÀN BỘ 9+1 module sang `PermissionGuard`/`@RequirePermission()` —
+> không còn module nào dùng `@Roles()` tĩnh. Bổ sung 10 permission mới (view/manage/delete đầy đủ cho
+> mọi module). Tất cả page FE dùng `useMyPermissions()` thay cho hardcode role list. `tsc` BE+FE sạch,
+> test suite pass. Đọc mục 1.7 + 4 để biết danh mục permission đầy đủ.)
 > **Người xác nhận rule:** Chủ dự án (qua chat trực tiếp với Agent)
 
 ---
@@ -106,20 +103,50 @@ role-permission}.entity.ts`):**
 | `Permission` (bảng `permissions`) | 1 quyền **THẬT SỰ được code enforce**, dạng `resource.action` (vd `customers.assign`) | **KHÔNG ai sửa qua UI** — chỉ mở rộng khi dev thêm tính năng mới có kiểm tra quyền tương ứng, kèm migration seed. Cố ý chặn Admin tự đặt permission tuỳ ý — tránh tạo "quyền ảo" không ai enforce, Admin tưởng đã khoá nhưng thực ra không có tác dụng gì |
 | `RolePermission` (bảng `role_permissions`) | Ma trận thật: "Role X có Permission Y, phạm vi Z (`own`/`department`/`all`)". KHÔNG có dòng = không có quyền | Admin (qua `roles.manage`), chỉnh qua Drawer ở trang `/phan-quyen` |
 
-**⚠️ QUAN TRỌNG NHẤT — phạm vi áp dụng THỰC TẾ hiện tại (đừng hiểu nhầm):**
+**✅ PHẠM VI ÁP DỤNG THỰC TẾ (2026-09-04 — ĐÃ MIGRATE HOÀN TOÀN):**
 
-Cơ chế này **CHỈ ĐANG ENFORCE cho đúng module `roles`/`permissions` (trang "Phân quyền")**. Toàn bộ 9
-module còn lại ở mục 2 (Khách hàng, Users, ZK Device, Link Groups, Media Sources, Nghỉ phép, Audit Logs,
-Đăng ký, Phòng ban) **VẪN dùng `@Roles()` enum tĩnh y hệt trước đây**, chưa migrate sang đọc từ
-`role_permissions`. Nghĩa là: hôm nay, nếu Admin vào trang Phân quyền và tắt quyền "Khách hàng" của
-Manager, **KHÔNG có tác dụng gì** — module Customer chưa đọc bảng này. Chỉ 2 permission thật sự có tác
-dụng ngay bây giờ: `roles.view` (xem trang Phân quyền) và `roles.manage` (sửa được ma trận). Các dòng
-`role_permissions` khác đã được seed sẵn (đúng theo hành vi `@Roles()` hiện tại của từng module — xem
-migration `AddCustomRbacSystem`) nhưng **chỉ mang tính "ghi lại đúng luật hiện có" để UI hiển thị nhất
-quán**, chưa phải nguồn enforce thật.
+Cơ chế Dynamic RBAC **ĐÃ ENFORCE cho TOÀN BỘ 10 module** (2026-09-04). Không còn module nào
+dùng `@Roles()` enum tĩnh. Danh mục permission đầy đủ trong DB (sau 2 migration):
 
-→ **Hệ quả cho công việc tương lai:** migrate dần TỪNG module sang đọc `RolePermission` (thay `@Roles()`
-tĩnh bằng `@RequirePermission()` + `PermissionGuard`) là việc CÒN THIẾU, không phải bug — xem mục 4.
+| Permission key | Resource | Mô tả ngắn |
+|---|---|---|
+| `customers.view` | customers | Xem KH (scope: own/department/all) |
+| `customers.assign` | customers | Chia data KH |
+| `customers.note` | customers | Ghi chú KH |
+| `customers.manage` | customers | Tạo/sửa KH |
+| `customers.import` | customers | Import từ Excel |
+| `customers.delete` | customers | Xoá KH — chỉ Admin |
+| `customers.invalid_report` | customers | Report data lỗi |
+| `customers.trash_manage` | customers | Thùng rác KH |
+| `leave_requests.request` | leave_requests | Tạo/xem đơn của mình |
+| `leave_requests.view` | leave_requests | Xem đơn của người khác |
+| `leave_requests.approve` | leave_requests | Duyệt/từ chối đơn |
+| `leave_requests.delete` | leave_requests | Xoá đơn — chỉ Admin |
+| `attendance.view` | attendance | Xem bảng chấm công |
+| `attendance.manage` | attendance | Đồng bộ/map chấm công |
+| `attendance.delete` | attendance | Xoá log — chỉ Admin |
+| `reports.view` | reports | Xem báo cáo doanh số |
+| `users.view` | users | Xem danh sách nhân viên |
+| `users.manage` | users | Tạo/sửa/duyệt nhân viên |
+| `users.delete` | users | Khoá/xoá nhân viên — chỉ Admin |
+| `departments.view` | departments | Xem phòng ban |
+| `departments.manage` | departments | Tạo/sửa phòng ban |
+| `departments.delete` | departments | Xoá phòng ban — chỉ Admin |
+| `link_groups.view` | link_groups | Xem nhóm liên kết |
+| `link_groups.manage` | link_groups | Tạo/sửa nhóm |
+| `link_groups.delete` | link_groups | Xoá nhóm — chỉ Admin |
+| `media_sources.view` | media_sources | Xem nguồn media |
+| `media_sources.manage` | media_sources | Tạo/sửa nguồn media |
+| `media_sources.delete` | media_sources | Xoá nguồn — chỉ Admin |
+| `audit.view` | audit | Xem nhật ký hệ thống |
+| `audit.manage` | audit | Cấu hình/dọn dẹp audit log |
+| `roles.view` | roles | Xem trang Phân quyền |
+| `roles.manage` | roles | Chỉnh ma trận quyền — chỉ Admin |
+
+Nghĩa là: Admin vào trang Phân quyền **BẬT/TẮT bất kỳ permission nào ở bảng trên** → BE **thật sự
+chặn/mở** ngay (không cần deploy), FE **tự ẩn/hiện** trong tối đa 60 giây.
+
+→ **Việc cần làm tiếp:** Không còn backlog migration — tất cả đã xong.
 
 **Cách hoạt động kỹ thuật (đúng nguyên tắc "API và UI đồng bộ" — mục 1, quy tắc kỹ thuật #1):**
 
