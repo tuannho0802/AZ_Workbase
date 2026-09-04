@@ -23,8 +23,22 @@ export interface NavItem {
   description: string;
   icon: ReactNode;
   path: string;
-  /** null = mọi role đã đăng nhập đều thấy. */
+  /** null = mọi role đã đăng nhập đều thấy. BỎ QUA nếu `permission` có giá
+   * trị (xem giải thích ở `permission` bên dưới). */
   roles: string[] | null;
+  /**
+   * ⚠️ Permission key ĐỘNG (vd "roles.view") - nếu có giá trị, mục này ẨN/HIỆN
+   * theo permission THẬT của role hiện tại (gọi `GET /roles/my-permissions`,
+   * xem `useMyPermissions.ts`), KHÔNG dùng field `roles` tĩnh phía trên nữa.
+   * Đây là cách "API và UI đồng bộ": khi Admin đổi ma trận quyền ở trang
+   * Phân quyền, mục nav này tự ẩn/hiện theo, không cần sửa code/deploy lại.
+   *
+   * CHỈ dùng field này cho mục nào ĐÃ thật sự được BE enforce qua
+   * `@RequirePermission()` (xem PermissionGuard) - nếu chỉ đổi FE mà BE vẫn
+   * chặn theo `@Roles()` enum cũ thì UI và API sẽ LỆCH NHAU (đúng thứ dự án
+   * này đang cố tránh) - lúc đó vẫn phải dùng `roles` tĩnh như cũ.
+   */
+  permission?: string;
 }
 
 /**
