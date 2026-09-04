@@ -12,6 +12,7 @@ import { LinkGroupSecondaryManager } from '../../database/entities/link-group-se
 import { User } from '../../database/entities/user.entity';
 import { Role } from '../../common/enums/role.enum';
 import { LinkGroupAccessHelper } from './helpers/link-group-access.helper';
+import { PermissionsService } from '../permissions/permissions.service';
 
 export interface GroupManagersResult {
   groupId: number;
@@ -29,7 +30,33 @@ export class LinkGroupManagersService {
     private readonly secondaryRepo: Repository<LinkGroupSecondaryManager>,
     @InjectRepository(User)
     private readonly userRepo: Repository<User>,
+    private readonly permissionsService: PermissionsService,
   ) {}
+
+  /**
+   * "Quyền rộng" cho tính năng Quản lý chính/phụ - true nếu role được thấy/
+   * sửa MỌI nhóm bất kể có phải chính/phụ của nhóm đó hay không.
+   *
+   * ⚠️ SỬA BUG (xem giải thích đầy đủ ở JSDoc `LinkGroupAccessHelper`):
+   * - `Role.ADMIN` luôn `true` - LỐI THOÁT HIỂM cứng, không phụ thuộc DB
+   *   (đồng bộ với `PermissionGuard`/`RolesService.getMyPermissions()` đã
+   *   vá trước đó - admin không bao giờ bị khoá bởi cấu hình `role_permissions`
+   *   sai/thiếu).
+   * - Role khác (bao gồm `Role.ASSISTANT` VÀ bất kỳ role tuỳ chỉnh nào Admin
+   *   tự tạo qua trang Phân quyền) tra thật `role_permissions` qua
+   *   `PermissionsService.hasPermission()` cho permission `link_groups.manage`
+   *   - CÙNG permission đã dùng để gác `link-categories.controller.ts`/
+   *   `link-groups.controller.ts` (CRUD Category/Group nói chung), tái dùng
+   *   đúng 1 nguồn quyền, không tạo permission key riêng cho tính năng này.
+   */
+  private async hasBroadAccess(requesterRole: string): Promise<boolean> {
+    if (requesterRole === Role.ADMIN) return true;
+    const { allowed } = await this.permissionsService.hasPermission(
+      requesterRole,
+      'link_groups.manage',
+    );
+    return allowed;
+  }
 
   /**
    * Nạp 1 group KÈM quan hệ primaryManager + secondaryManagers (dùng chung
@@ -79,7 +106,7 @@ export class LinkGroupManagersService {
   async listManagedByMe(requesterId: number, requesterRole: string): Promise<GroupManagersResult[]> {
     let groups: LinkGroup[];
 
-    if (requesterRole === Role.ADMIN) {
+    if (await this.hasBroadAccess(requesterRole)) {
       groups = await this.groupRepo.find({
         relations: ['primaryManager', 'secondaryManagers', 'secondaryManagers.user', 'category'],
         order: { sortOrder: 'ASC', id: 'ASC' },
@@ -116,7 +143,14 @@ export class LinkGroupManagersService {
     const group = await this.loadGroupWithManagers(groupId);
     const secondaryIds = (group.secondaryManagers ?? []).map((m) => m.userId);
 
-    if (!LinkGroupAccessHelper.canManage(requesterId, requesterRole, group.primaryManagerId, secondaryIds)) {
+    if (
+      !LinkGroupAccessHelper.canManage(
+        requesterId,
+        await this.hasBroadAccess(requesterRole),
+        group.primaryManagerId,
+        secondaryIds,
+      )
+    ) {
       throw new ForbiddenException('Bạn không phải quản lý (chính/phụ) của nhóm này nên không có quyền xem');
     }
 
@@ -134,7 +168,13 @@ export class LinkGroupManagersService {
   ): Promise<GroupManagersResult> {
     const group = await this.loadGroupWithManagers(groupId);
 
-    if (!LinkGroupAccessHelper.canEditSecondaryManagers(requesterId, requesterRole, group.primaryManagerId)) {
+    if (
+      !LinkGroupAccessHelper.canEditSecondaryManagers(
+        requesterId,
+        await this.hasBroadAccess(requesterRole),
+        group.primaryManagerId,
+      )
+    ) {
       throw new ForbiddenException('Chỉ Quản lý chính (hoặc admin) mới có quyền thêm Quản lý phụ cho nhóm này');
     }
 
@@ -173,7 +213,13 @@ export class LinkGroupManagersService {
   ): Promise<GroupManagersResult> {
     const group = await this.loadGroupWithManagers(groupId);
 
-    if (!LinkGroupAccessHelper.canEditSecondaryManagers(requesterId, requesterRole, group.primaryManagerId)) {
+    if (
+      !LinkGroupAccessHelper.canEditSecondaryManagers(
+        requesterId,
+        await this.hasBroadAccess(requesterRole),
+        group.primaryManagerId,
+      )
+    ) {
       throw new ForbiddenException('Chỉ Quản lý chính (hoặc admin) mới có quyền xoá Quản lý phụ của nhóm này');
     }
 

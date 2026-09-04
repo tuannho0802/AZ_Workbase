@@ -17,6 +17,7 @@ import {
   UnauthorizedCustomerAccessException,
 } from './exceptions/customer.exceptions';
 import { Role } from '../../common/enums/role.enum';
+import { PermissionScope } from '../../database/entities/role-permission.entity';
 
 describe('CustomersService', () => {
   let service: CustomersService;
@@ -151,7 +152,7 @@ describe('CustomersService', () => {
       mockAssignmentRepo.findOne.mockResolvedValue(null);
 
       await expect(
-        service.reclaimAssignment(999, 1, Role.ADMIN),
+        service.reclaimAssignment(999, 1, Role.ADMIN, PermissionScope.ALL),
       ).rejects.toThrow(NotFoundException);
     });
 
@@ -159,7 +160,7 @@ describe('CustomersService', () => {
       mockAssignmentRepo.findOne.mockResolvedValue(makeAssignment({ status: AssignmentStatus.RECLAIMED }));
 
       await expect(
-        service.reclaimAssignment(10, 1, Role.ADMIN),
+        service.reclaimAssignment(10, 1, Role.ADMIN, PermissionScope.ALL),
       ).rejects.toThrow(BadRequestException);
     });
 
@@ -168,7 +169,7 @@ describe('CustomersService', () => {
 
       // caller id=999, role EMPLOYEE, không trùng assignedById=2
       await expect(
-        service.reclaimAssignment(10, 999, Role.EMPLOYEE),
+        service.reclaimAssignment(10, 999, Role.EMPLOYEE, PermissionScope.OWN),
       ).rejects.toThrow(UnauthorizedCustomerAccessException);
     });
 
@@ -179,7 +180,7 @@ describe('CustomersService', () => {
       mockCustomerRepo.save.mockResolvedValue({});
 
       // caller id=2 (đúng assignedById), role EMPLOYEE - vẫn được phép
-      const result = await service.reclaimAssignment(10, 2, Role.EMPLOYEE);
+      const result = await service.reclaimAssignment(10, 2, Role.EMPLOYEE, PermissionScope.OWN);
 
       expect(result).toEqual({ message: 'Đã thu hồi lượt gán data thành công' });
     });
@@ -190,7 +191,7 @@ describe('CustomersService', () => {
       mockAssignmentRepo.find.mockResolvedValue([]); // không còn ai active khác
       mockCustomerRepo.save.mockResolvedValue({});
 
-      await service.reclaimAssignment(10, 1, Role.ADMIN);
+      await service.reclaimAssignment(10, 1, Role.ADMIN, PermissionScope.ALL);
 
       expect(mockCustomerRepo.save).toHaveBeenCalledWith(
         expect.objectContaining({ salesUserId: null }),
@@ -205,7 +206,7 @@ describe('CustomersService', () => {
       ]);
       mockCustomerRepo.save.mockResolvedValue({});
 
-      await service.reclaimAssignment(10, 1, Role.ADMIN);
+      await service.reclaimAssignment(10, 1, Role.ADMIN, PermissionScope.ALL);
 
       expect(mockCustomerRepo.save).toHaveBeenCalledWith(
         expect.objectContaining({ salesUserId: 7 }),
@@ -219,7 +220,7 @@ describe('CustomersService', () => {
       );
       mockAssignmentRepo.save.mockResolvedValue({});
 
-      await service.reclaimAssignment(10, 1, Role.ADMIN);
+      await service.reclaimAssignment(10, 1, Role.ADMIN, PermissionScope.ALL);
 
       expect(mockCustomerRepo.save).not.toHaveBeenCalled();
     });
@@ -245,7 +246,7 @@ describe('CustomersService', () => {
       mockAssignmentRepo.findOne.mockResolvedValue(null);
 
       await expect(
-        service.updateAssignment(999, { reason: 'x' }, 1, Role.ADMIN),
+        service.updateAssignment(999, { reason: 'x' }, 1, Role.ADMIN, PermissionScope.ALL),
       ).rejects.toThrow(NotFoundException);
     });
 
@@ -256,7 +257,7 @@ describe('CustomersService', () => {
       });
 
       await expect(
-        service.updateAssignment(10, { reason: 'x' }, 1, Role.ADMIN),
+        service.updateAssignment(10, { reason: 'x' }, 1, Role.ADMIN, PermissionScope.ALL),
       ).rejects.toThrow(BadRequestException);
     });
 
@@ -264,7 +265,7 @@ describe('CustomersService', () => {
       mockAssignmentRepo.findOne.mockResolvedValue({ ...baseAssignment });
 
       await expect(
-        service.updateAssignment(10, { reason: 'x' }, 999, Role.EMPLOYEE),
+        service.updateAssignment(10, { reason: 'x' }, 999, Role.EMPLOYEE, PermissionScope.OWN),
       ).rejects.toThrow(UnauthorizedCustomerAccessException);
     });
 
@@ -276,7 +277,7 @@ describe('CustomersService', () => {
         10,
         { reason: 'Lý do mới' },
         1,
-        Role.ADMIN,
+        Role.ADMIN, PermissionScope.ALL,
       );
 
       expect(result.reason).toBe('Lý do mới');
@@ -289,7 +290,7 @@ describe('CustomersService', () => {
       mockUserRepo.findOneBy.mockResolvedValue(null);
 
       await expect(
-        service.updateAssignment(10, { assignedToId: 999 }, 1, Role.ADMIN),
+        service.updateAssignment(10, { assignedToId: 999 }, 1, Role.ADMIN, PermissionScope.ALL),
       ).rejects.toThrow(BadRequestException);
     });
 
@@ -302,7 +303,7 @@ describe('CustomersService', () => {
         .mockResolvedValueOnce({ id: 20 });
 
       await expect(
-        service.updateAssignment(10, { assignedToId: 7 }, 1, Role.ADMIN),
+        service.updateAssignment(10, { assignedToId: 7 }, 1, Role.ADMIN, PermissionScope.ALL),
       ).rejects.toThrow(BadRequestException);
     });
 
@@ -314,7 +315,7 @@ describe('CustomersService', () => {
       mockAssignmentRepo.save.mockImplementation((a: any) => Promise.resolve(a));
       mockCustomerRepo.save.mockResolvedValue({});
 
-      const result = await service.updateAssignment(10, { assignedToId: 7 }, 1, Role.ADMIN);
+      const result = await service.updateAssignment(10, { assignedToId: 7 }, 1, Role.ADMIN, PermissionScope.ALL);
 
       expect(result.assignedToId).toBe(7);
       expect(result.previousAssigneeId).toBe(5); // lưu lại người cũ
@@ -347,7 +348,7 @@ describe('CustomersService', () => {
         mockDepartmentRepo.exists.mockResolvedValue(true);
         mockAssignmentRepo.save.mockImplementation((a: any) => Promise.resolve(a));
 
-        const result = await service.updateAssignment(10, { reason: 'ok' }, 3, Role.MANAGER);
+        const result = await service.updateAssignment(10, { reason: 'ok' }, 3, Role.MANAGER, PermissionScope.DEPARTMENT);
 
         expect(mockDepartmentRepo.exists).toHaveBeenCalledWith({
           where: { id: 5, managerUserId: 3 },
@@ -360,7 +361,7 @@ describe('CustomersService', () => {
         mockDepartmentRepo.exists.mockResolvedValue(false);
 
         await expect(
-          service.updateAssignment(10, { reason: 'x' }, 3, Role.MANAGER),
+          service.updateAssignment(10, { reason: 'x' }, 3, Role.MANAGER, PermissionScope.DEPARTMENT),
         ).rejects.toThrow(UnauthorizedCustomerAccessException);
       });
 
@@ -368,7 +369,7 @@ describe('CustomersService', () => {
         mockAssignmentRepo.findOne.mockResolvedValue({ ...baseAssignment, customer: { id: 100, departmentId: null, salesUserId: 5 } });
 
         await expect(
-          service.updateAssignment(10, { reason: 'x' }, 3, Role.MANAGER),
+          service.updateAssignment(10, { reason: 'x' }, 3, Role.MANAGER, PermissionScope.DEPARTMENT),
         ).rejects.toThrow(UnauthorizedCustomerAccessException);
         // Không cần query Department nếu đã biết chắc fail từ departmentId null
         expect(mockDepartmentRepo.exists).not.toHaveBeenCalled();

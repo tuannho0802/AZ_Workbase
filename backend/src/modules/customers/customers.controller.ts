@@ -16,6 +16,7 @@ import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { PermissionGuard } from '../../common/guards/permission.guard';
 import { RequirePermission } from '../../common/decorators/require-permission.decorator';
 import { GetUser } from '../../common/decorators/get-user.decorator';
+import { GetPermissionScope } from '../../common/decorators/get-permission-scope.decorator';
 import { CacheControlInterceptor } from '../../common/interceptors/cache-control.interceptor';
 
 @ApiTags('Customers')
@@ -144,8 +145,9 @@ export class CustomersController {
     @Param('id') id: string,
     @Body() dto: UpdateAssignmentDto,
     @GetUser() user: any,
+    @GetPermissionScope() scope: string | null | undefined,
   ) {
-    return this.customersService.updateAssignment(+id, dto, user.id, user.role);
+    return this.customersService.updateAssignment(+id, dto, user.id, user.role, scope);
   }
 
   @Patch('assignments/:id/reclaim')
@@ -153,8 +155,12 @@ export class CustomersController {
   @ApiOperation({
     summary: 'Thu hồi 1 lượt gán data - quyền kiểm tra chi tiết trong service',
   })
-  async reclaimAssignment(@Param('id') id: string, @GetUser() user: any) {
-    return this.customersService.reclaimAssignment(+id, user.id, user.role);
+  async reclaimAssignment(
+    @Param('id') id: string,
+    @GetUser() user: any,
+    @GetPermissionScope() scope: string | null | undefined,
+  ) {
+    return this.customersService.reclaimAssignment(+id, user.id, user.role, scope);
   }
 
   @Post()

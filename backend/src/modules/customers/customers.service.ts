@@ -7,6 +7,7 @@ import { UpdateCustomerDto } from './dto/update-customer.dto';
 import { CustomerFiltersDto } from './dto/customer-filters.dto';
 import { UpdateAssignmentDto } from './dto/update-assignment.dto';
 import { Role } from '../../common/enums/role.enum';
+import { PermissionScope } from '../../database/entities/role-permission.entity';
 import { User } from '../../database/entities/user.entity';
 import { Department } from '../../database/entities/department.entity';
 import {
@@ -1234,22 +1235,37 @@ export class CustomersService {
 
   /**
    * Kiểm tra quyền sửa/thu hồi 1 assignment theo đúng bảng phân quyền:
-   * - Admin/Assistant: luôn được (CRUD toàn bộ, trừ xoá khách hàng).
-   * - Manager: CHỈ được nếu khách hàng của assignment này thuộc phòng ban
-   *   mình quản lý (trước đây Manager được bypass hoàn toàn không phân
-   *   biệt phòng ban - sai so với yêu cầu "CRUD data của phòng ban mình
-   *   quản lý", không phải CRUD ALL).
-   * - Employee: chỉ khi chính họ là người tạo ra assignment đó
-   *   (assignedById) - giữ nguyên hành vi gốc.
+   * - Admin: luôn được (lối thoát hiểm cứng, không phụ thuộc DB - đồng bộ
+   *   với `PermissionGuard`/`RolesService.getMyPermissions()`).
+   * - scope='all' (Assistant hệ thống, HOẶC bất kỳ role tuỳ chỉnh nào Admin
+   *   cấp quyền `customers.assign` phạm vi 'all' qua trang Phân quyền):
+   *   luôn được, không giới hạn.
+   * - scope='department' (Manager hệ thống hoặc role tuỳ chỉnh tương ứng):
+   *   CHỈ được nếu khách hàng của assignment này thuộc phòng ban mình quản
+   *   lý.
+   * - scope='own' hoặc thiếu/null (Employee hoặc role tuỳ chỉnh tương ứng):
+   *   chỉ khi chính họ là người tạo ra assignment đó (assignedById).
+   *
+   * ⚠️ SỬA BUG (phát hiện khi rà soát dynamic RBAC): bản trước tự so sánh
+   * cứng `callerRole === Role.ADMIN || callerRole === Role.ASSISTANT` ngay
+   * trong hàm này - dù ĐÃ đủ 2 role hệ thống, vẫn hoàn toàn "mù" trước role
+   * TUỲ CHỈNH Admin tự tạo qua trang Phân quyền (dù được cấp
+   * `customers.assign` scope='all', role đó vẫn bị coi như Employee ở đây).
+   * Đổi sang đọc `permissionScope` mà `PermissionGuard` đã tra cứu sẵn từ
+   * `role_permissions` (truyền qua tham số, xem `GetPermissionScope`
+   * decorator) - generalize đúng cho MỌI role, không cần sửa gì thêm khi có
+   * role mới.
    */
   private async canModifyAssignment(
     assignment: CustomerAssignment,
     callerId: number,
     callerRole: string,
+    permissionScope: string | null | undefined,
   ): Promise<boolean> {
-    if (callerRole === Role.ADMIN || callerRole === Role.ASSISTANT) return true;
+    if (callerRole === Role.ADMIN) return true;
+    if (permissionScope === PermissionScope.ALL) return true;
 
-    if (callerRole === Role.MANAGER) {
+    if (permissionScope === PermissionScope.DEPARTMENT) {
       const deptId = assignment.customer?.departmentId;
       if (deptId == null) return false;
       const departmentRepo = this.customersRepository.manager.getRepository(Department);
@@ -1277,6 +1293,7 @@ export class CustomersService {
     dto: UpdateAssignmentDto,
     callerId: number,
     callerRole: string,
+    permissionScope: string | null | undefined,
   ) {
     const assignment = await this.assignmentRepository.findOne({
       where: { id: assignmentId },
@@ -1290,7 +1307,7 @@ export class CustomersService {
         'Chỉ có thể sửa lượt gán đang ở trạng thái active (chưa bị thu hồi/chuyển giao)',
       );
     }
-    if (!(await this.canModifyAssignment(assignment, callerId, callerRole))) {
+    if (!(await this.canModifyAssignment(assignment, callerId, callerRole, permissionScope))) {
       throw new UnauthorizedCustomerAccessException(
         'Bạn không có quyền sửa lượt gán data này - chỉ Admin/Manager hoặc chính người đã tạo lượt gán mới được sửa.',
       );
@@ -1378,6 +1395,7 @@ export class CustomersService {
     assignmentId: number,
     callerId: number,
     callerRole: string,
+    permissionScope: string | null | undefined,
   ) {
     const assignment = await this.assignmentRepository.findOne({
       where: { id: assignmentId },
@@ -1391,7 +1409,7 @@ export class CustomersService {
         'Lượt gán này đã được thu hồi hoặc chuyển giao trước đó rồi',
       );
     }
-    if (!(await this.canModifyAssignment(assignment, callerId, callerRole))) {
+    if (!(await this.canModifyAssignment(assignment, callerId, callerRole, permissionScope))) {
       throw new UnauthorizedCustomerAccessException(
         'Bạn không có quyền thu hồi lượt gán data này - chỉ Admin/Manager hoặc chính người đã tạo lượt gán mới được thu hồi.',
       );
