@@ -41,7 +41,12 @@ function UserMobileCard({
       {/* Header */}
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 8 }}>
         <div>
-          <div style={{ fontWeight: 600, fontSize: 14 }}>{record.name || '—'}</div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+            <div style={{ fontWeight: 600, fontSize: 14 }}>{record.name || '—'}</div>
+            {record.employeeCode && (
+              <Tag color="default" style={{ fontSize: 11, marginInlineEnd: 0 }}>{record.employeeCode}</Tag>
+            )}
+          </div>
           <div style={{ display: 'flex', alignItems: 'center', gap: 4, marginTop: 2 }}>
             <MailOutlined style={{ fontSize: 11, color: '#8c8c8c' }} />
             <Text style={{ fontSize: 12, color: '#8c8c8c' }}>{record.email}</Text>
@@ -187,6 +192,10 @@ export default function UsersPage() {
         phone: values.phone || undefined,
         role: String(values.role).toLowerCase(),
         departmentId: values.departmentId ? Number(values.departmentId) : undefined,
+        // Để trống -> KHÔNG gửi field này -> BE tự sinh mã kế tiếp
+        // (generateNextEmployeeCode()). Có nhập tay -> BE tự check trùng,
+        // ném lỗi rõ ràng nếu đã tồn tại (xem catch bên dưới).
+        employeeCode: values.employeeCode?.trim() || undefined,
       };
 
       if (editingUser) {
@@ -233,6 +242,13 @@ export default function UsersPage() {
 
   const columns = [
     { title: 'ID', dataIndex: 'id', key: 'id', width: 60 },
+    {
+      title: 'Mã NV',
+      dataIndex: 'employeeCode',
+      key: 'employeeCode',
+      width: 90,
+      render: (val: string | null) => val || <Text type="secondary">—</Text>,
+    },
     { title: 'Họ tên', dataIndex: 'name', key: 'name' },
     { title: 'Email', dataIndex: 'email', key: 'email' },
     {
@@ -376,6 +392,20 @@ export default function UsersPage() {
             ]}
           >
             <Input disabled={!!editingUser} placeholder="user@azworkbase.com" />
+          </Form.Item>
+
+          <Form.Item
+            name="employeeCode"
+            label="Mã nhân viên"
+            tooltip="Để trống sẽ tự sinh mã kế tiếp dạng AZ001, AZ002..."
+            rules={[
+              {
+                pattern: /^[A-Za-z0-9-]{1,20}$/,
+                message: 'Mã nhân viên chỉ gồm chữ, số, dấu gạch ngang, tối đa 20 ký tự',
+              },
+            ]}
+          >
+            <Input placeholder="Để trống để tự sinh (AZ001, AZ002...)" />
           </Form.Item>
 
           <Form.Item

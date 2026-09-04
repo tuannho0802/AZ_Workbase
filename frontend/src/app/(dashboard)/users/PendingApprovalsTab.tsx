@@ -94,6 +94,13 @@ export const PendingApprovalsTab = ({ onCountChange }: Props) => {
   };
 
   const columns = [
+    {
+      title: 'Mã NV',
+      dataIndex: 'employeeCode',
+      key: 'employeeCode',
+      width: 90,
+      render: (val: string | null) => val || '—',
+    },
     { title: 'Họ tên', dataIndex: 'name', key: 'name' },
     {
       title: 'Liên hệ',

@@ -72,6 +72,7 @@ export const usersApi = {
 
 export interface UserDetail {
   id: number;
+  employeeCode: string;
   email: string;
   name: string;
   phone: string | null;
@@ -90,6 +91,7 @@ export interface UserDetail {
 // BE, xem UsersService.createPendingRegistration()).
 export interface PendingUser {
   id: number;
+  employeeCode: string;
   name: string;
   email: string;
   phone: string | null;
