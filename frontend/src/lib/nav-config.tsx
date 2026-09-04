@@ -38,8 +38,18 @@ export interface NavItem {
    * `@RequirePermission()` (xem PermissionGuard) - nếu chỉ đổi FE mà BE vẫn
    * chặn theo `@Roles()` enum cũ thì UI và API sẽ LỆCH NHAU (đúng thứ dự án
    * này đang cố tránh) - lúc đó vẫn phải dùng `roles` tĩnh như cũ.
+   *
+   * Có thể truyền 1 MẢNG permission key thay vì 1 chuỗi - dùng khi trang
+   * đích thật sự chấp nhận "CÓ ÍT NHẤT 1 TRONG NHIỀU quyền" (OR), ví dụ
+   * `/duyet-phep` cho vào được nếu có `leave_requests.view` HOẶC
+   * `leave_requests.approve` (xem chính logic trong `duyet-phep/page.tsx` -
+   * `if (!canView && !canApprove) { ... redirect }`). Nếu chỉ kiểm tra 1
+   * trong 2 key đó ở đây, role chỉ có ĐÚNG quyền còn lại sẽ bị ẩn nhầm menu
+   * dù trang thực sự cho họ vào (bug đã tìm thấy + sửa khi rà soát 2026-09 -
+   * đối chiếu với `useSidebarBadgeCounts.ts` cũng dùng `leave_requests.approve`
+   * cho đúng badge này, xác nhận `.view` một mình không đủ).
    */
-  permission?: string;
+  permission?: string | string[];
 }
 
 /**
@@ -125,8 +135,15 @@ export const NAV_ITEMS: NavItem[] = [
     description: 'Duyệt/từ chối đơn nghỉ phép của nhân viên',
     icon: <CheckCircleOutlined />,
     path: '/duyet-phep',
+    // ⚠️ FIX BUG THẬT (rà soát permission 2026-09): trang này cho vào nếu
+    // có leave_requests.view HOẶC leave_requests.approve (xem chính logic
+    // trong duyet-phep/page.tsx: `if (!canView && !canApprove) redirect`) -
+    // trước đây chỉ check `.view`, khiến 1 role CHỈ có `.approve` (không có
+    // `.view`) bị ẩn nhầm khỏi sidebar dù trang thực sự cho vào được. Khớp
+    // đúng `useSidebarBadgeCounts.ts` (dùng `.approve` cho badge số đơn chờ
+    // duyệt của mục này) - xác nhận `.approve` cũng là quyền hợp lệ ở đây.
     roles: null,
-    permission: 'leave_requests.view',
+    permission: ['leave_requests.view', 'leave_requests.approve'],
   },
   {
     key: 'audit-logs',
@@ -231,6 +248,10 @@ export const getVisibleNavItems = (
   role: string | undefined,
   can?: (permissionKey: string) => boolean,
 ) =>
-  NAV_ITEMS.filter((item) =>
-    item.permission ? !!can?.(item.permission) : !item.roles || item.roles.includes(role || ''),
-  );
+  NAV_ITEMS.filter((item) => {
+    if (!item.permission) return !item.roles || item.roles.includes(role || '');
+    const keys = Array.isArray(item.permission) ? item.permission : [item.permission];
+    // OR: chỉ cần CÓ ÍT NHẤT 1 trong các key - khớp đúng cách trang đích tự
+    // kiểm tra quyền vào trang (xem giải thích ở field `permission` trên).
+    return keys.some((key) => !!can?.(key));
+  });

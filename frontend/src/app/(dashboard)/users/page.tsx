@@ -150,7 +150,7 @@ export default function UsersPage() {
   // Manager/Assistant bị chặn nhầm khỏi tab "Danh sách nhân viên" dù BE đã
   // cho phép từ trước). Đặt tên lại cho đúng ý nghĩa thay vì giữ "isAdmin"
   const { can, isLoading: permissionsLoading } = useMyPermissions();
-  const { roles } = useRoles();
+  const { roles, isLoading: rolesLoading } = useRoles();
   const roleOptions = (roles || []).map(r => ({ value: r.code, label: r.name }));
   const roleMap = new Map((roles || []).map(r => [r.code, r.name]));
   const canAccessPage = can('users.view');
@@ -467,12 +467,8 @@ export default function UsersPage() {
           >
             <Select
               placeholder="Chọn vai trò"
-              options={[
-                { value: 'admin', label: 'Admin' },
-                { value: 'manager', label: 'Manager' },
-                { value: 'assistant', label: 'Assistant' },
-                { value: 'employee', label: 'Employee' },
-              ]}
+              loading={rolesLoading}
+              options={roleOptions}
             />
           </Form.Item>
 

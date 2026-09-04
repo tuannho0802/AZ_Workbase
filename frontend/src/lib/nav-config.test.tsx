@@ -3,8 +3,13 @@ import { NAV_ITEMS, getVisibleNavItems } from './nav-config';
 
 describe('nav-config: getVisibleNavItems', () => {
   it('mục roles=null và không có permission -> luôn hiện cho mọi role đăng nhập', () => {
+    // FIX TEST STALE (rà soát permission 2026-09): trước đây dùng 'customers'
+    // làm ví dụ, nhưng mục đó đã được gắn `permission: 'customers.view'` từ
+    // 1 lần fix bug trước (không còn "không có permission" nữa) - test cũ
+    // vì vậy luôn đỏ, không liên quan gì tới thay đổi ở lần rà soát này.
+    // 'profile' mới thực sự là mục `roles: null` KHÔNG có `permission`.
     const items = getVisibleNavItems('employee', () => false);
-    expect(items.some((i) => i.key === 'customers')).toBe(true);
+    expect(items.some((i) => i.key === 'profile')).toBe(true);
   });
 
   it('mục dùng `permission` -> ẨN nếu can() trả false, dù role có nằm trong 1 field roles cũ nào đó', () => {
@@ -58,9 +63,31 @@ describe('nav-config: getVisibleNavItems', () => {
   it('danh mục permission key không trùng lặp vô nghĩa và không rỗng chuỗi', () => {
     for (const item of NAV_ITEMS) {
       if (item.permission) {
-        expect(item.permission.length).toBeGreaterThan(0);
-        expect(item.permission).toMatch(/^[a-z_]+\.[a-z_]+$/);
+        const keys = Array.isArray(item.permission) ? item.permission : [item.permission];
+        expect(keys.length).toBeGreaterThan(0);
+        expect(new Set(keys).size).toBe(keys.length); // không trùng lặp trong cùng 1 mục
+        for (const key of keys) {
+          expect(key.length).toBeGreaterThan(0);
+          expect(key).toMatch(/^[a-z_]+\.[a-z_]+$/);
+        }
       }
     }
+  });
+
+  it('mục dùng mảng permission (OR) -> HIỆN nếu can() trả true cho BẤT KỲ 1 key nào trong mảng', () => {
+    // duyet-phep: permission = ['leave_requests.view', 'leave_requests.approve']
+    // - role chỉ có approve (không có view) vẫn phải thấy mục này (bug đã
+    // sửa 2026-09 - trước đây chỉ check .view, ẩn nhầm role chỉ có .approve).
+    const canOnlyApprove = (key: string) => key === 'leave_requests.approve';
+    const items = getVisibleNavItems('manager', canOnlyApprove);
+    expect(items.some((i) => i.key === 'duyet-phep')).toBe(true);
+
+    const canOnlyView = (key: string) => key === 'leave_requests.view';
+    const items2 = getVisibleNavItems('employee', canOnlyView);
+    expect(items2.some((i) => i.key === 'duyet-phep')).toBe(true);
+
+    const canNeither = () => false;
+    const items3 = getVisibleNavItems('employee', canNeither);
+    expect(items3.some((i) => i.key === 'duyet-phep')).toBe(false);
   });
 });
