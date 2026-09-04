@@ -25,7 +25,12 @@ const RESOURCE_LABEL: Record<string, string> = {
   leave_requests: 'Nghỉ phép',
   attendance: 'Chấm công',
   reports: 'Báo cáo',
-  users: 'Nhân viên',
+  // ⚠️ "users" gộp chung 2 trang: "/users" (Nhân viên) VÀ "/profile" (chế độ
+  // xem Profile người khác) - CÙNG 1 permission users.view, không tách
+  // riêng permission cho Profile (đúng kiến trúc, tránh trùng lặp permission
+  // cho cùng 1 khả năng) - đổi label để Admin thấy rõ phạm vi ảnh hưởng thật,
+  // không hiểu lầm là chỉ liên quan trang "Nhân viên".
+  users: 'Nhân viên & Profile',
   roles: 'Phân quyền',
   departments: 'Phòng ban',
   link_groups: 'Nhóm liên kết',
