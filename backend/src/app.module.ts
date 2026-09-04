@@ -19,6 +19,8 @@ import { AttendanceExportModule } from './modules/attendance-export/attendance-e
 import { MediaSourcesModule } from './modules/media-sources/media-sources.module';
 import { LinkGroupsModule } from './modules/link-groups/link-groups.module';
 import { ReportsModule } from './modules/reports/reports.module';
+import { PermissionsModule } from './modules/permissions/permissions.module';
+import { RolesModule } from './modules/roles/roles.module';
 import { KeepAliveController } from './keep-alive/keep-alive.controller';
 @Module({ 
   imports: [
@@ -63,6 +65,10 @@ import { KeepAliveController } from './keep-alive/keep-alive.controller';
     MediaSourcesModule,
     LinkGroupsModule,
     ReportsModule,
+    // PermissionsModule (@Global) PHẢI import trước RolesModule để
+    // PermissionsService sẵn sàng cho PermissionGuard dùng ở mọi route.
+    PermissionsModule,
+    RolesModule,
     ServeStaticModule.forRoot({
       rootPath: join(process.cwd(), 'public'),
       serveRoot: '/',
