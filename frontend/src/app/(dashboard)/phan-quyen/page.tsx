@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useMemo, useState } from 'react';
+import { useRouter } from 'next/navigation';
 import {
   Table, Button, Tag, Space, Modal, Form, Input, App,
   Popconfirm, Typography, Drawer, Segmented, Empty, Spin,
@@ -329,8 +330,24 @@ function RolePermissionsDrawer({
 // ── Trang chính ──────────────────────────────────────────────────────────────
 export default function PhanQuyenPage() {
   const { message } = App.useApp();
-  const { can } = useMyPermissions();
+  const router = useRouter();
+  const { can, isLoading: loadingPermissions } = useMyPermissions();
+  const canView = can('roles.view');
   const canManage = can('roles.manage');
+
+  // ⚠️ Sidebar/trang chủ đã ẩn mục "Phân quyền" nếu không có `roles.view`
+  // (xem nav-config.tsx), nhưng đó chỉ là UX - vào THẲNG url `/phan-quyen`
+  // vẫn phải tự chặn ở đây, không dựa hoàn toàn vào việc sidebar đã ẩn link.
+  // Cùng pattern với audit-logs/page.tsx (dùng router.replace + message.warning),
+  // chỉ khác: dùng permission ĐỘNG (`can('roles.view')`) thay vì role tĩnh -
+  // đúng tinh thần trang quản lý phân quyền phải tự tuân thủ chính hệ thống
+  // permission mà nó quản lý.
+  useEffect(() => {
+    if (!loadingPermissions && !canView) {
+      message.warning('Bạn không có quyền truy cập trang này');
+      router.replace('/customers');
+    }
+  }, [loadingPermissions, canView, router, message]);
 
   const { roles, isLoading } = useRoles();
   const deleteMutation = useDeleteRole();
@@ -360,6 +377,16 @@ export default function PhanQuyenPage() {
       onError: (err: any) => message.error(err?.response?.data?.message || 'Xoá thất bại'),
     });
   };
+
+  // Đang chờ xác định quyền HOẶC không có quyền (chuẩn bị redirect ở effect
+  // trên) -> không render bảng/nội dung nhạy cảm ra màn hình dù chỉ 1 khắc.
+  if (loadingPermissions || !canView) {
+    return (
+      <div style={{ padding: 24, textAlign: 'center' }}>
+        <Spin size="large" />
+      </div>
+    );
+  }
 
   const columns = [
     {
@@ -445,7 +472,7 @@ export default function PhanQuyenPage() {
         <Alert
           type="info"
           showIcon
-          message="Bạn chỉ có quyền xem (roles.view) - không tạo/sửa/xoá được Role hay ma trận quyền."
+          title="Bạn chỉ có quyền xem (roles.view) - không tạo/sửa/xoá được Role hay ma trận quyền."
           style={{ marginBottom: 16 }}
         />
       )}
