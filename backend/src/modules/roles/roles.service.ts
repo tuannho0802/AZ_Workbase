@@ -10,6 +10,7 @@ import { RoleEntity } from '../../database/entities/role.entity';
 import { Permission } from '../../database/entities/permission.entity';
 import { RolePermission, PermissionScope } from '../../database/entities/role-permission.entity';
 import { User } from '../../database/entities/user.entity';
+import { Role } from '../../common/enums/role.enum';
 import { CreateRoleDto } from './dto/create-role.dto';
 import { UpdateRoleDto } from './dto/update-role.dto';
 import { UpdateRolePermissionsDto } from './dto/update-role-permissions.dto';
@@ -194,8 +195,20 @@ export class RolesService {
    * `roles.view` (ai cũng có quyền biết quyền của chính mình - nếu bắt
    * buộc `roles.view` thì user không có quyền đó sẽ không cách nào tự biết
    * mình thiếu quyền gì, kể cả để FE ẩn đúng những mục họ không có).
+   *
+   * ⚠️ LỐI THOÁT HIỂM (đồng bộ với `PermissionGuard`, xem giải thích đầy đủ
+   * ở đó): role `admin` LUÔN trả về ĐỦ MỌI permission hiện có với
+   * scope='all', KHÔNG đọc từ `role_permissions` - nếu chỉ vá ở
+   * `PermissionGuard` (tầng BE enforce) mà bỏ sót chỗ này, admin dù gọi API
+   * vẫn được (nhờ Guard) nhưng UI sẽ ẨN nhầm nút/menu tương ứng vì tưởng
+   * không có quyền -> admin "có quyền nhưng không thấy nút để bấm", vẫn coi
+   * là bị khoá trên thực tế. Phải đồng bộ CẢ 2 nơi.
    */
   async getMyPermissions(roleCode: string): Promise<Record<string, PermissionScope | null>> {
+    if (roleCode === Role.ADMIN) {
+      const allPermissions = await this.permissionRepo.find();
+      return Object.fromEntries(allPermissions.map((p) => [p.key, PermissionScope.ALL]));
+    }
     const map = await this.permissionsService.getRolePermissions(roleCode);
     return Object.fromEntries(map);
   }

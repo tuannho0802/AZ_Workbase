@@ -2,6 +2,7 @@ import { Injectable, CanActivate, ExecutionContext, ForbiddenException } from '@
 import { Reflector } from '@nestjs/core';
 import { PERMISSION_KEY } from '../decorators/require-permission.decorator';
 import { PermissionsService } from '../../modules/permissions/permissions.service';
+import { PermissionScope } from '../../database/entities/role-permission.entity';
 import { Role } from '../enums/role.enum';
 
 /**
@@ -58,7 +59,7 @@ export class PermissionGuard implements CanActivate {
     // truy vấn DB - admin không bao giờ bị chặn bởi cấu hình role_permissions,
     // kể cả khi bảng đó trống/sai/thiếu dòng cho role admin.
     if (user.role === Role.ADMIN) {
-      request.permissionScope = 'all';
+      request.permissionScope = PermissionScope.ALL;
       return true;
     }
 
