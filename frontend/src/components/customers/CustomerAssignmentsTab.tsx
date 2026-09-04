@@ -87,12 +87,24 @@ export const CustomerAssignmentsTab = ({ customerId, primarySalesUserId, onUpdat
     fetchHistory();
   }, [fetchHistory]);
 
-  // Chỉ Admin/Manager, hoặc chính người đã tạo ra lượt gán đó, mới được sửa/
-  // thu hồi - khớp đúng quyền `canModifyAssignment()` phía backend. Backend
-  // vẫn là nơi thực thi thật; kiểm tra ở đây chỉ để ẩn nút cho gọn UI, không
-  // phải lớp bảo mật.
+  // ⚠️ FIX BUG THẬT (rà soát permission 2026-09): thiếu 'assistant' - đối
+  // chiếu customers.service.ts `canModifyAssignment()` xác nhận BE cho
+  // Assistant quyền y hệt Admin ở action này (không kèm điều kiện gì thêm),
+  // nhưng FE trước đây quên liệt kê -> nút Sửa/Thu hồi bị ẩn SAI với
+  // Assistant dù họ gọi API vẫn thành công (chỉ là phải gõ URL/gọi thẳng).
+  //
+  // Lưu ý: đây KHÔNG phải lỗi lệch permission-động (BE hàm này vẫn hardcode
+  // theo Role enum, chưa migrate sang @RequirePermission()/scope - cùng
+  // dạng ngoại lệ "Phòng ban thì giữ nguyên" như UsersAccessHelper) - nên
+  // FE ở đây vẫn dùng role string cho khớp, chỉ sửa đúng cho ĐẦY ĐỦ theo
+  // logic BE thật, không đổi sang can()/scope() vì BE chưa có gì để đọc.
+  // Nhánh Manager giữ nguyên là ước lượng rộng hơn thực tế (BE còn kiểm tra
+  // đúng phòng ban của assignment) - chấp nhận được vì đây chỉ là ẩn/hiện
+  // nút cho gọn UI, chặn thật sự luôn nằm ở BE (có thể vẫn 403 nếu sai
+  // phòng ban dù nút hiện ra).
   const canModify = (a: AssignmentHistory) =>
     currentUser?.role === 'admin' ||
+    currentUser?.role === 'assistant' ||
     currentUser?.role === 'manager' ||
     a.assignedById === currentUser?.id;
 

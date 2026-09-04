@@ -61,7 +61,13 @@ export const NAV_ITEMS: NavItem[] = [
     description: 'Xem và quản lý danh sách khách hàng',
     icon: <TeamOutlined />,
     path: '/customers',
+    // ⚠️ FIX BUG THẬT (rà soát permission 2026-09): trước đây `roles: null`
+    // không kiểm tra gì - nhưng GET /customers đã khớp
+    // @RequirePermission('customers.view') từ lâu. Nếu Admin thu hồi
+    // customers.view khỏi 1 role, sidebar vẫn hiện mục này -> bấm vào dính
+    // 403 (đúng loại bug đang rà soát: UI không theo kịp permission BE).
     roles: null,
+    permission: 'customers.view',
   },
   {
     key: 'chia-data',
@@ -69,7 +75,11 @@ export const NAV_ITEMS: NavItem[] = [
     description: 'Gán khách hàng cho sales phụ trách',
     icon: <SwapOutlined />,
     path: '/chia-data',
+    // ⚠️ FIX BUG THẬT (rà soát permission 2026-09): cùng lý do ở mục
+    // 'customers' phía trên - GET /customers/unassigned và
+    // /customers/assigned đều khớp @RequirePermission('customers.view').
     roles: null,
+    permission: 'customers.view',
   },
   {
     key: 'nghi-phep',

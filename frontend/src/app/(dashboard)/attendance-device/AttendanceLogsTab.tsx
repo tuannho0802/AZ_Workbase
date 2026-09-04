@@ -7,7 +7,7 @@ import dayjs, { Dayjs } from 'dayjs';
 import { useAttendanceLogs, useCleanupAttendanceLogs, useExportAttendanceLogs } from '@/lib/hooks/useZkDevice';
 import { useUsersList } from '@/lib/hooks/useUsers';
 import { AttendanceLog } from '@/lib/types/zk-device.types';
-import { useAuthStore } from '@/lib/stores/auth.store';
+import { useMyPermissions } from '@/lib/hooks/useMyPermissions';
 import ExportPeriodModal from './ExportPeriodModal';
 
 const { RangePicker } = DatePicker;
@@ -34,11 +34,15 @@ const RANGE_PRESETS = [
 export default function AttendanceLogsTab() {
   const { message } = App.useApp();
   const { users } = useUsersList();
-  // Trang "Máy chấm công" giờ mở cho admin/assistant/manager (khớp
-  // PERMISSIONS.md §2.3), nhưng riêng DỌN DẸP LOG (hard-delete vĩnh viễn)
-  // vẫn tách decorator @Roles(Role.ADMIN) ở BE - ẩn nút này với
-  // assistant/manager để không hiện 1 nút bấm vào chắc chắn dính 403.
-  const isAdmin = useAuthStore((s) => s.user?.role) === 'admin';
+  // ⚠️ FIX BUG THẬT (rà soát permission 2026-09): comment cũ ở đây ghi
+  // "vẫn tách decorator @Roles(Role.ADMIN) ở BE" - ĐÃ STALE, BE đã đổi
+  // sang @RequirePermission('attendance.delete') động từ lâu (xem
+  // zk-device.controller.ts + migration AddMissingRbacPermissions). Trước
+  // đây FE hardcode role==='admin' khiến nút DỌN DẸP LOG không bao giờ
+  // hiện cho Assistant/role tuỳ chỉnh dù Admin đã cấp attendance.delete qua
+  // trang Phân quyền - đúng kiểu lệch UI/API đang rà soát.
+  const { can } = useMyPermissions();
+  const canCleanup = can('attendance.delete');
   const [page, setPage] = useState(1);
   const [limit, setLimit] = useState(20);
   const [userId, setUserId] = useState<number | undefined>(undefined);
@@ -146,7 +150,7 @@ export default function AttendanceLogsTab() {
         >
           Xuất Excel
         </Button>
-        {isAdmin && (
+        {canCleanup && (
           <Button
             danger
             icon={<DeleteOutlined />}

@@ -240,7 +240,7 @@ export default function ChiaDataPage() {
   const { user, isAuthenticated, isHydrated } = useAuthStore();
   // ⚠️ FIX BUG THẬT (rà soát permission): thay `user?.role === 'admin'` cứng
   // bằng permission động - xem giải thích chi tiết ở UnassignedMobileCard.
-  const { can } = useMyPermissions();
+  const { can, scope } = useMyPermissions();
   const canDeleteCustomer = can('customers.delete');
 
   useEffect(() => {
@@ -539,19 +539,28 @@ export default function ChiaDataPage() {
     .filter((d) => d.managerUserId === user?.id)
     .map((d) => d.id);
 
+  // ⚠️ FIX BUG THẬT (rà soát permission 2026-09): trước đây if/else hardcode
+  // theo `user?.role` - nếu Admin đổi scope của `customers.view` cho 1 role
+  // (vd đổi Manager từ 'department' sang 'own', hoặc cấp 'all' cho 1 role
+  // tuỳ chỉnh) qua trang Phân quyền, dropdown này KHÔNG phản ánh theo, vẫn
+  // hành xử như cấu hình gốc - đúng kiểu lệch UI/API đang rà soát. Giờ đọc
+  // trực tiếp `scope('customers.view')` (nguồn THẬT mà PermissionGuard ở BE
+  // dùng để enforce applyViewFilter) thay vì suy luận lại từ role string.
+  const customersViewScope = scope('customers.view');
   const viewScopeUsers: User[] = (() => {
-    if (user?.role === 'admin' || user?.role === 'assistant') {
+    if (customersViewScope === 'all') {
       return usersData || [];
     }
-    if (user?.role === 'manager') {
+    if (customersViewScope === 'department') {
       return (usersData || []).filter(
         (u: User) => u.id === user?.id || (u.department?.id != null && managedDepartmentIds.includes(u.department.id)),
       );
     }
-    // Employee: phạm vi xem chỉ có chính mình -> dropdown lọc theo
-    // "Data Owner"/"Sales" chỉ còn đúng 1 lựa chọn hợp lý là bản thân, nên
-    // ẨN LUÔN 2 dropdown này ở phần RENDER (xem isMobile/không isMobile bên
-    // dưới) thay vì hiện dropdown chỉ có 1 option gây rối mắt.
+    // scope === 'own' hoặc không có quyền customers.view: phạm vi xem chỉ
+    // có chính mình -> dropdown lọc theo "Data Owner"/"Sales" chỉ còn đúng
+    // 1 lựa chọn hợp lý là bản thân, nên ẨN LUÔN 2 dropdown này ở phần
+    // RENDER (xem isMobile/không isMobile bên dưới) thay vì hiện dropdown
+    // chỉ có 1 option gây rối mắt.
     return [];
   })();
 
@@ -666,7 +675,7 @@ export default function ChiaDataPage() {
                       }}
                     />
                   </Col>
-                  {user?.role !== 'employee' && (
+                  {viewScopeUsers.length > 0 && (
                     <Col flex="180px">
                       <Select
                         allowClear
@@ -824,7 +833,7 @@ export default function ChiaDataPage() {
                       }}
                     />
                   </Col>
-                  {user?.role !== 'employee' && (
+                  {viewScopeUsers.length > 0 && (
                     <Col flex="220px">
                       <Select
                         allowClear

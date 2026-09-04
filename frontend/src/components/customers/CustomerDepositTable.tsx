@@ -5,7 +5,7 @@ import { Table, Button, Space, Typography, Popconfirm, App, Card } from 'antd';
 import { DeleteOutlined, ReloadOutlined } from '@ant-design/icons';
 import { customersApi } from '@/lib/api/customers.api';
 import { Deposit } from '@/lib/types/customer.types';
-import { useAuthStore } from '@/lib/stores/auth.store';
+import { useMyPermissions } from '@/lib/hooks/useMyPermissions';
 import dayjs from 'dayjs';
 
 const { Text } = Typography;
@@ -19,11 +19,15 @@ export const CustomerDepositTable = ({ customerId, refreshTrigger }: Props) => {
   const [loading, setLoading] = useState(false);
   const [deposits, setDeposits] = useState<Deposit[]>([]);
   const { message } = App.useApp();
-  const { user } = useAuthStore();
-  // Khớp PERMISSIONS.md §2.1: DELETE /customers/deposits/:id đã siết
-  // @Roles(Role.ADMIN) - trước đây FE cho cả Manager thấy nút Xoá (SAI, sẽ
-  // bấm vào là dính 403 vì BE đã chặn từ lâu, chỉ FE quên cập nhật theo).
-  const canDelete = user?.role === 'admin';
+  const { can } = useMyPermissions();
+  // ⚠️ FIX BUG THẬT (rà soát permission 2026-09): comment cũ ghi
+  // "@Roles(Role.ADMIN)" - ĐÃ STALE, BE thực tế dùng
+  // @RequirePermission('customers.delete') động (xem
+  // customers.controller.ts `deleteDeposit`) - CÙNG permission key với nút
+  // xoá khách hàng ở chia-data/page.tsx. Trước đây FE hardcode
+  // role==='admin' khiến nút Xoá không hiện cho role tuỳ chỉnh dù Admin đã
+  // cấp customers.delete qua trang Phân quyền.
+  const canDelete = can('customers.delete');
 
   const fetchDeposits = useCallback(async () => {
     if (!customerId) return;
