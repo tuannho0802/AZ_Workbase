@@ -4,6 +4,7 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, In } from 'typeorm';
 import { User } from '../../database/entities/user.entity';
 import { Department } from '../../database/entities/department.entity';
+import { RoleEntity } from '../../database/entities/role.entity';
 import { Role } from '../../common/enums/role.enum';
 import { CreateUserDto } from './dto/create-user.dto';
 import { UpdateUserDto } from './dto/update-user.dto';
@@ -32,9 +33,28 @@ export class UsersService {
     private usersRepository: Repository<User>,
     @InjectRepository(Department)
     private departmentsRepository: Repository<Department>,
+    @InjectRepository(RoleEntity)
+    private roleRepository: Repository<RoleEntity>,
     private readonly auditService: AuditService,
     private readonly departmentsService: DepartmentsService,
   ) {}
+
+  /**
+   * ⚠️ FIX BUG THẬT (400 "role must be one of the following values" khi gán
+   * role tuỳ chỉnh qua trang Nhân viên): DTO giờ chỉ validate ĐỊNH DẠNG mã
+   * role (xem update-user.dto.ts), KHÔNG còn hardcode enum 4 role hệ thống
+   * nữa - phải tự kiểm tra ở đây role đó có THẬT SỰ tồn tại trong bảng
+   * `roles` không (kể cả role tuỳ chỉnh Admin tạo qua trang "Phân quyền").
+   * Nếu không check, `usersRepository.save()` sẽ rơi xuống lỗi FK thô từ
+   * MySQL (`FK_users_role`) - vẫn CHẶN ĐÚNG nhưng thông báo lỗi khó hiểu,
+   * không phải message rõ ràng cho người dùng.
+   */
+  private async validateRoleExists(code: string): Promise<void> {
+    const exists = await this.roleRepository.exists({ where: { code } });
+    if (!exists) {
+      throw new BadRequestException(`Vai trò "${code}" không tồn tại - có thể đã bị xoá, vui lòng chọn lại`);
+    }
+  }
 
   async findByEmail(email: string): Promise<User | null> {
     // password có select: false trong entity -> phải addSelect thủ công vì cần so khớp lúc login
@@ -183,6 +203,10 @@ export class UsersService {
     if (existing) {
       throw new ConflictException('Email đã tồn tại');
     }
+
+    // FIX BUG THẬT: role phải THẬT SỰ tồn tại trong bảng `roles` - xem
+    // validateRoleExists() để biết vì sao (DTO không còn hardcode enum nữa).
+    await this.validateRoleExists(createDto.role);
 
     // ⚠️ FIX PERMISSIONS.md mục 2.2: Manager chỉ được tạo user TRONG phòng
     // ban mình quản lý - bắt buộc phải truyền departmentId (không cho để
@@ -338,6 +362,12 @@ export class UsersService {
       if (existingCode) {
         throw new ConflictException(`Mã nhân viên "${updateDto.employeeCode}" đã tồn tại`);
       }
+    }
+
+    // FIX BUG THẬT: role phải THẬT SỰ tồn tại trong bảng `roles` (chỉ check
+    // khi CÓ đổi role - undefined nghĩa là giữ nguyên, không cần validate lại).
+    if (updateDto.role) {
+      await this.validateRoleExists(updateDto.role);
     }
 
     // 2. Nếu có password, hash trước. Nếu không, XÓA khỏi DTO để tránh Object.assign chép đè chuỗi rỗng
@@ -566,6 +596,12 @@ export class UsersService {
           'Bạn chỉ được chuyển tài khoản này sang phòng ban mình đang quản lý',
         );
       }
+    }
+
+    // FIX BUG THẬT: role phải THẬT SỰ tồn tại trong bảng `roles` (chỉ check
+    // khi Admin/Assistant/Manager có ĐỔI role lúc duyệt).
+    if (overrides?.role) {
+      await this.validateRoleExists(overrides.role);
     }
 
     user.approvalStatus = ApprovalStatus.APPROVED;

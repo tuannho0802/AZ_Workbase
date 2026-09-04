@@ -1,4 +1,4 @@
-import { IsEmail, IsString, IsEnum, IsInt, IsOptional, MinLength, Matches, IsBoolean } from 'class-validator';
+import { IsEmail, IsString, IsInt, IsOptional, MinLength, Matches, IsBoolean } from 'class-validator';
 import { ApiProperty } from '@nestjs/swagger';
 
 export class CreateUserDto {
@@ -30,13 +30,16 @@ export class CreateUserDto {
   )
   password: string;
 
-  @ApiProperty({ 
-    enum: ['admin', 'manager', 'assistant', 'employee'],
-    example: 'employee'
+  // ⚠️ FIX BUG THẬT (400 "role must be one of the following values" khi gán
+  // role tuỳ chỉnh) - xem giải thích đầy đủ ở update-user.dto.ts. Chỉ
+  // validate ĐỊNH DẠNG ở đây, tồn tại hay không do UsersService kiểm tra qua
+  // bảng `roles`.
+  @ApiProperty({
+    example: 'employee',
+    description: 'Mã role (khớp `roles.code`) - có thể là 1 trong 4 role hệ thống hoặc role tuỳ chỉnh Admin đã tạo',
   })
-  @IsEnum(['admin', 'manager', 'assistant', 'employee'], {
-    message: 'Vai trò không hợp lệ'
-  })
+  @IsString()
+  @Matches(/^[a-z][a-z0-9_]*$/, { message: 'Mã role không hợp lệ' })
   role: string;
 
   @ApiProperty({ example: 1, required: false })
