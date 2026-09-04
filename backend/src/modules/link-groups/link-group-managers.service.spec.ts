@@ -11,6 +11,7 @@ import { LinkGroup } from '../../database/entities/link-group.entity';
 import { LinkGroupSecondaryManager } from '../../database/entities/link-group-secondary-manager.entity';
 import { User } from '../../database/entities/user.entity';
 import { Role } from '../../common/enums/role.enum';
+import { PermissionsService } from '../permissions/permissions.service';
 
 describe('LinkGroupManagersService', () => {
   let service: LinkGroupManagersService;
@@ -28,6 +29,17 @@ describe('LinkGroupManagersService', () => {
   const mockUserRepo = {
     findOneBy: jest.fn(),
   };
+  // FIX: LinkGroupManagersService giờ inject thêm PermissionsService (dùng
+  // bởi `hasBroadAccess()` để tra `link_groups.manage` cho role KHÔNG PHẢI
+  // admin, thay vì tự so `role === Role.ADMIN` như cũ - xem
+  // link-group-managers.service.ts) - spec này thiếu mock nên toàn bộ suite
+  // fail khi Nest không resolve được dependency thứ 4 của constructor.
+  // Mặc định `allowed: false` - MỌI test case dùng `Role.EMPLOYEE` ở file
+  // này vốn kỳ vọng "không có quyền rộng", khớp đúng hành vi gốc (Employee
+  // chưa bao giờ có `link_groups.manage`).
+  const mockPermissionsService = {
+    hasPermission: jest.fn().mockResolvedValue({ allowed: false, scope: null }),
+  };
 
   // Helper dựng nhanh 1 "user" giả để nhét vào relation primaryManager/user
   const fakeUser = (id: number, name = `User ${id}`) => ({
@@ -39,6 +51,7 @@ describe('LinkGroupManagersService', () => {
 
   beforeEach(async () => {
     jest.clearAllMocks();
+    mockPermissionsService.hasPermission.mockResolvedValue({ allowed: false, scope: null });
 
     const module: TestingModule = await Test.createTestingModule({
       providers: [
@@ -46,6 +59,7 @@ describe('LinkGroupManagersService', () => {
         { provide: getRepositoryToken(LinkGroup), useValue: mockGroupRepo },
         { provide: getRepositoryToken(LinkGroupSecondaryManager), useValue: mockSecondaryRepo },
         { provide: getRepositoryToken(User), useValue: mockUserRepo },
+        { provide: PermissionsService, useValue: mockPermissionsService },
       ],
     }).compile();
 
@@ -170,6 +184,44 @@ describe('LinkGroupManagersService', () => {
 
       const result = await service.listManagedByMe(999, Role.EMPLOYEE);
 
+      expect(result).toEqual([]);
+    });
+
+    // FIX BUG THẬT: trước đây helper tự so `role === Role.ADMIN` cứng, bỏ
+    // sót Role.ASSISTANT và MỌI role tuỳ chỉnh Admin tự tạo qua trang Phân
+    // quyền (dù được cấp `link_groups.manage` với scope='all', code cũ vẫn
+    // luôn coi là "không có quyền rộng"). Test này xác nhận đã sửa đúng:
+    // BẤT KỲ role nào (không riêng 4 role tĩnh) có `link_groups.manage`
+    // trong role_permissions đều được coi là quyền rộng, thấy TẤT CẢ group.
+    it('role tuỳ chỉnh (vd "team_lead") được cấp link_groups.manage qua trang Phân quyền -> vẫn thấy TẤT CẢ group như Admin', async () => {
+      mockPermissionsService.hasPermission.mockResolvedValue({ allowed: true, scope: 'all' });
+      mockGroupRepo.find.mockResolvedValue([
+        { id: 1, name: 'Nhóm A', sortOrder: 0, primaryManager: null, secondaryManagers: [] },
+      ]);
+
+      const result = await service.listManagedByMe(999, 'team_lead');
+
+      expect(mockPermissionsService.hasPermission).toHaveBeenCalledWith('team_lead', 'link_groups.manage');
+      expect(mockGroupRepo.find).toHaveBeenCalledWith({
+        relations: ['primaryManager', 'secondaryManagers', 'secondaryManagers.user', 'category'],
+        order: { sortOrder: 'ASC', id: 'ASC' },
+      });
+      expect(mockSecondaryRepo.find).not.toHaveBeenCalled();
+      expect(result).toHaveLength(1);
+    });
+
+    it('Assistant KHÔNG được cấp link_groups.manage -> KHÔNG có quyền rộng, chỉ thấy nhóm mình liên quan (bug cũ: helper cũ luôn coi Assistant là "không có quyền" bất kể DB, nay tra đúng theo DB)', async () => {
+      mockPermissionsService.hasPermission.mockResolvedValue({ allowed: false, scope: null });
+      mockGroupRepo.find.mockResolvedValue([]); // asPrimary rỗng
+      mockSecondaryRepo.find.mockResolvedValue([]); // asSecondary rỗng
+
+      const result = await service.listManagedByMe(50, Role.ASSISTANT);
+
+      expect(mockPermissionsService.hasPermission).toHaveBeenCalledWith(Role.ASSISTANT, 'link_groups.manage');
+      expect(mockGroupRepo.find).toHaveBeenCalledWith({
+        where: { primaryManagerId: 50 },
+        relations: ['primaryManager', 'secondaryManagers', 'secondaryManagers.user', 'category'],
+      });
       expect(result).toEqual([]);
     });
   });
