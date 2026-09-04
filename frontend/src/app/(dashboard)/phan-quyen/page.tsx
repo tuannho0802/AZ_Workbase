@@ -310,7 +310,7 @@ function RolePermissionsDrawer({
       title={role ? `Ma trận quyền: ${role.name}` : ''}
       open={open}
       onClose={onClose}
-      width={640}
+      size={640}
       destroyOnHidden
     >
       {role && (
@@ -393,7 +393,7 @@ export default function PhanQuyenPage() {
       title: 'Role',
       key: 'name',
       render: (_: unknown, role: RoleWithPermissions) => (
-        <Space direction="vertical" size={0}>
+        <Space orientation="vertical" size={0}>
           <Space>
             <Text strong>{role.name}</Text>
             {role.isSystem && <Tag color="gold">Hệ thống</Tag>}
