@@ -19,6 +19,12 @@ export class User {
   @PrimaryGeneratedColumn()
   id: number;
 
+  // "Mã nhân viên" hiển thị (vd AZ001, AZ002...) - tự sinh tăng dần nếu
+  // không đặt tay (xem UsersService.generateNextEmployeeCode()), nhưng vẫn
+  // cho phép admin sửa tay thành mã tuỳ ý khác (không ép đúng format AZ+số).
+  @Column({ name: 'employee_code', type: 'varchar', length: 20, unique: true })
+  employeeCode: string;
+
   @Column({ unique: true })
   email: string;
 

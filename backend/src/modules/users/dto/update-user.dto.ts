@@ -29,4 +29,12 @@ export class UpdateUserDto {
   @IsOptional()
   @IsBoolean()
   isActive?: boolean;
+
+  @ApiProperty({ example: 'AZ042', required: false, description: 'Mã nhân viên' })
+  @IsOptional()
+  @IsString({ message: 'Mã nhân viên phải là chuỗi ký tự' })
+  @Matches(/^[A-Za-z0-9\-_]{1,20}$/, {
+    message: 'Mã nhân viên chỉ gồm chữ, số, gạch ngang/gạch dưới, tối đa 20 ký tự',
+  })
+  employeeCode?: string;
 }

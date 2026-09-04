@@ -1,6 +1,6 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { getRepositoryToken } from '@nestjs/typeorm';
-import { NotFoundException, BadRequestException, ForbiddenException } from '@nestjs/common';
+import { NotFoundException, BadRequestException, ForbiddenException, ConflictException } from '@nestjs/common';
 import { UsersService } from './users.service';
 import { User } from '../../database/entities/user.entity';
 import { Department } from '../../database/entities/department.entity';
@@ -12,11 +12,21 @@ import { ApprovalStatus } from '../../common/enums/approval-status.enum';
 describe('UsersService - Approval workflow (đăng ký công khai chờ duyệt)', () => {
   let service: UsersService;
 
+  // QueryBuilder giả cho generateNextEmployeeCode() - mọi method chain trả
+  // về chính nó, chỉ .getRawOne() là async thật. Mặc định trả về maxNum=null
+  // (chưa có mã nào khớp định dạng AZ<số>) -> mã tiếp theo luôn là "AZ001".
+  const mockEmployeeCodeQueryBuilder = {
+    select: jest.fn().mockReturnThis(),
+    where: jest.fn().mockReturnThis(),
+    getRawOne: jest.fn().mockResolvedValue({ maxNum: null }),
+  };
+
   const mockUsersRepo = {
     create: jest.fn(),
     save: jest.fn(),
     find: jest.fn(),
     findOne: jest.fn(),
+    createQueryBuilder: jest.fn(() => mockEmployeeCodeQueryBuilder),
   };
   const mockAuditService = {
     logAction: jest.fn(),
@@ -36,6 +46,11 @@ describe('UsersService - Approval workflow (đăng ký công khai chờ duyệt)
 
   beforeEach(async () => {
     jest.clearAllMocks();
+    // jest.clearAllMocks() xoá luôn implementation .mockReturnThis()/
+    // .mockResolvedValue() của queryBuilder giả - phải gán lại SAU khi clear.
+    mockEmployeeCodeQueryBuilder.select.mockReturnThis();
+    mockEmployeeCodeQueryBuilder.where.mockReturnThis();
+    mockEmployeeCodeQueryBuilder.getRawOne.mockResolvedValue({ maxNum: null });
 
     const module: TestingModule = await Test.createTestingModule({
       providers: [
@@ -362,6 +377,105 @@ describe('UsersService - Approval workflow (đăng ký công khai chờ duyệt)
         ForbiddenException,
       );
       expect(mockUsersRepo.save).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('Mã nhân viên (employeeCode) - tự sinh AZ+N tăng dần', () => {
+    it('createPendingRegistration: tự sinh "AZ001" khi CHƯA có mã nào khớp định dạng AZ<số>', async () => {
+      mockEmployeeCodeQueryBuilder.getRawOne.mockResolvedValue({ maxNum: null });
+      mockUsersRepo.create.mockImplementation((input: any) => input);
+      mockUsersRepo.save.mockImplementation((entity: any) => Promise.resolve({ id: 1, ...entity }));
+
+      await service.createPendingRegistration({
+        name: 'A',
+        email: 'a@example.com',
+        password: 'hash',
+      });
+
+      expect(mockUsersRepo.create).toHaveBeenCalledWith(
+        expect.objectContaining({ employeeCode: 'AZ001' }),
+      );
+    });
+
+    it('createPendingRegistration: mã lớn nhất hiện có là AZ005 -> sinh tiếp "AZ006"', async () => {
+      mockEmployeeCodeQueryBuilder.getRawOne.mockResolvedValue({ maxNum: '5' });
+      mockUsersRepo.create.mockImplementation((input: any) => input);
+      mockUsersRepo.save.mockImplementation((entity: any) => Promise.resolve({ id: 1, ...entity }));
+
+      await service.createPendingRegistration({
+        name: 'A',
+        email: 'a@example.com',
+        password: 'hash',
+      });
+
+      expect(mockUsersRepo.create).toHaveBeenCalledWith(
+        expect.objectContaining({ employeeCode: 'AZ006' }),
+      );
+    });
+
+    it('create (admin thêm nhân viên): tự sinh mã nếu không nhập employeeCode', async () => {
+      mockUsersRepo.findOne.mockResolvedValue(null); // không trùng email
+      mockEmployeeCodeQueryBuilder.getRawOne.mockResolvedValue({ maxNum: '10' });
+      mockUsersRepo.create.mockImplementation((input: any) => input);
+      mockUsersRepo.save.mockImplementation((entity: any) => Promise.resolve({ id: 2, ...entity }));
+
+      await service.create(
+        { email: 'x@example.com', name: 'X', password: 'Password@123', role: Role.EMPLOYEE } as any,
+        1,
+        Role.ADMIN,
+      );
+
+      expect(mockUsersRepo.create).toHaveBeenCalledWith(
+        expect.objectContaining({ employeeCode: 'AZ011' }),
+      );
+    });
+
+    it('create: admin nhập tay employeeCode đã tồn tại -> ConflictException, KHÔNG gọi save', async () => {
+      // Lần findOne đầu = check trùng email (null = chưa trùng), lần 2 = check trùng mã (có -> trùng).
+      mockUsersRepo.findOne
+        .mockResolvedValueOnce(null)
+        .mockResolvedValueOnce({ id: 5, employeeCode: 'AZ005' });
+
+      await expect(
+        service.create(
+          {
+            email: 'y@example.com',
+            name: 'Y',
+            password: 'Password@123',
+            role: Role.EMPLOYEE,
+            employeeCode: 'AZ005',
+          } as any,
+          1,
+          Role.ADMIN,
+        ),
+      ).rejects.toThrow(ConflictException);
+      expect(mockUsersRepo.save).not.toHaveBeenCalled();
+    });
+
+    it('create: admin nhập tay employeeCode chưa tồn tại -> dùng đúng mã đó, KHÔNG tự sinh', async () => {
+      mockUsersRepo.findOne
+        .mockResolvedValueOnce(null) // check trùng email
+        .mockResolvedValueOnce(null); // check trùng mã -> chưa có ai dùng
+      mockUsersRepo.create.mockImplementation((input: any) => input);
+      mockUsersRepo.save.mockImplementation((entity: any) => Promise.resolve({ id: 3, ...entity }));
+
+      await service.create(
+        {
+          email: 'z@example.com',
+          name: 'Z',
+          password: 'Password@123',
+          role: Role.EMPLOYEE,
+          employeeCode: 'AZ099',
+        } as any,
+        1,
+        Role.ADMIN,
+      );
+
+      expect(mockUsersRepo.create).toHaveBeenCalledWith(
+        expect.objectContaining({ employeeCode: 'AZ099' }),
+      );
+      // Không cần gọi tới generateNextEmployeeCode() (queryBuilder) khi đã có mã nhập tay hợp lệ.
+      expect(mockUsersRepo.createQueryBuilder).not.toHaveBeenCalled();
     });
   });
 });
