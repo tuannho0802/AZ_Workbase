@@ -41,6 +41,7 @@ describe('RolesService', () => {
   };
   const mockPermissionsService = {
     invalidate: jest.fn(),
+    getRolePermissions: jest.fn(),
   };
 
   beforeEach(async () => {

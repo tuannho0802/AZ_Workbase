@@ -17,6 +17,7 @@ import { UpdateRolePermissionsDto } from './dto/update-role-permissions.dto';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { PermissionGuard } from '../../common/guards/permission.guard';
 import { RequirePermission } from '../../common/decorators/require-permission.decorator';
+import { GetUser } from '../../common/decorators/get-user.decorator';
 
 @ApiTags('Roles & Permissions (Phân quyền tuỳ chỉnh)')
 @ApiBearerAuth()
@@ -24,6 +25,15 @@ import { RequirePermission } from '../../common/decorators/require-permission.de
 @UseGuards(JwtAuthGuard, PermissionGuard)
 export class RolesController {
   constructor(private readonly rolesService: RolesService) {}
+
+  @Get('roles/my-permissions')
+  @ApiOperation({
+    summary:
+      'Quyền của CHÍNH người đang gọi API - không cần roles.view, ai cũng xem được quyền của bản thân. FE dùng route này để tự quyết định hiện/ẩn sidebar/nút bấm, đồng bộ đúng những gì BE thật sự cho phép.',
+  })
+  getMyPermissions(@GetUser() user: any) {
+    return this.rolesService.getMyPermissions(user.role);
+  }
 
   @Get('roles')
   @RequirePermission('roles.view')

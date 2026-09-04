@@ -8,7 +8,7 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, DataSource } from 'typeorm';
 import { RoleEntity } from '../../database/entities/role.entity';
 import { Permission } from '../../database/entities/permission.entity';
-import { RolePermission } from '../../database/entities/role-permission.entity';
+import { RolePermission, PermissionScope } from '../../database/entities/role-permission.entity';
 import { User } from '../../database/entities/user.entity';
 import { CreateRoleDto } from './dto/create-role.dto';
 import { UpdateRoleDto } from './dto/update-role.dto';
@@ -185,5 +185,18 @@ export class RolesService {
       throw new NotFoundException(`Không tìm thấy role ID ${id}`);
     }
     return role;
+  }
+
+  /**
+   * Quyền của CHÍNH role đang gọi - dùng để FE tự quyết định hiện/ẩn UI
+   * (sidebar, trang chủ, nút bấm...) khớp đúng những gì BE thật sự cho
+   * phép, KHÔNG hardcode danh sách role ở FE. Route này KHÔNG cần
+   * `roles.view` (ai cũng có quyền biết quyền của chính mình - nếu bắt
+   * buộc `roles.view` thì user không có quyền đó sẽ không cách nào tự biết
+   * mình thiếu quyền gì, kể cả để FE ẩn đúng những mục họ không có).
+   */
+  async getMyPermissions(roleCode: string): Promise<Record<string, PermissionScope | null>> {
+    const map = await this.permissionsService.getRolePermissions(roleCode);
+    return Object.fromEntries(map);
   }
 }
