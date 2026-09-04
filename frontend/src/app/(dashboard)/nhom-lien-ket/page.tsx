@@ -75,6 +75,14 @@ export default function LinkGroupsAdminPage() {
   }, [user, router]);
 
   const canDelete = can('link_groups.delete');
+  // ⚠️ FIX BUG THẬT (rà soát UI Permission - đợt kiểm tra Tabs/component/cột):
+  // trước đây các nút Sửa/Thêm nhóm/Thêm category/Khoá-Mở KHÔNG gate theo
+  // permission gì - hiện ra cho mọi user có `link_groups.view` (kể cả
+  // Manager, dù §2.4 đã chốt Manager KHÔNG có quyền ghi ở module này). Bấm
+  // vào sẽ dính 403 từ `link_groups.manage` ở BE.
+  const canManage = can('link_groups.manage');
+  const isAdmin = user?.role === 'admin';
+  const currentUserId = user?.id;
 
   const { categories, isLoading: loadingCategories } = useLinkCategories(false);
   const { groups, isLoading: loadingGroups } = useAllLinkGroups();
@@ -293,34 +301,58 @@ export default function LinkGroupsAdminPage() {
       title: 'Thao tác',
       key: 'action',
       width: 320,
-      render: (_: any, group: LinkGroup) => (
-        <Space>
-          <Button size="small" icon={<EditOutlined />} onClick={() => openEditGroup(group)}>
-            Sửa
-          </Button>
-          <Button
-            size="small"
-            icon={<TeamOutlined />}
-            onClick={() => setManagingGroup({ id: group.id, name: group.name })}
-          >
-            Quản lý phụ
-          </Button>
-          <Button size="small" onClick={() => handleToggleActiveGroup(group)}>
-            {group.isActive ? 'Ẩn' : 'Hiện lại'}
-          </Button>
-          {canDelete && (
-            <Popconfirm
-              title={`Xoá nhóm "${group.name}"?`}
-              description="Chỉ xoá được nếu chưa có khách hàng nào có dữ liệu join gắn với nhóm này."
-              onConfirm={() => handleDeleteGroup(group)}
-            >
-              <Button size="small" danger icon={<DeleteOutlined />}>
-                Xoá
+      render: (_: any, group: LinkGroup) => {
+        // Nút "Quản lý phụ" mở GroupManagersModal - BE (`getManagers()`,
+        // LinkGroupAccessHelper.canManage()) chỉ cho admin/chính quản lý
+        // chính/chính quản lý phụ CỦA ĐÚNG NHÓM ĐÓ xem, KHÁC hẳn permission
+        // chung `link_groups.manage` (đây là quyền theo TỪNG resource cụ
+        // thể - ngoại lệ có chủ đích, xem PERMISSIONS.md mục 1.6, giống hệt
+        // cách GroupManagersModal.tsx tự tính `canEdit`). Trước đây nút này
+        // hiện cho MỌI người có `link_groups.view` (vd 1 Manager không liên
+        // quan gì tới nhóm này) - bấm vào Modal fetch `getManagers()` sẽ
+        // dính 403 ngay, không phải bug permission chung mà là thiếu check
+        // theo resource - phải tính riêng ở đây, không thể dùng `can()`.
+        const isPrimaryOfThisGroup = group.primaryManagerId === currentUserId;
+        const isSecondaryOfThisGroup = (group.secondaryManagers ?? []).some(
+          (m) => m.user.id === currentUserId,
+        );
+        const canSeeManagers = isAdmin || isPrimaryOfThisGroup || isSecondaryOfThisGroup;
+
+        return (
+          <Space>
+            {canManage && (
+              <Button size="small" icon={<EditOutlined />} onClick={() => openEditGroup(group)}>
+                Sửa
               </Button>
-            </Popconfirm>
-          )}
-        </Space>
-      ),
+            )}
+            {canSeeManagers && (
+              <Button
+                size="small"
+                icon={<TeamOutlined />}
+                onClick={() => setManagingGroup({ id: group.id, name: group.name })}
+              >
+                Quản lý phụ
+              </Button>
+            )}
+            {canManage && (
+              <Button size="small" onClick={() => handleToggleActiveGroup(group)}>
+                {group.isActive ? 'Ẩn' : 'Hiện lại'}
+              </Button>
+            )}
+            {canDelete && (
+              <Popconfirm
+                title={`Xoá nhóm "${group.name}"?`}
+                description="Chỉ xoá được nếu chưa có khách hàng nào có dữ liệu join gắn với nhóm này."
+                onConfirm={() => handleDeleteGroup(group)}
+              >
+                <Button size="small" danger icon={<DeleteOutlined />}>
+                  Xoá
+                </Button>
+              </Popconfirm>
+            )}
+          </Space>
+        );
+      },
     },
   ];
 
@@ -357,19 +389,23 @@ export default function LinkGroupsAdminPage() {
       width: 340,
       render: (_: any, record: LinkCategory) => (
         <Space>
-          <Button size="small" icon={<PlusOutlined />} onClick={() => openCreateGroup(record.id)}>
-            Thêm nhóm
-          </Button>
-          <Button size="small" icon={<EditOutlined />} onClick={() => openEditCategory(record)}>
-            Sửa
-          </Button>
-          <Button
-            size="small"
-            icon={record.isLocked ? <UnlockOutlined /> : <LockOutlined />}
-            onClick={() => handleToggleLockCategory(record)}
-          >
-            {record.isLocked ? 'Mở khoá' : 'Khoá'}
-          </Button>
+          {canManage && (
+            <>
+              <Button size="small" icon={<PlusOutlined />} onClick={() => openCreateGroup(record.id)}>
+                Thêm nhóm
+              </Button>
+              <Button size="small" icon={<EditOutlined />} onClick={() => openEditCategory(record)}>
+                Sửa
+              </Button>
+              <Button
+                size="small"
+                icon={record.isLocked ? <UnlockOutlined /> : <LockOutlined />}
+                onClick={() => handleToggleLockCategory(record)}
+              >
+                {record.isLocked ? 'Mở khoá' : 'Khoá'}
+              </Button>
+            </>
+          )}
           {canDelete && (
             <Popconfirm
               title={`Xoá category "${record.name}"?`}
@@ -399,9 +435,11 @@ export default function LinkGroupsAdminPage() {
             nguồn" để checklist "đã join nhóm" tự lọc đúng khi thêm khách hàng theo nguồn tương ứng.
           </Text>
         </div>
-        <Button type="primary" icon={<PlusOutlined />} onClick={openCreateCategory}>
-          Thêm category mới
-        </Button>
+        {canManage && (
+          <Button type="primary" icon={<PlusOutlined />} onClick={openCreateCategory}>
+            Thêm category mới
+          </Button>
+        )}
       </div>
 
       <Table

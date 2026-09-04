@@ -57,6 +57,15 @@ export default function MediaSourcesPage() {
   }, [user, router]);
 
   const canDelete = can('media_sources.delete');
+  // ⚠️ FIX BUG THẬT (rà soát UI Permission - đợt kiểm tra Tabs/component/cột
+  // sau khi BE migrate hết sang @RequirePermission): trước đây các nút
+  // Sửa/Khoá-Mở/Thêm nguồn mới KHÔNG hề gate theo permission gì cả - hiện
+  // ra cho MỌI user có `media_sources.view` (gần như tất cả role, vì đây là
+  // danh mục dropdown). Nếu 1 role chỉ có `.view` (không có `.manage`) bấm
+  // vào, request tới đúng permission `media_sources.manage` ở BE
+  // (media-sources.controller.ts: POST/PATCH/lock/unlock) sẽ dính 403 -
+  // đúng loại bug "UI không đồng bộ với API" đang rà soát.
+  const canManage = can('media_sources.manage');
 
   const { sources, isLoading } = useMediaSources(false);
   const createMutation = useCreateMediaSource();
@@ -165,16 +174,20 @@ export default function MediaSourcesPage() {
       width: 260,
       render: (_: any, record: MediaSource) => (
         <Space>
-          <Button size="small" icon={<EditOutlined />} onClick={() => openEditModal(record)}>
-            Sửa
-          </Button>
-          <Button
-            size="small"
-            icon={record.isLocked ? <UnlockOutlined /> : <LockOutlined />}
-            onClick={() => handleToggleLock(record)}
-          >
-            {record.isLocked ? 'Mở khoá' : 'Khoá'}
-          </Button>
+          {canManage && (
+            <>
+              <Button size="small" icon={<EditOutlined />} onClick={() => openEditModal(record)}>
+                Sửa
+              </Button>
+              <Button
+                size="small"
+                icon={record.isLocked ? <UnlockOutlined /> : <LockOutlined />}
+                onClick={() => handleToggleLock(record)}
+              >
+                {record.isLocked ? 'Mở khoá' : 'Khoá'}
+              </Button>
+            </>
+          )}
           {canDelete && (
             <Popconfirm
               title={`Xoá nguồn "${record.name}"?`}
@@ -204,9 +217,11 @@ export default function MediaSourcesPage() {
             thị bình thường.
           </Text>
         </div>
-        <Button type="primary" icon={<PlusOutlined />} onClick={openCreateModal}>
-          Thêm nguồn mới
-        </Button>
+        {canManage && (
+          <Button type="primary" icon={<PlusOutlined />} onClick={openCreateModal}>
+            Thêm nguồn mới
+          </Button>
+        )}
       </div>
 
       <Table
