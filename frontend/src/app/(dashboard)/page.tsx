@@ -22,7 +22,7 @@ export default function HomePage() {
   const router = useRouter();
   const user = useAuthStore((s) => s.user);
   const { can } = useMyPermissions();
-  const badgeCounts = useSidebarBadgeCounts(user?.role);
+  const badgeCounts = useSidebarBadgeCounts();
 
   // Cùng 1 danh sách + role-gate với Sidebar (lib/nav-config.tsx) - "sidebar
   // có gì thì trang chủ có đó" theo đúng yêu cầu, không định nghĩa lại.

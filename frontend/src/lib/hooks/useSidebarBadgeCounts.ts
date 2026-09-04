@@ -3,15 +3,12 @@ import { customersApi } from '../api/customers.api';
 import { usersApi } from '../api/users.api';
 import { leaveRequestsApi } from '../api/leave-requests.api';
 
+import { useMyPermissions } from './useMyPermissions';
+
 // 60s: đủ để badge không bị lỗi thời quá lâu (vd Admin duyệt xong 1 đơn ở
 // tab khác, quay lại sidebar sẽ tự cập nhật trong tối đa 1 phút), nhưng
 // không dí server liên tục như polling vài giây 1 lần.
 const REFRESH_INTERVAL_MS = 60_000;
-
-const ROLES_SEE_INVALID_DATA = ['admin'];
-const ROLES_SEE_TRASH = ['admin'];
-const ROLES_SEE_PENDING_USERS = ['admin', 'assistant', 'manager'];
-const ROLES_APPROVE_LEAVE = ['admin', 'assistant', 'manager'];
 
 /**
  * Trả về map { [navItemKey]: count } - KHỚP TRỰC TIẾP với `key` trong
@@ -21,18 +18,16 @@ const ROLES_APPROVE_LEAVE = ['admin', 'assistant', 'manager'];
  * Muốn thêm 1 nguồn badge MỚI sau này: thêm đúng 1 khối useQuery bên dưới
  * (key = đúng key trong nav-config), không cần sửa gì ở nơi tiêu thụ
  * (layout.tsx / trang chủ) - chúng chỉ đọc từ map này.
- *
- * @param role Role hiện tại (dùng để tắt fetch những nguồn role không có
- * quyền xem - tránh gọi API thừa và tránh dính 403 vô ích).
  */
-export function useSidebarBadgeCounts(role: string | undefined): Record<string, number> {
-  const canSeeInvalidData = ROLES_SEE_INVALID_DATA.includes(role || '');
-  const canSeeTrash = ROLES_SEE_TRASH.includes(role || '');
-  const canSeePendingUsers = ROLES_SEE_PENDING_USERS.includes(role || '');
-  const canApproveLeave = ROLES_APPROVE_LEAVE.includes(role || '');
-  // "Nghỉ phép" (đơn nghỉ phép CỦA CHÍNH MÌNH) - mọi role đều tự gửi đơn
-  // được, nên không giới hạn role, chỉ cần đã đăng nhập.
-  const isLoggedIn = !!role;
+export function useSidebarBadgeCounts(): Record<string, number> {
+  const { can, isLoading } = useMyPermissions();
+  
+  // Disable fetches until permissions are loaded
+  const canSeeInvalidData = !isLoading && can('customers.manage'); 
+  const canSeeTrash = !isLoading && can('customers.delete');
+  const canSeePendingUsers = !isLoading && can('users.manage');
+  const canApproveLeave = !isLoading && can('leave_requests.approve');
+  const canRequestLeave = !isLoading && can('leave_requests.request');
 
   // 1. Báo cáo data lỗi (chỉ admin)
   const invalidData = useQuery({
@@ -80,7 +75,7 @@ export function useSidebarBadgeCounts(role: string | undefined): Record<string, 
       const all = await leaveRequestsApi.getAll();
       return (all as Array<{ status: string }>).filter((r) => r.status === 'pending').length;
     },
-    enabled: isLoggedIn,
+    enabled: canRequestLeave,
     refetchInterval: REFRESH_INTERVAL_MS,
     staleTime: REFRESH_INTERVAL_MS,
   });
@@ -98,7 +93,7 @@ export function useSidebarBadgeCounts(role: string | undefined): Record<string, 
   if (canApproveLeave && pendingLeaveApprovals.data !== undefined) {
     counts['duyet-phep'] = pendingLeaveApprovals.data;
   }
-  if (isLoggedIn && myPendingLeave.data !== undefined) {
+  if (canRequestLeave && myPendingLeave.data !== undefined) {
     counts['nghi-phep'] = myPendingLeave.data;
   }
 

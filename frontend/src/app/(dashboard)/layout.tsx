@@ -84,7 +84,7 @@ export default function DashboardLayout({
   const { can } = useMyPermissions();
   const [selectedKey, setSelectedKey] = useState('customers');
   const [collapsed, setCollapsed] = useState(false);
-  const badgeCounts = useSidebarBadgeCounts(user?.role);
+  const badgeCounts = useSidebarBadgeCounts();
   const [todayLabel, setTodayLabel] = useState('');
 
   // Tính ngày ở client sau khi mount (KHÔNG tính ngay lúc render) để tránh
