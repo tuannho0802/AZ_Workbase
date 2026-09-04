@@ -102,10 +102,12 @@ export const NAV_ITEMS: NavItem[] = [
     description: 'Doanh thu và data khách hàng theo Cá nhân/Phòng ban/Tổng tất cả',
     icon: <BarChartOutlined />,
     path: '/reports',
-    // role nào cũng xem được (khớp @Roles(ADMIN, ASSISTANT, MANAGER, EMPLOYEE)
-    // ở reports.controller.ts) - phạm vi dữ liệu thật do BE tự khoanh vùng
-    // theo role, không cần ẩn mục này với ai.
+    // Khớp @RequirePermission('reports.view') ở reports.controller.ts (rà
+    // soát permission UI - trước đây để `roles: null` với lý do "mở cho mọi
+    // role", nhưng giờ BE dùng permission động nên Admin có thể thu hồi
+    // quyền này cho 1 role bất kỳ qua trang Phân quyền - phải theo dõi đúng).
     roles: null,
+    permission: 'reports.view',
   },
   {
     key: 'duyet-phep',
@@ -138,7 +140,11 @@ export const NAV_ITEMS: NavItem[] = [
     description: 'Khôi phục hoặc xoá vĩnh viễn khách hàng đã xoá',
     icon: <DeleteOutlined />,
     path: '/trash-can',
-    roles: ['admin'],
+    // Khớp @RequirePermission('customers.trash_manage') ở customers.controller.ts
+    // (3 endpoint GET trash/restore/hard-delete) - đổi từ `roles: ['admin']`
+    // tĩnh sang permission động (rà soát permission UI).
+    roles: null,
+    permission: 'customers.trash_manage',
   },
   {
     key: 'nguon-media',
