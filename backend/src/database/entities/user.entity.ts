@@ -64,9 +64,16 @@ export class User {
   })
   zkDeviceUserId: string | null;
 
+  // ⚠️ FIX: đổi từ `type: 'enum', enum: Role` sang varchar sau khi migration
+  // AddCustomRbacSystem đổi cột DB thật từ ENUM cứng -> VARCHAR(50) + FK tới
+  // bảng `roles.code` (cho phép Admin tự tạo role mới ngoài 4 giá trị cũ mà
+  // không cần ALTER TABLE). Giữ khai báo entity khớp đúng schema DB thật -
+  // khai báo `enum: Role` cũ giờ sai lệch với DB (schema drift), dù chạy
+  // được (mysql2 không strict-validate enum ở tầng client) nhưng dễ gây
+  // hiểu nhầm/lỗi khi có công cụ đối chiếu entity-vs-DB sau này.
   @Column({
-    type: 'enum',
-    enum: Role,
+    type: 'varchar',
+    length: 50,
     default: Role.EMPLOYEE,
   })
   role: string;
