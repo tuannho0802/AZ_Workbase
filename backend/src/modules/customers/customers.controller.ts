@@ -15,8 +15,6 @@ import { CreateDepositDto } from './dto/create-deposit.dto';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { PermissionGuard } from '../../common/guards/permission.guard';
 import { RequirePermission } from '../../common/decorators/require-permission.decorator';
-import { Roles } from '../../common/decorators/roles.decorator';
-import { Role } from '../../common/enums/role.enum';
 import { GetUser } from '../../common/decorators/get-user.decorator';
 import { CacheControlInterceptor } from '../../common/interceptors/cache-control.interceptor';
 
@@ -231,7 +229,7 @@ export class CustomersController {
   }
 
   @Delete('deposits/:id')
-  @Roles(Role.ADMIN)
+  @RequirePermission('customers.delete')
   @ApiOperation({ summary: 'Xóa bản ghi nạp tiền - CHỈ ADMIN (đúng rule Xoá ở PERMISSIONS.md mục 1, không có ngoại lệ cho Manager)' })
   async deleteDeposit(@Param('id') id: string, @GetUser() user: any) {
     return this.customersService.deleteDeposit(+id, user.id);
@@ -245,7 +243,7 @@ export class CustomersController {
   }
 
   @Delete(':id')
-  @Roles(Role.ADMIN)
+  @RequirePermission('customers.delete')
   @ApiOperation({ summary: 'Xóa mềm khách hàng - CHỈ ADMIN (Assistant/Manager/Employee không có quyền xoá)' })
   @ApiResponse({ status: 200, description: 'Đã xóa mềm khách hàng thành công' })
   @ApiResponse({ status: 403, description: 'Chỉ Admin mới có quyền xóa khách hàng' })
