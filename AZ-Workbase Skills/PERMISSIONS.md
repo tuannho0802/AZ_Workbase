@@ -5,14 +5,13 @@
 > Nếu code hiện tại (BE hoặc FE) khác với tài liệu này → **tài liệu này đúng, code là bug cần sửa**,
 > trừ khi tài liệu chưa được cập nhật theo quyết định nghiệp vụ mới nhất (luôn hỏi lại nếu nghi ngờ).
 >
-> **Cập nhật lần cuối:** 2026-08-28 (rà soát toàn diện lần 2 — đối chiếu TRỰC TIẾP từng dòng code cho
-> TOÀN BỘ 9 module, không dựa vào trạng thái cũ trong tài liệu. Phát hiện: §2.6 (Nghỉ phép), §2.7 (Audit
-> Logs), §2.8 (Duyệt đăng ký), §2.9 (Phòng ban) đã được sửa xong trong code từ trước nhưng tài liệu chưa
-> cập nhật theo (đang ghi nhầm ⚠️ CHƯA KHỚP dù code đã ✅ đúng rule) — đã xác nhận và chuyển cả 4 mục sang
-> ✅. **Toàn bộ 9/9 module giờ khớp 100% với rule ở mục 1 (Backend).** Thêm 3 file spec mới
-> (`users.service.spec.ts` bổ sung nhánh Manager, `departments.service.spec.ts`,
-> `leave-requests.service.spec.ts`) khoá lại các rule vừa xác nhận — chưa từng có test nào che phủ trước
-> đó dù code đã đúng. Toàn bộ suite: **13/13 test suite, 203/203 test PASS**)
+> **Cập nhật lần cuối:** 2026-08-28 (thêm mục 1.7 + 2.10 — tài liệu hoá hệ thống Permission tuỳ chỉnh
+> (Dynamic RBAC: `RoleEntity`/`Permission`/`RolePermission`, `PermissionGuard`, trang `/phan-quyen`) vừa
+> hoàn thành. **QUAN TRỌNG:** cơ chế mới này hiện CHỈ enforce cho đúng module `roles`/`permissions` —
+> 9 module còn lại (2.1→2.9) VẪN dùng `@Roles()` tĩnh y hệt trước, CHƯA migrate. Đọc kỹ mục 1.7 để không
+> hiểu nhầm phạm vi áp dụng. Đã verify: backend `tsc`/`nest build` sạch, **272/272 test pass** (18 suite,
+> tăng từ 203 — thêm `roles.service.spec.ts`, `permissions.service.spec.ts`, và các spec module Reports/
+> Attendance-export mới không thuộc phạm vi tài liệu này); frontend `tsc`/`next build` sạch.
 > **Người xác nhận rule:** Chủ dự án (qua chat trực tiếp với Agent)
 
 ---
@@ -82,13 +81,96 @@
    ownership), KHÁC với RBAC theo role ở mục 1 — 2 tầng quyền này hoạt động **song song, không thay thế
    nhau**: Admin/Assistant vẫn luôn full quyền; Manager vẫn theo phòng ban; còn cơ chế "chính/phụ" chỉ
    mở thêm 1 lối truy cập hẹp cho đúng Employee được gán, không nới quyền chung của Employee.
+7. **Hệ thống Permission tuỳ chỉnh (Dynamic RBAC) — MỚI, xem mục 1.7 ngay dưới đây.** Đây KHÔNG thay thế
+   rule tĩnh ở mục 1-6 (rule đó vẫn là "hợp đồng" cho toàn bộ 9 module hiện có) — đây là 1 TẦNG BỔ SUNG,
+   hiện chỉ áp dụng cho đúng module `roles`/`permissions`. Đọc kỹ mục 1.7 trước khi thêm permission mới
+   hoặc tưởng nhầm cả app đã "tự do hoá" theo Admin tuỳ chỉnh — CHƯA đúng, mới chỉ 1 module.
+
+### 1.7. Hệ thống Permission tuỳ chỉnh (Dynamic RBAC) — cơ chế MỚI, đọc kỹ phạm vi áp dụng
+
+> Thêm 2026-08-28 (sau khi merge nhánh `Feat: Add module, service for role and permission and also
+> guard dynamic for it` → `Feat: Wiring endpoints for UI to use` → `Feat: create hooks to use Role and
+> page for it`). Đây là thay đổi kiến trúc LỚN NHẤT kể từ khi tài liệu này ra đời — đọc hết mục này
+> trước khi động vào bất kỳ thứ gì liên quan `roles`/`permissions`/`RolePermission`.
+
+**Mục tiêu nghiệp vụ (nguyên văn yêu cầu chủ dự án):** Admin (end-user, không cần dev) tự tạo Role mới,
+tự bật/tắt từng quyền cho từng Role qua UI — không cần sửa code/deploy lại. Khi Admin đổi ma trận quyền,
+**API và UI phải đồng bộ ngay** (BE thật sự chặn, FE thật sự ẩn/disable — không phải chỉ 1 trong 2).
+
+**3 khái niệm cốt lõi (đọc entity gốc để hiểu đầy đủ — `database/entities/{role,permission,
+role-permission}.entity.ts`):**
+
+| Khái niệm | Là gì | Ai sửa được |
+|---|---|---|
+| `RoleEntity` (bảng `roles`) | 1 vai trò — gồm 4 role hệ thống (`admin/manager/assistant/employee`, `isSystem=true`, không xoá được, `code` bất biến) + role tuỳ chỉnh Admin tự tạo (vd `mkt_manager`) | Admin (qua `roles.manage`) — tạo/sửa tên/xoá (role tuỳ chỉnh, chưa gán ai) |
+| `Permission` (bảng `permissions`) | 1 quyền **THẬT SỰ được code enforce**, dạng `resource.action` (vd `customers.assign`) | **KHÔNG ai sửa qua UI** — chỉ mở rộng khi dev thêm tính năng mới có kiểm tra quyền tương ứng, kèm migration seed. Cố ý chặn Admin tự đặt permission tuỳ ý — tránh tạo "quyền ảo" không ai enforce, Admin tưởng đã khoá nhưng thực ra không có tác dụng gì |
+| `RolePermission` (bảng `role_permissions`) | Ma trận thật: "Role X có Permission Y, phạm vi Z (`own`/`department`/`all`)". KHÔNG có dòng = không có quyền | Admin (qua `roles.manage`), chỉnh qua Drawer ở trang `/phan-quyen` |
+
+**⚠️ QUAN TRỌNG NHẤT — phạm vi áp dụng THỰC TẾ hiện tại (đừng hiểu nhầm):**
+
+Cơ chế này **CHỈ ĐANG ENFORCE cho đúng module `roles`/`permissions` (trang "Phân quyền")**. Toàn bộ 9
+module còn lại ở mục 2 (Khách hàng, Users, ZK Device, Link Groups, Media Sources, Nghỉ phép, Audit Logs,
+Đăng ký, Phòng ban) **VẪN dùng `@Roles()` enum tĩnh y hệt trước đây**, chưa migrate sang đọc từ
+`role_permissions`. Nghĩa là: hôm nay, nếu Admin vào trang Phân quyền và tắt quyền "Khách hàng" của
+Manager, **KHÔNG có tác dụng gì** — module Customer chưa đọc bảng này. Chỉ 2 permission thật sự có tác
+dụng ngay bây giờ: `roles.view` (xem trang Phân quyền) và `roles.manage` (sửa được ma trận). Các dòng
+`role_permissions` khác đã được seed sẵn (đúng theo hành vi `@Roles()` hiện tại của từng module — xem
+migration `AddCustomRbacSystem`) nhưng **chỉ mang tính "ghi lại đúng luật hiện có" để UI hiển thị nhất
+quán**, chưa phải nguồn enforce thật.
+
+→ **Hệ quả cho công việc tương lai:** migrate dần TỪNG module sang đọc `RolePermission` (thay `@Roles()`
+tĩnh bằng `@RequirePermission()` + `PermissionGuard`) là việc CÒN THIẾU, không phải bug — xem mục 4.
+
+**Cách hoạt động kỹ thuật (đúng nguyên tắc "API và UI đồng bộ" — mục 1, quy tắc kỹ thuật #1):**
+
+- **BE**: `PermissionGuard` (`common/guards/permission.guard.ts`) đọc metadata từ decorator
+  `@RequirePermission('resource.action')`, tra `role_permissions` theo `user.role` — 403 nếu không có
+  dòng khớp. Đây là nơi chặn THẬT SỰ, y hệt nguyên tắc cũ với `@Roles()`, chỉ khác nguồn dữ liệu (DB thay
+  vì hardcode).
+- **FE**: `GET /roles/my-permissions` (mở cho MỌI user đã đăng nhập, không cần quyền gì — tự hỏi "quyền
+  của chính tôi" không thể bị chính cơ chế phân quyền chặn, nếu không sẽ tự khoá luôn UI của chính mình)
+  trả về `{ [permissionKey]: scope | null }`. Hook `useMyPermissions()` (`lib/hooks/useMyPermissions.ts`)
+  là **hook DUY NHẤT** toàn app dùng để quyết định hiện/ẩn UI cho phần đã migrate — `can(key)` trả
+  true/false, `scope(key)` trả phạm vi. `staleTime=60s` — Admin đổi ma trận quyền, UI người khác tự cập
+  nhật trong tối đa 60s không cần F5 (riêng chính Admin vừa đổi thì cập nhật ngay, do
+  `useUpdateRolePermissions` tự invalidate `my-permissions` sau khi lưu).
+- **`nav-config.tsx`** hỗ trợ SONG SONG 2 cơ chế trên cùng 1 mảng `NAV_ITEMS`: field `roles: string[] |
+  null` (tĩnh, dùng cho 9 module chưa migrate) và field `permission?: string` (động, hiện CHỈ mục "Phân
+  quyền" dùng `permission: 'roles.view'`). Item nào có `permission` thì BỎ QUA `roles` — xem comment
+  trong chính file đó để biết quy tắc chọn dùng field nào khi thêm mục nav mới.
+- **Trang `/phan-quyen`** (`app/(dashboard)/phan-quyen/page.tsx`) tự áp dụng ĐÚNG cơ chế nó quản lý:
+  chặn cả ở mức route (redirect + toast nếu thiếu `roles.view`, phòng trường hợp gõ thẳng URL bỏ qua
+  sidebar) lẫn từng nút hành động (`roles.manage` quyết định hiện nút Tạo/Sửa/Xoá/Lưu ma trận, thiếu thì
+  chỉ xem read-only).
+
+**Endpoint đầy đủ (`roles.controller.ts`, tất cả qua `JwtAuthGuard` + `PermissionGuard`):**
+
+| Endpoint | Quyền cần | Ghi chú |
+|---|---|---|
+| `GET /roles/my-permissions` | Không cần gì (chỉ cần đăng nhập) | Self-referential fix — không thể đòi `roles.view` để hỏi "tôi có quyền gì", vì FE cần gọi API này TRƯỚC KHI biết mình có `roles.view` hay không |
+| `GET /roles` | `roles.view` | Danh sách Role kèm ma trận quyền đầy đủ |
+| `GET /permissions` | `roles.view` | Danh mục permission hệ thống (để UI vẽ ma trận theo `resource`) |
+| `POST /roles` | `roles.manage` | Tạo Role tuỳ chỉnh |
+| `PATCH /roles/:id` | `roles.manage` | Sửa tên/mô tả (không đổi được `code`) |
+| `DELETE /roles/:id` | `roles.manage` | Không xoá được role hệ thống hoặc role đang có người dùng |
+| `PATCH /roles/:id/permissions` | `roles.manage` | Ghi đè TOÀN BỘ ma trận quyền của 1 Role |
+
+**An toàn đã cài sẵn (đọc `roles.service.ts` để xác nhận):** không cho xoá 4 role hệ thống, không cho
+xoá role đang có user gán, không cho đổi `code` sau khi tạo (tránh mồ côi `users.role` — cột này giờ là
+`VARCHAR(50)` + FK tới `roles.code`, không còn ENUM cứng). **Chưa có** cơ chế chặn Admin tự khoá hết
+quyền `roles.manage` của chính role mình đang mang (tự khoá cửa) — xem mục 4.
 
 ---
 
 ## 2. Đối chiếu theo từng module (trạng thái thực tế — đọc trực tiếp code tại thời điểm cập nhật)
 
-> Chú thích: ✅ = đã khớp đúng rule ở mục 1. ⚠️ = chưa rà soát/chưa khớp — cần 1 phiên riêng để sửa.
-> 🟦 = có mô hình quyền riêng theo chủ đích (xem mục 1.6), không thuộc thang ✅/⚠️ thông thường.
+> Chú thích: ✅ = đã khớp đúng rule ở mục 1 (hoặc, riêng mục 2.10, khớp đúng cơ chế riêng của chính nó -
+> xem mục 1.7). ⚠️ = chưa rà soát/chưa khớp — cần 1 phiên riêng để sửa. 🟦 = có mô hình quyền riêng theo
+> chủ đích (xem mục 1.6), không thuộc thang ✅/⚠️ thông thường.
+>
+> **9 module 2.1→2.9 dùng `@Roles()` tĩnh (enum `Role` cũ) — mục 2.10 (`roles`/`permissions`) là module
+> DUY NHẤT dùng cơ chế Permission tuỳ chỉnh động (mục 1.7). 2 cơ chế này SONG SONG, module nào dùng cơ
+> chế nào đã ghi rõ trong tiêu đề từng mục con — đừng nhầm lẫn khi đọc.**
 
 ### 2.1. Khách hàng / Chia Data (`modules/customers`) — ✅ ĐÃ KHỚP (6 sub-resource đã vá xong)
 
@@ -306,6 +388,19 @@ tồn tại, sai role, bị khoá tài khoản, và không đụng `managerUserI
 chưa có UI chọn Manager cho phòng ban (trang quản lý Department nói chung còn chưa có, chỉ dùng
 `GET /departments/public` ở trang đăng ký) — Admin/Assistant hiện phải gọi thẳng API `PATCH
 /departments/:id` (qua Swagger hoặc công cụ khác) để gán Manager cho tới khi có UI.
+
+### 2.10. Phân quyền tuỳ chỉnh (`modules/roles`, `modules/permissions`) — ✅ ĐÃ KHỚP (module TỰ enforce chính nó)
+
+Xem mục 1.7 để hiểu đầy đủ kiến trúc. Đối chiếu nhanh trạng thái tuân thủ của chính module này:
+
+| Hành động | File chịu trách nhiệm |
+|---|---|
+| Guard | `PermissionGuard` + `@RequirePermission()` — KHÔNG dùng `@Roles()` tĩnh (module duy nhất trong 10 module hiện có làm vậy — hợp lý, vì đây chính là module ĐỊNH NGHĨA hệ thống quyền) |
+| FE — ẩn/hiện mục nav "Phân quyền" | `nav-config.tsx` (`permission: 'roles.view'`) + `getVisibleNavItems()` trong `layout.tsx`/`page.tsx` (trang chủ) |
+| FE — chặn vào thẳng URL | `phan-quyen/page.tsx` — `useEffect` redirect + `message.warning` nếu thiếu `roles.view`, cùng pattern `audit-logs/page.tsx` nhưng dùng permission động thay vì role tĩnh |
+| FE — ẩn nút Tạo/Sửa/Xoá/Lưu ma trận | `canManage = can('roles.manage')` — thiếu thì Drawer chuyển read-only (`Segmented`/`Checkbox` disabled), có `Alert` báo rõ "Chỉ xem" |
+| Xoá | Không áp rule "chỉ Admin" tuyệt đối như mục 1 — thay vào đó chặn theo nghiệp vụ riêng: không xoá được role hệ thống, không xoá được role đang có user gán (xem `roles.service.ts`). Đây là **ngoại lệ có chủ đích** (mục 1.6) vì bản chất "xoá 1 Role" khác hẳn "xoá 1 bản ghi dữ liệu nghiệp vụ" |
+| Spec test | `roles.service.spec.ts`, `permissions.service.spec.ts` |
 
 ---
 
