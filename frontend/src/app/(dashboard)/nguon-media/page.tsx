@@ -168,7 +168,7 @@ export default function MediaSourcesPage() {
           <Tag color="green">Đang mở</Tag>
         ),
     },
-    {
+    ...((canManage || canDelete) ? [{
       title: 'Thao tác',
       key: 'action',
       width: 260,
@@ -201,7 +201,7 @@ export default function MediaSourcesPage() {
           )}
         </Space>
       ),
-    },
+    }] : []),
   ];
 
   return (

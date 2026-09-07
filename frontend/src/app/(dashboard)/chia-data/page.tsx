@@ -421,25 +421,22 @@ export default function ChiaDataPage() {
         ? dayjs(v).format('DD/MM/YYYY')
         : '-',
     },
-    {
+    ...(canDeleteCustomer ? [{
       title: 'Thao tác', width: 60, align: 'center' as const,
-      render: (_: any, r: Customer) => {
-        if (!canDeleteCustomer) return null;
-        return (
-          <Popconfirm
-            title="Xóa khách hàng"
-            description="Bạn có chắc muốn xóa?"
-            onConfirm={(e) => { e?.stopPropagation(); handleDeleteCustomer(r.id); }}
-            onCancel={(e) => e?.stopPropagation()}
-            okText="Xóa"
-            cancelText="Hủy"
-            okButtonProps={{ danger: true }}
-          >
-            <Button type="text" danger icon={<DeleteOutlined />} onClick={(e) => e.stopPropagation()} size="small" />
-          </Popconfirm>
-        );
-      }
-    },
+      render: (_: any, r: Customer) => (
+        <Popconfirm
+          title="Xóa khách hàng"
+          description="Bạn có chắc muốn xóa?"
+          onConfirm={(e) => { e?.stopPropagation(); handleDeleteCustomer(r.id); }}
+          onCancel={(e) => e?.stopPropagation()}
+          okText="Xóa"
+          cancelText="Hủy"
+          okButtonProps={{ danger: true }}
+        >
+          <Button type="text" danger icon={<DeleteOutlined />} onClick={(e) => e.stopPropagation()} size="small" />
+        </Popconfirm>
+      )
+    }] : []),
   ];
 
   // ── COLUMNS: Bảng Đã assign ────────────────────────────
@@ -508,25 +505,22 @@ export default function ChiaDataPage() {
       render: (v: string | null) => v
         ? dayjs(v).format('DD/MM/YYYY') : '-',
     },
-    {
+    ...(canDeleteCustomer ? [{
       title: 'Thao tác', width: 60, align: 'center' as const,
-      render: (_: any, r: Customer) => {
-        if (!canDeleteCustomer) return null;
-        return (
-          <Popconfirm
-            title="Xóa khách hàng"
-            description="Bạn có chắc muốn xóa?"
-            onConfirm={(e) => { e?.stopPropagation(); handleDeleteCustomer(r.id); }}
-            onCancel={(e) => e?.stopPropagation()}
-            okText="Xóa"
-            cancelText="Hủy"
-            okButtonProps={{ danger: true }}
-          >
-            <Button type="text" danger icon={<DeleteOutlined />} onClick={(e) => e.stopPropagation()} size="small" />
-          </Popconfirm>
-        );
-      }
-    },
+      render: (_: any, r: Customer) => (
+        <Popconfirm
+          title="Xóa khách hàng"
+          description="Bạn có chắc muốn xóa?"
+          onConfirm={(e) => { e?.stopPropagation(); handleDeleteCustomer(r.id); }}
+          onCancel={(e) => e?.stopPropagation()}
+          okText="Xóa"
+          cancelText="Hủy"
+          okButtonProps={{ danger: true }}
+        >
+          <Button type="text" danger icon={<DeleteOutlined />} onClick={(e) => e.stopPropagation()} size="small" />
+        </Popconfirm>
+      )
+    }] : []),
   ];
 
   // ── Phạm vi XEM theo role - dùng để lọc dropdown "Data Owner"/"Lọc theo
