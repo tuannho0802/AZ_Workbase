@@ -15,9 +15,8 @@ import {
     App,
     Typography,
     Drawer,
-    List,
     Avatar,
-    Empty,
+    Tooltip,
 } from 'antd';
 import { PlusOutlined, EditOutlined, EyeOutlined, UserOutlined } from '@ant-design/icons';
 import { useQuery } from '@tanstack/react-query';
@@ -31,6 +30,7 @@ import {
 import { useUsersList } from '@/lib/hooks/useUsers';
 import { usersApi } from '@/lib/api/users.api';
 import { Department } from '@/lib/api/departments.api';
+import { SimpleList } from '@/components/common/SimpleList';
 
 const { Title, Text } = Typography;
 
@@ -38,6 +38,13 @@ interface DeptUserPreview {
     id: number;
     name: string;
     email: string;
+    // ⚠️ Bắt buộc có field này - Tag "Manager" trong Drawer phải dựa vào
+    // ĐÚNG role thật của từng user (u.role === 'manager'), KHÔNG dựa vào so
+    // sánh với `department.managerUserId` (chỉ là 1 FK DUY NHẤT được "chính
+    // thức" gán quản lý phòng ban - phòng ban có thể có NHIỀU user khác
+    // cũng mang role Manager mà chưa/không phải người được gán FK đó). Bug
+    // cũ: chỉ đúng 1 người có Tag dù phòng ban có 2 Manager thật.
+    role: string;
 }
 
 export default function DepartmentsPage() {
@@ -69,16 +76,6 @@ export default function DepartmentsPage() {
     const createMutation = useCreateDepartment();
     const updateMutation = useUpdateDepartment();
 
-    // Danh sách TẤT CẢ user (không lọc role) - chỉ dùng để tra cứu tên hiển
-    // thị đúng cho managerUserId đang lưu trên từng phòng ban, kể cả trường
-    // hợp hiếm user đó sau này bị đổi role khỏi Manager (không muốn cột
-    // "Quản lý" hiện trống/ID thô khó hiểu).
-    const { users: allUsers } = useUsersList();
-    const userNameById = useMemo(
-        () => new Map((allUsers || []).map((u: any) => [u.id, u.name])),
-        [allUsers],
-    );
-
     // Danh sách ứng viên CHO DROPDOWN gán Manager - chỉ user có role Manager,
     // khớp đúng validate ở BE (`managerCandidate.role !== Role.MANAGER` ->
     // BadRequestException) - lọc trước ở FE để tránh chọn xong mới báo lỗi.
@@ -88,6 +85,23 @@ export default function DepartmentsPage() {
         label: u.isActive ? u.name : `${u.name} (đã khoá)`,
         disabled: !u.isActive,
     }));
+
+    // ⚠️ Cột "Quản lý (Manager)" ở bảng phải hiện HẾT những ai đang mang role
+    // Manager TRONG phòng ban đó - không chỉ đúng 1 người theo
+    // `department.managerUserId` (đó chỉ là FK "chính thức", phòng ban vẫn
+    // có thể có thêm user khác cũng role Manager chưa/không phải người được
+    // gán FK này). Tái dùng LUÔN `managerCandidates` (đã lọc role=manager ở
+    // trên cho dropdown) - gom theo departmentId, không cần gọi API riêng.
+    const managersByDeptId = useMemo(() => {
+        const map = new Map<number, { id: number; name: string }[]>();
+        for (const u of managerCandidates || []) {
+            const deptId = u.departmentId ?? u.department?.id;
+            if (!deptId) continue;
+            if (!map.has(deptId)) map.set(deptId, []);
+            map.get(deptId)!.push({ id: u.id, name: u.name });
+        }
+        return map;
+    }, [managerCandidates]);
 
     const [modalOpen, setModalOpen] = useState(false);
     const [editingDept, setEditingDept] = useState<Department | null>(null);
@@ -174,30 +188,24 @@ export default function DepartmentsPage() {
         },
         {
             title: 'Quản lý (Manager)',
-            dataIndex: 'managerUserId',
-            key: 'managerUserId',
-            render: (managerUserId: number | null | undefined) =>
-                managerUserId ? (
-                    userNameById.get(managerUserId) || `#${managerUserId}`
-                ) : (
-                    <Text type="secondary">Chưa gán</Text>
-                ),
-        },
-        {
-            title: 'Nhân viên',
-            key: 'employees',
-            width: 200,
+            key: 'managers',
             render: (_: any, record: Department) => {
-                const list = record.employees ?? [];
-                if (list.length === 0) return <Text type="secondary">Chưa có ai</Text>;
-                const rest = list.length - 1;
+                // ⚠️ Đổi từ "chỉ hiện 1 tên theo managerUserId" sang cùng
+                // pattern "+N" như cột Nhân viên trước đây (đúng yêu cầu:
+                // hiện HẾT user role Manager của phòng ban, không chỉ đúng 1
+                // FK chính thức).
+                const managers = managersByDeptId.get(record.id) ?? [];
+                if (managers.length === 0) return <Text type="secondary">Chưa gán</Text>;
+                const rest = managers.length - 1;
                 return (
                     <span>
-                        {list[0].name}
+                        {managers[0].name}
                         {rest > 0 && (
-                            <Tag style={{ marginLeft: 6 }} color="blue">
-                                +{rest}
-                            </Tag>
+                            <Tooltip title={managers.slice(1).map((m) => m.name).join(', ')}>
+                                <Tag style={{ marginLeft: 6 }} color="gold">
+                                    +{rest}
+                                </Tag>
+                            </Tooltip>
                         )}
                     </span>
                 );
@@ -314,20 +322,23 @@ export default function DepartmentsPage() {
                 onClose={() => setViewingDept(null)}
                 size={400}
             >
-                <List
+                <SimpleList<DeptUserPreview>
                     loading={deptUsersLoading}
                     dataSource={deptUsersList}
-                    locale={{ emptyText: <Empty description="Phòng ban này chưa có nhân viên nào" /> }}
-                    renderItem={(u: DeptUserPreview) => (
-                        <List.Item>
-                            <List.Item.Meta
-                                avatar={<Avatar icon={<UserOutlined />} />}
-                                title={u.name}
-                                description={u.email}
-                            />
-                            {u.id === viewingDept?.managerUserId && <Tag color="gold">Manager</Tag>}
-                        </List.Item>
-                    )}
+                    rowKey={(u) => u.id}
+                    emptyText="Phòng ban này chưa có nhân viên nào"
+                    renderMeta={(u) => ({
+                        avatar: <Avatar icon={<UserOutlined />} />,
+                        title: u.name,
+                        description: u.email,
+                    })}
+                    renderActions={(u) =>
+                        // ⚠️ Fix bug thật: TRƯỚC ĐÂY so `u.id === viewingDept?.managerUserId`
+                        // (chỉ đúng 1 người - đúng FK "chính thức" của phòng
+                        // ban) - nay so ĐÚNG role thật của từng user, hiện Tag
+                        // cho MỌI người đang mang role Manager, không chỉ 1.
+                        u.role === 'manager' ? [<Tag key="manager-tag" color="gold">Manager</Tag>] : []
+                    }
                 />
             </Drawer>
         </div>
