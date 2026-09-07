@@ -289,6 +289,8 @@ export class CustomersService {
       userRole,
       scope,
     );
+
+    this.applyCustomerListFilters(queryBuilder, {
       search,
       source,
       status,
@@ -869,6 +871,7 @@ export class CustomersService {
     callerId: number,
     callerRole: string,
     reason?: string,
+    scope?: string | null,
   ) {
     const userRepo = this.customersRepository.manager.getRepository(User);
 
@@ -888,12 +891,23 @@ export class CustomersService {
     // Removed department check for bulk assign as visibility is strictly owned
     // Managers and Assistants can assign customers they own to anyone.
 
-    // Nếu người gọi là MANAGER, lấy 1 LẦN DUY NHẤT danh sách phòng ban mà
-    // họ quản lý (department.manager_user_id = callerId) để kiểm tra
-    // trong vòng lặp bên dưới - KHÔNG query lại cho từng customer (tránh
-    // lặp lại đúng lỗi N+1 mà phần tối ưu batch bên dưới đang cố tránh).
+    // ⚠️ FIX BUG THẬT (rà soát dynamic RBAC, cùng loại bug đã sửa ở
+    // findAll/getStats*/getAssigned...): trước đây so sánh CỨNG
+    // `callerRole === Role.MANAGER` để quyết định có lấy danh sách phòng
+    // ban quản lý hay không - "mù" trước role TUỲ CHỈNH được cấp
+    // `customers.assign` scope='department' (vd role "team_lead" mới tạo).
+    // Giờ dùng đúng `scope` PermissionGuard đã tra từ role_permissions,
+    // fallback về role hệ thống cũ khi thiếu scope (route cũ/role hệ thống
+    // không có cấu hình override) - khớp đúng cách applyViewFilter() đang
+    // làm.
+    const isDepartmentScope =
+      scope === PermissionScope.DEPARTMENT || (!scope && callerRole === Role.MANAGER);
+    const isAllScope =
+      scope === PermissionScope.ALL ||
+      (!scope && (callerRole === Role.ADMIN || callerRole === Role.ASSISTANT));
+
     let callerManagedDepartmentIds: number[] = [];
-    if (callerRole === Role.MANAGER) {
+    if (isDepartmentScope) {
       const departmentRepo = this.customersRepository.manager.getRepository(Department);
       const managed = await departmentRepo.find({
         where: { managerUserId: callerId },
@@ -947,9 +961,9 @@ export class CustomersService {
       // HOẶC khi chính họ đang là sales chính hiện tại (re-delegate lead
       // của mình cho đồng nghiệp) - KHÔNG cho phép "giật" 1 khách hàng đã
       // thuộc về người khác chỉ vì họ là người tạo ra data ban đầu.
-      if (callerRole === Role.ADMIN || callerRole === Role.ASSISTANT) {
+      if (isAllScope) {
         // Được phép, không cần kiểm tra thêm.
-      } else if (callerRole === Role.MANAGER) {
+      } else if (isDepartmentScope) {
         if (
           customer.departmentId == null ||
           !callerManagedDepartmentIds.includes(customer.departmentId)
@@ -1526,7 +1540,7 @@ export class CustomersService {
     return { todayList, historyList };
   }
 
-  async getStatsByStatus(userId: number, userRole: string) {
+  async getStatsByStatus(userId: number, userRole: string, scope?: string | null) {
     // ⚠️ Trước đây hàm này load TOÀN BỘ customer (mọi status) + join salesUser
     // + createdBy vào RAM rồi mới .filter() bằng JS để tách closed/notClosed.
     // Càng nhiều khách hàng, query này càng chậm tuyến tính vì phải kéo hết
@@ -1548,15 +1562,21 @@ export class CustomersService {
       status: 'closed',
     });
 
+    // FIX BUG THẬT (rà soát dynamic RBAC): thiếu tham số `scope` suốt từ
+    // đầu - dù helper đã hỗ trợ từ trước, khiến scope cấu hình động ở trang
+    // Phân quyền cho `customers.view` hoàn toàn không có tác dụng ở đây,
+    // luôn fallback về hardcode role hệ thống cũ.
     CustomerAccessHelper.applyViewFilter(
       closedQuery,
       userId,
       userRole,
+      scope,
     );
     CustomerAccessHelper.applyViewFilter(
       notClosedQuery,
       userId,
       userRole,
+      scope,
     );
 
     const STATS_ROW_CAP = 1000;
@@ -1581,6 +1601,7 @@ export class CustomersService {
     endDate?: string,
     sortBy: string = 'depositDate',
     sortOrder: 'ASC' | 'DESC' = 'DESC',
+    scope?: string | null,
   ) {
     const queryBuilder = this.depositsRepository
       .createQueryBuilder('deposit')
@@ -1589,10 +1610,13 @@ export class CustomersService {
       .leftJoinAndSelect('customer.salesUser', 'salesUser')
       .where('customer.deletedAt IS NULL');
 
+    // FIX BUG THẬT (rà soát dynamic RBAC): thiếu tham số `scope`, xem giải
+    // thích đầy đủ ở getStatsByStatus() phía trên.
     CustomerAccessHelper.applyViewFilter(
       queryBuilder,
       userId,
       userRole,
+      scope,
     );
 
     // Date range filtering on depositDate
@@ -1708,6 +1732,7 @@ export class CustomersService {
     invalidType: string = 'future_date',
     page = 1,
     limit = 20,
+    scope?: string | null,
   ) {
     const todayStr = todayVnStr();
 
@@ -1727,7 +1752,9 @@ export class CustomersService {
       qb.andWhere('customer.inputDate > :todayStr', { todayStr });
     }
 
-    CustomerAccessHelper.applyViewFilter(qb, userId, userRole);
+    // FIX BUG THẬT (rà soát dynamic RBAC): thiếu tham số `scope`, xem giải
+    // thích đầy đủ ở getStatsByStatus() phía trên.
+    CustomerAccessHelper.applyViewFilter(qb, userId, userRole, scope);
 
     const [data, total] = await qb
       .orderBy('customer.inputDate', 'DESC')

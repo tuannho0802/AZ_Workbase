@@ -32,22 +32,22 @@ export class CustomersController {
   @Get('stats')
   @RequirePermission('customers.view')
   @ApiOperation({ summary: 'Lấy thống kê khách hàng (Option A - Theo quyền)' })
-  async getStats(@GetUser() user: any) {
-    return this.customersService.getStats(user.id, user.role);
+  async getStats(@GetUser() user: any, @GetPermissionScope() scope: string | null | undefined) {
+    return this.customersService.getStats(user.id, user.role, scope);
   }
 
   @Get('stats/today')
   @RequirePermission('customers.view')
   @ApiOperation({ summary: 'Lấy danh sách khách hàng mới hôm nay' })
-  async getStatsToday(@GetUser() user: any) {
-    return this.customersService.getStatsToday(user.id, user.role);
+  async getStatsToday(@GetUser() user: any, @GetPermissionScope() scope: string | null | undefined) {
+    return this.customersService.getStatsToday(user.id, user.role, scope);
   }
 
   @Get('stats/by-status')
   @RequirePermission('customers.view')
   @ApiOperation({ summary: 'Lấy danh sách khách hàng theo trạng thái chốt' })
-  async getStatsByStatus(@GetUser() user: any) {
-    return this.customersService.getStatsByStatus(user.id, user.role);
+  async getStatsByStatus(@GetUser() user: any, @GetPermissionScope() scope: string | null | undefined) {
+    return this.customersService.getStatsByStatus(user.id, user.role, scope);
   }
 
   @Get('stats/deposits')
@@ -55,12 +55,13 @@ export class CustomersController {
   @ApiOperation({ summary: 'Lấy danh sách nạp tiền cho Dashboard (hỗ trợ lọc theo ngày)' })
   async getAllDepositsStats(
     @GetUser() user: any,
+    @GetPermissionScope() scope: string | null | undefined,
     @Query('startDate') startDate?: string,
     @Query('endDate') endDate?: string,
     @Query('sortBy') sortBy?: string,
     @Query('sortOrder') sortOrder?: 'ASC' | 'DESC',
   ) {
-    return this.customersService.getAllDepositsStats(user.id, user.role, startDate, endDate, sortBy, sortOrder);
+    return this.customersService.getAllDepositsStats(user.id, user.role, startDate, endDate, sortBy, sortOrder, scope);
   }
 
   @Get('reports/invalid-data')
@@ -71,6 +72,7 @@ export class CustomersController {
   })
   async getInvalidDataReport(
     @GetUser() user: any,
+    @GetPermissionScope() scope: string | null | undefined,
     @Query('invalidType') invalidType?: string,
     @Query('page') page?: string,
     @Query('limit') limit?: string,
@@ -81,6 +83,7 @@ export class CustomersController {
       invalidType,
       page ? parseInt(page, 10) : 1,
       limit ? parseInt(limit, 10) : 20,
+      scope,
     );
   }
 
@@ -97,21 +100,30 @@ export class CustomersController {
   @Patch('bulk-assign')
   @RequirePermission('customers.assign')
   @ApiOperation({ summary: 'Bàn giao Khách hàng hàng loạt cho Sales' })
-  async bulkAssign(@Body() dto: BulkAssignDto, @GetUser() user: any) {
+  async bulkAssign(
+    @Body() dto: BulkAssignDto,
+    @GetUser() user: any,
+    @GetPermissionScope() scope: string | null | undefined,
+  ) {
     return this.customersService.bulkAssign(
       dto.customerIds,
       dto.salesUserIds,
       user.id,
       user.role,
-      dto.reason
+      dto.reason,
+      scope,
     );
   }
 
   @Get('unassigned')
   @RequirePermission('customers.view')
   @ApiOperation({ summary: 'Lấy danh sách khách hàng chưa assign (salesUserId IS NULL)' })
-  getUnassigned(@GetUser() user: any, @Query() filters: CustomerFiltersDto) {
-    return this.customersService.getUnassigned(filters, user.id, user.role);
+  getUnassigned(
+    @GetUser() user: any,
+    @Query() filters: CustomerFiltersDto,
+    @GetPermissionScope() scope: string | null | undefined,
+  ) {
+    return this.customersService.getUnassigned(filters, user.id, user.role, scope);
   }
 
   @Get('assigned')
@@ -119,6 +131,7 @@ export class CustomersController {
   @ApiOperation({ summary: 'Lấy danh sách khách hàng đã gán cho Sales (có phân quyền theo role)' })
   async getAssigned(
     @GetUser() user: any,
+    @GetPermissionScope() scope: string | null | undefined,
     @Query('page') page = '1',
     @Query('limit') limit = '20',
     @Query('salesUserId') salesUserId?: string,
@@ -133,6 +146,7 @@ export class CustomersController {
       search,
       userId: user.id,
       userRole: user.role,
+      scope,
     });
   }
 
@@ -177,8 +191,12 @@ export class CustomersController {
   @UseInterceptors(new CacheControlInterceptor(0, true))
   @ApiOperation({ summary: 'Lấy danh sách khách hàng (có phân quyền)' })
   @ApiResponse({ status: 200, description: 'Trả về danh sách khách hàng và thông tin phân trang' })
-  findAll(@GetUser() user: any, @Query() filters: CustomerFiltersDto) {
-    return this.customersService.findAll(filters, user.id, user.role);
+  findAll(
+    @GetUser() user: any,
+    @Query() filters: CustomerFiltersDto,
+    @GetPermissionScope() scope: string | null | undefined,
+  ) {
+    return this.customersService.findAll(filters, user.id, user.role, scope);
   }
 
   @Get('trash')
@@ -207,36 +225,58 @@ export class CustomersController {
   @ApiOperation({ summary: 'Lấy thông tin chi tiết khách hàng' })
   @ApiResponse({ status: 200, description: 'Chi tiết khách hàng (kèm Sales, Department, Deposits, Notes)' })
   @ApiResponse({ status: 404, description: 'Không tìm thấy khách hàng hoặc không có quyền xem' })
-  findOne(@GetUser() user: any, @Param('id') id: string) {
-    return this.customersService.findOne(+id, user.id, user.role);
+  findOne(
+    @GetUser() user: any,
+    @Param('id') id: string,
+    @GetPermissionScope() scope: string | null | undefined,
+  ) {
+    return this.customersService.findOne(+id, user.id, user.role, scope);
   }
 
   @Post(':id/notes')
   @RequirePermission('customers.note')
   @ApiOperation({ summary: 'Thêm ghi chú khách hàng' })
-  async createNote(@Param('id') id: string, @Body() dto: CreateCustomerNoteDto, @GetUser() user: any) {
-    return this.customersService.createNote(+id, dto, user.id, user.role);
+  async createNote(
+    @Param('id') id: string,
+    @Body() dto: CreateCustomerNoteDto,
+    @GetUser() user: any,
+    @GetPermissionScope() scope: string | null | undefined,
+  ) {
+    return this.customersService.createNote(+id, dto, user.id, user.role, scope);
   }
 
   @Post(':id/deposits')
   @RequirePermission('customers.manage')
   @ApiOperation({ summary: 'Thêm nạp tiền cho khách hàng - phạm vi kiểm tra trong service (giống findOne)' })
-  async createDeposit(@Param('id') id: string, @Body() dto: CreateDepositDto, @GetUser() user: any) {
-    return this.customersService.createDeposit(+id, dto, user.id, user.role);
+  async createDeposit(
+    @Param('id') id: string,
+    @Body() dto: CreateDepositDto,
+    @GetUser() user: any,
+    @GetPermissionScope() scope: string | null | undefined,
+  ) {
+    return this.customersService.createDeposit(+id, dto, user.id, user.role, scope);
   }
 
   @Get(':id/deposits')
   @RequirePermission('customers.view')
   @ApiOperation({ summary: 'Lấy danh sách nạp tiền (5 bản ghi gần nhất)' })
-  async getDeposits(@Param('id') id: string, @GetUser() user: any) {
-    return this.customersService.getDeposits(+id, user.id, user.role);
+  async getDeposits(
+    @Param('id') id: string,
+    @GetUser() user: any,
+    @GetPermissionScope() scope: string | null | undefined,
+  ) {
+    return this.customersService.getDeposits(+id, user.id, user.role, scope);
   }
 
   @Get(':id/assignment-history')
   @RequirePermission('customers.view')
   @ApiOperation({ summary: 'Lịch sử gán data của 1 khách hàng' })
-  async getAssignmentHistory(@Param('id') id: string, @GetUser() user: any) {
-    return this.customersService.getAssignmentHistory(+id, user.id, user.role);
+  async getAssignmentHistory(
+    @Param('id') id: string,
+    @GetUser() user: any,
+    @GetPermissionScope() scope: string | null | undefined,
+  ) {
+    return this.customersService.getAssignmentHistory(+id, user.id, user.role, scope);
   }
 
   @Delete('deposits/:id')
@@ -250,8 +290,13 @@ export class CustomersController {
   @RequirePermission('customers.edit')
   @ApiOperation({ summary: 'Cập nhật thông tin khách hàng' })
   @ApiResponse({ status: 200, description: 'Cập nhật khách hàng thành công' })
-  update(@GetUser() user: any, @Param('id') id: string, @Body() updateCustomerDto: UpdateCustomerDto) {
-    return this.customersService.update(+id, updateCustomerDto, user.id, user.role);
+  update(
+    @GetUser() user: any,
+    @Param('id') id: string,
+    @Body() updateCustomerDto: UpdateCustomerDto,
+    @GetPermissionScope() scope: string | null | undefined,
+  ) {
+    return this.customersService.update(+id, updateCustomerDto, user.id, user.role, scope);
   }
 
   @Delete(':id')
