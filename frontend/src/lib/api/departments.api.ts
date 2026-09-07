@@ -9,6 +9,12 @@ export interface Department {
   // này - nguồn xác định phạm vi "Manager theo phòng ban" (xem
   // update-department.dto.ts ở BE). null/undefined = chưa gán ai.
   managerUserId?: number | null;
+  // Preview rút gọn (chỉ id/name) nhân viên ĐANG active thuộc phòng ban này
+  // - trả kèm từ GET /departments (KHÔNG có ở GET /departments/:id hay
+  // response create/update). Dùng để hiển thị "Tên A +N" ở bảng danh sách,
+  // không dùng để hiển thị chi tiết (Drawer tự gọi GET /users?departmentId=
+  // để lấy đủ email/role/... khi cần).
+  employees?: { id: number; name: string }[];
 }
 
 export const departmentsApi = {

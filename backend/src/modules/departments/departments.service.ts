@@ -1,6 +1,6 @@
 import { Injectable, NotFoundException, ConflictException, BadRequestException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { Repository, In } from 'typeorm';
 import { Department } from '../../database/entities/department.entity';
 import { User } from '../../database/entities/user.entity';
 import { Role } from '../../common/enums/role.enum';
@@ -16,11 +16,49 @@ export class DepartmentsService {
     private readonly userRepository: Repository<User>,
   ) {}
 
+  /**
+   * Danh sách phòng ban, kèm PREVIEW nhân viên (id/name, KHÔNG kèm email/
+   * role/thông tin khác) đang thuộc từng phòng - phục vụ UI trang
+   * /phong-ban hiển thị dạng "Tên A +N" ở cột "Nhân viên" mà không cần Drawer
+   * gọi thêm request nào chỉ để đếm số lượng.
+   *
+   * Chỉ 2 QUERY DUY NHẤT bất kể có bao nhiêu phòng ban (KHÔNG N+1: không
+   * query riêng cho từng phòng) - query 1 lấy danh sách phòng, query 2 lấy
+   * TOÀN BỘ user active thuộc các phòng đó 1 lần, rồi gom nhóm ở tầng ứng
+   * dụng (JS Map), không phải tại DB.
+   *
+   * Khi cần xem ĐẦY ĐỦ chi tiết nhân viên (email, role...) - vd mở Drawer -
+   * FE tự gọi riêng `GET /users?departmentId=X`, KHÔNG dùng field
+   * `employees` rút gọn ở đây (tránh nhúng dữ liệu nặng cho MỌI phòng ban
+   * trong khi người dùng chỉ xem chi tiết 1 phòng tại 1 thời điểm).
+   */
   async findAll() {
-    return await this.departmentRepository.find({
+    const departments = await this.departmentRepository.find({
       where: { isActive: true },
       order: { name: 'ASC' },
     });
+
+    if (departments.length === 0) return [];
+
+    const deptIds = departments.map((d) => d.id);
+    const users = await this.userRepository.find({
+      where: { departmentId: In(deptIds), isActive: true },
+      select: ['id', 'name', 'departmentId'],
+      order: { name: 'ASC' },
+    });
+
+    const employeesByDept = new Map<number, { id: number; name: string }[]>();
+    for (const u of users) {
+      if (u.departmentId == null) continue;
+      const list = employeesByDept.get(u.departmentId) ?? [];
+      list.push({ id: u.id, name: u.name });
+      employeesByDept.set(u.departmentId, list);
+    }
+
+    return departments.map((d) => ({
+      ...d,
+      employees: employeesByDept.get(d.id) ?? [],
+    }));
   }
 
   /**

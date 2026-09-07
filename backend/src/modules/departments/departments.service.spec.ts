@@ -18,6 +18,7 @@ describe('DepartmentsService', () => {
   };
   const mockUserRepo = {
     findOne: jest.fn(),
+    find: jest.fn(),
   };
 
   beforeEach(async () => {
@@ -37,6 +38,64 @@ describe('DepartmentsService', () => {
   it('nên khởi tạo thành công service', () => {
     expect(service).toBeDefined();
   });
+
+  describe('findAll - Danh sách phòng ban kèm preview nhân viên (User 1 +N)', () => {
+    it('trả về [] ngay, KHÔNG query user, nếu chưa có phòng ban nào', async () => {
+      mockDepartmentRepo.find.mockResolvedValue([]);
+
+      const result = await service.findAll();
+
+      expect(result).toEqual([]);
+      expect(mockUserRepo.find).not.toHaveBeenCalled();
+    });
+
+    it('gom đúng nhân viên vào đúng phòng ban tương ứng (2 query, không N+1)', async () => {
+      mockDepartmentRepo.find.mockResolvedValue([
+        { id: 1, name: 'MKT' },
+        { id: 2, name: 'Sales' },
+      ]);
+      mockUserRepo.find.mockResolvedValue([
+        { id: 10, name: 'Anh A', departmentId: 1 },
+        { id: 11, name: 'Chị B', departmentId: 1 },
+        { id: 12, name: 'Anh C', departmentId: 2 },
+      ]);
+
+      const result = await service.findAll();
+
+      expect(mockUserRepo.find).toHaveBeenCalledTimes(1); // đúng 1 query cho MỌI phòng ban
+      expect(result[0]).toEqual(
+        expect.objectContaining({
+          id: 1,
+          employees: [
+            { id: 10, name: 'Anh A' },
+            { id: 11, name: 'Chị B' },
+          ],
+        }),
+      );
+      expect(result[1]).toEqual(
+        expect.objectContaining({ id: 2, employees: [{ id: 12, name: 'Anh C' }] }),
+      );
+    });
+
+    it('phòng ban không có nhân viên nào -> employees=[] (không bị undefined/lỗi)', async () => {
+      mockDepartmentRepo.find.mockResolvedValue([{ id: 1, name: 'MKT' }]);
+      mockUserRepo.find.mockResolvedValue([]);
+
+      const result = await service.findAll();
+
+      expect(result[0].employees).toEqual([]);
+    });
+
+    it('bỏ qua user chưa có departmentId (null) - không crash, không gán nhầm phòng ban', async () => {
+      mockDepartmentRepo.find.mockResolvedValue([{ id: 1, name: 'MKT' }]);
+      mockUserRepo.find.mockResolvedValue([{ id: 99, name: 'Chưa gán phòng', departmentId: null }]);
+
+      const result = await service.findAll();
+
+      expect(result[0].employees).toEqual([]);
+    });
+  });
+
 
   describe('findAllPublic - Danh sách công khai (KHÔNG cần đăng nhập)', () => {
     it('chỉ lọc isActive=true, chỉ select id/name (không lộ field khác)', async () => {

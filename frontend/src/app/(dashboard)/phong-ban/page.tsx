@@ -14,8 +14,13 @@ import {
     Switch,
     App,
     Typography,
+    Drawer,
+    List,
+    Avatar,
+    Empty,
 } from 'antd';
-import { PlusOutlined, EditOutlined } from '@ant-design/icons';
+import { PlusOutlined, EditOutlined, EyeOutlined, UserOutlined } from '@ant-design/icons';
+import { useQuery } from '@tanstack/react-query';
 import { useAuthStore } from '@/lib/stores/auth.store';
 import { useMyPermissions } from '@/lib/hooks/useMyPermissions';
 import {
@@ -24,9 +29,16 @@ import {
     useUpdateDepartment,
 } from '@/lib/hooks/useDepartments';
 import { useUsersList } from '@/lib/hooks/useUsers';
+import { usersApi } from '@/lib/api/users.api';
 import { Department } from '@/lib/api/departments.api';
 
 const { Title, Text } = Typography;
+
+interface DeptUserPreview {
+    id: number;
+    name: string;
+    email: string;
+}
 
 export default function DepartmentsPage() {
     const { can, isLoading: permissionsLoading } = useMyPermissions();
@@ -47,6 +59,11 @@ export default function DepartmentsPage() {
     // CHUNG 1 permission 'departments.manage' ở BE hiện tại (chưa tách
     // create/edit riêng như 1 số module khác) - xem departments.controller.ts.
     const canManage = can('departments.manage');
+    // Nút "Xem" (Drawer danh sách nhân viên) gọi GET /users?departmentId=X -
+    // endpoint này yêu cầu 'users.view' (users.controller.ts), KHÔNG phải
+    // 'departments.manage' - phải check ĐÚNG permission của endpoint sẽ gọi,
+    // tránh hiện nút rồi bấm vào dính 403 (rà soát permission UI).
+    const canViewUsers = can('users.view');
 
     const { departments, isLoading } = useDepartments();
     const createMutation = useCreateDepartment();
@@ -75,6 +92,18 @@ export default function DepartmentsPage() {
     const [modalOpen, setModalOpen] = useState(false);
     const [editingDept, setEditingDept] = useState<Department | null>(null);
     const [form] = Form.useForm();
+
+    // Drawer "Danh sách nhân viên phòng ban" - fetch riêng khi mở (không
+    // nhúng sẵn dữ liệu đầy đủ cho MỌI phòng ban vào bảng chính).
+    const [viewingDept, setViewingDept] = useState<Department | null>(null);
+    const { data: deptUsersData, isFetching: deptUsersLoading } = useQuery({
+        queryKey: ['department-users', viewingDept?.id],
+        queryFn: () => usersApi.getUsers({ departmentId: viewingDept!.id, limit: 100 }),
+        enabled: !!viewingDept && canViewUsers,
+    });
+    const deptUsersList: DeptUserPreview[] = Array.isArray(deptUsersData)
+        ? deptUsersData
+        : deptUsersData?.data ?? [];
 
     const openCreateModal = () => {
         setEditingDept(null);
@@ -155,6 +184,26 @@ export default function DepartmentsPage() {
                 ),
         },
         {
+            title: 'Nhân viên',
+            key: 'employees',
+            width: 200,
+            render: (_: any, record: Department) => {
+                const list = record.employees ?? [];
+                if (list.length === 0) return <Text type="secondary">Chưa có ai</Text>;
+                const rest = list.length - 1;
+                return (
+                    <span>
+                        {list[0].name}
+                        {rest > 0 && (
+                            <Tag style={{ marginLeft: 6 }} color="blue">
+                                +{rest}
+                            </Tag>
+                        )}
+                    </span>
+                );
+            },
+        },
+        {
             title: 'Trạng thái',
             dataIndex: 'isActive',
             key: 'isActive',
@@ -162,22 +211,25 @@ export default function DepartmentsPage() {
             render: (isActive: boolean) =>
                 isActive ? <Tag color="green">Đang hoạt động</Tag> : <Tag color="red">Ngừng hoạt động</Tag>,
         },
-        ...(canManage
-            ? [
-                {
-                    title: 'Thao tác',
-                    key: 'action',
-                    width: 100,
-                    render: (_: any, record: Department) => (
-                        <Space>
-                            <Button size="small" icon={<EditOutlined />} onClick={() => openEditModal(record)}>
-                                Sửa
-                            </Button>
-                        </Space>
-                    ),
-                },
-            ]
-            : []),
+        {
+            title: 'Thao tác',
+            key: 'action',
+            width: 160,
+            render: (_: any, record: Department) => (
+                <Space>
+                    {canViewUsers && (
+                        <Button size="small" icon={<EyeOutlined />} onClick={() => setViewingDept(record)}>
+                            Xem
+                        </Button>
+                    )}
+                    {canManage && (
+                        <Button size="small" icon={<EditOutlined />} onClick={() => openEditModal(record)}>
+                            Sửa
+                        </Button>
+                    )}
+                </Space>
+            ),
+        },
     ];
 
     return (
@@ -241,8 +293,9 @@ export default function DepartmentsPage() {
                             >
                                 <Select
                                     allowClear
-                                    showSearch
-                                    optionFilterProp="label"
+                                    showSearch={{
+                                        optionFilterProp: "label"
+                                    }}
                                     placeholder="Chưa gán Manager"
                                     options={managerOptions}
                                 />
@@ -254,6 +307,29 @@ export default function DepartmentsPage() {
                     )}
                 </Form>
             </Modal>
+
+            <Drawer
+                title={`Nhân viên phòng "${viewingDept?.name}"`}
+                open={!!viewingDept}
+                onClose={() => setViewingDept(null)}
+                size={400}
+            >
+                <List
+                    loading={deptUsersLoading}
+                    dataSource={deptUsersList}
+                    locale={{ emptyText: <Empty description="Phòng ban này chưa có nhân viên nào" /> }}
+                    renderItem={(u: DeptUserPreview) => (
+                        <List.Item>
+                            <List.Item.Meta
+                                avatar={<Avatar icon={<UserOutlined />} />}
+                                title={u.name}
+                                description={u.email}
+                            />
+                            {u.id === viewingDept?.managerUserId && <Tag color="gold">Manager</Tag>}
+                        </List.Item>
+                    )}
+                />
+            </Drawer>
         </div>
     );
 }
