@@ -79,6 +79,20 @@ export const customersApi = {
     return response.data;
   },
 
+  updateNote: async (
+    customerId: number,
+    noteId: number,
+    data: { note?: string; noteType?: string; isImportant?: boolean },
+  ) => {
+    const response = await axiosInstance.patch(`/customers/${customerId}/notes/${noteId}`, data);
+    return response.data;
+  },
+
+  deleteNote: async (customerId: number, noteId: number) => {
+    const response = await axiosInstance.delete(`/customers/${customerId}/notes/${noteId}`);
+    return response.data;
+  },
+
   createDeposit: async (id: number, data: { amount: number; depositDate: string; broker?: string; note?: string }) => {
     const response = await axiosInstance.post(`/customers/${id}/deposits`, data);
     return response.data;

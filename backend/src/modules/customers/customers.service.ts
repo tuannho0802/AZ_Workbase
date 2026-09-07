@@ -514,32 +514,23 @@ export class CustomersService {
       scope,
     );
 
-    // Áp dụng bộ lọc khách hàng (search, source, status, v.v.)
-    // Dùng as any vì applyCustomerListFilters expect type của customer repository query builder
-    this.applyCustomerListFilters(depositsQuery as any, {
-      search,
-      source,
-      status,
-      salesUserId,
-      departmentId,
-      dateFrom,
-      dateTo,
-      joinedGroups,
-    });
-
-    // Áp dụng bộ lọc thời gian nạp tiền giống hệt như query lấy dữ liệu bảng
-    if (dateFrom) {
-      depositsQuery.andWhere('deposit.depositDate >= :dateFrom', { dateFrom });
-    }
-    if (dateTo) {
-      depositsQuery.andWhere('deposit.depositDate <= :dateTo', { dateTo });
-    } else if (!dateFrom) {
-      // Default: 30 days
-      const thirtyDays = new Date();
-      thirtyDays.setDate(thirtyDays.getDate() - 30);
-      const thirtyDaysAgo = thirtyDays.toISOString().split('T')[0];
-      depositsQuery.andWhere('deposit.depositDate >= :thirtyDaysAgo', { thirtyDaysAgo });
-    }
+    // ⚠️ FIX BUG THẬT (mismatch "Tổng nạp" ở Dashboard vs cột "Nạp tiền" trên
+    // bảng danh sách - ảnh chụp màn hình đã báo): trước đây "Tổng nạp" cộng
+    // dồn TOÀN BỘ deposit từ trước tới giờ (không giới hạn ngày) của các
+    // customer trong phạm vi Xem, trong khi cột "Nạp tiền (30 ngày gần đây)"
+    // trên bảng CHỈ tính 30 ngày gần nhất (xem findAll()/getAllDepositsStats())
+    // - 2 con số vì vậy không khớp nhau (vd Employee thấy $40 ở thẻ tổng
+    // nhưng cộng tay các dòng trên bảng chỉ ra $10), khiến người dùng tưởng
+    // nhầm là lỗi rò rỉ dữ liệu ngoài phạm vi RBAC trong khi thực chất chỉ
+    // lệch khung thời gian tính toán. `getStats()` hiện KHÔNG nhận filter gì
+    // từ Frontend (xem `customersApi.getStats()` - gọi trơn không kèm query
+    // param), nên áp thẳng mặc định "30 ngày gần đây" giống hệt cách
+    // findAll()/getAllDepositsStats() tự fallback khi thiếu dateFrom, để 2
+    // con số luôn khớp nhau.
+    const thirtyDaysAgoDate = new Date();
+    thirtyDaysAgoDate.setDate(thirtyDaysAgoDate.getDate() - 30);
+    const thirtyDaysAgo = thirtyDaysAgoDate.toISOString().split('T')[0];
+    depositsQuery.andWhere('deposit.depositDate >= :thirtyDaysAgo', { thirtyDaysAgo });
 
     const totalDepositRaw = await depositsQuery
       .select('SUM(deposit.amount)', 'total')

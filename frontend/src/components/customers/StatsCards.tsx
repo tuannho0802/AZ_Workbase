@@ -87,7 +87,7 @@ export const StatsCards = ({ stats, loading, onCardClick }: StatsCardsProps) => 
           onMouseLeave={normalEffect}
         >
           <Statistic
-            title="Tổng nạp (USD)"
+            title="Tổng nạp (30 ngày, USD)"
             value={stats?.totalDepositAmount || 0}
             styles={{ content: { color: '#faad14' } }}
             formatter={(value) => new Intl.NumberFormat('en-US', { 

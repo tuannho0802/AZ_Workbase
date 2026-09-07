@@ -6,6 +6,7 @@ import {
   BadRequestException,
 } from '@nestjs/common';
 import { CustomersService } from './customers.service';
+import { PermissionsService } from '../permissions/permissions.service';
 import { Customer } from '../../database/entities/customer.entity';
 import { CustomerNote } from '../../database/entities/customer-note.entity';
 import { Deposit } from '../../database/entities/deposit.entity';
@@ -45,7 +46,7 @@ describe('CustomersService', () => {
     manager: { getRepository: jest.fn() },
   };
   const mockNoteRepo = {};
-  const mockDepositRepo = {};
+  const mockDepositRepo: { createQueryBuilder?: jest.Mock } = {};
   const mockAssignmentRepo = {
     findOne: jest.fn(),
     find: jest.fn(),
@@ -63,9 +64,17 @@ describe('CustomersService', () => {
     logAction: jest.fn(),
     logActionAsync: jest.fn(),
   };
+  // ⚠️ Provider thứ 7 (thêm khi triển khai sửa/xoá ghi chú - updateNote()/
+  // deleteNote() cần tra `customer_notes.edit`/`.delete` cho case sửa/xoá
+  // ghi chú CỦA NGƯỜI KHÁC). Mặc định trả `allowed: false` (an toàn hơn) -
+  // test nào cần bypass tự override bằng mockResolvedValueOnce/mockReturnValue.
+  const mockPermissionsService = {
+    hasPermission: jest.fn().mockResolvedValue({ allowed: false, scope: null }),
+  };
 
   beforeEach(async () => {
     jest.clearAllMocks();
+    mockPermissionsService.hasPermission.mockResolvedValue({ allowed: false, scope: null });
 
     const module: TestingModule = await Test.createTestingModule({
       providers: [
@@ -82,6 +91,7 @@ describe('CustomersService', () => {
           useValue: mockGroupMembershipRepo,
         },
         { provide: AuditService, useValue: mockAuditService },
+        { provide: PermissionsService, useValue: mockPermissionsService },
       ],
     }).compile();
 
@@ -599,6 +609,48 @@ describe('CustomersService', () => {
       const result = await service.bulkAssign([100], [5], 1, Role.ASSISTANT);
 
       expect(result.success).toBe(1);
+    });
+  });
+
+  describe('getStats - Thống kê Dashboard', () => {
+    function makeCountQb() {
+      const qb: any = {
+        where: jest.fn().mockReturnThis(),
+        andWhere: jest.fn().mockReturnThis(),
+        clone: jest.fn(),
+        getCount: jest.fn().mockResolvedValue(0),
+      };
+      qb.clone.mockReturnValue(qb);
+      return qb;
+    }
+
+    it('"Tổng nạp" CHỈ cộng deposit trong 30 ngày gần đây - khớp đúng khung thời gian với cột "Nạp tiền (30 ngày gần đây)" trên bảng (fix bug thật: trước đây cộng dồn TOÀN BỘ deposit từ trước tới giờ, gây lệch số với bảng - xem StatsCards.tsx)', async () => {
+      const countQb = makeCountQb();
+      mockCustomerRepo.createQueryBuilder.mockReturnValue(countQb);
+
+      const depositAndWhereCalls: { sql: string; params?: any }[] = [];
+      const depositQb: any = {
+        leftJoin: jest.fn().mockReturnThis(),
+        where: jest.fn().mockReturnThis(),
+        andWhere: jest.fn((sql: string, params?: any) => {
+          depositAndWhereCalls.push({ sql, params });
+          return depositQb;
+        }),
+        select: jest.fn().mockReturnThis(),
+        getRawOne: jest.fn().mockResolvedValue({ total: '10' }),
+      };
+      mockDepositRepo.createQueryBuilder = jest.fn().mockReturnValue(depositQb);
+
+      const result = await service.getStats(1, Role.ADMIN);
+
+      // Phải có đúng 1 điều kiện lọc theo ngày (>= 30 ngày trước) trên
+      // deposit.depositDate - không giới hạn nào khác (không có upper bound
+      // dateTo vì đây là "N ngày gần đây tính tới hiện tại", không phải
+      // khoảng tuỳ chọn).
+      const dateCondition = depositAndWhereCalls.find((c) => c.sql.includes('deposit.depositDate >='));
+      expect(dateCondition).toBeDefined();
+      expect(dateCondition!.params).toHaveProperty('thirtyDaysAgo');
+      expect(result.totalDepositAmount).toBe(10);
     });
   });
 });
