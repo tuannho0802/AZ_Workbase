@@ -67,6 +67,31 @@ const renderMarketingTag = (record: any) => {
   return <Tag color="purple" title="Marketing phụ trách">{marketingUser.name}</Tag>;
 };
 
+// Cùng pattern hiển thị với renderSalesTag: nhóm ĐẦU TIÊN hiện tên thật,
+// các nhóm còn lại gộp thành "+N", hover xem đủ tên qua Tooltip - áp dụng
+// cho "Đã joined nhóm" y hệt "Sales chính/phụ" theo đúng yêu cầu, thay vì
+// chỉ hiện số lượng trần trụi như trước.
+const renderJoinedGroupsTag = (record: any) => {
+  const groups: Array<{ id: number; name: string }> = record.joinedGroups || [];
+
+  if (groups.length === 0) {
+    return <Tag color="default">Chưa join</Tag>;
+  }
+
+  const [first, ...rest] = groups;
+
+  return (
+    <Space size={[0, 4]} align="center" wrap>
+      <Tag color="green" title="Nhóm đã join">{first.name}</Tag>
+      {rest.length > 0 && (
+        <Tooltip title={`Nhóm khác đã join:\n${rest.map((g) => g.name).join(', ')}`}>
+          <Tag color="cyan">+{rest.length}</Tag>
+        </Tooltip>
+      )}
+    </Space>
+  );
+};
+
 const CustomerMobileCard = ({ 
   record, 
   index, 
@@ -442,16 +467,10 @@ function CustomersPageContent() {
     },
     {
       title: 'Đã joined nhóm',
-      dataIndex: 'joinedGroupsCount',
-      key: 'joinedGroupsCount',
+      key: 'joinedGroups',
       width: isLaptop ? '7%' : '8%',
       align: 'center',
-      render: (count: number | undefined) =>
-        count && count > 0 ? (
-          <Tag color="green">{count} nhóm</Tag>
-        ) : (
-          <Tag color="default">Chưa join</Tag>
-        ),
+      render: (_: any, record: any) => renderJoinedGroupsTag(record),
     },
     {
       title: () => (
@@ -474,40 +493,48 @@ function CustomersPageContent() {
         </Tooltip>
       ),
     },
-    {
-      title: 'Thao tác',
-      key: 'action',
-      width: isLaptop ? 60 : 70,
-      align: 'center' as const,
-      render: (_: any, record: Customer) => {
-        if (!canDeleteCustomer) return null;
-
-        return (
-          <Popconfirm
-            title="Xóa khách hàng"
-            description="Bạn có chắc muốn xóa?"
-            onConfirm={(e) => {
-              e?.stopPropagation();
-              handleDeleteCustomer(record.id);
-            }}
-            onCancel={(e) => e?.stopPropagation()}
-            okText="Xóa"
-            cancelText="Hủy"
-            okButtonProps={{ danger: true }}
-          >
-            <Button
-              type="text"
-              danger
-              icon={<DeleteOutlined />}
-              onClick={(e) => e.stopPropagation()}
-              size="small"
-              title="Xóa khách hàng"
-            />
-          </Popconfirm>
-        );
-      },
-    },
-  ], [isLaptop, depositRangeForColumnLabel, page, pageSize, user]);
+    // Cột "Thao tác" (nút Xoá) - BỎ HẲN cả cột khi không có quyền
+    // `customers.delete`, thay vì để cột rỗng (mỗi ô render `null`) như
+    // trước - đỡ tốn 1 cột trống vô nghĩa trên bảng, đúng yêu cầu UI.
+    ...(canDeleteCustomer
+      ? [
+          {
+            title: 'Thao tác',
+            key: 'action',
+            width: isLaptop ? 60 : 70,
+            align: 'center' as const,
+            render: (_: any, record: Customer) => (
+              <Popconfirm
+                title="Xóa khách hàng"
+                description="Bạn có chắc muốn xóa?"
+                onConfirm={(e) => {
+                  e?.stopPropagation();
+                  handleDeleteCustomer(record.id);
+                }}
+                onCancel={(e) => e?.stopPropagation()}
+                okText="Xóa"
+                cancelText="Hủy"
+                okButtonProps={{ danger: true }}
+              >
+                <Button
+                  type="text"
+                  danger
+                  icon={<DeleteOutlined />}
+                  onClick={(e) => e.stopPropagation()}
+                  size="small"
+                  title="Xóa khách hàng"
+                />
+              </Popconfirm>
+            ),
+          },
+        ]
+      : []),
+  // ⚠️ FIX BUG THẬT: `canDeleteCustomer` trước đây KHÔNG nằm trong dependency
+  // array dù đã được dùng trong nội dung cột - nếu quyền tải xong SAU lần
+  // render đầu (permissions API luôn async), giá trị `false` ban đầu bị
+  // "đông cứng" vĩnh viễn trong closure của useMemo, cột Thao tác/nút Xoá
+  // sẽ không bao giờ hiện dù sau đó canDeleteCustomer đã thành true.
+  ], [isLaptop, depositRangeForColumnLabel, page, pageSize, user, canDeleteCustomer]);
 
   const handleFiltersChange = (newFilters: any) => {
     if (newFilters.search !== undefined) setSearchText(newFilters.search);

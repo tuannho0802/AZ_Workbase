@@ -97,6 +97,9 @@ export interface Customer {
   // query/trang ở backend (customers.service.ts findAll()), KHÔNG phải
   // N+1 query. Chỉ có mặt khi backend trả kèm (luôn có ở findAll()).
   joinedGroupsCount?: number;
+  /** Tên các nhóm đã join (kèm id) - dùng để hiển thị tag theo pattern
+   * giống "Sales chính/phụ" (tên nhóm đầu + "+N", hover xem chi tiết). */
+  joinedGroups?: Array<{ id: number; name: string }>;
   notes?: CustomerNote[];
   deposits?: Deposit[];
   createdById?: number;
