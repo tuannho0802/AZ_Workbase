@@ -18,7 +18,7 @@ import {
     Avatar,
     Tooltip,
 } from 'antd';
-import { PlusOutlined, EditOutlined, EyeOutlined, UserOutlined } from '@ant-design/icons';
+import { PlusOutlined, EditOutlined, EyeOutlined, UserOutlined, DeleteOutlined } from '@ant-design/icons';
 import { useQuery } from '@tanstack/react-query';
 import { useAuthStore } from '@/lib/stores/auth.store';
 import { useMyPermissions } from '@/lib/hooks/useMyPermissions';
@@ -26,6 +26,7 @@ import {
     useDepartments,
     useCreateDepartment,
     useUpdateDepartment,
+    useDeleteDepartment,
 } from '@/lib/hooks/useDepartments';
 import { useUsersList } from '@/lib/hooks/useUsers';
 import { usersApi } from '@/lib/api/users.api';
@@ -53,45 +54,23 @@ export default function DepartmentsPage() {
     const router = useRouter();
     const user = useAuthStore((s) => s.user);
 
-    // Khớp @RequirePermission('departments.view') ở departments.controller.ts
-    // (GET /departments) - cùng pattern chặn UI đã dùng ở nguon-media,
-    // nhom-lien-ket... (chặn thật sự luôn nằm ở BE, đây chỉ để UX gọn).
     useEffect(() => {
         if (!permissionsLoading && user && !can('departments.view')) {
             router.replace('/customers');
         }
     }, [user, router, permissionsLoading, can]);
 
-    // ⚠️ Cả tạo mới (POST) LẪN sửa (PATCH, bao gồm gán Manager) đều dùng
-    // CHUNG 1 permission 'departments.manage' ở BE hiện tại (chưa tách
-    // create/edit riêng như 1 số module khác) - xem departments.controller.ts.
     const canManage = can('departments.manage');
-    // Nút "Xem" (Drawer danh sách nhân viên) gọi GET /users?departmentId=X -
-    // endpoint này yêu cầu 'users.view' (users.controller.ts), KHÔNG phải
-    // 'departments.manage' - phải check ĐÚNG permission của endpoint sẽ gọi,
-    // tránh hiện nút rồi bấm vào dính 403 (rà soát permission UI).
+    const canDelete = can('departments.delete');
     const canViewUsers = can('users.view');
 
     const { departments, isLoading } = useDepartments();
     const createMutation = useCreateDepartment();
     const updateMutation = useUpdateDepartment();
+    const deleteMutation = useDeleteDepartment();
 
-    // Danh sách ứng viên CHO DROPDOWN gán Manager - chỉ user có role Manager,
-    // khớp đúng validate ở BE (`managerCandidate.role !== Role.MANAGER` ->
-    // BadRequestException) - lọc trước ở FE để tránh chọn xong mới báo lỗi.
     const { users: managerCandidates } = useUsersList('manager');
-    const managerOptions = (managerCandidates || []).map((u: any) => ({
-        value: u.id,
-        label: u.isActive ? u.name : `${u.name} (đã khoá)`,
-        disabled: !u.isActive,
-    }));
 
-    // ⚠️ Cột "Quản lý (Manager)" ở bảng phải hiện HẾT những ai đang mang role
-    // Manager TRONG phòng ban đó - không chỉ đúng 1 người theo
-    // `department.managerUserId` (đó chỉ là FK "chính thức", phòng ban vẫn
-    // có thể có thêm user khác cũng role Manager chưa/không phải người được
-    // gán FK này). Tái dùng LUÔN `managerCandidates` (đã lọc role=manager ở
-    // trên cho dropdown) - gom theo departmentId, không cần gọi API riêng.
     const managersByDeptId = useMemo(() => {
         const map = new Map<number, { id: number; name: string }[]>();
         for (const u of managerCandidates || []) {
@@ -107,8 +86,6 @@ export default function DepartmentsPage() {
     const [editingDept, setEditingDept] = useState<Department | null>(null);
     const [form] = Form.useForm();
 
-    // Drawer "Danh sách nhân viên phòng ban" - fetch riêng khi mở (không
-    // nhúng sẵn dữ liệu đầy đủ cho MỌI phòng ban vào bảng chính).
     const [viewingDept, setViewingDept] = useState<Department | null>(null);
     const { data: deptUsersData, isFetching: deptUsersLoading } = useQuery({
         queryKey: ['department-users', viewingDept?.id],
@@ -118,6 +95,11 @@ export default function DepartmentsPage() {
     const deptUsersList: DeptUserPreview[] = Array.isArray(deptUsersData)
         ? deptUsersData
         : deptUsersData?.data ?? [];
+
+    // --- Delete modal ---
+    const [deleteModalOpen, setDeleteModalOpen] = useState(false);
+    const [deletingDept, setDeletingDept] = useState<Department | null>(null);
+    const [deleteForm] = Form.useForm();
 
     const openCreateModal = () => {
         setEditingDept(null);
@@ -131,9 +113,14 @@ export default function DepartmentsPage() {
             name: dept.name,
             description: dept.description,
             isActive: dept.isActive,
-            managerUserId: dept.managerUserId ?? undefined,
         });
         setModalOpen(true);
+    };
+
+    const openDeleteModal = (dept: Department) => {
+        setDeletingDept(dept);
+        deleteForm.resetFields();
+        setDeleteModalOpen(true);
     };
 
     const handleSubmit = async () => {
@@ -153,9 +140,6 @@ export default function DepartmentsPage() {
                     },
                 );
             } else {
-                // Tạo mới KHÔNG nhận isActive/managerUserId (xem CreateDepartmentDto
-                // ở BE - chỉ name/description) - loại 2 field đó ra trước khi gửi,
-                // dù form không hiện chúng lúc tạo mới nên values vốn đã không có.
                 createMutation.mutate(
                     { name: values.name, description: values.description },
                     {
@@ -170,9 +154,48 @@ export default function DepartmentsPage() {
                 );
             }
         } catch {
-            // lỗi validate form - antd tự hiển thị, không cần xử lý thêm
+            // lỗi validate form - antd tự hiển thị
         }
     };
+
+    const handleDelete = async () => {
+        if (!deletingDept) return;
+        try {
+            const values = await deleteForm.validateFields();
+            deleteMutation.mutate(
+                {
+                    id: deletingDept.id,
+                    data: values.moveUsersToDepartmentId
+                        ? { moveUsersToDepartmentId: values.moveUsersToDepartmentId }
+                        : undefined,
+                },
+                {
+                    onSuccess: (res) => {
+                        message.success(
+                            `Đã xoá phòng ban "${deletingDept.name}"` +
+                            (res.movedUsersCount > 0
+                                ? ` — đã di dời ${res.movedUsersCount} nhân viên`
+                                : ''),
+                        );
+                        setDeleteModalOpen(false);
+                        setDeletingDept(null);
+                    },
+                    onError: (err: any) => {
+                        message.error(err?.response?.data?.message || 'Xoá thất bại');
+                    },
+                },
+            );
+        } catch {
+    // validate error
+        }
+    };
+
+    const deletingDeptEmployeeCount = deletingDept?.employees?.length ?? 0;
+    const otherDepartmentOptions = departments
+        .filter((d) => d.id !== deletingDept?.id && d.isActive)
+        .map((d) => ({ value: d.id, label: d.name }));
+
+    const canShowActionCol = canViewUsers || canManage || canDelete;
 
     const columns = [
         {
@@ -190,10 +213,6 @@ export default function DepartmentsPage() {
             title: 'Quản lý (Manager)',
             key: 'managers',
             render: (_: any, record: Department) => {
-                // ⚠️ Đổi từ "chỉ hiện 1 tên theo managerUserId" sang cùng
-                // pattern "+N" như cột Nhân viên trước đây (đúng yêu cầu:
-                // hiện HẾT user role Manager của phòng ban, không chỉ đúng 1
-                // FK chính thức).
                 const managers = managersByDeptId.get(record.id) ?? [];
                 if (managers.length === 0) return <Text type="secondary">Chưa gán</Text>;
                 const rest = managers.length - 1;
@@ -219,10 +238,10 @@ export default function DepartmentsPage() {
             render: (isActive: boolean) =>
                 isActive ? <Tag color="green">Đang hoạt động</Tag> : <Tag color="red">Ngừng hoạt động</Tag>,
         },
-        {
+        ...(canShowActionCol ? [{
             title: 'Thao tác',
             key: 'action',
-            width: 160,
+            width: 220,
             render: (_: any, record: Department) => (
                 <Space>
                     {canViewUsers && (
@@ -235,9 +254,20 @@ export default function DepartmentsPage() {
                             Sửa
                         </Button>
                     )}
+                    {/* Nút Xoá chỉ hiện nếu còn >= 2 phòng ban (BE cũng enforce điều này) */}
+                    {canDelete && departments.length > 1 && (
+                        <Button
+                            size="small"
+                            danger
+                            icon={<DeleteOutlined />}
+                            onClick={() => openDeleteModal(record)}
+                        >
+                            Xoá
+                        </Button>
+                    )}
                 </Space>
             ),
-        },
+        }] : []),
     ];
 
     return (
@@ -268,6 +298,7 @@ export default function DepartmentsPage() {
 
             <Table rowKey="id" loading={isLoading} columns={columns} dataSource={departments} pagination={false} />
 
+            {/* Modal Tạo / Sửa phòng ban */}
             <Modal
                 title={editingDept ? `Sửa phòng ban "${editingDept.name}"` : 'Thêm phòng ban mới'}
                 open={modalOpen}
@@ -290,30 +321,53 @@ export default function DepartmentsPage() {
                         <Input.TextArea rows={2} placeholder="Mô tả ngắn về phòng ban" />
                     </Form.Item>
 
-                    {/* Chỉ hiện khi SỬA - tạo mới không nhận 2 field này (xem
-              CreateDepartmentDto ở BE chỉ có name/description). */}
                     {editingDept && (
-                        <>
-                            <Form.Item
-                                name="managerUserId"
-                                label="Quản lý (Manager)"
-                                extra="Chỉ chọn được user có vai trò Manager và đang hoạt động."
-                            >
-                                <Select
-                                    allowClear
-                                    showSearch={{
-                                        optionFilterProp: "label"
-                                    }}
-                                    placeholder="Chưa gán Manager"
-                                    options={managerOptions}
-                                />
-                            </Form.Item>
-                            <Form.Item name="isActive" label="Trạng thái hoạt động" valuePropName="checked">
-                                <Switch checkedChildren="Đang hoạt động" unCheckedChildren="Ngừng hoạt động" />
-                            </Form.Item>
-                        </>
+                        <Form.Item name="isActive" label="Trạng thái hoạt động" valuePropName="checked">
+                            <Switch checkedChildren="Đang hoạt động" unCheckedChildren="Ngừng hoạt động" />
+                        </Form.Item>
                     )}
                 </Form>
+            </Modal>
+
+            {/* Modal Xoá phòng ban — nhắc di dời nhân viên nếu còn */}
+            <Modal
+                title={`Xoá phòng ban "${deletingDept?.name}"`}
+                open={deleteModalOpen}
+                onCancel={() => { setDeleteModalOpen(false); setDeletingDept(null); }}
+                onOk={handleDelete}
+                okText="Xoá"
+                okButtonProps={{ danger: true }}
+                confirmLoading={deleteMutation.isPending}
+            >
+                {deletingDeptEmployeeCount > 0 ? (
+                    <>
+                        <Text>
+                            Phòng ban này đang có <Text strong>{deletingDeptEmployeeCount}</Text> nhân viên.
+                            Vui lòng chọn phòng ban khác để di dời họ sang trước khi xoá.
+                        </Text>
+                        <Form form={deleteForm} layout="vertical" style={{ marginTop: 16 }}>
+                            <Form.Item
+                                name="moveUsersToDepartmentId"
+                                label="Di dời nhân viên sang phòng ban"
+                                rules={[{ required: true, message: 'Vui lòng chọn phòng ban đích' }]}
+                            >
+                                <Select
+                                    placeholder="Chọn phòng ban đích"
+                                    options={otherDepartmentOptions}
+                                    showSearch={{ optionFilterProp: 'label' }}
+                                />
+                            </Form.Item>
+                        </Form>
+                    </>
+                ) : (
+                    <Text>
+                        Phòng ban này không còn nhân viên. Bạn có chắc muốn xoá?
+                        <br />
+                        <Text type="secondary" style={{ fontSize: 12 }}>
+                            Lưu ý: Dữ liệu khách hàng liên kết phòng ban này sẽ không còn phòng ban (có thể gán lại sau).
+                        </Text>
+                    </Text>
+                )}
             </Modal>
 
             <Drawer
@@ -333,10 +387,6 @@ export default function DepartmentsPage() {
                         description: u.email,
                     })}
                     renderActions={(u) =>
-                        // ⚠️ Fix bug thật: TRƯỚC ĐÂY so `u.id === viewingDept?.managerUserId`
-                        // (chỉ đúng 1 người - đúng FK "chính thức" của phòng
-                        // ban) - nay so ĐÚNG role thật của từng user, hiện Tag
-                        // cho MỌI người đang mang role Manager, không chỉ 1.
                         u.role === 'manager' ? [<Tag key="manager-tag" color="gold">Manager</Tag>] : []
                     }
                 />
