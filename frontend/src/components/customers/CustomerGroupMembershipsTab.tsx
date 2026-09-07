@@ -5,6 +5,7 @@ import { App, Spin, Empty, Switch, Tag, Typography, Avatar } from 'antd';
 import { LinkOutlined, CheckCircleFilled } from '@ant-design/icons';
 import { customerGroupMembershipsApi, GroupMembershipRow } from '@/lib/api/link-groups.api';
 import { SimpleList } from '@/components/common/SimpleList';
+import { useMyPermissions } from '@/lib/hooks/useMyPermissions';
 
 const { Text, Link: TypoLink } = Typography;
 
@@ -18,9 +19,19 @@ interface Props {
  * "đã join" + tên nhóm + URL. Dùng LEFT JOIN từ BE nên group nào customer
  * CHƯA từng có row membership vẫn hiện ra với joined=false (không bị thiếu
  * khỏi checklist) - xem CustomerGroupMembershipsService.getMembershipsForCustomer().
+ *
+ * ⚠️ Phạm vi quyền: `GET .../group-memberships` (danh sách - tab này) chỉ
+ * cần `customers.view`; `PATCH .../group-memberships/:groupId` (bật/tắt)
+ * cần `customers.manage` - 2 quyền RIÊNG BIỆT (xem
+ * customer-group-memberships.controller.ts). Role chỉ có `view` (không có
+ * `manage`, vd Employee tuỳ cấu hình) VẪN xem được đầy đủ checklist - chỉ
+ * ẩn Switch bật/tắt, không ẩn/chặn cả tab. Trước đây Switch hiện vô điều
+ * kiện, bấm vào role chỉ có `view` sẽ luôn nhận 403 từ PATCH.
  */
 export const CustomerGroupMembershipsTab = ({ customerId }: Props) => {
   const { message } = App.useApp();
+  const { can } = useMyPermissions();
+  const canToggle = can('customers.manage');
   const [loading, setLoading] = useState(true);
   const [rows, setRows] = useState<GroupMembershipRow[]>([]);
   // Đang lưu riêng từng groupId (không phải 1 boolean chung) - để chỉ đúng
@@ -124,14 +135,23 @@ export const CustomerGroupMembershipsTab = ({ customerId }: Props) => {
               ),
             })}
             renderActions={(row) => [
-              <Switch
-                key="toggle"
-                checked={row.joined}
-                loading={savingGroupId === row.groupId}
-                onChange={(checked) => handleToggle(row, checked)}
-                checkedChildren="Đã join"
-                unCheckedChildren="Chưa join"
-              />,
+              canToggle ? (
+                <Switch
+                  key="toggle"
+                  checked={row.joined}
+                  loading={savingGroupId === row.groupId}
+                  onChange={(checked) => handleToggle(row, checked)}
+                  checkedChildren="Đã join"
+                  unCheckedChildren="Chưa join"
+                />
+              ) : (
+                // Chỉ có quyền view (customers.manage) - hiện trạng thái
+                // read-only thay vì Switch (bấm vào sẽ luôn 403 nếu để
+                // Switch hoạt động cho role không có quyền sửa).
+                <Tag key="status" color={row.joined ? 'success' : 'default'}>
+                  {row.joined ? 'Đã join' : 'Chưa join'}
+                </Tag>
+              ),
             ]}
           />
         </div>
