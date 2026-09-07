@@ -20,7 +20,13 @@ import { UpdateMediaSourceDto } from './dto/update-media-source.dto';
 
 @ApiTags('Media Sources (Nguồn khách hàng)')
 @ApiBearerAuth()
-@UseGuards(JwtAuthGuard)
+// FIX rủi ro rà soát toàn hệ thống: trước đây JwtAuthGuard ở class nhưng
+// PermissionGuard bị lặp lại RIÊNG Ở TỪNG METHOD (5 chỗ) - dễ quên khi
+// thêm endpoint mới, vô tình mở toang cho mọi user đã đăng nhập (không
+// còn check permission gì). Gộp lên class-level vì controller này KHÔNG
+// có route public nào (khác departments.controller.ts có GET /public) -
+// an toàn để áp dụng chung cho toàn bộ method.
+@UseGuards(JwtAuthGuard, PermissionGuard)
 @Controller('media-sources')
 export class MediaSourcesController {
     constructor(private readonly mediaSourcesService: MediaSourcesService) { }
@@ -29,7 +35,6 @@ export class MediaSourcesController {
     // này để load dropdown "Nguồn" khi thêm khách hàng (không chỉ admin).
     // Quyền CRUD/khoá-mở mới giới hạn admin (xem các endpoint bên dưới).
     @Get()
-    @UseGuards(PermissionGuard)
     @RequirePermission('media_sources.view')
     @ApiOperation({
         summary: 'Lấy danh sách nguồn. activeOnly=true để chỉ lấy nguồn đang mở (dùng cho dropdown thêm khách hàng).',
@@ -40,7 +45,6 @@ export class MediaSourcesController {
     }
 
     @Post()
-    @UseGuards(PermissionGuard)
     @RequirePermission('media_sources.manage')
     @ApiOperation({ summary: 'Tạo nguồn mới (Admin, Assistant)' })
     async create(@Body() dto: CreateMediaSourceDto) {
@@ -48,7 +52,6 @@ export class MediaSourcesController {
     }
 
     @Patch(':id')
-    @UseGuards(PermissionGuard)
     @RequirePermission('media_sources.manage')
     @ApiOperation({ summary: 'Sửa tên/thứ tự nguồn (Admin, Assistant)' })
     async update(@Param('id', ParseIntPipe) id: number, @Body() dto: UpdateMediaSourceDto) {
@@ -56,7 +59,6 @@ export class MediaSourcesController {
     }
 
     @Patch(':id/lock')
-    @UseGuards(PermissionGuard)
     @RequirePermission('media_sources.manage')
     @ApiOperation({ summary: 'Khoá nguồn - ẩn khỏi dropdown thêm khách hàng mới (Admin, Assistant)' })
     async lock(@Param('id', ParseIntPipe) id: number) {
@@ -64,7 +66,6 @@ export class MediaSourcesController {
     }
 
     @Patch(':id/unlock')
-    @UseGuards(PermissionGuard)
     @RequirePermission('media_sources.manage')
     @ApiOperation({ summary: 'Mở khoá nguồn (Admin, Assistant)' })
     async unlock(@Param('id', ParseIntPipe) id: number) {
@@ -75,7 +76,6 @@ export class MediaSourcesController {
     // Admin - cùng lý do với link-categories/link-groups (chưa có khái niệm
     // phòng ban cho Media Source nên không mở thêm cho Manager ở đây).
     @Delete(':id')
-    @UseGuards(PermissionGuard)
     @RequirePermission('media_sources.delete')
     @ApiOperation({ summary: 'Xoá nguồn - chỉ được nếu chưa có khách hàng nào dùng (chỉ Admin)' })
     async remove(@Param('id', ParseIntPipe) id: number) {

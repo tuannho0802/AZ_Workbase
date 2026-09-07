@@ -20,13 +20,16 @@ import { UpdateLinkGroupDto } from './dto/update-link-group.dto';
 
 @ApiTags('Link Groups (Zalo/FB/Threads groups)')
 @ApiBearerAuth()
-@UseGuards(JwtAuthGuard)
+// FIX rủi ro rà soát toàn hệ thống: gộp PermissionGuard lên class-level -
+// trước đây lặp lại RIÊNG Ở TỪNG METHOD (5 chỗ), dễ quên khi thêm endpoint
+// mới (xem giải thích đầy đủ ở media-sources.controller.ts). Controller
+// này không có route public nào - an toàn để áp dụng chung.
+@UseGuards(JwtAuthGuard, PermissionGuard)
 @Controller('link-groups')
 export class LinkGroupsController {
   constructor(private readonly groupsService: LinkGroupsService) {}
 
   @Get()
-  @UseGuards(PermissionGuard)
   @RequirePermission('link_groups.view')
   @ApiOperation({ summary: 'Lấy danh sách nhóm, lọc theo categoryId/activeOnly (mọi role đã đăng nhập)' })
   @ApiQuery({ name: 'categoryId', required: false, type: Number })
@@ -42,7 +45,6 @@ export class LinkGroupsController {
   }
 
   @Post()
-  @UseGuards(PermissionGuard)
   @RequirePermission('link_groups.manage')
   @ApiOperation({ summary: 'Tạo nhóm mới (Admin, Assistant)' })
   async create(@Body() dto: CreateLinkGroupDto) {
@@ -50,7 +52,6 @@ export class LinkGroupsController {
   }
 
   @Patch(':id')
-  @UseGuards(PermissionGuard)
   @RequirePermission('link_groups.manage')
   @ApiOperation({ summary: 'Sửa tên/url/thứ tự nhóm (Admin, Assistant)' })
   async update(@Param('id', ParseIntPipe) id: number, @Body() dto: UpdateLinkGroupDto) {
@@ -58,7 +59,6 @@ export class LinkGroupsController {
   }
 
   @Patch(':id/deactivate')
-  @UseGuards(PermissionGuard)
   @RequirePermission('link_groups.manage')
   @ApiOperation({ summary: 'Ẩn nhóm khỏi checklist (Admin, Assistant)' })
   async deactivate(@Param('id', ParseIntPipe) id: number) {
@@ -66,7 +66,6 @@ export class LinkGroupsController {
   }
 
   @Patch(':id/activate')
-  @UseGuards(PermissionGuard)
   @RequirePermission('link_groups.manage')
   @ApiOperation({ summary: 'Hiện lại nhóm (Admin, Assistant)' })
   async activate(@Param('id', ParseIntPipe) id: number) {
@@ -77,7 +76,6 @@ export class LinkGroupsController {
   // Admin - xem giải thích tương tự ở link-categories.controller.ts (chưa
   // có khái niệm phòng ban cho Group nên không mở thêm cho Manager ở đây).
   @Delete(':id')
-  @UseGuards(PermissionGuard)
   @RequirePermission('link_groups.delete')
   @ApiOperation({ summary: 'Xoá nhóm - chỉ được nếu chưa có customer nào có dữ liệu join (chỉ Admin)' })
   async remove(@Param('id', ParseIntPipe) id: number) {

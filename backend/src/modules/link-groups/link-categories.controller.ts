@@ -20,7 +20,9 @@ import { UpdateLinkCategoryDto } from './dto/update-link-category.dto';
 
 @ApiTags('Link Categories (Zalo/FB/Threads groups)')
 @ApiBearerAuth()
-@UseGuards(JwtAuthGuard)
+// FIX rủi ro rà soát toàn hệ thống: gộp PermissionGuard lên class-level -
+// cùng lý do đã fix ở media-sources.controller.ts và link-groups.controller.ts.
+@UseGuards(JwtAuthGuard, PermissionGuard)
 @Controller('link-categories')
 export class LinkCategoriesController {
   constructor(private readonly categoriesService: LinkCategoriesService) {}
@@ -29,7 +31,6 @@ export class LinkCategoriesController {
   // dropdown khi tạo Group / xem checklist join-nhóm của khách hàng. Quyền
   // CRUD/khoá-mở mới giới hạn admin (các endpoint bên dưới).
   @Get()
-  @UseGuards(PermissionGuard)
   @RequirePermission('link_groups.view')
   @ApiOperation({ summary: 'Lấy danh sách category. activeOnly=true để chỉ lấy category đang mở.' })
   @ApiQuery({ name: 'activeOnly', required: false, type: Boolean })
@@ -38,7 +39,6 @@ export class LinkCategoriesController {
   }
 
   @Post()
-  @UseGuards(PermissionGuard)
   @RequirePermission('link_groups.manage')
   @ApiOperation({ summary: 'Tạo category mới (Admin, Assistant)' })
   async create(@Body() dto: CreateLinkCategoryDto) {
@@ -46,7 +46,6 @@ export class LinkCategoriesController {
   }
 
   @Patch(':id')
-  @UseGuards(PermissionGuard)
   @RequirePermission('link_groups.manage')
   @ApiOperation({ summary: 'Sửa tên/màu/thứ tự category (Admin, Assistant)' })
   async update(@Param('id', ParseIntPipe) id: number, @Body() dto: UpdateLinkCategoryDto) {
@@ -54,7 +53,6 @@ export class LinkCategoriesController {
   }
 
   @Patch(':id/lock')
-  @UseGuards(PermissionGuard)
   @RequirePermission('link_groups.manage')
   @ApiOperation({ summary: 'Khoá category (Admin, Assistant)' })
   async lock(@Param('id', ParseIntPipe) id: number) {
@@ -62,7 +60,6 @@ export class LinkCategoriesController {
   }
 
   @Patch(':id/unlock')
-  @UseGuards(PermissionGuard)
   @RequirePermission('link_groups.manage')
   @ApiOperation({ summary: 'Mở khoá category (Admin, Assistant)' })
   async unlock(@Param('id', ParseIntPipe) id: number) {
@@ -77,7 +74,6 @@ export class LinkCategoriesController {
   // đúng rule (Assistant = Admin trừ Xoá), để tránh tự quyết thay chủ dự án
   // 1 quyết định thiết kế còn treo.
   @Delete(':id')
-  @UseGuards(PermissionGuard)
   @RequirePermission('link_groups.delete')
   @ApiOperation({ summary: 'Xoá category - chỉ được nếu chưa có group nào (chỉ Admin)' })
   async remove(@Param('id', ParseIntPipe) id: number) {

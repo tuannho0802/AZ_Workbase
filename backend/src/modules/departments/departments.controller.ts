@@ -37,8 +37,14 @@ export class DepartmentsController {
   }
 
   @Get(':id')
-  @UseGuards(JwtAuthGuard)
+  @UseGuards(JwtAuthGuard, PermissionGuard)
   @ApiBearerAuth()
+  // ⚠️ FIX BUG THẬT (rà soát toàn hệ thống): trước đây route này chỉ có
+  // JwtAuthGuard, thiếu hẳn @RequirePermission('departments.view') - nếu 1
+  // role bị Admin thu hồi quyền này, họ vẫn xem được TỪNG phòng ban bằng
+  // cách dò ID (1,2,3...) dù không xem được danh sách qua GET / nữa -
+  // không nhất quán với chính rule mà route GET / đang áp dụng.
+  @RequirePermission('departments.view')
   @ApiOperation({ summary: 'Lấy chi tiết phòng ban' })
   findOne(@Param('id', ParseIntPipe) id: number) {
     return this.departmentsService.findOne(id);
