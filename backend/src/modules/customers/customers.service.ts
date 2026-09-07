@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, ForbiddenException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, Brackets, IsNull, In } from 'typeorm';
 import { Customer } from '../../database/entities/customer.entity';
@@ -23,6 +23,8 @@ import {
 } from '../../database/entities/customer-assignment.entity';
 import { CustomerGroupMembership } from '../../database/entities/customer-group-membership.entity';
 import { CreateCustomerNoteDto } from './dto/create-customer-note.dto';
+import { UpdateCustomerNoteDto } from './dto/update-customer-note.dto';
+import { PermissionsService } from '../permissions/permissions.service';
 import { CreateDepositDto } from './dto/create-deposit.dto';
 import {
   NotFoundException,
@@ -46,6 +48,7 @@ export class CustomersService {
     @InjectRepository(CustomerGroupMembership)
     private readonly customerGroupMembershipRepository: Repository<CustomerGroupMembership>,
     private readonly auditService: AuditService,
+    private readonly permissionsService: PermissionsService,
   ) {}
 
   private getTodayVn(): Date {
@@ -644,6 +647,85 @@ export class CustomersService {
       where: { id: (savedNote as any).id },
       relations: ['createdByUser'],
     });
+  }
+
+  async updateNote(
+    customerId: number,
+    noteId: number,
+    dto: UpdateCustomerNoteDto,
+    userId: number,
+    userRole: string,
+    departmentId: number | null,
+  ) {
+    const note = await this.notesRepository.findOne({ where: { id: noteId, customerId } });
+    if (!note) throw new NotFoundException('Không tìm thấy ghi chú');
+
+    if (note.createdBy !== userId) {
+      if (userRole === 'admin') {
+        await this.assertCustomerAccessible(customerId, userId, userRole, 'all');
+      } else {
+        const { allowed, scope } = await this.permissionsService.hasPermission(userRole, 'customer_notes.edit', departmentId);
+        if (!allowed) throw new ForbiddenException('Bạn chỉ có quyền sửa ghi chú do chính mình tạo');
+        await this.assertCustomerAccessible(customerId, userId, userRole, scope);
+      }
+    } else {
+      await this.assertCustomerAccessible(customerId, userId, userRole, null); // Only verify customer access
+    }
+
+    const oldData = { ...note };
+    this.notesRepository.merge(note, dto);
+    const savedNote = await this.notesRepository.save(note);
+
+    this.auditService.logActionAsync(
+      userId,
+      'UPDATE_NOTE',
+      'customer_note',
+      savedNote.id,
+      oldData,
+      savedNote,
+    );
+
+    return this.notesRepository.findOne({
+      where: { id: savedNote.id },
+      relations: ['createdByUser'],
+    });
+  }
+
+  async deleteNote(
+    customerId: number,
+    noteId: number,
+    userId: number,
+    userRole: string,
+    departmentId: number | null,
+  ) {
+    const note = await this.notesRepository.findOne({ where: { id: noteId, customerId } });
+    if (!note) throw new NotFoundException('Không tìm thấy ghi chú');
+
+    if (note.createdBy !== userId) {
+      if (userRole === 'admin') {
+        await this.assertCustomerAccessible(customerId, userId, userRole, 'all');
+      } else {
+        const { allowed, scope } = await this.permissionsService.hasPermission(userRole, 'customer_notes.delete', departmentId);
+        if (!allowed) throw new ForbiddenException('Bạn chỉ có quyền xoá ghi chú do chính mình tạo');
+        await this.assertCustomerAccessible(customerId, userId, userRole, scope);
+      }
+    } else {
+      await this.assertCustomerAccessible(customerId, userId, userRole, null);
+    }
+
+    const oldData = { ...note };
+    await this.notesRepository.remove(note);
+
+    this.auditService.logActionAsync(
+      userId,
+      'DELETE_NOTE',
+      'customer_note',
+      noteId,
+      oldData,
+      null,
+    );
+
+    return { message: 'Đã xoá ghi chú' };
   }
 
   async createDeposit(

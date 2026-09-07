@@ -11,6 +11,7 @@ import { ImportCustomerDto } from './dto/import-customer.dto';
 import { BulkAssignDto } from './dto/bulk-assign.dto';
 import { UpdateAssignmentDto } from './dto/update-assignment.dto';
 import { CreateCustomerNoteDto } from './dto/create-customer-note.dto';
+import { UpdateCustomerNoteDto } from './dto/update-customer-note.dto';
 import { CreateDepositDto } from './dto/create-deposit.dto';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { PermissionGuard } from '../../common/guards/permission.guard';
@@ -234,7 +235,7 @@ export class CustomersController {
   }
 
   @Post(':id/notes')
-  @RequirePermission('customers.note')
+  @RequirePermission('customer_notes.create')
   @ApiOperation({ summary: 'Thêm ghi chú khách hàng' })
   async createNote(
     @Param('id') id: string,
@@ -243,6 +244,27 @@ export class CustomersController {
     @GetPermissionScope() scope: string | null | undefined,
   ) {
     return this.customersService.createNote(+id, dto, user.id, user.role, scope);
+  }
+
+  @Patch(':id/notes/:noteId')
+  @ApiOperation({ summary: 'Sửa ghi chú khách hàng (Check quyền trong service)' })
+  async updateNote(
+    @Param('id') id: string,
+    @Param('noteId') noteId: string,
+    @Body() dto: UpdateCustomerNoteDto,
+    @GetUser() user: any,
+  ) {
+    return this.customersService.updateNote(+id, +noteId, dto, user.id, user.role, user.departmentId);
+  }
+
+  @Delete(':id/notes/:noteId')
+  @ApiOperation({ summary: 'Xoá ghi chú khách hàng (Check quyền trong service)' })
+  async deleteNote(
+    @Param('id') id: string,
+    @Param('noteId') noteId: string,
+    @GetUser() user: any,
+  ) {
+    return this.customersService.deleteNote(+id, +noteId, user.id, user.role, user.departmentId);
   }
 
   @Post(':id/deposits')
