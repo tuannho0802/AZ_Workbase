@@ -1,11 +1,13 @@
-import { Controller, Get, Post, Patch, Param, Body, UseGuards, ParseIntPipe, UseInterceptors } from '@nestjs/common';
+import { Controller, Get, Post, Patch, Delete, Param, Body, UseGuards, ParseIntPipe, UseInterceptors } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiBearerAuth } from '@nestjs/swagger';
 import { DepartmentsService } from './departments.service';
 import { CreateDepartmentDto } from './dto/create-department.dto';
 import { UpdateDepartmentDto } from './dto/update-department.dto';
+import { DeleteDepartmentDto } from './dto/delete-department.dto';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { PermissionGuard } from '../../common/guards/permission.guard';
 import { RequirePermission } from '../../common/decorators/require-permission.decorator';
+import { GetUser } from '../../common/decorators/get-user.decorator';
 import { CacheControlInterceptor } from '../../common/interceptors/cache-control.interceptor';
 
 @ApiTags('Departments')
@@ -66,5 +68,22 @@ export class DepartmentsController {
   @ApiOperation({ summary: 'Cập nhật phòng ban, bao gồm gán Manager quản lý (Admin, Assistant)' })
   update(@Param('id', ParseIntPipe) id: number, @Body() dto: UpdateDepartmentDto) {
     return this.departmentsService.update(id, dto);
+  }
+
+  @Delete(':id')
+  @UseGuards(JwtAuthGuard, PermissionGuard)
+  @ApiBearerAuth()
+  @RequirePermission('departments.delete')
+  @ApiOperation({
+    summary:
+      'Xoá phòng ban (CHỈ ADMIN) - bắt buộc còn tối thiểu 1 phòng ban sau khi xoá; ' +
+      'nếu còn nhân viên thuộc phòng ban này phải truyền moveUsersToDepartmentId để di dời trước',
+  })
+  remove(
+    @Param('id', ParseIntPipe) id: number,
+    @Body() dto: DeleteDepartmentDto,
+    @GetUser() user: any,
+  ) {
+    return this.departmentsService.remove(id, dto, user.id);
   }
 }

@@ -3,9 +3,12 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, In } from 'typeorm';
 import { Department } from '../../database/entities/department.entity';
 import { User } from '../../database/entities/user.entity';
+import { Customer } from '../../database/entities/customer.entity';
 import { Role } from '../../common/enums/role.enum';
 import { CreateDepartmentDto } from './dto/create-department.dto';
 import { UpdateDepartmentDto } from './dto/update-department.dto';
+import { DeleteDepartmentDto } from './dto/delete-department.dto';
+import { AuditService } from '../audit/audit.service';
 
 @Injectable()
 export class DepartmentsService {
@@ -14,6 +17,9 @@ export class DepartmentsService {
     private readonly departmentRepository: Repository<Department>,
     @InjectRepository(User)
     private readonly userRepository: Repository<User>,
+    @InjectRepository(Customer)
+    private readonly customerRepository: Repository<Customer>,
+    private readonly auditService: AuditService,
   ) {}
 
   /**
@@ -137,5 +143,110 @@ export class DepartmentsService {
     const { managerUserId, ...rest } = dto;
     this.departmentRepository.merge(department, rest);
     return await this.departmentRepository.save(department);
+  }
+
+  /**
+   * Xoá phòng ban - CÓ ĐỦ RÀNG BUỘC AN TOÀN theo đúng yêu cầu nghiệp vụ
+   * (KHÔNG dùng migration để xoá dữ liệu, luôn qua endpoint có kiểm tra):
+   *
+   * 1. Không cho xoá nếu đây là phòng ban CUỐI CÙNG (hệ thống phải luôn còn
+   *    tối thiểu 1 phòng ban - tức là chỉ xoá được khi đang có >= 2 phòng
+   *    ban tồn tại trước khi xoá).
+   * 2. Nếu phòng ban sắp xoá còn User nào đang thuộc về (user.department_id
+   *    = phòng ban này) - BẮT BUỘC phải truyền `moveUsersToDepartmentId`
+   *    (1 phòng ban khác đang tồn tại) để di dời toàn bộ User đó sang
+   *    trước khi xoá. Không tự ý chọn hộ 1 phòng ban ngẫu nhiên - từ chối
+   *    rõ ràng nếu thiếu tham số này, để người gọi (Admin) chủ động quyết
+   *    định đích di dời.
+   *    (Khớp đúng ràng buộc DB thật: users.department_id có FK
+   *    `ON DELETE NO ACTION` - nếu không di dời trước, MySQL sẽ tự chặn
+   *    bằng lỗi FK constraint; ở đây chủ động kiểm tra + thông báo rõ ràng
+   *    bằng tiếng Việt thay vì để lộ lỗi SQL thô ra ngoài.)
+   * 3. Customer đang thuộc phòng ban này KHÔNG bắt buộc di dời - FK
+   *    `customers.department_id` đã là `ON DELETE SET NULL` sẵn (khách
+   *    hàng chỉ mất gán phòng ban, không bị lỗi/mất dữ liệu) - vẫn LOG rõ
+   *    số lượng bị ảnh hưởng vào audit log để Admin biết mà rà soát lại
+   *    nếu cần gán lại phòng ban cho các khách hàng đó.
+   * 4. Ghi audit log đầy đủ (loại action DELETE_DEPARTMENT), lưu lại toàn
+   *    bộ dữ liệu phòng ban đã xoá + số user đã di dời + số customer bị
+   *    ảnh hưởng - phục vụ truy vết sau này (không thể hoàn tác qua UI,
+   *    audit log là nơi duy nhất còn giữ lại thông tin phòng ban đã mất).
+   */
+  async remove(id: number, dto: DeleteDepartmentDto, adminId: number) {
+    const department = await this.findOne(id);
+
+    const totalDepartments = await this.departmentRepository.count();
+    if (totalDepartments <= 1) {
+      throw new BadRequestException(
+        'Không thể xoá phòng ban cuối cùng - hệ thống phải luôn còn tối thiểu 1 phòng ban.',
+      );
+    }
+
+    const usersInDept = await this.userRepository.find({
+      where: { departmentId: id },
+      select: ['id', 'name'],
+    });
+
+    if (usersInDept.length > 0) {
+      if (!dto.moveUsersToDepartmentId) {
+        throw new BadRequestException(
+          `Phòng ban "${department.name}" đang có ${usersInDept.length} nhân viên ` +
+          `(${usersInDept.map((u) => u.name).join(', ')}). ` +
+          'Vui lòng chọn 1 phòng ban khác để di dời họ sang trước khi xoá ' +
+          '(truyền moveUsersToDepartmentId).',
+        );
+      }
+
+      if (dto.moveUsersToDepartmentId === id) {
+        throw new BadRequestException(
+          'Phòng ban đích để di dời phải KHÁC với phòng ban đang xoá.',
+        );
+      }
+
+      const targetDept = await this.departmentRepository.findOne({
+        where: { id: dto.moveUsersToDepartmentId },
+      });
+      if (!targetDept) {
+        throw new NotFoundException(
+          `Không tìm thấy phòng ban đích (ID ${dto.moveUsersToDepartmentId}) để di dời nhân viên`,
+        );
+      }
+
+      await this.userRepository
+        .createQueryBuilder()
+        .update(User)
+        .set({ departmentId: dto.moveUsersToDepartmentId })
+        .where('department_id = :id', { id })
+        .execute();
+    }
+
+    // Đếm (KHÔNG bắt buộc di dời - FK đã SET NULL sẵn, chỉ để ghi audit)
+    const affectedCustomersCount = await this.customerRepository.count({
+      where: { departmentId: id },
+    });
+
+    const oldData = {
+      ...department,
+      movedUsersCount: usersInDept.length,
+      movedUsersTo: dto.moveUsersToDepartmentId ?? null,
+      affectedCustomersCount,
+    };
+
+    await this.departmentRepository.delete(id);
+
+    this.auditService.logActionAsync(
+      adminId,
+      'DELETE_DEPARTMENT',
+      'department',
+      id,
+      oldData,
+      null,
+    );
+
+    return {
+      message: `Đã xoá phòng ban "${department.name}"`,
+      movedUsersCount: usersInDept.length,
+      affectedCustomersCount,
+    };
   }
 }
