@@ -247,6 +247,13 @@ export default function LinkGroupsAdminPage() {
     });
   };
 
+  const someGroupCanSeeManagers = (groups || []).some(
+    (group) =>
+      isAdmin ||
+      group.primaryManagerId === currentUserId ||
+      (group.secondaryManagers ?? []).some((m) => m.user.id === currentUserId)
+  );
+
   const groupColumns = [
     {
       title: 'Tên nhóm',
@@ -274,7 +281,7 @@ export default function LinkGroupsAdminPage() {
       key: 'status',
       width: 130,
       render: (_: any, group: LinkGroup) =>
-        group.isActive ? <Tag color="green">Đang hiện</Tag> : <Tag color="red">Đã ẩn</Tag>,
+        !group.isActive ? <Tag color="red">Đang ẩn</Tag> : <Tag color="green">Đang hiện</Tag>,
     },
     {
       title: 'Quản lý chính/phụ',
@@ -297,7 +304,7 @@ export default function LinkGroupsAdminPage() {
         </Space>
       ),
     },
-    {
+    ...((canManage || canDelete || someGroupCanSeeManagers) ? [{
       title: 'Thao tác',
       key: 'action',
       width: 320,
@@ -353,7 +360,7 @@ export default function LinkGroupsAdminPage() {
           </Space>
         );
       },
-    },
+    }] : []),
   ];
 
   const categoryColumns = [
@@ -383,7 +390,7 @@ export default function LinkGroupsAdminPage() {
       render: (_: any, record: LinkCategory) =>
         record.isLocked ? <Tag color="red">Đã khoá</Tag> : <Tag color="green">Đang mở</Tag>,
     },
-    {
+    ...((canManage || canDelete) ? [{
       title: 'Thao tác',
       key: 'action',
       width: 340,
@@ -419,7 +426,7 @@ export default function LinkGroupsAdminPage() {
           )}
         </Space>
       ),
-    },
+    }] : []),
   ];
 
   return (
