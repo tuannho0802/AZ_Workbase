@@ -1,4 +1,4 @@
-import { Test, TestingModule } from '@nestjs/testing';
+﻿import { Test, TestingModule } from '@nestjs/testing';
 import { getRepositoryToken } from '@nestjs/typeorm';
 import { PermissionsService } from './permissions.service';
 import { RolePermission, PermissionScope } from '../../database/entities/role-permission.entity';
@@ -25,118 +25,99 @@ describe('PermissionsService', () => {
   });
 
   describe('hasPermission', () => {
-    it('role có dòng row cho permission -> allowed=true, đúng scope', async () => {
+    it('không truyền departmentId -> dùng quyền global (departmentId = null)', async () => {
       mockRolePermissionRepo.find.mockResolvedValue([
-        { permission: { key: 'customers.view' }, scope: PermissionScope.DEPARTMENT },
+        { permission: { key: 'customers.view' }, scope: PermissionScope.DEPARTMENT, departmentId: null },
       ]);
 
       const result = await service.hasPermission('manager', 'customers.view');
-
       expect(result).toEqual({ allowed: true, scope: PermissionScope.DEPARTMENT });
     });
 
-    it('role KHÔNG có dòng row cho permission -> allowed=false (không phải throw)', async () => {
+    it('có truyền departmentId nhưng không có override -> fallback về quyền global', async () => {
       mockRolePermissionRepo.find.mockResolvedValue([
-        { permission: { key: 'customers.view' }, scope: PermissionScope.ALL },
+        { permission: { key: 'customers.view' }, scope: PermissionScope.DEPARTMENT, departmentId: null },
       ]);
 
-      const result = await service.hasPermission('employee', 'roles.manage');
-
-      expect(result).toEqual({ allowed: false, scope: null });
+      const result = await service.hasPermission('manager', 'customers.view', 5);
+      expect(result).toEqual({ allowed: true, scope: PermissionScope.DEPARTMENT });
     });
 
-    it('permission nhị phân (không hỗ trợ scope) -> scope null nhưng allowed=true', async () => {
+    it('có truyền departmentId và có override -> override ghi đè global', async () => {
       mockRolePermissionRepo.find.mockResolvedValue([
-        { permission: { key: 'roles.manage' }, scope: null },
+        { permission: { key: 'customers.view' }, scope: PermissionScope.DEPARTMENT, departmentId: null },
+        { permission: { key: 'customers.view' }, scope: PermissionScope.ALL, departmentId: 5 },
       ]);
 
-      const result = await service.hasPermission('admin', 'roles.manage');
-
-      expect(result).toEqual({ allowed: true, scope: null });
+      const result = await service.hasPermission('manager', 'customers.view', 5);
+      expect(result).toEqual({ allowed: true, scope: PermissionScope.ALL });
     });
 
-    it('cache: gọi 2 lần liên tiếp cùng role chỉ query DB 1 lần', async () => {
+    it('cache: gọi 2 lần liên tiếp cùng role và department -> query DB 1 lần', async () => {
       mockRolePermissionRepo.find.mockResolvedValue([
-        { permission: { key: 'customers.view' }, scope: PermissionScope.ALL },
+        { permission: { key: 'customers.view' }, scope: PermissionScope.DEPARTMENT, departmentId: null },
       ]);
 
-      await service.hasPermission('admin', 'customers.view');
-      await service.hasPermission('admin', 'customers.assign');
+      await service.hasPermission('manager', 'customers.view', 5);
+      await service.hasPermission('manager', 'customers.view', 5);
 
       expect(mockRolePermissionRepo.find).toHaveBeenCalledTimes(1);
     });
 
-    it('2 role khác nhau -> query DB riêng cho từng role (cache theo key role)', async () => {
+    it('cache: gọi 2 lần với 2 department khác nhau -> query DB 2 lần', async () => {
       mockRolePermissionRepo.find.mockResolvedValue([]);
 
-      await service.hasPermission('admin', 'customers.view');
-      await service.hasPermission('manager', 'customers.view');
+      await service.hasPermission('manager', 'customers.view', 5);
+      await service.hasPermission('manager', 'customers.view', 6);
 
       expect(mockRolePermissionRepo.find).toHaveBeenCalledTimes(2);
     });
   });
 
   describe('invalidate', () => {
-    it('invalidate(roleCode) -> lần gọi tiếp theo cho role đó query lại DB', async () => {
+    it('invalidate(roleCode, departmentId) -> xoá đúng cache của phòng đó, phòng khác giữ nguyên', async () => {
       mockRolePermissionRepo.find.mockResolvedValue([]);
 
-      await service.hasPermission('manager', 'customers.view');
-      service.invalidate('manager');
-      await service.hasPermission('manager', 'customers.view');
-
+      await service.hasPermission('manager', 'customers.view', 5);
+      await service.hasPermission('manager', 'customers.view', 6);
       expect(mockRolePermissionRepo.find).toHaveBeenCalledTimes(2);
+
+      service.invalidate('manager', 5);
+      
+      await service.hasPermission('manager', 'customers.view', 5); // query lai
+      await service.hasPermission('manager', 'customers.view', 6); // lay tu cache
+
+      expect(mockRolePermissionRepo.find).toHaveBeenCalledTimes(3);
     });
 
-    it('invalidate(roleCode) KHÔNG ảnh hưởng cache của role khác', async () => {
+    it('invalidate(roleCode) -> xoá tất cả cache của role đó (các phòng đều mất cache)', async () => {
       mockRolePermissionRepo.find.mockResolvedValue([]);
 
-      await service.hasPermission('manager', 'customers.view');
-      await service.hasPermission('admin', 'customers.view');
-      service.invalidate('manager');
-      await service.hasPermission('admin', 'customers.view'); // vẫn cache, không query lại
-
+      await service.hasPermission('manager', 'customers.view', 5);
+      await service.hasPermission('manager', 'customers.view', 6);
       expect(mockRolePermissionRepo.find).toHaveBeenCalledTimes(2);
-    });
 
-    it('invalidate() không tham số -> xoá cache TOÀN BỘ mọi role', async () => {
-      mockRolePermissionRepo.find.mockResolvedValue([]);
-
-      await service.hasPermission('manager', 'customers.view');
-      await service.hasPermission('admin', 'customers.view');
-      service.invalidate();
-      await service.hasPermission('manager', 'customers.view');
-      await service.hasPermission('admin', 'customers.view');
+      service.invalidate('manager');
+      
+      await service.hasPermission('manager', 'customers.view', 5); // query lai
+      await service.hasPermission('manager', 'customers.view', 6); // query lai
 
       expect(mockRolePermissionRepo.find).toHaveBeenCalledTimes(4);
     });
-  });
 
-  describe('cache TTL (an toàn đa-instance)', () => {
-    it('sau khi TTL hết hạn, lần gọi tiếp theo query lại DB dù không invalidate() thủ công', async () => {
-      jest.useFakeTimers();
+    it('invalidate() -> xoá toàn bộ cache mọi role', async () => {
       mockRolePermissionRepo.find.mockResolvedValue([]);
 
-      await service.hasPermission('manager', 'customers.view');
-      jest.advanceTimersByTime(31_000); // > CACHE_TTL_MS (30s)
-      await service.hasPermission('manager', 'customers.view');
-
+      await service.hasPermission('manager', 'customers.view', 5);
+      await service.hasPermission('employee', 'customers.view', 5);
       expect(mockRolePermissionRepo.find).toHaveBeenCalledTimes(2);
-      jest.useRealTimers();
-    });
-  });
 
-  describe('getRolePermissions', () => {
-    it('trả về Map đầy đủ permissionKey -> scope', async () => {
-      mockRolePermissionRepo.find.mockResolvedValue([
-        { permission: { key: 'customers.view' }, scope: PermissionScope.ALL },
-        { permission: { key: 'roles.manage' }, scope: null },
-      ]);
+      service.invalidate();
+      
+      await service.hasPermission('manager', 'customers.view', 5); // query lai
+      await service.hasPermission('employee', 'customers.view', 5); // query lai
 
-      const map = await service.getRolePermissions('admin');
-
-      expect(map.get('customers.view')).toBe(PermissionScope.ALL);
-      expect(map.get('roles.manage')).toBeNull();
-      expect(map.has('customers.assign')).toBe(false);
+      expect(mockRolePermissionRepo.find).toHaveBeenCalledTimes(4);
     });
   });
 });

@@ -1,6 +1,7 @@
 import { Entity, PrimaryGeneratedColumn, Column, CreateDateColumn, ManyToOne, JoinColumn } from 'typeorm';
 import { RoleEntity } from './role.entity';
 import { Permission } from './permission.entity';
+import { Department } from './department.entity';
 
 export enum PermissionScope {
   OWN = 'own',
@@ -44,6 +45,13 @@ export class RolePermission {
 
   @Column({ type: 'enum', enum: PermissionScope, nullable: true })
   scope: PermissionScope | null;
+
+  @Column({ name: 'department_id', nullable: true })
+  departmentId: number | null;
+
+  @ManyToOne(() => Department, { onDelete: 'CASCADE', nullable: true })
+  @JoinColumn({ name: 'department_id' })
+  department: Department | null;
 
   @CreateDateColumn({ name: 'created_at' })
   createdAt: Date;

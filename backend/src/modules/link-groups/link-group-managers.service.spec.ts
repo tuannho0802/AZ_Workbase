@@ -201,7 +201,7 @@ describe('LinkGroupManagersService', () => {
 
       const result = await service.listManagedByMe(999, 'team_lead');
 
-      expect(mockPermissionsService.hasPermission).toHaveBeenCalledWith('team_lead', 'link_groups.manage');
+      expect(mockPermissionsService.hasPermission).toHaveBeenCalledWith('team_lead', 'link_groups.manage', undefined);
       expect(mockGroupRepo.find).toHaveBeenCalledWith({
         relations: ['primaryManager', 'secondaryManagers', 'secondaryManagers.user', 'category'],
         order: { sortOrder: 'ASC', id: 'ASC' },
@@ -217,7 +217,7 @@ describe('LinkGroupManagersService', () => {
 
       const result = await service.listManagedByMe(50, Role.ASSISTANT);
 
-      expect(mockPermissionsService.hasPermission).toHaveBeenCalledWith(Role.ASSISTANT, 'link_groups.manage');
+      expect(mockPermissionsService.hasPermission).toHaveBeenCalledWith(Role.ASSISTANT, 'link_groups.manage', undefined);
       expect(mockGroupRepo.find).toHaveBeenCalledWith({
         where: { primaryManagerId: 50 },
         relations: ['primaryManager', 'secondaryManagers', 'secondaryManagers.user', 'category'],

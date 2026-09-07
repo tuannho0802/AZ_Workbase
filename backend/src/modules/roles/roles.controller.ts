@@ -3,6 +3,7 @@ import {
   Get,
   Post,
   Patch,
+  Put,
   Delete,
   Body,
   Param,
@@ -32,7 +33,7 @@ export class RolesController {
       'Quyền của CHÍNH người đang gọi API - không cần roles.view, ai cũng xem được quyền của bản thân. FE dùng route này để tự quyết định hiện/ẩn sidebar/nút bấm, đồng bộ đúng những gì BE thật sự cho phép.',
   })
   getMyPermissions(@GetUser() user: any) {
-    return this.rolesService.getMyPermissions(user.role);
+    return this.rolesService.getMyPermissions(user.role, user.departmentId);
   }
 
   @Get('roles')
@@ -65,18 +66,46 @@ export class RolesController {
 
   @Delete('roles/:id')
   @RequirePermission('roles.manage')
-  @ApiOperation({ summary: 'Xoá Role tuỳ chỉnh (không xoá được role hệ thống hoặc role đang có người dùng)' })
+  @ApiOperation({ summary: 'Xoá Role tuỳ chỉnh' })
   deleteRole(@Param('id', ParseIntPipe) id: number) {
     return this.rolesService.deleteRole(id);
   }
 
   @Patch('roles/:id/permissions')
   @RequirePermission('roles.manage')
-  @ApiOperation({ summary: 'Ghi đè TOÀN BỘ ma trận quyền của 1 Role' })
+  @ApiOperation({ summary: 'Ghi đè TOÀN BỘ ma trận quyền của 1 Role (Global)' })
   updateRolePermissions(
     @Param('id', ParseIntPipe) id: number,
     @Body() dto: UpdateRolePermissionsDto,
   ) {
     return this.rolesService.updateRolePermissions(id, dto);
+  }
+
+  @Get('roles/:id/department-overrides')
+  @RequirePermission('roles.manage')
+  @ApiOperation({ summary: 'Lấy các overrides phân quyền theo phòng ban của Role này' })
+  getDepartmentOverrides(@Param('id', ParseIntPipe) roleId: number) {
+    return this.rolesService.getDepartmentOverrides(roleId);
+  }
+
+  @Put('roles/:id/department-overrides/:departmentId')
+  @RequirePermission('roles.manage')
+  @ApiOperation({ summary: 'Ghi đè phân quyền của Role cho một phòng ban cụ thể' })
+  updateDepartmentOverride(
+    @Param('id', ParseIntPipe) roleId: number,
+    @Param('departmentId', ParseIntPipe) departmentId: number,
+    @Body() dto: UpdateRolePermissionsDto,
+  ) {
+    return this.rolesService.updateDepartmentOverride(roleId, departmentId, dto);
+  }
+
+  @Delete('roles/:id/department-overrides/:departmentId')
+  @RequirePermission('roles.manage')
+  @ApiOperation({ summary: 'Xoá override phân quyền của Role cho một phòng ban cụ thể' })
+  deleteDepartmentOverride(
+    @Param('id', ParseIntPipe) roleId: number,
+    @Param('departmentId', ParseIntPipe) departmentId: number,
+  ) {
+    return this.rolesService.deleteDepartmentOverride(roleId, departmentId);
   }
 }

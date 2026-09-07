@@ -49,11 +49,12 @@ export class LinkGroupManagersService {
    *   `link-groups.controller.ts` (CRUD Category/Group nói chung), tái dùng
    *   đúng 1 nguồn quyền, không tạo permission key riêng cho tính năng này.
    */
-  private async hasBroadAccess(requesterRole: string): Promise<boolean> {
+  private async hasBroadAccess(requesterRole: string, requesterDepartmentId?: number | null): Promise<boolean> {
     if (requesterRole === Role.ADMIN) return true;
     const { allowed } = await this.permissionsService.hasPermission(
       requesterRole,
       'link_groups.manage',
+      requesterDepartmentId
     );
     return allowed;
   }
@@ -106,7 +107,7 @@ export class LinkGroupManagersService {
   async listManagedByMe(requesterId: number, requesterRole: string): Promise<GroupManagersResult[]> {
     let groups: LinkGroup[];
 
-    if (await this.hasBroadAccess(requesterRole)) {
+    if (await this.hasBroadAccess(requesterRole, undefined)) {
       groups = await this.groupRepo.find({
         relations: ['primaryManager', 'secondaryManagers', 'secondaryManagers.user', 'category'],
         order: { sortOrder: 'ASC', id: 'ASC' },
@@ -146,7 +147,7 @@ export class LinkGroupManagersService {
     if (
       !LinkGroupAccessHelper.canManage(
         requesterId,
-        await this.hasBroadAccess(requesterRole),
+        await this.hasBroadAccess(requesterRole, undefined),
         group.primaryManagerId,
         secondaryIds,
       )
@@ -171,7 +172,7 @@ export class LinkGroupManagersService {
     if (
       !LinkGroupAccessHelper.canEditSecondaryManagers(
         requesterId,
-        await this.hasBroadAccess(requesterRole),
+        await this.hasBroadAccess(requesterRole, undefined),
         group.primaryManagerId,
       )
     ) {
@@ -216,7 +217,7 @@ export class LinkGroupManagersService {
     if (
       !LinkGroupAccessHelper.canEditSecondaryManagers(
         requesterId,
-        await this.hasBroadAccess(requesterRole),
+        await this.hasBroadAccess(requesterRole, undefined),
         group.primaryManagerId,
       )
     ) {

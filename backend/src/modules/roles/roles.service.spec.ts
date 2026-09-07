@@ -15,6 +15,7 @@ describe('RolesService', () => {
   const mockRoleRepo = {
     find: jest.fn(),
     findOne: jest.fn(),
+    findOneBy: jest.fn(),
     create: jest.fn(),
     save: jest.fn(),
     remove: jest.fn(),
@@ -23,6 +24,7 @@ describe('RolesService', () => {
     find: jest.fn(),
   };
   const mockRolePermissionRepo = {
+    delete: jest.fn(),
     find: jest.fn(),
     count: jest.fn(),
     exists: jest.fn(),
@@ -30,7 +32,21 @@ describe('RolesService', () => {
   const mockUserRepo = {
     count: jest.fn(),
   };
+  const mockQueryRunner = {
+    connect: jest.fn(),
+    startTransaction: jest.fn(),
+    commitTransaction: jest.fn(),
+    rollbackTransaction: jest.fn(),
+    release: jest.fn(),
+    manager: {
+      find: jest.fn(),
+      delete: jest.fn(),
+      save: jest.fn(),
+    },
+  };
+
   const mockDataSource = {
+    createQueryRunner: jest.fn().mockReturnValue(mockQueryRunner),
     transaction: jest.fn((cb) =>
       cb({
         delete: jest.fn(),
@@ -237,6 +253,42 @@ describe('RolesService', () => {
       });
 
       expect(mockPermissionsService.invalidate).toHaveBeenCalledWith('admin');
+    });
+    });
+  describe('Department Overrides', () => {
+    it('getDepartmentOverrides -> nhóm đúng theo phòng ban', async () => {
+      mockRoleRepo.findOneBy.mockResolvedValue({ id: 1 });
+      mockRolePermissionRepo.find.mockResolvedValue([
+        { departmentId: 5, permission: { key: 'perm1' }, scope: null, department: { name: 'MKT' } },
+        { departmentId: 5, permission: { key: 'perm2' }, scope: 'own', department: { name: 'MKT' } },
+      ]);
+      const res = await service.getDepartmentOverrides(1);
+      expect(res).toHaveLength(1);
+      expect(res[0].departmentId).toBe(5);
+      expect(res[0].permissions).toHaveLength(2);
+    });
+
+    it('updateDepartmentOverride -> thành công, invalidate cache cho phòng đó', async () => {
+      mockRoleRepo.findOneBy.mockResolvedValue({ id: 1, code: 'manager' });
+      mockQueryRunner.manager.find.mockResolvedValue([
+        { id: 10, key: 'customers.view', supportsScope: true },
+      ]);
+      
+      const res = await service.updateDepartmentOverride(1, 5, {
+        permissions: [{ permissionKey: 'customers.view', scope: 'department' as any }],
+      });
+      
+      expect(res.success).toBe(true);
+      expect(mockQueryRunner.manager.delete).toHaveBeenCalledWith(RolePermission, { roleId: 1, departmentId: 5 });
+      expect(mockQueryRunner.manager.save).toHaveBeenCalled();
+      expect(mockPermissionsService.invalidate).toHaveBeenCalledWith('manager', 5);
+    });
+
+    it('deleteDepartmentOverride -> xoá thành công, invalidate cache cho phòng đó', async () => {
+      mockRoleRepo.findOneBy.mockResolvedValue({ id: 1, code: 'manager' });
+      await service.deleteDepartmentOverride(1, 5);
+      expect(mockRolePermissionRepo.delete).toHaveBeenCalledWith({ roleId: 1, departmentId: 5 });
+      expect(mockPermissionsService.invalidate).toHaveBeenCalledWith('manager', 5);
     });
   });
 });
