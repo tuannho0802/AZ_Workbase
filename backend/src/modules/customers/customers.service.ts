@@ -514,6 +514,33 @@ export class CustomersService {
       scope,
     );
 
+    // Áp dụng bộ lọc khách hàng (search, source, status, v.v.)
+    // Dùng as any vì applyCustomerListFilters expect type của customer repository query builder
+    this.applyCustomerListFilters(depositsQuery as any, {
+      search,
+      source,
+      status,
+      salesUserId,
+      departmentId,
+      dateFrom,
+      dateTo,
+      joinedGroups,
+    });
+
+    // Áp dụng bộ lọc thời gian nạp tiền giống hệt như query lấy dữ liệu bảng
+    if (dateFrom) {
+      depositsQuery.andWhere('deposit.depositDate >= :dateFrom', { dateFrom });
+    }
+    if (dateTo) {
+      depositsQuery.andWhere('deposit.depositDate <= :dateTo', { dateTo });
+    } else if (!dateFrom) {
+      // Default: 30 days
+      const thirtyDays = new Date();
+      thirtyDays.setDate(thirtyDays.getDate() - 30);
+      const thirtyDaysAgo = thirtyDays.toISOString().split('T')[0];
+      depositsQuery.andWhere('deposit.depositDate >= :thirtyDaysAgo', { thirtyDaysAgo });
+    }
+
     const totalDepositRaw = await depositsQuery
       .select('SUM(deposit.amount)', 'total')
       .getRawOne();
