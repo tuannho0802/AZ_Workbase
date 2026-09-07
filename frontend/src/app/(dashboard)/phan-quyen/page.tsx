@@ -145,27 +145,42 @@ function RoleFormModal({
 }
 
 // Tách thân Drawer ra component riêng, nhận `role` KHÔNG NULL - khởi tạo
-// state `checked` TRỰC TIẾP từ role qua `useState(() => ...)` thay vì dùng
-// `useEffect` + `setChecked` (tránh set-state-trong-effect, không cần thiết
-// khi có thể khởi tạo ngay từ đầu). Nơi gọi PHẢI truyền `key={role.id}` để
-// React tự tạo instance mới (state mới) mỗi khi đổi role đang xem/sửa.
+// state `checked` TRỰC TIẾP từ `initialPermissions` qua `useState(() => ...)`
+// thay vì dùng `useEffect` + `setChecked` (tránh set-state-trong-effect,
+// không cần thiết khi có thể khởi tạo ngay từ đầu). Nơi gọi PHẢI truyền
+// `key=...` duy nhất theo (role.id, departmentId) để React tự tạo instance
+// mới (state mới) mỗi khi đổi role/phòng ban đang xem/sửa.
+//
+// Dùng CHUNG cho cả 2 loại lưu (đúng yêu cầu "tách rõ nhưng dùng lại UI cho
+// nhất quán"): `departmentId=undefined` -> lưu vào ma trận TOÀN CỤC của role
+// (PATCH /roles/:id/permissions); `departmentId=<number>` -> lưu vào
+// OVERRIDE riêng của phòng ban đó (PUT
+// /roles/:id/department-overrides/:departmentId) - permissions ở đây là
+// phần "chênh" so với Toàn cục, không phải toàn bộ quyền thật sự phòng ban
+// đó có (xem giải thích ở DepartmentOverride type).
 function RolePermissionsEditor({
   role,
   canManage,
+  initialPermissions,
+  departmentId,
   onSaved,
 }: {
   role: RoleWithPermissions;
   canManage: boolean;
+  initialPermissions: RolePermissionEntry[];
+  departmentId?: number;
   onSaved: () => void;
 }) {
   const { message } = App.useApp();
   const { permissions: allPermissions, isLoading: loadingCatalog } = useAllPermissions();
-  const updateMutation = useUpdateRolePermissions();
+  const updateGlobalMutation = useUpdateRolePermissions();
+  const updateDeptMutation = useUpdateDepartmentOverride(role.id);
+  const isSaving = departmentId ? updateDeptMutation.isPending : updateGlobalMutation.isPending;
 
   // Map cục bộ: permissionKey -> scope đã chọn (null = permission không hỗ
   // trợ scope nhưng ĐANG bật). Permission KHÔNG có mặt trong map = đang tắt.
   const [checked, setChecked] = useState<Map<string, PermissionScope | null>>(
-    () => new Map(role.permissions.map((entry) => [entry.permissionKey, entry.scope])),
+    () => new Map(initialPermissions.map((entry) => [entry.permissionKey, entry.scope])),
   );
 
   const grouped = useMemo(() => {
@@ -201,12 +216,44 @@ function RolePermissionsEditor({
     });
   };
 
+  const deleteDeptMutation = useDeleteDepartmentOverride(role.id);
+
   const handleSave = () => {
     const payload: RolePermissionEntry[] = Array.from(checked.entries()).map(([permissionKey, scope]) => ({
       permissionKey,
       scope,
     }));
-    updateMutation.mutate(
+
+    if (departmentId) {
+      if (payload.length === 0) {
+        // Bỏ hết checkbox = coi như không còn override gì cho phòng ban này
+        // nữa - gọi DELETE thay vì PUT với mảng rỗng, để dòng override biến
+        // mất hẳn (phòng ban quay lại dùng đúng ma trận Toàn cục), thay vì
+        // giữ lại 1 "override rỗng" gây hiểu nhầm là phòng ban đó có
+        // 0 quyền tuyệt đối.
+        deleteDeptMutation.mutate(departmentId, {
+          onSuccess: () => {
+            message.success(`Đã gỡ override cho phòng ban này (quay lại dùng ma trận Toàn cục)`);
+            onSaved();
+          },
+          onError: (err: any) => message.error(err?.response?.data?.message || 'Cập nhật thất bại'),
+        });
+        return;
+      }
+      updateDeptMutation.mutate(
+        { departmentId, payload: { permissions: payload } },
+        {
+          onSuccess: () => {
+            message.success(`Đã lưu override riêng cho phòng ban`);
+            onSaved();
+          },
+          onError: (err: any) => message.error(err?.response?.data?.message || 'Cập nhật thất bại'),
+        },
+      );
+      return;
+    }
+
+    updateGlobalMutation.mutate(
       { id: role.id, payload: { permissions: payload } },
       {
         onSuccess: () => {

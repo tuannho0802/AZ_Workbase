@@ -6,17 +6,20 @@ import {
     CreateRolePayload,
     UpdateRolePayload,
     UpdateRolePermissionsPayload,
+    DepartmentOverride,
 } from '../types/roles.types';
 
 const ROLES_KEY = ['roles'];
 const PERMISSIONS_KEY = ['permissions'];
 const MY_PERMISSIONS_KEY = ['my-permissions'];
+const DEPARTMENT_OVERRIDES_KEY = (roleId: number) => ['role-department-overrides', roleId];
 
 // Cùng lý do EMPTY_ARRAY dùng chung ở useLinkGroups.ts - tránh tạo array
 // mới mỗi render khi data còn undefined (infinite loop nếu nơi gọi có
 // useEffect phụ thuộc reference này).
 const EMPTY_ROLES: RoleWithPermissions[] = [];
 const EMPTY_PERMISSIONS: Permission[] = [];
+const EMPTY_OVERRIDES: DepartmentOverride[] = [];
 
 export const useRoles = () => {
     const { data, isLoading, isError, error, refetch } = useQuery({
@@ -82,6 +85,51 @@ export const useUpdateRolePermissions = () => {
     return useMutation({
         mutationFn: ({ id, payload }: { id: number; payload: UpdateRolePermissionsPayload }) =>
             rolesApi.updateRolePermissions(id, payload),
+        onSuccess: invalidate,
+    });
+};
+
+// ── Department Override (mục "Bảng điều khiển Permission theo Phòng ban") ──
+export const useDepartmentOverrides = (roleId: number | undefined) => {
+    const { data, isLoading, refetch } = useQuery({
+        queryKey: DEPARTMENT_OVERRIDES_KEY(roleId ?? 0),
+        queryFn: () => rolesApi.getDepartmentOverrides(roleId as number),
+        enabled: !!roleId,
+        staleTime: 30 * 1000,
+    });
+
+    return { overrides: (data as DepartmentOverride[]) ?? EMPTY_OVERRIDES, isLoading, refetch };
+};
+
+function useInvalidateDepartmentOverrides(roleId: number) {
+    const queryClient = useQueryClient();
+    return () => {
+        queryClient.invalidateQueries({ queryKey: DEPARTMENT_OVERRIDES_KEY(roleId) });
+        // Override vừa đổi có thể trùng phòng ban của CHÍNH người đang thao
+        // tác (Admin cũng có thể thuộc 1 phòng ban) - invalidate cho chắc,
+        // giống lý do ở useInvalidateRoles().
+        queryClient.invalidateQueries({ queryKey: MY_PERMISSIONS_KEY });
+    };
+}
+
+export const useUpdateDepartmentOverride = (roleId: number) => {
+    const invalidate = useInvalidateDepartmentOverrides(roleId);
+    return useMutation({
+        mutationFn: ({
+            departmentId,
+            payload,
+        }: {
+            departmentId: number;
+            payload: UpdateRolePermissionsPayload;
+        }) => rolesApi.updateDepartmentOverride(roleId, departmentId, payload),
+        onSuccess: invalidate,
+    });
+};
+
+export const useDeleteDepartmentOverride = (roleId: number) => {
+    const invalidate = useInvalidateDepartmentOverrides(roleId);
+    return useMutation({
+        mutationFn: (departmentId: number) => rolesApi.deleteDepartmentOverride(roleId, departmentId),
         onSuccess: invalidate,
     });
 };

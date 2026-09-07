@@ -6,6 +6,7 @@ import {
   CreateRolePayload,
   UpdateRolePayload,
   UpdateRolePermissionsPayload,
+  DepartmentOverride,
 } from '../types/roles.types';
 
 export const rolesApi = {
@@ -46,6 +47,38 @@ export const rolesApi = {
     const response = await axiosInstance.patch<RoleWithPermissions>(
       `/roles/${id}/permissions`,
       payload,
+    );
+    return response.data;
+  },
+
+  /** Khớp GET /roles/:id/department-overrides - danh sách phòng ban ĐANG có override riêng cho role này. */
+  getDepartmentOverrides: async (roleId: number): Promise<DepartmentOverride[]> => {
+    const response = await axiosInstance.get<DepartmentOverride[]>(
+      `/roles/${roleId}/department-overrides`,
+    );
+    return response.data;
+  },
+
+  /** Khớp PUT /roles/:id/department-overrides/:departmentId - ghi đè (tạo mới nếu chưa có) toàn bộ override của 1 phòng ban. */
+  updateDepartmentOverride: async (
+    roleId: number,
+    departmentId: number,
+    payload: UpdateRolePermissionsPayload,
+  ): Promise<{ success: true; count: number }> => {
+    const response = await axiosInstance.put(
+      `/roles/${roleId}/department-overrides/${departmentId}`,
+      payload,
+    );
+    return response.data;
+  },
+
+  /** Khớp DELETE /roles/:id/department-overrides/:departmentId - gỡ hẳn override, phòng ban quay lại dùng đúng ma trận Toàn cục. */
+  deleteDepartmentOverride: async (
+    roleId: number,
+    departmentId: number,
+  ): Promise<{ success: true }> => {
+    const response = await axiosInstance.delete(
+      `/roles/${roleId}/department-overrides/${departmentId}`,
     );
     return response.data;
   },
