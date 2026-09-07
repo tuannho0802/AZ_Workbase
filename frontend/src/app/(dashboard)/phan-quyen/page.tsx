@@ -15,8 +15,10 @@ import { useMyPermissions } from '@/lib/hooks/useMyPermissions';
 import {
   useRoles, useAllPermissions, useCreateRole, useUpdateRole,
   useDeleteRole, useUpdateRolePermissions,
+  useUpdateDepartmentOverride, useDeleteDepartmentOverride,
 } from '@/lib/hooks/useRoles';
 import { RoleWithPermissions, Permission, PermissionScope, RolePermissionEntry } from '@/lib/types/roles.types';
+import { DepartmentOverridesPanel } from './DepartmentOverridesPanel';
 
 const { Title, Text, Paragraph } = Typography;
 
@@ -269,7 +271,7 @@ function RolePermissionsEditor({
     <>
       <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 16 }}>
         {canManage && (
-          <Button type="primary" icon={<SaveOutlined />} loading={updateMutation.isPending} onClick={handleSave}>
+          <Button type="primary" icon={<SaveOutlined />} loading={isSaving} onClick={handleSave}>
             Lưu thay đổi
           </Button>
         )}
@@ -354,30 +356,76 @@ function RolePermissionsDrawer({
   open,
   role,
   canManage,
+  canManageDepartments,
   onClose,
 }: {
   open: boolean;
   role: RoleWithPermissions | null;
   canManage: boolean;
+  canManageDepartments: boolean;
   onClose: () => void;
 }) {
+  // 'global' | 'department' - reset về 'global' mỗi khi mở Drawer cho 1 role
+  // khác (key={role.id} bên dưới lo phần reset state con, còn tab thì tự
+  // quản qua state riêng, reset thủ công lúc onClose).
+  const [tab, setTab] = useState<'global' | 'department'>('global');
+
   return (
     <Drawer
       title={role ? `Ma trận quyền: ${role.name}` : ''}
       open={open}
-      onClose={onClose}
+      onClose={() => {
+        setTab('global');
+        onClose();
+      }}
       size={640}
       destroyOnHidden
     >
       {role && (
-        <RolePermissionsEditor
-          // key={role.id}: buộc React tạo instance MỚI (state mới, khởi tạo
-          // lại từ đầu) mỗi khi đổi sang role khác - không cần useEffect.
-          key={role.id}
-          role={role}
-          canManage={canManage}
-          onSaved={onClose}
-        />
+        <>
+          {/* Endpoint department-overrides yêu cầu roles.manage (không có
+              bản chỉ-xem) - người chỉ có roles.view không thấy tab này,
+              khớp đúng BE thay vì hiện ra rồi gọi API dính 403. */}
+          {canManage && (
+            <Segmented
+              block
+              style={{ marginBottom: 16 }}
+              value={tab}
+              onChange={(v) => setTab(v as 'global' | 'department')}
+              options={[
+                { label: 'Toàn cục', value: 'global' },
+                { label: 'Theo phòng ban', value: 'department' },
+              ]}
+            />
+          )}
+
+          {tab === 'global' || !canManage ? (
+            <RolePermissionsEditor
+              // key={role.id}: buộc React tạo instance MỚI (state mới, khởi tạo
+              // lại từ đầu) mỗi khi đổi sang role khác - không cần useEffect.
+              key={role.id}
+              role={role}
+              canManage={canManage}
+              initialPermissions={role.permissions}
+              onSaved={onClose}
+            />
+          ) : (
+            <DepartmentOverridesPanel
+              role={role}
+              canManageDepartments={canManageDepartments}
+              renderEditor={(departmentId, initialPermissions) => (
+                <RolePermissionsEditor
+                  key={`${role.id}-${departmentId}`}
+                  role={role}
+                  canManage={canManage}
+                  initialPermissions={initialPermissions}
+                  departmentId={departmentId}
+                  onSaved={onClose}
+                />
+              )}
+            />
+          )}
+        </>
       )}
     </Drawer>
   );
@@ -390,6 +438,10 @@ export default function PhanQuyenPage() {
   const { can, isLoading: loadingPermissions } = useMyPermissions();
   const canView = can('roles.view');
   const canManage = can('roles.manage');
+  // GET /departments (để chọn phòng ban trong tab Override) yêu cầu
+  // departments.view riêng - không giả định roles.manage kéo theo luôn
+  // quyền này (xem DepartmentOverridesPanel.tsx).
+  const canManageDepartments = can('departments.view');
 
   // ⚠️ Sidebar/trang chủ đã ẩn mục "Phân quyền" nếu không có `roles.view`
   // (xem nav-config.tsx), nhưng đó chỉ là UX - vào THẲNG url `/phan-quyen`
@@ -552,6 +604,7 @@ export default function PhanQuyenPage() {
         open={permDrawerOpen}
         role={viewingRole}
         canManage={canManage}
+        canManageDepartments={canManageDepartments}
         onClose={() => setPermDrawerOpen(false)}
       />
     </div>
