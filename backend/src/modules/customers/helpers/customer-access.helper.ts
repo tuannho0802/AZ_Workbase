@@ -34,12 +34,13 @@ export class CustomerAccessHelper {
     query: SelectQueryBuilder<any>,
     userId: number,
     userRole: string,
+    scope?: string | null,
   ): SelectQueryBuilder<any> {
-    if (userRole === Role.ADMIN || userRole === Role.ASSISTANT) {
+    if (userRole === Role.ADMIN || scope === 'all' || (!scope && userRole === Role.ASSISTANT)) {
       return query;
     }
 
-    if (userRole === Role.MANAGER) {
+    if (scope === 'department' || (!scope && userRole === Role.MANAGER)) {
       query.andWhere(
         'customer.department_id IN ' +
         '(SELECT d.id FROM departments d WHERE d.manager_user_id = :accessManagerId)',
@@ -48,7 +49,7 @@ export class CustomerAccessHelper {
       return query;
     }
 
-    // EMPLOYEE (và bất kỳ role lạ nào khác ngoài 3 role trên, phòng hờ):
+    // own (và bất kỳ role lạ nào khác ngoài các scope trên, phòng hờ):
     // chỉ được xem KH do mình tạo, mình làm sales chính, hoặc mình đang có
     // 1 lượt gán còn hiệu lực (bulk-assign có thể gán 1 KH cho nhiều
     // người, không chỉ riêng salesUserId "chính").
@@ -91,7 +92,7 @@ export class CustomerAccessHelper {
    * customers.service.ts). Cùng 1 bộ quy tắc với applyViewFilter(), chỉ
    * khác là kiểm tra trong bộ nhớ thay vì sinh điều kiện SQL.
    *
-   * managerDepartmentIds: chỉ cần truyền khi userRole === MANAGER - danh
+   * managerDepartmentIds: chỉ cần truyền khi scope === 'department' - danh
    * sách id phòng ban mà user này là manager_user_id (lấy 1 lần trước khi
    * lặp qua nhiều customer, KHÔNG query lại cho từng customer).
    */
@@ -100,10 +101,11 @@ export class CustomerAccessHelper {
     userId: number,
     userRole: string,
     managerDepartmentIds: number[] = [],
+    scope?: string | null,
   ): boolean {
-    if (userRole === Role.ADMIN || userRole === Role.ASSISTANT) return true;
+    if (userRole === Role.ADMIN || scope === 'all' || (!scope && userRole === Role.ASSISTANT)) return true;
 
-    if (userRole === Role.MANAGER) {
+    if (scope === 'department' || (!scope && userRole === Role.MANAGER)) {
       return (
         customer.departmentId != null &&
         managerDepartmentIds.includes(customer.departmentId)

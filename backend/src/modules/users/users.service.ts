@@ -69,7 +69,7 @@ export class UsersService {
     return this.usersRepository.findOne({ where: { id } });
   }
 
-  async findOne(id: number, currentUserId: number, currentUserRole: string): Promise<User | null> {
+  async findOne(id: number, currentUserId: number, currentUserRole: string, scope?: string | null): Promise<User | null> {
     const user = await this.usersRepository.findOne({ where: { id }, relations: ['department'] });
     if (!user) {
       throw new NotFoundException('Không tìm thấy nhân viên');
@@ -85,6 +85,7 @@ export class UsersService {
       user.departmentId,
       currentUserId,
       currentUserRole,
+      scope,
     );
     if (!allowed) {
       throw new ForbiddenException('Bạn không có quyền xem thông tin nhân viên này');
@@ -128,7 +129,7 @@ export class UsersService {
     });
   }
 
-  async findAll(userId: number, userRole: string, options: { role?: string; departmentId?: number; isActive?: boolean; search?: string; page?: number; limit?: number }) {
+  async findAll(userId: number, userRole: string, scope?: string | null, options: { role?: string; departmentId?: number; isActive?: boolean; search?: string; page?: number; limit?: number } = {}) {
     const { role, departmentId, isActive, search, page = 1, limit = 20 } = options;
 
     const queryBuilder = this.usersRepository.createQueryBuilder('user')
@@ -141,7 +142,7 @@ export class UsersService {
     // sách phân trang đầy đủ thông tin. Giờ dùng UsersAccessHelper: Admin/
     // Assistant thấy tất cả; Manager chỉ phòng ban mình quản lý (+ chính
     // mình); Employee chỉ chính mình.
-    UsersAccessHelper.applyViewFilter(queryBuilder, userId, userRole);
+    UsersAccessHelper.applyViewFilter(queryBuilder, userId, userRole, scope);
 
     if (role) {
       queryBuilder.andWhere('user.role = :role', { role });
@@ -194,6 +195,7 @@ export class UsersService {
     createDto: CreateUserDto,
     creatorId: number,
     creatorRole: string,
+    scope?: string | null,
   ): Promise<User> {
     // 1. Check email exists
     const existing = await this.usersRepository.findOne({
@@ -208,12 +210,9 @@ export class UsersService {
     // validateRoleExists() để biết vì sao (DTO không còn hardcode enum nữa).
     await this.validateRoleExists(createDto.role);
 
-    // ⚠️ FIX PERMISSIONS.md mục 2.2: Manager chỉ được tạo user TRONG phòng
-    // ban mình quản lý - bắt buộc phải truyền departmentId (không cho để
-    // trống rồi mặc định) và departmentId đó phải nằm trong danh sách phòng
-    // ban mà chính Manager này đang là `manager_user_id`. Admin/Assistant
-    // không bị giới hạn (tạo được ở bất kỳ phòng ban nào, kể cả không chọn).
-    if (creatorRole === Role.MANAGER) {
+    // ⚠️ Scope-based: thay check Role.MANAGER bằng scope='department'.
+    // scope='department' -> Manager tuỳ chỉnh: chỉ tạo user trong phòng ban mình quản lý.
+    if (creatorRole !== Role.ADMIN && scope === 'department') {
       if (createDto.departmentId == null) {
         throw new ForbiddenException(
           'Bạn phải chọn phòng ban khi tạo nhân viên mới (chỉ tạo được trong phòng ban mình quản lý)',
@@ -309,6 +308,7 @@ export class UsersService {
     updateDto: UpdateUserDto,
     callerId: number,
     callerRole: string,
+    scope?: string | null,
   ): Promise<User> {
     // 1. Tìm user
     const user = await this.usersRepository.findOne({ 
@@ -329,6 +329,7 @@ export class UsersService {
       user.departmentId,
       callerId,
       callerRole,
+      scope,
     );
     if (!allowed) {
       throw new ForbiddenException('Bạn không có quyền sửa thông tin nhân viên này');
@@ -412,6 +413,7 @@ export class UsersService {
     dto: ResetPasswordDto,
     callerId: number,
     callerRole: string,
+    scope?: string | null,
   ) {
     const user = await this.findById(id);
     if (!user) {
@@ -426,6 +428,7 @@ export class UsersService {
       user.departmentId,
       callerId,
       callerRole,
+      scope,
     );
     if (!allowed) {
       throw new ForbiddenException('Bạn không có quyền đặt lại mật khẩu của nhân viên này');
@@ -536,10 +539,10 @@ export class UsersService {
    * không khớp, không phải báo lỗi (đây là danh sách, không phải hành động
    * trên 1 bản ghi cụ thể).
    */
-  async findPendingApprovals(viewerId: number, viewerRole: string): Promise<User[]> {
+  async findPendingApprovals(viewerId: number, viewerRole: string, scope?: string | null): Promise<User[]> {
     const where: any = { approvalStatus: ApprovalStatus.PENDING };
 
-    if (viewerRole === Role.MANAGER) {
+    if (viewerRole !== Role.ADMIN && scope === 'department') {
       const managedIds = await UsersAccessHelper.getManagedDepartmentIds(
         this.departmentsRepository,
         viewerId,
@@ -571,6 +574,7 @@ export class UsersService {
     id: number,
     approverId: number,
     approverRole: string,
+    scope?: string | null,
     overrides?: { role?: string; departmentId?: number },
   ): Promise<User> {
     const user = await this.usersRepository.findOne({ where: { id } });
@@ -581,7 +585,8 @@ export class UsersService {
       throw new BadRequestException('Tài khoản này không ở trạng thái chờ duyệt');
     }
 
-    if (approverRole === Role.MANAGER) {
+    // Scope-based: thay check Role.MANAGER bằng scope='department'
+    if (approverRole !== Role.ADMIN && scope === 'department') {
       const managedIds = await UsersAccessHelper.getManagedDepartmentIds(
         this.departmentsRepository,
         approverId,
@@ -639,6 +644,7 @@ export class UsersService {
     id: number,
     approverId: number,
     approverRole: string,
+    scope?: string | null,
     reason?: string,
   ): Promise<User> {
     const user = await this.usersRepository.findOne({ where: { id } });
@@ -649,7 +655,8 @@ export class UsersService {
       throw new BadRequestException('Tài khoản này không ở trạng thái chờ duyệt');
     }
 
-    if (approverRole === Role.MANAGER) {
+    // Scope-based: thay check Role.MANAGER bằng scope='department'
+    if (approverRole !== Role.ADMIN && scope === 'department') {
       const managedIds = await UsersAccessHelper.getManagedDepartmentIds(
         this.departmentsRepository,
         approverId,

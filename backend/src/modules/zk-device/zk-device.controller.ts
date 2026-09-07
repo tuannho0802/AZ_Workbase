@@ -26,6 +26,7 @@ import {
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { PermissionGuard } from '../../common/guards/permission.guard';
 import { RequirePermission } from '../../common/decorators/require-permission.decorator';
+import { GetPermissionScope } from '../../common/decorators/get-permission-scope.decorator';
 
 @ApiTags('ZK Device (Máy chấm công)')
 @ApiBearerAuth()
@@ -105,8 +106,8 @@ export class ZkDeviceController {
     summary:
       'Danh sách log chấm công đã đồng bộ (đọc-only), lọc theo nhân viên/khoảng ngày/trạng thái khớp',
   })
-  async getAttendanceLogs(@Query() query: QueryAttendanceLogDto, @Request() req: any) {
-    return this.zkDeviceService.getAttendanceLogs(query, req.user.id, req.user.role);
+  async getAttendanceLogs(@Query() query: QueryAttendanceLogDto, @Request() req: any, @GetPermissionScope() scope?: string | null) {
+    return this.zkDeviceService.getAttendanceLogs(query, req.user.id, req.user.role, scope);
   }
 
   // FIX PERMISSIONS.md mục 1 (quy tắc Xoá) + mục 2.3: xoá log chấm công là
@@ -128,8 +129,8 @@ export class ZkDeviceController {
     summary:
       'Bảng chấm công tổng hợp theo ngày (giờ vào/giờ ra/đi muộn/về sớm), tính theo giờ VN (GMT+7)',
   })
-  async getAttendanceSummary(@Query() query: QueryAttendanceSummaryDto, @Request() req: any) {
-    return this.zkDeviceService.getAttendanceSummary(query, req.user.id, req.user.role);
+  async getAttendanceSummary(@Query() query: QueryAttendanceSummaryDto, @Request() req: any, @GetPermissionScope() scope?: string | null) {
+    return this.zkDeviceService.getAttendanceSummary(query, req.user.id, req.user.role, scope);
   }
 
   @Post('sync')

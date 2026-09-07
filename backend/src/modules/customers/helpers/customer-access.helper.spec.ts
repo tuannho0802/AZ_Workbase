@@ -46,7 +46,7 @@ describe('CustomerAccessHelper', () => {
     it('ADMIN: không áp thêm bất kỳ điều kiện lọc nào (xem tất cả)', () => {
       const { qb, calls } = makeFakeQueryBuilder();
 
-      const result = CustomerAccessHelper.applyViewFilter(qb, 1, Role.ADMIN);
+      const result = CustomerAccessHelper.applyViewFilter(qb, 1, Role.ADMIN, 'all');
 
       expect(calls).toHaveLength(0);
       expect(result).toBe(qb); // vẫn trả về đúng instance (fluent chain nguyên vẹn)
@@ -55,7 +55,7 @@ describe('CustomerAccessHelper', () => {
     it('ASSISTANT: không áp thêm bất kỳ điều kiện lọc nào (xem tất cả, bất chấp phòng ban)', () => {
       const { qb, calls } = makeFakeQueryBuilder();
 
-      CustomerAccessHelper.applyViewFilter(qb, 1, Role.ASSISTANT);
+      CustomerAccessHelper.applyViewFilter(qb, 1, Role.ASSISTANT, 'all');
 
       expect(calls).toHaveLength(0);
     });
@@ -63,7 +63,7 @@ describe('CustomerAccessHelper', () => {
     it('MANAGER: lọc theo department mà manager_user_id = chính mình', () => {
       const { qb, calls } = makeFakeQueryBuilder();
 
-      CustomerAccessHelper.applyViewFilter(qb, 42, Role.MANAGER);
+      CustomerAccessHelper.applyViewFilter(qb, 42, Role.MANAGER, 'department');
 
       expect(calls).toHaveLength(1);
       expect(calls[0].sqlOrBrackets).toContain('department_id IN');
@@ -129,22 +129,22 @@ describe('CustomerAccessHelper', () => {
   describe('canManageCustomer', () => {
     it('ADMIN/ASSISTANT -> luôn true bất kể dữ liệu customer', () => {
       expect(CustomerAccessHelper.canManageCustomer({} as any, 1, Role.ADMIN)).toBe(true);
-      expect(CustomerAccessHelper.canManageCustomer({} as any, 1, Role.ASSISTANT)).toBe(true);
+      expect(CustomerAccessHelper.canManageCustomer({} as any, 1, Role.ASSISTANT, [], 'all')).toBe(true);
     });
 
     it('MANAGER -> true nếu departmentId của customer nằm trong managerDepartmentIds truyền vào', () => {
       const customer: any = { departmentId: 5 };
-      expect(CustomerAccessHelper.canManageCustomer(customer, 1, Role.MANAGER, [3, 5, 8])).toBe(true);
+      expect(CustomerAccessHelper.canManageCustomer(customer, 1, Role.MANAGER, [3, 5, 8], 'department')).toBe(true);
     });
 
     it('MANAGER -> false nếu departmentId của customer KHÔNG nằm trong managerDepartmentIds', () => {
       const customer: any = { departmentId: 99 };
-      expect(CustomerAccessHelper.canManageCustomer(customer, 1, Role.MANAGER, [3, 5, 8])).toBe(false);
+      expect(CustomerAccessHelper.canManageCustomer(customer, 1, Role.MANAGER, [3, 5, 8], 'department')).toBe(false);
     });
 
     it('MANAGER -> false nếu customer chưa có departmentId (null)', () => {
       const customer: any = { departmentId: null };
-      expect(CustomerAccessHelper.canManageCustomer(customer, 1, Role.MANAGER, [3, 5, 8])).toBe(false);
+      expect(CustomerAccessHelper.canManageCustomer(customer, 1, Role.MANAGER, [3, 5, 8], 'department')).toBe(false);
     });
 
     it('MANAGER -> false nếu không truyền managerDepartmentIds (mặc định mảng rỗng - phòng thủ, không vô tình cấp quyền)', () => {

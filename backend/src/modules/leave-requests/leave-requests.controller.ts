@@ -2,6 +2,7 @@ import { Controller, Get, Post, Patch, Body, Param, UseGuards, Request, Query, B
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { PermissionGuard } from '../../common/guards/permission.guard';
 import { RequirePermission } from '../../common/decorators/require-permission.decorator';
+import { GetPermissionScope } from '../../common/decorators/get-permission-scope.decorator';
 import { LeaveRequestsService } from './leave-requests.service';
 
 @Controller('leave-requests')
@@ -23,14 +24,14 @@ export class LeaveRequestsController {
   
   @Get('pending')
   @RequirePermission('leave_requests.approve')
-  async findPending(@Request() req) {
-    return this.leaveRequestsService.findPending(req.user.id, req.user.role);
+  async findPending(@Request() req, @GetPermissionScope() scope?: string | null) {
+    return this.leaveRequestsService.findPending(req.user.id, req.user.role, scope);
   }
   
   @Get('history')
   @RequirePermission('leave_requests.view')
-  async findHistory(@Request() req) {
-    return this.leaveRequestsService.findHistory(req.user.id, req.user.role);
+  async findHistory(@Request() req, @GetPermissionScope() scope?: string | null) {
+    return this.leaveRequestsService.findHistory(req.user.id, req.user.role, scope);
   }
 
   @Get('approved-range')
@@ -50,11 +51,12 @@ export class LeaveRequestsController {
   
   @Patch(':id/approve')
   @RequirePermission('leave_requests.approve')
-  async approve(@Param('id') id: string, @Request() req) {
+  async approve(@Param('id') id: string, @Request() req, @GetPermissionScope() scope?: string | null) {
     return this.leaveRequestsService.approve(
       parseInt(id),
       req.user.id,
       req.user.role,
+      scope,
     );
   }
   
@@ -63,13 +65,15 @@ export class LeaveRequestsController {
   async reject(
     @Param('id') id: string,
     @Body() body: { reason: string },
-    @Request() req
+    @Request() req,
+    @GetPermissionScope() scope?: string | null,
   ) {
     return this.leaveRequestsService.reject(
       parseInt(id),
       req.user.id,
       body.reason,
       req.user.role,
+      scope,
     );
   }
   

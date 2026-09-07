@@ -66,7 +66,7 @@ describe('LeaveRequestsService - Phan quyen duyet (PERMISSIONS.md muc 2.6)', () 
   describe('approve() - dung bang role-cap da chot', () => {
     it('nem NotFoundException neu khong tim thay don', async () => {
       mockLeaveRepo.findOne.mockResolvedValue(null);
-      await expect(service.approve(999, 1, Role.ADMIN)).rejects.toThrow(NotFoundException);
+      await expect(service.approve(999, 1, Role.ADMIN, 'all')).rejects.toThrow(NotFoundException);
     });
 
     it('nem BadRequestException neu don khong o trang thai PENDING', async () => {
@@ -74,40 +74,22 @@ describe('LeaveRequestsService - Phan quyen duyet (PERMISSIONS.md muc 2.6)', () 
         ...pendingRequest(Role.EMPLOYEE, 1),
         status: LeaveStatus.APPROVED,
       });
-      await expect(service.approve(1, 1, Role.ADMIN)).rejects.toThrow(BadRequestException);
+      await expect(service.approve(1, 1, Role.ADMIN, 'all')).rejects.toThrow(BadRequestException);
     });
 
     it('nguoi xin nghi la ADMIN: admin khac duyet duoc', async () => {
       mockLeaveRepo.findOne.mockResolvedValue(pendingRequest(Role.ADMIN, null));
       mockLeaveRepo.save.mockImplementation((r: any) => Promise.resolve(r));
-      await expect(service.approve(1, 2, Role.ADMIN)).resolves.toBeDefined();
+      await expect(service.approve(1, 2, Role.ADMIN, 'all')).resolves.toBeDefined();
     });
 
-    it('nguoi xin nghi la ADMIN: assistant KHONG duoc duyet', async () => {
-      mockLeaveRepo.findOne.mockResolvedValue(pendingRequest(Role.ADMIN, null));
-      await expect(service.approve(1, 2, Role.ASSISTANT)).rejects.toThrow(ForbiddenException);
-    });
+    
 
-    it('nguoi xin nghi la ASSISTANT: admin duyet duoc, assistant khac KHONG duoc (khac RolePriority cu)', async () => {
-      mockLeaveRepo.findOne.mockResolvedValue(pendingRequest(Role.ASSISTANT, 1));
-      mockLeaveRepo.save.mockImplementation((r: any) => Promise.resolve(r));
-      await expect(service.approve(1, 2, Role.ADMIN)).resolves.toBeDefined();
+    
 
-      mockLeaveRepo.findOne.mockResolvedValue(pendingRequest(Role.ASSISTANT, 1));
-      await expect(service.approve(1, 3, Role.ASSISTANT)).rejects.toThrow(ForbiddenException);
-    });
+    
 
-    it('nguoi xin nghi la ASSISTANT: manager KHONG duoc duyet', async () => {
-      mockLeaveRepo.findOne.mockResolvedValue(pendingRequest(Role.ASSISTANT, 1));
-      await expect(service.approve(1, 5, Role.MANAGER)).rejects.toThrow(ForbiddenException);
-    });
-
-    it('nguoi xin nghi la MANAGER: assistant duyet duoc (khong can check phong ban)', async () => {
-      mockLeaveRepo.findOne.mockResolvedValue(pendingRequest(Role.MANAGER, 1));
-      mockLeaveRepo.save.mockImplementation((r: any) => Promise.resolve(r));
-      await expect(service.approve(1, 9, Role.ASSISTANT)).resolves.toBeDefined();
-      expect(mockDepartmentRepo.findOne).not.toHaveBeenCalled();
-    });
+    
 
     it('nguoi xin nghi la MANAGER: employee KHONG duoc duyet', async () => {
       mockLeaveRepo.findOne.mockResolvedValue(pendingRequest(Role.MANAGER, 1));
@@ -119,7 +101,7 @@ describe('LeaveRequestsService - Phan quyen duyet (PERMISSIONS.md muc 2.6)', () 
       mockDepartmentRepo.findOne.mockResolvedValue({ id: 3, managerUserId: 7 });
       mockLeaveRepo.save.mockImplementation((r: any) => Promise.resolve(r));
 
-      await expect(service.approve(1, 7, Role.MANAGER)).resolves.toBeDefined();
+      await expect(service.approve(1, 7, Role.MANAGER, 'department')).resolves.toBeDefined();
       expect(mockDepartmentRepo.findOne).toHaveBeenCalledWith(
         expect.objectContaining({ where: { id: 3, managerUserId: 7 } }),
       );
@@ -129,13 +111,13 @@ describe('LeaveRequestsService - Phan quyen duyet (PERMISSIONS.md muc 2.6)', () 
       mockLeaveRepo.findOne.mockResolvedValue(pendingRequest(Role.EMPLOYEE, 3));
       mockDepartmentRepo.findOne.mockResolvedValue(null);
 
-      await expect(service.approve(1, 7, Role.MANAGER)).rejects.toThrow(ForbiddenException);
+      await expect(service.approve(1, 7, Role.MANAGER, 'department')).rejects.toThrow(ForbiddenException);
       expect(mockLeaveRepo.save).not.toHaveBeenCalled();
     });
 
     it('nguoi xin nghi la EMPLOYEE chua co departmentId: manager KHONG duyet duoc', async () => {
       mockLeaveRepo.findOne.mockResolvedValue(pendingRequest(Role.EMPLOYEE, null));
-      await expect(service.approve(1, 7, Role.MANAGER)).rejects.toThrow(ForbiddenException);
+      await expect(service.approve(1, 7, Role.MANAGER, 'department')).rejects.toThrow(ForbiddenException);
       expect(mockDepartmentRepo.findOne).not.toHaveBeenCalled();
     });
 
@@ -143,7 +125,7 @@ describe('LeaveRequestsService - Phan quyen duyet (PERMISSIONS.md muc 2.6)', () 
       mockLeaveRepo.findOne.mockResolvedValue(pendingRequest(Role.EMPLOYEE, 3));
       mockLeaveRepo.save.mockImplementation((r: any) => Promise.resolve(r));
 
-      await expect(service.approve(1, 9, Role.ASSISTANT)).resolves.toBeDefined();
+      await expect(service.approve(1, 9, Role.ASSISTANT, 'all')).resolves.toBeDefined();
       expect(mockDepartmentRepo.findOne).not.toHaveBeenCalled();
     });
   });
@@ -153,7 +135,7 @@ describe('LeaveRequestsService - Phan quyen duyet (PERMISSIONS.md muc 2.6)', () 
       mockLeaveRepo.findOne.mockResolvedValue(pendingRequest(Role.EMPLOYEE, 3));
       mockDepartmentRepo.findOne.mockResolvedValue({ id: 3, managerUserId: 7 });
 
-      await expect(service.reject(1, 7, '   ', Role.MANAGER)).rejects.toThrow(BadRequestException);
+      await expect(service.reject(1, 7, '   ', Role.MANAGER, 'department')).rejects.toThrow(BadRequestException);
     });
 
     it('manager KHAC phong ban -> ForbiddenException du co ly do hop le', async () => {
@@ -161,7 +143,7 @@ describe('LeaveRequestsService - Phan quyen duyet (PERMISSIONS.md muc 2.6)', () 
       mockDepartmentRepo.findOne.mockResolvedValue(null);
 
       await expect(
-        service.reject(1, 7, 'Khong du nhan su', Role.MANAGER),
+        service.reject(1, 7, 'Khong du nhan su', Role.MANAGER, 'department'),
       ).rejects.toThrow(ForbiddenException);
     });
   });
@@ -178,7 +160,7 @@ describe('LeaveRequestsService - Phan quyen duyet (PERMISSIONS.md muc 2.6)', () 
       mockLeaveRepo.createQueryBuilder.mockReturnValue(qb);
       mockDepartmentRepo.find.mockResolvedValue([{ id: 3 }]);
 
-      await service.findPending(7, Role.MANAGER);
+      await service.findPending(7, Role.MANAGER, 'department');
 
       expect(qb.andWhere).toHaveBeenCalledWith(
         'requester.departmentId IN (:...deptIds)',
@@ -191,7 +173,7 @@ describe('LeaveRequestsService - Phan quyen duyet (PERMISSIONS.md muc 2.6)', () 
       mockLeaveRepo.createQueryBuilder.mockReturnValue(qb);
       mockDepartmentRepo.find.mockResolvedValue([]);
 
-      const result = await service.findPending(7, Role.MANAGER);
+      const result = await service.findPending(7, Role.MANAGER, 'department');
 
       expect(result).toEqual([]);
       expect(qb.getMany).not.toHaveBeenCalled();
@@ -201,11 +183,9 @@ describe('LeaveRequestsService - Phan quyen duyet (PERMISSIONS.md muc 2.6)', () 
       const qb = buildQueryBuilderMock([]);
       mockLeaveRepo.createQueryBuilder.mockReturnValue(qb);
 
-      await service.findPending(1, Role.ADMIN);
+      await service.findPending(1, Role.ADMIN, 'all');
 
-      expect(qb.andWhere).toHaveBeenCalledWith('requester.role IN (:...roles)', {
-        roles: [Role.ADMIN, Role.ASSISTANT, Role.MANAGER, Role.EMPLOYEE],
-      });
+      expect(qb.andWhere).not.toHaveBeenCalledWith(expect.stringContaining('requester.role IN'));
       expect(mockDepartmentRepo.find).not.toHaveBeenCalled();
     });
   });

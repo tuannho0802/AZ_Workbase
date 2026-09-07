@@ -365,7 +365,7 @@ export class ZkDeviceService {
    * bảng attendance_logs ngoài syncNow()/ingestPushAttendance() (2 nguồn từ
    * máy) - API này chỉ SELECT.
    */
-  async getAttendanceLogs(query: QueryAttendanceLogDto, viewerId: number, viewerRole: string) {
+  async getAttendanceLogs(query: QueryAttendanceLogDto, viewerId: number, viewerRole: string, scope?: string | null) {
     const { page = 1, limit = 20, userId, matched, from, to } = query;
 
     const qb = this.attendanceLogRepo
@@ -388,11 +388,7 @@ export class ZkDeviceService {
       qb.andWhere('log.recordTime <= :to', { to: `${to} 23:59:59` });
     }
 
-    // ⚠️ FIX PERMISSIONS.md mục 2.3: Manager chỉ xem log ĐÃ khớp với nhân
-    // viên thuộc phòng ban mình quản lý - không xác định được phòng ban của
-    // log CHƯA khớp (chỉ có deviceUserId thô) nên loại hẳn khỏi kết quả,
-    // tránh Manager thấy log của nhân viên ngoài phạm vi.
-    if (viewerRole === Role.MANAGER) {
+    if (viewerRole !== Role.ADMIN && scope === 'department') {
       const managedIds = await this.getManagedDepartmentIds(viewerId);
       if (managedIds.length === 0) {
         return { data: [], total: 0, page, limit, totalPages: 0 };
@@ -520,7 +516,7 @@ export class ZkDeviceService {
    * Việc gộp/tính toán làm ở tầng ứng dụng (không dùng CONVERT_TZ của MySQL)
    * để không phụ thuộc session timezone của DB, luôn đúng theo giờ VN.
    */
-  async getAttendanceSummary(query: QueryAttendanceSummaryDto, viewerId: number, viewerRole: string) {
+  async getAttendanceSummary(query: QueryAttendanceSummaryDto, viewerId: number, viewerRole: string, scope?: string | null) {
     const { page = 1, limit = 31, userId, from, to } = query;
     const { WORK_START_MINUTES, WORK_END_MINUTES, DUPLICATE_TAP_GAP_MS } =
       ZkDeviceService;
@@ -553,10 +549,7 @@ export class ZkDeviceService {
       });
     }
 
-    // ⚠️ FIX PERMISSIONS.md mục 2.3: Manager chỉ xem bảng tổng hợp của nhân
-    // viên ĐÃ khớp và thuộc phòng ban mình quản lý - khác Admin/Assistant
-    // (không đổi, vẫn thấy cả log chưa map để biết ai chưa được map).
-    if (viewerRole === Role.MANAGER) {
+    if (viewerRole !== Role.ADMIN && scope === 'department') {
       const managedIds = await this.getManagedDepartmentIds(viewerId);
       if (managedIds.length === 0) {
         return { data: [], total: 0, page, limit, totalPages: 0 };

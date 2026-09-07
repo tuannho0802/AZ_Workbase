@@ -4,6 +4,7 @@ import { UsersService } from './users.service';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { PermissionGuard } from '../../common/guards/permission.guard';
 import { RequirePermission } from '../../common/decorators/require-permission.decorator';
+import { GetPermissionScope } from '../../common/decorators/get-permission-scope.decorator';
 import { CreateUserDto } from './dto/create-user.dto';
 import { UpdateUserDto } from './dto/update-user.dto';
 import { ResetPasswordDto } from './dto/reset-password.dto';
@@ -38,6 +39,7 @@ export class UsersController {
   @ApiOperation({ summary: 'Danh sách nhân viên (Phân trang & Filter)' })
   async findAll(
     @Request() req: any,
+    @GetPermissionScope() scope?: string | null,
     @Query('role') role?: string,
     @Query('departmentId') departmentId?: number,
     @Query('isActive') isActive?: boolean,
@@ -50,7 +52,7 @@ export class UsersController {
     // 100 mà không đổi hành vi với các giá trị limit hợp lệ (<=100).
     const safeLimit = limit ? Math.min(Math.max(+limit, 1), 100) : 20;
 
-    return this.usersService.findAll(req.user.id, req.user.role, {
+    return this.usersService.findAll(req.user.id, req.user.role, scope, {
       role,
       departmentId,
       isActive,
@@ -69,43 +71,43 @@ export class UsersController {
   @Get('pending-approvals')
   @RequirePermission('users.manage')
   @ApiOperation({ summary: 'Danh sách tài khoản tự đăng ký đang chờ duyệt (Admin/Assistant toàn bộ, Manager chỉ phòng ban mình quản lý)' })
-  async getPendingApprovals(@Request() req: any) {
-    return this.usersService.findPendingApprovals(req.user.id, req.user.role);
+  async getPendingApprovals(@Request() req: any, @GetPermissionScope() scope?: string | null) {
+    return this.usersService.findPendingApprovals(req.user.id, req.user.role, scope);
   }
 
   @Get(':id')
   @RequirePermission('users.view')
   @ApiOperation({ summary: 'Lấy thông tin chi tiết nhân viên theo ID' })
-  async findOne(@Param('id') id: string, @Request() req: any) {
-    return this.usersService.findOne(+id, req.user.id, req.user.role);
+  async findOne(@Param('id') id: string, @Request() req: any, @GetPermissionScope() scope?: string | null) {
+    return this.usersService.findOne(+id, req.user.id, req.user.role, scope);
   }
 
   @Patch(':id/approve')
   @RequirePermission('users.manage')
   @ApiOperation({ summary: 'Duyệt tài khoản tự đăng ký (Admin/Assistant toàn bộ, Manager chỉ đúng phòng ban mình quản lý)' })
-  async approveUser(@Param('id') id: string, @Body() dto: ApproveUserDto, @Request() req: any) {
-    return this.usersService.approveUser(+id, req.user.id, req.user.role, dto);
+  async approveUser(@Param('id') id: string, @Body() dto: ApproveUserDto, @Request() req: any, @GetPermissionScope() scope?: string | null) {
+    return this.usersService.approveUser(+id, req.user.id, req.user.role, scope, dto);
   }
 
   @Patch(':id/reject')
   @RequirePermission('users.manage')
   @ApiOperation({ summary: 'Từ chối tài khoản tự đăng ký (Admin/Assistant toàn bộ, Manager chỉ đúng phòng ban mình quản lý)' })
-  async rejectUser(@Param('id') id: string, @Body() dto: RejectUserDto, @Request() req: any) {
-    return this.usersService.rejectUser(+id, req.user.id, req.user.role, dto.reason);
+  async rejectUser(@Param('id') id: string, @Body() dto: RejectUserDto, @Request() req: any, @GetPermissionScope() scope?: string | null) {
+    return this.usersService.rejectUser(+id, req.user.id, req.user.role, scope, dto.reason);
   }
 
   @Post()
   @RequirePermission('users.manage')
   @ApiOperation({ summary: 'Tạo nhân viên mới (Admin/Assistant toàn quyền, Manager chỉ trong phòng ban mình quản lý)' })
-  async create(@Request() req: any, @Body() dto: CreateUserDto) {
-    return this.usersService.create(dto, req.user.id, req.user.role);
+  async create(@Request() req: any, @Body() dto: CreateUserDto, @GetPermissionScope() scope?: string | null) {
+    return this.usersService.create(dto, req.user.id, req.user.role, scope);
   }
 
   @Patch(':id')
   @RequirePermission('users.manage')
   @ApiOperation({ summary: 'Cập nhật thông tin nhân viên' })
-  async update(@Param('id') id: string, @Body() dto: UpdateUserDto, @Request() req: any) {
-    return this.usersService.update(+id, dto, req.user.id, req.user.role);
+  async update(@Param('id') id: string, @Body() dto: UpdateUserDto, @Request() req: any, @GetPermissionScope() scope?: string | null) {
+    return this.usersService.update(+id, dto, req.user.id, req.user.role, scope);
   }
 
   // ⚠️ Endpoint GET/PUT `:id/profile` (Fanpage/Group thủ công) ĐÃ BỊ XOÁ -
@@ -117,7 +119,7 @@ export class UsersController {
   @Patch(':id/reset-password')
   @RequirePermission('users.manage')
   @ApiOperation({ summary: 'Đặt lại mật khẩu nhân viên (Admin/Assistant toàn bộ, Manager trong phòng ban quản lý)' })
-  async resetPassword(@Param('id') id: string, @Body() dto: ResetPasswordDto, @Request() req: any) {
-    return this.usersService.resetPassword(+id, dto, req.user.id, req.user.role);
+  async resetPassword(@Param('id') id: string, @Body() dto: ResetPasswordDto, @Request() req: any, @GetPermissionScope() scope?: string | null) {
+    return this.usersService.resetPassword(+id, dto, req.user.id, req.user.role, scope);
   }
 }

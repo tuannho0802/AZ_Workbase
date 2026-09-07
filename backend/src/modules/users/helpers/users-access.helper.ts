@@ -33,12 +33,13 @@ export class UsersAccessHelper {
     query: SelectQueryBuilder<any>,
     viewerId: number,
     viewerRole: string,
+    scope?: string | null,
   ): SelectQueryBuilder<any> {
-    if (viewerRole === Role.ADMIN || viewerRole === Role.ASSISTANT) {
+    if (viewerRole === Role.ADMIN || scope === 'all') {
       return query;
     }
 
-    if (viewerRole === Role.MANAGER) {
+    if (scope === 'department') {
       query.andWhere(
         '(user.department_id IN ' +
         '(SELECT d.id FROM departments d WHERE d.manager_user_id = :accessManagerId)' +
@@ -48,7 +49,7 @@ export class UsersAccessHelper {
       return query;
     }
 
-    // EMPLOYEE (và role lạ khác, phòng hờ): chỉ thấy chính mình.
+    // own (và role lạ khác, phòng hờ): chỉ thấy chính mình.
     query.andWhere('user.id = :accessUserId', { accessUserId: viewerId });
     return query;
   }
@@ -66,10 +67,11 @@ export class UsersAccessHelper {
     targetDepartmentId: number | null | undefined,
     viewerId: number,
     viewerRole: string,
+    scope?: string | null,
   ): Promise<boolean> {
-    if (viewerRole === Role.ADMIN || viewerRole === Role.ASSISTANT) return true;
+    if (viewerRole === Role.ADMIN || scope === 'all') return true;
 
-    if (viewerRole === Role.MANAGER) {
+    if (scope === 'department') {
       if (targetId === viewerId) return true; // Manager luôn tự sửa được chính mình
       if (targetDepartmentId == null) return false;
       const dept = await departmentRepo.findOne({
@@ -78,7 +80,7 @@ export class UsersAccessHelper {
       return !!dept;
     }
 
-    // EMPLOYEE: chỉ chính mình.
+    // own: chỉ chính mình.
     return targetId === viewerId;
   }
 

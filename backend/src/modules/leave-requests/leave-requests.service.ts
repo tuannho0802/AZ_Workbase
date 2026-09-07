@@ -7,50 +7,16 @@ import { Department } from '../../database/entities/department.entity';
 import { Role } from '../../common/enums/role.enum';
 
 /**
- * PERMISSIONS.md mục 2.6 - THAY THẾ HOÀN TOÀN cơ chế `RolePriority` chéo
- * phòng ban cũ (ADMIN:4, MANAGER:3, ASSISTANT:2, EMPLOYEE:1 - priority cao
- * hơn duyệt được đơn priority thấp hơn, không phụ thuộc phòng ban) bằng bảng
- * role-cặp cụ thể đã chốt với chủ dự án:
+ * PERMISSIONS.md mục 2.6 - ĐÃ ĐƯỢC GENERALIZE sang scope-based:
  *
- *   Người xin nghỉ (role) | Ai được duyệt đơn này
- *   -----------------------|--------------------------------------------
- *   admin                  | CHỈ admin
- *   assistant               | CHỈ admin
- *   manager                 | assistant HOẶC admin
- *   employee                 | manager CÙNG PHÒNG BAN với employee đó,
- *                           | HOẶC assistant, HOẶC admin
+ * Trước đây dùng bảng ELIGIBLE_APPROVER_ROLES cứng (4 role hệ thống). Giờ:
+ * - Ai có permission `leave_requests.approve` với scope='all' -> duyệt được mọi đơn.
+ * - Ai có permission `leave_requests.approve` với scope='department' -> chỉ duyệt
+ *   đơn của nhân viên trong phòng ban mà họ là manager_user_id.
+ * - Không có permission hoặc scope=null -> không duyệt được.
  *
- * Khác biệt quan trọng so với cơ chế cũ: KHÔNG còn thuần "priority cao hơn
- * thì duyệt được" - assistant KHÔNG duyệt được đơn của assistant khác (dù
- * cùng "priority" theo cách hiểu cũ), và manager CHỈ duyệt được đơn employee
- * ĐÚNG phòng ban mình đang quản lý (`department.manager_user_id = mình`,
- * KHÔNG phải phòng ban mình *thuộc về* - xem "Diễn giải quan trọng" mục 1
- * của PERMISSIONS.md), không phải "mọi phòng ban" như cơ chế cũ.
+ * Lối thoát hiểm: Role.ADMIN luôn bypass tuyệt đối (khớp với PermissionGuard).
  */
-const ELIGIBLE_APPROVER_ROLES: Record<string, string[]> = {
-  [Role.ADMIN]: [Role.ADMIN],
-  [Role.ASSISTANT]: [Role.ADMIN],
-  [Role.MANAGER]: [Role.ASSISTANT, Role.ADMIN],
-  [Role.EMPLOYEE]: [Role.MANAGER, Role.ASSISTANT, Role.ADMIN],
-};
-
-/**
- * Bảng NGƯỢC của ELIGIBLE_APPROVER_ROLES - dùng cho findPending()/findHistory()
- * để biết 1 approver (viewer) được thấy đơn của NHỮNG role nào. Suy ra trực
- * tiếp từ bảng trên (role nào có approverRole trong danh sách được duyệt thì
- * approverRole đó thấy được đơn của role đó):
- *   admin thấy được: admin, assistant, manager, employee (mọi role)
- *   assistant thấy được: assistant, manager, employee (KHÔNG thấy đơn admin)
- *   manager thấy được: CHỈ employee (và phải đúng phòng ban mình quản lý)
- *   employee: không thấy đơn ai (không có quyền duyệt)
- */
-const VIEWER_SEES_REQUESTER_ROLES: Record<string, string[]> = {
-  [Role.ADMIN]: [Role.ADMIN, Role.ASSISTANT, Role.MANAGER, Role.EMPLOYEE],
-  [Role.ASSISTANT]: [Role.ASSISTANT, Role.MANAGER, Role.EMPLOYEE],
-  [Role.MANAGER]: [Role.EMPLOYEE],
-  [Role.EMPLOYEE]: [],
-};
-
 @Injectable()
 export class LeaveRequestsService {
   constructor(
@@ -65,26 +31,29 @@ export class LeaveRequestsService {
   ) {}
 
   /**
-   * Kiểm tra `approverId`(role `approverRole`) có được phép duyệt/từ chối
-   * đơn của 1 người có role `requesterRole` + `requesterDepartmentId` hay
-   * không - đúng bảng role-cặp ở đầu file. Dùng chung cho cả approve() lẫn
-   * reject() (1 nguồn duy nhất, tránh lệch logic giữa 2 hàm).
+   * Kiểm tra `approverId` (role `approverRole`, scope `scope`) có được phép
+   * duyệt/từ chối đơn của người thuộc `requesterDepartmentId` hay không.
+   * Dùng chung cho cả approve() lẫn reject() (1 nguồn duy nhất).
+   *
+   * Thay thế hoàn toàn ELIGIBLE_APPROVER_ROLES cứng cũ:
+   * - scope='all' hoặc Role.ADMIN -> duyệt mọi đơn.
+   * - scope='department' -> chỉ duyệt nếu approver là managerUserId của
+   *   phòng ban mà người xin nghỉ thuộc về (dùng department.managerUserId).
+   * - scope khác (null/own/undefined) -> không được duyệt.
    */
   private async isEligibleApprover(
-    requesterRole: string,
     requesterDepartmentId: number | null,
     approverId: number,
     approverRole: string,
+    scope?: string | null,
   ): Promise<boolean> {
-    const eligibleRoles = ELIGIBLE_APPROVER_ROLES[requesterRole] ?? [];
-    if (!eligibleRoles.includes(approverRole)) {
-      return false;
+    // Lối thoát hiểm tuyệt đối cho admin - không bao giờ bị khoá dù cấu hình sai
+    if (approverRole === Role.ADMIN || scope === 'all') {
+      return true;
     }
 
-    if (approverRole === Role.MANAGER) {
-      // Employee's approver Manager PHẢI là người đang quản lý ĐÚNG phòng
-      // ban của employee đó (department.manager_user_id = approverId) -
-      // không phải phòng ban Manager *thuộc về*.
+    // scope='department' -> phải là managerUserId của đúng phòng ban người xin nghỉ
+    if (scope === 'department') {
       if (requesterDepartmentId == null) return false;
       const dept = await this.departmentRepo.findOne({
         where: { id: requesterDepartmentId, managerUserId: approverId },
@@ -92,7 +61,8 @@ export class LeaveRequestsService {
       return !!dept;
     }
 
-    return true;
+    // scope=null/own hoặc bất kỳ giá trị khác -> không được duyệt
+    return false;
   }
 
   /**
@@ -206,22 +176,18 @@ export class LeaveRequestsService {
   }
   
   /**
-   * Danh sách đơn đang chờ duyệt MÀ VIEWER CÓ QUYỀN DUYỆT - theo đúng bảng
-   * role-cặp ở đầu file (thay hoàn toàn cơ chế RolePriority chéo phòng ban
-   * cũ). Manager CHỈ thấy đơn của Employee ĐÚNG phòng ban mình quản lý.
+   * Danh sách đơn đang chờ duyệt MÀ VIEWER CÓ QUYỀN DUYỆT - theo scope.
    */
-  async findPending(viewerId: number, viewerRole: string) {
-    const requesterRoles = VIEWER_SEES_REQUESTER_ROLES[viewerRole] ?? [];
-    if (requesterRoles.length === 0) return [];
+  async findPending(viewerId: number, viewerRole: string, scope?: string | null) {
+    if (viewerRole !== Role.ADMIN && scope !== 'all' && scope !== 'department') return [];
 
     const query = this.leaveRequestRepo
       .createQueryBuilder('leave')
       .leftJoinAndSelect('leave.requester', 'requester')
       .leftJoinAndSelect('requester.department', 'department')
-      .where('leave.status = :status', { status: LeaveStatus.PENDING })
-      .andWhere('requester.role IN (:...roles)', { roles: requesterRoles });
+      .where('leave.status = :status', { status: LeaveStatus.PENDING });
 
-    if (viewerRole === Role.MANAGER) {
+    if (viewerRole !== Role.ADMIN && scope === 'department') {
       const managedIds = await this.getManagedDepartmentIds(viewerId);
       if (managedIds.length === 0) return [];
       query.andWhere('requester.departmentId IN (:...deptIds)', { deptIds: managedIds });
@@ -232,12 +198,10 @@ export class LeaveRequestsService {
 
   /**
    * Lịch sử duyệt (Approved/Rejected) trong phạm vi VIEWER CÓ QUYỀN DUYỆT -
-   * cùng bộ lọc role/phòng ban với findPending() (đối xứng, tránh lệch nhau
-   * theo thời gian).
+   * cùng bộ lọc scope với findPending().
    */
-  async findHistory(viewerId: number, viewerRole: string) {
-    const requesterRoles = VIEWER_SEES_REQUESTER_ROLES[viewerRole] ?? [];
-    if (requesterRoles.length === 0) return [];
+  async findHistory(viewerId: number, viewerRole: string, scope?: string | null) {
+    if (viewerRole !== Role.ADMIN && scope !== 'all' && scope !== 'department') return [];
 
     const query = this.leaveRequestRepo
       .createQueryBuilder('leave')
@@ -246,10 +210,9 @@ export class LeaveRequestsService {
       .leftJoinAndSelect('leave.approver', 'approver')
       .where('leave.status IN (:...statuses)', { 
         statuses: [LeaveStatus.APPROVED, LeaveStatus.REJECTED] 
-      })
-      .andWhere('requester.role IN (:...roles)', { roles: requesterRoles });
+      });
 
-    if (viewerRole === Role.MANAGER) {
+    if (viewerRole !== Role.ADMIN && scope === 'department') {
       const managedIds = await this.getManagedDepartmentIds(viewerId);
       if (managedIds.length === 0) return [];
       query.andWhere('requester.departmentId IN (:...deptIds)', { deptIds: managedIds });
@@ -266,7 +229,7 @@ export class LeaveRequestsService {
    * Permission: bảng role-cặp ở đầu file (isEligibleApprover) - thay hoàn
    * toàn kiểm tra RolePriority cũ.
    */
-  async approve(requestId: number, approverId: number, userRole: string) {
+  async approve(requestId: number, approverId: number, userRole: string, scope?: string | null) {
     const request = await this.leaveRequestRepo.findOne({
       where: { id: requestId },
       relations: ['requester']
@@ -281,10 +244,10 @@ export class LeaveRequestsService {
     }
     
     const allowed = await this.isEligibleApprover(
-      request.requester.role,
       request.requester.departmentId,
       approverId,
       userRole,
+      scope,
     );
     if (!allowed) {
       throw new ForbiddenException('Bạn không có quyền phê duyệt đơn của người này');
@@ -315,6 +278,7 @@ export class LeaveRequestsService {
     approverId: number, 
     rejectionReason: string,
     userRole: string,
+    scope?: string | null,
   ) {
     const request = await this.leaveRequestRepo.findOne({
       where: { id: requestId },
@@ -330,10 +294,10 @@ export class LeaveRequestsService {
     }
 
     const allowed = await this.isEligibleApprover(
-      request.requester.role,
       request.requester.departmentId,
       approverId,
       userRole,
+      scope,
     );
     if (!allowed) {
       throw new ForbiddenException('Bạn không có quyền từ chối đơn của người này');
