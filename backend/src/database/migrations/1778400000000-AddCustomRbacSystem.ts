@@ -29,6 +29,27 @@ import { MigrationInterface, QueryRunner } from 'typeorm';
 export class AddCustomRbacSystem1778400000000 implements MigrationInterface {
   public async up(queryRunner: QueryRunner): Promise<void> {
     // ------------------------------------------------------------------
+    // 0) DỌN DẸP PHÒNG THỦ - bắt buộc phải có vì MySQL: mọi lệnh DDL
+    //    (CREATE/ALTER/DROP TABLE) tự động IMPLICIT COMMIT ngay khi chạy,
+    //    KHÔNG rollback được dù TypeORM có bọc transaction. Thực tế đã gặp:
+    //    lần chạy trước lỗi ở bước ADD CONSTRAINT cuối `up()`, TypeORM log
+    //    "ROLLBACK" nhưng KHÔNG hề huỷ được 3 bảng roles/permissions/
+    //    role_permissions đã CREATE + INSERT xong trước đó, cũng như
+    //    `users.role` đã ALTER sang VARCHAR(50) - toàn bộ vẫn nằm nguyên
+    //    trong DB, khiến lần chạy lại sau đó gặp "Table roles already
+    //    exists". => Luôn dọn sạch 3 bảng (nếu có, theo đúng thứ tự ngược
+    //    phụ thuộc FK: role_permissions trước, rồi permissions/roles) NGAY
+    //    ĐẦU up() trước khi tạo lại - làm migration này AN TOÀN chạy lại
+    //    nhiều lần (idempotent) bất kể lần trước dừng ở bước nào. Không có
+    //    rủi ro mất dữ liệu thật: dữ liệu duy nhất từng có trong 3 bảng này
+    //    là seed CHÍNH migration này tự chèn, sẽ được chèn lại y hệt ngay
+    //    bên dưới.
+    // ------------------------------------------------------------------
+    await queryRunner.query(`DROP TABLE IF EXISTS role_permissions;`);
+    await queryRunner.query(`DROP TABLE IF EXISTS permissions;`);
+    await queryRunner.query(`DROP TABLE IF EXISTS roles;`);
+
+    // ------------------------------------------------------------------
     // 1) Bảng roles
     // ------------------------------------------------------------------
     await queryRunner.query(`
