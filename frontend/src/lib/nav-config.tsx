@@ -15,6 +15,7 @@ import {
   WarningOutlined,
   BarChartOutlined,
   CrownOutlined,
+  BankOutlined,
 } from '@ant-design/icons';
 
 export interface NavItem {
@@ -166,6 +167,16 @@ export const NAV_ITEMS: NavItem[] = [
     // Khớp @RequirePermission('users.view') ở users.controller.ts.
     roles: null,
     permission: 'users.view',
+  },
+  {
+    key: 'phong-ban',
+    label: 'Phòng ban',
+    description: 'Danh sách phòng ban, gán Manager quản lý theo phòng ban',
+    icon: <BankOutlined />,
+    path: '/phong-ban',
+    // Khớp @RequirePermission('departments.view') ở departments.controller.ts.
+    roles: null,
+    permission: 'departments.view',
   },
   {
     key: 'trash-can',

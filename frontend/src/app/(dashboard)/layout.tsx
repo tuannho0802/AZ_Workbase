@@ -158,6 +158,8 @@ export default function DashboardLayout({
       newKey = 'phan-quyen';
     } else if (pathname.includes('/reports')) {
       newKey = 'reports';
+    } else if (pathname.includes('/phong-ban')) {
+      newKey = 'phong-ban';
     }
     
     setSelectedKey(newKey);

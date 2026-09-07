@@ -5,6 +5,10 @@ export interface Department {
   name: string;
   description?: string;
   isActive: boolean;
+  // ID user (role phải là MANAGER, đang active) được gán quản lý phòng ban
+  // này - nguồn xác định phạm vi "Manager theo phòng ban" (xem
+  // update-department.dto.ts ở BE). null/undefined = chưa gán ai.
+  managerUserId?: number | null;
 }
 
 export const departmentsApi = {
