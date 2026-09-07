@@ -26,7 +26,11 @@ export class DepartmentsController {
   @UseGuards(JwtAuthGuard, PermissionGuard)
   @ApiBearerAuth()
   @RequirePermission('departments.view')
-  @UseInterceptors(new CacheControlInterceptor(300))
+  // ⚠️ Cùng loại bug đã fix ở users.controller.ts (max-age=300 chế độ mù ->
+  // trễ tới 300+120=420 giây thấy đúng data). Giờ phòng ban được sửa thường
+  // xuyên hơn qua trang /phong-ban mới (gán Manager, đổi tên...) - đổi sang
+  // revalidate=true (ETag) để không lặp lại đúng bug đó ở trang mới.
+  @UseInterceptors(new CacheControlInterceptor(300, true))
   @ApiOperation({ summary: 'Danh sách tất cả phòng ban' })
   findAll() {
     return this.departmentsService.findAll();

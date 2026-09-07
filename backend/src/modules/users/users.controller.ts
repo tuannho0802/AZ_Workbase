@@ -24,7 +24,7 @@ export class UsersController {
     // đăng nhập (dùng để đổ dropdown chọn nhân viên ở khắp nơi trong app,
     // không phải màn quản trị nhân sự) - khớp hành vi cũ (@Roles liệt kê đủ cả
     // 4 role = tương đương không giới hạn gì).
-  @UseInterceptors(new CacheControlInterceptor(60))
+  @UseInterceptors(new CacheControlInterceptor(60, true))
   @ApiOperation({ summary: 'Lấy toàn bộ danh sách nhân viên (Không phân trang)' })
   async findAllList(
     @Request() req: any,
@@ -35,7 +35,18 @@ export class UsersController {
 
   @Get()
   @RequirePermission('users.view')
-  @UseInterceptors(new CacheControlInterceptor(60))
+  // ⚠️ FIX BUG THẬT (đúng nguyên nhân "update User xong phải đợi ~2 phút mới
+  // đúng data"): trước đây dùng CacheControlInterceptor(60) - chế độ mù
+  // (revalidate=false) sinh header "public, max-age=60,
+  // stale-while-revalidate=120" -> trình duyệt có thể trả data CŨ tối đa
+  // 60+120=180 giây mà KHÔNG hề hỏi lại server, dù PATCH /users/:id đã
+  // chạy thành công (API call success nhưng UI vẫn thấy data cũ vì đọc
+  // thẳng từ cache trình duyệt, chưa từng gửi request mới). Đổi sang
+  // revalidate=true ("private, no-cache" + ETag) - trình duyệt LUÔN phải
+  // hỏi lại server trước khi dùng bản cache, server tính lại ETag từ data
+  // MỚI NHẤT mỗi lần - không thể trả nhầm data cũ nữa, vẫn giữ được lợi
+  // ích 304 Not Modified khi data thực sự chưa đổi.
+  @UseInterceptors(new CacheControlInterceptor(60, true))
   @ApiOperation({ summary: 'Danh sách nhân viên (Phân trang & Filter)' })
   async findAll(
     @Request() req: any,
