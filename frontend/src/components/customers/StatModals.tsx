@@ -325,7 +325,7 @@ export const StatModals: React.FC<StatModalsProps> = ({
             <Statistic
               title={<span style={{ fontWeight: 500, color: '#8c8c8c' }}>Số giao dịch</span>}
               value={depositSummary.count}
-              valueStyle={{ fontSize: 20, color: '#1890ff', fontWeight: 600 }}
+              styles={{ content: { fontSize: 20, color: '#1890ff', fontWeight: 600 } }}
               prefix={<UserOutlined style={{ fontSize: 16 }} />}
             />
             <Statistic
@@ -334,7 +334,7 @@ export const StatModals: React.FC<StatModalsProps> = ({
               precision={2}
               prefix={<DollarOutlined style={{ fontSize: 16 }} />}
               suffix="USD"
-              valueStyle={{ fontSize: 20, color: '#52c41a', fontWeight: 600 }}
+              styles={{ content: { fontSize: 20, color: '#52c41a', fontWeight: 600 } }}
             />
           </Space>
         </div>
