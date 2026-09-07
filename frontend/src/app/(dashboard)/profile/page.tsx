@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect, useMemo } from 'react';
+import { useSearchParams } from 'next/navigation';
 import {
   Card, Table, Button, Space, Tag, App,
   Spin, Typography, Avatar,
@@ -243,10 +244,13 @@ function ProfilePortal({ userId }: { userId: number }) {
 function AdminProfileManager() {
   const { message } = App.useApp();
   const { user: currentUser } = useAuthStore();
+  const searchParams = useSearchParams();
+  const initialUserId = searchParams.get('userId') ? Number(searchParams.get('userId')) : null;
+  
   const [users, setUsers] = useState<any[]>([]);
   const [loading, setLoading] = useState(false);
   const [isMobile, setIsMobile] = useState(false);
-  const [selectedUserId, setSelectedUserId] = useState<number | null>(null);
+  const [selectedUserId, setSelectedUserId] = useState<number | null>(initialUserId);
   const [drawerOpen, setDrawerOpen] = useState(false);
 
   useEffect(() => {
@@ -255,6 +259,14 @@ function AdminProfileManager() {
     window.addEventListener('resize', check);
     return () => window.removeEventListener('resize', check);
   }, []);
+
+  // Update selectedUserId if URL changes
+  useEffect(() => {
+    const uid = searchParams.get('userId');
+    if (uid) {
+        setSelectedUserId(Number(uid));
+    }
+  }, [searchParams]);
 
   const fetchUsers = async () => {
     setLoading(true);

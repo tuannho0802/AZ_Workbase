@@ -385,6 +385,7 @@ export default function DepartmentsPage() {
                     dataSource={deptUsersList}
                     rowKey={(u) => u.id}
                     emptyText="Phòng ban này chưa có nhân viên nào"
+                    onItemClick={(u) => router.push(`/profile?userId=${u.id}`)}
                     renderMeta={(u) => ({
                         avatar: <Avatar icon={<UserOutlined />} />,
                         title: u.name,

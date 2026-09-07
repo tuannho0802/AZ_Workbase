@@ -36,6 +36,7 @@ interface SimpleListProps<T> {
   size?: 'small' | 'default';
   /** Thêm viền bao quanh toàn bộ list + bo góc (tương đương List `bordered`) */
   bordered?: boolean;
+  onItemClick?: (item: T) => void;
 }
 
 export function SimpleList<T>({
@@ -47,6 +48,7 @@ export function SimpleList<T>({
   emptyText = 'Không có dữ liệu',
   size = 'default',
   bordered = false,
+  onItemClick,
 }: SimpleListProps<T>) {
   const itemPadding = size === 'small' ? '8px 0' : '12px 0';
   const itemPaddingInline = bordered ? '12px 16px' : '0';
@@ -67,9 +69,12 @@ export function SimpleList<T>({
             const meta = renderMeta(item);
             const actions = renderActions?.(item) ?? [];
             const isLast = index === dataSource.length - 1;
+            const isClickable = !!onItemClick;
+            
             return (
               <div
                 key={rowKey(item)}
+                onClick={() => onItemClick?.(item)}
                 style={{
                   display: 'flex',
                   alignItems: 'center',
@@ -77,6 +82,14 @@ export function SimpleList<T>({
                   padding: bordered ? itemPaddingInline : itemPadding,
                   borderBottom: isLast ? 'none' : '1px solid #f0f0f0',
                   gap: 12,
+                  cursor: isClickable ? 'pointer' : undefined,
+                  transition: isClickable ? 'background-color 0.3s' : undefined,
+                }}
+                onMouseEnter={(e) => {
+                  if (isClickable) e.currentTarget.style.backgroundColor = '#fafafa';
+                }}
+                onMouseLeave={(e) => {
+                  if (isClickable) e.currentTarget.style.backgroundColor = 'transparent';
                 }}
               >
                 <div style={{ display: 'flex', alignItems: 'center', gap: 12, minWidth: 0 }}>
