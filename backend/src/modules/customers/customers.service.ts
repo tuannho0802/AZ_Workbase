@@ -418,26 +418,36 @@ export class CustomersService {
       });
 
       // "Đã joined nhóm" cho cột hiển thị trên bảng danh sách - 1 query
-      // GROUP BY duy nhất cho CẢ TRANG (không phải N query/khách hàng),
-      // cùng nguyên tắc với activeAssignees ở trên.
-      const joinedCountsRaw = await this.customerGroupMembershipRepository
+      // JOIN duy nhất cho CẢ TRANG (không phải N query/khách hàng), cùng
+      // nguyên tắc với activeAssignees ở trên. Lấy kèm TÊN nhóm (không chỉ
+      // đếm số lượng) để FE hiển thị theo đúng pattern "Sales chính/phụ"
+      // (tên nhóm đầu tiên + "+N" cho các nhóm còn lại, hover xem chi tiết).
+      const joinedGroupsRaw = await this.customerGroupMembershipRepository
         .createQueryBuilder('cgm')
+        .innerJoin('cgm.group', 'grp')
         .select('cgm.customer_id', 'customerId')
-        .addSelect('COUNT(*)', 'joinedCount')
+        .addSelect('grp.id', 'groupId')
+        .addSelect('grp.name', 'groupName')
         .where('cgm.customer_id IN (:...ids)', {
           ids: entities.map((e) => e.id),
         })
         .andWhere('cgm.joined = true')
-        .groupBy('cgm.customer_id')
+        .orderBy('grp.name', 'ASC')
         .getRawMany();
 
-      const joinedCountByCustomerId = new Map(
-        joinedCountsRaw.map((r) => [Number(r.customerId), Number(r.joinedCount)]),
-      );
+      const joinedGroupsByCustomerId = new Map<number, Array<{ id: number; name: string }>>();
+      for (const row of joinedGroupsRaw) {
+        const customerId = Number(row.customerId);
+        if (!joinedGroupsByCustomerId.has(customerId)) {
+          joinedGroupsByCustomerId.set(customerId, []);
+        }
+        joinedGroupsByCustomerId.get(customerId)!.push({ id: Number(row.groupId), name: row.groupName });
+      }
 
       entities.forEach((customer) => {
-        (customer as any).joinedGroupsCount =
-          joinedCountByCustomerId.get(customer.id) ?? 0;
+        const groups = joinedGroupsByCustomerId.get(customer.id) ?? [];
+        (customer as any).joinedGroups = groups;
+        (customer as any).joinedGroupsCount = groups.length;
       });
     }
 
