@@ -249,7 +249,12 @@ export class CustomersService {
     }
   }
 
-  async findAll(filters: CustomerFiltersDto, userId: number, userRole: string) {
+  async findAll(
+    filters: CustomerFiltersDto,
+    userId: number,
+    userRole: string,
+    scope?: string | null,
+  ) {
     const {
       page = 1,
       limit = 20,
@@ -282,9 +287,8 @@ export class CustomersService {
       queryBuilder,
       userId,
       userRole,
+      scope,
     );
-
-    this.applyCustomerListFilters(queryBuilder, {
       search,
       source,
       status,
@@ -357,6 +361,7 @@ export class CustomersService {
       countQueryBuilder,
       userId,
       userRole,
+      scope,
     );
     this.applyCustomerListFilters(countQueryBuilder, {
       search,
@@ -443,7 +448,7 @@ export class CustomersService {
     };
   }
 
-  async getStats(userId: number, userRole: string) {
+  async getStats(userId: number, userRole: string, scope?: string | null) {
     const queryBuilder = this.customersRepository
       .createQueryBuilder('customer')
       .where('customer.deletedAt IS NULL');
@@ -453,6 +458,7 @@ export class CustomersService {
       queryBuilder,
       userId,
       userRole,
+      scope,
     );
 
     const [total, newToday, closedTotal] = await Promise.all([
@@ -490,6 +496,7 @@ export class CustomersService {
       depositsQuery,
       userId,
       userRole,
+      scope,
     );
 
     const totalDepositRaw = await depositsQuery
@@ -521,6 +528,7 @@ export class CustomersService {
     customerId: number,
     userId: number,
     userRole: string,
+    scope?: string | null,
   ): Promise<void> {
     const qb = this.customersRepository
       .createQueryBuilder('customer')
@@ -528,7 +536,7 @@ export class CustomersService {
       .where('customer.id = :id', { id: customerId })
       .andWhere('customer.deletedAt IS NULL');
 
-    CustomerAccessHelper.applyViewFilter(qb, userId, userRole);
+    CustomerAccessHelper.applyViewFilter(qb, userId, userRole, scope);
 
     const found = await qb.getOne();
     if (!found) {
@@ -536,7 +544,7 @@ export class CustomersService {
     }
   }
 
-  async findOne(id: number, userId: number, userRole: string) {
+  async findOne(id: number, userId: number, userRole: string, scope?: string | null) {
     const queryBuilder = this.customersRepository
       .createQueryBuilder('customer')
       .leftJoinAndSelect('customer.salesUser', 'salesUser')
@@ -555,6 +563,7 @@ export class CustomersService {
       queryBuilder,
       userId,
       userRole,
+      scope,
     );
 
     const customer = await queryBuilder.getOne();
@@ -595,11 +604,12 @@ export class CustomersService {
     dto: CreateCustomerNoteDto,
     userId: number,
     userRole: string,
+    scope?: string | null,
   ) {
     // ⚠️ FIX PERMISSIONS.md mục 2.1/4.0b: trước đây chỉ query đơn giản
     // (không qua CustomerAccessHelper) - BẤT KỲ role nào đăng nhập cũng
     // ghi note được vào customer bất kỳ, không riêng phạm vi của mình.
-    await this.assertCustomerAccessible(customerId, userId, userRole);
+    await this.assertCustomerAccessible(customerId, userId, userRole, scope);
 
     const note = this.notesRepository.create({
       ...dto,
@@ -629,6 +639,7 @@ export class CustomersService {
     dto: CreateDepositDto,
     userId: number,
     userRole: string,
+    scope?: string | null,
   ) {
     // ⚠️ FIX PERMISSIONS.md mục 2.1/4.0b: trước đây chỉ check tồn tại,
     // KHÔNG check phạm vi -> Manager tạo được deposit cho customer NGOÀI
@@ -636,7 +647,7 @@ export class CustomersService {
     // giờ cho phép Employee gọi endpoint này (trước đây bị loại hẳn khỏi
     // @Roles dù có thể đang là sales chính của customer đó) - phạm vi thực
     // tế vẫn bị giới hạn đúng bởi assertCustomerAccessible ngay dưới đây.
-    await this.assertCustomerAccessible(customerId, userId, userRole);
+    await this.assertCustomerAccessible(customerId, userId, userRole, scope);
 
     const customer = await this.customersRepository.findOne({
       where: { id: customerId, deletedAt: IsNull() },
@@ -671,11 +682,11 @@ export class CustomersService {
     return savedDeposit;
   }
 
-  async getDeposits(customerId: number, userId: number, userRole: string) {
+  async getDeposits(customerId: number, userId: number, userRole: string, scope?: string | null) {
     // ⚠️ FIX PERMISSIONS.md mục 2.1/4.0b: trước đây KHÔNG check phạm vi -
     // bất kỳ role nào cũng xem được lịch sử nạp tiền (dữ liệu tài chính)
     // của customer bất kỳ. Mức độ nghiêm trọng: Cao.
-    await this.assertCustomerAccessible(customerId, userId, userRole);
+    await this.assertCustomerAccessible(customerId, userId, userRole, scope);
 
     return this.depositsRepository
       .createQueryBuilder('deposit')
@@ -712,8 +723,9 @@ export class CustomersService {
     updateCustomerDto: UpdateCustomerDto,
     userId: number,
     userRole: string,
+    scope?: string | null,
   ) {
-    const customer = await this.findOne(id, userId, userRole);
+    const customer = await this.findOne(id, userId, userRole, scope);
 
     // Không cần check quyền sửa riêng ở đây: findOne() ở trên đã áp dụng
     // CustomerAccessHelper.applyViewFilter() - nếu user không có quyền
@@ -829,8 +841,8 @@ export class CustomersService {
     }
   }
 
-  async remove(id: number, userId: number, userRole: string) {
-    const customer = await this.findOne(id, userId, userRole);
+  async remove(id: number, userId: number, userRole: string, scope?: string | null) {
+    const customer = await this.findOne(id, userId, userRole, scope);
     if (!customer) {
       throw new CustomerNotFoundException();
     }
@@ -1080,6 +1092,7 @@ export class CustomersService {
     filters: CustomerFiltersDto,
     userId: number,
     userRole: string,
+    scope?: string | null,
   ) {
     const { page = 1, limit = 20, search, source, creatorId } = filters;
 
@@ -1100,9 +1113,26 @@ export class CustomersService {
       }),
     );
 
-    if (userRole === Role.ADMIN || userRole === Role.ASSISTANT) {
+    // ⚠️ FIX BUG THẬT (rà soát dynamic RBAC): trước đây if/else hardcode
+    // thẳng theo `userRole` (Role.ADMIN/ASSISTANT/MANAGER), hoàn toàn không
+    // đọc `scope` - dù `PermissionGuard` đã tra đúng scope thật từ
+    // role_permissions và Controller đã truyền xuống, hàm này bỏ qua, luôn
+    // fallback về hành vi role cứng. Hậu quả: Admin gán scope='all' cho 1
+    // role bất kỳ (kể cả role hệ thống như Employee) qua trang Phân quyền
+    // KHÔNG có tác dụng gì ở tab "Có thể chia" của Chia Data - đúng bug
+    // trong ảnh chụp màn hình (Employee được set Toàn bộ nhưng vẫn chỉ
+    // thấy đúng 3 khách của mình). Sửa để cùng 1 fallback semantics với
+    // CustomerAccessHelper.applyViewFilter() (role hệ thống không có dòng
+    // role_permissions tương ứng vẫn hoạt động y hệt trước - an toàn).
+    if (
+      scope === PermissionScope.ALL ||
+      (!scope && (userRole === Role.ADMIN || userRole === Role.ASSISTANT))
+    ) {
       // Xem toàn bộ pool chưa gán - không lọc gì thêm.
-    } else if (userRole === Role.MANAGER) {
+    } else if (
+      scope === PermissionScope.DEPARTMENT ||
+      (!scope && userRole === Role.MANAGER)
+    ) {
       // Chỉ thấy KH chưa Primary trong phạm vi phòng ban mình quản lý,
       // HOẶC KH mà chính mình đang là Primary (không phân biệt phòng ban -
       // họ đã là chủ sở hữu chính thì luôn thấy được, giống mọi role khác).
@@ -1116,8 +1146,8 @@ export class CustomersService {
         }),
       );
     } else {
-    // Employee (và role lạ khác): chỉ thấy KH chưa Primary NẾU họ tạo
-    // ra, HOẶC KH họ là Primary.
+    // own (Employee và role lạ khác không có scope rộng hơn): chỉ thấy KH
+    // chưa Primary NẾU họ tạo ra, HOẶC KH họ là Primary.
       qb.andWhere(
         new Brackets((q) => {
           q.where(
@@ -1166,8 +1196,9 @@ export class CustomersService {
     search?: string;
     userId: number;
     userRole: string;
+    scope?: string | null;
   }) {
-    const { page, limit, salesUserId, sourceUserId, search, userId, userRole } = params;
+    const { page, limit, salesUserId, sourceUserId, search, userId, userRole, scope } = params;
     const skip = (page - 1) * limit;
 
     const query = this.customersRepository
@@ -1184,7 +1215,14 @@ export class CustomersService {
     // nhưng thấy cả data của Sales User khác, Manager, Admin. Thêm dòng
     // dưới để áp đúng CustomerAccessHelper.applyViewFilter() giống mọi
     // endpoint list khách hàng khác (findAll, getStats...).
-    CustomerAccessHelper.applyViewFilter(query, userId, userRole);
+    //
+    // ⚠️ FIX BUG THẬT #2 (rà soát dynamic RBAC): dòng gọi applyViewFilter()
+    // ở trên vẫn THIẾU tham số `scope` suốt từ đầu - dù helper đã hỗ trợ
+    // sẵn (xem customer-access.helper.ts), không ai truyền vào nên luôn
+    // fallback về hardcode role, khiến Admin đổi scope qua trang Phân
+    // quyền không có tác dụng thật - CHÍNH XÁC bug trong ảnh chụp màn hình
+    // (Employee scope='all' vẫn chỉ thấy 3 khách của mình).
+    CustomerAccessHelper.applyViewFilter(query, userId, userRole, scope);
 
     if (salesUserId) {
       query.andWhere('customer.salesUserId = :salesUserId', { salesUserId });
@@ -1216,10 +1254,10 @@ export class CustomersService {
   }
 
   /** Lịch sử gán data của 1 khách hàng */
-  async getAssignmentHistory(customerId: number, userId: number, userRole: string) {
+  async getAssignmentHistory(customerId: number, userId: number, userRole: string, scope?: string | null) {
     // ⚠️ FIX PERMISSIONS.md mục 2.1/4.0b: trước đây KHÔNG check phạm vi -
     // ai cũng xem được lịch sử gán/thu hồi sales của customer bất kỳ.
-    await this.assertCustomerAccessible(customerId, userId, userRole);
+    await this.assertCustomerAccessible(customerId, userId, userRole, scope);
 
     return this.assignmentRepository.find({
       where: { customerId },
@@ -1447,7 +1485,7 @@ export class CustomersService {
     return { message: 'Đã thu hồi lượt gán data thành công' };
   }
 
-  async getStatsToday(userId: number, userRole: string) {
+  async getStatsToday(userId: number, userRole: string, scope?: string | null) {
     const baseQuery = () =>
       this.customersRepository
         .createQueryBuilder('customer')
@@ -1468,11 +1506,13 @@ export class CustomersService {
       todayQuery,
       userId,
       userRole,
+      scope,
     );
     CustomerAccessHelper.applyViewFilter(
       historyQuery,
       userId,
       userRole,
+      scope,
     );
 
     // ⚠️ Giới hạn (take) để tránh load toàn bộ bảng vào RAM khi 1 ngày có
