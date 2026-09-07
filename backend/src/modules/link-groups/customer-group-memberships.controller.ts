@@ -4,6 +4,7 @@ import { IsBoolean } from 'class-validator';
 import { ApiProperty } from '@nestjs/swagger';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { GetUser } from '../../common/decorators/get-user.decorator';
+import { GetPermissionScope } from '../../common/decorators/get-permission-scope.decorator';
 import { CustomerGroupMembershipsService } from './customer-group-memberships.service';
 
 class SetMembershipDto {
@@ -25,8 +26,12 @@ export class CustomerGroupMembershipsController {
   @Get(':id/group-memberships')
   @RequirePermission('customers.view')
   @ApiOperation({ summary: 'Checklist toàn bộ nhóm (theo category) + trạng thái đã join của customer này' })
-  async getMemberships(@Param('id', ParseIntPipe) id: number, @GetUser() user: any) {
-    return this.membershipsService.getMembershipsForCustomer(id, user.id, user.role);
+  async getMemberships(
+    @Param('id', ParseIntPipe) id: number,
+    @GetUser() user: any,
+    @GetPermissionScope() scope: string | null | undefined,
+  ) {
+    return this.membershipsService.getMembershipsForCustomer(id, user.id, user.role, scope);
   }
 
   @Patch(':id/group-memberships/:groupId')
@@ -37,7 +42,8 @@ export class CustomerGroupMembershipsController {
     @Param('groupId', ParseIntPipe) groupId: number,
     @Body() dto: SetMembershipDto,
     @GetUser() user: any,
+    @GetPermissionScope() scope: string | null | undefined,
   ) {
-    return this.membershipsService.setMembership(id, groupId, dto.joined, user.id, user.role);
+    return this.membershipsService.setMembership(id, groupId, dto.joined, user.id, user.role, scope);
   }
 }

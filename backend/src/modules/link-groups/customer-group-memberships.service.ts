@@ -35,11 +35,23 @@ export class CustomerGroupMembershipsService {
    * endpoint của controller này chỉ có `JwtAuthGuard`, KHÔNG check sở hữu -
    * ai đăng nhập cũng xem/sửa được checklist "đã join nhóm" của customer
    * bất kỳ, không riêng phạm vi của mình.
+   *
+   * ⚠️ FIX BUG THẬT #2 (rà soát dynamic RBAC): bản trước gọi
+   * `applyViewFilter(qb, userId, userRole)` - THIẾU tham số `scope` thứ 4,
+   * trong khi TOÀN BỘ 13 chỗ gọi khác trong `customers.service.ts` đều
+   * truyền đủ. `applyViewFilter()` chỉ tự suy scope từ `userRole` khi
+   * `scope` là falsy (fallback dành riêng cho 2 role tĩnh Assistant/Manager
+   * - xem JSDoc `CustomerAccessHelper`) - fallback đó KHÔNG áp dụng cho bất
+   * kỳ role tuỳ chỉnh nào Admin tự tạo qua trang Phân quyền, khiến role tuỳ
+   * chỉnh được cấp `customers.view` scope='all' vẫn bị lọc như thể chỉ có
+   * quyền 'own' (giống Employee) ở riêng module này - lệch hẳn với các
+   * module khác đã đọc đúng `permissionScope`.
    */
   private async assertCustomerAccessible(
     customerId: number,
     userId: number,
     userRole: string,
+    scope: string | null | undefined,
   ): Promise<void> {
     const qb = this.customerRepo
       .createQueryBuilder('customer')
@@ -47,7 +59,7 @@ export class CustomerGroupMembershipsService {
       .where('customer.id = :id', { id: customerId })
       .andWhere('customer.deletedAt IS NULL');
 
-    CustomerAccessHelper.applyViewFilter(qb, userId, userRole);
+    CustomerAccessHelper.applyViewFilter(qb, userId, userRole, scope);
 
     const found = await qb.getOne();
     if (!found) {
@@ -65,8 +77,9 @@ export class CustomerGroupMembershipsService {
     customerId: number,
     userId: number,
     userRole: string,
+    scope: string | null | undefined,
   ): Promise<GroupMembershipRow[]> {
-    await this.assertCustomerAccessible(customerId, userId, userRole);
+    await this.assertCustomerAccessible(customerId, userId, userRole, scope);
 
     const customer = await this.customerRepo.findOne({ where: { id: customerId } });
     if (!customer) {
@@ -121,8 +134,9 @@ export class CustomerGroupMembershipsService {
     joined: boolean,
     userId: number,
     userRole: string,
+    scope: string | null | undefined,
   ): Promise<CustomerGroupMembership> {
-    await this.assertCustomerAccessible(customerId, userId, userRole);
+    await this.assertCustomerAccessible(customerId, userId, userRole, scope);
 
     const [customer, group] = await Promise.all([
       this.customerRepo.findOne({ where: { id: customerId } }),

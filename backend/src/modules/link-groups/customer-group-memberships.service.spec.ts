@@ -6,6 +6,7 @@ import { CustomerGroupMembership } from '../../database/entities/customer-group-
 import { LinkGroup } from '../../database/entities/link-group.entity';
 import { Customer } from '../../database/entities/customer.entity';
 import { Role } from '../../common/enums/role.enum';
+import { PermissionScope } from '../../database/entities/role-permission.entity';
 
 describe('CustomerGroupMembershipsService', () => {
   let service: CustomerGroupMembershipsService;
@@ -96,7 +97,7 @@ describe('CustomerGroupMembershipsService', () => {
       mockCustomerQueryBuilder.getOne.mockResolvedValue(null);
 
       await expect(
-        service.getMembershipsForCustomer(999, 1, Role.ADMIN),
+        service.getMembershipsForCustomer(999, 1, Role.ADMIN, PermissionScope.ALL),
       ).rejects.toThrow(NotFoundException);
       expect(mockGroupRepo.createQueryBuilder).not.toHaveBeenCalled();
     });
@@ -118,7 +119,7 @@ describe('CustomerGroupMembershipsService', () => {
         },
       ]);
 
-      const result = await service.getMembershipsForCustomer(1, 1, Role.ADMIN);
+      const result = await service.getMembershipsForCustomer(1, 1, Role.ADMIN, PermissionScope.ALL);
 
       expect(mockGroupRepo.createQueryBuilder).toHaveBeenCalledWith('g');
       expect(mockQueryBuilder.where).toHaveBeenCalledWith('g.isActive = true');
@@ -132,7 +133,7 @@ describe('CustomerGroupMembershipsService', () => {
       mockCustomerRepo.findOne.mockResolvedValue({ id: 1 });
       mockQueryBuilder.getRawMany.mockResolvedValue([]);
 
-      const result = await service.getMembershipsForCustomer(1, 1, Role.ADMIN);
+      const result = await service.getMembershipsForCustomer(1, 1, Role.ADMIN, PermissionScope.ALL);
 
       expect(result).toEqual([]);
     });
@@ -141,7 +142,7 @@ describe('CustomerGroupMembershipsService', () => {
       mockCustomerRepo.findOne.mockResolvedValue({ id: 1 });
       mockQueryBuilder.getRawMany.mockResolvedValue([]);
 
-      await service.getMembershipsForCustomer(1, 7, Role.MANAGER);
+      await service.getMembershipsForCustomer(1, 7, Role.MANAGER, PermissionScope.DEPARTMENT);
 
       expect(mockCustomerQueryBuilder.andWhere).toHaveBeenCalledWith(
         expect.stringContaining('department_id IN'),
@@ -156,7 +157,7 @@ describe('CustomerGroupMembershipsService', () => {
       mockGroupRepo.findOne.mockResolvedValue({ id: 10 });
 
       await expect(
-        service.setMembership(999, 10, true, 5, Role.ADMIN),
+        service.setMembership(999, 10, true, 5, Role.ADMIN, PermissionScope.ALL),
       ).rejects.toThrow(NotFoundException);
       expect(mockMembershipRepo.save).not.toHaveBeenCalled();
     });
@@ -166,7 +167,7 @@ describe('CustomerGroupMembershipsService', () => {
       mockGroupRepo.findOne.mockResolvedValue(null);
 
       await expect(
-        service.setMembership(1, 999, true, 5, Role.ADMIN),
+        service.setMembership(1, 999, true, 5, Role.ADMIN, PermissionScope.ALL),
       ).rejects.toThrow(NotFoundException);
       expect(mockMembershipRepo.save).not.toHaveBeenCalled();
     });
@@ -178,7 +179,7 @@ describe('CustomerGroupMembershipsService', () => {
       mockMembershipRepo.create.mockReturnValue({ customerId: 1, groupId: 10 });
       mockMembershipRepo.save.mockImplementation((m) => Promise.resolve({ id: 100, ...m }));
 
-      const result = await service.setMembership(1, 10, true, 5, Role.ADMIN);
+      const result = await service.setMembership(1, 10, true, 5, Role.ADMIN, PermissionScope.ALL);
 
       expect(mockMembershipRepo.create).toHaveBeenCalledWith({ customerId: 1, groupId: 10 });
       expect(result.joined).toBe(true);
@@ -193,7 +194,7 @@ describe('CustomerGroupMembershipsService', () => {
       mockMembershipRepo.findOne.mockResolvedValue(existing);
       mockMembershipRepo.save.mockImplementation((m) => Promise.resolve(m));
 
-      const result = await service.setMembership(1, 10, false, 9, Role.ADMIN);
+      const result = await service.setMembership(1, 10, false, 9, Role.ADMIN, PermissionScope.ALL);
 
       expect(mockMembershipRepo.create).not.toHaveBeenCalled();
       expect(result.joined).toBe(false);
@@ -205,7 +206,7 @@ describe('CustomerGroupMembershipsService', () => {
       mockCustomerQueryBuilder.getOne.mockResolvedValue(null); // ngoài phạm vi -> assertCustomerAccessible fail
 
       await expect(
-        service.setMembership(1, 10, true, 7, Role.EMPLOYEE),
+        service.setMembership(1, 10, true, 7, Role.EMPLOYEE, PermissionScope.OWN),
       ).rejects.toThrow(NotFoundException);
       expect(mockGroupRepo.findOne).not.toHaveBeenCalled(); // dừng sớm, không đi tiếp
     });
