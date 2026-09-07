@@ -43,5 +43,10 @@ export const departmentsApi = {
   update: async (id: number, data: Partial<Department>): Promise<Department> => {
     const response = await axiosInstance.patch<Department>(`/departments/${id}`, data);
     return response.data;
-  }
+  },
+
+  remove: async (id: number, data?: { moveUsersToDepartmentId?: number }): Promise<{ message: string; movedUsersCount: number; affectedCustomersCount: number }> => {
+    const response = await axiosInstance.delete(`/departments/${id}`, { data });
+    return response.data;
+  },
 };

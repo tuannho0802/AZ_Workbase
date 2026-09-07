@@ -35,3 +35,12 @@ export const useUpdateDepartment = () => {
     onSuccess: invalidate,
   });
 };
+
+export const useDeleteDepartment = () => {
+  const invalidate = useInvalidateDepartments();
+  return useMutation({
+    mutationFn: ({ id, data }: { id: number; data?: { moveUsersToDepartmentId?: number } }) =>
+      departmentsApi.remove(id, data),
+    onSuccess: invalidate,
+  });
+};
