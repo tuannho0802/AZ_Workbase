@@ -1,6 +1,7 @@
 import { Brackets } from 'typeorm';
 import { CustomerAccessHelper } from './customer-access.helper';
 import { Role } from '../../../common/enums/role.enum';
+import { PermissionScope } from '../../../database/entities/role-permission.entity';
 
 /**
  * QueryBuilder giả lập tối thiểu - chỉ implement đúng những method
@@ -104,6 +105,27 @@ describe('CustomerAccessHelper', () => {
       expect(calls).toHaveLength(1);
       expect(calls[0].sqlOrBrackets).toBeInstanceOf(Brackets);
     });
+
+    it('custom role + PermissionScope.DEPARTMENT -> lọc theo department (chuẩn mới)', () => {
+      const { qb, calls } = makeFakeQueryBuilder();
+      CustomerAccessHelper.applyViewFilter(qb, 42, 'custom_manager', PermissionScope.DEPARTMENT);
+      expect(calls).toHaveLength(1);
+      expect(calls[0].sqlOrBrackets).toContain('department_id IN');
+    });
+
+    it('custom role + không có scope -> rơi vào nhánh sở hữu (own)', () => {
+      const { qb, calls } = makeFakeQueryBuilder();
+      CustomerAccessHelper.applyViewFilter(qb, 42, 'custom_manager', null);
+      expect(calls).toHaveLength(1);
+      expect(calls[0].sqlOrBrackets).toBeInstanceOf(Brackets);
+    });
+
+    it('backward-compat: MANAGER + không có scope -> lọc theo department', () => {
+      const { qb, calls } = makeFakeQueryBuilder();
+      CustomerAccessHelper.applyViewFilter(qb, 42, Role.MANAGER, null);
+      expect(calls).toHaveLength(1);
+      expect(calls[0].sqlOrBrackets).toContain('department_id IN');
+    });
   });
 
   describe('canDelete', () => {
@@ -165,6 +187,24 @@ describe('CustomerAccessHelper', () => {
     it('EMPLOYEE -> false nếu không phải người tạo và không phải sales chính', () => {
       const customer: any = { createdById: 99, salesUserId: 98 };
       expect(CustomerAccessHelper.canManageCustomer(customer, 7, Role.EMPLOYEE)).toBe(false);
+    });
+
+    it('custom role + PermissionScope.DEPARTMENT -> kiểm tra theo department (chuẩn mới)', () => {
+      const customer: any = { departmentId: 5 };
+      expect(CustomerAccessHelper.canManageCustomer(customer, 1, 'custom_manager', [5], PermissionScope.DEPARTMENT)).toBe(true);
+      expect(CustomerAccessHelper.canManageCustomer(customer, 1, 'custom_manager', [99], PermissionScope.DEPARTMENT)).toBe(false);
+    });
+
+    it('custom role + không có scope -> kiểm tra nhánh sở hữu (own)', () => {
+      const customer1: any = { createdById: 1 };
+      const customer2: any = { createdById: 99 };
+      expect(CustomerAccessHelper.canManageCustomer(customer1, 1, 'custom_manager', [], null)).toBe(true);
+      expect(CustomerAccessHelper.canManageCustomer(customer2, 1, 'custom_manager', [], null)).toBe(false);
+    });
+
+    it('backward-compat: MANAGER + không có scope -> kiểm tra theo department', () => {
+      const customer: any = { departmentId: 5 };
+      expect(CustomerAccessHelper.canManageCustomer(customer, 1, Role.MANAGER, [5], null)).toBe(true);
     });
   });
 });

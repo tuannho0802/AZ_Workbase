@@ -5,6 +5,7 @@ import { LeaveRequest, LeaveStatus, LeaveType, LeaveDuration } from '../../datab
 import { User } from '../../database/entities/user.entity';
 import { Department } from '../../database/entities/department.entity';
 import { Role } from '../../common/enums/role.enum';
+import { PermissionScope } from '../../database/entities/role-permission.entity';
 
 /**
  * PERMISSIONS.md mục 2.6 - ĐÃ ĐƯỢC GENERALIZE sang scope-based:
@@ -48,12 +49,12 @@ export class LeaveRequestsService {
     scope?: string | null,
   ): Promise<boolean> {
     // Lối thoát hiểm tuyệt đối cho admin - không bao giờ bị khoá dù cấu hình sai
-    if (approverRole === Role.ADMIN || scope === 'all') {
+    if (approverRole === Role.ADMIN || scope === PermissionScope.ALL) {
       return true;
     }
 
-    // scope='department' -> phải là managerUserId của đúng phòng ban người xin nghỉ
-    if (scope === 'department') {
+    // scope='department' → phải là managerUserId của đúng phòng ban người xin nghỉ
+    if (scope === PermissionScope.DEPARTMENT) {
       if (requesterDepartmentId == null) return false;
       const dept = await this.departmentRepo.findOne({
         where: { id: requesterDepartmentId, managerUserId: approverId },
@@ -61,7 +62,7 @@ export class LeaveRequestsService {
       return !!dept;
     }
 
-    // scope=null/own hoặc bất kỳ giá trị khác -> không được duyệt
+    // scope=null/own hoặc bất kỳ giá trị khác → không được duyệt
     return false;
   }
 
@@ -179,7 +180,15 @@ export class LeaveRequestsService {
    * Danh sách đơn đang chờ duyệt MÀ VIEWER CÓ QUYỀN DUYỆT - theo scope.
    */
   async findPending(viewerId: number, viewerRole: string, scope?: string | null) {
-    if (viewerRole !== Role.ADMIN && scope !== 'all' && scope !== 'department') return [];
+    // Fallback: MANAGER không có scope vẫn được xem (backward-compat)
+    const isDeptScope =
+      scope === PermissionScope.DEPARTMENT ||
+      (!scope && viewerRole === Role.MANAGER);
+    const isAllScope =
+      scope === PermissionScope.ALL ||
+      (!scope && viewerRole === Role.ASSISTANT);
+
+    if (viewerRole !== Role.ADMIN && !isAllScope && !isDeptScope) return [];
 
     const query = this.leaveRequestRepo
       .createQueryBuilder('leave')
@@ -187,7 +196,7 @@ export class LeaveRequestsService {
       .leftJoinAndSelect('requester.department', 'department')
       .where('leave.status = :status', { status: LeaveStatus.PENDING });
 
-    if (viewerRole !== Role.ADMIN && scope === 'department') {
+    if (viewerRole !== Role.ADMIN && !isAllScope && isDeptScope) {
       const managedIds = await this.getManagedDepartmentIds(viewerId);
       if (managedIds.length === 0) return [];
       query.andWhere('requester.departmentId IN (:...deptIds)', { deptIds: managedIds });
@@ -201,18 +210,26 @@ export class LeaveRequestsService {
    * cùng bộ lọc scope với findPending().
    */
   async findHistory(viewerId: number, viewerRole: string, scope?: string | null) {
-    if (viewerRole !== Role.ADMIN && scope !== 'all' && scope !== 'department') return [];
+    // Fallback: MANAGER không có scope vẫn được xem (backward-compat)
+    const isDeptScopeH =
+      scope === PermissionScope.DEPARTMENT ||
+      (!scope && viewerRole === Role.MANAGER);
+    const isAllScopeH =
+      scope === PermissionScope.ALL ||
+      (!scope && viewerRole === Role.ASSISTANT);
+
+    if (viewerRole !== Role.ADMIN && !isAllScopeH && !isDeptScopeH) return [];
 
     const query = this.leaveRequestRepo
       .createQueryBuilder('leave')
       .leftJoinAndSelect('leave.requester', 'requester')
       .leftJoinAndSelect('requester.department', 'department')
       .leftJoinAndSelect('leave.approver', 'approver')
-      .where('leave.status IN (:...statuses)', { 
-        statuses: [LeaveStatus.APPROVED, LeaveStatus.REJECTED] 
+      .where('leave.status IN (:...statuses)', {
+        statuses: [LeaveStatus.APPROVED, LeaveStatus.REJECTED]
       });
 
-    if (viewerRole !== Role.ADMIN && scope === 'department') {
+    if (viewerRole !== Role.ADMIN && !isAllScopeH && isDeptScopeH) {
       const managedIds = await this.getManagedDepartmentIds(viewerId);
       if (managedIds.length === 0) return [];
       query.andWhere('requester.departmentId IN (:...deptIds)', { deptIds: managedIds });

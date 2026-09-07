@@ -95,7 +95,7 @@ export class RolesService {
     return saved;
   }
 
-  async deleteRole(id: number) {
+  async deleteRole(id: number): Promise<{ deleted: true; usersReassigned: number }> {
     const role = await this.getRoleOrThrow(id);
 
     if (role.isSystem) {
@@ -104,15 +104,20 @@ export class RolesService {
       );
     }
 
-    const usersWithRole = await this.userRepo.count({ where: { role: role.code } });
-    if (usersWithRole > 0) {
-      throw new ConflictException(
-        `Không thể xoá role "${role.name}" - đang có ${usersWithRole} nhân viên được gán role này. Đổi role cho họ trước.`,
+    const usersReassigned = await this.dataSource.transaction(async (manager) => {
+      const updateResult = await manager.update(
+        User,
+        { role: role.code },
+        { role: Role.EMPLOYEE },
       );
-    }
+      await manager.remove(role);
+      return updateResult.affected ?? 0;
+    });
 
-    await this.roleRepo.remove(role);
     this.permissionsService.invalidate(role.code);
+    this.permissionsService.invalidate(Role.EMPLOYEE);
+
+    return { deleted: true, usersReassigned };
   }
 
   async updateRolePermissions(id: number, dto: UpdateRolePermissionsDto) {

@@ -7,6 +7,7 @@ import { AttendanceLog } from '../../database/entities/attendance-log.entity';
 import { ZkDeviceUserCache } from '../../database/entities/zk-device-user-cache.entity';
 import { Department } from '../../database/entities/department.entity';
 import { Role } from '../../common/enums/role.enum';
+import { PermissionScope } from '../../database/entities/role-permission.entity';
 import { AttendanceSource } from '../../common/enums/attendance-source.enum';
 import { QueryAttendanceLogDto } from './dto/query-attendance-log.dto';
 import { QueryAttendanceSummaryDto } from './dto/query-attendance-summary.dto';
@@ -310,10 +311,16 @@ export class ZkDeviceService {
     deviceUserId: string,
     callerId: number,
     callerRole: string,
+    scope?: string | null,
   ): Promise<User> {
     const user = await this.userRepo.findOneByOrFail({ id: userId });
 
-    if (callerRole === Role.MANAGER) {
+    // Fallback: nếu scope chưa được truyền (route cũ) thì dựa vào role cứng
+    const isDeptScope =
+      scope === PermissionScope.DEPARTMENT ||
+      (!scope && callerRole === Role.MANAGER);
+
+    if (callerRole !== Role.ADMIN && scope !== PermissionScope.ALL && isDeptScope) {
       const managedIds = await this.getManagedDepartmentIds(callerId);
       if (user.departmentId == null || !managedIds.includes(user.departmentId)) {
         throw new ForbiddenException(
@@ -324,9 +331,6 @@ export class ZkDeviceService {
 
     user.zkDeviceUserId = deviceUserId;
     const saved = await this.userRepo.save(user);
-    // Có hiệu lực ngay: log cũ của người này (nếu có, đang NULL) được khớp
-    // lại luôn, không cần đợi lần sync kế tiếp - xem giải thích ở
-    // rematchUnmatchedLogs().
     await this.rematchUnmatchedLogs();
     return saved;
   }
@@ -340,13 +344,18 @@ export class ZkDeviceService {
    * "chưa khớp" (matchedUserId = null) vì map không còn tồn tại.
    * FIX PERMISSIONS.md mục 2.3: cùng rule phòng ban với mapUser() ở trên.
    */
-  async unmapUser(userId: number, callerId: number, callerRole: string): Promise<User> {
+  async unmapUser(userId: number, callerId: number, callerRole: string, scope?: string | null): Promise<User> {
     const user = await this.userRepo.findOneBy({ id: userId });
     if (!user) {
       throw new NotFoundException(`Không tìm thấy nhân viên id=${userId}`);
     }
 
-    if (callerRole === Role.MANAGER) {
+    // Fallback: nếu scope chưa được truyền (route cũ) thì dựa vào role cứng
+    const isDeptScope =
+      scope === PermissionScope.DEPARTMENT ||
+      (!scope && callerRole === Role.MANAGER);
+
+    if (callerRole !== Role.ADMIN && scope !== PermissionScope.ALL && isDeptScope) {
       const managedIds = await this.getManagedDepartmentIds(callerId);
       if (user.departmentId == null || !managedIds.includes(user.departmentId)) {
         throw new ForbiddenException(
@@ -388,7 +397,12 @@ export class ZkDeviceService {
       qb.andWhere('log.recordTime <= :to', { to: `${to} 23:59:59` });
     }
 
-    if (viewerRole !== Role.ADMIN && scope === 'department') {
+    // Fallback: scope chưa được truyền từ controller cũ → dựa vào role cứng
+    const isDeptScope =
+      scope === PermissionScope.DEPARTMENT ||
+      (!scope && viewerRole === Role.MANAGER);
+
+    if (viewerRole !== Role.ADMIN && scope !== PermissionScope.ALL && isDeptScope) {
       const managedIds = await this.getManagedDepartmentIds(viewerId);
       if (managedIds.length === 0) {
         return { data: [], total: 0, page, limit, totalPages: 0 };
@@ -549,7 +563,12 @@ export class ZkDeviceService {
       });
     }
 
-    if (viewerRole !== Role.ADMIN && scope === 'department') {
+    // Fallback: scope chưa được truyền từ controller cũ → dựa vào role cứng
+    const isDeptScopeSummary =
+      scope === PermissionScope.DEPARTMENT ||
+      (!scope && viewerRole === Role.MANAGER);
+
+    if (viewerRole !== Role.ADMIN && scope !== PermissionScope.ALL && isDeptScopeSummary) {
       const managedIds = await this.getManagedDepartmentIds(viewerId);
       if (managedIds.length === 0) {
         return { data: [], total: 0, page, limit, totalPages: 0 };

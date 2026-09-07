@@ -1,4 +1,5 @@
 import { Role } from '../../../common/enums/role.enum';
+import { PermissionScope } from '../../../database/entities/role-permission.entity';
 import { SelectQueryBuilder } from 'typeorm';
 import { Repository } from 'typeorm';
 import { Department } from '../../../database/entities/department.entity';
@@ -35,11 +36,23 @@ export class UsersAccessHelper {
     viewerRole: string,
     scope?: string | null,
   ): SelectQueryBuilder<any> {
-    if (viewerRole === Role.ADMIN || scope === 'all') {
+    // Admin luôn thấy tất cả — lối thoát hiểm tuyệt đối
+    if (viewerRole === Role.ADMIN) return query;
+
+    // scope='all' hoặc fallback: ASSISTANT không có scope → thấy tất cả
+    if (
+      scope === PermissionScope.ALL ||
+      (!scope && viewerRole === Role.ASSISTANT)
+    ) {
       return query;
     }
 
-    if (scope === 'department') {
+    // scope='department' hoặc fallback: MANAGER không có scope → lọc theo phòng ban
+    // + luôn thấy chính mình
+    if (
+      scope === PermissionScope.DEPARTMENT ||
+      (!scope && viewerRole === Role.MANAGER)
+    ) {
       query.andWhere(
         '(user.department_id IN ' +
         '(SELECT d.id FROM departments d WHERE d.manager_user_id = :accessManagerId)' +
@@ -69,9 +82,19 @@ export class UsersAccessHelper {
     viewerRole: string,
     scope?: string | null,
   ): Promise<boolean> {
-    if (viewerRole === Role.ADMIN || scope === 'all') return true;
+    if (viewerRole === Role.ADMIN) return true;
 
-    if (scope === 'department') {
+    // scope='all' hoặc fallback: ASSISTANT không có scope → quản lý tất cả
+    if (
+      scope === PermissionScope.ALL ||
+      (!scope && viewerRole === Role.ASSISTANT)
+    ) return true;
+
+    // scope='department' hoặc fallback: MANAGER không có scope → kiểm tra phòng ban
+    if (
+      scope === PermissionScope.DEPARTMENT ||
+      (!scope && viewerRole === Role.MANAGER)
+    ) {
       if (targetId === viewerId) return true; // Manager luôn tự sửa được chính mình
       if (targetDepartmentId == null) return false;
       const dept = await departmentRepo.findOne({

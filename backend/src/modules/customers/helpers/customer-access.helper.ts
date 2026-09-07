@@ -1,4 +1,5 @@
 import { Role } from '../../../common/enums/role.enum';
+import { PermissionScope } from '../../../database/entities/role-permission.entity';
 import { SelectQueryBuilder, Brackets } from 'typeorm';
 import { Customer } from '../../../database/entities/customer.entity';
 
@@ -36,11 +37,22 @@ export class CustomerAccessHelper {
     userRole: string,
     scope?: string | null,
   ): SelectQueryBuilder<any> {
-    if (userRole === Role.ADMIN || scope === 'all' || (!scope && userRole === Role.ASSISTANT)) {
+    // Admin luôn thấy tất cả — lối thoát hiểm tuyệt đối
+    if (userRole === Role.ADMIN) return query;
+
+    // scope='all' hoặc fallback: ASSISTANT không có scope → thấy tất cả
+    if (
+      scope === PermissionScope.ALL ||
+      (!scope && userRole === Role.ASSISTANT)
+    ) {
       return query;
     }
 
-    if (scope === 'department' || (!scope && userRole === Role.MANAGER)) {
+    // scope='department' hoặc fallback: MANAGER không có scope → lọc theo phòng ban
+    if (
+      scope === PermissionScope.DEPARTMENT ||
+      (!scope && userRole === Role.MANAGER)
+    ) {
       query.andWhere(
         'customer.department_id IN ' +
         '(SELECT d.id FROM departments d WHERE d.manager_user_id = :accessManagerId)',
@@ -92,7 +104,7 @@ export class CustomerAccessHelper {
    * customers.service.ts). Cùng 1 bộ quy tắc với applyViewFilter(), chỉ
    * khác là kiểm tra trong bộ nhớ thay vì sinh điều kiện SQL.
    *
-   * managerDepartmentIds: chỉ cần truyền khi scope === 'department' - danh
+   * managerDepartmentIds: chỉ cần truyền khi scope === department - danh
    * sách id phòng ban mà user này là manager_user_id (lấy 1 lần trước khi
    * lặp qua nhiều customer, KHÔNG query lại cho từng customer).
    */
@@ -103,9 +115,17 @@ export class CustomerAccessHelper {
     managerDepartmentIds: number[] = [],
     scope?: string | null,
   ): boolean {
-    if (userRole === Role.ADMIN || scope === 'all' || (!scope && userRole === Role.ASSISTANT)) return true;
+    if (userRole === Role.ADMIN) return true;
 
-    if (scope === 'department' || (!scope && userRole === Role.MANAGER)) {
+    if (
+      scope === PermissionScope.ALL ||
+      (!scope && userRole === Role.ASSISTANT)
+    ) return true;
+
+    if (
+      scope === PermissionScope.DEPARTMENT ||
+      (!scope && userRole === Role.MANAGER)
+    ) {
       return (
         customer.departmentId != null &&
         managerDepartmentIds.includes(customer.departmentId)

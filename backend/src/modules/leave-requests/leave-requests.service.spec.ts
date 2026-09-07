@@ -6,6 +6,7 @@ import { LeaveRequest, LeaveStatus, LeaveType } from '../../database/entities/le
 import { User } from '../../database/entities/user.entity';
 import { Department } from '../../database/entities/department.entity';
 import { Role } from '../../common/enums/role.enum';
+import { PermissionScope } from '../../database/entities/role-permission.entity';
 
 describe('LeaveRequestsService - Phan quyen duyet (PERMISSIONS.md muc 2.6)', () => {
   let service: LeaveRequestsService;
@@ -126,6 +127,23 @@ describe('LeaveRequestsService - Phan quyen duyet (PERMISSIONS.md muc 2.6)', () 
       mockLeaveRepo.save.mockImplementation((r: any) => Promise.resolve(r));
 
       await expect(service.approve(1, 9, Role.ASSISTANT, 'all')).resolves.toBeDefined();
+      expect(mockDepartmentRepo.findOne).not.toHaveBeenCalled();
+    });
+    it('custom role + PermissionScope.DEPARTMENT -> kiểm tra theo department (chuẩn mới)', async () => {
+      mockLeaveRepo.findOne.mockResolvedValue(pendingRequest(Role.EMPLOYEE, 3));
+      mockDepartmentRepo.findOne.mockResolvedValue({ id: 3, managerUserId: 7 });
+      mockLeaveRepo.save.mockImplementation((r: any) => Promise.resolve(r));
+
+      await expect(service.approve(1, 7, 'custom_approver', PermissionScope.DEPARTMENT)).resolves.toBeDefined();
+      expect(mockDepartmentRepo.findOne).toHaveBeenCalledWith(
+        expect.objectContaining({ where: { id: 3, managerUserId: 7 } }),
+      );
+    });
+
+    it('custom role + không có scope -> từ chối (không có fallback)', async () => {
+      mockLeaveRepo.findOne.mockResolvedValue(pendingRequest(Role.EMPLOYEE, 3));
+
+      await expect(service.approve(1, 7, 'custom_approver', null)).rejects.toThrow(ForbiddenException);
       expect(mockDepartmentRepo.findOne).not.toHaveBeenCalled();
     });
   });

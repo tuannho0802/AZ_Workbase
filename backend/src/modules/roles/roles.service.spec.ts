@@ -36,6 +36,8 @@ describe('RolesService', () => {
         delete: jest.fn(),
         create: jest.fn((_entity, data) => data),
         save: jest.fn(),
+        update: jest.fn().mockResolvedValue({ affected: 3 }),
+        remove: jest.fn(),
       }),
     ),
   };
@@ -109,28 +111,16 @@ describe('RolesService', () => {
       expect(mockRoleRepo.remove).not.toHaveBeenCalled();
     });
 
-    it('từ chối xoá role đang có nhân viên được gán', async () => {
-      mockRoleRepo.findOne.mockResolvedValue({
-        id: 5,
-        code: 'mkt_manager',
-        isSystem: false,
-        name: 'MKT Manager',
-      });
-      mockUserRepo.count.mockResolvedValue(3);
-
-      await expect(service.deleteRole(5)).rejects.toThrow(ConflictException);
-      expect(mockRoleRepo.remove).not.toHaveBeenCalled();
-    });
-
-    it('xoá thành công role tuỳ chỉnh không còn ai dùng, và invalidate cache', async () => {
+    it('tự động chuyển users sang employee khi xoá role có người dùng', async () => {
       const role = { id: 5, code: 'mkt_manager', isSystem: false, name: 'MKT Manager' };
       mockRoleRepo.findOne.mockResolvedValue(role);
-      mockUserRepo.count.mockResolvedValue(0);
 
-      await service.deleteRole(5);
+      const result = await service.deleteRole(5);
 
-      expect(mockRoleRepo.remove).toHaveBeenCalledWith(role);
+      expect(result).toEqual({ deleted: true, usersReassigned: 3 });
+      expect(mockDataSource.transaction).toHaveBeenCalled();
       expect(mockPermissionsService.invalidate).toHaveBeenCalledWith('mkt_manager');
+      expect(mockPermissionsService.invalidate).toHaveBeenCalledWith('employee');
     });
 
     it('báo lỗi rõ ràng khi role không tồn tại', async () => {

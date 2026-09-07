@@ -78,8 +78,8 @@ export class ZkDeviceController {
   @Post('map-user')
   @RequirePermission('attendance.manage')
   @ApiOperation({ summary: 'Map 1 nhân viên trong hệ thống với mã user trên máy chấm công' })
-  async mapUser(@Body() dto: MapDeviceUserDto, @Request() req: any) {
-    return this.zkDeviceService.mapUser(dto.userId, dto.deviceUserId, req.user.id, req.user.role);
+  async mapUser(@Body() dto: MapDeviceUserDto, @Request() req: any, @GetPermissionScope() scope?: string | null) {
+    return this.zkDeviceService.mapUser(dto.userId, dto.deviceUserId, req.user.id, req.user.role, scope);
   }
 
   @Post('rematch')
@@ -96,8 +96,8 @@ export class ZkDeviceController {
   @Delete('map-user/:userId')
   @RequirePermission('attendance.manage')
   @ApiOperation({ summary: 'Gỡ mapping của 1 nhân viên (map nhầm) - không đụng log đã đồng bộ' })
-  async unmapUser(@Param('userId', ParseIntPipe) userId: number, @Request() req: any) {
-    return this.zkDeviceService.unmapUser(userId, req.user.id, req.user.role);
+  async unmapUser(@Param('userId', ParseIntPipe) userId: number, @Request() req: any, @GetPermissionScope() scope?: string | null) {
+    return this.zkDeviceService.unmapUser(userId, req.user.id, req.user.role, scope);
   }
 
   @Get('attendance-logs')

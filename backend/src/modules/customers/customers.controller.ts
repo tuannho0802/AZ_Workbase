@@ -164,7 +164,7 @@ export class CustomersController {
   }
 
   @Post()
-  @RequirePermission('customers.manage')
+  @RequirePermission('customers.create')
   @ApiOperation({ summary: 'Tạo khách hàng mới' })
   @ApiResponse({ status: 201, description: 'Khách hàng tạo thành công' })
   @ApiResponse({ status: 400, description: 'Lỗi validation hoặc trùng số điện thoại' })
@@ -247,7 +247,7 @@ export class CustomersController {
   }
 
   @Patch(':id')
-  @RequirePermission('customers.manage')
+  @RequirePermission('customers.edit')
   @ApiOperation({ summary: 'Cập nhật thông tin khách hàng' })
   @ApiResponse({ status: 200, description: 'Cập nhật khách hàng thành công' })
   update(@GetUser() user: any, @Param('id') id: string, @Body() updateCustomerDto: UpdateCustomerDto) {
