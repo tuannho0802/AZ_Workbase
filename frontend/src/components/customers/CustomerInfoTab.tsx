@@ -4,6 +4,7 @@ import { Descriptions, Tag, Button, Typography, Space } from 'antd';
 import { CalendarOutlined, EditOutlined } from '@ant-design/icons';
 import { Customer } from '@/lib/types/customer.types';
 import { SourceTag } from './SourceTag';
+import { useMyPermissions } from '@/lib/hooks/useMyPermissions';
 import dayjs from 'dayjs';
 
 const { Text } = Typography;
@@ -14,13 +15,28 @@ interface Props {
 }
 
 export const CustomerInfoTab = ({ customer, onEdit }: Props) => {
+  const { can } = useMyPermissions();
+  // ⚠️ FIX BUG THẬT: nút "Chỉnh sửa" trước đây hiện KHÔNG ĐIỀU KIỆN, không
+  // hề gọi can() - BE đã tách riêng `customers.edit` khỏi `customers.create`
+  // (PATCH /customers/:id đòi @RequirePermission('customers.edit'), xem
+  // migration 1778900000000-SplitCustomersManagePermission.ts) từ lâu,
+  // nhưng nút này chưa bao giờ được nối vào. Hậu quả: Admin tắt hẳn quyền
+  // `customers.edit` cho 1 role (hoặc override riêng cho 1 phòng ban qua
+  // department_id override - xem PermissionsService) thì role/phòng ban đó
+  // BẤM VẪN THẤY NÚT, chỉ khi bấm mới lộ 403 từ BE ("Không tìm thấy khách
+  // hàng" - vì findOne() cũng lọc theo scope, làm người dùng tưởng lỗi dữ
+  // liệu chứ không phải lỗi phân quyền) - đúng bug trong ảnh chụp màn hình.
+  const canEdit = can('customers.edit');
+
   if (!customer) return null;
 
   return (
     <>
-      <div style={{ marginBottom: 16, textAlign: 'right' }}>
-        <Button icon={<EditOutlined />} onClick={onEdit}>Chỉnh sửa</Button>
-      </div>
+      {canEdit && (
+        <div style={{ marginBottom: 16, textAlign: 'right' }}>
+          <Button icon={<EditOutlined />} onClick={onEdit}>Chỉnh sửa</Button>
+        </div>
+      )}
       <Descriptions bordered column={1} size="small">
         <Descriptions.Item label="Họ tên">{customer.name}</Descriptions.Item>
         <Descriptions.Item label="Số điện thoại">{customer.phone}</Descriptions.Item>

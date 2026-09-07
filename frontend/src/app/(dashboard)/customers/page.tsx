@@ -284,6 +284,11 @@ function CustomersPageContent() {
   const canImport = can('customers.import');
   const canAssign = can('customers.assign');
   const canDeleteCustomer = can('customers.delete');
+  // ⚠️ FIX BUG THẬT: bị bỏ sót so với canImport/canAssign/canDeleteCustomer
+  // ngay bên cạnh - nút "+ Thêm khách hàng" trước đây hiện KHÔNG ĐIỀU KIỆN,
+  // không hề gọi can('customers.create'). BE đã đòi đúng permission này ở
+  // POST /customers từ migration 1778900000000-SplitCustomersManagePermission.ts.
+  const canCreate = can('customers.create');
 
   const rowSelection = {
     selectedRowKeys,
@@ -544,15 +549,17 @@ function CustomersPageContent() {
       >
         {!isMobile && !isLaptop && 'Làm mới'}
       </Button>
-      <Button 
-        type="primary" 
-        icon={<PlusOutlined />} 
-        onClick={() => setIsCreateOpen(true)} 
-        title="Thêm khách hàng"
-        size={isLaptop ? 'small' : 'middle'}
-      >
-        {!isMobile && !isLaptop && 'Thêm khách hàng'}
-      </Button>
+      {canCreate && (
+        <Button 
+          type="primary" 
+          icon={<PlusOutlined />} 
+          onClick={() => setIsCreateOpen(true)} 
+          title="Thêm khách hàng"
+          size={isLaptop ? 'small' : 'middle'}
+        >
+          {!isMobile && !isLaptop && 'Thêm khách hàng'}
+        </Button>
+      )}
       {canImport && (
         <Button 
           icon={<UploadOutlined />} 
