@@ -41,7 +41,15 @@ export class RolesService {
 
   async findAllRoles() {
     const roles = await this.roleRepo.find({ order: { isSystem: 'DESC', id: 'ASC' } });
-    const allPermissions = await this.rolePermissionRepo.find({ relations: ['permission'] });
+    // ⚠️ BUG THẬT phát hiện khi xây FE cho Department Override: PHẢI lọc
+    // departmentId IS NULL - nếu không, ma trận GLOBAL sẽ trộn lẫn cả các
+    // dòng override riêng theo phòng ban vào, permissionKey trùng nhau giữa
+    // dòng global và dòng override khiến Map ở FE (RolePermissionsEditor)
+    // ghi đè lẫn nhau không theo thứ tự xác định.
+    const allPermissions = await this.rolePermissionRepo.find({
+      where: { departmentId: IsNull() },
+      relations: ['permission'],
+    });
 
     return roles.map((role) => ({
       id: role.id,
@@ -168,7 +176,12 @@ export class RolesService {
     }
 
     await this.dataSource.transaction(async (manager) => {
-      await manager.delete(RolePermission, { roleId: id });
+      // ⚠️ BUG THẬT: PHẢI kèm departmentId: IsNull() - thiếu điều kiện này
+      // sẽ xoá LUÔN mọi override riêng theo phòng ban của role, mỗi lần
+      // Admin lưu ma trận Global (2 khái niệm khác nhau, phải tách delete
+      // riêng - xem updateDepartmentOverride() bên dưới, nó tự xoá đúng
+      // phạm vi departmentId của chính nó, không đụng gì tới dòng global).
+      await manager.delete(RolePermission, { roleId: id, departmentId: IsNull() });
       const rows = dto.permissions.map((entry) =>
         manager.create(RolePermission, {
           roleId: id,
