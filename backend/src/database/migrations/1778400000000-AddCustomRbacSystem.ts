@@ -34,7 +34,7 @@ export class AddCustomRbacSystem1778400000000 implements MigrationInterface {
     await queryRunner.query(`
       CREATE TABLE roles (
         id INT NOT NULL AUTO_INCREMENT,
-        code VARCHAR(50) NOT NULL COMMENT 'Định danh nội bộ, bất biến sau khi tạo - dùng làm giá trị lưu trong users.role (vd "mkt_manager")',
+        code VARCHAR(50) CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci NOT NULL COMMENT 'Định danh nội bộ, bất biến sau khi tạo - dùng làm giá trị lưu trong users.role (vd "mkt_manager")',
         name VARCHAR(100) NOT NULL COMMENT 'Tên hiển thị trên UI, Admin sửa được (vd "Trưởng phòng Marketing")',
         description VARCHAR(255) NULL,
         is_system BOOLEAN NOT NULL DEFAULT FALSE COMMENT '4 role gốc (admin/manager/assistant/employee) - không xoá được, code bất biến',
@@ -176,9 +176,24 @@ export class AddCustomRbacSystem1778400000000 implements MigrationInterface {
     // 7) Đổi users.role từ ENUM cứng -> VARCHAR + FOREIGN KEY tới roles.code.
     //    Đây là bước GIẢI PHÓNG - từ giờ gán role mới cho user không cần
     //    ALTER TABLE nữa, chỉ cần INSERT 1 dòng vào bảng roles.
+    //
+    //    ⚠️ BUG THẬT ĐÃ GẶP (chạy được ở local, lỗi ở production - lỗi
+    //    ER_FK_INCOMPATIBLE_COLUMNS khi ADD CONSTRAINT ngay dưới đây):
+    //    MySQL bắt buộc 2 cột tham gia FOREIGN KEY phải cùng
+    //    charset VÀ collation (không chỉ cùng kiểu dữ liệu VARCHAR(50)).
+    //    Câu lệnh gốc KHÔNG chỉ định collation tường minh cho cả 2 cột,
+    //    nên mỗi cột lặng lẽ nhận collation MẶC ĐỊNH CỦA SERVER đang chạy
+    //    tại thời điểm ALTER/CREATE - 2 server MySQL khác nhau (local vs
+    //    production, khác version hoặc khác config) hoàn toàn có thể có
+    //    collation mặc định utf8mb4 khác nhau (vd utf8mb4_general_ci vs
+    //    utf8mb4_0900_ai_ci) -> tình cờ khớp ở local, lệch ở production.
+    //    => Ép TƯỜNG MINH cả 2 cột dùng ĐÚNG 1 collation cố định
+    //    (utf8mb4_general_ci - hỗ trợ trên MỌI bản MySQL 5.7 lẫn 8.0, không
+    //    phụ thuộc server mặc định gì), không dựa vào suy đoán "server đang
+    //    chạy mặc định là gì".
     // ------------------------------------------------------------------
     await queryRunner.query(`
-      ALTER TABLE users MODIFY COLUMN role VARCHAR(50) NOT NULL DEFAULT 'employee';
+      ALTER TABLE users MODIFY COLUMN role VARCHAR(50) CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci NOT NULL DEFAULT 'employee';
     `);
     await queryRunner.query(`
       ALTER TABLE users
