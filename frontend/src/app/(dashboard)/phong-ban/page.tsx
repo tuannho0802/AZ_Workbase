@@ -339,17 +339,21 @@ export default function DepartmentsPage() {
                 okButtonProps={{ danger: true }}
                 confirmLoading={deleteMutation.isPending}
             >
-                {deletingDeptEmployeeCount > 0 ? (
-                    <>
-                        <Text>
-                            Phòng ban này đang có <Text strong>{deletingDeptEmployeeCount}</Text> nhân viên.
-                            Vui lòng chọn phòng ban khác để di dời họ sang trước khi xoá.
-                        </Text>
-                        <Form form={deleteForm} layout="vertical" style={{ marginTop: 16 }}>
+                {/* Form luôn được mount để deleteForm instance luôn có element kết nối —
+                    tránh warning "useForm not connected to any Form element" khi phòng ban
+                    không có nhân viên (lúc đó branch ternary kia không render Form). */}
+                <Form form={deleteForm} layout="vertical">
+                    {deletingDeptEmployeeCount > 0 ? (
+                        <>
+                            <Text>
+                                Phòng ban này đang có <Text strong>{deletingDeptEmployeeCount}</Text> nhân viên.
+                                Vui lòng chọn phòng ban khác để di dời họ sang trước khi xoá.
+                            </Text>
                             <Form.Item
                                 name="moveUsersToDepartmentId"
                                 label="Di dời nhân viên sang phòng ban"
                                 rules={[{ required: true, message: 'Vui lòng chọn phòng ban đích' }]}
+                                style={{ marginTop: 16 }}
                             >
                                 <Select
                                     placeholder="Chọn phòng ban đích"
@@ -357,17 +361,17 @@ export default function DepartmentsPage() {
                                     showSearch={{ optionFilterProp: 'label' }}
                                 />
                             </Form.Item>
-                        </Form>
-                    </>
-                ) : (
-                    <Text>
-                        Phòng ban này không còn nhân viên. Bạn có chắc muốn xoá?
-                        <br />
-                        <Text type="secondary" style={{ fontSize: 12 }}>
-                            Lưu ý: Dữ liệu khách hàng liên kết phòng ban này sẽ không còn phòng ban (có thể gán lại sau).
+                        </>
+                    ) : (
+                        <Text>
+                            Phòng ban này không còn nhân viên. Bạn có chắc muốn xoá?
+                            <br />
+                            <Text type="secondary" style={{ fontSize: 12 }}>
+                                Lưu ý: Dữ liệu khách hàng liên kết phòng ban này sẽ không còn phòng ban (có thể gán lại sau).
+                            </Text>
                         </Text>
-                    </Text>
-                )}
+                    )}
+                </Form>
             </Modal>
 
             <Drawer
