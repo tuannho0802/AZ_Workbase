@@ -86,11 +86,18 @@ export const NAV_ITEMS: NavItem[] = [
     description: 'Gán khách hàng cho sales phụ trách',
     icon: <SwapOutlined />,
     path: '/chia-data',
-    // ⚠️ FIX BUG THẬT (rà soát permission 2026-09): cùng lý do ở mục
-    // 'customers' phía trên - GET /customers/unassigned và
-    // /customers/assigned đều khớp @RequirePermission('customers.view').
+    // ⚠️ FIX BUG THẬT (báo cáo trực tiếp qua ảnh chụp Ma trận quyền: tắt
+    // "assign" cho Employee nhưng mục "Chia Data" vẫn hiện ở sidebar). Trước
+    // đây gate nhầm theo `customers.view` (permission phụ, chỉ dùng để load
+    // 2 danh sách unassigned/assigned) thay vì `customers.assign` (permission
+    // CHÍNH - mục đích cốt lõi của cả trang này là GÁN data, không phải chỉ
+    // xem). Hệ quả: role có view nhưng KHÔNG có assign vẫn thấy mục này ở
+    // sidebar, vào được cả trang, chỉ 403 khi bấm nút "Gán data" thật -
+    // đúng loại bug "UI không theo kịp permission BE" đã rà soát. Route
+    // guard tương ứng trong chính `chia-data/page.tsx` (redirect nếu thiếu
+    // `customers.assign`) cũng đã được thêm khớp với thay đổi này.
     roles: null,
-    permission: 'customers.view',
+    permission: 'customers.assign',
   },
   {
     key: 'nghi-phep',

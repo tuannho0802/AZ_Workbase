@@ -238,16 +238,31 @@ export default function ChiaDataPage() {
   // Auth State
   const router = useRouter();
   const { user, isAuthenticated, isHydrated } = useAuthStore();
-  // ⚠️ FIX BUG THẬT (rà soát permission): thay `user?.role === 'admin'` cứng
-  // bằng permission động - xem giải thích chi tiết ở UnassignedMobileCard.
-  const { can, scope } = useMyPermissions();
+  // ⚠️ FIX BUG THẬT (báo cáo trực tiếp qua ảnh chụp Ma trận quyền: Employee
+  // tắt "assign" nhưng trang /chia-data KHÔNG ẩn, kể cả sidebar) - trước đây
+  // trang này KHÔNG có gate riêng nào theo `customers.assign`, chỉ dựa vào
+  // `isAuthenticated`. BE đã chặn đúng (403 khi bấm "Gán data" thật), nhưng
+  // FE chưa theo kịp - vào được cả trang, chỉ 403 khi thao tác, đúng loại
+  // bug "UI không theo kịp permission BE" đã rà soát trước đó. Thêm gate
+  // cùng pattern với `trash-can/page.tsx` (canAccessTrash): đợi permissions
+  // tải xong rồi mới quyết định, tránh nhấp nháy UI hoặc redirect nhầm lúc
+  // chưa kịp tải.
+  const { can, scope, isLoading: permissionsLoading } = useMyPermissions();
   const canDeleteCustomer = can('customers.delete');
+  const canAssign = can('customers.assign');
 
   useEffect(() => {
     if (isHydrated && !isAuthenticated) {
       router.push('/login');
     }
   }, [isHydrated, isAuthenticated, router]);
+
+  useEffect(() => {
+    if (!permissionsLoading && user && !canAssign) {
+      antdMessage.error('Bạn không có quyền truy cập trang này');
+      router.replace('/customers');
+    }
+  }, [user, canAssign, permissionsLoading, router, antdMessage]);
 
   // ── QUERIES ────────────────────────────────────────────
   const { data: unassignedData, isLoading: loadingUnassigned } = useQuery({
@@ -589,6 +604,21 @@ export default function ChiaDataPage() {
         <Typography.Title level={4}>Đang kiểm tra quyền truy cập...</Typography.Title>
       </div>
     );
+  }
+
+  // Đợi permissions tải xong trước khi quyết định - tránh render nhấp
+  // nháy nội dung trang rồi mới redirect (cùng lý do permissionsLoading ở
+  // trash-can/page.tsx). Sau khi tải xong, không có quyền `customers.assign`
+  // thì không render gì cả (redirect đã được kích hoạt ở useEffect phía trên).
+  if (permissionsLoading) {
+    return (
+      <div style={{ padding: 40, textAlign: 'center' }}>
+        <Typography.Title level={4}>Đang kiểm tra quyền truy cập...</Typography.Title>
+      </div>
+    );
+  }
+  if (!canAssign) {
+    return null;
   }
 
   return (
