@@ -831,11 +831,15 @@ export class CustomersService {
     const oldData = { ...note };
     this.notesRepository.merge(note, dto);
     // ⚠️ MỚI: luôn ghi nhận người SỬA CUỐI (kể cả khi người này chính là
-    // người tạo - vẫn set để nhất quán, FE chỉ hiển thị dòng "Sửa cuối bởi"
-    // khi `updatedBy !== createdBy`, xem CustomerNotesTab.tsx) - phục vụ
-    // yêu cầu "khi A tạo, B sửa thì phải có dòng ghi chú nhỏ hệ thống tự
-    // tạo báo ai là người sửa cuối cùng".
+    // người tạo - vẫn set để nhất quán, FE chỉ hiển thị TÊN người sửa khi
+    // `updatedBy !== createdBy`, xem CustomerNotesTab.tsx) - phục vụ yêu
+    // cầu "khi A tạo, B sửa thì phải có dòng ghi chú nhỏ hệ thống tự tạo
+    // báo ai là người sửa cuối cùng".
     note.updatedBy = userId;
+    // Đếm số lần đã sửa - tăng mỗi lần PATCH thành công, bất kể ai sửa
+    // (kể cả tự sửa ghi chú của chính mình) - phục vụ yêu cầu hiển thị
+    // "Đã sửa N lần" trên UI.
+    note.editCount = (note.editCount ?? 0) + 1;
     const savedNote = await this.notesRepository.save(note);
 
     this.auditService.logActionAsync(

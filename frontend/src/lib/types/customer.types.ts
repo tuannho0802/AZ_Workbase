@@ -21,6 +21,11 @@ export interface CustomerNote {
     fullName?: string;
     email?: string;
   } | null;
+  // Số lần ghi chú đã được SỬA (không tính lần tạo đầu tiên) - luôn hiện
+  // trên UI cạnh thời gian sửa cuối khi > 0, bất kể người sửa cuối có
+  // trùng người tạo hay không (khác `updatedBy` - chỉ dùng để hiện TÊN
+  // người sửa khi khác người tạo).
+  editCount: number;
   createdAt: string;
   updatedAt?: string;
 }

@@ -50,6 +50,14 @@ export class CustomerNote {
   @JoinColumn({ name: 'updated_by' })
   updatedByUser: User | null;
 
+  // Đếm số lần ghi chú đã được SỬA (không tính lần tạo đầu tiên) - dùng để
+  // hiện "Đã sửa N lần" trên UI cạnh thời gian sửa cuối, bất kể người sửa
+  // cuối có trùng người tạo hay không (khác `updatedBy`, chỉ dùng để hiện
+  // TÊN người sửa khi khác người tạo). Tăng dần trong
+  // `CustomersService.updateNote()` mỗi lần PATCH thành công.
+  @Column({ name: 'edit_count', type: 'int', default: 0 })
+  editCount: number;
+
   @CreateDateColumn({ name: 'created_at' })
   createdAt: Date;
 

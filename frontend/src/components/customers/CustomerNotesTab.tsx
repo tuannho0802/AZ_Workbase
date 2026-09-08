@@ -218,14 +218,19 @@ export const CustomerNotesTab = ({ customerId, notes, onNoteAdded }: Props) => {
                   <div style={{ whiteSpace: 'pre-wrap', color: '#262626', fontSize: '14px' }}>{item.note}</div>
                 )}
 
-                  {/* Dòng hệ thống tự tạo: CHỈ hiện khi người sửa cuối KHÁC
-                    người tạo (2 người khác nhau cùng chạm vào 1 note) -
-                    tự sửa ghi chú của chính mình không cần hiển thị thêm
-                    dòng nào, tránh nhiễu giao diện. */}
-                  {!isEditing && item.updatedBy && item.updatedBy !== item.createdBy && (
+                  {/* Dòng hệ thống tự tạo: LUÔN hiện khi note đã từng được
+                    sửa (editCount > 0) - hiện thời gian sửa cuối + số lần
+                    đã sửa, bất kể người sửa cuối có phải chính người tạo
+                    hay không. CHỈ thêm tên người sửa khi 2 người KHÁC NHAU
+                    cùng chạm vào 1 note (updatedBy !== createdBy) - tự sửa
+                    ghi chú của chính mình thì không cần nêu lại tên mình. */}
+                  {!isEditing && item.editCount > 0 && (
                     <Text type="secondary" style={{ fontSize: '11px', fontStyle: 'italic', display: 'block', marginTop: 4 }}>
-                      Đã chỉnh sửa cuối bởi {item.updatedByUser?.fullName || item.updatedByUser?.name || 'Không xác định'}
+                      {item.updatedBy && item.updatedBy !== item.createdBy
+                        ? `Đã chỉnh sửa cuối bởi ${item.updatedByUser?.fullName || item.updatedByUser?.name || 'Không xác định'}`
+                        : 'Đã chỉnh sửa'}
                       {item.updatedAt ? ` · ${dayjs(item.updatedAt).format('DD/MM/YYYY HH:mm')}` : ''}
+                      {` · ${item.editCount} lần`}
                     </Text>
                   )}
               </div>
