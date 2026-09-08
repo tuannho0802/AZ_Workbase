@@ -509,7 +509,7 @@ function CustomersPageContent() {
     {
       title: 'STT',
       key: 'stt',
-      width: 36,
+      width: 40,
       align: 'center',
       render: (_, __, index) => (page - 1) * pageSize + index + 1,
     },
@@ -517,14 +517,20 @@ function CustomersPageContent() {
       title: 'Ngày nhập',
       dataIndex: 'inputDate',
       key: 'inputDate',
-      width: isLaptop ? '7%' : '8%',
+      // ⚠️ FIX BUG THẬT: width % dưới table-layout:fixed không đảm bảo đủ
+      // chỗ hiển thị hết nội dung khi container hẹp (laptop nhỏ) - cột bị
+      // bóp nhỏ hơn nội dung/tiêu đề thật cần, gây crop chữ ("Ng...",
+      // "S..."). Đổi sang width px cố định đúng bằng nhu cầu hiển thị thật +
+      // bật `scroll={{ x: 'max-content' }}` ở <Table> bên dưới để khi
+      // viewport không đủ rộng, bảng cuộn ngang thay vì bóp chữ.
+      width: isLaptop ? 90 : 100,
       render: (date) => dayjs(date).format('DD/MM/YYYY'),
     },
     {
       title: 'Họ và tên',
       dataIndex: 'name',
       key: 'name',
-      width: isLaptop ? '14%' : '16%',
+      width: isLaptop ? 160 : 190,
       onCell: () => ({ className: 'col-name' }),
       render: (text, record) => (
         <Space size={4}>
@@ -539,46 +545,46 @@ function CustomersPageContent() {
       title: 'SĐT',
       dataIndex: 'phone',
       key: 'phone',
-      width: isLaptop ? '8%' : '9%',
+      width: isLaptop ? 100 : 115,
       render: (val) => val ? val : <span style={{ color: '#aaa', fontStyle: 'italic' }}>Chưa có SDT</span>,
     },
     {
       title: 'Nguồn',
       dataIndex: 'source',
       key: 'source',
-      width: isLaptop ? '6%' : '7%',
+      width: isLaptop ? 80 : 90,
       render: (source) => <SourceTag source={source} />,
     },
     {
       title: 'UTM',
       dataIndex: 'campaign',
       key: 'campaign',
-      width: isLaptop ? '7%' : '8%',
+      width: isLaptop ? 90 : 100,
       ellipsis: { showTitle: true },
     },
     {
       title: 'Sales (Chính + Phụ)',
       key: 'salesUser',
-      width: isLaptop ? '11%' : '13%',
+      width: isLaptop ? 150 : 170,
       render: (_, record: any) => renderSalesTag(record),
     },
     {
       title: 'Marketing',
       key: 'marketingUser',
-      width: isLaptop ? '8%' : '9%',
+      width: isLaptop ? 110 : 125,
       render: (_, record: any) => renderMarketingTag(record),
     },
     {
       title: 'Trạng thái',
       dataIndex: 'status',
       key: 'status',
-      width: isLaptop ? '8%' : '9%',
+      width: isLaptop ? 100 : 110,
       render: (status) => renderStatusTag(status),
     },
     {
       title: 'Đã joined nhóm',
       key: 'joinedGroups',
-      width: isLaptop ? '7%' : '8%',
+      width: isLaptop ? 110 : 125,
       align: 'center',
       render: (_: any, record: any) => renderJoinedGroupsTag(record),
     },
@@ -593,7 +599,7 @@ function CustomersPageContent() {
       ),
       dataIndex: 'totalDeposit30Days',
       key: 'totalDeposit30Days',
-      width: isLaptop ? '9%' : '10%',
+      width: isLaptop ? 110 : 125,
       align: 'right',
       render: (val) => (
         <Tooltip title="Tổng tiền nạp dựa trên khoảng ngày">
@@ -606,7 +612,7 @@ function CustomersPageContent() {
     {
       title: 'Ghi chú gần nhất',
       key: 'recentNotes',
-      width: isLaptop ? '11%' : '13%',
+      width: isLaptop ? 150 : 170,
       render: (_, record: Customer) => renderRecentNotesCell(record, recentNotesCount),
     },
     // Cột "Thao tác" (nút Xoá) - BỎ HẲN cả cột khi không có quyền
@@ -842,6 +848,15 @@ function CustomersPageContent() {
         <Table
           className="customer-table"
           rowSelection={canAssign ? rowSelection : undefined}
+              // ⚠️ FIX BUG THẬT: thiếu `scroll.x` là nguyên nhân gốc khiến bảng bị
+              // crop chữ ở màn hình laptop nhỏ - table-layout:fixed (CSS
+              // .customer-table) ép TẤT CẢ cột co lại vừa đúng bề rộng container
+              // dù đã khai width cố định, làm nội dung/tiêu đề bị `text-overflow:
+              // ellipsis` cắt ngắn ("S...", "Marke...", "Đã j..."). `scroll: {
+              // x: 'max-content' }` cho antd biết: nếu tổng width các cột lớn
+              // hơn container, hãy giữ nguyên width khai báo và cho cuộn ngang
+              // thay vì bóp nhỏ - đảm bảo hiển thị đủ 100% nội dung.
+              scroll={{ x: 'max-content' }}
           columns={columns.map(col => ({
             ...col,
             sorter: ['name', 'phone', 'status', 'inputDate', 'createdAt', 'totalDeposit30Days'].includes(col.key as string),

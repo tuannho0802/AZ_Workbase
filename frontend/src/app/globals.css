@@ -30,10 +30,17 @@ body {
   width: 100%;
 }
 
+/* ⚠️ FIX BUG THẬT: `width: 100% !important` ép table LUÔN co đúng bằng
+   container dù đã khai `scroll={{ x: 'max-content' }}` ở component - antd
+   set width tổng các cột bằng inline style trên <table>, nhưng !important ở
+   đây đè lên inline style đó, xoá luôn tác dụng của scroll.x nên chữ vẫn bị
+   bóp/crop trên laptop nhỏ. Bỏ `width: 100% !important`, chỉ giữ
+   `table-layout: fixed` để mỗi cột bám đúng width đã khai (px) - antd tự
+   tính width tổng của <table> dựa trên cột khi có scroll.x. */
 .customer-table .ant-table-content table,
 .customer-table .ant-table-fixed-header table {
   table-layout: fixed !important;
-  width: 100% !important;
+  min-width: 100%;
 }
 
 .customer-table .ant-table-cell {
@@ -45,8 +52,19 @@ body {
   line-height: 1.4;
 }
 
+/* ⚠️ FIX BUG THẬT: header trước đây thừa hưởng `white-space: nowrap` +
+   `text-overflow: ellipsis` giống cell dữ liệu, nên tiêu đề dài
+   ("Sales (Chính + Phụ)", "Đã joined nhóm"...) bị cắt còn "S...", "Đã j...".
+   Cho phép header wrap xuống 2 dòng thay vì cắt chữ - kết hợp với width cột
+   đã đủ rộng (xem customers/page.tsx, trash-can/page.tsx) để không cần cuộn
+   ngang ở hầu hết trường hợp, và khi vẫn thiếu chỗ thì đã có scroll.x lo. */
 .customer-table .ant-table-thead > tr > th {
   padding: 8px 10px !important;
+  white-space: normal;
+  overflow: visible;
+  text-overflow: unset;
+  word-break: break-word;
+  line-height: 1.3;
 }
 
 /* Riêng cột tên cho phép wrap */

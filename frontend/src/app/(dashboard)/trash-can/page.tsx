@@ -186,6 +186,13 @@ export default function TrashCanPage() {
       title: 'Họ và tên',
       dataIndex: 'name',
       key: 'name',
+      // ⚠️ FIX BUG THẬT: cột này trước đây KHÔNG khai width - dưới
+      // table-layout:fixed (CSS .customer-table), cột không khai width sẽ
+      // bị co gần bằng 0 khi các cột % khác giành hết chỗ trên container
+      // hẹp (laptop nhỏ), giống hệt bug checkbox đã fix ở customers/page.tsx.
+      // Khai width cố định + bật `scroll.x` ở <Table> bên dưới để không bị
+      // crop tên khách hàng.
+      width: isLaptop ? 160 : 190,
       onCell: () => ({ className: 'col-name' }),
       render: (text: string) => <Text strong style={{ color: '#1890ff' }}>{text}</Text>,
     },
@@ -193,34 +200,34 @@ export default function TrashCanPage() {
       title: 'SĐT',
       dataIndex: 'phone',
       key: 'phone',
-      width: '15%',
+      width: isLaptop ? 100 : 115,
       render: (val: string) => val || <span style={{ color: '#aaa', fontStyle: 'italic' }}>Chưa có SĐT</span>,
     },
     {
       title: 'Nguồn',
       dataIndex: 'source',
       key: 'source',
-      width: '12%',
+      width: isLaptop ? 80 : 90,
       render: (val: string) => val ? <SourceTag source={val} /> : '-',
     },
     {
       title: 'Sales phụ trách',
       key: 'salesUser',
-      width: isLaptop ? '18%' : '20%',
+      width: isLaptop ? 140 : 160,
       render: (_: any, record: Customer) => record.salesUser?.name || '-',
     },
     {
       title: 'Ngày tạo',
       dataIndex: 'createdAt',
       key: 'createdAt',
-      width: '12%',
+      width: isLaptop ? 100 : 110,
       render: (val: string) => dayjs(val).format('DD/MM/YYYY'),
     },
     {
       title: 'Ngày xóa',
       dataIndex: 'deletedAt',
       key: 'deletedAt',
-      width: '15%',
+      width: isLaptop ? 130 : 145,
       render: (val: string) => dayjs(val).format('DD/MM/YYYY HH:mm'),
     },
     {
@@ -322,6 +329,10 @@ export default function TrashCanPage() {
         ) : (
           <Table
             className="customer-table"
+              // Xem chú thích chi tiết ở customers/page.tsx: bật scroll ngang
+              // để không bị crop chữ khi container hẹp (laptop nhỏ) thay vì
+              // để table-layout:fixed bóp nhỏ các cột.
+              scroll={{ x: 'max-content' }}
             columns={columns}
             dataSource={data}
             rowKey="id"
