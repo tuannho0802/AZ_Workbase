@@ -4,6 +4,8 @@ import { NotFoundException, BadRequestException, ConflictException } from '@nest
 import { DepartmentsService } from './departments.service';
 import { Department } from '../../database/entities/department.entity';
 import { User } from '../../database/entities/user.entity';
+import { Customer } from '../../database/entities/customer.entity';
+import { AuditService } from '../audit/audit.service';
 import { Role } from '../../common/enums/role.enum';
 
 describe('DepartmentsService', () => {
@@ -20,6 +22,17 @@ describe('DepartmentsService', () => {
     findOne: jest.fn(),
     find: jest.fn(),
   };
+  // Thêm sau khi DepartmentsService có thêm remove() (xoá phòng ban, hỗ trợ
+  // moveUsersToDepartmentId) - cần đếm/di chuyển customer thuộc phòng ban
+  // bị xoá, nên constructor giờ có thêm CustomerRepository + AuditService.
+  const mockCustomerRepo = {
+    count: jest.fn(),
+    update: jest.fn(),
+  };
+  const mockAuditService = {
+    logAction: jest.fn(),
+    logActionAsync: jest.fn(),
+  };
 
   beforeEach(async () => {
     jest.clearAllMocks();
@@ -29,6 +42,8 @@ describe('DepartmentsService', () => {
         DepartmentsService,
         { provide: getRepositoryToken(Department), useValue: mockDepartmentRepo },
         { provide: getRepositoryToken(User), useValue: mockUserRepo },
+        { provide: getRepositoryToken(Customer), useValue: mockCustomerRepo },
+        { provide: AuditService, useValue: mockAuditService },
       ],
     }).compile();
 
