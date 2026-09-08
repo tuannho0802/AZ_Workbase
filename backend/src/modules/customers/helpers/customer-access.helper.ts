@@ -62,13 +62,20 @@ export class CustomerAccessHelper {
     }
 
     // own (và bất kỳ role lạ nào khác ngoài các scope trên, phòng hờ):
-    // chỉ được xem KH do mình tạo, mình làm sales chính, hoặc mình đang có
-    // 1 lượt gán còn hiệu lực (bulk-assign có thể gán 1 KH cho nhiều
-    // người, không chỉ riêng salesUserId "chính").
+    // chỉ được xem KH do mình tạo, mình làm sales chính, mình là Marketing
+    // phụ trách, hoặc mình đang có 1 lượt gán còn hiệu lực (bulk-assign có
+    // thể gán 1 KH cho nhiều người, không chỉ riêng salesUserId "chính").
+    // ⚠️ FIX BUG THẬT: trước đây thiếu `marketingUserId = mình` ở đây ->
+    // User được gán làm Marketing phụ trách (customer.marketing_user_id)
+    // nhưng không phải người tạo/không phải Sales chính/không có dòng
+    // customer_assignments (bảng đó chỉ ghi nhận gán Sales) thì KHÔNG thấy
+    // được khách hàng của chính mình trong mọi màn hình dùng applyViewFilter
+    // (danh sách chính, Chia Data, Gán/Assign...).
     query.andWhere(
       new Brackets((qb) => {
         qb.where('customer.createdById = :accessUserId', { accessUserId: userId })
           .orWhere('customer.salesUserId = :accessUserId', { accessUserId: userId })
+          .orWhere('customer.marketingUserId = :accessUserId', { accessUserId: userId })
           .orWhere(
             'customer.id IN ' +
             '(SELECT ca.customer_id FROM customer_assignments ca ' +
@@ -133,7 +140,9 @@ export class CustomerAccessHelper {
     }
 
     return (
-      customer.createdById === userId || customer.salesUserId === userId
+      customer.createdById === userId ||
+      customer.salesUserId === userId ||
+      customer.marketingUserId === userId
     );
   }
 }

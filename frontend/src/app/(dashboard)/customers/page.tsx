@@ -113,12 +113,12 @@ const renderRecentNotesCell = (record: Customer, count: number) => {
   const latestLine = formatRecentNoteLine(visibleNotes[0]);
 
   const tooltipContent = (
-    <div style={{ minWidth: 220, maxWidth: 320 }}>
+    <div style={{ minWidth: 220, maxWidth: 320, fontSize: 12 }}>
       {visibleNotes.map((n, idx) => (
         <div key={n.id} style={idx < visibleNotes.length - 1 ? { marginBottom: 8 } : undefined}>
           <strong>{n.createdByName || 'Không xác định'}:</strong> {n.note}
           <br />
-          <span style={{ fontSize: 11, color: 'rgba(255,255,255,0.65)' }}>
+          <span style={{ fontSize: 10, color: 'rgba(255,255,255,0.65)' }}>
             {dayjs(n.createdAt).format('HH:mm DD/MM/YYYY')}
           </span>
         </div>

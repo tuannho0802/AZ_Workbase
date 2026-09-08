@@ -72,7 +72,7 @@ describe('CustomerAccessHelper', () => {
       expect(calls[0].params).toEqual({ accessManagerId: 42 });
     });
 
-    it('EMPLOYEE: lọc theo (createdById = mình) OR (salesUserId = mình) OR (đang có assignment active)', () => {
+    it('EMPLOYEE: lọc theo (createdById = mình) OR (salesUserId = mình) OR (marketingUserId = mình) OR (đang có assignment active)', () => {
       const { qb, calls } = makeFakeQueryBuilder();
 
       CustomerAccessHelper.applyViewFilter(qb, 7, Role.EMPLOYEE);
@@ -82,7 +82,7 @@ describe('CustomerAccessHelper', () => {
       expect(bracket).toBeInstanceOf(Brackets);
 
       const inner = extractBracketCalls(bracket);
-      expect(inner).toHaveLength(3);
+      expect(inner).toHaveLength(4);
 
       expect(inner[0].method).toBe('where');
       expect(inner[0].sql).toContain('createdById = :accessUserId');
@@ -92,9 +92,13 @@ describe('CustomerAccessHelper', () => {
       expect(inner[1].sql).toContain('salesUserId = :accessUserId');
 
       expect(inner[2].method).toBe('orWhere');
-      expect(inner[2].sql).toContain('customer_assignments');
-      expect(inner[2].sql).toContain("status = :accessStatus");
-      expect(inner[2].params).toEqual({ accessUserId: 7, accessStatus: 'active' });
+      expect(inner[2].sql).toContain('marketingUserId = :accessUserId');
+      expect(inner[2].params).toEqual({ accessUserId: 7 });
+
+      expect(inner[3].method).toBe('orWhere');
+      expect(inner[3].sql).toContain('customer_assignments');
+      expect(inner[3].sql).toContain("status = :accessStatus");
+      expect(inner[3].params).toEqual({ accessUserId: 7, accessStatus: 'active' });
     });
 
     it('role lạ/không xác định (không phải 3 role trên) -> rơi vào nhánh EMPLOYEE (phòng thủ mặc định chặt nhất)', () => {
@@ -184,8 +188,13 @@ describe('CustomerAccessHelper', () => {
       expect(CustomerAccessHelper.canManageCustomer(customer, 7, Role.EMPLOYEE)).toBe(true);
     });
 
-    it('EMPLOYEE -> false nếu không phải người tạo và không phải sales chính', () => {
-      const customer: any = { createdById: 99, salesUserId: 98 };
+    it('EMPLOYEE -> true nếu là Marketing phụ trách (marketingUserId)', () => {
+      const customer: any = { createdById: 99, salesUserId: 98, marketingUserId: 7 };
+      expect(CustomerAccessHelper.canManageCustomer(customer, 7, Role.EMPLOYEE)).toBe(true);
+    });
+
+    it('EMPLOYEE -> false nếu không phải người tạo, không phải sales chính, không phải marketing phụ trách', () => {
+      const customer: any = { createdById: 99, salesUserId: 98, marketingUserId: 97 };
       expect(CustomerAccessHelper.canManageCustomer(customer, 7, Role.EMPLOYEE)).toBe(false);
     });
 
