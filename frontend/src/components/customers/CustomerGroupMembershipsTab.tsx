@@ -5,7 +5,6 @@ import { App, Spin, Empty, Switch, Tag, Typography, Avatar } from 'antd';
 import { LinkOutlined, CheckCircleFilled } from '@ant-design/icons';
 import { customerGroupMembershipsApi, GroupMembershipRow } from '@/lib/api/link-groups.api';
 import { SimpleList } from '@/components/common/SimpleList';
-import { useMyPermissions } from '@/lib/hooks/useMyPermissions';
 
 const { Text, Link: TypoLink } = Typography;
 
@@ -28,20 +27,29 @@ interface Props {
  * ẩn Switch bật/tắt, không ẩn/chặn cả tab. Trước đây Switch hiện vô điều
  * kiện, bấm vào role chỉ có `view` sẽ luôn nhận 403 từ PATCH.
  *
- * ⚠️ SỬA BUG THẬT (2026-09-08): trước đây check `can('customers.manage')` -
+ * ⚠️ SỬA BUG THẬT #1 (2026-09-08): trước đây check `can('customers.manage')` -
  * permission LEGACY từ trước khi tách `customers.create`/`customers.edit`,
  * không còn khớp với bất kỳ quyền nào Backend thực sự enforce ở route PATCH
- * này (đã đổi 2 lần trong ngày: `customers.manage` -> `customers.edit` ->
- * `customer_group_memberships.set`, xem PERMISSIONS.md mục 3) - hậu quả:
- * Switch bị ẩn sai (hiện Tag read-only) cho nhiều role dù Backend đáng lẽ
- * cho phép bấm.
+ * này.
+ *
+ * ⚠️ SỬA BUG THẬT #2 (2026-09-08, tiếp): sau khi đổi sang
+ * `can('customer_group_memberships.set')`, vẫn còn 1 lỗi khác - `can()` chỉ
+ * biết "role NÀY nói chung có quyền set hay không", KHÔNG biết "CÓ được set
+ * ĐÚNG khách hàng đang xem hay không" khi scope='own'/'department'. Hậu quả
+ * thật: Employee scope='own' vẫn thấy Switch bấm được ở data KHÔNG PHẢI của
+ * mình (dù bấm vào bị 403 + rollback đúng - nhưng UI không "render dynamic
+ * theo scope" như yêu cầu, gây hiểu nhầm). CHỐT: không tự tính `canToggle` ở
+ * FE nữa - đọc THẲNG field `canManage` mà BE trả kèm response
+ * (`GET .../group-memberships`), BE đã tính đúng theo CHÍNH khách hàng này
+ * bằng `CustomerAccessHelper.applyViewFilter()` (xem
+ * `CustomerGroupMembershipsService.canManageMembership()`) - nguồn chân lý
+ * DUY NHẤT, FE không tự suy luận gì thêm.
  */
 export const CustomerGroupMembershipsTab = ({ customerId }: Props) => {
   const { message } = App.useApp();
-  const { can } = useMyPermissions();
-  const canToggle = can('customer_group_memberships.set');
   const [loading, setLoading] = useState(true);
   const [rows, setRows] = useState<GroupMembershipRow[]>([]);
+  const [canManage, setCanManage] = useState(false);
   // Đang lưu riêng từng groupId (không phải 1 boolean chung) - để chỉ đúng
   // 1 Switch đang thao tác hiện loading, các Switch khác vẫn bấm được bình
   // thường trong lúc chờ.
@@ -50,8 +58,9 @@ export const CustomerGroupMembershipsTab = ({ customerId }: Props) => {
   const fetchData = async () => {
     setLoading(true);
     try {
-      const data = await customerGroupMembershipsApi.getForCustomer(customerId);
-      setRows(data);
+      const { items, canManage: manage } = await customerGroupMembershipsApi.getForCustomer(customerId);
+      setRows(items);
+      setCanManage(manage);
     } catch (err) {
       console.error(err);
       message.error('Lấy checklist nhóm thất bại');
@@ -143,7 +152,7 @@ export const CustomerGroupMembershipsTab = ({ customerId }: Props) => {
               ),
             })}
             renderActions={(row) => [
-              canToggle ? (
+              canManage ? (
                 <Switch
                   key="toggle"
                   checked={row.joined}
@@ -153,9 +162,10 @@ export const CustomerGroupMembershipsTab = ({ customerId }: Props) => {
                   unCheckedChildren="Chưa join"
                 />
               ) : (
-                  // Chỉ có `customers.view`, thiếu `customer_group_memberships.set`
-                  // - hiện trạng thái read-only thay vì Switch (bấm vào sẽ
-                  // luôn 403 nếu để Switch hoạt động cho role không có quyền).
+                  // Khách hàng này ngoài phạm vi (scope) của permission
+                  // `customer_group_memberships.set`, hoặc role không có quyền
+                  // này - hiện trạng thái read-only thay vì Switch (bấm vào sẽ
+                  // luôn 403 nếu để Switch hoạt động).
                 <Tag key="status" color={row.joined ? 'success' : 'default'}>
                   {row.joined ? 'Đã join' : 'Chưa join'}
                 </Tag>

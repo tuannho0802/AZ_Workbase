@@ -42,6 +42,18 @@ export interface GroupMembershipRow {
   joinedAt: string | null;
 }
 
+/**
+ * ⚠️ MỚI (2026-09-08): khớp `GroupMembershipsResult` bên BE -
+ * `canManage` tính SẴN theo ĐÚNG khách hàng đang xem (không chỉ theo role
+ * nói chung) - `CustomerGroupMembershipsTab.tsx` dùng field này để quyết
+ * định hiện Switch/Tag, KHÔNG tự gọi `useMyPermissions().can()` nữa (xem
+ * PERMISSIONS.md mục 3).
+ */
+export interface GroupMembershipsResponse {
+  items: GroupMembershipRow[];
+  canManage: boolean;
+}
+
 // ── Quản lý chính/phụ theo từng LinkGroup ──
 // Khớp với `GroupManagersResult` bên backend (LinkGroupManagersService).
 export interface GroupManagerUser {
@@ -203,9 +215,10 @@ export const linkGroupManagersApi = {
 };
 
 export const customerGroupMembershipsApi = {
-  /** Checklist toàn bộ group đang active (kèm category) + trạng thái đã join của 1 customer */
-  getForCustomer: async (customerId: number): Promise<GroupMembershipRow[]> => {
-    const response = await axiosInstance.get<GroupMembershipRow[]>(
+  /** Checklist toàn bộ group đang active (kèm category) + trạng thái đã join
+   * của 1 customer, kèm `canManage` (BE tính sẵn theo ĐÚNG khách hàng này). */
+  getForCustomer: async (customerId: number): Promise<GroupMembershipsResponse> => {
+    const response = await axiosInstance.get<GroupMembershipsResponse>(
       `/customers/${customerId}/group-memberships`,
     );
     return response.data;

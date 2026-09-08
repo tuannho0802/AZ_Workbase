@@ -31,7 +31,12 @@ export class CustomerGroupMembershipsController {
     @GetUser() user: any,
     @GetPermissionScope() scope: string | null | undefined,
   ) {
-    return this.membershipsService.getMembershipsForCustomer(id, user.id, user.role, scope);
+    // ⚠️ `scope` ở đây là scope của `customers.view` (route này chỉ đòi
+    // permission đó) - dùng để check quyền XEM checklist. Quyền TICK
+    // (`canManage` trong response) được tính RIÊNG bên trong service theo
+    // `customer_group_memberships.set`, không dùng lại biến `scope` này -
+    // xem JSDoc `getMembershipsForCustomer()`.
+    return this.membershipsService.getMembershipsForCustomer(id, user.id, user.role, scope, user.departmentId);
   }
 
   @Patch(':id/group-memberships/:groupId')

@@ -65,8 +65,8 @@ export const CustomerForm: React.FC<CustomerFormProps> = ({ open, customer, onCl
     if (open && customer) {
       customerGroupMembershipsApi
         .getForCustomer(customer.id)
-        .then((rows) => {
-          const joined = new Set(rows.filter((r) => r.joined).map((r) => r.groupId));
+        .then(({ items }) => {
+          const joined = new Set(items.filter((r) => r.joined).map((r) => r.groupId));
           setSavedJoinedGroupIds(joined);
           setCheckedGroupIds(joined);
         })
