@@ -767,10 +767,36 @@ export class CustomersService {
       if (note.createdBy !== userId) {
         throw new ForbiddenException(forbiddenMessage);
       }
-      // Vẫn xác nhận khách hàng còn truy cập được (fallback theo role) -
-      // không siết thêm điều kiện nào khác ngoài việc ghi chú phải là của
-      // chính mình.
-      await this.assertCustomerAccessible(customerId, userId, userRole, null);
+      // ⚠️ FIX BUG THẬT (báo cáo 2026-09-08: Employee được cấp
+      // `customer_notes.edit` scope='own' bị 404 "Không tìm thấy khách hàng
+      // này" khi Lưu sửa ĐÚNG ghi chú do chính mình tạo):
+      //
+      // Nguyên nhân gốc: trước đây dòng dưới đây gọi cứng
+      // `assertCustomerAccessible(customerId, userId, userRole, null)` -
+      // `null` rơi vào nhánh mặc định của `CustomerAccessHelper.
+      // applyViewFilter()`, tức là bắt buộc user phải là NGƯỜI TẠO/SALES
+      // CHÍNH/đang được GÁN CHIA SẺ của chính khách hàng đó thì mới qua
+      // được. Nhưng `customer_notes.create` (permission dùng để TẠO ra ghi
+      // chú ban đầu) hoàn toàn có thể có scope RỘNG HƠN (vd 'department'/
+      // 'all') - Admin cấp cho Employee được viết note trên MỌI khách hàng
+      // trong phòng ban, không chỉ khách của riêng mình. Hệ quả: Employee
+      // tạo note thành công trên 1 khách hàng KHÔNG PHẢI của mình (do
+      // scope tạo note rộng), nhưng khi quay lại SỬA đúng note đó (scope
+      // sửa note = 'own', đã tự kiểm tra `note.createdBy === userId` ở
+      // trên - ĐÚNG rồi) thì bị chặn nhầm bởi recheck khách hàng quá hẹp
+      // (own-only) - không nhất quán với quyền họ thực sự có.
+      //
+      // Sửa: recheck khách hàng bằng CHÍNH scope thật của `customers.view`
+      // (tra động qua PermissionsService, KHÔNG hardcode 'own'/null nữa) -
+      // đây mới là nguồn chân lý đúng cho câu hỏi "user này có được đụng
+      // vào khách hàng này không", nhất quán với cách `findOne()`/
+      // `createNote()` đang xác định phạm vi truy cập khách hàng.
+      const { scope: viewScope } = await this.permissionsService.hasPermission(
+        userRole,
+        'customers.view',
+        departmentId,
+      );
+      await this.assertCustomerAccessible(customerId, userId, userRole, viewScope);
       return;
     }
 

@@ -45,7 +45,11 @@ describe('CustomersService', () => {
     // mock rỗng, gán return value cụ thể trong từng describe() cần dùng.
     manager: { getRepository: jest.fn() },
   };
-  const mockNoteRepo = {};
+  const mockNoteRepo: {
+    findOne?: jest.Mock;
+    merge?: jest.Mock;
+    save?: jest.Mock;
+  } = {};
   const mockDepositRepo: { createQueryBuilder?: jest.Mock } = {};
   const mockAssignmentRepo = {
     findOne: jest.fn(),
@@ -609,6 +613,103 @@ describe('CustomersService', () => {
       const result = await service.bulkAssign([100], [5], 1, Role.ASSISTANT);
 
       expect(result.success).toBe(1);
+    });
+  });
+
+  describe('updateNote - Sửa ghi chú khách hàng (regression bug 404 "Không tìm thấy khách hàng này")', () => {
+    // ⚠️ BÁO CÁO GỐC (2026-09-08): Admin cấp `customer_notes.edit` (scope
+    // 'own') cho Employee nhưng KHÔNG cấp `customer_notes.delete`. Employee
+    // (Sales User 2) tạo được note trên 1 khách hàng (customer_notes.create
+    // scope rộng hơn 'own' của Employee, vd 'department'), rồi quay lại
+    // SỬA ĐÚNG note mình vừa tạo -> dính 404 "Không tìm thấy khách hàng
+    // này" dù note chắc chắn là của mình. Nguyên nhân: code cũ hardcode
+    // `assertCustomerAccessible(..., null)` cho nhánh scope='own' - null
+    // rơi vào check ownership "cứng" (createdById/salesUserId/assignment),
+    // BỎ QUA scope thật của `customers.view` (vd 'department'/'all') mà
+    // Employee thực sự đang có. Test dưới đây khoá lại hành vi ĐÚNG sau
+    // khi sửa: recheck khách hàng phải dùng scope thật của `customers.view`.
+    function makeAccessQb(found: boolean) {
+      const qb: any = {
+        select: jest.fn().mockReturnThis(),
+        where: jest.fn().mockReturnThis(),
+        andWhere: jest.fn().mockReturnThis(),
+        getOne: jest.fn().mockResolvedValue(found ? { id: 148 } : null),
+      };
+      return qb;
+    }
+
+    const baseNote = { id: 10, customerId: 148, createdBy: 7, note: 'nội dung cũ' };
+
+    beforeEach(() => {
+      mockNoteRepo.findOne = jest.fn().mockResolvedValue({ ...baseNote });
+      mockNoteRepo.merge = jest.fn((note: any, dto: any) => Object.assign(note, dto));
+      mockNoteRepo.save = jest.fn((note: any) => Promise.resolve(note));
+    });
+
+    it('ĐÂY LÀ FIX CHO BUG GỐC: Employee (scope=own) sửa ĐÚNG note mình tạo, trên KH chỉ truy cập được nhờ customers.view scope=department -> KHÔNG còn bị 404', async () => {
+      mockPermissionsService.hasPermission.mockImplementation((_role: string, key: string) => {
+        if (key === 'customer_notes.edit') return Promise.resolve({ allowed: true, scope: PermissionScope.OWN });
+        if (key === 'customers.view') return Promise.resolve({ allowed: true, scope: PermissionScope.DEPARTMENT });
+        return Promise.resolve({ allowed: false, scope: null });
+      });
+      const qb = makeAccessQb(true);
+      mockCustomerRepo.createQueryBuilder.mockReturnValue(qb);
+
+      await expect(
+        service.updateNote(148, 10, { note: 'nội dung mới' } as any, 7, Role.EMPLOYEE, 3),
+      ).resolves.toBeDefined();
+
+      // Phải recheck bằng scope THẬT của customers.view ('department') -
+      // tức có 1 lệnh andWhere chứa điều kiện phòng ban, KHÔNG phải
+      // Brackets ownership cứng như hành vi cũ (bug).
+      expect(qb.andWhere).toHaveBeenCalledWith(
+        expect.stringContaining('manager_user_id'),
+        expect.objectContaining({ accessManagerId: 7 }),
+      );
+    });
+
+    it('scope=own + customers.view scope=all: vẫn sửa được (không đòi hỏi phải là chủ khách hàng)', async () => {
+      mockPermissionsService.hasPermission.mockImplementation((_role: string, key: string) => {
+        if (key === 'customer_notes.edit') return Promise.resolve({ allowed: true, scope: PermissionScope.OWN });
+        if (key === 'customers.view') return Promise.resolve({ allowed: true, scope: PermissionScope.ALL });
+        return Promise.resolve({ allowed: false, scope: null });
+      });
+      const qb = makeAccessQb(true);
+      mockCustomerRepo.createQueryBuilder.mockReturnValue(qb);
+
+      await expect(
+        service.updateNote(148, 10, { note: 'nội dung mới' } as any, 7, Role.EMPLOYEE, null),
+      ).resolves.toBeDefined();
+    });
+
+    it('note KHÔNG phải do mình tạo -> luôn bị chặn 403, bất kể customers.view scope rộng cỡ nào', async () => {
+      mockNoteRepo.findOne = jest.fn().mockResolvedValue({ ...baseNote, createdBy: 999 });
+      mockPermissionsService.hasPermission.mockImplementation((_role: string, key: string) => {
+        if (key === 'customer_notes.edit') return Promise.resolve({ allowed: true, scope: PermissionScope.OWN });
+        return Promise.resolve({ allowed: false, scope: null });
+      });
+
+      await expect(
+        service.updateNote(148, 10, { note: 'x' } as any, 7, Role.EMPLOYEE, null),
+      ).rejects.toThrow('Bạn không có quyền sửa ghi chú này');
+    });
+
+    it('không có permission customer_notes.edit nào cả -> luôn bị chặn 403, kể cả note của chính mình', async () => {
+      mockPermissionsService.hasPermission.mockResolvedValue({ allowed: false, scope: null });
+
+      await expect(
+        service.updateNote(148, 10, { note: 'x' } as any, 7, Role.EMPLOYEE, null),
+      ).rejects.toThrow('Bạn không có quyền sửa ghi chú này');
+    });
+
+    it('ADMIN luôn sửa được, không tra permission nào (lối thoát hiểm cứng)', async () => {
+      const qb = makeAccessQb(true);
+      mockCustomerRepo.createQueryBuilder.mockReturnValue(qb);
+
+      await expect(
+        service.updateNote(148, 10, { note: 'x' } as any, 1, Role.ADMIN, null),
+      ).resolves.toBeDefined();
+      expect(mockPermissionsService.hasPermission).not.toHaveBeenCalled();
     });
   });
 
