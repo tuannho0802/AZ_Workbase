@@ -22,16 +22,24 @@ interface Props {
  *
  * ⚠️ Phạm vi quyền: `GET .../group-memberships` (danh sách - tab này) chỉ
  * cần `customers.view`; `PATCH .../group-memberships/:groupId` (bật/tắt)
- * cần `customers.manage` - 2 quyền RIÊNG BIỆT (xem
+ * cần `customer_group_memberships.set` - 2 quyền RIÊNG BIỆT (xem
  * customer-group-memberships.controller.ts). Role chỉ có `view` (không có
- * `manage`, vd Employee tuỳ cấu hình) VẪN xem được đầy đủ checklist - chỉ
+ * quyền set, vd Employee tuỳ cấu hình) VẪN xem được đầy đủ checklist - chỉ
  * ẩn Switch bật/tắt, không ẩn/chặn cả tab. Trước đây Switch hiện vô điều
  * kiện, bấm vào role chỉ có `view` sẽ luôn nhận 403 từ PATCH.
+ *
+ * ⚠️ SỬA BUG THẬT (2026-09-08): trước đây check `can('customers.manage')` -
+ * permission LEGACY từ trước khi tách `customers.create`/`customers.edit`,
+ * không còn khớp với bất kỳ quyền nào Backend thực sự enforce ở route PATCH
+ * này (đã đổi 2 lần trong ngày: `customers.manage` -> `customers.edit` ->
+ * `customer_group_memberships.set`, xem PERMISSIONS.md mục 3) - hậu quả:
+ * Switch bị ẩn sai (hiện Tag read-only) cho nhiều role dù Backend đáng lẽ
+ * cho phép bấm.
  */
 export const CustomerGroupMembershipsTab = ({ customerId }: Props) => {
   const { message } = App.useApp();
   const { can } = useMyPermissions();
-  const canToggle = can('customers.manage');
+  const canToggle = can('customer_group_memberships.set');
   const [loading, setLoading] = useState(true);
   const [rows, setRows] = useState<GroupMembershipRow[]>([]);
   // Đang lưu riêng từng groupId (không phải 1 boolean chung) - để chỉ đúng
@@ -145,9 +153,9 @@ export const CustomerGroupMembershipsTab = ({ customerId }: Props) => {
                   unCheckedChildren="Chưa join"
                 />
               ) : (
-                // Chỉ có quyền view (customers.manage) - hiện trạng thái
-                // read-only thay vì Switch (bấm vào sẽ luôn 403 nếu để
-                // Switch hoạt động cho role không có quyền sửa).
+                  // Chỉ có `customers.view`, thiếu `customer_group_memberships.set`
+                  // - hiện trạng thái read-only thay vì Switch (bấm vào sẽ
+                  // luôn 403 nếu để Switch hoạt động cho role không có quyền).
                 <Tag key="status" color={row.joined ? 'success' : 'default'}>
                   {row.joined ? 'Đã join' : 'Chưa join'}
                 </Tag>

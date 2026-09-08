@@ -32,6 +32,10 @@ const RESOURCE_LABEL: Record<string, string> = {
   // nhóm quyền hiện raw key "customer_notes" xấu và khó hiểu thay vì tên
   // tiếng Việt như các resource khác.
   customer_notes: 'Ghi chú khách hàng',
+  // ⚠️ MỚI (2026-09-08): tách riêng khỏi `customers.edit` -
+  // `customer_group_memberships.set` (bật/tắt "đã tham gia nhóm" ở tab
+  // "Nhóm" trong chi tiết KH, và lúc tạo mới KH) - xem PERMISSIONS.md mục 3.
+  customer_group_memberships: 'Tham gia nhóm (Checklist KH)',
   leave_requests: 'Nghỉ phép',
   attendance: 'Chấm công',
   reports: 'Báo cáo',

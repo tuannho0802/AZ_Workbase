@@ -35,20 +35,23 @@ export class CustomerGroupMembershipsController {
   }
 
   @Patch(':id/group-memberships/:groupId')
-  // ⚠️ FIX BUG THẬT: trước đây đòi `customers.manage` - permission KEY CŨ,
-  // đã bị migration `1778900000000-SplitCustomersManagePermission` tách
-  // thành `customers.create`/`customers.edit` cho TOÀN BỘ route
-  // create/edit khách hàng khác, NHƯNG route này (module link-groups,
-  // KHÔNG nằm trong phạm vi migration đó) bị bỏ sót, vẫn giữ nguyên
-  // `customers.manage` - permission này CHỈ được seed sẵn cho
-  // admin/assistant/manager (xem `1778600000000-AddDetailedRbacPermissions`),
-  // KHÔNG BAO GIỜ tự động có ở Employee dù Employee đã được cấp
-  // `customers.edit` (dùng để sửa thông tin KH bình thường). Hậu quả: bất
-  // kỳ role nào (kể cả Employee) có quyền sửa khách hàng vẫn bị 403 khi
-  // tick "đã join nhóm" - đúng bug đã gặp thật (customer 53217). Đổi sang
-  // `customers.edit` để nhất quán với phần còn lại của "sửa thông tin
-  // khách hàng" - ai sửa được KH thì cũng tick được nhóm của KH đó.
-  @RequirePermission('customers.edit')
+  // ⚠️ LỊCH SỬ (xem PERMISSIONS.md mục 3 để đọc đầy đủ):
+  // - Bản gốc đòi `customers.manage` (permission LEGACY, chỉ seed sẵn cho
+  //   admin/assistant/manager) -> Employee luôn bị 403 khi tick "đã join
+  //   nhóm" dù sửa khách hàng bình thường không lỗi (bug thật, customer
+  //   53217, 2026-09-08).
+  // - Vá tạm bằng cách đổi sang `customers.edit` - hết 403 nhưng vẫn GỘP
+  //   CHUNG với toàn bộ quyền sửa thông tin khách hàng khác, Admin không
+  //   bật/tắt riêng được hành động này, và role chỉ có `customers.create`
+  //   (không có `customers.edit`) vẫn không tick được nhóm ngay lúc vừa
+  //   tạo khách hàng mới (use case checkbox "Tham gia nhóm" ở
+  //   `CustomerForm.tsx` lúc tạo mới).
+  // - CHỐT: tách hẳn permission riêng `customer_group_memberships.set`
+  //   (migration `1779600000000-AddCustomerGroupMembershipSetPermission`)
+  //   - Admin cấu hình độc lập qua `/phan-quyen`, mặc định Employee scope
+  //   'own' (chỉ khách hàng của chính mình), Manager 'department', Admin/
+  //   Assistant 'all' - đúng bảng chuẩn PERMISSIONS.md mục 1.
+  @RequirePermission('customer_group_memberships.set')
   @ApiOperation({ summary: 'Bật/tắt trạng thái đã join của customer với 1 group' })
   async setMembership(
     @Param('id', ParseIntPipe) id: number,
