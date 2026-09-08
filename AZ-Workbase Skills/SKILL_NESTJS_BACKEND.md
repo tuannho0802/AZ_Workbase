@@ -12,44 +12,56 @@ Guide development of NestJS backend for AZWorkbase project following strict arch
 
 ## Core Principles
 
-### 1. Project Structure (MANDATORY)
+### 1. Project Structure (ĐÃ CẬP NHẬT khớp code thật — xem thêm `../backend/README.md` mục 2-3)
+
+> ⚠️ Block dưới đây từng là scaffold GỐC lúc khởi tạo dự án (module mẫu `data-sharing`, deploy PM2 qua
+> `ecosystem.config.js`) — đã lỗi thời hoàn toàn. Dự án hiện **deploy Vercel Serverless**
+> (`vercel.json`, không dùng PM2/`ecosystem.config.js`), và logic "chia sẻ dữ liệu" nằm trong
+> `customers/` (assignment) + `link-groups/` (quản lý chính/phụ theo nhóm), KHÔNG có module
+> `data-sharing/` riêng. Danh sách module dưới đây lấy trực tiếp từ `ls backend/src/modules/` — nếu
+> thấy lệch khi đọc lại (module mới được thêm), tin theo `ls` thật, không tin bảng này.
+
 ```
 backend/
 ├── src/
-│   ├── common/               # Shared utilities
-│   │   ├── decorators/       # Custom decorators
-│   │   ├── filters/          # Exception filters
-│   │   ├── guards/           # Auth guards
-│   │   ├── interceptors/     # Response interceptors
-│   │   └── pipes/            # Validation pipes
-│   ├── config/               # Configuration modules
-│   │   ├── database.config.ts
-│   │   └── jwt.config.ts
-│   ├── modules/              # Feature modules
+│   ├── common/                # decorators, enums, filters, guards, interceptors, utils
+│   ├── config/                 # database.config.ts (đọc từ biến môi trường)
+│   ├── database/
+│   │   ├── entities/            # ⭐ NGUỒN SỰ THẬT — luôn đọc trước khi sửa field
+│   │   ├── migrations/          # xem SKILL_DATABASE_MANAGEMENT.md mục 5 — luôn `ls | sort | tail`
+│   │   ├── seeds/, import/       # seed dữ liệu mẫu, import Excel/CSV marketing data
+│   ├── integrations/
+│   │   └── zk-device/            # giao thức TCP thô máy chấm công, chạy ĐỘC LẬP không qua NestJS DI
+│   ├── modules/                  # 1 module = 1 domain nghiệp vụ, danh sách thật hiện tại:
+│   │   ├── attendance-export/
+│   │   ├── audit/
 │   │   ├── auth/
-│   │   │   ├── auth.controller.ts
-│   │   │   ├── auth.service.ts
-│   │   │   ├── auth.module.ts
-│   │   │   ├── dto/
-│   │   │   ├── guards/
-│   │   │   └── strategies/
-│   │   ├── customers/
+│   │   ├── customers/            # bao gồm cả CRUD + assignment (chia data) + deposit + import Excel
+│   │   ├── departments/
 │   │   ├── deposits/
+│   │   ├── leave-requests/
+│   │   ├── link-groups/          # Category/Group liên kết + Quản lý chính/phụ theo Group
+│   │   ├── media-sources/
+│   │   ├── permissions/
+│   │   ├── reports/
+│   │   ├── roles/
 │   │   ├── users/
-│   │   └── data-sharing/
-│   ├── database/             # Database entities
-│   │   ├── entities/
-│   │   └── migrations/
-│   ├── main.ts
-│   └── app.module.ts
+│   │   └── zk-device/            # module NestJS wrap quanh integrations/zk-device (controller/cron)
+│   ├── keep-alive/                # cron giữ kết nối DB không bị timeout trên serverless
+│   ├── database.config.ts
+│   ├── vercel.ts                  # entry point khi chạy dạng Vercel Serverless Function
+│   ├── app.controller.ts          # Landing page tại "/"
+│   └── main.ts                    # Bootstrap: CORS, Swagger, ValidationPipe, cache app cho serverless
+├── scripts/                      # Script test/tiện ích ĐỘC LẬP, KHÔNG phải code sản phẩm
+│   └── test-b2-presign.ts         # vd: test presigned URL Backblaze B2 (npm run b2:test-presign)
 ├── test/
-├── .env.example
-├── .env.development
-├── .env.production
-├── ecosystem.config.js
+├── .env.development.example      # mẫu để commit — KHÔNG chứa giá trị thật
+├── .env.development               # giá trị thật, gitignored, KHÔNG commit
+├── .env.production                # giá trị thật, gitignored — production dùng Vercel Dashboard, KHÔNG file này
+├── vercel.json                    # cấu hình deploy Serverless (xem mục 14 file này)
 ├── package.json
 ├── tsconfig.json
-└── README.md
+└── README.md                      # setup nhanh — bổ sung cho skill file này, đọc cả 2
 ```
 
 ### 2. Module Development Pattern

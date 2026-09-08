@@ -528,13 +528,24 @@ npm run migration:revert
 npm run migration:generate --name=AddHashedRefreshToken
 ```
 
-#### Danh sách Migration hiện tại (Baseline):
-| Timestamp | Tên | Nội dung |
-|---|---|---|
-| `1700000000000` | `InitialSchema` | Tạo tất cả bảng ban đầu |
-| `1710000000000` | `CreateCustomersTable` | Đảm bảo bảng customers tồn tại (IF NOT EXISTS) |
-| `1711883300000` | `AddDateFieldsToCustomers` | Thêm `input_date`, `assigned_date` |
-| `1743472800000` | `AddHashedRefreshTokenToUsers` | Thêm cột `hashed_refresh_token` (Refresh Token Rotation) |
+#### Danh sách Migration — ⚠️ KHÔNG dùng bảng tĩnh nữa (đã gây mismatch thật)
+
+> Bảng liệt kê cứng từng có ở đây (chỉ 4 dòng: `InitialSchema`, `CreateCustomersTable`,
+> `AddDateFieldsToCustomers`, `AddHashedRefreshTokenToUsers`) đã lỗi thời nặng — repo thật hiện có
+> **39 migration** (tính tới lần rà soát gần nhất, xem timestamp mới nhất bên dưới), phần lớn thuộc hệ
+> thống RBAC động (`AddCustomRbacSystem`, `AddDetailedRbacPermissions`, `AddDepartmentPermissionOverrides`...
+> — xem `PERMISSIONS.md`), leave-requests, zk-device, link-groups, audit... Việc giữ 1 bảng tay lúc nào
+> cũng đồng bộ với 39+ file là không khả thi và tự nó sẽ lại lỗi thời — **KHÔNG duy trì danh sách đầy đủ
+> ở đây nữa**. Nguồn sự thật duy nhất luôn là:
+> ```bash
+> ls backend/src/database/migrations | sort
+> npm run migration:show   # xem thêm migration nào ĐÃ chạy trên DB đang kết nối, không chỉ trên disk
+> ```
+>
+> Migration gần nhất tại lần rà soát này (2026-09-08), chỉ để tham khảo — **PHẢI `ls | sort | tail` lại
+> lần nữa trước khi tạo migration mới**, vì có thể đã có người khác thêm migration mới hơn giữa lúc bạn
+> đọc file này và lúc bạn thật sự code:
+> `1779700000000-AddUserSoftDeleteAndProfilePermissions.ts`
 
 #### Lưu ý quan trọng khi viết Migration thủ công:
 ```typescript

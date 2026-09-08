@@ -90,19 +90,33 @@ AZ-Workbase/
 │   │   │   ├── entities/           # ⭐ NGUỒN SỰ THẬT - Luôn đọc trước
 │   │   │   ├── migrations/         # Schema version history
 │   │   │   └── seeds/              # Dữ liệu mẫu
-│   │   └── modules/
-│   │       ├── auth/               # JWT Login/Refresh
-│   │       ├── users/              # CRUD nhân viên
-│   │       ├── customers/          # CRUD khách hàng
-│   │       ├── departments/        # Quản lý phòng ban
-│   │       └── deposits/           # Quản lý nạp tiền
-│   └── .env.development            # Config môi trường dev
+│   │   ├── modules/                 # ⚠️ Danh sách thật (ls backend/src/modules), KHÔNG chỉ 5 module dưới:
+│   │   │   ├── attendance-export/
+│   │   │   ├── audit/
+│   │   │   ├── auth/                # JWT Login/Refresh
+│   │   │   ├── customers/           # CRUD khách hàng + assignment (chia data) + deposit + import Excel
+│   │   │   ├── departments/         # Quản lý phòng ban
+│   │   │   ├── deposits/            # Quản lý nạp tiền
+│   │   │   ├── leave-requests/      # Nghỉ phép
+│   │   │   ├── link-groups/         # Category/Group liên kết + Quản lý chính/phụ
+│   │   │   ├── media-sources/       # Danh mục "Nguồn" (Facebook/TikTok/Google...)
+│   │   │   ├── permissions/         # RBAC động
+│   │   │   ├── reports/
+│   │   │   ├── roles/               # RBAC động
+│   │   │   ├── users/               # CRUD nhân viên
+│   │   │   └── zk-device/           # Máy chấm công
+│   │   ├── integrations/zk-device/  # Giao thức TCP thô, chạy ĐỘC LẬP không qua NestJS DI
+│   │   └── scripts/                 # Script test/tiện ích độc lập (vd test-b2-presign.ts)
+│   └── .env.development            # Config môi trường dev (KHÔNG commit — xem .env.development.example)
 │
 ├── frontend/                       # Next.js 16 App (Port 3000)
 │   ├── src/
 │   │   ├── app/
 │   │   │   ├── (auth)/login/       # Trang đăng nhập
-│   │   │   └── (dashboard)/        # Các trang chính sau login
+│   │   │   └── (dashboard)/        # Các trang chính sau login — route thật dùng tên tiếng Việt:
+│   │   │       # customers, chia-data, phong-ban, nghi-phep, duyet-phep, nguon-media,
+│   │   │       # nhom-lien-ket, nhom-toi-quan-ly, phan-quyen, profile, reports, users,
+│   │   │       # audit-logs, attendance-device, trash-can
 │   │   ├── components/             # Shared UI components
 │   │   └── lib/
 │   │       ├── api/                # Axios instance + API methods
@@ -116,9 +130,15 @@ AZ-Workbase/
     ├── SKILL_DATABASE_MANAGEMENT.md
     ├── SKILL_NESTJS_BACKEND.md
     ├── SKILL_NEXTJS_FRONTEND.md
-    ├── README_AZWORKBASE_PROJECT.md
+    ├── PERMISSIONS.md               # Nguồn chân lý RBAC — cập nhật liên tục
+    ├── PLAN_AVATAR_LEAVE_ATTACHMENT_BACKBLAZE_B2.md  # Plan đang triển khai (xem trạng thái ở đầu file)
+    ├── README_AZWORKBASE_PROJECT.md # ⚠️ Lịch sử/roadmap gốc, KHÔNG phản ánh tiến độ thật
     └── WORKFLOW_LOG.md             # Nhật ký tư duy & hành động
 ```
+
+> Cây thư mục trên chỉ minh hoạ các cấp quan trọng — không liệt kê hết mọi file. Khi cần danh sách đầy
+> đủ, luôn `ls`/`find` trực tiếp thay vì tin cây này (đã từng lỗi thời khi mới có 5 module, thực tế đã
+> lên 14 module tính tới lần rà soát 2026-09-08).
 
 ---
 
