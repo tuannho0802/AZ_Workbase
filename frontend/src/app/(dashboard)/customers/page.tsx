@@ -1,13 +1,13 @@
 'use client';
 
 import { useEffect, useState, useMemo, Suspense } from 'react';
-import { Table, Card, Tag, App, Button, Space, Typography, Tooltip, Divider, Collapse, Pagination, Grid, Popconfirm } from 'antd';
+import { Table, Card, Tag, App, Button, Space, Typography, Tooltip, Divider, Collapse, Pagination, Grid, Popconfirm, Select } from 'antd';
 import { UploadOutlined, UsergroupAddOutlined, ReloadOutlined, PlusOutlined, InfoCircleOutlined, DeleteOutlined } from '@ant-design/icons';
 import type { ColumnsType, TablePaginationConfig } from 'antd/es/table';
 import type { FilterValue, SorterResult } from 'antd/es/table/interface';
 import { useSearchParams, useRouter, usePathname } from 'next/navigation';
 import { customersApi } from '@/lib/api/customers.api';
-import { Customer, CustomerStats } from '@/lib/types/customer.types';
+import { Customer, CustomerStats, RecentNote } from '@/lib/types/customer.types';
 import { useAuthStore } from '@/lib/stores/auth.store';
 import { ImportExcelModal } from '@/components/customers/ImportExcelModal';
 import { BulkAssignModal } from '@/components/customers/BulkAssignModal';
@@ -90,6 +90,57 @@ const renderJoinedGroupsTag = (record: any) => {
         </Tooltip>
       )}
     </Space>
+  );
+};
+
+// Cột "Ghi chú gần nhất": `record.recentNotes` do BE trả sẵn (tối đa 5,
+// mới nhất trước - batch fetch trong findAll(), không N+1). `count` là số
+// lượng note (3 hoặc 5) NGƯỜI DÙNG chọn hiển thị trong tooltip - cắt bớt ở
+// FE từ mảng tối đa 5 note đã có sẵn, KHÔNG gọi lại API khi đổi lựa chọn.
+// Ô hiển thị trong bảng chỉ show note MỚI NHẤT (dạng "Tên: Nội dung
+// (ngày/tháng/năm)"), cắt ngắn bằng CSS ellipsis nếu quá dài; hover vào để
+// xem đủ `count` note gần nhất qua Tooltip.
+const formatRecentNoteLine = (note: RecentNote) =>
+  `${note.createdByName || 'Không xác định'}: ${note.note} (${dayjs(note.createdAt).format('D/M/YY')})`;
+
+const renderRecentNotesCell = (record: Customer, count: number) => {
+  const allNotes = record.recentNotes || [];
+  if (allNotes.length === 0) {
+    return <span style={{ color: '#bbb', fontStyle: 'italic', fontSize: '11px' }}>Chưa có ghi chú</span>;
+  }
+
+  const visibleNotes = allNotes.slice(0, count);
+  const latestLine = formatRecentNoteLine(visibleNotes[0]);
+
+  const tooltipContent = (
+    <div style={{ minWidth: 220, maxWidth: 320 }}>
+      {visibleNotes.map((n, idx) => (
+        <div key={n.id} style={idx < visibleNotes.length - 1 ? { marginBottom: 8 } : undefined}>
+          <strong>{n.createdByName || 'Không xác định'}:</strong> {n.note}
+          <br />
+          <span style={{ fontSize: 11, color: 'rgba(255,255,255,0.65)' }}>
+            {dayjs(n.createdAt).format('HH:mm DD/MM/YYYY')}
+          </span>
+        </div>
+      ))}
+    </div>
+  );
+
+  return (
+    <Tooltip title={tooltipContent} mouseEnterDelay={0.3}>
+      <div
+        style={{
+          maxWidth: '100%',
+          overflow: 'hidden',
+          textOverflow: 'ellipsis',
+          whiteSpace: 'nowrap',
+          cursor: 'help',
+          fontSize: 12,
+        }}
+      >
+        {latestLine}
+      </div>
+    </Tooltip>
   );
 };
 
@@ -535,6 +586,12 @@ function CustomersPageContent() {
         </Tooltip>
       ),
     },
+    {
+      title: 'Ghi chú gần nhất',
+      key: 'recentNotes',
+      width: isLaptop ? '11%' : '13%',
+      render: (_, record: Customer) => renderRecentNotesCell(record, recentNotesCount),
+    },
     // Cột "Thao tác" (nút Xoá) - BỎ HẲN cả cột khi không có quyền
     // `customers.delete`, thay vì để cột rỗng (mỗi ô render `null`) như
     // trước - đỡ tốn 1 cột trống vô nghĩa trên bảng, đúng yêu cầu UI.
@@ -576,7 +633,7 @@ function CustomersPageContent() {
   // render đầu (permissions API luôn async), giá trị `false` ban đầu bị
   // "đông cứng" vĩnh viễn trong closure của useMemo, cột Thao tác/nút Xoá
   // sẽ không bao giờ hiện dù sau đó canDeleteCustomer đã thành true.
-  ], [isLaptop, depositRangeForColumnLabel, page, pageSize, user, canDeleteCustomer]);
+  ], [isLaptop, depositRangeForColumnLabel, page, pageSize, user, canDeleteCustomer, recentNotesCount]);
 
   const handleFiltersChange = (newFilters: any) => {
     if (newFilters.search !== undefined) setSearchText(newFilters.search);
@@ -611,6 +668,21 @@ function CustomersPageContent() {
 
   const renderToolbar = () => (
     <Space className="mobile-toolbar" size={isLaptop ? 4 : 8}>
+      {!isMobile && (
+        <Space size={4} title='Số ghi chú gần nhất hiển thị trong tooltip cột "Ghi chú gần nhất"'>
+          {!isLaptop && <Text style={{ fontSize: 12, color: '#8c8c8c' }}>Ghi chú gần nhất:</Text>}
+          <Select
+            size="small"
+            value={recentNotesCount}
+            style={{ width: isLaptop ? 58 : 90 }}
+            onChange={(val: 3 | 5) => setRecentNotesCount(val)}
+            options={[
+              { value: 3, label: isLaptop ? '3' : '3 gần nhất' },
+              { value: 5, label: isLaptop ? '5' : '5 gần nhất' },
+            ]}
+          />
+        </Space>
+      )}
       <Button 
         icon={<ReloadOutlined />} 
         onClick={() => { refetchCustomers(); fetchStats(); }} 
