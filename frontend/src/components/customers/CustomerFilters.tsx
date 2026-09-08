@@ -12,12 +12,18 @@ interface CustomerFiltersProps {
     status?: string;
     salesUserId?: number;
     marketingUserId?: number;
+    // "Người nhập Data" - tách riêng khỏi marketingUserId, vì người nhập
+    // data thực tế có thể ở phòng ban khác Marketing (xem page.tsx).
+    creatorId?: number;
     dateFrom?: string;
     dateTo?: string;
     joinedGroups?: 'joined' | 'not_joined';
   };
   salesUsers: { id: number; name: string }[];
   marketingUsers: { id: number; name: string }[];
+  // Chỉ chứa user đã từng tạo >=1 Data Customer (BE lọc sẵn qua
+  // GET /customers/creators) - KHÔNG lọc theo phòng ban.
+  creatorUsers: { id: number; name: string }[];
   onFiltersChange: (newFilters: any) => void;
 }
 
@@ -25,6 +31,7 @@ export const CustomerFilters: React.FC<CustomerFiltersProps> = ({
   filters,
   salesUsers,
   marketingUsers,
+  creatorUsers,
   onFiltersChange,
 }) => {
   const [fromDate, setFromDate] = useState<Dayjs | null>(filters.dateFrom ? dayjs(filters.dateFrom) : null);
@@ -167,7 +174,7 @@ export const CustomerFilters: React.FC<CustomerFiltersProps> = ({
         <Col xs={24} sm={12} md={4}>
           <label className="block text-sm font-medium mb-1">Marketing (Phòng Marketing)</label>
           <Select
-            placeholder="Chọn người nhập data"
+            placeholder="Chọn Marketing"
             allowClear
             showSearch
             optionFilterProp="label"
@@ -175,6 +182,19 @@ export const CustomerFilters: React.FC<CustomerFiltersProps> = ({
             value={filters.marketingUserId}
             onChange={(val) => onFiltersChange({ ...filters, marketingUserId: val, page: 1 })}
             options={marketingUsers.map(u => ({ value: u.id, label: u.name }))}
+          />
+        </Col>
+
+        <Col xs={24} sm={12} md={4}>
+          <label className="block text-sm font-medium mb-1">Người nhập Data</label>
+          <Select
+            placeholder="Chọn người nhập data"
+            allowClear
+            showSearch={{ optionFilterProp: 'label' }}
+            style={{ width: '100%' }}
+            value={filters.creatorId}
+            onChange={(val) => onFiltersChange({ ...filters, creatorId: val, page: 1 })}
+            options={creatorUsers.map(u => ({ value: u.id, label: u.name }))}
           />
         </Col>
 

@@ -200,6 +200,13 @@ export class CustomersController {
     return this.customersService.findAll(filters, user.id, user.role, scope);
   }
 
+  @Get('creators')
+  @RequirePermission('customers.view')
+  @ApiOperation({ summary: 'Danh sách "Người nhập Data" - chỉ user đã từng tạo >=1 khách hàng, dùng cho dropdown filter (tách riêng khỏi Marketing vì người nhập data có thể ở phòng ban khác)' })
+  getCreators() {
+    return this.customersService.getCreatorsList();
+  }
+
   @Get('trash')
   @RequirePermission('customers.trash_manage')
   @ApiOperation({ summary: 'Lấy danh sách khách hàng đã xóa mềm' })

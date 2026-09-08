@@ -187,6 +187,7 @@ export class CustomersService {
       | 'status'
       | 'salesUserId'
       | 'marketingUserId'
+      | 'creatorId'
       | 'departmentId'
       | 'dateFrom'
       | 'dateTo'
@@ -199,6 +200,7 @@ export class CustomersService {
       status,
       salesUserId,
       marketingUserId,
+      creatorId,
       departmentId,
       dateFrom,
       dateTo,
@@ -225,6 +227,14 @@ export class CustomersService {
     if (marketingUserId) {
       queryBuilder.andWhere('customer.marketingUserId = :marketingUserId', {
         marketingUserId,
+      });
+    }
+    // "Người nhập Data" - tách riêng khỏi marketingUserId, lọc theo người
+    // THỰC SỰ tạo bản ghi (createdById), vì người nhập data có thể ở
+    // phòng ban khác Marketing.
+    if (creatorId) {
+      queryBuilder.andWhere('customer.createdById = :creatorId', {
+        creatorId,
       });
     }
     if (departmentId) {
@@ -259,6 +269,28 @@ export class CustomersService {
     }
   }
 
+  /**
+   * Danh sách user dùng cho dropdown filter "Người nhập Data" (tách riêng
+   * khỏi "Marketing" - người nhập data thực tế có thể ở phòng ban khác,
+   * không nhất thiết thuộc Phòng Marketing). CHỈ trả về user nào đã từng
+   * tạo ÍT NHẤT 1 khách hàng còn tồn tại (chưa bị soft-delete) - tránh
+   * dropdown dài vô ích với những người chưa từng nhập data nào.
+   */
+  async getCreatorsList(): Promise<{ id: number; name: string }[]> {
+    const rows = await this.customersRepository
+      .createQueryBuilder('customer')
+      .innerJoin('customer.createdBy', 'creator')
+      .select('creator.id', 'id')
+      .addSelect('creator.name', 'name')
+      .where('customer.deletedAt IS NULL')
+      .groupBy('creator.id')
+      .addGroupBy('creator.name')
+      .orderBy('creator.name', 'ASC')
+      .getRawMany();
+
+    return rows.map((r) => ({ id: Number(r.id), name: r.name }));
+  }
+
   async findAll(
     filters: CustomerFiltersDto,
     userId: number,
@@ -275,6 +307,7 @@ export class CustomersService {
       status,
       salesUserId,
       marketingUserId,
+      creatorId,
       departmentId,
       dateFrom,
       dateTo,
@@ -307,6 +340,7 @@ export class CustomersService {
       status,
       salesUserId,
       marketingUserId,
+      creatorId,
       departmentId,
       dateFrom,
       dateTo,
@@ -383,6 +417,7 @@ export class CustomersService {
       status,
       salesUserId,
       marketingUserId,
+      creatorId,
       departmentId,
       dateFrom,
       dateTo,

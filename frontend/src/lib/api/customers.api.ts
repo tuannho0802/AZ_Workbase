@@ -10,6 +10,7 @@ export const customersApi = {
     source?: string;
     salesUserId?: number;
     marketingUserId?: number;
+    creatorId?: number;
     departmentId?: number;
     sortField?: string;
     sortOrder?: 'ASC' | 'DESC';
@@ -18,6 +19,14 @@ export const customersApi = {
     joinedGroups?: 'joined' | 'not_joined';
   }): Promise<PaginatedResponse<Customer>> => {
     const response = await axiosInstance.get('/customers', { params });
+    return response.data;
+  },
+
+  // Danh sách "Người nhập Data" cho dropdown filter - CHỈ user đã từng tạo
+  // >=1 khách hàng (tách riêng khỏi Marketing vì người nhập data có thể ở
+  // phòng ban khác) - xem CustomersController.getCreators().
+  getCreators: async (): Promise<{ id: number; name: string }[]> => {
+    const response = await axiosInstance.get('/customers/creators');
     return response.data;
   },
 

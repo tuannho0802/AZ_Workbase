@@ -288,6 +288,9 @@ function CustomersPageContent() {
   const [status, setStatus] = useState<string | undefined>(undefined);
   const [salesUserId, setSalesUserId] = useState<number | undefined>(undefined);
   const [marketingUserId, setMarketingUserId] = useState<number | undefined>(undefined);
+  // "Người nhập Data" - tách riêng khỏi marketingUserId vì người nhập data
+  // thực tế có thể ở phòng ban khác Marketing (xem CustomerFilters.tsx).
+  const [creatorId, setCreatorId] = useState<number | undefined>(undefined);
   const [dateFrom, setDateFrom] = useState<dayjs.Dayjs | null>(null);
   const [dateTo, setDateTo] = useState<dayjs.Dayjs | null>(null);
   const [joinedGroups, setJoinedGroups] = useState<'joined' | 'not_joined' | undefined>(undefined);
@@ -333,6 +336,7 @@ function CustomersPageContent() {
     status,
     salesUserId,
     marketingUserId,
+    creatorId,
     sortField,
     sortOrder,
     dateFrom: dateFrom?.format('YYYY-MM-DD'),
@@ -364,6 +368,19 @@ function CustomersPageContent() {
 
   useEffect(() => {
     fetchSalesUsers();
+  }, []);
+
+  // Danh sách "Người nhập Data" cho dropdown filter - CHỈ user đã từng tạo
+  // >=1 khách hàng (BE lọc sẵn qua GET /customers/creators), KHÔNG lọc theo
+  // phòng ban vì người nhập data thực tế có thể ở phòng ban bất kỳ, khác
+  // hẳn Marketing/Sales.
+  const [creatorUsers, setCreatorUsers] = useState<{ id: number; name: string }[]>([]);
+
+  useEffect(() => {
+    customersApi
+      .getCreators()
+      .then(setCreatorUsers)
+      .catch((error) => console.error('Fetch creators error:', error));
   }, []);
 
   // Tra đúng phòng "Kinh doanh"/"Marketing" theo TÊN (không hardcode ID, vì
@@ -635,15 +652,26 @@ function CustomersPageContent() {
   // sẽ không bao giờ hiện dù sau đó canDeleteCustomer đã thành true.
   ], [isLaptop, depositRangeForColumnLabel, page, pageSize, user, canDeleteCustomer, recentNotesCount]);
 
+  // ⚠️ FIX BUG THẬT: nút "X" (clear) trên các Select (Sales/Marketing/Người
+  // nhập Data/Nguồn/Trạng thái/Đã joined nhóm...) không tắt được filter,
+  // phải F5 cả trang mới hết. Nguyên nhân: `antd Select allowClear` gọi
+  // `onChange(undefined)` khi bấm X, CustomerFilters spread ra
+  // `{ ...filters, salesUserId: undefined, page: 1 }` - object NÀY LUÔN có
+  // key `salesUserId` (dù value là undefined). Check cũ `!== undefined` coi
+  // "value undefined" giống hệt "key không đổi" nên bỏ qua, KHÔNG BAO GIỜ
+  // set lại state về undefined được. Sửa bằng cách kiểm tra SỰ TỒN TẠI của
+  // key (`in`) thay vì kiểm tra giá trị - CustomerFilters luôn gửi đủ toàn
+  // bộ key mỗi lần đổi (spread từ `filters` hiện tại), nên cách này an toàn.
   const handleFiltersChange = (newFilters: any) => {
-    if (newFilters.search !== undefined) setSearchText(newFilters.search);
-    if (newFilters.source !== undefined) setSource(newFilters.source);
-    if (newFilters.status !== undefined) setStatus(newFilters.status);
-    if (newFilters.salesUserId !== undefined) setSalesUserId(newFilters.salesUserId);
-    if (newFilters.marketingUserId !== undefined) setMarketingUserId(newFilters.marketingUserId);
-    if (newFilters.dateFrom !== undefined) setDateFrom(newFilters.dateFrom ? dayjs(newFilters.dateFrom) : null);
-    if (newFilters.dateTo !== undefined) setDateTo(newFilters.dateTo ? dayjs(newFilters.dateTo) : null);
-    if (newFilters.joinedGroups !== undefined) setJoinedGroups(newFilters.joinedGroups);
+    if ('search' in newFilters) setSearchText(newFilters.search ?? '');
+    if ('source' in newFilters) setSource(newFilters.source);
+    if ('status' in newFilters) setStatus(newFilters.status);
+    if ('salesUserId' in newFilters) setSalesUserId(newFilters.salesUserId);
+    if ('marketingUserId' in newFilters) setMarketingUserId(newFilters.marketingUserId);
+    if ('creatorId' in newFilters) setCreatorId(newFilters.creatorId);
+    if ('dateFrom' in newFilters) setDateFrom(newFilters.dateFrom ? dayjs(newFilters.dateFrom) : null);
+    if ('dateTo' in newFilters) setDateTo(newFilters.dateTo ? dayjs(newFilters.dateTo) : null);
+    if ('joinedGroups' in newFilters) setJoinedGroups(newFilters.joinedGroups);
     if (newFilters.page) setPage(newFilters.page);
   };
 
@@ -751,12 +779,14 @@ function CustomersPageContent() {
                       status,
                       salesUserId,
                       marketingUserId,
+                      creatorId,
                       dateFrom: dateFrom?.format('YYYY-MM-DD'),
                       dateTo: dateTo?.format('YYYY-MM-DD'),
                       joinedGroups,
                     }}
                     salesUsers={salesUsersInDept}
                     marketingUsers={marketingUsersInDept}
+                    creatorUsers={creatorUsers}
                     onFiltersChange={handleFiltersChange}
                   />
                 </div>
@@ -772,12 +802,14 @@ function CustomersPageContent() {
             status,
             salesUserId,
                 marketingUserId,
+                creatorId,
             dateFrom: dateFrom?.format('YYYY-MM-DD'),
             dateTo: dateTo?.format('YYYY-MM-DD'),
             joinedGroups,
           }}
               salesUsers={salesUsersInDept}
               marketingUsers={marketingUsersInDept}
+              creatorUsers={creatorUsers}
           onFiltersChange={handleFiltersChange}
         />
       )}
