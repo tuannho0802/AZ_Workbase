@@ -30,16 +30,30 @@ export const CustomerNotesTab = ({ customerId, notes, onNoteAdded }: Props) => {
   const [loading, setLoading] = useState(false);
   const { message } = App.useApp();
   const currentUser = useAuthStore((s) => s.user);
-  const { can } = useMyPermissions();
+  const { scope } = useMyPermissions();
 
-  // Sửa/xoá ghi chú CHÍNH MÌNH tạo luôn được phép (BE tự cho qua không cần
-  // permission - xem CustomersService.updateNote/deleteNote), sửa/xoá ghi
-  // chú CỦA NGƯỜI KHÁC cần permission customer_notes.edit/.delete tương ứng
-  // (Admin/Assistant toàn bộ, Manager trong phòng ban quản lý - xem migration
-  // SplitCustomerNotesPermissions). BE luôn là nguồn kiểm tra thật cuối cùng,
-  // đây chỉ là điều kiện ẩn/hiện nút cho gọn giao diện.
-  const canEditNote = (note: CustomerNote) => note.createdBy === currentUser?.id || can('customer_notes.edit');
-  const canDeleteNote = (note: CustomerNote) => note.createdBy === currentUser?.id || can('customer_notes.delete');
+  // ⚠️ Đồng bộ với CustomersService.assertNoteManageable() (BE) - KHÔNG còn
+  // bypass cứng "ghi chú của chính mình luôn sửa/xoá được" nữa. Giờ đây
+  // HOÀN TOÀN theo scope thật của permission customer_notes.edit/.delete
+  // (Admin cấu hình qua trang "Phân quyền", không cần migration để đổi):
+  //  - Không có permission (scope null) -> luôn ẩn nút, KỂ CẢ ghi chú của
+  //    chính mình.
+  //  - scope='own' -> chỉ hiện nút với ghi chú CHÍNH MÌNH tạo.
+  //  - scope='department'/'all' -> hiện nút với MỌI ghi chú (BE vẫn tự xác
+  //    nhận lại phạm vi khách hàng khi request thật sự tới, đây chỉ là ẩn/
+  //    hiện nút cho gọn giao diện).
+  const canEditNote = (note: CustomerNote) => {
+    const s = scope('customer_notes.edit');
+    if (!s) return false;
+    if (s === 'own') return note.createdBy === currentUser?.id;
+    return true;
+  };
+  const canDeleteNote = (note: CustomerNote) => {
+    const s = scope('customer_notes.delete');
+    if (!s) return false;
+    if (s === 'own') return note.createdBy === currentUser?.id;
+    return true;
+  };
 
   const [editingId, setEditingId] = useState<number | null>(null);
   const [editValue, setEditValue] = useState('');
@@ -203,6 +217,17 @@ export const CustomerNotesTab = ({ customerId, notes, onNoteAdded }: Props) => {
                 ) : (
                   <div style={{ whiteSpace: 'pre-wrap', color: '#262626', fontSize: '14px' }}>{item.note}</div>
                 )}
+
+                  {/* Dòng hệ thống tự tạo: CHỈ hiện khi người sửa cuối KHÁC
+                    người tạo (2 người khác nhau cùng chạm vào 1 note) -
+                    tự sửa ghi chú của chính mình không cần hiển thị thêm
+                    dòng nào, tránh nhiễu giao diện. */}
+                  {!isEditing && item.updatedBy && item.updatedBy !== item.createdBy && (
+                    <Text type="secondary" style={{ fontSize: '11px', fontStyle: 'italic', display: 'block', marginTop: 4 }}>
+                      Đã chỉnh sửa cuối bởi {item.updatedByUser?.fullName || item.updatedByUser?.name || 'Không xác định'}
+                      {item.updatedAt ? ` · ${dayjs(item.updatedAt).format('DD/MM/YYYY HH:mm')}` : ''}
+                    </Text>
+                  )}
               </div>
             );
           })

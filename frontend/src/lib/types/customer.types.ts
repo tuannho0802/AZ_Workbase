@@ -11,7 +11,18 @@ export interface CustomerNote {
     fullName?: string;
     email?: string;
   };
+  // NULL nếu ghi chú chưa từng được sửa. Chỉ hiện dòng hệ thống "Sửa cuối
+  // bởi" trên UI khi `updatedBy` khác `createdBy` (2 người khác nhau cùng
+  // chạm vào 1 note) - xem CustomerNotesTab.tsx.
+  updatedBy?: number | null;
+  updatedByUser?: {
+    id: number;
+    name: string;
+    fullName?: string;
+    email?: string;
+  } | null;
   createdAt: string;
+  updatedAt?: string;
 }
 
 export interface RecentNote {
