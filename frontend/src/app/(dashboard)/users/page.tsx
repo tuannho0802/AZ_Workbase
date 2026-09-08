@@ -7,7 +7,7 @@ import {
 } from 'antd';
 import {
   UserAddOutlined, EditOutlined, KeyOutlined,
-  ReloadOutlined, MailOutlined, TeamOutlined
+  ReloadOutlined, MailOutlined, TeamOutlined, DeleteOutlined,
 } from '@ant-design/icons';
 
 import { useAuthStore } from '@/lib/stores/auth.store';
@@ -17,6 +17,8 @@ import { useMyPermissions } from '@/lib/hooks/useMyPermissions';
 import { useRoles } from '@/lib/hooks/useRoles';
 import { useDepartments } from '@/lib/hooks/useDepartments';
 import { PendingApprovalsTab } from './PendingApprovalsTab';
+import { TrashTab } from './TrashTab';
+import { getApiErrorMessage } from '@/lib/utils/error-message.util';
 
 const { Text } = Typography;
 
@@ -30,11 +32,15 @@ function UserMobileCard({
   roleMap,
   onEdit,
   onResetPass,
+  onDelete,
+  canDelete,
 }: {
   record: any;
   roleMap: Map<string, string>;
   onEdit: (r: any) => void;
   onResetPass: (r: any) => void;
+    onDelete: (r: any) => void;
+    canDelete: boolean;
 }) {
   return (
     <Card
@@ -93,6 +99,14 @@ function UserMobileCard({
         >
           Reset Pass
         </Button>
+        {canDelete && (
+          <Button
+            size="small"
+            danger
+            icon={<DeleteOutlined />}
+            onClick={() => onDelete(record)}
+          />
+        )}
       </div>
     </Card>
   );
@@ -107,7 +121,7 @@ export default function UsersPage() {
   const [pageSize, setPageSize] = useState(20);
   const [isMobile, setIsMobile] = useState(false);
 
-  const { message } = App.useApp();
+  const { message, modal } = App.useApp();
 
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [isResetOpen, setIsResetOpen] = useState(false);
@@ -118,6 +132,7 @@ export default function UsersPage() {
   const { user } = useAuthStore();
   const router = useRouter();
   const [pendingCount, setPendingCount] = useState(0);
+  const [trashCount, setTrashCount] = useState(0);
   const [activeTab, setActiveTab] = useState<string>('list');
 
   useEffect(() => {
@@ -155,6 +170,11 @@ export default function UsersPage() {
   const roleMap = new Map((roles || []).map(r => [r.code, r.name]));
   const canAccessPage = can('users.view');
   const canManage = can('users.manage');
+  // ⚠️ `users.delete` mặc định CHỈ Admin (khác `users.manage` - Admin/
+  // Assistant/Manager) - tuỳ biến được qua "/phan-quyen", xem migration
+  // `AddUserSoftDeleteAndProfilePermissions`. Nút "Xoá" + tab "Đã xoá" chỉ
+  // hiện khi thực sự có quyền này, không hardcode role === 'admin'.
+  const canDelete = can('users.delete');
   const canSeeFullList = canAccessPage;
 
   useEffect(() => {
@@ -248,6 +268,30 @@ export default function UsersPage() {
     }
   };
 
+  // ── Xoá mềm (chuyển vào thùng rác) - nút "Xoá" ở bảng chính, đúng như
+  // Profile page đã có (usersApi.softDeleteUser -> PATCH /users/:id/soft-
+  // delete). BE tự chặn tự xoá chính mình (ForbiddenException) nên chỉ cần
+  // ẩn nút với chính người đang đăng nhập cho UX gọn, không cần check lại
+  // ở đây - vẫn an toàn dù có bấm được (BE là nguồn chặn thật sự).
+  const handleSoftDelete = (record: any) => {
+    modal.confirm({
+      title: `Xoá tài khoản "${record.name}"?`,
+      content: 'Tài khoản sẽ được chuyển vào thùng rác (tab "Đã xoá"), dữ liệu vẫn giữ nguyên và có thể khôi phục. Người này sẽ không đăng nhập được nữa ngay lập tức.',
+      okText: 'Xoá (chuyển vào thùng rác)',
+      okButtonProps: { danger: true },
+      cancelText: 'Huỷ',
+      onOk: async () => {
+        try {
+          await usersApi.softDeleteUser(record.id);
+          message.success(`Đã chuyển "${record.name}" vào thùng rác`);
+          fetchUsers();
+        } catch (err) {
+          message.error(getApiErrorMessage(err, 'Xoá thất bại'));
+        }
+      },
+    });
+  };
+
   const columns = [
     { title: 'ID', dataIndex: 'id', key: 'id', width: 60 },
     {
@@ -282,12 +326,15 @@ export default function UsersPage() {
       key: 'action',
       render: (_: any, record: any) => (
         <Space>
-          <Button icon={<EditOutlined />} onClick={() => openEdit(record)}>Sửa</Button>
-          <Button icon={<KeyOutlined />} onClick={() => openResetPass(record)}>Reset Pass</Button>
+          {canManage && <Button icon={<EditOutlined />} onClick={() => openEdit(record)}>Sửa</Button>}
+          {canManage && <Button icon={<KeyOutlined />} onClick={() => openResetPass(record)}>Reset Pass</Button>}
+          {canDelete && record.id !== user?.id && (
+            <Button danger icon={<DeleteOutlined />} onClick={() => handleSoftDelete(record)}>Xoá</Button>
+          )}
         </Space>
       ),
     },
-  ].filter((c: any) => canManage || c.key !== 'action');
+  ].filter((c: any) => canManage || canDelete || c.key !== 'action');
 
   const userListContent = (
     loading && users.length === 0 ? (
@@ -308,6 +355,8 @@ export default function UsersPage() {
               roleMap={roleMap}
               onEdit={openEdit}
               onResetPass={openResetPass}
+              onDelete={handleSoftDelete}
+              canDelete={canDelete && u.id !== user?.id}
             />
           ))
         )}
@@ -358,6 +407,23 @@ export default function UsersPage() {
       ),
       children: <PendingApprovalsTab onCountChange={setPendingCount} />,
     },
+    // Tab "Đã xoá" (thùng rác) - chỉ hiện với ai có quyền `users.delete`
+    // (mặc định chỉ Admin, tuỳ biến qua "/phan-quyen"), tách bạch khỏi
+    // `canSeeFullList`/`users.view` vì đây là hành động NHẠY CẢM hơn hẳn
+    // chỉ xem danh sách.
+    ...(canDelete
+      ? [
+        {
+          key: 'trash',
+          label: (
+            <Badge count={trashCount} offset={[10, 0]} size="small">
+              <span>Đã xoá</span>
+            </Badge>
+          ),
+          children: <TrashTab onCountChange={setTrashCount} onRestored={fetchUsers} />,
+        },
+      ]
+      : []),
   ];
 
   return (
