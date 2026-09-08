@@ -51,7 +51,14 @@ describe('LinkGroupsService', () => {
 
       expect(mockGroupRepo.find).toHaveBeenCalledWith({
         where: {},
-        relations: ['category', 'primaryManager', 'secondaryManagers', 'secondaryManagers.user'],
+        relations: [
+          'category',
+          'primaryManager',
+          'secondaryManagers',
+          'secondaryManagers.user',
+          'contentStaff',
+          'contentStaff.user',
+        ],
         order: { sortOrder: 'ASC', id: 'ASC' },
       });
       expect(result).toEqual([{ id: 1, name: 'Nhóm A' }]);
@@ -64,7 +71,14 @@ describe('LinkGroupsService', () => {
 
       expect(mockGroupRepo.find).toHaveBeenCalledWith({
         where: { categoryId: 2 },
-        relations: ['category', 'primaryManager', 'secondaryManagers', 'secondaryManagers.user'],
+        relations: [
+          'category',
+          'primaryManager',
+          'secondaryManagers',
+          'secondaryManagers.user',
+          'contentStaff',
+          'contentStaff.user',
+        ],
         order: { sortOrder: 'ASC', id: 'ASC' },
       });
     });
@@ -76,7 +90,14 @@ describe('LinkGroupsService', () => {
 
       expect(mockGroupRepo.find).toHaveBeenCalledWith({
         where: { isActive: true },
-        relations: ['category', 'primaryManager', 'secondaryManagers', 'secondaryManagers.user'],
+        relations: [
+          'category',
+          'primaryManager',
+          'secondaryManagers',
+          'secondaryManagers.user',
+          'contentStaff',
+          'contentStaff.user',
+        ],
         order: { sortOrder: 'ASC', id: 'ASC' },
       });
     });
@@ -88,7 +109,14 @@ describe('LinkGroupsService', () => {
 
       expect(mockGroupRepo.find).toHaveBeenCalledWith({
         where: { categoryId: 2, isActive: true },
-        relations: ['category', 'primaryManager', 'secondaryManagers', 'secondaryManagers.user'],
+        relations: [
+          'category',
+          'primaryManager',
+          'secondaryManagers',
+          'secondaryManagers.user',
+          'contentStaff',
+          'contentStaff.user',
+        ],
         order: { sortOrder: 'ASC', id: 'ASC' },
       });
     });
