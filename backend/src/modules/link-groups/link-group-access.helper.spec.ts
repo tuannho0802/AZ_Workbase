@@ -22,6 +22,23 @@ describe('LinkGroupAccessHelper', () => {
     it('group chưa có Quản lý chính (null) và danh sách phụ rỗng -> user thường không thấy gì', () => {
       expect(LinkGroupAccessHelper.canManage(1, false, null, [])).toBe(false);
     });
+
+    it('không truyền contentStaffUserIds (tham số cũ, mặc định []) -> vẫn hoạt động đúng như trước, không throw', () => {
+      expect(LinkGroupAccessHelper.canManage(7, false, 5, [7, 9])).toBe(true);
+      expect(LinkGroupAccessHelper.canManage(11, false, 5, [7, 9])).toBe(false);
+    });
+
+    it('user nằm trong danh sách Nhân viên Content -> được xem dù không phải chính/phụ và không có quyền rộng', () => {
+      expect(LinkGroupAccessHelper.canManage(20, false, 5, [7, 9], [20, 21])).toBe(true);
+    });
+
+    it('user không nằm trong bất kỳ danh sách nào (chính/phụ/content) -> vẫn false', () => {
+      expect(LinkGroupAccessHelper.canManage(99, false, 5, [7, 9], [20, 21])).toBe(false);
+    });
+
+    it('user vừa là Quản lý phụ vừa là Nhân viên Content (2 vai trò không loại trừ nhau) -> vẫn true', () => {
+      expect(LinkGroupAccessHelper.canManage(7, false, 5, [7, 9], [7])).toBe(true);
+    });
   });
 
   describe('canEditSecondaryManagers', () => {
