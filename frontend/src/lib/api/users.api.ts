@@ -68,6 +68,50 @@ export const usersApi = {
   // ⚠️ getUserProfile/updateUserProfile (Fanpage/Group thủ công) ĐÃ BỊ XOÁ -
   // dùng linkGroupManagersApi.listManagedByMe() (link-groups.api.ts) thay
   // thế, tự động lấy từ dữ liệu Quản lý chính/phụ đã gán cho LinkGroup.
+
+  // ── Profile tự phục vụ (PATCH /users/me/*) - CHÍNH MÌNH sửa hồ sơ của
+  // mình. Gate bằng permission `profile.edit_info`/`profile.edit_email`/
+  // `profile.change_password` (mặc định: 2 cái đầu mở cho cả 4 role,
+  // edit_email mặc định chỉ Admin) - xem PERMISSIONS.md mục 1.7. ─────────
+  updateOwnProfile: async (data: { name?: string; phone?: string }): Promise<UserDetail> => {
+    const response = await axiosInstance.patch('/users/me/profile', data);
+    return response.data;
+  },
+
+  updateOwnEmail: async (data: { email: string; currentPassword: string }): Promise<UserDetail> => {
+    const response = await axiosInstance.patch('/users/me/email', data);
+    return response.data;
+  },
+
+  changeOwnPassword: async (data: {
+    currentPassword: string;
+    newPassword: string;
+    confirmNewPassword: string;
+  }): Promise<{ success: boolean; message: string }> => {
+    const response = await axiosInstance.patch('/users/me/password', data);
+    return response.data;
+  },
+
+  // ── Xoá tài khoản (mềm -> cứng) - `users.delete`, mặc định chỉ Admin ───
+  softDeleteUser: async (id: number) => {
+    const response = await axiosInstance.patch(`/users/${id}/soft-delete`);
+    return response.data;
+  },
+
+  getTrash: async (): Promise<TrashedUser[]> => {
+    const response = await axiosInstance.get('/users/trash');
+    return response.data;
+  },
+
+  restoreUser: async (id: number) => {
+    const response = await axiosInstance.patch(`/users/trash/${id}/restore`);
+    return response.data;
+  },
+
+  hardDeleteUser: async (id: number) => {
+    const response = await axiosInstance.delete(`/users/trash/${id}/hard-delete`);
+    return response.data;
+  },
 };
 
 export interface UserDetail {
@@ -85,6 +129,18 @@ export interface UserDetail {
   leaveYear: number;
   createdAt: string;
   department?: { id: number; name: string } | null;
+}
+
+// Tài khoản đã xoá mềm (đang ở "thùng rác" - GET /users/trash)
+export interface TrashedUser {
+  id: number;
+  employeeCode: string;
+  email: string;
+  name: string;
+  role: string;
+  department?: { id: number; name: string } | null;
+  deletedAt: string;
+  deletedBy?: { id: number; name: string } | null;
 }
 
 // Tài khoản tự đăng ký đang chờ duyệt (role LUÔN là 'employee' - hardcode ở

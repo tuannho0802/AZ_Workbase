@@ -6,12 +6,14 @@ import {
   Card, Table, Button, Space, Tag, App,
   Spin, Typography, Avatar,
   Descriptions, Divider, Drawer, Row, Col,
+  Form, Input, Modal, Popconfirm,
 } from 'antd';
 import {
   ReloadOutlined,
   MailOutlined, PhoneOutlined, ApartmentOutlined, ClockCircleOutlined,
   CalendarOutlined, UserOutlined, EyeOutlined,
   LinkOutlined, CrownOutlined, TeamOutlined, ArrowRightOutlined,
+  EditOutlined, SaveOutlined, CloseOutlined, LockOutlined, DeleteOutlined,
 } from '@ant-design/icons';
 import Link from 'next/link';
 import dayjs from 'dayjs';
@@ -89,11 +91,25 @@ function ManagedGroupsSection({ groups }: { groups: ManagedGroupRow[] }) {
 }
 
 // ── Trang Profile kiểu "cổng thông tin" cho 1 user ──────────────────────────
-function ProfilePortal({ userId }: { userId: number }) {
-  const { message } = App.useApp();
+function ProfilePortal({ userId, onDeleted }: { userId: number; onDeleted?: () => void }) {
+  const { message, modal } = App.useApp();
   const { user: currentUser } = useAuthStore();
+  const { can } = useMyPermissions();
   const [loadingDetail, setLoadingDetail] = useState(true);
   const [detail, setDetail] = useState<UserDetail | null>(null);
+
+  // ── Chỉnh sửa thông tin (tên/SĐT/Email) - giống mode Xem/Sửa ở trang
+  // Nhân viên (SKILL_NEXTJS_FRONTEND.md mục "Customer Detail Modal") ──────
+  const [isEditing, setIsEditing] = useState(false);
+  const [savingInfo, setSavingInfo] = useState(false);
+  const [infoForm] = Form.useForm();
+
+  // ── Đổi mật khẩu (modal riêng) ───────────────────────────────────────────
+  const [pwdModalOpen, setPwdModalOpen] = useState(false);
+  const [savingPwd, setSavingPwd] = useState(false);
+  const [pwdForm] = Form.useForm();
+
+  const [deleting, setDeleting] = useState(false);
 
   // GET /link-groups/managed-by-me: admin trả TOÀN BỘ nhóm trong hệ thống
   // (không chỉ của admin) -> phải tự lọc ở client theo đúng userId đang xem

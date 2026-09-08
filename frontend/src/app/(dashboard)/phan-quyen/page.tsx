@@ -45,6 +45,12 @@ const RESOURCE_LABEL: Record<string, string> = {
   // cho cùng 1 khả năng) - đổi label để Admin thấy rõ phạm vi ảnh hưởng thật,
   // không hiểu lầm là chỉ liên quan trang "Nhân viên".
   users: 'Nhân viên & Profile',
+  // MỚI (migration AddUserSoftDeleteAndProfilePermissions): 3 permission
+  // "tự phục vụ" (`profile.edit_info`/`profile.change_password`/
+  // `profile.edit_email`) - tách riêng resource `profile` khỏi `users` vì
+  // đây là hành động CHÍNH MÌNH làm trên hồ sơ CỦA MÌNH (PATCH /users/me/*),
+  // khác hẳn `users.manage` (Admin/Assistant/Manager sửa NGƯỜI KHÁC).
+  profile: 'Hồ sơ cá nhân (Tự phục vụ)',
   roles: 'Phân quyền',
   departments: 'Phòng ban',
   link_groups: 'Nhóm liên kết',
