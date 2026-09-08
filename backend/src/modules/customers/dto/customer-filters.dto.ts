@@ -30,6 +30,12 @@ export class CustomerFiltersDto {
   @IsInt()
   salesUserId?: number;
 
+  @ApiPropertyOptional({ example: 4, description: 'Lọc theo Marketing phụ trách (người nhập data)' })
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  marketingUserId?: number;
+
   @ApiPropertyOptional({ example: 'createdAt', enum: ['createdAt', 'name', 'status', 'closedDate', 'totalDeposit30Days', 'phone', 'inputDate'] })
   @IsOptional()
   @IsEnum(['createdAt', 'name', 'status', 'closedDate', 'totalDeposit30Days', 'phone', 'inputDate'])

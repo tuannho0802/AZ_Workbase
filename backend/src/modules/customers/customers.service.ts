@@ -186,6 +186,7 @@ export class CustomersService {
       | 'source'
       | 'status'
       | 'salesUserId'
+      | 'marketingUserId'
       | 'departmentId'
       | 'dateFrom'
       | 'dateTo'
@@ -197,6 +198,7 @@ export class CustomersService {
       source,
       status,
       salesUserId,
+      marketingUserId,
       departmentId,
       dateFrom,
       dateTo,
@@ -218,6 +220,11 @@ export class CustomersService {
     if (salesUserId) {
       queryBuilder.andWhere('customer.salesUserId = :salesUserId', {
         salesUserId,
+      });
+    }
+    if (marketingUserId) {
+      queryBuilder.andWhere('customer.marketingUserId = :marketingUserId', {
+        marketingUserId,
       });
     }
     if (departmentId) {
@@ -267,6 +274,7 @@ export class CustomersService {
       source,
       status,
       salesUserId,
+      marketingUserId,
       departmentId,
       dateFrom,
       dateTo,
@@ -298,6 +306,7 @@ export class CustomersService {
       source,
       status,
       salesUserId,
+      marketingUserId,
       departmentId,
       dateFrom,
       dateTo,
@@ -373,6 +382,7 @@ export class CustomersService {
       source,
       status,
       salesUserId,
+      marketingUserId,
       departmentId,
       dateFrom,
       dateTo,
