@@ -4,6 +4,7 @@ import {
   PrimaryGeneratedColumn,
   CreateDateColumn,
   UpdateDateColumn,
+  DeleteDateColumn,
   ManyToOne,
   JoinColumn,
 } from 'typeorm';
@@ -178,4 +179,26 @@ export class User {
 
   @UpdateDateColumn({ name: 'updated_at' })
   updatedAt: Date;
+
+  /**
+   * Soft-delete (mục "Xoá tài khoản" - xem migration
+   * `AddUserSoftDeleteAndProfilePermissions`). Có giá trị này = tài khoản
+   * đang nằm trong "thùng rác" (`GET /users/trash`) - KHÔNG login được
+   * (findByEmail/findById dùng query builder mặc định của TypeORM tự loại
+   * bỏ record có `deletedAt` khi entity có `@DeleteDateColumn`, không cần tự
+   * viết điều kiện `deletedAt IS NULL` ở từng nơi, giống hệt cách
+   * `Customer.deletedAt` đang vận hành). Restore (`PATCH
+   * /users/trash/:id/restore`) set lại về NULL. Hard delete
+   * (`DELETE /users/trash/:id/hard-delete`) xoá HẲN dòng này khỏi DB sau
+   * khi đã cascade dữ liệu liên quan - xem `UsersService.hardDelete()`.
+   */
+  @DeleteDateColumn({ name: 'deleted_at', nullable: true })
+  deletedAt: Date | null;
+
+  @Column({ name: 'deleted_by_id', nullable: true })
+  deletedById: number | null;
+
+  @ManyToOne(() => User, { nullable: true })
+  @JoinColumn({ name: 'deleted_by_id' })
+  deletedBy: User | null;
 }
