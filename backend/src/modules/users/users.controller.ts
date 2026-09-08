@@ -10,6 +10,9 @@ import { UpdateUserDto } from './dto/update-user.dto';
 import { ResetPasswordDto } from './dto/reset-password.dto';
 import { ApproveUserDto } from './dto/approve-user.dto';
 import { RejectUserDto } from './dto/reject-user.dto';
+import { UpdateOwnProfileDto } from './dto/update-own-profile.dto';
+import { UpdateOwnEmailDto } from './dto/update-own-email.dto';
+import { ChangePasswordDto } from './dto/change-password.dto';
 import { CacheControlInterceptor } from '../../common/interceptors/cache-control.interceptor';
 
 @ApiTags('Users')
@@ -86,6 +89,17 @@ export class UsersController {
     return this.usersService.findPendingApprovals(req.user.id, req.user.role, scope);
   }
 
+  // ⚠️ THỨ TỰ QUAN TRỌNG: `Get('trash')` PHẢI đứng TRƯỚC `Get(':id')` bên
+  // dưới - NestJS/Express khớp route theo đúng thứ tự khai báo, không tự ưu
+  // tiên route "tĩnh" (literal) hơn route "động" (`:id`). Nếu đặt sau,
+  // `GET /users/trash` sẽ bị `Get(':id')` nuốt mất (hiểu nhầm id="trash").
+  @Get('trash')
+  @RequirePermission('users.delete')
+  @ApiOperation({ summary: 'Danh sách tài khoản đã xoá mềm (thùng rác)' })
+  async getTrash() {
+    return this.usersService.listTrash();
+  }
+
   @Get(':id')
   @RequirePermission('users.view')
   @ApiOperation({ summary: 'Lấy thông tin chi tiết nhân viên theo ID' })
@@ -132,5 +146,60 @@ export class UsersController {
   @ApiOperation({ summary: 'Đặt lại mật khẩu nhân viên (Admin/Assistant toàn bộ, Manager trong phòng ban quản lý)' })
   async resetPassword(@Param('id') id: string, @Body() dto: ResetPasswordDto, @Request() req: any, @GetPermissionScope() scope?: string | null) {
     return this.usersService.resetPassword(+id, dto, req.user.id, req.user.role, scope);
+  }
+
+  // ==========================================================================
+  // PROFILE TỰ PHỤC VỤ - CHÍNH MÌNH SỬA HỒ SƠ CỦA MÌNH (id luôn lấy từ JWT,
+  // KHÔNG nhận :id tuỳ ý trên URL - tránh 1 user gọi API sửa hồ sơ NGƯỜI
+  // KHÁC qua nhầm endpoint "của chính mình"). Đặt SAU route `:id/*` phía
+  // trên để tránh NestJS match nhầm "me" vào param `:id`.
+  // ==========================================================================
+
+  @Patch('me/profile')
+  @RequirePermission('profile.edit_info')
+  @ApiOperation({ summary: 'Tự sửa thông tin cá nhân (tên, SĐT) - không gồm Email' })
+  async updateOwnProfile(@Request() req: any, @Body() dto: UpdateOwnProfileDto) {
+    return this.usersService.updateOwnProfile(req.user.id, dto);
+  }
+
+  @Patch('me/email')
+  @RequirePermission('profile.edit_email')
+  @ApiOperation({ summary: 'Tự đổi Email đăng nhập (mặc định chỉ Admin, cần nhập lại mật khẩu hiện tại)' })
+  async updateOwnEmail(@Request() req: any, @Body() dto: UpdateOwnEmailDto) {
+    return this.usersService.updateOwnEmail(req.user.id, dto);
+  }
+
+  @Patch('me/password')
+  @RequirePermission('profile.change_password')
+  @ApiOperation({ summary: 'Tự đổi mật khẩu (cần nhập đúng mật khẩu hiện tại)' })
+  async changeOwnPassword(@Request() req: any, @Body() dto: ChangePasswordDto) {
+    return this.usersService.changeOwnPassword(req.user.id, dto);
+  }
+
+  // ==========================================================================
+  // XOÁ TÀI KHOẢN (mềm -> cứng) - `users.delete`, mặc định CHỈ Admin, tuỳ
+  // biến được qua trang "/phan-quyen" (xem UsersService.hardDeleteUser JSDoc
+  // để biết cơ chế fallback gán lại dữ liệu liên quan).
+  // ==========================================================================
+
+  @Patch(':id/soft-delete')
+  @RequirePermission('users.delete')
+  @ApiOperation({ summary: 'Xoá mềm tài khoản (chuyển vào thùng rác - dữ liệu vẫn giữ nguyên)' })
+  async softDelete(@Param('id') id: string, @Request() req: any) {
+    return this.usersService.softDeleteUser(+id, req.user.id);
+  }
+
+  @Patch('trash/:id/restore')
+  @RequirePermission('users.delete')
+  @ApiOperation({ summary: 'Khôi phục tài khoản khỏi thùng rác' })
+  async restore(@Param('id') id: string, @Request() req: any) {
+    return this.usersService.restoreUser(+id, req.user.id);
+  }
+
+  @Delete('trash/:id/hard-delete')
+  @RequirePermission('users.delete')
+  @ApiOperation({ summary: 'Xoá vĩnh viễn (bắt buộc đã xoá mềm trước) - auto fallback gán data liên quan cho người xoá' })
+  async hardDelete(@Param('id') id: string, @Request() req: any) {
+    return this.usersService.hardDeleteUser(+id, req.user.id);
   }
 }

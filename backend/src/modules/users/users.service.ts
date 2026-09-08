@@ -1,7 +1,7 @@
 import { Injectable, Logger } from '@nestjs/common';
 
-import { InjectRepository } from '@nestjs/typeorm';
-import { Repository, In } from 'typeorm';
+import { InjectRepository, InjectDataSource } from '@nestjs/typeorm';
+import { Repository, In, DataSource } from 'typeorm';
 import { User } from '../../database/entities/user.entity';
 import { Department } from '../../database/entities/department.entity';
 import { RoleEntity } from '../../database/entities/role.entity';
@@ -9,7 +9,10 @@ import { Role } from '../../common/enums/role.enum';
 import { CreateUserDto } from './dto/create-user.dto';
 import { UpdateUserDto } from './dto/update-user.dto';
 import { ResetPasswordDto } from './dto/reset-password.dto';
-import { ConflictException, NotFoundException, ForbiddenException, BadRequestException } from '@nestjs/common';
+import { UpdateOwnProfileDto } from './dto/update-own-profile.dto';
+import { UpdateOwnEmailDto } from './dto/update-own-email.dto';
+import { ChangePasswordDto } from './dto/change-password.dto';
+import { ConflictException, NotFoundException, ForbiddenException, BadRequestException, UnauthorizedException } from '@nestjs/common';
 import * as bcrypt from 'bcrypt';
 import { AuditService } from '../audit/audit.service';
 import { ApprovalStatus } from '../../common/enums/approval-status.enum';
@@ -37,6 +40,8 @@ export class UsersService {
     private roleRepository: Repository<RoleEntity>,
     private readonly auditService: AuditService,
     private readonly departmentsService: DepartmentsService,
+    @InjectDataSource()
+    private readonly dataSource: DataSource,
   ) {}
 
   /**
@@ -454,6 +459,286 @@ export class UsersService {
   // ⚠️ Method getProfile()/updateProfile() (Fanpage/Group thủ công) ĐÃ BỊ
   // XOÁ - xem user.entity.ts + users.controller.ts. Dùng
   // `LinkGroupManagersService.listManagedByMe()` thay thế.
+
+  // ==========================================================================
+  // PROFILE TỰ PHỤC VỤ (`PATCH /users/me/*`) - CHÍNH MÌNH SỬA, KHÔNG PHẢI
+  // ADMIN SỬA NGƯỜI KHÁC (khác create/update/resetPassword ở trên). 3 hành
+  // động độc lập, mỗi hành động gate 1 permission riêng (xem migration
+  // `AddUserSoftDeleteAndProfilePermissions`) - đúng nguyên tắc PERMISSIONS.md
+  // §1.7: mỗi permission chỉ nên tương ứng 1 hành động rõ nghĩa.
+  // ==========================================================================
+
+  /**
+   * Tự sửa tên/SĐT của chính mình. Không nhận email/role/departmentId/
+   * isActive/employeeCode - các trường quản trị đó vẫn chỉ sửa được qua
+   * `update()` (ADMIN/ASSISTANT/MANAGER + `users.manage`).
+   */
+  async updateOwnProfile(userId: number, dto: UpdateOwnProfileDto): Promise<User> {
+    const user = await this.usersRepository.findOne({ where: { id: userId } });
+    if (!user) {
+      throw new NotFoundException('Không tìm thấy tài khoản');
+    }
+
+    const oldData = omitPassword(user as any);
+    if (dto.name !== undefined) user.name = dto.name;
+    if (dto.phone !== undefined) user.phone = dto.phone;
+
+    const saved = await this.usersRepository.save(user);
+    const safeUser = omitPassword(saved as any);
+
+    this.auditService.logActionAsync(userId, 'UPDATE_OWN_PROFILE', 'user', userId, oldData, safeUser);
+    this.logger.log(`[Users] User ID ${userId} tự sửa profile của chính mình`);
+
+    return safeUser as User;
+  }
+
+  /**
+   * Tự đổi Email đăng nhập của chính mình. Yêu cầu nhập lại mật khẩu hiện
+   * tại để xác nhận (hành động nhạy cảm - email dùng để đăng nhập). Permission
+   * `profile.edit_email` mặc định CHỈ Admin - guard thật sự nằm ở Controller
+   * (`@RequirePermission`), ở đây chỉ lo nghiệp vụ (check mật khẩu + trùng
+   * email).
+   */
+  async updateOwnEmail(userId: number, dto: UpdateOwnEmailDto): Promise<User> {
+    // password có select:false -> phải addSelect thủ công để so khớp
+    const user = await this.usersRepository
+      .createQueryBuilder('user')
+      .addSelect('user.password')
+      .where('user.id = :userId', { userId })
+      .getOne();
+    if (!user) {
+      throw new NotFoundException('Không tìm thấy tài khoản');
+    }
+
+    const isPasswordMatching = await bcrypt.compare(dto.currentPassword, user.password as string);
+    if (!isPasswordMatching) {
+      throw new UnauthorizedException('Mật khẩu hiện tại không đúng');
+    }
+
+    if (dto.email !== user.email) {
+      const existing = await this.usersRepository.findOne({ where: { email: dto.email } });
+      if (existing) {
+        throw new ConflictException('Email đã được sử dụng bởi tài khoản khác');
+      }
+    }
+
+    const oldEmail = user.email;
+    user.email = dto.email;
+    const saved = await this.usersRepository.save(user);
+    const safeUser = omitPassword(saved as any);
+
+    this.auditService.logActionAsync(userId, 'UPDATE_OWN_EMAIL', 'user', userId, { email: oldEmail }, { email: saved.email });
+    this.logger.log(`[Users] User ID ${userId} tự đổi email: ${oldEmail} -> ${saved.email}`);
+
+    return safeUser as User;
+  }
+
+  /**
+   * Tự đổi mật khẩu của chính mình. Khác `resetPassword()` (Admin đặt lại
+   * CHO NGƯỜI KHÁC, không cần mật khẩu cũ) - ở đây bắt buộc `currentPassword`
+   * đúng mới cho đổi, và `newPassword`/`confirmNewPassword` phải khớp nhau
+   * (validate lại ở tầng Service dù FE đã tự so khớp - không tin riêng FE
+   * cho hành động nhạy cảm). Sau khi đổi, thu hồi refresh token hiện tại
+   * (giống `AuthService.logout`) - buộc đăng nhập lại ở các thiết bị khác,
+   * tránh phiên cũ vẫn dùng được sau khi mật khẩu đã đổi.
+   */
+  async changeOwnPassword(userId: number, dto: ChangePasswordDto): Promise<{ success: boolean; message: string }> {
+    if (dto.newPassword !== dto.confirmNewPassword) {
+      throw new BadRequestException('Mật khẩu mới nhập lại không khớp');
+    }
+
+    const user = await this.usersRepository
+      .createQueryBuilder('user')
+      .addSelect('user.password')
+      .where('user.id = :userId', { userId })
+      .getOne();
+    if (!user) {
+      throw new NotFoundException('Không tìm thấy tài khoản');
+    }
+
+    const isPasswordMatching = await bcrypt.compare(dto.currentPassword, user.password as string);
+    if (!isPasswordMatching) {
+      throw new UnauthorizedException('Mật khẩu hiện tại không đúng');
+    }
+
+    const hashedPassword = await bcrypt.hash(dto.newPassword, 10);
+    await this.usersRepository.update(userId, { password: hashedPassword });
+    // Thu hồi refresh token hiện tại - đồng bộ hành vi với AuthService.logout,
+    // ép các phiên (thiết bị) khác đăng nhập lại sau khi đổi mật khẩu.
+    await this.saveRefreshToken(userId, null);
+
+    this.auditService.logActionAsync(userId, 'CHANGE_OWN_PASSWORD', 'user', userId, null, { targetUserId: userId });
+    this.logger.log(`[Users] User ID ${userId} tự đổi mật khẩu`);
+
+    return { success: true, message: 'Đã đổi mật khẩu thành công. Vui lòng đăng nhập lại ở các thiết bị khác.' };
+  }
+
+  // ==========================================================================
+  // XOÁ TÀI KHOẢN (mềm -> cứng) - `users.delete`, mặc định CHỈ Admin, có thể
+  // mở rộng qua `/phan-quyen` (supports_scope=FALSE -> không giới hạn theo
+  // phòng ban, ai có quyền này xoá được BẤT KỲ ai, đúng như thiết kế quyền
+  // Xoá tuyệt đối ở PERMISSIONS.md mục 1).
+  //
+  // Chặn cứng KHÔNG cho tự xoá chính mình (soft lẫn hard) - phòng trường hợp
+  // Admin cuối cùng tự khoá/tự xoá tài khoản của chính mình gây "mồ côi" hệ
+  // thống (không còn ai đăng nhập được để khôi phục). Đây là quyết định sản
+  // phẩm chủ động, KHÔNG có trong yêu cầu gốc - cần xác nhận lại với chủ dự
+  // án nếu muốn cho phép tự xoá chính mình.
+  // ==========================================================================
+
+  /**
+   * Xoá mềm - chỉ set `deletedAt`/`deletedById`, dữ liệu vẫn còn nguyên vẹn
+   * trong DB (nằm ở "thùng rác" `GET /users/trash`). Tài khoản này ngay lập
+   * tức KHÔNG login được nữa (`findByEmail`/`findById` tự loại bỏ record có
+   * `deletedAt` - xem comment trong `user.entity.ts`), refresh token hiện có
+   * cũng bị thu hồi luôn để chặn phiên đang đăng nhập tiếp tục dùng token cũ.
+   */
+  async softDeleteUser(targetId: number, callerId: number): Promise<{ success: boolean; message: string }> {
+    if (targetId === callerId) {
+      throw new ForbiddenException('Không thể tự xoá chính mình');
+    }
+
+    const user = await this.usersRepository.findOne({ where: { id: targetId } });
+    if (!user) {
+      throw new NotFoundException('Không tìm thấy tài khoản');
+    }
+
+    await this.usersRepository.update(targetId, {
+      deletedAt: new Date(),
+      deletedById: callerId,
+    } as any);
+    await this.saveRefreshToken(targetId, null);
+
+    this.auditService.logActionAsync(callerId, 'SOFT_DELETE_USER', 'user', targetId, null, { targetUserId: targetId });
+    this.logger.log(`[Users] User ID ${targetId} đã bị xoá mềm bởi ${callerId}`);
+
+    return { success: true, message: 'Đã chuyển tài khoản vào thùng rác' };
+  }
+
+  /** Danh sách tài khoản đang ở "thùng rác" (đã xoá mềm, chưa xoá cứng). */
+  async listTrash(): Promise<User[]> {
+    return this.usersRepository
+      .createQueryBuilder('user')
+      .withDeleted()
+      .leftJoinAndSelect('user.department', 'department')
+      .leftJoinAndSelect('user.deletedBy', 'deletedBy')
+      .where('user.deletedAt IS NOT NULL')
+      .orderBy('user.deletedAt', 'DESC')
+      .getMany();
+  }
+
+  /** Khôi phục 1 tài khoản đã xoá mềm - chỉ cần clear `deletedAt`/`deletedById`. */
+  async restoreUser(targetId: number, callerId: number): Promise<{ success: boolean; message: string }> {
+    const user = await this.usersRepository.findOne({
+      where: { id: targetId } as any,
+      withDeleted: true,
+    });
+    if (!user || user.deletedAt == null) {
+      throw new NotFoundException('Không tìm thấy tài khoản trong thùng rác');
+    }
+
+    await this.usersRepository.update(targetId, {
+      deletedAt: null,
+      deletedById: null,
+    } as any);
+
+    this.auditService.logActionAsync(callerId, 'RESTORE_USER', 'user', targetId, null, { targetUserId: targetId });
+    this.logger.log(`[Users] User ID ${targetId} đã được khôi phục bởi ${callerId}`);
+
+    return { success: true, message: 'Đã khôi phục tài khoản' };
+  }
+
+  /**
+   * XOÁ CỨNG - vĩnh viễn, không hoàn tác. BẮT BUỘC tài khoản đã ở trạng thái
+   * xoá mềm trước đó (2 bước tách biệt theo đúng yêu cầu chủ dự án: xoá mềm
+   * trước, xoá cứng là bước "confirm" riêng sau).
+   *
+   * Chạy trong 1 transaction (`DataSource.transaction`), 2 giai đoạn:
+   *
+   * 1. "Assign"/quan hệ hiện hành (còn ý nghĩa nghiệp vụ "ai đang phụ trách
+   *    cái gì") -> AUTO FALLBACK gán lại cho CHÍNH NGƯỜI BẤM XOÁ (`callerId`)
+   *    thay vì để mất/vỡ FK - đúng yêu cầu "nếu xoá user bị hỏng thì auto
+   *    fallback gán cho user nào xoá user đó": `customers.sales_user_id`,
+   *    `customers.marketing_user_id`, `departments.manager_user_id`.
+   * 2. Bản ghi "assignment"/quan hệ mang tính LỊCH SỬ giao-nhận data (không
+   *    phải trạng thái hiện hành) -> XOÁ HẲN theo (đúng yêu cầu "assign hay
+   *    các phần liên quan bị xoá theo"): toàn bộ dòng trong
+   *    `customer_assignments` có nhắc tới user này (dù là người gán, người
+   *    nhận, người gán trước đó, hay người thu hồi).
+   * 3. Cột audit trail thuần tuý (không phải "đang sở hữu" cái gì, chỉ là
+   *    "ai từng tạo/sửa bản ghi X") -> reassign sang `callerId` khi cột đó
+   *    NOT NULL (bắt buộc phải có giá trị hợp lệ, không thể để trống), hoặc
+   *    SET NULL khi cột cho phép NULL và việc gán nhầm cho người xoá sẽ làm
+   *    sai lệch lịch sử (vd audit_logs.user_id không NULL được -> đành
+   *    reassign; users.approved_by_id NULL được -> set NULL cho đúng nghĩa
+   *    "không rõ ai duyệt nữa" thay vì bịa ra chủ mới).
+   * 4. Các FK đã tự khai `onDelete: 'SET NULL'`/`'CASCADE'` sẵn ở tầng DB
+   *    (`customer.created_by_id`/`updated_by_id`, `deposit.created_by_id`,
+   *    `customer_note.updated_by`, `customer_group_membership.updated_by`,
+   *    `leave_requests.approver_id`/`requester_id`, `link_group.primary_
+   *    manager_id`, `link_group_secondary_manager.*`, `link_group_content_
+   *    staff.*`, `users.deleted_by_id`) - KHÔNG cần xử lý tay, DB tự lo khi
+   *    chạy lệnh DELETE cuối cùng.
+   *
+   * ⚠️ Khi thêm cột FK trỏ tới `users.id` mới ở bảng khác trong tương lai,
+   * PHẢI cập nhật lại danh sách trong hàm này (không có cơ chế tự phát hiện)
+   * - nếu quên, lệnh DELETE cuối cùng sẽ ném lỗi FK constraint rõ ràng (an
+   * toàn - KHÔNG âm thầm xoá dở dang) chứ không tự ý bỏ qua.
+   */
+  async hardDeleteUser(targetId: number, callerId: number): Promise<{ success: boolean; message: string }> {
+    if (targetId === callerId) {
+      throw new ForbiddenException('Không thể tự xoá chính mình');
+    }
+
+    const user = await this.usersRepository.findOne({
+      where: { id: targetId } as any,
+      withDeleted: true,
+    });
+    if (!user) {
+      throw new NotFoundException('Không tìm thấy tài khoản');
+    }
+    if (user.deletedAt == null) {
+      throw new BadRequestException('Phải xoá mềm (chuyển vào thùng rác) trước khi xoá cứng');
+    }
+
+    const safeUserSnapshot = omitPassword(user as any);
+
+    await this.dataSource.transaction(async (manager) => {
+      // 1. "Assign" hiện hành -> fallback gán cho người xoá
+      await manager.query('UPDATE customers SET sales_user_id = ? WHERE sales_user_id = ?', [callerId, targetId]);
+      await manager.query('UPDATE customers SET marketing_user_id = ? WHERE marketing_user_id = ?', [callerId, targetId]);
+      await manager.query('UPDATE departments SET manager_user_id = ? WHERE manager_user_id = ?', [callerId, targetId]);
+
+      // 2. Lịch sử giao-nhận data -> xoá hẳn theo
+      await manager.query(
+        'DELETE FROM customer_assignments WHERE assigned_to_id = ? OR assigned_by_id = ? OR previous_assignee_id = ? OR reclaimed_by_id = ?',
+        [targetId, targetId, targetId, targetId],
+      );
+
+      // 3a. Audit trail NOT NULL -> reassign cho người xoá (không thể để trống)
+      await manager.query('UPDATE customers SET created_by = ? WHERE created_by = ?', [callerId, targetId]);
+      await manager.query('UPDATE customers SET created_by_id = ? WHERE created_by_id = ?', [callerId, targetId]);
+      await manager.query('UPDATE customers SET updated_by_id = ? WHERE updated_by_id = ?', [callerId, targetId]);
+      await manager.query('UPDATE deposits SET created_by = ? WHERE created_by = ?', [callerId, targetId]);
+      await manager.query('UPDATE deposits SET created_by_id = ? WHERE created_by_id = ?', [callerId, targetId]);
+      await manager.query('UPDATE customer_notes SET created_by = ? WHERE created_by = ?', [callerId, targetId]);
+      await manager.query('UPDATE customer_notes SET updated_by = ? WHERE updated_by = ?', [callerId, targetId]);
+      await manager.query('UPDATE audit_logs SET user_id = ? WHERE user_id = ?', [callerId, targetId]);
+
+      // 3b. Audit trail NULL được -> set NULL (tránh gán nhầm lịch sử cho người xoá)
+      await manager.query('UPDATE users SET approved_by_id = NULL WHERE approved_by_id = ?', [targetId]);
+      await manager.query('UPDATE attendance_logs SET matched_user_id = NULL WHERE matched_user_id = ?', [targetId]);
+
+      // 4. Xoá hẳn dòng user - các FK còn lại đã có onDelete SET NULL/CASCADE
+      // sẵn ở tầng DB (xem JSDoc phía trên), tự động xử lý khi DELETE chạy.
+      await manager.query('DELETE FROM users WHERE id = ?', [targetId]);
+    });
+
+    this.auditService.logActionAsync(callerId, 'HARD_DELETE_USER', 'user', targetId, safeUserSnapshot, null);
+    this.logger.log(`[Users] User ID ${targetId} đã bị xoá CỨNG (vĩnh viễn) bởi ${callerId}`);
+
+    return { success: true, message: 'Đã xoá vĩnh viễn tài khoản' };
+  }
 
   /**
    * Tạo user từ luồng TỰ ĐĂNG KÝ (AuthService.register) - KHÁC với create()
