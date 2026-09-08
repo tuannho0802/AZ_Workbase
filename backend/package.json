@@ -31,7 +31,8 @@
     "import:clear": "ts-node -r tsconfig-paths/register src/database/import/clear-test-data.ts",
     "import:data": "ts-node -r tsconfig-paths/register src/database/import/import-marketing-data.ts",
     "import:full": "npm run import:clear && npm run import:data",
-    "zk:test": "ts-node -r tsconfig-paths/register src/integrations/zk-device/test-connection.ts"
+    "zk:test": "ts-node -r tsconfig-paths/register src/integrations/zk-device/test-connection.ts",
+    "b2:test-presign": "ts-node -r tsconfig-paths/register scripts/test-b2-presign.ts"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.1127.0",
