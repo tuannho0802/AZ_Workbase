@@ -23,6 +23,10 @@ export interface LinkGroup {
   primaryManager?: { id: number; name: string; email: string } | null;
   // "Quản lý phụ" - quản lý qua GroupManagersModal (endpoint /link-groups/:id/managers riêng).
   secondaryManagers?: { user: { id: number; name: string; email: string } }[];
+  // "Nhân viên Content" - CÙNG shape với secondaryManagers, quản lý qua
+  // cùng GroupManagersModal (tab/section riêng) - endpoint
+  // /link-groups/:id/content-staff. Xem LinkGroupContentStaff (BE).
+  contentStaff?: { user: { id: number; name: string; email: string } }[];
   createdAt: string;
   updatedAt: string;
 }
@@ -56,6 +60,9 @@ export interface GroupManagersResult {
   groupName: string;
   primaryManager: GroupManagerUser | null;
   secondaryManagers: SecondaryManagerUser[];
+  // Khớp `GroupManagersResult.contentStaff` bên backend
+  // (LinkGroupManagersService) - cùng shape với secondaryManagers.
+  contentStaff: SecondaryManagerUser[];
 }
 
 export const linkCategoriesApi = {
@@ -173,6 +180,23 @@ export const linkGroupManagersApi = {
   removeSecondaryManager: async (groupId: number, userId: number): Promise<GroupManagersResult> => {
     const response = await axiosInstance.delete<GroupManagersResult>(
       `/link-groups/${groupId}/managers/${userId}`,
+    );
+    return response.data;
+  },
+
+  /** Thêm 1 Nhân viên Content - CÙNG rule với Quản lý phụ (chỉ admin hoặc chính Quản lý chính của nhóm đó) */
+  addContentStaff: async (groupId: number, userId: number): Promise<GroupManagersResult> => {
+    const response = await axiosInstance.post<GroupManagersResult>(
+      `/link-groups/${groupId}/content-staff`,
+      { userId },
+    );
+    return response.data;
+  },
+
+  /** Gỡ 1 Nhân viên Content - CÙNG rule với Quản lý phụ (chỉ admin hoặc chính Quản lý chính của nhóm đó) */
+  removeContentStaff: async (groupId: number, userId: number): Promise<GroupManagersResult> => {
+    const response = await axiosInstance.delete<GroupManagersResult>(
+      `/link-groups/${groupId}/content-staff/${userId}`,
     );
     return response.data;
   },

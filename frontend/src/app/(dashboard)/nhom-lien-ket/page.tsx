@@ -251,7 +251,12 @@ export default function LinkGroupsAdminPage() {
     (group) =>
       isAdmin ||
       group.primaryManagerId === currentUserId ||
-      (group.secondaryManagers ?? []).some((m) => m.user.id === currentUserId)
+      (group.secondaryManagers ?? []).some((m) => m.user.id === currentUserId) ||
+      // ⚠️ BỔ SUNG: Nhân viên Content cũng được xem Modal "Quản lý chính/
+      // phụ & Nhân viên Content" của đúng nhóm mình tham gia - khớp
+      // `LinkGroupAccessHelper.canManage()` (BE) đã nhận thêm tham số
+      // `contentStaffUserIds`.
+      (group.contentStaff ?? []).some((m) => m.user.id === currentUserId)
   );
 
   const groupColumns = [
@@ -304,6 +309,21 @@ export default function LinkGroupsAdminPage() {
         </Space>
       ),
     },
+    {
+      title: 'Nhân viên Content',
+      key: 'contentStaff',
+      width: 160,
+      render: (_: any, group: LinkGroup) =>
+        (group.contentStaff?.length ?? 0) > 0 ? (
+          <Tag color="purple" icon={<EditOutlined />}>
+            {group.contentStaff!.length} người
+          </Tag>
+        ) : (
+          <Text type="secondary" style={{ fontSize: 12 }}>
+            Chưa có
+          </Text>
+        ),
+    },
     ...((canManage || canDelete || someGroupCanSeeManagers) ? [{
       title: 'Thao tác',
       key: 'action',
@@ -323,7 +343,11 @@ export default function LinkGroupsAdminPage() {
         const isSecondaryOfThisGroup = (group.secondaryManagers ?? []).some(
           (m) => m.user.id === currentUserId,
         );
-        const canSeeManagers = isAdmin || isPrimaryOfThisGroup || isSecondaryOfThisGroup;
+        const isContentStaffOfThisGroup = (group.contentStaff ?? []).some(
+          (m) => m.user.id === currentUserId,
+        );
+        const canSeeManagers =
+          isAdmin || isPrimaryOfThisGroup || isSecondaryOfThisGroup || isContentStaffOfThisGroup;
 
         return (
           <Space>
@@ -338,7 +362,7 @@ export default function LinkGroupsAdminPage() {
                 icon={<TeamOutlined />}
                 onClick={() => setManagingGroup({ id: group.id, name: group.name })}
               >
-                Quản lý phụ
+                Quản lý phụ / Content
               </Button>
             )}
             {canManage && (

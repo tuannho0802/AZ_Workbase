@@ -24,6 +24,14 @@ const { Title, Text, Paragraph } = Typography;
 
 const RESOURCE_LABEL: Record<string, string> = {
   customers: 'Khách hàng',
+  // ⚠️ BỔ SUNG (rà soát bảng điều khiển phân quyền 2026-09-08): resource
+  // `customer_notes` đã tách riêng khỏi `customers.note` từ migration
+  // `1779200000000-SplitCustomerNotesPermissions.ts` (3 permission
+  // customer_notes.create/edit/delete) nhưng label bị thiếu ở đây -
+  // trước đây rơi vào nhánh fallback `?? resource` nên Admin nhìn thấy
+  // nhóm quyền hiện raw key "customer_notes" xấu và khó hiểu thay vì tên
+  // tiếng Việt như các resource khác.
+  customer_notes: 'Ghi chú khách hàng',
   leave_requests: 'Nghỉ phép',
   attendance: 'Chấm công',
   reports: 'Báo cáo',

@@ -36,7 +36,21 @@ export class LinkGroupsService {
         ...(categoryId != null ? { categoryId } : {}),
         ...(activeOnly ? { isActive: true } : {}),
       },
-      relations: ['category', 'primaryManager', 'secondaryManagers', 'secondaryManagers.user'],
+      // ⚠️ BỔ SUNG `contentStaff`/`contentStaff.user` (2026-09-08): trang
+      // "Quản lý nhóm liên kết" (FE) cần đếm/hiển thị số Nhân viên Content
+      // của từng nhóm ngay trên bảng danh sách (cột riêng, giống cách đang
+      // hiển thị `+N phụ` cho secondaryManagers) - nếu thiếu relation này ở
+      // đây, FE luôn nhận mảng rỗng dù DB đã có dữ liệu (không phải bug ở
+      // FE, mà do BE không nạp quan hệ này trong `findAll`, chỉ nạp trong
+      // `LinkGroupManagersService` phục vụ Modal riêng).
+      relations: [
+        'category',
+        'primaryManager',
+        'secondaryManagers',
+        'secondaryManagers.user',
+        'contentStaff',
+        'contentStaff.user',
+      ],
       order: { sortOrder: 'ASC', id: 'ASC' },
     });
   }

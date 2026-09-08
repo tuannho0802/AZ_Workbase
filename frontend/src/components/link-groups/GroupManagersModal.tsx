@@ -1,12 +1,18 @@
 'use client';
 
 import { useState } from 'react';
-import { Modal, Avatar, Tag, Select, Button, Typography, App, Popconfirm } from 'antd';
-import { UserOutlined, DeleteOutlined, PlusOutlined, CrownOutlined } from '@ant-design/icons';
+import { Modal, Avatar, Tag, Select, Button, Typography, App, Popconfirm, Divider } from 'antd';
+import { UserOutlined, DeleteOutlined, PlusOutlined, CrownOutlined, EditOutlined } from '@ant-design/icons';
 import { useQuery } from '@tanstack/react-query';
 import { useAuthStore } from '@/lib/stores/auth.store';
 import { usersApi } from '@/lib/api/users.api';
-import { useGroupManagers, useAddSecondaryManager, useRemoveSecondaryManager } from '@/lib/hooks/useLinkGroups';
+import {
+  useGroupManagers,
+  useAddSecondaryManager,
+  useRemoveSecondaryManager,
+  useAddContentStaff,
+  useRemoveContentStaff,
+} from '@/lib/hooks/useLinkGroups';
 import { getApiErrorMessage } from '@/lib/utils/error-message.util';
 import { SimpleList } from '@/components/common/SimpleList';
 
@@ -26,12 +32,21 @@ interface Props {
 }
 
 /**
- * Xem Quản lý chính + phụ của 1 nhóm, và thêm/xoá Quản lý phụ.
+ * Xem Quản lý chính + phụ + Nhân viên Content của 1 nhóm, và thêm/xoá
+ * Quản lý phụ / Nhân viên Content.
  * - Quản lý CHÍNH của nhóm KHÔNG đổi được ở đây (chỉ admin đổi được, qua
  *   form Sửa nhóm ở trang "Quản lý nhóm liên kết" - PATCH /link-groups/:id).
- * - Thêm/xoá Quản lý phụ: chỉ admin hoặc chính Quản lý chính của nhóm đó -
- *   khớp `LinkGroupAccessHelper.canEditSecondaryManagers()` ở BE. Ở đây chỉ
- *   ẩn/hiện UI cho gọn, quyền thật sự vẫn do BE chặn (403 nếu cố gọi sai).
+ * - Thêm/xoá Quản lý phụ VÀ Nhân viên Content: CÙNG 1 rule - chỉ admin hoặc
+ *   chính Quản lý chính của nhóm đó (khớp
+ *   `LinkGroupAccessHelper.canEditSecondaryManagers()` ở BE, tái dùng cho cả
+ *   2 tính năng - xem JSDoc `LinkGroupManagersService.addContentStaff()`).
+ *   Ở đây chỉ ẩn/hiện UI cho gọn, quyền thật sự vẫn do BE chặn (403 nếu cố
+ *   gọi sai).
+ * - 1 người CÓ THỂ vừa là Quản lý phụ vừa là Nhân viên Content của cùng 1
+ *   nhóm (2 vai trò không loại trừ nhau) - nên 2 danh sách chọn bên dưới
+ *   ĐỘC LẬP với nhau, chỉ loại người đã có trong CHÍNH danh sách đang thao
+ *   tác (và luôn loại Quản lý chính khỏi cả 2, vì không được vừa là chính
+ *   vừa là phụ/Content).
  */
 export const GroupManagersModal = ({ open, onClose, groupId, groupName }: Props) => {
   const { message } = App.useApp();
@@ -39,7 +54,10 @@ export const GroupManagersModal = ({ open, onClose, groupId, groupName }: Props)
   const { managers, isLoading } = useGroupManagers(groupId ?? undefined);
   const addMutation = useAddSecondaryManager();
   const removeMutation = useRemoveSecondaryManager();
+  const addContentStaffMutation = useAddContentStaff();
+  const removeContentStaffMutation = useRemoveContentStaff();
   const [selectedUserId, setSelectedUserId] = useState<number | undefined>(undefined);
+  const [selectedContentStaffId, setSelectedContentStaffId] = useState<number | undefined>(undefined);
 
   const { data: users } = useQuery<UserOption[]>({
     queryKey: ['users-for-select'],
@@ -55,6 +73,7 @@ export const GroupManagersModal = ({ open, onClose, groupId, groupName }: Props)
 
   const primaryId = managers?.primaryManager?.id;
   const secondaryIds = new Set((managers?.secondaryManagers ?? []).map((m) => m.id));
+  const contentStaffIds = new Set((managers?.contentStaff ?? []).map((m) => m.id));
 
   // Loại người đã là chính/phụ rồi khỏi danh sách chọn - tránh gọi API rồi
   // ăn lỗi 400/409 (Người này đang là Quản lý chính.../Đã là Quản lý phụ rồi)
@@ -62,8 +81,15 @@ export const GroupManagersModal = ({ open, onClose, groupId, groupName }: Props)
     .filter((u) => u.id !== primaryId && !secondaryIds.has(u.id))
     .map((u) => ({ value: u.id, label: u.name || u.email }));
 
+  // Danh sách chọn cho Nhân viên Content - CHỈ loại Quản lý chính + người
+  // đã là Content rồi, KHÔNG loại Quản lý phụ (được phép trùng, xem JSDoc).
+  const availableContentStaffOptions = userList
+    .filter((u) => u.id !== primaryId && !contentStaffIds.has(u.id))
+    .map((u) => ({ value: u.id, label: u.name || u.email }));
+
   const resetAndClose = () => {
     setSelectedUserId(undefined);
+    setSelectedContentStaffId(undefined);
     onClose();
   };
 
@@ -92,9 +118,34 @@ export const GroupManagersModal = ({ open, onClose, groupId, groupName }: Props)
     );
   };
 
+  const handleAddContentStaff = () => {
+    if (!groupId || !selectedContentStaffId) return;
+    addContentStaffMutation.mutate(
+      { groupId, userId: selectedContentStaffId },
+      {
+        onSuccess: () => {
+          message.success('Đã thêm Nhân viên Content');
+          setSelectedContentStaffId(undefined);
+        },
+        onError: (err) => message.error(getApiErrorMessage(err, 'Thêm Nhân viên Content thất bại')),
+      },
+    );
+  };
+
+  const handleRemoveContentStaff = (userId: number, name: string) => {
+    if (!groupId) return;
+    removeContentStaffMutation.mutate(
+      { groupId, userId },
+      {
+        onSuccess: () => message.success(`Đã gỡ "${name}" khỏi Nhân viên Content`),
+        onError: (err) => message.error(getApiErrorMessage(err, 'Gỡ Nhân viên Content thất bại')),
+      },
+    );
+  };
+
   return (
     <Modal
-      title={`Quản lý chính/phụ - ${groupName ?? managers?.groupName ?? ''}`}
+      title={`Quản lý chính/phụ & Nhân viên Content - ${groupName ?? managers?.groupName ?? ''}`}
       open={open}
       onCancel={resetAndClose}
       footer={
@@ -180,6 +231,78 @@ export const GroupManagersModal = ({ open, onClose, groupId, groupName }: Props)
         <Text type="secondary" style={{ display: 'block', marginTop: 12 }}>
           Chỉ Quản lý chính (hoặc admin) mới có quyền thêm/xoá Quản lý phụ. Bạn đang xem với quyền
           Quản lý phụ.
+        </Text>
+      )}
+
+      <Divider style={{ margin: '20px 0 12px' }} />
+
+      <div style={{ marginBottom: 8 }}>
+        <Text strong>Nhân viên Content ({managers?.contentStaff.length ?? 0}):</Text>
+      </div>
+      <SimpleList
+        loading={isLoading}
+        size="small"
+        dataSource={managers?.contentStaff ?? []}
+        rowKey={(m) => m.id}
+        emptyText="Chưa có Nhân viên Content nào"
+        renderMeta={(m) => ({
+          avatar: <Avatar size="small" icon={<EditOutlined />} />,
+          title: m.name,
+          description: m.email,
+        })}
+        renderActions={(m) =>
+          canEdit
+            ? [
+              <Popconfirm
+                key="remove-content-staff"
+                title={`Gỡ "${m.name}" khỏi Nhân viên Content?`}
+                onConfirm={() => handleRemoveContentStaff(m.id, m.name)}
+                okText="Gỡ"
+                cancelText="Huỷ"
+              >
+                <Button
+                  size="small"
+                  danger
+                  type="text"
+                  icon={<DeleteOutlined />}
+                  loading={
+                    removeContentStaffMutation.isPending &&
+                    removeContentStaffMutation.variables?.userId === m.id
+                  }
+                />
+              </Popconfirm>,
+            ]
+            : []
+        }
+      />
+
+      {canEdit ? (
+        <div style={{ marginTop: 16, display: 'flex', gap: 8 }}>
+          <Select
+            showSearch={{
+              filterOption: (input, option) =>
+                (option?.label as string)?.toLowerCase().includes(input.toLowerCase()),
+            }}
+            style={{ flex: 1 }}
+            placeholder="Chọn nhân viên để thêm làm Nhân viên Content"
+            value={selectedContentStaffId}
+            onChange={setSelectedContentStaffId}
+            options={availableContentStaffOptions}
+            notFoundContent="Không còn ai để thêm"
+          />
+          <Button
+            type="primary"
+            icon={<PlusOutlined />}
+            disabled={!selectedContentStaffId}
+            loading={addContentStaffMutation.isPending}
+            onClick={handleAddContentStaff}
+          >
+            Thêm
+          </Button>
+        </div>
+      ) : (
+        <Text type="secondary" style={{ display: 'block', marginTop: 12 }}>
+          Chỉ Quản lý chính (hoặc admin) mới có quyền thêm/xoá Nhân viên Content.
         </Text>
       )}
     </Modal>

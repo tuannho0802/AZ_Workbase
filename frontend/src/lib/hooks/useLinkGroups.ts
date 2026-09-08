@@ -226,3 +226,31 @@ export const useRemoveSecondaryManager = () => {
     },
   });
 };
+
+// ── Nhân viên Content (cùng pattern với Quản lý phụ ở trên) ──
+
+export const useAddContentStaff = () => {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ groupId, userId }: { groupId: number; userId: number }) =>
+      linkGroupManagersApi.addContentStaff(groupId, userId),
+    onSuccess: (_data, variables) => {
+      queryClient.invalidateQueries({ queryKey: MANAGED_BY_ME_KEY });
+      queryClient.invalidateQueries({ queryKey: GROUP_KEY });
+      queryClient.invalidateQueries({ queryKey: groupManagersKey(variables.groupId) });
+    },
+  });
+};
+
+export const useRemoveContentStaff = () => {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ groupId, userId }: { groupId: number; userId: number }) =>
+      linkGroupManagersApi.removeContentStaff(groupId, userId),
+    onSuccess: (_data, variables) => {
+      queryClient.invalidateQueries({ queryKey: MANAGED_BY_ME_KEY });
+      queryClient.invalidateQueries({ queryKey: GROUP_KEY });
+      queryClient.invalidateQueries({ queryKey: groupManagersKey(variables.groupId) });
+    },
+  });
+};
