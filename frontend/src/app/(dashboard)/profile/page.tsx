@@ -161,6 +161,111 @@ function ProfilePortal({ userId, onDeleted }: { userId: number; onDeleted?: () =
 
   const loadingGroups = loadingManaged || loadingAllGroups;
 
+  const canEditInfo = isSelf && can('profile.edit_info');
+  const canEditEmail = isSelf && can('profile.edit_email');
+  const canChangePassword = isSelf && can('profile.change_password');
+  const canDelete = !isSelf && can('users.delete');
+
+  const startEditing = () => {
+    infoForm.setFieldsValue({
+      name: detail.name,
+      phone: detail.phone,
+      email: detail.email,
+    });
+    setIsEditing(true);
+  };
+
+  const cancelEditing = () => {
+    setIsEditing(false);
+    infoForm.resetFields();
+  };
+
+  const handleSaveInfo = async () => {
+    try {
+      const values = await infoForm.validateFields();
+      setSavingInfo(true);
+
+      if (canEditInfo) {
+        await usersApi.updateOwnProfile({ name: values.name, phone: values.phone });
+      }
+
+      // Đổi Email đi qua endpoint riêng (permission riêng, cần mật khẩu hiện
+      // tại) - chỉ gọi nếu thực sự có thay đổi và có quyền, tránh bắt nhập
+      // mật khẩu khi người dùng không đổi gì ở Email.
+      if (canEditEmail && values.email && values.email !== detail.email) {
+        Modal.confirm({
+          title: 'Xác nhận đổi Email',
+          content: (
+            <Form layout="vertical" onFinish={async (v) => {
+              try {
+                await usersApi.updateOwnEmail({ email: values.email, currentPassword: v.currentPassword });
+                message.success('Đã đổi Email thành công');
+                Modal.destroyAll();
+                setIsEditing(false);
+                fetchDetail();
+              } catch (err: any) {
+                message.error(err?.response?.data?.message || 'Đổi Email thất bại');
+              }
+            }}>
+              <Form.Item name="currentPassword" label="Nhập mật khẩu hiện tại để xác nhận" rules={[{ required: true }]}>
+                <Input.Password autoFocus />
+              </Form.Item>
+            </Form>
+          ),
+          footer: null,
+          closable: true,
+        });
+      } else {
+        message.success('Đã lưu thay đổi');
+        setIsEditing(false);
+        fetchDetail();
+      }
+    } catch (err: any) {
+      if (err?.errorFields) return; // lỗi validate form, đã hiện sẵn dưới field
+      message.error(err?.response?.data?.message || 'Lưu thất bại');
+    } finally {
+      setSavingInfo(false);
+    }
+  };
+
+  const handleChangePassword = async () => {
+    try {
+      const values = await pwdForm.validateFields();
+      setSavingPwd(true);
+      const res = await usersApi.changeOwnPassword(values);
+      message.success(res.message || 'Đã đổi mật khẩu thành công');
+      setPwdModalOpen(false);
+      pwdForm.resetFields();
+    } catch (err: any) {
+      if (err?.errorFields) return;
+      message.error(err?.response?.data?.message || 'Đổi mật khẩu thất bại');
+    } finally {
+      setSavingPwd(false);
+    }
+  };
+
+  const handleSoftDelete = () => {
+    modal.confirm({
+      title: `Xoá tài khoản "${detail.name}"?`,
+      content: 'Tài khoản sẽ được chuyển vào thùng rác, dữ liệu vẫn giữ nguyên và có thể khôi phục. Người này sẽ không đăng nhập được nữa ngay lập tức.',
+      okText: 'Xoá (chuyển vào thùng rác)',
+      okButtonProps: { danger: true },
+      cancelText: 'Huỷ',
+      onOk: async () => {
+        setDeleting(true);
+        try {
+          await usersApi.softDeleteUser(userId);
+          message.success('Đã chuyển tài khoản vào thùng rác');
+          onDeleted?.();
+        } catch (err: any) {
+          message.error(err?.response?.data?.message || 'Xoá thất bại');
+        } finally {
+          setDeleting(false);
+        }
+      },
+    });
+  };
+
   if (loadingDetail || !detail) {
     return (
       <div className="flex justify-center items-center my-10 py-10">
@@ -171,54 +276,154 @@ function ProfilePortal({ userId, onDeleted }: { userId: number; onDeleted?: () =
 
   return (
     <div>
-      {/* ── Header: Avatar + tên + tags ── */}
-      <div style={{ display: 'flex', alignItems: 'center', gap: 16, marginBottom: 20 }}>
-        <Avatar size={72} style={{ backgroundColor: '#1677ff', fontSize: 28 }}>
-          {getInitials(detail.name)}
-        </Avatar>
-        <div>
-          <Title level={4} style={{ margin: 0 }}>{detail.name}</Title>
-          <Space style={{ marginTop: 6 }}>
-            <Tag color={ROLE_COLOR[detail.role] ?? 'default'}>
-              {(ROLE_LABEL[detail.role] ?? detail.role)?.toUpperCase()}
-            </Tag>
-            <Tag color={detail.isActive ? 'green' : 'red'}>
-              {detail.isActive ? 'Đang hoạt động' : 'Bị khóa'}
-            </Tag>
-          </Space>
+      {/* ── Header: Avatar + tên + tags + hành động ── */}
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 16, marginBottom: 20, flexWrap: 'wrap' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
+          <Avatar size={72} style={{ backgroundColor: '#1677ff', fontSize: 28 }}>
+            {getInitials(detail.name)}
+          </Avatar>
+          <div>
+            <Title level={4} style={{ margin: 0 }}>{detail.name}</Title>
+            <Space style={{ marginTop: 6 }}>
+              <Tag color={ROLE_COLOR[detail.role] ?? 'default'}>
+                {(ROLE_LABEL[detail.role] ?? detail.role)?.toUpperCase()}
+              </Tag>
+              <Tag color={detail.isActive ? 'green' : 'red'}>
+                {detail.isActive ? 'Đang hoạt động' : 'Bị khóa'}
+              </Tag>
+            </Space>
+          </div>
         </div>
+
+        <Space>
+          {!isEditing && (canEditInfo || canEditEmail) && (
+            <Button icon={<EditOutlined />} onClick={startEditing}>
+              Chỉnh sửa
+            </Button>
+          )}
+          {canChangePassword && (
+            <Button icon={<LockOutlined />} onClick={() => setPwdModalOpen(true)}>
+              Đổi mật khẩu
+            </Button>
+          )}
+          {canDelete && (
+            <Button danger icon={<DeleteOutlined />} loading={deleting} onClick={handleSoftDelete}>
+              Xoá tài khoản
+            </Button>
+          )}
+        </Space>
       </div>
 
       {/* ── Thông tin cá nhân ── */}
-      <Descriptions
-        bordered
-        column={{ xs: 1, sm: 1, md: 2 }}
-        size="middle"
+      {isEditing ? (
+        <Form form={infoForm} layout="vertical">
+          <Row gutter={16}>
+            <Col xs={24} md={12}>
+              <Form.Item
+                name="name"
+                label="Họ và tên"
+                rules={[{ required: true, message: 'Vui lòng nhập họ tên' }, { min: 2, message: 'Tên phải có ít nhất 2 ký tự' }]}
+              >
+                <Input disabled={!canEditInfo} prefix={<UserOutlined />} />
+              </Form.Item>
+            </Col>
+            <Col xs={24} md={12}>
+              <Form.Item
+                name="phone"
+                label="Số điện thoại"
+                rules={[{ pattern: /^(09|08|07|03|05)[0-9]{8}$/, message: 'Số điện thoại không hợp lệ' }]}
+              >
+                <Input disabled={!canEditInfo} prefix={<PhoneOutlined />} />
+              </Form.Item>
+            </Col>
+            <Col xs={24} md={12}>
+              <Form.Item
+                name="email"
+                label={canEditEmail ? 'Email' : 'Email (không có quyền sửa)'}
+                rules={[{ required: true, type: 'email', message: 'Email không hợp lệ' }]}
+              >
+                <Input disabled={!canEditEmail} prefix={<MailOutlined />} />
+              </Form.Item>
+            </Col>
+          </Row>
+          <Space>
+            <Button type="primary" icon={<SaveOutlined />} loading={savingInfo} onClick={handleSaveInfo}>
+              Lưu
+            </Button>
+            <Button icon={<CloseOutlined />} onClick={cancelEditing}>
+              Huỷ
+            </Button>
+          </Space>
+        </Form>
+      ) : (
+          <Descriptions
+            bordered
+            column={{ xs: 1, sm: 1, md: 2 }}
+            size="middle"
+          >
+            <Descriptions.Item label={<><MailOutlined /> Email</>}>
+              {detail.email}
+            </Descriptions.Item>
+            <Descriptions.Item label={<><PhoneOutlined /> Số điện thoại</>}>
+              {detail.phone || <Text type="secondary">Chưa cập nhật</Text>}
+            </Descriptions.Item>
+            <Descriptions.Item label={<><ApartmentOutlined /> Phòng ban</>}>
+              {detail.department?.name || <Text type="secondary">Chưa có phòng ban</Text>}
+            </Descriptions.Item>
+            <Descriptions.Item label={<><CalendarOutlined /> Ngày tham gia</>}>
+              {dayjs(detail.createdAt).format('DD/MM/YYYY')}
+            </Descriptions.Item>
+            <Descriptions.Item label={<><ClockCircleOutlined /> Đăng nhập gần nhất</>}>
+              {detail.lastLoginAt
+                ? dayjs(detail.lastLoginAt).format('DD/MM/YYYY HH:mm')
+                : <Text type="secondary">Chưa đăng nhập</Text>}
+            </Descriptions.Item>
+            <Descriptions.Item label={<><UserOutlined /> Phép năm còn lại</>}>
+              {detail.annualLeaveBalance} / {detail.annualLeaveTotal} ngày (năm {detail.leaveYear})
+            </Descriptions.Item>
+            <Descriptions.Item label="Phép bù tích lũy" span={2}>
+              {detail.compensatoryLeaveBalance} ngày
+            </Descriptions.Item>
+          </Descriptions>
+      )}
+
+      {/* ── Modal đổi mật khẩu ── */}
+      <Modal
+        title="Đổi mật khẩu"
+        open={pwdModalOpen}
+        onCancel={() => { setPwdModalOpen(false); pwdForm.resetFields(); }}
+        onOk={handleChangePassword}
+        confirmLoading={savingPwd}
+        okText="Đổi mật khẩu"
+        cancelText="Huỷ"
+        destroyOnHidden
       >
-        <Descriptions.Item label={<><MailOutlined /> Email</>}>
-          {detail.email}
-        </Descriptions.Item>
-        <Descriptions.Item label={<><PhoneOutlined /> Số điện thoại</>}>
-          {detail.phone || <Text type="secondary">Chưa cập nhật</Text>}
-        </Descriptions.Item>
-        <Descriptions.Item label={<><ApartmentOutlined /> Phòng ban</>}>
-          {detail.department?.name || <Text type="secondary">Chưa có phòng ban</Text>}
-        </Descriptions.Item>
-        <Descriptions.Item label={<><CalendarOutlined /> Ngày tham gia</>}>
-          {dayjs(detail.createdAt).format('DD/MM/YYYY')}
-        </Descriptions.Item>
-        <Descriptions.Item label={<><ClockCircleOutlined /> Đăng nhập gần nhất</>}>
-          {detail.lastLoginAt
-            ? dayjs(detail.lastLoginAt).format('DD/MM/YYYY HH:mm')
-            : <Text type="secondary">Chưa đăng nhập</Text>}
-        </Descriptions.Item>
-        <Descriptions.Item label={<><UserOutlined /> Phép năm còn lại</>}>
-          {detail.annualLeaveBalance} / {detail.annualLeaveTotal} ngày (năm {detail.leaveYear})
-        </Descriptions.Item>
-        <Descriptions.Item label="Phép bù tích lũy" span={2}>
-          {detail.compensatoryLeaveBalance} ngày
-        </Descriptions.Item>
-      </Descriptions>
+        <Form form={pwdForm} layout="vertical">
+          <Form.Item name="currentPassword" label="Mật khẩu hiện tại" rules={[{ required: true, message: 'Vui lòng nhập mật khẩu hiện tại' }]}>
+            <Input.Password autoFocus />
+          </Form.Item>
+          <Form.Item name="newPassword" label="Mật khẩu mới" rules={[{ required: true, min: 6, message: 'Mật khẩu mới phải có ít nhất 6 ký tự' }]}>
+            <Input.Password />
+          </Form.Item>
+          <Form.Item
+            name="confirmNewPassword"
+            label="Nhập lại mật khẩu mới"
+            dependencies={['newPassword']}
+            rules={[
+              { required: true, message: 'Vui lòng nhập lại mật khẩu mới' },
+              ({ getFieldValue }) => ({
+                validator(_, value) {
+                  if (!value || getFieldValue('newPassword') === value) return Promise.resolve();
+                  return Promise.reject(new Error('Mật khẩu nhập lại không khớp'));
+                },
+              }),
+            ]}
+          >
+            <Input.Password />
+          </Form.Item>
+        </Form>
+      </Modal>
+
 
       <Divider titlePlacement="left" style={{ marginTop: 32 }}>
         <Space>
@@ -318,6 +523,15 @@ function AdminProfileManager() {
   const handleSelectUser = (id: number) => {
     setSelectedUserId(id);
     if (isMobile) setDrawerOpen(true);
+  };
+
+  // Sau khi xoá mềm 1 tài khoản từ Profile chi tiết - tải lại danh sách (để
+  // biến mất khỏi bảng, vì `usersApi.getUsers()` tự loại user đã xoá mềm) và
+  // bỏ chọn để không còn hiện Profile của người vừa xoá.
+  const handleUserDeleted = () => {
+    setSelectedUserId(null);
+    setDrawerOpen(false);
+    fetchUsers();
   };
 
   const columns: any[] = [
