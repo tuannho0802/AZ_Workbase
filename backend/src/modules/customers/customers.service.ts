@@ -452,6 +452,46 @@ export class CustomersService {
         (customer as any).joinedGroups = groups;
         (customer as any).joinedGroupsCount = groups.length;
       });
+
+      // "Ghi chú gần nhất" cho cột mới trên bảng danh sách - 1 query duy
+      // nhất cho CẢ TRANG (cùng nguyên tắc activeAssignees/joinedGroups ở
+      // trên, KHÔNG gọi riêng lẻ theo từng dòng). Lấy TẤT CẢ note của các
+      // customer trong trang, sắp theo customer + ngày tạo giảm dần, rồi
+      // chỉ giữ lại tối đa 5 note đầu/customer khi gom nhóm ở JS bên dưới -
+      // đủ dùng ở quy mô CRM nội bộ (1 customer thường chỉ vài chục note),
+      // tránh phải phụ thuộc window function (ROW_NUMBER) của riêng MySQL
+      // 8+ để lấy "top N mỗi nhóm" ngay trong SQL.
+      const MAX_RECENT_NOTES = 5;
+      const noteRows = await this.notesRepository
+        .createQueryBuilder('note')
+        .leftJoinAndSelect('note.createdByUser', 'noteCreator')
+        .where('note.customer_id IN (:...ids)', {
+          ids: entities.map((e) => e.id),
+        })
+        .orderBy('note.customer_id', 'ASC')
+        .addOrderBy('note.created_at', 'DESC')
+        .getMany();
+
+      const recentNotesByCustomerId = new Map<
+        number,
+        Array<{ id: number; note: string; createdAt: Date; createdByName: string | null }>
+      >();
+      for (const noteRow of noteRows) {
+        const list = recentNotesByCustomerId.get(noteRow.customerId) ?? [];
+        if (list.length < MAX_RECENT_NOTES) {
+          list.push({
+            id: noteRow.id,
+            note: noteRow.note,
+            createdAt: noteRow.createdAt,
+            createdByName: noteRow.createdByUser?.name ?? null,
+          });
+        }
+        recentNotesByCustomerId.set(noteRow.customerId, list);
+      }
+
+      entities.forEach((customer) => {
+        (customer as any).recentNotes = recentNotesByCustomerId.get(customer.id) ?? [];
+      });
     }
 
     return {
