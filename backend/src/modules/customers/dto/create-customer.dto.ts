@@ -1,4 +1,4 @@
-import { IsString, IsNotEmpty, Length, Matches, IsOptional, IsEmail, IsEnum, IsInt, IsDateString } from 'class-validator';
+import { IsString, IsNotEmpty, Length, Matches, IsOptional, IsEmail, IsEnum, IsInt, IsDateString, ValidateIf } from 'class-validator';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { Type } from 'class-transformer';
 
@@ -9,10 +9,17 @@ export class CreateCustomerDto {
   @Length(1, 100, { message: 'Họ tên phải từ 1 đến 100 ký tự' })
   name: string;
 
-  @ApiProperty({ example: '0901234567', description: 'Số điện thoại' })
-  @IsNotEmpty({ message: 'Số điện thoại là bắt buộc' })
+  // ⚠️ FIX BUG THẬT: SĐT là Tuỳ chọn (UI đã ghi rõ "(Tuỳ chọn)", entity
+  // `phone` cũng nullable/unique - NULL không đụng unique index ở MySQL).
+  // Trước đây @IsNotEmpty() bắt buộc SĐT ngay cả lúc TẠO MỚI, mâu thuẫn với
+  // UI. Dùng @ValidateIf thay vì @IsOptional() vì @IsOptional() của
+  // class-validator CHỈ bỏ qua validate khi giá trị là null/undefined -
+  // chuỗi rỗng '' (giá trị Input rỗng của Ant Design gửi lên) vẫn bị
+  // @Matches() chặn lại dù field không "required" ở FE.
+  @ApiPropertyOptional({ example: '0901234567', description: 'Số điện thoại (không bắt buộc)' })
+  @ValidateIf((o) => !!o.phone && o.phone.trim() !== '')
   @Matches(/^((09|08|07|03|05)[0-9]{8}|MISSING_[0-9]+)$/, { message: 'Số điện thoại không hợp lệ (Ví dụ: 0912345678)' })
-  phone: string;
+  phone?: string;
 
   @ApiPropertyOptional({ example: 'nguyenvana@example.com', description: 'Email khách hàng' })
   @IsOptional()
