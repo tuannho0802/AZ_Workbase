@@ -482,3 +482,55 @@ Token cũ bị dùng lại → `bcrypt.compare` fail → Log `[SECURITY] Token r
 2. Đảm bảo `dist/public` có đầy đủ file.
 3. Vercel tự động build từ GitHub.
 4. Kiểm tra Vercel Logs: Tìm `[Static] ✅ Found at __dirname path`.
+
+---
+
+## [2026-09-08 18:10] | Backblaze B2 — Setup phase 1 (deps + test script) + Docs audit | Status: Success
+
+**Actor:** Agent
+
+**Bối cảnh:** Chuyển kiến trúc lưu file từ Cloudflare R2 sang Backblaze B2 (xem
+`PLAN_AVATAR_LEAVE_ATTACHMENT_BACKBLAZE_B2.md` v2.0.0 — cả 2 bucket Private, không dùng Public vì B2 bắt
+thẻ tín dụng để bật Public). Đây là **phase 1/nhiều** của module `uploads` (avatar + ảnh đính kèm nghỉ
+phép) — module `uploads` thật CHƯA được code, mới dừng ở bước hạ tầng/dependency.
+
+**Việc đã làm:**
+1. Cài `@aws-sdk/client-s3` + `@aws-sdk/s3-request-presigner` ở `backend/`.
+2. Thêm khung biến `B2_ENDPOINT`, `B2_REGION`, `B2_ACCESS_KEY_ID`, `B2_SECRET_ACCESS_KEY`,
+   `B2_BUCKET_AVATARS`, `B2_BUCKET_LEAVE_ATTACHMENTS` vào `backend/.env.development.example`.
+3. Viết script độc lập `backend/scripts/test-b2-presign.ts` (chạy qua `npm run b2:test-presign`) — tự
+   đọc `.env.development` bằng `dotenv` (không qua NestJS ConfigModule), tạo presigned PUT/GET, upload +
+   tải lại 1 file test để xác nhận credentials + CORS + bucket hoạt động đúng. Đã chạy thật, kết nối
+   thành công.
+4. **Audit toàn bộ docs trong `AZ-Workbase Skills/` so với code thật** (theo yêu cầu chủ dự án — do
+   `WORKFLOW_LOG.md` này đã quá dài để đối chiếu từng dòng lịch sử, chọn cách bỏ qua phần lịch sử cũ,
+   chỉ đối chiếu trạng thái HIỆN TẠI):
+   - `SKILL_FILE_MANAGEMENT.md` mục 4: sửa lỗi cây thư mục vẽ nhầm `scripts/` là con của `backend/src/`
+     — thực tế `scripts/` nằm ngang hàng `src/` (`backend/scripts/`, không phải `backend/src/scripts/`).
+   - `README.md` (gốc repo): bổ sung 4 module backend bị thiếu trong danh sách (`permissions/`,
+     `roles/`, `reports/`, `attendance-export/` — trước đó chỉ liệt kê 10/14 module thật), thêm
+     `backend/scripts/test-b2-presign.ts` vào cây thư mục, thêm block biến môi trường `B2_*` và lệnh
+     `npm run b2:test-presign` vào phần "Hướng dẫn chạy local".
+   - `PLAN_AVATAR_LEAVE_ATTACHMENT_BACKBLAZE_B2.md` mục 9: đánh dấu bước cài SDK + script test (trước
+     đó nằm ở mục 9.2 "Còn lại", số 8, trạng thái ⏳) chuyển thành ✅ ở mục 9.1 "Đã làm xong", kèm chú
+     thích rõ script test KHÔNG thay thế các bước còn lại (App Key scope đúng bucket, CORS rule qua B2
+     CLI, điền `.env.development`/Vercel dashboard, build module `uploads` thật).
+   - `SKILL_DATABASE_MANAGEMENT.md`, `SKILL_NESTJS_BACKEND.md`: đã được cập nhật đúng ở phiên ngay
+     trước phiên này (commit `79478fb`) — verify lại thấy khớp code thật (migration baseline không còn
+     liệt kê cứng danh sách cũ, cấu trúc module/scripts khớp `ls` thật), không cần sửa thêm.
+
+**Files Changed trong phiên này:**
+- `backend/package.json`, `backend/package-lock.json` — thêm 2 dependency B2.
+- `backend/.env.development.example` — thêm block biến `B2_*`.
+- `backend/scripts/test-b2-presign.ts` (mới).
+- `AZ-Workbase Skills/SKILL_FILE_MANAGEMENT.md` — sửa cây thư mục mục 4.
+- `README.md` — bổ sung module list, biến môi trường, lệnh B2 test.
+- `AZ-Workbase Skills/PLAN_AVATAR_LEAVE_ATTACHMENT_BACKBLAZE_B2.md` — cập nhật tiến độ mục 9.
+
+**Notes:**
+> Chưa code module `uploads/` thật (entity `avatarUrl`, DTO presign, controller/service) — đó vẫn là
+> việc tiếp theo, đi theo đúng thứ tự đề xuất ở mục 10 của file PLAN. Các bước setup B2 còn lại (App Key
+> scope đúng bucket, CORS rule qua B2 CLI, điền secret thật vào `.env.development`/Vercel dashboard) vẫn
+> ⏳ chưa làm.
+
+---

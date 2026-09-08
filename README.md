@@ -58,10 +58,16 @@ AZ-Workbase/
 │   │   │   ├── leave-requests/     # Xin nghỉ phép + duyệt theo cấp bậc
 │   │   │   ├── link-groups/        # Category/Group liên kết (Zalo/FB/Threads...) + checklist đã-join
 │   │   │   ├── media-sources/      # Danh mục "Nguồn" (Facebook/TikTok/Google...) cho form khách hàng
+│   │   │   ├── permissions/        # RBAC động — danh mục permission
+│   │   │   ├── roles/              # RBAC động — role + role_permissions + department override
+│   │   │   ├── reports/            # Báo cáo tổng hợp
+│   │   │   ├── attendance-export/  # Xuất báo cáo chấm công
 │   │   │   ├── zk-device/          # Đồng bộ chấm công từ máy ZKTeco (pull + ADMS push)
 │   │   │   └── audit/              # Nhật ký audit log (ai làm gì, khi nào)
 │   │   ├── app.controller.ts       # Landing page tại "/"
 │   │   └── main.ts                 # Bootstrap (CORS, Swagger, Pipes) + Vercel serverless handler
+│   ├── scripts/                    # Script test/tiện ích độc lập, KHÔNG phải code sản phẩm
+│   │   └── test-b2-presign.ts      # Test presigned URL Backblaze B2 (npm run b2:test-presign)
 │   └── .env.development            # ⚠️ Không commit
 │
 ├── frontend/                       # Next.js 16 App
@@ -116,6 +122,10 @@ npm run start:dev       # Chạy trên http://localhost:3001
 npm run migration:show    # Xem trạng thái migrations
 npm run migration:run     # Chạy migrations mới
 npm run migration:revert  # Hoàn tác migration gần nhất
+
+# Backblaze B2 (upload avatar/file đính kèm — xem AZ-Workbase Skills/PLAN_AVATAR_LEAVE_ATTACHMENT_BACKBLAZE_B2.md)
+# Điền đủ biến B2_* vào .env.development (xem .env.development.example) trước khi chạy:
+npm run b2:test-presign   # Test presigned PUT/GET URL lên B2 (đọc riêng .env.development, không qua ConfigModule)
 ```
 
 ### 2. Frontend (Next.js)
@@ -147,7 +157,16 @@ JWT_EXPIRES_IN=1h
 JWT_REFRESH_SECRET=your-refresh-secret
 JWT_REFRESH_EXPIRES_IN=7d
 CORS_ORIGIN=http://localhost:3000
+
+# Backblaze B2 (S3-compatible) — bắt buộc nếu chạy npm run b2:test-presign hoặc module uploads
+B2_ENDPOINT=https://s3.us-west-004.backblazeb2.com
+B2_REGION=us-west-004
+B2_ACCESS_KEY_ID=your_key_id
+B2_SECRET_ACCESS_KEY=your_application_key
+B2_BUCKET_AVATARS=az-imgs-avatars-workbase
+B2_BUCKET_LEAVE_ATTACHMENTS=az-imgs-leave-request-workbase
 ```
+> Danh sách đầy đủ (bao gồm cả `ZK_DEVICE_*`, `CRON_SECRET`) luôn xem `backend/.env.development.example` — bảng trên chỉ liệt kê phần cốt lõi để chạy được app.
 
 ---
 

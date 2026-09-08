@@ -13,72 +13,80 @@ Guide development of Next.js frontend for AZWorkbase project with focus on Ant D
 
 ## Core Principles
 
-### 1. Project Structure (MANDATORY)
+### 1. Project Structure
+
+> ⚠️ **Block dưới đây ĐÃ CẬP NHẬT (2026-09-08) khớp code thật** — bản gốc trước đó là scaffold lúc khởi
+> tạo dự án (route `deposits/` riêng, component `Header.tsx`/`Sidebar.tsx`/`CustomerTable.tsx` mẫu,
+> hook `useAuth.ts` riêng) — KHÔNG khớp thực tế: dự án dùng route tiếng Việt trong `(dashboard)/`, auth
+> nằm trong `stores/auth.store.ts` + `hooks/useMyPermissions.ts` (không có `useAuth.ts`/`usePermissions.ts`
+> riêng như bản cũ mô tả), và không có thư mục `components/deposits/` (deposit UI nằm trong
+> `components/customers/DepositForm.tsx`, `CustomerDepositTable.tsx` vì gắn liền vào Customer Detail).
+> Danh sách dưới lấy trực tiếp từ `find frontend/src -maxdepth 2` — nếu lệch khi đọc lại, tin `find`/`ls`
+> thật, không tin bảng này.
 
 ```
 frontend/
-├── public/
-│   ├── images/
-│   └── icons/
+├── public/                        # logo, favicon...
 ├── src/
-│   ├── app/                      # Next.js 16 App Router
+│   ├── proxy.ts                   # Next.js proxy config (nếu có)
+│   ├── app/                       # Next.js 16 App Router
+│   │   ├── layout.tsx, globals.css, not-found.tsx, favicon.ico, logo.png
+│   │   ├── api/auth/               # Next.js Route Handler phụ trợ (KHÔNG phải backend NestJS)
 │   │   ├── (auth)/
 │   │   │   ├── login/
-│   │   │   │   └── page.tsx
-│   │   │   └── layout.tsx
-│   │   ├── (dashboard)/
-│   │   │   ├── customers/
-│   │   │   │   ├── page.tsx
-│   │   │   │   └── [id]/
-│   │   │   │       └── page.tsx
-│   │   │   ├── deposits/
-│   │   │   └── layout.tsx
-│   │   ├── layout.tsx
-│   │   ├── page.tsx
-│   │   └── globals.css
-│   ├── components/               # Reusable components
-│   │   ├── common/
-│   │   │   ├── Header.tsx
-│   │   │   ├── Sidebar.tsx
-│   │   │   ├── LoadingSkeleton.tsx
-│   │   │   └── ErrorBoundary.tsx
-│   │   ├── customers/
-│   │   │   ├── CustomerTable.tsx
-│   │   │   ├── CustomerFilters.tsx
-│   │   │   ├── CustomerDetailModal.tsx
-│   │   │   └── CustomerForm.tsx
-│   │   └── deposits/
-│   │       ├── DepositHistoryTable.tsx
-│   │       └── AddDepositForm.tsx
+│   │   │   ├── register/           # Đăng ký tài khoản mới (chờ Admin duyệt)
+│   │   │   └── account-status/     # Trạng thái chờ duyệt
+│   │   └── (dashboard)/            # Route thật dùng tên tiếng Việt cho URL, KHÔNG dùng tên tiếng Anh:
+│   │       ├── layout.tsx          # Sidebar + Auth guard (dùng nav-config.tsx)
+│   │       ├── customers/          # Khách hàng (bao gồm cả deposit — không có route /deposits riêng)
+│   │       ├── chia-data/          # Chia/gán data
+│   │       ├── trash-can/          # Thùng rác (soft-deleted)
+│   │       ├── users/              # Quản lý nhân viên + duyệt đăng ký mới
+│   │       ├── profile/            # Trang cá nhân
+│   │       ├── phong-ban/          # Phòng ban
+│   │       ├── nghi-phep/          # Xin nghỉ phép
+│   │       ├── duyet-phep/         # Duyệt nghỉ phép
+│   │       ├── nguon-media/        # Danh mục Nguồn (Facebook/TikTok/Google...)
+│   │       ├── nhom-lien-ket/      # Category/Group liên kết
+│   │       ├── nhom-toi-quan-ly/   # Nhóm mình quản lý
+│   │       ├── phan-quyen/         # RBAC UI (role/permission matrix)
+│   │       ├── reports/            # Báo cáo
+│   │       ├── audit-logs/         # Nhật ký audit log
+│   │       └── attendance-device/  # Máy chấm công
+│   ├── components/
+│   │   ├── common/                 # AntdAppProvider.tsx, SimpleList.tsx, CountBadge.tsx
+│   │   ├── customers/               # ⭐ Nhiều nhất — bao gồm cả deposit/note/group-membership/assignment UI:
+│   │   │                            #   CustomerForm, CustomerDetailDrawer, CustomerInfoTab, CustomerNotesTab,
+│   │   │                            #   CustomerDepositTable, DepositForm, CustomerAssignmentsTab, BulkAssignModal,
+│   │   │                            #   CustomerGroupMembershipsTab, GroupPickerModal, ImportExcelModal, SalesUserSelect...
+│   │   ├── link-groups/             # GroupManagersModal.tsx
+│   │   └── audit/                   # AuditDiffViewer.tsx
 │   ├── lib/                      # Utilities
-│   │   ├── api/
-│   │   │   ├── axios-instance.ts
-│   │   │   ├── customers.api.ts
-│   │   │   └── auth.api.ts
-│   │   ├── hooks/
-│   │   │   ├── useAuth.ts
-│   │   │   ├── useCustomers.ts
-│   │   │   └── usePermissions.ts
-│   │   ├── stores/
-│   │   │   ├── auth.store.ts
-│   │   │   └── ui.store.ts
-│   │   ├── types/
-│   │   │   ├── customer.types.ts
-│   │   │   └── user.types.ts
-│   │   └── utils/
-│   │       ├── formatters.ts
-│   │       └── validators.ts
-│   ├── middleware.ts
-│   └── constants/
-│       ├── routes.ts
-│       └── roles.ts
+│   │   ├── nav-config.tsx          # ⭐ Cấu hình sidebar/menu — có kèm nav-config.test.tsx
+│   │   ├── api/                    # 1 file / module BE — axios-instance.ts, auth/users/customers/
+│   │   │                           #   departments/leave-requests/link-groups/media-sources/reports/
+│   │   │                           #   roles/zk-device/attendance-export/assignments.api.ts, index.ts
+│   │   ├── hooks/                  # React Query hooks — useCustomers, useUsers, useDepartments,
+│   │   │                           #   useLinkGroups, useMediaSources, useReports, useRoles, useZkDevice,
+│   │   │                           #   useDebounce, useCustomerStats, useSidebarBadgeCounts
+│   │   ├── stores/                 # ⭐ Zustand — auth.store.ts (JWT + cookie persistence). KHÔNG có
+│   │   │                           #   ui.store.ts riêng như bản cũ mô tả — modal/UI state nằm cục bộ
+│   │   │                           #   trong từng component (useState), không tập trung qua store.
+│   │   ├── types/                  # audit.types.ts, auth.types.ts, customer.types.ts, reports.types.ts,
+│   │   │                           # roles.types.ts, zk-device.types.ts — KHÔNG có file riêng cho mọi
+│   │   │                           # module (vd departments/media-sources dùng type khai inline/từ customer.types.ts)
+│   │   └── utils/                  # formatters, validators dùng chung
+│   └── middleware.ts               # Route protection (JWT check qua cookie)
 ├── .env.local
 ├── .env.production
 ├── next.config.js
 ├── tailwind.config.js
+├── postcss.config.mjs
 ├── tsconfig.json
 └── package.json
 ```
+> Không có thư mục `src/constants/` (`routes.ts`/`roles.ts`) như bản cũ mô tả — role/permission check
+> dùng trực tiếp hook `useMyPermissions()` thay vì mảng role tĩnh (xem `PERMISSIONS.md`).
 
 ### 2. TypeScript Types (MANDATORY)
 

@@ -576,6 +576,15 @@ export const uploadsApi = {
 3. ✅ Tạo bucket `az-imgs-leave-request-workbase` — Private, Encryption Disabled, Object Lock Disabled.
 4. ✅ Xác nhận thử bật Public cho bucket avatar → bị chặn, bắt nhập thẻ hoặc trả $1 → **quyết định bỏ
    hẳn Public, giữ cả 2 Private** (xem mục 0).
+4b. ✅ `npm install @aws-sdk/client-s3 @aws-sdk/s3-request-presigner` ở `backend/` (commit
+   `3436161`) + thêm khung biến `B2_*` vào `backend/.env.development.example` (giá trị mẫu, KHÔNG
+   phải secret thật — secret thật vẫn chỉ nằm ở `.env.development` local, gitignored).
+8. ✅ Script `backend/scripts/test-b2-presign.ts` đã tạo (commit `bddd75c`, chạy qua
+   `npm run b2:test-presign`) và đã test kết nối thật với bucket — xem tiêu đề commit "Test: connection
+   with bucket testing run with npm run b2:test-presign". **Lưu ý:** script này chỉ xác nhận
+   credentials + CORS + bucket hoạt động, KHÔNG thay thế module `uploads` chính thức ở mục 9.2 bước 5-7
+   (App Key scope đúng 2 bucket, CORS rule multi-origin qua B2 CLI, điền `.env.development`/Vercel
+   dashboard) — các bước đó **vẫn cần làm** trước khi build module `uploads` thật.
 
 ### 9.2 Còn lại — làm tiếp khi sẵn sàng
 
@@ -618,9 +627,7 @@ export const uploadsApi = {
 7. ⏳ Điền `.env.development` (local, KHÔNG commit) + Vercel dashboard → Environment Variables
    (production) theo đúng mục 5.1.
 
-8. ⏳ Test thử bằng `curl` với presigned URL giả lập trước khi code thật (tạo thử 1 script Node nhỏ gọi
-   `getSignedUrl` bằng credentials thật, PUT 1 file test bằng `curl -X PUT <url> --upload-file test.jpg`,
-   xác nhận 200 OK và file xuất hiện trong bucket qua console).
+8. ✅ Đã xong — chuyển lên mục 9.1 (script `test-b2-presign.ts`, xem chi tiết ở đó).
 
 ---
 

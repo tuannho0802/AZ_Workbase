@@ -105,8 +105,9 @@ AZ-Workbase/
 │   │   │   ├── roles/               # RBAC động
 │   │   │   ├── users/               # CRUD nhân viên
 │   │   │   └── zk-device/           # Máy chấm công
-│   │   ├── integrations/zk-device/  # Giao thức TCP thô, chạy ĐỘC LẬP không qua NestJS DI
-│   │   └── scripts/                 # Script test/tiện ích độc lập (vd test-b2-presign.ts)
+│   │   └── integrations/zk-device/  # Giao thức TCP thô, chạy ĐỘC LẬP không qua NestJS DI
+│   ├── scripts/                     # ⚠️ Nằm ở backend/scripts (NGANG HÀNG src/, KHÔNG lồng trong src/)
+│   │                                 #    Script test/tiện ích độc lập (vd test-b2-presign.ts)
 │   └── .env.development            # Config môi trường dev (KHÔNG commit — xem .env.development.example)
 │
 ├── frontend/                       # Next.js 16 App (Port 3000)
