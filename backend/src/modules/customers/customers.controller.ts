@@ -275,7 +275,17 @@ export class CustomersController {
   }
 
   @Post(':id/deposits')
-  @RequirePermission('customers.manage')
+  // ⚠️ FIX BUG THẬT (cùng nguyên nhân với PATCH group-memberships - xem
+  // `customer-group-memberships.controller.ts`): route này SÓT LẠI
+  // permission key CŨ `customers.manage` sau khi migration
+  // `1778900000000-SplitCustomersManagePermission` tách quyền sửa khách
+  // hàng thành `customers.create`/`customers.edit`. `customers.manage` chỉ
+  // được seed cho admin/assistant/manager, KHÔNG tự có ở Employee dù
+  // Employee đã có `customers.edit` - Sales tạo/sửa KH bình thường được
+  // nhưng KHÔNG NẠP ĐƯỢC TIỀN (FTD) cho khách của chính mình, 403 im lặng.
+  // Đổi sang `customers.edit` cho nhất quán: ai sửa được thông tin KH thì
+  // cũng ghi nhận được deposit của KH đó.
+  @RequirePermission('customers.edit')
   @ApiOperation({ summary: 'Thêm nạp tiền cho khách hàng - phạm vi kiểm tra trong service (giống findOne)' })
   async createDeposit(
     @Param('id') id: string,

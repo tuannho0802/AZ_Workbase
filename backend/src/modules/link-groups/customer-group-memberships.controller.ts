@@ -35,7 +35,20 @@ export class CustomerGroupMembershipsController {
   }
 
   @Patch(':id/group-memberships/:groupId')
-  @RequirePermission('customers.manage')
+  // ⚠️ FIX BUG THẬT: trước đây đòi `customers.manage` - permission KEY CŨ,
+  // đã bị migration `1778900000000-SplitCustomersManagePermission` tách
+  // thành `customers.create`/`customers.edit` cho TOÀN BỘ route
+  // create/edit khách hàng khác, NHƯNG route này (module link-groups,
+  // KHÔNG nằm trong phạm vi migration đó) bị bỏ sót, vẫn giữ nguyên
+  // `customers.manage` - permission này CHỈ được seed sẵn cho
+  // admin/assistant/manager (xem `1778600000000-AddDetailedRbacPermissions`),
+  // KHÔNG BAO GIỜ tự động có ở Employee dù Employee đã được cấp
+  // `customers.edit` (dùng để sửa thông tin KH bình thường). Hậu quả: bất
+  // kỳ role nào (kể cả Employee) có quyền sửa khách hàng vẫn bị 403 khi
+  // tick "đã join nhóm" - đúng bug đã gặp thật (customer 53217). Đổi sang
+  // `customers.edit` để nhất quán với phần còn lại của "sửa thông tin
+  // khách hàng" - ai sửa được KH thì cũng tick được nhóm của KH đó.
+  @RequirePermission('customers.edit')
   @ApiOperation({ summary: 'Bật/tắt trạng thái đã join của customer với 1 group' })
   async setMembership(
     @Param('id', ParseIntPipe) id: number,
