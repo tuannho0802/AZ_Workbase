@@ -9,6 +9,7 @@ export interface CustomerFilterParams {
   status?: string;
   source?: string;
   salesUserId?: number;
+  marketingUserId?: number;
   departmentId?: number;
   search?: string;
   dateFrom?: string;

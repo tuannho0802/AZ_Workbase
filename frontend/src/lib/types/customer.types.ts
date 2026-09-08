@@ -14,6 +14,13 @@ export interface CustomerNote {
   createdAt: string;
 }
 
+export interface RecentNote {
+  id: number;
+  note: string;
+  createdAt: string;
+  createdByName: string | null;
+}
+
 export interface Deposit {
   id: number;
   customerId: number;
@@ -101,6 +108,10 @@ export interface Customer {
    * giống "Sales chính/phụ" (tên nhóm đầu + "+N", hover xem chi tiết). */
   joinedGroups?: Array<{ id: number; name: string }>;
   notes?: CustomerNote[];
+  // Tối đa 5 note gần nhất (mới nhất trước) - trả kèm sẵn từ findAll() (1
+  // query/trang, KHÔNG N+1) - dùng cho cột "Ghi chú gần nhất" ở bảng danh
+  // sách, KHÁC với `notes` (đầy đủ, chỉ có ở findOne() khi mở chi tiết).
+  recentNotes?: RecentNote[];
   deposits?: Deposit[];
   createdById?: number;
   updatedById?: number;

@@ -11,17 +11,20 @@ interface CustomerFiltersProps {
     source?: string;
     status?: string;
     salesUserId?: number;
+    marketingUserId?: number;
     dateFrom?: string;
     dateTo?: string;
     joinedGroups?: 'joined' | 'not_joined';
   };
   salesUsers: { id: number; name: string }[];
+  marketingUsers: { id: number; name: string }[];
   onFiltersChange: (newFilters: any) => void;
 }
 
 export const CustomerFilters: React.FC<CustomerFiltersProps> = ({
   filters,
   salesUsers,
+  marketingUsers,
   onFiltersChange,
 }) => {
   const [fromDate, setFromDate] = useState<Dayjs | null>(filters.dateFrom ? dayjs(filters.dateFrom) : null);
@@ -148,7 +151,7 @@ export const CustomerFilters: React.FC<CustomerFiltersProps> = ({
         </Col>
 
         <Col xs={24} sm={12} md={4}>
-          <label className="block text-sm font-medium mb-1">Sales</label>
+          <label className="block text-sm font-medium mb-1">Sales (Phòng Kinh Doanh)</label>
           <Select
             placeholder="Chọn Sales"
             allowClear
@@ -158,6 +161,20 @@ export const CustomerFilters: React.FC<CustomerFiltersProps> = ({
             value={filters.salesUserId}
             onChange={(val) => onFiltersChange({ ...filters, salesUserId: val, page: 1 })}
             options={salesUsers.map(u => ({ value: u.id, label: u.name }))}
+          />
+        </Col>
+
+        <Col xs={24} sm={12} md={4}>
+          <label className="block text-sm font-medium mb-1">Marketing (Phòng Marketing)</label>
+          <Select
+            placeholder="Chọn người nhập data"
+            allowClear
+            showSearch
+            optionFilterProp="label"
+            style={{ width: '100%' }}
+            value={filters.marketingUserId}
+            onChange={(val) => onFiltersChange({ ...filters, marketingUserId: val, page: 1 })}
+            options={marketingUsers.map(u => ({ value: u.id, label: u.name }))}
           />
         </Col>
 

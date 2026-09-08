@@ -20,6 +20,7 @@ import { useCustomers } from '@/lib/hooks/useCustomers';
 import { useDebounce } from '@/lib/hooks/useDebounce';
 import { usersApi } from '@/lib/api/users.api';
 import { useMyPermissions } from '@/lib/hooks/useMyPermissions';
+import { useDepartments } from '@/lib/hooks/useDepartments';
 import dayjs from 'dayjs';
 import { CustomerFilters } from '@/components/customers/CustomerFilters';
 import { SourceTag } from '@/components/customers/SourceTag';
@@ -235,9 +236,15 @@ function CustomersPageContent() {
   const [source, setSource] = useState<string | undefined>(undefined);
   const [status, setStatus] = useState<string | undefined>(undefined);
   const [salesUserId, setSalesUserId] = useState<number | undefined>(undefined);
+  const [marketingUserId, setMarketingUserId] = useState<number | undefined>(undefined);
   const [dateFrom, setDateFrom] = useState<dayjs.Dayjs | null>(null);
   const [dateTo, setDateTo] = useState<dayjs.Dayjs | null>(null);
   const [joinedGroups, setJoinedGroups] = useState<'joined' | 'not_joined' | undefined>(undefined);
+  // Số ghi chú gần nhất hiển thị trong tooltip cột "Ghi chú gần nhất" - BE
+  // luôn trả tối đa 5 (MAX_RECENT_NOTES ở customers.service.ts), FE cho
+  // người dùng CHỌN xem 3 hay 5 trong số đó (cắt bớt ở đây, không gọi lại
+  // API khi đổi lựa chọn này).
+  const [recentNotesCount, setRecentNotesCount] = useState<3 | 5>(3);
   const [sortField, setSortField] = useState<string>('createdAt');
   const [sortOrder, setSortOrder] = useState<'ASC' | 'DESC'>('DESC');
 
@@ -274,6 +281,7 @@ function CustomersPageContent() {
     source,
     status,
     salesUserId,
+    marketingUserId,
     sortField,
     sortOrder,
     dateFrom: dateFrom?.format('YYYY-MM-DD'),
@@ -284,7 +292,15 @@ function CustomersPageContent() {
   const customers = customersResponse?.data || [];
   const total = customersResponse?.total || 0;
 
-  const [salesUsers, setSalesUsers] = useState<{ id: number; name: string }[]>([]);
+  // Danh sách TOÀN BỘ user (không lọc role/phòng ban) - lấy 1 lần, sau đó
+  // lọc CLIENT-SIDE thành 2 danh sách riêng theo ĐÚNG phòng ban (Kinh doanh
+  // / Marketing), thay vì gọi 2 API riêng - endpoint GET /users/all vốn đã
+  // trả kèm quan hệ `department` cho mỗi user (users.service.ts
+  // findEmployees(), relations: ['department']), đủ dữ liệu để lọc mà
+  // không cần thêm/sửa gì ở Backend.
+  const [salesUsers, setSalesUsers] = useState<
+    { id: number; name: string; department?: { id: number; name: string } | null }[]
+  >([]);
 
   const fetchSalesUsers = async () => {
     try {
@@ -298,6 +314,32 @@ function CustomersPageContent() {
   useEffect(() => {
     fetchSalesUsers();
   }, []);
+
+  // Tra đúng phòng "Kinh doanh"/"Marketing" theo TÊN (không hardcode ID, vì
+  // ID phòng ban khác nhau giữa các môi trường/instance) - so khớp không
+  // phân biệt hoa/thường, chỉ cần TÊN có chứa từ khoá tương ứng (khớp cách
+  // đặt tên phổ biến đã thấy trong hệ thống: "Phòng Kinh Doanh", "Phòng
+  // Marketing"). Nếu sau này đổi tên phòng ban thành thứ không chứa 2 từ
+  // khoá này, dropdown tương ứng sẽ rỗng - CHỦ ĐỘNG chấp nhận đánh đổi này
+  // để không phải hardcode ID; admin có thể đổi tên phòng ban cho khớp lại.
+  const { departments } = useDepartments();
+  const salesDept = useMemo(
+    () => (departments || []).find((d: any) => d.name?.toLowerCase().includes('kinh doanh')),
+    [departments],
+  );
+  const marketingDept = useMemo(
+    () => (departments || []).find((d: any) => d.name?.toLowerCase().includes('marketing')),
+    [departments],
+  );
+
+  const salesUsersInDept = useMemo(
+    () => salesUsers.filter((u) => salesDept && u.department?.id === salesDept.id),
+    [salesUsers, salesDept],
+  );
+  const marketingUsersInDept = useMemo(
+    () => salesUsers.filter((u) => marketingDept && u.department?.id === marketingDept.id),
+    [salesUsers, marketingDept],
+  );
 
   // ⚠️ FIX BUG THẬT (rà soát UI Permission): trước đây liệt kê cứng
   // ['admin','manager','assistant'] - lệch hẳn với BE (đã dùng
@@ -541,6 +583,7 @@ function CustomersPageContent() {
     if (newFilters.source !== undefined) setSource(newFilters.source);
     if (newFilters.status !== undefined) setStatus(newFilters.status);
     if (newFilters.salesUserId !== undefined) setSalesUserId(newFilters.salesUserId);
+    if (newFilters.marketingUserId !== undefined) setMarketingUserId(newFilters.marketingUserId);
     if (newFilters.dateFrom !== undefined) setDateFrom(newFilters.dateFrom ? dayjs(newFilters.dateFrom) : null);
     if (newFilters.dateTo !== undefined) setDateTo(newFilters.dateTo ? dayjs(newFilters.dateTo) : null);
     if (newFilters.joinedGroups !== undefined) setJoinedGroups(newFilters.joinedGroups);
@@ -635,11 +678,13 @@ function CustomersPageContent() {
                       source,
                       status,
                       salesUserId,
+                      marketingUserId,
                       dateFrom: dateFrom?.format('YYYY-MM-DD'),
                       dateTo: dateTo?.format('YYYY-MM-DD'),
                       joinedGroups,
                     }}
-                    salesUsers={salesUsers}
+                    salesUsers={salesUsersInDept}
+                    marketingUsers={marketingUsersInDept}
                     onFiltersChange={handleFiltersChange}
                   />
                 </div>
@@ -654,11 +699,13 @@ function CustomersPageContent() {
             source,
             status,
             salesUserId,
+                marketingUserId,
             dateFrom: dateFrom?.format('YYYY-MM-DD'),
             dateTo: dateTo?.format('YYYY-MM-DD'),
             joinedGroups,
           }}
-          salesUsers={salesUsers}
+              salesUsers={salesUsersInDept}
+              marketingUsers={marketingUsersInDept}
           onFiltersChange={handleFiltersChange}
         />
       )}
