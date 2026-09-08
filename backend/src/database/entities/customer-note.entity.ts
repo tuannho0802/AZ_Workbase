@@ -38,6 +38,18 @@ export class CustomerNote {
   @JoinColumn({ name: 'created_by' })
   createdByUser: User;
 
+  // NULL nếu ghi chú chưa từng được sửa lần nào (kể cả bởi chính người
+  // tạo) - FE (CustomerNotesTab.tsx) chỉ hiện dòng hệ thống "Sửa cuối bởi"
+  // khi `updatedBy` khác `createdBy` (yêu cầu nghiệp vụ: chỉ cần biết khi
+  // 2 NGƯỜI KHÁC NHAU cùng chạm vào 1 ghi chú, tự sửa ghi chú của mình
+  // không cần hiển thị thêm dòng nào).
+  @Column({ name: 'updated_by', type: 'int', nullable: true })
+  updatedBy: number | null;
+
+  @ManyToOne(() => User, { nullable: true })
+  @JoinColumn({ name: 'updated_by' })
+  updatedByUser: User | null;
+
   @CreateDateColumn({ name: 'created_at' })
   createdAt: Date;
 

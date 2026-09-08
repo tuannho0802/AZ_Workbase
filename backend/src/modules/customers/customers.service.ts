@@ -636,6 +636,7 @@ export class CustomersService {
       .leftJoinAndSelect('customer.deposits', 'deposits')
       .leftJoinAndSelect('customer.notes', 'notes')
       .leftJoinAndSelect('notes.createdByUser', 'noteCreator')
+      .leftJoinAndSelect('notes.updatedByUser', 'noteUpdater')
       .leftJoinAndSelect('customer.createdBy', 'createdBy')
       .leftJoinAndSelect('customer.updatedBy', 'updatedBy');
 
@@ -717,6 +718,69 @@ export class CustomersService {
     });
   }
 
+  /**
+   * Cổng gác DUY NHẤT cho sửa/xoá 1 ghi chú khách hàng (customer_notes.edit
+   * / customer_notes.delete) - thay thế hoàn toàn bypass cứng cũ "ghi chú
+   * của chính mình luôn sửa/xoá được bất kể permission". Giờ đây HOÀN TOÀN
+   * Dynamic theo `role_permissions` (Admin tự bật/tắt qua trang "Phân
+   * quyền" - KHÔNG cần migration để thêm/bớt cho role nào):
+   *
+   *  - KHÔNG có dòng permission nào cho role này -> luôn bị chặn, KỂ CẢ với
+   *    ghi chú do chính mình tạo (khác hẳn thiết kế cũ). Admin có thể chủ
+   *    động tắt hẳn quyền sửa/xoá ghi chú của 1 Role qua UI nếu muốn.
+   *  - scope='own': chỉ sửa/xoá được ghi chú CHÍNH MÌNH tạo
+   *    (`note.createdBy === userId`).
+   *  - scope='department': sửa/xoá được ghi chú của KHÁCH HÀNG thuộc phòng
+   *    ban mình quản lý (`department.manager_user_id = mình`), bất kể ai
+   *    tạo ra ghi chú đó.
+   *  - scope='all': sửa/xoá được MỌI ghi chú.
+   *
+   * Admin luôn bypass tuyệt đối (đúng nguyên tắc 3 lối thoát hiểm bắt buộc
+   * của dự án: PermissionGuard, RolesService.getMyPermissions(), và mọi
+   * helper tự check quyền như hàm này).
+   */
+  private async assertNoteManageable(
+    note: CustomerNote,
+    customerId: number,
+    userId: number,
+    userRole: string,
+    departmentId: number | null,
+    permissionKey: 'customer_notes.edit' | 'customer_notes.delete',
+    forbiddenMessage: string,
+  ): Promise<void> {
+    if (userRole === Role.ADMIN) {
+      await this.assertCustomerAccessible(customerId, userId, userRole, PermissionScope.ALL);
+      return;
+    }
+
+    const { allowed, scope } = await this.permissionsService.hasPermission(
+      userRole,
+      permissionKey,
+      departmentId,
+    );
+
+    if (!allowed) {
+      throw new ForbiddenException(forbiddenMessage);
+    }
+
+    if (scope === PermissionScope.OWN) {
+      if (note.createdBy !== userId) {
+        throw new ForbiddenException(forbiddenMessage);
+      }
+      // Vẫn xác nhận khách hàng còn truy cập được (fallback theo role) -
+      // không siết thêm điều kiện nào khác ngoài việc ghi chú phải là của
+      // chính mình.
+      await this.assertCustomerAccessible(customerId, userId, userRole, null);
+      return;
+    }
+
+    // 'department' hoặc 'all' - áp ĐÚNG scope này vào việc xác nhận truy
+    // cập khách hàng chứa ghi chú (tái dùng CustomerAccessHelper sẵn có
+    // qua assertCustomerAccessible, cùng 1 nguồn chân lý với view/manage
+    // khách hàng).
+    await this.assertCustomerAccessible(customerId, userId, userRole, scope);
+  }
+
   async updateNote(
     customerId: number,
     noteId: number,
@@ -728,20 +792,24 @@ export class CustomersService {
     const note = await this.notesRepository.findOne({ where: { id: noteId, customerId } });
     if (!note) throw new NotFoundException('Không tìm thấy ghi chú');
 
-    if (note.createdBy !== userId) {
-      if (userRole === 'admin') {
-        await this.assertCustomerAccessible(customerId, userId, userRole, 'all');
-      } else {
-        const { allowed, scope } = await this.permissionsService.hasPermission(userRole, 'customer_notes.edit', departmentId);
-        if (!allowed) throw new ForbiddenException('Bạn chỉ có quyền sửa ghi chú do chính mình tạo');
-        await this.assertCustomerAccessible(customerId, userId, userRole, scope);
-      }
-    } else {
-      await this.assertCustomerAccessible(customerId, userId, userRole, null); // Only verify customer access
-    }
+    await this.assertNoteManageable(
+      note,
+      customerId,
+      userId,
+      userRole,
+      departmentId,
+      'customer_notes.edit',
+      'Bạn không có quyền sửa ghi chú này',
+    );
 
     const oldData = { ...note };
     this.notesRepository.merge(note, dto);
+    // ⚠️ MỚI: luôn ghi nhận người SỬA CUỐI (kể cả khi người này chính là
+    // người tạo - vẫn set để nhất quán, FE chỉ hiển thị dòng "Sửa cuối bởi"
+    // khi `updatedBy !== createdBy`, xem CustomerNotesTab.tsx) - phục vụ
+    // yêu cầu "khi A tạo, B sửa thì phải có dòng ghi chú nhỏ hệ thống tự
+    // tạo báo ai là người sửa cuối cùng".
+    note.updatedBy = userId;
     const savedNote = await this.notesRepository.save(note);
 
     this.auditService.logActionAsync(
@@ -755,7 +823,7 @@ export class CustomersService {
 
     return this.notesRepository.findOne({
       where: { id: savedNote.id },
-      relations: ['createdByUser'],
+      relations: ['createdByUser', 'updatedByUser'],
     });
   }
 
@@ -769,17 +837,15 @@ export class CustomersService {
     const note = await this.notesRepository.findOne({ where: { id: noteId, customerId } });
     if (!note) throw new NotFoundException('Không tìm thấy ghi chú');
 
-    if (note.createdBy !== userId) {
-      if (userRole === 'admin') {
-        await this.assertCustomerAccessible(customerId, userId, userRole, 'all');
-      } else {
-        const { allowed, scope } = await this.permissionsService.hasPermission(userRole, 'customer_notes.delete', departmentId);
-        if (!allowed) throw new ForbiddenException('Bạn chỉ có quyền xoá ghi chú do chính mình tạo');
-        await this.assertCustomerAccessible(customerId, userId, userRole, scope);
-      }
-    } else {
-      await this.assertCustomerAccessible(customerId, userId, userRole, null);
-    }
+    await this.assertNoteManageable(
+      note,
+      customerId,
+      userId,
+      userRole,
+      departmentId,
+      'customer_notes.delete',
+      'Bạn không có quyền xoá ghi chú này',
+    );
 
     const oldData = { ...note };
     await this.notesRepository.remove(note);
