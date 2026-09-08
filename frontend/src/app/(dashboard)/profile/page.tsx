@@ -167,6 +167,7 @@ function ProfilePortal({ userId, onDeleted }: { userId: number; onDeleted?: () =
   const canDelete = !isSelf && can('users.delete');
 
   const startEditing = () => {
+    if (!detail) return;
     infoForm.setFieldsValue({
       name: detail.name,
       phone: detail.phone,
@@ -181,6 +182,7 @@ function ProfilePortal({ userId, onDeleted }: { userId: number; onDeleted?: () =
   };
 
   const handleSaveInfo = async () => {
+    if (!detail) return;
     try {
       const values = await infoForm.validateFields();
       setSavingInfo(true);
@@ -245,6 +247,7 @@ function ProfilePortal({ userId, onDeleted }: { userId: number; onDeleted?: () =
   };
 
   const handleSoftDelete = () => {
+    if (!detail) return;
     modal.confirm({
       title: `Xoá tài khoản "${detail.name}"?`,
       content: 'Tài khoản sẽ được chuyển vào thùng rác, dữ liệu vẫn giữ nguyên và có thể khôi phục. Người này sẽ không đăng nhập được nữa ngay lập tức.',
