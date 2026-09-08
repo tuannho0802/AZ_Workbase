@@ -13,6 +13,7 @@ import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { GetUser } from '../../common/decorators/get-user.decorator';
 import { LinkGroupManagersService } from './link-group-managers.service';
 import { AddGroupManagerDto } from './dto/add-group-manager.dto';
+import { AddContentStaffDto } from './dto/add-content-staff.dto';
 
 /**
  * "Quản lý chính/phụ" của từng LinkGroup - KHÁC với LinkGroupsController
@@ -68,5 +69,29 @@ export class LinkGroupManagersController {
     @GetUser() user: any,
   ) {
     return this.managersService.removeSecondaryManager(id, userId, user.id, user.role);
+  }
+
+  @Post(':id/content-staff')
+  @ApiOperation({
+    summary: 'Thêm 1 Nhân viên Content cho nhóm - chỉ admin hoặc chính Quản lý chính của nhóm đó',
+  })
+  async addContentStaff(
+    @Param('id', ParseIntPipe) id: number,
+    @Body() dto: AddContentStaffDto,
+    @GetUser() user: any,
+  ) {
+    return this.managersService.addContentStaff(id, dto.userId, user.id, user.role);
+  }
+
+  @Delete(':id/content-staff/:userId')
+  @ApiOperation({
+    summary: 'Gỡ 1 Nhân viên Content khỏi nhóm - chỉ admin hoặc chính Quản lý chính của nhóm đó',
+  })
+  async removeContentStaff(
+    @Param('id', ParseIntPipe) id: number,
+    @Param('userId', ParseIntPipe) userId: number,
+    @GetUser() user: any,
+  ) {
+    return this.managersService.removeContentStaff(id, userId, user.id, user.role);
   }
 }

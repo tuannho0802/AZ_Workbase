@@ -9,6 +9,7 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { LinkGroup } from '../../database/entities/link-group.entity';
 import { LinkGroupSecondaryManager } from '../../database/entities/link-group-secondary-manager.entity';
+import { LinkGroupContentStaff } from '../../database/entities/link-group-content-staff.entity';
 import { User } from '../../database/entities/user.entity';
 import { Role } from '../../common/enums/role.enum';
 import { LinkGroupAccessHelper } from './helpers/link-group-access.helper';
@@ -19,6 +20,9 @@ export interface GroupManagersResult {
   groupName: string;
   primaryManager: { id: number; name: string; email: string; role: string } | null;
   secondaryManagers: Array<{ id: number; name: string; email: string; role: string; addedAt: Date }>;
+  // "Nhân viên Content" - cùng shape với secondaryManagers, xem
+  // LinkGroupContentStaff.
+  contentStaff: Array<{ id: number; name: string; email: string; role: string; addedAt: Date }>;
 }
 
 @Injectable()
@@ -28,6 +32,8 @@ export class LinkGroupManagersService {
     private readonly groupRepo: Repository<LinkGroup>,
     @InjectRepository(LinkGroupSecondaryManager)
     private readonly secondaryRepo: Repository<LinkGroupSecondaryManager>,
+    @InjectRepository(LinkGroupContentStaff)
+    private readonly contentStaffRepo: Repository<LinkGroupContentStaff>,
     @InjectRepository(User)
     private readonly userRepo: Repository<User>,
     private readonly permissionsService: PermissionsService,
@@ -66,7 +72,13 @@ export class LinkGroupManagersService {
   private async loadGroupWithManagers(groupId: number): Promise<LinkGroup> {
     const group = await this.groupRepo.findOne({
       where: { id: groupId },
-      relations: ['primaryManager', 'secondaryManagers', 'secondaryManagers.user'],
+      relations: [
+        'primaryManager',
+        'secondaryManagers',
+        'secondaryManagers.user',
+        'contentStaff',
+        'contentStaff.user',
+      ],
     });
     if (!group) {
       throw new NotFoundException('Không tìm thấy nhóm này');
@@ -95,6 +107,15 @@ export class LinkGroupManagersService {
           role: m.user.role,
           addedAt: m.createdAt,
         })),
+      contentStaff: (group.contentStaff ?? [])
+        .filter((m) => m.user)
+        .map((m) => ({
+          id: m.user.id,
+          name: m.user.name,
+          email: m.user.email,
+          role: m.user.role,
+          addedAt: m.createdAt,
+        })),
     };
   }
 
@@ -107,28 +128,53 @@ export class LinkGroupManagersService {
   async listManagedByMe(requesterId: number, requesterRole: string): Promise<GroupManagersResult[]> {
     let groups: LinkGroup[];
 
+    const fullRelations = [
+      'primaryManager',
+      'secondaryManagers',
+      'secondaryManagers.user',
+      'contentStaff',
+      'contentStaff.user',
+      'category',
+    ];
+
     if (await this.hasBroadAccess(requesterRole, undefined)) {
       groups = await this.groupRepo.find({
-        relations: ['primaryManager', 'secondaryManagers', 'secondaryManagers.user', 'category'],
+        relations: fullRelations,
         order: { sortOrder: 'ASC', id: 'ASC' },
       });
     } else {
-      // 2 nhánh: group mình là primary, HOẶC group mình có mặt trong
-      // secondary_managers - gộp lại, loại trùng (trường hợp hiếm nhưng
-      // valid: bị gán cả 2 vai trò cùng lúc, vd trước là phụ giờ lên chính
-      // mà chưa kịp gỡ khỏi bảng phụ).
+      // 3 nhánh: group mình là primary, group mình có mặt trong
+      // secondary_managers, HOẶC group mình có mặt trong content_staff -
+      // gộp lại, loại trùng (trường hợp hiếm nhưng valid: bị gán nhiều vai
+      // trò cùng lúc, vd trước là phụ giờ lên chính mà chưa kịp gỡ khỏi
+      // bảng phụ, hoặc vừa là phụ vừa là content).
+      const joinRowRelations = [
+        'group',
+        'group.primaryManager',
+        'group.secondaryManagers',
+        'group.secondaryManagers.user',
+        'group.contentStaff',
+        'group.contentStaff.user',
+        'group.category',
+      ];
+
       const asPrimary = await this.groupRepo.find({
         where: { primaryManagerId: requesterId },
-        relations: ['primaryManager', 'secondaryManagers', 'secondaryManagers.user', 'category'],
+        relations: fullRelations,
       });
       const secondaryRows = await this.secondaryRepo.find({
         where: { userId: requesterId },
-        relations: ['group', 'group.primaryManager', 'group.secondaryManagers', 'group.secondaryManagers.user', 'group.category'],
+        relations: joinRowRelations,
       });
       const asSecondary = secondaryRows.map((r) => r.group);
+      const contentRows = await this.contentStaffRepo.find({
+        where: { userId: requesterId },
+        relations: joinRowRelations,
+      });
+      const asContentStaff = contentRows.map((r) => r.group);
 
       const byId = new Map<number, LinkGroup>();
-      for (const g of [...asPrimary, ...asSecondary]) byId.set(g.id, g);
+      for (const g of [...asPrimary, ...asSecondary, ...asContentStaff]) byId.set(g.id, g);
       groups = Array.from(byId.values()).sort((a, b) => a.sortOrder - b.sortOrder || a.id - b.id);
     }
 
@@ -143,6 +189,7 @@ export class LinkGroupManagersService {
   async getManagers(groupId: number, requesterId: number, requesterRole: string): Promise<GroupManagersResult> {
     const group = await this.loadGroupWithManagers(groupId);
     const secondaryIds = (group.secondaryManagers ?? []).map((m) => m.userId);
+    const contentStaffIds = (group.contentStaff ?? []).map((m) => m.userId);
 
     if (
       !LinkGroupAccessHelper.canManage(
@@ -150,9 +197,10 @@ export class LinkGroupManagersService {
         await this.hasBroadAccess(requesterRole, undefined),
         group.primaryManagerId,
         secondaryIds,
+        contentStaffIds,
       )
     ) {
-      throw new ForbiddenException('Bạn không phải quản lý (chính/phụ) của nhóm này nên không có quyền xem');
+      throw new ForbiddenException('Bạn không phải quản lý (chính/phụ) hoặc Nhân viên Content của nhóm này nên không có quyền xem');
     }
 
     return this.toResult(group);
@@ -230,6 +278,88 @@ export class LinkGroupManagersService {
     }
 
     await this.secondaryRepo.remove(existing);
+
+    return this.getManagers(groupId, requesterId, requesterRole);
+  }
+
+  /**
+   * Thêm 1 Nhân viên Content - CÙNG RULE với Quản lý phụ: CHỈ admin hoặc
+   * CHÍNH quản lý chính của group đó (tái dùng `canEditSecondaryManagers`,
+   * không tạo rule riêng - xem JSDoc `LinkGroupContentStaff`).
+   *
+   * KHÔNG chặn nếu người này đã là Quản lý phụ - 1 user được phép VỪA là
+   * Quản lý phụ VỪA là Nhân viên Content của cùng 1 group (2 vai trò không
+   * loại trừ nhau, xem JSDoc entity).
+   */
+  async addContentStaff(
+    groupId: number,
+    userId: number,
+    requesterId: number,
+    requesterRole: string,
+  ): Promise<GroupManagersResult> {
+    const group = await this.loadGroupWithManagers(groupId);
+
+    if (
+      !LinkGroupAccessHelper.canEditSecondaryManagers(
+        requesterId,
+        await this.hasBroadAccess(requesterRole, undefined),
+        group.primaryManagerId,
+      )
+    ) {
+      throw new ForbiddenException('Chỉ Quản lý chính (hoặc admin) mới có quyền thêm Nhân viên Content cho nhóm này');
+    }
+
+    if (group.primaryManagerId === userId) {
+      throw new BadRequestException('Người này đang là Quản lý chính của nhóm - không thể vừa là chính vừa là Nhân viên Content');
+    }
+
+    const alreadyContentStaff = (group.contentStaff ?? []).some((m) => m.userId === userId);
+    if (alreadyContentStaff) {
+      throw new ConflictException('Người này đã là Nhân viên Content của nhóm rồi');
+    }
+
+    const targetUser = await this.userRepo.findOneBy({ id: userId, isActive: true });
+    if (!targetUser) {
+      throw new BadRequestException(`Nhân viên ID ${userId} không tồn tại hoặc đã bị khóa`);
+    }
+
+    const created = this.contentStaffRepo.create({
+      groupId,
+      userId,
+      addedById: requesterId,
+    });
+    await this.contentStaffRepo.save(created);
+
+    return this.getManagers(groupId, requesterId, requesterRole);
+  }
+
+  /**
+   * Gỡ 1 Nhân viên Content - CHỈ admin hoặc CHÍNH quản lý chính của group đó.
+   */
+  async removeContentStaff(
+    groupId: number,
+    userId: number,
+    requesterId: number,
+    requesterRole: string,
+  ): Promise<GroupManagersResult> {
+    const group = await this.loadGroupWithManagers(groupId);
+
+    if (
+      !LinkGroupAccessHelper.canEditSecondaryManagers(
+        requesterId,
+        await this.hasBroadAccess(requesterRole, undefined),
+        group.primaryManagerId,
+      )
+    ) {
+      throw new ForbiddenException('Chỉ Quản lý chính (hoặc admin) mới có quyền xoá Nhân viên Content của nhóm này');
+    }
+
+    const existing = (group.contentStaff ?? []).find((m) => m.userId === userId);
+    if (!existing) {
+      throw new NotFoundException('Người này không phải Nhân viên Content của nhóm - không có gì để xoá');
+    }
+
+    await this.contentStaffRepo.remove(existing);
 
     return this.getManagers(groupId, requesterId, requesterRole);
   }

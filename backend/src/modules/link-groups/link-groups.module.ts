@@ -3,6 +3,7 @@ import { TypeOrmModule } from '@nestjs/typeorm';
 import { LinkCategory } from '../../database/entities/link-category.entity';
 import { LinkGroup } from '../../database/entities/link-group.entity';
 import { LinkGroupSecondaryManager } from '../../database/entities/link-group-secondary-manager.entity';
+import { LinkGroupContentStaff } from '../../database/entities/link-group-content-staff.entity';
 import { CustomerGroupMembership } from '../../database/entities/customer-group-membership.entity';
 import { Customer } from '../../database/entities/customer.entity';
 import { User } from '../../database/entities/user.entity';
@@ -21,6 +22,7 @@ import { CustomerGroupMembershipsController } from './customer-group-memberships
       LinkCategory,
       LinkGroup,
       LinkGroupSecondaryManager,
+      LinkGroupContentStaff,
       CustomerGroupMembership,
       Customer,
       User,

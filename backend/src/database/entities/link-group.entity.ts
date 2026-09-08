@@ -13,6 +13,7 @@ import { LinkCategory } from './link-category.entity';
 import { CustomerGroupMembership } from './customer-group-membership.entity';
 import { User } from './user.entity';
 import { LinkGroupSecondaryManager } from './link-group-secondary-manager.entity';
+import { LinkGroupContentStaff } from './link-group-content-staff.entity';
 
 /**
  * 1 nhóm cụ thể được đặt tên (vd "Nhóm Zalo Sales HN"), thuộc 1 LinkCategory
@@ -58,6 +59,12 @@ export class LinkGroup {
     // chính (hoặc admin) có quyền thêm/xoá qua LinkGroupManagersService.
     @OneToMany(() => LinkGroupSecondaryManager, (m) => m.group)
     secondaryManagers: LinkGroupSecondaryManager[];
+
+    // "Nhân viên Content" - CÙNG CƠ CHẾ với Quản lý phụ (nhiều user/group,
+    // add/remove thuần tuý) nhưng KHÁC vai trò nghiệp vụ (phụ trách nội
+    // dung, không phải quản trị nhóm) - xem LinkGroupContentStaff.
+    @OneToMany(() => LinkGroupContentStaff, (m) => m.group)
+    contentStaff: LinkGroupContentStaff[];
 
     @Column({ name: 'sort_order', default: 0 })
     sortOrder: number;

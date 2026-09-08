@@ -25,17 +25,22 @@ export class LinkGroupAccessHelper {
   /**
    * Có được XEM/thao tác trên nhóm này không - true nếu có quyền rộng
    * (`hasBroadAccess`, do tầng service tính), HOẶC là quản lý chính, HOẶC
-   * nằm trong danh sách quản lý phụ.
+   * nằm trong danh sách quản lý phụ, HOẶC nằm trong danh sách Nhân viên
+   * Content (cùng cơ chế xem như Quản lý phụ - xem `LinkGroupContentStaff`).
+   * `contentStaffUserIds` mặc định `[]` để không phá vỡ các lời gọi cũ chưa
+   * truyền tham số này.
    */
   static canManage(
     userId: number,
     hasBroadAccess: boolean,
     primaryManagerId: number | null,
     secondaryManagerUserIds: number[],
+    contentStaffUserIds: number[] = [],
   ): boolean {
     if (hasBroadAccess) return true;
     if (primaryManagerId != null && primaryManagerId === userId) return true;
-    return secondaryManagerUserIds.includes(userId);
+    if (secondaryManagerUserIds.includes(userId)) return true;
+    return contentStaffUserIds.includes(userId);
   }
 
   /**
