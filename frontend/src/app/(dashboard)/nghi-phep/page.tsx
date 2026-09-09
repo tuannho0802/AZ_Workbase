@@ -8,6 +8,8 @@ import {
 import { PlusOutlined, CloseCircleOutlined, CalendarOutlined, FileTextOutlined, UserOutlined } from '@ant-design/icons';
 import { leaveRequestsApi, LeaveRequest } from '@/lib/api/leave-requests.api';
 import { useMyPermissions } from '@/lib/hooks/useMyPermissions';
+import { AttachmentUploader } from '@/components/leave-requests/AttachmentUploader';
+import { AttachmentsViewerButton } from '@/components/leave-requests/AttachmentsViewerButton';
 import dayjs from 'dayjs';
 
 const { RangePicker } = DatePicker;
@@ -103,6 +105,7 @@ export default function LeaveRequestsPage() {
   const [requests, setRequests] = useState<LeaveRequest[]>([]);
   const [loading, setLoading] = useState(false);
   const [modalOpen, setModalOpen] = useState(false);
+  const [attachmentUploaderKey, setAttachmentUploaderKey] = useState(0);
   const [isMobile, setIsMobile] = useState(false);
   const [form] = Form.useForm();
   const { message } = App.useApp();
@@ -151,12 +154,14 @@ export default function LeaveRequestsPage() {
         startDate: startDate.format('YYYY-MM-DD'),
         endDate: endDate.format('YYYY-MM-DD'),
         duration: values.duration,
-        reason: values.reason
+        reason: values.reason,
+        attachmentKeys: values.attachmentKeys ?? [],
       });
 
       message.success('Tạo đơn nghỉ phép thành công');
       setModalOpen(false);
       form.resetFields();
+      setAttachmentUploaderKey((k) => k + 1);
       fetchRequests();
     } catch (err: any) {
       message.error(err.message || 'Tạo đơn thất bại');
@@ -279,7 +284,11 @@ export default function LeaveRequestsPage() {
       <Modal
         title="Tạo đơn nghỉ phép"
         open={modalOpen}
-        onCancel={() => setModalOpen(false)}
+        onCancel={() => {
+          setModalOpen(false);
+          form.resetFields();
+          setAttachmentUploaderKey((k) => k + 1);
+        }}
         footer={null}
         width={600}
       >
