@@ -20,7 +20,7 @@ export class StorageController {
   @RequirePermission('storage.view')
   @ApiOperation({
     summary:
-      'Dung lượng đã dùng (cache, refresh định kỳ qua storage-cron - xem storage-cron.controller.ts) + hạn mức mềm',
+      'Dung lượng đã dùng (cache, có thể refresh thủ công qua POST usage/refresh) + hạn mức mềm',
   })
   async getUsage() {
     const [cache, softLimitGb] = await Promise.all([
