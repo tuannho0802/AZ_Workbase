@@ -48,6 +48,14 @@ export const storageApi = {
     return response.data;
   },
 
+  // `storage.manage` - tính lại THẬT ngay lúc gọi (không đợi cron ngoài) -
+  // dùng cho nút "Tính lại ngay", đặc biệt cần ở lần đầu bật tính năng khi
+  // storage-cron chưa từng chạy (cache rỗng, xem storage-cron.controller.ts).
+  refreshUsage: async (): Promise<StorageUsageCache> => {
+    const response = await axiosInstance.post<StorageUsageCache>('/storage/usage/refresh');
+    return response.data;
+  },
+
   // `storage.manage` - hạn mức MỀM để tính %, KHÔNG chặn upload nếu vượt
   updateSoftLimit: async (softLimitGb: number): Promise<{ softLimitGb: number }> => {
     const response = await axiosInstance.patch<{ softLimitGb: number }>('/storage/usage/limit', { softLimitGb });

@@ -28,6 +28,15 @@ export function useUpdateStorageLimit() {
   });
 }
 
+/** Tính lại THẬT dung lượng B2 ngay lúc gọi (Class C transaction) - chỉ Admin bấm tay, không tự động. */
+export function useRefreshStorageUsage() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: () => storageApi.refreshUsage(),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: USAGE_QUERY_KEY }),
+  });
+}
+
 /** Danh sách media phân trang theo cursor (ContinuationToken thật của B2) - "Tải thêm", không infinite-scroll tự động. */
 export function useStorageMedia(bucket: StorageBucketKey) {
   const query = useInfiniteQuery({
