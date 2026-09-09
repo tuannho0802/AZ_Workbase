@@ -1,8 +1,10 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { getRepositoryToken } from '@nestjs/typeorm';
 import { ConfigService } from '@nestjs/config';
-import { BadRequestException, ForbiddenException, NotFoundException } from '@nestjs/common';
+import { BadRequestException, NotFoundException } from '@nestjs/common';
 import { Setting } from '../../database/entities/setting.entity';
+import { User } from '../../database/entities/user.entity';
+import { LeaveRequestAttachment } from '../../database/entities/leave-request-attachment.entity';
 import {
   STORAGE_USAGE_CACHE_SETTING_KEY,
   STORAGE_SOFT_LIMIT_SETTING_KEY,
@@ -44,6 +46,16 @@ describe('StorageService', () => {
     save: jest.fn((s: any) => Promise.resolve(s)),
   };
 
+  // ⚠️ StorageService giờ có thêm UserRepository + LeaveRequestAttachmentRepository
+  // (xem storage.service.ts constructor) - dùng để dọn tham chiếu DB trước khi xoá
+  // object thật khi xoá bucket avatars/leave-attachments.
+  const mockUserRepo = {
+    update: jest.fn().mockResolvedValue({ affected: 1 }),
+  };
+  const mockAttachmentRepo = {
+    delete: jest.fn().mockResolvedValue({ affected: 1 }),
+  };
+
   // Đủ cả 3 biến B2_BUCKET_* - test riêng "thiếu biến môi trường" sẽ build
   // 1 module khác (thiếu 1 key), KHÔNG dùng chung config này.
   const validConfig: Record<string, string> = {
@@ -61,6 +73,8 @@ describe('StorageService', () => {
       providers: [
         StorageService,
         { provide: getRepositoryToken(Setting), useValue: mockSettingRepo },
+        { provide: getRepositoryToken(User), useValue: mockUserRepo },
+        { provide: getRepositoryToken(LeaveRequestAttachment), useValue: mockAttachmentRepo },
         { provide: ConfigService, useValue: { get: jest.fn((key: string) => config[key]) } },
       ],
     }).compile();
@@ -72,6 +86,8 @@ describe('StorageService', () => {
     mockGetSignedUrl.mockImplementation((_client: any, command: any) =>
       Promise.resolve(`https://signed.example.com/${command?.input?.Key ?? 'unknown'}`),
     );
+    mockUserRepo.update.mockResolvedValue({ affected: 1 });
+    mockAttachmentRepo.delete.mockResolvedValue({ affected: 1 });
     service = await buildService();
   });
 
@@ -157,19 +173,13 @@ describe('StorageService', () => {
 
   // ----------------------------------------------------------------------
   describe('deleteMedia', () => {
-    it.each(['avatars', 'leave-attachments'] as const)(
-      'ném ForbiddenException khi xoá bucket "%s" (view-only, object key đang được DB tham chiếu)',
-      async (bucket) => {
-        await expect(service.deleteMedia(bucket, 'some-key.jpg')).rejects.toThrow(ForbiddenException);
-        expect(mockSend).not.toHaveBeenCalled();
-      },
-    );
-
-    it('gọi DeleteObjectCommand thật với bucket media-library (bucket duy nhất được phép xoá)', async () => {
+    it('gọi DeleteObjectCommand thật với bucket media-library (không đụng DB - không có tham chiếu nào)', async () => {
       mockSend.mockResolvedValueOnce({});
 
       await service.deleteMedia('media-library', 'media-library/abc.webp');
 
+      expect(mockUserRepo.update).not.toHaveBeenCalled();
+      expect(mockAttachmentRepo.delete).not.toHaveBeenCalled();
       expect(mockSend).toHaveBeenCalledTimes(1);
       const sentCommand = mockSend.mock.calls[0][0];
       expect(sentCommand.commandName).toBe('DeleteObjectCommand');
@@ -179,10 +189,92 @@ describe('StorageService', () => {
       });
     });
 
+    it('bucket "avatars": dọn users.avatar_url (set NULL) TRƯỚC khi xoá object thật trên B2', async () => {
+      mockSend.mockResolvedValueOnce({});
+
+      await service.deleteMedia('avatars', 'avatars/12/NguyenVanA_PhongKinhDoanh_Employee.webp');
+
+      expect(mockUserRepo.update).toHaveBeenCalledWith(
+        { avatarUrl: 'avatars/12/NguyenVanA_PhongKinhDoanh_Employee.webp' },
+        { avatarUrl: null },
+      );
+      expect(mockAttachmentRepo.delete).not.toHaveBeenCalled();
+      const sentCommand = mockSend.mock.calls[0][0];
+      expect(sentCommand.input).toMatchObject({
+        Bucket: 'az-imgs-avatars-workbase',
+        Key: 'avatars/12/NguyenVanA_PhongKinhDoanh_Employee.webp',
+      });
+      // Thứ tự bắt buộc: dọn DB xong mới gọi S3 - verify qua invocation order.
+      expect(mockUserRepo.update.mock.invocationCallOrder[0]).toBeLessThan(mockSend.mock.invocationCallOrder[0]);
+    });
+
+    it('bucket "avatars": KHÔNG throw nếu không còn user nào tham chiếu key này (avatar mồ côi - vẫn xoá object bình thường)', async () => {
+      mockUserRepo.update.mockResolvedValueOnce({ affected: 0 });
+      mockSend.mockResolvedValueOnce({});
+
+      await expect(service.deleteMedia('avatars', 'avatars/999/orphan.webp')).resolves.toBeUndefined();
+      expect(mockSend).toHaveBeenCalledTimes(1);
+    });
+
+    it('bucket "leave-attachments": xoá row leave_request_attachments (theo object_key) TRƯỚC khi xoá object thật trên B2', async () => {
+      mockSend.mockResolvedValueOnce({});
+
+      await service.deleteMedia('leave-attachments', 'leave-attachments/7/giay-kham-benh.pdf');
+
+      expect(mockAttachmentRepo.delete).toHaveBeenCalledWith({
+        objectKey: 'leave-attachments/7/giay-kham-benh.pdf',
+      });
+      expect(mockUserRepo.update).not.toHaveBeenCalled();
+      const sentCommand = mockSend.mock.calls[0][0];
+      expect(sentCommand.input).toMatchObject({
+        Bucket: 'az-imgs-leave-request-workbase',
+        Key: 'leave-attachments/7/giay-kham-benh.pdf',
+      });
+      expect(mockAttachmentRepo.delete.mock.invocationCallOrder[0]).toBeLessThan(mockSend.mock.invocationCallOrder[0]);
+    });
+
     it('ném NotFoundException (không lộ lỗi S3 thô ra ngoài) nếu B2 xoá thất bại', async () => {
       mockSend.mockRejectedValueOnce(new Error('NoSuchKey'));
 
       await expect(service.deleteMedia('media-library', 'khong-ton-tai.webp')).rejects.toThrow(NotFoundException);
+    });
+  });
+
+  // ----------------------------------------------------------------------
+  describe('bulkDeleteMedia', () => {
+    it('xoá tuần tự nhiều key, trả về succeeded cho từng key thành công', async () => {
+      mockSend.mockResolvedValue({});
+
+      const result = await service.bulkDeleteMedia('media-library', ['a.webp', 'b.webp', 'c.webp']);
+
+      expect(result.succeeded).toEqual(['a.webp', 'b.webp', 'c.webp']);
+      expect(result.failed).toEqual([]);
+      expect(mockSend).toHaveBeenCalledTimes(3);
+    });
+
+    it('1 key lỗi KHÔNG chặn các key còn lại - trả về đúng succeeded/failed riêng biệt', async () => {
+      mockSend
+        .mockResolvedValueOnce({}) // a.webp: ok
+        .mockRejectedValueOnce(new Error('NoSuchKey')) // b.webp: lỗi
+        .mockResolvedValueOnce({}); // c.webp: ok
+
+      const result = await service.bulkDeleteMedia('media-library', ['a.webp', 'b.webp', 'c.webp']);
+
+      expect(result.succeeded).toEqual(['a.webp', 'c.webp']);
+      expect(result.failed).toHaveLength(1);
+      expect(result.failed[0].key).toBe('b.webp');
+      // Vẫn phải thử xoá c.webp dù b.webp lỗi trước đó - xử lý tuần tự không dừng giữa chừng.
+      expect(mockSend).toHaveBeenCalledTimes(3);
+    });
+
+    it('bucket "avatars": dọn DB reference cho từng key trước khi xoá object tương ứng', async () => {
+      mockSend.mockResolvedValue({});
+
+      await service.bulkDeleteMedia('avatars', ['avatars/1/A.webp', 'avatars/2/B.webp']);
+
+      expect(mockUserRepo.update).toHaveBeenCalledTimes(2);
+      expect(mockUserRepo.update).toHaveBeenCalledWith({ avatarUrl: 'avatars/1/A.webp' }, { avatarUrl: null });
+      expect(mockUserRepo.update).toHaveBeenCalledWith({ avatarUrl: 'avatars/2/B.webp' }, { avatarUrl: null });
     });
   });
 

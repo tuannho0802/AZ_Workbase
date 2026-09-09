@@ -68,6 +68,14 @@ export class UsersService {
    * UploadsController.presignAvatar). Validate dung lượng thật qua
    * `assertUploadedSizeWithinLimit` (giới hạn đọc động từ settings), xoá
    * avatar cũ trên B2 (best-effort, không chặn luồng chính nếu lỗi).
+   *
+   * ⚠️ FIX BUG THẬT: từ khi object key avatar đổi sang tên deterministic
+   * "{TenNhanVien}_{PhongBan}_{Role}.{ext}" (xem uploads.service.ts -
+   * buildReadableFileName), 2 lần upload liên tiếp của CÙNG 1 người (chưa
+   * đổi tên/phòng/role) ra ĐÚNG 1 key - PUT sau ghi đè PUT trước lên B2.
+   * Nếu vẫn gọi deleteAvatar(oldKey) như cũ, sẽ tự xoá NHẦM ảnh VỪA upload
+   * xong (vì oldKey === newKey), để lại avatar vỡ. Chỉ xoá khi 2 key thật
+   * sự khác nhau.
    */
   async updateOwnAvatar(userId: number, newKey: string): Promise<User> {
     const limits = await this.uploadsService.getLimits();
@@ -85,7 +93,7 @@ export class UsersService {
 
     await this.usersRepository.update(userId, { avatarUrl: newKey });
 
-    if (oldKey) {
+    if (oldKey && oldKey !== newKey) {
       this.uploadsService.deleteAvatar(oldKey);
     }
 

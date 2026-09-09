@@ -973,6 +973,19 @@ describe('UsersService - Approval workflow (đăng ký công khai chờ duyệt)
       expect(result).toEqual({ id: 7, name: 'D', avatarUrl: 'https://signed.example/avatars/7/new.webp' });
     });
 
+    it('BUG FIX: oldKey === newKey (upload lại avatar khi chưa đổi tên/phòng/role -> key deterministic trùng nhau) -> KHÔNG gọi deleteAvatar (tránh tự xoá nhầm ảnh vừa upload)', async () => {
+      const sameKey = 'avatars/10/NguyenVanA_PhongKinhDoanh_Employee.webp';
+      const oldUser = { id: 10, name: 'F', avatarUrl: sameKey };
+      const updatedUser = { id: 10, name: 'F', avatarUrl: sameKey };
+      mockUsersRepo.findOne.mockResolvedValueOnce(oldUser).mockResolvedValueOnce(updatedUser);
+      mockUploadsService.signAvatarGetUrl.mockResolvedValue(`https://signed.example/${sameKey}`);
+
+      await service.updateOwnAvatar(10, sameKey);
+
+      expect(mockUsersRepo.update).toHaveBeenCalledWith(10, { avatarUrl: sameKey });
+      expect(mockUploadsService.deleteAvatar).not.toHaveBeenCalled();
+    });
+
     it('cập nhật thành công + CHƯA có avatar cũ (user mới, avatarUrl null) -> KHÔNG gọi deleteAvatar', async () => {
       const oldUser = { id: 8, name: 'E', avatarUrl: null };
       const updatedUser = { id: 8, name: 'E', avatarUrl: 'avatars/8/first.webp' };

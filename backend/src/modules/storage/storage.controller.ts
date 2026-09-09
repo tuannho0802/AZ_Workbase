@@ -67,9 +67,24 @@ export class StorageController {
 
   @Delete('media')
   @RequirePermission('storage.manage')
-  @ApiOperation({ summary: 'Xoá 1 media - CHỈ hoạt động với bucket media-library (2 bucket còn lại view-only)' })
+  @ApiOperation({
+    summary:
+      'Xoá 1 media - cả 3 bucket. avatars/leave-attachments sẽ tự dọn tham chiếu DB (users.avatar_url / ' +
+      'leave_request_attachments) trước khi xoá object thật trên B2, tránh để lại ảnh vỡ nơi khác trong app.',
+  })
   async deleteMedia(@Body() dto: DeleteMediaDto) {
     await this.storageService.deleteMedia(dto.bucket, dto.key);
     return { success: true };
+  }
+
+  @Post('media/bulk-delete')
+  @RequirePermission('storage.manage')
+  @ApiOperation({
+    summary:
+      'Xoá NHIỀU media cùng lúc (nút "Xoá đã chọn" ở trang Dọn dẹp Media, tối đa 200 key/lần). Xử lý tuần tự, ' +
+      'không dừng giữa chừng khi 1 key lỗi - trả về danh sách key nào xoá được/lỗi để FE hiển thị đúng kết quả.',
+  })
+  async bulkDeleteMedia(@Body() dto: BulkDeleteMediaDto) {
+    return this.storageService.bulkDeleteMedia(dto.bucket, dto.keys);
   }
 }
