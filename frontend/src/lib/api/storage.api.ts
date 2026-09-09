@@ -78,9 +78,25 @@ export const storageApi = {
     return response.data;
   },
 
-  // `storage.manage` - CHỈ xoá được bucket media-library (2 bucket cũ luôn view-only)
+  // `storage.manage` - cả 3 bucket. avatars/leave-attachments tự dọn tham
+  // chiếu DB (users.avatar_url / leave_request_attachments) trước khi xoá
+  // object thật trên B2 - xem storage.service.ts deleteMedia().
   deleteMedia: async (bucket: StorageBucketKey, key: string): Promise<{ success: true }> => {
     const response = await axiosInstance.delete<{ success: true }>('/storage/media', { data: { bucket, key } });
+    return response.data;
+  },
+
+  // `storage.manage` - xoá NHIỀU key cùng lúc (trang "Dọn dẹp Media", tối
+  // đa 200 key/lần - khớp MAX_BULK_DELETE_KEYS ở backend). Xử lý tuần tự,
+  // không dừng giữa chừng khi 1 key lỗi.
+  bulkDeleteMedia: async (
+    bucket: StorageBucketKey,
+    keys: string[],
+  ): Promise<{ succeeded: string[]; failed: { key: string; reason: string }[] }> => {
+    const response = await axiosInstance.post<{ succeeded: string[]; failed: { key: string; reason: string }[] }>(
+      '/storage/media/bulk-delete',
+      { bucket, keys },
+    );
     return response.data;
   },
 };

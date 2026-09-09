@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useState, type Key } from 'react';
 import { useRouter } from 'next/navigation';
 import {
     Card,
@@ -20,6 +20,9 @@ import {
     InputNumber,
     Space,
     Tooltip,
+    Table,
+    Segmented,
+    Alert,
 } from 'antd';
 import {
     InboxOutlined,
@@ -28,13 +31,16 @@ import {
     EditOutlined,
     CheckOutlined,
     CloseOutlined,
+    ClearOutlined,
 } from '@ant-design/icons';
+import type { ColumnsType } from 'antd/es/table';
 import dayjs from 'dayjs';
 import { useMyPermissions } from '@/lib/hooks/useMyPermissions';
 import {
     STORAGE_BUCKET_KEYS,
     STORAGE_BUCKET_LABELS,
     StorageBucketKey,
+    StorageMediaItem,
     formatBytes,
 } from '@/lib/api/storage.api';
 import { validateImageFile } from '@/lib/api/uploads.api';
@@ -44,8 +50,14 @@ import {
     useRefreshStorageUsage,
     useStorageMedia,
     useDeleteMedia,
+    useBulkDeleteMedia,
     useUploadMediaLibraryImage,
 } from '@/lib/hooks/useStorage';
+
+// 2 bucket được phép dọn hàng loạt ở tab "Dọn dẹp Media" - media-library đã
+// có luồng xoá từng ảnh riêng ở tab của nó (chọn/thêm/xoá thủ công từng
+// tấm), không cần bulk ở đây.
+const CLEANUP_BUCKETS = ['avatars', 'leave-attachments'] as const satisfies readonly StorageBucketKey[];
 
 const { Text, Title } = Typography;
 
@@ -287,6 +299,155 @@ function MediaGrid({ bucket, canManage }: { bucket: StorageBucketKey; canManage:
   );
 }
 
+// ── Dọn dẹp Media (bulk selection + xoá hàng loạt cho Avatar / Nghỉ phép) ──────
+function MediaCleanupPanel({ bucket }: { bucket: (typeof CLEANUP_BUCKETS)[number] }) {
+    const { items, isLoading, hasNextPage, fetchNextPage, isFetchingNextPage } = useStorageMedia(bucket);
+    const bulkDelete = useBulkDeleteMedia(bucket);
+    const { message, modal } = App.useApp();
+    const [selectedKeys, setSelectedKeys] = useState<Key[]>([]);
+
+    // Danh sách hiện tại thay đổi (đổi bucket, tải thêm trang, xoá xong) ->
+    // bỏ chọn các key không còn nằm trong `items` để tránh giữ selection ma.
+    useEffect(() => {
+        setSelectedKeys((prev) => prev.filter((k) => items.some((it) => it.key === k)));
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [items.length, bucket]);
+
+    const handleBulkDelete = () => {
+        const keys = selectedKeys as string[];
+        modal.confirm({
+            title: `Xoá ${keys.length} file đã chọn?`,
+            content: 'Hành động này xoá file thật trên B2 và không thể hoàn tác.',
+            okButtonProps: { danger: true },
+            okText: 'Xoá',
+            cancelText: 'Huỷ',
+            onOk: async () => {
+                try {
+                    const result = await bulkDelete.mutateAsync(keys);
+                    setSelectedKeys([]);
+                    if (result.failed.length === 0) {
+                        message.success(`Đã xoá ${result.succeeded.length} file`);
+                    } else {
+                        message.warning(
+                            `Xoá thành công ${result.succeeded.length}/${keys.length} file, ${result.failed.length} file lỗi`,
+                        );
+                    }
+                } catch {
+                    message.error('Xoá hàng loạt thất bại - kiểm tra kết nối');
+                }
+            },
+        });
+    };
+
+    const columns: ColumnsType<StorageMediaItem> = [
+        {
+            title: '',
+            dataIndex: 'viewUrl',
+            width: 64,
+            render: (viewUrl: string, record) => (
+                <Image src={viewUrl} alt={record.key} width={40} height={40} style={{ objectFit: 'cover', borderRadius: 4 }} />
+            ),
+        },
+        {
+            title: 'Tên file',
+            dataIndex: 'key',
+            ellipsis: true,
+            render: (key: string) => (
+                <Tooltip title={key}>
+                    <Text style={{ fontSize: 13 }}>{key.split('/').pop()}</Text>
+                </Tooltip>
+            ),
+        },
+        {
+            title: 'Dung lượng',
+            dataIndex: 'size',
+            width: 110,
+            sorter: (a, b) => a.size - b.size,
+            render: (size: number) => formatBytes(size),
+        },
+        {
+            title: 'Cập nhật lúc',
+            dataIndex: 'lastModified',
+            width: 160,
+            render: (lastModified: string | null) =>
+                lastModified ? dayjs(lastModified).format('HH:mm DD/MM/YYYY') : '-',
+        },
+    ];
+
+    return (
+        <div>
+            <Alert
+                type="warning"
+                showIcon
+                style={{ marginBottom: 12 }}
+                message="Xoá file ở đây sẽ dọn luôn dữ liệu liên quan (bỏ avatar khỏi hồ sơ nhân viên / xoá đính kèm khỏi đơn nghỉ phép) trước khi xoá file thật trên B2."
+            />
+
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12, flexWrap: 'wrap', gap: 8 }}>
+                <Text type="secondary" style={{ fontSize: 13 }}>
+                    Đã chọn {selectedKeys.length} / {items.length} file đang tải
+                </Text>
+                <Space>
+                    {selectedKeys.length > 0 && (
+                        <Button size="small" icon={<ClearOutlined />} onClick={() => setSelectedKeys([])}>
+                            Bỏ chọn
+                        </Button>
+                    )}
+                    <Button
+                        danger
+                        type="primary"
+                        size="small"
+                        icon={<DeleteOutlined />}
+                        disabled={selectedKeys.length === 0}
+                        loading={bulkDelete.isPending}
+                        onClick={handleBulkDelete}
+                    >
+                        Xoá đã chọn ({selectedKeys.length})
+                    </Button>
+                </Space>
+            </div>
+
+            <Table<StorageMediaItem>
+                rowKey="key"
+                size="small"
+                columns={columns}
+                dataSource={items}
+                loading={isLoading}
+                pagination={false}
+                rowSelection={{
+                    selectedRowKeys: selectedKeys,
+                    onChange: setSelectedKeys,
+                }}
+                locale={{ emptyText: <Empty description="Chưa có file nào trong bucket này" /> }}
+            />
+
+            {hasNextPage && (
+                <div style={{ textAlign: 'center', marginTop: 16 }}>
+                    <Button loading={isFetchingNextPage} onClick={() => fetchNextPage()}>
+                        Tải thêm
+                    </Button>
+                </div>
+            )}
+        </div>
+    );
+}
+
+function MediaCleanupTab() {
+    const [bucket, setBucket] = useState<(typeof CLEANUP_BUCKETS)[number]>('avatars');
+
+    return (
+        <div>
+            <Segmented
+                options={CLEANUP_BUCKETS.map((key) => ({ label: STORAGE_BUCKET_LABELS[key], value: key }))}
+                value={bucket}
+                onChange={(v) => setBucket(v as (typeof CLEANUP_BUCKETS)[number])}
+                style={{ marginBottom: 16 }}
+            />
+            <MediaCleanupPanel key={bucket} bucket={bucket} />
+        </div>
+    );
+}
+
 // ── Main page ────────────────────────────────────────────────────────────────
 export default function StorageImgPage() {
     const { can, isLoading: permissionsLoading } = useMyPermissions();
@@ -304,12 +465,22 @@ export default function StorageImgPage() {
     }, [permissionsLoading, canView]);
 
     const tabItems = useMemo(
-        () =>
-            STORAGE_BUCKET_KEYS.map((key) => ({
+        () => [
+            ...STORAGE_BUCKET_KEYS.map((key) => ({
                 key,
                 label: STORAGE_BUCKET_LABELS[key],
                 children: <MediaGrid bucket={key} canManage={canManage} />,
             })),
+            ...(canManage
+                ? [
+                    {
+                        key: 'cleanup',
+                        label: '🧹 Dọn dẹp Media',
+                        children: <MediaCleanupTab />,
+                    },
+                ]
+                : []),
+        ],
         [canManage],
     );
 

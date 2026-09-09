@@ -66,6 +66,17 @@ export function useDeleteMedia(bucket: StorageBucketKey) {
   });
 }
 
+/** Xoá nhiều key cùng lúc (trang "Dọn dẹp Media") - dùng cho avatars/leave-attachments. */
+export function useBulkDeleteMedia(bucket: StorageBucketKey) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (keys: string[]) => storageApi.bulkDeleteMedia(bucket, keys),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: mediaQueryKey(bucket) });
+    },
+  });
+}
+
 /** Chỉ dùng cho bucket media-library (2 bucket cũ view-only, BE tự chặn nếu gọi sai). */
 export function useUploadMediaLibraryImage() {
   const queryClient = useQueryClient();
