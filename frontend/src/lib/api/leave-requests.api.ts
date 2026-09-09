@@ -75,7 +75,7 @@ export const leaveRequestsApi = {
 
   // Ký Presigned GET URL (TTL 10 phút) cho toàn bộ ảnh đính kèm của 1 đơn -
   // chỉ chủ đơn hoặc người có quyền duyệt/xem đúng phạm vi mới gọi được.
-  async getAttachmentUrls(id: number): Promise<{ id: number; url: string }[]> {
+  async getAttachmentUrls(id: number): Promise<{ id: number; key: string; url: string }[]> {
     const res = await axiosInstance.get(`/leave-requests/${id}/attachment-urls`);
     return res.data;
   },

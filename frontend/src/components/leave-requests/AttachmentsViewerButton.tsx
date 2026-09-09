@@ -4,7 +4,7 @@ import { useState } from 'react';
 import { Button, Modal, Image, Empty, Spin } from 'antd';
 import { PaperClipOutlined } from '@ant-design/icons';
 import { useAttachmentUrls } from '@/lib/hooks/useLeaveAttachments';
-import { useCachedImage } from '@/lib/hooks/useCachedImage';
+import { useCachedImage, buildImageCacheKey } from '@/lib/hooks/useCachedImage';
 
 interface AttachmentsViewerButtonProps {
   requestId: number;
@@ -13,14 +13,16 @@ interface AttachmentsViewerButtonProps {
 
 /**
  * 1 ảnh đính kèm - tách riêng component để mỗi ảnh gọi `useCachedImage` độc
- * lập (hook cần biết `id` + `url` của ĐÚNG 1 ảnh, không lồng vào .map trần
+ * lập (hook cần biết `key` + `url` của ĐÚNG 1 ảnh, không lồng vào .map trần
  * trụi để tránh vi phạm rule-of-hooks).
  */
-function AttachmentImage({ id, url }: { id: number; url: string }) {
-  // `id` (khoá chính bản ghi attachment) ổn định tuyệt đối - 1 ảnh đính kèm
-  // KHÔNG BAO GIỜ bị thay ảnh tại chỗ (chỉ tạo mới/xoá), nên dùng thẳng làm
-  // cache key mà không cần BE trả thêm objectKey riêng.
-  const cachedSrc = useCachedImage(`leave-attachment:${id}`, url);
+function AttachmentImage({ objectKey, url }: { objectKey: string; url: string }) {
+  // Dùng `objectKey` thô trên B2 (BE trả thêm ở getAttachmentViewUrls) qua
+  // buildImageCacheKey('leave-attachments', ...) - KHỚP với cacheKey mà
+  // storage-img dùng cho CÙNG bucket này, tránh cache trùng 2 bản cho cùng
+  // 1 ảnh đính kèm (trước đây dùng `id` - ổn định nhưng không khớp key bên
+  // storage-img).
+  const cachedSrc = useCachedImage(buildImageCacheKey('leave-attachments', objectKey), url);
   return (
     <Image
       src={cachedSrc || url}
@@ -64,7 +66,7 @@ export function AttachmentsViewerButton({ requestId, size = 'small' }: Attachmen
           <Image.PreviewGroup>
             <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
               {attachments.map((a) => (
-                <AttachmentImage key={a.id} id={a.id} url={a.url} />
+                <AttachmentImage key={a.id} objectKey={a.key} url={a.url} />
               ))}
             </div>
           </Image.PreviewGroup>
