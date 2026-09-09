@@ -16,6 +16,10 @@ describe('AuthService - Đăng ký công khai + chặn đăng nhập chưa duy�
     createPendingRegistration: jest.fn(),
     saveRefreshToken: jest.fn(),
     updateLastLogin: jest.fn(),
+    // login() giờ ký avatarUrl trước khi trả về (xem auth.service.ts) - mặc
+    // định trả nguyên user vào (không avatarUrl -> signAvatarUrl trả về y
+    // nguyên, khớp hành vi thật khi user.avatarUrl null).
+    signAvatarUrl: jest.fn((u) => Promise.resolve(u)),
   };
   const mockJwtService = { sign: jest.fn().mockReturnValue('fake-jwt-token') };
   const mockConfigService = { get: jest.fn().mockReturnValue('fake-secret') };
@@ -176,6 +180,31 @@ describe('AuthService - Đăng ký công khai + chặn đăng nhập chưa duy�
 
       expect(result.access_token).toBe('fake-jwt-token');
       expect(mockUsersService.saveRefreshToken).toHaveBeenCalled();
+    });
+
+    it('trả về avatarUrl đã ký (Presigned GET) trong response login nếu user có avatar', async () => {
+      mockUsersService.findByEmail.mockResolvedValue(baseUser({ avatarUrl: 'avatars/1/abc.webp' }));
+      mockUsersService.saveRefreshToken.mockResolvedValue(undefined);
+      mockUsersService.updateLastLogin.mockResolvedValue(undefined);
+      mockUsersService.signAvatarUrl.mockResolvedValue({
+        avatarUrl: 'https://signed.example.com/avatars/1/abc.webp',
+      });
+
+      const result = await service.login({ email: 'a@example.com', password: 'MatKhau123' });
+
+      expect(mockUsersService.signAvatarUrl).toHaveBeenCalled();
+      expect(result.user.avatarUrl).toBe('https://signed.example.com/avatars/1/abc.webp');
+    });
+
+    it('trả về avatarUrl=null nếu user chưa từng upload avatar (KHÔNG lộ object key thô)', async () => {
+      mockUsersService.findByEmail.mockResolvedValue(baseUser());
+      mockUsersService.saveRefreshToken.mockResolvedValue(undefined);
+      mockUsersService.updateLastLogin.mockResolvedValue(undefined);
+      mockUsersService.signAvatarUrl.mockResolvedValue(baseUser());
+
+      const result = await service.login({ email: 'a@example.com', password: 'MatKhau123' });
+
+      expect(result.user.avatarUrl).toBeNull();
     });
 
     it('vẫn ném UnauthorizedException khi sai mật khẩu (không bị đổi hành vi bởi approvalStatus check)', async () => {

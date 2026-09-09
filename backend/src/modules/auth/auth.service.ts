@@ -91,6 +91,15 @@ export class AuthService {
       { email: user.email, role: user.role },
     );
 
+    // Ký avatarUrl (object key -> Presigned GET URL, TTL 1h) TRƯỚC khi trả
+    // ra khỏi service, dùng lại ĐÚNG UsersService.signAvatarUrl() - không tự
+    // viết logic ký riêng ở đây (xem comment ở users.service.ts: "Gọi
+    // signAvatarUrl ở TẤT CẢ nơi trả User(s) ra ngoài - thiếu 1 chỗ là
+    // avatar hiện ra key thô, không load được ảnh"). FE lưu thẳng field này
+    // vào authStore lúc login - không phải gọi thêm GET /users/me chỉ để có
+    // avatar cho header.
+    const signedUser = await this.usersService.signAvatarUrl(user);
+
     return {
       access_token,
       refresh_token,
@@ -100,6 +109,7 @@ export class AuthService {
         name: user.name,
         role: user.role,
         isActive: user.isActive,
+        avatarUrl: signedUser?.avatarUrl ?? null,
       },
     };
   }
