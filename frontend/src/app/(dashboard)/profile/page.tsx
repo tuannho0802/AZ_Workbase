@@ -279,6 +279,7 @@ function ProfilePortal({ userId, onDeleted }: { userId: number; onDeleted?: () =
         <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
           <AvatarUpload
             avatarUrl={detail.avatarUrl}
+            avatarKey={detail.avatarKey}
             name={detail.name}
             size={72}
             editable={isSelf && can('profile.edit_avatar')}

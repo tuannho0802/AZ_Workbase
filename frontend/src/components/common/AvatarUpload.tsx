@@ -4,6 +4,7 @@ import { useRef } from 'react';
 import { Avatar, Spin, App } from 'antd';
 import { CameraOutlined } from '@ant-design/icons';
 import { useUpdateAvatar } from '@/lib/hooks/useUploads';
+import { useCachedImage } from '@/lib/hooks/useCachedImage';
 import { useAuthStore } from '@/lib/stores/auth.store';
 
 function getInitials(name?: string) {
@@ -14,6 +15,13 @@ function getInitials(name?: string) {
 
 interface AvatarUploadProps {
   avatarUrl?: string | null;
+  /**
+   * Object key thô, ỔN ĐỊNH trên B2 (KHÔNG đổi giữa các lần gọi API, khác
+   * avatarUrl luôn bị ký lại) - dùng làm cache-key để tránh tải lại ảnh mỗi
+   * lần re-render/refetch (xem `useCachedImage`). Không bắt buộc để không
+   * phá vỡ chỗ gọi cũ, nhưng NÊN truyền vào nếu có sẵn từ API.
+   */
+  avatarKey?: string | null;
   name?: string;
   size?: number;
   /** true nếu người đang xem ĐƯỢC PHÉP đổi avatar này (isSelf && can('profile.edit_avatar')). */
@@ -32,19 +40,31 @@ interface AvatarUploadProps {
  * luồng thật là presign trước rồi mới PUT thẳng ra ngoài B2 - không phải
  * multipart form POST bình thường mà `<Upload>` mặc định hỗ trợ).
  */
-export function AvatarUpload({ avatarUrl, name, size = 72, editable, isSelf, onUpdated }: AvatarUploadProps) {
+export function AvatarUpload({ avatarUrl, avatarKey, name, size = 72, editable, isSelf, onUpdated }: AvatarUploadProps) {
   const { message } = App.useApp();
   const inputRef = useRef<HTMLInputElement>(null);
   const mutation = useUpdateAvatar();
   const currentUser = useAuthStore((s) => s.user);
   const setUser = useAuthStore((s) => s.setUser);
 
+  // Chỉ tải bytes ảnh THẬT SỰ đúng 1 lần cho mỗi avatarKey - các lần
+  // render/refetch sau (dù avatarUrl đã được BE ký lại thành URL khác) đều
+  // phục vụ từ Cache Storage, không tải lại từ B2. Xem useCachedImage.ts.
+  const cachedSrc = useCachedImage(avatarKey, avatarUrl);
+
   const handleFile = async (file: File) => {
     try {
       const updated = await mutation.mutateAsync(file);
       message.success('Đã cập nhật ảnh đại diện');
       if (isSelf && currentUser) {
-        setUser({ ...currentUser, avatarUrl: updated.avatarUrl ?? null });
+        setUser({
+          ...currentUser,
+          avatarUrl: updated.avatarUrl ?? null,
+          // Key MỚI (khác key cũ trong đa số trường hợp - xem comment
+          // deterministic-name ở uploads.service.ts) -> useCachedImage sẽ tự
+          // cache-miss đúng 1 lần cho ảnh mới, không dính cache của ảnh cũ.
+          avatarKey: updated.avatarKey ?? null,
+        });
       }
       onUpdated?.(updated.avatarUrl ?? '');
     } catch (err: any) {
@@ -62,8 +82,8 @@ export function AvatarUpload({ avatarUrl, name, size = 72, editable, isSelf, onU
 
   return (
     <div style={{ position: 'relative', width: size, height: size, flexShrink: 0 }}>
-      <Avatar size={size} src={avatarUrl || undefined} style={{ backgroundColor: '#1677ff', fontSize: size * 0.38 }}>
-        {!avatarUrl ? getInitials(name) : undefined}
+      <Avatar size={size} src={cachedSrc} style={{ backgroundColor: '#1677ff', fontSize: size * 0.38 }}>
+        {!cachedSrc ? getInitials(name) : undefined}
       </Avatar>
 
       {mutation.isPending && (

@@ -15,6 +15,7 @@ import { useAuthStore } from '@/lib/stores/auth.store';
 import { getVisibleNavItems, NAV_ITEMS } from '@/lib/nav-config';
 import { useMyPermissions } from '@/lib/hooks/useMyPermissions';
 import { useSidebarBadgeCounts } from '@/lib/hooks/useSidebarBadgeCounts';
+import { useCachedImage } from '@/lib/hooks/useCachedImage';
 import { CountBadge } from '@/components/common/CountBadge';
 import dayjs from 'dayjs';
 import 'dayjs/locale/vi';
@@ -81,6 +82,10 @@ export default function DashboardLayout({
   const router = useRouter();
   const pathname = usePathname();
   const { user, isAuthenticated, isHydrated, logout } = useAuthStore();
+  // Avatar sidebar - chỉ tải bytes ảnh THẬT SỰ đúng 1 lần cho mỗi avatarKey,
+  // các lần layout re-render sau (avatarUrl bị BE ký lại URL khác) phục vụ
+  // từ Cache Storage thay vì tải lại từ B2 - xem useCachedImage.ts.
+  const cachedAvatarSrc = useCachedImage(user?.avatarKey, user?.avatarUrl);
   const { can } = useMyPermissions();
   const [selectedKey, setSelectedKey] = useState('customers');
   const [collapsed, setCollapsed] = useState(false);
@@ -313,8 +318,8 @@ export default function DashboardLayout({
             >
               <div style={{ display: 'flex', alignItems: 'center', gap: 10, cursor: 'pointer' }}>
                 <Avatar
-                  src={user?.avatarUrl || undefined}
-                  icon={!user?.avatarUrl ? <UserOutlined /> : undefined}
+                  src={cachedAvatarSrc}
+                  icon={!cachedAvatarSrc ? <UserOutlined /> : undefined}
                   style={{ background: 'linear-gradient(135deg, #1890ff 0%, #0a3d91 100%)' }}
                 />
                 <div style={{ display: 'flex', flexDirection: 'column', lineHeight: 1.25 }}>

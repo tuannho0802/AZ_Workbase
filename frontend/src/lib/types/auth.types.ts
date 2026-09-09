@@ -36,6 +36,10 @@ export interface User {
   // Presigned GET URL (TTL 1h, ký sẵn ở BE - KHÔNG PHẢI object key) - null
   // nếu chưa từng upload avatar. Có thể null/undefined tuỳ endpoint trả về.
   avatarUrl?: string | null;
+  // Object key THÔ, ỔN ĐỊNH trên B2 (KHÔNG đổi giữa các lần gọi API, khác
+  // avatarUrl luôn bị ký lại) - dùng làm cache-key cho `useCachedImage()`,
+  // xem lib/hooks/useCachedImage.ts. null nếu chưa từng upload avatar.
+  avatarKey?: string | null;
 }
 
 export interface AuthResponse {
