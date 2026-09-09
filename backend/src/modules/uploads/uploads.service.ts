@@ -12,8 +12,10 @@ import {
 } from '@aws-sdk/client-s3';
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
 import { Setting } from '../../database/entities/setting.entity';
+import { User } from '../../database/entities/user.entity';
 import { ALLOWED_IMAGE_TYPES } from './dto/presign-avatar.dto';
 import { UpdateUploadLimitsDto } from './dto/update-upload-limits.dto';
+import { buildReadableFileName } from '../../common/utils/vietnamese-slug.util';
 
 // TTL (giây) - xem PLAN_AVATAR_LEAVE_ATTACHMENT_BACKBLAZE_B2.md mục 7:
 // không set dài "cho chắc", đặc biệt attachment (dữ liệu nhạy cảm).
@@ -44,6 +46,8 @@ export class UploadsService {
     private readonly configService: ConfigService,
     @InjectRepository(Setting)
     private readonly settingRepository: Repository<Setting>,
+    @InjectRepository(User)
+    private readonly userRepository: Repository<User>,
   ) {
     this.s3 = new S3Client({
       region: this.configService.get<string>('B2_REGION'),
@@ -106,10 +110,36 @@ export class UploadsService {
 
   // --- Presign PUT (upload) ---
 
+  /**
+   * ⚠️ FIX BUG THẬT (theo yêu cầu): trước đây object key avatar là UUID
+   * ngẫu nhiên vô nghĩa (`avatars/{userId}/{uuid}.png`), không đọc/nhận
+   * dạng được khi liệt kê media trong trang "Dọn dẹp" - phải bấm vào từng
+   * ảnh mới biết của ai. Đổi tên file thành dạng dễ đọc
+   * "{TenNhanVien}_{PhongBan}_{Role}.{ext}" (viết liền, không dấu,
+   * PascalCase - xem vietnamese-slug.util.ts), vẫn giữ path riêng theo
+   * `{userId}/` để 2 nhân viên trùng tên/phòng ban/role tuyệt đối vẫn không
+   * đụng key nhau (namespace theo userId).
+   *
+   * Vì tên file giờ PHỤ THUỘC dữ liệu nhân viên (không random), 2 lần
+   * upload avatar liên tiếp của CÙNG 1 người (chưa đổi tên/phòng/role) sẽ
+   * ra ĐÚNG 1 key - PUT sau ghi đè PUT trước. `UsersService.updateOwnAvatar`
+   * đã tự bỏ qua bước xoá "avatar cũ" khi oldKey === newKey (xem comment ở
+   * đó) để không tự xoá nhầm ảnh VỪA upload xong.
+   */
   async presignAvatarUpload(userId: number, contentType: string) {
     this.validateContentType(contentType);
     const ext = contentType.split('/')[1];
-    const key = `avatars/${userId}/${randomUUID()}.${ext}`;
+
+    const user = await this.userRepository.findOne({
+      where: { id: userId },
+      relations: ['department'],
+    });
+    // Không throw nếu thiếu user/department (dữ liệu hỏng hiếm gặp) -
+    // buildReadableFileName tự fallback "File.{ext}", KHÔNG được để lỗi ở
+    // bước đặt tên chặn mất cả luồng upload avatar.
+    const fileName = buildReadableFileName([user?.name, user?.department?.name, user?.role], ext);
+    const key = `avatars/${userId}/${fileName}`;
+
     const uploadUrl = await getSignedUrl(
       this.s3,
       new PutObjectCommand({ Bucket: this.bucketAvatars, Key: key, ContentType: contentType }),

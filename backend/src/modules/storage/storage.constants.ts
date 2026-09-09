@@ -8,12 +8,16 @@ export const STORAGE_BUCKET_KEYS = ['avatars', 'leave-attachments', 'media-libra
 export type StorageBucketKey = (typeof STORAGE_BUCKET_KEYS)[number];
 
 /**
- * 2 bucket cũ (avatars, leave-attachments) LUÔN view-only qua trang
- * /storage-img - object key của chúng được tham chiếu trong
- * `users.avatar_url` / `leave_request_attachments.object_key`. Xoá trực
- * tiếp từ đây sẽ để lại DB trỏ tới file đã mất (ảnh vỡ ở nơi khác trong
- * app). Chỉ `media-library` (không bucket nào tham chiếu) mới cho phép
- * xoá/thêm tự do.
+ * ⚠️ CẬP NHẬT (Media Cleanup): trước đây `MUTABLE_BUCKET_KEYS` gộp chung 2
+ * ý nghĩa "cho upload tự do" VÀ "cho xoá tự do" - giờ TÁCH RIÊNG:
+ *  - Upload tự do qua trang Storage: VẪN chỉ `media-library` (avatars/
+ *    leave-attachments upload qua luồng riêng ở uploads.service.ts, gắn
+ *    liền với nghiệp vụ profile/đơn nghỉ phép, không phải upload tự do).
+ *  - XOÁ: giờ cho phép CẢ 3 bucket (StorageService.deleteMedia) - nhưng
+ *    avatars/leave-attachments xoá qua đường "an toàn": tự dọn luôn tham
+ *    chiếu DB (users.avatar_url / leave_request_attachments) trước khi xoá
+ *    object thật trên B2, để không để lại ảnh vỡ ở nơi khác trong app. Xem
+ *    StorageService.deleteMedia() để hiểu chi tiết từng bucket.
  */
 export const MUTABLE_BUCKET_KEYS: StorageBucketKey[] = ['media-library'];
 

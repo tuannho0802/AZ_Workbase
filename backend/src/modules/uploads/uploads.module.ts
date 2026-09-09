@@ -1,6 +1,7 @@
 import { Module, Global } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { Setting } from '../../database/entities/setting.entity';
+import { User } from '../../database/entities/user.entity';
 import { UploadsService } from './uploads.service';
 import { UploadsController } from './uploads.controller';
 
@@ -9,9 +10,9 @@ import { UploadsController } from './uploads.controller';
 // không phải import UploadsModule lặp lại ở từng module đó.
 @Global()
 @Module({
-  imports: [TypeOrmModule.forFeature([Setting])],
+  imports: [TypeOrmModule.forFeature([Setting, User])],
   controllers: [UploadsController],
   providers: [UploadsService],
   exports: [UploadsService],
 })
-export class UploadsModule {}
+export class UploadsModule { }

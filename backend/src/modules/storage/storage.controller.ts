@@ -6,6 +6,7 @@ import { RequirePermission } from '../../common/decorators/require-permission.de
 import { StorageService } from './storage.service';
 import { ListMediaDto } from './dto/list-media.dto';
 import { DeleteMediaDto } from './dto/delete-media.dto';
+import { BulkDeleteMediaDto } from './dto/bulk-delete-media.dto';
 import { PresignMediaLibraryDto } from './dto/presign-media-library.dto';
 import { UpdateStorageLimitDto } from './dto/update-storage-limit.dto';
 

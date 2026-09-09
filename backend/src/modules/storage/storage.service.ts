@@ -1,4 +1,4 @@
-import { BadRequestException, ForbiddenException, Injectable, Logger, NotFoundException } from '@nestjs/common';
+import { BadRequestException, Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
@@ -12,6 +12,8 @@ import {
 } from '@aws-sdk/client-s3';
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
 import { Setting } from '../../database/entities/setting.entity';
+import { User } from '../../database/entities/user.entity';
+import { LeaveRequestAttachment } from '../../database/entities/leave-request-attachment.entity';
 import { ALLOWED_IMAGE_TYPES } from '../uploads/dto/presign-avatar.dto';
 import {
   StorageBucketKey,
@@ -41,6 +43,10 @@ export class StorageService {
     private readonly configService: ConfigService,
     @InjectRepository(Setting)
     private readonly settingRepository: Repository<Setting>,
+    @InjectRepository(User)
+    private readonly userRepository: Repository<User>,
+    @InjectRepository(LeaveRequestAttachment)
+    private readonly attachmentRepository: Repository<LeaveRequestAttachment>,
   ) {
     this.s3 = new S3Client({
       region: this.configService.get<string>('B2_REGION'),
@@ -119,16 +125,30 @@ export class StorageService {
     return { uploadUrl, key };
   }
 
-  // --- Delete (chỉ bucket mutable - chặn CỨNG ở service, không chỉ ở FE) ---
+  // --- Delete (xoá THẬT cả 3 bucket - avatars/leave-attachments dọn kèm DB reference) ---
 
-  async deleteMedia(bucket: StorageBucketKey, key: string) {
-    if (!isMutableBucket(bucket)) {
-      // Chặn ở tầng service (không chỉ ẩn nút ở FE) - đây là bucket có DB
-      // tham chiếu, xoá sai sẽ để lại avatar/đính kèm vỡ ảnh trong app thật.
-      throw new ForbiddenException(
-        `Bucket "${bucket}" chỉ xem, không cho xoá qua trang này (object key đang được tham chiếu trong DB)`,
-      );
+  /**
+   * ⚠️ CẬP NHẬT (Media Cleanup - trước đây `avatars`/`leave-attachments`
+   * LUÔN bị chặn ForbiddenException, xem lịch sử comment cũ ở dưới nếu cần
+   * đối chiếu): giờ cho phép xoá CẢ 3 bucket, nhưng 2 bucket có DB tham
+   * chiếu (`avatars`, `leave-attachments`) PHẢI dọn tham chiếu đó TRƯỚC khi
+   * xoá object thật trên B2 - nếu không, DB sẽ trỏ tới file đã mất (ảnh vỡ
+   * ở trang Hồ sơ nhân viên / đơn nghỉ phép). Thứ tự bắt buộc: dọn DB xong
+   * MỚI xoá S3 - nếu xoá S3 trước rồi dọn DB sau mà bước dọn DB lỗi giữa
+   * chừng (crash, mất kết nối...), sẽ để lại DB trỏ tới file đã mất - tệ
+   * hơn nhiều so với việc lỡ dọn DB nhưng object S3 xoá thất bại (chỉ tốn
+   * thêm dung lượng, không có ảnh vỡ hiển thị ra ngoài).
+   */
+  async deleteMedia(bucket: StorageBucketKey, key: string): Promise<void> {
+    if (bucket === 'avatars') {
+      // Không throw nếu KHÔNG còn user nào tham chiếu key này (avatar cũ đã
+      // mồ côi từ trước, hoặc user đã bị xoá) - vẫn cho xoá file bình
+      // thường, đây chính là trường hợp "dọn rác" phổ biến nhất.
+      await this.userRepository.update({ avatarUrl: key }, { avatarUrl: null });
+    } else if (bucket === 'leave-attachments') {
+      await this.attachmentRepository.delete({ objectKey: key });
     }
+
     const bucketName = this.resolveBucketName(bucket);
     try {
       await this.s3.send(new DeleteObjectCommand({ Bucket: bucketName, Key: key }));
@@ -136,6 +156,33 @@ export class StorageService {
       this.logger.error(`Xoá media thất bại: ${bucket}/${key}`, error as Error);
       throw new NotFoundException('Không tìm thấy hoặc không xoá được file này');
     }
+  }
+
+  /**
+   * Xoá NHIỀU key cùng lúc (nút "Xoá đã chọn" ở trang Dọn dẹp Media) - xử
+   * lý TUẦN TỰ từng key (không Promise.all song song) để 1 lỗi đơn lẻ
+   * không làm rối log/DB reference của các key khác, và để không dội quá
+   * nhiều request cùng lúc lên B2 (rate limit). Không throw giữa chừng -
+   * luôn xử lý hết mảng, trả về danh sách key nào xoá được/lỗi để FE hiển
+   * thị đúng kết quả từng dòng.
+   */
+  async bulkDeleteMedia(
+    bucket: StorageBucketKey,
+    keys: string[],
+  ): Promise<{ succeeded: string[]; failed: { key: string; reason: string }[] }> {
+    const succeeded: string[] = [];
+    const failed: { key: string; reason: string }[] = [];
+
+    for (const key of keys) {
+      try {
+        await this.deleteMedia(bucket, key);
+        succeeded.push(key);
+      } catch (error) {
+        failed.push({ key, reason: error instanceof Error ? error.message : 'Lỗi không xác định' });
+      }
+    }
+
+    return { succeeded, failed };
   }
 
   // --- Usage stats (CÓ CACHE - xem storage-cron.controller.ts để refresh) ---
