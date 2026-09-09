@@ -21,6 +21,7 @@ import { LinkGroupsModule } from './modules/link-groups/link-groups.module';
 import { ReportsModule } from './modules/reports/reports.module';
 import { PermissionsModule } from './modules/permissions/permissions.module';
 import { RolesModule } from './modules/roles/roles.module';
+import { UploadsModule } from './modules/uploads/uploads.module';
 import { KeepAliveController } from './keep-alive/keep-alive.controller';
 @Module({ 
   imports: [
@@ -60,6 +61,7 @@ import { KeepAliveController } from './keep-alive/keep-alive.controller';
     DepositsModule,
     LeaveRequestsModule,
     AuditModule,
+    UploadsModule,
     ZkDeviceModule,
     AttendanceExportModule,
     MediaSourcesModule,
