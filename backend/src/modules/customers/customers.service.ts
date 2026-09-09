@@ -300,7 +300,13 @@ export class CustomersService {
     const {
       page = 1,
       limit = 20,
-      sortField = 'createdAt',
+      // ⚠️ Khớp default ở FE (customers/page.tsx) - "Ngày nhập" (inputDate)
+      // là cột hiển thị mặc định trên bảng, không phải `createdAt` (thời
+      // điểm ghi DB, có thể lệch xa so với ngày nhập liệu thật khi Import
+      // Excel hàng loạt dữ liệu cũ). Đổi default ở đây để phòng trường hợp
+      // 1 nơi gọi API khác (Postman, integration khác) không tự truyền
+      // sortField vẫn nhận đúng hành vi mong đợi.
+      sortField = 'inputDate',
       sortOrder = 'DESC',
       search,
       source,
@@ -377,6 +383,16 @@ export class CustomersService {
     queryBuilder.setParameters(depositSubQuery.getParameters());
 
     // Sorting
+    // ⚠️ FIX BUG THẬT: MySQL KHÔNG đảm bảo thứ tự ổn định cho các dòng
+    // TRÙNG giá trị cột sort khi dùng LIMIT/OFFSET (đặc biệt `inputDate` -
+    // kiểu DATE, không có giờ - rất nhiều khách hàng nhập cùng 1 ngày sẽ
+    // trùng tuyệt đối). Không có tiêu chí phụ để phá vỡ trùng lặp
+    // (tie-break), thứ tự các dòng trùng ngày có thể đảo lộn ngẫu nhiên
+    // giữa các lần gọi/F5/chuyển trang - đúng hiện tượng "ngày hiển thị
+    // lung tung" đã báo. Luôn thêm `customer.id DESC` làm tiêu chí phụ SAU
+    // CÙNG (id là khoá duy nhất, tăng dần theo thời gian tạo) để đảm bảo
+    // thứ tự luôn nhất quán, deterministic - mới nhất theo id lên trước khi
+    // 2 dòng trùng giá trị cột sort chính.
     if (sortField === 'name') {
       queryBuilder.orderBy('customer.name', sortOrder);
     } else if (sortField === 'status') {
@@ -393,6 +409,7 @@ export class CustomersService {
     } else {
       queryBuilder.orderBy('customer.createdAt', sortOrder);
     }
+    queryBuilder.addOrderBy('customer.id', 'DESC');
 
     // Pagination
     queryBuilder.skip((page - 1) * limit).take(limit);

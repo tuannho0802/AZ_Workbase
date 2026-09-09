@@ -299,7 +299,14 @@ function CustomersPageContent() {
   // người dùng CHỌN xem 3 hay 5 trong số đó (cắt bớt ở đây, không gọi lại
   // API khi đổi lựa chọn này).
   const [recentNotesCount, setRecentNotesCount] = useState<3 | 5>(3);
-  const [sortField, setSortField] = useState<string>('createdAt');
+  // ⚠️ FIX BUG THẬT: mặc định trước đây sort theo `createdAt` (thời điểm
+  // RECORD được ghi vào DB - vd lúc Import Excel hàng loạt) trong khi cột
+  // hiển thị trên bảng là "Ngày nhập" (`inputDate` - ngày khách được NHẬP
+  // liệu, do Sales/Marketing tự điền, có thể là ngày TRONG QUÁ KHỨ so với
+  // lúc import). 2 giá trị này lệch nhau -> mặc định F5 vào trang, cột
+  // "Ngày nhập" hiển thị KHÔNG theo thứ tự giảm dần thật (nhìn như xáo
+  // trộn ngẫu nhiên). Đổi default sort đúng theo cột đang hiển thị.
+  const [sortField, setSortField] = useState<string>('inputDate');
   const [sortOrder, setSortOrder] = useState<'ASC' | 'DESC'>('DESC');
 
   // States for interactive stats
@@ -695,7 +702,10 @@ function CustomersPageContent() {
       setSortField(sorterResult.field as string);
       setSortOrder(sorterResult.order === 'ascend' ? 'ASC' : 'DESC');
     } else {
-      setSortField('createdAt');
+      // Bỏ sort trên cột (bấm tới lần thứ 3) -> quay về ĐÚNG default của
+      // trang (xem giải thích ở khai báo state `sortField` phía trên),
+      // KHÔNG phải 'createdAt' - tránh lặp lại đúng bug vừa fix.
+      setSortField('inputDate');
       setSortOrder('DESC');
     }
   };
