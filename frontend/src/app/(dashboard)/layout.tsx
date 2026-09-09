@@ -160,6 +160,10 @@ export default function DashboardLayout({
       newKey = 'reports';
     } else if (pathname.includes('/phong-ban')) {
       newKey = 'phong-ban';
+    } else if (pathname.includes('/storage-img')) {
+      // Thiếu nhánh này sẽ để sidebar sáng nhầm mục cũ (đúng bug pattern
+      // '/nguon-media' đã sửa trước đó - route mới luôn phải thêm vào đây).
+      newKey = 'storage-img';
     }
     
     setSelectedKey(newKey);
