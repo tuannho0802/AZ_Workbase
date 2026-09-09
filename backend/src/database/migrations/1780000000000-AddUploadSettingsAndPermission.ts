@@ -12,6 +12,16 @@ import { MigrationInterface, QueryRunner } from 'typeorm';
  *   kèm nghỉ phép.
  * - `upload_leave_attachment_max_count`: số ảnh tối đa / 1 đơn nghỉ phép.
  *
+ * ⚠️ FIX (2026-09-08): Bảng `settings` được `AuditService` dùng từ trước
+ * (`audit_cleanup_enabled`/`audit_retention_days`) nhưng CHƯA TỪNG có
+ * migration nào tạo ra nó trong toàn bộ lịch sử `src/database/migrations/`
+ * — chỉ tồn tại trên (các) DB nào từng bị tạo tay/qua `synchronize` ngoài
+ * quy trình migration (vi phạm quy tắc "NGHIÊM CẤM sửa Schema bằng GUI").
+ * Migration này giờ tự `CREATE TABLE IF NOT EXISTS` trước khi insert (an
+ * toàn khi chạy lại nhiều lần / trên DB đã có sẵn bảng), không còn phụ
+ * thuộc giả định "bảng có sẵn" nữa. Lỗi thật đã gặp:
+ * `ER_NO_SUCH_TABLE: Table 'settings' doesn't exist`.
+ *
  * Permission `uploads.manage_limits`: `supports_scope = FALSE` (nhị phân
  * thuần, không có khái niệm "chỉ phòng ban mình" - đây là cấu hình toàn
  * cục duy nhất cho cả hệ thống) - giống hệt convention của `audit.manage`
@@ -21,6 +31,17 @@ import { MigrationInterface, QueryRunner } from 'typeorm';
  */
 export class AddUploadSettingsAndPermission1780000000000 implements MigrationInterface {
   public async up(queryRunner: QueryRunner): Promise<void> {
+    // Tự tạo bảng nếu chưa có (xem ghi chú FIX ở đầu file) — khớp đúng
+    // `setting.entity.ts` (key PK varchar(100), value/description TEXT).
+    await queryRunner.query(`
+      CREATE TABLE IF NOT EXISTS settings (
+        \`key\` VARCHAR(100) NOT NULL PRIMARY KEY,
+        value TEXT NOT NULL,
+        description TEXT NULL,
+        updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+      ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+    `);
+
     await queryRunner.query(`
       INSERT INTO settings (\`key\`, value, description) VALUES
       ('upload_avatar_max_size_kb', '1024', 'Dung lượng tối đa 1 ảnh đại diện (KB, sau khi client resize/nén)'),
