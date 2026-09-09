@@ -4,12 +4,32 @@ import { PermissionGuard } from '../../common/guards/permission.guard';
 import { RequirePermission } from '../../common/decorators/require-permission.decorator';
 import { GetPermissionScope } from '../../common/decorators/get-permission-scope.decorator';
 import { LeaveRequestsService } from './leave-requests.service';
+import { UploadsService } from '../uploads/uploads.service';
+import { PresignAttachmentDto } from '../uploads/dto/presign-attachment.dto';
 
 @Controller('leave-requests')
 @UseGuards(JwtAuthGuard, PermissionGuard)
 export class LeaveRequestsController {
-  constructor(private leaveRequestsService: LeaveRequestsService) {}
-  
+  constructor(
+    private leaveRequestsService: LeaveRequestsService,
+    private uploadsService: UploadsService,
+  ) { }
+
+  // Presign đặt ở đây (không phải UploadsController chung) vì gắn đúng
+  // permission `leave_requests.request` - chưa có leaveRequestId lúc gọi
+  // (đang điền form tạo đơn), key trả về được gửi kèm khi POST / bên dưới.
+  @Post('attachments/presign')
+  @RequirePermission('leave_requests.request')
+  async presignAttachment(@Body() dto: PresignAttachmentDto, @Request() req) {
+    return this.uploadsService.presignAttachmentUpload(req.user.id, dto.contentType);
+  }
+
+  @Get(':id/attachment-urls')
+  @RequirePermission('leave_requests.request')
+  async getAttachmentUrls(@Param('id') id: string, @Request() req, @GetPermissionScope() scope?: string | null) {
+    return this.leaveRequestsService.getAttachmentViewUrls(+id, req.user.id, req.user.role, scope);
+  }
+
   @Post()
   @RequirePermission('leave_requests.request')
   async create(@Body() dto: any, @Request() req) {

@@ -2,10 +2,12 @@ import { Injectable, BadRequestException, ForbiddenException, NotFoundException,
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, Between, Not, In } from 'typeorm';
 import { LeaveRequest, LeaveStatus, LeaveType, LeaveDuration } from '../../database/entities/leave-request.entity';
+import { LeaveRequestAttachment } from '../../database/entities/leave-request-attachment.entity';
 import { User } from '../../database/entities/user.entity';
 import { Department } from '../../database/entities/department.entity';
 import { Role } from '../../common/enums/role.enum';
 import { PermissionScope } from '../../database/entities/role-permission.entity';
+import { UploadsService } from '../uploads/uploads.service';
 
 /**
  * PERMISSIONS.md mục 2.6 - ĐÃ ĐƯỢC GENERALIZE sang scope-based:
@@ -29,6 +31,11 @@ export class LeaveRequestsService {
 
     @InjectRepository(Department)
     private departmentRepo: Repository<Department>,
+
+    @InjectRepository(LeaveRequestAttachment)
+    private attachmentRepo: Repository<LeaveRequestAttachment>,
+
+    private readonly uploadsService: UploadsService,
   ) {}
 
   /**
@@ -124,7 +131,29 @@ export class LeaveRequestsService {
       }
     }
     
-    // 5. Create request
+    // 5. Validate + lưu ảnh đính kèm (nếu có) - dto.attachmentKeys là mảng
+    // object key đã PUT thẳng lên B2 qua POST /leave-requests/attachments/presign
+    const attachmentKeys: string[] = Array.isArray(dto.attachmentKeys) ? dto.attachmentKeys : [];
+    if (attachmentKeys.length > 0) {
+      const limits = await this.uploadsService.getLimits();
+      if (attachmentKeys.length > limits.leaveAttachmentMaxCount) {
+        throw new BadRequestException(
+          `Tối đa ${limits.leaveAttachmentMaxCount} ảnh đính kèm / đơn`,
+        );
+      }
+      // Kiểm tra dung lượng thật từng ảnh trên B2 - làm TUẦN TỰ (không
+      // Promise.all) để dừng ngay + xoá đúng ảnh vi phạm khi gặp lỗi đầu
+      // tiên, tránh xoá nhầm/rối trạng thái khi nhiều ảnh cùng lỗi song song.
+      for (const key of attachmentKeys) {
+        await this.uploadsService.assertUploadedSizeWithinLimit(
+          this.uploadsService.leaveAttachmentsBucket,
+          key,
+          limits.leaveAttachmentMaxSizeKb,
+        );
+      }
+    }
+
+    // 6. Create request
     const leaveRequest = this.leaveRequestRepo.create({
       requesterId,
       leaveType: dto.leaveType,
@@ -133,11 +162,57 @@ export class LeaveRequestsService {
       duration: dto.duration,
       totalDays,
       reason: dto.reason,
-      attachmentUrl: dto.attachmentUrl || null,
       status: LeaveStatus.PENDING
     });
-    
-    return this.leaveRequestRepo.save(leaveRequest);
+
+    const saved = await this.leaveRequestRepo.save(leaveRequest);
+
+    if (attachmentKeys.length > 0) {
+      const rows = attachmentKeys.map((objectKey) =>
+        this.attachmentRepo.create({ leaveRequestId: saved.id, objectKey }),
+      );
+      await this.attachmentRepo.save(rows);
+    }
+
+    return saved;
+  }
+
+  /**
+   * Ký Presigned GET URL (TTL 10 phút) cho toàn bộ ảnh đính kèm của 1 đơn -
+   * chỉ cho phép CHỦ ĐƠN hoặc người có quyền duyệt/xem đúng scope (giống
+   * hệt rule `isEligibleApprover` dùng cho approve/reject, CỘNG THÊM
+   * trường hợp chính chủ dù họ không có `leave_requests.view/approve`).
+   */
+  async getAttachmentViewUrls(
+    requestId: number,
+    viewerId: number,
+    viewerRole: string,
+    scope?: string | null,
+  ): Promise<{ id: number; url: string }[]> {
+    const request = await this.leaveRequestRepo.findOne({
+      where: { id: requestId },
+      relations: ['requester', 'attachments'],
+    });
+    if (!request) {
+      throw new NotFoundException('Không tìm thấy đơn nghỉ phép');
+    }
+
+    const isOwner = request.requesterId === viewerId;
+    const canApproveOrView =
+      viewerRole === Role.ADMIN ||
+      scope === PermissionScope.ALL ||
+      (await this.isEligibleApprover(request.requester.departmentId, viewerId, viewerRole, scope));
+
+    if (!isOwner && !canApproveOrView) {
+      throw new ForbiddenException('Bạn không có quyền xem ảnh đính kèm của đơn này');
+    }
+
+    return Promise.all(
+      (request.attachments || []).map(async (a) => ({
+        id: a.id,
+        url: await this.uploadsService.signAttachmentGetUrl(a.objectKey),
+      })),
+    );
   }
   
   /**
