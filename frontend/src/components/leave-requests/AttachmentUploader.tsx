@@ -83,7 +83,14 @@ export function AttachmentUploader({ value = [], onChange, leaveType }: Attachme
 
   const handleRemove = (file: UploadFile) => {
     const key = (file.response as { key?: string } | undefined)?.key;
-    if (key) onChange?.(value.filter((k) => k !== key));
+    if (!key) return;
+    onChange?.(value.filter((k) => k !== key));
+    // Ảnh vừa xoá khỏi picker CHƯA gắn vào đơn nào (đơn chưa tạo) - dọn
+    // luôn object thật trên B2, tránh tồn rác nếu người dùng không bấm
+    // "Tạo đơn" nữa. Best-effort - không chặn UI nếu lỗi (ảnh đã biến mất
+    // khỏi picker rồi, thất bại ở đây chỉ để lại rác chờ admin dọn thủ công
+    // qua trang "Dọn dẹp Media").
+    leaveRequestsApi.discardAttachments([key]).catch(() => undefined);
   };
 
   return (

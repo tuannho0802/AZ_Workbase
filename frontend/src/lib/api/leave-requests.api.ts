@@ -62,6 +62,17 @@ export const leaveRequestsApi = {
     return res.data;
   },
 
+  // Dọn ảnh đã PUT lên B2 (qua presignAttachment) nhưng CHƯA gắn vào đơn
+  // nào - gọi khi người dùng xoá ảnh khỏi picker, hoặc đóng/huỷ Modal tạo
+  // đơn TRƯỚC khi bấm "Tạo đơn". Best-effort ở phía gọi - không throw ra
+  // UI nếu lỗi (xem AttachmentUploader.tsx / nghi-phep/page.tsx), vì đây
+  // chỉ là dọn rác, không phải luồng nghiệp vụ chính.
+  async discardAttachments(keys: string[]) {
+    if (keys.length === 0) return;
+    const res = await axiosInstance.post('/leave-requests/attachments/discard', { keys });
+    return res.data;
+  },
+
   // Ký Presigned GET URL (TTL 10 phút) cho toàn bộ ảnh đính kèm của 1 đơn -
   // chỉ chủ đơn hoặc người có quyền duyệt/xem đúng phạm vi mới gọi được.
   async getAttachmentUrls(id: number): Promise<{ id: number; url: string }[]> {

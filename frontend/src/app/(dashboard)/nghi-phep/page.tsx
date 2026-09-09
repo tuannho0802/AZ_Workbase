@@ -151,6 +151,23 @@ export default function LeaveRequestsPage() {
     }
   };
 
+  /**
+   * Đóng/huỷ Modal tạo đơn KHÔNG qua bấm "Tạo đơn" (nút "Hủy" hoặc bấm X) -
+   * ảnh đã chọn (nếu có) đã PUT thẳng lên B2 rồi (xem AttachmentUploader)
+   * nhưng CHƯA gắn vào đơn nào -> dọn luôn qua discardAttachments(), tránh
+   * để rác vĩnh viễn trên B2 chỉ vì người dùng đổi ý không tạo đơn.
+   * Best-effort - không chặn việc đóng Modal nếu dọn rác lỗi.
+   */
+  const closeModalAndDiscardAttachments = () => {
+    const keys: string[] = form.getFieldValue('attachmentKeys') ?? [];
+    if (keys.length > 0) {
+      leaveRequestsApi.discardAttachments(keys).catch(() => undefined);
+    }
+    setModalOpen(false);
+    form.resetFields();
+    setAttachmentUploaderKey((k) => k + 1);
+  };
+
   const handleCreateRequest = async (values: any) => {
     try {
       const [startDate, endDate] = values.dateRange;
@@ -296,11 +313,7 @@ export default function LeaveRequestsPage() {
       <Modal
         title="Tạo đơn nghỉ phép"
         open={modalOpen}
-        onCancel={() => {
-          setModalOpen(false);
-          form.resetFields();
-          setAttachmentUploaderKey((k) => k + 1);
-        }}
+        onCancel={closeModalAndDiscardAttachments}
         footer={null}
         width={600}
       >
@@ -369,7 +382,7 @@ export default function LeaveRequestsPage() {
           </Form.Item>
 
           <div className="flex justify-end gap-2" style={{ marginTop: 16 }}>
-            <Button onClick={() => setModalOpen(false)}>Hủy</Button>
+            <Button onClick={closeModalAndDiscardAttachments}>Hủy</Button>
             <Button type="primary" htmlType="submit">Tạo đơn</Button>
           </div>
         </Form>
