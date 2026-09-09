@@ -3,12 +3,14 @@ import {
   PrimaryGeneratedColumn,
   Column,
   ManyToOne,
+  OneToMany,
   JoinColumn,
   CreateDateColumn,
   UpdateDateColumn
 } from 'typeorm';
 import { User } from './user.entity';
 import { DecimalTransformer } from '../transformers/decimal.transformer';
+import { LeaveRequestAttachment } from './leave-request-attachment.entity';
 
 export enum LeaveType {
   ANNUAL = 'annual',         // Phép năm
@@ -116,15 +118,24 @@ export class LeaveRequest {
   })
   status: LeaveStatus;
   
-  // ATTACHMENT (Optional)
+  // ATTACHMENT (Optional) - ⚠️ CỘT CŨ, giữ lại để không vỡ dữ liệu cũ nếu
+  // đã có bản ghi dùng field này, nhưng luồng upload MỚI (nhiều ảnh, xem
+  // migration CreateLeaveRequestAttachments) dùng bảng con `attachments`
+  // bên dưới - KHÔNG ghi tiếp vào cột này nữa.
   @Column({ 
     name: 'attachment_url',
     type: 'varchar', 
     length: 500, 
     nullable: true,
-    comment: 'Link file đính kèm (giấy bác sĩ, v.v.)' 
+    comment: '[DEPRECATED] Dùng bảng leave_request_attachments thay thế - giữ cột này chỉ để tương thích ngược' 
   })
   attachmentUrl: string | null;
+
+  // Danh sách ảnh đính kèm (tối đa upload_leave_attachment_max_count, xem
+  // settings) - mỗi phần tử lưu OBJECT KEY trên B2, phải ký lại Presigned
+  // GET on-demand, KHÔNG trả trực tiếp trong response mặc định.
+  @OneToMany(() => LeaveRequestAttachment, (a) => a.leaveRequest)
+  attachments: LeaveRequestAttachment[];
   
   // TIMESTAMPS
   @CreateDateColumn({ name: 'created_at', comment: 'Ngày tạo đơn' })

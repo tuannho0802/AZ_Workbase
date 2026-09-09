@@ -79,6 +79,14 @@ export class User {
   })
   role: string;
 
+  // ⚠️ Lưu OBJECT KEY trên Backblaze B2 (bucket az-imgs-avatars-workbase,
+  // Private), KHÔNG PHẢI URL trực tiếp - bucket Private nên không có URL
+  // tĩnh dùng được. Phải qua UsersService.signAvatarUrl() để đổi thành
+  // Presigned GET URL (TTL 1h) trước khi trả cho FE - xem checklist đầy đủ
+  // các endpoint cần gọi hàm này trong users.controller.ts.
+  @Column({ name: 'avatar_url', type: 'varchar', length: 255, nullable: true })
+  avatarUrl: string | null;
+
   @Column({ name: 'department_id', nullable: true })
   departmentId: number;
 
