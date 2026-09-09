@@ -1,61 +1,74 @@
-import { Controller, Get, Headers, HttpException, HttpStatus, Logger, Query } from '@nestjs/common';
-import { ApiOperation, ApiQuery, ApiTags } from '@nestjs/swagger';
+import { Body, Controller, Delete, Get, Patch, Post, Query, UseGuards } from '@nestjs/common';
+import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
+import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
+import { PermissionGuard } from '../../common/guards/permission.guard';
+import { RequirePermission } from '../../common/decorators/require-permission.decorator';
 import { StorageService } from './storage.service';
+import { ListMediaDto } from './dto/list-media.dto';
+import { DeleteMediaDto } from './dto/delete-media.dto';
+import { PresignMediaLibraryDto } from './dto/presign-media-library.dto';
+import { UpdateStorageLimitDto } from './dto/update-storage-limit.dto';
 
-/**
- * ⚠️ CONTROLLER RIÊNG - CỐ Ý KHÔNG dùng chung `StorageController` (có
- * `@UseGuards(JwtAuthGuard, PermissionGuard)` ở mức class).
- *
- * Lý do & cách bảo vệ bằng CRON_SECRET: giống HỆT
- * `zk-device-cron.controller.ts` - đọc kỹ comment ở file đó trước khi sửa
- * gì ở đây. Tái dùng ĐÚNG biến môi trường `CRON_SECRET` đã có sẵn (không
- * tạo secret riêng cho từng cron job - không cần thiết, cùng mức rủi ro).
- *
- * Cấu hình dịch vụ Uptime (cron-job.org / Vercel Cron) trỏ tới, gọi mỗi
- * 15-30 phút (KHÔNG cần dày hơn - đây chỉ là hạn mức MỀM để hiển thị, sai
- * lệch vài phút không ảnh hưởng gì):
- *   GET https://<domain>/api/storage-cron/refresh-usage?secret=<CRON_SECRET>
- */
-@ApiTags('Storage Cron (nội bộ - dùng cho Uptime)')
-@Controller('storage-cron')
-export class StorageCronController {
-  private readonly logger = new Logger(StorageCronController.name);
-
+@ApiTags('storage')
+@ApiBearerAuth()
+@UseGuards(JwtAuthGuard, PermissionGuard)
+@Controller('storage')
+export class StorageController {
   constructor(private readonly storageService: StorageService) {}
 
-  @Get('refresh-usage')
+  @Get('usage')
+  @RequirePermission('storage.view')
   @ApiOperation({
     summary:
-      'CHỈ dùng cho dịch vụ Uptime bên ngoài gọi định kỳ - tính lại THẬT dung lượng B2 (liệt kê toàn bộ object, tốn Class C transaction) và ghi vào cache. Yêu cầu query param `secret` hoặc header `x-cron-secret` khớp biến môi trường CRON_SECRET.',
+      'Dung lượng đã dùng (cache, refresh định kỳ qua storage-cron - xem storage-cron.controller.ts) + hạn mức mềm',
   })
-  @ApiQuery({ name: 'secret', required: false, description: 'CRON_SECRET - có thể truyền qua query hoặc header x-cron-secret' })
-  async refreshUsage(
-    @Query('secret') secretQuery?: string,
-    @Headers('x-cron-secret') secretHeader?: string,
-  ) {
-    const expected = process.env.CRON_SECRET;
-    const provided = secretHeader || secretQuery;
+  async getUsage() {
+    const [cache, softLimitGb] = await Promise.all([
+      this.storageService.getUsageFromCache(),
+      this.storageService.getSoftLimitGb(),
+    ]);
+    return { cache, softLimitGb };
+  }
 
-    if (!expected) {
-      throw new HttpException(
-        'CRON_SECRET chưa được cấu hình trên server - liên hệ admin để bật endpoint này.',
-        HttpStatus.SERVICE_UNAVAILABLE,
-      );
-    }
-    if (!provided || provided !== expected) {
-      throw new HttpException('Secret không hợp lệ.', HttpStatus.UNAUTHORIZED);
-    }
+  @Post('usage/refresh')
+  @RequirePermission('storage.manage')
+  @ApiOperation({
+    summary:
+      'Tính lại THẬT dung lượng B2 ngay lúc gọi (không đợi cron ngoài) - dùng cho nút "Tính lại ngay" trên UI, ' +
+      'đặc biệt cần thiết ở lần đầu bật tính năng khi storage-cron chưa từng chạy (cache rỗng). ' +
+      'Tốn Class C transaction (liệt kê toàn bộ object) - không gọi tự động, chỉ khi Admin bấm.',
+  })
+  async refreshUsage() {
+    return this.storageService.refreshUsageCache();
+  }
 
-    try {
-      const result = await this.storageService.refreshUsageCache();
-      this.logger.log(
-        `[Cron] Refresh storage usage xong: total=${result.totalUsedBytes} bytes, buckets=${Object.keys(result.buckets).length}`,
-      );
-      return result;
-    } catch (err) {
-      const message = err instanceof Error ? err.message : String(err);
-      this.logger.error(`[Cron] Refresh storage usage thất bại: ${message}`);
-      throw new HttpException(`Refresh thất bại: ${message}`, HttpStatus.SERVICE_UNAVAILABLE);
-    }
+  @Patch('usage/limit')
+  @RequirePermission('storage.manage')
+  @ApiOperation({ summary: 'Đổi hạn mức mềm (GB) - chỉ để hiển thị %, không chặn upload' })
+  async updateLimit(@Body() dto: UpdateStorageLimitDto) {
+    const softLimitGb = await this.storageService.updateSoftLimitGb(dto.softLimitGb);
+    return { softLimitGb };
+  }
+
+  @Get('media')
+  @RequirePermission('storage.view')
+  @ApiOperation({ summary: 'Danh sách media phân trang (bucket: avatars | leave-attachments | media-library)' })
+  async listMedia(@Query() dto: ListMediaDto) {
+    return this.storageService.listMedia(dto.bucket, dto.cursor, dto.limit ?? 50);
+  }
+
+  @Post('media-library/presign')
+  @RequirePermission('storage.manage')
+  @ApiOperation({ summary: 'Xin Presigned PUT URL để thêm ảnh mới vào media-library' })
+  async presignMediaLibraryUpload(@Body() dto: PresignMediaLibraryDto) {
+    return this.storageService.presignMediaLibraryUpload(dto.contentType);
+  }
+
+  @Delete('media')
+  @RequirePermission('storage.manage')
+  @ApiOperation({ summary: 'Xoá 1 media - CHỈ hoạt động với bucket media-library (2 bucket còn lại view-only)' })
+  async deleteMedia(@Body() dto: DeleteMediaDto) {
+    await this.storageService.deleteMedia(dto.bucket, dto.key);
+    return { success: true };
   }
 }
