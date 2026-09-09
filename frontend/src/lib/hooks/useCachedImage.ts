@@ -20,6 +20,46 @@ function supportsCacheStorage(): boolean {
     return typeof window !== 'undefined' && 'caches' in window;
 }
 
+// ⚠️ FIX BUG THẬT (dedup request đang bay - root cause của việc avatar Header
+// tải 2 LẦN THẬT từ B2 với 2 signed URL KHÁC NHAU, thấy rõ trong DevTools
+// Network dù cache đang hoạt động đúng): mỗi khi `signedUrl` truyền vào đổi
+// (BE ký lại URL mới cho CÙNG 1 `cacheKey` - vd effect tự refresh avatar mỗi
+// 8 phút ở dashboard layout, hoặc React 18 StrictMode dev tự chạy effect 2
+// lần), nếu 2 lần gọi hook xảy ra GẦN NHAU trước khi lần fetch đầu kịp
+// `cache.put()` xong, `cache.match()` ở lần gọi sau vẫn miss (cache còn
+// trống) -> tự fetch thêm 1 lần THẬT nữa qua B2 dù ảnh giống hệt, tốn gấp
+// đôi băng thông đúng lúc cache còn "lạnh". Fix: 1 Map DÙNG CHUNG (module-
+// level, không phải per-hook-instance) theo dõi promise fetch+cache-write
+// đang bay cho từng `cacheKey` - lần gọi sau (dù `signedUrl` khác) chỉ cần
+// AWAIT lại đúng promise đó thay vì tự fetch thêm, đảm bảo TỐI ĐA 1 request
+// mạng thật sự cho mỗi `cacheKey` tại 1 thời điểm, bất kể có bao nhiêu
+// component/effect cùng yêu cầu cùng lúc.
+const inFlightFetches = new Map<string, Promise<Blob>>();
+
+async function fetchAndCache(cache: Cache, request: Request, cacheKey: string, signedUrl: string): Promise<Blob> {
+    const existing = inFlightFetches.get(cacheKey);
+    if (existing) return existing;
+
+    const promise = (async () => {
+        const response = await fetch(signedUrl);
+        if (!response.ok) throw new Error(`Tải ảnh thất bại (${response.status})`);
+        // Lưu vào cache bằng bản clone (body Response chỉ đọc được 1 lần).
+        await cache.put(request, response.clone());
+        return response.blob();
+    })();
+
+    inFlightFetches.set(cacheKey, promise);
+    try {
+        return await promise;
+    } finally {
+        // Chỉ xoá nếu vẫn còn đúng promise này (tránh race hiếm: promise mới
+        // hơn đã ghi đè trong lúc promise cũ đang finally).
+        if (inFlightFetches.get(cacheKey) === promise) {
+            inFlightFetches.delete(cacheKey);
+        }
+    }
+}
+
 /**
  * Cache 1 ảnh (avatar / ảnh đính kèm nghỉ phép / media-library...) theo
  * `cacheKey` ỔN ĐỊNH (object key thô trên B2, hoặc id bản ghi DB - KHÔNG
@@ -93,12 +133,9 @@ export function useCachedImage(
             return;
         }
 
-          const response = await fetch(signedUrl);
-          if (!response.ok) throw new Error(`Tải ảnh thất bại (${response.status})`);
-
-          // Lưu vào cache bằng bản clone (body Response chỉ đọc được 1 lần).
-          await cache.put(request, response.clone());
-          const blob = await response.blob();
+            // Dedup qua Map dùng chung - xem comment ở fetchAndCache() phía
+            // trên: tối đa 1 request mạng thật cho mỗi cacheKey tại 1 thời điểm.
+            const blob = await fetchAndCache(cache, request, cacheKey, signedUrl);
           setFromBlob(blob);
       } catch {
           // Cache Storage lỗi hoặc fetch lỗi - vẫn hiển thị được ảnh qua URL

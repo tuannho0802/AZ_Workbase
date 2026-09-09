@@ -16,6 +16,7 @@ import { getVisibleNavItems, NAV_ITEMS } from '@/lib/nav-config';
 import { useMyPermissions } from '@/lib/hooks/useMyPermissions';
 import { useSidebarBadgeCounts } from '@/lib/hooks/useSidebarBadgeCounts';
 import { useCachedImage } from '@/lib/hooks/useCachedImage';
+import { usersApi } from '@/lib/api/users.api';
 import { CountBadge } from '@/components/common/CountBadge';
 import dayjs from 'dayjs';
 import 'dayjs/locale/vi';
@@ -108,6 +109,60 @@ export default function DashboardLayout({
       setCollapsed(savedState === 'true');
     }
   }, []);
+
+  // ⚠️ FIX BUG THẬT (root cause vụ "Profile OK nhưng avatar Header/Sidebar ở
+  // MỌI trang khác vẫn còn `x-amz-checksum-mode=ENABLED` dù backend đã fix +
+  // restart"): `user.avatarUrl` trong store này được set DUY NHẤT 1 LẦN lúc
+  // login (xem auth.store.ts - persist qua cookie), sau đó KHÔNG BAO GIỜ tự
+  // refetch khi chuyển trang - khác với `/profile` (page đó tự gọi
+  // `usersApi.getMe()` mới toanh mỗi lần mount). Hệ quả: nếu user đăng nhập
+  // TRƯỚC lúc backend được fix (tắt flexible-checksums) hoặc trước lúc URL
+  // hết hạn (AVATAR_GET_TTL_SECONDS=3600s ở uploads.service.ts), avatar Header/
+  // Sidebar dùng lại `avatarUrl` CŨ đã ký từ session login đó mãi mãi, không
+  // tự "tự lành" dù backend đã đúng - phải logout/login lại thủ công mới hết.
+  // Fix: layout bọc TẤT CẢ trang trong (dashboard) nên gọi lại `/users/me`
+  // 1 lần lúc mount + định kỳ (< 600s để URL luôn còn hạn) để merge
+  // avatarUrl/avatarKey mới nhất vào store - tự lành, không cần user
+  // logout/login lại mỗi khi backend đổi cách ký URL hoặc URL cũ hết hạn.
+  useEffect(() => {
+    if (!isAuthenticated || !isHydrated) return;
+
+    let cancelled = false;
+
+    const refreshAvatar = async () => {
+      try {
+        const fresh = await usersApi.getMe();
+        if (cancelled) return;
+        const current = useAuthStore.getState().user;
+        if (!current) return;
+        // Chỉ merge avatarUrl/avatarKey - KHÔNG ghi đè các field khác của
+        // user (vd role/department có thể đang được quản lý bởi luồng
+        // khác), tránh side-effect ngoài ý muốn.
+        if (current.avatarUrl !== fresh.avatarUrl || current.avatarKey !== fresh.avatarKey) {
+          useAuthStore.getState().setUser({
+            ...current,
+            avatarUrl: fresh.avatarUrl ?? null,
+            avatarKey: fresh.avatarKey ?? null,
+          });
+        }
+      } catch {
+        // Im lặng bỏ qua - đây chỉ là refresh nền, không phải hành động
+        // người dùng chủ động chờ kết quả; lỗi mạng tạm thời không nên làm
+        // phiền UI (avatar cũ vẫn hiển thị được, chỉ là chưa refresh).
+      }
+    };
+
+    refreshAvatar();
+    // 8 phút << 60 phút TTL của presigned URL (AVATAR_GET_TTL_SECONDS) - đảm
+    // bảo avatarUrl trong store luôn còn hạn cho session mở lâu, và tự lành
+    // nhanh (không cần chờ tới 1h) nếu backend vừa được fix/redeploy.
+    const intervalId = setInterval(refreshAvatar, 8 * 60 * 1000);
+
+    return () => {
+      cancelled = true;
+      clearInterval(intervalId);
+    };
+  }, [isAuthenticated, isHydrated]);
 
   const handleToggleSidebar = () => {
     const newState = !collapsed;
