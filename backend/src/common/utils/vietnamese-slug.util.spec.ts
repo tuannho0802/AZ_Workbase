@@ -1,4 +1,10 @@
-import { removeVietnameseDiacritics, toPascalSlug, buildReadableFileName } from './vietnamese-slug.util';
+import {
+  removeVietnameseDiacritics,
+  toPascalSlug,
+  buildReadableFileName,
+  buildAttachmentFileName,
+  formatShortDateVN,
+} from './vietnamese-slug.util';
 
 describe('vietnamese-slug.util', () => {
   describe('removeVietnameseDiacritics', () => {
@@ -52,6 +58,43 @@ describe('vietnamese-slug.util', () => {
 
     it('tất cả phần đều rỗng -> fallback "File.{ext}" thay vì tên file rỗng', () => {
       expect(buildReadableFileName([null, undefined, '   '], 'webp')).toBe('File.webp');
+    });
+  });
+
+  describe('buildAttachmentFileName (ảnh đính kèm nghỉ phép - có thêm số thứ tự + ngày)', () => {
+    it('khớp đúng ví dụ thật: tên NV + role + loại nghỉ phép + N (từ 1) + ngày -> nối "_"', () => {
+      expect(buildAttachmentFileName(['Nguyễn Văn A', 'employee', 'Nghỉ ốm'], 1, '8-9-26', 'png')).toBe(
+        'NguyenVanA_Employee_NghiOm_1_8-9-26.png',
+      );
+    });
+
+    it('số thứ tự N tăng dần theo từng ảnh trong CÙNG đơn, giữ nguyên phần còn lại', () => {
+      const key2 = buildAttachmentFileName(['Nguyễn Văn A', 'employee', 'Nghỉ ốm'], 2, '8-9-26', 'png');
+      expect(key2).toBe('NguyenVanA_Employee_NghiOm_2_8-9-26.png');
+    });
+
+    it('ngày KHÔNG bị PascalCase/tách bởi dấu gạch ngang (giữ nguyên định dạng "d-m-yy")', () => {
+      expect(buildAttachmentFileName(['A'], 1, '8-9-26', 'png')).toBe('A_1_8-9-26.png');
+    });
+
+    it('bỏ qua phần null/undefined/rỗng trong parts, KHÔNG để lại dấu "_" thừa', () => {
+      expect(buildAttachmentFileName(['Nguyen Van A', null, 'Nghi om'], 1, '1-1-26', 'jpg')).toBe(
+        'NguyenVanA_NghiOm_1_1-1-26.jpg',
+      );
+    });
+
+    it('tất cả parts rỗng -> fallback "File" (vẫn giữ N + ngày)', () => {
+      expect(buildAttachmentFileName([null, undefined], 3, '1-1-26', 'webp')).toBe('File_3_1-1-26.webp');
+    });
+  });
+
+  describe('formatShortDateVN', () => {
+    it('format "d-m-yy" KHÔNG zero-pad - khớp đúng ví dụ thật "8-9-26" (8/9/2026)', () => {
+      expect(formatShortDateVN(new Date(2026, 8, 8))).toBe('8-9-26'); // tháng JS 0-index: 8 = tháng 9
+    });
+
+    it('ngày/tháng 2 chữ số vẫn KHÔNG zero-pad (vd 25/12/2026 -> "25-12-26")', () => {
+      expect(formatShortDateVN(new Date(2026, 11, 25))).toBe('25-12-26');
     });
   });
 });

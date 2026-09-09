@@ -37,7 +37,9 @@ export function toPascalSlug(input: string): string {
  * (KHÔNG để lại dấu `_` thừa) - vd nhân viên chưa gán phòng ban vẫn ra tên
  * file hợp lệ "AbcXyz_Admin.png" thay vì "AbcXyz__Admin.png".
  * Nếu TẤT CẢ phần đều rỗng (dữ liệu user hỏng/thiếu), fallback về "File" để
- * luôn có 1 tên file hợp lệ, không bao giờ trả chuỗi rỗng.
+ * luôn có 1 tên file hợp lệ, không bao giờ trả chuỗi rỗng. Dùng cho AVATAR
+ * (xem uploads.service.ts:presignAvatarUpload). Cho ẢNH ĐÍNH KÈM NGHỈ PHÉP,
+ * dùng `buildAttachmentFileName` bên dưới (cần thêm số thứ tự + ngày).
  */
 export function buildReadableFileName(parts: Array<string | null | undefined>, ext: string): string {
   const slugParts = parts
@@ -47,4 +49,39 @@ export function buildReadableFileName(parts: Array<string | null | undefined>, e
 
   const base = slugParts.length > 0 ? slugParts.join('_') : 'File';
   return `${base}.${ext}`;
+}
+
+/**
+ * Build tên file "dễ đọc" cho ẢNH ĐÍNH KÈM ĐƠN NGHỈ PHÉP - khác avatar ở chỗ
+ * PHẢI thêm số thứ tự (N, bắt đầu từ 1 - phân biệt nhiều ảnh trong CÙNG 1
+ * đơn) và ngày tạo (dd-m-yy, KHÔNG PascalCase/bỏ dấu gạch ngang - đây là số,
+ * không phải chữ, giữ nguyên định dạng ngày cho dễ đọc khi liệt kê theo thời
+ * gian). VD: "NguyenVanA_Employee_NghiOm_1_8-9-26.png".
+ */
+export function buildAttachmentFileName(
+  parts: Array<string | null | undefined>,
+  index: number,
+  dateLabel: string,
+  ext: string,
+): string {
+  const slugParts = parts
+    .filter((p): p is string => !!p && p.trim().length > 0)
+    .map((p) => toPascalSlug(p))
+    .filter(Boolean);
+
+  const base = slugParts.length > 0 ? slugParts.join('_') : 'File';
+  return `${base}_${index}_${dateLabel}.${ext}`;
+}
+
+/**
+ * Format ngày ngắn kiểu VN cho tên file: "d-m-yy" (KHÔNG zero-pad, VD ngày
+ * 8 tháng 9 năm 2026 -> "8-9-26"). Chỉ dùng cho tên file (đã có `createdAt`
+ * thật trong DB để hiển thị chính xác ở UI) - đây chỉ là gợi nhớ khi liệt kê
+ * key thô trong trang Dọn dẹp Media.
+ */
+export function formatShortDateVN(date: Date): string {
+  const d = date.getDate();
+  const m = date.getMonth() + 1;
+  const yy = date.getFullYear() % 100;
+  return `${d}-${m}-${yy}`;
 }
