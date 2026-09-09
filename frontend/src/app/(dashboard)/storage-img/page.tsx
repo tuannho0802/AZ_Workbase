@@ -380,7 +380,7 @@ function MediaCleanupPanel({ bucket }: { bucket: (typeof CLEANUP_BUCKETS)[number
                 type="warning"
                 showIcon
                 style={{ marginBottom: 12 }}
-                message="Xoá file ở đây sẽ dọn luôn dữ liệu liên quan (bỏ avatar khỏi hồ sơ nhân viên / xoá đính kèm khỏi đơn nghỉ phép) trước khi xoá file thật trên B2."
+                title="Xoá file ở đây sẽ dọn luôn dữ liệu liên quan (bỏ avatar khỏi hồ sơ nhân viên / xoá đính kèm khỏi đơn nghỉ phép) trước khi xoá file thật trên B2."
             />
 
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12, flexWrap: 'wrap', gap: 8 }}>
