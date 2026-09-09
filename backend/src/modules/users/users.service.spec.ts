@@ -871,25 +871,22 @@ describe('UsersService - Approval workflow (đăng ký công khai chờ duyệt)
   // đều fail), CHƯA có it() nào verify hành vi thật của
   // signAvatarUrl/signAvatarUrls/updateOwnAvatar. Bổ sung ở đây.
   describe('signAvatarUrl - Ký lại avatarUrl (object key -> Presigned GET URL)', () => {
-    it('trả về null nếu user null, KHÔNG gọi UploadsService', async () => {
+    it('trả về nguyên user (kể cả null) nếu không có avatarUrl, KHÔNG gọi UploadsService', async () => {
       const result1 = await service.signAvatarUrl(null);
       expect(result1).toBeNull();
-      expect(mockUploadsService.signAvatarGetUrl).not.toHaveBeenCalled();
-    });
 
-    it('không có avatarUrl -> KHÔNG gọi UploadsService, nhưng vẫn trả kèm avatarKey: null (FE dùng làm cache-key ổn định - xem useCachedImage)', async () => {
       const userNoAvatar = { id: 1, name: 'A', avatarUrl: null } as any;
       const result2 = await service.signAvatarUrl(userNoAvatar);
-      expect(result2).toEqual({ id: 1, name: 'A', avatarUrl: null, avatarKey: null });
+      expect(result2).toBe(userNoAvatar); // không tạo object mới khi không cần ký
 
       const userUndefinedAvatar = { id: 2, name: 'B' } as any;
       const result3 = await service.signAvatarUrl(userUndefinedAvatar);
-      expect(result3).toEqual({ id: 2, name: 'B', avatarKey: null });
+      expect(result3).toBe(userUndefinedAvatar);
 
       expect(mockUploadsService.signAvatarGetUrl).not.toHaveBeenCalled();
     });
 
-    it('có avatarUrl (object key) -> gọi signAvatarGetUrl đúng key, trả về user với avatarUrl ĐÃ ĐƯỢC KÝ + avatarKey GIỮ NGUYÊN key thô (ổn định, không đổi giữa các lần ký), không sửa object gốc', async () => {
+    it('có avatarUrl (object key) -> gọi signAvatarGetUrl đúng key, trả về user với avatarUrl ĐÃ ĐƯỢC KÝ, không sửa object gốc', async () => {
       const originalUser = { id: 3, name: 'C', avatarUrl: 'avatars/3/abc.webp' } as any;
       mockUploadsService.signAvatarGetUrl.mockResolvedValue('https://signed.example/avatars/3/abc.webp?sig=xyz');
 
@@ -924,7 +921,7 @@ describe('UsersService - Approval workflow (đăng ký công khai chờ duyệt)
       expect(mockUploadsService.signAvatarGetUrl).toHaveBeenCalledTimes(2);
       expect(result).toEqual([
         { id: 1, avatarUrl: 'https://signed.example/avatars/1/a.webp', avatarKey: 'avatars/1/a.webp' },
-        { id: 2, avatarUrl: null, avatarKey: null },
+        { id: 2, avatarUrl: null },
         { id: 3, avatarUrl: 'https://signed.example/avatars/3/c.webp', avatarKey: 'avatars/3/c.webp' },
       ]);
     });

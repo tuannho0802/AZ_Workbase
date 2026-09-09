@@ -110,6 +110,7 @@ export class AuthService {
         role: user.role,
         isActive: user.isActive,
         avatarUrl: signedUser?.avatarUrl ?? null,
+        avatarKey: signedUser?.avatarKey ?? null,
       },
     };
   }

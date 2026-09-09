@@ -52,30 +52,24 @@ export class UsersService {
   // URL (TTL 1h) trước khi trả ra khỏi service cho bất kỳ controller nào.
   // Gọi `signAvatarUrl`/`signAvatarUrls` ở TẤT CẢ nơi trả User(s) ra ngoài -
   // thiếu 1 chỗ là avatar hiện ra key thô, không load được ảnh.
-  //
-  // ⚠️ FIX BANDWIDTH THẬT (theo yêu cầu tối ưu bandwidth B2): trả kèm
-  // `avatarKey` - chính là OBJECT KEY thô, ỔN ĐỊNH, không đổi giữa các lần
-  // gọi API (khác `avatarUrl` - Presigned GET URL đổi query string MỖI LẦN
-  // ký lại nên trình duyệt không cache được, tải lại toàn bộ bytes ảnh mỗi
-  // lần load trang dù avatar không đổi). FE dùng `avatarKey` làm cache-key
-  // ổn định (Cache Storage API - xem `useCachedImage` hook), `avatarUrl` chỉ
-  // dùng để fetch THẬT đúng 1 lần khi cache miss. Key chỉ đổi khi avatar
-  // THẬT SỰ đổi -> cache tự động invalidate đúng lúc, không cần TTL riêng.
 
+  // ⚠️ Giữ thêm `avatarKey` (= key thô, chính giá trị avatarUrl cột DB TRƯỚC
+  // khi ký) song song với avatarUrl đã ký - FE dùng key này làm cache key ổn
+  // định cho Cache Storage API (useCachedImage), vì avatarUrl đổi mỗi lần
+  // ký lại (query string HMAC khác nhau) nên không dùng làm cache key được.
   async signAvatarUrl<T extends { avatarUrl?: string | null }>(
     user: T | null,
-  ): Promise<(T & { avatarKey: string | null }) | null> {
-    if (!user) return user as (T & { avatarKey: string | null }) | null;
-    const rawKey = user.avatarUrl ?? null;
-    if (!rawKey) return { ...user, avatarKey: null };
+  ): Promise<(T & { avatarKey?: string | null }) | null> {
+    if (!user || !user.avatarUrl) return user as (T & { avatarKey?: string | null }) | null;
+    const rawKey = user.avatarUrl;
     const signedUrl = await this.uploadsService.signAvatarGetUrl(rawKey);
     return { ...user, avatarUrl: signedUrl, avatarKey: rawKey };
   }
 
   async signAvatarUrls<T extends { avatarUrl?: string | null }>(
     users: T[],
-  ): Promise<(T & { avatarKey: string | null })[]> {
-    return Promise.all(users.map((u) => this.signAvatarUrl(u))) as Promise<(T & { avatarKey: string | null })[]>;
+  ): Promise<(T & { avatarKey?: string | null })[]> {
+    return Promise.all(users.map((u) => this.signAvatarUrl(u))) as Promise<(T & { avatarKey?: string | null })[]>;
   }
 
   /**
