@@ -14,6 +14,7 @@ import { Department } from '../../database/entities/department.entity';
 import { RoleEntity } from '../../database/entities/role.entity';
 import { AuditService } from '../audit/audit.service';
 import { DepartmentsService } from '../departments/departments.service';
+import { UploadsService } from '../uploads/uploads.service';
 import { Role } from '../../common/enums/role.enum';
 import { ApprovalStatus } from '../../common/enums/approval-status.enum';
 
@@ -95,6 +96,27 @@ describe('UsersService - Approval workflow (đăng ký công khai chờ duyệt)
   const mockRoleRepo = {
     exists: jest.fn().mockResolvedValue(true),
   };
+  // FIX: UsersService giờ inject thêm UploadsService (dùng bởi
+  // signAvatarUrl()/signAvatarUrls()/updateOwnAvatar() - tính năng avatar
+  // qua Backblaze B2, xem PLAN_AVATAR_LEAVE_ATTACHMENT_BACKBLAZE_B2.md) -
+  // spec này thiếu mock nên TOÀN BỘ suite (50/50 test, kể cả test không
+  // liên quan gì tới avatar) fail ngay từ bước
+  // `Test.createTestingModule().compile()`: "Nest can't resolve
+  // dependencies of the UsersService (...) argument UploadsService at
+  // index [5]". `avatarsBucket` là getter thật trong UploadsService (đọc
+  // biến môi trường B2_BUCKET_AVATARS) nên mock bằng 1 string cố định,
+  // không phải jest.fn().
+  const mockUploadsService = {
+    signAvatarGetUrl: jest.fn().mockResolvedValue('https://signed-get-url.example/avatar.webp'),
+    getLimits: jest.fn().mockResolvedValue({
+      avatarMaxSizeKb: 1024,
+      leaveAttachmentMaxSizeKb: 1536,
+      leaveAttachmentMaxCount: 5,
+    }),
+    assertUploadedSizeWithinLimit: jest.fn().mockResolvedValue(undefined),
+    deleteAvatar: jest.fn().mockResolvedValue(undefined),
+    avatarsBucket: 'az-imgs-avatars-workbase',
+  };
 
   beforeEach(async () => {
     jest.clearAllMocks();
@@ -114,6 +136,14 @@ describe('UsersService - Approval workflow (đăng ký công khai chờ duyệt)
     mockQueryBuilder.getMany.mockResolvedValue([]);
     mockQueryBuilder.execute.mockResolvedValue(undefined);
     mockRoleRepo.exists.mockResolvedValue(true);
+    mockUploadsService.signAvatarGetUrl.mockResolvedValue('https://signed-get-url.example/avatar.webp');
+    mockUploadsService.getLimits.mockResolvedValue({
+      avatarMaxSizeKb: 1024,
+      leaveAttachmentMaxSizeKb: 1536,
+      leaveAttachmentMaxCount: 5,
+    });
+    mockUploadsService.assertUploadedSizeWithinLimit.mockResolvedValue(undefined);
+    mockUploadsService.deleteAvatar.mockResolvedValue(undefined);
     mockTransactionManager.query.mockResolvedValue(undefined);
     mockDataSource.transaction.mockImplementation(async (cb: any) => cb(mockTransactionManager));
 
@@ -125,6 +155,7 @@ describe('UsersService - Approval workflow (đăng ký công khai chờ duyệt)
         { provide: getRepositoryToken(RoleEntity), useValue: mockRoleRepo },
         { provide: AuditService, useValue: mockAuditService },
         { provide: DepartmentsService, useValue: mockDepartmentsService },
+        { provide: UploadsService, useValue: mockUploadsService },
         { provide: getDataSourceToken(), useValue: mockDataSource },
       ],
     }).compile();
