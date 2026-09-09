@@ -140,6 +140,9 @@ export interface UserDetail {
   department?: { id: number; name: string } | null;
   // Presigned GET URL (TTL 1h, ký sẵn ở BE) - null nếu chưa từng upload avatar.
   avatarUrl?: string | null;
+  // Key thô ổn định song song avatarUrl - dùng làm cache key cho
+  // useCachedImage(), không đổi giữa các lần ký lại avatarUrl.
+  avatarKey?: string | null;
 }
 
 // Tài khoản đã xoá mềm (đang ở "thùng rác" - GET /users/trash)
