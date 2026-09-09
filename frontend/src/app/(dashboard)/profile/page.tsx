@@ -23,6 +23,7 @@ import { usersApi, UserDetail } from '@/lib/api/users.api';
 import { useManagedByMe, useAllLinkGroups } from '@/lib/hooks/useLinkGroups';
 import { useMyPermissions } from '@/lib/hooks/useMyPermissions';
 import { SimpleList } from '@/components/common/SimpleList';
+import { AvatarUpload } from '@/components/common/AvatarUpload';
 
 const { Text, Title } = Typography;
 
@@ -33,12 +34,6 @@ const ROLE_COLOR: Record<string, string> = {
 const ROLE_LABEL: Record<string, string> = {
   admin: 'Admin', manager: 'Manager', assistant: 'Assistant', employee: 'Employee',
 };
-
-function getInitials(name?: string) {
-  if (!name) return '?';
-  const parts = name.trim().split(/\s+/);
-  return parts[parts.length - 1]?.[0]?.toUpperCase() ?? '?';
-}
 
 interface ManagedGroupRow {
   groupId: number;
@@ -282,9 +277,14 @@ function ProfilePortal({ userId, onDeleted }: { userId: number; onDeleted?: () =
       {/* ── Header: Avatar + tên + tags + hành động ── */}
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 16, marginBottom: 20, flexWrap: 'wrap' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
-          <Avatar size={72} style={{ backgroundColor: '#1677ff', fontSize: 28 }}>
-            {getInitials(detail.name)}
-          </Avatar>
+          <AvatarUpload
+            avatarUrl={detail.avatarUrl}
+            name={detail.name}
+            size={72}
+            editable={isSelf && can('profile.edit_avatar')}
+            isSelf={isSelf}
+            onUpdated={() => fetchDetail()}
+          />
           <div>
             <Title level={4} style={{ margin: 0 }}>{detail.name}</Title>
             <Space style={{ marginTop: 6 }}>

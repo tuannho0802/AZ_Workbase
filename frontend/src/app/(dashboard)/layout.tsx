@@ -309,7 +309,8 @@ export default function DashboardLayout({
             >
               <div style={{ display: 'flex', alignItems: 'center', gap: 10, cursor: 'pointer' }}>
                 <Avatar
-                  icon={<UserOutlined />}
+                  src={user?.avatarUrl || undefined}
+                  icon={!user?.avatarUrl ? <UserOutlined /> : undefined}
                   style={{ background: 'linear-gradient(135deg, #1890ff 0%, #0a3d91 100%)' }}
                 />
                 <div style={{ display: 'flex', flexDirection: 'column', lineHeight: 1.25 }}>
