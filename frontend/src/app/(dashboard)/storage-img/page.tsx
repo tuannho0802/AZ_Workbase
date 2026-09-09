@@ -36,7 +36,7 @@ import {
 import type { ColumnsType } from 'antd/es/table';
 import dayjs from 'dayjs';
 import { useMyPermissions } from '@/lib/hooks/useMyPermissions';
-import { useCachedImage } from '@/lib/hooks/useCachedImage';
+import { useCachedImage, buildImageCacheKey } from '@/lib/hooks/useCachedImage';
 import {
     STORAGE_BUCKET_KEYS,
     STORAGE_BUCKET_LABELS,
@@ -196,7 +196,7 @@ function UsageBar({ canManage }: { canManage: boolean }) {
 // tính duy nhất của object trên B2), tránh tải lại mỗi lần danh sách
 // refetch dù `viewUrl` (presigned GET, ký lại mỗi lần) đổi liên tục.
 function CachedMediaCover({ bucket, item }: { bucket: StorageBucketKey; item: StorageMediaItem }) {
-    const cachedSrc = useCachedImage(`media:${bucket}:${item.key}`, item.viewUrl);
+    const cachedSrc = useCachedImage(buildImageCacheKey(bucket, item.key), item.viewUrl);
     return (
         <Image
             src={cachedSrc || item.viewUrl}
@@ -313,7 +313,7 @@ function MediaGrid({ bucket, canManage }: { bucket: StorageBucketKey; canManage:
 // ── Thumbnail nhỏ (bảng Dọn dẹp) - cùng cơ chế cache với CachedMediaCover,
 // tách riêng vì kích thước/khung khác (40x40 trong Table thay vì cover Card).
 function CachedMediaThumb({ bucket, item }: { bucket: StorageBucketKey; item: StorageMediaItem }) {
-    const cachedSrc = useCachedImage(`media:${bucket}:${item.key}`, item.viewUrl);
+    const cachedSrc = useCachedImage(buildImageCacheKey(bucket, item.key), item.viewUrl);
     return (
         <Image
             src={cachedSrc || item.viewUrl}

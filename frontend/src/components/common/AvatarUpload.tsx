@@ -5,7 +5,7 @@ import { Avatar, Spin, App } from 'antd';
 import { CameraOutlined } from '@ant-design/icons';
 import { useUpdateAvatar } from '@/lib/hooks/useUploads';
 import { useAuthStore } from '@/lib/stores/auth.store';
-import { useCachedImage } from '@/lib/hooks/useCachedImage';
+import { useCachedImage, buildImageCacheKey } from '@/lib/hooks/useCachedImage';
 
 function getInitials(name?: string) {
   if (!name) return '?';
@@ -43,8 +43,11 @@ export function AvatarUpload({ avatarUrl, avatarKey, name, size = 72, editable, 
   const currentUser = useAuthStore((s) => s.user);
   const setUser = useAuthStore((s) => s.setUser);
   // Cache Storage theo avatarKey (ổn định) - không tải lại avatar dù
-  // avatarUrl (ký sẵn, TTL 1h) đổi mỗi lần API trả về.
-  const cachedSrc = useCachedImage(avatarKey, avatarUrl);
+  // avatarUrl (ký sẵn, TTL 1h) đổi mỗi lần API trả về. Dùng chung
+  // buildImageCacheKey() với storage-img/layout để cùng 1 avatar luôn ra
+  // đúng 1 cacheKey, không bị cache trùng 2 bản cho cùng 1 file (xem
+  // comment chi tiết ở useCachedImage.ts).
+  const cachedSrc = useCachedImage(avatarKey ? buildImageCacheKey('avatars', avatarKey) : avatarKey, avatarUrl);
   const displaySrc = cachedSrc || avatarUrl || undefined;
 
   const handleFile = async (file: File) => {

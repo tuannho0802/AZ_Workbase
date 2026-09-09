@@ -15,7 +15,7 @@ import { useAuthStore } from '@/lib/stores/auth.store';
 import { getVisibleNavItems, NAV_ITEMS } from '@/lib/nav-config';
 import { useMyPermissions } from '@/lib/hooks/useMyPermissions';
 import { useSidebarBadgeCounts } from '@/lib/hooks/useSidebarBadgeCounts';
-import { useCachedImage } from '@/lib/hooks/useCachedImage';
+import { useCachedImage, buildImageCacheKey } from '@/lib/hooks/useCachedImage';
 import { usersApi } from '@/lib/api/users.api';
 import { CountBadge } from '@/components/common/CountBadge';
 import dayjs from 'dayjs';
@@ -84,8 +84,13 @@ export default function DashboardLayout({
   const pathname = usePathname();
   const { user, isAuthenticated, isHydrated, logout } = useAuthStore();
   // Cache theo avatarKey (ổn định) - tránh tải lại avatar mỗi lần layout
-  // render lại dù avatarUrl (đã ký) đổi liên tục giữa các lần fetch.
-  const sidebarAvatarSrc = useCachedImage(user?.avatarKey, user?.avatarUrl);
+  // render lại dù avatarUrl (đã ký) đổi liên tục giữa các lần fetch. Dùng
+  // chung buildImageCacheKey() với AvatarUpload/storage-img (xem comment ở
+  // useCachedImage.ts) - tránh cache trùng 2 bản cho cùng 1 avatar.
+  const sidebarAvatarSrc = useCachedImage(
+    user?.avatarKey ? buildImageCacheKey('avatars', user.avatarKey) : user?.avatarKey,
+    user?.avatarUrl,
+  );
   const { can } = useMyPermissions();
   const [selectedKey, setSelectedKey] = useState('customers');
   const [collapsed, setCollapsed] = useState(false);

@@ -2,11 +2,13 @@
 
 import { useEffect, useRef, useState } from 'react';
 
-// Cache Storage dùng CHUNG 1 cache cho MỌI loại ảnh (avatar, đính kèm nghỉ
-// phép, media-library...) - phân biệt bằng `cacheKey` (namespace tự đặt ở
-// nơi gọi, xem các ví dụ dưới). Bump version (v1 -> v2) nếu sau này đổi cấu
-// trúc lưu (vd đổi cách build Request key) để tự bỏ cache cũ không đọc được.
-const CACHE_NAME = 'az-workbase-image-cache-v1';
+// Bump version (v1 -> v2) nếu sau này đổi cấu trúc lưu (vd đổi cách build
+// Request key) để tự bỏ cache cũ không đọc được. Bump lần này (v1 -> v2) vì
+// đổi ĐỊNH DẠNG cacheKey cho avatar (thêm tiền tố `avatars:`, xem
+// buildImageCacheKey() bên dưới) - nếu không bump, entry cũ theo key cũ
+// (không tiền tố) sẽ nằm mồ côi vĩnh viễn trong Cache Storage (tốn dung
+// lượng, không bao giờ được đọc lại vì không còn ai tạo request theo key cũ).
+const CACHE_NAME = 'az-workbase-image-cache-v2';
 // Origin giả cố định - CHỈ dùng làm key cho Cache Storage, KHÔNG bao giờ
 // thật sự fetch tới domain này. Cache Storage API yêu cầu key là Request/URL
 // hợp lệ, không nhận string tuỳ ý.
@@ -14,6 +16,25 @@ const FAKE_ORIGIN = 'https://az-workbase-image-cache.local';
 
 function buildCacheRequest(cacheKey: string): Request {
     return new Request(`${FAKE_ORIGIN}/${encodeURIComponent(cacheKey)}`);
+}
+
+// ⚠️ FIX BUG THẬT (root cause vụ avatar Header/Profile ĐÃ cache rồi nhưng
+// trang /storage-img vẫn tự fetch riêng 1 bản KHÁC cho ĐÚNG 1 file: xem
+// DevTools Application > Cache Storage - từng thấy 2 entry
+// `avatars%2F1%2FAdmin_Admin.png` (từ AvatarUpload/layout, dùng thẳng
+// `avatarKey` thô) VÀ `media%3Aavatars%3Aavatars%2F1%2FAdmin_Admin.png` (từ
+// storage-img, tự ghép `media:${bucket}:${item.key}`) - CÙNG 1 object trên
+// B2 nhưng 2 cacheKey khác nhau -> Cache Storage coi là 2 ảnh khác nhau,
+// không bao giờ dùng chung, mỗi trang tự fetch + lưu riêng, tốn gấp đôi
+// dung lượng VÀ băng thông cho cùng 1 file):
+// TẤT CẢ nơi gọi `useCachedImage()` cho ảnh lấy từ B2 (avatar, đính kèm nghỉ
+// phép, media-library...) PHẢI dùng chung hàm này để build cacheKey - không
+// tự ghép chuỗi thủ công ở từng component - đảm bảo cùng 1 `bucket` + `key`
+// luôn ra ĐÚNG 1 cacheKey, bất kể ảnh đó đang hiển thị ở trang nào.
+export type ImageCacheBucket = 'avatars' | 'leave-attachments' | 'media-library';
+
+export function buildImageCacheKey(bucket: ImageCacheBucket, key: string): string {
+    return `media:${bucket}:${key}`;
 }
 
 function supportsCacheStorage(): boolean {
