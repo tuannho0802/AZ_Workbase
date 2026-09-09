@@ -534,3 +534,5 @@ phép) — module `uploads` thật CHƯA được code, mới dừng ở bước
 > ⏳ chưa làm.
 
 ---
+
+Fix encoding 
