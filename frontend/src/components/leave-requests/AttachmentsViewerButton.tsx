@@ -4,10 +4,31 @@ import { useState } from 'react';
 import { Button, Modal, Image, Empty, Spin } from 'antd';
 import { PaperClipOutlined } from '@ant-design/icons';
 import { useAttachmentUrls } from '@/lib/hooks/useLeaveAttachments';
+import { useCachedImage } from '@/lib/hooks/useCachedImage';
 
 interface AttachmentsViewerButtonProps {
   requestId: number;
   size?: 'small' | 'middle';
+}
+
+/**
+ * 1 ảnh đính kèm - tách riêng component để mỗi ảnh gọi `useCachedImage` độc
+ * lập (hook cần biết `id` + `url` của ĐÚNG 1 ảnh, không lồng vào .map trần
+ * trụi để tránh vi phạm rule-of-hooks).
+ */
+function AttachmentImage({ id, url }: { id: number; url: string }) {
+  // `id` (khoá chính bản ghi attachment) ổn định tuyệt đối - 1 ảnh đính kèm
+  // KHÔNG BAO GIỜ bị thay ảnh tại chỗ (chỉ tạo mới/xoá), nên dùng thẳng làm
+  // cache key mà không cần BE trả thêm objectKey riêng.
+  const cachedSrc = useCachedImage(`leave-attachment:${id}`, url);
+  return (
+    <Image
+      src={cachedSrc || url}
+      width={110}
+      height={110}
+      style={{ objectFit: 'cover', borderRadius: 6 }}
+    />
+  );
 }
 
 /**
@@ -43,13 +64,7 @@ export function AttachmentsViewerButton({ requestId, size = 'small' }: Attachmen
           <Image.PreviewGroup>
             <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
               {attachments.map((a) => (
-                <Image
-                  key={a.id}
-                  src={a.url}
-                  width={110}
-                  height={110}
-                  style={{ objectFit: 'cover', borderRadius: 6 }}
-                />
+                <AttachmentImage key={a.id} id={a.id} url={a.url} />
               ))}
             </div>
           </Image.PreviewGroup>

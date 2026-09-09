@@ -36,6 +36,7 @@ import {
 import type { ColumnsType } from 'antd/es/table';
 import dayjs from 'dayjs';
 import { useMyPermissions } from '@/lib/hooks/useMyPermissions';
+import { useCachedImage } from '@/lib/hooks/useCachedImage';
 import {
     STORAGE_BUCKET_KEYS,
     STORAGE_BUCKET_LABELS,
@@ -191,6 +192,20 @@ function UsageBar({ canManage }: { canManage: boolean }) {
   );
 }
 
+// ── 1 ảnh trong MediaGrid - cache theo `key` ổn định (bucket + key = danh
+// tính duy nhất của object trên B2), tránh tải lại mỗi lần danh sách
+// refetch dù `viewUrl` (presigned GET, ký lại mỗi lần) đổi liên tục.
+function CachedMediaCover({ bucket, item }: { bucket: StorageBucketKey; item: StorageMediaItem }) {
+    const cachedSrc = useCachedImage(`media:${bucket}:${item.key}`, item.viewUrl);
+    return (
+        <Image
+            src={cachedSrc || item.viewUrl}
+            alt={item.key}
+            style={{ height: 110, objectFit: 'cover' }}
+        />
+    );
+}
+
 // ── Media grid cho 1 bucket ─────────────────────────────────────────────────
 function MediaGrid({ bucket, canManage }: { bucket: StorageBucketKey; canManage: boolean }) {
     const { items, mutable, isLoading, hasNextPage, fetchNextPage, isFetchingNextPage } = useStorageMedia(bucket);
@@ -251,11 +266,7 @@ function MediaGrid({ bucket, canManage }: { bucket: StorageBucketKey; canManage:
                                   size="small"
                                   styles={{ body: { padding: 6 } }}
                                   cover={
-                                      <Image
-                                          src={item.viewUrl}
-                                          alt={item.key}
-                                          style={{ height: 110, objectFit: 'cover' }}
-                                      />
+                                      <CachedMediaCover bucket={bucket} item={item} />
                                   }
                                   actions={
                                       canDeleteHere
@@ -297,6 +308,21 @@ function MediaGrid({ bucket, canManage }: { bucket: StorageBucketKey; canManage:
           )}
       </div>
   );
+}
+
+// ── Thumbnail nhỏ (bảng Dọn dẹp) - cùng cơ chế cache với CachedMediaCover,
+// tách riêng vì kích thước/khung khác (40x40 trong Table thay vì cover Card).
+function CachedMediaThumb({ bucket, item }: { bucket: StorageBucketKey; item: StorageMediaItem }) {
+    const cachedSrc = useCachedImage(`media:${bucket}:${item.key}`, item.viewUrl);
+    return (
+        <Image
+            src={cachedSrc || item.viewUrl}
+            alt={item.key}
+            width={40}
+            height={40}
+            style={{ objectFit: 'cover', borderRadius: 4 }}
+        />
+    );
 }
 
 // ── Dọn dẹp Media (bulk selection + xoá hàng loạt cho Avatar / Nghỉ phép) ──────
@@ -344,9 +370,7 @@ function MediaCleanupPanel({ bucket }: { bucket: (typeof CLEANUP_BUCKETS)[number
             title: '',
             dataIndex: 'viewUrl',
             width: 64,
-            render: (viewUrl: string, record) => (
-                <Image src={viewUrl} alt={record.key} width={40} height={40} style={{ objectFit: 'cover', borderRadius: 4 }} />
-            ),
+            render: (_viewUrl: string, record) => <CachedMediaThumb bucket={bucket} item={record} />,
         },
         {
             title: 'Tên file',

@@ -82,10 +82,9 @@ export default function DashboardLayout({
   const router = useRouter();
   const pathname = usePathname();
   const { user, isAuthenticated, isHydrated, logout } = useAuthStore();
-  // Avatar sidebar - chỉ tải bytes ảnh THẬT SỰ đúng 1 lần cho mỗi avatarKey,
-  // các lần layout re-render sau (avatarUrl bị BE ký lại URL khác) phục vụ
-  // từ Cache Storage thay vì tải lại từ B2 - xem useCachedImage.ts.
-  const cachedAvatarSrc = useCachedImage(user?.avatarKey, user?.avatarUrl);
+  // Cache theo avatarKey (ổn định) - tránh tải lại avatar mỗi lần layout
+  // render lại dù avatarUrl (đã ký) đổi liên tục giữa các lần fetch.
+  const sidebarAvatarSrc = useCachedImage(user?.avatarKey, user?.avatarUrl);
   const { can } = useMyPermissions();
   const [selectedKey, setSelectedKey] = useState('customers');
   const [collapsed, setCollapsed] = useState(false);
@@ -318,8 +317,8 @@ export default function DashboardLayout({
             >
               <div style={{ display: 'flex', alignItems: 'center', gap: 10, cursor: 'pointer' }}>
                 <Avatar
-                  src={cachedAvatarSrc}
-                  icon={!cachedAvatarSrc ? <UserOutlined /> : undefined}
+                  src={sidebarAvatarSrc || user?.avatarUrl || undefined}
+                  icon={!user?.avatarUrl ? <UserOutlined /> : undefined}
                   style={{ background: 'linear-gradient(135deg, #1890ff 0%, #0a3d91 100%)' }}
                 />
                 <div style={{ display: 'flex', flexDirection: 'column', lineHeight: 1.25 }}>

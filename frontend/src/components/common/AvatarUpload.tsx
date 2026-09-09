@@ -4,8 +4,8 @@ import { useRef } from 'react';
 import { Avatar, Spin, App } from 'antd';
 import { CameraOutlined } from '@ant-design/icons';
 import { useUpdateAvatar } from '@/lib/hooks/useUploads';
-import { useCachedImage } from '@/lib/hooks/useCachedImage';
 import { useAuthStore } from '@/lib/stores/auth.store';
+import { useCachedImage } from '@/lib/hooks/useCachedImage';
 
 function getInitials(name?: string) {
   if (!name) return '?';
@@ -15,12 +15,8 @@ function getInitials(name?: string) {
 
 interface AvatarUploadProps {
   avatarUrl?: string | null;
-  /**
-   * Object key thô, ỔN ĐỊNH trên B2 (KHÔNG đổi giữa các lần gọi API, khác
-   * avatarUrl luôn bị ký lại) - dùng làm cache-key để tránh tải lại ảnh mỗi
-   * lần re-render/refetch (xem `useCachedImage`). Không bắt buộc để không
-   * phá vỡ chỗ gọi cũ, nhưng NÊN truyền vào nếu có sẵn từ API.
-   */
+  /** Key thô ổn định song song avatarUrl - dùng cache theo key, tránh tải
+   * lại avatar mỗi lần trang render lại dù avatarUrl (đã ký) đổi liên tục. */
   avatarKey?: string | null;
   name?: string;
   size?: number;
@@ -46,11 +42,10 @@ export function AvatarUpload({ avatarUrl, avatarKey, name, size = 72, editable, 
   const mutation = useUpdateAvatar();
   const currentUser = useAuthStore((s) => s.user);
   const setUser = useAuthStore((s) => s.setUser);
-
-  // Chỉ tải bytes ảnh THẬT SỰ đúng 1 lần cho mỗi avatarKey - các lần
-  // render/refetch sau (dù avatarUrl đã được BE ký lại thành URL khác) đều
-  // phục vụ từ Cache Storage, không tải lại từ B2. Xem useCachedImage.ts.
+  // Cache Storage theo avatarKey (ổn định) - không tải lại avatar dù
+  // avatarUrl (ký sẵn, TTL 1h) đổi mỗi lần API trả về.
   const cachedSrc = useCachedImage(avatarKey, avatarUrl);
+  const displaySrc = cachedSrc || avatarUrl || undefined;
 
   const handleFile = async (file: File) => {
     try {
@@ -82,8 +77,8 @@ export function AvatarUpload({ avatarUrl, avatarKey, name, size = 72, editable, 
 
   return (
     <div style={{ position: 'relative', width: size, height: size, flexShrink: 0 }}>
-      <Avatar size={size} src={cachedSrc} style={{ backgroundColor: '#1677ff', fontSize: size * 0.38 }}>
-        {!cachedSrc ? getInitials(name) : undefined}
+      <Avatar size={size} src={displaySrc} style={{ backgroundColor: '#1677ff', fontSize: size * 0.38 }}>
+        {!displaySrc ? getInitials(name) : undefined}
       </Avatar>
 
       {mutation.isPending && (
