@@ -84,6 +84,8 @@ function MyLeaveMobileCard({
         )}
       </div>
 
+      <AttachmentsViewerButton requestId={record.id} size="small" />
+
       {record.status === 'pending' && (
         <Button
           danger
@@ -227,6 +229,12 @@ export default function LeaveRequestsPage() {
       render: (name: string) => name || '-'
     },
     {
+      title: 'Đính kèm',
+      render: (_: any, record: LeaveRequest) => (
+        <AttachmentsViewerButton requestId={record.id} />
+      )
+    },
+    {
       title: 'Thao tác',
       render: (_: any, record: LeaveRequest) => (
         record.status === 'pending' && (
@@ -346,6 +354,10 @@ export default function LeaveRequestsPage() {
             rules={[{ required: true, message: 'Vui lòng nhập lý do' }]}
           >
             <TextArea rows={4} placeholder="Nhập lý do xin nghỉ phép..." />
+          </Form.Item>
+
+          <Form.Item name="attachmentKeys" label="Ảnh đính kèm (nếu có)">
+            <AttachmentUploader key={attachmentUploaderKey} />
           </Form.Item>
 
           <div className="flex justify-end gap-2" style={{ marginTop: 16 }}>

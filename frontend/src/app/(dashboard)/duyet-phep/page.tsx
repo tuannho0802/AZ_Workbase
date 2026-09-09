@@ -11,6 +11,7 @@ import {
 } from '@ant-design/icons';
 import { leaveRequestsApi, LeaveRequest } from '@/lib/api/leave-requests.api';
 import { useMyPermissions } from '@/lib/hooks/useMyPermissions';
+import { AttachmentsViewerButton } from '@/components/leave-requests/AttachmentsViewerButton';
 import dayjs from 'dayjs';
 
 const { TextArea } = Input;
@@ -88,6 +89,7 @@ function PendingMobileCard({
 
       {/* Actions */}
       <div style={{ display: 'flex', gap: 8 }}>
+        <AttachmentsViewerButton requestId={record.id} size="small" />
         <Button
           type="primary"
           size="small"
@@ -158,6 +160,10 @@ function HistoryMobileCard({ record }: { record: LeaveRequest }) {
             Lý do từ chối: {record.rejectionReason}
           </Text>
         )}
+      </div>
+
+      <div style={{ marginTop: 10 }}>
+        <AttachmentsViewerButton requestId={record.id} size="small" />
       </div>
     </Card>
   );
@@ -307,6 +313,12 @@ export default function ApprovalPage() {
     },
     { title: 'Lý do', dataIndex: 'reason', ellipsis: true },
     {
+      title: 'Đính kèm',
+      render: (_: any, record: LeaveRequest) => (
+        <AttachmentsViewerButton requestId={record.id} />
+      )
+    },
+    {
       title: 'Thao tác',
       render: (_: any, record: LeaveRequest) => (
         <Space>
@@ -373,6 +385,12 @@ export default function ApprovalPage() {
       title: 'Người duyệt',
       dataIndex: ['approver', 'name'],
       render: (name: string) => <b>{name || '-'}</b>
+    },
+    {
+      title: 'Đính kèm',
+      render: (_: any, record: LeaveRequest) => (
+        <AttachmentsViewerButton requestId={record.id} />
+      )
     },
     {
       title: 'Ngày xử lý',
