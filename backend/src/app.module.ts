@@ -22,6 +22,7 @@ import { ReportsModule } from './modules/reports/reports.module';
 import { PermissionsModule } from './modules/permissions/permissions.module';
 import { RolesModule } from './modules/roles/roles.module';
 import { UploadsModule } from './modules/uploads/uploads.module';
+import { StorageModule } from './modules/storage/storage.module';
 import { KeepAliveController } from './keep-alive/keep-alive.controller';
 @Module({ 
   imports: [
@@ -62,6 +63,7 @@ import { KeepAliveController } from './keep-alive/keep-alive.controller';
     LeaveRequestsModule,
     AuditModule,
     UploadsModule,
+    StorageModule,
     ZkDeviceModule,
     AttendanceExportModule,
     MediaSourcesModule,
