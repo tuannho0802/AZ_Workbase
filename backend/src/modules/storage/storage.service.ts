@@ -51,6 +51,15 @@ export class StorageService {
     this.s3 = new S3Client({
       region: this.configService.get<string>('B2_REGION'),
       endpoint: this.configService.get<string>('B2_ENDPOINT'),
+      // Xem comment đầy đủ ở UploadsService constructor (uploads.service.ts) -
+      // 2 service này KHÔNG dùng chung 1 S3Client, nên phải tắt riêng ở CẢ
+      // 2 nơi. Thiếu chỗ này là lý do `viewUrl` của trang storage-img (nguồn
+      // duy nhất qua StorageService, KHÔNG qua UploadsService) vẫn còn dính
+      // `x-amz-checksum-mode=ENABLED` dù đã fix UploadsService - `fetch()`
+      // từ useCachedImage.ts vẫn bị ERR_BLOCKED_BY_ORB, cache vẫn không ghi
+      // được, băng thông vẫn tốn y như chưa cache.
+      requestChecksumCalculation: 'WHEN_REQUIRED',
+      responseChecksumValidation: 'WHEN_REQUIRED',
       credentials: {
         accessKeyId: this.configService.get<string>('B2_ACCESS_KEY_ID')!,
         secretAccessKey: this.configService.get<string>('B2_SECRET_ACCESS_KEY')!,

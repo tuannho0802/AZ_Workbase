@@ -63,6 +63,23 @@ export class UploadsService {
     this.s3 = new S3Client({
       region: this.configService.get<string>('B2_REGION'),
       endpoint: this.configService.get<string>('B2_ENDPOINT'),
+      // ⚠️ FIX BUG THẬT (root cause của việc `fetch()` presigned GET URL từ
+      // FE luôn bị Chrome chặn với `net::ERR_BLOCKED_BY_ORB`, dù `<img src>`
+      // load bình thường - xem useCachedImage.ts):
+      // `@aws-sdk/client-s3` từ ~v3.729 trở đi MẶC ĐỊNH tự bật
+      // "flexible checksums" (`responseChecksumValidation: 'WHEN_SUPPORTED'`),
+      // khiến MỌI `GetObjectCommand` được ký tự động thêm
+      // `ChecksumMode: 'ENABLED'` -> lộ ra thành query param
+      // `x-amz-checksum-mode=ENABLED` trên presigned URL. B2 (S3-compatible,
+      // KHÔNG phải AWS thật) không trả đúng CORS header tương ứng cho request
+      // có param này khi gọi qua `fetch()`/XHR (chỉ `<img>` tag - không bị
+      // trình duyệt enforce CORS - mới load được), nên Cache Storage
+      // (`useCachedImage.ts`) không bao giờ `fetch()` thành công, luôn rơi
+      // xuống fallback tải thẳng qua `<img>` - tốn băng thông y hệt lúc
+      // chưa cache. Tắt hẳn 2 flag này để presigned URL KHÔNG còn param lạ,
+      // giữ đúng hành vi S3 GetObject "trần" như trước khi SDK đổi default.
+      requestChecksumCalculation: 'WHEN_REQUIRED',
+      responseChecksumValidation: 'WHEN_REQUIRED',
       credentials: {
         accessKeyId: this.configService.get<string>('B2_ACCESS_KEY_ID')!,
         secretAccessKey: this.configService.get<string>('B2_SECRET_ACCESS_KEY')!,
