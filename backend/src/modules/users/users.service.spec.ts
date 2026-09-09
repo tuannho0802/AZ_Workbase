@@ -865,4 +865,144 @@ describe('UsersService - Approval workflow (đăng ký công khai chờ duyệt)
       );
     });
   });
+
+  // Test thật cho logic avatar (Backblaze B2) - trước đây spec chỉ mock
+  // UploadsService để hết lỗi DI (50 test cũ không liên quan gì tới avatar
+  // đều fail), CHƯA có it() nào verify hành vi thật của
+  // signAvatarUrl/signAvatarUrls/updateOwnAvatar. Bổ sung ở đây.
+  describe('signAvatarUrl - Ký lại avatarUrl (object key -> Presigned GET URL)', () => {
+    it('trả về nguyên user (kể cả null) nếu không có avatarUrl, KHÔNG gọi UploadsService', async () => {
+      const result1 = await service.signAvatarUrl(null);
+      expect(result1).toBeNull();
+
+      const userNoAvatar = { id: 1, name: 'A', avatarUrl: null } as any;
+      const result2 = await service.signAvatarUrl(userNoAvatar);
+      expect(result2).toBe(userNoAvatar); // không tạo object mới khi không cần ký
+
+      const userUndefinedAvatar = { id: 2, name: 'B' } as any;
+      const result3 = await service.signAvatarUrl(userUndefinedAvatar);
+      expect(result3).toBe(userUndefinedAvatar);
+
+      expect(mockUploadsService.signAvatarGetUrl).not.toHaveBeenCalled();
+    });
+
+    it('có avatarUrl (object key) -> gọi signAvatarGetUrl đúng key, trả về user với avatarUrl ĐÃ ĐƯỢC KÝ, không sửa object gốc', async () => {
+      const originalUser = { id: 3, name: 'C', avatarUrl: 'avatars/3/abc.webp' } as any;
+      mockUploadsService.signAvatarGetUrl.mockResolvedValue('https://signed.example/avatars/3/abc.webp?sig=xyz');
+
+      const result = await service.signAvatarUrl(originalUser);
+
+      expect(mockUploadsService.signAvatarGetUrl).toHaveBeenCalledWith('avatars/3/abc.webp');
+      expect(result).toEqual({ id: 3, name: 'C', avatarUrl: 'https://signed.example/avatars/3/abc.webp?sig=xyz' });
+      // Object gốc KHÔNG bị mutate (service trả về {...user, avatarUrl} mới).
+      expect(originalUser.avatarUrl).toBe('avatars/3/abc.webp');
+    });
+  });
+
+  describe('signAvatarUrls - Ký lại avatarUrl cho MẢNG user (dùng ở list/pending-approvals)', () => {
+    it('ký đúng từng user có avatarUrl, bỏ qua user không có, giữ đúng thứ tự mảng ban đầu', async () => {
+      const users = [
+        { id: 1, avatarUrl: 'avatars/1/a.webp' },
+        { id: 2, avatarUrl: null },
+        { id: 3, avatarUrl: 'avatars/3/c.webp' },
+      ] as any[];
+
+      mockUploadsService.signAvatarGetUrl.mockImplementation((key: string) =>
+        Promise.resolve(`https://signed.example/${key}`),
+      );
+
+      const result = await service.signAvatarUrls(users);
+
+      expect(mockUploadsService.signAvatarGetUrl).toHaveBeenCalledTimes(2);
+      expect(result).toEqual([
+        { id: 1, avatarUrl: 'https://signed.example/avatars/1/a.webp' },
+        { id: 2, avatarUrl: null },
+        { id: 3, avatarUrl: 'https://signed.example/avatars/3/c.webp' },
+      ]);
+    });
+
+    it('mảng rỗng -> trả mảng rỗng, không gọi UploadsService', async () => {
+      const result = await service.signAvatarUrls([]);
+      expect(result).toEqual([]);
+      expect(mockUploadsService.signAvatarGetUrl).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('updateOwnAvatar - Xác nhận avatar mới sau khi FE đã PUT thẳng lên B2', () => {
+    it('ném NotFoundException nếu không tìm thấy user, KHÔNG gọi assertUploadedSizeWithinLimit trước khi biết user tồn tại hay không thì vẫn phải validate size trước - verify đúng thứ tự gọi thật', async () => {
+      // Đúng code thật: validate size (getLimits + assertUploadedSizeWithinLimit)
+      // chạy TRƯỚC khi tìm user trong DB - test theo đúng thứ tự này, không
+      // giả định ngược lại.
+      mockUsersRepo.findOne.mockResolvedValueOnce(null);
+
+      await expect(service.updateOwnAvatar(999, 'avatars/999/new.webp')).rejects.toThrow(NotFoundException);
+
+      expect(mockUploadsService.getLimits).toHaveBeenCalled();
+      expect(mockUploadsService.assertUploadedSizeWithinLimit).toHaveBeenCalledWith(
+        'az-imgs-avatars-workbase',
+        'avatars/999/new.webp',
+        1024,
+      );
+      expect(mockUsersRepo.update).not.toHaveBeenCalled();
+      expect(mockUploadsService.deleteAvatar).not.toHaveBeenCalled();
+    });
+
+    it('ảnh vượt quá dung lượng cho phép -> propagate đúng BadRequestException từ UploadsService, KHÔNG đụng gì tới DB user (không update, không tìm user)', async () => {
+      mockUploadsService.assertUploadedSizeWithinLimit.mockRejectedValueOnce(
+        new BadRequestException('Ảnh vượt quá dung lượng cho phép (1024KB)'),
+      );
+
+      await expect(service.updateOwnAvatar(5, 'avatars/5/too-big.webp')).rejects.toThrow(BadRequestException);
+
+      // Vượt size là chặn SỚM - service không cần tìm user trong DB nữa.
+      expect(mockUsersRepo.findOne).not.toHaveBeenCalled();
+      expect(mockUsersRepo.update).not.toHaveBeenCalled();
+      expect(mockUploadsService.deleteAvatar).not.toHaveBeenCalled();
+    });
+
+    it('cập nhật thành công + CÓ avatar cũ -> lưu key mới vào DB, xoá avatar cũ trên B2, trả user với avatarUrl đã ký', async () => {
+      const oldUser = { id: 7, name: 'D', avatarUrl: 'avatars/7/old.webp' };
+      const updatedUser = { id: 7, name: 'D', avatarUrl: 'avatars/7/new.webp' };
+      mockUsersRepo.findOne.mockResolvedValueOnce(oldUser).mockResolvedValueOnce(updatedUser);
+      mockUploadsService.signAvatarGetUrl.mockResolvedValue('https://signed.example/avatars/7/new.webp');
+
+      const result = await service.updateOwnAvatar(7, 'avatars/7/new.webp');
+
+      expect(mockUsersRepo.update).toHaveBeenCalledWith(7, { avatarUrl: 'avatars/7/new.webp' });
+      expect(mockUploadsService.deleteAvatar).toHaveBeenCalledWith('avatars/7/old.webp');
+      expect(result).toEqual({ id: 7, name: 'D', avatarUrl: 'https://signed.example/avatars/7/new.webp' });
+    });
+
+    it('cập nhật thành công + CHƯA có avatar cũ (user mới, avatarUrl null) -> KHÔNG gọi deleteAvatar', async () => {
+      const oldUser = { id: 8, name: 'E', avatarUrl: null };
+      const updatedUser = { id: 8, name: 'E', avatarUrl: 'avatars/8/first.webp' };
+      mockUsersRepo.findOne.mockResolvedValueOnce(oldUser).mockResolvedValueOnce(updatedUser);
+      mockUploadsService.signAvatarGetUrl.mockResolvedValue('https://signed.example/avatars/8/first.webp');
+
+      await service.updateOwnAvatar(8, 'avatars/8/first.webp');
+
+      expect(mockUsersRepo.update).toHaveBeenCalledWith(8, { avatarUrl: 'avatars/8/first.webp' });
+      expect(mockUploadsService.deleteAvatar).not.toHaveBeenCalled();
+    });
+
+    it('đọc đúng giới hạn ĐỘNG từ getLimits() (không hardcode) khi gọi assertUploadedSizeWithinLimit', async () => {
+      mockUploadsService.getLimits.mockResolvedValueOnce({
+        avatarMaxSizeKb: 2048, // Admin vừa đổi giới hạn qua /phan-quyen, khác mặc định 1024
+        leaveAttachmentMaxSizeKb: 1536,
+        leaveAttachmentMaxCount: 5,
+      });
+      mockUsersRepo.findOne.mockResolvedValueOnce({ id: 9, avatarUrl: null }).mockResolvedValueOnce({
+        id: 9,
+        avatarUrl: 'avatars/9/x.webp',
+      });
+
+      await service.updateOwnAvatar(9, 'avatars/9/x.webp');
+
+      expect(mockUploadsService.assertUploadedSizeWithinLimit).toHaveBeenCalledWith(
+        'az-imgs-avatars-workbase',
+        'avatars/9/x.webp',
+        2048, // PHẢI dùng giá trị động vừa mock, không phải 1024 mặc định
+      );
+    });
+  });
 });
