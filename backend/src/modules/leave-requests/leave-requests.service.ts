@@ -190,7 +190,7 @@ export class LeaveRequestsService {
     viewerId: number,
     viewerRole: string,
     scope?: string | null,
-  ): Promise<{ id: number; url: string }[]> {
+  ): Promise<{ id: number; key: string; url: string }[]> {
     const request = await this.leaveRequestRepo.findOne({
       where: { id: requestId },
       relations: ['requester', 'attachments'],
@@ -212,6 +212,12 @@ export class LeaveRequestsService {
     return Promise.all(
       (request.attachments || []).map(async (a) => ({
         id: a.id,
+        // objectKey thô trên B2 - trả thêm để FE build cacheKey CHUNG với
+        // storage-img (buildImageCacheKey('leave-attachments', key)), tránh
+        // cache trùng 2 bản cho cùng 1 ảnh đính kèm (trước đây FE tự cache
+        // theo `id` - đúng nhưng KHÔNG khớp key mà storage-img dùng, nên
+        // cùng 1 ảnh bị tải + lưu 2 lần khác nhau).
+        key: a.objectKey,
         url: await this.uploadsService.signAttachmentGetUrl(a.objectKey),
       })),
     );
