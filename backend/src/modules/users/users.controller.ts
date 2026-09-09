@@ -13,6 +13,7 @@ import { RejectUserDto } from './dto/reject-user.dto';
 import { UpdateOwnProfileDto } from './dto/update-own-profile.dto';
 import { UpdateOwnEmailDto } from './dto/update-own-email.dto';
 import { ChangePasswordDto } from './dto/change-password.dto';
+import { UpdateOwnAvatarDto } from './dto/update-own-avatar.dto';
 import { CacheControlInterceptor } from '../../common/interceptors/cache-control.interceptor';
 
 @ApiTags('Users')
@@ -33,7 +34,8 @@ export class UsersController {
     @Request() req: any,
     @Query('role') role?: string,
   ) {
-    return this.usersService.findEmployees(req.user.id, req.user.role, role, true);
+    const users = await this.usersService.findEmployees(req.user.id, req.user.role, role, true);
+    return this.usersService.signAvatarUrls(users);
   }
 
   @Get()
@@ -66,7 +68,7 @@ export class UsersController {
     // 100 mà không đổi hành vi với các giá trị limit hợp lệ (<=100).
     const safeLimit = limit ? Math.min(Math.max(+limit, 1), 100) : 20;
 
-    return this.usersService.findAll(req.user.id, req.user.role, scope, {
+    const result = await this.usersService.findAll(req.user.id, req.user.role, scope, {
       role,
       departmentId,
       isActive,
@@ -74,19 +76,22 @@ export class UsersController {
       page: page ? +page : 1,
       limit: safeLimit,
     });
+    return { ...result, data: await this.usersService.signAvatarUrls(result.data) };
   }
 
   @Get('me')
   @ApiOperation({ summary: 'Lấy thông tin cá nhân của người đang đăng nhập' })
   async getProfile(@Request() req: any) {
-    return this.usersService.findById(req.user.id);
+    const user = await this.usersService.findById(req.user.id);
+    return this.usersService.signAvatarUrl(user);
   }
 
   @Get('pending-approvals')
   @RequirePermission('users.manage')
   @ApiOperation({ summary: 'Danh sách tài khoản tự đăng ký đang chờ duyệt (Admin/Assistant toàn bộ, Manager chỉ phòng ban mình quản lý)' })
   async getPendingApprovals(@Request() req: any, @GetPermissionScope() scope?: string | null) {
-    return this.usersService.findPendingApprovals(req.user.id, req.user.role, scope);
+    const users = await this.usersService.findPendingApprovals(req.user.id, req.user.role, scope);
+    return this.usersService.signAvatarUrls(users);
   }
 
   // ⚠️ THỨ TỰ QUAN TRỌNG: `Get('trash')` PHẢI đứng TRƯỚC `Get(':id')` bên
@@ -104,7 +109,8 @@ export class UsersController {
   @RequirePermission('users.view')
   @ApiOperation({ summary: 'Lấy thông tin chi tiết nhân viên theo ID' })
   async findOne(@Param('id') id: string, @Request() req: any, @GetPermissionScope() scope?: string | null) {
-    return this.usersService.findOne(+id, req.user.id, req.user.role, scope);
+    const user = await this.usersService.findOne(+id, req.user.id, req.user.role, scope);
+    return this.usersService.signAvatarUrl(user);
   }
 
   @Patch(':id/approve')
@@ -125,14 +131,16 @@ export class UsersController {
   @RequirePermission('users.manage')
   @ApiOperation({ summary: 'Tạo nhân viên mới (Admin/Assistant toàn quyền, Manager chỉ trong phòng ban mình quản lý)' })
   async create(@Request() req: any, @Body() dto: CreateUserDto, @GetPermissionScope() scope?: string | null) {
-    return this.usersService.create(dto, req.user.id, req.user.role, scope);
+    const user = await this.usersService.create(dto, req.user.id, req.user.role, scope);
+    return this.usersService.signAvatarUrl(user);
   }
 
   @Patch(':id')
   @RequirePermission('users.manage')
   @ApiOperation({ summary: 'Cập nhật thông tin nhân viên' })
   async update(@Param('id') id: string, @Body() dto: UpdateUserDto, @Request() req: any, @GetPermissionScope() scope?: string | null) {
-    return this.usersService.update(+id, dto, req.user.id, req.user.role, scope);
+    const user = await this.usersService.update(+id, dto, req.user.id, req.user.role, scope);
+    return this.usersService.signAvatarUrl(user);
   }
 
   // ⚠️ Endpoint GET/PUT `:id/profile` (Fanpage/Group thủ công) ĐÃ BỊ XOÁ -
@@ -159,14 +167,23 @@ export class UsersController {
   @RequirePermission('profile.edit_info')
   @ApiOperation({ summary: 'Tự sửa thông tin cá nhân (tên, SĐT) - không gồm Email' })
   async updateOwnProfile(@Request() req: any, @Body() dto: UpdateOwnProfileDto) {
-    return this.usersService.updateOwnProfile(req.user.id, dto);
+    const user = await this.usersService.updateOwnProfile(req.user.id, dto);
+    return this.usersService.signAvatarUrl(user);
+  }
+
+  @Patch('me/avatar')
+  @RequirePermission('profile.edit_avatar')
+  @ApiOperation({ summary: 'Xác nhận avatar mới sau khi đã PUT thẳng lên B2 (dùng key từ POST /uploads/avatar/presign)' })
+  async updateOwnAvatar(@Request() req: any, @Body() dto: UpdateOwnAvatarDto) {
+    return this.usersService.updateOwnAvatar(req.user.id, dto.key);
   }
 
   @Patch('me/email')
   @RequirePermission('profile.edit_email')
   @ApiOperation({ summary: 'Tự đổi Email đăng nhập (mặc định chỉ Admin, cần nhập lại mật khẩu hiện tại)' })
   async updateOwnEmail(@Request() req: any, @Body() dto: UpdateOwnEmailDto) {
-    return this.usersService.updateOwnEmail(req.user.id, dto);
+    const user = await this.usersService.updateOwnEmail(req.user.id, dto);
+    return this.usersService.signAvatarUrl(user);
   }
 
   @Patch('me/password')

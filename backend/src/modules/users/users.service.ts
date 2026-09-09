@@ -18,6 +18,7 @@ import { AuditService } from '../audit/audit.service';
 import { ApprovalStatus } from '../../common/enums/approval-status.enum';
 import { DepartmentsService } from '../departments/departments.service';
 import { UsersAccessHelper } from './helpers/users-access.helper';
+import { UploadsService } from '../uploads/uploads.service';
 
 /** Loại bỏ field password khỏi object trước khi trả ra API hoặc ghi vào audit log */
 function omitPassword<T extends { password?: unknown }>(obj: T): Omit<T, 'password'> {
@@ -40,9 +41,57 @@ export class UsersService {
     private roleRepository: Repository<RoleEntity>,
     private readonly auditService: AuditService,
     private readonly departmentsService: DepartmentsService,
+    private readonly uploadsService: UploadsService,
     @InjectDataSource()
     private readonly dataSource: DataSource,
   ) {}
+
+  // --- Avatar (Backblaze B2, bucket Private) ------------------------------
+  // Xem PLAN_AVATAR_LEAVE_ATTACHMENT_BACKBLAZE_B2.md mục 5.4a: avatarUrl
+  // trong DB là OBJECT KEY, KHÔNG PHẢI URL - PHẢI ký lại thành Presigned GET
+  // URL (TTL 1h) trước khi trả ra khỏi service cho bất kỳ controller nào.
+  // Gọi `signAvatarUrl`/`signAvatarUrls` ở TẤT CẢ nơi trả User(s) ra ngoài -
+  // thiếu 1 chỗ là avatar hiện ra key thô, không load được ảnh.
+
+  async signAvatarUrl<T extends { avatarUrl?: string | null }>(user: T | null): Promise<T | null> {
+    if (!user || !user.avatarUrl) return user;
+    const signedUrl = await this.uploadsService.signAvatarGetUrl(user.avatarUrl);
+    return { ...user, avatarUrl: signedUrl };
+  }
+
+  async signAvatarUrls<T extends { avatarUrl?: string | null }>(users: T[]): Promise<T[]> {
+    return Promise.all(users.map((u) => this.signAvatarUrl(u))) as Promise<T[]>;
+  }
+
+  /**
+   * Xác nhận avatar mới sau khi FE đã PUT thẳng lên B2 (xem
+   * UploadsController.presignAvatar). Validate dung lượng thật qua
+   * `assertUploadedSizeWithinLimit` (giới hạn đọc động từ settings), xoá
+   * avatar cũ trên B2 (best-effort, không chặn luồng chính nếu lỗi).
+   */
+  async updateOwnAvatar(userId: number, newKey: string): Promise<User> {
+    const limits = await this.uploadsService.getLimits();
+    await this.uploadsService.assertUploadedSizeWithinLimit(
+      this.uploadsService.avatarsBucket,
+      newKey,
+      limits.avatarMaxSizeKb,
+    );
+
+    const user = await this.usersRepository.findOne({ where: { id: userId } });
+    if (!user) {
+      throw new NotFoundException('Không tìm thấy nhân viên');
+    }
+    const oldKey = user.avatarUrl;
+
+    await this.usersRepository.update(userId, { avatarUrl: newKey });
+
+    if (oldKey) {
+      this.uploadsService.deleteAvatar(oldKey);
+    }
+
+    const updated = await this.usersRepository.findOne({ where: { id: userId } });
+    return (await this.signAvatarUrl(updated)) as User;
+  }
 
   /**
    * ⚠️ FIX BUG THẬT (400 "role must be one of the following values" khi gán
