@@ -3,10 +3,12 @@ import { getRepositoryToken } from '@nestjs/typeorm';
 import { ForbiddenException, NotFoundException, BadRequestException } from '@nestjs/common';
 import { LeaveRequestsService } from './leave-requests.service';
 import { LeaveRequest, LeaveStatus, LeaveType } from '../../database/entities/leave-request.entity';
+import { LeaveRequestAttachment } from '../../database/entities/leave-request-attachment.entity';
 import { User } from '../../database/entities/user.entity';
 import { Department } from '../../database/entities/department.entity';
 import { Role } from '../../common/enums/role.enum';
 import { PermissionScope } from '../../database/entities/role-permission.entity';
+import { UploadsService } from '../uploads/uploads.service';
 
 describe('LeaveRequestsService - Phan quyen duyet (PERMISSIONS.md muc 2.6)', () => {
   let service: LeaveRequestsService;
@@ -22,6 +24,20 @@ describe('LeaveRequestsService - Phan quyen duyet (PERMISSIONS.md muc 2.6)', () 
   const mockDepartmentRepo = {
     findOne: jest.fn(),
     find: jest.fn(),
+  };
+  const mockAttachmentRepo = {
+    create: jest.fn(),
+    save: jest.fn(),
+  };
+  const mockUploadsService = {
+    getLimits: jest.fn().mockResolvedValue({
+      avatarMaxSizeKb: 1024,
+      leaveAttachmentMaxSizeKb: 1536,
+      leaveAttachmentMaxCount: 5,
+    }),
+    assertUploadedSizeWithinLimit: jest.fn().mockResolvedValue(undefined),
+    signAttachmentGetUrl: jest.fn().mockResolvedValue('https://signed.example/att'),
+    leaveAttachmentsBucket: 'az-imgs-leave-request-workbase',
   };
 
   const buildQueryBuilderMock = (result: any[]) => {
@@ -45,6 +61,8 @@ describe('LeaveRequestsService - Phan quyen duyet (PERMISSIONS.md muc 2.6)', () 
         { provide: getRepositoryToken(LeaveRequest), useValue: mockLeaveRepo },
         { provide: getRepositoryToken(User), useValue: mockUserRepo },
         { provide: getRepositoryToken(Department), useValue: mockDepartmentRepo },
+        { provide: getRepositoryToken(LeaveRequestAttachment), useValue: mockAttachmentRepo },
+        { provide: UploadsService, useValue: mockUploadsService },
       ],
     }).compile();
 
