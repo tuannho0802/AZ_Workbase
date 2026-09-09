@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import { Upload, App } from 'antd';
 import type { UploadFile, UploadProps } from 'antd';
 import { PlusOutlined } from '@ant-design/icons';
@@ -12,6 +12,13 @@ interface AttachmentUploaderProps {
   /** Danh sách object key ĐÃ upload xong lên B2 - gửi kèm khi POST /leave-requests. */
   value?: string[];
   onChange?: (keys: string[]) => void;
+  /**
+   * Loại nghỉ phép hiện đang chọn trong Form cha (`nghi-phep/page.tsx`) -
+   * BẮT BUỘC phải truyền vào vì BE (`PresignAttachmentDto.leaveType`) yêu
+   * cầu tường minh, không có giá trị mặc định. Chưa chọn -> chặn upload,
+   * yêu cầu chọn Loại phép trước (xem `customRequest` bên dưới).
+   */
+  leaveType?: string;
 }
 
 /**
@@ -25,10 +32,16 @@ interface AttachmentUploaderProps {
  * component này (nghi-phep/page.tsx) phải truyền `key={resetCounter}` đổi
  * mỗi lần mở Modal, buộc React remount lại component -> fileList tự về [].
  */
-export function AttachmentUploader({ value = [], onChange }: AttachmentUploaderProps) {
+export function AttachmentUploader({ value = [], onChange, leaveType }: AttachmentUploaderProps) {
   const { message } = App.useApp();
   const { limits } = useUploadLimits();
   const [fileList, setFileList] = useState<UploadFile[]>([]);
+
+  // Số thứ tự ảnh (N, từ 1) trong đơn - dùng ref (không phải `value.length`)
+  // để tăng ĐỒNG BỘ ngay khi bắt đầu 1 lượt upload, tránh 2 ảnh chọn cùng
+  // lúc (Upload `multiple`) nhận trùng N do `value` (state, cập nhật bất
+  // đồng bộ qua onChange) chưa kịp phản ánh ảnh đang upload dở.
+  const nextIndexRef = useRef(value.length);
 
   const maxCount = limits?.leaveAttachmentMaxCount ?? 5;
   const maxSizeKb = limits?.leaveAttachmentMaxSizeKb ?? 1536;
@@ -44,9 +57,19 @@ export function AttachmentUploader({ value = [], onChange }: AttachmentUploaderP
       return;
     }
 
+    if (!leaveType) {
+      const err = new Error('Vui lòng chọn Loại phép trước khi đính kèm ảnh');
+      onError?.(err);
+      message.error(err.message);
+      return;
+    }
+
+    nextIndexRef.current += 1;
+    const index = nextIndexRef.current;
+
     try {
       onProgress?.({ percent: 30 });
-      const { uploadUrl, key } = await leaveRequestsApi.presignAttachment(f.type);
+      const { uploadUrl, key } = await leaveRequestsApi.presignAttachment(f.type, leaveType, index);
       onProgress?.({ percent: 60 });
       await putFileToPresignedUrl(uploadUrl, f, f.type);
       onProgress?.({ percent: 100 });

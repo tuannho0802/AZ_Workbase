@@ -110,6 +110,10 @@ export default function LeaveRequestsPage() {
   const [attachmentUploaderKey, setAttachmentUploaderKey] = useState(0);
   const [isMobile, setIsMobile] = useState(false);
   const [form] = Form.useForm();
+  // Theo dõi realtime giá trị "Loại phép" trong Form để truyền xuống
+  // AttachmentUploader - BE (`PresignAttachmentDto.leaveType`) bắt buộc
+  // phải có giá trị này ngay khi presign, không thể lấy sau.
+  const selectedLeaveType = Form.useWatch('leaveType', form);
   const { message } = App.useApp();
   const router = useRouter();
   const { can, isLoading: permissionsLoading } = useMyPermissions();
@@ -356,8 +360,12 @@ export default function LeaveRequestsPage() {
             <TextArea rows={4} placeholder="Nhập lý do xin nghỉ phép..." />
           </Form.Item>
 
-          <Form.Item name="attachmentKeys" label="Ảnh đính kèm (nếu có)">
-            <AttachmentUploader key={attachmentUploaderKey} />
+          <Form.Item
+            name="attachmentKeys"
+            label="Ảnh đính kèm (nếu có)"
+            extra={!selectedLeaveType ? 'Chọn Loại phép trước để có thể đính kèm ảnh' : undefined}
+          >
+            <AttachmentUploader key={attachmentUploaderKey} leaveType={selectedLeaveType} />
           </Form.Item>
 
           <div className="flex justify-end gap-2" style={{ marginTop: 16 }}>

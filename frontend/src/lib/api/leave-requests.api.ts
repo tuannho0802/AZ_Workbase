@@ -46,8 +46,19 @@ export const leaveRequestsApi = {
 
   // `leave_requests.request` - xin Presigned PUT URL để đính kèm 1 ảnh vào
   // đơn ĐANG TẠO (chưa có id đơn lúc gọi, key trả về gửi kèm lúc create()).
-  async presignAttachment(contentType: string): Promise<{ uploadUrl: string; key: string }> {
-    const res = await axiosInstance.post('/leave-requests/attachments/presign', { contentType });
+  // `leaveType` + `index` là BẮT BUỘC ở BE (PresignAttachmentDto không có
+  // @IsOptional, ValidationPipe global bật forbidNonWhitelisted) - dùng để
+  // đặt tên file dễ đọc "{TenNV}_{Role}_{LoaiPhep}_{N}_{Ngay}.{ext}".
+  async presignAttachment(
+    contentType: string,
+    leaveType: string,
+    index: number,
+  ): Promise<{ uploadUrl: string; key: string }> {
+    const res = await axiosInstance.post('/leave-requests/attachments/presign', {
+      contentType,
+      leaveType,
+      index,
+    });
     return res.data;
   },
 
