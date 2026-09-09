@@ -2,7 +2,6 @@ import { Injectable, BadRequestException, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
-import { randomUUID } from 'crypto';
 import {
   S3Client,
   PutObjectCommand,
@@ -15,7 +14,8 @@ import { Setting } from '../../database/entities/setting.entity';
 import { User } from '../../database/entities/user.entity';
 import { ALLOWED_IMAGE_TYPES } from './dto/presign-avatar.dto';
 import { UpdateUploadLimitsDto } from './dto/update-upload-limits.dto';
-import { buildReadableFileName } from '../../common/utils/vietnamese-slug.util';
+import { buildReadableFileName, buildAttachmentFileName, formatShortDateVN } from '../../common/utils/vietnamese-slug.util';
+import { LeaveType } from '../../database/entities/leave-request.entity';
 
 // TTL (giây) - xem PLAN_AVATAR_LEAVE_ATTACHMENT_BACKBLAZE_B2.md mục 7:
 // không set dài "cho chắc", đặc biệt attachment (dữ liệu nhạy cảm).
@@ -33,6 +33,17 @@ const DEFAULT_LIMITS = {
   avatarMaxSizeKb: 1024,
   leaveAttachmentMaxSizeKb: 1536,
   leaveAttachmentMaxCount: 5,
+};
+
+// Nhãn tiếng Việt CÓ DẤU cho từng LeaveType - đi qua toPascalSlug() khi build
+// tên file nên dấu tự bị bỏ (xem buildAttachmentFileName), giữ có dấu ở đây
+// chỉ để code dễ đọc/dễ đối chiếu với LEAVE_TYPE_MAP ở FE (nghi-phep/page.tsx).
+const LEAVE_TYPE_LABELS: Record<LeaveType, string> = {
+  [LeaveType.ANNUAL]: 'Phép năm',
+  [LeaveType.SICK]: 'Nghỉ ốm',
+  [LeaveType.MATERNITY]: 'Thai sản',
+  [LeaveType.UNPAID]: 'Không lương',
+  [LeaveType.COMPENSATORY]: 'Nghỉ bù',
 };
 
 @Injectable()
@@ -148,10 +159,46 @@ export class UploadsService {
     return { uploadUrl, key };
   }
 
-  async presignAttachmentUpload(userId: number, contentType: string) {
+  /**
+   * ⚠️ CẬP NHẬT (theo yêu cầu): object key ảnh đính kèm nghỉ phép trước đây
+   * là UUID ngẫu nhiên vô nghĩa (`leave-attachments/{userId}/{uuid}.{ext}`),
+   * giờ đổi sang tên dễ đọc CÙNG QUY TẮC với avatar:
+   * "{TenNhanVien}_{Role}_{LoaiNghiPhep}_{N}_{Ngay}.{ext}" (VD:
+   * "NguyenVanA_Employee_NghiOm_1_8-9-26.png") - xem
+   * buildAttachmentFileName trong vietnamese-slug.util.ts.
+   *
+   * Khác avatar ở 2 điểm bắt buộc phải có N (số thứ tự trong đơn, từ 1) và
+   * ngày tạo:
+   *  - N: 1 đơn có thể có NHIỀU ảnh (tối đa leaveAttachmentMaxCount) - nếu
+   *    không có N, nhiều ảnh CÙNG người/CÙNG loại phép/CÙNG ngày sẽ trùng
+   *    key tuyệt đối, ảnh sau ghi đè ảnh trước ngay trên B2 (không giống
+   *    avatar - avatar chỉ có 1 ảnh/người nên không cần N).
+   *  - Ngày: nhiều đơn nghỉ phép CÙNG loại của CÙNG người ở các THỜI ĐIỂM
+   *    khác nhau vẫn cần phân biệt được qua tên file khi liệt kê ở trang
+   *    "Dọn dẹp Media" (namespace theo userId không đủ, vì userId + loại +
+   *    N=1 của đơn tháng này và đơn tháng trước sẽ giống hệt nhau nếu bỏ
+   *    ngày).
+   *
+   * `leaveType` + `index` do FE gửi lên (xem PresignAttachmentDto) - presign
+   * LUÔN xảy ra TRƯỚC khi đơn nghỉ phép thật được tạo (đang điền form), nên
+   * không thể lấy 2 giá trị này từ DB, phải tin FE gửi đúng.
+   */
+  async presignAttachmentUpload(userId: number, contentType: string, leaveType: LeaveType, index: number) {
     this.validateContentType(contentType);
     const ext = contentType.split('/')[1];
-    const key = `leave-attachments/${userId}/${randomUUID()}.${ext}`;
+
+    const user = await this.userRepository.findOne({ where: { id: userId } });
+    // Không throw nếu thiếu user (dữ liệu hỏng hiếm gặp) - buildAttachmentFileName
+    // tự fallback "File", KHÔNG được để lỗi ở bước đặt tên chặn mất luồng
+    // đính kèm đơn nghỉ phép.
+    const fileName = buildAttachmentFileName(
+      [user?.name, user?.role, LEAVE_TYPE_LABELS[leaveType]],
+      index,
+      formatShortDateVN(new Date()),
+      ext,
+    );
+    const key = `leave-attachments/${userId}/${fileName}`;
+
     const uploadUrl = await getSignedUrl(
       this.s3,
       new PutObjectCommand({ Bucket: this.bucketLeaveAttachments, Key: key, ContentType: contentType }),

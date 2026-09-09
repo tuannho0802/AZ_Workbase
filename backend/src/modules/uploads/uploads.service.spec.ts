@@ -25,6 +25,7 @@ jest.mock('@aws-sdk/s3-request-presigner', () => ({
 
 import { UploadsService } from './uploads.service';
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
+import { LeaveType } from '../../database/entities/leave-request.entity';
 
 const mockGetSignedUrl = getSignedUrl as jest.Mock;
 
@@ -125,11 +126,39 @@ describe('UploadsService', () => {
     });
   });
 
-  describe('presignAttachmentUpload - vẫn giữ UUID ngẫu nhiên (không đổi theo yêu cầu)', () => {
-    it('build key dạng "leave-attachments/{userId}/{uuid}.{ext}"', async () => {
-      const result = await service.presignAttachmentUpload(7, 'image/png');
+  describe('presignAttachmentUpload - đặt tên dễ đọc cùng quy tắc avatar (thêm N + ngày)', () => {
+    it('build key dạng "leave-attachments/{userId}/{TenNV}_{Role}_{LoaiNghiPhep}_{N}_{Ngay}.{ext}"', async () => {
+      jest.useFakeTimers().setSystemTime(new Date(2026, 8, 8)); // 8/9/2026
+      mockUserRepo.findOne.mockResolvedValueOnce({ id: 7, name: 'Nguyễn Văn A', role: 'employee' });
 
-      expect(result.key).toMatch(/^leave-attachments\/7\/[0-9a-f-]{36}\.png$/);
+      const result = await service.presignAttachmentUpload(7, 'image/png', LeaveType.SICK, 1);
+
+      expect(result.key).toBe('leave-attachments/7/NguyenVanA_Employee_NghiOm_1_8-9-26.png');
+      jest.useRealTimers();
+    });
+
+    it('N (index) tăng dần theo từng ảnh trong CÙNG đơn - khác key dù cùng user/loại phép/ngày', async () => {
+      jest.useFakeTimers().setSystemTime(new Date(2026, 8, 8));
+      mockUserRepo.findOne
+        .mockResolvedValueOnce({ id: 7, name: 'Nguyễn Văn A', role: 'employee' })
+        .mockResolvedValueOnce({ id: 7, name: 'Nguyễn Văn A', role: 'employee' });
+
+      const result1 = await service.presignAttachmentUpload(7, 'image/png', LeaveType.SICK, 1);
+      const result2 = await service.presignAttachmentUpload(7, 'image/png', LeaveType.SICK, 2);
+
+      expect(result1.key).not.toBe(result2.key);
+      expect(result2.key).toBe('leave-attachments/7/NguyenVanA_Employee_NghiOm_2_8-9-26.png');
+      jest.useRealTimers();
+    });
+
+    it('KHÔNG throw nếu không tìm thấy user - fallback chỉ mất phần tên/role (leaveType label vẫn còn vì không phụ thuộc DB)', async () => {
+      jest.useFakeTimers().setSystemTime(new Date(2026, 0, 1));
+      mockUserRepo.findOne.mockResolvedValueOnce(null);
+
+      const result = await service.presignAttachmentUpload(999, 'image/jpeg', LeaveType.ANNUAL, 3);
+
+      expect(result.key).toBe('leave-attachments/999/PhepNam_3_1-1-26.jpeg');
+      jest.useRealTimers();
     });
   });
 

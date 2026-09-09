@@ -21,7 +21,7 @@ export class LeaveRequestsController {
   @Post('attachments/presign')
   @RequirePermission('leave_requests.request')
   async presignAttachment(@Body() dto: PresignAttachmentDto, @Request() req) {
-    return this.uploadsService.presignAttachmentUpload(req.user.id, dto.contentType);
+    return this.uploadsService.presignAttachmentUpload(req.user.id, dto.contentType, dto.leaveType, dto.index);
   }
 
   @Get(':id/attachment-urls')
