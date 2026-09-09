@@ -30,6 +30,18 @@ export class StorageController {
     return { cache, softLimitGb };
   }
 
+  @Post('usage/refresh')
+  @RequirePermission('storage.manage')
+  @ApiOperation({
+    summary:
+      'Tính lại THẬT dung lượng B2 ngay lúc gọi (không đợi cron ngoài) - dùng cho nút "Tính lại ngay" trên UI, ' +
+      'đặc biệt cần thiết ở lần đầu bật tính năng khi cache rỗng. ' +
+      'Tốn Class C transaction (liệt kê toàn bộ object) - không gọi tự động, chỉ khi Admin bấm.',
+  })
+  async refreshUsage() {
+    return this.storageService.refreshUsageCache();
+  }
+
   @Patch('usage/limit')
   @RequirePermission('storage.manage')
   @ApiOperation({ summary: 'Đổi hạn mức mềm (GB) - chỉ để hiển thị %, không chặn upload' })
