@@ -1,4 +1,4 @@
-import { Injectable, BadRequestException, ForbiddenException, NotFoundException, InternalServerErrorException } from '@nestjs/common';
+import { Injectable, BadRequestException, ForbiddenException, NotFoundException, InternalServerErrorException, Logger } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, Between, Not, In } from 'typeorm';
 import { LeaveRequest, LeaveStatus, LeaveType, LeaveDuration } from '../../database/entities/leave-request.entity';
@@ -22,6 +22,8 @@ import { UploadsService } from '../uploads/uploads.service';
  */
 @Injectable()
 export class LeaveRequestsService {
+  private readonly logger = new Logger(LeaveRequestsService.name);
+
   constructor(
     @InjectRepository(LeaveRequest)
     private leaveRequestRepo: Repository<LeaveRequest>,
@@ -410,10 +412,18 @@ export class LeaveRequestsService {
   
   /**
    * Cancel request (by requester)
+   *
+   * ⚠️ CẬP NHẬT (theo yêu cầu): huỷ đơn giờ dọn luôn ảnh đính kèm (nếu có) -
+   * cả object thật trên B2 lẫn dòng `leave_request_attachments` trong DB.
+   * Đơn đã huỷ không còn nghiệp vụ nào cần giữ ảnh (thường là giấy khám
+   * bệnh - dữ liệu sức khoẻ nhạy cảm), không nên để tồn tại vô thời hạn.
+   * Xoá B2 làm BEST-EFFORT (log warn nếu lỗi) - KHÔNG chặn việc huỷ đơn
+   * nếu bước xoá ảnh gặp sự cố (giống pattern `deleteAvatar` ở uploads.service.ts).
    */
   async cancel(requestId: number, requesterId: number) {
     const request = await this.leaveRequestRepo.findOne({
-      where: { id: requestId, requesterId }
+      where: { id: requestId, requesterId },
+      relations: ['attachments'],
     });
     
     if (!request) {
@@ -427,7 +437,64 @@ export class LeaveRequestsService {
     request.status = LeaveStatus.CANCELLED;
     request.cancelledAt = new Date();
     
-    return this.leaveRequestRepo.save(request);
+    const saved = await this.leaveRequestRepo.save(request);
+
+    const attachments = request.attachments || [];
+    if (attachments.length > 0) {
+      await Promise.all(
+        attachments.map((a) =>
+          this.uploadsService
+            .deleteObject(this.uploadsService.leaveAttachmentsBucket, a.objectKey)
+            .catch((err) => this.logger.warn(`Không xoá được ảnh đính kèm khi huỷ đơn: ${a.objectKey}`, err)),
+        ),
+      );
+      await this.attachmentRepo.remove(attachments);
+    }
+
+    return saved;
+  }
+
+  /**
+   * Xoá 1 ảnh đính kèm ĐÃ upload thẳng lên B2 (qua presign) nhưng CHƯA
+   * (hoặc không còn) gắn vào đơn nghỉ phép thật nào - dùng khi:
+   *  - Người dùng bấm xoá ảnh khỏi picker TRƯỚC khi bấm "Tạo đơn".
+   *  - Người dùng đóng/huỷ Modal tạo đơn sau khi đã chọn ảnh (chưa bấm
+   *    "Tạo đơn") - dọn hết ảnh đã lỡ PUT lên B2 trong phiên đó.
+   *
+   * 2 lớp an toàn bắt buộc:
+   *  1. Key phải đúng namespace `leave-attachments/{userId}/` của CHÍNH
+   *     người gọi - không cho xoá object của người khác dù đoán được key.
+   *  2. Key KHÔNG được đang gắn với bất kỳ đơn nào trong DB
+   *     (`leave_request_attachments`) - nếu đã gắn (đơn đã tạo thật), từ
+   *     chối xoá qua đường này (phải qua `cancel()`), tránh 1 request cũ
+   *     tự ý xoá "bằng chứng" ảnh của đơn ĐÃ NỘP thành công.
+   */
+  async discardOrphanAttachments(userId: number, keys: string[]) {
+    const uniqueKeys = Array.from(new Set(keys)).slice(0, 20);
+    const prefix = `leave-attachments/${userId}/`;
+
+    const linked = uniqueKeys.length
+      ? await this.attachmentRepo.find({ where: { objectKey: In(uniqueKeys) } })
+      : [];
+    const linkedKeys = new Set(linked.map((a) => a.objectKey));
+
+    return Promise.all(
+      uniqueKeys.map(async (key) => {
+        if (!key.startsWith(prefix)) {
+          return { key, deleted: false, reason: 'not_owner' as const };
+        }
+        if (linkedKeys.has(key)) {
+          return { key, deleted: false, reason: 'already_linked' as const };
+        }
+        try {
+          await this.uploadsService.deleteObject(this.uploadsService.leaveAttachmentsBucket, key);
+          return { key, deleted: true as const };
+        } catch (err) {
+          this.logger.warn(`Không xoá được ảnh đính kèm bỏ dở: ${key}`, err as Error);
+          return { key, deleted: false, reason: 'error' as const };
+        }
+      }),
+    );
   }
   
   /**

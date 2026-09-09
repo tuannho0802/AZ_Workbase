@@ -6,6 +6,7 @@ import { GetPermissionScope } from '../../common/decorators/get-permission-scope
 import { LeaveRequestsService } from './leave-requests.service';
 import { UploadsService } from '../uploads/uploads.service';
 import { PresignAttachmentDto } from '../uploads/dto/presign-attachment.dto';
+import { DiscardAttachmentsDto } from './dto/discard-attachments.dto';
 
 @Controller('leave-requests')
 @UseGuards(JwtAuthGuard, PermissionGuard)
@@ -22,6 +23,15 @@ export class LeaveRequestsController {
   @RequirePermission('leave_requests.request')
   async presignAttachment(@Body() dto: PresignAttachmentDto, @Request() req) {
     return this.uploadsService.presignAttachmentUpload(req.user.id, dto.contentType, dto.leaveType, dto.index);
+  }
+
+  // Dọn ảnh đã PUT lên B2 nhưng CHƯA gắn vào đơn nào (huỷ Modal / xoá khỏi
+  // picker trước khi bấm "Tạo đơn") - xem comment chi tiết ở
+  // LeaveRequestsService.discardOrphanAttachments().
+  @Post('attachments/discard')
+  @RequirePermission('leave_requests.request')
+  async discardAttachments(@Body() dto: DiscardAttachmentsDto, @Request() req) {
+    return this.leaveRequestsService.discardOrphanAttachments(req.user.id, dto.keys);
   }
 
   @Get(':id/attachment-urls')

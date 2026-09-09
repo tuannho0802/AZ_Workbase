@@ -28,6 +28,8 @@ describe('LeaveRequestsService - Phan quyen duyet (PERMISSIONS.md muc 2.6)', () 
   const mockAttachmentRepo = {
     create: jest.fn(),
     save: jest.fn(),
+    find: jest.fn(),
+    remove: jest.fn(),
   };
   const mockUploadsService = {
     getLimits: jest.fn().mockResolvedValue({
@@ -37,6 +39,7 @@ describe('LeaveRequestsService - Phan quyen duyet (PERMISSIONS.md muc 2.6)', () 
     }),
     assertUploadedSizeWithinLimit: jest.fn().mockResolvedValue(undefined),
     signAttachmentGetUrl: jest.fn().mockResolvedValue('https://signed.example/att'),
+    deleteObject: jest.fn().mockResolvedValue(undefined),
     leaveAttachmentsBucket: 'az-imgs-leave-request-workbase',
   };
 
@@ -223,6 +226,93 @@ describe('LeaveRequestsService - Phan quyen duyet (PERMISSIONS.md muc 2.6)', () 
 
       expect(qb.andWhere).not.toHaveBeenCalledWith(expect.stringContaining('requester.role IN'));
       expect(mockDepartmentRepo.find).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('cancel() - huy don TU DONG don anh dinh kem (theo yeu cau moi)', () => {
+    it('nem NotFoundException neu khong tim thay don cua chinh requester', async () => {
+      mockLeaveRepo.findOne.mockResolvedValue(null);
+      await expect(service.cancel(1, 100)).rejects.toThrow(NotFoundException);
+    });
+
+    it('nem BadRequestException neu don khong o trang thai PENDING', async () => {
+      mockLeaveRepo.findOne.mockResolvedValue({ ...pendingRequest(Role.EMPLOYEE, 1), status: LeaveStatus.APPROVED });
+      await expect(service.cancel(1, 100)).rejects.toThrow(BadRequestException);
+    });
+
+    it('don KHONG co anh dinh kem: huy binh thuong, khong goi deleteObject/remove', async () => {
+      mockLeaveRepo.findOne.mockResolvedValue({ ...pendingRequest(Role.EMPLOYEE, 1), attachments: [] });
+      mockLeaveRepo.save.mockImplementation((r: any) => Promise.resolve(r));
+
+      const result = await service.cancel(1, 100);
+
+      expect(result.status).toBe(LeaveStatus.CANCELLED);
+      expect(mockUploadsService.deleteObject).not.toHaveBeenCalled();
+      expect(mockAttachmentRepo.remove).not.toHaveBeenCalled();
+    });
+
+    it('don CO anh dinh kem: xoa het object tren B2 + xoa dong DB, khong chan huy don neu B2 loi', async () => {
+      const attachments = [
+        { id: 1, objectKey: 'leave-attachments/100/A_1_1-1-26.png' },
+        { id: 2, objectKey: 'leave-attachments/100/A_2_1-1-26.png' },
+      ];
+      mockLeaveRepo.findOne.mockResolvedValue({ ...pendingRequest(Role.EMPLOYEE, 1), attachments });
+      mockLeaveRepo.save.mockImplementation((r: any) => Promise.resolve(r));
+      mockUploadsService.deleteObject
+        .mockRejectedValueOnce(new Error('B2 down'))
+        .mockResolvedValueOnce(undefined);
+
+      const result = await service.cancel(1, 100);
+
+      expect(result.status).toBe(LeaveStatus.CANCELLED);
+      expect(mockUploadsService.deleteObject).toHaveBeenCalledTimes(2);
+      expect(mockUploadsService.deleteObject).toHaveBeenCalledWith(
+        'az-imgs-leave-request-workbase',
+        'leave-attachments/100/A_1_1-1-26.png',
+      );
+      expect(mockAttachmentRepo.remove).toHaveBeenCalledWith(attachments);
+    });
+  });
+
+  describe('discardOrphanAttachments() - xoa anh upload dang do (chua gan don nao)', () => {
+    it('key KHONG dung namespace userId -> tu choi xoa (khong goi deleteObject)', async () => {
+      mockAttachmentRepo.find.mockResolvedValue([]);
+
+      const result = await service.discardOrphanAttachments(100, ['leave-attachments/999/hack.png']);
+
+      expect(result).toEqual([{ key: 'leave-attachments/999/hack.png', deleted: false, reason: 'not_owner' }]);
+      expect(mockUploadsService.deleteObject).not.toHaveBeenCalled();
+    });
+
+    it('key DA gan vao 1 don that trong DB -> tu choi xoa qua duong nay', async () => {
+      const key = 'leave-attachments/100/A_1_1-1-26.png';
+      mockAttachmentRepo.find.mockResolvedValue([{ id: 1, objectKey: key }]);
+
+      const result = await service.discardOrphanAttachments(100, [key]);
+
+      expect(result).toEqual([{ key, deleted: false, reason: 'already_linked' }]);
+      expect(mockUploadsService.deleteObject).not.toHaveBeenCalled();
+    });
+
+    it('key dung namespace + CHUA gan don nao -> xoa that tren B2', async () => {
+      const key = 'leave-attachments/100/A_1_1-1-26.png';
+      mockAttachmentRepo.find.mockResolvedValue([]);
+      mockUploadsService.deleteObject.mockResolvedValue(undefined);
+
+      const result = await service.discardOrphanAttachments(100, [key]);
+
+      expect(result).toEqual([{ key, deleted: true }]);
+      expect(mockUploadsService.deleteObject).toHaveBeenCalledWith('az-imgs-leave-request-workbase', key);
+    });
+
+    it('B2 xoa loi -> tra ve deleted:false reason:error, khong throw', async () => {
+      const key = 'leave-attachments/100/A_1_1-1-26.png';
+      mockAttachmentRepo.find.mockResolvedValue([]);
+      mockUploadsService.deleteObject.mockRejectedValue(new Error('B2 down'));
+
+      const result = await service.discardOrphanAttachments(100, [key]);
+
+      expect(result).toEqual([{ key, deleted: false, reason: 'error' }]);
     });
   });
 });
