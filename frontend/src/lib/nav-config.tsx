@@ -16,6 +16,7 @@ import {
   BarChartOutlined,
   CrownOutlined,
   BankOutlined,
+  CloudServerOutlined,
 } from '@ant-design/icons';
 
 export interface NavItem {
@@ -251,6 +252,18 @@ export const NAV_ITEMS: NavItem[] = [
     // cho 1 role tuỳ chỉnh, mục này tự hiện ra - không cần sửa code.
     roles: null,
     permission: 'roles.view',
+  },
+  {
+    key: 'storage-img',
+    label: 'Quản lý lưu trữ ảnh',
+    description: 'Dung lượng B2 (avatars/đính kèm nghỉ phép/thư viện ảnh chung)',
+    icon: <CloudServerOutlined />,
+    path: '/storage-img',
+    // Khớp @RequirePermission('storage.view') ở storage.controller.ts
+    // (migration 1780100000000-AddStorageManagementPermissions.ts - mặc
+    // định chỉ role admin có sẵn).
+    roles: null,
+    permission: 'storage.view',
   },
 ];
 
