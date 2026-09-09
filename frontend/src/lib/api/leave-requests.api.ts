@@ -35,8 +35,26 @@ export const leaveRequestsApi = {
     endDate: string;   // YYYY-MM-DD
     duration: string;
     reason: string;
+    // Object key trên B2 (bucket leave-attachments) đã PUT xong qua
+    // presignAttachment() - KHÔNG PHẢI URL. Xem
+    // LeaveRequestsService.create() ở BE (mục 5: validate + lưu ảnh).
+    attachmentKeys?: string[];
   }) {
     const res = await axiosInstance.post('/leave-requests', data);
+    return res.data;
+  },
+
+  // `leave_requests.request` - xin Presigned PUT URL để đính kèm 1 ảnh vào
+  // đơn ĐANG TẠO (chưa có id đơn lúc gọi, key trả về gửi kèm lúc create()).
+  async presignAttachment(contentType: string): Promise<{ uploadUrl: string; key: string }> {
+    const res = await axiosInstance.post('/leave-requests/attachments/presign', { contentType });
+    return res.data;
+  },
+
+  // Ký Presigned GET URL (TTL 10 phút) cho toàn bộ ảnh đính kèm của 1 đơn -
+  // chỉ chủ đơn hoặc người có quyền duyệt/xem đúng phạm vi mới gọi được.
+  async getAttachmentUrls(id: number): Promise<{ id: number; url: string }[]> {
+    const res = await axiosInstance.get(`/leave-requests/${id}/attachment-urls`);
     return res.data;
   },
   

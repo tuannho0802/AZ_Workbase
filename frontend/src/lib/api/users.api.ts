@@ -92,6 +92,15 @@ export const usersApi = {
     return response.data;
   },
 
+  // Xác nhận avatar mới SAU KHI đã PUT thẳng lên B2 (key lấy từ
+  // POST /uploads/avatar/presign - xem uploadsApi.presignAvatar()). Response
+  // trả về avatarUrl đã ký sẵn (Presigned GET, TTL 1h) - dùng thẳng, không
+  // cần ký lại ở FE.
+  updateOwnAvatar: async (key: string): Promise<UserDetail> => {
+    const response = await axiosInstance.patch('/users/me/avatar', { key });
+    return response.data;
+  },
+
   // ── Xoá tài khoản (mềm -> cứng) - `users.delete`, mặc định chỉ Admin ───
   softDeleteUser: async (id: number) => {
     const response = await axiosInstance.patch(`/users/${id}/soft-delete`);
@@ -129,6 +138,8 @@ export interface UserDetail {
   leaveYear: number;
   createdAt: string;
   department?: { id: number; name: string } | null;
+  // Presigned GET URL (TTL 1h, ký sẵn ở BE) - null nếu chưa từng upload avatar.
+  avatarUrl?: string | null;
 }
 
 // Tài khoản đã xoá mềm (đang ở "thùng rác" - GET /users/trash)

@@ -33,6 +33,9 @@ export interface User {
     id: number;
     name: string;
   };
+  // Presigned GET URL (TTL 1h, ký sẵn ở BE - KHÔNG PHẢI object key) - null
+  // nếu chưa từng upload avatar. Có thể null/undefined tuỳ endpoint trả về.
+  avatarUrl?: string | null;
 }
 
 export interface AuthResponse {
