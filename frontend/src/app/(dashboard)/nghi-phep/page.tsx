@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import {
   Table, Button, Modal, Form, Select, DatePicker, Input, Tag, App, Card, Divider, Typography
@@ -8,7 +8,7 @@ import {
 import { PlusOutlined, CloseCircleOutlined, CalendarOutlined, FileTextOutlined, UserOutlined } from '@ant-design/icons';
 import { leaveRequestsApi, LeaveRequest } from '@/lib/api/leave-requests.api';
 import { useMyPermissions } from '@/lib/hooks/useMyPermissions';
-import { AttachmentUploader } from '@/components/leave-requests/AttachmentUploader';
+import { AttachmentUploader, AttachmentUploaderHandle } from '@/components/leave-requests/AttachmentUploader';
 import { AttachmentsViewerButton } from '@/components/leave-requests/AttachmentsViewerButton';
 import dayjs from 'dayjs';
 
@@ -109,7 +109,12 @@ export default function LeaveRequestsPage() {
   const [modalOpen, setModalOpen] = useState(false);
   const [attachmentUploaderKey, setAttachmentUploaderKey] = useState(0);
   const [isMobile, setIsMobile] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
   const [form] = Form.useForm();
+  // Ảnh đính kèm giờ chỉ nằm trong RAM trình duyệt (xem AttachmentUploader) -
+  // component cha gọi `uploadAll()` qua ref đúng lúc submit, KHÔNG còn bind
+  // value/onChange kiểu controlled field qua Form nữa.
+  const attachmentUploaderRef = useRef<AttachmentUploaderHandle>(null);
   // Theo dõi realtime giá trị "Loại phép" trong Form để truyền xuống
   // AttachmentUploader - BE (`PresignAttachmentDto.leaveType`) bắt buộc
   // phải có giá trị này ngay khi presign, không thể lấy sau.
@@ -152,25 +157,31 @@ export default function LeaveRequestsPage() {
   };
 
   /**
-   * Đóng/huỷ Modal tạo đơn KHÔNG qua bấm "Tạo đơn" (nút "Hủy" hoặc bấm X) -
-   * ảnh đã chọn (nếu có) đã PUT thẳng lên B2 rồi (xem AttachmentUploader)
-   * nhưng CHƯA gắn vào đơn nào -> dọn luôn qua discardAttachments(), tránh
-   * để rác vĩnh viễn trên B2 chỉ vì người dùng đổi ý không tạo đơn.
-   * Best-effort - không chặn việc đóng Modal nếu dọn rác lỗi.
+   * Đóng/huỷ Modal tạo đơn KHÔNG qua bấm "Tạo đơn" (nút "Hủy" hoặc bấm X).
+   * ⚠️ Khác bản cũ: ảnh đính kèm (nếu có) CHƯA từng chạm B2 ở bước này (chỉ
+   * là `File` object giữ cục bộ trong AttachmentUploader) - KHÔNG còn cần
+   * gọi `discardAttachments()` nữa, chỉ cần remount component (đổi key) để
+   * giải phóng state, trình duyệt tự dọn.
    */
-  const closeModalAndDiscardAttachments = () => {
-    const keys: string[] = form.getFieldValue('attachmentKeys') ?? [];
-    if (keys.length > 0) {
-      leaveRequestsApi.discardAttachments(keys).catch(() => undefined);
-    }
+  const closeModal = () => {
     setModalOpen(false);
     form.resetFields();
     setAttachmentUploaderKey((k) => k + 1);
   };
 
   const handleCreateRequest = async (values: any) => {
+    // Giữ lại key vừa upload (nếu có) ở scope ngoài try - cần để dọn rác
+    // trong catch nếu bước tạo đơn thất bại SAU KHI ảnh đã lỡ lên B2 rồi.
+    let uploadedKeys: string[] = [];
+    setSubmitting(true);
     try {
       const [startDate, endDate] = values.dateRange;
+
+      // Bước duy nhất trong toàn bộ luồng tạo đơn thật sự đụng tới B2: chỉ
+      // presign + PUT đúng lúc người dùng bấm "Tạo đơn" (xem AttachmentUploader.uploadAll).
+      if (attachmentUploaderRef.current?.hasFiles()) {
+        uploadedKeys = await attachmentUploaderRef.current.uploadAll();
+      }
 
       await leaveRequestsApi.create({
         leaveType: values.leaveType,
@@ -178,7 +189,7 @@ export default function LeaveRequestsPage() {
         endDate: endDate.format('YYYY-MM-DD'),
         duration: values.duration,
         reason: values.reason,
-        attachmentKeys: values.attachmentKeys ?? [],
+        attachmentKeys: uploadedKeys,
       });
 
       message.success('Tạo đơn nghỉ phép thành công');
@@ -187,7 +198,15 @@ export default function LeaveRequestsPage() {
       setAttachmentUploaderKey((k) => k + 1);
       fetchRequests();
     } catch (err: any) {
+      // Ảnh đã PUT lên B2 xong (uploadAll thành công) nhưng bước tạo đơn
+      // sau đó lại lỗi (network/validate BE...) -> ảnh mồ côi, dọn ngay
+      // tránh rác vĩnh viễn. Best-effort - không chặn UI nếu dọn lỗi.
+      if (uploadedKeys.length > 0) {
+        leaveRequestsApi.discardAttachments(uploadedKeys).catch(() => undefined);
+      }
       message.error(err.message || 'Tạo đơn thất bại');
+    } finally {
+      setSubmitting(false);
     }
   };
 
@@ -313,7 +332,7 @@ export default function LeaveRequestsPage() {
       <Modal
         title="Tạo đơn nghỉ phép"
         open={modalOpen}
-        onCancel={closeModalAndDiscardAttachments}
+        onCancel={closeModal}
         footer={null}
         width={600}
       >
@@ -374,16 +393,19 @@ export default function LeaveRequestsPage() {
           </Form.Item>
 
           <Form.Item
-            name="attachmentKeys"
             label="Ảnh đính kèm (nếu có)"
             extra={!selectedLeaveType ? 'Chọn Loại phép trước để có thể đính kèm ảnh' : undefined}
           >
-            <AttachmentUploader key={attachmentUploaderKey} leaveType={selectedLeaveType} />
+            <AttachmentUploader
+              key={attachmentUploaderKey}
+              ref={attachmentUploaderRef}
+              leaveType={selectedLeaveType}
+            />
           </Form.Item>
 
           <div className="flex justify-end gap-2" style={{ marginTop: 16 }}>
-            <Button onClick={closeModalAndDiscardAttachments}>Hủy</Button>
-            <Button type="primary" htmlType="submit">Tạo đơn</Button>
+            <Button onClick={closeModal} disabled={submitting}>Hủy</Button>
+            <Button type="primary" htmlType="submit" loading={submitting}>Tạo đơn</Button>
           </div>
         </Form>
       </Modal>
