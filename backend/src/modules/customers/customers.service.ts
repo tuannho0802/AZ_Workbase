@@ -244,11 +244,23 @@ export class CustomersService {
     }
 
     // Date Filters
+    // ⚠️ FIX BUG THẬT: trước đây lọc theo `customer.createdAt` (thời điểm
+    // RECORD được ghi vào DB) trong khi cột hiển thị trên bảng + label bộ
+    // lọc là "Ngày nhập" (`inputDate`) - 2 giá trị lệch nhau khi Import
+    // Excel hàng loạt (createdAt = lúc import hôm nay, inputDate = ngày
+    // nhập liệu thật, có thể là quá khứ xa). Kết quả: chọn "8/9 → 9/9" vẫn
+    // trả về cả khách có "Ngày nhập" hiển thị là tháng trước, miễn createdAt
+    // rơi đúng khoảng đó - đúng hiện tượng "lố ra ngày trước đó" đã báo.
+    // `inputDate` là cột kiểu DATE thuần (không có giờ - xem
+    // customer.entity.ts), nên so sánh trực tiếp chuỗi 'YYYY-MM-DD' là
+    // CHÍNH XÁC và ĐÃ inclusive ở cả 2 đầu, không cần cộng thêm 23:59:59.
+    // Đồng thời đã có sẵn index @Index(['inputDate']) nên không tốn thêm
+    // chi phí quét bảng so với trước.
     if (dateFrom) {
-      queryBuilder.andWhere('customer.createdAt >= :dateFrom', { dateFrom });
+      queryBuilder.andWhere('customer.inputDate >= :dateFrom', { dateFrom });
     }
     if (dateTo) {
-      queryBuilder.andWhere('customer.createdAt <= :dateTo', { dateTo });
+      queryBuilder.andWhere('customer.inputDate <= :dateTo', { dateTo });
     }
 
     // "Đã joined nhóm liên kết" - dùng EXISTS/NOT EXISTS thay vì JOIN để
