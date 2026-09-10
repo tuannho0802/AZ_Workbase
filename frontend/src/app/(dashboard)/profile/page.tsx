@@ -24,12 +24,9 @@ import { useManagedByMe, useAllLinkGroups } from '@/lib/hooks/useLinkGroups';
 import { useMyPermissions } from '@/lib/hooks/useMyPermissions';
 import { SimpleList } from '@/components/common/SimpleList';
 import { AvatarUpload } from '@/components/common/AvatarUpload';
+import { useRoleColorMap } from '@/lib/hooks/useRoleColorMap';
 
 const { Text, Title } = Typography;
-
-const ROLE_COLOR: Record<string, string> = {
-  admin: 'red', manager: 'orange', assistant: 'blue', employee: 'green',
-};
 
 const ROLE_LABEL: Record<string, string> = {
   admin: 'Admin', manager: 'Manager', assistant: 'Assistant', employee: 'Employee',
@@ -90,6 +87,7 @@ function ProfilePortal({ userId, onDeleted }: { userId: number; onDeleted?: () =
   const { message, modal } = App.useApp();
   const { user: currentUser } = useAuthStore();
   const { can } = useMyPermissions();
+  const { getRoleColor } = useRoleColorMap();
   const [loadingDetail, setLoadingDetail] = useState(true);
   const [detail, setDetail] = useState<UserDetail | null>(null);
 
@@ -289,7 +287,7 @@ function ProfilePortal({ userId, onDeleted }: { userId: number; onDeleted?: () =
           <div>
             <Title level={4} style={{ margin: 0 }}>{detail.name}</Title>
             <Space style={{ marginTop: 6 }}>
-              <Tag color={ROLE_COLOR[detail.role] ?? 'default'}>
+              <Tag color={getRoleColor(detail.role)}>
                 {(ROLE_LABEL[detail.role] ?? detail.role)?.toUpperCase()}
               </Tag>
               <Tag color={detail.isActive ? 'green' : 'red'}>
@@ -477,6 +475,7 @@ function ProfilePortal({ userId, onDeleted }: { userId: number; onDeleted?: () =
 function AdminProfileManager() {
   const { message } = App.useApp();
   const { user: currentUser } = useAuthStore();
+  const { getRoleColor } = useRoleColorMap();
   const searchParams = useSearchParams();
   const initialUserId = searchParams.get('userId') ? Number(searchParams.get('userId')) : null;
   
@@ -554,7 +553,7 @@ function AdminProfileManager() {
       title: 'Chức vụ',
       dataIndex: 'role',
       render: (role: string) => (
-        <Tag color={ROLE_COLOR[role] ?? 'default'}>{role?.toUpperCase()}</Tag>
+        <Tag color={getRoleColor(role)}>{role?.toUpperCase()}</Tag>
       ),
     },
     {
@@ -603,7 +602,7 @@ function AdminProfileManager() {
                   <div style={{ fontWeight: 600 }}>{u.name}</div>
                   <Text style={{ fontSize: 12, color: '#8c8c8c' }}>{u.email}</Text>
                   <div style={{ marginTop: 4 }}>
-                    <Tag color={ROLE_COLOR[u.role] ?? 'default'}>{u.role?.toUpperCase()}</Tag>
+                    <Tag color={getRoleColor(u.role)}>{u.role?.toUpperCase()}</Tag>
                   </div>
                 </div>
                 <EyeOutlined style={{ fontSize: 16, color: '#8c8c8c' }} />

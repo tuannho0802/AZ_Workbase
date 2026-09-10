@@ -20,6 +20,7 @@ import { AuditLog, AuditFilters, AuditSettings } from '@/lib/types/audit.types';
 import dayjs from 'dayjs';
 import { AuditDiffViewer } from '@/components/audit/AuditDiffViewer';
 import { useMyPermissions } from '@/lib/hooks/useMyPermissions';
+import { useRoleColorMap } from '@/lib/hooks/useRoleColorMap';
 
 const { Text, Title, Link } = Typography;
 const { RangePicker } = DatePicker;
@@ -52,12 +53,7 @@ const ENTITY_TYPE_LABELS: Record<string, string> = {
   audit_log: 'Nhật ký',
 };
 
-const ROLE_COLORS: Record<string, string> = {
-  admin: 'red',
-  manager: 'blue',
-  assistant: 'purple',
-  employee: 'default',
-};
+
 
 const ROLE_LABELS: Record<string, string> = {
   admin: 'Admin',
@@ -71,6 +67,7 @@ const AuditLogMobileCard = ({ record, onShowDetail }: { record: AuditLog; onShow
   const u = record.user;
   const isCustomer = record.entityType === 'customer';
   const customer = record.targetCustomer;
+  const { getRoleColor } = useRoleColorMap();
 
   return (
     <Card
@@ -91,7 +88,7 @@ const AuditLogMobileCard = ({ record, onShowDetail }: { record: AuditLog; onShow
           <Space>
             <Avatar size={20} icon={<UserOutlined />} style={{ backgroundColor: '#1890ff' }} />
             <Text strong style={{ fontSize: 12 }}>{u.name}</Text>
-            <Tag color={ROLE_COLORS[u.role] || 'default'} style={{ fontSize: 9, margin: 0, padding: '0 4px', lineHeight: '14px' }}>
+            <Tag color={getRoleColor(u.role)} style={{ fontSize: 9, margin: 0, padding: '0 4px', lineHeight: '14px' }}>
               {ROLE_LABELS[u.role] || u.role}
             </Tag>
           </Space>
@@ -146,6 +143,7 @@ export default function AuditLogsPage() {
   const { user } = useAuthStore();
   const router = useRouter();
   const { message, modal } = App.useApp();
+  const { getRoleColor } = useRoleColorMap();
   // ⚠️ FIX BUG THẬT (rà soát permission): trước đây hardcode
   // `role==='admin'||'assistant'` với lý do "seed mặc định audit.manage chỉ
   // cấp cho 2 role này, không phân biệt gì thêm". Nhưng đây CHÍNH LÀ module
@@ -374,7 +372,7 @@ export default function AuditLogsPage() {
             <Avatar size={28} icon={<UserOutlined />} style={{ backgroundColor: '#1890ff' }} />
             <Space orientation={"vertical" as any} size={0}>
               <Text strong style={{ fontSize: 13 }}>{u.name}</Text>
-              <Tag color={ROLE_COLORS[u.role] || 'default'} style={{ fontSize: 10, margin: 0 }}>
+              <Tag color={getRoleColor(u.role)} style={{ fontSize: 10, margin: 0 }}>
                 {ROLE_LABELS[u.role] || u.role}
               </Tag>
             </Space>

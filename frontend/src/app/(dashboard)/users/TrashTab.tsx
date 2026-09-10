@@ -7,12 +7,9 @@ import { UndoOutlined, DeleteOutlined, ExclamationCircleOutlined } from '@ant-de
 import dayjs from 'dayjs';
 import { usersApi, TrashedUser } from '@/lib/api/users.api';
 import { getApiErrorMessage } from '@/lib/utils/error-message.util';
+import { useRoleColorMap } from '@/lib/hooks/useRoleColorMap';
 
 const { Text, Paragraph } = Typography;
-
-const ROLE_COLOR: Record<string, string> = {
-  admin: 'red', manager: 'orange', assistant: 'blue', employee: 'green',
-};
 
 interface Props {
   onCountChange?: (count: number) => void;
@@ -27,6 +24,7 @@ interface Props {
 export const TrashTab = ({ onCountChange, onRestored }: Props) => {
   const { message, modal } = App.useApp();
   const queryClient = useQueryClient();
+  const { getRoleColor } = useRoleColorMap();
 
   const [restoring, setRestoring] = useState<TrashedUser | null>(null);
   const [restoreSubmitting, setRestoreSubmitting] = useState(false);
@@ -92,7 +90,7 @@ export const TrashTab = ({ onCountChange, onRestored }: Props) => {
       title: 'Chức vụ',
       dataIndex: 'role',
       key: 'role',
-      render: (role: string) => <Tag color={ROLE_COLOR[role] ?? 'default'}>{role?.toUpperCase()}</Tag>,
+      render: (role: string) => <Tag color={getRoleColor(role)}>{role?.toUpperCase()}</Tag>,
     },
     {
       title: 'Phòng ban',
