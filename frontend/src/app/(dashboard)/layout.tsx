@@ -140,14 +140,28 @@ export default function DashboardLayout({
         if (cancelled) return;
         const current = useAuthStore.getState().user;
         if (!current) return;
-        // Chỉ merge avatarUrl/avatarKey - KHÔNG ghi đè các field khác của
-        // user (vd role/department có thể đang được quản lý bởi luồng
-        // khác), tránh side-effect ngoài ý muốn.
-        if (current.avatarUrl !== fresh.avatarUrl || current.avatarKey !== fresh.avatarKey) {
+        // Chỉ merge avatarUrl/avatarKey/isRootAdmin - KHÔNG ghi đè các field
+        // khác của user (vd role/department có thể đang được quản lý bởi
+        // luồng khác), tránh side-effect ngoài ý muốn.
+        //
+        // ⚠️ FIX BUG THẬT (Switch "Root Admin" ở /users biến mất dù DB đã
+        // đúng `is_root_admin=1`): CÙNG NGUYÊN NHÂN với bug avatarUrl ở
+        // JSDoc trên - `user.isRootAdmin` chỉ được set 1 LẦN lúc login, nếu
+        // session (cookie 7 ngày) được tạo TRƯỚC lúc migration
+        // AddIsRootAdminToUsers backfill DB hoặc TRƯỚC lúc 1 Root Admin
+        // khác vừa bật cờ cho tài khoản này, cookie giữ giá trị cũ mãi mãi
+        // cho tới khi tự logout/login lại. Merge thêm field này vào vòng
+        // tự-lành sẵn có để không cần bắt user logout/login thủ công.
+        if (
+          current.avatarUrl !== fresh.avatarUrl ||
+          current.avatarKey !== fresh.avatarKey ||
+          !!current.isRootAdmin !== !!fresh.isRootAdmin
+        ) {
           useAuthStore.getState().setUser({
             ...current,
             avatarUrl: fresh.avatarUrl ?? null,
             avatarKey: fresh.avatarKey ?? null,
+            isRootAdmin: !!fresh.isRootAdmin,
           });
         }
       } catch {

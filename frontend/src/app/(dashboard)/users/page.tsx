@@ -184,6 +184,19 @@ export default function UsersPage() {
   // - xem JSDoc User.isRootAdmin). BE (UsersService.create()/update()) mới
   // là nơi chặn thật sự nếu FE bị bypass.
   const isRootAdminCaller = !!user?.isRootAdmin;
+  // ⚠️ MỚI (isRootAdmin - self-target & confirm password) - theo dõi giá trị
+  // Switch "Root Admin" trong Modal theo thời gian thực để: (1) biết khi nào
+  // caller thực sự ĐỔI trạng thái (khác giá trị gốc của record đang sửa) ->
+  // chỉ lúc đó mới bắt buộc hiện ô "Mật khẩu hiện tại" và gửi kèm
+  // `currentPassword` lên BE (khớp điều kiện BE chỉ đòi field này khi giá
+  // trị THAY ĐỔI - xem UsersService.update()); (2) disable hẳn Switch khi
+  // đang sửa CHÍNH MÌNH - BE đã chặn cứng (ForbiddenException nếu
+  // `id === callerId`) nhưng vẫn ẩn/disable ở FE để tránh user bấm vào rồi
+  // nhận lỗi 403 khó hiểu.
+  const isRootAdminWatch = Form.useWatch('isRootAdmin', form);
+  const isEditingSelf = !!(editingUser && user && editingUser.id === user.id);
+  const isRootAdminChanged =
+    !!editingUser && isRootAdminWatch !== undefined && !!isRootAdminWatch !== !!editingUser?.isRootAdmin;
 
   useEffect(() => {
     if (!permissionsLoading && user && !canAccessPage) {
@@ -240,6 +253,13 @@ export default function UsersPage() {
       // thường, dù BE cũng tự chặn lại (ForbiddenException) nếu lỡ gửi.
       if (isRootAdminCaller) {
         payload.isRootAdmin = !!values.isRootAdmin;
+        // ⚠️ MỚI - chỉ gửi kèm currentPassword khi THỰC SỰ đổi trạng thái
+        // Root Admin so với giá trị gốc (khớp điều kiện BE yêu cầu field
+        // này - xem UsersService.update()). Gửi rỗng/không gửi khi không đổi
+        // để tránh lộ mật khẩu lên network log không cần thiết.
+        if (isRootAdminChanged) {
+          payload.currentPassword = values.currentPassword;
+        }
       }
 
       if (editingUser) {
@@ -587,15 +607,48 @@ export default function UsersPage() {
               hiện tại. BE (UsersService) chặn: chỉ role=admin mới bật được,
               và không được tự gỡ Root Admin cuối cùng của hệ thống. */}
           {isRootAdminCaller && (
-            <Form.Item
-              name="isRootAdmin"
-              label="Root Admin"
-              valuePropName="checked"
-              initialValue={false}
-              tooltip="Root Admin luôn giữ đủ quyền dù ma trận phân quyền của role Admin bị sửa/thu hồi thế nào đi nữa. Có thể có nhiều Root Admin. Chỉ Root Admin mới bật/tắt được cờ này, và không thể gỡ Root Admin cuối cùng của hệ thống."
-            >
-              <Switch checkedChildren="Root Admin" unCheckedChildren="Admin thường" />
-            </Form.Item>
+            <>
+              <Form.Item
+                name="isRootAdmin"
+                label="Root Admin"
+                valuePropName="checked"
+                initialValue={false}
+                tooltip={
+                  isEditingSelf
+                    ? 'Không thể tự thay đổi trạng thái Root Admin của chính mình - phải nhờ 1 Root Admin khác thực hiện.'
+                    : 'Root Admin luôn giữ đủ quyền dù ma trận phân quyền của role Admin bị sửa/thu hồi thế nào đi nữa. Có thể có nhiều Root Admin. Chỉ Root Admin mới bật/tắt được cờ này, và không thể gỡ Root Admin cuối cùng của hệ thống.'
+                }
+              >
+                {/* ⚠️ MỚI - disable tuyệt đối khi đang sửa chính tài khoản
+                    đang đăng nhập (xem `isEditingSelf`) - BE cũng chặn cứng
+                    hành động này (ForbiddenException), disable ở FE chỉ để
+                    tránh gây khó hiểu (bấm được nhưng luôn báo lỗi). */}
+                <Switch
+                  checkedChildren="Root Admin"
+                  unCheckedChildren="Admin thường"
+                  disabled={isEditingSelf}
+                />
+              </Form.Item>
+
+              {/* ⚠️ MỚI - chỉ hiện khi THỰC SỰ đổi trạng thái Root Admin so
+                  với giá trị gốc của record đang sửa (xem
+                  `isRootAdminChanged`) - khớp đúng điều kiện BE bắt buộc
+                  `currentPassword` (UsersService.update()). Xác nhận lại
+                  MẬT KHẨU CỦA CHÍNH ROOT ADMIN ĐANG THAO TÁC (không phải mật
+                  khẩu của target). */}
+              {isRootAdminChanged && (
+                <Form.Item
+                  name="currentPassword"
+                  label="Mật khẩu hiện tại của bạn"
+                  tooltip="Xác nhận lại mật khẩu của chính bạn (Root Admin đang thao tác) để cho phép thay đổi trạng thái Root Admin của tài khoản này."
+                  rules={[
+                    { required: true, message: 'Vui lòng nhập lại mật khẩu hiện tại của bạn để xác nhận' },
+                  ]}
+                >
+                  <Input.Password placeholder="Nhập mật khẩu đăng nhập hiện tại của bạn" />
+                </Form.Item>
+              )}
+            </>
           )}
         </Form>
       </Modal>
