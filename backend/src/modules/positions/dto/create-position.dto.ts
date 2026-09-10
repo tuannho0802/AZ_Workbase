@@ -1,6 +1,8 @@
 import { ApiProperty } from '@nestjs/swagger';
 import { IsNotEmpty, IsString, IsOptional, IsInt, Matches, MaxLength } from 'class-validator';
 
+const HEX_COLOR_REGEX = /^#[0-9A-Fa-f]{6}$/;
+
 export class CreatePositionDto {
   @ApiProperty({
     example: 'content',
@@ -37,4 +39,14 @@ export class CreatePositionDto {
   @IsString({ message: 'Mô tả phải là chuỗi' })
   @MaxLength(255, { message: 'Mô tả tối đa 255 ký tự' })
   description?: string;
+
+  @ApiProperty({
+    example: '#1890ff',
+    required: false,
+    description: 'Mã màu hex hiển thị Tag vị trí ngoài FE - để trống sẽ dùng màu mặc định',
+  })
+  @IsOptional()
+  @IsString({ message: 'Màu phải là chuỗi' })
+  @Matches(HEX_COLOR_REGEX, { message: 'Màu phải là mã hex hợp lệ dạng #RRGGBB (vd #1890ff)' })
+  color?: string;
 }

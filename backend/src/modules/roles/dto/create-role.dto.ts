@@ -1,6 +1,8 @@
 import { IsString, IsNotEmpty, Length, Matches, IsOptional } from 'class-validator';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 
+const HEX_COLOR_REGEX = /^#[0-9A-Fa-f]{6}$/;
+
 export class CreateRoleDto {
   // Bất biến sau khi tạo (xem role.entity.ts) - CHỈ chữ thường/số/gạch dưới
   // để an toàn khi dùng làm giá trị FK trong users.role và trong code (nếu
@@ -25,4 +27,13 @@ export class CreateRoleDto {
   @IsString()
   @Length(0, 255)
   description?: string;
+
+  @ApiPropertyOptional({
+    example: '#1890ff',
+    description: 'Mã màu hex hiển thị Tag role ngoài FE - để trống sẽ dùng màu mặc định',
+  })
+  @IsOptional()
+  @IsString()
+  @Matches(HEX_COLOR_REGEX, { message: 'Màu phải là mã hex hợp lệ dạng #RRGGBB (vd #1890ff)' })
+  color?: string;
 }

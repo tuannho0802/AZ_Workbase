@@ -1,6 +1,8 @@
 import { ApiProperty } from '@nestjs/swagger';
 import { ArrayMinSize, IsArray, IsInt, IsNotEmpty, IsOptional, IsString, Matches, MaxLength } from 'class-validator';
 
+const HEX_COLOR_REGEX = /^#[0-9A-Fa-f]{6}$/;
+
 export class CreateAssignmentGroupDto {
   @ApiProperty({
     example: 'content_staff',
@@ -42,4 +44,14 @@ export class CreateAssignmentGroupDto {
   @IsArray()
   @IsInt({ each: true })
   positionIds?: number[];
+
+  @ApiProperty({
+    example: '#1890ff',
+    required: false,
+    description: 'Mã màu hex hiển thị Tag nhóm phụ trách ngoài FE - để trống sẽ dùng màu mặc định',
+  })
+  @IsOptional()
+  @IsString()
+  @Matches(HEX_COLOR_REGEX, { message: 'Màu phải là mã hex hợp lệ dạng #RRGGBB (vd #1890ff)' })
+  color?: string;
 }
