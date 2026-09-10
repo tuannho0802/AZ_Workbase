@@ -38,6 +38,13 @@ export class UpdateUserDto {
   @IsInt()
   departmentId?: number;
 
+  // ⚠️ MỚI - Vị trí (Position), tuỳ chọn (xem PLAN mục 2.6) - đối xứng với
+  // departmentId ở trên, cùng dựa vào FK `fk_users_position` để chặn ID sai.
+  @ApiProperty({ example: 1, required: false, nullable: true, description: 'ID vị trí (Position), tuỳ chọn' })
+  @IsOptional()
+  @IsInt()
+  positionId?: number | null;
+
   @ApiProperty({ example: true, required: false })
   @IsOptional()
   @IsBoolean()

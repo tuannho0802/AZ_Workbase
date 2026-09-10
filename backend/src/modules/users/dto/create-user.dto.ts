@@ -47,6 +47,14 @@ export class CreateUserDto {
   @IsInt({ message: 'ID phòng ban phải là số nguyên' })
   departmentId?: number;
 
+  // ⚠️ MỚI - Vị trí (Position), tuỳ chọn, KHÔNG bắt buộc (xem PLAN mục 2.6).
+  // Không tồn tại -> DB tự chặn qua FK `fk_users_position` (giống cách
+  // departmentId đang dựa vào FK, không check existence riêng ở service).
+  @ApiProperty({ example: 1, required: false, nullable: true, description: 'ID vị trí (Position), tuỳ chọn' })
+  @IsOptional()
+  @IsInt({ message: 'ID vị trí phải là số nguyên' })
+  positionId?: number | null;
+
   @ApiProperty({ example: true, default: true, required: false })
   @IsOptional()
   @IsBoolean({ message: 'Trạng thái phải là kiểu boolean' })
