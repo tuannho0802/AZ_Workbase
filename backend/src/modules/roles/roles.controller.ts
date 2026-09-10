@@ -33,7 +33,7 @@ export class RolesController {
       'Quyền của CHÍNH người đang gọi API - không cần roles.view, ai cũng xem được quyền của bản thân. FE dùng route này để tự quyết định hiện/ẩn sidebar/nút bấm, đồng bộ đúng những gì BE thật sự cho phép.',
   })
   getMyPermissions(@GetUser() user: any) {
-    return this.rolesService.getMyPermissions(user.role, user.departmentId);
+    return this.rolesService.getMyPermissions(user.role, user.departmentId, user.positionId);
   }
 
   @Get('roles')
@@ -107,5 +107,36 @@ export class RolesController {
     @Param('departmentId', ParseIntPipe) departmentId: number,
   ) {
     return this.rolesService.deleteDepartmentOverride(roleId, departmentId);
+  }
+
+  // ⚠️ 3 endpoint dưới đây COPY GẦN NHƯ Y HỆT 3 endpoint `department-overrides`
+  // ở trên - tầng override ưu tiên CAO NHẤT (Position -> Department -> Global,
+  // xem PLAN_POSITION_FIELD_VISIBILITY_ASSIGNMENT_GROUPS.md mục 2.2/3.3).
+  @Get('roles/:id/position-overrides')
+  @RequirePermission('roles.manage')
+  @ApiOperation({ summary: 'Lấy các overrides phân quyền theo Vị trí của Role này' })
+  getPositionOverrides(@Param('id', ParseIntPipe) roleId: number) {
+    return this.rolesService.getPositionOverrides(roleId);
+  }
+
+  @Put('roles/:id/position-overrides/:positionId')
+  @RequirePermission('roles.manage')
+  @ApiOperation({ summary: 'Ghi đè phân quyền của Role cho một Vị trí cụ thể' })
+  updatePositionOverride(
+    @Param('id', ParseIntPipe) roleId: number,
+    @Param('positionId', ParseIntPipe) positionId: number,
+    @Body() dto: UpdateRolePermissionsDto,
+  ) {
+    return this.rolesService.updatePositionOverride(roleId, positionId, dto);
+  }
+
+  @Delete('roles/:id/position-overrides/:positionId')
+  @RequirePermission('roles.manage')
+  @ApiOperation({ summary: 'Xoá override phân quyền của Role cho một Vị trí cụ thể' })
+  deletePositionOverride(
+    @Param('id', ParseIntPipe) roleId: number,
+    @Param('positionId', ParseIntPipe) positionId: number,
+  ) {
+    return this.rolesService.deletePositionOverride(roleId, positionId);
   }
 }
