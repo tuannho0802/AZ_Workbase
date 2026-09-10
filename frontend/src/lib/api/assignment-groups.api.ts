@@ -37,6 +37,14 @@ export interface UpdateAssignmentGroupPayload {
 export interface AssignmentGroupUser {
   id: number;
   name: string;
+  // ⚠️ MỚI (2026-09-10, rà soát GroupManagersModal.tsx): backend
+  // `resolveUsers()` giờ trả đủ field giống `GET /users/all` (dùng chung bởi
+  // SalesUserSelect) để FE vẽ dropdown chi tiết avatar/role/department/vị
+  // trí thay vì chỉ hiện tên trơn.
+  email: string;
+  role: string;
+  department?: { id: number; name: string } | null;
+  position?: { id: number; name: string; code?: string } | null;
 }
 
 export const assignmentGroupsApi = {

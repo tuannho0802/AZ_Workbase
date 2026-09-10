@@ -1,7 +1,7 @@
 'use client';
 
 import { useState } from 'react';
-import { Modal, Avatar, Tag, Select, Button, Typography, App, Popconfirm, Divider } from 'antd';
+import { Modal, Avatar, Tag, Button, Typography, App, Popconfirm, Divider } from 'antd';
 import { UserOutlined, DeleteOutlined, PlusOutlined, CrownOutlined, EditOutlined } from '@ant-design/icons';
 import { useQuery } from '@tanstack/react-query';
 import { useAuthStore } from '@/lib/stores/auth.store';
@@ -16,19 +16,9 @@ import {
 import { getApiErrorMessage } from '@/lib/utils/error-message.util';
 import { SimpleList } from '@/components/common/SimpleList';
 import { useAssignmentGroupUsers } from '@/lib/hooks/useAssignmentGroups';
+import { SalesUserSelect, type UserOption } from '@/components/customers/SalesUserSelect';
 
 const { Text } = Typography;
-
-interface UserOption {
-  id: number;
-  name: string;
-  email: string;
-  // ⚠️ MỚI - rà soát Vị trí 2026-09-10: dùng để lọc đúng "Nhân viên Content"
-  // theo Position thật (code='content', seed sẵn ở migration
-  // SeedSamplePositions) thay vì cho chọn TẤT CẢ nhân viên như trước đây -
-  // nguồn `/users/all` (findEmployees()) giờ đã JOIN 'position'.
-  position?: { id: number; name: string; code?: string } | null;
-}
 
 interface Props {
   open: boolean;
@@ -53,6 +43,26 @@ interface Props {
  *   ĐỘC LẬP với nhau, chỉ loại người đã có trong CHÍNH danh sách đang thao
  *   tác (và luôn loại Quản lý chính khỏi cả 2, vì không được vừa là chính
  *   vừa là phụ/Content).
+ *
+ * ⚠️ SỬA (2026-09-10, rà soát): 2 dropdown chọn người để thêm trước đây là
+ * `<Select>` trơn chỉ hiện `name || email`, thiếu hẳn avatar/role/department/
+ * vị trí như dropdown "Sales/Marketing phụ trách" ở form Khách hàng. Đổi
+ * sang dùng LẠI đúng `SalesUserSelect` (component `CustomerForm.tsx` đang
+ * dùng) qua prop `users` (danh sách candidate đã lọc sẵn theo đúng nghiệp vụ
+ * riêng của từng dropdown - xem 2 biến `secondaryManagerOptions` và
+ * `contentStaffOptions` bên dưới) thay vì viết lại UI riêng.
+ *  - "Quản lý phụ": nguồn dữ liệu VẪN LÀ toàn bộ nhân viên (`usersApi.
+ *    getAllForSelect()`, KHÔNG lọc theo Assignment Group Config như Content
+ *    Staff) - chỉ loại người đã là Quản lý chính/phụ của CHÍNH nhóm này.
+ *    Đây là nghiệp vụ đã có TỪ TRƯỚC (ai cũng có thể được gán làm Quản lý
+ *    phụ 1 nhóm liên kết, không giới hạn phòng ban/vị trí) - giữ nguyên,
+ *    KHÔNG áp thêm bộ lọc Assignment Group vào đây.
+ *  - "Nhân viên Content": nguồn dữ liệu là `useAssignmentGroupUsers
+ *    ('content_staff')` (đã lọc đúng Phòng Marketing + Vị trí `content` qua
+ *    trang "Quản lý phụ trách", xem migration CreateAssignmentGroupConfigs)
+ *    - route `resolveUsers()` BE giờ trả đủ field email/role/department/
+ *    position (trước đây chỉ `select: ['id','name']`) để dropdown vẽ được
+ *    đầy đủ như customer.
  */
 export const GroupManagersModal = ({ open, onClose, groupId, groupName }: Props) => {
   const { message } = App.useApp();
@@ -83,9 +93,9 @@ export const GroupManagersModal = ({ open, onClose, groupId, groupName }: Props)
 
   // Loại người đã là chính/phụ rồi khỏi danh sách chọn - tránh gọi API rồi
   // ăn lỗi 400/409 (Người này đang là Quản lý chính.../Đã là Quản lý phụ rồi)
-  const availableOptions = userList
-    .filter((u) => u.id !== primaryId && !secondaryIds.has(u.id))
-    .map((u) => ({ value: u.id, label: u.name || u.email }));
+  const secondaryManagerOptions: UserOption[] = userList.filter(
+    (u) => u.id !== primaryId && !secondaryIds.has(u.id),
+  );
 
   // Danh sách chọn cho Nhân viên Content - CHỈ loại Quản lý chính + người
   // đã là Content rồi, KHÔNG loại Quản lý phụ (được phép trùng, xem JSDoc).
@@ -97,9 +107,16 @@ export const GroupManagersModal = ({ open, onClose, groupId, groupName }: Props)
   // theo Position: Admin có thể mở rộng/đổi Phòng ban+Vị trí hợp lệ qua
   // trang `/quan-ly-phu-trach` mà KHÔNG cần sửa code component này.
   const { users: contentStaffCandidates } = useAssignmentGroupUsers('content_staff');
-  const availableContentStaffOptions = contentStaffCandidates
+  const contentStaffOptions: UserOption[] = contentStaffCandidates
     .filter((u) => u.id !== primaryId && !contentStaffIds.has(u.id))
-    .map((u) => ({ value: u.id, label: u.name }));
+    .map((u) => ({
+      id: u.id,
+      name: u.name,
+      email: u.email,
+      role: u.role,
+      department: u.department ?? undefined,
+      position: u.position ?? undefined,
+    }));
 
   const resetAndClose = () => {
     setSelectedUserId(undefined);
@@ -218,19 +235,16 @@ export const GroupManagersModal = ({ open, onClose, groupId, groupName }: Props)
       />
 
       {canEdit ? (
-        <div style={{ marginTop: 16, display: 'flex', gap: 8 }}>
-          <Select
-            showSearch={{
-              filterOption: (input, option) =>
-                (option?.label as string)?.toLowerCase().includes(input.toLowerCase()),
-            }}
-            style={{ flex: 1 }}
-            placeholder="Chọn nhân viên để thêm làm Quản lý phụ"
-            value={selectedUserId}
-            onChange={setSelectedUserId}
-            options={availableOptions}
-            notFoundContent="Không còn ai để thêm"
-          />
+        <div style={{ marginTop: 16, display: 'flex', gap: 8, alignItems: 'flex-start' }}>
+          <div style={{ flex: 1 }}>
+            <SalesUserSelect
+              users={secondaryManagerOptions}
+              value={selectedUserId}
+              onChange={(userId) => setSelectedUserId(userId ?? undefined)}
+              placeholder="Chọn nhân viên để thêm làm Quản lý phụ"
+              hidePreviewCard
+            />
+          </div>
           <Button
             type="primary"
             icon={<PlusOutlined />}
@@ -291,19 +305,16 @@ export const GroupManagersModal = ({ open, onClose, groupId, groupName }: Props)
       />
 
       {canEdit ? (
-        <div style={{ marginTop: 16, display: 'flex', gap: 8 }}>
-          <Select
-            showSearch={{
-              filterOption: (input, option) =>
-                (option?.label as string)?.toLowerCase().includes(input.toLowerCase()),
-            }}
-            style={{ flex: 1 }}
-            placeholder="Chọn nhân viên để thêm làm Nhân viên Content"
-            value={selectedContentStaffId}
-            onChange={setSelectedContentStaffId}
-            options={availableContentStaffOptions}
-            notFoundContent='Không có nhân viên hợp lệ để thêm (xem cấu hình ở trang "Quản lý phụ trách")'
-          />
+        <div style={{ marginTop: 16, display: 'flex', gap: 8, alignItems: 'flex-start' }}>
+          <div style={{ flex: 1 }}>
+            <SalesUserSelect
+              users={contentStaffOptions}
+              value={selectedContentStaffId}
+              onChange={(userId) => setSelectedContentStaffId(userId ?? undefined)}
+              placeholder="Chọn nhân viên để thêm làm Nhân viên Content"
+              hidePreviewCard
+            />
+          </div>
           <Button
             type="primary"
             icon={<PlusOutlined />}

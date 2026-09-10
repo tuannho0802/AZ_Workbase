@@ -32,6 +32,12 @@ interface UserOption {
   };
 }
 
+// ⚠️ EXPORT (2026-09-10, tái dùng ở GroupManagersModal.tsx) - "copy kiểu
+// dropdown của customer" cho trang Nhóm liên kết (Quản lý phụ + Nhân viên
+// Content) thay vì Select trơn chỉ hiện tên. Nơi khác import type này để
+// build đúng shape dữ liệu truyền vào prop `users` bên dưới.
+export type { UserOption };
+
 interface SalesUserSelectProps {
   value?: number;           // userId đang được chọn
   onChange?: (userId: number | null, user: UserOption | null) => void;
@@ -49,23 +55,42 @@ interface SalesUserSelectProps {
   // giữ nguyên hành vi cũ (hiện TẤT CẢ) cho các nơi khác đang dùng component
   // này mà không cần lọc.
   departmentId?: number;
+  // ⚠️ MỚI (2026-09-10, rà soát GroupManagersModal.tsx): cho phép nơi gọi
+  // truyền SẴN danh sách candidate đã lọc đúng nghiệp vụ riêng (vd "Nhân
+  // viên Content" lọc theo Assignment Group Config department+position,
+  // "Quản lý phụ" loại người đã là Quản lý chính/phụ) - khi truyền, component
+  // dùng NGUYÊN danh sách này thay vì tự fetch `/users/all`, tránh phải
+  // nhân bản logic lọc ở 2 nơi. Không truyền = giữ hành vi cũ (tự fetch +
+  // lọc theo departmentId).
+  users?: UserOption[];
+  // Không hiện Card xem trước bên dưới Select sau khi chọn - dùng cho các màn
+  // "chọn để thêm vào danh sách rồi bấm nút Thêm riêng" (GroupManagersModal)
+  // nơi Card preview dư thừa vì đã có SimpleList hiển thị người đã thêm.
+  hidePreviewCard?: boolean;
 }
 
-export const SalesUserSelect = ({ 
-  value, onChange, placeholder = 'Chọn sales đang hoạt động...', disabled, departmentId,
+export const SalesUserSelect = ({
+  value, onChange, placeholder = 'Chọn sales đang hoạt động...', disabled, departmentId, users: usersOverride, hidePreviewCard,
 }: SalesUserSelectProps) => {
   const [searchText, setSearchText] = useState('');
 
-  // Fetch tất cả users
-  const { data: allUsers = [], isLoading } = useQuery<UserOption[]>({
+  // Fetch tất cả users - CHỈ khi nơi gọi không tự truyền sẵn danh sách qua
+  // prop `users` (xem JSDoc prop `users` ở trên).
+  const { data: fetchedUsers = [], isLoading } = useQuery<UserOption[]>({
     queryKey: ['users-for-select'],
     queryFn: () => usersApi.getAllForSelect(),
     staleTime: 5 * 60 * 1000, // cache 5 phút
+    enabled: usersOverride === undefined,
   });
+  const allUsers = usersOverride ?? fetchedUsers;
+  const effectiveLoading = usersOverride !== undefined ? false : isLoading;
 
   const users = useMemo(
-    () => (departmentId == null ? allUsers : allUsers.filter((u) => u.department?.id === departmentId)),
-    [allUsers, departmentId],
+    () =>
+      usersOverride !== undefined || departmentId == null
+        ? allUsers
+        : allUsers.filter((u) => u.department?.id === departmentId),
+    [allUsers, departmentId, usersOverride],
   );
 
   // User đang được chọn hiện tại
@@ -92,7 +117,7 @@ export const SalesUserSelect = ({
         value={value ?? null}
         placeholder={placeholder}
         disabled={disabled}
-        loading={isLoading}
+        loading={effectiveLoading}
         showSearch={{
           filterOption: false, // tắt filter mặc định, dùng onSearch
           onSearch: setSearchText,
@@ -107,7 +132,7 @@ export const SalesUserSelect = ({
         style={{ width: '100%' }}
         suffixIcon={<SearchOutlined />}
         notFoundContent={
-          isLoading ? 'Đang tải...' : 'Không tìm thấy nhân viên'
+          effectiveLoading ? 'Đang tải...' : 'Không tìm thấy nhân viên'
         }
         optionLabelProp="label"  // hiện label đơn giản khi đã chọn
         // options + optionRender thay cho <Select.Option> (deprecated ở antd
@@ -158,8 +183,8 @@ export const SalesUserSelect = ({
       />
       {/* filteredOptions render moved into `options` + `optionRender` above */}
 
-      {/* --- PREVIEW CARD — hiện khi đã chọn user --- */}
-      {selectedUser && (
+      {/* --- PREVIEW CARD — hiện khi đã chọn user (bỏ qua nếu hidePreviewCard) --- */}
+      {selectedUser && !hidePreviewCard && (
         <Card
           size="small"
           style={{ 
