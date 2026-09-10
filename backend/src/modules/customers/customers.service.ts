@@ -357,7 +357,14 @@ export class CustomersService {
       this.customersRepository.createQueryBuilder('customer');
 
     queryBuilder.leftJoinAndSelect('customer.salesUser', 'salesUser');
+    // ⚠️ MỚI - rà soát Vị trí 2026-09-10: FE (CustomerInfoTab.tsx) hiện Tag
+    // Role cho "Sales phụ trách chính" nhưng chưa từng có Vị trí vì quan hệ
+    // `salesUser.position`/`marketingUser.position` chưa bao giờ được JOIN
+    // ở đây - object `salesUser`/`marketingUser` trả ra luôn thiếu field
+    // `position` dù DB có dữ liệu đúng.
+    queryBuilder.leftJoinAndSelect('salesUser.position', 'salesUserPosition');
     queryBuilder.leftJoinAndSelect('customer.marketingUser', 'marketingUser');
+    queryBuilder.leftJoinAndSelect('marketingUser.position', 'marketingUserPosition');
     queryBuilder.leftJoinAndSelect('customer.department', 'department');
     queryBuilder.leftJoinAndSelect('customer.createdBy', 'createdBy');
     queryBuilder.leftJoinAndSelect('customer.updatedBy', 'updatedBy');
@@ -499,6 +506,9 @@ export class CustomersService {
       const activeAssignments = await this.assignmentRepository
         .createQueryBuilder('assignment')
         .leftJoinAndSelect('assignment.assignedTo', 'assignedTo')
+        // ⚠️ MỚI - đối xứng salesUser/marketingUser ở trên: "Sales được
+        // chia" (CustomerInfoTab.tsx) cũng hiện Tag Role, cần thêm Vị trí.
+        .leftJoinAndSelect('assignedTo.position', 'assignedToPosition')
         .where('assignment.status = :status', { status: 'active' })
         .andWhere('assignment.customer_id IN (:...ids)', {
           ids: entities.map((e) => e.id),
@@ -742,7 +752,10 @@ export class CustomersService {
     const queryBuilder = this.customersRepository
       .createQueryBuilder('customer')
       .leftJoinAndSelect('customer.salesUser', 'salesUser')
+      // ⚠️ MỚI - đối xứng findAll() (xem chú thích tương ứng ở đó).
+      .leftJoinAndSelect('salesUser.position', 'salesUserPosition')
       .leftJoinAndSelect('customer.marketingUser', 'marketingUser')
+      .leftJoinAndSelect('marketingUser.position', 'marketingUserPosition')
       .leftJoinAndSelect('customer.department', 'department')
       .leftJoinAndSelect('customer.deposits', 'deposits')
       .leftJoinAndSelect('customer.notes', 'notes')
@@ -783,6 +796,7 @@ export class CustomersService {
     const activeAssignments = await this.assignmentRepository
       .createQueryBuilder('assignment')
       .leftJoinAndSelect('assignment.assignedTo', 'assignedTo')
+      .leftJoinAndSelect('assignedTo.position', 'assignedToPosition')
       .where('assignment.status = :status', { status: 'active' })
       .andWhere('assignment.customer_id = :id', { id })
       .getMany();
