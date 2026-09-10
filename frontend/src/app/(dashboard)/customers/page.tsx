@@ -22,7 +22,6 @@ import { usersApi } from '@/lib/api/users.api';
 import { useMyPermissions } from '@/lib/hooks/useMyPermissions';
 import { useMyHiddenElements } from '@/lib/hooks/useUiVisibility';
 import { useAssignmentGroupUsers } from '@/lib/hooks/useAssignmentGroups';
-import { useRoleColorMap } from '@/lib/hooks/useRoleColorMap';
 import dayjs from 'dayjs';
 import { CustomerFilters } from '@/components/customers/CustomerFilters';
 import { SourceTag } from '@/components/customers/SourceTag';
@@ -41,17 +40,7 @@ const renderStatusTag = (status: string) => {
   return <Tag color={color}>{text}</Tag>;
 };
 
-// ⚠️ FIX BUG THẬT (rà soát màu Role 2026-09-10): trước đây Tag Sales/Marketing
-// ở đây hardcode "blue"/"purple" bất kể role thật của người được gán - lệch
-// hẳn với màu Role Admin đã cấu hình ở /phan-quyen (cột `roles.color`) và
-// khác pattern đã áp dụng đúng ở SalesUserSelect.tsx (dropdown chọn Sales,
-// dùng `useRoleColorMap().getRoleColor(user.role)`). Giờ nhận thêm
-// `getRoleColor` (từ hook `useRoleColorMap` gọi trong component cha, vì 2 hàm
-// này ở module scope nên không tự gọi hook được) để tô đúng màu Role thật cho
-// TÊN sales/marketing chính, đối xứng hoàn toàn với dropdown trong ảnh chụp
-// màn hình. Badge "+N" (đếm số người được chia) giữ nguyên "cyan" vì đó là
-// badge số lượng, không đại diện cho 1 Role cụ thể nào.
-const renderSalesTag = (record: any, getRoleColor: (role?: string | null) => string) => {
+const renderSalesTag = (record: any) => {
   const primarySales = record.salesUser;
   const allAssignees = record.activeAssignees || [];
   const sharedSales = allAssignees.filter((a: any) => a.id !== primarySales?.id);
@@ -62,13 +51,7 @@ const renderSalesTag = (record: any, getRoleColor: (role?: string | null) => str
 
   return (
     <Space size={[0, 4]} align="center" wrap>
-      {primarySales ? (
-        <Tag color={getRoleColor(primarySales.role)} title="Sales phụ trách chính">
-          {primarySales.name}
-        </Tag>
-      ) : (
-        <span style={{ color: '#bbb', fontStyle: 'italic', fontSize: '11px' }}>Chưa có Primary</span>
-      )}
+      {primarySales ? <Tag color="blue" title="Sales phụ trách chính">{primarySales.name}</Tag> : <span style={{ color: '#bbb', fontStyle: 'italic', fontSize: '11px' }}>Chưa có Primary</span>}
       {sharedSales.length > 0 && (
         <Tooltip title={`Sales được chia:\n${sharedSales.map((a: any) => a.name).join(', ')}`}>
           <Tag color="cyan">+{sharedSales.length}</Tag>
@@ -78,16 +61,12 @@ const renderSalesTag = (record: any, getRoleColor: (role?: string | null) => str
   );
 };
 
-const renderMarketingTag = (record: any, getRoleColor: (role?: string | null) => string) => {
+const renderMarketingTag = (record: any) => {
   const marketingUser = record.marketingUser;
   if (!marketingUser) {
     return <span style={{ color: '#bbb', fontStyle: 'italic', fontSize: '11px' }}>Chưa gán</span>;
   }
-  return (
-    <Tag color={getRoleColor(marketingUser.role)} title="Marketing phụ trách">
-      {marketingUser.name}
-    </Tag>
-  );
+  return <Tag color="purple" title="Marketing phụ trách">{marketingUser.name}</Tag>;
 };
 
 // Cùng pattern hiển thị với renderSalesTag: nhóm ĐẦU TIÊN hiện tên thật,
@@ -120,10 +99,38 @@ const renderJoinedGroupsTag = (record: any) => {
 // lượng note (3 hoặc 5) NGƯỜI DÙNG chọn hiển thị trong tooltip - cắt bớt ở
 // FE từ mảng tối đa 5 note đã có sẵn, KHÔNG gọi lại API khi đổi lựa chọn.
 // Ô hiển thị trong bảng chỉ show note MỚI NHẤT (dạng "Tên: Nội dung
-// (ngày/tháng/năm)"), cắt ngắn bằng CSS ellipsis nếu quá dài; hover vào để
-// xem đủ `count` note gần nhất qua Tooltip.
+// (ngày/tháng/năm)"), cắt ngắn còn ~20 ký tự bằng JS (KHÔNG dùng CSS
+// text-overflow:ellipsis nữa - xem `truncateAtWordBoundary` bên dưới); hover
+// vào để xem đủ `count` note gần nhất qua Tooltip (nội dung đầy đủ, không cắt).
 const formatRecentNoteLine = (note: RecentNote) =>
   `${note.createdByName || 'Không xác định'}: ${note.note} (${dayjs(note.createdAt).format('D/M/YY')})`;
+
+// ⚠️ MỚI (2026-09-10, fix UI cột "Ghi chú gần nhất") - trước đây cắt ngắn
+// bằng CSS `text-overflow: ellipsis`, cắt CỨNG theo bề rộng pixel của ô nên
+// hay lòi ra nửa từ cuối dòng (vd "...thà" thay vì "...thành"), tuỳ độ rộng
+// màn hình/font. Hàm này cắt CHỦ ĐỘNG ở tầng JS theo SỐ KÝ TỰ (~20), và nếu
+// điểm cắt rơi vào GIỮA 1 từ thì LÙI LẠI đến hết từ liền trước đó (khoảng
+// trắng gần nhất) rồi mới thêm "..." - đảm bảo không bao giờ hiển thị 1 từ
+// bị cụt (yêu cầu tường minh từ chủ dự án: "Khách hàng đã chốt đơn thà..."
+// SAI, phải là "Khách hàng đã chốt đơn thành..." - luôn hết chữ trước khi
+// cắt). Trường hợp ký tự thứ `maxLength` NGAY SAU 1 từ vừa hết (đúng ranh
+// giới khoảng trắng) thì không cần lùi gì cả.
+export const truncateAtWordBoundary = (text: string, maxLength = 20): string => {
+  if (text.length <= maxLength) return text;
+
+  const cut = text.slice(0, maxLength);
+  // Ký tự ngay SAU điểm cắt không phải khoảng trắng -> đang cắt giữa chừng
+  // 1 từ -> lùi về khoảng trắng gần nhất TRONG PHẠM VI đã cắt để bỏ hẳn từ
+  // dở đó, chỉ giữ lại các từ đã trọn vẹn.
+  const cuttingMidWord = text[maxLength] !== ' ';
+  const safeCut = cuttingMidWord ? cut.slice(0, cut.lastIndexOf(' ')) : cut;
+
+  // Trường hợp hiếm: 1 từ ĐẦU TIÊN đã dài hơn maxLength (không có khoảng
+  // trắng nào để lùi về, vd URL/số điện thoại dính liền) - đành cắt cứng
+  // theo đúng maxLength, không còn cách nào khác để tránh tràn ô.
+  const finalText = safeCut.trim().length > 0 ? safeCut.trimEnd() : cut;
+  return `${finalText}...`;
+};
 
 const renderRecentNotesCell = (record: Customer, count: number) => {
   const allNotes = record.recentNotes || [];
@@ -132,7 +139,8 @@ const renderRecentNotesCell = (record: Customer, count: number) => {
   }
 
   const visibleNotes = allNotes.slice(0, count);
-  const latestLine = formatRecentNoteLine(visibleNotes[0]);
+  const fullLatestLine = formatRecentNoteLine(visibleNotes[0]);
+  const latestLine = truncateAtWordBoundary(fullLatestLine, 20);
 
   const tooltipContent = (
     <div style={{ minWidth: 220, maxWidth: 320, fontSize: 12 }}>
@@ -154,7 +162,6 @@ const renderRecentNotesCell = (record: Customer, count: number) => {
         style={{
           maxWidth: '100%',
           overflow: 'hidden',
-          textOverflow: 'ellipsis',
           whiteSpace: 'nowrap',
           cursor: 'help',
           fontSize: 12,
@@ -182,10 +189,7 @@ const CustomerMobileCard = ({
   onRowClick: (id: number) => void; 
   canDelete: boolean;
   onDelete: (id: number) => void;
-}) => {
-  // Component thật (không phải hàm render trần) nên gọi hook trực tiếp được -
-  // xem comment ở renderSalesTag/renderMarketingTag phía trên.
-  const { getRoleColor } = useRoleColorMap();
+  }) => {
   return (
   <Card
     size="small"
@@ -207,8 +211,8 @@ const CustomerMobileCard = ({
     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 }}>
       <Space size={4} wrap>
         <SourceTag source={record.source} />
-          {renderSalesTag(record, getRoleColor)}
-          {renderMarketingTag(record, getRoleColor)}
+          {renderSalesTag(record)}
+          {renderMarketingTag(record)}
       </Space>
     </div>
     {record.campaign && (
@@ -273,10 +277,6 @@ function CustomersPageContent() {
   
   const { user } = useAuthStore();
   const { can } = useMyPermissions();
-  // Cùng nguồn màu Role với dropdown "Sales phụ trách" (CustomerForm →
-  // SalesUserSelect.tsx) - đọc `roles.color` thật qua /phan-quyen, KHÔNG
-  // hardcode "blue"/"purple" cho Tag tên Sales/Marketing ở bảng + card mobile.
-  const { getRoleColor } = useRoleColorMap();
   // ⚠️ FIX BUG THẬT (rà soát Vị trí 2026-09-10): trang này CHƯA BAO GIỜ gọi
   // useMyHiddenElements('customers') - Admin cấu hình ẩn
   // field:sales_assignment/field:marketing_assignment cho 1 Position (vd
@@ -602,13 +602,13 @@ function CustomersPageContent() {
       title: 'Sales (Chính + Phụ)',
       key: 'salesUser',
       width: isLaptop ? 150 : 170,
-      render: (_: any, record: any) => renderSalesTag(record, getRoleColor),
+      render: (_: any, record: any) => renderSalesTag(record),
     }]),
     ...(hideMarketingField ? [] : [{
       title: 'Marketing',
       key: 'marketingUser',
       width: isLaptop ? 110 : 125,
-      render: (_: any, record: any) => renderMarketingTag(record, getRoleColor),
+      render: (_: any, record: any) => renderMarketingTag(record),
     }]),
     {
       title: 'Trạng thái',
@@ -692,7 +692,7 @@ function CustomersPageContent() {
   // render đầu (permissions API luôn async), giá trị `false` ban đầu bị
   // "đông cứng" vĩnh viễn trong closure của useMemo, cột Thao tác/nút Xoá
   // sẽ không bao giờ hiện dù sau đó canDeleteCustomer đã thành true.
-  ], [isLaptop, depositRangeForColumnLabel, page, pageSize, user, canDeleteCustomer, recentNotesCount, hideSalesField, hideMarketingField, getRoleColor]);
+  ], [isLaptop, depositRangeForColumnLabel, page, pageSize, user, canDeleteCustomer, recentNotesCount, hideSalesField, hideMarketingField]);
 
   // ⚠️ FIX BUG THẬT: nút "X" (clear) trên các Select (Sales/Marketing/Người
   // nhập Data/Nguồn/Trạng thái/Đã joined nhóm...) không tắt được filter,
