@@ -227,9 +227,22 @@ export function PositionVisibilityDrawer({ position, open, onClose }: Props) {
         loading={loadingRoles}
         value={selectedRoleId}
         onChange={(v) => setSelectedRoleId(v)}
-        options={roles
-          .filter((r) => r.code !== 'admin')
-          .map((r) => ({ value: r.id, label: r.name }))}
+        // ⚠️ ĐỔI (isRootAdmin) - TRƯỚC ĐÂY lọc bỏ role 'admin' khỏi dropdown
+        // vì lúc đó BE (`UiVisibilityService.getHiddenElementKeys()`) bypass
+        // cứng cho MỌI `role === 'admin'` - cấu hình ẩn field cho Admin lúc
+        // đó Lưu xong không có tác dụng gì (BE luôn trả rỗng), để Admin
+        // trong dropdown sẽ gây hiểu nhầm.
+        //
+        // Giờ BE đã đổi điều kiện bypass thành CHỈ Root Admin
+        // (`roleCode === Role.ADMIN && isRootAdmin === true` - xem JSDoc
+        // `getHiddenElementKeys()`). Admin THƯỜNG (`role=admin` nhưng
+        // `isRootAdmin=false`) đi qua đúng luồng `loadHiddenKeysMap()` như
+        // mọi role khác - CÓ THỂ bị Root Admin ẩn field/tab qua màn hình
+        // này. Vì vậy không còn lý do lọc bỏ 'admin' khỏi danh sách nữa -
+        // Root Admin vẫn luôn thấy mọi thứ (bypass ở tầng BE, không phụ
+        // thuộc màn hình này) nên tự cấu hình 1 rule cho role 'admin' không
+        // "tự khoá mắt chính mình" của Root Admin.
+        options={roles.map((r) => ({ value: r.id, label: r.name }))}
         showSearch={{ optionFilterProp: 'label' }}
       />
 
