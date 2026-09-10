@@ -145,6 +145,11 @@ export default function UsersPage() {
   // Select trong Modal Thêm/Sửa - cột "Vị trí" ở bảng đọc thẳng từ object
   // quan hệ `record.position` (GET /users đã JOIN sẵn), không cần tra map.
   const { positions } = usePositions();
+  // Màu Tag theo Role (đọc từ `roles.color` do Admin cấu hình ở /phan-quyen,
+  // xem `useRoleColorMap.ts`) - dùng cho cột "Chức vụ" ở bảng desktop bên
+  // dưới. `UserMobileCard` tự gọi hook riêng của nó (không nhận prop này) vì
+  // đó là 1 function component tách biệt, không chung scope với UsersPage.
+  const { getRoleColor } = useRoleColorMap();
   const { user } = useAuthStore();
   const router = useRouter();
   const [pendingCount, setPendingCount] = useState(0);

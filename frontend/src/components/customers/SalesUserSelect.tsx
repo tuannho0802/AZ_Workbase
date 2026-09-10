@@ -159,7 +159,7 @@ export const SalesUserSelect = ({
                     {user.name || '(Chưa đặt tên)'}
                   </Text>
                   <Tag
-                    color={roleColor[user.role]}
+                    color={getRoleColor(user.role)}
                     style={{ marginLeft: 6, fontSize: 10 }}
                   >
                     {user.role}
@@ -192,7 +192,7 @@ export const SalesUserSelect = ({
           <Space align="center" style={{ width: '100%' }}>
             <Avatar
               icon={<UserOutlined />}
-              style={{ backgroundColor: roleColor[selectedUser.role] ?? '#ccc' }}
+              style={{ backgroundColor: getRoleColor(selectedUser.role) }}
             >
               {selectedUser.name?.[0]?.toUpperCase()}
             </Avatar>
@@ -200,7 +200,7 @@ export const SalesUserSelect = ({
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                 <Space size={4}>
                   <Text strong>{selectedUser.name}</Text>
-                  <Tag color={roleColor[selectedUser.role]} style={{ fontSize: 10, margin: 0 }}>
+                  <Tag color={getRoleColor(selectedUser.role)} style={{ fontSize: 10, margin: 0 }}>
                     {selectedUser.role.toUpperCase()}
                   </Tag>
                 </Space>
