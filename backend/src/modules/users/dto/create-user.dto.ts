@@ -60,6 +60,20 @@ export class CreateUserDto {
   @IsBoolean({ message: 'Trạng thái phải là kiểu boolean' })
   isActive?: boolean;
 
+  // ⚠️ MỚI (migration AddIsRootAdminToUsers1781000000000) - CHỈ validate
+  // ĐỊNH DẠNG ở đây. `UsersService.create()` mới là nơi enforce THẬT: chỉ
+  // Root Admin hiện tại (role=admin && isRootAdmin=true) mới được set field
+  // này, và chỉ role='admin' mới được là Root Admin - xem JSDoc ở đó.
+  @ApiProperty({
+    example: false,
+    default: false,
+    required: false,
+    description: 'Root Admin - CHỈ Root Admin hiện tại mới được set field này khi tạo nhân viên mới',
+  })
+  @IsOptional()
+  @IsBoolean({ message: 'isRootAdmin phải là kiểu boolean' })
+  isRootAdmin?: boolean;
+
   @ApiProperty({
     example: 'AZ042',
     required: false,

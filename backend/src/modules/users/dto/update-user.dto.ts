@@ -50,6 +50,18 @@ export class UpdateUserDto {
   @IsBoolean()
   isActive?: boolean;
 
+  // ⚠️ MỚI (migration AddIsRootAdminToUsers1781000000000) - xem JSDoc đầy đủ
+  // ở create-user.dto.ts/UsersService.update(). Chỉ validate ĐỊNH DẠNG ở
+  // đây - Root Admin hiện tại mới được thực sự đổi field này cho user khác.
+  @ApiProperty({
+    example: false,
+    required: false,
+    description: 'Root Admin - CHỈ Root Admin hiện tại mới được đổi field này',
+  })
+  @IsOptional()
+  @IsBoolean({ message: 'isRootAdmin phải là kiểu boolean' })
+  isRootAdmin?: boolean;
+
   @ApiProperty({ example: 'AZ042', required: false, description: 'Mã nhân viên' })
   @IsOptional()
   @IsString({ message: 'Mã nhân viên phải là chuỗi ký tự' })

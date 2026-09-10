@@ -131,7 +131,7 @@ export class UsersController {
   @RequirePermission('users.manage')
   @ApiOperation({ summary: 'Tạo nhân viên mới (Admin/Assistant toàn quyền, Manager chỉ trong phòng ban mình quản lý)' })
   async create(@Request() req: any, @Body() dto: CreateUserDto, @GetPermissionScope() scope?: string | null) {
-    const user = await this.usersService.create(dto, req.user.id, req.user.role, scope);
+    const user = await this.usersService.create(dto, req.user.id, req.user.role, scope, req.user.isRootAdmin);
     return this.usersService.signAvatarUrl(user);
   }
 
@@ -139,7 +139,7 @@ export class UsersController {
   @RequirePermission('users.manage')
   @ApiOperation({ summary: 'Cập nhật thông tin nhân viên' })
   async update(@Param('id') id: string, @Body() dto: UpdateUserDto, @Request() req: any, @GetPermissionScope() scope?: string | null) {
-    const user = await this.usersService.update(+id, dto, req.user.id, req.user.role, scope);
+    const user = await this.usersService.update(+id, dto, req.user.id, req.user.role, scope, req.user.isRootAdmin);
     return this.usersService.signAvatarUrl(user);
   }
 

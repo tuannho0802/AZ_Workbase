@@ -278,6 +278,10 @@ export class UsersService {
     creatorId: number,
     creatorRole: string,
     scope?: string | null,
+    // ⚠️ MỚI (isRootAdmin) - optional để không phá lời gọi cũ (test/nơi
+    // khác chưa truyền) - thiếu thì coi như KHÔNG phải Root Admin (an toàn
+    // hơn: chặn nhầm còn hơn cấp nhầm quyền Root Admin).
+    creatorIsRootAdmin?: boolean,
   ): Promise<User> {
     // 1. Check email exists
     const existing = await this.usersRepository.findOne({
@@ -291,6 +295,23 @@ export class UsersService {
     // FIX BUG THẬT: role phải THẬT SỰ tồn tại trong bảng `roles` - xem
     // validateRoleExists() để biết vì sao (DTO không còn hardcode enum nữa).
     await this.validateRoleExists(createDto.role);
+
+    // ⚠️ MỚI (isRootAdmin) - xem JSDoc đầy đủ ở User.isRootAdmin/migration
+    // AddIsRootAdminToUsers1781000000000. CHỈ Root Admin hiện tại
+    // (role=admin && isRootAdmin=true) mới được tạo thẳng 1 user khác đã là
+    // Root Admin ngay từ đầu - Admin thường/role khác cố tình gửi field này
+    // đều bị chặn (không âm thầm bỏ qua - báo lỗi rõ để không tưởng nhầm đã
+    // thành công). Root Admin chỉ có thể gắn cho role='admin' - gắn cho role
+    // khác vô nghĩa vì bypass ở PermissionGuard/RolesService/... đều check
+    // `role === Role.ADMIN` TRƯỚC KHI check isRootAdmin.
+    if (createDto.isRootAdmin) {
+      if (creatorRole !== Role.ADMIN || !creatorIsRootAdmin) {
+        throw new ForbiddenException('Chỉ Root Admin mới có quyền cấp Root Admin cho tài khoản khác');
+      }
+      if (createDto.role !== Role.ADMIN) {
+        throw new BadRequestException('Root Admin chỉ áp dụng cho role Admin');
+      }
+    }
 
     // ⚠️ Scope-based: thay check Role.MANAGER bằng scope='department'.
     // scope='department' -> Manager tuỳ chỉnh: chỉ tạo user trong phòng ban mình quản lý.
@@ -391,6 +412,9 @@ export class UsersService {
     callerId: number,
     callerRole: string,
     scope?: string | null,
+    // ⚠️ MỚI (isRootAdmin) - xem JSDoc trong create(). Thiếu -> coi như
+    // KHÔNG phải Root Admin.
+    callerIsRootAdmin?: boolean,
   ): Promise<User> {
     // 1. Tìm user
     const user = await this.usersRepository.findOne({ 
@@ -399,6 +423,64 @@ export class UsersService {
 
     if (!user) {
       throw new NotFoundException('Không tìm thấy nhân viên');
+    }
+
+    // ⚠️ MỚI (isRootAdmin) - xem JSDoc đầy đủ ở create(). CHỈ Root Admin
+    // hiện tại mới được ĐỔI field này (bật hoặc tắt) cho BẤT KỲ user nào
+    // (kể cả chính mình - tự tắt Root Admin của mình vẫn phải là Root Admin
+    // mới làm được, tránh 1 Admin thường mạo nhận). `updateDto.isRootAdmin`
+    // chỉ coi là "có gửi lên" khi khác `undefined` - tránh chặn nhầm các
+    // request update khác hoàn toàn không đụng tới field này.
+    if (updateDto.isRootAdmin !== undefined && updateDto.isRootAdmin !== user.isRootAdmin) {
+      if (callerRole !== Role.ADMIN || !callerIsRootAdmin) {
+        throw new ForbiddenException('Chỉ Root Admin mới có quyền thay đổi trạng thái Root Admin của tài khoản khác');
+      }
+      const targetRoleAfterUpdate = updateDto.role ?? user.role;
+      if (updateDto.isRootAdmin && targetRoleAfterUpdate !== Role.ADMIN) {
+        throw new BadRequestException('Root Admin chỉ áp dụng cho role Admin');
+      }
+      // Tắt Root Admin của MỘT trong số các Root Admin hiện có -> phải đảm
+      // bảo còn ÍT NHẤT 1 Root Admin khác sau khi lưu, tránh khoá cứng toàn
+      // bộ hệ thống (không còn ai còn lối thoát hiểm để tự cấp lại quyền) -
+      // đúng tinh thần JSDoc migration AddIsRootAdminToUsers1781000000000.
+      if (updateDto.isRootAdmin === false && user.isRootAdmin === true) {
+        const remainingRootAdmins = await this.usersRepository.count({
+          where: { isRootAdmin: true } as any,
+        });
+        if (remainingRootAdmins <= 1) {
+          throw new ForbiddenException(
+            'Không thể gỡ Root Admin cuối cùng của hệ thống - phải chỉ định ít nhất 1 Root Admin khác trước',
+          );
+        }
+      }
+    }
+
+    // Đổi role của 1 Root Admin SANG role khác 'admin' (không đụng field
+    // isRootAdmin trực tiếp) - coi như tước Root Admin luôn, vì isRootAdmin
+    // chỉ có ý nghĩa khi role='admin' (mọi bypass đều check `role ===
+    // Role.ADMIN` TRƯỚC). Áp CÙNG rào chắn với việc tắt isRootAdmin ở trên
+    // (nhánh này chỉ chạy khi nhánh trên CHƯA xử lý, tức updateDto không hề
+    // gửi kèm isRootAdmin).
+    if (
+      user.isRootAdmin &&
+      updateDto.role !== undefined &&
+      updateDto.role !== Role.ADMIN &&
+      updateDto.isRootAdmin === undefined
+    ) {
+      if (callerRole !== Role.ADMIN || !callerIsRootAdmin) {
+        throw new ForbiddenException('Chỉ Root Admin mới có quyền đổi role của 1 Root Admin sang role khác');
+      }
+      const remainingRootAdmins = await this.usersRepository.count({
+        where: { isRootAdmin: true } as any,
+      });
+      if (remainingRootAdmins <= 1) {
+        throw new ForbiddenException(
+          'Không thể đổi role của Root Admin cuối cùng sang role khác - phải chỉ định ít nhất 1 Root Admin khác trước',
+        );
+      }
+      // Tự động tước cờ - tránh dữ liệu tự mâu thuẫn (role khác 'admin'
+      // nhưng isRootAdmin vẫn true).
+      (updateDto as any).isRootAdmin = false;
     }
 
     // ⚠️ FIX PERMISSIONS.md mục 2.2: trước đây endpoint khoá cứng
@@ -680,6 +762,19 @@ export class UsersService {
       throw new NotFoundException('Không tìm thấy tài khoản');
     }
 
+    // ⚠️ MỚI (isRootAdmin) - KHÔNG AI xoá được tài khoản Root Admin qua
+    // đường này, kể cả 1 Root Admin khác (đúng yêu cầu "RootAdmin không xoá
+    // được người cùng là RootAdmin" - áp dụng chặt hơn 1 bước: chặn LUÔN ở
+    // tầng service, không chỉ chặn Root Admin xoá Root Admin, vì Admin
+    // thường có `users.delete` cũng không được phép xoá Root Admin). Muốn
+    // xoá 1 Root Admin, phải tự tay 1 Root Admin khác gỡ cờ `isRootAdmin`
+    // qua `update()` trước (có rào chắn "còn ít nhất 1 Root Admin" riêng).
+    if (user.isRootAdmin) {
+      throw new ForbiddenException(
+        'Không thể xoá tài khoản Root Admin - phải gỡ trạng thái Root Admin của tài khoản này trước',
+      );
+    }
+
     await this.usersRepository.update(targetId, {
       deletedAt: new Date(),
       deletedById: callerId,
@@ -778,6 +873,15 @@ export class UsersService {
     }
     if (user.deletedAt == null) {
       throw new BadRequestException('Phải xoá mềm (chuyển vào thùng rác) trước khi xoá cứng');
+    }
+
+    // ⚠️ MỚI (isRootAdmin) - xem giải thích đầy đủ ở softDeleteUser(). Về lý
+    // thuyết không thể xảy ra (softDeleteUser đã chặn từ trước nên Root
+    // Admin không thể lọt vào thùng rác qua luồng bình thường), nhưng vẫn
+    // chặn tường minh ở đây - phòng thủ 2 lớp, không tin tưởng ngầm định
+    // rằng dữ liệu trong thùng rác luôn "sạch".
+    if (user.isRootAdmin) {
+      throw new ForbiddenException('Không thể xoá vĩnh viễn tài khoản Root Admin');
     }
 
     const safeUserSnapshot = omitPassword(user as any);

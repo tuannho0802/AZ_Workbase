@@ -323,6 +323,11 @@ export class CustomersService {
     // không phải phòng ban của NGƯỜI GỌI).
     callerDepartmentId?: number | null,
     callerPositionId?: number | null,
+    // ⚠️ MỚI (isRootAdmin) - optional để KHÔNG phá lời gọi cũ, xem
+    // JSDoc `UiVisibilityService.getHiddenElementKeys()`. Thiếu -> coi như
+    // KHÔNG phải Root Admin (an toàn hơn: có thể bị strip field nhầm chứ
+    // không lộ field lẽ ra phải ẩn).
+    callerIsRootAdmin?: boolean,
   ) {
     const {
       page = 1,
@@ -592,6 +597,7 @@ export class CustomersService {
       'customers',
       callerDepartmentId,
       callerPositionId,
+      callerIsRootAdmin,
     );
     if (hiddenKeys.size > 0) {
       entities.forEach((customer) =>
@@ -730,6 +736,8 @@ export class CustomersService {
     // ⚠️ MỚI (UI Visibility Phase 3) - xem chú thích trong findAll().
     callerDepartmentId?: number | null,
     callerPositionId?: number | null,
+    // ⚠️ MỚI (isRootAdmin) - xem chú thích trong findAll().
+    callerIsRootAdmin?: boolean,
   ) {
     const queryBuilder = this.customersRepository
       .createQueryBuilder('customer')
@@ -792,6 +800,7 @@ export class CustomersService {
       'customers',
       callerDepartmentId,
       callerPositionId,
+      callerIsRootAdmin,
     );
     if (hiddenKeys.size > 0) {
       this.uiVisibilityService.stripHiddenCustomerFields(customer as any, hiddenKeys);

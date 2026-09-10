@@ -62,11 +62,22 @@ describe('UiVisibilityService', () => {
   // getHiddenElementKeys() - default OPT-OUT: bảng trống = mọi thứ HIỆN.
   // ══════════════════════════════════════════════════════════════════════
   describe('getHiddenElementKeys', () => {
-    it('trả Set rỗng cho role admin - KHÔNG query DB (bypass cứng, admin không tự khoá mắt chính mình)', async () => {
-      const result = await service.getHiddenElementKeys(Role.ADMIN, 'customers');
+    it('trả Set rỗng cho Root Admin (role=admin, isRootAdmin=true) - KHÔNG query DB (bypass cứng, Root Admin không tự khoá mắt chính mình)', async () => {
+      const result = await service.getHiddenElementKeys(Role.ADMIN, 'customers', undefined, undefined, true);
 
       expect(result.size).toBe(0);
       expect(mockRuleRepo.find).not.toHaveBeenCalled();
+    });
+
+    // MỚI (isRootAdmin) - Admin THƯỜNG (role=admin nhưng isRootAdmin=false
+    // hoặc không truyền) KHÔNG còn được bypass mặc định nữa, phải tra DB
+    // như mọi role khác - đúng ý đồ "chỉ Root Admin mới không thể bị ẩn field".
+    it('Admin THƯỜNG (isRootAdmin=false) KHÔNG bypass - vẫn query DB như role khác', async () => {
+      mockRuleRepo.find.mockResolvedValue([]);
+
+      await service.getHiddenElementKeys(Role.ADMIN, 'customers', undefined, undefined, false);
+
+      expect(mockRuleRepo.find).toHaveBeenCalled();
     });
 
     it('trả Set rỗng cho resource không hợp lệ - KHÔNG query DB', async () => {

@@ -33,6 +33,7 @@ export class UiVisibilityController {
       resource,
       user.departmentId,
       user.positionId,
+      user.isRootAdmin,
     );
   }
 

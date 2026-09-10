@@ -219,6 +219,7 @@ export class LinkGroupManagersService {
     userId: number,
     requesterId: number,
     requesterRole: string,
+    requesterIsRootAdmin?: boolean,
   ): Promise<GroupManagersResult> {
     const group = await this.loadGroupWithManagers(groupId);
 
@@ -253,7 +254,7 @@ export class LinkGroupManagersService {
     });
     await this.secondaryRepo.save(created);
 
-    return this.getManagers(groupId, requesterId, requesterRole);
+    return this.getManagers(groupId, requesterId, requesterRole, requesterIsRootAdmin);
   }
 
   /**
@@ -264,6 +265,7 @@ export class LinkGroupManagersService {
     userId: number,
     requesterId: number,
     requesterRole: string,
+    requesterIsRootAdmin?: boolean,
   ): Promise<GroupManagersResult> {
     const group = await this.loadGroupWithManagers(groupId);
 
@@ -284,7 +286,7 @@ export class LinkGroupManagersService {
 
     await this.secondaryRepo.remove(existing);
 
-    return this.getManagers(groupId, requesterId, requesterRole);
+    return this.getManagers(groupId, requesterId, requesterRole, requesterIsRootAdmin);
   }
 
   /**
@@ -301,6 +303,7 @@ export class LinkGroupManagersService {
     userId: number,
     requesterId: number,
     requesterRole: string,
+    requesterIsRootAdmin?: boolean,
   ): Promise<GroupManagersResult> {
     const group = await this.loadGroupWithManagers(groupId);
 
@@ -335,7 +338,7 @@ export class LinkGroupManagersService {
     });
     await this.contentStaffRepo.save(created);
 
-    return this.getManagers(groupId, requesterId, requesterRole);
+    return this.getManagers(groupId, requesterId, requesterRole, requesterIsRootAdmin);
   }
 
   /**
@@ -346,6 +349,7 @@ export class LinkGroupManagersService {
     userId: number,
     requesterId: number,
     requesterRole: string,
+    requesterIsRootAdmin?: boolean,
   ): Promise<GroupManagersResult> {
     const group = await this.loadGroupWithManagers(groupId);
 
@@ -366,6 +370,6 @@ export class LinkGroupManagersService {
 
     await this.contentStaffRepo.remove(existing);
 
-    return this.getManagers(groupId, requesterId, requesterRole);
+    return this.getManagers(groupId, requesterId, requesterRole, requesterIsRootAdmin);
   }
 }

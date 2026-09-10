@@ -204,6 +204,7 @@ export class CustomersController {
       scope,
       user.departmentId,
       user.positionId,
+      user.isRootAdmin,
     );
   }
 
@@ -252,6 +253,7 @@ export class CustomersController {
       scope,
       user.departmentId,
       user.positionId,
+      user.isRootAdmin,
     );
   }
 

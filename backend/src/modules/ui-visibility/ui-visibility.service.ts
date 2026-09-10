@@ -134,17 +134,23 @@ export class UiVisibilityService {
 
   /**
    * Tập `element_key` đang bị ẩn của 1 (role, resource), đã tính override
-   * Department + Position. Role `admin` LUÔN trả về rỗng (bypass cứng, đúng
-   * nguyên tắc "Admin không tự khoá mắt chính mình" - xem PLAN mục 2.4,
-   * cùng tinh thần bypass admin ở `PermissionGuard`).
+   * Department + Position. ĐÃ ĐỔI theo migration
+   * `AddIsRootAdminToUsers1781000000000`: CHỈ Root Admin
+   * (`roleCode === Role.ADMIN && isRootAdmin === true`) LUÔN trả về rỗng
+   * (bypass cứng, đúng nguyên tắc "Root Admin không tự khoá mắt chính mình"
+   * - xem PLAN mục 2.4, cùng tinh thần bypass Root Admin ở `PermissionGuard`).
+   * Admin THƯỜNG (`role=admin` nhưng `isRootAdmin=false`) giờ đi qua ĐÚNG
+   * `loadHiddenKeysMap()` như mọi role khác - CÓ THỂ bị Root Admin ẩn field/
+   * tab qua trang "Phân quyền" như bình thường.
    */
   async getHiddenElementKeys(
     roleCode: string,
     resource: string,
     departmentId?: number | null,
     positionId?: number | null,
+    isRootAdmin?: boolean,
   ): Promise<Set<string>> {
-    if (roleCode === Role.ADMIN) return new Set();
+    if (roleCode === Role.ADMIN && isRootAdmin) return new Set();
     if (!isValidResource(resource)) return new Set();
     return this.loadHiddenKeysMap(roleCode, resource, departmentId, positionId);
   }
@@ -155,8 +161,9 @@ export class UiVisibilityService {
     resource: string,
     departmentId?: number | null,
     positionId?: number | null,
+    isRootAdmin?: boolean,
   ): Promise<string[]> {
-    const hidden = await this.getHiddenElementKeys(roleCode, resource, departmentId, positionId);
+    const hidden = await this.getHiddenElementKeys(roleCode, resource, departmentId, positionId, isRootAdmin);
     return Array.from(hidden);
   }
 

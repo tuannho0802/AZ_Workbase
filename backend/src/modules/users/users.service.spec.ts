@@ -53,6 +53,9 @@ describe('UsersService - Approval workflow (đăng ký công khai chờ duyệt)
     find: jest.fn(),
     findOne: jest.fn(),
     update: jest.fn(),
+    // MỚI (isRootAdmin) - update()/create() dùng count() để chặn gỡ Root
+    // Admin cuối cùng của hệ thống, xem JSDoc UsersService.update().
+    count: jest.fn(),
     createQueryBuilder: jest.fn(() => mockQueryBuilder),
   };
   const mockAuditService = {
@@ -640,6 +643,105 @@ describe('UsersService - Approval workflow (đăng ký công khai chờ duyệt)
   });
 
   // ==========================================================================
+  // isRootAdmin (migration AddIsRootAdminToUsers1781000000000) - CHỈ Root
+  // Admin hiện tại mới được set/đổi field này cho user khác, và Root Admin
+  // cuối cùng không thể bị gỡ (tránh khoá cứng hệ thống).
+  // ==========================================================================
+  describe('create - isRootAdmin', () => {
+    it('Admin THƯỜNG (isRootAdmin=false) cố gửi isRootAdmin=true -> ForbiddenException, KHÔNG lưu', async () => {
+      mockUsersRepo.findOne.mockResolvedValue(null); // không trùng email
+
+      await expect(
+        service.create(
+          { email: 'x@example.com', name: 'X', password: 'Password@123', role: Role.ADMIN, isRootAdmin: true } as any,
+          1,
+          Role.ADMIN,
+          undefined,
+          false, // creatorIsRootAdmin
+        ),
+      ).rejects.toThrow(ForbiddenException);
+      expect(mockUsersRepo.save).not.toHaveBeenCalled();
+    });
+
+    it('Root Admin gửi isRootAdmin=true nhưng role KHÁC admin -> BadRequestException', async () => {
+      mockUsersRepo.findOne.mockResolvedValue(null);
+
+      await expect(
+        service.create(
+          { email: 'x@example.com', name: 'X', password: 'Password@123', role: Role.EMPLOYEE, isRootAdmin: true } as any,
+          1,
+          Role.ADMIN,
+          undefined,
+          true,
+        ),
+      ).rejects.toThrow(BadRequestException);
+      expect(mockUsersRepo.save).not.toHaveBeenCalled();
+    });
+
+    it('Root Admin gửi isRootAdmin=true + role=admin -> tạo thành công', async () => {
+      mockUsersRepo.findOne.mockResolvedValue(null);
+      mockQueryBuilder.getRawOne.mockResolvedValue({ maxNum: null });
+      mockUsersRepo.create.mockImplementation((input: any) => input);
+      mockUsersRepo.save.mockImplementation((entity: any) => Promise.resolve({ id: 9, ...entity }));
+
+      await service.create(
+        { email: 'root2@example.com', name: 'Root 2', password: 'Password@123', role: Role.ADMIN, isRootAdmin: true } as any,
+        1,
+        Role.ADMIN,
+        undefined,
+        true,
+      );
+
+      expect(mockUsersRepo.save).toHaveBeenCalled();
+    });
+  });
+
+  describe('update - isRootAdmin', () => {
+    it('Admin THƯỜNG cố bật isRootAdmin cho user khác -> ForbiddenException, KHÔNG save', async () => {
+      mockUsersRepo.findOne.mockResolvedValue({ id: 2, role: Role.ADMIN, isRootAdmin: false, departmentId: null });
+
+      await expect(
+        service.update(2, { isRootAdmin: true } as any, 1, Role.ADMIN, undefined, false),
+      ).rejects.toThrow(ForbiddenException);
+      expect(mockUsersRepo.save).not.toHaveBeenCalled();
+    });
+
+    it('Root Admin gỡ Root Admin của người khác NHƯNG đó là Root Admin cuối cùng -> ForbiddenException', async () => {
+      mockUsersRepo.findOne.mockResolvedValue({ id: 2, role: Role.ADMIN, isRootAdmin: true, departmentId: null });
+      mockUsersRepo.count.mockResolvedValue(1); // chỉ còn đúng 1 Root Admin (chính là user#2)
+
+      await expect(
+        service.update(2, { isRootAdmin: false } as any, 1, Role.ADMIN, undefined, true),
+      ).rejects.toThrow(ForbiddenException);
+      expect(mockUsersRepo.save).not.toHaveBeenCalled();
+    });
+
+    it('Root Admin gỡ Root Admin của người khác, còn ÍT NHẤT 1 Root Admin khác -> thành công', async () => {
+      const user = { id: 2, role: Role.ADMIN, isRootAdmin: true, departmentId: null };
+      mockUsersRepo.findOne.mockResolvedValue(user);
+      mockUsersRepo.count.mockResolvedValue(2); // còn Root Admin khác
+      mockUsersRepo.save.mockImplementation((entity: any) => Promise.resolve(entity));
+
+      await service.update(2, { isRootAdmin: false } as any, 1, Role.ADMIN, undefined, true);
+
+      expect(mockUsersRepo.save).toHaveBeenCalledWith(expect.objectContaining({ isRootAdmin: false }));
+    });
+
+    it('Root Admin đổi role của 1 Root Admin khác sang role không phải admin (không đụng field isRootAdmin) -> tự động tước cờ, cần còn Root Admin khác', async () => {
+      const user = { id: 2, role: Role.ADMIN, isRootAdmin: true, departmentId: null };
+      mockUsersRepo.findOne.mockResolvedValue(user);
+      mockUsersRepo.count.mockResolvedValue(2);
+      mockUsersRepo.save.mockImplementation((entity: any) => Promise.resolve(entity));
+
+      await service.update(2, { role: Role.EMPLOYEE } as any, 1, Role.ADMIN, undefined, true);
+
+      expect(mockUsersRepo.save).toHaveBeenCalledWith(
+        expect.objectContaining({ role: Role.EMPLOYEE, isRootAdmin: false }),
+      );
+    });
+  });
+
+  // ==========================================================================
   // PROFILE TỰ PHỤC VỤ (updateOwnProfile/updateOwnEmail/changeOwnPassword) +
   // XOÁ TÀI KHOẢN MỀM -> CỨNG (softDeleteUser/listTrash/restoreUser/
   // hardDeleteUser) - coverage mới cho các method thêm ở commit
@@ -834,6 +936,13 @@ describe('UsersService - Approval workflow (đăng ký công khai chờ duyệt)
         expect.any(Object),
       );
     });
+
+    it('MỚI (isRootAdmin): ném ForbiddenException nếu target là Root Admin - KHÔNG AI xoá được, kể cả Root Admin khác', async () => {
+      mockUsersRepo.findOne.mockResolvedValue({ id: 2, name: 'Root B', isRootAdmin: true });
+
+      await expect(service.softDeleteUser(2, 1)).rejects.toThrow(ForbiddenException);
+      expect(mockUsersRepo.update).not.toHaveBeenCalled();
+    });
   });
 
   describe('listTrash - Danh sách tài khoản đã xoá mềm', () => {
@@ -925,6 +1034,13 @@ describe('UsersService - Approval workflow (đăng ký công khai chờ duyệt)
         expect.any(Object),
         null,
       );
+    });
+
+    it('MỚI (isRootAdmin): ném ForbiddenException nếu target là Root Admin - phòng thủ 2 lớp dù về lý thuyết không lọt được vào thùng rác', async () => {
+      mockUsersRepo.findOne.mockResolvedValue({ id: 2, name: 'Root B', deletedAt: new Date(), isRootAdmin: true });
+
+      await expect(service.hardDeleteUser(2, 1)).rejects.toThrow(ForbiddenException);
+      expect(mockDataSource.transaction).not.toHaveBeenCalled();
     });
   });
 

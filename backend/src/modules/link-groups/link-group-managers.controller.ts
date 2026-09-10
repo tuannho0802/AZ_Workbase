@@ -36,7 +36,7 @@ export class LinkGroupManagersController {
       'Danh sách nhóm mà user hiện tại được xem trong tính năng "Quản lý nhóm liên kết" - admin thấy TẤT CẢ, user thường CHỈ thấy nhóm mình là Quản lý chính hoặc phụ',
   })
   async listManagedByMe(@GetUser() user: any) {
-    return this.managersService.listManagedByMe(user.id, user.role);
+    return this.managersService.listManagedByMe(user.id, user.role, user.isRootAdmin);
   }
 
   @Get(':id/managers')
@@ -44,7 +44,7 @@ export class LinkGroupManagersController {
     summary: 'Xem Quản lý chính + phụ của 1 nhóm - chỉ admin/chính/phụ của nhóm đó mới xem được',
   })
   async getManagers(@Param('id', ParseIntPipe) id: number, @GetUser() user: any) {
-    return this.managersService.getManagers(id, user.id, user.role);
+    return this.managersService.getManagers(id, user.id, user.role, user.isRootAdmin);
   }
 
   @Post(':id/managers')
@@ -56,7 +56,7 @@ export class LinkGroupManagersController {
     @Body() dto: AddGroupManagerDto,
     @GetUser() user: any,
   ) {
-    return this.managersService.addSecondaryManager(id, dto.userId, user.id, user.role);
+    return this.managersService.addSecondaryManager(id, dto.userId, user.id, user.role, user.isRootAdmin);
   }
 
   @Delete(':id/managers/:userId')
@@ -68,7 +68,7 @@ export class LinkGroupManagersController {
     @Param('userId', ParseIntPipe) userId: number,
     @GetUser() user: any,
   ) {
-    return this.managersService.removeSecondaryManager(id, userId, user.id, user.role);
+    return this.managersService.removeSecondaryManager(id, userId, user.id, user.role, user.isRootAdmin);
   }
 
   @Post(':id/content-staff')
@@ -80,7 +80,7 @@ export class LinkGroupManagersController {
     @Body() dto: AddContentStaffDto,
     @GetUser() user: any,
   ) {
-    return this.managersService.addContentStaff(id, dto.userId, user.id, user.role);
+    return this.managersService.addContentStaff(id, dto.userId, user.id, user.role, user.isRootAdmin);
   }
 
   @Delete(':id/content-staff/:userId')
@@ -92,6 +92,6 @@ export class LinkGroupManagersController {
     @Param('userId', ParseIntPipe) userId: number,
     @GetUser() user: any,
   ) {
-    return this.managersService.removeContentStaff(id, userId, user.id, user.role);
+    return this.managersService.removeContentStaff(id, userId, user.id, user.role, user.isRootAdmin);
   }
 }

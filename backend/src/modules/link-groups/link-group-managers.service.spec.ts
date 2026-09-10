@@ -114,7 +114,7 @@ describe('LinkGroupManagersService', () => {
         { id: 1, name: 'Nhóm A', sortOrder: 0, primaryManager: null, secondaryManagers: [], contentStaff: [] },
       ]);
 
-      const result = await service.listManagedByMe(999, Role.ADMIN);
+      const result = await service.listManagedByMe(999, Role.ADMIN, true);
 
       expect(mockGroupRepo.find).toHaveBeenCalledWith({
         relations: LIST_FULL_RELATIONS,
@@ -293,6 +293,22 @@ describe('LinkGroupManagersService', () => {
       expect(result).toHaveLength(1);
     });
 
+    // MỚI (isRootAdmin) - Admin THƯỜNG (role=admin, isRootAdmin=false hoặc
+    // không truyền) KHÔNG còn tự động có quyền rộng nữa - phải tra
+    // `link_groups.manage` như mọi role khác, đúng ý đồ "chỉ Root Admin mới
+    // có lối thoát hiểm cứng".
+    it('Admin THƯỜNG (isRootAdmin=false) KHÔNG có quyền rộng mặc định - tra role_permissions như role khác', async () => {
+      mockPermissionsService.hasPermission.mockResolvedValue({ allowed: false, scope: null });
+      mockGroupRepo.find.mockResolvedValue([]); // asPrimary rỗng
+      mockSecondaryRepo.find.mockResolvedValue([]);
+      mockContentStaffRepo.find.mockResolvedValue([]);
+
+      const result = await service.listManagedByMe(999, Role.ADMIN, false);
+
+      expect(mockPermissionsService.hasPermission).toHaveBeenCalledWith(Role.ADMIN, 'link_groups.manage', undefined);
+      expect(result).toEqual([]);
+    });
+
     it('Assistant KHÔNG được cấp link_groups.manage -> KHÔNG có quyền rộng, chỉ thấy nhóm mình liên quan (bug cũ: helper cũ luôn coi Assistant là "không có quyền" bất kể DB, nay tra đúng theo DB)', async () => {
       mockPermissionsService.hasPermission.mockResolvedValue({ allowed: false, scope: null });
       mockGroupRepo.find.mockResolvedValue([]); // asPrimary rỗng
@@ -321,7 +337,7 @@ describe('LinkGroupManagersService', () => {
         contentStaff: [],
       });
 
-      const result = await service.getManagers(1, 999, Role.ADMIN);
+      const result = await service.getManagers(1, 999, Role.ADMIN, true);
 
       expect(mockGroupRepo.findOne).toHaveBeenCalledWith({
         where: { id: 1 },
@@ -471,7 +487,7 @@ describe('LinkGroupManagersService', () => {
       mockSecondaryRepo.create.mockReturnValue({ groupId: 1, userId: 9, addedById: 999 });
       mockSecondaryRepo.save.mockResolvedValue({ id: 100 });
 
-      await service.addSecondaryManager(1, 9, 999, Role.ADMIN);
+      await service.addSecondaryManager(1, 9, 999, Role.ADMIN, true);
 
       expect(mockSecondaryRepo.create).toHaveBeenCalledWith({ groupId: 1, userId: 9, addedById: 999 });
     });
@@ -562,7 +578,7 @@ describe('LinkGroupManagersService', () => {
       mockGroupRepo.findOne.mockResolvedValueOnce(group).mockResolvedValueOnce({ ...group, secondaryManagers: [] });
       mockSecondaryRepo.remove.mockResolvedValue(group.secondaryManagers[0]);
 
-      await service.removeSecondaryManager(1, 9, 999, Role.ADMIN);
+      await service.removeSecondaryManager(1, 9, 999, Role.ADMIN, true);
 
       expect(mockSecondaryRepo.remove).toHaveBeenCalled();
     });
@@ -634,7 +650,7 @@ describe('LinkGroupManagersService', () => {
       mockContentStaffRepo.create.mockReturnValue({ groupId: 1, userId: 20, addedById: 999 });
       mockContentStaffRepo.save.mockResolvedValue({ id: 200 });
 
-      await service.addContentStaff(1, 20, 999, Role.ADMIN);
+      await service.addContentStaff(1, 20, 999, Role.ADMIN, true);
 
       expect(mockContentStaffRepo.create).toHaveBeenCalledWith({ groupId: 1, userId: 20, addedById: 999 });
     });
@@ -744,7 +760,7 @@ describe('LinkGroupManagersService', () => {
       mockGroupRepo.findOne.mockResolvedValueOnce(group).mockResolvedValueOnce({ ...group, contentStaff: [] });
       mockContentStaffRepo.remove.mockResolvedValue(group.contentStaff[0]);
 
-      await service.removeContentStaff(1, 20, 999, Role.ADMIN);
+      await service.removeContentStaff(1, 20, 999, Role.ADMIN, true);
 
       expect(mockContentStaffRepo.remove).toHaveBeenCalled();
     });
