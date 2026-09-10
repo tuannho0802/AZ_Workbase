@@ -8,6 +8,7 @@ import { useQuery } from '@tanstack/react-query';
 import Link from 'next/link';
 import { authApi } from '@/lib/api/auth.api';
 import { departmentsApi } from '@/lib/api/departments.api';
+import { positionsApi } from '@/lib/api/positions.api';
 import { getApiErrorMessage } from '@/lib/utils/error-message.util';
 
 const { Title, Paragraph } = Typography;
@@ -19,6 +20,9 @@ interface RegisterFormValues {
   confirmPassword: string;
   phone?: string;
   departmentId?: number;
+  // ⚠️ MỚI - đối xứng departmentId ở trên (RegisterDto.positionId ở BE đã
+  // hỗ trợ từ trước).
+  positionId?: number;
   // Honeypot - KHÔNG hiển thị cho người dùng, field ẩn hoàn toàn (xem JSX
   // bên dưới). Người dùng thật không bao giờ chạm tới field này.
   website?: string;
@@ -38,6 +42,16 @@ export default function RegisterPage() {
     staleTime: 5 * 60 * 1000,
   });
 
+  // ⚠️ MỚI - đối xứng departments ở trên, dùng đúng route công khai
+  // /positions/public (chỉ id/name - xem positionsApi.getPublic() +
+  // PositionsService.findAllPublic() BE), KHÔNG dùng positionsApi.getAll()
+  // (yêu cầu token, dùng cho trang quản trị "/vi-tri").
+  const { data: positions = [], isLoading: loadingPositions } = useQuery({
+    queryKey: ['positions-public'],
+    queryFn: positionsApi.getPublic,
+    staleTime: 5 * 60 * 1000,
+  });
+
   const onFinish = async (values: RegisterFormValues) => {
     setLoading(true);
     try {
@@ -47,6 +61,7 @@ export default function RegisterPage() {
         password: values.password,
         phone: values.phone || undefined,
         departmentId: values.departmentId,
+        positionId: values.positionId,
         website: values.website, // honeypot - luôn rỗng với người dùng thật
       });
       // Không có token trả về (đúng thiết kế BE - tài khoản đang chờ duyệt),
@@ -130,6 +145,20 @@ export default function RegisterPage() {
               allowClear
               loading={loadingDepartments}
               options={departments.map((d) => ({ value: d.id, label: d.name }))}
+            />
+          </Form.Item>
+
+          <Form.Item label="Vị trí" name="positionId">
+            <Select
+              placeholder="Chọn vị trí (không bắt buộc)"
+              size="large"
+              allowClear
+              showSearch
+              loading={loadingPositions}
+              options={positions.map((p) => ({ value: p.id, label: p.name }))}
+              filterOption={(input, option) =>
+                (option?.label as string).toLowerCase().includes(input.toLowerCase())
+              }
             />
           </Form.Item>
 
