@@ -2,6 +2,7 @@ import { Entity, PrimaryGeneratedColumn, Column, CreateDateColumn, ManyToOne, Jo
 import { RoleEntity } from './role.entity';
 import { Permission } from './permission.entity';
 import { Department } from './department.entity';
+import { Position } from './position.entity';
 
 export enum PermissionScope {
   OWN = 'own',
@@ -67,6 +68,22 @@ export class RolePermission {
   @ManyToOne(() => Department, { onDelete: 'CASCADE', nullable: true })
   @JoinColumn({ name: 'department_id' })
   department: Department | null;
+
+  /**
+   * ⚠️ MỚI - Override TẦNG VỊ TRÍ (Position), tầng ưu tiên CAO NHẤT trong 3
+   * tầng: Position -> Department -> Global (xem PLAN mục 2.2, 3.3). 1 dòng
+   * CHỈ được set `departmentId` HOẶC `positionId`, KHÔNG set cả hai cùng lúc
+   * (không phải ma trận tổ hợp Phòng ban x Vị trí) - validate ở
+   * `RolesService.updatePositionOverride()`, KHÔNG enforce bằng DB CHECK
+   * (tránh phụ thuộc tính năng CHECK không đồng nhất giữa các phiên bản
+   * MySQL, giống lý do đã ghi trong migration AddDenyScopeForDepartmentOverrides).
+   */
+  @Column({ name: 'position_id', nullable: true })
+  positionId: number | null;
+
+  @ManyToOne(() => Position, { onDelete: 'CASCADE', nullable: true })
+  @JoinColumn({ name: 'position_id' })
+  position: Position | null;
 
   @CreateDateColumn({ name: 'created_at' })
   createdAt: Date;

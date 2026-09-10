@@ -14,6 +14,7 @@ import { DecimalTransformer } from '../transformers/decimal.transformer';
 import { Role } from '../../common/enums/role.enum';
 import { ApprovalStatus } from '../../common/enums/approval-status.enum';
 import { Department } from './department.entity';
+import { Position } from './position.entity';
 
 @Entity('users')
 export class User {
@@ -93,6 +94,19 @@ export class User {
   @ManyToOne(() => Department)
   @JoinColumn({ name: 'department_id' })
   department: Department;
+
+  // ⚠️ MỚI (Position/Vị trí) - tuỳ chọn (nullable), KHÔNG bắt buộc. Dùng làm
+  // tầng override phân quyền chi tiết hơn Role - xem giải thích đầy đủ ở
+  // `position.entity.ts` và PLAN_POSITION_FIELD_VISIBILITY_ASSIGNMENT_GROUPS.md
+  // mục 2.6/3.2. Rất nhiều user hiện tại sẽ có giá trị NULL ngay sau migration
+  // - toàn bộ hệ thống PHẢI hoạt động bình thường với NULL (coi như không có
+  // override Position nào, fallback về Department/Global).
+  @Column({ name: 'position_id', nullable: true })
+  positionId: number | null;
+
+  @ManyToOne(() => Position, { nullable: true, onDelete: 'SET NULL' })
+  @JoinColumn({ name: 'position_id' })
+  position: Position | null;
 
   @Column({
     name: 'is_active',
