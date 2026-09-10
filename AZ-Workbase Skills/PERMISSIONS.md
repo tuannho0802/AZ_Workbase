@@ -146,8 +146,9 @@ dùng `@Roles()` enum tĩnh. Danh mục permission đầy đủ trong DB (sau 2 
 | `audit.manage` | audit | Cấu hình/dọn dẹp audit log |
 | `roles.view` | roles | Xem trang Phân quyền |
 | `roles.manage` | roles | Chỉnh ma trận quyền — chỉ Admin |
-| `positions.manage` | positions | **MỚI (2026-09-10).** CRUD Vị trí (Position) — bảng cấu hình toàn cục, không có scope (mọi user thấy chung 1 danh mục, không theo phòng ban). Seed mặc định: Admin/Assistant = `all` (thực chất là quyền nhị phân vì `supportsScope=false`, giá trị scope luôn NULL). Xem mục 1.8 để biết Position dùng để làm gì |
+| `positions.manage` | positions | **MỚI (2026-09-10).** Tạo/sửa Vị trí (POST/PATCH /positions) — bảng cấu hình toàn cục, không có scope (mọi user thấy chung 1 danh mục, không theo phòng ban). Seed mặc định: Admin/Assistant = `all` (thực chất là quyền nhị phân vì `supportsScope=false`, giá trị scope luôn NULL). **KHÔNG còn bao gồm xoá** (xem `positions.delete`). Xem mục 1.8 để biết Position dùng để làm gì |
 | `positions.view` | positions | **MỚI (2026-09-10, fix bug audit).** Xem danh mục Vị trí (GET /positions, GET /positions/:id) — tách riêng khỏi `positions.manage` giống cặp `departments.view`/`departments.manage`. Seed mặc định: CẢ 4 role (admin/assistant/manager/employee) = quyền nhị phân, vì đây chỉ là danh mục tham chiếu dùng cho dropdown khi tạo/sửa/đăng ký tài khoản, không phải hành động nhạy cảm. `GET /positions/public` (không cần đăng nhập, chỉ id/name) dùng riêng cho form `POST /auth/register` |
+| `positions.delete` | positions | **MỚI (2026-09-10, fix bug audit lần 2).** Xoá Vị trí (DELETE /positions/:id) — tách riêng khỏi `positions.manage`, mirror đúng cặp `departments.manage`/`departments.delete`. Seed mặc định: CHỈ `admin` (giống `departments.delete`), KHÔNG gán cho Assistant dù Assistant có `positions.manage` |
 
 Nghĩa là: Admin vào trang Phân quyền **BẬT/TẮT bất kỳ permission nào ở bảng trên** → BE **thật sự
 chặn/mở** ngay (không cần deploy), FE **tự ẩn/hiện** trong tối đa 60 giây.
@@ -257,6 +258,25 @@ Admin chủ động xử lý trước).
    `user.positionId` nhưng luôn nhận `undefined`, khiến MỌI override theo Position (Phase 2) không có
    hiệu lực trên request thật dù DB cấu hình đúng. Đã thêm `positionId: user.positionId` vào object trả
    về của `validate()`.
+
+**⚠️ Bug/thiếu sót phát hiện thêm khi rà soát lần 2 (2026-09-10, trước khi làm FE) — đã sửa:**
+5. `DELETE /positions/:id` trước đây gate CHUNG với `positions.manage` (cùng permission với tạo/sửa) —
+   không tách được quyền "được sửa nhưng không được xoá" như pattern `departments.manage`/
+   `departments.delete` đã có sẵn. Đã thêm permission `positions.delete` riêng (migration
+   `AddPositionsDeletePermission1780600000000`, seed CHỈ cho `admin`, giống hệt cách `departments.delete`
+   đang được seed), đổi `@RequirePermission` của endpoint DELETE sang `positions.delete`.
+   `positions.manage` (POST/PATCH) giữ nguyên không đổi.
+6. Các query load `User` (`UsersService.findOne`/`findAll`/`listTrash`/`findPendingApprovals`) chỉ join
+   quan hệ `department`, KHÔNG join `position` — dù entity đã khai quan hệ `position` đầy đủ, response
+   của GET /users, GET /users/:id, GET /users/trash, GET /users/pending-approvals đều thiếu object
+   `position` (chỉ có `positionId` thô), khiến FE không thể hiển thị tên Vị trí ở bảng Nhân viên/Chi tiết/
+   Thùng rác/Duyệt đăng ký. Đã thêm `'position'` vào relations/`leftJoinAndSelect` ở cả 4 chỗ.
+   **CHƯA sửa** `UsersService.findById()` (dùng bởi `JwtStrategy.validate()` MỌI request + `GET /users/me`)
+   — đây là bug CŨ, có SẴN từ trước với cả `department` (không load relation nào), CỐ TÌNH không đụng vào
+   vì `findById()` chạy trên mọi request đã đăng nhập (thêm JOIN ở đây ảnh hưởng hiệu năng toàn hệ thống,
+   không riêng gì Position) — nếu muốn Trang Profile tự xem chính mình hiển thị đúng Department/Position,
+   cần sửa RIÊNG ở `UsersController.getProfile()` (dùng 1 query có relations khác, không tái sử dụng
+   `findById()`), không nằm trong phạm vi đợt sửa Position này.
 
 Xem chi tiết đầy đủ ở `WORKFLOW_LOG.md` 2 entry ngày 2026-09-10 ("Audit BE Phase 1+2 Position" và bản ghi
 tiếp theo về `positions.view`).

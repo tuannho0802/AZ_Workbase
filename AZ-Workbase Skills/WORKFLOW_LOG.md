@@ -535,6 +535,49 @@ phép) — module `uploads` thật CHƯA được code, mới dừng ở bước
 
 ---
 
-Fix encoding 
+---
 
-Deploy
+## [2026-09-10] | Audit BE Position (Phase 1+2) + fix 2 bug thật + granular CRUD permission | Status: Success
+
+**Actor:** Agent
+
+**Bối cảnh:** Audit lại toàn bộ BE Position (Phase 1 + Phase 2 của
+`PLAN_POSITION_FIELD_VISIBILITY_ASSIGNMENT_GROUPS.md`, đã code ở phiên trước) trước khi bắt đầu triển
+khai FE, theo yêu cầu chủ dự án. Lưu ý: 1 phiên trước đó có báo cáo đã append entry log này + thêm test
+`findAllPublic()` nhưng khi audit thật KHÔNG thấy 2 việc đó tồn tại trong repo (pattern "báo cáo nhưng
+chưa thật sự push/lưu" đã ghi nhận ở mục "Key learnings" của project) — entry này mới là bản ghi thật.
+
+**Đã xác nhận đúng (không cần sửa):** `positionId` đã có trong `JwtStrategy.validate()`,
+`positions.view` đã tách riêng khỏi `positions.manage` (Manager list được Position khi tạo nhân viên),
+3 luồng tạo tài khoản (tự đăng ký / Admin tạo / Admin sửa) đều có field `positionId` đối xứng
+`departmentId`, 3 lớp bypass admin (`PermissionGuard`, `RolesService.getMyPermissions`,
+`LinkGroupManagersService`) còn nguyên vẹn. `tsc --noEmit` + `nest build` sạch, `jest`: 24/24 suites,
+452/452 tests pass trước khi sửa gì thêm.
+
+**Bug/thiếu sót phát hiện thêm + đã sửa trong phiên này:**
+1. `DELETE /positions/:id` gate chung `positions.manage` với tạo/sửa - không tách được quyền theo yêu
+   cầu "đủ CRUD, Admin bật/tắt chi tiết từng quyền". Thêm permission `positions.delete` riêng (migration
+   `1780600000000-AddPositionsDeletePermission.ts`, seed CHỈ `admin`, mirror đúng
+   `departments.manage`/`departments.delete`), đổi decorator endpoint DELETE.
+2. `UsersService.findOne()`/`findAll()`/`listTrash()`/`findPendingApprovals()` không join quan hệ
+   `position` (chỉ join `department`) - response API thiếu object `position`, FE không hiển thị được tên
+   Vị trí dù `positionId` đã lưu đúng. Thêm `'position'` vào relations/`leftJoinAndSelect` ở cả 4 chỗ.
+
+**Cố tình CHƯA sửa (ngoài phạm vi):** `UsersService.findById()` (dùng bởi `JwtStrategy.validate()` mọi
+request + `GET /users/me`) không load relation nào (kể cả `department`) - bug CŨ, có sẵn từ trước Position,
+không đụng vào vì đây là hot path chạy mọi request đã đăng nhập.
+
+**Files Changed:**
+- `backend/src/database/migrations/1780600000000-AddPositionsDeletePermission.ts` (mới)
+- `backend/src/modules/positions/positions.controller.ts` — đổi `@RequirePermission` endpoint DELETE
+- `backend/src/modules/users/users.service.ts` — thêm relation `'position'` ở 4 method
+- `AZ-Workbase Skills/PERMISSIONS.md` — cập nhật mục 1.8, mục 2 (bảng permission)
+
+**Verify thật:** `tsc --noEmit` sạch, `nest build` sạch, `jest`: 24/24 suites, 452/452 tests pass (không
+regression) sau khi sửa.
+
+**Còn lại (chưa làm, thuộc phạm vi FE - lượt tiếp theo):** trang CRUD `/vi-tri`, field chọn Vị trí ở form
+tạo/sửa nhân viên + form đăng ký công khai, tab "Theo Vị trí" ở trang Phân quyền, hiển thị Vị trí ở
+Profile, mục nav-config.
+
+---
