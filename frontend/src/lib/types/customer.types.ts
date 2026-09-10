@@ -95,6 +95,10 @@ export interface Customer {
     fullName?: string;
     email?: string;
     role?: string;
+    // ⚠️ MỚI - rà soát Vị trí 2026-09-10: BE (customers.service.ts
+    // findAll()/findOne()) giờ đã JOIN salesUser.position, thêm field ở
+    // đây để CustomerInfoTab.tsx hiện được Tag Vị trí cạnh Tag Role.
+    position?: { id: number; name: string } | null;
   };
   marketingUser?: {
     id: number;
@@ -102,6 +106,7 @@ export interface Customer {
     fullName?: string;
     email?: string;
     role?: string;
+    position?: { id: number; name: string } | null;
   };
   status: 'closed' | 'pending' | 'potential' | 'lost' | 'inactive';
   broker?: string;

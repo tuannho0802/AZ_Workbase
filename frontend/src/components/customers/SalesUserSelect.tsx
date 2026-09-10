@@ -23,6 +23,12 @@ interface UserOption {
   department?: {
     name: string;
   };
+  // ⚠️ MỚI - rà soát Vị trí 2026-09-10: BE (users.service.ts
+  // findEmployees(), nguồn dữ liệu của GET /users/all) giờ đã JOIN
+  // 'position' đối xứng 'department'.
+  position?: {
+    name: string;
+  };
 }
 
 interface SalesUserSelectProps {
@@ -125,6 +131,7 @@ export const SalesUserSelect = ({
                 <Text type="secondary" style={{ fontSize: 11 }}>
                   {user.email}
                   {user.department?.name ? ` · ${user.department.name}` : ''}
+                  {user.position?.name ? ` · ${user.position.name}` : ''}
                 </Text>
               </div>
             </Space>
@@ -163,6 +170,11 @@ export const SalesUserSelect = ({
                 {selectedUser.department?.name && (
                    <Tag color="default" style={{ fontSize: 10, margin: 0 }}>
                     {selectedUser.department.name}
+                  </Tag>
+                )}
+                {selectedUser.position?.name && (
+                  <Tag color="default" style={{ fontSize: 10, margin: 0 }}>
+                    {selectedUser.position.name}
                   </Tag>
                 )}
               </div>

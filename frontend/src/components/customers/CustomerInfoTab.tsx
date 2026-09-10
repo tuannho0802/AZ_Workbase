@@ -53,6 +53,11 @@ export const CustomerInfoTab = ({ customer, onEdit }: Props) => {
             <Space>
               <Text strong>{customer.salesUser.name}</Text>
               <Tag color="blue">{customer.salesUser.role?.toUpperCase()}</Tag>
+              {/* ⚠️ MỚI - rà soát Vị trí: đối xứng Tag Role ở trên, chỉ hiện
+                  khi có dữ liệu (không phải ai cũng được gán Vị trí). */}
+              {customer.salesUser.position?.name && (
+                <Tag color="default">{customer.salesUser.position.name}</Tag>
+              )}
             </Space>
           ) : (
             <Text type="secondary" italic>Chưa phân công</Text>
@@ -69,6 +74,7 @@ export const CustomerInfoTab = ({ customer, onEdit }: Props) => {
                   <Space key={user.id}>
                     <Text>{user.name}</Text>
                     <Tag>{user.role?.toUpperCase()}</Tag>
+                    {user.position?.name && <Tag color="default">{user.position.name}</Tag>}
                   </Space>
                 ))}
               </Space>
@@ -80,6 +86,9 @@ export const CustomerInfoTab = ({ customer, onEdit }: Props) => {
             <Space>
               <Text strong>{customer.marketingUser.name}</Text>
               <Tag color="purple">{customer.marketingUser.role?.toUpperCase()}</Tag>
+              {customer.marketingUser.position?.name && (
+                <Tag color="default">{customer.marketingUser.position.name}</Tag>
+              )}
             </Space>
           ) : (
             <Text type="secondary" italic>Chưa phân công</Text>

@@ -10,6 +10,7 @@ import dayjs from 'dayjs';
 import { usersApi, PendingUser } from '@/lib/api/users.api';
 import { useDepartments } from '@/lib/hooks/useDepartments';
 import { useRoles } from '@/lib/hooks/useRoles';
+import { usePositions } from '@/lib/hooks/usePositions';
 import { getApiErrorMessage } from '@/lib/utils/error-message.util';
 import { useMyPermissions } from '@/lib/hooks/useMyPermissions';
 
@@ -26,6 +27,12 @@ export const PendingApprovalsTab = ({ onCountChange }: Props) => {
   const queryClient = useQueryClient();
   const { departments } = useDepartments();
   const { roles } = useRoles();
+  // ⚠️ MỚI - rà soát Vị trí 2026-09-10: BE (ApproveUserDto, findPendingApprovals()
+  // đã JOIN 'position') hỗ trợ đầy đủ từ trước, FE (PendingUser type,
+  // approveUser() API) cũng đã có sẵn field `positionId`/`position` - chỉ
+  // riêng Form/Modal Duyệt ở đây chưa từng dùng tới, khiến người duyệt
+  // không có cách nào xác nhận/đổi Vị trí ngay lúc duyệt (đối xứng Phòng ban).
+  const { positions } = usePositions();
   const roleOptions = (roles || []).map((r: any) => ({ value: r.code, label: r.name }));
   const roleMap = new Map((roles || []).map((r: any) => [r.code, r.name]));
 
@@ -52,6 +59,7 @@ export const PendingApprovalsTab = ({ onCountChange }: Props) => {
     approveForm.setFieldsValue({
       role: record.role, // mặc định 'employee' (hardcode ở BE lúc đăng ký) - admin/assistant có thể đổi ngay lúc duyệt
       departmentId: record.department?.id,
+      positionId: record.position?.id,
     });
   };
 
@@ -63,6 +71,7 @@ export const PendingApprovalsTab = ({ onCountChange }: Props) => {
       await usersApi.approveUser(approving.id, {
         role: values.role,
         departmentId: values.departmentId,
+        positionId: values.positionId,
       });
       message.success(`Đã duyệt tài khoản "${approving.name}"`);
       setApproving(null);
@@ -106,7 +115,7 @@ export const PendingApprovalsTab = ({ onCountChange }: Props) => {
       title: 'Liên hệ',
       key: 'contact',
       render: (_: unknown, record: PendingUser) => (
-        <Space direction="vertical" size={0}>
+        <Space orientation="vertical" size={0}>
           <Space size={4}>
             <MailOutlined style={{ fontSize: 12, color: '#8c8c8c' }} />
             <Text style={{ fontSize: 13 }}>{record.email}</Text>
@@ -124,6 +133,11 @@ export const PendingApprovalsTab = ({ onCountChange }: Props) => {
       title: 'Phòng ban đăng ký',
       key: 'department',
       render: (_: unknown, record: PendingUser) => record.department?.name || <Text type="secondary">Chưa chọn</Text>,
+    },
+    {
+      title: 'Vị trí đăng ký',
+      key: 'position',
+      render: (_: unknown, record: PendingUser) => record.position?.name || <Text type="secondary">Chưa chọn</Text>,
     },
     {
       title: 'Ngày đăng ký',
@@ -186,6 +200,14 @@ export const PendingApprovalsTab = ({ onCountChange }: Props) => {
               placeholder="Chọn phòng ban"
               allowClear
               options={departments.map((d: any) => ({ value: Number(d.id), label: d.name }))}
+            />
+          </Form.Item>
+          <Form.Item name="positionId" label="Vị trí">
+            <Select
+              placeholder="Chọn vị trí"
+              allowClear
+              showSearch={{ optionFilterProp: "label" }}
+              options={positions.map((p: any) => ({ value: Number(p.id), label: p.name }))}
             />
           </Form.Item>
         </Form>

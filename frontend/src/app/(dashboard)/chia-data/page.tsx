@@ -43,6 +43,9 @@ interface User {
   email: string;
   role: string;
   department?: { id: number; name: string } | null;
+  // ⚠️ MỚI - rà soát Vị trí 2026-09-10: nguồn `/users/all` (findEmployees())
+  // giờ đã JOIN 'position' đối xứng 'department'.
+  position?: { id: number; name: string } | null;
 }
 
 interface Department {
@@ -587,6 +590,7 @@ export default function ChiaDataPage() {
         </Avatar>
         <span>{u.name || u.email}</span>
         <Tag style={{ fontSize: 10 }}>{u.role}</Tag>
+        {u.position?.name && <Tag style={{ fontSize: 10 }} color="default">{u.position.name}</Tag>}
       </Space>
     ),
   }));

@@ -11,6 +11,12 @@ export interface RegisterDto {
   password: string;
   phone?: string;
   departmentId?: number;
+  // ⚠️ FIX BUG THẬT (rà soát Vị trí 2026-09-10): BE (RegisterDto) đã hỗ trợ
+  // positionId từ trước, register/page.tsx cũng đã gửi field này lên, nhưng
+  // type FE ở đây bị bỏ sót -> `tsc --noEmit` lỗi thật "positionId does not
+  // exist in type RegisterDto" (object literal check), tức là build production
+  // sẽ FAIL hoàn toàn ở đúng trang đăng ký nếu bật strict build.
+  positionId?: number;
   // Honeypot - PHẢI luôn rỗng khi gửi từ người dùng thật, field bị ẩn hoàn toàn khỏi UI.
   // (Chống bot spam đăng ký - lớp "human challenge" giờ là Vercel BotID ở
   // route `/api/auth/register`, không còn field token nào cần gửi kèm từ
