@@ -33,7 +33,11 @@ export class RolesController {
       'Quyền của CHÍNH người đang gọi API - không cần roles.view, ai cũng xem được quyền của bản thân. FE dùng route này để tự quyết định hiện/ẩn sidebar/nút bấm, đồng bộ đúng những gì BE thật sự cho phép.',
   })
   getMyPermissions(@GetUser() user: any) {
-    return this.rolesService.getMyPermissions(user.role, user.departmentId, user.positionId);
+    // ⚠️ BẮT BUỘC truyền isRootAdmin (xem JSDoc RolesService.getMyPermissions)
+    // - thiếu tham số này thì Admin thường (isRootAdmin=false) vẫn nhận đủ
+    // MỌI permission ở đây trong khi PermissionGuard đã chặn đúng ở tầng BE
+    // -> lệch pha, sinh ra tình huống "thấy nút nhưng bấm vào bị 403".
+    return this.rolesService.getMyPermissions(user.role, user.departmentId, user.positionId, user.isRootAdmin);
   }
 
   @Get('roles')

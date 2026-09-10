@@ -43,20 +43,25 @@ export class LinkGroupManagersService {
    * "Quyền rộng" cho tính năng Quản lý chính/phụ - true nếu role được thấy/
    * sửa MỌI nhóm bất kể có phải chính/phụ của nhóm đó hay không.
    *
-   * ⚠️ SỬA BUG (xem giải thích đầy đủ ở JSDoc `LinkGroupAccessHelper`):
-   * - `Role.ADMIN` luôn `true` - LỐI THOÁT HIỂM cứng, không phụ thuộc DB
-   *   (đồng bộ với `PermissionGuard`/`RolesService.getMyPermissions()` đã
-   *   vá trước đó - admin không bao giờ bị khoá bởi cấu hình `role_permissions`
-   *   sai/thiếu).
-   * - Role khác (bao gồm `Role.ASSISTANT` VÀ bất kỳ role tuỳ chỉnh nào Admin
-   *   tự tạo qua trang Phân quyền) tra thật `role_permissions` qua
-   *   `PermissionsService.hasPermission()` cho permission `link_groups.manage`
-   *   - CÙNG permission đã dùng để gác `link-categories.controller.ts`/
-   *   `link-groups.controller.ts` (CRUD Category/Group nói chung), tái dùng
-   *   đúng 1 nguồn quyền, không tạo permission key riêng cho tính năng này.
+   * ⚠️ SỬA BUG (xem giải thích đầy đủ ở JSDoc `LinkGroupAccessHelper`), ĐÃ
+   * ĐỔI theo migration `AddIsRootAdminToUsers1781000000000` (đồng bộ với
+   * `PermissionGuard`/`RolesService.getMyPermissions()`):
+   * - CHỈ Root Admin (`requesterRole === Role.ADMIN && requesterIsRootAdmin
+   *   === true`) luôn `true` - LỐI THOÁT HIỂM cứng, không phụ thuộc DB, admin
+   *   không bao giờ bị khoá bởi cấu hình `role_permissions` sai/thiếu.
+   * - Role khác, KỂ CẢ Admin thường (`role=admin` nhưng `isRootAdmin=false`),
+   *   tra thật `role_permissions` qua `PermissionsService.hasPermission()`
+   *   cho permission `link_groups.manage` - CÙNG permission đã dùng để gác
+   *   `link-categories.controller.ts`/`link-groups.controller.ts` (CRUD
+   *   Category/Group nói chung), tái dùng đúng 1 nguồn quyền, không tạo
+   *   permission key riêng cho tính năng này.
    */
-  private async hasBroadAccess(requesterRole: string, requesterDepartmentId?: number | null): Promise<boolean> {
-    if (requesterRole === Role.ADMIN) return true;
+  private async hasBroadAccess(
+    requesterRole: string,
+    requesterDepartmentId?: number | null,
+    requesterIsRootAdmin?: boolean,
+  ): Promise<boolean> {
+    if (requesterRole === Role.ADMIN && requesterIsRootAdmin) return true;
     const { allowed } = await this.permissionsService.hasPermission(
       requesterRole,
       'link_groups.manage',
@@ -125,7 +130,7 @@ export class LinkGroupManagersService {
    * Đây chính là API phục vụ trang "Quản lý nhóm liên kết" hiển thị đúng
    * theo yêu cầu: "chỉ hiển thị cho user nào được gán chính và phụ thôi".
    */
-  async listManagedByMe(requesterId: number, requesterRole: string): Promise<GroupManagersResult[]> {
+  async listManagedByMe(requesterId: number, requesterRole: string, requesterIsRootAdmin?: boolean): Promise<GroupManagersResult[]> {
     let groups: LinkGroup[];
 
     const fullRelations = [
@@ -137,7 +142,7 @@ export class LinkGroupManagersService {
       'category',
     ];
 
-    if (await this.hasBroadAccess(requesterRole, undefined)) {
+    if (await this.hasBroadAccess(requesterRole, undefined, requesterIsRootAdmin)) {
       groups = await this.groupRepo.find({
         relations: fullRelations,
         order: { sortOrder: 'ASC', id: 'ASC' },
@@ -186,7 +191,7 @@ export class LinkGroupManagersService {
    * group đó mới xem được (đúng yêu cầu: user không liên quan không thấy
    * gì cả, kể cả xem).
    */
-  async getManagers(groupId: number, requesterId: number, requesterRole: string): Promise<GroupManagersResult> {
+  async getManagers(groupId: number, requesterId: number, requesterRole: string, requesterIsRootAdmin?: boolean): Promise<GroupManagersResult> {
     const group = await this.loadGroupWithManagers(groupId);
     const secondaryIds = (group.secondaryManagers ?? []).map((m) => m.userId);
     const contentStaffIds = (group.contentStaff ?? []).map((m) => m.userId);
@@ -194,7 +199,7 @@ export class LinkGroupManagersService {
     if (
       !LinkGroupAccessHelper.canManage(
         requesterId,
-        await this.hasBroadAccess(requesterRole, undefined),
+        await this.hasBroadAccess(requesterRole, undefined, requesterIsRootAdmin),
         group.primaryManagerId,
         secondaryIds,
         contentStaffIds,
@@ -220,7 +225,7 @@ export class LinkGroupManagersService {
     if (
       !LinkGroupAccessHelper.canEditSecondaryManagers(
         requesterId,
-        await this.hasBroadAccess(requesterRole, undefined),
+        await this.hasBroadAccess(requesterRole, undefined, requesterIsRootAdmin),
         group.primaryManagerId,
       )
     ) {
@@ -265,7 +270,7 @@ export class LinkGroupManagersService {
     if (
       !LinkGroupAccessHelper.canEditSecondaryManagers(
         requesterId,
-        await this.hasBroadAccess(requesterRole, undefined),
+        await this.hasBroadAccess(requesterRole, undefined, requesterIsRootAdmin),
         group.primaryManagerId,
       )
     ) {
@@ -302,7 +307,7 @@ export class LinkGroupManagersService {
     if (
       !LinkGroupAccessHelper.canEditSecondaryManagers(
         requesterId,
-        await this.hasBroadAccess(requesterRole, undefined),
+        await this.hasBroadAccess(requesterRole, undefined, requesterIsRootAdmin),
         group.primaryManagerId,
       )
     ) {
@@ -347,7 +352,7 @@ export class LinkGroupManagersService {
     if (
       !LinkGroupAccessHelper.canEditSecondaryManagers(
         requesterId,
-        await this.hasBroadAccess(requesterRole, undefined),
+        await this.hasBroadAccess(requesterRole, undefined, requesterIsRootAdmin),
         group.primaryManagerId,
       )
     ) {

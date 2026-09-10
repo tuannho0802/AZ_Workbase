@@ -415,13 +415,30 @@ describe('RolesService', () => {
       expect(res).toEqual({ 'customers.view': 'own' });
     });
 
-    it('role admin -> luôn trả full quyền scope=all, KHÔNG gọi PermissionsService (lối thoát hiểm, bất kể positionId)', async () => {
+    it('role admin + isRootAdmin=true -> luôn trả full quyền scope=all, KHÔNG gọi PermissionsService (lối thoát hiểm, bất kể positionId)', async () => {
       mockPermissionRepo.find.mockResolvedValue([{ key: 'customers.view' }, { key: 'positions.manage' }]);
 
-      const res = await service.getMyPermissions('admin', 5, 3);
+      const res = await service.getMyPermissions('admin', 5, 3, true);
 
       expect(mockPermissionsService.getRolePermissions).not.toHaveBeenCalled();
       expect(res).toEqual({ 'customers.view': PermissionScope.ALL, 'positions.manage': PermissionScope.ALL });
+    });
+
+    it('role admin NHƯNG isRootAdmin=false (Admin thường) -> đi qua nhánh tra DB như role khác, KHÔNG còn lối thoát hiểm', async () => {
+      mockPermissionsService.getRolePermissions.mockResolvedValue(new Map([['customers.view', 'own']]));
+
+      const res = await service.getMyPermissions('admin', 5, 3, false);
+
+      expect(mockPermissionsService.getRolePermissions).toHaveBeenCalledWith('admin', 5, 3);
+      expect(res).toEqual({ 'customers.view': 'own' });
+    });
+
+    it('role admin, isRootAdmin không truyền (undefined) -> mặc định coi như KHÔNG phải Root Admin, đi qua nhánh tra DB', async () => {
+      mockPermissionsService.getRolePermissions.mockResolvedValue(new Map());
+
+      await service.getMyPermissions('admin', 5, 3);
+
+      expect(mockPermissionsService.getRolePermissions).toHaveBeenCalledWith('admin', 5, 3);
     });
   });
 });
