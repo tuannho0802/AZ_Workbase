@@ -8,27 +8,43 @@ import { PermissionGuard } from '../../common/guards/permission.guard';
 import { RequirePermission } from '../../common/decorators/require-permission.decorator';
 
 @ApiTags('Positions (Vị trí)')
-@ApiBearerAuth()
-@Controller('positions')
-@UseGuards(JwtAuthGuard, PermissionGuard)
+  @Controller('positions')
 export class PositionsController {
   constructor(private readonly positionsService: PositionsService) {}
 
+  // ⚠️ PHẢI khai báo TRƯỚC route `:id` bên dưới - nếu không Nest sẽ match
+  // "GET /positions/public" vào route `:id` (coi "public" là giá trị id),
+  // đúng thứ tự đã áp dụng ở DepartmentsController.findAllPublic().
+  @Get('public')
+  @ApiOperation({
+    summary:
+      'Danh sách Vị trí (công khai, KHÔNG cần đăng nhập) - chỉ id/name, dùng cho form đăng ký tài khoản',
+  })
+  findAllPublic() {
+    return this.positionsService.findAllPublic();
+  }
+
   @Get()
-  @RequirePermission('positions.manage')
+  @UseGuards(JwtAuthGuard, PermissionGuard)
+  @ApiBearerAuth()
+  @RequirePermission('positions.view')
   @ApiOperation({ summary: 'Danh sách tất cả Vị trí' })
   findAll() {
     return this.positionsService.findAll();
   }
 
   @Get(':id')
-  @RequirePermission('positions.manage')
+  @UseGuards(JwtAuthGuard, PermissionGuard)
+  @ApiBearerAuth()
+  @RequirePermission('positions.view')
   @ApiOperation({ summary: 'Lấy chi tiết 1 Vị trí' })
   findOne(@Param('id', ParseIntPipe) id: number) {
     return this.positionsService.findOne(id);
   }
 
   @Post()
+  @UseGuards(JwtAuthGuard, PermissionGuard)
+  @ApiBearerAuth()
   @RequirePermission('positions.manage')
   @ApiOperation({ summary: 'Tạo Vị trí mới' })
   create(@Body() dto: CreatePositionDto) {
@@ -36,6 +52,8 @@ export class PositionsController {
   }
 
   @Patch(':id')
+  @UseGuards(JwtAuthGuard, PermissionGuard)
+  @ApiBearerAuth()
   @RequirePermission('positions.manage')
   @ApiOperation({ summary: 'Sửa Vị trí (không đổi được code)' })
   update(@Param('id', ParseIntPipe) id: number, @Body() dto: UpdatePositionDto) {
@@ -43,6 +61,8 @@ export class PositionsController {
   }
 
   @Delete(':id')
+  @UseGuards(JwtAuthGuard, PermissionGuard)
+  @ApiBearerAuth()
   @RequirePermission('positions.manage')
   @ApiOperation({ summary: 'Xoá Vị trí (chặn nếu đang có nhân viên gán)' })
   remove(@Param('id', ParseIntPipe) id: number) {

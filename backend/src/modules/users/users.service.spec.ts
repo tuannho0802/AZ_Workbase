@@ -14,6 +14,7 @@ import { Department } from '../../database/entities/department.entity';
 import { RoleEntity } from '../../database/entities/role.entity';
 import { AuditService } from '../audit/audit.service';
 import { DepartmentsService } from '../departments/departments.service';
+import { PositionsService } from '../positions/positions.service';
 import { UploadsService } from '../uploads/uploads.service';
 import { Role } from '../../common/enums/role.enum';
 import { ApprovalStatus } from '../../common/enums/approval-status.enum';
@@ -59,6 +60,14 @@ describe('UsersService - Approval workflow (đăng ký công khai chờ duyệt)
     logActionAsync: jest.fn(),
   };
   const mockDepartmentsService = {
+    findOne: jest.fn(),
+  };
+  // FIX: UsersService giờ inject thêm PositionsService (dùng bởi
+  // createPendingRegistration() để validate positionId tồn tại khi đăng ký
+  // công khai - xem WORKFLOW_LOG.md 2026-09-10 "positions.view") - thiếu mock
+  // này sẽ fail TOÀN BỘ suite ngay từ bước `Test.createTestingModule().compile()`,
+  // đúng y hệt lý do đã ghi cho DepartmentsService/UploadsService ở trên.
+  const mockPositionsService = {
     findOne: jest.fn(),
   };
   // FIX: UsersService giờ inject thêm DataSource (@InjectDataSource() -
@@ -136,6 +145,7 @@ describe('UsersService - Approval workflow (đăng ký công khai chờ duyệt)
     mockQueryBuilder.getMany.mockResolvedValue([]);
     mockQueryBuilder.execute.mockResolvedValue(undefined);
     mockRoleRepo.exists.mockResolvedValue(true);
+    mockPositionsService.findOne.mockReset();
     mockUploadsService.signAvatarGetUrl.mockResolvedValue('https://signed-get-url.example/avatar.webp');
     mockUploadsService.getLimits.mockResolvedValue({
       avatarMaxSizeKb: 1024,
@@ -155,6 +165,7 @@ describe('UsersService - Approval workflow (đăng ký công khai chờ duyệt)
         { provide: getRepositoryToken(RoleEntity), useValue: mockRoleRepo },
         { provide: AuditService, useValue: mockAuditService },
         { provide: DepartmentsService, useValue: mockDepartmentsService },
+        { provide: PositionsService, useValue: mockPositionsService },
         { provide: UploadsService, useValue: mockUploadsService },
         { provide: getDataSourceToken(), useValue: mockDataSource },
       ],
@@ -258,6 +269,57 @@ describe('UsersService - Approval workflow (đăng ký công khai chờ duyệt)
           departmentId: 5,
         }),
       ).rejects.toThrow(BadRequestException);
+
+      expect(mockUsersRepo.save).not.toHaveBeenCalled();
+    });
+
+    // ⚠️ MỚI - mirror đúng bộ 3 test departmentId ở trên cho positionId
+    // (xem WORKFLOW_LOG.md 2026-09-10 "positions.view" - luồng đăng ký công
+    // khai giờ cũng nhận positionId, phải validate TỒN TẠI trước khi lưu).
+    it('lưu đúng positionId khi có truyền vào', async () => {
+      mockUsersRepo.create.mockImplementation((input: any) => input);
+      mockUsersRepo.save.mockImplementation((entity: any) => Promise.resolve(entity));
+      mockPositionsService.findOne.mockResolvedValue({ id: 4, code: 'content', name: 'Content' });
+
+      await service.createPendingRegistration({
+        name: 'F',
+        email: 'f@example.com',
+        password: 'hash',
+        positionId: 4,
+      });
+
+      expect(mockPositionsService.findOne).toHaveBeenCalledWith(4);
+      expect(mockUsersRepo.create).toHaveBeenCalledWith(
+        expect.objectContaining({ positionId: 4 }),
+      );
+    });
+
+    it('KHÔNG gọi kiểm tra Position nếu không truyền positionId (tránh gọi thừa)', async () => {
+      mockUsersRepo.create.mockImplementation((input: any) => input);
+      mockUsersRepo.save.mockImplementation((entity: any) => Promise.resolve(entity));
+
+      await service.createPendingRegistration({
+        name: 'G',
+        email: 'g@example.com',
+        password: 'hash',
+      });
+
+      expect(mockPositionsService.findOne).not.toHaveBeenCalled();
+    });
+
+    it('⚠️ KIỂM TRA TÍNH THỐNG NHẤT DỮ LIỆU: ném NotFoundException nếu positionId không tồn tại (endpoint công khai, ai cũng gửi được ID bịa)', async () => {
+      mockPositionsService.findOne.mockRejectedValue(
+        new NotFoundException('Không tìm thấy vị trí với ID 999'),
+      );
+
+      await expect(
+        service.createPendingRegistration({
+          name: 'H',
+          email: 'h@example.com',
+          password: 'hash',
+          positionId: 999,
+        }),
+      ).rejects.toThrow(NotFoundException);
 
       expect(mockUsersRepo.save).not.toHaveBeenCalled();
     });

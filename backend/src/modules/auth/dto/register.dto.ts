@@ -45,6 +45,16 @@ export class RegisterDto {
   @Type(() => Number)
   departmentId?: number;
 
+  // ⚠️ MỚI - đối xứng departmentId ở trên, cho phép người tự đăng ký chọn
+  // luôn Vị trí (tuỳ chọn) thay vì phải chờ Admin gán sau khi duyệt - đúng
+  // yêu cầu "mọi luồng tạo tài khoản (Admin tạo / tự đăng ký) có đầy đủ field
+  // như nhau".
+  @ApiPropertyOptional({ example: 1, description: 'Vị trí muốn đăng ký (tuỳ chọn)' })
+  @IsOptional()
+  @IsInt()
+  @Type(() => Number)
+  positionId?: number;
+
   // ── Chống bot spam đăng ký (không liên quan tới nghiệp vụ, xem AuthService.register) ──
   // ⚠️ Trước đây có field `turnstileToken` bắt buộc (Cloudflare Turnstile) -
   // đã bỏ. Lớp chống bot "human challenge" giờ nằm ở Frontend (Vercel

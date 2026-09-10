@@ -175,6 +175,7 @@ export class AuthService {
       password: hashedPassword,
       phone: dto.phone,
       departmentId: dto.departmentId,
+      positionId: dto.positionId,
     });
 
     this.logger.log(`[Auth] New self-registration pending approval: ${user.email} (ID ${user.id})`);

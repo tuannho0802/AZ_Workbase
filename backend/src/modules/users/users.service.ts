@@ -17,6 +17,7 @@ import * as bcrypt from 'bcrypt';
 import { AuditService } from '../audit/audit.service';
 import { ApprovalStatus } from '../../common/enums/approval-status.enum';
 import { DepartmentsService } from '../departments/departments.service';
+import { PositionsService } from '../positions/positions.service';
 import { UsersAccessHelper } from './helpers/users-access.helper';
 import { UploadsService } from '../uploads/uploads.service';
 
@@ -41,6 +42,7 @@ export class UsersService {
     private roleRepository: Repository<RoleEntity>,
     private readonly auditService: AuditService,
     private readonly departmentsService: DepartmentsService,
+    private readonly positionsService: PositionsService,
     private readonly uploadsService: UploadsService,
     @InjectDataSource()
     private readonly dataSource: DataSource,
@@ -820,6 +822,7 @@ export class UsersService {
     password: string; // đã hash sẵn từ AuthService
     phone?: string;
     departmentId?: number;
+    positionId?: number;
   }): Promise<User> {
     // ⚠️ KIỂM TRA TÍNH THỐNG NHẤT DỮ LIỆU: đây là endpoint CÔNG KHAI, ai
     // cũng gọi được (không cần token) - nếu không validate, 1 người bất kỳ
@@ -839,6 +842,13 @@ export class UsersService {
       }
     }
 
+    // Cùng lý do như departmentId ở trên - Position không có cột isActive
+    // (xem position.entity.ts) nên chỉ cần xác nhận TỒN TẠI; findOne() đã tự
+    // ném NotFoundException (404) nếu ID bịa, không cần check thêm.
+    if (data.positionId != null) {
+      await this.positionsService.findOne(data.positionId);
+    }
+
     // Mã nhân viên: đăng ký công khai luôn TỰ SINH (không cho tự đặt tay -
     // tránh spam trùng/đặt mã tuỳ tiện qua form công khai). Retry vài lần
     // nếu đụng race condition hiếm gặp (2 người đăng ký gần như đồng thời).
@@ -855,6 +865,7 @@ export class UsersService {
         password: data.password,
         phone: data.phone ?? null,
         departmentId: data.departmentId ?? undefined,
+        positionId: data.positionId ?? undefined,
         employeeCode,
         role: Role.EMPLOYEE,
         approvalStatus: ApprovalStatus.PENDING,

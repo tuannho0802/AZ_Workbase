@@ -27,6 +27,17 @@ export class PositionsService {
     });
   }
 
+  // Public - dùng cho form đăng ký tài khoản (POST /auth/register), KHÔNG
+  // cần đăng nhập. Position không có cột `isActive` (khác Department) nên
+  // trả toàn bộ danh mục, chỉ giới hạn 2 field id/name giống đúng
+  // DepartmentsService.findAllPublic() (không lộ description/isSystem).
+  async findAllPublic(): Promise<{ id: number; name: string }[]> {
+    return this.positionRepo.find({
+      order: { name: 'ASC' },
+      select: ['id', 'name'],
+    });
+  }
+
   async findOne(id: number): Promise<Position> {
     const position = await this.positionRepo.findOne({
       where: { id },

@@ -147,6 +147,7 @@ dùng `@Roles()` enum tĩnh. Danh mục permission đầy đủ trong DB (sau 2 
 | `roles.view` | roles | Xem trang Phân quyền |
 | `roles.manage` | roles | Chỉnh ma trận quyền — chỉ Admin |
 | `positions.manage` | positions | **MỚI (2026-09-10).** CRUD Vị trí (Position) — bảng cấu hình toàn cục, không có scope (mọi user thấy chung 1 danh mục, không theo phòng ban). Seed mặc định: Admin/Assistant = `all` (thực chất là quyền nhị phân vì `supportsScope=false`, giá trị scope luôn NULL). Xem mục 1.8 để biết Position dùng để làm gì |
+| `positions.view` | positions | **MỚI (2026-09-10, fix bug audit).** Xem danh mục Vị trí (GET /positions, GET /positions/:id) — tách riêng khỏi `positions.manage` giống cặp `departments.view`/`departments.manage`. Seed mặc định: CẢ 4 role (admin/assistant/manager/employee) = quyền nhị phân, vì đây chỉ là danh mục tham chiếu dùng cho dropdown khi tạo/sửa/đăng ký tài khoản, không phải hành động nhạy cảm. `GET /positions/public` (không cần đăng nhập, chỉ id/name) dùng riêng cho form `POST /auth/register` |
 
 Nghĩa là: Admin vào trang Phân quyền **BẬT/TẮT bất kỳ permission nào ở bảng trên** → BE **thật sự
 chặn/mở** ngay (không cần deploy), FE **tự ẩn/hiện** trong tối đa 60 giây.
@@ -238,6 +239,27 @@ là điểm dễ nhầm nhất khi đọc code `PermissionsService.loadRolePermi
 `positions.manage`) — chặn xoá nếu Position đang có User gán hoặc `isSystem=true` (KHÔNG dựa vào FK
 `ON DELETE SET NULL` để âm thầm gỡ Position khỏi User, dù kỹ thuật vẫn an toàn — chặn tường minh để
 Admin chủ động xử lý trước).
+
+**⚠️ Bug đã phát hiện & sửa khi audit lại BE (2026-09-10, trước khi làm FE):**
+1. `GET /positions`/`GET /positions/:id` trước đây gate CHUNG với `positions.manage` (chỉ Admin/Assistant)
+   — Manager (scope='department' trên `users.manage`) không list được Position để chọn khi tạo nhân viên
+   (403). Đã tách permission `positions.view` riêng (xem bảng permission ở trên), gán cho cả 4 role, giữ
+   nguyên `positions.manage` chỉ Admin/Assistant cho CUD.
+2. `POST /auth/register` (đăng ký công khai) hoàn toàn không có field `positionId` lẫn endpoint public để
+   lấy danh mục — đã thêm `GET /positions/public` (mirror `GET /departments/public`, không cần đăng nhập,
+   chỉ id/name) + field `positionId` (tuỳ chọn) vào `RegisterDto`/`AuthService.register()`/
+   `UsersService.createPendingRegistration()` (có validate tồn tại, ném `NotFoundException` nếu ID bịa,
+   giống hệt cách `departmentId` đang được validate ở luồng này).
+3. `CreateUserDto`/`UpdateUserDto` (Admin/Manager tạo/sửa nhân viên) trước đây cũng thiếu field
+   `positionId` — `ValidationPipe` global (`whitelist: true`) tự strip field này nếu client gửi lên, khiến
+   KHÔNG CÓ CÁCH NÀO gán Position cho User qua bất kỳ luồng nào. Đã thêm vào cả 2 DTO.
+4. `JwtStrategy.validate()` (`request.user`) trước đây thiếu `positionId` — `PermissionGuard` đọc đúng
+   `user.positionId` nhưng luôn nhận `undefined`, khiến MỌI override theo Position (Phase 2) không có
+   hiệu lực trên request thật dù DB cấu hình đúng. Đã thêm `positionId: user.positionId` vào object trả
+   về của `validate()`.
+
+Xem chi tiết đầy đủ ở `WORKFLOW_LOG.md` 2 entry ngày 2026-09-10 ("Audit BE Phase 1+2 Position" và bản ghi
+tiếp theo về `positions.view`).
 
 **⚠️ Bug đã phát hiện & sửa trong lúc code phase này:** `PermissionsService.invalidate(roleCode,
 departmentId)` (dùng để xoá cache sau khi Admin lưu override) trước đây dựng lại đúng 1 cacheKey khớp
