@@ -14,6 +14,7 @@ import { Customer } from '@/lib/types/customer.types';
 import dayjs, { Dayjs } from 'dayjs';
 import { isFutureVnDate } from '@/lib/utils/date-vn';
 import { useMyHiddenElements } from '@/lib/hooks/useUiVisibility';
+import { useDepartments } from '@/lib/hooks/useDepartments';
 
 const { Text } = Typography;
 
@@ -42,6 +43,24 @@ export const CustomerForm: React.FC<CustomerFormProps> = ({ open, customer, onCl
   const { hiddenKeys } = useMyHiddenElements('customers');
   const hideSalesField = hiddenKeys.includes('field:sales_assignment');
   const hideMarketingField = hiddenKeys.includes('field:marketing_assignment');
+
+  // ⚠️ MỚI - FIX BUG THẬT (phát hiện qua ảnh chụp màn hình người dùng):
+  // dropdown "Sales phụ trách"/"Marketing phụ trách" ở modal này trước đây
+  // KHÔNG lọc theo phòng ban - "Marketing phụ trách" hiện ra cả
+  // Admin/Manager/Sales (toàn Phòng Kinh doanh), không đúng như 2 dropdown
+  // filter ở bảng danh sách khách hàng (page.tsx đã lọc qua
+  // salesUsersInDept/marketingUsersInDept nhưng CHƯA truyền xuống modal).
+  // Tra đúng phòng "Kinh doanh"/"Marketing" theo TÊN - GIỐNG HỆT logic ở
+  // customers/page.tsx (không hardcode ID, xem chú thích tương ứng ở đó).
+  const { departments } = useDepartments();
+  const salesDept = useMemo(
+    () => (departments || []).find((d: any) => d.name?.toLowerCase().includes('kinh doanh')),
+    [departments],
+  );
+  const marketingDept = useMemo(
+    () => (departments || []).find((d: any) => d.name?.toLowerCase().includes('marketing')),
+    [departments],
+  );
 
   // ── "Tham gia nhóm" - chọn TỰ DO, KHÔNG còn ràng buộc trùng Category với
   // Nguồn đã chọn nữa. Trước đây bắt buộc trùng tên (Nguồn "Facebook" chỉ
@@ -329,14 +348,14 @@ export const CustomerForm: React.FC<CustomerFormProps> = ({ open, customer, onCl
             {!hideSalesField && (
               <Col span={hideMarketingField ? 24 : 12}>
                 <Form.Item name="salesUserId" label="Sales phụ trách">
-                  <SalesUserSelect />
+                  <SalesUserSelect departmentId={salesDept?.id} />
                 </Form.Item>
               </Col>
             )}
             {!hideMarketingField && (
               <Col span={hideSalesField ? 24 : 12}>
                 <Form.Item name="marketingUserId" label="Marketing phụ trách">
-                  <SalesUserSelect placeholder="Chọn Marketing đang hoạt động..." />
+                  <SalesUserSelect placeholder="Chọn Marketing đang hoạt động..." departmentId={marketingDept?.id} />
                 </Form.Item>
               </Col>
             )}

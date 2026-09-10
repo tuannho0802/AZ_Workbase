@@ -21,6 +21,7 @@ interface UserOption {
   email: string;
   role: string;
   department?: {
+    id: number;
     name: string;
   };
   // ⚠️ MỚI - rà soát Vị trí 2026-09-10: BE (users.service.ts
@@ -36,19 +37,36 @@ interface SalesUserSelectProps {
   onChange?: (userId: number | null, user: UserOption | null) => void;
   placeholder?: string;
   disabled?: boolean;
+  // ⚠️ MỚI - rà soát 2026-09-10: BUG THẬT phát hiện qua ảnh chụp màn hình
+  // người dùng - Modal Thêm/Sửa khách hàng (CustomerForm.tsx) dùng chung 1
+  // component này cho CẢ "Sales phụ trách" LẪN "Marketing phụ trách", nhưng
+  // không hề lọc theo phòng ban -> dropdown "Marketing phụ trách" hiện ra cả
+  // Admin/Manager/Sales (toàn "Phòng Kinh doanh"), không giới hạn đúng
+  // "Phòng Marketing" như 2 dropdown filter ở bảng danh sách khách hàng
+  // (page.tsx đã lọc đúng qua salesUsersInDept/marketingUsersInDept, nhưng
+  // filter đó CHƯA BAO GIỜ được truyền xuống modal này). Khi truyền
+  // departmentId, chỉ hiện user thuộc đúng phòng ban đó; để trống (undefined)
+  // giữ nguyên hành vi cũ (hiện TẤT CẢ) cho các nơi khác đang dùng component
+  // này mà không cần lọc.
+  departmentId?: number;
 }
 
 export const SalesUserSelect = ({ 
-  value, onChange, placeholder = 'Chọn sales đang hoạt động...', disabled 
+  value, onChange, placeholder = 'Chọn sales đang hoạt động...', disabled, departmentId,
 }: SalesUserSelectProps) => {
   const [searchText, setSearchText] = useState('');
 
   // Fetch tất cả users
-  const { data: users = [], isLoading } = useQuery<UserOption[]>({
+  const { data: allUsers = [], isLoading } = useQuery<UserOption[]>({
     queryKey: ['users-for-select'],
     queryFn: () => usersApi.getAllForSelect(),
     staleTime: 5 * 60 * 1000, // cache 5 phút
   });
+
+  const users = useMemo(
+    () => (departmentId == null ? allUsers : allUsers.filter((u) => u.department?.id === departmentId)),
+    [allUsers, departmentId],
+  );
 
   // User đang được chọn hiện tại
   const selectedUser = useMemo(
