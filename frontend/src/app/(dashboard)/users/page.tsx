@@ -197,6 +197,16 @@ export default function UsersPage() {
   const isEditingSelf = !!(editingUser && user && editingUser.id === user.id);
   const isRootAdminChanged =
     !!editingUser && isRootAdminWatch !== undefined && !!isRootAdminWatch !== !!editingUser?.isRootAdmin;
+  // ⚠️ MỚI - Root Admin CHỈ có ý nghĩa với role='admin' (BE cũng chặn cứng:
+  // `UsersService.update()` ném BadRequestException "Root Admin chỉ áp dụng
+  // cho role Admin" nếu gửi isRootAdmin=true mà role đích khác 'admin').
+  // Trước đây Switch hiện với MỌI vai trò miễn caller là Root Admin - gây
+  // khó hiểu khi sửa 1 nhân viên role khác (vd "Staff Marketing") vẫn thấy
+  // toggle Root Admin dù bấm vào chắc chắn sẽ bị BE từ chối. Giờ chỉ render
+  // khi vai trò ĐANG CHỌN trong Form (roleWatch - theo dõi realtime để cũng
+  // ẩn/hiện ngay khi đổi Select "Vai trò", không cần đợi submit) là 'admin'.
+  const roleWatch = Form.useWatch('role', form);
+  const isTargetRoleAdmin = String(roleWatch ?? '').toLowerCase() === 'admin';
 
   useEffect(() => {
     if (!permissionsLoading && user && !canAccessPage) {
@@ -581,6 +591,18 @@ export default function UsersPage() {
               placeholder="Chọn vai trò"
               loading={rolesLoading}
               options={roleOptions}
+              // ⚠️ MỚI - đổi vai trò khỏi 'admin' -> tự tắt Switch "Root
+              // Admin" đang ẩn đi (antd Form mặc định GIỮ NGUYÊN giá trị
+              // field dù Form.Item của nó không render - preserve=true) và
+              // xoá theo ô "Mật khẩu hiện tại" nếu đang hiện. Thiếu bước
+              // này, payload vẫn có thể lỡ gửi `isRootAdmin: true` kèm role
+              // khác 'admin' lên BE (BE sẽ từ chối đúng, nhưng trải nghiệm
+              // khó hiểu vì Switch đã ẩn khỏi màn hình từ trước khi bấm Lưu).
+              onChange={(value) => {
+                if (String(value ?? '').toLowerCase() !== 'admin') {
+                  form.setFieldsValue({ isRootAdmin: false, currentPassword: undefined });
+                }
+              }}
             />
           </Form.Item>
 
@@ -606,7 +628,7 @@ export default function UsersPage() {
               này cho 1 nhân viên `role=admin` khác vẫn giữ nguyên Root Admin
               hiện tại. BE (UsersService) chặn: chỉ role=admin mới bật được,
               và không được tự gỡ Root Admin cuối cùng của hệ thống. */}
-          {isRootAdminCaller && (
+          {isRootAdminCaller && isTargetRoleAdmin && (
             <>
               <Form.Item
                 name="isRootAdmin"
