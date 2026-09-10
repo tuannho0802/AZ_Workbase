@@ -1,8 +1,7 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { useQuery } from '@tanstack/react-query';
 import {
   Table,
   Button,
@@ -16,7 +15,6 @@ import {
   Popconfirm,
   Typography,
   ColorPicker,
-  Select,
 } from 'antd';
 import {
   PlusOutlined,
@@ -44,17 +42,12 @@ import {
   useDeleteLinkGroup,
 } from '@/lib/hooks/useLinkGroups';
 import { LinkCategory, LinkGroup } from '@/lib/api/link-groups.api';
-import { usersApi } from '@/lib/api/users.api';
 import { GroupManagersModal } from '@/components/link-groups/GroupManagersModal';
 import { useMyPermissions } from '@/lib/hooks/useMyPermissions';
+import { useAssignmentGroupUsers } from '@/lib/hooks/useAssignmentGroups';
+import { SalesUserSelect, type UserOption } from '@/components/customers/SalesUserSelect';
 
 const { Title, Text } = Typography;
-
-interface UserOption {
-  id: number;
-  name: string;
-  email: string;
-}
 
 export default function LinkGroupsAdminPage() {
   const { can, isLoading: permissionsLoading } = useMyPermissions();
@@ -87,14 +80,29 @@ export default function LinkGroupsAdminPage() {
   const { categories, isLoading: loadingCategories } = useLinkCategories(false);
   const { groups, isLoading: loadingGroups } = useAllLinkGroups();
 
-  // Dùng để chọn "Quản lý chính" trong form Thêm/Sửa nhóm - endpoint mở
-  // cho mọi role đã đăng nhập nên gọi thẳng không cần check role ở đây.
-  const { data: users } = useQuery<UserOption[]>({
-    queryKey: ['users-for-select'],
-    queryFn: () => usersApi.getAllForSelect(),
-    staleTime: 5 * 60 * 1000,
-  });
-  const userOptions = (users ?? []).map((u) => ({ value: u.id, label: u.name || u.email }));
+  // ⚠️ SỬA (2026-09-10, theo phản hồi người dùng - "Filter ở đây check là
+  // nhân viên phòng ban marketing, không check positions"): dropdown "Quản
+  // lý chính" trước đây gọi thẳng `usersApi.getAllForSelect()` - hiện TẤT
+  // CẢ nhân viên (kể cả Admin/Sales), không lọc gì, và vẽ bằng `<Select>`
+  // trơn chỉ hiện tên - không đồng bộ với "Quản lý phụ"/"Nhân viên Content"
+  // bên dưới đã đổi sang `SalesUserSelect`. Đổi sang dùng đúng "Quản lý phụ
+  // trách" (Assignment Group Config) key `marketing` (Phòng Marketing,
+  // KHÔNG lọc theo Vị trí - xem trang /quan-ly-phu-trach) để Admin đổi được
+  // filter qua UI mà không cần sửa code, và dùng lại đúng UI SalesUserSelect
+  // cho cả 3 dropdown của trang này.
+  const { users: primaryManagerCandidatesRaw } = useAssignmentGroupUsers('marketing');
+  const primaryManagerCandidates: UserOption[] = useMemo(
+    () =>
+      primaryManagerCandidatesRaw.map((u) => ({
+        id: u.id,
+        name: u.name,
+        email: u.email,
+        role: u.role,
+        department: u.department ?? undefined,
+        position: u.position ?? undefined,
+      })),
+    [primaryManagerCandidatesRaw],
+  );
 
   const createCategoryMutation = useCreateLinkCategory();
   const updateCategoryMutation = useUpdateLinkCategory();
@@ -561,16 +569,12 @@ export default function LinkGroupsAdminPage() {
           <Form.Item
             name="primaryManagerId"
             label="Quản lý chính"
-            tooltip="Người chịu trách nhiệm chính cho nhóm này - chỉ admin gán/đổi được. Có thể thêm nhiều Quản lý phụ sau khi tạo, qua nút 'Quản lý phụ'."
+            tooltip="Người chịu trách nhiệm chính cho nhóm này - chỉ admin gán/đổi được. Có thể thêm nhiều Quản lý phụ sau khi tạo, qua nút 'Quản lý phụ'. Danh sách lọc theo cấu hình 'Marketing phụ trách' ở trang Quản lý phụ trách."
           >
-            <Select
-              allowClear
-              showSearch={{
-                filterOption: (input, option) =>
-                  (option?.label as string)?.toLowerCase().includes(input.toLowerCase()),
-              }}
+            <SalesUserSelect
               placeholder="Chưa gán ai làm Quản lý chính"
-              options={userOptions}
+              users={primaryManagerCandidates}
+              hidePreviewCard
             />
           </Form.Item>
         </Form>

@@ -7,14 +7,14 @@ import { customersApi } from '@/lib/api/customers.api';
 import { useMediaSources } from '@/lib/hooks/useMediaSources';
 import { useAllActiveLinkGroups } from '@/lib/hooks/useLinkGroups';
 import { customerGroupMembershipsApi } from '@/lib/api/link-groups.api';
-import { SalesUserSelect } from './SalesUserSelect';
+import { SalesUserSelect, type UserOption } from './SalesUserSelect';
+import { useAssignmentGroupUsers } from '@/lib/hooks/useAssignmentGroups';
 import { SourceTag } from './SourceTag';
 import { GroupPickerModal } from './GroupPickerModal';
 import { Customer } from '@/lib/types/customer.types';
 import dayjs, { Dayjs } from 'dayjs';
 import { isFutureVnDate } from '@/lib/utils/date-vn';
 import { useMyHiddenElements } from '@/lib/hooks/useUiVisibility';
-import { useDepartments } from '@/lib/hooks/useDepartments';
 
 const { Text } = Typography;
 
@@ -44,22 +44,43 @@ export const CustomerForm: React.FC<CustomerFormProps> = ({ open, customer, onCl
   const hideSalesField = hiddenKeys.includes('field:sales_assignment');
   const hideMarketingField = hiddenKeys.includes('field:marketing_assignment');
 
-  // ⚠️ MỚI - FIX BUG THẬT (phát hiện qua ảnh chụp màn hình người dùng):
-  // dropdown "Sales phụ trách"/"Marketing phụ trách" ở modal này trước đây
-  // KHÔNG lọc theo phòng ban - "Marketing phụ trách" hiện ra cả
-  // Admin/Manager/Sales (toàn Phòng Kinh doanh), không đúng như 2 dropdown
-  // filter ở bảng danh sách khách hàng (page.tsx đã lọc qua
-  // salesUsersInDept/marketingUsersInDept nhưng CHƯA truyền xuống modal).
-  // Tra đúng phòng "Kinh doanh"/"Marketing" theo TÊN - GIỐNG HỆT logic ở
-  // customers/page.tsx (không hardcode ID, xem chú thích tương ứng ở đó).
-  const { departments } = useDepartments();
-  const salesDept = useMemo(
-    () => (departments || []).find((d: any) => d.name?.toLowerCase().includes('kinh doanh')),
-    [departments],
+  // ⚠️ SỬA (2026-09-10, theo phản hồi người dùng - "Sao lại filter mất luôn
+  // rồi" / "User thuộc phòng ban mới vừa update đâu?"): bản trước tự dò
+  // phòng ban theo TÊN cứng ('kinh doanh'/'marketing') qua useDepartments()
+  // + .find(), CHỈ khớp ĐÚNG 1 phòng ban duy nhất. Khi Admin vào trang
+  // "/quan-ly-phu-trach" thêm phòng ban thứ 2 (vd "Phòng Hỗ trợ kỹ thuật")
+  // vào config `sales`, nhân viên phòng đó vẫn KHÔNG hiện ra ở đây vì code
+  // chưa hề đọc config này - "Quản lý phụ trách" tồn tại chính là để đổi
+  // filter mà không cần sửa FE, nhưng modal này chưa được wire vào đó.
+  // Đổi sang dùng thẳng `useAssignmentGroupUsers('sales'|'marketing')` -
+  // ĐÚNG NGUỒN mà bộ lọc bảng danh sách khách hàng (customers/page.tsx,
+  // salesUsersInDept/marketingUsersInDept) đã dùng từ trước - giờ đồng bộ 1
+  // nguồn duy nhất, sửa config ở /quan-ly-phu-trach có tác dụng ngay ở cả 2 nơi.
+  const { users: salesCandidatesRaw } = useAssignmentGroupUsers('sales');
+  const { users: marketingCandidatesRaw } = useAssignmentGroupUsers('marketing');
+  const salesCandidates: UserOption[] = useMemo(
+    () =>
+      salesCandidatesRaw.map((u) => ({
+        id: u.id,
+        name: u.name,
+        email: u.email,
+        role: u.role,
+        department: u.department ?? undefined,
+        position: u.position ?? undefined,
+      })),
+    [salesCandidatesRaw],
   );
-  const marketingDept = useMemo(
-    () => (departments || []).find((d: any) => d.name?.toLowerCase().includes('marketing')),
-    [departments],
+  const marketingCandidates: UserOption[] = useMemo(
+    () =>
+      marketingCandidatesRaw.map((u) => ({
+        id: u.id,
+        name: u.name,
+        email: u.email,
+        role: u.role,
+        department: u.department ?? undefined,
+        position: u.position ?? undefined,
+      })),
+    [marketingCandidatesRaw],
   );
 
   // ── "Tham gia nhóm" - chọn TỰ DO, KHÔNG còn ràng buộc trùng Category với
@@ -348,14 +369,14 @@ export const CustomerForm: React.FC<CustomerFormProps> = ({ open, customer, onCl
             {!hideSalesField && (
               <Col span={hideMarketingField ? 24 : 12}>
                 <Form.Item name="salesUserId" label="Sales phụ trách">
-                  <SalesUserSelect departmentId={salesDept?.id} />
+                  <SalesUserSelect users={salesCandidates} />
                 </Form.Item>
               </Col>
             )}
             {!hideMarketingField && (
               <Col span={hideSalesField ? 24 : 12}>
                 <Form.Item name="marketingUserId" label="Marketing phụ trách">
-                  <SalesUserSelect placeholder="Chọn Marketing đang hoạt động..." departmentId={marketingDept?.id} />
+                  <SalesUserSelect placeholder="Chọn Marketing đang hoạt động..." users={marketingCandidates} />
                 </Form.Item>
               </Col>
             )}
