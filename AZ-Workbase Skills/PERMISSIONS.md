@@ -146,6 +146,7 @@ dùng `@Roles()` enum tĩnh. Danh mục permission đầy đủ trong DB (sau 2 
 | `audit.manage` | audit | Cấu hình/dọn dẹp audit log |
 | `roles.view` | roles | Xem trang Phân quyền |
 | `roles.manage` | roles | Chỉnh ma trận quyền — chỉ Admin |
+| `positions.manage` | positions | **MỚI (2026-09-10).** CRUD Vị trí (Position) — bảng cấu hình toàn cục, không có scope (mọi user thấy chung 1 danh mục, không theo phòng ban). Seed mặc định: Admin/Assistant = `all` (thực chất là quyền nhị phân vì `supportsScope=false`, giá trị scope luôn NULL). Xem mục 1.8 để biết Position dùng để làm gì |
 
 Nghĩa là: Admin vào trang Phân quyền **BẬT/TẮT bất kỳ permission nào ở bảng trên** → BE **thật sự
 chặn/mở** ngay (không cần deploy), FE **tự ẩn/hiện** trong tối đa 60 giây.
@@ -192,6 +193,62 @@ xoá role đang có user gán, không cho đổi `code` sau khi tạo (tránh m�
 quyền `roles.manage` của chính role mình đang mang (tự khoá cửa) — xem mục 4.
 
 ---
+
+### 1.8. Position (Vị trí) — tầng override THỨ 3, ưu tiên CAO NHẤT (thêm 2026-09-10, ĐANG TRIỂN KHAI)
+
+> Kế hoạch đầy đủ:
+> `AZ-Workbase Skills/PLAN_POSITION_FIELD_VISIBILITY_ASSIGNMENT_GROUPS.md`. Trạng thái tại thời điểm
+> cập nhật mục này: **Phase 1 + Phase 2 (Position nền tảng + Override Action Permission theo Position)
+> đã code + build + test xong** (xem WORKFLOW_LOG.md ngày 2026-09-10). **Phase 3 (UI Visibility Rules)
+> và Phase 4 (Assignment Group Config) CHƯA làm** — đừng nhầm là đã xong toàn bộ plan.
+
+**Khái niệm:** `Position` (bảng `positions`) là 1 lớp phân quyền chi tiết hơn Role, đặt DƯỚI Role (vd
+Role `employee` + Position `content`/`editor`/`media`, hoặc Role `admin` + Position `hr`/`it`/`director`/
+`ceo`). 1 User có 1 Role (bắt buộc) + tối đa 1 Position (`users.position_id`, **luôn nullable, KHÔNG bắt
+buộc**). `positions.department_id` **chỉ mang tính gợi ý hiển thị**, KHÔNG ràng buộc user phải thuộc
+đúng phòng ban đó mới chọn được Position tương ứng.
+
+**Thứ tự ưu tiên override — TUYẾN TÍNH 3 TẦNG (không phải ma trận tổ hợp Phòng ban × Vị trí):**
+
+```
+Override theo Vị trí (position_id ≠ NULL, department_id = NULL)
+        ▼ (nếu không có dòng)
+Override theo Phòng ban (department_id ≠ NULL, position_id = NULL)
+        ▼ (nếu không có dòng)
+Toàn cục / Global (cả hai đều NULL)
+```
+
+1 dòng `role_permissions` chỉ được set `department_id` HOẶC `position_id`, không cả hai. Dòng override
+Position **không lọc theo `departmentId` của user** — áp dụng bất kể user đang thuộc phòng ban nào (đây
+là điểm dễ nhầm nhất khi đọc code `PermissionsService.loadRolePermissionMap()`).
+
+**Endpoint mới (`roles.controller.ts`, quyền `roles.manage`, mirror y hệt `department-overrides` đã có
+ở mục 1.7):**
+
+| Endpoint | Ghi chú |
+|---|---|
+| `GET /roles/:id/position-overrides` | Danh sách override theo Vị trí của Role này |
+| `PUT /roles/:id/position-overrides/:positionId` | Ghi đè toàn bộ quyền của Role cho 1 Vị trí cụ thể |
+| `DELETE /roles/:id/position-overrides/:positionId` | Xoá override |
+
+`GET /roles/my-permissions` giờ tính CẢ override Position của chính user gọi (BE tự đọc
+`user.positionId` từ JWT/DB, FE không cần truyền gì thêm).
+
+**Module CRUD Position mới:** `positions/` (`GET/POST/PATCH/DELETE /positions`, quyền
+`positions.manage`) — chặn xoá nếu Position đang có User gán hoặc `isSystem=true` (KHÔNG dựa vào FK
+`ON DELETE SET NULL` để âm thầm gỡ Position khỏi User, dù kỹ thuật vẫn an toàn — chặn tường minh để
+Admin chủ động xử lý trước).
+
+**⚠️ Bug đã phát hiện & sửa trong lúc code phase này:** `PermissionsService.invalidate(roleCode,
+departmentId)` (dùng để xoá cache sau khi Admin lưu override) trước đây dựng lại đúng 1 cacheKey khớp
+CHÍNH XÁC — sau khi cache key có thêm chiều `positionId`, cách này bỏ sót các user cùng phòng ban nhưng
+có Position khác nhau (cache stale tối đa 30s). Đã sửa thành quét + so khớp đúng 1 dimension được
+truyền, bỏ qua dimension còn lại — có test khoá hành vi ở `permissions.service.spec.ts` (nhóm
+`invalidate - BUG FIX`).
+
+---
+
+
 
 ## 2. Đối chiếu theo từng module (trạng thái thực tế — đọc trực tiếp code tại thời điểm cập nhật)
 
