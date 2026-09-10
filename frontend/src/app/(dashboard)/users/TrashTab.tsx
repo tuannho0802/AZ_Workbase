@@ -100,6 +100,11 @@ export const TrashTab = ({ onCountChange, onRestored }: Props) => {
       render: (_: unknown, record: TrashedUser) => record.department?.name || <Text type="secondary">—</Text>,
     },
     {
+      title: 'Vị trí',
+      key: 'position',
+      render: (_: unknown, record: TrashedUser) => record.position?.name || <Text type="secondary">—</Text>,
+    },
+    {
       title: 'Đã xoá lúc',
       dataIndex: 'deletedAt',
       key: 'deletedAt',
