@@ -20,6 +20,10 @@ export class Department {
   @Column({ name: 'is_active', default: true, transformer: new BooleanTransformer() })
   isActive: boolean;
 
+  // Mã màu hex hiển thị Tag ngoài FE (vd '#1890ff') - xem migration
+  // AddColorToRbacGroupingTables1781300000000. NOT NULL DEFAULT '#1890ff'.
+  @Column({ type: 'varchar', length: 20, default: '#1890ff' })
+  color: string;
 
   @CreateDateColumn({ name: 'created_at' })
   createdAt: Date;
