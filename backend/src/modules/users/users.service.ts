@@ -143,7 +143,12 @@ export class UsersService {
   }
 
   async findOne(id: number, currentUserId: number, currentUserRole: string, scope?: string | null): Promise<User | null> {
-    const user = await this.usersRepository.findOne({ where: { id }, relations: ['department'] });
+    // ⚠️ MỚI - thêm 'position' cùng 'department' (rà soát BE Position
+    // 2026-09-10): trước đây FE (trang Chi tiết nhân viên/Profile xem người
+    // khác, dùng GET /users/:id) không có cách nào hiển thị Vị trí dù
+    // `positionId` đã lưu đúng trong DB - quan hệ chỉ được khai ở entity,
+    // KHÔNG được join ở đây nên `user.position` luôn undefined trên response.
+    const user = await this.usersRepository.findOne({ where: { id }, relations: ['department', 'position'] });
     if (!user) {
       throw new NotFoundException('Không tìm thấy nhân viên');
     }
@@ -207,6 +212,10 @@ export class UsersService {
 
     const queryBuilder = this.usersRepository.createQueryBuilder('user')
       .leftJoinAndSelect('user.department', 'department')
+      // ⚠️ MỚI - cùng lý do ở findOne() phía trên: danh sách Nhân viên
+      // (GET /users, bảng chính ở trang /users) cần join 'position' để FE
+      // hiển thị cột Vị trí, tránh phải gọi thêm request riêng cho từng dòng.
+      .leftJoinAndSelect('user.position', 'position')
       .where('1=1');
 
     // ⚠️ FIX PERMISSIONS.md mục 2.2: trước đây có comment "Visibility logic:
@@ -689,6 +698,8 @@ export class UsersService {
       .createQueryBuilder('user')
       .withDeleted()
       .leftJoinAndSelect('user.department', 'department')
+      // ⚠️ MỚI - đồng bộ với findOne()/findAll() ở trên, cùng đợt rà soát.
+      .leftJoinAndSelect('user.position', 'position')
       .leftJoinAndSelect('user.deletedBy', 'deletedBy')
       .where('user.deletedAt IS NOT NULL')
       .orderBy('user.deletedAt', 'DESC')
@@ -917,7 +928,10 @@ export class UsersService {
 
     return this.usersRepository.find({
       where,
-      relations: ['department'],
+      // ⚠️ MỚI - đồng bộ với các query khác ở trên: người duyệt (Admin/
+      // Assistant/Manager) cần thấy Vị trí mà người tự đăng ký đã chọn
+      // (xem RegisterDto.positionId) để duyệt đúng, không chỉ thấy phòng ban.
+      relations: ['department', 'position'],
       order: { createdAt: 'ASC' },
     });
   }

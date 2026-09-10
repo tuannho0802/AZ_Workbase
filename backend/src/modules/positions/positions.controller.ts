@@ -60,10 +60,14 @@ export class PositionsController {
     return this.positionsService.update(id, dto);
   }
 
+  // ⚠️ Xoá tách riêng khỏi `positions.manage` (tạo/sửa) từ migration
+  // AddPositionsDeletePermission1780600000000 - mirror đúng pattern
+  // departments.manage/departments.delete, cho phép Admin cấp quyền tạo/sửa
+  // Vị trí mà KHÔNG kèm quyền xoá.
   @Delete(':id')
   @UseGuards(JwtAuthGuard, PermissionGuard)
   @ApiBearerAuth()
-  @RequirePermission('positions.manage')
+  @RequirePermission('positions.delete')
   @ApiOperation({ summary: 'Xoá Vị trí (chặn nếu đang có nhân viên gán)' })
   remove(@Param('id', ParseIntPipe) id: number) {
     return this.positionsService.remove(id);
