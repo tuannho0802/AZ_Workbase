@@ -30,13 +30,18 @@ export default function AssignmentGroupsPage() {
   const { message } = App.useApp();
   const router = useRouter();
 
+    // ⚠️ Tách nhỏ theo action từ `assignment_groups.manage` gộp chung (khớp
+    // @RequirePermission ở assignment-groups.controller.ts) - vào trang cần
+    // `view`, còn nút Thêm/Sửa/Xoá gate riêng theo `create`/`update`/`delete`.
   useEffect(() => {
-    if (!permissionsLoading && !can('assignment_groups.manage')) {
+      if (!permissionsLoading && !can('assignment_groups.view')) {
       router.replace('/customers');
     }
   }, [router, permissionsLoading, can]);
 
-  const canManage = can('assignment_groups.manage');
+    const canCreate = can('assignment_groups.create');
+    const canUpdate = can('assignment_groups.update');
+    const canDelete = can('assignment_groups.delete');
 
   const { configs, isLoading } = useAssignmentGroups();
   const { departments, isLoading: loadingDepartments } = useDepartments();
@@ -172,7 +177,7 @@ export default function AssignmentGroupsPage() {
       width: 110,
       render: (isSystem: boolean) => (isSystem ? <Tag color="gold">Hệ thống</Tag> : <Tag>Tuỳ chỉnh</Tag>),
     },
-    ...(canManage
+      ...(canUpdate || canDelete
       ? [
           {
             title: 'Thao tác',
@@ -180,10 +185,12 @@ export default function AssignmentGroupsPage() {
             width: 160,
             render: (_: any, record: AssignmentGroupConfig) => (
               <Space wrap>
-                <Button size="small" icon={<EditOutlined />} onClick={() => openEditModal(record)}>
-                  Sửa
-                </Button>
-                {!record.isSystem && (
+                    {canUpdate && (
+                        <Button size="small" icon={<EditOutlined />} onClick={() => openEditModal(record)}>
+                            Sửa
+                        </Button>
+                    )}
+                    {canDelete && !record.isSystem && (
                   <Button
                     size="small"
                     danger
@@ -220,7 +227,7 @@ export default function AssignmentGroupsPage() {
             sửa code khi tổ chức thay đổi.
           </Text>
         </div>
-        {canManage && (
+              {canCreate && (
           <Button type="primary" icon={<PlusOutlined />} onClick={openCreateModal}>
             Thêm nhóm phụ trách
           </Button>

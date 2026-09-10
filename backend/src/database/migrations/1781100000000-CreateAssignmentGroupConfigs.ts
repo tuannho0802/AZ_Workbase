@@ -28,6 +28,10 @@ import { MigrationInterface, QueryRunner } from 'typeorm';
  * ở `GroupManagersModal.tsx` (trang "Quản lý nhóm liên kết" > Quản lý
  * chính/phụ > Nhân viên Content) bằng 1 config có thể chỉnh qua UI, đồng bộ
  * đúng 1 cơ chế với dropdown Sales/Marketing phụ trách ở trang Khách hàng.
+ *
+ * Permission tách nhỏ theo action ngay từ đầu (xem chi tiết ở block seed bên
+ * dưới): `assignment_groups.view/create/update/delete` - KHÔNG dùng 1
+ * permission `manage` gộp chung như thiết kế nháp ban đầu.
  */
 export class CreateAssignmentGroupConfigs1781100000000 implements MigrationInterface {
   name = 'CreateAssignmentGroupConfigs1781100000000';
@@ -117,18 +121,34 @@ export class CreateAssignmentGroupConfigs1781100000000 implements MigrationInter
       WHERE c.key = 'content_staff';
     `);
 
-    // Permission mới - CRUD "Quản lý phụ trách" (Admin/Assistant, giống
-    // đúng pattern positions.manage).
+    // ⚠️ SỬA (2026-09-10, cùng ngày, TRƯỚC khi migration này từng chạy ở bất
+    // kỳ môi trường nào - sửa trực tiếp an toàn đúng SKILL_DATABASE_MANAGEMENT.md
+    // mục 5): tách permission gộp `assignment_groups.manage` (CRUD chung 1
+    // permission) thành 4 permission nhỏ theo action, mirror đúng pattern đã
+    // dùng cho `customer_notes.create/edit/delete` và cặp
+    // `positions.view`/`positions.manage`/`positions.delete` - cho phép Admin
+    // cấp quyền "chỉ xem" hoặc "chỉ tạo, không xoá" riêng biệt ở Ma trận
+    // quyền thay vì buộc phải cấp/thu hồi trọn gói cả CRUD cùng lúc:
+    //  - assignment_groups.view   : GET /assignment-groups, GET /assignment-groups/:id
+    //  - assignment_groups.create : POST /assignment-groups
+    //  - assignment_groups.update : PATCH /assignment-groups/:id
+    //  - assignment_groups.delete : DELETE /assignment-groups/:id
+    // Seed mặc định GIỮ NGUYÊN hành vi hiện tại (Admin/Assistant có đủ cả 4,
+    // các role khác không có quyền nào) - không role nào bị mất/được thêm
+    // quyền so với trước khi tách.
     await queryRunner.query(`
       INSERT INTO permissions (\`key\`, resource, action, supports_scope, description) VALUES
-      ('assignment_groups.manage', 'assignment_groups', 'manage', FALSE, 'CRUD "Quản lý phụ trách" (Assignment Group Config) - bảng cấu hình toàn cục')
+      ('assignment_groups.view', 'assignment_groups', 'view', FALSE, 'Xem danh sách/chi tiết "Quản lý phụ trách" (Assignment Group Config)'),
+      ('assignment_groups.create', 'assignment_groups', 'create', FALSE, 'Tạo mới "Quản lý phụ trách" (Assignment Group Config)'),
+      ('assignment_groups.update', 'assignment_groups', 'update', FALSE, 'Sửa "Quản lý phụ trách" (Assignment Group Config) - đổi tên/mô tả/danh sách phòng ban/vị trí'),
+      ('assignment_groups.delete', 'assignment_groups', 'delete', FALSE, 'Xoá "Quản lý phụ trách" (Assignment Group Config) - chặn nếu is_system=true')
       ON DUPLICATE KEY UPDATE \`key\` = \`key\`;
     `);
     await queryRunner.query(`
       INSERT INTO role_permissions (role_id, permission_id, scope)
       SELECT r.id, p.id, NULL
       FROM roles r, permissions p
-      WHERE p.key = 'assignment_groups.manage'
+      WHERE p.key IN ('assignment_groups.view', 'assignment_groups.create', 'assignment_groups.update', 'assignment_groups.delete')
         AND r.code IN ('admin', 'assistant');
     `);
   }
@@ -137,9 +157,12 @@ export class CreateAssignmentGroupConfigs1781100000000 implements MigrationInter
     await queryRunner.query(`
       DELETE rp FROM role_permissions rp
       JOIN permissions p ON p.id = rp.permission_id
-      WHERE p.key = 'assignment_groups.manage';
+      WHERE p.key IN ('assignment_groups.view', 'assignment_groups.create', 'assignment_groups.update', 'assignment_groups.delete');
     `);
-    await queryRunner.query(`DELETE FROM permissions WHERE \`key\` = 'assignment_groups.manage'`);
+    await queryRunner.query(`
+      DELETE FROM permissions WHERE \`key\` IN
+        ('assignment_groups.view', 'assignment_groups.create', 'assignment_groups.update', 'assignment_groups.delete')
+    `);
 
     await queryRunner.query(`DROP TABLE IF EXISTS assignment_group_config_positions`);
     await queryRunner.query(`DROP TABLE IF EXISTS assignment_group_config_departments`);

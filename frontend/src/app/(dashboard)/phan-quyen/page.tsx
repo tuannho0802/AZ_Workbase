@@ -58,6 +58,11 @@ const RESOURCE_LABEL: Record<string, string> = {
   link_groups: 'Nhóm liên kết',
   media_sources: 'Nguồn Media',
   audit: 'Nhật ký hệ thống',
+  // ⚠️ BỔ SUNG (2026-09-10, cùng lúc tách `assignment_groups.manage` thành
+  // view/create/update/delete): resource này trước đó rơi vào fallback
+  // `?? resource`, Admin nhìn thấy nhóm quyền hiện raw key
+  // "assignment_groups" thay vì tên tiếng Việt như các resource khác.
+  assignment_groups: 'Quản lý phụ trách',
 };
 
 const SCOPE_LABEL: Record<PermissionScope, string> = {

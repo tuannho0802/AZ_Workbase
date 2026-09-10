@@ -25,10 +25,15 @@ export class AssignmentGroupsController {
     return this.service.resolveUsers(key);
   }
 
+  // ⚠️ Tách nhỏ theo action từ `assignment_groups.manage` gộp chung (giống
+  // đúng pattern positions.view/positions.manage/positions.delete) - cho phép
+  // Admin cấp riêng lẻ view/create/update/delete ở Ma trận quyền thay vì
+  // trọn gói cả CRUD cùng lúc. Xem migration
+  // `1781100000000-CreateAssignmentGroupConfigs.ts`.
   @Get()
   @UseGuards(JwtAuthGuard, PermissionGuard)
   @ApiBearerAuth()
-  @RequirePermission('assignment_groups.manage')
+  @RequirePermission('assignment_groups.view')
   @ApiOperation({ summary: 'Danh sách tất cả config kèm departments/positions đã gán' })
   findAll() {
     return this.service.findAll();
@@ -37,7 +42,7 @@ export class AssignmentGroupsController {
   @Get(':id')
   @UseGuards(JwtAuthGuard, PermissionGuard)
   @ApiBearerAuth()
-  @RequirePermission('assignment_groups.manage')
+  @RequirePermission('assignment_groups.view')
   @ApiOperation({ summary: 'Chi tiết 1 config' })
   findOne(@Param('id', ParseIntPipe) id: number) {
     return this.service.findOne(id);
@@ -46,7 +51,7 @@ export class AssignmentGroupsController {
   @Post()
   @UseGuards(JwtAuthGuard, PermissionGuard)
   @ApiBearerAuth()
-  @RequirePermission('assignment_groups.manage')
+  @RequirePermission('assignment_groups.create')
   @ApiOperation({ summary: 'Tạo config mới (key tuỳ chỉnh, khác sales/marketing)' })
   create(@Body() dto: CreateAssignmentGroupDto) {
     return this.service.create(dto);
@@ -55,7 +60,7 @@ export class AssignmentGroupsController {
   @Patch(':id')
   @UseGuards(JwtAuthGuard, PermissionGuard)
   @ApiBearerAuth()
-  @RequirePermission('assignment_groups.manage')
+  @RequirePermission('assignment_groups.update')
   @ApiOperation({ summary: 'Sửa tên/mô tả + ghi đè toàn bộ danh sách department/position' })
   update(@Param('id', ParseIntPipe) id: number, @Body() dto: UpdateAssignmentGroupDto) {
     return this.service.update(id, dto);
@@ -64,7 +69,7 @@ export class AssignmentGroupsController {
   @Delete(':id')
   @UseGuards(JwtAuthGuard, PermissionGuard)
   @ApiBearerAuth()
-  @RequirePermission('assignment_groups.manage')
+  @RequirePermission('assignment_groups.delete')
   @ApiOperation({ summary: 'Xoá config (chặn nếu is_system=true)' })
   remove(@Param('id', ParseIntPipe) id: number) {
     return this.service.remove(id);

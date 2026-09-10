@@ -203,9 +203,11 @@ export const NAV_ITEMS: NavItem[] = [
     description: 'Cấu hình danh sách nhân sự hợp lệ cho dropdown Sales/Marketing/Content phụ trách theo Phòng ban + Vị trí',
     icon: <UsergroupAddOutlined />,
     path: '/quan-ly-phu-trach',
-    // Khớp @RequirePermission('assignment_groups.manage') ở assignment-groups.controller.ts.
+    // Khớp @RequirePermission('assignment_groups.view') ở assignment-groups.controller.ts
+    // (permission gộp `assignment_groups.manage` cũ đã tách nhỏ thành
+    // view/create/update/delete - menu chỉ cần quyền xem trang).
     roles: null,
-    permission: 'assignment_groups.manage',
+    permission: 'assignment_groups.view',
   },
   {
     key: 'trash-can',
