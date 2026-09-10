@@ -62,6 +62,22 @@ export class UpdateUserDto {
   @IsBoolean({ message: 'isRootAdmin phải là kiểu boolean' })
   isRootAdmin?: boolean;
 
+  // ⚠️ MỚI - bắt buộc khi (và CHỈ khi) `isRootAdmin` gửi kèm KHÁC giá trị
+  // hiện tại của target (đổi trạng thái Root Admin) - xác nhận lại mật khẩu
+  // của CHÍNH NGƯỜI GỌI (Root Admin đang thao tác), không phải mật khẩu của
+  // target - cùng tinh thần `ChangePasswordDto`/`UpdateOwnEmailDto` (hành
+  // động nhạy cảm -> bắt buộc nhập lại mật khẩu). Validate CÓ MẶT hay không
+  // do `UsersService.update()` tự kiểm tra theo ngữ cảnh (không dùng
+  // `@ValidateIf` ở đây vì điều kiện phụ thuộc giá trị CŨ trong DB, DTO
+  // không tự biết được).
+  @ApiProperty({
+    required: false,
+    description: 'Mật khẩu hiện tại của Root Admin đang thao tác - bắt buộc khi đổi isRootAdmin',
+  })
+  @IsOptional()
+  @IsString()
+  currentPassword?: string;
+
   @ApiProperty({ example: 'AZ042', required: false, description: 'Mã nhân viên' })
   @IsOptional()
   @IsString({ message: 'Mã nhân viên phải là chuỗi ký tự' })

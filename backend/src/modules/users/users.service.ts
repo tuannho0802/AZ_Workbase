@@ -435,6 +435,34 @@ export class UsersService {
       if (callerRole !== Role.ADMIN || !callerIsRootAdmin) {
         throw new ForbiddenException('Chỉ Root Admin mới có quyền thay đổi trạng thái Root Admin của tài khoản khác');
       }
+      // ⚠️ MỚI - KHÔNG được tự đổi trạng thái Root Admin của CHÍNH MÌNH qua
+      // đường này (kể cả Root Admin đang thao tác) - tránh tình huống tự bật
+      // Root Admin cho vô số tài khoản khác rồi tự gỡ mình mà không ai xác
+      // nhận lại được, hoặc tự gỡ Root Admin của chính mình trong lúc thao
+      // tác nhầm. Muốn đổi trạng thái Root Admin của bản thân, phải nhờ 1
+      // Root Admin KHÁC thực hiện việc này giúp.
+      if (id === callerId) {
+        throw new ForbiddenException('Không thể tự thay đổi trạng thái Root Admin của chính mình - phải nhờ 1 Root Admin khác thực hiện');
+      }
+      // ⚠️ MỚI - hành động nhạy cảm (thêm/gỡ "lối thoát hiểm" tuyệt đối cho
+      // 1 tài khoản) -> bắt buộc Root Admin đang thao tác nhập lại ĐÚNG mật
+      // khẩu CỦA CHÍNH HỌ (không phải mật khẩu target) để xác nhận, cùng
+      // tinh thần `changeOwnPassword()`/`updateOwnEmail()` ở trên.
+      if (!updateDto.currentPassword) {
+        throw new BadRequestException('Phải nhập lại mật khẩu hiện tại để xác nhận thay đổi trạng thái Root Admin');
+      }
+      const caller = await this.usersRepository
+        .createQueryBuilder('user')
+        .addSelect('user.password')
+        .where('user.id = :callerId', { callerId })
+        .getOne();
+      if (!caller || !caller.password) {
+        throw new UnauthorizedException('Không xác thực được tài khoản đang thao tác');
+      }
+      const isCallerPasswordMatching = await bcrypt.compare(updateDto.currentPassword, caller.password);
+      if (!isCallerPasswordMatching) {
+        throw new UnauthorizedException('Mật khẩu hiện tại không đúng');
+      }
       const targetRoleAfterUpdate = updateDto.role ?? user.role;
       if (updateDto.isRootAdmin && targetRoleAfterUpdate !== Role.ADMIN) {
         throw new BadRequestException('Root Admin chỉ áp dụng cho role Admin');
