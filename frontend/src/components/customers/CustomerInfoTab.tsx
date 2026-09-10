@@ -5,6 +5,8 @@ import { CalendarOutlined, EditOutlined } from '@ant-design/icons';
 import { Customer } from '@/lib/types/customer.types';
 import { SourceTag } from './SourceTag';
 import { useMyPermissions } from '@/lib/hooks/useMyPermissions';
+import { useRoleColorMap } from '@/lib/hooks/useRoleColorMap';
+import { resolveEntityColor } from '@/lib/utils/entityColor';
 import dayjs from 'dayjs';
 
 const { Text } = Typography;
@@ -16,6 +18,13 @@ interface Props {
 
 export const CustomerInfoTab = ({ customer, onEdit }: Props) => {
   const { can } = useMyPermissions();
+  // ⚠️ FIX BUG THẬT (rà soát màu Role 2026-09-10): Tag Role ở tab này trước
+  // đây hardcode "blue"/"purple" (Sales/Marketing) và Tag Vị trí hardcode
+  // "default" - comment cũ ngay phía trên đã CLAIM dùng đúng màu Admin cấu
+  // hình ở /vi-tri nhưng code KHÔNG hề đọc `position.color` thật. Giờ đồng bộ
+  // đúng pattern chuẩn của dự án (`resolveEntityColor`, xem entityColor.ts +
+  // SalesUserSelect.tsx dropdown "Sales phụ trách").
+  const { getRoleColor } = useRoleColorMap();
   // ⚠️ FIX BUG THẬT: nút "Chỉnh sửa" trước đây hiện KHÔNG ĐIỀU KIỆN, không
   // hề gọi can() - BE đã tách riêng `customers.edit` khỏi `customers.create`
   // (PATCH /customers/:id đòi @RequirePermission('customers.edit'), xem
@@ -52,11 +61,11 @@ export const CustomerInfoTab = ({ customer, onEdit }: Props) => {
           {customer.salesUser ? (
             <Space>
               <Text strong>{customer.salesUser.name}</Text>
-              <Tag color="blue">{customer.salesUser.role?.toUpperCase()}</Tag>
+              <Tag color={getRoleColor(customer.salesUser.role)}>{customer.salesUser.role?.toUpperCase()}</Tag>
               {/* ⚠️ MỚI - rà soát Vị trí: đối xứng Tag Role ở trên, chỉ hiện
                   khi có dữ liệu (không phải ai cũng được gán Vị trí). */}
               {customer.salesUser.position?.name && (
-                <Tag color="default">{customer.salesUser.position.name}</Tag>
+                <Tag color={resolveEntityColor(customer.salesUser.position.color)}>{customer.salesUser.position.name}</Tag>
               )}
             </Space>
           ) : (
@@ -73,8 +82,8 @@ export const CustomerInfoTab = ({ customer, onEdit }: Props) => {
                 {shared.map((user: any) => (
                   <Space key={user.id}>
                     <Text>{user.name}</Text>
-                    <Tag>{user.role?.toUpperCase()}</Tag>
-                    {user.position?.name && <Tag color="default">{user.position.name}</Tag>}
+                    <Tag color={getRoleColor(user.role)}>{user.role?.toUpperCase()}</Tag>
+                    {user.position?.name && <Tag color={resolveEntityColor(user.position.color)}>{user.position.name}</Tag>}
                   </Space>
                 ))}
               </Space>
@@ -85,9 +94,9 @@ export const CustomerInfoTab = ({ customer, onEdit }: Props) => {
           {customer.marketingUser ? (
             <Space>
               <Text strong>{customer.marketingUser.name}</Text>
-              <Tag color="purple">{customer.marketingUser.role?.toUpperCase()}</Tag>
+              <Tag color={getRoleColor(customer.marketingUser.role)}>{customer.marketingUser.role?.toUpperCase()}</Tag>
               {customer.marketingUser.position?.name && (
-                <Tag color="default">{customer.marketingUser.position.name}</Tag>
+                <Tag color={resolveEntityColor(customer.marketingUser.position.color)}>{customer.marketingUser.position.name}</Tag>
               )}
             </Space>
           ) : (

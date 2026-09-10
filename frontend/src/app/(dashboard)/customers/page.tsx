@@ -22,6 +22,7 @@ import { usersApi } from '@/lib/api/users.api';
 import { useMyPermissions } from '@/lib/hooks/useMyPermissions';
 import { useMyHiddenElements } from '@/lib/hooks/useUiVisibility';
 import { useAssignmentGroupUsers } from '@/lib/hooks/useAssignmentGroups';
+import { useRoleColorMap } from '@/lib/hooks/useRoleColorMap';
 import dayjs from 'dayjs';
 import { CustomerFilters } from '@/components/customers/CustomerFilters';
 import { SourceTag } from '@/components/customers/SourceTag';
@@ -40,18 +41,34 @@ const renderStatusTag = (status: string) => {
   return <Tag color={color}>{text}</Tag>;
 };
 
-const renderSalesTag = (record: any) => {
+// ⚠️ FIX BUG THẬT (rà soát màu Role 2026-09-10): trước đây Tag Sales/Marketing
+// ở đây hardcode "blue"/"purple" bất kể role thật của người được gán - lệch
+// hẳn với màu Role Admin đã cấu hình ở /phan-quyen (cột `roles.color`) và
+// khác pattern đã áp dụng đúng ở SalesUserSelect.tsx (dropdown chọn Sales,
+// dùng `useRoleColorMap().getRoleColor(user.role)`). Giờ nhận thêm
+// `getRoleColor` (từ hook `useRoleColorMap` gọi trong component cha, vì 2 hàm
+// này ở module scope nên không tự gọi hook được) để tô đúng màu Role thật cho
+// TÊN sales/marketing chính, đối xứng hoàn toàn với dropdown trong ảnh chụp
+// màn hình. Badge "+N" (đếm số người được chia) giữ nguyên "cyan" vì đó là
+// badge số lượng, không đại diện cho 1 Role cụ thể nào.
+const renderSalesTag = (record: any, getRoleColor: (role?: string | null) => string) => {
   const primarySales = record.salesUser;
   const allAssignees = record.activeAssignees || [];
   const sharedSales = allAssignees.filter((a: any) => a.id !== primarySales?.id);
-  
+
   if (!primarySales && sharedSales.length === 0) {
     return <span style={{ color: '#bbb', fontStyle: 'italic', fontSize: '11px' }}>Chưa gán</span>;
   }
 
   return (
     <Space size={[0, 4]} align="center" wrap>
-      {primarySales ? <Tag color="blue" title="Sales phụ trách chính">{primarySales.name}</Tag> : <span style={{ color: '#bbb', fontStyle: 'italic', fontSize: '11px' }}>Chưa có Primary</span>}
+      {primarySales ? (
+        <Tag color={getRoleColor(primarySales.role)} title="Sales phụ trách chính">
+          {primarySales.name}
+        </Tag>
+      ) : (
+        <span style={{ color: '#bbb', fontStyle: 'italic', fontSize: '11px' }}>Chưa có Primary</span>
+      )}
       {sharedSales.length > 0 && (
         <Tooltip title={`Sales được chia:\n${sharedSales.map((a: any) => a.name).join(', ')}`}>
           <Tag color="cyan">+{sharedSales.length}</Tag>
@@ -61,12 +78,16 @@ const renderSalesTag = (record: any) => {
   );
 };
 
-const renderMarketingTag = (record: any) => {
+const renderMarketingTag = (record: any, getRoleColor: (role?: string | null) => string) => {
   const marketingUser = record.marketingUser;
   if (!marketingUser) {
     return <span style={{ color: '#bbb', fontStyle: 'italic', fontSize: '11px' }}>Chưa gán</span>;
   }
-  return <Tag color="purple" title="Marketing phụ trách">{marketingUser.name}</Tag>;
+  return (
+    <Tag color={getRoleColor(marketingUser.role)} title="Marketing phụ trách">
+      {marketingUser.name}
+    </Tag>
+  );
 };
 
 // Cùng pattern hiển thị với renderSalesTag: nhóm ĐẦU TIÊN hiện tên thật,
@@ -162,6 +183,9 @@ const CustomerMobileCard = ({
   canDelete: boolean;
   onDelete: (id: number) => void;
 }) => {
+  // Component thật (không phải hàm render trần) nên gọi hook trực tiếp được -
+  // xem comment ở renderSalesTag/renderMarketingTag phía trên.
+  const { getRoleColor } = useRoleColorMap();
   return (
   <Card
     size="small"
@@ -183,8 +207,8 @@ const CustomerMobileCard = ({
     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 }}>
       <Space size={4} wrap>
         <SourceTag source={record.source} />
-        {renderSalesTag(record)}
-        {renderMarketingTag(record)}
+          {renderSalesTag(record, getRoleColor)}
+          {renderMarketingTag(record, getRoleColor)}
       </Space>
     </div>
     {record.campaign && (
@@ -249,6 +273,10 @@ function CustomersPageContent() {
   
   const { user } = useAuthStore();
   const { can } = useMyPermissions();
+  // Cùng nguồn màu Role với dropdown "Sales phụ trách" (CustomerForm →
+  // SalesUserSelect.tsx) - đọc `roles.color` thật qua /phan-quyen, KHÔNG
+  // hardcode "blue"/"purple" cho Tag tên Sales/Marketing ở bảng + card mobile.
+  const { getRoleColor } = useRoleColorMap();
   // ⚠️ FIX BUG THẬT (rà soát Vị trí 2026-09-10): trang này CHƯA BAO GIỜ gọi
   // useMyHiddenElements('customers') - Admin cấu hình ẩn
   // field:sales_assignment/field:marketing_assignment cho 1 Position (vd
@@ -574,13 +602,13 @@ function CustomersPageContent() {
       title: 'Sales (Chính + Phụ)',
       key: 'salesUser',
       width: isLaptop ? 150 : 170,
-      render: (_: any, record: any) => renderSalesTag(record),
+      render: (_: any, record: any) => renderSalesTag(record, getRoleColor),
     }]),
     ...(hideMarketingField ? [] : [{
       title: 'Marketing',
       key: 'marketingUser',
       width: isLaptop ? 110 : 125,
-      render: (_: any, record: any) => renderMarketingTag(record),
+      render: (_: any, record: any) => renderMarketingTag(record, getRoleColor),
     }]),
     {
       title: 'Trạng thái',
@@ -664,7 +692,7 @@ function CustomersPageContent() {
   // render đầu (permissions API luôn async), giá trị `false` ban đầu bị
   // "đông cứng" vĩnh viễn trong closure của useMemo, cột Thao tác/nút Xoá
   // sẽ không bao giờ hiện dù sau đó canDeleteCustomer đã thành true.
-  ], [isLaptop, depositRangeForColumnLabel, page, pageSize, user, canDeleteCustomer, recentNotesCount, hideSalesField, hideMarketingField]);
+  ], [isLaptop, depositRangeForColumnLabel, page, pageSize, user, canDeleteCustomer, recentNotesCount, hideSalesField, hideMarketingField, getRoleColor]);
 
   // ⚠️ FIX BUG THẬT: nút "X" (clear) trên các Select (Sales/Marketing/Người
   // nhập Data/Nguồn/Trạng thái/Đã joined nhóm...) không tắt được filter,
