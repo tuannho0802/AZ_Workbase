@@ -10,6 +10,7 @@ import { RoleEntity } from '../../database/entities/role.entity';
 import { Permission } from '../../database/entities/permission.entity';
 import { RolePermission, PermissionScope } from '../../database/entities/role-permission.entity';
 import { User } from '../../database/entities/user.entity';
+import { Position } from '../../database/entities/position.entity';
 import { Role } from '../../common/enums/role.enum';
 import { CreateRoleDto } from './dto/create-role.dto';
 import { UpdateRoleDto } from './dto/update-role.dto';

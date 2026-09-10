@@ -11,6 +11,7 @@ import { UsersModule } from './modules/users/users.module';
 import { AuthModule } from './modules/auth/auth.module';
 import { CustomersModule } from './modules/customers/customers.module';
 import { DepartmentsModule } from './modules/departments/departments.module';
+import { PositionsModule } from './modules/positions/positions.module';
 import { DepositsModule } from './modules/deposits/deposits.module';
 import { LeaveRequestsModule } from './modules/leave-requests/leave-requests.module';
 import { AuditModule } from './modules/audit/audit.module';
@@ -58,6 +59,7 @@ import { KeepAliveController } from './keep-alive/keep-alive.controller';
     UsersModule,
     AuthModule,
     DepartmentsModule,
+    PositionsModule,
     CustomersModule,
     DepositsModule,
     LeaveRequestsModule,

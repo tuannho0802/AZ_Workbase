@@ -63,7 +63,12 @@ export class PermissionGuard implements CanActivate {
       return true;
     }
 
-    const { allowed, scope } = await this.permissionsService.hasPermission(user.role, requiredKey, user.departmentId);
+    const { allowed, scope } = await this.permissionsService.hasPermission(
+      user.role,
+      requiredKey,
+      user.departmentId,
+      user.positionId,
+    );
 
     if (!allowed) {
       throw new ForbiddenException('Bạn không có quyền thực hiện hành động này');
