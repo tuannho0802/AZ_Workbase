@@ -581,3 +581,53 @@ tạo/sửa nhân viên + form đăng ký công khai, tab "Theo Vị trí" ở t
 Profile, mục nav-config.
 
 ---
+
+## [2026-09-10] | Wire FE tab "Theo Vị trí" vào trang Phân quyền (hoàn tất Phase 2 Position ở FE) | Status: Success
+
+**Actor:** Agent
+
+**Bối cảnh:** `git clone` lại bản mới nhất (commit `7138b58`), đọc trực tiếp code thật (không dựa
+transcript phiên trước dán vào chat). Xác nhận: BE Position (Phase 1+2, bao gồm `positions.delete`
+tách riêng, DI fix `UsersModule` import `PositionsModule`) đã đúng như báo cáo — `tsc --noEmit`,
+`nest build`, `jest` (24/24 suites, 452/452 tests) đều sạch trước khi sửa gì thêm.
+
+Phát hiện: `PositionOverridesPanel.tsx`, `positions.api.ts`, `usePositions.ts`, và các hook
+`usePositionOverrides`/`useUpdatePositionOverride`/`useDeletePositionOverride` trong `useRoles.ts`
+đã có sẵn (đúng như commit log), NHƯNG `PositionOverridesPanel` là **file mồ côi** — chưa được
+import/mount ở đâu cả. Drawer "Ma trận quyền" (`RolePermissionsDrawer` trong `phan-quyen/page.tsx`)
+chỉ có 2 tab (`global`/`department`), thiếu hẳn tab thứ 3 dù tên commit "Add PositionOverridePanel in
+phan-quyen page" gợi ý đã xong.
+
+**Đã làm (frontend, `frontend/src/app/(dashboard)/phan-quyen/page.tsx`):**
+1. Import `PositionOverridesPanel`, `useUpdatePositionOverride`, `useDeletePositionOverride`.
+2. `RolePermissionsEditor`: thêm prop `positionId?: number` mirror `departmentId` — mở rộng
+   `isSaving`, `isOverridden`, và `handleSave` (gộp chung nhánh diff-tính-override cho cả 2 loại,
+   chỉ rẽ nhánh mutation gọi ở cuối: `updateDeptMutation`/`deleteDeptMutation` vs
+   `updatePosMutation`/`deletePosMutation`).
+3. `RolePermissionsDrawer`: tab state đổi `'global' | 'department'` → thêm `'position'`, Segmented
+   thêm option "Theo Vị trí", nhận thêm prop `canManagePositions`, render `PositionOverridesPanel`
+   khi `tab === 'position'`.
+4. `PhanQuyenPage`: thêm `canManagePositions = can('positions.view')`, truyền xuống
+   `RolePermissionsDrawer`.
+
+**Verify thật:**
+- Backend: `tsc --noEmit` sạch, `nest build` sạch, `jest` 24/24 suites/452/452 tests pass (không
+  đụng BE trong phiên này, chỉ verify lại để chắc chắn trước khi báo "đủ điều kiện" ở lượt trước).
+- Frontend: `npx tsc --noEmit` — 3 lỗi thấy được (`logo.png` module not found ở 2 file,
+  `styled-jsx` prop `jsx` ở `CountBadge.tsx`) đã xác nhận là **lỗi môi trường sandbox pre-existing**
+  (thiếu `next-env.d.ts` chưa generate, không liên quan thay đổi trong phiên này — đã `git stash`
+  đối chiếu, y hệt lỗi trước khi sửa). `npm run build` (Next.js 16, Turbopack) chạy **sạch hoàn
+  toàn**, generate đủ 26 route tĩnh bao gồm `/phan-quyen`, không có lỗi TypeScript nào trong quá
+  trình `Running TypeScript` của build thật.
+
+**Files Changed:**
+- `frontend/src/app/(dashboard)/phan-quyen/page.tsx` — wire `PositionOverridesPanel` vào Drawer (chi
+  tiết ở trên).
+- `AZ-Workbase Skills/PERMISSIONS.md` — cập nhật mục 1.8, ghi rõ FE tab "Theo Vị trí" đã xong.
+
+**Còn lại (ngoài phạm vi phiên này, thuộc Phase 3/4 của PLAN_POSITION...):** UI Visibility Rules (ẩn
+field/tab dữ liệu khách hàng theo Role×Phòng ban×Position — bảng `ui_visibility_rules` CHƯA tồn tại,
+CHƯA có migration nào cho bảng này) và Assignment Group Config (nhóm phụ trách tự cấu hình). Đây
+chính là phần "quyền nhỏ/chi tiết hơn Global và Department override" nếu chủ dự án muốn tiếp tục
+theo đúng tinh thần mục 1/3 của PLAN — cần xác nhận lại phạm vi trước khi code (bảng mới, migration
+mới, helper ẩn field ở service layer).

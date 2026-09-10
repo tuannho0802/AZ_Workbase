@@ -201,8 +201,14 @@ quyền `roles.manage` của chính role mình đang mang (tự khoá cửa) —
 > Kế hoạch đầy đủ:
 > `AZ-Workbase Skills/PLAN_POSITION_FIELD_VISIBILITY_ASSIGNMENT_GROUPS.md`. Trạng thái tại thời điểm
 > cập nhật mục này: **Phase 1 + Phase 2 (Position nền tảng + Override Action Permission theo Position)
-> đã code + build + test xong** (xem WORKFLOW_LOG.md ngày 2026-09-10). **Phase 3 (UI Visibility Rules)
-> và Phase 4 (Assignment Group Config) CHƯA làm** — đừng nhầm là đã xong toàn bộ plan.
+> đã code + build + test xong CẢ BE lẫn FE** — FE: trang `/phan-quyen`, Drawer "Ma trận quyền" giờ có
+> đủ 3 tab `Toàn cục` / `Theo phòng ban` / `Theo Vị trí` (component `PositionOverridesPanel.tsx`, wire
+> vào `RolePermissionsDrawer` trong `page.tsx`, gate bằng `can('positions.view')` giống hệt
+> `canManageDepartments`/`departments.view`). Xem WORKFLOW_LOG.md ngày 2026-09-10 (2 entry, entry sau
+> cùng là bản audit+FE-wiring mới nhất). **Phase 3 (UI Visibility Rules - ẩn field/tab theo
+> Role×Phòng ban×Vị trí) và Phase 4 (Assignment Group Config) CHƯA làm** — đừng nhầm là đã xong toàn
+> bộ plan, mới xong đúng phần "Override Action Permission theo Position" (tương tự Override Phòng ban
+> đã có, KHÔNG phải phần field/tab visibility chi tiết hơn nêu ở mục 3 của PLAN).
 
 **Khái niệm:** `Position` (bảng `positions`) là 1 lớp phân quyền chi tiết hơn Role, đặt DƯỚI Role (vd
 Role `employee` + Position `content`/`editor`/`media`, hoặc Role `admin` + Position `hr`/`it`/`director`/

@@ -16,9 +16,11 @@ import {
   useRoles, useAllPermissions, useCreateRole, useUpdateRole,
   useDeleteRole, useUpdateRolePermissions,
   useUpdateDepartmentOverride, useDeleteDepartmentOverride,
+  useUpdatePositionOverride, useDeletePositionOverride,
 } from '@/lib/hooks/useRoles';
 import { RoleWithPermissions, Permission, PermissionScope, RolePermissionEntry } from '@/lib/types/roles.types';
 import { DepartmentOverridesPanel } from './DepartmentOverridesPanel';
+import { PositionOverridesPanel } from './PositionOverridesPanel';
 
 const { Title, Text, Paragraph } = Typography;
 
@@ -183,19 +185,29 @@ function RolePermissionsEditor({
   canManage,
   initialPermissions,
   departmentId,
+  positionId,
   onSaved,
 }: {
   role: RoleWithPermissions;
   canManage: boolean;
   initialPermissions: RolePermissionEntry[];
   departmentId?: number;
+    // Override theo Vị trí - mirror y hệt departmentId, KHÔNG dùng đồng thời
+    // cả hai (renderEditor của DepartmentOverridesPanel/PositionOverridesPanel
+    // chỉ truyền đúng 1 trong 2, xem RolePermissionsDrawer bên dưới).
+    positionId?: number;
   onSaved: () => void;
 }) {
   const { message } = App.useApp();
   const { permissions: allPermissions, isLoading: loadingCatalog } = useAllPermissions();
   const updateGlobalMutation = useUpdateRolePermissions();
   const updateDeptMutation = useUpdateDepartmentOverride(role.id);
-  const isSaving = departmentId ? updateDeptMutation.isPending : updateGlobalMutation.isPending;
+  const updatePosMutation = useUpdatePositionOverride(role.id);
+  const isSaving = departmentId
+    ? updateDeptMutation.isPending
+    : positionId
+      ? updatePosMutation.isPending
+      : updateGlobalMutation.isPending;
 
   // Map cục bộ: permissionKey -> scope đã chọn (null = permission không hỗ
   // trợ scope nhưng ĐANG bật). Permission KHÔNG có mặt trong map = đang tắt.
@@ -235,7 +247,7 @@ function RolePermissionsEditor({
     [role.permissions],
   );
   const isOverridden = (permissionKey: string): boolean => {
-    if (!departmentId) return false;
+    if (!departmentId && !positionId) return false;
     const globalScope = globalBaseline.get(permissionKey);
     const hasGlobal = globalBaseline.has(permissionKey);
     const currentScope = checked.get(permissionKey) ?? null;
@@ -271,22 +283,24 @@ function RolePermissionsEditor({
   };
 
   const deleteDeptMutation = useDeleteDepartmentOverride(role.id);
+  const deletePosMutation = useDeletePositionOverride(role.id);
 
   const handleSave = () => {
-    if (departmentId) {
-      // Chế độ Override phòng ban: `initialPermissions` (và do đó `checked`
-      // lúc khởi tạo) đã được DepartmentOverridesPanel đồng bộ với Toàn cục
-      // (mergeGlobalWithOverride) - nên `checked` hiện tại LÀ trạng thái
-      // HIỆU LỰC MONG MUỐN cuối cùng, không phải override thô. Phải tự tính
-      // lại phần CHÊNH LỆCH so với `role.permissions` (Toàn cục) trước khi
-      // gửi lên BE (updateDepartmentOverride LUÔN thay thế toàn bộ dòng
-      // override của phòng ban bằng đúng mảng gửi lên):
+    if (departmentId || positionId) {
+    // Chế độ Override (phòng ban HOẶC vị trí - 2 nhánh dùng CHUNG logic diff
+    // dưới đây, chỉ khác mutation gọi ở cuối): `initialPermissions` (và do
+    // đó `checked` lúc khởi tạo) đã được Department/PositionOverridesPanel
+    // đồng bộ với Toàn cục (mergeGlobalWithOverride) - nên `checked` hiện
+    // tại LÀ trạng thái HIỆU LỰC MONG MUỐN cuối cùng, không phải override
+    // thô. Phải tự tính lại phần CHÊNH LỆCH so với `role.permissions`
+    // (Toàn cục) trước khi gửi lên BE (update*Override LUÔN thay thế toàn
+    // bộ dòng override bằng đúng mảng gửi lên):
       //  - Có trong `checked`, khác/không có ở Toàn cục -> gửi kèm scope
       //    thật (override CHO PHÉP thêm/đổi quyền).
       //  - Có ở Toàn cục nhưng KHÔNG còn trong `checked` (vừa bị bỏ tick) ->
       //    gửi scope='none' (TỪ CHỐI TƯỜNG MINH - xem OverrideScope) để
-      //    phòng ban này thật sự mất quyền, không bị fallback ngược lại
-      //    Toàn cục.
+      //    phòng ban/vị trí này thật sự mất quyền, không bị fallback ngược
+      //    lại Toàn cục.
       //  - Giống hệt Toàn cục -> bỏ qua, không cần gửi (mặc định kế thừa).
       const globalMap = new Map(role.permissions.map((p) => [p.permissionKey, p.scope]));
       const diff: RolePermissionEntry[] = [];
@@ -303,28 +317,45 @@ function RolePermissionsEditor({
         }
       }
 
+      const scopeLabel = departmentId ? 'phòng ban' : 'vị trí';
+
       if (diff.length === 0) {
         // Trùng khớp hoàn toàn với Toàn cục -> không còn override nào cả,
         // gỡ hẳn dòng override (nếu có) thay vì lưu 1 mảng rỗng.
-        deleteDeptMutation.mutate(departmentId, {
+        const deleteMutation = departmentId ? deleteDeptMutation : deletePosMutation;
+        const deleteId = (departmentId ?? positionId) as number;
+        deleteMutation.mutate(deleteId, {
           onSuccess: () => {
-            message.success(`Đã gỡ override cho phòng ban này (quay lại dùng ma trận Toàn cục)`);
+            message.success(`Đã gỡ override cho ${scopeLabel} này (quay lại dùng ma trận Toàn cục)`);
             onSaved();
           },
           onError: (err: any) => message.error(err?.response?.data?.message || 'Cập nhật thất bại'),
         });
         return;
       }
-      updateDeptMutation.mutate(
-        { departmentId, payload: { permissions: diff } },
-        {
-          onSuccess: () => {
-            message.success(`Đã lưu override riêng cho phòng ban`);
-            onSaved();
+      if (departmentId) {
+        updateDeptMutation.mutate(
+          { departmentId, payload: { permissions: diff } },
+          {
+            onSuccess: () => {
+              message.success(`Đã lưu override riêng cho phòng ban`);
+              onSaved();
+            },
+            onError: (err: any) => message.error(err?.response?.data?.message || 'Cập nhật thất bại'),
           },
-          onError: (err: any) => message.error(err?.response?.data?.message || 'Cập nhật thất bại'),
-        },
-      );
+        );
+      } else {
+        updatePosMutation.mutate(
+          { positionId: positionId as number, payload: { permissions: diff } },
+          {
+            onSuccess: () => {
+              message.success(`Đã lưu override riêng cho vị trí`);
+              onSaved();
+            },
+            onError: (err: any) => message.error(err?.response?.data?.message || 'Cập nhật thất bại'),
+          },
+        );
+      }
       return;
     }
 
@@ -443,18 +474,20 @@ function RolePermissionsDrawer({
   role,
   canManage,
   canManageDepartments,
+  canManagePositions,
   onClose,
 }: {
   open: boolean;
   role: RoleWithPermissions | null;
   canManage: boolean;
   canManageDepartments: boolean;
+    canManagePositions: boolean;
   onClose: () => void;
 }) {
-  // 'global' | 'department' - reset về 'global' mỗi khi mở Drawer cho 1 role
-  // khác (key={role.id} bên dưới lo phần reset state con, còn tab thì tự
-  // quản qua state riêng, reset thủ công lúc onClose).
-  const [tab, setTab] = useState<'global' | 'department'>('global');
+  // 'global' | 'department' | 'position' - reset về 'global' mỗi khi mở
+  // Drawer cho 1 role khác (key={role.id} bên dưới lo phần reset state con,
+  // còn tab thì tự quản qua state riêng, reset thủ công lúc onClose).
+  const [tab, setTab] = useState<'global' | 'department' | 'position'>('global');
 
   return (
     <Drawer
@@ -477,10 +510,11 @@ function RolePermissionsDrawer({
               block
               style={{ marginBottom: 16 }}
               value={tab}
-              onChange={(v) => setTab(v as 'global' | 'department')}
+              onChange={(v) => setTab(v as 'global' | 'department' | 'position')}
               options={[
                 { label: 'Toàn cục', value: 'global' },
                 { label: 'Theo phòng ban', value: 'department' },
+                { label: 'Theo Vị trí', value: 'position' },
               ]}
             />
           )}
@@ -495,13 +529,13 @@ function RolePermissionsDrawer({
               initialPermissions={role.permissions}
               onSaved={onClose}
             />
-          ) : (
+          ) : tab === 'department' ? (
             <DepartmentOverridesPanel
               role={role}
               canManageDepartments={canManageDepartments}
               renderEditor={(departmentId, initialPermissions) => (
                 <RolePermissionsEditor
-                  key={`${role.id}-${departmentId}`}
+                  key={`${role.id}-dept-${departmentId}`}
                   role={role}
                   canManage={canManage}
                   initialPermissions={initialPermissions}
@@ -510,6 +544,21 @@ function RolePermissionsDrawer({
                 />
               )}
             />
+            ) : (
+              <PositionOverridesPanel
+                role={role}
+                canManagePositions={canManagePositions}
+                renderEditor={(positionId, initialPermissions) => (
+                  <RolePermissionsEditor
+                    key={`${role.id}-pos-${positionId}`}
+                    role={role}
+                    canManage={canManage}
+                    initialPermissions={initialPermissions}
+                    positionId={positionId}
+                    onSaved={onClose}
+                  />
+                )}
+              />
           )}
         </>
       )}
@@ -528,6 +577,10 @@ export default function PhanQuyenPage() {
   // departments.view riêng - không giả định roles.manage kéo theo luôn
   // quyền này (xem DepartmentOverridesPanel.tsx).
   const canManageDepartments = can('departments.view');
+  // GET /positions (để chọn Vị trí trong tab Override) yêu cầu
+  // positions.view riêng - mirror y hệt canManageDepartments ở trên (xem
+  // PositionOverridesPanel.tsx).
+  const canManagePositions = can('positions.view');
 
   // ⚠️ Sidebar/trang chủ đã ẩn mục "Phân quyền" nếu không có `roles.view`
   // (xem nav-config.tsx), nhưng đó chỉ là UX - vào THẲNG url `/phan-quyen`
@@ -691,6 +744,7 @@ export default function PhanQuyenPage() {
         role={viewingRole}
         canManage={canManage}
         canManageDepartments={canManageDepartments}
+        canManagePositions={canManagePositions}
         onClose={() => setPermDrawerOpen(false)}
       />
     </div>
