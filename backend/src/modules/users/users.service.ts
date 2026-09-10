@@ -211,9 +211,16 @@ export class UsersService {
       whereCondition.role = targetRole;
     }
 
+    // ⚠️ FIX BUG THẬT: endpoint này (GET /users/all) là nguồn dữ liệu DUY
+    // NHẤT cho MỌI dropdown chọn nhân viên trong app (SalesUserSelect,
+    // BulkAssignModal, CustomerAssignmentsTab, GroupManagersModal,
+    // nhom-lien-ket, chia-data) - trước đây chỉ JOIN 'department', thiếu
+    // 'position' -> dù FE có hiển thị Tag Vị trí thì cũng luôn undefined ở
+    // TẤT CẢ các dropdown này. Thêm relations đối xứng với findAll()
+    // (GET /users) đã JOIN đủ cả 2 từ trước.
     return this.usersRepository.find({
       where: whereCondition,
-      relations: ['department'],
+      relations: ['department', 'position'],
       order: { name: 'ASC' }
     });
   }
