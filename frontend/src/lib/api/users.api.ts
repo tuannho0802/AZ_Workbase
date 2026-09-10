@@ -141,6 +141,10 @@ export interface UserDetail {
   leaveYear: number;
   createdAt: string;
   department?: { id: number; name: string } | null;
+  // ⚠️ MỚI - đối xứng `department` ở trên. `GET /users/me` (findById +
+  // relations) và `GET /users/:id` (findOne) đều đã JOIN sẵn - null nếu
+  // user chưa gán Vị trí (positionId nullable, hợp lệ - xem position.entity.ts).
+  position?: { id: number; name: string } | null;
   // Presigned GET URL (TTL 1h, ký sẵn ở BE) - null nếu chưa từng upload avatar.
   avatarUrl?: string | null;
   // Key thô ổn định song song avatarUrl - dùng làm cache key cho

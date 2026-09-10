@@ -39,6 +39,16 @@ export interface User {
     id: number;
     name: string;
   };
+  // ⚠️ MỚI - đối xứng `department` ở trên (rà soát BE Position). Hiện KHÔNG
+  // trả kèm trong response login/`GET /users/me` refresh định kỳ (những nơi
+  // set `useAuthStore().user`) - CHỈ dùng field này khi đọc từ
+  // `usersApi.getMe()`/`getUserDetail()` (kiểu `UserDetail`), không phải từ
+  // authStore. Khai ở đây để type nhất quán nếu sau này cũng merge vào
+  // authStore giống `isRootAdmin`.
+  position?: {
+    id: number;
+    name: string;
+  } | null;
   // Presigned GET URL (TTL 1h, ký sẵn ở BE - KHÔNG PHẢI object key) - null
   // nếu chưa từng upload avatar. Có thể null/undefined tuỳ endpoint trả về.
   avatarUrl?: string | null;
