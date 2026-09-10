@@ -5,6 +5,10 @@ export interface Department {
   name: string;
   description?: string;
   isActive: boolean;
+  // Mã màu hex hiển thị Tag phòng ban ngoài FE (vd '#1890ff') - luôn có giá
+  // trị (BE cột NOT NULL DEFAULT '#1890ff', xem migration
+  // AddColorToRbacGroupingTables1781300000000). Admin tự đổi qua UI.
+  color: string;
   // ID user (role phải là MANAGER, đang active) được gán quản lý phòng ban
   // này - nguồn xác định phạm vi "Manager theo phòng ban" (xem
   // update-department.dto.ts ở BE). null/undefined = chưa gán ai.

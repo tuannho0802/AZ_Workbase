@@ -17,6 +17,9 @@ export interface LeaveRequest {
     department?: {
       id: number;
       name: string;
+      // Mã màu hex hiển thị Tag phòng ban ngoài FE - luôn có giá trị (BE
+      // cột NOT NULL DEFAULT, xem migration AddColorToRbacGroupingTables1781300000000).
+      color?: string;
     };
   };
   approver: {

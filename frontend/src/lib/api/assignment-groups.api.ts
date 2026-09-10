@@ -2,11 +2,11 @@ import axiosInstance from './axios-instance';
 
 export interface AssignmentGroupDepartmentRef {
   departmentId: number;
-  department?: { id: number; name: string };
+  department?: { id: number; name: string; color: string };
 }
 export interface AssignmentGroupPositionRef {
   positionId: number;
-  position?: { id: number; code: string; name: string };
+  position?: { id: number; code: string; name: string; color: string };
 }
 
 export interface AssignmentGroupConfig {
@@ -15,6 +15,9 @@ export interface AssignmentGroupConfig {
   name: string;
   description: string | null;
   isSystem: boolean;
+  // Mã màu hex hiển thị Tag nhóm phụ trách ngoài FE - luôn có giá trị (BE
+  // cột NOT NULL DEFAULT, xem migration AddColorToRbacGroupingTables1781300000000).
+  color: string;
   departments: AssignmentGroupDepartmentRef[];
   positions: AssignmentGroupPositionRef[];
 }
@@ -25,6 +28,7 @@ export interface CreateAssignmentGroupPayload {
   description?: string;
   departmentIds: number[];
   positionIds?: number[];
+  color?: string;
 }
 
 export interface UpdateAssignmentGroupPayload {
@@ -32,6 +36,7 @@ export interface UpdateAssignmentGroupPayload {
   description?: string;
   departmentIds: number[];
   positionIds?: number[];
+  color?: string;
 }
 
 export interface AssignmentGroupUser {

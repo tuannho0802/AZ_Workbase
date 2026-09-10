@@ -8,9 +8,12 @@ export interface Position {
   // Trả kèm từ GET /positions (relations: ['department']) - CHỈ mang tính
   // TỔ CHỨC/GỢI Ý hiển thị, KHÔNG ràng buộc user thuộc đúng phòng ban đó mới
   // chọn được Position này (xem position.entity.ts ở BE).
-  department?: { id: number; name: string } | null;
+  department?: { id: number; name: string; color: string } | null;
   description: string | null;
   isSystem: boolean;
+  // Mã màu hex hiển thị Tag vị trí ngoài FE (vd '#1890ff') - luôn có giá trị
+  // (BE cột NOT NULL DEFAULT, xem migration AddColorToRbacGroupingTables1781300000000).
+  color: string;
 }
 
 export interface CreatePositionPayload {
@@ -18,12 +21,14 @@ export interface CreatePositionPayload {
   name: string;
   departmentId?: number | null;
   description?: string | null;
+  color?: string;
 }
 
 export interface UpdatePositionPayload {
   name?: string;
   departmentId?: number | null;
   description?: string | null;
+  color?: string;
 }
 
 export const positionsApi = {

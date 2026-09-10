@@ -32,6 +32,9 @@ export interface RoleWithPermissions {
   name: string;
   description: string | null;
   isSystem: boolean;
+  // Mã màu hex hiển thị Tag role ngoài FE (vd '#1890ff') - luôn có giá trị
+  // (BE cột NOT NULL DEFAULT, xem migration AddColorToRbacGroupingTables1781300000000).
+  color: string;
   permissions: RolePermissionEntry[];
 }
 
@@ -39,11 +42,13 @@ export interface CreateRolePayload {
   code: string;
   name: string;
   description?: string;
+  color?: string;
 }
 
 export interface UpdateRolePayload {
   name?: string;
   description?: string;
+  color?: string;
 }
 
 export interface UpdateRolePermissionsPayload {

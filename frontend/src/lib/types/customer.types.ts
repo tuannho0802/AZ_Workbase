@@ -98,7 +98,9 @@ export interface Customer {
     // ⚠️ MỚI - rà soát Vị trí 2026-09-10: BE (customers.service.ts
     // findAll()/findOne()) giờ đã JOIN salesUser.position, thêm field ở
     // đây để CustomerInfoTab.tsx hiện được Tag Vị trí cạnh Tag Role.
-    position?: { id: number; name: string } | null;
+    // `color` luôn có giá trị (cột NOT NULL DEFAULT ở BE) - dùng để hiển
+    // thị Tag vị trí đúng màu Admin đã cấu hình ở /vi-tri thay vì hardcode.
+    position?: { id: number; name: string; color: string } | null;
   };
   marketingUser?: {
     id: number;
@@ -106,7 +108,7 @@ export interface Customer {
     fullName?: string;
     email?: string;
     role?: string;
-    position?: { id: number; name: string } | null;
+    position?: { id: number; name: string; color: string } | null;
   };
   status: 'closed' | 'pending' | 'potential' | 'lost' | 'inactive';
   broker?: string;
@@ -116,6 +118,7 @@ export interface Customer {
   department?: {
     id: number;
     name: string;
+    color?: string;
   };
   note?: string;
   latestFTD?: number;
