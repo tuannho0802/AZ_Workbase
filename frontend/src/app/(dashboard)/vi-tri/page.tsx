@@ -25,6 +25,8 @@ import {
 } from '@/lib/hooks/usePositions';
 import { Position } from '@/lib/api/positions.api';
 import { PositionVisibilityDrawer } from './PositionVisibilityDrawer';
+import { ColorPickerField } from '@/components/common/ColorPickerField';
+import { resolveEntityColor } from '@/lib/utils/entityColor';
 
 const { Title, Text } = Typography;
 
@@ -74,6 +76,7 @@ export default function PositionsPage() {
             name: position.name,
             departmentId: position.departmentId,
             description: position.description,
+            color: resolveEntityColor(position.color),
         });
         setModalOpen(true);
     };
@@ -106,6 +109,7 @@ export default function PositionsPage() {
                         name: values.name,
                         departmentId: values.departmentId ?? null,
                         description: values.description,
+                        color: values.color,
                     },
                     {
                         onSuccess: () => {
@@ -151,13 +155,16 @@ export default function PositionsPage() {
             title: 'Tên vị trí',
             dataIndex: 'name',
             key: 'name',
+            render: (name: string, record: Position) => (
+                <Tag color={resolveEntityColor(record.color)}>{name}</Tag>
+            ),
         },
         {
             title: 'Phòng ban (gợi ý)',
             key: 'department',
             render: (_: any, record: Position) =>
                 record.department?.name ? (
-                    <Tag color="blue">{record.department.name}</Tag>
+                    <Tag color={resolveEntityColor(record.department.color)}>{record.department.name}</Tag>
                 ) : (
                     <Text type="secondary">—</Text>
                 ),
@@ -302,6 +309,8 @@ export default function PositionsPage() {
                     <Form.Item name="description" label="Mô tả (tuỳ chọn)">
                         <Input.TextArea rows={2} placeholder="Mô tả ngắn về vị trí" />
                     </Form.Item>
+
+                    <ColorPickerField extra="Màu Tag vị trí này hiển thị ở bảng danh sách và các nơi liên quan (chi tiết khách hàng, chọn Sales/Marketing phụ trách...)." />
                 </Form>
             </Modal>
 

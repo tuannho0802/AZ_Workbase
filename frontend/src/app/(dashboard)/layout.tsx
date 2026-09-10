@@ -18,6 +18,7 @@ import { useSidebarBadgeCounts } from '@/lib/hooks/useSidebarBadgeCounts';
 import { useCachedImage, buildImageCacheKey } from '@/lib/hooks/useCachedImage';
 import { usersApi } from '@/lib/api/users.api';
 import { CountBadge } from '@/components/common/CountBadge';
+import { useRoleColorMap } from '@/lib/hooks/useRoleColorMap';
 import dayjs from 'dayjs';
 import 'dayjs/locale/vi';
 import Image from 'next/image';
@@ -42,12 +43,6 @@ const ROLE_LABEL: Record<string, string> = {
   assistant: 'Trợ lý',
   manager: 'Quản lý',
   employee: 'Nhân viên',
-};
-const ROLE_COLOR: Record<string, string> = {
-  admin: 'gold',
-  assistant: 'purple',
-  manager: 'blue',
-  employee: 'default',
 };
 
 /** Logo dùng chung cho Header và Footer - điểm nhận diện xuyên suốt. Dùng
@@ -92,6 +87,7 @@ export default function DashboardLayout({
     user?.avatarUrl,
   );
   const { can } = useMyPermissions();
+  const { getRoleColor } = useRoleColorMap();
   const [selectedKey, setSelectedKey] = useState('customers');
   const [collapsed, setCollapsed] = useState(false);
   const badgeCounts = useSidebarBadgeCounts();
@@ -402,7 +398,7 @@ export default function DashboardLayout({
                 <div style={{ display: 'flex', flexDirection: 'column', lineHeight: 1.25 }}>
                   <span style={{ fontSize: 14, fontWeight: 600, color: '#0f172a' }}>{user?.name}</span>
                   <Tag
-                    color={ROLE_COLOR[user?.role ?? ''] ?? 'default'}
+                    color={getRoleColor(user?.role)}
                     style={{ margin: 0, fontSize: 11, lineHeight: '16px', padding: '0 6px' }}
                   >
                     {ROLE_LABEL[user?.role ?? ''] ?? user?.role}

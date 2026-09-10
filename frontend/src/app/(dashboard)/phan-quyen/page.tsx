@@ -21,6 +21,8 @@ import {
 import { RoleWithPermissions, Permission, PermissionScope, RolePermissionEntry } from '@/lib/types/roles.types';
 import { DepartmentOverridesPanel } from './DepartmentOverridesPanel';
 import { PositionOverridesPanel } from './PositionOverridesPanel';
+import { ColorPickerField } from '@/components/common/ColorPickerField';
+import { resolveEntityColor } from '@/lib/utils/entityColor';
 
 const { Title, Text, Paragraph } = Typography;
 
@@ -97,6 +99,7 @@ function RoleFormModal({
         code: editingRole?.code ?? '',
         name: editingRole?.name ?? '',
         description: editingRole?.description ?? '',
+        color: resolveEntityColor(editingRole?.color),
       });
     }
   }, [open, editingRole, form]);
@@ -106,7 +109,7 @@ function RoleFormModal({
       const values = await form.validateFields();
       if (editingRole) {
         updateMutation.mutate(
-          { id: editingRole.id, payload: { name: values.name, description: values.description } },
+          { id: editingRole.id, payload: { name: values.name, description: values.description, color: values.color } },
           {
             onSuccess: () => {
               message.success('Đã cập nhật Role');
@@ -117,7 +120,7 @@ function RoleFormModal({
         );
       } else {
         createMutation.mutate(
-          { code: values.code, name: values.name, description: values.description },
+          { code: values.code, name: values.name, description: values.description, color: values.color },
           {
             onSuccess: () => {
               message.success('Đã tạo Role mới');
@@ -166,6 +169,8 @@ function RoleFormModal({
         <Form.Item name="description" label="Mô tả">
           <Input.TextArea rows={2} placeholder="Ghi chú ngắn về vai trò này (không bắt buộc)" />
         </Form.Item>
+
+        <ColorPickerField extra="Màu Tag role này hiển thị ở bảng danh sách nhân viên, hồ sơ cá nhân, nhật ký hệ thống..." />
       </Form>
     </Modal>
   );
@@ -647,7 +652,7 @@ export default function PhanQuyenPage() {
       render: (_: unknown, role: RoleWithPermissions) => (
         <Space orientation="vertical" size={0}>
           <Space>
-            <Text strong>{role.name}</Text>
+            <Tag color={resolveEntityColor(role.color)} style={{ fontWeight: 600 }}>{role.name}</Tag>
             {role.isSystem && <Tag color="gold">Hệ thống</Tag>}
           </Space>
           <Text type="secondary" style={{ fontSize: 12 }}>

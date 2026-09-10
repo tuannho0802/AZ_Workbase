@@ -21,12 +21,9 @@ import { usePositions } from '@/lib/hooks/usePositions';
 import { PendingApprovalsTab } from './PendingApprovalsTab';
 import { TrashTab } from './TrashTab';
 import { getApiErrorMessage } from '@/lib/utils/error-message.util';
+import { useRoleColorMap } from '@/lib/hooks/useRoleColorMap';
 
 const { Text } = Typography;
-
-const ROLE_COLOR: Record<string, string> = {
-  admin: 'red', manager: 'orange', assistant: 'blue', employee: 'green'
-};
 
 // ── mobile card ──────────────────────────────────────────────────────────────
 function UserMobileCard({
@@ -44,6 +41,7 @@ function UserMobileCard({
     onDelete: (r: any) => void;
     canDelete: boolean;
 }) {
+  const { getRoleColor } = useRoleColorMap();
   return (
     <Card
       variant="outlined"

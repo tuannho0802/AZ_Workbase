@@ -14,6 +14,8 @@ import {
   useDeleteAssignmentGroup,
 } from '@/lib/hooks/useAssignmentGroups';
 import { AssignmentGroupConfig } from '@/lib/api/assignment-groups.api';
+import { ColorPickerField } from '@/components/common/ColorPickerField';
+import { resolveEntityColor } from '@/lib/utils/entityColor';
 
 const { Title, Text } = Typography;
 
@@ -71,6 +73,7 @@ export default function AssignmentGroupsPage() {
       description: config.description,
       departmentIds: config.departments.map((d) => d.departmentId),
       positionIds: config.positions.map((p) => p.positionId),
+        color: resolveEntityColor(config.color),
     });
     setModalOpen(true);
   };
@@ -88,6 +91,7 @@ export default function AssignmentGroupsPage() {
         description: values.description,
         departmentIds: values.departmentIds,
         positionIds: values.positionIds ?? [],
+          color: values.color,
       };
       if (editing) {
         updateMutation.mutate(
@@ -137,7 +141,7 @@ export default function AssignmentGroupsPage() {
       width: 160,
       render: (key: string) => <Text code>{key}</Text>,
     },
-    { title: 'Tên', dataIndex: 'name', key: 'name' },
+      { title: 'Tên', dataIndex: 'name', key: 'name', render: (name: string, record: AssignmentGroupConfig) => <Tag color={resolveEntityColor(record.color)}>{name}</Tag> },
     {
       title: 'Phòng ban (bắt buộc)',
       key: 'departments',
@@ -145,7 +149,7 @@ export default function AssignmentGroupsPage() {
         record.departments.length ? (
           <Space wrap size={4}>
             {record.departments.map((d) => (
-              <Tag color="blue" key={d.departmentId}>
+                <Tag color={resolveEntityColor(d.department?.color)} key={d.departmentId}>
                 {d.department?.name ?? d.departmentId}
               </Tag>
             ))}
@@ -161,7 +165,7 @@ export default function AssignmentGroupsPage() {
         record.positions.length ? (
           <Space wrap size={4}>
             {record.positions.map((p) => (
-              <Tag color="purple" key={p.positionId}>
+                <Tag color={resolveEntityColor(p.position?.color)} key={p.positionId}>
                 {p.position?.name ?? p.positionId}
               </Tag>
             ))}
@@ -300,6 +304,8 @@ export default function AssignmentGroupsPage() {
           <Form.Item name="description" label="Mô tả (tuỳ chọn)">
             <Input.TextArea rows={2} placeholder="Mô tả ngắn về nhóm phụ trách này" />
           </Form.Item>
+
+                  <ColorPickerField extra="Màu Tag nhóm phụ trách này hiển thị ở bảng danh sách." />
         </Form>
       </Modal>
 
