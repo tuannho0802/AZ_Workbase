@@ -8,6 +8,7 @@ import {
 import {
   UserAddOutlined, EditOutlined, KeyOutlined,
   ReloadOutlined, MailOutlined, TeamOutlined, DeleteOutlined, CrownOutlined,
+  IdcardOutlined,
 } from '@ant-design/icons';
 
 import { useAuthStore } from '@/lib/stores/auth.store';
@@ -16,6 +17,7 @@ import { usersApi } from '@/lib/api/users.api';
 import { useMyPermissions } from '@/lib/hooks/useMyPermissions';
 import { useRoles } from '@/lib/hooks/useRoles';
 import { useDepartments } from '@/lib/hooks/useDepartments';
+import { usePositions } from '@/lib/hooks/usePositions';
 import { PendingApprovalsTab } from './PendingApprovalsTab';
 import { TrashTab } from './TrashTab';
 import { getApiErrorMessage } from '@/lib/utils/error-message.util';
@@ -82,6 +84,15 @@ function UserMobileCard({
             {record.department?.name || 'Chưa có phòng ban'}
           </Text>
         </div>
+        {/* ⚠️ MỚI - Vị trí (Position), đối xứng Phòng ban ở trên. CHỈ hiện
+            dòng này khi user thực sự có gán Vị trí - tránh rối UI card cho
+            phần lớn user hiện tại chưa có Vị trí nào (nullable, mới thêm). */}
+        {record.position?.name && (
+          <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+            <IdcardOutlined style={{ fontSize: 12, color: '#8c8c8c' }} />
+            <Text style={{ fontSize: 12, color: '#595959' }}>{record.position.name}</Text>
+          </div>
+        )}
         <Text style={{ fontSize: 11, color: '#bfbfbf' }}>ID: {record.id}</Text>
       </div>
 
@@ -132,6 +143,10 @@ export default function UsersPage() {
   const [form] = Form.useForm();
   const [resetForm] = Form.useForm();
   const { departments } = useDepartments();
+  // ⚠️ MỚI - Vị trí (Position), đối xứng `departments` ở trên. Dùng cho
+  // Select trong Modal Thêm/Sửa - cột "Vị trí" ở bảng đọc thẳng từ object
+  // quan hệ `record.position` (GET /users đã JOIN sẵn), không cần tra map.
+  const { positions } = usePositions();
   const { user } = useAuthStore();
   const router = useRouter();
   const [pendingCount, setPendingCount] = useState(0);
@@ -234,6 +249,10 @@ export default function UsersPage() {
     form.setFieldsValue({
       ...record,
       departmentId: record.department?.id || record.departmentId,
+      // ⚠️ MỚI - đối xứng departmentId ở trên, lấy id từ object quan hệ
+      // `position` (GET /users đã JOIN sẵn) ưu tiên, fallback về scalar
+      // `positionId` thô nếu vì lý do gì đó object chưa được join.
+      positionId: record.position?.id || record.positionId,
     });
     setIsModalOpen(true);
   };
@@ -251,6 +270,11 @@ export default function UsersPage() {
         phone: values.phone || undefined,
         role: String(values.role).toLowerCase(),
         departmentId: values.departmentId ? Number(values.departmentId) : undefined,
+        // ⚠️ MỚI - đối xứng departmentId ở trên. `allowClear` nên gửi
+        // `null` tường minh khi người dùng xoá lựa chọn (không phải
+        // `undefined`) để BE thực sự XOÁ gán Vị trí cũ thay vì bỏ qua field
+        // này (UpdateUserDto.positionId?: number | null - đã hỗ trợ null).
+        positionId: values.positionId != null ? Number(values.positionId) : (editingUser ? null : undefined),
         // Để trống -> KHÔNG gửi field này -> BE tự sinh mã kế tiếp
         // (generateNextEmployeeCode()). Có nhập tay -> BE tự check trùng,
         // ném lỗi rõ ràng nếu đã tồn tại (xem catch bên dưới).
@@ -364,6 +388,11 @@ export default function UsersPage() {
     {
       title: 'Phòng ban',
       dataIndex: ['department', 'name'],
+      render: (val: any) => val || '-'
+    },
+    {
+      title: 'Vị trí',
+      dataIndex: ['position', 'name'],
       render: (val: any) => val || '-'
     },
     {
@@ -611,6 +640,23 @@ export default function UsersPage() {
               placeholder="Chọn phòng ban"
               allowClear
               options={departments.map((d: any) => ({ value: Number(d.id), label: d.name }))}
+            />
+          </Form.Item>
+
+          {/* ⚠️ MỚI - Vị trí (Position), đối xứng Phòng ban ở trên. Tuỳ chọn
+              (không bắt buộc), KHÔNG ràng buộc phải cùng phòng ban đã chọn ở
+              trên - Position chỉ mang tính tổ chức/gợi ý hiển thị (xem JSDoc
+              `positions.api.ts::Position.department`), không phải quan hệ
+              cha-con bắt buộc. */}
+          <Form.Item name="positionId" label="Vị trí">
+            <Select
+              placeholder="Chọn vị trí (không bắt buộc)"
+              allowClear
+              options={positions.map((p) => ({ value: p.id, label: p.name }))}
+              showSearch
+              filterOption={(input, option) =>
+                (option?.label as string).toLowerCase().includes(input.toLowerCase())
+              }
             />
           </Form.Item>
 

@@ -11,7 +11,7 @@ import {
 import {
   ReloadOutlined,
   MailOutlined, PhoneOutlined, ApartmentOutlined, ClockCircleOutlined,
-  CalendarOutlined, UserOutlined, EyeOutlined,
+  CalendarOutlined, UserOutlined, EyeOutlined, IdcardOutlined,
   LinkOutlined, CrownOutlined, TeamOutlined, ArrowRightOutlined,
   EditOutlined, SaveOutlined, CloseOutlined, LockOutlined, DeleteOutlined,
 } from '@ant-design/icons';
@@ -374,6 +374,14 @@ function ProfilePortal({ userId, onDeleted }: { userId: number; onDeleted?: () =
             <Descriptions.Item label={<><ApartmentOutlined /> Phòng ban</>}>
               {detail.department?.name || <Text type="secondary">Chưa có phòng ban</Text>}
             </Descriptions.Item>
+            {/* ⚠️ MỚI - Vị trí (Position), đối xứng Phòng ban ở trên. Chỉ
+                HIỂN THỊ (read-only) - không cho tự sửa, đúng thiết kế BE
+                (`UpdateOwnProfileDto` cố tình KHÔNG có `positionId`, giống
+                `departmentId`/`role` - các trường quản trị này chỉ Admin/
+                Assistant/Manager sửa được qua trang "/users"). */}
+            <Descriptions.Item label={<><IdcardOutlined /> Vị trí</>}>
+              {detail.position?.name || <Text type="secondary">Chưa có vị trí</Text>}
+            </Descriptions.Item>
             <Descriptions.Item label={<><CalendarOutlined /> Ngày tham gia</>}>
               {dayjs(detail.createdAt).format('DD/MM/YYYY')}
             </Descriptions.Item>
@@ -552,6 +560,11 @@ function AdminProfileManager() {
     {
       title: 'Phòng ban',
       dataIndex: ['department', 'name'],
+      render: (val: any) => val || '-',
+    },
+    {
+      title: 'Vị trí',
+      dataIndex: ['position', 'name'],
       render: (val: any) => val || '-',
     },
     {
