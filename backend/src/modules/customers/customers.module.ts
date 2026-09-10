@@ -10,11 +10,13 @@ import { CustomerGroupMembership } from '../../database/entities/customer-group-
 import { User } from '../../database/entities/user.entity';
 import { DepositsModule } from '../deposits/deposits.module';
 import { Deposit } from '../../database/entities/deposit.entity';
+import { UiVisibilityModule } from '../ui-visibility/ui-visibility.module';
 
 @Module({
   imports: [
     TypeOrmModule.forFeature([Customer, User, CustomerNote, CustomerAssignment, CustomerGroupMembership, Deposit]),
-    DepositsModule
+    DepositsModule,
+    UiVisibilityModule,
   ],
   controllers: [CustomersController],
   providers: [CustomersService, CustomersImportService],

@@ -33,6 +33,7 @@ import {
 import { CustomerAccessHelper } from './helpers/customer-access.helper';
 import { AuditService } from '../audit/audit.service';
 import { todayVnStr } from '../../common/utils/date-vn.util';
+import { UiVisibilityService } from '../ui-visibility/ui-visibility.service';
 
 @Injectable()
 export class CustomersService {
@@ -49,6 +50,11 @@ export class CustomersService {
     private readonly customerGroupMembershipRepository: Repository<CustomerGroupMembership>,
     private readonly auditService: AuditService,
     private readonly permissionsService: PermissionsService,
+    // ⚠️ Trục "UI Visibility" (field ẨN/HIỆN) - ĐỘC LẬP với PermissionsService
+    // (action permission). Chỉ strip field ở findAll()/findOne() - đây là 2
+    // nơi DUY NHẤT trả object Customer đầy đủ ra ngoài response (xem PLAN
+    // mục 2.5, JSDoc `UiVisibilityService.stripHiddenCustomerFields()`).
+    private readonly uiVisibilityService: UiVisibilityService,
   ) {}
 
   private getTodayVn(): Date {
@@ -308,6 +314,15 @@ export class CustomersService {
     userId: number,
     userRole: string,
     scope?: string | null,
+    // ⚠️ MỚI (UI Visibility Phase 3) - optional để KHÔNG phá các lời gọi cũ
+    // (test/service khác gọi findAll() chưa truyền 2 tham số này) - thiếu
+    // thì coi như không có override Phòng ban/Vị trí, dùng đúng rule Global.
+    // Đặt tên `callerDepartmentId`/`callerPositionId` (không phải
+    // `departmentId`) vì `departmentId` đã bị `filters` destructure bên dưới
+    // dùng cho mục đích KHÁC (lọc DANH SÁCH theo phòng ban của KHÁCH HÀNG,
+    // không phải phòng ban của NGƯỜI GỌI).
+    callerDepartmentId?: number | null,
+    callerPositionId?: number | null,
   ) {
     const {
       page = 1,
@@ -568,6 +583,22 @@ export class CustomersService {
       });
     }
 
+    // ⚠️ UI Visibility (Phase 3) - xoá field bị ẩn KHỎI từng customer trước
+    // khi trả về, KHÔNG set null (xem `UiVisibilityService` JSDoc). Tính 1
+    // LẦN cho cả trang (`hiddenKeys` giống nhau cho mọi customer vì phụ
+    // thuộc role/phòng ban/vị trí của NGƯỜI GỌI, không phải của customer).
+    const hiddenKeys = await this.uiVisibilityService.getHiddenElementKeys(
+      userRole,
+      'customers',
+      callerDepartmentId,
+      callerPositionId,
+    );
+    if (hiddenKeys.size > 0) {
+      entities.forEach((customer) =>
+        this.uiVisibilityService.stripHiddenCustomerFields(customer as any, hiddenKeys),
+      );
+    }
+
     return {
       data: entities,
       total: count,
@@ -691,7 +722,15 @@ export class CustomersService {
     }
   }
 
-  async findOne(id: number, userId: number, userRole: string, scope?: string | null) {
+  async findOne(
+    id: number,
+    userId: number,
+    userRole: string,
+    scope?: string | null,
+    // ⚠️ MỚI (UI Visibility Phase 3) - xem chú thích trong findAll().
+    callerDepartmentId?: number | null,
+    callerPositionId?: number | null,
+  ) {
     const queryBuilder = this.customersRepository
       .createQueryBuilder('customer')
       .leftJoinAndSelect('customer.salesUser', 'salesUser')
@@ -743,6 +782,20 @@ export class CustomersService {
     (customer as any).activeAssignees = activeAssignments.map(
       (a) => a.assignedTo,
     );
+
+    // ⚠️ UI Visibility (Phase 3) - GIỐNG HỆT findAll(), phải xoá SAU khi gán
+    // `activeAssignees` ở trên (field:sales_assignment strip luôn cả
+    // activeAssignees - xem `stripHiddenCustomerFields()`), nếu xoá trước sẽ
+    // bị gán đè lại field vừa xoá.
+    const hiddenKeys = await this.uiVisibilityService.getHiddenElementKeys(
+      userRole,
+      'customers',
+      callerDepartmentId,
+      callerPositionId,
+    );
+    if (hiddenKeys.size > 0) {
+      this.uiVisibilityService.stripHiddenCustomerFields(customer as any, hiddenKeys);
+    }
 
     return customer;
   }

@@ -7,6 +7,7 @@ import {
 } from '@nestjs/common';
 import { CustomersService } from './customers.service';
 import { PermissionsService } from '../permissions/permissions.service';
+import { UiVisibilityService } from '../ui-visibility/ui-visibility.service';
 import { Customer } from '../../database/entities/customer.entity';
 import { CustomerNote } from '../../database/entities/customer-note.entity';
 import { Deposit } from '../../database/entities/deposit.entity';
@@ -75,10 +76,21 @@ describe('CustomersService', () => {
   const mockPermissionsService = {
     hasPermission: jest.fn().mockResolvedValue({ allowed: false, scope: null }),
   };
+  // ⚠️ Provider thứ 8 (UI Visibility Phase 3) - trục ĐỘC LẬP với
+  // PermissionsService, chỉ strip field khi `getHiddenElementKeys()` trả về
+  // tập KHÔNG rỗng. Mặc định trả Set rỗng (không ẩn gì) để các test cũ
+  // (viết TRƯỚC khi có UI Visibility) không bị strip field ngoài ý muốn -
+  // test nào cần assert hành vi ẩn field tự override bằng mockResolvedValueOnce.
+  const mockUiVisibilityService = {
+    getHiddenElementKeys: jest.fn().mockResolvedValue(new Set<string>()),
+    stripHiddenCustomerFields: jest.fn((customer: any) => customer),
+  };
 
   beforeEach(async () => {
     jest.clearAllMocks();
     mockPermissionsService.hasPermission.mockResolvedValue({ allowed: false, scope: null });
+    mockUiVisibilityService.getHiddenElementKeys.mockResolvedValue(new Set<string>());
+    mockUiVisibilityService.stripHiddenCustomerFields.mockImplementation((customer: any) => customer);
 
     const module: TestingModule = await Test.createTestingModule({
       providers: [
@@ -96,6 +108,7 @@ describe('CustomersService', () => {
         },
         { provide: AuditService, useValue: mockAuditService },
         { provide: PermissionsService, useValue: mockPermissionsService },
+        { provide: UiVisibilityService, useValue: mockUiVisibilityService },
       ],
     }).compile();
 

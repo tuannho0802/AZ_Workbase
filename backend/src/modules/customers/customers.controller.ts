@@ -197,7 +197,14 @@ export class CustomersController {
     @Query() filters: CustomerFiltersDto,
     @GetPermissionScope() scope: string | null | undefined,
   ) {
-    return this.customersService.findAll(filters, user.id, user.role, scope);
+    return this.customersService.findAll(
+      filters,
+      user.id,
+      user.role,
+      scope,
+      user.departmentId,
+      user.positionId,
+    );
   }
 
   @Get('creators')
@@ -238,7 +245,14 @@ export class CustomersController {
     @Param('id') id: string,
     @GetPermissionScope() scope: string | null | undefined,
   ) {
-    return this.customersService.findOne(+id, user.id, user.role, scope);
+    return this.customersService.findOne(
+      +id,
+      user.id,
+      user.role,
+      scope,
+      user.departmentId,
+      user.positionId,
+    );
   }
 
   @Post(':id/notes')
