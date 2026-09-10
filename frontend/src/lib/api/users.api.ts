@@ -55,7 +55,7 @@ export const usersApi = {
     return response.data;
   },
 
-  approveUser: async (id: number, data: { role?: string; departmentId?: number }) => {
+  approveUser: async (id: number, data: { role?: string; departmentId?: number; positionId?: number }) => {
     const response = await axiosInstance.patch(`/users/${id}/approve`, data);
     return response.data;
   },
@@ -160,6 +160,8 @@ export interface TrashedUser {
   name: string;
   role: string;
   department?: { id: number; name: string } | null;
+  // ⚠️ MỚI - đối xứng department ở trên.
+  position?: { id: number; name: string } | null;
   deletedAt: string;
   deletedBy?: { id: number; name: string } | null;
 }
@@ -175,4 +177,8 @@ export interface PendingUser {
   role: string;
   createdAt: string;
   department?: { id: number; name: string } | null;
+  // ⚠️ MỚI - đối xứng department ở trên (findPendingApprovals() BE đã JOIN
+  // sẵn quan hệ position - người tự đăng ký có thể đã chọn Vị trí qua
+  // RegisterDto.positionId).
+  position?: { id: number; name: string } | null;
 }
