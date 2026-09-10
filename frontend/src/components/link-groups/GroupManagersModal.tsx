@@ -22,6 +22,11 @@ interface UserOption {
   id: number;
   name: string;
   email: string;
+  // ⚠️ MỚI - rà soát Vị trí 2026-09-10: dùng để lọc đúng "Nhân viên Content"
+  // theo Position thật (code='content', seed sẵn ở migration
+  // SeedSamplePositions) thay vì cho chọn TẤT CẢ nhân viên như trước đây -
+  // nguồn `/users/all` (findEmployees()) giờ đã JOIN 'position'.
+  position?: { id: number; name: string; code?: string } | null;
 }
 
 interface Props {
@@ -83,8 +88,13 @@ export const GroupManagersModal = ({ open, onClose, groupId, groupName }: Props)
 
   // Danh sách chọn cho Nhân viên Content - CHỈ loại Quản lý chính + người
   // đã là Content rồi, KHÔNG loại Quản lý phụ (được phép trùng, xem JSDoc).
+  // ⚠️ MỚI - rà soát Vị trí 2026-09-10: LỌC THÊM theo Position code='content'
+  // - trước đây cho chọn TẤT CẢ nhân viên bất kể Vị trí, không đúng nghĩa
+  // "Nhân viên Content" (đã có Position riêng biệt, seed sẵn ở migration
+  // SeedSamplePositions). Người không có Position "Content" sẽ không còn
+  // xuất hiện trong dropdown này nữa.
   const availableContentStaffOptions = userList
-    .filter((u) => u.id !== primaryId && !contentStaffIds.has(u.id))
+    .filter((u) => u.id !== primaryId && !contentStaffIds.has(u.id) && u.position?.code === 'content')
     .map((u) => ({ value: u.id, label: u.name || u.email }));
 
   const resetAndClose = () => {
@@ -288,7 +298,7 @@ export const GroupManagersModal = ({ open, onClose, groupId, groupName }: Props)
             value={selectedContentStaffId}
             onChange={setSelectedContentStaffId}
             options={availableContentStaffOptions}
-            notFoundContent="Không còn ai để thêm"
+            notFoundContent='Không có nhân viên nào mang Vị trí "Content" để thêm'
           />
           <Button
             type="primary"

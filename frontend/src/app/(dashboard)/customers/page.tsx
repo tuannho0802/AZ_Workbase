@@ -20,6 +20,7 @@ import { useCustomers } from '@/lib/hooks/useCustomers';
 import { useDebounce } from '@/lib/hooks/useDebounce';
 import { usersApi } from '@/lib/api/users.api';
 import { useMyPermissions } from '@/lib/hooks/useMyPermissions';
+import { useMyHiddenElements } from '@/lib/hooks/useUiVisibility';
 import { useDepartments } from '@/lib/hooks/useDepartments';
 import dayjs from 'dayjs';
 import { CustomerFilters } from '@/components/customers/CustomerFilters';
@@ -248,6 +249,18 @@ function CustomersPageContent() {
   
   const { user } = useAuthStore();
   const { can } = useMyPermissions();
+  // ⚠️ FIX BUG THẬT (rà soát Vị trí 2026-09-10): trang này CHƯA BAO GIỜ gọi
+  // useMyHiddenElements('customers') - Admin cấu hình ẩn
+  // field:sales_assignment/field:marketing_assignment cho 1 Position (vd
+  // "Content") qua trang /vi-tri KHÔNG có tác dụng gì ở đây: cột "Sales
+  // (Chính + Phụ)"/"Marketing" và 2 dropdown filter "Sales (Phòng Kinh
+  // Doanh)"/"Marketing (Phòng Marketing)" vẫn luôn hiện, dù BE đã strip
+  // đúng field khỏi response (`stripHiddenCustomerFields`) - vì cột/filter
+  // UI không phụ thuộc vào dữ liệu customer có field đó hay không, chúng là
+  // control độc lập luôn render cứng.
+  const { hiddenKeys } = useMyHiddenElements('customers');
+  const hideSalesField = hiddenKeys.includes('field:sales_assignment');
+  const hideMarketingField = hiddenKeys.includes('field:marketing_assignment');
   const [selectedRowKeys, setSelectedRowKeys] = useState<React.Key[]>([]);
   const [isImportOpen, setIsImportOpen] = useState(false);
   const [isAssignOpen, setIsAssignOpen] = useState(false);
@@ -569,18 +582,18 @@ function CustomersPageContent() {
       width: isLaptop ? 90 : 100,
       ellipsis: { showTitle: true },
     },
-    {
+    ...(hideSalesField ? [] : [{
       title: 'Sales (Chính + Phụ)',
       key: 'salesUser',
       width: isLaptop ? 150 : 170,
-      render: (_, record: any) => renderSalesTag(record),
-    },
-    {
+      render: (_: any, record: any) => renderSalesTag(record),
+    }]),
+    ...(hideMarketingField ? [] : [{
       title: 'Marketing',
       key: 'marketingUser',
       width: isLaptop ? 110 : 125,
-      render: (_, record: any) => renderMarketingTag(record),
-    },
+      render: (_: any, record: any) => renderMarketingTag(record),
+    }]),
     {
       title: 'Trạng thái',
       dataIndex: 'status',
@@ -663,7 +676,7 @@ function CustomersPageContent() {
   // render đầu (permissions API luôn async), giá trị `false` ban đầu bị
   // "đông cứng" vĩnh viễn trong closure của useMemo, cột Thao tác/nút Xoá
   // sẽ không bao giờ hiện dù sau đó canDeleteCustomer đã thành true.
-  ], [isLaptop, depositRangeForColumnLabel, page, pageSize, user, canDeleteCustomer, recentNotesCount]);
+  ], [isLaptop, depositRangeForColumnLabel, page, pageSize, user, canDeleteCustomer, recentNotesCount, hideSalesField, hideMarketingField]);
 
   // ⚠️ FIX BUG THẬT: nút "X" (clear) trên các Select (Sales/Marketing/Người
   // nhập Data/Nguồn/Trạng thái/Đã joined nhóm...) không tắt được filter,
@@ -804,6 +817,8 @@ function CustomersPageContent() {
                     marketingUsers={marketingUsersInDept}
                     creatorUsers={creatorUsers}
                     onFiltersChange={handleFiltersChange}
+                    hideSalesFilter={hideSalesField}
+                    hideMarketingFilter={hideMarketingField}
                   />
                 </div>
               )
@@ -827,6 +842,8 @@ function CustomersPageContent() {
               marketingUsers={marketingUsersInDept}
               creatorUsers={creatorUsers}
           onFiltersChange={handleFiltersChange}
+              hideSalesFilter={hideSalesField}
+              hideMarketingFilter={hideMarketingField}
         />
       )}
 

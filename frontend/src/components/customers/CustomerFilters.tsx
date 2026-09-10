@@ -25,6 +25,13 @@ interface CustomerFiltersProps {
   // GET /customers/creators) - KHÔNG lọc theo phòng ban.
   creatorUsers: { id: number; name: string }[];
   onFiltersChange: (newFilters: any) => void;
+  // ⚠️ MỚI - rà soát Vị trí 2026-09-10: đối xứng field:sales_assignment/
+  // field:marketing_assignment đã bị strip khỏi response Customer (BE
+  // stripHiddenCustomerFields) - 2 dropdown filter này là control ĐỘC LẬP
+  // (không phụ thuộc data), nên phải ẩn tường minh qua prop truyền từ
+  // page.tsx (useMyHiddenElements), không tự suy luận được.
+  hideSalesFilter?: boolean;
+  hideMarketingFilter?: boolean;
 }
 
 export const CustomerFilters: React.FC<CustomerFiltersProps> = ({
@@ -33,6 +40,8 @@ export const CustomerFilters: React.FC<CustomerFiltersProps> = ({
   marketingUsers,
   creatorUsers,
   onFiltersChange,
+  hideSalesFilter,
+  hideMarketingFilter,
 }) => {
   const [fromDate, setFromDate] = useState<Dayjs | null>(filters.dateFrom ? dayjs(filters.dateFrom) : null);
   const [toDate, setToDate] = useState<Dayjs | null>(filters.dateTo ? dayjs(filters.dateTo) : null);
@@ -157,33 +166,35 @@ export const CustomerFilters: React.FC<CustomerFiltersProps> = ({
           />
         </Col>
 
-        <Col xs={24} sm={12} md={4}>
-          <label className="block text-sm font-medium mb-1">Sales (Phòng Kinh Doanh)</label>
-          <Select
-            placeholder="Chọn Sales"
-            allowClear
-            showSearch
-            optionFilterProp="label"
-            style={{ width: '100%' }}
-            value={filters.salesUserId}
-            onChange={(val) => onFiltersChange({ ...filters, salesUserId: val, page: 1 })}
-            options={salesUsers.map(u => ({ value: u.id, label: u.name }))}
-          />
-        </Col>
+        {!hideSalesFilter && (
+          <Col xs={24} sm={12} md={4}>
+            <label className="block text-sm font-medium mb-1">Sales (Phòng Kinh Doanh)</label>
+            <Select
+              placeholder="Chọn Sales"
+              allowClear
+              showSearch={{ optionFilterProp: 'label' }}
+              style={{ width: '100%' }}
+              value={filters.salesUserId}
+              onChange={(val) => onFiltersChange({ ...filters, salesUserId: val, page: 1 })}
+              options={salesUsers.map(u => ({ value: u.id, label: u.name }))}
+            />
+          </Col>
+        )}
 
-        <Col xs={24} sm={12} md={4}>
-          <label className="block text-sm font-medium mb-1">Marketing (Phòng Marketing)</label>
-          <Select
-            placeholder="Chọn Marketing"
-            allowClear
-            showSearch
-            optionFilterProp="label"
-            style={{ width: '100%' }}
-            value={filters.marketingUserId}
-            onChange={(val) => onFiltersChange({ ...filters, marketingUserId: val, page: 1 })}
-            options={marketingUsers.map(u => ({ value: u.id, label: u.name }))}
-          />
-        </Col>
+        {!hideMarketingFilter && (
+          <Col xs={24} sm={12} md={4}>
+            <label className="block text-sm font-medium mb-1">Marketing (Phòng Marketing)</label>
+            <Select
+              placeholder="Chọn Marketing"
+              allowClear
+              showSearch={{ optionFilterProp: 'label' }}
+              style={{ width: '100%' }}
+              value={filters.marketingUserId}
+              onChange={(val) => onFiltersChange({ ...filters, marketingUserId: val, page: 1 })}
+              options={marketingUsers.map(u => ({ value: u.id, label: u.name }))}
+            />
+          </Col>
+        )}
 
         <Col xs={24} sm={12} md={4}>
           <label className="block text-sm font-medium mb-1">Người nhập Data</label>

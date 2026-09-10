@@ -13,6 +13,7 @@ import { GroupPickerModal } from './GroupPickerModal';
 import { Customer } from '@/lib/types/customer.types';
 import dayjs, { Dayjs } from 'dayjs';
 import { isFutureVnDate } from '@/lib/utils/date-vn';
+import { useMyHiddenElements } from '@/lib/hooks/useUiVisibility';
 
 const { Text } = Typography;
 
@@ -32,6 +33,15 @@ export const CustomerForm: React.FC<CustomerFormProps> = ({ open, customer, onCl
   // nguồn mới mà không sửa code. Giờ lấy động từ /media-sources (chỉ nguồn
   // đang MỞ - activeOnly=true) - quản lý tại trang /nguon-media.
   const { sources } = useMediaSources(true);
+
+  // ⚠️ MỚI - rà soát Vị trí 2026-09-10 (đồng bộ với CustomerFilters.tsx +
+  // cột bảng ở page.tsx): field:sales_assignment/field:marketing_assignment
+  // bị ẩn qua Position override thì Modal Thêm/Sửa cũng PHẢI ẩn đúng 2 field
+  // "Sales phụ trách"/"Marketing phụ trách" - trước đây modal này không hề
+  // biết tới rule ẩn, luôn hiện đủ cả 2 field bất kể cấu hình gì.
+  const { hiddenKeys } = useMyHiddenElements('customers');
+  const hideSalesField = hiddenKeys.includes('field:sales_assignment');
+  const hideMarketingField = hiddenKeys.includes('field:marketing_assignment');
 
   // ── "Tham gia nhóm" - chọn TỰ DO, KHÔNG còn ràng buộc trùng Category với
   // Nguồn đã chọn nữa. Trước đây bắt buộc trùng tên (Nguồn "Facebook" chỉ
@@ -314,18 +324,24 @@ export const CustomerForm: React.FC<CustomerFormProps> = ({ open, customer, onCl
           </Col>
         </Row>
 
-        <Row gutter={16}>
-          <Col span={12}>
-            <Form.Item name="salesUserId" label="Sales phụ trách">
-              <SalesUserSelect />
-            </Form.Item>
-          </Col>
-          <Col span={12}>
-            <Form.Item name="marketingUserId" label="Marketing phụ trách">
-              <SalesUserSelect placeholder="Chọn Marketing đang hoạt động..." />
-            </Form.Item>
-          </Col>
-        </Row>
+        {(!hideSalesField || !hideMarketingField) && (
+          <Row gutter={16}>
+            {!hideSalesField && (
+              <Col span={hideMarketingField ? 24 : 12}>
+                <Form.Item name="salesUserId" label="Sales phụ trách">
+                  <SalesUserSelect />
+                </Form.Item>
+              </Col>
+            )}
+            {!hideMarketingField && (
+              <Col span={hideSalesField ? 24 : 12}>
+                <Form.Item name="marketingUserId" label="Marketing phụ trách">
+                  <SalesUserSelect placeholder="Chọn Marketing đang hoạt động..." />
+                </Form.Item>
+              </Col>
+            )}
+          </Row>
+        )}
 
         <Row gutter={16}>
           <Col span={8}>
