@@ -247,7 +247,7 @@ export function PositionVisibilityDrawer({ position, open, onClose }: Props) {
               showIcon
               icon={<EyeInvisibleOutlined />}
               style={{ marginBottom: 12 }}
-              message="Vị trí này đang có cấu hình riêng"
+                  title="Vị trí này đang có cấu hình riêng"
               description="Khác với ma trận Toàn cục/Phòng ban - bấm &quot;Gỡ override&quot; để quay lại dùng chung."
             />
           )}
