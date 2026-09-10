@@ -138,8 +138,19 @@ export class UsersService {
       .getOne();
   }
 
-  async findById(id: number): Promise<User | null> {
-    return this.usersRepository.findOne({ where: { id } });
+  // ⚠️ MỚI - thêm tham số `relations` (mặc định RỖNG - giữ nguyên hành vi
+  // cũ cho hot-path `JwtStrategy.validate()` chạy trên MỌI request đã đăng
+  // nhập, không cần JOIN gì thêm vì chỉ đọc field scalar departmentId/
+  // positionId/isRootAdmin trực tiếp trên entity, không cần object quan hệ
+  // đầy đủ). FIX BUG THẬT: `GET /users/me` (getProfile()) gọi hàm này mà
+  // KHÔNG truyền relations -> `department`/`position` luôn `undefined` trên
+  // response -> trang Profile (xem chính mình, `isSelf=true` ở
+  // `profile/page.tsx`) LUÔN hiển thị "Chưa có phòng ban" dù user thực sự
+  // có phòng ban/vị trí trong DB (trong khi xem NGƯỜI KHÁC qua GET
+  // /users/:id vẫn đúng vì `findOne()` có JOIN sẵn) - lỗi phát hiện khi rà
+  // soát để thêm hiển thị Vị trí ở FE.
+  async findById(id: number, relations: string[] = []): Promise<User | null> {
+    return this.usersRepository.findOne({ where: { id }, relations });
   }
 
   async findOne(id: number, currentUserId: number, currentUserRole: string, scope?: string | null): Promise<User | null> {

@@ -82,7 +82,7 @@ export class UsersController {
   @Get('me')
   @ApiOperation({ summary: 'Lấy thông tin cá nhân của người đang đăng nhập' })
   async getProfile(@Request() req: any) {
-    const user = await this.usersService.findById(req.user.id);
+    const user = await this.usersService.findById(req.user.id, ['department', 'position']);
     return this.usersService.signAvatarUrl(user);
   }
 
