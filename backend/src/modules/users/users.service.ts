@@ -1094,7 +1094,7 @@ export class UsersService {
     approverId: number,
     approverRole: string,
     scope?: string | null,
-    overrides?: { role?: string; departmentId?: number },
+    overrides?: { role?: string; departmentId?: number; positionId?: number | null },
   ): Promise<User> {
     const user = await this.usersRepository.findOne({ where: { id } });
     if (!user) {
@@ -1128,12 +1128,20 @@ export class UsersService {
       await this.validateRoleExists(overrides.role);
     }
 
+    // ⚠️ MỚI - đối xứng validate role ở trên. Người duyệt có thể gán/đổi Vị
+    // trí ngay lúc duyệt (thay vì phải vào "/users" sửa lại lần 2) - xác
+    // nhận Vị trí THẬT SỰ tồn tại, đúng pattern `UsersService.create()`.
+    if (overrides?.positionId != null) {
+      await this.positionsService.findOne(overrides.positionId);
+    }
+
     user.approvalStatus = ApprovalStatus.APPROVED;
     user.approvedById = approverId;
     user.approvedAt = new Date();
     user.rejectionReason = null;
     if (overrides?.role) user.role = overrides.role;
     if (overrides?.departmentId !== undefined) user.departmentId = overrides.departmentId;
+    if (overrides?.positionId !== undefined) user.positionId = overrides.positionId;
 
     const saved = await this.usersRepository.save(user);
 
@@ -1143,7 +1151,7 @@ export class UsersService {
       'user',
       id,
       null,
-      { role: saved.role, departmentId: saved.departmentId },
+      { role: saved.role, departmentId: saved.departmentId, positionId: saved.positionId },
     );
     this.logger.log(`[Users] User ID ${id} approved by ${approverId}`);
 

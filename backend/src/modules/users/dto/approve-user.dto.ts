@@ -21,4 +21,14 @@ export class ApproveUserDto {
   @IsInt()
   @Type(() => Number)
   departmentId?: number;
+
+  // ⚠️ MỚI - đối xứng departmentId ở trên. Cho phép người duyệt gán/đổi Vị
+  // trí ngay lúc duyệt (RegisterDto.positionId chỉ là GỢI Ý người tự đăng
+  // ký chọn, người duyệt vẫn có toàn quyền xác nhận lại) - xem
+  // UsersService.approveUser().
+  @ApiPropertyOptional({ description: 'Đổi vị trí khi duyệt (để trống thì giữ nguyên lúc đăng ký)' })
+  @IsOptional()
+  @IsInt()
+  @Type(() => Number)
+  positionId?: number;
 }
