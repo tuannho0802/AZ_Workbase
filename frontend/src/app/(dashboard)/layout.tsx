@@ -220,6 +220,8 @@ export default function DashboardLayout({
       newKey = 'vi-tri';
     } else if (pathname.includes('/trash-can')) {
       newKey = 'trash-can';
+    } else if (pathname.includes('/quan-ly-phu-trach')) {
+      newKey = 'quan-ly-phu-trach';
     } else if (pathname.includes('/nguon-media')) {
       // Thiếu nhánh này khiến pathname rơi qua hết mọi else-if rồi giữ
       // nguyên default 'customers' -> sidebar luôn sáng nhầm "Khách hàng"

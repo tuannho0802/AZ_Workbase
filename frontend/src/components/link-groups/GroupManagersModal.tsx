@@ -15,6 +15,7 @@ import {
 } from '@/lib/hooks/useLinkGroups';
 import { getApiErrorMessage } from '@/lib/utils/error-message.util';
 import { SimpleList } from '@/components/common/SimpleList';
+import { useAssignmentGroupUsers } from '@/lib/hooks/useAssignmentGroups';
 
 const { Text } = Typography;
 
@@ -88,14 +89,17 @@ export const GroupManagersModal = ({ open, onClose, groupId, groupName }: Props)
 
   // Danh sách chọn cho Nhân viên Content - CHỈ loại Quản lý chính + người
   // đã là Content rồi, KHÔNG loại Quản lý phụ (được phép trùng, xem JSDoc).
-  // ⚠️ MỚI - rà soát Vị trí 2026-09-10: LỌC THÊM theo Position code='content'
-  // - trước đây cho chọn TẤT CẢ nhân viên bất kể Vị trí, không đúng nghĩa
-  // "Nhân viên Content" (đã có Position riêng biệt, seed sẵn ở migration
-  // SeedSamplePositions). Người không có Position "Content" sẽ không còn
-  // xuất hiện trong dropdown này nữa.
-  const availableContentStaffOptions = userList
-    .filter((u) => u.id !== primaryId && !contentStaffIds.has(u.id) && u.position?.code === 'content')
-    .map((u) => ({ value: u.id, label: u.name || u.email }));
+  // ⚠️ SỬA (2026-09-10, thay bản lọc client-side `position.code==='content'`
+  // cũ) - giờ dùng "Quản lý phụ trách" (Assignment Group Config, config
+  // hệ thống `content_staff` = Phòng Marketing + Vị trí `content`, xem
+  // migration CreateAssignmentGroupConfigs) qua
+  // `GET /assignment-groups/content_staff/users`. Ưu điểm so với lọc cứng
+  // theo Position: Admin có thể mở rộng/đổi Phòng ban+Vị trí hợp lệ qua
+  // trang `/quan-ly-phu-trach` mà KHÔNG cần sửa code component này.
+  const { users: contentStaffCandidates } = useAssignmentGroupUsers('content_staff');
+  const availableContentStaffOptions = contentStaffCandidates
+    .filter((u) => u.id !== primaryId && !contentStaffIds.has(u.id))
+    .map((u) => ({ value: u.id, label: u.name }));
 
   const resetAndClose = () => {
     setSelectedUserId(undefined);
@@ -298,7 +302,7 @@ export const GroupManagersModal = ({ open, onClose, groupId, groupName }: Props)
             value={selectedContentStaffId}
             onChange={setSelectedContentStaffId}
             options={availableContentStaffOptions}
-            notFoundContent='Không có nhân viên nào mang Vị trí "Content" để thêm'
+            notFoundContent='Không có nhân viên hợp lệ để thêm (xem cấu hình ở trang "Quản lý phụ trách")'
           />
           <Button
             type="primary"

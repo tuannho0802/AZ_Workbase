@@ -21,7 +21,7 @@ import { useDebounce } from '@/lib/hooks/useDebounce';
 import { usersApi } from '@/lib/api/users.api';
 import { useMyPermissions } from '@/lib/hooks/useMyPermissions';
 import { useMyHiddenElements } from '@/lib/hooks/useUiVisibility';
-import { useDepartments } from '@/lib/hooks/useDepartments';
+import { useAssignmentGroupUsers } from '@/lib/hooks/useAssignmentGroups';
 import dayjs from 'dayjs';
 import { CustomerFilters } from '@/components/customers/CustomerFilters';
 import { SourceTag } from '@/components/customers/SourceTag';
@@ -403,31 +403,19 @@ function CustomersPageContent() {
       .catch((error) => console.error('Fetch creators error:', error));
   }, []);
 
-  // Tra đúng phòng "Kinh doanh"/"Marketing" theo TÊN (không hardcode ID, vì
-  // ID phòng ban khác nhau giữa các môi trường/instance) - so khớp không
-  // phân biệt hoa/thường, chỉ cần TÊN có chứa từ khoá tương ứng (khớp cách
-  // đặt tên phổ biến đã thấy trong hệ thống: "Phòng Kinh Doanh", "Phòng
-  // Marketing"). Nếu sau này đổi tên phòng ban thành thứ không chứa 2 từ
-  // khoá này, dropdown tương ứng sẽ rỗng - CHỦ ĐỘNG chấp nhận đánh đổi này
-  // để không phải hardcode ID; admin có thể đổi tên phòng ban cho khớp lại.
-  const { departments } = useDepartments();
-  const salesDept = useMemo(
-    () => (departments || []).find((d: any) => d.name?.toLowerCase().includes('kinh doanh')),
-    [departments],
-  );
-  const marketingDept = useMemo(
-    () => (departments || []).find((d: any) => d.name?.toLowerCase().includes('marketing')),
-    [departments],
-  );
-
-  const salesUsersInDept = useMemo(
-    () => salesUsers.filter((u) => salesDept && u.department?.id === salesDept.id),
-    [salesUsers, salesDept],
-  );
-  const marketingUsersInDept = useMemo(
-    () => salesUsers.filter((u) => marketingDept && u.department?.id === marketingDept.id),
-    [salesUsers, marketingDept],
-  );
+  // ⚠️ ĐÃ CHUYỂN (2026-09-10) từ hardcode dò tên phòng ban
+  // (`.find((d) => d.name.includes('kinh doanh'))`) sang "Quản lý phụ
+  // trách" (Assignment Group Config, xem PLAN_POSITION_...md mục 3.6) - 2
+  // config hệ thống `sales`/`marketing` seed sẵn giữ ĐÚNG hành vi cũ (auto
+  // map theo tên phòng ban lúc migrate), nhưng giờ Admin có thể sửa lại
+  // Phòng ban/Vị trí qua trang `/quan-ly-phu-trach` mà KHÔNG cần deploy lại
+  // code - tự động scale khi tổ chức thêm phòng ban mới.
+  const { users: salesUsersInDept } = useAssignmentGroupUsers('sales');
+  const { users: marketingUsersInDeptRaw } = useAssignmentGroupUsers('marketing');
+  // Giữ đúng kiểu dữ liệu cũ mà CustomerFilters/CustomerForm đang mong đợi
+  // (`{id, name}[]`, không có field `department` như `salesUsers` gốc) -
+  // API mới trả sẵn đúng shape này nên không cần transform thêm.
+  const marketingUsersInDept = marketingUsersInDeptRaw;
 
   // ⚠️ FIX BUG THẬT (rà soát UI Permission): trước đây liệt kê cứng
   // ['admin','manager','assistant'] - lệch hẳn với BE (đã dùng

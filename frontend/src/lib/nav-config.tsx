@@ -198,6 +198,16 @@ export const NAV_ITEMS: NavItem[] = [
     permission: 'positions.view',
   },
   {
+    key: 'quan-ly-phu-trach',
+    label: 'Quản lý phụ trách',
+    description: 'Cấu hình danh sách nhân sự hợp lệ cho dropdown Sales/Marketing/Content phụ trách theo Phòng ban + Vị trí',
+    icon: <UsergroupAddOutlined />,
+    path: '/quan-ly-phu-trach',
+    // Khớp @RequirePermission('assignment_groups.manage') ở assignment-groups.controller.ts.
+    roles: null,
+    permission: 'assignment_groups.manage',
+  },
+  {
     key: 'trash-can',
     label: 'Thùng rác',
     description: 'Khôi phục hoặc xoá vĩnh viễn khách hàng đã xoá',
