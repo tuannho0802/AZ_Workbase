@@ -36,6 +36,8 @@ export class RolesService {
     private readonly rolePermissionRepo: Repository<RolePermission>,
     @InjectRepository(User)
     private readonly userRepo: Repository<User>,
+    @InjectRepository(Position)
+    private readonly positionRepo: Repository<Position>,
     private readonly dataSource: DataSource,
     private readonly permissionsService: PermissionsService,
   ) {}
@@ -231,12 +233,16 @@ export class RolesService {
    * không có quyền -> admin "có quyền nhưng không thấy nút để bấm", vẫn coi
    * là bị khoá trên thực tế. Phải đồng bộ CẢ 2 nơi.
    */
-  async getMyPermissions(roleCode: string, departmentId?: number | null): Promise<Record<string, PermissionScope | null>> {
+  async getMyPermissions(
+    roleCode: string,
+    departmentId?: number | null,
+    positionId?: number | null,
+  ): Promise<Record<string, PermissionScope | null>> {
     if (roleCode === Role.ADMIN) {
       const allPermissions = await this.permissionRepo.find();
       return Object.fromEntries(allPermissions.map((p) => [p.key, PermissionScope.ALL]));
     }
-    const map = await this.permissionsService.getRolePermissions(roleCode, departmentId);
+    const map = await this.permissionsService.getRolePermissions(roleCode, departmentId, positionId);
     return Object.fromEntries(map);
   }
 
@@ -323,6 +329,102 @@ export class RolesService {
 
     await this.rolePermissionRepo.delete({ roleId, departmentId });
     this.permissionsService.invalidate(role.code, departmentId);
+    return { success: true };
+  }
+
+  /**
+   * 3 hàm dưới đây COPY GẦN NHƯ Y HỆT 3 hàm `*DepartmentOverride*` ở trên,
+   * chỉ đổi `departmentId` -> `positionId` - đây là tầng override ưu tiên
+   * CAO NHẤT (Position -> Department -> Global, xem PLAN mục 2.2/3.3).
+   * Position KHÔNG có ràng buộc theo phòng ban của user (dòng override
+   * Position được lọc `positionId = X AND departmentId IS NULL`, không cần
+   * biết user thuộc phòng ban nào) - xem `PermissionsService.loadRolePermissionMap()`.
+   */
+  async getPositionOverrides(roleId: number) {
+    const role = await this.roleRepo.findOneBy({ id: roleId });
+    if (!role) throw new NotFoundException('Role không tồn tại');
+
+    const overrides = await this.rolePermissionRepo.find({
+      where: { roleId, positionId: Not(IsNull()) },
+      relations: ['permission', 'position'],
+    });
+
+    const grouped = new Map<number, any>();
+    for (const row of overrides) {
+      if (row.positionId === null) continue;
+
+      if (!grouped.has(row.positionId)) {
+        grouped.set(row.positionId, {
+          positionId: row.positionId,
+          positionName: row.position?.name,
+          permissions: [],
+        });
+      }
+      grouped.get(row.positionId).permissions.push({
+        permissionKey: row.permission.key,
+        scope: row.scope ?? null,
+      });
+    }
+
+    return Array.from(grouped.values());
+  }
+
+  async updatePositionOverride(roleId: number, positionId: number, dto: UpdateRolePermissionsDto) {
+    const role = await this.roleRepo.findOneBy({ id: roleId });
+    if (!role) throw new NotFoundException('Role không tồn tại');
+
+    const position = await this.positionRepo.findOneBy({ id: positionId });
+    if (!position) throw new NotFoundException('Vị trí không tồn tại');
+
+    const queryRunner = this.dataSource.createQueryRunner();
+    await queryRunner.connect();
+    await queryRunner.startTransaction();
+    try {
+      const permissionsList = await queryRunner.manager.find(Permission);
+      const permMap = new Map(permissionsList.map((p) => [p.key, p]));
+
+      await queryRunner.manager.delete(RolePermission, { roleId, positionId });
+
+      const newRows: RolePermission[] = [];
+      for (const p of dto.permissions) {
+        const perm = permMap.get(p.permissionKey);
+        if (!perm) continue;
+
+        // 'none' (TỪ CHỐI TƯỜNG MINH) là sentinel riêng của tầng Override,
+        // giống hệt ý nghĩa đã dùng cho Department (xem updateDepartmentOverride).
+        if (p.scope !== PermissionScope.NONE && !perm.supportsScope && p.scope !== null) {
+          throw new BadRequestException(`Permission ${perm.key} không hỗ trợ scope`);
+        }
+
+        const newRow = new RolePermission();
+        newRow.roleId = roleId;
+        newRow.permissionId = perm.id;
+        newRow.positionId = positionId;
+        newRow.departmentId = null;
+        newRow.scope = (p.scope as PermissionScope) ?? null;
+        newRows.push(newRow);
+      }
+
+      await queryRunner.manager.save(newRows);
+      await queryRunner.commitTransaction();
+
+      this.permissionsService.invalidate(role.code, undefined, positionId);
+
+      return { success: true, count: newRows.length };
+    } catch (err) {
+      await queryRunner.rollbackTransaction();
+      throw err;
+    } finally {
+      await queryRunner.release();
+    }
+  }
+
+  async deletePositionOverride(roleId: number, positionId: number) {
+    const role = await this.roleRepo.findOneBy({ id: roleId });
+    if (!role) throw new NotFoundException('Role không tồn tại');
+
+    await this.rolePermissionRepo.delete({ roleId, positionId });
+    this.permissionsService.invalidate(role.code, undefined, positionId);
     return { success: true };
   }
 }

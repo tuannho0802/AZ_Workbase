@@ -38,24 +38,46 @@ export class PermissionsService {
 
   /**
    * Xoá cache. Nếu chỉ truyền roleCode, xoá TẤT CẢ entry cache có prefix đó
-   * (mọi phòng ban/vị trí). Nếu truyền thêm departmentId/positionId, chỉ xoá
-   * đúng entry đó.
+   * (mọi phòng ban/vị trí). Nếu truyền thêm departmentId HOẶC positionId
+   * (không cả hai), xoá MỌI entry khớp đúng đúng dimension đó, bất kể giá
+   * trị của dimension còn lại là gì.
+   *
+   * ⚠️ BUG THẬT đã sửa: trước đây `invalidate(roleCode, departmentId)` xoá
+   * bằng cách dựng lại 1 cacheKey CHÍNH XÁC `${roleCode}:${departmentId}:nopos`
+   * - chỉ khớp đúng user KHÔNG có Position. Từ khi cache key có thêm chiều
+   * Position, 1 user thuộc đúng phòng ban đó NHƯNG có Position bất kỳ sẽ có
+   * cacheKey khác (vd `role:5:3`) và KHÔNG bị xoá - Admin sửa override phòng
+   * ban 5 xong, user có Position vẫn thấy dữ liệu cache cũ tối đa
+   * CACHE_TTL_MS (30s). Sửa bằng cách quét toàn bộ key và so khớp đúng
+   * dimension được truyền, bỏ qua dimension còn lại.
    */
   invalidate(roleCode?: string, departmentId?: number | null, positionId?: number | null): void {
-    if (roleCode) {
-      if (departmentId !== undefined || positionId !== undefined) {
-        const cacheKey = `${roleCode}:${departmentId ?? 'global'}:${positionId ?? 'nopos'}`;
-        this.cache.delete(cacheKey);
-      } else {
-        // Xoá tất cả cache của roleCode này
-        for (const key of this.cache.keys()) {
-          if (key.startsWith(`${roleCode}:`)) {
-            this.cache.delete(key);
-          }
+    if (!roleCode) {
+      this.cache.clear();
+      return;
+    }
+
+    if (departmentId === undefined && positionId === undefined) {
+      // Xoá tất cả cache của roleCode này (mọi phòng ban/vị trí)
+      for (const key of this.cache.keys()) {
+        if (key.startsWith(`${roleCode}:`)) {
+          this.cache.delete(key);
         }
       }
-    } else {
-      this.cache.clear();
+      return;
+    }
+
+    const deptSegment = departmentId === undefined ? null : String(departmentId ?? 'global');
+    const posSegment = positionId === undefined ? null : String(positionId ?? 'nopos');
+
+    for (const key of this.cache.keys()) {
+      const match = key.match(/^(.*):([^:]+):([^:]+)$/);
+      if (!match) continue;
+      const [, cachedRole, cachedDept, cachedPos] = match;
+      if (cachedRole !== roleCode) continue;
+      if (deptSegment !== null && cachedDept !== deptSegment) continue;
+      if (posSegment !== null && cachedPos !== posSegment) continue;
+      this.cache.delete(key);
     }
   }
 
