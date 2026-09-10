@@ -10,10 +10,27 @@ import {
   PositionOverride,
 } from '../types/roles.types';
 
+export interface RoleColor {
+  id: number;
+  code: string;
+  name: string;
+  color: string;
+}
+
 export const rolesApi = {
   /** Quyền của CHÍNH mình - không cần quyền gì đặc biệt, ai đã đăng nhập cũng gọi được. */
   getMyPermissions: async (): Promise<MyPermissionsMap> => {
     const response = await axiosInstance.get<MyPermissionsMap>('/roles/my-permissions');
+    return response.data;
+  },
+
+  // ⚠️ MỚI (2026-09-10, fix bug 403 Employee) - dùng cho useRoleColorMap.ts.
+  // KHÔNG dùng getAllRoles() (route /roles) ở đây vì route đó đòi
+  // `roles.view`, Employee/Assistant không có quyền này sẽ bị 403 ngay khi
+  // vào các trang chỉ cần TÔ MÀU Tag Role (Khách hàng...), không cần xem ma
+  // trận quyền đầy đủ. Route /roles/colors chỉ cần đăng nhập.
+  getAllRoleColors: async (): Promise<RoleColor[]> => {
+    const response = await axiosInstance.get<RoleColor[]>('/roles/colors');
     return response.data;
   },
 

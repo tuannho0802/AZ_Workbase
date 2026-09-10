@@ -1,6 +1,23 @@
 import { useMemo } from 'react';
-import { useRoles } from './useRoles';
 import { resolveEntityColor } from '../utils/entityColor';
+import { useQuery } from '@tanstack/react-query';
+import { rolesApi } from '../api/roles.api';
+
+const ROLE_COLORS_KEY = ['roles', 'colors'];
+
+// ⚠️ MỚI (2026-09-10, fix bug 403 khi Employee đăng nhập) - dùng route
+// KHÔNG cần `roles.view` (GET /roles/colors) thay vì `useRoles()` (GET
+// /roles, đòi `roles.view`, Employee/Assistant không có). Xem JSDoc đầy đủ ở
+// roles.controller.ts#getAllRoleColors và roles.api.ts#getAllRoleColors.
+export function useRoleColors() {
+  const { data, isLoading } = useQuery({
+    queryKey: ROLE_COLORS_KEY,
+    queryFn: () => rolesApi.getAllRoleColors(),
+    staleTime: 30 * 1000,
+  });
+
+  return { roleColors: data ?? [], isLoading };
+}
 
 /**
  * Thay thế các map `ROLE_COLOR`/`roleColor` từng bị hardcode rải rác (layout.tsx,
@@ -11,19 +28,26 @@ import { resolveEntityColor } from '../utils/entityColor';
  * code. Role tuỳ chỉnh (không nằm trong 4 role hệ thống cũ) giờ cũng tự động
  * có màu riêng, không còn rơi vào `'default'` xám xịt như trước.
  *
- * Dùng chung `useRoles()` (đã cache 30s qua React Query) - gọi hook này ở
- * nhiều nơi trong cùng 1 lượt render KHÔNG tạo thêm request nào.
+ * ⚠️ FIX BUG THẬT (2026-09-10): TRƯỚC ĐÂY dùng `useRoles()` (GET /roles) -
+ * route này đòi `roles.view`, nên Employee/Assistant đăng nhập vào BẤT KỲ
+ * trang nào có gọi hook này (layout.tsx chạy ở MỌI trang, cộng thêm
+ * SalesUserSelect/CustomerInfoTab/customers/page.tsx ở trang Khách hàng) đều
+ * nhận 403 "Bạn không có quyền thực hiện hành động này" kèm toast lỗi đỏ tự
+ * động hiện lên (axios-instance.ts interceptor gọi `message.error()` cho MỌI
+ * lỗi non-401), dù người dùng chẳng bấm gì. Giờ dùng `useRoleColors()` (GET
+ * /roles/colors) - route KHÔNG cần `roles.view`, chỉ cần đăng nhập, chỉ trả
+ * đúng field an toàn (id/code/name/color), không lộ ma trận permission.
  */
 export function useRoleColorMap() {
-  const { roles, isLoading } = useRoles();
+  const { roleColors, isLoading } = useRoleColors();
 
   const roleColorMap = useMemo(() => {
     const map = new Map<string, string>();
-    for (const role of roles) {
+    for (const role of roleColors) {
       map.set(role.code, resolveEntityColor(role.color));
     }
     return map;
-  }, [roles]);
+  }, [roleColors]);
 
   const getRoleColor = (code?: string | null): string =>
     (code && roleColorMap.get(code)) || resolveEntityColor(undefined);
