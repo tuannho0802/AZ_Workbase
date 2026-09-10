@@ -61,6 +61,7 @@ export class PositionsService {
       departmentId: dto.departmentId ?? null,
       description: dto.description ?? null,
       isSystem: false,
+      ...(dto.color !== undefined ? { color: dto.color } : {}),
     });
     return this.positionRepo.save(position);
   }
@@ -71,6 +72,7 @@ export class PositionsService {
     if (dto.name !== undefined) position.name = dto.name;
     if (dto.description !== undefined) position.description = dto.description ?? null;
     if (dto.departmentId !== undefined) position.departmentId = dto.departmentId ?? null;
+    if (dto.color !== undefined) position.color = dto.color;
 
     return this.positionRepo.save(position);
   }

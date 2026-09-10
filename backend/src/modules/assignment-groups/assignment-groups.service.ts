@@ -71,6 +71,7 @@ export class AssignmentGroupsService {
         name: dto.name,
         description: dto.description ?? null,
         isSystem: false,
+        ...(dto.color !== undefined ? { color: dto.color } : {}),
       }),
     );
 
@@ -85,6 +86,7 @@ export class AssignmentGroupsService {
 
     if (dto.name !== undefined) config.name = dto.name;
     if (dto.description !== undefined) config.description = dto.description ?? null;
+    if (dto.color !== undefined) config.color = dto.color;
     await this.configRepo.save(config);
 
     await this.replaceDepartments(id, dto.departmentIds);

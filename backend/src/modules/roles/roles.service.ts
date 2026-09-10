@@ -60,6 +60,7 @@ export class RolesService {
       name: role.name,
       description: role.description,
       isSystem: role.isSystem,
+      color: role.color,
       permissions: allPermissions
         .filter((rp) => rp.roleId === role.id)
         .map((rp) => ({ permissionKey: rp.permission.key, scope: rp.scope })),
@@ -88,6 +89,7 @@ export class RolesService {
       name: dto.name,
       description: dto.description ?? null,
       isSystem: false,
+      ...(dto.color !== undefined ? { color: dto.color } : {}),
     });
     return this.roleRepo.save(role);
   }
@@ -97,6 +99,7 @@ export class RolesService {
 
     if (dto.name !== undefined) role.name = dto.name;
     if (dto.description !== undefined) role.description = dto.description;
+    if (dto.color !== undefined) role.color = dto.color;
 
     const saved = await this.roleRepo.save(role);
     // Đổi `name` không ảnh hưởng logic phân quyền (chỉ đổi chữ hiển thị),
