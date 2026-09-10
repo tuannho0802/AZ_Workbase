@@ -7,6 +7,21 @@ export enum PermissionScope {
   OWN = 'own',
   DEPARTMENT = 'department',
   ALL = 'all',
+  /**
+   * 'none' - KHÔNG phải 1 phạm vi thật, mà là dấu hiệu "TỪ CHỐI TƯỜNG MINH"
+   * CHỈ hợp lệ trên dòng override theo phòng ban (`departmentId != null`) -
+   * dùng để phòng ban NÀY tắt hẳn 1 permission mà ma trận Toàn cục đang bật,
+   * mà KHÔNG cần tắt permission đó ở Toàn cục (ảnh hưởng mọi phòng ban khác).
+   *
+   * Lý do cần sentinel riêng thay vì chỉ "không có dòng override": quy ước
+   * cũ "không có dòng = không có quyền" chỉ đúng cho ma trận GLOBAL. Với
+   * override phòng ban, PermissionsService.loadRolePermissionMap() luôn
+   * fallback về Toàn cục khi phòng ban không có dòng cho permissionKey đó -
+   * nên "không có dòng" ở phòng ban nghĩa là "kế thừa Toàn cục", KHÔNG thể
+   * dùng để biểu diễn "phòng ban này KHÔNG có quyền dù Toàn cục đang bật".
+   * 'none' lấp đúng khoảng trống đó (xem loadRolePermissionMap()).
+   */
+  NONE = 'none',
 }
 
 /**

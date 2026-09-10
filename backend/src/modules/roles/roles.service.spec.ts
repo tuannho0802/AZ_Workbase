@@ -180,6 +180,14 @@ describe('RolesService', () => {
         }),
       ).rejects.toThrow(BadRequestException);
     });
+
+    it('từ chối scope="none" trên ma trận Toàn cục (chỉ hợp lệ ở Override phòng ban)', async () => {
+      await expect(
+        service.updateRolePermissions(5, {
+          permissions: [{ permissionKey: 'customers.view', scope: PermissionScope.NONE }],
+        }),
+      ).rejects.toThrow(BadRequestException);
+    });
   });
 
   describe('updateRolePermissions - chống khoá trang phân quyền', () => {
@@ -282,6 +290,35 @@ describe('RolesService', () => {
       expect(mockQueryRunner.manager.delete).toHaveBeenCalledWith(RolePermission, { roleId: 1, departmentId: 5 });
       expect(mockQueryRunner.manager.save).toHaveBeenCalled();
       expect(mockPermissionsService.invalidate).toHaveBeenCalledWith('manager', 5);
+    });
+
+    it('updateDepartmentOverride -> CHO PHÉP scope="none" (từ chối tường minh) dù permission hỗ trợ scope', async () => {
+      mockRoleRepo.findOneBy.mockResolvedValue({ id: 1, code: 'employee' });
+      mockQueryRunner.manager.find.mockResolvedValue([
+        { id: 10, key: 'customers.edit', supportsScope: true },
+      ]);
+
+      const res = await service.updateDepartmentOverride(1, 5, {
+        permissions: [{ permissionKey: 'customers.edit', scope: PermissionScope.NONE }],
+      });
+
+      expect(res.success).toBe(true);
+      expect(mockQueryRunner.manager.save).toHaveBeenCalledWith([
+        expect.objectContaining({ roleId: 1, departmentId: 5, permissionId: 10, scope: PermissionScope.NONE }),
+      ]);
+    });
+
+    it('updateDepartmentOverride -> CHO PHÉP scope="none" trên permission nhị phân (KHÔNG hỗ trợ scope)', async () => {
+      mockRoleRepo.findOneBy.mockResolvedValue({ id: 1, code: 'employee' });
+      mockQueryRunner.manager.find.mockResolvedValue([
+        { id: 11, key: 'link_groups.view', supportsScope: false },
+      ]);
+
+      await expect(
+        service.updateDepartmentOverride(1, 5, {
+          permissions: [{ permissionKey: 'link_groups.view', scope: PermissionScope.NONE }],
+        }),
+      ).resolves.toEqual({ success: true, count: 1 });
     });
 
     it('deleteDepartmentOverride -> xoá thành công, invalidate cache cho phòng đó', async () => {

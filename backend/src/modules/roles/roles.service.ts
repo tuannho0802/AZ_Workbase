@@ -140,6 +140,14 @@ export class RolesService {
       if (!permission) {
         throw new BadRequestException(`Permission "${entry.permissionKey}" không tồn tại`);
       }
+      // scope='none' (TỪ CHỐI TƯỜNG MINH) CHỈ có ý nghĩa trên override theo
+      // phòng ban (xem updateDepartmentOverride()) - ma trận Toàn cục không
+      // có khái niệm "Toàn cục nhưng từ chối", nên chặn ngay ở đây.
+      if (entry.scope === PermissionScope.NONE) {
+        throw new BadRequestException(
+          `Permission "${entry.permissionKey}": phạm vi "none" chỉ dùng cho Override theo phòng ban, không dùng cho ma trận Toàn cục`,
+        );
+      }
       if (permission.supportsScope && !entry.scope) {
         throw new BadRequestException(
           `Permission "${entry.permissionKey}" bắt buộc phải chọn phạm vi (scope)`,
@@ -278,7 +286,11 @@ export class RolesService {
         const perm = permMap.get(p.permissionKey);
         if (!perm) continue;
 
-        if (!perm.supportsScope && p.scope !== null) {
+        // 'none' (TỪ CHỐI TƯỜNG MINH) là sentinel riêng của tầng Override,
+        // KHÔNG phải 1 scope thật - bỏ qua check supportsScope bình thường
+        // cho giá trị này (permission nhị phân hay có scope đều dùng 'none'
+        // được như nhau, ý nghĩa luôn là "phòng ban này không có quyền").
+        if (p.scope !== PermissionScope.NONE && !perm.supportsScope && p.scope !== null) {
           throw new BadRequestException(`Permission ${perm.key} không hỗ trợ scope`);
         }
 

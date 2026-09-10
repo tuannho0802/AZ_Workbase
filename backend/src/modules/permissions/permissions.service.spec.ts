@@ -53,6 +53,29 @@ describe('PermissionsService', () => {
       expect(result).toEqual({ allowed: true, scope: PermissionScope.ALL });
     });
 
+    it('override scope="none" -> phòng ban KHÔNG có quyền dù Toàn cục đang bật (từ chối tường minh)', async () => {
+      mockRolePermissionRepo.find.mockResolvedValue([
+        { permission: { key: 'customers.edit' }, scope: PermissionScope.OWN, departmentId: null },
+        { permission: { key: 'customers.edit' }, scope: PermissionScope.NONE, departmentId: 5 },
+      ]);
+
+      const result = await service.hasPermission('employee', 'customers.edit', 5);
+      expect(result).toEqual({ allowed: false, scope: null });
+    });
+
+    it('override scope="none" chỉ ảnh hưởng đúng phòng ban đó, phòng khác vẫn dùng Toàn cục', async () => {
+      // Phòng 5 có dòng "none" cho customers.edit; phòng 6 hoàn toàn không
+      // đụng tới (không được trả về trong `rows` vì query WHERE departmentId
+      // IN (5, NULL) khi gọi phòng 5) - mô phỏng đúng bằng cách gọi riêng
+      // department 6 với chỉ dòng global.
+      mockRolePermissionRepo.find.mockResolvedValue([
+        { permission: { key: 'customers.edit' }, scope: PermissionScope.OWN, departmentId: null },
+      ]);
+
+      const result = await service.hasPermission('employee', 'customers.edit', 6);
+      expect(result).toEqual({ allowed: true, scope: PermissionScope.OWN });
+    });
+
     it('cache: gọi 2 lần liên tiếp cùng role và department -> query DB 1 lần', async () => {
       mockRolePermissionRepo.find.mockResolvedValue([
         { permission: { key: 'customers.view' }, scope: PermissionScope.DEPARTMENT, departmentId: null },

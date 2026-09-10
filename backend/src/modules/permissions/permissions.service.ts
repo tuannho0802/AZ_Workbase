@@ -78,7 +78,16 @@ export class PermissionsService {
       map.set(row.permission.key, row.scope);
     }
     for (const row of deptRows) {
-      map.set(row.permission.key, row.scope);
+      // scope='none' = dấu hiệu TỪ CHỐI TƯỜNG MINH của riêng phòng ban này
+      // (xem comment PermissionScope.NONE) - XOÁ key khỏi map thay vì set,
+      // để phòng ban này thật sự KHÔNG có quyền dù Toàn cục đang bật, thay
+      // vì vô tình "set" giá trị 'none' làm scope hiệu lực (map.has() vẫn
+      // true nhưng scope vô nghĩa) nếu chỉ set như các scope thật khác.
+      if (row.scope === PermissionScope.NONE) {
+        map.delete(row.permission.key);
+      } else {
+        map.set(row.permission.key, row.scope);
+      }
     }
 
     this.cache.set(cacheKey, { map, expiresAt: Date.now() + CACHE_TTL_MS });
