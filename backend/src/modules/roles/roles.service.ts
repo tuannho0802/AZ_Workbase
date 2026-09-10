@@ -226,19 +226,24 @@ export class RolesService {
    * mình thiếu quyền gì, kể cả để FE ẩn đúng những mục họ không có).
    *
    * ⚠️ LỐI THOÁT HIỂM (đồng bộ với `PermissionGuard`, xem giải thích đầy đủ
-   * ở đó): role `admin` LUÔN trả về ĐỦ MỌI permission hiện có với
-   * scope='all', KHÔNG đọc từ `role_permissions` - nếu chỉ vá ở
-   * `PermissionGuard` (tầng BE enforce) mà bỏ sót chỗ này, admin dù gọi API
-   * vẫn được (nhờ Guard) nhưng UI sẽ ẨN nhầm nút/menu tương ứng vì tưởng
-   * không có quyền -> admin "có quyền nhưng không thấy nút để bấm", vẫn coi
-   * là bị khoá trên thực tế. Phải đồng bộ CẢ 2 nơi.
+   * ở đó, ĐÃ ĐỔI theo migration `AddIsRootAdminToUsers1781000000000`): CHỈ
+   * Root Admin (`roleCode === Role.ADMIN && isRootAdmin === true`) LUÔN trả
+   * về ĐỦ MỌI permission hiện có với scope='all', KHÔNG đọc từ
+   * `role_permissions` - nếu chỉ vá ở `PermissionGuard` (tầng BE enforce)
+   * mà bỏ sót chỗ này, admin dù gọi API vẫn được (nhờ Guard) nhưng UI sẽ ẨN
+   * nhầm nút/menu tương ứng vì tưởng không có quyền -> admin "có quyền
+   * nhưng không thấy nút để bấm", vẫn coi là bị khoá trên thực tế. Phải
+   * đồng bộ CẢ 2 nơi. Admin thường (isRootAdmin=false) đi qua nhánh tra DB
+   * bên dưới như mọi role khác - CÓ THỂ bị ẩn nút/menu nếu Root Admin thu
+   * hồi quyền qua trang "Phân quyền", đúng ý đồ mới.
    */
   async getMyPermissions(
     roleCode: string,
     departmentId?: number | null,
     positionId?: number | null,
+    isRootAdmin?: boolean,
   ): Promise<Record<string, PermissionScope | null>> {
-    if (roleCode === Role.ADMIN) {
+    if (roleCode === Role.ADMIN && isRootAdmin) {
       const allPermissions = await this.permissionRepo.find();
       return Object.fromEntries(allPermissions.map((p) => [p.key, PermissionScope.ALL]));
     }

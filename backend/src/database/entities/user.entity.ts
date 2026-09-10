@@ -80,6 +80,23 @@ export class User {
   })
   role: string;
 
+  // ⚠️ Migration AddIsRootAdminToUsers1781000000000 - lối thoát hiểm tuyệt
+  // đối (bypass PermissionGuard/RolesService.getMyPermissions()/
+  // LinkGroupManagersService/UiVisibilityService) TRƯỚC ĐÂY áp dụng cho MỌI
+  // user `role='admin'`. Giờ CHỈ áp dụng khi cột này = true (có thể có
+  // NHIỀU root admin). User `role='admin'` nhưng `isRootAdmin=false` đi qua
+  // ĐÚNG luồng kiểm tra `role_permissions`/`ui_visibility_rules` như role
+  // khác - có thể bị Root Admin khác thu hồi quyền/ẩn field bình thường.
+  // Chỉ Root Admin hiện tại mới được sửa cột này cho user khác (xem
+  // UsersService.create()/update()) - và Root Admin KHÔNG được xoá 1 Root
+  // Admin khác (xem UsersService.remove()).
+  @Column({
+    name: 'is_root_admin',
+    default: false,
+    transformer: new BooleanTransformer(),
+  })
+  isRootAdmin: boolean;
+
   // ⚠️ Lưu OBJECT KEY trên Backblaze B2 (bucket az-imgs-avatars-workbase,
   // Private), KHÔNG PHẢI URL trực tiếp - bucket Private nên không có URL
   // tĩnh dùng được. Phải qua UsersService.signAvatarUrl() để đổi thành

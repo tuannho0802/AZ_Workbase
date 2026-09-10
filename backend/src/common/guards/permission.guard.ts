@@ -16,18 +16,24 @@ import { Role } from '../enums/role.enum';
  * như trước), tránh phải tra bảng `role_permissions` LẦN THỨ HAI cho cùng
  * 1 request.
  *
- * ⚠️ LỐI THOÁT HIỂM BẮT BUỘC (yêu cầu tường minh từ chủ dự án): role
- * `admin` (enum `Role.ADMIN` cố định trong code, KHÔNG phải role tuỳ biến
- * nào khác dù có tên hiển thị "Admin") LUÔN được coi là có MỌI permission
- * với scope='all', BẤT KỂ bảng `role_permissions` trong DB đang lưu gì.
- * Đây là bypass Ở TẦNG GUARD (trước khi chạm DB), không phải chỉ dựa vào cơ
- * chế "guardian permission" (`roles.manage`, xem `roles.service.ts`) - cơ
- * chế guardian đó CHỈ bảo vệ đúng 1 permission (`roles.manage`) khỏi bị gỡ
- * khỏi TẤT CẢ role, không bảo vệ role `admin` khỏi bị lỡ tay xoá/thiếu các
- * permission KHÁC (vd `customers.view`) - nếu chỉ dựa vào guardian, admin
- * vẫn có thể tự khoá nhầm quyền truy cập hầu hết endpoint khác của chính
- * mình. Việc thêm bypass cứng ở đây mới thực sự đảm bảo "dù admin lỡ tắt
- * permission của chính mình vẫn luôn vào được", đúng yêu cầu.
+ * ⚠️ LỐI THOÁT HIỂM BẮT BUỘC (yêu cầu tường minh từ chủ dự án) - ĐÃ ĐỔI từ
+ * migration `AddIsRootAdminToUsers1781000000000`: KHÔNG còn bypass theo
+ * riêng `role === 'admin'` nữa. User phải VỪA mang `role = Role.ADMIN`
+ * VỪA có `isRootAdmin = true` (cột mới trên `users`, có thể có NHIỀU root
+ * admin) mới được coi là có MỌI permission với scope='all', BẤT KỂ bảng
+ * `role_permissions` trong DB đang lưu gì. User `role='admin'` nhưng
+ * `isRootAdmin=false` đi qua ĐÚNG luồng `PermissionsService.hasPermission()`
+ * như role khác - có thể bị Root Admin thu hồi quyền qua trang "Phân quyền"
+ * như bình thường.
+ *
+ * Đây là bypass Ở TẦNG GUARD (trước khi chạm bảng `role_permissions`),
+ * không phải chỉ dựa vào cơ chế "guardian permission" (`roles.manage`, xem
+ * `roles.service.ts`) - cơ chế guardian đó CHỈ bảo vệ đúng 1 permission
+ * (`roles.manage`) khỏi bị gỡ khỏi TẤT CẢ role, không bảo vệ role `admin`
+ * khỏi bị lỡ tay xoá/thiếu các permission KHÁC (vd `customers.view`) - nếu
+ * chỉ dựa vào guardian, admin thường vẫn có thể tự khoá nhầm quyền truy cập
+ * hầu hết endpoint khác của chính mình (ĐÚNG Ý ĐỒ mới: chỉ Root Admin mới
+ * KHÔNG THỂ bị khoá nhầm như vậy, Admin thường thì có thể).
  */
 @Injectable()
 export class PermissionGuard implements CanActivate {
@@ -56,9 +62,11 @@ export class PermissionGuard implements CanActivate {
     }
 
     // ⚠️ LỐI THOÁT HIỂM - xem giải thích đầy đủ ở JSDoc class. Đặt TRƯỚC mọi
-    // truy vấn DB - admin không bao giờ bị chặn bởi cấu hình role_permissions,
-    // kể cả khi bảng đó trống/sai/thiếu dòng cho role admin.
-    if (user.role === Role.ADMIN) {
+    // truy vấn DB - CHỈ Root Admin (role=admin VÀ isRootAdmin=true) không
+    // bao giờ bị chặn bởi cấu hình role_permissions, kể cả khi bảng đó
+    // trống/sai/thiếu dòng cho role admin. Admin thường (isRootAdmin=false)
+    // đi qua nhánh tra DB bên dưới như mọi role khác.
+    if (user.role === Role.ADMIN && user.isRootAdmin) {
       request.permissionScope = PermissionScope.ALL;
       return true;
     }

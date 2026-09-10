@@ -31,6 +31,13 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
       id: user.id, 
       email: user.email, 
       role: user.role,
+      // ⚠️ BẮT BUỘC - PermissionGuard/RolesController/UiVisibilityController
+      // đều đọc field này để quyết định lối thoát hiểm Admin (xem JSDoc
+      // User.isRootAdmin). Lấy LIVE từ DB mỗi request giống departmentId/
+      // positionId bên dưới - KHÔNG lấy từ JWT payload (payload chỉ có
+      // sub/email/role) để Root Admin bị thu hồi flag có hiệu lực ngay,
+      // không cần chờ user đăng nhập lại.
+      isRootAdmin: user.isRootAdmin,
       departmentId: user.departmentId,
       // ⚠️ BẮT BUỘC cho override tầng Position (PLAN mục 3.3) - thiếu dòng
       // này thì PermissionGuard/PermissionsService luôn nhận positionId =
