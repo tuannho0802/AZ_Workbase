@@ -631,3 +631,58 @@ CHƯA có migration nào cho bảng này) và Assignment Group Config (nhóm ph�
 chính là phần "quyền nhỏ/chi tiết hơn Global và Department override" nếu chủ dự án muốn tiếp tục
 theo đúng tinh thần mục 1/3 của PLAN — cần xác nhận lại phạm vi trước khi code (bảng mới, migration
 mới, helper ẩn field ở service layer).
+
+## [2026-09-10 13:02] | Wire UI Visibility (Phase 3) vào hệ thống thật + seed Position mẫu + spec còn thiếu | Status: Success
+
+**Actor:** Agent
+
+**Bối cảnh:** `git clone` lại bản mới nhất (commit `a8cec5b "Update: ui-visibility add dto, constant and
+service"`), đọc trực tiếp code thật. Xác nhận: `UiVisibilityRule` entity, migration
+`1780700000000-CreateUiVisibilityRules.ts`, DTOs, và `UiVisibilityService` (merge 3 tầng
+Position->Department->Global, `stripHiddenCustomerFields()`) đã viết đúng — NHƯNG chưa có
+`Module`/`Controller`, chưa đăng ký ở `app.module.ts`, và `CustomersService` chưa gọi strip field
+nào cả (code "chết", không có tác dụng thật trên response API).
+
+**Đã làm (phần 1 - wire UI Visibility vào hệ thống thật):**
+1. `backend/src/modules/ui-visibility/ui-visibility.controller.ts` (mới) — 3 endpoint admin CRUD
+   (`GET/PUT/DELETE roles/:id/ui-visibility-rules`, gate `roles.manage`) + 1 endpoint self-service
+   `GET /ui-visibility/my-hidden` (không cần permission, ai cũng xem được của bản thân).
+2. `backend/src/modules/ui-visibility/ui-visibility.module.ts` (mới) — export `UiVisibilityService`.
+3. `backend/src/app.module.ts` — import `UiVisibilityModule`.
+4. `backend/src/modules/customers/customers.module.ts` — import `UiVisibilityModule`.
+5. `backend/src/modules/customers/customers.service.ts` — inject `UiVisibilityService`, gọi
+   `getHiddenElementKeys()` + `stripHiddenCustomerFields()` ở CUỐI `findAll()`/`findOne()` (2 tham số
+   mới `callerDepartmentId`/`callerPositionId`, optional, không phá lời gọi cũ).
+6. `backend/src/modules/customers/customers.controller.ts` — `findAll()`/`findOne()` truyền thêm
+   `user.departmentId`/`user.positionId` xuống service.
+7. `backend/src/modules/customers/customers.service.spec.ts` — thêm mock `UiVisibilityService`
+   (provider mới làm 1 suite fail DI trước khi sửa).
+
+**Đã làm (phần 2 - theo yêu cầu tiếp theo trong lượt này):**
+8. `backend/src/database/migrations/1780800000000-SeedSamplePositions.ts` (mới) — seed data-only
+   migration, KHÔNG đổi schema, nạp 7 Position mẫu đúng ví dụ trong PLAN mục 1: `ceo`, `hr`, `it`,
+   `director` (Admin-tier), `content`, `editor`, `media` (Employee-tier, phòng Marketing).
+   `department_id` tra theo TÊN phòng ban (không hardcode id, vì id khác nhau giữa các môi trường
+   dùng chung migration này), fallback NULL nếu không tìm thấy tên khớp — idempotent qua
+   `ON DUPLICATE KEY UPDATE code = code`. `is_system = FALSE` cho toàn bộ (data mẫu, không phải
+   Position lõi bị code hardcode phụ thuộc — đã grep xác nhận không có chỗ nào so sánh cứng theo
+   `code` Position).
+9. `backend/src/modules/ui-visibility/ui-visibility.service.spec.ts` (mới, spec còn thiếu) — 21 test:
+   bypass admin, opt-out mặc định khi bảng trống, thứ tự merge Global->Department->Position, cache
+   TTL + `invalidate()`, `stripHiddenCustomerFields()` cho từng element_key, validate
+   `upsertRoleRules()`/`deleteRoleRules()` (role/department/position không tồn tại, set cả
+   departmentId+positionId, element_key sai danh mục, rollback transaction khi lỗi), `getRoleRules()`
+   gom đúng 3 nhóm.
+
+**Verify thật:** `tsc --noEmit` sạch, `nest build` sạch, `jest`: 25/25 suites, 473/473 tests pass
+(452 cũ + 21 mới, không regression).
+
+**Còn lại (chưa làm, lượt sau):**
+- FE: hook `useMyHiddenElements`, ẩn cột + filter trên bảng khách hàng theo `element_key`, ẩn field
+  trong modal chi tiết (Sales/Marketing phụ trách), tab thứ 3 "Hiển thị dữ liệu" ở trang `/phan-quyen`
+  (song song 2 tab Action Permission đã có).
+- Tab `deposits`/`assignments`/`groups` ở modal chi tiết khách hàng — ẩn thuần FE theo `tab:*`
+  element_key (API con đã tự gate riêng, không dựa vào ẩn tab FE làm lớp bảo mật duy nhất).
+- Bảng "Quản lý phụ trách" (Assignment Group Config) — CHƯA bắt đầu, phase riêng theo yêu cầu gốc.
+- File migration seed Position (`1780800000000`) mới viết trong sandbox — CHƯA chạy trên DB thật,
+  người dùng cần tự `npm run migration:run` sau khi copy file vào đúng vị trí.
