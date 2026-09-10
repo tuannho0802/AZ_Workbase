@@ -6,6 +6,7 @@ import { RoleEntity } from '../../database/entities/role.entity';
 import { Permission } from '../../database/entities/permission.entity';
 import { RolePermission, PermissionScope } from '../../database/entities/role-permission.entity';
 import { User } from '../../database/entities/user.entity';
+import { Position } from '../../database/entities/position.entity';
 import { DataSource } from 'typeorm';
 import { PermissionsService } from '../permissions/permissions.service';
 
@@ -31,6 +32,9 @@ describe('RolesService', () => {
   };
   const mockUserRepo = {
     count: jest.fn(),
+  };
+  const mockPositionRepo = {
+    findOneBy: jest.fn(),
   };
   const mockQueryRunner = {
     connect: jest.fn(),
@@ -72,6 +76,7 @@ describe('RolesService', () => {
         { provide: getRepositoryToken(Permission), useValue: mockPermissionRepo },
         { provide: getRepositoryToken(RolePermission), useValue: mockRolePermissionRepo },
         { provide: getRepositoryToken(User), useValue: mockUserRepo },
+        { provide: getRepositoryToken(Position), useValue: mockPositionRepo },
         { provide: DataSource, useValue: mockDataSource },
         { provide: PermissionsService, useValue: mockPermissionsService },
       ],
@@ -326,6 +331,97 @@ describe('RolesService', () => {
       await service.deleteDepartmentOverride(1, 5);
       expect(mockRolePermissionRepo.delete).toHaveBeenCalledWith({ roleId: 1, departmentId: 5 });
       expect(mockPermissionsService.invalidate).toHaveBeenCalledWith('manager', 5);
+    });
+  });
+
+  // ⚠️ COPY GẦN NHƯ Y HỆT khối 'Department Overrides' ở trên - chỉ đổi
+  // departmentId -> positionId (xem PLAN_POSITION_FIELD_VISIBILITY_ASSIGNMENT_GROUPS.md
+  // mục 2.2/3.3: Position là tầng override ưu tiên CAO NHẤT).
+  describe('Position Overrides', () => {
+    it('getPositionOverrides -> nhóm đúng theo vị trí', async () => {
+      mockRoleRepo.findOneBy.mockResolvedValue({ id: 1 });
+      mockRolePermissionRepo.find.mockResolvedValue([
+        { positionId: 3, permission: { key: 'field:sales_assignment' }, scope: null, position: { name: 'Content' } },
+        { positionId: 3, permission: { key: 'customers.view' }, scope: 'own', position: { name: 'Content' } },
+      ]);
+      const res = await service.getPositionOverrides(1);
+      expect(res).toHaveLength(1);
+      expect(res[0].positionId).toBe(3);
+      expect(res[0].permissions).toHaveLength(2);
+    });
+
+    it('updatePositionOverride -> báo lỗi nếu Vị trí không tồn tại', async () => {
+      mockRoleRepo.findOneBy.mockResolvedValue({ id: 1, code: 'employee' });
+      mockPositionRepo.findOneBy.mockResolvedValue(null);
+
+      await expect(
+        service.updatePositionOverride(1, 999, {
+          permissions: [{ permissionKey: 'customers.view', scope: 'own' as any }],
+        }),
+      ).rejects.toThrow(NotFoundException);
+    });
+
+    it('updatePositionOverride -> thành công, invalidate cache cho vị trí đó (departmentId=undefined)', async () => {
+      mockRoleRepo.findOneBy.mockResolvedValue({ id: 1, code: 'employee' });
+      mockPositionRepo.findOneBy.mockResolvedValue({ id: 3, code: 'content' });
+      mockQueryRunner.manager.find.mockResolvedValue([
+        { id: 10, key: 'customers.view', supportsScope: true },
+      ]);
+
+      const res = await service.updatePositionOverride(1, 3, {
+        permissions: [{ permissionKey: 'customers.view', scope: 'own' as any }],
+      });
+
+      expect(res.success).toBe(true);
+      expect(mockQueryRunner.manager.delete).toHaveBeenCalledWith(RolePermission, { roleId: 1, positionId: 3 });
+      expect(mockQueryRunner.manager.save).toHaveBeenCalledWith([
+        expect.objectContaining({ roleId: 1, positionId: 3, departmentId: null, permissionId: 10 }),
+      ]);
+      expect(mockPermissionsService.invalidate).toHaveBeenCalledWith('employee', undefined, 3);
+    });
+
+    it('updatePositionOverride -> CHO PHÉP scope="none" (từ chối tường minh) dù permission hỗ trợ scope', async () => {
+      mockRoleRepo.findOneBy.mockResolvedValue({ id: 1, code: 'employee' });
+      mockPositionRepo.findOneBy.mockResolvedValue({ id: 3, code: 'content' });
+      mockQueryRunner.manager.find.mockResolvedValue([
+        { id: 10, key: 'customers.edit', supportsScope: true },
+      ]);
+
+      const res = await service.updatePositionOverride(1, 3, {
+        permissions: [{ permissionKey: 'customers.edit', scope: PermissionScope.NONE }],
+      });
+
+      expect(res.success).toBe(true);
+      expect(mockQueryRunner.manager.save).toHaveBeenCalledWith([
+        expect.objectContaining({ roleId: 1, positionId: 3, permissionId: 10, scope: PermissionScope.NONE }),
+      ]);
+    });
+
+    it('deletePositionOverride -> xoá thành công, invalidate cache cho vị trí đó', async () => {
+      mockRoleRepo.findOneBy.mockResolvedValue({ id: 1, code: 'employee' });
+      await service.deletePositionOverride(1, 3);
+      expect(mockRolePermissionRepo.delete).toHaveBeenCalledWith({ roleId: 1, positionId: 3 });
+      expect(mockPermissionsService.invalidate).toHaveBeenCalledWith('employee', undefined, 3);
+    });
+  });
+
+  describe('getMyPermissions - hỗ trợ positionId', () => {
+    it('role không phải admin -> truyền đúng departmentId VÀ positionId xuống PermissionsService', async () => {
+      mockPermissionsService.getRolePermissions.mockResolvedValue(new Map([['customers.view', 'own']]));
+
+      const res = await service.getMyPermissions('employee', 5, 3);
+
+      expect(mockPermissionsService.getRolePermissions).toHaveBeenCalledWith('employee', 5, 3);
+      expect(res).toEqual({ 'customers.view': 'own' });
+    });
+
+    it('role admin -> luôn trả full quyền scope=all, KHÔNG gọi PermissionsService (lối thoát hiểm, bất kể positionId)', async () => {
+      mockPermissionRepo.find.mockResolvedValue([{ key: 'customers.view' }, { key: 'positions.manage' }]);
+
+      const res = await service.getMyPermissions('admin', 5, 3);
+
+      expect(mockPermissionsService.getRolePermissions).not.toHaveBeenCalled();
+      expect(res).toEqual({ 'customers.view': PermissionScope.ALL, 'positions.manage': PermissionScope.ALL });
     });
   });
 });
