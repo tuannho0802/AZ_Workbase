@@ -536,3 +536,5 @@ phép) — module `uploads` thật CHƯA được code, mới dừng ở bước
 ---
 
 Fix encoding 
+
+Deploy
