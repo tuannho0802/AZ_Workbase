@@ -7,12 +7,14 @@ import {
     UpdateRolePayload,
     UpdateRolePermissionsPayload,
     DepartmentOverride,
+    PositionOverride,
 } from '../types/roles.types';
 
 const ROLES_KEY = ['roles'];
 const PERMISSIONS_KEY = ['permissions'];
 const MY_PERMISSIONS_KEY = ['my-permissions'];
 const DEPARTMENT_OVERRIDES_KEY = (roleId: number) => ['role-department-overrides', roleId];
+const POSITION_OVERRIDES_KEY = (roleId: number) => ['role-position-overrides', roleId];
 
 // Cùng lý do EMPTY_ARRAY dùng chung ở useLinkGroups.ts - tránh tạo array
 // mới mỗi render khi data còn undefined (infinite loop nếu nơi gọi có
@@ -20,6 +22,7 @@ const DEPARTMENT_OVERRIDES_KEY = (roleId: number) => ['role-department-overrides
 const EMPTY_ROLES: RoleWithPermissions[] = [];
 const EMPTY_PERMISSIONS: Permission[] = [];
 const EMPTY_OVERRIDES: DepartmentOverride[] = [];
+const EMPTY_POSITION_OVERRIDES: PositionOverride[] = [];
 
 export const useRoles = () => {
     const { data, isLoading, isError, error, refetch } = useQuery({
@@ -130,6 +133,51 @@ export const useDeleteDepartmentOverride = (roleId: number) => {
     const invalidate = useInvalidateDepartmentOverrides(roleId);
     return useMutation({
         mutationFn: (departmentId: number) => rolesApi.deleteDepartmentOverride(roleId, departmentId),
+        onSuccess: invalidate,
+    });
+};
+
+// ── Position Override (mục "Bảng điều khiển Permission theo Vị trí") ───────
+// Mirror Y HỆT khối Department Override ở trên, chỉ đổi departmentId -> positionId.
+export const usePositionOverrides = (roleId: number | undefined) => {
+    const { data, isLoading, refetch } = useQuery({
+        queryKey: POSITION_OVERRIDES_KEY(roleId ?? 0),
+        queryFn: () => rolesApi.getPositionOverrides(roleId as number),
+        enabled: !!roleId,
+        staleTime: 30 * 1000,
+    });
+
+    return { overrides: (data as PositionOverride[]) ?? EMPTY_POSITION_OVERRIDES, isLoading, refetch };
+};
+
+function useInvalidatePositionOverrides(roleId: number) {
+    const queryClient = useQueryClient();
+    return () => {
+        queryClient.invalidateQueries({ queryKey: POSITION_OVERRIDES_KEY(roleId) });
+        // Override vừa đổi có thể trùng Vị trí của CHÍNH người đang thao tác -
+        // invalidate cho chắc, giống lý do ở useInvalidateDepartmentOverrides().
+        queryClient.invalidateQueries({ queryKey: MY_PERMISSIONS_KEY });
+    };
+}
+
+export const useUpdatePositionOverride = (roleId: number) => {
+    const invalidate = useInvalidatePositionOverrides(roleId);
+    return useMutation({
+        mutationFn: ({
+            positionId,
+            payload,
+        }: {
+            positionId: number;
+            payload: UpdateRolePermissionsPayload;
+        }) => rolesApi.updatePositionOverride(roleId, positionId, payload),
+        onSuccess: invalidate,
+    });
+};
+
+export const useDeletePositionOverride = (roleId: number) => {
+    const invalidate = useInvalidatePositionOverrides(roleId);
+    return useMutation({
+        mutationFn: (positionId: number) => rolesApi.deletePositionOverride(roleId, positionId),
         onSuccess: invalidate,
     });
 };

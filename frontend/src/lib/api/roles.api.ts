@@ -7,6 +7,7 @@ import {
   UpdateRolePayload,
   UpdateRolePermissionsPayload,
   DepartmentOverride,
+  PositionOverride,
 } from '../types/roles.types';
 
 export const rolesApi = {
@@ -79,6 +80,40 @@ export const rolesApi = {
   ): Promise<{ success: true }> => {
     const response = await axiosInstance.delete(
       `/roles/${roleId}/department-overrides/${departmentId}`,
+    );
+    return response.data;
+  },
+
+  // ── Position Override (mirror Y HỆT Department Override ở trên) ──────────
+
+  /** Khớp GET /roles/:id/position-overrides - danh sách Vị trí ĐANG có override riêng cho role này. */
+  getPositionOverrides: async (roleId: number): Promise<PositionOverride[]> => {
+    const response = await axiosInstance.get<PositionOverride[]>(
+      `/roles/${roleId}/position-overrides`,
+    );
+    return response.data;
+  },
+
+  /** Khớp PUT /roles/:id/position-overrides/:positionId - ghi đè (tạo mới nếu chưa có) toàn bộ override của 1 Vị trí. */
+  updatePositionOverride: async (
+    roleId: number,
+    positionId: number,
+    payload: UpdateRolePermissionsPayload,
+  ): Promise<{ success: true; count: number }> => {
+    const response = await axiosInstance.put(
+      `/roles/${roleId}/position-overrides/${positionId}`,
+      payload,
+    );
+    return response.data;
+  },
+
+  /** Khớp DELETE /roles/:id/position-overrides/:positionId - gỡ hẳn override, Vị trí quay lại dùng đúng ma trận Toàn cục. */
+  deletePositionOverride: async (
+    roleId: number,
+    positionId: number,
+  ): Promise<{ success: true }> => {
+    const response = await axiosInstance.delete(
+      `/roles/${roleId}/position-overrides/${positionId}`,
     );
     return response.data;
   },

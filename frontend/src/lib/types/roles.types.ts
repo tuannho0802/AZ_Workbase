@@ -71,6 +71,18 @@ export interface DepartmentOverride {
 }
 
 /**
+ * Y HỆT `DepartmentOverride` ở trên, chỉ đổi `departmentId` -> `positionId` -
+ * tầng override ưu tiên CAO NHẤT (Position -> Department -> Global, xem
+ * PERMISSIONS.md mục 1.8). Khớp response GET /roles/:id/position-overrides
+ * (roles.service.ts#getPositionOverrides).
+ */
+export interface PositionOverride {
+  positionId: number;
+  positionName: string;
+  permissions: RolePermissionEntry[];
+}
+
+/**
  * Quyền của CHÍNH người dùng hiện tại - key = permission.key (vd
  * "customers.assign"), value = scope ('own'/'department'/'all') hoặc null
  * (quyền nhị phân không có scope). Permission KHÔNG có mặt trong object này
