@@ -32,6 +32,8 @@ import { useUsersList } from '@/lib/hooks/useUsers';
 import { usersApi } from '@/lib/api/users.api';
 import { Department } from '@/lib/api/departments.api';
 import { SimpleList } from '@/components/common/SimpleList';
+import { ColorPickerField } from '@/components/common/ColorPickerField';
+import { resolveEntityColor } from '@/lib/utils/entityColor';
 
 const { Title, Text } = Typography;
 
@@ -113,6 +115,7 @@ export default function DepartmentsPage() {
             name: dept.name,
             description: dept.description,
             isActive: dept.isActive,
+            color: resolveEntityColor(dept.color),
         });
         setModalOpen(true);
     };
@@ -141,7 +144,7 @@ export default function DepartmentsPage() {
                 );
             } else {
                 createMutation.mutate(
-                    { name: values.name, description: values.description },
+                    { name: values.name, description: values.description, color: values.color },
                     {
                         onSuccess: () => {
                             message.success('Đã tạo phòng ban mới');
@@ -202,6 +205,9 @@ export default function DepartmentsPage() {
             title: 'Tên phòng ban',
             dataIndex: 'name',
             key: 'name',
+            render: (name: string, record: Department) => (
+                <Tag color={resolveEntityColor(record.color)}>{name}</Tag>
+            ),
         },
         {
             title: 'Mô tả',
@@ -320,6 +326,7 @@ export default function DepartmentsPage() {
                     <Form.Item name="description" label="Mô tả (tuỳ chọn)">
                         <Input.TextArea rows={2} placeholder="Mô tả ngắn về phòng ban" />
                     </Form.Item>
+                    <ColorPickerField extra="Màu Tag phòng ban này hiển thị ở bảng danh sách và các nơi liên quan (Vị trí, chi tiết khách hàng, chọn Sales/Marketing phụ trách...)." />
 
                     {editingDept && (
                         <Form.Item name="isActive" label="Trạng thái hoạt động" valuePropName="checked">

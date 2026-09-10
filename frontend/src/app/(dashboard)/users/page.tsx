@@ -63,7 +63,7 @@ function UserMobileCard({
           </div>
         </div>
         <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 4 }}>
-          <Tag color={ROLE_COLOR[record.role] ?? 'default'}>{roleMap.get(record.role) || record.role?.toUpperCase()}</Tag>
+          <Tag color={getRoleColor(record.role)}>{roleMap.get(record.role) || record.role?.toUpperCase()}</Tag>
           {record.isRootAdmin && (
             <Tag color="gold" icon={<CrownOutlined />}>Root Admin</Tag>
           )}
@@ -376,7 +376,7 @@ export default function UsersPage() {
       dataIndex: 'role',
       render: (role: string, record: any) => (
         <Space size={4}>
-          <Tag color={ROLE_COLOR[role] ?? 'default'}>{roleMap.get(role) || role?.toUpperCase()}</Tag>
+          <Tag color={getRoleColor(role)}>{roleMap.get(role) || role?.toUpperCase()}</Tag>
           {record.isRootAdmin && (
             <Tag color="gold" icon={<CrownOutlined />}>Root Admin</Tag>
           )}

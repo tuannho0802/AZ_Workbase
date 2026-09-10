@@ -4,16 +4,9 @@ import { UserOutlined, SearchOutlined } from '@ant-design/icons';
 import { useState, useMemo } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { usersApi } from '@/lib/api/users.api';
+import { useRoleColorMap } from '@/lib/hooks/useRoleColorMap';
 
 const { Text } = Typography;
-
-// Màu theo role
-const roleColor: Record<string, string> = {
-  admin: 'red',
-  manager: 'blue', 
-  assistant: 'cyan',
-  employee: 'green',
-};
 
 interface UserOption {
   id: number;
@@ -73,6 +66,7 @@ export const SalesUserSelect = ({
   value, onChange, placeholder = 'Chọn sales đang hoạt động...', disabled, departmentId, users: usersOverride, hidePreviewCard,
 }: SalesUserSelectProps) => {
   const [searchText, setSearchText] = useState('');
+  const { getRoleColor } = useRoleColorMap();
 
   // Fetch tất cả users - CHỈ khi nơi gọi không tự truyền sẵn danh sách qua
   // prop `users` (xem JSDoc prop `users` ở trên).
@@ -153,7 +147,7 @@ export const SalesUserSelect = ({
                 size="small"
                 icon={<UserOutlined />}
                 style={{
-                  backgroundColor: roleColor[user.role] ?? '#ccc',
+                  backgroundColor: getRoleColor(user.role),
                   flexShrink: 0
                 }}
               >
