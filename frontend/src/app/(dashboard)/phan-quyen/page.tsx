@@ -199,8 +199,21 @@ function RolePermissionsEditor({
 
   // Map cục bộ: permissionKey -> scope đã chọn (null = permission không hỗ
   // trợ scope nhưng ĐANG bật). Permission KHÔNG có mặt trong map = đang tắt.
+  // `initialPermissions` có kiểu rộng hơn (OverrideScope, có thể lý thuyết
+  // chứa 'none') nhưng nơi gọi (DepartmentOverridesPanel.mergeGlobalWithOverride,
+  // hoặc role.permissions ở chế độ Toàn cục) ĐÃ giải quyết hết 'none' thành
+  // "xoá khỏi danh sách" trước khi truyền vào đây - Editor chỉ thao tác
+  // trên scope THẬT, không bao giờ tự set 'none' (chỉ handleSave() suy ra
+  // 'none' lúc tính diff để gửi lên BE). Lọc phòng thân ở đây để khớp đúng
+  // kiểu Map (PermissionScope | null), không lỡ tay giữ 'none' làm giá trị
+  // hiển thị nếu sau này có nơi gọi khác truyền thiếu chuẩn.
   const [checked, setChecked] = useState<Map<string, PermissionScope | null>>(
-    () => new Map(initialPermissions.map((entry) => [entry.permissionKey, entry.scope])),
+    () =>
+      new Map(
+        initialPermissions
+          .filter((entry) => entry.scope !== 'none')
+          .map((entry) => [entry.permissionKey, entry.scope as PermissionScope | null]),
+      ),
   );
 
   const grouped = useMemo(() => {
@@ -239,18 +252,39 @@ function RolePermissionsEditor({
   const deleteDeptMutation = useDeleteDepartmentOverride(role.id);
 
   const handleSave = () => {
-    const payload: RolePermissionEntry[] = Array.from(checked.entries()).map(([permissionKey, scope]) => ({
-      permissionKey,
-      scope,
-    }));
-
     if (departmentId) {
-      if (payload.length === 0) {
-        // Bỏ hết checkbox = coi như không còn override gì cho phòng ban này
-        // nữa - gọi DELETE thay vì PUT với mảng rỗng, để dòng override biến
-        // mất hẳn (phòng ban quay lại dùng đúng ma trận Toàn cục), thay vì
-        // giữ lại 1 "override rỗng" gây hiểu nhầm là phòng ban đó có
-        // 0 quyền tuyệt đối.
+      // Chế độ Override phòng ban: `initialPermissions` (và do đó `checked`
+      // lúc khởi tạo) đã được DepartmentOverridesPanel đồng bộ với Toàn cục
+      // (mergeGlobalWithOverride) - nên `checked` hiện tại LÀ trạng thái
+      // HIỆU LỰC MONG MUỐN cuối cùng, không phải override thô. Phải tự tính
+      // lại phần CHÊNH LỆCH so với `role.permissions` (Toàn cục) trước khi
+      // gửi lên BE (updateDepartmentOverride LUÔN thay thế toàn bộ dòng
+      // override của phòng ban bằng đúng mảng gửi lên):
+      //  - Có trong `checked`, khác/không có ở Toàn cục -> gửi kèm scope
+      //    thật (override CHO PHÉP thêm/đổi quyền).
+      //  - Có ở Toàn cục nhưng KHÔNG còn trong `checked` (vừa bị bỏ tick) ->
+      //    gửi scope='none' (TỪ CHỐI TƯỜNG MINH - xem OverrideScope) để
+      //    phòng ban này thật sự mất quyền, không bị fallback ngược lại
+      //    Toàn cục.
+      //  - Giống hệt Toàn cục -> bỏ qua, không cần gửi (mặc định kế thừa).
+      const globalMap = new Map(role.permissions.map((p) => [p.permissionKey, p.scope]));
+      const diff: RolePermissionEntry[] = [];
+
+      for (const [permissionKey, scope] of checked.entries()) {
+        const globalScope = globalMap.get(permissionKey) ?? null;
+        if (!globalMap.has(permissionKey) || globalScope !== scope) {
+          diff.push({ permissionKey, scope });
+        }
+      }
+      for (const globalEntry of role.permissions) {
+        if (!checked.has(globalEntry.permissionKey)) {
+          diff.push({ permissionKey: globalEntry.permissionKey, scope: 'none' });
+        }
+      }
+
+      if (diff.length === 0) {
+      // Trùng khớp hoàn toàn với Toàn cục -> không còn override nào cả,
+      // gỡ hẳn dòng override (nếu có) thay vì lưu 1 mảng rỗng.
         deleteDeptMutation.mutate(departmentId, {
           onSuccess: () => {
             message.success(`Đã gỡ override cho phòng ban này (quay lại dùng ma trận Toàn cục)`);
@@ -261,7 +295,7 @@ function RolePermissionsEditor({
         return;
       }
       updateDeptMutation.mutate(
-        { departmentId, payload: { permissions: payload } },
+        { departmentId, payload: { permissions: diff } },
         {
           onSuccess: () => {
             message.success(`Đã lưu override riêng cho phòng ban`);
@@ -272,6 +306,11 @@ function RolePermissionsEditor({
       );
       return;
     }
+
+    const payload: RolePermissionEntry[] = Array.from(checked.entries()).map(([permissionKey, scope]) => ({
+      permissionKey,
+      scope,
+    }));
 
     updateGlobalMutation.mutate(
       { id: role.id, payload: { permissions: payload } },

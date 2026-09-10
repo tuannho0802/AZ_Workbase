@@ -9,9 +9,39 @@ import {
   useDepartmentOverrides,
   useDeleteDepartmentOverride,
 } from '@/lib/hooks/useRoles';
-import { RoleWithPermissions, DepartmentOverride } from '@/lib/types/roles.types';
+import { RoleWithPermissions, DepartmentOverride, RolePermissionEntry } from '@/lib/types/roles.types';
 
 const { Text, Paragraph } = Typography;
+
+/**
+ * Hợp nhất ma trận Toàn cục với override (nếu có) của 1 phòng ban, ra đúng
+ * trạng thái HIỆU LỰC để hiển thị lúc mở Editor - FIX bug thật: trước đây
+ * Editor override luôn khởi tạo từ mảng override THÔ (`selectedOverride?.
+ * permissions ?? []`), nên phòng ban CHƯA override gì thấy TOÀN BỘ checkbox
+ * trống trơn dù Toàn cục đang bật đầy đủ - muốn override 1 quyền, Admin
+ * buộc phải tự tay tick lại HẾT các quyền Toàn cục khác trong tab Override
+ * (hoặc tệ hơn, phải tắt ở Toàn cục trước). Hàm này đảm bảo Editor LUÔN mở
+ * ra ở đúng trạng thái "phòng ban này thật sự có quyền gì" (Toàn cục đã áp
+ * dụng override, nếu có) - sync 1 chiều Toàn cục -> Override ngay lúc mở,
+ * đúng yêu cầu nghiệp vụ.
+ */
+function mergeGlobalWithOverride(
+  globalPermissions: RolePermissionEntry[],
+  overridePermissions: RolePermissionEntry[],
+): RolePermissionEntry[] {
+  const map = new Map<string, RolePermissionEntry['scope']>(
+    globalPermissions.map((p) => [p.permissionKey, p.scope]),
+  );
+  for (const o of overridePermissions) {
+    if (o.scope === 'none') {
+      // Từ chối tường minh - phòng ban KHÔNG có quyền này dù Toàn cục bật.
+      map.delete(o.permissionKey);
+    } else {
+      map.set(o.permissionKey, o.scope);
+    }
+  }
+  return Array.from(map.entries()).map(([permissionKey, scope]) => ({ permissionKey, scope }));
+}
 
 /**
  * Tab "Theo phòng ban" trong Drawer ma trận quyền - CHÍNH LÀ phần bạn yêu
@@ -64,7 +94,9 @@ export function DepartmentOverridesPanel({
       <Paragraph type="secondary" style={{ marginBottom: 12 }}>
         Cấp quyền RIÊNG cho 1 phòng ban, khác với ma trận Toàn cục ở trên - ví dụ role &quot;Nhân
         viên&quot; không có <Text code>customers.assign</Text> ở Toàn cục, nhưng phòng Marketing vẫn
-        cần quyền này thì thêm override tại đây, chỉ áp dụng cho đúng phòng ban đó.
+        cần quyền này thì thêm override tại đây, chỉ áp dụng cho đúng phòng ban đó. Bảng bên dưới LUÔN
+        mở ra đúng trạng thái phòng ban đang thật sự có (đã tự đồng bộ với Toàn cục) - chỉ cần tick/bỏ
+        tick đúng quyền muốn khác đi, không cần qua tab Toàn cục để tắt trước.
       </Paragraph>
 
       {overrides.length > 0 && (
@@ -128,7 +160,7 @@ export function DepartmentOverridesPanel({
               </Button>
             )}
           </div>
-          {renderEditor(selectedDeptId, selectedOverride?.permissions ?? [])}
+            {renderEditor(selectedDeptId, mergeGlobalWithOverride(role.permissions, selectedOverride?.permissions ?? []))}
         </>
       ) : (
         <Empty description="Chọn 1 phòng ban ở trên để xem/sửa override" />
