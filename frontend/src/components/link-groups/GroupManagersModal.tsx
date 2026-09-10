@@ -3,9 +3,7 @@
 import { useState } from 'react';
 import { Modal, Avatar, Tag, Button, Typography, App, Popconfirm, Divider } from 'antd';
 import { UserOutlined, DeleteOutlined, PlusOutlined, CrownOutlined, EditOutlined } from '@ant-design/icons';
-import { useQuery } from '@tanstack/react-query';
 import { useAuthStore } from '@/lib/stores/auth.store';
-import { usersApi } from '@/lib/api/users.api';
 import {
   useGroupManagers,
   useAddSecondaryManager,
@@ -51,12 +49,15 @@ interface Props {
  * dùng) qua prop `users` (danh sách candidate đã lọc sẵn theo đúng nghiệp vụ
  * riêng của từng dropdown - xem 2 biến `secondaryManagerOptions` và
  * `contentStaffOptions` bên dưới) thay vì viết lại UI riêng.
- *  - "Quản lý phụ": nguồn dữ liệu VẪN LÀ toàn bộ nhân viên (`usersApi.
- *    getAllForSelect()`, KHÔNG lọc theo Assignment Group Config như Content
- *    Staff) - chỉ loại người đã là Quản lý chính/phụ của CHÍNH nhóm này.
- *    Đây là nghiệp vụ đã có TỪ TRƯỚC (ai cũng có thể được gán làm Quản lý
- *    phụ 1 nhóm liên kết, không giới hạn phòng ban/vị trí) - giữ nguyên,
- *    KHÔNG áp thêm bộ lọc Assignment Group vào đây.
+ *  - "Quản lý phụ": SỬA (2026-09-10, theo xác nhận chủ dự án) - trước đây
+ *    nguồn dữ liệu là TOÀN BỘ nhân viên (`usersApi.getAllForSelect()`,
+ *    không lọc gì, ai cũng gán được). Giờ đổi sang dùng "Quản lý phụ trách"
+ *    (Assignment Group Config) key RIÊNG `link_group_secondary_manager`
+ *    (mặc định = Phòng Marketing, không lọc Vị trí - xem migration
+ *    `1781200000000-AddLinkGroupManagerAssignmentConfigs.ts`) - Admin sửa
+ *    được qua `/quan-ly-phu-trach`, ĐỘC LẬP với key `link_group_primary_
+ *    manager` của "Quản lý chính" (2 key riêng, cố ý KHÔNG dùng chung, để
+ *    sau này có thể chỉnh mỗi cái một khác mà không đụng nhau).
  *  - "Nhân viên Content": nguồn dữ liệu là `useAssignmentGroupUsers
  *    ('content_staff')` (đã lọc đúng Phòng Marketing + Vị trí `content` qua
  *    trang "Quản lý phụ trách", xem migration CreateAssignmentGroupConfigs)
@@ -75,14 +76,6 @@ export const GroupManagersModal = ({ open, onClose, groupId, groupName }: Props)
   const [selectedUserId, setSelectedUserId] = useState<number | undefined>(undefined);
   const [selectedContentStaffId, setSelectedContentStaffId] = useState<number | undefined>(undefined);
 
-  const { data: users } = useQuery<UserOption[]>({
-    queryKey: ['users-for-select'],
-    queryFn: () => usersApi.getAllForSelect(),
-    staleTime: 5 * 60 * 1000,
-    enabled: open,
-  });
-  const userList = users ?? [];
-
   const isAdmin = currentUser?.role === 'admin';
   const isPrimary = !!managers?.primaryManager && managers.primaryManager.id === currentUser?.id;
   const canEdit = isAdmin || isPrimary;
@@ -93,9 +86,17 @@ export const GroupManagersModal = ({ open, onClose, groupId, groupName }: Props)
 
   // Loại người đã là chính/phụ rồi khỏi danh sách chọn - tránh gọi API rồi
   // ăn lỗi 400/409 (Người này đang là Quản lý chính.../Đã là Quản lý phụ rồi)
-  const secondaryManagerOptions: UserOption[] = userList.filter(
-    (u) => u.id !== primaryId && !secondaryIds.has(u.id),
-  );
+  const { users: secondaryManagerCandidates } = useAssignmentGroupUsers('link_group_secondary_manager');
+  const secondaryManagerOptions: UserOption[] = secondaryManagerCandidates
+    .filter((u) => u.id !== primaryId && !secondaryIds.has(u.id))
+    .map((u) => ({
+      id: u.id,
+      name: u.name,
+      email: u.email,
+      role: u.role,
+      department: u.department ?? undefined,
+      position: u.position ?? undefined,
+    }));
 
   // Danh sách chọn cho Nhân viên Content - CHỈ loại Quản lý chính + người
   // đã là Content rồi, KHÔNG loại Quản lý phụ (được phép trùng, xem JSDoc).

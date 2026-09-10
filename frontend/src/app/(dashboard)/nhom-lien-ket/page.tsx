@@ -85,12 +85,15 @@ export default function LinkGroupsAdminPage() {
   // lý chính" trước đây gọi thẳng `usersApi.getAllForSelect()` - hiện TẤT
   // CẢ nhân viên (kể cả Admin/Sales), không lọc gì, và vẽ bằng `<Select>`
   // trơn chỉ hiện tên - không đồng bộ với "Quản lý phụ"/"Nhân viên Content"
-  // bên dưới đã đổi sang `SalesUserSelect`. Đổi sang dùng đúng "Quản lý phụ
-  // trách" (Assignment Group Config) key `marketing` (Phòng Marketing,
-  // KHÔNG lọc theo Vị trí - xem trang /quan-ly-phu-trach) để Admin đổi được
-  // filter qua UI mà không cần sửa code, và dùng lại đúng UI SalesUserSelect
-  // cho cả 3 dropdown của trang này.
-  const { users: primaryManagerCandidatesRaw } = useAssignmentGroupUsers('marketing');
+  // bên dưới đã đổi sang `SalesUserSelect`.
+  // ⚠️ SỬA TIẾP (cùng ngày, theo xác nhận chủ dự án): LÚC ĐẦU dùng chung key
+  // `marketing` (share với "Marketing phụ trách" ở form Khách hàng) - nhưng
+  // chủ dự án muốn 2 dropdown này ĐỘC LẬP (sửa filter 1 bên không ảnh hưởng
+  // bên kia) nên tách sang key RIÊNG `link_group_primary_manager` (seed ở
+  // migration `1781200000000-AddLinkGroupManagerAssignmentConfigs.ts`, mặc
+  // định = Phòng Marketing, không lọc Vị trí - Admin sửa độc lập qua trang
+  // /quan-ly-phu-trach mà không đụng tới config `marketing`).
+  const { users: primaryManagerCandidatesRaw } = useAssignmentGroupUsers('link_group_primary_manager');
   const primaryManagerCandidates: UserOption[] = useMemo(
     () =>
       primaryManagerCandidatesRaw.map((u) => ({
@@ -569,7 +572,7 @@ export default function LinkGroupsAdminPage() {
           <Form.Item
             name="primaryManagerId"
             label="Quản lý chính"
-            tooltip="Người chịu trách nhiệm chính cho nhóm này - chỉ admin gán/đổi được. Có thể thêm nhiều Quản lý phụ sau khi tạo, qua nút 'Quản lý phụ'. Danh sách lọc theo cấu hình 'Marketing phụ trách' ở trang Quản lý phụ trách."
+            tooltip="Người chịu trách nhiệm chính cho nhóm này - chỉ admin gán/đổi được. Có thể thêm nhiều Quản lý phụ sau khi tạo, qua nút 'Quản lý phụ'. Danh sách lọc theo cấu hình 'Quản lý chính - Nhóm liên kết' ở trang Quản lý phụ trách."
           >
             <SalesUserSelect
               placeholder="Chưa gán ai làm Quản lý chính"
