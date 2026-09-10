@@ -39,10 +39,12 @@ export class AddPositionsTable1780300000000 implements MigrationInterface {
       ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
     `);
 
-    await queryRunner.query(`
-      ALTER TABLE users ADD COLUMN IF NOT EXISTS position_id INT NULL;
-    `);
-
+    // ⚠️ MySQL (khác MariaDB) KHÔNG hỗ trợ `ADD COLUMN IF NOT EXISTS` - dùng
+    // lại đúng pattern đã fix ở AddEditCountToCustomerNotes1779500000000.
+    const usersTable = await queryRunner.getTable('users');
+    if (!usersTable?.findColumnByName('position_id')) {
+      await queryRunner.query(`ALTER TABLE users ADD COLUMN position_id INT NULL;`);
+    }
     // MySQL không hỗ trợ "ADD CONSTRAINT IF NOT EXISTS" - kiểm tra tồn tại
     // trước qua information_schema để migration idempotent, tránh lỗi
     // "Duplicate key name" nếu chạy lại trên môi trường đã có FK này.
@@ -92,7 +94,10 @@ export class AddPositionsTable1780300000000 implements MigrationInterface {
     if (Number(cnt) > 0) {
       await queryRunner.query(`ALTER TABLE users DROP FOREIGN KEY fk_users_position`);
     }
-    await queryRunner.query(`ALTER TABLE users DROP COLUMN IF EXISTS position_id`);
+    const usersTableDown = await queryRunner.getTable('users');
+    if (usersTableDown?.findColumnByName('position_id')) {
+      await queryRunner.query(`ALTER TABLE users DROP COLUMN position_id`);
+    }
     await queryRunner.query(`DROP TABLE IF EXISTS positions`);
   }
 }

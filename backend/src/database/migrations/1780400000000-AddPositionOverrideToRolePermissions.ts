@@ -21,9 +21,12 @@ export class AddPositionOverrideToRolePermissions1780400000000
   name = 'AddPositionOverrideToRolePermissions1780400000000';
 
   public async up(queryRunner: QueryRunner): Promise<void> {
-    await queryRunner.query(`
-      ALTER TABLE role_permissions ADD COLUMN IF NOT EXISTS position_id INT NULL;
-    `);
+    // ⚠️ MySQL (khác MariaDB) KHÔNG hỗ trợ `ADD COLUMN IF NOT EXISTS` - dùng
+    // lại đúng pattern đã fix ở AddEditCountToCustomerNotes1779500000000.
+    const rpTable = await queryRunner.getTable('role_permissions');
+    if (!rpTable?.findColumnByName('position_id')) {
+      await queryRunner.query(`ALTER TABLE role_permissions ADD COLUMN position_id INT NULL;`);
+    }
 
     const [{ cnt }] = await queryRunner.query(`
       SELECT COUNT(*) as cnt FROM information_schema.TABLE_CONSTRAINTS
@@ -50,6 +53,9 @@ export class AddPositionOverrideToRolePermissions1780400000000
     if (Number(cnt) > 0) {
       await queryRunner.query(`ALTER TABLE role_permissions DROP FOREIGN KEY fk_role_permissions_position`);
     }
-    await queryRunner.query(`ALTER TABLE role_permissions DROP COLUMN IF EXISTS position_id`);
+    const rpTableDown = await queryRunner.getTable('role_permissions');
+    if (rpTableDown?.findColumnByName('position_id')) {
+      await queryRunner.query(`ALTER TABLE role_permissions DROP COLUMN position_id`);
+    }
   }
 }
