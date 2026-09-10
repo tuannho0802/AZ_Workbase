@@ -131,6 +131,9 @@ export interface UserDetail {
   phone: string | null;
   role: string;
   isActive: boolean;
+  // ⚠️ MỚI (AddIsRootAdminToUsers1781000000000) - xem chú thích ở
+  // auth.types.ts::User.isRootAdmin.
+  isRootAdmin?: boolean;
   lastLoginAt: string | null;
   annualLeaveBalance: number;
   annualLeaveTotal: number;

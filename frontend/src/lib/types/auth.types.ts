@@ -29,6 +29,12 @@ export interface User {
   name: string;
   role: 'admin' | 'manager' | 'assistant' | 'employee';
   isActive: boolean;
+  // ⚠️ MỚI (migration AddIsRootAdminToUsers1781000000000) - CHỈ true khi
+  // đây là Root Admin thật (có thể có NHIỀU root admin). Dùng để: hiện
+  // toggle "Root Admin" ở trang /users, ẩn nút "Xoá" với record isRootAdmin.
+  // KHÔNG dùng field này để tự gate quyền ở FE thay cho `useMyPermissions()`
+  // - chỉ BE (PermissionGuard) là nguồn chặn thật sự.
+  isRootAdmin?: boolean;
   department?: {
     id: number;
     name: string;

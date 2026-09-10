@@ -7,7 +7,7 @@ import {
 } from 'antd';
 import {
   UserAddOutlined, EditOutlined, KeyOutlined,
-  ReloadOutlined, MailOutlined, TeamOutlined, DeleteOutlined,
+  ReloadOutlined, MailOutlined, TeamOutlined, DeleteOutlined, CrownOutlined,
 } from '@ant-design/icons';
 
 import { useAuthStore } from '@/lib/stores/auth.store';
@@ -64,6 +64,9 @@ function UserMobileCard({
         </div>
         <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 4 }}>
           <Tag color={ROLE_COLOR[record.role] ?? 'default'}>{roleMap.get(record.role) || record.role?.toUpperCase()}</Tag>
+          {record.isRootAdmin && (
+            <Tag color="gold" icon={<CrownOutlined />}>Root Admin</Tag>
+          )}
           <Tag color={record.isActive ? 'green' : 'red'}>
             {record.isActive ? 'Hoạt động' : 'Bị khóa'}
           </Tag>
@@ -176,6 +179,11 @@ export default function UsersPage() {
   // hiện khi thực sự có quyền này, không hardcode role === 'admin'.
   const canDelete = can('users.delete');
   const canSeeFullList = canAccessPage;
+  // ⚠️ MỚI (isRootAdmin) - toggle "Root Admin" trong Modal Thêm/Sửa CHỈ hiện
+  // với người đang đăng nhập THẬT SỰ là Root Admin (khác `role === 'admin'`
+  // - xem JSDoc User.isRootAdmin). BE (UsersService.create()/update()) mới
+  // là nơi chặn thật sự nếu FE bị bypass.
+  const isRootAdminCaller = !!user?.isRootAdmin;
 
   useEffect(() => {
     if (!permissionsLoading && user && !canAccessPage) {
@@ -225,6 +233,14 @@ export default function UsersPage() {
         // ném lỗi rõ ràng nếu đã tồn tại (xem catch bên dưới).
         employeeCode: values.employeeCode?.trim() || undefined,
       };
+
+      // ⚠️ MỚI (isRootAdmin) - CHỈ gửi field này khi người đang thao tác
+      // thật sự là Root Admin (toggle chỉ hiện với họ - xem Form.Item bên
+      // dưới) - tránh gửi `undefined`/giá trị cũ nhầm cho request của Admin
+      // thường, dù BE cũng tự chặn lại (ForbiddenException) nếu lỡ gửi.
+      if (isRootAdminCaller) {
+        payload.isRootAdmin = !!values.isRootAdmin;
+      }
 
       if (editingUser) {
         payload.isActive = values.isActive;
@@ -306,8 +322,13 @@ export default function UsersPage() {
     {
       title: 'Chức vụ',
       dataIndex: 'role',
-      render: (role: string) => (
-        <Tag color={ROLE_COLOR[role] ?? 'default'}>{roleMap.get(role) || role?.toUpperCase()}</Tag>
+      render: (role: string, record: any) => (
+        <Space size={4}>
+          <Tag color={ROLE_COLOR[role] ?? 'default'}>{roleMap.get(role) || role?.toUpperCase()}</Tag>
+          {record.isRootAdmin && (
+            <Tag color="gold" icon={<CrownOutlined />}>Root Admin</Tag>
+          )}
+        </Space>
       )
     },
     {
@@ -328,7 +349,9 @@ export default function UsersPage() {
         <Space>
           {canManage && <Button icon={<EditOutlined />} onClick={() => openEdit(record)}>Sửa</Button>}
           {canManage && <Button icon={<KeyOutlined />} onClick={() => openResetPass(record)}>Reset Pass</Button>}
-          {canDelete && record.id !== user?.id && (
+          {/* ⚠️ MỚI (isRootAdmin) - ẩn nút xoá với record là Root Admin, xem
+              chú thích ở UserMobileCard bên trên. */}
+          {canDelete && record.id !== user?.id && !record.isRootAdmin && (
             <Button danger icon={<DeleteOutlined />} onClick={() => handleSoftDelete(record)}>Xoá</Button>
           )}
         </Space>
@@ -356,7 +379,10 @@ export default function UsersPage() {
               onEdit={openEdit}
               onResetPass={openResetPass}
               onDelete={handleSoftDelete}
-              canDelete={canDelete && u.id !== user?.id}
+              // ⚠️ MỚI (isRootAdmin) - ẩn nút xoá với record là Root Admin ở
+              // FE cho gọn UX; BE (softDeleteUser/hardDeleteUser) mới là nơi
+              // chặn thật sự (ForbiddenException) - xem users.service.ts.
+              canDelete={canDelete && u.id !== user?.id && !u.isRootAdmin}
             />
           ))
         )}
@@ -554,6 +580,23 @@ export default function UsersPage() {
           >
             <Switch checkedChildren="Hoạt động" unCheckedChildren="Khóa" />
           </Form.Item>
+
+          {/* ⚠️ MỚI (isRootAdmin) - CHỈ hiện với Root Admin đang đăng nhập
+              (xem `isRootAdminCaller`). Có thể có NHIỀU Root Admin - bật cờ
+              này cho 1 nhân viên `role=admin` khác vẫn giữ nguyên Root Admin
+              hiện tại. BE (UsersService) chặn: chỉ role=admin mới bật được,
+              và không được tự gỡ Root Admin cuối cùng của hệ thống. */}
+          {isRootAdminCaller && (
+            <Form.Item
+              name="isRootAdmin"
+              label="Root Admin"
+              valuePropName="checked"
+              initialValue={false}
+              tooltip="Root Admin luôn giữ đủ quyền dù ma trận phân quyền của role Admin bị sửa/thu hồi thế nào đi nữa. Có thể có nhiều Root Admin. Chỉ Root Admin mới bật/tắt được cờ này, và không thể gỡ Root Admin cuối cùng của hệ thống."
+            >
+              <Switch checkedChildren="Root Admin" unCheckedChildren="Admin thường" />
+            </Form.Item>
+          )}
         </Form>
       </Modal>
 
