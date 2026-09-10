@@ -391,7 +391,7 @@ function ProfilePortal({ userId, onDeleted }: { userId: number; onDeleted?: () =
             <Descriptions.Item label={<><UserOutlined /> Phép năm còn lại</>}>
               {detail.annualLeaveBalance} / {detail.annualLeaveTotal} ngày (năm {detail.leaveYear})
             </Descriptions.Item>
-            <Descriptions.Item label="Phép bù tích lũy" span={2}>
+            <Descriptions.Item label="Phép bù tích lũy" span="filled">
               {detail.compensatoryLeaveBalance} ngày
             </Descriptions.Item>
           </Descriptions>

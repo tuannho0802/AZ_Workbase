@@ -22,6 +22,7 @@ import { PendingApprovalsTab } from './PendingApprovalsTab';
 import { TrashTab } from './TrashTab';
 import { getApiErrorMessage } from '@/lib/utils/error-message.util';
 import { useRoleColorMap } from '@/lib/hooks/useRoleColorMap';
+import { resolveEntityColor } from '@/lib/utils/entityColor';
 
 const { Text } = Typography;
 
@@ -187,7 +188,7 @@ export default function UsersPage() {
   // cho phép từ trước). Đặt tên lại cho đúng ý nghĩa thay vì giữ "isAdmin"
   const { can, isLoading: permissionsLoading } = useMyPermissions();
   const { roles, isLoading: rolesLoading } = useRoles();
-  const roleOptions = (roles || []).map(r => ({ value: r.code, label: r.name }));
+  const roleOptions = (roles || []).map(r => ({ value: r.code, label: r.name, color: resolveEntityColor(r.color) }));
   const roleMap = new Map((roles || []).map(r => [r.code, r.name]));
   const canAccessPage = can('users.view');
   const canManage = can('users.manage');
@@ -391,12 +392,14 @@ export default function UsersPage() {
     {
       title: 'Phòng ban',
       dataIndex: ['department', 'name'],
-      render: (val: any) => val || '-'
+      render: (val: any, record: any) =>
+        val ? <Tag color={resolveEntityColor(record.department?.color)}>{val}</Tag> : '-'
     },
     {
       title: 'Vị trí',
       dataIndex: ['position', 'name'],
-      render: (val: any) => val || '-'
+      render: (val: any, record: any) =>
+        val ? <Tag color={resolveEntityColor(record.position?.color)}>{val}</Tag> : '-'
     },
     {
       title: 'Trạng thái',
@@ -623,6 +626,22 @@ export default function UsersPage() {
               placeholder="Chọn vai trò"
               loading={rolesLoading}
               options={roleOptions}
+              // ⚠️ MỚI - hiện màu Tag (đúng màu Admin đã cấu hình ở /phan-quyen,
+              // xem `roles.color`) ngay trên ô Select, không chỉ ở dropdown -
+              // đồng bộ với cột "Chức vụ" ở bảng danh sách bên ngoài modal.
+              optionRender={(option) => (
+                <Tag color={(option.data as any).color} style={{ marginInlineEnd: 0 }}>
+                  {option.label}
+                </Tag>
+              )}
+              labelRender={(props) => {
+                const opt = roleOptions.find(r => r.value === props.value);
+                return (
+                  <Tag color={opt?.color ?? resolveEntityColor(undefined)} style={{ marginInlineEnd: 0 }}>
+                    {props.label ?? opt?.label ?? props.value}
+                  </Tag>
+                );
+              }}
               // ⚠️ MỚI - đổi vai trò khỏi 'admin' -> tự tắt Switch "Root
               // Admin" đang ẩn đi (antd Form mặc định GIỮ NGUYÊN giá trị
               // field dù Form.Item của nó không render - preserve=true) và
@@ -642,7 +661,20 @@ export default function UsersPage() {
             <Select
               placeholder="Chọn phòng ban"
               allowClear
-              options={departments.map((d: any) => ({ value: Number(d.id), label: d.name }))}
+              options={departments.map((d: any) => ({ value: Number(d.id), label: d.name, color: resolveEntityColor(d.color) }))}
+              optionRender={(option) => (
+                <Tag color={(option.data as any).color} style={{ marginInlineEnd: 0 }}>
+                  {option.label}
+                </Tag>
+              )}
+              labelRender={(props) => {
+                const dept = departments.find((d: any) => Number(d.id) === props.value);
+                return (
+                  <Tag color={resolveEntityColor(dept?.color)} style={{ marginInlineEnd: 0 }}>
+                    {props.label ?? dept?.name ?? props.value}
+                  </Tag>
+                );
+              }}
             />
           </Form.Item>
 
