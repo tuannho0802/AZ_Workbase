@@ -31,7 +31,14 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
       id: user.id, 
       email: user.email, 
       role: user.role,
-      departmentId: user.departmentId
+      departmentId: user.departmentId,
+      // ⚠️ BẮT BUỘC cho override tầng Position (PLAN mục 3.3) - thiếu dòng
+      // này thì PermissionGuard/PermissionsService luôn nhận positionId =
+      // undefined, khiến mọi Position override cấu hình qua UI KHÔNG BAO
+      // GIỜ có hiệu lực trên request thật (dù merge logic ở PermissionsService
+      // đã đúng) - lấy LIVE từ DB mỗi request giống departmentId, không lấy
+      // từ JWT payload (payload chỉ có sub/email/role).
+      positionId: user.positionId,
     };
   }
 }
