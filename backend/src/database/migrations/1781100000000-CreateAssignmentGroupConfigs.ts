@@ -17,6 +17,17 @@ import { MigrationInterface, QueryRunner } from 'typeorm';
  * ⚠️ Đây MỚI CHỈ tạo bảng + seed data - CHƯA đổi `customers/page.tsx` sang
  * dùng API mới (giữ nguyên hardcode cũ cho tới khi có quyết định chuyển đổi
  * riêng, đúng yêu cầu "chưa remove vội" của chủ dự án).
+ *
+ * ⚠️ SỬA (2026-09-10, cùng ngày, TRƯỚC khi chạy trên bất kỳ môi trường nào -
+ * migration này CHƯA từng apply nên sửa trực tiếp là an toàn, đúng
+ * `SKILL_DATABASE_MANAGEMENT.md` mục 5): thêm config thứ 3 `content_staff`
+ * ("Nhân viên Content") = Phòng Marketing + Vị trí có `code='content'`
+ * (đã seed sẵn ở migration `1780800000000-SeedSamplePositions.ts`, chạy
+ * TRƯỚC migration này nên bảng `positions` đã có dòng `content` khi tới
+ * đây). Dùng để thay thế bộ lọc client-side cứng `position.code === 'content'`
+ * ở `GroupManagersModal.tsx` (trang "Quản lý nhóm liên kết" > Quản lý
+ * chính/phụ > Nhân viên Content) bằng 1 config có thể chỉnh qua UI, đồng bộ
+ * đúng 1 cơ chế với dropdown Sales/Marketing phụ trách ở trang Khách hàng.
  */
 export class CreateAssignmentGroupConfigs1781100000000 implements MigrationInterface {
   name = 'CreateAssignmentGroupConfigs1781100000000';
@@ -61,11 +72,12 @@ export class CreateAssignmentGroupConfigs1781100000000 implements MigrationInter
       ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
     `);
 
-    // Seed 2 config hệ thống - idempotent qua ON DUPLICATE KEY UPDATE.
+    // Seed 3 config hệ thống - idempotent qua ON DUPLICATE KEY UPDATE.
     await queryRunner.query(`
       INSERT INTO assignment_group_configs (\`key\`, name, description, is_system) VALUES
       ('sales', 'Sales phụ trách', 'Danh sách nhân sự hợp lệ cho dropdown "Sales phụ trách"', TRUE),
-      ('marketing', 'Marketing phụ trách', 'Danh sách nhân sự hợp lệ cho dropdown "Marketing phụ trách"', TRUE)
+      ('marketing', 'Marketing phụ trách', 'Danh sách nhân sự hợp lệ cho dropdown "Marketing phụ trách"', TRUE),
+      ('content_staff', 'Nhân viên Content', 'Danh sách nhân sự hợp lệ để thêm làm "Nhân viên Content" ở trang Quản lý nhóm liên kết', TRUE)
       ON DUPLICATE KEY UPDATE \`key\` = \`key\`;
     `);
 
@@ -85,6 +97,24 @@ export class CreateAssignmentGroupConfigs1781100000000 implements MigrationInter
       FROM assignment_group_configs c
       JOIN departments d ON LOWER(d.name) LIKE '%marketing%'
       WHERE c.key = 'marketing';
+    `);
+    // "Nhân viên Content" mặc định = Phòng Marketing (giữ đúng yêu cầu
+    // "mặc định là nhân viên phòng marketing vị trí nhân viên content").
+    await queryRunner.query(`
+      INSERT IGNORE INTO assignment_group_config_departments (config_id, department_id)
+      SELECT c.id, d.id
+      FROM assignment_group_configs c
+      JOIN departments d ON LOWER(d.name) LIKE '%marketing%'
+      WHERE c.key = 'content_staff';
+    `);
+    // + Vị trí `code='content'` (TUỲ CHỌN về mặt cơ chế, nhưng seed sẵn theo
+    // đúng yêu cầu nghiệp vụ "vị trí nhân viên content").
+    await queryRunner.query(`
+      INSERT IGNORE INTO assignment_group_config_positions (config_id, position_id)
+      SELECT c.id, p.id
+      FROM assignment_group_configs c
+      JOIN positions p ON p.code = 'content'
+      WHERE c.key = 'content_staff';
     `);
 
     // Permission mới - CRUD "Quản lý phụ trách" (Admin/Assistant, giống
