@@ -17,6 +17,7 @@ import {
   CrownOutlined,
   BankOutlined,
   CloudServerOutlined,
+  IdcardOutlined,
 } from '@ant-design/icons';
 
 export interface NavItem {
@@ -185,6 +186,16 @@ export const NAV_ITEMS: NavItem[] = [
     // Khớp @RequirePermission('departments.view') ở departments.controller.ts.
     roles: null,
     permission: 'departments.view',
+  },
+  {
+    key: 'vi-tri',
+    label: 'Vị trí',
+    description: 'Quản lý Vị trí (Content, Editor, HR...) và cấu hình ẩn/hiện dữ liệu theo Vị trí',
+    icon: <IdcardOutlined />,
+    path: '/vi-tri',
+    // Khớp @RequirePermission('positions.view') ở positions.controller.ts.
+    roles: null,
+    permission: 'positions.view',
   },
   {
     key: 'trash-can',

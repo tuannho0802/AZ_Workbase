@@ -686,3 +686,66 @@ nào cả (code "chết", không có tác dụng thật trên response API).
 - Bảng "Quản lý phụ trách" (Assignment Group Config) — CHƯA bắt đầu, phase riêng theo yêu cầu gốc.
 - File migration seed Position (`1780800000000`) mới viết trong sandbox — CHƯA chạy trên DB thật,
   người dùng cần tự `npm run migration:run` sau khi copy file vào đúng vị trí.
+
+
+## [2026-09-10 14:10] | Trang CRUD /vi-tri (Position) + Drawer cấu hình UI Visibility theo Vị trí | Status: Success
+
+**Actor:** Agent
+
+**Bối cảnh:** `git clone` fresh, xác nhận commit mới nhất thật `bf1a467`. Đọc HANDOFF cuối
+`WORKFLOW_LOG.md` (mục "CHƯA làm" #1 và #3) — BE Position + UI Visibility đã đầy đủ từ trước,
+nhưng chưa có `page.tsx` nào cho `/vi-tri` cả (Admin trước đây phải thao tác qua Postman/DB).
+
+**Đã làm (chỉ FE, KHÔNG đổi BE):**
+- `frontend/src/lib/api/ui-visibility.api.ts` (mới) — client khớp đúng `ui-visibility.controller.ts`
+  (4 endpoint: `GET my-hidden`, `GET/PUT/DELETE roles/:id/ui-visibility-rules`).
+- `frontend/src/lib/hooks/useUiVisibility.ts` (mới) — `useMyHiddenElements`, `useRoleUiVisibilityRules`,
+  `useUpsertUiVisibilityRules`, `useDeleteUiVisibilityRules` (React Query, invalidate cả `my-hidden`
+  lẫn cache rule khi lưu — mirror đúng pattern `useInvalidateDepartmentOverrides` ở `useRoles.ts`).
+- `frontend/src/app/(dashboard)/vi-tri/page.tsx` (mới) — CRUD Vị trí đầy đủ (mirror cấu trúc
+  `/phong-ban`): bảng danh sách (mã/tên/phòng ban gợi ý/mô tả/loại hệ thống-tuỳ chỉnh), Modal
+  tạo/sửa (chặn sửa `code` sau khi tạo — đúng `UpdatePositionDto`), Modal xoá (BE tự chặn nếu
+  `isSystem` hoặc đang có nhân viên gán, FE không tự đoán trước — theo đúng thông điệp lỗi trả về).
+  Gate theo `positions.view`/`positions.manage`/`positions.delete` (redirect `/customers` nếu thiếu
+  `positions.view`, khớp pattern `/phong-ban`).
+- `frontend/src/app/(dashboard)/vi-tri/PositionVisibilityDrawer.tsx` (mới) — Drawer "Hiển thị dữ liệu"
+  mở từ mỗi dòng Vị trí: chọn Role trước (rule luôn gắn 1 Role, 1 Vị trí có thể có nhiều Role) → hiển
+  thị TRẠNG THÁI HIỆU LỰC đã merge Global→Position override của đúng Vị trí đó (áp dụng lại đúng
+  nguyên tắc `mergeGlobalWithOverride` ở `DepartmentOverridesPanel.tsx`, nhưng cho trục UI Visibility
+  thay vì Action Permission) → Switch bật/tắt từng `field:*`/`tab:*` (nhãn tiếng Việt cứng, PHẢI đồng
+  bộ tay với `CUSTOMER_ELEMENT_KEYS` ở BE nếu sau này thêm resource/key mới) → nút "Lưu" (PUT replace
+  toàn bộ scope Position) + "Gỡ override" (DELETE, quay về dùng chung Toàn cục/Phòng ban). Gate quyền
+  `roles.manage` (tái dùng đúng permission BE yêu cầu ở `ui-visibility.controller.ts`, KHÔNG phải
+  `positions.manage` — 2 quyền độc lập).
+- `frontend/src/lib/nav-config.tsx` — thêm mục sidebar "Vị trí" (`/vi-tri`, icon `IdcardOutlined`),
+  gate `positions.view`, đặt ngay sau "Phòng ban" (đã đổi 1 dòng import icon + 1 object NAV_ITEMS).
+
+**Quyết định thiết kế cần lưu ý cho phiên sau:**
+- Drawer chỉ cấu hình scope **Position** (khớp đúng bối cảnh trang `/vi-tri`) — scope **Global** và
+  **Department** cho UI Visibility (mục #4 cũ trong HANDOFF: tab "Hiển thị dữ liệu" ở Drawer
+  `/phan-quyen`) **VẪN CHƯA LÀM** — 2 scope đó nên đặt ở `/phan-quyen` (nơi tự nhiên hơn để so sánh
+  cả 3 tầng cùng lúc, giống Action Permission đã làm), không nhét thêm vào đây kẻo trùng UX.
+- Effective-state hiển thị trong Drawer CHỈ merge Global + Position (không phải Global + Department +
+  Position đầy đủ 3 tầng) vì Drawer không biết trước user sẽ thuộc phòng ban nào khi mang Vị trí này —
+  đây là giới hạn CÓ CHỦ Ý, không phải bug (đã ghi rõ trong JSDoc component).
+
+**Verify thật:**
+- Backend: KHÔNG đổi gì, không chạy lại (đã verify ở entry trước, không có thay đổi liên quan).
+- Frontend: `npm install` sạch. `npx tsc --noEmit`: CHỈ còn đúng 3 lỗi pre-existing giống các lượt
+  trước (thiếu `logo.png` trong sandbox ở `layout.tsx`/`not-found.tsx`, kiểu `styled-jsx` ở
+  `CountBadge.tsx`) — xác nhận qua `git status --short` là các file đó KHÔNG nằm trong diff của lượt
+  này. `npm run build` (Next.js 16 Turbopack) **sạch hoàn toàn**, generate đủ **27 route** (thêm route
+  `/vi-tri` mới so với 26 route ở lượt trước).
+- 1 lỗi type thật đã sửa trong lúc code: AntD 6 đổi API `Divider` — prop `orientation="left"` (dùng để
+  canh trái tiêu đề) giờ chỉ nhận `'horizontal' | 'vertical'` (đổi ý nghĩa hoàn toàn, dùng thay cho
+  `type`), API tương ứng để canh tiêu đề trái/phải/giữa đã đổi tên thành `titlePlacement`. Cùng loại
+  gotcha với mục 8.4 `SKILL_NEXTJS_FRONTEND.md` (`Space direction` → `orientation`) — nên bổ sung thêm
+  ghi chú riêng cho `Divider` vào skill đó nếu phiên sau gặp lại chỗ khác dùng `orientation="left"` cũ.
+
+**Còn lại (chưa làm, theo đúng thứ tự ưu tiên cũ trong HANDOFF trước, trừ mục #1 vừa xong 1 phần):**
+1. Dropdown Position song song Role ở form nhân viên/filter/nav-config khác (nếu còn sót).
+2. FE thật sự DÙNG `my-hidden` để ẩn cột/field/tab/filter trên `CustomerTable` + Customer Detail Modal
+   (route `/vi-tri` mới chỉ có UI CẤU HÌNH rule, chưa có nơi nào ÁP DỤNG rule đó lên bảng khách hàng).
+3. Tab "Hiển thị dữ liệu" (scope Global/Department) ở Drawer `/phan-quyen`.
+4. Assignment Group Config ("Quản lý phụ trách") — vẫn hoàn toàn chưa bắt đầu, cần viết PLAN trước khi
+   code (xem chi tiết đầy đủ ở HANDOFF entry trước, mục 5 — không lặp lại ở đây để tránh phình log).

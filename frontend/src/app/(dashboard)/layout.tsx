@@ -202,6 +202,8 @@ export default function DashboardLayout({
       newKey = 'nghi-phep';
     } else if (pathname.includes('/duyet-phep')) {
       newKey = 'duyet-phep';
+    } else if (pathname.includes('/vi-tri')) {
+      newKey = 'vi-tri';
     } else if (pathname.includes('/trash-can')) {
       newKey = 'trash-can';
     } else if (pathname.includes('/nguon-media')) {

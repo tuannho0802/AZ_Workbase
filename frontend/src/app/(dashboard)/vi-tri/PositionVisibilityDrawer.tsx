@@ -188,7 +188,7 @@ export function PositionVisibilityDrawer({ position, open, onClose }: Props) {
       title={`Cấu hình hiển thị dữ liệu - Vị trí "${position?.name ?? ''}"`}
       open={open}
       onClose={onClose}
-      width={480}
+      size={480}
       extra={
         selectedRoleId && (
           <Space>
