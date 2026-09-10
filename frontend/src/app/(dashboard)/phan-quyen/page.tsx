@@ -225,6 +225,27 @@ function RolePermissionsEditor({
     return Array.from(byResource.entries());
   }, [allPermissions]);
 
+  // Chỉ có ý nghĩa ở chế độ Override phòng ban (`departmentId` có giá trị) -
+  // baseline Toàn cục để so sánh, hiện tag "Ghi đè" cho đúng permission đang
+  // KHÁC so với Toàn cục (thêm mới, đổi scope, hoặc bị tắt hẳn dù Toàn cục
+  // đang bật) - giúp Admin nhìn 1 phát biết ngay override đang chỉnh gì mà
+  // không cần tự nhớ/so sánh lại với tab Toàn cục.
+  const globalBaseline = useMemo(
+    () => new Map(role.permissions.map((p) => [p.permissionKey, p.scope])),
+    [role.permissions],
+  );
+  const isOverridden = (permissionKey: string): boolean => {
+    if (!departmentId) return false;
+    const globalScope = globalBaseline.get(permissionKey);
+    const hasGlobal = globalBaseline.has(permissionKey);
+    const currentScope = checked.get(permissionKey) ?? null;
+    const isChecked = checked.has(permissionKey);
+    if (!hasGlobal && !isChecked) return false; // cả 2 đều tắt - không có gì để ghi đè
+    if (!hasGlobal && isChecked) return true; // override THÊM quyền Toàn cục không có
+    if (hasGlobal && !isChecked) return true; // override TỪ CHỐI quyền Toàn cục đang bật
+    return globalScope !== currentScope; // cùng bật nhưng khác scope
+  };
+
   const toggle = (permission: Permission, on: boolean) => {
     if (!canManage) return;
     setChecked((prev) => {
@@ -283,8 +304,8 @@ function RolePermissionsEditor({
       }
 
       if (diff.length === 0) {
-      // Trùng khớp hoàn toàn với Toàn cục -> không còn override nào cả,
-      // gỡ hẳn dòng override (nếu có) thay vì lưu 1 mảng rỗng.
+        // Trùng khớp hoàn toàn với Toàn cục -> không còn override nào cả,
+        // gỡ hẳn dòng override (nếu có) thay vì lưu 1 mảng rỗng.
         deleteDeptMutation.mutate(departmentId, {
           onSuccess: () => {
             message.success(`Đã gỡ override cho phòng ban này (quay lại dùng ma trận Toàn cục)`);
@@ -357,6 +378,7 @@ function RolePermissionsEditor({
             {perms.map((p) => {
               const isChecked = checked.has(p.key);
               const scope = checked.get(p.key) ?? null;
+              const overridden = isOverridden(p.key);
               return (
                 <div
                   key={p.key}
@@ -367,7 +389,7 @@ function RolePermissionsEditor({
                     padding: '10px 12px',
                     marginBottom: 6,
                     borderRadius: 8,
-                    border: '1px solid #f0f0f0',
+                    border: overridden ? '1px solid #ffd591' : '1px solid #f0f0f0',
                     background: isChecked ? '#f6ffed' : undefined,
                     opacity: canManage ? 1 : 0.85,
                   }}
@@ -383,7 +405,14 @@ function RolePermissionsEditor({
                       onClick={(e) => e.stopPropagation()}
                     />
                     <div style={{ minWidth: 0 }}>
-                      <Text strong>{p.action}</Text>
+                      <Space size={6}>
+                        <Text strong>{p.action}</Text>
+                        {overridden && (
+                          <Tag color="orange" style={{ marginInlineEnd: 0, fontSize: 11, lineHeight: '16px' }}>
+                            Ghi đè
+                          </Tag>
+                        )}
+                      </Space>
                       {p.description && (
                         <div style={{ fontSize: 12, color: '#8c8c8c' }}>{p.description}</div>
                       )}

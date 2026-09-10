@@ -25,7 +25,7 @@ const { Text, Paragraph } = Typography;
  * dụng override, nếu có) - sync 1 chiều Toàn cục -> Override ngay lúc mở,
  * đúng yêu cầu nghiệp vụ.
  */
-function mergeGlobalWithOverride(
+export function mergeGlobalWithOverride(
   globalPermissions: RolePermissionEntry[],
   overridePermissions: RolePermissionEntry[],
 ): RolePermissionEntry[] {
