@@ -124,7 +124,15 @@ export class AssignmentGroupsService {
    * Config không có phòng ban nào (chưa cấu hình) → trả rỗng, KHÔNG fallback
    * "tất cả phòng ban" (tránh lộ data ngoài ý muốn nếu Admin quên cấu hình).
    */
-  async resolveUsers(key: string): Promise<{ id: number; name: string }[]> {
+  // ⚠️ SỬA (2026-09-10, rà soát GroupManagersModal.tsx): trước đây chỉ
+  // `select: ['id', 'name']` -> dropdown "Nhân viên Content" ở FE thiếu hẳn
+  // department/role/position để vẽ dropdown chi tiết như `SalesUserSelect`
+  // (dùng chung nguồn `GET /users/all`). Đổi sang JOIN 'department'+'position'
+  // đối xứng `UsersService.findEmployees()`, trả về đủ field FE cần - không
+  // đổi logic lọc (department/position theo config), chỉ đổi field trả về.
+  async resolveUsers(key: string): Promise<
+    Pick<User, 'id' | 'name' | 'email' | 'role' | 'department' | 'position'>[]
+  > {
     const config = await this.findByKeyOrThrow(key);
 
     const [deptRows, posRows] = await Promise.all([
@@ -149,7 +157,15 @@ export class AssignmentGroupsService {
 
     const users = await this.userRepo.find({
       where,
-      select: ['id', 'name'],
+      relations: ['department', 'position'],
+      select: {
+        id: true,
+        name: true,
+        email: true,
+        role: true,
+        department: { id: true, name: true },
+        position: { id: true, name: true, code: true },
+      },
       order: { name: 'ASC' },
     });
     return users;
