@@ -109,6 +109,14 @@ export class AuthService {
         name: user.name,
         role: user.role,
         isActive: user.isActive,
+        // ⚠️ MỚI (isRootAdmin) - THIẾU field này khiến FE (authStore) không
+        // biết user vừa login có phải Root Admin hay không cho tới khi tự
+        // gọi thêm GET /users/me - lỗi đã phát hiện khi rà soát cùng đợt
+        // isRootAdmin (xem JSDoc User.isRootAdmin/migration
+        // AddIsRootAdminToUsers1781000000000). PermissionGuard/jwt.strategy
+        // luôn tự nạp LIVE từ DB mỗi request nên KHÔNG có rủi ro bảo mật gì
+        // khi trả field này ra ngay lúc login (chỉ là hiển thị UI sớm hơn).
+        isRootAdmin: user.isRootAdmin,
         avatarUrl: signedUser?.avatarUrl ?? null,
         avatarKey: signedUser?.avatarKey ?? null,
       },
