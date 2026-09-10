@@ -40,6 +40,15 @@ export class RolesController {
     return this.rolesService.getMyPermissions(user.role, user.departmentId, user.positionId, user.isRootAdmin);
   }
 
+  @Get('roles/colors')
+  @ApiOperation({
+    summary:
+      'Màu của tất cả Role (id/code/name/color) - KHÔNG cần roles.view, mọi user đã đăng nhập đều gọi được. Dùng để FE tô đúng màu Tag Role (SalesUserSelect, bảng/tab Khách hàng...) mà không lộ ma trận permission như GET /roles đầy đủ.',
+  })
+  getAllRoleColors() {
+    return this.rolesService.findAllColors();
+  }
+
   @Get('roles')
   @RequirePermission('roles.view')
   @ApiOperation({ summary: 'Danh sách Role kèm ma trận quyền đầy đủ' })

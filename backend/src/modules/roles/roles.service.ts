@@ -67,6 +67,26 @@ export class RolesService {
     }));
   }
 
+  // ⚠️ MỚI (2026-09-10, fix bug 403 khi Employee đăng nhập) - `findAllRoles()`
+  // ở trên trả về CẢ ma trận permission đầy đủ của từng Role, nên route
+  // `GET /roles` đúng đắn phải khoá sau `roles.view` (Employee/Assistant
+  // không có quyền này -> xem BE gate ở RolesController). Nhưng FE lại cần
+  // BIẾT `color` của mọi Role để tô đúng màu Tag (SalesUserSelect.tsx,
+  // useRoleColorMap.ts) ở NHIỀU trang mà Employee vẫn truy cập bình thường
+  // (vd trang Khách hàng) - trước đây các nơi đó gọi thẳng `useRoles()` (tức
+  // `GET /roles`), Employee đăng nhập bị 403 ngay khi vào trang dù không bấm
+  // gì, kèm toast lỗi đỏ hiện ra do interceptor Axios (xem
+  // axios-instance.ts). Endpoint này CHỈ trả field không nhạy cảm
+  // (id/code/name/color), KHÔNG có `permissions` - an toàn để mở cho MỌI
+  // user đã đăng nhập (JwtAuthGuard) mà KHÔNG cần `roles.view`, đúng pattern
+  // `roles/my-permissions` đã áp dụng ở trên.
+  async findAllColors(): Promise<{ id: number; code: string; name: string; color: string }[]> {
+    return this.roleRepo.find({
+      order: { isSystem: 'DESC', id: 'ASC' },
+      select: ['id', 'code', 'name', 'color'],
+    });
+  }
+
   async findAllPermissions() {
     const permissions = await this.permissionRepo.find({ order: { resource: 'ASC', action: 'ASC' } });
     return permissions.map((p) => ({
