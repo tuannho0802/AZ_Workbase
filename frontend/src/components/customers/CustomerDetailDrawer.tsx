@@ -21,6 +21,7 @@ import {
 } from '@ant-design/icons';
 import { Customer } from '@/lib/types/customer.types';
 import { customersApi } from '@/lib/api/customers.api';
+import { useMyHiddenElements } from '@/lib/hooks/useUiVisibility';
 import { CustomerDepositTable } from './CustomerDepositTable';
 import { CustomerInfoTab } from './CustomerInfoTab';
 import { CustomerNotesTab } from './CustomerNotesTab';
@@ -46,6 +47,18 @@ export const CustomerDetailDrawer = ({ open, customerId, onClose, onUpdate }: Cu
   const [isModalOpen, setIsModalOpen] = useState(false);
   const { message } = App.useApp();
   const [depositRefreshTrigger, setDepositRefreshTrigger] = useState(0);
+
+  // ⚠️ FIX BUG THẬT: các tab "Nạp tiền"/"Gán data"/"Nhóm" trước đây LUÔN
+  // render cứng trong mảng `items` bên dưới - component này CHƯA BAO GIỜ
+  // gọi `useMyHiddenElements('customers')`, nên dù Admin đã cấu hình ẩn
+  // `tab:deposits`/`tab:assignments`/`tab:groups` qua Position/Department
+  // override (trang /vi-tri, PositionVisibilityDrawer.tsx), rule đó KHÔNG
+  // có tác dụng gì ở đây - Employee/role bị ẩn vẫn thấy đủ cả 3 tab. BE đã
+  // strip đúng field (`stripHiddenCustomerFields`) nhưng đó chỉ áp dụng cho
+  // `field:*` (dữ liệu trên object Customer), còn `tab:*` được BE ghi chú
+  // rõ là "ẩn THUẦN Ở FE" (xem CUSTOMER_ELEMENT_KEYS) - phần FE đó bị bỏ sót.
+  const { hiddenKeys } = useMyHiddenElements('customers');
+  const isTabHidden = (elementKey: string) => hiddenKeys.includes(elementKey);
 
   const fetchDetail = useCallback(async () => {
     if (!customerId) return;
@@ -131,7 +144,7 @@ export const CustomerDetailDrawer = ({ open, customerId, onClose, onUpdate }: Cu
                 />
               ) : null
             },
-            {
+            !isTabHidden('tab:deposits') && {
               key: 'deposits',
               label: (<span><DollarOutlined />Nạp tiền ({customer?.deposits?.length || 0})</span>),
               children: customerId ? (
@@ -147,7 +160,7 @@ export const CustomerDetailDrawer = ({ open, customerId, onClose, onUpdate }: Cu
                 </>
               ) : null
             },
-            {
+            !isTabHidden('tab:assignments') && {
               key: 'assignments',
               label: (<span><UsergroupAddOutlined />Gán data</span>),
               children: customerId ? (
@@ -161,14 +174,14 @@ export const CustomerDetailDrawer = ({ open, customerId, onClose, onUpdate }: Cu
                 />
               ) : null
             },
-            {
+            !isTabHidden('tab:groups') && {
               key: 'groups',
               label: (<span><ApartmentOutlined />Nhóm</span>),
               children: customerId ? (
                 <CustomerGroupMembershipsTab customerId={customerId} />
               ) : null
             }
-          ]}
+          ].filter(Boolean) as any[]}
         />
       )}
 
