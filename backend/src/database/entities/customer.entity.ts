@@ -56,11 +56,13 @@ export class Customer {
   @JoinColumn({ name: 'marketing_user_id' })
   marketingUser: User | null;
 
-  @Column({
-    type: 'enum',
-    enum: ['closed', 'pending', 'potential', 'lost', 'inactive'],
-    default: 'pending',
-  })
+  // ⚠️ Trước đây `type: 'enum'` cứng 5 giá trị - đã đổi cột thật trong DB
+  // sang VARCHAR ở CreateCustomerStatuses1781400000000 (bảng
+  // `customer_statuses` giờ là nguồn sự thật cho danh sách trạng thái hợp
+  // lệ, validate ở CustomersService.create()/update() - xem 2 hàm đó).
+  // Khai lại đúng type thật ở đây để tránh lệch schema TypeORM vs DB (dù
+  // `synchronize: false` nên không tự sync ngược, chỉ để nhất quán/rõ ràng).
+  @Column({ type: 'varchar', length: 50, default: 'pending' })
   status: string;
 
   @Column({ length: 100, nullable: true })
