@@ -343,6 +343,12 @@ export default function ChiaDataPage() {
   const { positions: allPositions } = usePositions();
   const { roles: allRoles } = useRoles();
   const { getRoleColor } = useRoleColorMap();
+  // ⚠️ FIX BUG THẬT (báo cáo qua ảnh chụp, đồng bộ CustomerFilters.tsx): Tag
+  // Vai trò ở userOptions/renderUserOption bên dưới trước đây hiện thẳng
+  // `u.role` (CODE hệ thống vd "manager") thay vì TÊN hiển thị Admin đặt ở
+  // /phan-quyen (vd "Quản lý").
+  const roleNameMap = new Map(allRoles.map((r: any) => [r.code, r.name]));
+  const getRoleName = (code?: string) => (code ? roleNameMap.get(code) || code : '');
   // Danh sách user hợp lệ theo ĐÚNG config key='sales' (Assignment Group) -
   // nguồn "rules" thật sự, KHÔNG phải 3 dropdown lọc thủ công bên dưới.
   const { users: salesRuleUsers } = useAssignmentGroupUsers('sales');
@@ -641,17 +647,17 @@ export default function ChiaDataPage() {
   const userOptions = candidateUsers.map((u: User) => ({
     value: u.id,
     label: (
-      <Space>
-        <Avatar size="small" style={{ backgroundColor: getRoleColor(u.role) }}>
+      <Space size={4} align="center">
+        <Avatar size={20} style={{ backgroundColor: getRoleColor(u.role), fontSize: 11, flexShrink: 0 }}>
           {u.name?.[0]?.toUpperCase()}
         </Avatar>
-        <span>{u.name || u.email}</span>
-        <Tag style={{ fontSize: 10 }} color={getRoleColor(u.role)}>{u.role}</Tag>
+        <span style={{ fontSize: 13 }}>{u.name || u.email}</span>
+        <Tag style={{ fontSize: 10, lineHeight: '16px', padding: '0 4px', margin: 0 }} color={getRoleColor(u.role)}>{getRoleName(u.role)}</Tag>
         {u.department?.name && (
-          <Tag style={{ fontSize: 10 }} color={resolveEntityColor(u.department.color)}>{u.department.name}</Tag>
+          <Tag style={{ fontSize: 10, lineHeight: '16px', padding: '0 4px', margin: 0 }} color={resolveEntityColor(u.department.color)}>{u.department.name}</Tag>
         )}
         {u.position?.name && (
-          <Tag style={{ fontSize: 10 }} color={resolveEntityColor(u.position.color)}>{u.position.name}</Tag>
+          <Tag style={{ fontSize: 10, lineHeight: '16px', padding: '0 4px', margin: 0 }} color={resolveEntityColor(u.position.color)}>{u.position.name}</Tag>
         )}
       </Space>
     ),
@@ -687,17 +693,17 @@ export default function ChiaDataPage() {
   const renderUserOption = (option: { data: { user: User } }) => {
     const u = option.data.user;
     return (
-      <Space>
-        <Avatar size="small" style={{ backgroundColor: getRoleColor(u.role) }}>
+      <Space size={4} align="center">
+        <Avatar size={20} style={{ backgroundColor: getRoleColor(u.role), fontSize: 11, flexShrink: 0 }}>
           {u.name?.[0]?.toUpperCase()}
         </Avatar>
-        <span>{u.name || u.email}</span>
-        <Tag style={{ fontSize: 10 }} color={getRoleColor(u.role)}>{u.role}</Tag>
+        <span style={{ fontSize: 13 }}>{u.name || u.email}</span>
+        <Tag style={{ fontSize: 10, lineHeight: '16px', padding: '0 4px', margin: 0 }} color={getRoleColor(u.role)}>{getRoleName(u.role)}</Tag>
         {u.department?.name && (
-          <Tag style={{ fontSize: 10 }} color={resolveEntityColor(u.department.color)}>{u.department.name}</Tag>
+          <Tag style={{ fontSize: 10, lineHeight: '16px', padding: '0 4px', margin: 0 }} color={resolveEntityColor(u.department.color)}>{u.department.name}</Tag>
         )}
         {u.position?.name && (
-          <Tag style={{ fontSize: 10 }} color={resolveEntityColor(u.position.color)}>{u.position.name}</Tag>
+          <Tag style={{ fontSize: 10, lineHeight: '16px', padding: '0 4px', margin: 0 }} color={resolveEntityColor(u.position.color)}>{u.position.name}</Tag>
         )}
       </Space>
     );
@@ -814,6 +820,7 @@ export default function ChiaDataPage() {
                         options={viewScopeUserOptions}
                         optionLabelProp="label"
                         optionRender={renderUserOption}
+                        popupMatchSelectWidth={false}
                         showSearch={{ optionFilterProp: 'label' }}
                         onChange={v => { 
                           setFilterDataOwner(v ?? null); 
@@ -975,6 +982,7 @@ export default function ChiaDataPage() {
                         options={viewScopeUserOptions}
                         optionLabelProp="label"
                         optionRender={renderUserOption}
+                        popupMatchSelectWidth={false}
                         showSearch={{ optionFilterProp: 'label' }}
                         onChange={v => {
                           setFilterAssignedTo(v ?? null);
