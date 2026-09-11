@@ -25,25 +25,30 @@ export class AssignmentGroupsController {
     return this.service.resolveUsers(key);
   }
 
-  // ⚠️ Tách nhỏ theo action từ `assignment_groups.manage` gộp chung (giống
-  // đúng pattern positions.view/positions.manage/positions.delete) - cho phép
-  // Admin cấp riêng lẻ view/create/update/delete ở Ma trận quyền thay vì
-  // trọn gói cả CRUD cùng lúc. Xem migration
-  // `1781100000000-CreateAssignmentGroupConfigs.ts`.
+  // ⚠️ CỐ Ý KHÔNG gắn @RequirePermission('assignment_groups.view') ở GET /
+  // và GET /:id nữa (chỉ còn JwtAuthGuard) - permission này CHỈ dùng để FE
+  // gate sidebar/trang "Quản lý phụ trách" (nav-config.tsx,
+  // quan-ly-phu-trach/page.tsx). GET / còn được useAssignmentGroups() gọi
+  // từ CustomerForm.tsx, customers/page.tsx, chia-data/page.tsx (đều là
+  // trang mọi nhân viên dùng hàng ngày) để biết danh sách config
+  // sales/marketing/content_staff hợp lệ trước khi tra
+  // GET /assignment-groups/:key/users (route ngay trên, vốn đã CỐ TÌNH mở
+  // cho mọi user đăng nhập) - dùng chung 1 permission cho cả 2 mục đích
+  // khiến Admin tắt 'assignment_groups.view' để ẩn trang quản lý vô tình phá
+  // các trang nghiệp vụ trên. Mirror đúng cách fix ở
+  // leave-types.controller.ts.
   @Get()
-  @UseGuards(JwtAuthGuard, PermissionGuard)
+  @UseGuards(JwtAuthGuard)
   @ApiBearerAuth()
-  @RequirePermission('assignment_groups.view')
-  @ApiOperation({ summary: 'Danh sách tất cả config kèm departments/positions đã gán' })
+  @ApiOperation({ summary: 'Danh sách tất cả config kèm departments/positions đã gán (mọi user đã đăng nhập)' })
   findAll() {
     return this.service.findAll();
   }
 
   @Get(':id')
-  @UseGuards(JwtAuthGuard, PermissionGuard)
+  @UseGuards(JwtAuthGuard)
   @ApiBearerAuth()
-  @RequirePermission('assignment_groups.view')
-  @ApiOperation({ summary: 'Chi tiết 1 config' })
+  @ApiOperation({ summary: 'Chi tiết 1 config (mọi user đã đăng nhập)' })
   findOne(@Param('id', ParseIntPipe) id: number) {
     return this.service.findOne(id);
   }

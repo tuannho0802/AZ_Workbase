@@ -24,30 +24,29 @@ export class DepartmentsController {
     return this.departmentsService.findAllPublic();
   }
 
+  // ⚠️ CỐ Ý KHÔNG gắn @RequirePermission('departments.view') ở GET / và
+  // GET /:id nữa (chỉ còn JwtAuthGuard) - permission này CHỈ dùng để FE gate
+  // sidebar/trang "Phòng ban" (nav-config.tsx, phong-ban/page.tsx). Trước
+  // đây dùng chung 1 permission cho cả 2 mục đích -> Admin tắt
+  // 'departments.view' để ẩn trang quản lý vô tình chặn luôn dropdown
+  // "Phòng ban" ở CustomerForm.tsx (mọi nhân viên tạo/sửa khách hàng đều
+  // gọi useDepartments() -> GET /departments) và ở chia-data/page.tsx (bộ
+  // lọc phòng ban khi chia data) - 403 dù người dùng không hề đụng tới
+  // trang "Phòng ban". Mirror đúng cách fix ở leave-types.controller.ts /
+  // customer-statuses.controller.ts.
   @Get()
-  @UseGuards(JwtAuthGuard, PermissionGuard)
+  @UseGuards(JwtAuthGuard)
   @ApiBearerAuth()
-  @RequirePermission('departments.view')
-  // ⚠️ Cùng loại bug đã fix ở users.controller.ts (max-age=300 chế độ mù ->
-  // trễ tới 300+120=420 giây thấy đúng data). Giờ phòng ban được sửa thường
-  // xuyên hơn qua trang /phong-ban mới (gán Manager, đổi tên...) - đổi sang
-  // revalidate=true (ETag) để không lặp lại đúng bug đó ở trang mới.
   @UseInterceptors(new CacheControlInterceptor(300, true))
-  @ApiOperation({ summary: 'Danh sách tất cả phòng ban' })
+  @ApiOperation({ summary: 'Danh sách tất cả phòng ban (mọi user đã đăng nhập, không cần permission riêng)' })
   findAll() {
     return this.departmentsService.findAll();
   }
 
   @Get(':id')
-  @UseGuards(JwtAuthGuard, PermissionGuard)
+  @UseGuards(JwtAuthGuard)
   @ApiBearerAuth()
-  // ⚠️ FIX BUG THẬT (rà soát toàn hệ thống): trước đây route này chỉ có
-  // JwtAuthGuard, thiếu hẳn @RequirePermission('departments.view') - nếu 1
-  // role bị Admin thu hồi quyền này, họ vẫn xem được TỪNG phòng ban bằng
-  // cách dò ID (1,2,3...) dù không xem được danh sách qua GET / nữa -
-  // không nhất quán với chính rule mà route GET / đang áp dụng.
-  @RequirePermission('departments.view')
-  @ApiOperation({ summary: 'Lấy chi tiết phòng ban' })
+  @ApiOperation({ summary: 'Lấy chi tiết phòng ban (mọi user đã đăng nhập, không cần permission riêng)' })
   findOne(@Param('id', ParseIntPipe) id: number) {
     return this.departmentsService.findOne(id);
   }

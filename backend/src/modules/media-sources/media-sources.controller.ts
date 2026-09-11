@@ -31,11 +31,14 @@ import { UpdateMediaSourceDto } from './dto/update-media-source.dto';
 export class MediaSourcesController {
     constructor(private readonly mediaSourcesService: MediaSourcesService) { }
 
-    // Không giới hạn role - MỌI nhân viên đã đăng nhập cần gọi được endpoint
-    // này để load dropdown "Nguồn" khi thêm khách hàng (không chỉ admin).
-    // Quyền CRUD/khoá-mở mới giới hạn admin (xem các endpoint bên dưới).
+    // ⚠️ CỐ Ý KHÔNG gắn @RequirePermission ở đây (chỉ còn JwtAuthGuard qua
+    // class-level @UseGuards) - 'media_sources.view' CHỈ dùng để FE gate
+    // sidebar/trang "Quản lý nguồn" (nav-config.tsx). GET này còn được
+    // CustomerForm.tsx gọi (useMediaSources()) để load dropdown "Nguồn" khi
+    // MỌI nhân viên thêm khách hàng - dùng chung 1 permission cho cả 2 mục
+    // đích khiến Admin tắt quyền xem trang quản lý vô tình chặn luôn tạo
+    // khách hàng. Mirror đúng cách fix ở leave-types.controller.ts.
     @Get()
-    @RequirePermission('media_sources.view')
     @ApiOperation({
         summary: 'Lấy danh sách nguồn. activeOnly=true để chỉ lấy nguồn đang mở (dùng cho dropdown thêm khách hàng).',
     })

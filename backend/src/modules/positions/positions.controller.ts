@@ -24,20 +24,26 @@ export class PositionsController {
     return this.positionsService.findAllPublic();
   }
 
+  // ⚠️ CỐ Ý KHÔNG gắn @RequirePermission('positions.view') ở GET / và
+  // GET /:id nữa (chỉ còn JwtAuthGuard) - permission này CHỈ dùng để FE gate
+  // sidebar/trang "Vị trí" (nav-config.tsx, vi-tri/page.tsx). GET / còn được
+  // usePositions() gọi từ chia-data/page.tsx (bộ lọc Vị trí khi chia data -
+  // trang mọi nhân viên có customers.assign đều vào được) - dùng chung 1
+  // permission cho cả 2 mục đích khiến Admin tắt 'positions.view' để ẩn
+  // trang quản lý vô tình phá luôn Chia Data. Mirror đúng cách fix ở
+  // leave-types.controller.ts / departments.controller.ts.
   @Get()
-  @UseGuards(JwtAuthGuard, PermissionGuard)
+  @UseGuards(JwtAuthGuard)
   @ApiBearerAuth()
-  @RequirePermission('positions.view')
-  @ApiOperation({ summary: 'Danh sách tất cả Vị trí' })
+  @ApiOperation({ summary: 'Danh sách tất cả Vị trí (mọi user đã đăng nhập, không cần permission riêng)' })
   findAll() {
     return this.positionsService.findAll();
   }
 
   @Get(':id')
-  @UseGuards(JwtAuthGuard, PermissionGuard)
+  @UseGuards(JwtAuthGuard)
   @ApiBearerAuth()
-  @RequirePermission('positions.view')
-  @ApiOperation({ summary: 'Lấy chi tiết 1 Vị trí' })
+  @ApiOperation({ summary: 'Lấy chi tiết 1 Vị trí (mọi user đã đăng nhập, không cần permission riêng)' })
   findOne(@Param('id', ParseIntPipe) id: number) {
     return this.positionsService.findOne(id);
   }

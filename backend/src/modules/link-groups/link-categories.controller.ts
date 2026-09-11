@@ -27,11 +27,12 @@ import { UpdateLinkCategoryDto } from './dto/update-link-category.dto';
 export class LinkCategoriesController {
   constructor(private readonly categoriesService: LinkCategoriesService) {}
 
-  // Không giới hạn role - mọi nhân viên đã đăng nhập cần gọi được để load
-  // dropdown khi tạo Group / xem checklist join-nhóm của khách hàng. Quyền
-  // CRUD/khoá-mở mới giới hạn admin (các endpoint bên dưới).
+  // ⚠️ CỐ Ý KHÔNG gắn @RequirePermission ở đây (chỉ còn JwtAuthGuard qua
+  // class-level @UseGuards) - 'link_groups.view' CHỈ dùng để FE gate
+  // sidebar/trang "Quản lý nhóm liên kết" (nav-config.tsx), không được chặn
+  // dropdown khi mọi nhân viên tạo Group / xem checklist join-nhóm của
+  // khách hàng. Mirror đúng cách fix ở link-groups.controller.ts.
   @Get()
-  @RequirePermission('link_groups.view')
   @ApiOperation({ summary: 'Lấy danh sách category. activeOnly=true để chỉ lấy category đang mở.' })
   @ApiQuery({ name: 'activeOnly', required: false, type: Boolean })
   async findAll(@Query('activeOnly') activeOnly?: string) {

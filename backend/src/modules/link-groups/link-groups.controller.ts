@@ -29,8 +29,13 @@ import { UpdateLinkGroupDto } from './dto/update-link-group.dto';
 export class LinkGroupsController {
   constructor(private readonly groupsService: LinkGroupsService) {}
 
+  // ⚠️ CỐ Ý KHÔNG gắn @RequirePermission ở đây (chỉ còn JwtAuthGuard qua
+  // class-level @UseGuards) - 'link_groups.view' CHỈ dùng để FE gate
+  // sidebar/trang "Quản lý nhóm liên kết" (nav-config.tsx). GET này còn
+  // được CustomerForm.tsx gọi (useAllActiveLinkGroups()) để load dropdown
+  // khi MỌI nhân viên thêm khách hàng - mirror đúng cách fix ở
+  // leave-types.controller.ts / media-sources.controller.ts.
   @Get()
-  @RequirePermission('link_groups.view')
   @ApiOperation({ summary: 'Lấy danh sách nhóm, lọc theo categoryId/activeOnly (mọi role đã đăng nhập)' })
   @ApiQuery({ name: 'categoryId', required: false, type: Number })
   @ApiQuery({ name: 'activeOnly', required: false, type: Boolean })
