@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState, useMemo, Suspense } from 'react';
+import { useEffect, useState, useMemo, useRef, Suspense } from 'react';
 import { Table, Card, Tag, App, Button, Space, Typography, Tooltip, Divider, Collapse, Pagination, Grid, Popconfirm, Select } from 'antd';
 import { UploadOutlined, UsergroupAddOutlined, ReloadOutlined, PlusOutlined, InfoCircleOutlined, DeleteOutlined } from '@ant-design/icons';
 import type { ColumnsType, TablePaginationConfig } from 'antd/es/table';
@@ -265,6 +265,16 @@ function CustomersPageContent() {
   const isLaptop = !!(screens.md && !screens.xl); // 768px - 1279px
 
   const [isMobile, setIsMobile] = useState(false);
+
+  // ⚠️ Thanh cuộn ngang nhân bản ở phía trên bảng khách hàng: Ant Table chỉ
+  // có 1 thanh cuộn ngang ở dưới cùng bảng, gây bất tiện khi bảng dài phải
+  // kéo xuống cuối mới cuộn được. Tạo 1 div giả overflow-x:auto phía trên,
+  // đồng bộ scrollLeft 2 chiều với `.ant-table-content` (container cuộn
+  // ngang thật của antd khi chỉ set scroll.x, không set scroll.y).
+  const tableWrapperRef = useRef<HTMLDivElement>(null);
+  const topScrollRef = useRef<HTMLDivElement>(null);
+  const [tableScrollWidth, setTableScrollWidth] = useState(0);
+  const isSyncingScrollRef = useRef(false);
   useEffect(() => {
     const check = () => setIsMobile(window.innerWidth < 768);
     check();
@@ -713,6 +723,49 @@ function CustomersPageContent() {
   // sẽ không bao giờ hiện dù sau đó canDeleteCustomer đã thành true.
   ], [isLaptop, depositRangeForColumnLabel, page, pageSize, user, canDeleteCustomer, recentNotesCount, hideSalesField, hideMarketingField]);
 
+  // ⚠️ Thanh cuộn ngang nhân bản ở phía trên bảng khách hàng: Ant Table chỉ
+  // có 1 thanh cuộn ngang ở dưới cùng bảng, gây bất tiện khi bảng dài phải
+  // kéo xuống cuối mới cuộn được. Tạo 1 div giả overflow-x:auto phía trên,
+  // đồng bộ scrollLeft 2 chiều với `.ant-table-content` (container cuộn
+  // ngang thật của antd khi chỉ set scroll.x, không set scroll.y).
+  useEffect(() => {
+    const wrapper = tableWrapperRef.current;
+    if (!wrapper) return;
+    const contentEl = wrapper.querySelector('.ant-table-content') as HTMLElement | null;
+    const innerTable = wrapper.querySelector('.ant-table-content > table') as HTMLElement | null;
+    if (!contentEl || !innerTable) return;
+
+    const syncWidth = () => setTableScrollWidth(innerTable.scrollWidth);
+    syncWidth();
+
+    const handleContentScroll = () => {
+      if (isSyncingScrollRef.current) { isSyncingScrollRef.current = false; return; }
+      if (topScrollRef.current) {
+        isSyncingScrollRef.current = true;
+        topScrollRef.current.scrollLeft = contentEl.scrollLeft;
+      }
+    };
+    contentEl.addEventListener('scroll', handleContentScroll);
+
+    const resizeObserver = new ResizeObserver(syncWidth);
+    resizeObserver.observe(innerTable);
+
+    return () => {
+      contentEl.removeEventListener('scroll', handleContentScroll);
+      resizeObserver.disconnect();
+    };
+    // Re-attach mỗi khi dữ liệu/cột đổi vì antd có thể remount phần content.
+  }, [customers, columns, isMobile]);
+
+  const handleTopScrollBarScroll = (e: React.UIEvent<HTMLDivElement>) => {
+    if (isSyncingScrollRef.current) { isSyncingScrollRef.current = false; return; }
+    const contentEl = tableWrapperRef.current?.querySelector('.ant-table-content') as HTMLElement | null;
+    if (contentEl) {
+      isSyncingScrollRef.current = true;
+      contentEl.scrollLeft = e.currentTarget.scrollLeft;
+    }
+  };
+
   // ⚠️ FIX BUG THẬT: nút "X" (clear) trên các Select (Sales/Marketing/Người
   // nhập Data/Nguồn/Trạng thái/Đã joined nhóm...) không tắt được filter,
   // phải F5 cả trang mới hết. Nguyên nhân: `antd Select allowClear` gọi
@@ -907,6 +960,16 @@ function CustomersPageContent() {
           />
         </div>
       ) : (
+            <div ref={tableWrapperRef}>
+              {tableScrollWidth > 0 && (
+                <div
+                  ref={topScrollRef}
+                  onScroll={handleTopScrollBarScroll}
+                  style={{ overflowX: 'auto', overflowY: 'hidden', marginBottom: 4 }}
+                >
+                  <div style={{ width: tableScrollWidth, height: 1 }} />
+                </div>
+              )}
         <Table
           className="customer-table"
           rowSelection={canAssign ? rowSelection : undefined}
@@ -948,6 +1011,7 @@ function CustomersPageContent() {
             },
           }}
         />
+            </div>
       )}
     </Card>
 
