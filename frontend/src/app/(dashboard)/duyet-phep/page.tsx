@@ -3,7 +3,7 @@
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import {
-  Table, Card, Button, Space, Tag, Badge, Tabs, Modal, Input, App, Typography, Divider
+  Table, Card, Button, Space, Tag, Badge, Tabs, Modal, Input, App, Typography, Divider, Tooltip
 } from 'antd';
 import {
   CheckOutlined, CloseOutlined, HistoryOutlined, HourglassOutlined,
@@ -145,6 +145,11 @@ function HistoryMobileCard({ record }: { record: LeaveRequest }) {
             <Text strong style={{ color: '#1890ff', marginLeft: 6 }}>{record.totalDays} ngày</Text>
           </Text>
         </div>
+        {record.reason && (
+          <Text style={{ fontSize: 12, color: '#595959', fontStyle: 'italic' }}>
+            Lý do: {record.reason}
+          </Text>
+        )}
         {record.approver && (
           <Text style={{ fontSize: 12 }}>
             Người duyệt: <Text strong>{record.approver.name}</Text>
@@ -275,6 +280,7 @@ export default function ApprovalPage() {
     {
       title: 'Người gửi',
       dataIndex: ['requester', 'name'],
+      width: 170,
       render: (name: string, record: LeaveRequest) => (
         <div>
           <div style={{ fontWeight: 500 }}>{name}</div>
@@ -285,10 +291,12 @@ export default function ApprovalPage() {
     {
       title: 'Ngày gửi',
       dataIndex: 'createdAt',
+      width: 110,
       render: (date: string) => dayjs(date).format('DD/MM/YYYY HH:mm')
     },
     {
       title: 'Phòng ban',
+      width: 120,
       render: (_: any, record: LeaveRequest) => (
         <Tag color="blue">{record.requester.department?.name || 'Chưa gán'}</Tag>
       )
@@ -296,6 +304,7 @@ export default function ApprovalPage() {
     {
       title: 'Loại phép',
       dataIndex: 'leaveType',
+      width: 100,
       render: (type: string) => {
         const info = LEAVE_TYPE_MAP[type] ?? { text: type, color: 'default' };
         return <Tag color={info.color}>{info.text}</Tag>;
@@ -303,6 +312,7 @@ export default function ApprovalPage() {
     },
     {
       title: 'Thời gian',
+      width: 130,
       render: (_: any, record: LeaveRequest) => (
         <div>
           <div>{dayjs(record.startDate).format('DD/MM/YYYY')}</div>
@@ -311,15 +321,24 @@ export default function ApprovalPage() {
         </div>
       )
     },
-    { title: 'Lý do', dataIndex: 'reason', ellipsis: true },
+    {
+      title: 'Lý do',
+      dataIndex: 'reason',
+      width: 160,
+      ellipsis: true,
+      render: (reason: string) =>
+        reason ? <Tooltip title={reason}><span>{reason}</span></Tooltip> : '-'
+    },
     {
       title: 'Đính kèm',
+      width: 100,
       render: (_: any, record: LeaveRequest) => (
         <AttachmentsViewerButton requestId={record.id} />
       )
     },
     {
       title: 'Thao tác',
+      width: 160,
       render: (_: any, record: LeaveRequest) => (
         <Space>
           <Button type="primary" size="small" icon={<CheckOutlined />} onClick={() => handleApprove(record.id)}>
@@ -337,6 +356,7 @@ export default function ApprovalPage() {
     {
       title: 'Người gửi',
       dataIndex: ['requester', 'name'],
+      width: 170,
       render: (name: string, record: LeaveRequest) => (
         <div>
           <div style={{ fontWeight: 500 }}>{name}</div>
@@ -347,10 +367,12 @@ export default function ApprovalPage() {
     {
       title: 'Ngày gửi',
       dataIndex: 'createdAt',
+      width: 100,
       render: (date: string) => dayjs(date).format('DD/MM/YYYY')
     },
     {
       title: 'Phòng ban',
+      width: 120,
       render: (_: any, record: LeaveRequest) => (
         <Tag color="blue">{record.requester.department?.name || 'Chưa gán'}</Tag>
       )
@@ -358,6 +380,7 @@ export default function ApprovalPage() {
     {
       title: 'Loại phép',
       dataIndex: 'leaveType',
+      width: 100,
       render: (type: string) => {
         const info = LEAVE_TYPE_MAP[type] ?? { text: type, color: 'default' };
         return <Tag color={info.color}>{info.text}</Tag>;
@@ -365,6 +388,7 @@ export default function ApprovalPage() {
     },
     {
       title: 'Thời gian',
+      width: 130,
       render: (_: any, record: LeaveRequest) => (
         <div>
           <div>{dayjs(record.startDate).format('DD/MM/YYYY')}</div>
@@ -376,24 +400,36 @@ export default function ApprovalPage() {
     {
       title: 'Trạng thái',
       dataIndex: 'status',
+      width: 100,
       render: (status: string) => {
         const info = STATUS_MAP[status] ?? { text: status, color: 'default' };
         return <Tag color={info.color}>{info.text}</Tag>;
       }
     },
     {
+      title: 'Lý do',
+      dataIndex: 'reason',
+      width: 150,
+      ellipsis: true,
+      render: (reason: string) =>
+        reason ? <Tooltip title={reason}><span>{reason}</span></Tooltip> : '-'
+    },
+    {
       title: 'Người duyệt',
       dataIndex: ['approver', 'name'],
+      width: 110,
       render: (name: string) => <b>{name || '-'}</b>
     },
     {
       title: 'Đính kèm',
+      width: 100,
       render: (_: any, record: LeaveRequest) => (
         <AttachmentsViewerButton requestId={record.id} />
       )
     },
     {
       title: 'Ngày xử lý',
+      width: 130,
       render: (_: any, record: LeaveRequest) => {
         const date = record.approvedAt || record.rejectedAt;
         return date ? dayjs(date).format('DD/MM/YYYY HH:mm') : '-';
@@ -402,8 +438,14 @@ export default function ApprovalPage() {
     {
       title: 'Lý do từ chối',
       dataIndex: 'rejectionReason',
+      width: 150,
+      ellipsis: true,
       render: (reason: string) =>
-        reason ? <span style={{ color: '#f5222d', fontStyle: 'italic' }}>{reason}</span> : '-'
+        reason ? (
+          <Tooltip title={reason}>
+            <span style={{ color: '#f5222d', fontStyle: 'italic' }}>{reason}</span>
+          </Tooltip>
+        ) : '-'
     }
   ];
 
@@ -440,6 +482,9 @@ export default function ApprovalPage() {
           rowKey="id"
           loading={loading}
           pagination={false}
+            size="small"
+            tableLayout="fixed"
+            scroll={{ x: 'max-content' }}
           locale={{ emptyText: '✅ Không có đơn chờ duyệt' }}
         />
       )
@@ -469,6 +514,9 @@ export default function ApprovalPage() {
           rowKey="id"
           loading={loading}
           pagination={{ pageSize: 10 }}
+            size="small"
+            tableLayout="fixed"
+            scroll={{ x: 'max-content' }}
           locale={{ emptyText: 'Chưa có lịch sử xử lý' }}
         />
       )
