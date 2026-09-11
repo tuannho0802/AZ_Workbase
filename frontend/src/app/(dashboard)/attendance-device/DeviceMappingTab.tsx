@@ -28,6 +28,7 @@ import { SalesUserSelect } from '@/components/customers/SalesUserSelect';
 // SalesUserSelect tự fetch riêng, không expose ra ngoài) để tra cứu theo
 // `mappedUserId` và lấy đúng role/department/position hệ thống.
 import { useRoleColorMap, useRoleColors } from '@/lib/hooks/useRoleColorMap';
+import { UserMiniCard } from './UserMiniCard';
 
 const { RangePicker } = DatePicker;
 
@@ -211,14 +212,21 @@ export default function DeviceMappingTab() {
       key: 'mapped',
       render: (_: any, record: DeviceUser) => {
         if (!record.mappedUserId) return <Tag color="orange">Chưa map</Tag>;
+        // ⚠️ MỚI - trước hiện nhiều Tag rời rạc cạnh nhau (khó nhìn theo
+        // phản hồi người dùng), giờ gom vào UserMiniCard dùng chung, kèm 1
+        // Tag "Đã map" nhỏ đứng trước để giữ nguyên ý nghĩa trạng thái.
         const u = usersById.get(record.mappedUserId);
-        const tagStyle = { fontSize: 10, lineHeight: '16px', padding: '0 4px', margin: 0 };
         return (
-          <Space size={4} wrap>
-            <Tag color="green" style={{ margin: 0 }}>Đã map: {record.mappedUserName}</Tag>
-            {u?.role && <Tag style={tagStyle} color={getRoleColor(u.role)}>{getRoleName(u.role)}</Tag>}
-            {u?.department?.name && <Tag style={tagStyle} color="default">{u.department.name}</Tag>}
-            {u?.position?.name && <Tag style={tagStyle} color="default">{u.position.name}</Tag>}
+          <Space size={6} align="center" wrap>
+            <Tag color="green" style={{ margin: 0 }}>Đã map</Tag>
+            <UserMiniCard
+              name={record.mappedUserName || u?.name || '(không rõ tên)'}
+              role={u?.role}
+              departmentName={u?.department?.name}
+              positionName={u?.position?.name}
+              getRoleColor={getRoleColor}
+              getRoleName={getRoleName}
+            />
           </Space>
         );
       },

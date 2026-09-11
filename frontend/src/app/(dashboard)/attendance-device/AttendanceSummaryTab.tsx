@@ -12,6 +12,7 @@ import { AttendanceStatus, AttendanceSummaryRow } from '@/lib/types/zk-device.ty
 // - đồng bộ Tag màu Vai trò/Phòng ban/Vị trí theo đúng pattern renderUserOption
 // ở CustomerFilters.tsx.
 import { useRoleColorMap, useRoleColors } from '@/lib/hooks/useRoleColorMap';
+import { UserMiniCard } from './UserMiniCard';
 import ExportPeriodModal from './ExportPeriodModal';
 
 const { RangePicker } = DatePicker;
@@ -75,11 +76,8 @@ export default function AttendanceSummaryTab() {
       title: 'Nhân viên',
       key: 'userName',
       render: (_: unknown, r: AttendanceSummaryRow) => {
-        // ⚠️ MỚI - trước đây chỉ `dataIndex: 'userName'` hiện text trơn cho
-        // MỌI dòng, kể cả user CHƯA map (không phân biệt được bằng mắt với
-        // user đã map, khác hẳn 2 tab Logs/Tổng hợp đã có Tag "chưa map" rõ
-        // ràng). Đồng bộ Tag Vai trò/Phòng ban/Vị trí (đã map) hoặc Tag cam
-        // "chưa map" (chưa map) giống 2 tab kia.
+        // ⚠️ MỚI - trước hiện nhiều Tag rời rạc cạnh tên (khó nhìn theo phản
+        // hồi người dùng), giờ gom vào UserMiniCard dùng chung.
         if (!r.isMapped) {
           return (
             <span title={`Chưa map - mã máy: ${r.deviceUserId}`}>
@@ -89,14 +87,15 @@ export default function AttendanceSummaryTab() {
           );
         }
         const u = r.userId != null ? usersById.get(r.userId) : undefined;
-        const tagStyle = { fontSize: 10, lineHeight: '16px', padding: '0 4px', margin: 0 };
         return (
-          <Space size={4} wrap>
-            <span>{r.userName}</span>
-            {u?.role && <Tag style={tagStyle} color={getRoleColor(u.role)}>{getRoleName(u.role)}</Tag>}
-            {u?.department?.name && <Tag style={tagStyle} color="default">{u.department.name}</Tag>}
-            {u?.position?.name && <Tag style={tagStyle} color="default">{u.position.name}</Tag>}
-          </Space>
+          <UserMiniCard
+            name={r.userName}
+            role={u?.role}
+            departmentName={u?.department?.name}
+            positionName={u?.position?.name}
+            getRoleColor={getRoleColor}
+            getRoleName={getRoleName}
+          />
         );
       },
     },

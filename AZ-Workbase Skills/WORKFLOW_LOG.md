@@ -953,3 +953,36 @@ lượt này verify lại toàn bộ claim của phiên trước bằng code th�
 2. Cột "Vị trí" ở `AttendanceMonthlyTab.tsx` thực chất đang hiện TÊN PHÒNG BAN (`departmentName`), không
    phải vị trí thật (`position`) - tên cột có thể gây hiểu nhầm, đã tồn tại từ trước lượt này, không tự ý
    đổi vì có thể là chủ đích ban đầu (dùng "Vị trí" theo nghĩa rộng = vị trí công tác/phòng ban).
+
+## [2026-09-11] | Gom Tag rời rạc (Vai trò/Phòng ban/Vị trí) thành 1 UserMiniCard dùng chung ở tab Máy chấm công | Status: Success
+
+**Actor:** Agent (Claude), theo phản hồi trực tiếp qua ảnh chụp của người dùng ("gom nó lại thành 1 Card
+mini chung để dễ nhìn hơn là tách ra như vậy"). Người dùng đã tự test và xác nhận ổn.
+
+**Files Changed:**
+- `frontend/src/app/(dashboard)/attendance-device/UserMiniCard.tsx` (MỚI) — component dùng chung: 1 khối
+  bo tròn nền xám nhạt (`borderRadius: 20`, nền `#fafafa`, viền `#f0f0f0`) gói Avatar + tên (bold) + Tag
+  Vai trò (màu theo role)/Phòng ban/Vị trí, thay cho kiểu cũ nhiều `<Tag>` rời rạc trôi nổi cạnh nhau.
+  Nhận `getRoleColor`/`getRoleName` qua props (không tự gọi hook riêng) để tái dùng đúng instance đã có
+  sẵn ở component cha, tránh nhân bản gọi `useRoleColors()` nhiều lần không cần thiết trên cùng 1 trang.
+- `frontend/src/app/(dashboard)/attendance-device/AttendanceSummaryTab.tsx` — cột "Nhân viên" (dòng đã
+  map) đổi từ `<Space wrap>` nhiều Tag rời sang `<UserMiniCard>`.
+- `frontend/src/app/(dashboard)/attendance-device/AttendanceLogsTab.tsx` — cột "Nhân viên" (log đã khớp)
+  đổi tương tự sang `<UserMiniCard>`.
+- `frontend/src/app/(dashboard)/attendance-device/DeviceMappingTab.tsx` — cột "Trạng thái map" (đã map)
+  đổi sang `<UserMiniCard>`, giữ thêm 1 Tag xanh nhỏ "Đã map" đứng trước để không mất ý nghĩa trạng thái
+  (áp dụng thêm cho ĐỒNG BỘ, dù người dùng chỉ gửi ảnh 2 tab Bảng chấm công/Logs - tab này có ĐÚNG vấn đề
+  Tag rời rạc y hệt).
+
+**Notes:**
+> `AttendanceMonthlyTab.tsx` (tab "Tổng hợp chấm công") - cột "Họ và tên" CHƯA đổi sang `UserMiniCard` ở
+> lượt này: cột này `fixed: 'left'`, width cố định 190px, đã có sẵn layout 2 dòng (tên hệ thống + phụ đề
+> tên trên máy) trong 1 bảng rất nhiều cột fixed khác - thêm khối pill/Avatar có nguy cơ tràn/đè lên cột
+> kế bên do các cột fixed không tự co giãn. Cần test trực tiếp trên trình duyệt (không chỉ `tsc`/`build`)
+> trước khi đổi, nên tạm giữ nguyên kiểu Tag nhỏ gọn (không có khung/Avatar) đã làm ở lượt trước cho tab
+> này. Sẽ đổi nếu người dùng xác nhận muốn đồng bộ luôn và chấp nhận rủi ro layout.
+
+**Verify thật:**
+- Frontend: `npx tsc --noEmit` sạch (0 lỗi mới). `npm run build` (Next.js 16 Turbopack): **sạch hoàn
+  toàn**, đủ 27 route (bao gồm `/attendance-device`).
+- Người dùng đã tự test trực tiếp trên UI thật và xác nhận ổn ("tôi test ổn rồi").
