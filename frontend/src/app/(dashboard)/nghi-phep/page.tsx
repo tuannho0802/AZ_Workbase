@@ -128,8 +128,18 @@ export default function LeaveRequestsPage() {
     () => Object.fromEntries(leaveTypes.map((t) => [t.code, { text: t.name, color: t.color }])),
     [leaveTypes],
   );
+  // ⚠️ MỚI - dropdown "Loại phép" ở Modal tạo đơn trước đây chỉ hiện text
+  // trơn (label: t.name), không có Tag màu như ở cột "Loại phép" của bảng
+  // hay ở dropdown filter Trạng thái/Nguồn (xem CustomerFilters.tsx -
+  // `options={...map(s => ({ value: s.code, label: <Tag color={s.color}>...}))}`).
+  // Đồng bộ đúng pattern đó: label giờ là <Tag> màu theo `t.color` (đã có sẵn
+  // từ BE qua bảng leave_types), thay vì chuỗi text đơn thuần.
   const leaveTypeOptions = useMemo(
-    () => leaveTypes.map((t) => ({ value: t.code, label: t.name })),
+    () =>
+      leaveTypes.map((t) => ({
+        value: t.code,
+        label: <Tag color={t.color} style={{ marginInlineEnd: 0 }}>{t.name}</Tag>,
+      })),
     [leaveTypes],
   );
 
