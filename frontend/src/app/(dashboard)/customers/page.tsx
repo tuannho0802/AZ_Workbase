@@ -25,6 +25,7 @@ import { useAssignmentGroupUsers } from '@/lib/hooks/useAssignmentGroups';
 import dayjs from 'dayjs';
 import { CustomerFilters } from '@/components/customers/CustomerFilters';
 import { SourceTag } from '@/components/customers/SourceTag';
+import { CustomerStatusSelect } from '@/components/customers/CustomerStatusSelect';
 
 const { Text } = Typography;
 
@@ -460,6 +461,12 @@ function CustomersPageContent() {
   // không hề gọi can('customers.create'). BE đã đòi đúng permission này ở
   // POST /customers từ migration 1778900000000-SplitCustomersManagePermission.ts.
   const canCreate = can('customers.create');
+  // ⚠️ MỚI (yêu cầu: dropdown sửa nhanh Trạng thái ngay trong bảng) - ĐÚNG
+  // permission PATCH /customers/:id đòi hỏi (`customers.edit`, xem
+  // migration 1778900000000-SplitCustomersManagePermission.ts), cùng
+  // permission `CustomerInfoTab.tsx` đang dùng cho nút "Chỉnh sửa" ở Drawer
+  // chi tiết - không tạo permission/luật riêng, giữ 1 nguồn sự thật.
+  const canEditCustomer = can('customers.edit');
 
   const rowSelection = {
     selectedRowKeys,
@@ -615,7 +622,19 @@ function CustomersPageContent() {
       dataIndex: 'status',
       key: 'status',
       width: isLaptop ? 100 : 110,
-      render: (status) => renderStatusTag(status),
+      // ⚠️ FIX (yêu cầu: bấm đổi ngay, không cần vào Sửa) - thay
+      // `renderStatusTag(status)` tĩnh bằng dropdown sửa nhanh, CHỈ hiện
+      // dạng Select khi có `customers.edit` (`canEditCustomer` ở trên,
+      // cùng permission nút "Chỉnh sửa" ở CustomerInfoTab.tsx) - không có
+      // quyền thì `CustomerStatusSelect` tự fallback về đúng Tag tĩnh cũ.
+      render: (status, record: any) => (
+        <CustomerStatusSelect
+          customerId={record.id}
+          status={status}
+          canEdit={canEditCustomer}
+          onSaved={() => refetchCustomers()}
+        />
+      ),
     },
     {
       title: 'Đã joined nhóm',
