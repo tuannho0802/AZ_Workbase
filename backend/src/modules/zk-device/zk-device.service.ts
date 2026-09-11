@@ -375,7 +375,7 @@ export class ZkDeviceService {
    * máy) - API này chỉ SELECT.
    */
   async getAttendanceLogs(query: QueryAttendanceLogDto, viewerId: number, viewerRole: string, scope?: string | null) {
-    const { page = 1, limit = 20, userId, matched, from, to } = query;
+    const { page = 1, limit = 20, userId, deviceUserId, matched, from, to } = query;
 
     const qb = this.attendanceLogRepo
       .createQueryBuilder('log')
@@ -384,6 +384,14 @@ export class ZkDeviceService {
 
     if (userId) {
       qb.andWhere('log.matchedUserId = :userId', { userId });
+    }
+    // ⚠️ MỚI - hoàn thiện phần "Not yet done" ở query-attendance-log.dto.ts:
+    // field `deviceUserId` đã khai báo ở DTO nhưng chưa được dùng trong
+    // query. Cho phép lọc log theo 1 user CHƯA map (chọn qua dropdown "Lọc
+    // theo nhân viên" ở FE, nhóm "Chưa map (mã máy)") - mirror đúng cách
+    // `userId` lọc user ĐÃ map ở trên.
+    if (deviceUserId) {
+      qb.andWhere('log.deviceUserId = :deviceUserId', { deviceUserId });
     }
     if (matched === 'matched') {
       qb.andWhere('log.matchedUserId IS NOT NULL');
