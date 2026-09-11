@@ -18,6 +18,7 @@ import { useMyPermissions } from '@/lib/hooks/useMyPermissions';
 import { useRoles } from '@/lib/hooks/useRoles';
 import { useDepartments } from '@/lib/hooks/useDepartments';
 import { usePositions } from '@/lib/hooks/usePositions';
+import { useUsersList } from '@/lib/hooks/useUsers';
 import { PendingApprovalsTab } from './PendingApprovalsTab';
 import { TrashTab } from './TrashTab';
 import { getApiErrorMessage } from '@/lib/utils/error-message.util';
@@ -146,6 +147,14 @@ export default function UsersPage() {
   // Select trong Modal Thêm/Sửa - cột "Vị trí" ở bảng đọc thẳng từ object
   // quan hệ `record.position` (GET /users đã JOIN sẵn), không cần tra map.
   const { positions } = usePositions();
+  // ⚠️ MỚI (migration AddLeaveApproverOverrideToUsers1781700000000) - danh
+  // sách Manager để chọn "Người duyệt nghỉ phép (ngoại lệ)" trong Modal
+  // Sửa. Chỉ liệt kê role='manager' vì override chỉ có tác dụng khi
+  // approver đang giữ scope='department' cho permission
+  // `leave_requests.approve` (xem LeaveRequestsService.isEligibleApprover) -
+  // chọn user role khác vẫn lưu được (BE không ép cứng) nhưng sẽ KHÔNG có
+  // tác dụng, nên không đưa vào danh sách để tránh Admin chọn nhầm.
+  const { users: managerOptions } = useUsersList('manager');
   // Màu Tag theo Role (đọc từ `roles.color` do Admin cấu hình ở /phan-quyen,
   // xem `useRoleColorMap.ts`) - dùng cho cột "Chức vụ" ở bảng desktop bên
   // dưới. `UserMobileCard` tự gọi hook riêng của nó (không nhận prop này) vì
@@ -257,6 +266,9 @@ export default function UsersPage() {
       // `position` (GET /users đã JOIN sẵn) ưu tiên, fallback về scalar
       // `positionId` thô nếu vì lý do gì đó object chưa được join.
       positionId: record.position?.id || record.positionId,
+      // ⚠️ MỚI - scalar column thuần (không có relation object join sẵn
+      // như department/position), đọc thẳng record.leaveApproverId.
+      leaveApproverId: record.leaveApproverId ?? undefined,
     });
     setIsModalOpen(true);
   };
@@ -279,6 +291,10 @@ export default function UsersPage() {
         // `undefined`) để BE thực sự XOÁ gán Vị trí cũ thay vì bỏ qua field
         // này (UpdateUserDto.positionId?: number | null - đã hỗ trợ null).
         positionId: values.positionId != null ? Number(values.positionId) : (editingUser ? null : undefined),
+        // ⚠️ MỚI - đối xứng positionId ở trên: gửi `null` tường minh khi
+        // Admin xoá lựa chọn lúc SỬA (để BE thực sự gỡ ngoại lệ), `undefined`
+        // khi tạo mới và không chọn (không gửi field, để mặc định NULL).
+        leaveApproverId: values.leaveApproverId != null ? Number(values.leaveApproverId) : (editingUser ? null : undefined),
         // Để trống -> KHÔNG gửi field này -> BE tự sinh mã kế tiếp
         // (generateNextEmployeeCode()). Có nhập tay -> BE tự check trùng,
         // ném lỗi rõ ràng nếu đã tồn tại (xem catch bên dưới).
@@ -689,6 +705,29 @@ export default function UsersPage() {
               allowClear
               options={positions.map((p) => ({ value: p.id, label: p.name }))}
               showSearch
+              filterOption={(input, option) =>
+                (option?.label as string).toLowerCase().includes(input.toLowerCase())
+              }
+            />
+          </Form.Item>
+
+          {/* ⚠️ MỚI (migration AddLeaveApproverOverrideToUsers1781700000000) -
+              ngoại lệ duyệt nghỉ phép, TÁCH BIỆT với Phòng ban/Vị trí ở trên.
+              Chỉ ảnh hưởng module Nghỉ phép - không đụng phạm vi xem Khách
+              hàng/Báo cáo/... của user này. Để trống = không có ngoại lệ,
+              duyệt theo Manager của phòng ban như bình thường. */}
+          <Form.Item
+            name="leaveApproverId"
+            label="Người duyệt nghỉ phép (ngoại lệ)"
+            tooltip="Chỉ dùng khi user này cần 1 Manager cụ thể duyệt nghỉ phép dù không cùng (hoặc không có) phòng ban với Manager đó. Để trống = áp dụng rule phòng ban mặc định."
+          >
+            <Select
+              placeholder="Không có ngoại lệ (mặc định theo phòng ban)"
+              allowClear
+              showSearch
+              options={managerOptions
+                .filter((m: any) => m.id !== editingUser?.id)
+                .map((m: any) => ({ value: m.id, label: `${m.name} (${m.email})` }))}
               filterOption={(input, option) =>
                 (option?.label as string).toLowerCase().includes(input.toLowerCase())
               }
