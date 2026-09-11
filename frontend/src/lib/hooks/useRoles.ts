@@ -24,10 +24,22 @@ const EMPTY_PERMISSIONS: Permission[] = [];
 const EMPTY_OVERRIDES: DepartmentOverride[] = [];
 const EMPTY_POSITION_OVERRIDES: PositionOverride[] = [];
 
-export const useRoles = () => {
+// ⚠️ MỚI (2026-09-11, fix bug 403 "GET /api/roles" ở trang "Vị trí"): tham
+// số `enabled` (mặc định `true` - KHÔNG đổi hành vi các nơi gọi cũ, vd
+// `/phan-quyen` đã tự gate `canView('roles.view')` trước khi render nên luôn
+// enabled là an toàn) - cho phép nơi gọi trì hoãn fetch tới khi THẬT SỰ cần,
+// dùng cho các component LUÔN được mount sẵn trong cây (Drawer/Modal điều
+// khiển hiện/ẩn qua prop `open`, không unmount) như `PositionVisibilityDrawer`
+// - nếu không, `useRoles()` bắn ngay GET /roles lúc trang cha render, BẤT KỂ
+// Drawer có đang mở hay không VÀ bất kể người xem trang cha (vd Manager ở
+// trang "Vị trí") có quyền `roles.view` hay không -> 403 toast vô nghĩa dù
+// họ còn chưa từng bấm nút mở Drawer (nút đó vốn dĩ cũng chỉ hiện với người
+// có `roles.manage`, tức Manager không bao giờ bấm được).
+export const useRoles = (enabled: boolean = true) => {
     const { data, isLoading, isError, error, refetch } = useQuery({
         queryKey: ROLES_KEY,
         queryFn: () => rolesApi.getAllRoles(),
+        enabled,
         staleTime: 30 * 1000,
     });
 

@@ -72,7 +72,16 @@ interface Props {
  */
 export function PositionVisibilityDrawer({ position, open, onClose }: Props) {
   const { message } = App.useApp();
-  const { roles, isLoading: loadingRoles } = useRoles();
+  // ⚠️ FIX BUG THẬT (403 "GET /api/roles" vô nghĩa ở trang "Vị trí" cho
+  // Manager): Drawer này LUÔN được mount sẵn trong `vi-tri/page.tsx` (ẩn/hiện
+  // qua prop `open`, không unmount), nên nếu gọi `useRoles()` không điều
+  // kiện thì GET /roles bắn ngay lúc trang "Vị trí" render - BẤT KỂ Drawer
+  // đang mở hay không, và bất kể người xem trang (Manager) có `roles.view`
+  // hay không. Nút mở Drawer này vốn dĩ CHỈ hiện với người có `roles.manage`
+  // (xem `canManageVisibility` ở page.tsx) - Manager không bao giờ bấm được
+  // nút đó nên không bao giờ cần gọi API này. Truyền `enabled: open` để chỉ
+  // fetch đúng lúc Drawer thật sự được mở ra.
+  const { roles, isLoading: loadingRoles } = useRoles(open);
   const [selectedRoleId, setSelectedRoleId] = useState<number | null>(null);
 
   // Reset lựa chọn Role mỗi khi đổi Vị trí đang xem/mở lại Drawer - tránh
