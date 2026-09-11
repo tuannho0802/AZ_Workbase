@@ -65,6 +65,14 @@ const RESOURCE_LABEL: Record<string, string> = {
   // `?? resource`, Admin nhìn thấy nhóm quyền hiện raw key
   // "assignment_groups" thay vì tên tiếng Việt như các resource khác.
   assignment_groups: 'Quản lý phụ trách',
+  leave_types: 'Loại phép',
+  // ⚠️ BỔ SUNG (2026-09-10, cùng lúc tách `customer_statuses.manage` thành
+  positions: 'Vị trí',
+  customer_statuses: 'Trạng thái khách hàng',
+  // ⚠️ BỔ SUNG (2026-09-10, cùng lúc tách `customer_statuses.manage` thành
+  // view/create/update/delete): resource này trước đó rơi vào fallback
+  // `?? resource`, Admin nhìn thấy nhóm quyền hiện raw key
+  // "customer_statuses" thay vì tên tiếng Việt như các resource khác.
 };
 
 const SCOPE_LABEL: Record<PermissionScope, string> = {
