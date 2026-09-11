@@ -16,6 +16,20 @@ import { CountBadge } from '@/components/common/CountBadge';
 
 const { Title, Text, Paragraph } = Typography;
 
+// Style dùng chung cho các Tag ở hàng Role/Phòng ban/Vị trí để đảm bảo
+// padding, border-radius, font-weight đồng nhất giữa 3 tag (trước đây mỗi
+// tag một icon/khác nhau khiến chiều cao/padding lệch nhau, nhìn "rối").
+const infoTagStyle: React.CSSProperties = {
+  marginInlineEnd: 0,
+  padding: '2px 10px',
+  borderRadius: 6,
+  fontWeight: 500,
+  display: 'inline-flex',
+  alignItems: 'center',
+  gap: 4,
+  lineHeight: '20px',
+};
+
 export default function HomePage() {
   const router = useRouter();
   const user = useAuthStore((s) => s.user);
@@ -76,53 +90,108 @@ export default function HomePage() {
         style={{
           display: 'flex',
           alignItems: 'center',
-          gap: 16,
+          gap: 18,
           marginBottom: 24,
-          padding: '20px 24px',
-          borderRadius: 12,
+          padding: '22px 26px',
+          borderRadius: 14,
           background: 'linear-gradient(135deg, #f0f7ff 0%, #fafcff 100%)',
           border: '1px solid #e6f0ff',
+          boxShadow: '0 2px 8px rgba(22, 119, 255, 0.05)',
         }}
       >
         <Avatar
           size={56}
-          style={{ backgroundColor: roleColor, fontSize: 22, flexShrink: 0 }}
+          style={{
+            backgroundColor: roleColor,
+            fontSize: 22,
+            fontWeight: 600,
+            flexShrink: 0,
+            boxShadow: `0 2px 6px ${roleColor}55`,
+          }}
         >
           {user?.name?.[0]?.toUpperCase()}
         </Avatar>
+
         <div style={{ minWidth: 0 }}>
-          <Title level={3} style={{ marginBottom: 6 }}>
-            Chào mừng trở lại, {user?.name}!
+          <Title
+            level={3}
+            style={{
+              margin: 0,
+              display: 'flex',
+              alignItems: 'center',
+              flexWrap: 'wrap',
+              gap: 10,
+              lineHeight: 1.4,
+            }}
+          >
+            <span>Chào mừng trở lại,</span>
+            <span
+              style={{
+                display: 'inline-flex',
+                alignItems: 'center',
+                padding: '2px 12px',
+                borderRadius: 999,
+                background: '#ffffff',
+                border: `1px solid ${roleColor}`,
+                fontWeight: 700,
+                fontSize: 16,
+                color: roleColor,
+                boxShadow: '0 1px 2px rgba(0,0,0,0.04)',
+              }}
+            >
+              {user?.name}
+            </span>
+            <span>!</span>
           </Title>
-          {meLoading && !me ? (
-            <Skeleton.Button active size="small" style={{ width: 220 }} />
-          ) : (
-            <Space size={[8, 8]} wrap>
-              {user?.role && (
-                <Tag color={roleColor} style={{ marginInlineEnd: 0 }}>
-                  {roleName}
-                </Tag>
-              )}
-              {departmentName && (
-                <Tag
-                  color={departmentColor}
-                  icon={<BankOutlined />}
-                  style={{ marginInlineEnd: 0 }}
+
+          <div style={{ marginTop: 10 }}>
+            {meLoading && !me ? (
+              <Skeleton.Button active size="small" style={{ width: 220 }} />
+            ) : (
+                // "Layer" nền trắng bên dưới nhóm Tag - Tag màu tuỳ ý (có thể
+                // rất nhạt, vd xanh lá non) nằm trực tiếp trên nền gradient nhạt
+                // của khối chào mừng dễ bị chìm/khó đọc chữ (báo qua ảnh chụp).
+                // Bọc thêm 1 lớp nền trắng đục phía sau để chữ Tag luôn tương
+                // phản tốt, bất kể Tag đó màu gì. Đồng thời dùng chung
+                // `infoTagStyle` cho cả 3 tag để padding/bo góc/độ đậm chữ đều
+                // nhau (trước đây lệch nhau do tag có/không có icon).
+                <div
+                  style={{
+                    display: 'inline-block',
+                    padding: '7px 10px',
+                    borderRadius: 10,
+                    background: 'rgba(255, 255, 255, 0.85)',
+                    boxShadow: '0 1px 2px rgba(0,0,0,0.04)',
+                  }}
                 >
-                  {departmentName}
-                </Tag>
-              )}
-              {positionName && (
-                <Tag
-                  color={positionColor}
-                  icon={<IdcardOutlined />}
-                  style={{ marginInlineEnd: 0 }}
-                >
-                  {positionName}
-                </Tag>
-              )}
-            </Space>
-          )}
+                  <Space size={[8, 8]} wrap>
+                    {user?.role && (
+                      <Tag color={roleColor} style={infoTagStyle}>
+                        {roleName}
+                      </Tag>
+                    )}
+                    {departmentName && (
+                      <Tag
+                        color={departmentColor}
+                        icon={<BankOutlined />}
+                        style={infoTagStyle}
+                      >
+                        {departmentName}
+                      </Tag>
+                    )}
+                    {positionName && (
+                      <Tag
+                        color={positionColor}
+                        icon={<IdcardOutlined />}
+                        style={infoTagStyle}
+                      >
+                        {positionName}
+                      </Tag>
+                    )}
+                  </Space>
+                </div>
+            )}
+          </div>
         </div>
       </div>
 
