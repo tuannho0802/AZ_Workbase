@@ -4,17 +4,29 @@ import { SelectQueryBuilder, Brackets } from 'typeorm';
 import { Customer } from '../../../database/entities/customer.entity';
 
 /**
- * Bảng phân quyền khách hàng (áp dụng thống nhất cho MỌI endpoint list/get,
- * và gián tiếp cho sửa - xem ghi chú ở applyViewFilter):
+ * Phân quyền khách hàng (áp dụng thống nhất cho MỌI endpoint list/get, và
+ * gián tiếp cho sửa - xem ghi chú ở applyViewFilter):
  *
- *  Role       | Xem (View)                        | Sửa (trừ xoá)  | Xoá
- *  -----------|------------------------------------|----------------|-------
- *  ADMIN      | Tất cả                             | Tất cả         | Được
- *  ASSISTANT  | Tất cả (bất chấp phòng ban)         | Tất cả         | Không
- *  MANAGER    | Chỉ KH thuộc phòng ban mình quản lý | = phạm vi Xem  | Không
- *             | (department.manager_user_id = mình) |                |
- *  EMPLOYEE   | Chỉ KH mình tạo/làm sales chính/     | = phạm vi Xem  | Không
- *             | đang được gán (assignment active)   |                |
+ *  scope (role_permissions) | Xem (View)                      | Sửa (trừ xoá) | Xoá
+ *  --------------------------|----------------------------------|----------------|-------
+ *  all                       | Tất cả                           | = phạm vi Xem  | Không*
+ *  department                | Chỉ KH thuộc phòng ban mình quản  | = phạm vi Xem  | Không*
+ *                            | lý (department.manager_user_id = |                |
+ *                            | mình)                             |                |
+ *  own                       | Chỉ KH mình tạo/làm sales chính/   | = phạm vi Xem  | Không*
+ *                            | đang được gán (assignment active)  |                |
+ *
+ * (*) Xoá KHÔNG có khái niệm scope - chỉ `Role.ADMIN` mới xoá được, xem
+ * `canDelete()`, không phụ thuộc `role_permissions`.
+ *
+ * Hoàn toàn thuần theo `scope` mà `PermissionGuard` tra từ `role_permissions`
+ * - KHÔNG còn hardcode theo `Role` enum (Assistant, Manager, Employee).
+ * NGOẠI LỆ DUY NHẤT: `Role.ADMIN` luôn thấy/sửa/xoá tất cả bất kể
+ * `role_permissions` cấu hình gì (đồng bộ với lối thoát hiểm ở
+ * `PermissionGuard`). Với 4 role hệ thống, `role_permissions` được seed mặc
+ * định scope tương ứng đúng bảng trên - đây chỉ là DỮ LIỆU MẶC ĐỊNH, Admin
+ * có thể đổi qua trang "Phân quyền" bất cứ lúc nào (xem PERMISSIONS.md mục
+ * 1.7).
  *
  * Nguyên tắc thiết kế quan trọng: với app này, phạm vi XEM và phạm vi SỬA
  * là MỘT - ai xem được 1 khách hàng thì cũng sửa được khách hàng đó (chỉ

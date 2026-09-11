@@ -39,22 +39,22 @@ interface DepartmentBreakdownRow {
  * CustomerAccessHelper.applyViewFilter() - CÙNG 1 nguồn chân lý RBAC với
  * module Customer, không viết lại điều kiện role riêng ở đây):
  *
- *  Role       | Cá nhân (breakdown)          | Phòng ban (breakdown)   | Tổng tất cả
- *  -----------|-------------------------------|-------------------------|-------------
- *  ADMIN      | Mọi người                     | Mọi phòng ban            | Có
- *  ASSISTANT  | Mọi người                     | Mọi phòng ban            | Có
- *  MANAGER    | Chỉ người trong phòng ban      | Chỉ phòng ban mình quản  | ẨN (null)
- *             | mình quản lý (tự nhiên qua      | lý (tự nhiên qua         |
- *             | applyViewFilter)               | applyViewFilter)         |
- *  EMPLOYEE   | CHỈ SỐ CỦA CHÍNH MÌNH          | ẨN (null)                | ẨN (null)
+ *  scope (role_permissions) | Cá nhân (breakdown)      | Phòng ban (breakdown) | Tổng tất cả
+ *  --------------------------|---------------------------|------------------------|-------------
+ *  all                       | Mọi người                  | Mọi phòng ban           | Có
+ *  department                | Chỉ người trong phòng ban   | Chỉ phòng ban mình      | ẨN (null)
+ *                            | mình quản lý (tự nhiên qua   | quản lý (tự nhiên qua   |
+ *                            | applyViewFilter)             | applyViewFilter)        |
+ *  own                       | CHỈ SỐ CỦA CHÍNH MÌNH       | ẨN (null)               | ẨN (null)
  *
- * ⚠️ Điểm này CHƯA có xác nhận tường minh bằng văn bản từ chủ dự án khi bắt
- * tay viết code (đã hỏi trước đó, câu trả lời nhận được lại là quyết định
- * caching thay vì trả lời trực tiếp câu hỏi RBAC) - đây là phương án ĐỀ XUẤT
- * mặc định, khớp nhất quán với toàn bộ PERMISSIONS.md đã áp dụng cho module
- * Customer (Manager khoanh vùng phòng ban, Employee chỉ thấy phạm vi của
- * mình). Cần chủ dự án xác nhận lại, dễ đổi nếu sai (chỉ nằm ở khối điều
- * kiện role bên dưới, không ảnh hưởng phần tính toán).
+ * Hoàn toàn thuần theo `scope` (own/department/all) mà `PermissionGuard` tra
+ * từ `role_permissions` - KHÔNG còn hardcode theo `Role` enum (Assistant,
+ * Manager, Employee) ở bất kỳ đâu trong file này. NGOẠI LỆ DUY NHẤT:
+ * `Role.ADMIN` luôn có mục "Tổng tất cả" bất kể `role_permissions` cấu hình
+ * gì (đồng bộ với lối thoát hiểm ở `PermissionGuard`). Với 4 role hệ thống,
+ * `role_permissions` đã seed mặc định scope tương ứng đúng bảng trên - đây
+ * chỉ là DỮ LIỆU MẶC ĐỊNH, Admin có thể đổi qua trang "Phân quyền" bất cứ
+ * lúc nào (xem PERMISSIONS.md mục 1.7).
  */
 @Injectable()
 export class ReportsService {
@@ -138,7 +138,7 @@ export class ReportsService {
       .orderBy('amount', 'DESC');
 
     if (scope === PermissionScope.OWN) {
-    // scope='own' - CHỈ thấy số của CHÍNH MÌNH ở mục "Cá nhân" - dù
+      // scope='own' - CHỈ thấy số của CHÍNH MÌNH ở mục "Cá nhân" - dù
       // applyViewFilter có thể cho họ THẤY (view) vài khách hàng được gán
       // qua customer_assignments mà salesUserId không phải họ, báo cáo
       // "Cá nhân" không nên lộ số của người khác qua đường đó. Thuần theo
@@ -274,16 +274,17 @@ export class ReportsService {
         .andWhere('customer.salesUserId IS NOT NULL')
         .groupBy('customer.salesUserId'),
     );
-    CustomerAccessHelper.applyViewFilter(personalJoinedQb, viewerId, viewerRole);
-    if (viewerRole === Role.EMPLOYEE) {
+    CustomerAccessHelper.applyViewFilter(personalJoinedQb, viewerId, viewerRole, scope);
+    if (scope === PermissionScope.OWN) {
       personalJoinedQb.andWhere('customer.salesUserId = :selfId', { selfId: viewerId });
     }
     const personalJoinedRaw = await personalJoinedQb.getRawMany();
 
     let personalMainFiltered = personalMainRaw;
-    if (viewerRole === Role.EMPLOYEE) {
+    if (scope === PermissionScope.OWN) {
       // Cùng lý do như getRevenueReport(): ép về đúng chính mình, không phụ
-      // thuộc phạm vi "xem được" rộng hơn của applyViewFilter cho Employee.
+      // thuộc phạm vi "xem được" rộng hơn của applyViewFilter cho scope='own'.
+      // Thuần theo scope - không còn hardcode Role.EMPLOYEE.
       personalMainFiltered = personalMainRaw.filter(
         (r: any) => Number(r.userId) === viewerId,
       );
@@ -295,9 +296,9 @@ export class ReportsService {
       (r: any) => ({ userId: Number(r.userId), userName: r.userName ?? '(Không rõ)' }),
     );
 
-    // ── Phòng ban (Employee KHÔNG có mục này) ──
+    // ── Phòng ban (scope='own' KHÔNG có mục này - thuần theo scope) ──
     let department: any[] | null = null;
-    if (viewerRole !== Role.EMPLOYEE) {
+    if (scope !== PermissionScope.OWN) {
       const departmentMainRaw = await buildMainSelect(
         mainQb
           .clone()
@@ -315,7 +316,7 @@ export class ReportsService {
           .andWhere('customer.departmentId IS NOT NULL')
           .groupBy('customer.departmentId'),
       );
-      CustomerAccessHelper.applyViewFilter(departmentJoinedQb, viewerId, viewerRole);
+      CustomerAccessHelper.applyViewFilter(departmentJoinedQb, viewerId, viewerRole, scope);
       const departmentJoinedRaw = await departmentJoinedQb.getRawMany();
 
       department = this.mergeBreakdown(
@@ -329,10 +330,10 @@ export class ReportsService {
       );
     }
 
-    // ── Tổng tất cả (CHỈ Admin/Assistant) ──
+    // ── Tổng tất cả (scope='all', hoặc Admin - ngoại lệ duy nhất) ──
     let total: { totalCustomers: number; closedCustomers: number; joinedGroupCustomers: number } | null =
       null;
-    if (viewerRole === Role.ADMIN || viewerRole === Role.ASSISTANT) {
+    if (scope === PermissionScope.ALL || viewerRole === Role.ADMIN) {
       // ⚠️ PHẢI tự gọi .select() với ĐÚNG 1 cột giả trước khi buildMainSelect()
       // addSelect thêm 2 cột tổng hợp - nếu không, TypeORM mặc định SELECT
       // TOÀN BỘ cột customer.* (chưa từng gọi .select() lần nào), trộn lẫn
