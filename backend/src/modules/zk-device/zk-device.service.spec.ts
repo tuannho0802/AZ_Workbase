@@ -6,6 +6,7 @@ import { User } from '../../database/entities/user.entity';
 import { AttendanceLog } from '../../database/entities/attendance-log.entity';
 import { ZkDeviceUserCache } from '../../database/entities/zk-device-user-cache.entity';
 import { Department } from '../../database/entities/department.entity';
+import { DepartmentManager } from '../../database/entities/department-manager.entity';
 import { Role } from '../../common/enums/role.enum';
 import { PermissionScope } from '../../database/entities/role-permission.entity';
 import { ForbiddenException, NotFoundException } from '@nestjs/common';
@@ -22,8 +23,18 @@ describe('ZkDeviceService', () => {
     createQueryBuilder: jest.fn(),
   };
   const mockZkDeviceUserCacheRepo = {};
+  // ⚠️ MỚI: getManagedDepartmentIds() giờ lấy DepartmentManagerRepository
+  // qua `departmentRepo.manager.getRepository(DepartmentManager)` (bảng
+  // nhiều-nhiều `department_managers`, thay cho `departmentRepo.find({where:
+  // {managerUserId}})` cũ) - xem zk-device.service.ts.
+  const mockDepartmentManagerRepo = {
+    find: jest.fn(),
+  };
   const mockDepartmentRepo = {
     find: jest.fn(),
+    manager: {
+      getRepository: jest.fn(() => mockDepartmentManagerRepo),
+    },
   };
 
   const buildQueryBuilderMock = () => {
@@ -40,6 +51,8 @@ describe('ZkDeviceService', () => {
   };
 
   beforeEach(async () => {
+    jest.clearAllMocks();
+
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         ZkDeviceService,
@@ -58,22 +71,35 @@ describe('ZkDeviceService', () => {
   describe('mapUser', () => {
     it('custom role + PermissionScope.DEPARTMENT -> quan ly duoc nhan vien cung phong', async () => {
       mockUserRepo.findOneByOrFail.mockResolvedValue({ id: 2, departmentId: 5 });
-      mockDepartmentRepo.find.mockResolvedValue([{ id: 5 }]);
+      mockDepartmentManagerRepo.find.mockResolvedValue([{ departmentId: 5 }]);
       const res = await service.mapUser(2, 'd1', 1, 'custom_role', PermissionScope.DEPARTMENT);
       expect(res.zkDeviceUserId).toBe('d1');
     });
 
-    it('custom role + khong co scope -> bypass check phong ban (giong hET ASSISTANT cu)', async () => {
+    it('custom role + khong co scope -> bypass check phong ban (giong het ASSISTANT cu)', async () => {
       mockUserRepo.findOneByOrFail.mockResolvedValue({ id: 2, departmentId: 5 });
       const res = await service.mapUser(2, 'd1', 1, 'custom_role', null);
       expect(res.zkDeviceUserId).toBe('d1');
     });
 
-    it('backward-compat: MANAGER + khong co scope -> quan ly duoc nhan vien cung phong', async () => {
+    it('MANAGER + khong co scope -> KHONG con fallback cung theo role, bypass check phong ban giong moi role khac (hoan toan theo scope tu role_permissions)', async () => {
+    // ⚠️ Đổi ý nghĩa so với bản cũ ("backward-compat" trước đây giả định
+    // Role.MANAGER luôn bị chặn theo phòng ban dù thiếu scope) - code
+    // hiện tại hoàn toàn theo `scope`, không còn đọc Role.MANAGER đặc
+    // biệt - xem zk-device.service.ts mapUser().
       mockUserRepo.findOneByOrFail.mockResolvedValue({ id: 2, departmentId: 5 });
-      mockDepartmentRepo.find.mockResolvedValue([{ id: 5 }]);
       const res = await service.mapUser(2, 'd1', 1, Role.MANAGER, null);
       expect(res.zkDeviceUserId).toBe('d1');
+      expect(mockDepartmentManagerRepo.find).not.toHaveBeenCalled();
+    });
+
+    it('scope=department -> ForbiddenException nếu nhân viên KHÔNG thuộc phòng ban mình quản lý', async () => {
+      mockUserRepo.findOneByOrFail.mockResolvedValue({ id: 2, departmentId: 99 });
+      mockDepartmentManagerRepo.find.mockResolvedValue([{ departmentId: 5 }]);
+
+      await expect(
+        service.mapUser(2, 'd1', 1, Role.MANAGER, PermissionScope.DEPARTMENT),
+      ).rejects.toThrow(ForbiddenException);
     });
   });
 
@@ -81,19 +107,23 @@ describe('ZkDeviceService', () => {
     it('custom role + PermissionScope.DEPARTMENT -> them query andWhere cho phong ban', async () => {
       const qb = buildQueryBuilderMock();
       mockAttendanceLogRepo.createQueryBuilder.mockReturnValue(qb);
-      mockDepartmentRepo.find.mockResolvedValue([{ id: 5 }]);
-      
+      mockDepartmentManagerRepo.find.mockResolvedValue([{ departmentId: 5 }]);
+
       await service.getAttendanceLogs({}, 1, 'custom_role', PermissionScope.DEPARTMENT);
       expect(qb.andWhere).toHaveBeenCalledWith('matchedUser.departmentId IN (:...deptIds)', { deptIds: [5] });
     });
 
-    it('backward-compat: MANAGER + khong co scope -> them query andWhere', async () => {
+    it('MANAGER + khong co scope -> KHONG con them query andWhere theo phong ban (hoan toan theo scope)', async () => {
+    // ⚠️ Đổi ý nghĩa so với bản cũ - xem giải thích ở describe('mapUser') phía trên.
       const qb = buildQueryBuilderMock();
       mockAttendanceLogRepo.createQueryBuilder.mockReturnValue(qb);
-      mockDepartmentRepo.find.mockResolvedValue([{ id: 5 }]);
-      
+
       await service.getAttendanceLogs({}, 1, Role.MANAGER, null);
-      expect(qb.andWhere).toHaveBeenCalledWith('matchedUser.departmentId IN (:...deptIds)', { deptIds: [5] });
+      expect(qb.andWhere).not.toHaveBeenCalledWith(
+        expect.stringContaining('matchedUser.departmentId IN'),
+        expect.anything(),
+      );
+      expect(mockDepartmentManagerRepo.find).not.toHaveBeenCalled();
     });
 
     // ⚠️ MỚI - test cho field `deviceUserId` (thêm ở QueryAttendanceLogDto,
