@@ -11,9 +11,14 @@ interface StatsCardsProps {
   stats: CustomerStats | null;
   loading: boolean;
   onCardClick?: (type: 'today' | 'status' | 'deposit') => void;
+  /** Ẩn thẻ "Tổng nạp" khi Admin đã ẩn `tab:deposits` cho Position/Department
+   * hiện tại (xem PositionVisibilityDrawer.tsx) - thẻ này và cột "Nạp tiền"
+   * ở bảng khách hàng cùng hiển thị dữ liệu FTD, chung 1 trường dữ liệu với
+   * tab "Lịch sử nạp tiền (FTD)" nên phải ẩn/hiện đồng bộ với nhau. */
+  hideDeposit?: boolean;
 }
 
-export const StatsCards = ({ stats, loading, onCardClick }: StatsCardsProps) => {
+export const StatsCards = ({ stats, loading, onCardClick, hideDeposit }: StatsCardsProps) => {
   const cardStyle: React.CSSProperties = {
     cursor: 'pointer',
     transition: 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
@@ -76,28 +81,30 @@ export const StatsCards = ({ stats, loading, onCardClick }: StatsCardsProps) => 
           />
         </Card>
       </Col>
-      <Col xs={24} sm={12} md={6}>
-        <Card 
-          loading={loading} 
-          variant="borderless" 
-          className="stat-card"
-          style={cardStyle}
-          onClick={() => onCardClick?.('deposit')}
-          onMouseEnter={hoverEffect}
-          onMouseLeave={normalEffect}
-        >
-          <Statistic
-            title="Tổng nạp (30 ngày, USD)"
-            value={stats?.totalDepositAmount || 0}
-            styles={{ content: { color: '#faad14' } }}
-            formatter={(value) => new Intl.NumberFormat('en-US', { 
-              style: 'currency', 
-              currency: 'USD' 
-            }).format(Number(value))}
-            prefix={<DollarOutlined />}
-          />
-        </Card>
-      </Col>
+      {!hideDeposit && (
+        <Col xs={24} sm={12} md={6}>
+          <Card
+            loading={loading}
+            variant="borderless"
+            className="stat-card"
+            style={cardStyle}
+            onClick={() => onCardClick?.('deposit')}
+            onMouseEnter={hoverEffect}
+            onMouseLeave={normalEffect}
+          >
+            <Statistic
+              title="Tổng nạp (30 ngày, USD)"
+              value={stats?.totalDepositAmount || 0}
+              styles={{ content: { color: '#faad14' } }}
+              formatter={(value) => new Intl.NumberFormat('en-US', {
+                style: 'currency',
+                currency: 'USD'
+              }).format(Number(value))}
+              prefix={<DollarOutlined />}
+            />
+          </Card>
+        </Col>
+      )}
     </Row>
   );
 };

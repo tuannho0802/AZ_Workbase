@@ -5,6 +5,7 @@ import { CalendarOutlined, EditOutlined } from '@ant-design/icons';
 import { Customer } from '@/lib/types/customer.types';
 import { SourceTag } from './SourceTag';
 import { useMyPermissions } from '@/lib/hooks/useMyPermissions';
+import { useMyHiddenElements } from '@/lib/hooks/useUiVisibility';
 import { useRoleColorMap } from '@/lib/hooks/useRoleColorMap';
 import { resolveEntityColor } from '@/lib/utils/entityColor';
 import dayjs from 'dayjs';
@@ -37,6 +38,22 @@ export const CustomerInfoTab = ({ customer, onEdit }: Props) => {
   // liệu chứ không phải lỗi phân quyền) - đúng bug trong ảnh chụp màn hình.
   const canEdit = can('customers.edit');
 
+  // ⚠️ FIX BUG THẬT (rà soát Vị trí 2026-09-11): tab "Chi tiết" ở đây CHƯA
+  // BAO GIỜ gọi useMyHiddenElements('customers') - Admin cấu hình ẩn
+  // field:sales_assignment/field:marketing_assignment/field:assigned_date/
+  // field:closed_date cho 1 Position (vd "Content") qua /vi-tri KHÔNG có tác
+  // dụng gì ở màn "Chi tiết khách hàng" này (khác với bảng danh sách ở
+  // customers/page.tsx đã ẩn đúng cột Sales/Marketing). "Ghi chú hệ thống"
+  // (customer.note) không có element_key riêng trong danh mục
+  // (CUSTOMER_ELEMENT_KEYS) - gộp chung nhóm ẩn/hiện với field:closed_date
+  // (nằm liền kề, cùng thuộc "thông tin chốt khách" - chung 1 trường dữ liệu
+  // theo yêu cầu) thay vì thêm 1 element_key mới.
+  const { hiddenKeys } = useMyHiddenElements('customers');
+  const hideSales = hiddenKeys.includes('field:sales_assignment');
+  const hideMarketing = hiddenKeys.includes('field:marketing_assignment');
+  const hideAssignedDate = hiddenKeys.includes('field:assigned_date');
+  const hideClosedDate = hiddenKeys.includes('field:closed_date');
+
   if (!customer) return null;
 
   return (
@@ -57,63 +74,75 @@ export const CustomerInfoTab = ({ customer, onEdit }: Props) => {
         <Descriptions.Item label="Người tạo data">
           {customer.createdBy?.name || 'Hệ thống'}
         </Descriptions.Item>
-        <Descriptions.Item label="Sales phụ trách chính">
-          {customer.salesUser ? (
-            <Space>
-              <Text strong>{customer.salesUser.name}</Text>
-              <Tag color={getRoleColor(customer.salesUser.role)}>{customer.salesUser.role?.toUpperCase()}</Tag>
-              {/* ⚠️ MỚI - rà soát Vị trí: đối xứng Tag Role ở trên, chỉ hiện
-                  khi có dữ liệu (không phải ai cũng được gán Vị trí). */}
-              {customer.salesUser.position?.name && (
-                <Tag color={resolveEntityColor(customer.salesUser.position.color)}>{customer.salesUser.position.name}</Tag>
-              )}
-            </Space>
-          ) : (
-            <Text type="secondary" italic>Chưa phân công</Text>
-          )}
-        </Descriptions.Item>
-        <Descriptions.Item label="Sales được chia">
-          {(() => {
-            const primaryId = customer.salesUser?.id;
-            const shared = ((customer as any).activeAssignees || []).filter((a: any) => a.id !== primaryId);
-            if (shared.length === 0) return <Text type="secondary">-</Text>;
-            return (
-              <Space orientation="vertical" size={2}>
-                {shared.map((user: any) => (
-                  <Space key={user.id}>
-                    <Text>{user.name}</Text>
-                    <Tag color={getRoleColor(user.role)}>{user.role?.toUpperCase()}</Tag>
-                    {user.position?.name && <Tag color={resolveEntityColor(user.position.color)}>{user.position.name}</Tag>}
-                  </Space>
-                ))}
+        {!hideSales && (
+          <Descriptions.Item label="Sales phụ trách chính">
+            {customer.salesUser ? (
+              <Space>
+                <Text strong>{customer.salesUser.name}</Text>
+                <Tag color={getRoleColor(customer.salesUser.role)}>{customer.salesUser.role?.toUpperCase()}</Tag>
+                {/* ⚠️ MỚI - rà soát Vị trí: đối xứng Tag Role ở trên, chỉ hiện
+                    khi có dữ liệu (không phải ai cũng được gán Vị trí). */}
+                {customer.salesUser.position?.name && (
+                  <Tag color={resolveEntityColor(customer.salesUser.position.color)}>{customer.salesUser.position.name}</Tag>
+                )}
               </Space>
-            );
-          })()}
-        </Descriptions.Item>
-        <Descriptions.Item label="Marketing phụ trách">
-          {customer.marketingUser ? (
-            <Space>
-              <Text strong>{customer.marketingUser.name}</Text>
-              <Tag color={getRoleColor(customer.marketingUser.role)}>{customer.marketingUser.role?.toUpperCase()}</Tag>
-              {customer.marketingUser.position?.name && (
-                <Tag color={resolveEntityColor(customer.marketingUser.position.color)}>{customer.marketingUser.position.name}</Tag>
-              )}
-            </Space>
-          ) : (
-            <Text type="secondary" italic>Chưa phân công</Text>
-          )}
-        </Descriptions.Item>
+            ) : (
+              <Text type="secondary" italic>Chưa phân công</Text>
+            )}
+          </Descriptions.Item>
+        )}
+        {!hideSales && (
+          <Descriptions.Item label="Sales được chia">
+            {(() => {
+              const primaryId = customer.salesUser?.id;
+              const shared = ((customer as any).activeAssignees || []).filter((a: any) => a.id !== primaryId);
+              if (shared.length === 0) return <Text type="secondary">-</Text>;
+              return (
+                <Space orientation="vertical" size={2}>
+                  {shared.map((user: any) => (
+                    <Space key={user.id}>
+                      <Text>{user.name}</Text>
+                      <Tag color={getRoleColor(user.role)}>{user.role?.toUpperCase()}</Tag>
+                      {user.position?.name && <Tag color={resolveEntityColor(user.position.color)}>{user.position.name}</Tag>}
+                    </Space>
+                  ))}
+                </Space>
+              );
+            })()}
+          </Descriptions.Item>
+        )}
+        {!hideMarketing && (
+          <Descriptions.Item label="Marketing phụ trách">
+            {customer.marketingUser ? (
+              <Space>
+                <Text strong>{customer.marketingUser.name}</Text>
+                <Tag color={getRoleColor(customer.marketingUser.role)}>{customer.marketingUser.role?.toUpperCase()}</Tag>
+                {customer.marketingUser.position?.name && (
+                  <Tag color={resolveEntityColor(customer.marketingUser.position.color)}>{customer.marketingUser.position.name}</Tag>
+                )}
+              </Space>
+            ) : (
+              <Text type="secondary" italic>Chưa phân công</Text>
+            )}
+          </Descriptions.Item>
+        )}
         <Descriptions.Item label="Broker">{customer.broker || '-'}</Descriptions.Item>
         <Descriptions.Item label="Ngày nhập data">
           <Text strong><CalendarOutlined /> {customer.inputDate ? dayjs(customer.inputDate).format('DD/MM/YYYY') : '-'}</Text>
         </Descriptions.Item>
-        <Descriptions.Item label="Ngày nhận KH">
-          <Text type="secondary">{customer.assignedDate ? dayjs(customer.assignedDate).format('DD/MM/YYYY') : '-'}</Text>
-        </Descriptions.Item>
-        <Descriptions.Item label="Ngày chốt">
-          <Tag color="success">{customer.closedDate ? dayjs(customer.closedDate).format('DD/MM/YYYY') : '-'}</Tag>
-        </Descriptions.Item>
-        <Descriptions.Item label="Ghi chú hệ thống">{customer.note || '-'}</Descriptions.Item>
+        {!hideAssignedDate && (
+          <Descriptions.Item label="Ngày nhận KH">
+            <Text type="secondary">{customer.assignedDate ? dayjs(customer.assignedDate).format('DD/MM/YYYY') : '-'}</Text>
+          </Descriptions.Item>
+        )}
+        {!hideClosedDate && (
+          <Descriptions.Item label="Ngày chốt">
+            <Tag color="success">{customer.closedDate ? dayjs(customer.closedDate).format('DD/MM/YYYY') : '-'}</Tag>
+          </Descriptions.Item>
+        )}
+        {!hideClosedDate && (
+          <Descriptions.Item label="Ghi chú hệ thống">{customer.note || '-'}</Descriptions.Item>
+        )}
         <Descriptions.Item label="Ngày tạo hệ thống">
           <Text type="secondary">{dayjs(customer.createdAt).format('DD/MM/YYYY HH:mm')}</Text>
         </Descriptions.Item>

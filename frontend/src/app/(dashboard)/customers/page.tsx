@@ -300,6 +300,12 @@ function CustomersPageContent() {
   const { hiddenKeys } = useMyHiddenElements('customers');
   const hideSalesField = hiddenKeys.includes('field:sales_assignment');
   const hideMarketingField = hiddenKeys.includes('field:marketing_assignment');
+  // ⚠️ FIX BUG THẬT: thẻ "Tổng nạp (30 ngày, USD)" (StatsCards.tsx) và cột
+  // "Nạp tiền" ở bảng dưới đây trước đây LUÔN render cứng - Admin ẩn
+  // `tab:deposits` cho 1 Position (vd "Content") qua /vi-tri không có tác
+  // dụng gì ở đây, dù CustomerDetailDrawer đã ẩn đúng tab "Lịch sử nạp tiền
+  // (FTD)". Cả 3 chỗ cùng hiển thị 1 loại dữ liệu (FTD) nên phải ẩn đồng bộ.
+  const hideDepositsTab = hiddenKeys.includes('tab:deposits');
   const [selectedRowKeys, setSelectedRowKeys] = useState<React.Key[]>([]);
   const [isImportOpen, setIsImportOpen] = useState(false);
   const [isAssignOpen, setIsAssignOpen] = useState(false);
@@ -653,7 +659,7 @@ function CustomersPageContent() {
       align: 'center',
       render: (_: any, record: any) => renderJoinedGroupsTag(record),
     },
-    {
+    ...(hideDepositsTab ? [] : [{
       title: () => (
         <div>
           <div>Nạp tiền</div>
@@ -665,15 +671,15 @@ function CustomersPageContent() {
       dataIndex: 'totalDeposit30Days',
       key: 'totalDeposit30Days',
       width: isLaptop ? 110 : 125,
-      align: 'right',
-      render: (val) => (
+      align: 'right' as const,
+      render: (val: any) => (
         <Tooltip title="Tổng tiền nạp dựa trên khoảng ngày">
           <Text strong style={{ color: Number(val) > 0 ? '#52c41a' : '#bfbfbf' }}>
             ${(Number(val) || 0).toLocaleString(undefined, { minimumFractionDigits: 2 })}
           </Text>
         </Tooltip>
       ),
-    },
+    }]),
     {
       title: 'Ghi chú gần nhất',
       key: 'recentNotes',
@@ -721,7 +727,7 @@ function CustomersPageContent() {
   // render đầu (permissions API luôn async), giá trị `false` ban đầu bị
   // "đông cứng" vĩnh viễn trong closure của useMemo, cột Thao tác/nút Xoá
   // sẽ không bao giờ hiện dù sau đó canDeleteCustomer đã thành true.
-  ], [isLaptop, depositRangeForColumnLabel, page, pageSize, user, canDeleteCustomer, recentNotesCount, hideSalesField, hideMarketingField]);
+  ], [isLaptop, depositRangeForColumnLabel, page, pageSize, user, canDeleteCustomer, recentNotesCount, hideSalesField, hideMarketingField, hideDepositsTab]);
 
   // ⚠️ Thanh cuộn ngang nhân bản ở phía trên bảng khách hàng: Ant Table chỉ
   // có 1 thanh cuộn ngang ở dưới cùng bảng, gây bất tiện khi bảng dài phải
@@ -876,6 +882,7 @@ function CustomersPageContent() {
       stats={stats} 
       loading={statsLoading} 
       onCardClick={(type) => setModalType(type)}
+        hideDeposit={hideDepositsTab}
     />
     
     <Card title="Danh sách khách hàng" extra={renderToolbar()}>
