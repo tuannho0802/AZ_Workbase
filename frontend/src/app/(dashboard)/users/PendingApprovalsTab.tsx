@@ -9,7 +9,7 @@ import { CheckOutlined, CloseOutlined, MailOutlined, PhoneOutlined } from '@ant-
 import dayjs from 'dayjs';
 import { usersApi, PendingUser } from '@/lib/api/users.api';
 import { useDepartments } from '@/lib/hooks/useDepartments';
-import { useRoles } from '@/lib/hooks/useRoles';
+import { useRoleColors } from '@/lib/hooks/useRoleColorMap';
 import { usePositions } from '@/lib/hooks/usePositions';
 import { getApiErrorMessage } from '@/lib/utils/error-message.util';
 import { useMyPermissions } from '@/lib/hooks/useMyPermissions';
@@ -26,15 +26,19 @@ export const PendingApprovalsTab = ({ onCountChange }: Props) => {
   const { message } = App.useApp();
   const queryClient = useQueryClient();
   const { departments } = useDepartments();
-  const { roles } = useRoles();
+  // ⚠️ FIX BUG THẬT (403 "GET /api/roles" khi Manager duyệt đăng ký): trước
+  // đây dùng `useRoles()` (GET /roles, đòi `roles.view` - Manager không có
+  // theo thiết kế). Chỉ cần code/name để build dropdown -> dùng
+  // `useRoleColors()` (GET /roles/colors, không cần quyền đặc biệt).
+  const { roleColors } = useRoleColors();
   // ⚠️ MỚI - rà soát Vị trí 2026-09-10: BE (ApproveUserDto, findPendingApprovals()
   // đã JOIN 'position') hỗ trợ đầy đủ từ trước, FE (PendingUser type,
   // approveUser() API) cũng đã có sẵn field `positionId`/`position` - chỉ
   // riêng Form/Modal Duyệt ở đây chưa từng dùng tới, khiến người duyệt
   // không có cách nào xác nhận/đổi Vị trí ngay lúc duyệt (đối xứng Phòng ban).
   const { positions } = usePositions();
-  const roleOptions = (roles || []).map((r: any) => ({ value: r.code, label: r.name }));
-  const roleMap = new Map((roles || []).map((r: any) => [r.code, r.name]));
+  const roleOptions = (roleColors || []).map((r: any) => ({ value: r.code, label: r.name }));
+  const roleMap = new Map((roleColors || []).map((r: any) => [r.code, r.name]));
 
   const [approving, setApproving] = useState<PendingUser | null>(null);
   const [approveForm] = Form.useForm();

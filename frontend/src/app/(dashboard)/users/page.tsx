@@ -15,14 +15,13 @@ import { useAuthStore } from '@/lib/stores/auth.store';
 import { useRouter } from 'next/navigation';
 import { usersApi } from '@/lib/api/users.api';
 import { useMyPermissions } from '@/lib/hooks/useMyPermissions';
-import { useRoles } from '@/lib/hooks/useRoles';
 import { useDepartments } from '@/lib/hooks/useDepartments';
 import { usePositions } from '@/lib/hooks/usePositions';
 import { useUsersList } from '@/lib/hooks/useUsers';
 import { PendingApprovalsTab } from './PendingApprovalsTab';
 import { TrashTab } from './TrashTab';
 import { getApiErrorMessage } from '@/lib/utils/error-message.util';
-import { useRoleColorMap } from '@/lib/hooks/useRoleColorMap';
+import { useRoleColorMap, useRoleColors } from '@/lib/hooks/useRoleColorMap';
 import { resolveEntityColor } from '@/lib/utils/entityColor';
 
 const { Text } = Typography;
@@ -196,9 +195,15 @@ export default function UsersPage() {
   // Manager/Assistant bị chặn nhầm khỏi tab "Danh sách nhân viên" dù BE đã
   // cho phép từ trước). Đặt tên lại cho đúng ý nghĩa thay vì giữ "isAdmin"
   const { can, isLoading: permissionsLoading } = useMyPermissions();
-  const { roles, isLoading: rolesLoading } = useRoles();
-  const roleOptions = (roles || []).map(r => ({ value: r.code, label: r.name, color: resolveEntityColor(r.color) }));
-  const roleMap = new Map((roles || []).map(r => [r.code, r.name]));
+  // ⚠️ FIX BUG THẬT (403 "GET /api/roles" + dropdown "Vai trò" trống khi Manager
+  // vào trang Nhân viên): trước đây dùng `useRoles()` (GET /roles) - route đòi
+  // `roles.view`, Manager không có quyền này theo thiết kế (roles.view chỉ dành
+  // cho admin/assistant, xem AddCustomRbacSystem migration). Ở đây chỉ cần
+  // code/name/color để tô Tag + build dropdown, không cần ma trận quyền đầy đủ
+  // -> dùng `useRoleColors()` (GET /roles/colors), route KHÔNG cần `roles.view`.
+  const { roleColors, isLoading: rolesLoading } = useRoleColors();
+  const roleOptions = (roleColors || []).map(r => ({ value: r.code, label: r.name, color: resolveEntityColor(r.color) }));
+  const roleMap = new Map((roleColors || []).map(r => [r.code, r.name]));
   const canAccessPage = can('users.view');
   const canManage = can('users.manage');
   // ⚠️ `users.delete` mặc định CHỈ Admin (khác `users.manage` - Admin/
