@@ -71,18 +71,28 @@ export default function DepartmentsPage() {
     const updateMutation = useUpdateDepartment();
     const deleteMutation = useDeleteDepartment();
 
-    const { users: managerCandidates } = useUsersList('manager');
-
-    const managersByDeptId = useMemo(() => {
-        const map = new Map<number, { id: number; name: string }[]>();
-        for (const u of managerCandidates || []) {
-            const deptId = u.departmentId ?? u.department?.id;
-            if (!deptId) continue;
-            if (!map.has(deptId)) map.set(deptId, []);
-            map.get(deptId)!.push({ id: u.id, name: u.name });
-        }
+    // Lấy TOÀN BỘ user active (không lọc role='manager' tại BE nữa) vì BE
+    // (departments.service.ts) giờ cho phép gán managerUserId cho user có
+    // role Admin/Assistant/Manager - lọc client-side theo đúng 3 role này để
+    // đổ vào dropdown chọn "Quản lý phòng ban".
+    const { users: allActiveUsers } = useUsersList();
+    const managerCandidates = useMemo(
+        () => (allActiveUsers || []).filter((u: any) => ['admin', 'assistant', 'manager'].includes(u.role)),
+        [allActiveUsers],
+    );
+    const managerCandidateOptions = useMemo(
+        () => managerCandidates.map((u: any) => ({ value: u.id, label: `${u.name} (${u.role})` })),
+        [managerCandidates],
+    );
+    // Map id -> user, dùng để hiển thị TÊN của managerUserId thật (FK) ở cột
+    // "Quản lý (Manager)" - nguồn ĐÚNG duy nhất là department.managerUserId,
+    // KHÔNG suy diễn qua role/departmentId của user như logic cũ (logic cũ
+    // sai hoàn toàn với model FK managerUserId đã thêm ở BE).
+    const usersById = useMemo(() => {
+        const map = new Map<number, { id: number; name: string; role: string }>();
+        for (const u of allActiveUsers || []) map.set(u.id, { id: u.id, name: u.name, role: u.role });
         return map;
-    }, [managerCandidates]);
+    }, [allActiveUsers]);
 
     const [modalOpen, setModalOpen] = useState(false);
     const [editingDept, setEditingDept] = useState<Department | null>(null);
@@ -116,6 +126,7 @@ export default function DepartmentsPage() {
             description: dept.description,
             isActive: dept.isActive,
             color: resolveEntityColor(dept.color),
+            managerUserId: dept.managerUserId ?? undefined,
         });
         setModalOpen(true);
     };
@@ -131,7 +142,7 @@ export default function DepartmentsPage() {
             const values = await form.validateFields();
             if (editingDept) {
                 updateMutation.mutate(
-                    { id: editingDept.id, data: values },
+                    { id: editingDept.id, data: { ...values, managerUserId: values.managerUserId ?? null } },
                     {
                         onSuccess: () => {
                             message.success('Đã cập nhật phòng ban');
@@ -219,19 +230,15 @@ export default function DepartmentsPage() {
             title: 'Quản lý (Manager)',
             key: 'managers',
             render: (_: any, record: Department) => {
-                const managers = managersByDeptId.get(record.id) ?? [];
-                if (managers.length === 0) return <Text type="secondary">Chưa gán</Text>;
-                const rest = managers.length - 1;
+                if (!record.managerUserId) return <Text type="secondary">Chưa gán</Text>;
+                const manager = usersById.get(record.managerUserId);
+                if (!manager) return <Text type="secondary">Chưa gán</Text>;
                 return (
                     <span>
-                        {managers[0].name}
-                        {rest > 0 && (
-                            <Tooltip title={managers.slice(1).map((m) => m.name).join(', ')}>
-                                <Tag style={{ marginLeft: 6 }} color="gold">
-                                    +{rest}
-                                </Tag>
-                            </Tooltip>
-                        )}
+                        {manager.name}
+                        <Tag style={{ marginLeft: 6 }} color="blue">
+                            {manager.role}
+                        </Tag>
                     </span>
                 );
             },
@@ -329,9 +336,24 @@ export default function DepartmentsPage() {
                     <ColorPickerField extra="Màu Tag phòng ban này hiển thị ở bảng danh sách và các nơi liên quan (Vị trí, chi tiết khách hàng, chọn Sales/Marketing phụ trách...)." />
 
                     {editingDept && (
-                        <Form.Item name="isActive" label="Trạng thái hoạt động" valuePropName="checked">
-                            <Switch checkedChildren="Đang hoạt động" unCheckedChildren="Ngừng hoạt động" />
-                        </Form.Item>
+                        <>
+                            <Form.Item
+                                name="managerUserId"
+                                label="Quản lý phòng ban (Manager)"
+                                extra="Người được gán ở đây quyết định phạm vi 'Phòng ban quản lý' (department scope) trong Ma trận quyền cho CHÍNH người đó - áp dụng cho Admin/Assistant/Manager. Để trống nếu phòng ban tạm chưa có ai quản lý."
+                            >
+                                <Select
+                                    allowClear
+                                    showSearch
+                                    placeholder="Chọn user quản lý phòng ban này"
+                                    options={managerCandidateOptions}
+                                    optionFilterProp="label"
+                                />
+                            </Form.Item>
+                            <Form.Item name="isActive" label="Trạng thái hoạt động" valuePropName="checked">
+                                <Switch checkedChildren="Đang hoạt động" unCheckedChildren="Ngừng hoạt động" />
+                            </Form.Item>
+                        </>
                     )}
                 </Form>
             </Modal>
