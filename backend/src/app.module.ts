@@ -24,6 +24,7 @@ import { PermissionsModule } from './modules/permissions/permissions.module';
 import { RolesModule } from './modules/roles/roles.module';
 import { UiVisibilityModule } from './modules/ui-visibility/ui-visibility.module';
 import { AssignmentGroupsModule } from './modules/assignment-groups/assignment-groups.module';
+import { CustomerStatusesModule } from './modules/customer-statuses/customer-statuses.module';
 import { UploadsModule } from './modules/uploads/uploads.module';
 import { StorageModule } from './modules/storage/storage.module';
 import { KeepAliveController } from './keep-alive/keep-alive.controller';
@@ -79,6 +80,7 @@ import { KeepAliveController } from './keep-alive/keep-alive.controller';
     RolesModule,
     UiVisibilityModule,
     AssignmentGroupsModule,
+    CustomerStatusesModule,
     ServeStaticModule.forRoot({
       rootPath: join(process.cwd(), 'public'),
       serveRoot: '/',
