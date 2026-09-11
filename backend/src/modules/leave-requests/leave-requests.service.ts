@@ -1,13 +1,14 @@
 import { Injectable, BadRequestException, ForbiddenException, NotFoundException, InternalServerErrorException, Logger } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, Between, Not, In } from 'typeorm';
-import { LeaveRequest, LeaveStatus, LeaveType, LeaveDuration } from '../../database/entities/leave-request.entity';
+import { LeaveRequest, LeaveStatus, LeaveDuration } from '../../database/entities/leave-request.entity';
 import { LeaveRequestAttachment } from '../../database/entities/leave-request-attachment.entity';
 import { User } from '../../database/entities/user.entity';
 import { Department } from '../../database/entities/department.entity';
 import { Role } from '../../common/enums/role.enum';
 import { PermissionScope } from '../../database/entities/role-permission.entity';
 import { UploadsService } from '../uploads/uploads.service';
+import { LeaveTypesService } from '../leave-types/leave-types.service';
 
 /**
  * PERMISSIONS.md mục 2.6 - ĐÃ ĐƯỢC GENERALIZE sang scope-based:
@@ -38,6 +39,10 @@ export class LeaveRequestsService {
     private attachmentRepo: Repository<LeaveRequestAttachment>,
 
     private readonly uploadsService: UploadsService,
+    // Đọc động isPaid/deductsAnnualBalance theo leaveType.code - thay hoàn
+    // toàn so sánh cứng `leaveType === LeaveType.ANNUAL/SICK` cũ (giờ
+    // leave_type là VARCHAR tự do, xem CreateLeaveTypes1781500000000).
+    private readonly leaveTypesService: LeaveTypesService,
   ) {}
 
   /**
@@ -92,6 +97,11 @@ export class LeaveRequestsService {
    * Validation: Balance check + Conflict check
    */
   async create(dto: any, requesterId: number) {
+    // 0. Validate leaveType tồn tại trong `leave_types` - cột leave_type giờ
+    // VARCHAR tự do (không còn ENUM tự chặn ở tầng DB như trước), PHẢI
+    // validate ở đây trước khi tạo đơn.
+    const leaveType = await this.leaveTypesService.assertExists(dto.leaveType);
+
     // 1. Validate dates
     const startDate = new Date(dto.startDate);
     const endDate = new Date(dto.endDate);
@@ -118,8 +128,9 @@ export class LeaveRequestsService {
       );
     }
     
-    // 4. Check balance (for annual/sick leave)
-    if (dto.leaveType === LeaveType.ANNUAL || dto.leaveType === LeaveType.SICK) {
+    // 4. Check balance (loại phép có deductsAnnualBalance=true, mặc định
+    // đúng 2 code cũ 'annual'/'sick' - xem seed CreateLeaveTypes1781500000000)
+    if (leaveType.deductsAnnualBalance) {
       const user = await this.userRepo.findOne({ where: { id: requesterId } });
       
       if (!user) {
@@ -353,8 +364,12 @@ export class LeaveRequestsService {
       throw new ForbiddenException('Bạn không có quyền phê duyệt đơn của người này');
     }
     
-    // Deduct balance
-    if (request.leaveType === LeaveType.ANNUAL || request.leaveType === LeaveType.SICK) {
+    // Deduct balance - đọc động deductsAnnualBalance theo leaveType.code
+    // (thay so sánh cứng LeaveType.ANNUAL/SICK cũ). Loại phép có thể đã bị
+    // xoá sau khi đơn được tạo (hiếm, race condition) - coi như false, không
+    // chặn duyệt đơn vì lý do này.
+    const leaveTypeRow = await this.leaveTypesService.getByCode(request.leaveType);
+    if (leaveTypeRow?.deductsAnnualBalance) {
       await this.userRepo.decrement(
         { id: request.requesterId },
         'annualLeaveBalance',

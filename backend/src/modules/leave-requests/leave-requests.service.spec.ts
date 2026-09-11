@@ -9,6 +9,7 @@ import { Department } from '../../database/entities/department.entity';
 import { Role } from '../../common/enums/role.enum';
 import { PermissionScope } from '../../database/entities/role-permission.entity';
 import { UploadsService } from '../uploads/uploads.service';
+import { LeaveTypesService } from '../leave-types/leave-types.service';
 
 describe('LeaveRequestsService - Phan quyen duyet (PERMISSIONS.md muc 2.6)', () => {
   let service: LeaveRequestsService;
@@ -42,6 +43,14 @@ describe('LeaveRequestsService - Phan quyen duyet (PERMISSIONS.md muc 2.6)', () 
     deleteObject: jest.fn().mockResolvedValue(undefined),
     leaveAttachmentsBucket: 'az-imgs-leave-request-workbase',
   };
+  // pendingRequest() dùng leaveType='annual' - mock luôn trả deductsAnnualBalance
+  // true (khớp seed CreateLeaveTypes1781500000000), đúng hành vi cũ (ANNUAL
+  // trừ annualLeaveBalance khi duyệt). Không test nào ở file này assert số
+  // lần gọi decrement() cụ thể, chỉ cần getByCode() không throw.
+  const mockLeaveTypesService = {
+    getByCode: jest.fn().mockResolvedValue({ code: 'annual', deductsAnnualBalance: true }),
+    assertExists: jest.fn().mockResolvedValue({ code: 'annual', deductsAnnualBalance: true, isPaid: true }),
+  };
 
   const buildQueryBuilderMock = (result: any[]) => {
     const qb: any = {
@@ -66,6 +75,7 @@ describe('LeaveRequestsService - Phan quyen duyet (PERMISSIONS.md muc 2.6)', () 
         { provide: getRepositoryToken(Department), useValue: mockDepartmentRepo },
         { provide: getRepositoryToken(LeaveRequestAttachment), useValue: mockAttachmentRepo },
         { provide: UploadsService, useValue: mockUploadsService },
+        { provide: LeaveTypesService, useValue: mockLeaveTypesService },
       ],
     }).compile();
 
