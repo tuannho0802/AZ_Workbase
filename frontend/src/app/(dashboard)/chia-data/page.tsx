@@ -19,6 +19,16 @@ import { CustomerDetailDrawer } from '@/components/customers/CustomerDetailDrawe
 import { useMediaSources } from '@/lib/hooks/useMediaSources';
 import { useMyPermissions } from '@/lib/hooks/useMyPermissions';
 import { SourceTag } from '@/components/customers/SourceTag';
+// ⚠️ MỚI (2026-09-10) - dropdown lọc "Chọn Sales nhận data" theo Phòng ban/
+// Vai trò/Vị trí (yêu cầu người dùng). CHỈ lọc danh sách candidate hiển thị
+// trong Select ở Modal chia data - KHÔNG đụng tới rules phân quyền dữ liệu
+// khách hàng (đã có UiVisibilityRule/CustomerAccessHelper lo phần đó rồi,
+// xem comment ở managedDepartmentIds/customersViewScope bên dưới).
+import { useDepartments } from '@/lib/hooks/useDepartments';
+import { usePositions } from '@/lib/hooks/usePositions';
+import { useRoles } from '@/lib/hooks/useRoles';
+import { useRoleColorMap } from '@/lib/hooks/useRoleColorMap';
+import { resolveEntityColor } from '@/lib/utils/entityColor';
 
 const { Text } = Typography;
 
@@ -42,10 +52,10 @@ interface User {
   name: string;
   email: string;
   role: string;
-  department?: { id: number; name: string } | null;
+  department?: { id: number; name: string; color?: string } | null;
   // ⚠️ MỚI - rà soát Vị trí 2026-09-10: nguồn `/users/all` (findEmployees())
   // giờ đã JOIN 'position' đối xứng 'department'.
-  position?: { id: number; name: string } | null;
+  position?: { id: number; name: string; color?: string } | null;
 }
 
 interface Department {
@@ -237,6 +247,15 @@ export default function ChiaDataPage() {
   // điều hướng sang /customers nữa, theo đúng yêu cầu.
   const [detailCustomerId, setDetailCustomerId] = useState<number | null>(null);
   const [targetSalesIds, setTargetSalesIds] = useState<number[]>([]);
+  // ⚠️ MỚI (2026-09-10) - 3 filter "rules" để thu hẹp danh sách candidate
+  // trong Select "Chọn Sales nhận data" (Modal chia data) theo Phòng ban/
+  // Vị trí/Vai trò - CHỈ lọc hiển thị dropdown, KHÔNG đụng rules phân quyền
+  // dữ liệu khách hàng (đã có CustomerAccessHelper lo phần đó, xem comment
+  // ở customersViewScope bên dưới). Reset về rỗng mỗi lần đóng/mở modal để
+  // không giữ filter cũ từ lượt chia data trước.
+  const [candidateDeptId, setCandidateDeptId] = useState<number | null>(null);
+  const [candidatePositionId, setCandidatePositionId] = useState<number | null>(null);
+  const [candidateRole, setCandidateRole] = useState<string | null>(null);
 
   // Auth State
   const router = useRouter();
@@ -305,6 +324,17 @@ export default function ChiaDataPage() {
     staleTime: 5 * 60_000,
     enabled: isHydrated && isAuthenticated,
   });
+
+  // ── "RULES" LỌC CANDIDATE Ở MODAL CHIA DATA (2026-09-10) ─────────────
+  // Dùng ĐÚNG nguồn dữ liệu chuẩn (đã cache React Query, cùng nguồn với
+  // /phan-quyen, /phong-ban, /vi-tri, users/page.tsx) thay vì tự chế lại
+  // list rời rạc - departments ở đây có `color` (đủ cho resolveEntityColor),
+  // KHÁC với `departmentsData` (chỉ dùng tính managedDepartmentIds ở dưới,
+  // giữ nguyên không đụng để tránh phá logic RBAC hiện có).
+  const { departments: allDepartments } = useDepartments();
+  const { positions: allPositions } = usePositions();
+  const { roles: allRoles } = useRoles();
+  const { getRoleColor } = useRoleColorMap();
 
   // ── MUTATION: Bulk Assign ───────────────────────────────
   const { mutate: doAssign, isPending: assigning } = useMutation({
@@ -576,23 +606,52 @@ export default function ChiaDataPage() {
     return [];
   })();
 
-  // ── USER OPTIONS cho Select "Chọn Sales nhận data" (modal Chia data) -
-  // giữ nguyên FULL list mọi role, khớp đúng BE (xem ghi chú ở trên).
-  const userOptions = (usersData || []).map((u: User) => ({
+  // ── CANDIDATE cho Select "Chọn Sales nhận data" (modal Chia data) -
+  // nguồn vẫn giữ FULL list mọi role (KHÔNG giới hạn phòng ban - đúng ghi
+  // chú "Removed department check for bulk assign" ở BE), chỉ áp thêm 3
+  // "rules" lọc client-side (Phòng ban/Vị trí/Vai trò) khi người dùng chủ
+  // động chọn ở 3 dropdown filter bên dưới - không chọn gì = giữ nguyên
+  // hành vi cũ (hiện tất cả).
+  const candidateUsers = (usersData || []).filter((u: User) => {
+    if (candidateDeptId != null && u.department?.id !== candidateDeptId) return false;
+    if (candidatePositionId != null && u.position?.id !== candidatePositionId) return false;
+    if (candidateRole != null && u.role !== candidateRole) return false;
+    return true;
+  });
+
+  const userOptions = candidateUsers.map((u: User) => ({
     value: u.id,
     label: (
       <Space>
-        <Avatar size="small" style={{ 
-          backgroundColor: u.role === 'admin' ? '#f5222d' 
-            : u.role === 'manager' ? '#1890ff' : '#52c41a' 
-        }}>
+        <Avatar size="small" style={{ backgroundColor: getRoleColor(u.role) }}>
           {u.name?.[0]?.toUpperCase()}
         </Avatar>
         <span>{u.name || u.email}</span>
-        <Tag style={{ fontSize: 10 }}>{u.role}</Tag>
-        {u.position?.name && <Tag style={{ fontSize: 10 }} color="default">{u.position.name}</Tag>}
+        <Tag style={{ fontSize: 10 }} color={getRoleColor(u.role)}>{u.role}</Tag>
+        {u.department?.name && (
+          <Tag style={{ fontSize: 10 }} color={resolveEntityColor(u.department.color)}>{u.department.name}</Tag>
+        )}
+        {u.position?.name && (
+          <Tag style={{ fontSize: 10 }} color={resolveEntityColor(u.position.color)}>{u.position.name}</Tag>
+        )}
       </Space>
     ),
+  }));
+
+  // Options cho 3 dropdown filter "rules" ở modal - Tag preview cùng màu
+  // với Tag thật sẽ hiện trong danh sách candidate (resolveEntityColor),
+  // để người dùng nhận ra ngay trước khi chọn.
+  const candidateDeptOptions = allDepartments.map((d: any) => ({
+    value: d.id,
+    label: <Tag color={resolveEntityColor(d.color)} style={{ marginInlineEnd: 0 }}>{d.name}</Tag>,
+  }));
+  const candidatePositionOptions = allPositions.map((p: any) => ({
+    value: p.id,
+    label: <Tag color={resolveEntityColor(p.color)} style={{ marginInlineEnd: 0 }}>{p.name}</Tag>,
+  }));
+  const candidateRoleOptions = allRoles.map((r: any) => ({
+    value: r.code,
+    label: <Tag color={resolveEntityColor(r.color)} style={{ marginInlineEnd: 0 }}>{r.name}</Tag>,
   }));
 
   // Options cho 2 dropdown filter theo phạm vi xem (Data Owner / Lọc theo Sales)

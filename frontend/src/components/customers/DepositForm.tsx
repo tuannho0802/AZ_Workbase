@@ -69,7 +69,7 @@ export const DepositForm = ({ customerId, onSuccess }: Props) => {
           </Col>
         </Row>
         <Form.Item name="broker" label="Sàn giao dịch">
-          <Input placeholder="XM, Exness..." />
+          <Input placeholder="BCR, OEXN..." />
         </Form.Item>
         <Button type="primary" htmlType="submit" loading={submitLoading} block icon={<PlusOutlined />}>
           Xác nhận nạp tiền
