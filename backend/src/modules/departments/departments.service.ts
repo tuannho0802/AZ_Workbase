@@ -110,12 +110,19 @@ export class DepartmentsService {
     }
 
     // ⚠️ FIX PERMISSIONS.md mục 2.9 (blocker): trước đây KHÔNG có endpoint
-    // nào cho phép gán "Manager quản lý phòng ban nào" - managerUserId chỉ
-    // sửa được thủ công qua DB. Đây là field CHỦ ĐỘNG dùng bởi
-    // CustomerAccessHelper (và các module khác) để tính phạm vi Manager -
-    // validate chặt: user được gán PHẢI có role MANAGER và đang active,
-    // tránh gán nhầm 1 Employee/Admin làm "manager_user_id" khiến toàn bộ
-    // rule phân quyền theo phòng ban bị sai lệch ở MỌI module liên quan.
+    // nào cho phép gán "quản lý phòng ban nào" - managerUserId chỉ sửa được
+    // thủ công qua DB. Đây là field CHỦ ĐỘNG dùng bởi CustomerAccessHelper/
+    // UsersAccessHelper (và các module khác) để tính phạm vi scope='department'
+    // - ĐÚNG CHO MỌI ROLE có permission được set scope='department' (không
+    // riêng Manager - vd Admin cấu hình 1 Assistant chỉ giới hạn ở 1 phòng
+    // ban cụ thể qua trang Phân quyền + gán managerUserId ở đây).
+    //
+    // Validate: user được gán PHẢI thuộc nhóm role "quản trị" (Admin/
+    // Assistant/Manager) và đang active - tránh gán nhầm 1 Employee làm
+    // "manager_user_id" (Employee về nguyên tắc CHỈ nên ở scope='own', gán
+    // Employee làm mốc quy chiếu phòng ban cho role khác là sai ý đồ nghiệp
+    // vụ, dù kỹ thuật không sai) khiến rule phân quyền theo phòng ban bị sai
+    // lệch ở MỌI module liên quan.
     if (dto.managerUserId !== undefined) {
       if (dto.managerUserId === null) {
         department.managerUserId = null as any;
@@ -126,9 +133,13 @@ export class DepartmentsService {
         if (!managerCandidate) {
           throw new NotFoundException('Không tìm thấy user để gán làm Manager phòng ban');
         }
-        if (managerCandidate.role !== Role.MANAGER) {
+        if (
+          managerCandidate.role !== Role.MANAGER &&
+          managerCandidate.role !== Role.ASSISTANT &&
+          managerCandidate.role !== Role.ADMIN
+        ) {
           throw new BadRequestException(
-            'Chỉ có thể gán user có vai trò Manager làm người quản lý phòng ban',
+            'Chỉ có thể gán user có vai trò Admin/Assistant/Manager làm người quản lý phòng ban',
           );
         }
         if (!managerCandidate.isActive) {
