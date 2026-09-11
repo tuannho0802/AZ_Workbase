@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { Table, Button, Tag, Space, Modal, App, Alert, Popconfirm, DatePicker, Radio } from 'antd';
 import { LinkOutlined, DisconnectOutlined, SyncOutlined } from '@ant-design/icons';
 import dayjs, { Dayjs } from 'dayjs';
@@ -11,6 +11,7 @@ import {
   useSyncDeviceNow,
   useRematchDeviceLogs,
 } from '@/lib/hooks/useZkDevice';
+import { useUsersList } from '@/lib/hooks/useUsers';
 import { useMyPermissions } from '@/lib/hooks/useMyPermissions';
 import { DeviceUser } from '@/lib/types/zk-device.types';
 // ⚠️ MỚI - Select "Chọn nhân viên trong hệ thống" trước đây chỉ hiện text
@@ -20,6 +21,13 @@ import { DeviceUser } from '@/lib/types/zk-device.types';
 // /users/all - JOIN sẵn role/department/position, xem users.service.ts#findEmployees)
 // thay vì Select trơn + useUsersList() cũ.
 import { SalesUserSelect } from '@/components/customers/SalesUserSelect';
+// ⚠️ MỚI - cột "Trạng thái map" trước đây chỉ hiện `Đã map: {tên}` (Tag xanh
+// trơn), KHÔNG có Tag Vai trò/Phòng ban/Vị trí của nhân viên HỆ THỐNG đã map
+// (khác `record.role` của DeviceUser - đó là mã role TRÊN MÁY chấm công,
+// không liên quan). Cần tự fetch lại `users` (đã bỏ ở lượt sửa trước vì
+// SalesUserSelect tự fetch riêng, không expose ra ngoài) để tra cứu theo
+// `mappedUserId` và lấy đúng role/department/position hệ thống.
+import { useRoleColorMap, useRoleColors } from '@/lib/hooks/useRoleColorMap';
 
 const { RangePicker } = DatePicker;
 
@@ -56,6 +64,18 @@ export default function DeviceMappingTab() {
   const unmapMutation = useUnmapDeviceUser();
   const syncMutation = useSyncDeviceNow();
   const rematchMutation = useRematchDeviceLogs();
+
+  // Tra cứu role/department/position HỆ THỐNG của user đã map, theo id
+  // (`record.mappedUserId`) - dùng cho Tag ở cột "Trạng thái map".
+  const { users } = useUsersList();
+  const usersById = useMemo(
+    () => new Map<number, any>((users || []).map((u: any) => [u.id, u] as [number, any])),
+    [users],
+  );
+  const { getRoleColor } = useRoleColorMap();
+  const { roleColors: allRoles } = useRoleColors();
+  const roleNameMap = useMemo(() => new Map(allRoles.map((r) => [r.code, r.name])), [allRoles]);
+  const getRoleName = (code?: string) => (code ? roleNameMap.get(code) || code : '');
 
   const [mappingTarget, setMappingTarget] = useState<DeviceUser | null>(null);
   const [selectedUserId, setSelectedUserId] = useState<number | null>(null);
@@ -189,12 +209,19 @@ export default function DeviceMappingTab() {
     {
       title: 'Trạng thái map',
       key: 'mapped',
-      render: (_: any, record: DeviceUser) =>
-        record.mappedUserId ? (
-          <Tag color="green">Đã map: {record.mappedUserName}</Tag>
-        ) : (
-          <Tag color="orange">Chưa map</Tag>
-        ),
+      render: (_: any, record: DeviceUser) => {
+        if (!record.mappedUserId) return <Tag color="orange">Chưa map</Tag>;
+        const u = usersById.get(record.mappedUserId);
+        const tagStyle = { fontSize: 10, lineHeight: '16px', padding: '0 4px', margin: 0 };
+        return (
+          <Space size={4} wrap>
+            <Tag color="green" style={{ margin: 0 }}>Đã map: {record.mappedUserName}</Tag>
+            {u?.role && <Tag style={tagStyle} color={getRoleColor(u.role)}>{getRoleName(u.role)}</Tag>}
+            {u?.department?.name && <Tag style={tagStyle} color="default">{u.department.name}</Tag>}
+            {u?.position?.name && <Tag style={tagStyle} color="default">{u.position.name}</Tag>}
+          </Space>
+        );
+      },
     },
     {
       title: 'Thao tác',

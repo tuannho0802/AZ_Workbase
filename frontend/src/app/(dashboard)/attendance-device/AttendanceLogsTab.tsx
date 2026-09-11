@@ -132,14 +132,28 @@ export default function AttendanceLogsTab() {
     {
       title: 'Nhân viên',
       key: 'matchedUser',
-      render: (_: any, r: AttendanceLog) =>
-        r.matchedUser ? (
-          <Tag color="green">{r.matchedUser.name}</Tag>
-        ) : (
-          <Tag color="orange">
-            Chưa khớp: {r.deviceUserName || `UID ${r.deviceUserId}`}
-          </Tag>
-        ),
+      render: (_: any, r: AttendanceLog) => {
+        if (!r.matchedUser) {
+          return (
+            <Tag color="orange">
+              Chưa khớp: {r.deviceUserName || `UID ${r.deviceUserId}`}
+            </Tag>
+          );
+        }
+        // ⚠️ MỚI - trước đây chỉ hiện 1 Tag xanh trơn (tên). Đồng bộ Tag
+        // Vai trò/Phòng ban/Vị trí giống cột "Trạng thái map" ở
+        // DeviceMappingTab.tsx và dropdown "Lọc theo nhân viên" ở trên.
+        const u = r.matchedUser;
+        const tagStyle = { fontSize: 10, lineHeight: '16px', padding: '0 4px', margin: 0 };
+        return (
+          <Space size={4} wrap>
+            <Tag color="green" style={{ margin: 0 }}>{u.name}</Tag>
+            {u.role && <Tag style={tagStyle} color={getRoleColor(u.role)}>{getRoleName(u.role)}</Tag>}
+            {u.department?.name && <Tag style={tagStyle} color="default">{u.department.name}</Tag>}
+            {u.position?.name && <Tag style={tagStyle} color="default">{u.position.name}</Tag>}
+          </Space>
+        );
+      },
     },
     {
       title: 'Nguồn',

@@ -868,3 +868,44 @@ lượt này verify lại toàn bộ claim của phiên trước bằng code th�
 **Còn lại (chưa làm, ngoài phạm vi yêu cầu lượt này):**
 1. `AttendanceSummaryTab.tsx` ("Bảng chấm công") vẫn thiếu Tag màu ở dropdown lọc nhân viên — xem Notes.
 2. Chưa viết spec test riêng cho nhánh filter `deviceUserId` mới (BE lẫn FE).
+
+## [2026-09-11] | Hoàn thiện nốt Tag màu (role/department/position) còn thiếu ở attendance-device | Status: Success
+
+**Actor:** Agent (Claude), theo ảnh chụp người dùng gửi phản hồi lượt trước.
+**Files Changed:**
+- `frontend/src/app/(dashboard)/attendance-device/AttendanceSummaryTab.tsx` — dropdown "Lọc theo nhân
+  viên" (tab "Bảng chấm công") thêm Tag Vai trò/Phòng ban/Vị trí, đồng bộ đúng pattern đã áp dụng ở tab
+  Logs/Tổng hợp lượt trước (đây chính là gap đã tự ghi nhận ở lượt trước nhưng chưa sửa).
+- `frontend/src/app/(dashboard)/attendance-device/DeviceMappingTab.tsx` — cột "Trạng thái map": khi đã
+  map, trước đây chỉ hiện `Đã map: {tên}` (Tag xanh trơn) - giờ thêm Tag Vai trò/Phòng ban/Vị trí của
+  NHÂN VIÊN HỆ THỐNG đã map (tra theo `record.mappedUserId` qua `useUsersList()`, KHÔNG phải
+  `record.role` - field đó là role dạng số TRÊN MÁY chấm công, khác hoàn toàn).
+- `backend/src/modules/zk-device/zk-device.service.ts` — `getAttendanceLogs()`: thêm
+  `leftJoinAndSelect('matchedUser.department', ...)` + `'matchedUser.position'` (role đã có sẵn là cột
+  gốc trên User, không cần join thêm) - để trả đủ dữ liệu cho FE hiển thị Tag ở cột "Nhân viên".
+- `frontend/src/lib/types/zk-device.types.ts` — mở rộng `AttendanceLog.matchedUser` thêm
+  `role/department/position`.
+- `frontend/src/app/(dashboard)/attendance-device/AttendanceLogsTab.tsx` — cột "Nhân viên" (bảng log,
+  KHÔNG phải dropdown lọc): log đã khớp giờ hiện thêm Tag Vai trò/Phòng ban/Vị trí bên cạnh Tag tên xanh,
+  thay vì chỉ 1 Tag trơn như trước.
+
+**Root Cause:**
+> 2 gap còn sót đúng như đã tự ghi chú ở entry trước: (1) tab "Bảng chấm công" chưa được áp Tag màu dropdown
+> dù 2 tab còn lại đã xong; (2) người dùng phản hồi qua ảnh chụp chỉ ra thêm 1 gap khác chưa lường tới -
+> cột hiển thị KẾT QUẢ (không phải dropdown chọn) ở "Trạng thái map" (Mapping) và "Nhân viên" (Logs) cũng
+> cần Tag đầy đủ, không chỉ riêng ô dropdown lọc.
+
+**Notes:**
+> Bảng "Tổng hợp chấm công" (`AttendanceMonthlyTab.tsx`) - cột "Họ và tên" hiện vẫn CHƯA có Tag Vai
+> trò/Vị trí inline (chỉ có tên + cột "Vị trí"/phòng ban riêng dạng text thường) - CHƯA sửa ở lượt này vì
+> cần thêm field role/position vào `EmployeeMonthRow` + rủi ro vỡ layout cột `fixed: 'left'` vốn đã chật;
+> cần xác nhận thêm với người dùng trước khi động vào bảng này.
+
+**Verify thật:**
+- Backend: `npx tsc --noEmit` sạch. `npx nest build` sạch. `npx jest zk-device`: **5/5 pass**.
+- Frontend: `npx tsc --noEmit` sạch (0 lỗi mới, chỉ còn 2 lỗi pre-existing không liên quan đã ghi nhận
+  nhiều lượt trước).
+
+**Còn lại (chưa làm):**
+1. `AttendanceMonthlyTab.tsx` - cột "Họ và tên" chưa có Tag Vai trò/Vị trí inline (xem Notes).
+2. Chưa viết spec test riêng cho các nhánh Tag mới (đều là thay đổi thuần UI + 1 join BE, rủi ro thấp).

@@ -1,12 +1,17 @@
 'use client';
 
-import { useState } from 'react';
-import { Table, Select, DatePicker, Space, Tag, Button, Tooltip, App } from 'antd';
+import { useMemo, useState } from 'react';
+import { Table, Select, DatePicker, Space, Tag, Button, Tooltip, App, Avatar } from 'antd';
 import { ReloadOutlined, FileExcelOutlined } from '@ant-design/icons';
 import dayjs, { Dayjs } from 'dayjs';
 import { useAttendanceSummary, useExportAttendanceSummary } from '@/lib/hooks/useZkDevice';
 import { useUsersList } from '@/lib/hooks/useUsers';
 import { AttendanceStatus, AttendanceSummaryRow } from '@/lib/types/zk-device.types';
+// ⚠️ MỚI - dropdown "Lọc theo nhân viên" trước đây chỉ hiện text trơn
+// `u.name` (gap y hệt đã sửa ở AttendanceLogsTab.tsx/AttendanceMonthlyTab.tsx)
+// - đồng bộ Tag màu Vai trò/Phòng ban/Vị trí theo đúng pattern renderUserOption
+// ở CustomerFilters.tsx.
+import { useRoleColorMap, useRoleColors } from '@/lib/hooks/useRoleColorMap';
 import ExportPeriodModal from './ExportPeriodModal';
 
 const { RangePicker } = DatePicker;
@@ -31,6 +36,15 @@ export default function AttendanceSummaryTab() {
   const [exportModalOpen, setExportModalOpen] = useState(false);
 
   const exportMutation = useExportAttendanceSummary();
+
+  const { getRoleColor } = useRoleColorMap();
+  const { roleColors: allRoles } = useRoleColors();
+  const roleNameMap = useMemo(() => new Map(allRoles.map((r) => [r.code, r.name])), [allRoles]);
+  const getRoleName = (code?: string) => (code ? roleNameMap.get(code) || code : '');
+  const userSelectOptions = useMemo(
+    () => (users || []).map((u: any) => ({ value: u.id, label: u.name, user: u })),
+    [users],
+  );
 
   const { data, isLoading, refetch, isFetching } = useAttendanceSummary({
     page,
@@ -105,13 +119,29 @@ export default function AttendanceSummaryTab() {
           allowClear
           showSearch={{ optionFilterProp: 'label' }}
           placeholder="Lọc theo nhân viên"
-          style={{ width: 220 }}
+          style={{ width: 240 }}
+          popupMatchSelectWidth={false}
           value={userId}
           onChange={(v) => {
             setUserId(v);
             setPage(1);
           }}
-          options={(users || []).map((u: any) => ({ value: u.id, label: u.name }))}
+          options={userSelectOptions}
+          optionRender={(option) => {
+            const u = (option.data as { user: any }).user;
+            const tagStyle = { fontSize: 10, lineHeight: '16px', padding: '0 4px', margin: 0 };
+            return (
+              <Space size={4} align="center">
+                <Avatar size={20} style={{ backgroundColor: getRoleColor(u?.role), fontSize: 11, flexShrink: 0 }}>
+                  {u?.name?.[0]?.toUpperCase()}
+                </Avatar>
+                <span style={{ fontSize: 13 }}>{u?.name}</span>
+                {u?.role && <Tag style={tagStyle} color={getRoleColor(u.role)}>{getRoleName(u.role)}</Tag>}
+                {u?.department?.name && <Tag style={tagStyle} color="default">{u.department.name}</Tag>}
+                {u?.position?.name && <Tag style={tagStyle} color="default">{u.position.name}</Tag>}
+              </Space>
+            );
+          }}
         />
         <RangePicker
           value={range}

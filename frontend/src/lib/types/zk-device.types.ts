@@ -45,7 +45,13 @@ export interface AttendanceLog {
   statusCode: string | null;
   verifyMode: string | null;
   matchedUserId: number | null;
-  matchedUser: { id: number; name: string } | null;
+  matchedUser: {
+    id: number;
+    name: string;
+    role?: string;
+    department?: { name: string } | null;
+    position?: { name: string } | null;
+  } | null;
   deviceUserName: string | null; // tên trên máy (từ cache) - có cho MỌI log, kể cả đã khớp nhân viên
   source: 'device_pull' | 'device_push';
   syncedAt: string;

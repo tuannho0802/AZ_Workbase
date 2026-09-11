@@ -380,6 +380,13 @@ export class ZkDeviceService {
     const qb = this.attendanceLogRepo
       .createQueryBuilder('log')
       .leftJoinAndSelect('log.matchedUser', 'matchedUser')
+      // ⚠️ MỚI - JOIN thêm department/position của user ĐÃ map, để FE (cột
+      // "Nhân viên" ở tab Logs chấm công) hiển thị được Tag Phòng ban/Vị trí
+      // giống các dropdown chọn nhân viên khác trong app, thay vì chỉ có tên
+      // trơn. `matchedUser.role` không cần join thêm vì đã là cột sẵn có trên
+      // chính entity User (không phải quan hệ riêng).
+      .leftJoinAndSelect('matchedUser.department', 'matchedUserDepartment')
+      .leftJoinAndSelect('matchedUser.position', 'matchedUserPosition')
       .orderBy('log.recordTime', 'DESC');
 
     if (userId) {
