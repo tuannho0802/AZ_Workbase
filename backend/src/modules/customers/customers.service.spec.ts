@@ -708,8 +708,11 @@ describe('CustomersService', () => {
       // Phải recheck bằng scope THẬT của customers.view ('department') -
       // tức có 1 lệnh andWhere chứa điều kiện phòng ban, KHÔNG phải
       // Brackets ownership cứng như hành vi cũ (bug).
+      // Từ khi hệ thống chuyển sang multi-manager (bảng department_managers),
+      // điều kiện phòng ban truy vấn qua department_managers thay vì cột
+      // department.manager_user_id cũ.
       expect(qb.andWhere).toHaveBeenCalledWith(
-        expect.stringContaining('manager_user_id'),
+        expect.stringContaining('department_managers'),
         expect.objectContaining({ accessManagerId: 7 }),
       );
     });
