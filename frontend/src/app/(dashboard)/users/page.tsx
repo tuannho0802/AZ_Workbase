@@ -747,14 +747,22 @@ export default function UsersPage() {
             />
           </Form.Item>
 
-          <Form.Item
-            name="isActive"
-            label="Trạng thái"
-            valuePropName="checked"
-            initialValue={true}
-          >
-            <Switch checkedChildren="Hoạt động" unCheckedChildren="Khóa" />
-          </Form.Item>
+          {/* ⚠️ MỚI - đối xứng rào chắn BE (UsersService.update(): chặn
+              `id === callerId && updateDto.isActive === false`) - ẩn hẳn
+              Form.Item này khi đang sửa CHÍNH MÌNH, không chỉ disable, để
+              không gây hiểu lầm "có thể bấm nhưng không tác dụng". Người
+              dùng tự sửa hồ sơ của mình sẽ không thấy trường Trạng thái này
+              nữa - muốn khoá/mở tài khoản của mình phải nhờ người khác. */}
+          {!isEditingSelf && (
+            <Form.Item
+              name="isActive"
+              label="Trạng thái"
+              valuePropName="checked"
+              initialValue={true}
+            >
+              <Switch checkedChildren="Hoạt động" unCheckedChildren="Khóa" />
+            </Form.Item>
+          )}
 
           {/* ⚠️ MỚI (isRootAdmin) - CHỈ hiện với Root Admin đang đăng nhập
               (xem `isRootAdminCaller`). Có thể có NHIỀU Root Admin - bật cờ
