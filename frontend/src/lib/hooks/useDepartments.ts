@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { departmentsApi, Department } from '../api/departments.api';
+import { departmentsApi, Department, UpdateDepartmentPayload } from '../api/departments.api';
 
 export const useDepartments = () => {
   const { data, isLoading } = useQuery({
@@ -30,7 +30,7 @@ export const useCreateDepartment = () => {
 export const useUpdateDepartment = () => {
   const invalidate = useInvalidateDepartments();
   return useMutation({
-    mutationFn: ({ id, data }: { id: number; data: Partial<Department> }) =>
+    mutationFn: ({ id, data }: { id: number; data: UpdateDepartmentPayload }) =>
       departmentsApi.update(id, data),
     onSuccess: invalidate,
   });

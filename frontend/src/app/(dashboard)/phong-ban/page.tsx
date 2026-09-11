@@ -43,10 +43,12 @@ interface DeptUserPreview {
     email: string;
     // ⚠️ Bắt buộc có field này - Tag "Manager" trong Drawer phải dựa vào
     // ĐÚNG role thật của từng user (u.role === 'manager'), KHÔNG dựa vào so
-    // sánh với `department.managerUserId` (chỉ là 1 FK DUY NHẤT được "chính
-    // thức" gán quản lý phòng ban - phòng ban có thể có NHIỀU user khác
-    // cũng mang role Manager mà chưa/không phải người được gán FK đó). Bug
-    // cũ: chỉ đúng 1 người có Tag dù phòng ban có 2 Manager thật.
+    // sánh với `department.managers` (danh sách nhiều-nhiều NHỮNG NGƯỜI
+    // ĐƯỢC GÁN quản lý phòng ban này qua bảng department_managers - phòng
+    // ban có thể có NHIỀU user khác cũng mang role Manager mà chưa/không
+    // phải người được gán quản lý chính thức). Bug cũ (trước khi có bảng
+    // department_managers): chỉ đúng 1 người có Tag dù phòng ban có 2
+    // Manager thật.
     role: string;
 }
 
@@ -72,9 +74,10 @@ export default function DepartmentsPage() {
     const deleteMutation = useDeleteDepartment();
 
     // Lấy TOÀN BỘ user active (không lọc role='manager' tại BE nữa) vì BE
-    // (departments.service.ts) giờ cho phép gán managerUserId cho user có
-    // role Admin/Assistant/Manager - lọc client-side theo đúng 3 role này để
-    // đổ vào dropdown chọn "Quản lý phòng ban".
+    // (departments.service.ts) giờ cho phép gán NHIỀU Manager/phòng ban
+    // (bảng department_managers) cho user có role Admin/Assistant/Manager -
+    // lọc client-side theo đúng 3 role này để đổ vào dropdown chọn multi
+    // "Quản lý phòng ban".
     const { users: allActiveUsers } = useUsersList();
     const managerCandidates = useMemo(
         () => (allActiveUsers || []).filter((u: any) => ['admin', 'assistant', 'manager'].includes(u.role)),
@@ -84,15 +87,6 @@ export default function DepartmentsPage() {
         () => managerCandidates.map((u: any) => ({ value: u.id, label: `${u.name} (${u.role})` })),
         [managerCandidates],
     );
-    // Map id -> user, dùng để hiển thị TÊN của managerUserId thật (FK) ở cột
-    // "Quản lý (Manager)" - nguồn ĐÚNG duy nhất là department.managerUserId,
-    // KHÔNG suy diễn qua role/departmentId của user như logic cũ (logic cũ
-    // sai hoàn toàn với model FK managerUserId đã thêm ở BE).
-    const usersById = useMemo(() => {
-        const map = new Map<number, { id: number; name: string; role: string }>();
-        for (const u of allActiveUsers || []) map.set(u.id, { id: u.id, name: u.name, role: u.role });
-        return map;
-    }, [allActiveUsers]);
 
     const [modalOpen, setModalOpen] = useState(false);
     const [editingDept, setEditingDept] = useState<Department | null>(null);
@@ -126,7 +120,9 @@ export default function DepartmentsPage() {
             description: dept.description,
             isActive: dept.isActive,
             color: resolveEntityColor(dept.color),
-            managerUserId: dept.managerUserId ?? undefined,
+            // Nhiều Manager (nhiều-nhiều) - nguồn đúng là dept.managers[] trả về
+            // từ GET /departments, KHÔNG còn dùng dept.managerUserId (đã deprecated).
+            managerUserIds: (dept.managers ?? []).map((m) => m.id),
         });
         setModalOpen(true);
     };
@@ -141,8 +137,12 @@ export default function DepartmentsPage() {
         try {
             const values = await form.validateFields();
             if (editingDept) {
+                // managerUserIds luôn gửi lại TOÀN BỘ danh sách đang chọn trong
+                // Select mode="multiple" (thay thế, không phải thêm/bớt - khớp
+                // đúng hợp đồng update-department.dto.ts ở BE). Không chọn gì =
+                // mảng rỗng [] (gỡ hết Manager), khác với undefined (không đụng gì).
                 updateMutation.mutate(
-                    { id: editingDept.id, data: { ...values, managerUserId: values.managerUserId ?? null } },
+                    { id: editingDept.id, data: { ...values, managerUserIds: values.managerUserIds ?? [] } },
                     {
                         onSuccess: () => {
                             message.success('Đã cập nhật phòng ban');
@@ -230,16 +230,19 @@ export default function DepartmentsPage() {
             title: 'Quản lý (Manager)',
             key: 'managers',
             render: (_: any, record: Department) => {
-                if (!record.managerUserId) return <Text type="secondary">Chưa gán</Text>;
-                const manager = usersById.get(record.managerUserId);
-                if (!manager) return <Text type="secondary">Chưa gán</Text>;
+                const managers = record.managers ?? [];
+                if (managers.length === 0) return <Text type="secondary">Chưa gán</Text>;
                 return (
-                    <span>
-                        {manager.name}
-                        <Tag style={{ marginLeft: 6 }} color="blue">
-                            {manager.role}
-                        </Tag>
-                    </span>
+                    <Space size={[4, 4]} wrap>
+                        {managers.map((m) => (
+                            <span key={m.id}>
+                                {m.name}
+                                <Tag style={{ marginLeft: 4 }} color="blue">
+                                    {m.role}
+                                </Tag>
+                            </span>
+                        ))}
+                    </Space>
                 );
             },
         },
@@ -338,14 +341,15 @@ export default function DepartmentsPage() {
                     {editingDept && (
                         <>
                             <Form.Item
-                                name="managerUserId"
+                                name="managerUserIds"
                                 label="Quản lý phòng ban (Manager)"
-                                extra="Người được gán ở đây quyết định phạm vi 'Phòng ban quản lý' (department scope) trong Ma trận quyền cho CHÍNH người đó - áp dụng cho Admin/Assistant/Manager. Để trống nếu phòng ban tạm chưa có ai quản lý."
+                                extra="Những người được gán ở đây quyết định phạm vi 'Phòng ban quản lý' (department scope) trong Ma trận quyền cho CHÍNH họ - áp dụng cho Admin/Assistant/Manager. Có thể chọn NHIỀU người cùng quản lý 1 phòng ban. Để trống nếu phòng ban tạm chưa có ai quản lý."
                             >
                                 <Select
+                                    mode="multiple"
                                     allowClear
                                     showSearch
-                                    placeholder="Chọn user quản lý phòng ban này"
+                                    placeholder="Chọn (nhiều) user quản lý phòng ban này"
                                     options={managerCandidateOptions}
                                     optionFilterProp="label"
                                 />

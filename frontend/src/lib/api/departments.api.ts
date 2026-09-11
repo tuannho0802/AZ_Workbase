@@ -9,16 +9,33 @@ export interface Department {
   // trị (BE cột NOT NULL DEFAULT '#1890ff', xem migration
   // AddColorToRbacGroupingTables1781300000000). Admin tự đổi qua UI.
   color: string;
-  // ID user (role phải là MANAGER, đang active) được gán quản lý phòng ban
-  // này - nguồn xác định phạm vi "Manager theo phòng ban" (xem
-  // update-department.dto.ts ở BE). null/undefined = chưa gán ai.
+  // ⚠️ DEPRECATED - cột cũ 1-1, BE không còn đọc/ghi field này (xem
+  // department.entity.ts). Giữ lại type để tương thích ngược nếu response
+  // cũ nào đó còn trả về, KHÔNG dùng cho code mới - dùng `managers` bên
+  // dưới thay thế (nhiều-nhiều, bảng department_managers).
   managerUserId?: number | null;
+  // Danh sách ĐẦY ĐỦ Manager/Assistant/Admin đang quản lý phòng ban này
+  // (nhiều-nhiều, bảng department_managers) - trả kèm từ GET /departments.
+  // Nguồn xác định phạm vi "Manager theo phòng ban" cho MỌI module liên
+  // quan (Khách hàng, Chấm công, Nghỉ phép...). Mảng rỗng = chưa gán ai.
+  managers?: { id: number; name: string; role: string }[];
   // Preview rút gọn (chỉ id/name) nhân viên ĐANG active thuộc phòng ban này
   // - trả kèm từ GET /departments (KHÔNG có ở GET /departments/:id hay
   // response create/update). Dùng để hiển thị "Tên A +N" ở bảng danh sách,
   // không dùng để hiển thị chi tiết (Drawer tự gọi GET /users?departmentId=
   // để lấy đủ email/role/... khi cần).
   employees?: { id: number; name: string }[];
+}
+
+// Payload cập nhật phòng ban - tách riêng khỏi `Department` vì
+// `managerUserIds` (mảng, ghi) khác hẳn `managers` (mảng object, chỉ đọc)
+// trả về từ GET. Xem update-department.dto.ts ở BE.
+export interface UpdateDepartmentPayload
+  extends Partial<Omit<Department, 'id' | 'managerUserId' | 'managers' | 'employees'>> {
+  // Danh sách ĐẦY ĐỦ id user thay thế toàn bộ Manager hiện tại của phòng
+  // ban này (không phải thêm/bớt từng phần). [] = gỡ hết. undefined =
+  // không đụng vào danh sách Manager đang có.
+  managerUserIds?: number[];
 }
 
 export const departmentsApi = {
@@ -44,7 +61,7 @@ export const departmentsApi = {
     return response.data;
   },
 
-  update: async (id: number, data: Partial<Department>): Promise<Department> => {
+  update: async (id: number, data: UpdateDepartmentPayload): Promise<Department> => {
     const response = await axiosInstance.patch<Department>(`/departments/${id}`, data);
     return response.data;
   },

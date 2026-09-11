@@ -68,7 +68,11 @@ interface User {
 interface Department {
   id: number;
   name: string;
-  managerUserId: number | null;
+  // ⚠️ Nguồn "ai đang quản lý phòng ban này" giờ là nhiều-nhiều (bảng
+  // department_managers, xem department-manager.entity.ts ở BE) - KHÔNG
+  // còn dùng cột managerUserId cũ (đã deprecated, BE không còn ghi giá trị
+  // mới vào đó). GET /departments trả kèm mảng `managers` này.
+  managers?: { id: number; name: string; role: string }[];
 }
 
 // ── API CALLS (inline để tránh import lỗi) ─────────────
@@ -81,11 +85,12 @@ const api = {
     axiosInstance.patch('/customers/bulk-assign', body),
   getUsers: () => 
     axiosInstance.get('/users/all'),
-  // Cần để tính đúng "phòng ban Manager đang quản lý" (department.managerUserId
-  // === user.id) - dùng lọc dropdown "Data Owner"/"Lọc theo Sales" cho khớp
-  // ĐÚNG phạm vi Manager được XEM (xem CustomerAccessHelper.applyViewFilter ở
-  // BE - Manager chỉ xem được KH thuộc phòng ban mà mình là manager_user_id,
-  // KHÔNG phải phòng ban mà bản thân Manager trực thuộc).
+  // Cần để tính đúng "phòng ban Manager đang quản lý" (user.id nằm trong
+  // department.managers[] - bảng department_managers, nhiều-nhiều) - dùng
+  // lọc dropdown "Data Owner"/"Lọc theo Sales" cho khớp ĐÚNG phạm vi Manager
+  // được XEM (xem CustomerAccessHelper.applyViewFilter ở BE - Manager chỉ
+  // xem được KH thuộc phòng ban mà mình được gán quản lý, KHÔNG phải phòng
+  // ban mà bản thân Manager trực thuộc).
   getDepartments: () =>
     axiosInstance.get('/departments'),
   deleteCustomer: (id: number) =>
@@ -600,7 +605,7 @@ export default function ChiaDataPage() {
   // data - chỗ đó giờ lọc theo "rules" Assignment Group key='sales' (xem
   // candidateUsers bên dưới), độc lập với RBAC xem dữ liệu khách hàng ở đây.
   const managedDepartmentIds = ((departmentsData || []) as Department[])
-    .filter((d) => d.managerUserId === user?.id)
+    .filter((d) => (d.managers ?? []).some((m) => m.id === user?.id))
     .map((d) => d.id);
 
   // ⚠️ FIX BUG THẬT (rà soát permission 2026-09): trước đây if/else hardcode
