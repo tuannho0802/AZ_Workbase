@@ -26,6 +26,13 @@ export class QueryAttendanceLogDto {
     @IsInt()
     userId?: number;
 
+    // Lọc theo mã user TRÊN MÁY (deviceUserId) - dùng khi admin chọn 1 user
+    // CHƯA map trong dropdown "Lọc theo nhân viên" (mirror đúng cách `userId`
+    // lọc user đã map). Không dùng chung field `userId` vì deviceUserId là
+    // string tự do do máy chấm công cấp, không phải id trong bảng `users`.
+    @IsOptional()
+    deviceUserId?: string;
+
     // 'matched': chỉ log đã khớp được nhân viên hệ thống.
     // 'unmatched': chỉ log CHƯA khớp (deviceUserId lạ, chưa ai map) - dùng để
     // admin rà soát rồi vào màn Mapping gán tiếp.
