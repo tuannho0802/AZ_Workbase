@@ -1,7 +1,7 @@
 'use client';
 
 import { useState } from 'react';
-import { Table, Button, Tag, Space, Modal, Select, App, Alert, Popconfirm, DatePicker, Radio } from 'antd';
+import { Table, Button, Tag, Space, Modal, App, Alert, Popconfirm, DatePicker, Radio } from 'antd';
 import { LinkOutlined, DisconnectOutlined, SyncOutlined } from '@ant-design/icons';
 import dayjs, { Dayjs } from 'dayjs';
 import {
@@ -11,9 +11,15 @@ import {
   useSyncDeviceNow,
   useRematchDeviceLogs,
 } from '@/lib/hooks/useZkDevice';
-import { useUsersList } from '@/lib/hooks/useUsers';
 import { useMyPermissions } from '@/lib/hooks/useMyPermissions';
 import { DeviceUser } from '@/lib/types/zk-device.types';
+// ⚠️ MỚI - Select "Chọn nhân viên trong hệ thống" trước đây chỉ hiện text
+// trơn `${name} (${email})`, không có Tag màu Vai trò/Phòng ban/Vị trí như
+// các dropdown chọn nhân viên khác trong app (CustomerFilters, chia-data...).
+// Dùng lại đúng component chuẩn `SalesUserSelect` (đã tự fetch GET
+// /users/all - JOIN sẵn role/department/position, xem users.service.ts#findEmployees)
+// thay vì Select trơn + useUsersList() cũ.
+import { SalesUserSelect } from '@/components/customers/SalesUserSelect';
 
 const { RangePicker } = DatePicker;
 
@@ -46,7 +52,6 @@ export default function DeviceMappingTab() {
   const canManage = can('attendance.manage');
   const { message, modal } = App.useApp();
   const { data: deviceUsers, isLoading, isError, error } = useDeviceUsers();
-  const { users } = useUsersList();
   const mapMutation = useMapDeviceUser();
   const unmapMutation = useUnmapDeviceUser();
   const syncMutation = useSyncDeviceNow();
@@ -255,16 +260,11 @@ export default function DeviceMappingTab() {
         confirmLoading={mapMutation.isPending}
         okButtonProps={{ disabled: !selectedUserId }}
       >
-        <Select
-          style={{ width: '100%' }}
-          placeholder="Chọn nhân viên trong hệ thống"
-          showSearch={{ optionFilterProp: 'label' }}
+        <SalesUserSelect
           value={selectedUserId ?? undefined}
-          onChange={(val) => setSelectedUserId(val)}
-          options={(users || []).map((u: any) => ({
-            value: u.id,
-            label: `${u.name} (${u.email})`,
-          }))}
+          onChange={(userId) => setSelectedUserId(userId)}
+          placeholder="Chọn nhân viên trong hệ thống"
+          hidePreviewCard
         />
       </Modal>
 
