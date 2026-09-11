@@ -909,3 +909,47 @@ lượt này verify lại toàn bộ claim của phiên trước bằng code th�
 **Còn lại (chưa làm):**
 1. `AttendanceMonthlyTab.tsx` - cột "Họ và tên" chưa có Tag Vai trò/Vị trí inline (xem Notes).
 2. Chưa viết spec test riêng cho các nhánh Tag mới (đều là thay đổi thuần UI + 1 join BE, rủi ro thấp).
+
+## [2026-09-11] | Hoàn thiện Tag ở 2 TABLE còn thiếu (Bảng chấm công + Tổng hợp chấm công) + spec test cho deviceUserId | Status: Success
+
+**Actor:** Agent (Claude). Đã pull lại code thật trước khi làm (phát hiện 3 commit mới từ phiên khác:
+`357aed8`/`f15ca48`/`2cdb05d` - đã bao gồm sẵn phần lớn việc "Logs chấm công" + dropdown 3 tab từ trước,
+`git reset --hard origin/main` để lấy đúng baseline thật thay vì tin state cũ trong hội thoại).
+
+**Files Changed:**
+- `frontend/src/app/(dashboard)/attendance-device/AttendanceSummaryTab.tsx` — cột **"Nhân viên"** trong
+  BẢNG (khác dropdown lọc đã xong từ trước) trước đây `dataIndex: 'userName'` text trơn cho MỌI dòng,
+  không phân biệt được đã map/chưa map bằng mắt (khác hẳn 2 tab Logs/Tổng hợp). Giờ: dòng CHƯA map hiện
+  Tag cam "chưa map" (đồng bộ Monthly tab); dòng ĐÃ map hiện thêm Tag Vai trò/Phòng ban/Vị trí (tra theo
+  `r.userId` qua map `usersById` dựng từ `useUsersList()` - BE `AttendanceSummaryRow` không tự mang
+  role/department/position nên phải lookup ở FE, không cần sửa BE).
+- `frontend/src/app/(dashboard)/attendance-device/AttendanceMonthlyTab.tsx` — cột **"Họ và tên"** thêm Tag
+  Vai trò (màu) + Vị trí nhỏ dưới tên cho dòng đã map (field `role`/`positionName` mới thêm vào
+  `EmployeeMonthRow`, lấy từ `u.role`/`u.position?.name` ngay lúc build row - đã có sẵn dữ liệu, không cần
+  gọi thêm). Giữ nguyên nhánh hiển thị cũ (phụ đề tên trên máy / "chưa map"), chỉ chèn thêm khối Tag.
+- `backend/src/modules/zk-device/zk-device.service.spec.ts` — thêm 3 test case cho
+  `getAttendanceLogs()`: (1) `deviceUserId` filter đúng cột `log.deviceUserId`, không lẫn với
+  `userId`/`matchedUserId`; (2) không truyền `deviceUserId` thì không gọi `andWhere` thừa; (3) LUÔN join
+  `matchedUser.department` + `matchedUser.position` (regression test cho JOIN mới thêm phục vụ Tag ở tab Logs).
+
+**Root Cause:**
+> 2 gap còn sót: TABLE (không phải dropdown) ở 2 tab "Bảng chấm công" và "Tổng hợp chấm công" - các lượt
+> sửa trước chỉ động vào DROPDOWN lọc, quên mất chính cột hiển thị dữ liệu trong bảng cũng cần đồng bộ Tag.
+> Người dùng gửi ảnh chụp chỉ rõ 2 trang còn thiếu, dùng ảnh tab Logs (đã đúng từ trước) làm ảnh đối chứng.
+
+**Verify thật:**
+- Backend: `npx tsc --noEmit` sạch. `npx nest build` sạch. `npx jest zk-device.service.spec.ts`: **8/8
+  pass** (5 cũ + 3 mới). Toàn bộ suite backend: **528/530 pass** - 2 fail còn lại ở `users.service.spec.ts`
+  là lỗi CÓ SẴN TỪ TRƯỚC (Root Admin password confirmation), đã xác nhận KHÔNG liên quan diff lượt này
+  (đã ghi nhận y hệt ở entry cũ hơn).
+- Frontend: `npx tsc --noEmit` sạch (chỉ còn 2 lỗi pre-existing không liên quan). `npx vitest run`:
+  **14/14 pass** (2 file test hiện có, không liên quan trực tiếp attendance-device nhưng chạy để đảm bảo
+  không phá gì khác). `npm run build` (Next.js 16 Turbopack): **sạch hoàn toàn**, đủ 27 route.
+
+**Còn lại (chưa làm):**
+1. Chưa có spec test riêng (component test) cho 3 tab FE attendance-device - dự án hiện chưa có coverage
+   test cho trang nghiệp vụ nào ở FE (chỉ `nav-config`/`useMyPermissions`), việc này nằm ngoài phạm vi 1
+   lượt sửa nhỏ, cần quyết định riêng nếu muốn đầu tư test framework cho component (React Testing Library).
+2. Cột "Vị trí" ở `AttendanceMonthlyTab.tsx` thực chất đang hiện TÊN PHÒNG BAN (`departmentName`), không
+   phải vị trí thật (`position`) - tên cột có thể gây hiểu nhầm, đã tồn tại từ trước lượt này, không tự ý
+   đổi vì có thể là chủ đích ban đầu (dùng "Vị trí" theo nghĩa rộng = vị trí công tác/phòng ban).

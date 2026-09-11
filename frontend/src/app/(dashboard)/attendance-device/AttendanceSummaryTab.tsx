@@ -45,6 +45,15 @@ export default function AttendanceSummaryTab() {
     () => (users || []).map((u: any) => ({ value: u.id, label: u.name, user: u })),
     [users],
   );
+  // ⚠️ MỚI - tra cứu role/department/position theo `r.userId` để hiện Tag ở
+  // cột "Nhân viên" của BẢNG (khác dropdown lọc ở trên) - `AttendanceSummaryRow`
+  // (BE) không tự mang theo role/department/position, nên phải lookup qua
+  // danh sách `users` đã fetch sẵn ở component này, giống pattern
+  // `usersById` ở DeviceMappingTab.tsx.
+  const usersById = useMemo(
+    () => new Map<number, any>((users || []).map((u: any) => [u.id, u] as [number, any])),
+    [users],
+  );
 
   const { data, isLoading, refetch, isFetching } = useAttendanceSummary({
     page,
@@ -64,8 +73,32 @@ export default function AttendanceSummaryTab() {
     },
     {
       title: 'Nhân viên',
-      dataIndex: 'userName',
       key: 'userName',
+      render: (_: unknown, r: AttendanceSummaryRow) => {
+        // ⚠️ MỚI - trước đây chỉ `dataIndex: 'userName'` hiện text trơn cho
+        // MỌI dòng, kể cả user CHƯA map (không phân biệt được bằng mắt với
+        // user đã map, khác hẳn 2 tab Logs/Tổng hợp đã có Tag "chưa map" rõ
+        // ràng). Đồng bộ Tag Vai trò/Phòng ban/Vị trí (đã map) hoặc Tag cam
+        // "chưa map" (chưa map) giống 2 tab kia.
+        if (!r.isMapped) {
+          return (
+            <span title={`Chưa map - mã máy: ${r.deviceUserId}`}>
+              <span style={{ color: '#d46b08' }}>{r.userName}</span>{' '}
+              <Tag color="orange" style={{ marginLeft: 2 }}>chưa map</Tag>
+            </span>
+          );
+        }
+        const u = r.userId != null ? usersById.get(r.userId) : undefined;
+        const tagStyle = { fontSize: 10, lineHeight: '16px', padding: '0 4px', margin: 0 };
+        return (
+          <Space size={4} wrap>
+            <span>{r.userName}</span>
+            {u?.role && <Tag style={tagStyle} color={getRoleColor(u.role)}>{getRoleName(u.role)}</Tag>}
+            {u?.department?.name && <Tag style={tagStyle} color="default">{u.department.name}</Tag>}
+            {u?.position?.name && <Tag style={tagStyle} color="default">{u.position.name}</Tag>}
+          </Space>
+        );
+      },
     },
     {
       title: 'Giờ vào',

@@ -95,5 +95,47 @@ describe('ZkDeviceService', () => {
       await service.getAttendanceLogs({}, 1, Role.MANAGER, null);
       expect(qb.andWhere).toHaveBeenCalledWith('matchedUser.departmentId IN (:...deptIds)', { deptIds: [5] });
     });
+
+    // ⚠️ MỚI - test cho field `deviceUserId` (thêm ở QueryAttendanceLogDto,
+    // trước đây khai báo nhưng chưa wire vào query - đã fix ở
+    // getAttendanceLogs()). Đảm bảo filter đúng cột `log.deviceUserId`,
+    // KHÔNG lẫn với `userId` (lọc theo `log.matchedUserId`).
+    it('truyen deviceUserId -> andWhere theo log.deviceUserId (KHONG phai matchedUserId)', async () => {
+      const qb = buildQueryBuilderMock();
+      mockAttendanceLogRepo.createQueryBuilder.mockReturnValue(qb);
+
+      await service.getAttendanceLogs({ deviceUserId: 'd123' } as any, 1, Role.ADMIN, PermissionScope.ALL);
+
+      expect(qb.andWhere).toHaveBeenCalledWith('log.deviceUserId = :deviceUserId', { deviceUserId: 'd123' });
+      expect(qb.andWhere).not.toHaveBeenCalledWith(
+        expect.stringContaining('matchedUserId = :userId'),
+        expect.anything(),
+      );
+    });
+
+    it('khong truyen deviceUserId -> KHONG goi andWhere theo log.deviceUserId', async () => {
+      const qb = buildQueryBuilderMock();
+      mockAttendanceLogRepo.createQueryBuilder.mockReturnValue(qb);
+
+      await service.getAttendanceLogs({}, 1, Role.ADMIN, PermissionScope.ALL);
+
+      expect(qb.andWhere).not.toHaveBeenCalledWith(
+        expect.stringContaining('log.deviceUserId ='),
+        expect.anything(),
+      );
+    });
+
+    // ⚠️ MỚI - đảm bảo JOIN department/position của matchedUser LUÔN được
+    // gọi (để FE tab "Logs chấm công" có đủ dữ liệu hiển thị Tag Phòng
+    // ban/Vị trí ở cột "Nhân viên") - regression test cho fix JOIN thêm.
+    it('luon JOIN matchedUser.department va matchedUser.position', async () => {
+      const qb = buildQueryBuilderMock();
+      mockAttendanceLogRepo.createQueryBuilder.mockReturnValue(qb);
+
+      await service.getAttendanceLogs({}, 1, Role.ADMIN, PermissionScope.ALL);
+
+      expect(qb.leftJoinAndSelect).toHaveBeenCalledWith('matchedUser.department', 'matchedUserDepartment');
+      expect(qb.leftJoinAndSelect).toHaveBeenCalledWith('matchedUser.position', 'matchedUserPosition');
+    });
   });
 });

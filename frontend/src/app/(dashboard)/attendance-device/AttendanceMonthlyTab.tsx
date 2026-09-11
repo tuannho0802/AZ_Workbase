@@ -73,6 +73,13 @@ interface EmployeeMonthRow {
   isMapped: boolean;
   userName: string;
   departmentName: string;
+  // ⚠️ MỚI - trước đây cột "Họ và tên" không hiện Tag Vai trò/Vị trí (chỉ có
+  // tên + cột "Vị trí" riêng hiện departmentName dạng text). Lưu thêm 2 field
+  // này khi build row (từ `u.role`/`u.position`, xem vòng lặp employeeList
+  // bên dưới) để Tag hoá đồng bộ với các tab khác - undefined cho dòng CHƯA
+  // map (không có user hệ thống nào để tra).
+  role?: string;
+  positionName?: string;
   annualLeaveBalance: number | null;
   days: Partial<Record<number, DayMark>>;
   // Lý do CỤ THỂ cho từng ô ngày (vd "Thiếu chấm công ra", "Chỉ làm 3.2h -
@@ -161,6 +168,8 @@ export default function AttendanceMonthlyTab() {
         isMapped: true,
         userName: u.name,
         departmentName: u.department?.name || '—',
+        role: u.role,
+        positionName: u.position?.name,
         annualLeaveBalance: u.annualLeaveBalance ?? null,
         days: {},
         dayReasons: {},
@@ -468,29 +477,58 @@ export default function AttendanceMonthlyTab() {
       width: 190,
       fixed: 'left',
       ellipsis: true,
-      render: (_: unknown, record: EmployeeMonthRow) =>
-        record.isMapped ? (
-          record.deviceUserName ? (
-            // Đã map + biết tên trên máy - hiện tên hệ thống, kèm phụ đề tên
-            // trên máy bên dưới (vd "Admin" / "(TuanIT)") để admin dễ đối
-            // chiếu đang map đúng người trên máy hay không.
+      render: (_: unknown, record: EmployeeMonthRow) => {
+        // ⚠️ MỚI - thêm Tag Vai trò/Vị trí nhỏ dưới tên (chỉ dòng ĐÃ map -
+        // dòng chưa map không có user hệ thống để tra `role`/`positionName`),
+        // đồng bộ với cột "Nhân viên" ở Logs/Bảng chấm công. Giữ nguyên
+        // nhánh hiển thị cũ (tên trên máy phụ đề / "chưa map"), chỉ chèn
+        // thêm 1 dòng Tag nếu có dữ liệu.
+        const roleTags = record.isMapped && (record.role || record.positionName) ? (
+          <div style={{ marginTop: 2 }}>
+            {record.role && (
+              <Tag color={getRoleColor(record.role)} style={{ fontSize: 10, lineHeight: '16px', padding: '0 4px', margin: '0 4px 0 0' }}>
+                {getRoleName(record.role)}
+              </Tag>
+            )}
+            {record.positionName && (
+              <Tag color="default" style={{ fontSize: 10, lineHeight: '16px', padding: '0 4px', margin: 0 }}>
+                {record.positionName}
+              </Tag>
+            )}
+          </div>
+        ) : null;
+
+        if (!record.isMapped) {
+          return (
+            <span title={`Chưa map - mã máy: ${record.deviceUserId}`}>
+              <span style={{ color: '#d46b08' }}>{record.userName}</span>{' '}
+              <Tag color="orange" style={{ marginLeft: 2 }}>
+                chưa map
+              </Tag>
+            </span>
+          );
+        }
+        if (record.deviceUserName) {
+      // Đã map + biết tên trên máy - hiện tên hệ thống, kèm phụ đề tên
+      // trên máy bên dưới (vd "Admin" / "(TuanIT)") để admin dễ đối
+      // chiếu đang map đúng người trên máy hay không.
+          return (
             <span title={`Đã map với "${record.deviceUserName}" trên máy`}>
               <div>{record.userName}</div>
               <div style={{ fontSize: 12, color: '#bfbfbf', fontWeight: 400 }}>
                 ({record.deviceUserName})
               </div>
+              {roleTags}
             </span>
-          ) : (
-            record.userName
-          )
-        ) : (
-          <span title={`Chưa map - mã máy: ${record.deviceUserId}`}>
-            <span style={{ color: '#d46b08' }}>{record.userName}</span>{' '}
-            <Tag color="orange" style={{ marginLeft: 2 }}>
-              chưa map
-            </Tag>
+          );
+        }
+        return (
+          <span>
+            <div>{record.userName}</div>
+            {roleTags}
           </span>
-        ),
+        );
+      },
     },
     {
       title: 'Vị trí',
