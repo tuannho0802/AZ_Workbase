@@ -48,8 +48,13 @@ export interface AssignmentGroupUser {
   // trí thay vì chỉ hiện tên trơn.
   email: string;
   role: string;
-  department?: { id: number; name: string } | null;
-  position?: { id: number; name: string; code?: string } | null;
+  // ⚠️ MỚI (đồng bộ Tag màu CustomerFilters.tsx "Sales (Phòng Kinh Doanh)"/
+  // "Marketing (Phòng Marketing)" + chia-data/page.tsx "Data Owner"/"Lọc
+  // theo Sales") - `color` giờ có sẵn từ BE (xem
+  // AssignmentGroupsService.resolveUsers()), dùng chung `resolveEntityColor()`
+  // như mọi Tag Phòng ban/Vị trí khác trong app.
+  department?: { id: number; name: string; color?: string } | null;
+  position?: { id: number; name: string; code?: string; color?: string } | null;
 }
 
 export const assignmentGroupsApi = {

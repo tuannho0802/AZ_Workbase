@@ -1,9 +1,24 @@
 import React, { useState, useEffect } from 'react';
-import { Row, Col, Input, Select, DatePicker } from 'antd';
+import { Row, Col, Input, Select, DatePicker, Space, Avatar, Tag } from 'antd';
 import { SearchOutlined } from '@ant-design/icons';
 import dayjs, { Dayjs } from 'dayjs';
 import { useMediaSources } from '@/lib/hooks/useMediaSources';
 import { SourceTag } from './SourceTag';
+import { useRoleColorMap } from '@/lib/hooks/useRoleColorMap';
+import { resolveEntityColor } from '@/lib/utils/entityColor';
+
+// ⚠️ MỚI (đồng bộ Tag Phòng ban/Vai trò/Vị trí, giống hệt `userOptions` ở
+// chia-data/page.tsx và `SalesUserSelect.tsx`) - trước đây `salesUsers`/
+// `marketingUsers` chỉ có {id,name}, dropdown chỉ hiện tên trơn. Field mới
+// đều optional để không phá các nơi khác đang truyền đúng shape cũ (vd
+// `creatorUsers` từ GET /customers/creators vẫn chỉ có {id,name}).
+interface FilterUserOption {
+  id: number;
+  name: string;
+  role?: string;
+  department?: { name: string; color?: string } | null;
+  position?: { name: string; color?: string } | null;
+}
 
 interface CustomerFiltersProps {
   filters: {
@@ -19,11 +34,11 @@ interface CustomerFiltersProps {
     dateTo?: string;
     joinedGroups?: 'joined' | 'not_joined';
   };
-  salesUsers: { id: number; name: string }[];
-  marketingUsers: { id: number; name: string }[];
+  salesUsers: FilterUserOption[];
+  marketingUsers: FilterUserOption[];
   // Chỉ chứa user đã từng tạo >=1 Data Customer (BE lọc sẵn qua
   // GET /customers/creators) - KHÔNG lọc theo phòng ban.
-  creatorUsers: { id: number; name: string }[];
+  creatorUsers: FilterUserOption[];
   onFiltersChange: (newFilters: any) => void;
   // ⚠️ MỚI - rà soát Vị trí 2026-09-10: đối xứng field:sales_assignment/
   // field:marketing_assignment đã bị strip khỏi response Customer (BE
@@ -54,6 +69,30 @@ export const CustomerFilters: React.FC<CustomerFiltersProps> = ({
   // sang lấy động từ bảng media_sources (activeOnly=false, giống SourceTag,
   // để dropdown vẫn hiện được các nguồn cũ dùng cho khách hàng cũ dù đã khoá).
   const { sources: allMediaSources } = useMediaSources(false);
+  const { getRoleColor } = useRoleColorMap();
+
+  // Render Avatar + Tag Vai trò/Phòng ban/Vị trí cho option trong dropdown -
+  // dùng chung cho "Sales (Phòng Kinh Doanh)" và "Marketing (Phòng Marketing)".
+  const renderUserOption = (option: { data: { user: FilterUserOption } }) => {
+    const u = option.data.user;
+    return (
+      <Space>
+        <Avatar size="small" style={{ backgroundColor: getRoleColor(u.role) }}>
+          {u.name?.[0]?.toUpperCase()}
+        </Avatar>
+        <span>{u.name}</span>
+        {u.role && (
+          <Tag style={{ fontSize: 10 }} color={getRoleColor(u.role)}>{u.role}</Tag>
+        )}
+        {u.department?.name && (
+          <Tag style={{ fontSize: 10 }} color={resolveEntityColor(u.department.color)}>{u.department.name}</Tag>
+        )}
+        {u.position?.name && (
+          <Tag style={{ fontSize: 10 }} color={resolveEntityColor(u.position.color)}>{u.position.name}</Tag>
+        )}
+      </Space>
+    );
+  };
 
   // Sync temp dates if filters change externally (e.g. clear all)
   useEffect(() => {
@@ -176,7 +215,9 @@ export const CustomerFilters: React.FC<CustomerFiltersProps> = ({
               style={{ width: '100%' }}
               value={filters.salesUserId}
               onChange={(val) => onFiltersChange({ ...filters, salesUserId: val, page: 1 })}
-              options={salesUsers.map(u => ({ value: u.id, label: u.name }))}
+              optionLabelProp="label"
+              optionRender={renderUserOption}
+              options={salesUsers.map(u => ({ value: u.id, label: u.name, user: u }))}
             />
           </Col>
         )}
@@ -191,7 +232,9 @@ export const CustomerFilters: React.FC<CustomerFiltersProps> = ({
               style={{ width: '100%' }}
               value={filters.marketingUserId}
               onChange={(val) => onFiltersChange({ ...filters, marketingUserId: val, page: 1 })}
-              options={marketingUsers.map(u => ({ value: u.id, label: u.name }))}
+              optionLabelProp="label"
+              optionRender={renderUserOption}
+              options={marketingUsers.map(u => ({ value: u.id, label: u.name, user: u }))}
             />
           </Col>
         )}

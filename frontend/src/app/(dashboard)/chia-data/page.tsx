@@ -673,11 +673,35 @@ export default function ChiaDataPage() {
     label: <Tag color={resolveEntityColor(r.color)} style={{ marginInlineEnd: 0 }}>{r.name}</Tag>,
   }));
 
-  // Options cho 2 dropdown filter theo phạm vi xem (Data Owner / Lọc theo Sales)
+  // Options cho 2 dropdown filter theo phạm vi xem (Data Owner / Lọc theo
+  // Sales) - ⚠️ FIX (đồng bộ Tag màu Phòng ban/Vai trò/Vị trí, giống hệt
+  // `userOptions` ở modal Chia data và CustomerFilters.tsx bên /customers):
+  // trước đây chỉ render `u.name || u.email` trơn, không có Avatar/Tag nào.
   const viewScopeUserOptions = viewScopeUsers.map((u: User) => ({
     value: u.id,
     label: u.name || u.email,
+    // "label" giữ text đơn giản cho optionLabelProp (hiện gọn khi đã chọn),
+    // "user" mang FULL data để optionRender vẽ Avatar/Tag đầy đủ khi mở dropdown.
+    user: u,
   }));
+  const renderUserOption = (option: { data: { user: User } }) => {
+    const u = option.data.user;
+    return (
+      <Space>
+        <Avatar size="small" style={{ backgroundColor: getRoleColor(u.role) }}>
+          {u.name?.[0]?.toUpperCase()}
+        </Avatar>
+        <span>{u.name || u.email}</span>
+        <Tag style={{ fontSize: 10 }} color={getRoleColor(u.role)}>{u.role}</Tag>
+        {u.department?.name && (
+          <Tag style={{ fontSize: 10 }} color={resolveEntityColor(u.department.color)}>{u.department.name}</Tag>
+        )}
+        {u.position?.name && (
+          <Tag style={{ fontSize: 10 }} color={resolveEntityColor(u.position.color)}>{u.position.name}</Tag>
+        )}
+      </Space>
+    );
+  };
 
   // ── RENDER ─────────────────────────────────────────────
   if (!isHydrated || !isAuthenticated) {
@@ -782,12 +806,15 @@ export default function ChiaDataPage() {
                     />
                   </Col>
                   {viewScopeUsers.length > 0 && (
-                    <Col flex="180px">
+                    <Col flex="220px">
                       <Select
                         allowClear
                         placeholder="Data Owner"
                         style={{ width: '100%' }}
                         options={viewScopeUserOptions}
+                        optionLabelProp="label"
+                        optionRender={renderUserOption}
+                        showSearch={{ optionFilterProp: 'label' }}
                         onChange={v => { 
                           setFilterDataOwner(v ?? null); 
                           setUnassignedPage(1); 
@@ -946,6 +973,9 @@ export default function ChiaDataPage() {
                         placeholder="Lọc theo Sales"
                         style={{ width: '100%' }}
                         options={viewScopeUserOptions}
+                        optionLabelProp="label"
+                        optionRender={renderUserOption}
+                        showSearch={{ optionFilterProp: 'label' }}
                         onChange={v => {
                           setFilterAssignedTo(v ?? null);
                           setAssignedPage(1);

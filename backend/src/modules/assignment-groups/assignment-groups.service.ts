@@ -165,8 +165,14 @@ export class AssignmentGroupsService {
         name: true,
         email: true,
         role: true,
-        department: { id: true, name: true },
-        position: { id: true, name: true, code: true },
+        // ⚠️ MỚI (rà soát dropdown lọc "Sales (Phòng Kinh Doanh)"/"Marketing
+        // (Phòng Marketing)" ở CustomerFilters.tsx + "Data Owner"/"Lọc theo
+        // Sales" ở chia-data/page.tsx) - thêm `color` để FE vẽ Tag Phòng
+        // ban/Vị trí ĐÚNG màu Admin đã cấu hình (giống hệt `userOptions` ở
+        // modal Chia data, nguồn `/users/all` vốn đã có sẵn field này qua
+        // full relation, không bị giới hạn bởi `select` như ở đây).
+        department: { id: true, name: true, color: true },
+        position: { id: true, name: true, code: true, color: true },
       },
       order: { name: 'ASC' },
     });
