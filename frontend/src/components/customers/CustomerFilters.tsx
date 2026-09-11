@@ -4,8 +4,7 @@ import { SearchOutlined } from '@ant-design/icons';
 import dayjs, { Dayjs } from 'dayjs';
 import { useMediaSources } from '@/lib/hooks/useMediaSources';
 import { SourceTag } from './SourceTag';
-import { useRoleColorMap } from '@/lib/hooks/useRoleColorMap';
-import { useRoles } from '@/lib/hooks/useRoles';
+import { useRoleColorMap, useRoleColors } from '@/lib/hooks/useRoleColorMap';
 import { resolveEntityColor } from '@/lib/utils/entityColor';
 
 // ⚠️ MỚI (đồng bộ Tag Phòng ban/Vai trò/Vị trí, giống hệt `userOptions` ở
@@ -71,12 +70,14 @@ export const CustomerFilters: React.FC<CustomerFiltersProps> = ({
   // để dropdown vẫn hiện được các nguồn cũ dùng cho khách hàng cũ dù đã khoá).
   const { sources: allMediaSources } = useMediaSources(false);
   const { getRoleColor } = useRoleColorMap();
-  // ⚠️ FIX BUG THẬT (báo cáo qua ảnh chụp): Tag Vai trò trong dropdown đang
-  // hiện thẳng `user.role` - tức CODE hệ thống (vd "manager"/"assistant"),
-  // không phải TÊN hiển thị Admin đặt ở trang /phan-quyen (vd "Quản lý",
-  // "Trợ lý"). Map code -> name giống đúng cách `ROLE_LABELS`/`roleMap` đang
-  // dùng ở audit-logs/page.tsx và users/page.tsx.
-  const { roles: allRoles } = useRoles();
+  // ⚠️ FIX BUG THẬT (403 "GET /api/roles" mỗi lần vào trang Khách hàng, kể cả
+  // F5): trước đây dùng `useRoles()` (GET /roles) - route đòi `roles.view`,
+  // Employee/Sales không có quyền này nên bị 403 + toast lỗi đỏ tự động (xem
+  // axios-instance.ts interceptor) dù không hề bấm gì. Đổi sang
+  // `useRoleColors()` (GET /roles/colors) - ĐÚNG route an toàn đã tạo riêng
+  // cho việc này (không cần `roles.view`, chỉ cần đăng nhập), xem JSDoc đầy
+  // đủ ở roles.controller.ts#getAllRoleColors và useRoleColorMap.ts.
+  const { roleColors: allRoles } = useRoleColors();
   const roleNameMap = new Map(allRoles.map((r) => [r.code, r.name]));
   const getRoleName = (code?: string) => (code ? roleNameMap.get(code) || code : '');
 

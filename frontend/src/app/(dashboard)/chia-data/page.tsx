@@ -26,8 +26,7 @@ import { SourceTag } from '@/components/customers/SourceTag';
 // xem comment ở managedDepartmentIds/customersViewScope bên dưới).
 import { useDepartments } from '@/lib/hooks/useDepartments';
 import { usePositions } from '@/lib/hooks/usePositions';
-import { useRoles } from '@/lib/hooks/useRoles';
-import { useRoleColorMap } from '@/lib/hooks/useRoleColorMap';
+import { useRoleColorMap, useRoleColors } from '@/lib/hooks/useRoleColorMap';
 import { resolveEntityColor } from '@/lib/utils/entityColor';
 // ⚠️ FIX (tuân thủ key 'sales' của Assignment Group) - đây mới là nguồn "rules"
 // thật (Phòng ban/Vị trí Admin cấu hình qua /quan-ly-phu-trach, xem migration
@@ -341,8 +340,15 @@ export default function ChiaDataPage() {
   // giữ nguyên không đụng để tránh phá logic RBAC hiện có).
   const { departments: allDepartments } = useDepartments();
   const { positions: allPositions } = usePositions();
-  const { roles: allRoles } = useRoles();
   const { getRoleColor } = useRoleColorMap();
+  // ⚠️ FIX BUG THẬT (403 "GET /api/roles" liên tục ở trang Chia Data, kể cả
+  // F5) - `useRoles()` (GET /roles) đòi `roles.view`, Employee/Sales không
+  // có -> toast lỗi đỏ tự động mỗi lần vào trang (axios-instance.ts
+  // interceptor). Đổi sang `useRoleColors()` (GET /roles/colors) - route AN
+  // TOÀN đã có sẵn, không cần `roles.view`, trả đủ {id,code,name,color} cho
+  // cả map tên hiển thị lẫn 3 dropdown "rules" Phòng ban/Vị trí/Vai trò bên
+  // dưới (candidateRoleOptions).
+  const { roleColors: allRoles } = useRoleColors();
   // ⚠️ FIX BUG THẬT (báo cáo qua ảnh chụp, đồng bộ CustomerFilters.tsx): Tag
   // Vai trò ở userOptions/renderUserOption bên dưới trước đây hiện thẳng
   // `u.role` (CODE hệ thống vd "manager") thay vì TÊN hiển thị Admin đặt ở
