@@ -477,6 +477,17 @@ export class UsersService {
       throw new ForbiddenException('Không được tự thay đổi role của chính mình - phải nhờ người khác có thẩm quyền thực hiện');
     }
 
+    // ⚠️ MỚI - CHẶN TUYỆT ĐỐI (mọi role, kể cả Admin/Root Admin) việc tự TẮT
+    // "Trạng thái hoạt động" (`isActive`) của CHÍNH MÌNH qua endpoint này -
+    // cùng lỗ hổng và cùng lý do với check role tự đổi ở trên
+    // (`canManageUser()` luôn cho `targetId === viewerId`). Chỉ chặn chiều
+    // TẮT (isActive === false) - tự BẬT lại chính mình (nếu vì lý do nào đó
+    // đang bị false) vô hại nên không chặn chiều đó. Nếu 1 tài khoản thật sự
+    // cần bị vô hiệu hoá, phải nhờ người QUẢN LÝ KHÁC thực hiện.
+    if (id === callerId && updateDto.isActive === false) {
+      throw new ForbiddenException('Không được tự vô hiệu hoá (tắt hoạt động) tài khoản của chính mình - phải nhờ người khác có thẩm quyền thực hiện');
+    }
+
     // ⚠️ MỚI (isRootAdmin) - xem JSDoc đầy đủ ở create(). CHỈ Root Admin
     // hiện tại mới được ĐỔI field này (bật hoặc tắt) cho BẤT KỲ user nào
     // (kể cả chính mình - tự tắt Root Admin của mình vẫn phải là Root Admin
