@@ -314,6 +314,17 @@ export class UsersService {
     // validateRoleExists() để biết vì sao (DTO không còn hardcode enum nữa).
     await this.validateRoleExists(createDto.role);
 
+    // ⚠️ MỚI - "Manager Full trừ Admin": Manager/Assistant có `users.manage`
+    // (tạo được nhân viên) nhưng KHÔNG được tự gán role='admin' cho ai - nếu
+    // không, 1 tài khoản role='admin' mới (dù isRootAdmin=false) vẫn đi qua
+    // PermissionsService.hasPermission() bình thường và mặc định thường được
+    // seed gần như mọi quyền -> Manager tự tạo ra 1 "Admin" ngang cấp mình
+    // không hề quản lý được nữa. CHỈ role='admin' mới được gán role='admin'
+    // cho tài khoản khác.
+    if (createDto.role === Role.ADMIN && creatorRole !== Role.ADMIN) {
+      throw new ForbiddenException('Chỉ Admin mới có quyền gán role Admin cho nhân viên');
+    }
+
     // ⚠️ MỚI (isRootAdmin) - xem JSDoc đầy đủ ở User.isRootAdmin/migration
     // AddIsRootAdminToUsers1781000000000. CHỈ Root Admin hiện tại
     // (role=admin && isRootAdmin=true) mới được tạo thẳng 1 user khác đã là
@@ -579,6 +590,19 @@ export class UsersService {
     // khi CÓ đổi role - undefined nghĩa là giữ nguyên, không cần validate lại).
     if (updateDto.role) {
       await this.validateRoleExists(updateDto.role);
+    }
+
+    // ⚠️ MỚI - "Manager Full trừ Admin" (đối xứng check ở create()): Manager/
+    // Assistant được canManageUser() cho sửa nhân viên trong phạm vi mình,
+    // nhưng KHÔNG được NÂNG role của họ lên 'admin'. Chỉ chặn khi ĐANG đổi
+    // sang admin (user.role !== ADMIN từ trước) - user vốn đã là admin thì đổi
+    // sang role khác lại là nhánh "hạ quyền", không thuộc phạm vi leo thang.
+    if (
+      updateDto.role === Role.ADMIN &&
+      user.role !== Role.ADMIN &&
+      callerRole !== Role.ADMIN
+    ) {
+      throw new ForbiddenException('Chỉ Admin mới có quyền nâng nhân viên lên role Admin');
     }
 
     // 2. Nếu có password, hash trước. Nếu không, XÓA khỏi DTO để tránh Object.assign chép đè chuỗi rỗng
@@ -1133,6 +1157,13 @@ export class UsersService {
     // khi Admin/Assistant/Manager có ĐỔI role lúc duyệt).
     if (overrides?.role) {
       await this.validateRoleExists(overrides.role);
+    }
+
+    // ⚠️ MỚI - "Manager Full trừ Admin" (đối xứng create()/update()): duyệt
+    // đăng ký cũng là 1 đường tạo/gán role gián tiếp - Manager/Assistant
+    // không được duyệt kèm gán role='admin'.
+    if (overrides?.role === Role.ADMIN && approverRole !== Role.ADMIN) {
+      throw new ForbiddenException('Chỉ Admin mới có quyền duyệt tài khoản với role Admin');
     }
 
     // ⚠️ MỚI - đối xứng validate role ở trên. Người duyệt có thể gán/đổi Vị
