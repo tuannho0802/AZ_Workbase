@@ -45,6 +45,22 @@ export class UpdateUserDto {
   @IsInt()
   positionId?: number | null;
 
+  // ⚠️ MỚI (migration AddLeaveApproverOverrideToUsers1781700000000) - ngoại
+  // lệ duyệt nghỉ phép, TÁCH BIỆT với departmentId ở trên (không ảnh hưởng
+  // module nào khác ngoài Nghỉ phép). null = xoá ngoại lệ (quay về rule
+  // phòng ban mặc định), undefined = giữ nguyên. Nên là id của 1 user role
+  // Manager (không bắt buộc ở tầng validate - DB có FK `fk_users_leave_approver`
+  // chặn ID bịa, còn việc chọn đúng Manager do UI Admin tự kiểm soát).
+  @ApiProperty({
+    example: 12,
+    required: false,
+    nullable: true,
+    description: 'Ngoại lệ: id Manager luôn được duyệt/xem đơn nghỉ phép của user này, bất kể phòng ban',
+  })
+  @IsOptional()
+  @IsInt()
+  leaveApproverId?: number | null;
+
   @ApiProperty({ example: true, required: false })
   @IsOptional()
   @IsBoolean()

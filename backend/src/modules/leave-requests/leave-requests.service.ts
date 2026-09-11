@@ -1,6 +1,6 @@
 import { Injectable, BadRequestException, ForbiddenException, NotFoundException, InternalServerErrorException, Logger } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository, Between, Not, In } from 'typeorm';
+import { Repository, Between, Not, In, Brackets } from 'typeorm';
 import { LeaveRequest, LeaveStatus, LeaveDuration } from '../../database/entities/leave-request.entity';
 import { LeaveRequestAttachment } from '../../database/entities/leave-request-attachment.entity';
 import { User } from '../../database/entities/user.entity';
@@ -52,8 +52,14 @@ export class LeaveRequestsService {
    *
    * Thay thế hoàn toàn ELIGIBLE_APPROVER_ROLES cứng cũ:
    * - scope='all' hoặc Role.ADMIN -> duyệt mọi đơn.
-   * - scope='department' -> chỉ duyệt nếu approver là managerUserId của
-   *   phòng ban mà người xin nghỉ thuộc về (dùng department.managerUserId).
+   * - scope='department' -> duyệt được nếu THOẢ 1 TRONG 2:
+   *     (a) approver là managerUserId của phòng ban mà người xin nghỉ thuộc
+   *         về (dùng department.managerUserId) - rule mặc định, ÁP DỤNG
+   *         CHO MỌI ROLE người xin nghỉ kể cả Assistant nếu cùng phòng ban;
+   *     (b) approver chính là `requesterLeaveApproverId` - NGOẠI LỆ gán tay
+   *         (xem migration AddLeaveApproverOverrideToUsers1781700000000),
+   *         dùng cho case người xin nghỉ KHÔNG cùng phòng ban với Manager
+   *         nhưng về tổ chức vẫn phải báo cáo Manager đó.
    * - scope khác (null/own/undefined) -> không được duyệt.
    */
   private async isEligibleApprover(
@@ -61,14 +67,19 @@ export class LeaveRequestsService {
     approverId: number,
     approverRole: string,
     scope?: string | null,
+    requesterLeaveApproverId?: number | null,
   ): Promise<boolean> {
     // Lối thoát hiểm tuyệt đối cho admin - không bao giờ bị khoá dù cấu hình sai
     if (approverRole === Role.ADMIN || scope === PermissionScope.ALL) {
       return true;
     }
 
-    // scope='department' → phải là managerUserId của đúng phòng ban người xin nghỉ
+    // scope='department' → managerUserId của đúng phòng ban người xin nghỉ,
+    // HOẶC ngoại lệ leave_approver_id gán riêng cho người xin nghỉ đó.
     if (scope === PermissionScope.DEPARTMENT) {
+      if (requesterLeaveApproverId != null && requesterLeaveApproverId === approverId) {
+        return true;
+      }
       if (requesterDepartmentId == null) return false;
       const dept = await this.departmentRepo.findOne({
         where: { id: requesterDepartmentId, managerUserId: approverId },
@@ -214,7 +225,13 @@ export class LeaveRequestsService {
     const canApproveOrView =
       viewerRole === Role.ADMIN ||
       scope === PermissionScope.ALL ||
-      (await this.isEligibleApprover(request.requester.departmentId, viewerId, viewerRole, scope));
+      (await this.isEligibleApprover(
+        request.requester.departmentId,
+        viewerId,
+        viewerRole,
+        scope,
+        request.requester.leaveApproverId,
+      ));
 
     if (!isOwner && !canApproveOrView) {
       throw new ForbiddenException('Bạn không có quyền xem ảnh đính kèm của đơn này');
@@ -292,8 +309,21 @@ export class LeaveRequestsService {
 
     if (viewerRole !== Role.ADMIN && !isAllScope && isDeptScope) {
       const managedIds = await this.getManagedDepartmentIds(viewerId);
-      if (managedIds.length === 0) return [];
-      query.andWhere('requester.departmentId IN (:...deptIds)', { deptIds: managedIds });
+      // Đối xứng với isEligibleApprover(): ngoài phòng ban đang quản lý,
+      // cộng thêm những requester gán riêng leave_approver_id = viewerId
+      // (ngoại lệ, không cùng phòng ban). Nếu Manager không quản lý phòng
+      // ban nào NHƯNG có ngoại lệ gán riêng, vẫn phải thấy - không return
+      // [] sớm như trước migration AddLeaveApproverOverrideToUsers nữa.
+      if (managedIds.length === 0) {
+        query.andWhere('requester.leaveApproverId = :viewerId', { viewerId });
+      } else {
+        query.andWhere(
+          new Brackets((qb) => {
+            qb.where('requester.departmentId IN (:...deptIds)', { deptIds: managedIds })
+              .orWhere('requester.leaveApproverId = :viewerId', { viewerId });
+          }),
+        );
+      }
     }
 
     return query.orderBy('leave.createdAt', 'DESC').getMany();
@@ -325,8 +355,17 @@ export class LeaveRequestsService {
 
     if (viewerRole !== Role.ADMIN && !isAllScopeH && isDeptScopeH) {
       const managedIds = await this.getManagedDepartmentIds(viewerId);
-      if (managedIds.length === 0) return [];
-      query.andWhere('requester.departmentId IN (:...deptIds)', { deptIds: managedIds });
+      // Đối xứng với findPending()/isEligibleApprover() - xem comment ở đó.
+      if (managedIds.length === 0) {
+        query.andWhere('requester.leaveApproverId = :viewerId', { viewerId });
+      } else {
+        query.andWhere(
+          new Brackets((qb) => {
+            qb.where('requester.departmentId IN (:...deptIds)', { deptIds: managedIds })
+              .orWhere('requester.leaveApproverId = :viewerId', { viewerId });
+          }),
+        );
+      }
     }
 
     // ⚠️ Trước đây không có take()/skip() nào - số đơn phép đã duyệt/từ chối
@@ -359,6 +398,7 @@ export class LeaveRequestsService {
       approverId,
       userRole,
       scope,
+      request.requester.leaveApproverId,
     );
     if (!allowed) {
       throw new ForbiddenException('Bạn không có quyền phê duyệt đơn của người này');
@@ -413,6 +453,7 @@ export class LeaveRequestsService {
       approverId,
       userRole,
       scope,
+      request.requester.leaveApproverId,
     );
     if (!allowed) {
       throw new ForbiddenException('Bạn không có quyền từ chối đơn của người này');

@@ -112,6 +112,23 @@ export class User {
   @JoinColumn({ name: 'department_id' })
   department: Department;
 
+  // ⚠️ MỚI (migration AddLeaveApproverOverrideToUsers1781700000000) - ngoại
+  // lệ duyệt nghỉ phép, TÁCH BIỆT HOÀN TOÀN khỏi department_id/department ở
+  // trên. NULL (mặc định) = không có ngoại lệ, `LeaveRequestsService` chỉ
+  // xét department như trước giờ. Khi có giá trị, user (thường có role
+  // Manager) trỏ tới bởi id này LUÔN được duyệt/xem đơn nghỉ phép của CHÍNH
+  // user đang khai báo field này - BẤT KỂ department_id có khớp hay không.
+  // Dùng cho case 1 Assistant/Employee về tổ chức phải báo cáo 1 Manager cụ
+  // thể không phải manager_user_id của phòng ban họ đang đứng tên. KHÔNG
+  // dùng field này cho bất kỳ mục đích nào khác ngoài module Nghỉ phép (xem
+  // JSDoc đầy đủ ở migration).
+  @Column({ name: 'leave_approver_id', nullable: true })
+  leaveApproverId: number | null;
+
+  @ManyToOne(() => User, { nullable: true, onDelete: 'SET NULL' })
+  @JoinColumn({ name: 'leave_approver_id' })
+  leaveApprover: User | null;
+
   // ⚠️ MỚI (Position/Vị trí) - tuỳ chọn (nullable), KHÔNG bắt buộc. Dùng làm
   // tầng override phân quyền chi tiết hơn Role - xem giải thích đầy đủ ở
   // `position.entity.ts` và PLAN_POSITION_FIELD_VISIBILITY_ASSIGNMENT_GROUPS.md
