@@ -5,6 +5,7 @@ import { Customer } from '../../database/entities/customer.entity';
 import { Role } from '../../common/enums/role.enum';
 import { CustomerAccessHelper } from '../customers/helpers/customer-access.helper';
 import { getReportPeriodRange, getNowVn } from '../../common/utils/date-vn.util';
+import { PermissionScope } from '../../database/entities/role-permission.entity';
 
 /**
  * ⚠️ CHIẾN LƯỢC MOCK - đọc trước khi sửa test này:
@@ -94,7 +95,7 @@ describe('ReportsService', () => {
   // ═══════════════════════ getRevenueReport ═══════════════════════
 
   describe('getRevenueReport', () => {
-    it('ADMIN: có đủ personal + department + total, applyViewFilter được gọi ĐÚNG 1 lần với (viewerId, role)', async () => {
+    it('ADMIN: có đủ personal + department + total, applyViewFilter được gọi ĐÚNG 1 lần với (viewerId, role, scope)', async () => {
       const spy = jest.spyOn(CustomerAccessHelper, 'applyViewFilter');
       rawManyQueue = [
         [{ userId: '1', userName: 'Sales A', amount: '1500000.00' }], // personal
@@ -106,9 +107,10 @@ describe('ReportsService', () => {
         { period: 'month' } as any,
         99,
         Role.ADMIN,
+        PermissionScope.ALL,
       );
 
-      expect(spy).toHaveBeenCalledWith(expect.anything(), 99, Role.ADMIN);
+      expect(spy).toHaveBeenCalledWith(expect.anything(), 99, Role.ADMIN, PermissionScope.ALL);
       expect(result.personal).toEqual([{ userId: 1, userName: 'Sales A', amount: 1500000 }]);
       expect(result.department).toEqual([
         { departmentId: 2, departmentName: 'Kinh doanh', amount: 3000000 },
@@ -119,7 +121,12 @@ describe('ReportsService', () => {
     it('EMPLOYEE: department=null, total=null, personal LUÔN bị ép về đúng selfId (bất kể applyViewFilter cho xem rộng hơn)', async () => {
       rawManyQueue = [[{ userId: '7', userName: 'Tôi', amount: '900000.00' }]];
 
-      const result = await service.getRevenueReport({ period: 'week' } as any, 7, Role.EMPLOYEE);
+      const result = await service.getRevenueReport(
+        { period: 'week' } as any,
+        7,
+        Role.EMPLOYEE,
+        PermissionScope.OWN,
+      );
 
       expect(result.department).toBeNull();
       expect(result.total).toBeNull();
@@ -235,6 +242,7 @@ describe('ReportsService', () => {
         { period: 'month' } as any,
         1,
         Role.EMPLOYEE,
+        PermissionScope.OWN,
       );
 
       expect(result.department).toBeNull();
@@ -254,6 +262,7 @@ describe('ReportsService', () => {
         { period: 'month' } as any,
         5,
         Role.EMPLOYEE,
+        PermissionScope.OWN,
       );
 
       expect(result.personal).toHaveLength(1);

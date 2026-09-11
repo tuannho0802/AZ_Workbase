@@ -1552,11 +1552,17 @@ export class CustomersService {
       // Chỉ thấy KH chưa Primary trong phạm vi phòng ban mình quản lý,
       // HOẶC KH mà chính mình đang là Primary (không phân biệt phòng ban -
       // họ đã là chủ sở hữu chính thì luôn thấy được, giống mọi role khác).
+      // ⚠️ FIX BUG THẬT (rà soát cùng đợt multi-manager): nhánh này vẫn dùng
+      // cột đơn CŨ `departments.manager_user_id` trong khi mọi chỗ khác
+      // (CustomerAccessHelper.applyViewFilter, getAssigned...) đã chuyển
+      // sang bảng nhiều-nhiều `department_managers` từ lâu - khiến Manager
+      // được gán qua bảng mới (không phải cột cũ) không thấy được data chưa
+      // gán thuộc phòng ban mình quản lý ở tab "Chưa assign".
       qb.andWhere(
         new Brackets((q) => {
           q.where(
             'customer.salesUserId IS NULL AND customer.department_id IN ' +
-            '(SELECT d.id FROM departments d WHERE d.manager_user_id = :userId)',
+            '(SELECT dm.department_id FROM department_managers dm WHERE dm.user_id = :userId)',
             { userId },
           ).orWhere('customer.salesUserId = :userId', { userId });
         }),

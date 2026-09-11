@@ -61,14 +61,16 @@ describe('CustomerAccessHelper', () => {
       expect(calls).toHaveLength(0);
     });
 
-    it('MANAGER: lọc theo department mà manager_user_id = chính mình', () => {
+    it('MANAGER: scope=department -> lọc theo phòng ban có dòng department_managers cho chính mình', () => {
       const { qb, calls } = makeFakeQueryBuilder();
 
       CustomerAccessHelper.applyViewFilter(qb, 42, Role.MANAGER, 'department');
 
       expect(calls).toHaveLength(1);
       expect(calls[0].sqlOrBrackets).toContain('department_id IN');
-      expect(calls[0].sqlOrBrackets).toContain('manager_user_id = :accessManagerId');
+      expect(calls[0].sqlOrBrackets).toContain(
+        'SELECT dm.department_id FROM department_managers dm WHERE dm.user_id = :accessManagerId',
+      );
       expect(calls[0].params).toEqual({ accessManagerId: 42 });
     });
 
@@ -124,11 +126,11 @@ describe('CustomerAccessHelper', () => {
       expect(calls[0].sqlOrBrackets).toBeInstanceOf(Brackets);
     });
 
-    it('backward-compat: MANAGER + không có scope -> lọc theo department', () => {
+    it('MANAGER + không có scope -> KHÔNG còn fallback cứng theo Role, rơi vào nhánh sở hữu (own) giống mọi role khác (hoàn toàn theo scope từ role_permissions)', () => {
       const { qb, calls } = makeFakeQueryBuilder();
       CustomerAccessHelper.applyViewFilter(qb, 42, Role.MANAGER, null);
       expect(calls).toHaveLength(1);
-      expect(calls[0].sqlOrBrackets).toContain('department_id IN');
+      expect(calls[0].sqlOrBrackets).toBeInstanceOf(Brackets);
     });
   });
 
@@ -211,9 +213,11 @@ describe('CustomerAccessHelper', () => {
       expect(CustomerAccessHelper.canManageCustomer(customer2, 1, 'custom_manager', [], null)).toBe(false);
     });
 
-    it('backward-compat: MANAGER + không có scope -> kiểm tra theo department', () => {
-      const customer: any = { departmentId: 5 };
-      expect(CustomerAccessHelper.canManageCustomer(customer, 1, Role.MANAGER, [5], null)).toBe(true);
+    it('MANAGER + không có scope -> KHÔNG còn fallback cứng theo Role, kiểm tra theo nhánh sở hữu (own) giống mọi role khác', () => {
+      const customer: any = { departmentId: 5, createdById: 99, salesUserId: 98, marketingUserId: 97 };
+      expect(CustomerAccessHelper.canManageCustomer(customer, 1, Role.MANAGER, [5], null)).toBe(false);
+      const ownedCustomer: any = { departmentId: 5, createdById: 1 };
+      expect(CustomerAccessHelper.canManageCustomer(ownedCustomer, 1, Role.MANAGER, [5], null)).toBe(true);
     });
   });
 });

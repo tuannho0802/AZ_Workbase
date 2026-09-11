@@ -371,35 +371,40 @@ describe('CustomersService', () => {
     // phải đúng phòng ban, trước đây bypass hoàn toàn). Thêm 2 case dưới để
     // khoá lại hành vi mới, tránh regression về bypass-toàn-bộ như cũ.
     describe('canModifyAssignment - nhánh MANAGER (qua updateAssignment)', () => {
-      const mockDepartmentRepo = { exists: jest.fn() };
+      // ⚠️ Đã chuyển từ cột đơn departments.manager_user_id sang bảng
+      // nhiều-nhiều department_managers (xem department-manager.helper.ts) -
+      // canModifyAssignment() giờ gọi DepartmentManagerHelper.isManagerOfDepartment()
+      // dùng repo.findOne({ where: { departmentId, userId } }), KHÔNG còn
+      // Department.exists({ where: { id, managerUserId } }).
+      const mockDepartmentManagerRepo = { findOne: jest.fn() };
 
       beforeEach(() => {
         // customersRepository.manager.getRepository() được gọi 2 lần khác
         // mục đích trong luồng này: lần 1 lấy User repo (validate
-        // assignedToId nếu có), lần 2 lấy Department repo (check quyền
-        // Manager) - trả đúng mock tương ứng theo entity được yêu cầu.
+        // assignedToId nếu có), lần 2 lấy DepartmentManager repo (check
+        // quyền Manager) - trả đúng mock tương ứng theo entity được yêu cầu.
         mockCustomerRepo.manager.getRepository.mockImplementation((entity: any) => {
-          if (entity?.name === 'Department') return mockDepartmentRepo;
+          if (entity?.name === 'DepartmentManager') return mockDepartmentManagerRepo;
           return mockUserRepo;
         });
       });
 
       it('MANAGER được sửa nếu khách hàng thuộc phòng ban mình quản lý', async () => {
         mockAssignmentRepo.findOne.mockResolvedValue({ ...baseAssignment, customer: { id: 100, departmentId: 5, salesUserId: 5 } });
-        mockDepartmentRepo.exists.mockResolvedValue(true);
+        mockDepartmentManagerRepo.findOne.mockResolvedValue({ departmentId: 5, userId: 3 });
         mockAssignmentRepo.save.mockImplementation((a: any) => Promise.resolve(a));
 
         const result = await service.updateAssignment(10, { reason: 'ok' }, 3, Role.MANAGER, PermissionScope.DEPARTMENT);
 
-        expect(mockDepartmentRepo.exists).toHaveBeenCalledWith({
-          where: { id: 5, managerUserId: 3 },
+        expect(mockDepartmentManagerRepo.findOne).toHaveBeenCalledWith({
+          where: { departmentId: 5, userId: 3 },
         });
         expect(result.reason).toBe('ok');
       });
 
       it('MANAGER bị từ chối nếu khách hàng KHÔNG thuộc phòng ban mình quản lý', async () => {
         mockAssignmentRepo.findOne.mockResolvedValue({ ...baseAssignment, customer: { id: 100, departmentId: 99, salesUserId: 5 } });
-        mockDepartmentRepo.exists.mockResolvedValue(false);
+        mockDepartmentManagerRepo.findOne.mockResolvedValue(null);
 
         await expect(
           service.updateAssignment(10, { reason: 'x' }, 3, Role.MANAGER, PermissionScope.DEPARTMENT),
@@ -412,8 +417,8 @@ describe('CustomersService', () => {
         await expect(
           service.updateAssignment(10, { reason: 'x' }, 3, Role.MANAGER, PermissionScope.DEPARTMENT),
         ).rejects.toThrow(UnauthorizedCustomerAccessException);
-        // Không cần query Department nếu đã biết chắc fail từ departmentId null
-        expect(mockDepartmentRepo.exists).not.toHaveBeenCalled();
+        // Không cần query DepartmentManager nếu đã biết chắc fail từ departmentId null
+        expect(mockDepartmentManagerRepo.findOne).not.toHaveBeenCalled();
       });
     });
   });
@@ -452,14 +457,18 @@ describe('CustomersService', () => {
       expect(andWhereCalls[0].sql).toContain('salesUserId IS NOT NULL');
     });
 
-    it('MANAGER: bị áp thêm đúng 1 điều kiện lọc theo phòng ban mình quản lý', async () => {
+    it('MANAGER: bị áp thêm đúng 1 điều kiện lọc theo phòng ban mình quản lý (bảng department_managers, nhiều-nhiều)', async () => {
       const { qb, andWhereCalls } = makeFakeQb();
       mockCustomerRepo.createQueryBuilder.mockReturnValue(qb);
 
-      await service.getAssigned({ page: 1, limit: 20, userId: 9, userRole: Role.MANAGER });
+      await service.getAssigned({
+        page: 1, limit: 20, userId: 9, userRole: Role.MANAGER, scope: PermissionScope.DEPARTMENT,
+      });
 
       expect(andWhereCalls).toHaveLength(2);
-      expect(andWhereCalls[1].sql).toContain('manager_user_id = :accessManagerId');
+      expect(andWhereCalls[1].sql).toContain(
+        'SELECT dm.department_id FROM department_managers dm WHERE dm.user_id = :accessManagerId',
+      );
       expect(andWhereCalls[1].params).toEqual({ accessManagerId: 9 });
     });
 
@@ -467,7 +476,9 @@ describe('CustomersService', () => {
       const { qb, andWhereCalls } = makeFakeQb();
       mockCustomerRepo.createQueryBuilder.mockReturnValue(qb);
 
-      await service.getAssigned({ page: 1, limit: 20, userId: 7, userRole: Role.EMPLOYEE });
+      await service.getAssigned({
+        page: 1, limit: 20, userId: 7, userRole: Role.EMPLOYEE, scope: PermissionScope.OWN,
+      });
 
       // Trước khi fix: andWhereCalls chỉ có 1 phần tử (không có dòng này) ->
       // Employee thấy TOÀN BỘ khách hàng đã assign của mọi người. Giờ phải
@@ -481,7 +492,7 @@ describe('CustomersService', () => {
       mockCustomerRepo.createQueryBuilder.mockReturnValue(qb);
 
       await service.getAssigned({
-        page: 1, limit: 20, userId: 1, userRole: Role.ADMIN, salesUserId: 5,
+        page: 1, limit: 20, userId: 1, userRole: Role.ADMIN, scope: PermissionScope.ALL, salesUserId: 5,
       });
 
       expect(andWhereCalls).toHaveLength(2);
@@ -512,16 +523,16 @@ describe('CustomersService', () => {
       const { qb, andWhereCalls } = makeFakeQb();
       mockCustomerRepo.createQueryBuilder.mockReturnValue(qb);
 
-      await service.getUnassigned({} as any, 1, Role.ASSISTANT);
+      await service.getUnassigned({} as any, 1, Role.ASSISTANT, PermissionScope.ALL);
 
       expect(andWhereCalls).toHaveLength(1);
     });
 
-    it('MANAGER: có thêm điều kiện giới hạn theo phòng ban mình quản lý (OR đang là Primary)', async () => {
+    it('MANAGER: có thêm điều kiện giới hạn theo phòng ban mình quản lý (bảng department_managers, OR đang là Primary)', async () => {
       const { qb, andWhereCalls } = makeFakeQb();
       mockCustomerRepo.createQueryBuilder.mockReturnValue(qb);
 
-      await service.getUnassigned({} as any, 9, Role.MANAGER);
+      await service.getUnassigned({} as any, 9, Role.MANAGER, PermissionScope.DEPARTMENT);
 
       expect(andWhereCalls).toHaveLength(2);
       expect(andWhereCalls[1].sql).toBeInstanceOf(Brackets);
@@ -535,14 +546,16 @@ describe('CustomersService', () => {
         orWhere: (sql: string) => { innerCalls.push(sql); return innerQb; },
       };
       (andWhereCalls[1].sql as Brackets).whereFactory(innerQb);
-      expect(innerCalls.join(' ')).toContain('manager_user_id = :userId');
+      expect(innerCalls.join(' ')).toContain(
+        'SELECT dm.department_id FROM department_managers dm WHERE dm.user_id = :userId',
+      );
     });
 
     it('EMPLOYEE: có thêm điều kiện giới hạn theo chính mình tạo ra (OR đang là Primary)', async () => {
       const { qb, andWhereCalls } = makeFakeQb();
       mockCustomerRepo.createQueryBuilder.mockReturnValue(qb);
 
-      await service.getUnassigned({} as any, 7, Role.EMPLOYEE);
+      await service.getUnassigned({} as any, 7, Role.EMPLOYEE, PermissionScope.OWN);
 
       expect(andWhereCalls).toHaveLength(2);
       expect(andWhereCalls[1].sql).toBeInstanceOf(Brackets);
@@ -558,14 +571,20 @@ describe('CustomersService', () => {
 
   describe('bulkAssign - Chia data hàng loạt', () => {
     const mockUserRepoForBulk = { find: jest.fn() };
-    const mockDepartmentRepoForBulk = { find: jest.fn() };
+    // ⚠️ Đã chuyển từ cột đơn departments.manager_user_id sang bảng
+    // nhiều-nhiều department_managers - bulkAssign() giờ gọi
+    // DepartmentManagerHelper.getManagedDepartmentIds() dùng
+    // repo.find({ where: { userId }, select: ['departmentId'] }), trả về
+    // mảng dòng { departmentId } (KHÔNG phải { id } của bảng departments).
+    const mockDepartmentManagerRepoForBulk = { find: jest.fn() };
 
     beforeEach(() => {
       mockCustomerRepo.manager.getRepository.mockImplementation((entity: any) => {
-        if (entity?.name === 'Department') return mockDepartmentRepoForBulk;
+        if (entity?.name === 'DepartmentManager') return mockDepartmentManagerRepoForBulk;
         return mockUserRepoForBulk;
       });
       mockUserRepoForBulk.find.mockResolvedValue([{ id: 5, isActive: true }]);
+      mockDepartmentManagerRepoForBulk.find.mockResolvedValue([]);
       mockAssignmentRepo.find.mockResolvedValue([]); // không có assignment active trùng sẵn
       (mockAssignmentRepo as any).insert = jest.fn().mockResolvedValue({});
       mockCustomerRepo.createQueryBuilder.mockReturnValue({
@@ -577,24 +596,24 @@ describe('CustomersService', () => {
     });
 
     it('MANAGER: được gán khách hàng thuộc phòng ban mình quản lý', async () => {
-      mockDepartmentRepoForBulk.find.mockResolvedValue([{ id: 5 }]); // Manager quản lý phòng ban id=5
+      mockDepartmentManagerRepoForBulk.find.mockResolvedValue([{ departmentId: 5 }]); // Manager quản lý phòng ban id=5
       mockCustomerRepo.find.mockResolvedValue([
         { id: 100, departmentId: 5, salesUserId: null, createdById: 1 },
       ]);
 
-      const result = await service.bulkAssign([100], [5], 9, Role.MANAGER);
+      const result = await service.bulkAssign([100], [5], 9, Role.MANAGER, undefined, PermissionScope.DEPARTMENT);
 
       expect(result.success).toBe(1);
       expect(result.failed).toBe(0);
     });
 
     it('MANAGER: KHÔNG được gán khách hàng ngoài phòng ban mình quản lý (fix chính - trước đây bypass hoàn toàn)', async () => {
-      mockDepartmentRepoForBulk.find.mockResolvedValue([{ id: 5 }]); // chỉ quản lý phòng ban 5
+      mockDepartmentManagerRepoForBulk.find.mockResolvedValue([{ departmentId: 5 }]); // chỉ quản lý phòng ban 5
       mockCustomerRepo.find.mockResolvedValue([
         { id: 100, departmentId: 99, salesUserId: null, createdById: 1 }, // thuộc phòng ban 99
       ]);
 
-      const result = await service.bulkAssign([100], [5], 9, Role.MANAGER);
+      const result = await service.bulkAssign([100], [5], 9, Role.MANAGER, undefined, PermissionScope.DEPARTMENT);
 
       expect(result.success).toBe(0);
       expect(result.failed).toBe(1);
@@ -606,7 +625,7 @@ describe('CustomersService', () => {
         { id: 100, departmentId: null, salesUserId: null, createdById: 7 },
       ]);
 
-      const result = await service.bulkAssign([100], [5], 7, Role.EMPLOYEE);
+      const result = await service.bulkAssign([100], [5], 7, Role.EMPLOYEE, undefined, PermissionScope.OWN);
 
       expect(result.success).toBe(1);
     });
@@ -616,7 +635,7 @@ describe('CustomersService', () => {
         { id: 100, departmentId: null, salesUserId: 7, createdById: 1 },
       ]);
 
-      const result = await service.bulkAssign([100], [5], 7, Role.EMPLOYEE);
+      const result = await service.bulkAssign([100], [5], 7, Role.EMPLOYEE, undefined, PermissionScope.OWN);
 
       expect(result.success).toBe(1);
     });
@@ -626,7 +645,7 @@ describe('CustomersService', () => {
         { id: 100, departmentId: null, salesUserId: 99, createdById: 7 }, // đã có sales khác (99)
       ]);
 
-      const result = await service.bulkAssign([100], [5], 7, Role.EMPLOYEE);
+      const result = await service.bulkAssign([100], [5], 7, Role.EMPLOYEE, undefined, PermissionScope.OWN);
 
       expect(result.success).toBe(0);
       expect(result.failed).toBe(1);
@@ -637,7 +656,7 @@ describe('CustomersService', () => {
         { id: 100, departmentId: 123, salesUserId: 456, createdById: 789 },
       ]);
 
-      const result = await service.bulkAssign([100], [5], 1, Role.ASSISTANT);
+      const result = await service.bulkAssign([100], [5], 1, Role.ASSISTANT, undefined, PermissionScope.ALL);
 
       expect(result.success).toBe(1);
     });
