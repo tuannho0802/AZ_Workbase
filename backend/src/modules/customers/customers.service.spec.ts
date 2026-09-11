@@ -10,6 +10,7 @@ import { PermissionsService } from '../permissions/permissions.service';
 import { UiVisibilityService } from '../ui-visibility/ui-visibility.service';
 import { Customer } from '../../database/entities/customer.entity';
 import { CustomerNote } from '../../database/entities/customer-note.entity';
+import { CustomerStatus } from '../../database/entities/customer-status.entity';
 import { Deposit } from '../../database/entities/deposit.entity';
 import { CustomerAssignment, AssignmentStatus } from '../../database/entities/customer-assignment.entity';
 import { CustomerGroupMembership } from '../../database/entities/customer-group-membership.entity';
@@ -65,6 +66,17 @@ describe('CustomersService', () => {
   // liên quan gì tới logic nghiệp vụ nào. Không method nào trong service
   // đang được test ở đây thực sự gọi tới repo này, nên object rỗng là đủ.
   const mockGroupMembershipRepo = {};
+  // ⚠️ Provider thứ 6 (Setup dynamic Customer Status -
+  // CreateCustomerStatuses1781400000000) - dùng trong
+  // `assertValidStatus()` gọi từ create()/update() để đối chiếu
+  // `dto.status` với bảng `customer_statuses`. Mặc định `findOne` trả về 1
+  // record giả (bất kỳ status nào trong DTO test cũ như 'closed'/'pending'
+  // đều coi là hợp lệ) để KHÔNG làm fail các test cũ viết TRƯỚC tính năng
+  // này - test nào cần assert case "status không tồn tại" tự override bằng
+  // mockResolvedValueOnce(null).
+  const mockCustomerStatusRepo = {
+    findOne: jest.fn().mockResolvedValue({ id: 1, code: 'pending', name: 'Chờ xử lý' }),
+  };
   const mockAuditService = {
     logAction: jest.fn(),
     logActionAsync: jest.fn(),
@@ -91,6 +103,7 @@ describe('CustomersService', () => {
     mockPermissionsService.hasPermission.mockResolvedValue({ allowed: false, scope: null });
     mockUiVisibilityService.getHiddenElementKeys.mockResolvedValue(new Set<string>());
     mockUiVisibilityService.stripHiddenCustomerFields.mockImplementation((customer: any) => customer);
+    mockCustomerStatusRepo.findOne.mockResolvedValue({ id: 1, code: 'pending', name: 'Chờ xử lý' });
 
     const module: TestingModule = await Test.createTestingModule({
       providers: [
@@ -106,6 +119,7 @@ describe('CustomersService', () => {
           provide: getRepositoryToken(CustomerGroupMembership),
           useValue: mockGroupMembershipRepo,
         },
+        { provide: getRepositoryToken(CustomerStatus), useValue: mockCustomerStatusRepo },
         { provide: AuditService, useValue: mockAuditService },
         { provide: PermissionsService, useValue: mockPermissionsService },
         { provide: UiVisibilityService, useValue: mockUiVisibilityService },

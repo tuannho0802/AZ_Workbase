@@ -1,4 +1,4 @@
-import { IsString, IsNotEmpty, Length, Matches, IsOptional, IsEmail, IsEnum, IsInt, IsDateString, ValidateIf } from 'class-validator';
+import { IsString, IsNotEmpty, Length, Matches, IsOptional, IsEmail, IsInt, IsDateString, ValidateIf } from 'class-validator';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { Type } from 'class-transformer';
 
@@ -64,9 +64,17 @@ export class CreateCustomerDto {
   @Type(() => Number)
   marketingUserId?: number | null;
 
-  @ApiPropertyOptional({ example: 'pending', enum: ['closed', 'pending', 'potential', 'lost', 'inactive'], description: 'Trạng thái khách hàng' })
+  // ⚠️ FIX BUG THẬT (Setup dynamic Customer Status - xem
+  // CreateCustomerStatuses1781400000000): trước đây `@IsEnum([...5 giá trị
+  // cũ])` cứng - Admin tự thêm status mới qua "/quan-ly-status-khach"
+  // (bảng `customer_statuses`) vẫn bị DTO này chặn 400 ngay từ tầng
+  // validate, y hệt bug đã fix cho `source`/`media_sources`. Chỉ còn validate
+  // là chuỗi hợp lệ; việc "status này có tồn tại/đang mở không" do
+  // `CustomersService` đối chiếu với bảng `customer_statuses` khi
+  // create()/update() (thông báo lỗi rõ ràng hơn @IsEnum tĩnh).
+  @ApiPropertyOptional({ example: 'pending', description: 'Mã trạng thái khách hàng - phải khớp 1 trạng thái đang có trong Quản lý status Khách' })
   @IsOptional()
-  @IsEnum(['closed', 'pending', 'potential', 'lost', 'inactive'], { message: 'Trạng thái không hợp lệ' })
+  @IsString({ message: 'Trạng thái phải là chuỗi' })
   status?: string;
 
   @ApiPropertyOptional({ example: 'Exness', description: 'Sàn môi giới' })

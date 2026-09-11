@@ -2,6 +2,7 @@ import { Injectable, ForbiddenException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, Brackets, IsNull, In } from 'typeorm';
 import { Customer } from '../../database/entities/customer.entity';
+import { CustomerStatus } from '../../database/entities/customer-status.entity';
 import { CreateCustomerDto } from './dto/create-customer.dto';
 import { UpdateCustomerDto } from './dto/update-customer.dto';
 import { CustomerFiltersDto } from './dto/customer-filters.dto';
@@ -48,6 +49,12 @@ export class CustomersService {
     private readonly assignmentRepository: Repository<CustomerAssignment>,
     @InjectRepository(CustomerGroupMembership)
     private readonly customerGroupMembershipRepository: Repository<CustomerGroupMembership>,
+    // ⚠️ MỚI (Setup dynamic Customer Status - CreateCustomerStatuses1781400000000):
+    // dùng để validate `dto.status` khi create()/update() đối chiếu với bảng
+    // `customer_statuses` thay vì ENUM cứng cũ - mirror đúng cách
+    // `salesUserId`/`marketingUserId` được validate tồn tại ở 2 hàm đó.
+    @InjectRepository(CustomerStatus)
+    private readonly customerStatusRepository: Repository<CustomerStatus>,
     private readonly auditService: AuditService,
     private readonly permissionsService: PermissionsService,
     // ⚠️ Trục "UI Visibility" (field ẨN/HIỆN) - ĐỘC LẬP với PermissionsService
@@ -62,6 +69,23 @@ export class CustomersService {
     // Offset for UTC+7 (Vietnam time)
     const vnTime = new Date(now.getTime() + 7 * 60 * 60 * 1000);
     return vnTime;
+  }
+
+  /**
+   * Đối chiếu `status` với bảng `customer_statuses` (nguồn sự thật động,
+   * thay ENUM cứng cũ - xem CreateCustomerStatuses1781400000000). Chỉ gọi
+   * khi `status` THẬT SỰ có trong DTO (undefined = không đổi/dùng default
+   * DB 'pending', không cần query) - mirror đúng cách `salesUserId`/
+   * `marketingUserId` được validate tồn tại ở create()/update().
+   */
+  private async assertValidStatus(code: string | undefined): Promise<void> {
+    if (code === undefined) return;
+    const exists = await this.customerStatusRepository.findOne({ where: { code } });
+    if (!exists) {
+      throw new BadRequestException(
+        `Trạng thái "${code}" không tồn tại. Vui lòng kiểm tra lại ở Quản lý status Khách.`,
+      );
+    }
   }
 
   async create(createCustomerDto: CreateCustomerDto, userId: number) {
@@ -90,6 +114,8 @@ export class CustomersService {
         );
       }
     }
+
+    await this.assertValidStatus(createCustomerDto.status);
 
     try {
       const today = this.getTodayVn();
@@ -1204,6 +1230,8 @@ export class CustomersService {
     ) {
       (updateCustomerDto as any).closedDate = todayStr;
     }
+
+    await this.assertValidStatus(updateCustomerDto.status);
 
     const oldData = { ...customer };
 

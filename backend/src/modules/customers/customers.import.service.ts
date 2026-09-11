@@ -3,6 +3,7 @@ import { DataSource, In } from 'typeorm';
 import { Customer } from '../../database/entities/customer.entity';
 import { User } from '../../database/entities/user.entity';
 import { MediaSource } from '../../database/entities/media-source.entity';
+import { CustomerStatus } from '../../database/entities/customer-status.entity';
 import * as XLSX from 'xlsx';
 import 'multer';
 import { todayVnStr } from '../../common/utils/date-vn.util';
@@ -92,6 +93,19 @@ export class CustomersImportService {
     // cho an toàn thay vì fallback theo dữ liệu động dễ vỡ khi bảng rỗng.
     const mediaSourceRepo = this.dataSource.getRepository(MediaSource);
     const validSources = (await mediaSourceRepo.find({ select: ['name'] })).map((s) => s.name);
+
+    // ⚠️ FIX BUG THẬT (Setup dynamic Customer Status -
+    // CreateCustomerStatuses1781400000000): trước đây mảng hardcode
+    // `['closed','pending','potential','lost','inactive']` - status nào
+    // admin tự thêm sau qua "/quan-ly-status-khach" sẽ bị import Excel âm
+    // thầm ghi đè về 'pending' dù giá trị trong file khớp đúng 1 status hợp
+    // lệ. Giờ lấy CODE SỐNG từ bảng `customer_statuses`, mirror đúng cách
+    // đã fix cho `source`/`media_sources` ở trên. Fallback 'pending' khi cột
+    // "Trạng thái" trong file rỗng/không khớp bất kỳ code nào - 'pending'
+    // luôn tồn tại vì là status mặc định seed sẵn, trừ khi admin lỡ xoá
+    // (không thể vì is_system chặn xoá - xem CustomerStatusesService.remove()).
+    const customerStatusRepo = this.dataSource.getRepository(CustomerStatus);
+    const validStatusCodes = (await customerStatusRepo.find({ select: ['code'] })).map((s) => s.code);
 
     // ⚠️ TỐI ƯU: trước đây check trùng SĐT trong chính file dùng
     // `validCustomers.some(c => c.phone === rawPhone)` bên trong vòng lặp
@@ -198,7 +212,7 @@ export class CustomersImportService {
          email: email || null,
          source,
          campaign: campaign || null,
-         status: ['closed', 'pending', 'potential', 'lost', 'inactive'].includes(status) ? status : 'pending',
+        status: validStatusCodes.includes(status) ? status : 'pending',
          broker: broker || null,
          closedDate: closedDateObj,
          inputDate: inputDateObj,
