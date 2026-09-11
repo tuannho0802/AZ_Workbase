@@ -12,7 +12,6 @@ import { useDepartments } from '@/lib/hooks/useDepartments';
 import { useRoleColors } from '@/lib/hooks/useRoleColorMap';
 import { usePositions } from '@/lib/hooks/usePositions';
 import { getApiErrorMessage } from '@/lib/utils/error-message.util';
-import { useMyPermissions } from '@/lib/hooks/useMyPermissions';
 import { useAuthStore } from '@/lib/stores/auth.store';
 
 const { Text, Paragraph } = Typography;

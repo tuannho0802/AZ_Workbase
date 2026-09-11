@@ -454,6 +454,29 @@ export class UsersService {
       throw new NotFoundException('Không tìm thấy nhân viên');
     }
 
+    // ⚠️ MỚI - CHẶN TUYỆT ĐỐI (mọi role, kể cả Admin/Root Admin) việc tự đổi
+    // role của CHÍNH MÌNH qua endpoint này. Lý do đặt riêng, không gộp với
+    // check "Manager không được gán role=admin" phía dưới:
+    //  1. `canManageUser()` cho phép `targetId === viewerId` ở MỌI role (kể cả
+    //     Manager - "Manager luôn tự sửa được chính mình") -> nếu không chặn
+    //     ở đây, 1 Manager có thể tự PATCH /users/:id với id CỦA CHÍNH MÌNH để
+    //     đổi role bản thân sang bất kỳ role nào khác (kể cả role có quyền cao
+    //     hơn hiện tại) mà không ai duyệt - tự leo thang.
+    //  2. Áp dụng cho CẢ Admin thường lẫn Root Admin - tự đổi role bản thân
+    //     (kể cả đổi sang 1 role admin khác/tuỳ chỉnh) là hành động nhạy cảm,
+    //     phải nhờ 1 người QUẢN LÝ KHÁC thực hiện, cùng tinh thần với rào chắn
+    //     tự đổi cờ `isRootAdmin` của chính mình ở dưới.
+    //  3. Chỉ chặn khi THẬT SỰ đổi role (updateDto.role khác role hiện có) -
+    //     request không đụng field role hoặc giữ nguyên role cũ vẫn đi qua
+    //     bình thường (vd Admin tự sửa SĐT của mình qua trang Nhân viên).
+    if (
+      id === callerId &&
+      updateDto.role !== undefined &&
+      updateDto.role !== user.role
+    ) {
+      throw new ForbiddenException('Không được tự thay đổi role của chính mình - phải nhờ người khác có thẩm quyền thực hiện');
+    }
+
     // ⚠️ MỚI (isRootAdmin) - xem JSDoc đầy đủ ở create(). CHỈ Root Admin
     // hiện tại mới được ĐỔI field này (bật hoặc tắt) cho BẤT KỲ user nào
     // (kể cả chính mình - tự tắt Root Admin của mình vẫn phải là Root Admin
