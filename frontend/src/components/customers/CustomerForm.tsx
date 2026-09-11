@@ -5,6 +5,7 @@ import { Modal, Form, Input, Select, DatePicker, Row, Col, App, Tag, Typography,
 import { PlusOutlined } from '@ant-design/icons';
 import { customersApi } from '@/lib/api/customers.api';
 import { useMediaSources } from '@/lib/hooks/useMediaSources';
+import { useCustomerStatuses } from '@/lib/hooks/useCustomerStatuses';
 import { useAllActiveLinkGroups } from '@/lib/hooks/useLinkGroups';
 import { customerGroupMembershipsApi } from '@/lib/api/link-groups.api';
 import { SalesUserSelect, type UserOption } from './SalesUserSelect';
@@ -34,6 +35,13 @@ export const CustomerForm: React.FC<CustomerFormProps> = ({ open, customer, onCl
   // nguồn mới mà không sửa code. Giờ lấy động từ /media-sources (chỉ nguồn
   // đang MỞ - activeOnly=true) - quản lý tại trang /nguon-media.
   const { sources } = useMediaSources(true);
+
+  // ⚠️ MỚI (đồng bộ /quan-ly-status-khach, thay ENUM cứng cũ - xem migration
+  // CreateCustomerStatuses1781400000000) - trước đây dropdown "Trạng thái"
+  // hardcode 5 option cố định trong chính component này (không biết tới 4
+  // trạng thái mới hay trạng thái tuỳ chỉnh admin tự thêm sau). Lấy động từ
+  // /customer-statuses, mirror đúng cách `sources` ở trên.
+  const { statuses } = useCustomerStatuses();
 
   // ⚠️ MỚI - rà soát Vị trí 2026-09-10 (đồng bộ với CustomerFilters.tsx +
   // cột bảng ở page.tsx): field:sales_assignment/field:marketing_assignment
@@ -155,6 +163,26 @@ export const CustomerForm: React.FC<CustomerFormProps> = ({ open, customer, onCl
     });
   }
 
+  // Mirror đúng `sourceOptions` phía trên - lấy TẤT CẢ trạng thái đang có
+  // (kể cả không phải hệ thống) làm option dropdown, tô Tag đúng màu đã cấu
+  // hình ở /quan-ly-status-khach.
+  const statusOptions: { label: React.ReactNode; value: string; disabled?: boolean }[] =
+    statuses.map((s) => ({ value: s.code, label: <Tag color={s.color} style={{ marginInlineEnd: 0 }}>{s.name}</Tag> }));
+  // Nếu đang SỬA 1 khách hàng có status không còn khớp dòng nào trong
+  // customer_statuses (dữ liệu cũ từ trước khi có cơ chế bắt buộc fallback
+  // khi xoá) - vẫn hiện đúng giá trị đó thay vì để dropdown trống trơn.
+  if (customer?.status && !statusOptions.some((o) => o.value === customer.status)) {
+    statusOptions.push({
+      label: (
+        <Tag color="default" style={{ marginInlineEnd: 0 }}>
+          {customer.status} (không xác định)
+        </Tag>
+      ),
+      value: customer.status,
+      disabled: true,
+    });
+  }
+
   useEffect(() => {
     if (open) {
       if (customer) {
@@ -169,7 +197,13 @@ export const CustomerForm: React.FC<CustomerFormProps> = ({ open, customer, onCl
       } else {
         form.resetFields();
         form.setFieldsValue({
-          status: 'pending',
+          // Mặc định 'pending' (Chờ xử lý) nếu còn tồn tại - đúng vai trò
+          // "mặc định khi vừa nhập khách" ghi trong migration
+          // CreateCustomerStatuses1781400000000; nếu admin lỡ xoá cả status
+          // 'pending' (không nên xảy ra vì đây là status hệ thống, nhưng vẫn
+          // phòng hờ), fallback về status ĐẦU TIÊN đang có thay vì trỏ vào 1
+          // giá trị không tồn tại.
+          status: statuses.some((s) => s.code === 'pending') ? 'pending' : statuses[0]?.code,
           inputDate: dayjs(),
           // Mặc định nguồn đầu tiên đang MỞ thay vì hardcode 'Facebook' -
           // nếu admin đã khoá/xoá Facebook, hardcode sẽ trỏ vào 1 option
@@ -178,7 +212,7 @@ export const CustomerForm: React.FC<CustomerFormProps> = ({ open, customer, onCl
         });
       }
     }
-  }, [open, customer, form, sources]);
+  }, [open, customer, form, sources, statuses]);
 
   const handleSubmit = async (values: any) => {
     setLoading(true);
@@ -421,15 +455,7 @@ export const CustomerForm: React.FC<CustomerFormProps> = ({ open, customer, onCl
         </Row>
 
         <Form.Item name="status" label="Trạng thái">
-          <Select
-            options={[
-              { value: 'pending', label: 'Chờ xử lý' },
-              { value: 'potential', label: 'Tiềm năng' },
-              { value: 'closed', label: 'Đã chốt' },
-              { value: 'lost', label: 'Mất' },
-              { value: 'inactive', label: 'Ngừng chăm sóc' },
-            ]}
-          />
+          <Select options={statusOptions} placeholder="Chọn trạng thái" />
         </Form.Item>
 
         <Form.Item name="note" label="Ghi chú">

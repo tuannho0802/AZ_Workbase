@@ -3,6 +3,7 @@
 import React from 'react';
 import { Table, Tag, Typography, Space, Empty, Alert } from 'antd';
 import { ArrowRightOutlined, PlusOutlined, DeleteOutlined } from '@ant-design/icons';
+import { StatusTag } from '@/components/customers/StatusTag';
 
 const { Text } = Typography;
 
@@ -35,14 +36,6 @@ const FIELD_LABELS: Record<string, string> = {
   inputDate: 'Ngày nhập',
 };
 
-const STATUS_MAP: Record<string, string> = {
-  pending: 'Chờ xử lý',
-  potential: 'Tiềm năng',
-  closed: 'Đã chốt',
-  lost: 'Đã mất',
-  inactive: 'Không hoạt động',
-};
-
 export const AuditDiffViewer: React.FC<AuditDiffViewerProps> = ({ oldData, newData, action }) => {
   const isCreate = action.includes('CREATE');
   const isDelete = action.includes('DELETE');
@@ -53,7 +46,13 @@ export const AuditDiffViewer: React.FC<AuditDiffViewerProps> = ({ oldData, newDa
     if (val === null || val === undefined || val === '') return <Text type="secondary" italic>Trống</Text>;
 
     if (key === 'status') {
-      return <Tag color="blue">{STATUS_MAP[val] || val}</Tag>;
+      // ⚠️ Đồng bộ /quan-ly-status-khach (thay ENUM cứng cũ - xem migration
+      // CreateCustomerStatuses1781400000000) - trước đây bảng STATUS_MAP ở
+      // đây chỉ có 5 giá trị cố định (thậm chí thiếu tên khớp với FE khác:
+      // 'lost' hiện "Đã mất" ở đây nhưng "Mất" ở CustomerFilters.tsx cũ) và
+      // hoàn toàn không biết tới trạng thái mới/tuỳ chỉnh. `StatusTag` lấy
+      // động từ `/customer-statuses`, 1 nguồn duy nhất cho MỌI nơi hiển thị.
+      return <StatusTag code={val} />;
     }
 
     if (key === 'isActive') {

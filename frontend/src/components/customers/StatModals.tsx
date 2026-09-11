@@ -5,6 +5,7 @@ import dayjs from 'dayjs';
 import type { Dayjs } from 'dayjs';
 import { UserOutlined, CalendarOutlined, DollarOutlined, FilterOutlined, InfoCircleOutlined } from '@ant-design/icons';
 import type { ColumnsType } from 'antd/es/table';
+import { StatusTag } from './StatusTag';
 
 const { Text, Link } = Typography;
 const { RangePicker } = DatePicker;
@@ -116,11 +117,12 @@ export const StatModals: React.FC<StatModalsProps> = ({
       title: 'Trạng thái',
       dataIndex: 'status',
       key: 'status',
-      render: (status: string) => (
-        <Tag color={status === 'closed' ? 'success' : 'processing'}>
-          {status.toUpperCase()}
-        </Tag>
-      ),
+      // ⚠️ Đồng bộ /quan-ly-status-khach - trước đây hardcode 2 màu
+      // (success/processing) theo đúng bằng 'closed' hay không, và hiện
+      // raw code viết HOA thay vì tên tiếng Việt thật (vd "NURTURING_GROUP"
+      // thay vì "Đang chăm sóc nhóm") - dùng `StatusTag` cho đúng màu + tên
+      // đã cấu hình, đồng bộ với mọi nơi khác hiển thị trạng thái.
+      render: (status: string) => <StatusTag code={status} />,
     },
   ];
 

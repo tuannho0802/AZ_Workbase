@@ -4,6 +4,7 @@ import { Descriptions, Tag, Button, Typography, Space } from 'antd';
 import { CalendarOutlined, EditOutlined } from '@ant-design/icons';
 import { Customer } from '@/lib/types/customer.types';
 import { SourceTag } from './SourceTag';
+import { StatusTag } from './StatusTag';
 import { useMyPermissions } from '@/lib/hooks/useMyPermissions';
 import { useMyHiddenElements } from '@/lib/hooks/useUiVisibility';
 import { useRoleColorMap } from '@/lib/hooks/useRoleColorMap';
@@ -69,6 +70,9 @@ export const CustomerInfoTab = ({ customer, onEdit }: Props) => {
         <Descriptions.Item label="Email">{customer.email || '-'}</Descriptions.Item>
         <Descriptions.Item label="Nguồn">
           <SourceTag source={customer.source} />
+        </Descriptions.Item>
+        <Descriptions.Item label="Trạng thái">
+          <StatusTag code={customer.status} />
         </Descriptions.Item>
         <Descriptions.Item label="Chiến dịch">{customer.campaign || '-'}</Descriptions.Item>
         <Descriptions.Item label="Người tạo data">

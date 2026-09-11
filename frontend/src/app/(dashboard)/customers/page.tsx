@@ -26,20 +26,10 @@ import dayjs from 'dayjs';
 import { CustomerFilters } from '@/components/customers/CustomerFilters';
 import { SourceTag } from '@/components/customers/SourceTag';
 import { CustomerStatusSelect } from '@/components/customers/CustomerStatusSelect';
+import { StatusTag } from '@/components/customers/StatusTag';
 
 const { Text } = Typography;
 
-const renderStatusTag = (status: string) => {
-  const config: Record<string, { color: string; text: string }> = {
-    closed: { color: 'success', text: 'Đã chốt' },
-    pending: { color: 'warning', text: 'Chờ xử lý' },
-    potential: { color: 'processing', text: 'Tiềm năng' },
-    lost: { color: 'error', text: 'Mất' },
-    inactive: { color: 'default', text: 'Ngừng chăm sóc' },
-  };
-  const { color, text } = config[status] || { color: 'default', text: status };
-  return <Tag color={color}>{text}</Tag>;
-};
 
 const renderSalesTag = (record: any) => {
   const primarySales = record.salesUser;
@@ -203,7 +193,7 @@ const CustomerMobileCard = ({
         <Text type="secondary" style={{ fontSize: 11 }}>#{(page - 1) * pageSize + index + 1}</Text>
         <Text strong style={{ color: '#1890ff' }}>{record.name}</Text>
       </Space>
-      {renderStatusTag(record.status)}
+        <StatusTag code={record.status} />
     </div>
     <div style={{ display: 'flex', gap: 12, marginBottom: 4, fontSize: 12, color: '#555' }}>
       <span>📞 {record.phone || 'Chưa có SĐT'}</span>

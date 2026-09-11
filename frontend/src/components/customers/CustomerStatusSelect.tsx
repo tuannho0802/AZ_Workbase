@@ -3,24 +3,7 @@
 import { useEffect, useState } from 'react';
 import { Select, Tag, App } from 'antd';
 import { customersApi } from '@/lib/api/customers.api';
-
-// ⚠️ MỚI (yêu cầu: bấm đổi Trạng thái ngay trong bảng, không cần mở
-// Sửa/Drawer) - dùng LẠI đúng 1 bảng màu/nhãn với `renderStatusTag()` ở
-// customers/page.tsx (giữ đồng bộ, không tạo thêm 1 nguồn dữ liệu enum
-// riêng) và đúng danh sách 5 giá trị `CreateCustomerDto.status`
-// (`@IsEnum(['closed','pending','potential','lost','inactive'])`).
-const STATUS_CONFIG: Record<string, { color: string; text: string }> = {
-  closed: { color: 'success', text: 'Đã chốt' },
-  pending: { color: 'warning', text: 'Chờ xử lý' },
-  potential: { color: 'processing', text: 'Tiềm năng' },
-  lost: { color: 'error', text: 'Mất' },
-  inactive: { color: 'default', text: 'Ngừng chăm sóc' },
-};
-
-const STATUS_OPTIONS = Object.entries(STATUS_CONFIG).map(([value, cfg]) => ({
-  value,
-  label: <Tag color={cfg.color} style={{ marginInlineEnd: 0 }}>{cfg.text}</Tag>,
-}));
+import { useCustomerStatuses } from '@/lib/hooks/useCustomerStatuses';
 
 interface Props {
   customerId: number;
@@ -29,7 +12,7 @@ interface Props {
   // `can('customers.edit')` - đúng permission PATCH /customers/:id đòi hỏi,
   // xem CustomerInfoTab.tsx dùng cùng permission cho nút "Chỉnh sửa"). Không
   // tự gọi useMyPermissions() lại ở đây để tránh 2 nguồn sự thật lệch nhau.
-  // Không có quyền -> chỉ render Tag tĩnh y hệt `renderStatusTag()` cũ.
+  // Không có quyền -> chỉ render Tag tĩnh y hệt `<StatusTag />`.
   canEdit: boolean;
   // Callback tuỳ chọn sau khi lưu thành công (vd refetch danh sách để đồng
   // bộ Ghi chú/Audit ở cột khác) - không bắt buộc vì component đã tự
@@ -42,6 +25,35 @@ export const CustomerStatusSelect = ({ customerId, status, canEdit, onSaved }: P
   const [value, setValue] = useState(status);
   const [saving, setSaving] = useState(false);
 
+  // ⚠️ Đồng bộ với `/quan-ly-status-khach` (thay ENUM cứng cũ, xem migration
+  // CreateCustomerStatuses1781400000000) - trước đây dropdown này tự hardcode
+  // 5 giá trị cố định, không biết tới trạng thái mới hay trạng thái tuỳ
+  // chỉnh admin tự thêm sau này (mirror đúng cách `SourceTag`/`StatusTag`
+  // lấy dữ liệu động thay vì bảng màu tĩnh).
+  const { statuses } = useCustomerStatuses();
+  const statusOptions = statuses.map((s) => ({
+    value: s.code,
+    label: (
+      <Tag color={s.color} style={{ marginInlineEnd: 0 }}>
+        {s.name}
+      </Tag>
+    ),
+  }));
+  // Nếu customer đang có 1 `status` không còn khớp dòng nào trong
+  // customer_statuses (dữ liệu cũ từ trước khi có cơ chế bắt buộc fallback
+  // khi xoá) - vẫn thêm vào options dạng disabled để Select không hiện trống
+  // trơn, đúng tinh thần "Đã khoá" của `sourceOptions` ở CustomerForm.tsx.
+  if (status && !statuses.some((s) => s.code === status)) {
+    statusOptions.push({
+      value: status,
+      label: (
+        <Tag color="default" style={{ marginInlineEnd: 0 }}>
+          {status} (không xác định)
+        </Tag>
+      ),
+    });
+  }
+
   // Đồng bộ lại nếu prop đổi từ ngoài (vd sau khi refetch danh sách do lọc/
   // phân trang) - tránh Select "đứng hình" giá trị cũ.
   useEffect(() => {
@@ -49,8 +61,8 @@ export const CustomerStatusSelect = ({ customerId, status, canEdit, onSaved }: P
   }, [status]);
 
   if (!canEdit) {
-    const { color, text } = STATUS_CONFIG[status] || { color: 'default', text: status };
-    return <Tag color={color}>{text}</Tag>;
+    const info = statuses.find((s) => s.code === status);
+    return <Tag color={info?.color}>{info?.name ?? status}</Tag>;
   }
 
   const handleChange = async (newStatus: string) => {
@@ -84,7 +96,7 @@ export const CustomerStatusSelect = ({ customerId, status, canEdit, onSaved }: P
         style={{ width: '100%', minWidth: 110 }}
         popupMatchSelectWidth={false}
         onChange={handleChange}
-        options={STATUS_OPTIONS}
+        options={statusOptions}
       />
     </div>
   );

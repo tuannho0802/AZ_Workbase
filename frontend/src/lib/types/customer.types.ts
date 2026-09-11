@@ -110,7 +110,13 @@ export interface Customer {
     role?: string;
     position?: { id: number; name: string; color: string } | null;
   };
-  status: 'closed' | 'pending' | 'potential' | 'lost' | 'inactive';
+  // ⚠️ Đồng bộ với BE (migration CreateCustomerStatuses1781400000000 đổi
+  // cột `customers.status` từ ENUM cứng -> VARCHAR tự do, quản lý qua bảng
+  // `customer_statuses` / trang /quan-ly-status-khach) - Union 5 giá trị cũ
+  // trước đây khiến TypeScript coi 4 trạng thái mới (account_opened/
+  // callback_later/nurturing_group/ib) và mọi trạng thái tuỳ chỉnh admin tự
+  // thêm là lỗi kiểu dữ liệu dù BE hoàn toàn chấp nhận.
+  status: string;
   broker?: string;
   inputDate: string;
   assignedDate?: string;

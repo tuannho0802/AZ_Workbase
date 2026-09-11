@@ -3,6 +3,7 @@ import { Row, Col, Input, Select, DatePicker, Space, Avatar, Tag } from 'antd';
 import { SearchOutlined } from '@ant-design/icons';
 import dayjs, { Dayjs } from 'dayjs';
 import { useMediaSources } from '@/lib/hooks/useMediaSources';
+import { useCustomerStatuses } from '@/lib/hooks/useCustomerStatuses';
 import { SourceTag } from './SourceTag';
 import { useRoleColorMap, useRoleColors } from '@/lib/hooks/useRoleColorMap';
 import { resolveEntityColor } from '@/lib/utils/entityColor';
@@ -69,6 +70,10 @@ export const CustomerFilters: React.FC<CustomerFiltersProps> = ({
   // sang lấy động từ bảng media_sources (activeOnly=false, giống SourceTag,
   // để dropdown vẫn hiện được các nguồn cũ dùng cho khách hàng cũ dù đã khoá).
   const { sources: allMediaSources } = useMediaSources(false);
+  // ⚠️ MỚI (đồng bộ /quan-ly-status-khach, thay ENUM cứng cũ - xem migration
+  // CreateCustomerStatuses1781400000000) - dropdown lọc "Trạng thái" trước
+  // đây hardcode 5 giá trị cố định trong chính component này.
+  const { statuses: allCustomerStatuses } = useCustomerStatuses();
   const { getRoleColor } = useRoleColorMap();
   // ⚠️ FIX BUG THẬT (403 "GET /api/roles" mỗi lần vào trang Khách hàng, kể cả
   // F5): trước đây dùng `useRoles()` (GET /roles) - route đòi `roles.view`,
@@ -213,11 +218,10 @@ export const CustomerFilters: React.FC<CustomerFiltersProps> = ({
             value={filters.status}
             onChange={(val) => onFiltersChange({ ...filters, status: val, page: 1 })}
             options={[
-              { value: 'pending', label: 'Chờ xử lý' },
-              { value: 'potential', label: 'Tiềm năng' },
-              { value: 'closed', label: 'Đã chốt' },
-              { value: 'lost', label: 'Mất' },
-              { value: 'inactive', label: 'Ngừng chăm sóc' },
+              ...allCustomerStatuses
+                .slice()
+                .sort((a, b) => a.sortOrder - b.sortOrder)
+                .map((s) => ({ value: s.code, label: <Tag color={s.color} style={{ marginInlineEnd: 0 }}>{s.name}</Tag> })),
             ]}
           />
         </Col>
