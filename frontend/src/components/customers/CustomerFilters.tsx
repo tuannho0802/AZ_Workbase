@@ -5,6 +5,7 @@ import dayjs, { Dayjs } from 'dayjs';
 import { useMediaSources } from '@/lib/hooks/useMediaSources';
 import { SourceTag } from './SourceTag';
 import { useRoleColorMap } from '@/lib/hooks/useRoleColorMap';
+import { useRoles } from '@/lib/hooks/useRoles';
 import { resolveEntityColor } from '@/lib/utils/entityColor';
 
 // ⚠️ MỚI (đồng bộ Tag Phòng ban/Vai trò/Vị trí, giống hệt `userOptions` ở
@@ -70,25 +71,40 @@ export const CustomerFilters: React.FC<CustomerFiltersProps> = ({
   // để dropdown vẫn hiện được các nguồn cũ dùng cho khách hàng cũ dù đã khoá).
   const { sources: allMediaSources } = useMediaSources(false);
   const { getRoleColor } = useRoleColorMap();
+  // ⚠️ FIX BUG THẬT (báo cáo qua ảnh chụp): Tag Vai trò trong dropdown đang
+  // hiện thẳng `user.role` - tức CODE hệ thống (vd "manager"/"assistant"),
+  // không phải TÊN hiển thị Admin đặt ở trang /phan-quyen (vd "Quản lý",
+  // "Trợ lý"). Map code -> name giống đúng cách `ROLE_LABELS`/`roleMap` đang
+  // dùng ở audit-logs/page.tsx và users/page.tsx.
+  const { roles: allRoles } = useRoles();
+  const roleNameMap = new Map(allRoles.map((r) => [r.code, r.name]));
+  const getRoleName = (code?: string) => (code ? roleNameMap.get(code) || code : '');
 
   // Render Avatar + Tag Vai trò/Phòng ban/Vị trí cho option trong dropdown -
   // dùng chung cho "Sales (Phòng Kinh Doanh)" và "Marketing (Phòng Marketing)".
+  // ⚠️ FIX BUG THẬT (báo cáo qua ảnh chụp): cỡ chữ/Avatar/khoảng cách Space
+  // mặc định quá to khiến Tag Phòng ban bị cắt chữ (dropdown bị giới hạn
+  // đúng bằng bề rộng ô Select, vốn rất hẹp ở layout filter 4 cột). Thu nhỏ
+  // Avatar + Tag (padding/lineHeight) + đổi `popupMatchSelectWidth={false}`
+  // (áp ở Select bên dưới) để dropdown tự giãn theo nội dung dài nhất thay
+  // vì bị bó cứng theo bề rộng ô input.
   const renderUserOption = (option: { data: { user: FilterUserOption } }) => {
     const u = option.data.user;
+    const tagStyle: React.CSSProperties = { fontSize: 10, lineHeight: '16px', padding: '0 4px', margin: 0 };
     return (
-      <Space>
-        <Avatar size="small" style={{ backgroundColor: getRoleColor(u.role) }}>
+      <Space size={4} align="center">
+        <Avatar size={20} style={{ backgroundColor: getRoleColor(u.role), fontSize: 11, flexShrink: 0 }}>
           {u.name?.[0]?.toUpperCase()}
         </Avatar>
-        <span>{u.name}</span>
+        <span style={{ fontSize: 13 }}>{u.name}</span>
         {u.role && (
-          <Tag style={{ fontSize: 10 }} color={getRoleColor(u.role)}>{u.role}</Tag>
+          <Tag style={tagStyle} color={getRoleColor(u.role)}>{getRoleName(u.role)}</Tag>
         )}
         {u.department?.name && (
-          <Tag style={{ fontSize: 10 }} color={resolveEntityColor(u.department.color)}>{u.department.name}</Tag>
+          <Tag style={tagStyle} color={resolveEntityColor(u.department.color)}>{u.department.name}</Tag>
         )}
         {u.position?.name && (
-          <Tag style={{ fontSize: 10 }} color={resolveEntityColor(u.position.color)}>{u.position.name}</Tag>
+          <Tag style={tagStyle} color={resolveEntityColor(u.position.color)}>{u.position.name}</Tag>
         )}
       </Space>
     );
@@ -217,6 +233,7 @@ export const CustomerFilters: React.FC<CustomerFiltersProps> = ({
               onChange={(val) => onFiltersChange({ ...filters, salesUserId: val, page: 1 })}
               optionLabelProp="label"
               optionRender={renderUserOption}
+              popupMatchSelectWidth={false}
               options={salesUsers.map(u => ({ value: u.id, label: u.name, user: u }))}
             />
           </Col>
@@ -234,6 +251,7 @@ export const CustomerFilters: React.FC<CustomerFiltersProps> = ({
               onChange={(val) => onFiltersChange({ ...filters, marketingUserId: val, page: 1 })}
               optionLabelProp="label"
               optionRender={renderUserOption}
+              popupMatchSelectWidth={false}
               options={marketingUsers.map(u => ({ value: u.id, label: u.name, user: u }))}
             />
           </Col>
