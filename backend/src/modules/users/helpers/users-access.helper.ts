@@ -3,6 +3,8 @@ import { PermissionScope } from '../../../database/entities/role-permission.enti
 import { SelectQueryBuilder } from 'typeorm';
 import { Repository } from 'typeorm';
 import { Department } from '../../../database/entities/department.entity';
+import { DepartmentManager } from '../../../database/entities/department-manager.entity';
+import { DepartmentManagerHelper } from '../../departments/helpers/department-manager.helper';
 
 /**
  * Phân quyền module Users - hoàn toàn dựa vào `scope` (own/department/all)
@@ -47,11 +49,13 @@ export class UsersAccessHelper {
 
     // scope='department' (từ role_permissions) → lọc theo phòng ban mình
     // quản lý + luôn thấy chính mình. KHÔNG còn fallback cứng theo
-    // Role.MANAGER.
+    // Role.MANAGER. Đọc từ bảng nhiều-nhiều `department_managers` (1 phòng
+    // ban có thể có NHIỀU Manager/Assistant cùng quản lý) - thay cho cột
+    // đơn `departments.manager_user_id` cũ (đã deprecated).
     if (scope === PermissionScope.DEPARTMENT) {
       query.andWhere(
         '(user.department_id IN ' +
-        '(SELECT d.id FROM departments d WHERE d.manager_user_id = :accessManagerId)' +
+        '(SELECT dm.department_id FROM department_managers dm WHERE dm.user_id = :accessManagerId)' +
         ' OR user.id = :accessManagerId)',
         { accessManagerId: viewerId },
       );
@@ -85,14 +89,17 @@ export class UsersAccessHelper {
     if (scope === PermissionScope.ALL) return true;
 
     // scope='department' (role_permissions) → kiểm tra phòng ban. Không
-    // còn fallback cứng theo Role.MANAGER.
+    // còn fallback cứng theo Role.MANAGER. Đọc từ bảng nhiều-nhiều
+    // `department_managers` qua DepartmentManagerHelper (dùng chung).
     if (scope === PermissionScope.DEPARTMENT) {
       if (targetId === viewerId) return true; // Manager luôn tự sửa được chính mình
       if (targetDepartmentId == null) return false;
-      const dept = await departmentRepo.findOne({
-        where: { id: targetDepartmentId, managerUserId: viewerId },
-      });
-      return !!dept;
+      const departmentManagerRepo = departmentRepo.manager.getRepository(DepartmentManager);
+      return DepartmentManagerHelper.isManagerOfDepartment(
+        departmentManagerRepo,
+        targetDepartmentId,
+        viewerId,
+      );
     }
 
     // own: chỉ chính mình.
@@ -100,20 +107,17 @@ export class UsersAccessHelper {
   }
 
   /**
-   * Danh sách id phòng ban mà `managerId` đang là `manager_user_id` - dùng
-   * cho các chỗ cần validate "phòng ban được chọn có phải phòng ban mình
-   * quản lý không" (vd tạo user mới, duyệt đăng ký) mà không tiện viết
-   * subquery SQL trực tiếp (DTO chỉ có departmentId đơn lẻ, không phải
-   * query builder).
+   * Danh sách id phòng ban mà `managerId` đang được gán quản lý (nhiều-nhiều,
+   * bảng `department_managers`) - dùng cho các chỗ cần validate "phòng ban
+   * được chọn có phải phòng ban mình quản lý không" (vd tạo user mới, duyệt
+   * đăng ký) mà không tiện viết subquery SQL trực tiếp (DTO chỉ có
+   * departmentId đơn lẻ, không phải query builder).
    */
   static async getManagedDepartmentIds(
     departmentRepo: Repository<Department>,
     managerId: number,
   ): Promise<number[]> {
-    const depts = await departmentRepo.find({
-      where: { managerUserId: managerId },
-      select: ['id'],
-    });
-    return depts.map((d) => d.id);
+    const departmentManagerRepo = departmentRepo.manager.getRepository(DepartmentManager);
+    return DepartmentManagerHelper.getManagedDepartmentIds(departmentManagerRepo, managerId);
   }
 }

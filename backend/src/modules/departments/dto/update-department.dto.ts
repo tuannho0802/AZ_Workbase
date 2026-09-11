@@ -1,6 +1,6 @@
 import { ApiProperty, PartialType } from '@nestjs/swagger';
 import { CreateDepartmentDto } from './create-department.dto';
-import { IsOptional, IsBoolean, IsInt } from 'class-validator';
+import { IsOptional, IsBoolean, IsInt, IsArray, ArrayUnique } from 'class-validator';
 
 export class UpdateDepartmentDto extends PartialType(CreateDepartmentDto) {
   @ApiProperty({ example: true, required: false })
@@ -9,15 +9,21 @@ export class UpdateDepartmentDto extends PartialType(CreateDepartmentDto) {
   isActive?: boolean;
 
   @ApiProperty({
-    example: 5,
+    example: [5, 8],
     required: false,
-    nullable: true,
+    type: [Number],
     description:
-      'ID user (role phải là MANAGER, đang active) được gán quản lý phòng ban này - ' +
-      'là nguồn xác định phạm vi "Manager theo phòng ban" dùng bởi CustomerAccessHelper ' +
-      'và các module khác. Truyền null để gỡ bỏ (phòng ban tạm không có Manager quản lý).',
+      'Danh sách ĐẦY ĐỦ id user (role phải là Admin/Assistant/Manager, đang active) được ' +
+      'gán quản lý phòng ban này - THAY THẾ TOÀN BỘ danh sách cũ (không phải thêm/bớt). ' +
+      'Là nguồn xác định phạm vi "Manager theo phòng ban" dùng bởi CustomerAccessHelper/ ' +
+      'UsersAccessHelper/LeaveRequestsService/ZkDeviceService (bảng department_managers, ' +
+      'nhiều-nhiều - 1 phòng ban có thể có NHIỀU Manager/Assistant cùng lúc). ' +
+      'Truyền mảng rỗng [] để gỡ hết Manager hiện tại. Không truyền field này (undefined) ' +
+      'nghĩa là KHÔNG đụng gì tới danh sách Manager đang có.',
   })
   @IsOptional()
-  @IsInt({ message: 'managerUserId phải là số nguyên' })
-  managerUserId?: number | null;
+  @IsArray({ message: 'managerUserIds phải là mảng số nguyên' })
+  @ArrayUnique({ message: 'managerUserIds không được có id trùng lặp' })
+  @IsInt({ each: true, message: 'Mỗi phần tử trong managerUserIds phải là số nguyên' })
+  managerUserIds?: number[];
 }

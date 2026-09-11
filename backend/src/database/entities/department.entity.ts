@@ -2,6 +2,7 @@ import { Entity, Column, PrimaryGeneratedColumn, CreateDateColumn, UpdateDateCol
 import { BooleanTransformer } from '../transformers/boolean.transformer';
 
 import { Customer } from './customer.entity';
+import { DepartmentManager } from './department-manager.entity';
 
 @Entity('departments')
 export class Department {
@@ -14,6 +15,11 @@ export class Department {
   @Column({ type: 'text', nullable: true })
   description: string;
 
+  // ⚠️ DEPRECATED (từ migration CreateDepartmentManagers1781800000000) - cột
+  // NÀY KHÔNG còn được đọc/ghi bởi bất kỳ logic phân quyền nào (đã chuyển
+  // sang bảng nhiều-nhiều `department_managers`, xem department-manager.entity.ts).
+  // Giữ nguyên cột trong DB (không drop) chỉ vì lý do an toàn dữ liệu lịch sử -
+  // KHÔNG dùng field này cho code mới.
   @Column({ name: 'manager_user_id', nullable: true })
   managerUserId: number;
 
@@ -33,4 +39,9 @@ export class Department {
 
   @OneToMany(() => Customer, customer => customer.department)
   customers: Customer[];
+
+  // Nguồn chân lý MỚI cho "ai đang quản lý phòng ban này" - nhiều-nhiều,
+  // thay cho managerUserId ở trên.
+  @OneToMany(() => DepartmentManager, dm => dm.department)
+  departmentManagers: DepartmentManager[];
 }

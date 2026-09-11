@@ -11,6 +11,8 @@ import { Role } from '../../common/enums/role.enum';
 import { PermissionScope } from '../../database/entities/role-permission.entity';
 import { User } from '../../database/entities/user.entity';
 import { Department } from '../../database/entities/department.entity';
+import { DepartmentManager } from '../../database/entities/department-manager.entity';
+import { DepartmentManagerHelper } from '../departments/helpers/department-manager.helper';
 import {
   DuplicatePhoneException,
   CustomerNotFoundException,
@@ -1324,12 +1326,11 @@ export class CustomersService {
 
     let callerManagedDepartmentIds: number[] = [];
     if (isDepartmentScope) {
-      const departmentRepo = this.customersRepository.manager.getRepository(Department);
-      const managed = await departmentRepo.find({
-        where: { managerUserId: callerId },
-        select: ['id'],
-      });
-      callerManagedDepartmentIds = managed.map((d) => d.id);
+      const departmentManagerRepo = this.customersRepository.manager.getRepository(DepartmentManager);
+      callerManagedDepartmentIds = await DepartmentManagerHelper.getManagedDepartmentIds(
+        departmentManagerRepo,
+        callerId,
+      );
     }
 
     const results = { success: 0, failed: 0, errors: [] as string[] };

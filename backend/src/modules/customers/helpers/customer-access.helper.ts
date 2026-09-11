@@ -11,8 +11,8 @@ import { Customer } from '../../../database/entities/customer.entity';
  *  --------------------------|----------------------------------|----------------|-------
  *  all                       | Tất cả                           | = phạm vi Xem  | Không*
  *  department                | Chỉ KH thuộc phòng ban mình quản  | = phạm vi Xem  | Không*
- *                            | lý (department.manager_user_id = |                |
- *                            | mình)                             |                |
+ *                            | lý (tồn tại dòng trong bảng       |                |
+ *                            | department_managers cho user này) |                |
  *  own                       | Chỉ KH mình tạo/làm sales chính/   | = phạm vi Xem  | Không*
  *                            | đang được gán (assignment active)  |                |
  *
@@ -59,11 +59,14 @@ export class CustomerAccessHelper {
     }
 
     // scope='department' (từ role_permissions) → lọc theo phòng ban mình
-    // quản lý. KHÔNG còn fallback cứng theo Role.MANAGER.
+    // quản lý. KHÔNG còn fallback cứng theo Role.MANAGER. Đọc bảng
+    // nhiều-nhiều `department_managers` (1 phòng ban có thể có NHIỀU
+    // Manager/Assistant cùng quản lý) - thay cho cột đơn
+    // `departments.manager_user_id` cũ (đã deprecated).
     if (scope === PermissionScope.DEPARTMENT) {
       query.andWhere(
         'customer.department_id IN ' +
-        '(SELECT d.id FROM departments d WHERE d.manager_user_id = :accessManagerId)',
+        '(SELECT dm.department_id FROM department_managers dm WHERE dm.user_id = :accessManagerId)',
         { accessManagerId: userId },
       );
       return query;
@@ -120,8 +123,9 @@ export class CustomerAccessHelper {
    * khác là kiểm tra trong bộ nhớ thay vì sinh điều kiện SQL.
    *
    * managerDepartmentIds: chỉ cần truyền khi scope === department - danh
-   * sách id phòng ban mà user này là manager_user_id (lấy 1 lần trước khi
-   * lặp qua nhiều customer, KHÔNG query lại cho từng customer).
+   * sách id phòng ban mà user này được gán quản lý (bảng nhiều-nhiều
+   * department_managers, lấy 1 lần trước khi lặp qua nhiều customer, KHÔNG
+   * query lại cho từng customer).
    */
   static canManageCustomer(
     customer: Customer,

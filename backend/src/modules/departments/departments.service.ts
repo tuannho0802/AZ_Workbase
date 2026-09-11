@@ -2,6 +2,7 @@ import { Injectable, NotFoundException, ConflictException, BadRequestException }
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, In } from 'typeorm';
 import { Department } from '../../database/entities/department.entity';
+import { DepartmentManager } from '../../database/entities/department-manager.entity';
 import { User } from '../../database/entities/user.entity';
 import { Customer } from '../../database/entities/customer.entity';
 import { Role } from '../../common/enums/role.enum';
@@ -15,6 +16,8 @@ export class DepartmentsService {
   constructor(
     @InjectRepository(Department)
     private readonly departmentRepository: Repository<Department>,
+    @InjectRepository(DepartmentManager)
+    private readonly departmentManagerRepository: Repository<DepartmentManager>,
     @InjectRepository(User)
     private readonly userRepository: Repository<User>,
     @InjectRepository(Customer)
@@ -61,9 +64,35 @@ export class DepartmentsService {
       employeesByDept.set(u.departmentId, list);
     }
 
+    // Managers (nhiều-nhiều, xem department-manager.entity.ts) - THÊM 2
+    // QUERY (không N+1: 1 query lấy hết dòng department_managers của các
+    // phòng ban này, 1 query lấy hết user liên quan) rồi JOIN ở tầng ứng
+    // dụng, CÙNG 1 pattern với employeesByDept ở trên.
+    const managerRows = await this.departmentManagerRepository.find({
+      where: { departmentId: In(deptIds) },
+    });
+    const managerUserIds = [...new Set(managerRows.map((r) => r.userId))];
+    const managerUsers = managerUserIds.length
+      ? await this.userRepository.find({
+        where: { id: In(managerUserIds) },
+        select: ['id', 'name', 'role'],
+      })
+      : [];
+    const managerUserById = new Map(managerUsers.map((u) => [u.id, u]));
+
+    const managersByDept = new Map<number, { id: number; name: string; role: string }[]>();
+    for (const row of managerRows) {
+      const u = managerUserById.get(row.userId);
+      if (!u) continue; // phòng thủ - không nên xảy ra do FK RESTRICT ở user_id
+      const list = managersByDept.get(row.departmentId) ?? [];
+      list.push({ id: u.id, name: u.name, role: u.role });
+      managersByDept.set(row.departmentId, list);
+    }
+
     return departments.map((d) => ({
       ...d,
       employees: employeesByDept.get(d.id) ?? [],
+      managers: managersByDept.get(d.id) ?? [],
     }));
   }
 
@@ -109,51 +138,73 @@ export class DepartmentsService {
       }
     }
 
-    // ⚠️ FIX PERMISSIONS.md mục 2.9 (blocker): trước đây KHÔNG có endpoint
-    // nào cho phép gán "quản lý phòng ban nào" - managerUserId chỉ sửa được
-    // thủ công qua DB. Đây là field CHỦ ĐỘNG dùng bởi CustomerAccessHelper/
-    // UsersAccessHelper (và các module khác) để tính phạm vi scope='department'
-    // - ĐÚNG CHO MỌI ROLE có permission được set scope='department' (không
-    // riêng Manager - vd Admin cấu hình 1 Assistant chỉ giới hạn ở 1 phòng
-    // ban cụ thể qua trang Phân quyền + gán managerUserId ở đây).
+    // ⚠️ FIX PERMISSIONS.md mục 2.9 (blocker, đã fix) + yêu cầu 2026-09-11
+    // (mở rộng: cho phép NHIỀU Manager/Assistant cùng quản lý 1 phòng ban,
+    // không còn giới hạn 1-1 như cột managerUserId cũ - xem
+    // department-manager.entity.ts + migration CreateDepartmentManagers).
     //
-    // Validate: user được gán PHẢI thuộc nhóm role "quản trị" (Admin/
-    // Assistant/Manager) và đang active - tránh gán nhầm 1 Employee làm
-    // "manager_user_id" (Employee về nguyên tắc CHỈ nên ở scope='own', gán
+    // managerUserIds THAY THẾ TOÀN BỘ danh sách Manager hiện tại của phòng
+    // ban này (không phải thêm/bớt từng phần) - đơn giản hoá hợp đồng API,
+    // khớp đúng cách Select mode="multiple" ở FE luôn gửi lại toàn bộ danh
+    // sách đang chọn. Không truyền field này (undefined) = không đụng gì.
+    //
+    // Validate: MỌI user trong danh sách PHẢI thuộc nhóm role "quản trị"
+    // (Admin/Assistant/Manager) và đang active - tránh gán nhầm 1 Employee
+    // làm "manager" (Employee về nguyên tắc CHỈ nên ở scope='own', gán
     // Employee làm mốc quy chiếu phòng ban cho role khác là sai ý đồ nghiệp
     // vụ, dù kỹ thuật không sai) khiến rule phân quyền theo phòng ban bị sai
-    // lệch ở MỌI module liên quan.
-    if (dto.managerUserId !== undefined) {
-      if (dto.managerUserId === null) {
-        department.managerUserId = null as any;
-      } else {
-        const managerCandidate = await this.userRepository.findOne({
-          where: { id: dto.managerUserId },
-        });
-        if (!managerCandidate) {
-          throw new NotFoundException('Không tìm thấy user để gán làm Manager phòng ban');
-        }
-        if (
-          managerCandidate.role !== Role.MANAGER &&
-          managerCandidate.role !== Role.ASSISTANT &&
-          managerCandidate.role !== Role.ADMIN
-        ) {
-          throw new BadRequestException(
-            'Chỉ có thể gán user có vai trò Admin/Assistant/Manager làm người quản lý phòng ban',
+    // lệch ở MỌI module liên quan (CustomerAccessHelper/UsersAccessHelper/
+    // LeaveRequestsService/ZkDeviceService).
+    if (dto.managerUserIds !== undefined) {
+      const managerUserIds = [...new Set(dto.managerUserIds)];
+
+      if (managerUserIds.length > 0) {
+        const candidates = await this.userRepository.find({ where: { id: In(managerUserIds) } });
+        if (candidates.length !== managerUserIds.length) {
+          const foundIds = candidates.map((u) => u.id);
+          const missing = managerUserIds.filter((uid) => !foundIds.includes(uid));
+          throw new NotFoundException(
+            `Không tìm thấy user để gán làm Manager phòng ban: ${missing.join(', ')}`,
           );
         }
-        if (!managerCandidate.isActive) {
+        const invalidRoleUser = candidates.find(
+          (u) => u.role !== Role.MANAGER && u.role !== Role.ASSISTANT && u.role !== Role.ADMIN,
+        );
+        if (invalidRoleUser) {
           throw new BadRequestException(
-            'Không thể gán Manager đang bị khoá tài khoản (isActive = false)',
+            `Chỉ có thể gán user có vai trò Admin/Assistant/Manager làm người quản lý phòng ban (user #${invalidRoleUser.id} không hợp lệ)`,
           );
         }
-        department.managerUserId = dto.managerUserId;
+        const inactiveUser = candidates.find((u) => !u.isActive);
+        if (inactiveUser) {
+          throw new BadRequestException(
+            `Không thể gán Manager đang bị khoá tài khoản (isActive = false): user #${inactiveUser.id}`,
+          );
+        }
       }
+
+      // Xoá hết rồi chèn lại trong 1 transaction - tránh trạng thái nửa vời
+      // (vd mất hết Manager cũ nhưng insert danh sách mới bị lỗi giữa chừng).
+      await this.departmentManagerRepository.manager.transaction(async (manager) => {
+        await manager.delete(DepartmentManager, { departmentId: id });
+        if (managerUserIds.length > 0) {
+          await manager.insert(
+            DepartmentManager,
+            managerUserIds.map((userId) => ({ departmentId: id, userId })),
+          );
+        }
+      });
     }
 
-    const { managerUserId, ...rest } = dto;
+    const { managerUserIds: _ignoredManagerUserIds, ...rest } = dto;
     this.departmentRepository.merge(department, rest);
-    return await this.departmentRepository.save(department);
+    const saved = await this.departmentRepository.save(department);
+
+    const currentManagerUserIds = (
+      await this.departmentManagerRepository.find({ where: { departmentId: id }, select: ['userId'] })
+    ).map((r) => r.userId);
+
+    return { ...saved, managerUserIds: currentManagerUserIds };
   }
 
   /**
