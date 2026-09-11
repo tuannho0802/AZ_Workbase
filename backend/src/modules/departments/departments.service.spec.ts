@@ -3,6 +3,7 @@ import { getRepositoryToken } from '@nestjs/typeorm';
 import { NotFoundException, BadRequestException, ConflictException } from '@nestjs/common';
 import { DepartmentsService } from './departments.service';
 import { Department } from '../../database/entities/department.entity';
+import { DepartmentManager } from '../../database/entities/department-manager.entity';
 import { User } from '../../database/entities/user.entity';
 import { Customer } from '../../database/entities/customer.entity';
 import { AuditService } from '../audit/audit.service';
@@ -17,6 +18,8 @@ describe('DepartmentsService', () => {
     create: jest.fn(),
     save: jest.fn(),
     merge: jest.fn(),
+    count: jest.fn(),
+    delete: jest.fn(),
   };
   const mockUserRepo = {
     findOne: jest.fn(),
@@ -33,14 +36,33 @@ describe('DepartmentsService', () => {
     logAction: jest.fn(),
     logActionAsync: jest.fn(),
   };
+  // ⚠️ MỚI (multi-manager) - DepartmentsService giờ inject thêm
+  // DepartmentManagerRepository (bảng nhiều-nhiều department_managers) -
+  // dùng ở findAll() (đọc danh sách managers/phòng ban) và update() (thay
+  // toàn bộ danh sách Manager qua transaction xoá-rồi-chèn lại).
+  const mockTransactionEntityManager = {
+    delete: jest.fn().mockResolvedValue({}),
+    insert: jest.fn().mockResolvedValue({}),
+  };
+  const mockDepartmentManagerRepo = {
+    find: jest.fn(),
+    manager: {
+      transaction: jest.fn((cb: any) => cb(mockTransactionEntityManager)),
+    },
+  };
 
   beforeEach(async () => {
     jest.clearAllMocks();
+    mockDepartmentManagerRepo.manager.transaction.mockImplementation((cb: any) =>
+      cb(mockTransactionEntityManager),
+    );
+    mockDepartmentManagerRepo.find.mockResolvedValue([]);
 
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         DepartmentsService,
         { provide: getRepositoryToken(Department), useValue: mockDepartmentRepo },
+        { provide: getRepositoryToken(DepartmentManager), useValue: mockDepartmentManagerRepo },
         { provide: getRepositoryToken(User), useValue: mockUserRepo },
         { provide: getRepositoryToken(Customer), useValue: mockCustomerRepo },
         { provide: AuditService, useValue: mockAuditService },
@@ -127,13 +149,17 @@ describe('DepartmentsService', () => {
     });
   });
 
-  describe('update - managerUserId (PERMISSIONS.md mục 2.9 - blocker đã fix)', () => {
-    const existingDepartment = () => ({ id: 1, name: 'Kinh doanh', managerUserId: null });
+  // ⚠️ MỚI (2026-09-11): thay cột đơn managerUserId (1-1) bằng
+  // managerUserIds (mảng, nhiều-nhiều qua bảng department_managers) - cho
+  // phép NHIỀU Manager/Assistant cùng quản lý 1 phòng ban. Xem
+  // departments.service.ts update() + department-manager.entity.ts.
+  describe('update - managerUserIds (multi-manager, thay thế managerUserId cũ)', () => {
+    const existingDepartment = () => ({ id: 1, name: 'Kinh doanh' });
 
     it('ném NotFoundException nếu phòng ban không tồn tại', async () => {
       mockDepartmentRepo.findOne.mockResolvedValue(null);
 
-      await expect(service.update(999, { managerUserId: 5 } as any)).rejects.toThrow(
+      await expect(service.update(999, { managerUserIds: [5] } as any)).rejects.toThrow(
         NotFoundException,
       );
     });
@@ -148,75 +174,134 @@ describe('DepartmentsService', () => {
       ).rejects.toThrow(ConflictException);
     });
 
-    it('KHÔNG đụng gì tới managerUserId nếu DTO không truyền field này (undefined)', async () => {
+    it('KHÔNG đụng gì tới department_managers nếu DTO không truyền managerUserIds (undefined)', async () => {
       mockDepartmentRepo.findOne.mockResolvedValueOnce(existingDepartment());
       mockDepartmentRepo.save.mockImplementation((d: any) => Promise.resolve(d));
 
       await service.update(1, { name: 'Tên mới' } as any);
 
-      expect(mockUserRepo.findOne).not.toHaveBeenCalled();
+      expect(mockUserRepo.find).not.toHaveBeenCalled();
+      expect(mockDepartmentManagerRepo.manager.transaction).not.toHaveBeenCalled();
     });
 
-    it('cho phép gỡ Manager (managerUserId = null) mà KHÔNG cần validate user', async () => {
-      mockDepartmentRepo.findOne.mockResolvedValueOnce({ ...existingDepartment(), managerUserId: 5 });
-      mockDepartmentRepo.save.mockImplementation((d: any) => Promise.resolve(d));
-
-      const result = await service.update(1, { managerUserId: null } as any);
-
-      expect(mockUserRepo.findOne).not.toHaveBeenCalled();
-      expect(result.managerUserId).toBeNull();
-    });
-
-    it('ném NotFoundException nếu managerUserId trỏ tới user không tồn tại', async () => {
+    it('cho phép gỡ HẾT Manager (managerUserIds = []) mà KHÔNG cần validate user - chỉ xoá, không insert', async () => {
       mockDepartmentRepo.findOne.mockResolvedValueOnce(existingDepartment());
-      mockUserRepo.findOne.mockResolvedValue(null);
+      mockDepartmentRepo.save.mockImplementation((d: any) => Promise.resolve(d));
+      mockDepartmentManagerRepo.find.mockResolvedValue([]); // sau khi xoá -> rỗng
 
-      await expect(service.update(1, { managerUserId: 999 } as any)).rejects.toThrow(
+      const result = await service.update(1, { managerUserIds: [] } as any);
+
+      expect(mockUserRepo.find).not.toHaveBeenCalled();
+      expect(mockTransactionEntityManager.delete).toHaveBeenCalledWith(DepartmentManager, {
+        departmentId: 1,
+      });
+      expect(mockTransactionEntityManager.insert).not.toHaveBeenCalled();
+      expect(result.managerUserIds).toEqual([]);
+    });
+
+    it('ném NotFoundException nếu 1 trong các managerUserIds trỏ tới user không tồn tại', async () => {
+      mockDepartmentRepo.findOne.mockResolvedValueOnce(existingDepartment());
+      mockUserRepo.find.mockResolvedValue([{ id: 5, role: Role.MANAGER, isActive: true }]); // thiếu id=6
+
+      await expect(service.update(1, { managerUserIds: [5, 6] } as any)).rejects.toThrow(
         NotFoundException,
       );
       expect(mockDepartmentRepo.save).not.toHaveBeenCalled();
+      expect(mockDepartmentManagerRepo.manager.transaction).not.toHaveBeenCalled();
     });
 
-    it('⚠️ ném BadRequestException nếu user được gán KHÔNG có role MANAGER (vd Employee/Admin) - chặn gán nhầm làm sai lệch phạm vi phân quyền toàn hệ thống', async () => {
+    it('⚠️ ném BadRequestException nếu 1 user được gán KHÔNG thuộc nhóm role Admin/Assistant/Manager (vd Employee) - chặn gán nhầm làm sai lệch phạm vi phân quyền toàn hệ thống', async () => {
       mockDepartmentRepo.findOne.mockResolvedValueOnce(existingDepartment());
-      mockUserRepo.findOne.mockResolvedValue({ id: 5, role: Role.EMPLOYEE, isActive: true });
+      mockUserRepo.find.mockResolvedValue([{ id: 5, role: Role.EMPLOYEE, isActive: true }]);
 
-      await expect(service.update(1, { managerUserId: 5 } as any)).rejects.toThrow(
+      await expect(service.update(1, { managerUserIds: [5] } as any)).rejects.toThrow(
         BadRequestException,
       );
       expect(mockDepartmentRepo.save).not.toHaveBeenCalled();
+      expect(mockDepartmentManagerRepo.manager.transaction).not.toHaveBeenCalled();
     });
 
-    it('⚠️ ném BadRequestException nếu Manager được gán đang bị khoá (isActive=false)', async () => {
+    it('⚠️ ném BadRequestException nếu 1 Manager được gán đang bị khoá (isActive=false)', async () => {
       mockDepartmentRepo.findOne.mockResolvedValueOnce(existingDepartment());
-      mockUserRepo.findOne.mockResolvedValue({ id: 5, role: Role.MANAGER, isActive: false });
+      mockUserRepo.find.mockResolvedValue([{ id: 5, role: Role.MANAGER, isActive: false }]);
 
-      await expect(service.update(1, { managerUserId: 5 } as any)).rejects.toThrow(
+      await expect(service.update(1, { managerUserIds: [5] } as any)).rejects.toThrow(
         BadRequestException,
       );
       expect(mockDepartmentRepo.save).not.toHaveBeenCalled();
+      expect(mockDepartmentManagerRepo.manager.transaction).not.toHaveBeenCalled();
     });
 
-    it('gán thành công khi user hợp lệ (role MANAGER, đang active)', async () => {
+    it('cho phép gán role ASSISTANT/ADMIN làm manager phòng ban (không chỉ riêng role MANAGER)', async () => {
       mockDepartmentRepo.findOne.mockResolvedValueOnce(existingDepartment());
-      mockUserRepo.findOne.mockResolvedValue({ id: 5, role: Role.MANAGER, isActive: true });
+      mockUserRepo.find.mockResolvedValue([
+        { id: 5, role: Role.ASSISTANT, isActive: true },
+        { id: 6, role: Role.ADMIN, isActive: true },
+      ]);
       mockDepartmentRepo.save.mockImplementation((d: any) => Promise.resolve(d));
+      mockDepartmentManagerRepo.find.mockResolvedValue([
+        { departmentId: 1, userId: 5 },
+        { departmentId: 1, userId: 6 },
+      ]);
 
-      const result = await service.update(1, { managerUserId: 5 } as any);
+      const result = await service.update(1, { managerUserIds: [5, 6] } as any);
 
-      expect(result.managerUserId).toBe(5);
+      expect(result.managerUserIds).toEqual([5, 6]);
+    });
+
+    it('gán thành công NHIỀU Manager cùng lúc (khác biệt cốt lõi so với managerUserId đơn 1-1 cũ): xoá hết rồi chèn lại trong 1 transaction', async () => {
+      mockDepartmentRepo.findOne.mockResolvedValueOnce(existingDepartment());
+      mockUserRepo.find.mockResolvedValue([
+        { id: 5, role: Role.MANAGER, isActive: true },
+        { id: 7, role: Role.MANAGER, isActive: true },
+      ]);
+      mockDepartmentRepo.save.mockImplementation((d: any) => Promise.resolve(d));
+      mockDepartmentManagerRepo.find.mockResolvedValue([
+        { departmentId: 1, userId: 5 },
+        { departmentId: 1, userId: 7 },
+      ]);
+
+      const result = await service.update(1, { managerUserIds: [5, 7] } as any);
+
+      expect(mockDepartmentManagerRepo.manager.transaction).toHaveBeenCalledTimes(1);
+      expect(mockTransactionEntityManager.delete).toHaveBeenCalledWith(DepartmentManager, {
+        departmentId: 1,
+      });
+      expect(mockTransactionEntityManager.insert).toHaveBeenCalledWith(DepartmentManager, [
+        { departmentId: 1, userId: 5 },
+        { departmentId: 1, userId: 7 },
+      ]);
+      expect(result.managerUserIds).toEqual([5, 7]);
       expect(mockDepartmentRepo.save).toHaveBeenCalled();
     });
 
-    it('KHÔNG truyền managerUserId vào merge() (đã destructure riêng) - tránh TypeORM merge đè nhầm giá trị đã validate', async () => {
+    it('tự loại id trùng lặp trong managerUserIds trước khi validate/insert (dedupe)', async () => {
       mockDepartmentRepo.findOne.mockResolvedValueOnce(existingDepartment());
-      mockUserRepo.findOne.mockResolvedValue({ id: 5, role: Role.MANAGER, isActive: true });
+      mockUserRepo.find.mockResolvedValue([{ id: 5, role: Role.MANAGER, isActive: true }]);
       mockDepartmentRepo.save.mockImplementation((d: any) => Promise.resolve(d));
+      mockDepartmentManagerRepo.find.mockResolvedValue([{ departmentId: 1, userId: 5 }]);
 
-      await service.update(1, { managerUserId: 5, name: 'Tên mới' } as any);
+      await service.update(1, { managerUserIds: [5, 5, 5] } as any);
+
+      // find() để validate user chỉ nên nhận đúng 1 id (đã dedupe), không phải 3
+      expect(mockUserRepo.find).toHaveBeenCalledWith(
+        expect.objectContaining({ where: { id: expect.anything() } }),
+      );
+      expect(mockTransactionEntityManager.insert).toHaveBeenCalledWith(DepartmentManager, [
+        { departmentId: 1, userId: 5 },
+      ]);
+    });
+
+    it('KHÔNG truyền managerUserIds vào merge() (đã destructure riêng) - tránh TypeORM merge đè nhầm giá trị đã validate', async () => {
+      mockDepartmentRepo.findOne.mockResolvedValueOnce(existingDepartment());
+      mockUserRepo.find.mockResolvedValue([{ id: 5, role: Role.MANAGER, isActive: true }]);
+      mockDepartmentRepo.save.mockImplementation((d: any) => Promise.resolve(d));
+      mockDepartmentManagerRepo.find.mockResolvedValue([{ departmentId: 1, userId: 5 }]);
+
+      await service.update(1, { managerUserIds: [5], name: 'Tên mới' } as any);
 
       const mergeArg = mockDepartmentRepo.merge.mock.calls[0][1];
-      expect(mergeArg).not.toHaveProperty('managerUserId');
+      expect(mergeArg).not.toHaveProperty('managerUserIds');
       expect(mergeArg).toEqual(expect.objectContaining({ name: 'Tên mới' }));
     });
   });

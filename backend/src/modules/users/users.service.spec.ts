@@ -83,7 +83,11 @@ describe('UsersService - Approval workflow (đăng ký công khai chờ duyệt)
   // giả chạy callback với 1 `manager` giả có `.query()` - đủ để test hành
   // vi gọi transaction đúng cách mà không cần DB thật.
   const mockTransactionManager = {
-    query: jest.fn().mockResolvedValue(undefined),
+    // ⚠️ hardDeleteUser() giờ CÓ 2 lệnh SELECT (department_managers) đọc
+    // kết quả trả về (`.length`, `.map()`) - mặc định phải là mảng rỗng,
+    // KHÔNG phải `undefined` (bản cũ chỉ toàn UPDATE/DELETE không đọc kết
+    // quả nên `undefined` không sao, giờ khác).
+    query: jest.fn().mockResolvedValue([]),
   };
   const mockDataSource = {
     transaction: jest.fn(async (cb: any) => cb(mockTransactionManager)),
@@ -93,6 +97,18 @@ describe('UsersService - Approval workflow (đăng ký công khai chờ duyệt)
   // mục 2.2/2.8) - trước đây spec này thiếu mock nên toàn bộ suite fail khi
   // Nest không resolve được dependency thứ 2 của constructor.
   const mockDepartmentsRepo = {
+    find: jest.fn(),
+    findOne: jest.fn(),
+    // ⚠️ Đã chuyển từ cột đơn departments.manager_user_id sang bảng
+    // nhiều-nhiều department_managers - UsersAccessHelper.getManagedDepartmentIds/
+    // canManageUser() giờ lấy DepartmentManagerRepository qua
+    // `departmentRepo.manager.getRepository(DepartmentManager)` (đúng pattern
+    // dùng sẵn ở customers.service.ts), KHÔNG còn tự query Department.find({managerUserId}).
+    manager: { getRepository: jest.fn() },
+  };
+  // Repo giả cho bảng department_managers - trả về DepartmentManagerHelper
+  // khi mockDepartmentsRepo.manager.getRepository(DepartmentManager) được gọi.
+  const mockDepartmentManagerRepo = {
     find: jest.fn(),
     findOne: jest.fn(),
   };
@@ -148,6 +164,7 @@ describe('UsersService - Approval workflow (đăng ký công khai chờ duyệt)
     mockQueryBuilder.getMany.mockResolvedValue([]);
     mockQueryBuilder.execute.mockResolvedValue(undefined);
     mockRoleRepo.exists.mockResolvedValue(true);
+    mockDepartmentsRepo.manager.getRepository.mockReturnValue(mockDepartmentManagerRepo);
     mockPositionsService.findOne.mockReset();
     mockUploadsService.signAvatarGetUrl.mockResolvedValue('https://signed-get-url.example/avatar.webp');
     mockUploadsService.getLimits.mockResolvedValue({
@@ -157,7 +174,7 @@ describe('UsersService - Approval workflow (đăng ký công khai chờ duyệt)
     });
     mockUploadsService.assertUploadedSizeWithinLimit.mockResolvedValue(undefined);
     mockUploadsService.deleteAvatar.mockResolvedValue(undefined);
-    mockTransactionManager.query.mockResolvedValue(undefined);
+    mockTransactionManager.query.mockResolvedValue([]);
     mockDataSource.transaction.mockImplementation(async (cb: any) => cb(mockTransactionManager));
 
     const module: TestingModule = await Test.createTestingModule({
@@ -346,13 +363,13 @@ describe('UsersService - Approval workflow (đăng ký công khai chờ duyệt)
     // phòng ban mình quản lý - khoá lại hành vi này bằng spec, trước đây
     // code đã đúng nhưng hoàn toàn chưa có test nào che phủ nhánh Manager.
     it('MANAGER: chỉ lọc user đăng ký vào phòng ban mình quản lý (departmentId IN managedIds)', async () => {
-      mockDepartmentsRepo.find.mockResolvedValue([{ id: 2 }, { id: 5 }]);
+      mockDepartmentManagerRepo.find.mockResolvedValue([{ departmentId: 2 }, { departmentId: 5 }]);
       mockUsersRepo.find.mockResolvedValue([]);
 
       await service.findPendingApprovals(7, Role.MANAGER, 'department');
 
-      expect(mockDepartmentsRepo.find).toHaveBeenCalledWith(
-        expect.objectContaining({ where: { managerUserId: 7 } }),
+      expect(mockDepartmentManagerRepo.find).toHaveBeenCalledWith(
+        expect.objectContaining({ where: { userId: 7 } }),
       );
       expect(mockUsersRepo.find).toHaveBeenCalledWith(
         expect.objectContaining({
@@ -362,7 +379,7 @@ describe('UsersService - Approval workflow (đăng ký công khai chờ duyệt)
     });
 
     it('MANAGER chưa quản lý phòng ban nào: trả về [] NGAY, không gọi usersRepository.find (tránh lộ toàn bộ danh sách)', async () => {
-      mockDepartmentsRepo.find.mockResolvedValue([]);
+      mockDepartmentManagerRepo.find.mockResolvedValue([]);
 
       const result = await service.findPendingApprovals(7, Role.MANAGER, 'department');
 
@@ -441,7 +458,7 @@ describe('UsersService - Approval workflow (đăng ký công khai chờ duyệt)
     // phòng ban / đổi departmentId sang phòng ban không quản lý).
     it('MANAGER duyệt user đăng ký ĐÚNG phòng ban mình quản lý -> thành công', async () => {
       mockUsersRepo.findOne.mockResolvedValue({ ...pendingUser(), departmentId: 2 });
-      mockDepartmentsRepo.find.mockResolvedValue([{ id: 2 }]);
+      mockDepartmentManagerRepo.find.mockResolvedValue([{ departmentId: 2 }]);
       mockUsersRepo.save.mockImplementation((u: any) => Promise.resolve(u));
 
       const result = await service.approveUser(10, 7, Role.MANAGER, 'department');
@@ -451,7 +468,7 @@ describe('UsersService - Approval workflow (đăng ký công khai chờ duyệt)
 
     it('MANAGER duyệt user đăng ký SAI phòng ban (không quản lý) -> ForbiddenException, KHÔNG được save', async () => {
       mockUsersRepo.findOne.mockResolvedValue({ ...pendingUser(), departmentId: 99 });
-      mockDepartmentsRepo.find.mockResolvedValue([{ id: 2 }]); // chỉ quản lý phòng 2, không phải 99
+      mockDepartmentManagerRepo.find.mockResolvedValue([{ departmentId: 2 }]); // chỉ quản lý phòng 2, không phải 99
 
       await expect(service.approveUser(10, 7, Role.MANAGER, 'department')).rejects.toThrow(ForbiddenException);
       expect(mockUsersRepo.save).not.toHaveBeenCalled();
@@ -459,7 +476,7 @@ describe('UsersService - Approval workflow (đăng ký công khai chờ duyệt)
 
     it('MANAGER duyệt đúng phòng ban NHƯNG override sang phòng ban không quản lý -> ForbiddenException', async () => {
       mockUsersRepo.findOne.mockResolvedValue({ ...pendingUser(), departmentId: 2 });
-      mockDepartmentsRepo.find.mockResolvedValue([{ id: 2 }]); // chỉ quản lý phòng 2
+      mockDepartmentManagerRepo.find.mockResolvedValue([{ departmentId: 2 }]); // chỉ quản lý phòng 2
 
       await expect(
         service.approveUser(10, 7, Role.MANAGER, 'department', { departmentId: 99 }),
@@ -469,7 +486,7 @@ describe('UsersService - Approval workflow (đăng ký công khai chờ duyệt)
 
     it('MANAGER duyệt user CHƯA có departmentId (đăng ký không chọn phòng ban) -> ForbiddenException (không có gì để đối chiếu quyền quản lý)', async () => {
       mockUsersRepo.findOne.mockResolvedValue({ ...pendingUser(), departmentId: null });
-      mockDepartmentsRepo.find.mockResolvedValue([{ id: 2 }]);
+      mockDepartmentManagerRepo.find.mockResolvedValue([{ departmentId: 2 }]);
 
       await expect(service.approveUser(10, 7, Role.MANAGER, 'department')).rejects.toThrow(ForbiddenException);
     });
@@ -524,7 +541,7 @@ describe('UsersService - Approval workflow (đăng ký công khai chờ duyệt)
     // chối được tài khoản đăng ký đúng phòng ban mình quản lý.
     it('MANAGER từ chối user đăng ký ĐÚNG phòng ban mình quản lý -> thành công', async () => {
       mockUsersRepo.findOne.mockResolvedValue({ ...pendingUser(), departmentId: 2 });
-      mockDepartmentsRepo.find.mockResolvedValue([{ id: 2 }]);
+      mockDepartmentManagerRepo.find.mockResolvedValue([{ departmentId: 2 }]);
       mockUsersRepo.save.mockImplementation((u: any) => Promise.resolve(u));
 
       const result = await service.rejectUser(11, 7, Role.MANAGER, 'department', 'Không đủ hồ sơ');
@@ -534,7 +551,7 @@ describe('UsersService - Approval workflow (đăng ký công khai chờ duyệt)
 
     it('MANAGER từ chối user đăng ký SAI phòng ban (không quản lý) -> ForbiddenException, KHÔNG được save', async () => {
       mockUsersRepo.findOne.mockResolvedValue({ ...pendingUser(), departmentId: 99 });
-      mockDepartmentsRepo.find.mockResolvedValue([{ id: 2 }]);
+      mockDepartmentManagerRepo.find.mockResolvedValue([{ departmentId: 2 }]);
 
       await expect(service.rejectUser(11, 7, Role.MANAGER, 'department', 'lý do')).rejects.toThrow(
         ForbiddenException,
@@ -709,9 +726,15 @@ describe('UsersService - Approval workflow (đăng ký công khai chờ duyệt)
     it('Root Admin gỡ Root Admin của người khác NHƯNG đó là Root Admin cuối cùng -> ForbiddenException', async () => {
       mockUsersRepo.findOne.mockResolvedValue({ id: 2, role: Role.ADMIN, isRootAdmin: true, departmentId: null });
       mockUsersRepo.count.mockResolvedValue(1); // chỉ còn đúng 1 Root Admin (chính là user#2)
+      // ⚠️ Đổi isRootAdmin giờ BẮT BUỘC currentPassword (xác nhận mật khẩu
+      // của chính Root Admin đang thao tác) - xem users.service.ts. Test
+      // này chỉ nhắm vào rule "Root Admin cuối cùng", nên phải qua được
+      // bước xác thực mật khẩu TRƯỚC để chạm đúng nhánh cần test.
+      const hashed = await bcrypt.hash('MatKhauDung', 10);
+      mockQueryBuilder.getOne.mockResolvedValue({ id: 1, password: hashed });
 
       await expect(
-        service.update(2, { isRootAdmin: false } as any, 1, Role.ADMIN, undefined, true),
+        service.update(2, { isRootAdmin: false, currentPassword: 'MatKhauDung' } as any, 1, Role.ADMIN, undefined, true),
       ).rejects.toThrow(ForbiddenException);
       expect(mockUsersRepo.save).not.toHaveBeenCalled();
     });
@@ -721,8 +744,10 @@ describe('UsersService - Approval workflow (đăng ký công khai chờ duyệt)
       mockUsersRepo.findOne.mockResolvedValue(user);
       mockUsersRepo.count.mockResolvedValue(2); // còn Root Admin khác
       mockUsersRepo.save.mockImplementation((entity: any) => Promise.resolve(entity));
+      const hashed = await bcrypt.hash('MatKhauDung', 10);
+      mockQueryBuilder.getOne.mockResolvedValue({ id: 1, password: hashed });
 
-      await service.update(2, { isRootAdmin: false } as any, 1, Role.ADMIN, undefined, true);
+      await service.update(2, { isRootAdmin: false, currentPassword: 'MatKhauDung' } as any, 1, Role.ADMIN, undefined, true);
 
       expect(mockUsersRepo.save).toHaveBeenCalledWith(expect.objectContaining({ isRootAdmin: false }));
     });
