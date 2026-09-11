@@ -986,3 +986,5 @@ mini chung để dễ nhìn hơn là tách ra như vậy"). Người dùng đã 
 - Frontend: `npx tsc --noEmit` sạch (0 lỗi mới). `npm run build` (Next.js 16 Turbopack): **sạch hoàn
   toàn**, đủ 27 route (bao gồm `/attendance-device`).
 - Người dùng đã tự test trực tiếp trên UI thật và xác nhận ổn ("tôi test ổn rồi").
+
+Now [deploy]
