@@ -37,22 +37,18 @@ export class CustomerAccessHelper {
     userRole: string,
     scope?: string | null,
   ): SelectQueryBuilder<any> {
-    // Admin luôn thấy tất cả — lối thoát hiểm tuyệt đối
+    // Admin luôn thấy tất cả — NGOẠI LỆ DUY NHẤT, không dựa vào scope.
     if (userRole === Role.ADMIN) return query;
 
-    // scope='all' hoặc fallback: ASSISTANT không có scope → thấy tất cả
-    if (
-      scope === PermissionScope.ALL ||
-      (!scope && userRole === Role.ASSISTANT)
-    ) {
+    // scope='all' (từ role_permissions) → thấy tất cả. KHÔNG còn fallback
+    // cứng theo Role.ASSISTANT - hành vi hoàn toàn do role_permissions quyết định.
+    if (scope === PermissionScope.ALL) {
       return query;
     }
 
-    // scope='department' hoặc fallback: MANAGER không có scope → lọc theo phòng ban
-    if (
-      scope === PermissionScope.DEPARTMENT ||
-      (!scope && userRole === Role.MANAGER)
-    ) {
+    // scope='department' (từ role_permissions) → lọc theo phòng ban mình
+    // quản lý. KHÔNG còn fallback cứng theo Role.MANAGER.
+    if (scope === PermissionScope.DEPARTMENT) {
       query.andWhere(
         'customer.department_id IN ' +
         '(SELECT d.id FROM departments d WHERE d.manager_user_id = :accessManagerId)',
@@ -124,15 +120,9 @@ export class CustomerAccessHelper {
   ): boolean {
     if (userRole === Role.ADMIN) return true;
 
-    if (
-      scope === PermissionScope.ALL ||
-      (!scope && userRole === Role.ASSISTANT)
-    ) return true;
+    if (scope === PermissionScope.ALL) return true;
 
-    if (
-      scope === PermissionScope.DEPARTMENT ||
-      (!scope && userRole === Role.MANAGER)
-    ) {
+    if (scope === PermissionScope.DEPARTMENT) {
       return (
         customer.departmentId != null &&
         managerDepartmentIds.includes(customer.departmentId)

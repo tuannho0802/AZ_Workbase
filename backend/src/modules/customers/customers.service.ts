@@ -1315,20 +1315,12 @@ export class CustomersService {
     // Removed department check for bulk assign as visibility is strictly owned
     // Managers and Assistants can assign customers they own to anyone.
 
-    // ⚠️ FIX BUG THẬT (rà soát dynamic RBAC, cùng loại bug đã sửa ở
-    // findAll/getStats*/getAssigned...): trước đây so sánh CỨNG
-    // `callerRole === Role.MANAGER` để quyết định có lấy danh sách phòng
-    // ban quản lý hay không - "mù" trước role TUỲ CHỈNH được cấp
-    // `customers.assign` scope='department' (vd role "team_lead" mới tạo).
-    // Giờ dùng đúng `scope` PermissionGuard đã tra từ role_permissions,
-    // fallback về role hệ thống cũ khi thiếu scope (route cũ/role hệ thống
-    // không có cấu hình override) - khớp đúng cách applyViewFilter() đang
-    // làm.
-    const isDepartmentScope =
-      scope === PermissionScope.DEPARTMENT || (!scope && callerRole === Role.MANAGER);
-    const isAllScope =
-      scope === PermissionScope.ALL ||
-      (!scope && (callerRole === Role.ADMIN || callerRole === Role.ASSISTANT));
+    // Thuần theo `scope` PermissionGuard đã tra từ role_permissions - KHÔNG
+    // còn fallback cứng theo Role.MANAGER/ASSISTANT. Ngoại lệ duy nhất là
+    // Role.ADMIN (đã tính trong isAllScope bên dưới, đồng bộ pattern với
+    // các nơi khác giữ Admin làm lối thoát hiểm tường minh).
+    const isDepartmentScope = scope === PermissionScope.DEPARTMENT;
+    const isAllScope = scope === PermissionScope.ALL || callerRole === Role.ADMIN;
 
     let callerManagedDepartmentIds: number[] = [];
     if (isDepartmentScope) {
@@ -1551,26 +1543,12 @@ export class CustomersService {
       }),
     );
 
-    // ⚠️ FIX BUG THẬT (rà soát dynamic RBAC): trước đây if/else hardcode
-    // thẳng theo `userRole` (Role.ADMIN/ASSISTANT/MANAGER), hoàn toàn không
-    // đọc `scope` - dù `PermissionGuard` đã tra đúng scope thật từ
-    // role_permissions và Controller đã truyền xuống, hàm này bỏ qua, luôn
-    // fallback về hành vi role cứng. Hậu quả: Admin gán scope='all' cho 1
-    // role bất kỳ (kể cả role hệ thống như Employee) qua trang Phân quyền
-    // KHÔNG có tác dụng gì ở tab "Có thể chia" của Chia Data - đúng bug
-    // trong ảnh chụp màn hình (Employee được set Toàn bộ nhưng vẫn chỉ
-    // thấy đúng 3 khách của mình). Sửa để cùng 1 fallback semantics với
-    // CustomerAccessHelper.applyViewFilter() (role hệ thống không có dòng
-    // role_permissions tương ứng vẫn hoạt động y hệt trước - an toàn).
-    if (
-      scope === PermissionScope.ALL ||
-      (!scope && (userRole === Role.ADMIN || userRole === Role.ASSISTANT))
-    ) {
+    // Thuần theo `scope` PermissionGuard đã tra từ role_permissions - KHÔNG
+    // còn fallback cứng theo Role.ASSISTANT/MANAGER. Ngoại lệ duy nhất là
+    // Role.ADMIN.
+    if (scope === PermissionScope.ALL || userRole === Role.ADMIN) {
       // Xem toàn bộ pool chưa gán - không lọc gì thêm.
-    } else if (
-      scope === PermissionScope.DEPARTMENT ||
-      (!scope && userRole === Role.MANAGER)
-    ) {
+    } else if (scope === PermissionScope.DEPARTMENT) {
       // Chỉ thấy KH chưa Primary trong phạm vi phòng ban mình quản lý,
       // HOẶC KH mà chính mình đang là Primary (không phân biệt phòng ban -
       // họ đã là chủ sở hữu chính thì luôn thấy được, giống mọi role khác).

@@ -315,10 +315,8 @@ export class ZkDeviceService {
   ): Promise<User> {
     const user = await this.userRepo.findOneByOrFail({ id: userId });
 
-    // Fallback: nếu scope chưa được truyền (route cũ) thì dựa vào role cứng
-    const isDeptScope =
-      scope === PermissionScope.DEPARTMENT ||
-      (!scope && callerRole === Role.MANAGER);
+    // Thuần theo scope từ role_permissions - không fallback cứng theo Role.MANAGER.
+    const isDeptScope = scope === PermissionScope.DEPARTMENT;
 
     if (callerRole !== Role.ADMIN && scope !== PermissionScope.ALL && isDeptScope) {
       const managedIds = await this.getManagedDepartmentIds(callerId);
@@ -350,10 +348,8 @@ export class ZkDeviceService {
       throw new NotFoundException(`Không tìm thấy nhân viên id=${userId}`);
     }
 
-    // Fallback: nếu scope chưa được truyền (route cũ) thì dựa vào role cứng
-    const isDeptScope =
-      scope === PermissionScope.DEPARTMENT ||
-      (!scope && callerRole === Role.MANAGER);
+    // Thuần theo scope từ role_permissions - không fallback cứng theo Role.MANAGER.
+    const isDeptScope = scope === PermissionScope.DEPARTMENT;
 
     if (callerRole !== Role.ADMIN && scope !== PermissionScope.ALL && isDeptScope) {
       const managedIds = await this.getManagedDepartmentIds(callerId);
@@ -412,10 +408,8 @@ export class ZkDeviceService {
       qb.andWhere('log.recordTime <= :to', { to: `${to} 23:59:59` });
     }
 
-    // Fallback: scope chưa được truyền từ controller cũ → dựa vào role cứng
-    const isDeptScope =
-      scope === PermissionScope.DEPARTMENT ||
-      (!scope && viewerRole === Role.MANAGER);
+    // Thuần theo scope từ role_permissions - không fallback cứng theo Role.MANAGER.
+    const isDeptScope = scope === PermissionScope.DEPARTMENT;
 
     if (viewerRole !== Role.ADMIN && scope !== PermissionScope.ALL && isDeptScope) {
       const managedIds = await this.getManagedDepartmentIds(viewerId);
@@ -578,10 +572,8 @@ export class ZkDeviceService {
       });
     }
 
-    // Fallback: scope chưa được truyền từ controller cũ → dựa vào role cứng
-    const isDeptScopeSummary =
-      scope === PermissionScope.DEPARTMENT ||
-      (!scope && viewerRole === Role.MANAGER);
+    // Thuần theo scope từ role_permissions - không fallback cứng theo Role.MANAGER.
+    const isDeptScopeSummary = scope === PermissionScope.DEPARTMENT;
 
     if (viewerRole !== Role.ADMIN && scope !== PermissionScope.ALL && isDeptScopeSummary) {
       const managedIds = await this.getManagedDepartmentIds(viewerId);

@@ -4,6 +4,7 @@ import { Repository } from 'typeorm';
 import { Customer } from '../../database/entities/customer.entity';
 import { CustomerGroupMembership } from '../../database/entities/customer-group-membership.entity';
 import { Role } from '../../common/enums/role.enum';
+import { PermissionScope } from '../../database/entities/role-permission.entity';
 import { CustomerAccessHelper } from '../customers/helpers/customer-access.helper';
 import { getReportPeriodRange, getNowVn } from '../../common/utils/date-vn.util';
 import { QueryReportDto } from './dto/query-report.dto';
@@ -109,7 +110,12 @@ export class ReportsService {
 
   // ═══════════════════════════ DOANH THU (TIỀN) ═══════════════════════════
 
-  async getRevenueReport(query: QueryReportDto, viewerId: number, viewerRole: string) {
+  async getRevenueReport(
+    query: QueryReportDto,
+    viewerId: number,
+    viewerRole: string,
+    scope?: string | null,
+  ) {
     const { from, to } = this.resolveRange(query);
 
     const baseQb = this.customerRepo
@@ -118,7 +124,7 @@ export class ReportsService {
       .leftJoin('customer.salesUser', 'salesUser')
       .leftJoin('customer.department', 'department')
       .andWhere('deposit.depositDate BETWEEN :from AND :to', { from, to });
-    CustomerAccessHelper.applyViewFilter(baseQb, viewerId, viewerRole);
+    CustomerAccessHelper.applyViewFilter(baseQb, viewerId, viewerRole, scope);
 
     // ── Cá nhân ──
     const personalQb = baseQb
@@ -131,11 +137,12 @@ export class ReportsService {
       .addGroupBy('salesUser.name')
       .orderBy('amount', 'DESC');
 
-    if (viewerRole === Role.EMPLOYEE) {
-      // Nhân viên CHỈ thấy số của CHÍNH MÌNH ở mục "Cá nhân" - dù
+    if (scope === PermissionScope.OWN) {
+    // scope='own' - CHỈ thấy số của CHÍNH MÌNH ở mục "Cá nhân" - dù
       // applyViewFilter có thể cho họ THẤY (view) vài khách hàng được gán
       // qua customer_assignments mà salesUserId không phải họ, báo cáo
-      // "Cá nhân" không nên lộ số của người khác qua đường đó.
+      // "Cá nhân" không nên lộ số của người khác qua đường đó. Thuần theo
+      // scope - không còn hardcode Role.EMPLOYEE.
       personalQb.andWhere('customer.salesUserId = :selfId', { selfId: viewerId });
     }
 
@@ -148,10 +155,10 @@ export class ReportsService {
       amount: Number(r.amount) || 0,
     }));
 
-    // ── Phòng ban (Employee KHÔNG có mục này) ──
+    // ── Phòng ban (scope='own' KHÔNG có mục này - thuần theo scope) ──
     let department: { departmentId: number; departmentName: string; amount: number }[] | null =
       null;
-    if (viewerRole !== Role.EMPLOYEE) {
+    if (scope !== PermissionScope.OWN) {
       const departmentRaw = await baseQb
         .clone()
         .select('customer.departmentId', 'departmentId')
@@ -169,9 +176,9 @@ export class ReportsService {
       }));
     }
 
-    // ── Tổng tất cả (CHỈ Admin/Assistant - xem bảng phân quyền ở đầu file) ──
+    // ── Tổng tất cả (scope='all', hoặc Admin - ngoại lệ duy nhất) ──
     let total: number | null = null;
-    if (viewerRole === Role.ADMIN || viewerRole === Role.ASSISTANT) {
+    if (scope === PermissionScope.ALL || viewerRole === Role.ADMIN) {
       const totalRaw = await baseQb.clone().select('SUM(deposit.amount)', 'total').getRawOne();
       total = Number(totalRaw?.total) || 0;
     }
@@ -199,7 +206,12 @@ export class ReportsService {
    * chốt trong kỳ bị loại nhầm khỏi closedCustomers vì WHERE ngoài lọc theo
    * createdAt.
    */
-  async getCustomerReport(query: QueryReportDto, viewerId: number, viewerRole: string) {
+  async getCustomerReport(
+    query: QueryReportDto,
+    viewerId: number,
+    viewerRole: string,
+    scope?: string | null,
+  ) {
     const { from, to, fromUtc, toUtc } = this.resolveRange(query);
 
     // ── totalCustomers + closedCustomers (cùng 1 bảng customers) ──
@@ -207,7 +219,7 @@ export class ReportsService {
       .createQueryBuilder('customer')
       .leftJoin('customer.salesUser', 'salesUser')
       .leftJoin('customer.department', 'department');
-    CustomerAccessHelper.applyViewFilter(mainQb, viewerId, viewerRole);
+    CustomerAccessHelper.applyViewFilter(mainQb, viewerId, viewerRole, scope);
 
     // ⚠️ FIX bug lệch giờ: `customer.createdAt` là cột datetime DO DB TỰ SINH
     // (CreateDateColumn, đã xác nhận là UTC THẬT - xem giải thích đầy đủ ở

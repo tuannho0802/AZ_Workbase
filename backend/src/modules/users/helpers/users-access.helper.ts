@@ -5,19 +5,18 @@ import { Repository } from 'typeorm';
 import { Department } from '../../../database/entities/department.entity';
 
 /**
- * Bảng phân quyền module Users - PERMISSIONS.md mục 2.2 (dựng cùng pattern
- * `CustomerAccessHelper` theo mục 1, quy tắc kỹ thuật #2 và #4: "1 nguồn áp
- * filter duy nhất", "module mới có khái niệm phòng ban thì viết 1 helper
- * riêng, không rải điều kiện role khắp nơi"):
+ * Phân quyền module Users - hoàn toàn dựa vào `scope` (own/department/all)
+ * mà `PermissionGuard` tra được từ bảng `role_permissions`, KHÔNG còn
+ * hardcode theo `Role` enum. NGOẠI LỆ DUY NHẤT: `Role.ADMIN` luôn thấy/
+ * quản lý tất cả bất kể `role_permissions` đang cấu hình gì (đồng bộ với
+ * lối thoát hiểm ở `PermissionGuard`/`RolesService.getMyPermissions()`).
  *
- *  Role       | Xem (View)                          | Sửa (trừ xoá - không có xoá user)
- *  -----------|--------------------------------------|--------------------------------
- *  ADMIN      | Tất cả                               | Tất cả
- *  ASSISTANT  | Tất cả (bất chấp phòng ban)           | Tất cả
- *  MANAGER    | Chỉ user thuộc phòng ban mình quản lý | = phạm vi Xem
- *             | (department.manager_user_id = mình)  |
- *             | + LUÔN xem được CHÍNH MÌNH            |
- *  EMPLOYEE   | CHỈ chính mình (self)                 | = phạm vi Xem (self)
+ * Với 4 role hệ thống, `role_permissions` được seed mặc định đúng ý đồ gốc
+ * (Assistant=all, Manager=department, Employee=own cho `users.view`/
+ * `users.manage`) - nhưng đó chỉ là DỮ LIỆU MẶC ĐỊNH, Admin có thể đổi qua
+ * trang "Phân quyền" bất cứ lúc nào, kể cả cho role hệ thống (xem
+ * PERMISSIONS.md mục 1.7). Hàm ở đây không "biết" role nào nghĩa là gì -
+ * chỉ đọc đúng giá trị `scope` được truyền vào từ Controller.
  *
  * Không có khái niệm "Xoá" ở module này (không có endpoint xoá user - chỉ
  * có isActive=false qua update()).
@@ -36,23 +35,20 @@ export class UsersAccessHelper {
     viewerRole: string,
     scope?: string | null,
   ): SelectQueryBuilder<any> {
-    // Admin luôn thấy tất cả — lối thoát hiểm tuyệt đối
+    // Admin luôn thấy tất cả — NGOẠI LỆ DUY NHẤT, không dựa vào scope.
     if (viewerRole === Role.ADMIN) return query;
 
-    // scope='all' hoặc fallback: ASSISTANT không có scope → thấy tất cả
-    if (
-      scope === PermissionScope.ALL ||
-      (!scope && viewerRole === Role.ASSISTANT)
-    ) {
+    // scope='all' (từ role_permissions - đúng cho Assistant/role tuỳ chỉnh
+    // được cấp scope='all') → thấy tất cả. KHÔNG còn fallback cứng theo
+    // Role.ASSISTANT - hành vi hoàn toàn do bảng role_permissions quyết định.
+    if (scope === PermissionScope.ALL) {
       return query;
     }
 
-    // scope='department' hoặc fallback: MANAGER không có scope → lọc theo phòng ban
-    // + luôn thấy chính mình
-    if (
-      scope === PermissionScope.DEPARTMENT ||
-      (!scope && viewerRole === Role.MANAGER)
-    ) {
+    // scope='department' (từ role_permissions) → lọc theo phòng ban mình
+    // quản lý + luôn thấy chính mình. KHÔNG còn fallback cứng theo
+    // Role.MANAGER.
+    if (scope === PermissionScope.DEPARTMENT) {
       query.andWhere(
         '(user.department_id IN ' +
         '(SELECT d.id FROM departments d WHERE d.manager_user_id = :accessManagerId)' +
@@ -84,17 +80,13 @@ export class UsersAccessHelper {
   ): Promise<boolean> {
     if (viewerRole === Role.ADMIN) return true;
 
-    // scope='all' hoặc fallback: ASSISTANT không có scope → quản lý tất cả
-    if (
-      scope === PermissionScope.ALL ||
-      (!scope && viewerRole === Role.ASSISTANT)
-    ) return true;
+    // scope='all' (role_permissions) → quản lý tất cả. Không còn fallback
+    // cứng theo Role.ASSISTANT.
+    if (scope === PermissionScope.ALL) return true;
 
-    // scope='department' hoặc fallback: MANAGER không có scope → kiểm tra phòng ban
-    if (
-      scope === PermissionScope.DEPARTMENT ||
-      (!scope && viewerRole === Role.MANAGER)
-    ) {
+    // scope='department' (role_permissions) → kiểm tra phòng ban. Không
+    // còn fallback cứng theo Role.MANAGER.
+    if (scope === PermissionScope.DEPARTMENT) {
       if (targetId === viewerId) return true; // Manager luôn tự sửa được chính mình
       if (targetDepartmentId == null) return false;
       const dept = await departmentRepo.findOne({

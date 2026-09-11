@@ -291,13 +291,9 @@ export class LeaveRequestsService {
    * Danh sách đơn đang chờ duyệt MÀ VIEWER CÓ QUYỀN DUYỆT - theo scope.
    */
   async findPending(viewerId: number, viewerRole: string, scope?: string | null) {
-    // Fallback: MANAGER không có scope vẫn được xem (backward-compat)
-    const isDeptScope =
-      scope === PermissionScope.DEPARTMENT ||
-      (!scope && viewerRole === Role.MANAGER);
-    const isAllScope =
-      scope === PermissionScope.ALL ||
-      (!scope && viewerRole === Role.ASSISTANT);
+    // Thuần theo scope từ role_permissions - không fallback cứng theo Role.
+    const isDeptScope = scope === PermissionScope.DEPARTMENT;
+    const isAllScope = scope === PermissionScope.ALL;
 
     if (viewerRole !== Role.ADMIN && !isAllScope && !isDeptScope) return [];
 
@@ -334,13 +330,9 @@ export class LeaveRequestsService {
    * cùng bộ lọc scope với findPending().
    */
   async findHistory(viewerId: number, viewerRole: string, scope?: string | null) {
-    // Fallback: MANAGER không có scope vẫn được xem (backward-compat)
-    const isDeptScopeH =
-      scope === PermissionScope.DEPARTMENT ||
-      (!scope && viewerRole === Role.MANAGER);
-    const isAllScopeH =
-      scope === PermissionScope.ALL ||
-      (!scope && viewerRole === Role.ASSISTANT);
+    // Thuần theo scope từ role_permissions - không fallback cứng theo Role.
+    const isDeptScopeH = scope === PermissionScope.DEPARTMENT;
+    const isAllScopeH = scope === PermissionScope.ALL;
 
     if (viewerRole !== Role.ADMIN && !isAllScopeH && !isDeptScopeH) return [];
 
