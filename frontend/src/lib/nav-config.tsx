@@ -19,6 +19,7 @@ import {
   CloudServerOutlined,
   IdcardOutlined,
   FlagOutlined,
+  TagOutlined,
 } from '@ant-design/icons';
 
 export interface NavItem {
@@ -209,6 +210,18 @@ export const NAV_ITEMS: NavItem[] = [
     // view/create/update/delete - menu chỉ cần quyền xem trang).
     roles: null,
     permission: 'assignment_groups.view',
+  },
+  {
+    key: 'quan-ly-loai-phep',
+    label: 'Quản lý Loại phép',
+    description: 'CRUD loại đơn nghỉ phép (thay ENUM cứng cũ) hiển thị trong dropdown "Loại phép"',
+    icon: <TagOutlined />,
+    path: '/quan-ly-loai-phep',
+    // Khớp @RequirePermission('leave_types.view') ở leave-types.controller.ts
+    // (seed ở migration CreateLeaveTypes1781500000000: mọi role đã đăng
+    // nhập đều có sẵn) - mirror đúng pattern quan-ly-status-khach.
+    roles: null,
+    permission: 'leave_types.view',
   },
   {
     key: 'quan-ly-status-khach',

@@ -218,6 +218,8 @@ export default function DashboardLayout({
       newKey = 'trash-can';
     } else if (pathname.includes('/quan-ly-phu-trach')) {
       newKey = 'quan-ly-phu-trach';
+    } else if (pathname.includes('/quan-ly-loai-phep')) {
+      newKey = 'quan-ly-loai-phep';
     } else if (pathname.includes('/quan-ly-status-khach')) {
       newKey = 'quan-ly-status-khach';
     } else if (pathname.includes('/nguon-media')) {
