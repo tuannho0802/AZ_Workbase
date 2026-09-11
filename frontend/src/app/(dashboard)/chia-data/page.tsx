@@ -29,6 +29,14 @@ import { usePositions } from '@/lib/hooks/usePositions';
 import { useRoles } from '@/lib/hooks/useRoles';
 import { useRoleColorMap } from '@/lib/hooks/useRoleColorMap';
 import { resolveEntityColor } from '@/lib/utils/entityColor';
+// ⚠️ FIX (tuân thủ key 'sales' của Assignment Group) - đây mới là nguồn "rules"
+// thật (Phòng ban/Vị trí Admin cấu hình qua /quan-ly-phu-trach, xem migration
+// 1781100000000-CreateAssignmentGroupConfigs.ts), ĐÚNG pattern customers/page.tsx
+// (`salesUsersInDept = useAssignmentGroupUsers('sales')`). Trước đây trang này
+// chỉ có 3 dropdown lọc THỦ CÔNG (candidateDeptId/Position/Role) trên nền FULL
+// usersData - không tự động áp rule 'sales', nên bấm "Chọn Sales nhận data" vẫn
+// ra tất cả user (kể cả Admin/phòng ban khác) nếu không tự tay lọc.
+import { useAssignmentGroupUsers } from '@/lib/hooks/useAssignmentGroups';
 
 const { Text } = Typography;
 
@@ -335,6 +343,9 @@ export default function ChiaDataPage() {
   const { positions: allPositions } = usePositions();
   const { roles: allRoles } = useRoles();
   const { getRoleColor } = useRoleColorMap();
+  // Danh sách user hợp lệ theo ĐÚNG config key='sales' (Assignment Group) -
+  // nguồn "rules" thật sự, KHÔNG phải 3 dropdown lọc thủ công bên dưới.
+  const { users: salesRuleUsers } = useAssignmentGroupUsers('sales');
 
   // ── MUTATION: Bulk Assign ───────────────────────────────
   const { mutate: doAssign, isPending: assigning } = useMutation({
@@ -573,10 +584,9 @@ export default function ChiaDataPage() {
 
   // ── Phạm vi XEM theo role - dùng để lọc dropdown "Data Owner"/"Lọc theo
   // Sales" cho khớp ĐÚNG với những gì BE thực sự trả về (CustomerAccessHelper.
-  // applyViewFilter). KHÔNG dùng cho "Chọn Sales nhận data" ở modal Chia data -
-  // chỗ đó BE CỐ Ý cho phép gán cho bất kỳ ai đang active, không giới hạn
-  // phòng ban (xem comment "Removed department check for bulk assign" ở
-  // customers.service.ts) nên giữ nguyên userOptions đầy đủ cho modal đó.
+  // applyViewFilter). KHÔNG liên quan tới "Chọn Sales nhận data" ở modal Chia
+  // data - chỗ đó giờ lọc theo "rules" Assignment Group key='sales' (xem
+  // candidateUsers bên dưới), độc lập với RBAC xem dữ liệu khách hàng ở đây.
   const managedDepartmentIds = ((departmentsData || []) as Department[])
     .filter((d) => d.managerUserId === user?.id)
     .map((d) => d.id);
@@ -607,12 +617,21 @@ export default function ChiaDataPage() {
   })();
 
   // ── CANDIDATE cho Select "Chọn Sales nhận data" (modal Chia data) -
-  // nguồn vẫn giữ FULL list mọi role (KHÔNG giới hạn phòng ban - đúng ghi
-  // chú "Removed department check for bulk assign" ở BE), chỉ áp thêm 3
-  // "rules" lọc client-side (Phòng ban/Vị trí/Vai trò) khi người dùng chủ
-  // động chọn ở 3 dropdown filter bên dưới - không chọn gì = giữ nguyên
-  // hành vi cũ (hiện tất cả).
+  // ⚠️ FIX BUG THẬT (báo cáo trực tiếp: "Bấm chọn Sales để gán thì nó ra
+  // full User") - trước đây nền là FULL `usersData` (mọi role/phòng ban),
+  // 3 dropdown Phòng ban/Vị trí/Vai trò chỉ là lọc THÊM thủ công, không có
+  // "rule" mặc định nào. Giờ bắt buộc nền PHẢI là danh sách đã lọc theo
+  // đúng config key='sales' (Assignment Group, Admin cấu hình qua
+  // /quan-ly-phu-trach - mặc định = Phòng "Kinh doanh", xem migration
+  // 1781100000000-CreateAssignmentGroupConfigs.ts), ĐÚNG pattern
+  // `salesUsersInDept` ở customers/page.tsx. Join lại với `usersData` (thay
+  // vì dùng thẳng `salesRuleUsers`) chỉ để giữ field `department.color`/
+  // `position.color` cho Tag (resolveUsers() ở BE không trả `color`). 3
+  // dropdown Phòng ban/Vị trí/Vai trò vẫn giữ để lọc SÂU HƠN bên trong tập
+  // đã đúng rule này (không chọn gì = giữ nguyên toàn bộ tập rule).
+  const salesRuleUserIds = new Set(salesRuleUsers.map((u) => u.id));
   const candidateUsers = (usersData || []).filter((u: User) => {
+    if (!salesRuleUserIds.has(u.id)) return false;
     if (candidateDeptId != null && u.department?.id !== candidateDeptId) return false;
     if (candidatePositionId != null && u.position?.id !== candidatePositionId) return false;
     if (candidateRole != null && u.role !== candidateRole) return false;
@@ -1079,9 +1098,14 @@ export default function ChiaDataPage() {
             value={targetSalesIds}
             onChange={setTargetSalesIds}
             options={userOptions}
+            notFoundContent={
+              salesRuleUsers.length === 0
+                ? 'Chưa cấu hình "Sales phụ trách" (Assignment Group key=sales) ở trang Quản lý phụ trách'
+                : 'Không tìm thấy nhân viên'
+            }
             showSearch={{
               filterOption: (input, option) => {
-                const u = (usersData || []).find(
+                const u = candidateUsers.find(
                   (u: User) => u.id === option?.value
                 );
                 const q = input.toLowerCase();
@@ -1104,7 +1128,7 @@ export default function ChiaDataPage() {
               <div style={{ marginTop: 8, display: 'flex', 
                 flexWrap: 'wrap', gap: 8 }}>
                 {targetSalesIds.map(id => {
-                  const u = (usersData || []).find(
+                  const u = candidateUsers.find(
                     (u: User) => u.id === id
                   );
                   return u ? (
