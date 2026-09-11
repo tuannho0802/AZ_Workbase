@@ -15,7 +15,6 @@ import { User } from '../../database/entities/user.entity';
 import { ALLOWED_IMAGE_TYPES } from './dto/presign-avatar.dto';
 import { UpdateUploadLimitsDto } from './dto/update-upload-limits.dto';
 import { buildReadableFileName, buildAttachmentFileName, formatShortDateVN } from '../../common/utils/vietnamese-slug.util';
-import { LeaveType } from '../../database/entities/leave-request.entity';
 
 // TTL (giây) - xem PLAN_AVATAR_LEAVE_ATTACHMENT_BACKBLAZE_B2.md mục 7:
 // không set dài "cho chắc", đặc biệt attachment (dữ liệu nhạy cảm).
@@ -35,15 +34,22 @@ const DEFAULT_LIMITS = {
   leaveAttachmentMaxCount: 5,
 };
 
-// Nhãn tiếng Việt CÓ DẤU cho từng LeaveType - đi qua toPascalSlug() khi build
+// Nhãn tiếng Việt CÓ DẤU cho các `leave_types.code` mặc định (7 loại seed sẵn
+// - xem `CreateLeaveTypes1781500000000`) - đi qua toPascalSlug() khi build
 // tên file nên dấu tự bị bỏ (xem buildAttachmentFileName), giữ có dấu ở đây
 // chỉ để code dễ đọc/dễ đối chiếu với LEAVE_TYPE_MAP ở FE (nghi-phep/page.tsx).
-const LEAVE_TYPE_LABELS: Record<LeaveType, string> = {
-  [LeaveType.ANNUAL]: 'Phép năm',
-  [LeaveType.SICK]: 'Nghỉ ốm',
-  [LeaveType.MATERNITY]: 'Thai sản',
-  [LeaveType.UNPAID]: 'Không lương',
-  [LeaveType.COMPENSATORY]: 'Nghỉ bù',
+// ⚠️ CHỈ dùng để đặt tên file cho ĐẸP - KHÔNG phải nguồn xác thực loại phép
+// nữa (xem `leave_types` bảng thật trong DB). Code KHÔNG có trong map này
+// (vd loại phép tuỳ chỉnh do Admin thêm sau) tự fallback về chính `code`
+// (xem `presignAttachmentUpload()` bên dưới) - không throw lỗi.
+const LEAVE_TYPE_LABELS: Record<string, string> = {
+  annual: 'Phép năm',
+  sick: 'Nghỉ ốm',
+  maternity: 'Thai sản',
+  unpaid: 'Không lương',
+  compensatory: 'Nghỉ bù',
+  meet_client: 'Gặp khách',
+  late_arrival: 'Đi trễ',
 };
 
 @Injectable()
@@ -200,16 +206,17 @@ export class UploadsService {
    * LUÔN xảy ra TRƯỚC khi đơn nghỉ phép thật được tạo (đang điền form), nên
    * không thể lấy 2 giá trị này từ DB, phải tin FE gửi đúng.
    */
-  async presignAttachmentUpload(userId: number, contentType: string, leaveType: LeaveType, index: number) {
+  async presignAttachmentUpload(userId: number, contentType: string, leaveType: string, index: number) {
     this.validateContentType(contentType);
     const ext = contentType.split('/')[1];
 
     const user = await this.userRepository.findOne({ where: { id: userId } });
     // Không throw nếu thiếu user (dữ liệu hỏng hiếm gặp) - buildAttachmentFileName
     // tự fallback "File", KHÔNG được để lỗi ở bước đặt tên chặn mất luồng
-    // đính kèm đơn nghỉ phép.
+    // đính kèm đơn nghỉ phép. `leaveType` không có trong LEAVE_TYPE_LABELS
+    // (loại phép tuỳ chỉnh) -> fallback dùng thẳng code, vẫn ra tên file hợp lệ.
     const fileName = buildAttachmentFileName(
-      [user?.name, user?.role, LEAVE_TYPE_LABELS[leaveType]],
+      [user?.name, user?.role, LEAVE_TYPE_LABELS[leaveType] || leaveType],
       index,
       formatShortDateVN(new Date()),
       ext,

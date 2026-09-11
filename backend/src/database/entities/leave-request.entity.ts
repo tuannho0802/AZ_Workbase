@@ -12,6 +12,17 @@ import { User } from './user.entity';
 import { DecimalTransformer } from '../transformers/decimal.transformer';
 import { LeaveRequestAttachment } from './leave-request-attachment.entity';
 
+// ⚠️ [DEPRECATED] Enum này KHÔNG còn là nguồn sự thật cho loại phép kể từ
+// migration `CreateLeaveTypes1781500000000` - cột `leave_requests.leave_type`
+// giờ là VARCHAR tự do, tham chiếu `leave_types.code` (bảng do Admin/Assistant
+// tự CRUD qua module `leave-types`, mirror `customer_statuses`). Giữ lại enum
+// này CHỈ để không vỡ code cũ còn tham chiếu (vd giá trị mặc định trong test),
+// KHÔNG dùng để validate/so sánh nghiệp vụ nữa (xem `LeaveTypesService`,
+// `LeaveRequestsService.create()`/`approve()` đọc động từ DB thay vì so sánh
+// enum). 5 giá trị dưới đây trùng đúng 5 `code` đã seed sẵn (is_system=true)
+// trong `leave_types`, cộng thêm 2 code mới `meet_client`/`late_arrival`
+// KHÔNG có trong enum (loại phép mới, không cần enum TS vì không còn nơi nào
+// so sánh cứng theo enum).
 export enum LeaveType {
   ANNUAL = 'annual',         // Phép năm
   SICK = 'sick',            // Nghỉ ốm
@@ -51,13 +62,16 @@ export class LeaveRequest {
   approverId: number | null;
   
   // WHAT
-  @Column({ 
+  // ⚠️ VARCHAR tự do (không còn ENUM cứng kể từ `CreateLeaveTypes1781500000000`)
+  // - giá trị THẬT tham chiếu `leave_types.code`, validate ở
+  // `LeaveTypesService`/`LeaveRequestsService.create()`, KHÔNG phải ở tầng DB.
+  @Column({
     name: 'leave_type',
-    type: 'enum', 
-    enum: LeaveType,
-    comment: 'Loại nghỉ phép' 
+    type: 'varchar',
+    length: 50,
+    comment: 'Mã loại nghỉ phép - tham chiếu leave_types.code',
   })
-  leaveType: LeaveType;
+  leaveType: string;
   
   @Column({ 
     type: 'enum', 
