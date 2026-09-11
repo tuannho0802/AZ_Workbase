@@ -818,3 +818,53 @@ lượt này verify lại toàn bộ claim của phiên trước bằng code th�
 2. Chưa viết spec test/E2E cho 3 file FE vừa sửa (`nghi-phep`, `duyet-phep`, `AttendanceMonthlyTab`) —
    hiện tại FE của dự án chỉ có `vitest` cho vài file (`nav-config`, `useMyPermissions`), chưa có coverage
    cho các trang nghiệp vụ chính này (kể cả trước lượt này).
+
+   ## [2026-09-11] | Đồng bộ Tag màu dropdown "Lọc theo nhân viên" ở attendance-device + hoàn thiện filter deviceUserId | Status: Success
+
+**Actor:** Agent (Claude)
+**Files Changed:**
+- `backend/src/modules/zk-device/zk-device.service.ts` — wire field `deviceUserId` (đã thêm sẵn ở
+  `QueryAttendanceLogDto` từ commit `74daab9`, đánh dấu "Not yet done") vào `getAttendanceLogs()`:
+  `andWhere('log.deviceUserId = :deviceUserId', ...)`. Vì `exportAttendanceLogs()` (Export Excel tab Logs)
+  gọi lại đúng hàm này, filter mới áp dụng đồng thời cho cả GET list lẫn Export - không cần sửa thêm chỗ nào khác.
+- `frontend/src/lib/types/zk-device.types.ts` — thêm `deviceUserId?: string` vào `AttendanceLogQuery`.
+- `frontend/src/lib/api/attendance-export.api.ts` — thêm `deviceUserId?: string` vào tham số `exportLogs()`.
+- `frontend/src/app/(dashboard)/attendance-device/AttendanceLogsTab.tsx` — dropdown "Lọc theo nhân viên"
+  giờ gộp 2 nhóm: (1) Nhân viên hệ thống đã map — hiện Avatar + Tag màu Vai trò/Phòng ban/Vị trí (đúng
+  pattern `renderUserOption` ở `CustomerFilters.tsx`); (2) Chưa map (mã máy) — lấy từ `useDeviceUsers()`
+  lọc `!mappedUserId`, value mã hoá `d:{deviceUserId}` để phân biệt với `u:{userId}`. State tách riêng
+  `userId`/`deviceUserId`, chỉ 1 trong 2 có giá trị. Cả `useAttendanceLogs()` lẫn `exportMutation` đều
+  truyền `deviceUserId`.
+- `frontend/src/app/(dashboard)/attendance-device/AttendanceMonthlyTab.tsx` — dropdown "Lọc theo nhân
+  viên" thêm Tag màu Vai trò/Phòng ban/Vị trí giống trên (chỉ nhóm nhân viên đã map — dòng chưa map ở tab
+  này tự động hiện sẵn khi không lọc theo 1 ai, không cần filter theo deviceUserId riêng).
+
+**Root Cause:**
+> Dropdown "Lọc theo nhân viên" ở cả 3 tab attendance-device (Logs/Tổng hợp/Bảng chấm công) trước đây chỉ
+> `options={(users||[]).map(u => ({value: u.id, label: u.name}))}` — text trơn, không đồng bộ với pattern
+> Tag màu đã áp dụng ở các dropdown chọn nhân viên khác trong app (CustomerFilters, SalesUserSelect,
+> chia-data). Riêng field `deviceUserId` ở `QueryAttendanceLogDto` được thêm ở commit trước
+> (`74daab9`, tự đánh dấu "Not yet done") nhưng chưa được dùng trong query BE lẫn chưa có chỗ nào ở FE
+> truyền lên — filter "user chưa map" trên tab Logs thực tế chưa hoạt động dù DTO đã khai.
+
+**Solution:**
+> Wire `deviceUserId` vào query BE (1 dòng `andWhere`, dùng chung cho GET + Export vì cùng gọi
+> `getAttendanceLogs()`). FE: thêm Tag màu (Avatar + role/dept/position) cho dropdown ở tab Logs + Tổng
+> hợp chấm công, và ở tab Logs gộp thêm nhóm "Chưa map (mã máy)" để filter được cả log của user chưa map.
+
+**Notes:**
+> Tab "Bảng chấm công" (`AttendanceSummaryTab.tsx`) đang có ĐÚNG gap y hệt (dropdown "Lọc theo nhân viên"
+> vẫn text trơn, chưa có Tag màu) — CHƯA sửa ở lượt này vì người dùng chỉ yêu cầu 2 tab Logs + Tổng hợp.
+> Cần xử lý nốt nếu người dùng muốn đồng bộ toàn bộ 3 tab.
+
+**Verify thật:**
+- Backend: `npm install` sạch (917 packages). `npx tsc --noEmit`: sạch (0 lỗi). `npx nest build`: sạch.
+  `npx jest zk-device`: **5/5 pass** (`zk-device.service.spec.ts`, không có test riêng cho case
+  `deviceUserId` mới — nên viết thêm nếu cần coverage chặt hơn).
+- Frontend: `npm install` sạch (598 packages, cache từ lượt trước). `npx tsc --noEmit`: KHÔNG có lỗi mới ở
+  2 file vừa sửa — chỉ còn 2 lỗi pre-existing đã ghi nhận từ trước (thiếu `logo.png` trong sandbox test,
+  kiểu `styled-jsx` ở `CountBadge.tsx`), không liên quan diff lượt này.
+
+**Còn lại (chưa làm, ngoài phạm vi yêu cầu lượt này):**
+1. `AttendanceSummaryTab.tsx` ("Bảng chấm công") vẫn thiếu Tag màu ở dropdown lọc nhân viên — xem Notes.
+2. Chưa viết spec test riêng cho nhánh filter `deviceUserId` mới (BE lẫn FE).

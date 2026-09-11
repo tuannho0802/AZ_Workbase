@@ -55,6 +55,9 @@ export interface AttendanceLogQuery {
   page?: number;
   limit?: number;
   userId?: number;
+  // Lọc theo mã user TRÊN MÁY - dùng khi chọn 1 user CHƯA map trong dropdown
+  // "Lọc theo nhân viên" (mirror `userId`, xem query-attendance-log.dto.ts BE).
+  deviceUserId?: string;
   matched?: 'matched' | 'unmatched';
   from?: string;
   to?: string;

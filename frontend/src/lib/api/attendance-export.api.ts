@@ -86,6 +86,7 @@ async function rethrowWithParsedBlobError(error: any): Promise<never> {
 export const attendanceExportApi = {
   exportLogs: async (query: {
     userId?: number;
+    deviceUserId?: string;
     matched?: 'matched' | 'unmatched';
     from?: string;
     to?: string;

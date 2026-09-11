@@ -1,7 +1,7 @@
 'use client';
 
 import { useMemo, useState } from 'react';
-import { Table, DatePicker, Select, Space, Tag, Typography, Tooltip, Button, App } from 'antd';
+import { Table, DatePicker, Select, Space, Tag, Typography, Tooltip, Button, App, Avatar } from 'antd';
 import { FileExcelOutlined } from '@ant-design/icons';
 import dayjs, { Dayjs } from 'dayjs';
 import { useQuery } from '@tanstack/react-query';
@@ -10,6 +10,10 @@ import { useAttendanceSummary, useExportMonthlyAttendance } from '@/lib/hooks/us
 import { useUsersList } from '@/lib/hooks/useUsers';
 import { leaveRequestsApi } from '@/lib/api/leave-requests.api';
 import { useLeaveTypes } from '@/lib/hooks/useLeaveTypes';
+// ⚠️ MỚI - dropdown "Lọc theo nhân viên" trước đây chỉ hiện text trơn
+// `u.name` (mirror gap y hệt ở AttendanceLogsTab.tsx) - đồng bộ Tag màu
+// Vai trò/Phòng ban/Vị trí theo đúng pattern renderUserOption ở CustomerFilters.tsx.
+import { useRoleColorMap, useRoleColors } from '@/lib/hooks/useRoleColorMap';
 import type { ExportMonthlyRow } from '@/lib/api/attendance-export.api';
 import ExportMonthModal from './ExportMonthModal';
 
@@ -90,6 +94,15 @@ export default function AttendanceMonthlyTab() {
   const { users, isLoading: usersLoading } = useUsersList();
   const exportMutation = useExportMonthlyAttendance();
   const [exportModalOpen, setExportModalOpen] = useState(false);
+
+  const { getRoleColor } = useRoleColorMap();
+  const { roleColors: allRoles } = useRoleColors();
+  const roleNameMap = useMemo(() => new Map(allRoles.map((r) => [r.code, r.name])), [allRoles]);
+  const getRoleName = (code?: string) => (code ? roleNameMap.get(code) || code : '');
+  const userSelectOptions = useMemo(
+    () => (users || []).map((u: any) => ({ value: u.id, label: u.name, user: u })),
+    [users],
+  );
 
   // Loại phép lấy động từ BE (bảng leave_types, CRUD ở /quan-ly-loai-phep)
   // thay vì so sánh cứng theo enum `unpaid` - `isPaid` quyết định đúng dấu
@@ -606,10 +619,26 @@ export default function AttendanceMonthlyTab() {
             allowClear
             showSearch={{ optionFilterProp: 'label' }}
             placeholder="Lọc theo nhân viên"
-            style={{ width: 220 }}
+            style={{ width: 240 }}
+            popupMatchSelectWidth={false}
             value={userId}
             onChange={setUserId}
-            options={(users || []).map((u: any) => ({ value: u.id, label: u.name }))}
+            options={userSelectOptions}
+            optionRender={(option) => {
+              const u = (option.data as { user: any }).user;
+              const tagStyle = { fontSize: 10, lineHeight: '16px', padding: '0 4px', margin: 0 };
+              return (
+                <Space size={4} align="center">
+                  <Avatar size={20} style={{ backgroundColor: getRoleColor(u?.role), fontSize: 11, flexShrink: 0 }}>
+                    {u?.name?.[0]?.toUpperCase()}
+                  </Avatar>
+                  <span style={{ fontSize: 13 }}>{u?.name}</span>
+                  {u?.role && <Tag style={tagStyle} color={getRoleColor(u.role)}>{getRoleName(u.role)}</Tag>}
+                  {u?.department?.name && <Tag style={tagStyle} color="default">{u.department.name}</Tag>}
+                  {u?.position?.name && <Tag style={tagStyle} color="default">{u.position.name}</Tag>}
+                </Space>
+              );
+            }}
           />
           <Text>
             Ngày công chuẩn tháng {month.format('MM/YYYY')}: <Text strong>{standardWorkDays}</Text>
