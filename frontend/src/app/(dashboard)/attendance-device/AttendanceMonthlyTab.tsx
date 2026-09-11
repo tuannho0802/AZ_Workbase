@@ -9,6 +9,7 @@ import type { ColumnsType } from 'antd/es/table';
 import { useAttendanceSummary, useExportMonthlyAttendance } from '@/lib/hooks/useZkDevice';
 import { useUsersList } from '@/lib/hooks/useUsers';
 import { leaveRequestsApi } from '@/lib/api/leave-requests.api';
+import { useLeaveTypes } from '@/lib/hooks/useLeaveTypes';
 import type { ExportMonthlyRow } from '@/lib/api/attendance-export.api';
 import ExportMonthModal from './ExportMonthModal';
 
@@ -34,15 +35,6 @@ const MARK_COLOR: Record<DayMark, string> = {
   KL: '#cf1322',
 };
 
-// Chỉ dùng để hiển thị lý do dễ đọc khi hover vào ô có đơn nghỉ - KHÔNG phải
-// nguồn xác thực (nguồn thật là leaveType/duration từ leave-requests.api.ts).
-const LEAVE_TYPE_LABEL: Record<string, string> = {
-  annual: 'Phép năm',
-  sick: 'Nghỉ ốm',
-  maternity: 'Thai sản',
-  unpaid: 'Không lương',
-  compensatory: 'Nghỉ bù',
-};
 const LEAVE_DURATION_LABEL: Record<string, string> = {
   full_day: 'Cả ngày',
   half_day_am: 'Nửa ngày sáng',
@@ -98,6 +90,17 @@ export default function AttendanceMonthlyTab() {
   const { users, isLoading: usersLoading } = useUsersList();
   const exportMutation = useExportMonthlyAttendance();
   const [exportModalOpen, setExportModalOpen] = useState(false);
+
+  // Loại phép lấy động từ BE (bảng leave_types, CRUD ở /quan-ly-loai-phep)
+  // thay vì so sánh cứng theo enum `unpaid` - `isPaid` quyết định đúng dấu
+  // P/X-2 (hưởng lương) hay KL/1-2K (không lương) cho từng đơn nghỉ đã duyệt
+  // (xem vòng lặp `leaveData` bên dưới). `name` chỉ dùng để hiển thị lý do
+  // khi hover vào ô (KHÔNG phải nguồn xác thực).
+  const { leaveTypes } = useLeaveTypes();
+  const leaveTypeInfoMap = useMemo<Record<string, { name: string; isPaid: boolean }>>(
+    () => Object.fromEntries(leaveTypes.map((t) => [t.code, { name: t.name, isPaid: t.isPaid }])),
+    [leaveTypes],
+  );
 
   const monthStart = month.startOf('month');
   const monthEnd = month.endOf('month');
@@ -281,11 +284,16 @@ export default function AttendanceMonthlyTab() {
       const rangeEnd = leaveEnd.isBefore(monthEnd) ? leaveEnd : monthEnd;
 
       const isHalf = leave.duration !== 'full_day';
-      const isUnpaid = leave.leaveType === 'unpaid';
+      // Fallback `leave.leaveType === 'unpaid'` chỉ dùng khi `leaveTypeInfoMap`
+      // chưa load xong (leaveTypes rỗng) hoặc gặp code lạ không còn tồn tại
+      // trong bảng leave_types (dữ liệu cũ) - tránh hiển thị sai lúc trang
+      // vừa mở trong khi useLeaveTypes() còn đang fetch.
+      const info = leaveTypeInfoMap[leave.leaveType];
+      const isUnpaid = info ? !info.isPaid : leave.leaveType === 'unpaid';
       const mark: DayMark = isHalf ? (isUnpaid ? '1/2K' : 'X/2') : isUnpaid ? 'KL' : 'P';
       const fraction = isHalf ? 0.5 : 1;
       const leaveReason = [
-        `Đơn nghỉ đã duyệt: ${LEAVE_TYPE_LABEL[leave.leaveType] || leave.leaveType} (${LEAVE_DURATION_LABEL[leave.duration] || leave.duration})`,
+        `Đơn nghỉ đã duyệt: ${info?.name || leave.leaveType} (${LEAVE_DURATION_LABEL[leave.duration] || leave.duration})`,
         leave.reason?.trim() ? `Lý do: ${leave.reason.trim()}` : null,
       ]
         .filter(Boolean)
@@ -364,7 +372,7 @@ export default function AttendanceMonthlyTab() {
       ...Array.from(map.values()).sort((a, b) => a.userName.localeCompare(b.userName)),
       ...Array.from(unmappedMap.values()).sort((a, b) => a.userName.localeCompare(b.userName)),
     ];
-  }, [users, userId, attendanceData, leaveData, standardWorkDays, monthStart, monthEnd]);
+  }, [users, userId, attendanceData, leaveData, standardWorkDays, monthStart, monthEnd, leaveTypeInfoMap]);
 
   // Chuyển `rows` (state UI - `days`/`dayReasons` là 2 map riêng, tiện cho
   // việc render từng ô) sang đúng shape DTO backend cần (`days` là 1 mảng

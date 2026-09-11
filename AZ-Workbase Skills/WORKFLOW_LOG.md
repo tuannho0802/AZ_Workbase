@@ -749,3 +749,72 @@ nhưng chưa có `page.tsx` nào cho `/vi-tri` cả (Admin trước đây phải
 3. Tab "Hiển thị dữ liệu" (scope Global/Department) ở Drawer `/phan-quyen`.
 4. Assignment Group Config ("Quản lý phụ trách") — vẫn hoàn toàn chưa bắt đầu, cần viết PLAN trước khi
    code (xem chi tiết đầy đủ ở HANDOFF entry trước, mục 5 — không lặp lại ở đây để tránh phình log).
+## [2026-09-11 12:54] | Hoàn thiện Loại đơn nghỉ phép động (spec test + FE + đồng bộ chấm công) | Status: Success
+
+**Actor:** Agent
+
+**Bối cảnh:** Tiếp nối 3 commit trước đó cùng ngày (`Feat: Setup dynamic leave-type`, `Update: Add
+migration for it`, `Feat: Setup module leave-type`, `Update: Add api and hooks for leave-type in UI`) -
+lượt này verify lại toàn bộ claim của phiên trước bằng code thật (KHÔNG tin transcript), rồi hoàn thiện
+3 phần còn thiếu: spec test BE, trang quản lý FE + đăng ký nav, và đồng bộ 3 nơi FE còn dùng enum
+`leaveType` cứng (`nghi-phep`, `duyet-phep`, `AttendanceMonthlyTab`) sang đọc động từ `useLeaveTypes()`.
+
+**Files Changed:**
+- `backend/src/modules/leave-types/leave-types.service.spec.ts` (MỚI) — 18 test case, mirror đúng
+  `customer-statuses.service.spec.ts`: findAll/findOne/getByCode/assertExists/create/update/remove
+  (kể cả nhánh fallback khi xoá loại phép đang có đơn dùng).
+- `frontend/src/app/(dashboard)/quan-ly-loai-phep/page.tsx` (MỚI) — trang CRUD Loại đơn nghỉ phép,
+  mirror `quan-ly-status-khach/page.tsx`, thêm 2 field so với template (`isPaid` Switch,
+  `deductsAnnualBalance` Switch) + cột minh hoạ ký hiệu chấm công P/X-2/KL/1-2K theo `isPaid`.
+- `frontend/src/lib/nav-config.tsx` — thêm mục sidebar "Quản lý Loại phép" (`/quan-ly-loai-phep`,
+  icon `TagOutlined` mới import để tránh trùng icon với mục khác), gate `leave_types.view` (đặt ngay
+  trước "Quản lý Status khách"). `layout.tsx` tự động lấy từ `NAV_ITEMS` nên KHÔNG cần sửa thêm.
+- `frontend/src/app/(dashboard)/nghi-phep/page.tsx` — bỏ `LEAVE_TYPE_MAP` cứng (5 loại phép hardcode),
+  thay bằng `leaveTypeMap`/`leaveTypeOptions` dựng động từ `useLeaveTypes()` (useMemo theo `leaveTypes`):
+  dùng cho cột "Loại phép" trong bảng, `MyLeaveMobileCard` (nhận thêm prop `leaveTypeMap`), và dropdown
+  "Loại phép" khi tạo đơn (`Select options`) — giờ loại phép tuỳ chỉnh thêm ở `/quan-ly-loai-phep` sẽ
+  tự xuất hiện, không cần sửa code.
+- `frontend/src/app/(dashboard)/duyet-phep/page.tsx` — tương tự: bỏ `LEAVE_TYPE_MAP` cứng, thay bằng
+  `leaveTypeMap` động; áp dụng cho `PendingMobileCard`, `HistoryMobileCard` (cả 2 nhận thêm prop
+  `leaveTypeMap`), cột "Loại phép" ở cả `pendingColumns` và `historyColumns`. Trang này không có dropdown
+  tạo đơn nên không cần sửa phần Select.
+- `frontend/src/app/(dashboard)/attendance-device/AttendanceMonthlyTab.tsx` — bỏ hằng số
+  `LEAVE_TYPE_LABEL` cứng + logic `const isUnpaid = leave.leaveType === 'unpaid'` so sánh cứng theo 1
+  string duy nhất; thay bằng `leaveTypeInfoMap` (useMemo từ `useLeaveTypes()`, map `code -> {name,
+  isPaid}`) — cờ `isPaid` từ DB giờ quyết định đúng dấu chấm công `P`/`X/2` (hưởng lương) hay
+  `KL`/`1/2K` (không lương) cho MỌI loại phép, kể cả loại tuỳ chỉnh mới thêm (trước đây loại tuỳ chỉnh
+  sẽ luôn bị tính nhầm thành "hưởng lương" vì không khớp chuỗi `'unpaid'`). Giữ fallback
+  `leave.leaveType === 'unpaid'` CHỈ dùng khi `leaveTypeInfoMap` chưa load xong hoặc gặp code lạ không
+  còn tồn tại trong bảng `leave_types` (dữ liệu cũ), tránh hiển thị sai lúc trang vừa mở.
+
+**Quyết định thiết kế cần lưu ý cho phiên sau:**
+- 2 loại phép mới theo yêu cầu ban đầu (`meet_client` "Gặp khách", `late_arrival` "Đi trễ") đã được seed
+  sẵn ở migration `1781500000000-CreateLeaveTypes.ts` từ phiên trước (đã verify lại bằng code thật, không
+  phải chỉ tin báo cáo) — is_paid mặc định theo đúng yêu cầu gốc: `meet_client` = true (hưởng lương, tính
+  P/X-2), `late_arrival` = false (không lương, tính KL/1-2K). Nếu nghiệp vụ thực tế khác đi, sửa trực
+  tiếp ở `/quan-ly-loai-phep` (Admin/Assistant), KHÔNG cần sửa code hay chạy lại migration.
+- `AttendanceMonthlyTab.tsx` giờ phụ thuộc `useLeaveTypes()` để tính đúng dấu chấm công — nếu API
+  `/leave-types` lỗi hoặc chậm, `leaveTypeInfoMap` rỗng tạm thời và toàn bộ đơn nghỉ trong tháng đang xem
+  sẽ tạm thời rơi vào nhánh fallback (chỉ đúng cho đúng code `'unpaid'`, các loại phép không lương khác
+  sẽ tạm hiển thị SAI thành P/X-2 cho tới khi `useLeaveTypes()` load xong) — chấp nhận được vì
+  `staleTime: 60s` của hook khiến lần load sau gần như luôn có cache, nhưng cần biết nếu debug sau này.
+
+**Verify thật:**
+- Backend: `npm install` sạch (917 packages). `npx tsc --noEmit`: sạch. `npx jest`: **18/18 pass** riêng
+  `leave-types.service.spec.ts`; toàn bộ suite: **525/527 pass** (2 fail còn lại ở `users.service.spec.ts`
+  là lỗi CÓ SẴN TỪ TRƯỚC, không liên quan `leave-types` — đã xác nhận qua nội dung lỗi: về xác nhận mật
+  khẩu khi gỡ Root Admin cuối cùng).
+- Frontend: `npm install` sạch (598 packages). `npx tsc --noEmit`: KHÔNG có lỗi mới, chỉ còn đúng các lỗi
+  pre-existing đã ghi nhận ở entry trước (thiếu `logo.png` trong sandbox, kiểu `styled-jsx` ở
+  `CountBadge.tsx`) — xác nhận không liên quan diff lượt này. `npm run build` (Next.js 16 Turbopack)
+  **sạch hoàn toàn**, generate đủ 27 route (thêm `/quan-ly-loai-phep` so với lượt trước). `npx vitest run`
+  toàn bộ: **14/14 pass** (gồm `nav-config.test.tsx` 8 test, permission key `leave_types.view` khớp
+  regex `^[a-z_]+\.[a-z_]+$` được test kiểm tra tự động).
+
+**Còn lại (chưa làm, ngoài phạm vi yêu cầu 3 mục của lượt này):**
+1. Chưa có UI hiển thị "Ký hiệu chấm công" ở chính trang `/quan-ly-loai-phep` dạng cột riêng dễ nhìn hơn
+   (hiện đã có ở bảng, nhưng chưa có phần chú thích tổng hợp riêng như bảng mẫu gốc yêu cầu ban đầu:
+   X/X-2/1-2K/P/KL kèm mô tả) — có thể cần nếu người dùng cuối (không phải dev) sẽ tự cấu hình.
+2. Chưa viết spec test/E2E cho 3 file FE vừa sửa (`nghi-phep`, `duyet-phep`, `AttendanceMonthlyTab`) —
+   hiện tại FE của dự án chỉ có `vitest` cho vài file (`nav-config`, `useMyPermissions`), chưa có coverage
+   cho các trang nghiệp vụ chính này (kể cả trước lượt này).

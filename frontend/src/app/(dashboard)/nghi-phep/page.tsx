@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useMemo } from 'react';
 import { useRouter } from 'next/navigation';
 import {
   Table, Button, Modal, Form, Select, DatePicker, Input, Tag, App, Card, Divider, Typography
@@ -8,6 +8,7 @@ import {
 import { PlusOutlined, CloseCircleOutlined, CalendarOutlined, FileTextOutlined, UserOutlined } from '@ant-design/icons';
 import { leaveRequestsApi, LeaveRequest } from '@/lib/api/leave-requests.api';
 import { useMyPermissions } from '@/lib/hooks/useMyPermissions';
+import { useLeaveTypes } from '@/lib/hooks/useLeaveTypes';
 import { AttachmentUploader, AttachmentUploaderHandle } from '@/components/leave-requests/AttachmentUploader';
 import { AttachmentsViewerButton } from '@/components/leave-requests/AttachmentsViewerButton';
 import dayjs from 'dayjs';
@@ -15,14 +16,6 @@ import dayjs from 'dayjs';
 const { RangePicker } = DatePicker;
 const { TextArea } = Input;
 const { Text } = Typography;
-
-const LEAVE_TYPE_MAP: Record<string, { text: string; color: string }> = {
-  annual: { text: 'Phép năm', color: 'blue' },
-  sick: { text: 'Nghỉ ốm', color: 'orange' },
-  maternity: { text: 'Thai sản', color: 'pink' },
-  unpaid: { text: 'Không lương', color: 'default' },
-  compensatory: { text: 'Nghỉ bù', color: 'green' }
-};
 
 const STATUS_MAP: Record<string, { text: string; color: string }> = {
   pending: { text: 'Chờ duyệt', color: 'gold' },
@@ -35,11 +28,13 @@ const STATUS_MAP: Record<string, { text: string; color: string }> = {
 function MyLeaveMobileCard({
   record,
   onCancel,
+  leaveTypeMap,
 }: {
   record: LeaveRequest;
   onCancel: (id: number) => void;
+    leaveTypeMap: Record<string, { text: string; color: string }>;
 }) {
-  const lt = LEAVE_TYPE_MAP[record.leaveType] || { text: record.leaveType, color: 'default' };
+  const lt = leaveTypeMap[record.leaveType] || { text: record.leaveType, color: 'default' };
   const st = STATUS_MAP[record.status] || { text: record.status, color: 'default' };
 
   return (
@@ -122,6 +117,21 @@ export default function LeaveRequestsPage() {
   const { message } = App.useApp();
   const router = useRouter();
   const { can, isLoading: permissionsLoading } = useMyPermissions();
+
+  // Loại phép giờ lấy động từ BE (bảng leave_types, CRUD ở /quan-ly-loai-phep)
+  // thay vì enum cứng - mirror đúng cách `useCustomerStatuses()` được dùng ở
+  // trang khách hàng. `leaveTypeMap`: tra cứu {text, color} theo `code` để
+  // hiển thị Tag (cột bảng + mobile card); `leaveTypeOptions`: options cho
+  // Select khi tạo đơn, sắp theo `sortOrder` (đã có sẵn từ hook).
+  const { leaveTypes } = useLeaveTypes();
+  const leaveTypeMap = useMemo<Record<string, { text: string; color: string }>>(
+    () => Object.fromEntries(leaveTypes.map((t) => [t.code, { text: t.name, color: t.color }])),
+    [leaveTypes],
+  );
+  const leaveTypeOptions = useMemo(
+    () => leaveTypes.map((t) => ({ value: t.code, label: t.name })),
+    [leaveTypes],
+  );
 
   // Quyền: request = xem + tạo đơn của bản thân; view = xem thêm đơn người khác (không liên quan trang này)
   const canRequest = can('leave_requests.request');
@@ -231,7 +241,7 @@ export default function LeaveRequestsPage() {
       title: 'Loại phép',
       dataIndex: 'leaveType',
       render: (type: string) => {
-        const info = LEAVE_TYPE_MAP[type] || { text: type, color: 'default' };
+        const info = leaveTypeMap[type] || { text: type, color: 'default' };
         return <Tag color={info.color}>{info.text}</Tag>;
       }
     },
@@ -315,6 +325,7 @@ export default function LeaveRequestsPage() {
               key={r.id}
               record={r}
               onCancel={handleCancel}
+              leaveTypeMap={leaveTypeMap}
             />
           ))
         )
@@ -348,13 +359,7 @@ export default function LeaveRequestsPage() {
           >
             <Select
               placeholder="Chọn loại phép"
-              options={[
-                { value: 'annual', label: 'Phép năm' },
-                { value: 'sick', label: 'Nghỉ ốm' },
-                { value: 'maternity', label: 'Thai sản' },
-                { value: 'unpaid', label: 'Không lương' },
-                { value: 'compensatory', label: 'Nghỉ bù' },
-              ]}
+              options={leaveTypeOptions}
             />
           </Form.Item>
 

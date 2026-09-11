@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { useRouter } from 'next/navigation';
 import {
   Table, Card, Button, Space, Tag, Badge, Tabs, Modal, Input, App, Typography, Divider, Tooltip
@@ -11,6 +11,7 @@ import {
 } from '@ant-design/icons';
 import { leaveRequestsApi, LeaveRequest } from '@/lib/api/leave-requests.api';
 import { useMyPermissions } from '@/lib/hooks/useMyPermissions';
+import { useLeaveTypes } from '@/lib/hooks/useLeaveTypes';
 import { AttachmentsViewerButton } from '@/components/leave-requests/AttachmentsViewerButton';
 import dayjs from 'dayjs';
 
@@ -18,14 +19,6 @@ const { TextArea } = Input;
 const { Text } = Typography;
 
 // ── helpers ─────────────────────────────────────────────────────────────────
-const LEAVE_TYPE_MAP: Record<string, { text: string; color: string }> = {
-  annual:        { text: 'Phép năm',    color: 'blue' },
-  sick:          { text: 'Nghỉ ốm',    color: 'orange' },
-  maternity:     { text: 'Thai sản',   color: 'pink' },
-  unpaid:        { text: 'Không lương',color: 'default' },
-  compensatory:  { text: 'Nghỉ bù',   color: 'green' },
-};
-
 const STATUS_MAP: Record<string, { text: string; color: string }> = {
   approved:  { text: 'Đã duyệt', color: 'success' },
   rejected:  { text: 'Từ chối',  color: 'error' },
@@ -38,12 +31,14 @@ function PendingMobileCard({
   record,
   onApprove,
   onReject,
+  leaveTypeMap,
 }: {
   record: LeaveRequest;
   onApprove: (id: number) => void;
   onReject: (id: number) => void;
+    leaveTypeMap: Record<string, { text: string; color: string }>;
 }) {
-  const lt = LEAVE_TYPE_MAP[record.leaveType] ?? { text: record.leaveType, color: 'default' };
+  const lt = leaveTypeMap[record.leaveType] ?? { text: record.leaveType, color: 'default' };
   return (
     <Card
       variant="outlined"
@@ -114,8 +109,14 @@ function PendingMobileCard({
 }
 
 // ── mobile card – history ────────────────────────────────────────────────────
-function HistoryMobileCard({ record }: { record: LeaveRequest }) {
-  const lt = LEAVE_TYPE_MAP[record.leaveType] ?? { text: record.leaveType, color: 'default' };
+function HistoryMobileCard({
+  record,
+  leaveTypeMap,
+}: {
+  record: LeaveRequest;
+  leaveTypeMap: Record<string, { text: string; color: string }>;
+}) {
+  const lt = leaveTypeMap[record.leaveType] ?? { text: record.leaveType, color: 'default' };
   const st = STATUS_MAP[record.status] ?? { text: record.status, color: 'default' };
   const processedDate = record.approvedAt || record.rejectedAt;
   return (
@@ -189,6 +190,14 @@ export default function ApprovalPage() {
   const { message: messageApi, modal } = App.useApp();
   const router = useRouter();
   const { can, isLoading: permissionsLoading } = useMyPermissions();
+
+  // Loại phép lấy động từ BE (bảng leave_types, CRUD ở /quan-ly-loai-phep)
+  // thay vì enum cứng - mirror đúng nghi-phep/page.tsx.
+  const { leaveTypes } = useLeaveTypes();
+  const leaveTypeMap = useMemo<Record<string, { text: string; color: string }>>(
+    () => Object.fromEntries(leaveTypes.map((t) => [t.code, { text: t.name, color: t.color }])),
+    [leaveTypes],
+  );
 
   // Phân biệt quyền:
   // view = xem lịch sử duyệt (của người khác)
@@ -306,7 +315,7 @@ export default function ApprovalPage() {
       dataIndex: 'leaveType',
       width: 100,
       render: (type: string) => {
-        const info = LEAVE_TYPE_MAP[type] ?? { text: type, color: 'default' };
+        const info = leaveTypeMap[type] ?? { text: type, color: 'default' };
         return <Tag color={info.color}>{info.text}</Tag>;
       }
     },
@@ -382,7 +391,7 @@ export default function ApprovalPage() {
       dataIndex: 'leaveType',
       width: 100,
       render: (type: string) => {
-        const info = LEAVE_TYPE_MAP[type] ?? { text: type, color: 'default' };
+        const info = leaveTypeMap[type] ?? { text: type, color: 'default' };
         return <Tag color={info.color}>{info.text}</Tag>;
       }
     },
@@ -472,6 +481,7 @@ export default function ApprovalPage() {
               record={r}
               onApprove={handleApprove}
               onReject={openRejectModal}
+              leaveTypeMap={leaveTypeMap}
             />
           ))
         )
@@ -504,7 +514,7 @@ export default function ApprovalPage() {
           </div>
         ) : (
           historyRequests.map(r => (
-            <HistoryMobileCard key={r.id} record={r} />
+            <HistoryMobileCard key={r.id} record={r} leaveTypeMap={leaveTypeMap} />
           ))
         )
       ) : (
