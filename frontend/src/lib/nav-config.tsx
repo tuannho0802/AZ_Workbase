@@ -18,6 +18,7 @@ import {
   BankOutlined,
   CloudServerOutlined,
   IdcardOutlined,
+  FlagOutlined,
 } from '@ant-design/icons';
 
 export interface NavItem {
@@ -208,6 +209,18 @@ export const NAV_ITEMS: NavItem[] = [
     // view/create/update/delete - menu chỉ cần quyền xem trang).
     roles: null,
     permission: 'assignment_groups.view',
+  },
+  {
+    key: 'quan-ly-status-khach',
+    label: 'Quản lý Status khách',
+    description: 'CRUD trạng thái khách hàng (thay ENUM cứng cũ) hiển thị trong dropdown "Trạng thái"',
+    icon: <FlagOutlined />,
+    path: '/quan-ly-status-khach',
+    // Khớp @RequirePermission('customer_statuses.view') ở
+    // customer-statuses.controller.ts (seed ở migration
+    // CreateCustomerStatuses1781400000000: mọi role đã đăng nhập đều có sẵn).
+    roles: null,
+    permission: 'customer_statuses.view',
   },
   {
     key: 'trash-can',
