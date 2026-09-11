@@ -5,12 +5,14 @@ import { Select, Tag, Space, Typography, Alert, Empty, Spin, Button } from 'antd
 import { IdcardOutlined, UndoOutlined } from '@ant-design/icons';
 import { App } from 'antd';
 import { usePositions } from '@/lib/hooks/usePositions';
+import { Position } from '@/lib/api/positions.api';
 import {
   usePositionOverrides,
   useDeletePositionOverride,
 } from '@/lib/hooks/useRoles';
 import { RoleWithPermissions, PositionOverride } from '@/lib/types/roles.types';
 import { mergeGlobalWithOverride } from './DepartmentOverridesPanel';
+import { resolveEntityColor } from '@/lib/utils/entityColor';
 
 const { Text, Paragraph } = Typography;
 
@@ -67,6 +69,27 @@ export function PositionOverridesPanel({
   const overrideMap = new Map(overrides.map((o) => [o.positionId, o]));
   const selectedOverride = selectedPositionId ? overrideMap.get(selectedPositionId) : undefined;
 
+  // Render Tag màu Vị trí (+ Tag Phòng ban đi kèm nếu có, cùng màu thật của
+  // từng entity qua `resolveEntityColor`) cho dropdown - đồng bộ với pattern
+  // đã dùng ở CustomerFilters.tsx/vi-tri/page.tsx thay vì chỉ text trơn như
+  // trước (bug thật báo qua ảnh chụp 2026-09-11, y hệt gap ở DepartmentOverridesPanel).
+  const renderPositionOption = (option: { data: { position: Position } }) => {
+    const p = option.data.position;
+    return (
+      <Space size={4} align="center">
+        <Tag color={resolveEntityColor(p.color)} style={{ marginInlineEnd: 0 }}>{p.name}</Tag>
+        {p.department?.name && (
+          <Tag color={resolveEntityColor(p.department.color)} style={{ marginInlineEnd: 0 }}>
+            {p.department.name}
+          </Tag>
+        )}
+        {overrideMap.has(p.id) && (
+          <Text type="warning" style={{ fontSize: 11 }}>(đang override)</Text>
+        )}
+      </Space>
+    );
+  };
+
   return (
     <div>
       <Paragraph type="secondary" style={{ marginBottom: 12 }}>
@@ -101,9 +124,16 @@ export function PositionOverridesPanel({
         loading={loadingPositions}
         value={selectedPositionId}
         onChange={(v) => setSelectedPositionId(v)}
+        optionLabelProp="label"
+        optionRender={renderPositionOption}
+        popupMatchSelectWidth={false}
         options={positions.map((p) => ({
           value: p.id,
+          // `label` giữ NGUYÊN dạng string - vẫn cần cho filter tìm kiếm
+          // (`optionFilterProp="label"`) và cho ô Select hiển thị khi đã
+          // chọn xong - Tag màu CHỈ hiện trong dropdown đang mở qua `optionRender`.
           label: overrideMap.has(p.id) ? `${p.name} (đang override)` : p.name,
+          position: p,
         }))}
         showSearch={{
           optionFilterProp: "label"

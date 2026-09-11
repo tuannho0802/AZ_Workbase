@@ -5,11 +5,13 @@ import { Select, Tag, Space, Typography, Alert, Empty, Spin, Button } from 'antd
 import { BankOutlined, UndoOutlined } from '@ant-design/icons';
 import { App } from 'antd';
 import { useDepartments } from '@/lib/hooks/useDepartments';
+import { Department } from '@/lib/api/departments.api';
 import {
   useDepartmentOverrides,
   useDeleteDepartmentOverride,
 } from '@/lib/hooks/useRoles';
 import { RoleWithPermissions, DepartmentOverride, RolePermissionEntry } from '@/lib/types/roles.types';
+import { resolveEntityColor } from '@/lib/utils/entityColor';
 
 const { Text, Paragraph } = Typography;
 
@@ -89,6 +91,24 @@ export function DepartmentOverridesPanel({
   const overrideMap = new Map(overrides.map((o) => [o.departmentId, o]));
   const selectedOverride = selectedDeptId ? overrideMap.get(selectedDeptId) : undefined;
 
+  // Render Tag màu (đúng màu thật của phòng ban, xem `resolveEntityColor`) +
+  // nhãn "(đang override)" cho từng dòng trong dropdown - đồng bộ với pattern
+  // đã dùng ở CustomerFilters.tsx/phong-ban/page.tsx thay vì chỉ text trơn
+  // như trước (bug thật báo qua ảnh chụp 2026-09-11: dropdown "Chọn phòng ban
+  // để xem/sửa override..." không có Tag màu như các dropdown chọn phòng ban
+  // khác trong app).
+  const renderDepartmentOption = (option: { data: { department: Department } }) => {
+    const d = option.data.department;
+    return (
+      <Space size={4} align="center">
+        <Tag color={resolveEntityColor(d.color)} style={{ marginInlineEnd: 0 }}>{d.name}</Tag>
+        {overrideMap.has(d.id) && (
+          <Text type="warning" style={{ fontSize: 11 }}>(đang override)</Text>
+        )}
+      </Space>
+    );
+  };
+
   return (
     <div>
       <Paragraph type="secondary" style={{ marginBottom: 12 }}>
@@ -124,9 +144,17 @@ export function DepartmentOverridesPanel({
         loading={loadingDepartments}
         value={selectedDeptId}
         onChange={(v) => setSelectedDeptId(v)}
+        optionLabelProp="label"
+        optionRender={renderDepartmentOption}
+        popupMatchSelectWidth={false}
         options={departments.map((d) => ({
           value: d.id,
+          // `label` giữ NGUYÊN dạng string (không phải Tag) - vẫn cần cho
+          // filter tìm kiếm (`optionFilterProp="label"` bên dưới so khớp
+          // text) và cho ô Select hiển thị khi đã chọn xong (đóng dropdown) -
+          // Tag màu CHỈ hiện trong danh sách dropdown đang mở qua `optionRender`.
           label: overrideMap.has(d.id) ? `${d.name} (đang override)` : d.name,
+          department: d,
         }))}
         showSearch={{
           optionFilterProp: "label"
