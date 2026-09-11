@@ -13,6 +13,7 @@ import { useRoleColors } from '@/lib/hooks/useRoleColorMap';
 import { usePositions } from '@/lib/hooks/usePositions';
 import { getApiErrorMessage } from '@/lib/utils/error-message.util';
 import { useMyPermissions } from '@/lib/hooks/useMyPermissions';
+import { useAuthStore } from '@/lib/stores/auth.store';
 
 const { Text, Paragraph } = Typography;
 
@@ -31,13 +32,19 @@ export const PendingApprovalsTab = ({ onCountChange }: Props) => {
   // theo thiết kế). Chỉ cần code/name để build dropdown -> dùng
   // `useRoleColors()` (GET /roles/colors, không cần quyền đặc biệt).
   const { roleColors } = useRoleColors();
+  const { user: currentUser } = useAuthStore();
   // ⚠️ MỚI - rà soát Vị trí 2026-09-10: BE (ApproveUserDto, findPendingApprovals()
   // đã JOIN 'position') hỗ trợ đầy đủ từ trước, FE (PendingUser type,
   // approveUser() API) cũng đã có sẵn field `positionId`/`position` - chỉ
   // riêng Form/Modal Duyệt ở đây chưa từng dùng tới, khiến người duyệt
   // không có cách nào xác nhận/đổi Vị trí ngay lúc duyệt (đối xứng Phòng ban).
   const { positions } = usePositions();
-  const roleOptions = (roleColors || []).map((r: any) => ({ value: r.code, label: r.name }));
+  // ⚠️ MỚI - "Manager Full trừ Admin": đối xứng users/page.tsx - BE
+  // (approveUser()) đã chặn cứng, đây chỉ là lớp UX ẩn option 'admin' khỏi
+  // dropdown khi người duyệt không phải Admin.
+  const roleOptions = (roleColors || [])
+    .filter((r: any) => currentUser?.role === 'admin' || r.code !== 'admin')
+    .map((r: any) => ({ value: r.code, label: r.name }));
   const roleMap = new Map((roleColors || []).map((r: any) => [r.code, r.name]));
 
   const [approving, setApproving] = useState<PendingUser | null>(null);

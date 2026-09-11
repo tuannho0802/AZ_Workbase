@@ -202,7 +202,15 @@ export default function UsersPage() {
   // code/name/color để tô Tag + build dropdown, không cần ma trận quyền đầy đủ
   // -> dùng `useRoleColors()` (GET /roles/colors), route KHÔNG cần `roles.view`.
   const { roleColors, isLoading: rolesLoading } = useRoleColors();
-  const roleOptions = (roleColors || []).map(r => ({ value: r.code, label: r.name, color: resolveEntityColor(r.color) }));
+  // ⚠️ MỚI - "Manager Full trừ Admin": BE (users.service.ts create()/update()/
+  // approveUser()) đã CHẶN CỨNG việc gán role='admin' nếu người gọi không
+  // phải Admin - đây chỉ là lớp UX đối xứng, ẩn hẳn option 'admin' khỏi dropdown
+  // để Manager/Assistant không chọn nhầm rồi nhận 403 lúc submit. `roleMap` vẫn
+  // giữ ĐẦY ĐỦ mọi role (kể cả admin) vì nó dùng để hiển thị đúng tên/Tag cho
+  // các user ĐÃ là admin sẵn trong danh sách, không phải để build dropdown.
+  const roleOptions = (roleColors || [])
+    .filter(r => user?.role === 'admin' || r.code !== 'admin')
+    .map(r => ({ value: r.code, label: r.name, color: resolveEntityColor(r.color) }));
   const roleMap = new Map((roleColors || []).map(r => [r.code, r.name]));
   const canAccessPage = can('users.view');
   const canManage = can('users.manage');
