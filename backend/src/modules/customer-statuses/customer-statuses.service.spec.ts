@@ -8,15 +8,27 @@ import { Customer } from '../../database/entities/customer.entity';
 describe('CustomerStatusesService', () => {
   let service: CustomerStatusesService;
 
+  const mockTransactionManager = {
+    update: jest.fn(),
+    remove: jest.fn(),
+  };
+
   const mockStatusRepo = {
     find: jest.fn(),
     findOne: jest.fn(),
     create: jest.fn(),
     save: jest.fn(),
     remove: jest.fn(),
+    createQueryBuilder: jest.fn(),
+    manager: {
+      transaction: jest.fn(async (cb: (manager: typeof mockTransactionManager) => Promise<void>) => {
+        await cb(mockTransactionManager);
+      }),
+    },
   };
   const mockCustomerRepo = {
     count: jest.fn(),
+    createQueryBuilder: jest.fn(),
   };
 
   beforeEach(async () => {
@@ -34,15 +46,37 @@ describe('CustomerStatusesService', () => {
   });
 
   describe('findAll', () => {
-    it('lấy tất cả trạng thái, sắp theo sortOrder', async () => {
-      mockStatusRepo.find.mockResolvedValue([{ id: 1, code: 'pending' }]);
+    it('trả về [] ngay, không query đếm nếu chưa có status nào', async () => {
+      mockStatusRepo.find.mockResolvedValue([]);
+
+      const result = await service.findAll();
+
+      expect(result).toEqual([]);
+      expect(mockCustomerRepo.createQueryBuilder).not.toHaveBeenCalled();
+    });
+
+    it('lấy tất cả trạng thái kèm inUseCount, sắp theo sortOrder', async () => {
+      mockStatusRepo.find.mockResolvedValue([
+        { id: 1, code: 'pending' },
+        { id: 2, code: 'callback_later' },
+      ]);
+      const qb = {
+        select: jest.fn().mockReturnThis(),
+        addSelect: jest.fn().mockReturnThis(),
+        groupBy: jest.fn().mockReturnThis(),
+        getRawMany: jest.fn().mockResolvedValue([{ status: 'pending', count: '5' }]),
+      };
+      mockCustomerRepo.createQueryBuilder.mockReturnValue(qb);
 
       const result = await service.findAll();
 
       expect(mockStatusRepo.find).toHaveBeenCalledWith({
         order: { sortOrder: 'ASC', id: 'ASC' },
       });
-      expect(result).toEqual([{ id: 1, code: 'pending' }]);
+      expect(result).toEqual([
+        { id: 1, code: 'pending', inUseCount: 5 },
+        { id: 2, code: 'callback_later', inUseCount: 0 },
+      ]);
     });
   });
 
@@ -106,18 +140,36 @@ describe('CustomerStatusesService', () => {
       mockStatusRepo.findOne.mockResolvedValue({ id: 1, code: 'pending', name: 'Chờ xử lý', isSystem: true });
 
       await expect(service.remove(1)).rejects.toThrow(BadRequestException);
-      expect(mockStatusRepo.remove).not.toHaveBeenCalled();
+      expect(mockTransactionManager.remove).not.toHaveBeenCalled();
     });
 
-    it('ném BadRequestException nếu đang có customer dùng trạng thái tuỳ chỉnh này', async () => {
+    it('ném BadRequestException nếu đang có customer dùng mà KHÔNG truyền fallbackCode', async () => {
       mockStatusRepo.findOne.mockResolvedValue({ id: 2, code: 'callback_later', name: 'Gọi lại sau', isSystem: false });
       mockCustomerRepo.count.mockResolvedValue(3);
 
       await expect(service.remove(2)).rejects.toThrow(BadRequestException);
-      expect(mockStatusRepo.remove).not.toHaveBeenCalled();
+      expect(mockTransactionManager.remove).not.toHaveBeenCalled();
     });
 
-    it('xoá thành công khi trạng thái tuỳ chỉnh KHÔNG có customer nào dùng', async () => {
+    it('ném BadRequestException nếu fallbackCode trùng với code đang xoá', async () => {
+      mockStatusRepo.findOne.mockResolvedValue({ id: 2, code: 'callback_later', name: 'Gọi lại sau', isSystem: false });
+      mockCustomerRepo.count.mockResolvedValue(3);
+
+      await expect(service.remove(2, 'callback_later')).rejects.toThrow(BadRequestException);
+      expect(mockTransactionManager.remove).not.toHaveBeenCalled();
+    });
+
+    it('ném BadRequestException nếu fallbackCode không tồn tại', async () => {
+      mockStatusRepo.findOne
+        .mockResolvedValueOnce({ id: 2, code: 'callback_later', name: 'Gọi lại sau', isSystem: false }) // findOne(id)
+        .mockResolvedValueOnce(null); // tìm fallback theo code
+      mockCustomerRepo.count.mockResolvedValue(3);
+
+      await expect(service.remove(2, 'khong_ton_tai')).rejects.toThrow(BadRequestException);
+      expect(mockTransactionManager.remove).not.toHaveBeenCalled();
+    });
+
+    it('xoá thành công khi trạng thái tuỳ chỉnh KHÔNG có customer nào dùng (không cần fallback)', async () => {
       const status = { id: 2, code: 'callback_later', name: 'Gọi lại sau', isSystem: false };
       mockStatusRepo.findOne.mockResolvedValue(status);
       mockCustomerRepo.count.mockResolvedValue(0);
@@ -125,8 +177,28 @@ describe('CustomerStatusesService', () => {
       const result = await service.remove(2);
 
       expect(mockCustomerRepo.count).toHaveBeenCalledWith({ where: { status: 'callback_later' } });
-      expect(mockStatusRepo.remove).toHaveBeenCalledWith(status);
-      expect(result).toEqual({ deleted: true });
+      expect(mockTransactionManager.update).not.toHaveBeenCalled();
+      expect(mockTransactionManager.remove).toHaveBeenCalledWith(CustomerStatus, status);
+      expect(result).toEqual({ deleted: true, reassignedCount: 0 });
+    });
+
+    it('chuyển customer sang fallbackCode rồi xoá khi đang có customer dùng', async () => {
+      const status = { id: 2, code: 'callback_later', name: 'Gọi lại sau', isSystem: false };
+      const fallbackStatus = { id: 5, code: 'pending', name: 'Chờ xử lý', isSystem: true };
+      mockStatusRepo.findOne
+        .mockResolvedValueOnce(status) // findOne(id)
+        .mockResolvedValueOnce(fallbackStatus); // tìm fallback theo code
+      mockCustomerRepo.count.mockResolvedValue(3);
+
+      const result = await service.remove(2, 'pending');
+
+      expect(mockTransactionManager.update).toHaveBeenCalledWith(
+        Customer,
+        { status: 'callback_later' },
+        { status: 'pending' },
+      );
+      expect(mockTransactionManager.remove).toHaveBeenCalledWith(CustomerStatus, status);
+      expect(result).toEqual({ deleted: true, reassignedCount: 3 });
     });
 
     it('ném NotFoundException nếu id không tồn tại', async () => {

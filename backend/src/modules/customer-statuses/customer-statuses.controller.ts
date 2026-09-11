@@ -1,5 +1,5 @@
-import { Controller, Get, Post, Patch, Delete, Param, Body, UseGuards, ParseIntPipe } from '@nestjs/common';
-import { ApiTags, ApiOperation, ApiBearerAuth } from '@nestjs/swagger';
+import { Controller, Get, Post, Patch, Delete, Param, Body, Query, UseGuards, ParseIntPipe } from '@nestjs/common';
+import { ApiTags, ApiOperation, ApiBearerAuth, ApiQuery } from '@nestjs/swagger';
 import { CustomerStatusesService } from './customer-statuses.service';
 import { CreateCustomerStatusDto } from './dto/create-customer-status.dto';
 import { UpdateCustomerStatusDto } from './dto/update-customer-status.dto';
@@ -49,8 +49,17 @@ export class CustomerStatusesController {
 
   @Delete(':id')
   @RequirePermission('customer_statuses.delete')
-  @ApiOperation({ summary: 'Xoá trạng thái - chặn nếu là trạng thái hệ thống hoặc đang có khách hàng dùng (chỉ Admin)' })
-  remove(@Param('id', ParseIntPipe) id: number) {
-    return this.customerStatusesService.remove(id);
+  @ApiOperation({
+    summary:
+      'Xoá trạng thái (chỉ Admin) - chặn nếu là trạng thái hệ thống. Nếu đang có khách hàng dùng, ' +
+      'bắt buộc truyền fallbackCode để chuyển dữ liệu các khách hàng đó sang trạng thái khác trước khi xoá.',
+  })
+  @ApiQuery({
+    name: 'fallbackCode',
+    required: false,
+    description: 'Mã trạng thái thay thế - bắt buộc nếu trạng thái đang xoá còn khách hàng dùng',
+  })
+  remove(@Param('id', ParseIntPipe) id: number, @Query('fallbackCode') fallbackCode?: string) {
+    return this.customerStatusesService.remove(id, fallbackCode);
   }
 }

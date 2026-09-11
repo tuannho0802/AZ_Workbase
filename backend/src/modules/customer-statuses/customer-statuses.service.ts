@@ -19,10 +19,29 @@ export class CustomerStatusesService {
     private readonly customerRepo: Repository<Customer>,
   ) {}
 
-  async findAll(): Promise<CustomerStatus[]> {
-    return this.statusRepo.find({
+  /**
+   * `inUseCount` KHÔNG lưu trong entity (chỉ tính động từ `customers.status`,
+   * cột free-text sau migration, không có FK) - FE dùng số này để: (1) hiển
+   * thị ngay trong bảng quản lý ("Đang dùng: N khách hàng"), (2) quyết định
+   * có cần bắt buộc chọn `fallbackCode` khi xoá hay không (xem `remove()`)
+   * TRƯỚC KHI user bấm Xoá, tránh phải bấm rồi mới biết cần chọn fallback.
+   * 1 query GROUP BY duy nhất, không N+1 theo từng status.
+   */
+  async findAll(): Promise<(CustomerStatus & { inUseCount: number })[]> {
+    const statuses = await this.statusRepo.find({
       order: { sortOrder: 'ASC', id: 'ASC' },
     });
+    if (statuses.length === 0) return [];
+
+    const counts = await this.customerRepo
+      .createQueryBuilder('customer')
+      .select('customer.status', 'status')
+      .addSelect('COUNT(*)', 'count')
+      .groupBy('customer.status')
+      .getRawMany<{ status: string; count: string }>();
+    const countMap = new Map(counts.map((c) => [c.status, Number(c.count)]));
+
+    return statuses.map((s) => ({ ...s, inUseCount: countMap.get(s.code) ?? 0 }));
   }
 
   async findOne(id: number): Promise<CustomerStatus> {
@@ -62,14 +81,22 @@ export class CustomerStatusesService {
   }
 
   /**
-   * ⚠️ KHÔNG xoá trạng thái hệ thống (`isSystem = true`, 5 giá trị seed từ
-   * ENUM cũ) - đúng nguyên tắc `PositionsService.remove()`. Với trạng thái
-   * tuỳ chỉnh (`isSystem = false`), vẫn chặn xoá nếu đang có customer dùng
-   * (cột `customers.status` là free-text sau migration, không có FK) - đúng
-   * pattern `MediaSourcesService.remove()`, gợi ý đổi status cho các customer
-   * đó trước khi xoá thay vì để "mồ côi" dữ liệu.
+   * ⚠️ KHÔNG xoá trạng thái hệ thống (`isSystem = true`, 9 giá trị seed từ
+   * migration `CreateCustomerStatuses1781400000000`) - đúng nguyên tắc
+   * `PositionsService.remove()`. Với trạng thái tuỳ chỉnh (`isSystem =
+   * false`) đang có customer dùng (cột `customers.status` là free-text sau
+   * migration, không có FK), thay vì chặn cứng như trước, BÂY GIỜ cho phép
+   * xoá kèm "fallback": mọi customer đang có `status = code cũ` sẽ được
+   * chuyển sang `fallbackCode` do người dùng chọn (UI bắt buộc chọn - xem
+   * `CustomerStatusesController.remove()` + modal xoá ở FE) TRƯỚC khi status
+   * cũ bị xoá, tránh làm "mồ côi" dữ liệu như pattern cũ nhưng không cần
+   * người dùng phải tự sửa từng khách hàng trước.
+   *
+   * `fallbackCode` CHƯA truyền + đang có customer dùng -> ném lỗi rõ ràng
+   * (kèm số lượng) để FE hiện modal bắt chọn, KHÔNG tự ý chọn hộ 1 fallback
+   * mặc định nào - đây là quyết định nghiệp vụ, phải do người xoá chọn.
    */
-  async remove(id: number): Promise<{ deleted: true }> {
+  async remove(id: number, fallbackCode?: string): Promise<{ deleted: true; reassignedCount: number }> {
     const status = await this.findOne(id);
 
     if (status.isSystem) {
@@ -77,14 +104,34 @@ export class CustomerStatusesService {
     }
 
     const inUseCount = await this.customerRepo.count({ where: { status: status.code } });
+
+    let fallbackStatus: CustomerStatus | null = null;
     if (inUseCount > 0) {
-      throw new BadRequestException(
-        `Không thể xoá "${status.name}" vì đang có ${inUseCount} khách hàng dùng trạng thái này. ` +
-          'Vui lòng đổi trạng thái cho các khách hàng đó trước khi xoá.',
-      );
+      if (!fallbackCode) {
+        throw new BadRequestException(
+          `Đang có ${inUseCount} khách hàng dùng trạng thái "${status.name}". ` +
+          'Vui lòng chọn trạng thái thay thế (fallbackCode) để chuyển dữ liệu trước khi xoá.',
+        );
+      }
+      if (fallbackCode === status.code) {
+        throw new BadRequestException('Trạng thái thay thế không được trùng với trạng thái đang xoá');
+      }
+      fallbackStatus = await this.statusRepo.findOne({ where: { code: fallbackCode } });
+      if (!fallbackStatus) {
+        throw new BadRequestException(`Trạng thái thay thế "${fallbackCode}" không tồn tại`);
+      }
     }
 
-    await this.statusRepo.remove(status);
-    return { deleted: true };
+    // Transaction: chuyển dữ liệu customer (nếu có) + xoá status phải cùng
+    // thành công hoặc cùng rollback - tránh trạng thái nửa vời (đã chuyển
+    // hết customer sang fallback nhưng status cũ vẫn còn, hoặc ngược lại).
+    await this.statusRepo.manager.transaction(async (manager) => {
+      if (inUseCount > 0 && fallbackStatus) {
+        await manager.update(Customer, { status: status.code }, { status: fallbackStatus.code });
+      }
+      await manager.remove(CustomerStatus, status);
+    });
+
+    return { deleted: true, reassignedCount: inUseCount };
   }
 }
