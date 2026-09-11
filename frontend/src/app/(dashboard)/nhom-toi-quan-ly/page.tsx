@@ -1,22 +1,38 @@
 'use client';
 
-import { useMemo, useState } from 'react';
-import { Table, Tag, Typography, Space, Button, Empty } from 'antd';
+import { useEffect, useMemo, useState } from 'react';
+import { useRouter } from 'next/navigation';
+import { Table, Tag, Typography, Space, Button, Empty, App } from 'antd';
 import { LinkOutlined, TeamOutlined, CrownOutlined } from '@ant-design/icons';
 import { useAuthStore } from '@/lib/stores/auth.store';
 import { useManagedByMe, useAllLinkGroups } from '@/lib/hooks/useLinkGroups';
+import { useMyPermissions } from '@/lib/hooks/useMyPermissions';
 import { GroupManagersModal } from '@/components/link-groups/GroupManagersModal';
 
 const { Title, Text } = Typography;
 
 export default function MyManagedLinkGroupsPage() {
+  const router = useRouter();
+  const { message } = App.useApp();
   const currentUser = useAuthStore((s) => s.user);
+  const { can, isLoading: permissionsLoading } = useMyPermissions();
   const { groups: managedGroups, isLoading } = useManagedByMe();
   // Chỉ để lấy thêm url/category cho hiển thị - GroupManagersResult (BE)
   // không trả url/category vì đó không phải dữ liệu của tính năng phân
   // quyền chính/phụ. Endpoint GET /link-groups mở cho mọi user đã đăng
   // nhập nên ghép thêm ở đây là an toàn.
   const { groups: allGroups, isLoading: loadingAll } = useAllLinkGroups();
+
+  // ⚠️ MỚI - trước đây trang này KHÔNG có route guard nào (mở cho MỌI role
+  // đã đăng nhập, kể cả khi Admin đã tắt permission qua /phan-quyen) - khác
+  // với mọi trang khác trong app đều tự chặn theo `useMyPermissions()`. Fix
+  // khớp `permission: 'link_groups.my_managed'` mới thêm ở nav-config.tsx.
+  useEffect(() => {
+    if (!permissionsLoading && !can('link_groups.my_managed')) {
+      message.warning('Bạn không có quyền truy cập trang này');
+      router.replace('/');
+    }
+  }, [permissionsLoading, can, router, message]);
 
   const [managingGroup, setManagingGroup] = useState<{ id: number; name: string } | null>(null);
 

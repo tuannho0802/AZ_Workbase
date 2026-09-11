@@ -36,12 +36,18 @@ describe('nav-config: getVisibleNavItems', () => {
     }
   });
 
-  it('mục dùng field `roles` tĩnh (chưa migrate) vẫn lọc đúng theo role, không phụ thuộc can()', () => {
-    // nhom-toi-quan-ly: roles=null, không permission -> luôn hiện, không
-    // liên quan gì tới can() - nếu ai lỡ đổi field `permission` cho mục
-    // này mà quên cập nhật BE tương ứng, test dưới sẽ đỏ và cảnh báo sớm.
-    const items = getVisibleNavItems('employee', () => false);
-    expect(items.some((i) => i.key === 'nhom-toi-quan-ly')).toBe(true);
+  it('mục dùng `permission` (link_groups.my_managed) -> ẨN/HIỆN đúng theo can(), không còn luôn hiện như trước', () => {
+    // ⚠️ FIX BUG THẬT (báo qua ảnh chụp 2026-09-11): trước đây test này
+    // khẳng định `nhom-toi-quan-ly` (roles=null, KHÔNG có permission) luôn
+    // hiện bất kể can() - đó chính là bug người dùng báo (mục vẫn hiện dù
+    // Admin đã tắt hết quyền khác). Đã thêm `permission: 'link_groups.my_managed'`
+    // (migration AddLinkGroupsMyManagedPermission1781600000000) - test giờ
+    // khẳng định hành vi ĐÚNG: ẩn khi can() false, hiện khi can() true.
+    const hiddenWhenNoPermission = getVisibleNavItems('employee', () => false);
+    expect(hiddenWhenNoPermission.some((i) => i.key === 'nhom-toi-quan-ly')).toBe(false);
+
+    const shownWhenHasPermission = getVisibleNavItems('employee', (key) => key === 'link_groups.my_managed');
+    expect(shownWhenHasPermission.some((i) => i.key === 'nhom-toi-quan-ly')).toBe(true);
   });
 
   it('mỗi NAV_ITEM chỉ dùng ĐÚNG 1 trong 2 cơ chế: hoặc `permission`, hoặc `roles` cụ thể - không lẫn lộn dở dang', () => {

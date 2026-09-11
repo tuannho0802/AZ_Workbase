@@ -126,7 +126,13 @@ export const NAV_ITEMS: NavItem[] = [
     description: 'Các nhóm liên kết bạn là quản lý chính/phụ',
     icon: <UsergroupAddOutlined />,
     path: '/nhom-toi-quan-ly',
+    // ⚠️ FIX BUG THẬT (báo qua ảnh chụp 2026-09-11): trước đây `roles: null`
+    // không có `permission` -> hiện với MỌI role bất kể Admin đã tắt hết
+    // quyền khác. Permission MỚI `link_groups.my_managed` (KHÔNG dùng chung
+    // `link_groups.view` của trang CRUD `/nhom-lien-ket` - khác mục đích, xem
+    // migration AddLinkGroupsMyManagedPermission1781600000000).
     roles: null,
+    permission: 'link_groups.my_managed',
   },
   {
     key: 'reports',
