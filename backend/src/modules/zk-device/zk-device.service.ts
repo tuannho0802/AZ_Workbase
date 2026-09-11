@@ -6,6 +6,8 @@ import { User } from '../../database/entities/user.entity';
 import { AttendanceLog } from '../../database/entities/attendance-log.entity';
 import { ZkDeviceUserCache } from '../../database/entities/zk-device-user-cache.entity';
 import { Department } from '../../database/entities/department.entity';
+import { DepartmentManager } from '../../database/entities/department-manager.entity';
+import { DepartmentManagerHelper } from '../departments/helpers/department-manager.helper';
 import { Role } from '../../common/enums/role.enum';
 import { PermissionScope } from '../../database/entities/role-permission.entity';
 import { AttendanceSource } from '../../common/enums/attendance-source.enum';
@@ -96,17 +98,15 @@ export class ZkDeviceService {
   ) {}
 
   /**
-   * PERMISSIONS.md mục 2.3: danh sách id phòng ban mà `managerId` đang là
-   * `manager_user_id` - dùng để giới hạn phạm vi Manager xem/thao tác chấm
-   * công CHỈ trong phòng ban mình quản lý (không phải phòng ban mình *thuộc
-   * về*). Cùng pattern với UsersAccessHelper/CustomerAccessHelper.
+   * PERMISSIONS.md mục 2.3: danh sách id phòng ban mà `managerId` đang được
+   * gán làm Manager/Assistant quản lý (bảng `department_managers`, có thể
+   * nhiều hơn 1 phòng ban) - dùng để giới hạn phạm vi Manager xem/thao tác
+   * chấm công CHỈ trong (các) phòng ban mình quản lý (không phải phòng ban
+   * mình *thuộc về*). Cùng pattern với UsersAccessHelper/CustomerAccessHelper.
    */
   private async getManagedDepartmentIds(managerId: number): Promise<number[]> {
-    const depts = await this.departmentRepo.find({
-      where: { managerUserId: managerId },
-      select: ['id'],
-    });
-    return depts.map((d) => d.id);
+    const departmentManagerRepo = this.departmentRepo.manager.getRepository(DepartmentManager);
+    return DepartmentManagerHelper.getManagedDepartmentIds(departmentManagerRepo, managerId);
   }
 
   private get deviceIp(): string {

@@ -5,6 +5,8 @@ import { LeaveRequest, LeaveStatus, LeaveDuration } from '../../database/entitie
 import { LeaveRequestAttachment } from '../../database/entities/leave-request-attachment.entity';
 import { User } from '../../database/entities/user.entity';
 import { Department } from '../../database/entities/department.entity';
+import { DepartmentManager } from '../../database/entities/department-manager.entity';
+import { DepartmentManagerHelper } from '../departments/helpers/department-manager.helper';
 import { Role } from '../../common/enums/role.enum';
 import { PermissionScope } from '../../database/entities/role-permission.entity';
 import { UploadsService } from '../uploads/uploads.service';
@@ -53,9 +55,12 @@ export class LeaveRequestsService {
    * Thay thế hoàn toàn ELIGIBLE_APPROVER_ROLES cứng cũ:
    * - scope='all' hoặc Role.ADMIN -> duyệt mọi đơn.
    * - scope='department' -> duyệt được nếu THOẢ 1 TRONG 2:
-   *     (a) approver là managerUserId của phòng ban mà người xin nghỉ thuộc
-   *         về (dùng department.managerUserId) - rule mặc định, ÁP DỤNG
-   *         CHO MỌI ROLE người xin nghỉ kể cả Assistant nếu cùng phòng ban;
+   *     (a) approver là 1 trong các Manager/Assistant được gán quản lý phòng
+   *         ban mà người xin nghỉ thuộc về (bảng `department_managers`, xem
+   *         `DepartmentManagerHelper` - đã thay cho cột đơn
+   *         `department.managerUserId` cũ, giờ 1 phòng ban có thể có NHIỀU
+   *         người quản lý) - rule mặc định, ÁP DỤNG CHO MỌI ROLE người xin
+   *         nghỉ kể cả Assistant nếu cùng phòng ban;
    *     (b) approver chính là `requesterLeaveApproverId` - NGOẠI LỆ gán tay
    *         (xem migration AddLeaveApproverOverrideToUsers1781700000000),
    *         dùng cho case người xin nghỉ KHÔNG cùng phòng ban với Manager
@@ -74,17 +79,21 @@ export class LeaveRequestsService {
       return true;
     }
 
-    // scope='department' → managerUserId của đúng phòng ban người xin nghỉ,
-    // HOẶC ngoại lệ leave_approver_id gán riêng cho người xin nghỉ đó.
+    // scope='department' → approver phải là 1 trong các Manager/Assistant
+    // được gán quản lý đúng phòng ban người xin nghỉ (bảng
+    // department_managers), HOẶC ngoại lệ leave_approver_id gán riêng cho
+    // người xin nghỉ đó.
     if (scope === PermissionScope.DEPARTMENT) {
       if (requesterLeaveApproverId != null && requesterLeaveApproverId === approverId) {
         return true;
       }
       if (requesterDepartmentId == null) return false;
-      const dept = await this.departmentRepo.findOne({
-        where: { id: requesterDepartmentId, managerUserId: approverId },
-      });
-      return !!dept;
+      const departmentManagerRepo = this.departmentRepo.manager.getRepository(DepartmentManager);
+      return DepartmentManagerHelper.isManagerOfDepartment(
+        departmentManagerRepo,
+        requesterDepartmentId,
+        approverId,
+      );
     }
 
     // scope=null/own hoặc bất kỳ giá trị khác → không được duyệt
@@ -92,15 +101,13 @@ export class LeaveRequestsService {
   }
 
   /**
-   * Danh sách id phòng ban mà `managerId` đang là `manager_user_id` - dùng
+   * Danh sách id phòng ban mà `managerId` đang được gán làm Manager/Assistant
+   * quản lý (bảng `department_managers`, có thể nhiều hơn 1 phòng ban) - dùng
    * để lọc findPending()/findHistory() khi viewer là Manager.
    */
   private async getManagedDepartmentIds(managerId: number): Promise<number[]> {
-    const depts = await this.departmentRepo.find({
-      where: { managerUserId: managerId },
-      select: ['id'],
-    });
-    return depts.map((d) => d.id);
+    const departmentManagerRepo = this.departmentRepo.manager.getRepository(DepartmentManager);
+    return DepartmentManagerHelper.getManagedDepartmentIds(departmentManagerRepo, managerId);
   }
   
   /**

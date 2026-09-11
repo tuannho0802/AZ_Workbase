@@ -10,7 +10,6 @@ import { UpdateAssignmentDto } from './dto/update-assignment.dto';
 import { Role } from '../../common/enums/role.enum';
 import { PermissionScope } from '../../database/entities/role-permission.entity';
 import { User } from '../../database/entities/user.entity';
-import { Department } from '../../database/entities/department.entity';
 import { DepartmentManager } from '../../database/entities/department-manager.entity';
 import { DepartmentManagerHelper } from '../departments/helpers/department-manager.helper';
 import {
@@ -1723,10 +1722,12 @@ export class CustomersService {
     if (permissionScope === PermissionScope.DEPARTMENT) {
       const deptId = assignment.customer?.departmentId;
       if (deptId == null) return false;
-      const departmentRepo = this.customersRepository.manager.getRepository(Department);
-      const managed = await departmentRepo.exists({
-        where: { id: deptId, managerUserId: callerId },
-      });
+      const departmentManagerRepo = this.customersRepository.manager.getRepository(DepartmentManager);
+      const managed = await DepartmentManagerHelper.isManagerOfDepartment(
+        departmentManagerRepo,
+        deptId,
+        callerId,
+      );
       return managed;
     }
 

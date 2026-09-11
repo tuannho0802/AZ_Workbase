@@ -994,7 +994,40 @@ export class UsersService {
       // 1. "Assign" hiện hành -> fallback gán cho người xoá
       await manager.query('UPDATE customers SET sales_user_id = ? WHERE sales_user_id = ?', [callerId, targetId]);
       await manager.query('UPDATE customers SET marketing_user_id = ? WHERE marketing_user_id = ?', [callerId, targetId]);
+      // Cột `departments.manager_user_id` đã DEPRECATED (không còn được đọc
+      // bởi bất kỳ logic phân quyền nào, xem department-manager.entity.ts) -
+      // vẫn fallback cho dữ liệu lịch sử nhất quán, nhưng nguồn sự thật thật
+      // sự giờ là bảng `department_managers` xử lý ngay bên dưới.
       await manager.query('UPDATE departments SET manager_user_id = ? WHERE manager_user_id = ?', [callerId, targetId]);
+
+      // 1b. `department_managers` (nhiều-nhiều) -> fallback gán cho người xoá,
+      // NHƯNG PHẢI tránh vi phạm UNIQUE(department_id, user_id): nếu callerId
+      // ĐÃ SẴN là manager của đúng phòng ban đó rồi thì chỉ cần xoá dòng cũ
+      // của targetId (giữ dòng của callerId), không được UPDATE đè vì sẽ tạo
+      // ra 2 dòng trùng (department_id, callerId).
+      const targetManagedDeptRows: Array<{ department_id: number }> = await manager.query(
+        'SELECT department_id FROM department_managers WHERE user_id = ?',
+        [targetId],
+      );
+      if (targetManagedDeptRows.length > 0) {
+        const callerManagedDeptRows: Array<{ department_id: number }> = await manager.query(
+          'SELECT department_id FROM department_managers WHERE user_id = ?',
+          [callerId],
+        );
+        const callerManagedDeptIds = new Set(callerManagedDeptRows.map((r) => r.department_id));
+        const duplicateDeptIds = targetManagedDeptRows
+          .map((r) => r.department_id)
+          .filter((id) => callerManagedDeptIds.has(id));
+
+        if (duplicateDeptIds.length > 0) {
+          await manager.query(
+            `DELETE FROM department_managers WHERE user_id = ? AND department_id IN (${duplicateDeptIds.map(() => '?').join(',')})`,
+            [targetId, ...duplicateDeptIds],
+          );
+        }
+        // Phần còn lại (không trùng với callerId) -> update bình thường
+        await manager.query('UPDATE department_managers SET user_id = ? WHERE user_id = ?', [callerId, targetId]);
+      }
 
       // 2. Lịch sử giao-nhận data -> xoá hẳn theo
       await manager.query(
