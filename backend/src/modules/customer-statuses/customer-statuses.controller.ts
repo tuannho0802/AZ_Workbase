@@ -17,18 +17,23 @@ import { RequirePermission } from '../../common/decorators/require-permission.de
 export class CustomerStatusesController {
   constructor(private readonly customerStatusesService: CustomerStatusesService) {}
 
-  // Không giới hạn role cao - MỌI nhân viên đã đăng nhập cần gọi được để
-  // load dropdown "Trạng thái" khi thêm/sửa khách hàng.
+  // ⚠️ CỐ Ý KHÔNG gắn @RequirePermission() ở đây (chỉ còn JwtAuthGuard qua
+  // class-level @UseGuards) - permission 'customer_statuses.view' CHỈ dùng
+  // để FE gate sidebar/trang "Quản lý Status khách" (xem nav-config.tsx +
+  // quan-ly-status-khach/page.tsx), KHÔNG được dùng để chặn API này, vì mọi
+  // nhân viên đã đăng nhập vẫn PHẢI gọi được để load dropdown "Trạng thái"
+  // khi thêm/sửa khách hàng. Trước đây dùng chung 1 permission cho cả 2 mục
+  // đích -> Admin tắt 'customer_statuses.view' để ẩn trang quản lý vô tình
+  // chặn luôn nhân viên xem/tạo khách hàng - đã fix bằng cách tách 2 mục
+  // đích này ra (mirror đúng cách fix ở leave-types.controller.ts).
   @Get()
-  @RequirePermission('customer_statuses.view')
-  @ApiOperation({ summary: 'Danh sách tất cả trạng thái khách hàng' })
+  @ApiOperation({ summary: 'Danh sách tất cả trạng thái khách hàng (mọi user đã đăng nhập, không cần permission riêng)' })
   findAll() {
     return this.customerStatusesService.findAll();
   }
 
   @Get(':id')
-  @RequirePermission('customer_statuses.view')
-  @ApiOperation({ summary: 'Lấy chi tiết 1 trạng thái' })
+  @ApiOperation({ summary: 'Lấy chi tiết 1 trạng thái (mọi user đã đăng nhập, không cần permission riêng)' })
   findOne(@Param('id', ParseIntPipe) id: number) {
     return this.customerStatusesService.findOne(id);
   }

@@ -17,18 +17,24 @@ import { RequirePermission } from '../../common/decorators/require-permission.de
 export class LeaveTypesController {
   constructor(private readonly leaveTypesService: LeaveTypesService) {}
 
-  // Không giới hạn role cao - MỌI nhân viên đã đăng nhập cần gọi được để
-  // load dropdown "Loại phép" khi tạo đơn nghỉ phép.
+  // ⚠️ CỐ Ý KHÔNG gắn @RequirePermission() ở đây (chỉ còn JwtAuthGuard qua
+  // class-level @UseGuards) - permission 'leave_types.view' CHỈ dùng để FE
+  // gate sidebar/trang "Quản lý Loại phép" (xem nav-config.tsx +
+  // quan-ly-loai-phep/page.tsx), KHÔNG được dùng để chặn API này, vì mọi
+  // nhân viên đã đăng nhập (bất kể có quyền vào trang quản lý hay không) vẫn
+  // PHẢI gọi được để load dropdown "Loại phép" khi tạo đơn nghỉ phép
+  // (nghi-phep/page.tsx). Trước đây dùng chung 1 permission cho cả 2 mục
+  // đích -> Admin tắt 'leave_types.view' để ẩn trang quản lý vô tình chặn
+  // luôn nhân viên tạo đơn nghỉ phép (403 'Bạn không có quyền thực hiện
+  // hành động này') - đã fix bằng cách tách 2 mục đích này ra.
   @Get()
-  @RequirePermission('leave_types.view')
-  @ApiOperation({ summary: 'Danh sách tất cả loại đơn nghỉ phép' })
+  @ApiOperation({ summary: 'Danh sách tất cả loại đơn nghỉ phép (mọi user đã đăng nhập, không cần permission riêng)' })
   findAll() {
     return this.leaveTypesService.findAll();
   }
 
   @Get(':id')
-  @RequirePermission('leave_types.view')
-  @ApiOperation({ summary: 'Lấy chi tiết 1 loại phép' })
+  @ApiOperation({ summary: 'Lấy chi tiết 1 loại phép (mọi user đã đăng nhập, không cần permission riêng)' })
   findOne(@Param('id', ParseIntPipe) id: number) {
     return this.leaveTypesService.findOne(id);
   }
