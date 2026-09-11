@@ -73,6 +73,8 @@ const RESOURCE_LABEL: Record<string, string> = {
   // view/create/update/delete): resource này trước đó rơi vào fallback
   // `?? resource`, Admin nhìn thấy nhóm quyền hiện raw key
   // "customer_statuses" thay vì tên tiếng Việt như các resource khác.
+  storage: 'Lưu trữ hình ảnh',
+  uploads: 'Tải lên hình ảnh',
 };
 
 const SCOPE_LABEL: Record<PermissionScope, string> = {
