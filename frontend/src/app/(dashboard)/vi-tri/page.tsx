@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import {
     Table,
@@ -25,6 +25,7 @@ import {
 } from '@/lib/hooks/usePositions';
 import { Position } from '@/lib/api/positions.api';
 import { PositionVisibilityDrawer } from './PositionVisibilityDrawer';
+import { ListFilterBar } from '@/components/common/ListFilterBar';
 import { ColorPickerField } from '@/components/common/ColorPickerField';
 import { resolveEntityColor } from '@/lib/utils/entityColor';
 import { Department } from '@/lib/api/departments.api';
@@ -64,6 +65,23 @@ export default function PositionsPage() {
     const [deletingPosition, setDeletingPosition] = useState<Position | null>(null);
 
     const [visibilityPosition, setVisibilityPosition] = useState<Position | null>(null);
+
+    // Filter nhẹ CLIENT-SIDE (danh mục Vị trí thường rất ít, usePositions
+    // trả toàn bộ không phân trang) - giống pattern phong-ban/nhom-lien-ket.
+    const [searchText, setSearchText] = useState('');
+    const [filterDepartmentId, setFilterDepartmentId] = useState<number | undefined>(undefined);
+    const [filterIsSystem, setFilterIsSystem] = useState<boolean | undefined>(undefined);
+    const filteredPositions = useMemo(() => {
+        return positions.filter((p) => {
+            if (filterDepartmentId !== undefined && p.departmentId !== filterDepartmentId) return false;
+            if (filterIsSystem !== undefined && p.isSystem !== filterIsSystem) return false;
+            if (searchText.trim()) {
+                const q = searchText.trim().toLowerCase();
+                if (!(p.name.toLowerCase().includes(q) || p.code.toLowerCase().includes(q))) return false;
+            }
+            return true;
+        });
+    }, [positions, searchText, filterDepartmentId, filterIsSystem]);
 
     const openCreateModal = () => {
         setEditingPosition(null);
@@ -258,11 +276,39 @@ export default function PositionsPage() {
                 )}
             </div>
 
+            <ListFilterBar
+                searchValue={searchText}
+                onSearchChange={setSearchText}
+                searchPlaceholder="Tìm theo tên hoặc mã vị trí..."
+                dropdowns={[
+                    {
+                        key: 'department',
+                        placeholder: 'Phòng ban',
+                        value: filterDepartmentId,
+                        onChange: setFilterDepartmentId,
+                        options: departments.map((d) => ({
+                            value: d.id,
+                            label: <Tag color={resolveEntityColor(d.color)} style={{ marginInlineEnd: 0 }}>{d.name}</Tag>,
+                        })),
+                    },
+                    {
+                        key: 'isSystem',
+                        placeholder: 'Loại',
+                        value: filterIsSystem,
+                        onChange: setFilterIsSystem,
+                        options: [
+                            { value: true, label: <Tag color="gold" style={{ marginInlineEnd: 0 }}>Hệ thống</Tag> },
+                            { value: false, label: <Tag style={{ marginInlineEnd: 0 }}>Tuỳ chỉnh</Tag> },
+                        ],
+                    },
+                ]}
+            />
+
             <Table
                 rowKey="id"
                 loading={isLoading}
                 columns={columns}
-                dataSource={positions}
+                dataSource={filteredPositions}
                 pagination={false}
             />
 

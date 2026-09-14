@@ -33,6 +33,7 @@ import {
 } from '@/lib/hooks/useLeaveTypes';
 import { LeaveType } from '@/lib/api/leave-types.api';
 import { useMyPermissions } from '@/lib/hooks/useMyPermissions';
+import { ListFilterBar } from '@/components/common/ListFilterBar';
 
 const { Title, Text } = Typography;
 
@@ -71,6 +72,23 @@ export default function LeaveTypesPage() {
     const createMutation = useCreateLeaveType();
     const updateMutation = useUpdateLeaveType();
     const deleteMutation = useDeleteLeaveType();
+
+    // Filter nhẹ CLIENT-SIDE (danh mục Loại phép thường rất ít, useLeaveTypes
+    // trả toàn bộ không phân trang).
+    const [searchText, setSearchText] = useState('');
+    const [filterIsPaid, setFilterIsPaid] = useState<boolean | undefined>(undefined);
+    const [filterIsSystem, setFilterIsSystem] = useState<boolean | undefined>(undefined);
+    const filteredLeaveTypes = useMemo(() => {
+        return leaveTypes.filter((t) => {
+            if (filterIsPaid !== undefined && t.isPaid !== filterIsPaid) return false;
+            if (filterIsSystem !== undefined && t.isSystem !== filterIsSystem) return false;
+            if (searchText.trim()) {
+                const q = searchText.trim().toLowerCase();
+                if (!(t.name.toLowerCase().includes(q) || t.code.toLowerCase().includes(q))) return false;
+            }
+            return true;
+        });
+    }, [leaveTypes, searchText, filterIsPaid, filterIsSystem]);
 
     // ---- Modal Thêm/Sửa ----
     const [modalOpen, setModalOpen] = useState(false);
@@ -323,11 +341,39 @@ export default function LeaveTypesPage() {
                 )}
             </div>
 
+            <ListFilterBar
+                searchValue={searchText}
+                onSearchChange={setSearchText}
+                searchPlaceholder="Tìm theo tên hoặc mã loại phép..."
+                dropdowns={[
+                    {
+                        key: 'isPaid',
+                        placeholder: 'Hưởng lương',
+                        value: filterIsPaid,
+                        onChange: setFilterIsPaid,
+                        options: [
+                            { value: true, label: <Tag color="green" style={{ marginInlineEnd: 0 }}>Có lương</Tag> },
+                            { value: false, label: <Tag color="red" style={{ marginInlineEnd: 0 }}>Không lương</Tag> },
+                        ],
+                    },
+                    {
+                        key: 'isSystem',
+                        placeholder: 'Loại',
+                        value: filterIsSystem,
+                        onChange: setFilterIsSystem,
+                        options: [
+                            { value: true, label: <Tag color="gold" style={{ marginInlineEnd: 0 }}>Hệ thống</Tag> },
+                            { value: false, label: <Tag style={{ marginInlineEnd: 0 }}>Tuỳ chỉnh</Tag> },
+                        ],
+                    },
+                ]}
+            />
+
             <Table
                 rowKey="id"
                 loading={isLoading}
                 columns={columns}
-                dataSource={leaveTypes}
+                dataSource={filteredLeaveTypes}
                 pagination={false}
             />
 

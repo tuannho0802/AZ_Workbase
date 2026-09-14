@@ -33,6 +33,7 @@ import { useRoleColorMap, useRoleColors } from '@/lib/hooks/useRoleColorMap';
 import { usersApi } from '@/lib/api/users.api';
 import { Department } from '@/lib/api/departments.api';
 import { SimpleList } from '@/components/common/SimpleList';
+import { ListFilterBar } from '@/components/common/ListFilterBar';
 import { ColorPickerField } from '@/components/common/ColorPickerField';
 import { resolveEntityColor } from '@/lib/utils/entityColor';
 // Dùng chung UserMiniCard (đã có sẵn ở attendance-device) cho cột "Quản lý
@@ -367,7 +368,25 @@ export default function DepartmentsPage() {
                 )}
             </div>
 
-            <Table rowKey="id" loading={isLoading} columns={columns} dataSource={departments} pagination={false} />
+            <ListFilterBar
+                searchValue={searchText}
+                onSearchChange={setSearchText}
+                searchPlaceholder="Tìm theo tên phòng ban..."
+                dropdowns={[
+                    {
+                        key: 'active',
+                        placeholder: 'Trạng thái',
+                        value: filterActive === null ? undefined : filterActive,
+                        onChange: (v) => setFilterActive(v === undefined ? null : v),
+                        options: [
+                            { value: true, label: <Tag color="green" style={{ marginInlineEnd: 0 }}>Đang hoạt động</Tag> },
+                            { value: false, label: <Tag color="red" style={{ marginInlineEnd: 0 }}>Ngừng hoạt động</Tag> },
+                        ],
+                    },
+                ]}
+            />
+
+            <Table rowKey="id" loading={isLoading} columns={columns} dataSource={filteredDepartments} pagination={false} />
 
             {/* Modal Tạo / Sửa phòng ban */}
             <Modal

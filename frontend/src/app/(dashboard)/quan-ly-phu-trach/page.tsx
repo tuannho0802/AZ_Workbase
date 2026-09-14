@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { Table, Button, Tag, Space, Modal, Form, Input, Select, App, Typography } from 'antd';
 import { PlusOutlined, EditOutlined, DeleteOutlined } from '@ant-design/icons';
@@ -14,6 +14,7 @@ import {
   useDeleteAssignmentGroup,
 } from '@/lib/hooks/useAssignmentGroups';
 import { AssignmentGroupConfig } from '@/lib/api/assignment-groups.api';
+import { ListFilterBar } from '@/components/common/ListFilterBar';
 import { ColorPickerField } from '@/components/common/ColorPickerField';
 import { resolveEntityColor } from '@/lib/utils/entityColor';
 import { Department } from '@/lib/api/departments.api';
@@ -60,6 +61,24 @@ export default function AssignmentGroupsPage() {
 
   const [deleteModalOpen, setDeleteModalOpen] = useState(false);
   const [deleting, setDeleting] = useState<AssignmentGroupConfig | null>(null);
+
+  // Filter nhẹ CLIENT-SIDE (danh mục Quản lý phụ trách thường rất ít,
+  // useAssignmentGroups trả toàn bộ không phân trang).
+  const [searchText, setSearchText] = useState('');
+  const [filterDepartmentId, setFilterDepartmentId] = useState<number | undefined>(undefined);
+  const [filterIsSystem, setFilterIsSystem] = useState<boolean | undefined>(undefined);
+  const filteredConfigs = useMemo(() => {
+    return configs.filter((c) => {
+      if (filterDepartmentId !== undefined && !c.departments.some((d) => d.departmentId === filterDepartmentId))
+        return false;
+      if (filterIsSystem !== undefined && c.isSystem !== filterIsSystem) return false;
+      if (searchText.trim()) {
+        const q = searchText.trim().toLowerCase();
+        if (!(c.name.toLowerCase().includes(q) || c.key.toLowerCase().includes(q))) return false;
+      }
+      return true;
+    });
+  }, [configs, searchText, filterDepartmentId, filterIsSystem]);
 
   const openCreateModal = () => {
     setEditing(null);
@@ -262,7 +281,35 @@ export default function AssignmentGroupsPage() {
         )}
       </div>
 
-      <Table rowKey="id" loading={isLoading} columns={columns} dataSource={configs} pagination={false} />
+      <ListFilterBar
+        searchValue={searchText}
+        onSearchChange={setSearchText}
+        searchPlaceholder="Tìm theo tên hoặc key..."
+        dropdowns={[
+          {
+            key: 'department',
+            placeholder: 'Phòng ban',
+            value: filterDepartmentId,
+            onChange: setFilterDepartmentId,
+            options: departments.map((d) => ({
+              value: d.id,
+              label: <Tag color={resolveEntityColor(d.color)} style={{ marginInlineEnd: 0 }}>{d.name}</Tag>,
+            })),
+          },
+          {
+            key: 'isSystem',
+            placeholder: 'Loại',
+            value: filterIsSystem,
+            onChange: setFilterIsSystem,
+            options: [
+              { value: true, label: <Tag color="gold" style={{ marginInlineEnd: 0 }}>Hệ thống</Tag> },
+              { value: false, label: <Tag style={{ marginInlineEnd: 0 }}>Tuỳ chỉnh</Tag> },
+            ],
+          },
+        ]}
+      />
+
+      <Table rowKey="id" loading={isLoading} columns={columns} dataSource={filteredConfigs} pagination={false} />
 
       <Modal
         title={editing ? `Sửa "${editing.name}"` : 'Thêm nhóm phụ trách mới'}

@@ -15,8 +15,6 @@ import {
   Popconfirm,
   Typography,
   ColorPicker,
-  Row,
-  Col,
   Select,
 } from 'antd';
 import {
@@ -28,8 +26,8 @@ import {
   LinkOutlined,
   TeamOutlined,
   CrownOutlined,
-  SearchOutlined,
 } from '@ant-design/icons';
+import { ListFilterBar } from '@/components/common/ListFilterBar';
 import { useAuthStore } from '@/lib/stores/auth.store';
 import {
   useLinkCategories,
@@ -507,30 +505,23 @@ export default function LinkGroupsAdminPage() {
         )}
       </div>
 
-      <Row gutter={[12, 12]} style={{ marginBottom: 16 }}>
-        <Col xs={24} sm={12} md={8}>
-          <Input
-            allowClear
-            placeholder="Tìm nhóm theo tên hoặc URL..."
-            prefix={<SearchOutlined />}
-            value={groupSearch}
-            onChange={(e) => setGroupSearch(e.target.value)}
-          />
-        </Col>
-        <Col xs={12} sm={8} md={5}>
-          <Select
-            allowClear
-            placeholder="Trạng thái nhóm"
-            style={{ width: '100%' }}
-            value={groupStatusFilter}
-            onChange={(v) => setGroupStatusFilter(v ?? null)}
-            options={[
+      <ListFilterBar
+        searchValue={groupSearch}
+        onSearchChange={setGroupSearch}
+        searchPlaceholder="Tìm nhóm theo tên hoặc URL..."
+        dropdowns={[
+          {
+            key: 'groupStatus',
+            placeholder: 'Trạng thái nhóm',
+            value: groupStatusFilter ?? undefined,
+            onChange: (v) => setGroupStatusFilter(v ?? null),
+            options: [
               { value: 'active', label: <Tag color="green" style={{ marginInlineEnd: 0 }}>Đang hiện</Tag> },
               { value: 'inactive', label: <Tag color="red" style={{ marginInlineEnd: 0 }}>Đang ẩn</Tag> },
-            ]}
-          />
-        </Col>
-      </Row>
+            ],
+          },
+        ]}
+      />
 
       <Table
         rowKey="id"

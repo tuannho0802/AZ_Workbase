@@ -32,6 +32,7 @@ import {
 } from '@/lib/hooks/useCustomerStatuses';
 import { CustomerStatus } from '@/lib/api/customer-statuses.api';
 import { useMyPermissions } from '@/lib/hooks/useMyPermissions';
+import { ListFilterBar } from '@/components/common/ListFilterBar';
 
 const { Title, Text } = Typography;
 
@@ -61,6 +62,21 @@ export default function CustomerStatusesPage() {
     const createMutation = useCreateCustomerStatus();
     const updateMutation = useUpdateCustomerStatus();
     const deleteMutation = useDeleteCustomerStatus();
+
+    // Filter nhẹ CLIENT-SIDE (danh mục Trạng thái khách thường rất ít,
+    // useCustomerStatuses trả toàn bộ không phân trang).
+    const [searchText, setSearchText] = useState('');
+    const [filterIsSystem, setFilterIsSystem] = useState<boolean | undefined>(undefined);
+    const filteredStatuses = useMemo(() => {
+        return statuses.filter((s) => {
+            if (filterIsSystem !== undefined && s.isSystem !== filterIsSystem) return false;
+            if (searchText.trim()) {
+                const q = searchText.trim().toLowerCase();
+                if (!(s.name.toLowerCase().includes(q) || s.code.toLowerCase().includes(q))) return false;
+            }
+            return true;
+        });
+    }, [statuses, searchText, filterIsSystem]);
 
     // ---- Modal Thêm/Sửa ----
     const [modalOpen, setModalOpen] = useState(false);
@@ -275,11 +291,29 @@ export default function CustomerStatusesPage() {
                 )}
             </div>
 
+            <ListFilterBar
+                searchValue={searchText}
+                onSearchChange={setSearchText}
+                searchPlaceholder="Tìm theo tên hoặc mã trạng thái..."
+                dropdowns={[
+                    {
+                        key: 'isSystem',
+                        placeholder: 'Loại',
+                        value: filterIsSystem,
+                        onChange: setFilterIsSystem,
+                        options: [
+                            { value: true, label: <Tag color="gold" style={{ marginInlineEnd: 0 }}>Hệ thống</Tag> },
+                            { value: false, label: <Tag style={{ marginInlineEnd: 0 }}>Tuỳ chỉnh</Tag> },
+                        ],
+                    },
+                ]}
+            />
+
             <Table
                 rowKey="id"
                 loading={isLoading}
                 columns={columns}
-                dataSource={statuses}
+                dataSource={filteredStatuses}
                 pagination={false}
             />
 

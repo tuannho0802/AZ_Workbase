@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import {
   Table,
@@ -35,6 +35,7 @@ import {
 } from '@/lib/hooks/useMediaSources';
 import { MediaSource } from '@/lib/api/media-sources.api';
 import { useMyPermissions } from '@/lib/hooks/useMyPermissions';
+import { ListFilterBar } from '@/components/common/ListFilterBar';
 
 const { Title, Text } = Typography;
 
@@ -73,6 +74,18 @@ export default function MediaSourcesPage() {
   const lockMutation = useLockMediaSource();
   const unlockMutation = useUnlockMediaSource();
   const deleteMutation = useDeleteMediaSource();
+
+  // Filter nhẹ CLIENT-SIDE (danh mục Nguồn media thường rất ít,
+  // useMediaSources trả toàn bộ không phân trang).
+  const [searchText, setSearchText] = useState('');
+  const [filterIsLocked, setFilterIsLocked] = useState<boolean | undefined>(undefined);
+  const filteredSources = useMemo(() => {
+    return sources.filter((s) => {
+      if (filterIsLocked !== undefined && s.isLocked !== filterIsLocked) return false;
+      if (searchText.trim() && !s.name.toLowerCase().includes(searchText.trim().toLowerCase())) return false;
+      return true;
+    });
+  }, [sources, searchText, filterIsLocked]);
 
   const [modalOpen, setModalOpen] = useState(false);
   const [editingSource, setEditingSource] = useState<MediaSource | null>(null);
@@ -224,11 +237,29 @@ export default function MediaSourcesPage() {
         )}
       </div>
 
+      <ListFilterBar
+        searchValue={searchText}
+        onSearchChange={setSearchText}
+        searchPlaceholder="Tìm theo tên nguồn..."
+        dropdowns={[
+          {
+            key: 'isLocked',
+            placeholder: 'Trạng thái',
+            value: filterIsLocked,
+            onChange: setFilterIsLocked,
+            options: [
+              { value: false, label: <Tag color="green" style={{ marginInlineEnd: 0 }}>Đang mở</Tag> },
+              { value: true, label: <Tag color="red" style={{ marginInlineEnd: 0 }}>Đã khoá</Tag> },
+            ],
+          },
+        ]}
+      />
+
       <Table
         rowKey="id"
         loading={isLoading}
         columns={columns}
-        dataSource={sources}
+        dataSource={filteredSources}
         pagination={false}
       />
 
