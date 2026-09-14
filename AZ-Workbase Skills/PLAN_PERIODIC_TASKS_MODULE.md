@@ -219,7 +219,80 @@ Soft delete (`deleted_at`), không hard-delete. Task đã xoá mềm **vẫn gi�
 `periodic_task_links`** trỏ tới nó (không cascade xoá cạnh) nhưng mọi query rollup/list PHẢI luôn có
 `AND t.deleted_at IS NULL` — đúng như ví dụ SQL ở mục 2.3.
 
-### 2.8. Không đụng vào cơ chế RBAC/entity hiện có
+### 2.9. Khoá/mở khoá và Done/Not-Done — TỰ DO đổi 2 chiều, không phải workflow 1 chiều
+
+Đã chốt lại (thay cho câu hỏi mở cũ ở mục 8): **không có khái niệm "chốt vĩnh viễn"** cho cả 2 trục:
+- `is_locked` có thể bật lại tắt, tắt lại bật, không giới hạn số lần, không cần lý do bắt buộc (chỉ
+  có `lock_note` optional) — ai có `periodic_tasks.approve` đều làm được cả 2 chiều, không tách quyền
+  "lock" riêng "unlock" riêng.
+- Đổi status (kể cả từ 1 status `is_done_state=true` quay lại 1 status khác, hoặc ngược lại) luôn
+  được phép — **không** chặn "đã Done thì không cho đổi lại". Hệ quả trực tiếp: % rollup ở mục 2.3
+  luôn phải tính **live theo status hiện tại**, không được cache theo kiểu "đã từng Done thì tính
+  mãi mãi" — thiết kế live-query ở mục 2.3 đã đúng sẵn theo yêu cầu này, không cần sửa.
+
+**Việc CÓ ĐƯỢC SỬA 1 Task đang `is_locked=true` hay không** là 1 câu hỏi RIÊNG BIỆT với việc "có
+được đổi `is_locked` hay không" — 2 permission tách bạch:
+
+| Permission | Việc quyết định | Loại |
+|---|---|---|
+| `periodic_tasks.approve` | Có được bật/tắt `is_locked` của 1 Task không (2 chiều tự do) | scope (own/department/all) |
+| `periodic_tasks.edit_locked` | Khi 1 Task ĐANG `is_locked=true`, có được `PATCH` sửa nội dung/đổi status/gán lại chính-phụ/link-unlink của Task đó không, hay bắt buộc unlock trước mới sửa được | nhị phân (`supportsScope=false`), mirror `roles.manage` |
+
+`periodic_tasks.edit_locked` seed mặc định **CHỈ Admin** (giống các permission "vượt rào" khác trong
+dự án) — nhưng vì đây là 1 dòng bình thường trong `role_permissions`, nó **tự động thừa hưởng đầy đủ
+cơ chế override 3 tầng Position → Department → Global** đã có sẵn trong `PermissionsService`/
+`roles.controller.ts` (`department-overrides`, `position-overrides`) — **không cần code thêm gì**
+cho phần override, chỉ cần khai đúng permission key này trong catalogue (mục 4) và dùng
+`PermissionGuard`/`hasPermission()` y hệt mọi permission khác. Ví dụ thực tế: Admin có thể mở
+override riêng cho phòng ban Marketing (`department_id` cụ thể) hoặc riêng 1 Position (vd `director`)
+để những người đó được sửa Task dù đang khoá, mà không cần bật quyền này cho toàn bộ role Manager.
+
+Service khi xử lý `PATCH /periodic-tasks/:id` (và các sub-endpoint sửa dữ liệu con: links, secondary-
+assignees, customers):
+```ts
+if (task.isLocked && !(await this.permissionsService.hasPermission(
+      user.role, 'periodic_tasks.edit_locked', user.departmentId, user.positionId)).allowed
+    && !(user.role === Role.ADMIN && user.isRootAdmin)) {
+  throw new ForbiddenException('Task đang bị khoá, bạn không có quyền sửa khi đang khoá');
+}
+```
+(Root Admin luôn bypass, đúng lối thoát hiểm chung của `PermissionGuard` toàn hệ thống — không tạo
+ngoại lệ riêng cho module này.)
+
+### 2.10. `department_id` của Task — auto-fill lúc tạo, nhưng SỬA TỰ DO sau đó
+
+Xác nhận: `department_id` chỉ là **giá trị khởi tạo mặc định** (copy từ phòng ban của
+`primary_assignee_id` lúc `POST`), không khoá cứng. Bất kỳ ai có `periodic_tasks.edit` trong phạm vi
+scope của Task đó đều sửa được `department_id` tự do qua `PATCH` (không cần permission riêng) — dùng
+đúng để linh hoạt cho trường hợp Task thuộc về 1 phòng ban khác với phòng ban của người phụ trách
+chính (vd Task liên phòng ban).
+
+### 2.11. Filter theo thời gian ở `GET /periodic-tasks` — hỗ trợ CẢ 2 kiểu
+
+Filter DTO (`PeriodicTaskFiltersDto`) hỗ trợ đồng thời:
+- **Lọc chính xác đơn lẻ:** `periodType` + `periodStartDate` (khớp đúng 1 kỳ, vd đúng 1 ngày Daily
+  cụ thể, hoặc đúng 1 tuần bắt đầu từ ngày X).
+- **Lọc theo khoảng (range) tuỳ ý:** `dateFrom`/`dateTo` — điều kiện chồng lấn (overlap) giữa
+  `[dateFrom, dateTo]` và `[period_start_date, period_end_date]` của Task:
+  ```sql
+  WHERE period_start_date <= :dateTo AND period_end_date >= :dateFrom
+  ```
+  cho phép truy vấn kiểu "toàn bộ Task Daily trong tháng 9" (`periodType='daily'`,
+  `dateFrom='2026-09-01'`, `dateTo='2026-09-30'`) mà không quan tâm ngày bắt đầu chính xác của từng
+  Task con.
+- 2 kiểu lọc **kết hợp được với nhau** (AND) — dùng `periodType` cùng lúc với `dateFrom/dateTo` là
+  trường hợp phổ biến nhất trên UI (tab theo period_type + date range picker).
+
+### 2.12. `periodic_tasks.link_customer` — permission bình thường, KHÔNG hardcode default cố định
+
+Xác nhận: đây là permission **hoàn toàn do `role_permissions` quyết định** như mọi permission khác
+trong Dynamic RBAC — **không có ngoại lệ code cứng nào ngoài Root Admin** (bypass sẵn có ở
+`PermissionGuard`, áp dụng chung cho MỌI permission, không riêng gì permission này). Seed dữ liệu
+ban đầu (mục 4) chỉ là **giá trị khởi tạo hợp lý**, Admin toàn quyền bật/tắt lại cho từng Role/
+Department/Position qua `/phan-quyen` ngay sau khi migrate — không có logic nào trong code giả định
+"Manager/Employee luôn tắt" hay tương tự.
+
+### 2.13. Không đụng vào cơ chế RBAC/entity hiện có
 
 Module này **CHỈ THÊM bảng mới**, không sửa `customers`, `role_permissions`, `department_managers`,
 v.v. Điểm chạm duy nhất với module khác: đọc (không ghi) `customers`, `users`, `departments`,
@@ -323,8 +396,9 @@ periodic_task_checklist_items    (kiểu Trello — item phẳng, KHÔNG có vò
 | `periodic_tasks.create` | true | all/all/department/own | Tạo Task mới (form thủ công) |
 | `periodic_tasks.edit` | true | all/all/department/own | Sửa Task, đổi status, gán chính/phụ, tạo/gỡ liên kết cha-con |
 | `periodic_tasks.delete` | true, nhưng CHỈ seed cho Admin | all / _(không seed)_ / _(không seed)_ / _(không seed)_ | Xoá mềm — đúng quy ước "chỉ Admin" |
-| `periodic_tasks.link_customer` | false (nhị phân) | bật/bật/tắt/tắt *(cần chủ dự án chốt mặc định Manager/Employee — xem mục 8)* | Bật/tắt TÍNH NĂNG gắn Khách hàng vào Task ở UI (xem mục 2.4) |
-| `periodic_tasks.approve` | true (own/department/all) | all/all/department/_(không seed)_ | Khoá (lock/approve) 1 Task — Phase 5 |
+| `periodic_tasks.link_customer` | false (nhị phân) | bật/bật/tắt/tắt *(chỉ là giá trị khởi tạo — Admin đổi tự do qua `/phan-quyen`, xem mục 2.12)* | Bật/tắt TÍNH NĂNG gắn Khách hàng vào Task ở UI (xem mục 2.4) |
+| `periodic_tasks.approve` | true (own/department/all) | all/all/department/_(không seed)_ | Bật/tắt `is_locked` — CẢ 2 CHIỀU lock/unlock tự do, không phải workflow 1 chiều (xem mục 2.9) |
+| `periodic_tasks.edit_locked` | false (nhị phân) | bật (Admin)/_(không seed)_/_(không seed)_/_(không seed)_ | "Vượt rào" — được sửa Task dù đang `is_locked=true` (xem mục 2.9). Override 3 tầng Position→Department→Global dùng NGUYÊN cơ chế `role_permissions` sẵn có, không cần code riêng |
 | `periodic_task_statuses.manage` | false | bật/bật/tắt/tắt | CRUD trạng thái (mirror `customer_statuses.manage`) |
 | `periodic_task_statuses.delete` | false | bật/tắt/tắt/tắt | Xoá trạng thái — chỉ Admin (mirror `customer_statuses.delete`) |
 
@@ -337,11 +411,11 @@ controller.ts` — mở cho mọi user đã đăng nhập để đổ dropdown c
 
 | Method + Path | Permission | Scope filter áp dụng |
 |---|---|---|
-| `GET /periodic-tasks` | `periodic_tasks.view` | `PeriodicTaskAccessHelper.applyViewFilter()` (mirror `CustomerAccessHelper`) |
+| `GET /periodic-tasks` | `periodic_tasks.view` | `PeriodicTaskAccessHelper.applyViewFilter()` (mirror `CustomerAccessHelper`); query hỗ trợ `periodType`, `periodStartDate` (khớp đúng 1 kỳ) **và** `dateFrom/dateTo` (range chồng lấn) cùng lúc — xem mục 2.11 |
 | `GET /periodic-tasks/:id` | `periodic_tasks.view` | như trên, 404 nếu ngoài phạm vi |
 | `GET /periodic-tasks/:id/rollup` | `periodic_tasks.view` | trả `{ totalChildren, doneChildren, percent }` (mục 2.3) |
-| `POST /periodic-tasks` | `periodic_tasks.create` | — |
-| `PATCH /periodic-tasks/:id` | `periodic_tasks.edit` | qua `findOne()` trước (đúng pattern "1 cổng gác") |
+| `POST /periodic-tasks` | `periodic_tasks.create` | `departmentId` auto-fill theo phòng ban `primaryAssigneeId` nếu không truyền, sửa tự do sau đó (mục 2.10) |
+| `PATCH /periodic-tasks/:id` | `periodic_tasks.edit` | qua `findOne()` trước (đúng pattern "1 cổng gác"); nếu Task đang `is_locked=true` → cần THÊM `periodic_tasks.edit_locked` mới cho qua (mục 2.9), kể cả đổi status/`departmentId` |
 | `DELETE /periodic-tasks/:id` | `periodic_tasks.delete` | Admin only |
 | `POST /periodic-tasks/:id/links` (body: `parentTaskId`) | `periodic_tasks.edit` | validate rank + cycle (mục 2.2) |
 | `DELETE /periodic-tasks/:id/links/:parentTaskId` | `periodic_tasks.edit` | |
@@ -351,8 +425,8 @@ controller.ts` — mở cho mọi user đã đăng nhập để đổ dropdown c
 | `DELETE /periodic-tasks/:id/secondary-assignees/:userId` | `periodic_tasks.edit` | |
 | `POST /periodic-tasks/:id/customers` (body: `customerIds[]`) | `periodic_tasks.edit` + `periodic_tasks.link_customer` | mỗi `customerId` phải pass `CustomerAccessHelper` (mục 2.4.2) |
 | `DELETE /periodic-tasks/:id/customers/:customerId` | như trên | |
-| `PATCH /periodic-tasks/:id/lock` (Phase 5) | `periodic_tasks.approve` | department scope qua `department_managers` |
-| `PATCH /periodic-tasks/:id/unlock` (Phase 5) | `periodic_tasks.approve` | |
+| `PATCH /periodic-tasks/:id/lock` (Phase 5) | `periodic_tasks.approve` | department scope qua `department_managers`; cho phép gọi lại nhiều lần, kể cả khi đã `is_locked=true` (idempotent, không lỗi) |
+| `PATCH /periodic-tasks/:id/unlock` (Phase 5) | `periodic_tasks.approve` | tự do gọi lại bất kỳ lúc nào, không giới hạn số lần lock↔unlock (mục 2.9) |
 | `GET /periodic-tasks/:id/audit-logs` | `periodic_tasks.view` | |
 | `GET/POST/PATCH/DELETE /periodic-task-statuses` | xem mục 4 | mirror `customer-statuses.controller.ts` y hệt |
 
@@ -404,14 +478,19 @@ controller.ts` — mở cho mọi user đã đăng nhập để đổ dropdown c
   (không cho gán cùng 1 user vừa chính vừa phụ — validate ở service).
 
 ### Phase 5 — Approve/Lock (tuỳ chọn, có thể lùi lại nếu chủ dự án muốn ưu tiên phần khác trước)
-- Migration: thêm cột `is_locked/locked_by_id/locked_at/lock_note` vào `periodic_tasks`, seed
-  permission `periodic_tasks.approve`.
-- Service: `lock()`/`unlock()`, kiểm tra quyền qua `department_managers` giống hệt
-  `isEligibleApprover()` của `leave-requests.service.ts` (KHÔNG bịa bảng role-pair mới).
-- Quy tắc nghiệp vụ cần chốt thêm trước khi code (xem mục 8, câu hỏi 3): khoá 1 Task có tự động khoá
-  luôn các Task con của nó không, hay chỉ khoá đúng Task đang thao tác?
-- **Spec bắt buộc:** eligible approver đúng theo scope, task đã lock thì `PATCH .../edit` bị chặn
-  sửa (trừ Admin?), audit log ghi đúng action `locked`/`unlocked`.
+- Migration: thêm cột `is_locked/locked_by_id/locked_at/lock_note` vào `periodic_tasks`, seed 2
+  permission `periodic_tasks.approve` (toggle `is_locked`, 2 chiều tự do) và
+  `periodic_tasks.edit_locked` (vượt rào sửa khi đang khoá — mặc định chỉ Admin, xem mục 2.9).
+- Service: `lock()`/`unlock()` idempotent (gọi lại nhiều lần không lỗi), kiểm tra quyền qua
+  `department_managers` giống hệt `isEligibleApprover()` của `leave-requests.service.ts` (KHÔNG bịa
+  bảng role-pair mới). `update()` (PATCH nội dung Task) kiểm tra thêm `edit_locked` nếu
+  `task.isLocked === true` (đoạn code mẫu ở mục 2.9).
+- **Đã chốt (không còn là câu hỏi mở):** khoá 1 Task **KHÔNG** cascade xuống Task con — mỗi Task tự
+  quản lý `is_locked` độc lập, kể cả khi đang liên kết cha-con qua `periodic_task_links`.
+- **Spec bắt buộc:** eligible approver đúng theo scope; lock rồi unlock rồi lock lại nhiều lần không
+  lỗi; Task đang lock mà thiếu `edit_locked` → 403 khi PATCH (bao gồm cả đổi `departmentId`, đổi
+  status, gán lại chính/phụ); có `edit_locked` (kể cả qua override Department/Position, không chỉ
+  Global) → PATCH bình thường; Root Admin luôn bypass; audit log ghi đúng action `locked`/`unlocked`.
 
 ### Phase 6 — Checklist con kiểu Trello (tách riêng theo đúng yêu cầu chủ dự án — làm SAU CÙNG)
 - Migration: tạo `periodic_task_checklist_items`.
@@ -441,24 +520,27 @@ controller.ts` — mở cho mọi user đã đăng nhập để đổ dropdown c
 | 6 | `1782400000000` | `AddPeriodicTaskLinkCustomerPermission` | 3 |
 | 7 | `1782500000000` | `CreatePeriodicTaskSecondaryAssignees` | 4 |
 | 8 | `1782600000000` | `AddPeriodicTaskLockColumns` | 5 |
-| 9 | `1782700000000` | `AddPeriodicTasksApprovePermission` | 5 |
+| 9 | `1782700000000` | `AddPeriodicTasksApproveAndEditLockedPermissions` | 5 |
 | 10 | `1782800000000` | `CreatePeriodicTaskChecklistItems` | 6 |
 | 11 | `1782900000000` | `CreatePeriodicTaskAuditLogs` | 7 |
 
 ---
 
-## 8. Câu hỏi còn mở — cần chốt trước khi bắt đầu Phase tương ứng (không tự suy đoán)
+## 8. Lịch sử chốt các câu hỏi mở (theo đúng xác nhận chủ dự án — tham khảo khi cần đối chiếu lại lý do thiết kế)
 
-1. **`periodic_tasks.link_customer` mặc định cho Manager/Employee** nên bật hay tắt? (mục 4 đang để
-   trống — ảnh hưởng UX ngay từ ngày đầu triển khai Phase 3.)
-2. **`department_id` của Task** tự auto-fill theo phòng ban của `primary_assignee_id` lúc tạo — cho
-   phép Admin/Manager đổi tay sau đó không, hay khoá cứng theo người phụ trách chính?
-3. **Phase 5 (lock):** khoá 1 Task cha có tự động khoá luôn Task con (cascade lock) không, hay mỗi
-   Task tự lock độc lập (Weekly bị khoá không ảnh hưởng gì tới Daily con của nó)?
-4. **Task đã bị khoá (`is_locked=true`)** — Admin có được sửa "vượt rào" không, hay tuyệt đối không
-   ai sửa được cho tới khi unlock (kể cả Admin)?
-5. **Có cần filter theo khoảng thời gian tuỳ ý** (vd xem tất cả Task Daily trong tháng 9) ở
-   `GET /periodic-tasks`, hay chỉ cần filter theo `period_type` + `period_start_date` đơn lẻ?
+| Câu hỏi (từ bản plan trước) | Đã chốt | Áp dụng ở mục nào |
+|---|---|---|
+| Khoá/mở khoá 1 Task có phải workflow 1 chiều không? | **Không** — tự do lock ↔ unlock 2 chiều, không giới hạn, không bắt buộc lý do | 2.9, Phase 5 |
+| Đổi status Done/Not-Done có bị khoá chiều không? | **Không** — tự do đổi lại bất kỳ lúc nào, kể cả từ Done quay lại chưa Done | 2.9 |
+| `periodic_tasks.link_customer` mặc định Manager/Employee bật hay tắt? | **Không hardcode** — permission bình thường, Admin toàn quyền bật/tắt qua `/phan-quyen` cho từng Role/Phòng ban/Vị trí, seed chỉ là giá trị khởi tạo. Ngoại lệ DUY NHẤT là Root Admin (bypass sẵn có toàn hệ thống, không phải riêng permission này) | 2.12, mục 4 |
+| `department_id` của Task có bị khoá cứng theo `primary_assignee_id` không? | **Không** — chỉ auto-fill lúc `POST` làm giá trị khởi tạo, sửa tự do sau đó qua `PATCH` (cùng permission `periodic_tasks.edit`, không cần permission riêng) | 2.10 |
+| Task bị khoá (`is_locked=true`) có ai sửa được không? | **Có, nhưng phải qua permission riêng** `periodic_tasks.edit_locked` (nhị phân, mặc định chỉ Admin) — tự động thừa hưởng override 3 tầng Position→Department→Global sẵn có, không cần code thêm cơ chế override | 2.9, mục 4 |
+| Khoá 1 Task cha có cascade xuống Task con không? | **Không** — mỗi Task tự quản lý `is_locked` độc lập, không lan truyền qua `periodic_task_links` | Phase 5 |
+| Filter thời gian ở `GET /periodic-tasks`: chính xác 1 kỳ hay theo khoảng? | **Cả 2, dùng kết hợp được (AND)** — `periodType`+`periodStartDate` (khớp đúng 1 kỳ) và `dateFrom/dateTo` (range chồng lấn `period_start_date`/`period_end_date`) | 2.11, mục 5 |
+
+**Hiện tại không còn câu hỏi mở nào treo lại** — Phase 1 có thể bắt đầu code khi được yêu cầu. Nếu
+phát sinh câu hỏi mới trong lúc code (thường xảy ra khi đụng chi tiết implement), bổ sung thêm dòng
+vào bảng này theo đúng khuôn, không tự suy đoán rồi code luôn.
 
 ---
 
