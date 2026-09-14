@@ -92,6 +92,7 @@ export class PeriodicTasksService {
       departmentId,
       createdById: userId,
       note: dto.note ?? null,
+      color: dto.color ?? null,
     });
 
     return this.taskRepo.save(task);
@@ -220,6 +221,7 @@ export class PeriodicTasksService {
     // field THẬT SỰ có mặt trong body (không phải "undefined nghĩa là xoá").
     if (dto.departmentId !== undefined) task.departmentId = dto.departmentId;
     if (dto.note !== undefined) task.note = dto.note ?? null;
+    if (dto.color !== undefined) task.color = dto.color ?? null;
 
     task.updatedById = userId;
 

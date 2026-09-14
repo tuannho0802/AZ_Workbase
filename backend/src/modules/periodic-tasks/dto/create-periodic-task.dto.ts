@@ -7,6 +7,7 @@ import {
   IsEnum,
   IsDateString,
   MaxLength,
+  Matches,
 } from 'class-validator';
 import { Type } from 'class-transformer';
 import { PeriodType } from '../../../common/enums/period-type.enum';
@@ -68,4 +69,12 @@ export class CreatePeriodicTaskDto {
   @IsOptional()
   @IsString({ message: 'note phải là chuỗi' })
   note?: string;
+
+  @ApiPropertyOptional({
+    example: '#FF5733',
+    description: 'Màu Task (hex 6 ký tự, dùng để hiển thị Card/Kanban/Calendar sau này) - không bắt buộc',
+  })
+  @IsOptional()
+  @Matches(/^#[0-9A-Fa-f]{6}$/, { message: 'color phải đúng định dạng hex 6 ký tự, ví dụ #FF5733' })
+  color?: string;
 }

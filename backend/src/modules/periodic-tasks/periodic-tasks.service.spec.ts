@@ -112,6 +112,19 @@ describe('PeriodicTasksService', () => {
 
       await expect(service.create({ ...validDto, statusId: 999 }, 1)).rejects.toThrow(BadRequestException);
     });
+
+    it('lưu color khi có truyền, mặc định null khi không truyền', async () => {
+      mockUserRepo.findOne.mockResolvedValue({ id: 5, departmentId: 3, isActive: true });
+      mockStatusRepo.findOne.mockResolvedValue({ id: 1, code: 'not_started' });
+      mockTaskRepo.create.mockImplementation((data) => data);
+      mockTaskRepo.save.mockImplementation((data) => Promise.resolve(data));
+
+      await service.create({ ...validDto, color: '#FF5733' }, 1);
+      expect(mockTaskRepo.create).toHaveBeenCalledWith(expect.objectContaining({ color: '#FF5733' }));
+
+      await service.create(validDto, 1);
+      expect(mockTaskRepo.create).toHaveBeenCalledWith(expect.objectContaining({ color: null }));
+    });
   });
 
   describe('findOne', () => {
@@ -180,6 +193,20 @@ describe('PeriodicTasksService', () => {
       const result = await service.update(1, { departmentId: 8 }, 9, Role.ADMIN, 'all');
 
       expect(result.departmentId).toBe(8);
+    });
+
+    it('cho phép sửa color tự do, kể cả về null', async () => {
+      const task: any = {
+        id: 1,
+        color: '#000000',
+        periodStartDate: '2026-09-14',
+        periodEndDate: '2026-09-14',
+      };
+      mockTaskRepo.createQueryBuilder.mockReturnValue(makeFakeQueryBuilder({ getOne: task }));
+      mockTaskRepo.save.mockImplementation((t) => Promise.resolve(t));
+
+      const result = await service.update(1, { color: '#FF5733' }, 9, Role.ADMIN, 'all');
+      expect(result.color).toBe('#FF5733');
     });
 
     it('ném BadRequestException nếu sửa statusId thành ID không tồn tại', async () => {

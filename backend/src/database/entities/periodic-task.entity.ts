@@ -63,6 +63,12 @@ export class PeriodicTask {
   @Column({ name: 'status_id' })
   statusId: number;
 
+  // Màu Task (hex, ví dụ '#FF5733') - CHỈ dùng để hiển thị UI (Card, Kanban,
+  // Calendar...) sau này, KHÔNG mang ý nghĩa nghiệp vụ/không ảnh hưởng RBAC.
+  // Sửa tự do như mọi field khác, không bắt buộc lúc tạo.
+  @Column({ type: 'varchar', length: 7, nullable: true })
+  color: string | null;
+
   @ManyToOne(() => PeriodicTaskStatus, { onDelete: 'RESTRICT' })
   @JoinColumn({ name: 'status_id' })
   status: PeriodicTaskStatus;

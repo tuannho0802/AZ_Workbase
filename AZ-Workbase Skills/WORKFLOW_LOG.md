@@ -1424,4 +1424,69 @@ nên hành vi mới là ĐÚNG Ý ĐỒ, spec cũ mới là bên lỗi thời.
 - Đã rà soát KHÔNG có suite nào khác fail (chỉ đúng 1 chỗ lệch giữa toàn bộ 28 suite) - không cần sửa thêm
   file spec nào khác.
 
-  Now [deploy]
+## [2026-09-14 16:40] | Xác nhận BE Phase 1 module "Công việc định kỳ" (periodic-tasks) sẵn sàng cho FE + thêm cột `color` | Status: Success
+
+**Actor:** Agent (Claude), theo yêu cầu: verify lại bằng code thật (không tin transcript phiên trước) trước
+khi cho phép bắt đầu triển khai FE, sau đó bổ sung cột `color` cho `periodic_tasks`.
+
+**Bối cảnh:** Phiên chat trước báo cáo đã hoàn tất Phase 1 (module `periodic-tasks` +
+`periodic-task-statuses`, 588/588 test pass) nhưng **quên `git push`** - `git clone` lại từ đầu tại thời
+điểm nhận báo cáo cho thấy `origin/main` vẫn dừng ở commit `5818bf2` (chỉ có 4 file gốc: enum, 2 entity,
+1 migration status), KHÔNG có module/service/controller/spec như báo cáo mô tả. Đã báo người dùng, người
+dùng xác nhận quên push và push bổ sung 2 commit (`886ecaa`, `f7ed3fa`).
+
+**Verify lại bằng code thật (SAU khi push):**
+- `git log`: HEAD = `f7ed3fa`, đúng khớp nội dung được báo cáo.
+- `npm install` + `npx tsc --noEmit`: sạch, 0 lỗi.
+- `npx nest build`: thành công.
+- `npx jest` (toàn bộ, không filter): **31/31 suite pass, 588/588 test pass** (số vài dòng ERROR log đỏ của
+  `storage.service.spec.ts` là log cố ý khi test giả lập lỗi `NoSuchKey`, suite đó vẫn PASS - không phải
+  regression).
+- Đọc trực tiếp `periodic-tasks.controller.ts`, `periodic-task-access.helper.ts`,
+  `1782100000000-SeedPeriodicTasksPermissions.ts`: xác nhận dùng đúng `PermissionGuard`/`RequirePermission`
+  (không hardcode role), bypass `Role.ADMIN` có mặt ở cả 3 hàm của helper
+  (`applyViewFilter`/`canDelete`/`canManageTask`), ma trận permission seed đúng yêu cầu (view/create/edit:
+  admin+assistant=all, manager=department, employee=own; delete: CHỈ admin=all).
+- Migration timestamp `1781900000000` → `1782100000000` không trùng, tăng dần đúng thứ tự so với migration
+  mới nhất khác đang có trong repo (`1781800000000-CreateDepartmentManagers.ts`).
+- **Kết luận: BE Phase 1 ĐỦ điều kiện để FE bắt đầu triển khai** CRUD `/periodic-tasks` +
+  `/periodic-task-statuses`, dùng permission key `periodic_tasks.view/create/edit/delete` qua
+  `useMyPermissions`. Các phần liên kết cha-con/Customer/phụ trách phụ/lock chưa có (Phase 2-5), FE không
+  dựng UI cho các phần này ở Phase 1.
+
+**Bổ sung theo yêu cầu:** thêm cột `color` cho bảng `periodic_tasks` (hex 6 ký tự, vd `#FF5733`) - CHỈ dùng
+hiển thị UI (Card/Kanban/Calendar... sau này), không mang ý nghĩa nghiệp vụ, không ảnh hưởng RBAC. Optional,
+sửa tự do như mọi field khác (mirror nguyên tắc PLAN mục 2.10 áp dụng chung cho các field không khoá cứng).
+
+**Files sửa/thêm:**
+- `backend/src/database/entities/periodic-task.entity.ts` — thêm `@Column({ type: 'varchar', length: 7,
+  nullable: true }) color: string | null;`.
+- `backend/src/database/migrations/1782200000000-AddColorToPeriodicTasks.ts` — migration MỚI (không sửa
+  migration cũ), `ADD COLUMN IF NOT EXISTS color VARCHAR(7) NULL`, `down()` đối xứng `DROP COLUMN IF EXISTS`.
+- `backend/src/modules/periodic-tasks/dto/create-periodic-task.dto.ts` — thêm field `color?: string`
+  optional, validate `@Matches(/^#[0-9A-Fa-f]{6}$/)`. `UpdatePeriodicTaskDto` tự động nhận field này qua
+  `PartialType`.
+- `backend/src/modules/periodic-tasks/periodic-tasks.service.ts` — `create()` lưu `color: dto.color ?? null`;
+  `update()` cho sửa tự do kể cả về `null` (`if (dto.color !== undefined) task.color = dto.color ?? null`).
+- `backend/src/modules/periodic-tasks/periodic-tasks.service.spec.ts` — thêm 2 test: "lưu color khi có
+  truyền, mặc định null khi không truyền" (create) và "cho phép sửa color tự do, kể cả về null" (update).
+
+**Permission xoá (`periodic_tasks.delete`):** đã có sẵn từ migration
+`1782100000000-SeedPeriodicTasksPermissions.ts` (seed đúng: CHỈ role `admin`, scope `all`, không seed cho
+3 role còn lại) - người dùng xác nhận đã thấy, KHÔNG cần migration bổ sung.
+
+**Verify thật (SAU khi thêm color):**
+- `npx tsc --noEmit`: sạch.
+- `npx nest build`: thành công.
+- `npx jest periodic-tasks periodic-task-statuses`: 3/3 suite, **51/51 test pass** (49 cũ + 2 test color mới).
+- `npx jest` (toàn bộ, không filter): **31/31 suite pass, 590/590 test pass** (588 cũ + 2 test color mới) -
+  không regression.
+
+**Notes:**
+- FE khi hiển thị Card/Kanban cho `periodic-tasks`: `color` có thể `null` (Task tạo trước khi có field này,
+  hoặc không truyền lúc tạo) - tự quyết định màu mặc định khi `null`, không giả định luôn có giá trị.
+- Bài học quy trình: LUÔN xác nhận `git log`/`git status` trên bản `clone` mới, không tin số liệu test/báo
+  cáo hoàn tất từ 1 phiên chat khác cho tới khi tự verify được trên `origin/main` - lần này review đã bắt
+  đúng trường hợp báo cáo "xong" nhưng chưa push.
+
+---
