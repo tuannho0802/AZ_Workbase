@@ -27,6 +27,7 @@ import {
     DeleteOutlined,
     SearchOutlined,
     SettingOutlined,
+    ApartmentOutlined,
 } from '@ant-design/icons';
 import dayjs, { Dayjs } from 'dayjs';
 import { useAuthStore } from '@/lib/stores/auth.store';
@@ -49,14 +50,17 @@ import {
 } from '@/lib/api/periodic-tasks.api';
 import { resolveEntityColor, DEFAULT_ENTITY_COLOR } from '@/lib/utils/entityColor';
 import { useRoleColorMap, useRoleColors } from '@/lib/hooks/useRoleColorMap';
+import { TaskLinksModal } from '@/components/periodic-tasks/TaskLinksModal';
 
 const { Title, Text } = Typography;
 const { RangePicker } = DatePicker;
 
 /**
- * Trang chính "Công việc định kỳ" (Phase 1 - PLAN_PERIODIC_TASKS_MODULE.md
- * mục 6). CHƯA có ở Phase 1 (để Phase 2-5): liên kết cha-con, gắn Customer,
- * phụ trách phụ, lock/unlock/duyệt - KHÔNG dựng UI cho các phần này ở đây.
+ * Trang chính "Công việc định kỳ" (Phase 1 + Phase 2 -
+ * PLAN_PERIODIC_TASKS_MODULE.md mục 6). Phase 2 (liên kết cha-con DAG +
+ * % hoàn thành) được UI qua nút "Liên kết" mở `TaskLinksModal` - xem file đó.
+ * CHƯA có ở Phase 2 (để Phase 3-5): gắn Customer, phụ trách phụ,
+ * lock/unlock/duyệt - KHÔNG dựng UI cho các phần này ở đây.
  *
  * RBAC: mọi filter/scope (own/department/all) đã được BE tự áp qua
  * `PeriodicTaskAccessHelper` (xem `periodic-tasks.service.ts`) - FE chỉ việc
@@ -221,6 +225,9 @@ export default function PeriodicTasksPage() {
         }
     };
 
+    // ---- Modal Liên kết & Tiến độ (Phase 2) ----
+    const [linkingTask, setLinkingTask] = useState<PeriodicTask | null>(null);
+
     // ---- Modal Xoá (đơn giản - CHỈ Admin, không scope/fallback) ----
     const [deletingTask, setDeletingTask] = useState<PeriodicTask | null>(null);
 
@@ -279,7 +286,7 @@ export default function PeriodicTasksPage() {
             key: 'period',
             width: 190,
             render: (_: any, record: PeriodicTask) => (
-                <Space direction="vertical" size={0}>
+                <Space orientation="vertical" size={0}>
                     <Tag>{PERIOD_TYPE_LABELS[record.periodType]}</Tag>
                     <Text style={{ fontSize: 12 }}>
                         {dayjs(record.periodStartDate).format('DD/MM/YYYY')}
@@ -315,35 +322,38 @@ export default function PeriodicTasksPage() {
                     <Text type="secondary">—</Text>
                 ),
         },
-        ...((canEdit || canDelete)
-            ? [
-                {
-                    title: 'Thao tác',
-                    key: 'action',
-                    width: 160,
-                    fixed: 'right' as const,
-                    render: (_: any, record: PeriodicTask) => (
-                        <Space>
-                            {canEdit && (
-                                <Button size="small" icon={<EditOutlined />} onClick={() => openEditModal(record)}>
-                                    Sửa
-                                </Button>
-                            )}
-                            {canDelete && (
-                                <Button
-                                    size="small"
-                                    danger
-                                    icon={<DeleteOutlined />}
-                                    onClick={() => setDeletingTask(record)}
-                                >
-                                    Xoá
-                                </Button>
-                            )}
-                        </Space>
-                    ),
-                },
-            ]
-            : []),
+        {
+            // Luôn hiển thị (khác Phase 1) - nút "Liên kết" chỉ cần
+            // `periodic_tasks.view` (ai đứng được ở trang này cũng có sẵn,
+            // xem guard redirect đầu file), KHÔNG phụ thuộc canEdit/canDelete
+            // như Sửa/Xoá bên dưới.
+            title: 'Thao tác',
+            key: 'action',
+            width: 220,
+            fixed: 'right' as const,
+            render: (_: any, record: PeriodicTask) => (
+                <Space>
+                    <Button size="small" icon={<ApartmentOutlined />} onClick={() => setLinkingTask(record)}>
+                        Liên kết
+                    </Button>
+                    {canEdit && (
+                        <Button size="small" icon={<EditOutlined />} onClick={() => openEditModal(record)}>
+                            Sửa
+                        </Button>
+                    )}
+                    {canDelete && (
+                        <Button
+                            size="small"
+                            danger
+                            icon={<DeleteOutlined />}
+                            onClick={() => setDeletingTask(record)}
+                        >
+                            Xoá
+                        </Button>
+                    )}
+                </Space>
+            ),
+        },
     ];
 
     return (
@@ -605,6 +615,9 @@ export default function PeriodicTasksPage() {
                 />
                 <Text>Bạn có chắc muốn xoá Công việc định kỳ này?</Text>
             </Modal>
+
+            {/* Modal Liên kết & Tiến độ (Phase 2) */}
+            <TaskLinksModal open={!!linkingTask} onClose={() => setLinkingTask(null)} task={linkingTask} />
         </div>
     );
 }
