@@ -1175,3 +1175,73 @@ nguon-media, nhom-lien-ket) và Batch C (users + tab, nhom-toi-quan-ly, trash-ca
 tách tab "Đăng nhập" riêng + filter trạng thái đầy đủ) - CHƯA làm, chờ người dùng xác nhận thứ tự tiếp theo.
 
 ---
+
+## [2026-09-14 13:15] | Hoàn tất Batch B (search/filter cho 7 trang danh mục) + fix bug wiring của lượt trước + tạo component dùng chung `ListFilterBar` | Status: Success
+
+**Actor:** Agent (Claude), tiếp tục theo yêu cầu trực tiếp ("bạn pull về và làm tiếp giúp tôi nhé") sau khi
+người dùng xác nhận đã test xong Batch A. Batch B trước đó có 1 commit dở dang của chính người dùng
+(`708b92f`, message tự ghi "still cannot filter, just UI").
+
+**Trước khi làm:** `git clone` lại từ đầu (full history, không dùng `--depth 1`) để tránh lỗi shallow-clone,
+xác nhận commit mới nhất `708b92f` đúng như người dùng mô tả - đọc diff `f4f1dd8..HEAD` để audit thật thay
+vì tin theo tóm tắt.
+
+**Bug phát hiện từ lượt trước (đã fix):** `frontend/src/app/(dashboard)/phong-ban/page.tsx` - state
+`filteredDepartments`/`searchText`/`filterActive` đã được khai báo và tính bằng `useMemo`, nhưng (1)
+`<Table dataSource={departments}>` vẫn trỏ vào mảng CHƯA lọc, và (2) hoàn toàn KHÔNG có UI Input/Select nào
+để người dùng nhập - 3 biến state bị ESLint cảnh báo "assigned but never used". Đây là nguyên nhân đúng như
+commit message người dùng tự ghi.
+
+**Files mới:**
+- `frontend/src/components/common/ListFilterBar.tsx` - Component Search Input + N dropdown Select dùng
+  chung cho các trang "danh mục quản trị" nhỏ (lọc CLIENT-SIDE qua `useMemo` ở từng page.tsx, component chỉ
+  render UI + gọi callback). Khác với `CustomerFilters.tsx` (lọc SERVER-SIDE qua query param, dành riêng
+  cho `/customers` - danh sách lớn có phân trang thật) - không dùng chung được vì khác cơ chế, chỉ giống
+  phần UI.
+
+**Files sửa (7 trang, đều theo pattern: thêm state search/filter + `useMemo` lọc + `<ListFilterBar>` + wire
+lại `dataSource`):**
+- `phong-ban/page.tsx` - fix bug wiring nêu trên + Search theo tên + Select Trạng thái (Đang hoạt động/
+  Ngừng hoạt động).
+- `nhom-lien-ket/page.tsx` - refactor block filter Group cũ (Row/Col thủ công, đã hoạt động đúng từ trước)
+  sang dùng `ListFilterBar` cho đồng nhất; dọn import thừa (`Row`, `Col`, `SearchOutlined`, `Select` -
+  Select không còn chỗ nào dùng sau khi refactor).
+- `vi-tri/page.tsx` - Search (tên/mã vị trí) + Select Phòng ban + Select Loại (Hệ thống/Tuỳ chỉnh).
+- `quan-ly-phu-trach/page.tsx` - Search (tên/key) + Select Phòng ban (lọc theo phòng ban CÓ TRONG config,
+  `c.departments.some(d => d.departmentId === filterDepartmentId)`) + Select Loại.
+- `quan-ly-loai-phep/page.tsx` - Search (tên/mã) + Select Hưởng lương (Có lương/Không lương) + Select Loại.
+- `quan-ly-status-khach/page.tsx` - Search (tên/mã) + Select Loại (Hệ thống/Tuỳ chỉnh).
+- `nguon-media/page.tsx` - Search theo tên + Select Trạng thái (Đang mở/Đã khoá, field `isLocked`).
+
+**Nguyên tắc áp dụng (giống Batch A, khác `/customers`/`chia-data`):** cả 7 trang đều là danh mục BOUNDED
+(hook trả toàn bộ, không phân trang, tối đa vài chục dòng) nên lọc CLIENT-SIDE, KHÔNG sửa BE thêm query
+param.
+
+**Verify thật:**
+- `npx tsc --noEmit` (frontend, full project): sạch hoàn toàn, 0 lỗi (kể cả 2 lỗi pre-existing `logo.png`/
+  `CountBadge.tsx` cũng không xuất hiện, giống hiện tượng đã ghi nhận ở lượt trước - không phải do diff).
+- `npm run build` (Next.js 16 Turbopack): Compiled successfully, đủ toàn bộ route (bao gồm `phong-ban`,
+  `vi-tri`, `quan-ly-phu-trach`, `quan-ly-loai-phep`, `quan-ly-status-khach`, `nguon-media`,
+  `nhom-lien-ket`).
+- `npx eslint` cho cả 7 file + `ListFilterBar.tsx`: đối chiếu bằng `git stash` (chỉ áp dụng được cho file
+  ĐÃ TRACKED - `ListFilterBar.tsx` là file mới nên kiểm riêng) - toàn bộ lỗi `any`/`react/no-unescaped-
+  entities` còn lại đều PRE-EXISTING (số lượng KHỚP 1-1 giữa trước/sau, trừ 3 warning "unused var" ở
+  `phong-ban` đã tự hết vì giờ đã dùng thật). `ListFilterBar.tsx` lint sạch hoàn toàn sau khi thêm 1 dòng
+  `eslint-disable-next-line @typescript-eslint/no-explicit-any` có chủ đích (mảng dropdown không đồng nhất
+  kiểu value giữa các filter, cần type-erase).
+- Đã `git checkout -- package-lock.json` sau `npm install` để tránh noise không liên quan (đúng nguyên tắc
+  "Minimal diff noise").
+- Chưa test tay trên browser thật với dữ liệu thật - người dùng tự pull + test lại 7 trang.
+
+**Còn lại (CHƯA làm, theo đúng phạm vi yêu cầu gốc của người dùng):**
+- Batch C: `users` (+ các tab), `nhom-toi-quan-ly`, `trash-can` (bổ sung thêm field lọc), `audit-logs` (tách
+  tab "Đăng nhập" riêng khỏi log nghiệp vụ + filter trạng thái đầy đủ hơn).
+- `chia-data`: bổ sung field search/filter còn thiếu so với `/customers` (người dùng báo còn thiếu, ngoài
+  phần `status`/khoảng ngày đã thêm ở lượt trước đó).
+- `profile`: bổ sung Search/Filter cho chế độ 1 user xem chính mình (hiện chỉ đã có ở chế độ Admin xem
+  nhiều user, từ Batch A).
+- Fix warning `[antd: Modal] Static function can not consume context` ở nút "Huỷ đơn" `nghi-phep` - đã được
+  xác nhận fix ở commit `772e08e` (trước Batch A), CHƯA re-verify lại trong lượt này vì không nằm trong
+  phạm vi Batch B.
+
+---

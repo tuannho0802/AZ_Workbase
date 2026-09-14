@@ -40,6 +40,9 @@ interface ListFilterBarProps {
   searchPlaceholder?: string;
   /** Độ rộng cột Input ở breakpoint md - mặc định tự tính theo số dropdown */
   searchMdSpan?: number;
+  /** Danh sách dropdown filter - value có thể khác kiểu nhau giữa từng dropdown
+   * (string/number/boolean) nên buộc dùng `any` ở đây (type-erase có chủ đích). */
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   dropdowns?: ListFilterDropdown<any>[];
   style?: React.CSSProperties;
 }

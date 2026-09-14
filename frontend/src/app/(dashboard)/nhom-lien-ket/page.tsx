@@ -15,7 +15,6 @@ import {
   Popconfirm,
   Typography,
   ColorPicker,
-  Select,
 } from 'antd';
 import {
   PlusOutlined,
