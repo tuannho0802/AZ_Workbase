@@ -162,7 +162,14 @@ export const CustomerDetailDrawer = ({ open, customerId, onClose, onUpdate }: Cu
             },
             !isTabHidden('tab:assignments') && {
               key: 'assignments',
-              label: (<span><UsergroupAddOutlined />Gán data</span>),
+              // ⚠️ MỚI - theo yêu cầu người dùng (ảnh chụp 14/09): đổi tên
+              // "Gán data" -> "Chia data" cho khớp thuật ngữ dùng ở trang
+              // /chia-data, và thêm số đếm bên cạnh (giống pattern "Ghi chú
+              // (N)"/"Nạp tiền (N)" đã có). Số này = số User ĐANG được chia
+              // (active) - dùng luôn `customer.activeAssignees` mà BE
+              // findOne() đã populate sẵn (assignment.status = 'active'),
+              // KHÔNG đếm cả các lượt đã thu hồi trong lịch sử.
+              label: (<span><UsergroupAddOutlined />Chia data ({customer?.activeAssignees?.length || 0})</span>),
               children: customerId ? (
                 <CustomerAssignmentsTab
                   customerId={customerId}
