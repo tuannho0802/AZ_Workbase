@@ -29,11 +29,16 @@ import {
     useDeleteDepartment,
 } from '@/lib/hooks/useDepartments';
 import { useUsersList } from '@/lib/hooks/useUsers';
+import { useRoleColorMap, useRoleColors } from '@/lib/hooks/useRoleColorMap';
 import { usersApi } from '@/lib/api/users.api';
 import { Department } from '@/lib/api/departments.api';
 import { SimpleList } from '@/components/common/SimpleList';
 import { ColorPickerField } from '@/components/common/ColorPickerField';
 import { resolveEntityColor } from '@/lib/utils/entityColor';
+// Dùng chung UserMiniCard (đã có sẵn ở attendance-device) cho cột "Quản lý
+// (Manager)" của bảng danh sách phòng ban, thay vì tự vẽ span+Tag rời rạc -
+// theo đúng yêu cầu đồng bộ UI 1 chỗ cho nhiều nơi hiển thị nhân viên.
+import { UserMiniCard } from '../attendance-device/UserMiniCard';
 
 const { Title, Text } = Typography;
 
@@ -83,10 +88,41 @@ export default function DepartmentsPage() {
         () => (allActiveUsers || []).filter((u: any) => ['admin', 'assistant', 'manager'].includes(u.role)),
         [allActiveUsers],
     );
+    // ⚠️ MỚI - đồng bộ pattern renderUserOption (Avatar + Tag màu Vai
+    // trò/Phòng ban/Vị trí) đã dùng ở CustomerFilters.tsx/chia-data/
+    // attendance-device thay vì list text trơn "Tên (role)" như trước (báo
+    // cáo qua ảnh chụp: dropdown "Quản lý phòng ban" đang hiện options dạng
+    // chữ thường, không có Tag/Avatar như các dropdown chọn nhân viên khác
+    // trong app). `label` giữ nguyên "Tên (role)" cho optionFilterProp/chip
+    // đã chọn gọn nhẹ; `user` mang full data để optionRender vẽ đầy đủ khi
+    // mở dropdown.
+    const { getRoleColor } = useRoleColorMap();
+    const { roleColors: allRoles } = useRoleColors();
+    const roleNameMap = useMemo(() => new Map(allRoles.map((r) => [r.code, r.name])), [allRoles]);
+    const getRoleName = (code?: string) => (code ? roleNameMap.get(code) || code : '');
     const managerCandidateOptions = useMemo(
-        () => managerCandidates.map((u: any) => ({ value: u.id, label: `${u.name} (${u.role})` })),
+        () => managerCandidates.map((u: any) => ({ value: u.id, label: `${u.name} (${u.role})`, user: u })),
         [managerCandidates],
     );
+    const renderManagerOption = (option: { data: { user: any } }) => {
+        const u = option.data.user;
+        const tagStyle: React.CSSProperties = { fontSize: 10, lineHeight: '16px', padding: '0 4px', margin: 0 };
+        return (
+            <Space size={4} align="center">
+                <Avatar size={20} style={{ backgroundColor: getRoleColor(u.role), fontSize: 11, flexShrink: 0 }}>
+                    {u.name?.[0]?.toUpperCase()}
+                </Avatar>
+                <span style={{ fontSize: 13 }}>{u.name}</span>
+                {u.role && <Tag style={tagStyle} color={getRoleColor(u.role)}>{getRoleName(u.role)}</Tag>}
+                {u.department?.name && (
+                    <Tag style={tagStyle} color={resolveEntityColor(u.department.color)}>{u.department.name}</Tag>
+                )}
+                {u.position?.name && (
+                    <Tag style={tagStyle} color={resolveEntityColor(u.position.color)}>{u.position.name}</Tag>
+                )}
+            </Space>
+        );
+    };
 
     const [modalOpen, setModalOpen] = useState(false);
     const [editingDept, setEditingDept] = useState<Department | null>(null);
@@ -232,15 +268,22 @@ export default function DepartmentsPage() {
             render: (_: any, record: Department) => {
                 const managers = record.managers ?? [];
                 if (managers.length === 0) return <Text type="secondary">Chưa gán</Text>;
+                // ⚠️ MỚI - dùng chung UserMiniCard (Avatar + Tag màu Vai trò, gói
+                // khối bo tròn) thay cho span+Tag rời rạc trước đây, theo đúng
+                // pattern đã áp dụng ở 4 tab Máy chấm công (xem JSDoc
+                // UserMiniCard.tsx). `record.managers` chỉ trả id/name/role (không
+                // có department/position vì đây là NGƯỜI QUẢN LÝ phòng ban này,
+                // không nhất thiết thuộc phòng ban này) nên chỉ truyền role.
                 return (
-                    <Space size={[4, 4]} wrap>
+                    <Space size={[6, 6]} wrap>
                         {managers.map((m) => (
-                            <span key={m.id}>
-                                {m.name}
-                                <Tag style={{ marginLeft: 4 }} color="blue">
-                                    {m.role}
-                                </Tag>
-                            </span>
+                            <UserMiniCard
+                                key={m.id}
+                                name={m.name}
+                                role={m.role}
+                                getRoleColor={getRoleColor}
+                                getRoleName={getRoleName}
+                            />
                         ))}
                     </Space>
                 );
@@ -352,6 +395,9 @@ export default function DepartmentsPage() {
                                     placeholder="Chọn (nhiều) user quản lý phòng ban này"
                                     options={managerCandidateOptions}
                                     optionFilterProp="label"
+                                    optionLabelProp="label"
+                                    optionRender={renderManagerOption}
+                                    popupMatchSelectWidth={false}
                                 />
                             </Form.Item>
                             <Form.Item name="isActive" label="Trạng thái hoạt động" valuePropName="checked">
