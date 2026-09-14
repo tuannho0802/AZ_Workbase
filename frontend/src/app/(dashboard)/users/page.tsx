@@ -716,6 +716,16 @@ export default function UsersPage() {
             <Select
               placeholder="Chọn vị trí (không bắt buộc)"
               allowClear
+              // ⚠️ FIX (antd 6.x deprecation warning: "'filterOption' is
+              // deprecated" - Select.d.ts báo top-level `filterOption` prop
+              // đã deprecated, phải gộp vào object `showSearch`). Đổi
+              // `showSearch` từ boolean sang object kèm `filterOption`, cùng
+              // pattern đã dùng ở nhiều Select khác trong app (vd
+              // CustomerAssignmentsTab.tsx).
+              showSearch={{
+                filterOption: (input, option) =>
+                  (option?.label as string).toLowerCase().includes(input.toLowerCase()),
+              }}
               options={positions.map((p) => ({ value: p.id, label: p.name, color: resolveEntityColor(p.color) }))}
               optionRender={(option) => (
                 <Tag color={(option.data as any).color} style={{ marginInlineEnd: 0 }}>
@@ -730,10 +740,6 @@ export default function UsersPage() {
                   </Tag>
                 );
               }}
-              showSearch
-              filterOption={(input, option) =>
-                (option?.label as string).toLowerCase().includes(input.toLowerCase())
-              }
             />
           </Form.Item>
 
@@ -750,13 +756,43 @@ export default function UsersPage() {
             <Select
               placeholder="Không có ngoại lệ (mặc định theo phòng ban)"
               allowClear
-              showSearch
+              // ⚠️ FIX BUG THẬT (antd 6.x deprecation warning: "'filterOption'
+              // is deprecated" - Select.d.ts(100,10) - top-level prop `filterOption`
+              // đã bị deprecate, API mới gộp vào object `showSearch`). Trước
+              // đây `showSearch` (boolean) + `filterOption` riêng (2 prop tách
+              // rời) - đổi thành 1 object `showSearch={{ filterOption }}`,
+              // cùng pattern đã sửa cho Select "Vị trí" ngay phía trên.
+              showSearch={{
+                filterOption: (input, option) =>
+                  (option?.label as string).toLowerCase().includes(input.toLowerCase()),
+              }}
+              // ⚠️ MỚI - dropdown này trước đây CHỈ hiện `${name} (${email})` trơn,
+              // thiếu hẳn Tag Vai trò/Phòng ban/Vị trí như MỌI dropdown chọn
+              // nhân viên khác trong CHÍNH file này (xem cột "Phòng ban"/"Vị trí"
+              // ở bảng, dòng 425/431 dùng đúng `resolveEntityColor`). `managerOptions`
+              // (từ `/users/all`) đã JOIN sẵn role/department/position từ lâu -
+              // chỉ optionRender chưa đọc tới, không cần sửa gì ở BE/hook.
               options={managerOptions
                 .filter((m: any) => m.id !== editingUser?.id)
-                .map((m: any) => ({ value: m.id, label: `${m.name} (${m.email})` }))}
-              filterOption={(input, option) =>
-                (option?.label as string).toLowerCase().includes(input.toLowerCase())
-              }
+                .map((m: any) => ({ value: m.id, label: `${m.name} (${m.email})`, user: m }))}
+              optionLabelProp="label"
+              optionRender={(option) => {
+                const m = (option.data as any).user;
+                const tagStyle: React.CSSProperties = { fontSize: 10, lineHeight: '16px', padding: '0 4px', margin: 0 };
+                return (
+                  <Space size={4} align="center" wrap>
+                    <span style={{ fontSize: 13 }}>{m.name} ({m.email})</span>
+                    {m.role && <Tag style={tagStyle} color={getRoleColor(m.role)}>{roleMap.get(m.role) || m.role}</Tag>}
+                    {m.department?.name && (
+                      <Tag style={tagStyle} color={resolveEntityColor(m.department.color)}>{m.department.name}</Tag>
+                    )}
+                    {m.position?.name && (
+                      <Tag style={tagStyle} color={resolveEntityColor(m.position.color)}>{m.position.name}</Tag>
+                    )}
+                  </Space>
+                );
+              }}
+              popupMatchSelectWidth={false}
             />
           </Form.Item>
 

@@ -243,7 +243,7 @@ export default function DepartmentsPage() {
     const deletingDeptEmployeeCount = deletingDept?.employees?.length ?? 0;
     const otherDepartmentOptions = departments
         .filter((d) => d.id !== deletingDept?.id && d.isActive)
-        .map((d) => ({ value: d.id, label: d.name }));
+        .map((d) => ({ value: d.id, label: d.name, color: d.color }));
 
     const canShowActionCol = canViewUsers || canManage || canDelete;
 
@@ -437,6 +437,16 @@ export default function DepartmentsPage() {
                                 <Select
                                     placeholder="Chọn phòng ban đích"
                                     options={otherDepartmentOptions}
+                                    // ⚠️ FIX BUG THẬT (rà soát FE 2026-09-14): dropdown "Chọn phòng ban
+                                    // đích" (modal Xoá phòng ban) trước đây chỉ hiện text trơn, thiếu
+                                    // Tag màu như CỘT "Tên phòng ban" ngay trong CÙNG trang (dòng ~256,
+                                    // `<Tag color={resolveEntityColor(record.color)}>`). Đồng bộ lại.
+                                    optionLabelProp="label"
+                                    optionRender={(option) => (
+                                        <Tag color={resolveEntityColor((option.data as { color?: string }).color)} style={{ marginInlineEnd: 0 }}>
+                                            {option.data.label}
+                                        </Tag>
+                                    )}
                                     showSearch={{ optionFilterProp: 'label' }}
                                 />
                             </Form.Item>

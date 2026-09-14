@@ -163,7 +163,12 @@ export default function RegisterPage() {
               placeholder="Chọn vị trí (không bắt buộc)"
               size="large"
               allowClear
-              showSearch
+              // ⚠️ FIX (antd 6.x deprecation: top-level `filterOption` prop đã
+              // deprecated - Select.d.ts, phải gộp vào object `showSearch`).
+              showSearch={{
+                filterOption: (input, option) =>
+                  (option?.label as string).toLowerCase().includes(input.toLowerCase()),
+              }}
               loading={loadingPositions}
               options={positions.map((p) => ({ value: p.id, label: p.name, color: p.color }))}
               optionLabelProp="label"
@@ -173,9 +178,6 @@ export default function RegisterPage() {
                 </Tag>
               )}
               popupMatchSelectWidth={false}
-              filterOption={(input, option) =>
-                (option?.label as string).toLowerCase().includes(input.toLowerCase())
-              }
             />
           </Form.Item>
 
