@@ -13,17 +13,32 @@ export class AddColorToPeriodicTasks1782200000000 implements MigrationInterface 
   name = 'AddColorToPeriodicTasks1782200000000';
 
   public async up(queryRunner: QueryRunner): Promise<void> {
-    await queryRunner.query(`
-      ALTER TABLE periodic_tasks
-      ADD COLUMN IF NOT EXISTS color VARCHAR(7) NULL
-      COMMENT 'Màu Task (hex, vd #FF5733) - chỉ dùng hiển thị UI'
-      AFTER status_id;
-    `);
+    // ⚠️ MySQL (khác MariaDB) KHÔNG hỗ trợ `ADD COLUMN IF NOT EXISTS` -
+    // đây là nguyên nhân lỗi cú pháp ER_PARSE_ERROR 1064 khi chạy trên môi
+    // trường MySQL thật. Thay bằng cách kiểm tra `table.findColumnByName()`
+    // trước, chỉ ALTER khi cột chưa tồn tại - đúng pattern đã dùng ở
+    // AddColorToRbacGroupingTables1781300000000 / AddEditCountToCustomerNotes1779500000000.
+    const table = await queryRunner.getTable('periodic_tasks');
+    const columnExists = table?.findColumnByName('color');
+
+    if (!columnExists) {
+      await queryRunner.query(`
+        ALTER TABLE \`periodic_tasks\`
+        ADD COLUMN \`color\` VARCHAR(7) NULL
+        COMMENT 'Màu Task (hex, vd #FF5733) - chỉ dùng hiển thị UI'
+        AFTER \`status_id\`;
+      `);
+    }
   }
 
   public async down(queryRunner: QueryRunner): Promise<void> {
-    await queryRunner.query(`
-      ALTER TABLE periodic_tasks DROP COLUMN IF EXISTS color;
-    `);
+    const table = await queryRunner.getTable('periodic_tasks');
+    const columnExists = table?.findColumnByName('color');
+
+    if (columnExists) {
+      await queryRunner.query(`
+        ALTER TABLE \`periodic_tasks\` DROP COLUMN \`color\`;
+      `);
+    }
   }
 }
