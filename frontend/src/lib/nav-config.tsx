@@ -20,6 +20,8 @@ import {
   IdcardOutlined,
   FlagOutlined,
   TagOutlined,
+  ScheduleOutlined,
+  BgColorsOutlined,
 } from '@ant-design/icons';
 
 export interface NavItem {
@@ -102,6 +104,19 @@ export const NAV_ITEMS: NavItem[] = [
     // `customers.assign`) cũng đã được thêm khớp với thay đổi này.
     roles: null,
     permission: 'customers.assign',
+  },
+  {
+    key: 'cong-viec-dinh-ky',
+    label: 'Công việc định kỳ',
+    description: 'Quản lý Công việc định kỳ (Ngày/Tuần/Tháng/Năm) - tạo thủ công từng kỳ, xem/sửa theo phạm vi quyền (own/phòng ban/tất cả)',
+    icon: <ScheduleOutlined />,
+    path: '/cong-viec-dinh-ky',
+    // Khớp @RequirePermission('periodic_tasks.view') ở
+    // periodic-tasks.controller.ts (seed ở migration
+    // SeedPeriodicTasksPermissions1782100000000: admin+assistant=all,
+    // manager=department, employee=own).
+    roles: null,
+    permission: 'periodic_tasks.view',
   },
   {
     key: 'nghi-phep',
@@ -240,6 +255,20 @@ export const NAV_ITEMS: NavItem[] = [
     // CreateCustomerStatuses1781400000000: mọi role đã đăng nhập đều có sẵn).
     roles: null,
     permission: 'customer_statuses.view',
+  },
+  {
+    key: 'quan-ly-trang-thai-cong-viec',
+    label: 'Quản lý Trạng thái công việc',
+    description: 'CRUD trạng thái Công việc định kỳ (thay ENUM cứng) hiển thị trong dropdown "Trạng thái" - cấu hình luôn % rollup (Phase 2)',
+    icon: <BgColorsOutlined />,
+    path: '/quan-ly-trang-thai-cong-viec',
+    // Khớp @RequirePermission('periodic_task_statuses.view')... thực chất
+    // Controller CỐ Ý không gắn @RequirePermission trên GET (mọi user đăng
+    // nhập đều gọi được để load dropdown) - permission này CHỈ dùng để FE
+    // gate TRANG QUẢN LÝ (seed ở CreatePeriodicTaskStatuses1781900000000:
+    // mọi role đã đăng nhập đều có sẵn `.view`, mirror quan-ly-status-khach).
+    roles: null,
+    permission: 'periodic_task_statuses.view',
   },
   {
     key: 'trash-can',
