@@ -1076,3 +1076,57 @@ drawer "Chi tiết khách hàng").
   route.
 - Chưa test tay trên browser thật với dữ liệu thật (cần DB có sẵn assignment active để thấy đúng số đếm
   và Tag "+N") - người dùng tự pull + test lại 2 màn hình trong ảnh để xác nhận.
+
+## [2026-09-14 04:00] | Rà soát toàn bộ Select thiếu Tag màu (Register + các trang còn lại) + fix deprecation warning `filterOption` | Status: Success
+
+**Actor:** Agent (Claude), theo yêu cầu trực tiếp: "kiểm tra thêm còn phần nào thiếu Tag", "kiểm tra Register
+cho thấy role/position public hay chưa", "kiểm tra các phần còn lại". Sau đó người dùng báo thêm 1 warning
+TypeScript riêng ("'filterOption' is deprecated") ở đúng đoạn code mới sửa trong `users/page.tsx`.
+
+**Trước khi làm:** `git fetch` phát hiện remote đã có 4 commit mới (`5de71e7`..`4c7ab2e`) khớp y hệt 3 lượt
+sửa trước của Agent (đã verify bằng diff, KHÔNG phải trùng hợp - có vẻ người dùng đã tự apply/commit các
+diff Agent đưa ra ở các lượt trước). Đã `git pull` để đồng bộ trước khi rà soát tiếp, tránh audit trên bản
+cũ.
+
+**Files Changed:**
+- `frontend/src/app/(dashboard)/users/page.tsx`:
+  - Select "Vị trí" (modal Sửa nhân viên): đổi `showSearch` (boolean) + `filterOption` (prop riêng, ĐÃ
+    DEPRECATED ở antd 6.x) thành 1 object `showSearch={{ filterOption }}`.
+  - Select "Người duyệt nghỉ phép (ngoại lệ)": (1) thêm Tag Vai trò/Phòng ban/Vị trí màu (trước đây chỉ
+    hiện `${name} (${email})` trơn - `managerOptions` từ `/users/all` đã JOIN sẵn field này từ lâu, chỉ
+    optionRender chưa đọc tới); (2) đổi `filterOption` sang dạng object `showSearch={{ filterOption }}`
+    (cùng lỗi deprecation).
+- `frontend/src/app/(dashboard)/phong-ban/page.tsx` — Select "Chọn phòng ban đích" (modal Xoá phòng ban
+  khi còn nhân viên): thêm Tag màu (`resolveEntityColor`) đồng bộ với cột "Tên phòng ban" trong cùng
+  trang - trước đây chỉ hiện tên trơn.
+- `frontend/src/app/(auth)/register/page.tsx` — Select "Vị trí": cùng lỗi deprecation `filterOption` như
+  trên, đổi sang `showSearch={{ filterOption }}`.
+
+**Root Cause (deprecation warning):** antd 6.x đã deprecate prop top-level `filterOption` của `<Select>`
+(xem `Select.d.ts(100,10)`) - API mới gộp logic filter vào 1 object truyền qua prop `showSearch` (đã dùng
+đúng cách ở phần lớn Select khác trong app, ví dụ `CustomerAssignmentsTab.tsx`). 3 chỗ nêu trên là các chỗ
+CÒN SÓT dùng cú pháp cũ (`showSearch` boolean tách rời `filterOption`) - đã grep toàn bộ
+`frontend/src --include=*.tsx` với pattern `^\s*filterOption={` để xác nhận đây là TOÀN BỘ các chỗ còn lại
+(0 kết quả sau khi sửa xong).
+
+**Đã audit toàn bộ `<Select>` trong `frontend/src` (30 file) - kết quả:**
+- Register: Phòng ban/Vị trí ĐÃ có Tag màu từ trước (đã xác nhận BE `findAllPublic()` của cả 2 module trả
+  đúng field `color`, không lộ field nhạy cảm description/isSystem). KHÔNG có dropdown "Vai trò" ở Register
+  (đúng thiết kế - role gán sau khi Admin duyệt, không phải người tự chọn lúc đăng ký) nên không áp dụng.
+- Đã kiểm tra và xác nhận ỔN (đã có Tag/màu đầy đủ, không cần sửa): attendance-device (3 tab),
+  audit-logs, customers/reports/invalid-data, nghi-phep, nhom-lien-ket, phan-quyen (2 panel override),
+  quan-ly-loai-phep, quan-ly-phu-trach, quan-ly-status-khach, reports (không phải dropdown chọn
+  người/phòng ban/vị trí nên không áp dụng), users/PendingApprovalsTab, vi-tri (2 file), CustomerForm,
+  CustomerNotesTab, SalesUserSelect, CustomerStatusSelect, GroupManagersModal (đã dùng lại SalesUserSelect
+  từ lượt sửa trước), BulkAssignModal, CustomerFilters, toàn bộ Select ở chia-data/page.tsx (bao gồm modal
+  "Chọn Sales nhận data" chính - `userOptions` đã có Avatar+Tag đầy đủ dạng JSX label).
+
+**Verify thật:**
+- Frontend: `npx tsc --noEmit` sạch (0 lỗi mới, toàn bộ frontend). `grep -rn "^\s*filterOption={"
+  frontend/src` — 0 kết quả (xác nhận đã sửa hết, không sót chỗ nào dùng cú pháp deprecated). `npx eslint`
+  cho `users/page.tsx`/`register/page.tsx`/`phong-ban/page.tsx` — số lỗi TRƯỚC/SAU giống hệt nhau (đối
+  chiếu bằng `git stash` + eslint lại bản gốc), xác nhận toàn bộ lỗi `any`/`react/no-unescaped-entities`
+  còn lại đều PRE-EXISTING, không phải do diff các lượt sửa Tag màu. `npm run build` (Next.js 16
+  Turbopack): sạch hoàn toàn, đủ 30 route.
+- Chưa test tay trên browser thật (cần mở modal "Sửa nhân viên"/"Xoá phòng ban" với data thật để xác nhận
+  Tag hiện đúng màu và warning console đã hết) - người dùng tự pull + test lại để xác nhận.
