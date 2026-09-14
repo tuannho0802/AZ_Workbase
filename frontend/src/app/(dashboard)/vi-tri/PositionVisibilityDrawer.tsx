@@ -6,6 +6,8 @@ import { UndoOutlined, SaveOutlined, EyeInvisibleOutlined } from '@ant-design/ic
 import { useRoles } from '@/lib/hooks/useRoles';
 import { useRoleUiVisibilityRules, useUpsertUiVisibilityRules, useDeleteUiVisibilityRules } from '@/lib/hooks/useUiVisibility';
 import { Position } from '@/lib/api/positions.api';
+import { RoleWithPermissions } from '@/lib/types/roles.types';
+import { resolveEntityColor } from '@/lib/utils/entityColor';
 
 const { Text, Paragraph } = Typography;
 
@@ -154,6 +156,14 @@ export function PositionVisibilityDrawer({ position, open, onClose }: Props) {
   const fieldKeys = rules?.elementKeys.filter((k) => ELEMENT_KEY_LABELS[k]?.group !== 'tab') ?? [];
   const tabKeys = rules?.elementKeys.filter((k) => ELEMENT_KEY_LABELS[k]?.group === 'tab') ?? [];
 
+  // ⚠️ MỚI - đồng bộ pattern Tag màu (renderUserOption/renderDepartmentOption)
+  // đã dùng ở các dropdown chọn nhân sự/phòng ban khác trong app, thay vì
+  // dropdown "Chọn Role" ở đây đang hiện text trơn (báo qua ảnh chụp).
+  const renderRoleOption = (option: { data: { role: RoleWithPermissions } }) => {
+    const r = option.data.role;
+    return <Tag color={resolveEntityColor(r.color)} style={{ marginInlineEnd: 0 }}>{r.name}</Tag>;
+  };
+
   const renderRow = (key: string) => {
     const meta = ELEMENT_KEY_LABELS[key] ?? { label: key, group: 'field' as const };
     const visible = draft?.get(key) ?? true;
@@ -251,7 +261,10 @@ export function PositionVisibilityDrawer({ position, open, onClose }: Props) {
         // Root Admin vẫn luôn thấy mọi thứ (bypass ở tầng BE, không phụ
         // thuộc màn hình này) nên tự cấu hình 1 rule cho role 'admin' không
         // "tự khoá mắt chính mình" của Root Admin.
-        options={roles.map((r) => ({ value: r.id, label: r.name }))}
+        options={roles.map((r) => ({ value: r.id, label: r.name, role: r }))}
+        optionLabelProp="label"
+        optionRender={renderRoleOption}
+        popupMatchSelectWidth={false}
         showSearch={{ optionFilterProp: 'label' }}
       />
 

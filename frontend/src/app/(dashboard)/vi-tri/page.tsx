@@ -27,6 +27,7 @@ import { Position } from '@/lib/api/positions.api';
 import { PositionVisibilityDrawer } from './PositionVisibilityDrawer';
 import { ColorPickerField } from '@/components/common/ColorPickerField';
 import { resolveEntityColor } from '@/lib/utils/entityColor';
+import { Department } from '@/lib/api/departments.api';
 
 const { Title, Text } = Typography;
 
@@ -142,6 +143,14 @@ export default function PositionsPage() {
     };
 
     const canShowActionCol = canManage || canDelete || canManageVisibility;
+
+    // ⚠️ MỚI - đồng bộ pattern renderDepartmentOption (Tag màu) đã dùng ở
+    // DepartmentOverridesPanel.tsx/CustomerFilters.tsx thay vì dropdown chọn
+    // Phòng ban ở đây đang hiện text trơn (báo qua ảnh chụp).
+    const renderDepartmentOption = (option: { data: { department: Department } }) => {
+        const d = option.data.department;
+        return <Tag color={resolveEntityColor(d.color)} style={{ marginInlineEnd: 0 }}>{d.name}</Tag>;
+    };
 
     const columns = [
         {
@@ -302,7 +311,10 @@ export default function PositionsPage() {
                             placeholder="Không thuộc phòng ban cụ thể"
                             allowClear
                             loading={loadingDepartments}
-                            options={departments.map((d) => ({ value: d.id, label: d.name }))}
+                            options={departments.map((d) => ({ value: d.id, label: d.name, department: d }))}
+                            optionLabelProp="label"
+                            optionRender={renderDepartmentOption}
+                            popupMatchSelectWidth={false}
                             showSearch={{ optionFilterProp: 'label' }}
                         />
                     </Form.Item>

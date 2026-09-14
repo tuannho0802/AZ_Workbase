@@ -16,6 +16,8 @@ import {
 import { AssignmentGroupConfig } from '@/lib/api/assignment-groups.api';
 import { ColorPickerField } from '@/components/common/ColorPickerField';
 import { resolveEntityColor } from '@/lib/utils/entityColor';
+import { Department } from '@/lib/api/departments.api';
+import { Position } from '@/lib/api/positions.api';
 
 const { Title, Text } = Typography;
 
@@ -131,6 +133,28 @@ export default function AssignmentGroupsPage() {
       },
       onError: (err: any) => message.error(err?.response?.data?.message || 'Xoá thất bại'),
     });
+  };
+
+  // ⚠️ MỚI - đồng bộ pattern Tag màu (renderDepartmentOption/renderPositionOption)
+  // đã dùng ở DepartmentOverridesPanel.tsx/PositionOverridesPanel.tsx thay vì 2
+  // dropdown multi-select "Phòng ban"/"Vị trí" ở modal bên dưới đang hiện text
+  // trơn (báo qua ảnh chụp).
+  const renderDepartmentOption = (option: { data: { department: Department } }) => {
+    const d = option.data.department;
+    return <Tag color={resolveEntityColor(d.color)} style={{ marginInlineEnd: 0 }}>{d.name}</Tag>;
+  };
+  const renderPositionOption = (option: { data: { position: Position } }) => {
+    const p = option.data.position;
+    return (
+      <Space size={4} align="center">
+        <Tag color={resolveEntityColor(p.color)} style={{ marginInlineEnd: 0 }}>{p.name}</Tag>
+        {p.department?.name && (
+          <Tag color={resolveEntityColor(p.department.color)} style={{ marginInlineEnd: 0 }}>
+            {p.department.name}
+          </Tag>
+        )}
+      </Space>
+    );
   };
 
   const columns = [
@@ -282,7 +306,10 @@ export default function AssignmentGroupsPage() {
               mode="multiple"
               placeholder="Chọn 1 hoặc nhiều phòng ban"
               loading={loadingDepartments}
-              options={departments.map((d) => ({ value: d.id, label: d.name }))}
+              options={departments.map((d) => ({ value: d.id, label: d.name, department: d }))}
+              optionLabelProp="label"
+              optionRender={renderDepartmentOption}
+              popupMatchSelectWidth={false}
               showSearch
               optionFilterProp="label"
             />
@@ -296,7 +323,10 @@ export default function AssignmentGroupsPage() {
               allowClear
               placeholder="Không lọc theo vị trí"
               loading={loadingPositions}
-              options={positions.map((p) => ({ value: p.id, label: p.name }))}
+              options={positions.map((p) => ({ value: p.id, label: p.name, position: p }))}
+              optionLabelProp="label"
+              optionRender={renderPositionOption}
+              popupMatchSelectWidth={false}
               showSearch
               optionFilterProp="label"
             />
