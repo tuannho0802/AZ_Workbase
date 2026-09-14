@@ -81,24 +81,68 @@ export default function LinkGroupsAdminPage() {
   const { categories, isLoading: loadingCategories } = useLinkCategories(false);
   const { groups, isLoading: loadingGroups } = useAllLinkGroups();
 
-  // Filter nhẹ CHỈ áp cho bảng Group (lồng bên trong từng Category) - Category
-  // (nền tảng: Zalo/Facebook/Threads...) thường chỉ vài dòng, không cần lọc.
-  // Group thì có thể nhiều (nhiều nhóm Zalo/Facebook khác nhau) nên cần
-  // search theo tên/URL + lọc Trạng thái (đang hiện/đang ẩn).
+  // Filter áp cho CẢ bảng Category lẫn bảng Group lồng bên trong - Category
+  // (nền tảng: Zalo/Facebook/Threads...) thường chỉ vài dòng nhưng vẫn cần
+  // ẩn category không liên quan khi đang tìm kiếm, để không gây rối mắt.
+  //
+  // ⚠️ FIX BUG THẬT (báo qua ảnh chụp 2026-09-14): 2 lỗi trước đây:
+  // 1. Search chỉ so khớp tên/URL của Group - gõ đúng tên Category (vd "Zalo")
+  //    không tìm ra gì vì component chỉ lọc bảng Group con, không đụng tới
+  //    tên Category.
+  // 2. Khi search ra ít nhóm, bảng Category ngoài vẫn hiện NGUYÊN cả 4 dòng
+  //    Category (kể cả category rỗng, không liên quan gì tới từ khoá) vì
+  //    `dataSource={categories}` không hề lọc theo `groupSearch`/
+  //    `groupStatusFilter` - chỉ bảng Group lồng bên trong (`filteredGroups`)
+  //    mới bị lọc.
+  //
+  // Cách sửa: 1 Category được GIỮ LẠI nếu (a) chính TÊN Category khớp từ
+  // khoá tìm kiếm, HOẶC (b) có ít nhất 1 Group con khớp filter. Khi (a) đúng
+  // (tên Category khớp), hiện TOÀN BỘ Group con của category đó (chỉ áp
+  // Trạng thái, KHÔNG áp lại điều kiện text - vì user tìm theo Category chứ
+  // không phải theo tên nhóm, không nên ẩn nhóm không khớp text bên trong).
   const [groupSearch, setGroupSearch] = useState('');
   const [groupStatusFilter, setGroupStatusFilter] = useState<'active' | 'inactive' | null>(null);
 
-  const filteredGroups = useMemo(() => {
-    return groups.filter((g) => {
-      if (groupStatusFilter === 'active' && !g.isActive) return false;
-      if (groupStatusFilter === 'inactive' && g.isActive) return false;
-      if (groupSearch.trim()) {
-        const q = groupSearch.trim().toLowerCase();
-        if (!(g.name.toLowerCase().includes(q) || g.url?.toLowerCase().includes(q))) return false;
-      }
-      return true;
-    });
-  }, [groups, groupSearch, groupStatusFilter]);
+  const groupMatchesStatus = (g: LinkGroup) => {
+    if (groupStatusFilter === 'active' && !g.isActive) return false;
+    if (groupStatusFilter === 'inactive' && g.isActive) return false;
+    return true;
+  };
+
+  const groupMatchesText = (g: LinkGroup) => {
+    const q = groupSearch.trim().toLowerCase();
+    if (!q) return true;
+    return g.name.toLowerCase().includes(q) || !!g.url?.toLowerCase().includes(q);
+  };
+
+  const categoryNameMatches = (c: LinkCategory) => {
+    const q = groupSearch.trim().toLowerCase();
+    return !!q && c.name.toLowerCase().includes(q);
+  };
+
+  // Danh sách Group hiển thị BÊN TRONG 1 category cụ thể - nếu tên category
+  // đó đã khớp từ khoá thì bỏ qua điều kiện text (chỉ còn lọc Trạng thái).
+  const groupsOfCategory = (categoryId: number) => {
+    const skipTextMatch = categoryNameMatches(categories.find((c) => c.id === categoryId) as LinkCategory);
+    return groups.filter(
+      (g) => g.categoryId === categoryId && groupMatchesStatus(g) && (skipTextMatch || groupMatchesText(g)),
+    );
+  };
+
+  const filteredCategories = useMemo(() => {
+    if (!groupSearch.trim() && !groupStatusFilter) return categories;
+    return categories.filter((c) => categoryNameMatches(c) || groupsOfCategory(c.id).length > 0);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [categories, groups, groupSearch, groupStatusFilter]);
+
+  // Tự động mở rộng (expand) toàn bộ category còn lại khi đang có filter -
+  // nếu không, category dù đã lọc đúng vẫn ở trạng thái thu gọn (mặc định
+  // của Table) khiến người dùng tưởng "tìm không ra gì" cho tới khi tự bấm
+  // dấu "+". Khi KHÔNG filter, trả về trạng thái expand THỦ CÔNG bình
+  // thường (giữ nguyên hành vi cũ).
+  const [manualExpandedIds, setManualExpandedIds] = useState<number[]>([]);
+  const isFilteringGroups = !!groupSearch.trim() || !!groupStatusFilter;
+  const expandedCategoryIds = isFilteringGroups ? filteredCategories.map((c) => c.id) : manualExpandedIds;
 
   // ⚠️ SỬA (2026-09-10, theo phản hồi người dùng - "Filter ở đây check là
   // nhân viên phòng ban marketing, không check positions"): dropdown "Quản
@@ -429,8 +473,7 @@ export default function LinkGroupsAdminPage() {
       title: 'Số nhóm',
       key: 'groupCount',
       width: 100,
-      render: (_: any, record: LinkCategory) =>
-        filteredGroups.filter((g) => g.categoryId === record.id).length,
+      render: (_: any, record: LinkCategory) => groupsOfCategory(record.id).length,
     },
     {
       title: 'Thứ tự',
@@ -526,15 +569,17 @@ export default function LinkGroupsAdminPage() {
         rowKey="id"
         loading={loadingCategories || loadingGroups}
         columns={categoryColumns}
-        dataSource={categories}
+        dataSource={filteredCategories}
         pagination={false}
         expandable={{
+          expandedRowKeys: expandedCategoryIds,
+          onExpandedRowsChange: (keys) => setManualExpandedIds(keys as number[]),
           expandedRowRender: (record: LinkCategory) => (
             <Table
               rowKey="id"
               size="small"
               columns={groupColumns}
-              dataSource={filteredGroups.filter((g) => g.categoryId === record.id)}
+              dataSource={groupsOfCategory(record.id)}
               pagination={false}
               locale={{ emptyText: 'Chưa có nhóm nào - bấm "Thêm nhóm" ở dòng category để tạo mới' }}
             />
