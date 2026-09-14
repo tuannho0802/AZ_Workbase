@@ -279,7 +279,15 @@ export default function UsersPage() {
     if (canSeeFullList) {
       fetchUsers();
     }
-  }, [canSeeFullList, page, pageSize]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [canSeeFullList, page, pageSize, filterRole, filterDepartmentId, filterIsActive, debouncedUserSearch]);
+
+  // Reset về trang 1 khi đổi filter/search (tránh đứng ở trang trống nếu
+  // tập kết quả mới có ít trang hơn trang đang đứng) - đối xứng pattern đã
+  // dùng ở trash-can.
+  useEffect(() => {
+    setPage(1);
+  }, [filterRole, filterDepartmentId, filterIsActive, debouncedUserSearch]);
 
   // Trước đây đẩy về tab "Chờ duyệt" cho MỌI role không phải Admin - giờ
   // Assistant/Manager cũng thấy được tab "Danh sách nhân viên" nên chỉ cần
@@ -472,6 +480,40 @@ export default function UsersPage() {
     },
   ].filter((c: any) => canManage || canDelete || c.key !== 'action');
 
+  const userListFilters = (
+    <ListFilterBar
+      searchValue={userSearch}
+      onSearchChange={setUserSearch}
+      searchPlaceholder="Tìm theo tên, email, mã NV..."
+      dropdowns={[
+        {
+          key: 'role',
+          placeholder: 'Vai trò',
+          value: filterRole,
+          onChange: setFilterRole,
+          options: roleOptions.map(r => ({ value: r.value, label: r.label })),
+        },
+        {
+          key: 'department',
+          placeholder: 'Phòng ban',
+          value: filterDepartmentId,
+          onChange: setFilterDepartmentId,
+          options: departments.map((d) => ({ value: Number(d.id), label: d.name })),
+        },
+        {
+          key: 'isActive',
+          placeholder: 'Trạng thái',
+          value: filterIsActive,
+          onChange: setFilterIsActive,
+          options: [
+            { value: true, label: 'Đang hoạt động' },
+            { value: false, label: 'Không hoạt động' },
+          ],
+        },
+      ]}
+    />
+  );
+
   const userListContent = (
     loading && users.length === 0 ? (
       <div className="flex justify-center items-center my-10 py-10">
@@ -533,7 +575,12 @@ export default function UsersPage() {
           {
             key: 'list',
             label: 'Danh sách nhân viên',
-            children: userListContent,
+          children: (
+            <>
+              {userListFilters}
+              {userListContent}
+            </>
+          ),
           },
         ]
       : []),

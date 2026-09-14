@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useMemo } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   Table, Button, Space, App, Modal, Form, Select, Input, Typography, Spin, Tag,
@@ -14,6 +14,7 @@ import { usePositions } from '@/lib/hooks/usePositions';
 import { getApiErrorMessage } from '@/lib/utils/error-message.util';
 import { useAuthStore } from '@/lib/stores/auth.store';
 import { resolveEntityColor } from '@/lib/utils/entityColor';
+import { ListFilterBar } from '@/components/common/ListFilterBar';
 
 const { Text, Paragraph } = Typography;
 
@@ -67,6 +68,20 @@ export const PendingApprovalsTab = ({ onCountChange }: Props) => {
       return data;
     },
   });
+
+  // Search/filter CLIENT-SIDE - danh sách chờ duyệt luôn BOUNDED (số tài
+  // khoản chờ duyệt tại 1 thời điểm thường rất ít), không cần sửa BE.
+  const [search, setSearch] = useState('');
+  const [filterDepartmentId, setFilterDepartmentId] = useState<number | undefined>();
+
+  const filteredPendingUsers = useMemo(() => {
+    const q = search.trim().toLowerCase();
+    return pendingUsers.filter((u) => {
+      if (q && !u.name.toLowerCase().includes(q) && !u.email.toLowerCase().includes(q) && !(u.employeeCode || '').toLowerCase().includes(q)) return false;
+      if (filterDepartmentId && u.department?.id !== filterDepartmentId) return false;
+      return true;
+    });
+  }, [pendingUsers, search, filterDepartmentId]);
 
   const refetch = () => queryClient.invalidateQueries({ queryKey: ['pending-approvals'] });
 
@@ -187,11 +202,25 @@ export const PendingApprovalsTab = ({ onCountChange }: Props) => {
 
   return (
     <div>
+      <ListFilterBar
+        searchValue={search}
+        onSearchChange={setSearch}
+        searchPlaceholder="Tìm tên, email, mã NV..."
+        dropdowns={[
+          {
+            key: 'department',
+            placeholder: 'Phòng ban đăng ký',
+            value: filterDepartmentId,
+            onChange: setFilterDepartmentId,
+            options: departments.map((d: any) => ({ value: Number(d.id), label: d.name })),
+          },
+        ]}
+      />
       <Table
         columns={columns}
-        dataSource={pendingUsers}
+        dataSource={filteredPendingUsers}
         rowKey="id"
-        locale={{ emptyText: '✅ Không có tài khoản nào đang chờ duyệt' }}
+        locale={{ emptyText: pendingUsers.length === 0 ? '✅ Không có tài khoản nào đang chờ duyệt' : 'Không tìm thấy tài khoản nào khớp bộ lọc' }}
         pagination={false}
       />
 

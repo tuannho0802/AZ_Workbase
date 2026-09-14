@@ -1,13 +1,14 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useMemo } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Table, Button, Space, App, Modal, Typography, Spin, Tag } from 'antd';
 import { UndoOutlined, DeleteOutlined, ExclamationCircleOutlined } from '@ant-design/icons';
 import dayjs from 'dayjs';
 import { usersApi, TrashedUser } from '@/lib/api/users.api';
 import { getApiErrorMessage } from '@/lib/utils/error-message.util';
-import { useRoleColorMap } from '@/lib/hooks/useRoleColorMap';
+import { useRoleColorMap, useRoleColors } from '@/lib/hooks/useRoleColorMap';
+import { ListFilterBar } from '@/components/common/ListFilterBar';
 
 const { Text, Paragraph } = Typography;
 
@@ -25,6 +26,7 @@ export const TrashTab = ({ onCountChange, onRestored }: Props) => {
   const { message, modal } = App.useApp();
   const queryClient = useQueryClient();
   const { getRoleColor } = useRoleColorMap();
+  const { roleColors } = useRoleColors();
 
   const [restoring, setRestoring] = useState<TrashedUser | null>(null);
   const [restoreSubmitting, setRestoreSubmitting] = useState(false);
@@ -39,6 +41,21 @@ export const TrashTab = ({ onCountChange, onRestored }: Props) => {
       return data;
     },
   });
+
+  // Search/filter CLIENT-SIDE - thùng rác nhân viên luôn BOUNDED (không có
+  // BE pagination), giống pattern đã dùng ở trash-can (customer) và
+  // PendingApprovalsTab bên cạnh.
+  const [search, setSearch] = useState('');
+  const [filterRole, setFilterRole] = useState<string | undefined>();
+
+  const filteredTrashedUsers = useMemo(() => {
+    const q = search.trim().toLowerCase();
+    return trashedUsers.filter((u) => {
+      if (q && !u.name.toLowerCase().includes(q) && !u.email.toLowerCase().includes(q) && !(u.employeeCode || '').toLowerCase().includes(q)) return false;
+      if (filterRole && u.role !== filterRole) return false;
+      return true;
+    });
+  }, [trashedUsers, search, filterRole]);
 
   const refetch = () => queryClient.invalidateQueries({ queryKey: ['users-trash'] });
 
@@ -139,11 +156,25 @@ export const TrashTab = ({ onCountChange, onRestored }: Props) => {
 
   return (
     <div>
+      <ListFilterBar
+        searchValue={search}
+        onSearchChange={setSearch}
+        searchPlaceholder="Tìm tên, email, mã NV..."
+        dropdowns={[
+          {
+            key: 'role',
+            placeholder: 'Vai trò',
+            value: filterRole,
+            onChange: setFilterRole,
+            options: (roleColors || []).map((r) => ({ value: r.code, label: r.name })),
+          },
+        ]}
+      />
       <Table
         columns={columns}
-        dataSource={trashedUsers}
+        dataSource={filteredTrashedUsers}
         rowKey="id"
-        locale={{ emptyText: '🗑️ Thùng rác trống - chưa có tài khoản nào bị xoá' }}
+        locale={{ emptyText: trashedUsers.length === 0 ? '🗑️ Thùng rác trống - chưa có tài khoản nào bị xoá' : 'Không tìm thấy tài khoản nào khớp bộ lọc' }}
         pagination={false}
       />
 
