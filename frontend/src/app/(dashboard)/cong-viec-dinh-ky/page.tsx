@@ -393,7 +393,7 @@ export default function PeriodicTasksPage() {
                         style={{ width: '100%' }}
                         value={primaryAssigneeId}
                         onChange={(v) => setPrimaryAssigneeId(v)}
-                        options={users.map((u) => ({ value: u.id, label: u.name }))}
+                        options={users.map((u: any) => ({ value: u.id, label: u.name }))}
                     />
                 </Col>
                 <Col xs={12} sm={6} md={4}>
@@ -498,7 +498,7 @@ export default function PeriodicTasksPage() {
                                 <Select
                                     showSearch={{ optionFilterProp: 'label' }}
                                     placeholder="Chọn nhân viên"
-                                    options={users.map((u) => ({ value: u.id, label: u.name }))}
+                                    options={users.map((u: any) => ({ value: u.id, label: u.name }))}
                                 />
                             </Form.Item>
                         </Col>
