@@ -988,3 +988,91 @@ mini chung để dễ nhìn hơn là tách ra như vậy"). Người dùng đã 
 - Người dùng đã tự test trực tiếp trên UI thật và xác nhận ổn ("tôi test ổn rồi").
 
 Now [deploy]
+
+## [2026-09-14 03:26] | Fix warning "Instance created by useForm is not connected to any Form element" ở tab Gán data (chia-data) | Status: Success
+
+**Actor:** Agent (Claude), theo console error người dùng chụp màn hình gửi kèm ảnh modal "Gán thêm Sales"
+(trang `/chia-data` → drawer "Chi tiết khách hàng" → tab "Gán data").
+
+**Files Changed:**
+- `frontend/src/components/customers/CustomerAssignmentsTab.tsx` — hàm `openEdit()`: dời lệnh
+  `editForm.setFieldsValue(...)` ra khỏi thân hàm, chuyển vào `useEffect` theo dõi state `editing`.
+
+**Root Cause:**
+> Modal "Sửa lượt gán data" dùng `destroyOnHidden` → `<Form form={editForm}>` chỉ mount khi `open=true`
+> (rc-dialog/antd Modal mặc định lazy-render children, không render tới khi `open` từng = true lần đầu).
+> `openEdit()` cũ gọi `editForm.setFieldsValue(...)` NGAY sau `setEditing(a)` trong cùng 1 lượt gọi hàm -
+> nhưng `setEditing` chỉ là state update (áp dụng bất đồng bộ ở lần re-render kế tiếp), nên tại đúng thời
+> điểm gọi `setFieldsValue`, Modal vẫn đang `open=false`, `<Form>` chưa từng mount trong DOM ⇒ `editForm`
+> instance "chưa kết nối với Form element nào" ⇒ warning bắn ra console (đúng y hệt lỗi người dùng chụp).
+> Vì `editForm` được tạo ngay khi component `CustomerAssignmentsTab` mount (mỗi lần tab "Gán data" active),
+> warning này xuất hiện ngay cả khi người dùng chỉ mở modal "Gán thêm Sales" (modal kia dùng state thường,
+> không liên quan `editForm`) - do 2 modal share chung component cha.
+
+**Solution:**
+> `openEdit()` giờ chỉ `setEditing(a)`. Một `useEffect([editing, editForm])` riêng đảm nhiệm gọi
+> `setFieldsValue` - effect này chạy SAU khi React đã commit/paint xong lần re-render có `editing` mới
+> (thời điểm này Modal `open={!!editing}` đã true, `<Form>` đã mount) ⇒ `editForm` luôn có Form element để
+> kết nối trước khi bị gọi lệnh.
+
+**Đã phát hiện thêm (NGOÀI phạm vi câu hỏi, CHƯA sửa - báo để quyết định có sweep toàn bộ không):**
+> Cùng 1 pattern lỗi này (gọi `form.setFieldsValue()` đồng bộ ngay trong hàm mở modal, thay vì qua
+> `useEffect`) xuất hiện lặp lại ở nhiều trang khác dùng Modal + `destroyOnHidden`/lazy-render tương tự,
+> có nguy cơ warning tương tự (chưa xác nhận từng cái có thực sự bắn warning hay không - phụ thuộc
+> `forceRender`/thời điểm modal từng mở lần đầu):
+> `users/page.tsx` (`openEdit`), `phong-ban/page.tsx`, `vi-tri/page.tsx`, `quan-ly-loai-phep/page.tsx`,
+> `quan-ly-status-khach/page.tsx`, `quan-ly-phu-trach/page.tsx`, `nguon-media/page.tsx`,
+> `nhom-lien-ket/page.tsx`. Đề xuất: nếu người dùng xác nhận còn thấy warning tương tự ở các trang này,
+> làm 1 lượt sweep riêng áp dụng cùng pattern `useEffect`.
+
+**Verify thật:**
+- Frontend: `npx tsc --noEmit` — 0 lỗi liên quan diff (chỉ còn lỗi pre-existing không liên quan: thiếu
+  type declaration cho `logo.png` ở 4 file, và lỗi type `styled-jsx` ở `CountBadge.tsx` - đã xác nhận cả
+  2 đều tồn tại từ trước, không đụng tới trong diff này). `npx eslint
+  src/components/customers/CustomerAssignmentsTab.tsx` — sạch. `npm run build` (Next.js 16 Turbopack):
+  **sạch hoàn toàn**, đủ 30 route (bao gồm `/chia-data`).
+- Chưa test tay trên trình duyệt thật (console warning chỉ tái hiện được ở runtime dev thật) - người dùng
+  cần tự pull về, mở lại flow "chia-data → Chi tiết khách hàng → Gán data → Gán thêm Sales" để xác nhận
+  console sạch.
+
+## [2026-09-14 03:38] | Đổi tên tab "Gán data" -> "Chia data" + thêm số đếm, fix thiếu Sales phụ ở bảng "Đã assign" (chia-data) | Status: Success
+
+**Actor:** Agent (Claude), theo yêu cầu trực tiếp qua 2 ảnh chụp người dùng gửi (trang `/chia-data` +
+drawer "Chi tiết khách hàng").
+
+**Files Changed:**
+- `frontend/src/components/customers/CustomerDetailDrawer.tsx` — label tab "Gán data" đổi thành
+  "Chia data" kèm số đếm `({customer?.activeAssignees?.length || 0})`, cùng pattern với tab "Ghi chú
+  (N)"/"Nạp tiền (N)" đã có sẵn ngay bên cạnh. Không cần gọi thêm API nào - `customer.activeAssignees`
+  đã được BE `findOne()` populate sẵn từ trước (chỉ tính assignment `status = 'active'`, KHÔNG tính các
+  lượt đã thu hồi trong lịch sử).
+- `backend/src/modules/customers/customers.service.ts` — hàm `getAssigned()` (endpoint `/customers/assigned`,
+  data source của bảng tab "Đã assign" ở `/chia-data`): thêm đúng 1 query gộp (không N+1, cùng pattern hệt
+  `findAll()`/`findOne()`) để populate `(customer as any).activeAssignees` cho từng dòng kết quả.
+
+**Root Cause (bug #2 - "chưa có cột Sales phụ"):**
+> Cột "Sales Phụ trách chính" ở bảng "Đã assign" (`assignedColumns` trong `chia-data/page.tsx`) đã CÓ SẴN
+> đúng logic render Tag "+N" Sales phụ (copy y hệt `/customers` từ một lượt sửa trước) - nhưng
+> `getAssigned()` ở BE chưa TỪNG populate field `customer.activeAssignees` như 2 hàm chị em `findAll()`
+> (dùng cho `/customers`) và `findOne()` (dùng cho drawer chi tiết) đã làm từ lâu. FE luôn đọc
+> `r.activeAssignees` ra `undefined` -> `sharedSales.length` luôn = 0 -> Tag cyan "+N" không bao giờ hiện,
+> nhìn như thiếu hẳn cột dù code JSX đã đúng.
+
+**Đã phát hiện thêm (NGOÀI phạm vi câu hỏi, CHƯA sửa):**
+> `getAssigned()`/`getUnassigned()` (2 endpoint dùng riêng cho trang `/chia-data`) không hề áp
+> `stripHiddenCustomerFields()`/`getHiddenElementKeys()` như `findAll()`/`findOne()` đã làm - nghĩa là rule
+> ẩn field qua UI Visibility (Vị trí/Phòng ban override, ví dụ ẩn `field:sales_assignment`) KHÔNG có tác
+> dụng ở 2 endpoint này, kể cả sau khi thêm `activeAssignees` ở lượt sửa này. Cần 1 lượt riêng nếu muốn rule
+> ẩn field áp dụng đồng bộ cho cả trang `/chia-data`, không tự ý mở rộng phạm vi sửa ở đây vì có thể ảnh
+> hưởng luồng RBAC nhạy cảm (PERMISSIONS.md) cần bàn kỹ hơn.
+
+**Verify thật:**
+- Backend: `npx tsc --noEmit` sạch. `npx nest build` sạch. `npx jest customers.service.spec.ts`: **39/39
+  pass** (bao gồm cả 4 test `describe('getAssigned...')` có sẵn - không có test nào assert phủ định sự
+  tồn tại của `activeAssignees` nên thêm field mới không phá test nào).
+- Frontend: `npx tsc --noEmit` sạch (0 lỗi mới). `npx eslint CustomerDetailDrawer.tsx` — chỉ còn 1 lỗi
+  `no-explicit-any` PRE-EXISTING ở dòng `.filter(Boolean) as any[]` (xác nhận bằng `git show HEAD:...` -
+  y hệt bản gốc, không phải do diff này). `npm run build` (Next.js 16 Turbopack): sạch hoàn toàn, đủ 30
+  route.
+- Chưa test tay trên browser thật với dữ liệu thật (cần DB có sẵn assignment active để thấy đúng số đếm
+  và Tag "+N") - người dùng tự pull + test lại 2 màn hình trong ảnh để xác nhận.

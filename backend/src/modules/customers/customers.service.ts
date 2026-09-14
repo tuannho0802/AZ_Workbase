@@ -1694,6 +1694,35 @@ export class CustomersService {
       .take(limit)
       .getManyAndCount();
 
+    // ⚠️ FIX BUG THẬT (báo qua ảnh chụp 14/09: cột "Sales Phụ trách chính" ở
+    // bảng "Đã assign" trang /chia-data không bao giờ hiện Tag "+N" Sales
+    // phụ, dù FE (assignedColumns ở chia-data/page.tsx) ĐÃ có sẵn đúng logic
+    // render giống hệt /customers - copy từ trước rồi). Nguyên nhân: hàm này
+    // chưa từng populate `activeAssignees` như `findAll()`/`findOne()` đã
+    // làm (xem 2 chỗ đó) - FE đọc `r.activeAssignees` luôn ra `undefined`
+    // nên `sharedSales.length` luôn = 0, Tag cyan "+N" không bao giờ xuất
+    // hiện. Bổ sung ĐÚNG 1 query gộp (không N+1) theo cùng pattern.
+    if (customers.length > 0) {
+      const activeAssignments = await this.assignmentRepository
+        .createQueryBuilder('assignment')
+        .leftJoinAndSelect('assignment.assignedTo', 'assignedTo')
+        .leftJoinAndSelect('assignedTo.position', 'assignedToPosition')
+        .where('assignment.status = :status', { status: 'active' })
+        .andWhere('assignment.customer_id IN (:...ids)', {
+          ids: customers.map((c) => c.id),
+        })
+        .getMany();
+
+      customers.forEach((customer) => {
+        const assignmentsForCustomer = activeAssignments.filter(
+          (a) => a.customerId === customer.id,
+        );
+        (customer as any).activeAssignees = assignmentsForCustomer.map(
+          (a) => a.assignedTo,
+        );
+      });
+    }
+
     return {
       customers,
       pagination: {
