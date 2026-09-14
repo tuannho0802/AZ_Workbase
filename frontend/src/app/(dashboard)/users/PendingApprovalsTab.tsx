@@ -227,7 +227,7 @@ export const PendingApprovalsTab = ({ onCountChange }: Props) => {
             placeholder: 'Vị trí đăng ký',
             value: filterPositionId,
             onChange: setFilterPositionId,
-            options: positions.map((p: any) => ({
+            options: positions.map((p) => ({
               value: Number(p.id),
               label: <Tag color={resolveEntityColor(p.color)} style={{ marginInlineEnd: 0 }}>{p.name}</Tag>,
             })),

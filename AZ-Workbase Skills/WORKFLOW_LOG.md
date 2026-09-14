@@ -1282,3 +1282,110 @@ Category NGOÀI (`dataSource={categories}`) không hề bị lọc theo 2 state 
   khớp), Group con lồng bên trong chỉ còn đúng 1 dòng "Nhóm Fx Test").
 
 ---
+
+
+## [2026-09-14 14:20] | Batch C (audit-logs tách tab Đăng nhập, trash-can bổ sung field, users + 2 tab search/filter) - Ghi bù log | Status: Success
+
+**Actor:** Người dùng (tuannho0802), commit trực tiếp `6168f05`/`f5fd0a1`/`7205619` - session Claude thực
+hiện các commit này KHÔNG ghi vào file log này (phát hiện khi Agent audit lại `git log` vs
+`WORKFLOW_LOG.md` ở phiên sau và thấy lệch). Agent (Claude) ghi bù lại đây để nhật ký khớp đúng lịch sử
+git, không tự ý diễn giải nội dung ngoài những gì đọc được từ diff thật.
+
+**Files changed (theo `git show --stat` từng commit):**
+- `6168f05`: `backend/.../audit/audit.service.ts` (+11), `.../audit/dto/get-audit-logs.dto.ts` (+5, filter
+  `excludeEntityType`), `frontend/.../audit-logs/page.tsx` (tách tab "Đăng nhập" riêng khỏi log nghiệp vụ,
+  lazy-load), `frontend/.../nhom-toi-quan-ly/page.tsx` (thêm filter Nền tảng/Vai trò), `audit.types.ts`.
+- `f5fd0a1`: `backend/.../customers/customers.service.ts` (+22, filter cho trash-can), `trash-can/page.tsx`
+  (+73, thêm Select Nguồn/Sales phụ trách/RangePicker Ngày xóa), `users/page.tsx` (+21, state filter ban
+  đầu), `customers.api.ts`/`users.api.ts`.
+- `7205619`: `PendingApprovalsTab.tsx` (+35), `TrashTab.tsx` (+39), `users/page.tsx` (+51) - hoàn thiện
+  search/filter cho cả 3 phần của trang Users.
+
+**Verify:** Không thực hiện trong phiên ghi bù này (chỉ đọc git log/diff để đối chiếu) - xem entry NGAY BÊN
+DƯỚI để biết kết quả build/tsc/eslint thật SAU KHI đã cộng thêm các sửa đổi màu sắc.
+
+---
+
+## [2026-09-14 14:20] | Thêm màu Tag đúng entity cho dropdown filter còn thiếu + bổ sung dropdown "Vị trí" cho users/2 tab | Status: Success
+
+**Actor:** Agent (Claude), theo yêu cầu trực tiếp: rà soát toàn bộ trang có dropdown filter (sau khi xác
+nhận 3 Batch A/B/C đã có trên git qua `git log`/`git show --stat`, KHÔNG tin theo tóm tắt dán vào chat) để
+tìm dropdown nào tham chiếu 1 entity CÓ màu cấu hình (Phòng ban/Vai trò/Vị trí/Nguồn/Nền tảng) nhưng label
+vẫn là text trơn - và bổ sung dropdown "Vị trí" còn thiếu ở `users` + 2 tab.
+
+**Trước khi làm:** `git clone` sạch từ đầu, xác nhận HEAD `7205619`, đọc trực tiếp từng file có
+`ListFilterBar`/`Select` filter (không chỉ tin theo `WORKFLOW_LOG.md` cũ - phát hiện ở bước audit rằng 3
+commit gần nhất của người dùng CHƯA từng được ghi vào log này, xem entry ngay bên trên).
+
+**Đã audit và XÁC NHẬN ĐÃ ĐÚNG CHUẨN từ trước (không sửa):** `customers` (`CustomerFilters.tsx`),
+`chia-data`, `vi-tri`, `quan-ly-phu-trach`, `quan-ly-loai-phep`, `quan-ly-status-khach`, `nguon-media`,
+`nhom-lien-ket`, `nghi-phep` - đều đã dùng `Tag color={resolveEntityColor(...)}` / `SourceTag` / `StatusTag`
+đúng pattern.
+
+**Backend:**
+- `users.controller.ts` + `users.service.ts` (`findAll`) - thêm `positionId` vào `GET /users` (đối xứng
+  `departmentId` đã có), phục vụ dropdown "Vị trí" mới ở tab "Danh sách nhân viên" (SERVER-SIDE, vì `/users`
+  đã phân trang thật, khác 2 tab kia).
+
+**Frontend - thêm Tag màu cho dropdown thiếu:**
+- `duyet-phep/page.tsx` - dropdown Phòng ban (`pendingDeptOptions`/`historyDeptOptions`, cả 2 tab) giờ bọc
+  `Tag color={resolveEntityColor(department.color)}` (trước đây `LeaveRequest.requester.department.color`
+  đã có sẵn trong type nhưng dropdown build từ `Array.from(map, ([value,label])=>({value,label}))` chỉ lấy
+  tên, bỏ qua field màu).
+- `nhom-toi-quan-ly/page.tsx` - dropdown "Nền tảng" đổi từ set tên trơn sang giữ cặp
+  `[categoryName, categoryColor]` (đã có sẵn trong `rows`, cột bảng đã dùng nhưng dropdown filter thì
+  không) để bọc đúng `Tag color={resolveEntityColor(color)}`; dropdown "Vai trò của tôi" đổi 2 option text
+  trơn sang `Tag color="gold" icon={<CrownOutlined/>}` / `Tag color="blue"` khớp Y HỆT cách cột "Vai trò của
+  tôi" đang tô màu.
+- `profile/page.tsx` (`AdminProfileManager`) - dropdown Phòng ban thêm Tag màu (`deptOptions` giờ giữ cả
+  `color` thay vì chỉ `name`); dropdown Chức vụ đổi từ hằng số `ROLE_LABEL` (chỉ hardcode 4 role hệ thống,
+  sẽ MISS role tuỳ chỉnh admin tự thêm - cùng loại bug đã sửa ở nơi khác trong app) sang
+  `useRoleColors()` (route `/roles/colors`, không cần `roles.view`) + Tag màu thật, áp dụng cho CẢ layout
+  mobile (Card list) và desktop (Table).
+- `trash-can/page.tsx` - dropdown "Nguồn" đổi từ text trơn (`label: s.name`) sang `<SourceTag source=.../>`
+  (đã import sẵn, chỉ chưa dùng ở đây).
+- `audit-logs/page.tsx` - dropdown "Loại hành động" giờ bọc `Tag color={v.color}` khớp đúng màu cột "Hành
+  động" trong bảng (dùng chung `ACTION_META`); "Đối tượng" giữ nguyên text (không có khái niệm màu cho loại
+  đối tượng, không áp dụng được).
+
+**Frontend - bổ sung dropdown "Vị trí" (users + 2 tab, theo đúng yêu cầu):**
+- `users/page.tsx` - thêm state `filterPositionId`, wire vào `fetchUsers()` (gọi `usersApi.getUsers` với
+  `positionId` mới) + vào 2 `useEffect` (fetch lại + reset trang khi đổi filter); dropdown mới dùng
+  `usePositions()` đã fetch sẵn (trước chỉ dùng cho Modal Thêm/Sửa). Đồng thời tô màu lại 3 dropdown cũ
+  (Vai trò/Phòng ban/Trạng thái) đang text trơn dù `roleOptions` đã có sẵn field `color` chưa dùng tới.
+- `users/PendingApprovalsTab.tsx` - thêm dropdown "Vị trí đăng ký" lọc CLIENT-SIDE (danh sách chờ duyệt
+  luôn BOUNDED, không sửa BE) dựa trên `positions` đã fetch sẵn cho Modal Duyệt; tô màu dropdown Phòng ban.
+- `users/TrashTab.tsx` - thêm dropdown "Vị trí" lọc CLIENT-SIDE (thùng rác cũng BOUNDED), import mới
+  `usePositions()`; tô màu dropdown Vai trò.
+
+**Bug tự phát hiện + tự sửa trong lúc verify:** `PendingApprovalsTab.tsx` - lúc đầu viết
+`positions.map((p: any) => ...)` (thừa `any` không cần thiết, sai khác style các dropdown khác trong cùng
+file dùng `departments.map((d: any) => ...)` - đây là debt CŨ, không nên nhân thêm) - phát hiện qua đối
+chiếu eslint trước/sau (từ 7 xuống phải đúng 7, không phải 8) - sửa bỏ `: any`, dùng đúng type suy ra từ
+`usePositions()` (giống pattern KHÔNG dùng `any` ở `users/page.tsx`/`TrashTab.tsx` cho cùng danh sách
+`positions`).
+
+**Verify thật:**
+- Backend: `npx tsc --noEmit` sạch, `npm run build` (`nest build`) sạch, `npx jest users.service.spec.ts`:
+  72/72 pass (bao gồm toàn bộ test cũ về `findAll`/RBAC, không có test nào viết riêng cho `positionId` filter
+  mới - CHƯA thêm unit test cho nhánh lọc mới này, xem mục "Còn lại" bên dưới).
+- Frontend: `npx tsc --noEmit` sạch (chỉ còn đúng 4 lỗi PRE-EXISTING không liên quan diff: `logo.png` thiếu
+  ở 4 file `layout.tsx`/`error.tsx`/`global-error.tsx`/`not-found.tsx`, và 1 lỗi `CountBadge.tsx` JSX style
+  prop - đã xác nhận qua `git stash` các lỗi này tồn tại y hệt ở baseline, không phải do các sửa đổi này).
+- `npm run build` (Next.js 16 Turbopack): Compiled successfully cả 2 lần build (trước và sau khi sửa bug
+  `any` ở PendingApprovalsTab) - đủ 30 route.
+- `npx eslint` cho toàn bộ 9 file đã sửa, đối chiếu bằng `git stash`: baseline 92 problems (84 lỗi, 8
+  warning) → sau khi sửa: ĐÚNG 92 problems (84 lỗi, 8 warning) - 1-1 khớp tuyệt đối, 0 vấn đề mới.
+- `git checkout -- frontend/package-lock.json` sau `npm install` để tránh noise không liên quan.
+- Chưa test tay trên browser thật với dữ liệu thật (đặc biệt: dropdown "Vị trí" mới ở `users` cần tài
+  khoản có users thuộc nhiều Vị trí khác nhau để thấy rõ tác dụng lọc; màu Tag Phòng ban/Vai trò/Nền tảng ở
+  các dropdown vừa sửa cần đối chiếu bằng mắt với màu đã cấu hình ở `/phong-ban`, `/phan-quyen`,
+  `/nhom-lien-ket`) - người dùng tự pull + test lại.
+
+**Còn lại (ngoài phạm vi yêu cầu lần này, ghi nhận để theo dõi):**
+- `users.service.spec.ts` chưa có test riêng cho filter `positionId` mới (nên thêm 1 test mirror đúng test
+  đã có cho `departmentId` để tránh regression sau này).
+- `trash-can/page.tsx` dropdown "Sales phụ trách" vẫn text trơn (không có Avatar/Tag Vai trò-Phòng ban như
+  `renderUserOption` ở `CustomerFilters.tsx`/`chia-data`) - không nằm trong phạm vi "màu theo entity có cấu
+  hình màu" (đây là chọn người, không phải chọn 1 entity có bảng màu riêng) nên KHÔNG sửa trong lượt này,
+  chỉ ghi chú nếu người dùng muốn đồng bộ thêm sau.
