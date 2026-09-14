@@ -24,7 +24,8 @@ import { useManagedByMe, useAllLinkGroups } from '@/lib/hooks/useLinkGroups';
 import { useMyPermissions } from '@/lib/hooks/useMyPermissions';
 import { SimpleList } from '@/components/common/SimpleList';
 import { AvatarUpload } from '@/components/common/AvatarUpload';
-import { useRoleColorMap } from '@/lib/hooks/useRoleColorMap';
+import { useRoleColorMap, useRoleColors } from '@/lib/hooks/useRoleColorMap';
+import { resolveEntityColor } from '@/lib/utils/entityColor';
 
 const { Text, Title } = Typography;
 
@@ -476,6 +477,10 @@ function AdminProfileManager() {
   const { message } = App.useApp();
   const { user: currentUser } = useAuthStore();
   const { getRoleColor } = useRoleColorMap();
+  // ⚠️ MỚI - đồng bộ Tag màu cho dropdown "Chức vụ" (trước đây dùng
+  // `ROLE_LABEL` tĩnh, chỉ 4 role hệ thống, label trơn không màu - khác
+  // pattern `useRoleColors()` đã dùng ở users/page.tsx, nhom-toi-quan-ly...).
+  const { roleColors } = useRoleColors();
   const searchParams = useSearchParams();
   const initialUserId = searchParams.get('userId') ? Number(searchParams.get('userId')) : null;
   
@@ -554,10 +559,23 @@ function AdminProfileManager() {
   // Options suy từ chính danh sách đã tải - đủ dùng cho 1 dropdown lọc nhẹ,
   // không cần gọi thêm API /departments riêng.
   const deptOptions = useMemo(() => {
-    const map = new Map<string, string>();
-    users.forEach((u) => { if (u.department) map.set(String(u.department.id), u.department.name); });
-    return Array.from(map, ([value, label]) => ({ value, label }));
+    const map = new Map<string, { name: string; color?: string }>();
+    users.forEach((u) => { if (u.department) map.set(String(u.department.id), { name: u.department.name, color: u.department.color }); });
+    return Array.from(map, ([value, info]) => ({
+      value,
+      label: <Tag color={resolveEntityColor(info.color)} style={{ marginInlineEnd: 0 }}>{info.name}</Tag>,
+    }));
   }, [users]);
+
+  // ⚠️ MỚI - đồng bộ Tag màu thật (roles.color do Admin cấu hình ở
+  // /phan-quyen) cho dropdown "Chức vụ", thay vì text trơn từ `ROLE_LABEL`.
+  const roleFilterOptions = useMemo(
+    () => (roleColors || []).map((r) => ({
+      value: r.code,
+      label: <Tag color={resolveEntityColor(r.color)} style={{ marginInlineEnd: 0 }}>{r.name}</Tag>,
+    })),
+    [roleColors],
+  );
 
   const filteredUsers = useMemo(() => {
     return users.filter((u) => {
@@ -638,7 +656,7 @@ function AdminProfileManager() {
               style={{ width: '100%' }}
               value={filterRole}
               onChange={(v) => setFilterRole(v ?? null)}
-              options={Object.entries(ROLE_LABEL).map(([value, label]) => ({ value, label }))}
+              options={roleFilterOptions}
             />
           </Col>
         </Row>
@@ -720,7 +738,7 @@ function AdminProfileManager() {
                   style={{ width: '100%' }}
                   value={filterRole}
                   onChange={(v) => setFilterRole(v ?? null)}
-                  options={Object.entries(ROLE_LABEL).map(([value, label]) => ({ value, label }))}
+                  options={roleFilterOptions}
                 />
               </Col>
             </Row>

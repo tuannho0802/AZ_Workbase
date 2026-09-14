@@ -6,6 +6,7 @@ export const usersApi = {
     limit?: number;
     role?: string;
     departmentId?: number;
+    positionId?: number;
     isActive?: boolean;
     search?: string;
   }) => {

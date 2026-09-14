@@ -559,8 +559,8 @@ export default function AuditLogsPage() {
                   </Col>
                   <Col xs={24} md={5}>
                     <Select placeholder="Loại hành động" value={filterAction} onChange={setFilterAction} allowClear style={{ width: '100%' }}
-                      options={[...Object.entries(ACTION_META).filter(([k]) => k !== 'USER_LOGIN').map(([k, v]) => ({ label: v.label, value: k })),
-                      ...availableActions.filter(a => a !== 'USER_LOGIN' && !ACTION_META[a]).map(a => ({ label: a, value: a }))]} />
+                      options={[...Object.entries(ACTION_META).filter(([k]) => k !== 'USER_LOGIN').map(([k, v]) => ({ label: <Tag color={v.color} style={{ marginInlineEnd: 0 }}>{v.label}</Tag>, value: k })),
+                      ...availableActions.filter(a => a !== 'USER_LOGIN' && !ACTION_META[a]).map(a => ({ label: <Tag style={{ marginInlineEnd: 0 }}>{a}</Tag>, value: a }))]} />
                   </Col>
                   <Col xs={24} md={5}>
                     <Select placeholder="Đối tượng" value={filterEntityType} onChange={setFilterEntityType} allowClear style={{ width: '100%' }}

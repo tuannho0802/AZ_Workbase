@@ -8,6 +8,8 @@ import dayjs from 'dayjs';
 import { usersApi, TrashedUser } from '@/lib/api/users.api';
 import { getApiErrorMessage } from '@/lib/utils/error-message.util';
 import { useRoleColorMap, useRoleColors } from '@/lib/hooks/useRoleColorMap';
+import { usePositions } from '@/lib/hooks/usePositions';
+import { resolveEntityColor } from '@/lib/utils/entityColor';
 import { ListFilterBar } from '@/components/common/ListFilterBar';
 
 const { Text, Paragraph } = Typography;
@@ -27,6 +29,10 @@ export const TrashTab = ({ onCountChange, onRestored }: Props) => {
   const queryClient = useQueryClient();
   const { getRoleColor } = useRoleColorMap();
   const { roleColors } = useRoleColors();
+  // ⚠️ MỚI - đối xứng PendingApprovalsTab, đáp ứng yêu cầu bổ sung dropdown
+  // "Vị trí" cho thùng rác nhân viên (cột bảng đã hiện `record.position`
+  // sẵn - chỉ chưa có lọc theo Vị trí).
+  const { positions } = usePositions();
 
   const [restoring, setRestoring] = useState<TrashedUser | null>(null);
   const [restoreSubmitting, setRestoreSubmitting] = useState(false);
@@ -47,15 +53,17 @@ export const TrashTab = ({ onCountChange, onRestored }: Props) => {
   // PendingApprovalsTab bên cạnh.
   const [search, setSearch] = useState('');
   const [filterRole, setFilterRole] = useState<string | undefined>();
+  const [filterPositionId, setFilterPositionId] = useState<number | undefined>();
 
   const filteredTrashedUsers = useMemo(() => {
     const q = search.trim().toLowerCase();
     return trashedUsers.filter((u) => {
       if (q && !u.name.toLowerCase().includes(q) && !u.email.toLowerCase().includes(q) && !(u.employeeCode || '').toLowerCase().includes(q)) return false;
       if (filterRole && u.role !== filterRole) return false;
+      if (filterPositionId && u.position?.id !== filterPositionId) return false;
       return true;
     });
-  }, [trashedUsers, search, filterRole]);
+  }, [trashedUsers, search, filterRole, filterPositionId]);
 
   const refetch = () => queryClient.invalidateQueries({ queryKey: ['users-trash'] });
 
@@ -166,7 +174,20 @@ export const TrashTab = ({ onCountChange, onRestored }: Props) => {
             placeholder: 'Vai trò',
             value: filterRole,
             onChange: setFilterRole,
-            options: (roleColors || []).map((r) => ({ value: r.code, label: r.name })),
+            options: (roleColors || []).map((r) => ({
+              value: r.code,
+              label: <Tag color={resolveEntityColor(r.color)} style={{ marginInlineEnd: 0 }}>{r.name}</Tag>,
+            })),
+          },
+          {
+            key: 'position',
+            placeholder: 'Vị trí',
+            value: filterPositionId,
+            onChange: setFilterPositionId,
+            options: positions.map((p) => ({
+              value: p.id,
+              label: <Tag color={resolveEntityColor(p.color)} style={{ marginInlineEnd: 0 }}>{p.name}</Tag>,
+            })),
           },
         ]}
       />

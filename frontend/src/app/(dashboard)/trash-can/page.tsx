@@ -334,7 +334,7 @@ export default function TrashCanPage() {
               onChange={setFilterSource}
               allowClear
               style={{ width: 140 }}
-              options={mediaSources.map(s => ({ value: s.name, label: s.name }))}
+              options={mediaSources.map(s => ({ value: s.name, label: <SourceTag source={s.name} /> }))}
             />
             <Select
               placeholder="Sales phụ trách"

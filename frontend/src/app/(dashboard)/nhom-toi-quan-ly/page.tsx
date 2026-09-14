@@ -9,6 +9,7 @@ import { useManagedByMe, useAllLinkGroups } from '@/lib/hooks/useLinkGroups';
 import { useMyPermissions } from '@/lib/hooks/useMyPermissions';
 import { GroupManagersModal } from '@/components/link-groups/GroupManagersModal';
 import { ListFilterBar } from '@/components/common/ListFilterBar';
+import { resolveEntityColor } from '@/lib/utils/entityColor';
 
 const { Title, Text } = Typography;
 
@@ -60,11 +61,14 @@ export default function MyManagedLinkGroupsPage() {
   }, [managedGroups, allGroups, currentUser]);
 
   const categoryOptions = useMemo(() => {
-    const seen = new Map<string, string>();
+    const seen = new Map<string, string | undefined>();
     rows.forEach((r) => {
-      if (r.categoryName) seen.set(r.categoryName, r.categoryName);
+      if (r.categoryName) seen.set(r.categoryName, r.categoryColor);
     });
-    return Array.from(seen.values()).map((name) => ({ value: name, label: name }));
+    return Array.from(seen, ([name, color]) => ({
+      value: name,
+      label: <Tag color={resolveEntityColor(color)} style={{ marginInlineEnd: 0 }}>{name}</Tag>,
+    }));
   }, [rows]);
 
   const filteredRows = useMemo(() => {
@@ -191,8 +195,15 @@ export default function MyManagedLinkGroupsPage() {
             value: filterRole,
             onChange: setFilterRole,
             options: [
-              { value: 'primary', label: 'Quản lý chính' },
-              { value: 'secondary', label: 'Quản lý phụ' },
+              {
+                value: 'primary',
+                label: (
+                  <Tag color="gold" icon={<CrownOutlined />} style={{ marginInlineEnd: 0 }}>
+                    Quản lý chính
+                  </Tag>
+                ),
+              },
+              { value: 'secondary', label: <Tag color="blue" style={{ marginInlineEnd: 0 }}>Quản lý phụ</Tag> },
             ],
           },
         ]}

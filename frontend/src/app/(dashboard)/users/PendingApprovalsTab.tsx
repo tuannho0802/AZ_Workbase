@@ -73,15 +73,20 @@ export const PendingApprovalsTab = ({ onCountChange }: Props) => {
   // khoản chờ duyệt tại 1 thời điểm thường rất ít), không cần sửa BE.
   const [search, setSearch] = useState('');
   const [filterDepartmentId, setFilterDepartmentId] = useState<number | undefined>();
+  // ⚠️ MỚI - đối xứng filterDepartmentId, rà soát 2026-09-14: `positions` đã
+  // fetch sẵn ở trên (chỉ dùng cho Modal Duyệt) - danh sách chờ duyệt cũng
+  // có field `position` nên lọc CLIENT-SIDE được luôn, không cần sửa BE.
+  const [filterPositionId, setFilterPositionId] = useState<number | undefined>();
 
   const filteredPendingUsers = useMemo(() => {
     const q = search.trim().toLowerCase();
     return pendingUsers.filter((u) => {
       if (q && !u.name.toLowerCase().includes(q) && !u.email.toLowerCase().includes(q) && !(u.employeeCode || '').toLowerCase().includes(q)) return false;
       if (filterDepartmentId && u.department?.id !== filterDepartmentId) return false;
+      if (filterPositionId && u.position?.id !== filterPositionId) return false;
       return true;
     });
-  }, [pendingUsers, search, filterDepartmentId]);
+  }, [pendingUsers, search, filterDepartmentId, filterPositionId]);
 
   const refetch = () => queryClient.invalidateQueries({ queryKey: ['pending-approvals'] });
 
@@ -212,7 +217,20 @@ export const PendingApprovalsTab = ({ onCountChange }: Props) => {
             placeholder: 'Phòng ban đăng ký',
             value: filterDepartmentId,
             onChange: setFilterDepartmentId,
-            options: departments.map((d: any) => ({ value: Number(d.id), label: d.name })),
+            options: departments.map((d: any) => ({
+              value: Number(d.id),
+              label: <Tag color={resolveEntityColor(d.color)} style={{ marginInlineEnd: 0 }}>{d.name}</Tag>,
+            })),
+          },
+          {
+            key: 'position',
+            placeholder: 'Vị trí đăng ký',
+            value: filterPositionId,
+            onChange: setFilterPositionId,
+            options: positions.map((p: any) => ({
+              value: Number(p.id),
+              label: <Tag color={resolveEntityColor(p.color)} style={{ marginInlineEnd: 0 }}>{p.name}</Tag>,
+            })),
           },
         ]}
       />

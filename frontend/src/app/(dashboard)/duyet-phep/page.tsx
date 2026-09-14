@@ -14,6 +14,7 @@ import { leaveRequestsApi, LeaveRequest } from '@/lib/api/leave-requests.api';
 import { useMyPermissions } from '@/lib/hooks/useMyPermissions';
 import { useLeaveTypes } from '@/lib/hooks/useLeaveTypes';
 import { AttachmentsViewerButton } from '@/components/leave-requests/AttachmentsViewerButton';
+import { resolveEntityColor } from '@/lib/utils/entityColor';
 import dayjs, { Dayjs } from 'dayjs';
 
 const { TextArea } = Input;
@@ -218,19 +219,25 @@ export default function ApprovalPage() {
   // sách đơn nghỉ, không có phòng ban nào lạ hơn danh sách này), tránh phải
   // gọi thêm 1 API riêng chỉ để phục vụ 1 dropdown lọc.
   const pendingDeptOptions = useMemo(() => {
-    const map = new Map<string, string>();
+    const map = new Map<string, { name: string; color?: string }>();
     pendingRequests.forEach((r) => {
-      if (r.requester.department) map.set(String(r.requester.department.id), r.requester.department.name);
+      if (r.requester.department) map.set(String(r.requester.department.id), { name: r.requester.department.name, color: r.requester.department.color });
     });
-    return Array.from(map, ([value, label]) => ({ value, label }));
+    return Array.from(map, ([value, info]) => ({
+      value,
+      label: <Tag color={resolveEntityColor(info.color)} style={{ marginInlineEnd: 0 }}>{info.name}</Tag>,
+    }));
   }, [pendingRequests]);
 
   const historyDeptOptions = useMemo(() => {
-    const map = new Map<string, string>();
+    const map = new Map<string, { name: string; color?: string }>();
     historyRequests.forEach((r) => {
-      if (r.requester.department) map.set(String(r.requester.department.id), r.requester.department.name);
+      if (r.requester.department) map.set(String(r.requester.department.id), { name: r.requester.department.name, color: r.requester.department.color });
     });
-    return Array.from(map, ([value, label]) => ({ value, label }));
+    return Array.from(map, ([value, info]) => ({
+      value,
+      label: <Tag color={resolveEntityColor(info.color)} style={{ marginInlineEnd: 0 }}>{info.name}</Tag>,
+    }));
   }, [historyRequests]);
 
   const matchesRequesterSearch = (r: LeaveRequest, q: string) => {

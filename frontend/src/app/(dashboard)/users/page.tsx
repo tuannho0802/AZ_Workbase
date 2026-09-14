@@ -175,6 +175,9 @@ export default function UsersPage() {
   const debouncedUserSearch = useDebounce(userSearch, 500);
   const [filterRole, setFilterRole] = useState<string | undefined>();
   const [filterDepartmentId, setFilterDepartmentId] = useState<number | undefined>();
+  // ⚠️ MỚI - đối xứng filterDepartmentId, đáp ứng yêu cầu bổ sung dropdown
+  // "Vị trí" (BE /users nay đã hỗ trợ query positionId, xem users.service.ts).
+  const [filterPositionId, setFilterPositionId] = useState<number | undefined>();
   const [filterIsActive, setFilterIsActive] = useState<boolean | undefined>();
 
   useEffect(() => {
@@ -192,6 +195,7 @@ export default function UsersPage() {
         limit: pageSize,
         role: filterRole,
         departmentId: filterDepartmentId,
+        positionId: filterPositionId,
         isActive: filterIsActive,
         search: debouncedUserSearch || undefined,
       });
@@ -280,14 +284,14 @@ export default function UsersPage() {
       fetchUsers();
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [canSeeFullList, page, pageSize, filterRole, filterDepartmentId, filterIsActive, debouncedUserSearch]);
+  }, [canSeeFullList, page, pageSize, filterRole, filterDepartmentId, filterPositionId, filterIsActive, debouncedUserSearch]);
 
   // Reset về trang 1 khi đổi filter/search (tránh đứng ở trang trống nếu
   // tập kết quả mới có ít trang hơn trang đang đứng) - đối xứng pattern đã
   // dùng ở trash-can.
   useEffect(() => {
     setPage(1);
-  }, [filterRole, filterDepartmentId, filterIsActive, debouncedUserSearch]);
+  }, [filterRole, filterDepartmentId, filterPositionId, filterIsActive, debouncedUserSearch]);
 
   // Trước đây đẩy về tab "Chờ duyệt" cho MỌI role không phải Admin - giờ
   // Assistant/Manager cũng thấy được tab "Danh sách nhân viên" nên chỉ cần
@@ -491,14 +495,30 @@ export default function UsersPage() {
           placeholder: 'Vai trò',
           value: filterRole,
           onChange: setFilterRole,
-          options: roleOptions.map(r => ({ value: r.value, label: r.label })),
+          options: roleOptions.map(r => ({
+            value: r.value,
+            label: <Tag color={r.color} style={{ marginInlineEnd: 0 }}>{r.label}</Tag>,
+          })),
         },
         {
           key: 'department',
           placeholder: 'Phòng ban',
           value: filterDepartmentId,
           onChange: setFilterDepartmentId,
-          options: departments.map((d) => ({ value: Number(d.id), label: d.name })),
+          options: departments.map((d) => ({
+            value: Number(d.id),
+            label: <Tag color={resolveEntityColor(d.color)} style={{ marginInlineEnd: 0 }}>{d.name}</Tag>,
+          })),
+        },
+        {
+          key: 'position',
+          placeholder: 'Vị trí',
+          value: filterPositionId,
+          onChange: setFilterPositionId,
+          options: positions.map((p) => ({
+            value: p.id,
+            label: <Tag color={resolveEntityColor(p.color)} style={{ marginInlineEnd: 0 }}>{p.name}</Tag>,
+          })),
         },
         {
           key: 'isActive',
@@ -506,8 +526,8 @@ export default function UsersPage() {
           value: filterIsActive,
           onChange: setFilterIsActive,
           options: [
-            { value: true, label: 'Đang hoạt động' },
-            { value: false, label: 'Không hoạt động' },
+            { value: true, label: <Tag color="green" style={{ marginInlineEnd: 0 }}>Đang hoạt động</Tag> },
+            { value: false, label: <Tag color="red" style={{ marginInlineEnd: 0 }}>Không hoạt động</Tag> },
           ],
         },
       ]}
