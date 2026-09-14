@@ -3,17 +3,18 @@
 import { useState, useEffect, useMemo } from 'react';
 import { useRouter } from 'next/navigation';
 import {
-  Table, Card, Button, Space, Tag, Badge, Tabs, Modal, Input, App, Typography, Divider, Tooltip
+  Table, Card, Button, Space, Tag, Badge, Tabs, Modal, Input, App, Typography, Divider, Tooltip,
+  Row, Col, Select, DatePicker
 } from 'antd';
 import {
   CheckOutlined, CloseOutlined, HistoryOutlined, HourglassOutlined,
-  UserOutlined, CalendarOutlined, ClockCircleOutlined
+  UserOutlined, CalendarOutlined, ClockCircleOutlined, SearchOutlined
 } from '@ant-design/icons';
 import { leaveRequestsApi, LeaveRequest } from '@/lib/api/leave-requests.api';
 import { useMyPermissions } from '@/lib/hooks/useMyPermissions';
 import { useLeaveTypes } from '@/lib/hooks/useLeaveTypes';
 import { AttachmentsViewerButton } from '@/components/leave-requests/AttachmentsViewerButton';
-import dayjs from 'dayjs';
+import dayjs, { Dayjs } from 'dayjs';
 
 const { TextArea } = Input;
 const { Text } = Typography;
@@ -186,6 +187,20 @@ export default function ApprovalPage() {
   const [isProcessing, setIsProcessing] = useState(false);
   const [isMobile, setIsMobile] = useState(false);
 
+  // Filter: cả 2 tab đều là client-side (BE trả toàn bộ, không phân trang) -
+  // dữ liệu nhiều người/phòng ban nên field cần nhiều hơn nghi-phep (của
+  // riêng mình): search theo tên/email người gửi + lý do, phòng ban, loại
+  // phép; tab Lịch sử có thêm Trạng thái + khoảng ngày (đã xử lý xong).
+  const [pendingSearch, setPendingSearch] = useState('');
+  const [pendingDept, setPendingDept] = useState<string | null>(null);
+  const [pendingLeaveType, setPendingLeaveType] = useState<string | null>(null);
+
+  const [historySearch, setHistorySearch] = useState('');
+  const [historyDept, setHistoryDept] = useState<string | null>(null);
+  const [historyLeaveType, setHistoryLeaveType] = useState<string | null>(null);
+  const [historyStatus, setHistoryStatus] = useState<string | null>(null);
+  const [historyDateRange, setHistoryDateRange] = useState<[Dayjs | null, Dayjs | null] | null>(null);
+
   // Antd Hooks to fix "Static function" warning
   const { message: messageApi, modal } = App.useApp();
   const router = useRouter();
@@ -198,6 +213,59 @@ export default function ApprovalPage() {
     () => Object.fromEntries(leaveTypes.map((t) => [t.code, { text: t.name, color: t.color }])),
     [leaveTypes],
   );
+
+  // Phòng ban dùng cho dropdown filter - suy trực tiếp từ data đã tải (danh
+  // sách đơn nghỉ, không có phòng ban nào lạ hơn danh sách này), tránh phải
+  // gọi thêm 1 API riêng chỉ để phục vụ 1 dropdown lọc.
+  const pendingDeptOptions = useMemo(() => {
+    const map = new Map<string, string>();
+    pendingRequests.forEach((r) => {
+      if (r.requester.department) map.set(String(r.requester.department.id), r.requester.department.name);
+    });
+    return Array.from(map, ([value, label]) => ({ value, label }));
+  }, [pendingRequests]);
+
+  const historyDeptOptions = useMemo(() => {
+    const map = new Map<string, string>();
+    historyRequests.forEach((r) => {
+      if (r.requester.department) map.set(String(r.requester.department.id), r.requester.department.name);
+    });
+    return Array.from(map, ([value, label]) => ({ value, label }));
+  }, [historyRequests]);
+
+  const matchesRequesterSearch = (r: LeaveRequest, q: string) => {
+    const s = q.trim().toLowerCase();
+    if (!s) return true;
+    return (
+      r.requester.name.toLowerCase().includes(s) ||
+      r.requester.email.toLowerCase().includes(s) ||
+      (r.reason || '').toLowerCase().includes(s)
+    );
+  };
+
+  const filteredPending = useMemo(() => {
+    return pendingRequests.filter((r) => {
+      if (!matchesRequesterSearch(r, pendingSearch)) return false;
+      if (pendingDept && String(r.requester.department?.id) !== pendingDept) return false;
+      if (pendingLeaveType && r.leaveType !== pendingLeaveType) return false;
+      return true;
+    });
+  }, [pendingRequests, pendingSearch, pendingDept, pendingLeaveType]);
+
+  const filteredHistory = useMemo(() => {
+    return historyRequests.filter((r) => {
+      if (!matchesRequesterSearch(r, historySearch)) return false;
+      if (historyDept && String(r.requester.department?.id) !== historyDept) return false;
+      if (historyLeaveType && r.leaveType !== historyLeaveType) return false;
+      if (historyStatus && r.status !== historyStatus) return false;
+      if (historyDateRange && historyDateRange[0] && historyDateRange[1]) {
+        const [from, to] = historyDateRange;
+        const overlap = !dayjs(r.startDate).isAfter(to, 'day') && !dayjs(r.endDate).isBefore(from, 'day');
+        if (!overlap) return false;
+      }
+      return true;
+    });
+  }, [historyRequests, historySearch, historyDept, historyLeaveType, historyStatus, historyDateRange]);
 
   // Phân biệt quyền:
   // view = xem lịch sử duyệt (của người khác)
@@ -469,13 +537,49 @@ export default function ApprovalPage() {
           {pendingRequests.length > 0 && <Badge count={pendingRequests.length} offset={[10, -5]} size="small" />}
         </span>
       ),
-      children: isMobile ? (
-        pendingRequests.length === 0 ? (
+      children: (
+        <>
+          <Row gutter={[12, 12]} style={{ marginBottom: 16 }}>
+            <Col xs={24} sm={12} md={8}>
+              <Input
+                allowClear
+                placeholder="Tìm theo tên, email, lý do..."
+                prefix={<SearchOutlined />}
+                value={pendingSearch}
+                onChange={(e) => setPendingSearch(e.target.value)}
+              />
+            </Col>
+            <Col xs={12} sm={6} md={5}>
+              <Select
+                allowClear
+                placeholder="Phòng ban"
+                style={{ width: '100%' }}
+                value={pendingDept}
+                onChange={(v) => setPendingDept(v ?? null)}
+                options={pendingDeptOptions}
+              />
+            </Col>
+            <Col xs={12} sm={6} md={5}>
+              <Select
+                allowClear
+                placeholder="Loại phép"
+                style={{ width: '100%' }}
+                value={pendingLeaveType}
+                onChange={(v) => setPendingLeaveType(v ?? null)}
+                options={leaveTypes.map((t) => ({
+                  value: t.code,
+                  label: <Tag color={t.color} style={{ marginInlineEnd: 0 }}>{t.name}</Tag>,
+                }))}
+              />
+            </Col>
+          </Row>
+          {isMobile ? (
+            filteredPending.length === 0 ? (
           <div style={{ padding: '24px 0', textAlign: 'center', color: '#8c8c8c' }}>
             ✅ Không có đơn chờ duyệt
           </div>
         ) : (
-          pendingRequests.map(r => (
+                filteredPending.map(r => (
             <PendingMobileCard
               key={r.id}
               record={r}
@@ -488,7 +592,7 @@ export default function ApprovalPage() {
       ) : (
         <Table
           columns={pendingColumns}
-          dataSource={pendingRequests}
+                dataSource={filteredPending}
           rowKey="id"
           loading={loading}
           pagination={false}
@@ -497,6 +601,8 @@ export default function ApprovalPage() {
             scroll={{ x: 'max-content' }}
           locale={{ emptyText: '✅ Không có đơn chờ duyệt' }}
         />
+          )}
+        </>
       )
     } : null,
     canView ? {
@@ -507,20 +613,80 @@ export default function ApprovalPage() {
           {' '}Lịch sử phê duyệt
         </span>
       ),
-      children: isMobile ? (
-        historyRequests.length === 0 ? (
+      children: (
+        <>
+          <Row gutter={[12, 12]} style={{ marginBottom: 16 }}>
+            <Col xs={24} sm={12} md={7}>
+              <Input
+                allowClear
+                placeholder="Tìm theo tên, email, lý do..."
+                prefix={<SearchOutlined />}
+                value={historySearch}
+                onChange={(e) => setHistorySearch(e.target.value)}
+              />
+            </Col>
+            <Col xs={12} sm={6} md={4}>
+              <Select
+                allowClear
+                placeholder="Phòng ban"
+                style={{ width: '100%' }}
+                value={historyDept}
+                onChange={(v) => setHistoryDept(v ?? null)}
+                options={historyDeptOptions}
+              />
+            </Col>
+            <Col xs={12} sm={6} md={4}>
+              <Select
+                allowClear
+                placeholder="Loại phép"
+                style={{ width: '100%' }}
+                value={historyLeaveType}
+                onChange={(v) => setHistoryLeaveType(v ?? null)}
+                options={leaveTypes.map((t) => ({
+                  value: t.code,
+                  label: <Tag color={t.color} style={{ marginInlineEnd: 0 }}>{t.name}</Tag>,
+                }))}
+              />
+            </Col>
+            <Col xs={12} sm={6} md={4}>
+              <Select
+                allowClear
+                placeholder="Trạng thái"
+                style={{ width: '100%' }}
+                value={historyStatus}
+                onChange={(v) => setHistoryStatus(v ?? null)}
+                options={Object.entries(STATUS_MAP)
+                  .filter(([code]) => code !== 'pending')
+                  .map(([code, s]) => ({
+                    value: code,
+                    label: <Tag color={s.color} style={{ marginInlineEnd: 0 }}>{s.text}</Tag>,
+                  }))}
+              />
+            </Col>
+            <Col xs={24} sm={12} md={5}>
+              <DatePicker.RangePicker
+                style={{ width: '100%' }}
+                format="DD/MM/YYYY"
+                placeholder={['Từ ngày', 'Đến ngày']}
+                value={historyDateRange as any}
+                onChange={(vals) => setHistoryDateRange(vals as [Dayjs | null, Dayjs | null] | null)}
+              />
+            </Col>
+          </Row>
+          {isMobile ? (
+            filteredHistory.length === 0 ? (
           <div style={{ padding: '24px 0', textAlign: 'center', color: '#8c8c8c' }}>
             Chưa có lịch sử xử lý
           </div>
         ) : (
-          historyRequests.map(r => (
+                filteredHistory.map(r => (
             <HistoryMobileCard key={r.id} record={r} leaveTypeMap={leaveTypeMap} />
           ))
         )
       ) : (
         <Table
           columns={historyColumns}
-          dataSource={historyRequests}
+                dataSource={filteredHistory}
           rowKey="id"
           loading={loading}
           pagination={{ pageSize: 10 }}
@@ -529,6 +695,8 @@ export default function ApprovalPage() {
             scroll={{ x: 'max-content' }}
           locale={{ emptyText: 'Chưa có lịch sử xử lý' }}
         />
+          )}
+        </>
       )
     } : null,
   ].filter(Boolean) as any[];

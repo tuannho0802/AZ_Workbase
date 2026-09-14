@@ -6,14 +6,14 @@ import {
   Card, Table, Button, Space, Tag, App,
   Spin, Typography, Avatar,
   Descriptions, Divider, Drawer, Row, Col,
-  Form, Input, Modal, Popconfirm,
+  Form, Input, Modal, Popconfirm, Select,
 } from 'antd';
 import {
   ReloadOutlined,
   MailOutlined, PhoneOutlined, ApartmentOutlined, ClockCircleOutlined,
   CalendarOutlined, UserOutlined, EyeOutlined, IdcardOutlined,
   LinkOutlined, CrownOutlined, TeamOutlined, ArrowRightOutlined,
-  EditOutlined, SaveOutlined, CloseOutlined, LockOutlined, DeleteOutlined,
+  EditOutlined, SaveOutlined, CloseOutlined, LockOutlined, DeleteOutlined, SearchOutlined,
 } from '@ant-design/icons';
 import Link from 'next/link';
 import dayjs from 'dayjs';
@@ -484,6 +484,12 @@ function AdminProfileManager() {
   const [isMobile, setIsMobile] = useState(false);
   const [selectedUserId, setSelectedUserId] = useState<number | null>(initialUserId);
   const [drawerOpen, setDrawerOpen] = useState(false);
+  // Filter nhẹ (client-side, danh sách tối đa 100 bản ghi/lần tải) - chỉ
+  // hiện khi trang này render (tức đang xem Profile của >=2 người, xem
+  // comment ở `can('users.view')` tại entry point bên dưới).
+  const [searchText, setSearchText] = useState('');
+  const [filterDeptId, setFilterDeptId] = useState<string | null>(null);
+  const [filterRole, setFilterRole] = useState<string | null>(null);
 
   useEffect(() => {
     const check = () => setIsMobile(window.innerWidth < 768);
@@ -545,6 +551,26 @@ function AdminProfileManager() {
     fetchUsers();
   };
 
+  // Options suy từ chính danh sách đã tải - đủ dùng cho 1 dropdown lọc nhẹ,
+  // không cần gọi thêm API /departments riêng.
+  const deptOptions = useMemo(() => {
+    const map = new Map<string, string>();
+    users.forEach((u) => { if (u.department) map.set(String(u.department.id), u.department.name); });
+    return Array.from(map, ([value, label]) => ({ value, label }));
+  }, [users]);
+
+  const filteredUsers = useMemo(() => {
+    return users.filter((u) => {
+      if (filterDeptId && String(u.department?.id) !== filterDeptId) return false;
+      if (filterRole && u.role !== filterRole) return false;
+      if (searchText.trim()) {
+        const q = searchText.trim().toLowerCase();
+        if (!(u.name?.toLowerCase().includes(q) || u.email?.toLowerCase().includes(q))) return false;
+      }
+      return true;
+    });
+  }, [users, filterDeptId, filterRole, searchText]);
+
   const columns: any[] = [
     { title: 'ID', dataIndex: 'id', key: 'id', width: 60 },
     { title: 'Họ tên', dataIndex: 'name', key: 'name' },
@@ -585,12 +611,43 @@ function AdminProfileManager() {
           <Button icon={<ReloadOutlined />} onClick={fetchUsers} loading={loading} size="small" />
         }
       >
+        <Row gutter={[8, 8]} style={{ marginBottom: 12 }}>
+          <Col span={24}>
+            <Input
+              allowClear
+              placeholder="Tìm theo tên, email..."
+              prefix={<SearchOutlined />}
+              value={searchText}
+              onChange={(e) => setSearchText(e.target.value)}
+            />
+          </Col>
+          <Col span={12}>
+            <Select
+              allowClear
+              placeholder="Phòng ban"
+              style={{ width: '100%' }}
+              value={filterDeptId}
+              onChange={(v) => setFilterDeptId(v ?? null)}
+              options={deptOptions}
+            />
+          </Col>
+          <Col span={12}>
+            <Select
+              allowClear
+              placeholder="Chức vụ"
+              style={{ width: '100%' }}
+              value={filterRole}
+              onChange={(v) => setFilterRole(v ?? null)}
+              options={Object.entries(ROLE_LABEL).map(([value, label]) => ({ value, label }))}
+            />
+          </Col>
+        </Row>
         {loading && users.length === 0 ? (
           <div className="flex justify-center items-center my-10 py-10">
             <Spin size="large" />
           </div>
         ) : (
-          users.map((u) => (
+            filteredUsers.map((u) => (
             <Card
               key={u.id}
               size="small"
@@ -635,6 +692,39 @@ function AdminProfileManager() {
           }
           styles={{ body: { padding: 0 } }}
         >
+          <div style={{ padding: 12 }}>
+            <Row gutter={[8, 8]}>
+              <Col span={24}>
+                <Input
+                  allowClear
+                  placeholder="Tìm theo tên, email..."
+                  prefix={<SearchOutlined />}
+                  value={searchText}
+                  onChange={(e) => setSearchText(e.target.value)}
+                />
+              </Col>
+              <Col span={12}>
+                <Select
+                  allowClear
+                  placeholder="Phòng ban"
+                  style={{ width: '100%' }}
+                  value={filterDeptId}
+                  onChange={(v) => setFilterDeptId(v ?? null)}
+                  options={deptOptions}
+                />
+              </Col>
+              <Col span={12}>
+                <Select
+                  allowClear
+                  placeholder="Chức vụ"
+                  style={{ width: '100%' }}
+                  value={filterRole}
+                  onChange={(v) => setFilterRole(v ?? null)}
+                  options={Object.entries(ROLE_LABEL).map(([value, label]) => ({ value, label }))}
+                />
+              </Col>
+            </Row>
+          </div>
           <Table
             columns={columns.filter((c) => c.key !== 'action').concat([
               {
@@ -651,7 +741,7 @@ function AdminProfileManager() {
                 ),
               },
             ])}
-            dataSource={users}
+            dataSource={filteredUsers}
             rowKey="id"
             loading={loading}
             size="small"

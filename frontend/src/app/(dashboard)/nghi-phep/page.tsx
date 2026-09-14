@@ -3,15 +3,15 @@
 import { useState, useEffect, useRef, useMemo } from 'react';
 import { useRouter } from 'next/navigation';
 import {
-  Table, Button, Modal, Form, Select, DatePicker, Input, Tag, App, Card, Divider, Typography
+  Table, Button, Modal, Form, Select, DatePicker, Input, Tag, App, Card, Divider, Typography, Row, Col
 } from 'antd';
-import { PlusOutlined, CloseCircleOutlined, CalendarOutlined, FileTextOutlined, UserOutlined } from '@ant-design/icons';
+import { PlusOutlined, CloseCircleOutlined, CalendarOutlined, FileTextOutlined, UserOutlined, SearchOutlined } from '@ant-design/icons';
 import { leaveRequestsApi, LeaveRequest } from '@/lib/api/leave-requests.api';
 import { useMyPermissions } from '@/lib/hooks/useMyPermissions';
 import { useLeaveTypes } from '@/lib/hooks/useLeaveTypes';
 import { AttachmentUploader, AttachmentUploaderHandle } from '@/components/leave-requests/AttachmentUploader';
 import { AttachmentsViewerButton } from '@/components/leave-requests/AttachmentsViewerButton';
-import dayjs from 'dayjs';
+import dayjs, { Dayjs } from 'dayjs';
 
 const { RangePicker } = DatePicker;
 const { TextArea } = Input;
@@ -106,6 +106,14 @@ export default function LeaveRequestsPage() {
   const [isMobile, setIsMobile] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [form] = Form.useForm();
+  // Filter: đơn nghỉ của tôi thường không quá nhiều, nên lọc CLIENT-SIDE
+  // (BE /leave-requests trả toàn bộ, không phân trang) - đủ nhẹ, không cần
+  // thêm query param BE. Trường ít vì đây là dữ liệu CỦA CHÍNH mình (không
+  // cần lọc theo người/phòng ban như duyet-phep).
+  const [searchText, setSearchText] = useState('');
+  const [filterLeaveType, setFilterLeaveType] = useState<string | null>(null);
+  const [filterStatus, setFilterStatus] = useState<string | null>(null);
+  const [filterDateRange, setFilterDateRange] = useState<[Dayjs | null, Dayjs | null] | null>(null);
   // Ảnh đính kèm giờ chỉ nằm trong RAM trình duyệt (xem AttachmentUploader) -
   // component cha gọi `uploadAll()` qua ref đúng lúc submit, KHÔNG còn bind
   // value/onChange kiểu controlled field qua Form nữa.
@@ -246,6 +254,24 @@ export default function LeaveRequestsPage() {
     });
   };
 
+  const filteredRequests = useMemo(() => {
+    return requests.filter((r) => {
+      if (filterLeaveType && r.leaveType !== filterLeaveType) return false;
+      if (filterStatus && r.status !== filterStatus) return false;
+      if (searchText.trim()) {
+        const q = searchText.trim().toLowerCase();
+        if (!(r.reason || '').toLowerCase().includes(q)) return false;
+      }
+      if (filterDateRange && filterDateRange[0] && filterDateRange[1]) {
+        const [from, to] = filterDateRange;
+        // Đơn "trong khoảng" nếu khoảng nghỉ [startDate,endDate] giao với [from,to]
+        const overlap = !dayjs(r.startDate).isAfter(to, 'day') && !dayjs(r.endDate).isBefore(from, 'day');
+        if (!overlap) return false;
+      }
+      return true;
+    });
+  }, [requests, filterLeaveType, filterStatus, searchText, filterDateRange]);
+
   const columns = [
     {
       title: 'Loại phép',
@@ -324,13 +350,57 @@ export default function LeaveRequestsPage() {
         </Button>
       </div>
 
+      <Row gutter={[12, 12]} style={{ marginBottom: 16 }}>
+        <Col xs={24} sm={12} md={6}>
+          <Input
+            allowClear
+            placeholder="Tìm theo lý do..."
+            prefix={<SearchOutlined />}
+            value={searchText}
+            onChange={(e) => setSearchText(e.target.value)}
+          />
+        </Col>
+        <Col xs={12} sm={6} md={4}>
+          <Select
+            allowClear
+            placeholder="Loại phép"
+            style={{ width: '100%' }}
+            value={filterLeaveType}
+            onChange={(v) => setFilterLeaveType(v ?? null)}
+            options={leaveTypeOptions}
+          />
+        </Col>
+        <Col xs={12} sm={6} md={4}>
+          <Select
+            allowClear
+            placeholder="Trạng thái"
+            style={{ width: '100%' }}
+            value={filterStatus}
+            onChange={(v) => setFilterStatus(v ?? null)}
+            options={Object.entries(STATUS_MAP).map(([code, s]) => ({
+              value: code,
+              label: <Tag color={s.color} style={{ marginInlineEnd: 0 }}>{s.text}</Tag>,
+            }))}
+          />
+        </Col>
+        <Col xs={24} sm={12} md={6}>
+          <RangePicker
+            style={{ width: '100%' }}
+            format="DD/MM/YYYY"
+            placeholder={['Từ ngày', 'Đến ngày']}
+            value={filterDateRange as any}
+            onChange={(vals) => setFilterDateRange(vals as [Dayjs | null, Dayjs | null] | null)}
+          />
+        </Col>
+      </Row>
+
       {isMobile ? (
-        requests.length === 0 ? (
+        filteredRequests.length === 0 ? (
           <div style={{ padding: '24px 0', textAlign: 'center', color: '#8c8c8c' }}>
             Chưa có đơn nghỉ phép nào
           </div>
         ) : (
-          requests.map(r => (
+            filteredRequests.map(r => (
             <MyLeaveMobileCard
               key={r.id}
               record={r}
@@ -342,7 +412,7 @@ export default function LeaveRequestsPage() {
       ) : (
         <Table
           columns={columns}
-          dataSource={requests}
+            dataSource={filteredRequests}
           rowKey="id"
           loading={loading}
           pagination={{ pageSize: 10 }}

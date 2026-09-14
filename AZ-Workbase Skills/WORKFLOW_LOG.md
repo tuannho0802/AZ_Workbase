@@ -1130,3 +1130,48 @@ CÒN SÓT dùng cú pháp cũ (`showSearch` boolean tách rời `filterOption`) 
   Turbopack): sạch hoàn toàn, đủ 30 route.
 - Chưa test tay trên browser thật (cần mở modal "Sửa nhân viên"/"Xoá phòng ban" với data thật để xác nhận
   Tag hiện đúng màu và warning console đã hết) - người dùng tự pull + test lại để xác nhận.
+## [2026-09-14 12:30] | Batch A: thêm Search/Filter cho nghi-phep, duyet-phep (2 tab), profile (danh sách nhân viên) | Status: Success
+
+**Actor:** Agent (Claude), theo yêu cầu trực tiếp: rà soát toàn app thấy nhiều trang thiếu search/filter so
+với `/customers`, làm theo batch. Đây là Batch A (nhóm CRM-adjacent còn thiếu nhiều nhất) trong 3 batch đã
+thống nhất với người dùng (A: nghi-phep/duyet-phep/profile, B: nhóm quản trị danh mục, C: users/nhom-toi-
+quan-ly/trash-can/audit-logs).
+
+**Trước khi làm:** `git pull` xác nhận không có commit mới kể từ lượt sửa `chia-data` (inputDate) trước đó.
+
+**Files Changed:**
+- `frontend/src/app/(dashboard)/nghi-phep/page.tsx` — thêm filter CLIENT-SIDE (BE `/leave-requests` trả
+  toàn bộ, không phân trang, dữ liệu là đơn CỦA CHÍNH mình nên không nhiều): Input tìm theo lý do, Select
+  Loại phép, Select Trạng thái, RangePicker theo khoảng ngày nghỉ (giao nhau với [startDate,endDate] của
+  từng đơn, dùng `!isAfter`/`!isBefore` thuần vì dayjs chưa extend plugin `isSameOrBefore/isSameOrAfter`
+  ở đâu trong app - tránh phá vỡ các chỗ khác nếu extend global).
+- `frontend/src/app/(dashboard)/duyet-phep/page.tsx` — thêm filter CLIENT-SIDE cho CẢ 2 tab (dữ liệu cross-
+  user nên field nhiều hơn nghi-phep): tab "Chờ phê duyệt" có Input (tên/email/lý do) + Select Phòng ban +
+  Select Loại phép; tab "Lịch sử phê duyệt" có thêm Select Trạng thái (bỏ `pending` khỏi option, vì tab
+  này chỉ chứa đơn đã xử lý) + RangePicker. Phòng ban dropdown suy trực tiếp từ data đã tải (Map theo
+  `requester.department.id`), KHÔNG gọi thêm API `/departments` riêng chỉ để phục vụ 1 dropdown.
+- `frontend/src/app/(dashboard)/profile/page.tsx` (`AdminProfileManager` - chế độ xem Profile nhiều người,
+  chỉ hiện khi `can('users.view')`) — thêm Input tìm theo tên/email + Select Phòng ban + Select Chức vụ
+  (`ROLE_LABEL` có sẵn) cho cả 2 layout (mobile Card list + desktop Table). Phòng ban dropdown cũng suy từ
+  data đã tải (`usersApi.getUsers({limit:100})`, tối đa 100 bản ghi/lần) - không thêm API riêng.
+
+**Nguyên tắc áp dụng chung (khác với `/customers`):** cả 3 trang này đều dùng danh sách BOUNDED (đơn của 1
+người, hoặc tối đa ~100 user) và BE hiện KHÔNG hỗ trợ query filter/pagination cho các endpoint liên quan
+(`/leave-requests`, `/leave-requests/pending`, `/leave-requests/history`, `/users?limit=100`) - nên chọn
+lọc CLIENT-SIDE (`useMemo`) thay vì sửa BE thêm query param như đã làm ở `chia-data` (nơi data có thể rất
+lớn, cần phân trang thật). Tránh over-engineering khi chưa cần.
+
+**Verify thật:**
+- `npx tsc --noEmit` (frontend, full project, không cache): sạch hoàn toàn, 0 lỗi (kể cả 2 lỗi pre-existing
+  `logo.png`/`CountBadge.tsx` ở lượt trước cũng không còn xuất hiện lần chạy này - không phải do diff, đã
+  xác nhận 3 file sửa không đụng tới `logo.png`/`CountBadge.tsx`).
+- `npm run build` (Next.js 16 Turbopack): Compiled successfully, đủ 30 route (bao gồm `/nghi-phep`,
+  `/duyet-phep`, `/profile`).
+- Chưa test tay trên browser thật với dữ liệu thật (cần tài khoản Manager/Admin có nhiều đơn nghỉ phép của
+  nhiều nhân viên/phòng ban để thấy rõ tác dụng filter ở `duyet-phep`) - người dùng tự pull + test lại.
+
+**Còn lại:** Batch B (phong-ban, vi-tri, quan-ly-phu-trach, quan-ly-loai-phep, quan-ly-status-khach,
+nguon-media, nhom-lien-ket) và Batch C (users + tab, nhom-toi-quan-ly, trash-can bổ sung thêm, audit-logs
+tách tab "Đăng nhập" riêng + filter trạng thái đầy đủ) - CHƯA làm, chờ người dùng xác nhận thứ tự tiếp theo.
+
+---
