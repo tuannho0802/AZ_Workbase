@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useCallback } from 'react';
 import {
-  Table, Card, Button, Space, Tag, App, Popconfirm, Input, Typography, Pagination, Badge, Grid, Tooltip
+  Table, Card, Button, Space, Tag, App, Popconfirm, Input, Typography, Pagination, Badge, Grid, Tooltip, Select, DatePicker
 } from 'antd';
 import {
   UndoOutlined, DeleteOutlined, ReloadOutlined, SearchOutlined
@@ -11,10 +11,14 @@ import { useAuthStore } from '@/lib/stores/auth.store';
 import { useMyPermissions } from '@/lib/hooks/useMyPermissions';
 import { useRouter } from 'next/navigation';
 import { customersApi } from '@/lib/api/customers.api';
+import { usersApi } from '@/lib/api/users.api';
 import { Customer } from '@/lib/types/customer.types';
 import { useDebounce } from '@/lib/hooks/useDebounce';
 import { SourceTag } from '@/components/customers/SourceTag';
-import dayjs from 'dayjs';
+import { useMediaSources } from '@/lib/hooks/useMediaSources';
+import dayjs, { Dayjs } from 'dayjs';
+
+const { RangePicker } = DatePicker;
 
 const { Text } = Typography;
 
@@ -105,6 +109,21 @@ export default function TrashCanPage() {
   const [data, setData] = useState<Customer[]>([]);
   const [total, setTotal] = useState(0);
 
+  // Filter bổ sung (trước đây chỉ có Search) - SERVER-SIDE vì thùng rác có
+  // thể chứa rất nhiều bản ghi cũ theo thời gian, giống `/customers` chứ
+  // không phải danh mục nhỏ (khác các trang Batch B).
+  const [filterSource, setFilterSource] = useState<string | undefined>();
+  const [filterSalesUserId, setFilterSalesUserId] = useState<number | undefined>();
+  const [deletedRange, setDeletedRange] = useState<[Dayjs | null, Dayjs | null] | null>(null);
+  const { sources: mediaSources } = useMediaSources(false);
+  // Danh sách Sales cho dropdown - tái dùng API `/users/all` đã có sẵn
+  // (dùng chung ở customers/page.tsx), KHÔNG suy từ dữ liệu trang hiện tại
+  // (chỉ 20 dòng/trang, sẽ đổi liên tục theo trang - trải nghiệm tệ).
+  const [salesOptions, setSalesOptions] = useState<{ id: number; name: string }[]>([]);
+  useEffect(() => {
+    usersApi.getAllForSelect().then(setSalesOptions).catch(() => { });
+  }, []);
+
   const { message } = App.useApp();
   const { user } = useAuthStore();
   const router = useRouter();
@@ -140,6 +159,10 @@ export default function TrashCanPage() {
         page,
         limit: pageSize,
         search: debouncedSearch || undefined,
+        source: filterSource,
+        salesUserId: filterSalesUserId,
+        dateFrom: deletedRange?.[0] ? deletedRange[0].startOf('day').toISOString() : undefined,
+        dateTo: deletedRange?.[1] ? deletedRange[1].endOf('day').toISOString() : undefined,
       });
       setData(res.data || []);
       setTotal(res.total || 0);
@@ -148,11 +171,25 @@ export default function TrashCanPage() {
     } finally {
       setLoading(false);
     }
-  }, [page, pageSize, debouncedSearch, user, canAccessTrash, message]);
+  }, [page, pageSize, debouncedSearch, filterSource, filterSalesUserId, deletedRange, user, canAccessTrash, message]);
 
   useEffect(() => {
     fetchTrash();
   }, [fetchTrash]);
+
+  // Reset về trang 1 khi đổi filter (tránh đứng ở trang trống nếu tập kết
+  // quả mới có ít trang hơn trang đang đứng).
+  useEffect(() => {
+    setPage(1);
+  }, [debouncedSearch, filterSource, filterSalesUserId, deletedRange]);
+
+  const handleResetFilters = () => {
+    setSearch('');
+    setFilterSource(undefined);
+    setFilterSalesUserId(undefined);
+    setDeletedRange(null);
+    setPage(1);
+  };
 
   const handleRestore = async (id: number) => {
     try {
@@ -282,15 +319,41 @@ export default function TrashCanPage() {
       <Card
         title="Danh sách đã xóa mềm"
         extra={
-          <Space>
+          <Space wrap>
             <Input
               prefix={<SearchOutlined />}
               placeholder="Tìm tên, SĐT..."
               value={search}
               onChange={e => setSearch(e.target.value)}
               allowClear
-              style={{ width: 220 }}
+              style={{ width: 200 }}
             />
+            <Select
+              placeholder="Nguồn"
+              value={filterSource}
+              onChange={setFilterSource}
+              allowClear
+              style={{ width: 140 }}
+              options={mediaSources.map(s => ({ value: s.name, label: s.name }))}
+            />
+            <Select
+              placeholder="Sales phụ trách"
+              value={filterSalesUserId}
+              onChange={setFilterSalesUserId}
+              allowClear
+              showSearch
+              optionFilterProp="label"
+              style={{ width: 180 }}
+              options={salesOptions.map(u => ({ value: u.id, label: u.name }))}
+            />
+            <RangePicker
+              placeholder={['Xóa từ', 'Xóa đến']}
+              value={deletedRange}
+              onChange={v => setDeletedRange(v as [Dayjs | null, Dayjs | null] | null)}
+              format="DD/MM/YYYY"
+              style={{ width: 240 }}
+            />
+            <Button onClick={handleResetFilters}>Xóa bộ lọc</Button>
             <Button icon={<ReloadOutlined />} onClick={fetchTrash} loading={loading}>
               Làm mới
             </Button>

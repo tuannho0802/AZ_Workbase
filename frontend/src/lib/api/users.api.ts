@@ -6,6 +6,7 @@ export const usersApi = {
     limit?: number;
     role?: string;
     departmentId?: number;
+    isActive?: boolean;
     search?: string;
   }) => {
     const response = await axiosInstance.get('/users', { params });

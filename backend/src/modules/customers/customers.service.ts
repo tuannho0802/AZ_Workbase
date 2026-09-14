@@ -2138,7 +2138,7 @@ export class CustomersService {
   }
 
   async getTrash(filters: CustomerFiltersDto) {
-    const { page = 1, limit = 20, search } = filters;
+    const { page = 1, limit = 20, search, source, salesUserId, dateFrom, dateTo } = filters;
 
     const qb = this.customersRepository
       .createQueryBuilder('customer')
@@ -2149,6 +2149,26 @@ export class CustomersService {
 
     if (search?.trim()) {
       this.applyCustomerSearch(qb, search);
+    }
+
+    if (source) {
+      qb.andWhere('customer.source = :source', { source });
+    }
+
+    if (salesUserId) {
+      qb.andWhere('customer.salesUserId = :salesUserId', { salesUserId });
+    }
+
+    // ⚠️ Khác `findAll()` (dateFrom/dateTo lọc theo `inputDate`) - ở màn
+    // Thùng rác, khoảng ngày có ý nghĩa với người dùng là "xóa trong
+    // khoảng nào" nên lọc theo `deletedAt`, không phải ngày nhập khách.
+    if (dateFrom) {
+      qb.andWhere('customer.deletedAt >= :dateFrom', { dateFrom });
+    }
+    if (dateTo) {
+      const end = new Date(dateTo);
+      end.setDate(end.getDate() + 1);
+      qb.andWhere('customer.deletedAt < :dateToEnd', { dateToEnd: end.toISOString() });
     }
 
     const [data, total] = await qb

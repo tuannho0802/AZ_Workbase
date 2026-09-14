@@ -23,6 +23,8 @@ import { TrashTab } from './TrashTab';
 import { getApiErrorMessage } from '@/lib/utils/error-message.util';
 import { useRoleColorMap, useRoleColors } from '@/lib/hooks/useRoleColorMap';
 import { resolveEntityColor } from '@/lib/utils/entityColor';
+import { useDebounce } from '@/lib/hooks/useDebounce';
+import { ListFilterBar } from '@/components/common/ListFilterBar';
 
 const { Text } = Typography;
 
@@ -165,6 +167,16 @@ export default function UsersPage() {
   const [trashCount, setTrashCount] = useState(0);
   const [activeTab, setActiveTab] = useState<string>('list');
 
+  // Search/filter tab "Danh sách nhân viên" - SERVER-SIDE (khác các trang
+  // Batch B) vì `/users` đã có phân trang thật (BE hỗ trợ sẵn role/
+  // departmentId/isActive/search, trước đây FE chỉ gọi page/limit, bỏ phí
+  // các filter đã có).
+  const [userSearch, setUserSearch] = useState('');
+  const debouncedUserSearch = useDebounce(userSearch, 500);
+  const [filterRole, setFilterRole] = useState<string | undefined>();
+  const [filterDepartmentId, setFilterDepartmentId] = useState<number | undefined>();
+  const [filterIsActive, setFilterIsActive] = useState<boolean | undefined>();
+
   useEffect(() => {
     const check = () => setIsMobile(window.innerWidth < 768);
     check();
@@ -175,7 +187,14 @@ export default function UsersPage() {
   const fetchUsers = async () => {
     setLoading(true);
     try {
-      const res = await usersApi.getUsers({ page, limit: pageSize });
+      const res = await usersApi.getUsers({
+        page,
+        limit: pageSize,
+        role: filterRole,
+        departmentId: filterDepartmentId,
+        isActive: filterIsActive,
+        search: debouncedUserSearch || undefined,
+      });
       if (res && res.data) {
         setUsers(res.data);
         setTotal(res.total);
