@@ -23,11 +23,16 @@ import { PeriodType } from '../../common/enums/period-type.enum';
  * toàn, không tham chiếu ngược về bất kỳ "khuôn mẫu" nào.
  *
  * ⚠️ Phase 1 CHƯA có: cột lock (`is_locked`..., thêm ở Phase 5 qua migration
- * `AddPeriodicTaskLockColumns`), quan hệ `periodic_task_links` (Phase 2),
- * `periodic_task_customers` (Phase 3), `periodic_task_secondary_assignees`
- * (Phase 4) - KHÔNG khai `@OneToMany` cho các bảng đó ở entity này cho tới
- * khi đúng Phase tương ứng được code, tránh TypeORM tham chiếu tới entity
- * chưa tồn tại.
+ * `AddPeriodicTaskLockColumns`), `periodic_task_customers` (Phase 3),
+ * `periodic_task_secondary_assignees` (Phase 4) - KHÔNG khai `@OneToMany`
+ * cho các bảng đó ở entity này cho tới khi đúng Phase tương ứng được code,
+ * tránh TypeORM tham chiếu tới entity chưa tồn tại.
+ *
+ * `periodic_task_links` (Phase 2 - liên kết cha-con DAG) đã có (xem
+ * `periodic-task-link.entity.ts`) nhưng CỐ TÌNH không khai `@OneToMany`
+ * ngược lại ở đây - quan hệ cha-con được truy vấn qua
+ * `PeriodicTaskLinksService` (join tường minh qua query builder), không cần
+ * eager/lazy relation 2 chiều làm phức tạp thêm entity chính.
  */
 @Entity('periodic_tasks')
 @Index(['periodType'])
