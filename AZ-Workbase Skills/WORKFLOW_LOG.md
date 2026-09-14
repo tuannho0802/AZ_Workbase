@@ -1423,3 +1423,5 @@ nên hành vi mới là ĐÚNG Ý ĐỒ, spec cũ mới là bên lỗi thời.
 - `npm run build` (`nest build`): sạch.
 - Đã rà soát KHÔNG có suite nào khác fail (chỉ đúng 1 chỗ lệch giữa toàn bộ 28 suite) - không cần sửa thêm
   file spec nào khác.
+
+  Now [deploy]
