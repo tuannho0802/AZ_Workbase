@@ -1389,3 +1389,37 @@ chiếu eslint trước/sau (từ 7 xuống phải đúng 7, không phải 8) - 
   `renderUserOption` ở `CustomerFilters.tsx`/`chia-data`) - không nằm trong phạm vi "màu theo entity có cấu
   hình màu" (đây là chọn người, không phải chọn 1 entity có bảng màu riêng) nên KHÔNG sửa trong lượt này,
   chỉ ghi chú nếu người dùng muốn đồng bộ thêm sau.
+
+  ## [2026-09-14 15:05] | Chạy toàn bộ spec test BE, sửa 1 spec lỗi thời (departments.service.spec.ts) | Status: Success
+
+**Actor:** Agent (Claude), theo yêu cầu trực tiếp: "chạy spec test toàn bộ, chỗ nào fail thì sửa lại file
+spec do service đã sửa nhưng spec chưa apply theo".
+
+**Trước khi làm:** `npx jest` (không filter) chạy TOÀN BỘ 28 test suite / 539 test có trong repo, không suy
+diễn hay chỉ chạy lại đúng suite đã sửa lần trước.
+
+**Kết quả lần chạy đầu:** 1/28 suite FAIL - `departments.service.spec.ts`, test
+`findAllPublic - ... chỉ select id/name (không lộ field khác)`. Đọc trực tiếp `departments.service.ts` để
+xác nhận đây là SERVICE ĐÃ ĐỔI THẬT (không phải bug): `findAllPublic()` có comment
+"⚠️ MỚI - thêm `color`... để form đăng ký công khai cũng vẽ được Tag màu" (đã có sẵn trong code TRƯỚC khi
+Agent bắt đầu phiên này - không phải do Agent tự thêm) - service giờ trả thêm `order: { name: 'ASC' }` và
+`select: ['id','name','color']`, nhưng spec cũ vẫn assert `select: ['id','name']` (không có `order`, không
+có `color`) → lệch, đúng như người dùng mô tả "service sửa nhưng spec chưa apply theo".
+
+**Nguyên tắc áp dụng:** SỬA SPEC để khớp hành vi THẬT của service (không revert service về hành vi cũ) -
+`color` không phải field nhạy cảm (khác `description`/`isSystem` service vẫn cố tình giữ ẩn ở `select`),
+nên hành vi mới là ĐÚNG Ý ĐỒ, spec cũ mới là bên lỗi thời.
+
+**Files sửa:**
+- `backend/src/modules/departments/departments.service.spec.ts` - cập nhật lại tên test + expectation:
+  assert `select: ['id','name','color']` + `order: { name: 'ASC' }`, giữ nguyên phần `where: { isActive:
+  true }`. Thêm comment giải thích rõ đây là spec lỗi thời được cập nhật theo service mới, không phải sửa
+  ngược lại service.
+
+**Verify thật:**
+- `npx jest` (toàn bộ, không filter): 28/28 suite pass, 539/539 test pass (trước đó 27/28 suite, 538/539
+  test).
+- `npx tsc --noEmit` (backend): sạch.
+- `npm run build` (`nest build`): sạch.
+- Đã rà soát KHÔNG có suite nào khác fail (chỉ đúng 1 chỗ lệch giữa toàn bộ 28 suite) - không cần sửa thêm
+  file spec nào khác.

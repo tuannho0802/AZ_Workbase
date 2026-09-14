@@ -135,7 +135,13 @@ describe('DepartmentsService', () => {
 
 
   describe('findAllPublic - Danh sách công khai (KHÔNG cần đăng nhập)', () => {
-    it('chỉ lọc isActive=true, chỉ select id/name (không lộ field khác)', async () => {
+    // ⚠️ CẬP NHẬT (2026-09-14): service giờ SELECT thêm `color` (không nhạy
+    // cảm, khác `description`/`isSystem` vẫn cố tình giữ ẩn) để form đăng ký
+    // công khai vẽ được Tag màu đồng bộ với các dropdown Phòng ban khác
+    // trong app - xem comment ở `findAllPublic()`. Test trước đây assert
+    // CHỈ `['id','name']` đã lỗi thời so với code thật, sửa lại đúng hành vi
+    // MỚI (không phải revert service).
+    it('chỉ lọc isActive=true, sắp theo tên, chỉ select id/name/color (không lộ description/isSystem)', async () => {
       mockDepartmentRepo.find.mockResolvedValue([]);
 
       await service.findAllPublic();
@@ -143,7 +149,8 @@ describe('DepartmentsService', () => {
       expect(mockDepartmentRepo.find).toHaveBeenCalledWith(
         expect.objectContaining({
           where: { isActive: true },
-          select: ['id', 'name'],
+          order: { name: 'ASC' },
+          select: ['id', 'name', 'color'],
         }),
       );
     });
