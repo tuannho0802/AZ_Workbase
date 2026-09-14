@@ -244,6 +244,10 @@ export const CustomerAssignmentsTab = ({ customerId, primarySalesUserId, onUpdat
       label: u.name || u.email, // dùng cho hiển thị tag ĐÃ CHỌN gọn gàng (không kèm status tag)
       email: u.email,
       status,
+      user: u, // ⚠️ MỚI - đối xứng renderUserOption() ở dropdown "Người nhận" (modal Sửa): cần
+      // nguyên object user (role/department/position) để optionRender vẽ đủ Tag màu, trước đây
+      // chỉ truyền id/label/email/status nên dropdown "Gán thêm Sales" thiếu hẳn Tag Vai trò/
+      // Phòng ban/Vị trí so với các dropdown chọn nhân viên khác trong app (báo qua ảnh chụp).
       disabled: status !== 'available',
     };
   });
@@ -383,10 +387,27 @@ export const CustomerAssignmentsTab = ({ customerId, primarySalesUserId, onUpdat
           options={addModalOptions}
           optionRender={(option) => {
             const status = option.data.status as AddUserStatus;
+            const u = option.data.user as UserOption;
+            const tagStyle: React.CSSProperties = { fontSize: 10, lineHeight: '16px', padding: '0 4px', margin: 0 };
             return (
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8 }}>
-                <span>{option.data.label}</span>
-                <Tag color={STATUS_OPTION_TAG[status].color} style={{ marginRight: 0 }}>
+                {/* ⚠️ FIX BUG THẬT (báo qua ảnh chụp 14/09): dropdown này trước đây CHỈ hiện tên +
+                    Tag trạng thái (Chưa gán/Đã gán/Sales chính), thiếu hẳn Tag Vai trò/Phòng ban/
+                    Vị trí màu như MỌI dropdown chọn nhân viên khác trong app (đối chiếu
+                    renderUserOption() ở dropdown "Người nhận" ngay trong cùng file này). Đồng bộ lại
+                    cho đủ - vẫn giữ Tag trạng thái riêng ở cuối vì ý nghĩa khác nhau (trạng thái gán
+                    data, không phải Vai trò/Phòng ban/Vị trí của user). */}
+                <Space size={4} align="center" style={{ minWidth: 0 }}>
+                  <span style={{ fontSize: 13 }}>{u?.name || u?.email || option.data.label}</span>
+                  {u?.role && <Tag style={tagStyle} color={getRoleColor(u.role)}>{getRoleName(u.role)}</Tag>}
+                  {u?.department?.name && (
+                    <Tag style={tagStyle} color={resolveEntityColor(u.department.color)}>{u.department.name}</Tag>
+                  )}
+                  {u?.position?.name && (
+                    <Tag style={tagStyle} color={resolveEntityColor(u.position.color)}>{u.position.name}</Tag>
+                  )}
+                </Space>
+                <Tag color={STATUS_OPTION_TAG[status].color} style={{ marginRight: 0, flexShrink: 0 }}>
                   {STATUS_OPTION_TAG[status].label}
                 </Tag>
               </div>
