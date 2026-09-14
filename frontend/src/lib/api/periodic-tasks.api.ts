@@ -11,6 +11,12 @@ export const PERIOD_TYPE_LABELS: Record<PeriodType, string> = {
   yearly: 'Năm',
 };
 
+/** Mirror ĐÚNG `PERIOD_RANK` ở BE (`common/enums/period-type.enum.ts`) - dùng
+ * để FE lọc TRƯỚC danh sách gợi ý cha/con hợp lệ ở `TaskLinksModal` (Phase 2).
+ * KHÔNG phải lớp bảo vệ duy nhất - BE luôn validate lại 100% ở
+ * `PeriodicTaskLinksService.addLink()`. */
+export const PERIOD_RANK: Record<PeriodType, number> = { daily: 1, weekly: 2, monthly: 3, yearly: 4 };
+
 interface RefUser {
   id: number;
   name: string;
