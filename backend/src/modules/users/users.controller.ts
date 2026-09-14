@@ -58,6 +58,7 @@ export class UsersController {
     @GetPermissionScope() scope?: string | null,
     @Query('role') role?: string,
     @Query('departmentId') departmentId?: number,
+    @Query('positionId') positionId?: number,
     @Query('isActive') isActive?: boolean,
     @Query('search') search?: string,
     @Query('page') page?: number,
@@ -71,6 +72,11 @@ export class UsersController {
     const result = await this.usersService.findAll(req.user.id, req.user.role, scope, {
       role,
       departmentId,
+      // ⚠️ MỚI - đối xứng `departmentId`, đáp ứng yêu cầu thêm dropdown lọc
+      // "Vị trí" ở tab "Danh sách nhân viên" (trước đây BE chỉ hỗ trợ
+      // departmentId, dropdown Vị trí ở FE chưa từng tồn tại dù `usersApi`
+      // đã fetch sẵn danh sách Position cho Modal Thêm/Sửa).
+      positionId,
       isActive,
       search,
       page: page ? +page : 1,

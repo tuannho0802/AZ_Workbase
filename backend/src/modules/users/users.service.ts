@@ -225,8 +225,8 @@ export class UsersService {
     });
   }
 
-  async findAll(userId: number, userRole: string, scope?: string | null, options: { role?: string; departmentId?: number; isActive?: boolean; search?: string; page?: number; limit?: number } = {}) {
-    const { role, departmentId, isActive, search, page = 1, limit = 20 } = options;
+  async findAll(userId: number, userRole: string, scope?: string | null, options: { role?: string; departmentId?: number; positionId?: number; isActive?: boolean; search?: string; page?: number; limit?: number } = {}) {
+    const { role, departmentId, positionId, isActive, search, page = 1, limit = 20 } = options;
 
     const queryBuilder = this.usersRepository.createQueryBuilder('user')
       .leftJoinAndSelect('user.department', 'department')
@@ -249,6 +249,9 @@ export class UsersService {
     }
     if (departmentId) {
       queryBuilder.andWhere('user.departmentId = :departmentId', { departmentId });
+    }
+    if (positionId) {
+      queryBuilder.andWhere('user.positionId = :positionId', { positionId });
     }
     if (isActive !== undefined) {
       queryBuilder.andWhere('user.isActive = :isActive', { isActive });
