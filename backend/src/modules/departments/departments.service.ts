@@ -102,11 +102,15 @@ export class DepartmentsService {
    * các field khác (createdAt, isActive...) để không lộ thừa dữ liệu nội bộ
    * qua 1 endpoint không yêu cầu xác thực.
    */
-  async findAllPublic(): Promise<{ id: number; name: string }[]> {
+  async findAllPublic(): Promise<{ id: number; name: string; color: string }[]> {
     return this.departmentRepository.find({
       where: { isActive: true },
       order: { name: 'ASC' },
-      select: ['id', 'name'],
+      // ⚠️ MỚI - thêm `color` (không nhạy cảm, khác description/isSystem đã
+      // cố tình giữ ẩn) để form đăng ký công khai cũng vẽ được Tag màu đồng
+      // bộ với mọi dropdown chọn Phòng ban khác trong app (báo qua rà soát
+      // FE 2026-09-14).
+      select: ['id', 'name', 'color'],
     });
   }
 

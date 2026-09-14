@@ -40,7 +40,7 @@ export const positionsApi = {
   // Danh sách công khai (KHÔNG cần token) - chỉ id/name, dùng cho form đăng
   // ký tài khoản mới (trang /register, chưa đăng nhập) - khớp
   // PositionsService.findAllPublic() ở BE.
-  getPublic: async (): Promise<Pick<Position, 'id' | 'name'>[]> => {
+  getPublic: async (): Promise<Pick<Position, 'id' | 'name' | 'color'>[]> => {
     const response = await axiosInstance.get('/positions/public');
     return response.data;
   },

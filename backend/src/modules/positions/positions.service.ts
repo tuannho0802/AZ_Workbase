@@ -31,10 +31,13 @@ export class PositionsService {
   // cần đăng nhập. Position không có cột `isActive` (khác Department) nên
   // trả toàn bộ danh mục, chỉ giới hạn 2 field id/name giống đúng
   // DepartmentsService.findAllPublic() (không lộ description/isSystem).
-  async findAllPublic(): Promise<{ id: number; name: string }[]> {
+  async findAllPublic(): Promise<{ id: number; name: string; color: string }[]> {
     return this.positionRepo.find({
       order: { name: 'ASC' },
-      select: ['id', 'name'],
+      // ⚠️ MỚI - thêm `color` (đối xứng DepartmentsService.findAllPublic(),
+      // không nhạy cảm, không lộ description/isSystem) để form đăng ký công
+      // khai vẽ được Tag màu đồng bộ với dropdown chọn Vị trí khác.
+      select: ['id', 'name', 'color'],
     });
   }
 

@@ -320,20 +320,50 @@ export class CustomersService {
    * không nhất thiết thuộc Phòng Marketing). CHỈ trả về user nào đã từng
    * tạo ÍT NHẤT 1 khách hàng còn tồn tại (chưa bị soft-delete) - tránh
    * dropdown dài vô ích với những người chưa từng nhập data nào.
+   *
+   * ⚠️ MỚI - trước đây chỉ SELECT id/name, khiến dropdown FE không có Tag
+   * màu Vai trò/Phòng ban/Vị trí như các dropdown chọn nhân viên khác
+   * (salesUsers/marketingUsers ở CustomerFilters.tsx, nguồn từ /users/all đã
+   * JOIN sẵn - xem findEmployees() ở users.service.ts). Thêm JOIN
+   * department/position + SELECT role để FE dùng chung 1 pattern optionRender.
    */
-  async getCreatorsList(): Promise<{ id: number; name: string }[]> {
+  async getCreatorsList(): Promise<
+    { id: number; name: string; role: string; department: { id: number; name: string; color: string } | null; position: { id: number; name: string; color: string } | null }[]
+  > {
     const rows = await this.customersRepository
       .createQueryBuilder('customer')
       .innerJoin('customer.createdBy', 'creator')
+      .leftJoin('creator.department', 'department')
+      .leftJoin('creator.position', 'position')
       .select('creator.id', 'id')
       .addSelect('creator.name', 'name')
+      .addSelect('creator.role', 'role')
+      .addSelect('department.id', 'departmentId')
+      .addSelect('department.name', 'departmentName')
+      .addSelect('department.color', 'departmentColor')
+      .addSelect('position.id', 'positionId')
+      .addSelect('position.name', 'positionName')
+      .addSelect('position.color', 'positionColor')
       .where('customer.deletedAt IS NULL')
       .groupBy('creator.id')
       .addGroupBy('creator.name')
+      .addGroupBy('creator.role')
+      .addGroupBy('department.id')
+      .addGroupBy('department.name')
+      .addGroupBy('department.color')
+      .addGroupBy('position.id')
+      .addGroupBy('position.name')
+      .addGroupBy('position.color')
       .orderBy('creator.name', 'ASC')
       .getRawMany();
 
-    return rows.map((r) => ({ id: Number(r.id), name: r.name }));
+    return rows.map((r) => ({
+      id: Number(r.id),
+      name: r.name,
+      role: r.role,
+      department: r.departmentId ? { id: Number(r.departmentId), name: r.departmentName, color: r.departmentColor } : null,
+      position: r.positionId ? { id: Number(r.positionId), name: r.positionName, color: r.positionColor } : null,
+    }));
   }
 
   async findAll(

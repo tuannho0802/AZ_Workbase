@@ -2,7 +2,7 @@
 
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { Form, Input, Button, Card, Select, App, Typography } from 'antd';
+import { Form, Input, Button, Card, Select, App, Typography, Tag } from 'antd';
 import { UserOutlined, LockOutlined, MailOutlined, PhoneOutlined } from '@ant-design/icons';
 import { useQuery } from '@tanstack/react-query';
 import Link from 'next/link';
@@ -10,6 +10,7 @@ import { authApi } from '@/lib/api/auth.api';
 import { departmentsApi } from '@/lib/api/departments.api';
 import { positionsApi } from '@/lib/api/positions.api';
 import { getApiErrorMessage } from '@/lib/utils/error-message.util';
+import { resolveEntityColor } from '@/lib/utils/entityColor';
 
 const { Title, Paragraph } = Typography;
 
@@ -144,7 +145,16 @@ export default function RegisterPage() {
               size="large"
               allowClear
               loading={loadingDepartments}
-              options={departments.map((d) => ({ value: d.id, label: d.name }))}
+              // ⚠️ MỚI - Tag màu đồng bộ dropdown chọn Phòng ban khác trong
+              // app (rà soát FE 2026-09-14) - trước chỉ hiện text trơn.
+              options={departments.map((d) => ({ value: d.id, label: d.name, color: d.color }))}
+              optionLabelProp="label"
+              optionRender={(option) => (
+                <Tag color={resolveEntityColor((option.data as { color?: string }).color)} style={{ marginInlineEnd: 0 }}>
+                  {option.data.label}
+                </Tag>
+              )}
+              popupMatchSelectWidth={false}
             />
           </Form.Item>
 
@@ -155,7 +165,14 @@ export default function RegisterPage() {
               allowClear
               showSearch
               loading={loadingPositions}
-              options={positions.map((p) => ({ value: p.id, label: p.name }))}
+              options={positions.map((p) => ({ value: p.id, label: p.name, color: p.color }))}
+              optionLabelProp="label"
+              optionRender={(option) => (
+                <Tag color={resolveEntityColor((option.data as { color?: string }).color)} style={{ marginInlineEnd: 0 }}>
+                  {option.data.label}
+                </Tag>
+              )}
+              popupMatchSelectWidth={false}
               filterOption={(input, option) =>
                 (option?.label as string).toLowerCase().includes(input.toLowerCase())
               }

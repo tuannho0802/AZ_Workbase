@@ -3,7 +3,7 @@
 import { useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import {
-  Table, Button, Space, App, Modal, Form, Select, Input, Typography, Spin,
+  Table, Button, Space, App, Modal, Form, Select, Input, Typography, Spin, Tag,
 } from 'antd';
 import { CheckOutlined, CloseOutlined, MailOutlined, PhoneOutlined } from '@ant-design/icons';
 import dayjs from 'dayjs';
@@ -13,6 +13,7 @@ import { useRoleColors } from '@/lib/hooks/useRoleColorMap';
 import { usePositions } from '@/lib/hooks/usePositions';
 import { getApiErrorMessage } from '@/lib/utils/error-message.util';
 import { useAuthStore } from '@/lib/stores/auth.store';
+import { resolveEntityColor } from '@/lib/utils/entityColor';
 
 const { Text, Paragraph } = Typography;
 
@@ -43,8 +44,13 @@ export const PendingApprovalsTab = ({ onCountChange }: Props) => {
   // dropdown khi người duyệt không phải Admin.
   const roleOptions = (roleColors || [])
     .filter((r: any) => currentUser?.role === 'admin' || r.code !== 'admin')
-    .map((r: any) => ({ value: r.code, label: r.name }));
+    .map((r: any) => ({ value: r.code, label: r.name, color: r.color }));
   const roleMap = new Map((roleColors || []).map((r: any) => [r.code, r.name]));
+  // ⚠️ MỚI - đồng bộ pattern Tag màu (rà soát FE 2026-09-14) cho cả 3
+  // dropdown Vai trò/Phòng ban/Vị trí ở modal Duyệt - trước chỉ text trơn.
+  const renderColorTagOption = (option: { data: { label: string; color?: string } }) => (
+    <Tag color={resolveEntityColor(option.data.color)} style={{ marginInlineEnd: 0 }}>{option.data.label}</Tag>
+  );
 
   const [approving, setApproving] = useState<PendingUser | null>(null);
   const [approveForm] = Form.useForm();
@@ -203,13 +209,16 @@ export const PendingApprovalsTab = ({ onCountChange }: Props) => {
         </Paragraph>
         <Form form={approveForm} layout="vertical">
           <Form.Item name="role" label="Vai trò" rules={[{ required: true, message: 'Vui lòng chọn vai trò' }]}>
-            <Select options={roleOptions} />
+            <Select options={roleOptions} optionLabelProp="label" optionRender={renderColorTagOption} popupMatchSelectWidth={false} />
           </Form.Item>
           <Form.Item name="departmentId" label="Phòng ban">
             <Select
               placeholder="Chọn phòng ban"
               allowClear
-              options={departments.map((d: any) => ({ value: Number(d.id), label: d.name }))}
+              options={departments.map((d: any) => ({ value: Number(d.id), label: d.name, color: d.color }))}
+              optionLabelProp="label"
+              optionRender={renderColorTagOption}
+              popupMatchSelectWidth={false}
             />
           </Form.Item>
           <Form.Item name="positionId" label="Vị trí">
@@ -217,7 +226,10 @@ export const PendingApprovalsTab = ({ onCountChange }: Props) => {
               placeholder="Chọn vị trí"
               allowClear
               showSearch={{ optionFilterProp: "label" }}
-              options={positions.map((p: any) => ({ value: Number(p.id), label: p.name }))}
+              options={positions.map((p: any) => ({ value: Number(p.id), label: p.name, color: p.color }))}
+              optionLabelProp="label"
+              optionRender={renderColorTagOption}
+              popupMatchSelectWidth={false}
             />
           </Form.Item>
         </Form>

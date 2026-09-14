@@ -1,10 +1,12 @@
 import React, { useState, useEffect } from 'react';
-import { Modal, Button, Select, Input, Typography, App } from 'antd';
+import { Modal, Button, Select, Input, Typography, App, Space, Tag } from 'antd';
 import { UserAddOutlined } from '@ant-design/icons';
 import { useQuery } from '@tanstack/react-query';
 import axiosInstance from '@/lib/api/axios-instance';
 import { usersApi } from '@/lib/api/users.api';
 import { getApiErrorMessage } from '@/lib/utils/error-message.util';
+import { useRoleColorMap, useRoleColors } from '@/lib/hooks/useRoleColorMap';
+import { resolveEntityColor } from '@/lib/utils/entityColor';
 
 const { Text } = Typography;
 
@@ -19,6 +21,11 @@ interface UserOption {
   id: number;
   name: string;
   email: string;
+  // ⚠️ MỚI - cùng lý do ở CustomerAssignmentsTab.tsx: /users/all đã JOIN sẵn
+  // role/department/position, khai đủ (optional) để dùng Tag màu cho dropdown.
+  role?: string;
+  department?: { id: number; name: string; color: string } | null;
+  position?: { id: number; name: string; color: string } | null;
 }
 
 /**
@@ -46,6 +53,30 @@ export const BulkAssignModal: React.FC<BulkAssignModalProps> = ({
     queryFn: () => usersApi.getAllForSelect(),
     staleTime: 5 * 60 * 1000,
   });
+
+  // ⚠️ MỚI - đồng bộ pattern renderUserOption (Tag màu Vai trò/Phòng ban/Vị
+  // trí) đã dùng ở CustomerFilters.tsx/CustomerAssignmentsTab.tsx cho dropdown
+  // "Chọn Sales nhận data" - trước đây chỉ hiện text trơn.
+  const { getRoleColor } = useRoleColorMap();
+  const { roleColors: allRoles } = useRoleColors();
+  const roleNameMap = new Map(allRoles.map((r) => [r.code, r.name]));
+  const getRoleName = (code?: string) => (code ? roleNameMap.get(code) || code : '');
+  const renderUserOption = (option: { data: { user: UserOption } }) => {
+    const u = option.data.user;
+    const tagStyle: React.CSSProperties = { fontSize: 10, lineHeight: '16px', padding: '0 4px', margin: 0 };
+    return (
+      <Space size={4} align="center">
+        <span style={{ fontSize: 13 }}>{u.name || u.email}</span>
+        {u.role && <Tag style={tagStyle} color={getRoleColor(u.role)}>{getRoleName(u.role)}</Tag>}
+        {u.department?.name && (
+          <Tag style={tagStyle} color={resolveEntityColor(u.department.color)}>{u.department.name}</Tag>
+        )}
+        {u.position?.name && (
+          <Tag style={tagStyle} color={resolveEntityColor(u.position.color)}>{u.position.name}</Tag>
+        )}
+      </Space>
+    );
+  };
 
   useEffect(() => {
     if (open) {
@@ -115,7 +146,10 @@ export const BulkAssignModal: React.FC<BulkAssignModalProps> = ({
         value={salesUserIds}
         onChange={setSalesUserIds}
         loading={loadingUsers}
-        options={users.map((u) => ({ value: u.id, label: u.name || u.email }))}
+        options={users.map((u) => ({ value: u.id, label: u.name || u.email, user: u }))}
+        optionLabelProp="label"
+        optionRender={renderUserOption}
+        popupMatchSelectWidth={false}
         showSearch={{
           filterOption: (input, option) => {
             const u = users.find((u) => u.id === option?.value);

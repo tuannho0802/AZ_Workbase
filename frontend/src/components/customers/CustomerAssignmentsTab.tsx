@@ -27,6 +27,8 @@ import { usersApi } from '@/lib/api/users.api';
 import { useAuthStore } from '@/lib/stores/auth.store';
 import axiosInstance from '@/lib/api/axios-instance';
 import { getApiErrorMessage } from '@/lib/utils/error-message.util';
+import { useRoleColorMap, useRoleColors } from '@/lib/hooks/useRoleColorMap';
+import { resolveEntityColor } from '@/lib/utils/entityColor';
 
 const { Text } = Typography;
 
@@ -40,6 +42,15 @@ interface UserOption {
   id: number;
   name: string;
   email: string;
+  // ⚠️ MỚI - BE (/users/all, dùng chung cho MỌI dropdown chọn nhân viên -
+  // xem JSDoc findEmployees() ở users.service.ts) đã JOIN sẵn role/department/
+  // position, trước đây interface này cắt bớt chỉ còn id/name/email nên
+  // dropdown "Người nhận" bên dưới không có Tag màu như các dropdown chọn
+  // nhân viên khác trong app (báo qua ảnh chụp). Khai đủ field (optional, có
+  // thể thiếu ở vài API khác dùng chung type này) để dùng cho optionRender.
+  role?: string;
+  department?: { id: number; name: string; color: string } | null;
+  position?: { id: number; name: string; color: string } | null;
 }
 
 const STATUS_TAG: Record<AssignmentHistory['status'], { color: string; label: string }> = {
@@ -70,6 +81,30 @@ export const CustomerAssignmentsTab = ({ customerId, primarySalesUserId, onUpdat
     queryFn: () => usersApi.getAllForSelect(),
     staleTime: 5 * 60 * 1000,
   });
+
+  // ⚠️ MỚI - đồng bộ pattern renderUserOption (Avatar + Tag màu Vai trò/
+  // Phòng ban/Vị trí) đã dùng ở CustomerFilters.tsx/chia-data cho dropdown
+  // "Người nhận" (modal Sửa lượt gán) - trước đây chỉ hiện text trơn.
+  const { getRoleColor } = useRoleColorMap();
+  const { roleColors: allRoles } = useRoleColors();
+  const roleNameMap = new Map(allRoles.map((r) => [r.code, r.name]));
+  const getRoleName = (code?: string) => (code ? roleNameMap.get(code) || code : '');
+  const renderUserOption = (option: { data: { user: UserOption } }) => {
+    const u = option.data.user;
+    const tagStyle: React.CSSProperties = { fontSize: 10, lineHeight: '16px', padding: '0 4px', margin: 0 };
+    return (
+      <Space size={4} align="center">
+        <span style={{ fontSize: 13 }}>{u.name || u.email}</span>
+        {u.role && <Tag style={tagStyle} color={getRoleColor(u.role)}>{getRoleName(u.role)}</Tag>}
+        {u.department?.name && (
+          <Tag style={tagStyle} color={resolveEntityColor(u.department.color)}>{u.department.name}</Tag>
+        )}
+        {u.position?.name && (
+          <Tag style={tagStyle} color={resolveEntityColor(u.position.color)}>{u.position.name}</Tag>
+        )}
+      </Space>
+    );
+  };
 
   const fetchHistory = useCallback(async () => {
     setLoading(true);
@@ -298,7 +333,10 @@ export const CustomerAssignmentsTab = ({ customerId, primarySalesUserId, onUpdat
                 filterOption: (input, option) =>
                   (option?.label as string)?.toLowerCase().includes(input.toLowerCase()),
               }}
-              options={users.map((u) => ({ value: u.id, label: u.name || u.email }))}
+              options={users.map((u) => ({ value: u.id, label: u.name || u.email, user: u }))}
+              optionLabelProp="label"
+              optionRender={renderUserOption}
+              popupMatchSelectWidth={false}
             />
           </Form.Item>
           <Form.Item name="reason" label="Lý do">

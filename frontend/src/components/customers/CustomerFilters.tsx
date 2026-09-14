@@ -11,8 +11,10 @@ import { resolveEntityColor } from '@/lib/utils/entityColor';
 // ⚠️ MỚI (đồng bộ Tag Phòng ban/Vai trò/Vị trí, giống hệt `userOptions` ở
 // chia-data/page.tsx và `SalesUserSelect.tsx`) - trước đây `salesUsers`/
 // `marketingUsers` chỉ có {id,name}, dropdown chỉ hiện tên trơn. Field mới
-// đều optional để không phá các nơi khác đang truyền đúng shape cũ (vd
-// `creatorUsers` từ GET /customers/creators vẫn chỉ có {id,name}).
+// đều optional để không phá các nơi khác đang truyền đúng shape cũ.
+// `creatorUsers` (GET /customers/creators) từ 2026-09-14 cũng đã JOIN thêm
+// role/department/position ở BE (customers.service.ts#getCreatorsList) nên
+// dùng chung được optionRender bên dưới, không còn là ngoại lệ chỉ {id,name}.
 interface FilterUserOption {
   id: number;
   name: string;
@@ -271,7 +273,10 @@ export const CustomerFilters: React.FC<CustomerFiltersProps> = ({
             style={{ width: '100%' }}
             value={filters.creatorId}
             onChange={(val) => onFiltersChange({ ...filters, creatorId: val, page: 1 })}
-            options={creatorUsers.map(u => ({ value: u.id, label: u.name }))}
+            optionLabelProp="label"
+            optionRender={renderUserOption}
+            popupMatchSelectWidth={false}
+            options={creatorUsers.map(u => ({ value: u.id, label: u.name, user: u }))}
           />
         </Col>
 

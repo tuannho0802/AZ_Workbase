@@ -716,7 +716,20 @@ export default function UsersPage() {
             <Select
               placeholder="Chọn vị trí (không bắt buộc)"
               allowClear
-              options={positions.map((p) => ({ value: p.id, label: p.name }))}
+              options={positions.map((p) => ({ value: p.id, label: p.name, color: resolveEntityColor(p.color) }))}
+              optionRender={(option) => (
+                <Tag color={(option.data as any).color} style={{ marginInlineEnd: 0 }}>
+                  {option.label}
+                </Tag>
+              )}
+              labelRender={(props) => {
+                const pos = positions.find((p) => p.id === props.value);
+                return (
+                  <Tag color={resolveEntityColor(pos?.color)} style={{ marginInlineEnd: 0 }}>
+                    {props.label ?? pos?.name ?? props.value}
+                  </Tag>
+                );
+              }}
               showSearch
               filterOption={(input, option) =>
                 (option?.label as string).toLowerCase().includes(input.toLowerCase())
