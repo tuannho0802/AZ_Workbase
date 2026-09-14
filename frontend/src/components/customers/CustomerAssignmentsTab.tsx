@@ -156,8 +156,22 @@ export const CustomerAssignmentsTab = ({ customerId, primarySalesUserId, onUpdat
 
   const openEdit = (a: AssignmentHistory) => {
     setEditing(a);
-    editForm.setFieldsValue({ assignedToId: a.assignedToId, reason: a.reason || '' });
   };
+
+  // ⚠️ FIX BUG THẬT (console warning "Instance created by useForm is not
+  // connected to any Form element"): Modal "Sửa lượt gán" dùng destroyOnHidden
+  // nên <Form form={editForm}> chỉ mount sau khi state `editing` re-render và
+  // Modal open=true. Trước đây openEdit() gọi editForm.setFieldsValue() NGAY
+  // sau setEditing(a) trong cùng 1 lần gọi hàm - lúc đó setEditing chưa kịp
+  // áp dụng (state update là bất đồng bộ), Modal vẫn open=false, <Form> chưa
+  // tồn tại trong cây DOM -> editForm "chưa kết nối" -> warning. Dời sang
+  // useEffect để setFieldsValue chỉ chạy SAU khi React đã re-render và Modal/
+  // Form đã mount xong (đảm bảo đúng thứ tự effect chạy sau paint).
+  useEffect(() => {
+    if (editing) {
+      editForm.setFieldsValue({ assignedToId: editing.assignedToId, reason: editing.reason || '' });
+    }
+  }, [editing, editForm]);
 
   const handleEditSubmit = async () => {
     if (!editing) return;
