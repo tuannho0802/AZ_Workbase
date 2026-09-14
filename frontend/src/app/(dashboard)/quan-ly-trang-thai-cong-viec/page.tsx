@@ -357,7 +357,7 @@ export default function PeriodicTaskStatusesPage() {
                         type="info"
                         showIcon
                         style={{ marginBottom: 16 }}
-                        message="Đây là trạng thái hệ thống - chỉ sửa được tên/màu/mô tả/thứ tự/cấu hình rollup, mã (code) giữ nguyên."
+                        title="Đây là trạng thái hệ thống - chỉ sửa được tên/màu/mô tả/thứ tự/cấu hình rollup, mã (code) giữ nguyên."
                     />
                 )}
                 <Form form={form} layout="vertical">
@@ -442,7 +442,7 @@ export default function PeriodicTaskStatusesPage() {
                             type="warning"
                             showIcon
                             style={{ marginBottom: 16 }}
-                            message={`Đang có ${deletingStatus?.inUseCount} Công việc định kỳ dùng trạng thái này`}
+                            title={`Đang có ${deletingStatus?.inUseCount} Công việc định kỳ dùng trạng thái này`}
                             description="Chọn trạng thái thay thế bên dưới - toàn bộ Task đang dùng trạng thái này sẽ được tự động chuyển sang trạng thái bạn chọn trước khi trạng thái cũ bị xoá."
                         />
                         <Text strong>Chuyển sang trạng thái:</Text>

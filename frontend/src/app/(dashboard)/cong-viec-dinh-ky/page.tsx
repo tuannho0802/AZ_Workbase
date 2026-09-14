@@ -610,7 +610,7 @@ export default function PeriodicTasksPage() {
                 <Alert
                     type="warning"
                     showIcon
-                    message="Hành động này chỉ Admin mới thực hiện được và không thể hoàn tác qua UI."
+                    title="Hành động này chỉ Admin mới thực hiện được và không thể hoàn tác qua UI."
                     style={{ marginBottom: 12 }}
                 />
                 <Text>Bạn có chắc muốn xoá Công việc định kỳ này?</Text>
