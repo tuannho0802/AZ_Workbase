@@ -19,6 +19,7 @@ import {
     Col,
     ColorPicker,
     Alert,
+    Avatar,
 } from 'antd';
 import {
     PlusOutlined,
@@ -47,6 +48,7 @@ import {
     CreatePeriodicTaskPayload,
 } from '@/lib/api/periodic-tasks.api';
 import { resolveEntityColor, DEFAULT_ENTITY_COLOR } from '@/lib/utils/entityColor';
+import { useRoleColorMap, useRoleColors } from '@/lib/hooks/useRoleColorMap';
 
 const { Title, Text } = Typography;
 const { RangePicker } = DatePicker;
@@ -112,6 +114,36 @@ export default function PeriodicTasksPage() {
     const { statuses } = usePeriodicTaskStatuses();
     const { departments } = useDepartments();
     const { users } = useUsersList();
+
+    // Avatar + Tag Vai trò/Phòng ban cho dropdown "Người phụ trách chính" -
+    // mirror ĐÚNG `renderUserOption` ở CustomerFilters.tsx/chia-data/page.tsx
+    // (cùng nguồn useUsersList() đã JOIN department/position, chỉ thiếu Tag
+    // màu nên trước đây hiện tên trơn, không đồng bộ với các dropdown khác).
+    const { getRoleColor } = useRoleColorMap();
+    const { roleColors: allRoles } = useRoleColors();
+    const roleNameMap = new Map(allRoles.map((r) => [r.code, r.name]));
+    const getRoleName = (code?: string) => (code ? roleNameMap.get(code) || code : '');
+    const tagStyle: { fontSize: number; lineHeight: string; padding: string; margin: number } = { fontSize: 10, lineHeight: '16px', padding: '0 4px', margin: 0 };
+    const renderUserOption = (option: { data: { user: any } }) => {
+        const u = option.data.user;
+        return (
+            <Space size={4} align="center">
+                <Avatar size={20} style={{ backgroundColor: getRoleColor(u.role), fontSize: 11, flexShrink: 0 }}>
+                    {u.name?.[0]?.toUpperCase()}
+                </Avatar>
+                <span style={{ fontSize: 13 }}>{u.name}</span>
+                {u.role && (
+                    <Tag style={tagStyle} color={getRoleColor(u.role)}>{getRoleName(u.role)}</Tag>
+                )}
+                {u.department?.name && (
+                    <Tag style={tagStyle} color={resolveEntityColor(u.department.color)}>{u.department.name}</Tag>
+                )}
+                {u.position?.name && (
+                    <Tag style={tagStyle} color={resolveEntityColor(u.position.color)}>{u.position.name}</Tag>
+                )}
+            </Space>
+        );
+    };
 
     const createMutation = useCreatePeriodicTask();
     const updateMutation = useUpdatePeriodicTask();
@@ -393,7 +425,10 @@ export default function PeriodicTasksPage() {
                         style={{ width: '100%' }}
                         value={primaryAssigneeId}
                         onChange={(v) => setPrimaryAssigneeId(v)}
-                        options={users.map((u: any) => ({ value: u.id, label: u.name }))}
+                        optionLabelProp="label"
+                        optionRender={renderUserOption}
+                        popupMatchSelectWidth={false}
+                        options={users.map((u: any) => ({ value: u.id, label: u.name, user: u }))}
                     />
                 </Col>
                 <Col xs={12} sm={6} md={4}>
@@ -498,7 +533,10 @@ export default function PeriodicTasksPage() {
                                 <Select
                                     showSearch={{ optionFilterProp: 'label' }}
                                     placeholder="Chọn nhân viên"
-                                    options={users.map((u: any) => ({ value: u.id, label: u.name }))}
+                                    optionLabelProp="label"
+                                    optionRender={renderUserOption}
+                                    popupMatchSelectWidth={false}
+                                    options={users.map((u: any) => ({ value: u.id, label: u.name, user: u }))}
                                 />
                             </Form.Item>
                         </Col>
