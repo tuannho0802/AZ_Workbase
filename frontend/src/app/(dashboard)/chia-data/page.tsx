@@ -4,8 +4,10 @@ import { useState, useEffect } from 'react';
 import {
   Table, Select, Button, Modal, Tag, Space, Input,
   Typography, Row, Col, Statistic, Divider, Tabs,
-  Avatar, Tooltip, Badge, App, Card, Pagination, Popconfirm
+  Avatar, Tooltip, Badge, App, Card, Pagination, Popconfirm, DatePicker
 } from 'antd';
+import dayjs, { Dayjs } from 'dayjs';
+import { useCustomerStatuses } from '@/lib/hooks/useCustomerStatuses';
 import {
   UserAddOutlined, ReloadOutlined, SearchOutlined,
   CheckCircleOutlined, TeamOutlined, InfoCircleOutlined, DeleteOutlined
@@ -14,7 +16,6 @@ import { useRouter } from 'next/navigation';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import axiosInstance from '@/lib/api/axios-instance';
 import { useAuthStore } from '@/lib/stores/auth.store';
-import dayjs from 'dayjs';
 import { CustomerDetailDrawer } from '@/components/customers/CustomerDetailDrawer';
 import { useMediaSources } from '@/lib/hooks/useMediaSources';
 import { useMyPermissions } from '@/lib/hooks/useMyPermissions';
@@ -245,11 +246,21 @@ export default function ChiaDataPage() {
   const [unassignedSearch, setUnassignedSearch] = useState('');
   const [filterSource, setFilterSource] = useState<string | null>(null);
   const [filterDataOwner, setFilterDataOwner] = useState<number | null>(null);
+  const [filterStatus, setFilterStatus] = useState<string | null>(null);
+  const [unassignedDateFrom, setUnassignedDateFrom] = useState<Dayjs | null>(null);
+  const [unassignedDateTo, setUnassignedDateTo] = useState<Dayjs | null>(null);
 
   // State: filters cho bảng Đã assign
   const [assignedPage, setAssignedPage] = useState(1);
   const [assignedSearch, setAssignedSearch] = useState('');
   const [filterAssignedTo, setFilterAssignedTo] = useState<number | null>(null);
+  const [filterAssignedStatus, setFilterAssignedStatus] = useState<string | null>(null);
+  const [assignedDateFrom, setAssignedDateFrom] = useState<Dayjs | null>(null);
+  const [assignedDateTo, setAssignedDateTo] = useState<Dayjs | null>(null);
+
+  // Trạng thái động (bảng customer_statuses) - dùng chung cho cả 2 tab, đồng
+  // bộ với dropdown "Trạng thái" ở /customers (CustomerFilters.tsx).
+  const { statuses: allCustomerStatuses } = useCustomerStatuses();
 
   // State: selection + modal
   const [selectedIds, setSelectedIds] = useState<number[]>([]);
@@ -300,24 +311,32 @@ export default function ChiaDataPage() {
 
   // ── QUERIES ────────────────────────────────────────────
   const { data: unassignedData, isLoading: loadingUnassigned } = useQuery({
-    queryKey: ['unassigned', unassignedPage, unassignedSearch, 
-                filterSource, filterDataOwner],
+    queryKey: ['unassigned', unassignedPage, unassignedSearch,
+      filterSource, filterDataOwner, filterStatus,
+      unassignedDateFrom?.format('YYYY-MM-DD'), unassignedDateTo?.format('YYYY-MM-DD')],
     queryFn: () => api.getUnassigned({
       page: unassignedPage, limit: 20,
       search: unassignedSearch || undefined,
       source: filterSource || undefined,
       creatorId: filterDataOwner || undefined,
+      status: filterStatus || undefined,
+      dateFrom: unassignedDateFrom?.format('YYYY-MM-DD') || undefined,
+      dateTo: unassignedDateTo?.format('YYYY-MM-DD') || undefined,
     }).then(r => r.data),
     staleTime: 30_000,
     enabled: isHydrated && isAuthenticated, // Chỉ chạy khi đã nạp xong token
   });
 
   const { data: assignedData, isLoading: loadingAssigned } = useQuery({
-    queryKey: ['assigned', assignedPage, assignedSearch, filterAssignedTo],
+    queryKey: ['assigned', assignedPage, assignedSearch, filterAssignedTo,
+      filterAssignedStatus, assignedDateFrom?.format('YYYY-MM-DD'), assignedDateTo?.format('YYYY-MM-DD')],
     queryFn: () => api.getAssigned({
       page: assignedPage, limit: 20,
       search: assignedSearch || undefined,
       salesUserId: filterAssignedTo || undefined,
+      status: filterAssignedStatus || undefined,
+      dateFrom: assignedDateFrom?.format('YYYY-MM-DD') || undefined,
+      dateTo: assignedDateTo?.format('YYYY-MM-DD') || undefined,
     }).then(r => r.data),
     staleTime: 30_000,
     enabled: isHydrated && isAuthenticated,
@@ -840,6 +859,31 @@ export default function ChiaDataPage() {
                       />
                     </Col>
                   )}
+                  <Col flex="160px">
+                    <Select
+                      allowClear
+                      placeholder="Trạng thái"
+                      style={{ width: '100%' }}
+                      onChange={v => { setFilterStatus(v ?? null); setUnassignedPage(1); }}
+                      options={allCustomerStatuses
+                        .slice()
+                        .sort((a, b) => a.sortOrder - b.sortOrder)
+                        .map(s => ({ value: s.code, label: <Tag color={s.color} style={{ marginInlineEnd: 0 }}>{s.name}</Tag> }))}
+                    />
+                  </Col>
+                  <Col flex="260px">
+                    <DatePicker.RangePicker
+                      style={{ width: '100%' }}
+                      format="DD/MM/YYYY"
+                      placeholder={['Từ ngày', 'Đến ngày']}
+                      value={[unassignedDateFrom, unassignedDateTo]}
+                      onChange={(vals) => {
+                        setUnassignedDateFrom(vals?.[0] ?? null);
+                        setUnassignedDateTo(vals?.[1] ?? null);
+                        setUnassignedPage(1);
+                      }}
+                    />
+                  </Col>
                   <Col flex="auto" />
                   {/* NÚT CHIA — chỉ hiện khi đã chọn */}
                   {selectedIds.length > 0 && !isMobile && (
@@ -1002,6 +1046,31 @@ export default function ChiaDataPage() {
                       />
                     </Col>
                   )}
+                  <Col flex="160px">
+                    <Select
+                      allowClear
+                      placeholder="Trạng thái"
+                      style={{ width: '100%' }}
+                      onChange={v => { setFilterAssignedStatus(v ?? null); setAssignedPage(1); }}
+                      options={allCustomerStatuses
+                        .slice()
+                        .sort((a, b) => a.sortOrder - b.sortOrder)
+                        .map(s => ({ value: s.code, label: <Tag color={s.color} style={{ marginInlineEnd: 0 }}>{s.name}</Tag> }))}
+                    />
+                  </Col>
+                  <Col flex="260px">
+                    <DatePicker.RangePicker
+                      style={{ width: '100%' }}
+                      format="DD/MM/YYYY"
+                      placeholder={['Từ ngày', 'Đến ngày']}
+                      value={[assignedDateFrom, assignedDateTo]}
+                      onChange={(vals) => {
+                        setAssignedDateFrom(vals?.[0] ?? null);
+                        setAssignedDateTo(vals?.[1] ?? null);
+                        setAssignedPage(1);
+                      }}
+                    />
+                  </Col>
                   <Col>
                     <Tooltip title="Làm mới">
                       <Button

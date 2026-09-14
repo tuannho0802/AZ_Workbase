@@ -24,6 +24,9 @@ export const assignmentsApi = {
     search?: string;
     source?: string;
     creatorId?: number;  // lọc theo người tạo (Data Owner)
+    status?: string;
+    dateFrom?: string;
+    dateTo?: string;
   }): Promise<PaginatedResponse<Customer>> => {
     const response = await axiosInstance.get('/customers/unassigned', { params });
     return response.data;
@@ -70,6 +73,9 @@ export const assignmentsApi = {
     salesUserId?: number;
     sourceUserId?: number;
     search?: string;
+    status?: string;
+    dateFrom?: string;
+    dateTo?: string;
   }) => {
     const response = await axiosInstance.get('/customers/assigned', { params });
     return response.data;

@@ -138,6 +138,9 @@ export class CustomersController {
     @Query('salesUserId') salesUserId?: string,
     @Query('sourceUserId') sourceUserId?: string,
     @Query('search') search?: string,
+    @Query('status') status?: string,
+    @Query('dateFrom') dateFrom?: string,
+    @Query('dateTo') dateTo?: string,
   ) {
     return this.customersService.getAssigned({
       page: parseInt(page, 10),
@@ -145,6 +148,9 @@ export class CustomersController {
       salesUserId: salesUserId ? parseInt(salesUserId, 10) : null,
       sourceUserId: sourceUserId ? parseInt(sourceUserId, 10) : null,
       search,
+      status,
+      dateFrom,
+      dateTo,
       userId: user.id,
       userRole: user.role,
       scope,

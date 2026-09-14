@@ -1554,7 +1554,7 @@ export class CustomersService {
     userRole: string,
     scope?: string | null,
   ) {
-    const { page = 1, limit = 20, search, source, creatorId } = filters;
+    const { page = 1, limit = 20, search, source, creatorId, status, dateFrom, dateTo } = filters;
 
     const qb = this.customersRepository
       .createQueryBuilder('customer')
@@ -1619,6 +1619,18 @@ export class CustomersService {
       qb.andWhere('customer.source = :source', { source });
     }
 
+    if (status) {
+      qb.andWhere('customer.status = :status', { status });
+    }
+
+    if (dateFrom) {
+      qb.andWhere('customer.inputDate >= :dateFrom', { dateFrom });
+    }
+
+    if (dateTo) {
+      qb.andWhere('customer.inputDate <= :dateTo', { dateTo });
+    }
+
     if (search) {
       this.applyCustomerSearch(qb, search);
     }
@@ -1646,11 +1658,14 @@ export class CustomersService {
     salesUserId?: number | null;
     sourceUserId?: number | null;
     search?: string;
+    status?: string;
+    dateFrom?: string;
+    dateTo?: string;
     userId: number;
     userRole: string;
     scope?: string | null;
   }) {
-    const { page, limit, salesUserId, sourceUserId, search, userId, userRole, scope } = params;
+    const { page, limit, salesUserId, sourceUserId, search, status, dateFrom, dateTo, userId, userRole, scope } = params;
     const skip = (page - 1) * limit;
 
     const query = this.customersRepository
@@ -1682,6 +1697,18 @@ export class CustomersService {
 
     if (sourceUserId) {
       query.andWhere('customer.createdById = :sourceUserId', { sourceUserId });
+    }
+
+    if (status) {
+      query.andWhere('customer.status = :status', { status });
+    }
+
+    if (dateFrom) {
+      query.andWhere('customer.inputDate >= :dateFrom', { dateFrom });
+    }
+
+    if (dateTo) {
+      query.andWhere('customer.inputDate <= :dateTo', { dateTo });
     }
 
     if (search?.trim()) {
