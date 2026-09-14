@@ -388,14 +388,11 @@ export default function PeriodicTasksPage() {
                 <Col xs={12} sm={6} md={4}>
                     <Select
                         allowClear
-                        showSearch
+                        showSearch={{ optionFilterProp: 'label' }}
                         placeholder="Phụ trách chính"
                         style={{ width: '100%' }}
                         value={primaryAssigneeId}
                         onChange={(v) => setPrimaryAssigneeId(v)}
-                        filterOption={(input, option) =>
-                            (option?.label as string)?.toLowerCase().includes(input.toLowerCase())
-                        }
                         options={users.map((u) => ({ value: u.id, label: u.name }))}
                     />
                 </Col>
@@ -499,11 +496,8 @@ export default function PeriodicTasksPage() {
                                 rules={[{ required: true, message: 'Chọn người phụ trách chính' }]}
                             >
                                 <Select
-                                    showSearch
+                                    showSearch={{ optionFilterProp: 'label' }}
                                     placeholder="Chọn nhân viên"
-                                    filterOption={(input, option) =>
-                                        (option?.label as string)?.toLowerCase().includes(input.toLowerCase())
-                                    }
                                     options={users.map((u) => ({ value: u.id, label: u.name }))}
                                 />
                             </Form.Item>
