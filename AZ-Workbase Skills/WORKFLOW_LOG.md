@@ -1245,3 +1245,40 @@ param.
   phạm vi Batch B.
 
 ---
+
+## [2026-09-14 13:45] | Fix bug Search "nhom-lien-ket" chưa lọc theo Category + Category không liên quan không bị ẩn | Status: Success
+
+**Actor:** Agent (Claude), theo phản hồi trực tiếp kèm ảnh chụp UI: (1) gõ đúng tên Category (vd "Zalo")
+không tìm ra gì, (2) khi search ra ít nhóm, bảng Category ngoài vẫn hiện nguyên toàn bộ category khác
+(kể cả category không liên quan/rỗng).
+
+**Root Cause:** `groupSearch`/`groupStatusFilter` (thêm ở lượt Batch B) chỉ đang lọc `filteredGroups` (bảng
+Group lồng bên trong từng Category qua `expandedRowRender`) - hoàn toàn KHÔNG so khớp tên Category, và bảng
+Category NGOÀI (`dataSource={categories}`) không hề bị lọc theo 2 state này.
+
+**Solution:**
+- `frontend/src/app/(dashboard)/nhom-lien-ket/page.tsx`:
+  - Thêm `categoryNameMatches(c)` - so khớp tên Category với từ khoá tìm kiếm.
+  - Thêm `groupsOfCategory(categoryId)` - trả về Group của 1 category, có lọc Trạng thái; nếu TÊN Category
+    đó đã khớp từ khoá thì BỎ QUA điều kiện text cho Group con (hiện toàn bộ nhóm của category đó, đúng kỳ
+    vọng "tìm theo category thì hiện cả category").
+  - Thêm `filteredCategories` (`useMemo`) - chỉ giữ Category có TÊN khớp từ khoá HOẶC có ít nhất 1 Group
+    con khớp filter; dùng làm `dataSource` cho bảng Category ngoài (trước đây trỏ thẳng `categories`).
+  - Đồng bộ cột "Số nhóm" và bảng Group lồng bên trong dùng chung `groupsOfCategory()` thay vì
+    `filteredGroups.filter(...)` cũ (xoá biến `filteredGroups`).
+  - UX đi kèm: thêm `expandedRowKeys` CONTROLLED - khi đang có filter, tự động mở rộng toàn bộ Category còn
+    lại trong kết quả (trước đây Table mặc định thu gọn, filter đúng nhưng nhìn như "không ra gì" cho tới
+    khi tự bấm dấu "+"); khi KHÔNG filter, trả về đúng hành vi thu gọn/mở rộng thủ công như cũ
+    (`manualExpandedIds`).
+
+**Verify thật:**
+- `npx tsc --noEmit` (frontend, full project): sạch, 0 lỗi.
+- `npm run build` (Next.js 16 Turbopack): Compiled successfully, đủ route.
+- `npx eslint` cho file: lọc bỏ 3 nhóm lỗi PRE-EXISTING đã biết (`no-explicit-any`,
+  `react/no-unescaped-entities`, `react-hooks/exhaustive-deps`) - 0 vấn đề MỚI phát sinh ngoài 3 nhóm đó.
+- Đã `git checkout -- package-lock.json` sau `npm install` để tránh noise.
+- Chưa test tay trên browser thật - người dùng tự pull + test lại (đặc biệt case: gõ "Zalo" → chỉ còn dòng
+  Category Zalo, tự động mở rộng hiện đủ 2 nhóm bên trong; gõ "Fx Test" → chỉ còn Category Zalo (vì có nhóm
+  khớp), Group con lồng bên trong chỉ còn đúng 1 dòng "Nhóm Fx Test").
+
+---
