@@ -114,7 +114,7 @@ export default function LeaveRequestsPage() {
   // AttachmentUploader - BE (`PresignAttachmentDto.leaveType`) bắt buộc
   // phải có giá trị này ngay khi presign, không thể lấy sau.
   const selectedLeaveType = Form.useWatch('leaveType', form);
-  const { message } = App.useApp();
+  const { message, modal } = App.useApp();
   const router = useRouter();
   const { can, isLoading: permissionsLoading } = useMyPermissions();
 
@@ -231,7 +231,7 @@ export default function LeaveRequestsPage() {
   };
 
   const handleCancel = async (id: number) => {
-    Modal.confirm({
+    modal.confirm({
       title: 'Hủy đơn nghỉ phép?',
       content: 'Bạn chắc chắn muốn hủy đơn này?',
       onOk: async () => {
