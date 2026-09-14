@@ -177,6 +177,19 @@ export default function AuditLogsPage() {
   const [filterEntityType, setFilterEntityType] = useState<string | undefined>();
   const [dateRange, setDateRange] = useState<[dayjs.Dayjs | null, dayjs.Dayjs | null] | null>(null);
 
+  // ⚠️ Tab "Đăng nhập" tách riêng (yêu cầu người dùng: log đăng nhập gây
+  // nhiễu tab chính, không filter/xử lý được gì thêm ở đó). State/pagination
+  // độc lập hoàn toàn với tab "Danh sách nhật ký" - 2 request khác nhau, 2
+  // trang khác nhau, không dùng chung `page`/`pageSize`/`logs` ở trên.
+  const [loginLogs, setLoginLogs] = useState<AuditLog[]>([]);
+  const [loginTotal, setLoginTotal] = useState(0);
+  const [loginLoading, setLoginLoading] = useState(false);
+  const [loginPage, setLoginPage] = useState(1);
+  const [loginPageSize, setLoginPageSize] = useState(20);
+  const [loginSearch, setLoginSearch] = useState('');
+  const [loginDateRange, setLoginDateRange] = useState<[dayjs.Dayjs | null, dayjs.Dayjs | null] | null>(null);
+  const [loginTabLoaded, setLoginTabLoaded] = useState(false);
+
   // ── Effects ────────────────────────────────────────────────────────────
   useEffect(() => {
     // Khớp PERMISSIONS.md §2.7: CHỈ admin/assistant - Manager 403 tuyệt đối
@@ -204,6 +217,8 @@ export default function AuditLogsPage() {
         search: search || undefined,
         action: filterAction,
         entityType: filterEntityType,
+        // Tab chính luôn ẩn log đăng nhập - xem riêng ở tab "Đăng nhập".
+        excludeEntityType: 'auth',
         fromDate: dateRange?.[0]?.startOf('day').toISOString(),
         toDate: dateRange?.[1]?.endOf('day').toISOString(),
       };
@@ -224,6 +239,34 @@ export default function AuditLogsPage() {
     }
   }, [page, pageSize, search, filterAction, filterEntityType, dateRange, message]);
 
+  const fetchLoginLogs = useCallback(async (pg = loginPage, ps = loginPageSize) => {
+    setLoginLoading(true);
+    try {
+      const filters: AuditFilters = {
+        page: pg,
+        limit: ps,
+        search: loginSearch || undefined,
+        entityType: 'auth',
+        fromDate: loginDateRange?.[0]?.startOf('day').toISOString(),
+        toDate: loginDateRange?.[1]?.endOf('day').toISOString(),
+      };
+      const res = await auditApi.getLogs(filters);
+      if (res && res.data) {
+        setLoginLogs(res.data);
+        setLoginTotal(res.total || 0);
+      } else {
+        setLoginLogs([]);
+        setLoginTotal(0);
+      }
+    } catch (error) {
+      console.error('Fetch login logs error:', error);
+      message.error('Không thể tải nhật ký đăng nhập');
+      setLoginLogs([]);
+    } finally {
+      setLoginLoading(false);
+    }
+  }, [loginPage, loginPageSize, loginSearch, loginDateRange, message]);
+
   useEffect(() => {
     // ⚠️ FIX BUG THẬT (rà soát UI Permission): trước đây check cứng
     // ['admin','manager'] - lệch với chính đoạn code fix ngay phía trên
@@ -238,12 +281,32 @@ export default function AuditLogsPage() {
     }
   }, [page, pageSize, fetchLogs, user]);
 
+  // Tab "Đăng nhập" chỉ fetch LẦN ĐẦU khi người dùng thực sự mở tab đó (lazy)
+  // - tránh gọi thêm 1 API không cần thiết mỗi lần trang audit-logs mount,
+  // vì phần lớn người dùng chỉ xem tab chính.
+  useEffect(() => {
+    if (loginTabLoaded && user && can('audit.view')) {
+      fetchLoginLogs(loginPage, loginPageSize);
+    }
+  }, [loginPage, loginPageSize, loginTabLoaded, fetchLoginLogs, user]);
+
   // ── Handlers ───────────────────────────────────────────────────────────
   const handleSearch = () => { setPage(1); fetchLogs(1, pageSize); };
   const handleReset = () => {
     setSearch(''); setFilterAction(undefined); setFilterEntityType(undefined);
     setDateRange(null); setPage(1);
     setTimeout(() => fetchLogs(1, pageSize), 0);
+  };
+
+  const handleLoginSearch = () => { setLoginPage(1); fetchLoginLogs(1, loginPageSize); };
+  const handleLoginReset = () => {
+    setLoginSearch(''); setLoginDateRange(null); setLoginPage(1);
+    setTimeout(() => fetchLoginLogs(1, loginPageSize), 0);
+  };
+  const handleTabChange = (key: string) => {
+    if (key === '2' && !loginTabLoaded) {
+      setLoginTabLoaded(true);
+    }
   };
 
   const handleUpdateSettings = async () => {
@@ -481,7 +544,7 @@ export default function AuditLogsPage() {
         </Col>
       </Row>
 
-      <Tabs defaultActiveKey="1" items={[
+      <Tabs defaultActiveKey="1" onChange={handleTabChange} items={[
         {
           key: '1',
           label: <span><FileTextOutlined /> Danh sách nhật ký</span>,
@@ -496,8 +559,8 @@ export default function AuditLogsPage() {
                   </Col>
                   <Col xs={24} md={5}>
                     <Select placeholder="Loại hành động" value={filterAction} onChange={setFilterAction} allowClear style={{ width: '100%' }}
-                      options={[...Object.entries(ACTION_META).map(([k, v]) => ({ label: v.label, value: k })), 
-                               ...availableActions.filter(a => !ACTION_META[a]).map(a => ({ label: a, value: a }))]} />
+                      options={[...Object.entries(ACTION_META).filter(([k]) => k !== 'USER_LOGIN').map(([k, v]) => ({ label: v.label, value: k })),
+                      ...availableActions.filter(a => a !== 'USER_LOGIN' && !ACTION_META[a]).map(a => ({ label: a, value: a }))]} />
                   </Col>
                   <Col xs={24} md={5}>
                     <Select placeholder="Đối tượng" value={filterEntityType} onChange={setFilterEntityType} allowClear style={{ width: '100%' }}
@@ -570,8 +633,77 @@ export default function AuditLogsPage() {
             </>
           )
         },
-        ...(canManageAudit ? [{
+        {
           key: '2',
+          label: <span><UserOutlined /> Đăng nhập</span>,
+          children: (
+            <>
+              {/* Filters - ít field hơn tab chính (không cần Loại hành động/Đối tượng vì luôn là "Đăng nhập") */}
+              <Card variant="outlined" style={{ marginBottom: 16, borderRadius: 8 }}>
+                <Row gutter={[12, 12]} align="middle">
+                  <Col xs={24} md={8}>
+                    <Input placeholder="Tìm theo tên người đăng nhập..." prefix={<SearchOutlined />}
+                      value={loginSearch} onChange={e => setLoginSearch(e.target.value)} onPressEnter={handleLoginSearch} allowClear />
+                  </Col>
+                  <Col xs={24} md={8}>
+                    <RangePicker style={{ width: '100%' }} format="DD/MM/YYYY" value={loginDateRange} onChange={v => setLoginDateRange(v as [dayjs.Dayjs | null, dayjs.Dayjs | null] | null)} />
+                  </Col>
+                  <Col xs={24} md={4}>
+                    <Space>
+                      <Button type="primary" onClick={handleLoginSearch}>Lọc</Button>
+                      <Button icon={<ReloadOutlined />} onClick={handleLoginReset} />
+                    </Space>
+                  </Col>
+                </Row>
+              </Card>
+
+              {isMobile ? (
+                <div style={{ padding: '0 4px' }}>
+                  {loginLoading && loginLogs.length === 0 ? (
+                    <div style={{ padding: '24px 0', textAlign: 'center', color: '#8c8c8c' }}>Đang tải...</div>
+                  ) : loginLogs.length === 0 ? (
+                    <div style={{ padding: '24px 0', textAlign: 'center', color: '#8c8c8c' }}>Chưa có lượt đăng nhập nào</div>
+                  ) : (
+                    loginLogs.map((record) => (
+                      <AuditLogMobileCard
+                        key={record.id}
+                        record={record}
+                        onShowDetail={() => { setSelectedLog(record); setDrawerOpen(true); }}
+                      />
+                    ))
+                  )}
+                  <Pagination
+                    current={loginPage}
+                    pageSize={loginPageSize}
+                    total={loginTotal}
+                    size="small"
+                    simple
+                    onChange={(p, ps) => { setLoginPage(p); setLoginPageSize(ps || loginPageSize); }}
+                    style={{ textAlign: 'center', marginTop: 12 }}
+                  />
+                </div>
+              ) : (
+                <Card variant="outlined" style={{ borderRadius: 8 }}>
+                  <Table<AuditLog>
+                    columns={columns.filter(c => c.key !== 'entity')}
+                    dataSource={loginLogs}
+                    rowKey="id"
+                    loading={loginLoading}
+                    size="middle"
+                    pagination={{
+                      current: loginPage, pageSize: loginPageSize, total: loginTotal, showSizeChanger: true,
+                      pageSizeOptions: ['20', '50', '100'],
+                      showTotal: (t) => `Tổng cộng ${t.toLocaleString()} lượt đăng nhập`,
+                      onChange: (p, ps) => { setLoginPage(p); setLoginPageSize(ps); },
+                    }}
+                  />
+                </Card>
+              )}
+            </>
+          )
+        },
+        ...(canManageAudit ? [{
+          key: '3',
           label: <span><SettingOutlined /> Cài đặt dọn dẹp</span>,
           children: (
             <Card title="Cài đặt dọn dẹp tự động" style={{ maxWidth: 600, borderRadius: 8 }}>

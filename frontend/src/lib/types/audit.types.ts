@@ -35,6 +35,7 @@ export interface AuditFilters {
   userId?: number;
   action?: string;
   entityType?: string;
+  excludeEntityType?: string;
   fromDate?: string;
   toDate?: string;
   search?: string;

@@ -96,6 +96,7 @@ export class AuditService {
       userId,
       action,
       entityType,
+      excludeEntityType,
       fromDate,
       toDate,
       search,
@@ -124,6 +125,16 @@ export class AuditService {
 
     if (entityType) {
       qb.andWhere('log.entityType = :entityType', { entityType });
+    }
+
+    // Dùng cho tab "Danh sách nhật ký" chính: ẩn log đăng nhập (entityType
+    // 'auth') để tránh nhiễu, log đăng nhập xem riêng ở tab "Đăng nhập".
+    // Không dùng chung điều kiện với `entityType` ở trên vì 2 tham số này
+    // luôn loại trừ nhau theo cách FE gọi (tab chính gửi excludeEntityType,
+    // tab Đăng nhập gửi entityType=auth) - nhưng vẫn cho phép kết hợp nếu
+    // sau này cần (VD: loại trừ nhiều hơn 1 loại).
+    if (excludeEntityType) {
+      qb.andWhere('log.entityType != :excludeEntityType', { excludeEntityType });
     }
 
     if (fromDate) {

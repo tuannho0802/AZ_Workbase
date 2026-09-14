@@ -34,6 +34,11 @@ export class GetAuditLogsDto {
   @IsString()
   entityType?: string;
 
+  @ApiProperty({ required: false, description: 'Loại trừ entity type (VD: "auth" để ẩn log đăng nhập khỏi tab chính)' })
+  @IsOptional()
+  @IsString()
+  excludeEntityType?: string;
+
   @ApiProperty({ required: false, description: 'Từ ngày (ISO 8601)' })
   @IsOptional()
   @IsDateString()

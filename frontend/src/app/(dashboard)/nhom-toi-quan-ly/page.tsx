@@ -8,6 +8,7 @@ import { useAuthStore } from '@/lib/stores/auth.store';
 import { useManagedByMe, useAllLinkGroups } from '@/lib/hooks/useLinkGroups';
 import { useMyPermissions } from '@/lib/hooks/useMyPermissions';
 import { GroupManagersModal } from '@/components/link-groups/GroupManagersModal';
+import { ListFilterBar } from '@/components/common/ListFilterBar';
 
 const { Title, Text } = Typography;
 
@@ -36,6 +37,13 @@ export default function MyManagedLinkGroupsPage() {
 
   const [managingGroup, setManagingGroup] = useState<{ id: number; name: string } | null>(null);
 
+  // Search/filter CLIENT-SIDE: danh sách chỉ chứa nhóm mà chính user này
+  // quản lý (chính hoặc phụ) - BOUNDED, không phân trang thật ở BE, giống
+  // các trang danh mục khác (dùng chung `ListFilterBar`).
+  const [searchText, setSearchText] = useState('');
+  const [filterCategory, setFilterCategory] = useState<string | undefined>();
+  const [filterRole, setFilterRole] = useState<'primary' | 'secondary' | undefined>();
+
   const rows = useMemo(() => {
     const byId = new Map(allGroups.map((g) => [g.id, g]));
     return managedGroups.map((mg) => {
@@ -50,6 +58,26 @@ export default function MyManagedLinkGroupsPage() {
       };
     });
   }, [managedGroups, allGroups, currentUser]);
+
+  const categoryOptions = useMemo(() => {
+    const seen = new Map<string, string>();
+    rows.forEach((r) => {
+      if (r.categoryName) seen.set(r.categoryName, r.categoryName);
+    });
+    return Array.from(seen.values()).map((name) => ({ value: name, label: name }));
+  }, [rows]);
+
+  const filteredRows = useMemo(() => {
+    const q = searchText.trim().toLowerCase();
+    return rows.filter((r) => {
+      if (q && !r.groupName.toLowerCase().includes(q) && !(r.url || '').toLowerCase().includes(q)) return false;
+      if (filterCategory && r.categoryName !== filterCategory) return false;
+      // Admin luôn hiện "Admin" ở cột Vai trò (không phải primary/secondary
+      // thật) - filter theo Vai trò chỉ có ý nghĩa với user thường.
+      if (filterRole && currentUser?.role !== 'admin' && r.myRole !== filterRole) return false;
+      return true;
+    });
+  }, [rows, searchText, filterCategory, filterRole, currentUser]);
 
   const columns = [
     {
@@ -145,17 +173,44 @@ export default function MyManagedLinkGroupsPage() {
         </Text>
       </div>
 
+      <ListFilterBar
+        searchValue={searchText}
+        onSearchChange={setSearchText}
+        searchPlaceholder="Tìm theo tên nhóm/URL..."
+        dropdowns={[
+          {
+            key: 'category',
+            placeholder: 'Nền tảng',
+            value: filterCategory,
+            onChange: setFilterCategory,
+            options: categoryOptions,
+          },
+          {
+            key: 'role',
+            placeholder: 'Vai trò của tôi',
+            value: filterRole,
+            onChange: setFilterRole,
+            options: [
+              { value: 'primary', label: 'Quản lý chính' },
+              { value: 'secondary', label: 'Quản lý phụ' },
+            ],
+          },
+        ]}
+      />
+
       <Table
         rowKey="groupId"
         loading={isLoading || loadingAll}
         columns={columns}
-        dataSource={rows}
+        dataSource={filteredRows}
         pagination={{ pageSize: 20, hideOnSinglePage: true }}
         locale={{
           emptyText: (
             <Empty
               description={
-                currentUser?.role === 'admin'
+                searchText || filterCategory || filterRole
+                  ? 'Không tìm thấy nhóm nào khớp bộ lọc'
+                  : currentUser?.role === 'admin'
                   ? 'Chưa có nhóm liên kết nào trong hệ thống'
                   : 'Bạn chưa được gán làm Quản lý chính hoặc phụ của nhóm nào - liên hệ admin nếu cần được gán'
               }
