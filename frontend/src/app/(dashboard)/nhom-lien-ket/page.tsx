@@ -15,6 +15,9 @@ import {
   Popconfirm,
   Typography,
   ColorPicker,
+  Row,
+  Col,
+  Select,
 } from 'antd';
 import {
   PlusOutlined,
@@ -25,6 +28,7 @@ import {
   LinkOutlined,
   TeamOutlined,
   CrownOutlined,
+  SearchOutlined,
 } from '@ant-design/icons';
 import { useAuthStore } from '@/lib/stores/auth.store';
 import {
@@ -79,6 +83,25 @@ export default function LinkGroupsAdminPage() {
 
   const { categories, isLoading: loadingCategories } = useLinkCategories(false);
   const { groups, isLoading: loadingGroups } = useAllLinkGroups();
+
+  // Filter nhẹ CHỈ áp cho bảng Group (lồng bên trong từng Category) - Category
+  // (nền tảng: Zalo/Facebook/Threads...) thường chỉ vài dòng, không cần lọc.
+  // Group thì có thể nhiều (nhiều nhóm Zalo/Facebook khác nhau) nên cần
+  // search theo tên/URL + lọc Trạng thái (đang hiện/đang ẩn).
+  const [groupSearch, setGroupSearch] = useState('');
+  const [groupStatusFilter, setGroupStatusFilter] = useState<'active' | 'inactive' | null>(null);
+
+  const filteredGroups = useMemo(() => {
+    return groups.filter((g) => {
+      if (groupStatusFilter === 'active' && !g.isActive) return false;
+      if (groupStatusFilter === 'inactive' && g.isActive) return false;
+      if (groupSearch.trim()) {
+        const q = groupSearch.trim().toLowerCase();
+        if (!(g.name.toLowerCase().includes(q) || g.url?.toLowerCase().includes(q))) return false;
+      }
+      return true;
+    });
+  }, [groups, groupSearch, groupStatusFilter]);
 
   // ⚠️ SỬA (2026-09-10, theo phản hồi người dùng - "Filter ở đây check là
   // nhân viên phòng ban marketing, không check positions"): dropdown "Quản
@@ -410,7 +433,7 @@ export default function LinkGroupsAdminPage() {
       key: 'groupCount',
       width: 100,
       render: (_: any, record: LinkCategory) =>
-        groups.filter((g) => g.categoryId === record.id).length,
+        filteredGroups.filter((g) => g.categoryId === record.id).length,
     },
     {
       title: 'Thứ tự',
@@ -484,6 +507,31 @@ export default function LinkGroupsAdminPage() {
         )}
       </div>
 
+      <Row gutter={[12, 12]} style={{ marginBottom: 16 }}>
+        <Col xs={24} sm={12} md={8}>
+          <Input
+            allowClear
+            placeholder="Tìm nhóm theo tên hoặc URL..."
+            prefix={<SearchOutlined />}
+            value={groupSearch}
+            onChange={(e) => setGroupSearch(e.target.value)}
+          />
+        </Col>
+        <Col xs={12} sm={8} md={5}>
+          <Select
+            allowClear
+            placeholder="Trạng thái nhóm"
+            style={{ width: '100%' }}
+            value={groupStatusFilter}
+            onChange={(v) => setGroupStatusFilter(v ?? null)}
+            options={[
+              { value: 'active', label: <Tag color="green" style={{ marginInlineEnd: 0 }}>Đang hiện</Tag> },
+              { value: 'inactive', label: <Tag color="red" style={{ marginInlineEnd: 0 }}>Đang ẩn</Tag> },
+            ]}
+          />
+        </Col>
+      </Row>
+
       <Table
         rowKey="id"
         loading={loadingCategories || loadingGroups}
@@ -496,7 +544,7 @@ export default function LinkGroupsAdminPage() {
               rowKey="id"
               size="small"
               columns={groupColumns}
-              dataSource={groups.filter((g) => g.categoryId === record.id)}
+              dataSource={filteredGroups.filter((g) => g.categoryId === record.id)}
               pagination={false}
               locale={{ emptyText: 'Chưa có nhóm nào - bấm "Thêm nhóm" ở dòng category để tạo mới' }}
             />

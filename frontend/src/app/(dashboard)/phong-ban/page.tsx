@@ -78,6 +78,18 @@ export default function DepartmentsPage() {
     const updateMutation = useUpdateDepartment();
     const deleteMutation = useDeleteDepartment();
 
+    // Filter nhẹ CLIENT-SIDE (danh mục phòng ban thường rất ít, useDepartments
+    // trả toàn bộ không phân trang).
+    const [searchText, setSearchText] = useState('');
+    const [filterActive, setFilterActive] = useState<boolean | null>(null);
+    const filteredDepartments = useMemo(() => {
+        return departments.filter((d) => {
+            if (filterActive !== null && d.isActive !== filterActive) return false;
+            if (searchText.trim() && !d.name.toLowerCase().includes(searchText.trim().toLowerCase())) return false;
+            return true;
+        });
+    }, [departments, searchText, filterActive]);
+
     // Lấy TOÀN BỘ user active (không lọc role='manager' tại BE nữa) vì BE
     // (departments.service.ts) giờ cho phép gán NHIỀU Manager/phòng ban
     // (bảng department_managers) cho user có role Admin/Assistant/Manager -
