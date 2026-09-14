@@ -214,6 +214,10 @@ export default function DashboardLayout({
       newKey = 'duyet-phep';
     } else if (pathname.includes('/vi-tri')) {
       newKey = 'vi-tri';
+    } else if (pathname.includes('/quan-ly-trang-thai-cong-viec')) {
+      newKey = 'quan-ly-trang-thai-cong-viec';
+    } else if (pathname.includes('/cong-viec-dinh-ky')) {
+      newKey = 'cong-viec-dinh-ky';
     } else if (pathname.includes('/trash-can')) {
       newKey = 'trash-can';
     } else if (pathname.includes('/quan-ly-phu-trach')) {

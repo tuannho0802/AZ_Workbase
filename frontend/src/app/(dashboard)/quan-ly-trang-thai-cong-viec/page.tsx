@@ -234,7 +234,7 @@ export default function PeriodicTaskStatusesPage() {
             title: (
                 <Space size={4}>
                     Tính % hoàn thành
-                    <Tooltip title="Task ở trạng thái này có tính vào TỬ SỐ % rollup không (dùng ở Phase 2 - Rollup theo phòng ban/kỳ)">
+                    <Tooltip title="Task ở trạng thái này có tính vào TỬ SỐ % rollup không">
                         <InfoCircleOutlined style={{ color: '#8c8c8c' }} />
                     </Tooltip>
                 </Space>
