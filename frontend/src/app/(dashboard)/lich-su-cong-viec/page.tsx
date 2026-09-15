@@ -111,6 +111,10 @@ export default function TaskHistoryPage() {
       message.warning('Bạn không có quyền truy cập trang này');
       router.replace('/customers');
     }
+    // `can` từ useMyPermissions KHÔNG memoized (hàm mới mỗi render) - thêm vào
+    // deps sẽ khiến effect này chạy lại mỗi render, không infinite loop
+    // nhưng dư thừa. Bỏ qua theo đúng pattern đã dùng ở effect fetchLogs bên dưới.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user, permissionsLoading, router, message]);
 
   // ── State ──────────────────────────────────────────────────────────────
@@ -176,7 +180,7 @@ export default function TaskHistoryPage() {
       content: (
         <div>
           <Text>Bạn có chắc chắn muốn xóa <b>{selectedRowKeys.length}</b> bản ghi lịch sử đã chọn?</Text>
-          <p style={{ marginTop: 8, color: 'red' }}>Hành động này không thể hoàn tác. Vui lòng nhập "XÁC NHẬN" để tiếp tục:</p>
+          <p style={{ marginTop: 8, color: 'red' }}>Hành động này không thể hoàn tác. Vui lòng nhập &quot;XÁC NHẬN&quot; để tiếp tục:</p>
           <Input id="task-history-confirm-input" placeholder="XÁC NHẬN" />
         </div>
       ),
@@ -212,9 +216,9 @@ export default function TaskHistoryPage() {
         <div style={{ marginTop: 16 }}>
           <Text type="secondary">Vui lòng chọn khoảng thời gian cần dọn dẹp:</Text>
           <div style={{ marginTop: 8 }}>
-            <RangePicker onChange={(v) => { range = v as any; }} />
+            <RangePicker onChange={(v) => { range = v as [dayjs.Dayjs | null, dayjs.Dayjs | null] | null; }} />
           </div>
-          <p style={{ marginTop: 16, color: 'red' }}>Vui lòng nhập "XÁC NHẬN" để thực hiện xóa:</p>
+          <p style={{ marginTop: 16, color: 'red' }}>Vui lòng nhập &quot;XÁC NHẬN&quot; để thực hiện xóa:</p>
           <Input id="task-history-cleanup-confirm" placeholder="XÁC NHẬN" />
         </div>
       ),
@@ -254,7 +258,7 @@ export default function TaskHistoryPage() {
       key: 'createdAt',
       width: 160,
       render: (val: string) => (
-        <Space direction="vertical" size={0}>
+        <Space orientation="vertical" size={0}>
           <Text style={{ fontSize: 13, fontWeight: 500 }}>{dayjs(val).format('HH:mm:ss')}</Text>
           <Text type="secondary" style={{ fontSize: 11 }}>{dayjs(val).format('DD/MM/YYYY')}</Text>
         </Space>
@@ -370,7 +374,12 @@ export default function TaskHistoryPage() {
             />
           </Col>
           <Col xs={24} md={6}>
-            <RangePicker style={{ width: '100%' }} format="DD/MM/YYYY" value={dateRange} onChange={(v) => setDateRange(v as any)} />
+            <RangePicker
+              style={{ width: '100%' }}
+              format="DD/MM/YYYY"
+              value={dateRange}
+              onChange={(v) => setDateRange(v as [dayjs.Dayjs | null, dayjs.Dayjs | null] | null)}
+            />
           </Col>
           <Col xs={24} md={4}>
             <Space>

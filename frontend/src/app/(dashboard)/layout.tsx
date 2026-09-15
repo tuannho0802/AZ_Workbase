@@ -218,6 +218,8 @@ export default function DashboardLayout({
       newKey = 'quan-ly-trang-thai-cong-viec';
     } else if (pathname.includes('/cong-viec-dinh-ky')) {
       newKey = 'cong-viec-dinh-ky';
+    } else if (pathname.includes('/lich-su-cong-viec')) {
+      newKey = 'lich-su-cong-viec';
     } else if (pathname.includes('/trash-can')) {
       newKey = 'trash-can';
     } else if (pathname.includes('/quan-ly-phu-trach')) {

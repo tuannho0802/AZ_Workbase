@@ -20,8 +20,8 @@ export interface PeriodicTaskAuditLog {
   userId: number;
   user: PeriodicTaskAuditLogUser;
   action: string;
-  oldData: any | null;
-  newData: any | null;
+  oldData: Record<string, unknown> | null;
+  newData: Record<string, unknown> | null;
   ipAddress: string | null;
   userAgent: string | null;
   createdAt: string;

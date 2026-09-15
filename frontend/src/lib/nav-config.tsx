@@ -22,6 +22,7 @@ import {
   TagOutlined,
   ScheduleOutlined,
   BgColorsOutlined,
+  HistoryOutlined,
 } from '@ant-design/icons';
 
 export interface NavItem {
@@ -115,6 +116,21 @@ export const NAV_ITEMS: NavItem[] = [
     // periodic-tasks.controller.ts (seed ở migration
     // SeedPeriodicTasksPermissions1782100000000: admin+assistant=all,
     // manager=department, employee=own).
+    roles: null,
+    permission: 'periodic_tasks.view',
+  },
+  {
+    key: 'lich-su-cong-viec',
+    label: 'Lịch sử Công việc định kỳ',
+    description: 'Nhật ký thay đổi gộp của mọi Công việc định kỳ (bulk xoá, dọn dẹp theo khoảng ngày)',
+    icon: <HistoryOutlined />,
+    path: '/lich-su-cong-viec',
+    // Khớp @RequirePermission('periodic_tasks.view') ở 2 endpoint GET (xem
+    // lịch sử) trong periodic-tasks.controller.ts - GIỐNG mục "Công việc định
+    // kỳ" ở trên (tái dùng permission đã có, không tạo key mới). Bulk
+    // xoá/dọn dẹp dùng riêng `periodic_tasks.delete` được check ở CHÍNH trang
+    // (ẩn nút, không phải ẩn cả mục nav) vì đó là hành động phụ, không phải
+    // điều kiện để VÀO trang.
     roles: null,
     permission: 'periodic_tasks.view',
   },
