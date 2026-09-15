@@ -10,6 +10,7 @@ import { UpdateAssignmentDto } from './dto/update-assignment.dto';
 import { Role } from '../../common/enums/role.enum';
 import { PermissionScope } from '../../database/entities/role-permission.entity';
 import { User } from '../../database/entities/user.entity';
+import { Department } from '../../database/entities/department.entity';
 import { DepartmentManager } from '../../database/entities/department-manager.entity';
 import { DepartmentManagerHelper } from '../departments/helpers/department-manager.helper';
 import {
@@ -92,29 +93,43 @@ export class CustomersService {
   async create(createCustomerDto: CreateCustomerDto, userId: number) {
     const userRepo = this.customersRepository.manager.getRepository(User);
 
+    // ⚠️ Giữ lại kết quả tra cứu (trước đây chỉ dùng để validate rồi bỏ) -
+    // tái dùng thẳng cho `buildCustomerAuditSnapshot()` bên dưới, tránh phải
+    // query lại lần 2 (mirror `PeriodicTasksService.create()`).
+    let salesUserEntity: User | null = null;
     if (createCustomerDto.salesUserId) {
-      const salesUser = await userRepo.findOneBy({
+      salesUserEntity = await userRepo.findOneBy({
         id: createCustomerDto.salesUserId,
         isActive: true,
       });
-      if (!salesUser) {
+      if (!salesUserEntity) {
         throw new BadRequestException(
           `Nhân viên ID ${createCustomerDto.salesUserId} không tồn tại hoặc đã bị khóa`,
         );
       }
     }
 
+    let marketingUserEntity: User | null = null;
     if (createCustomerDto.marketingUserId) {
-      const marketingUser = await userRepo.findOneBy({
+      marketingUserEntity = await userRepo.findOneBy({
         id: createCustomerDto.marketingUserId,
         isActive: true,
       });
-      if (!marketingUser) {
+      if (!marketingUserEntity) {
         throw new BadRequestException(
           `Nhân viên ID ${createCustomerDto.marketingUserId} không tồn tại hoặc đã bị khóa`,
         );
       }
     }
+
+    // Chỉ để dựng audit snapshot đọc được (KHÔNG throw nếu không tồn tại -
+    // departmentId chưa từng được validate tồn tại ở create(), không đổi
+    // hành vi cũ, chỉ best-effort lấy tên hiển thị).
+    const departmentEntity = createCustomerDto.departmentId
+      ? await this.customersRepository.manager
+        .getRepository(Department)
+        .findOneBy({ id: createCustomerDto.departmentId })
+      : null;
 
     await this.assertValidStatus(createCustomerDto.status);
 
@@ -148,7 +163,11 @@ export class CustomersService {
         'customer',
         (saved as any).id,
         null,
-        saved,
+        this.buildCustomerAuditSnapshot(saved as unknown as Customer, {
+          salesUser: salesUserEntity,
+          marketingUser: marketingUserEntity,
+          department: departmentEntity,
+        }),
       );
 
       return saved;
@@ -158,6 +177,54 @@ export class CustomersService {
       }
       throw error;
     }
+  }
+
+  /**
+   * ⚠️ CẢI TIẾN AUDIT LOG (mirror ĐÚNG `PeriodicTasksService.
+   * buildAuditSnapshot()` - báo lỗi thật từ người dùng: trang "Nhật ký hệ
+   * thống" hiển thị "Nhân viên sales: 3" / "Dữ liệu phức hợp" thay vì tên đọc
+   * được): dựng 1 snapshot "sạch" cho `oldData`/`newData` của audit log, THAY
+   * THẾ việc trước đây log thẳng cả entity `Customer` (raw `salesUserId`
+   * dạng số + relation object cồng kềnh lẫn lộn, có nơi chỉ có ID không có
+   * quan hệ nào được load).
+   *
+   * `createdBy`/`updatedBy` KHÔNG đưa vào đây - luôn TRÙNG với cột "Người
+   * thực hiện" mà chính dòng audit log đã hiển thị riêng (`log.user`), mirror
+   * đúng lý do đã áp dụng ở `PeriodicTasksService.buildAuditSnapshot()`.
+   * `deposits`/`notes` cũng KHÔNG đưa vào - đó là bảng con có audit riêng của
+   * chính nó (`CREATE_DEPOSIT`/`CREATE_NOTE`...), lặp lại ở đây chỉ gây rối.
+   */
+  private buildCustomerAuditSnapshot(
+    customer: Customer,
+    overrides?: {
+      salesUser?: User | null;
+      marketingUser?: User | null;
+      department?: Department | null;
+    },
+  ): Record<string, unknown> {
+    const salesUser =
+      overrides && 'salesUser' in overrides ? overrides.salesUser : (customer.salesUser ?? null);
+    const marketingUser =
+      overrides && 'marketingUser' in overrides ? overrides.marketingUser : (customer.marketingUser ?? null);
+    const department =
+      overrides && 'department' in overrides ? overrides.department : (customer.department ?? null);
+
+    return {
+      name: customer.name,
+      phone: customer.phone,
+      email: customer.email,
+      source: customer.source,
+      campaign: customer.campaign,
+      status: customer.status,
+      broker: customer.broker,
+      closedDate: customer.closedDate,
+      note: customer.note,
+      inputDate: customer.inputDate,
+      assignedDate: customer.assignedDate,
+      salesUser: salesUser ? { id: salesUser.id, name: salesUser.name } : null,
+      marketingUser: marketingUser ? { id: marketingUser.id, name: marketingUser.name } : null,
+      department: department ? { id: department.id, name: department.name } : null,
+    };
   }
 
   /**
@@ -1188,6 +1255,15 @@ export class CustomersService {
     // code sẽ không chạy tới được dòng này. Với app này, phạm vi Xem và
     // phạm vi Sửa là một (xem chú thích đầu file customer-access.helper.ts).
 
+    // ⚠️ FIX BUG THẬT (audit log "oldData" không phải dữ liệu CŨ): trước đây
+    // `oldData = { ...customer }` được chụp SAU khi Step 1/1b/2 bên dưới đã
+    // tự sửa thẳng `customer.salesUser`/`marketingUser`/`departmentId` trong
+    // bộ nhớ - lúc chụp thì "cũ" đã lẫn "mới", audit log không bao giờ thấy
+    // được sales/marketing/phòng ban THẬT SỰ đổi từ đâu. Chụp `before` NGAY
+    // ở đây - TRƯỚC bất kỳ mutation nào - dùng `buildCustomerAuditSnapshot()`
+    // (mirror `PeriodicTasksService.update()`, biến `before`/`beforeStatusId`).
+    const before = this.buildCustomerAuditSnapshot(customer);
+
     const today = this.getTodayVn();
     const todayStr = today.toISOString().split('T')[0];
 
@@ -1237,11 +1313,28 @@ export class CustomersService {
     }
 
     // Step 2: Handle departmentId assignment explicitly
+    // ⚠️ FIX BUG THẬT (TypeORM Relation Precedence - xem
+    // `SKILL_NESTJS_BACKEND.md` mục 13): nhánh else-if trước đây CHỈ sửa
+    // `customer.departmentId` (cột FK thô) mà KHÔNG sửa `customer.department`
+    // (relation object đã được `findOne()` load ĐẦY ĐỦ ở trên) - object cũ
+    // vẫn còn nguyên trong bộ nhớ nên (1) audit log "sau khi sửa" vẫn hiện
+    // tên phòng ban CŨ, và (2) có rủi ro TypeORM ưu tiên relation object đã
+    // load khi `.save()`, ghi ĐÈ `department_id` về giá trị cũ xuống DB. Gán
+    // `{ id }` tạm (mirror ĐÚNG cách `customer.updatedBy` đã fix bên dưới),
+    // để `buildCustomerAuditSnapshot()` tự fetch lại tên đầy đủ sau khi save
+    // (xem `newDepartment` ở dưới).
+    let departmentChanged = false;
     if (updateCustomerDto.departmentId === null) {
       customer.department = null;
       customer.departmentId = null;
-    } else if (updateCustomerDto.departmentId !== undefined) {
+      departmentChanged = true;
+    } else if (
+      updateCustomerDto.departmentId !== undefined &&
+      updateCustomerDto.departmentId !== customer.departmentId
+    ) {
       customer.departmentId = updateCustomerDto.departmentId;
+      customer.department = { id: updateCustomerDto.departmentId } as Department;
+      departmentChanged = true;
     }
 
     // Logic cho assignedDate: Tự động set khi salesUserId được gán lần đầu
@@ -1264,8 +1357,6 @@ export class CustomersService {
 
     await this.assertValidStatus(updateCustomerDto.status);
 
-    const oldData = { ...customer };
-
     try {
       this.customersRepository.merge(customer, {
         ...updateCustomerDto,
@@ -1281,13 +1372,27 @@ export class CustomersService {
       customer.updatedBy = { id: userId } as User;
 
       const saved = await this.customersRepository.save(customer);
+
+      // `saved.department` ở đây có thể chỉ còn `{ id }` (rút gọn tạm ở Step 2
+      // để persist đúng FK) - fetch lại ĐẦY ĐỦ nếu vừa đổi, để audit snapshot
+      // "sau khi sửa" có tên phòng ban đọc được (mirror `PeriodicTasksService.
+      // update()` - biến `newDepartment`/`newStatus`). Không đổi -> tái dùng
+      // đúng entity đã load sẵn từ `findOne()` (đã có tên).
+      const newDepartment = departmentChanged
+        ? saved.departmentId != null
+          ? await this.customersRepository.manager
+            .getRepository(Department)
+            .findOneBy({ id: saved.departmentId })
+          : null
+        : (saved.department ?? null);
+
       this.auditService.logActionAsync(
         userId,
         'UPDATE_CUSTOMER',
         'customer',
         (saved as any).id,
-        oldData,
-        saved,
+        before,
+        this.buildCustomerAuditSnapshot(saved, { department: newDepartment }),
       );
       return saved;
     } catch (error: any) {
