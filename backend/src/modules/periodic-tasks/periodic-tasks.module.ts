@@ -9,6 +9,7 @@ import { PeriodicTaskChecklistItem } from '../../database/entities/periodic-task
 import { PeriodicTaskAuditLog } from '../../database/entities/periodic-task-audit-log.entity';
 import { Customer } from '../../database/entities/customer.entity';
 import { User } from '../../database/entities/user.entity';
+import { Department } from '../../database/entities/department.entity';
 import { DepartmentManager } from '../../database/entities/department-manager.entity';
 import { PeriodicTasksService } from './periodic-tasks.service';
 import { PeriodicTaskLinksService } from './periodic-task-links.service';
@@ -33,6 +34,7 @@ import { PeriodicTasksController } from './periodic-tasks.controller';
       PeriodicTaskAuditLog,
       Customer,
       User,
+      Department,
       DepartmentManager,
     ]),
   ],

@@ -48,6 +48,8 @@ export class PeriodicTasksService {
     private readonly statusRepo: Repository<PeriodicTaskStatus>,
     @InjectRepository(User)
     private readonly userRepo: Repository<User>,
+    @InjectRepository(Department)
+    private readonly departmentRepo: Repository<Department>,
     @InjectRepository(DepartmentManager)
     private readonly departmentManagerRepo: Repository<DepartmentManager>,
     private readonly permissionsService: PermissionsService,
@@ -59,21 +61,38 @@ export class PeriodicTasksService {
    * status hệ thống `code='not_started'` seed sẵn ở
    * `CreatePeriodicTaskStatuses1781900000000`.
    */
-  private async getDefaultStatusId(): Promise<number> {
+  /**
+   * Trạng thái mặc định khi tạo Task không truyền `statusId` - dùng đúng
+   * status hệ thống `code='not_started'` seed sẵn ở
+   * `CreatePeriodicTaskStatuses1781900000000`.
+   *
+   * ⚠️ Trả về CẢ ENTITY (không chỉ `id` như bản cũ `getDefaultStatusId()`) -
+   * cần đủ `name`/`color` để dựng audit snapshot "Tạo mới" đọc được ngay
+   * (xem `buildAuditSnapshot()` + mục cải tiến audit log bên dưới), tránh
+   * phải query lại lần 2.
+   */
+  private async getDefaultStatus(): Promise<PeriodicTaskStatus> {
     const defaultStatus = await this.statusRepo.findOne({ where: { code: 'not_started' } });
     if (!defaultStatus) {
       throw new BadRequestException(
         'Không tìm thấy trạng thái mặc định "not_started" - hệ thống Trạng thái công việc định kỳ chưa được khởi tạo đúng',
       );
     }
-    return defaultStatus.id;
+    return defaultStatus;
   }
 
-  private async assertStatusExists(statusId: number): Promise<void> {
-    const exists = await this.statusRepo.findOne({ where: { id: statusId } });
-    if (!exists) {
+  /**
+   * ⚠️ Trả về CẢ ENTITY (trước đây `Promise<void>`, chỉ ném lỗi nếu không
+   * tồn tại) - lý do đổi: cần đủ `name`/`color` của status MỚI để dựng audit
+   * snapshot đọc được (xem `buildAuditSnapshot()`) mà KHÔNG cần query lại
+   * lần 2 - tái dùng đúng kết quả của lần kiểm tra tồn tại này.
+   */
+  private async assertStatusExists(statusId: number): Promise<PeriodicTaskStatus> {
+    const status = await this.statusRepo.findOne({ where: { id: statusId } });
+    if (!status) {
       throw new BadRequestException(`Trạng thái với ID ${statusId} không tồn tại`);
     }
+    return status;
   }
 
   private async assertUserExists(userId: number, fieldLabel: string): Promise<User> {
@@ -88,6 +107,65 @@ export class PeriodicTasksService {
     if (new Date(periodEndDate) < new Date(periodStartDate)) {
       throw new BadRequestException('periodEndDate không được nhỏ hơn periodStartDate');
     }
+  }
+
+  /**
+   * ⚠️ CẢI TIẾN AUDIT LOG (báo lỗi thật từ người dùng - trang "Lịch sử Công
+   * việc định kỳ" hiển thị "Trạng thái: 2" / "Dữ liệu phức hợp" thay vì tên
+   * đọc được): dựng 1 snapshot "sạch" cho `oldData`/`newData` của audit log,
+   * THAY THẾ việc trước đây log thẳng `{ ...task }`/`saved` (raw entity).
+   *
+   * 2 vấn đề gốc rễ của cách làm cũ:
+   *  1. Entity `PeriodicTask` có CẢ cột FK thô (`statusId`/`primaryAssigneeId`/
+   *     `departmentId`) LẪN object quan hệ (`status`/`primaryAssignee`/
+   *     `department`) - spread `{ ...task }` đưa CẢ 2 vào snapshot, khiến
+   *     FE hiển thị 2 dòng "Trạng thái" trùng nhau (1 dòng đọc được, 1 dòng
+   *     chỉ có số ID thô).
+   *  2. Sau khi đổi `statusId`/`primaryAssigneeId`/`departmentId`, code gán
+   *     tạm object quan hệ dạng `{ id }` (CỐ Ý - xem comment "BUG THẬT
+   *     2026-09-15" ở `update()`, cần thiết để TypeORM ghi đúng FK xuống
+   *     DB) - nhưng object rút gọn này mất hết `name`/`color`, nếu log
+   *     thẳng vào audit thì FE không có gì để hiển thị ngoài raw object.
+   *
+   * Hàm này giải quyết CẢ 2: chỉ chọn lọc field có ý nghĩa với end-user,
+   * và cho phép truyền `overrides` để dùng ENTITY ĐẦY ĐỦ (đã tự fetch riêng
+   * ở `create()`/`update()` - xem `assertStatusExists()`/`assertUserExists()`
+   * giờ trả về cả entity) thay vì object rút gọn `{ id }` đang gắn tạm trên
+   * `task`/`saved` cho mục đích persist.
+   *
+   * `createdBy`/`updatedBy` KHÔNG đưa vào đây - luôn TRÙNG với cột "Người
+   * thực hiện" mà chính dòng audit log đã hiển thị riêng (`log.user`), đưa
+   * vào chỉ gây nhiễu (đã xác nhận qua ảnh chụp màn hình người dùng gửi:
+   * dòng "updatedBy: Trống → Dữ liệu phức hợp" không mang thêm thông tin gì).
+   */
+  private buildAuditSnapshot(
+    task: PeriodicTask,
+    overrides?: {
+      status?: PeriodicTaskStatus | null;
+      primaryAssignee?: User | null;
+      department?: Department | null;
+    },
+  ): Record<string, unknown> {
+    const status = overrides && 'status' in overrides ? overrides.status : (task.status ?? null);
+    const primaryAssignee =
+      overrides && 'primaryAssignee' in overrides ? overrides.primaryAssignee : (task.primaryAssignee ?? null);
+    const department =
+      overrides && 'department' in overrides ? overrides.department : (task.department ?? null);
+
+    return {
+      title: task.title,
+      description: task.description,
+      periodType: task.periodType,
+      periodStartDate: task.periodStartDate,
+      periodEndDate: task.periodEndDate,
+      status: status ? { id: status.id, code: status.code, name: status.name, color: status.color } : null,
+      primaryAssignee: primaryAssignee ? { id: primaryAssignee.id, name: primaryAssignee.name } : null,
+      department: department ? { id: department.id, name: department.name } : null,
+      color: task.color,
+      isLocked: task.isLocked,
+      lockNote: task.lockNote,
+      note: task.note,
+    };
   }
 
   /**
@@ -134,14 +212,16 @@ export class PeriodicTasksService {
 
     const primaryAssignee = await this.assertUserExists(dto.primaryAssigneeId, 'Người phụ trách chính');
 
-    const statusId = dto.statusId ?? (await this.getDefaultStatusId());
-    if (dto.statusId) {
-      await this.assertStatusExists(dto.statusId);
-    }
+    // Luôn lấy CẢ ENTITY status (không chỉ id) - dùng thẳng cho cả cột FK
+    // lẫn audit snapshot "Tạo mới", tránh phải query lại lần 2 (xem
+    // `buildAuditSnapshot()`).
+    const status = dto.statusId ? await this.assertStatusExists(dto.statusId) : await this.getDefaultStatus();
 
     // Auto-fill departmentId từ phòng ban của primaryAssignee lúc tạo nếu
     // không truyền - CHỈ là giá trị khởi tạo, sửa tự do sau đó (PLAN mục 2.10).
     const departmentId = dto.departmentId ?? primaryAssignee.departmentId ?? null;
+    const department =
+      departmentId != null ? await this.departmentRepo.findOne({ where: { id: departmentId } }) : null;
 
     const task = this.taskRepo.create({
       title: dto.title,
@@ -149,7 +229,7 @@ export class PeriodicTasksService {
       periodType: dto.periodType,
       periodStartDate: dto.periodStartDate,
       periodEndDate: dto.periodEndDate,
-      statusId,
+      statusId: status.id,
       primaryAssigneeId: dto.primaryAssigneeId,
       departmentId,
       createdById: userId,
@@ -161,7 +241,17 @@ export class PeriodicTasksService {
 
     // Phase 7 (PLAN mục 2.6): audit log `created`, gọi SAU khi có `saved.id`
     // thật (fire-and-forget, không chặn response - xem JSDoc `logActionAsync`).
-    this.auditService.logActionAsync(saved.id, userId, PeriodicTaskAuditAction.CREATED, null, saved);
+    // Dùng `buildAuditSnapshot()` + entity đầy đủ vừa fetch ở trên (KHÔNG
+    // log thẳng `saved` - `saved` chỉ có `statusId`/`primaryAssigneeId`/
+    // `departmentId` dạng số, không có tên/màu để FE hiển thị - xem JSDoc
+    // `buildAuditSnapshot`).
+    this.auditService.logActionAsync(
+      saved.id,
+      userId,
+      PeriodicTaskAuditAction.CREATED,
+      null,
+      this.buildAuditSnapshot(saved, { status, primaryAssignee, department }),
+    );
 
     return saved;
   }
@@ -269,10 +359,21 @@ export class PeriodicTasksService {
     await this.assertEditableWhenLocked(task, user);
 
     // Phase 7 (PLAN mục 2.6): chụp lại snapshot TRƯỚC khi mutate để có
-    // `oldData` đúng cho audit log (`{ ...task }` - shallow copy đủ dùng vì
-    // các field dưới đây đều là kiểu nguyên thuỷ/string, không phải object
-    // lồng bị mutate chung tham chiếu).
-    const before = { ...task };
+    // `oldData` đúng cho audit log. Giữ RIÊNG `beforeStatusId`/
+    // `beforePrimaryAssigneeId` (để so sánh đổi/không đổi bên dưới - vẫn cần
+    // giá trị SỐ thô cho phép so sánh `!==` đơn giản) tách khỏi `before` (bản
+    // ĐỌC ĐƯỢC dùng để ghi log - xem `buildAuditSnapshot()`).
+    const beforeStatusId = task.statusId;
+    const beforePrimaryAssigneeId = task.primaryAssigneeId;
+    const before = this.buildAuditSnapshot(task);
+
+    // Giữ sẵn entity ĐẦY ĐỦ (name/color/...) của status/primaryAssignee/
+    // department cho audit "after" - mặc định = giá trị hiện có trên `task`
+    // (đã load đủ qua `findOne()`), CHỈ ghi đè khi field đó thật sự đổi bên
+    // dưới (xem từng nhánh `if`).
+    let newStatus: PeriodicTaskStatus | null = task.status ?? null;
+    let newPrimaryAssignee: User | null = task.primaryAssignee ?? null;
+    let newDepartment: Department | null = task.department ?? null;
 
     if (dto.periodStartDate !== undefined || dto.periodEndDate !== undefined) {
       this.assertPeriodDatesValid(
@@ -282,7 +383,7 @@ export class PeriodicTasksService {
     }
 
     if (dto.primaryAssigneeId !== undefined) {
-      await this.assertUserExists(dto.primaryAssigneeId, 'Người phụ trách chính');
+      newPrimaryAssignee = await this.assertUserExists(dto.primaryAssigneeId, 'Người phụ trách chính');
       task.primaryAssigneeId = dto.primaryAssigneeId;
       // BUG THẬT (2026-09-15, xem WORKFLOW_LOG): `findOne()` gọi
       // `leftJoinAndSelect` nên `task.primaryAssignee` (relation) đã có
@@ -291,17 +392,20 @@ export class PeriodicTasksService {
       // `.save()` ưu tiên relation object đã load, khiến FK không thực sự
       // được ghi xuống DB (xem SKILL_NESTJS_BACKEND.md mục 13, "TypeORM
       // Relation Precedence in Update"). Set relation bằng object rút gọn
-      // `{ id }` để đồng bộ với cột FK vừa đổi.
+      // `{ id }` để đồng bộ với cột FK vừa đổi - vẫn giữ nguyên fix này
+      // (bắt buộc cho persist), entity ĐẦY ĐỦ ở `newPrimaryAssignee` phía
+      // trên CHỈ dùng cho audit log, không gán vào `task`.
       task.primaryAssignee = { id: dto.primaryAssigneeId } as User;
     }
 
     if (dto.statusId !== undefined) {
-      await this.assertStatusExists(dto.statusId);
+      newStatus = await this.assertStatusExists(dto.statusId);
       task.statusId = dto.statusId;
       // Cùng bug như `primaryAssignee` ở trên - đây chính là nguyên nhân
       // Kanban kéo-thả đổi cột: PATCH trả 200 (object JS trong bộ nhớ đã
       // đổi `statusId`) nhưng DB không đổi thật, nên GET lại sau đó (Table/
-      // Kanban refetch) vẫn thấy Task ở trạng thái cũ.
+      // Kanban refetch) vẫn thấy Task ở trạng thái cũ. Tương tự trên: entity
+      // đầy đủ nằm ở `newStatus`, `task.status` vẫn chỉ gán `{ id }`.
       task.status = { id: dto.statusId } as PeriodicTaskStatus;
     }
 
@@ -315,6 +419,8 @@ export class PeriodicTasksService {
     if (dto.departmentId !== undefined) {
       task.departmentId = dto.departmentId;
       task.department = dto.departmentId != null ? ({ id: dto.departmentId } as Department) : null;
+      newDepartment =
+        dto.departmentId != null ? await this.departmentRepo.findOne({ where: { id: dto.departmentId } }) : null;
     }
     if (dto.note !== undefined) task.note = dto.note ?? null;
     if (dto.color !== undefined) task.color = dto.color ?? null;
@@ -324,28 +430,38 @@ export class PeriodicTasksService {
 
     const saved = await this.taskRepo.save(task);
 
+    // ⚠️ CẢI TIẾN AUDIT LOG (xem JSDoc `buildAuditSnapshot`): dùng snapshot
+    // ĐỌC ĐƯỢC (entity đầy đủ đã resolve ở trên qua `newStatus`/
+    // `newPrimaryAssignee`/`newDepartment`) thay vì log thẳng `saved` (raw
+    // entity, quan hệ vừa đổi chỉ còn `{ id }` sau bug-fix persist ở trên).
+    const after = this.buildAuditSnapshot(saved, {
+      status: newStatus,
+      primaryAssignee: newPrimaryAssignee,
+      department: newDepartment,
+    });
+
     // Phase 7 (PLAN mục 2.6): action `updated` chung cho MỌI lần PATCH, cộng
     // thêm 2 action CHUYÊN BIỆT `status_changed`/`primary_assignee_changed`
     // nếu đúng field đó thật sự đổi giá trị (1 lần PATCH có thể ghi nhiều
     // dòng audit nếu đổi cùng lúc nhiều field quan trọng - đúng ý PLAN liệt
     // kê đây là các action TÁCH BIỆT nhau, không phải biến thể của nhau).
-    this.auditService.logActionAsync(saved.id, user.id, PeriodicTaskAuditAction.UPDATED, before, saved);
-    if (dto.statusId !== undefined && before.statusId !== saved.statusId) {
+    this.auditService.logActionAsync(saved.id, user.id, PeriodicTaskAuditAction.UPDATED, before, after);
+    if (dto.statusId !== undefined && beforeStatusId !== saved.statusId) {
       this.auditService.logActionAsync(
         saved.id,
         user.id,
         PeriodicTaskAuditAction.STATUS_CHANGED,
-        { statusId: before.statusId },
-        { statusId: saved.statusId },
+        { status: before.status },
+        { status: after.status },
       );
     }
-    if (dto.primaryAssigneeId !== undefined && before.primaryAssigneeId !== saved.primaryAssigneeId) {
+    if (dto.primaryAssigneeId !== undefined && beforePrimaryAssigneeId !== saved.primaryAssigneeId) {
       this.auditService.logActionAsync(
         saved.id,
         user.id,
         PeriodicTaskAuditAction.PRIMARY_ASSIGNEE_CHANGED,
-        { primaryAssigneeId: before.primaryAssigneeId },
-        { primaryAssigneeId: saved.primaryAssigneeId },
+        { primaryAssignee: before.primaryAssignee },
+        { primaryAssignee: after.primaryAssignee },
       );
     }
 
@@ -378,12 +494,16 @@ export class PeriodicTasksService {
     // Phase 7: ghi log ngay cả khi gọi lại `lock()` trên Task đã khoá sẵn
     // (idempotent theo PLAN mục 2.9) - vẫn là 1 hành động lock thật (có thể
     // đổi `lockNote` mới), không lọc trùng ở tầng audit.
+    // ⚠️ CẢI TIẾN: bỏ `lockedById` khỏi snapshot (trước đây log thêm field
+    // này) - LUÔN trùng giá trị `user.id` đã hiển thị sẵn ở cột "Người thực
+    // hiện" của chính dòng audit log, chỉ gây nhiễu (cùng nguyên tắc đã áp
+    // dụng cho `updatedBy`/`createdBy` ở `buildAuditSnapshot()`).
     this.auditService.logActionAsync(
       saved.id,
       user.id,
       PeriodicTaskAuditAction.LOCKED,
       null,
-      { lockNote: saved.lockNote, lockedById: saved.lockedById },
+      { lockNote: saved.lockNote },
     );
 
     return saved;
@@ -424,7 +544,10 @@ export class PeriodicTasksService {
 
     await this.taskRepo.softDelete(id);
 
-    this.auditService.logActionAsync(id, userId, PeriodicTaskAuditAction.DELETED, task, null);
+    // Dùng `buildAuditSnapshot()` thay vì log thẳng `task` (raw entity) -
+    // cùng lý do đã sửa ở `create()`/`update()`: `task` có cả cột FK thô lẫn
+    // object quan hệ, spread thẳng gây trùng dòng "Trạng thái" ở FE.
+    this.auditService.logActionAsync(id, userId, PeriodicTaskAuditAction.DELETED, this.buildAuditSnapshot(task), null);
 
     return { deleted: true };
   }

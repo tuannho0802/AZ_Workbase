@@ -5,6 +5,7 @@ import { PeriodicTasksService } from './periodic-tasks.service';
 import { PeriodicTask } from '../../database/entities/periodic-task.entity';
 import { PeriodicTaskStatus } from '../../database/entities/periodic-task-status.entity';
 import { User } from '../../database/entities/user.entity';
+import { Department } from '../../database/entities/department.entity';
 import { DepartmentManager } from '../../database/entities/department-manager.entity';
 import { PermissionsService } from '../permissions/permissions.service';
 import { PeriodicTaskAuditService, PeriodicTaskAuditAction } from './periodic-task-audit.service';
@@ -41,6 +42,9 @@ describe('PeriodicTasksService', () => {
   const mockUserRepo = {
     findOne: jest.fn(),
   };
+  const mockDepartmentRepo = {
+    findOne: jest.fn(),
+  };
   const mockDepartmentManagerRepo = {
     find: jest.fn(),
   };
@@ -60,6 +64,7 @@ describe('PeriodicTasksService', () => {
         { provide: getRepositoryToken(PeriodicTask), useValue: mockTaskRepo },
         { provide: getRepositoryToken(PeriodicTaskStatus), useValue: mockStatusRepo },
         { provide: getRepositoryToken(User), useValue: mockUserRepo },
+        { provide: getRepositoryToken(Department), useValue: mockDepartmentRepo },
         { provide: getRepositoryToken(DepartmentManager), useValue: mockDepartmentManagerRepo },
         { provide: PermissionsService, useValue: mockPermissionsService },
         { provide: PeriodicTaskAuditService, useValue: mockAuditService },
@@ -93,7 +98,8 @@ describe('PeriodicTasksService', () => {
 
     it('auto-fill departmentId từ phòng ban của primaryAssignee khi không truyền departmentId', async () => {
       mockUserRepo.findOne.mockResolvedValue({ id: 5, departmentId: 3, isActive: true });
-      mockStatusRepo.findOne.mockResolvedValue({ id: 1, code: 'not_started' });
+      mockStatusRepo.findOne.mockResolvedValue({ id: 1, code: 'not_started', name: 'Chưa bắt đầu' });
+      mockDepartmentRepo.findOne.mockResolvedValue({ id: 3, name: 'Sales' });
       mockTaskRepo.create.mockImplementation((data) => data);
       mockTaskRepo.save.mockImplementation((data) => Promise.resolve({ id: 100, ...data }));
 
@@ -105,12 +111,21 @@ describe('PeriodicTasksService', () => {
       expect(result).toEqual(expect.objectContaining({ id: 100, departmentId: 3 }));
       // Phase 7 (PLAN mục 2.6): audit log `created` phải ghi ĐÚNG id thật
       // (result.id) - không phải id tạm trước khi save.
+      // ⚠️ CẢI TIẾN AUDIT LOG (2026-09): `newData` giờ là snapshot ĐỌC ĐƯỢC
+      // (`buildAuditSnapshot()`) - object `status`/`primaryAssignee`/
+      // `department` mang tên/màu thật, KHÔNG còn log thẳng `result` (raw
+      // entity chỉ có `statusId`/`primaryAssigneeId`/`departmentId` số).
       expect(mockAuditService.logActionAsync).toHaveBeenCalledWith(
         100,
         1,
         PeriodicTaskAuditAction.CREATED,
         null,
-        result,
+        expect.objectContaining({
+          title: 'Gọi lại khách',
+          status: expect.objectContaining({ id: 1, code: 'not_started', name: 'Chưa bắt đầu' }),
+          primaryAssignee: expect.objectContaining({ id: 5 }),
+          department: expect.objectContaining({ id: 3, name: 'Sales' }),
+        }),
       );
     });
 
@@ -199,12 +214,14 @@ describe('PeriodicTasksService', () => {
       expect(result.updatedById).toBe(9);
       // Phase 7: action `updated` chung luôn ghi, KHÔNG kèm `status_changed`/
       // `primary_assignee_changed` vì 2 field đó không đổi ở test này.
+      // ⚠️ `before`/`after` giờ là snapshot đọc được (buildAuditSnapshot) -
+      // chỉ cần khớp field liên quan, không cần liệt kê toàn bộ shape.
       expect(mockAuditService.logActionAsync).toHaveBeenCalledWith(
         1,
         9,
         PeriodicTaskAuditAction.UPDATED,
         expect.objectContaining({ title: 'Old' }),
-        result,
+        expect.objectContaining({ title: 'New title', note: 'ghi chú mới' }),
       );
       expect(mockAuditService.logActionAsync).not.toHaveBeenCalledWith(
         1,
@@ -228,12 +245,15 @@ describe('PeriodicTasksService', () => {
 
       await service.update(1, { statusId: 2 }, { id: 9, role: Role.ADMIN }, 'all');
 
+      // ⚠️ `{ statusId }` (số thô) → `{ status: {...} }` (object đọc được) -
+      // xem JSDoc `buildAuditSnapshot`. Task mock không có `.status` load
+      // sẵn nên "before" là `null`, "after" resolve full entity mock trả về.
       expect(mockAuditService.logActionAsync).toHaveBeenCalledWith(
         1,
         9,
         PeriodicTaskAuditAction.STATUS_CHANGED,
-        { statusId: 1 },
-        { statusId: 2 },
+        { status: null },
+        { status: expect.objectContaining({ id: 2 }) },
       );
     });
 
@@ -277,12 +297,14 @@ describe('PeriodicTasksService', () => {
 
       await service.update(1, { primaryAssigneeId: 7 }, { id: 9, role: Role.ADMIN }, 'all');
 
+      // ⚠️ `{ primaryAssigneeId }` (số thô) → `{ primaryAssignee: {...} }`
+      // (object đọc được) - cùng lý do đã sửa ở `status_changed` bên trên.
       expect(mockAuditService.logActionAsync).toHaveBeenCalledWith(
         1,
         9,
         PeriodicTaskAuditAction.PRIMARY_ASSIGNEE_CHANGED,
-        { primaryAssigneeId: 5 },
-        { primaryAssigneeId: 7 },
+        { primaryAssignee: null },
+        { primaryAssignee: expect.objectContaining({ id: 7 }) },
       );
     });
 
