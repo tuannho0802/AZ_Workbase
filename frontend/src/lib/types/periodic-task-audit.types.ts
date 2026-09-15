@@ -36,6 +36,43 @@ export interface PaginatedPeriodicTaskAuditLogs {
 }
 
 /**
+ * PeriodicTaskAuditLogGlobal - trang riêng "Lịch sử Công việc định kỳ"
+ * (`GET /periodic-tasks/audit-logs`, khác `GET /:id/audit-logs` ở trên) -
+ * thêm field `task` (join sang `periodic_tasks`, chỉ chọn `id`/`title`/
+ * `deletedAt` ở BE - xem `getGlobalLogs()`) vì trang này gộp log của NHIỀU
+ * Task, cần biết log thuộc Task nào để hiển thị cột "Công việc".
+ */
+export interface PeriodicTaskAuditLogTaskRef {
+  id: number;
+  title: string;
+  deletedAt: string | null;
+}
+
+export interface PeriodicTaskAuditLogGlobal extends PeriodicTaskAuditLog {
+  task: PeriodicTaskAuditLogTaskRef;
+}
+
+export interface PaginatedPeriodicTaskAuditLogsGlobal {
+  data: PeriodicTaskAuditLogGlobal[];
+  total: number;
+  page: number;
+  limit: number;
+  totalPages: number;
+}
+
+/** Filter cho `GET /periodic-tasks/audit-logs` - khớp `GetPeriodicTaskAuditLogsGlobalDto` (BE). */
+export interface PeriodicTaskAuditLogFilters {
+  page?: number;
+  limit?: number;
+  taskId?: number;
+  userId?: number;
+  action?: string;
+  fromDate?: string;
+  toDate?: string;
+  search?: string;
+}
+
+/**
  * Mirror ĐÚNG `PeriodicTaskAuditAction` (const object, không phải TypeScript
  * `enum`) ở BE `periodic-task-audit.service.ts` - liệt kê lại giá trị string
  * thay vì import chéo BE→FE (2 project tách biệt, không dùng chung package).

@@ -25,7 +25,7 @@ interface Props {
  * `department`/`createdBy`/`updatedBy`) không liệt kê ở đây - `AuditDiffViewer`
  * tự fallback hiển thị "Dữ liệu phức hợp" cho `typeof val === 'object'`.
  */
-const PERIODIC_TASK_FIELD_LABELS: Record<string, string> = {
+export const PERIODIC_TASK_FIELD_LABELS: Record<string, string> = {
   title: 'Tiêu đề',
   description: 'Mô tả',
   periodType: 'Loại kỳ',
