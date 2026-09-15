@@ -148,4 +148,4 @@ describe('buildTaskLinkChains - thứ tự DFS pre-order', () => {
     const order = [1, 2, 3].sort((a, b) => (chains.get(a)?.index ?? 0) - (chains.get(b)?.index ?? 0));
     expect(order).toEqual([1, 2, 3]);
   });
-});d
+});
