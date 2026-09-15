@@ -6,6 +6,7 @@ import { PeriodicTasksService, RequestingUser } from './periodic-tasks.service';
 import { CreatePeriodicTaskChecklistItemDto } from './dto/create-periodic-task-checklist-item.dto';
 import { UpdatePeriodicTaskChecklistItemDto } from './dto/update-periodic-task-checklist-item.dto';
 import { ReorderPeriodicTaskChecklistItemsDto } from './dto/reorder-periodic-task-checklist-items.dto';
+import { PeriodicTaskAuditService, PeriodicTaskAuditAction } from './periodic-task-audit.service';
 
 /**
  * PeriodicTaskChecklistItemsService - Phase 6 (PLAN mục 6): checklist con
@@ -27,6 +28,7 @@ export class PeriodicTaskChecklistItemsService {
     @InjectRepository(PeriodicTaskChecklistItem)
     private readonly checklistRepo: Repository<PeriodicTaskChecklistItem>,
     private readonly tasksService: PeriodicTasksService,
+    private readonly auditService: PeriodicTaskAuditService,
   ) {}
 
   /** Danh sách item của 1 Task, sắp xếp theo `position` tăng dần. */
@@ -91,6 +93,10 @@ export class PeriodicTaskChecklistItemsService {
     });
     await this.checklistRepo.save(created);
 
+    this.auditService.logActionAsync(taskId, user.id, PeriodicTaskAuditAction.CHECKLIST_ITEM_ADDED, null, {
+      content: created.content,
+    });
+
     return this.queryItems(taskId);
   }
 
@@ -106,8 +112,17 @@ export class PeriodicTaskChecklistItemsService {
     await this.tasksService.assertEditableWhenLocked(task, user);
 
     const item = await this.findItemOrFail(taskId, itemId);
+    const before = { ...item };
     Object.assign(item, dto);
     await this.checklistRepo.save(item);
+
+    this.auditService.logActionAsync(
+      taskId,
+      user.id,
+      PeriodicTaskAuditAction.CHECKLIST_ITEM_UPDATED,
+      { itemId, content: before.content, isDone: before.isDone },
+      { itemId, content: item.content, isDone: item.isDone },
+    );
 
     return this.queryItems(taskId);
   }
@@ -124,6 +139,11 @@ export class PeriodicTaskChecklistItemsService {
 
     const item = await this.findItemOrFail(taskId, itemId);
     await this.checklistRepo.remove(item);
+
+    this.auditService.logActionAsync(taskId, user.id, PeriodicTaskAuditAction.CHECKLIST_ITEM_REMOVED, {
+      itemId,
+      content: item.content,
+    });
 
     return this.queryItems(taskId);
   }
@@ -161,6 +181,14 @@ export class PeriodicTaskChecklistItemsService {
       dto.itemIds.map((id, index) =>
         this.checklistRepo.update({ id, taskId }, { position: index }),
       ),
+    );
+
+    this.auditService.logActionAsync(
+      taskId,
+      user.id,
+      PeriodicTaskAuditAction.CHECKLIST_ITEMS_REORDERED,
+      null,
+      { itemIds: dto.itemIds },
     );
 
     return this.queryItems(taskId);

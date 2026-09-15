@@ -86,6 +86,10 @@ export class PeriodicTaskSecondaryAssigneesService {
     });
     await this.secondaryRepo.save(created);
 
+    this.auditService.logActionAsync(taskId, user.id, PeriodicTaskAuditAction.SECONDARY_ASSIGNEE_ADDED, null, {
+      userId: dto.userId,
+    });
+
     return this.queryAssigneeUsers(taskId);
   }
 
@@ -105,6 +109,11 @@ export class PeriodicTaskSecondaryAssigneesService {
     }
 
     await this.secondaryRepo.remove(existing);
+
+    this.auditService.logActionAsync(taskId, user.id, PeriodicTaskAuditAction.SECONDARY_ASSIGNEE_REMOVED, {
+      userId: targetUserId,
+    });
+
     return { deleted: true };
   }
 

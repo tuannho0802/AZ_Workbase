@@ -15,6 +15,8 @@ import { LockPeriodicTaskDto } from './dto/lock-periodic-task.dto';
 import { CreatePeriodicTaskChecklistItemDto } from './dto/create-periodic-task-checklist-item.dto';
 import { UpdatePeriodicTaskChecklistItemDto } from './dto/update-periodic-task-checklist-item.dto';
 import { ReorderPeriodicTaskChecklistItemsDto } from './dto/reorder-periodic-task-checklist-items.dto';
+import { GetPeriodicTaskAuditLogsDto } from './dto/get-periodic-task-audit-logs.dto';
+import { PeriodicTaskAuditService } from './periodic-task-audit.service';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { PermissionGuard } from '../../common/guards/permission.guard';
 import { RequirePermission } from '../../common/decorators/require-permission.decorator';
@@ -35,6 +37,7 @@ export class PeriodicTasksController {
     private readonly periodicTaskCustomersService: PeriodicTaskCustomersService,
     private readonly periodicTaskSecondaryAssigneesService: PeriodicTaskSecondaryAssigneesService,
     private readonly periodicTaskChecklistItemsService: PeriodicTaskChecklistItemsService,
+    private readonly periodicTaskAuditService: PeriodicTaskAuditService,
   ) { }
 
   @Post()
@@ -303,5 +306,24 @@ export class PeriodicTasksController {
     @GetPermissionScope() scope: string | null | undefined,
   ) {
     return this.periodicTaskChecklistItemsService.remove(id, itemId, user, scope);
+  }
+
+  // ── Phase 7 (cuối): Audit log riêng - PLAN mục 2.6 + mục 5 ──
+
+  @Get(':id/audit-logs')
+  @RequirePermission('periodic_tasks.view')
+  @ApiOperation({ summary: 'Lịch sử audit của 1 Công việc định kỳ (mới nhất trước, có phân trang)' })
+  @ApiResponse({ status: 404, description: 'Không tìm thấy hoặc không có quyền xem' })
+  async getAuditLogs(
+    @Param('id', ParseIntPipe) id: number,
+    @Query() filters: GetPeriodicTaskAuditLogsDto,
+    @GetUser() user: any,
+    @GetPermissionScope() scope: string | null | undefined,
+  ) {
+    // "1 cổng gác" - Task ngoài phạm vi periodic_tasks.view của người gọi
+    // tự 404 trước khi kịp truy vấn bảng audit (đúng JSDoc
+    // `PeriodicTaskAuditService.getLogsForTask()`).
+    await this.periodicTasksService.findOne(id, user.id, user.role, scope);
+    return this.periodicTaskAuditService.getLogsForTask(id, filters);
   }
 }
