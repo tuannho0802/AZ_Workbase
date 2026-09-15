@@ -78,7 +78,7 @@ export class PeriodicTasksController {
     @GetUser() user: any,
     @GetPermissionScope() scope: string | null | undefined,
   ) {
-    return this.periodicTasksService.update(id, dto, user.id, user.role, scope);
+    return this.periodicTasksService.update(id, dto, user, scope);
   }
 
   @Delete(':id')
@@ -100,7 +100,7 @@ export class PeriodicTasksController {
     @GetUser() user: any,
     @GetPermissionScope() scope: string | null | undefined,
   ) {
-    return this.periodicTaskLinksService.addLink(id, dto, user.id, user.role, scope);
+    return this.periodicTaskLinksService.addLink(id, dto, user, scope);
   }
 
   @Delete(':id/links/:parentTaskId')
@@ -112,7 +112,7 @@ export class PeriodicTasksController {
     @GetUser() user: any,
     @GetPermissionScope() scope: string | null | undefined,
   ) {
-    return this.periodicTaskLinksService.removeLink(id, parentTaskId, user.id, user.role, scope);
+    return this.periodicTaskLinksService.removeLink(id, parentTaskId, user, scope);
   }
 
   @Get(':id/children')
@@ -189,7 +189,7 @@ export class PeriodicTasksController {
     @GetUser() user: any,
     @GetPermissionScope() scope: string | null | undefined,
   ) {
-    return this.periodicTaskSecondaryAssigneesService.addSecondaryAssignee(id, dto, user.id, user.role, scope);
+    return this.periodicTaskSecondaryAssigneesService.addSecondaryAssignee(id, dto, user, scope);
   }
 
   @Delete(':id/secondary-assignees/:userId')
@@ -201,6 +201,32 @@ export class PeriodicTasksController {
     @GetUser() user: any,
     @GetPermissionScope() scope: string | null | undefined,
   ) {
-    return this.periodicTaskSecondaryAssigneesService.removeSecondaryAssignee(id, userId, user.id, user.role, scope);
+    return this.periodicTaskSecondaryAssigneesService.removeSecondaryAssignee(id, userId, user, scope);
+  }
+
+  // ── Phase 5: Khoá/mở khoá (approve) - PLAN mục 2.9 + mục 5 ──
+
+  @Patch(':id/lock')
+  @RequirePermission('periodic_tasks.approve')
+  @ApiOperation({ summary: 'Khoá Công việc định kỳ - idempotent, gọi lại nhiều lần không lỗi (2 chiều tự do)' })
+  @ApiResponse({ status: 403, description: 'Thiếu periodic_tasks.approve trong phạm vi scope của Task' })
+  lock(
+    @Param('id', ParseIntPipe) id: number,
+    @Body() dto: LockPeriodicTaskDto,
+    @GetUser() user: any,
+    @GetPermissionScope() scope: string | null | undefined,
+  ) {
+    return this.periodicTasksService.lock(id, dto, user, scope);
+  }
+
+  @Patch(':id/unlock')
+  @RequirePermission('periodic_tasks.approve')
+  @ApiOperation({ summary: 'Mở khoá Công việc định kỳ - tự do gọi lại bất kỳ lúc nào, không giới hạn số lần' })
+  unlock(
+    @Param('id', ParseIntPipe) id: number,
+    @GetUser() user: any,
+    @GetPermissionScope() scope: string | null | undefined,
+  ) {
+    return this.periodicTasksService.unlock(id, user, scope);
   }
 }

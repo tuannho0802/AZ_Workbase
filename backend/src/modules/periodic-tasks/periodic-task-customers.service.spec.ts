@@ -37,6 +37,7 @@ describe('PeriodicTaskCustomersService', () => {
   };
   const mockTasksService = {
     findOne: jest.fn(),
+    assertEditableWhenLocked: jest.fn(),
   };
   const mockPermissionsService = {
     hasPermission: jest.fn(),
@@ -49,6 +50,7 @@ describe('PeriodicTaskCustomersService', () => {
   beforeEach(async () => {
     jest.clearAllMocks();
     mockTasksService.findOne.mockResolvedValue({ id: taskId });
+    mockTasksService.assertEditableWhenLocked.mockResolvedValue(undefined);
 
     const module: TestingModule = await Test.createTestingModule({
       providers: [

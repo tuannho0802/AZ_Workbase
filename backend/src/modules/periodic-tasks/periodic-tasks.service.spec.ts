@@ -6,6 +6,7 @@ import { PeriodicTask } from '../../database/entities/periodic-task.entity';
 import { PeriodicTaskStatus } from '../../database/entities/periodic-task-status.entity';
 import { User } from '../../database/entities/user.entity';
 import { DepartmentManager } from '../../database/entities/department-manager.entity';
+import { PermissionsService } from '../permissions/permissions.service';
 import { Role } from '../../common/enums/role.enum';
 import { PeriodType } from '../../common/enums/period-type.enum';
 
@@ -42,6 +43,9 @@ describe('PeriodicTasksService', () => {
   const mockDepartmentManagerRepo = {
     find: jest.fn(),
   };
+  const mockPermissionsService = {
+    hasPermission: jest.fn(),
+  };
 
   beforeEach(async () => {
     jest.clearAllMocks();
@@ -53,6 +57,7 @@ describe('PeriodicTasksService', () => {
         { provide: getRepositoryToken(PeriodicTaskStatus), useValue: mockStatusRepo },
         { provide: getRepositoryToken(User), useValue: mockUserRepo },
         { provide: getRepositoryToken(DepartmentManager), useValue: mockDepartmentManagerRepo },
+        { provide: PermissionsService, useValue: mockPermissionsService },
       ],
     }).compile();
 
@@ -159,7 +164,7 @@ describe('PeriodicTasksService', () => {
     it('ném NotFoundException nếu Task không tồn tại/ngoài phạm vi scope (qua findOne - "1 cổng gác")', async () => {
       mockTaskRepo.createQueryBuilder.mockReturnValue(makeFakeQueryBuilder({ getOne: null }));
 
-      await expect(service.update(999, { title: 'X' }, 1, Role.EMPLOYEE, 'own')).rejects.toThrow(NotFoundException);
+      await expect(service.update(999, { title: 'X' }, { id: 1, role: Role.EMPLOYEE }, 'own')).rejects.toThrow(NotFoundException);
     });
 
     it('sửa tiêu đề/note thành công, gán updatedById', async () => {
@@ -173,7 +178,7 @@ describe('PeriodicTasksService', () => {
       mockTaskRepo.createQueryBuilder.mockReturnValue(makeFakeQueryBuilder({ getOne: task }));
       mockTaskRepo.save.mockImplementation((t) => Promise.resolve(t));
 
-      const result = await service.update(1, { title: 'New title', note: 'ghi chú mới' }, 9, Role.ADMIN, 'all');
+      const result = await service.update(1, { title: 'New title', note: 'ghi chú mới' }, { id: 9, role: Role.ADMIN }, 'all');
 
       expect(result.title).toBe('New title');
       expect(result.note).toBe('ghi chú mới');
@@ -190,7 +195,7 @@ describe('PeriodicTasksService', () => {
       mockTaskRepo.createQueryBuilder.mockReturnValue(makeFakeQueryBuilder({ getOne: task }));
       mockTaskRepo.save.mockImplementation((t) => Promise.resolve(t));
 
-      const result = await service.update(1, { departmentId: 8 }, 9, Role.ADMIN, 'all');
+      const result = await service.update(1, { departmentId: 8 }, { id: 9, role: Role.ADMIN }, 'all');
 
       expect(result.departmentId).toBe(8);
     });
@@ -205,7 +210,7 @@ describe('PeriodicTasksService', () => {
       mockTaskRepo.createQueryBuilder.mockReturnValue(makeFakeQueryBuilder({ getOne: task }));
       mockTaskRepo.save.mockImplementation((t) => Promise.resolve(t));
 
-      const result = await service.update(1, { color: '#FF5733' }, 9, Role.ADMIN, 'all');
+      const result = await service.update(1, { color: '#FF5733' }, { id: 9, role: Role.ADMIN }, 'all');
       expect(result.color).toBe('#FF5733');
     });
 
@@ -214,7 +219,7 @@ describe('PeriodicTasksService', () => {
       mockTaskRepo.createQueryBuilder.mockReturnValue(makeFakeQueryBuilder({ getOne: task }));
       mockStatusRepo.findOne.mockResolvedValue(null);
 
-      await expect(service.update(1, { statusId: 999 }, 9, Role.ADMIN, 'all')).rejects.toThrow(BadRequestException);
+      await expect(service.update(1, { statusId: 999 }, { id: 9, role: Role.ADMIN }, 'all')).rejects.toThrow(BadRequestException);
     });
   });
 

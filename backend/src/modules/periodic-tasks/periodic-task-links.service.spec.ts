@@ -40,14 +40,17 @@ describe('PeriodicTaskLinksService', () => {
   };
   const mockTasksService = {
     findOne: jest.fn(),
+    assertEditableWhenLocked: jest.fn(),
   };
 
   const userId = 1;
   const userRole = Role.EMPLOYEE;
   const scope = 'own';
+  const user = { id: userId, role: userRole };
 
   beforeEach(async () => {
     jest.clearAllMocks();
+    mockTasksService.assertEditableWhenLocked.mockResolvedValue(undefined);
 
     const module: TestingModule = await Test.createTestingModule({
       providers: [
@@ -64,7 +67,7 @@ describe('PeriodicTaskLinksService', () => {
   describe('addLink', () => {
     it('ném BadRequestException nếu tự gán làm cha của chính nó (không gọi tới findOne)', async () => {
       await expect(
-        service.addLink(5, { parentTaskId: 5 }, userId, userRole, scope),
+        service.addLink(5, { parentTaskId: 5 }, user, scope),
       ).rejects.toThrow(BadRequestException);
       expect(mockTasksService.findOne).not.toHaveBeenCalled();
     });
@@ -78,7 +81,7 @@ describe('PeriodicTaskLinksService', () => {
       mockLinkRepo.create.mockImplementation((data) => data);
       mockLinkRepo.save.mockImplementation((data) => Promise.resolve({ id: 99, ...data }));
 
-      const result = await service.addLink(1, { parentTaskId: 2 }, userId, userRole, scope);
+      const result = await service.addLink(1, { parentTaskId: 2 }, user, scope);
 
       expect(result).toMatchObject({ childTaskId: 1, parentTaskId: 2, createdById: userId });
     });
@@ -89,7 +92,7 @@ describe('PeriodicTaskLinksService', () => {
       mockTasksService.findOne.mockResolvedValueOnce(child).mockResolvedValueOnce(parent);
 
       await expect(
-        service.addLink(1, { parentTaskId: 2 }, userId, userRole, scope),
+        service.addLink(1, { parentTaskId: 2 }, user, scope),
       ).rejects.toThrow(BadRequestException);
       expect(mockLinkRepo.save).not.toHaveBeenCalled();
     });
@@ -100,7 +103,7 @@ describe('PeriodicTaskLinksService', () => {
       mockTasksService.findOne.mockResolvedValueOnce(child).mockResolvedValueOnce(parent);
 
       await expect(
-        service.addLink(1, { parentTaskId: 2 }, userId, userRole, scope),
+        service.addLink(1, { parentTaskId: 2 }, user, scope),
       ).rejects.toThrow(BadRequestException);
     });
 
@@ -111,7 +114,7 @@ describe('PeriodicTaskLinksService', () => {
       mockLinkRepo.findOne.mockResolvedValue({ id: 5, childTaskId: 1, parentTaskId: 2 });
 
       await expect(
-        service.addLink(1, { parentTaskId: 2 }, userId, userRole, scope),
+        service.addLink(1, { parentTaskId: 2 }, user, scope),
       ).rejects.toThrow(BadRequestException);
       expect(mockLinkRepo.save).not.toHaveBeenCalled();
     });
@@ -135,7 +138,7 @@ describe('PeriodicTaskLinksService', () => {
         .mockResolvedValueOnce([{ childTaskId: 2, parentTaskId: 1 }]);
 
       await expect(
-        service.addLink(1, { parentTaskId: 4 }, userId, userRole, scope),
+        service.addLink(1, { parentTaskId: 4 }, user, scope),
       ).rejects.toThrow(BadRequestException);
       expect(mockLinkRepo.save).not.toHaveBeenCalled();
       expect(mockLinkRepo.find).toHaveBeenCalledTimes(2);
@@ -147,7 +150,7 @@ describe('PeriodicTaskLinksService', () => {
       mockTasksService.findOne.mockResolvedValue(makeTask(1, PeriodType.DAILY));
       mockLinkRepo.findOne.mockResolvedValue(null);
 
-      await expect(service.removeLink(1, 2, userId, userRole, scope)).rejects.toThrow(NotFoundException);
+      await expect(service.removeLink(1, 2, user, scope)).rejects.toThrow(NotFoundException);
     });
 
     it('gỡ liên kết thành công khi tồn tại', async () => {
@@ -156,7 +159,7 @@ describe('PeriodicTaskLinksService', () => {
       mockLinkRepo.findOne.mockResolvedValue(existing);
       mockLinkRepo.remove.mockResolvedValue(existing);
 
-      const result = await service.removeLink(1, 2, userId, userRole, scope);
+      const result = await service.removeLink(1, 2, user, scope);
 
       expect(result).toEqual({ deleted: true });
       expect(mockLinkRepo.remove).toHaveBeenCalledWith(existing);

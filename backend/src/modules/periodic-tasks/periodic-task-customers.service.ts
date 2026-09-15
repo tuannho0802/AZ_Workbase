@@ -103,7 +103,9 @@ export class PeriodicTaskCustomersService {
     taskScope?: string | null,
   ): Promise<Customer[]> {
     // 1 cổng gác - Task ngoài phạm vi periodic_tasks.edit của người gọi tự 404.
-    await this.tasksService.findOne(taskId, user.id, user.role, taskScope);
+    const task = await this.tasksService.findOne(taskId, user.id, user.role, taskScope);
+    // Phase 5 (PLAN mục 2.9): Task đang khoá mà thiếu `periodic_tasks.edit_locked` -> 403.
+    await this.tasksService.assertEditableWhenLocked(task, user);
 
     // Permission nhị phân riêng - bắt buộc CẢ 2 lớp mới được gắn Customer.
     await this.assertCanLinkCustomer(user);
@@ -158,7 +160,8 @@ export class PeriodicTaskCustomersService {
     user: RequestingUser,
     taskScope?: string | null,
   ): Promise<{ deleted: true }> {
-    await this.tasksService.findOne(taskId, user.id, user.role, taskScope);
+    const task = await this.tasksService.findOne(taskId, user.id, user.role, taskScope);
+    await this.tasksService.assertEditableWhenLocked(task, user);
     await this.assertCanLinkCustomer(user);
 
     const existing = await this.linkRepo.findOne({ where: { taskId, customerId } });
