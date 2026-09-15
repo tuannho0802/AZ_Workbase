@@ -129,6 +129,22 @@ export function TaskLinksModal({ open, onClose, task }: Props) {
         [customerCandidatesData, linkedCustomerIds],
     );
 
+    // Phase 4: ứng viên "Phụ trách phụ" - loại người đang là Phụ trách CHÍNH
+    // (`primaryAssigneeId`, 1 người không thể vừa chính vừa phụ - BE cũng
+    // chặn lại ở `addSecondaryAssignee`, FE lọc trước cho gọn) và người ĐÃ
+    // là Phụ trách phụ rồi.
+    const secondaryAssigneeIds = useMemo(
+        () => new Set(secondaryAssignees.map((u) => u.id)),
+        [secondaryAssignees],
+    );
+    const secondaryCandidates = useMemo(
+        () =>
+            allUsers.filter(
+                (u: { id: number }) => u.id !== task?.primaryAssigneeId && !secondaryAssigneeIds.has(u.id),
+            ),
+        [allUsers, task, secondaryAssigneeIds],
+    );
+
     const parentIds = useMemo(() => new Set(parents.map((p) => p.id)), [parents]);
     const childIds = useMemo(() => new Set(children.map((c) => c.id)), [children]);
 
@@ -151,6 +167,7 @@ export function TaskLinksModal({ open, onClose, task }: Props) {
         setSelectedChildId(undefined);
         setSelectedCustomerIds([]);
         setCustomerSearch('');
+        setSelectedSecondaryUserIds([]);
         onClose();
     };
 
@@ -226,6 +243,33 @@ export function TaskLinksModal({ open, onClose, task }: Props) {
             {
                 onSuccess: () => message.success(`Đã gỡ "${name}" khỏi Công việc`),
                 onError: (err) => message.error(getApiErrorMessage(err, 'Gỡ Khách hàng thất bại')),
+            },
+        );
+    };
+
+    // Phase 4: BE chỉ nhận 1 userId/lần (xem JSDoc đầu file) - gọi tuần tự
+    // (mutateAsync + for-loop, KHÔNG Promise.all) để giữ đúng thứ tự và
+    // tránh 2 request cùng lúc ghi trùng invalidate.
+    const handleAddSecondary = async () => {
+        if (!task || selectedSecondaryUserIds.length === 0) return;
+        try {
+            for (const userId of selectedSecondaryUserIds) {
+                await addSecondaryMutation.mutateAsync({ taskId: task.id, userId });
+            }
+            message.success(`Đã thêm ${selectedSecondaryUserIds.length} Phụ trách phụ`);
+            setSelectedSecondaryUserIds([]);
+        } catch (err) {
+            message.error(getApiErrorMessage(err, 'Thêm Phụ trách phụ thất bại'));
+        }
+    };
+
+    const handleRemoveSecondary = (userId: number, name: string) => {
+        if (!task) return;
+        removeSecondaryMutation.mutate(
+            { taskId: task.id, userId },
+            {
+                onSuccess: () => message.success(`Đã gỡ "${name}" khỏi Phụ trách phụ`),
+                onError: (err) => message.error(getApiErrorMessage(err, 'Gỡ Phụ trách phụ thất bại')),
             },
         );
     };
@@ -312,8 +356,7 @@ export function TaskLinksModal({ open, onClose, task }: Props) {
                         <div style={{ marginTop: 12, display: 'flex', gap: 8 }}>
                             <Select
                                 style={{ flex: 1 }}
-                                showSearch
-                                optionFilterProp="label"
+                                showSearch={{ optionFilterProp: 'label' }}
                                 placeholder="Chọn Công việc cha để gán"
                                 loading={candidatesLoading}
                                 value={selectedParentId}
@@ -383,8 +426,7 @@ export function TaskLinksModal({ open, onClose, task }: Props) {
                         <div style={{ marginTop: 12, display: 'flex', gap: 8 }}>
                             <Select
                                 style={{ flex: 1 }}
-                                showSearch
-                                optionFilterProp="label"
+                                showSearch={{ optionFilterProp: 'label' }}
                                 placeholder="Chọn Công việc con để gán"
                                 loading={candidatesLoading}
                                 value={selectedChildId}
@@ -510,6 +552,88 @@ export function TaskLinksModal({ open, onClose, task }: Props) {
                         <Text type="secondary" style={{ display: 'block', marginTop: 8 }}>
                             Bạn chỉ có quyền xem Khách hàng liên quan - cần thêm quyền &quot;Gắn Khách hàng vào Công
                             việc định kỳ&quot; để gán/gỡ.
+                        </Text>
+                    )}
+
+                    <Divider style={{ margin: '20px 0 12px' }} />
+
+                    <div style={{ marginBottom: 8 }}>
+                        <Text strong>Phụ trách phụ ({secondaryAssignees.length}):</Text>
+                        <Text type="secondary" style={{ marginLeft: 8, fontSize: 12 }}>
+                            Người hỗ trợ thêm ngoài Phụ trách chính &quot;{task.primaryAssignee?.name ?? '—'}&quot;.
+                        </Text>
+                    </div>
+                    <SimpleList
+                        loading={taskDetailLoading}
+                        size="small"
+                        dataSource={secondaryAssignees}
+                        rowKey={(u) => u.id}
+                        emptyText="Chưa có Phụ trách phụ nào"
+                        renderMeta={(u) => ({
+                            title: u.name,
+                            description: u.email ? (
+                                <Text type="secondary" style={{ fontSize: 12 }}>
+                                    {u.email}
+                                </Text>
+                            ) : undefined,
+                        })}
+                        renderActions={(u) =>
+                            canEditLinks
+                                ? [
+                                    <Popconfirm
+                                        key="remove-secondary"
+                                        title={`Gỡ "${u.name}" khỏi Phụ trách phụ?`}
+                                        onConfirm={() => handleRemoveSecondary(u.id, u.name)}
+                                        okText="Gỡ"
+                                        cancelText="Huỷ"
+                                    >
+                                        <Button
+                                            size="small"
+                                            danger
+                                            type="text"
+                                            icon={<DeleteOutlined />}
+                                            loading={
+                                                removeSecondaryMutation.isPending &&
+                                                removeSecondaryMutation.variables?.userId === u.id
+                                            }
+                                        />
+                                    </Popconfirm>,
+                                ]
+                                : []
+                        }
+                    />
+                    {canEditLinks && (
+                        <div style={{ marginTop: 12, display: 'flex', gap: 8 }}>
+                            <Select
+                                mode="multiple"
+                                style={{ flex: 1 }}
+                                showSearch={{ optionFilterProp: 'label' }}
+                                popupMatchSelectWidth={false}
+                                maxTagCount="responsive"
+                                placeholder="Chọn người để thêm làm Phụ trách phụ (chọn nhiều được)"
+                                value={selectedSecondaryUserIds}
+                                onChange={setSelectedSecondaryUserIds}
+                                options={secondaryCandidates.map((u: { id: number; name: string; email?: string }) => ({
+                                    value: u.id,
+                                    label: u.email ? `${u.name} (${u.email})` : u.name,
+                                }))}
+                                notFoundContent="Không có người dùng nào đủ điều kiện"
+                            />
+                            <Button
+                                type="primary"
+                                icon={<PlusOutlined />}
+                                disabled={selectedSecondaryUserIds.length === 0}
+                                loading={addSecondaryMutation.isPending}
+                                onClick={handleAddSecondary}
+                            >
+                                Gán
+                            </Button>
+                        </div>
+                    )}
+
+                    {!canEditLinks && (
+                        <Text type="secondary" style={{ display: 'block', marginTop: 8 }}>
+                            Bạn chỉ có quyền xem - cần quyền &quot;Sửa Công việc định kỳ&quot; để gán/gỡ Phụ trách phụ.
                         </Text>
                     )}
                 </>

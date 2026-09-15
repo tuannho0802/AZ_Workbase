@@ -1727,3 +1727,35 @@ màn hình `TaskLinksModal` và Modal Tạo/Sửa) - phát hiện 3 vấn đề 
 
 **Còn lại:** Phase 4-7 (như entry trước). Có thể cân nhắc dọn nợ lint `react-hooks/set-state-in-effect`
 (3 chỗ, kể cả 1 chỗ cũ) ở 1 phiên riêng sau này nếu chủ dự án muốn, không cấp thiết vì không chặn build.
+## [2026-09-15 11:15] | Hoàn tất FE Phase 4 "Công việc định kỳ" (gán/gỡ Phụ trách phụ trong TaskLinksModal) + fix deprecated `optionFilterProp` | Status: Success
+
+**Actor:** Agent
+
+Hoàn thiện phần FE Phase 4 còn dang dở từ phiên trước (BE đã xong sạch, FE mới có imports/hooks/state):
+- `TaskLinksModal.tsx`: thêm `secondaryCandidates` (lọc người đã là Phụ trách chính hoặc đã là Phụ trách
+  phụ), `handleAddSecondary` (gọi tuần tự `mutateAsync` từng `userId` - đúng contract BE chỉ nhận 1
+  người/request, KHÔNG batch), `handleRemoveSecondary`, và section JSX "Phụ trách phụ" (SimpleList hiển
+  thị danh sách hiện tại + Select multiple chọn thêm), mirror đúng style phần "Khách hàng liên quan"
+  Phase 3 phía trên.
+- Đối chiếu `PLAN_PERIODIC_TASKS_MODULE.md` mục 2.5 + `create-periodic-task.dto.ts`/
+  `update-periodic-task.dto.ts`: xác nhận KHÔNG có field `secondaryAssigneeIds` lúc Tạo/Sửa Task - Phụ
+  trách phụ CHỈ quản lý sau khi Task đã tồn tại qua `TaskLinksModal` (giống Customer Phase 3) - **không**
+  thêm field vào Modal Tạo/Sửa ở `page.tsx` (khác với 1 ý trong báo cáo transcript phiên trước dán vào -
+  báo cáo đó không khớp code/PLAN thật, đã tự verify lại bằng code + PLAN doc trước khi tin).
+- Fix warning deprecated `optionFilterProp` (antd: "please use showSearch.optionFilterProp") ở cả 3
+  `Select` trong file (Task cha, Task con, và Phụ trách phụ mới thêm) - đổi `showSearch` (boolean) +
+  `optionFilterProp="label"` (2 prop rời) thành `showSearch={{ optionFilterProp: 'label' }}` (object),
+  đúng convention đã dùng sẵn ở `CustomerFilters.tsx`, `phong-ban/page.tsx` và nhiều nơi khác trong repo.
+
+**Files Changed:**
+- `frontend/src/components/periodic-tasks/TaskLinksModal.tsx` - thêm handler + JSX Phụ trách phụ, fix
+  deprecated `optionFilterProp` x3
+
+**Verify thật:**
+- `npx tsc --noEmit`: sạch, 0 lỗi (kể cả 5 lỗi baseline logo.png/CountBadge cũng không xuất hiện lần
+  này - cùng hiện tượng cache đã ghi nhận ở entry Phase 3 trước, không liên quan code lượt này).
+- `npm run build` (Next.js 16 Turbopack): Compiled successfully, đủ 32 route bao gồm `/cong-viec-dinh-ky`.
+- `npx vitest run`: 14/14 test pass, không regression.
+
+**Còn lại:** Phase 4 coi như ĐỦ cả BE+FE. Còn Phase 5-7 (như entry trước) + nợ lint
+`react-hooks/set-state-in-effect` (không cấp thiết, đã ghi ở entry trước).
