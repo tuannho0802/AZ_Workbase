@@ -4,6 +4,7 @@ import { PeriodicTasksService } from './periodic-tasks.service';
 import { PeriodicTaskLinksService } from './periodic-task-links.service';
 import { PeriodicTaskCustomersService } from './periodic-task-customers.service';
 import { PeriodicTaskSecondaryAssigneesService } from './periodic-task-secondary-assignees.service';
+import { PeriodicTaskChecklistItemsService } from './periodic-task-checklist-items.service';
 import { CreatePeriodicTaskDto } from './dto/create-periodic-task.dto';
 import { UpdatePeriodicTaskDto } from './dto/update-periodic-task.dto';
 import { PeriodicTaskFiltersDto } from './dto/periodic-task-filters.dto';
@@ -11,6 +12,9 @@ import { CreatePeriodicTaskLinkDto } from './dto/create-periodic-task-link.dto';
 import { LinkPeriodicTaskCustomersDto } from './dto/link-periodic-task-customers.dto';
 import { AddPeriodicTaskSecondaryAssigneeDto } from './dto/add-periodic-task-secondary-assignee.dto';
 import { LockPeriodicTaskDto } from './dto/lock-periodic-task.dto';
+import { CreatePeriodicTaskChecklistItemDto } from './dto/create-periodic-task-checklist-item.dto';
+import { UpdatePeriodicTaskChecklistItemDto } from './dto/update-periodic-task-checklist-item.dto';
+import { ReorderPeriodicTaskChecklistItemsDto } from './dto/reorder-periodic-task-checklist-items.dto';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { PermissionGuard } from '../../common/guards/permission.guard';
 import { RequirePermission } from '../../common/decorators/require-permission.decorator';
@@ -18,7 +22,7 @@ import { GetUser } from '../../common/decorators/get-user.decorator';
 import { GetPermissionScope } from '../../common/decorators/get-permission-scope.decorator';
 
 /**
- * PeriodicTasksController - Phase 1 + 2 + 3 + 4 + 5 (PLAN mục 5 + mục 6).
+ * PeriodicTasksController - Phase 1 + 2 + 3 + 4 + 5 + 6 (PLAN mục 5 + mục 6).
  */
 @ApiTags('Periodic Tasks (Công việc định kỳ)')
 @ApiBearerAuth()
@@ -30,6 +34,7 @@ export class PeriodicTasksController {
     private readonly periodicTaskLinksService: PeriodicTaskLinksService,
     private readonly periodicTaskCustomersService: PeriodicTaskCustomersService,
     private readonly periodicTaskSecondaryAssigneesService: PeriodicTaskSecondaryAssigneesService,
+    private readonly periodicTaskChecklistItemsService: PeriodicTaskChecklistItemsService,
   ) { }
 
   @Post()
@@ -66,7 +71,10 @@ export class PeriodicTasksController {
     const withCustomers = await this.periodicTaskCustomersService.attachLinkedCustomers(task, user);
     // Phase 4: đính thêm `secondaryAssignees` - không cần ẩn theo quyền
     // (xem JSDoc `attachSecondaryAssignees()`).
-    return this.periodicTaskSecondaryAssigneesService.attachSecondaryAssignees(withCustomers);
+    const withSecondary = await this.periodicTaskSecondaryAssigneesService.attachSecondaryAssignees(withCustomers);
+    // Phase 6: đính thêm `checklistItems` - cũng không cần ẩn theo quyền
+    // (xem JSDoc `attachChecklistItems()`).
+    return this.periodicTaskChecklistItemsService.attachChecklistItems(withSecondary);
   }
 
   @Patch(':id')
@@ -228,5 +236,72 @@ export class PeriodicTasksController {
     @GetPermissionScope() scope: string | null | undefined,
   ) {
     return this.periodicTasksService.unlock(id, user, scope);
+  }
+
+  // ── Phase 6: Checklist con kiểu Trello (không có permission riêng - thừa
+  // hưởng periodic_tasks.view/edit của chính Task cha, xem PLAN mục 6) ──
+
+  @Get(':id/checklist-items')
+  @RequirePermission('periodic_tasks.view')
+  @ApiOperation({ summary: 'Danh sách checklist item của Công việc, sắp xếp theo position' })
+  getChecklistItems(
+    @Param('id', ParseIntPipe) id: number,
+    @GetUser() user: any,
+    @GetPermissionScope() scope: string | null | undefined,
+  ) {
+    return this.periodicTaskChecklistItemsService.findAllForTask(id, user.id, user.role, scope);
+  }
+
+  @Post(':id/checklist-items')
+  @RequirePermission('periodic_tasks.edit')
+  @ApiOperation({ summary: 'Thêm 1 checklist item mới vào cuối danh sách' })
+  addChecklistItem(
+    @Param('id', ParseIntPipe) id: number,
+    @Body() dto: CreatePeriodicTaskChecklistItemDto,
+    @GetUser() user: any,
+    @GetPermissionScope() scope: string | null | undefined,
+  ) {
+    return this.periodicTaskChecklistItemsService.create(id, dto, user, scope);
+  }
+
+  // ⚠️ Route tĩnh `reorder` PHẢI khai TRƯỚC route `:itemId` bên dưới - Nest/
+  // Express khớp route theo THỨ TỰ ĐĂNG KÝ (không theo độ cụ thể), khai sau
+  // sẽ khiến "reorder" bị `:itemId` (+ ParseIntPipe) nuốt mất, trả 400 sai.
+  @Patch(':id/checklist-items/reorder')
+  @RequirePermission('periodic_tasks.edit')
+  @ApiOperation({ summary: 'Sắp xếp lại thứ tự TOÀN BỘ checklist item (kéo-thả kiểu Trello)' })
+  @ApiResponse({ status: 400, description: 'itemIds không phải hoán vị đầy đủ của checklist hiện có' })
+  reorderChecklistItems(
+    @Param('id', ParseIntPipe) id: number,
+    @Body() dto: ReorderPeriodicTaskChecklistItemsDto,
+    @GetUser() user: any,
+    @GetPermissionScope() scope: string | null | undefined,
+  ) {
+    return this.periodicTaskChecklistItemsService.reorder(id, dto, user, scope);
+  }
+
+  @Patch(':id/checklist-items/:itemId')
+  @RequirePermission('periodic_tasks.edit')
+  @ApiOperation({ summary: 'Sửa nội dung và/hoặc đánh dấu xong/chưa xong 1 checklist item' })
+  updateChecklistItem(
+    @Param('id', ParseIntPipe) id: number,
+    @Param('itemId', ParseIntPipe) itemId: number,
+    @Body() dto: UpdatePeriodicTaskChecklistItemDto,
+    @GetUser() user: any,
+    @GetPermissionScope() scope: string | null | undefined,
+  ) {
+    return this.periodicTaskChecklistItemsService.update(id, itemId, dto, user, scope);
+  }
+
+  @Delete(':id/checklist-items/:itemId')
+  @RequirePermission('periodic_tasks.edit')
+  @ApiOperation({ summary: 'Xoá 1 checklist item' })
+  removeChecklistItem(
+    @Param('id', ParseIntPipe) id: number,
+    @Param('itemId', ParseIntPipe) itemId: number,
+    @GetUser() user: any,
+    @GetPermissionScope() scope: string | null | undefined,
+  ) {
+    return this.periodicTaskChecklistItemsService.remove(id, itemId, user, scope);
   }
 }
