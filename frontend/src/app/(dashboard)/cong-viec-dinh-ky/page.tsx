@@ -69,6 +69,9 @@ import { TaskActionsBar } from '@/components/periodic-tasks/TaskActionsBar';
 import { PeriodicTasksAgendaView } from '@/components/periodic-tasks/PeriodicTasksAgendaView';
 import { PeriodicTasksKanbanView } from '@/components/periodic-tasks/PeriodicTasksKanbanView';
 import { PeriodicTasksCalendarView } from '@/components/periodic-tasks/PeriodicTasksCalendarView';
+import { TaskTitlePill, TaskChainBadge } from '@/components/periodic-tasks/TaskTitlePill';
+import { buildTaskLinkChains, sortTasksByChain } from '@/lib/utils/taskLinkChains';
+import { useTaskLinksAmong } from '@/lib/hooks/usePeriodicTaskLinks';
 import { customerPhoneDisplay, customerPlainLabel, renderCustomerOption } from '@/components/common/customer-option-render';
 import { SimpleList } from '@/components/common/SimpleList';
 
@@ -203,6 +206,23 @@ export default function PeriodicTasksPage() {
         view !== 'table',
     );
     const viewTasks = viewData?.data ?? [];
+
+    // Phase 8 (yêu cầu chủ dự án 2026-09-15): UI "nối/xếp hàng" các Task đã
+    // liên kết (Phase 2 - `periodic_task_links`). Chỉ tra cạnh liên kết
+    // trong đúng danh sách Task đang hiển thị Ở VIEW HIỆN TẠI (`tasks` cho
+    // Bảng, `viewTasks` cho 3 view còn lại) - 1 API DUY NHẤT/lần đổi view
+    // hoặc đổi filter (không gọi lặp theo từng Task, xem JSDoc
+    // `useTaskLinksAmong`). Task nằm ngoài danh sách đang tải (khác trang/
+    // khác filter) sẽ KHÔNG được nối trực quan - chấp nhận được vì đây là
+    // tính năng trang trí, không phải nguồn dữ liệu chính thức (BE trả đúng
+    // Phase 2 `getChildren`/`getParents`/`rollup` mới là nguồn thật).
+    const currentViewTasks = view === 'table' ? tasks : viewTasks;
+    const currentViewTaskIds = useMemo(() => currentViewTasks.map((t) => t.id), [currentViewTasks]);
+    const { data: linksData } = useTaskLinksAmong(currentViewTaskIds, currentViewTaskIds.length > 0);
+    const chains = useMemo(() => buildTaskLinkChains(linksData?.edges ?? []), [linksData]);
+    const currentViewTasksById = useMemo(() => new Map(currentViewTasks.map((t) => [t.id, t])), [currentViewTasks]);
+    const resolveChainTask = (taskId: number) => currentViewTasksById.get(taskId);
+    const tableTasksSorted = useMemo(() => sortTasksByChain(tasks, chains), [tasks, chains]);
 
     const { statuses } = usePeriodicTaskStatuses();
     const { departments } = useDepartments();
@@ -607,35 +627,35 @@ export default function PeriodicTasksPage() {
             dataIndex: 'title',
             key: 'title',
             width: 260,
-            render: (title: string, record: PeriodicTask) => (
-                <Space align="start">
-                    {/* Chấm màu Task - CHỈ hiển thị UI, không mang ý nghĩa nghiệp vụ
-                        (xem JSDoc entity BE). Fallback màu mặc định nếu chưa set. */}
-                    <Tooltip title={record.color ? `Màu: ${record.color}` : 'Chưa đặt màu'}>
-                        <span
-                            style={{
-                                display: 'inline-block',
-                                width: 10,
-                                height: 10,
-                                borderRadius: '50%',
-                                backgroundColor: resolveEntityColor(record.color),
-                                marginTop: 6,
-                                flexShrink: 0,
-                            }}
-                        />
-                    </Tooltip>
+            // Phase 8: viền trái màu chuỗi liên kết (nếu có) - Table dùng
+            // `<tr>` rời rạc nên KHÔNG vẽ được đường nối liên tục như Agenda
+            // (`TaskChainGroupedList`), thay bằng viền trái CÙNG 1 màu cho
+            // các dòng liền kề cùng chuỗi (đã `sortTasksByChain()` ở
+            // `dataSource` để đảm bảo các dòng này đứng cạnh nhau).
+            onCell: (record: PeriodicTask) => {
+                const chain = chains.get(record.id);
+                return chain ? { style: { borderLeft: `3px solid ${chain.color}` } } : {};
+            },
+            render: (title: string, record: PeriodicTask) => {
+                const chain = chains.get(record.id);
+                return (
                     <div>
-                        <div style={{ fontWeight: 500 }}>{title}</div>
+                        <Space align="start" wrap size={4}>
+                            <TaskTitlePill title={title} color={record.color} />
+                            {chain && <TaskChainBadge chain={chain} currentTaskId={record.id} resolveTask={resolveChainTask} />}
+                        </Space>
                         {record.note && (
-                            <Tooltip title={record.note}>
-                                <Text type="secondary" style={{ fontSize: 12 }} ellipsis>
-                                    {record.note}
-                                </Text>
-                            </Tooltip>
+                            <div>
+                                <Tooltip title={record.note}>
+                                    <Text type="secondary" style={{ fontSize: 12 }} ellipsis>
+                                        {record.note}
+                                    </Text>
+                                </Tooltip>
+                            </div>
                         )}
                     </div>
-                </Space>
-            ),
+                );
+            },
         },
         {
             title: 'Kỳ hạn',
@@ -858,7 +878,7 @@ export default function PeriodicTasksPage() {
                     rowKey="id"
                     loading={isLoading || isFetching}
                     columns={columns}
-                    dataSource={tasks}
+                    dataSource={tableTasksSorted}
                     scroll={{ x: 'max-content' }}
                     pagination={{
                         current: page,
@@ -878,6 +898,8 @@ export default function PeriodicTasksPage() {
                 <PeriodicTasksAgendaView
                     tasks={viewTasks}
                     loading={viewLoading || viewFetching}
+                    chains={chains}
+                    resolveChainTask={resolveChainTask}
                     canEdit={canEdit}
                     canEditLocked={canEditLocked}
                     canApprove={canApprove}
@@ -898,6 +920,8 @@ export default function PeriodicTasksPage() {
                     tasks={viewTasks}
                     statuses={statuses}
                     loading={viewLoading || viewFetching}
+                    chains={chains}
+                    resolveChainTask={resolveChainTask}
                     canEdit={canEdit}
                     canEditLocked={canEditLocked}
                     canApprove={canApprove}
@@ -914,7 +938,12 @@ export default function PeriodicTasksPage() {
             )}
 
             {view === 'calendar' && (
-                <PeriodicTasksCalendarView tasks={viewTasks} onSelectTask={canEdit ? openEditModal : undefined} />
+                <PeriodicTasksCalendarView
+                    tasks={viewTasks}
+                    onSelectTask={canEdit ? openEditModal : undefined}
+                    chains={chains}
+                    resolveChainTask={resolveChainTask}
+                />
             )}
 
             {/* Modal Thêm/Sửa */}

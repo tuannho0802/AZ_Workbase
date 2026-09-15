@@ -4,8 +4,10 @@ import { Card, Tag, Tooltip, Space, Typography } from 'antd';
 import { LockOutlined } from '@ant-design/icons';
 import dayjs from 'dayjs';
 import { PeriodicTask, PERIOD_TYPE_LABELS } from '@/lib/api/periodic-tasks.api';
-import { resolveEntityColor, DEFAULT_ENTITY_COLOR } from '@/lib/utils/entityColor';
+import { DEFAULT_ENTITY_COLOR, resolveEntityColor } from '@/lib/utils/entityColor';
 import { useUsersList } from '@/lib/hooks/useUsers';
+import { TaskTitlePill, TaskChainBadge } from './TaskTitlePill';
+import { TaskChainInfo } from '@/lib/utils/taskLinkChains';
 
 const { Text } = Typography;
 
@@ -29,9 +31,25 @@ export interface TaskMiniCardProps {
      * tự bọc thêm listener/style qua đây thay vì phải fork component. */
     onClick?: () => void;
     className?: string;
+    /** Phase 8 - thông tin chuỗi liên kết của CHÍNH `task` này (nếu có),
+     * `undefined` = Task không thuộc chuỗi nào -> KHÔNG hiện badge. */
+    chainInfo?: TaskChainInfo;
+    /** Tra tiêu đề/ngày của từng thành viên trong chuỗi (mirror
+     * `TaskChainBadgeProps.resolveTask`) - bắt buộc truyền cùng `chainInfo`. */
+    resolveChainTask?: (taskId: number) => Pick<PeriodicTask, 'title' | 'periodStartDate'> | undefined;
 }
 
-export function TaskMiniCard({ task, extra, footer, size = 'small', style, onClick, className }: TaskMiniCardProps) {
+export function TaskMiniCard({
+    task,
+    extra,
+    footer,
+    size = 'small',
+    style,
+    onClick,
+    className,
+    chainInfo,
+    resolveChainTask,
+}: TaskMiniCardProps) {
     // `lockedById` KHÔNG kèm object quan hệ từ BE (xem JSDoc
     // `PeriodicTask.lockedById` ở periodic-tasks.api.ts) - tự tra tên qua
     // `useUsersList()`, mirror ĐÚNG `userNameById` ở page gốc.
@@ -43,33 +61,23 @@ export function TaskMiniCard({ task, extra, footer, size = 'small', style, onCli
     return (
         <Card size={size} style={{ marginBottom: 8, ...style }} onClick={onClick} className={className}>
             <Space align="start" style={{ width: '100%', justifyContent: 'space-between' }}>
-                <Space align="start">
-                    <Tooltip title={task.color ? `Màu: ${task.color}` : 'Chưa đặt màu'}>
-                        <span
-                            style={{
-                                display: 'inline-block',
-                                width: 10,
-                                height: 10,
-                                borderRadius: '50%',
-                                backgroundColor: resolveEntityColor(task.color),
-                                marginTop: 6,
-                                flexShrink: 0,
-                            }}
-                        />
-                    </Tooltip>
-                    <div>
-                        <Text style={{ fontWeight: 500 }}>{task.title}</Text>
-                        {task.note && (
-                            <div>
-                                <Tooltip title={task.note}>
-                                    <Text type="secondary" style={{ fontSize: 12 }} ellipsis>
-                                        {task.note}
-                                    </Text>
-                                </Tooltip>
-                            </div>
+                <div>
+                    <Space align="start" wrap size={4}>
+                        <TaskTitlePill title={task.title} color={task.color} />
+                        {chainInfo && resolveChainTask && (
+                            <TaskChainBadge chain={chainInfo} currentTaskId={task.id} resolveTask={resolveChainTask} />
                         )}
-                    </div>
-                </Space>
+                    </Space>
+                    {task.note && (
+                        <div>
+                            <Tooltip title={task.note}>
+                                <Text type="secondary" style={{ fontSize: 12 }} ellipsis>
+                                    {task.note}
+                                </Text>
+                            </Tooltip>
+                        </div>
+                    )}
+                </div>
                 {extra}
             </Space>
 

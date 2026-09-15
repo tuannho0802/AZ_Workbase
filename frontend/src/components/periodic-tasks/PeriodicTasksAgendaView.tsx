@@ -7,10 +7,20 @@ import 'dayjs/locale/vi';
 import { PeriodicTask } from '@/lib/api/periodic-tasks.api';
 import { TaskMiniCard } from './TaskMiniCard';
 import { TaskActionsBar, TaskActionsBarProps } from './TaskActionsBar';
+import { TaskChainGroupedList } from './TaskChainConnector';
+import { TaskChainInfo, sortTasksByChain } from '@/lib/utils/taskLinkChains';
 
 dayjs.locale('vi');
 
 const { Text } = Typography;
+
+/** Viết hoa CHỮ CÁI ĐẦU của MỖI TỪ trong tên thứ tiếng Việt trả về từ dayjs
+ * locale 'vi' (mặc định toàn chữ thường, vd "thứ hai") - KHÔNG đụng phần
+ * ngày/tháng/năm phía sau. Dùng `\p{L}` (Unicode letter, có \u flag) để xử
+ * lý đúng ký tự có dấu tiếng Việt, không chỉ a-z. */
+function capitalizeVietnameseWeekday(weekday: string): string {
+    return weekday.replace(/(^|\s)\p{L}/gu, (m) => m.toUpperCase());
+}
 
 type ActionHandlers = Pick<
     TaskActionsBarProps,
@@ -22,6 +32,13 @@ type ActionHandlers = Pick<
 export interface PeriodicTasksAgendaViewProps extends ActionHandlers {
     tasks: PeriodicTask[];
     loading?: boolean;
+    /** Phase 8 - chuỗi liên kết đã tính từ TOÀN BỘ `tasks` (không chỉ trong
+     * 1 ngày) - Agenda tự sắp lại thành viên LIỀN NHAU trong TỪNG panel
+     * ngày (2 Task cùng chuỗi nhưng khác ngày sẽ KHÔNG được nối - chỉ hiện
+     * `TaskChainBadge` cho biết còn liên kết ở panel khác, xem JSDoc
+     * `TaskMiniCard.chainInfo`). */
+    chains?: Map<number, TaskChainInfo>;
+    resolveChainTask?: (taskId: number) => Pick<PeriodicTask, 'title' | 'periodStartDate'> | undefined;
 }
 
 /**
@@ -39,7 +56,7 @@ export interface PeriodicTasksAgendaViewProps extends ActionHandlers {
  * filter từ trang cha (`cong-viec-dinh-ky/page.tsx`), mirror đúng nguyên tắc
  * "FE chỉ việc gọi bình thường" ở JSDoc đầu file đó.
  */
-export function PeriodicTasksAgendaView({ tasks, loading, ...actions }: PeriodicTasksAgendaViewProps) {
+export function PeriodicTasksAgendaView({ tasks, loading, chains, resolveChainTask, ...actions }: PeriodicTasksAgendaViewProps) {
     const groups = useMemo(() => {
         const map = new Map<string, PeriodicTask[]>();
         for (const t of tasks) {
@@ -98,7 +115,7 @@ export function PeriodicTasksAgendaView({ tasks, loading, ...actions }: Periodic
                     key: dateKey,
                     label: (
                         <span style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
-                            <Text strong>{dayjs(dateKey).format('dddd, DD/MM/YYYY')}</Text>
+                            <Text strong>{capitalizeVietnameseWeekday(dayjs(dateKey).format('dddd'))}, {dayjs(dateKey).format('DD/MM/YYYY')}</Text>
                             {isToday && <Tag color="blue">Hôm nay</Tag>}
                             <Badge count={groupTasks.length} color="#1890ff" showZero />
                             {doneCount > 0 && (
@@ -108,30 +125,38 @@ export function PeriodicTasksAgendaView({ tasks, loading, ...actions }: Periodic
                             )}
                         </span>
                     ),
-                    children: groupTasks.map((task) => (
-                        <TaskMiniCard
-                            key={task.id}
-                            task={task}
-                            footer={
-                                <TaskActionsBar
+                    children: (
+                        <TaskChainGroupedList
+                            tasks={chains ? sortTasksByChain(groupTasks, chains) : groupTasks}
+                            chains={chains ?? new Map()}
+                            renderTask={(task) => (
+                                <TaskMiniCard
+                                    key={task.id}
                                     task={task}
-                                    canEdit={actions.canEdit}
-                                    canEditLocked={actions.canEditLocked}
-                                    canApprove={actions.canApprove}
-                                    canDelete={actions.canDelete}
-                                    onLink={actions.onLink}
-                                    onChecklist={actions.onChecklist}
-                                    onAudit={actions.onAudit}
-                                    onEdit={actions.onEdit}
-                                    onLock={actions.onLock}
-                                    onUnlock={actions.onUnlock}
-                                    onDelete={actions.onDelete}
-                                    unlockLoading={actions.isUnlocking(task.id)}
-                                    wrap
+                                    chainInfo={chains?.get(task.id)}
+                                    resolveChainTask={resolveChainTask}
+                                    footer={
+                                        <TaskActionsBar
+                                            task={task}
+                                            canEdit={actions.canEdit}
+                                            canEditLocked={actions.canEditLocked}
+                                            canApprove={actions.canApprove}
+                                            canDelete={actions.canDelete}
+                                            onLink={actions.onLink}
+                                            onChecklist={actions.onChecklist}
+                                            onAudit={actions.onAudit}
+                                            onEdit={actions.onEdit}
+                                            onLock={actions.onLock}
+                                            onUnlock={actions.onUnlock}
+                                            onDelete={actions.onDelete}
+                                            unlockLoading={actions.isUnlocking(task.id)}
+                                            wrap
+                                        />
+                                    }
                                 />
-                            }
+                            )}
                         />
-                    )),
+                    ),
                 };
             })}
         />

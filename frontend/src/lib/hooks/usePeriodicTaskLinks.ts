@@ -29,6 +29,25 @@ export const useTaskRollup = (taskId: number | null) =>
     enabled: taskId != null,
   });
 
+/**
+ * useTaskLinksAmong - Phase 8 (PLAN mục Phase 8): 1 query DUY NHẤT cho toàn
+ * bộ `taskIds` của 1 view (Table/Agenda/Kanban/Calendar đang hiển thị) - lấy
+ * cạnh liên kết để dựng UI "nối/xếp hàng" (`buildTaskLinkChains`). `taskIds`
+ * được sort trước khi đưa vào `queryKey` để tránh refetch thừa khi thứ tự
+ * mảng đổi (vd sort lại Table) nhưng TẬP hợp ID không đổi.
+ */
+export const useTaskLinksAmong = (taskIds: number[], enabled = true) => {
+  const sortedIds = [...taskIds].sort((a, b) => a - b);
+  return useQuery({
+    queryKey: [LIST_KEY, 'links-among', sortedIds],
+    queryFn: () => periodicTaskLinksApi.getLinksAmong(sortedIds),
+    enabled: enabled && sortedIds.length > 0,
+    // Cạnh liên kết ít khi đổi trong lúc đang xem 1 trang - giữ cache 30s để
+    // không gọi lại API này mỗi lần re-render nhỏ (vd gõ ô tìm kiếm khác).
+    staleTime: 30_000,
+  });
+};
+
 function useInvalidateTaskLinks() {
   const queryClient = useQueryClient();
   return () => queryClient.invalidateQueries({ queryKey: [LIST_KEY] });

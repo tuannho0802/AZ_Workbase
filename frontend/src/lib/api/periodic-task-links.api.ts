@@ -55,4 +55,22 @@ export const periodicTaskLinksApi = {
     );
     return response.data;
   },
+
+  /**
+   * getLinksAmong - Phase 8 (PLAN mục Phase 8): lấy TOÀN BỘ cạnh cha-con mà
+   * CẢ 2 đầu đều nằm trong `taskIds` (1 lần gọi CHO CẢ danh sách Task đang
+   * hiển thị ở 1 view - KHÔNG gọi lặp theo từng Task, tránh N+1, mirror
+   * `getChildren`/`getParents` KHÔNG phù hợp cho use case này vì chỉ tra 1
+   * Task/lần). Trả rỗng ngay ở FE nếu `taskIds` rỗng - không tốn round-trip.
+   */
+  getLinksAmong: async (
+    taskIds: number[],
+  ): Promise<{ edges: Array<{ parentTaskId: number; childTaskId: number }> }> => {
+    if (taskIds.length === 0) return { edges: [] };
+    const response = await axiosInstance.get<{ edges: Array<{ parentTaskId: number; childTaskId: number }> }>(
+      '/periodic-tasks/links',
+      { params: { taskIds: taskIds.join(',') } },
+    );
+    return response.data;
+  },
 };

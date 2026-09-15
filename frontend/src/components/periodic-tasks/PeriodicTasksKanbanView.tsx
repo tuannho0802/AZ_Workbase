@@ -22,6 +22,7 @@ import { useUpdatePeriodicTask } from '@/lib/hooks/usePeriodicTasks';
 import { getApiErrorMessage } from '@/lib/utils/error-message.util';
 import { TaskMiniCard } from './TaskMiniCard';
 import { TaskActionsBar, TaskActionsBarProps } from './TaskActionsBar';
+import { TaskChainInfo } from '@/lib/utils/taskLinkChains';
 
 const { Text } = Typography;
 
@@ -36,6 +37,13 @@ export interface PeriodicTasksKanbanViewProps extends ActionHandlers {
     tasks: PeriodicTask[];
     statuses: PeriodicTaskStatus[];
     loading?: boolean;
+    /** Phase 8 - xem JSDoc tương ứng ở `PeriodicTasksAgendaViewProps`. Kanban
+     * CHỈ hiện `TaskChainBadge` (không vẽ đường nối liên tục như Agenda) vì
+     * mỗi Card đang gắn `ref` cho `useSortable()` (dnd-kit) - bọc thêm 1 lớp
+     * div định vị riêng cho đường nối có rủi ro lệch toạ độ kéo-thả, không
+     * đáng đánh đổi cho 1 chi tiết trang trí. */
+    chains?: Map<number, TaskChainInfo>;
+    resolveChainTask?: (taskId: number) => Pick<PeriodicTask, 'title' | 'periodStartDate'> | undefined;
 }
 
 const TASK_PREFIX = 'task-';
@@ -61,7 +69,7 @@ const COLUMN_PREFIX = 'col-';
  * trong cùng cột) KHÔNG làm gì, vì Task không có cột `position` riêng theo
  * từng status để lưu thứ tự trong 1 cột.
  */
-export function PeriodicTasksKanbanView({ tasks, statuses, loading, ...actions }: PeriodicTasksKanbanViewProps) {
+export function PeriodicTasksKanbanView({ tasks, statuses, loading, chains, resolveChainTask, ...actions }: PeriodicTasksKanbanViewProps) {
     const { message } = App.useApp();
     const updateMutation = useUpdatePeriodicTask();
 
@@ -191,6 +199,8 @@ export function PeriodicTasksKanbanView({ tasks, statuses, loading, ...actions }
                                     task={task}
                                     disabled={!canDragTask(task)}
                                     actions={actions}
+                                    chainInfo={chains?.get(task.id)}
+                                    resolveChainTask={resolveChainTask}
                                 />
                             ))}
                             {columnTasks.length === 0 && (
@@ -250,10 +260,14 @@ function KanbanCard({
     task,
     disabled,
     actions,
+    chainInfo,
+    resolveChainTask,
 }: {
     task: PeriodicTask;
     disabled: boolean;
     actions: ActionHandlers;
+        chainInfo?: TaskChainInfo;
+        resolveChainTask?: (taskId: number) => Pick<PeriodicTask, 'title' | 'periodStartDate'> | undefined;
 }) {
     const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
         id: `${TASK_PREFIX}${task.id}`,
@@ -273,6 +287,8 @@ function KanbanCard({
         >
             <TaskMiniCard
                 task={task}
+                chainInfo={chainInfo}
+                resolveChainTask={resolveChainTask}
                 footer={
                     <TaskActionsBar
                         task={task}

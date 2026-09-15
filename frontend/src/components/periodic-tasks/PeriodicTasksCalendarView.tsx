@@ -2,10 +2,12 @@
 
 import { useMemo } from 'react';
 import { Calendar, Tag, Tooltip, Badge, Typography } from 'antd';
+import { LinkOutlined } from '@ant-design/icons';
 import type { Dayjs } from 'dayjs';
 import dayjs from 'dayjs';
 import { PeriodicTask, PERIOD_TYPE_LABELS } from '@/lib/api/periodic-tasks.api';
-import { DEFAULT_ENTITY_COLOR } from '@/lib/utils/entityColor';
+import { resolveEntityColor } from '@/lib/utils/entityColor';
+import { TaskChainInfo } from '@/lib/utils/taskLinkChains';
 
 const { Text } = Typography;
 
@@ -16,6 +18,11 @@ export interface PeriodicTasksCalendarViewProps {
      * không có quyền sửa, click Tag chỉ hiện Tooltip chi tiết (không làm gì
      * thêm) - không truyền `onSelectTask` trong trường hợp đó. */
     onSelectTask?: (task: PeriodicTask) => void;
+    /** Phase 8 - xem JSDoc tương ứng ở `PeriodicTasksAgendaViewProps`. Lưới
+     * ngày KHÔNG phải khối dọc liên tục nên không vẽ được đường nối như
+     * Agenda - chỉ tô viền màu chuỗi lên Tag + liệt kê trong Tooltip. */
+    chains?: Map<number, TaskChainInfo>;
+    resolveChainTask?: (taskId: number) => Pick<PeriodicTask, 'title' | 'periodStartDate'> | undefined;
 }
 
 /**
@@ -30,7 +37,7 @@ export interface PeriodicTasksCalendarViewProps {
  * Không phân trang - nhận `tasks` đã tải với `limit` đủ lớn từ trang cha
  * (mirror Agenda/Kanban, xem `page.tsx` phần chọn `viewLimit`).
  */
-export function PeriodicTasksCalendarView({ tasks, onSelectTask }: PeriodicTasksCalendarViewProps) {
+export function PeriodicTasksCalendarView({ tasks, onSelectTask, chains, resolveChainTask }: PeriodicTasksCalendarViewProps) {
     // Index theo NGÀY (YYYY-MM-DD) -> danh sách Task phủ ngày đó. Tính 1 lần
     // cho toàn bộ `tasks` hiện có (quy mô dự án hiện tại nhỏ - vài chục Task
     // - lặp qua từng ngày trong khoảng của mỗi Task là đủ rẻ, không cần tối
@@ -60,38 +67,62 @@ export function PeriodicTasksCalendarView({ tasks, onSelectTask }: PeriodicTasks
         if (dayTasks.length === 0) return null;
         return (
             <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
-                {dayTasks.slice(0, 3).map((task) => (
-                    <Tooltip
-                        key={task.id}
-                        title={
-                            <>
-                                <div>{task.title}</div>
-                                <div style={{ fontSize: 12, opacity: 0.8 }}>
-                                    {PERIOD_TYPE_LABELS[task.periodType]} · {task.status?.name ?? '—'} ·{' '}
-                                    {task.primaryAssignee?.name ?? '—'}
-                                </div>
-                            </>
-                        }
-                    >
-                        <Tag
-                            color={task.status?.color ?? DEFAULT_ENTITY_COLOR}
-                            style={{
-                                margin: 0,
-                                cursor: onSelectTask ? 'pointer' : 'default',
-                                overflow: 'hidden',
-                                textOverflow: 'ellipsis',
-                                whiteSpace: 'nowrap',
-                                maxWidth: '100%',
-                            }}
-                            onClick={(e) => {
-                                e.stopPropagation();
-                                onSelectTask?.(task);
-                            }}
+                {dayTasks.slice(0, 3).map((task) => {
+                    const chain = chains?.get(task.id);
+                    return (
+                        <Tooltip
+                            key={task.id}
+                            title={
+                                <>
+                                    <div>{task.title}</div>
+                                    <div style={{ fontSize: 12, opacity: 0.8 }}>
+                                        {PERIOD_TYPE_LABELS[task.periodType]} · {task.status?.name ?? '—'} ·{' '}
+                                        {task.primaryAssignee?.name ?? '—'}
+                                    </div>
+                                    {chain && resolveChainTask && (
+                                        <div style={{ fontSize: 12, marginTop: 4, borderTop: '1px solid rgba(255,255,255,0.2)', paddingTop: 4 }}>
+                                            <LinkOutlined /> Chuỗi liên kết ({chain.memberIds.length} Công việc):
+                                            {chain.memberIds.map((id) => {
+                                                const t = resolveChainTask(id);
+                                                return (
+                                                    <div key={id} style={{ opacity: id === task.id ? 1 : 0.8 }}>
+                                                        {id === task.id ? '➤ ' : '• '}
+                                                        {t ? `${t.title} (${dayjs(t.periodStartDate).format('DD/MM')})` : `Công việc #${id}`}
+                                                    </div>
+                                                );
+                                            })}
+                                        </div>
+                                    )}
+                                </>
+                            }
                         >
-                            {task.title}
-                        </Tag>
-                    </Tooltip>
-                ))}
+                            <Tag
+                                color={resolveEntityColor(task.color)}
+                                style={{
+                                    margin: 0,
+                                    cursor: onSelectTask ? 'pointer' : 'default',
+                                    overflow: 'hidden',
+                                    textOverflow: 'ellipsis',
+                                    whiteSpace: 'nowrap',
+                                    maxWidth: '100%',
+                                    borderRadius: 4,
+                                    fontWeight: 500,
+                                    // Phase 8: viền màu chuỗi liên kết (khác hẳn màu nền của Tag,
+                                    // dùng `boxShadow` inset thay vì `border` để không đổi kích
+                                    // thước Tag) - CHỈ hiện khi Task thuộc 1 chuỗi >= 2 thành viên.
+                                    boxShadow: chain ? `inset 0 0 0 2px ${chain.color}` : undefined,
+                                }}
+                                onClick={(e) => {
+                                    e.stopPropagation();
+                                    onSelectTask?.(task);
+                                }}
+                            >
+                                {chain && <LinkOutlined style={{ marginRight: 3, fontSize: 10 }} />}
+                                {task.title}
+                            </Tag>
+                        </Tooltip>
+                    );
+                })}
                 {dayTasks.length > 3 && (
                     <Badge
                         count={`+${dayTasks.length - 3}`}
