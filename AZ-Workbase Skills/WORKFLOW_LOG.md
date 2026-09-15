@@ -2289,3 +2289,77 @@ nhận ổn (Agent không tự push theo quy ước).
 - Lỗi lint prettier/`no-unsafe-*` rải rác baseline trong nhiều spec file + `periodic-tasks.service.ts`
   (đối chiếu xác nhận không phải do phiên này gây ra - tồn tại xuyên suốt các Phase trước).
 - Sắp xếp checklist dùng nút Lên/Xuống thay kéo-thả chuột thật (đã ghi rõ lý do + JSDoc ở entry Phase 6).
+
+
+## [2026-09-15 18:20] | Fix 2 bug thật ở Phase 8 "Công việc định kỳ" (403 spam thiếu quyền Customer + 400 limit>100) | Status: Success
+
+**Actor:** Agent (theo báo lỗi kèm ảnh chụp của chủ dự án)
+
+**Bối cảnh:** Chủ dự án test 1 Role chỉ bật đúng module Công việc định kỳ (mô phỏng "Content" - không
+cần biết Khách hàng), tắt hết `customers.*`. Vào trang `/cong-viec-dinh-ky` thấy: (1) Toast đỏ
+"Bạn không có quyền thực hiện hành động này" lặp lại liên tục; (2) Toast đỏ "limit must not be greater
+than 100" lặp lại liên tục; view "Xem theo Ngày" không tải được data (mãi loading). Ảnh chụp thứ 2 (từ
+Admin, xem đủ mọi quyền) xác nhận thêm: CHỈ view Bảng chạy được, 3 view Agenda/Kanban/Calendar đều lỗi
+như nhau bất kể Role - tức bug #2 không phải do RBAC.
+
+**Files Changed:**
+- `frontend/src/lib/hooks/useCustomers.ts` — thêm tham số `enabled` (mirror đúng pattern
+  `usePeriodicTasks(params, enabled)` đã có từ Phase 8), mặc định `true` nên KHÔNG đổi hành vi chỗ gọi
+  cũ (`customers/page.tsx`).
+- `frontend/src/app/(dashboard)/cong-viec-dinh-ky/page.tsx` — 2 chỗ:
+  1. Gate `useCustomers()` (ô tìm Khách hàng trong modal Tạo/Sửa Task) bằng `enabled: canLinkCustomer`.
+  2. Đổi `nonTableFilters.limit` từ `500` xuống `100`.
+- `frontend/src/components/periodic-tasks/TaskLinksModal.tsx` — gate `useCustomers()` (ô tìm Khách hàng
+  để gắn qua nút "Liên kết") bằng `enabled: canLinkCustomer` — comment cũ ở đây đã ghi ĐÚNG Ý ĐỊNH
+  "chỉ chạy khi modal cho phép gắn Customer" nhưng code thực tế CHƯA từng làm vậy (hook `useCustomers`
+  lúc viết Phase 3 chưa hỗ trợ `enabled`) — code không khớp comment, xác nhận bằng cách đọc trực tiếp.
+
+**Root Cause (2 bug độc lập, không liên quan nhau):**
+> **Bug 1 (403 spam theo Role):** Component `TaskLinksModal` LUÔN mount sẵn ở cuối `page.tsx`
+> (`<TaskLinksModal open={!!linkingTask} ... />` — chỉ ẩn/hiện qua prop `open` của `<Modal>`, KHÔNG phải
+> conditional render `{linkingTask && <TaskLinksModal />}`). Cả `TaskLinksModal` lẫn modal Tạo/Sửa Task
+> ở `page.tsx` đều gọi `useCustomers()` (ô tìm Khách hàng để gắn vào Task) KHÔNG ĐIỀU KIỆN ngay lúc trang
+> vừa tải xong — bất kể user có `periodic_tasks.link_customer` hay không, bất kể có từng mở Modal/bấm
+> "Liên kết" hay chưa. User trong ảnh chụp chỉ có `periodic_tasks.*`, KHÔNG có `customers.view` → Backend
+> trả 403 hoàn toàn ĐÚNG RBAC (không phải lỗi phân quyền Backend) — nhưng FE không có gì chặn request
+> lúc mount, React Query tự retry → toast lỗi bắn liên tục dù user chưa hề chạm vào tính năng Customer.
+>
+> **Bug 2 (400 limit, xảy ra với MỌI Role kể cả Admin):** `nonTableFilters` (query riêng cho 3 view
+> Agenda/Kanban/Calendar, không phân trang) set cứng `limit: 500` với lý do ghi trong comment cũ "500 đủ
+> lớn cho quy mô Task hiện tại" — nhưng `PeriodicTaskFiltersDto.limit` ở Backend giới hạn cứng
+> `@Max(100)` (đúng convention chung toàn dự án, đối chiếu `CustomerFiltersDto` cùng mức 100) — không hề
+> được kiểm tra khớp lại lúc code Phase 8. Mọi request `GET /periodic-tasks?limit=500` bị `400 Bad
+> Request "limit must not be greater than 100"` cho TẤT CẢ user, không phân biệt Role — đúng như ảnh
+> chụp thứ 2 (Admin) xác nhận. Đây là lỗi Phase 8 tự thú "chưa build/test" trong tóm tắt trước đó của
+> chính Agent — nay mới bị phát hiện thật qua báo lỗi của chủ dự án.
+
+**Solution:**
+> 1. Thêm `enabled` cho hook `useCustomers()` — cho phép nơi gọi tự TẮT hẳn query khi tính năng liên
+>    quan không hiển thị/không được phép, đúng nguyên tắc dự án "BE 403 → FE tự ẩn TRƯỚC" áp dụng luôn
+>    cho tầng data-fetching, không chỉ tầng UI (trước đây chỉ phần UI hiện/ẩn Select được gate bằng
+>    `canLinkCustomer`, còn query nền vẫn chạy ngầm).
+> 2. Gate cả 2 call site (`page.tsx` modal + `TaskLinksModal.tsx`) bằng đúng permission
+>    `periodic_tasks.link_customer` (qua biến `canLinkCustomer` đã có sẵn ở cả 2 nơi).
+> 3. Đổi `limit` của `nonTableFilters` từ `500` → `100` cho khớp giới hạn Backend, KHÔNG nới giới hạn
+>    Backend (giữ nguyên convention `@Max(100)` áp dụng đồng nhất mọi module trong dự án) — 100 vẫn thừa
+>    cho quy mô Task hiện tại (vài chục Task).
+
+**Verify thật (không suy diễn):**
+- `npm install` (chưa có `node_modules` từ trước) — sạch, 602 package.
+- `npx next build` — sạch, Compiled + TypeScript pass, đủ 32 route kể cả `/cong-viec-dinh-ky`.
+- `npx vitest run` — 2/2 suite, **14/14 test PASS** (không regression - không có spec nào đụng trực tiếp
+  3 file vừa sửa nên số lượng giữ nguyên so với lần verify Phase 8 trước).
+- Không đụng Backend trong phiên này (bug thuần FE, xác nhận DTO Backend vốn đã đúng, không cần sửa).
+
+**Notes:**
+> - Chưa có test tự động khoá hành vi `enabled` (mirror `usePeriodicTasks` cũng chưa có test riêng cho
+>   `enabled` dù đã tồn tại từ Phase 8) — nếu muốn chống regression dài hạn, nên thêm test kiểu "hook
+>   không gọi query khi `enabled=false`" cho cả `useCustomers`/`usePeriodicTasks`, hiện ưu tiên thấp hơn
+>   vì bug đã có nguyên nhân rõ ràng và dễ soát lại bằng mắt (2 chỗ gọi trong toàn repo).
+> - Đã cập nhật `PLAN_PERIODIC_TASKS_MODULE.md` — bổ sung mục "Phase 8 — View switcher" đầy đủ (trước đó
+>   Phase 8 đã code + commit (`6da05c0`) nhưng CHƯA từng được ghi vào Plan/Log, đúng như tóm tắt cuối
+>   cùng của lượt code trước đó tự nhận "chưa cập nhật Plan/WORKFLOW_LOG") — mục mới bao gồm cả 2 bug
+>   vừa sửa ở entry này để tra cứu tại đúng 1 chỗ.
+> - Root Admin/Assistant/Manager có `customers.view` nên KHÔNG bao giờ thấy Bug 1 khi tự test — đây là
+>   lý do bug tồn tại từ lúc code Phase 3 (2026-09-15 sáng) đến giờ mới bị phát hiện: chỉ lộ ra khi có
+>   Role thật sự bị tắt `customers.view`, đúng kịch bản chủ dự án vừa test.

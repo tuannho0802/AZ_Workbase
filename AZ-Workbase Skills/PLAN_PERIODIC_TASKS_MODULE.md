@@ -506,6 +506,64 @@ controller.ts` — mở cho mọi user đã đăng nhập để đổ dropdown c
 - **Spec bắt buộc:** mỗi action chính ở Phase 1-6 đều có ít nhất 1 dòng audit tương ứng (test bằng
   cách gọi service thật rồi query lại bảng audit).
 
+### Phase 8 — View switcher (Agenda/Kanban/Calendar), thuần FE, không có migration
+
+Yêu cầu chủ dự án (2026-09-15): giao diện Bảng gốc khó kiểm tra ngày giờ, muốn thêm 2-3 kiểu xem khác
+để tự chọn, đặc biệt Kanban kéo-thả kiểu Trello với **cột chính sắp xếp theo Trạng thái**. Không đụng
+Backend/Schema — 100% dùng lại API `GET /periodic-tasks` đã có từ Phase 1, chỉ thêm cách hiển thị ở FE.
+
+**Thư viện mới:** `@dnd-kit/core@^6.3.1` + `@dnd-kit/sortable@^10.0.0` + `@dnd-kit/utilities@^3.2.2` —
+đã cài thật (verify `npm install` chạy sạch trên đúng stack React 19.2.4/Next 16, không xung đột
+peerDeps). Chọn bộ cổ điển `core`+`sortable` (không phải dòng mới `@dnd-kit/react` còn pre-1.0) vì nhiều
+mẫu Kanban tham khảo hơn, rủi ro thấp hơn cho production.
+
+**4 view (Segmented switcher, mặc định mở ở `agenda`):**
+
+| View | Component | Cơ chế |
+|---|---|---|
+| Bảng (gốc, giữ nguyên) | `<Table>` trong `page.tsx` | Phân trang server-side qua `filters` (`page`/`limit` nhỏ, Table tự set qua `pagination.onChange`) |
+| Xem theo Ngày (Agenda) | `PeriodicTasksAgendaView.tsx` | Nhóm Task theo `periodStartDate` bằng antd `Collapse`, mặc định GẬP hết trừ nhóm khớp hôm nay/ngày gần nhất sắp tới |
+| Kanban | `PeriodicTasksKanbanView.tsx` | Cột = từng `PeriodicTaskStatus`, sort theo `sortOrder` (KHÔNG hardcode thứ tự — Admin tự cấu hình qua `/quan-ly-trang-thai-cong-viec`). Kéo Task sang cột khác = gọi `PATCH /periodic-tasks/:id { statusId }` (dùng lại nguyên `useUpdatePeriodicTask`, không có endpoint BE riêng). Audit `status_changed` (Phase 7) tự sinh ở BE. RBAC: `useSortable({ disabled })` khi thiếu `periodic_tasks.edit` hoặc đang `isLocked` mà thiếu `edit_locked` — chặn kéo ở FE TRƯỚC, không đợi BE 403 |
+| Lịch tháng (Calendar) | `PeriodicTasksCalendarView.tsx` | Dùng `Calendar` có sẵn của antd (không cài thêm gì), mỗi ô ngày hiện chấm/Tag Task có `periodStartDate`/`periodEndDate` phủ ngày đó, click mở modal chi tiết |
+| Timeline ngang (Gantt rút gọn) | _(lùi lại, chưa làm)_ | Phức tạp nhất trong 4 phương án đề xuất ban đầu, ROI thấp hơn với quy mô Task hiện tại — làm sau nếu 3 view trên chưa đủ |
+
+**Chi tiết kỹ thuật quan trọng:**
+- `usePeriodicTasks(params, enabled)` — thêm tham số `enabled` (mirror `usePeriodicTask(id)`), mặc định
+  `true` nên KHÔNG đổi hành vi chỗ gọi cũ. 3 view không-phải-Bảng dùng 1 query RIÊNG (`nonTableFilters`,
+  `limit: 100`) thay vì tái dùng `filters` của Table (vốn `limit` nhỏ) — vì các view này hiển thị TOÀN BỘ
+  Task khớp filter, không cắt trang kiểu Table. Chỉ bật ĐÚNG 1 trong 2 query tại 1 thời điểm qua `enabled`
+  (theo `view === 'table'` hay khác) — tránh gọi song song 2 API khi chỉ đang xem 1 view.
+- `TaskActionsBar.tsx` — tách nhóm nút Thao tác (Liên kết/Checklist/Lịch sử/Sửa/Khoá/Mở khoá/Xoá, đủ RBAC
+  gate như bản gốc) dùng CHUNG cho Table/Agenda/Kanban, tránh lặp code + tránh lệch quyền giữa các view.
+- `TaskMiniCard.tsx` — card thu gọn dùng chung Agenda/Kanban, hiển thị tối thiểu (tiêu đề, Kỳ hạn, Phụ
+  trách chính, Trạng thái) + `TaskActionsBar`.
+- **BUG THẬT đã phát hiện + đã sửa ở lượt code tiếp theo (2026-09-15, xem WORKFLOW_LOG mục cuối) — lượt
+  code Phase 8 ban đầu tự báo "chưa build/test" và đúng là còn 2 lỗi thật:**
+  1. `nonTableFilters.limit` set cứng `500` nhưng `PeriodicTaskFiltersDto.limit` ở Backend giới hạn
+     `@Max(100)` (đúng convention chung toàn dự án) → BE trả `400 limit must not be greater than 100`
+     cho CẢ 3 view Agenda/Kanban/Calendar, với MỌI role kể cả Admin (không phải bug RBAC, bug thuần kỹ
+     thuật do 2 lớp FE/BE không khớp giới hạn). Đã sửa: đổi `limit` về `100`.
+  2. Ô tìm Khách hàng để gắn vào Task (`useCustomers()` ở cả `page.tsx` modal Tạo/Sửa VÀ
+     `TaskLinksModal.tsx`) gọi `GET /customers` KHÔNG ĐIỀU KIỆN ngay lúc mount — kể cả khi user không có
+     `periodic_tasks.link_customer` (ví dụ role chỉ bật đúng module Công việc định kỳ, tắt hết
+     `customers.*`) và kể cả khi Modal/`TaskLinksModal` chưa từng được mở (`TaskLinksModal` luôn mount
+     sẵn ở cuối `page.tsx`, chỉ ẩn/hiện qua prop `open` của `<Modal>` chứ không phải conditional render).
+     BE trả 403 đúng RBAC nhưng FE toast lỗi lặp lại liên tục vì không có gì chặn request lúc mount. Đã
+     sửa: thêm tham số `enabled` cho hook `useCustomers()` (mirror `usePeriodicTasks`), gate cả 2 call
+     site bằng `enabled: canLinkCustomer`.
+
+**Spec test:** chưa có file spec riêng cho 4 component View mới (thuần UI/dnd, khó test hiệu quả bằng
+Jest/Vitest hiện có của dự án — nếu cần, ưu tiên test hành vi `enabled`/limit của 2 hook liên quan ở
+trên thay vì test drag-drop). **Verify (2026-09-15, sau khi sửa 2 bug trên):** `npm install` sạch (602
+package), `next build` sạch (đủ 32 route, kể cả `/cong-viec-dinh-ky`), `vitest run` FE 2/2 suite - 14/14
+test PASS (không có spec nào đụng trực tiếp file vừa sửa nên số lượng không đổi so với trước).
+
+**Còn thiếu (chưa làm, không phải bug):**
+- View Timeline/Gantt (lùi lại theo đúng thống nhất ban đầu).
+- Chưa cài thêm cơ chế "tải thêm" nếu số Task vượt quá 100 ở 3 view Agenda/Kanban/Calendar (giới hạn
+  cứng theo Backend) — hiện tại đủ dùng vì quy mô Task còn nhỏ (vài chục), nhưng cần lưu ý nếu về sau
+  dữ liệu tăng nhiều — lúc đó cân nhắc phân trang thật cho các view này thay vì chỉ tăng `limit`.
+
 ---
 
 ## 7. Migration list dự kiến (timestamp CHỈ là placeholder — phải `ls` lại thật trước khi code)
