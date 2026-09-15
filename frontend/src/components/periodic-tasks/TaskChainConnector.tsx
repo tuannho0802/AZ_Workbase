@@ -37,12 +37,25 @@ export function TaskChainGroupedList({ tasks, chains, renderTask }: TaskChainGro
         }
     }
 
+    // Khoảng cách GIỮA 2 khối ("task lớn"/chuỗi) liền kề - phản hồi chủ dự án
+    // 2026-09-15: các khối trước đây dính sát nhau (marginBottom = 0) trông
+    // như 1 danh sách liền mạch dù thuộc 2 chuỗi/2 Task độc lập khác nhau,
+    // khó phân biệt bằng mắt. Áp dụng ĐỀU cho cả khối có đường nối lẫn Task
+    // đơn lẻ (không thuộc chuỗi nào) để khoảng cách nhất quán xuyên suốt danh
+    // sách, không riêng khối có chuỗi.
+    const RUN_GAP = 10;
+    // Thụt dòng nội dung Task khỏi đường kẻ/chấm nối - phản hồi chủ dự án:
+    // 16px cũ khiến nội dung Card đè sát lên chấm tròn. Tăng lên 24px và di
+    // dời đường kẻ/chấm theo đúng tỉ lệ (giữa khoảng thụt) để vẫn canh giữa.
+    const INDENT = 24;
+
     return (
         <>
             {runs.map((run, runIndex) => {
+                const isLast = runIndex === runs.length - 1;
                 if (!run.color || run.items.length < 2) {
                     return (
-                        <div key={runIndex}>
+                        <div key={runIndex} style={{ marginBottom: isLast ? 0 : RUN_GAP }}>
                             {run.items.map((task) => (
                                 <div key={task.id}>{renderTask(task)}</div>
                             ))}
@@ -50,14 +63,17 @@ export function TaskChainGroupedList({ tasks, chains, renderTask }: TaskChainGro
                     );
                 }
                 return (
-                    <div key={runIndex} style={{ position: 'relative', paddingLeft: 16 }}>
+                    <div
+                        key={runIndex}
+                        style={{ position: 'relative', paddingLeft: INDENT, marginBottom: isLast ? 0 : RUN_GAP }}
+                    >
                         {/* Đường kẻ dọc LIÊN TỤC xuyên suốt cả khối - vẽ 1 LẦN cho cả
                             `run`, không lặp theo từng Task, mới ra cảm giác "nối liền". */}
                         <div
                             aria-hidden
                             style={{
                                 position: 'absolute',
-                                left: 5,
+                                left: 9,
                                 top: 18,
                                 bottom: 26,
                                 width: 2,
@@ -71,7 +87,7 @@ export function TaskChainGroupedList({ tasks, chains, renderTask }: TaskChainGro
                                     aria-hidden
                                     style={{
                                         position: 'absolute',
-                                        left: -16 + 1,
+                                        left: -INDENT + 5,
                                         top: 16,
                                         width: 10,
                                         height: 10,
