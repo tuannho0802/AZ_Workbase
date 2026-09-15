@@ -297,7 +297,7 @@ export default function AttendanceLogsTab() {
           });
         }}
       >
-        <Space direction="vertical" style={{ width: '100%' }}>
+        <Space orientation="vertical" style={{ width: '100%' }}>
           <Text>
             Xoá vĩnh viễn mọi log chấm công có thời gian <Text strong>trước</Text> ngày chọn bên
             dưới. Dùng khi bảng log đã tích luỹ quá lâu, chiếm nhiều dung lượng DB.
