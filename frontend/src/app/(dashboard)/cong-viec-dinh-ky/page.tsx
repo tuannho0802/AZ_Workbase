@@ -732,8 +732,10 @@ export default function PeriodicTasksPage() {
                         >
                             <Select
                                 mode="multiple"
-                                showSearch
-                                filterOption={false}
+                                showSearch={{
+                                    filterOption: false, // tắt filter mặc định, dùng onSearch (server-side)
+                                    onSearch: setCustomerSearchInput,
+                                }}
                                 optionLabelProp="label"
                                 optionRender={renderCustomerOption}
                                 popupMatchSelectWidth={false}
@@ -743,7 +745,6 @@ export default function PeriodicTasksPage() {
                                 disabled={!!editingTask && editingTaskDetailLoading}
                                 value={customerIds}
                                 onChange={setCustomerIds}
-                                onSearch={setCustomerSearchInput}
                                 options={customerSelectOptions}
                                 notFoundContent={customerSearchLoading ? 'Đang tìm...' : 'Không tìm thấy Khách hàng phù hợp'}
                             />
