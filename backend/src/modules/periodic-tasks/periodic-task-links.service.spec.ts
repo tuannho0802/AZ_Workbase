@@ -9,14 +9,16 @@ import { PeriodicTask } from '../../database/entities/periodic-task.entity';
 import { PeriodType } from '../../common/enums/period-type.enum';
 import { Role } from '../../common/enums/role.enum';
 
-function makeFakeQueryBuilder(overrides: { getMany?: any } = {}) {
+function makeFakeQueryBuilder(overrides: { getMany?: any; getRawMany?: any } = {}) {
   const qb: any = {
+    select: jest.fn().mockReturnThis(),
     leftJoinAndSelect: jest.fn().mockReturnThis(),
     innerJoin: jest.fn().mockReturnThis(),
     where: jest.fn().mockReturnThis(),
     andWhere: jest.fn().mockReturnThis(),
     orderBy: jest.fn().mockReturnThis(),
     getMany: jest.fn().mockResolvedValue(overrides.getMany ?? []),
+    getRawMany: jest.fn().mockResolvedValue(overrides.getRawMany ?? []),
   };
   return qb;
 }
@@ -208,6 +210,45 @@ describe('PeriodicTaskLinksService', () => {
 
       expect(qb.innerJoin).toHaveBeenCalledWith('periodic_task_links', 'link', 'link.parent_task_id = task.id');
       expect(qb.where).toHaveBeenCalledWith('link.child_task_id = :taskId', { taskId: 1 });
+    });
+  });
+
+  describe('getLinksAmong (Phase 8 - batch cho UI nối/xếp hàng)', () => {
+    it('trả rỗng ngay khi taskIds rỗng - KHÔNG query DB', async () => {
+      const result = await service.getLinksAmong([], userId, userRole, scope);
+
+      expect(result).toEqual({ edges: [] });
+      expect(mockTaskRepo.createQueryBuilder).not.toHaveBeenCalled();
+    });
+
+    it('chỉ trả cạnh mà CẢ 2 đầu đều nằm trong tập ID đã lọc qua applyViewFilter (RBAC)', async () => {
+      // Người gọi CHỈ được xem task 1 và 2 (task 3 ngoài phạm vi, dù FE có
+      // gửi lên trong taskIds) - applyViewFilter (qua getRawMany) chỉ trả 1, 2.
+      const qb = makeFakeQueryBuilder({ getRawMany: [{ id: 1 }, { id: 2 }] });
+      mockTaskRepo.createQueryBuilder.mockReturnValue(qb);
+      mockLinkRepo.find.mockResolvedValue([
+        { id: 100, childTaskId: 1, parentTaskId: 2 },
+      ]);
+
+      const result = await service.getLinksAmong([1, 2, 3], userId, userRole, scope);
+
+      expect(qb.where).toHaveBeenCalledWith('task.id IN (:...taskIds)', { taskIds: [1, 2, 3] });
+      const [{ where }] = mockLinkRepo.find.mock.calls[0];
+      expect(where.childTaskId.type).toBe('in');
+      expect(where.childTaskId.value).toEqual([1, 2]);
+      expect(where.parentTaskId.type).toBe('in');
+      expect(where.parentTaskId.value).toEqual([1, 2]);
+      expect(result).toEqual({ edges: [{ parentTaskId: 2, childTaskId: 1 }] });
+    });
+
+    it('trả rỗng khi không có Task nào trong taskIds nằm trong phạm vi xem - KHÔNG query bảng link', async () => {
+      const qb = makeFakeQueryBuilder({ getRawMany: [] });
+      mockTaskRepo.createQueryBuilder.mockReturnValue(qb);
+
+      const result = await service.getLinksAmong([99], userId, userRole, scope);
+
+      expect(result).toEqual({ edges: [] });
+      expect(mockLinkRepo.find).not.toHaveBeenCalled();
     });
   });
 

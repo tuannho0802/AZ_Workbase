@@ -16,6 +16,7 @@ import { CreatePeriodicTaskChecklistItemDto } from './dto/create-periodic-task-c
 import { UpdatePeriodicTaskChecklistItemDto } from './dto/update-periodic-task-checklist-item.dto';
 import { ReorderPeriodicTaskChecklistItemsDto } from './dto/reorder-periodic-task-checklist-items.dto';
 import { GetPeriodicTaskAuditLogsDto } from './dto/get-periodic-task-audit-logs.dto';
+import { GetPeriodicTaskLinksBatchDto } from './dto/get-periodic-task-links-batch.dto';
 import { PeriodicTaskAuditService } from './periodic-task-audit.service';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { PermissionGuard } from '../../common/guards/permission.guard';
@@ -57,6 +58,22 @@ export class PeriodicTasksController {
     @GetPermissionScope() scope: string | null | undefined,
   ) {
     return this.periodicTasksService.findAll(filters, user.id, user.role, scope);
+  }
+
+  // ⚠️ Route tĩnh `links` PHẢI khai TRƯỚC route `:id` ngay bên dưới - mirror
+  // ĐÚNG lưu ý đã ghi ở route `reorder` (Phase 6) - Nest/Express khớp route
+  // theo THỨ TỰ ĐĂNG KÝ, khai sau sẽ bị `:id` (+ `ParseIntPipe`) nuốt mất và
+  // trả 400 "Validation failed (numeric string is expected)" sai, không bao
+  // giờ chạm tới handler thật bên dưới.
+  @Get('links')
+  @RequirePermission('periodic_tasks.view')
+  @ApiOperation({ summary: 'Cạnh liên kết cha-con giữa 1 tập Task (Phase 8 - UI nối/xếp hàng Task đã liên kết)' })
+  getLinksAmong(
+    @Query() filters: GetPeriodicTaskLinksBatchDto,
+    @GetUser() user: any,
+    @GetPermissionScope() scope: string | null | undefined,
+  ) {
+    return this.periodicTaskLinksService.getLinksAmong(filters.taskIds, user.id, user.role, scope);
   }
 
   @Get(':id')

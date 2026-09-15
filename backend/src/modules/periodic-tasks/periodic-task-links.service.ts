@@ -5,6 +5,7 @@ import { PeriodicTaskLink } from '../../database/entities/periodic-task-link.ent
 import { PeriodicTask } from '../../database/entities/periodic-task.entity';
 import { PERIOD_RANK } from '../../common/enums/period-type.enum';
 import { PeriodicTasksService, RequestingUser } from './periodic-tasks.service';
+import { PeriodicTaskAccessHelper } from './helpers/periodic-task-access.helper';
 import { CreatePeriodicTaskLinkDto } from './dto/create-periodic-task-link.dto';
 import { PeriodicTaskAuditService, PeriodicTaskAuditAction } from './periodic-task-audit.service';
 
@@ -185,6 +186,50 @@ export class PeriodicTaskLinksService {
       .andWhere('task.deletedAt IS NULL')
       .orderBy('task.periodStartDate', 'DESC')
       .getMany();
+  }
+
+  /**
+   * getLinksAmong - Phase 8 (PLAN mục Phase 8): trả về TOÀN BỘ cạnh cha-con
+   * mà CẢ 2 đầu đều nằm trong `taskIds` - phục vụ UI "nối/xếp hàng" các Task
+   * đã liên kết ở Table/Agenda/Kanban/Calendar (FE gọi 1 LẦN cho cả danh
+   * sách Task đang hiển thị, KHÔNG gọi lặp theo từng Task - tránh N+1 y hệt
+   * lý do `getChildren`/`getParents` chỉ tra 1 Task/lần không phù hợp cho
+   * trường hợp này).
+   *
+   * RBAC: KHÔNG tin `taskIds` do FE gửi lên là đã đúng phạm vi (FE có thể bị
+   * sửa/giả mạo) - tự lọc lại qua `applyViewFilter()` (đúng nguyên tắc "1
+   * nguồn áp filter duy nhất") để lấy tập ID THẬT SỰ nằm trong phạm vi xem
+   * của người gọi, rồi chỉ truy vấn cạnh trong tập đã lọc đó - Task ngoài
+   * phạm vi (dù ID có được truyền lên) sẽ không bao giờ lộ ra trong kết quả,
+   * kể cả gián tiếp qua việc "có cạnh nối tới ID X" (không leak sự tồn tại).
+   */
+  async getLinksAmong(
+    taskIds: number[],
+    userId: number,
+    userRole: string,
+    scope?: string | null,
+  ): Promise<{ edges: Array<{ parentTaskId: number; childTaskId: number }> }> {
+    if (taskIds.length === 0) return { edges: [] };
+
+    const qb = this.taskRepo
+      .createQueryBuilder('task')
+      .select('task.id', 'id')
+      .where('task.id IN (:...taskIds)', { taskIds })
+      .andWhere('task.deletedAt IS NULL');
+    PeriodicTaskAccessHelper.applyViewFilter(qb, userId, userRole, scope);
+    const visibleRows: Array<{ id: number }> = await qb.getRawMany();
+    const visibleIds = visibleRows.map((r) => r.id);
+    if (visibleIds.length === 0) return { edges: [] };
+
+    // Cả 2 điều kiện `In()` đều bắt buộc (AND mặc định của `.find()`) - cạnh
+    // chỉ được trả về khi CẢ child LẪN parent đều thuộc `visibleIds`.
+    const links = await this.linkRepo.find({
+      where: { childTaskId: In(visibleIds), parentTaskId: In(visibleIds) },
+    });
+
+    return {
+      edges: links.map((l) => ({ parentTaskId: l.parentTaskId, childTaskId: l.childTaskId })),
+    };
   }
 
   /**
