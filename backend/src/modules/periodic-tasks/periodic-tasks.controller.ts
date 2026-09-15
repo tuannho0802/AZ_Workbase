@@ -2,10 +2,12 @@ import { Controller, Get, Post, Body, Patch, Param, Delete, Query, UseGuards, Pa
 import { ApiTags, ApiOperation, ApiResponse, ApiBearerAuth } from '@nestjs/swagger';
 import { PeriodicTasksService } from './periodic-tasks.service';
 import { PeriodicTaskLinksService } from './periodic-task-links.service';
+import { PeriodicTaskCustomersService } from './periodic-task-customers.service';
 import { CreatePeriodicTaskDto } from './dto/create-periodic-task.dto';
 import { UpdatePeriodicTaskDto } from './dto/update-periodic-task.dto';
 import { PeriodicTaskFiltersDto } from './dto/periodic-task-filters.dto';
 import { CreatePeriodicTaskLinkDto } from './dto/create-periodic-task-link.dto';
+import { LinkPeriodicTaskCustomersDto } from './dto/link-periodic-task-customers.dto';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { PermissionGuard } from '../../common/guards/permission.guard';
 import { RequirePermission } from '../../common/decorators/require-permission.decorator';
@@ -13,9 +15,9 @@ import { GetUser } from '../../common/decorators/get-user.decorator';
 import { GetPermissionScope } from '../../common/decorators/get-permission-scope.decorator';
 
 /**
- * PeriodicTasksController - Phase 1 + Phase 2 (PLAN mục 5 + mục 6). Endpoint
- * Customer (`/customers` - Phase 3), phụ trách phụ (`/secondary-assignees` -
- * Phase 4), lock/unlock (Phase 5) sẽ được thêm ở đúng Phase tương ứng.
+ * PeriodicTasksController - Phase 1 + 2 + 3 (PLAN mục 5 + mục 6). Endpoint
+ * phụ trách phụ (`/secondary-assignees` - Phase 4), lock/unlock (Phase 5) sẽ
+ * được thêm ở đúng Phase tương ứng.
  */
 @ApiTags('Periodic Tasks (Công việc định kỳ)')
 @ApiBearerAuth()
@@ -25,6 +27,7 @@ export class PeriodicTasksController {
   constructor(
     private readonly periodicTasksService: PeriodicTasksService,
     private readonly periodicTaskLinksService: PeriodicTaskLinksService,
+    private readonly periodicTaskCustomersService: PeriodicTaskCustomersService,
   ) { }
 
   @Post()
@@ -48,14 +51,17 @@ export class PeriodicTasksController {
 
   @Get(':id')
   @RequirePermission('periodic_tasks.view')
-  @ApiOperation({ summary: 'Chi tiết 1 Công việc định kỳ' })
+  @ApiOperation({ summary: 'Chi tiết 1 Công việc định kỳ (kèm linkedCustomers nếu có quyền customers.view)' })
   @ApiResponse({ status: 404, description: 'Không tìm thấy hoặc không có quyền xem' })
-  findOne(
+  async findOne(
     @Param('id', ParseIntPipe) id: number,
     @GetUser() user: any,
     @GetPermissionScope() scope: string | null | undefined,
   ) {
-    return this.periodicTasksService.findOne(id, user.id, user.role, scope);
+    const task = await this.periodicTasksService.findOne(id, user.id, user.role, scope);
+    // Phase 3 (PLAN mục 2.4 bước 3+4): xoá hẳn key `linkedCustomers` nếu
+    // người xem không có `customers.view` - xem JSDoc `attachLinkedCustomers()`.
+    return this.periodicTaskCustomersService.attachLinkedCustomers(task, user);
   }
 
   @Patch(':id')
@@ -135,5 +141,33 @@ export class PeriodicTasksController {
     @GetPermissionScope() scope: string | null | undefined,
   ) {
     return this.periodicTaskLinksService.getRollup(id, user.id, user.role, scope);
+  }
+
+  // ── Phase 3: Gắn Customer vào Task (kèm ẩn field theo quyền) ──
+
+  @Post(':id/customers')
+  @RequirePermission('periodic_tasks.edit')
+  @ApiOperation({ summary: 'Gắn danh sách Khách hàng vào Công việc (cần thêm periodic_tasks.link_customer)' })
+  @ApiResponse({ status: 403, description: 'Thiếu periodic_tasks.link_customer hoặc customers.view' })
+  @ApiResponse({ status: 400, description: 'Customer không tồn tại hoặc ngoài phạm vi quyền xem' })
+  addCustomers(
+    @Param('id', ParseIntPipe) id: number,
+    @Body() dto: LinkPeriodicTaskCustomersDto,
+    @GetUser() user: any,
+    @GetPermissionScope() scope: string | null | undefined,
+  ) {
+    return this.periodicTaskCustomersService.addCustomers(id, dto, user, scope);
+  }
+
+  @Delete(':id/customers/:customerId')
+  @RequirePermission('periodic_tasks.edit')
+  @ApiOperation({ summary: 'Gỡ 1 Khách hàng khỏi Công việc (cần thêm periodic_tasks.link_customer)' })
+  removeCustomer(
+    @Param('id', ParseIntPipe) id: number,
+    @Param('customerId', ParseIntPipe) customerId: number,
+    @GetUser() user: any,
+    @GetPermissionScope() scope: string | null | undefined,
+  ) {
+    return this.periodicTaskCustomersService.removeCustomer(id, customerId, user, scope);
   }
 }

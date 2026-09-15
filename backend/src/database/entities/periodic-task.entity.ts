@@ -22,17 +22,19 @@ import { PeriodType } from '../../common/enums/period-type.enum';
  * - mỗi dòng ở đây là 1 công việc CỤ THỂ do User tự tay tạo, độc lập hoàn
  * toàn, không tham chiếu ngược về bất kỳ "khuôn mẫu" nào.
  *
- * ⚠️ Phase 1 CHƯA có: cột lock (`is_locked`..., thêm ở Phase 5 qua migration
- * `AddPeriodicTaskLockColumns`), `periodic_task_customers` (Phase 3),
+ * ⚠️ Phase 1 CHƯA có (vẫn còn thiếu): cột lock (`is_locked`..., thêm ở
+ * Phase 5 qua migration `AddPeriodicTaskLockColumns`),
  * `periodic_task_secondary_assignees` (Phase 4) - KHÔNG khai `@OneToMany`
- * cho các bảng đó ở entity này cho tới khi đúng Phase tương ứng được code,
- * tránh TypeORM tham chiếu tới entity chưa tồn tại.
+ * cho bảng đó ở entity này cho tới khi đúng Phase tương ứng được code, tránh
+ * TypeORM tham chiếu tới entity chưa tồn tại.
  *
- * `periodic_task_links` (Phase 2 - liên kết cha-con DAG) đã có (xem
- * `periodic-task-link.entity.ts`) nhưng CỐ TÌNH không khai `@OneToMany`
- * ngược lại ở đây - quan hệ cha-con được truy vấn qua
- * `PeriodicTaskLinksService` (join tường minh qua query builder), không cần
- * eager/lazy relation 2 chiều làm phức tạp thêm entity chính.
+ * `periodic_task_links` (Phase 2 - liên kết cha-con DAG) và
+ * `periodic_task_customers` (Phase 3 - gắn Customer, xem
+ * `periodic-task-customer.entity.ts`) đều đã có, nhưng CỐ TÌNH không khai
+ * `@OneToMany` ngược lại ở đây - quan hệ được truy vấn qua
+ * `PeriodicTaskLinksService`/`PeriodicTaskCustomersService` (join tường
+ * minh qua query builder), không cần eager/lazy relation 2 chiều làm phức
+ * tạp thêm entity chính vốn đã được nhiều module khác tham chiếu.
  */
 @Entity('periodic_tasks')
 @Index(['periodType'])
