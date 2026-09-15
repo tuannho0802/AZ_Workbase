@@ -1,10 +1,12 @@
 'use client';
 
-import { useState } from 'react';
-import { Tabs, Typography } from 'antd';
+import { useEffect, useState } from 'react';
+import { useRouter } from 'next/navigation';
+import { App, Tabs, Typography } from 'antd';
 import dayjs from 'dayjs';
 import { DollarOutlined, TeamOutlined } from '@ant-design/icons';
 import { ReportQuery } from '@/lib/types/reports.types';
+import { useMyPermissions } from '@/lib/hooks/useMyPermissions';
 import RevenueReportTab from './RevenueReportTab';
 import CustomerReportTab from './CustomerReportTab';
 
@@ -16,19 +18,42 @@ const DEFAULT_QUERY: ReportQuery = {
 };
 
 /**
- * Trang Báo cáo doanh số - mở cho MỌI role (Admin/Assistant/Manager/Employee
- * đều xem được, khớp `@Roles(ADMIN, ASSISTANT, MANAGER, EMPLOYEE)` ở
- * `reports.controller.ts`) - phạm vi dữ liệu thật do BE tự khoanh vùng theo
- * role (xem bảng phân quyền ở đầu `reports.service.ts`), Frontend không cần
- * tự ẩn/hiện gì theo role - cứ hiển thị đúng những gì BE trả về (`total`/
- * `department` = null thì tab con tự ẩn phần đó, xem RevenueReportTab.tsx).
+ * Trang Báo cáo doanh số - mở cho role nào ĐANG CÓ `reports.view`
+ * (`@RequirePermission('reports.view')` ở `reports.controller.ts`, xem
+ * PERMISSIONS.md) - phạm vi dữ liệu thật do BE tự khoanh vùng theo
+ * scope (own/department/all), Frontend không cần tự lọc dữ liệu.
  *
- * 2 tab dùng CHUNG 1 state `query` (period/anchor/customFrom/customTo) - đổi
- * kỳ ở tab này thì tab kia cũng theo đúng kỳ đó khi chuyển qua, tránh người
- * dùng phải chọn lại kỳ 2 lần cho cùng 1 lần xem báo cáo.
+ * ⚠️ FIX BUG THẬT (rà soát permission 2026-09): trước đây trang này KHÔNG
+ * check `reports.view` gì cả (comment cũ ghi nhầm "mở cho MỌI role, khớp
+ * `@Roles(...)`" - đã lỗi thời từ lúc BE đổi sang permission động). Nếu Admin
+ * thu hồi `reports.view` khỏi 1 role qua trang "Phân quyền", user role đó
+ * gõ thẳng URL `/reports` (sidebar đã ẩn mục này nhưng không chặn URL trực
+ * tiếp) vẫn vào được trang, 2 tab con gọi API ngay khi mount -> BE trả 403 ->
+ * axios interceptor tự bắn toast lỗi cho MỌI query chạy song song (2 tab =
+ * 2 toast cùng lúc) mà KHÔNG có gì giải thích hay điều hướng đi đâu - đúng
+ * loại bug "khoá quyền nhưng không ẩn, để tự bắn toast lỗi" đang rà soát.
+ * Mirror ĐÚNG pattern route-guard đã dùng ở mọi trang khác (vd
+ * `quan-ly-status-khach/page.tsx`, `duyet-phep/page.tsx`).
  */
 export default function ReportsPage() {
+  const router = useRouter();
+  const { message } = App.useApp();
+  const { can, isLoading: permissionsLoading } = useMyPermissions();
   const [query, setQuery] = useState<ReportQuery>(DEFAULT_QUERY);
+
+  useEffect(() => {
+    if (!permissionsLoading && !can('reports.view')) {
+      message.warning('Bạn không có quyền truy cập trang này');
+      router.replace('/customers');
+    }
+  }, [permissionsLoading, router]);
+
+  // Chưa xác định được quyền (đang tải `my-permissions`) hoặc đã xác định
+  // KHÔNG có quyền (đang điều hướng đi) -> không render 2 tab, tránh bắn
+  // API/toast 403 vô ích trong lúc chờ `router.replace()` áp dụng.
+  if (permissionsLoading || !can('reports.view')) {
+    return null;
+  }
 
   return (
     <div style={{ padding: 24 }}>
