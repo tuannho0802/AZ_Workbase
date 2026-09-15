@@ -1658,3 +1658,72 @@ yêu cầu.
   riêng) - chưa code, xem PLAN mục 6.
 - (Tuỳ chọn, không bắt buộc) Có thể thêm FE test cho `TaskLinksModal` sau nếu chủ dự án muốn nâng độ phủ
   test FE - hiện repo FE gần như chưa có test component nào, không riêng module này.
+
+---
+
+## [2026-09-15 10:10] | UX fix + mở rộng gắn Customer (chọn nhiều, hiện PTC, sửa hiển thị "null", thêm vào cả Tạo/Sửa) | Status: Success
+
+**Actor:** Agent (Claude), theo phản hồi trực tiếp của chủ dự án sau khi xem UI thật (đính kèm ảnh chụp
+màn hình `TaskLinksModal` và Modal Tạo/Sửa) - phát hiện 3 vấn đề UX từ Phase 3 FE (entry trước):
+1. Dropdown chọn Customer hiện chữ "null" thay vì "Chưa có SĐT" khi Customer chưa có SĐT.
+2. Dropdown không hiện Người phụ trách chính (PTC) của Customer, và chỉ chọn được 1 Customer/lần.
+3. Modal "Tạo Công việc định kỳ mới" hoàn toàn chưa có chỗ gắn Customer (phải tạo xong mới vào "Liên
+   kết" gắn sau) - sau đó chủ dự án yêu cầu thêm áp dụng luôn cho Modal Sửa.
+
+**Đã làm:**
+1. `components/common/customer-option-render.tsx` (mới) - 3 helper dùng CHUNG cho mọi nơi có Select
+   chọn Customer trong repo (tránh lặp code, tránh lệch định dạng giữa 2 modal):
+   - `customerPhoneDisplay(phone)` - trả `'Chưa có SĐT'` thay vì để lộ `null`/`undefined` ra UI.
+   - `customerPlainLabel(c)` - `"Tên - SĐT"`, dùng làm `label` phẳng (chip đã chọn + tìm kiếm).
+   - `renderCustomerOption(option)` - JSX cho `optionRender` của antd `Select`, thêm Tag xanh
+     `"PTC: <tên>"` nếu Customer có `salesUser` - mirror đúng quy ước Tag "Primary Sales" nền xanh ở
+     `SKILL_NEXTJS_FRONTEND.md` mục 13.2.
+2. `TaskLinksModal.tsx` - đổi Select chọn Customer từ đơn sang `mode="multiple"` (state
+   `selectedCustomerId` số đơn -> `selectedCustomerIds: number[]`), 1 lần bấm "Gán" gửi thẳng mảng qua
+   `addCustomers()` (endpoint BE vốn đã nhận `customerIds[]` từ Phase 3, không cần sửa BE). Áp dụng
+   `customerPlainLabel`/`renderCustomerOption` cho Select, và sửa dòng hiện SĐT ở danh sách đã gắn
+   (`SimpleList`) từ `{c.phone}` trần sang `{customerPhoneDisplay(c.phone)}`.
+3. `cong-viec-dinh-ky/page.tsx` - thêm hẳn field "Khách hàng liên quan" (Select multiple, cùng
+   `customerPlainLabel`/`renderCustomerOption`) vào Modal Tạo/Sửa DÙNG CHUNG, khác nhau ở cách LƯU (field
+   này KHÔNG thuộc `CreatePeriodicTaskDto`/`UpdatePeriodicTaskDto` nên không thể gộp vào `Form`/payload
+   chính, phải gọi API Phase 3 riêng SAU KHI Tạo/Sửa Task thành công):
+   - **Tạo mới**: sau `createMutation` thành công, có `newTask.id` -> gọi thẳng `addCustomers()` với toàn
+     bộ `customerIds` đã chọn (nếu có).
+   - **Sửa**: fetch `linkedCustomers` HIỆN TẠI của Task qua `usePeriodicTask(editingTask.id)` (không dùng
+     `task` từ danh sách - danh sách không có field này), nạp vào state `customerIds`/`originalCustomerIds`
+     qua 1 `useEffect` ngay khi tải xong (không thể set đồng bộ lúc bấm "Sửa" vì phải chờ API). Lúc Lưu,
+     DIFF `customerIds` (người dùng vừa chỉnh) với `originalCustomerIds` (lúc mở modal): phần tử MỚI
+     thêm -> gọi `addCustomers()` 1 lần với cả mảng; phần tử bị bỏ -> gọi `removeCustomer()` RIÊNG TỪNG
+     cái (BE không có endpoint gỡ hàng loạt).
+   - Thêm state `knownCustomers` (map id -> Customer) GỘP từ 2 nguồn (kết quả search hiện tại + Customer
+     đã gắn sẵn lúc Sửa) để Select hiện ĐÚNG tên/SĐT ngay khi mở Modal Sửa, thay vì hiện ID trần (Customer
+     đã gắn thường KHÔNG nằm trong 20 kết quả search mặc định/rỗng).
+   - Ẩn hẳn field nếu thiếu `periodic_tasks.link_customer`; ở chế độ Sửa, nếu có quyền đó nhưng THIẾU
+     `customers.view` (quyền KHÁC, PLAN mục 2.4) thì `editingLinkedCustomers` sẽ là `undefined` dù đã tải
+     xong -> ẩn Select, hiện dòng cảnh báo thay vì Select rỗng gây hiểu nhầm "Task chưa gắn Customer nào".
+   - Dọn 3 chỗ `err: any` MỚI thêm trong lượt này thành `getApiErrorMessage(err, fallback)` (đã import
+     sẵn từ `error-message.util.ts`) - không đụng các `err: any` CŨ đã có sẵn trong file trước đó (ngoài
+     phạm vi sửa của lượt này, đúng rule "diff edit, không viết lại toàn bộ file").
+
+**Files Changed:**
+- `frontend/src/components/common/customer-option-render.tsx` (mới)
+- `frontend/src/components/periodic-tasks/TaskLinksModal.tsx` - Select đơn -> multiple, sửa hiển thị SĐT
+- `frontend/src/app/(dashboard)/cong-viec-dinh-ky/page.tsx` - thêm field Customer vào Modal Tạo/Sửa
+
+**Verify thật:**
+- `npx tsc --noEmit`: sạch (0 lỗi mới, kể cả 5 lỗi baseline logo.png/CountBadge cũng KHÔNG còn xuất hiện
+  ở lần chạy sau cùng - có thể do cache `tsconfig`/`.next` giữa các lần chạy `tsc` liên tiếp, cần xác nhận
+  lại ở phiên sau nếu tái diễn, KHÔNG liên quan code Phase 3).
+- `npm run build` (Next.js 16 Turbopack): **Compiled successfully**, đủ 32 route bao gồm
+  `/cong-viec-dinh-ky`.
+- `npx vitest run`: **14/14 test pass**, không regression.
+- `npx eslint` trên `page.tsx`: 16 problems - ĐÚNG BẰNG baseline `any`-errors (12, không tăng, đã dọn hết
+  3 cái mới) + 2 lỗi `react-hooks/set-state-in-effect` MỚI (từ 2 `useEffect` mới thêm để đồng bộ
+  `customerIds` và `knownCustomers`) - mirror ĐÚNG 1 lỗi CÙNG LOẠI đã có sẵn từ trước ở effect `setPage(1)`
+  (dòng 164) - xác nhận bằng `git stash` diff trước/sau, không phải rule mới phát sinh riêng cho code này.
+  `next build` KHÔNG chạy ESLint (không thấy bước "Running ESLint" trong output, khác giả định cũ ở
+  `SKILL_NEXTJS_FRONTEND.md` rằng `no-explicit-any` chặn hẳn build) - ghi nhận lại để tránh hiểu nhầm ở
+  phiên sau: lint và build là 2 gate TÁCH RIÊNG trong repo này hiện tại.
+
+**Còn lại:** Phase 4-7 (như entry trước). Có thể cân nhắc dọn nợ lint `react-hooks/set-state-in-effect`
+(3 chỗ, kể cả 1 chỗ cũ) ở 1 phiên riêng sau này nếu chủ dự án muốn, không cấp thiết vì không chặn build.

@@ -37,9 +37,10 @@ import { useDepartments } from '@/lib/hooks/useDepartments';
 import { useUsersList } from '@/lib/hooks/useUsers';
 import { usePeriodicTaskStatuses } from '@/lib/hooks/usePeriodicTaskStatuses';
 import { useCustomers } from '@/lib/hooks/useCustomers';
-import { useAddTaskCustomers } from '@/lib/hooks/usePeriodicTaskCustomers';
+import { useAddTaskCustomers, useRemoveTaskCustomer } from '@/lib/hooks/usePeriodicTaskCustomers';
 import {
     usePeriodicTasks,
+    usePeriodicTask,
     useCreatePeriodicTask,
     useUpdatePeriodicTask,
     useDeletePeriodicTask,
@@ -51,6 +52,8 @@ import {
     CreatePeriodicTaskPayload,
 } from '@/lib/api/periodic-tasks.api';
 import { resolveEntityColor, DEFAULT_ENTITY_COLOR } from '@/lib/utils/entityColor';
+import { Customer } from '@/lib/types/customer.types';
+import { getApiErrorMessage } from '@/lib/utils/error-message.util';
 import { useRoleColorMap, useRoleColors } from '@/lib/hooks/useRoleColorMap';
 import { TaskLinksModal } from '@/components/periodic-tasks/TaskLinksModal';
 import { customerPlainLabel, renderCustomerOption } from '@/components/common/customer-option-render';
@@ -166,29 +169,80 @@ export default function PeriodicTasksPage() {
     const [editingTask, setEditingTask] = useState<PeriodicTask | null>(null);
     const [form] = Form.useForm();
 
-    // Gắn Khách hàng NGAY LÚC TẠO MỚI (yêu cầu chủ dự án 2026-09-15) - CHỈ áp
-    // dụng cho Tạo mới (`!editingTask`), vì Task đã tồn tại có sẵn nút
-    // "Liên kết" (`TaskLinksModal`) để quản lý Customer đầy đủ (thêm/gỡ từng
-    // cái, xem đúng phạm vi quyền). Không đưa vào `Form` vì
-    // `CreatePeriodicTaskDto` ở BE không nhận `customerIds` - phải gọi
-    // riêng `POST /:id/customers` SAU KHI tạo Task thành công (cần `id` mới).
+    // Gắn Khách hàng NGAY TRONG Modal Tạo/Sửa (yêu cầu chủ dự án 2026-09-15) -
+    // dùng CHUNG 1 khối state cho cả 2 chế độ, khác nhau ở cách LƯU:
+    //  - Tạo mới: Task chưa có id -> gọi `POST /:id/customers` SAU KHI tạo
+    //    Task thành công (không thể gộp vào `CreatePeriodicTaskDto`, BE
+    //    không nhận `customerIds` ở endpoint đó).
+    //  - Sửa: Task đã có sẵn `linkedCustomers` (fetch riêng qua
+    //    `usePeriodicTask` vì `task` từ danh sách KHÔNG có field này) - so
+    //    sánh (diff) danh sách gốc với danh sách người dùng vừa chỉnh để
+    //    biết cần THÊM (`addCustomers`) hay GỠ (`removeCustomer`, không có
+    //    endpoint gỡ hàng loạt nên gọi riêng từng cái).
     const canLinkCustomer = can('periodic_tasks.link_customer');
-    const [createCustomerIds, setCreateCustomerIds] = useState<number[]>([]);
+    const [customerIds, setCustomerIds] = useState<number[]>([]);
+    // Chỉ có ý nghĩa ở chế độ Sửa - danh sách Customer ĐÃ gắn lúc mở modal,
+    // dùng để diff lúc lưu. Rỗng ở chế độ Tạo mới (không có gì để diff).
+    const [originalCustomerIds, setOriginalCustomerIds] = useState<number[]>([]);
     const [customerSearchInput, setCustomerSearchInput] = useState('');
     const debouncedCustomerSearch = useDebounce(customerSearchInput, 300);
-    const { data: customerOptionsData, isLoading: customerOptionsLoading } = useCustomers({
+    const { data: customerSearchData, isLoading: customerSearchLoading } = useCustomers({
         page: 1,
         limit: 20,
         search: debouncedCustomerSearch || undefined,
     });
-    const createCustomerOptions = customerOptionsData?.data ?? [];
+    // Chi tiết Task đang Sửa (CHỈ fetch khi đang Sửa - `usePeriodicTask` tự
+    // tắt query khi id là `null`) - nguồn duy nhất có `linkedCustomers`.
+    const { data: editingTaskDetail, isLoading: editingTaskDetailLoading } = usePeriodicTask(
+        editingTask?.id ?? null,
+    );
+    const editingLinkedCustomers = editingTaskDetail?.linkedCustomers;
+
+    // Danh sách Customer "đã biết tên" để hiện label đúng trong Select, GỘP
+    // từ 2 nguồn: kết quả search hiện tại + Customer đã gắn sẵn lúc Sửa (nếu
+    // không gộp, mở modal Sửa lên sẽ hiện toàn ID trần vì Customer đã gắn
+    // thường KHÔNG nằm trong 20 kết quả search mặc định/rỗng).
+    const [knownCustomers, setKnownCustomers] = useState<Record<number, Customer>>({});
+    useEffect(() => {
+        const toMerge = [...(customerSearchData?.data ?? []), ...(editingLinkedCustomers ?? [])];
+        if (toMerge.length === 0) return;
+        setKnownCustomers((prev) => {
+            const next = { ...prev };
+            let changed = false;
+            for (const c of toMerge) {
+                if (next[c.id] !== c) {
+                    next[c.id] = c;
+                    changed = true;
+                }
+            }
+            return changed ? next : prev;
+        });
+    }, [customerSearchData, editingLinkedCustomers]);
+
+    // Nạp `customerIds`/`originalCustomerIds` từ dữ liệu THẬT ngay khi Task
+    // đang Sửa tải xong (async - không thể set đồng bộ lúc bấm nút Sửa).
+    useEffect(() => {
+        if (editingTask && editingLinkedCustomers) {
+            const ids = editingLinkedCustomers.map((c) => c.id);
+            setCustomerIds(ids);
+            setOriginalCustomerIds(ids);
+        }
+    }, [editingTask, editingLinkedCustomers]);
+
+    const customerSelectOptions = Object.values(knownCustomers).map((c) => ({
+        value: c.id,
+        label: customerPlainLabel(c),
+        customer: c,
+    }));
     const addTaskCustomersMutation = useAddTaskCustomers();
+    const removeTaskCustomerMutation = useRemoveTaskCustomer();
 
     const openCreateModal = () => {
         setEditingTask(null);
         form.resetFields();
         form.setFieldsValue({ periodType: 'daily', color: '#1890ff' });
-        setCreateCustomerIds([]);
+        setCustomerIds([]);
+        setOriginalCustomerIds([]);
         setCustomerSearchInput('');
         setModalOpen(true);
     };
@@ -206,7 +260,10 @@ export default function PeriodicTasksPage() {
             note: task.note ?? undefined,
             color: task.color ?? '#1890ff',
         });
-        setCreateCustomerIds([]);
+        // Rỗng tạm thời - `useEffect` phía trên tự nạp lại đúng giá trị NGAY
+        // KHI `usePeriodicTask(task.id)` tải xong `linkedCustomers` thật.
+        setCustomerIds([]);
+        setOriginalCustomerIds([]);
         setCustomerSearchInput('');
         setModalOpen(true);
     };
@@ -222,11 +279,36 @@ export default function PeriodicTasksPage() {
             };
 
             if (editingTask) {
+                const editingTaskId = editingTask.id;
                 updateMutation.mutate(
-                    { id: editingTask.id, data: payload },
+                    { id: editingTaskId, data: payload },
                     {
                         onSuccess: () => {
                             message.success('Đã cập nhật Công việc định kỳ');
+                            // Diff Customer đã chọn với danh sách gốc lúc mở modal
+                            // (chỉ thực hiện khi CÓ quyền `link_customer` - nếu
+                            // không có quyền, field bị ẩn nên 2 mảng luôn giống
+                            // nhau [], không có gì để gọi).
+                            if (canLinkCustomer) {
+                                const toAdd = customerIds.filter((id) => !originalCustomerIds.includes(id));
+                                const toRemove = originalCustomerIds.filter((id) => !customerIds.includes(id));
+                                if (toAdd.length > 0) {
+                                    addTaskCustomersMutation.mutate(
+                                        { taskId: editingTaskId, customerIds: toAdd },
+                                        {
+                                            onError: (err) => message.error(getApiErrorMessage(err, 'Gắn thêm Khách hàng thất bại')),
+                                        },
+                                    );
+                                }
+                                toRemove.forEach((customerId) => {
+                                    removeTaskCustomerMutation.mutate(
+                                        { taskId: editingTaskId, customerId },
+                                        {
+                                            onError: (err) => message.error(getApiErrorMessage(err, 'Gỡ 1 Khách hàng thất bại')),
+                                        },
+                                    );
+                                });
+                            }
                             setModalOpen(false);
                         },
                         onError: (err: any) => {
@@ -241,14 +323,16 @@ export default function PeriodicTasksPage() {
                         // Gắn Khách hàng đã chọn (nếu có) NGAY SAU KHI tạo -
                         // BE không nhận `customerIds` trong `POST /periodic-tasks`,
                         // phải gọi tiếp `POST /:id/customers` với id vừa tạo.
-                        if (createCustomerIds.length > 0) {
+                        if (canLinkCustomer && customerIds.length > 0) {
                             addTaskCustomersMutation.mutate(
-                                { taskId: newTask.id, customerIds: createCustomerIds },
+                                { taskId: newTask.id, customerIds },
                                 {
-                                    onError: (err: any) =>
+                                    onError: (err) =>
                                         message.error(
-                                            err?.response?.data?.message ||
-                                            'Tạo Công việc thành công nhưng gắn Khách hàng thất bại - vào "Liên kết" để gắn lại',
+                                            getApiErrorMessage(
+                                                err,
+                                                'Tạo Công việc thành công nhưng gắn Khách hàng thất bại - vào "Liên kết" để gắn lại',
+                                            ),
                                         ),
                                 },
                             );
@@ -634,12 +718,18 @@ export default function PeriodicTasksPage() {
                         <Input.TextArea rows={2} placeholder="Không bắt buộc" />
                     </Form.Item>
 
-                    {/* Gắn Khách hàng lúc tạo mới - CHỈ hiện khi Tạo mới (Sửa dùng nút
-                        "Liên kết" riêng, xem TaskLinksModal) + có quyền
-                        periodic_tasks.link_customer (PLAN mục 2.4). Không phải
-                        Form.Item vì field này không thuộc CreatePeriodicTaskDto. */}
-                    {!editingTask && canLinkCustomer && (
-                        <Form.Item label="Khách hàng liên quan" tooltip="Không bắt buộc - có thể gắn/gỡ sau qua nút &quot;Liên kết&quot;">
+                    {/* Gắn Khách hàng - hiện ở CẢ Tạo mới lẫn Sửa (yêu cầu chủ dự
+                        án 2026-09-15), gate bằng `periodic_tasks.link_customer`
+                        (PLAN mục 2.4). Ở chế độ Sửa: nếu Task đã có sẵn Customer
+                        nhưng người xem KHÔNG có `customers.view` (quyền KHÁC),
+                        `editingLinkedCustomers` sẽ là `undefined` dù đã tải xong
+                        - ẩn hẳn Select, hiện dòng cảnh báo thay vì Select rỗng
+                        gây hiểu nhầm "task chưa gắn khách hàng nào". */}
+                    {canLinkCustomer && (!editingTask || editingTaskDetailLoading || editingLinkedCustomers) && (
+                        <Form.Item
+                            label="Khách hàng liên quan"
+                            tooltip={editingTask ? undefined : 'Không bắt buộc - có thể gắn/gỡ sau qua nút "Liên kết"'}
+                        >
                             <Select
                                 mode="multiple"
                                 showSearch
@@ -649,18 +739,20 @@ export default function PeriodicTasksPage() {
                                 popupMatchSelectWidth={false}
                                 maxTagCount="responsive"
                                 placeholder="Tìm Khách hàng theo tên/SĐT để gắn (chọn nhiều được, không bắt buộc)"
-                                loading={customerOptionsLoading}
-                                value={createCustomerIds}
-                                onChange={setCreateCustomerIds}
+                                loading={customerSearchLoading || (!!editingTask && editingTaskDetailLoading)}
+                                disabled={!!editingTask && editingTaskDetailLoading}
+                                value={customerIds}
+                                onChange={setCustomerIds}
                                 onSearch={setCustomerSearchInput}
-                                options={createCustomerOptions.map((c) => ({
-                                    value: c.id,
-                                    label: customerPlainLabel(c),
-                                    customer: c,
-                                }))}
-                                notFoundContent={customerOptionsLoading ? 'Đang tìm...' : 'Không tìm thấy Khách hàng phù hợp'}
+                                options={customerSelectOptions}
+                                notFoundContent={customerSearchLoading ? 'Đang tìm...' : 'Không tìm thấy Khách hàng phù hợp'}
                             />
                         </Form.Item>
+                    )}
+                    {canLinkCustomer && editingTask && !editingTaskDetailLoading && editingLinkedCustomers === undefined && (
+                        <Text type="secondary" style={{ display: 'block', marginTop: -12, marginBottom: 12 }}>
+                            Bạn không có quyền xem Khách hàng nên không thể xem/sửa phần này.
+                        </Text>
                     )}
                 </Form>
             </Modal>
