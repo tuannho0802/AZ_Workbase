@@ -1759,3 +1759,105 @@ Hoàn thiện phần FE Phase 4 còn dang dở từ phiên trước (BE đã xon
 
 **Còn lại:** Phase 4 coi như ĐỦ cả BE+FE. Còn Phase 5-7 (như entry trước) + nợ lint
 `react-hooks/set-state-in-effect` (không cấp thiết, đã ghi ở entry trước).
+
+## [2026-09-15 12:30] | Hoàn tất BE Phase 5 "Công việc định kỳ" (Khoá/Mở khoá - approve) | Status: Success
+
+**Actor:** Agent (Claude)
+
+Tiếp tục từ commit trước (`1a02bb5 - Setup migration, entity, dto and service for Phase 5 (Not yet
+done BE)`) - migration/entity/DTO/service `lock()`/`unlock()`/`assertEditableWhenLocked()` đã có sẵn
+nhưng **build đang gãy thật sự** và thiếu endpoint. Đã hoàn thiện + verify thật, không suy diễn từ
+transcript phiên trước.
+
+**Đã làm:**
+1. **Fix build gãy** (nguyên nhân: commit trước đổi signature `update()`/`addLink()`/`removeLink()`/
+   `addSecondaryAssignee()`/`removeSecondaryAssignee()` từ `(id, dto, userId, userRole, scope)` sang
+   `(id, dto, user: RequestingUser, scope)` để hỗ trợ `assertEditableWhenLocked()`, nhưng KHÔNG sửa
+   controller + 3 spec file gọi theo signature cũ) - `tsc --noEmit` từng lỗi 25 chỗ
+   `TS2554: Expected 3-4 arguments, but got 5`. Đã sửa `periodic-tasks.controller.ts` (5 chỗ) +
+   `periodic-tasks.service.spec.ts` (5 chỗ) + `periodic-task-links.service.spec.ts` (8 chỗ) +
+   `periodic-task-secondary-assignees.service.spec.ts` (6 chỗ) để truyền `user` object thay vì
+   `user.id, user.role` rời.
+2. **Thêm 2 endpoint còn thiếu** ở `periodic-tasks.controller.ts`: `PATCH /periodic-tasks/:id/lock`
+   (body `LockPeriodicTaskDto.lockNote?`) và `PATCH /periodic-tasks/:id/unlock` - cả 2 gắn
+   `@RequirePermission('periodic_tasks.approve')`, gọi thẳng `service.lock()`/`service.unlock()` đã có
+   sẵn từ commit trước (idempotent, tự do lock↔unlock nhiều lần - PLAN mục 2.9).
+3. **Nối `assertEditableWhenLocked()` vào `PeriodicTaskCustomersService`** (Phase 3) - PLAN mục 2.9 yêu
+   cầu rõ áp dụng cho CẢ sub-endpoint customers, nhưng `addCustomers()`/`removeCustomer()` đang thiếu
+   (chỉ có ở links/secondary-assignees) - đã bổ sung, Task khoá mà thiếu `periodic_tasks.edit_locked`
+   giờ 403 đúng khi gắn/gỡ Customer, không riêng PATCH nội dung Task.
+4. **Fix test mock thiếu** - `mockTasksService` ở cả 3 spec (`links`/`secondary-assignees`/`customers`)
+   thiếu hẳn `assertEditableWhenLocked: jest.fn()` (sẽ throw `TypeError: ... is not a function` lúc chạy
+   thật dù tsc sạch) - đã thêm + `mockResolvedValue(undefined)` trong `beforeEach`. Đồng thời
+   `periodic-tasks.service.spec.ts` chưa provide mock cho `PermissionsService` (dependency mới của
+   `PeriodicTasksService` từ Phase 5) - Nest DI sẽ throw lúc `Test.createTestingModule().compile()` -
+   đã thêm `mockPermissionsService` vào providers.
+5. Dọn tiện thể 148 lỗi prettier `--fix` tự động trên các file vừa sửa (baseline vốn đã lỗi trước khi
+   tôi chạm vào, đã xác nhận bằng `git stash` so sánh trước/sau: 227 problems -> 67 problems, giảm chứ
+   không tăng, không phải tôi gây ra thêm).
+
+**Kiểm tra riêng theo yêu cầu chủ dự án - phân quyền lock/unlock:**
+- Migration `1782600000000-AddPeriodicTaskLockColumns.ts` (đã có từ commit trước, xác nhận lại): seed ĐỦ
+  2 permission `periodic_tasks.approve` (scope: admin/assistant=all, manager=department, employee KHÔNG
+  seed - mirror view/create/edit nhưng bỏ employee) và `periodic_tasks.edit_locked` (nhị phân, CHỈ
+  Admin) - khác đúng kiểu với `delete` (chỉ Admin scope=all) và `edit` (đủ 4 role có scope), đúng PLAN
+  mục 4.
+- **Phát hiện gap hiển thị UI (ngoài phạm vi Phase 5, nhưng liên quan trực tiếp câu hỏi)**: resource
+  `periodic_tasks` (và `periodic_task_statuses`) **hoàn toàn thiếu** trong `RESOURCE_LABEL` ở
+  `frontend/src/app/(dashboard)/phan-quyen/page.tsx` - nghĩa là TOÀN BỘ nhóm quyền Công việc định kỳ
+  (không riêng approve/edit_locked) đang hiện raw key xấu `"periodic_tasks"` thay vì tiếng Việt trên
+  trang Phân quyền, từ trước khi có Phase 5. Chưa sửa (để dành đúng giai đoạn FE theo yêu cầu chủ dự án -
+  sẽ cần thêm 2 dòng vào `RESOURCE_LABEL`, mirror các entry `assignment_groups`/`customer_statuses` đã có
+  sẵn trong cùng file).
+
+**Files Changed:**
+- `backend/src/modules/periodic-tasks/periodic-tasks.controller.ts` - fix 5 chỗ gọi service sai
+  signature, thêm 2 endpoint `lock`/`unlock`
+- `backend/src/modules/periodic-tasks/periodic-task-customers.service.ts` - nối
+  `assertEditableWhenLocked()` vào `addCustomers()`/`removeCustomer()`
+- `backend/src/modules/periodic-tasks/periodic-tasks.service.spec.ts` - fix 5 chỗ gọi sai + thêm mock
+  `PermissionsService`
+- `backend/src/modules/periodic-tasks/periodic-task-links.service.spec.ts` - fix 8 chỗ gọi sai + thêm
+  mock `assertEditableWhenLocked`
+- `backend/src/modules/periodic-tasks/periodic-task-secondary-assignees.service.spec.ts` - fix 6 chỗ gọi
+  sai + thêm mock `assertEditableWhenLocked`
+- `backend/src/modules/periodic-tasks/periodic-task-customers.service.spec.ts` - thêm mock
+  `assertEditableWhenLocked`
+
+**Verify thật:**
+- `npx tsc --noEmit`: sạch, 0 lỗi (trước khi sửa: 25 lỗi `TS2554`).
+- `npx jest` toàn bộ backend: **34 suite pass, 620/620 test pass**, không regression module nào khác
+  (bao gồm 6 suite riêng `periodic-tasks*`: 81/81 test pass).
+- `npx nest build`: build production sạch, không lỗi/không warning.
+- `npx eslint --fix` trên 6 file vừa sửa: 227 problems -> 67 problems (44 error + 23 warning còn lại là
+  baseline `@typescript-eslint/no-unsafe-*` do dùng `any` cho mock/QueryBuilder/`@GetUser() user: any` -
+  pattern có sẵn xuyên suốt toàn bộ controller/spec từ trước, không phải nợ mới).
+- Migration: chưa chạy thật lên DB (đúng rule dự án - không tự chạy migration lên DB của chủ dự án, chỉ
+  đưa file để họ tự chạy/xác nhận). Đã rà cú pháp qua `tsc`/`nest build` (sạch) + đọc lại logic
+  `up()`/`down()` đối xứng, dùng `findColumnByName()`/`foreignKeys`/`indices` check tồn tại trước ALTER
+  (đúng convention MySQL không hỗ trợ `IF NOT EXISTS` cho ALTER, đã đính chính ở
+  `SKILL_DATABASE_MANAGEMENT.md`).
+- Đã `git commit` cục bộ trong sandbox (`a9c1bf3`) - **KHÔNG push** theo yêu cầu chủ dự án; chủ dự án tự
+  đồng bộ code khi cần.
+
+**Kết luận:** Phase 5 (Khoá/Mở khoá) nay **ĐỦ điều kiện coi là hoàn tất BE** - đúng đủ 2 permission
+`approve`/`edit_locked` seed migration, 2 endpoint `lock`/`unlock`, `assertEditableWhenLocked()` áp dụng
+đồng bộ ở CẢ 4 nơi sửa dữ liệu Task (`update`, links, secondary-assignees, customers), build+test+lint
+sạch thật (không suy diễn). Sẵn sàng chuyển sang **FE Phase 5** khi chủ dự án yêu cầu.
+
+**Còn lại (ngoài phạm vi phiên này):**
+- FE Phase 5: nút Khoá/Mở khoá trong `TaskLinksModal.tsx` hoặc trang chính `cong-viec-dinh-ky/page.tsx`
+  (gate theo `can('periodic_tasks.approve')`), hiện badge/trạng thái khoá trên Card/Table, và ẩn nút Sửa
+  khi `isLocked=true` mà thiếu `periodic_tasks.edit_locked` (dùng `can('periodic_tasks.edit_locked')`).
+- **Cần làm cùng lúc FE Phase 5 hoặc trước đó**: thêm `periodic_tasks: 'Công việc định kỳ'` và
+  `periodic_task_statuses: 'Trạng thái công việc định kỳ'` vào `RESOURCE_LABEL` ở
+  `frontend/.../phan-quyen/page.tsx` (gap có sẵn từ trước Phase 5, xem mục "Kiểm tra riêng" ở trên) - nếu
+  không sửa, Admin sẽ không thấy tên tiếng Việt của 2 permission mới `approve`/`edit_locked` (và toàn bộ
+  nhóm quyền Công việc định kỳ khác) trên trang Phân quyền.
+- Phase 6 (checklist con), Phase 7 (audit log riêng) - chưa code, xem PLAN mục 6.
+- Chưa có test riêng cho `lock()`/`unlock()`/`assertEditableWhenLocked()` trong
+  `periodic-tasks.service.spec.ts` (chỉ mới có mock để các spec KHÁC không gãy) - nên bổ sung ở phiên sau
+  để phủ đúng spec bắt buộc PLAN mục 6 Phase 5 (idempotent lock nhiều lần, 403 khi thiếu `edit_locked`,
+  Root Admin bypass).
+- Migration chưa chạy thật lên DB nào (theo đúng rule "không tự chạy migration lên production") - chủ dự
+  án cần tự `npm run migration:run` và xác nhận.
