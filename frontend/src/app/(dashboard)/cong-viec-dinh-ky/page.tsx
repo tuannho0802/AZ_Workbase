@@ -41,6 +41,7 @@ import { useUsersList } from '@/lib/hooks/useUsers';
 import { usePeriodicTaskStatuses } from '@/lib/hooks/usePeriodicTaskStatuses';
 import { useCustomers } from '@/lib/hooks/useCustomers';
 import { useAddTaskCustomers, useRemoveTaskCustomer } from '@/lib/hooks/usePeriodicTaskCustomers';
+import { useAddTaskSecondaryAssignee, useRemoveTaskSecondaryAssignee } from '@/lib/hooks/usePeriodicTaskSecondaryAssignees';
 import {
     usePeriodicTasks,
     usePeriodicTask,
@@ -61,7 +62,8 @@ import { Customer } from '@/lib/types/customer.types';
 import { getApiErrorMessage } from '@/lib/utils/error-message.util';
 import { useRoleColorMap, useRoleColors } from '@/lib/hooks/useRoleColorMap';
 import { TaskLinksModal } from '@/components/periodic-tasks/TaskLinksModal';
-import { customerPlainLabel, renderCustomerOption } from '@/components/common/customer-option-render';
+import { customerPhoneDisplay, customerPlainLabel, renderCustomerOption } from '@/components/common/customer-option-render';
+import { SimpleList } from '@/components/common/SimpleList';
 
 const { Title, Text } = Typography;
 const { RangePicker } = DatePicker;
@@ -264,6 +266,39 @@ export default function PeriodicTasksPage() {
     }));
     const addTaskCustomersMutation = useAddTaskCustomers();
     const removeTaskCustomerMutation = useRemoveTaskCustomer();
+    // Select "Tìm để gắn" chỉ giữ lựa chọn TẠM (chưa vào danh sách chính
+    // thức `customerIds`) - bấm "Gán" mới gộp vào, mirror ĐÚNG UX 2 bước
+    // (chọn -> Gán) của `TaskLinksModal.tsx` (yêu cầu chủ dự án 2026-09-15:
+    // Select multiple 1 khối cũ khó dùng, đổi sang list + ô tìm riêng).
+    const [pendingCustomerIdsToAdd, setPendingCustomerIdsToAdd] = useState<number[]>([]);
+
+    // ---- Phụ trách phụ NGAY TRONG Modal Tạo/Sửa (yêu cầu chủ dự án
+    // 2026-09-15) - trước đây (Phase 4) CỐ TÌNH không đưa vào modal này, chỉ
+    // quản lý được sau khi Task đã tồn tại qua nút "Liên kết" (xem JSDoc cũ
+    // ở `TaskLinksModal.tsx`) - nay thêm vào đây, dùng lại ĐÚNG cơ chế
+    // diff-on-save như Customer ở trên (Task chưa tồn tại lúc Tạo mới thì
+    // không thể gọi `POST .../secondary-assignees` ngay, phải đợi có `id`).
+    const [secondaryAssigneeIds, setSecondaryAssigneeIds] = useState<number[]>([]);
+    const [originalSecondaryAssigneeIds, setOriginalSecondaryAssigneeIds] = useState<number[]>([]);
+    const [pendingSecondaryUserIds, setPendingSecondaryUserIds] = useState<number[]>([]);
+    const editingSecondaryAssignees = editingTaskDetail?.secondaryAssignees;
+    const addSecondaryMutation = useAddTaskSecondaryAssignee();
+    const removeSecondaryMutation = useRemoveTaskSecondaryAssignee();
+    // Loại người đang được chọn làm "Người phụ trách chính" khỏi ứng viên
+    // Phụ trách phụ - 1 người không thể vừa chính vừa phụ (BE cũng chặn,
+    // đây chỉ là lọc trước cho gọn, mirror `secondaryCandidates` ở
+    // `TaskLinksModal.tsx`). Dùng `Form.useWatch` vì đây là field CÓ đăng ký
+    // trong `form` (`name="primaryAssigneeId"`), khác `customerIds`/
+    // `secondaryAssigneeIds` là state ngoài form.
+    const watchedPrimaryAssigneeId = Form.useWatch('primaryAssigneeId', form);
+
+    useEffect(() => {
+        if (editingTask && editingSecondaryAssignees) {
+            const ids = editingSecondaryAssignees.map((u) => u.id);
+            setSecondaryAssigneeIds(ids);
+            setOriginalSecondaryAssigneeIds(ids);
+        }
+    }, [editingTask, editingSecondaryAssignees]);
 
     const openCreateModal = () => {
         setEditingTask(null);
@@ -272,6 +307,10 @@ export default function PeriodicTasksPage() {
         setCustomerIds([]);
         setOriginalCustomerIds([]);
         setCustomerSearchInput('');
+        setPendingCustomerIdsToAdd([]);
+        setSecondaryAssigneeIds([]);
+        setOriginalSecondaryAssigneeIds([]);
+        setPendingSecondaryUserIds([]);
         setModalOpen(true);
     };
 
@@ -289,10 +328,15 @@ export default function PeriodicTasksPage() {
             color: task.color ?? '#1890ff',
         });
         // Rỗng tạm thời - `useEffect` phía trên tự nạp lại đúng giá trị NGAY
-        // KHI `usePeriodicTask(task.id)` tải xong `linkedCustomers` thật.
+        // KHI `usePeriodicTask(task.id)` tải xong `linkedCustomers`/
+        // `secondaryAssignees` thật.
         setCustomerIds([]);
         setOriginalCustomerIds([]);
         setCustomerSearchInput('');
+        setPendingCustomerIdsToAdd([]);
+        setSecondaryAssigneeIds([]);
+        setOriginalSecondaryAssigneeIds([]);
+        setPendingSecondaryUserIds([]);
         setModalOpen(true);
     };
 
@@ -337,6 +381,37 @@ export default function PeriodicTasksPage() {
                                     );
                                 });
                             }
+                            // Diff Phụ trách phụ tương tự Customer ở trên (chỉ
+                            // khác: mỗi lần gọi API chỉ nhận 1 userId, KHÔNG có
+                            // batch - mirror `handleAddSecondary`/
+                            // `handleRemoveSecondary` ở `TaskLinksModal.tsx`).
+                            // Luôn thực hiện khi `canEdit` (không có permission
+                            // ẩn riêng như `link_customer` - xem JSDoc đầu
+                            // `TaskLinksModal.tsx`).
+                            if (canEdit) {
+                                const secondaryToAdd = secondaryAssigneeIds.filter(
+                                    (id) => !originalSecondaryAssigneeIds.includes(id),
+                                );
+                                const secondaryToRemove = originalSecondaryAssigneeIds.filter(
+                                    (id) => !secondaryAssigneeIds.includes(id),
+                                );
+                                secondaryToAdd.forEach((userId) => {
+                                    addSecondaryMutation.mutate(
+                                        { taskId: editingTaskId, userId },
+                                        {
+                                            onError: (err) => message.error(getApiErrorMessage(err, 'Thêm 1 Phụ trách phụ thất bại')),
+                                        },
+                                    );
+                                });
+                                secondaryToRemove.forEach((userId) => {
+                                    removeSecondaryMutation.mutate(
+                                        { taskId: editingTaskId, userId },
+                                        {
+                                            onError: (err) => message.error(getApiErrorMessage(err, 'Gỡ 1 Phụ trách phụ thất bại')),
+                                        },
+                                    );
+                                });
+                            }
                             setModalOpen(false);
                         },
                         onError: (err: any) => {
@@ -364,6 +439,26 @@ export default function PeriodicTasksPage() {
                                         ),
                                 },
                             );
+                        }
+                        // Gán Phụ trách phụ đã chọn (nếu có) NGAY SAU KHI tạo -
+                        // cùng lý do với Customer ở trên (BE không nhận field
+                        // này trong `POST /periodic-tasks`), gọi tuần tự từng
+                        // người (endpoint chỉ nhận 1 userId/lần).
+                        if (canEdit && secondaryAssigneeIds.length > 0) {
+                            secondaryAssigneeIds.forEach((userId) => {
+                                addSecondaryMutation.mutate(
+                                    { taskId: newTask.id, userId },
+                                    {
+                                        onError: (err) =>
+                                            message.error(
+                                                getApiErrorMessage(
+                                                    err,
+                                                    'Tạo Công việc thành công nhưng gắn Phụ trách phụ thất bại - vào "Liên kết" để gắn lại',
+                                                ),
+                                            ),
+                                    },
+                                );
+                            });
                         }
                         setModalOpen(false);
                     },
@@ -837,37 +932,158 @@ export default function PeriodicTasksPage() {
                         (PLAN mục 2.4). Ở chế độ Sửa: nếu Task đã có sẵn Customer
                         nhưng người xem KHÔNG có `customers.view` (quyền KHÁC),
                         `editingLinkedCustomers` sẽ là `undefined` dù đã tải xong
-                        - ẩn hẳn Select, hiện dòng cảnh báo thay vì Select rỗng
-                        gây hiểu nhầm "task chưa gắn khách hàng nào". */}
+                        - ẩn hẳn phần này, hiện dòng cảnh báo thay vì list rỗng
+                        gây hiểu nhầm "task chưa gắn khách hàng nào".
+                        UI dạng list + ô tìm riêng (KHÔNG còn 1 Select multiple
+                        gộp chung) - copy đúng UX 2 bước "chọn -> Gán" của
+                        `TaskLinksModal.tsx` theo yêu cầu chủ dự án 2026-09-15,
+                        vì Select multiple cũ hiện thẳng cả chip đã chọn lẫn
+                        dropdown tìm trong CÙNG 1 ô rất khó dùng khi đã gắn
+                        nhiều Khách hàng. */}
                     {canLinkCustomer && (!editingTask || editingTaskDetailLoading || editingLinkedCustomers) && (
                         <Form.Item
                             label="Khách hàng liên quan"
                             tooltip={editingTask ? undefined : 'Không bắt buộc - có thể gắn/gỡ sau qua nút "Liên kết"'}
                         >
-                            <Select
-                                mode="multiple"
-                                showSearch={{
-                                    filterOption: false, // tắt filter mặc định, dùng onSearch (server-side)
-                                    onSearch: setCustomerSearchInput,
-                                }}
-                                optionLabelProp="label"
-                                optionRender={renderCustomerOption}
-                                popupMatchSelectWidth={false}
-                                maxTagCount="responsive"
-                                placeholder="Tìm Khách hàng theo tên/SĐT để gắn (chọn nhiều được, không bắt buộc)"
-                                loading={customerSearchLoading || (!!editingTask && editingTaskDetailLoading)}
-                                disabled={!!editingTask && editingTaskDetailLoading}
-                                value={customerIds}
-                                onChange={setCustomerIds}
-                                options={customerSelectOptions}
-                                notFoundContent={customerSearchLoading ? 'Đang tìm...' : 'Không tìm thấy Khách hàng phù hợp'}
+                            <SimpleList
+                                loading={!!editingTask && editingTaskDetailLoading}
+                                size="small"
+                                dataSource={customerIds.map((id) => knownCustomers[id]).filter((c): c is Customer => !!c)}
+                                rowKey={(c) => c.id}
+                                emptyText="Chưa gắn Khách hàng nào"
+                                renderMeta={(c) => ({
+                                    title: c.name,
+                                    description: (
+                                        <Space size={4}>
+                                            <Text type="secondary" style={{ fontSize: 12 }}>
+                                                {customerPhoneDisplay(c.phone)}
+                                            </Text>
+                                            {c.salesUser && <Tag color="blue">{c.salesUser.name}</Tag>}
+                                        </Space>
+                                    ),
+                                })}
+                                renderActions={(c) => [
+                                    <Button
+                                        key="remove-customer"
+                                        size="small"
+                                        danger
+                                        type="text"
+                                        icon={<DeleteOutlined />}
+                                        onClick={() => setCustomerIds((prev) => prev.filter((id) => id !== c.id))}
+                                    />,
+                                ]}
                             />
+                            <div style={{ marginTop: 12, display: 'flex', gap: 8 }}>
+                                <Select
+                                    mode="multiple"
+                                    style={{ flex: 1 }}
+                                    showSearch={{
+                                        filterOption: false, // tắt filter mặc định, dùng onSearch (server-side)
+                                        onSearch: setCustomerSearchInput,
+                                    }}
+                                    optionLabelProp="label"
+                                    optionRender={renderCustomerOption}
+                                    popupMatchSelectWidth={false}
+                                    maxTagCount="responsive"
+                                    placeholder="Tìm Khách hàng theo tên/SĐT để gắn (chọn nhiều được)"
+                                    loading={customerSearchLoading}
+                                    value={pendingCustomerIdsToAdd}
+                                    onChange={setPendingCustomerIdsToAdd}
+                                    options={customerSelectOptions.filter((o) => !customerIds.includes(o.value))}
+                                    notFoundContent={customerSearchLoading ? 'Đang tìm...' : 'Không tìm thấy Khách hàng phù hợp'}
+                                />
+                                <Button
+                                    type="primary"
+                                    icon={<PlusOutlined />}
+                                    disabled={pendingCustomerIdsToAdd.length === 0}
+                                    onClick={() => {
+                                        setCustomerIds((prev) => Array.from(new Set([...prev, ...pendingCustomerIdsToAdd])));
+                                        setPendingCustomerIdsToAdd([]);
+                                        setCustomerSearchInput('');
+                                    }}
+                                >
+                                    Gán
+                                </Button>
+                            </div>
                         </Form.Item>
                     )}
                     {canLinkCustomer && editingTask && !editingTaskDetailLoading && editingLinkedCustomers === undefined && (
                         <Text type="secondary" style={{ display: 'block', marginTop: -12, marginBottom: 12 }}>
                             Bạn không có quyền xem Khách hàng nên không thể xem/sửa phần này.
                         </Text>
+                    )}
+
+                    {/* Phụ trách phụ - MỚI thêm vào modal Tạo/Sửa (yêu cầu chủ
+                        dự án 2026-09-15, trước đây Phase 4 chỉ quản lý được
+                        qua nút "Liên kết" sau khi Task đã tồn tại). Gate bằng
+                        `periodic_tasks.edit` (KHÔNG có permission nhị phân
+                        riêng như `link_customer`, mirror `TaskLinksModal.tsx`).
+                        UI copy đúng list + ô tìm riêng từ `TaskLinksModal.tsx`. */}
+                    {canEdit && (
+                        <Form.Item label="Phụ trách phụ" tooltip="Người hỗ trợ thêm ngoài Phụ trách chính - không bắt buộc">
+                            <SimpleList
+                                loading={!!editingTask && editingTaskDetailLoading}
+                                size="small"
+                                dataSource={secondaryAssigneeIds
+                                    .map((id) => users.find((u: any) => u.id === id))
+                                    .filter((u): u is { id: number; name: string; email?: string } => !!u)}
+                                rowKey={(u) => u.id}
+                                emptyText="Chưa có Phụ trách phụ nào"
+                                renderMeta={(u) => ({
+                                    title: u.name,
+                                    description: u.email ? (
+                                        <Text type="secondary" style={{ fontSize: 12 }}>
+                                            {u.email}
+                                        </Text>
+                                    ) : undefined,
+                                })}
+                                renderActions={(u) => [
+                                    <Button
+                                        key="remove-secondary"
+                                        size="small"
+                                        danger
+                                        type="text"
+                                        icon={<DeleteOutlined />}
+                                        onClick={() => setSecondaryAssigneeIds((prev) => prev.filter((id) => id !== u.id))}
+                                    />,
+                                ]}
+                            />
+                            <div style={{ marginTop: 12, display: 'flex', gap: 8 }}>
+                                <Select
+                                    mode="multiple"
+                                    style={{ flex: 1 }}
+                                    showSearch={{ optionFilterProp: 'label' }}
+                                    popupMatchSelectWidth={false}
+                                    maxTagCount="responsive"
+                                    placeholder="Chọn người để thêm làm Phụ trách phụ (chọn nhiều được)"
+                                    value={pendingSecondaryUserIds}
+                                    onChange={setPendingSecondaryUserIds}
+                                    options={users
+                                        .filter(
+                                            (u: any) =>
+                                                u.id !== watchedPrimaryAssigneeId && !secondaryAssigneeIds.includes(u.id),
+                                        )
+                                        .map((u: any) => ({
+                                            value: u.id,
+                                            label: u.email ? `${u.name} (${u.email})` : u.name,
+                                        }))}
+                                    notFoundContent="Không có người dùng nào đủ điều kiện"
+                                />
+                                <Button
+                                    type="primary"
+                                    icon={<PlusOutlined />}
+                                    disabled={pendingSecondaryUserIds.length === 0}
+                                    onClick={() => {
+                                        setSecondaryAssigneeIds((prev) =>
+                                            Array.from(new Set([...prev, ...pendingSecondaryUserIds])),
+                                        );
+                                        setPendingSecondaryUserIds([]);
+                                    }}
+                                >
+                                    Gán
+                                </Button>
+                            </div>
+                        </Form.Item>
                     )}
                 </Form>
             </Modal>

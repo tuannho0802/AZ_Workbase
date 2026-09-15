@@ -1926,3 +1926,64 @@ gap hiển thị tên tiếng Việt ở trang Phân quyền. Phase 5 coi như �
   file nào cho `TaskLinksModal.tsx` để mirror).
 - Vẫn còn nợ cũ đã ghi ở entry BE Phase 5 phía trên (test riêng cho `lock()`/`unlock()` ở backend, chạy
   migration thật lên DB).
+
+  ## [2026-09-15 13:40] | "Công việc định kỳ" - thêm Phụ trách phụ vào Modal Tạo/Sửa + đổi UI Khách hàng liên quan thành dạng list (theo yêu cầu chủ dự án, trước Phase 6) | Status: Success
+
+**Actor:** Agent (Claude)
+
+Yêu cầu chủ dự án (kèm ảnh chụp Modal Sửa Task thật): UI "Khách hàng liên quan" ở Modal Tạo/Sửa dùng 1
+`Select mode="multiple"` gộp chung cả chip đã chọn lẫn ô tìm kiếm - khó dùng khi đã gắn nhiều Khách hàng
+(ảnh minh hoạ đúng vấn đề này). Yêu cầu đổi sang UI dạng list như `TaskLinksModal.tsx` ("Liên kết"), và bổ
+sung luôn "Phụ trách phụ" (đang thiếu hoàn toàn ở Modal Tạo/Sửa, trước đây theo JSDoc cũ ở
+`TaskLinksModal.tsx`/entry Phase 4 phía trên, CỐ Ý chỉ cho quản lý sau khi Task đã tồn tại qua nút "Liên
+kết" - nay chủ dự án đổi ý, muốn có luôn trong Modal Tạo/Sửa).
+
+**Đã làm** (`frontend/src/app/(dashboard)/cong-viec-dinh-ky/page.tsx`):
+
+1. **Đổi UI "Khách hàng liên quan"**: từ 1 `Select mode="multiple"` (value = `customerIds`, chọn thẳng)
+   sang **list + ô tìm riêng** (copy đúng UX 2 bước "chọn -> Gán" từ `TaskLinksModal.tsx`):
+   - `SimpleList` hiển thị `customerIds` đã gắn (tên + SĐT + Tag PTC nếu có), mỗi dòng có nút Gỡ (icon
+     `DeleteOutlined`, xoá thẳng khỏi `customerIds` cục bộ - KHÔNG gọi API ngay, vẫn giữ nguyên cơ chế
+     diff-on-save cũ vì Modal này còn dùng chung cho cả Tạo mới lúc Task CHƯA có `id`).
+   - Bên dưới: `Select mode="multiple"` MỚI chỉ giữ lựa chọn TẠM (`pendingCustomerIdsToAdd`, options đã
+     lọc bỏ Customer đã có trong `customerIds`) + nút "Gán" gộp vào `customerIds` chính thức rồi xoá lựa
+     chọn tạm - đúng 2 bước như `TaskLinksModal.tsx`, không còn chip + tìm kiếm chung 1 ô.
+   - **Không đổi logic lưu** (`toAdd`/`toRemove` diff lúc Sửa, gọi `addTaskCustomers` sau khi tạo Task lúc
+     Tạo mới) - chỉ đổi UI hiển thị/thao tác, giảm rủi ro so với viết lại toàn bộ luồng lưu.
+
+2. **Thêm mới "Phụ trách phụ"** vào Modal Tạo/Sửa, dùng lại NGUYÊN cơ chế state cục bộ + diff-on-save như
+   Customer ở trên (Task chưa tồn tại lúc Tạo mới nên không thể gọi `POST .../secondary-assignees` ngay):
+   - State: `secondaryAssigneeIds`/`originalSecondaryAssigneeIds`/`pendingSecondaryUserIds`, nạp từ
+     `editingTaskDetail.secondaryAssignees` (đã fetch sẵn cho phần Customer, dùng lại luôn, không fetch
+     thêm request nào).
+   - Loại người đang là "Người phụ trách chính" khỏi ứng viên - dùng `Form.useWatch('primaryAssigneeId',
+     form)` để phản ứng ngay khi đổi Select đó (mirror `secondaryCandidates` ở `TaskLinksModal.tsx`).
+   - Gate bằng `periodic_tasks.edit` (biến `canEdit` có sẵn ở đầu file) - KHÔNG có permission nhị phân
+     riêng như `link_customer` (đúng PLAN mục 2.5/2.12, mirror `TaskLinksModal.tsx`).
+   - Lúc Sửa: diff `secondaryToAdd`/`secondaryToRemove` rồi gọi tuần tự `addSecondaryMutation`/
+     `removeSecondaryMutation` **từng người 1** (endpoint chỉ nhận 1 `userId`/lần, KHÔNG batch - khác
+     Customer có batch `customerIds[]`). Lúc Tạo mới: sau khi tạo Task thành công, `forEach` gọi
+     `addSecondaryMutation` cho từng id đã chọn.
+
+**Files Changed:**
+- `frontend/src/app/(dashboard)/cong-viec-dinh-ky/page.tsx` - đổi UI Customer thành list+ô tìm riêng,
+  thêm state/JSX/logic lưu cho Phụ trách phụ
+
+**Verify thật:**
+- `npx tsc --noEmit`: sạch, 0 lỗi.
+- `npm run build` (Next.js 16 Turbopack): **Compiled successfully**, đủ 32 route.
+- `npx vitest run`: 14/14 test pass, không regression.
+- `npx eslint` trên file: 16 -> 20 problems, đối chiếu `git stash` từng rule cụ thể (không chỉ đếm tổng):
+  - `@typescript-eslint/no-explicit-any`: 12 -> 15 (+3) - do 3 chỗ dùng `u: any` khi lặp qua `users` (từ
+    `useUsersList()`, vốn KHÔNG có type mạnh - toàn bộ file từ trước đã dùng `any` cho biến này ở nhiều
+    chỗ khác, ví dụ dropdown "Người phụ trách chính" - mirror ĐÚNG pattern có sẵn, không phải kiểu lỗi
+    mới).
+  - `react-hooks/set-state-in-effect`: 3 -> 4 (+1) - `useEffect` mới nạp `secondaryAssigneeIds` từ
+    `editingTaskDetail` mirror Y HỆT `useEffect` nạp `customerIds` đã có sẵn ngay phía trên (cùng file,
+    cùng shape) - không phải rule mới phát sinh riêng cho code này.
+  - `react-hooks/exhaustive-deps`: không đổi (1 -> 1, baseline cũ không liên quan).
+- Đã `git commit` cục bộ (`1c54e52`) - **KHÔNG push**, mirror quy ước các entry trước.
+
+**Còn lại:** Chưa test thủ công trên UI thật (chỉ verify qua build/tsc/lint) - đề nghị chủ dự án tự bấm
+thử luồng Tạo mới + Sửa với cả 2 phần Khách hàng/Phụ trách phụ trước khi coi là xong hẳn. Sau entry này
+chuyển sang **Phase 6 - Checklist con kiểu Trello** (PLAN mục 6, migration `periodic_task_checklist_items`).
