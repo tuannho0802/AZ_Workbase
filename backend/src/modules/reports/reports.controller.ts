@@ -49,4 +49,18 @@ export class ReportsController {
   ) {
     return this.reportsService.getCustomerReport(query, req.user.id, req.user.role, scope);
   }
+
+  @Get('quality')
+  @RequirePermission('reports.view')
+  @ApiOperation({
+    summary:
+      'Báo cáo CHẤT LƯỢNG data (data đổ về trong kỳ chia theo Status hiện tại) theo Cá nhân/Phòng ban/Tổng tất cả - phạm vi tự động theo role',
+  })
+  async getCustomerQualityReport(
+    @Query() query: QueryReportDto,
+    @Request() req: any,
+    @GetPermissionScope() scope: string | null,
+  ) {
+    return this.reportsService.getCustomerQualityReport(query, req.user.id, req.user.role, scope);
+  }
 }

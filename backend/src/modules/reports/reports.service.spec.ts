@@ -2,6 +2,7 @@ import { Test, TestingModule } from '@nestjs/testing';
 import { getRepositoryToken } from '@nestjs/typeorm';
 import { ReportsService } from './reports.service';
 import { Customer } from '../../database/entities/customer.entity';
+import { CustomerStatus } from '../../database/entities/customer-status.entity';
 import { Role } from '../../common/enums/role.enum';
 import { CustomerAccessHelper } from '../customers/helpers/customer-access.helper';
 import { getReportPeriodRange, getNowVn } from '../../common/utils/date-vn.util';
@@ -69,6 +70,13 @@ describe('ReportsService', () => {
     createQueryBuilder: jest.fn(() => createMockQb()),
   };
 
+  // getCustomerQualityReport() đọc danh sách status qua .find() (không qua
+  // QueryBuilder) - mock riêng, mặc định rỗng cho các test KHÔNG đụng tới
+  // method này (giữ nguyên hành vi các describe block cũ).
+  const mockCustomerStatusRepo = {
+    find: jest.fn(() => Promise.resolve([] as any[])),
+  };
+
   beforeEach(async () => {
     jest.clearAllMocks();
     rawManyQueue = [];
@@ -77,11 +85,13 @@ describe('ReportsService', () => {
     capturedInnerJoinParams = [];
     capturedAndWhere = [];
     mockCustomerRepo.createQueryBuilder.mockImplementation(() => createMockQb());
+    mockCustomerStatusRepo.find.mockImplementation(() => Promise.resolve([]));
 
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         ReportsService,
         { provide: getRepositoryToken(Customer), useValue: mockCustomerRepo },
+        { provide: getRepositoryToken(CustomerStatus), useValue: mockCustomerStatusRepo },
       ],
     }).compile();
 
@@ -295,6 +305,61 @@ describe('ReportsService', () => {
       expect(result.personal).toEqual([
         { userId: 2, userName: '(Không rõ)', totalCustomers: 0, closedCustomers: 0, joinedGroupCustomers: 3 },
       ]);
+    });
+  });
+
+  describe('getCustomerQualityReport', () => {
+    const STATUSES = [
+      { code: 'closed', name: 'Đã chốt', color: '#52c41a' },
+      { code: 'pending', name: 'Chờ xử lý', color: '#faad14' },
+    ];
+
+    it('pivot đúng: 1 user có nhiều dòng status -> gộp vào 1 hàng byStatus, thiếu status khác trong danh sách -> mặc định 0 (không undefined)', async () => {
+      mockCustomerStatusRepo.find.mockImplementation(() => Promise.resolve(STATUSES as any));
+      rawManyQueue = [
+        // personal
+        [
+          { userId: '1', userName: 'A', status: 'closed', count: '3' },
+          { userId: '1', userName: 'A', status: 'pending', count: '2' },
+        ],
+        // department
+        [{ departmentId: '10', departmentName: 'Sales', status: 'closed', count: '3' }],
+        // total
+        [
+          { status: 'closed', count: '3' },
+          { status: 'pending', count: '2' },
+        ],
+      ];
+
+      const result = await service.getCustomerQualityReport({ period: 'month' } as any, 1, Role.ADMIN);
+
+      expect(result.statuses).toEqual(STATUSES);
+      expect(result.personal).toEqual([
+        { userId: 1, userName: 'A', total: 5, byStatus: { closed: 3, pending: 2 } },
+      ]);
+      expect(result.department).toEqual([
+        { departmentId: 10, departmentName: 'Sales', total: 3, byStatus: { closed: 3, pending: 0 } },
+      ]);
+      expect(result.total).toEqual({ total: 5, byStatus: { closed: 3, pending: 2 } });
+    });
+
+    it('scope=own -> ẨN Phòng ban/Tổng tất cả (null) và tự ép filter Cá nhân về đúng chính mình', async () => {
+      mockCustomerStatusRepo.find.mockImplementation(() => Promise.resolve(STATUSES as any));
+      rawManyQueue = [[{ userId: '7', userName: 'Me', status: 'closed', count: '1' }]];
+
+      const result = await service.getCustomerQualityReport(
+        { period: 'month' } as any,
+        7,
+        Role.EMPLOYEE,
+        PermissionScope.OWN,
+      );
+
+      expect(result.department).toBeNull();
+      expect(result.total).toBeNull();
+      expect(capturedAndWhere).toContainEqual({
+        condition: 'customer.salesUserId = :selfId',
+        params: { selfId: 7 },
+      });
     });
   });
 

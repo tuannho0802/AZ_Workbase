@@ -3,6 +3,7 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { Customer } from '../../database/entities/customer.entity';
 import { CustomerGroupMembership } from '../../database/entities/customer-group-membership.entity';
+import { CustomerStatus } from '../../database/entities/customer-status.entity';
 import { Role } from '../../common/enums/role.enum';
 import { PermissionScope } from '../../database/entities/role-permission.entity';
 import { CustomerAccessHelper } from '../customers/helpers/customer-access.helper';
@@ -61,6 +62,8 @@ export class ReportsService {
   constructor(
     @InjectRepository(Customer)
     private readonly customerRepo: Repository<Customer>,
+    @InjectRepository(CustomerStatus)
+    private readonly customerStatusRepo: Repository<CustomerStatus>,
   ) { }
 
   /**
@@ -356,6 +359,142 @@ export class ReportsService {
     }
 
     return { period: { type: query.period, from, to }, personal, department, total };
+  }
+
+  // ═══════════════════════════ CHẤT LƯỢNG DATA (THEO STATUS) ═══════════════════════════
+
+  /**
+   * Báo cáo CHẤT LƯỢNG data (khác `getCustomerReport()` chỉ đếm SỐ LƯỢNG) -
+   * với MỖI User/Phòng ban, đếm data đổ về trong kỳ (customer.createdAt,
+   * cùng cột/quy ước UTC với `totalCustomers` ở getCustomerReport) BỊ CHIA
+   * NHỎ theo `customer.status` HIỆN TẠI (không phải status lúc tạo - 1
+   * khách tạo trong kỳ nhưng đã đổi status vẫn tính đúng theo status mới
+   * nhất, phản ánh đúng "chất lượng data đã xử lý tới đâu"). Danh sách
+   * status lấy động từ bảng `customer_statuses` (Admin tự CRUD được, xem
+   * `customer-status.entity.ts`) - KHÔNG hardcode enum cũ.
+   *
+   * `byStatus` luôn đủ mặt TẤT CẢ status hiện có (kể cả = 0) để FE vẽ được
+   * cột/chart nhất quán giữa các hàng, không phải tự đoán field nào tồn tại.
+   */
+  async getCustomerQualityReport(
+    query: QueryReportDto,
+    viewerId: number,
+    viewerRole: string,
+    scope?: string | null,
+  ) {
+    const { from, to, fromUtc, toUtc } = this.resolveRange(query);
+
+    const statuses = await this.customerStatusRepo.find({ order: { sortOrder: 'ASC', id: 'ASC' } });
+    const statusMeta = statuses.map((s) => ({ code: s.code, name: s.name, color: s.color }));
+    const zeroByStatus = () =>
+      Object.fromEntries(statuses.map((s) => [s.code, 0])) as Record<string, number>;
+
+    const mainQb = this.customerRepo
+      .createQueryBuilder('customer')
+      .leftJoin('customer.salesUser', 'salesUser')
+      .leftJoin('customer.department', 'department')
+      .andWhere('customer.createdAt BETWEEN :createdFrom AND :createdTo', {
+        createdFrom: fromUtc,
+        createdTo: toUtc,
+      });
+    CustomerAccessHelper.applyViewFilter(mainQb, viewerId, viewerRole, scope);
+
+    // ── Cá nhân ──
+    const personalQb = mainQb
+      .clone()
+      .select('customer.salesUserId', 'userId')
+      .addSelect('salesUser.name', 'userName')
+      .addSelect('customer.status', 'status')
+      .addSelect('COUNT(*)', 'count')
+      .andWhere('customer.salesUserId IS NOT NULL')
+      .groupBy('customer.salesUserId')
+      .addGroupBy('salesUser.name')
+      .addGroupBy('customer.status');
+
+    if (scope === PermissionScope.OWN) {
+      // Cùng lý do như getRevenueReport()/getCustomerReport(): mục "Cá nhân"
+      // chỉ lộ số của chính mình, không phụ thuộc phạm vi "xem được" rộng
+      // hơn của applyViewFilter cho scope='own'.
+      personalQb.andWhere('customer.salesUserId = :selfId', { selfId: viewerId });
+    }
+    const personalRaw = await personalQb.getRawMany<{
+      userId: string;
+      userName: string | null;
+      status: string;
+      count: string;
+    }>();
+    const personal = this.pivotByStatus(personalRaw, 'userId', zeroByStatus, (r) => ({
+      userId: Number(r.userId),
+      userName: r.userName ?? '(Không rõ)',
+    }));
+
+    // ── Phòng ban (scope='own' KHÔNG có mục này - thuần theo scope) ──
+    let department: any[] | null = null;
+    if (scope !== PermissionScope.OWN) {
+      const departmentRaw = await mainQb
+        .clone()
+        .select('customer.departmentId', 'departmentId')
+        .addSelect('department.name', 'departmentName')
+        .addSelect('customer.status', 'status')
+        .addSelect('COUNT(*)', 'count')
+        .andWhere('customer.departmentId IS NOT NULL')
+        .groupBy('customer.departmentId')
+        .addGroupBy('department.name')
+        .addGroupBy('customer.status')
+        .getRawMany<{ departmentId: string; departmentName: string | null; status: string; count: string }>();
+      department = this.pivotByStatus(departmentRaw, 'departmentId', zeroByStatus, (r) => ({
+        departmentId: Number(r.departmentId),
+        departmentName: r.departmentName ?? '(Không rõ)',
+      }));
+    }
+
+    // ── Tổng tất cả (scope='all', hoặc Admin - ngoại lệ duy nhất) ──
+    let total: { total: number; byStatus: Record<string, number> } | null = null;
+    if (scope === PermissionScope.ALL || viewerRole === Role.ADMIN) {
+      const totalRaw = await mainQb
+        .clone()
+        .select('customer.status', 'status')
+        .addSelect('COUNT(*)', 'count')
+        .groupBy('customer.status')
+        .getRawMany<{ status: string; count: string }>();
+      const byStatus = zeroByStatus();
+      let totalCount = 0;
+      for (const r of totalRaw) {
+        const c = Number(r.count) || 0;
+        if (r.status in byStatus) byStatus[r.status] = c;
+        totalCount += c;
+      }
+      total = { total: totalCount, byStatus };
+    }
+
+    return { period: { type: query.period, from, to }, statuses: statusMeta, personal, department, total };
+  }
+
+  /**
+   * Chuyển 1 mảng "phẳng" (mỗi dòng = 1 tổ hợp [khoá, status, count]) thành
+   * 1 mảng "pivot" (mỗi dòng = 1 khoá, kèm object `byStatus` đủ mặt mọi
+   * status). Dùng chung cho cả breakdown Cá nhân/Phòng ban ở
+   * `getCustomerQualityReport()`.
+   */
+  private pivotByStatus(
+    rows: { status: string; count: string }[],
+    key: 'userId' | 'departmentId',
+    zeroByStatus: () => Record<string, number>,
+    pickIdentity: (row: any) => Record<string, any>,
+  ) {
+    const map = new Map<number, any>();
+    for (const row of rows) {
+      const k = Number((row as any)[key]);
+      let entry = map.get(k);
+      if (!entry) {
+        entry = { ...pickIdentity(row), total: 0, byStatus: zeroByStatus() };
+        map.set(k, entry);
+      }
+      const c = Number(row.count) || 0;
+      if (row.status in entry.byStatus) entry.byStatus[row.status] = c;
+      entry.total += c;
+    }
+    return Array.from(map.values()).sort((a, b) => b.total - a.total);
   }
 
   /**
