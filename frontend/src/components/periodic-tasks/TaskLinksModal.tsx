@@ -126,13 +126,23 @@ export function TaskLinksModal({ open, onClose, task }: Props) {
     const { data: candidatesData, isLoading: candidatesLoading } = usePeriodicTasks({ page: 1, limit: 100 });
     const allTasks = useMemo(() => candidatesData?.data ?? [], [candidatesData]);
 
-    // Search server-side (mirror `useCustomers.ts`) - chỉ chạy khi modal cho
+    // Search server-side (mirror `useCustomers.ts`) - CHỈ chạy khi modal cho
     // phép gắn Customer, tránh gọi API thừa cho user không có quyền.
-    const { data: customerCandidatesData, isLoading: customerCandidatesLoading } = useCustomers({
-        page: 1,
-        limit: 20,
-        search: customerSearch || undefined,
-    });
+    // BUG THẬT đã gặp (2026-09-15, xem WORKFLOW_LOG): comment này ghi đúng ý
+    // định từ trước nhưng code chưa từng truyền `enabled` (hook `useCustomers`
+    // lúc đó cũng chưa hỗ trợ tham số này) - `TaskLinksModal` lại LUÔN mount
+    // sẵn ở `page.tsx` (chỉ ẩn/hiện qua prop `open` của `<Modal>`, không phải
+    // conditional render), nên hook này gọi `GET /customers` ngay khi trang
+    // Công việc định kỳ vừa tải xong, kể cả khi chưa từng bấm "Liên kết" và
+    // kể cả khi user không có `periodic_tasks.link_customer` -> 403 lặp lại.
+    const { data: customerCandidatesData, isLoading: customerCandidatesLoading } = useCustomers(
+        {
+            page: 1,
+            limit: 20,
+            search: customerSearch || undefined,
+        },
+        canLinkCustomer,
+    );
     const linkedCustomerIds = useMemo(
         () => new Set((linkedCustomers ?? []).map((c) => c.id)),
         [linkedCustomers],

@@ -178,10 +178,16 @@ export default function PeriodicTasksPage() {
     const nonTableFilters = useMemo(
         () => ({
             page: 1,
-            // 500 - đủ lớn cho quy mô Task hiện tại của dự án (research Phase
-            // 8: vài chục Task), tránh phải cài thêm cơ chế "tải thêm" cho
-            // Agenda/Kanban/Calendar ở bản đầu tiên này.
-            limit: 500,
+            // 100 - BUG THẬT đã gặp (2026-09-15, xem WORKFLOW_LOG): giá trị
+            // gốc là 500 nhưng `PeriodicTaskFiltersDto.limit` ở Backend giới
+            // hạn cứng `@Max(100)` (đúng convention chung toàn dự án, xem
+            // `CustomerFiltersDto` cùng mức 100) - luôn bị 400 "limit must
+            // not be greater than 100" cho MỌI role (kể cả Admin), khiến 3/4
+            // view (Agenda/Kanban/Calendar) không tải được data, chỉ view
+            // Bảng (dùng `limit` nhỏ từ Table) còn chạy được. 100 vẫn đủ lớn
+            // cho quy mô Task hiện tại (vài chục Task) - không đổi giới hạn
+            // Backend để giữ đúng convention chung, chỉ sửa FE cho khớp.
+            limit: 100,
             search: search || undefined,
             periodType,
             statusId,
@@ -272,11 +278,20 @@ export default function PeriodicTasksPage() {
     const [originalCustomerIds, setOriginalCustomerIds] = useState<number[]>([]);
     const [customerSearchInput, setCustomerSearchInput] = useState('');
     const debouncedCustomerSearch = useDebounce(customerSearchInput, 300);
-    const { data: customerSearchData, isLoading: customerSearchLoading } = useCustomers({
-        page: 1,
-        limit: 20,
-        search: debouncedCustomerSearch || undefined,
-    });
+    // BUG THẬT đã gặp (2026-09-15, xem WORKFLOW_LOG): thiếu `enabled` khiến
+    // hook này gọi `GET /customers` ngay lúc mount trang, kể cả khi user
+    // KHÔNG có `periodic_tasks.link_customer` (vd role chỉ bật mỗi Công việc
+    // định kỳ) - Backend trả 403 đúng RBAC nhưng FE toast lỗi lặp lại liên
+    // tục vì không có gì chặn request. Chỉ bật query khi user thực sự có
+    // quyền gắn Khách hàng.
+    const { data: customerSearchData, isLoading: customerSearchLoading } = useCustomers(
+        {
+            page: 1,
+            limit: 20,
+            search: debouncedCustomerSearch || undefined,
+        },
+        canLinkCustomer,
+    );
     // Chi tiết Task đang Sửa (CHỈ fetch khi đang Sửa - `usePeriodicTask` tự
     // tắt query khi id là `null`) - nguồn duy nhất có `linkedCustomers`.
     const { data: editingTaskDetail, isLoading: editingTaskDetailLoading } = usePeriodicTask(
