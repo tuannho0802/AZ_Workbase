@@ -631,56 +631,84 @@ export default function PeriodicTasksPage() {
             dataIndex: 'title',
             key: 'title',
             width: 260,
-            // Phase 8 (yêu cầu chủ dự án 2026-09-15): đổi từ viền trái màu
-            // sang chấm tròn + đường kẻ nối GIỐNG HỆT kiểu Agenda
-            // (`TaskChainGroupedList`) - khác ở chỗ Bảng có `<tr>` RIÊNG cho
-            // từng Task (không có 1 khối DOM chung để vẽ 1 đường kẻ liền
-            // mạch xuyên nhiều dòng), nên mỗi dòng tự vẽ NỬA đoạn kẻ
-            // trên/dưới dựa vào cờ `isFirst`/`isLast` (`getChainRunFlags()`)
-            // - 2 nửa đoạn của 2 dòng liền kề khớp đúng mép trên/dưới của
-            // `<td>` nên nhìn liền mạch dù DOM tách rời.
+            // Phase 8 (yêu cầu chủ dự án 2026-09-15): đổi từ 1 đường kẻ thẳng
+            // xuyên tâm mỗi dòng sang kiểu CÂY PHÂN CẤP (tree view, giống hệt
+            // nguyên lý `TaskChainGroupedList` bên Agenda) - dòng ĐẦU CHUỖI
+            // (`isFirst`) là gốc, không có nhánh rẽ vào; MỌI dòng sau đó có 1
+            // đoạn dọc đi xuống từ dòng cha rồi BẺ GÓC 90° rẽ ngang vào đúng
+            // dòng đó (giống `├─`/`└─`), thay vì đâm thẳng qua tâm như trước.
+            // Bảng có `<tr>` RIÊNG cho từng Task (không có 1 khối DOM chung
+            // để trục tự co giãn theo `flow-root` như Agenda), nên vẫn giữ
+            // cách "bleed" bằng số px cố định (giả định padding mặc định
+            // AntD Table, xem ghi chú `CONTENT_H` bên dưới - đã từng lưu ý
+            // cần chủ dự án xác nhận trực quan nếu đổi `size`/theme Table).
             render: (title: string, record: PeriodicTask) => {
                 const chain = chains.get(record.id);
                 const runFlag = chainRunFlags.get(record.id);
                 const CONTENT_H = 24;
+                const BEND_Y = CONTENT_H / 2; // điểm bẻ góc, giữa chiều cao nội dung 1 dòng
+                const TRUNK_X = 9; // trục dọc, nằm trong vùng thụt lề (paddingLeft 24)
                 return (
                     <div style={{ position: 'relative', paddingLeft: runFlag ? 24 : 0 }}>
                         {runFlag && (
                             <>
+                                {/* Đoạn dọc đi vào TỪ dòng cha phía trên - chỉ dòng KHÔNG
+                                    phải gốc chuỗi mới có (gốc không có cha). Bleed lên trên
+                                    mép `<td>` (top âm) để nối liền với đoạn "đi tiếp xuống"
+                                    của dòng ngay phía trên. */}
                                 {!runFlag.isFirst && (
                                     <div
                                         aria-hidden
                                         style={{
                                             position: 'absolute',
-                                            left: 9,
+                                            left: TRUNK_X,
                                             top: -20,
-                                            height: 20 + CONTENT_H / 2,
+                                            height: 20 + BEND_Y,
                                             width: 2,
                                             backgroundColor: runFlag.color,
                                             borderRadius: 1,
                                         }}
                                     />
                                 )}
+                                {/* Nhánh ngang bẻ góc 90° rẽ vào nội dung dòng - cùng điều
+                                    kiện với đoạn dọc phía trên (gốc chuỗi không có nhánh). */}
+                                {!runFlag.isFirst && (
+                                    <div
+                                        aria-hidden
+                                        style={{
+                                            position: 'absolute',
+                                            left: TRUNK_X,
+                                            top: BEND_Y - 1,
+                                            width: 24 - TRUNK_X,
+                                            height: 2,
+                                            backgroundColor: runFlag.color,
+                                            borderRadius: 1,
+                                        }}
+                                    />
+                                )}
+                                {/* Đoạn dọc đi tiếp xuống dòng con kế tiếp - không vẽ cho
+                                    dòng CUỐI chuỗi (trục "kết thúc" tại đó). */}
                                 {!runFlag.isLast && (
                                     <div
                                         aria-hidden
                                         style={{
                                             position: 'absolute',
-                                            left: 9,
-                                            top: CONTENT_H / 2,
-                                            height: 20 + CONTENT_H / 2,
+                                            left: TRUNK_X,
+                                            top: BEND_Y,
+                                            height: 20 + BEND_Y,
                                             width: 2,
                                             backgroundColor: runFlag.color,
                                             borderRadius: 1,
                                         }}
                                     />
                                 )}
+                                {/* Chấm đánh dấu node - vẽ cho MỌI dòng trong chuỗi kể cả gốc. */}
                                 <span
                                     aria-hidden
                                     style={{
                                         position: 'absolute',
-                                        left: 5,
-                                        top: CONTENT_H / 2 - 5,
+                                        left: TRUNK_X - 4,
+                                        top: BEND_Y - 5,
                                         width: 10,
                                         height: 10,
                                         borderRadius: '50%',
