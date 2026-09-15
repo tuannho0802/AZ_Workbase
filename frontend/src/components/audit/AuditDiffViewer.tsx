@@ -64,12 +64,24 @@ export const AuditDiffViewer: React.FC<AuditDiffViewerProps> = ({
     if (val === null || val === undefined || val === '') return <Text type="secondary" italic>Trống</Text>;
 
     if (key === 'status') {
-      // ⚠️ Đồng bộ /quan-ly-status-khach (thay ENUM cứng cũ - xem migration
-      // CreateCustomerStatuses1781400000000) - trước đây bảng STATUS_MAP ở
-      // đây chỉ có 5 giá trị cố định (thậm chí thiếu tên khớp với FE khác:
-      // 'lost' hiện "Đã mất" ở đây nhưng "Mất" ở CustomerFilters.tsx cũ) và
-      // hoàn toàn không biết tới trạng thái mới/tuỳ chỉnh. `StatusTag` lấy
-      // động từ `/customer-statuses`, 1 nguồn duy nhất cho MỌI nơi hiển thị.
+      // ⚠️ FIX BUG THẬT (báo lỗi "Objects are not valid as a React child"
+      // khi mở diff của Công việc định kỳ): field `status` có 2 DẠNG khác
+      // nhau tuỳ module, generic diff viewer này không biết trước:
+      //   - Customer: `status` là STRING code, đồng bộ /quan-ly-status-khach
+      //     (migration CreateCustomerStatuses1781400000000) → dùng StatusTag
+      //     (tự fetch màu/tên từ `/customer-statuses`).
+      //   - Công việc định kỳ: `status` là OBJECT nguyên vẹn từ quan hệ
+      //     `PeriodicTaskStatus` (id/code/name/color/...), KHÔNG phải string
+      //     - trước đây code cũ luôn coi `val` là string rồi truyền thẳng
+      //     vào `StatusTag({ code })`, StatusTag không tìm thấy trong map
+      //     (key tra cứu là string, `val` lại là cả object) nên fallback
+      //     render RAW OBJECT ra JSX → React crash. Tự nhận diện dạng object
+      //     và đọc thẳng `.name`/`.color` có sẵn (không cần gọi API status
+      //     nào khác - object đã đủ thông tin để hiển thị).
+      if (typeof val === 'object' && val !== null && !Array.isArray(val)) {
+        const statusObj = val as { name?: string; code?: string; color?: string };
+        return <Tag color={statusObj.color}>{statusObj.name ?? statusObj.code ?? 'Trạng thái'}</Tag>;
+      }
       return <StatusTag code={val} />;
     }
 
