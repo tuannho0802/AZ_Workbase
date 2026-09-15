@@ -1,4 +1,4 @@
-import { PeriodicTask } from '@/lib/api/periodic-tasks.api';
+import { PeriodicTask, PERIOD_RANK } from '@/lib/api/periodic-tasks.api';
 
 export interface TaskLinkEdge {
   parentTaskId: number;
@@ -339,4 +339,60 @@ export function sortTasksByChain(tasks: PeriodicTask[], chains: Map<number, Task
   });
 
   return out;
+}
+
+/**
+ * sortTasksByPeriodHierarchy - (2026-09-15, yêu cầu chủ dự án: "Task Tuần
+ * không lên trên hết" ở Agenda) sắp `tasks` sao cho các nhóm (1 chuỗi liên
+ * kết giữ NGUYÊN liền khối qua `sortTasksByChain`, hoặc 1 Task đơn lẻ không
+ * thuộc chuỗi nào) được xếp theo thứ tự **Yearly -> Monthly -> Weekly ->
+ * Daily** (PERIOD_RANK giảm dần), thay vì theo thứ tự gốc từ BE (vốn chỉ là
+ * `periodStartDate DESC, id DESC` - không liên quan gì tới cấp bậc kỳ hạn,
+ * xem `periodic-tasks.service.ts#findAll`) - đây chính là NGUYÊN NHÂN 1 Task
+ * "Ngày" đơn lẻ tạo SAU lại trồi lên trên 1 chuỗi "Tuần" tạo TRƯỚC.
+ *
+ * Hạng của 1 NHÓM (không phải của riêng từng Task) = PERIOD_RANK CAO NHẤT
+ * trong số các thành viên - vì gốc chuỗi liên kết (vd "Tuần") luôn có
+ * `periodType` cấp cao hơn hoặc bằng con cháu của nó (BE chặn tạo cạnh
+ * ngược cấp, xem `PeriodicTaskLinksService.addLink()`), nên lấy hạng cao
+ * nhất trong nhóm tương đương lấy hạng của gốc - nhưng tính theo TOÀN BỘ
+ * thành viên để vẫn đúng cả khi gốc hiển thị bị lọc mất khỏi `tasks` (chỉ
+ * còn 1 con cháu cấp thấp hơn đại diện cho nhóm).
+ *
+ * Trong cùng 1 hạng, giữ NGUYÊN thứ tự tương đối ban đầu (stable) - không tự
+ * ý sắp lại theo `periodStartDate`/id, tránh phá vỡ trật tự BE đã trả.
+ *
+ * Dùng hàm này ở CẢ Agenda (`PeriodicTasksAgendaView`, sắp trong TỪNG panel
+ * ngày) lẫn Bảng (`cong-viec-dinh-ky/page.tsx`, sắp trên toàn bộ danh sách
+ * trang hiện tại) để 2 view nhất quán với nhau.
+ */
+export function sortTasksByPeriodHierarchy(tasks: PeriodicTask[], chains: Map<number, TaskChainInfo>): PeriodicTask[] {
+  if (tasks.length === 0) return tasks;
+
+  // 1. Vẫn giữ chuỗi liên kết liền khối trước (không đổi hành vi hiện có).
+  const chainOrdered = sortTasksByChain(tasks, chains);
+
+  // 2. Cắt `chainOrdered` thành các NHÓM liên tiếp: mỗi chuỗi (theo
+  //    `chainId`) là 1 nhóm nhiều Task, mỗi Task không thuộc chuỗi nào là 1
+  //    nhóm riêng - rồi tính hạng cao nhất cho mỗi nhóm.
+  const groups: { rank: number; items: PeriodicTask[] }[] = [];
+  let currentChainId: number | undefined;
+  for (const task of chainOrdered) {
+    const chain = chains.get(task.id);
+    const taskRank = PERIOD_RANK[task.periodType] ?? 0;
+    const last = groups[groups.length - 1];
+    if (chain && currentChainId === chain.chainId && last) {
+      last.items.push(task);
+      last.rank = Math.max(last.rank, taskRank);
+    } else {
+      groups.push({ rank: taskRank, items: [task] });
+    }
+    currentChainId = chain?.chainId;
+  }
+
+  // 3. Stable sort nhóm theo hạng GIẢM DẦN (Yearly=4 trước ... Daily=1 sau).
+  const stableIndexed = groups.map((g, i) => ({ ...g, i }));
+  stableIndexed.sort((a, b) => (b.rank - a.rank) || (a.i - b.i));
+
+  return stableIndexed.flatMap((g) => g.items);
 }

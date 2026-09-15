@@ -1,9 +1,9 @@
 import { describe, expect, it } from 'vitest';
-import { buildTaskLinkChains, getChainRunFlags, TaskChainInfo, TaskLinkEdge } from './taskLinkChains';
-import { PeriodicTask } from '@/lib/api/periodic-tasks.api';
+import { buildTaskLinkChains, getChainRunFlags, sortTasksByPeriodHierarchy, TaskChainInfo, TaskLinkEdge } from './taskLinkChains';
+import { PeriodicTask, PeriodType } from '@/lib/api/periodic-tasks.api';
 
-function fakeTask(id: number): PeriodicTask {
-  return { id } as PeriodicTask;
+function fakeTask(id: number, periodType: PeriodType = 'daily'): PeriodicTask {
+  return { id, periodType } as PeriodicTask;
 }
 
 function fakeChain(color: string): TaskChainInfo {
@@ -147,5 +147,37 @@ describe('buildTaskLinkChains - thứ tự DFS pre-order', () => {
     const chains = buildTaskLinkChains(edges);
     const order = [1, 2, 3].sort((a, b) => (chains.get(a)?.index ?? 0) - (chains.get(b)?.index ?? 0));
     expect(order).toEqual([1, 2, 3]);
+  });
+});
+
+describe('sortTasksByPeriodHierarchy', () => {
+  it('Task đơn lẻ (không chuỗi) -> sắp theo PERIOD_RANK giảm dần: Yearly -> Monthly -> Weekly -> Daily', () => {
+    const tasks = [fakeTask(1, 'daily'), fakeTask(2, 'yearly'), fakeTask(3, 'weekly'), fakeTask(4, 'monthly')];
+    const result = sortTasksByPeriodHierarchy(tasks, new Map());
+    expect(result.map((t) => t.periodType)).toEqual(['yearly', 'monthly', 'weekly', 'daily']);
+  });
+
+  it('cùng hạng -> giữ NGUYÊN thứ tự tương đối ban đầu (stable)', () => {
+    const tasks = [fakeTask(5, 'daily'), fakeTask(1, 'daily'), fakeTask(3, 'daily')];
+    const result = sortTasksByPeriodHierarchy(tasks, new Map());
+    expect(result.map((t) => t.id)).toEqual([5, 1, 3]);
+  });
+
+  it('bug thật: 1 Task "Ngày" đơn lẻ tạo SAU (đứng trước trong mảng gốc do BE sort id DESC) không còn trồi lên trên 1 chuỗi "Tuần" tạo TRƯỚC', () => {
+    // Mảng gốc mô phỏng thứ tự BE trả (id DESC): Task "Ngày" đơn lẻ (id=99,
+    // tạo sau) đứng TRƯỚC cả chuỗi Tuần(1) -> Ngày(2) (id nhỏ hơn, tạo trước).
+    const tasks = [fakeTask(99, 'daily'), fakeTask(1, 'weekly'), fakeTask(2, 'daily')];
+    const chains = buildTaskLinkChains([{ parentTaskId: 1, childTaskId: 2 }]);
+
+    const result = sortTasksByPeriodHierarchy(tasks, chains);
+
+    // Chuỗi Tuần(1) (hạng cao hơn, vì nhóm lấy PERIOD_RANK cao nhất trong
+    // thành viên) phải lên TRƯỚC Task "Ngày" đơn lẻ (99), và 2 vẫn theo NGAY
+    // sau cha (1) của nó (giữ nguyên khối chuỗi).
+    expect(result.map((t) => t.id)).toEqual([1, 2, 99]);
+  });
+
+  it('nhóm rỗng/không có Task -> trả về mảng rỗng, không lỗi', () => {
+    expect(sortTasksByPeriodHierarchy([], new Map())).toEqual([]);
   });
 });

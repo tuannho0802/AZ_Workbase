@@ -8,7 +8,7 @@ import { PeriodicTask } from '@/lib/api/periodic-tasks.api';
 import { TaskMiniCard } from './TaskMiniCard';
 import { TaskActionsBar, TaskActionsBarProps } from './TaskActionsBar';
 import { TaskChainGroupedList } from './TaskChainConnector';
-import { TaskChainInfo, TaskLinkEdge, sortTasksByChain } from '@/lib/utils/taskLinkChains';
+import { TaskChainInfo, TaskLinkEdge, sortTasksByPeriodHierarchy } from '@/lib/utils/taskLinkChains';
 
 dayjs.locale('vi');
 
@@ -133,7 +133,7 @@ export function PeriodicTasksAgendaView({ tasks, loading, chains, edges, resolve
                     ),
                     children: (
                         <TaskChainGroupedList
-                            tasks={chains ? sortTasksByChain(groupTasks, chains) : groupTasks}
+                            tasks={chains ? sortTasksByPeriodHierarchy(groupTasks, chains) : groupTasks}
                             chains={chains ?? new Map()}
                             edges={edges ?? []}
                             renderTask={(task) => (
