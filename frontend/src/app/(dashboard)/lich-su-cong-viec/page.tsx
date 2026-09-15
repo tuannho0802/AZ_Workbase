@@ -285,7 +285,7 @@ export default function TaskHistoryPage() {
         return (
           <Space>
             <Avatar size={28} icon={<UserOutlined />} style={{ backgroundColor: '#1890ff' }} />
-            <Space direction="vertical" size={0}>
+            <Space orientation="vertical" size={0}>
               <Text strong style={{ fontSize: 13 }}>{u.name}</Text>
               <Tag color={getRoleColor(u.role)} style={{ fontSize: 10, margin: 0 }}>
                 {ROLE_LABELS[u.role] || u.role}
