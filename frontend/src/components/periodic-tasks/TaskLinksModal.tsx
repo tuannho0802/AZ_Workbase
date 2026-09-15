@@ -13,7 +13,9 @@ import {
     useRemoveTaskLink,
 } from '@/lib/hooks/usePeriodicTaskLinks';
 import { useAddTaskCustomers, useRemoveTaskCustomer } from '@/lib/hooks/usePeriodicTaskCustomers';
+import { useAddTaskSecondaryAssignee, useRemoveTaskSecondaryAssignee } from '@/lib/hooks/usePeriodicTaskSecondaryAssignees';
 import { useCustomers } from '@/lib/hooks/useCustomers';
+import { useUsersList } from '@/lib/hooks/useUsers';
 import { customerPhoneDisplay, customerPlainLabel, renderCustomerOption } from '@/components/common/customer-option-render';
 import { PeriodicTask, PERIOD_TYPE_LABELS, PERIOD_RANK } from '@/lib/api/periodic-tasks.api';
 import { getApiErrorMessage } from '@/lib/utils/error-message.util';
@@ -65,6 +67,14 @@ interface Props {
  * - ẩn hẳn phần này, KHÔNG coi là "chưa gắn khách hàng nào" (mảng rỗng).
  * Gán/gỡ cần thêm `periodic_tasks.link_customer` (khác `periodic_tasks.edit`
  * dùng cho liên kết cha/con ở trên) - 2 quyền độc lập, ẩn riêng từng nút.
+ *
+ * Phần "Phụ trách phụ" (Phase 4, PLAN mục 2.5) đọc `secondaryAssignees` từ
+ * CÙNG `taskDetail` (mirror `linkedCustomers` về cách fetch), nhưng KHÁC ở
+ * chỗ KHÔNG ẩn theo quyền nào khác - chỉ cần `periodic_tasks.edit` (đã có
+ * biến `canEditLinks` ở trên) để gán/gỡ, không có permission nhị phân riêng
+ * như `link_customer`. Endpoint BE chỉ nhận 1 `userId`/lần
+ * (`POST .../secondary-assignees` body `{ userId }`) - chọn nhiều trên UI
+ * rồi gọi tuần tự từng người, KHÔNG phải batch như Customer.
  */
 export function TaskLinksModal({ open, onClose, task }: Props) {
     const { message } = App.useApp();
@@ -81,16 +91,24 @@ export function TaskLinksModal({ open, onClose, task }: Props) {
     // fetch riêng qua `GET /:id`, xem JSDoc đầu file.
     const { data: taskDetail, isLoading: taskDetailLoading } = usePeriodicTask(taskId);
     const linkedCustomers = taskDetail?.linkedCustomers;
+    // Phase 4: cùng nguồn `taskDetail`, nhưng KHÔNG có case `undefined` do
+    // thiếu quyền (xem JSDoc đầu file) - mặc định mảng rỗng lúc đang tải.
+    const secondaryAssignees = taskDetail?.secondaryAssignees ?? [];
 
     const addMutation = useAddTaskLink();
     const removeMutation = useRemoveTaskLink();
     const addCustomersMutation = useAddTaskCustomers();
     const removeCustomerMutation = useRemoveTaskCustomer();
+    const addSecondaryMutation = useAddTaskSecondaryAssignee();
+    const removeSecondaryMutation = useRemoveTaskSecondaryAssignee();
 
     const [selectedParentId, setSelectedParentId] = useState<number | undefined>(undefined);
     const [selectedChildId, setSelectedChildId] = useState<number | undefined>(undefined);
     const [selectedCustomerIds, setSelectedCustomerIds] = useState<number[]>([]);
     const [customerSearch, setCustomerSearch] = useState('');
+    const [selectedSecondaryUserIds, setSelectedSecondaryUserIds] = useState<number[]>([]);
+
+    const { users: allUsers } = useUsersList();
 
     const { data: candidatesData, isLoading: candidatesLoading } = usePeriodicTasks({ page: 1, limit: 100 });
     const allTasks = useMemo(() => candidatesData?.data ?? [], [candidatesData]);
@@ -453,8 +471,10 @@ export function TaskLinksModal({ open, onClose, task }: Props) {
                                     <Select
                                             mode="multiple"
                                         style={{ flex: 1 }}
-                                        showSearch
-                                        filterOption={false}
+                                            showSearch={{
+                                                filterOption: false, // tắt filter mặc định, dùng onSearch (server-side)
+                                                onSearch: setCustomerSearch,
+                                            }}
                                             optionLabelProp="label"
                                             optionRender={renderCustomerOption}
                                             popupMatchSelectWidth={false}
@@ -463,7 +483,6 @@ export function TaskLinksModal({ open, onClose, task }: Props) {
                                         loading={customerCandidatesLoading}
                                             value={selectedCustomerIds}
                                             onChange={setSelectedCustomerIds}
-                                        onSearch={setCustomerSearch}
                                         options={customerCandidates.map((c) => ({
                                             value: c.id,
                                             label: customerPlainLabel(c),
