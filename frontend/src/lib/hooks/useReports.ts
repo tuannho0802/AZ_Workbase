@@ -29,3 +29,12 @@ export const useCustomerReport = (query: ReportQuery) => {
         staleTime: 60 * 1000,
     });
 };
+
+export const useCustomerQualityReport = (query: ReportQuery) => {
+    return useQuery({
+        queryKey: ['reports', 'quality', query],
+        queryFn: () => reportsApi.getCustomerQualityReport(query),
+        enabled: isQueryReady(query),
+        staleTime: 60 * 1000,
+    });
+};

@@ -64,3 +64,39 @@ export interface CustomerReport {
     department: CustomerDepartmentRow[] | null;
     total: CustomerBreakdownCounts | null;
 }
+
+// ── Chất lượng data (theo Status) ────────────────────────────────────────
+
+/** Metadata 1 trạng thái khách hàng (lấy động từ `customer_statuses`, xem
+ * `customer-statuses.api.ts` - đây là bản RÚT GỌN chỉ đủ để vẽ chart/bảng,
+ * không cần isSystem/inUseCount như trang "Quản lý status"). */
+export interface QualityStatusMeta {
+    code: string;
+    name: string;
+    color: string;
+}
+
+export interface QualityPersonalRow {
+    userId: number;
+    userName: string;
+    total: number;
+    /** Luôn đủ mặt mọi `statuses[].code` (kể cả = 0) - xem BE `zeroByStatus()`. */
+    byStatus: Record<string, number>;
+}
+
+export interface QualityDepartmentRow {
+    departmentId: number;
+    departmentName: string;
+    total: number;
+    byStatus: Record<string, number>;
+}
+
+export interface QualityReport {
+    period: ReportPeriodInfo;
+    /** Danh sách status hiện có, đã sắp theo `sortOrder` - dùng để build cột
+     * bảng/series chart động, KHÔNG hardcode tên status ở FE. */
+    statuses: QualityStatusMeta[];
+    personal: QualityPersonalRow[];
+    department: QualityDepartmentRow[] | null;
+    total: { total: number; byStatus: Record<string, number> } | null;
+}
