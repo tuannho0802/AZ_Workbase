@@ -226,7 +226,10 @@ export default function PeriodicTasksPage() {
     // Phase 8 (yêu cầu chủ dự án 2026-09-15): đường nối chuỗi ở Bảng phải
     // giống Agenda (đường kẻ dọc liên tục + chấm tròn), KHÔNG còn viền trái
     // màu như trước - xem JSDoc `getChainRunFlags()`.
-    const chainRunFlags = useMemo(() => getChainRunFlags(tableTasksSorted, chains), [tableTasksSorted, chains]);
+    const chainRunFlags = useMemo(
+        () => getChainRunFlags(tableTasksSorted, chains, linksData?.edges ?? []),
+        [tableTasksSorted, chains, linksData],
+    );
 
     const { statuses } = usePeriodicTaskStatuses();
     const { departments } = useDepartments();
@@ -653,15 +656,38 @@ export default function PeriodicTasksPage() {
                 const depth = runFlag?.depth ?? 0;
                 const ownTrunkX = depth * STEP + TRUNK_OFFSET;
                 const parentTrunkX = (depth - 1) * STEP + TRUNK_OFFSET;
+                const trunkXAt = (d: number) => d * STEP + TRUNK_OFFSET;
                 return (
                     <div style={{ position: 'relative', paddingLeft: runFlag ? ownTrunkX + TRUNK_TO_TEXT : 0 }}>
                         {runFlag && (
                             <>
+                                {/* Gạch dọc XUYÊN SUỐT cả chiều cao dòng, tại trục của các
+                                    TỔ TIÊN (không phải cha trực tiếp) CHƯA xong nhánh - giữ
+                                    đường nối của tổ tiên liền mạch khi có nhánh anh em khác
+                                    (con khác của cùng 1 cha) chen ở giữa. 2026-09-15 fix: đây
+                                    là phần CÒN THIẾU khiến 2 Task cùng cấp (cùng 1 cha) bị vẽ
+                                    lồng vào nhau thay vì cùng 1 trục cha. */}
+                                {runFlag.passThroughDepths.map((d) => (
+                                    <div
+                                        key={`pass-${d}`}
+                                        aria-hidden
+                                        style={{
+                                            position: 'absolute',
+                                            left: trunkXAt(d),
+                                            top: 0,
+                                            height: CONTENT_H,
+                                            width: 2,
+                                            backgroundColor: runFlag.color,
+                                            borderRadius: 1,
+                                        }}
+                                    />
+                                ))}
                                 {/* Đoạn dọc đi vào TỪ trục Task CHA (cấp nông hơn 1 bậc) -
-                                    chỉ dòng KHÔNG phải gốc chuỗi mới có (gốc không có cha).
-                                    Bleed lên trên mép `<td>` (top âm) để nối liền với đoạn
-                                    "đi tiếp xuống" của dòng ngay phía trên. */}
-                                {!runFlag.isFirst && (
+                                    chỉ dòng KHÔNG phải gốc mới có (gốc không có cha). Bleed
+                                    lên trên mép `<td>` (top âm) để nối liền với đoạn "đi tiếp
+                                    xuống" của dòng phía trên (cha, hoặc gạch xuyên suốt của
+                                    tổ tiên nếu dòng ngay trên là 1 nhánh anh em khác). */}
+                                {!runFlag.isRoot && (
                                     <div
                                         aria-hidden
                                         style={{
@@ -677,8 +703,8 @@ export default function PeriodicTasksPage() {
                                 )}
                                 {/* Nhánh ngang bẻ góc 90° - nối từ trục CHA sang sát điểm
                                     bắt đầu nội dung dòng này (dài đúng `STEP`, LUÔN đủ dài dù
-                                    đang ở cấp nào). Gốc chuỗi không có nhánh (không có cha). */}
-                                {!runFlag.isFirst && (
+                                    đang ở cấp nào). Gốc không có nhánh (không có cha). */}
+                                {!runFlag.isRoot && (
                                     <div
                                         aria-hidden
                                         style={{
@@ -692,10 +718,31 @@ export default function PeriodicTasksPage() {
                                         }}
                                     />
                                 )}
-                                {/* Đoạn dọc đi tiếp xuống dòng con kế tiếp, tại trục của
-                                    CHÍNH dòng này - không vẽ cho dòng CUỐI chuỗi (trục "kết
-                                    thúc" tại đó). */}
-                                {!runFlag.isLast && (
+                                {/* Đoạn dọc TẠI TRỤC CHA, kéo dài từ điểm bẻ góc xuống hết
+                                    dòng - CHỈ khi dòng này CHƯA phải con cuối của cha (còn
+                                    Task anh em khác - vd 2 Task "Ngày" cùng cha "Tuần" - sẽ
+                                    xuất hiện ở (các) dòng ngay bên dưới, đọc bằng
+                                    `passThroughDepths` của chính chúng). Đây chính là phần
+                                    khiến 2 con CÙNG cấp nối vào ĐÚNG 1 trục cha thay vì trục
+                                    của nhau. */}
+                                {!runFlag.isRoot && !runFlag.isLastChild && (
+                                    <div
+                                        aria-hidden
+                                        style={{
+                                            position: 'absolute',
+                                            left: parentTrunkX,
+                                            top: BEND_Y,
+                                            height: CONTENT_H - BEND_Y,
+                                            width: 2,
+                                            backgroundColor: runFlag.color,
+                                            borderRadius: 1,
+                                        }}
+                                    />
+                                )}
+                                {/* Đoạn dọc đi tiếp xuống dòng CON kế tiếp, tại trục của
+                                    CHÍNH dòng này - chỉ khi dòng này CÓ con đang hiển thị
+                                    ngay sau. */}
+                                {runFlag.hasVisibleChildren && (
                                     <div
                                         aria-hidden
                                         style={{

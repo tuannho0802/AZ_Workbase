@@ -1,4 +1,4 @@
-import { PeriodicTask } from '@/lib/api/periodic-tasks.api';
+import { PeriodicTask, PERIOD_RANK } from '@/lib/api/periodic-tasks.api';
 
 export interface TaskLinkEdge {
   parentTaskId: number;
@@ -52,10 +52,13 @@ const CHAIN_COLOR_PALETTE = [
  * trong map (caller coi `undefined` = "không thuộc chuỗi nào cả", không vẽ
  * connector).
  *
- * Thứ tự thành viên trong mỗi nhóm dùng Kahn's algorithm (topological sort)
- * dựa trên chiều `parentTaskId -> childTaskId` thật của cạnh - nhóm có nhiều
- * cha (multi-parent, xem PLAN mục 2.2) vẫn cho ra 1 thứ tự hợp lệ (không
- * duy nhất, nhưng ổn định vì tie-break theo ID tăng dần).
+ * Thứ tự thành viên trong mỗi nhóm dùng DFS pre-order (topological, tie-break
+ * theo ID tăng dần) dựa trên chiều `parentTaskId -> childTaskId` thật của
+ * cạnh - nhóm có nhiều cha (multi-parent, xem PLAN mục 2.2) vẫn cho ra 1 thứ
+ * tự hợp lệ (không duy nhất, nhưng ổn định). DFS (thay vì Kahn/BFS theo
+ * tầng) để đảm bảo hậu duệ của 1 node luôn LIỀN KHỐI ngay sau nó - cần thiết
+ * cho `getChainRunFlags()` vẽ đúng cây phân cấp thật (2026-09-15: fix bug 2
+ * Task "Ngày" cùng cha "Tuần" bị vẽ lồng vào nhau thay vì cùng cấp).
  */
 export function buildTaskLinkChains(edges: TaskLinkEdge[]): Map<number, TaskChainInfo> {
   const result = new Map<number, TaskChainInfo>();
@@ -103,23 +106,25 @@ export function buildTaskLinkChains(edges: TaskLinkEdge[]): Map<number, TaskChai
       inDegree.set(e.childTaskId, (inDegree.get(e.childTaskId) ?? 0) + 1);
     }
 
+    // DFS pre-order (KHÔNG dùng Kahn/BFS theo tầng như trước) - cha luôn
+    // đứng ngay trước, và TOÀN BỘ hậu duệ của 1 node luôn nằm LIỀN NHAU
+    // ngay sau nó trước khi sang nhánh kế tiếp. Bắt buộc phải vậy để
+    // `getChainRunFlags()` vẽ đúng cây phân cấp thật: Kahn cũ xử lý theo
+    // TỪNG TẦNG (mọi node hết in-degree được đẩy chung 1 hàng đợi, tie-break
+    // theo ID) nên cháu của nhánh A có ID nhỏ có thể bị xen vào TRƯỚC con
+    // của nhánh B - phá vỡ tính liền khối theo nhánh mà thuật toán vẽ
+    // connector (elbow/pass-through) cần.
     const ordered: number[] = [];
-    let frontier = members.filter((m) => (inDegree.get(m) ?? 0) === 0).sort((a, b) => a - b);
+    const roots = members.filter((m) => (inDegree.get(m) ?? 0) === 0).sort((a, b) => a - b);
     const visited = new Set<number>();
-    while (frontier.length > 0) {
-      const next = frontier.shift() as number;
-      if (visited.has(next)) continue;
-      visited.add(next);
-      ordered.push(next);
-      const children = (adjacency.get(next) ?? []).sort((a, b) => a - b);
-      for (const child of children) {
-        inDegree.set(child, (inDegree.get(child) ?? 1) - 1);
-        if ((inDegree.get(child) ?? 0) <= 0 && !visited.has(child)) {
-          frontier.push(child);
-          frontier.sort((a, b) => a - b);
-        }
-      }
-    }
+    const visit = (nodeId: number) => {
+      if (visited.has(nodeId)) return;
+      visited.add(nodeId);
+      ordered.push(nodeId);
+      const children = (adjacency.get(nodeId) ?? []).sort((a, b) => a - b);
+      for (const child of children) visit(child);
+    };
+    for (const root of roots) visit(root);
     // Phòng hờ cycle lọt qua (không nên xảy ra - BE đã chặn cycle lúc tạo
     // cạnh, xem `wouldCreateCycle()`) - thành viên còn sót được thêm cuối
     // theo ID tăng dần, không để mất khỏi Tooltip.
@@ -137,31 +142,65 @@ export function buildTaskLinkChains(edges: TaskLinkEdge[]): Map<number, TaskChai
 
 export interface ChainRunFlag {
   color: string;
-  isFirst: boolean;
-  isLast: boolean;
-  /** Vị trí (0-based) của Task trong "run" đang hiển thị - phản hồi chủ dự
-   * án 2026-09-15 (bản tree view "chưa đủ dài/rõ ràng"): Bảng cần giá trị
-   * này để thụt lề TĂNG DẦN theo từng cấp (staircase, giống Agenda) thay vì
-   * mọi Task trong 1 chuỗi thụt CÙNG 1 mức như bản trước - xem cách dùng ở
-   * cột "Công việc" (`page.tsx`). KHÔNG trùng với `TaskChainInfo.index`
-   * (thứ tự topological cố định toàn chuỗi, kể cả thành viên KHÔNG hiển thị
-   * liền kề trong danh sách hiện tại) - đây là vị trí trong "run" ĐANG THẤY. */
+  /** Cấp trong CÂY PHÂN CẤP THẬT (0 = gốc của nhánh đang hiển thị) - tính
+   * bằng khoảng cách thật (số cạnh) tới gốc qua quan hệ `parentTaskId ->
+   * childTaskId`, KHÔNG phải theo vị trí hiển thị và KHÔNG suy trực tiếp từ
+   * `PERIOD_RANK` (để vẫn đúng với liên kết skip-level, vd Daily nối thẳng
+   * lên Monthly bỏ qua Weekly - lúc đó Daily vẫn chỉ cách gốc Monthly đúng 1
+   * cấp, không phải 2). 2026-09-15 fix: bản trước dùng vị trí (index) trong
+   * "run" đang hiển thị làm depth -> 2 Task CÙNG cấp (vd 2 Task "Ngày" cùng
+   * 1 cha "Tuần") bị gán depth khác nhau, vẽ lồng vào nhau như quan hệ
+   * cha-con thay vì anh em cùng cấp. */
   depth: number;
+  /** true nếu Task này KHÔNG có cha nào khác đang hiển thị trong cùng run -
+   * là gốc của 1 nhánh (thường là gốc của cả chuỗi). Gốc không vẽ đoạn nối
+   * đi vào từ phía trên. */
+  isRoot: boolean;
+  /** true nếu đây là con CUỐI CÙNG (theo thứ tự hiển thị) trong danh sách
+   * con của cha - quyết định trục của CHA có cần vẽ tiếp xuống dưới điểm bẻ
+   * góc của dòng này hay dừng lại (chỉ 1 chấm nếu là con cuối). */
+  isLastChild: boolean;
+  /** true nếu Task này có ít nhất 1 con đang hiển thị NGAY SAU nó trong
+   * `tasks` - cần vẽ trục CHÍNH của dòng này (khác trục của cha) tiếp tục
+   * xuống dòng dưới. */
+  hasVisibleChildren: boolean;
+  /** Các cấp TỔ TIÊN (nhỏ hơn `depth`, KHÔNG tính cấp của cha trực tiếp -
+   * cấp đó dùng `isLastChild` riêng) mà tổ tiên ở cấp đó CHƯA phải con cuối
+   * của CHA của chính tổ tiên đó (tức còn nhánh anh em khác của tổ tiên sẽ
+   * xuất hiện ở các dòng phía dưới) - Caller vẽ 1 gạch dọc XUYÊN SUỐT cả
+   * chiều cao dòng này tại đúng cấp đó để đường nối của tổ tiên không bị đứt
+   * đoạn khi có nhánh khác chen giữa (cây phân cấp nhiều tầng, nhiều con). */
+  passThroughDepths: number[];
 }
 
 /**
  * getChainRunFlags - Phase 8 (yêu cầu chủ dự án 2026-09-15: đồng bộ đường nối
- * ở Bảng giống Agenda). Bảng render mỗi Task thành 1 `<tr>` riêng (không có
- * 1 khối DOM chung để vẽ đường kẻ liên tục như `TaskChainGroupedList`), nên
- * thay vì trả về "khối", hàm này gắn cờ `isFirst`/`isLast` cho từng Task
- * thuộc 1 "run" (nhóm Task LIỀN NHAU cùng 1 chuỗi trong `tasks` ĐÃ sắp qua
- * `sortTasksByChain()`) - Caller (mỗi `<tr>` tự vẽ NỬA đoạn kẻ trên/dưới +
- * chấm tròn dựa vào cờ này) rồi các nửa đoạn của 2 dòng liền kề sẽ khớp lại
- * thành 1 đường liên tục qua mắt nhìn, dù DOM không liền khối.
+ * ở Bảng giống Agenda; fix cùng ngày: dựng ĐÚNG cây phân cấp thật theo cạnh
+ * thay vì suy depth từ vị trí hiển thị). Bảng render mỗi Task thành 1 `<tr>`
+ * riêng (không có 1 khối DOM chung để vẽ đường kẻ liên tục như
+ * `TaskChainGroupedList`), nên hàm này gắn cờ cho từng Task thuộc 1 "run"
+ * (nhóm Task LIỀN NHAU cùng 1 chuỗi trong `tasks` ĐÃ sắp qua
+ * `sortTasksByChain()`, vốn đã dùng DFS pre-order nên hậu duệ của 1 Task
+ * luôn liền khối ngay sau nó) - Caller (mỗi `<tr>` tự vẽ nửa đoạn kẻ trên/
+ * dưới + gạch xuyên suốt + chấm tròn dựa vào cờ này) rồi các nửa đoạn của
+ * các dòng liền kề khớp lại thành đường liên tục qua mắt nhìn, dù DOM không
+ * liền khối.
  * Task không thuộc run nào (không có chuỗi, hoặc run chỉ có 1 thành viên) ->
  * KHÔNG có mặt trong map trả về (coi như "không vẽ connector" ở dòng đó).
+ *
+ * `edges` CHỈ dùng cạnh có CẢ 2 đầu đang hiển thị trong CÙNG 1 run để chọn
+ * cha - Task có cha KHÔNG hiển thị (bị lọc/khác trang) được coi là gốc tại
+ * chỗ, tránh vẽ nối tới 1 dòng không tồn tại trên màn hình. Với Task có
+ * nhiều cha hợp lệ cùng hiển thị (multi-parent, xem `PeriodicTaskLink`), chỉ
+ * dùng ĐÚNG 1 cha để vẽ (mục đích ở đây là hiển thị trực quan 1 cây, không
+ * phải vẽ lại toàn bộ DAG) - ưu tiên cha đứng GẦN NHẤT ngay phía trước trong
+ * thứ tự hiển thị hiện tại.
  */
-export function getChainRunFlags(tasks: PeriodicTask[], chains: Map<number, TaskChainInfo>): Map<number, ChainRunFlag> {
+export function getChainRunFlags(
+  tasks: PeriodicTask[],
+  chains: Map<number, TaskChainInfo>,
+  edges: TaskLinkEdge[],
+): Map<number, ChainRunFlag> {
   const result = new Map<number, ChainRunFlag>();
   const runs: Array<{ color: string; ids: number[] }> = [];
   for (const task of tasks) {
@@ -173,12 +212,89 @@ export function getChainRunFlags(tasks: PeriodicTask[], chains: Map<number, Task
       runs.push({ color: chain?.color ?? '', ids: [task.id] });
     }
   }
+
   for (const run of runs) {
     if (!run.color || run.ids.length < 2) continue;
-    run.ids.forEach((id, idx) => {
-      result.set(id, { color: run.color, isFirst: idx === 0, isLast: idx === run.ids.length - 1, depth: idx });
+    const idSet = new Set(run.ids);
+    const indexOf = new Map(run.ids.map((id, idx) => [id, idx]));
+
+    // 1. Cha thật (đã lọc chỉ trong run) của mỗi Task - xem JSDoc phía trên
+    //    về cách chọn 1 cha khi multi-parent.
+    const parentOf = new Map<number, number>();
+    for (const e of edges) {
+      if (!idSet.has(e.childTaskId) || !idSet.has(e.parentTaskId)) continue;
+      const childIdx = indexOf.get(e.childTaskId) as number;
+      const parentIdx = indexOf.get(e.parentTaskId) as number;
+      if (parentIdx >= childIdx) continue; // an toàn - cha luôn đứng trước con (DFS pre-order)
+      const currentParent = parentOf.get(e.childTaskId);
+      const currentParentIdx = currentParent === undefined ? -1 : (indexOf.get(currentParent) as number);
+      if (parentIdx > currentParentIdx) parentOf.set(e.childTaskId, e.parentTaskId);
+    }
+
+    // 2. Depth = khoảng cách thật tới gốc qua `parentOf` (KHÔNG phải vị trí
+    //    hiển thị - xem JSDoc field `depth`).
+    const depthOf = new Map<number, number>();
+    const getDepth = (id: number): number => {
+      const cached = depthOf.get(id);
+      if (cached !== undefined) return cached;
+      const parent = parentOf.get(id);
+      const depth = parent === undefined ? 0 : getDepth(parent) + 1;
+      depthOf.set(id, depth);
+      return depth;
+    };
+
+    // 3. Danh sách con (theo đúng thứ tự hiển thị) của mỗi Task -> suy ra
+    //    `isLastChild` / `hasVisibleChildren`.
+    const childrenOf = new Map<number, number[]>();
+    run.ids.forEach((id) => {
+      const parent = parentOf.get(id);
+      if (parent === undefined) return;
+      const list = childrenOf.get(parent) ?? [];
+      list.push(id);
+      childrenOf.set(parent, list);
+    });
+    const isLastChild = new Map<number, boolean>();
+    run.ids.forEach((id) => {
+      const parent = parentOf.get(id);
+      if (parent === undefined) {
+        isLastChild.set(id, true); // gốc: không có cha nên không cần kéo trục cha xuống
+        return;
+      }
+      const siblings = childrenOf.get(parent) ?? [];
+      isLastChild.set(id, siblings[siblings.length - 1] === id);
+    });
+
+    // 4. `passThroughDepths` - đi ngược chuỗi tổ tiên (bỏ qua cha trực tiếp,
+    //    cấp đó dùng `isLastChild` riêng), cấp nào tổ tiên CHƯA phải con
+    //    cuối của cha nó -> cần gạch xuyên suốt dòng này tại cấp đó.
+    const getAncestorChain = (id: number): number[] => {
+      const chain: number[] = [];
+      let cur = parentOf.get(id);
+      while (cur !== undefined) {
+        chain.unshift(cur);
+        cur = parentOf.get(cur);
+      }
+      return chain; // [gốc, ..., cha trực tiếp]
+    };
+
+    run.ids.forEach((id) => {
+      const depth = getDepth(id);
+      const ancestors = getAncestorChain(id);
+      const passThroughDepths: number[] = [];
+      for (let i = 0; i < ancestors.length - 1; i++) {
+        if (!isLastChild.get(ancestors[i])) passThroughDepths.push(i);
+      }
+      result.set(id, {
+        color: run.color,
+        depth,
+        isRoot: parentOf.get(id) === undefined,
+        isLastChild: isLastChild.get(id) ?? true,
+        hasVisibleChildren: (childrenOf.get(id) ?? []).length > 0,
+        passThroughDepths,
+      });
     });
   }
+
   return result;
 }
 /**
