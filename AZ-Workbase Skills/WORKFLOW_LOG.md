@@ -1861,3 +1861,68 @@ sạch thật (không suy diễn). Sẵn sàng chuyển sang **FE Phase 5** khi 
   Root Admin bypass).
 - Migration chưa chạy thật lên DB nào (theo đúng rule "không tự chạy migration lên production") - chủ dự
   án cần tự `npm run migration:run` và xác nhận.
+
+  ## [2026-09-15 13:00] | FE Phase 5 "Công việc định kỳ" (Khoá/Mở khoá) - vá 2 lỗ hổng gate còn sót | Status: Success
+
+**Actor:** Agent (Claude)
+
+Pull lại repo thật trước khi làm (rule dự án) — phát hiện commit `2459b17 "Feat: Update api, hook and
+page for cong-viec-dinh-ky Phase 5 (Not yet done)"` đã có sẵn trên `origin/main` (tác giả
+`tuannho0802`, không phải agent phiên này) — nghĩa là phần FE Phase 5 chính (nút Khoá/Mở khoá +
+Modal + Tag "Đã khoá" + disable nút Sửa khi khoá ở `page.tsx`, cùng `periodicTasksApi.lock/unlock` +
+2 hook `useLockPeriodicTask`/`useUnlockPeriodicTask`) đã tồn tại và đã ĐỦ tốt — không làm lại. Đọc kỹ
+transcript phiên trước dán vào chỉ để tham khảo hướng đi, đã tự verify lại toàn bộ bằng code thật
+(đúng rule "không tin báo cáo").
+
+**Đã tìm thấy 2 gap thật (đối chiếu PLAN mục 2.9 + rule FE mục 4 của dự án) và đã sửa:**
+
+1. **`TaskLinksModal.tsx` KHÔNG gate theo `isLocked`/`edit_locked`** — BE áp `assertEditableWhenLocked()`
+   ở CẢ 3 hành động sửa dữ liệu trong modal này (gán/gỡ liên kết cha-con, Khách hàng, Phụ trách phụ —
+   xem entry BE Phase 5 phía trên), nhưng modal chỉ gate theo `periodic_tasks.edit`/`link_customer` như
+   cũ, không biết gì về khoá — user có đủ quyền `edit` vẫn thấy nút Gán/Gỡ HIỆN dù Task đang khoá, bấm
+   vào mới ăn 403. Vi phạm đúng rule mục 4: "Nếu BE 403 một endpoint, FE phải tự ẩn UI tương ứng trước
+   khi user bấm được, không để lộ ra rồi báo lỗi 403."
+   - Thêm `canEditLocked = can('periodic_tasks.edit_locked')`, tính `isLocked` ưu tiên từ
+     `taskDetail.isLocked` (fetch riêng qua `GET /:id`, tự refetch khi Khoá/Mở khoá ở `page.tsx` vì cùng
+     invalidate `LIST_KEY`) hơn `task.isLocked` (prop từ danh sách, có thể cũ hơn 1 nhịp).
+   - `canEditLinks`/`canLinkCustomer` giờ = quyền gốc AND `!lockBlocksEdit` (`lockBlocksEdit = isLocked
+     && !canEditLocked`) — áp dụng đồng bộ cho CẢ 3 khu vực (liên kết cha/con, Khách hàng, Phụ trách phụ)
+     vì cả 3 đều dùng lại 2 biến này.
+   - Thêm Tag "Công việc đang bị khoá" ở đầu modal khi `isLocked`, và sửa 3 dòng text "chỉ có quyền
+     xem..." để phân biệt rõ 2 nguyên nhân khác nhau (thiếu quyền gốc vs. bị khoá) — tránh hiểu lầm case
+     "tôi CÓ quyền Sửa mà sao không gán được" khi thực ra do khoá.
+
+2. **`RESOURCE_LABEL` thiếu `periodic_tasks`/`periodic_task_statuses`** ở `phan-quyen/page.tsx` — gap này
+   đã được ghi nhận ở entry BE Phase 5 phía trên (tồn tại từ trước Phase 5, không riêng
+   `approve`/`edit_locked`) nhưng cố tình để dành đúng giai đoạn FE — nay đã thêm 2 dòng, mirror đúng
+   style comment các entry `assignment_groups`/`customer_statuses` có sẵn trong cùng file.
+
+**Files Changed:**
+- `frontend/src/components/periodic-tasks/TaskLinksModal.tsx` — thêm gate khoá cho links/customers/phụ
+  trách phụ, Tag cảnh báo khoá, sửa 3 dòng text giải thích lý do ẩn nút
+- `frontend/src/app/(dashboard)/phan-quyen/page.tsx` — thêm 2 entry `RESOURCE_LABEL`
+
+**Verify thật (không suy diễn):**
+- `npx tsc --noEmit`: chỉ còn đúng 5 lỗi baseline (`logo.png` thiếu file thật trong repo,
+  `CountBadge.tsx` lỗi type `styled-jsx`) — KHÔNG liên quan 2 file vừa sửa, đã xác nhận bằng
+  `git stash`/`git stash pop` so sánh trước/sau, số lỗi và nội dung giống hệt nhau.
+- `npm run build` (Next.js 16 Turbopack): **Compiled successfully**, đủ 32 route bao gồm
+  `/cong-viec-dinh-ky` và `/phan-quyen`.
+- `npx vitest run`: 14/14 test pass, không regression.
+- `npx eslint` trên 2 file vừa sửa: 8 problems (7 `no-explicit-any` + 1 `exhaustive-deps` warning) —
+  ĐÚNG BẰNG baseline (đối chiếu `git stash` trước/sau, chỉ lệch số dòng do code chèn thêm, không phải
+  lỗi mới).
+- Đã `git commit` cục bộ trong sandbox (`3f208c7`) — **KHÔNG push**, mirror đúng quy ước các entry
+  trước (chủ dự án tự đồng bộ code khi cần).
+
+**Kết luận:** FE Phase 5 (Khoá/Mở khoá) nay coi là **hoàn tất cả 2 nơi** hiển thị/thao tác liên quan
+khoá (trang chính `page.tsx` — đã có sẵn từ trước — và `TaskLinksModal.tsx` — vừa vá ở phiên này), cùng
+gap hiển thị tên tiếng Việt ở trang Phân quyền. Phase 5 coi như ĐỦ cả BE+FE.
+
+**Còn lại (ngoài phạm vi phiên này):**
+- Phase 6 (checklist con), Phase 7 (audit log riêng) — chưa code, xem PLAN mục 6.
+- Chưa có test riêng (`vitest`) cho behavior mới của `TaskLinksModal.tsx` khi `isLocked=true` — nên bổ
+  sung ở phiên sau nếu dự án có thói quen viết test cho component này (hiện tại repo chưa có sẵn spec
+  file nào cho `TaskLinksModal.tsx` để mirror).
+- Vẫn còn nợ cũ đã ghi ở entry BE Phase 5 phía trên (test riêng cho `lock()`/`unlock()` ở backend, chạy
+  migration thật lên DB).

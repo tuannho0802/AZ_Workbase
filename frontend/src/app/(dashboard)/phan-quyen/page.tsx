@@ -75,6 +75,15 @@ const RESOURCE_LABEL: Record<string, string> = {
   // "customer_statuses" thay vì tên tiếng Việt như các resource khác.
   storage: 'Lưu trữ hình ảnh',
   uploads: 'Tải lên hình ảnh',
+  // ⚠️ BỔ SUNG (2026-09-15, phát hiện lúc làm FE Phase 5 "Khoá/Mở khoá" module
+  // Công việc định kỳ): 2 resource này có từ Phase 1 (`periodic_tasks`) và
+  // migration `CreatePeriodicTaskStatuses` (`periodic_task_statuses`) nhưng
+  // CHƯA từng có label ở đây - rơi vào fallback `?? resource`, Admin nhìn
+  // thấy toàn bộ nhóm quyền "Công việc định kỳ" (view/create/edit/delete/
+  // approve/edit_locked/link_customer...) hiện raw key xấu thay vì tiếng
+  // Việt, không riêng 2 permission mới của Phase 5.
+  periodic_tasks: 'Công việc định kỳ',
+  periodic_task_statuses: 'Trạng thái công việc định kỳ',
 };
 
 const SCOPE_LABEL: Record<PermissionScope, string> = {

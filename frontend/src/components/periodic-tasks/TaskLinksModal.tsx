@@ -79,8 +79,14 @@ interface Props {
 export function TaskLinksModal({ open, onClose, task }: Props) {
     const { message } = App.useApp();
     const { can } = useMyPermissions();
-    const canEditLinks = can('periodic_tasks.edit');
-    const canLinkCustomer = can('periodic_tasks.link_customer');
+    const hasEditPermission = can('periodic_tasks.edit');
+    const hasLinkCustomerPermission = can('periodic_tasks.link_customer');
+    // Phase 5 (PLAN mục 2.9) - BE áp `assertEditableWhenLocked()` ở CẢ 3 chỗ
+    // sửa dữ liệu trong modal này (links cha/con, Customer, Phụ trách phụ),
+    // không riêng PATCH nội dung Task ở `page.tsx`. Thiếu gate FE ở đây thì
+    // user vẫn bấm được nút Gán/Gỡ rồi mới ăn 403 - sai nguyên tắc "BE 403 ->
+    // FE phải tự ẩn UI trước" (Repository_Context___Rules mục 4).
+    const canEditLocked = can('periodic_tasks.edit_locked');
 
     const taskId = task?.id ?? null;
     const { data: parents = [], isLoading: parentsLoading } = useTaskParents(taskId);
@@ -90,6 +96,13 @@ export function TaskLinksModal({ open, onClose, task }: Props) {
     // Phase 3: `task` prop (từ danh sách) KHÔNG có `linkedCustomers` - phải
     // fetch riêng qua `GET /:id`, xem JSDoc đầu file.
     const { data: taskDetail, isLoading: taskDetailLoading } = usePeriodicTask(taskId);
+    // Ưu tiên `taskDetail.isLocked` (fetch riêng, tự refetch khi
+    // Khoá/Mở khoá ở `page.tsx` vì cùng invalidate `LIST_KEY`) hơn
+    // `task.isLocked` (prop từ danh sách, có thể cũ hơn 1 nhịp).
+    const isLocked = taskDetail?.isLocked ?? task?.isLocked ?? false;
+    const lockBlocksEdit = isLocked && !canEditLocked;
+    const canEditLinks = hasEditPermission && !lockBlocksEdit;
+    const canLinkCustomer = hasLinkCustomerPermission && !lockBlocksEdit;
     const linkedCustomers = taskDetail?.linkedCustomers;
     // Phase 4: cùng nguồn `taskDetail`, nhưng KHÔNG có case `undefined` do
     // thiếu quyền (xem JSDoc đầu file) - mặc định mảng rỗng lúc đang tải.
@@ -290,6 +303,11 @@ export function TaskLinksModal({ open, onClose, task }: Props) {
         >
             {task && (
                 <>
+                    {isLocked && (
+                        <Tag color="red" style={{ marginBottom: 12 }}>
+                            Công việc đang bị khoá{lockBlocksEdit ? ' - chỉ xem, không gán/gỡ được' : ''}
+                        </Tag>
+                    )}
                     <div style={{ marginBottom: 8 }}>
                         <Text strong>Tiến độ (tính theo Công việc con TRỰC TIẾP):</Text>
                     </div>
@@ -448,7 +466,9 @@ export function TaskLinksModal({ open, onClose, task }: Props) {
 
                     {!canEditLinks && (
                         <Text type="secondary" style={{ display: 'block', marginTop: 16 }}>
-                            Bạn chỉ có quyền xem liên kết - cần quyền &quot;Sửa Công việc định kỳ&quot; để gán/gỡ.
+                            {lockBlocksEdit && hasEditPermission
+                                ? 'Công việc đang bị khoá - cần quyền "Sửa khi đang khoá" để gán/gỡ liên kết.'
+                                : 'Bạn chỉ có quyền xem liên kết - cần quyền "Sửa Công việc định kỳ" để gán/gỡ.'}
                         </Text>
                     )}
 
@@ -550,8 +570,9 @@ export function TaskLinksModal({ open, onClose, task }: Props) {
 
                     {linkedCustomers !== undefined && !canLinkCustomer && (
                         <Text type="secondary" style={{ display: 'block', marginTop: 8 }}>
-                            Bạn chỉ có quyền xem Khách hàng liên quan - cần thêm quyền &quot;Gắn Khách hàng vào Công
-                            việc định kỳ&quot; để gán/gỡ.
+                            {lockBlocksEdit && hasLinkCustomerPermission
+                                ? 'Công việc đang bị khoá - cần quyền "Sửa khi đang khoá" để gán/gỡ Khách hàng.'
+                                : 'Bạn chỉ có quyền xem Khách hàng liên quan - cần thêm quyền "Gắn Khách hàng vào Công việc định kỳ" để gán/gỡ.'}
                         </Text>
                     )}
 
@@ -633,7 +654,9 @@ export function TaskLinksModal({ open, onClose, task }: Props) {
 
                     {!canEditLinks && (
                         <Text type="secondary" style={{ display: 'block', marginTop: 8 }}>
-                            Bạn chỉ có quyền xem - cần quyền &quot;Sửa Công việc định kỳ&quot; để gán/gỡ Phụ trách phụ.
+                            {lockBlocksEdit && hasEditPermission
+                                ? 'Công việc đang bị khoá - cần quyền "Sửa khi đang khoá" để gán/gỡ Phụ trách phụ.'
+                                : 'Bạn chỉ có quyền xem - cần quyền "Sửa Công việc định kỳ" để gán/gỡ Phụ trách phụ.'}
                         </Text>
                     )}
                 </>
