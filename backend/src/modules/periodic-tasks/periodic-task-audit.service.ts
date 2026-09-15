@@ -1,9 +1,14 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { Between, In, Repository } from 'typeorm';
 import { waitUntil } from '@vercel/functions';
 import { PeriodicTaskAuditLog } from '../../database/entities/periodic-task-audit-log.entity';
-import { GetPeriodicTaskAuditLogsDto } from './dto/get-periodic-task-audit-logs.dto';
+import {
+  GetPeriodicTaskAuditLogsDto,
+  GetPeriodicTaskAuditLogsGlobalDto,
+} from './dto/get-periodic-task-audit-logs.dto';
+import { PeriodicTaskAccessHelper } from './helpers/periodic-task-access.helper';
+import { AuditService } from '../audit/audit.service';
 
 /**
  * Danh sách action chuẩn hoá cho `periodic_task_audit_logs` (PLAN mục 2.6),
@@ -51,6 +56,14 @@ export class PeriodicTaskAuditService {
   constructor(
     @InjectRepository(PeriodicTaskAuditLog)
     private readonly auditLogRepository: Repository<PeriodicTaskAuditLog>,
+    // AuditModule là @Global() (audit.module.ts) - dùng lại ĐÚNG bảng
+    // `audit_logs` chung để ghi "log về hành động dọn dẹp" (mirror chính
+    // xác cách `AuditService.bulkDelete()`/`cleanupByDateRange()` tự log lại
+    // hành động của chính nó ở dưới), KHÔNG ghi vào `periodic_task_audit_logs`
+    // vì bulk-delete/cleanup là hành động vận hành hệ thống, không phải hành
+    // động sửa đổi 1 Task cụ thể - tránh vừa xoá vừa tự thêm log mới cùng
+    // bảng gây rối logic phân trang ngay sau khi xoá.
+    private readonly auditService: AuditService,
   ) {}
 
   async logAction(
@@ -123,5 +136,123 @@ export class PeriodicTaskAuditService {
       .getManyAndCount();
 
     return { data, total, page, limit, totalPages: Math.ceil(total / limit) };
+  }
+
+  // ═══════════════════ TRANG RIÊNG "LỊCH SỬ CÔNG VIỆC ĐỊNH KỲ" ═══════════════════
+  // Yêu cầu người dùng: lịch sử hiện chỉ xem được TỪNG Task 1 (getLogsForTask ở
+  // trên) - cần 1 trang riêng kiểu "Nhật ký hệ thống" (`audit.controller.ts`)
+  // gộp log của MỌI Task trong phạm vi scope người xem, có filter đủ bộ + bulk
+  // xoá/dọn dẹp. Mirror gần như y hệt AuditService, chỉ khác nguồn bảng.
+
+  /**
+   * Lịch sử audit GỘP của mọi Task (không giới hạn theo 1 taskId cụ thể) -
+   * dùng cho `GET /periodic-tasks/audit-logs`. Áp `PeriodicTaskAccessHelper.
+   * applyViewFilter()` join qua bảng `periodic_tasks` (alias `task`, ĐÚNG
+   * alias mà helper này yêu cầu, xem JSDoc của helper) để đảm bảo user chỉ
+   * thấy log của Task nằm trong phạm vi scope (own/department/all) - KHÔNG
+   * lộ log của Task ngoài phạm vi dù đã xem được qua endpoint theo-Task
+   * (endpoint đó có 1 cổng gác khác ở Controller: `tasksService.findOne()`).
+   */
+  async getGlobalLogs(
+    filters: GetPeriodicTaskAuditLogsGlobalDto,
+    viewerId: number,
+    viewerRole: string,
+    scope?: string | null,
+  ) {
+    const { page = 1, limit = 20, taskId, userId, action, fromDate, toDate, search } = filters;
+
+    const qb = this.auditLogRepository
+      .createQueryBuilder('log')
+      .innerJoin('log.task', 'task')
+      .addSelect(['task.id', 'task.title', 'task.deletedAt'])
+      .leftJoinAndSelect('log.user', 'user')
+      .orderBy('log.createdAt', 'DESC');
+
+    PeriodicTaskAccessHelper.applyViewFilter(qb, viewerId, viewerRole, scope);
+
+    if (taskId) {
+      qb.andWhere('log.taskId = :taskId', { taskId });
+    }
+    if (userId) {
+      qb.andWhere('log.userId = :userId', { userId });
+    }
+    if (action) {
+      qb.andWhere('log.action = :action', { action });
+    }
+    if (fromDate) {
+      qb.andWhere('log.createdAt >= :fromDate', { fromDate });
+    }
+    if (toDate) {
+      const end = new Date(toDate);
+      end.setDate(end.getDate() + 1);
+      qb.andWhere('log.createdAt < :toDate', { toDate: end.toISOString() });
+    }
+    if (search) {
+      qb.andWhere('(task.title LIKE :search OR user.name LIKE :search)', { search: `%${search}%` });
+    }
+
+    const [data, total] = await qb
+      .skip((page - 1) * limit)
+      .take(limit)
+      .getManyAndCount();
+
+    return { data, total, page, limit, totalPages: Math.ceil(total / limit) };
+  }
+
+  /**
+   * Danh sách action cố định (KHÔNG query DISTINCT như `AuditService.
+   * getDistinctActions()`) - khác `audit_logs` (action tự do dạng chuỗi bất
+   * kỳ do nhiều module khác nhau ghi vào), `periodic_task_audit_logs` CHỈ
+   * ghi đúng 16 action đã khai ở `PeriodicTaskAuditAction` (hằng số đóng ở
+   * đầu file) - trả thẳng danh sách này cho FE dựng bộ lọc, khỏi tốn 1
+   * query DB không cần thiết.
+   */
+  getDistinctActions(): string[] {
+    return Object.values(PeriodicTaskAuditAction);
+  }
+
+  /**
+   * Xoá hàng loạt theo danh sách ID - CHỈ Admin (Controller gate bằng
+   * `@RequirePermission('periodic_tasks.delete')`, permission này vốn đã
+   * "chỉ seed Admin", xem PERMISSIONS.md mục periodic_tasks). Tự ghi lại 1
+   * dòng vào `audit_logs` CHUNG (không phải bảng vừa xoá) - mirror đúng
+   * `AuditService.bulkDelete()`.
+   */
+  async bulkDelete(ids: number[], adminId: number) {
+    await this.auditLogRepository.delete({ id: In(ids) });
+    await this.auditService.logAction(
+      adminId,
+      'ADMIN_BULK_DELETE_TASK_AUDIT_LOGS',
+      'periodic_task_audit_log',
+      0,
+      { ids },
+      null,
+    );
+    return { success: true };
+  }
+
+  /** Dọn dẹp theo khoảng ngày - mirror đúng `AuditService.cleanupByDateRange()`. */
+  async cleanupByDateRange(from: string, to: string, adminId: number) {
+    const fromDate = new Date(from);
+    const toDate = new Date(to);
+    toDate.setDate(toDate.getDate() + 1); // Inclusive
+
+    const count = await this.auditLogRepository.count({
+      where: { createdAt: Between(fromDate, toDate) },
+    });
+
+    await this.auditLogRepository.delete({
+      createdAt: Between(fromDate, toDate),
+    });
+
+    await this.auditService.logAction(
+      adminId,
+      'ADMIN_CLEANUP_TASK_AUDIT_LOGS',
+      'periodic_task_audit_log',
+      0,
+      { from, to, count },
+      null,
+    );
+    return { success: true, count };
   }
 }

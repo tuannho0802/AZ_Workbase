@@ -15,7 +15,12 @@ import { LockPeriodicTaskDto } from './dto/lock-periodic-task.dto';
 import { CreatePeriodicTaskChecklistItemDto } from './dto/create-periodic-task-checklist-item.dto';
 import { UpdatePeriodicTaskChecklistItemDto } from './dto/update-periodic-task-checklist-item.dto';
 import { ReorderPeriodicTaskChecklistItemsDto } from './dto/reorder-periodic-task-checklist-items.dto';
-import { GetPeriodicTaskAuditLogsDto } from './dto/get-periodic-task-audit-logs.dto';
+import {
+  GetPeriodicTaskAuditLogsDto,
+  GetPeriodicTaskAuditLogsGlobalDto,
+  BulkDeletePeriodicTaskAuditLogsDto,
+  CleanupPeriodicTaskAuditLogsDto,
+} from './dto/get-periodic-task-audit-logs.dto';
 import { GetPeriodicTaskLinksBatchDto } from './dto/get-periodic-task-links-batch.dto';
 import { PeriodicTaskAuditService } from './periodic-task-audit.service';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
@@ -74,6 +79,50 @@ export class PeriodicTasksController {
     @GetPermissionScope() scope: string | null | undefined,
   ) {
     return this.periodicTaskLinksService.getLinksAmong(filters.taskIds, user.id, user.role, scope);
+  }
+
+  // ⚠️ Route tĩnh `audit-logs*` PHẢI khai TRƯỚC route `:id` ngay bên dưới -
+  // CÙNG LÝ DO đã ghi ở route `links` phía trên (Nest/Express khớp route
+  // theo thứ tự đăng ký, `:id` + `ParseIntPipe` sẽ nuốt mất và trả 400 sai
+  // nếu khai sau). Trang riêng "Lịch sử Công việc định kỳ" (yêu cầu người
+  // dùng: lịch sử hiện chỉ xem được theo TỪNG Task, cần trang gộp kiểu
+  // `audit.controller.ts` có filter + bulk xoá/dọn dẹp).
+
+  @Get('audit-logs')
+  @RequirePermission('periodic_tasks.view')
+  @ApiOperation({ summary: 'Lịch sử audit GỘP của mọi Công việc định kỳ trong phạm vi scope (có filter + phân trang)' })
+  getGlobalAuditLogs(
+    @Query() filters: GetPeriodicTaskAuditLogsGlobalDto,
+    @GetUser() user: any,
+    @GetPermissionScope() scope: string | null | undefined,
+  ) {
+    return this.periodicTaskAuditService.getGlobalLogs(filters, user.id, user.role, scope);
+  }
+
+  @Get('audit-logs/actions')
+  @RequirePermission('periodic_tasks.view')
+  @ApiOperation({ summary: 'Danh sách action dùng để dựng bộ lọc "Loại hành động"' })
+  getAuditLogActions() {
+    return this.periodicTaskAuditService.getDistinctActions();
+  }
+
+  // Xoá/dọn dẹp: đồng nhất permission `periodic_tasks.delete` (permission
+  // này vốn "chỉ seed Admin", xem PERMISSIONS.md) - KHÔNG có ngoại lệ theo
+  // scope cho hành động xoá, mirror đúng quy ước "Xoá = chỉ Admin" chung của
+  // dự án (CustomerAccessHelper/PeriodicTaskAccessHelper.canDelete()).
+
+  @Delete('audit-logs/bulk')
+  @RequirePermission('periodic_tasks.delete')
+  @ApiOperation({ summary: 'Xoá hàng loạt log lịch sử theo ID' })
+  bulkDeleteAuditLogs(@Body() dto: BulkDeletePeriodicTaskAuditLogsDto, @GetUser('id') adminId: number) {
+    return this.periodicTaskAuditService.bulkDelete(dto.ids, adminId);
+  }
+
+  @Delete('audit-logs/cleanup')
+  @RequirePermission('periodic_tasks.delete')
+  @ApiOperation({ summary: 'Dọn dẹp log lịch sử theo khoảng ngày' })
+  cleanupAuditLogs(@Query() dto: CleanupPeriodicTaskAuditLogsDto, @GetUser('id') adminId: number) {
+    return this.periodicTaskAuditService.cleanupByDateRange(dto.from, dto.to, adminId);
   }
 
   @Get(':id')
