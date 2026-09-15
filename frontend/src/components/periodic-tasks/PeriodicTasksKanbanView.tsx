@@ -3,13 +3,15 @@
 import { useMemo, useState } from 'react';
 import { App, Badge, Empty, Spin, Typography } from 'antd';
 import {
+    CollisionDetection,
     DndContext,
     DragEndEvent,
     DragOverlay,
     DragStartEvent,
     KeyboardSensor,
     PointerSensor,
-    closestCorners,
+    pointerWithin,
+    rectIntersection,
     useDroppable,
     useSensor,
     useSensors,
@@ -106,6 +108,25 @@ export function PeriodicTasksKanbanView({ tasks, statuses, loading, chains, reso
         useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }),
     );
 
+    // BUG THẬT (2026-09-15, xem WORKFLOW_LOG): `closestCorners` so khoảng
+    // cách góc TUYỆT ĐỐI giữa Card đang kéo với MỌI droppable (cả cột rỗng
+    // lẫn từng Card ở cột khác) - khi 1 cột NẰM GIỮA 1 cột có Card và 1 cột
+    // trống, góc của Card thuộc cột bên cạnh luôn gần hơn góc của cột giữa
+    // (diện tích lớn, rỗng), khiến `over` liên tục trả về Card/cột SAI, cột
+    // giữa không bao giờ sáng `isOver` (và có thể tính sai cột đích lúc thả)
+    // - lỗi CÀNG DỄ gặp khi Admin thêm Trạng thái mới nằm giữa 2 cột khác
+    // (đúng như quan sát của chủ dự án). Đổi sang chiến lược chuẩn của
+    // dnd-kit cho Kanban nhiều cột ("Multiple Containers"): ưu tiên
+    // `pointerWithin` (khớp THEO VỊ TRÍ CON TRỎ thực tế đang nằm trong
+    // droppable nào, không phụ thuộc khoảng cách góc), chỉ fallback
+    // `rectIntersection` khi con trỏ ra khỏi MỌI droppable (kéo nhanh/ra rìa
+    // ngoài bảng).
+    const collisionDetectionStrategy: CollisionDetection = (args) => {
+        const pointerCollisions = pointerWithin(args);
+        if (pointerCollisions.length > 0) return pointerCollisions;
+        return rectIntersection(args);
+    };
+
     const activeTask = activeTaskId != null ? tasks.find((t) => t.id === activeTaskId) : undefined;
 
     const handleDragStart = (event: DragStartEvent) => {
@@ -184,7 +205,7 @@ export function PeriodicTasksKanbanView({ tasks, statuses, loading, chains, reso
     return (
         <DndContext
             sensors={sensors}
-            collisionDetection={closestCorners}
+            collisionDetection={collisionDetectionStrategy}
             onDragStart={handleDragStart}
             onDragEnd={handleDragEnd}
         >

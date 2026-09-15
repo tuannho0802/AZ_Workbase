@@ -135,6 +135,44 @@ export function buildTaskLinkChains(edges: TaskLinkEdge[]): Map<number, TaskChai
   return result;
 }
 
+export interface ChainRunFlag {
+  color: string;
+  isFirst: boolean;
+  isLast: boolean;
+}
+
+/**
+ * getChainRunFlags - Phase 8 (yêu cầu chủ dự án 2026-09-15: đồng bộ đường nối
+ * ở Bảng giống Agenda). Bảng render mỗi Task thành 1 `<tr>` riêng (không có
+ * 1 khối DOM chung để vẽ đường kẻ liên tục như `TaskChainGroupedList`), nên
+ * thay vì trả về "khối", hàm này gắn cờ `isFirst`/`isLast` cho từng Task
+ * thuộc 1 "run" (nhóm Task LIỀN NHAU cùng 1 chuỗi trong `tasks` ĐÃ sắp qua
+ * `sortTasksByChain()`) - Caller (mỗi `<tr>` tự vẽ NỬA đoạn kẻ trên/dưới +
+ * chấm tròn dựa vào cờ này) rồi các nửa đoạn của 2 dòng liền kề sẽ khớp lại
+ * thành 1 đường liên tục qua mắt nhìn, dù DOM không liền khối.
+ * Task không thuộc run nào (không có chuỗi, hoặc run chỉ có 1 thành viên) ->
+ * KHÔNG có mặt trong map trả về (coi như "không vẽ connector" ở dòng đó).
+ */
+export function getChainRunFlags(tasks: PeriodicTask[], chains: Map<number, TaskChainInfo>): Map<number, ChainRunFlag> {
+  const result = new Map<number, ChainRunFlag>();
+  const runs: Array<{ color: string; ids: number[] }> = [];
+  for (const task of tasks) {
+    const chain = chains.get(task.id);
+    const last = runs[runs.length - 1];
+    if (chain && last && last.color === chain.color) {
+      last.ids.push(task.id);
+    } else {
+      runs.push({ color: chain?.color ?? '', ids: [task.id] });
+    }
+  }
+  for (const run of runs) {
+    if (!run.color || run.ids.length < 2) continue;
+    run.ids.forEach((id, idx) => {
+      result.set(id, { color: run.color, isFirst: idx === 0, isLast: idx === run.ids.length - 1 });
+    });
+  }
+  return result;
+}
 /**
  * sortTasksByChain - sắp lại `tasks` sao cho thành viên CÙNG 1 chuỗi đứng
  * LIỀN NHAU ("xếp hàng" theo đúng yêu cầu) - giữ NGUYÊN thứ tự tương đối

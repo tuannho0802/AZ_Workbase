@@ -70,7 +70,7 @@ import { PeriodicTasksAgendaView } from '@/components/periodic-tasks/PeriodicTas
 import { PeriodicTasksKanbanView } from '@/components/periodic-tasks/PeriodicTasksKanbanView';
 import { PeriodicTasksCalendarView } from '@/components/periodic-tasks/PeriodicTasksCalendarView';
 import { TaskTitlePill, TaskChainBadge } from '@/components/periodic-tasks/TaskTitlePill';
-import { buildTaskLinkChains, sortTasksByChain } from '@/lib/utils/taskLinkChains';
+import { buildTaskLinkChains, sortTasksByChain, getChainRunFlags } from '@/lib/utils/taskLinkChains';
 import { useTaskLinksAmong } from '@/lib/hooks/usePeriodicTaskLinks';
 import { customerPhoneDisplay, customerPlainLabel, renderCustomerOption } from '@/components/common/customer-option-render';
 import { SimpleList } from '@/components/common/SimpleList';
@@ -223,6 +223,10 @@ export default function PeriodicTasksPage() {
     const currentViewTasksById = useMemo(() => new Map(currentViewTasks.map((t) => [t.id, t])), [currentViewTasks]);
     const resolveChainTask = (taskId: number) => currentViewTasksById.get(taskId);
     const tableTasksSorted = useMemo(() => sortTasksByChain(tasks, chains), [tasks, chains]);
+    // Phase 8 (yêu cầu chủ dự án 2026-09-15): đường nối chuỗi ở Bảng phải
+    // giống Agenda (đường kẻ dọc liên tục + chấm tròn), KHÔNG còn viền trái
+    // màu như trước - xem JSDoc `getChainRunFlags()`.
+    const chainRunFlags = useMemo(() => getChainRunFlags(tableTasksSorted, chains), [tableTasksSorted, chains]);
 
     const { statuses } = usePeriodicTaskStatuses();
     const { departments } = useDepartments();
@@ -627,23 +631,72 @@ export default function PeriodicTasksPage() {
             dataIndex: 'title',
             key: 'title',
             width: 260,
-            // Phase 8: viền trái màu chuỗi liên kết (nếu có) - Table dùng
-            // `<tr>` rời rạc nên KHÔNG vẽ được đường nối liên tục như Agenda
-            // (`TaskChainGroupedList`), thay bằng viền trái CÙNG 1 màu cho
-            // các dòng liền kề cùng chuỗi (đã `sortTasksByChain()` ở
-            // `dataSource` để đảm bảo các dòng này đứng cạnh nhau).
-            onCell: (record: PeriodicTask) => {
-                const chain = chains.get(record.id);
-                return chain ? { style: { borderLeft: `3px solid ${chain.color}` } } : {};
-            },
+            // Phase 8 (yêu cầu chủ dự án 2026-09-15): đổi từ viền trái màu
+            // sang chấm tròn + đường kẻ nối GIỐNG HỆT kiểu Agenda
+            // (`TaskChainGroupedList`) - khác ở chỗ Bảng có `<tr>` RIÊNG cho
+            // từng Task (không có 1 khối DOM chung để vẽ 1 đường kẻ liền
+            // mạch xuyên nhiều dòng), nên mỗi dòng tự vẽ NỬA đoạn kẻ
+            // trên/dưới dựa vào cờ `isFirst`/`isLast` (`getChainRunFlags()`)
+            // - 2 nửa đoạn của 2 dòng liền kề khớp đúng mép trên/dưới của
+            // `<td>` nên nhìn liền mạch dù DOM tách rời.
             render: (title: string, record: PeriodicTask) => {
                 const chain = chains.get(record.id);
+                const runFlag = chainRunFlags.get(record.id);
+                const CONTENT_H = 24;
                 return (
-                    <div>
-                        <Space align="start" wrap size={4}>
-                            <TaskTitlePill title={title} color={record.color} />
-                            {chain && <TaskChainBadge chain={chain} currentTaskId={record.id} resolveTask={resolveChainTask} />}
-                        </Space>
+                    <div style={{ position: 'relative', paddingLeft: runFlag ? 24 : 0 }}>
+                        {runFlag && (
+                            <>
+                                {!runFlag.isFirst && (
+                                    <div
+                                        aria-hidden
+                                        style={{
+                                            position: 'absolute',
+                                            left: 9,
+                                            top: -20,
+                                            height: 20 + CONTENT_H / 2,
+                                            width: 2,
+                                            backgroundColor: runFlag.color,
+                                            borderRadius: 1,
+                                        }}
+                                    />
+                                )}
+                                {!runFlag.isLast && (
+                                    <div
+                                        aria-hidden
+                                        style={{
+                                            position: 'absolute',
+                                            left: 9,
+                                            top: CONTENT_H / 2,
+                                            height: 20 + CONTENT_H / 2,
+                                            width: 2,
+                                            backgroundColor: runFlag.color,
+                                            borderRadius: 1,
+                                        }}
+                                    />
+                                )}
+                                <span
+                                    aria-hidden
+                                    style={{
+                                        position: 'absolute',
+                                        left: 5,
+                                        top: CONTENT_H / 2 - 5,
+                                        width: 10,
+                                        height: 10,
+                                        borderRadius: '50%',
+                                        backgroundColor: runFlag.color,
+                                        border: '2px solid var(--ant-color-bg-container, #fff)',
+                                        boxSizing: 'content-box',
+                                    }}
+                                />
+                            </>
+                        )}
+                        <div style={{ minHeight: CONTENT_H, display: 'flex', alignItems: 'center' }}>
+                            <Space align="start" wrap size={4}>
+                                <TaskTitlePill title={title} color={record.color} />
+                                {chain && <TaskChainBadge chain={chain} currentTaskId={record.id} resolveTask={resolveChainTask} />}
+                            </Space>
+                        </div>
                         {record.note && (
                             <div>
                                 <Tooltip title={record.note}>
