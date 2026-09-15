@@ -10,6 +10,7 @@ import { PeriodicTaskFiltersDto } from './dto/periodic-task-filters.dto';
 import { CreatePeriodicTaskLinkDto } from './dto/create-periodic-task-link.dto';
 import { LinkPeriodicTaskCustomersDto } from './dto/link-periodic-task-customers.dto';
 import { AddPeriodicTaskSecondaryAssigneeDto } from './dto/add-periodic-task-secondary-assignee.dto';
+import { LockPeriodicTaskDto } from './dto/lock-periodic-task.dto';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { PermissionGuard } from '../../common/guards/permission.guard';
 import { RequirePermission } from '../../common/decorators/require-permission.decorator';
@@ -17,8 +18,7 @@ import { GetUser } from '../../common/decorators/get-user.decorator';
 import { GetPermissionScope } from '../../common/decorators/get-permission-scope.decorator';
 
 /**
- * PeriodicTasksController - Phase 1 + 2 + 3 + 4 (PLAN mục 5 + mục 6).
- * Endpoint lock/unlock (Phase 5) sẽ được thêm ở đúng Phase tương ứng.
+ * PeriodicTasksController - Phase 1 + 2 + 3 + 4 + 5 (PLAN mục 5 + mục 6).
  */
 @ApiTags('Periodic Tasks (Công việc định kỳ)')
 @ApiBearerAuth()

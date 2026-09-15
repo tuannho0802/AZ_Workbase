@@ -3,7 +3,7 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { PeriodicTaskSecondaryAssignee } from '../../database/entities/periodic-task-secondary-assignee.entity';
 import { User } from '../../database/entities/user.entity';
-import { PeriodicTasksService } from './periodic-tasks.service';
+import { PeriodicTasksService, RequestingUser } from './periodic-tasks.service';
 import { AddPeriodicTaskSecondaryAssigneeDto } from './dto/add-periodic-task-secondary-assignee.dto';
 
 /**
@@ -49,12 +49,13 @@ export class PeriodicTaskSecondaryAssigneesService {
   async addSecondaryAssignee(
     taskId: number,
     dto: AddPeriodicTaskSecondaryAssigneeDto,
-    requesterId: number,
-    requesterRole: string,
+    user: RequestingUser,
     taskScope?: string | null,
   ): Promise<User[]> {
     // 1 cổng gác - Task ngoài phạm vi periodic_tasks.edit của người gọi tự 404.
-    const task = await this.tasksService.findOne(taskId, requesterId, requesterRole, taskScope);
+    const task = await this.tasksService.findOne(taskId, user.id, user.role, taskScope);
+    // Phase 5: Task đang khoá mà thiếu `periodic_tasks.edit_locked` -> 403.
+    await this.tasksService.assertEditableWhenLocked(task, user);
 
     // "Chính khác phụ" (spec bắt buộc PLAN mục 6) - không cho gán cùng 1
     // người vừa là chính (cột `primary_assignee_id` trên Task) vừa là phụ.
@@ -79,7 +80,7 @@ export class PeriodicTaskSecondaryAssigneesService {
     const created = this.secondaryRepo.create({
       taskId,
       userId: dto.userId,
-      addedById: requesterId,
+      addedById: user.id,
     });
     await this.secondaryRepo.save(created);
 
@@ -90,11 +91,11 @@ export class PeriodicTaskSecondaryAssigneesService {
   async removeSecondaryAssignee(
     taskId: number,
     targetUserId: number,
-    requesterId: number,
-    requesterRole: string,
+    user: RequestingUser,
     taskScope?: string | null,
   ): Promise<{ deleted: true }> {
-    await this.tasksService.findOne(taskId, requesterId, requesterRole, taskScope);
+    const task = await this.tasksService.findOne(taskId, user.id, user.role, taskScope);
+    await this.tasksService.assertEditableWhenLocked(task, user);
 
     const existing = await this.secondaryRepo.findOne({ where: { taskId, userId: targetUserId } });
     if (!existing) {

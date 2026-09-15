@@ -22,9 +22,6 @@ import { PeriodType } from '../../common/enums/period-type.enum';
  * - mỗi dòng ở đây là 1 công việc CỤ THỂ do User tự tay tạo, độc lập hoàn
  * toàn, không tham chiếu ngược về bất kỳ "khuôn mẫu" nào.
  *
- * ⚠️ Vẫn còn thiếu (chưa tới Phase tương ứng): cột lock (`is_locked`...,
- * thêm ở Phase 5 qua migration `AddPeriodicTaskLockColumns`).
- *
  * `periodic_task_links` (Phase 2 - liên kết cha-con DAG),
  * `periodic_task_customers` (Phase 3 - gắn Customer, xem
  * `periodic-task-customer.entity.ts`) và `periodic_task_secondary_assignees`
@@ -117,6 +114,24 @@ export class PeriodicTask {
 
   @Column({ type: 'text', nullable: true })
   note: string | null;
+
+  // Phase 5 (PLAN mục 2.9) - khoá/mở khoá 2 chiều tự do, KHÔNG cascade
+  // xuống Task con qua `periodic_task_links` (mỗi Task tự quản lý độc lập).
+  @Column({ name: 'is_locked', type: 'boolean', default: false })
+  isLocked: boolean;
+
+  @Column({ name: 'locked_by_id', nullable: true })
+  lockedById: number | null;
+
+  @ManyToOne(() => User, { nullable: true, onDelete: 'SET NULL' })
+  @JoinColumn({ name: 'locked_by_id' })
+  lockedBy: User | null;
+
+  @Column({ name: 'locked_at', type: 'datetime', nullable: true })
+  lockedAt: Date | null;
+
+  @Column({ name: 'lock_note', type: 'varchar', length: 500, nullable: true })
+  lockNote: string | null;
 
   @CreateDateColumn({ name: 'created_at' })
   createdAt: Date;

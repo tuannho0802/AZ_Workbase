@@ -6,17 +6,36 @@ import { PeriodicTaskStatus } from '../../database/entities/periodic-task-status
 import { User } from '../../database/entities/user.entity';
 import { DepartmentManager } from '../../database/entities/department-manager.entity';
 import { DepartmentManagerHelper } from '../departments/helpers/department-manager.helper';
+import { PermissionsService } from '../permissions/permissions.service';
+import { Role } from '../../common/enums/role.enum';
 import { CreatePeriodicTaskDto } from './dto/create-periodic-task.dto';
 import { UpdatePeriodicTaskDto } from './dto/update-periodic-task.dto';
 import { PeriodicTaskFiltersDto } from './dto/periodic-task-filters.dto';
+import { LockPeriodicTaskDto } from './dto/lock-periodic-task.dto';
 import { PeriodicTaskAccessHelper } from './helpers/periodic-task-access.helper';
+
+/** Chủ thể gọi request - đúng shape `GetUser()` decorator trả về (xem
+ * `JwtStrategy.validate()`), mirror `RequestingUser` ở
+ * `PeriodicTaskCustomersService` (Phase 3) - cần đủ `departmentId`/
+ * `positionId` để tự tra permission `periodic_tasks.edit_locked` ĐỘC LẬP
+ * với scope của `periodic_tasks.edit`/`periodic_tasks.approve` đã tính sẵn
+ * ở Controller (Phase 5). */
+export interface RequestingUser {
+  id: number;
+  role: string;
+  isRootAdmin?: boolean;
+  departmentId?: number | null;
+  positionId?: number | null;
+}
 
 /**
  * PeriodicTasksService - Phase 1 (PLAN mục 6): Status catalog + Task CRUD cơ
- * bản + RBAC view/create/edit/delete. CHƯA có liên kết cha-con
+ * bản + RBAC view/create/edit/delete. Liên kết cha-con
  * (`periodic_task_links` - Phase 2), Customer (`periodic_task_customers` -
- * Phase 3), phụ trách phụ (`periodic_task_secondary_assignees` - Phase 4),
- * lock/approve (Phase 5) - cố tình để giữ Phase 1 nhỏ, dễ review.
+ * Phase 3), phụ trách phụ (`periodic_task_secondary_assignees` - Phase 4)
+ * đều nằm ở service riêng. Khoá/mở khoá (`is_locked`/Phase 5) nằm NGAY
+ * trong service này (`lock()`/`unlock()`/`assertEditableWhenLocked()`) vì
+ * đụng trực tiếp cột trên chính `periodic_tasks`, không phải bảng con.
  */
 @Injectable()
 export class PeriodicTasksService {
@@ -29,6 +48,7 @@ export class PeriodicTasksService {
     private readonly userRepo: Repository<User>,
     @InjectRepository(DepartmentManager)
     private readonly departmentManagerRepo: Repository<DepartmentManager>,
+    private readonly permissionsService: PermissionsService,
   ) {}
 
   /**
@@ -64,6 +84,45 @@ export class PeriodicTasksService {
   private assertPeriodDatesValid(periodStartDate: string, periodEndDate: string): void {
     if (new Date(periodEndDate) < new Date(periodStartDate)) {
       throw new BadRequestException('periodEndDate không được nhỏ hơn periodStartDate');
+    }
+  }
+
+  /**
+   * Lối thoát hiểm ĐỒNG BỘ với `PermissionGuard` (mirror
+   * `PeriodicTaskCustomersService.isRootAdmin()`) - CHỈ Root Admin (role=admin
+   * VÀ isRootAdmin=true) không bao giờ bị chặn bởi `is_locked`.
+   */
+  private isRootAdmin(user: RequestingUser): boolean {
+    return user.role === Role.ADMIN && !!user.isRootAdmin;
+  }
+
+  /**
+   * Phase 5 (PLAN mục 2.9): nếu Task đang `is_locked=true`, người sửa PHẢI
+   * có thêm permission nhị phân `periodic_tasks.edit_locked` (mặc định chỉ
+   * Admin, tự thừa hưởng override 3 tầng Position→Department→Global sẵn có
+   * của `role_permissions` - không cần code thêm cơ chế override). Gọi ở
+   * TẤT CẢ nơi sửa dữ liệu của/thuộc về 1 Task: `update()` ở đây, và các
+   * sub-endpoint con (`PeriodicTaskLinksService.addLink/removeLink`,
+   * `PeriodicTaskCustomersService.addCustomers/removeCustomer`,
+   * `PeriodicTaskSecondaryAssigneesService.addSecondaryAssignee/
+   * removeSecondaryAssignee`) - TRỪ chính `lock()`/`unlock()` bên dưới (2
+   * hàm đó dùng permission `periodic_tasks.approve` riêng, KHÔNG bị chặn
+   * bởi `edit_locked` - nếu không sẽ không ai unlock được 1 Task đang khoá).
+   */
+  async assertEditableWhenLocked(task: PeriodicTask, user: RequestingUser): Promise<void> {
+    if (!task.isLocked) return;
+    if (this.isRootAdmin(user)) return;
+
+    const { allowed } = await this.permissionsService.hasPermission(
+      user.role,
+      'periodic_tasks.edit_locked',
+      user.departmentId,
+      user.positionId,
+    );
+    if (!allowed) {
+      throw new ForbiddenException(
+        'Công việc đang bị khoá, bạn không có quyền sửa khi đang khoá',
+      );
     }
   }
 
@@ -185,15 +244,20 @@ export class PeriodicTasksService {
    * (đã áp `PeriodicTaskAccessHelper.applyViewFilter`) TRƯỚC khi sửa - Task
    * ngoài phạm vi scope sẽ tự 404 trước khi kịp chạm bước update, không cần
    * thêm 1 bộ điều kiện "canUpdate" riêng dễ lệch khỏi applyViewFilter.
+   *
+   * Phase 5: sau cổng gác scope, kiểm tra THÊM `assertEditableWhenLocked()`
+   * - Task đang khoá mà thiếu `periodic_tasks.edit_locked` -> 403, ÁP DỤNG
+   * cho MỌI field kể cả đổi `statusId`/`departmentId`/`primaryAssigneeId`
+   * (PLAN mục 6 Phase 5, spec bắt buộc).
    */
   async update(
     id: number,
     dto: UpdatePeriodicTaskDto,
-    userId: number,
-    userRole: string,
+    user: RequestingUser,
     scope?: string | null,
   ): Promise<PeriodicTask> {
-    const task = await this.findOne(id, userId, userRole, scope);
+    const task = await this.findOne(id, user.id, user.role, scope);
+    await this.assertEditableWhenLocked(task, user);
 
     if (dto.periodStartDate !== undefined || dto.periodEndDate !== undefined) {
       this.assertPeriodDatesValid(
@@ -223,7 +287,44 @@ export class PeriodicTasksService {
     if (dto.note !== undefined) task.note = dto.note ?? null;
     if (dto.color !== undefined) task.color = dto.color ?? null;
 
-    task.updatedById = userId;
+    task.updatedById = user.id;
+
+    return this.taskRepo.save(task);
+  }
+
+  /**
+   * Phase 5 (PLAN mục 2.9, 6): bật `is_locked` - idempotent, gọi lại nhiều
+   * lần kể cả khi đã khoá không lỗi (chỉ ghi đè lại `lockedBy`/`lockedAt`/
+   * `lockNote` mới nhất). Dùng CÙNG "1 cổng gác" `findOne()` với `scope` của
+   * `periodic_tasks.approve` (đã tính sẵn ở Controller/`PermissionGuard`) -
+   * KHÔNG bịa bảng role-pair riêng (PLAN mục 6 Phase 5), tái dùng nguyên cơ
+   * chế own/department/all chung của `PeriodicTaskAccessHelper`.
+   */
+  async lock(
+    id: number,
+    dto: LockPeriodicTaskDto,
+    user: RequestingUser,
+    scope?: string | null,
+  ): Promise<PeriodicTask> {
+    const task = await this.findOne(id, user.id, user.role, scope);
+
+    task.isLocked = true;
+    task.lockedById = user.id;
+    task.lockedAt = new Date();
+    task.lockNote = dto.lockNote ?? null;
+
+    return this.taskRepo.save(task);
+  }
+
+  /** Tắt `is_locked` - tự do gọi lại bất kỳ lúc nào, không giới hạn số lần
+   * lock↔unlock (PLAN mục 2.9), cùng permission `periodic_tasks.approve`. */
+  async unlock(id: number, user: RequestingUser, scope?: string | null): Promise<PeriodicTask> {
+    const task = await this.findOne(id, user.id, user.role, scope);
+
+    task.isLocked = false;
+    task.lockedById = null;
+    task.lockedAt = null;
+    task.lockNote = null;
 
     return this.taskRepo.save(task);
   }

@@ -4,7 +4,7 @@ import { Repository, In } from 'typeorm';
 import { PeriodicTaskLink } from '../../database/entities/periodic-task-link.entity';
 import { PeriodicTask } from '../../database/entities/periodic-task.entity';
 import { PERIOD_RANK } from '../../common/enums/period-type.enum';
-import { PeriodicTasksService } from './periodic-tasks.service';
+import { PeriodicTasksService, RequestingUser } from './periodic-tasks.service';
 import { CreatePeriodicTaskLinkDto } from './dto/create-periodic-task-link.dto';
 
 /**
@@ -62,12 +62,14 @@ export class PeriodicTaskLinksService {
   /**
    * Gán `parentTaskId` (dto) làm cha của `childId` (:id path) - validate rank
    * (PLAN mục 2.2 bước 1), chống trùng cạnh (bước 3), chống chu trình (bước 2).
+   * Phase 5: kiểm tra thêm `assertEditableWhenLocked()` trên Task CON (`:id`
+   * path - phía đang bị PATCH) - Task cha bị khoá không chặn (không phải
+   * Task đang được sửa trực tiếp qua route này).
    */
   async addLink(
     childId: number,
     dto: CreatePeriodicTaskLinkDto,
-    userId: number,
-    userRole: string,
+    user: RequestingUser,
     scope?: string | null,
   ): Promise<PeriodicTaskLink> {
     const parentId = dto.parentTaskId;
@@ -78,8 +80,9 @@ export class PeriodicTaskLinksService {
 
     // "1 cổng gác" - cả 2 đầu cạnh đều phải nằm trong phạm vi scope người gọi
     // được xem, nếu không sẽ tự 404 ở đây trước khi chạm bước rank/cycle.
-    const child = await this.tasksService.findOne(childId, userId, userRole, scope);
-    const parent = await this.tasksService.findOne(parentId, userId, userRole, scope);
+    const child = await this.tasksService.findOne(childId, user.id, user.role, scope);
+    const parent = await this.tasksService.findOne(parentId, user.id, user.role, scope);
+    await this.tasksService.assertEditableWhenLocked(child, user);
 
     if (PERIOD_RANK[parent.periodType] <= PERIOD_RANK[child.periodType]) {
       throw new BadRequestException(
@@ -103,7 +106,7 @@ export class PeriodicTaskLinksService {
     const link = this.linkRepo.create({
       childTaskId: childId,
       parentTaskId: parentId,
-      createdById: userId,
+      createdById: user.id,
     });
     return this.linkRepo.save(link);
   }
@@ -111,11 +114,11 @@ export class PeriodicTaskLinksService {
   async removeLink(
     childId: number,
     parentId: number,
-    userId: number,
-    userRole: string,
+    user: RequestingUser,
     scope?: string | null,
   ): Promise<{ deleted: true }> {
-    await this.tasksService.findOne(childId, userId, userRole, scope);
+    const child = await this.tasksService.findOne(childId, user.id, user.role, scope);
+    await this.tasksService.assertEditableWhenLocked(child, user);
 
     const existing = await this.linkRepo.findOne({
       where: { childTaskId: childId, parentTaskId: parentId },
