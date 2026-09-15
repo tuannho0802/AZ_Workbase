@@ -1987,3 +1987,101 @@ kết" - nay chủ dự án đổi ý, muốn có luôn trong Modal Tạo/Sửa)
 **Còn lại:** Chưa test thủ công trên UI thật (chỉ verify qua build/tsc/lint) - đề nghị chủ dự án tự bấm
 thử luồng Tạo mới + Sửa với cả 2 phần Khách hàng/Phụ trách phụ trước khi coi là xong hẳn. Sau entry này
 chuyển sang **Phase 6 - Checklist con kiểu Trello** (PLAN mục 6, migration `periodic_task_checklist_items`).
+
+## [2026-09-15 14:20] | Hoàn tất BE Phase 6 "Công việc định kỳ" (Checklist con kiểu Trello) - phát hiện thêm 1 bug thật ở scope "own" | Status: Success
+
+**Actor:** Agent (Claude). Bắt đầu phiên bằng `git clone` lại repo mới nhất (KHÔNG tin transcript phiên
+trước dán vào) - xác nhận HEAD thật là `313ccec` ("Docs: Update change about add more in modal of create
+and edit task"), các commit cục bộ mà transcript trước tự báo đã tạo (`3f208c7`/`1c54e52`.v.v) **không hề
+tồn tại** trong bản clone mới - đúng như chính entry log trước đã ghi "KHÔNG push". Đọc lại
+`PLAN_PERIODIC_TASKS_MODULE.md` mục 3+4+6 (Phase 6) trước khi code.
+
+**Đã làm (theo đúng PLAN mục 6 Phase 6, không seed permission riêng - thừa hưởng `periodic_tasks.
+view/edit` của Task cha):**
+1. Migration `1782700000000-CreatePeriodicTaskChecklistItems.ts` (timestamp lấy từ `ls` thật thư mục
+   migrations, > `1782600000000` đang có, không đoán số) - bảng `periodic_task_checklist_items`
+   (`task_id` FK CASCADE, `content` VARCHAR(500), `is_done` BOOLEAN, `position` INT, `created_by_id` FK
+   SET NULL, `created_at`/`updated_at`). Hard delete khi xoá item, không soft-delete (mirror
+   `PeriodicTaskSecondaryAssignee` Phase 4).
+2. Entity `periodic-task-checklist-item.entity.ts`.
+3. DTO: `CreatePeriodicTaskChecklistItemDto`, `UpdatePeriodicTaskChecklistItemDto` (viết tay, không
+   `PartialType` vì cần thêm field `isDone` không có ở DTO tạo), `ReorderPeriodicTaskChecklistItemsDto`
+   (`itemIds[]` = hoán vị ĐẦY ĐỦ của toàn bộ item hiện có trong Task).
+4. `PeriodicTaskChecklistItemsService`: `findAllForTask()`/`create()`/`update()`/`remove()`/`reorder()`,
+   TẤT CẢ đều qua "1 cổng gác" `tasksService.findOne()` trước (404 nếu Task ngoài scope), 4 hàm sửa dữ
+   liệu (`create`/`update`/`remove`/`reorder`) đều gọi thêm `assertEditableWhenLocked()` (Task đang
+   `is_locked=true` mà thiếu `periodic_tasks.edit_locked` -> 403, mirror nguyên tắc Phase 5 áp dụng cho
+   MỌI nơi sửa dữ liệu thuộc Task). `reorder()` validate `itemIds` khớp 1-1 tập hợp item hiện có (thiếu
+   hoặc thừa ID đều -> `BadRequestException`) trước khi ghi `position` mới theo đúng index trong mảng.
+   `attachChecklistItems()` đính field `checklistItems` vào response `findOne()` - KHÔNG ẩn theo quyền
+   (mirror `attachSecondaryAssignees()` Phase 4, đây là dữ liệu nội bộ của Task không phải Customer nhạy
+   cảm).
+5. Controller: thêm 5 route `GET/POST /periodic-tasks/:id/checklist-items`,
+   `PATCH .../checklist-items/reorder`, `PATCH/DELETE .../checklist-items/:itemId`. **Lưu ý kỹ thuật cho
+   phiên sau:** route tĩnh `reorder` PHẢI khai TRƯỚC route `:itemId` trong file Controller - NestJS/
+   Express khớp route theo THỨ TỰ ĐĂNG KÝ chứ không theo độ cụ thể (specificity), khai sau sẽ khiến
+   chuỗi `"reorder"` bị `:itemId` (+ `ParseIntPipe`) nuốt mất và trả 400 sai thay vì chạy đúng handler.
+6. Module: đăng ký `PeriodicTaskChecklistItem` + `PeriodicTaskChecklistItemsService` vào
+   `providers`/`exports`/`TypeOrmModule.forFeature`.
+7. Spec `periodic-task-checklist-items.service.spec.ts`: 15 test case - `findAllForTask` (cổng gác +
+   404 khi ngoài scope), `create` (tự tính `position` = MAX hiện có + 1, kể cả case chưa có item nào ->
+   0; ném `ForbiddenException` khi Task khoá thiếu `edit_locked`), `update`/`remove` (404 nếu `itemId`
+   không thuộc đúng `taskId` - không rò rỉ chéo Task), `reorder` (thiếu 1 ID -> 400, thừa 1 ID lạ -> 400,
+   hợp lệ -> ghi đúng `position` theo index, khoá Task -> 403), `attachChecklistItems` (luôn trả mảng,
+   không ẩn theo quyền).
+8. Sau khi báo cáo tóm tắt ở lượt trước, chủ dự án yêu cầu: (a) sửa nốt 1 lỗi lint còn sót ở spec
+   (`@typescript-eslint/no-unsafe-return` tại dòng `create: jest.fn((x) => x)` - đã thêm kiểu tường minh
+   `(x: unknown) => x`, khác spec Phase 4 (`periodic-task-secondary-assignees.service.spec.ts`) không bị
+   lỗi này dù cùng pattern - có thể do khác biệt suy luận kiểu của eslint theo ngữ cảnh dùng biến, không
+   ảnh hưởng logic); (b) chạy `eslint --fix` cho toàn bộ file MỚI của Phase 6 để dọn hết lỗi
+   `prettier/prettier` thuần format (36/37 lỗi tự fix được, không đụng logic).
+
+**Verify thật (chạy lại SAU KHI sửa lint, không chỉ trước đó):**
+- `npx tsc --noEmit`: sạch, 0 lỗi.
+- `npm run build` (`nest build`): sạch.
+- `npx jest` (toàn bộ, không filter): **35/35 suite pass, 634/634 test pass** (tăng từ 619 trước Phase 6
+  - +15 test mới của `periodic-task-checklist-items.service.spec.ts`, không regression suite nào khác).
+- `npx eslint` trên TOÀN BỘ 7 file mới của Phase 6 (entity, migration, 3 DTO, service, spec): **0 lỗi, 0
+  cảnh báo** sau `--fix`. Riêng `periodic-tasks.controller.ts`/`periodic-tasks.module.ts` (file có sẵn,
+  chỉ thêm code): baseline trước sửa = 67 problems (45 lỗi/22 cảnh báo, đo bằng `git stash` rồi lint lại);
+  sau khi thêm 5 endpoint Phase 6 = 83 problems (+16, gồm +10 lỗi/+6 cảnh báo) - đối chiếu từng dòng xác
+  nhận TOÀN BỘ là 2 loại rule đã có sẵn xuyên suốt file từ trước (`prettier/prettier` format nhiều dòng/
+  nhiều tham số trên 1 dòng, và `@typescript-eslint/no-unsafe-*` do tham số `user: any` - pattern
+  `@GetUser() user: any` đã dùng cho MỌI endpoint khác trong Controller từ Phase 1, không phải kiểu lỗi
+  mới do Phase 6 gây ra).
+- `git commit` cục bộ (`490abad`) - **KHÔNG push**, đúng quy ước dự án (10 tài khoản dùng chung repo).
+
+**Phát hiện thêm 1 bug thật NGOÀI phạm vi Phase 6 (đúng quy tắc mục 8 - báo ngay khi thấy, không im lặng
+bỏ qua) - trả lời trực tiếp câu hỏi của chủ dự án "phân quyền checklist mặc định có bật cho data của tôi,
+bao gồm task được gán, không?":**
+
+- Permission cho checklist: **KHÔNG có permission riêng** (đúng chủ ý PLAN mục 6) - checklist thừa hưởng
+  100% `periodic_tasks.view` (đọc) và `periodic_tasks.edit` (sửa) của chính Task cha, đã seed sẵn từ
+  Phase 1 (`1782100000000-SeedPeriodicTasksPermissions.ts`): `admin=all, assistant=all, manager=
+  department, employee=own`. Vì vậy **mặc định ĐÃ BẬT** cho mọi Task nằm trong phạm vi scope của
+  `periodic_tasks.edit` - không cần migration/permission mới nào cho riêng checklist.
+- **NHƯNG** phát hiện `PeriodicTaskAccessHelper` (`helpers/periodic-task-access.helper.ts`,
+  `applyViewFilter()` dòng ~51-58 và `canManageTask()` dòng ~92) ở scope `own` **CHỈ tính Task do mình
+  tạo (`createdById`) HOẶC mình là Phụ trách CHÍNH (`primaryAssigneeId`)** - **KHÔNG có điều kiện OR cho
+  Phụ trách PHỤ** (`periodic_task_secondary_assignees`, bảng đã tạo từ Phase 4). Đây không phải thiết kế
+  cố ý - chính JSDoc gốc trong file (viết từ Phase 1, trước khi Phase 4 tồn tại) đã ghi rõ: "Phụ trách
+  PHỤ - chưa tồn tại tới Phase 4, sẽ bổ sung điều kiện OR ở đây khi tới Phase đó" - nhưng rà lại toàn bộ
+  `WORKFLOW_LOG.md` xác nhận Phase 4 (hoàn tất ở entry `[2026-09-15 11:15]`) **CHƯA từng quay lại sửa file
+  này** - đây là 1 việc bị bỏ sót thật giữa các phiên, không phải chủ ý thiết kế.
+- **Hệ quả thực tế:** 1 Employee (scope mặc định `own`) được gán làm **Phụ trách PHỤ** của 1 Task (không
+  phải người tạo, không phải Phụ trách chính) hiện **KHÔNG thấy được Task đó** ở `GET /periodic-tasks`,
+  `GET /periodic-tasks/:id` sẽ trả 404, và do đó **cũng không thao tác được checklist** của Task đó (vì
+  checklist gate qua đúng `findOne()` này) - đúng tình huống chủ dự án đang hỏi ("bao gồm task được gán").
+  Vẫn thấy/sửa được bình thường nếu Employee đó là Phụ trách CHÍNH hoặc người tạo Task.
+- **CHƯA sửa trong phiên này** - nằm ngoài phạm vi Phase 6 đã giao, và đụng vào logic phân quyền dùng
+  chung cho CẢ `findAll`/`findOne`/`update`/`remove`/mọi sub-resource (Phase 2-6) nên cần xác nhận trước
+  khi sửa (đổi hành vi ảnh hưởng rộng, không phải lỗi cục bộ 1 chỗ). Đã báo cáo riêng ở chat để chủ dự án
+  xác nhận có muốn sửa ngay không (dự kiến: thêm điều kiện `OR task.id IN (SELECT task_id FROM
+  periodic_task_secondary_assignees WHERE user_id = :accessUserId)` vào cả `applyViewFilter()` và
+  `canManageTask()`, không cần migration DB nào, chỉ sửa code 1 file).
+
+**Còn lại (ngoài phạm vi phiên này):**
+- Bug scope `own` thiếu Phụ trách phụ ở trên - CHỜ xác nhận chủ dự án trước khi sửa.
+- Phase 6 FE (UI checklist kiểu Trello trong `cong-viec-dinh-ky/page.tsx`) - CHƯA làm, làm ở phiên sau
+  sau khi chủ dự án xác nhận BE Phase 6 đã đúng ý.
+- Phase 7 (audit log riêng, PLAN mục 6) - chưa code.
