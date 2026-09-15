@@ -11,6 +11,14 @@ interface AuditDiffViewerProps {
   oldData: any;
   newData: any;
   action: string;
+  /**
+   * Phase 7 (`AZ-Workbase Skills/PLAN_PERIODIC_TASKS_MODULE.md` mục 2.6):
+   * bổ sung nhãn tiếng Việt cho field của module khác (vd "Công việc định
+   * kỳ") mà KHÔNG cần sửa `FIELD_LABELS` gốc (vốn chỉ dành cho Customer/User/
+   * Deposit) - merge đè lên `FIELD_LABELS`, field trùng key sẽ ưu tiên giá
+   * trị truyền vào đây. Optional, mặc định không đổi hành vi cũ.
+   */
+  extraFieldLabels?: Record<string, string>;
 }
 
 const FIELD_LABELS: Record<string, string> = {
@@ -36,10 +44,20 @@ const FIELD_LABELS: Record<string, string> = {
   inputDate: 'Ngày nhập',
 };
 
-export const AuditDiffViewer: React.FC<AuditDiffViewerProps> = ({ oldData, newData, action }) => {
-  const isCreate = action.includes('CREATE');
-  const isDelete = action.includes('DELETE');
-  const isUpdate = action.includes('UPDATE') || (oldData && newData);
+export const AuditDiffViewer: React.FC<AuditDiffViewerProps> = ({
+  oldData,
+  newData,
+  action,
+  extraFieldLabels,
+}) => {
+  // Case-insensitive: audit chung dùng action UPPER_SNAKE ('CREATE_CUSTOMER'),
+  // Phase 7 (Công việc định kỳ) dùng lower_snake ('created') - so khớp không
+  // phân biệt hoa/thường để cả 2 hệ action đều nhận đúng nhãn cột icon.
+  const actionUpper = action.toUpperCase();
+  const isCreate = actionUpper.includes('CREATE');
+  const isDelete = actionUpper.includes('DELETE');
+  const isUpdate = actionUpper.includes('UPDATE') || (oldData && newData);
+  const fieldLabels = extraFieldLabels ? { ...FIELD_LABELS, ...extraFieldLabels } : FIELD_LABELS;
 
   // Helper to format values
   const formatValue = (val: any, key: string) => {
@@ -100,7 +118,7 @@ export const AuditDiffViewer: React.FC<AuditDiffViewerProps> = ({ oldData, newDa
 
     return {
       key,
-      label: FIELD_LABELS[key] || key,
+      label: fieldLabels[key] || key,
       old: oldVal,
       new: newVal,
     };

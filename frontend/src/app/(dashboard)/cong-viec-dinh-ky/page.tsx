@@ -32,6 +32,7 @@ import {
     LockOutlined,
     UnlockOutlined,
     CheckSquareOutlined,
+    HistoryOutlined,
 } from '@ant-design/icons';
 import dayjs, { Dayjs } from 'dayjs';
 import { useAuthStore } from '@/lib/stores/auth.store';
@@ -64,6 +65,7 @@ import { getApiErrorMessage } from '@/lib/utils/error-message.util';
 import { useRoleColorMap, useRoleColors } from '@/lib/hooks/useRoleColorMap';
 import { TaskLinksModal } from '@/components/periodic-tasks/TaskLinksModal';
 import { TaskChecklistModal } from '@/components/periodic-tasks/TaskChecklistModal';
+import { TaskAuditLogsModal } from '@/components/periodic-tasks/TaskAuditLogsModal';
 import { customerPhoneDisplay, customerPlainLabel, renderCustomerOption } from '@/components/common/customer-option-render';
 import { SimpleList } from '@/components/common/SimpleList';
 
@@ -80,7 +82,9 @@ const { RangePicker } = DatePicker;
  * Xoá - không phải dữ liệu con như liên kết/Customer/Phụ trách phụ. Phase 6
  * (checklist con kiểu Trello) qua nút "Checklist" mở `TaskChecklistModal`
  * riêng (không nhét vào `TaskLinksModal` - đủ lớn để tách thành nhóm chức
- * năng độc lập của riêng nó) - xem file đó.
+ * năng độc lập của riêng nó) - xem file đó. Phase 7 (CUỐI - audit log riêng)
+ * qua nút "Lịch sử" mở `TaskAuditLogsModal` riêng (chỉ xem, không có hành
+ * động sửa nào nên không cần gate `periodic_tasks.edit`) - xem file đó.
  *
  * 2 permission tách bạch (PLAN mục 2.9):
  *  - `periodic_tasks.approve`: bật/tắt được `is_locked` (2 chiều tự do,
@@ -482,6 +486,9 @@ export default function PeriodicTasksPage() {
     // Phase 6 (PLAN mục 6) - checklist con kiểu Trello, mở qua `TaskChecklistModal`
     // riêng (không nhét vào `TaskLinksModal`), xem JSDoc file đó.
     const [checklistingTask, setChecklistingTask] = useState<PeriodicTask | null>(null);
+    // Phase 7 (CUỐI, PLAN mục 6) - xem lịch sử audit riêng qua `TaskAuditLogsModal`,
+    // mirror 2 state trên (không phải hành động sửa, chỉ xem).
+    const [auditingTask, setAuditingTask] = useState<PeriodicTask | null>(null);
 
     // ---- Modal Xoá (đơn giản - CHỈ Admin, không scope/fallback) ----
     const [deletingTask, setDeletingTask] = useState<PeriodicTask | null>(null);
@@ -635,7 +642,7 @@ export default function PeriodicTasksPage() {
             // như Sửa/Xoá bên dưới.
             title: 'Thao tác',
             key: 'action',
-            width: 420,
+            width: 500,
             fixed: 'right' as const,
             render: (_: any, record: PeriodicTask) => {
                 // Phase 5 (PLAN mục 2.9): Task khoá mà thiếu `edit_locked` ->
@@ -649,6 +656,9 @@ export default function PeriodicTasksPage() {
                         </Button>
                         <Button size="small" icon={<CheckSquareOutlined />} onClick={() => setChecklistingTask(record)}>
                             Checklist
+                        </Button>
+                        <Button size="small" icon={<HistoryOutlined />} onClick={() => setAuditingTask(record)}>
+                            Lịch sử
                         </Button>
                         {canEdit && (
                             <Tooltip title={editDisabled ? 'Công việc đang bị khoá - cần quyền "Sửa khi đang khoá"' : ''}>
@@ -1157,6 +1167,9 @@ export default function PeriodicTasksPage() {
                 onClose={() => setChecklistingTask(null)}
                 task={checklistingTask}
             />
+
+            {/* Modal Lịch sử audit (Phase 7, CUỐI) */}
+            <TaskAuditLogsModal open={!!auditingTask} onClose={() => setAuditingTask(null)} task={auditingTask} />
         </div>
     );
 }
