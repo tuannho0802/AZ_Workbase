@@ -237,6 +237,33 @@ describe('PeriodicTasksService', () => {
       );
     });
 
+    it('BUG THẬT (2026-09-15, Kanban kéo-thả không đổi cột): đổi statusId phải set LUÔN relation `status` khớp cột FK, không chỉ đổi `statusId` - nếu không TypeORM ưu tiên relation cũ đã load từ findOne() khi save(), khiến DB không đổi thật dù response trả 200 (xem SKILL_NESTJS_BACKEND.md mục 13)', async () => {
+      const task: any = {
+        id: 1,
+        statusId: 1,
+        status: { id: 1, code: 'not_started' }, // relation ĐÃ load qua leftJoinAndSelect ở findOne()
+        primaryAssigneeId: 5,
+        primaryAssignee: { id: 5 },
+        periodStartDate: '2026-09-14',
+        periodEndDate: '2026-09-14',
+      };
+      mockTaskRepo.createQueryBuilder.mockReturnValue(makeFakeQueryBuilder({ getOne: task }));
+      let savedArg: any;
+      mockTaskRepo.save.mockImplementation((t) => {
+        savedArg = t;
+        return Promise.resolve(t);
+      });
+      mockStatusRepo.findOne.mockResolvedValue({ id: 2 });
+
+      await service.update(1, { statusId: 2 }, { id: 9, role: Role.ADMIN }, 'all');
+
+      // Entity truyền vào save() phải có relation `status`/`primaryAssignee`/
+      // `updatedBy` khớp ĐÚNG với id vừa đổi (không còn giữ object cũ).
+      expect(savedArg.status).toEqual({ id: 2 });
+      expect(savedArg.primaryAssignee).toEqual({ id: 5 });
+      expect(savedArg.updatedBy).toEqual({ id: 9 });
+    });
+
     it('đổi primaryAssigneeId ghi THÊM audit log primary_assignee_changed (PLAN mục 2.6)', async () => {
       const task: any = {
         id: 1,

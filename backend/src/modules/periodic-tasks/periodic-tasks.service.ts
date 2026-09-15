@@ -4,6 +4,7 @@ import { Repository } from 'typeorm';
 import { PeriodicTask } from '../../database/entities/periodic-task.entity';
 import { PeriodicTaskStatus } from '../../database/entities/periodic-task-status.entity';
 import { User } from '../../database/entities/user.entity';
+import { Department } from '../../database/entities/department.entity';
 import { DepartmentManager } from '../../database/entities/department-manager.entity';
 import { DepartmentManagerHelper } from '../departments/helpers/department-manager.helper';
 import { PermissionsService } from '../permissions/permissions.service';
@@ -283,11 +284,25 @@ export class PeriodicTasksService {
     if (dto.primaryAssigneeId !== undefined) {
       await this.assertUserExists(dto.primaryAssigneeId, 'Người phụ trách chính');
       task.primaryAssigneeId = dto.primaryAssigneeId;
+      // BUG THẬT (2026-09-15, xem WORKFLOW_LOG): `findOne()` gọi
+      // `leftJoinAndSelect` nên `task.primaryAssignee` (relation) đã có
+      // sẵn trong bộ nhớ, trỏ tới Entity CŨ - nếu chỉ đổi cột FK
+      // `primaryAssigneeId` mà không đổi luôn `primaryAssignee`, TypeORM
+      // `.save()` ưu tiên relation object đã load, khiến FK không thực sự
+      // được ghi xuống DB (xem SKILL_NESTJS_BACKEND.md mục 13, "TypeORM
+      // Relation Precedence in Update"). Set relation bằng object rút gọn
+      // `{ id }` để đồng bộ với cột FK vừa đổi.
+      task.primaryAssignee = { id: dto.primaryAssigneeId } as User;
     }
 
     if (dto.statusId !== undefined) {
       await this.assertStatusExists(dto.statusId);
       task.statusId = dto.statusId;
+      // Cùng bug như `primaryAssignee` ở trên - đây chính là nguyên nhân
+      // Kanban kéo-thả đổi cột: PATCH trả 200 (object JS trong bộ nhớ đã
+      // đổi `statusId`) nhưng DB không đổi thật, nên GET lại sau đó (Table/
+      // Kanban refetch) vẫn thấy Task ở trạng thái cũ.
+      task.status = { id: dto.statusId } as PeriodicTaskStatus;
     }
 
     if (dto.title !== undefined) task.title = dto.title;
@@ -297,11 +312,15 @@ export class PeriodicTasksService {
     if (dto.periodEndDate !== undefined) task.periodEndDate = dto.periodEndDate;
     // Sửa tự do sau khi tạo, kể cả về null (PLAN mục 2.10) - CHỈ áp dụng khi
     // field THẬT SỰ có mặt trong body (không phải "undefined nghĩa là xoá").
-    if (dto.departmentId !== undefined) task.departmentId = dto.departmentId;
+    if (dto.departmentId !== undefined) {
+      task.departmentId = dto.departmentId;
+      task.department = dto.departmentId != null ? ({ id: dto.departmentId } as Department) : null;
+    }
     if (dto.note !== undefined) task.note = dto.note ?? null;
     if (dto.color !== undefined) task.color = dto.color ?? null;
 
     task.updatedById = user.id;
+    task.updatedBy = { id: user.id } as User;
 
     const saved = await this.taskRepo.save(task);
 
