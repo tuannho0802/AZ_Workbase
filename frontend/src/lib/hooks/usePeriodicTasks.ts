@@ -10,12 +10,19 @@ const LIST_KEY = 'periodic-tasks';
 
 /** Danh sách phân trang SERVER-SIDE (mirror `useCustomers.ts`) - RBAC
  * view/edit đã được BE tự lọc theo scope (own/department/all) qua
- * `PeriodicTaskAccessHelper`, FE không cần tự lọc lại. */
-export const usePeriodicTasks = (params: PeriodicTaskFilterParams) => {
+ * `PeriodicTaskAccessHelper`, FE không cần tự lọc lại.
+ *
+ * `enabled` (Phase 8, PLAN mục Phase 8) - mirror `usePeriodicTask(id)` bên
+ * dưới: cho phép trang cha TẮT hẳn query này khi không cần (vd Agenda/
+ * Kanban/Calendar dùng 1 query riêng `limit` lớn hơn Table, không nên chạy
+ * song song CẢ 2 query cùng lúc khi người dùng chỉ đang xem 1 view). Mặc
+ * định `true` - KHÔNG đổi hành vi của mọi nơi gọi hook này từ trước Phase 8. */
+export const usePeriodicTasks = (params: PeriodicTaskFilterParams, enabled = true) => {
   return useQuery({
     queryKey: [LIST_KEY, params],
     queryFn: () => periodicTasksApi.getAll(params),
     placeholderData: keepPreviousData,
+    enabled,
   });
 };
 

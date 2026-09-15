@@ -20,19 +20,18 @@ import {
     ColorPicker,
     Alert,
     Avatar,
-    Popconfirm,
+    Segmented,
 } from 'antd';
 import {
     PlusOutlined,
-    EditOutlined,
     DeleteOutlined,
     SearchOutlined,
     SettingOutlined,
-    ApartmentOutlined,
     LockOutlined,
-    UnlockOutlined,
-    CheckSquareOutlined,
-    HistoryOutlined,
+    TableOutlined,
+    UnorderedListOutlined,
+    AppstoreOutlined,
+    CalendarOutlined,
 } from '@ant-design/icons';
 import dayjs, { Dayjs } from 'dayjs';
 import { useAuthStore } from '@/lib/stores/auth.store';
@@ -66,6 +65,10 @@ import { useRoleColorMap, useRoleColors } from '@/lib/hooks/useRoleColorMap';
 import { TaskLinksModal } from '@/components/periodic-tasks/TaskLinksModal';
 import { TaskChecklistModal } from '@/components/periodic-tasks/TaskChecklistModal';
 import { TaskAuditLogsModal } from '@/components/periodic-tasks/TaskAuditLogsModal';
+import { TaskActionsBar } from '@/components/periodic-tasks/TaskActionsBar';
+import { PeriodicTasksAgendaView } from '@/components/periodic-tasks/PeriodicTasksAgendaView';
+import { PeriodicTasksKanbanView } from '@/components/periodic-tasks/PeriodicTasksKanbanView';
+import { PeriodicTasksCalendarView } from '@/components/periodic-tasks/PeriodicTasksCalendarView';
 import { customerPhoneDisplay, customerPlainLabel, renderCustomerOption } from '@/components/common/customer-option-render';
 import { SimpleList } from '@/components/common/SimpleList';
 
@@ -85,6 +88,17 @@ const { RangePicker } = DatePicker;
  * năng độc lập của riêng nó) - xem file đó. Phase 7 (CUỐI - audit log riêng)
  * qua nút "Lịch sử" mở `TaskAuditLogsModal` riêng (chỉ xem, không có hành
  * động sửa nào nên không cần gate `periodic_tasks.edit`) - xem file đó.
+ * Phase 8 (PLAN mục Phase 8, "Cải tiến view switcher") thêm `Segmented` đổi
+ * giữa 4 giao diện xem: 'table' (gốc, giữ nguyên 100%, có phân trang) /
+ * 'agenda' (mặc định - `PeriodicTasksAgendaView`, gộp theo Ngày, mặc định mở
+ * đúng hôm nay/gần nhất - giải quyết vấn đề khó kiểm tra ngày giờ ở bảng
+ * gốc) / 'kanban' (`PeriodicTasksKanbanView`, kéo-thả đổi statusId qua
+ * `@dnd-kit`) / 'calendar' (`PeriodicTasksCalendarView`, dùng `Calendar` có
+ * sẵn của antd). Nhóm nút Thao tác tách ra `TaskActionsBar` dùng chung cho
+ * cả 4 view (tránh lệch RBAC giữa các nơi) - xem JSDoc từng file trong
+ * `components/periodic-tasks/`. View 4 (Timeline/Gantt rút gọn) CỐ TÌNH lùi
+ * lại theo đúng research (ROI thấp với quy mô Task hiện tại, cần thư viện
+ * vẽ riêng) - xem entry Phase 8 ở `WORKFLOW_LOG.md`.
  *
  * 2 permission tách bạch (PLAN mục 2.9):
  *  - `periodic_tasks.approve`: bật/tắt được `is_locked` (2 chiều tự do,
@@ -148,8 +162,41 @@ export default function PeriodicTasksPage() {
         [page, limit, search, periodType, statusId, primaryAssigneeId, departmentId, dateRange],
     );
 
-    const { data, isLoading, isFetching } = usePeriodicTasks(filters);
+    // ---- Phase 8 (PLAN mục Phase 8) - View switcher ----
+    // 'table' giữ NGUYÊN giao diện gốc (Phase 1-7, có phân trang server-side)
+    // - 3 view còn lại (Agenda/Kanban/Calendar) không phân trang (mirror
+    // Kanban/Calendar thông thường - xem 1 view của TẤT CẢ Task khớp filter,
+    // không cắt trang), nên dùng 1 query RIÊNG với `limit` lớn hơn hẳn thay
+    // vì tái dùng `filters` (vốn có `page`/`limit` nhỏ cho Table). Chỉ BẬT
+    // đúng 1 trong 2 query tại 1 thời điểm (`enabled`) - tránh gọi cả 2 API
+    // song song khi người dùng chỉ đang xem 1 view.
+    const [view, setView] = useState<'table' | 'agenda' | 'kanban' | 'calendar'>('agenda');
+
+    const { data, isLoading, isFetching } = usePeriodicTasks(filters, view === 'table');
     const tasks = data?.data ?? [];
+
+    const nonTableFilters = useMemo(
+        () => ({
+            page: 1,
+            // 500 - đủ lớn cho quy mô Task hiện tại của dự án (research Phase
+            // 8: vài chục Task), tránh phải cài thêm cơ chế "tải thêm" cho
+            // Agenda/Kanban/Calendar ở bản đầu tiên này.
+            limit: 500,
+            search: search || undefined,
+            periodType,
+            statusId,
+            primaryAssigneeId,
+            departmentId,
+            dateFrom: dateRange?.[0] ? dateRange[0].format('YYYY-MM-DD') : undefined,
+            dateTo: dateRange?.[1] ? dateRange[1].format('YYYY-MM-DD') : undefined,
+        }),
+        [search, periodType, statusId, primaryAssigneeId, departmentId, dateRange],
+    );
+    const { data: viewData, isLoading: viewLoading, isFetching: viewFetching } = usePeriodicTasks(
+        nonTableFilters,
+        view !== 'table',
+    );
+    const viewTasks = viewData?.data ?? [];
 
     const { statuses } = usePeriodicTaskStatuses();
     const { departments } = useDepartments();
@@ -644,69 +691,26 @@ export default function PeriodicTasksPage() {
             key: 'action',
             width: 500,
             fixed: 'right' as const,
-            render: (_: any, record: PeriodicTask) => {
-                // Phase 5 (PLAN mục 2.9): Task khoá mà thiếu `edit_locked` ->
-                // vẫn HIỆN nút Sửa (biết mình có periodic_tasks.edit) nhưng
-                // disable kèm Tooltip, tránh gọi PATCH ăn 403 mới biết.
-                const editDisabled = record.isLocked && !canEditLocked;
-                return (
-                    <Space>
-                        <Button size="small" icon={<ApartmentOutlined />} onClick={() => setLinkingTask(record)}>
-                            Liên kết
-                        </Button>
-                        <Button size="small" icon={<CheckSquareOutlined />} onClick={() => setChecklistingTask(record)}>
-                            Checklist
-                        </Button>
-                        <Button size="small" icon={<HistoryOutlined />} onClick={() => setAuditingTask(record)}>
-                            Lịch sử
-                        </Button>
-                        {canEdit && (
-                            <Tooltip title={editDisabled ? 'Công việc đang bị khoá - cần quyền "Sửa khi đang khoá"' : ''}>
-                                <Button
-                                    size="small"
-                                    icon={<EditOutlined />}
-                                    disabled={editDisabled}
-                                    onClick={() => openEditModal(record)}
-                                >
-                                    Sửa
-                                </Button>
-                            </Tooltip>
-                        )}
-                        {canApprove && (
-                            record.isLocked ? (
-                                <Popconfirm
-                                    title="Mở khoá Công việc này?"
-                                    onConfirm={() => handleUnlock(record)}
-                                    okText="Mở khoá"
-                                    cancelText="Huỷ"
-                                >
-                                    <Button
-                                        size="small"
-                                        icon={<UnlockOutlined />}
-                                        loading={unlockMutation.isPending && unlockMutation.variables === record.id}
-                                    >
-                                        Mở khoá
-                                    </Button>
-                                </Popconfirm>
-                            ) : (
-                                <Button size="small" icon={<LockOutlined />} onClick={() => setLockingTask(record)}>
-                                    Khoá
-                                </Button>
-                            )
-                        )}
-                        {canDelete && (
-                            <Button
-                                size="small"
-                                danger
-                                icon={<DeleteOutlined />}
-                                onClick={() => setDeletingTask(record)}
-                            >
-                                Xoá
-                            </Button>
-                        )}
-                    </Space>
-                );
-            },
+            // Phase 8 (PLAN mục Phase 8): tách nhóm nút này ra `TaskActionsBar`
+            // dùng chung cho cả 4 view (Table/Agenda/Kanban/Calendar) - xem
+            // JSDoc file đó. Hành vi/RBAC giữ NGUYÊN 100% so với Phase 1-7.
+            render: (_: any, record: PeriodicTask) => (
+                <TaskActionsBar
+                    task={record}
+                    canEdit={canEdit}
+                    canEditLocked={canEditLocked}
+                    canApprove={canApprove}
+                    canDelete={canDelete}
+                    onLink={setLinkingTask}
+                    onChecklist={setChecklistingTask}
+                    onAudit={setAuditingTask}
+                    onEdit={openEditModal}
+                    onLock={setLockingTask}
+                    onUnlock={handleUnlock}
+                    onDelete={setDeletingTask}
+                    unlockLoading={unlockMutation.isPending && unlockMutation.variables === record.id}
+                />
+            ),
         },
     ];
 
@@ -819,24 +823,84 @@ export default function PeriodicTasksPage() {
                 </Col>
             </Row>
 
-            <Table
-                rowKey="id"
-                loading={isLoading || isFetching}
-                columns={columns}
-                dataSource={tasks}
-                scroll={{ x: 'max-content' }}
-                pagination={{
-                    current: page,
-                    pageSize: limit,
-                    total: data?.total ?? 0,
-                    showSizeChanger: true,
-                    showTotal: (total) => `Tổng cộng ${total} Công việc`,
-                    onChange: (p, ps) => {
-                        setPage(p);
-                        setLimit(ps);
-                    },
-                }}
+            {/* Phase 8 (PLAN mục Phase 8) - View switcher. 'agenda' mặc định
+                (giải quyết đúng phản ánh "khó kiểm tra ngày giờ" ở bảng gốc),
+                người dùng tự đổi sang 'table' nếu muốn giao diện quen thuộc. */}
+            <Segmented
+                style={{ marginBottom: 16 }}
+                value={view}
+                onChange={(v) => setView(v as typeof view)}
+                options={[
+                    { label: 'Bảng', value: 'table', icon: <TableOutlined /> },
+                    { label: 'Xem theo Ngày', value: 'agenda', icon: <UnorderedListOutlined /> },
+                    { label: 'Kanban', value: 'kanban', icon: <AppstoreOutlined /> },
+                    { label: 'Lịch tháng', value: 'calendar', icon: <CalendarOutlined /> },
+                ]}
             />
+
+            {view === 'table' && (
+                <Table
+                    rowKey="id"
+                    loading={isLoading || isFetching}
+                    columns={columns}
+                    dataSource={tasks}
+                    scroll={{ x: 'max-content' }}
+                    pagination={{
+                        current: page,
+                        pageSize: limit,
+                        total: data?.total ?? 0,
+                        showSizeChanger: true,
+                        showTotal: (total) => `Tổng cộng ${total} Công việc`,
+                        onChange: (p, ps) => {
+                            setPage(p);
+                            setLimit(ps);
+                        },
+                    }}
+                />
+            )}
+
+            {view === 'agenda' && (
+                <PeriodicTasksAgendaView
+                    tasks={viewTasks}
+                    loading={viewLoading || viewFetching}
+                    canEdit={canEdit}
+                    canEditLocked={canEditLocked}
+                    canApprove={canApprove}
+                    canDelete={canDelete}
+                    onLink={setLinkingTask}
+                    onChecklist={setChecklistingTask}
+                    onAudit={setAuditingTask}
+                    onEdit={openEditModal}
+                    onLock={setLockingTask}
+                    onUnlock={handleUnlock}
+                    onDelete={setDeletingTask}
+                    isUnlocking={(id) => unlockMutation.isPending && unlockMutation.variables === id}
+                />
+            )}
+
+            {view === 'kanban' && (
+                <PeriodicTasksKanbanView
+                    tasks={viewTasks}
+                    statuses={statuses}
+                    loading={viewLoading || viewFetching}
+                    canEdit={canEdit}
+                    canEditLocked={canEditLocked}
+                    canApprove={canApprove}
+                    canDelete={canDelete}
+                    onLink={setLinkingTask}
+                    onChecklist={setChecklistingTask}
+                    onAudit={setAuditingTask}
+                    onEdit={openEditModal}
+                    onLock={setLockingTask}
+                    onUnlock={handleUnlock}
+                    onDelete={setDeletingTask}
+                    isUnlocking={(id) => unlockMutation.isPending && unlockMutation.variables === id}
+                />
+            )}
+
+            {view === 'calendar' && (
+                <PeriodicTasksCalendarView tasks={viewTasks} onSelectTask={canEdit ? openEditModal : undefined} />
+            )}
 
             {/* Modal Thêm/Sửa */}
             <Modal
