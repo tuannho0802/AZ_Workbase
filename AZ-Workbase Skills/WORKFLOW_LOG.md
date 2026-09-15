@@ -2085,3 +2085,66 @@ bao gồm task được gán, không?":**
 - Phase 6 FE (UI checklist kiểu Trello trong `cong-viec-dinh-ky/page.tsx`) - CHƯA làm, làm ở phiên sau
   sau khi chủ dự án xác nhận BE Phase 6 đã đúng ý.
 - Phase 7 (audit log riêng, PLAN mục 6) - chưa code.
+
+## [2026-09-15 15:40] | Bổ sung spec cho bug scope "own" thiếu Phụ trách PHỤ (code fix đã có sẵn từ trước, spec chưa theo kịp) | Status: Success
+
+**Actor:** Agent (Claude). Bắt đầu phiên bằng `git clone` lại repo mới nhất (KHÔNG tin transcript dán vào)
+- xác nhận HEAD thật là `f0188ae` ("Fix: Bug of secondary is not own data fix helper file (Not yet audit
+full)"). Rà lại thì phát hiện: code fix cho bug scope `own` thiếu Phụ trách PHỤ (đã báo ở entry
+`[2026-09-15 14:20]`) **ĐÃ được sửa xong trong `periodic-task-access.helper.ts`** ở cả `applyViewFilter()`
+(thêm `OR task.id IN (SELECT psa.task_id FROM periodic_task_secondary_assignees ...)`) và `canManageTask()`
+(thêm tham số `secondaryAssigneeUserIds: number[] = []` + điều kiện `.includes(userId)`) - đã commit
+`b023c1a`/`f0188ae`. **NHƯNG** `periodic-task-access.helper.spec.ts` chưa được cập nhật theo - đúng như chủ
+dự án phát hiện ("Spec về phần bug này chưa xử lý"): test `scope=own` của `applyViewFilter` chỉ assert 2
+điều kiện cũ (không assert điều kiện Phụ trách PHỤ mới), và toàn bộ describe `canManageTask` không có test
+nào truyền tham số `secondaryAssigneeUserIds` - nghĩa là nhánh code mới có thể bị xoá/sửa sai mà test vẫn
+xanh (false confidence).
+
+**Kiểm tra thêm theo yêu cầu chủ dự án:**
+1. **Migration:** xác nhận lại KHÔNG cần migration nào cho bug này - đây thuần là lỗi logic TypeScript
+   (thiếu điều kiện OR trong query builder + tham số hàm), không đụng schema DB. Bảng
+   `periodic_task_secondary_assignees` đã tồn tại từ migration Phase 4
+   (`1782500000000-CreatePeriodicTaskSecondaryAssignees.ts`), permission `periodic_tasks.*` đã seed đủ từ
+   Phase 1 - không có gì thiếu ở tầng migration/permission.
+2. **Phạm vi lan toả:** `grep` toàn bộ `backend/src` xác nhận `PeriodicTaskAccessHelper` CHỈ được dùng
+   trực tiếp trong `periodic-tasks.service.ts` (`findAll`/`findOne` gọi `applyViewFilter`) - mọi
+   sub-resource khác (`checklist-items`, `customers`, `links`, `secondary-assignees` service) đều đi qua
+   "1 cổng gác" `tasksService.findOne()` nên tự động thừa hưởng fix, KHÔNG cần sửa thêm nơi nào khác.
+   `canManageTask()` hiện KHÔNG được service nào gọi thật (chỉ tồn tại trong spec) - giữ nguyên như thiết
+   kế gốc (mirror `CustomerAccessHelper.canManageCustomer()`, dự phòng cho chỗ cần check trong bộ nhớ),
+   không phải lỗi.
+
+**Đã làm - bổ sung spec còn thiếu (`periodic-task-access.helper.spec.ts`):**
+1. Sửa test `scope=own (EMPLOYEE)` của `applyViewFilter`: thêm assertion cho đúng chuỗi SQL subquery
+   `task.id IN (SELECT psa.task_id FROM periodic_task_secondary_assignees psa WHERE psa.user_id =
+   :accessUserId)` - regression test cho đúng bug đã sửa.
+2. Thêm 3 test case mới cho `canManageTask`: (a) `own -> true nếu là Phụ trách PHỤ` (truyền
+   `secondaryAssigneeUserIds` có chứa `userId`), (b) `own -> false nếu KHÔNG có trong
+   secondaryAssigneeUserIds` (không tự ý cho true tràn lan), (c) mặc định `secondaryAssigneeUserIds` rỗng
+   nếu không truyền (không throw, phòng thủ).
+3. Đổi tên mô tả test `own -> false nếu không phải người tạo, không phải phụ trách chính` thành có thêm
+   "...không phải phụ trách phụ" cho khớp hành vi mới.
+
+**Verify thật:**
+- `npx tsc --noEmit`: sạch.
+- `nest build`: sạch.
+- `npx jest periodic-task-access.helper`: **22/22 pass** (tăng từ 19, +3 test mới).
+- `npx jest` toàn bộ: **35/35 suite pass, 637/637 test pass** (tăng từ 634, không regression).
+- `npx eslint --fix` cho `periodic-task-access.helper.spec.ts` + `periodic-task-access.helper.ts`: dọn hết
+  lỗi `prettier/prettier` (đều là format thuần, đối chiếu `git diff` xác nhận không đổi logic). Còn lại 3
+  lỗi `@typescript-eslint/no-unsafe-enum-comparison` ở `helper.ts` (dòng so sánh `userRole ===
+  Role.ADMIN`) - đối chiếu bằng cách lint riêng bản gốc tại commit `313ccec` (trước cả bug fix lẫn Phase 6)
+  xác nhận **CHÍNH XÁC 3 lỗi này đã tồn tại từ trước**, không phải do phiên này hay commit `f0188ae` gây
+  ra - không sửa vì ngoài phạm vi yêu cầu (baseline có sẵn xuyên suốt file, đổi rule này cần bàn riêng vì
+  có thể ảnh hưởng toàn bộ pattern `userRole: string` dùng chung nhiều helper khác trong dự án).
+- `git commit` cục bộ - **KHÔNG push**, đúng quy ước dự án.
+
+**Kết luận cho chủ dự án:** Bug scope `own` thiếu Phụ trách PHỤ **đã được sửa đầy đủ ở tầng BE** (cả code
+fix lẫn spec regression test), lan toả đúng tới toàn bộ sub-resource (kể cả checklist Phase 6) qua "1 cổng
+gác". Không cần migration. Sẵn sàng để xác nhận BE hoàn tất trước khi chuyển sang Phase 6 FE.
+
+**Còn lại (ngoài phạm vi phiên này):**
+- Phase 6 FE (UI checklist kiểu Trello) - chưa làm.
+- Phase 7 (audit log riêng, PLAN mục 6) - chưa code.
+- 3 lỗi lint `no-unsafe-enum-comparison` baseline ở `periodic-task-access.helper.ts` - có sẵn từ trước,
+  chưa sửa (ngoài phạm vi yêu cầu phiên này).
