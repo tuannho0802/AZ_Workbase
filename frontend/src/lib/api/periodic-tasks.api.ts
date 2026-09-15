@@ -98,6 +98,31 @@ export interface PeriodicTask {
    * do thiếu quyền (đây là thông tin phân công nội bộ, không phải Customer).
    */
   secondaryAssignees?: RefUser[];
+  /**
+   * Phase 6 (PLAN mục 6): checklist con kiểu Trello - CHỈ có mặt trên response
+   * của `GET /:id` (mirror `secondaryAssignees`, BE chỉ gọi
+   * `attachChecklistItems()` ở `findOne()`), KHÔNG có trên `GET /` (danh
+   * sách). KHÔNG ẩn theo quyền (giống `secondaryAssignees`) - luôn là mảng
+   * (kể cả rỗng `[]`) khi Task đã tải xong.
+   */
+  checklistItems?: PeriodicTaskChecklistItem[];
+}
+
+/**
+ * PeriodicTaskChecklistItem - khớp đúng response thật của
+ * `PeriodicTaskChecklistItemsService` (`queryItems()` - `find()` KHÔNG kèm
+ * relation `createdBy`, nên chỉ có `createdById` chứ không có object
+ * `createdBy` đính kèm, khác `primaryAssignee`/`secondaryAssignees`).
+ */
+export interface PeriodicTaskChecklistItem {
+  id: number;
+  taskId: number;
+  content: string;
+  isDone: boolean;
+  position: number;
+  createdById: number | null;
+  createdAt: string;
+  updatedAt: string;
 }
 
 export interface CreatePeriodicTaskPayload {

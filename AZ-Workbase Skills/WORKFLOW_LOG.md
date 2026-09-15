@@ -2148,3 +2148,76 @@ gác". Không cần migration. Sẵn sàng để xác nhận BE hoàn tất trư
 - Phase 7 (audit log riêng, PLAN mục 6) - chưa code.
 - 3 lỗi lint `no-unsafe-enum-comparison` baseline ở `periodic-task-access.helper.ts` - có sẵn từ trước,
   chưa sửa (ngoài phạm vi yêu cầu phiên này).
+
+## [2026-09-15 16:30] | Hoàn tất FE Phase 6 "Công việc định kỳ" (Checklist con kiểu Trello) | Status: Success
+
+**Actor:** Agent (Claude). Bắt đầu bằng `git clone` lại repo mới nhất - HEAD thật `a4d82f2` (entry log
+trước). Đọc lại `TaskLinksModal.tsx` (Phase 2-5) + `usePeriodicTaskSecondaryAssignees.ts` (Phase 4) trước
+khi code để mirror ĐÚNG quy ước UI/hook đã có, không bịa pattern mới.
+
+**Đã làm:**
+1. `lib/api/periodic-tasks.api.ts`: thêm interface `PeriodicTaskChecklistItem` (khớp đúng response thật
+   của `queryItems()` ở BE - CHỈ có `createdById`, KHÔNG có object `createdBy` vì Service không
+   `leftJoinAndSelect` quan hệ này) + field `checklistItems?: PeriodicTaskChecklistItem[]` trên
+   `PeriodicTask` (mirror `secondaryAssignees` - chỉ có ở `GET /:id`, không ẩn theo quyền).
+2. `lib/api/periodic-task-checklist-items.api.ts` (mới): 5 hàm khớp đúng 5 endpoint BE Phase 6
+   (`getAll/create/update/remove/reorder`) - tất cả hàm sửa dữ liệu trả về TOÀN BỘ danh sách mới nhất
+   (mirror `addSecondaryAssignee`), đơn giản hoá sync state FE.
+3. `lib/hooks/usePeriodicTaskChecklistItems.ts` (mới): 4 hook React Query
+   (`useAddTaskChecklistItem/useUpdateTaskChecklistItem/useRemoveTaskChecklistItem/useReorderTaskChecklistItems`),
+   mirror CHÍNH XÁC cấu trúc `usePeriodicTaskSecondaryAssignees.ts` (cùng namespace `LIST_KEY =
+   'periodic-tasks'`, invalidate cả namespace vì `checklistItems` chỉ nằm trong response `GET /:id`).
+4. `components/periodic-tasks/TaskChecklistModal.tsx` (mới): Modal riêng (KHÔNG nhét vào
+   `TaskLinksModal` - đủ lớn để tách thành nhóm chức năng độc lập của riêng nó), mirror `TaskLinksModal`
+   về mọi nguyên tắc chung: fetch `checklistItems` qua `usePeriodicTask(id)` riêng (prop `task` từ danh
+   sách không có field này), gate quyền `periodic_tasks.edit` + chặn thêm bởi `edit_locked` khi Task đang
+   khoá (disable toàn bộ nút sửa + hiện `Text` giải thích lý do, ĐÚNG nguyên tắc "BE 403 -> FE tự ẩn UI
+   trước", Repository_Context___Rules mục 4), toast lỗi qua `getApiErrorMessage`.
+   - Tick xong/chưa xong: `Checkbox` gọi `update({ isDone })` ngay khi đổi.
+   - Sửa nội dung: bấm vào text -> chuyển sang `Input` inline, Enter/nút ✓ lưu, nút ✕ huỷ.
+   - Thêm mới: `Input` + nút "Thêm" ở cuối, item mới luôn vào cuối danh sách (đúng hợp đồng BE, `position`
+     tự tính).
+   - Xoá: `Popconfirm` + nút xoá (mirror pattern `TaskLinksModal`).
+   - **Sắp xếp lại ("kéo-thả kiểu Trello"):** dự án CHƯA cài thư viện drag-and-drop nào (`grep` xác nhận
+     không có `@dnd-kit`/`react-beautiful-dnd` trong `package.json`) - để tránh thêm phụ thuộc mới chỉ cho
+     1 tính năng nhỏ, dùng 2 nút "Lên"/"Xuống" đổi chỗ với item liền kề rồi gửi lại TOÀN BỘ mảng ID mới
+     qua `reorder()` - đúng hợp đồng `ReorderPeriodicTaskChecklistItemsDto` (hoán vị đầy đủ) ở BE, đạt
+     đúng kết quả "sắp xếp lại được" dù khác cơ chế tương tác (không phải kéo-thả chuột thật). Đã ghi rõ
+     trong JSDoc file để phiên sau biết đổi sang DnD thật (nếu chủ dự án muốn) chỉ cần đổi phần render +
+     `handleMove`, không cần đổi API/hook.
+   - Reset form phụ (nội dung đang gõ dở) đặt TRỰC TIẾP trong `resetAndClose()` (gọi từ `onCancel`),
+     KHÔNG dùng `useEffect` theo dõi `open` - tránh vi phạm rule `react-hooks/set-state-in-effect`
+     (setState đồng bộ trong effect) mà bản thân file gặp phải lúc code lần đầu, đã tự sửa trước khi
+     commit.
+5. `app/(dashboard)/cong-viec-dinh-ky/page.tsx`: thêm nút "Checklist" (icon `CheckSquareOutlined`) cạnh
+   nút "Liên kết" ở cột Thao tác (nút LUÔN hiện, chỉ cần `periodic_tasks.view` giống nút Liên kết - ai
+   đứng được ở trang này cũng có sẵn), state `checklistingTask` + render `TaskChecklistModal` ở cuối
+   trang (mirror `linkingTask`/`TaskLinksModal`). Nới `width` cột Thao tác từ 320 -> 420 để đủ chỗ cho nút
+   mới (đối chiếu bằng mắt, không đo pixel chính xác - có thể cần tinh chỉnh thêm nếu vẫn chật ở màn hình
+   nhỏ). Cập nhật JSDoc đầu file để nhắc Phase 6.
+
+**Verify thật:**
+- `npx tsc --noEmit` (frontend): sạch cho MỌI file mới/đã sửa. Còn 2 lỗi baseline KHÔNG liên quan
+  (`logo.png` module not found x4, `CountBadge.tsx` kiểu `styled-jsx`) - đối chiếu `git stash` xác nhận
+  **tồn tại y hệt TRƯỚC cả phiên này**, không phải do Phase 6 gây ra.
+- `npm run build` (`next build`, Next.js 16 + Turbopack): **build thành công**, route `/cong-viec-dinh-ky`
+  compile + generate static page bình thường, không lỗi.
+- `npx eslint` cho 5 file mới/đã tạo (`TaskChecklistModal.tsx`, `periodic-task-checklist-items.api.ts`,
+  `usePeriodicTaskChecklistItems.ts`, `periodic-tasks.api.ts`): **0 lỗi, 0 cảnh báo**.
+- `npx eslint` cho `page.tsx` (file có sẵn, chỉ thêm code): baseline trước sửa (đối chiếu `git stash`) =
+  20 problems (19 lỗi/1 cảnh báo, toàn bộ `@typescript-eslint/no-explicit-any` + `react-hooks/set-state-in-effect`
+  có sẵn xuyên suốt file từ Phase 1-5); sau khi thêm nút Checklist = **VẪN ĐÚNG 20 problems** (chỉ lệch số
+  dòng do chèn thêm code phía trên) - xác nhận Phase 6 KHÔNG thêm lỗi lint mới nào vào file này.
+- Dự án frontend KHÔNG có test runner (`package.json` không có script `test`, chỉ có 1 file
+  `nav-config.test.tsx` không liên quan) - không có gì để chạy test tự động cho UI, đúng hiện trạng dự án
+  (mirror `TaskLinksModal.tsx` cũng không có file test riêng).
+
+**Kết luận:** Phase 6 (Checklist con kiểu Trello, PLAN mục 6) đã HOÀN TẤT cả BE lẫn FE. Toàn bộ module
+"Công việc định kỳ" (Phase 1-6) đã xong theo đúng PLAN - còn lại Phase 7 (audit log riêng).
+
+**Còn lại (ngoài phạm vi phiên này):**
+- Phase 7 (audit log riêng, PLAN mục 6) - chưa code.
+- 3 lỗi lint `no-unsafe-enum-comparison` baseline ở `periodic-task-access.helper.ts` (BE) - có sẵn từ
+  trước, chưa sửa.
+- Sắp xếp checklist hiện dùng nút Lên/Xuống thay vì kéo-thả chuột thật (xem lý do ở JSDoc
+  `TaskChecklistModal.tsx`) - nếu chủ dự án muốn nâng cấp lên kéo-thả thật, cần thêm thư viện DnD mới.

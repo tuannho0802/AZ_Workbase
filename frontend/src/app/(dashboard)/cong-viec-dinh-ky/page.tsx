@@ -31,6 +31,7 @@ import {
     ApartmentOutlined,
     LockOutlined,
     UnlockOutlined,
+    CheckSquareOutlined,
 } from '@ant-design/icons';
 import dayjs, { Dayjs } from 'dayjs';
 import { useAuthStore } from '@/lib/stores/auth.store';
@@ -62,6 +63,7 @@ import { Customer } from '@/lib/types/customer.types';
 import { getApiErrorMessage } from '@/lib/utils/error-message.util';
 import { useRoleColorMap, useRoleColors } from '@/lib/hooks/useRoleColorMap';
 import { TaskLinksModal } from '@/components/periodic-tasks/TaskLinksModal';
+import { TaskChecklistModal } from '@/components/periodic-tasks/TaskChecklistModal';
 import { customerPhoneDisplay, customerPlainLabel, renderCustomerOption } from '@/components/common/customer-option-render';
 import { SimpleList } from '@/components/common/SimpleList';
 
@@ -69,13 +71,16 @@ const { Title, Text } = Typography;
 const { RangePicker } = DatePicker;
 
 /**
- * Trang chính "Công việc định kỳ" (Phase 1 + 2 + 5 -
+ * Trang chính "Công việc định kỳ" (Phase 1 + 2 + 5 + 6 -
  * PLAN_PERIODIC_TASKS_MODULE.md mục 6). Phase 2 (liên kết cha-con DAG +
  * % hoàn thành), Phase 3 (gắn Customer), Phase 4 (Phụ trách phụ) được UI qua
  * nút "Liên kết" mở `TaskLinksModal` - xem file đó. Phase 5 (Khoá/Mở khoá -
  * `is_locked`, PLAN mục 2.9) dựng NGAY tại trang này (không phải trong
  * `TaskLinksModal`) vì đây là hành động "chốt/gate" cấp Task, tương tự Sửa/
- * Xoá - không phải dữ liệu con như liên kết/Customer/Phụ trách phụ.
+ * Xoá - không phải dữ liệu con như liên kết/Customer/Phụ trách phụ. Phase 6
+ * (checklist con kiểu Trello) qua nút "Checklist" mở `TaskChecklistModal`
+ * riêng (không nhét vào `TaskLinksModal` - đủ lớn để tách thành nhóm chức
+ * năng độc lập của riêng nó) - xem file đó.
  *
  * 2 permission tách bạch (PLAN mục 2.9):
  *  - `periodic_tasks.approve`: bật/tắt được `is_locked` (2 chiều tự do,
@@ -474,6 +479,9 @@ export default function PeriodicTasksPage() {
 
     // ---- Modal Liên kết & Tiến độ (Phase 2) ----
     const [linkingTask, setLinkingTask] = useState<PeriodicTask | null>(null);
+    // Phase 6 (PLAN mục 6) - checklist con kiểu Trello, mở qua `TaskChecklistModal`
+    // riêng (không nhét vào `TaskLinksModal`), xem JSDoc file đó.
+    const [checklistingTask, setChecklistingTask] = useState<PeriodicTask | null>(null);
 
     // ---- Modal Xoá (đơn giản - CHỈ Admin, không scope/fallback) ----
     const [deletingTask, setDeletingTask] = useState<PeriodicTask | null>(null);
@@ -627,7 +635,7 @@ export default function PeriodicTasksPage() {
             // như Sửa/Xoá bên dưới.
             title: 'Thao tác',
             key: 'action',
-            width: 320,
+            width: 420,
             fixed: 'right' as const,
             render: (_: any, record: PeriodicTask) => {
                 // Phase 5 (PLAN mục 2.9): Task khoá mà thiếu `edit_locked` ->
@@ -638,6 +646,9 @@ export default function PeriodicTasksPage() {
                     <Space>
                         <Button size="small" icon={<ApartmentOutlined />} onClick={() => setLinkingTask(record)}>
                             Liên kết
+                        </Button>
+                        <Button size="small" icon={<CheckSquareOutlined />} onClick={() => setChecklistingTask(record)}>
+                            Checklist
                         </Button>
                         {canEdit && (
                             <Tooltip title={editDisabled ? 'Công việc đang bị khoá - cần quyền "Sửa khi đang khoá"' : ''}>
@@ -1139,6 +1150,13 @@ export default function PeriodicTasksPage() {
 
             {/* Modal Liên kết & Tiến độ (Phase 2) */}
             <TaskLinksModal open={!!linkingTask} onClose={() => setLinkingTask(null)} task={linkingTask} />
+
+            {/* Modal Checklist con kiểu Trello (Phase 6) */}
+            <TaskChecklistModal
+                open={!!checklistingTask}
+                onClose={() => setChecklistingTask(null)}
+                task={checklistingTask}
+            />
         </div>
     );
 }
