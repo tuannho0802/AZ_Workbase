@@ -2489,3 +2489,63 @@ thêm Trạng thái mới sẽ gặp lại lỗi này. (2) Đường nối chu�
 >   `<tr>` liền kề dùng số px cố định (20), giả định padding mặc định Table AntD hiện tại. Nếu sau này đổi
 >   `size`/`density` của Table hoặc theme padding, có thể cần chỉnh lại 2 số này cho khớp - CẦN chủ dự án
 >   xác nhận trực quan (không verify được bằng `tsc`/`vitest`, cần xem thật trên browser).
+
+
+## [2026-09-15 08:35] | Đổi UI đường nối chuỗi Task sang Tree View (staircase thật) + fix tsc alias lỗi cho test file | Status: Success
+
+**Actor:** Agent (theo phản hồi trực tiếp kèm 2 ảnh chụp màn hình của chủ dự án, tiếp nối entry 22:15 cùng ngày)
+
+**Yêu cầu:** (1) Đường nối chuỗi hiện tại (1 đường thẳng liên tục xuyên tâm mỗi dòng/Card) nhìn "kì", muốn đổi
+sang dạng cây phân cấp (tree view) thật: bẻ góc 90°, nối vào đúng Task con bên dưới, để dễ mở rộng khi chuỗi có
+nhiều Task hơn. Vòng phản hồi 2: nhánh ngang bản đầu quá ngắn/chưa rõ, cần dài hơn VÀ cấp con phải thụt SÂU HƠN
+hẳn cấp cha (staircase thật) chứ không chỉ bẻ góc tại chỗ cùng 1 mức thụt. (3) Báo lỗi tsc thật:
+`frontend/src/lib/utils/taskLinkChains.test.ts` không resolve được `@/lib/api/periodic-tasks.api`.
+
+**Files Changed:**
+- `frontend/src/components/periodic-tasks/TaskChainConnector.tsx` — viết lại hoàn toàn từ "1 trục dọc
+  absolute-full-height cho cả run" sang staircase tree thật: mỗi Task tự vẽ đoạn dọc vào (từ trục CHA) + nhánh
+  ngang bẻ góc (dài đúng `STEP`) + đoạn dọc ra (tại trục CHÍNH nó, nối xuống Task con) - toạ độ tính tuyệt đối
+  theo `itemIndex * STEP + TRUNK_OFFSET` (không lồng `<div>` đệ quy), dùng `display: 'flow-root'` để chứa
+  `marginBottom` của `TaskMiniCard` (tránh đứt đoạn đường nối giữa 2 Card).
+- `frontend/src/app/(dashboard)/cong-viec-dinh-ky/page.tsx` — cột "Công việc": áp dụng CÙNG công thức staircase
+  (STEP nhỏ hơn Agenda vì cột chỉ rộng 260px), dùng field mới `runFlag.depth` để biết cấp của từng dòng.
+- `frontend/src/lib/utils/taskLinkChains.ts` — `ChainRunFlag` thêm field `depth: number` (vị trí 0-based của
+  Task trong "run" đang hiển thị) - `getChainRunFlags()` gán kèm khi build map.
+- `frontend/src/lib/utils/taskLinkChains.test.ts` — cập nhật 2 test case `.toEqual(...)` khớp field `depth` mới.
+- `frontend/tsconfig.json` — bỏ 4 dòng exclude (`vitest.config.mts`, `vitest.setup.ts`, `src/**/*.test.ts`,
+  `src/**/*.test.tsx`), chỉ còn exclude `node_modules`.
+
+**Root Cause (bug 2 - lỗi tsc alias ở file test):**
+> `tsconfig.json` (dùng chung cho cả VS Code TS Server lẫn `next build`) có `exclude` liệt kê thẳng
+> `src/**/*.test.ts`/`*.test.tsx`. File bị EXCLUDE khỏi 1 tsconfig project thì trình biên tập (VS Code) không
+> còn coi nó thuộc project đó nữa, mở nó ở chế độ "detached/orphan" với compilerOptions MẶC ĐỊNH (KHÔNG có
+> `paths: { "@/*": ... }`) - vì vậy `@/lib/api/periodic-tasks.api` không resolve được, dù file chạy THẬT vẫn
+> đúng (Vitest dùng `vitest.config.mts` riêng + plugin `vite-tsconfig-paths` tự áp `paths`, không phụ thuộc
+> tsconfig chính) - đây là lỗi CHỈ hiển thị trong editor (false positive), không phải lỗi build/test thật, nhưng
+> ảnh hưởng TRẢI NGHIỆM cho MỌI người viết test có dùng alias `@/` sau này.
+
+**Solution (bug 2):**
+> Thử bỏ hẳn 4 dòng exclude test file khỏi `tsconfig.json` rồi verify LẠI CẢ 2 chiều (không chỉ tin sẽ ổn):
+> `npx tsc --noEmit` (0 lỗi, kể cả sau khi xoá `tsconfig.tsbuildinfo` để loại trừ khả năng do cache) VÀ
+> `next build` (vẫn sạch, đủ 32 route) - xác nhận việc EXCLUDE ban đầu không thực sự cần thiết cho build (file
+> test dùng `import { describe, expect, it } from 'vitest'` tường minh, không dựa vào global ambient type nào
+> có thể xung đột với môi trường Next.js).
+
+**Verify thật:**
+- `npx tsc --noEmit` toàn repo frontend: **0 lỗi** (kể cả 5 lỗi "pre-existing" ghi ở entry trước - hoá ra do
+  clone mới CHƯA có `next-env.d.ts`/`.next/types` (file này bị gitignore, Next tự sinh khi chạy `next build`
+  lần đầu) - không liên quan gì đến thay đổi lần này, tự hết sau khi `next build` chạy 1 lần).
+- `npx vitest run`: **3/3 suite - 18/18 test PASS** (2 test cập nhật field `depth`, không test mới - đây là
+  thay đổi thuần trình bày/CSS, không thêm logic thuần cần test riêng).
+- `next build`: sạch, đủ 32 route (2 lần, trước và sau khi sửa `tsconfig.json`).
+
+**Notes:**
+> - Dữ liệu chuỗi (`buildTaskLinkChains`/`sortTasksByChain`) hoàn toàn KHÔNG đổi - chuỗi vẫn là 1 danh sách
+>   tuyến tính đã sắp topological (không phải cây đa nhánh thật với nhiều Task con cùng 1 Task cha) - "tree
+>   view" ở đây là hình thức TRÌNH BÀY (mỗi Task sau vẽ như "con" của Task ngay trước nó), KHÔNG phản ánh việc
+>   BE đã hỗ trợ multi-parent/multi-child hiển thị phân nhánh thật (PLAN mục 2.2 vẫn còn treo, chưa có yêu cầu
+>   làm UI phân nhánh thật cho multi-parent).
+> - `STEP` (khoảng cách/độ dài nhánh mỗi cấp): Agenda = 36px, Table = 24px (cột hẹp hơn, cần STEP nhỏ hơn để
+>   không tràn chữ khi chuỗi có nhiều cấp) - CẦN chủ dự án xác nhận trực quan trên trình duyệt thật (không
+>   verify được bằng `tsc`/`vitest`), nhất là trường hợp chuỗi dài (5-6 cấp) có làm cột "Công việc" quá hẹp so
+>   với 260px không.

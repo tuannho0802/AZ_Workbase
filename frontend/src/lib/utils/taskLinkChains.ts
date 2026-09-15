@@ -139,6 +139,14 @@ export interface ChainRunFlag {
   color: string;
   isFirst: boolean;
   isLast: boolean;
+  /** Vị trí (0-based) của Task trong "run" đang hiển thị - phản hồi chủ dự
+   * án 2026-09-15 (bản tree view "chưa đủ dài/rõ ràng"): Bảng cần giá trị
+   * này để thụt lề TĂNG DẦN theo từng cấp (staircase, giống Agenda) thay vì
+   * mọi Task trong 1 chuỗi thụt CÙNG 1 mức như bản trước - xem cách dùng ở
+   * cột "Công việc" (`page.tsx`). KHÔNG trùng với `TaskChainInfo.index`
+   * (thứ tự topological cố định toàn chuỗi, kể cả thành viên KHÔNG hiển thị
+   * liền kề trong danh sách hiện tại) - đây là vị trí trong "run" ĐANG THẤY. */
+  depth: number;
 }
 
 /**
@@ -168,7 +176,7 @@ export function getChainRunFlags(tasks: PeriodicTask[], chains: Map<number, Task
   for (const run of runs) {
     if (!run.color || run.ids.length < 2) continue;
     run.ids.forEach((id, idx) => {
-      result.set(id, { color: run.color, isFirst: idx === 0, isLast: idx === run.ids.length - 1 });
+      result.set(id, { color: run.color, isFirst: idx === 0, isLast: idx === run.ids.length - 1, depth: idx });
     });
   }
   return result;

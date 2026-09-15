@@ -631,37 +631,42 @@ export default function PeriodicTasksPage() {
             dataIndex: 'title',
             key: 'title',
             width: 260,
-            // Phase 8 (yêu cầu chủ dự án 2026-09-15): đổi từ 1 đường kẻ thẳng
-            // xuyên tâm mỗi dòng sang kiểu CÂY PHÂN CẤP (tree view, giống hệt
-            // nguyên lý `TaskChainGroupedList` bên Agenda) - dòng ĐẦU CHUỖI
-            // (`isFirst`) là gốc, không có nhánh rẽ vào; MỌI dòng sau đó có 1
-            // đoạn dọc đi xuống từ dòng cha rồi BẺ GÓC 90° rẽ ngang vào đúng
-            // dòng đó (giống `├─`/`└─`), thay vì đâm thẳng qua tâm như trước.
-            // Bảng có `<tr>` RIÊNG cho từng Task (không có 1 khối DOM chung
-            // để trục tự co giãn theo `flow-root` như Agenda), nên vẫn giữ
-            // cách "bleed" bằng số px cố định (giả định padding mặc định
-            // AntD Table, xem ghi chú `CONTENT_H` bên dưới - đã từng lưu ý
+            // Phase 8 (yêu cầu chủ dự án 2026-09-15, đã qua 2 vòng phản hồi
+            // - xem JSDoc `TaskChainGroupedList` để biết đầy đủ lý do): CÂY
+            // PHÂN CẤP staircase THẬT, cùng công thức toạ độ với Agenda
+            // (`ownTrunkX/parentTrunkX = depth * STEP + TRUNK_OFFSET`) - chỉ
+            // khác ở STEP nhỏ hơn (cột "Công việc" chỉ rộng 260px, cần STEP
+            // hẹp hơn Agenda để không đẩy chữ tràn ra ngoài khi chuỗi có
+            // nhiều cấp). Bảng có `<tr>` RIÊNG cho từng Task (không có 1
+            // khối DOM chung để trục tự co giãn theo `flow-root` như Agenda),
+            // nên vẫn giữ cách "bleed" bằng số px cố định (giả định padding
+            // mặc định AntD Table, xem ghi chú `CONTENT_H` - đã từng lưu ý
             // cần chủ dự án xác nhận trực quan nếu đổi `size`/theme Table).
             render: (title: string, record: PeriodicTask) => {
                 const chain = chains.get(record.id);
                 const runFlag = chainRunFlags.get(record.id);
                 const CONTENT_H = 24;
                 const BEND_Y = CONTENT_H / 2; // điểm bẻ góc, giữa chiều cao nội dung 1 dòng
-                const TRUNK_X = 9; // trục dọc, nằm trong vùng thụt lề (paddingLeft 24)
+                const STEP = 24; // khoảng cách giữa 2 trục liền kề = chiều dài nhánh ngang
+                const TRUNK_OFFSET = 9;
+                const TRUNK_TO_TEXT = 15;
+                const depth = runFlag?.depth ?? 0;
+                const ownTrunkX = depth * STEP + TRUNK_OFFSET;
+                const parentTrunkX = (depth - 1) * STEP + TRUNK_OFFSET;
                 return (
-                    <div style={{ position: 'relative', paddingLeft: runFlag ? 24 : 0 }}>
+                    <div style={{ position: 'relative', paddingLeft: runFlag ? ownTrunkX + TRUNK_TO_TEXT : 0 }}>
                         {runFlag && (
                             <>
-                                {/* Đoạn dọc đi vào TỪ dòng cha phía trên - chỉ dòng KHÔNG
-                                    phải gốc chuỗi mới có (gốc không có cha). Bleed lên trên
-                                    mép `<td>` (top âm) để nối liền với đoạn "đi tiếp xuống"
-                                    của dòng ngay phía trên. */}
+                                {/* Đoạn dọc đi vào TỪ trục Task CHA (cấp nông hơn 1 bậc) -
+                                    chỉ dòng KHÔNG phải gốc chuỗi mới có (gốc không có cha).
+                                    Bleed lên trên mép `<td>` (top âm) để nối liền với đoạn
+                                    "đi tiếp xuống" của dòng ngay phía trên. */}
                                 {!runFlag.isFirst && (
                                     <div
                                         aria-hidden
                                         style={{
                                             position: 'absolute',
-                                            left: TRUNK_X,
+                                            left: parentTrunkX,
                                             top: -20,
                                             height: 20 + BEND_Y,
                                             width: 2,
@@ -670,30 +675,32 @@ export default function PeriodicTasksPage() {
                                         }}
                                     />
                                 )}
-                                {/* Nhánh ngang bẻ góc 90° rẽ vào nội dung dòng - cùng điều
-                                    kiện với đoạn dọc phía trên (gốc chuỗi không có nhánh). */}
+                                {/* Nhánh ngang bẻ góc 90° - nối từ trục CHA sang sát điểm
+                                    bắt đầu nội dung dòng này (dài đúng `STEP`, LUÔN đủ dài dù
+                                    đang ở cấp nào). Gốc chuỗi không có nhánh (không có cha). */}
                                 {!runFlag.isFirst && (
                                     <div
                                         aria-hidden
                                         style={{
                                             position: 'absolute',
-                                            left: TRUNK_X,
+                                            left: parentTrunkX,
                                             top: BEND_Y - 1,
-                                            width: 24 - TRUNK_X,
+                                            width: ownTrunkX + TRUNK_TO_TEXT - 4 - parentTrunkX,
                                             height: 2,
                                             backgroundColor: runFlag.color,
                                             borderRadius: 1,
                                         }}
                                     />
                                 )}
-                                {/* Đoạn dọc đi tiếp xuống dòng con kế tiếp - không vẽ cho
-                                    dòng CUỐI chuỗi (trục "kết thúc" tại đó). */}
+                                {/* Đoạn dọc đi tiếp xuống dòng con kế tiếp, tại trục của
+                                    CHÍNH dòng này - không vẽ cho dòng CUỐI chuỗi (trục "kết
+                                    thúc" tại đó). */}
                                 {!runFlag.isLast && (
                                     <div
                                         aria-hidden
                                         style={{
                                             position: 'absolute',
-                                            left: TRUNK_X,
+                                            left: ownTrunkX,
                                             top: BEND_Y,
                                             height: 20 + BEND_Y,
                                             width: 2,
@@ -702,12 +709,13 @@ export default function PeriodicTasksPage() {
                                         }}
                                     />
                                 )}
-                                {/* Chấm đánh dấu node - vẽ cho MỌI dòng trong chuỗi kể cả gốc. */}
+                                {/* Chấm đánh dấu node - vẽ cho MỌI dòng trong chuỗi kể cả
+                                    gốc, tại đúng trục của cấp đó. */}
                                 <span
                                     aria-hidden
                                     style={{
                                         position: 'absolute',
-                                        left: TRUNK_X - 4,
+                                        left: ownTrunkX - 4,
                                         top: BEND_Y - 5,
                                         width: 10,
                                         height: 10,

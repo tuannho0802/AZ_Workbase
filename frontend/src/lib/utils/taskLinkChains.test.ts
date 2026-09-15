@@ -39,9 +39,9 @@ describe('getChainRunFlags', () => {
 
     const result = getChainRunFlags(tasks, chains);
 
-    expect(result.get(1)).toEqual({ color: '#abc', isFirst: true, isLast: false });
-    expect(result.get(2)).toEqual({ color: '#abc', isFirst: false, isLast: false });
-    expect(result.get(3)).toEqual({ color: '#abc', isFirst: false, isLast: true });
+    expect(result.get(1)).toEqual({ color: '#abc', isFirst: true, isLast: false, depth: 0 });
+    expect(result.get(2)).toEqual({ color: '#abc', isFirst: false, isLast: false, depth: 1 });
+    expect(result.get(3)).toEqual({ color: '#abc', isFirst: false, isLast: true, depth: 2 });
     expect(result.has(99)).toBe(false);
   });
 
@@ -56,9 +56,9 @@ describe('getChainRunFlags', () => {
 
     const result = getChainRunFlags(tasks, chains);
 
-    expect(result.get(1)).toEqual({ color: '#111', isFirst: true, isLast: false });
-    expect(result.get(2)).toEqual({ color: '#111', isFirst: false, isLast: true });
-    expect(result.get(3)).toEqual({ color: '#222', isFirst: true, isLast: false });
-    expect(result.get(4)).toEqual({ color: '#222', isFirst: false, isLast: true });
+    expect(result.get(1)).toEqual({ color: '#111', isFirst: true, isLast: false, depth: 0 });
+    expect(result.get(2)).toEqual({ color: '#111', isFirst: false, isLast: true, depth: 1 });
+    expect(result.get(3)).toEqual({ color: '#222', isFirst: true, isLast: false, depth: 0 });
+    expect(result.get(4)).toEqual({ color: '#222', isFirst: false, isLast: true, depth: 1 });
   });
 });
