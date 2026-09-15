@@ -1,5 +1,5 @@
 import axiosInstance from './axios-instance';
-import { PaginatedResponse } from '../types/customer.types';
+import { PaginatedResponse, Customer } from '../types/customer.types';
 
 /** Khớp đúng `PeriodType` enum ở BE (`common/enums/period-type.enum.ts`). */
 export type PeriodType = 'daily' | 'weekly' | 'monthly' | 'yearly';
@@ -65,6 +65,16 @@ export interface PeriodicTask {
   color: string | null;
   createdAt: string;
   updatedAt: string;
+  /**
+   * Phase 3 (PLAN mục 2.4): CHỈ có mặt trên response của `GET /:id`
+   * (`getOne()`) - `GET /` (`getAll()`) KHÔNG đính field này (BE chỉ gọi
+   * `attachLinkedCustomers()` ở `findOne()`, xem controller).
+   * - `undefined` (key không tồn tại trong object gốc) → người xem KHÔNG có
+   *   quyền `customers.view`, KHÔNG phải "chưa gắn Customer nào" - FE phải
+   *   phân biệt `undefined` (ẩn hẳn UI phần Customer) với mảng rỗng `[]`
+   *   (có quyền, chỉ là chưa gắn/không còn cái nào trong phạm vi xem).
+   */
+  linkedCustomers?: Customer[];
 }
 
 export interface CreatePeriodicTaskPayload {

@@ -4,7 +4,7 @@ import { useMemo, useState } from 'react';
 import { Modal, Typography, Divider, Progress, Select, Button, App, Popconfirm, Tag, Space } from 'antd';
 import { DeleteOutlined, PlusOutlined } from '@ant-design/icons';
 import { useMyPermissions } from '@/lib/hooks/useMyPermissions';
-import { usePeriodicTasks } from '@/lib/hooks/usePeriodicTasks';
+import { usePeriodicTasks, usePeriodicTask } from '@/lib/hooks/usePeriodicTasks';
 import {
     useTaskChildren,
     useTaskParents,
@@ -12,6 +12,8 @@ import {
     useAddTaskLink,
     useRemoveTaskLink,
 } from '@/lib/hooks/usePeriodicTaskLinks';
+import { useAddTaskCustomers, useRemoveTaskCustomer } from '@/lib/hooks/usePeriodicTaskCustomers';
+import { useCustomers } from '@/lib/hooks/useCustomers';
 import { PeriodicTask, PERIOD_TYPE_LABELS, PERIOD_RANK } from '@/lib/api/periodic-tasks.api';
 import { getApiErrorMessage } from '@/lib/utils/error-message.util';
 import { SimpleList } from '@/components/common/SimpleList';
@@ -53,25 +55,60 @@ interface Props {
  * bug thật lúc code lần đầu do quên đối chiếu DTO này), đủ dùng cho quy mô
  * hiện tại. Nếu sau này số lượng Task tăng nhiều, cân nhắc thêm search
  * server-side (mirror `CustomerFilters`) thay vì tải hết.
+ *
+ * Phần "Khách hàng liên quan" (Phase 3, PLAN mục 2.4) đọc `linkedCustomers`
+ * từ `usePeriodicTask(taskId)` (fetch riêng, KHÔNG dùng `task` prop truyền
+ * vào - `task` đến từ danh sách `GET /periodic-tasks`, endpoint đó KHÔNG
+ * đính `linkedCustomers`, chỉ `GET /:id` mới có). `linkedCustomers ===
+ * undefined` (key không tồn tại) nghĩa là người xem thiếu `customers.view`
+ * - ẩn hẳn phần này, KHÔNG coi là "chưa gắn khách hàng nào" (mảng rỗng).
+ * Gán/gỡ cần thêm `periodic_tasks.link_customer` (khác `periodic_tasks.edit`
+ * dùng cho liên kết cha/con ở trên) - 2 quyền độc lập, ẩn riêng từng nút.
  */
 export function TaskLinksModal({ open, onClose, task }: Props) {
     const { message } = App.useApp();
     const { can } = useMyPermissions();
     const canEditLinks = can('periodic_tasks.edit');
+    const canLinkCustomer = can('periodic_tasks.link_customer');
 
     const taskId = task?.id ?? null;
     const { data: parents = [], isLoading: parentsLoading } = useTaskParents(taskId);
     const { data: children = [], isLoading: childrenLoading } = useTaskChildren(taskId);
     const { data: rollup, isLoading: rollupLoading } = useTaskRollup(taskId);
 
+    // Phase 3: `task` prop (từ danh sách) KHÔNG có `linkedCustomers` - phải
+    // fetch riêng qua `GET /:id`, xem JSDoc đầu file.
+    const { data: taskDetail, isLoading: taskDetailLoading } = usePeriodicTask(taskId);
+    const linkedCustomers = taskDetail?.linkedCustomers;
+
     const addMutation = useAddTaskLink();
     const removeMutation = useRemoveTaskLink();
+    const addCustomersMutation = useAddTaskCustomers();
+    const removeCustomerMutation = useRemoveTaskCustomer();
 
     const [selectedParentId, setSelectedParentId] = useState<number | undefined>(undefined);
     const [selectedChildId, setSelectedChildId] = useState<number | undefined>(undefined);
+    const [selectedCustomerId, setSelectedCustomerId] = useState<number | undefined>(undefined);
+    const [customerSearch, setCustomerSearch] = useState('');
 
     const { data: candidatesData, isLoading: candidatesLoading } = usePeriodicTasks({ page: 1, limit: 100 });
     const allTasks = useMemo(() => candidatesData?.data ?? [], [candidatesData]);
+
+    // Search server-side (mirror `useCustomers.ts`) - chỉ chạy khi modal cho
+    // phép gắn Customer, tránh gọi API thừa cho user không có quyền.
+    const { data: customerCandidatesData, isLoading: customerCandidatesLoading } = useCustomers({
+        page: 1,
+        limit: 20,
+        search: customerSearch || undefined,
+    });
+    const linkedCustomerIds = useMemo(
+        () => new Set((linkedCustomers ?? []).map((c) => c.id)),
+        [linkedCustomers],
+    );
+    const customerCandidates = useMemo(
+        () => (customerCandidatesData?.data ?? []).filter((c) => !linkedCustomerIds.has(c.id)),
+        [customerCandidatesData, linkedCustomerIds],
+    );
 
     const parentIds = useMemo(() => new Set(parents.map((p) => p.id)), [parents]);
     const childIds = useMemo(() => new Set(children.map((c) => c.id)), [children]);
@@ -93,6 +130,8 @@ export function TaskLinksModal({ open, onClose, task }: Props) {
     const resetAndClose = () => {
         setSelectedParentId(undefined);
         setSelectedChildId(undefined);
+        setSelectedCustomerId(undefined);
+        setCustomerSearch('');
         onClose();
     };
 
@@ -142,6 +181,32 @@ export function TaskLinksModal({ open, onClose, task }: Props) {
             {
                 onSuccess: () => message.success(`Đã gỡ liên kết với "${title}"`),
                 onError: (err) => message.error(getApiErrorMessage(err, 'Gỡ liên kết thất bại')),
+            },
+        );
+    };
+
+    const handleAddCustomer = () => {
+        if (!task || !selectedCustomerId) return;
+        addCustomersMutation.mutate(
+            { taskId: task.id, customerIds: [selectedCustomerId] },
+            {
+                onSuccess: () => {
+                    message.success('Đã gắn Khách hàng vào Công việc');
+                    setSelectedCustomerId(undefined);
+                    setCustomerSearch('');
+                },
+                onError: (err) => message.error(getApiErrorMessage(err, 'Gắn Khách hàng thất bại')),
+            },
+        );
+    };
+
+    const handleRemoveCustomer = (customerId: number, name: string) => {
+        if (!task) return;
+        removeCustomerMutation.mutate(
+            { taskId: task.id, customerId },
+            {
+                onSuccess: () => message.success(`Đã gỡ "${name}" khỏi Công việc`),
+                onError: (err) => message.error(getApiErrorMessage(err, 'Gỡ Khách hàng thất bại')),
             },
         );
     };
@@ -323,6 +388,102 @@ export function TaskLinksModal({ open, onClose, task }: Props) {
                     {!canEditLinks && (
                         <Text type="secondary" style={{ display: 'block', marginTop: 16 }}>
                             Bạn chỉ có quyền xem liên kết - cần quyền &quot;Sửa Công việc định kỳ&quot; để gán/gỡ.
+                        </Text>
+                    )}
+
+                    <Divider style={{ margin: '20px 0 12px' }} />
+
+                    <div style={{ marginBottom: 8 }}>
+                        <Text strong>Khách hàng liên quan{linkedCustomers ? ` (${linkedCustomers.length})` : ''}:</Text>
+                    </div>
+
+                    {linkedCustomers === undefined ? (
+                        <Text type="secondary">
+                            {taskDetailLoading
+                                ? 'Đang tải...'
+                                : 'Bạn không có quyền xem Khách hàng nên không thấy được phần này.'}
+                        </Text>
+                    ) : (
+                        <>
+                            <SimpleList
+                                loading={taskDetailLoading}
+                                size="small"
+                                dataSource={linkedCustomers}
+                                rowKey={(c) => c.id}
+                                emptyText="Chưa gắn Khách hàng nào vào Công việc này"
+                                renderMeta={(c) => ({
+                                    title: c.name,
+                                    description: (
+                                        <Space size={4}>
+                                            <Text type="secondary" style={{ fontSize: 12 }}>
+                                                {c.phone}
+                                            </Text>
+                                            {c.salesUser && <Tag color="blue">{c.salesUser.name}</Tag>}
+                                        </Space>
+                                    ),
+                                })}
+                                renderActions={(c) =>
+                                    canLinkCustomer
+                                        ? [
+                                            <Popconfirm
+                                                key="remove-customer"
+                                                title={`Gỡ "${c.name}" khỏi Công việc?`}
+                                                onConfirm={() => handleRemoveCustomer(c.id, c.name)}
+                                                okText="Gỡ"
+                                                cancelText="Huỷ"
+                                            >
+                                                <Button
+                                                    size="small"
+                                                    danger
+                                                    type="text"
+                                                    icon={<DeleteOutlined />}
+                                                    loading={
+                                                        removeCustomerMutation.isPending &&
+                                                        removeCustomerMutation.variables?.customerId === c.id
+                                                    }
+                                                />
+                                            </Popconfirm>,
+                                        ]
+                                        : []
+                                }
+                            />
+                            {canLinkCustomer && (
+                                <div style={{ marginTop: 12, display: 'flex', gap: 8 }}>
+                                    <Select
+                                        style={{ flex: 1 }}
+                                        showSearch
+                                        filterOption={false}
+                                        placeholder="Tìm Khách hàng theo tên/SĐT để gắn"
+                                        loading={customerCandidatesLoading}
+                                        value={selectedCustomerId}
+                                        onChange={setSelectedCustomerId}
+                                        onSearch={setCustomerSearch}
+                                        options={customerCandidates.map((c) => ({
+                                            value: c.id,
+                                            label: `${c.name} - ${c.phone}`,
+                                        }))}
+                                        notFoundContent={
+                                            customerCandidatesLoading ? 'Đang tìm...' : 'Không tìm thấy Khách hàng phù hợp'
+                                        }
+                                    />
+                                    <Button
+                                        type="primary"
+                                        icon={<PlusOutlined />}
+                                        disabled={!selectedCustomerId}
+                                        loading={addCustomersMutation.isPending}
+                                        onClick={handleAddCustomer}
+                                    >
+                                        Gán
+                                    </Button>
+                                </div>
+                            )}
+                        </>
+                    )}
+
+                    {linkedCustomers !== undefined && !canLinkCustomer && (
+                        <Text type="secondary" style={{ display: 'block', marginTop: 8 }}>
+                            Bạn chỉ có quyền xem Khách hàng liên quan - cần thêm quyền &quot;Gắn Khách hàng vào Công
+                            việc định kỳ&quot; để gán/gỡ.
                         </Text>
                     )}
                 </>

@@ -1597,3 +1597,64 @@ tài khoản cùng code song song, có thể bị "vượt mặt" mà không ai 
   VÀ FE" đã áp dụng cho Phase 1/2).
 - Phase 4 (phụ trách chính/phụ - `periodic_task_secondary_assignees`), Phase 5 (approve/lock), Phase 6
   (checklist con), Phase 7 (audit log riêng) - chưa code, xem PLAN mục 6.
+
+---
+
+## [2026-09-15 09:50] | Code xong FE Phase 3 "Công việc định kỳ" (gắn Customer vào Task) - Phase 3 ĐỦ cả BE+FE | Status: Success
+
+**Actor:** Agent (Claude), theo yêu cầu chủ dự án tiếp FE ngay sau khi xác nhận BE Phase 3 build/test sạch
+(entry trên). Đã `git clone` lại repo mới nhất và tự đọc code thật trước khi code tiếp (không tin thẳng
+transcript dán vào - đối chiếu lại BE, migration, `PERMISSIONS.md` mục 2.11 đều khớp đúng như log ghi).
+
+**Đã làm (đối chiếu đúng `PLAN_PERIODIC_TASKS_MODULE.md` mục 2.4 - Phase 3 FE):**
+1. `frontend/src/lib/api/periodic-tasks.api.ts` - thêm field `linkedCustomers?: Customer[]` vào type
+   `PeriodicTask` (optional CỐ Ý - JSDoc giải thích rõ `undefined` = thiếu `customers.view`, khác mảng
+   rỗng `[]` = có quyền nhưng chưa gắn/không còn Customer trong phạm vi xem). Field này CHỈ có trên
+   response `GET /:id`, không có trên `GET /` (danh sách) - khớp đúng BE chỉ gọi `attachLinkedCustomers()`
+   ở `findOne()`.
+2. `frontend/src/lib/api/periodic-task-customers.api.ts` (mới) - khớp đúng 2 endpoint BE:
+   `POST /periodic-tasks/:id/customers` (body `customerIds[]`) và `DELETE .../customers/:customerId`.
+3. `frontend/src/lib/hooks/usePeriodicTaskCustomers.ts` (mới) - `useAddTaskCustomers`/
+   `useRemoveTaskCustomer`, cùng namespace invalidate `'periodic-tasks'` với `usePeriodicTaskLinks.ts` để
+   `usePeriodicTask(id)` tự fetch lại `linkedCustomers` mới nhất sau khi gán/gỡ.
+4. `TaskLinksModal.tsx` - thêm hẳn 1 section "Khách hàng liên quan" vào modal Liên kết & Tiến độ có sẵn
+   (không tạo modal riêng, mirror đúng chỗ Phase 2 đã đặt UI liên kết cha/con):
+   - Đọc `linkedCustomers` từ `usePeriodicTask(taskId)` (fetch riêng qua `GET /:id`), KHÔNG dùng `task`
+     prop truyền vào (prop đó đến từ `GET /` - không có field này).
+   - `linkedCustomers === undefined` -> ẩn hẳn phần chọn Customer + hiện dòng "không có quyền xem", đúng
+     PLAN mục 2.4 bước 4 (phân biệt với mảng rỗng).
+   - Nút Gán/Gỡ chỉ hiện khi `can('periodic_tasks.link_customer')` - permission RIÊNG, độc lập với
+     `periodic_tasks.edit` dùng cho liên kết cha/con phía trên (2 dòng thông báo thiếu quyền tách biệt).
+   - Select chọn Customer dùng search SERVER-SIDE qua `useCustomers({ search, limit: 20 })` (mirror
+     `CustomerFilters`) - KHÔNG tải hết danh sách Customer như `TaskLinksModal` đang làm với candidates
+     Task (chấp nhận được cho Task vì hard-cap 100, nhưng Customer có thể rất nhiều nên phải search thay
+     vì tải hết). Danh sách gợi ý tự loại các Customer đã gắn sẵn (`linkedCustomerIds`).
+
+**Files Changed:**
+- `frontend/src/lib/api/periodic-tasks.api.ts` - thêm field `linkedCustomers?` vào `PeriodicTask`
+- `frontend/src/lib/api/periodic-task-customers.api.ts` (mới)
+- `frontend/src/lib/hooks/usePeriodicTaskCustomers.ts` (mới)
+- `frontend/src/components/periodic-tasks/TaskLinksModal.tsx` - thêm section Customer + JSDoc cập nhật
+
+**Verify thật:**
+- `npx tsc --noEmit` (frontend): chỉ còn đúng 5 lỗi pre-existing baseline (thiếu asset `logo.png` trong
+  sandbox + `CountBadge.tsx` JSX style prop) - giống hệt baseline đã ghi nhận ở entry Phase 2, KHÔNG có
+  lỗi mới phát sinh từ code Phase 3 FE.
+- `npm run build` (Next.js 16 Turbopack): **Compiled successfully**, đủ 32 route bao gồm
+  `/cong-viec-dinh-ky`.
+- `npx vitest run` (toàn bộ): **2 suite pass, 14/14 test pass** (không có test riêng cho
+  `TaskLinksModal`/module `periodic-tasks` ở FE - mirror đúng thực trạng Phase 1/2 cũng chưa có FE test,
+  chỉ 2 file test hiện có trong repo là `nav-config.test.tsx` và `useMyPermissions.test.tsx`, không liên
+  quan module này).
+- `npx eslint` riêng 4 file vừa sửa/thêm: sạch, không lỗi/warning.
+
+**Kết luận:** Phase 3 (gắn Customer vào Task, kèm ẩn field theo quyền) nay ĐỦ điều kiện coi là hoàn tất
+CẢ BE LẪN FE - đúng chuẩn "1 Phase = build+test cả 2 phía" đã áp dụng cho Phase 1/2. Sẵn sàng bắt đầu
+Phase 4 (phụ trách chính/phụ - `periodic_task_secondary_assignees`, xem PLAN mục 2.5/6) khi chủ dự án
+yêu cầu.
+
+**Còn lại (ngoài phạm vi phiên này):**
+- Phase 4 (phụ trách chính/phụ), Phase 5 (approve/lock), Phase 6 (checklist con), Phase 7 (audit log
+  riêng) - chưa code, xem PLAN mục 6.
+- (Tuỳ chọn, không bắt buộc) Có thể thêm FE test cho `TaskLinksModal` sau nếu chủ dự án muốn nâng độ phủ
+  test FE - hiện repo FE gần như chưa có test component nào, không riêng module này.
