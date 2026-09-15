@@ -547,6 +547,54 @@ Xem mục 1.7 để hiểu đầy đủ kiến trúc. Đối chiếu nhanh trạ
 | Xoá | Không áp rule "chỉ Admin" tuyệt đối như mục 1 — thay vào đó chặn theo nghiệp vụ riêng: không xoá được role hệ thống, không xoá được role đang có user gán (xem `roles.service.ts`). Đây là **ngoại lệ có chủ đích** (mục 1.6) vì bản chất "xoá 1 Role" khác hẳn "xoá 1 bản ghi dữ liệu nghiệp vụ" |
 | Spec test | `roles.service.spec.ts`, `permissions.service.spec.ts` |
 
+### 2.11. Công việc định kỳ (`modules/periodic-tasks`) — ✅ ĐÃ KHỚP (Phase 1-3/7, xem `PLAN_PERIODIC_TASKS_MODULE.md`)
+
+Module mới (bắt đầu 2026-09-14), theo đúng `PLAN_PERIODIC_TASKS_MODULE.md` — dùng chung Dynamic RBAC
+(mục 1.7) với permission key riêng resource `periodic_tasks`, KHÔNG có ngoại lệ hardcode nào ngoài Root
+Admin (đồng bộ mục 1).
+
+| Permission | supports_scope | Seed mặc định (admin/assistant/manager/employee) | Ghi chú |
+|---|---|---|---|
+| `periodic_tasks.view/create/edit` | true (own/department/all) | all/all/department/own | Mirror đúng khuôn `customers.view/create/edit` |
+| `periodic_tasks.delete` | true, chỉ seed Admin | all/_(không seed)_/_(không seed)_/_(không seed)_ | Xoá mềm, đúng quy ước "chỉ Admin" |
+| `periodic_tasks.link_customer` | false (nhị phân) | bật/bật/tắt/tắt | Bật/tắt tính năng gắn Khách hàng vào Task — xem mục 2.4 của PLAN |
+
+**Phase 1 (nền tảng CRUD)** — `PeriodicTaskAccessHelper.applyViewFilter()` mirror 1-1
+`CustomerAccessHelper` (dùng bảng `department_managers`, KHÔNG dùng cột đơn đã deprecated). Mọi
+`update()`/`remove()` đều gọi `findOne()` trước ("1 cổng gác").
+
+**Phase 2 (liên kết DAG cha-con + rollup %)** — dùng chung `periodic_tasks.edit`, không cần permission
+mới. `PeriodicTaskLinksService` tự validate rank kỳ hạn + chống chu trình (BFS ngược từ parent) trước khi
+lưu cạnh — không đụng gì tới RBAC ngoài gọi lại `findOne()` làm cổng gác cho cả 2 đầu cạnh (child + parent).
+
+**Phase 3 (gắn Customer vào Task) — điểm khác biệt quan trọng nhất so với các module khác:** đây là module
+ĐẦU TIÊN trong repo cố tình dùng **2 lớp permission độc lập cho cùng 1 endpoint**
+(`POST/DELETE .../customers`), vì `@RequirePermission()` chỉ nhận đúng 1 key/route (xem JSDoc decorator):
+- Lớp 1: `periodic_tasks.edit` — gate ở Controller/`PermissionGuard` như mọi endpoint sửa Task khác.
+- Lớp 2: `periodic_tasks.link_customer` — permission nhị phân, `PeriodicTaskCustomersService` tự inject
+  `PermissionsService` và gọi `hasPermission()` trực tiếp (KHÔNG qua Guard) để check thêm lớp này, thiếu
+  thì 403 dù đã qua lớp 1.
+- Danh sách Customer hợp lệ để chọn/xem lại **KHÔNG tự viết bộ lọc riêng** — tự tra scope thật của
+  `customers.view` (permission của MODULE KHÁC, độc lập hoàn toàn với scope `periodic_tasks.*`) rồi chạy
+  qua đúng `CustomerAccessHelper.applyViewFilter()` — đúng nguyên tắc "1 nguồn áp filter duy nhất" (mục 1
+  quy tắc kỹ thuật) dù đây là 2 module khác nhau.
+- Response `GET /periodic-tasks/:id` — field `linkedCustomers` bị **xoá hẳn khỏi object** (không trả mảng
+  rỗng `[]`) nếu người xem không có `customers.view` — tránh lộ "trường này tồn tại" (yêu cầu tường minh
+  của chủ dự án, xem PLAN mục 2.4 bước 4). Có quyền thì mảng trả về được lọc lại theo ĐÚNG phạm vi
+  `customers.view` của người đang xem (không phải phạm vi của người đã gắn Customer vào Task).
+- Root Admin bypass đúng chuẩn hiện tại (`role === 'admin' && isRootAdmin === true`), tự implement lại ở
+  `PeriodicTaskCustomersService` vì lớp check thứ 2 này KHÔNG đi qua `PermissionGuard`.
+
+**Spec test:** `periodic-tasks.service.spec.ts`, `periodic-task-links.service.spec.ts`,
+`periodic-task-customers.service.spec.ts` (10 test — 403 thiếu `link_customer`, 403 thiếu `customers.view`,
+400 customer ngoài scope, ẩn field đúng cách khi thiếu quyền, idempotent add, Root Admin bypass),
+`periodic-task-access.helper.spec.ts`. Verify (2026-09-15): `tsc --noEmit` sạch, `nest build` sạch,
+**33/33 suite / 613/613 test pass** (toàn bộ, không regression).
+
+**Còn lại (Phase 4-7, chưa code):** phụ trách chính/phụ (`periodic_task_secondary_assignees`),
+approve/lock (`periodic_tasks.approve`/`edit_locked`), checklist con kiểu Trello, audit log riêng — xem
+`PLAN_PERIODIC_TASKS_MODULE.md` mục 6.
+
 ---
 
 ## 3. Lịch sử quyết định & rà soát
@@ -566,6 +614,7 @@ Xem mục 1.7 để hiểu đầy đủ kiến trúc. Đối chiếu nhanh trạ
 | 2026-09-08 (bug thật: 403 khi Employee tick "đã join nhóm") | Chủ dự án báo lỗi thật `PATCH /customers/:id/group-memberships/:groupId` trả 403 "Bạn không có quyền thực hiện hành động này" cho user role Employee ngay lúc vừa tạo khách hàng, dù user này tạo/sửa khách hàng bình thường không lỗi. Đối chiếu trực tiếp code xác nhận nguyên nhân: migration `1778900000000-SplitCustomersManagePermission` đã tách `customers.manage` → `customers.create`/`customers.edit` cho route CRUD chính của `customers.controller.ts`, nhưng **bỏ sót 2 route**: `customer-group-memberships.controller.ts` (`PATCH :id/group-memberships/:groupId`) và `customers.controller.ts` (`POST :id/deposits`) — cả 2 vẫn đòi `customers.manage`, permission NÀY CHỈ được seed cho admin/assistant/manager (`1778600000000-AddDetailedRbacPermissions`), Employee dù có `customers.edit` cũng không tự có. Bảng permission catalogue ở mục 1.7 cũng bị lệch theo (vẫn ghi `customers.manage` = "Tạo/sửa KH", chưa từng cập nhật theo cú tách). **Đã sửa code**: đổi `@RequirePermission('customers.manage')` → `@RequirePermission('customers.edit')` ở cả 2 route trên (nhất quán: ai sửa được KH thì cũng thao tác được sub-resource của KH đó). `customers.manage` vẫn giữ trong bảng `permissions` (không xoá, không có route nào tham chiếu nữa, đánh dấu LEGACY). Verify: `tsc --noEmit` BE sạch, `jest customers.service.spec.ts customer-group-memberships` 48/48 PASS | Xem mục 1.7 (bảng permission catalogue đã sửa), `customer-group-memberships.controller.ts`, `customers.controller.ts` |
 | 2026-09-08 (tiếp — tách riêng permission "Tham gia nhóm", theo yêu cầu chủ dự án) | Sau khi vá bug 403 ở trên, chủ dự án yêu cầu thêm: (1) 1 permission RIÊNG cho hành động tick "đã tham gia nhóm", tách khỏi `customers.edit`, có mục điều khiển riêng trên `/phan-quyen`; (2) mặc định scope Employee = `own` (chỉ data của chính mình); (3) hỗ trợ use case tick chọn nhóm ngay lúc tạo mới khách hàng. Kiểm tra trực tiếp code xác nhận: (a) use case "tick nhóm lúc tạo mới" **đã có sẵn ở FE** từ trước (`CustomerForm.tsx` — `GroupPickerModal` + gọi `setMembership()` ngay sau `POST /customers` khi tạo mới) — bug 403 vừa vá ở trên đã đủ để luồng này chạy được với `customers.edit`, chỉ là chưa có permission riêng theo đúng ý muốn tách bạch; (b) phát hiện thêm 1 bug thật KHÁC ở FE: `CustomerGroupMembershipsTab.tsx` (Switch bật/tắt ở tab "Nhóm" khi XEM chi tiết KH) đang check `can('customers.manage')` — permission LEGACY từ trước khi tách `customers.create`/`customers.edit` (2026-09-08 sáng), không khớp với bất kỳ permission nào Backend thực sự đang enforce ở route PATCH này kể từ 2 lần đổi liên tiếp trong ngày — khiến Switch bị ẩn (hiện Tag read-only) sai cho nhiều role dù Backend đáng lẽ cho phép. **Đã sửa**: (1) Migration mới `1779600000000-AddCustomerGroupMembershipSetPermission` — thêm permission `customer_group_memberships.set`, seed mặc định Admin/Assistant=`all`, Manager=`department`, Employee=`own` (đúng bảng chuẩn mục 1); (2) Đổi `@RequirePermission()` của `PATCH :id/group-memberships/:groupId` sang key mới; (3) Đổi `CustomerGroupMembershipsTab.tsx`: `can('customers.manage')` → `can('customer_group_memberships.set')`; (4) Thêm `RESOURCE_LABEL['customer_group_memberships']` ở `phan-quyen/page.tsx` để Admin thấy tên tiếng Việt thay vì raw key. `GET .../group-memberships` (xem checklist) và luồng tạo mới KH **không đổi gì thêm** — đã hoạt động đúng khi Employee có permission mới ở scope `own`. Verify: `tsc --noEmit` BE sạch, migration chạy thử `migration:run`/`migration:revert` OK trên DB test, `jest` toàn bộ suite PASS (xem số liệu ở cuối phiên) | Xem mục 1.7 (permission catalogue), mục 2.1 (bảng sub-resource), `1779600000000-AddCustomerGroupMembershipSetPermission.ts`, `customer-group-memberships.controller.ts`, `CustomerGroupMembershipsTab.tsx`, `phan-quyen/page.tsx` |
 | 2026-09-11 (2 bug thật báo qua ảnh chụp: nav "Nhóm tôi quản lý" không gate quyền + fallback 403 lặp vô hạn) | Chủ dự án test 1 role chỉ bật `profile`/`nghi-phep`, tắt hết còn lại — phát hiện 2 vấn đề: **(A)** mục nav "Nhóm tôi quản lý" (`/nhom-toi-quan-ly`) vẫn hiện dù đã tắt hết quyền khác — kiểm tra `nav-config.tsx` xác nhận đây là mục DUY NHẤT (ngoài `profile`, vốn cố ý luôn hiện) có `roles: null` mà KHÔNG có `permission` nào — không đồng bộ với 14 mục nav khác đều đã migrate. **(B)** F5 ở trang không có quyền → mọi route guard đều `router.replace('/customers')` làm fallback — nếu `customers.view` CŨNG bị tắt (đúng tình huống test của chủ dự án), fallback này tự đâm vào 1 trang cũng 403, tạo cảm giác "loop lỗi". Rà soát toàn bộ repo bằng `grep -rn "router.replace('/customers')"` xác nhận **15 file** dùng chung pattern này. **Đã sửa**: (A) Thêm permission MỚI `link_groups.my_managed` (migration `1781600000000-AddLinkGroupsMyManagedPermission`, seed cả 4 role = bật, giữ nguyên hành vi hiện tại) — CỐ Ý không tái dùng `link_groups.view` vì khác mục đích (xem mục 2.4); gắn `permission: 'link_groups.my_managed'` ở `nav-config.tsx` + thêm route guard `useEffect` ở chính `page.tsx` (trước đây hoàn toàn không có). (B) Đổi TOÀN BỘ 15 chỗ `router.replace('/customers')` → `router.replace('/')` — trang chủ (`app/(dashboard)/page.tsx`) tự lọc theo `getVisibleNavItems()`, luôn an toàn làm đích fallback vì không tự đòi permission gì (hiện danh sách rỗng nếu user không có quyền nào, không bao giờ tự 403). Cập nhật `nav-config.test.tsx` (1 test cũ khẳng định sai hành vi "nhom-toi-quan-ly luôn hiện" — đổi thành test hành vi ĐÚNG theo `can()`). Verify: `tsc --noEmit` BE+FE sạch, `nest build`/`next build` sạch (đủ 27 route), `jest` BE 528/530 pass (2 fail pre-existing không liên quan), `vitest` FE 14/14 pass | Xem mục 1.7 (permission catalogue), mục 2.4 (route guard `/nhom-toi-quan-ly`), `1781600000000-AddLinkGroupsMyManagedPermission.ts`, `nav-config.tsx`, `nhom-toi-quan-ly/page.tsx` |
+| 2026-09-15 (module MỚI "Công việc định kỳ" - Phase 1-3 xong) | Audit lại code thật (không tin transcript phiên trước) xác nhận BE Phase 1 (CRUD + RBAC own/department/all) và Phase 2 (liên kết DAG cha-con + rollup %, dùng chung `periodic_tasks.edit`) đã đúng rule, cả 2 đều đã có FE mount thật (không phải file mồ côi). Tiếp tục code Phase 3 (gắn Customer vào Task) - module ĐẦU TIÊN trong repo dùng 2 lớp permission độc lập cho cùng 1 endpoint (`periodic_tasks.edit` qua Guard + `periodic_tasks.link_customer` tự check thêm trong Service vì `@RequirePermission()` chỉ nhận 1 key/route), tái dùng `CustomerAccessHelper.applyViewFilter()` với scope thật của `customers.view` (module khác) để lọc Customer hợp lệ, xoá hẳn key `linkedCustomers` khỏi response khi thiếu quyền (không trả mảng rỗng) | Xem mục 2.11 (mới thêm), `PLAN_PERIODIC_TASKS_MODULE.md` mục 2.4/2.12/6, `1782400000000-CreatePeriodicTaskCustomers.ts`, `periodic-task-customers.service.ts` |
 
 ---
 

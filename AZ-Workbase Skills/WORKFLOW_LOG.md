@@ -1490,3 +1490,110 @@ sửa tự do như mọi field khác (mirror nguyên tắc PLAN mục 2.10 áp d
   đúng trường hợp báo cáo "xong" nhưng chưa push.
 
 ---
+
+
+## [2026-09-15 09:20] | Xác nhận BE+FE Phase 2 "Công việc định kỳ" (liên kết DAG cha-con + rollup %) đã hoàn tất | Status: Success
+
+**Actor:** Agent (Claude), theo yêu cầu chủ dự án: "scan và pull repo, xác nhận Phase 2 đã hoàn thành cả
+BE và FE chưa, đủ điều kiện sang Phase 3 chưa".
+
+**Bối cảnh:** `git clone` lại bản mới nhất (HEAD `a504e04`), đọc trực tiếp code thật - KHÔNG tin nội dung
+đã trao đổi ở phiên chat trước (chỉ dừng ở audit Phase 1 BE, ngày 2026-09-14 16:40). Phát hiện: code đã đi
+xa hơn `WORKFLOW_LOG.md` ghi nhận - `periodic-task-links.service.ts`, migration
+`1782300000000-CreatePeriodicTaskLinks.ts`, và toàn bộ FE (`TaskLinksModal.tsx`,
+`usePeriodicTaskLinks.ts`, `periodic-task-links.api.ts`) đã tồn tại trong repo nhưng CHƯA từng có entry
+log nào ghi nhận việc này - đúng pattern "code vượt tài liệu" đã cảnh báo ở đầu file.
+
+**Đã audit (đối chiếu trực tiếp với `PLAN_PERIODIC_TASKS_MODULE.md` mục 6 Phase 2):**
+- `PeriodicTaskLinksService`: validate rank kỳ hạn (cha phải lớn kỳ hơn con, chặn cả ngang hàng lẫn
+  ngược chiều), chống chu trình bằng BFS ngược từ parent, chống trùng cạnh - cả 3 đều đúng spec.
+- 5 endpoint (`POST/DELETE .../links`, `GET .../children/parents/rollup`) đều đi qua "1 cổng gác"
+  `tasksService.findOne()` trước khi chạm bước rank/cycle - không rò rỉ Task ngoài scope.
+- Rollup % đúng công thức PLAN mục 2.3 (đếm con TRỰC TIẾP, loại `is_excluded_from_rollup`, trả `null`
+  khi `totalChildren = 0`).
+- FE: `TaskLinksModal.tsx` đã được **mount thật** vào `cong-viec-dinh-ky/page.tsx` (dòng 620) - không
+  phải file mồ côi (khác case Position trước đây từng gặp).
+- Ranh giới Phase 3 chưa bị động tới: chưa có bảng `periodic_task_customers`, chưa seed permission
+  `periodic_tasks.link_customer`, chưa có `periodic_task_secondary_assignees` (Phase 4). `primary_
+  assignee_id` đã NOT NULL từ Phase 1 đúng note trong PLAN.
+
+**Verify thật:**
+- Backend: `tsc --noEmit` sạch, `nest build` sạch, `jest` (toàn bộ, không filter): **32/32 suite,
+  603/603 test pass**.
+- Frontend: `npx tsc --noEmit` chỉ còn đúng 5 lỗi pre-existing baseline (thiếu asset `logo.png` trong
+  sandbox ở 4 file `layout.tsx`/`error.tsx`/`global-error.tsx`/`not-found.tsx`, và 1 lỗi `CountBadge.tsx`
+  JSX style prop) - đã xác nhận đây là lỗi môi trường sandbox, không liên quan Phase 2. `npm run build`
+  (Next.js 16 Turbopack): Compiled successfully, đủ 32 route bao gồm `/cong-viec-dinh-ky`.
+- Migration timestamp tăng dần đúng thứ tự (`...1782300000000-CreatePeriodicTaskLinks.ts` sau
+  `...1782200000000-AddColorToPeriodicTasks.ts`), không trùng.
+
+**Kết luận:** Phase 2 ĐỦ điều kiện coi là hoàn tất cả BE lẫn FE - cho phép bắt đầu Phase 3 (gắn Customer
+vào Task, kèm ẩn field theo quyền). Đã báo chủ dự án và được yêu cầu tiếp tục ngay.
+
+**Bài học quy trình (lặp lại từ entry trước):** LUÔN `git clone`/`git pull` lại và đọc code thật trước khi
+kết luận tiến độ - `WORKFLOW_LOG.md` một mình không đủ tin cậy để biết trạng thái hiện tại khi có nhiều
+tài khoản cùng code song song, có thể bị "vượt mặt" mà không ai kịp ghi log.
+
+---
+
+## [2026-09-15 10:05] | Code xong BE Phase 3 "Công việc định kỳ" (gắn Customer vào Task, kèm ẩn field theo quyền) | Status: Success
+
+**Actor:** Agent (Claude), theo yêu cầu chủ dự án tiếp ngay sau khi xác nhận Phase 2 xong (entry trên).
+
+**Đã làm (đối chiếu đúng `PLAN_PERIODIC_TASKS_MODULE.md` mục 2.4, 2.12, 3, 4, 5, 6 - Phase 3):**
+1. Migration `1782400000000-CreatePeriodicTaskCustomers.ts` - bảng `periodic_task_customers`
+   (`UNIQUE(task_id, customer_id)`) + seed permission NHỊ PHÂN `periodic_tasks.link_customer`
+   (`supports_scope = FALSE`, mirror `periodic_task_statuses.manage`) - giá trị khởi tạo: admin/assistant
+   = bật (scope NULL), manager/employee = KHÔNG seed (tắt mặc định, Admin tự bật qua `/phan-quyen`).
+2. Entity `periodic-task-customer.entity.ts` - CỐ TÌNH không khai `@OneToMany` ngược lại ở
+   `PeriodicTask`/`Customer` (mirror cách Phase 2 xử lý `periodic_task_links`) - join tường minh qua
+   query builder trong Service.
+3. DTO `link-periodic-task-customers.dto.ts` (`customerIds: number[]`, tối đa 100/lần) - mirror
+   `BulkAssignDto` của module customers.
+4. Service `periodic-task-customers.service.ts` - điểm kỹ thuật quan trọng nhất phiên này: **2 lớp
+   permission độc lập cho cùng 1 endpoint**, vì `@RequirePermission()` (decorator) CHỈ nhận đúng 1 key/
+   route (xem JSDoc):
+   - Lớp 1 `periodic_tasks.edit` - gate ở Controller/`PermissionGuard` như mọi endpoint sửa Task khác.
+   - Lớp 2 `periodic_tasks.link_customer` - tự inject `PermissionsService` vào Service, gọi
+     `hasPermission()` trực tiếp (KHÔNG qua Guard) để check thêm, thiếu thì 403 dù đã qua lớp 1.
+   - Danh sách Customer hợp lệ để chọn KHÔNG tự viết bộ lọc riêng - tự tra scope THẬT của `customers.view`
+     (permission của MODULE KHÁC) qua `PermissionsService`, rồi chạy đúng
+     `CustomerAccessHelper.applyViewFilter()` - đúng nguyên tắc "1 nguồn áp filter duy nhất" dù khác module.
+   - Root Admin bypass tự implement lại đúng chuẩn hiện tại (`role === 'admin' && isRootAdmin === true`)
+     vì lớp check thứ 2 không đi qua `PermissionGuard`.
+5. `periodic-tasks.controller.ts` - thêm `POST/DELETE .../customers`; `GET /periodic-tasks/:id` (`findOne`)
+   giờ gọi thêm `periodicTaskCustomersService.attachLinkedCustomers()` - field `linkedCustomers` bị **XOÁ
+   HẲN khỏi object** (không phải mảng rỗng `[]`) nếu người xem thiếu `customers.view`, có quyền thì trả
+   mảng đã lọc lại ĐÚNG phạm vi xem của người ĐANG XEM (không phải phạm vi của người đã gắn Customer).
+6. `periodic-tasks.module.ts` - đăng ký thêm entity `PeriodicTaskCustomer`/`Customer` + provider mới
+   (`PermissionsService` không cần khai `imports` vì `PermissionsModule` là `@Global()`).
+
+**Files Changed:**
+- `backend/src/database/migrations/1782400000000-CreatePeriodicTaskCustomers.ts` (mới)
+- `backend/src/database/entities/periodic-task-customer.entity.ts` (mới)
+- `backend/src/database/entities/periodic-task.entity.ts` - cập nhật JSDoc (Phase 3 đã có bảng, vẫn
+  không khai `@OneToMany`)
+- `backend/src/modules/periodic-tasks/dto/link-periodic-task-customers.dto.ts` (mới)
+- `backend/src/modules/periodic-tasks/periodic-task-customers.service.ts` (mới)
+- `backend/src/modules/periodic-tasks/periodic-task-customers.service.spec.ts` (mới, 10 test)
+- `backend/src/modules/periodic-tasks/periodic-tasks.controller.ts` - thêm 2 endpoint + sửa `findOne()`
+- `backend/src/modules/periodic-tasks/periodic-tasks.module.ts` - đăng ký entity/provider mới
+- `AZ-Workbase Skills/PERMISSIONS.md` - thêm mục 2.11 (module `periodic-tasks`, Phase 1-3) + 1 dòng lịch
+  sử ở mục 3
+
+**Verify thật:**
+- `npx tsc --noEmit` (backend): sạch.
+- `npx nest build`: sạch.
+- `npx jest periodic-task-customers`: **10/10 test pass** (403 thiếu `link_customer`, 403 thiếu
+  `customers.view`, 400 customer ngoài phạm vi scope, XOÁ HẲN key `linkedCustomers` khi thiếu quyền
+  [không phải mảng rỗng], idempotent add khi customer đã gắn sẵn, Root Admin bypass cả 2 lớp permission).
+- `npx jest` (toàn bộ, không filter): **33/33 suite pass, 613/613 test pass** (tăng từ 603, không
+  regression).
+
+**Còn lại (ngoài phạm vi phiên này, thuộc Phase 3 FE + Phase 4-7 của PLAN):**
+- FE Phase 3 CHƯA làm: `periodic-task-customers.api.ts`, hook, UI chọn/hiển thị Customer trong
+  `TaskLinksModal.tsx` (hoặc modal riêng), ẩn UI khi thiếu `periodic_tasks.link_customer` - cần làm ở
+  lượt tiếp theo trước khi coi Phase 3 hoàn tất TOÀN BỘ (mirror đúng chuẩn "1 Phase = build+test cả BE
+  VÀ FE" đã áp dụng cho Phase 1/2).
+- Phase 4 (phụ trách chính/phụ - `periodic_task_secondary_assignees`), Phase 5 (approve/lock), Phase 6
+  (checklist con), Phase 7 (audit log riêng) - chưa code, xem PLAN mục 6.
