@@ -4,6 +4,7 @@ import { BadRequestException, ForbiddenException, NotFoundException } from '@nes
 import { PeriodicTaskCustomersService } from './periodic-task-customers.service';
 import { PeriodicTasksService } from './periodic-tasks.service';
 import { PermissionsService } from '../permissions/permissions.service';
+import { PeriodicTaskAuditService, PeriodicTaskAuditAction } from './periodic-task-audit.service';
 import { PeriodicTaskCustomer } from '../../database/entities/periodic-task-customer.entity';
 import { Customer } from '../../database/entities/customer.entity';
 import { PermissionScope } from '../../database/entities/role-permission.entity';
@@ -42,6 +43,9 @@ describe('PeriodicTaskCustomersService', () => {
   const mockPermissionsService = {
     hasPermission: jest.fn(),
   };
+  const mockAuditService = {
+    logActionAsync: jest.fn(),
+  };
 
   const taskId = 10;
   const employeeUser = { id: 1, role: Role.EMPLOYEE, isRootAdmin: false, departmentId: 2, positionId: null };
@@ -59,6 +63,7 @@ describe('PeriodicTaskCustomersService', () => {
         { provide: getRepositoryToken(Customer), useValue: mockCustomerRepo },
         { provide: PeriodicTasksService, useValue: mockTasksService },
         { provide: PermissionsService, useValue: mockPermissionsService },
+        { provide: PeriodicTaskAuditService, useValue: mockAuditService },
       ],
     }).compile();
 
@@ -140,6 +145,15 @@ describe('PeriodicTaskCustomersService', () => {
       expect(mockLinkRepo.create).toHaveBeenCalledTimes(1);
       expect(mockLinkRepo.create).toHaveBeenCalledWith({ taskId, customerId: 2, linkedById: employeeUser.id });
       expect(result).toEqual([{ id: 1 }, { id: 2 }]);
+      // Phase 7 (PLAN mục 2.6): CHỈ log customerId THẬT SỰ mới thêm (id=2),
+      // KHÔNG log lại id=1 (đã tồn tại từ trước, idempotent add).
+      expect(mockAuditService.logActionAsync).toHaveBeenCalledWith(
+        taskId,
+        employeeUser.id,
+        PeriodicTaskAuditAction.CUSTOMER_LINKED,
+        null,
+        { customerIds: [2] },
+      );
     });
   });
 
@@ -166,6 +180,12 @@ describe('PeriodicTaskCustomersService', () => {
 
       expect(mockPermissionsService.hasPermission).not.toHaveBeenCalled();
       expect(result).toEqual({ deleted: true });
+      expect(mockAuditService.logActionAsync).toHaveBeenCalledWith(
+        taskId,
+        rootAdminUser.id,
+        PeriodicTaskAuditAction.CUSTOMER_UNLINKED,
+        { customerId: 1 },
+      );
     });
   });
 

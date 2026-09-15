@@ -5,6 +5,7 @@ import { PeriodicTaskChecklistItemsService } from './periodic-task-checklist-ite
 import { PeriodicTasksService } from './periodic-tasks.service';
 import { PeriodicTaskChecklistItem } from '../../database/entities/periodic-task-checklist-item.entity';
 import { Role } from '../../common/enums/role.enum';
+import { PeriodicTaskAuditService, PeriodicTaskAuditAction } from './periodic-task-audit.service';
 
 describe('PeriodicTaskChecklistItemsService', () => {
   let service: PeriodicTaskChecklistItemsService;
@@ -29,6 +30,9 @@ describe('PeriodicTaskChecklistItemsService', () => {
     findOne: jest.fn(),
     assertEditableWhenLocked: jest.fn(),
   };
+  const mockAuditService = {
+    logActionAsync: jest.fn(),
+  };
 
   const taskId = 10;
   const employeeUser = { id: 1, role: Role.EMPLOYEE, isRootAdmin: false, departmentId: 2, positionId: null };
@@ -43,6 +47,7 @@ describe('PeriodicTaskChecklistItemsService', () => {
         PeriodicTaskChecklistItemsService,
         { provide: getRepositoryToken(PeriodicTaskChecklistItem), useValue: mockChecklistRepo },
         { provide: PeriodicTasksService, useValue: mockTasksService },
+        { provide: PeriodicTaskAuditService, useValue: mockAuditService },
       ],
     }).compile();
 
@@ -93,6 +98,13 @@ describe('PeriodicTaskChecklistItemsService', () => {
       });
       expect(mockChecklistRepo.save).toHaveBeenCalled();
       expect(result).toHaveLength(3);
+      expect(mockAuditService.logActionAsync).toHaveBeenCalledWith(
+        taskId,
+        employeeUser.id,
+        PeriodicTaskAuditAction.CHECKLIST_ITEM_ADDED,
+        null,
+        { content: 'Gọi khách' },
+      );
     });
 
     it('position = 0 khi Task chưa có item nào (MAX trả về null)', async () => {
@@ -139,6 +151,13 @@ describe('PeriodicTaskChecklistItemsService', () => {
       expect(mockChecklistRepo.save).toHaveBeenCalledWith(
         expect.objectContaining({ id: 5, content: 'Mới', isDone: true }),
       );
+      expect(mockAuditService.logActionAsync).toHaveBeenCalledWith(
+        taskId,
+        employeeUser.id,
+        PeriodicTaskAuditAction.CHECKLIST_ITEM_UPDATED,
+        { itemId: 5, content: 'Cũ', isDone: false },
+        { itemId: 5, content: 'Mới', isDone: true },
+      );
     });
   });
 
@@ -151,7 +170,7 @@ describe('PeriodicTaskChecklistItemsService', () => {
     });
 
     it('xoá thành công khi tồn tại (hard delete)', async () => {
-      const existing = { id: 5, taskId };
+      const existing = { id: 5, taskId, content: 'Gọi khách' };
       mockChecklistRepo.findOne.mockResolvedValue(existing);
       mockChecklistRepo.remove.mockResolvedValue(undefined);
       mockChecklistRepo.find.mockResolvedValue([]);
@@ -160,6 +179,12 @@ describe('PeriodicTaskChecklistItemsService', () => {
 
       expect(mockChecklistRepo.remove).toHaveBeenCalledWith(existing);
       expect(result).toEqual([]);
+      expect(mockAuditService.logActionAsync).toHaveBeenCalledWith(
+        taskId,
+        employeeUser.id,
+        PeriodicTaskAuditAction.CHECKLIST_ITEM_REMOVED,
+        { itemId: 5, content: 'Gọi khách' },
+      );
     });
   });
 
@@ -209,6 +234,13 @@ describe('PeriodicTaskChecklistItemsService', () => {
       expect(mockChecklistRepo.update).toHaveBeenCalledWith({ id: 1, taskId }, { position: 1 });
       expect(mockChecklistRepo.update).toHaveBeenCalledWith({ id: 2, taskId }, { position: 2 });
       expect(result[0].id).toBe(3);
+      expect(mockAuditService.logActionAsync).toHaveBeenCalledWith(
+        taskId,
+        employeeUser.id,
+        PeriodicTaskAuditAction.CHECKLIST_ITEMS_REORDERED,
+        null,
+        { itemIds: [3, 1, 2] },
+      );
     });
 
     it('ném ForbiddenException nếu Task đang khoá và thiếu periodic_tasks.edit_locked', async () => {

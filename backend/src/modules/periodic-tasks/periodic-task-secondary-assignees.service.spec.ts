@@ -3,6 +3,7 @@ import { getRepositoryToken } from '@nestjs/typeorm';
 import { BadRequestException, ConflictException, NotFoundException } from '@nestjs/common';
 import { PeriodicTaskSecondaryAssigneesService } from './periodic-task-secondary-assignees.service';
 import { PeriodicTasksService } from './periodic-tasks.service';
+import { PeriodicTaskAuditService, PeriodicTaskAuditAction } from './periodic-task-audit.service';
 import { PeriodicTaskSecondaryAssignee } from '../../database/entities/periodic-task-secondary-assignee.entity';
 import { User } from '../../database/entities/user.entity';
 import { Role } from '../../common/enums/role.enum';
@@ -24,6 +25,9 @@ describe('PeriodicTaskSecondaryAssigneesService', () => {
     findOne: jest.fn(),
     assertEditableWhenLocked: jest.fn(),
   };
+  const mockAuditService = {
+    logActionAsync: jest.fn(),
+  };
 
   const taskId = 10;
   const primaryAssigneeId = 3;
@@ -40,6 +44,7 @@ describe('PeriodicTaskSecondaryAssigneesService', () => {
         { provide: getRepositoryToken(PeriodicTaskSecondaryAssignee), useValue: mockSecondaryRepo },
         { provide: getRepositoryToken(User), useValue: mockUserRepo },
         { provide: PeriodicTasksService, useValue: mockTasksService },
+        { provide: PeriodicTaskAuditService, useValue: mockAuditService },
       ],
     }).compile();
 
@@ -87,6 +92,13 @@ describe('PeriodicTaskSecondaryAssigneesService', () => {
       expect(mockSecondaryRepo.create).toHaveBeenCalledWith({ taskId, userId: 5, addedById: employeeUser.id });
       expect(mockSecondaryRepo.save).toHaveBeenCalled();
       expect(result).toEqual([{ id: 5, name: 'User 5' }]);
+      expect(mockAuditService.logActionAsync).toHaveBeenCalledWith(
+        taskId,
+        employeeUser.id,
+        PeriodicTaskAuditAction.SECONDARY_ASSIGNEE_ADDED,
+        null,
+        { userId: 5 },
+      );
     });
   });
 
@@ -108,6 +120,12 @@ describe('PeriodicTaskSecondaryAssigneesService', () => {
 
       expect(mockTasksService.findOne).toHaveBeenCalledWith(taskId, employeeUser.id, employeeUser.role, 'own');
       expect(result).toEqual({ deleted: true });
+      expect(mockAuditService.logActionAsync).toHaveBeenCalledWith(
+        taskId,
+        employeeUser.id,
+        PeriodicTaskAuditAction.SECONDARY_ASSIGNEE_REMOVED,
+        { userId: 5 },
+      );
     });
   });
 

@@ -3,6 +3,7 @@ import { getRepositoryToken } from '@nestjs/typeorm';
 import { BadRequestException, NotFoundException } from '@nestjs/common';
 import { PeriodicTaskLinksService } from './periodic-task-links.service';
 import { PeriodicTasksService } from './periodic-tasks.service';
+import { PeriodicTaskAuditService, PeriodicTaskAuditAction } from './periodic-task-audit.service';
 import { PeriodicTaskLink } from '../../database/entities/periodic-task-link.entity';
 import { PeriodicTask } from '../../database/entities/periodic-task.entity';
 import { PeriodType } from '../../common/enums/period-type.enum';
@@ -42,6 +43,9 @@ describe('PeriodicTaskLinksService', () => {
     findOne: jest.fn(),
     assertEditableWhenLocked: jest.fn(),
   };
+  const mockAuditService = {
+    logActionAsync: jest.fn(),
+  };
 
   const userId = 1;
   const userRole = Role.EMPLOYEE;
@@ -58,6 +62,7 @@ describe('PeriodicTaskLinksService', () => {
         { provide: getRepositoryToken(PeriodicTaskLink), useValue: mockLinkRepo },
         { provide: getRepositoryToken(PeriodicTask), useValue: mockTaskRepo },
         { provide: PeriodicTasksService, useValue: mockTasksService },
+        { provide: PeriodicTaskAuditService, useValue: mockAuditService },
       ],
     }).compile();
 
@@ -84,6 +89,14 @@ describe('PeriodicTaskLinksService', () => {
       const result = await service.addLink(1, { parentTaskId: 2 }, user, scope);
 
       expect(result).toMatchObject({ childTaskId: 1, parentTaskId: 2, createdById: userId });
+      // Phase 7 (PLAN mục 2.6): audit log `parent_linked` gắn vào Task CON.
+      expect(mockAuditService.logActionAsync).toHaveBeenCalledWith(
+        1,
+        userId,
+        PeriodicTaskAuditAction.PARENT_LINKED,
+        null,
+        { parentTaskId: 2 },
+      );
     });
 
     it('chặn rank sai chiều (Weekly không được làm cha của Monthly)', async () => {
@@ -163,6 +176,12 @@ describe('PeriodicTaskLinksService', () => {
 
       expect(result).toEqual({ deleted: true });
       expect(mockLinkRepo.remove).toHaveBeenCalledWith(existing);
+      expect(mockAuditService.logActionAsync).toHaveBeenCalledWith(
+        1,
+        userId,
+        PeriodicTaskAuditAction.PARENT_UNLINKED,
+        { parentTaskId: 2 },
+      );
     });
   });
 

@@ -7,6 +7,7 @@ import { PeriodicTaskStatus } from '../../database/entities/periodic-task-status
 import { User } from '../../database/entities/user.entity';
 import { DepartmentManager } from '../../database/entities/department-manager.entity';
 import { PermissionsService } from '../permissions/permissions.service';
+import { PeriodicTaskAuditService, PeriodicTaskAuditAction } from './periodic-task-audit.service';
 import { Role } from '../../common/enums/role.enum';
 import { PeriodType } from '../../common/enums/period-type.enum';
 
@@ -46,6 +47,9 @@ describe('PeriodicTasksService', () => {
   const mockPermissionsService = {
     hasPermission: jest.fn(),
   };
+  const mockAuditService = {
+    logActionAsync: jest.fn(),
+  };
 
   beforeEach(async () => {
     jest.clearAllMocks();
@@ -58,6 +62,7 @@ describe('PeriodicTasksService', () => {
         { provide: getRepositoryToken(User), useValue: mockUserRepo },
         { provide: getRepositoryToken(DepartmentManager), useValue: mockDepartmentManagerRepo },
         { provide: PermissionsService, useValue: mockPermissionsService },
+        { provide: PeriodicTaskAuditService, useValue: mockAuditService },
       ],
     }).compile();
 
@@ -98,6 +103,15 @@ describe('PeriodicTasksService', () => {
         expect.objectContaining({ departmentId: 3, statusId: 1, createdById: 1, primaryAssigneeId: 5 }),
       );
       expect(result).toEqual(expect.objectContaining({ id: 100, departmentId: 3 }));
+      // Phase 7 (PLAN mục 2.6): audit log `created` phải ghi ĐÚNG id thật
+      // (result.id) - không phải id tạm trước khi save.
+      expect(mockAuditService.logActionAsync).toHaveBeenCalledWith(
+        100,
+        1,
+        PeriodicTaskAuditAction.CREATED,
+        null,
+        result,
+      );
     });
 
     it('dùng departmentId truyền vào thay vì auto-fill nếu có', async () => {
@@ -183,6 +197,66 @@ describe('PeriodicTasksService', () => {
       expect(result.title).toBe('New title');
       expect(result.note).toBe('ghi chú mới');
       expect(result.updatedById).toBe(9);
+      // Phase 7: action `updated` chung luôn ghi, KHÔNG kèm `status_changed`/
+      // `primary_assignee_changed` vì 2 field đó không đổi ở test này.
+      expect(mockAuditService.logActionAsync).toHaveBeenCalledWith(
+        1,
+        9,
+        PeriodicTaskAuditAction.UPDATED,
+        expect.objectContaining({ title: 'Old' }),
+        result,
+      );
+      expect(mockAuditService.logActionAsync).not.toHaveBeenCalledWith(
+        1,
+        9,
+        PeriodicTaskAuditAction.STATUS_CHANGED,
+        expect.anything(),
+        expect.anything(),
+      );
+    });
+
+    it('đổi statusId ghi THÊM audit log status_changed (PLAN mục 2.6)', async () => {
+      const task: any = {
+        id: 1,
+        statusId: 1,
+        periodStartDate: '2026-09-14',
+        periodEndDate: '2026-09-14',
+      };
+      mockTaskRepo.createQueryBuilder.mockReturnValue(makeFakeQueryBuilder({ getOne: task }));
+      mockTaskRepo.save.mockImplementation((t) => Promise.resolve(t));
+      mockStatusRepo.findOne.mockResolvedValue({ id: 2 });
+
+      await service.update(1, { statusId: 2 }, { id: 9, role: Role.ADMIN }, 'all');
+
+      expect(mockAuditService.logActionAsync).toHaveBeenCalledWith(
+        1,
+        9,
+        PeriodicTaskAuditAction.STATUS_CHANGED,
+        { statusId: 1 },
+        { statusId: 2 },
+      );
+    });
+
+    it('đổi primaryAssigneeId ghi THÊM audit log primary_assignee_changed (PLAN mục 2.6)', async () => {
+      const task: any = {
+        id: 1,
+        primaryAssigneeId: 5,
+        periodStartDate: '2026-09-14',
+        periodEndDate: '2026-09-14',
+      };
+      mockTaskRepo.createQueryBuilder.mockReturnValue(makeFakeQueryBuilder({ getOne: task }));
+      mockTaskRepo.save.mockImplementation((t) => Promise.resolve(t));
+      mockUserRepo.findOne.mockResolvedValue({ id: 7, isActive: true });
+
+      await service.update(1, { primaryAssigneeId: 7 }, { id: 9, role: Role.ADMIN }, 'all');
+
+      expect(mockAuditService.logActionAsync).toHaveBeenCalledWith(
+        1,
+        9,
+        PeriodicTaskAuditAction.PRIMARY_ASSIGNEE_CHANGED,
+        { primaryAssigneeId: 5 },
+        { primaryAssigneeId: 7 },
+      );
     });
 
     it('cho phép sửa departmentId tự do (không khoá cứng theo primaryAssignee) - PLAN mục 2.10', async () => {
@@ -247,6 +321,69 @@ describe('PeriodicTasksService', () => {
 
       expect(mockTaskRepo.softDelete).toHaveBeenCalledWith(1);
       expect(result).toEqual({ deleted: true });
+      expect(mockAuditService.logActionAsync).toHaveBeenCalledWith(
+        1,
+        2,
+        PeriodicTaskAuditAction.DELETED,
+        task,
+        null,
+      );
+    });
+  });
+
+  describe('lock', () => {
+    it('khoá Task thành công và ghi audit log locked (PLAN mục 2.9, 2.6)', async () => {
+      const task: any = { id: 1, isLocked: false };
+      mockTaskRepo.createQueryBuilder.mockReturnValue(makeFakeQueryBuilder({ getOne: task }));
+      mockTaskRepo.save.mockImplementation((t) => Promise.resolve(t));
+
+      const result = await service.lock(1, { lockNote: 'Đã chốt' }, { id: 9, role: Role.ADMIN }, 'all');
+
+      expect(result.isLocked).toBe(true);
+      expect(result.lockedById).toBe(9);
+      expect(mockAuditService.logActionAsync).toHaveBeenCalledWith(
+        1,
+        9,
+        PeriodicTaskAuditAction.LOCKED,
+        null,
+        { lockNote: 'Đã chốt', lockedById: 9 },
+      );
+    });
+
+    it('gọi lại lock() trên Task đã khoá vẫn ghi audit log mới (idempotent, không lỗi)', async () => {
+      const task: any = { id: 1, isLocked: true, lockedById: 1, lockNote: 'Cũ' };
+      mockTaskRepo.createQueryBuilder.mockReturnValue(makeFakeQueryBuilder({ getOne: task }));
+      mockTaskRepo.save.mockImplementation((t) => Promise.resolve(t));
+
+      await expect(
+        service.lock(1, { lockNote: 'Mới' }, { id: 9, role: Role.ADMIN }, 'all'),
+      ).resolves.toEqual(expect.objectContaining({ lockNote: 'Mới' }));
+      expect(mockAuditService.logActionAsync).toHaveBeenCalledWith(
+        1,
+        9,
+        PeriodicTaskAuditAction.LOCKED,
+        null,
+        { lockNote: 'Mới', lockedById: 9 },
+      );
+    });
+  });
+
+  describe('unlock', () => {
+    it('mở khoá Task thành công và ghi audit log unlocked (PLAN mục 2.9, 2.6)', async () => {
+      const task: any = { id: 1, isLocked: true, lockedById: 9, lockedAt: new Date(), lockNote: 'x' };
+      mockTaskRepo.createQueryBuilder.mockReturnValue(makeFakeQueryBuilder({ getOne: task }));
+      mockTaskRepo.save.mockImplementation((t) => Promise.resolve(t));
+
+      const result = await service.unlock(1, { id: 9, role: Role.ADMIN }, 'all');
+
+      expect(result.isLocked).toBe(false);
+      expect(mockAuditService.logActionAsync).toHaveBeenCalledWith(
+        1,
+        9,
+        PeriodicTaskAuditAction.UNLOCKED,
+        null,
+        null,
+      );
     });
   });
 });
