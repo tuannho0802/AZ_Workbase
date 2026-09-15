@@ -374,7 +374,20 @@ describe('PeriodicTasksService', () => {
         1,
         2,
         PeriodicTaskAuditAction.DELETED,
-        task,
+        {
+          title: undefined,
+          description: undefined,
+          periodType: undefined,
+          periodStartDate: undefined,
+          periodEndDate: undefined,
+          status: null,
+          primaryAssignee: null,
+          department: null,
+          color: undefined,
+          isLocked: undefined,
+          lockNote: undefined,
+          note: undefined,
+        },
         null,
       );
     });
@@ -395,7 +408,7 @@ describe('PeriodicTasksService', () => {
         9,
         PeriodicTaskAuditAction.LOCKED,
         null,
-        { lockNote: 'Đã chốt', lockedById: 9 },
+        { lockNote: 'Đã chốt' },
       );
     });
 
@@ -412,7 +425,7 @@ describe('PeriodicTasksService', () => {
         9,
         PeriodicTaskAuditAction.LOCKED,
         null,
-        { lockNote: 'Mới', lockedById: 9 },
+        { lockNote: 'Mới' },
       );
     });
   });
