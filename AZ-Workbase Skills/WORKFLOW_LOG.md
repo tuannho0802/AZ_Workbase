@@ -2363,3 +2363,74 @@ như nhau bất kể Role - tức bug #2 không phải do RBAC.
 > - Root Admin/Assistant/Manager có `customers.view` nên KHÔNG bao giờ thấy Bug 1 khi tự test — đây là
 >   lý do bug tồn tại từ lúc code Phase 3 (2026-09-15 sáng) đến giờ mới bị phát hiện: chỉ lộ ra khi có
 >   Role thật sự bị tắt `customers.view`, đúng kịch bản chủ dự án vừa test.
+
+
+## [2026-09-15 20:10] | Phase 8b "Công việc định kỳ" - UI nối/xếp hàng Task liên kết + Pill màu tên Task | Status: Success
+
+**Actor:** Agent (theo yêu cầu chủ dự án kèm 3 ảnh minh hoạ vẽ tay)
+
+**Yêu cầu:** (1) Khi 1 Task đã có liên kết (Phase 2 - `periodic_task_links`) với Task khác, hiển thị UI
+"nối lại + xếp hàng liền nhau" ở TẤT CẢ View (Table/Agenda/Kanban/Calendar). (2) Gộp `task.color` vào tên
+Task thành 1 Pill (bo góc nhẹ, không tròn hẳn), áp dụng đồng nhất mọi View. (3) Viết hoa thứ ở Agenda
+("thứ hai" -> "Thứ Hai").
+
+**Files Changed:**
+- `backend/src/modules/periodic-tasks/dto/get-periodic-task-links-batch.dto.ts` (mới).
+- `backend/src/modules/periodic-tasks/periodic-task-links.service.ts` — thêm `getLinksAmong()`.
+- `backend/src/modules/periodic-tasks/periodic-tasks.controller.ts` — thêm route TĨNH `GET
+  /periodic-tasks/links` (khai TRƯỚC `:id`).
+- `backend/src/modules/periodic-tasks/periodic-task-links.service.spec.ts` — +3 test cho `getLinksAmong`.
+- `frontend/src/lib/api/periodic-task-links.api.ts` — thêm `getLinksAmong()`.
+- `frontend/src/lib/hooks/usePeriodicTaskLinks.ts` — thêm `useTaskLinksAmong()`.
+- `frontend/src/lib/utils/taskLinkChains.ts` (mới) + `taskLinkChains.test.ts` (mới, 8 test).
+- `frontend/src/components/periodic-tasks/TaskTitlePill.tsx` (mới) — `TaskTitlePill` + `TaskChainBadge`.
+- `frontend/src/components/periodic-tasks/TaskChainConnector.tsx` (mới) — `TaskChainGroupedList`.
+- `frontend/src/components/periodic-tasks/TaskMiniCard.tsx` — dùng `TaskTitlePill`/`TaskChainBadge`.
+- `frontend/src/components/periodic-tasks/PeriodicTasksAgendaView.tsx` — wire `TaskChainGroupedList` +
+  `capitalizeVietnameseWeekday()`.
+- `frontend/src/components/periodic-tasks/PeriodicTasksKanbanView.tsx` — wire `TaskChainBadge` (KHÔNG
+  dùng `TaskChainGroupedList`, xem Root Cause/Solution).
+- `frontend/src/components/periodic-tasks/PeriodicTasksCalendarView.tsx` — đổi màu Tag từ
+  `task.status?.color` sang `task.color` + viền chuỗi + Tooltip liên kết.
+- `frontend/src/app/(dashboard)/cong-viec-dinh-ky/page.tsx` — wire `useTaskLinksAmong` +
+  `buildTaskLinkChains`/`sortTasksByChain`, cột "Công việc" dùng Pill + viền trái màu chuỗi.
+
+**Root Cause (không phải bug fix - tính năng mới, nhưng có 1 phát hiện tiện thể):**
+> Lúc rà lại `PeriodicTasksCalendarView.tsx` để đổi sang Pill đồng nhất, phát hiện Tag tên Task ở Calendar
+> trước đó dùng NHẦM `task.status?.color` (màu Trạng thái) thay vì `task.color` (màu riêng của Task, field
+> đã có từ Phase 1 với JSDoc ghi rõ ý định "CHỈ dùng hiển thị UI (Card/Kanban/Calendar...)" nhưng chưa
+> từng thực sự được dùng ở Calendar) - không phải lỗi nghiêm trọng (Tag vẫn hiển thị đúng tên/đúng Task,
+> chỉ sai NGUỒN màu) nhưng là điểm không nhất quán giữa các View mà yêu cầu lần này tiện thể sửa luôn.
+
+**Solution:**
+> 1. Backend: 1 endpoint batch MỚI (`GET /periodic-tasks/links`) lấy cạnh liên kết cho CẢ danh sách Task
+>    đang hiển thị trong 1 lần gọi (tránh N+1 - endpoint cũ `getChildren`/`getParents` chỉ tra 1
+>    Task/lần, không phù hợp khi cần biết liên kết của HÀNG CHỤC Task cùng lúc). RBAC: tự lọc lại
+>    `taskIds` FE gửi lên qua `applyViewFilter()`, không tin dữ liệu từ client.
+> 2. Frontend: `buildTaskLinkChains()` gom cạnh thành "chuỗi" (connected component) + gán 1 màu accent
+>    ổn định/chuỗi (khác hẳn dải màu Trạng thái/Phòng ban để không gây nhầm ý nghĩa nghiệp vụ) +
+>    `sortTasksByChain()` xếp các Task cùng chuỗi đứng liền nhau.
+> 3. Mỗi View áp dụng theo ĐÚNG đặc thù layout của nó (xem PLAN mục Phase 8b để biết lý do từng lựa
+>    chọn): Table = viền trái màu + badge; Agenda = đường nối liên tục thật (khối dọc thuần); Kanban =
+>    CHỈ badge (chủ động KHÔNG vẽ đường nối vì rủi ro lệch toạ độ kéo-thả dnd-kit); Calendar = viền
+>    `boxShadow` + Tooltip liệt kê.
+> 4. `capitalizeVietnameseWeekday()` (regex Unicode `\p{L}`) viết hoa chữ đầu mỗi từ tên thứ tiếng Việt từ
+>    `dayjs` (locale `vi` mặc định trả chữ thường).
+
+**Verify thật:**
+- Backend: `tsc --noEmit` sạch, `nest build` sạch, **36/36 suite / 653/653 test PASS** (thêm 3 test mới).
+- Frontend: `tsc --noEmit` sạch, `next build` sạch (đủ 32 route), **`vitest run` 3/3 suite - 22/22 test
+  PASS** (thêm 8 test mới cho `taskLinkChains.ts`, không regression so với 14 trước đó).
+
+**Notes:**
+> - **Cố ý CHƯA làm** (không phải bỏ sót): vẽ thanh liên tục kiểu Gantt nối 2 ô ngày của CÙNG 1 Task
+>   nhiều-ngày ở Calendar (ảnh minh hoạ thứ 3 của chủ dự án có ý này, nhưng đây là bài toán "span 1 Task
+>   qua nhiều ô lưới" khác hẳn "nối 2 Task khác nhau đã liên kết" - đủ phức tạp để xứng 1 hạng mục riêng,
+>   gần với View 4 Timeline/Gantt đã lùi lại từ trước) - xem PLAN mục Phase 8b để chủ dự án xác nhận có
+>   cần làm tiếp không.
+> - Chuỗi liên kết CHỈ nối được giữa các Task đang nằm trong danh sách đã tải của View hiện tại (khác
+>   trang/khác bộ lọc sẽ không nối được, chỉ còn thấy tên qua Tooltip) - chấp nhận được vì đây là tính
+>   năng trang trí bổ trợ, dữ liệu liên kết THẬT vẫn đọc đúng qua `TaskLinksModal`/`getChildren`/
+>   `getParents`/`rollup` (Phase 2) không đổi gì.
+> - Đã cập nhật `PLAN_PERIODIC_TASKS_MODULE.md` (mục "Phase 8b" mới) với đầy đủ lý do kỹ thuật cho từng
+>   quyết định khác nhau giữa các View, tránh phiên sau hiểu nhầm là làm thiếu.

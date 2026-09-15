@@ -564,6 +564,74 @@ test PASS (không có spec nào đụng trực tiếp file vừa sửa nên số
   cứng theo Backend) — hiện tại đủ dùng vì quy mô Task còn nhỏ (vài chục), nhưng cần lưu ý nếu về sau
   dữ liệu tăng nhiều — lúc đó cân nhắc phân trang thật cho các view này thay vì chỉ tăng `limit`.
 
+### Phase 8b — UI "nối/xếp hàng" Task đã liên kết + Pill màu tên Task (2026-09-15)
+
+Yêu cầu chủ dự án (kèm ảnh minh hoạ vẽ tay): khi 1 Task đã có `periodic_task_links` (Phase 2) với Task
+khác, hiển thị trực quan "nối lại + xếp hàng liền nhau" ở TẤT CẢ view thay vì chỉ biết qua nút "Liên kết".
+Đồng thời gộp `task.color` (field có sẵn từ Phase 1, JSDoc ghi rõ "CHỈ dùng hiển thị UI" nhưng trước đó
+chỉ dùng làm 1 chấm tròn nhỏ) vào thẳng tên Task, biến thành 1 Pill màu (bo góc NHẸ, không tròn hẳn kiểu
+viên thuốc) — áp dụng ĐỒNG NHẤT ở mọi View, thay vì mỗi nơi 1 kiểu cũ (chấm tròn ở Table/Card, Tag riêng
+dùng SAI màu Trạng thái thay vì màu Task ở Calendar).
+
+**Backend (mới, tránh N+1):**
+- `GET /periodic-tasks/links?taskIds=1,2,3` (route TĨNH, khai TRƯỚC `:id` — mirror đúng lưu ý routing đã
+  có sẵn ở route `reorder` của checklist) — trả `{ edges: [{parentTaskId, childTaskId}] }` cho MỌI cạnh mà
+  CẢ 2 đầu đều nằm trong `taskIds` VÀ trong phạm vi `applyViewFilter()` (own/department/all) của người
+  gọi — tự lọc lại, KHÔNG tin `taskIds` FE gửi lên đã đúng phạm vi, không rò rỉ sự tồn tại của Task ngoài
+  phạm vi kể cả gián tiếp qua cạnh nối.
+- `PeriodicTaskLinksService.getLinksAmong()` — 1 lần gọi CHO CẢ danh sách Task đang tải (FE gọi đúng 1
+  lần/view, không lặp theo từng Task).
+- `GetPeriodicTaskLinksBatchDto` — nhận `taskIds` dạng chuỗi phẩy (`?taskIds=1,2,3`), tối đa 200 phần tử.
+- Spec: `periodic-task-links.service.spec.ts` (+3 test: rỗng không query DB, chỉ trả cạnh trong phạm vi
+  RBAC, rỗng khi không Task nào trong phạm vi). Verify: `tsc --noEmit` sạch, `nest build` sạch, **36/36
+  suite / 653/653 test PASS**.
+
+**Frontend:**
+- `taskLinkChains.ts` (mới, có spec `taskLinkChains.test.ts` - 8 test): `buildTaskLinkChains(edges)` gom
+  cạnh thành "chuỗi" (connected component, coi cạnh VÔ HƯỚNG để nhóm trực quan — khác bản chất có hướng
+  cha-con của Phase 2, mục đích ở đây CHỈ để nhóm hiển thị) + topological sort (Kahn, xử lý đúng
+  multi-parent) + gán màu accent ổn định từ 1 bảng màu cố định (`chainId % palette.length`, `chainId` =
+  ID nhỏ nhất trong nhóm). `sortTasksByChain(tasks, chains)` sắp lại mảng Task sao cho thành viên CÙNG
+  chuỗi đứng LIỀN NHAU (stable - giữ nguyên vị trí Task không thuộc chuỗi nào).
+- `useTaskLinksAmong(taskIds, enabled)` (`usePeriodicTaskLinks.ts`) — 1 query/view, `taskIds` sort trước
+  khi vào `queryKey` để tránh refetch thừa khi đổi thứ tự mảng nhưng tập hợp ID không đổi, `staleTime`
+  30s.
+- `TaskTitlePill.tsx` (mới): `<TaskTitlePill>` (Pill màu `task.color`, dùng CHUNG Table/TaskMiniCard/
+  Calendar) + `<TaskChainBadge>` (icon 🔗 + số lượng, Tooltip liệt kê CẢ chuỗi kèm ngày, dùng cho nơi
+  không vẽ được đường nối liên tục).
+- `TaskChainConnector.tsx` (mới): `<TaskChainGroupedList>` — gom các Task LIỀN NHAU cùng 1 chuỗi (sau khi
+  đã `sortTasksByChain()`) thành 1 khối, vẽ 1 đường kẻ dọc LIÊN TỤC (không phải từng đoạn rời) xuyên suốt
+  khối kèm 1 chấm cho mỗi Task — CHỈ áp dụng được cho bố cục khối dọc thuần (Agenda mỗi ngày). Cân nhắc
+  dùng cho Kanban nhưng QUYẾT ĐỊNH KHÔNG DÙNG (xem dưới).
+- **Áp dụng theo từng View** (mức độ khác nhau tuỳ đặc thù layout, đã cân nhắc rủi ro kỹ thuật):
+  - **Table**: `TaskTitlePill` + `TaskChainBadge` ở cột "Công việc", viền TRÁI màu chuỗi qua `onCell`
+    (KHÔNG vẽ đường nối liên tục được vì mỗi dòng là 1 `<tr>` riêng biệt) + `dataSource` được
+    `sortTasksByChain()` trước để các dòng cùng chuỗi đứng cạnh nhau (viền trái mới có ý nghĩa nhóm).
+  - **Agenda**: DÙNG `TaskChainGroupedList` (đường nối liên tục thật) vì mỗi ngày là 1 khối dọc thuần
+    (`Collapse` panel) — thành viên cùng chuỗi thường CÙNG ngày bắt đầu (test data thực tế đúng vậy) nên
+    hay nằm cùng 1 panel; khác panel thì vẫn hiện `TaskChainBadge` trên từng Card (không nối được qua 2
+    panel khác nhau, panel đang gập không tồn tại trong DOM để đo toạ độ).
+  - **Kanban**: CHỈ dùng `TaskChainBadge` trên Card, KHÔNG bọc `TaskChainGroupedList` — mỗi Card đang gắn
+    `ref` cho `useSortable()` (dnd-kit), bọc thêm 1 lớp div định vị riêng cho đường nối có rủi ro lệch
+    toạ độ đo lường lúc kéo-thả, không đáng đánh đổi cho 1 chi tiết trang trí (quyết định CHỦ ĐỘNG đánh
+    đổi, ghi rõ trong JSDoc `PeriodicTasksKanbanViewProps.chains`).
+  - **Calendar**: đổi Tag từ dùng SAI `task.status?.color` (bug tiện thể phát hiện — không phải ý đồ ban
+    đầu, xem code cũ) sang đúng `task.color`; viền màu chuỗi qua `boxShadow: inset` (không đổi kích thước
+    Tag); Tooltip liệt kê cả chuỗi kèm ngày từng Task.
+- **Chưa làm** (ghi rõ để không lặp lại nhầm là "đã xong toàn bộ yêu cầu"): KHÔNG vẽ thanh liên tục
+  (Gantt-style) nối 2 ô ngày của CÙNG 1 Task nhiều-ngày ở Calendar (ảnh minh hoạ thứ 3 của chủ dự án có ý
+  này) — đây là bài toán khác hẳn (span 1 Task qua nhiều ô lưới, không phải nối 2 Task khác nhau), đủ
+  phức tạp để xứng đáng 1 hạng mục riêng (gần với View 4 Timeline/Gantt đã lùi lại) — KHÔNG tự ý làm thêm
+  ngoài phạm vi đã xác nhận.
+
+**Viết hoa thứ ở Agenda:** `dayjs` locale `'vi'` trả tên thứ toàn chữ thường (vd "thứ hai") - thêm hàm
+`capitalizeVietnameseWeekday()` (regex `\p{L}` Unicode, viết hoa chữ đầu MỖI TỪ, không đụng phần ngày)
+trong `PeriodicTasksAgendaView.tsx` → hiển thị đúng "Thứ Hai, 14/09/2026".
+
+**Verify (2026-09-15, sau khi wire xong toàn bộ):** Backend như trên. Frontend: `tsc --noEmit` sạch,
+`next build` sạch (đủ 32 route), `vitest run` **3/3 suite - 22/22 test PASS** (tăng từ 14, +8 test mới
+cho `taskLinkChains.ts`, không regression).
+
 ---
 
 ## 7. Migration list dự kiến (timestamp CHỈ là placeholder — phải `ls` lại thật trước khi code)
