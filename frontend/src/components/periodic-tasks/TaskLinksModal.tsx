@@ -14,6 +14,7 @@ import {
 } from '@/lib/hooks/usePeriodicTaskLinks';
 import { useAddTaskCustomers, useRemoveTaskCustomer } from '@/lib/hooks/usePeriodicTaskCustomers';
 import { useCustomers } from '@/lib/hooks/useCustomers';
+import { customerPhoneDisplay, customerPlainLabel, renderCustomerOption } from '@/components/common/customer-option-render';
 import { PeriodicTask, PERIOD_TYPE_LABELS, PERIOD_RANK } from '@/lib/api/periodic-tasks.api';
 import { getApiErrorMessage } from '@/lib/utils/error-message.util';
 import { SimpleList } from '@/components/common/SimpleList';
@@ -88,7 +89,7 @@ export function TaskLinksModal({ open, onClose, task }: Props) {
 
     const [selectedParentId, setSelectedParentId] = useState<number | undefined>(undefined);
     const [selectedChildId, setSelectedChildId] = useState<number | undefined>(undefined);
-    const [selectedCustomerId, setSelectedCustomerId] = useState<number | undefined>(undefined);
+    const [selectedCustomerIds, setSelectedCustomerIds] = useState<number[]>([]);
     const [customerSearch, setCustomerSearch] = useState('');
 
     const { data: candidatesData, isLoading: candidatesLoading } = usePeriodicTasks({ page: 1, limit: 100 });
@@ -130,7 +131,7 @@ export function TaskLinksModal({ open, onClose, task }: Props) {
     const resetAndClose = () => {
         setSelectedParentId(undefined);
         setSelectedChildId(undefined);
-        setSelectedCustomerId(undefined);
+        setSelectedCustomerIds([]);
         setCustomerSearch('');
         onClose();
     };
@@ -185,14 +186,14 @@ export function TaskLinksModal({ open, onClose, task }: Props) {
         );
     };
 
-    const handleAddCustomer = () => {
-        if (!task || !selectedCustomerId) return;
+    const handleAddCustomers = () => {
+        if (!task || selectedCustomerIds.length === 0) return;
         addCustomersMutation.mutate(
-            { taskId: task.id, customerIds: [selectedCustomerId] },
+            { taskId: task.id, customerIds: selectedCustomerIds },
             {
                 onSuccess: () => {
-                    message.success('Đã gắn Khách hàng vào Công việc');
-                    setSelectedCustomerId(undefined);
+                    message.success(`Đã gắn ${selectedCustomerIds.length} Khách hàng vào Công việc`);
+                    setSelectedCustomerIds([]);
                     setCustomerSearch('');
                 },
                 onError: (err) => message.error(getApiErrorMessage(err, 'Gắn Khách hàng thất bại')),
@@ -416,7 +417,7 @@ export function TaskLinksModal({ open, onClose, task }: Props) {
                                     description: (
                                         <Space size={4}>
                                             <Text type="secondary" style={{ fontSize: 12 }}>
-                                                {c.phone}
+                                                {customerPhoneDisplay(c.phone)}
                                             </Text>
                                             {c.salesUser && <Tag color="blue">{c.salesUser.name}</Tag>}
                                         </Space>
@@ -450,17 +451,23 @@ export function TaskLinksModal({ open, onClose, task }: Props) {
                             {canLinkCustomer && (
                                 <div style={{ marginTop: 12, display: 'flex', gap: 8 }}>
                                     <Select
+                                            mode="multiple"
                                         style={{ flex: 1 }}
                                         showSearch
                                         filterOption={false}
-                                        placeholder="Tìm Khách hàng theo tên/SĐT để gắn"
+                                            optionLabelProp="label"
+                                            optionRender={renderCustomerOption}
+                                            popupMatchSelectWidth={false}
+                                            maxTagCount="responsive"
+                                            placeholder="Tìm Khách hàng theo tên/SĐT để gắn (chọn nhiều được)"
                                         loading={customerCandidatesLoading}
-                                        value={selectedCustomerId}
-                                        onChange={setSelectedCustomerId}
+                                            value={selectedCustomerIds}
+                                            onChange={setSelectedCustomerIds}
                                         onSearch={setCustomerSearch}
                                         options={customerCandidates.map((c) => ({
                                             value: c.id,
-                                            label: `${c.name} - ${c.phone}`,
+                                            label: customerPlainLabel(c),
+                                            customer: c,
                                         }))}
                                         notFoundContent={
                                             customerCandidatesLoading ? 'Đang tìm...' : 'Không tìm thấy Khách hàng phù hợp'
@@ -469,9 +476,9 @@ export function TaskLinksModal({ open, onClose, task }: Props) {
                                     <Button
                                         type="primary"
                                         icon={<PlusOutlined />}
-                                        disabled={!selectedCustomerId}
+                                            disabled={selectedCustomerIds.length === 0}
                                         loading={addCustomersMutation.isPending}
-                                        onClick={handleAddCustomer}
+                                            onClick={handleAddCustomers}
                                     >
                                         Gán
                                     </Button>

@@ -36,6 +36,8 @@ import { useDebounce } from '@/lib/hooks/useDebounce';
 import { useDepartments } from '@/lib/hooks/useDepartments';
 import { useUsersList } from '@/lib/hooks/useUsers';
 import { usePeriodicTaskStatuses } from '@/lib/hooks/usePeriodicTaskStatuses';
+import { useCustomers } from '@/lib/hooks/useCustomers';
+import { useAddTaskCustomers } from '@/lib/hooks/usePeriodicTaskCustomers';
 import {
     usePeriodicTasks,
     useCreatePeriodicTask,
@@ -51,6 +53,7 @@ import {
 import { resolveEntityColor, DEFAULT_ENTITY_COLOR } from '@/lib/utils/entityColor';
 import { useRoleColorMap, useRoleColors } from '@/lib/hooks/useRoleColorMap';
 import { TaskLinksModal } from '@/components/periodic-tasks/TaskLinksModal';
+import { customerPlainLabel, renderCustomerOption } from '@/components/common/customer-option-render';
 
 const { Title, Text } = Typography;
 const { RangePicker } = DatePicker;
@@ -163,10 +166,30 @@ export default function PeriodicTasksPage() {
     const [editingTask, setEditingTask] = useState<PeriodicTask | null>(null);
     const [form] = Form.useForm();
 
+    // Gắn Khách hàng NGAY LÚC TẠO MỚI (yêu cầu chủ dự án 2026-09-15) - CHỈ áp
+    // dụng cho Tạo mới (`!editingTask`), vì Task đã tồn tại có sẵn nút
+    // "Liên kết" (`TaskLinksModal`) để quản lý Customer đầy đủ (thêm/gỡ từng
+    // cái, xem đúng phạm vi quyền). Không đưa vào `Form` vì
+    // `CreatePeriodicTaskDto` ở BE không nhận `customerIds` - phải gọi
+    // riêng `POST /:id/customers` SAU KHI tạo Task thành công (cần `id` mới).
+    const canLinkCustomer = can('periodic_tasks.link_customer');
+    const [createCustomerIds, setCreateCustomerIds] = useState<number[]>([]);
+    const [customerSearchInput, setCustomerSearchInput] = useState('');
+    const debouncedCustomerSearch = useDebounce(customerSearchInput, 300);
+    const { data: customerOptionsData, isLoading: customerOptionsLoading } = useCustomers({
+        page: 1,
+        limit: 20,
+        search: debouncedCustomerSearch || undefined,
+    });
+    const createCustomerOptions = customerOptionsData?.data ?? [];
+    const addTaskCustomersMutation = useAddTaskCustomers();
+
     const openCreateModal = () => {
         setEditingTask(null);
         form.resetFields();
         form.setFieldsValue({ periodType: 'daily', color: '#1890ff' });
+        setCreateCustomerIds([]);
+        setCustomerSearchInput('');
         setModalOpen(true);
     };
 
@@ -183,6 +206,8 @@ export default function PeriodicTasksPage() {
             note: task.note ?? undefined,
             color: task.color ?? '#1890ff',
         });
+        setCreateCustomerIds([]);
+        setCustomerSearchInput('');
         setModalOpen(true);
     };
 
@@ -211,8 +236,23 @@ export default function PeriodicTasksPage() {
                 );
             } else {
                 createMutation.mutate(payload, {
-                    onSuccess: () => {
+                    onSuccess: (newTask) => {
                         message.success('Đã tạo Công việc định kỳ mới');
+                        // Gắn Khách hàng đã chọn (nếu có) NGAY SAU KHI tạo -
+                        // BE không nhận `customerIds` trong `POST /periodic-tasks`,
+                        // phải gọi tiếp `POST /:id/customers` với id vừa tạo.
+                        if (createCustomerIds.length > 0) {
+                            addTaskCustomersMutation.mutate(
+                                { taskId: newTask.id, customerIds: createCustomerIds },
+                                {
+                                    onError: (err: any) =>
+                                        message.error(
+                                            err?.response?.data?.message ||
+                                            'Tạo Công việc thành công nhưng gắn Khách hàng thất bại - vào "Liên kết" để gắn lại',
+                                        ),
+                                },
+                            );
+                        }
                         setModalOpen(false);
                     },
                     onError: (err: any) => {
@@ -593,6 +633,35 @@ export default function PeriodicTasksPage() {
                     <Form.Item name="note" label="Ghi chú" rules={[{ max: 1000, message: 'Ghi chú quá dài' }]}>
                         <Input.TextArea rows={2} placeholder="Không bắt buộc" />
                     </Form.Item>
+
+                    {/* Gắn Khách hàng lúc tạo mới - CHỈ hiện khi Tạo mới (Sửa dùng nút
+                        "Liên kết" riêng, xem TaskLinksModal) + có quyền
+                        periodic_tasks.link_customer (PLAN mục 2.4). Không phải
+                        Form.Item vì field này không thuộc CreatePeriodicTaskDto. */}
+                    {!editingTask && canLinkCustomer && (
+                        <Form.Item label="Khách hàng liên quan" tooltip="Không bắt buộc - có thể gắn/gỡ sau qua nút &quot;Liên kết&quot;">
+                            <Select
+                                mode="multiple"
+                                showSearch
+                                filterOption={false}
+                                optionLabelProp="label"
+                                optionRender={renderCustomerOption}
+                                popupMatchSelectWidth={false}
+                                maxTagCount="responsive"
+                                placeholder="Tìm Khách hàng theo tên/SĐT để gắn (chọn nhiều được, không bắt buộc)"
+                                loading={customerOptionsLoading}
+                                value={createCustomerIds}
+                                onChange={setCreateCustomerIds}
+                                onSearch={setCustomerSearchInput}
+                                options={createCustomerOptions.map((c) => ({
+                                    value: c.id,
+                                    label: customerPlainLabel(c),
+                                    customer: c,
+                                }))}
+                                notFoundContent={customerOptionsLoading ? 'Đang tìm...' : 'Không tìm thấy Khách hàng phù hợp'}
+                            />
+                        </Form.Item>
+                    )}
                 </Form>
             </Modal>
 
