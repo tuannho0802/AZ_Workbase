@@ -75,6 +75,15 @@ export interface PeriodicTask {
    *   (có quyền, chỉ là chưa gắn/không còn cái nào trong phạm vi xem).
    */
   linkedCustomers?: Customer[];
+  /**
+   * Phase 4 (PLAN mục 2.5): danh sách "Phụ trách phụ" - CHỈ có mặt trên
+   * response của `GET /:id` (mirror `linkedCustomers`, BE chỉ gọi
+   * `attachSecondaryAssignees()` ở `findOne()`), KHÔNG có trên `GET /`
+   * (danh sách). KHÁC `linkedCustomers` ở chỗ KHÔNG ẩn theo quyền - luôn là
+   * mảng (kể cả rỗng `[]`) khi Task đã tải xong, không có case `undefined`
+   * do thiếu quyền (đây là thông tin phân công nội bộ, không phải Customer).
+   */
+  secondaryAssignees?: RefUser[];
 }
 
 export interface CreatePeriodicTaskPayload {
