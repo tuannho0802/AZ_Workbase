@@ -2434,3 +2434,58 @@ Task thành 1 Pill (bo góc nhẹ, không tròn hẳn), áp dụng đồng nhấ
 >   `getParents`/`rollup` (Phase 2) không đổi gì.
 > - Đã cập nhật `PLAN_PERIODIC_TASKS_MODULE.md` (mục "Phase 8b" mới) với đầy đủ lý do kỹ thuật cho từng
 >   quyết định khác nhau giữa các View, tránh phiên sau hiểu nhầm là làm thiếu.
+
+
+## [2026-09-15 22:15] | Fix bug thật: Kanban không "sáng" cột giữa khi kéo (closestCorners) + đường nối chuỗi ở Bảng giống Agenda | Status: Success
+
+**Actor:** Agent (theo report kèm ảnh chụp màn hình của chủ dự án, tiếp nối entry 21:30 cùng ngày)
+
+**Yêu cầu:** (1) Kéo Task vào cột "Hoàn thành" (cột GIỮA, kẹp giữa 1 cột có Card và 1 cột trống) không
+sáng lên nhận Task, trong khi cột "Không hoàn thành" (cột cuối) thì sáng bình thường - chủ dự án lo ngại
+thêm Trạng thái mới sẽ gặp lại lỗi này. (2) Đường nối chuỗi liên kết ở Bảng cần giống hệt kiểu Agenda
+(đường kẻ + chấm tròn), không dùng viền trái màu như cũ nữa.
+
+**Files Changed:**
+- `frontend/src/components/periodic-tasks/PeriodicTasksKanbanView.tsx` — đổi `collisionDetection` từ
+  `closestCorners` sang chiến lược `pointerWithin` (ưu tiên) + fallback `rectIntersection`.
+- `frontend/src/lib/utils/taskLinkChains.ts` — thêm `getChainRunFlags()` (gắn cờ
+  `isFirst`/`isLast`/`color` cho từng Task theo "run" liền nhau cùng chuỗi - dùng cho layout `<tr>` rời
+  rạc của Bảng, khác `TaskChainGroupedList` vốn cần 1 khối DOM chung).
+- `frontend/src/lib/utils/taskLinkChains.test.ts` (mới) — 4 test cho `getChainRunFlags`.
+- `frontend/src/app/(dashboard)/cong-viec-dinh-ky/page.tsx` — cột "Công việc": bỏ `onCell` viền trái màu,
+  đổi `render` sang vẽ nửa đoạn kẻ trên/dưới + chấm tròn mỗi `<tr>` (khớp mép để nhìn liền mạch qua các
+  dòng), dùng `getChainRunFlags()`.
+
+**Root Cause (bug 1 - Kanban):**
+> `closestCorners` so khoảng cách góc TUYỆT ĐỐI giữa Card đang kéo với MỌI droppable (cả cột rỗng lẫn
+> từng Card ở cột khác), không quan tâm con trỏ đang thực sự nằm trong cột nào. Khi 1 cột NẰM GIỮA 1 cột
+> có Card và 1 cột trống, góc của Card ở cột bên cạnh luôn tính GẦN HƠN góc của cột giữa (diện tích lớn,
+> rỗng) về khoảng cách tuyệt đối, khiến `over` liên tục trả về Card/cột SAI - cột giữa không bao giờ
+> `isOver`. Cột cuối ("Không hoàn thành") không bị ảnh hưởng vì không kẹp giữa 2 vùng cạnh tranh. Đúng
+> như lo ngại của chủ dự án: lỗi CÀNG DỄ tái diễn khi thêm Trạng thái mới nằm giữa 2 cột khác.
+
+**Solution (bug 1):**
+> Đổi sang pattern chuẩn "Multiple Containers" của dnd-kit: `pointerWithin` LÀM CHÍNH (khớp THEO VỊ TRÍ
+> CON TRỎ thực tế, không phụ thuộc khoảng cách góc) - chỉ fallback `rectIntersection` khi con trỏ ra khỏi
+> MỌI droppable (kéo nhanh/ra rìa ngoài bảng). Không đổi gì ở `handleDragEnd` vì logic tính `targetStatusId`
+> từ `overId` vốn đã đúng, chỉ sai ở bước xác định `overId`.
+
+**Solution (bug 2 - đường nối Bảng):**
+> Bảng có `<tr>` RIÊNG cho từng Task (không có 1 khối DOM chung để vẽ 1 đường kẻ liền mạch xuyên nhiều
+> dòng như Agenda) - `getChainRunFlags()` gắn cờ `isFirst`/`isLast` cho từng Task theo "run", mỗi `<tr>`
+> tự vẽ NỬA đoạn kẻ trên/dưới (nếu không phải đầu/cuối run) - 2 nửa đoạn của 2 dòng liền kề khớp đúng mép
+> trên/dưới `<td>` nên nhìn liền mạch dù DOM tách rời. Kanban/Calendar giữ nguyên (Kanban cố ý không vẽ
+> đường nối vì rủi ro lệch toạ độ kéo-thả, Calendar dùng Tooltip - không đổi).
+
+**Verify thật:**
+- Frontend: `npx tsc --noEmit` sạch cho 3 file sửa/thêm (4 lỗi tsc còn lại trong repo là pre-existing,
+  không liên quan - đã xác nhận ở entry trước). `npx vitest run` **3/3 suite - 18/18 test PASS** (thêm 4
+  test mới cho `getChainRunFlags`, bù lại phần thiếu đã phát hiện ở entry 21:30).
+- Backend: không đổi gì trong entry này (bug 1/2 đều thuần FE).
+
+**Notes:**
+> - Đường nối ở Bảng dùng chiều cao nội dung cố định `CONTENT_H = 24` (khớp Tag/Pill mặc định AntD) để
+>   tránh lỗi CSS "percentage height không resolve được khi container height=auto" - phần bleed lên/xuống
+>   `<tr>` liền kề dùng số px cố định (20), giả định padding mặc định Table AntD hiện tại. Nếu sau này đổi
+>   `size`/`density` của Table hoặc theme padding, có thể cần chỉnh lại 2 số này cho khớp - CẦN chủ dự án
+>   xác nhận trực quan (không verify được bằng `tsc`/`vitest`, cần xem thật trên browser).
