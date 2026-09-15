@@ -8,7 +8,7 @@ import { PeriodicTask } from '@/lib/api/periodic-tasks.api';
 import { TaskMiniCard } from './TaskMiniCard';
 import { TaskActionsBar, TaskActionsBarProps } from './TaskActionsBar';
 import { TaskChainGroupedList } from './TaskChainConnector';
-import { TaskChainInfo, sortTasksByChain } from '@/lib/utils/taskLinkChains';
+import { TaskChainInfo, TaskLinkEdge, sortTasksByChain } from '@/lib/utils/taskLinkChains';
 
 dayjs.locale('vi');
 
@@ -38,6 +38,12 @@ export interface PeriodicTasksAgendaViewProps extends ActionHandlers {
      * `TaskChainBadge` cho biết còn liên kết ở panel khác, xem JSDoc
      * `TaskMiniCard.chainInfo`). */
     chains?: Map<number, TaskChainInfo>;
+    /** Cạnh cha-con thật của TOÀN BỘ `tasks` (cùng nguồn với `chains`, xem
+     * `useTaskLinksAmong().edges` ở `cong-viec-dinh-ky/page.tsx`) - cần
+     * truyền xuống `TaskChainGroupedList` để dựng ĐÚNG cây phân cấp
+     * (2026-09-15: fix bug cấp lồng tính theo vị trí hiển thị thay vì theo
+     * cạnh cha-con thật, xem JSDoc `TaskChainGroupedList`). */
+    edges?: TaskLinkEdge[];
     resolveChainTask?: (taskId: number) => Pick<PeriodicTask, 'title' | 'periodStartDate'> | undefined;
 }
 
@@ -56,7 +62,7 @@ export interface PeriodicTasksAgendaViewProps extends ActionHandlers {
  * filter từ trang cha (`cong-viec-dinh-ky/page.tsx`), mirror đúng nguyên tắc
  * "FE chỉ việc gọi bình thường" ở JSDoc đầu file đó.
  */
-export function PeriodicTasksAgendaView({ tasks, loading, chains, resolveChainTask, ...actions }: PeriodicTasksAgendaViewProps) {
+export function PeriodicTasksAgendaView({ tasks, loading, chains, edges, resolveChainTask, ...actions }: PeriodicTasksAgendaViewProps) {
     const groups = useMemo(() => {
         const map = new Map<string, PeriodicTask[]>();
         for (const t of tasks) {
@@ -129,6 +135,7 @@ export function PeriodicTasksAgendaView({ tasks, loading, chains, resolveChainTa
                         <TaskChainGroupedList
                             tasks={chains ? sortTasksByChain(groupTasks, chains) : groupTasks}
                             chains={chains ?? new Map()}
+                            edges={edges ?? []}
                             renderTask={(task) => (
                                 <TaskMiniCard
                                     key={task.id}

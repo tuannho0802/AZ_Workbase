@@ -1035,6 +1035,7 @@ export default function PeriodicTasksPage() {
                     tasks={viewTasks}
                     loading={viewLoading || viewFetching}
                     chains={chains}
+                    edges={linksData?.edges ?? []}
                     resolveChainTask={resolveChainTask}
                     canEdit={canEdit}
                     canEditLocked={canEditLocked}

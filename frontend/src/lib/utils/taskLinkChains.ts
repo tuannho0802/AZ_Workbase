@@ -1,4 +1,4 @@
-import { PeriodicTask, PERIOD_RANK } from '@/lib/api/periodic-tasks.api';
+import { PeriodicTask } from '@/lib/api/periodic-tasks.api';
 
 export interface TaskLinkEdge {
   parentTaskId: number;
