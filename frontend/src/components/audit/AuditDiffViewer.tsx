@@ -32,8 +32,12 @@ const FIELD_LABELS: Record<string, string> = {
   campaign: 'Chiến dịch',
   salesUserId: 'Nhân viên sales',
   sales_user_id: 'Nhân viên sales',
+  salesUser: 'Nhân viên sales',
+  marketingUserId: 'Nhân viên marketing',
+  marketingUser: 'Nhân viên marketing',
   departmentId: 'Phòng ban',
   department_id: 'Phòng ban',
+  department: 'Phòng ban',
   amount: 'Số tiền nạp',
   type: 'Loại tiền',
   brokerId: 'ID Môi giới',
@@ -42,6 +46,7 @@ const FIELD_LABELS: Record<string, string> = {
   password: 'Mật khẩu',
   closedDate: 'Ngày chốt',
   inputDate: 'Ngày nhập',
+  assignedDate: 'Ngày phân bổ',
 };
 
 export const AuditDiffViewer: React.FC<AuditDiffViewerProps> = ({
@@ -97,7 +102,44 @@ export const AuditDiffViewer: React.FC<AuditDiffViewerProps> = ({
       return <Text type="secondary">{val.length} giao dịch nạp tiền</Text>;
     }
 
-    if (typeof val === 'object') {
+    // ⚠️ CẢI TIẾN (báo lỗi thật: "Dữ liệu phức hợp" cho MỌI field object, kể
+    // cả khi BE đã dựng snapshot SẠCH dạng `{ id, name }`/`{ id, code, name,
+    // color }` - mirror `PeriodicTasksService.buildAuditSnapshot()` và
+    // `CustomersService.buildCustomerAuditSnapshot()`, cả 2 đều trả object có
+    // sẵn `name` cho field quan hệ (status/primaryAssignee/department/
+    // salesUser/marketingUser...) - trước đây generic diff viewer này không
+    // biết đọc field nào ngoài `status`/`isActive`/`amount`/`deposits` (hard-
+    // code cứng theo tên field), nên MỌI object khác đều rơi vào nhánh cuối
+    // "Dữ liệu phức hợp", vô nghĩa với end-user. Xử lý TỔNG QUÁT: bất kỳ
+    // object nào có field `name` (string) đều coi là "1 thực thể có tên" -
+    // hiển thị `name`, kèm `Tag color` nếu có sẵn `color` (đồng bộ cách
+    // `status` object đã hiển thị ở nhánh riêng phía trên).
+    if (Array.isArray(val)) {
+      if (val.length === 0) return <Text type="secondary" italic>Trống</Text>;
+      if (val.every((item) => item && typeof item === 'object' && typeof item.name === 'string')) {
+        return (
+          <Space size={4} wrap>
+            {val.map((item, idx) =>
+              item.color ? (
+                <Tag key={item.id ?? idx} color={item.color}>{item.name}</Tag>
+              ) : (
+                <Tag key={item.id ?? idx}>{item.name}</Tag>
+              ),
+            )}
+          </Space>
+        );
+      }
+      return <Text type="secondary">{val.length} mục</Text>;
+    }
+
+    if (typeof val === 'object' && val !== null) {
+      const named = val as { name?: unknown; color?: string; code?: string };
+      if (typeof named.name === 'string') {
+        return named.color ? <Tag color={named.color}>{named.name}</Tag> : <Text>{named.name}</Text>;
+      }
+      if (typeof named.code === 'string') {
+        return <Text>{named.code}</Text>;
+      }
       return <Text type="secondary">Dữ liệu phức hợp</Text>;
     }
 

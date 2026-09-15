@@ -2491,6 +2491,35 @@ thêm Trạng thái mới sẽ gặp lại lỗi này. (2) Đường nối chu�
 >   xác nhận trực quan (không verify được bằng `tsc`/`vitest`, cần xem thật trên browser).
 
 
+## [2026-09-15 18:07] | Hoàn thiện audit log "đọc được" cho cả trang Nhật ký hệ thống lẫn Lịch sử công việc định kỳ (tiếp nối commit bd4a772) | Status: Success
+
+**Actor:** Agent (tiếp nối trực tiếp commit `bd4a772` "Fix: Try to fix with audit log and period audit log not to render raw Id or Data" - commit đó CHỈ sửa phần ghi log của `periodic-tasks.service.ts`, còn thiếu FE render + phần Customer của trang `/audit-logs` chung, đúng như người dùng báo "cả 2 đều bị")
+
+**Yêu cầu:** Ảnh chụp `/lich-su-cong-viec` cho thấy "Trạng thái: 2" (ID thô) và "updatedBy: Trống → Dữ liệu phức hợp" - yêu cầu sửa TỪ BACKEND (truy vấn đúng data) rồi trả FE đúng dữ liệu đọc được, áp dụng cho CẢ 2 trang `/lich-su-cong-viec` VÀ `/audit-logs`.
+
+**QUAN TRỌNG - đã pull code THẬT và verify lại trước khi tin bất kỳ báo cáo nào (theo đúng Custom Instructions):** commit `bd4a772` (tự nhận đã sửa xong) hoá ra:
+1. Chỉ sửa 1 phía (BE của `periodic-tasks.service.ts`) - FE (`AuditDiffViewer.tsx`) CHƯA được cập nhật để đọc snapshot sạch mới, vẫn fallback "Dữ liệu phức hợp" cho MỌI object.
+2. Hoàn toàn CHƯA đụng tới `customers.service.ts` - nguồn audit log chính của trang `/audit-logs` chung (Customer CRUD), vẫn log raw entity y hệt bug đã sửa ở periodic-tasks.
+3. `npx jest src/modules/periodic-tasks` phát hiện **3 test FAIL THẬT** (`lock`/`remove`) - commit trước đổi hành vi service (bỏ `lockedById` khỏi audit, đổi `remove()` sang dùng `buildAuditSnapshot()`) nhưng KHÔNG cập nhật lại test tương ứng - lỗi có thật, không phải do phiên này gây ra (xác nhận qua `git status` trước khi sửa gì).
+
+**Files Changed:**
+- `backend/src/modules/customers/customers.service.ts` — thêm `buildCustomerAuditSnapshot()` (mirror đúng `PeriodicTasksService.buildAuditSnapshot()`): snapshot sạch cho `CREATE_CUSTOMER`/`UPDATE_CUSTOMER`, resolve `salesUser`/`marketingUser`/`department` thành `{id, name}` thay vì log raw `salesUserId`/entity đầy đủ lẫn lộn. Nhân tiện fix 2 bug thật phát hiện khi đọc kỹ `update()`:
+  - `oldData` trước đây bị chụp SAU KHI Step 1/1b/2 đã tự mutate `customer.salesUser`/`marketingUser` trong bộ nhớ → audit "trước" thực chất đã là "sau" → giờ chụp `before` NGAY sau khi fetch, trước mọi mutation.
+  - `department` bị đổi `departmentId` mà không đồng bộ `customer.department` (relation object cũ vẫn còn) → đúng bug "TypeORM Relation Precedence" đã ghi ở `SKILL_NESTJS_BACKEND.md` mục 13 - fix bằng gán `{id}` tạm (mirror cách `updatedBy` đã fix trước đó), fetch lại tên đầy đủ sau `save()` để log.
+- `frontend/src/components/audit/AuditDiffViewer.tsx` — `formatValue()`: thay nhánh cuối `typeof val === 'object' → "Dữ liệu phức hợp"` bằng xử lý TỔNG QUÁT - object có field `name` (string) → hiển thị `name` (kèm `Tag color` nếu có); mảng object có `name` → hiển thị dạng Tag list; giữ nguyên các nhánh đặc thù cũ (`status` string/object, `isActive`, `amount`, `deposits`). Đây là phần khiến sửa ở BE (cả commit trước lẫn commit này) THẬT SỰ hiển thị được trên UI - trước đó dù BE đã trả `{id,name}` sạch, FE vẫn không biết đọc.
+- `frontend/src/components/periodic-tasks/TaskAuditLogsModal.tsx` — `PERIODIC_TASK_FIELD_LABELS`: thêm nhãn cho key MỚI (`status`/`primaryAssignee`/`department`, viết không có hậu tố `Id`) mà `buildAuditSnapshot()` hiện dùng, giữ lại key cũ (`statusId`/...) để các dòng audit CŨ (ghi trước khi đổi snapshot) vẫn hiển thị đúng nhãn.
+- `backend/src/modules/periodic-tasks/periodic-tasks.service.spec.ts` — fix-forward 3 test lỗi thật: `lock` (2 test) bỏ `lockedById` khỏi object kỳ vọng (khớp đúng hành vi mới - lý do đã có JSDoc ở service), `remove` (1 test) đổi kỳ vọng từ raw `task` sang đúng shape `buildAuditSnapshot()` trả về.
+
+**Verify thật (không suy diễn):**
+- Backend: `npx tsc --noEmit` 0 lỗi, `npx nest build` sạch, `npx jest` (toàn bộ) **663/663 PASS**, 36/36 suite (trước khi sửa: 660/663, 3 fail thật ở `periodic-tasks.service.spec.ts`).
+- Frontend: `npx tsc --noEmit` còn đúng 5 lỗi PRE-EXISTING (đã xác nhận bằng `git stash` so sánh trước/sau - do thiếu asset `logo.png` bị gitignore + 1 lỗi type `styled-jsx` có sẵn, KHÔNG liên quan file vừa sửa), `npx next build` sạch (đủ 33 route, gồm `/audit-logs` và `/lich-su-cong-viec`), `npx vitest run` **25/25 PASS**.
+
+**Notes:**
+> - CHƯA làm (ngoài phạm vi lần này, cần phiên sau): `users.service.ts` (`CREATE_USER`/`UPDATE_USER`) và `departments.service.ts` cũng log audit có khả năng dính cùng loại bug (`departmentId`/`positionId` thô không kèm tên) - CHƯA kiểm tra kỹ, người dùng chưa báo cáo cụ thể ở 2 module này.
+> - Dữ liệu audit log CŨ (ghi TRƯỚC 2 lần sửa - cả bd4a772 lẫn lần này) vẫn giữ nguyên format cũ trong DB (không backfill ngược) - các dòng lịch sử cũ sẽ vẫn hiển thị đúng nhờ `AuditDiffViewer` đã tổng quát hoá + `PERIODIC_TASK_FIELD_LABELS` giữ song song 2 bộ key, nhưng field nào cũ chỉ có ID thô (không phải `{id,name}`) thì vẫn hiển thị số thô - CHỈ dữ liệu ghi MỚI (sau khi deploy đợt này) mới đầy đủ tên.
+
+---
+
 ## [2026-09-15 08:35] | Đổi UI đường nối chuỗi Task sang Tree View (staircase thật) + fix tsc alias lỗi cho test file | Status: Success
 
 **Actor:** Agent (theo phản hồi trực tiếp kèm 2 ảnh chụp màn hình của chủ dự án, tiếp nối entry 22:15 cùng ngày)

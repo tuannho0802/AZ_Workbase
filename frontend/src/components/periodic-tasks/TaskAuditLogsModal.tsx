@@ -21,9 +21,14 @@ interface Props {
  * Nhãn tiếng Việt cho field riêng của `PeriodicTask` (khác Customer/User/
  * Deposit mà `AuditDiffViewer.FIELD_LABELS` gốc đã có sẵn) - truyền qua prop
  * `extraFieldLabels` (xem `AuditDiffViewer.tsx`), KHÔNG sửa file gốc dùng
- * chung với trang `/audit-logs`. Field object lồng (`status`/`primaryAssignee`/
- * `department`/`createdBy`/`updatedBy`) không liệt kê ở đây - `AuditDiffViewer`
- * tự fallback hiển thị "Dữ liệu phức hợp" cho `typeof val === 'object'`.
+ * chung với trang `/audit-logs`.
+ *
+ * `statusId`/`primaryAssigneeId`/`departmentId` giữ lại CHỈ để hiển thị đúng
+ * nhãn cho các dòng audit CŨ (ghi trước khi `PeriodicTasksService.
+ * buildAuditSnapshot()` đổi sang snapshot sạch `status`/`primaryAssignee`/
+ * `department` dạng object `{id, name}`) - snapshot MỚI dùng đúng 3 key này,
+ * `AuditDiffViewer` giờ tự đọc `.name`/`.color` trong object nên không còn
+ * fallback "Dữ liệu phức hợp" nữa (xem `formatValue()`).
  */
 export const PERIODIC_TASK_FIELD_LABELS: Record<string, string> = {
   title: 'Tiêu đề',
@@ -32,8 +37,11 @@ export const PERIODIC_TASK_FIELD_LABELS: Record<string, string> = {
   periodStartDate: 'Ngày bắt đầu kỳ',
   periodEndDate: 'Ngày kết thúc kỳ',
   statusId: 'Trạng thái',
+  status: 'Trạng thái',
   primaryAssigneeId: 'Phụ trách chính',
+  primaryAssignee: 'Phụ trách chính',
   departmentId: 'Phòng ban',
+  department: 'Phòng ban',
   color: 'Màu',
   isLocked: 'Đang khoá',
   lockNote: 'Ghi chú khoá',
