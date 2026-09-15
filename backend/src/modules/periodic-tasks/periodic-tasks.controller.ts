@@ -3,11 +3,13 @@ import { ApiTags, ApiOperation, ApiResponse, ApiBearerAuth } from '@nestjs/swagg
 import { PeriodicTasksService } from './periodic-tasks.service';
 import { PeriodicTaskLinksService } from './periodic-task-links.service';
 import { PeriodicTaskCustomersService } from './periodic-task-customers.service';
+import { PeriodicTaskSecondaryAssigneesService } from './periodic-task-secondary-assignees.service';
 import { CreatePeriodicTaskDto } from './dto/create-periodic-task.dto';
 import { UpdatePeriodicTaskDto } from './dto/update-periodic-task.dto';
 import { PeriodicTaskFiltersDto } from './dto/periodic-task-filters.dto';
 import { CreatePeriodicTaskLinkDto } from './dto/create-periodic-task-link.dto';
 import { LinkPeriodicTaskCustomersDto } from './dto/link-periodic-task-customers.dto';
+import { AddPeriodicTaskSecondaryAssigneeDto } from './dto/add-periodic-task-secondary-assignee.dto';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { PermissionGuard } from '../../common/guards/permission.guard';
 import { RequirePermission } from '../../common/decorators/require-permission.decorator';
@@ -15,9 +17,8 @@ import { GetUser } from '../../common/decorators/get-user.decorator';
 import { GetPermissionScope } from '../../common/decorators/get-permission-scope.decorator';
 
 /**
- * PeriodicTasksController - Phase 1 + 2 + 3 (PLAN mục 5 + mục 6). Endpoint
- * phụ trách phụ (`/secondary-assignees` - Phase 4), lock/unlock (Phase 5) sẽ
- * được thêm ở đúng Phase tương ứng.
+ * PeriodicTasksController - Phase 1 + 2 + 3 + 4 (PLAN mục 5 + mục 6).
+ * Endpoint lock/unlock (Phase 5) sẽ được thêm ở đúng Phase tương ứng.
  */
 @ApiTags('Periodic Tasks (Công việc định kỳ)')
 @ApiBearerAuth()
@@ -28,6 +29,7 @@ export class PeriodicTasksController {
     private readonly periodicTasksService: PeriodicTasksService,
     private readonly periodicTaskLinksService: PeriodicTaskLinksService,
     private readonly periodicTaskCustomersService: PeriodicTaskCustomersService,
+    private readonly periodicTaskSecondaryAssigneesService: PeriodicTaskSecondaryAssigneesService,
   ) { }
 
   @Post()
@@ -61,7 +63,10 @@ export class PeriodicTasksController {
     const task = await this.periodicTasksService.findOne(id, user.id, user.role, scope);
     // Phase 3 (PLAN mục 2.4 bước 3+4): xoá hẳn key `linkedCustomers` nếu
     // người xem không có `customers.view` - xem JSDoc `attachLinkedCustomers()`.
-    return this.periodicTaskCustomersService.attachLinkedCustomers(task, user);
+    const withCustomers = await this.periodicTaskCustomersService.attachLinkedCustomers(task, user);
+    // Phase 4: đính thêm `secondaryAssignees` - không cần ẩn theo quyền
+    // (xem JSDoc `attachSecondaryAssignees()`).
+    return this.periodicTaskSecondaryAssigneesService.attachSecondaryAssignees(withCustomers);
   }
 
   @Patch(':id')
@@ -169,5 +174,33 @@ export class PeriodicTasksController {
     @GetPermissionScope() scope: string | null | undefined,
   ) {
     return this.periodicTaskCustomersService.removeCustomer(id, customerId, user, scope);
+  }
+
+  // ── Phase 4: Phụ trách chính/phụ ("1 chính + N phụ") ──
+
+  @Post(':id/secondary-assignees')
+  @RequirePermission('periodic_tasks.edit')
+  @ApiOperation({ summary: 'Thêm 1 Phụ trách phụ cho Công việc' })
+  @ApiResponse({ status: 400, description: 'Người này đang là Phụ trách chính, hoặc không tồn tại/đã bị khoá' })
+  @ApiResponse({ status: 409, description: 'Người này đã là Phụ trách phụ rồi' })
+  addSecondaryAssignee(
+    @Param('id', ParseIntPipe) id: number,
+    @Body() dto: AddPeriodicTaskSecondaryAssigneeDto,
+    @GetUser() user: any,
+    @GetPermissionScope() scope: string | null | undefined,
+  ) {
+    return this.periodicTaskSecondaryAssigneesService.addSecondaryAssignee(id, dto, user.id, user.role, scope);
+  }
+
+  @Delete(':id/secondary-assignees/:userId')
+  @RequirePermission('periodic_tasks.edit')
+  @ApiOperation({ summary: 'Gỡ 1 Phụ trách phụ khỏi Công việc' })
+  removeSecondaryAssignee(
+    @Param('id', ParseIntPipe) id: number,
+    @Param('userId', ParseIntPipe) userId: number,
+    @GetUser() user: any,
+    @GetPermissionScope() scope: string | null | undefined,
+  ) {
+    return this.periodicTaskSecondaryAssigneesService.removeSecondaryAssignee(id, userId, user.id, user.role, scope);
   }
 }
