@@ -66,6 +66,20 @@ export interface PeriodicTask {
   createdAt: string;
   updatedAt: string;
   /**
+   * Phase 5 (PLAN mục 2.9) - cột thật trên entity (KHÔNG phải field đính
+   * thêm như `linkedCustomers`/`secondaryAssignees`) nên LUÔN có mặt trên cả
+   * `GET /` và `GET /:id`. `lockedById` KHÔNG kèm object quan hệ
+   * (`PeriodicTasksService.findAll()/findOne()` không `leftJoinAndSelect`
+   * `lockedBy` - BE cố tình để nhẹ query, xem JSDoc `periodic-tasks.service.ts`
+   * gốc) - FE tự tra tên qua `useUsersList()` (đã có sẵn ở mọi nơi cần hiển
+   * thị, mirror cách `primaryAssigneeId` KHÔNG cần tra riêng vì có sẵn object
+   * `primaryAssignee`, nhưng `lockedBy` thì phải tự tra).
+   */
+  isLocked: boolean;
+  lockedById: number | null;
+  lockedAt: string | null;
+  lockNote: string | null;
+  /**
    * Phase 3 (PLAN mục 2.4): CHỈ có mặt trên response của `GET /:id`
    * (`getOne()`) - `GET /` (`getAll()`) KHÔNG đính field này (BE chỉ gọi
    * `attachLinkedCustomers()` ở `findOne()`, xem controller).
@@ -145,6 +159,21 @@ export const periodicTasksApi = {
    * không có scope, khác view/create/edit - xem PLAN mục 2.7). */
   remove: async (id: number): Promise<{ deleted: true }> => {
     const response = await axiosInstance.delete<{ deleted: true }>(`/periodic-tasks/${id}`);
+    return response.data;
+  },
+
+  /** Phase 5 (PLAN mục 2.9) - Khoá, idempotent (gọi lại nhiều lần không lỗi).
+   * `lockNote` optional - KHÔNG bắt buộc lý do khi khoá. */
+  lock: async (id: number, lockNote?: string): Promise<PeriodicTask> => {
+    const response = await axiosInstance.patch<PeriodicTask>(`/periodic-tasks/${id}/lock`, {
+      lockNote: lockNote || undefined,
+    });
+    return response.data;
+  },
+
+  /** Mở khoá - tự do gọi lại bất kỳ lúc nào, không giới hạn số lần lock↔unlock. */
+  unlock: async (id: number): Promise<PeriodicTask> => {
+    const response = await axiosInstance.patch<PeriodicTask>(`/periodic-tasks/${id}/unlock`);
     return response.data;
   },
 };

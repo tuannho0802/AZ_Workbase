@@ -56,3 +56,23 @@ export const useDeletePeriodicTask = () => {
     onSuccess: invalidate,
   });
 };
+
+/** Phase 5 (PLAN mục 2.9) - Khoá/Mở khoá, invalidate CẢ namespace `LIST_KEY`
+ * (mirror các mutation khác ở file này) để cả bảng danh sách lẫn
+ * `usePeriodicTask(id)` (đang mở trong `TaskLinksModal`) tự fetch lại đúng
+ * `isLocked` mới nhất. */
+export const useLockPeriodicTask = () => {
+  const invalidate = useInvalidatePeriodicTasks();
+  return useMutation({
+    mutationFn: ({ id, lockNote }: { id: number; lockNote?: string }) => periodicTasksApi.lock(id, lockNote),
+    onSuccess: invalidate,
+  });
+};
+
+export const useUnlockPeriodicTask = () => {
+  const invalidate = useInvalidatePeriodicTasks();
+  return useMutation({
+    mutationFn: (id: number) => periodicTasksApi.unlock(id),
+    onSuccess: invalidate,
+  });
+};

@@ -20,6 +20,7 @@ import {
     ColorPicker,
     Alert,
     Avatar,
+    Popconfirm,
 } from 'antd';
 import {
     PlusOutlined,
@@ -28,6 +29,8 @@ import {
     SearchOutlined,
     SettingOutlined,
     ApartmentOutlined,
+    LockOutlined,
+    UnlockOutlined,
 } from '@ant-design/icons';
 import dayjs, { Dayjs } from 'dayjs';
 import { useAuthStore } from '@/lib/stores/auth.store';
@@ -44,6 +47,8 @@ import {
     useCreatePeriodicTask,
     useUpdatePeriodicTask,
     useDeletePeriodicTask,
+    useLockPeriodicTask,
+    useUnlockPeriodicTask,
 } from '@/lib/hooks/usePeriodicTasks';
 import {
     PeriodicTask,
@@ -62,11 +67,22 @@ const { Title, Text } = Typography;
 const { RangePicker } = DatePicker;
 
 /**
- * Trang chính "Công việc định kỳ" (Phase 1 + Phase 2 -
+ * Trang chính "Công việc định kỳ" (Phase 1 + 2 + 5 -
  * PLAN_PERIODIC_TASKS_MODULE.md mục 6). Phase 2 (liên kết cha-con DAG +
- * % hoàn thành) được UI qua nút "Liên kết" mở `TaskLinksModal` - xem file đó.
- * CHƯA có ở Phase 2 (để Phase 3-5): gắn Customer, phụ trách phụ,
- * lock/unlock/duyệt - KHÔNG dựng UI cho các phần này ở đây.
+ * % hoàn thành), Phase 3 (gắn Customer), Phase 4 (Phụ trách phụ) được UI qua
+ * nút "Liên kết" mở `TaskLinksModal` - xem file đó. Phase 5 (Khoá/Mở khoá -
+ * `is_locked`, PLAN mục 2.9) dựng NGAY tại trang này (không phải trong
+ * `TaskLinksModal`) vì đây là hành động "chốt/gate" cấp Task, tương tự Sửa/
+ * Xoá - không phải dữ liệu con như liên kết/Customer/Phụ trách phụ.
+ *
+ * 2 permission tách bạch (PLAN mục 2.9):
+ *  - `periodic_tasks.approve`: bật/tắt được `is_locked` (2 chiều tự do,
+ *    KHÔNG phải workflow 1 chiều) - nút Khoá/Mở khoá CHỈ hiện khi có quyền
+ *    này (`canApprove`).
+ *  - `periodic_tasks.edit_locked`: khi Task ĐANG khoá, có được bấm "Sửa"
+ *    hay không - THIẾU quyền này thì nút "Sửa" vẫn HIỆN (để user biết Task
+ *    tồn tại và mình có `periodic_tasks.edit`) nhưng bị `disabled` kèm
+ *    Tooltip giải thích, tránh gọi PATCH rồi nhận 403 mới biết.
  *
  * RBAC: mọi filter/scope (own/department/all) đã được BE tự áp qua
  * `PeriodicTaskAccessHelper` (xem `periodic-tasks.service.ts`) - FE chỉ việc
@@ -91,6 +107,9 @@ export default function PeriodicTasksPage() {
     // admin, scope 'all'), khác hẳn view/create/edit có 3 mức own/department/all.
     const canDelete = can('periodic_tasks.delete');
     const canManageStatuses = can('periodic_task_statuses.view');
+    // Phase 5 (PLAN mục 2.9) - 2 permission tách bạch, xem JSDoc đầu file.
+    const canApprove = can('periodic_tasks.approve');
+    const canEditLocked = can('periodic_tasks.edit_locked');
 
     // ---- Filter (server-side, mirror CustomerFilters) ----
     const [page, setPage] = useState(1);
@@ -124,6 +143,15 @@ export default function PeriodicTasksPage() {
     const { statuses } = usePeriodicTaskStatuses();
     const { departments } = useDepartments();
     const { users } = useUsersList();
+
+    // Phase 5: `lockedById` KHÔNG kèm object quan hệ từ BE (xem JSDoc
+    // `PeriodicTask.lockedById` ở periodic-tasks.api.ts) - tự tra tên qua
+    // `users` đã có sẵn ở đây.
+    const userNameById = useMemo(() => {
+        const map = new Map<number, string>();
+        for (const u of users as Array<{ id: number; name: string }>) map.set(u.id, u.name);
+        return map;
+    }, [users]);
 
     // Avatar + Tag Vai trò/Phòng ban cho dropdown "Người phụ trách chính" -
     // mirror ĐÚNG `renderUserOption` ở CustomerFilters.tsx/chia-data/page.tsx
@@ -369,6 +397,38 @@ export default function PeriodicTasksPage() {
         });
     };
 
+    // ---- Modal Khoá / Mở khoá (Phase 5, PLAN mục 2.9) ----
+    // Khoá cần Modal riêng vì có `lockNote` (optional, TextArea) - Mở khoá
+    // KHÔNG cần input gì nên dùng Popconfirm inline ngay trong cột Thao tác,
+    // không cần state riêng (mirror cách gỡ liên kết/Phụ trách phụ ở
+    // `TaskLinksModal.tsx` dùng Popconfirm cho hành động không cần nhập gì).
+    const lockMutation = useLockPeriodicTask();
+    const unlockMutation = useUnlockPeriodicTask();
+    const [lockingTask, setLockingTask] = useState<PeriodicTask | null>(null);
+    const [lockNoteInput, setLockNoteInput] = useState('');
+
+    const handleConfirmLock = () => {
+        if (!lockingTask) return;
+        lockMutation.mutate(
+            { id: lockingTask.id, lockNote: lockNoteInput.trim() || undefined },
+            {
+                onSuccess: () => {
+                    message.success(`Đã khoá "${lockingTask.title}"`);
+                    setLockingTask(null);
+                    setLockNoteInput('');
+                },
+                onError: (err) => message.error(getApiErrorMessage(err, 'Khoá thất bại')),
+            },
+        );
+    };
+
+    const handleUnlock = (task: PeriodicTask) => {
+        unlockMutation.mutate(task.id, {
+            onSuccess: () => message.success(`Đã mở khoá "${task.title}"`),
+            onError: (err) => message.error(getApiErrorMessage(err, 'Mở khoá thất bại')),
+        });
+    };
+
     const columns = [
         {
             title: 'Công việc',
@@ -423,9 +483,28 @@ export default function PeriodicTasksPage() {
         {
             title: 'Trạng thái',
             key: 'status',
-            width: 150,
+            width: 170,
             render: (_: any, record: PeriodicTask) => (
-                <Tag color={record.status?.color ?? DEFAULT_ENTITY_COLOR}>{record.status?.name ?? '—'}</Tag>
+                <Space orientation="vertical" size={4}>
+                    <Tag color={record.status?.color ?? DEFAULT_ENTITY_COLOR}>{record.status?.name ?? '—'}</Tag>
+                    {record.isLocked && (
+                        <Tooltip
+                            title={
+                                <>
+                                    <div>
+                                        Khoá bởi: {(record.lockedById && userNameById.get(record.lockedById)) ?? '—'}
+                                    </div>
+                                    {record.lockedAt && <div>Lúc: {dayjs(record.lockedAt).format('HH:mm DD/MM/YYYY')}</div>}
+                                    {record.lockNote && <div>Ghi chú: {record.lockNote}</div>}
+                                </>
+                            }
+                        >
+                            <Tag color="red" icon={<LockOutlined />}>
+                                Đã khoá
+                            </Tag>
+                        </Tooltip>
+                    )}
+                </Space>
             ),
         },
         {
@@ -453,30 +532,65 @@ export default function PeriodicTasksPage() {
             // như Sửa/Xoá bên dưới.
             title: 'Thao tác',
             key: 'action',
-            width: 220,
+            width: 320,
             fixed: 'right' as const,
-            render: (_: any, record: PeriodicTask) => (
-                <Space>
-                    <Button size="small" icon={<ApartmentOutlined />} onClick={() => setLinkingTask(record)}>
-                        Liên kết
-                    </Button>
-                    {canEdit && (
-                        <Button size="small" icon={<EditOutlined />} onClick={() => openEditModal(record)}>
-                            Sửa
+            render: (_: any, record: PeriodicTask) => {
+                // Phase 5 (PLAN mục 2.9): Task khoá mà thiếu `edit_locked` ->
+                // vẫn HIỆN nút Sửa (biết mình có periodic_tasks.edit) nhưng
+                // disable kèm Tooltip, tránh gọi PATCH ăn 403 mới biết.
+                const editDisabled = record.isLocked && !canEditLocked;
+                return (
+                    <Space>
+                        <Button size="small" icon={<ApartmentOutlined />} onClick={() => setLinkingTask(record)}>
+                            Liên kết
                         </Button>
-                    )}
-                    {canDelete && (
-                        <Button
-                            size="small"
-                            danger
-                            icon={<DeleteOutlined />}
-                            onClick={() => setDeletingTask(record)}
-                        >
-                            Xoá
-                        </Button>
-                    )}
-                </Space>
-            ),
+                        {canEdit && (
+                            <Tooltip title={editDisabled ? 'Công việc đang bị khoá - cần quyền "Sửa khi đang khoá"' : ''}>
+                                <Button
+                                    size="small"
+                                    icon={<EditOutlined />}
+                                    disabled={editDisabled}
+                                    onClick={() => openEditModal(record)}
+                                >
+                                    Sửa
+                                </Button>
+                            </Tooltip>
+                        )}
+                        {canApprove && (
+                            record.isLocked ? (
+                                <Popconfirm
+                                    title="Mở khoá Công việc này?"
+                                    onConfirm={() => handleUnlock(record)}
+                                    okText="Mở khoá"
+                                    cancelText="Huỷ"
+                                >
+                                    <Button
+                                        size="small"
+                                        icon={<UnlockOutlined />}
+                                        loading={unlockMutation.isPending && unlockMutation.variables === record.id}
+                                    >
+                                        Mở khoá
+                                    </Button>
+                                </Popconfirm>
+                            ) : (
+                                <Button size="small" icon={<LockOutlined />} onClick={() => setLockingTask(record)}>
+                                    Khoá
+                                </Button>
+                            )
+                        )}
+                        {canDelete && (
+                            <Button
+                                size="small"
+                                danger
+                                icon={<DeleteOutlined />}
+                                onClick={() => setDeletingTask(record)}
+                            >
+                                Xoá
+                            </Button>
+                        )}
+                    </Space>
+                );
+            },
         },
     ];
 
@@ -776,6 +890,35 @@ export default function PeriodicTasksPage() {
                     style={{ marginBottom: 12 }}
                 />
                 <Text>Bạn có chắc muốn xoá Công việc định kỳ này?</Text>
+            </Modal>
+
+            {/* Modal Khoá (Phase 5) - lockNote optional, KHÔNG bắt buộc lý do
+                (PLAN mục 2.9). Mở khoá không cần Modal riêng, xem Popconfirm
+                inline ở cột "Thao tác". */}
+            <Modal
+                title={`Khoá "${lockingTask?.title ?? ''}"?`}
+                open={!!lockingTask}
+                onCancel={() => {
+                    setLockingTask(null);
+                    setLockNoteInput('');
+                }}
+                onOk={handleConfirmLock}
+                okText="Khoá"
+                cancelText="Huỷ"
+                confirmLoading={lockMutation.isPending}
+            >
+                <Text type="secondary" style={{ display: 'block', marginBottom: 8 }}>
+                    Sau khi khoá, chỉ người có quyền &quot;Sửa khi đang khoá&quot; mới sửa được Công việc này (kể cả
+                    đổi trạng thái/liên kết/Khách hàng/Phụ trách phụ). Có thể mở khoá lại bất kỳ lúc nào.
+                </Text>
+                <Input.TextArea
+                    rows={3}
+                    placeholder="Ghi chú lúc khoá (không bắt buộc)"
+                    value={lockNoteInput}
+                    onChange={(e) => setLockNoteInput(e.target.value)}
+                    maxLength={500}
+                    showCount
+                />
             </Modal>
 
             {/* Modal Liên kết & Tiến độ (Phase 2) */}
