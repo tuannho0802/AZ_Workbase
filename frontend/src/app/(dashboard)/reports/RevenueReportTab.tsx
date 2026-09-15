@@ -1,5 +1,6 @@
 'use client';
 
+import { useMemo, useState } from 'react';
 import { Card, Statistic, Typography, Alert } from 'antd';
 import { DollarOutlined } from '@ant-design/icons';
 import { useRevenueReport } from '@/lib/hooks/useReports';
@@ -8,6 +9,7 @@ import { getApiErrorMessage } from '@/lib/utils/error-message.util';
 import { ReportSection } from './ReportSection';
 import { CHART_COLORS } from './ReportChart';
 import PeriodSelector from './PeriodSelector';
+import ReportNameFilter from './ReportNameFilter';
 
 const { Title } = Typography;
 
@@ -35,6 +37,22 @@ interface Props {
 
 export default function RevenueReportTab({ query, onQueryChange }: Props) {
   const { data, isLoading, isError, error } = useRevenueReport(query);
+  const [personalSearch, setPersonalSearch] = useState('');
+  const [departmentSearch, setDepartmentSearch] = useState('');
+
+  const filteredPersonal = useMemo(() => {
+    const rows = data?.personal || [];
+    if (!personalSearch.trim()) return rows;
+    const q = personalSearch.trim().toLowerCase();
+    return rows.filter((r) => r.userName.toLowerCase().includes(q));
+  }, [data?.personal, personalSearch]);
+
+  const filteredDepartment = useMemo(() => {
+    const rows = data?.department || [];
+    if (!departmentSearch.trim()) return rows;
+    const q = departmentSearch.trim().toLowerCase();
+    return rows.filter((r) => r.departmentName.toLowerCase().includes(q));
+  }, [data?.department, departmentSearch]);
 
   const personalColumns = [
     { title: 'Nhân viên', dataIndex: 'userName', key: 'userName' },
@@ -97,12 +115,15 @@ export default function RevenueReportTab({ query, onQueryChange }: Props) {
           rowKey="userId"
           loading={isLoading}
           columns={personalColumns}
-          data={data?.personal || []}
+          data={filteredPersonal}
           nameKey="userName"
           series={REVENUE_SERIES}
           valueFormatter={formatUsd}
           axisFormatter={formatUsdCompact}
-          emptyText="Không có doanh thu trong kỳ này"
+          emptyText={personalSearch ? 'Không tìm thấy nhân viên phù hợp' : 'Không có doanh thu trong kỳ này'}
+          extraFilters={
+            <ReportNameFilter value={personalSearch} onChange={setPersonalSearch} placeholder="Tìm theo tên nhân viên..." />
+          }
         />
       </div>
 
@@ -114,12 +135,15 @@ export default function RevenueReportTab({ query, onQueryChange }: Props) {
             rowKey="departmentId"
             loading={isLoading}
             columns={departmentColumns}
-            data={data.department}
+            data={filteredDepartment}
             nameKey="departmentName"
             series={REVENUE_SERIES}
             valueFormatter={formatUsd}
             axisFormatter={formatUsdCompact}
-            emptyText="Không có doanh thu trong kỳ này"
+            emptyText={departmentSearch ? 'Không tìm thấy phòng ban phù hợp' : 'Không có doanh thu trong kỳ này'}
+            extraFilters={
+              <ReportNameFilter value={departmentSearch} onChange={setDepartmentSearch} placeholder="Tìm theo tên phòng ban..." />
+            }
           />
         </>
       )}
