@@ -5,6 +5,7 @@ import { PeriodicTaskSecondaryAssignee } from '../../database/entities/periodic-
 import { User } from '../../database/entities/user.entity';
 import { PeriodicTasksService, RequestingUser } from './periodic-tasks.service';
 import { AddPeriodicTaskSecondaryAssigneeDto } from './dto/add-periodic-task-secondary-assignee.dto';
+import { PeriodicTaskAuditService, PeriodicTaskAuditAction } from './periodic-task-audit.service';
 
 /**
  * PeriodicTaskSecondaryAssigneesService - Phase 4 (PLAN mục 6): "1 chính +
@@ -25,6 +26,7 @@ export class PeriodicTaskSecondaryAssigneesService {
     @InjectRepository(User)
     private readonly userRepo: Repository<User>,
     private readonly tasksService: PeriodicTasksService,
+    private readonly auditService: PeriodicTaskAuditService,
   ) {}
 
   /**

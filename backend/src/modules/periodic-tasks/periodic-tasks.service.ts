@@ -13,6 +13,7 @@ import { UpdatePeriodicTaskDto } from './dto/update-periodic-task.dto';
 import { PeriodicTaskFiltersDto } from './dto/periodic-task-filters.dto';
 import { LockPeriodicTaskDto } from './dto/lock-periodic-task.dto';
 import { PeriodicTaskAccessHelper } from './helpers/periodic-task-access.helper';
+import { PeriodicTaskAuditService, PeriodicTaskAuditAction } from './periodic-task-audit.service';
 
 /** Chủ thể gọi request - đúng shape `GetUser()` decorator trả về (xem
  * `JwtStrategy.validate()`), mirror `RequestingUser` ở
@@ -49,6 +50,7 @@ export class PeriodicTasksService {
     @InjectRepository(DepartmentManager)
     private readonly departmentManagerRepo: Repository<DepartmentManager>,
     private readonly permissionsService: PermissionsService,
+    private readonly auditService: PeriodicTaskAuditService,
   ) {}
 
   /**
@@ -154,7 +156,13 @@ export class PeriodicTasksService {
       color: dto.color ?? null,
     });
 
-    return this.taskRepo.save(task);
+    const saved = await this.taskRepo.save(task);
+
+    // Phase 7 (PLAN mục 2.6): audit log `created`, gọi SAU khi có `saved.id`
+    // thật (fire-and-forget, không chặn response - xem JSDoc `logActionAsync`).
+    this.auditService.logActionAsync(saved.id, userId, PeriodicTaskAuditAction.CREATED, null, saved);
+
+    return saved;
   }
 
   async findAll(filters: PeriodicTaskFiltersDto, userId: number, userRole: string, scope?: string | null) {
@@ -259,6 +267,12 @@ export class PeriodicTasksService {
     const task = await this.findOne(id, user.id, user.role, scope);
     await this.assertEditableWhenLocked(task, user);
 
+    // Phase 7 (PLAN mục 2.6): chụp lại snapshot TRƯỚC khi mutate để có
+    // `oldData` đúng cho audit log (`{ ...task }` - shallow copy đủ dùng vì
+    // các field dưới đây đều là kiểu nguyên thuỷ/string, không phải object
+    // lồng bị mutate chung tham chiếu).
+    const before = { ...task };
+
     if (dto.periodStartDate !== undefined || dto.periodEndDate !== undefined) {
       this.assertPeriodDatesValid(
         dto.periodStartDate ?? task.periodStartDate,
@@ -289,7 +303,34 @@ export class PeriodicTasksService {
 
     task.updatedById = user.id;
 
-    return this.taskRepo.save(task);
+    const saved = await this.taskRepo.save(task);
+
+    // Phase 7 (PLAN mục 2.6): action `updated` chung cho MỌI lần PATCH, cộng
+    // thêm 2 action CHUYÊN BIỆT `status_changed`/`primary_assignee_changed`
+    // nếu đúng field đó thật sự đổi giá trị (1 lần PATCH có thể ghi nhiều
+    // dòng audit nếu đổi cùng lúc nhiều field quan trọng - đúng ý PLAN liệt
+    // kê đây là các action TÁCH BIỆT nhau, không phải biến thể của nhau).
+    this.auditService.logActionAsync(saved.id, user.id, PeriodicTaskAuditAction.UPDATED, before, saved);
+    if (dto.statusId !== undefined && before.statusId !== saved.statusId) {
+      this.auditService.logActionAsync(
+        saved.id,
+        user.id,
+        PeriodicTaskAuditAction.STATUS_CHANGED,
+        { statusId: before.statusId },
+        { statusId: saved.statusId },
+      );
+    }
+    if (dto.primaryAssigneeId !== undefined && before.primaryAssigneeId !== saved.primaryAssigneeId) {
+      this.auditService.logActionAsync(
+        saved.id,
+        user.id,
+        PeriodicTaskAuditAction.PRIMARY_ASSIGNEE_CHANGED,
+        { primaryAssigneeId: before.primaryAssigneeId },
+        { primaryAssigneeId: saved.primaryAssigneeId },
+      );
+    }
+
+    return saved;
   }
 
   /**
@@ -313,7 +354,20 @@ export class PeriodicTasksService {
     task.lockedAt = new Date();
     task.lockNote = dto.lockNote ?? null;
 
-    return this.taskRepo.save(task);
+    const saved = await this.taskRepo.save(task);
+
+    // Phase 7: ghi log ngay cả khi gọi lại `lock()` trên Task đã khoá sẵn
+    // (idempotent theo PLAN mục 2.9) - vẫn là 1 hành động lock thật (có thể
+    // đổi `lockNote` mới), không lọc trùng ở tầng audit.
+    this.auditService.logActionAsync(
+      saved.id,
+      user.id,
+      PeriodicTaskAuditAction.LOCKED,
+      null,
+      { lockNote: saved.lockNote, lockedById: saved.lockedById },
+    );
+
+    return saved;
   }
 
   /** Tắt `is_locked` - tự do gọi lại bất kỳ lúc nào, không giới hạn số lần
@@ -326,7 +380,11 @@ export class PeriodicTasksService {
     task.lockedAt = null;
     task.lockNote = null;
 
-    return this.taskRepo.save(task);
+    const saved = await this.taskRepo.save(task);
+
+    this.auditService.logActionAsync(saved.id, user.id, PeriodicTaskAuditAction.UNLOCKED, null, null);
+
+    return saved;
   }
 
   /**
@@ -346,6 +404,9 @@ export class PeriodicTasksService {
     }
 
     await this.taskRepo.softDelete(id);
+
+    this.auditService.logActionAsync(id, userId, PeriodicTaskAuditAction.DELETED, task, null);
+
     return { deleted: true };
   }
 

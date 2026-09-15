@@ -6,6 +6,7 @@ import { PeriodicTask } from '../../database/entities/periodic-task.entity';
 import { PERIOD_RANK } from '../../common/enums/period-type.enum';
 import { PeriodicTasksService, RequestingUser } from './periodic-tasks.service';
 import { CreatePeriodicTaskLinkDto } from './dto/create-periodic-task-link.dto';
+import { PeriodicTaskAuditService, PeriodicTaskAuditAction } from './periodic-task-audit.service';
 
 /**
  * PeriodicTaskLinksService - Phase 2 (PLAN mục 6): liên kết phân cấp DAG
@@ -25,6 +26,7 @@ export class PeriodicTaskLinksService {
     @InjectRepository(PeriodicTask)
     private readonly taskRepo: Repository<PeriodicTask>,
     private readonly tasksService: PeriodicTasksService,
+    private readonly auditService: PeriodicTaskAuditService,
   ) { }
 
   /**
@@ -108,7 +110,16 @@ export class PeriodicTaskLinksService {
       parentTaskId: parentId,
       createdById: user.id,
     });
-    return this.linkRepo.save(link);
+    const saved = await this.linkRepo.save(link);
+
+    // Phase 7 (PLAN mục 2.6): audit log gắn vào Task CON (`childId`, phía
+    // `:id` path đang được PATCH liên kết) - Task cha không đổi dữ liệu của
+    // chính nó nên không cần log thêm 1 dòng phía cha.
+    this.auditService.logActionAsync(childId, user.id, PeriodicTaskAuditAction.PARENT_LINKED, null, {
+      parentTaskId: parentId,
+    });
+
+    return saved;
   }
 
   async removeLink(
@@ -128,6 +139,11 @@ export class PeriodicTaskLinksService {
     }
 
     await this.linkRepo.remove(existing);
+
+    this.auditService.logActionAsync(childId, user.id, PeriodicTaskAuditAction.PARENT_UNLINKED, {
+      parentTaskId: parentId,
+    });
+
     return { deleted: true };
   }
 

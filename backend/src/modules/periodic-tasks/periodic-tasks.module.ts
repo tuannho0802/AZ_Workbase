@@ -6,6 +6,7 @@ import { PeriodicTaskLink } from '../../database/entities/periodic-task-link.ent
 import { PeriodicTaskCustomer } from '../../database/entities/periodic-task-customer.entity';
 import { PeriodicTaskSecondaryAssignee } from '../../database/entities/periodic-task-secondary-assignee.entity';
 import { PeriodicTaskChecklistItem } from '../../database/entities/periodic-task-checklist-item.entity';
+import { PeriodicTaskAuditLog } from '../../database/entities/periodic-task-audit-log.entity';
 import { Customer } from '../../database/entities/customer.entity';
 import { User } from '../../database/entities/user.entity';
 import { DepartmentManager } from '../../database/entities/department-manager.entity';
@@ -14,6 +15,7 @@ import { PeriodicTaskLinksService } from './periodic-task-links.service';
 import { PeriodicTaskCustomersService } from './periodic-task-customers.service';
 import { PeriodicTaskSecondaryAssigneesService } from './periodic-task-secondary-assignees.service';
 import { PeriodicTaskChecklistItemsService } from './periodic-task-checklist-items.service';
+import { PeriodicTaskAuditService } from './periodic-task-audit.service';
 import { PeriodicTasksController } from './periodic-tasks.controller';
 
 // PermissionsService KHÔNG cần import ở `imports` - PermissionsModule là
@@ -28,6 +30,7 @@ import { PeriodicTasksController } from './periodic-tasks.controller';
       PeriodicTaskCustomer,
       PeriodicTaskSecondaryAssignee,
       PeriodicTaskChecklistItem,
+      PeriodicTaskAuditLog,
       Customer,
       User,
       DepartmentManager,
@@ -40,6 +43,7 @@ import { PeriodicTasksController } from './periodic-tasks.controller';
     PeriodicTaskCustomersService,
     PeriodicTaskSecondaryAssigneesService,
     PeriodicTaskChecklistItemsService,
+    PeriodicTaskAuditService,
   ],
   exports: [
     PeriodicTasksService,
@@ -47,6 +51,7 @@ import { PeriodicTasksController } from './periodic-tasks.controller';
     PeriodicTaskCustomersService,
     PeriodicTaskSecondaryAssigneesService,
     PeriodicTaskChecklistItemsService,
+    PeriodicTaskAuditService,
   ],
 })
 export class PeriodicTasksModule { }

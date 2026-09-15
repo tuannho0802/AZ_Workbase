@@ -9,6 +9,7 @@ import { PermissionScope } from '../../database/entities/role-permission.entity'
 import { Role } from '../../common/enums/role.enum';
 import { PeriodicTasksService } from './periodic-tasks.service';
 import { LinkPeriodicTaskCustomersDto } from './dto/link-periodic-task-customers.dto';
+import { PeriodicTaskAuditService, PeriodicTaskAuditAction } from './periodic-task-audit.service';
 
 /** Chủ thể gọi request - đúng shape `GetUser()` decorator trả về (xem
  * `JwtStrategy.validate()`), cần đủ field để tự tra permission `customers.view`
@@ -47,6 +48,7 @@ export class PeriodicTaskCustomersService {
     private readonly customerRepo: Repository<Customer>,
     private readonly tasksService: PeriodicTasksService,
     private readonly permissionsService: PermissionsService,
+    private readonly auditService: PeriodicTaskAuditService,
   ) { }
 
   /** Lối thoát hiểm ĐỒNG BỘ với `PermissionGuard` - CHỈ Root Admin (role=admin
@@ -148,6 +150,14 @@ export class PeriodicTaskCustomersService {
         this.linkRepo.create({ taskId, customerId, linkedById: user.id }),
       );
       await this.linkRepo.save(rows);
+
+      // Phase 7 (PLAN mục 2.6): chỉ log những customerId THẬT SỰ mới thêm
+      // (`toInsert`, không phải toàn bộ `uniqueIds` đã gửi lên) - tránh log
+      // sai "đã gắn" cho những customerId thật ra đã tồn tại từ trước
+      // (idempotent add, xem comment phía trên).
+      this.auditService.logActionAsync(taskId, user.id, PeriodicTaskAuditAction.CUSTOMER_LINKED, null, {
+        customerIds: toInsert,
+      });
     }
 
     return this.getLinkedCustomers(taskId, user);
@@ -170,6 +180,11 @@ export class PeriodicTaskCustomersService {
     }
 
     await this.linkRepo.remove(existing);
+
+    this.auditService.logActionAsync(taskId, user.id, PeriodicTaskAuditAction.CUSTOMER_UNLINKED, {
+      customerId,
+    });
+
     return { deleted: true };
   }
 
