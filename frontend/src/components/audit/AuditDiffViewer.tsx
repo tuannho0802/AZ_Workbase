@@ -47,6 +47,23 @@ const FIELD_LABELS: Record<string, string> = {
   closedDate: 'Ngày chốt',
   inputDate: 'Ngày nhập',
   assignedDate: 'Ngày phân bổ',
+  // ⚠️ FIX BUG THẬT (báo lỗi trực tiếp: audit log tài khoản hiện raw
+  // "positionId: Trống -> 3" - field chưa từng có nhãn, rơi vào fallback
+  // hiển thị thẳng tên cột kỹ thuật). Đi kèm fix ở
+  // `UsersService.buildUserAuditSnapshot()` (BE giờ trả `{id,name}` sạch cho
+  // các field quan hệ thay vì FK thô) - nhãn dưới đây phủ CẢ 2 dạng key
+  // (có/không hậu tố `Id`) để cả dòng audit CŨ (chỉ có ID thô) lẫn dòng MỚI
+  // (đã có object `{id,name}`, tự vào nhánh generic "object có `name`" phía
+  // dưới) đều hiển thị đúng nhãn cột.
+  employeeCode: 'Mã nhân viên',
+  positionId: 'Vị trí',
+  position: 'Vị trí',
+  leaveApproverId: 'Người duyệt nghỉ phép (ngoại lệ)',
+  leaveApprover: 'Người duyệt nghỉ phép (ngoại lệ)',
+  isRootAdmin: 'Root Admin',
+  approvalStatus: 'Trạng thái duyệt',
+  zkDeviceUserId: 'Mã máy chấm công',
+  reason: 'Lý do từ chối',
 };
 
 export const AuditDiffViewer: React.FC<AuditDiffViewerProps> = ({
@@ -92,6 +109,20 @@ export const AuditDiffViewer: React.FC<AuditDiffViewerProps> = ({
 
     if (key === 'isActive') {
       return val ? <Tag color="success">Hoạt động</Tag> : <Tag color="error">Khóa</Tag>;
+    }
+
+    if (key === 'isRootAdmin') {
+      return val ? <Tag color="gold">Có</Tag> : <Tag>Không</Tag>;
+    }
+
+    if (key === 'approvalStatus' && typeof val === 'string') {
+      const approvalConfig: Record<string, { color: string; text: string }> = {
+        pending: { color: 'warning', text: 'Chờ duyệt' },
+        approved: { color: 'success', text: 'Đã duyệt' },
+        rejected: { color: 'error', text: 'Từ chối' },
+      };
+      const cfg = approvalConfig[val] || { color: 'default', text: val };
+      return <Tag color={cfg.color}>{cfg.text}</Tag>;
     }
 
     if (key === 'amount') {
