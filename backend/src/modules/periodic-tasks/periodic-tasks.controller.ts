@@ -88,8 +88,14 @@ export class PeriodicTasksController {
   // dùng: lịch sử hiện chỉ xem được theo TỪNG Task, cần trang gộp kiểu
   // `audit.controller.ts` có filter + bulk xoá/dọn dẹp).
 
+  // ⚠️ FIX BUG THẬT (migration SplitPeriodicTasksAuditViewPermission - tách
+  // permission cho trang "Lịch sử Công việc" GỘP): trước đây 2 endpoint dưới
+  // đây dùng CHUNG `periodic_tasks.view` với chính danh sách Task, nên Admin
+  // KHÔNG THỂ bật/tắt trang Lịch sử độc lập với trang Công việc định kỳ -
+  // đổi sang `periodic_tasks.audit_view` riêng. KHÔNG đụng `:id/audit-logs`
+  // bên dưới (lịch sử của 1 Task cụ thể, xem JSDoc đầy đủ ở migration).
   @Get('audit-logs')
-  @RequirePermission('periodic_tasks.view')
+  @RequirePermission('periodic_tasks.audit_view')
   @ApiOperation({ summary: 'Lịch sử audit GỘP của mọi Công việc định kỳ trong phạm vi scope (có filter + phân trang)' })
   getGlobalAuditLogs(
     @Query() filters: GetPeriodicTaskAuditLogsGlobalDto,
@@ -100,7 +106,7 @@ export class PeriodicTasksController {
   }
 
   @Get('audit-logs/actions')
-  @RequirePermission('periodic_tasks.view')
+  @RequirePermission('periodic_tasks.audit_view')
   @ApiOperation({ summary: 'Danh sách action dùng để dựng bộ lọc "Loại hành động"' })
   getAuditLogActions() {
     return this.periodicTaskAuditService.getDistinctActions();
