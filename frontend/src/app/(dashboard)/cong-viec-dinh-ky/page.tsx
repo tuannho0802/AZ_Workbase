@@ -1185,7 +1185,21 @@ export default function PeriodicTasksPage() {
                                     typeof color === 'string' ? color : color?.toHexString?.() ?? color
                                 }
                             >
-                                <ColorPicker showText format="hex" />
+                                {/*
+                                  ⚠️ FIX BUG THẬT (báo lỗi trực tiếp kèm ảnh chụp màn hình: tạo/sửa
+                                  Task, kéo % (opacity) trên ColorPicker khiến field hiện
+                                  "#188FFF,59%" và submit báo lỗi "color phải đúng định dạng hex 6
+                                  ký tự") - component này KHÔNG có `disabledAlpha` như
+                                  `ColorPickerField` (dùng chung cho Phòng ban/Vị trí/Role/Quản lý
+                                  phụ trách - xem JSDoc component đó), nên AntD cho chọn opacity;
+                                  khi alpha < 100%, `color.toHexString()` trả về hex 8 ký tự
+                                  (`#RRGGBBAA`) thay vì 6 ký tự - KHÔNG khớp regex BE
+                                  `^#[0-9A-Fa-f]{6}$` (`create-periodic-task.dto.ts`). Thêm
+                                  `disabledAlpha` để đồng bộ đúng pattern ĐÃ CHẠY ĐÚNG ở
+                                  `ColorPickerField` - Task cũng chỉ dùng màu này để hiển thị Tag/
+                                  Card, không cần opacity.
+                                */}
+                                <ColorPicker showText format="hex" disabledAlpha />
                             </Form.Item>
                         </Col>
                     </Row>

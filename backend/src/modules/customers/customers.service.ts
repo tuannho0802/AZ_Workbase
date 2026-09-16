@@ -1481,11 +1481,23 @@ export class CustomersService {
     }
 
     await this.customersRepository.softDelete(id);
+
+    // ⚠️ FIX BUG THẬT (báo lỗi trực tiếp: xoá khách hàng - dù mềm hay cứng -
+    // KHÔNG lưu lại khách hàng đó là ai, dòng audit chỉ có `id` số thô, xem
+    // trong app phải mở "Chi tiết hành động" mới thấy "Dữ liệu chính không
+    // thay đổi" vì `logActionAsync()` trước đây được gọi KHÔNG kèm `oldData`/
+    // `newData` gì cả). `hardDelete()` bên dưới đã làm ĐÚNG (chụp snapshot
+    // TRƯỚC khi xoá) từ trước - `remove()` (soft delete) lại bị bỏ sót, dùng
+    // đúng `customer` đã load kèm relations `salesUser`/`marketingUser`/
+    // `department` sẵn có ở `findOne()` phía trên (KHÔNG cần query lại) để
+    // đồng nhất với `buildCustomerAuditSnapshot()` chung.
     this.auditService.logActionAsync(
       userId,
       'DELETE_CUSTOMER',
       'customer',
       id,
+      this.buildCustomerAuditSnapshot(customer),
+      null,
     );
     return { message: 'Xóa khách hàng thành công' };
   }

@@ -152,6 +152,45 @@ const FIELD_LABELS: Record<string, string> = {
   createdBy: 'Người tạo',
 };
 
+/**
+ * ⚠️ FIX BUG THẬT (ảnh chụp màn hình: MỘT dòng audit "Cập nhật" hiện
+ * "Trạng thái" HAI LẦN - 1 dòng "Chưa hoàn thành → Trạng thái", 1 dòng "→ 2"
+ * trơn). Nguyên nhân: đây là bản ghi audit CŨ ghi THẲNG raw entity (trước khi
+ * `buildAuditSnapshot()`/`buildXxxAuditSnapshot()` chuẩn hoá), nên
+ * `oldData`/`newData` chứa CẢ 2 key cho cùng 1 field quan hệ: FK số thô
+ * (`statusId`) VÀ object quan hệ đã resolve (`status`) - 2 key khác nhau
+ * nhưng cùng trỏ nhãn "Trạng thái" (`FIELD_LABELS`/
+ * `PERIODIC_TASK_FIELD_LABELS`), nên render thành 2 dòng riêng biệt cho
+ * NGƯỜI DÙNG mà thực ra chỉ là 1 field bị log 2 lần.
+ *
+ * Dùng CHUNG 1 danh sách cho CẢ 2 việc: (1) dedupe ở `getRelevantKeys()` -
+ * bỏ FK thô nếu object resolve của ĐÚNG field đó cũng có mặt; (2) đánh dấu
+ * "đây là ID quan hệ" ở `formatValue()` khi CHỈ có FK thô trơn (không có
+ * object đi kèm - dữ liệu cũ thật sự chỉ lưu ID, hiển thị "ID: X" thay vì số
+ * trần trụi vô nghĩa, ví dụ ảnh chụp "Vị trí: Trống → 5"). Tránh 2 danh sách
+ * lệch nhau theo thời gian.
+ *
+ * Chỉ liệt kê các cặp ĐÃ XÁC NHẬN thật sự là "FK thô + object resolve của
+ * chính field đó" (khớp các field quan hệ có mặt ở `FIELD_LABELS`/
+ * `PERIODIC_TASK_FIELD_LABELS` phía trên) - CỐ Ý không suy luận tự động theo
+ * kiểu "mọi key kết thúc bằng Id" vì có field trùng tên vô hại (`brokerId`
+ * là ID môi giới rời rạc, KHÔNG liên quan gì đến field `broker` - chuỗi tên
+ * broker của Deposit, ghép nhầm sẽ mất dữ liệu hiển thị đúng của 1 trong 2
+ * field không liên quan).
+ */
+const ID_OBJECT_KEY_PAIRS: Array<[string, string]> = [
+  ['statusId', 'status'],
+  ['salesUserId', 'salesUser'],
+  ['marketingUserId', 'marketingUser'],
+  ['departmentId', 'department'],
+  ['assignedToId', 'assignedTo'],
+  ['previousAssigneeId', 'previousAssignee'],
+  ['primaryAssigneeId', 'primaryAssignee'],
+  ['positionId', 'position'],
+  ['leaveApproverId', 'leaveApprover'],
+];
+const RELATION_ID_KEYS = new Set(ID_OBJECT_KEY_PAIRS.map(([idKey]) => idKey));
+
 export const AuditDiffViewer: React.FC<AuditDiffViewerProps> = ({
   oldData,
   newData,
@@ -305,39 +344,25 @@ export const AuditDiffViewer: React.FC<AuditDiffViewerProps> = ({
       return <Text type="secondary">Không xác định (dữ liệu audit cũ, không đọc được)</Text>;
     }
 
+    // ⚠️ FIX BUG THẬT (báo lỗi trực tiếp kèm ảnh chụp màn hình: dòng "Vị trí:
+    // Trống → 5" - người xem không biết "5" nghĩa là gì, phải tự đoán hay
+    // vào tra thủ công). Đây là dữ liệu audit CŨ ghi thẳng FK số thô
+    // (`positionId`) mà KHÔNG kèm object quan hệ đã resolve (`position`) -
+    // cùng lớp nguyên nhân với nhánh "Dữ liệu cũ - ID" phía trên (dữ liệu ghi
+    // trước khi `buildXxxAuditSnapshot()` chuẩn hoá), chỉ khác là rơi xuống
+    // TỚI ĐÂY vì giá trị là number/string thô ngay từ đầu, không phải object
+    // `{id}`. Cùng nguyên tắc: không phục hồi được TÊN, nhưng ít nhất gắn rõ
+    // đây là ID, không hiển thị 1 số trần trụi vô nghĩa. CHỈ áp dụng cho các
+    // field ĐÃ XÁC NHẬN là FK quan hệ (khớp danh sách `ID_OBJECT_KEY_PAIRS`
+    // dùng để dedupe ở `getRelevantKeys()` bên dưới, dùng chung 1 nguồn để
+    // tránh 2 danh sách lệch nhau) - field số khác (`amount`, `id`...) không
+    // bị ảnh hưởng.
+    if ((typeof val === 'number' || typeof val === 'string') && RELATION_ID_KEYS.has(key)) {
+      return <Text type="secondary">ID: {val} (dữ liệu cũ, chưa có tên)</Text>;
+    }
+
     return String(val);
   };
-
-  /**
-   * ⚠️ FIX BUG THẬT (ảnh chụp màn hình: MỘT dòng audit "Cập nhật" hiện
-   * "Trạng thái" HAI LẦN - 1 dòng "Chưa hoàn thành → Trạng thái", 1 dòng
-   * "→ 2" trơn). Nguyên nhân: đây là bản ghi audit CŨ ghi THẲNG raw entity
-   * (trước khi `buildAuditSnapshot()`/`buildXxxAuditSnapshot()` chuẩn hoá),
-   * nên `oldData`/`newData` chứa CẢ 2 key cho cùng 1 field quan hệ: FK số
-   * thô (`statusId`) VÀ object quan hệ đã resolve (`status`) - 2 key khác
-   * nhau nhưng cùng trỏ nhãn "Trạng thái" (`FIELD_LABELS`/
-   * `PERIODIC_TASK_FIELD_LABELS`), nên render thành 2 dòng riêng biệt cho
-   * NGƯỜI DÙNG mà thực ra chỉ là 1 field bị log 2 lần.
-   *
-   * Chỉ liệt kê các cặp ĐÃ XÁC NHẬN thật sự là "FK thô + object resolve của
-   * chính field đó" (khớp các field quan hệ có mặt ở `FIELD_LABELS`/
-   * `PERIODIC_TASK_FIELD_LABELS` phía trên) - CỐ Ý không suy luận tự động
-   * theo kiểu "mọi key kết thúc bằng Id" vì có field trùng tên vô hại
-   * (`brokerId` là ID môi giới rời rạc, KHÔNG liên quan gì đến field
-   * `broker` - chuỗi tên broker của Deposit, ghép nhầm sẽ mất dữ liệu hiển
-   * thị đúng của 1 trong 2 field không liên quan).
-   */
-  const ID_OBJECT_KEY_PAIRS: Array<[string, string]> = [
-    ['statusId', 'status'],
-    ['salesUserId', 'salesUser'],
-    ['marketingUserId', 'marketingUser'],
-    ['departmentId', 'department'],
-    ['assignedToId', 'assignedTo'],
-    ['previousAssigneeId', 'previousAssignee'],
-    ['primaryAssigneeId', 'primaryAssignee'],
-    ['positionId', 'position'],
-    ['leaveApproverId', 'leaveApprover'],
-  ];
 
   // Extract and filter keys
   const getRelevantKeys = () => {
@@ -353,9 +378,10 @@ export const AuditDiffViewer: React.FC<AuditDiffViewerProps> = ({
     ];
 
     // Bỏ key FK thô nếu object resolve của ĐÚNG field đó cũng có mặt trong
-    // cùng bản ghi (ưu tiên hiển thị bản object đọc được, tránh lặp dòng).
-    // Nếu chỉ có FK thô (không có object đi kèm - dữ liệu cũ thật sự chỉ lưu
-    // ID), vẫn giữ nguyên hành vi cũ: hiển thị ID thô như trước.
+    // cùng bản ghi (ưu tiên hiển thị bản object đọc được, tránh lặp dòng -
+    // xem JSDoc `ID_OBJECT_KEY_PAIRS`). Nếu chỉ có FK thô (không có object đi
+    // kèm - dữ liệu cũ thật sự chỉ lưu ID), vẫn giữ nguyên hành vi: hiển thị
+    // "ID: X" như trước (xem nhánh `RELATION_ID_KEYS` ở `formatValue()`).
     for (const [idKey, objectKey] of ID_OBJECT_KEY_PAIRS) {
       if (keys.has(idKey) && keys.has(objectKey)) {
         keys.delete(idKey);

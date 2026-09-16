@@ -807,18 +807,25 @@ describe('CustomersService', () => {
     });
 
     it('Role KHÔNG PHẢI admin (vd Employee) vẫn xoá mềm được nếu findOne() (đã qua PermissionGuard + applyViewFilter) trả về customer - không còn bị chặn cứng "chỉ Admin"', async () => {
-      const fakeCustomer: any = { id: 55, createdById: 7 };
+      const fakeCustomer: any = { id: 55, createdById: 7, name: 'Nguyễn Văn A', phone: '0901234567' };
       jest.spyOn(service, 'findOne').mockResolvedValue(fakeCustomer);
       mockCustomerRepo.softDelete.mockResolvedValue({ affected: 1 });
 
       const result = await service.remove(55, 7, Role.EMPLOYEE, PermissionScope.OWN);
 
       expect(mockCustomerRepo.softDelete).toHaveBeenCalledWith(55);
+      // ⚠️ FIX BUG THẬT (báo lỗi trực tiếp kèm ảnh chụp màn hình: Xoá khách
+      // hàng - mềm hay cứng - không lưu lại khách hàng đó là ai, "Chi tiết
+      // hành động" hiện "Dữ liệu chính không thay đổi") - `remove()` giờ
+      // PHẢI chụp snapshot (đọc được, mirror `hardDelete()`) làm `oldData`
+      // TRƯỚC khi xoá, không còn gọi `logActionAsync()` thiếu 2 tham số cuối.
       expect(mockAuditService.logActionAsync).toHaveBeenCalledWith(
         7,
         'DELETE_CUSTOMER',
         'customer',
         55,
+        expect.objectContaining({ name: 'Nguyễn Văn A', phone: '0901234567' }),
+        null,
       );
       expect(result).toEqual({ message: 'Xóa khách hàng thành công' });
     });
