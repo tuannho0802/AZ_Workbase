@@ -947,6 +947,28 @@ export class CustomersService {
     return customer;
   }
 
+  /**
+   * ⚠️ FIX BUG THẬT (đợt rà soát toàn bộ audit log theo yêu cầu người dùng -
+   * cùng lớp bug `positionId`/`targetUserId` raw ở `UsersService`): trước
+   * đây `CREATE_NOTE`/`UPDATE_NOTE`/`DELETE_NOTE` log thẳng cả entity
+   * `CustomerNote` (`{ ...note }`/`savedNote`) - `createdBy`/`updatedBy` ở
+   * entity này là cột FK THÔ (`number`, KHÔNG phải relation `createdByUser`/
+   * `updatedByUser`) nên luôn hiện ra dạng ID số vô nghĩa. Bỏ HẲN 2 field
+   * này khỏi snapshot (không chỉ resolve tên) vì luôn TRÙNG với "Người thực
+   * hiện" mà chính dòng audit log đã hiển thị riêng (`log.user`) - đúng
+   * nguyên tắc đã áp dụng cho `createdBy`/`updatedBy` ở
+   * `PeriodicTasksService.buildAuditSnapshot()`/`lock()`. `customerId` cũng
+   * bỏ luôn - đang xem lịch sử của 1 ghi chú NGAY TRONG trang chi tiết
+   * khách hàng đó, biết trước customer nào, số ID không thêm thông tin gì.
+   */
+  private buildNoteAuditSnapshot(note: CustomerNote): Record<string, unknown> {
+    return {
+      note: note.note,
+      noteType: note.noteType,
+      isImportant: note.isImportant,
+    };
+  }
+
   async createNote(
     customerId: number,
     dto: CreateCustomerNoteDto,
@@ -973,7 +995,7 @@ export class CustomersService {
       'customer_note',
       (savedNote as any).id,
       null,
-      savedNote,
+      this.buildNoteAuditSnapshot(savedNote as any),
     );
 
     return this.notesRepository.findOne({
@@ -1092,7 +1114,7 @@ export class CustomersService {
       'Bạn không có quyền sửa ghi chú này',
     );
 
-    const oldData = { ...note };
+    const before = this.buildNoteAuditSnapshot(note);
     this.notesRepository.merge(note, dto);
     // ⚠️ MỚI: luôn ghi nhận người SỬA CUỐI (kể cả khi người này chính là
     // người tạo - vẫn set để nhất quán, FE chỉ hiển thị TÊN người sửa khi
@@ -1111,8 +1133,8 @@ export class CustomersService {
       'UPDATE_NOTE',
       'customer_note',
       savedNote.id,
-      oldData,
-      savedNote,
+      before,
+      this.buildNoteAuditSnapshot(savedNote),
     );
 
     return this.notesRepository.findOne({
@@ -1141,7 +1163,7 @@ export class CustomersService {
       'Bạn không có quyền xoá ghi chú này',
     );
 
-    const oldData = { ...note };
+    const oldData = this.buildNoteAuditSnapshot(note);
     await this.notesRepository.remove(note);
 
     this.auditService.logActionAsync(
@@ -1632,6 +1654,15 @@ export class CustomersService {
       // / customer y hệt bản gốc. Dùng logActionAsync() (fire-and-forget qua
       // waitUntil()) thay vì await Promise.all(...) — response không còn
       // phải chờ ghi xong audit log cho toàn bộ customer trong batch.
+      //
+      // ⚠️ FIX BUG THẬT (đợt rà soát toàn bộ audit log - báo lỗi trực tiếp:
+      // UI hiện "assignedToIds: Trống -> 1 mục" thay vì tên Sales) - trước
+      // đây log thẳng `salesUserIds` (mảng ID số thô), generic diff viewer ở
+      // FE không biết đọc mảng số thuần nên chỉ đếm số lượng ("N mục"),
+      // không hiển thị được TÊN sales nào vừa được gán. `targetUsers` đã
+      // được validate/fetch ĐẦY ĐỦ ở đầu hàm - map sẵn 1 lần ra ngoài vòng
+      // lặp, tái dùng cho mọi customer trong batch (không query lại).
+      const assignedToSnapshot = targetUsers.map((u) => ({ id: u.id, name: u.name }));
       authorizedCustomers.forEach((customer) => {
         this.auditService.logActionAsync(
           callerId,
@@ -1639,7 +1670,7 @@ export class CustomersService {
           'customer',
           customer.id,
           null,
-          { assignedToIds: salesUserIds },
+          { assignedTo: assignedToSnapshot },
         );
       });
 

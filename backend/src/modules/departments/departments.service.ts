@@ -253,6 +253,10 @@ export class DepartmentsService {
       select: ['id', 'name'],
     });
 
+    // Tên phòng ban đích (nếu có di dời) - khai báo NGOÀI block if bên dưới
+    // để dùng lại lúc dựng `oldData` cho audit log (tránh raw ID thô).
+    let targetDeptName: string | null = null;
+
     if (usersInDept.length > 0) {
       if (!dto.moveUsersToDepartmentId) {
         throw new BadRequestException(
@@ -277,6 +281,7 @@ export class DepartmentsService {
           `Không tìm thấy phòng ban đích (ID ${dto.moveUsersToDepartmentId}) để di dời nhân viên`,
         );
       }
+      targetDeptName = targetDept.name;
 
       await this.userRepository
         .createQueryBuilder()
@@ -294,7 +299,14 @@ export class DepartmentsService {
     const oldData = {
       ...department,
       movedUsersCount: usersInDept.length,
-      movedUsersTo: dto.moveUsersToDepartmentId ?? null,
+      // ⚠️ FIX BUG THẬT (đợt rà soát toàn bộ audit log theo yêu cầu người
+      // dùng - cùng lớp bug với `positionId` ở `users.service.ts`): trước
+      // đây log thẳng ID phòng ban đích thô (`dto.moveUsersToDepartmentId`),
+      // UI hiển thị số vô nghĩa. `targetDept` đã được fetch ở trên (bắt buộc
+      // phải tồn tại mới cho xoá) - dùng lại luôn, không query thêm lần nào.
+      movedUsersTo: dto.moveUsersToDepartmentId != null
+        ? { id: dto.moveUsersToDepartmentId, name: targetDeptName }
+        : null,
       affectedCustomersCount,
     };
 

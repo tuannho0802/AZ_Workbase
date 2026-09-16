@@ -790,7 +790,8 @@ export class UsersService {
         'user',
         id,
         null,
-        { targetUserId: id },
+        // ⚠️ FIX BUG THẬT (xem chú thích ở `changeOwnPassword()`).
+        { targetUser: { id, name: user.name } },
       );
     }
 
@@ -908,7 +909,18 @@ export class UsersService {
     // ép các phiên (thiết bị) khác đăng nhập lại sau khi đổi mật khẩu.
     await this.saveRefreshToken(userId, null);
 
-    this.auditService.logActionAsync(userId, 'CHANGE_OWN_PASSWORD', 'user', userId, null, { targetUserId: userId });
+    this.auditService.logActionAsync(
+      userId,
+      'CHANGE_OWN_PASSWORD',
+      'user',
+      userId,
+      null,
+      // ⚠️ FIX BUG THẬT (đợt rà soát toàn bộ audit log - báo lỗi "targetUserId:
+      // Trống -> 7" hiển thị raw ID không nhãn, không tên): thay `targetUserId`
+      // (số thô, không nằm trong FIELD_LABELS của FE) bằng object `{id,name}`
+      // - FE đã có sẵn nhánh generic hiển thị object có `.name`.
+      { targetUser: { id: userId, name: user.name } },
+    );
     this.logger.log(`[Users] User ID ${userId} tự đổi mật khẩu`);
 
     return { success: true, message: 'Đã đổi mật khẩu thành công. Vui lòng đăng nhập lại ở các thiết bị khác.' };
@@ -963,7 +975,16 @@ export class UsersService {
     } as any);
     await this.saveRefreshToken(targetId, null);
 
-    this.auditService.logActionAsync(callerId, 'SOFT_DELETE_USER', 'user', targetId, null, { targetUserId: targetId });
+    this.auditService.logActionAsync(
+      callerId,
+      'SOFT_DELETE_USER',
+      'user',
+      targetId,
+      null,
+      // ⚠️ FIX BUG THẬT (xem chú thích ở `changeOwnPassword()`): resolve tên
+      // thay vì log raw `targetUserId`.
+      { targetUser: { id: targetId, name: user.name } },
+    );
     this.logger.log(`[Users] User ID ${targetId} đã bị xoá mềm bởi ${callerId}`);
 
     return { success: true, message: 'Đã chuyển tài khoản vào thùng rác' };
@@ -998,7 +1019,15 @@ export class UsersService {
       deletedById: null,
     } as any);
 
-    this.auditService.logActionAsync(callerId, 'RESTORE_USER', 'user', targetId, null, { targetUserId: targetId });
+    this.auditService.logActionAsync(
+      callerId,
+      'RESTORE_USER',
+      'user',
+      targetId,
+      null,
+      // ⚠️ FIX BUG THẬT (xem chú thích ở `changeOwnPassword()`).
+      { targetUser: { id: targetId, name: user.name } },
+    );
     this.logger.log(`[Users] User ID ${targetId} đã được khôi phục bởi ${callerId}`);
 
     return { success: true, message: 'Đã khôi phục tài khoản' };
@@ -1049,6 +1078,11 @@ export class UsersService {
     const user = await this.usersRepository.findOne({
       where: { id: targetId } as any,
       withDeleted: true,
+      // ⚠️ FIX BUG THẬT (đợt rà soát toàn bộ audit log - cùng lớp bug
+      // `positionId`/`departmentId` raw ở `create()`/`update()`): load kèm
+      // relations để audit "backup" của tài khoản bị xoá cứng hiển thị được
+      // tên phòng ban/vị trí/người duyệt nghỉ phép, không chỉ ID thô.
+      relations: ['department', 'position', 'leaveApprover'],
     });
     if (!user) {
       throw new NotFoundException('Không tìm thấy tài khoản');
@@ -1067,6 +1101,14 @@ export class UsersService {
     }
 
     const safeUserSnapshot = omitPassword(user as any);
+    // ⚠️ FIX BUG THẬT: xoá cột FK thô TRÙNG LẶP với relation object đã load
+    // ở trên (mirror lý do `buildUserAuditSnapshot()`/`buildCustomerAuditSnapshot()`
+    // không đưa cả 2 dạng vào cùng lúc) - nếu để nguyên, FE sẽ hiển thị 2
+    // dòng trùng nhau cho cùng 1 field (1 dòng đọc được tên, 1 dòng chỉ có
+    // ID số thô vô nghĩa).
+    delete (safeUserSnapshot as any).departmentId;
+    delete (safeUserSnapshot as any).positionId;
+    delete (safeUserSnapshot as any).leaveApproverId;
 
     await this.dataSource.transaction(async (manager) => {
       // 1. "Assign" hiện hành -> fallback gán cho người xoá
