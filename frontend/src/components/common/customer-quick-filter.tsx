@@ -1,9 +1,12 @@
 import { useState } from 'react';
-import { Popover, Select, Button, Badge, Space, Tag } from 'antd';
+import { Popover, Select, Button, Badge, Space, Tag, Avatar } from 'antd';
 import { FilterOutlined } from '@ant-design/icons';
 import { useMediaSources } from '@/lib/hooks/useMediaSources';
 import { useCustomerStatuses } from '@/lib/hooks/useCustomerStatuses';
 import { useAssignmentGroupUsers } from '@/lib/hooks/useAssignmentGroups';
+import { AssignmentGroupUser } from '@/lib/api/assignment-groups.api';
+import { useRoleColorMap, useRoleColors } from '@/lib/hooks/useRoleColorMap';
+import { resolveEntityColor } from '@/lib/utils/entityColor';
 import { SourceTag } from '@/components/customers/SourceTag';
 
 /**
@@ -48,6 +51,45 @@ export function CustomerQuickFilterButton({ value, onChange }: CustomerQuickFilt
   const { sources } = useMediaSources(false);
   const { statuses } = useCustomerStatuses();
   const { users: salesUsers } = useAssignmentGroupUsers('sales');
+
+  // Avatar + Tag Vai trò/Phòng ban/Vị trí cho dropdown "Sales phụ trách" -
+  // MỚI (2026-09-16, yêu cầu chủ dự án qua ảnh chụp "Lọc Khách hàng"): trước
+  // đây hiện tên trơn, không đồng bộ với các dropdown chọn User khác trong
+  // app (`renderUserOption` ở `cong-viec-dinh-ky/page.tsx`,
+  // `BulkAssignModal.tsx`...). `AssignmentGroupUser` đã có sẵn
+  // role/department/position kèm color từ BE (xem JSDoc
+  // `assignment-groups.api.ts`), chỉ thiếu phần vẽ Tag màu ở đây.
+  const { getRoleColor } = useRoleColorMap();
+  const { roleColors: allRoles } = useRoleColors();
+  const roleNameMap = new Map(allRoles.map((r) => [r.code, r.name]));
+  const getRoleName = (code?: string) => (code ? roleNameMap.get(code) || code : '');
+  const userTagStyle = { fontSize: 10, lineHeight: '16px', padding: '0 4px', margin: 0 } as const;
+  const renderSalesUserOption = (option: { data: { user: AssignmentGroupUser } }) => {
+    const u = option.data.user;
+    return (
+      <Space size={4} align="center">
+        <Avatar size={20} style={{ backgroundColor: getRoleColor(u.role), fontSize: 11, flexShrink: 0 }}>
+          {u.name?.[0]?.toUpperCase()}
+        </Avatar>
+        <span style={{ fontSize: 13 }}>{u.name}</span>
+        {u.role && (
+          <Tag style={userTagStyle} color={getRoleColor(u.role)}>
+            {getRoleName(u.role)}
+          </Tag>
+        )}
+        {u.department?.name && (
+          <Tag style={userTagStyle} color={resolveEntityColor(u.department.color)}>
+            {u.department.name}
+          </Tag>
+        )}
+        {u.position?.name && (
+          <Tag style={userTagStyle} color={resolveEntityColor(u.position.color)}>
+            {u.position.name}
+          </Tag>
+        )}
+      </Space>
+    );
+  };
 
   const activeCount = countActiveCustomerQuickFilters(value);
 
@@ -94,7 +136,10 @@ export function CustomerQuickFilterButton({ value, onChange }: CustomerQuickFilt
           placeholder="Tất cả Sales"
           value={value.salesUserId}
           onChange={(v) => onChange({ ...value, salesUserId: v })}
-          options={salesUsers.map((u) => ({ value: u.id, label: u.name }))}
+          optionLabelProp="label"
+          optionRender={renderSalesUserOption}
+          popupMatchSelectWidth={false}
+          options={salesUsers.map((u) => ({ value: u.id, label: u.name, user: u }))}
         />
       </div>
       {activeCount > 0 && (

@@ -1203,7 +1203,14 @@ export default function PeriodicTasksPage() {
                                 <Select
                                     allowClear
                                     placeholder="Tự động theo người phụ trách"
-                                    options={departments.map((d) => ({ value: d.id, label: d.name }))}
+                                    options={departments.map((d) => ({
+                                        value: d.id,
+                                        label: (
+                                            <Tag color={resolveEntityColor(d.color)} style={{ marginInlineEnd: 0 }}>
+                                                {d.name}
+                                            </Tag>
+                                        ),
+                                    }))}
                                 />
                             </Form.Item>
                         </Col>
@@ -1384,6 +1391,8 @@ export default function PeriodicTasksPage() {
                                     placeholder="Chọn người để thêm làm Phụ trách phụ (chọn nhiều được)"
                                     value={pendingSecondaryUserIds}
                                     onChange={setPendingSecondaryUserIds}
+                                    optionLabelProp="label"
+                                    optionRender={renderUserOption}
                                     options={users
                                         .filter(
                                             (u: any) =>
@@ -1392,6 +1401,7 @@ export default function PeriodicTasksPage() {
                                         .map((u: any) => ({
                                             value: u.id,
                                             label: u.email ? `${u.name} (${u.email})` : u.name,
+                                            user: u,
                                         }))}
                                     notFoundContent="Không có người dùng nào đủ điều kiện"
                                 />
