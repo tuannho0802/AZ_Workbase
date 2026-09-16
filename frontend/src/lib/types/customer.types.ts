@@ -161,12 +161,14 @@ export interface Customer {
   updatedAt: string;
   deletedAt?: string;
   // Chỉ có mặt ở `GET /customers/trash` (getTrash() BE join riêng) - AI đã
-  // bấm xóa mềm, hiển thị ở cột "Người xóa" trang Thùng rác.
+  // bấm xóa mềm, hiển thị ở cột "Người xóa" trang Thùng rác bằng
+  // UserMiniCard (cần `role` để tô màu Tag vai trò).
   deletedBy?: {
     id: number;
     name: string;
     fullName?: string;
     email?: string;
+    role?: string;
   } | null;
 }
 

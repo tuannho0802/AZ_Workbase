@@ -123,7 +123,7 @@ export const customersApi = {
     return response.data;
   },
 
-  getTrash: async (params?: { page?: number; limit?: number; search?: string; source?: string; salesUserId?: number; dateFrom?: string; dateTo?: string }): Promise<PaginatedResponse<Customer>> => {
+  getTrash: async (params?: { page?: number; limit?: number; search?: string; source?: string; salesUserId?: number; deletedById?: number; dateFrom?: string; dateTo?: string }): Promise<PaginatedResponse<Customer>> => {
     const response = await axiosInstance.get('/customers/trash', { params });
     return response.data;
   },

@@ -1,11 +1,11 @@
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useMemo } from 'react';
 import {
-  Table, Card, Button, Space, Tag, App, Popconfirm, Input, Typography, Pagination, Badge, Grid, Tooltip, Select, DatePicker
+  Table, Card, Button, Space, Tag, App, Popconfirm, Input, Typography, Pagination, Badge, Grid, Tooltip, Select, DatePicker, Avatar
 } from 'antd';
 import {
-  UndoOutlined, DeleteOutlined, ReloadOutlined, SearchOutlined
+  UndoOutlined, DeleteOutlined, ReloadOutlined, SearchOutlined, UserOutlined
 } from '@ant-design/icons';
 import { useAuthStore } from '@/lib/stores/auth.store';
 import { useMyPermissions } from '@/lib/hooks/useMyPermissions';
@@ -16,6 +16,8 @@ import { Customer } from '@/lib/types/customer.types';
 import { useDebounce } from '@/lib/hooks/useDebounce';
 import { SourceTag } from '@/components/customers/SourceTag';
 import { useMediaSources } from '@/lib/hooks/useMediaSources';
+import { useRoleColorMap, useRoleColors } from '@/lib/hooks/useRoleColorMap';
+import { UserMiniCard } from '@/app/(dashboard)/attendance-device/UserMiniCard';
 import dayjs, { Dayjs } from 'dayjs';
 
 const { RangePicker } = DatePicker;
@@ -31,6 +33,8 @@ function TrashMobileCard({
   onRestore,
   onHardDelete,
   canHardDelete,
+  getRoleColor,
+  getRoleName,
 }: {
   record: Customer;
   index: number;
@@ -39,6 +43,8 @@ function TrashMobileCard({
   onRestore: (id: number) => void;
   onHardDelete: (id: number) => void;
     canHardDelete: boolean;
+    getRoleColor: (code?: string | null) => string;
+    getRoleName: (code?: string) => string;
 }) {
   return (
     <Card
@@ -65,8 +71,18 @@ function TrashMobileCard({
           Xóa: <Text type="danger">{record.deletedAt ? dayjs(record.deletedAt).format('DD/MM/YY HH:mm') : '—'}</Text>
         </Text>
       </div>
-      <div style={{ fontSize: 12, color: '#555', marginBottom: 4 }}>
-        Người xóa: <Text strong>{record.deletedBy?.name || '—'}</Text>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12, color: '#555', marginBottom: 4 }}>
+        <span>Người xóa:</span>
+        {record.deletedBy ? (
+          <UserMiniCard
+            name={record.deletedBy.name}
+            role={record.deletedBy.role}
+            getRoleColor={getRoleColor}
+            getRoleName={getRoleName}
+          />
+        ) : (
+          <Text type="secondary">—</Text>
+        )}
       </div>
       
       <div style={{ display: 'flex', gap: 8, marginTop: 8 }}>
@@ -121,15 +137,28 @@ export default function TrashCanPage() {
   // không phải danh mục nhỏ (khác các trang Batch B).
   const [filterSource, setFilterSource] = useState<string | undefined>();
   const [filterSalesUserId, setFilterSalesUserId] = useState<number | undefined>();
+  // ⚠️ MỚI (yêu cầu người dùng): filter "Người xóa" - lọc theo AI đã bấm
+  // xóa mềm (`customer.deletedById`, xem CustomersService.getTrash()).
+  const [filterDeletedById, setFilterDeletedById] = useState<number | undefined>();
   const [deletedRange, setDeletedRange] = useState<[Dayjs | null, Dayjs | null] | null>(null);
   const { sources: mediaSources } = useMediaSources(false);
   // Danh sách Sales cho dropdown - tái dùng API `/users/all` đã có sẵn
   // (dùng chung ở customers/page.tsx), KHÔNG suy từ dữ liệu trang hiện tại
-  // (chỉ 20 dòng/trang, sẽ đổi liên tục theo trang - trải nghiệm tệ).
-  const [salesOptions, setSalesOptions] = useState<{ id: number; name: string }[]>([]);
+  // (chỉ 20 dòng/trang, sẽ đổi liên tục theo trang - trải nghiệm tệ). Dùng
+  // CHUNG danh sách này cho cả filter "Sales phụ trách" LẪN "Người xóa" -
+  // ai cũng có thể là người bấm xóa, không riêng gì Sales.
+  const [salesOptions, setSalesOptions] = useState<{ id: number; name: string; role?: string }[]>([]);
   useEffect(() => {
     usersApi.getAllForSelect().then(setSalesOptions).catch(() => { });
   }, []);
+  // ⚠️ MỚI (yêu cầu người dùng - "dropdown chưa dùng Color tag đúng"): tô
+  // màu Tag vai trò trong dropdown "Sales phụ trách"/"Người xóa" đúng theo
+  // màu Admin đã cấu hình ở /phan-quyen, cùng pattern với SalesUserSelect.tsx/
+  // UserMiniCard.tsx (thay vì Select trơn chỉ hiện tên như trước).
+  const { getRoleColor } = useRoleColorMap();
+  const { roleColors: allRoles } = useRoleColors();
+  const roleNameMap = useMemo(() => new Map(allRoles.map(r => [r.code, r.name])), [allRoles]);
+  const getRoleName = (code?: string) => (code ? roleNameMap.get(code) || code : '');
 
   const { message } = App.useApp();
   const { user } = useAuthStore();
@@ -182,6 +211,7 @@ export default function TrashCanPage() {
         search: debouncedSearch || undefined,
         source: filterSource,
         salesUserId: filterSalesUserId,
+        deletedById: filterDeletedById,
         dateFrom: deletedRange?.[0] ? deletedRange[0].startOf('day').toISOString() : undefined,
         dateTo: deletedRange?.[1] ? deletedRange[1].endOf('day').toISOString() : undefined,
       });
@@ -192,7 +222,7 @@ export default function TrashCanPage() {
     } finally {
       setLoading(false);
     }
-  }, [page, pageSize, debouncedSearch, filterSource, filterSalesUserId, deletedRange, user, canAccessTrash, message]);
+  }, [page, pageSize, debouncedSearch, filterSource, filterSalesUserId, filterDeletedById, deletedRange, user, canAccessTrash, message]);
 
   useEffect(() => {
     fetchTrash();
@@ -202,12 +232,13 @@ export default function TrashCanPage() {
   // quả mới có ít trang hơn trang đang đứng).
   useEffect(() => {
     setPage(1);
-  }, [debouncedSearch, filterSource, filterSalesUserId, deletedRange]);
+  }, [debouncedSearch, filterSource, filterSalesUserId, filterDeletedById, deletedRange]);
 
   const handleResetFilters = () => {
     setSearch('');
     setFilterSource(undefined);
     setFilterSalesUserId(undefined);
+    setFilterDeletedById(undefined);
     setDeletedRange(null);
     setPage(1);
   };
@@ -291,8 +322,18 @@ export default function TrashCanPage() {
     {
       title: 'Người xóa',
       key: 'deletedBy',
-      width: isLaptop ? 120 : 140,
-      render: (_: any, record: Customer) => record.deletedBy?.name || <Text type="secondary">—</Text>,
+      width: isLaptop ? 200 : 230,
+      render: (_: any, record: Customer) =>
+        record.deletedBy ? (
+          <UserMiniCard
+            name={record.deletedBy.name}
+            role={record.deletedBy.role}
+            getRoleColor={getRoleColor}
+            getRoleName={getRoleName}
+          />
+        ) : (
+          <Text type="secondary">—</Text>
+        ),
     },
     {
       title: 'Thao tác',
@@ -372,8 +413,50 @@ export default function TrashCanPage() {
               allowClear
               showSearch
               optionFilterProp="label"
-              style={{ width: 180 }}
-              options={salesOptions.map(u => ({ value: u.id, label: u.name }))}
+              style={{ width: 200 }}
+              options={salesOptions.map(u => ({ value: u.id, label: u.name, user: u }))}
+              optionRender={(option) => {
+                const u = (option.data as { user: { name: string; role?: string } }).user;
+                return (
+                  <Space align="center" size={6}>
+                    <Avatar size={20} icon={<UserOutlined />} style={{ backgroundColor: getRoleColor(u.role), fontSize: 11, flexShrink: 0 }}>
+                      {u.name?.[0]?.toUpperCase()}
+                    </Avatar>
+                    <Text style={{ fontSize: 13 }}>{u.name}</Text>
+                    {u.role && (
+                      <Tag color={getRoleColor(u.role)} style={{ fontSize: 10, lineHeight: '16px', padding: '0 4px', margin: 0 }}>
+                        {getRoleName(u.role)}
+                      </Tag>
+                    )}
+                  </Space>
+                );
+              }}
+            />
+            <Select
+              placeholder="Người xóa"
+              value={filterDeletedById}
+              onChange={setFilterDeletedById}
+              allowClear
+              showSearch
+              optionFilterProp="label"
+              style={{ width: 200 }}
+              options={salesOptions.map(u => ({ value: u.id, label: u.name, user: u }))}
+              optionRender={(option) => {
+                const u = (option.data as { user: { name: string; role?: string } }).user;
+                return (
+                  <Space align="center" size={6}>
+                    <Avatar size={20} icon={<UserOutlined />} style={{ backgroundColor: getRoleColor(u.role), fontSize: 11, flexShrink: 0 }}>
+                      {u.name?.[0]?.toUpperCase()}
+                    </Avatar>
+                    <Text style={{ fontSize: 13 }}>{u.name}</Text>
+                    {u.role && (
+                      <Tag color={getRoleColor(u.role)} style={{ fontSize: 10, lineHeight: '16px', padding: '0 4px', margin: 0 }}>
+                        {getRoleName(u.role)}
+                      </Tag>
+                    )}
+                  </Space>
+                );
+              }}
             />
             <RangePicker
               placeholder={['Xóa từ', 'Xóa đến']}
@@ -406,6 +489,8 @@ export default function TrashCanPage() {
                   onRestore={handleRestore}
                   onHardDelete={handleHardDelete}
                   canHardDelete={canHardDelete}
+                  getRoleColor={getRoleColor}
+                  getRoleName={getRoleName}
                 />
               ))
             )}
