@@ -438,6 +438,17 @@ export default function ApprovalPage() {
       )
     }
   ].filter((col: any) => canApprove || col.title !== 'Thao tác');
+  // ⚠️ FIX BUG THẬT (2026-09-16, báo trực tiếp qua ảnh chụp): cột "Lý do"
+  // ĐÃ có `width`/`ellipsis`/`Tooltip` từ trước nhưng KHÔNG hề bị cắt ngắn
+  // trên UI - nguyên nhân là `<Table scroll={{ x: 'max-content' }}>` bên
+  // dưới: 'max-content' ép AntD tự đo bề rộng THEO NỘI DUNG THẬT của từng
+  // cột (bỏ qua `width` khai báo), dù đã có `tableLayout="fixed"`. Tính
+  // tổng `width` các cột đang hiển thị (SAU khi `.filter()` ẩn/hiện "Thao
+  // tác" theo quyền) làm `scroll.x` DẠNG SỐ PIXEL cụ thể thay cho
+  // 'max-content' - lúc đó `tableLayout="fixed"` mới thực sự ép mỗi cột
+  // đúng `width` đã khai, "Lý do" mới bị cắt (ellipsis) và cần hover mới
+  // thấy đủ (Tooltip đã có sẵn, không cần sửa thêm).
+  const pendingTableWidth = pendingColumns.reduce((sum: number, col: any) => sum + (col.width ?? 0), 0);
 
   const historyColumns = [
     {
@@ -538,6 +549,9 @@ export default function ApprovalPage() {
         ) : '-'
     }
   ];
+  // Cùng lý do với `pendingTableWidth` ở trên - `historyColumns` không có
+  // `.filter()` nên tính thẳng, không cần `useMemo`.
+  const historyTableWidth = historyColumns.reduce((sum: number, col: any) => sum + (col.width ?? 0), 0);
 
   // ── tab items ─────────────────────────────────────────────────────────────
   const tabItems = [
@@ -611,7 +625,7 @@ export default function ApprovalPage() {
           pagination={false}
             size="small"
             tableLayout="fixed"
-            scroll={{ x: 'max-content' }}
+                scroll={{ x: pendingTableWidth }}
           locale={{ emptyText: '✅ Không có đơn chờ duyệt' }}
         />
           )}
@@ -705,7 +719,7 @@ export default function ApprovalPage() {
           pagination={{ pageSize: 10 }}
             size="small"
             tableLayout="fixed"
-            scroll={{ x: 'max-content' }}
+                scroll={{ x: historyTableWidth }}
           locale={{ emptyText: 'Chưa có lịch sử xử lý' }}
         />
           )}
