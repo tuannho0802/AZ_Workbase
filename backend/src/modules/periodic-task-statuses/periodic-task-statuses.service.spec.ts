@@ -4,6 +4,7 @@ import { NotFoundException, ConflictException, BadRequestException } from '@nest
 import { PeriodicTaskStatusesService } from './periodic-task-statuses.service';
 import { PeriodicTaskStatus } from '../../database/entities/periodic-task-status.entity';
 import { PeriodicTask } from '../../database/entities/periodic-task.entity';
+import { AuditService } from '../audit/audit.service';
 
 describe('PeriodicTaskStatusesService', () => {
   let service: PeriodicTaskStatusesService;
@@ -28,6 +29,10 @@ describe('PeriodicTaskStatusesService', () => {
     count: jest.fn(),
     createQueryBuilder: jest.fn(),
   };
+  const mockAuditService = {
+    logAction: jest.fn(),
+    logActionAsync: jest.fn(),
+  };
 
   beforeEach(async () => {
     jest.clearAllMocks();
@@ -37,6 +42,7 @@ describe('PeriodicTaskStatusesService', () => {
         PeriodicTaskStatusesService,
         { provide: getRepositoryToken(PeriodicTaskStatus), useValue: mockStatusRepo },
         { provide: getRepositoryToken(PeriodicTask), useValue: mockTaskRepo },
+        { provide: AuditService, useValue: mockAuditService },
       ],
     }).compile();
 
