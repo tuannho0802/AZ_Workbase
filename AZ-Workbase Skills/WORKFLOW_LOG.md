@@ -2580,3 +2580,97 @@ hẳn cấp cha (staircase thật) chứ không chỉ bẻ góc tại chỗ cùn
 >   với 260px không.
 
 Now [deploy]
+---
+
+## [2026-09-16 12:28] | Fix hiển thị audit log cho action 1 chiều (REMOVED/UNLINKED/ADDED/LINKED) - AuditDiffViewer | Status: Success
+
+**Actor:** Agent (theo bug đã tự phát hiện và báo ở phiên trước - "ngoài phạm vi câu hỏi" - nhưng CHƯA được ghi
+vào log này, giờ ghi bổ sung cùng lúc verify lại code thật trên repo đã pull mới nhất, commit `a14784b`).
+
+**Yêu cầu:** Xử lý tiếp bug đã báo: audit của 4 action `CHECKLIST_ITEM_REMOVED`/`SECONDARY_ASSIGNEE_REMOVED`/
+`PARENT_UNLINKED`/`CUSTOMER_UNLINKED` (tên action không chứa chữ "DELETE") bị vẽ sai kiểu "Trống → giá trị"
+như đang update, đáng lẽ phải hiện kiểu "đã xoá: giá trị" như `DELETE_CUSTOMER`.
+
+**Files Changed:**
+- `frontend/src/components/audit/AuditDiffViewer.tsx` — mở rộng `isDelete`/`isCreate` bằng 2 lớp: (1)
+  name-based - thêm từ khoá `REMOVED`/`UNLINKED` vào `isDelete`, `ADDED`/`LINKED` (trừ `UNLINKED`) vào
+  `isCreate`; (2) shape-based (lưới an toàn cho action tương lai không khớp từ khoá nào) - chỉ có `oldData`
+  không có `newData` → chắc chắn là xoá 1 chiều, ngược lại là thêm 1 chiều.
+- `frontend/src/components/audit/AuditDiffViewer.test.tsx` (MỚI) — 11 test: 4 case REMOVED/UNLINKED (chỉ
+  `oldData`) phải render kiểu xoá, 4 case ADDED/LINKED (chỉ `newData`) phải render kiểu thêm, + 3 case chống
+  regress (`DELETE_CUSTOMER`/`UPDATE_CUSTOMER`/`CREATE_CUSTOMER` vẫn đúng như cũ).
+- `frontend/vitest.setup.ts` — thêm polyfill `window.matchMedia` (jsdom không có sẵn, AntD `Table`/`Grid` gọi
+  ngầm qua `useBreakpoint()` → crash MỌI test render component AntD nếu thiếu) - phát hiện khi viết test trên,
+  polyfill vào file setup CHUNG để các test AntD khác sau này không dính lại.
+
+**Root Cause:**
+> `logActionAsync(taskId, userId, action, oldData?, newData?)` ở `PeriodicTaskAuditService` - 4 action REMOVED/
+> UNLINKED chỉ truyền `oldData` (tham số thứ 4), bỏ trống `newData`. `isDelete` cũ CHỈ so `.includes('DELETE')`
+> trong tên action → nhận `false` cho 4 action này → rơi xuống nhánh render "update", hiện
+> `formatValue(oldVal)` (gạch ngang) → `formatValue(undefined)` = "Trống" trong khung xanh - sai logic (nhìn
+> như vừa THÊM 1 giá trị mới, trong khi thực ra vừa BỊ XOÁ) và sai màu (không có icon xoá đỏ). Rà soát thêm
+> phát hiện 4 action đối xứng `CHECKLIST_ITEM_ADDED`/`SECONDARY_ASSIGNEE_ADDED`/`PARENT_LINKED`/
+> `CUSTOMER_LINKED` bị lỗi y hệt chiều ngược lại (tên không có "CREATE" nên `isCreate` cũ cũng không nhận ra).
+
+**Solution:**
+> Xem "Files Changed" - kết hợp name-based (đúng 8 action đã biết trong hệ thống) + shape-based (bắt cả action
+> 1 chiều nào phát sinh sau này mà quên thêm từ khoá tên).
+
+**Verify thật (chạy lại trên code đã pull mới nhất `a14784b`, không suy diễn):**
+- `npx tsc --noEmit`: **0 lỗi**.
+- `npm run test` (Vitest, toàn bộ): **36/36 pass** (25 test cũ + 11 test mới của `AuditDiffViewer.test.tsx`).
+- `npm run build` (Next.js, Turbopack): thành công, đủ route.
+
+**Notes:**
+> Không push được lên GitHub trực tiếp từ sandbox (không có credential) ở lượt trả lời trước - đã đưa patch +
+> 3 file đầy đủ cho chủ dự án tự áp dụng; xác nhận qua `git pull` lần này: cả 3 file đã có mặt đúng y hệt trên
+> `main` (commit `a14784b`), chủ dự án đã tự áp dụng patch thành công.
+
+---
+
+## [2026-09-16 12:26] | Sửa UI Tooltip "Mô tả"/"Ghi chú" của Task - tràn chữ + Tooltip lệch vị trí hover | Status: Success
+
+**Actor:** Chủ dự án (tự sửa trực tiếp trên code, commit `ceb3ea9`) - Agent chỉ `git pull` về, đọc lại toàn bộ
+diff thật (không suy đoán theo tên commit "Change a little bit UI in tooltip") và verify build/test sau đó.
+
+**Files Changed (đọc trực tiếp diff, không phải theo lời kể):**
+- `frontend/src/app/(dashboard)/cong-viec-dinh-ky/page.tsx` — cột "Công việc": tách 2 dòng Mô tả/Ghi chú thành
+  2 `<Tooltip>` RIÊNG (không gộp chung 1 Tooltip to như trước), thêm nhãn chữ `Mô tả: `/`Ghi chú: ` ngay trong
+  dòng xem trước (không chỉ trong Tooltip), đổi `display: 'block'` → `'inline-block'` cho `<Text ellipsis>`.
+- `frontend/src/components/periodic-tasks/TaskMiniCard.tsx` (Kanban/Agenda) — mirror đúng cách làm ở trên: hiện
+  RIÊNG từng dòng cho `description`/`note` (không còn ưu tiên/ẩn 1 trong 2 như bản fix trước), thêm
+  `maxWidth: '100%'` cho style ellipsis dùng chung (`ellipsisTextStyle`).
+- `frontend/src/components/periodic-tasks/PeriodicTasksCalendarView.tsx` — thêm `maxWidth: 240`,
+  `whiteSpace: 'pre-wrap'`, `overflowWrap: 'anywhere'` cho khối Mô tả/Ghi chú trong popup lịch.
+
+**Root Cause (3 bug, đọc từ comment thật trong code chủ dự án đã viết kèm diff):**
+> 1. Bản fix trước chỉ hiện `note`, thiếu hẳn `description` (đã có nhãn riêng nhưng gộp chung 1 Tooltip, ưu
+>    tiên ẩn bớt 1 mục).
+> 2. AntD `Typography.Text ellipsis` tự set `display: inline-block` cho span - với `width: auto`, kiểu tính
+>    "shrink-to-fit" theo NỘI DUNG (không theo bề rộng cha). Text dài liền không khoảng trắng để ngắt dòng (vd
+>    data test toàn `"aaaa..."`) đẩy span rộng vô hạn, `overflow: hidden` không kịp cắt vì span đã tự nới rộng
+>    TRƯỚC khi bị cắt. Fix: thêm `maxWidth: '100%'` (khác `width: '100%'` - không có tác dụng với
+>    `inline-block` auto-sizing).
+> 3. `display: 'block'` khiến span chiếm ĐỦ 100% bề rộng div cha dù chữ hiển thị (đã ellipsis) chỉ chiếm 1 phần
+>    nhỏ bên trái - AntD `Tooltip` định vị theo TOÀN BỘ khung phần tử trigger (phần lớn là khoảng trống vô hình
+>    bên phải) nên Tooltip luôn canh giữa theo khung đó, trông như "trôi" lệch khỏi vị trí hover thật. Fix:
+>    đổi `display: 'block'` → `'inline-block'` (giữ `maxWidth: '100%'` để không tái phát bug #2) - span co
+>    đúng theo độ rộng CHỮ THẬT, Tooltip bám đúng vị trí hover.
+
+**Solution:** Xem "Root Cause" + "Files Changed" - đồng nhất cả 3 nơi hiển thị (Table/Kanban-Agenda/Calendar),
+dùng nhãn CHỮ "Mô tả:"/"Ghi chú:" thay Emoji (phản hồi chủ dự án: Emoji khó hiểu, hiện lệch/thành ô vuông tuỳ
+font hệ điều hành).
+
+**Verify thật (Agent chạy lại sau khi pull, không tin theo commit message):**
+- `npx tsc --noEmit`: **0 lỗi**.
+- `npm run test` (Vitest, toàn bộ): **36/36 pass** (không có test riêng cho 3 file UI thuần trình bày này -
+  thay đổi chỉ là CSS/style, không có logic mới cần test; các test hiện có không đụng tới 3 file này nên không
+  bị ảnh hưởng).
+- `npm run build` (Next.js, Turbopack): thành công, đủ route.
+
+**Notes:**
+> - Thay đổi thuần UI/CSS (không đổi cấu trúc dữ liệu/API) - cần chủ dự án tự xác nhận trực quan trên trình
+>   duyệt thật (Tooltip bám đúng vị trí hover, chữ dài không khoảng trắng bị cắt "...", không tràn khung) vì
+>   không verify được bằng `tsc`/`vitest`/`build`.
+> - Không có test tự động cho hành vi CSS (ellipsis/Tooltip position) - nếu bug tái phát sau này, cân nhắc
+>   thêm Playwright/visual regression test riêng cho phần này thay vì chỉ dựa vào review bằng mắt.
