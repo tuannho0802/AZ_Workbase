@@ -381,9 +381,12 @@ export default function ApprovalPage() {
     {
       title: 'Phòng ban',
       width: 120,
-      render: (_: any, record: LeaveRequest) => (
-        <Tag color="blue">{record.requester.department?.name || 'Chưa gán'}</Tag>
-      )
+      render: (_: any, record: LeaveRequest) =>
+        record.requester.department ? (
+          <Tag color={resolveEntityColor(record.requester.department.color)}>{record.requester.department.name}</Tag>
+        ) : (
+          <Tag>Chưa gán</Tag>
+        )
     },
     {
       title: 'Loại phép',
@@ -457,9 +460,12 @@ export default function ApprovalPage() {
     {
       title: 'Phòng ban',
       width: 120,
-      render: (_: any, record: LeaveRequest) => (
-        <Tag color="blue">{record.requester.department?.name || 'Chưa gán'}</Tag>
-      )
+      render: (_: any, record: LeaveRequest) =>
+        record.requester.department ? (
+          <Tag color={resolveEntityColor(record.requester.department.color)}>{record.requester.department.name}</Tag>
+        ) : (
+          <Tag>Chưa gán</Tag>
+        )
     },
     {
       title: 'Loại phép',
