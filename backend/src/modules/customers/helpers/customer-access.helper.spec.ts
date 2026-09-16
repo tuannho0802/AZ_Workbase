@@ -61,17 +61,46 @@ describe('CustomerAccessHelper', () => {
       expect(calls).toHaveLength(0);
     });
 
-    it('MANAGER: scope=department -> lọc theo phòng ban có dòng department_managers cho chính mình', () => {
+    /**
+     * ⚠️ FIX BUG THẬT (báo lỗi trực tiếp từ người dùng kèm ảnh chụp màn
+     * hình): scope='department' giờ là SUPERSET của 'own' - gói trong 1
+     * Brackets với 5 điều kiện OR (department_id IN managed depts, cộng 4
+     * điều kiện own giống hệt nhánh 'own' bên dưới), KHÔNG còn là 1 chuỗi
+     * SQL đơn lẻ như trước. Test cập nhật để assert đúng cấu trúc Brackets
+     * mới, đồng thời khẳng định rõ vế "own" vẫn còn trong đó.
+     */
+    it('MANAGER: scope=department -> lọc theo (phòng ban mình quản lý) OR (chính mình là người tạo/sales/marketing/đang được gán) - department là superset của own', () => {
       const { qb, calls } = makeFakeQueryBuilder();
 
       CustomerAccessHelper.applyViewFilter(qb, 42, Role.MANAGER, 'department');
 
       expect(calls).toHaveLength(1);
-      expect(calls[0].sqlOrBrackets).toContain('department_id IN');
-      expect(calls[0].sqlOrBrackets).toContain(
+      const bracket = calls[0].sqlOrBrackets as Brackets;
+      expect(bracket).toBeInstanceOf(Brackets);
+
+      const inner = extractBracketCalls(bracket);
+      expect(inner).toHaveLength(5);
+
+      expect(inner[0].method).toBe('where');
+      expect(inner[0].sql).toContain('department_id IN');
+      expect(inner[0].sql).toContain(
         'SELECT dm.department_id FROM department_managers dm WHERE dm.user_id = :accessManagerId',
       );
-      expect(calls[0].params).toEqual({ accessManagerId: 42 });
+      expect(inner[0].params).toEqual({ accessManagerId: 42 });
+
+      expect(inner[1].method).toBe('orWhere');
+      expect(inner[1].sql).toContain('createdById = :accessUserId');
+      expect(inner[1].params).toEqual({ accessUserId: 42 });
+
+      expect(inner[2].method).toBe('orWhere');
+      expect(inner[2].sql).toContain('salesUserId = :accessUserId');
+
+      expect(inner[3].method).toBe('orWhere');
+      expect(inner[3].sql).toContain('marketingUserId = :accessUserId');
+
+      expect(inner[4].method).toBe('orWhere');
+      expect(inner[4].sql).toContain('customer_assignments');
+      expect(inner[4].params).toEqual({ accessUserId: 42, accessStatus: 'active' });
     });
 
     it('EMPLOYEE: lọc theo (createdById = mình) OR (salesUserId = mình) OR (marketingUserId = mình) OR (đang có assignment active)', () => {
@@ -112,11 +141,15 @@ describe('CustomerAccessHelper', () => {
       expect(calls[0].sqlOrBrackets).toBeInstanceOf(Brackets);
     });
 
-    it('custom role + PermissionScope.DEPARTMENT -> lọc theo department (chuẩn mới)', () => {
+    it('custom role + PermissionScope.DEPARTMENT -> lọc theo department (chuẩn mới), vẫn là superset của own', () => {
       const { qb, calls } = makeFakeQueryBuilder();
       CustomerAccessHelper.applyViewFilter(qb, 42, 'custom_manager', PermissionScope.DEPARTMENT);
       expect(calls).toHaveLength(1);
-      expect(calls[0].sqlOrBrackets).toContain('department_id IN');
+      const bracket = calls[0].sqlOrBrackets as Brackets;
+      expect(bracket).toBeInstanceOf(Brackets);
+      const inner = extractBracketCalls(bracket);
+      expect(inner).toHaveLength(5);
+      expect(inner[0].sql).toContain('department_id IN');
     });
 
     it('custom role + không có scope -> rơi vào nhánh sở hữu (own)', () => {
@@ -184,6 +217,30 @@ describe('CustomerAccessHelper', () => {
       const customer: any = { departmentId: 5 };
       expect(CustomerAccessHelper.canManageCustomer(customer, 1, 'custom_manager', [5], PermissionScope.DEPARTMENT)).toBe(true);
       expect(CustomerAccessHelper.canManageCustomer(customer, 1, 'custom_manager', [99], PermissionScope.DEPARTMENT)).toBe(false);
+    });
+
+    /**
+     * ⚠️ FIX BUG THẬT (đúng kịch bản người dùng báo, ảnh chụp màn hình):
+     * Assistant (scope='department') tự tạo 1 khách hàng KHÔNG thuộc phòng
+     * ban mình quản lý (hoặc chưa gán phòng ban, departmentId=null) - vẫn
+     * phải quản lý (sửa/xoá mềm) được chính bản ghi mình tạo, vì
+     * scope='department' là superset của 'own', không phải tập tách biệt.
+     */
+    it('scope=department -> vẫn true nếu KHÔNG thuộc phòng ban mình quản lý nhưng chính mình là người tạo/sales/marketing (department là superset của own)', () => {
+      const outsideDeptButCreatedByMe: any = { departmentId: 99, createdById: 1 };
+      expect(
+        CustomerAccessHelper.canManageCustomer(outsideDeptButCreatedByMe, 1, 'custom_manager', [5], PermissionScope.DEPARTMENT),
+      ).toBe(true);
+
+      const noDeptButImSales: any = { departmentId: null, salesUserId: 1 };
+      expect(
+        CustomerAccessHelper.canManageCustomer(noDeptButImSales, 1, Role.MANAGER, [5], PermissionScope.DEPARTMENT),
+      ).toBe(true);
+
+      const unrelatedCustomer: any = { departmentId: 99, createdById: 2, salesUserId: 3, marketingUserId: 4 };
+      expect(
+        CustomerAccessHelper.canManageCustomer(unrelatedCustomer, 1, 'custom_manager', [5], PermissionScope.DEPARTMENT),
+      ).toBe(false);
     });
 
     it('custom role + không có scope -> kiểm tra nhánh sở hữu (own)', () => {

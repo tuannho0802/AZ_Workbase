@@ -1,4 +1,5 @@
 import { Test, TestingModule } from '@nestjs/testing';
+import { Brackets } from 'typeorm';
 import { getRepositoryToken } from '@nestjs/typeorm';
 import { NotFoundException } from '@nestjs/common';
 import { CustomerGroupMembershipsService } from './customer-group-memberships.service';
@@ -158,10 +159,26 @@ describe('CustomerGroupMembershipsService', () => {
 
       await service.getMembershipsForCustomer(1, 7, Role.MANAGER, PermissionScope.DEPARTMENT);
 
-      expect(mockCustomerQueryBuilder.andWhere).toHaveBeenCalledWith(
-        expect.stringContaining('department_id IN'),
-        { accessManagerId: 7 },
+      // ⚠️ Sau fix bug "scope=department phải là superset của own" (xem
+      // CustomerAccessHelper.applyViewFilter) - nhánh department giờ gói
+      // trong 1 Brackets (department_id IN ... OR 4 điều kiện own) thay vì
+      // 1 chuỗi SQL đơn lẻ như trước, nên phải mở whereFactory ra để assert
+      // đúng nội dung bên trong.
+      const deptCall = (mockCustomerQueryBuilder.andWhere as jest.Mock).mock.calls.find(
+        (call) => call[0] instanceof Brackets,
       );
+      expect(deptCall).toBeDefined();
+      const innerCalls: { sql: string; params?: any }[] = [];
+      const innerQb: any = {
+        where: (sql: string, params?: any) => { innerCalls.push({ sql, params }); return innerQb; },
+        orWhere: (sql: string, params?: any) => { innerCalls.push({ sql, params }); return innerQb; },
+      };
+      deptCall[0].whereFactory(innerQb);
+      const deptCondition = innerCalls.find((c) => c.sql.includes('department_id IN'));
+      expect(deptCondition?.sql).toContain(
+        'SELECT dm.department_id FROM department_managers dm WHERE dm.user_id = :accessManagerId',
+      );
+      expect(deptCondition?.params).toEqual({ accessManagerId: 7 });
     });
 
     it('canManage=false nếu role KHÔNG có permission `customer_group_memberships.set`', async () => {

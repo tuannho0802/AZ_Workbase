@@ -458,7 +458,7 @@ describe('CustomersService', () => {
       expect(andWhereCalls[0].sql).toContain('salesUserId IS NOT NULL');
     });
 
-    it('MANAGER: bị áp thêm đúng 1 điều kiện lọc theo phòng ban mình quản lý (bảng department_managers, nhiều-nhiều)', async () => {
+    it('MANAGER: bị áp thêm đúng 1 điều kiện lọc theo phòng ban mình quản lý (bảng department_managers, nhiều-nhiều) - department vẫn là superset của own nên gói trong Brackets (xem fix bug scope=department)', async () => {
       const { qb, andWhereCalls } = makeFakeQb();
       mockCustomerRepo.createQueryBuilder.mockReturnValue(qb);
 
@@ -467,10 +467,19 @@ describe('CustomersService', () => {
       });
 
       expect(andWhereCalls).toHaveLength(2);
-      expect(andWhereCalls[1].sql).toContain(
+      expect(andWhereCalls[1].sql).toBeInstanceOf(Brackets);
+      const innerCalls: string[] = [];
+      const innerQb: any = {
+        where: (sql: string) => { innerCalls.push(sql); return innerQb; },
+        orWhere: (sql: string) => { innerCalls.push(sql); return innerQb; },
+      };
+      (andWhereCalls[1].sql as Brackets).whereFactory(innerQb);
+      expect(innerCalls.join(' ')).toContain(
         'SELECT dm.department_id FROM department_managers dm WHERE dm.user_id = :accessManagerId',
       );
-      expect(andWhereCalls[1].params).toEqual({ accessManagerId: 9 });
+      // Vế "own" (createdById của chính mình) vẫn phải còn trong Brackets -
+      // đúng nội dung fix bug (department = superset của own).
+      expect(innerCalls.join(' ')).toContain('createdById = :accessUserId');
     });
 
     it('EMPLOYEE: bị áp thêm đúng 1 điều kiện lọc (Brackets createdById/salesUserId/assignment active) - ĐÂY LÀ FIX CHO BUG GỐC', async () => {
@@ -707,15 +716,30 @@ describe('CustomersService', () => {
       ).resolves.toBeDefined();
 
       // Phải recheck bằng scope THẬT của customers.view ('department') -
-      // tức có 1 lệnh andWhere chứa điều kiện phòng ban, KHÔNG phải
-      // Brackets ownership cứng như hành vi cũ (bug).
+      // KHÔNG phải Brackets ownership cứng như hành vi cũ (bug gốc).
       // Từ khi hệ thống chuyển sang multi-manager (bảng department_managers),
       // điều kiện phòng ban truy vấn qua department_managers thay vì cột
       // department.manager_user_id cũ.
-      expect(qb.andWhere).toHaveBeenCalledWith(
-        expect.stringContaining('department_managers'),
-        expect.objectContaining({ accessManagerId: 7 }),
+      // ⚠️ Sau fix "department = superset of own" (xem
+      // CustomerAccessHelper.applyViewFilter), nhánh 'department' giờ CŨNG
+      // gói trong 1 Brackets (department_id IN ... OR 4 điều kiện own) thay
+      // vì 1 chuỗi SQL đơn - nên phải mở whereFactory ra để assert đúng nội
+      // dung bên trong, không còn so sánh string/params phẳng như trước.
+      const deptRecheckCall = (qb.andWhere as jest.Mock).mock.calls.find(
+        (call) => call[0] instanceof Brackets,
       );
+      expect(deptRecheckCall).toBeDefined();
+      const innerCalls: { sql: string; params?: any }[] = [];
+      const innerQb: any = {
+        where: (sql: string, params?: any) => { innerCalls.push({ sql, params }); return innerQb; },
+        orWhere: (sql: string, params?: any) => { innerCalls.push({ sql, params }); return innerQb; },
+      };
+      (deptRecheckCall[0] as Brackets).whereFactory(innerQb);
+      const deptCondition = innerCalls.find((c) => c.sql.includes('department_managers'));
+      expect(deptCondition?.sql).toContain(
+        'SELECT dm.department_id FROM department_managers dm WHERE dm.user_id = :accessManagerId',
+      );
+      expect(deptCondition?.params).toEqual({ accessManagerId: 7 });
     });
 
     it('scope=own + customers.view scope=all: vẫn sửa được (không đòi hỏi phải là chủ khách hàng)', async () => {
