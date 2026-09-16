@@ -86,4 +86,10 @@ export class CustomerFiltersDto {
   @IsOptional()
   @IsEnum(['joined', 'not_joined'])
   joinedGroups?: 'joined' | 'not_joined';
+
+  @ApiPropertyOptional({ example: 5, description: 'Lọc theo người đã xóa mềm (Người xóa) - chỉ dùng ở GET /customers/trash' })
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  deletedById?: number;
 }

@@ -2379,7 +2379,7 @@ export class CustomersService {
   }
 
   async getTrash(filters: CustomerFiltersDto) {
-    const { page = 1, limit = 20, search, source, salesUserId, dateFrom, dateTo } = filters;
+    const { page = 1, limit = 20, search, source, salesUserId, dateFrom, dateTo, deletedById } = filters;
 
     const qb = this.customersRepository
       .createQueryBuilder('customer')
@@ -2401,6 +2401,17 @@ export class CustomersService {
       qb.andWhere('customer.salesUserId = :salesUserId', { salesUserId });
     }
 
+    // ⚠️ MỚI (yêu cầu người dùng - filter "Người xóa"): lọc trực tiếp trên
+    // cột `deleted_by_id` thật trong DB. Lưu ý: bản ghi CŨ (xóa trước
+    // migration `AddDeletedByToCustomers`, cột đang NULL) sẽ KHÔNG khớp
+    // filter này cho tới khi được "chữa lành" qua fallback audit log bên
+    // dưới ở 1 lần đọc KHÔNG lọc theo deletedById trước đó - đây là đánh
+    // đổi chấp nhận được (không thể lọc SQL trên dữ liệu chưa tồn tại
+    // trong DB), không phải bug.
+    if (deletedById) {
+      qb.andWhere('customer.deletedById = :deletedById', { deletedById });
+    }
+
     // ⚠️ Khác `findAll()` (dateFrom/dateTo lọc theo `inputDate`) - ở màn
     // Thùng rác, khoảng ngày có ý nghĩa với người dùng là "xóa trong
     // khoảng nào" nên lọc theo `deletedAt`, không phải ngày nhập khách.
@@ -2412,6 +2423,7 @@ export class CustomersService {
       end.setDate(end.getDate() + 1);
       qb.andWhere('customer.deletedAt < :dateToEnd', { dateToEnd: end.toISOString() });
     }
+
 
     const [data, total] = await qb
       .orderBy('customer.deletedAt', 'DESC')
