@@ -46,6 +46,53 @@ export class AuditService {
   }
 
   /**
+   * YÊU CẦU NGƯỜI DÙNG: fallback tự động cho cột "Người xóa" ở Thùng rác
+   * khách hàng - các bản ghi bị xóa mềm TRƯỚC KHI migration
+   * `AddDeletedByToCustomers` chạy sẽ có `deleted_by_id = NULL` (cột mới
+   * thêm, không hồi tố được dữ liệu cũ trực tiếp). Thay vì hiện "—" vĩnh
+   * viễn cho các bản ghi cũ đó, dò lại `audit_logs` (đã ghi từ trước, có
+   * `user_id` của người bấm xóa) để suy ra ai đã xóa.
+   *
+   * Tra cứu THEO BATCH (1 query cho N entityId, không N+1) - trả về
+   * `Map<entityId, userId>` ứng với bản ghi audit MỚI NHẤT khớp
+   * action+entityType cho từng entityId. Dùng
+   * `ORDER BY entity_id, created_at DESC` + lấy dòng đầu tiên gặp cho mỗi
+   * entityId (tương đương `ROW_NUMBER() OVER (PARTITION BY ...)`) để tương
+   * thích cả MySQL 5.7 (chưa có window function) lẫn 8.0.
+   */
+  async findLastActorsForEntities(
+    entityType: string,
+    entityIds: number[],
+    action: string,
+  ): Promise<Map<number, number>> {
+    const result = new Map<number, number>();
+    if (entityIds.length === 0) return result;
+
+    const rows = await this.auditLogRepository
+      .createQueryBuilder('log')
+      .select('log.entityId', 'entityId')
+      .addSelect('log.userId', 'userId')
+      .addSelect('log.createdAt', 'createdAt')
+      .where('log.entityType = :entityType', { entityType })
+      .andWhere('log.action = :action', { action })
+      .andWhere('log.entityId IN (:...entityIds)', { entityIds })
+      .orderBy('log.entityId', 'ASC')
+      .addOrderBy('log.createdAt', 'DESC')
+      .getRawMany<{ entityId: number | string; userId: number | string }>();
+
+    for (const row of rows) {
+      const entityId = Number(row.entityId);
+      // Đã sắp `createdAt DESC` trong từng nhóm entityId -> dòng ĐẦU TIÊN
+      // gặp cho 1 entityId chính là bản ghi audit mới nhất, các dòng sau
+      // (cũ hơn) bỏ qua.
+      if (!result.has(entityId)) {
+        result.set(entityId, Number(row.userId));
+      }
+    }
+    return result;
+  }
+
+  /**
    * Ghi audit log dạng "fire-and-forget": KHÔNG chặn response chính.
    * Dùng waitUntil() của Vercel (@vercel/functions) thay vì bỏ await "tay
    * không" — waitUntil() đảm bảo Vercel giữ function sống đủ lâu để tác vụ

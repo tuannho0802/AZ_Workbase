@@ -85,6 +85,10 @@ describe('CustomersService', () => {
   const mockAuditService = {
     logAction: jest.fn(),
     logActionAsync: jest.fn(),
+    // Dùng ở getTrash() để fallback "Người xóa" cho dữ liệu cũ (trước khi
+    // có cột deleted_by_id) - mặc định trả rỗng (không tìm thấy gì), test
+    // nào cần fallback tự override bằng mockResolvedValueOnce.
+    findLastActorsForEntities: jest.fn().mockResolvedValue(new Map()),
   };
   // ⚠️ Provider thứ 7 (thêm khi triển khai sửa/xoá ghi chú - updateNote()/
   // deleteNote() cần tra `customer_notes.edit`/`.delete` cho case sửa/xoá
@@ -856,6 +860,77 @@ describe('CustomersService', () => {
         service.remove(1, 99, Role.ADMIN, null),
       ).resolves.toEqual({ message: 'Xóa khách hàng thành công' });
       expect(mockCustomerRepo.softDelete).toHaveBeenCalledWith(1);
+    });
+  });
+
+  /**
+   * ⚠️ MỚI (yêu cầu người dùng): cột "Người xóa" ở trang Thùng rác. Dữ liệu
+   * xóa mềm TRƯỚC migration `AddDeletedByToCustomers` có `deletedById =
+   * NULL` - `getTrash()` phải tự dò `audit_logs` (qua
+   * `AuditService.findLastActorsForEntities()`) để lấp khoảng trống này,
+   * và tự "chữa lành" (ghi lại `deletedById`) để lần đọc sau không cần dò
+   * lại nữa.
+   */
+  describe('getTrash - Danh sách thùng rác + fallback "Người xóa" qua audit log', () => {
+    function makeTrashQb(rows: any[]) {
+      const qb: any = {
+        withDeleted: jest.fn().mockReturnThis(),
+        leftJoinAndSelect: jest.fn().mockReturnThis(),
+        where: jest.fn().mockReturnThis(),
+        andWhere: jest.fn().mockReturnThis(),
+        orderBy: jest.fn().mockReturnThis(),
+        skip: jest.fn().mockReturnThis(),
+        take: jest.fn().mockReturnThis(),
+        getManyAndCount: jest.fn().mockResolvedValue([rows, rows.length]),
+      };
+      return qb;
+    }
+
+    afterEach(() => {
+      jest.restoreAllMocks();
+    });
+
+    it('Bản ghi đã có sẵn deletedById (đã xóa SAU migration) -> KHÔNG gọi audit log fallback', async () => {
+      const rows = [{ id: 1, deletedById: 9, deletedBy: { id: 9, name: 'Sales A' } }];
+      mockCustomerRepo.createQueryBuilder.mockReturnValue(makeTrashQb(rows));
+
+      const result = await service.getTrash({ page: 1, limit: 20 } as any);
+
+      expect(mockAuditService.findLastActorsForEntities).not.toHaveBeenCalled();
+      expect(result.data).toEqual(rows);
+    });
+
+    it('Bản ghi CŨ thiếu deletedById -> dò audit log, gắn deletedBy vào response VÀ tự backfill lại DB', async () => {
+      const rows = [{ id: 2, deletedById: null, deletedBy: null }];
+      mockCustomerRepo.createQueryBuilder.mockReturnValue(makeTrashQb(rows));
+      mockAuditService.findLastActorsForEntities.mockResolvedValueOnce(
+        new Map([[2, 7]]),
+      );
+      const mockUserRepo = { findBy: jest.fn().mockResolvedValue([{ id: 7, name: 'Nguyễn Văn B' }]) };
+      mockCustomerRepo.manager.getRepository.mockReturnValue(mockUserRepo);
+      mockCustomerRepo.update.mockResolvedValue({ affected: 1 });
+
+      const result = await service.getTrash({ page: 1, limit: 20 } as any);
+
+      expect(mockAuditService.findLastActorsForEntities).toHaveBeenCalledWith(
+        'customer',
+        [2],
+        'DELETE_CUSTOMER',
+      );
+      expect(result.data[0].deletedById).toBe(7);
+      expect(result.data[0].deletedBy).toEqual({ id: 7, name: 'Nguyễn Văn B' });
+      // Backfill chạy fire-and-forget nhưng phải được kích hoạt đúng tham số
+      expect(mockCustomerRepo.update).toHaveBeenCalledWith(2, { deletedById: 7 });
+    });
+
+    it('Bản ghi CŨ thiếu deletedById nhưng audit log CŨNG không có gì -> vẫn trả về bình thường, deletedBy null', async () => {
+      const rows = [{ id: 3, deletedById: null, deletedBy: null }];
+      mockCustomerRepo.createQueryBuilder.mockReturnValue(makeTrashQb(rows));
+      mockAuditService.findLastActorsForEntities.mockResolvedValueOnce(new Map());
+
+      const result = await service.getTrash({ page: 1, limit: 20 } as any);
+
+      expect(result.data[0].deletedBy).toBeNull();
     });
   });
 

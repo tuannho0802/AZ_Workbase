@@ -2419,6 +2419,51 @@ export class CustomersService {
       .take(limit)
       .getManyAndCount();
 
+    // ⚠️ YÊU CẦU NGƯỜI DÙNG: fallback tự động cho "Người xóa" - các bản ghi
+    // bị xóa mềm TRƯỚC KHI migration `AddDeletedByToCustomers` chạy có
+    // `deletedById = NULL` (cột mới thêm, không tự hồi tố dữ liệu cũ). Dò
+    // lại `audit_logs` (đã ghi từ trước ở `remove()`, action='DELETE_CUSTOMER')
+    // để suy ra ai đã xóa, thay vì hiện "—" vĩnh viễn.
+    const missingIds = data
+      .filter((c) => !c.deletedById && !c.deletedBy)
+      .map((c) => c.id);
+
+    if (missingIds.length > 0) {
+      const actorByEntityId = await this.auditService.findLastActorsForEntities(
+        'customer',
+        missingIds,
+        'DELETE_CUSTOMER',
+      );
+
+      if (actorByEntityId.size > 0) {
+        const actorIds = Array.from(new Set(actorByEntityId.values()));
+        const actorUsers = await this.customersRepository.manager
+          .getRepository(User)
+          .findBy({ id: In(actorIds) });
+        const userById = new Map(actorUsers.map((u) => [u.id, u]));
+
+        for (const customer of data) {
+          const actorId = actorByEntityId.get(customer.id);
+          const actorUser = actorId ? userById.get(actorId) : undefined;
+          if (actorUser) {
+            // Chỉ gắn vào object trả về cho FE - KHÔNG đợi ghi DB mới trả
+            // response (backfill thật sự chạy fire-and-forget bên dưới).
+            customer.deletedById = actorUser.id;
+            customer.deletedBy = actorUser;
+          }
+        }
+
+        // Tự "chữa lành" 1 lần cho các bản ghi này để lần sau không cần dò
+        // lại audit_logs nữa (chạy nền, không chặn response - nếu lỗi cũng
+        // không sao vì lần đọc sau sẽ tự dò lại theo đúng logic trên).
+        for (const [entityId, actorId] of actorByEntityId.entries()) {
+          this.customersRepository
+            .update(entityId, { deletedById: actorId } as any)
+            .catch(() => { });
+        }
+      }
+    }
+
     return { data, total, page, limit, totalPages: Math.ceil(total / limit) };
   }
 
