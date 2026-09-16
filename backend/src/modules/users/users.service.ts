@@ -294,6 +294,53 @@ export class UsersService {
     return `AZ${String(nextNum).padStart(3, '0')}`;
   }
 
+  /**
+   * ⚠️ FIX BUG THẬT (báo lỗi trực tiếp từ người dùng: trang "Nhật ký hệ
+   * thống" / audit log tài khoản hiển thị raw FK thô kiểu "positionId: Trống
+   * -> 3" - vô nghĩa với người đọc, lộ ID nội bộ) - mirror ĐÚNG
+   * `CustomersService.buildCustomerAuditSnapshot()`: dựng 1 snapshot "sạch"
+   * cho oldData/newData của audit log user, thay vì log thẳng cả entity
+   * `User` (nơi `department`/`position`/`leaveApprover` là relation CHỈ có
+   * khi được load tường minh - `findOne({ where: { id } })` mặc định KHÔNG
+   * load - nên trước đây oldData/newData chỉ còn lại đúng cột FK thô
+   * `departmentId`/`positionId`/`leaveApproverId` dạng số).
+   *
+   * Yêu cầu gọi hàm này với 1 `User` đã LOAD ĐỦ 3 relation
+   * (`department`/`position`/`leaveApprover`) - xem các điểm gọi ở
+   * `create()`/`update()`/`approveUser()` (đều tự fetch lại kèm relations
+   * ngay trước khi build snapshot, không dựa vào entity có sẵn trong tay vì
+   * có thể chưa load hoặc đã lệch sau khi đổi FK).
+   *
+   * Không đưa `password`/`hashedRefreshToken` vào đây (đã tách khỏi audit
+   * bằng `omitPassword()` ở nơi gọi cho phần trả API, còn snapshot audit này
+   * vốn không hề đọc 2 field đó). Cũng không đưa các field nội bộ ít có ý
+   * nghĩa đọc khi diff (avatarUrl là object key lưu trữ, lastLoginAt/số dư
+   * phép do hệ thống tự tính - không phải field admin sửa qua form Nhân
+   * viên) để giữ audit log gọn, đúng tinh thần `buildCustomerAuditSnapshot()`
+   * (chỉ log field thật sự có ý nghĩa nghiệp vụ khi xem lại lịch sử).
+   */
+  private buildUserAuditSnapshot(user: User): Record<string, unknown> {
+    return {
+      employeeCode: user.employeeCode,
+      email: user.email,
+      name: user.name,
+      phone: user.phone,
+      role: user.role,
+      isRootAdmin: user.isRootAdmin,
+      department: user.department
+        ? { id: user.department.id, name: user.department.name }
+        : null,
+      position: user.position
+        ? { id: user.position.id, name: user.position.name }
+        : null,
+      leaveApprover: user.leaveApprover
+        ? { id: user.leaveApprover.id, name: user.leaveApprover.name }
+        : null,
+      isActive: user.isActive,
+      approvalStatus: user.approvalStatus,
+    };
+  }
+
   async create(
     createDto: CreateUserDto,
     creatorId: number,
@@ -423,13 +470,21 @@ export class UsersService {
     const safeUser = omitPassword(savedUser as any);
 
     if (creatorId) {
+      // ⚠️ FIX BUG THẬT (xem JSDoc `buildUserAuditSnapshot()`): `savedUser`
+      // trả về từ `.save()` KHÔNG có relation `department`/`position` được
+      // load (chỉ có cột FK thô) - fetch lại kèm relations CHỈ để dựng audit
+      // snapshot đọc được (không đổi `safeUser`/return value của hàm này).
+      const userWithRelations = await this.usersRepository.findOne({
+        where: { id: savedUser.id },
+        relations: ['department', 'position', 'leaveApprover'],
+      });
       this.auditService.logActionAsync(
         creatorId,
         'CREATE_USER',
         'user',
         (savedUser as any).id,
         null,
-        safeUser,
+        this.buildUserAuditSnapshot(userWithRelations ?? savedUser),
       );
     }
 
@@ -449,13 +504,23 @@ export class UsersService {
     callerIsRootAdmin?: boolean,
   ): Promise<User> {
     // 1. Tìm user
-    const user = await this.usersRepository.findOne({ 
-      where: { id } 
+    // ⚠️ FIX BUG THẬT (xem JSDoc `buildUserAuditSnapshot()`): PHẢI load kèm
+    // relations department/position/leaveApprover ngay từ đây để chụp
+    // snapshot "before" đọc được tên, không chỉ ID thô.
+    const user = await this.usersRepository.findOne({
+      where: { id },
+      relations: ['department', 'position', 'leaveApprover'],
     });
 
     if (!user) {
       throw new NotFoundException('Không tìm thấy nhân viên');
     }
+
+    // ⚠️ FIX BUG THẬT (mirror `CustomersService.update()` - xem chú thích
+    // đầy đủ ở đó): chụp `before` NGAY ở đây, TRƯỚC bất kỳ mutation nào bên
+    // dưới (`Object.assign(user, updateDto)` sẽ tự sửa thẳng `user` trong bộ
+    // nhớ) - chụp sau mutation sẽ khiến "cũ" thực chất đã lẫn "mới".
+    const before = this.buildUserAuditSnapshot(user);
 
     // ⚠️ MỚI - CHẶN TUYỆT ĐỐI (mọi role, kể cả Admin/Root Admin) việc tự đổi
     // role của CHÍNH MÌNH qua endpoint này. Lý do đặt riêng, không gộp với
@@ -650,27 +715,37 @@ export class UsersService {
       delete (updateDto as any).password;
     }
 
-    // 3. Clone for audit
-    const oldData = { ...user };
-
-    // 4. Merge data
+    // 3. Merge data
+    // (Snapshot "before" đã chụp bằng buildUserAuditSnapshot() ở đầu hàm -
+    // xem biến `before` phía trên - KHÔNG chụp `{ ...user }` ở đây nữa vì
+    // lúc này user đã sắp bị mutate ngay bên dưới.)
     Object.assign(user, updateDto);
 
-    // 5. CRITICAL: PHẢI CÓ SAVE()
+    // 4. CRITICAL: PHẢI CÓ SAVE()
     const savedUser = await this.usersRepository.save(user);
 
-    // 6. Không bao giờ echo password hash ra ngoài, kể cả trong audit log
-    const safeOldData = omitPassword(oldData as any);
+    // 5. Không bao giờ echo password hash ra ngoài, kể cả trong audit log
     const safeUser = omitPassword(savedUser as any);
 
     if (callerId) {
+      // ⚠️ FIX BUG THẬT (xem JSDoc `buildUserAuditSnapshot()`): sau
+      // `Object.assign(user, updateDto)`, `user.department`/`user.position`/
+      // `user.leaveApprover` vẫn là relation object CŨ trong bộ nhớ (chỉ
+      // đúng cột FK thô `departmentId`/`positionId`/`leaveApproverId` được
+      // cập nhật) - fetch lại kèm relations SAU khi save để snapshot "sau
+      // khi sửa" đọc đúng tên MỚI (mirror `newDepartment` ở
+      // `CustomersService.update()`).
+      const userAfterSave = await this.usersRepository.findOne({
+        where: { id: savedUser.id },
+        relations: ['department', 'position', 'leaveApprover'],
+      });
       this.auditService.logActionAsync(
         callerId,
         'UPDATE_USER',
         'user',
         (savedUser as any).id,
-        safeOldData,
-        safeUser,
+        before,
+        this.buildUserAuditSnapshot(userAfterSave ?? savedUser),
       );
     }
 
@@ -1253,13 +1328,22 @@ export class UsersService {
 
     const saved = await this.usersRepository.save(user);
 
+    // ⚠️ FIX BUG THẬT (xem JSDoc `buildUserAuditSnapshot()` - đúng bug người
+    // dùng báo cáo: "positionId: Trống -> 3"): trước đây log thẳng
+    // `{ role, departmentId, positionId }` raw - `departmentId`/`positionId`
+    // là ID số thô, không có tên. Fetch lại kèm relations để dựng snapshot
+    // đọc được, đồng nhất với `create()`/`update()`.
+    const userWithRelations = await this.usersRepository.findOne({
+      where: { id: saved.id },
+      relations: ['department', 'position', 'leaveApprover'],
+    });
     this.auditService.logActionAsync(
       approverId,
       'APPROVE_USER',
       'user',
       id,
       null,
-      { role: saved.role, departmentId: saved.departmentId, positionId: saved.positionId },
+      this.buildUserAuditSnapshot(userWithRelations ?? saved),
     );
     this.logger.log(`[Users] User ID ${id} approved by ${approverId}`);
 
