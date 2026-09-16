@@ -269,9 +269,45 @@ export const AuditDiffViewer: React.FC<AuditDiffViewerProps> = ({
   // Phase 7 (Công việc định kỳ) dùng lower_snake ('created') - so khớp không
   // phân biệt hoa/thường để cả 2 hệ action đều nhận đúng nhãn cột icon.
   const actionUpper = action.toUpperCase();
-  const isCreate = actionUpper.includes('CREATE');
-  const isDelete = actionUpper.includes('DELETE');
-  const isUpdate = actionUpper.includes('UPDATE') || (oldData && newData);
+
+  // ⚠️ FIX BUG THẬT (báo lỗi trực tiếp: audit của `CHECKLIST_ITEM_REMOVED`/
+  // `SECONDARY_ASSIGNEE_REMOVED`/`PARENT_UNLINKED`/`CUSTOMER_UNLINKED` vẽ
+  // sai kiểu "Trống → giá trị" như đang UPDATE, dù đây là hành động 1 CHIỀU
+  // (chỉ có `oldData`, không có `newData` - xem `logActionAsync()` ở
+  // `PeriodicTaskAuditService`/các Service gọi nó). Nguyên nhân gốc: tên 4
+  // action này không chứa chữ "DELETE" nên `isDelete` cũ (chỉ so tên) luôn
+  // nhận `false`.
+  //
+  // Sửa bằng 2 lớp, không chỉ 1:
+  //   (1) Name-based: mở rộng danh sách từ khoá cho isDelete/isCreate, khớp
+  //       ĐÚNG các action 1 chiều hiện có trong hệ thống (REMOVED/UNLINKED =
+  //       xoá 1 chiều; ADDED/LINKED (trừ UNLINKED) = thêm 1 chiều, mirror
+  //       "ADDED" ở `CHECKLIST_ITEM_ADDED`/`CUSTOMER_LINKED`/`PARENT_LINKED`/
+  //       `SECONDARY_ASSIGNEE_ADDED` - các action NÀY cũng bị lỗi y hệt theo
+  //       chiều ngược lại, không nằm trong action đã báo nhưng cùng gốc rễ).
+  //   (2) Shape-based (lưới an toàn cho action tương lai KHÔNG khớp bất kỳ từ
+  //       khoá nào ở trên - vd lỡ đặt tên `X_DETACHED`/`X_CLEARED`): nếu
+  //       `oldData` có dữ liệu mà `newData` rỗng/không có → chắc chắn là
+  //       hành động xoá 1 chiều, không quan trọng tên action là gì; ngược lại
+  //       cho hành động thêm 1 chiều. Đặt SAU name-based để name-based ưu
+  //       tiên khi rõ ràng, shape-based chỉ bắt phần còn sót.
+  const hasOldData = !!oldData && typeof oldData === 'object' && Object.keys(oldData).length > 0;
+  const hasNewData = !!newData && typeof newData === 'object' && Object.keys(newData).length > 0;
+
+  const isDelete =
+    actionUpper.includes('DELETE') ||
+    actionUpper.includes('REMOVED') ||
+    actionUpper.includes('UNLINKED') ||
+    (hasOldData && !hasNewData);
+
+  const isCreate =
+    !isDelete &&
+    (actionUpper.includes('CREATE') ||
+      actionUpper.includes('ADDED') ||
+      (actionUpper.includes('LINKED') && !actionUpper.includes('UNLINKED')) ||
+      (hasNewData && !hasOldData));
+
+  const isUpdate = !isCreate && !isDelete && (actionUpper.includes('UPDATE') || (oldData && newData));
   const isAssignmentAction = ASSIGNMENT_ACTIONS.some((a) => actionUpper.includes(a));
   const contextLabels = CONTEXTUAL_FIELD_LABELS.find((c) => actionUpper.includes(c.actionIncludes))?.labels;
   const fieldLabels = { ...FIELD_LABELS, ...(contextLabels || {}), ...(extraFieldLabels || {}) };
