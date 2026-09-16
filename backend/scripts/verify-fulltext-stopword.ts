@@ -1,174 +1,230 @@
 /**
- * VERIFY + AUTO-FIX: cấu hình stopword của FULLTEXT index `ft_customers_search`.
+ * scripts/verify-fulltext-stopword.ts
  *
- * BỐI CẢNH BUG ĐÃ GẶP THẬT (2026-09-16, xem WORKFLOW_LOG.md):
- * Migration `FixFulltextStopwordVietnamese1777100000000` gắn 1 stopword table
- * RỖNG (`customers_empty_stopwords`) vào index `ft_customers_search` để search
- * tên tiếng Việt chứa chữ "a" ngắn (Lan, Mai, An, Hana...) không bị lọc sai.
+ * Kiểm tra + tự sửa (idempotent) bug: FULLTEXT search trên bảng `customers`
+ * bỏ sót các tên chứa bigram trùng stopword mặc định của InnoDB (vd: "Hana"
+ * chứa bigram "an", "Lan", "An"...) sau khi DB local bị restore/clone.
  *
- * ⚠️ VẤN ĐỀ #1 — Vì sao cấu hình bị mất sau restore/clone DB:
- * Cấu hình stopword-table KHÔNG nằm trong DDL (`SHOW CREATE TABLE` vẫn hiện
- * đúng `WITH PARSER ngram` sau restore) — nó là state nội bộ InnoDB, chỉ được
- * set tại đúng thời điểm `CREATE FULLTEXT INDEX` chạy trong 1 session cụ thể.
- * Backup/restore (mysqldump → import) hoặc clone DB qua GUI thường DROP+CREATE
- * lại bảng/rebuild FULLTEXT index mà KHÔNG set `innodb_ft_user_stopword_table`
- * trước → index mới âm thầm quay về stopword MẶC ĐỊNH → bug tái phát, dù bảng
- * `migrations` vẫn báo migration này đã "chạy" (chỉ là 1 dòng DATA copy theo
- * dump, không phải chạy lại thật).
+ * LÝ DO VIẾT LẠI (so với bản gốc):
+ * Bản gốc dùng `SET GLOBAL innodb_ft_aux_table` + đọc
+ * INFORMATION_SCHEMA.INNODB_FT_INDEX_TABLE để soi trực tiếp bigram trong
+ * FTS index. Cách đó đòi quyền SUPER / SYSTEM_VARIABLES_ADMIN — bị MySQL
+ * managed (không phải root cục bộ) chặn thẳng:
+ *   ER_SPECIFIC_ACCESS_DENIED_ERROR: Access denied; you need SUPER or
+ *   SYSTEM_VARIABLES_ADMIN privilege(s)
  *
- * ⚠️ VẤN ĐỀ #2 — Vì sao KHÔNG được dùng `information_schema.INNODB_FT_CONFIG`
- * để kiểm tra (đã verify thật, không suy đoán):
- * Cột `stopword_table_name` trong bảng này có thể trả về giá trị CŨ/SAI LỆCH
- * (báo đang dùng bảng rỗng) ngay cả khi index vừa bị rebuild về stopword MẶC
- * ĐỊNH thật sự — đã tái hiện case này bằng tay: metadata báo đúng nhưng search
- * "Hana" vẫn ra rỗng. Không rõ đây là cache MySQL hay hành vi tài liệu hoá
- * thiếu đầy đủ — nhưng thực nghiệm cho thấy field này KHÔNG đáng tin.
+ * Bản này thay hoàn toàn bước introspect đó bằng "functional canary check":
+ * chèn tạm 1 dòng có tên chứa "Hana" vào chính bảng customers, search bằng
+ * MATCH...AGAINST so với LIKE, rồi xoá dòng canary đi. Chỉ cần quyền
+ * SELECT/INSERT/DELETE bình thường mà app đã có — không đụng biến global.
  *
- * → Script này dùng bằng chứng THẬT thay vì đọc metadata: kiểm tra trực tiếp
- * xem 1 vài "canary bigram" thuộc danh sách stopword mặc định của InnoDB
- * (an/in/on...) có thực sự tồn tại trong FTS index hay không, qua
- * `information_schema.INNODB_FT_INDEX_TABLE`. Nếu KHÔNG có canary nào tồn
- * tại dù bảng có nhiều dữ liệu → chắc chắn đang bị lọc stopword sai.
+ * SỬA LẦN 2 (khớp đúng backend/src/database/entities/customer.entity.ts thật):
+ * - Cột `input_date` (date, NOT NULL, KHÔNG có default) — thiếu gây lỗi
+ *   `ER_NO_DEFAULT_FOR_FIELD: Field 'input_date' doesn't have a default value`.
+ *   -> Đã thêm `input_date` = CURDATE() vào câu INSERT.
+ * - Cột `created_by` (int, NOT NULL, KHÔNG có default — đây là field
+ *   `createdBy_OLD` trong entity, khác với `created_by_id` mới) — cũng bắt
+ *   buộc phải truyền, nếu không sẽ lỗi tương tự ngay sau khi fix input_date.
+ * - `sales_user_id` và `department_id` trong entity thật đã nullable (xem
+ *   migration `AllowNullSalesAndDepartmentInCustomers`) -> KHÔNG cần mượn
+ *   department nữa, script chỉ còn cần 1 user bất kỳ để làm `created_by`.
+ * - `phone` có `unique: true` -> dùng số ngẫu nhiên/theo timestamp thay vì
+ *   hardcode '0900000000', để tránh đụng dữ liệu thật hoặc đụng nhau khi
+ *   nhiều tài khoản cùng chạy script song song trên cùng 1 DB dev/staging.
  *
- * CÁCH DÙNG:
+ * CHẠY:
  *   npx ts-node -r tsconfig-paths/register scripts/verify-fulltext-stopword.ts
- *        → chỉ kiểm tra, thoát mã lỗi khác 0 nếu sai cấu hình (dùng được
- *          trong CI/health-check, không tự sửa gì).
  *   npx ts-node -r tsconfig-paths/register scripts/verify-fulltext-stopword.ts --fix
- *        → tự DROP/CREATE lại index với đúng stopword rỗng nếu phát hiện sai.
- *
- * NÊN CHẠY LỆNH NÀY (bản --fix) SAU MỖI LẦN:
- *   - Restore DB từ file dump (mysqldump/backup).
- *   - Clone/copy DB qua GUI (TablePlus, "Local" app, HeidiSQL...).
- *   - Import DB production về máy local để debug.
- *
- * ⚠️ Yêu cầu quyền: cả bước kiểm tra (`SET GLOBAL innodb_ft_aux_table`) lẫn
- * bước sửa (`SET SESSION innodb_ft_user_stopword_table`) đều cần quyền
- * SUPER hoặc SYSTEM_VARIABLES_ADMIN/SESSION_VARIABLES_ADMIN (MySQL 8+). Nếu
- * user DB không có quyền này (phổ biến trên managed hosting), script sẽ báo
- * lỗi rõ ràng ngay từ bước kiểm tra.
  */
-import { DataSource } from 'typeorm';
+
+import { DataSource, QueryRunner } from 'typeorm';
 import * as dotenv from 'dotenv';
 
 dotenv.config({ path: '.env.development' });
 
-const STOPWORD_TABLE = 'customers_empty_stopwords';
-// Các bigram gần như CHẮC CHẮN xuất hiện trong bất kỳ tập dữ liệu khách hàng
-// Việt Nam nào có kích thước đáng kể (VD: "Văn" trong "Nguyễn Văn X" cực phổ
-// biến -> chứa "an"). Nếu KHÔNG cái nào trong số này tồn tại trong FTS index
-// dù bảng có đủ dữ liệu, gần như chắc chắn stopword mặc định đang lọc chúng.
-const CANARY_BIGRAMS = ['an', 'on', 'in'];
-const MIN_ROWS_FOR_RELIABLE_CHECK = 20;
+const CANARY_MARK = '__FTS_CANARY__';
+const CANARY_NAME = `${CANARY_MARK} Hana`;
+const STOPWORD_TABLE_NAME = 'customers_empty_stopwords';
 
-async function main() {
-  const shouldFix = process.argv.includes('--fix');
-
-  const sslConfig = process.env.DB_CA_CERT ? { ca: process.env.DB_CA_CERT } : undefined;
-  const dataSource = new DataSource({
+// ---------------------------------------------------------------------------
+// Kết nối DB — dùng đúng biến env như backend/.env.development
+// ---------------------------------------------------------------------------
+function buildDataSource(): DataSource {
+  return new DataSource({
     type: 'mysql',
     host: process.env.DB_HOST,
-    port: parseInt(process.env.DB_PORT || '3306'),
+    port: parseInt(process.env.DB_PORT || '3306', 10),
     username: process.env.DB_USERNAME,
     password: process.env.DB_PASSWORD,
     database: process.env.DB_DATABASE,
-    ...(sslConfig ? { ssl: sslConfig, extra: { ssl: sslConfig } } : {}),
+    synchronize: false,
+    logging: false,
   });
+}
 
-  await dataSource.initialize();
+// Số điện thoại canary duy nhất mỗi lần chạy (cột `phone` có unique: true) —
+// tránh đụng số thật và đụng nhau khi nhiều tài khoản chạy song song.
+function buildCanaryPhone(): string {
+  const suffix = Date.now().toString().slice(-9); // 9 chữ số cuối của timestamp
+  return `0${suffix}`.padEnd(10, '0').slice(0, 10);
+}
+
+// ---------------------------------------------------------------------------
+// FUNCTIONAL CANARY CHECK
+// Không dùng SET GLOBAL / INNODB_FT_* — chỉ cần SELECT/INSERT/DELETE thường.
+// KHÔNG bọc trong transaction để tránh FTS cache của InnoDB chưa flush khi
+// SELECT ngay sau INSERT trong cùng transaction.
+// ---------------------------------------------------------------------------
+async function functionalCanaryCheck(
+  queryRunner: QueryRunner,
+): Promise<{ ok: boolean; detail: string }> {
+  // Chỉ cần 1 user bất kỳ để làm `created_by` (NOT NULL, không default).
+  // `sales_user_id` / `department_id` đã nullable trong entity thật nên
+  // KHÔNG cần mượn department nữa.
+  const [user] = await queryRunner.query(`SELECT id FROM users LIMIT 1`);
+  if (!user) {
+    throw new Error(
+      'Không tìm thấy user nào trong DB để làm created_by cho dòng canary test. ' +
+      'Cần ít nhất 1 user đã seed.',
+    );
+  }
+
+  // Dọn canary cũ (phòng trường hợp lần chạy trước bị crash giữa chừng)
+  await queryRunner.query(`DELETE FROM customers WHERE name LIKE ?`, [
+    `${CANARY_MARK}%`,
+  ]);
+
+  const canaryPhone = buildCanaryPhone();
+
+  await queryRunner.query(
+    `INSERT INTO customers
+       (name, phone, source, created_by, input_date)
+     VALUES (?, ?, 'Other', ?, CURDATE())`,
+    [CANARY_NAME, canaryPhone, user.id],
+  );
 
   try {
-    const dbNameRows: any[] = await dataSource.query('SELECT DATABASE() AS db');
-    const dbName = dbNameRows[0].db;
-
-    const [{ cnt: rowCount }]: any[] = await dataSource.query(
-      'SELECT COUNT(*) AS cnt FROM customers',
+    const matched = await queryRunner.query(
+      `SELECT id FROM customers
+       WHERE MATCH(name, email, campaign) AGAINST('+Hana' IN BOOLEAN MODE)
+         AND name LIKE ?`,
+      [`${CANARY_MARK}%`],
+    );
+    const foundViaLike = await queryRunner.query(
+      `SELECT id FROM customers WHERE name LIKE ?`,
+      [`${CANARY_MARK}%`],
     );
 
-    if (rowCount < MIN_ROWS_FOR_RELIABLE_CHECK) {
-      console.warn(
-        `[verify-fulltext-stopword] ⚠️ Bảng customers chỉ có ${rowCount} dòng — quá ít để kiểm tra` +
-          ' đáng tin cậy bằng canary bigram (có thể báo sai). Cân nhắc chạy trên DB có dữ liệu thật.',
-      );
-    }
+    const ok = matched.length > 0 && foundViaLike.length > 0;
+    return {
+      ok,
+      detail: ok
+        ? 'FULLTEXT tìm ra "Hana" đúng như LIKE — stopword KHÔNG chặn bigram.'
+        : `FULLTEXT trả ${matched.length} kết quả, LIKE trả ${foundViaLike.length} ` +
+        `dòng — stopword ĐANG chặn (bug tái hiện).`,
+    };
+  } finally {
+    // Luôn dọn dẹp dòng canary dù pass hay fail
+    await queryRunner.query(`DELETE FROM customers WHERE name LIKE ?`, [
+      `${CANARY_MARK}%`,
+    ]);
+  }
+}
 
-    // ⚠️ innodb_ft_aux_table là GLOBAL variable — cần quyền SUPER/SYSTEM_VARIABLES_ADMIN.
-    await dataSource.query(`SET GLOBAL innodb_ft_aux_table = ?`, [`${dbName}/customers`]);
+// ---------------------------------------------------------------------------
+// FIX: drop + tạo lại FULLTEXT index, trỏ đúng stopword-table rỗng.
+// SET SESSION (không phải SET GLOBAL) — không đòi quyền SUPER.
+//
+// LƯU Ý: fix này giống hệt logic migration đã có sẵn trong repo
+// (`1777100000000-FixFulltextStopwordVietnamese.ts`). Script này là công cụ
+// verify/fix độc lập, không thay thế migration đó — nếu migration kia CHƯA
+// từng chạy thành công trên DB đang test (vd. do lỗi quyền lúc chạy migrate),
+// applyFix() ở đây sẽ áp dụng đúng hiệu ứng tương đương.
+// ---------------------------------------------------------------------------
+async function applyFix(queryRunner: QueryRunner): Promise<void> {
+  console.log('[fix] Tạo bảng stopword rỗng nếu chưa có...');
+  await queryRunner.query(
+    `CREATE TABLE IF NOT EXISTS \`${STOPWORD_TABLE_NAME}\` (
+       value VARCHAR(30) PRIMARY KEY
+     ) ENGINE=InnoDB`,
+  );
 
-    const foundCanaries: string[] = [];
-    for (const word of CANARY_BIGRAMS) {
-      const rows: any[] = await dataSource.query(
-        `SELECT DISTINCT WORD FROM information_schema.INNODB_FT_INDEX_TABLE WHERE WORD = ?`,
-        [word],
-      );
-      if (rows.length > 0) foundCanaries.push(word);
-    }
+  console.log('[fix] Trỏ session sang stopword-table rỗng...');
+  await queryRunner.query(
+    `SET SESSION innodb_ft_user_stopword_table =
+       CONCAT(DATABASE(), '/${STOPWORD_TABLE_NAME}')`,
+  );
 
-    const isCorrect = foundCanaries.length > 0;
-
-    console.log('[verify-fulltext-stopword] DB:', dbName, '| Số dòng customers:', rowCount);
-    console.log(
-      '[verify-fulltext-stopword] Canary bigram tìm thấy trong FTS index:',
-      foundCanaries.length ? foundCanaries.join(', ') : '(không có cái nào)',
+  console.log('[fix] Drop FULLTEXT index cũ (nếu tồn tại)...');
+  const existingIndexes: Array<{ Key_name: string }> = await queryRunner.query(
+    `SHOW INDEX FROM customers WHERE Key_name = 'ft_customers_search'`,
+  );
+  if (existingIndexes.length > 0) {
+    await queryRunner.query(
+      `ALTER TABLE customers DROP INDEX ft_customers_search`,
     );
+  }
 
-    if (isCorrect) {
-      console.log('[verify-fulltext-stopword] ✅ ĐÚNG cấu hình — search tên tiếng Việt (Hana/Lan/An...) hoạt động bình thường.');
-      process.exit(0);
+  console.log('[fix] Tạo lại FULLTEXT index với parser ngram...');
+  await queryRunner.query(
+    `CREATE FULLTEXT INDEX ft_customers_search
+     ON customers(name, email, campaign)
+     WITH PARSER ngram`,
+  );
+
+  console.log('[fix] Xong.');
+}
+
+// ---------------------------------------------------------------------------
+// MAIN
+// ---------------------------------------------------------------------------
+async function main() {
+  const shouldFix = process.argv.includes('--fix');
+  const dataSource = buildDataSource();
+  await dataSource.initialize();
+  const queryRunner = dataSource.createQueryRunner();
+  await queryRunner.connect();
+
+  try {
+    console.log('[verify-fulltext-stopword] Kiểm tra hiện trạng (trước fix)...');
+    const before = await functionalCanaryCheck(queryRunner);
+    console.log(`  -> ${before.detail}`);
+
+    if (before.ok) {
+      console.log('✅ Không phát hiện bug. Không cần làm gì thêm.');
+      return;
     }
 
-    console.error(
-      '[verify-fulltext-stopword] ❌ SAI cấu hình — không canary bigram nào tồn tại trong FTS index, dù' +
-        ' bảng có đủ dữ liệu. Index đang dùng stopword MẶC ĐỊNH thay vì bảng rỗng. Search tên chứa' +
-        ' "a" ngắn (Hana, Lan, An, Mai...) sẽ bị lọc sai. Nguyên nhân thường gặp: DB vừa được restore/clone.',
-    );
+    console.log('❌ Phát hiện bug: search bị chặn bởi stopword mặc định.');
 
     if (!shouldFix) {
-      console.error('[verify-fulltext-stopword] Chạy lại kèm --fix để tự sửa.');
-      process.exit(1);
+      console.log(
+        '\nChạy lại kèm --fix để tự động sửa:\n' +
+        '  npx ts-node -r tsconfig-paths/register scripts/verify-fulltext-stopword.ts --fix',
+      );
+      process.exitCode = 1;
+      return;
     }
 
-    console.log('[verify-fulltext-stopword] Đang tự sửa (rebuild FULLTEXT index với stopword rỗng)...');
+    await applyFix(queryRunner);
 
-    await dataSource.query(`
-      CREATE TABLE IF NOT EXISTS \`${STOPWORD_TABLE}\` (
-        value VARCHAR(30) PRIMARY KEY
-      ) ENGINE=InnoDB;
-    `);
-    await dataSource.query(`ALTER TABLE customers DROP INDEX ft_customers_search;`);
-    // ⚠️ innodb_ft_user_stopword_table là SESSION variable — PHẢI set trong
-    // CÙNG session trước khi CREATE FULLTEXT INDEX (khác connection sẽ không
-    // có tác dụng). TypeORM tái dùng 1 connection cho các query tuần tự ở
-    // đây nên đảm bảo đúng session.
-    await dataSource.query(
-      `SET SESSION innodb_ft_user_stopword_table = CONCAT(DATABASE(), '/${STOPWORD_TABLE}');`,
-    );
-    await dataSource.query(`
-      CREATE FULLTEXT INDEX ft_customers_search
-      ON customers(name, email, campaign)
-      WITH PARSER ngram;
-    `);
+    console.log('[verify-fulltext-stopword] Kiểm tra lại sau khi fix...');
+    const after = await functionalCanaryCheck(queryRunner);
+    console.log(`  -> ${after.detail}`);
 
-    // Verify lại bằng đúng phép thử canary, không tin ngay là đã xong.
-    await dataSource.query(`SET GLOBAL innodb_ft_aux_table = NULL;`);
-    await dataSource.query(`SET GLOBAL innodb_ft_aux_table = ?`, [`${dbName}/customers`]);
-    const afterRows: any[] = await dataSource.query(
-      `SELECT DISTINCT WORD FROM information_schema.INNODB_FT_INDEX_TABLE WHERE WORD = 'an'`,
-    );
-
-    if (afterRows.length === 0) {
-      console.error('[verify-fulltext-stopword] ❌ Đã rebuild nhưng verify lại VẪN thất bại — cần kiểm tra thủ công.');
-      process.exit(1);
+    if (after.ok) {
+      console.log('✅ Fix thành công — search "Hana" đã hoạt động đúng.');
+    } else {
+      console.error('❌ Fix KHÔNG thành công — cần kiểm tra thủ công.');
+      process.exitCode = 1;
     }
-
-    console.log('[verify-fulltext-stopword] ✅ Đã rebuild và verify lại thành công. Search "Hana"/"Lan"/"An" giờ hoạt động đúng.');
-    process.exit(0);
+  } catch (err) {
+    console.error('[verify-fulltext-stopword] Lỗi khi chạy script:', err);
+    process.exitCode = 1;
   } finally {
+    await queryRunner.release();
     await dataSource.destroy();
   }
 }
 
-main().catch((err) => {
-  console.error('[verify-fulltext-stopword] Lỗi khi chạy script:', err);
-  process.exit(1);
-});
+main();
