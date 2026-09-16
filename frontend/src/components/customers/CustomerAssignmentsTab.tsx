@@ -25,6 +25,7 @@ import dayjs from 'dayjs';
 import { assignmentsApi, AssignmentHistory } from '@/lib/api/assignments.api';
 import { usersApi } from '@/lib/api/users.api';
 import { useAuthStore } from '@/lib/stores/auth.store';
+import { useMyPermissions } from '@/lib/hooks/useMyPermissions';
 import axiosInstance from '@/lib/api/axios-instance';
 import { getApiErrorMessage } from '@/lib/utils/error-message.util';
 import { useRoleColorMap, useRoleColors } from '@/lib/hooks/useRoleColorMap';
@@ -62,6 +63,16 @@ const STATUS_TAG: Record<AssignmentHistory['status'], { color: string; label: st
 export const CustomerAssignmentsTab = ({ customerId, primarySalesUserId, onUpdate }: Props) => {
   const { message } = App.useApp();
   const { user: currentUser } = useAuthStore();
+  // ⚠️ MỚI (yêu cầu người dùng): use case là user vẫn được VÀO tab "Chia
+  // data" và xem "Lịch sử gán data" bình thường (tab này không có gate
+  // riêng, chỉ phụ thuộc quyền xem chi tiết khách hàng) - CHỈ ẩn nút "Gán
+  // thêm Sales" nếu role không có quyền `customers.assign` (đúng permission
+  // BE đang gác ở `PATCH /customers/bulk-assign`, xem
+  // `@RequirePermission('customers.assign')` ở customers.controller.ts).
+  // Không dùng role hardcode - đúng nguyên tắc "FE dùng can()/permission
+  // key thay vì mảng role tĩnh" (PERMISSIONS.md).
+  const { can } = useMyPermissions();
+  const canAssign = can('customers.assign');
   const [loading, setLoading] = useState(false);
   const [history, setHistory] = useState<AssignmentHistory[]>([]);
 
@@ -314,9 +325,11 @@ export const CustomerAssignmentsTab = ({ customerId, primarySalesUserId, onUpdat
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
         <Text strong>Lịch sử gán data</Text>
         <Space>
-          <Button type="primary" size="small" icon={<UserAddOutlined />} onClick={() => setAddOpen(true)}>
-            Gán thêm Sales
-          </Button>
+          {canAssign && (
+            <Button type="primary" size="small" icon={<UserAddOutlined />} onClick={() => setAddOpen(true)}>
+              Gán thêm Sales
+            </Button>
+          )}
           <Button size="small" icon={<ReloadOutlined />} onClick={fetchHistory} loading={loading}>
             Làm mới
           </Button>
