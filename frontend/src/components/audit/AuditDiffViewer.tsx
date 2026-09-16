@@ -28,6 +28,39 @@ const DATE_FIELD_KEYS = new Set([
 
 const { Text } = Typography;
 
+/**
+ * ⚠️ FIX BUG THẬT + BẢO MẬT (báo lỗi trực tiếp kèm ảnh chụp màn hình: dòng
+ * audit "currentPassword: Trống -> Admin@123" hiện NGUYÊN VĂN mật khẩu dạng
+ * chữ thường ra UI cho bất kỳ ai xem được Nhật ký hoạt động).
+ *
+ * Trước đây `FIELD_LABELS` còn gán nhãn "Mật khẩu" cho key `password` - tức
+ * là NẾU field này lọt vào `oldData`/`newData` (dù do code cũ trước khi các
+ * `buildXxxAuditSnapshot()` được áp dụng, hay do 1 code path tương lai lỡ
+ * quên lọc), UI sẽ chủ động hiển thị ĐẸP ĐẼ, RÕ RÀNG giá trị đó ra ngoài -
+ * phản tác dụng hoàn toàn so với mục tiêu "an toàn".
+ *
+ * Chặn ở ĐÂY (lớp hiển thị cuối cùng, không phụ thuộc BE có sạch hay không -
+ * defense in depth): danh sách các key nhạy cảm tuyệt đối KHÔNG được hiển thị
+ * giá trị, bất kể nằm trong bản ghi audit CŨ hay MỚI. Khớp không phân biệt
+ * hoa/thường và loại bỏ dấu gạch dưới để bắt được biến thể như
+ * `current_password`/`newPassword`/`NEW_PASSWORD`.
+ *
+ * Cố ý dùng "chứa chuỗi con" (KHÔNG dùng regex neo `^...$` cứng nhắc): 1 lần
+ * thử trước đó dùng `^(current|new|old|confirm)?_?(password)$` đã BỎ SÓT
+ * `confirmNewPassword` (ghép 2 tiền tố "confirm" + "new" cùng lúc, không
+ * khớp neo đầu-cuối) - "chứa chuỗi con `password`" đơn giản hơn NHIỀU và bắt
+ * được MỌI biến thể đặt tên field có chữ "password", đổi lại có thể chặn
+ * nhầm 1 vài field vô hại tên trùng (chưa gặp trong dự án) - CHẤP NHẬN ĐƯỢC,
+ * vì rủi ro lộ mật khẩu nghiêm trọng hơn nhiều so với rủi ro ẩn nhầm 1 field
+ * không nhạy cảm.
+ */
+const SENSITIVE_SUBSTRINGS = ['password', 'pwd', 'token', 'secret'];
+
+const isSensitiveKey = (key: string): boolean => {
+  const normalized = key.replace(/[_-]/g, '').toLowerCase();
+  return SENSITIVE_SUBSTRINGS.some((s) => normalized.includes(s));
+};
+
 interface AuditDiffViewerProps {
   oldData: any;
   newData: any;
@@ -64,7 +97,6 @@ const FIELD_LABELS: Record<string, string> = {
   brokerId: 'ID Môi giới',
   role: 'Quyền hạn',
   isActive: 'Trạng thái hoạt động',
-  password: 'Mật khẩu',
   closedDate: 'Ngày chốt',
   inputDate: 'Ngày nhập',
   assignedDate: 'Ngày phân bổ',
@@ -83,6 +115,13 @@ const FIELD_LABELS: Record<string, string> = {
   // cũng hiển thị lại ở trang `/audit-logs` chung (không phải chỉ riêng
   // modal của Task) - khai thẳng ở đây để cả 2 nơi đều có nhãn đúng.
   secondaryAssignee: 'Phụ trách phụ',
+  // ⚠️ FIX BUG THẬT (ảnh chụp màn hình: "assignedTolds: Trống -> 1 mục") -
+  // nhãn cho các bản ghi audit CŨ (trước khi `CustomersService.bulkAssign()`
+  // đổi sang log field `assignedTo` dạng `{id,name}[]`) vẫn còn dùng khoá số
+  // nhiều `assignedToIds` (mảng ID thô). Không thể phục hồi TÊN cho dữ liệu
+  // cũ này (BE lúc ghi log đã không lưu tên), nhưng ít nhất gắn đúng nhãn cột
+  // và hiển thị rõ đây là ID (xem nhánh mảng số thô trong `formatValue()`).
+  assignedToIds: 'Sales nhận data',
   customer: 'Khách hàng',
   customers: 'Danh sách khách hàng',
   parentTask: 'Công việc cha',
@@ -122,6 +161,13 @@ export const AuditDiffViewer: React.FC<AuditDiffViewerProps> = ({
 
   // Helper to format values
   const formatValue = (val: any, key: string) => {
+    // ⚠️ BẢO MẬT (xem JSDoc `isSensitiveKey()` phía trên) - chặn NGAY từ đầu,
+    // trước bất kỳ nhánh format nào khác, để không có đường nào lọt qua dù
+    // giá trị là string/number/object gì đi nữa.
+    if (isSensitiveKey(key)) {
+      return <Text type="secondary" italic>Đã ẩn (thông tin nhạy cảm)</Text>;
+    }
+
     if (val === null || val === undefined || val === '') return <Text type="secondary" italic>Trống</Text>;
 
     if (DATE_FIELD_KEYS.has(key) && (typeof val === 'string' || val instanceof Date)) {
@@ -204,18 +250,38 @@ export const AuditDiffViewer: React.FC<AuditDiffViewerProps> = ({
           </Space>
         );
       }
-      return <Text type="secondary">{val.length} mục</Text>;
+      // ⚠️ FIX BUG THẬT (ảnh chụp màn hình: "Trống -> 1 mục" - dữ liệu audit
+      // CŨ chỉ log mảng ID số thô, không có tên kèm theo). "N mục" không trả
+      // lời được câu hỏi "cụ thể ID nào" mà người dùng cần khi tra soát. Vì
+      // KHÔNG có tên để tra cứu (dữ liệu tại thời điểm ghi log đã không lưu),
+      // hiển thị THẲNG các ID thay vì che giấu sau con số đếm - trung thực
+      // hơn dù chưa lý tưởng bằng tên đầy đủ.
+      if (val.every((item) => typeof item === 'number' || typeof item === 'string')) {
+        return <Text>ID: {val.join(', ')}</Text>;
+      }
+      return <Text type="secondary">{val.length} mục (dữ liệu cũ, không đọc được chi tiết)</Text>;
     }
 
     if (typeof val === 'object' && val !== null) {
-      const named = val as { name?: unknown; color?: string; code?: string };
+      const named = val as { id?: unknown; name?: unknown; color?: string; code?: string };
       if (typeof named.name === 'string') {
         return named.color ? <Tag color={named.color}>{named.name}</Tag> : <Text>{named.name}</Text>;
       }
       if (typeof named.code === 'string') {
         return <Text>{named.code}</Text>;
       }
-      return <Text type="secondary">Dữ liệu phức hợp</Text>;
+      // ⚠️ FIX BUG THẬT (ảnh chụp màn hình: "updatedBy: Admin -> Dữ liệu phức
+      // hợp" - nhãn cũ không nói lên điều gì, người dùng không hiểu và không
+      // cần "dữ liệu phức hợp" nghĩa là gì). Đây LUÔN là dữ liệu audit CŨ ghi
+      // trước khi các `buildXxxAuditSnapshot()` (Customer/User/PeriodicTask)
+      // chuẩn hoá field quan hệ về dạng `{id,name}` - tại thời điểm ghi log,
+      // BE đã không lưu tên nên FE không có cách nào phục hồi lại tên đó.
+      // Trung thực nhất là: còn ID thì hiển thị thẳng ID (`#12`) thay vì mơ
+      // hồ hoá bằng 1 câu chung chung; hết cách thì mới báo "không xác định".
+      if (typeof named.id === 'number' || typeof named.id === 'string') {
+        return <Text type="secondary">Dữ liệu cũ - ID: {named.id} (không có tên do log tại thời điểm đó)</Text>;
+      }
+      return <Text type="secondary">Không xác định (dữ liệu audit cũ, không đọc được)</Text>;
     }
 
     return String(val);
@@ -234,7 +300,13 @@ export const AuditDiffViewer: React.FC<AuditDiffViewerProps> = ({
       'hashedRefreshToken', 'user', 'targetCustomer'
     ];
 
-    return Array.from(keys).filter(k => !ignoreKeys.includes(k));
+    // ⚠️ BẢO MẬT (xem JSDoc `isSensitiveKey()`): loại bỏ HẲN các key nhạy cảm
+    // khỏi bảng diff luôn, không chỉ che giá trị - end-user không cần biết
+    // (và không nên biết) 1 dòng "currentPassword: Đã ẩn" tồn tại, đây thuần
+    // tuý là nhiễu với họ (đúng góp ý: "End-user chẳng hiểu và chẳng cần").
+    // `formatValue()` vẫn giữ chặn giá trị làm lớp phòng thủ thứ 2 phòng khi
+    // có key nhạy cảm nào đó không khớp pattern lọt qua tới đây.
+    return Array.from(keys).filter(k => !ignoreKeys.includes(k) && !isSensitiveKey(k));
   };
 
   const keys = getRelevantKeys();

@@ -27,6 +27,7 @@
     "seed": "ts-node -r tsconfig-paths/register src/database/seeds/initial-data.seed.ts",
     "seed:customers": "ts-node -r tsconfig-paths/register src/database/seeds/customers.seed.ts",
     "seed:backfill": "ts-node -r tsconfig-paths/register src/database/seeds/backfill-audit-data.ts",
+    "audit:redact-secrets": "ts-node -r tsconfig-paths/register src/database/seeds/redact-audit-log-secrets.ts",
     "seed:users": "ts-node -r tsconfig-paths/register src/database/seeds/backfill-user-names.ts",
     "import:clear": "ts-node -r tsconfig-paths/register src/database/import/clear-test-data.ts",
     "import:data": "ts-node -r tsconfig-paths/register src/database/import/import-marketing-data.ts",
