@@ -780,35 +780,44 @@ export default function PeriodicTasksPage() {
                                 {chain && <TaskChainBadge chain={chain} currentTaskId={record.id} resolveTask={resolveChainTask} />}
                             </Space>
                         </div>
-                        {/* BUG THẬT (2026-09-16, chủ dự án báo): trước đây CHỈ hiện
-                            `record.note`, thiếu hẳn `record.description` - giờ Tooltip
-                            hiện CẢ 2 mục có nhãn riêng, dòng xem trước ưu tiên Ghi chú
-                            (giữ đúng UI cũ) nhưng fallback sang Mô tả nếu Task chỉ có
-                            Mô tả mà không có Ghi chú (trước đây bị ẩn hẳn). Mirror ĐÚNG
+                        {/* BUG THẬT (2026-09-16, chủ dự án báo, xem JSDoc đầy đủ ở
+                            `TaskMiniCard.tsx`): trước đây CHỈ hiện `record.note`, thiếu
+                            hẳn `record.description`, text dài liền không khoảng trắng
+                            tràn khỏi ô do AntD `Text ellipsis` tự dùng `inline-block`
+                            (shrink-to-fit), VÀ Tooltip nổi lệch khỏi vị trí hover do
+                            `display:'block'` cũ chiếm hết bề rộng div cha (Tooltip canh
+                            giữa theo khung ĐÓ, không theo chữ thật) - đổi `display:
+                            'inline-block'` để span co đúng theo chữ hiển thị. Dùng NHÃN
+                            CHỮ "Mô tả:"/"Ghi chú:" (không Emoji - phản hồi chủ dự án:
+                            Emoji khó hiểu, hiện lệch font tuỳ hệ điều hành). Mirror ĐÚNG
                             cách làm ở `TaskMiniCard.tsx` (Kanban/Agenda) để 2 nơi đồng
-                            nhất, không lệch UI. */}
-                        {(record.note || record.description) && (
-                            <div>
+                            nhất. */}
+                        {record.description && (
+                            <div style={{ minWidth: 0 }}>
                                 <Tooltip
                                     title={
-                                        <div style={{ maxWidth: 280 }}>
-                                            {record.description && (
-                                                <div>
-                                                    <div style={{ fontWeight: 600 }}>Mô tả:</div>
-                                                    <div style={{ whiteSpace: 'pre-wrap' }}>{record.description}</div>
-                                                </div>
-                                            )}
-                                            {record.note && (
-                                                <div style={{ marginTop: record.description ? 8 : 0 }}>
-                                                    <div style={{ fontWeight: 600 }}>Ghi chú:</div>
-                                                    <div style={{ whiteSpace: 'pre-wrap' }}>{record.note}</div>
-                                                </div>
-                                            )}
+                                        <div style={{ maxWidth: 280, whiteSpace: 'pre-wrap', overflowWrap: 'anywhere' }}>
+                                            {`Mô tả: ${record.description}`}
                                         </div>
                                     }
                                 >
-                                    <Text type="secondary" style={{ fontSize: 12 }} ellipsis>
-                                        {record.note || record.description}
+                                    <Text type="secondary" style={{ fontSize: 12, display: 'inline-block', maxWidth: '100%', verticalAlign: 'top' }} ellipsis>
+                                        {`Mô tả: ${record.description}`}
+                                    </Text>
+                                </Tooltip>
+                            </div>
+                        )}
+                        {record.note && (
+                            <div style={{ minWidth: 0 }}>
+                                <Tooltip
+                                    title={
+                                        <div style={{ maxWidth: 280, whiteSpace: 'pre-wrap', overflowWrap: 'anywhere' }}>
+                                            {`Ghi chú: ${record.note}`}
+                                        </div>
+                                    }
+                                >
+                                    <Text type="secondary" italic style={{ fontSize: 12, display: 'inline-block', maxWidth: '100%', verticalAlign: 'top' }} ellipsis>
+                                        {`Ghi chú: ${record.note}`}
                                     </Text>
                                 </Tooltip>
                             </div>

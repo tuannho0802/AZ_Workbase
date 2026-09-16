@@ -69,6 +69,36 @@ export function TaskMiniCard({
     const hasNote = !!task.note;
     const hasDescription = !!task.description;
 
+    // BUG THẬT #2 (2026-09-16, chủ dự án gửi ảnh 2 - vẫn tràn chữ dù đã fix
+    // #1 ở trên, xảy ra khi Ghi chú/Mô tả là 1 "từ" dài liền không có
+    // khoảng trắng để trình duyệt tự ngắt dòng, vd test data toàn "aaaa..."):
+    // `Typography.Text ellipsis` của AntD tự set `display: inline-block` nội
+    // bộ cho span - với `width: auto`, `inline-block` tính kích thước theo
+    // kiểu "shrink-to-fit" (co theo NỘI DUNG, không theo bề rộng cha), nên 1
+    // từ dài không chỗ ngắt cứ đẩy span rộng ra vô hạn, `overflow: hidden`
+    // hoàn toàn không kịp cắt vì span đã tự nới rộng trước khi bị cắt. Bắt
+    // buộc thêm `maxWidth: '100%'` (khác hẳn `width: '100%'` - `maxWidth`
+    // mới thật sự GIỚI HẠN trần cho kiểu tính "shrink-to-fit", `width: 100%`
+    // không có tác dụng với `inline-block` auto-sizing) thì `overflow:hidden`
+    // + `textOverflow:ellipsis` mới có cửa để cắt chữ hiện "...".
+    //
+    // BUG THẬT #3 (2026-09-16, chủ dự án gửi ảnh 3 - Tooltip nổi LỆCH hẳn
+    // khỏi vị trí con trỏ chuột đang hover): dùng `display: 'block'` khiến
+    // span chiếm ĐỦ 100% bề rộng div cha (block auto-width = lấp đầy khung
+    // cha) dù chữ hiển thị (đã bị ellipsis cắt) chỉ chiếm 1 phần nhỏ bên
+    // trái - AntD `Tooltip` định vị theo TOÀN BỘ khung của phần tử trigger
+    // (span rộng cả khung, phần lớn là khoảng trống vô hình bên phải), nên
+    // Tooltip luôn canh giữa theo khung ĐÓ chứ không theo chữ thật đang thấy,
+    // trông như "trôi" sang phải. Đổi `display: 'block'` -> `'inline-block'`
+    // (giữ nguyên `maxWidth: '100%'` để không tái phát bug #2) - giờ span co
+    // đúng theo ĐỘ RỘNG CHỮ THẬT (bị cắt), Tooltip bám sát đúng vị trí hover.
+    const ellipsisTextStyle: React.CSSProperties = {
+        fontSize: 12,
+        display: 'inline-block',
+        maxWidth: '100%',
+        verticalAlign: 'top',
+    };
+
     return (
         <Card size={size} style={{ marginBottom: 8, ...style }} onClick={onClick} className={className}>
             <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 8, width: '100%' }}>
@@ -79,33 +109,42 @@ export function TaskMiniCard({
                             <TaskChainBadge chain={chainInfo} currentTaskId={task.id} resolveTask={resolveChainTask} />
                         )}
                     </div>
-                    {/* Trước đây CHỈ hiện `task.note`, thiếu hẳn `task.description`
-                        (bug chủ dự án báo 2026-09-16) - giờ Tooltip hiện CẢ 2 mục
-                        có nhãn riêng, dòng xem trước ưu tiên Ghi chú (giữ đúng UI
-                        cũ khi cả 2 cùng có) nhưng fallback sang Mô tả nếu Task
-                        chỉ có Mô tả mà không có Ghi chú (trước đây bị ẩn hẳn). */}
-                    {(hasNote || hasDescription) && (
+                    {/* Trước đây CHỈ hiện `task.note`, thiếu hẳn `task.description`,
+                        và chỉ hiện 1 trong 2 (bug chủ dự án báo 2026-09-16) - giờ
+                        hiện RIÊNG từng dòng cho Mô tả và Ghi chú (không ưu tiên/ẩn
+                        cái nào), mỗi dòng 1 Tooltip RIÊNG y hệt hành vi hover cũ
+                        (hover đúng dòng nào hiện đúng nội dung đầy đủ dòng đó,
+                        không gộp chung 1 Tooltip to dễ hiểu lầm là của Task khác
+                        khi dòng bị cắt/tràn). Dùng NHÃN CHỮ "Mô tả:"/"Ghi chú:"
+                        (không dùng Emoji - phản hồi chủ dự án 2026-09-16: Emoji
+                        khó hiểu, hiện thành ô vuông/icon lạ tuỳ font hệ điều
+                        hành) ở CẢ dòng xem trước lẫn trong Tooltip. */}
+                    {hasDescription && (
                         <div style={{ minWidth: 0 }}>
                             <Tooltip
                                 title={
-                                    <div style={{ maxWidth: 280 }}>
-                                        {hasDescription && (
-                                            <div>
-                                                <div style={{ fontWeight: 600 }}>Mô tả:</div>
-                                                <div style={{ whiteSpace: 'pre-wrap' }}>{task.description}</div>
-                                            </div>
-                                        )}
-                                        {hasNote && (
-                                            <div style={{ marginTop: hasDescription ? 8 : 0 }}>
-                                                <div style={{ fontWeight: 600 }}>Ghi chú:</div>
-                                                <div style={{ whiteSpace: 'pre-wrap' }}>{task.note}</div>
-                                            </div>
-                                        )}
+                                    <div style={{ maxWidth: 280, whiteSpace: 'pre-wrap', overflowWrap: 'anywhere' }}>
+                                        {`Mô tả: ${task.description}`}
                                     </div>
                                 }
                             >
-                                <Text type="secondary" style={{ fontSize: 12, display: 'block' }} ellipsis>
-                                    {task.note || task.description}
+                                <Text type="secondary" style={ellipsisTextStyle} ellipsis>
+                                    {`Mô tả: ${task.description}`}
+                                </Text>
+                            </Tooltip>
+                        </div>
+                    )}
+                    {hasNote && (
+                        <div style={{ minWidth: 0 }}>
+                            <Tooltip
+                                title={
+                                    <div style={{ maxWidth: 280, whiteSpace: 'pre-wrap', overflowWrap: 'anywhere' }}>
+                                        {`Ghi chú: ${task.note}`}
+                                    </div>
+                                }
+                            >
+                                <Text type="secondary" italic style={ellipsisTextStyle} ellipsis>
+                                    {`Ghi chú: ${task.note}`}
                                 </Text>
                             </Tooltip>
                         </div>

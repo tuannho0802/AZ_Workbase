@@ -83,12 +83,12 @@ export function PeriodicTasksCalendarView({ tasks, onSelectTask, chains, resolve
                                         dự án báo 2026-09-16) - thêm để đồng nhất với
                                         TaskMiniCard (Kanban/Agenda) và Table gốc. */}
                                     {task.description && (
-                                        <div style={{ fontSize: 12, marginTop: 4, borderTop: '1px solid rgba(255,255,255,0.2)', paddingTop: 4 }}>
+                                        <div style={{ fontSize: 12, marginTop: 4, borderTop: '1px solid rgba(255,255,255,0.2)', paddingTop: 4, maxWidth: 240, whiteSpace: 'pre-wrap', overflowWrap: 'anywhere' }}>
                                             <strong>Mô tả:</strong> {task.description}
                                         </div>
                                     )}
                                     {task.note && (
-                                        <div style={{ fontSize: 12, marginTop: 4, borderTop: task.description ? undefined : '1px solid rgba(255,255,255,0.2)', paddingTop: 4 }}>
+                                        <div style={{ fontSize: 12, marginTop: 4, borderTop: task.description ? undefined : '1px solid rgba(255,255,255,0.2)', paddingTop: 4, maxWidth: 240, whiteSpace: 'pre-wrap', overflowWrap: 'anywhere' }}>
                                             <strong>Ghi chú:</strong> {task.note}
                                         </div>
                                     )}
