@@ -3,7 +3,28 @@
 import React from 'react';
 import { Table, Tag, Typography, Space, Empty, Alert } from 'antd';
 import { ArrowRightOutlined, PlusOutlined, DeleteOutlined } from '@ant-design/icons';
+import dayjs from 'dayjs';
 import { StatusTag } from '@/components/customers/StatusTag';
+
+/**
+ * ⚠️ FIX BUG THẬT (báo lỗi trực tiếp: audit log hiện "Ngày nhập:
+ * 2026-09-11T00:00:00.000Z" thay vì ngày đọc được) - các field kiểu Date/
+ * ISO string này KHÔNG có object quan hệ (`{id,name}`) để rơi vào nhánh
+ * generic phía dưới, cũng không phải string thường (rơi thẳng xuống
+ * `String(val)` ở cuối `formatValue()`, in ra y hệt ISO string thô của
+ * `JSON.stringify` khi BE trả `Date` object). Liệt kê tường minh các field
+ * ngày tháng dùng chung giữa Customer/Deposit (Công việc định kỳ dùng
+ * `periodStartDate`/`periodEndDate` dạng string 'YYYY-MM-DD' thuần, không
+ * cần parse lại - dayjs vẫn parse đúng nên gộp chung danh sách cho gọn).
+ */
+const DATE_FIELD_KEYS = new Set([
+  'closedDate',
+  'inputDate',
+  'assignedDate',
+  'depositDate',
+  'periodStartDate',
+  'periodEndDate',
+]);
 
 const { Text } = Typography;
 
@@ -47,6 +68,24 @@ const FIELD_LABELS: Record<string, string> = {
   closedDate: 'Ngày chốt',
   inputDate: 'Ngày nhập',
   assignedDate: 'Ngày phân bổ',
+  depositDate: 'Ngày nạp',
+  // ⚠️ FIX BUG THẬT (đợt rà soát toàn bộ audit log - `CustomersService.
+  // buildAssignmentAuditSnapshot()`, cùng lớp bug `positionId`): trước đây
+  // "Sửa lượt gán data" (`UPDATE_ASSIGNMENT`) log raw `assignedToId`/
+  // `previousAssigneeId`, chưa từng có nhãn - rơi vào fallback hiển thị
+  // thẳng tên cột kỹ thuật.
+  assignedTo: 'Sales nhận data',
+  assignedToId: 'Sales nhận data',
+  previousAssignee: 'Sales trước đó',
+  previousAssigneeId: 'Sales trước đó',
+  // Field riêng của module "Công việc định kỳ" (Phase 7) - `secondaryAssignee`/
+  // `parentTask` không đưa qua `extraFieldLabels` (TaskAuditLogsModal) vì
+  // cũng hiển thị lại ở trang `/audit-logs` chung (không phải chỉ riêng
+  // modal của Task) - khai thẳng ở đây để cả 2 nơi đều có nhãn đúng.
+  secondaryAssignee: 'Phụ trách phụ',
+  customer: 'Khách hàng',
+  customers: 'Danh sách khách hàng',
+  parentTask: 'Công việc cha',
   // ⚠️ FIX BUG THẬT (báo lỗi trực tiếp: audit log tài khoản hiện raw
   // "positionId: Trống -> 3" - field chưa từng có nhãn, rơi vào fallback
   // hiển thị thẳng tên cột kỹ thuật). Đi kèm fix ở
@@ -84,6 +123,11 @@ export const AuditDiffViewer: React.FC<AuditDiffViewerProps> = ({
   // Helper to format values
   const formatValue = (val: any, key: string) => {
     if (val === null || val === undefined || val === '') return <Text type="secondary" italic>Trống</Text>;
+
+    if (DATE_FIELD_KEYS.has(key) && (typeof val === 'string' || val instanceof Date)) {
+      const parsed = dayjs(val);
+      return <Text>{parsed.isValid() ? parsed.format('DD/MM/YYYY') : String(val)}</Text>;
+    }
 
     if (key === 'status') {
       // ⚠️ FIX BUG THẬT (báo lỗi "Objects are not valid as a React child"

@@ -23,8 +23,8 @@ function makeFakeQueryBuilder(overrides: { getMany?: any; getRawMany?: any } = {
   return qb;
 }
 
-function makeTask(id: number, periodType: PeriodType): PeriodicTask {
-  return { id, periodType } as PeriodicTask;
+function makeTask(id: number, periodType: PeriodType, title = `Task ${id}`): PeriodicTask {
+  return { id, periodType, title } as PeriodicTask;
 }
 
 describe('PeriodicTaskLinksService', () => {
@@ -40,6 +40,9 @@ describe('PeriodicTaskLinksService', () => {
   };
   const mockTaskRepo = {
     createQueryBuilder: jest.fn(),
+    // ⚠️ Mới - `removeLink()` giờ fetch tiêu đề Task cha để dựng audit
+    // snapshot sạch (`parentTask: {id, name}`) thay vì log raw `parentTaskId`.
+    findOne: jest.fn(),
   };
   const mockTasksService = {
     findOne: jest.fn(),
@@ -92,12 +95,14 @@ describe('PeriodicTaskLinksService', () => {
 
       expect(result).toMatchObject({ childTaskId: 1, parentTaskId: 2, createdById: userId });
       // Phase 7 (PLAN mục 2.6): audit log `parent_linked` gắn vào Task CON.
+      // ⚠️ FIX BUG THẬT (đợt rà soát audit log toàn bộ): resolve tiêu đề
+      // Task cha (`parentTask: {id, name}`) thay vì log raw `parentTaskId`.
       expect(mockAuditService.logActionAsync).toHaveBeenCalledWith(
         1,
         userId,
         PeriodicTaskAuditAction.PARENT_LINKED,
         null,
-        { parentTaskId: 2 },
+        { parentTask: { id: 2, name: 'Task 2' } },
       );
     });
 
@@ -173,16 +178,18 @@ describe('PeriodicTaskLinksService', () => {
       const existing = { id: 9, childTaskId: 1, parentTaskId: 2 };
       mockLinkRepo.findOne.mockResolvedValue(existing);
       mockLinkRepo.remove.mockResolvedValue(existing);
+      mockTaskRepo.findOne.mockResolvedValue({ id: 2, title: 'Task 2' });
 
       const result = await service.removeLink(1, 2, user, scope);
 
       expect(result).toEqual({ deleted: true });
       expect(mockLinkRepo.remove).toHaveBeenCalledWith(existing);
+      // ⚠️ FIX BUG THẬT (xem chú thích ở test `addLink`).
       expect(mockAuditService.logActionAsync).toHaveBeenCalledWith(
         1,
         userId,
         PeriodicTaskAuditAction.PARENT_UNLINKED,
-        { parentTaskId: 2 },
+        { parentTask: { id: 2, name: 'Task 2' } },
       );
     });
   });

@@ -82,7 +82,7 @@ describe('PeriodicTaskSecondaryAssigneesService', () => {
     });
 
     it('thêm thành công + trả lại danh sách User đang là phụ trách phụ', async () => {
-      mockUserRepo.findOne.mockResolvedValue({ id: 5, isActive: true });
+      mockUserRepo.findOne.mockResolvedValue({ id: 5, isActive: true, name: 'User 5' });
       mockSecondaryRepo.findOne.mockResolvedValue(null);
       mockSecondaryRepo.save.mockResolvedValue(undefined);
       mockSecondaryRepo.find.mockResolvedValue([{ user: { id: 5, name: 'User 5' } }]);
@@ -92,12 +92,15 @@ describe('PeriodicTaskSecondaryAssigneesService', () => {
       expect(mockSecondaryRepo.create).toHaveBeenCalledWith({ taskId, userId: 5, addedById: employeeUser.id });
       expect(mockSecondaryRepo.save).toHaveBeenCalled();
       expect(result).toEqual([{ id: 5, name: 'User 5' }]);
+      // ⚠️ FIX BUG THẬT (đợt rà soát audit log toàn bộ - key `userId` từng
+      // bị `AuditDiffViewer.ignoreKeys` lọc mất, dòng audit "mất trắng"):
+      // giờ log `{ secondaryAssignee: {id, name} }`.
       expect(mockAuditService.logActionAsync).toHaveBeenCalledWith(
         taskId,
         employeeUser.id,
         PeriodicTaskAuditAction.SECONDARY_ASSIGNEE_ADDED,
         null,
-        { userId: 5 },
+        { secondaryAssignee: { id: 5, name: 'User 5' } },
       );
     });
   });
@@ -115,6 +118,9 @@ describe('PeriodicTaskSecondaryAssigneesService', () => {
     it('gỡ thành công khi tồn tại', async () => {
       mockSecondaryRepo.findOne.mockResolvedValue({ id: 1, taskId, userId: 5 });
       mockSecondaryRepo.remove.mockResolvedValue(undefined);
+      // ⚠️ Mới - `removeSecondaryAssignee()` fetch riêng tên user vừa gỡ để
+      // dựng audit snapshot sạch.
+      mockUserRepo.findOne.mockResolvedValue({ id: 5, name: 'User 5' });
 
       const result = await service.removeSecondaryAssignee(taskId, 5, employeeUser, 'own');
 
@@ -124,7 +130,7 @@ describe('PeriodicTaskSecondaryAssigneesService', () => {
         taskId,
         employeeUser.id,
         PeriodicTaskAuditAction.SECONDARY_ASSIGNEE_REMOVED,
-        { userId: 5 },
+        { secondaryAssignee: { id: 5, name: 'User 5' } },
       );
     });
   });

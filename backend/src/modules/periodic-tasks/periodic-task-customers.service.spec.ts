@@ -35,6 +35,11 @@ describe('PeriodicTaskCustomersService', () => {
   };
   const mockCustomerRepo = {
     createQueryBuilder: jest.fn(),
+    // ⚠️ Mới - `addCustomers()`/`removeCustomer()` giờ fetch tên customer để
+    // dựng audit snapshot sạch (xem `buildDepositAuditSnapshot`-style fix ở
+    // `PeriodicTaskCustomersService`), KHÔNG còn chỉ dùng `createQueryBuilder`.
+    find: jest.fn(),
+    findOne: jest.fn(),
   };
   const mockTasksService = {
     findOne: jest.fn(),
@@ -55,6 +60,10 @@ describe('PeriodicTaskCustomersService', () => {
     jest.clearAllMocks();
     mockTasksService.findOne.mockResolvedValue({ id: taskId });
     mockTasksService.assertEditableWhenLocked.mockResolvedValue(undefined);
+    // Default an toàn cho các test KHÔNG quan tâm tới nội dung audit log -
+    // chỉ những test assert cụ thể tên customer trong log mới override lại.
+    mockCustomerRepo.find.mockResolvedValue([]);
+    mockCustomerRepo.findOne.mockResolvedValue(null);
 
     const module: TestingModule = await Test.createTestingModule({
       providers: [
@@ -139,6 +148,9 @@ describe('PeriodicTaskCustomersService', () => {
       // Customer id=1 đã có link sẵn -> KHÔNG insert lại, chỉ insert id=2.
       mockLinkRepo.find.mockResolvedValue([{ customerId: 1 }]);
       mockLinkRepo.save.mockResolvedValue([]);
+      // Resolve tên cho đúng 1 customer THẬT SỰ mới gắn (id=2) - dùng để
+      // dựng audit snapshot sạch.
+      mockCustomerRepo.find.mockResolvedValue([{ id: 2, name: 'Customer 2' }]);
 
       const result = await service.addCustomers(taskId, { customerIds: [1, 2] }, employeeUser, 'all');
 
@@ -147,12 +159,15 @@ describe('PeriodicTaskCustomersService', () => {
       expect(result).toEqual([{ id: 1 }, { id: 2 }]);
       // Phase 7 (PLAN mục 2.6): CHỈ log customerId THẬT SỰ mới thêm (id=2),
       // KHÔNG log lại id=1 (đã tồn tại từ trước, idempotent add).
+      // ⚠️ FIX BUG THẬT (đợt rà soát audit log toàn bộ): giờ log resolve
+      // TÊN customer (`customers: [{id,name}]`), không còn mảng ID thô
+      // `customerIds` - xem `PeriodicTaskCustomersService.addCustomers()`.
       expect(mockAuditService.logActionAsync).toHaveBeenCalledWith(
         taskId,
         employeeUser.id,
         PeriodicTaskAuditAction.CUSTOMER_LINKED,
         null,
-        { customerIds: [2] },
+        { customers: [{ id: 2, name: 'Customer 2' }] },
       );
     });
   });
@@ -175,6 +190,10 @@ describe('PeriodicTaskCustomersService', () => {
     it('gỡ liên kết thành công khi tồn tại (Root Admin, không cần hasPermission)', async () => {
       mockLinkRepo.findOne.mockResolvedValue({ id: 1, taskId, customerId: 1 });
       mockLinkRepo.remove.mockResolvedValue(undefined);
+      // ⚠️ FIX BUG THẬT (đợt rà soát audit log toàn bộ): `removeCustomer()`
+      // giờ resolve tên customer vừa gỡ (`customer: {id,name}`) thay vì log
+      // raw `customerId`.
+      mockCustomerRepo.findOne.mockResolvedValue({ id: 1, name: 'Customer 1' });
 
       const result = await service.removeCustomer(taskId, 1, rootAdminUser, 'all');
 
@@ -184,7 +203,7 @@ describe('PeriodicTaskCustomersService', () => {
         taskId,
         rootAdminUser.id,
         PeriodicTaskAuditAction.CUSTOMER_UNLINKED,
-        { customerId: 1 },
+        { customer: { id: 1, name: 'Customer 1' } },
       );
     });
   });
