@@ -721,6 +721,32 @@ export class UsersService {
     // lúc này user đã sắp bị mutate ngay bên dưới.)
     Object.assign(user, updateDto);
 
+    // ⚠️ FIX BUG THẬT (2026-09-16 - không gỡ/đổi được Position, cũng không
+    // gỡ được Department/leaveApprover qua endpoint này): đúng lỗi "TypeORM
+    // Relation Precedence in Update" đã cảnh báo ở SKILL_NESTJS_BACKEND.md
+    // mục 13 - `user` được load kèm `relations: ['department','position',
+    // 'leaveApprover']` ở đầu hàm, nên object quan hệ (`user.position`,
+    // `user.department`, `user.leaveApprover`) VẪN còn trỏ tới bản ghi CŨ
+    // trong bộ nhớ. `Object.assign()` ở trên chỉ cập nhật cột FK thô
+    // (`positionId`/`departmentId`/`leaveApproverId`) chứ không đụng tới các
+    // object quan hệ này - khi `.save()` chạy, TypeORM ưu tiên object quan hệ
+    // đã load thay vì cột FK vừa sửa, nên FK bị ghi ĐÈ NGƯỢC lại giá trị cũ
+    // (kể cả khi FE gửi `positionId: null` để gỡ, hoặc gửi 1 id khác để đổi
+    // sang Position khác - cả 2 trường hợp đều bị âm thầm bỏ qua).
+    // Cách sửa: mỗi khi field ID tương ứng THẬT SỰ có mặt trong payload
+    // (khác `undefined` - `undefined` nghĩa là "không đổi", giữ nguyên quan
+    // hệ cũ), tự đồng bộ lại object quan hệ khớp đúng giá trị ID mới (hoặc
+    // `null` nếu là gỡ) TRƯỚC khi save, không để TypeORM tự suy luận ngược.
+    if (updateDto.departmentId !== undefined) {
+      user.department = updateDto.departmentId == null ? (null as any) : ({ id: updateDto.departmentId } as Department);
+    }
+    if (updateDto.positionId !== undefined) {
+      user.position = updateDto.positionId == null ? null : ({ id: updateDto.positionId } as any);
+    }
+    if (updateDto.leaveApproverId !== undefined) {
+      user.leaveApprover = updateDto.leaveApproverId == null ? null : ({ id: updateDto.leaveApproverId } as User);
+    }
+
     // 4. CRITICAL: PHẢI CÓ SAVE()
     const savedUser = await this.usersRepository.save(user);
 
