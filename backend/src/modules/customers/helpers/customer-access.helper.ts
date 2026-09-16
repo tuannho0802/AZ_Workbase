@@ -10,9 +10,11 @@ import { Customer } from '../../../database/entities/customer.entity';
  *  scope (role_permissions) | Xem (View)                      | Sửa/Xoá mềm
  *  --------------------------|----------------------------------|----------------
  *  all                       | Tất cả                           | = phạm vi Xem
- *  department                | Chỉ KH thuộc phòng ban mình quản  | = phạm vi Xem
- *                            | lý (tồn tại dòng trong bảng       |
- *                            | department_managers cho user này) |
+ *  department                | KH thuộc phòng ban mình quản lý   | = phạm vi Xem
+ *                            | (department_managers) HOẶC KH mà  |
+ *                            | mình là chủ (như cột 'own' bên    |
+ *                            | dưới) - department là SUPERSET     |
+ *                            | của own, không phải tập tách biệt  |
  *  own                       | Chỉ KH mình tạo/làm sales chính/   | = phạm vi Xem
  *                            | đang được gán (assignment active)  |
  *
@@ -72,11 +74,46 @@ export class CustomerAccessHelper {
     // nhiều-nhiều `department_managers` (1 phòng ban có thể có NHIỀU
     // Manager/Assistant cùng quản lý) - thay cho cột đơn
     // `departments.manager_user_id` cũ (đã deprecated).
+    //
+    // ⚠️ FIX BUG THẬT (báo lỗi trực tiếp từ người dùng, kèm ảnh chụp màn
+    // hình): Assistant được cấp `customers.view` scope='department' tự tạo
+    // 1 khách hàng ("Test xoá assistant") rồi filter "Người nhập Data =
+    // chính mình" ở trang Khách hàng -> danh sách TRỐNG, dù chính họ vừa
+    // tạo ra bản ghi đó. Nguyên nhân: nhánh này TRƯỚC ĐÂY chỉ lọc thuần
+    // theo `department_id IN (phòng ban mình quản lý)` - nếu khách hàng đó
+    // không có department_id (chưa gán phòng ban) hoặc thuộc phòng ban
+    // KHÁC phòng ban mình quản lý, thì dù chính mình là người tạo/sales
+    // chính/marketing phụ trách vẫn bị lọc mất, hoàn toàn không có đường
+    // "own" nào để lọt qua. Yêu cầu đúng của người dùng: "Xem phòng ban của
+    // mình là vừa thấy data của phòng ban mình mà vừa thấy Data của mình
+    // nữa" - tức scope='department' phải là SUPERSET của scope='own', không
+    // phải 1 tập độc lập tách biệt. Đã có đúng tiền lệ này ở chỗ khác trong
+    // cùng service (`getUnassigned()`: nhánh DEPARTMENT có
+    // `.orWhere('customer.salesUserId = :userId', ...)` cạnh điều kiện
+    // department) - áp dụng lại ở đây cho nhất quán trên toàn bộ app.
+    //
+    // SỬA: OR thêm đúng 4 điều kiện "own" (createdById/salesUserId/
+    // marketingUserId/customer_assignments đang active) - giống hệt bộ điều
+    // kiện ở nhánh 'own' bên dưới - cạnh điều kiện phòng ban, thay vì thay
+    // thế nó.
     if (scope === PermissionScope.DEPARTMENT) {
       query.andWhere(
-        'customer.department_id IN ' +
-        '(SELECT dm.department_id FROM department_managers dm WHERE dm.user_id = :accessManagerId)',
-        { accessManagerId: userId },
+        new Brackets((qb) => {
+          qb.where(
+            'customer.department_id IN ' +
+            '(SELECT dm.department_id FROM department_managers dm WHERE dm.user_id = :accessManagerId)',
+            { accessManagerId: userId },
+          )
+            .orWhere('customer.createdById = :accessUserId', { accessUserId: userId })
+            .orWhere('customer.salesUserId = :accessUserId', { accessUserId: userId })
+            .orWhere('customer.marketingUserId = :accessUserId', { accessUserId: userId })
+            .orWhere(
+              'customer.id IN ' +
+              '(SELECT ca.customer_id FROM customer_assignments ca ' +
+              ' WHERE ca.assigned_to_id = :accessUserId AND ca.status = :accessStatus)',
+              { accessUserId: userId, accessStatus: 'active' },
+            );
+        }),
       );
       return query;
     }
@@ -133,10 +170,19 @@ export class CustomerAccessHelper {
 
     if (scope === PermissionScope.ALL) return true;
 
+    // ⚠️ Đồng bộ với fix ở applyViewFilter() phía trên: scope='department'
+    // phải là SUPERSET của 'own' (thấy/sửa được phòng ban mình quản lý VÀ
+    // data của chính mình, không chỉ riêng phòng ban) - nếu không 2 hàm này
+    // lệch quy tắc nhau dù cùng 1 bảng "Xem = Sửa" ở JSDoc đầu file.
     if (scope === PermissionScope.DEPARTMENT) {
-      return (
+      const inManagedDepartment =
         customer.departmentId != null &&
-        managerDepartmentIds.includes(customer.departmentId)
+        managerDepartmentIds.includes(customer.departmentId);
+      return (
+        inManagedDepartment ||
+        customer.createdById === userId ||
+        customer.salesUserId === userId ||
+        customer.marketingUserId === userId
       );
     }
 
