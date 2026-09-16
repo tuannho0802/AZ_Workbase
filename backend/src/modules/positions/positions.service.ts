@@ -74,8 +74,21 @@ export class PositionsService {
 
     if (dto.name !== undefined) position.name = dto.name;
     if (dto.description !== undefined) position.description = dto.description ?? null;
-    if (dto.departmentId !== undefined) position.departmentId = dto.departmentId ?? null;
     if (dto.color !== undefined) position.color = dto.color;
+
+    // ⚠️ FIX BUG THẬT (TypeORM Relation Precedence - cùng lỗi đã sửa ở
+    // `UsersService.update()`/`CustomersService.update()`, xem
+    // `SKILL_NESTJS_BACKEND.md` mục 13): `findOne()` ở trên load kèm
+    // `relations: ['department']`, nên `position.department` VẪN còn trỏ
+    // Department CŨ trong bộ nhớ. Trước đây chỉ sửa `position.departmentId`
+    // (cột FK thô) mà không đụng object quan hệ - TypeORM ưu tiên
+    // `position.department` cũ khi `.save()`, ghi ĐÈ NGƯỢC `department_id`
+    // xuống DB - không lỗi gì, nhưng đổi/gỡ phòng ban của 1 Vị trí bị bỏ
+    // qua âm thầm. Đồng bộ CẢ 2 (cột FK + object quan hệ) trước khi save.
+    if (dto.departmentId !== undefined) {
+      position.departmentId = dto.departmentId ?? null;
+      position.department = dto.departmentId == null ? null : ({ id: dto.departmentId } as any);
+    }
 
     return this.positionRepo.save(position);
   }
