@@ -1481,6 +1481,11 @@ export class CustomersService {
     }
 
     await this.customersRepository.softDelete(id);
+    // ⚠️ MỚI: `softDelete()` ở trên chỉ tự set `deleted_at` (hành vi mặc
+    // định của TypeORM cho DeleteDateColumn) - KHÔNG có cách nào truyền
+    // thêm `deletedById` qua `softDelete()`. Ghi riêng ngay sau đó để cột
+    // "Người xóa" ở trang Thùng rác (`getTrash()`) có dữ liệu.
+    await this.customersRepository.update(id, { deletedById: userId } as any);
 
     // ⚠️ FIX BUG THẬT (báo lỗi trực tiếp: xoá khách hàng - dù mềm hay cứng -
     // KHÔNG lưu lại khách hàng đó là ai, dòng audit chỉ có `id` số thô, xem
@@ -2381,6 +2386,7 @@ export class CustomersService {
       .withDeleted() // ← include soft-deleted rows
       .leftJoinAndSelect('customer.salesUser', 'salesUser')
       .leftJoinAndSelect('customer.createdBy', 'createdBy')
+      .leftJoinAndSelect('customer.deletedBy', 'deletedBy')
       .where('customer.deletedAt IS NOT NULL'); // ← chỉ lấy đã xóa
 
     if (search?.trim()) {
@@ -2428,6 +2434,10 @@ export class CustomersService {
       throw new BadRequestException('Khách hàng này chưa bị xóa');
 
     await this.customersRepository.restore(id);
+    // ⚠️ MỚI: clear `deletedById` khi khôi phục, cùng pattern với
+    // `UsersService.restoreUser()` - tránh hiển thị nhầm "Người xóa" cũ nếu
+    // khách hàng này bị xóa mềm lại lần sau mà quên set lại.
+    await this.customersRepository.update(id, { deletedById: null } as any);
 
     this.auditService.logActionAsync(
       adminId,
