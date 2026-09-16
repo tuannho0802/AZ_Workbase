@@ -311,6 +311,18 @@ export class RolesService {
     await queryRunner.connect();
     await queryRunner.startTransaction();
     try {
+      // ⚠️ FIX RACE CONDITION (2026-09-16): khoá pessimistic trên dòng role
+      // để serialize 2 request PUT department-overrides trùng (roleId,
+      // departmentId) tới gần nhau (double-click, StrictMode double-fire...).
+      // Không có lock này, cả 2 transaction đều `delete` thấy dòng cũ, rồi
+      // cả 2 đều `insert` cùng permissionId -> đụng UQ_role_permission_department
+      // ở transaction commit sau (lỗi 500, dù transaction trước vẫn commit
+      // đúng - đây là lý do user thấy "vẫn gỡ/lưu được" nhưng vẫn có lỗi).
+      await queryRunner.manager.findOne(RoleEntity, {
+        where: { id: roleId },
+        lock: { mode: 'pessimistic_write' },
+      });
+
       const permissionsList = await queryRunner.manager.find(Permission);
       const permMap = new Map(permissionsList.map((p) => [p.key, p]));
 
@@ -408,6 +420,13 @@ export class RolesService {
     await queryRunner.connect();
     await queryRunner.startTransaction();
     try {
+      // ⚠️ Cùng fix race condition như updateDepartmentOverride() ở trên -
+      // xem comment đầy đủ tại đó.
+      await queryRunner.manager.findOne(RoleEntity, {
+        where: { id: roleId },
+        lock: { mode: 'pessimistic_write' },
+      });
+
       const permissionsList = await queryRunner.manager.find(Permission);
       const permMap = new Map(permissionsList.map((p) => [p.key, p]));
 
