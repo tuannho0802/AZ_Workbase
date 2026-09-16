@@ -236,7 +236,7 @@ export class CustomersController {
   }
 
   @Delete('trash/:id/hard-delete')
-  @RequirePermission('customers.trash_manage')
+  @RequirePermission('customers.hard_delete')
   @ApiOperation({ summary: 'Xóa vĩnh viễn khách hàng (Hard Delete)' })
   hardDelete(@Param('id') id: string, @GetUser() user: any) {
     return this.customersService.hardDelete(+id, user.id);
@@ -362,10 +362,10 @@ export class CustomersController {
 
   @Delete(':id')
   @RequirePermission('customers.delete')
-  @ApiOperation({ summary: 'Xóa mềm khách hàng - CHỈ ADMIN (Assistant/Manager/Employee không có quyền xoá)' })
+  @ApiOperation({ summary: 'Xóa mềm khách hàng (đưa vào thùng rác) - theo quyền `customers.delete` cấu hình ở trang Phân quyền, không còn cứng CHỈ Admin' })
   @ApiResponse({ status: 200, description: 'Đã xóa mềm khách hàng thành công' })
-  @ApiResponse({ status: 403, description: 'Chỉ Admin mới có quyền xóa khách hàng' })
-  remove(@GetUser() user: any, @Param('id') id: string) {
-    return this.customersService.remove(+id, user.id, user.role);
+  @ApiResponse({ status: 403, description: 'Không có quyền xoá khách hàng này (thiếu permission hoặc khách hàng ngoài phạm vi xem của bạn)' })
+  remove(@GetUser() user: any, @Param('id') id: string, @GetPermissionScope() scope: string | null | undefined) {
+    return this.customersService.remove(+id, user.id, user.role, scope);
   }
 }

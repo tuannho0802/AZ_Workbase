@@ -134,26 +134,6 @@ describe('CustomerAccessHelper', () => {
     });
   });
 
-  describe('canDelete', () => {
-    it('ADMIN -> true', () => {
-      expect(CustomerAccessHelper.canDelete({} as any, 1, Role.ADMIN)).toBe(true);
-    });
-
-    it('ASSISTANT -> false (chỉ Admin được xoá)', () => {
-      expect(CustomerAccessHelper.canDelete({} as any, 1, Role.ASSISTANT)).toBe(false);
-    });
-
-    it('MANAGER -> false, kể cả khi khách hàng thuộc phòng ban mình quản lý', () => {
-      const customer: any = { departmentId: 5 };
-      expect(CustomerAccessHelper.canDelete(customer, 1, Role.MANAGER)).toBe(false);
-    });
-
-    it('EMPLOYEE -> false, KỂ CẢ khi chính họ là người tạo ra bản ghi (không còn ngoại lệ "chủ sở hữu tự xoá")', () => {
-      const customer: any = { createdById: 1 };
-      expect(CustomerAccessHelper.canDelete(customer, 1, Role.EMPLOYEE)).toBe(false);
-    });
-  });
-
   describe('canManageCustomer', () => {
     it('ADMIN/ASSISTANT -> luôn true bất kể dữ liệu customer', () => {
       expect(CustomerAccessHelper.canManageCustomer({} as any, 1, Role.ADMIN)).toBe(true);

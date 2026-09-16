@@ -7,17 +7,25 @@ import { Customer } from '../../../database/entities/customer.entity';
  * Phân quyền khách hàng (áp dụng thống nhất cho MỌI endpoint list/get, và
  * gián tiếp cho sửa - xem ghi chú ở applyViewFilter):
  *
- *  scope (role_permissions) | Xem (View)                      | Sửa (trừ xoá) | Xoá
- *  --------------------------|----------------------------------|----------------|-------
- *  all                       | Tất cả                           | = phạm vi Xem  | Không*
- *  department                | Chỉ KH thuộc phòng ban mình quản  | = phạm vi Xem  | Không*
- *                            | lý (tồn tại dòng trong bảng       |                |
- *                            | department_managers cho user này) |                |
- *  own                       | Chỉ KH mình tạo/làm sales chính/   | = phạm vi Xem  | Không*
- *                            | đang được gán (assignment active)  |                |
+ *  scope (role_permissions) | Xem (View)                      | Sửa/Xoá mềm
+ *  --------------------------|----------------------------------|----------------
+ *  all                       | Tất cả                           | = phạm vi Xem
+ *  department                | Chỉ KH thuộc phòng ban mình quản  | = phạm vi Xem
+ *                            | lý (tồn tại dòng trong bảng       |
+ *                            | department_managers cho user này) |
+ *  own                       | Chỉ KH mình tạo/làm sales chính/   | = phạm vi Xem
+ *                            | đang được gán (assignment active)  |
  *
- * (*) Xoá KHÔNG có khái niệm scope - chỉ `Role.ADMIN` mới xoá được, xem
- * `canDelete()`, không phụ thuộc `role_permissions`.
+ * (*) Xoá MỀM (đưa vào thùng rác): TRƯỚC ĐÂY chỉ `Role.ADMIN` cứng (xem
+ * `canDelete()` - ĐÃ XOÁ khỏi class này, xem migration
+ * `SplitCustomersHardDeletePermission` + JSDoc `CustomersService.remove()`).
+ * GIỜ hoàn toàn theo permission `customers.delete` (role_permissions) như
+ * mọi hành động khác - PermissionGuard xác nhận CÓ quyền, applyViewFilter()
+ * (qua findOne() trong service) xác nhận khách hàng nằm trong phạm vi XEM -
+ * đủ điều kiện để xoá mềm, KHÔNG cần thêm rào cản admin-only riêng.
+ * Xoá VĨNH VIỄN (hard delete, không thể khôi phục) vẫn là 1 permission
+ * TÁCH RIÊNG (`customers.hard_delete`) - mặc định chỉ Admin được cấp, Admin
+ * có thể mở rộng qua trang "Phân quyền" nếu muốn.
  *
  * Hoàn toàn thuần theo `scope` mà `PermissionGuard` tra từ `role_permissions`
  * - KHÔNG còn hardcode theo `Role` enum (Assistant, Manager, Employee).
@@ -28,13 +36,14 @@ import { Customer } from '../../../database/entities/customer.entity';
  * có thể đổi qua trang "Phân quyền" bất cứ lúc nào (xem PERMISSIONS.md mục
  * 1.7).
  *
- * Nguyên tắc thiết kế quan trọng: với app này, phạm vi XEM và phạm vi SỬA
- * là MỘT - ai xem được 1 khách hàng thì cũng sửa được khách hàng đó (chỉ
- * XOÁ là ngoại lệ, luôn riêng Admin). Vì vậy applyViewFilter() là nguồn
- * chân lý DUY NHẤT cho cả 2 việc: các hàm update()/remove() trong service
- * đều gọi findOne() (dùng applyViewFilter) TRƯỚC khi sửa/xoá - nếu
- * findOne() không trả về được customer (không nằm trong phạm vi xem) thì
- * sẽ tự động 404 trước khi kịp chạm tới bước sửa/xoá, nên không cần thêm 1
+ * Nguyên tắc thiết kế quan trọng: với app này, phạm vi XEM, SỬA, và (từ đợt
+ * sửa này) XOÁ MỀM là MỘT - ai xem được 1 khách hàng thì cũng sửa/xoá mềm
+ * được khách hàng đó (miễn là có permission tương ứng - `customers.edit`/
+ * `customers.delete`). Vì vậy applyViewFilter() là nguồn chân lý DUY NHẤT
+ * cho cả 3 việc: các hàm update()/remove() trong service đều gọi findOne()
+ * (dùng applyViewFilter) TRƯỚC khi sửa/xoá - nếu findOne() không trả về
+ * được customer (không nằm trong phạm vi xem) thì sẽ tự động 404 trước khi
+ * kịp chạm tới bước sửa/xoá, nên không cần thêm 1
  * bộ điều kiện "canUpdate" riêng dễ bị lệch khỏi applyViewFilter.
  */
 export class CustomerAccessHelper {
@@ -97,20 +106,6 @@ export class CustomerAccessHelper {
     );
 
     return query;
-  }
-
-  /**
-   * Quyền XOÁ 1 khách hàng - CHỈ Admin, không có ngoại lệ (kể cả người tạo
-   * ra bản ghi). Trước đây hàm này còn cho phép "chủ sở hữu" (createdById)
-   * tự xoá bản ghi của mình - không còn đúng theo yêu cầu mới (Assistant/
-   * Manager/Employee đều KHÔNG được xoá, chỉ Admin).
-   */
-  static canDelete(
-    _customer: Customer,
-    _userId: number,
-    userRole: string,
-  ): boolean {
-    return userRole === Role.ADMIN;
   }
 
   /**

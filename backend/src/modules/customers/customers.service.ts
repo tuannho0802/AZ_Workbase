@@ -1446,16 +1446,38 @@ export class CustomersService {
     }
   }
 
+  /**
+   * ⚠️ FIX BUG THẬT (báo lỗi trực tiếp từ người dùng: cấp permission
+   * `customers.delete` cho 1 role KHÔNG PHẢI admin qua trang "Phân quyền"
+   * xong vẫn bị chặn không xoá được). Nguyên nhân: hàm này gọi
+   * `CustomerAccessHelper.canDelete()` - hàm đó HARDCODE
+   * `userRole === Role.ADMIN`, hoàn toàn phớt lờ `role_permissions` mà
+   * `PermissionGuard`/`@RequirePermission('customers.delete')` ở controller
+   * ĐÃ kiểm tra động rồi. Kết quả: guard cho qua (vì role_permissions đã
+   * cấp `customers.delete` cho role đó), nhưng xuống tới service lại bị
+   * chặn lần 2 bởi 1 rào cản KHÔNG đọc DB, luôn luôn từ chối mọi role khác
+   * admin - mâu thuẫn trực tiếp với chính hệ thống phân quyền động của dự án
+   * (xem PERMISSIONS.md, và nguyên tắc "role==='admin' hardcode CHỈ được
+   * dùng làm lối thoát hiểm, KHÔNG được dùng để CHẶN thêm 1 permission đã
+   * được cấp qua role_permissions").
+   *
+   * SỬA: bỏ hẳn rào cản `canDelete()` thừa này. `findOne()` phía trên ĐÃ ĐỦ
+   * để gác quyền xoá - đúng nguyên tắc xuyên suốt module này ("phạm vi XEM
+   * và SỬA là MỘT", xem JSDoc đầu `CustomerAccessHelper`): PermissionGuard
+   * xác nhận caller CÓ quyền `customers.delete`, `findOne()` xác nhận
+   * khách hàng này nằm trong phạm vi XEM (scope) của caller - nếu không,
+   * `findOne()` tự ném `CustomerNotFoundException` trước khi chạy tới đây.
+   * Không cần thêm 1 bộ điều kiện riêng dễ bị lệch khỏi applyViewFilter.
+   *
+   * Việc "Xoá vĩnh viễn" (irreversible) vẫn tách RIÊNG hoàn toàn - đã đổi
+   * sang permission `customers.hard_delete` (khác `customers.delete`) ở
+   * `hardDelete()`/`customers.controller.ts`, xem migration
+   * `SplitCustomersHardDeletePermission`.
+   */
   async remove(id: number, userId: number, userRole: string, scope?: string | null) {
     const customer = await this.findOne(id, userId, userRole, scope);
     if (!customer) {
       throw new CustomerNotFoundException();
-    }
-
-    if (!CustomerAccessHelper.canDelete(customer, userId, userRole)) {
-      throw new UnauthorizedCustomerAccessException(
-        'Chỉ Admin mới có quyền xóa khách hàng.',
-      );
     }
 
     await this.customersRepository.softDelete(id);

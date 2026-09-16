@@ -18,6 +18,7 @@ import { AuditService } from '../audit/audit.service';
 import {
   DuplicatePhoneException,
   UnauthorizedCustomerAccessException,
+  CustomerNotFoundException,
 } from './exceptions/customer.exceptions';
 import { Role } from '../../common/enums/role.enum';
 import { PermissionScope } from '../../database/entities/role-permission.entity';
@@ -759,6 +760,64 @@ describe('CustomersService', () => {
         service.updateNote(148, 10, { note: 'x' } as any, 1, Role.ADMIN, null),
       ).resolves.toBeDefined();
       expect(mockPermissionsService.hasPermission).not.toHaveBeenCalled();
+    });
+  });
+
+  /**
+   * ⚠️ FIX BUG THẬT (báo lỗi trực tiếp từ người dùng: cấp `customers.delete`
+   * cho role không phải Admin qua trang "Phân quyền" vẫn không xoá mềm
+   * được) - trước đây `remove()` gọi thêm `CustomerAccessHelper.canDelete()`
+   * hardcode `role === admin`, phớt lờ hoàn toàn permission đã cấp. Test
+   * này đảm bảo hành vi ĐÚNG: ai qua được `findOne()` (tức nằm trong phạm vi
+   * xem của họ - đã được PermissionGuard xác nhận có `customers.delete`)
+   * đều xoá mềm được, KHÔNG còn rào cản admin-only nào ở tầng service nữa.
+   * Dùng `jest.spyOn(service, 'findOne')` thay vì dựng lại toàn bộ chuỗi
+   * `createQueryBuilder(...).leftJoinAndSelect(...)...getOne()` của
+   * `findOne()` (đã có test riêng gián tiếp qua các describe khác) - ở đây
+   * chỉ cần khẳng định `remove()` KHÔNG tự áp thêm điều kiện role nào sau
+   * khi `findOne()` đã trả về customer thành công.
+   */
+  describe('remove - Xoá mềm khách hàng (đưa vào thùng rác)', () => {
+    afterEach(() => {
+      jest.restoreAllMocks();
+    });
+
+    it('Role KHÔNG PHẢI admin (vd Employee) vẫn xoá mềm được nếu findOne() (đã qua PermissionGuard + applyViewFilter) trả về customer - không còn bị chặn cứng "chỉ Admin"', async () => {
+      const fakeCustomer: any = { id: 55, createdById: 7 };
+      jest.spyOn(service, 'findOne').mockResolvedValue(fakeCustomer);
+      mockCustomerRepo.softDelete.mockResolvedValue({ affected: 1 });
+
+      const result = await service.remove(55, 7, Role.EMPLOYEE, PermissionScope.OWN);
+
+      expect(mockCustomerRepo.softDelete).toHaveBeenCalledWith(55);
+      expect(mockAuditService.logActionAsync).toHaveBeenCalledWith(
+        7,
+        'DELETE_CUSTOMER',
+        'customer',
+        55,
+      );
+      expect(result).toEqual({ message: 'Xóa khách hàng thành công' });
+    });
+
+    it('Customer ngoài phạm vi xem (findOne() ném CustomerNotFoundException) -> KHÔNG xoá, lỗi được ném ra nguyên vẹn', async () => {
+      jest.spyOn(service, 'findOne').mockRejectedValue(new CustomerNotFoundException());
+
+      await expect(
+        service.remove(999, 7, Role.EMPLOYEE, PermissionScope.OWN),
+      ).rejects.toBeInstanceOf(CustomerNotFoundException);
+
+      expect(mockCustomerRepo.softDelete).not.toHaveBeenCalled();
+    });
+
+    it('Admin vẫn xoá mềm được như trước (không bị ảnh hưởng bởi việc bỏ rào cản admin-only)', async () => {
+      const fakeCustomer: any = { id: 1, createdById: 2 };
+      jest.spyOn(service, 'findOne').mockResolvedValue(fakeCustomer);
+      mockCustomerRepo.softDelete.mockResolvedValue({ affected: 1 });
+
+      await expect(
+        service.remove(1, 99, Role.ADMIN, null),
+      ).resolves.toEqual({ message: 'Xóa khách hàng thành công' });
+      expect(mockCustomerRepo.softDelete).toHaveBeenCalledWith(1);
     });
   });
 
