@@ -41,6 +41,7 @@ import { useDepartments } from '@/lib/hooks/useDepartments';
 import { useUsersList } from '@/lib/hooks/useUsers';
 import { usePeriodicTaskStatuses } from '@/lib/hooks/usePeriodicTaskStatuses';
 import { useCustomers } from '@/lib/hooks/useCustomers';
+import { useCustomerStatuses } from '@/lib/hooks/useCustomerStatuses';
 import { useAddTaskCustomers, useRemoveTaskCustomer } from '@/lib/hooks/usePeriodicTaskCustomers';
 import { useAddTaskSecondaryAssignee, useRemoveTaskSecondaryAssignee } from '@/lib/hooks/usePeriodicTaskSecondaryAssignees';
 import {
@@ -326,6 +327,8 @@ export default function PeriodicTasksPage() {
             source: customerQuickFilters.source,
             status: customerQuickFilters.status,
             salesUserId: customerQuickFilters.salesUserId,
+            dateFrom: customerQuickFilters.dateFrom,
+            dateTo: customerQuickFilters.dateTo,
         },
         canLinkCustomer,
     );
@@ -367,7 +370,26 @@ export default function PeriodicTasksPage() {
         }
     }, [editingTask, editingLinkedCustomers]);
 
-    const customerSelectOptions = Object.values(knownCustomers).map((c) => ({
+    // ⚠️ FIX BUG THẬT (2026-09-16, báo cáo trực tiếp qua ảnh chụp "Lọc Khách
+    // hàng ... chưa có tác dụng"): TRƯỚC ĐÂY options của Select "Tìm để gắn"
+    // lấy từ `knownCustomers` (Object.values) - biến này CHỈ ĐƯỢC CỘNG DỒN
+    // (xem effect merge ở trên), không bao giờ bớt đi, nên MỌI Khách hàng
+    // từng xuất hiện trong bất kỳ lượt search nào trước đó (trước khi bật bộ
+    // lọc Nguồn/Trạng thái/Sales/Ngày) vẫn tiếp tục hiện trong dropdown dù đã
+    // đổi bộ lọc -> đổi bộ lọc trông như "không có tác dụng" vì danh sách
+    // không co lại. Đổi sang lấy TRỰC TIẾP từ `customerSearchData` (kết quả
+    // search/lọc HIỆN TẠI của server) - `knownCustomers` vẫn giữ nguyên vai
+    // trò cũ (tra tên cho `SimpleList` các Khách hàng ĐÃ gắn/Phụ trách phụ ở
+    // dưới, những Khách hàng này có thể không còn khớp bộ lọc hiện tại nhưng
+    // vẫn cần hiện tên đúng).
+    const { statuses: customerStatusesForOption } = useCustomerStatuses();
+    const customerStatusByCode = useMemo(
+        () => new Map(customerStatusesForOption.map((s) => [s.code, s])),
+        [customerStatusesForOption],
+    );
+    const renderCustomerOptionWithStatus = (option: { data: { customer: Customer } }) =>
+        renderCustomerOption(option, customerStatusByCode);
+    const customerSelectOptions = (customerSearchData?.data ?? []).map((c) => ({
         value: c.id,
         label: customerPlainLabel(c),
         customer: c,
@@ -1314,7 +1336,7 @@ export default function PeriodicTasksPage() {
                                         onSearch: setCustomerSearchInput,
                                     }}
                                     optionLabelProp="label"
-                                    optionRender={renderCustomerOption}
+                                    optionRender={renderCustomerOptionWithStatus}
                                     popupMatchSelectWidth={false}
                                     maxTagCount="responsive"
                                     placeholder="Tìm Khách hàng theo tên/SĐT để gắn (chọn nhiều được)"

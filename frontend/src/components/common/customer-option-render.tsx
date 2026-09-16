@@ -1,5 +1,7 @@
 import { Space, Tag } from 'antd';
 import { Customer } from '@/lib/types/customer.types';
+import { CustomerStatus } from '@/lib/api/customer-statuses.api';
+import { resolveEntityColor } from '@/lib/utils/entityColor';
 
 /**
  * customerPhoneDisplay - tránh hiện chữ "null"/"undefined" ra UI khi Customer
@@ -29,9 +31,21 @@ export function customerPlainLabel(c: Customer): string {
  * "PTC: <tên>" nếu Customer đã có `salesUser` (Người phụ trách chính) - mirror
  * đúng quy ước Tag "Primary Sales" nền xanh ở `SKILL_NEXTJS_FRONTEND.md`
  * mục 13.2.
+ *
+ * `statusByCode` - MỚI (2026-09-16, yêu cầu chủ dự án qua ảnh chụp dropdown
+ * "Tìm Khách hàng để gắn"): thêm Tag Trạng thái Khách hàng kế bên Tag PTC,
+ * đúng màu đã cấu hình ở `/quan-ly-status-khach` (mirror cách
+ * `CustomerFilters.tsx`/`customer-quick-filter.tsx` vẽ Tag Trạng thái).
+ * Tham số optional (map rỗng/`undefined` vẫn chạy được, chỉ ẩn Tag) vì hàm
+ * này gọi ở nhiều nơi - nơi nào chưa truyền `statusByCode` thì chỉ mất Tag
+ * Trạng thái, không vỡ các Tag khác.
  */
-export function renderCustomerOption(option: { data: { customer: Customer } }) {
+export function renderCustomerOption(
+  option: { data: { customer: Customer } },
+  statusByCode?: Map<string, CustomerStatus>,
+) {
   const c = option.data.customer;
+  const status = statusByCode?.get(c.status);
   return (
     <Space size={4} align="center">
       <span style={{ fontSize: 13 }}>{c.name}</span>
@@ -39,6 +53,14 @@ export function renderCustomerOption(option: { data: { customer: Customer } }) {
       {c.salesUser && (
         <Tag color="blue" style={{ fontSize: 10, lineHeight: '16px', padding: '0 4px', margin: 0 }}>
           PTC: {c.salesUser.name}
+        </Tag>
+      )}
+      {status && (
+        <Tag
+          color={resolveEntityColor(status.color)}
+          style={{ fontSize: 10, lineHeight: '16px', padding: '0 4px', margin: 0 }}
+        >
+          {status.name}
         </Tag>
       )}
     </Space>

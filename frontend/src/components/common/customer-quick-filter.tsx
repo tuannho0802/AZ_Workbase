@@ -1,6 +1,7 @@
 import { useState } from 'react';
-import { Popover, Select, Button, Badge, Space, Tag, Avatar } from 'antd';
+import { Popover, Select, Button, Badge, Space, Tag, Avatar, DatePicker } from 'antd';
 import { FilterOutlined } from '@ant-design/icons';
+import dayjs from 'dayjs';
 import { useMediaSources } from '@/lib/hooks/useMediaSources';
 import { useCustomerStatuses } from '@/lib/hooks/useCustomerStatuses';
 import { useAssignmentGroupUsers } from '@/lib/hooks/useAssignmentGroups';
@@ -8,6 +9,8 @@ import { AssignmentGroupUser } from '@/lib/api/assignment-groups.api';
 import { useRoleColorMap, useRoleColors } from '@/lib/hooks/useRoleColorMap';
 import { resolveEntityColor } from '@/lib/utils/entityColor';
 import { SourceTag } from '@/components/customers/SourceTag';
+
+const { RangePicker } = DatePicker;
 
 /**
  * customer-quick-filter.tsx - MỚI (2026-09-16, yêu cầu chủ dự án qua ảnh chụp
@@ -20,21 +23,34 @@ import { SourceTag } from '@/components/customers/SourceTag';
  * thêm hàng ngang nào trong Form (2 nơi dùng đều là Form.Item hẹp, không có
  * chỗ cho 1 hàng `Row/Col` đầy đủ như trang Customer).
  *
- * CỐ Ý bỏ Marketing/Người nhập Data/Ngày/Đã joined nhóm (có ở
+ * CỐ Ý bỏ Marketing/Người nhập Data/Đã joined nhóm (có ở
  * `CustomerFilters.tsx`) - đây là chọn nhanh 1 Khách hàng để gắn Task, không
- * phải trang quản lý Data đầy đủ; 3 tiêu chí này đủ thu hẹp danh sách mà
+ * phải trang quản lý Data đầy đủ; các tiêu chí này đủ thu hẹp danh sách mà
  * không làm Popover quá dài. Có thể mở rộng thêm sau nếu chủ dự án yêu cầu.
+ *
+ * `dateFrom`/`dateTo` - MỚI (2026-09-16, yêu cầu chủ dự án "filter từ ngày
+ * XX -> ngày yy đầy đủ"): lọc theo "Ngày nhập khách" (`customers.createdAt`),
+ * mirror ĐÚNG field BE đã hỗ trợ sẵn ở `customers.api.ts`/`CustomerFilters.tsx`
+ * (route `GET /customers?dateFrom&dateTo`), chỉ trước đây popup nhanh này
+ * chưa có UI cho nó.
  */
 export interface CustomerQuickFilters {
   source?: string;
   status?: string;
   salesUserId?: number;
+  dateFrom?: string;
+  dateTo?: string;
 }
 
 export const EMPTY_CUSTOMER_QUICK_FILTERS: CustomerQuickFilters = {};
 
 export function countActiveCustomerQuickFilters(f: CustomerQuickFilters): number {
-  return [f.source, f.status, f.salesUserId].filter((v) => v !== undefined && v !== null).length;
+  // `dateFrom`/`dateTo` tính là 1 bộ lọc (không phải 2) - mirror cách đếm
+  // "khoảng ngày" trọn vẹn ở CustomerFilters.tsx, tránh Badge nhảy số lẻ khi
+  // user mới chọn 1 đầu ngày.
+  return [f.source, f.status, f.salesUserId, f.dateFrom || f.dateTo].filter(
+    (v) => v !== undefined && v !== null,
+  ).length;
 }
 
 interface CustomerQuickFilterButtonProps {
@@ -94,7 +110,7 @@ export function CustomerQuickFilterButton({ value, onChange }: CustomerQuickFilt
   const activeCount = countActiveCustomerQuickFilters(value);
 
   const content = (
-    <Space orientation="vertical" size={10} style={{ width: 240 }}>
+    <Space orientation="vertical" size={10} style={{ width: 260 }}>
       <div>
         <div style={{ fontSize: 12, marginBottom: 4, color: 'rgba(0,0,0,0.65)' }}>Nguồn</div>
         <Select
@@ -140,6 +156,22 @@ export function CustomerQuickFilterButton({ value, onChange }: CustomerQuickFilt
           optionRender={renderSalesUserOption}
           popupMatchSelectWidth={false}
           options={salesUsers.map((u) => ({ value: u.id, label: u.name, user: u }))}
+        />
+      </div>
+      <div>
+        <div style={{ fontSize: 12, marginBottom: 4, color: 'rgba(0,0,0,0.65)' }}>Ngày nhập khách</div>
+        <RangePicker
+          style={{ width: '100%' }}
+          format="DD/MM/YYYY"
+          placeholder={['Từ ngày', 'Đến ngày']}
+          value={[value.dateFrom ? dayjs(value.dateFrom) : null, value.dateTo ? dayjs(value.dateTo) : null]}
+          onChange={(dates) =>
+            onChange({
+              ...value,
+              dateFrom: dates?.[0]?.format('YYYY-MM-DD'),
+              dateTo: dates?.[1]?.format('YYYY-MM-DD'),
+            })
+          }
         />
       </div>
       {activeCount > 0 && (

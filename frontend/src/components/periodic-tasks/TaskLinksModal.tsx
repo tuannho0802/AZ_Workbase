@@ -15,10 +15,12 @@ import {
 import { useAddTaskCustomers, useRemoveTaskCustomer } from '@/lib/hooks/usePeriodicTaskCustomers';
 import { useAddTaskSecondaryAssignee, useRemoveTaskSecondaryAssignee } from '@/lib/hooks/usePeriodicTaskSecondaryAssignees';
 import { useCustomers } from '@/lib/hooks/useCustomers';
+import { useCustomerStatuses } from '@/lib/hooks/useCustomerStatuses';
 import { useUsersList } from '@/lib/hooks/useUsers';
 import { customerPhoneDisplay, customerPlainLabel, renderCustomerOption } from '@/components/common/customer-option-render';
 import { CustomerQuickFilterButton, CustomerQuickFilters, EMPTY_CUSTOMER_QUICK_FILTERS } from '@/components/common/customer-quick-filter';
 import { PeriodicTask, PERIOD_TYPE_LABELS, PERIOD_RANK } from '@/lib/api/periodic-tasks.api';
+import { Customer } from '@/lib/types/customer.types';
 import { getApiErrorMessage } from '@/lib/utils/error-message.util';
 import { SimpleList } from '@/components/common/SimpleList';
 
@@ -147,6 +149,8 @@ export function TaskLinksModal({ open, onClose, task }: Props) {
             source: customerQuickFilters.source,
             status: customerQuickFilters.status,
             salesUserId: customerQuickFilters.salesUserId,
+            dateFrom: customerQuickFilters.dateFrom,
+            dateTo: customerQuickFilters.dateTo,
         },
         canLinkCustomer,
     );
@@ -158,6 +162,16 @@ export function TaskLinksModal({ open, onClose, task }: Props) {
         () => (customerCandidatesData?.data ?? []).filter((c) => !linkedCustomerIds.has(c.id)),
         [customerCandidatesData, linkedCustomerIds],
     );
+    // Tag Trạng thái Khách hàng trong dropdown "Tìm để gắn" - mirror ĐÚNG
+    // `cong-viec-dinh-ky/page.tsx` (xem JSDoc `renderCustomerOption` ở
+    // `customer-option-render.tsx`).
+    const { statuses: customerStatusesForOption } = useCustomerStatuses();
+    const customerStatusByCode = useMemo(
+        () => new Map(customerStatusesForOption.map((s) => [s.code, s])),
+        [customerStatusesForOption],
+    );
+    const renderCustomerOptionWithStatus = (option: { data: { customer: Customer } }) =>
+        renderCustomerOption(option, customerStatusByCode);
 
     // Phase 4: ứng viên "Phụ trách phụ" - loại người đang là Phụ trách CHÍNH
     // (`primaryAssigneeId`, 1 người không thể vừa chính vừa phụ - BE cũng
@@ -556,7 +570,7 @@ export function TaskLinksModal({ open, onClose, task }: Props) {
                                                 onSearch: setCustomerSearch,
                                             }}
                                             optionLabelProp="label"
-                                            optionRender={renderCustomerOption}
+                                            optionRender={renderCustomerOptionWithStatus}
                                             popupMatchSelectWidth={false}
                                             maxTagCount="responsive"
                                             placeholder="Tìm Khách hàng theo tên/SĐT để gắn (chọn nhiều được)"
