@@ -2578,3 +2578,5 @@ hẳn cấp cha (staircase thật) chứ không chỉ bẻ góc tại chỗ cùn
 >   không tràn chữ khi chuỗi có nhiều cấp) - CẦN chủ dự án xác nhận trực quan trên trình duyệt thật (không
 >   verify được bằng `tsc`/`vitest`), nhất là trường hợp chuỗi dài (5-6 cấp) có làm cột "Công việc" quá hẹp so
 >   với 260px không.
+
+Now [deploy]
