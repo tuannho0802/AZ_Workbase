@@ -122,18 +122,71 @@ export class DepartmentsService {
     return department;
   }
 
-  async create(dto: CreateDepartmentDto) {
+  /**
+   * ⚠️ FIX BUG THẬT (rà soát audit log toàn hệ thống - cùng đợt fix
+   * `targetUser`/`itemId`/`role`/assignment `status` ở các module khác):
+   * trước đây `remove()` log thẳng `...department` (spread nguyên entity)
+   * vào audit - lộ cột `managerUserId` (ĐÃ DEPRECATED, không còn được
+   * ghi/đọc ở bất kỳ đâu khác - xem comment ở `department.entity.ts`, giữ
+   * cột lại trong DB chỉ vì lý do an toàn dữ liệu lịch sử) ra UI dưới dạng
+   * ID trần trụi vô nghĩa, đồng thời field `name`/`description` bị
+   * `AuditDiffViewer.FIELD_LABELS` gán nhãn chung "Họ và tên" (đúng cho
+   * Customer/User, SAI ngữ cảnh cho Department - FE đã fix bằng nhãn theo
+   * ngữ cảnh action `DEPARTMENT`, xem `CONTEXTUAL_FIELD_LABELS`).
+   *
+   * Snapshot RIÊNG, liệt kê tường minh field muốn log - KHÔNG đưa
+   * `managerUserId` vào đây (cột đã bỏ dùng, không đáng hiển thị, và
+   * "quản lý phòng ban" thật sự nằm ở bảng `department_managers` nhiều-nhiều,
+   * xem field `managers` được đính thêm riêng ở `update()` khi có đổi).
+   */
+  private buildDepartmentAuditSnapshot(department: Department): Record<string, unknown> {
+    return {
+      name: department.name,
+      description: department.description,
+      color: department.color,
+      isActive: department.isActive,
+    };
+  }
+
+  // ⚠️ MỚI (rà soát audit log toàn hệ thống): trước đây module Phòng ban CHỈ
+  // log DELETE_DEPARTMENT, hoàn toàn không có audit cho CREATE/UPDATE - không
+  // đồng bộ với Customer/User/Task (đều log đủ CREATE/UPDATE/DELETE).
+  // `userId` để optional (không bắt buộc) để không phá các lời gọi cũ (test
+  // hiện có gọi `create(dto)`/`update(id, dto)` không kèm userId) - thiếu
+  // thì chỉ đơn giản là bỏ qua bước ghi log, không throw lỗi.
+  async create(dto: CreateDepartmentDto, userId?: number) {
     const existing = await this.departmentRepository.findOne({ where: { name: dto.name } });
     if (existing) {
       throw new ConflictException('Tên phòng ban đã tồn tại');
     }
 
     const department = this.departmentRepository.create(dto);
-    return await this.departmentRepository.save(department);
+    const saved = await this.departmentRepository.save(department);
+
+    if (userId) {
+      this.auditService.logActionAsync(
+        userId,
+        'CREATE_DEPARTMENT',
+        'department',
+        saved.id,
+        null,
+        this.buildDepartmentAuditSnapshot(saved),
+      );
+    }
+
+    return saved;
   }
 
-  async update(id: number, dto: UpdateDepartmentDto) {
+  async update(id: number, dto: UpdateDepartmentDto, userId?: number) {
     const department = await this.findOne(id);
+
+    // Snapshot TRƯỚC khi sửa (mirror pattern `before`/`after` đã áp dụng cho
+    // Customer/User/Task) - lấy luôn danh sách Manager hiện tại để so sánh
+    // sau khi transaction bên dưới có thể đã thay đổi.
+    const before = this.buildDepartmentAuditSnapshot(department);
+    const beforeManagerUserIds = (
+      await this.departmentManagerRepository.find({ where: { departmentId: id }, select: ['userId'] })
+    ).map((r) => r.userId);
 
     if (dto.name && dto.name !== department.name) {
       const existing = await this.departmentRepository.findOne({ where: { name: dto.name } });
@@ -207,6 +260,25 @@ export class DepartmentsService {
     const currentManagerUserIds = (
       await this.departmentManagerRepository.find({ where: { departmentId: id }, select: ['userId'] })
     ).map((r) => r.userId);
+
+    // ⚠️ MỚI: chỉ đính kèm field `managers` khi request này CÓ đổi danh sách
+    // (dto.managerUserIds !== undefined) - resolve tên qua 1 query duy nhất
+    // (gộp cả ID cũ lẫn mới) thay vì log thẳng mảng ID thô như trước (đây
+    // vốn là thay đổi HOÀN TOÀN không được audit log trước khi có fix này).
+    const after = this.buildDepartmentAuditSnapshot(saved);
+    if (dto.managerUserIds !== undefined) {
+      const allManagerIds = [...new Set([...beforeManagerUserIds, ...currentManagerUserIds])];
+      const managerUsers = allManagerIds.length
+        ? await this.userRepository.find({ where: { id: In(allManagerIds) }, select: ['id', 'name'] })
+        : [];
+      const nameOf = (uid: number) => managerUsers.find((u) => u.id === uid)?.name ?? null;
+      (before as Record<string, unknown>).managers = beforeManagerUserIds.map((uid) => ({ id: uid, name: nameOf(uid) }));
+      (after as Record<string, unknown>).managers = currentManagerUserIds.map((uid) => ({ id: uid, name: nameOf(uid) }));
+    }
+
+    if (userId) {
+      this.auditService.logActionAsync(userId, 'UPDATE_DEPARTMENT', 'department', id, before, after);
+    }
 
     return { ...saved, managerUserIds: currentManagerUserIds };
   }
@@ -297,7 +369,7 @@ export class DepartmentsService {
     });
 
     const oldData = {
-      ...department,
+      ...this.buildDepartmentAuditSnapshot(department),
       movedUsersCount: usersInDept.length,
       // ⚠️ FIX BUG THẬT (đợt rà soát toàn bộ audit log theo yêu cầu người
       // dùng - cùng lớp bug với `positionId` ở `users.service.ts`): trước

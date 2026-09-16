@@ -56,8 +56,8 @@ export class DepartmentsController {
   @ApiBearerAuth()
   @RequirePermission('departments.manage')
   @ApiOperation({ summary: 'Tạo phòng ban mới (Admin, Assistant)' })
-  create(@Body() dto: CreateDepartmentDto) {
-    return this.departmentsService.create(dto);
+  create(@Body() dto: CreateDepartmentDto, @GetUser() user: any) {
+    return this.departmentsService.create(dto, user.id);
   }
 
   @Patch(':id')
@@ -65,8 +65,8 @@ export class DepartmentsController {
   @ApiBearerAuth()
   @RequirePermission('departments.manage')
   @ApiOperation({ summary: 'Cập nhật phòng ban, bao gồm gán Manager quản lý (Admin, Assistant)' })
-  update(@Param('id', ParseIntPipe) id: number, @Body() dto: UpdateDepartmentDto) {
-    return this.departmentsService.update(id, dto);
+  update(@Param('id', ParseIntPipe) id: number, @Body() dto: UpdateDepartmentDto, @GetUser() user: any) {
+    return this.departmentsService.update(id, dto, user.id);
   }
 
   @Delete(':id')

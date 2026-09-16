@@ -5,6 +5,7 @@ import { Table, Tag, Typography, Space, Empty, Alert } from 'antd';
 import { ArrowRightOutlined, PlusOutlined, DeleteOutlined } from '@ant-design/icons';
 import dayjs from 'dayjs';
 import { StatusTag } from '@/components/customers/StatusTag';
+import { useRoleColors } from '@/lib/hooks/useRoleColorMap';
 
 /**
  * ⚠️ FIX BUG THẬT (báo lỗi trực tiếp: audit log hiện "Ngày nhập:
@@ -27,6 +28,30 @@ const DATE_FIELD_KEYS = new Set([
 ]);
 
 const { Text } = Typography;
+
+/**
+ * ⚠️ FIX BUG THẬT (rà soát audit log toàn hệ thống - dòng "Sửa lượt gán
+ * data"/"Thu hồi lượt gán data" hiện raw "active"/"reclaimed" tiếng Anh
+ * không màu): field `status` bị DÙNG CHUNG tên key cho 2 miền dữ liệu khác
+ * nhau - `Customer.status` (mã trạng thái khách hàng, cấu hình qua
+ * /quan-ly-status-khach, tra bằng `StatusTag`) và `CustomerAssignment.status`
+ * (enum cố định `active/transferred/reclaimed` ở customer-assignment.entity.ts,
+ * KHÔNG liên quan gì tới bảng customer_statuses). `formatValue()` trước đây
+ * cứ thấy key `status` là gọi thẳng `StatusTag`, tra không thấy khớp (2 bảng
+ * mã khác nhau) nên hiện Tag xám kèm nguyên văn tiếng Anh.
+ *
+ * Mirror ĐÚNG bảng màu/nhãn đã dùng ở `CustomerAssignmentsTab.STATUS_TAG` để
+ * đồng nhất giao diện giữa tab "Lượt gán" và trang "Nhật ký hoạt động".
+ * Phân biệt 2 miền dữ liệu bằng `action` (luôn có sẵn ở audit log gán data:
+ * `UPDATE_ASSIGNMENT`/`RECLAIM_ASSIGNMENT`), KHÔNG đoán theo giá trị (dữ liệu
+ * khách hàng tương lai thừa sức trùng chữ 'active').
+ */
+const ASSIGNMENT_STATUS_META: Record<string, { color: string; label: string }> = {
+  active: { color: 'green', label: 'Đang hoạt động' },
+  transferred: { color: 'blue', label: 'Đã chuyển giao' },
+  reclaimed: { color: 'default', label: 'Đã thu hồi' },
+};
+const ASSIGNMENT_ACTIONS = ['UPDATE_ASSIGNMENT', 'RECLAIM_ASSIGNMENT'];
 
 /**
  * ⚠️ FIX BUG THẬT + BẢO MẬT (báo lỗi trực tiếp kèm ảnh chụp màn hình: dòng
@@ -150,7 +175,50 @@ const FIELD_LABELS: Record<string, string> = {
   // loại `updatedById`/`createdById`), nên vẫn hiển thị, chỉ thiếu nhãn.
   updatedBy: 'Người sửa cuối',
   createdBy: 'Người tạo',
+  // ⚠️ FIX BUG THẬT (rà soát audit log toàn hệ thống - báo lỗi trực tiếp
+  // "targetUser: ... " hiện raw tên cột kỹ thuật): 4 hành động
+  // RESET_PASSWORD/CHANGE_OWN_PASSWORD/SOFT_DELETE_USER/RESTORE_USER ở
+  // `users.service.ts` đều log field `targetUser` (object `{id,name}`, đã
+  // đúng CHUẨN từ trước) nhưng key này chưa từng được thêm vào đây - giá trị
+  // hiển thị đúng (nhánh object có `.name`), chỉ riêng NHÃN CỘT bị thiếu.
+  targetUser: 'Tài khoản liên quan',
+  // Checklist item (Công việc định kỳ, PeriodicTaskChecklistItemsService) -
+  // `itemId` (số) dùng cho CHECKLIST_ITEM_UPDATED/REMOVED, `itemIds` (mảng
+  // số, thứ tự sau khi kéo-thả) dùng cho CHECKLIST_ITEMS_REORDERED - trước
+  // đây rơi vào fallback hiển thị thẳng tên cột kỹ thuật.
+  itemId: 'Mục checklist',
+  itemIds: 'Thứ tự các mục checklist',
+  // Department (DepartmentsService) - field riêng của DELETE_DEPARTMENT
+  // (mirror lớp fix `positionId`/`assignedToIds` ở trên: trước đây spread
+  // thẳng raw entity + object tự chế, không field nào có nhãn) và
+  // UPDATE_DEPARTMENT (field `managers`, MỚI thêm audit log - trước đây
+  // module Phòng ban hoàn toàn không log CREATE/UPDATE).
+  color: 'Màu',
+  managers: 'Người quản lý phòng ban',
+  movedUsersCount: 'Số nhân viên đã di dời',
+  movedUsersTo: 'Di dời nhân viên sang phòng ban',
+  affectedCustomersCount: 'Số khách hàng bị ảnh hưởng (không di dời)',
+  // RESTORE_CUSTOMER (`{ restored: true }`) - trước đây không có nhãn lẫn
+  // cách hiển thị giá trị boolean riêng, rơi vào `String(val)` → "true" trần
+  // trụi (xem thêm nhánh `key === 'restored'` ở `formatValue()`).
+  restored: 'Khôi phục khách hàng',
 };
+
+/**
+ * ⚠️ FIX BUG THẬT (Department dùng chung key `name`/`description` với
+ * Customer/User - `FIELD_LABELS.name` ở trên gán "Họ và tên", đúng ngữ cảnh
+ * Customer/User nhưng SAI hoàn toàn cho Phòng ban). Áp nhãn ĐÈ lên
+ * `FIELD_LABELS` khi action đang xử lý thuộc về Department - tra theo
+ * substring của `action` (`CREATE_DEPARTMENT`/`UPDATE_DEPARTMENT`/
+ * `DELETE_DEPARTMENT` đều chứa "DEPARTMENT") thay vì thêm 1 prop mới vào
+ * component (tránh phải sửa MỌI nơi đang gọi `<AuditDiffViewer>`).
+ */
+const CONTEXTUAL_FIELD_LABELS: Array<{ actionIncludes: string; labels: Record<string, string> }> = [
+  {
+    actionIncludes: 'DEPARTMENT',
+    labels: { name: 'Tên phòng ban', description: 'Mô tả phòng ban' },
+  },
+];
 
 /**
  * ⚠️ FIX BUG THẬT (ảnh chụp màn hình: MỘT dòng audit "Cập nhật" hiện
@@ -204,7 +272,22 @@ export const AuditDiffViewer: React.FC<AuditDiffViewerProps> = ({
   const isCreate = actionUpper.includes('CREATE');
   const isDelete = actionUpper.includes('DELETE');
   const isUpdate = actionUpper.includes('UPDATE') || (oldData && newData);
-  const fieldLabels = extraFieldLabels ? { ...FIELD_LABELS, ...extraFieldLabels } : FIELD_LABELS;
+  const isAssignmentAction = ASSIGNMENT_ACTIONS.some((a) => actionUpper.includes(a));
+  const contextLabels = CONTEXTUAL_FIELD_LABELS.find((c) => actionUpper.includes(c.actionIncludes))?.labels;
+  const fieldLabels = { ...FIELD_LABELS, ...(contextLabels || {}), ...(extraFieldLabels || {}) };
+
+  // ⚠️ FIX BUG THẬT (rà soát audit log toàn hệ thống - CREATE_USER/
+  // UPDATE_USER/APPROVE_USER hiện raw slug "admin"/"employee" không dịch,
+  // không màu, trong khi MỌI nơi khác hiển thị Role trong app - dropdown
+  // chọn Sales, badge ở CustomerInfoTab... - đều dùng `useRoleColorMap()` để
+  // tra đúng màu + tên đã cấu hình ở /phan-quyen). Dùng `useRoleColors()`
+  // trực tiếp (không cần `roles.view`, an toàn cho MỌI role đang xem trang
+  // audit log) để tự dựng map code -> {name, color}.
+  const { roleColors } = useRoleColors();
+  const roleInfoMap = React.useMemo(
+    () => new Map(roleColors.map((r) => [r.code, { name: r.name, color: r.color }])),
+    [roleColors],
+  );
 
   // Helper to format values
   const formatValue = (val: any, key: string) => {
@@ -220,6 +303,15 @@ export const AuditDiffViewer: React.FC<AuditDiffViewerProps> = ({
     if (DATE_FIELD_KEYS.has(key) && (typeof val === 'string' || val instanceof Date)) {
       const parsed = dayjs(val);
       return <Text>{parsed.isValid() ? parsed.format('DD/MM/YYYY') : String(val)}</Text>;
+    }
+
+    if (key === 'status' && isAssignmentAction && typeof val === 'string') {
+      // ⚠️ FIX BUG THẬT (xem JSDoc `ASSIGNMENT_STATUS_META` phía trên) - PHẢI
+      // đứng TRƯỚC nhánh `key === 'status'` chung (dành cho Customer/Công
+      // việc định kỳ) để chặn đúng lúc `val` còn là string enum thô, tránh
+      // rơi xuống `StatusTag` (tra sai bảng customer_statuses).
+      const meta = ASSIGNMENT_STATUS_META[val];
+      return meta ? <Tag color={meta.color}>{meta.label}</Tag> : <Text>{val}</Text>;
     }
 
     if (key === 'status') {
@@ -259,6 +351,32 @@ export const AuditDiffViewer: React.FC<AuditDiffViewerProps> = ({
 
     if (key === 'isActive') {
       return val ? <Tag color="success">Hoạt động</Tag> : <Tag color="error">Khóa</Tag>;
+    }
+
+    if (key === 'role' && typeof val === 'string') {
+      // ⚠️ FIX BUG THẬT (xem JSDoc `roleInfoMap` phía trên) - trước đây
+      // không có nhánh riêng, rơi thẳng xuống `String(val)` cuối hàm, hiện
+      // nguyên slug tiếng Anh "admin"/"employee" không dịch, không màu.
+      const info = roleInfoMap.get(val);
+      return <Tag color={info?.color}>{info?.name ?? val.toUpperCase()}</Tag>;
+    }
+
+    if (key === 'color' && typeof val === 'string' && /^#[0-9a-fA-F]{3,8}$/.test(val)) {
+      return (
+        <Space size={4}>
+          <span
+            style={{ display: 'inline-block', width: 12, height: 12, borderRadius: 3, background: val, border: '1px solid #d9d9d9' }}
+          />
+          <Text>{val}</Text>
+        </Space>
+      );
+    }
+
+    if (key === 'restored') {
+      // ⚠️ FIX BUG THẬT (RESTORE_CUSTOMER log `{ restored: true }`) - trước
+      // đây không có nhánh riêng, `true` rơi xuống `String(val)` hiện chữ
+      // "true" trần trụi không có nghĩa với người dùng cuối.
+      return val ? <Tag color="success">Đã khôi phục</Tag> : <Tag color="default">Không</Tag>;
     }
 
     if (key === 'isRootAdmin') {
