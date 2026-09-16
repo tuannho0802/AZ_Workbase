@@ -17,6 +17,7 @@ import { useAddTaskSecondaryAssignee, useRemoveTaskSecondaryAssignee } from '@/l
 import { useCustomers } from '@/lib/hooks/useCustomers';
 import { useUsersList } from '@/lib/hooks/useUsers';
 import { customerPhoneDisplay, customerPlainLabel, renderCustomerOption } from '@/components/common/customer-option-render';
+import { CustomerQuickFilterButton, CustomerQuickFilters, EMPTY_CUSTOMER_QUICK_FILTERS } from '@/components/common/customer-quick-filter';
 import { PeriodicTask, PERIOD_TYPE_LABELS, PERIOD_RANK } from '@/lib/api/periodic-tasks.api';
 import { getApiErrorMessage } from '@/lib/utils/error-message.util';
 import { SimpleList } from '@/components/common/SimpleList';
@@ -119,6 +120,9 @@ export function TaskLinksModal({ open, onClose, task }: Props) {
     const [selectedChildId, setSelectedChildId] = useState<number | undefined>(undefined);
     const [selectedCustomerIds, setSelectedCustomerIds] = useState<number[]>([]);
     const [customerSearch, setCustomerSearch] = useState('');
+    // Bộ lọc nhanh (Nguồn/Trạng thái/Sales phụ trách) - mirror ĐÚNG
+    // `cong-viec-dinh-ky/page.tsx` (xem JSDoc đầy đủ ở `customer-quick-filter.tsx`).
+    const [customerQuickFilters, setCustomerQuickFilters] = useState<CustomerQuickFilters>(EMPTY_CUSTOMER_QUICK_FILTERS);
     const [selectedSecondaryUserIds, setSelectedSecondaryUserIds] = useState<number[]>([]);
 
     const { users: allUsers } = useUsersList();
@@ -140,6 +144,9 @@ export function TaskLinksModal({ open, onClose, task }: Props) {
             page: 1,
             limit: 20,
             search: customerSearch || undefined,
+            source: customerQuickFilters.source,
+            status: customerQuickFilters.status,
+            salesUserId: customerQuickFilters.salesUserId,
         },
         canLinkCustomer,
     );
@@ -190,6 +197,7 @@ export function TaskLinksModal({ open, onClose, task }: Props) {
         setSelectedChildId(undefined);
         setSelectedCustomerIds([]);
         setCustomerSearch('');
+        setCustomerQuickFilters(EMPTY_CUSTOMER_QUICK_FILTERS);
         setSelectedSecondaryUserIds([]);
         onClose();
     };
@@ -564,6 +572,7 @@ export function TaskLinksModal({ open, onClose, task }: Props) {
                                             customerCandidatesLoading ? 'Đang tìm...' : 'Không tìm thấy Khách hàng phù hợp'
                                         }
                                     />
+                                        <CustomerQuickFilterButton value={customerQuickFilters} onChange={setCustomerQuickFilters} />
                                     <Button
                                         type="primary"
                                         icon={<PlusOutlined />}

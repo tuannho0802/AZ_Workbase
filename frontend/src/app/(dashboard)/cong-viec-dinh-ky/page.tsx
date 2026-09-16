@@ -74,6 +74,7 @@ import { buildTaskLinkChains, sortTasksByChain, getChainRunFlags } from '@/lib/u
 import { useTaskLinksAmong } from '@/lib/hooks/usePeriodicTaskLinks';
 import { customerPhoneDisplay, customerPlainLabel, renderCustomerOption } from '@/components/common/customer-option-render';
 import { SimpleList } from '@/components/common/SimpleList';
+import { CustomerQuickFilterButton, CustomerQuickFilters, EMPTY_CUSTOMER_QUICK_FILTERS } from '@/components/common/customer-quick-filter';
 
 const { Title, Text } = Typography;
 const { RangePicker } = DatePicker;
@@ -305,6 +306,12 @@ export default function PeriodicTasksPage() {
     const [originalCustomerIds, setOriginalCustomerIds] = useState<number[]>([]);
     const [customerSearchInput, setCustomerSearchInput] = useState('');
     const debouncedCustomerSearch = useDebounce(customerSearchInput, 300);
+    // Bộ lọc nhanh (Nguồn/Trạng thái/Sales phụ trách) - MỚI (2026-09-16, yêu
+    // cầu chủ dự án: search tên/SĐT trần khó tìm khi nhiều Khách hàng trùng
+    // tên) - xem JSDoc đầy đủ ở `customer-quick-filter.tsx`. Reset về rỗng
+    // mỗi lần mở modal (tại `openModal`/`resetCustomerLinkState` bên dưới)
+    // để không giữ lọc cũ từ Task trước sang Task khác.
+    const [customerQuickFilters, setCustomerQuickFilters] = useState<CustomerQuickFilters>(EMPTY_CUSTOMER_QUICK_FILTERS);
     // BUG THẬT đã gặp (2026-09-15, xem WORKFLOW_LOG): thiếu `enabled` khiến
     // hook này gọi `GET /customers` ngay lúc mount trang, kể cả khi user
     // KHÔNG có `periodic_tasks.link_customer` (vd role chỉ bật mỗi Công việc
@@ -316,6 +323,9 @@ export default function PeriodicTasksPage() {
             page: 1,
             limit: 20,
             search: debouncedCustomerSearch || undefined,
+            source: customerQuickFilters.source,
+            status: customerQuickFilters.status,
+            salesUserId: customerQuickFilters.salesUserId,
         },
         canLinkCustomer,
     );
@@ -405,6 +415,7 @@ export default function PeriodicTasksPage() {
         setCustomerIds([]);
         setOriginalCustomerIds([]);
         setCustomerSearchInput('');
+        setCustomerQuickFilters(EMPTY_CUSTOMER_QUICK_FILTERS);
         setPendingCustomerIdsToAdd([]);
         setSecondaryAssigneeIds([]);
         setOriginalSecondaryAssigneeIds([]);
@@ -431,6 +442,7 @@ export default function PeriodicTasksPage() {
         setCustomerIds([]);
         setOriginalCustomerIds([]);
         setCustomerSearchInput('');
+        setCustomerQuickFilters(EMPTY_CUSTOMER_QUICK_FILTERS);
         setPendingCustomerIdsToAdd([]);
         setSecondaryAssigneeIds([]);
         setOriginalSecondaryAssigneeIds([]);
@@ -1305,6 +1317,7 @@ export default function PeriodicTasksPage() {
                                     options={customerSelectOptions.filter((o) => !customerIds.includes(o.value))}
                                     notFoundContent={customerSearchLoading ? 'Đang tìm...' : 'Không tìm thấy Khách hàng phù hợp'}
                                 />
+                                <CustomerQuickFilterButton value={customerQuickFilters} onChange={setCustomerQuickFilters} />
                                 <Button
                                     type="primary"
                                     icon={<PlusOutlined />}
