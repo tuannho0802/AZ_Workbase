@@ -322,7 +322,7 @@ export default function TaskHistoryPage() {
         <Col>
           <Title level={4} style={{ margin: 0 }}>
             <HistoryOutlined style={{ marginRight: 8, color: '#1890ff' }} />
-            Lịch sử Công việc định kỳ
+            Lịch sử Công việc
           </Title>
           <Text type="secondary">Toàn bộ log thay đổi của mọi Công việc định kỳ trong phạm vi quyền của bạn.</Text>
         </Col>

@@ -121,7 +121,7 @@ export const NAV_ITEMS: NavItem[] = [
   },
   {
     key: 'lich-su-cong-viec',
-    label: 'Lịch sử Công việc định kỳ',
+    label: 'Lịch sử Công việc',
     description: 'Nhật ký thay đổi gộp của mọi Công việc định kỳ (bulk xoá, dọn dẹp theo khoảng ngày)',
     icon: <HistoryOutlined />,
     path: '/lich-su-cong-viec',
