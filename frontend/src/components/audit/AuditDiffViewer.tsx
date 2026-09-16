@@ -142,6 +142,14 @@ const FIELD_LABELS: Record<string, string> = {
   approvalStatus: 'Trạng thái duyệt',
   zkDeviceUserId: 'Mã máy chấm công',
   reason: 'Lý do từ chối',
+  // ⚠️ FIX BUG THẬT (ảnh chụp màn hình: dòng audit CŨ hiện raw "updatedBy"/
+  // "createdBy" làm nhãn cột "Trường thông tin" - trước giờ 2 key này chỉ bị
+  // loại khỏi SNAPSHOT MỚI (xem JSDoc `buildAuditSnapshot` phía BE), nhưng
+  // các bản ghi audit CŨ ghi trước khi fix đó tồn tại vẫn còn nguyên 2 key
+  // này trong `oldData`/`newData` - `ignoreKeys` dưới không loại chúng (chỉ
+  // loại `updatedById`/`createdById`), nên vẫn hiển thị, chỉ thiếu nhãn.
+  updatedBy: 'Người sửa cuối',
+  createdBy: 'Người tạo',
 };
 
 export const AuditDiffViewer: React.FC<AuditDiffViewerProps> = ({
@@ -191,8 +199,21 @@ export const AuditDiffViewer: React.FC<AuditDiffViewerProps> = ({
       //     và đọc thẳng `.name`/`.color` có sẵn (không cần gọi API status
       //     nào khác - object đã đủ thông tin để hiển thị).
       if (typeof val === 'object' && val !== null && !Array.isArray(val)) {
-        const statusObj = val as { name?: string; code?: string; color?: string };
-        return <Tag color={statusObj.color}>{statusObj.name ?? statusObj.code ?? 'Trạng thái'}</Tag>;
+        // ⚠️ FIX BUG THẬT (ảnh chụp màn hình: dòng "Trạng thái" hiện
+        // "Chưa hoàn thành → Trạng thái" - literal fallback cũ trùng chữ với
+        // NHÃN cột "Trường thông tin" ở bên trái, khiến người xem tưởng nhầm
+        // là lỗi hiển thị/label bị lặp lại làm giá trị. Khi object status
+        // thật sự thiếu cả `name` và `code` (dữ liệu cũ/không đầy đủ), dùng
+        // đúng pattern "Dữ liệu cũ - ID" đã thống nhất ở nhánh object chung
+        // phía dưới (`named.id`) thay vì 1 câu tự bịa riêng cho field này.
+        const statusObj = val as { id?: number | string; name?: string; code?: string; color?: string };
+        if (statusObj.name || statusObj.code) {
+          return <Tag color={statusObj.color}>{statusObj.name ?? statusObj.code}</Tag>;
+        }
+        if (statusObj.id !== undefined) {
+          return <Text type="secondary">Dữ liệu cũ - ID: {statusObj.id} (không có tên do log tại thời điểm đó)</Text>;
+        }
+        return <Text type="secondary">Không xác định (dữ liệu audit cũ, không đọc được)</Text>;
       }
       return <StatusTag code={val} />;
     }
@@ -287,6 +308,37 @@ export const AuditDiffViewer: React.FC<AuditDiffViewerProps> = ({
     return String(val);
   };
 
+  /**
+   * ⚠️ FIX BUG THẬT (ảnh chụp màn hình: MỘT dòng audit "Cập nhật" hiện
+   * "Trạng thái" HAI LẦN - 1 dòng "Chưa hoàn thành → Trạng thái", 1 dòng
+   * "→ 2" trơn). Nguyên nhân: đây là bản ghi audit CŨ ghi THẲNG raw entity
+   * (trước khi `buildAuditSnapshot()`/`buildXxxAuditSnapshot()` chuẩn hoá),
+   * nên `oldData`/`newData` chứa CẢ 2 key cho cùng 1 field quan hệ: FK số
+   * thô (`statusId`) VÀ object quan hệ đã resolve (`status`) - 2 key khác
+   * nhau nhưng cùng trỏ nhãn "Trạng thái" (`FIELD_LABELS`/
+   * `PERIODIC_TASK_FIELD_LABELS`), nên render thành 2 dòng riêng biệt cho
+   * NGƯỜI DÙNG mà thực ra chỉ là 1 field bị log 2 lần.
+   *
+   * Chỉ liệt kê các cặp ĐÃ XÁC NHẬN thật sự là "FK thô + object resolve của
+   * chính field đó" (khớp các field quan hệ có mặt ở `FIELD_LABELS`/
+   * `PERIODIC_TASK_FIELD_LABELS` phía trên) - CỐ Ý không suy luận tự động
+   * theo kiểu "mọi key kết thúc bằng Id" vì có field trùng tên vô hại
+   * (`brokerId` là ID môi giới rời rạc, KHÔNG liên quan gì đến field
+   * `broker` - chuỗi tên broker của Deposit, ghép nhầm sẽ mất dữ liệu hiển
+   * thị đúng của 1 trong 2 field không liên quan).
+   */
+  const ID_OBJECT_KEY_PAIRS: Array<[string, string]> = [
+    ['statusId', 'status'],
+    ['salesUserId', 'salesUser'],
+    ['marketingUserId', 'marketingUser'],
+    ['departmentId', 'department'],
+    ['assignedToId', 'assignedTo'],
+    ['previousAssigneeId', 'previousAssignee'],
+    ['primaryAssigneeId', 'primaryAssignee'],
+    ['positionId', 'position'],
+    ['leaveApproverId', 'leaveApprover'],
+  ];
+
   // Extract and filter keys
   const getRelevantKeys = () => {
     const keys = new Set([
@@ -299,6 +351,16 @@ export const AuditDiffViewer: React.FC<AuditDiffViewerProps> = ({
       'updatedById', 'createdById', 'updatedBy_OLD', 'createdBy_OLD',
       'hashedRefreshToken', 'user', 'targetCustomer'
     ];
+
+    // Bỏ key FK thô nếu object resolve của ĐÚNG field đó cũng có mặt trong
+    // cùng bản ghi (ưu tiên hiển thị bản object đọc được, tránh lặp dòng).
+    // Nếu chỉ có FK thô (không có object đi kèm - dữ liệu cũ thật sự chỉ lưu
+    // ID), vẫn giữ nguyên hành vi cũ: hiển thị ID thô như trước.
+    for (const [idKey, objectKey] of ID_OBJECT_KEY_PAIRS) {
+      if (keys.has(idKey) && keys.has(objectKey)) {
+        keys.delete(idKey);
+      }
+    }
 
     // ⚠️ BẢO MẬT (xem JSDoc `isSensitiveKey()`): loại bỏ HẲN các key nhạy cảm
     // khỏi bảng diff luôn, không chỉ che giá trị - end-user không cần biết
