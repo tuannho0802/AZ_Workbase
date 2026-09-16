@@ -38,6 +38,10 @@ describe('CustomersService', () => {
     createQueryBuilder: jest.fn(),
     merge: jest.fn(),
     softDelete: jest.fn(),
+    // Dùng trong remove()/restore() để ghi/xoá `deletedById` (cột "Người
+    // xóa" trang Thùng rác) - `softDelete()`/`restore()` của TypeORM không
+    // nhận field tuỳ ý nào khác ngoài deletedAt.
+    update: jest.fn(),
     // Dùng trong bulkAssign() để lấy batch customer theo customerIds - khai
     // báo sẵn ở đây (thay vì gán runtime trong describe('bulkAssign') như
     // bản cũ) để type suy luận từ object literal này đã có sẵn `find`, tránh
@@ -810,10 +814,12 @@ describe('CustomersService', () => {
       const fakeCustomer: any = { id: 55, createdById: 7, name: 'Nguyễn Văn A', phone: '0901234567' };
       jest.spyOn(service, 'findOne').mockResolvedValue(fakeCustomer);
       mockCustomerRepo.softDelete.mockResolvedValue({ affected: 1 });
+      mockCustomerRepo.update.mockResolvedValue({ affected: 1 });
 
       const result = await service.remove(55, 7, Role.EMPLOYEE, PermissionScope.OWN);
 
       expect(mockCustomerRepo.softDelete).toHaveBeenCalledWith(55);
+      expect(mockCustomerRepo.update).toHaveBeenCalledWith(55, { deletedById: 7 });
       // ⚠️ FIX BUG THẬT (báo lỗi trực tiếp kèm ảnh chụp màn hình: Xoá khách
       // hàng - mềm hay cứng - không lưu lại khách hàng đó là ai, "Chi tiết
       // hành động" hiện "Dữ liệu chính không thay đổi") - `remove()` giờ
@@ -844,6 +850,7 @@ describe('CustomersService', () => {
       const fakeCustomer: any = { id: 1, createdById: 2 };
       jest.spyOn(service, 'findOne').mockResolvedValue(fakeCustomer);
       mockCustomerRepo.softDelete.mockResolvedValue({ affected: 1 });
+      mockCustomerRepo.update.mockResolvedValue({ affected: 1 });
 
       await expect(
         service.remove(1, 99, Role.ADMIN, null),

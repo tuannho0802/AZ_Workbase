@@ -65,6 +65,9 @@ function TrashMobileCard({
           Xóa: <Text type="danger">{record.deletedAt ? dayjs(record.deletedAt).format('DD/MM/YY HH:mm') : '—'}</Text>
         </Text>
       </div>
+      <div style={{ fontSize: 12, color: '#555', marginBottom: 4 }}>
+        Người xóa: <Text strong>{record.deletedBy?.name || '—'}</Text>
+      </div>
       
       <div style={{ display: 'flex', gap: 8, marginTop: 8 }}>
         <Popconfirm
@@ -284,6 +287,12 @@ export default function TrashCanPage() {
       key: 'deletedAt',
       width: isLaptop ? 130 : 145,
       render: (val: string) => dayjs(val).format('DD/MM/YYYY HH:mm'),
+    },
+    {
+      title: 'Người xóa',
+      key: 'deletedBy',
+      width: isLaptop ? 120 : 140,
+      render: (_: any, record: Customer) => record.deletedBy?.name || <Text type="secondary">—</Text>,
     },
     {
       title: 'Thao tác',
