@@ -115,6 +115,16 @@ export class Customer {
   @DeleteDateColumn({ name: 'deleted_at', nullable: true })
   deletedAt: Date;
 
+  // Ai đã bấm xóa (mềm) - dùng cho cột "Người xóa" ở trang Thùng rác, cùng
+  // pattern với `user.entity.ts` (deletedById/deletedBy). SET NULL nếu chính
+  // người xóa sau này cũng bị xóa tài khoản.
+  @Column({ name: 'deleted_by_id', nullable: true })
+  deletedById: number | null;
+
+  @ManyToOne(() => User, { nullable: true, onDelete: 'SET NULL' })
+  @JoinColumn({ name: 'deleted_by_id' })
+  deletedBy: User | null;
+
   @CreateDateColumn({ name: 'created_at' })
   createdAt: Date;
 
