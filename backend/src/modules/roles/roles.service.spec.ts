@@ -9,6 +9,7 @@ import { User } from '../../database/entities/user.entity';
 import { Position } from '../../database/entities/position.entity';
 import { DataSource } from 'typeorm';
 import { PermissionsService } from '../permissions/permissions.service';
+import { AuditService } from '../audit/audit.service';
 
 describe('RolesService', () => {
   let service: RolesService;
@@ -43,6 +44,10 @@ describe('RolesService', () => {
     rollbackTransaction: jest.fn(),
     release: jest.fn(),
     manager: {
+      // findOne dùng cho pessimistic lock trên dòng role (fix race condition
+      // updateDepartmentOverride/updatePositionOverride) - service không đọc
+      // giá trị trả về, chỉ cần không throw.
+      findOne: jest.fn().mockResolvedValue({ id: 1 }),
       find: jest.fn(),
       delete: jest.fn(),
       save: jest.fn(),
@@ -65,6 +70,10 @@ describe('RolesService', () => {
     invalidate: jest.fn(),
     getRolePermissions: jest.fn(),
   };
+  const mockAuditService = {
+    logAction: jest.fn(),
+    logActionAsync: jest.fn(),
+  };
 
   beforeEach(async () => {
     jest.clearAllMocks();
@@ -79,6 +88,7 @@ describe('RolesService', () => {
         { provide: getRepositoryToken(Position), useValue: mockPositionRepo },
         { provide: DataSource, useValue: mockDataSource },
         { provide: PermissionsService, useValue: mockPermissionsService },
+        { provide: AuditService, useValue: mockAuditService },
       ],
     }).compile();
 
