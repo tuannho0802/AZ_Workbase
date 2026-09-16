@@ -5,6 +5,7 @@ import { CustomerStatus } from '../../database/entities/customer-status.entity';
 import { Customer } from '../../database/entities/customer.entity';
 import { CreateCustomerStatusDto } from './dto/create-customer-status.dto';
 import { UpdateCustomerStatusDto } from './dto/update-customer-status.dto';
+import { AuditService } from '../audit/audit.service';
 
 /**
  * CustomerStatusesService - CRUD "Trạng thái khách hàng", thay thế ENUM cứng
@@ -17,6 +18,7 @@ export class CustomerStatusesService {
     private readonly statusRepo: Repository<CustomerStatus>,
     @InjectRepository(Customer)
     private readonly customerRepo: Repository<Customer>,
+    private readonly auditService: AuditService,
   ) {}
 
   /**
@@ -52,7 +54,7 @@ export class CustomerStatusesService {
     return status;
   }
 
-  async create(dto: CreateCustomerStatusDto): Promise<CustomerStatus> {
+  async create(dto: CreateCustomerStatusDto, callerId?: number): Promise<CustomerStatus> {
     const existing = await this.statusRepo.findOne({ where: { code: dto.code } });
     if (existing) {
       throw new ConflictException(`Mã trạng thái "${dto.code}" đã tồn tại`);
@@ -66,18 +68,27 @@ export class CustomerStatusesService {
       color: dto.color ?? '#1890ff',
       sortOrder: dto.sortOrder ?? 0,
     });
-    return this.statusRepo.save(status);
+    const saved = await this.statusRepo.save(status);
+    if (callerId) {
+      this.auditService.logActionAsync(callerId, 'CREATE_CUSTOMER_STATUS', 'customer_status', saved.id, null, saved);
+    }
+    return saved;
   }
 
-  async update(id: number, dto: UpdateCustomerStatusDto): Promise<CustomerStatus> {
+  async update(id: number, dto: UpdateCustomerStatusDto, callerId?: number): Promise<CustomerStatus> {
     const status = await this.findOne(id);
+    const before = { ...status };
 
     if (dto.name !== undefined) status.name = dto.name;
     if (dto.description !== undefined) status.description = dto.description ?? null;
     if (dto.color !== undefined) status.color = dto.color;
     if (dto.sortOrder !== undefined) status.sortOrder = dto.sortOrder;
 
-    return this.statusRepo.save(status);
+    const saved = await this.statusRepo.save(status);
+    if (callerId) {
+      this.auditService.logActionAsync(callerId, 'UPDATE_CUSTOMER_STATUS', 'customer_status', saved.id, before, saved);
+    }
+    return saved;
   }
 
   /**
@@ -96,7 +107,7 @@ export class CustomerStatusesService {
    * (kèm số lượng) để FE hiện modal bắt chọn, KHÔNG tự ý chọn hộ 1 fallback
    * mặc định nào - đây là quyết định nghiệp vụ, phải do người xoá chọn.
    */
-  async remove(id: number, fallbackCode?: string): Promise<{ deleted: true; reassignedCount: number }> {
+  async remove(id: number, fallbackCode?: string, callerId?: number): Promise<{ deleted: true; reassignedCount: number }> {
     const status = await this.findOne(id);
 
     if (status.isSystem) {
@@ -131,6 +142,10 @@ export class CustomerStatusesService {
       }
       await manager.remove(CustomerStatus, status);
     });
+
+    if (callerId) {
+      this.auditService.logActionAsync(callerId, 'DELETE_CUSTOMER_STATUS', 'customer_status', id, status, { reassignedCount: inUseCount });
+    }
 
     return { deleted: true, reassignedCount: inUseCount };
   }

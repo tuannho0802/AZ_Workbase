@@ -1,4 +1,4 @@
-import { Controller, Get, Post, Patch, Delete, Param, Body, Query, UseGuards, ParseIntPipe } from '@nestjs/common';
+import { Controller, Get, Post, Patch, Delete, Param, Body, Query, UseGuards, ParseIntPipe, Request } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiBearerAuth, ApiQuery } from '@nestjs/swagger';
 import { PeriodicTaskStatusesService } from './periodic-task-statuses.service';
 import { CreatePeriodicTaskStatusDto } from './dto/create-periodic-task-status.dto';
@@ -37,15 +37,15 @@ export class PeriodicTaskStatusesController {
   @Post()
   @RequirePermission('periodic_task_statuses.manage')
   @ApiOperation({ summary: 'Tạo trạng thái công việc định kỳ mới (Admin, Assistant)' })
-  create(@Body() dto: CreatePeriodicTaskStatusDto) {
-    return this.periodicTaskStatusesService.create(dto);
+  create(@Body() dto: CreatePeriodicTaskStatusDto, @Request() req) {
+    return this.periodicTaskStatusesService.create(dto, req.user.id);
   }
 
   @Patch(':id')
   @RequirePermission('periodic_task_statuses.manage')
   @ApiOperation({ summary: 'Sửa tên/mô tả/màu/thứ tự/isDoneState/isExcludedFromRollup (không đổi được code)' })
-  update(@Param('id', ParseIntPipe) id: number, @Body() dto: UpdatePeriodicTaskStatusDto) {
-    return this.periodicTaskStatusesService.update(id, dto);
+  update(@Param('id', ParseIntPipe) id: number, @Body() dto: UpdatePeriodicTaskStatusDto, @Request() req) {
+    return this.periodicTaskStatusesService.update(id, dto, req.user.id);
   }
 
   @Delete(':id')
@@ -60,7 +60,7 @@ export class PeriodicTaskStatusesController {
     required: false,
     description: 'ID trạng thái thay thế - bắt buộc nếu trạng thái đang xoá còn Task dùng',
   })
-  remove(@Param('id', ParseIntPipe) id: number, @Query('fallbackStatusId') fallbackStatusId?: string) {
-    return this.periodicTaskStatusesService.remove(id, fallbackStatusId ? +fallbackStatusId : undefined);
+  remove(@Param('id', ParseIntPipe) id: number, @Query('fallbackStatusId') fallbackStatusId: string | undefined, @Request() req) {
+    return this.periodicTaskStatusesService.remove(id, fallbackStatusId ? +fallbackStatusId : undefined, req.user.id);
   }
 }

@@ -1,4 +1,4 @@
-import { Controller, Get, Post, Patch, Delete, Param, Body, Query, UseGuards, ParseIntPipe } from '@nestjs/common';
+import { Controller, Get, Post, Patch, Delete, Param, Body, Query, UseGuards, ParseIntPipe, Request } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiBearerAuth, ApiQuery } from '@nestjs/swagger';
 import { CustomerStatusesService } from './customer-statuses.service';
 import { CreateCustomerStatusDto } from './dto/create-customer-status.dto';
@@ -41,15 +41,15 @@ export class CustomerStatusesController {
   @Post()
   @RequirePermission('customer_statuses.manage')
   @ApiOperation({ summary: 'Tạo trạng thái khách hàng mới (Admin, Assistant)' })
-  create(@Body() dto: CreateCustomerStatusDto) {
-    return this.customerStatusesService.create(dto);
+  create(@Body() dto: CreateCustomerStatusDto, @Request() req) {
+    return this.customerStatusesService.create(dto, req.user.id);
   }
 
   @Patch(':id')
   @RequirePermission('customer_statuses.manage')
   @ApiOperation({ summary: 'Sửa tên/mô tả/màu/thứ tự trạng thái (không đổi được code)' })
-  update(@Param('id', ParseIntPipe) id: number, @Body() dto: UpdateCustomerStatusDto) {
-    return this.customerStatusesService.update(id, dto);
+  update(@Param('id', ParseIntPipe) id: number, @Body() dto: UpdateCustomerStatusDto, @Request() req) {
+    return this.customerStatusesService.update(id, dto, req.user.id);
   }
 
   @Delete(':id')
@@ -64,7 +64,7 @@ export class CustomerStatusesController {
     required: false,
     description: 'Mã trạng thái thay thế - bắt buộc nếu trạng thái đang xoá còn khách hàng dùng',
   })
-  remove(@Param('id', ParseIntPipe) id: number, @Query('fallbackCode') fallbackCode?: string) {
-    return this.customerStatusesService.remove(id, fallbackCode);
+  remove(@Param('id', ParseIntPipe) id: number, @Query('fallbackCode') fallbackCode: string | undefined, @Request() req) {
+    return this.customerStatusesService.remove(id, fallbackCode, req.user.id);
   }
 }

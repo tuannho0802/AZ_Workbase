@@ -7,6 +7,7 @@ import { AssignmentGroupConfigDepartment } from '../../database/entities/assignm
 import { AssignmentGroupConfigPosition } from '../../database/entities/assignment-group-config-position.entity';
 import { User } from '../../database/entities/user.entity';
 import { ApprovalStatus } from '../../common/enums/approval-status.enum';
+import { AuditService } from '../audit/audit.service';
 
 describe('AssignmentGroupsService', () => {
   let service: AssignmentGroupsService;
@@ -33,6 +34,10 @@ describe('AssignmentGroupsService', () => {
   const mockUserRepo = {
     find: jest.fn(),
   };
+  const mockAuditService = {
+    logAction: jest.fn(),
+    logActionAsync: jest.fn(),
+  };
 
   beforeEach(async () => {
     jest.clearAllMocks();
@@ -44,6 +49,7 @@ describe('AssignmentGroupsService', () => {
         { provide: getRepositoryToken(AssignmentGroupConfigDepartment), useValue: mockDeptRepo },
         { provide: getRepositoryToken(AssignmentGroupConfigPosition), useValue: mockPosRepo },
         { provide: getRepositoryToken(User), useValue: mockUserRepo },
+        { provide: AuditService, useValue: mockAuditService },
       ],
     }).compile();
 

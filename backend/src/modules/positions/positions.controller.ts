@@ -1,4 +1,4 @@
-import { Controller, Get, Post, Patch, Delete, Param, Body, UseGuards, ParseIntPipe } from '@nestjs/common';
+import { Controller, Get, Post, Patch, Delete, Param, Body, UseGuards, ParseIntPipe, Request } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiBearerAuth } from '@nestjs/swagger';
 import { PositionsService } from './positions.service';
 import { CreatePositionDto } from './dto/create-position.dto';
@@ -53,8 +53,8 @@ export class PositionsController {
   @ApiBearerAuth()
   @RequirePermission('positions.manage')
   @ApiOperation({ summary: 'Tạo Vị trí mới' })
-  create(@Body() dto: CreatePositionDto) {
-    return this.positionsService.create(dto);
+  create(@Body() dto: CreatePositionDto, @Request() req) {
+    return this.positionsService.create(dto, req.user.id);
   }
 
   @Patch(':id')
@@ -62,8 +62,8 @@ export class PositionsController {
   @ApiBearerAuth()
   @RequirePermission('positions.manage')
   @ApiOperation({ summary: 'Sửa Vị trí (không đổi được code)' })
-  update(@Param('id', ParseIntPipe) id: number, @Body() dto: UpdatePositionDto) {
-    return this.positionsService.update(id, dto);
+  update(@Param('id', ParseIntPipe) id: number, @Body() dto: UpdatePositionDto, @Request() req) {
+    return this.positionsService.update(id, dto, req.user.id);
   }
 
   // ⚠️ Xoá tách riêng khỏi `positions.manage` (tạo/sửa) từ migration
@@ -75,7 +75,7 @@ export class PositionsController {
   @ApiBearerAuth()
   @RequirePermission('positions.delete')
   @ApiOperation({ summary: 'Xoá Vị trí (chặn nếu đang có nhân viên gán)' })
-  remove(@Param('id', ParseIntPipe) id: number) {
-    return this.positionsService.remove(id);
+  remove(@Param('id', ParseIntPipe) id: number, @Request() req) {
+    return this.positionsService.remove(id, req.user.id);
   }
 }

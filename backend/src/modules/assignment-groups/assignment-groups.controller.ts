@@ -1,4 +1,4 @@
-import { Controller, Get, Post, Patch, Delete, Param, Body, UseGuards, ParseIntPipe } from '@nestjs/common';
+import { Controller, Get, Post, Patch, Delete, Param, Body, UseGuards, ParseIntPipe, Request } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiBearerAuth } from '@nestjs/swagger';
 import { AssignmentGroupsService } from './assignment-groups.service';
 import { CreateAssignmentGroupDto } from './dto/create-assignment-group.dto';
@@ -58,8 +58,8 @@ export class AssignmentGroupsController {
   @ApiBearerAuth()
   @RequirePermission('assignment_groups.create')
   @ApiOperation({ summary: 'Tạo config mới (key tuỳ chỉnh, khác sales/marketing)' })
-  create(@Body() dto: CreateAssignmentGroupDto) {
-    return this.service.create(dto);
+  create(@Body() dto: CreateAssignmentGroupDto, @Request() req) {
+    return this.service.create(dto, req.user.id);
   }
 
   @Patch(':id')
@@ -67,8 +67,8 @@ export class AssignmentGroupsController {
   @ApiBearerAuth()
   @RequirePermission('assignment_groups.update')
   @ApiOperation({ summary: 'Sửa tên/mô tả + ghi đè toàn bộ danh sách department/position' })
-  update(@Param('id', ParseIntPipe) id: number, @Body() dto: UpdateAssignmentGroupDto) {
-    return this.service.update(id, dto);
+  update(@Param('id', ParseIntPipe) id: number, @Body() dto: UpdateAssignmentGroupDto, @Request() req) {
+    return this.service.update(id, dto, req.user.id);
   }
 
   @Delete(':id')
@@ -76,7 +76,7 @@ export class AssignmentGroupsController {
   @ApiBearerAuth()
   @RequirePermission('assignment_groups.delete')
   @ApiOperation({ summary: 'Xoá config (chặn nếu is_system=true)' })
-  remove(@Param('id', ParseIntPipe) id: number) {
-    return this.service.remove(id);
+  remove(@Param('id', ParseIntPipe) id: number, @Request() req) {
+    return this.service.remove(id, req.user.id);
   }
 }

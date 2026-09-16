@@ -5,6 +5,7 @@ import { PeriodicTaskStatus } from '../../database/entities/periodic-task-status
 import { PeriodicTask } from '../../database/entities/periodic-task.entity';
 import { CreatePeriodicTaskStatusDto } from './dto/create-periodic-task-status.dto';
 import { UpdatePeriodicTaskStatusDto } from './dto/update-periodic-task-status.dto';
+import { AuditService } from '../audit/audit.service';
 
 /**
  * PeriodicTaskStatusesService - CRUD "Trạng thái Công việc định kỳ", mirror
@@ -26,6 +27,7 @@ export class PeriodicTaskStatusesService {
     private readonly statusRepo: Repository<PeriodicTaskStatus>,
     @InjectRepository(PeriodicTask)
     private readonly taskRepo: Repository<PeriodicTask>,
+    private readonly auditService: AuditService,
   ) {}
 
   async findAll(): Promise<(PeriodicTaskStatus & { inUseCount: number })[]> {
@@ -54,7 +56,7 @@ export class PeriodicTaskStatusesService {
     return status;
   }
 
-  async create(dto: CreatePeriodicTaskStatusDto): Promise<PeriodicTaskStatus> {
+  async create(dto: CreatePeriodicTaskStatusDto, callerId?: number): Promise<PeriodicTaskStatus> {
     const existing = await this.statusRepo.findOne({ where: { code: dto.code } });
     if (existing) {
       throw new ConflictException(`Mã trạng thái "${dto.code}" đã tồn tại`);
@@ -70,11 +72,16 @@ export class PeriodicTaskStatusesService {
       isDoneState: dto.isDoneState ?? false,
       isExcludedFromRollup: dto.isExcludedFromRollup ?? false,
     });
-    return this.statusRepo.save(status);
+    const saved = await this.statusRepo.save(status);
+    if (callerId) {
+      this.auditService.logActionAsync(callerId, 'CREATE_PERIODIC_TASK_STATUS', 'periodic_task_status', saved.id, null, saved);
+    }
+    return saved;
   }
 
-  async update(id: number, dto: UpdatePeriodicTaskStatusDto): Promise<PeriodicTaskStatus> {
+  async update(id: number, dto: UpdatePeriodicTaskStatusDto, callerId?: number): Promise<PeriodicTaskStatus> {
     const status = await this.findOne(id);
+    const before = { ...status };
 
     if (dto.name !== undefined) status.name = dto.name;
     if (dto.description !== undefined) status.description = dto.description ?? null;
@@ -83,7 +90,11 @@ export class PeriodicTaskStatusesService {
     if (dto.isDoneState !== undefined) status.isDoneState = dto.isDoneState;
     if (dto.isExcludedFromRollup !== undefined) status.isExcludedFromRollup = dto.isExcludedFromRollup;
 
-    return this.statusRepo.save(status);
+    const saved = await this.statusRepo.save(status);
+    if (callerId) {
+      this.auditService.logActionAsync(callerId, 'UPDATE_PERIODIC_TASK_STATUS', 'periodic_task_status', saved.id, before, saved);
+    }
+    return saved;
   }
 
   /**
@@ -99,7 +110,7 @@ export class PeriodicTaskStatusesService {
    * (kèm số lượng) để FE hiện modal bắt chọn, KHÔNG tự ý chọn hộ 1 fallback
    * mặc định nào - quyết định nghiệp vụ, phải do người xoá chọn.
    */
-  async remove(id: number, fallbackStatusId?: number): Promise<{ deleted: true; reassignedCount: number }> {
+  async remove(id: number, fallbackStatusId?: number, callerId?: number): Promise<{ deleted: true; reassignedCount: number }> {
     const status = await this.findOne(id);
 
     if (status.isSystem) {
@@ -135,6 +146,10 @@ export class PeriodicTaskStatusesService {
       }
       await manager.remove(PeriodicTaskStatus, status);
     });
+
+    if (callerId) {
+      this.auditService.logActionAsync(callerId, 'DELETE_PERIODIC_TASK_STATUS', 'periodic_task_status', id, status, { reassignedCount: inUseCount });
+    }
 
     return { deleted: true, reassignedCount: inUseCount };
   }

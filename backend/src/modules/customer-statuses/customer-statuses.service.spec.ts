@@ -4,6 +4,7 @@ import { NotFoundException, ConflictException, BadRequestException } from '@nest
 import { CustomerStatusesService } from './customer-statuses.service';
 import { CustomerStatus } from '../../database/entities/customer-status.entity';
 import { Customer } from '../../database/entities/customer.entity';
+import { AuditService } from '../audit/audit.service';
 
 describe('CustomerStatusesService', () => {
   let service: CustomerStatusesService;
@@ -30,6 +31,10 @@ describe('CustomerStatusesService', () => {
     count: jest.fn(),
     createQueryBuilder: jest.fn(),
   };
+  const mockAuditService = {
+    logAction: jest.fn(),
+    logActionAsync: jest.fn(),
+  };
 
   beforeEach(async () => {
     jest.clearAllMocks();
@@ -39,6 +44,7 @@ describe('CustomerStatusesService', () => {
         CustomerStatusesService,
         { provide: getRepositoryToken(CustomerStatus), useValue: mockStatusRepo },
         { provide: getRepositoryToken(Customer), useValue: mockCustomerRepo },
+        { provide: AuditService, useValue: mockAuditService },
       ],
     }).compile();
 

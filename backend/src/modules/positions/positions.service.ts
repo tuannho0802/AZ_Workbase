@@ -5,6 +5,7 @@ import { Position } from '../../database/entities/position.entity';
 import { User } from '../../database/entities/user.entity';
 import { CreatePositionDto } from './dto/create-position.dto';
 import { UpdatePositionDto } from './dto/update-position.dto';
+import { AuditService } from '../audit/audit.service';
 
 /**
  * PositionsService - CRUD "Vị trí" (xem PLAN_POSITION_FIELD_VISIBILITY_ASSIGNMENT_GROUPS.md
@@ -18,6 +19,7 @@ export class PositionsService {
     private readonly positionRepo: Repository<Position>,
     @InjectRepository(User)
     private readonly userRepo: Repository<User>,
+    private readonly auditService: AuditService,
   ) {}
 
   async findAll(): Promise<Position[]> {
@@ -52,7 +54,7 @@ export class PositionsService {
     return position;
   }
 
-  async create(dto: CreatePositionDto): Promise<Position> {
+  async create(dto: CreatePositionDto, callerId?: number): Promise<Position> {
     const existing = await this.positionRepo.findOne({ where: { code: dto.code } });
     if (existing) {
       throw new ConflictException(`Mã vị trí "${dto.code}" đã tồn tại`);
@@ -66,11 +68,16 @@ export class PositionsService {
       isSystem: false,
       ...(dto.color !== undefined ? { color: dto.color } : {}),
     });
-    return this.positionRepo.save(position);
+    const saved = await this.positionRepo.save(position);
+    if (callerId) {
+      this.auditService.logActionAsync(callerId, 'CREATE_POSITION', 'position', saved.id, null, saved);
+    }
+    return saved;
   }
 
-  async update(id: number, dto: UpdatePositionDto): Promise<Position> {
+  async update(id: number, dto: UpdatePositionDto, callerId?: number): Promise<Position> {
     const position = await this.findOne(id);
+    const before = { ...position };
 
     if (dto.name !== undefined) position.name = dto.name;
     if (dto.description !== undefined) position.description = dto.description ?? null;
@@ -90,7 +97,11 @@ export class PositionsService {
       position.department = dto.departmentId == null ? null : ({ id: dto.departmentId } as any);
     }
 
-    return this.positionRepo.save(position);
+    const saved = await this.positionRepo.save(position);
+    if (callerId) {
+      this.auditService.logActionAsync(callerId, 'UPDATE_POSITION', 'position', saved.id, before, saved);
+    }
+    return saved;
   }
 
   /**
@@ -101,7 +112,7 @@ export class PositionsService {
    * họ mà không nhận ra (đúng nguyên tắc PLAN mục 3.1: "KHÔNG xoá cứng 1
    * Position đang có User gán").
    */
-  async remove(id: number): Promise<{ deleted: true }> {
+  async remove(id: number, callerId?: number): Promise<{ deleted: true }> {
     const position = await this.findOne(id);
 
     if (position.isSystem) {
@@ -117,6 +128,9 @@ export class PositionsService {
     }
 
     await this.positionRepo.delete(id);
+    if (callerId) {
+      this.auditService.logActionAsync(callerId, 'DELETE_POSITION', 'position', id, position, null);
+    }
     return { deleted: true };
   }
 }

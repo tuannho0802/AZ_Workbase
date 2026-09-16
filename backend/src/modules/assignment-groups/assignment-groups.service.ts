@@ -8,6 +8,7 @@ import { User } from '../../database/entities/user.entity';
 import { ApprovalStatus } from '../../common/enums/approval-status.enum';
 import { CreateAssignmentGroupDto } from './dto/create-assignment-group.dto';
 import { UpdateAssignmentGroupDto } from './dto/update-assignment-group.dto';
+import { AuditService } from '../audit/audit.service';
 
 /**
  * AssignmentGroupsService - "Quản lý phụ trách" (xem
@@ -31,6 +32,7 @@ export class AssignmentGroupsService {
     private readonly posRepo: Repository<AssignmentGroupConfigPosition>,
     @InjectRepository(User)
     private readonly userRepo: Repository<User>,
+    private readonly auditService: AuditService,
   ) {}
 
   async findAll(): Promise<AssignmentGroupConfig[]> {
@@ -59,7 +61,7 @@ export class AssignmentGroupsService {
     return config;
   }
 
-  async create(dto: CreateAssignmentGroupDto): Promise<AssignmentGroupConfig> {
+  async create(dto: CreateAssignmentGroupDto, callerId?: number): Promise<AssignmentGroupConfig> {
     const existing = await this.configRepo.findOne({ where: { key: dto.key } });
     if (existing) {
       throw new ConflictException(`Key "${dto.key}" đã tồn tại`);
@@ -78,11 +80,16 @@ export class AssignmentGroupsService {
     await this.replaceDepartments(config.id, dto.departmentIds);
     await this.replacePositions(config.id, dto.positionIds ?? []);
 
-    return this.findOne(config.id);
+    const result = await this.findOne(config.id);
+    if (callerId) {
+      this.auditService.logActionAsync(callerId, 'CREATE_ASSIGNMENT_GROUP', 'assignment_group', result.id, null, result);
+    }
+    return result;
   }
 
-  async update(id: number, dto: UpdateAssignmentGroupDto): Promise<AssignmentGroupConfig> {
+  async update(id: number, dto: UpdateAssignmentGroupDto, callerId?: number): Promise<AssignmentGroupConfig> {
     const config = await this.findOne(id);
+    const before = { ...config };
 
     if (dto.name !== undefined) config.name = dto.name;
     if (dto.description !== undefined) config.description = dto.description ?? null;
@@ -92,15 +99,22 @@ export class AssignmentGroupsService {
     await this.replaceDepartments(id, dto.departmentIds);
     await this.replacePositions(id, dto.positionIds ?? []);
 
-    return this.findOne(id);
+    const result = await this.findOne(id);
+    if (callerId) {
+      this.auditService.logActionAsync(callerId, 'UPDATE_ASSIGNMENT_GROUP', 'assignment_group', id, before, result);
+    }
+    return result;
   }
 
-  async remove(id: number): Promise<{ deleted: true }> {
+  async remove(id: number, callerId?: number): Promise<{ deleted: true }> {
     const config = await this.findOne(id);
     if (config.isSystem) {
       throw new BadRequestException(`Không thể xoá config hệ thống "${config.name}"`);
     }
     await this.configRepo.delete(id);
+    if (callerId) {
+      this.auditService.logActionAsync(callerId, 'DELETE_ASSIGNMENT_GROUP', 'assignment_group', id, config, null);
+    }
     return { deleted: true };
   }
 
