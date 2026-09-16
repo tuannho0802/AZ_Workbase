@@ -2673,4 +2673,39 @@ font hệ điều hành).
 >   duyệt thật (Tooltip bám đúng vị trí hover, chữ dài không khoảng trắng bị cắt "...", không tràn khung) vì
 >   không verify được bằng `tsc`/`vitest`/`build`.
 > - Không có test tự động cho hành vi CSS (ellipsis/Tooltip position) - nếu bug tái phát sau này, cân nhắc
->   thêm Playwright/visual regression test riêng cho phần này thay vì chỉ dựa vào review bằng mắt.
+>   thêm Playwright/visual regression test riêng cho phần này thay vì chỉ dựa vào review bằng mắt.\
+
+## [2026-09-16 10:50] | Fix mock queryRunner.manager thiếu ở roles.service.spec.ts | [Status: Success]
+
+**Actor:** Agent
+
+**Files Changed:**
+- `backend/src/modules/roles/roles.service.spec.ts` — thêm mock `AuditService` (import + provider trong
+  `TestingModule`, vì `RolesService` đã inject `AuditService` để gọi `logActionAsync()` ở các hàm
+  create/update/delete Role và set/xoá override phòng ban/vị trí — module test cũ hoàn toàn thiếu provider
+  này); thêm `findOne: jest.fn().mockResolvedValue({ id: 1 })` vào `mockQueryRunner.manager` (dùng cho
+  pessimistic lock mới thêm ngày 2026-09-16 trong `updateDepartmentOverride`/`updatePositionOverride` để fix
+  race condition double-click — service không đọc giá trị trả về, chỉ cần không throw).
+
+**Root Cause:**
+> Báo cáo phiên trước ghi nhận lỗi là "mock queryRunner.manager thiếu hàm findOne/save" — kiểm tra lại code
+> thật thấy KHÔNG chính xác: `save`/`delete`/`find` đã có mock từ trước. Nguyên nhân thật có 2 lớp: (1)
+> `RolesService` đã thêm dependency `AuditService` (audit log cho role) nhưng file test hoàn toàn chưa khai
+> báo provider này → toàn bộ 29 test lỗi "Nest can't resolve dependencies"; sau khi thêm mock AuditService,
+> lộ ra lớp thứ 2: code thật (`updateDepartmentOverride`/`updatePositionOverride`) đã thêm
+> `queryRunner.manager.findOne(RoleEntity, { lock: 'pessimistic_write' })` để fix race condition (theo comment
+> trong code, sửa cùng ngày 2026-09-16) — nhưng mock chưa cập nhật theo, thiếu hẳn hàm `findOne`.
+
+**Solution:**
+> Thêm mock `AuditService` (`logAction`, `logActionAsync`) làm provider trong `TestingModule`; thêm
+> `manager.findOne` vào `mockQueryRunner` trả về object giả bất kỳ (service không dùng giá trị trả về).
+
+**Verify thật (chạy lại toàn bộ, không tin theo báo cáo cũ):**
+- `npx jest src/modules/roles/roles.service.spec.ts`: **29/29 pass**.
+- `npx tsc --noEmit` (toàn backend): **0 lỗi**.
+- `npx jest` (toàn bộ backend): **36 test suites / 666 test — pass 100%**.
+
+**Notes:**
+> Việc audit log mở rộng cho `link-groups`, `media-sources`, `zk-device`, `storage`, `uploads` và fix dropdown
+> FE `ACTION_META`/`ENTITY_TYPE_LABELS` (theo báo cáo phiên trước) — chưa xác minh lại trong phiên này, cần
+> audit code thật ở phiên tiếp theo trước khi tin đã xong hay chưa.
