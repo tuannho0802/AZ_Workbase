@@ -125,14 +125,17 @@ export const NAV_ITEMS: NavItem[] = [
     description: 'Nhật ký thay đổi gộp của mọi Công việc định kỳ (bulk xoá, dọn dẹp theo khoảng ngày)',
     icon: <HistoryOutlined />,
     path: '/lich-su-cong-viec',
-    // Khớp @RequirePermission('periodic_tasks.view') ở 2 endpoint GET (xem
-    // lịch sử) trong periodic-tasks.controller.ts - GIỐNG mục "Công việc định
-    // kỳ" ở trên (tái dùng permission đã có, không tạo key mới). Bulk
-    // xoá/dọn dẹp dùng riêng `periodic_tasks.delete` được check ở CHÍNH trang
-    // (ẩn nút, không phải ẩn cả mục nav) vì đó là hành động phụ, không phải
-    // điều kiện để VÀO trang.
+    // ⚠️ FIX BUG THẬT (migration SplitPeriodicTasksAuditViewPermission -
+    // TÁCH khỏi periodic_tasks.view): trước đây tái dùng CHUNG permission
+    // với mục "Công việc định kỳ" ở trên, nên Admin không thể bật/tắt trang
+    // Lịch sử độc lập - giờ dùng permission RIÊNG `periodic_tasks.audit_view`,
+    // khớp 2 endpoint GET `audit-logs`/`audit-logs/actions` đã đổi trong
+    // `periodic-tasks.controller.ts` cùng migration. Bulk xoá/dọn dẹp vẫn
+    // dùng riêng `periodic_tasks.delete` được check ở CHÍNH trang (ẩn nút,
+    // không phải ẩn cả mục nav) vì đó là hành động phụ, không phải điều kiện
+    // để VÀO trang.
     roles: null,
-    permission: 'periodic_tasks.view',
+    permission: 'periodic_tasks.audit_view',
   },
   {
     key: 'nghi-phep',

@@ -84,10 +84,12 @@ const TaskHistoryMobileCard = ({ record }: { record: PeriodicTaskAuditLogGlobal 
  * xem (BE tự lọc qua `PeriodicTaskAccessHelper.applyViewFilter()`, FE không
  * cần tự lọc), có filter đủ bộ + bulk xoá/dọn dẹp theo khoảng ngày.
  *
- * Permission: `periodic_tasks.view` để xem, `periodic_tasks.delete` (vốn chỉ
- * seed Admin, xem PERMISSIONS.md) để bulk xoá/dọn dẹp - mirror `audit.manage`
- * của trang `/audit-logs` nhưng TÁI DÙNG permission đã có sẵn của module này
- * thay vì tạo permission key mới.
+ * Permission: `periodic_tasks.audit_view` để xem (permission RIÊNG, đã tách
+ * khỏi `periodic_tasks.view` qua migration `SplitPeriodicTasksAuditViewPermission`
+ * - trước đây tái dùng chung với trang "Công việc định kỳ" nên Admin không
+ * bật/tắt độc lập được), `periodic_tasks.delete` (vốn chỉ seed Admin, xem
+ * PERMISSIONS.md) để bulk xoá/dọn dẹp - mirror `audit.manage` của trang
+ * `/audit-logs`.
  */
 export default function TaskHistoryPage() {
   const { can, isLoading: permissionsLoading } = useMyPermissions();
@@ -107,7 +109,7 @@ export default function TaskHistoryPage() {
   const canManage = can('periodic_tasks.delete');
 
   useEffect(() => {
-    if (!permissionsLoading && user && !can('periodic_tasks.view')) {
+    if (!permissionsLoading && user && !can('periodic_tasks.audit_view')) {
       message.warning('Bạn không có quyền truy cập trang này');
       router.replace('/customers');
     }
@@ -158,7 +160,7 @@ export default function TaskHistoryPage() {
   }, [page, pageSize, search, filterAction, dateRange, message]);
 
   useEffect(() => {
-    if (user && can('periodic_tasks.view')) {
+    if (user && can('periodic_tasks.audit_view')) {
       fetchLogs(page, pageSize);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -311,7 +313,7 @@ export default function TaskHistoryPage() {
     onChange: (keys: React.Key[]) => setSelectedRowKeys(keys),
   } : undefined;
 
-  if (permissionsLoading || !can('periodic_tasks.view')) {
+  if (permissionsLoading || !can('periodic_tasks.audit_view')) {
     return null;
   }
 
