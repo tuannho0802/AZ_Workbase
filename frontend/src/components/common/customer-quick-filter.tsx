@@ -29,10 +29,12 @@ const { RangePicker } = DatePicker;
  * không làm Popover quá dài. Có thể mở rộng thêm sau nếu chủ dự án yêu cầu.
  *
  * `dateFrom`/`dateTo` - MỚI (2026-09-16, yêu cầu chủ dự án "filter từ ngày
- * XX -> ngày yy đầy đủ"): lọc theo "Ngày nhập khách" (`customers.createdAt`),
- * mirror ĐÚNG field BE đã hỗ trợ sẵn ở `customers.api.ts`/`CustomerFilters.tsx`
- * (route `GET /customers?dateFrom&dateTo`), chỉ trước đây popup nhanh này
- * chưa có UI cho nó.
+ * XX -> ngày yy đầy đủ"): lọc theo "Ngày nhập khách" = `customers.inputDate`
+ * (KHÔNG phải `createdAt` - 2 cột khác nhau khi Import Excel hàng loạt,
+ * xem JSDoc `CustomersService.findAll()`), mirror ĐÚNG field BE đã hỗ trợ
+ * sẵn ở `customers.api.ts`/`CustomerFilters.tsx` (route
+ * `GET /customers?dateFrom&dateTo` -> BE tự so `customer.inputDate`), chỉ
+ * trước đây popup nhanh này chưa có UI cho nó.
  */
 export interface CustomerQuickFilters {
   source?: string;
