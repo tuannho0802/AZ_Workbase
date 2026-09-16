@@ -780,11 +780,35 @@ export default function PeriodicTasksPage() {
                                 {chain && <TaskChainBadge chain={chain} currentTaskId={record.id} resolveTask={resolveChainTask} />}
                             </Space>
                         </div>
-                        {record.note && (
+                        {/* BUG THẬT (2026-09-16, chủ dự án báo): trước đây CHỈ hiện
+                            `record.note`, thiếu hẳn `record.description` - giờ Tooltip
+                            hiện CẢ 2 mục có nhãn riêng, dòng xem trước ưu tiên Ghi chú
+                            (giữ đúng UI cũ) nhưng fallback sang Mô tả nếu Task chỉ có
+                            Mô tả mà không có Ghi chú (trước đây bị ẩn hẳn). Mirror ĐÚNG
+                            cách làm ở `TaskMiniCard.tsx` (Kanban/Agenda) để 2 nơi đồng
+                            nhất, không lệch UI. */}
+                        {(record.note || record.description) && (
                             <div>
-                                <Tooltip title={record.note}>
+                                <Tooltip
+                                    title={
+                                        <div style={{ maxWidth: 280 }}>
+                                            {record.description && (
+                                                <div>
+                                                    <div style={{ fontWeight: 600 }}>Mô tả:</div>
+                                                    <div style={{ whiteSpace: 'pre-wrap' }}>{record.description}</div>
+                                                </div>
+                                            )}
+                                            {record.note && (
+                                                <div style={{ marginTop: record.description ? 8 : 0 }}>
+                                                    <div style={{ fontWeight: 600 }}>Ghi chú:</div>
+                                                    <div style={{ whiteSpace: 'pre-wrap' }}>{record.note}</div>
+                                                </div>
+                                            )}
+                                        </div>
+                                    }
+                                >
                                     <Text type="secondary" style={{ fontSize: 12 }} ellipsis>
-                                        {record.note}
+                                        {record.note || record.description}
                                     </Text>
                                 </Tooltip>
                             </div>

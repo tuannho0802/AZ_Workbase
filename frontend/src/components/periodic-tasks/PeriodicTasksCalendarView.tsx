@@ -79,6 +79,19 @@ export function PeriodicTasksCalendarView({ tasks, onSelectTask, chains, resolve
                                         {PERIOD_TYPE_LABELS[task.periodType]} · {task.status?.name ?? '—'} ·{' '}
                                         {task.primaryAssignee?.name ?? '—'}
                                     </div>
+                                    {/* Trước đây thiếu HẲN Mô tả/Ghi chú ở Calendar (bug chủ
+                                        dự án báo 2026-09-16) - thêm để đồng nhất với
+                                        TaskMiniCard (Kanban/Agenda) và Table gốc. */}
+                                    {task.description && (
+                                        <div style={{ fontSize: 12, marginTop: 4, borderTop: '1px solid rgba(255,255,255,0.2)', paddingTop: 4 }}>
+                                            <strong>Mô tả:</strong> {task.description}
+                                        </div>
+                                    )}
+                                    {task.note && (
+                                        <div style={{ fontSize: 12, marginTop: 4, borderTop: task.description ? undefined : '1px solid rgba(255,255,255,0.2)', paddingTop: 4 }}>
+                                            <strong>Ghi chú:</strong> {task.note}
+                                        </div>
+                                    )}
                                     {chain && resolveChainTask && (
                                         <div style={{ fontSize: 12, marginTop: 4, borderTop: '1px solid rgba(255,255,255,0.2)', paddingTop: 4 }}>
                                             <LinkOutlined /> Chuỗi liên kết ({chain.memberIds.length} Công việc):

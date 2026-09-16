@@ -1,6 +1,6 @@
 'use client';
 
-import { Card, Tag, Tooltip, Space, Typography } from 'antd';
+import { Card, Tag, Tooltip, Typography } from 'antd';
 import { LockOutlined } from '@ant-design/icons';
 import dayjs from 'dayjs';
 import { PeriodicTask, PERIOD_TYPE_LABELS } from '@/lib/api/periodic-tasks.api';
@@ -58,28 +58,61 @@ export function TaskMiniCard({
         ? (users as Array<{ id: number; name: string }>).find((u) => u.id === task.lockedById)?.name
         : undefined;
 
+    // BUG THẬT (2026-09-16, chữ tràn ra ngoài Card ở Kanban - xem ảnh chủ dự
+    // án gửi): `Space` cũ bọc khối tiêu đề/ghi chú KHÔNG co được (flex item
+    // mặc định `min-width: auto`), khiến div con cứ nới rộng theo chữ dài
+    // thay vì co lại theo bề rộng Card 300px rồi mới wrap/ellipsis bên trong.
+    // Đổi sang flex row tự viết tay: cột nội dung có `flex: 1, minWidth: 0`
+    // (bắt buộc để flex item CHO PHÉP co nhỏ hơn nội dung của nó - đây là chỗ
+    // hay bị quên nhất khi debug tràn chữ trong flexbox), cột `extra` giữ
+    // nguyên kích thước (`flexShrink: 0`).
+    const hasNote = !!task.note;
+    const hasDescription = !!task.description;
+
     return (
         <Card size={size} style={{ marginBottom: 8, ...style }} onClick={onClick} className={className}>
-            <Space align="start" style={{ width: '100%', justifyContent: 'space-between' }}>
-                <div>
-                    <Space align="start" wrap size={4}>
+            <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 8, width: '100%' }}>
+                <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'flex-start', gap: 4 }}>
                         <TaskTitlePill title={task.title} color={task.color} />
                         {chainInfo && resolveChainTask && (
                             <TaskChainBadge chain={chainInfo} currentTaskId={task.id} resolveTask={resolveChainTask} />
                         )}
-                    </Space>
-                    {task.note && (
-                        <div>
-                            <Tooltip title={task.note}>
-                                <Text type="secondary" style={{ fontSize: 12 }} ellipsis>
-                                    {task.note}
+                    </div>
+                    {/* Trước đây CHỈ hiện `task.note`, thiếu hẳn `task.description`
+                        (bug chủ dự án báo 2026-09-16) - giờ Tooltip hiện CẢ 2 mục
+                        có nhãn riêng, dòng xem trước ưu tiên Ghi chú (giữ đúng UI
+                        cũ khi cả 2 cùng có) nhưng fallback sang Mô tả nếu Task
+                        chỉ có Mô tả mà không có Ghi chú (trước đây bị ẩn hẳn). */}
+                    {(hasNote || hasDescription) && (
+                        <div style={{ minWidth: 0 }}>
+                            <Tooltip
+                                title={
+                                    <div style={{ maxWidth: 280 }}>
+                                        {hasDescription && (
+                                            <div>
+                                                <div style={{ fontWeight: 600 }}>Mô tả:</div>
+                                                <div style={{ whiteSpace: 'pre-wrap' }}>{task.description}</div>
+                                            </div>
+                                        )}
+                                        {hasNote && (
+                                            <div style={{ marginTop: hasDescription ? 8 : 0 }}>
+                                                <div style={{ fontWeight: 600 }}>Ghi chú:</div>
+                                                <div style={{ whiteSpace: 'pre-wrap' }}>{task.note}</div>
+                                            </div>
+                                        )}
+                                    </div>
+                                }
+                            >
+                                <Text type="secondary" style={{ fontSize: 12, display: 'block' }} ellipsis>
+                                    {task.note || task.description}
                                 </Text>
                             </Tooltip>
                         </div>
                     )}
                 </div>
-                {extra}
-            </Space>
+                {extra && <div style={{ flexShrink: 0 }}>{extra}</div>}
+            </div>
 
             <div style={{ marginTop: 8, display: 'flex', flexWrap: 'wrap', gap: 4, alignItems: 'center' }}>
                 <Tag>{PERIOD_TYPE_LABELS[task.periodType]}</Tag>

@@ -32,6 +32,14 @@ export function TaskTitlePill({ title, color, style }: TaskTitlePillProps) {
                 whiteSpace: 'normal',
                 lineHeight: 1.4,
                 padding: '2px 8px',
+                // BUG THẬT (2026-09-16, chữ tràn ra ngoài Card ở Kanban): `Tag`
+                // mặc định là `inline-block`, không tự co theo bề rộng cha dù
+                // đã có `whiteSpace: normal` - khi tiêu đề dài, Tag cứ nới rộng
+                // theo chữ thay vì XUỐNG DÒNG, tràn khỏi mép Card 300px. Bắt
+                // buộc `maxWidth: 100%` + `boxSizing: border-box` để Tag tự
+                // giới hạn theo cha rồi mới wrap chữ bên trong đúng như kỳ vọng.
+                maxWidth: '100%',
+                boxSizing: 'border-box',
                 ...style,
             }}
         >
