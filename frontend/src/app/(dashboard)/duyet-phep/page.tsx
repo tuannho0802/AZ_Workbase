@@ -28,6 +28,32 @@ const STATUS_MAP: Record<string, { text: string; color: string }> = {
   pending:   { text: 'Chờ duyệt', color: 'processing' },
 };
 
+/**
+ * REASON_ELLIPSIS_STYLE - FIX BUG THẬT (2026-09-16, báo trực tiếp qua ảnh
+ * chụp "vị trí tooltip đang sai"): cột "Lý do"/"Lý do từ chối" trước đây chỉ
+ * `<span>{reason}</span>` TRẦN, không tự giới hạn bề rộng - phần cắt/ẩn text
+ * tràn HOÀN TOÀN dựa vào CSS `ellipsis: true` ở cấp CỘT (Table tự bọc 1 div
+ * overflow:hidden quanh Ô, không phải quanh `<span>`). Vì `<span>` không có
+ * `maxWidth`, `getBoundingClientRect()` của nó (dùng để antd `Tooltip` định
+ * vị popup) trả về bề rộng THẬT của toàn bộ text CHƯA cắt (kéo dài tràn khỏi
+ * Ô, chỉ đang bị Ô cha ẩn đi chứ không đổi kích thước layout của span) - kết
+ * quả Tooltip bật lên lệch hẳn sang phải, xa hẳn vị trí chữ "..." nhìn thấy
+ * (đúng hiện tượng trong ảnh chụp: Tooltip đè lên tận cột Đính kèm/Duyệt).
+ * Style này ép chính `<span>` (đối tượng trigger Tooltip) tự cắt bằng
+ * `overflow:hidden`/`textOverflow:ellipsis`/`maxWidth:100%` - mirror ĐÚNG
+ * cách các nơi khác trong app làm (`ellipsisTextStyle` ở
+ * `customer-option-render.tsx`, `TaskMiniCard.tsx`) - lúc này bounding rect
+ * của span khớp ĐÚNG phần chữ nhìn thấy, Tooltip định vị đúng chỗ.
+ */
+const REASON_ELLIPSIS_STYLE: React.CSSProperties = {
+  display: 'inline-block',
+  maxWidth: '100%',
+  overflow: 'hidden',
+  textOverflow: 'ellipsis',
+  whiteSpace: 'nowrap',
+  verticalAlign: 'top',
+};
+
 // ── mobile card – pending ────────────────────────────────────────────────────
 function PendingMobileCard({
   record,
@@ -414,7 +440,11 @@ export default function ApprovalPage() {
       width: 160,
       ellipsis: true,
       render: (reason: string) =>
-        reason ? <Tooltip title={reason}><span>{reason}</span></Tooltip> : '-'
+        reason ? (
+          <Tooltip title={reason}>
+            <span style={REASON_ELLIPSIS_STYLE}>{reason}</span>
+          </Tooltip>
+        ) : '-'
     },
     {
       title: 'Đính kèm',
@@ -513,7 +543,11 @@ export default function ApprovalPage() {
       width: 150,
       ellipsis: true,
       render: (reason: string) =>
-        reason ? <Tooltip title={reason}><span>{reason}</span></Tooltip> : '-'
+        reason ? (
+          <Tooltip title={reason}>
+            <span style={REASON_ELLIPSIS_STYLE}>{reason}</span>
+          </Tooltip>
+        ) : '-'
     },
     {
       title: 'Người duyệt',
@@ -544,7 +578,7 @@ export default function ApprovalPage() {
       render: (reason: string) =>
         reason ? (
           <Tooltip title={reason}>
-            <span style={{ color: '#f5222d', fontStyle: 'italic' }}>{reason}</span>
+            <span style={{ ...REASON_ELLIPSIS_STYLE, color: '#f5222d', fontStyle: 'italic' }}>{reason}</span>
           </Tooltip>
         ) : '-'
     }
