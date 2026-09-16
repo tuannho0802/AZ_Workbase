@@ -66,22 +66,22 @@ export class RolesController {
   @Post('roles')
   @RequirePermission('roles.manage')
   @ApiOperation({ summary: 'Tạo Role mới (tuỳ chỉnh, ngoài 4 role hệ thống)' })
-  createRole(@Body() dto: CreateRoleDto) {
-    return this.rolesService.createRole(dto);
+  createRole(@Body() dto: CreateRoleDto, @GetUser() user: any) {
+    return this.rolesService.createRole(dto, user.id);
   }
 
   @Patch('roles/:id')
   @RequirePermission('roles.manage')
   @ApiOperation({ summary: 'Sửa tên/mô tả Role (không đổi được code)' })
-  updateRole(@Param('id', ParseIntPipe) id: number, @Body() dto: UpdateRoleDto) {
-    return this.rolesService.updateRole(id, dto);
+  updateRole(@Param('id', ParseIntPipe) id: number, @Body() dto: UpdateRoleDto, @GetUser() user: any) {
+    return this.rolesService.updateRole(id, dto, user.id);
   }
 
   @Delete('roles/:id')
   @RequirePermission('roles.manage')
   @ApiOperation({ summary: 'Xoá Role tuỳ chỉnh' })
-  deleteRole(@Param('id', ParseIntPipe) id: number) {
-    return this.rolesService.deleteRole(id);
+  deleteRole(@Param('id', ParseIntPipe) id: number, @GetUser() user: any) {
+    return this.rolesService.deleteRole(id, user.id);
   }
 
   @Patch('roles/:id/permissions')
@@ -90,8 +90,9 @@ export class RolesController {
   updateRolePermissions(
     @Param('id', ParseIntPipe) id: number,
     @Body() dto: UpdateRolePermissionsDto,
+    @GetUser() user: any,
   ) {
-    return this.rolesService.updateRolePermissions(id, dto);
+    return this.rolesService.updateRolePermissions(id, dto, user.id);
   }
 
   @Get('roles/:id/department-overrides')
@@ -108,8 +109,9 @@ export class RolesController {
     @Param('id', ParseIntPipe) roleId: number,
     @Param('departmentId', ParseIntPipe) departmentId: number,
     @Body() dto: UpdateRolePermissionsDto,
+    @GetUser() user: any,
   ) {
-    return this.rolesService.updateDepartmentOverride(roleId, departmentId, dto);
+    return this.rolesService.updateDepartmentOverride(roleId, departmentId, dto, user.id);
   }
 
   @Delete('roles/:id/department-overrides/:departmentId')
@@ -118,8 +120,9 @@ export class RolesController {
   deleteDepartmentOverride(
     @Param('id', ParseIntPipe) roleId: number,
     @Param('departmentId', ParseIntPipe) departmentId: number,
+    @GetUser() user: any,
   ) {
-    return this.rolesService.deleteDepartmentOverride(roleId, departmentId);
+    return this.rolesService.deleteDepartmentOverride(roleId, departmentId, user.id);
   }
 
   // ⚠️ 3 endpoint dưới đây COPY GẦN NHƯ Y HỆT 3 endpoint `department-overrides`
@@ -139,8 +142,9 @@ export class RolesController {
     @Param('id', ParseIntPipe) roleId: number,
     @Param('positionId', ParseIntPipe) positionId: number,
     @Body() dto: UpdateRolePermissionsDto,
+    @GetUser() user: any,
   ) {
-    return this.rolesService.updatePositionOverride(roleId, positionId, dto);
+    return this.rolesService.updatePositionOverride(roleId, positionId, dto, user.id);
   }
 
   @Delete('roles/:id/position-overrides/:positionId')
@@ -149,7 +153,8 @@ export class RolesController {
   deletePositionOverride(
     @Param('id', ParseIntPipe) roleId: number,
     @Param('positionId', ParseIntPipe) positionId: number,
+    @GetUser() user: any,
   ) {
-    return this.rolesService.deletePositionOverride(roleId, positionId);
+    return this.rolesService.deletePositionOverride(roleId, positionId, user.id);
   }
 }

@@ -4,6 +4,7 @@ import { NotFoundException, ConflictException, BadRequestException } from '@nest
 import { LeaveTypesService } from './leave-types.service';
 import { LeaveType } from '../../database/entities/leave-type.entity';
 import { LeaveRequest } from '../../database/entities/leave-request.entity';
+import { AuditService } from '../audit/audit.service';
 
 describe('LeaveTypesService', () => {
   let service: LeaveTypesService;
@@ -28,6 +29,7 @@ describe('LeaveTypesService', () => {
     count: jest.fn(),
     createQueryBuilder: jest.fn(),
   };
+  const mockAuditService = { logActionAsync: jest.fn(), logAction: jest.fn() };
 
   beforeEach(async () => {
     jest.clearAllMocks();
@@ -37,6 +39,7 @@ describe('LeaveTypesService', () => {
         LeaveTypesService,
         { provide: getRepositoryToken(LeaveType), useValue: mockLeaveTypeRepo },
         { provide: getRepositoryToken(LeaveRequest), useValue: mockLeaveRequestRepo },
+        { provide: AuditService, useValue: mockAuditService },
       ],
     }).compile();
 

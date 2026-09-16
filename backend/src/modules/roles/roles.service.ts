@@ -16,6 +16,7 @@ import { CreateRoleDto } from './dto/create-role.dto';
 import { UpdateRoleDto } from './dto/update-role.dto';
 import { UpdateRolePermissionsDto } from './dto/update-role-permissions.dto';
 import { PermissionsService } from '../permissions/permissions.service';
+import { AuditService } from '../audit/audit.service';
 
 // Permission "chìa khoá" - phải LUÔN còn ít nhất 1 role nắm giữ, nếu không
 // sẽ không còn ai (kể cả Admin) có thể tự mở lại trang Phân quyền để sửa
@@ -40,6 +41,7 @@ export class RolesService {
     private readonly positionRepo: Repository<Position>,
     private readonly dataSource: DataSource,
     private readonly permissionsService: PermissionsService,
+    private readonly auditService: AuditService,
   ) {}
 
   async findAllRoles() {
@@ -98,7 +100,7 @@ export class RolesService {
     }));
   }
 
-  async createRole(dto: CreateRoleDto) {
+  async createRole(dto: CreateRoleDto, callerId?: number) {
     const existing = await this.roleRepo.findOne({ where: { code: dto.code } });
     if (existing) {
       throw new ConflictException(`Mã role "${dto.code}" đã tồn tại`);
@@ -111,11 +113,16 @@ export class RolesService {
       isSystem: false,
       ...(dto.color !== undefined ? { color: dto.color } : {}),
     });
-    return this.roleRepo.save(role);
+    const saved = await this.roleRepo.save(role);
+    if (callerId) {
+      this.auditService.logActionAsync(callerId, 'CREATE_ROLE', 'role', saved.id, null, saved);
+    }
+    return saved;
   }
 
-  async updateRole(id: number, dto: UpdateRoleDto) {
+  async updateRole(id: number, dto: UpdateRoleDto, callerId?: number) {
     const role = await this.getRoleOrThrow(id);
+    const before = { ...role };
 
     if (dto.name !== undefined) role.name = dto.name;
     if (dto.description !== undefined) role.description = dto.description;
@@ -126,10 +133,13 @@ export class RolesService {
     // nhưng invalidate cho chắc - tránh 1 nhánh code nào đó lỡ cache luôn cả
     // object role (không chỉ map permission) trong tương lai.
     this.permissionsService.invalidate(role.code);
+    if (callerId) {
+      this.auditService.logActionAsync(callerId, 'UPDATE_ROLE', 'role', saved.id, before, saved);
+    }
     return saved;
   }
 
-  async deleteRole(id: number): Promise<{ deleted: true; usersReassigned: number }> {
+  async deleteRole(id: number, callerId?: number): Promise<{ deleted: true; usersReassigned: number }> {
     const role = await this.getRoleOrThrow(id);
 
     if (role.isSystem) {
@@ -151,10 +161,14 @@ export class RolesService {
     this.permissionsService.invalidate(role.code);
     this.permissionsService.invalidate(Role.EMPLOYEE);
 
+    if (callerId) {
+      this.auditService.logActionAsync(callerId, 'DELETE_ROLE', 'role', id, role, { usersReassigned });
+    }
+
     return { deleted: true, usersReassigned };
   }
 
-  async updateRolePermissions(id: number, dto: UpdateRolePermissionsDto) {
+  async updateRolePermissions(id: number, dto: UpdateRolePermissionsDto, callerId?: number) {
     const role = await this.getRoleOrThrow(id);
 
     const allPermissions = await this.permissionRepo.find();
@@ -229,6 +243,16 @@ export class RolesService {
     });
 
     this.permissionsService.invalidate(role.code);
+    if (callerId) {
+      this.auditService.logActionAsync(
+        callerId,
+        'UPDATE_ROLE_PERMISSIONS',
+        'role',
+        id,
+        null,
+        { roleCode: role.code, permissions: dto.permissions },
+      );
+    }
     return this.findAllRoles().then((roles) => roles.find((r) => r.id === id));
   }
 
@@ -303,7 +327,7 @@ export class RolesService {
     return Array.from(grouped.values());
   }
 
-  async updateDepartmentOverride(roleId: number, departmentId: number, dto: UpdateRolePermissionsDto) {
+  async updateDepartmentOverride(roleId: number, departmentId: number, dto: UpdateRolePermissionsDto, callerId?: number) {
     const role = await this.roleRepo.findOneBy({ id: roleId });
     if (!role) throw new NotFoundException('Role không tồn tại');
 
@@ -354,6 +378,17 @@ export class RolesService {
 
       this.permissionsService.invalidate(role.code, departmentId);
 
+      if (callerId) {
+        this.auditService.logActionAsync(
+          callerId,
+          'SET_ROLE_DEPARTMENT_OVERRIDE',
+          'role',
+          roleId,
+          null,
+          { roleCode: role.code, departmentId, permissions: dto.permissions },
+        );
+      }
+
       return { success: true, count: newRows.length };
     } catch (err) {
       await queryRunner.rollbackTransaction();
@@ -363,12 +398,22 @@ export class RolesService {
     }
   }
 
-  async deleteDepartmentOverride(roleId: number, departmentId: number) {
+  async deleteDepartmentOverride(roleId: number, departmentId: number, callerId?: number) {
     const role = await this.roleRepo.findOneBy({ id: roleId });
     if (!role) throw new NotFoundException('Role không tồn tại');
 
     await this.rolePermissionRepo.delete({ roleId, departmentId });
     this.permissionsService.invalidate(role.code, departmentId);
+    if (callerId) {
+      this.auditService.logActionAsync(
+        callerId,
+        'DELETE_ROLE_DEPARTMENT_OVERRIDE',
+        'role',
+        roleId,
+        { roleCode: role.code, departmentId },
+        null,
+      );
+    }
     return { success: true };
   }
 
@@ -409,7 +454,7 @@ export class RolesService {
     return Array.from(grouped.values());
   }
 
-  async updatePositionOverride(roleId: number, positionId: number, dto: UpdateRolePermissionsDto) {
+  async updatePositionOverride(roleId: number, positionId: number, dto: UpdateRolePermissionsDto, callerId?: number) {
     const role = await this.roleRepo.findOneBy({ id: roleId });
     if (!role) throw new NotFoundException('Role không tồn tại');
 
@@ -457,6 +502,17 @@ export class RolesService {
 
       this.permissionsService.invalidate(role.code, undefined, positionId);
 
+      if (callerId) {
+        this.auditService.logActionAsync(
+          callerId,
+          'SET_ROLE_POSITION_OVERRIDE',
+          'role',
+          roleId,
+          null,
+          { roleCode: role.code, positionId, permissions: dto.permissions },
+        );
+      }
+
       return { success: true, count: newRows.length };
     } catch (err) {
       await queryRunner.rollbackTransaction();
@@ -466,12 +522,22 @@ export class RolesService {
     }
   }
 
-  async deletePositionOverride(roleId: number, positionId: number) {
+  async deletePositionOverride(roleId: number, positionId: number, callerId?: number) {
     const role = await this.roleRepo.findOneBy({ id: roleId });
     if (!role) throw new NotFoundException('Role không tồn tại');
 
     await this.rolePermissionRepo.delete({ roleId, positionId });
     this.permissionsService.invalidate(role.code, undefined, positionId);
+    if (callerId) {
+      this.auditService.logActionAsync(
+        callerId,
+        'DELETE_ROLE_POSITION_OVERRIDE',
+        'role',
+        roleId,
+        { roleCode: role.code, positionId },
+        null,
+      );
+    }
     return { success: true };
   }
 }
