@@ -116,8 +116,16 @@ export class PeriodicTaskLinksService {
     // Phase 7 (PLAN mục 2.6): audit log gắn vào Task CON (`childId`, phía
     // `:id` path đang được PATCH liên kết) - Task cha không đổi dữ liệu của
     // chính nó nên không cần log thêm 1 dòng phía cha.
+    //
+    // ⚠️ FIX BUG THẬT (đợt rà soát toàn bộ audit log - cùng lớp bug
+    // `positionId`): trước đây log thẳng `parentTaskId` (số thô) - `parent`
+    // đã được fetch đầy đủ ở trên (bắt buộc phải tồn tại để validate rank),
+    // dùng lại tiêu đề của nó thay vì để lộ ID vô nghĩa.
+    // Dùng key `name` (không phải `title`) cho object con - `AuditDiffViewer`
+    // (generic object handling) chỉ nhận diện `.name`/`.code`, xem
+    // `formatValue()`.
     this.auditService.logActionAsync(childId, user.id, PeriodicTaskAuditAction.PARENT_LINKED, null, {
-      parentTaskId: parentId,
+      parentTask: { id: parent.id, name: parent.title },
     });
 
     return saved;
@@ -141,8 +149,11 @@ export class PeriodicTaskLinksService {
 
     await this.linkRepo.remove(existing);
 
+    // ⚠️ FIX BUG THẬT (xem chú thích ở `addLink()`): resolve tiêu đề Task cha
+    // thay vì log raw `parentTaskId`.
+    const parentTask = await this.taskRepo.findOne({ where: { id: parentId }, select: ['id', 'title'] });
     this.auditService.logActionAsync(childId, user.id, PeriodicTaskAuditAction.PARENT_UNLINKED, {
-      parentTaskId: parentId,
+      parentTask: { id: parentId, name: parentTask?.title ?? null },
     });
 
     return { deleted: true };

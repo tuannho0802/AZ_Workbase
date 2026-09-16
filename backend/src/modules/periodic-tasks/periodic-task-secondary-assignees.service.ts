@@ -86,8 +86,16 @@ export class PeriodicTaskSecondaryAssigneesService {
     });
     await this.secondaryRepo.save(created);
 
+    // ⚠️ FIX BUG THẬT (đợt rà soát toàn bộ audit log theo yêu cầu người dùng
+    // - cùng lớp bug `positionId` ở `UsersService`): trước đây log thẳng
+    // `{ userId: dto.userId }` (số thô) - KHÔNG chỉ hiển thị ID vô nghĩa mà
+    // còn tệ hơn: key `userId` nằm trong `ignoreKeys` của `AuditDiffViewer`
+    // (dành để lọc field kỹ thuật như `userId` của chính dòng log), nên dòng
+    // audit này de facto KHÔNG HIỂN THỊ GÌ (mất trắng thông tin "đã thêm ai").
+    // Đổi sang key riêng `secondaryAssignee` + resolve tên từ `targetUser`
+    // đã fetch/validate ở trên (không query lại).
     this.auditService.logActionAsync(taskId, user.id, PeriodicTaskAuditAction.SECONDARY_ASSIGNEE_ADDED, null, {
-      userId: dto.userId,
+      secondaryAssignee: { id: targetUser.id, name: targetUser.name },
     });
 
     return this.queryAssigneeUsers(taskId);
@@ -110,8 +118,12 @@ export class PeriodicTaskSecondaryAssigneesService {
 
     await this.secondaryRepo.remove(existing);
 
+    // ⚠️ FIX BUG THẬT (xem chú thích ở `addSecondaryAssignee()`): cùng lỗi
+    // `userId` bị `AuditDiffViewer` lọc mất - resolve tên người vừa bị gỡ
+    // (fetch riêng vì `existing` không load kèm relation `user`).
+    const removedUser = await this.userRepo.findOne({ where: { id: targetUserId } });
     this.auditService.logActionAsync(taskId, user.id, PeriodicTaskAuditAction.SECONDARY_ASSIGNEE_REMOVED, {
-      userId: targetUserId,
+      secondaryAssignee: { id: targetUserId, name: removedUser?.name ?? null },
     });
 
     return { deleted: true };

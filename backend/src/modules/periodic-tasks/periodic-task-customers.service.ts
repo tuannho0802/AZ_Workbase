@@ -155,8 +155,20 @@ export class PeriodicTaskCustomersService {
       // (`toInsert`, không phải toàn bộ `uniqueIds` đã gửi lên) - tránh log
       // sai "đã gắn" cho những customerId thật ra đã tồn tại từ trước
       // (idempotent add, xem comment phía trên).
+      //
+      // ⚠️ FIX BUG THẬT (đợt rà soát toàn bộ audit log - cùng lớp bug
+      // `positionId`/`assignedToIds`): trước đây log thẳng `customerIds`
+      // (mảng ID số thô) - `AuditDiffViewer` không biết đọc mảng số thuần
+      // nên chỉ hiện "N mục", không có tên khách hàng nào. Fetch tên các
+      // customer vừa gắn (chỉ những dòng THẬT SỰ mới `toInsert`) để dựng
+      // mảng `{id, name}` - viewer đã có sẵn nhánh generic hiển thị mảng
+      // object có `.name` dạng Tag (xem `formatValue()`).
+      const linkedCustomers = await this.customerRepo.find({
+        where: { id: In(toInsert) },
+        select: ['id', 'name'],
+      });
       this.auditService.logActionAsync(taskId, user.id, PeriodicTaskAuditAction.CUSTOMER_LINKED, null, {
-        customerIds: toInsert,
+        customers: linkedCustomers.map((c) => ({ id: c.id, name: c.name })),
       });
     }
 
@@ -181,8 +193,14 @@ export class PeriodicTaskCustomersService {
 
     await this.linkRepo.remove(existing);
 
+    // ⚠️ FIX BUG THẬT (xem chú thích ở `addCustomers()`): resolve tên thay
+    // vì log raw `customerId`.
+    const removedCustomer = await this.customerRepo.findOne({
+      where: { id: customerId },
+      select: ['id', 'name'],
+    });
     this.auditService.logActionAsync(taskId, user.id, PeriodicTaskAuditAction.CUSTOMER_UNLINKED, {
-      customerId,
+      customer: { id: customerId, name: removedCustomer?.name ?? null },
     });
 
     return { deleted: true };
