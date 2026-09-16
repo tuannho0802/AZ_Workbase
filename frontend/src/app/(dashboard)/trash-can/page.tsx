@@ -30,6 +30,7 @@ function TrashMobileCard({
   pageSize,
   onRestore,
   onHardDelete,
+  canHardDelete,
 }: {
   record: Customer;
   index: number;
@@ -37,6 +38,7 @@ function TrashMobileCard({
   pageSize: number;
   onRestore: (id: number) => void;
   onHardDelete: (id: number) => void;
+    canHardDelete: boolean;
 }) {
   return (
     <Card
@@ -76,18 +78,20 @@ function TrashMobileCard({
           </Button>
         </Popconfirm>
 
-        <Popconfirm
-          title="Xóa vĩnh viễn?"
-          description="Hành động này KHÔNG THỂ hoàn tác."
-          onConfirm={() => onHardDelete(record.id)}
-          okText="Xóa vĩnh viễn"
-          okButtonProps={{ danger: true }}
-          cancelText="Hủy"
-        >
-          <Button danger size="small" icon={<DeleteOutlined />} style={{ flex: 1 }}>
-            Xóa vĩnh viễn
-          </Button>
-        </Popconfirm>
+        {canHardDelete && (
+          <Popconfirm
+            title="Xóa vĩnh viễn?"
+            description="Hành động này KHÔNG THỂ hoàn tác."
+            onConfirm={() => onHardDelete(record.id)}
+            okText="Xóa vĩnh viễn"
+            okButtonProps={{ danger: true }}
+            cancelText="Hủy"
+          >
+            <Button danger size="small" icon={<DeleteOutlined />} style={{ flex: 1 }}>
+              Xóa vĩnh viễn
+            </Button>
+          </Popconfirm>
+        )}
       </div>
     </Card>
   );
@@ -131,11 +135,25 @@ export default function TrashCanPage() {
   // `user.role !== 'admin'` ở cả 3 chỗ (redirect, fetch guard, render guard)
   // - trang này thực ra được BE bảo vệ bởi `customers.trash_manage` (xem
   // @RequirePermission('customers.trash_manage') ở customers.controller.ts,
-  // 3 endpoint GET trash/restore/hard-delete), KHÔNG khoá cứng theo role. Nếu
-  // Admin cấp quyền này cho role khác qua trang Phân quyền, role đó vẫn bị
-  // chặn nhầm ở FE dù BE đã cho phép.
+  // GET trash + restore), KHÔNG khoá cứng theo role. Nếu Admin cấp quyền
+  // này cho role khác qua trang Phân quyền, role đó vẫn bị chặn nhầm ở FE
+  // dù BE đã cho phép.
+  //
+  // ⚠️ FIX BUG THẬT #2 (phát hiện khi audit lại sau migration
+  // `SplitCustomersHardDeletePermission`): endpoint hard-delete
+  // (`DELETE /customers/trash/:id/hard-delete`) đã tách sang permission
+  // RIÊNG `customers.hard_delete` (khác `customers.trash_manage`, xem
+  // `customers.controller.ts`) - nhưng nút "Xóa vĩnh viễn" ở trang này
+  // trước đó vẫn hiện cho BẤT KỲ ai vào được trang (chỉ cần
+  // `customers.trash_manage`), không check riêng `customers.hard_delete`.
+  // Hậu quả: 1 role chỉ được cấp "xem/khôi phục thùng rác" (an toàn) vẫn
+  // thấy nút xoá vĩnh viễn, bấm vào mới bị BE 403 - vi phạm nguyên tắc "BE
+  // 403 thì FE phải tự ẩn UI trước". Sửa: thêm `canHardDelete` riêng, ẩn
+  // hẳn nút/Popconfirm xoá vĩnh viễn (cả mobile card lẫn desktop table)
+  // nếu không có quyền này.
   const { can, isLoading: permissionsLoading } = useMyPermissions();
   const canAccessTrash = can('customers.trash_manage');
+  const canHardDelete = can('customers.hard_delete');
 
   useEffect(() => {
     const check = () => setIsMobile(window.innerWidth < 768);
@@ -285,18 +303,20 @@ export default function TrashCanPage() {
             </Tooltip>
           </Popconfirm>
 
-          <Popconfirm
-            title="Xóa vĩnh viễn?"
-            description="Hành động này KHÔNG THỂ hoàn tác."
-            onConfirm={() => handleHardDelete(record.id)}
-            okText="Xóa vĩnh viễn"
-            okButtonProps={{ danger: true }}
-            cancelText="Hủy"
-          >
-            <Tooltip title="Xóa vĩnh viễn">
-              <Button type="text" danger size="small" icon={<DeleteOutlined />} />
-            </Tooltip>
-          </Popconfirm>
+          {canHardDelete && (
+            <Popconfirm
+              title="Xóa vĩnh viễn?"
+              description="Hành động này KHÔNG THỂ hoàn tác."
+              onConfirm={() => handleHardDelete(record.id)}
+              okText="Xóa vĩnh viễn"
+              okButtonProps={{ danger: true }}
+              cancelText="Hủy"
+            >
+              <Tooltip title="Xóa vĩnh viễn">
+                <Button type="text" danger size="small" icon={<DeleteOutlined />} />
+              </Tooltip>
+            </Popconfirm>
+          )}
         </Space>
       ),
     },
@@ -376,6 +396,7 @@ export default function TrashCanPage() {
                   pageSize={pageSize}
                   onRestore={handleRestore}
                   onHardDelete={handleHardDelete}
+                  canHardDelete={canHardDelete}
                 />
               ))
             )}
