@@ -2709,3 +2709,70 @@ font hệ điều hành).
 > Việc audit log mở rộng cho `link-groups`, `media-sources`, `zk-device`, `storage`, `uploads` và fix dropdown
 > FE `ACTION_META`/`ENTITY_TYPE_LABELS` (theo báo cáo phiên trước) — chưa xác minh lại trong phiên này, cần
 > audit code thật ở phiên tiếp theo trước khi tin đã xong hay chưa.
+
+
+
+## [2026-09-16 11:08] | Audit log BE — rà soát toàn diện + xử lý 4/~10 module thiếu | [Status: In-Progress]
+
+**Actor:** Agent
+
+**⚠️ Cảnh báo quan trọng cho phiên sau:** Báo cáo của phiên trước (dán lại trong chat, không phải entry log
+thật) khẳng định 4 module `customer-statuses`, `positions`, `assignment-groups`, `periodic-task-statuses`
+**đã xong audit log (báo "46/46 test pass")** — kiểm tra lại code thật (`grep AuditService`) cho thấy **báo
+cáo đó SAI HOÀN TOÀN**, cả 4 module hoàn toàn chưa có dòng `AuditService` nào. Đã tự sửa lại đúng trong phiên
+này (xem "Files Changed"). Bài học: **không tin báo cáo tóm tắt dán lại trong chat, luôn `grep`/đọc code thật
+trước khi coi 1 việc là "đã xong".**
+
+**Đã audit toàn bộ 22 module backend** (`grep -rn "AuditService\|logAction" <module>` + liệt kê endpoint
+POST/PATCH/PUT/DELETE từng controller) để có bức tranh đầy đủ ai đã có/chưa có audit log:
+
+- **Đã có AuditService từ trước (xác nhận đúng, không đổi gì):** `auth`, `customers` (customers.service.ts —
+  nhưng `customers.import.service.ts` riêng biệt CHƯA có, cần kiểm tra kỹ ở phiên sau), `departments`,
+  `leave-requests`, `leave-types`, `periodic-tasks` (+4 service con), `roles`, `users`.
+- **CHƯA có, ĐÃ XỬ LÝ trong phiên này (service + controller + spec test, verify thật từng module):**
+  `customer-statuses` (14/14 test), `positions` (8/8 test), `assignment-groups` (9/9 test),
+  `periodic-task-statuses` (15/15 test) — action đã thêm: `CREATE_CUSTOMER_STATUS/UPDATE_.../DELETE_...`,
+  `CREATE_POSITION/UPDATE_.../DELETE_...`, `CREATE_ASSIGNMENT_GROUP/UPDATE_.../DELETE_...`,
+  `CREATE_PERIODIC_TASK_STATUS/UPDATE_.../DELETE_...`.
+- **CHƯA có, CHƯA XỬ LÝ (còn lại cho phiên sau, đã xác định rõ endpoint mutation cần audit):**
+  - `link-groups` module (4 service riêng: `link-groups.service.ts` — create/update/activate/deactivate/delete;
+    `link-categories.service.ts` — create/update/lock/unlock/delete; `link-group-managers.service.ts` —
+    add/remove managers, add/remove content-staff; `customer-group-memberships.service.ts` — update membership)
+  - `media-sources.service.ts` — create/update/lock/unlock/delete
+  - `storage.service.ts` — `PATCH usage/limit` (đổi config), `DELETE media` (đơn), `POST media/bulk-delete`
+    (`POST usage/refresh` KHÔNG cần audit — chỉ tính lại cache, không đổi dữ liệu nghiệp vụ)
+  - `uploads.service.ts` — `PATCH limits` (đổi config; `POST avatar/presign` KHÔNG cần audit — không ghi DB)
+  - `ui-visibility.service.ts` — `PUT`/`DELETE roles/:id/ui-visibility-rules` — ưu tiên vì liên quan phân quyền
+  - `zk-device.service.ts` — map-user, rematch, xoá map-user, cleanup attendance-logs, sync (`adms.controller.ts`
+    `POST cdata` là webhook thiết bị chấm công gọi tự động, KHÔNG audit vì không phải hành động người dùng)
+  - `customers.import.service.ts` — cần xác nhận có audit riêng cho bulk import hay đi qua `customers.service.ts`
+    đã có audit (chưa kiểm tra kỹ trong phiên này)
+  - Các module xác nhận KHÔNG cần audit (chỉ đọc/report, không mutation nghiệp vụ):
+    `attendance-export` (chỉ generate file export), `reports` (chỉ đọc), `permissions` (không có controller
+    riêng, chỉ cache layer)
+
+**Files Changed (phiên này):**
+- `backend/src/modules/customer-statuses/customer-statuses.service.ts`,
+  `customer-statuses.controller.ts`, `customer-statuses.service.spec.ts`
+- `backend/src/modules/positions/positions.service.ts`, `positions.controller.ts`,
+  `positions.service.spec.ts`
+- `backend/src/modules/assignment-groups/assignment-groups.service.ts`,
+  `assignment-groups.controller.ts`, `assignment-groups.service.spec.ts`
+- `backend/src/modules/periodic-task-statuses/periodic-task-statuses.service.ts`,
+  `periodic-task-statuses.controller.ts`, `periodic-task-statuses.service.spec.ts`
+- `backend/src/modules/roles/roles.service.spec.ts` (entry riêng ở trên, [2026-09-16 10:50])
+
+**Verify thật (chạy lại toàn bộ sau tất cả thay đổi):**
+- `npx tsc --noEmit` (toàn backend): **0 lỗi**.
+- `npx jest` (toàn backend): **36 test suites / 666 test — pass 100%**.
+
+**Notes:**
+> Chưa động tới FE (dropdown `ACTION_META`/`ENTITY_TYPE_LABELS` ở `audit-logs/page.tsx` vẫn thiếu nhãn cho
+> toàn bộ action mới thêm hôm nay: `*_CUSTOMER_STATUS`, `*_POSITION`, `*_ASSIGNMENT_GROUP`,
+> `*_PERIODIC_TASK_STATUS`, cộng các action cũ còn thiếu nhãn theo ảnh chụp màn hình người dùng gửi
+> (`UPDATE_NOTE`, `APPROVE_USER`, `RESTORE_USER`, `SOFT_DELETE_USER`, `CHANGE_OWN_PASSWORD`,
+> `RECLAIM_ASSIGNMENT`, `USER_SELF_REGISTER`, `UPDATE_USER_PROFILE`...). Nên làm SAU KHI toàn bộ action BE đã
+> chốt xong (để không phải sửa danh sách nhãn 2 lần).
+> Thứ tự ưu tiên đề xuất cho phiên sau: `ui-visibility` (nhạy cảm phân quyền) → `link-groups` (nhiều endpoint
+> nhất) → `media-sources`/`zk-device`/`storage`/`uploads` → `customers.import.service.ts` (xác minh) → fix
+> dropdown FE.
