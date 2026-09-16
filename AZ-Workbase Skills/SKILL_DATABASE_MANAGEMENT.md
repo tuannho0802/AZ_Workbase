@@ -853,7 +853,43 @@ Khi chạy lệnh TypeORM CLI trên Windows, không trỏ vào `.bin/typeorm`. T
 "typeorm:ts": "ts-node -r tsconfig-paths/register ./node_modules/typeorm/cli.js"
 ```
 
+## 13. Checklist BẮT BUỘC sau khi Restore/Clone DB (MySQL FULLTEXT + InnoDB internal state)
+
+> [!CAUTION]
+> Bug thật đã xảy ra (2026-09-16, xem `WORKFLOW_LOG.md`): search khách hàng theo tên ngắn có chữ "a"
+> (Hana/Lan/An/Mai...) ra 0 kết quả trên DB local, dù `npm run migration:show` báo migration liên quan đã
+> chạy `[X]`. Nguyên nhân: **1 số cấu hình InnoDB nội bộ (FULLTEXT stopword-table) KHÔNG nằm trong DDL**, nên
+> `mysqldump`/restore hoặc clone DB qua GUI (TablePlus, "Local" app, HeidiSQL...) **âm thầm làm mất** cấu hình
+> đó khi FULLTEXT index bị rebuild lúc import — dù bảng `migrations` (chỉ là DATA, copy nguyên theo dump) vẫn
+> báo đã chạy. Đây là loại bug **migration-status nói dối** — `[X]` chỉ nghĩa là dòng đó từng chạy trên DB
+> NGUỒN của bản dump, không đảm bảo state InnoDB nội bộ trên DB ĐÍCH (sau restore) còn đúng.
+
+**Sau MỌI lần** restore DB từ file dump, clone DB qua GUI, hoặc import DB production về máy local để debug —
+chạy ngay:
+
+```bash
+cd backend
+npx ts-node -r tsconfig-paths/register scripts/verify-fulltext-stopword.ts --fix
+```
+
+Script tự kiểm tra bằng bằng chứng thật (canary bigram trong `information_schema.INNODB_FT_INDEX_TABLE`,
+**không** dùng `information_schema.INNODB_FT_CONFIG` vì cột `stopword_table_name` của bảng đó đã được xác
+nhận có thể trả về giá trị sai lệch/stale trong trường hợp này) và tự rebuild lại FULLTEXT index đúng cấu
+hình nếu phát hiện sai — an toàn chạy lại nhiều lần (idempotent).
+
+Nếu chỉ muốn kiểm tra (không tự sửa, dùng cho CI/health-check), bỏ `--fix`:
+```bash
+npx ts-node -r tsconfig-paths/register scripts/verify-fulltext-stopword.ts
+```
+Exit code khác 0 nghĩa là đang sai cấu hình.
+
+**Quyền cần có:** cả migration gốc lẫn script này đều cần quyền `SUPER` hoặc
+`SYSTEM_VARIABLES_ADMIN`/`SESSION_VARIABLES_ADMIN` (MySQL 8+) để `SET SESSION/GLOBAL` các biến
+`innodb_ft_*`. Nếu thiếu quyền, lệnh sẽ báo lỗi rõ ràng ngay (không rơi vào trạng thái dở dang) — cần xin
+nâng quyền cho user DB tương ứng.
+
 ---
 
-**Skill Version:** 1.1.0  
-**Last Updated:** 2026-04-02
+**Skill Version:** 1.2.0  
+**Last Updated:** 2026-09-16 — Thêm mục 13 (checklist FULLTEXT stopword sau restore/clone DB, bug thật đã gặp
+và fix, xem `WORKFLOW_LOG.md` entry 2026-09-16 14:40)
