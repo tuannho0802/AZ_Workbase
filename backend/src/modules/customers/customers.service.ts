@@ -969,6 +969,27 @@ export class CustomersService {
     };
   }
 
+  /**
+   * ⚠️ FIX BUG THẬT (đợt rà soát toàn bộ audit log - cùng lớp bug
+   * `positionId`/note ở trên): `CREATE_DEPOSIT`/`DELETE_DEPOSIT` trước đây
+   * log thẳng cả entity `Deposit` (`savedDeposit`/`deposit`) - entity này có
+   * CẢ cột FK thô (`customerId`, `createdById`, `createdBy_OLD`) LẪN quan hệ
+   * `customer` (chỉ có `{id}` rút gọn vì tạo bằng `{ id: customerId }`, dễ
+   * rơi vào nhánh "Dữ liệu phức hợp") - không field nào trong số này có ý
+   * nghĩa khi xem lại lịch sử nạp tiền của 1 customer (đang xem NGAY TRONG
+   * trang chi tiết customer đó). `createdBy`/`createdById` bỏ hẳn - luôn
+   * TRÙNG "Người thực hiện" đã hiển thị riêng (`log.user`), đúng nguyên tắc
+   * đã áp dụng cho `buildNoteAuditSnapshot()`/`buildCustomerAuditSnapshot()`.
+   */
+  private buildDepositAuditSnapshot(deposit: Deposit): Record<string, unknown> {
+    return {
+      amount: deposit.amount,
+      depositDate: deposit.depositDate,
+      broker: deposit.broker,
+      note: deposit.note,
+    };
+  }
+
   async createNote(
     customerId: number,
     dto: CreateCustomerNoteDto,
@@ -1220,7 +1241,7 @@ export class CustomersService {
       'deposit',
       (savedDeposit as any).id,
       null,
-      savedDeposit,
+      this.buildDepositAuditSnapshot(savedDeposit),
     );
 
     return savedDeposit;
@@ -1255,7 +1276,7 @@ export class CustomersService {
         'DELETE_DEPOSIT',
         'deposit',
         id,
-        deposit,
+        this.buildDepositAuditSnapshot(deposit),
         null,
       );
     }
@@ -1963,6 +1984,33 @@ export class CustomersService {
   }
 
   /**
+   * ⚠️ FIX BUG THẬT (đợt rà soát toàn bộ audit log - cùng lớp bug
+   * `positionId`): `updateAssignment()` trước đây log thẳng `{ ...assignment }`
+   * (spread raw entity) - vừa lộ FK thô (`assignedToId`/`previousAssigneeId`/
+   * `assignedById`/`customerId` dạng số), vừa kéo theo NGUYÊN object quan hệ
+   * `customer` đầy đủ (được load ở `relations: ['customer']`) vào snapshot -
+   * quá nặng và chắc chắn rơi vào nhánh "Dữ liệu phức hợp" ở FE. `assignedBy`
+   * không đưa vào đây (trùng "Người thực hiện" đã hiển thị riêng), `customer`
+   * cũng bỏ (đang xem lịch sử của đúng 1 khách hàng, biết trước rồi).
+   */
+  private buildAssignmentAuditSnapshot(
+    assignment: CustomerAssignment,
+    overrides?: { assignedTo?: User | null },
+  ): Record<string, unknown> {
+    const assignedTo =
+      overrides && 'assignedTo' in overrides ? overrides.assignedTo : (assignment.assignedTo ?? null);
+
+    return {
+      assignedTo: assignedTo ? { id: assignedTo.id, name: assignedTo.name } : null,
+      previousAssignee: assignment.previousAssignee
+        ? { id: assignment.previousAssignee.id, name: assignment.previousAssignee.name }
+        : null,
+      status: assignment.status,
+      reason: assignment.reason,
+    };
+  }
+
+  /**
    * Sửa 1 lượt gán data đang ACTIVE: đổi người nhận (assignedToId) và/hoặc
    * lý do (reason) NGAY TRÊN dòng assignment hiện có - không tạo dòng mới,
    * không cần thu hồi trước.
@@ -1979,9 +2027,12 @@ export class CustomersService {
     callerRole: string,
     permissionScope: string | null | undefined,
   ) {
+    // ⚠️ FIX BUG THẬT (xem JSDoc `buildAssignmentAuditSnapshot()`): load kèm
+    // `assignedTo`/`previousAssignee` để snapshot "trước khi sửa" đọc được
+    // tên, không chỉ ID thô.
     const assignment = await this.assignmentRepository.findOne({
       where: { id: assignmentId },
-      relations: ['customer'],
+      relations: ['customer', 'assignedTo', 'previousAssignee'],
     });
     if (!assignment) {
       throw new NotFoundException('Không tìm thấy lượt gán data');
@@ -1997,7 +2048,9 @@ export class CustomersService {
       );
     }
 
-    const oldData = { ...assignment };
+    // ⚠️ Chụp "trước khi sửa" NGAY Ở ĐÂY (trước bất kỳ mutation nào bên dưới)
+    // - mirror `CustomersService.update()`/`UsersService.update()`.
+    const before = this.buildAssignmentAuditSnapshot(assignment);
 
     if (dto.reason !== undefined) {
       assignment.reason = dto.reason;
@@ -2034,6 +2087,15 @@ export class CustomersService {
       }
 
       const oldAssignedToId = assignment.assignedToId;
+      // ⚠️ FIX BUG THẬT (TypeORM Relation Precedence - xem
+      // `SKILL_NESTJS_BACKEND.md` mục 13, mirror `CustomersService.update()`
+      // đổi department): phải gán CẢ object quan hệ `previousAssignee`
+      // (không chỉ `previousAssigneeId` số) bằng chính người đang giữ
+      // TRƯỚC lúc đổi (`assignment.assignedTo` hiện tại, trước dòng gán đè
+      // `newUser` bên dưới) - nếu không, `buildAssignmentAuditSnapshot()`
+      // sau khi save đọc `previousAssignee` cũ/rỗng thay vì người vừa bị
+      // thay thế.
+      assignment.previousAssignee = assignment.assignedTo ?? null;
       assignment.previousAssigneeId = oldAssignedToId;
       assignment.assignedToId = dto.assignedToId;
       assignment.assignedTo = newUser;
@@ -2053,8 +2115,12 @@ export class CustomersService {
       'UPDATE_ASSIGNMENT',
       'customer_assignment',
       assignment.id,
-      oldData,
-      saved,
+      before,
+      // `saved.assignedTo` có thể chỉ còn object rút gọn nếu vừa đổi (gán
+      // trực tiếp `newUser` ở trên thì vẫn đầy đủ - không cần override thêm,
+      // khác `customer.department` ở `CustomersService.update()` vốn bị gán
+      // tạm `{ id }`).
+      this.buildAssignmentAuditSnapshot(saved),
     );
 
     return saved;
@@ -2342,9 +2408,17 @@ export class CustomersService {
   }
 
   async hardDelete(id: number, adminId: number) {
+    // ⚠️ FIX BUG THẬT (đợt rà soát toàn bộ audit log - cùng lớp bug
+    // `positionId`): trước đây `findOne()` KHÔNG load relations, nên
+    // `snapshot = { ...customer }` bên dưới chỉ còn lại `salesUserId`/
+    // `marketingUserId`/`departmentId` dạng số thô (object quan hệ vốn dĩ
+    // undefined khi không load). Load kèm relations để dùng
+    // `buildCustomerAuditSnapshot()` chung, đồng nhất với `create()`/
+    // `update()`.
     const customer = await this.customersRepository.findOne({
       where: { id } as any,
       withDeleted: true,
+      relations: ['salesUser', 'marketingUser', 'department'],
     });
 
     if (!customer) throw new NotFoundException('Không tìm thấy khách hàng');
@@ -2353,7 +2427,7 @@ export class CustomersService {
         'Chỉ có thể hard delete khách hàng đã soft delete trước',
       );
 
-    const snapshot = { ...customer };
+    const snapshot = this.buildCustomerAuditSnapshot(customer);
     await this.customersRepository.delete(id); // hard delete
 
     this.auditService.logActionAsync(
