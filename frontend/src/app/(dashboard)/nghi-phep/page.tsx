@@ -315,6 +315,15 @@ export default function LeaveRequestsPage() {
       render: (name: string) => name || '-'
     },
     {
+      title: 'Lý do từ chối',
+      dataIndex: 'rejectionReason',
+      ellipsis: true,
+      render: (rejectionReason: string | null, record: LeaveRequest) =>
+        record.status === 'rejected' && rejectionReason ? (
+          <Text type="danger" italic>{rejectionReason}</Text>
+        ) : '-'
+    },
+    {
       title: 'Đính kèm',
       render: (_: any, record: LeaveRequest) => (
         <AttachmentsViewerButton requestId={record.id} />
