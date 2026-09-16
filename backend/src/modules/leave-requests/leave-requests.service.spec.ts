@@ -12,6 +12,7 @@ import { Role } from '../../common/enums/role.enum';
 import { PermissionScope } from '../../database/entities/role-permission.entity';
 import { UploadsService } from '../uploads/uploads.service';
 import { LeaveTypesService } from '../leave-types/leave-types.service';
+import { AuditService } from '../audit/audit.service';
 
 describe('LeaveRequestsService - Phan quyen duyet (PERMISSIONS.md muc 2.6)', () => {
   let service: LeaveRequestsService;
@@ -63,6 +64,13 @@ describe('LeaveRequestsService - Phan quyen duyet (PERMISSIONS.md muc 2.6)', () 
     getByCode: jest.fn().mockResolvedValue({ code: 'annual', deductsAnnualBalance: true }),
     assertExists: jest.fn().mockResolvedValue({ code: 'annual', deductsAnnualBalance: true, isPaid: true }),
   };
+  // ⚠️ MỚI: LeaveRequestsService giờ inject AuditService (ghi log tạo/duyệt/
+  // từ chối/huỷ đơn) - mock rỗng, không có test nào ở file này assert lời
+  // gọi audit cụ thể, chỉ cần constructor resolve được.
+  const mockAuditService = {
+    logActionAsync: jest.fn(),
+    logAction: jest.fn(),
+  };
 
   const buildQueryBuilderMock = (result: any[]) => {
     const qb: any = {
@@ -88,6 +96,7 @@ describe('LeaveRequestsService - Phan quyen duyet (PERMISSIONS.md muc 2.6)', () 
         { provide: getRepositoryToken(LeaveRequestAttachment), useValue: mockAttachmentRepo },
         { provide: UploadsService, useValue: mockUploadsService },
         { provide: LeaveTypesService, useValue: mockLeaveTypesService },
+        { provide: AuditService, useValue: mockAuditService },
       ],
     }).compile();
 

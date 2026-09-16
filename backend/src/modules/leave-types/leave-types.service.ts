@@ -5,6 +5,7 @@ import { LeaveType } from '../../database/entities/leave-type.entity';
 import { LeaveRequest } from '../../database/entities/leave-request.entity';
 import { CreateLeaveTypeDto } from './dto/create-leave-type.dto';
 import { UpdateLeaveTypeDto } from './dto/update-leave-type.dto';
+import { AuditService } from '../audit/audit.service';
 
 /**
  * LeaveTypesService - CRUD "Loại đơn nghỉ phép", thay thế ENUM cứng cũ ở
@@ -20,6 +21,7 @@ export class LeaveTypesService {
     private readonly leaveTypeRepo: Repository<LeaveType>,
     @InjectRepository(LeaveRequest)
     private readonly leaveRequestRepo: Repository<LeaveRequest>,
+    private readonly auditService: AuditService,
   ) {}
 
   /**
@@ -71,7 +73,7 @@ export class LeaveTypesService {
     return type;
   }
 
-  async create(dto: CreateLeaveTypeDto): Promise<LeaveType> {
+  async create(dto: CreateLeaveTypeDto, callerId?: number): Promise<LeaveType> {
     const existing = await this.leaveTypeRepo.findOne({ where: { code: dto.code } });
     if (existing) {
       throw new ConflictException(`Mã loại phép "${dto.code}" đã tồn tại`);
@@ -87,11 +89,16 @@ export class LeaveTypesService {
       deductsAnnualBalance: dto.deductsAnnualBalance ?? false,
       sortOrder: dto.sortOrder ?? 0,
     });
-    return this.leaveTypeRepo.save(type);
+    const saved = await this.leaveTypeRepo.save(type);
+    if (callerId) {
+      this.auditService.logActionAsync(callerId, 'CREATE_LEAVE_TYPE', 'leave_type', saved.id, null, saved);
+    }
+    return saved;
   }
 
-  async update(id: number, dto: UpdateLeaveTypeDto): Promise<LeaveType> {
+  async update(id: number, dto: UpdateLeaveTypeDto, callerId?: number): Promise<LeaveType> {
     const type = await this.findOne(id);
+    const before = { ...type };
 
     if (dto.name !== undefined) type.name = dto.name;
     if (dto.description !== undefined) type.description = dto.description ?? null;
@@ -100,7 +107,11 @@ export class LeaveTypesService {
     if (dto.deductsAnnualBalance !== undefined) type.deductsAnnualBalance = dto.deductsAnnualBalance;
     if (dto.sortOrder !== undefined) type.sortOrder = dto.sortOrder;
 
-    return this.leaveTypeRepo.save(type);
+    const saved = await this.leaveTypeRepo.save(type);
+    if (callerId) {
+      this.auditService.logActionAsync(callerId, 'UPDATE_LEAVE_TYPE', 'leave_type', saved.id, before, saved);
+    }
+    return saved;
   }
 
   /**
@@ -117,7 +128,7 @@ export class LeaveTypesService {
    * lượng) để FE hiện modal bắt chọn, KHÔNG tự ý chọn hộ 1 fallback mặc định
    * nào - đây là quyết định nghiệp vụ, phải do người xoá chọn.
    */
-  async remove(id: number, fallbackCode?: string): Promise<{ deleted: true; reassignedCount: number }> {
+  async remove(id: number, fallbackCode?: string, callerId?: number): Promise<{ deleted: true; reassignedCount: number }> {
     const type = await this.findOne(id);
 
     if (type.isSystem) {
@@ -151,6 +162,10 @@ export class LeaveTypesService {
       }
       await manager.remove(LeaveType, type);
     });
+
+    if (callerId) {
+      this.auditService.logActionAsync(callerId, 'DELETE_LEAVE_TYPE', 'leave_type', id, type, { reassignedCount: inUseCount });
+    }
 
     return { deleted: true, reassignedCount: inUseCount };
   }

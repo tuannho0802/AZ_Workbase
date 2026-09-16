@@ -1,4 +1,4 @@
-import { Controller, Get, Post, Patch, Delete, Param, Body, Query, UseGuards, ParseIntPipe } from '@nestjs/common';
+import { Controller, Get, Post, Patch, Delete, Param, Body, Query, UseGuards, ParseIntPipe, Request } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiBearerAuth, ApiQuery } from '@nestjs/swagger';
 import { LeaveTypesService } from './leave-types.service';
 import { CreateLeaveTypeDto } from './dto/create-leave-type.dto';
@@ -42,15 +42,15 @@ export class LeaveTypesController {
   @Post()
   @RequirePermission('leave_types.manage')
   @ApiOperation({ summary: 'Tạo loại phép mới (Admin, Assistant)' })
-  create(@Body() dto: CreateLeaveTypeDto) {
-    return this.leaveTypesService.create(dto);
+  create(@Body() dto: CreateLeaveTypeDto, @Request() req) {
+    return this.leaveTypesService.create(dto, req.user.id);
   }
 
   @Patch(':id')
   @RequirePermission('leave_types.manage')
   @ApiOperation({ summary: 'Sửa tên/mô tả/màu/hưởng lương/thứ tự loại phép (không đổi được code)' })
-  update(@Param('id', ParseIntPipe) id: number, @Body() dto: UpdateLeaveTypeDto) {
-    return this.leaveTypesService.update(id, dto);
+  update(@Param('id', ParseIntPipe) id: number, @Body() dto: UpdateLeaveTypeDto, @Request() req) {
+    return this.leaveTypesService.update(id, dto, req.user.id);
   }
 
   @Delete(':id')
@@ -65,7 +65,7 @@ export class LeaveTypesController {
     required: false,
     description: 'Mã loại phép thay thế - bắt buộc nếu loại phép đang xoá còn đơn nghỉ phép dùng',
   })
-  remove(@Param('id', ParseIntPipe) id: number, @Query('fallbackCode') fallbackCode?: string) {
-    return this.leaveTypesService.remove(id, fallbackCode);
+  remove(@Param('id', ParseIntPipe) id: number, @Query('fallbackCode') fallbackCode: string | undefined, @Request() req) {
+    return this.leaveTypesService.remove(id, fallbackCode, req.user.id);
   }
 }

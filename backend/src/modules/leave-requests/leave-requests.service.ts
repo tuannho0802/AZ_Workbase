@@ -11,6 +11,7 @@ import { Role } from '../../common/enums/role.enum';
 import { PermissionScope } from '../../database/entities/role-permission.entity';
 import { UploadsService } from '../uploads/uploads.service';
 import { LeaveTypesService } from '../leave-types/leave-types.service';
+import { AuditService } from '../audit/audit.service';
 
 /**
  * PERMISSIONS.md mục 2.6 - ĐÃ ĐƯỢC GENERALIZE sang scope-based:
@@ -45,6 +46,11 @@ export class LeaveRequestsService {
     // toàn so sánh cứng `leaveType === LeaveType.ANNUAL/SICK` cũ (giờ
     // leave_type là VARCHAR tự do, xem CreateLeaveTypes1781500000000).
     private readonly leaveTypesService: LeaveTypesService,
+    // ⚠️ MỚI: trước đây module này KHÔNG ghi audit log chung (audit_logs) -
+    // toàn bộ vòng đời đơn nghỉ phép (tạo/duyệt/từ chối/huỷ) hoàn toàn không
+    // để lại dấu vết ở trang /audit-logs. AuditModule là @Global() nên chỉ
+    // cần inject thẳng, không cần khai báo import ở leave-requests.module.ts.
+    private readonly auditService: AuditService,
   ) {}
 
   /**
@@ -204,6 +210,21 @@ export class LeaveRequestsService {
       );
       await this.attachmentRepo.save(rows);
     }
+
+    this.auditService.logActionAsync(
+      requesterId,
+      'CREATE_LEAVE_REQUEST',
+      'leave_request',
+      saved.id,
+      null,
+      {
+        leaveType: leaveType.name,
+        startDate: dto.startDate,
+        endDate: dto.endDate,
+        totalDays: saved.totalDays,
+        reason: saved.reason,
+      },
+    );
 
     return saved;
   }
@@ -421,7 +442,23 @@ export class LeaveRequestsService {
     request.approverId = approverId;
     request.approvedAt = new Date();
     
-    return this.leaveRequestRepo.save(request);
+    const saved = await this.leaveRequestRepo.save(request);
+
+    this.auditService.logActionAsync(
+      approverId,
+      'APPROVE_LEAVE_REQUEST',
+      'leave_request',
+      saved.id,
+      { status: LeaveStatus.PENDING },
+      {
+        status: LeaveStatus.APPROVED,
+        requester: { id: request.requesterId, name: request.requester.name },
+        leaveType: request.leaveType,
+        totalDays: request.totalDays,
+      },
+    );
+
+    return saved;
   }
   
   /**
@@ -468,7 +505,22 @@ export class LeaveRequestsService {
     request.rejectedAt = new Date();
     request.rejectionReason = rejectionReason;
     
-    return this.leaveRequestRepo.save(request);
+    const saved = await this.leaveRequestRepo.save(request);
+
+    this.auditService.logActionAsync(
+      approverId,
+      'REJECT_LEAVE_REQUEST',
+      'leave_request',
+      saved.id,
+      { status: LeaveStatus.PENDING },
+      {
+        status: LeaveStatus.REJECTED,
+        requester: { id: request.requesterId, name: request.requester.name },
+        rejectionReason,
+      },
+    );
+
+    return saved;
   }
   
   /**
@@ -511,6 +563,15 @@ export class LeaveRequestsService {
       );
       await this.attachmentRepo.remove(attachments);
     }
+
+    this.auditService.logActionAsync(
+      requesterId,
+      'CANCEL_LEAVE_REQUEST',
+      'leave_request',
+      saved.id,
+      { status: LeaveStatus.PENDING },
+      { status: LeaveStatus.CANCELLED },
+    );
 
     return saved;
   }
