@@ -825,18 +825,20 @@ export default function PeriodicTasksPage() {
                             CHỮ "Mô tả:"/"Ghi chú:" (không Emoji - phản hồi chủ dự án:
                             Emoji khó hiểu, hiện lệch font tuỳ hệ điều hành). Mirror ĐÚNG
                             cách làm ở `TaskMiniCard.tsx` (Kanban/Agenda) để 2 nơi đồng
-                            nhất. */}
+                            nhất - kể cả phần nhãn đậm/to hơn nội dung (MỚI 2026-09-16,
+                            yêu cầu chủ dự án qua ảnh chụp "Xem theo Ngày"). */}
                         {record.description && (
                             <div style={{ minWidth: 0 }}>
                                 <Tooltip
                                     title={
                                         <div style={{ maxWidth: 280, whiteSpace: 'pre-wrap', overflowWrap: 'anywhere' }}>
-                                            {`Mô tả: ${record.description}`}
+                                            <span style={{ fontWeight: 600, fontSize: 13 }}>Mô tả:</span> {record.description}
                                         </div>
                                     }
                                 >
                                     <Text type="secondary" style={{ fontSize: 12, display: 'inline-block', maxWidth: '100%', verticalAlign: 'top' }} ellipsis>
-                                        {`Mô tả: ${record.description}`}
+                                        <span style={{ fontWeight: 600, fontSize: 13, color: 'rgba(0,0,0,0.75)' }}>Mô tả:</span>{' '}
+                                        {record.description}
                                     </Text>
                                 </Tooltip>
                             </div>
@@ -846,12 +848,15 @@ export default function PeriodicTasksPage() {
                                 <Tooltip
                                     title={
                                         <div style={{ maxWidth: 280, whiteSpace: 'pre-wrap', overflowWrap: 'anywhere' }}>
-                                            {`Ghi chú: ${record.note}`}
+                                            <span style={{ fontWeight: 600, fontSize: 13 }}>Ghi chú:</span> {record.note}
                                         </div>
                                     }
                                 >
                                     <Text type="secondary" italic style={{ fontSize: 12, display: 'inline-block', maxWidth: '100%', verticalAlign: 'top' }} ellipsis>
-                                        {`Ghi chú: ${record.note}`}
+                                        <span style={{ fontWeight: 600, fontSize: 13, color: 'rgba(0,0,0,0.75)', fontStyle: 'normal' }}>
+                                            Ghi chú:
+                                        </span>{' '}
+                                        {record.note}
                                     </Text>
                                 </Tooltip>
                             </div>

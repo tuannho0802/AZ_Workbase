@@ -81,15 +81,18 @@ export function PeriodicTasksCalendarView({ tasks, onSelectTask, chains, resolve
                                     </div>
                                     {/* Trước đây thiếu HẲN Mô tả/Ghi chú ở Calendar (bug chủ
                                         dự án báo 2026-09-16) - thêm để đồng nhất với
-                                        TaskMiniCard (Kanban/Agenda) và Table gốc. */}
+                                        TaskMiniCard (Kanban/Agenda) và Table gốc. Nhãn
+                                        "Mô tả:"/"Ghi chú:" to hơn nội dung 1px (13 so với
+                                        12, MỚI 2026-09-16, yêu cầu chủ dự án) - mirror ĐÚNG
+                                        `TaskMiniCard.tsx`/Table. */}
                                     {task.description && (
                                         <div style={{ fontSize: 12, marginTop: 4, borderTop: '1px solid rgba(255,255,255,0.2)', paddingTop: 4, maxWidth: 240, whiteSpace: 'pre-wrap', overflowWrap: 'anywhere' }}>
-                                            <strong>Mô tả:</strong> {task.description}
+                                            <strong style={{ fontSize: 13 }}>Mô tả:</strong> {task.description}
                                         </div>
                                     )}
                                     {task.note && (
                                         <div style={{ fontSize: 12, marginTop: 4, borderTop: task.description ? undefined : '1px solid rgba(255,255,255,0.2)', paddingTop: 4, maxWidth: 240, whiteSpace: 'pre-wrap', overflowWrap: 'anywhere' }}>
-                                            <strong>Ghi chú:</strong> {task.note}
+                                            <strong style={{ fontSize: 13 }}>Ghi chú:</strong> {task.note}
                                         </div>
                                     )}
                                     {chain && resolveChainTask && (

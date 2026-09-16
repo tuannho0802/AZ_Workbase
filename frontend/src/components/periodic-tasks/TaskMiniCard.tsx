@@ -118,18 +118,27 @@ export function TaskMiniCard({
                         khi dòng bị cắt/tràn). Dùng NHÃN CHỮ "Mô tả:"/"Ghi chú:"
                         (không dùng Emoji - phản hồi chủ dự án 2026-09-16: Emoji
                         khó hiểu, hiện thành ô vuông/icon lạ tuỳ font hệ điều
-                        hành) ở CẢ dòng xem trước lẫn trong Tooltip. */}
+                        hành) ở CẢ dòng xem trước lẫn trong Tooltip.
+
+                        MỚI (2026-09-16, yêu cầu chủ dự án qua ảnh chụp "Xem theo
+                        Ngày"): tách riêng nhãn "Mô tả:"/"Ghi chú:" ra `<span>` đậm
+                        (fontWeight 600) + to hơn nội dung 1px (13 so với 12) để dễ
+                        phân biệt nhãn với nội dung khi lướt nhanh - áp dụng ở CẢ
+                        dòng xem trước lẫn Tooltip. Nhãn "Ghi chú:" ép
+                        `fontStyle: 'normal'` vì `<Text italic>` cha làm nghiêng cả
+                        chữ - nhãn đậm nghiêng cùng lúc khó đọc hơn không nghiêng. */}
                     {hasDescription && (
                         <div style={{ minWidth: 0 }}>
                             <Tooltip
                                 title={
                                     <div style={{ maxWidth: 280, whiteSpace: 'pre-wrap', overflowWrap: 'anywhere' }}>
-                                        {`Mô tả: ${task.description}`}
+                                        <span style={{ fontWeight: 600, fontSize: 13 }}>Mô tả:</span> {task.description}
                                     </div>
                                 }
                             >
                                 <Text type="secondary" style={ellipsisTextStyle} ellipsis>
-                                    {`Mô tả: ${task.description}`}
+                                    <span style={{ fontWeight: 600, fontSize: 13, color: 'rgba(0,0,0,0.75)' }}>Mô tả:</span>{' '}
+                                    {task.description}
                                 </Text>
                             </Tooltip>
                         </div>
@@ -139,12 +148,15 @@ export function TaskMiniCard({
                             <Tooltip
                                 title={
                                     <div style={{ maxWidth: 280, whiteSpace: 'pre-wrap', overflowWrap: 'anywhere' }}>
-                                        {`Ghi chú: ${task.note}`}
+                                        <span style={{ fontWeight: 600, fontSize: 13 }}>Ghi chú:</span> {task.note}
                                     </div>
                                 }
                             >
                                 <Text type="secondary" italic style={ellipsisTextStyle} ellipsis>
-                                    {`Ghi chú: ${task.note}`}
+                                    <span style={{ fontWeight: 600, fontSize: 13, color: 'rgba(0,0,0,0.75)', fontStyle: 'normal' }}>
+                                        Ghi chú:
+                                    </span>{' '}
+                                    {task.note}
                                 </Text>
                             </Tooltip>
                         </div>
