@@ -1,7 +1,18 @@
-import { Injectable, BadRequestException, ForbiddenException, NotFoundException, InternalServerErrorException, Logger } from '@nestjs/common';
+import {
+  Injectable,
+  BadRequestException,
+  ForbiddenException,
+  NotFoundException,
+  InternalServerErrorException,
+  Logger,
+} from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository, Between, Not, In, Brackets } from 'typeorm';
-import { LeaveRequest, LeaveStatus, LeaveDuration } from '../../database/entities/leave-request.entity';
+import { Repository, In, Brackets } from 'typeorm';
+import {
+  LeaveRequest,
+  LeaveStatus,
+  LeaveDuration,
+} from '../../database/entities/leave-request.entity';
 import { LeaveRequestAttachment } from '../../database/entities/leave-request-attachment.entity';
 import { User } from '../../database/entities/user.entity';
 import { Department } from '../../database/entities/department.entity';
@@ -31,7 +42,7 @@ export class LeaveRequestsService {
   constructor(
     @InjectRepository(LeaveRequest)
     private leaveRequestRepo: Repository<LeaveRequest>,
-    
+
     @InjectRepository(User)
     private userRepo: Repository<User>,
 
@@ -90,11 +101,15 @@ export class LeaveRequestsService {
     // department_managers), HOẶC ngoại lệ leave_approver_id gán riêng cho
     // người xin nghỉ đó.
     if (scope === PermissionScope.DEPARTMENT) {
-      if (requesterLeaveApproverId != null && requesterLeaveApproverId === approverId) {
+      if (
+        requesterLeaveApproverId != null &&
+        requesterLeaveApproverId === approverId
+      ) {
         return true;
       }
       if (requesterDepartmentId == null) return false;
-      const departmentManagerRepo = this.departmentRepo.manager.getRepository(DepartmentManager);
+      const departmentManagerRepo =
+        this.departmentRepo.manager.getRepository(DepartmentManager);
       return DepartmentManagerHelper.isManagerOfDepartment(
         departmentManagerRepo,
         requesterDepartmentId,
@@ -112,10 +127,14 @@ export class LeaveRequestsService {
    * để lọc findPending()/findHistory() khi viewer là Manager.
    */
   private async getManagedDepartmentIds(managerId: number): Promise<number[]> {
-    const departmentManagerRepo = this.departmentRepo.manager.getRepository(DepartmentManager);
-    return DepartmentManagerHelper.getManagedDepartmentIds(departmentManagerRepo, managerId);
+    const departmentManagerRepo =
+      this.departmentRepo.manager.getRepository(DepartmentManager);
+    return DepartmentManagerHelper.getManagedDepartmentIds(
+      departmentManagerRepo,
+      managerId,
+    );
   }
-  
+
   /**
    * Create new leave request
    * Validation: Balance check + Conflict check
@@ -129,48 +148,100 @@ export class LeaveRequestsService {
     // 1. Validate dates
     const startDate = new Date(dto.startDate);
     const endDate = new Date(dto.endDate);
-    
+
     if (startDate > endDate) {
-      throw new BadRequestException('Ngày bắt đầu không được sau ngày kết thúc');
-    }
-    
-    // 2. Calculate total days
-    const totalDays = this.calculateDays(startDate, endDate, dto.duration);
-    
-    // 3. Check conflict (no overlapping approved/pending requests)
-    const conflict = await this.leaveRequestRepo.findOne({
-      where: {
-        requesterId,
-        status: Not(In([LeaveStatus.REJECTED, LeaveStatus.CANCELLED])),
-        startDate: Between(startDate, endDate)
-      }
-    });
-    
-    if (conflict) {
       throw new BadRequestException(
-        `Bạn đã có đơn nghỉ trong khoảng thời gian này (ID: ${conflict.id})`
+        'Ngày bắt đầu không được sau ngày kết thúc',
       );
     }
-    
+
+    // 2. Calculate total days
+    const totalDays = this.calculateDays(startDate, endDate, dto.duration);
+
+    // 3. Check conflict (no overlapping approved/pending requests)
+    // ⚠️ FIX BUG THẬT (báo cáo 18/9: tạo thêm 1 đơn "Gặp khách" Nửa ngày
+    // (Chiều) bị chặn "Bạn đã có đơn nghỉ trong khoảng thời gian này" dù
+    // buổi sáng CÙNG NGÀY đó không hề trùng giờ với đơn đã có):
+    //
+    // Nguyên nhân gốc: query CŨ chỉ `startDate: Between(startDate, endDate)`
+    // - tức chỉ kiểm tra xem đơn ĐÃ CÓ có `startDate` rơi vào khoảng
+    // [startDate, endDate] của đơn MỚI hay không, HOÀN TOÀN bỏ qua cột
+    // `duration` (full_day/half_day_am/half_day_pm). Hệ quả: chỉ cần user
+    // ĐÃ CÓ 1 đơn PENDING/APPROVED bất kỳ (loại phép nào, kể cả Nửa ngày
+    // Sáng) đúng ngày đó là mọi đơn Nửa ngày Chiều khác tạo sau đều bị chặn
+    // nhầm, dù 2 buổi không chồng giờ thực tế trong ngày (business rule
+    // đúng ở `calculateDays()`: Nửa ngày CHỈ có ý nghĩa khi đơn gói gọn
+    // trong ĐÚNG 1 ngày - startDate === endDate).
+    //
+    // Sửa: (a) đổi sang overlap ĐÚNG khoảng ngày (startDate <= to AND
+    // endDate >= from - cùng pattern đã dùng ở `findApprovedInRange()`),
+    // KHÔNG chỉ mỗi startDate của đơn cũ; (b) thêm 1 NGOẠI LỆ DUY NHẤT:
+    // nếu CẢ 2 đơn (mới và đã có) đều là đơn 1-NGÀY-DUY-NHẤT (start=end),
+    // CÙNG 1 ngày, và khác buổi (1 half_day_am + 1 half_day_pm) thì KHÔNG
+    // tính là trùng. Mọi trường hợp overlap khác (full_day, nhiều ngày,
+    // hoặc trùng buổi) vẫn chặn như cũ.
+    const overlapping = await this.leaveRequestRepo
+      .createQueryBuilder('leave')
+      .where('leave.requesterId = :requesterId', { requesterId })
+      .andWhere('leave.status NOT IN (:...excludedStatuses)', {
+        excludedStatuses: [LeaveStatus.REJECTED, LeaveStatus.CANCELLED],
+      })
+      .andWhere('leave.startDate <= :endDate', { endDate: dto.endDate })
+      .andWhere('leave.endDate >= :startDate', { startDate: dto.startDate })
+      .getMany();
+
+    const newIsSingleDay = startDate.getTime() === endDate.getTime();
+    const newIsHalfDay =
+      newIsSingleDay && dto.duration !== LeaveDuration.FULL_DAY;
+
+    const conflict = overlapping.find((existing) => {
+      const existingStart = new Date(existing.startDate).getTime();
+      const existingEnd = new Date(existing.endDate).getTime();
+      const existingIsSingleDay = existingStart === existingEnd;
+      const existingIsHalfDay =
+        existingIsSingleDay && existing.duration !== LeaveDuration.FULL_DAY;
+
+      const bothSameDayHalfDay =
+        newIsHalfDay &&
+        existingIsHalfDay &&
+        existingStart === startDate.getTime();
+
+      // Khác buổi (1 Sáng + 1 Chiều) trong CÙNG 1 ngày -> không chồng giờ
+      // thực tế, bỏ qua, không tính là trùng.
+      if (bothSameDayHalfDay && existing.duration !== dto.duration) {
+        return false;
+      }
+
+      return true;
+    });
+
+    if (conflict) {
+      throw new BadRequestException(
+        `Bạn đã có đơn nghỉ trong khoảng thời gian này (ID: ${conflict.id})`,
+      );
+    }
+
     // 4. Check balance (loại phép có deductsAnnualBalance=true, mặc định
     // đúng 2 code cũ 'annual'/'sick' - xem seed CreateLeaveTypes1781500000000)
     if (leaveType.deductsAnnualBalance) {
       const user = await this.userRepo.findOne({ where: { id: requesterId } });
-      
+
       if (!user) {
         throw new NotFoundException('User not found');
       }
-      
+
       if (user.annualLeaveBalance < totalDays) {
         throw new BadRequestException(
-          `Không đủ phép năm. Còn lại: ${user.annualLeaveBalance} ngày, cần: ${totalDays} ngày`
+          `Không đủ phép năm. Còn lại: ${user.annualLeaveBalance} ngày, cần: ${totalDays} ngày`,
         );
       }
     }
-    
+
     // 5. Validate + lưu ảnh đính kèm (nếu có) - dto.attachmentKeys là mảng
     // object key đã PUT thẳng lên B2 qua POST /leave-requests/attachments/presign
-    const attachmentKeys: string[] = Array.isArray(dto.attachmentKeys) ? dto.attachmentKeys : [];
+    const attachmentKeys: string[] = Array.isArray(dto.attachmentKeys)
+      ? dto.attachmentKeys
+      : [];
     if (attachmentKeys.length > 0) {
       const limits = await this.uploadsService.getLimits();
       if (attachmentKeys.length > limits.leaveAttachmentMaxCount) {
@@ -199,7 +270,7 @@ export class LeaveRequestsService {
       duration: dto.duration,
       totalDays,
       reason: dto.reason,
-      status: LeaveStatus.PENDING
+      status: LeaveStatus.PENDING,
     });
 
     const saved = await this.leaveRequestRepo.save(leaveRequest);
@@ -262,7 +333,9 @@ export class LeaveRequestsService {
       ));
 
     if (!isOwner && !canApproveOrView) {
-      throw new ForbiddenException('Bạn không có quyền xem ảnh đính kèm của đơn này');
+      throw new ForbiddenException(
+        'Bạn không có quyền xem ảnh đính kèm của đơn này',
+      );
     }
 
     return Promise.all(
@@ -278,7 +351,7 @@ export class LeaveRequestsService {
       })),
     );
   }
-  
+
   /**
    * Lấy các đơn nghỉ phép ĐÃ DUYỆT có khoảng ngày giao với [from, to].
    * Dùng để dựng bảng "Tổng hợp chấm công" theo tháng (đánh dấu X/2, KL...).
@@ -292,16 +365,18 @@ export class LeaveRequestsService {
    * của Manager cùng cấp/khác nhánh, dù dòng nhân viên đó vẫn hiện trên bảng.
    */
   async findApprovedInRange(from: string, to: string) {
-    return this.leaveRequestRepo
-      .createQueryBuilder('leave')
-      .leftJoinAndSelect('leave.requester', 'requester')
-      .leftJoinAndSelect('requester.department', 'department')
-      .where('leave.status = :status', { status: LeaveStatus.APPROVED })
-      // Giao khoảng ngày: đơn nghỉ có startDate <= to AND endDate >= from
-      .andWhere('leave.startDate <= :to', { to })
-      .andWhere('leave.endDate >= :from', { from })
-      .orderBy('leave.startDate', 'ASC')
-      .getMany();
+    return (
+      this.leaveRequestRepo
+        .createQueryBuilder('leave')
+        .leftJoinAndSelect('leave.requester', 'requester')
+        .leftJoinAndSelect('requester.department', 'department')
+        .where('leave.status = :status', { status: LeaveStatus.APPROVED })
+        // Giao khoảng ngày: đơn nghỉ có startDate <= to AND endDate >= from
+        .andWhere('leave.startDate <= :to', { to })
+        .andWhere('leave.endDate >= :from', { from })
+        .orderBy('leave.startDate', 'ASC')
+        .getMany()
+    );
   }
 
   /**
@@ -311,14 +386,18 @@ export class LeaveRequestsService {
     return this.leaveRequestRepo.find({
       where: { requesterId: userId },
       relations: ['requester', 'approver'],
-      order: { createdAt: 'DESC' }
+      order: { createdAt: 'DESC' },
     });
   }
-  
+
   /**
    * Danh sách đơn đang chờ duyệt MÀ VIEWER CÓ QUYỀN DUYỆT - theo scope.
    */
-  async findPending(viewerId: number, viewerRole: string, scope?: string | null) {
+  async findPending(
+    viewerId: number,
+    viewerRole: string,
+    scope?: string | null,
+  ) {
     // Thuần theo scope từ role_permissions - không fallback cứng theo Role.
     const isDeptScope = scope === PermissionScope.DEPARTMENT;
     const isAllScope = scope === PermissionScope.ALL;
@@ -343,8 +422,9 @@ export class LeaveRequestsService {
       } else {
         query.andWhere(
           new Brackets((qb) => {
-            qb.where('requester.departmentId IN (:...deptIds)', { deptIds: managedIds })
-              .orWhere('requester.leaveApproverId = :viewerId', { viewerId });
+            qb.where('requester.departmentId IN (:...deptIds)', {
+              deptIds: managedIds,
+            }).orWhere('requester.leaveApproverId = :viewerId', { viewerId });
           }),
         );
       }
@@ -357,7 +437,11 @@ export class LeaveRequestsService {
    * Lịch sử duyệt (Approved/Rejected) trong phạm vi VIEWER CÓ QUYỀN DUYỆT -
    * cùng bộ lọc scope với findPending().
    */
-  async findHistory(viewerId: number, viewerRole: string, scope?: string | null) {
+  async findHistory(
+    viewerId: number,
+    viewerRole: string,
+    scope?: string | null,
+  ) {
     // Thuần theo scope từ role_permissions - không fallback cứng theo Role.
     const isDeptScopeH = scope === PermissionScope.DEPARTMENT;
     const isAllScopeH = scope === PermissionScope.ALL;
@@ -370,7 +454,7 @@ export class LeaveRequestsService {
       .leftJoinAndSelect('requester.department', 'department')
       .leftJoinAndSelect('leave.approver', 'approver')
       .where('leave.status IN (:...statuses)', {
-        statuses: [LeaveStatus.APPROVED, LeaveStatus.REJECTED]
+        statuses: [LeaveStatus.APPROVED, LeaveStatus.REJECTED],
       });
 
     if (viewerRole !== Role.ADMIN && !isAllScopeH && isDeptScopeH) {
@@ -381,8 +465,9 @@ export class LeaveRequestsService {
       } else {
         query.andWhere(
           new Brackets((qb) => {
-            qb.where('requester.departmentId IN (:...deptIds)', { deptIds: managedIds })
-              .orWhere('requester.leaveApproverId = :viewerId', { viewerId });
+            qb.where('requester.departmentId IN (:...deptIds)', {
+              deptIds: managedIds,
+            }).orWhere('requester.leaveApproverId = :viewerId', { viewerId });
           }),
         );
       }
@@ -393,26 +478,31 @@ export class LeaveRequestsService {
     // nhất để tránh phình to dần mà không đổi contract (vẫn trả về mảng).
     return query.orderBy('leave.updatedAt', 'DESC').take(200).getMany();
   }
-  
+
   /**
    * Approve request
    * Permission: bảng role-cặp ở đầu file (isEligibleApprover) - thay hoàn
    * toàn kiểm tra RolePriority cũ.
    */
-  async approve(requestId: number, approverId: number, userRole: string, scope?: string | null) {
+  async approve(
+    requestId: number,
+    approverId: number,
+    userRole: string,
+    scope?: string | null,
+  ) {
     const request = await this.leaveRequestRepo.findOne({
       where: { id: requestId },
-      relations: ['requester']
+      relations: ['requester'],
     });
-    
+
     if (!request) {
       throw new NotFoundException('Leave request not found');
     }
-    
+
     if (request.status !== LeaveStatus.PENDING) {
       throw new BadRequestException('Can only approve pending requests');
     }
-    
+
     const allowed = await this.isEligibleApprover(
       request.requester.departmentId,
       approverId,
@@ -421,27 +511,31 @@ export class LeaveRequestsService {
       request.requester.leaveApproverId,
     );
     if (!allowed) {
-      throw new ForbiddenException('Bạn không có quyền phê duyệt đơn của người này');
+      throw new ForbiddenException(
+        'Bạn không có quyền phê duyệt đơn của người này',
+      );
     }
-    
+
     // Deduct balance - đọc động deductsAnnualBalance theo leaveType.code
     // (thay so sánh cứng LeaveType.ANNUAL/SICK cũ). Loại phép có thể đã bị
     // xoá sau khi đơn được tạo (hiếm, race condition) - coi như false, không
     // chặn duyệt đơn vì lý do này.
-    const leaveTypeRow = await this.leaveTypesService.getByCode(request.leaveType);
+    const leaveTypeRow = await this.leaveTypesService.getByCode(
+      request.leaveType,
+    );
     if (leaveTypeRow?.deductsAnnualBalance) {
       await this.userRepo.decrement(
         { id: request.requesterId },
         'annualLeaveBalance',
-        request.totalDays
+        request.totalDays,
       );
     }
-    
+
     // Update request
     request.status = LeaveStatus.APPROVED;
     request.approverId = approverId;
     request.approvedAt = new Date();
-    
+
     const saved = await this.leaveRequestRepo.save(request);
 
     this.auditService.logActionAsync(
@@ -460,26 +554,26 @@ export class LeaveRequestsService {
 
     return saved;
   }
-  
+
   /**
    * Reject request - cùng rule role-cặp với approve() (isEligibleApprover).
    */
   async reject(
-    requestId: number, 
-    approverId: number, 
+    requestId: number,
+    approverId: number,
     rejectionReason: string,
     userRole: string,
     scope?: string | null,
   ) {
     const request = await this.leaveRequestRepo.findOne({
       where: { id: requestId },
-      relations: ['requester']
+      relations: ['requester'],
     });
-    
+
     if (!request) {
       throw new NotFoundException('Leave request not found');
     }
-    
+
     if (request.status !== LeaveStatus.PENDING) {
       throw new BadRequestException('Can only reject pending requests');
     }
@@ -492,19 +586,21 @@ export class LeaveRequestsService {
       request.requester.leaveApproverId,
     );
     if (!allowed) {
-      throw new ForbiddenException('Bạn không có quyền từ chối đơn của người này');
+      throw new ForbiddenException(
+        'Bạn không có quyền từ chối đơn của người này',
+      );
     }
-    
+
     if (!rejectionReason || rejectionReason.trim() === '') {
       throw new BadRequestException('Vui lòng nhập lý do từ chối');
     }
-    
+
     // Update request
     request.status = LeaveStatus.REJECTED;
     request.approverId = approverId;
     request.rejectedAt = new Date();
     request.rejectionReason = rejectionReason;
-    
+
     const saved = await this.leaveRequestRepo.save(request);
 
     this.auditService.logActionAsync(
@@ -522,7 +618,7 @@ export class LeaveRequestsService {
 
     return saved;
   }
-  
+
   /**
    * Cancel request (by requester)
    *
@@ -538,18 +634,18 @@ export class LeaveRequestsService {
       where: { id: requestId, requesterId },
       relations: ['attachments'],
     });
-    
+
     if (!request) {
       throw new NotFoundException('Leave request not found');
     }
-    
+
     if (request.status !== LeaveStatus.PENDING) {
       throw new BadRequestException('Chỉ có thể hủy đơn đang chờ duyệt');
     }
-    
+
     request.status = LeaveStatus.CANCELLED;
     request.cancelledAt = new Date();
-    
+
     const saved = await this.leaveRequestRepo.save(request);
 
     const attachments = request.attachments || [];
@@ -557,8 +653,16 @@ export class LeaveRequestsService {
       await Promise.all(
         attachments.map((a) =>
           this.uploadsService
-            .deleteObject(this.uploadsService.leaveAttachmentsBucket, a.objectKey)
-            .catch((err) => this.logger.warn(`Không xoá được ảnh đính kèm khi huỷ đơn: ${a.objectKey}`, err)),
+            .deleteObject(
+              this.uploadsService.leaveAttachmentsBucket,
+              a.objectKey,
+            )
+            .catch((err) =>
+              this.logger.warn(
+                `Không xoá được ảnh đính kèm khi huỷ đơn: ${a.objectKey}`,
+                err,
+              ),
+            ),
         ),
       );
       await this.attachmentRepo.remove(attachments);
@@ -609,27 +713,37 @@ export class LeaveRequestsService {
           return { key, deleted: false, reason: 'already_linked' as const };
         }
         try {
-          await this.uploadsService.deleteObject(this.uploadsService.leaveAttachmentsBucket, key);
+          await this.uploadsService.deleteObject(
+            this.uploadsService.leaveAttachmentsBucket,
+            key,
+          );
           return { key, deleted: true as const };
         } catch (err) {
-          this.logger.warn(`Không xoá được ảnh đính kèm bỏ dở: ${key}`, err as Error);
+          this.logger.warn(
+            `Không xoá được ảnh đính kèm bỏ dở: ${key}`,
+            err as Error,
+          );
           return { key, deleted: false, reason: 'error' as const };
         }
       }),
     );
   }
-  
+
   /**
    * Calculate total days (handle half days)
    */
-  private calculateDays(start: Date, end: Date, duration: LeaveDuration): number {
+  private calculateDays(
+    start: Date,
+    end: Date,
+    duration: LeaveDuration,
+  ): number {
     const diffTime = Math.abs(end.getTime() - start.getTime());
     const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24)) + 1;
-    
+
     if (diffDays === 1 && duration !== LeaveDuration.FULL_DAY) {
       return 0.5;
     }
-    
+
     return diffDays;
   }
 }

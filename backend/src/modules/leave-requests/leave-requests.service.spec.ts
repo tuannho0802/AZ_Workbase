@@ -1,9 +1,17 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { getRepositoryToken } from '@nestjs/typeorm';
-import { ForbiddenException, NotFoundException, BadRequestException } from '@nestjs/common';
+import {
+  ForbiddenException,
+  NotFoundException,
+  BadRequestException,
+} from '@nestjs/common';
 import { Brackets } from 'typeorm';
 import { LeaveRequestsService } from './leave-requests.service';
-import { LeaveRequest, LeaveStatus, LeaveType } from '../../database/entities/leave-request.entity';
+import {
+  LeaveRequest,
+  LeaveStatus,
+  LeaveType,
+} from '../../database/entities/leave-request.entity';
 import { LeaveRequestAttachment } from '../../database/entities/leave-request-attachment.entity';
 import { User } from '../../database/entities/user.entity';
 import { Department } from '../../database/entities/department.entity';
@@ -19,6 +27,7 @@ describe('LeaveRequestsService - Phan quyen duyet (PERMISSIONS.md muc 2.6)', () 
 
   const mockLeaveRepo = {
     findOne: jest.fn(),
+    create: jest.fn((x: any) => x),
     save: jest.fn(),
     createQueryBuilder: jest.fn(),
   };
@@ -52,7 +61,9 @@ describe('LeaveRequestsService - Phan quyen duyet (PERMISSIONS.md muc 2.6)', () 
       leaveAttachmentMaxCount: 5,
     }),
     assertUploadedSizeWithinLimit: jest.fn().mockResolvedValue(undefined),
-    signAttachmentGetUrl: jest.fn().mockResolvedValue('https://signed.example/att'),
+    signAttachmentGetUrl: jest
+      .fn()
+      .mockResolvedValue('https://signed.example/att'),
     deleteObject: jest.fn().mockResolvedValue(undefined),
     leaveAttachmentsBucket: 'az-imgs-leave-request-workbase',
   };
@@ -61,8 +72,14 @@ describe('LeaveRequestsService - Phan quyen duyet (PERMISSIONS.md muc 2.6)', () 
   // trừ annualLeaveBalance khi duyệt). Không test nào ở file này assert số
   // lần gọi decrement() cụ thể, chỉ cần getByCode() không throw.
   const mockLeaveTypesService = {
-    getByCode: jest.fn().mockResolvedValue({ code: 'annual', deductsAnnualBalance: true }),
-    assertExists: jest.fn().mockResolvedValue({ code: 'annual', deductsAnnualBalance: true, isPaid: true }),
+    getByCode: jest
+      .fn()
+      .mockResolvedValue({ code: 'annual', deductsAnnualBalance: true }),
+    assertExists: jest.fn().mockResolvedValue({
+      code: 'annual',
+      deductsAnnualBalance: true,
+      isPaid: true,
+    }),
   };
   // ⚠️ MỚI: LeaveRequestsService giờ inject AuditService (ghi log tạo/duyệt/
   // từ chối/huỷ đơn) - mock rỗng, không có test nào ở file này assert lời
@@ -92,8 +109,14 @@ describe('LeaveRequestsService - Phan quyen duyet (PERMISSIONS.md muc 2.6)', () 
         LeaveRequestsService,
         { provide: getRepositoryToken(LeaveRequest), useValue: mockLeaveRepo },
         { provide: getRepositoryToken(User), useValue: mockUserRepo },
-        { provide: getRepositoryToken(Department), useValue: mockDepartmentRepo },
-        { provide: getRepositoryToken(LeaveRequestAttachment), useValue: mockAttachmentRepo },
+        {
+          provide: getRepositoryToken(Department),
+          useValue: mockDepartmentRepo,
+        },
+        {
+          provide: getRepositoryToken(LeaveRequestAttachment),
+          useValue: mockAttachmentRepo,
+        },
         { provide: UploadsService, useValue: mockUploadsService },
         { provide: LeaveTypesService, useValue: mockLeaveTypesService },
         { provide: AuditService, useValue: mockAuditService },
@@ -125,10 +148,136 @@ describe('LeaveRequestsService - Phan quyen duyet (PERMISSIONS.md muc 2.6)', () 
     },
   });
 
+  // ⚠️ MỚI: bao phủ bug THẬT báo cáo 18/9 - tạo đơn Nửa ngày (Chiều) "Gặp
+  // khách" bị chặn nhầm "Bạn đã có đơn nghỉ trong khoảng thời gian này" dù
+  // đơn CÙNG NGÀY đã có là Nửa ngày (Sáng), khác buổi, không chồng giờ thực
+  // tế. create() TRƯỚC ĐÂY chưa có test nào - đây là lần đầu bao phủ.
+  describe('create() - check trung lich (fix bug 18/9: bo qua duration cu)', () => {
+    const meetClientType = {
+      code: 'meet_client',
+      deductsAnnualBalance: false,
+      name: 'Gặp khách',
+    };
+
+    beforeEach(() => {
+      mockLeaveTypesService.assertExists.mockResolvedValue(meetClientType);
+      mockAttachmentRepo.create.mockImplementation((x: any) => x);
+      mockAttachmentRepo.save.mockResolvedValue([]);
+    });
+
+    it('da co don Nua ngay (Sang) CUNG NGAY, tao them Nua ngay (Chieu) -> KHONG conflict (fix)', async () => {
+      const existingMorning = {
+        id: 10,
+        startDate: '2026-09-18',
+        endDate: '2026-09-18',
+        duration: 'half_day_am',
+      };
+      const qb = buildQueryBuilderMock([existingMorning]);
+      mockLeaveRepo.createQueryBuilder.mockReturnValue(qb);
+      mockLeaveRepo.save.mockResolvedValue({
+        id: 20,
+        totalDays: 0.5,
+        startDate: '2026-09-18',
+        endDate: '2026-09-18',
+      });
+
+      await expect(
+        service.create(
+          {
+            leaveType: 'meet_client',
+            startDate: '2026-09-18',
+            endDate: '2026-09-18',
+            duration: 'half_day_pm',
+            reason: 'gap khach ten: tuyen',
+          },
+          100,
+        ),
+      ).resolves.toBeDefined();
+
+      expect(mockLeaveRepo.save).toHaveBeenCalled();
+    });
+
+    it('da co don Nua ngay (Sang) CUNG NGAY, tao them Nua ngay (Sang) TRUNG BUOI -> van conflict', async () => {
+      const existingMorning = {
+        id: 11,
+        startDate: '2026-09-18',
+        endDate: '2026-09-18',
+        duration: 'half_day_am',
+      };
+      const qb = buildQueryBuilderMock([existingMorning]);
+      mockLeaveRepo.createQueryBuilder.mockReturnValue(qb);
+
+      await expect(
+        service.create(
+          {
+            leaveType: 'meet_client',
+            startDate: '2026-09-18',
+            endDate: '2026-09-18',
+            duration: 'half_day_am',
+            reason: 'gap khach ten: tuyen',
+          },
+          100,
+        ),
+      ).rejects.toThrow(BadRequestException);
+
+      expect(mockLeaveRepo.save).not.toHaveBeenCalled();
+    });
+
+    it('da co don FULL DAY cung ngay, tao them Nua ngay (Chieu) -> van conflict (full_day chiem het ngay)', async () => {
+      const existingFullDay = {
+        id: 12,
+        startDate: '2026-09-18',
+        endDate: '2026-09-18',
+        duration: 'full_day',
+      };
+      const qb = buildQueryBuilderMock([existingFullDay]);
+      mockLeaveRepo.createQueryBuilder.mockReturnValue(qb);
+
+      await expect(
+        service.create(
+          {
+            leaveType: 'meet_client',
+            startDate: '2026-09-18',
+            endDate: '2026-09-18',
+            duration: 'half_day_pm',
+            reason: 'gap khach ten: tuyen',
+          },
+          100,
+        ),
+      ).rejects.toThrow(BadRequestException);
+    });
+
+    it('khong co don nao trung ngay -> tao binh thuong, khong conflict', async () => {
+      const qb = buildQueryBuilderMock([]);
+      mockLeaveRepo.createQueryBuilder.mockReturnValue(qb);
+      mockLeaveRepo.save.mockResolvedValue({
+        id: 21,
+        totalDays: 0.5,
+        startDate: '2026-09-19',
+        endDate: '2026-09-19',
+      });
+
+      await expect(
+        service.create(
+          {
+            leaveType: 'meet_client',
+            startDate: '2026-09-19',
+            endDate: '2026-09-19',
+            duration: 'half_day_pm',
+            reason: 'gap khach ten: tuyen',
+          },
+          100,
+        ),
+      ).resolves.toBeDefined();
+    });
+  });
+
   describe('approve() - dung bang role-cap da chot', () => {
     it('nem NotFoundException neu khong tim thay don', async () => {
       mockLeaveRepo.findOne.mockResolvedValue(null);
-      await expect(service.approve(999, 1, Role.ADMIN, 'all')).rejects.toThrow(NotFoundException);
+      await expect(service.approve(999, 1, Role.ADMIN, 'all')).rejects.toThrow(
+        NotFoundException,
+      );
     });
 
     it('nem BadRequestException neu don khong o trang thai PENDING', async () => {
@@ -136,34 +285,37 @@ describe('LeaveRequestsService - Phan quyen duyet (PERMISSIONS.md muc 2.6)', () 
         ...pendingRequest(Role.EMPLOYEE, 1),
         status: LeaveStatus.APPROVED,
       });
-      await expect(service.approve(1, 1, Role.ADMIN, 'all')).rejects.toThrow(BadRequestException);
+      await expect(service.approve(1, 1, Role.ADMIN, 'all')).rejects.toThrow(
+        BadRequestException,
+      );
     });
 
     it('nguoi xin nghi la ADMIN: admin khac duyet duoc', async () => {
       mockLeaveRepo.findOne.mockResolvedValue(pendingRequest(Role.ADMIN, null));
       mockLeaveRepo.save.mockImplementation((r: any) => Promise.resolve(r));
-      await expect(service.approve(1, 2, Role.ADMIN, 'all')).resolves.toBeDefined();
+      await expect(
+        service.approve(1, 2, Role.ADMIN, 'all'),
+      ).resolves.toBeDefined();
     });
-
-    
-
-    
-
-    
-
-    
 
     it('nguoi xin nghi la MANAGER: employee KHONG duoc duyet', async () => {
       mockLeaveRepo.findOne.mockResolvedValue(pendingRequest(Role.MANAGER, 1));
-      await expect(service.approve(1, 9, Role.EMPLOYEE)).rejects.toThrow(ForbiddenException);
+      await expect(service.approve(1, 9, Role.EMPLOYEE)).rejects.toThrow(
+        ForbiddenException,
+      );
     });
 
     it('nguoi xin nghi la EMPLOYEE: manager DUNG phong ban quan ly -> duyet duoc', async () => {
       mockLeaveRepo.findOne.mockResolvedValue(pendingRequest(Role.EMPLOYEE, 3));
-      mockDepartmentManagerRepo.findOne.mockResolvedValue({ departmentId: 3, userId: 7 });
+      mockDepartmentManagerRepo.findOne.mockResolvedValue({
+        departmentId: 3,
+        userId: 7,
+      });
       mockLeaveRepo.save.mockImplementation((r: any) => Promise.resolve(r));
 
-      await expect(service.approve(1, 7, Role.MANAGER, 'department')).resolves.toBeDefined();
+      await expect(
+        service.approve(1, 7, Role.MANAGER, 'department'),
+      ).resolves.toBeDefined();
       expect(mockDepartmentManagerRepo.findOne).toHaveBeenCalledWith(
         expect.objectContaining({ where: { departmentId: 3, userId: 7 } }),
       );
@@ -173,13 +325,19 @@ describe('LeaveRequestsService - Phan quyen duyet (PERMISSIONS.md muc 2.6)', () 
       mockLeaveRepo.findOne.mockResolvedValue(pendingRequest(Role.EMPLOYEE, 3));
       mockDepartmentManagerRepo.findOne.mockResolvedValue(null);
 
-      await expect(service.approve(1, 7, Role.MANAGER, 'department')).rejects.toThrow(ForbiddenException);
+      await expect(
+        service.approve(1, 7, Role.MANAGER, 'department'),
+      ).rejects.toThrow(ForbiddenException);
       expect(mockLeaveRepo.save).not.toHaveBeenCalled();
     });
 
     it('nguoi xin nghi la EMPLOYEE chua co departmentId: manager KHONG duyet duoc', async () => {
-      mockLeaveRepo.findOne.mockResolvedValue(pendingRequest(Role.EMPLOYEE, null));
-      await expect(service.approve(1, 7, Role.MANAGER, 'department')).rejects.toThrow(ForbiddenException);
+      mockLeaveRepo.findOne.mockResolvedValue(
+        pendingRequest(Role.EMPLOYEE, null),
+      );
+      await expect(
+        service.approve(1, 7, Role.MANAGER, 'department'),
+      ).rejects.toThrow(ForbiddenException);
       expect(mockDepartmentManagerRepo.findOne).not.toHaveBeenCalled();
     });
 
@@ -187,15 +345,22 @@ describe('LeaveRequestsService - Phan quyen duyet (PERMISSIONS.md muc 2.6)', () 
       mockLeaveRepo.findOne.mockResolvedValue(pendingRequest(Role.EMPLOYEE, 3));
       mockLeaveRepo.save.mockImplementation((r: any) => Promise.resolve(r));
 
-      await expect(service.approve(1, 9, Role.ASSISTANT, 'all')).resolves.toBeDefined();
+      await expect(
+        service.approve(1, 9, Role.ASSISTANT, 'all'),
+      ).resolves.toBeDefined();
       expect(mockDepartmentManagerRepo.findOne).not.toHaveBeenCalled();
     });
     it('custom role + PermissionScope.DEPARTMENT -> kiểm tra theo department (chuẩn mới)', async () => {
       mockLeaveRepo.findOne.mockResolvedValue(pendingRequest(Role.EMPLOYEE, 3));
-      mockDepartmentManagerRepo.findOne.mockResolvedValue({ departmentId: 3, userId: 7 });
+      mockDepartmentManagerRepo.findOne.mockResolvedValue({
+        departmentId: 3,
+        userId: 7,
+      });
       mockLeaveRepo.save.mockImplementation((r: any) => Promise.resolve(r));
 
-      await expect(service.approve(1, 7, 'custom_approver', PermissionScope.DEPARTMENT)).resolves.toBeDefined();
+      await expect(
+        service.approve(1, 7, 'custom_approver', PermissionScope.DEPARTMENT),
+      ).resolves.toBeDefined();
       expect(mockDepartmentManagerRepo.findOne).toHaveBeenCalledWith(
         expect.objectContaining({ where: { departmentId: 3, userId: 7 } }),
       );
@@ -204,34 +369,49 @@ describe('LeaveRequestsService - Phan quyen duyet (PERMISSIONS.md muc 2.6)', () 
     it('custom role + không có scope -> từ chối (không có fallback)', async () => {
       mockLeaveRepo.findOne.mockResolvedValue(pendingRequest(Role.EMPLOYEE, 3));
 
-      await expect(service.approve(1, 7, 'custom_approver', null)).rejects.toThrow(ForbiddenException);
+      await expect(
+        service.approve(1, 7, 'custom_approver', null),
+      ).rejects.toThrow(ForbiddenException);
       expect(mockDepartmentManagerRepo.findOne).not.toHaveBeenCalled();
     });
 
     // ── Ngoại lệ leave_approver_id (migration AddLeaveApproverOverrideToUsers) ──
     it('ngoai le leaveApproverId: requester KHAC phong ban Manager nhung duoc gan rieng -> duyet duoc, KHONG can query department', async () => {
-      mockLeaveRepo.findOne.mockResolvedValue(pendingRequest(Role.ASSISTANT, 99, 7));
+      mockLeaveRepo.findOne.mockResolvedValue(
+        pendingRequest(Role.ASSISTANT, 99, 7),
+      );
       mockLeaveRepo.save.mockImplementation((r: any) => Promise.resolve(r));
 
-      await expect(service.approve(1, 7, Role.MANAGER, 'department')).resolves.toBeDefined();
+      await expect(
+        service.approve(1, 7, Role.MANAGER, 'department'),
+      ).resolves.toBeDefined();
       // Uu tien check leaveApproverId TRUOC - khong can query department khi da khop
       expect(mockDepartmentManagerRepo.findOne).not.toHaveBeenCalled();
     });
 
     it('ngoai le leaveApproverId: gan cho Manager KHAC (khong phai nguoi dang duyet) -> van fallback ve rule phong ban, khong khop -> ForbiddenException', async () => {
-      mockLeaveRepo.findOne.mockResolvedValue(pendingRequest(Role.ASSISTANT, 99, 999));
+      mockLeaveRepo.findOne.mockResolvedValue(
+        pendingRequest(Role.ASSISTANT, 99, 999),
+      );
       mockDepartmentManagerRepo.findOne.mockResolvedValue(null);
 
-      await expect(service.approve(1, 7, Role.MANAGER, 'department')).rejects.toThrow(ForbiddenException);
+      await expect(
+        service.approve(1, 7, Role.MANAGER, 'department'),
+      ).rejects.toThrow(ForbiddenException);
     });
   });
 
   describe('reject() - cung rule role-cap voi approve()', () => {
     it('nem BadRequestException neu khong co ly do', async () => {
       mockLeaveRepo.findOne.mockResolvedValue(pendingRequest(Role.EMPLOYEE, 3));
-      mockDepartmentManagerRepo.findOne.mockResolvedValue({ departmentId: 3, userId: 7 });
+      mockDepartmentManagerRepo.findOne.mockResolvedValue({
+        departmentId: 3,
+        userId: 7,
+      });
 
-      await expect(service.reject(1, 7, '   ', Role.MANAGER, 'department')).rejects.toThrow(BadRequestException);
+      await expect(
+        service.reject(1, 7, '   ', Role.MANAGER, 'department'),
+      ).rejects.toThrow(BadRequestException);
     });
 
     it('manager KHAC phong ban -> ForbiddenException du co ly do hop le', async () => {
@@ -275,7 +455,10 @@ describe('LeaveRequestsService - Phan quyen duyet (PERMISSIONS.md muc 2.6)', () 
       const result = await service.findPending(7, Role.MANAGER, 'department');
 
       expect(result).toEqual([]);
-      expect(qb.andWhere).toHaveBeenCalledWith('requester.leaveApproverId = :viewerId', { viewerId: 7 });
+      expect(qb.andWhere).toHaveBeenCalledWith(
+        'requester.leaveApproverId = :viewerId',
+        { viewerId: 7 },
+      );
       expect(qb.getMany).toHaveBeenCalled();
     });
 
@@ -285,7 +468,9 @@ describe('LeaveRequestsService - Phan quyen duyet (PERMISSIONS.md muc 2.6)', () 
 
       await service.findPending(1, Role.ADMIN, 'all');
 
-      expect(qb.andWhere).not.toHaveBeenCalledWith(expect.stringContaining('requester.role IN'));
+      expect(qb.andWhere).not.toHaveBeenCalledWith(
+        expect.stringContaining('requester.role IN'),
+      );
       expect(mockDepartmentManagerRepo.find).not.toHaveBeenCalled();
     });
   });
@@ -297,12 +482,18 @@ describe('LeaveRequestsService - Phan quyen duyet (PERMISSIONS.md muc 2.6)', () 
     });
 
     it('nem BadRequestException neu don khong o trang thai PENDING', async () => {
-      mockLeaveRepo.findOne.mockResolvedValue({ ...pendingRequest(Role.EMPLOYEE, 1), status: LeaveStatus.APPROVED });
+      mockLeaveRepo.findOne.mockResolvedValue({
+        ...pendingRequest(Role.EMPLOYEE, 1),
+        status: LeaveStatus.APPROVED,
+      });
       await expect(service.cancel(1, 100)).rejects.toThrow(BadRequestException);
     });
 
     it('don KHONG co anh dinh kem: huy binh thuong, khong goi deleteObject/remove', async () => {
-      mockLeaveRepo.findOne.mockResolvedValue({ ...pendingRequest(Role.EMPLOYEE, 1), attachments: [] });
+      mockLeaveRepo.findOne.mockResolvedValue({
+        ...pendingRequest(Role.EMPLOYEE, 1),
+        attachments: [],
+      });
       mockLeaveRepo.save.mockImplementation((r: any) => Promise.resolve(r));
 
       const result = await service.cancel(1, 100);
@@ -317,7 +508,10 @@ describe('LeaveRequestsService - Phan quyen duyet (PERMISSIONS.md muc 2.6)', () 
         { id: 1, objectKey: 'leave-attachments/100/A_1_1-1-26.png' },
         { id: 2, objectKey: 'leave-attachments/100/A_2_1-1-26.png' },
       ];
-      mockLeaveRepo.findOne.mockResolvedValue({ ...pendingRequest(Role.EMPLOYEE, 1), attachments });
+      mockLeaveRepo.findOne.mockResolvedValue({
+        ...pendingRequest(Role.EMPLOYEE, 1),
+        attachments,
+      });
       mockLeaveRepo.save.mockImplementation((r: any) => Promise.resolve(r));
       mockUploadsService.deleteObject
         .mockRejectedValueOnce(new Error('B2 down'))
@@ -339,9 +533,17 @@ describe('LeaveRequestsService - Phan quyen duyet (PERMISSIONS.md muc 2.6)', () 
     it('key KHONG dung namespace userId -> tu choi xoa (khong goi deleteObject)', async () => {
       mockAttachmentRepo.find.mockResolvedValue([]);
 
-      const result = await service.discardOrphanAttachments(100, ['leave-attachments/999/hack.png']);
+      const result = await service.discardOrphanAttachments(100, [
+        'leave-attachments/999/hack.png',
+      ]);
 
-      expect(result).toEqual([{ key: 'leave-attachments/999/hack.png', deleted: false, reason: 'not_owner' }]);
+      expect(result).toEqual([
+        {
+          key: 'leave-attachments/999/hack.png',
+          deleted: false,
+          reason: 'not_owner',
+        },
+      ]);
       expect(mockUploadsService.deleteObject).not.toHaveBeenCalled();
     });
 
@@ -351,7 +553,9 @@ describe('LeaveRequestsService - Phan quyen duyet (PERMISSIONS.md muc 2.6)', () 
 
       const result = await service.discardOrphanAttachments(100, [key]);
 
-      expect(result).toEqual([{ key, deleted: false, reason: 'already_linked' }]);
+      expect(result).toEqual([
+        { key, deleted: false, reason: 'already_linked' },
+      ]);
       expect(mockUploadsService.deleteObject).not.toHaveBeenCalled();
     });
 
@@ -363,7 +567,10 @@ describe('LeaveRequestsService - Phan quyen duyet (PERMISSIONS.md muc 2.6)', () 
       const result = await service.discardOrphanAttachments(100, [key]);
 
       expect(result).toEqual([{ key, deleted: true }]);
-      expect(mockUploadsService.deleteObject).toHaveBeenCalledWith('az-imgs-leave-request-workbase', key);
+      expect(mockUploadsService.deleteObject).toHaveBeenCalledWith(
+        'az-imgs-leave-request-workbase',
+        key,
+      );
     });
 
     it('B2 xoa loi -> tra ve deleted:false reason:error, khong throw', async () => {

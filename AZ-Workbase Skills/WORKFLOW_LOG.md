@@ -3143,3 +3143,50 @@ POST/PATCH/PUT/DELETE từng controller) để có bức tranh đầy đủ ai �
 > gì) + role của user đó, để phiên sau xác nhận dứt điểm và đóng Status thành Success.
 
 ---
+
+## [2026-09-21 16:56] | Fix bug THẬT: tạo đơn nghỉ phép "Gặp khách" Nửa ngày bị chặn nhầm | [Status: Success]
+
+**Actor:** Agent
+
+**Root Cause:** người dùng đính kèm ảnh chụp form thật - "phiếu gặp khách" ở entry TRƯỚC ("2026-09-21 16:39")
+bị hiểu SAI là `customer_notes` (ghi chú khách hàng) - THỰC TẾ là **đơn nghỉ phép** (`leave_requests`) với
+loại phép "Gặp khách" (`leave_types.code = 'meet_client'`). Entry trước đó KHÔNG liên quan đến bug thật,
+để nguyên không revert (fix FE hợp lệ, độc lập, không hại gì).
+
+**Files Changed:**
+- `backend/src/modules/leave-requests/leave-requests.service.ts` — `create()` bước 3 "Check conflict":
+  - Query CŨ: `startDate: Between(startDate, endDate)` trên đơn ĐÃ CÓ — chỉ kiểm tra `startDate` của đơn cũ
+    có rơi vào khoảng ngày đơn MỚI hay không, **hoàn toàn bỏ qua cột `duration`** (`full_day`/
+    `half_day_am`/`half_day_pm`). Hệ quả: user đã có 1 đơn Nửa ngày (Sáng) ngày X (loại phép bất kỳ,
+    trạng thái pending/approved), tạo thêm 1 đơn Nửa ngày (Chiều) - kể cả loại phép khác như "Gặp khách" -
+    **cùng ngày X** → bị chặn nhầm "Bạn đã có đơn nghỉ trong khoảng thời gian này", dù 2 buổi không chồng
+    giờ thực tế (business rule ở `calculateDays()`: nửa ngày chỉ có ý nghĩa khi đơn gói gọn đúng 1 ngày).
+  - Sửa: đổi sang overlap khoảng ngày ĐÚNG (`startDate <= to AND endDate >= from`, cùng pattern đã dùng ở
+    `findApprovedInRange()`) qua `createQueryBuilder` thay vì `Between()`, kèm 1 ngoại lệ: nếu CẢ 2 đơn
+    (mới + đã có) đều là đơn 1-ngày-duy-nhất, CÙNG 1 ngày, và KHÁC buổi (1 `half_day_am` + 1 `half_day_pm`)
+    thì KHÔNG tính là trùng. Mọi overlap khác (full_day, nhiều ngày, hoặc trùng buổi) vẫn chặn như cũ.
+  - Xoá import `Between`, `Not` khỏi `typeorm` (không còn dùng sau khi đổi sang `createQueryBuilder` +
+    `NOT IN`).
+- `backend/src/modules/leave-requests/leave-requests.service.spec.ts` — `create()` **TRƯỚC ĐÂY CHƯA CÓ
+  TEST NÀO** (lỗ hổng coverage khiến bug này lọt qua) - thêm `describe('create()...')` với 4 test: (1) đã
+  có Nửa ngày Sáng, tạo thêm Nửa ngày Chiều cùng ngày → KHÔNG conflict (case bug thật); (2) đã có Nửa
+  ngày Sáng, tạo thêm Nửa ngày Sáng (trùng buổi) → vẫn conflict; (3) đã có Full day, tạo thêm Nửa ngày
+  Chiều cùng ngày → vẫn conflict (full_day chiếm hết ngày); (4) không có đơn nào trùng ngày → tạo bình
+  thường. Cũng bổ sung `create: jest.fn((x) => x)` vào `mockLeaveRepo` (thiếu từ trước, mọi test gọi
+  `service.create()` sẽ throw `TypeError` nếu không có).
+
+**Solution:** xem "Files Changed" ở trên.
+
+**Notes:**
+> Verify thật: `npx tsc --noEmit` (backend) 0 lỗi, `npx nest build` OK, `npx jest` (leave-requests riêng)
+> **31/31 pass** (27 cũ + 4 mới), `npx jest` toàn bộ backend **38 suites / 740 test pass** (100%, không
+> regress). `npx eslint --fix` đã chạy trên 2 file sửa - dọn được phần lớn lỗi `prettier` baseline có từ
+> trước (105 lỗi → 30 lỗi + 4 warning còn lại); phần còn lại là `no-unsafe-*`/`no-unsafe-enum-comparison`
+> xuất phát từ `dto: any` KHÔNG có DTO class ở `LeaveRequestsController.create()` (baseline có từ trước,
+> đã đối chiếu `git stash` xác nhận - không phải lỗi mới, cùng loại với `dto.leaveType`/`dto.reason` đã
+> có sẵn trong hàm). Đề xuất riêng (CHƯA làm, ngoài phạm vi bug này): tạo `CreateLeaveRequestDto` thật với
+> `class-validator` thay `dto: any` ở controller - vừa hết nhóm lỗi `no-unsafe-*` này, vừa có validation
+> tầng HTTP (hiện tại `startDate`/`endDate`/`duration`/`reason` hoàn toàn không được validate trước khi
+> vào service). Chưa test trên DB thật (không có quyền truy cập DB production từ phiên này).
+
+---
