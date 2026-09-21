@@ -25,7 +25,44 @@ const DATE_FIELD_KEYS = new Set([
   'depositDate',
   'periodStartDate',
   'periodEndDate',
+  // Nghỉ phép (CREATE_LEAVE_REQUEST) - trước đây rơi vào `String(val)` cuối
+  // `formatValue()`, hiện ISO thô "2026-09-21T00:00:00.000Z"/ngày không định
+  // dạng thay vì DD/MM/YYYY như mọi field ngày khác trong trang.
+  'startDate',
+  'endDate',
 ]);
+
+/**
+ * Nhãn tiếng Việt cho `noteType` (ghi chú khách hàng) - MIRROR ĐÚNG
+ * `CustomerNotesTab.NOTE_TYPE_OPTIONS` (nguồn chân lý, dùng cho dropdown tạo
+ * ghi chú). ⚠️ FIX BUG THẬT (ảnh chụp màn hình: audit "Tạo ghi chú" hiện raw
+ * `noteType: general` - phát hiện thêm khi rà soát: CHÍNH `CustomerNotesTab`
+ * cũng đang hiện raw code này ra Tag ở danh sách ghi chú, không riêng gì
+ * audit log - đã sửa luôn ở đó, xem `CustomerNotesTab.tsx`).
+ */
+const NOTE_TYPE_LABELS: Record<string, string> = {
+  general: 'Chung',
+  call: 'Cuộc gọi',
+  meeting: 'Cuộc họp',
+  follow_up: 'Theo dõi',
+};
+
+/**
+ * ⚠️ FIX BUG THẬT (rà soát audit log toàn hệ thống, cùng lớp bug
+ * `ASSIGNMENT_STATUS_META`): `LeaveRequest.status` dùng chung tên key
+ * `status` với Customer (string code tra `/customer-statuses`) - generic diff
+ * viewer trước đây cứ thấy key `status` là gọi `StatusTag` (tra sai bảng),
+ * hiện Tag xám kèm nguyên văn "pending"/"approved" không dịch. Mirror ĐÚNG
+ * bảng màu/nhãn đã dùng ở `nghi-phep/page.tsx` (`STATUS_CONFIG`) để đồng nhất
+ * giao diện giữa trang "Nghỉ phép của tôi" và "Nhật ký hoạt động".
+ */
+const LEAVE_STATUS_META: Record<string, { color: string; label: string }> = {
+  pending: { color: 'gold', label: 'Chờ duyệt' },
+  approved: { color: 'green', label: 'Đã duyệt' },
+  rejected: { color: 'red', label: 'Từ chối' },
+  cancelled: { color: 'default', label: 'Đã hủy' },
+};
+const LEAVE_REQUEST_ACTION_SUBSTRING = 'LEAVE_REQUEST';
 
 const { Text } = Typography;
 
@@ -202,6 +239,28 @@ const FIELD_LABELS: Record<string, string> = {
   // cách hiển thị giá trị boolean riêng, rơi vào `String(val)` → "true" trần
   // trụi (xem thêm nhánh `key === 'restored'` ở `formatValue()`).
   restored: 'Khôi phục khách hàng',
+  // ── Ghi chú khách hàng (customer_note) ─────────────────────────────────
+  // ⚠️ FIX BUG THẬT (ảnh chụp màn hình: audit "Tạo ghi chú" hiện raw
+  // "noteType"/"isImportant" làm nhãn cột - 2 field NÀY VẪN đang được
+  // `buildNoteAuditSnapshot()` ghi ở MỌI bản ghi mới, không riêng dữ liệu
+  // cũ, nên đây là bug ảnh hưởng liên tục chứ không chỉ log lịch sử).
+  noteType: 'Loại ghi chú',
+  isImportant: 'Đánh dấu quan trọng',
+  // ── Nghỉ phép (leave_request) ───────────────────────────────────────────
+  // ⚠️ FIX BUG THẬT (ảnh chụp màn hình: audit "Tạo đơn nghỉ phép" hiện raw
+  // "endDate"/"leaveType"/"startDate"/"totalDays" làm nhãn cột). Wording mirror
+  // ĐÚNG cột bảng ở `nghi-phep/page.tsx` để đồng nhất toàn app.
+  leaveType: 'Loại phép',
+  startDate: 'Từ ngày',
+  endDate: 'Đến ngày',
+  totalDays: 'Số ngày',
+  // `rejectionReason` (REJECT_LEAVE_REQUEST) - khác `reason` (dùng cho
+  // REJECT_USER) nên KHÔNG bị đè bởi nhãn `reason` phía trên; trước đây
+  // hoàn toàn chưa có nhãn, rơi vào fallback hiển thị thẳng tên cột kỹ thuật.
+  rejectionReason: 'Lý do từ chối',
+  // `requester` (APPROVE_LEAVE_REQUEST/REJECT_LEAVE_REQUEST) - mirror đúng
+  // cột "Người gửi" ở `duyet-phep/page.tsx`.
+  requester: 'Người gửi',
 };
 
 /**
@@ -309,8 +368,25 @@ export const AuditDiffViewer: React.FC<AuditDiffViewerProps> = ({
 
   const isUpdate = !isCreate && !isDelete && (actionUpper.includes('UPDATE') || (oldData && newData));
   const isAssignmentAction = ASSIGNMENT_ACTIONS.some((a) => actionUpper.includes(a));
+  // ⚠️ FIX BUG THẬT (ảnh chụp màn hình: audit "Tạo đơn nghỉ phép" hiện nhãn
+  // "Lý do từ chối" cho field `reason` - SAI ngữ cảnh, đây là lý do XIN nghỉ,
+  // không phải lý do TỪ CHỐI đơn). Key `reason` bị dùng chung cho 3 miền dữ
+  // liệu khác nhau: REJECT_USER (đúng nghĩa "lý do từ chối" - giữ nguyên
+  // `FIELD_LABELS.reason`), `CustomerAssignment.reason` (lý do gán/chuyển
+  // giao data, mirror "Lý do" ở `CustomerAssignmentsTab.tsx`), và
+  // `LeaveRequest.reason` (lý do xin nghỉ, mirror "Lý do" ở `nghi-phep/
+  // page.tsx`) - cùng lớp bug với `status`/`name` đã fix ở trên, xử lý bằng
+  // CHÍNH `isAssignmentAction` có sẵn + `isLeaveRequestAction` mới thêm.
+  const isLeaveRequestAction = actionUpper.includes(LEAVE_REQUEST_ACTION_SUBSTRING);
   const contextLabels = CONTEXTUAL_FIELD_LABELS.find((c) => actionUpper.includes(c.actionIncludes))?.labels;
-  const fieldLabels = { ...FIELD_LABELS, ...(contextLabels || {}), ...(extraFieldLabels || {}) };
+  const reasonOverride =
+    isAssignmentAction || isLeaveRequestAction ? { reason: 'Lý do' } : undefined;
+  const fieldLabels: Record<string, string> = {
+    ...FIELD_LABELS,
+    ...(contextLabels || {}),
+    ...(reasonOverride || {}),
+    ...(extraFieldLabels || {}),
+  };
 
   // ⚠️ FIX BUG THẬT (rà soát audit log toàn hệ thống - CREATE_USER/
   // UPDATE_USER/APPROVE_USER hiện raw slug "admin"/"employee" không dịch,
@@ -348,6 +424,24 @@ export const AuditDiffViewer: React.FC<AuditDiffViewerProps> = ({
       // rơi xuống `StatusTag` (tra sai bảng customer_statuses).
       const meta = ASSIGNMENT_STATUS_META[val];
       return meta ? <Tag color={meta.color}>{meta.label}</Tag> : <Text>{val}</Text>;
+    }
+
+    if (key === 'status' && isLeaveRequestAction && typeof val === 'string') {
+      // ⚠️ FIX BUG THẬT (xem JSDoc `LEAVE_STATUS_META` phía trên) - PHẢI đứng
+      // TRƯỚC nhánh `key === 'status'` chung (dành cho Customer/Công việc
+      // định kỳ) để chặn đúng lúc `val` còn là string enum thô
+      // ('pending'/'approved'/...), tránh rơi xuống `StatusTag` (tra sai
+      // bảng customer_statuses).
+      const meta = LEAVE_STATUS_META[val];
+      return meta ? <Tag color={meta.color}>{meta.label}</Tag> : <Text>{val}</Text>;
+    }
+
+    if (key === 'noteType' && typeof val === 'string') {
+      return <Tag>{NOTE_TYPE_LABELS[val] ?? val}</Tag>;
+    }
+
+    if (key === 'isImportant') {
+      return val ? <Tag color="error">Quan trọng</Tag> : <Tag>Bình thường</Tag>;
     }
 
     if (key === 'status') {
@@ -528,7 +622,19 @@ export const AuditDiffViewer: React.FC<AuditDiffViewerProps> = ({
     const ignoreKeys = [
       'id', 'createdAt', 'updatedAt', 'deletedAt', 'userId',
       'updatedById', 'createdById', 'updatedBy_OLD', 'createdBy_OLD',
-      'hashedRefreshToken', 'user', 'targetCustomer'
+      'hashedRefreshToken', 'user', 'targetCustomer',
+      // ⚠️ FIX BUG THẬT (ảnh chụp màn hình: audit "Tạo ghi chú" hiện raw
+      // "customerId: 53218"/"editCount: 0" - thuần dữ liệu nội bộ, không có
+      // giá trị nghiệp vụ khi xem lại lịch sử: `customerId` luôn trùng
+      // khách hàng đang xem (đúng nguyên tắc đã áp dụng cho `createdBy`/
+      // `updatedBy` ở `buildNoteAuditSnapshot()`/`buildDepositAuditSnapshot()`
+      // - 2 field này KHÔNG được ghi vào snapshot MỚI nữa vì lý do tương tự,
+      // nhưng dữ liệu audit CŨ ghi trước khi có 2 hàm đó vẫn còn nguyên cả
+      // entity, trong đó có `customerId`); `editCount` là bộ đếm nội bộ phục
+      // vụ hiển thị "Đã sửa N lần" ở `CustomerNotesTab.tsx`, không phải nội
+      // dung ghi chú thật sự thay đổi - liệt kê nó trong diff "Tạo ghi chú"
+      // gây hiểu nhầm là 1 trường dữ liệu người dùng vừa nhập.
+      'customerId', 'editCount',
     ];
 
     // Bỏ key FK thô nếu object resolve của ĐÚNG field đó cũng có mặt trong

@@ -90,6 +90,11 @@ export const ACTION_META: Record<string, ActionMeta> = {
   CHANGE_OWN_PASSWORD: m('Tự đổi mật khẩu', 'orange', 'user'),
   UPDATE_OWN_PROFILE: m('Tự cập nhật hồ sơ', 'blue', 'user'),
   UPDATE_OWN_EMAIL: m('Tự đổi email', 'blue', 'user'),
+  // Action cũ (endpoint PATCH /users/:id/profile) - đã bị xoá khỏi code ở
+  // commit 2de0f28 khi thay bằng "Nhóm liên kết" mới, nhưng dữ liệu audit_logs
+  // lịch sử vẫn còn tham chiếu action này -> vẫn cần nhãn để không lộ tên kỹ
+  // thuật ra UI khi xem log cũ.
+  UPDATE_USER_PROFILE: m('Sửa Fanpage/Group quản lý (tính năng cũ)', 'blue', 'user'),
 
   // ── Phân quyền ─────────────────────────────────────────────────────────
   CREATE_ROLE: m('Tạo Role', 'green', 'permission'),

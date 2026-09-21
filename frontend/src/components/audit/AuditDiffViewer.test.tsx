@@ -93,4 +93,74 @@ describe('AuditDiffViewer', () => {
 
     expect(screen.getByText('Giá trị mới')).toBeInTheDocument();
   });
+
+  // ⚠️ Bug đã báo (ảnh chụp màn hình "Tạo ghi chú"): noteType/isImportant
+  // phải có nhãn tiếng Việt + giá trị được dịch, customerId/editCount phải
+  // bị ẩn hẳn khỏi bảng diff (không có giá trị nghiệp vụ khi xem lại).
+  it('CREATE_NOTE dịch noteType/isImportant, ẩn customerId/editCount', () => {
+    renderViewer({
+      action: 'CREATE_NOTE',
+      oldData: null,
+      newData: { note: 'Hi marketing', noteType: 'general', editCount: 0, customerId: 53218, isImportant: false },
+    });
+
+    expect(screen.getByText('Loại ghi chú')).toBeInTheDocument();
+    expect(screen.getByText('Chung')).toBeInTheDocument();
+    expect(screen.getByText('Đánh dấu quan trọng')).toBeInTheDocument();
+    expect(screen.getByText('Bình thường')).toBeInTheDocument();
+    expect(screen.queryByText('customerId')).not.toBeInTheDocument();
+    expect(screen.queryByText('editCount')).not.toBeInTheDocument();
+    expect(screen.queryByText('53218')).not.toBeInTheDocument();
+  });
+
+  // ⚠️ Bug đã báo (ảnh chụp màn hình "Tạo đơn nghỉ phép"): startDate/endDate/
+  // leaveType/totalDays phải có nhãn, và `reason` phải dịch thành "Lý do"
+  // (không phải "Lý do từ chối" - field này là lý do XIN nghỉ, không phải lý
+  // do từ chối đơn).
+  it('CREATE_LEAVE_REQUEST có đủ nhãn tiếng Việt, "reason" không bị nhầm thành "Lý do từ chối"', () => {
+    renderViewer({
+      action: 'CREATE_LEAVE_REQUEST',
+      oldData: null,
+      newData: {
+        leaveType: 'Thai sản',
+        startDate: '2026-09-21',
+        endDate: '2026-09-21',
+        totalDays: 1,
+        reason: 'Test audit',
+      },
+    });
+
+    expect(screen.getByText('Loại phép')).toBeInTheDocument();
+    expect(screen.getByText('Từ ngày')).toBeInTheDocument();
+    expect(screen.getByText('Đến ngày')).toBeInTheDocument();
+    expect(screen.getByText('Số ngày')).toBeInTheDocument();
+    expect(screen.getByText('Lý do')).toBeInTheDocument();
+    expect(screen.queryByText('Lý do từ chối')).not.toBeInTheDocument();
+  });
+
+  // Không regress: REJECT_USER vẫn giữ đúng nhãn "Lý do từ chối" cho field
+  // `reason` (khác ngữ cảnh CREATE_LEAVE_REQUEST/UPDATE_ASSIGNMENT ở trên).
+  it('REJECT_USER vẫn giữ nhãn "Lý do từ chối" cho field reason (không regress)', () => {
+    renderViewer({
+      action: 'REJECT_USER',
+      oldData: null,
+      newData: { reason: 'Không đúng chính sách' },
+    });
+
+    expect(screen.getByText('Lý do từ chối')).toBeInTheDocument();
+  });
+
+  // ⚠️ Bug đã báo (LeaveRequest.status dùng chung key `status` với Customer -
+  // trước đây rơi vào StatusTag sai bảng, hiện Tag xám kèm "pending" thô).
+  it('LeaveRequest status dịch đúng bảng LEAVE_STATUS_META, không rơi vào StatusTag của Customer', () => {
+    renderViewer({
+      action: 'APPROVE_LEAVE_REQUEST',
+      oldData: { status: 'pending' },
+      newData: { status: 'approved', requester: { id: 1, name: 'Nguyễn Văn A' } },
+    });
+
+    expect(screen.getByText('Chờ duyệt')).toBeInTheDocument();
+    expect(screen.getByText('Đã duyệt')).toBeInTheDocument();
+    expect(screen.getByText('Người gửi')).toBeInTheDocument();
+  });
 });

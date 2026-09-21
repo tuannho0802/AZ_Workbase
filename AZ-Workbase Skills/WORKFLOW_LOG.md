@@ -2858,3 +2858,106 @@ POST/PATCH/PUT/DELETE từng controller) để có bức tranh đầy đủ ai �
 > sau).
 
 ---
+
+## [2026-09-21] | Audit logs FE: tách ô search Người thực hiện/Khách hàng + Cascader cho Loại hành động | [Status: Success]
+
+**Actor:** Agent
+
+**Bối cảnh:**
+> Người dùng phản hồi (ảnh chụp màn hình) sau khi đã push commit `dfc57eb` (wire audit-meta.ts): dropdown
+> "Loại hành động" quá dài dù đã gom nhóm, và ô "Tìm tên người thực hiện/khách hàng" gộp 2 mục đích khác
+> nhau vào 1 field text nên khó dùng - yêu cầu tách riêng + gắn dropdown chọn User thật cho phần "người
+> thực hiện" (thay vì gõ tên). Trước khi làm, đã `git fetch && git reset --hard origin/main` để lấy đúng
+> code đã push, không dùng lại working tree cũ trong sandbox.
+
+**Files Changed:**
+- `backend/src/modules/audit/dto/get-audit-logs.dto.ts` — đổi `search` -> `customerSearch`, mô tả rõ
+  "chỉ tìm theo TÊN KHÁCH HÀNG", tách khỏi `userId` (lọc chính xác người thực hiện, đã có sẵn từ trước,
+  giờ mới được FE dùng đúng qua dropdown).
+- `backend/src/modules/audit/audit.service.ts` — `getLogs()`: bỏ nhánh `OR customer.name` cũ ORed với
+  `user.name`; giờ `customerSearch` CHỈ khớp `customer.name` (người thực hiện đã có `userId` exact-match
+  riêng, không cần fuzzy theo tên nữa).
+- `backend/src/modules/audit/audit.service.spec.ts` (MỚI) — module `audit` trước đây CHƯA có spec nào;
+  viết 5 test cho `getLogs()`: `userId` lọc đúng cột (không kèm điều kiện `.name LIKE` nào), `customerSearch`
+  CHỈ sinh ra `customer.name LIKE` (không còn `user.name`), kết hợp cả 2 filter cùng lúc, không filter nào
+  thì không có `andWhere`, và action/entityType/excludeEntityType/khoảng ngày không bị regress.
+- `frontend/src/lib/types/audit.types.ts` — `AuditFilters.search` -> `AuditFilters.customerSearch` (+ JSDoc
+  phân biệt rõ với `userId`).
+- `frontend/src/app/(dashboard)/audit-logs/page.tsx`:
+  - Ô "Tìm tên người thực hiện/khách hàng" (1 Input) tách thành 2: `SalesUserSelect` (dropdown, tái dùng
+    component có sẵn tự fetch `/users/all`, đã có avatar/role tag + search theo tên/email) cho "Người thực
+    hiện" (gửi `userId`), và `Input` riêng cho "Tên khách hàng" (gửi `customerSearch`). Áp dụng tương tự cho
+    tab "Đăng nhập" (`loginSearch` text -> `loginUserId` dropdown).
+  - "Loại hành động": đổi từ `Select` phẳng (nhóm bằng `options` lồng, nhưng vẫn 1 danh sách dài khi mở)
+    sang `Cascader` 2 cấp (Nhóm nghiệp vụ -> Hành động cụ thể, dựng từ `ACTION_GROUP_ORDER`/`ACTION_META` có
+    sẵn ở `audit-meta.ts`) - thu gọn theo nhóm, `showSearch` khớp trên cả nhãn nhóm lẫn nhãn action. Action BE
+    có thật nhưng FE chưa có nhãn vẫn được gộp vào nhóm "Khác (chưa có nhãn)" ở cuối, không mất khỏi bộ lọc.
+
+**Solution:**
+> Tách đúng 2 khái niệm khác nhau ("ai làm" vs "làm với khách hàng nào") thành 2 filter riêng, và thay filter
+> theo tên (fuzzy, phải gõ đúng) bằng filter theo ID (dropdown, chọn từ danh sách User thật - không sai tên/
+> viết thiếu dấu). Cascader giải quyết đúng vấn đề UX "danh sách dài" bằng cách thu gọn theo cấp, không cần
+> đổi cấu trúc dữ liệu `ACTION_META` đã có.
+
+**Notes:**
+> Verify thật: Backend `tsc --noEmit` 0 lỗi, `npx jest` toàn backend **38 suites / 719 test pass** (bao gồm 5
+> test mới). Frontend `tsc --noEmit` 0 lỗi (không còn cả 4 lỗi cũ `logo.png`/`CountBadge` đã ghi nhận trước
+> đây - có vẻ đã được sửa ở 1 commit khác), `next build` OK (33 route), `npx vitest run` **5 test files / 40
+> test pass**. `eslint` trên file `page.tsx` vẫn còn 12 error/3 warning - đã xác nhận đối chiếu (`git stash`)
+> đây là baseline có từ TRƯỚC thay đổi này (unescaped quote, `any` ở các chỗ không liên quan), không phải lỗi
+> mới phát sinh. Chưa test trên DB thật.
+
+
+## [2026-09-21 04:35] | Rà soát field raw chưa dịch ở AuditDiffViewer (CREATE_NOTE, CREATE_LEAVE_REQUEST) | Status: Success
+
+**Actor:** Agent
+
+**Files Changed:**
+- `frontend/src/components/audit/AuditDiffViewer.tsx`:
+  - Thêm nhãn tiếng Việt: `noteType`, `isImportant`, `leaveType`, `startDate`, `endDate`, `totalDays`,
+    `rejectionReason`, `requester` (mirror đúng wording đã dùng ở `nghi-phep/page.tsx`/`duyet-phep/page.tsx`).
+  - Thêm `startDate`/`endDate` vào `DATE_FIELD_KEYS` (format DD/MM/YYYY thay vì ISO thô).
+  - Thêm `NOTE_TYPE_LABELS` (dịch `noteType`: general/call/meeting/follow_up) và `LEAVE_STATUS_META`
+    (dịch `LeaveRequest.status`: pending/approved/rejected/cancelled) + nhánh `formatValue()` riêng cho
+    `noteType`/`isImportant`, đứng TRƯỚC nhánh `status` chung để không rơi vào `StatusTag` (tra sai bảng
+    `customer_statuses`) - cùng lớp bug đã fix trước đó cho `CustomerAssignment.status`.
+  - Fix collision field `reason` bị dùng chung cho 3 miền dữ liệu khác nhau (REJECT_USER = "lý do từ chối",
+    `CustomerAssignment.reason`/`LeaveRequest.reason` = "lý do" thường) - override nhãn theo
+    `isAssignmentAction`/`isLeaveRequestAction` (mirror đúng cách đã xử lý `status`).
+  - Thêm `customerId`, `editCount` vào `ignoreKeys` (ẩn hẳn khỏi bảng diff - dữ liệu nội bộ không có ý
+    nghĩa nghiệp vụ, đúng nguyên tắc đã áp dụng cho `createdBy`/`updatedBy` ở `buildNoteAuditSnapshot()`).
+- `frontend/src/components/customers/CustomerNotesTab.tsx` — fix bug thật phát hiện thêm khi rà soát
+  (ngoài phạm vi câu hỏi): danh sách ghi chú hiện raw `noteType` ("general"...) thay vì nhãn tiếng Việt có
+  sẵn ở `NOTE_TYPE_OPTIONS` của CHÍNH file này.
+- `frontend/src/components/audit/AuditDiffViewer.test.tsx` — thêm 5 test mới: CREATE_NOTE (dịch nhãn +
+  ẩn field nội bộ), CREATE_LEAVE_REQUEST (đủ nhãn + `reason` không lẫn "Lý do từ chối"), REJECT_USER
+  (không regress - `reason` vẫn giữ "Lý do từ chối" đúng ngữ cảnh), APPROVE_LEAVE_REQUEST (status dịch
+  đúng bảng riêng, không lẫn StatusTag của Customer).
+
+**Root Cause:**
+> User gửi 2 ảnh chụp "Chi tiết hành động" (CREATE_NOTE và CREATE_LEAVE_REQUEST) hiện nguyên tên field kỹ
+> thuật (`noteType`/`editCount`/`customerId`/`isImportant`/`endDate`/`leaveType`/`startDate`/`totalDays`)
+> làm nhãn cột "Trường thông tin" - do 2 `buildXxxAuditSnapshot()`/snapshot inline này CHƯA từng được thêm
+> vào `FIELD_LABELS` (khác các module Customer/User/Department/PeriodicTask đã có snapshot + nhãn đầy đủ
+> từ trước). Rà soát thêm theo yêu cầu user ("check ngoài ảnh") phát hiện: (1) field `reason` bị 3 miền dữ
+> liệu dùng chung 1 key nhưng ý nghĩa khác nhau hoàn toàn (lỗi tương tự lớp bug `status`/`name` đã fix
+> trước đó), (2) `rejectionReason` (REJECT_LEAVE_REQUEST) hoàn toàn chưa có nhãn, (3) `LeaveRequest.status`
+> dùng chung key `status` với Customer nên rơi vào `StatusTag` sai bảng, (4) bug độc lập ở
+> `CustomerNotesTab.tsx` (không riêng audit log) hiện raw `noteType` luôn cả ở màn hình ghi chú thật.
+
+**Solution:**
+> Thêm đầy đủ nhãn + dịch giá trị theo đúng wording đã dùng ở các trang gốc (`nghi-phep`/`duyet-phep`/
+> `CustomerNotesTab`) để nhất quán toàn app, KHÔNG bịa nhãn mới. Ẩn hẳn 2 field thuần kỹ thuật
+> (`customerId`/`editCount`) theo đúng nguyên tắc "chỉ log field có ý nghĩa nghiệp vụ" đã áp dụng cho
+> `createdBy`/`updatedBy` ở snapshot Note.
+
+**Notes:**
+> Verify thật: `npx vitest run` toàn FE → **5 test files / 44 test pass** (gồm 5 test mới). `npx tsc
+> --noEmit` → không phát sinh lỗi mới (4 lỗi baseline cũ). `next build` → build thành công đủ 33 route.
+> Đã rà soát TOÀN BỘ 7 hàm `buildXxxAuditSnapshot()` trong backend + các `logAction` inline liên quan tới
+> field `reason`/`status` để tìm hết các trường hợp collision cùng lớp - không còn action nào trong
+> `audit_logs` dùng chung đang thiếu nhãn (đã đối chiếu qua `audit-meta.test.ts` cho tên action, và soát
+> tay từng snapshot builder cho tên FIELD). Nếu phát hiện thêm action/module mới có `buildXxxAuditSnapshot()`
+> sau này, nhớ đối chiếu NGAY với `FIELD_LABELS`/`CONTEXTUAL_FIELD_LABELS` để tránh lặp lại đúng lớp bug này.
+
+---

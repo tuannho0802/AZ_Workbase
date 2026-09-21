@@ -155,7 +155,13 @@ export const CustomerNotesTab = ({ customerId, notes, onNoteAdded }: Props) => {
                 <Space style={{ marginBottom: 4, width: '100%', justifyContent: 'space-between' }}>
                   <Space>
                     <Text strong>{item.createdByUser?.name || 'Hệ thống'}</Text>
-                    <Tag color={item.isImportant ? 'error' : 'default'}>{item.noteType}</Tag>
+                      {/* ⚠️ FIX BUG THẬT (phát hiện khi rà soát audit log - xem
+                        AuditDiffViewer.NOTE_TYPE_LABELS): trước đây hiện raw
+                        code "general"/"call"... thay vì nhãn tiếng Việt đã có
+                        sẵn ở NOTE_TYPE_OPTIONS phía trên. */}
+                      <Tag color={item.isImportant ? 'error' : 'default'}>
+                        {NOTE_TYPE_OPTIONS.find((o) => o.value === item.noteType)?.label || item.noteType}
+                      </Tag>
                     <Text type="secondary" style={{ fontSize: '12px' }}>
                       {dayjs(item.createdAt).format('DD/MM/YYYY HH:mm')}
                     </Text>
