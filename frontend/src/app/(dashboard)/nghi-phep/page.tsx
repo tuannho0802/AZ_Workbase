@@ -3,7 +3,7 @@
 import { useState, useEffect, useRef, useMemo } from 'react';
 import { useRouter } from 'next/navigation';
 import {
-  Table, Button, Modal, Form, Select, DatePicker, Input, Tag, App, Card, Divider, Typography, Row, Col
+  Table, Button, Modal, Form, Select, DatePicker, Input, Tag, App, Card, Divider, Typography, Row, Col, Tooltip
 } from 'antd';
 import { PlusOutlined, CloseCircleOutlined, CalendarOutlined, FileTextOutlined, UserOutlined, SearchOutlined } from '@ant-design/icons';
 import { leaveRequestsApi, LeaveRequest } from '@/lib/api/leave-requests.api';
@@ -22,6 +22,19 @@ const STATUS_MAP: Record<string, { text: string; color: string }> = {
   approved: { text: 'Đã duyệt', color: 'green' },
   rejected: { text: 'Từ chối', color: 'red' },
   cancelled: { text: 'Đã hủy', color: 'default' }
+};
+
+// Mirror `REASON_ELLIPSIS_STYLE` ở `duyet-phep/page.tsx`: ép chính `<span>`
+// (đối tượng trigger Tooltip) tự cắt bằng overflow/textOverflow/maxWidth,
+// tránh bug Tooltip định vị lệch do span không có maxWidth (xem JSDoc đầy đủ
+// ở file đó).
+const REASON_ELLIPSIS_STYLE: React.CSSProperties = {
+  display: 'inline-block',
+  maxWidth: '100%',
+  overflow: 'hidden',
+  textOverflow: 'ellipsis',
+  whiteSpace: 'nowrap',
+  verticalAlign: 'top',
 };
 
 // ── Mobile Card ──────────────────────────────────────────────────────────────
@@ -299,7 +312,13 @@ export default function LeaveRequestsPage() {
     {
       title: 'Lý do',
       dataIndex: 'reason',
-      ellipsis: true
+      ellipsis: true,
+      render: (reason: string) =>
+        reason ? (
+          <Tooltip title={reason}>
+            <span style={REASON_ELLIPSIS_STYLE}>{reason}</span>
+          </Tooltip>
+        ) : '-'
     },
     {
       title: 'Trạng thái',
@@ -320,7 +339,9 @@ export default function LeaveRequestsPage() {
       ellipsis: true,
       render: (rejectionReason: string | null, record: LeaveRequest) =>
         record.status === 'rejected' && rejectionReason ? (
-          <Text type="danger" italic>{rejectionReason}</Text>
+          <Tooltip title={rejectionReason}>
+            <span style={{ ...REASON_ELLIPSIS_STYLE, color: '#f5222d', fontStyle: 'italic' }}>{rejectionReason}</span>
+          </Tooltip>
         ) : '-'
     },
     {

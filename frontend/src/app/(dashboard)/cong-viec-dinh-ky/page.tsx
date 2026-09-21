@@ -81,6 +81,21 @@ const { Title, Text } = Typography;
 const { RangePicker } = DatePicker;
 
 /**
+ * truncateText - Trim CỨNG bằng ký tự (JS `.slice`), KHÔNG dựa vào CSS
+ * `ellipsis`/`maxWidth:100%` như trước. BUG THẬT (2026-09-21, chủ dự án báo
+ * qua ảnh chụp Tab "Bảng"): chuỗi `Mô tả`/`Ghi chú` dài LIỀN không có khoảng
+ * trắng (vd "ddddddd...") khiến CSS ellipsis không kẹp được - `Text
+ * ellipsis` của AntD set `display:inline-block; maxWidth:100%` nhưng % này
+ * tính theo bề rộng CHA, mà Table có `scroll={{x:'max-content'}}` nên
+ * `table-layout` KHÔNG `fixed` - cột "Công việc" tự NỞ RA theo đúng bề rộng
+ * chuỗi dài đó (100% của 1 khung đã nở vô hạn = không giới hạn gì cả), tràn
+ * đè lên cột "Kỳ hạn"/"Trạng thái" bên cạnh. Trim bằng JS trước khi render
+ * đảm bảo độ dài hiển thị luôn cố định, không phụ thuộc layout Table.
+ */
+const truncateText = (text: string, maxLength: number): string =>
+    text.length > maxLength ? `${text.slice(0, maxLength)}…` : text;
+
+/**
  * Trang chính "Công việc định kỳ" (Phase 1 + 2 + 5 + 6 -
  * PLAN_PERIODIC_TASKS_MODULE.md mục 6). Phase 2 (liên kết cha-con DAG +
  * % hoàn thành), Phase 3 (gắn Customer), Phase 4 (Phụ trách phụ) được UI qua
@@ -810,7 +825,7 @@ export default function PeriodicTasksPage() {
                         )}
                         <div style={{ minHeight: CONTENT_H, display: 'flex', alignItems: 'center' }}>
                             <Space align="start" wrap size={4}>
-                                <TaskTitlePill title={title} color={record.color} />
+                                <TaskTitlePill title={title} color={record.color} maxLength={40} />
                                 {chain && <TaskChainBadge chain={chain} currentTaskId={record.id} resolveTask={resolveChainTask} />}
                             </Space>
                         </div>
@@ -836,9 +851,9 @@ export default function PeriodicTasksPage() {
                                         </div>
                                     }
                                 >
-                                    <Text type="secondary" style={{ fontSize: 12, display: 'inline-block', maxWidth: '100%', verticalAlign: 'top' }} ellipsis>
+                                    <Text type="secondary" style={{ fontSize: 12, display: 'inline-block', maxWidth: '100%', verticalAlign: 'top' }}>
                                         <span style={{ fontWeight: 600, fontSize: 13, color: 'rgba(0,0,0,0.75)' }}>Mô tả:</span>{' '}
-                                        {record.description}
+                                        {truncateText(record.description, 60)}
                                     </Text>
                                 </Tooltip>
                             </div>
@@ -852,11 +867,11 @@ export default function PeriodicTasksPage() {
                                         </div>
                                     }
                                 >
-                                    <Text type="secondary" italic style={{ fontSize: 12, display: 'inline-block', maxWidth: '100%', verticalAlign: 'top' }} ellipsis>
+                                    <Text type="secondary" italic style={{ fontSize: 12, display: 'inline-block', maxWidth: '100%', verticalAlign: 'top' }}>
                                         <span style={{ fontWeight: 600, fontSize: 13, color: 'rgba(0,0,0,0.75)', fontStyle: 'normal' }}>
                                             Ghi chú:
                                         </span>{' '}
-                                        {record.note}
+                                        {truncateText(record.note, 60)}
                                     </Text>
                                 </Tooltip>
                             </div>

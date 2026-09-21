@@ -16,13 +16,24 @@ export interface TaskTitlePillProps {
      * đúng yêu cầu chủ dự án 2026-09-15. */
     color?: string | null;
     style?: React.CSSProperties;
+    /** Giới hạn số ký tự hiển thị - vượt quá sẽ cắt và thêm "…", kèm Tooltip
+     * hiện đầy đủ tiêu đề khi hover. Chỉ dùng ở nơi cần TRIM cứng (vd Tab
+     * "Bảng" - cột "Công việc" rộng cố định 260px, tiêu đề rất dài từng đẩy
+     * hàng cao bất thường do `whiteSpace: 'normal'` tự xuống dòng không giới
+     * hạn). Không truyền = giữ hành vi cũ (wrap tự do, không cắt) - dùng cho
+     * TaskMiniCard (Agenda/Kanban/Calendar) nơi Card đã tự co giãn theo nội
+     * dung, không cần trim. */
+    maxLength?: number;
 }
 
 /** TaskTitlePill - dùng CHUNG cho Table/TaskMiniCard (Agenda/Kanban)/Calendar
  * (Phase 8) để tên Task hiển thị ĐỒNG NHẤT 1 kiểu Pill màu ở mọi View, thay
  * cho cách cũ mỗi nơi 1 kiểu (chấm tròn ở Table/Card, Tag riêng ở Calendar). */
-export function TaskTitlePill({ title, color, style }: TaskTitlePillProps) {
-    return (
+export function TaskTitlePill({ title, color, style, maxLength }: TaskTitlePillProps) {
+    const isTruncated = typeof maxLength === 'number' && title.length > maxLength;
+    const displayTitle = isTruncated ? `${title.slice(0, maxLength)}…` : title;
+
+    const tag = (
         <Tag
             color={resolveEntityColor(color)}
             style={{
@@ -43,8 +54,16 @@ export function TaskTitlePill({ title, color, style }: TaskTitlePillProps) {
                 ...style,
             }}
         >
-            {title}
+            {displayTitle}
         </Tag>
+    );
+
+    if (!isTruncated) return tag;
+
+    return (
+        <Tooltip title={<div style={{ maxWidth: 280, whiteSpace: 'pre-wrap', overflowWrap: 'anywhere' }}>{title}</div>}>
+            {tag}
+        </Tooltip>
     );
 }
 
