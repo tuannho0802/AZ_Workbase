@@ -3009,3 +3009,87 @@ POST/PATCH/PUT/DELETE từng controller) để có bức tranh đầy đủ ai �
 > `maxLength=40/60` có phù hợp thực tế hay cần chủ dự án tinh chỉnh thêm).
 
 ---
+
+
+## [2026-09-21] | Phase 9 - Audit + fix BE cho tính năng "Tích hợp Task con vào chung Checklist" | [Status: Success]
+
+**Actor:** Agent
+
+**Bối cảnh:**
+> Trước khi làm, đã `git clone` lại repo mới nhất (per Rule 1, không tin transcript dán lại) - phát hiện
+> commit `ab4683f` (phiên trước) **đã push sẵn 1 phần BE** cho tính năng này (`getChildrenChecklist()` ở
+> `PeriodicTaskLinksService`, `attachLinkedChildrenChecklist()` ở `PeriodicTaskChecklistItemsService`, wire
+> vào `PeriodicTasksController.findOne()`) - việc đầu tiên là audit lại toàn bộ, không code lại từ đầu.
+
+**Files Changed:**
+- `backend/src/modules/periodic-tasks/periodic-task-customers.service.spec.ts` — **KHÔI PHỤC** nguyên trạng
+  từ commit `ad1d35e` (bản tốt gần nhất, đã diff xác nhận `periodic-task-customers.service.ts` không đổi gì
+  từ đó tới giờ nên spec cũ vẫn khớp 100%).
+- `backend/src/modules/periodic-tasks/periodic-task-checklist-items.service.spec.ts` — thêm mock
+  `PeriodicTaskLinksService` (constructor mới cần) + wiring vào `TestingModule`; thêm 3 test mới cho
+  `attachLinkedChildrenChecklist()` (đính đúng field, mảng rỗng khi chưa có Task con liên kết, `isDone`
+  phản ánh đúng `status.isDoneState` hiện tại - không phải cờ lưu cứng).
+- `backend/src/modules/periodic-tasks/periodic-task-links.service.spec.ts` — thêm 4 test mới cho
+  `getChildrenChecklist()`: query đúng chiều (`parent_task_id = :taskId`) + `applyViewFilter()` lọc lại
+  CHÍNH Task con theo scope người gọi (khác `getChildren()` chỉ check quyền Task cha), map đúng shape
+  `LinkedChildChecklistEntry`, mảng rỗng khi không có/bị lọc hết, Admin không bị lọc thêm theo scope.
+
+**Root Cause (bug fix):**
+> Commit `ab4683f` khi sửa constructor `PeriodicTaskChecklistItemsService` (thêm dependency
+> `PeriodicTaskLinksService`), phiên trước đã cập nhật **NHẦM FILE test**: sửa nội dung
+> `periodic-task-customers.service.spec.ts` (spec của 1 service KHÁC HẲN -
+> `PeriodicTaskCustomersService`) thành gần như bản sao của test checklist-items, thay vì sửa đúng
+> `periodic-task-checklist-items.service.spec.ts`. Hậu quả kép: (1) `periodic-task-checklist-items.service.spec.ts`
+> (spec THẬT của service) bị bỏ quên, không mock dependency mới → 14 test đỏ (Nest không resolve được
+> constructor); (2) `PeriodicTaskCustomersService` mất sạch 10 test coverage (bị ghi đè, không còn file
+> nào test service này). Phát hiện khi chạy `npx jest` thật (không suy diễn từ code đọc mắt).
+
+**Solution:**
+> Khôi phục đúng file/đúng service cho từng bên, đồng thời bổ sung test THẬT SỰ cho logic mới của Phase 9
+> (`getChildrenChecklist()`/`attachLinkedChildrenChecklist()`) ở đúng 2 file spec gốc của 2 service liên
+> quan - không tạo thêm file spec mới, giữ đúng quy ước 1 service = 1 file spec đã có.
+
+**Notes:**
+> Verify thật: `npx tsc --noEmit` 0 lỗi, `npx nest build` OK, `npx jest` **38 suites / 726 test pass**
+> (100%, tăng từ 723 do 3 test mới bù đắp phần khôi phục). `eslint` trên 3 file spec vừa sửa còn lỗi
+> (prettier formatting + `no-unsafe-*` từ helper mock kiểu `any` đã có sẵn) - đã đối chiếu `git stash` xác
+> nhận đây là baseline có từ TRƯỚC (cùng loại lỗi đã tồn tại ở các test case `getChildren`/`getRollup` cũ),
+> không phải lỗi mới phát sinh. Chưa test trên DB thật.
+
+---
+
+## [2026-09-21] | Phase 9 - FE: Section "Task con liên kết" trong TaskChecklistModal | [Status: Success]
+
+**Actor:** Agent
+
+**Files Changed:**
+- `frontend/src/lib/api/periodic-tasks.api.ts` — thêm type `LinkedChildChecklistEntry` (khớp đúng response
+  `getChildrenChecklist()` ở BE: `childTaskId`, `title`, `isDone`, `status{id,code,name,color}`,
+  `periodType`, `periodStartDate`, `periodEndDate`) + field `linkedChildrenChecklist?:
+  LinkedChildChecklistEntry[]` trên `PeriodicTask` - JSDoc nêu rõ CHỈ có trên `GET /:id`, KHÔNG có id/
+  position của checklist item thật, không có route sửa/xoá, đã được lọc theo scope người xem ngay ở BE.
+- `frontend/src/components/periodic-tasks/TaskChecklistModal.tsx`:
+  - Thêm section "Task con liên kết (N)" riêng biệt sau checklist thường, dùng `SimpleList` (component
+    list chuẩn của dự án, mirror cách dùng ở `TaskLinksModal`) - mỗi dòng: checkbox LUÔN `disabled` (chỉ
+    hiển thị tick, không tương tác), tiêu đề gạch ngang khi xong, `Tag` kỳ hạn + `Tag` màu status của
+    chính Task con + khoảng ngày kỳ hạn (`DD/MM/YYYY`, mirror format đã dùng ở `TaskMiniCard.tsx`, chỉ
+    hiện `→ ngày kết thúc` khi khác ngày bắt đầu). KHÔNG có nút sửa/xoá/sắp xếp nào cho section này (đúng
+    yêu cầu "không xoá được như checklist thường").
+  - Thanh % hoàn thành ở đầu modal gộp CHUNG cả 2 hạng mục thành 1 con số (`totalDoneCount`/`totalCount`)
+    - đúng nghĩa "tích hợp vào chung checklist" - nhưng 2 danh sách bên dưới vẫn hiển thị tách biệt hoàn
+    toàn (đây là giả định đã báo cho chủ dự án, chưa có phản hồi ngược lại yêu cầu tách riêng %).
+
+**Solution:**
+> `checklistItems` (thật, CRUD) và `linkedChildrenChecklist` (ảo, tính live theo trạng thái Task con, xem
+> entry BE phía trên) hoàn toàn tách biệt về data/type/UI - chỉ gộp chung duy nhất ở con số % hiển thị đầu
+> modal cho đúng tinh thần "chung 1 checklist" mà người dùng yêu cầu.
+
+**Notes:**
+> Verify thật: `npx tsc --noEmit` không phát sinh lỗi mới (chỉ còn baseline cũ: `logo.png`×4,
+> `CountBadge`), `npx eslint` trên 2 file vừa sửa sạch (0 lỗi), `npm run build` thành công đủ 33 route,
+> `npx vitest run` **5 test files / 44 test pass** (modal này chưa có test riêng từ trước nên không có gì
+> regress). Chưa test trực quan trên trình duyệt thật với dữ liệu Task con thật (đã có ảnh chụp người dùng
+> xác nhận UI hiển thị đúng, riêng phần ngày kỳ hạn mới thêm sau ảnh đó, chưa có ảnh xác nhận lại). Chưa
+> quyết định dứt khoát việc gộp % chung 2 hạng mục có đúng ý chủ dự án hay không - cần xác nhận.
+
+---
