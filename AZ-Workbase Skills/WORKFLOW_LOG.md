@@ -987,8 +987,6 @@ mini chung để dễ nhìn hơn là tách ra như vậy"). Người dùng đã 
   toàn**, đủ 27 route (bao gồm `/attendance-device`).
 - Người dùng đã tự test trực tiếp trên UI thật và xác nhận ổn ("tôi test ổn rồi").
 
-Now [deploy]
-
 ## [2026-09-14 03:26] | Fix warning "Instance created by useForm is not connected to any Form element" ở tab Gán data (chia-data) | Status: Success
 
 **Actor:** Agent (Claude), theo console error người dùng chụp màn hình gửi kèm ảnh modal "Gán thêm Sales"
