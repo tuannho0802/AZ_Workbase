@@ -2817,3 +2817,44 @@ POST/PATCH/PUT/DELETE từng controller) để có bức tranh đầy đủ ai �
 > Verify thật: `tsc --noEmit` 0 lỗi, `nest build` OK, `npx jest` toàn backend **37 suites / 714 test pass**. Chưa test trên DB thật. Chưa sửa FE: `ACTION_META`/`ENTITY_TYPE_LABELS` ở `audit-logs/page.tsx` còn thiếu nhãn cho các action mới thêm (cả đợt 2026-09-16 lẫn hôm nay).
 
 ---
+
+## [2026-09-21] | Wire audit-meta.ts vào audit-logs/page.tsx + test lưới an toàn đối chiếu BE thật | [Status: Success]
+
+**Actor:** Agent
+
+**Bối cảnh:**
+> Trước khi làm, đã `git clone` lại repo mới nhất và verify bằng code/lệnh thật (không tin transcript dán lại):
+> xác nhận phần BE audit 7 module (`ui-visibility`, `link-groups` x4, `media-sources`, `storage`, `uploads`,
+> `zk-device`, `customers.import.service.ts`) yêu cầu trong phiên trước **đã đúng và đã nằm trên `main`**
+> (commit `96288b7`/`b443087`) — `grep AuditService` từng module khớp 100% với log, chạy lại `tsc --noEmit`
+> (0 lỗi), `nest build` (OK), `npx jest` (37 suites/714 test pass). Không sửa gì thêm ở BE.
+
+**Files Changed:**
+- `frontend/src/app/(dashboard)/audit-logs/page.tsx` — bỏ `ACTION_META`/`ENTITY_TYPE_LABELS` khai báo cứng
+  (chỉ có ~13 action cũ), thay bằng import từ `@/lib/api/audit-meta` (đã có sẵn từ commit `b443087`, đủ
+  nhãn cho toàn bộ 94 action + 19 entityType thật ở BE). Cột "Hành động"/"Đối tượng" (bảng desktop, card
+  mobile, drawer chi tiết) dùng `getActionMeta()`/`getEntitySummary()` — mọi entityType ngoài `customer`
+  (link_group, media_source, storage_media, role UI-visibility...) giờ hiện đúng tên/ngữ cảnh suy ra từ
+  `oldData`/`newData`, thay vì chỉ hiện `#id` trơ như trước. Dropdown "Loại hành động" gom nhóm theo
+  `ACTION_GROUP_ORDER` (10 nhóm nghiệp vụ) cho dễ tìm giữa ~94 action, có search theo nhãn.
+- `frontend/src/lib/api/audit-meta.test.ts` (MỚI) — test "lưới an toàn": đọc TRỰC TIẾP code Backend thật
+  (`../backend/src/**/*.ts`, loại trừ `.spec.ts`), tự parse mọi lệnh `logAction`/`logActionAsync` (kể cả
+  dạng ternary `isLocked ? 'LOCK_X' : 'UNLOCK_X'`) để lấy đúng action/entityType thật đang ghi vào bảng
+  `audit_logs` dùng chung (KHÔNG gồm action riêng của `periodic_task_audit_logs` — bảng khác, action toàn
+  chữ thường, đúng yêu cầu "track full hành động - trừ phần task ra"), rồi đối chiếu với `ACTION_META`/
+  `ENTITY_TYPE_LABELS`. Đã sanity-check test tự bắt lỗi thật (xoá thử 1 dòng `ACTION_META`, test đỏ đúng
+  action đó, rồi khôi phục lại).
+
+**Solution:**
+> `audit-meta.ts` (file có sẵn, chưa ai wire) hoá ra đã đủ 100% nhãn cho toàn bộ action/entityType thật ở
+> BE (verify bằng script đối chiếu độc lập trước khi wire) — chỉ còn thiếu bước gắn vào `page.tsx` và thêm
+> lưới an toàn để không lặp lại tình trạng "BE thêm action mới, FE quên thêm nhãn" đã xảy ra ở phiên trước.
+
+**Notes:**
+> Verify thật: FE `tsc --noEmit` không phát sinh lỗi mới ở `audit-logs/page.tsx` (chỉ còn 4 lỗi cũ đã biết
+> từ trước: `logo.png` x3, `CountBadge` — không liên quan tới thay đổi này). `next build` build thành công
+> đủ 33 route. `npx vitest run` toàn frontend: **5 test files / 40 test pass** (gồm 4 test mới của
+> `audit-meta.test.ts`). Chưa test trên DB thật. Chưa export file cho người dùng ở bước log này (làm ngay
+> sau).
+
+---

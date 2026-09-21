@@ -21,39 +21,17 @@ import dayjs from 'dayjs';
 import { AuditDiffViewer } from '@/components/audit/AuditDiffViewer';
 import { useMyPermissions } from '@/lib/hooks/useMyPermissions';
 import { useRoleColorMap } from '@/lib/hooks/useRoleColorMap';
+import {
+  ACTION_META,
+  ACTION_GROUP_LABELS,
+  ACTION_GROUP_ORDER,
+  ENTITY_TYPE_LABELS,
+  getActionMeta,
+  getEntitySummary,
+} from '@/lib/api/audit-meta';
 
 const { Text, Title, Link } = Typography;
 const { RangePicker } = DatePicker;
-
-// ─── Constants & Metadata ──────────────────────────────────────────────────
-const ACTION_META: Record<string, { label: string; color: string }> = {
-  CREATE_CUSTOMER: { label: 'Tạo khách hàng', color: 'green' },
-  UPDATE_CUSTOMER: { label: 'Sửa khách hàng', color: 'blue' },
-  DELETE_CUSTOMER: { label: 'Xóa khách hàng', color: 'red' },
-  ASSIGN_CUSTOMER: { label: 'Chia data', color: 'purple' },
-  CREATE_DEPOSIT: { label: 'Nạp tiền', color: 'gold' },
-  DELETE_DEPOSIT: { label: 'Xóa phiếu nạp tiền', color: 'red' },
-  CREATE_NOTE: { label: 'Tạo ghi chú', color: 'cyan' },
-  CREATE_USER: { label: 'Tạo nhân viên', color: 'green' },
-  UPDATE_USER: { label: 'Sửa nhân viên', color: 'blue' },
-  RESET_PASSWORD: { label: 'Đặt lại mật khẩu', color: 'orange' },
-  USER_LOGIN: { label: 'Đăng nhập', color: 'default' },
-  UPDATE_AUDIT_SETTINGS: { label: 'Cập nhập cấu hình Audit', color: 'gray' },
-  ADMIN_CLEANUP_AUDIT_LOGS: { label: 'Admin dọn dẹp log', color: 'volcano' },
-  ADMIN_BULK_DELETE_AUDIT_LOGS: { label: 'Admin xóa log hàng loạt', color: 'volcano' },
-};
-
-const ENTITY_TYPE_LABELS: Record<string, string> = {
-  customer: 'Khách hàng',
-  deposit: 'Phiếu nạp tiền',
-  user: 'Nhân viên',
-  auth: 'Hệ thống',
-  customer_note: 'Ghi chú',
-  setting: 'Cấu hình',
-  audit_log: 'Nhật ký',
-};
-
-
 
 const ROLE_LABELS: Record<string, string> = {
   admin: 'Admin',
@@ -63,10 +41,14 @@ const ROLE_LABELS: Record<string, string> = {
 };
 
 const AuditLogMobileCard = ({ record, onShowDetail }: { record: AuditLog; onShowDetail: () => void }) => {
-  const meta = ACTION_META[record.action];
+  const meta = getActionMeta(record.action);
   const u = record.user;
   const isCustomer = record.entityType === 'customer';
   const customer = record.targetCustomer;
+  // Với customer, ưu tiên tên khách hàng thật (đã có API trả kèm) - các
+  // entityType còn lại (link_group, media_source, storage_media...) dùng
+  // `getEntitySummary` để suy ra tên/ngữ cảnh từ oldData/newData.
+  const summary = getEntitySummary(record);
   const { getRoleColor } = useRoleColorMap();
 
   return (
@@ -77,7 +59,7 @@ const AuditLogMobileCard = ({ record, onShowDetail }: { record: AuditLog; onShow
       onClick={onShowDetail}
     >
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
-        {meta ? <Tag color={meta.color} style={{ fontSize: 11 }}>{meta.label}</Tag> : <Tag style={{ fontSize: 11 }}>{record.action}</Tag>}
+        <Tag color={meta.color} style={{ fontSize: 11 }}>{meta.label}</Tag>
         <Text type="secondary" style={{ fontSize: 11 }}>
           {dayjs(record.createdAt).format('HH:mm:ss DD/MM/YYYY')}
         </Text>
@@ -111,7 +93,13 @@ const AuditLogMobileCard = ({ record, onShowDetail }: { record: AuditLog; onShow
               <Text type="secondary" italic style={{ fontSize: 12 }}>(Khách hàng đã xóa)</Text>
             )
           ) : (
-            record.entityType !== 'auth' && <Text style={{ fontSize: 12 }}>#{record.entityId}</Text>
+              <>
+                {summary.name && <Text style={{ fontSize: 12, fontWeight: 500 }}>{summary.name}</Text>}
+                {summary.subtitle && <Text type="secondary" style={{ fontSize: 11 }}>{summary.subtitle}</Text>}
+                {!summary.name && !summary.subtitle && summary.idLabel && (
+                  <Text style={{ fontSize: 12 }}>{summary.idLabel}</Text>
+                )}
+              </>
           )}
         </div>
         
@@ -448,17 +436,22 @@ export default function AuditLogsPage() {
       key: 'action',
       width: 180,
       render: (_, record) => {
-        const meta = ACTION_META[record.action];
-        return meta ? <Tag color={meta.color}>{meta.label}</Tag> : <Tag>{record.action}</Tag>;
+        const meta = getActionMeta(record.action);
+        return <Tag color={meta.color}>{meta.label}</Tag>;
       },
     },
     {
       title: 'Đối tượng',
       key: 'entity',
-      width: 200,
+      width: 220,
       render: (_, record) => {
         const isCustomer = record.entityType === 'customer';
         const customer = record.targetCustomer;
+        // Ngoài customer (có API trả kèm tên thật), mọi entityType khác
+        // (link_group, media_source, storage_media, role UI-visibility...)
+        // suy ra tên/ngữ cảnh từ oldData/newData qua `getEntitySummary` -
+        // trước đây chỉ hiện "#id" trơ, giờ hiện đúng tên đối tượng.
+        const summary = getEntitySummary(record);
 
         return (
           <Space orientation={"vertical" as any} size={0}>
@@ -476,8 +469,18 @@ export default function AuditLogsPage() {
               ) : (
                 <Text type="secondary" italic style={{ fontSize: 13 }}>(Khách hàng đã xóa)</Text>
               )
-            ) : (
-              record.entityType !== 'auth' && <Text style={{ fontSize: 13 }}>#{record.entityId}</Text>
+            ) : record.entityType === 'auth' ? null : (
+              <>
+                <Text style={{ fontSize: 13, fontWeight: 500 }}>
+                  {summary.name || summary.idLabel || <Text type="secondary" italic>(Không xác định)</Text>}
+                </Text>
+                {summary.subtitle && (
+                  <Text type="secondary" style={{ fontSize: 11 }}>{summary.subtitle}</Text>
+                )}
+                {summary.name && summary.idLabel && (
+                  <Text type="secondary" style={{ fontSize: 11 }}>{summary.idLabel}</Text>
+                )}
+              </>
             )}
           </Space>
         );
@@ -558,9 +561,44 @@ export default function AuditLogsPage() {
                       value={search} onChange={e => setSearch(e.target.value)} onPressEnter={handleSearch} allowClear />
                   </Col>
                   <Col xs={24} md={5}>
-                    <Select placeholder="Loại hành động" value={filterAction} onChange={setFilterAction} allowClear style={{ width: '100%' }}
-                      options={[...Object.entries(ACTION_META).filter(([k]) => k !== 'USER_LOGIN').map(([k, v]) => ({ label: <Tag color={v.color} style={{ marginInlineEnd: 0 }}>{v.label}</Tag>, value: k })),
-                      ...availableActions.filter(a => a !== 'USER_LOGIN' && !ACTION_META[a]).map(a => ({ label: <Tag style={{ marginInlineEnd: 0 }}>{a}</Tag>, value: a }))]} />
+                    <Select
+                      placeholder="Loại hành động"
+                      value={filterAction}
+                      onChange={setFilterAction}
+                      allowClear
+                      showSearch
+                      optionFilterProp="label"
+                      style={{ width: '100%' }}
+                      // Gom nhóm theo ACTION_GROUP_ORDER (audit-meta.ts) - ~94 action nếu
+                      // để phẳng 1 danh sách rất khó dò, nhóm theo nghiệp vụ dễ tìm hơn.
+                      options={[
+                        ...ACTION_GROUP_ORDER.filter((g) => g !== 'audit').map((groupKey) => ({
+                          label: ACTION_GROUP_LABELS[groupKey],
+                          title: ACTION_GROUP_LABELS[groupKey],
+                          options: Object.entries(ACTION_META)
+                            .filter(([k, v]) => v.group === groupKey && k !== 'USER_LOGIN')
+                            .map(([k, v]) => ({
+                              label: v.label,
+                              value: k,
+                            })),
+                        })),
+                        // Action BE có thật nhưng FE chưa kịp thêm nhãn (fallback) - vẫn
+                        // cho lọc được, chỉ hiện tên kỹ thuật thay vì biến mất khỏi danh sách.
+                        ...(availableActions.filter((a) => a !== 'USER_LOGIN' && !ACTION_META[a]).length
+                          ? [{
+                            label: 'Khác (chưa có nhãn)',
+                            title: 'Khác (chưa có nhãn)',
+                            options: availableActions
+                              .filter((a) => a !== 'USER_LOGIN' && !ACTION_META[a])
+                              .map((a) => ({ label: a, value: a })),
+                          }]
+                          : []),
+                      ]}
+                      optionRender={(option) => {
+                        const meta = ACTION_META[option.value as string];
+                        return meta ? <Tag color={meta.color} style={{ marginInlineEnd: 0 }}>{meta.label}</Tag> : <Tag style={{ marginInlineEnd: 0 }}>{option.value}</Tag>;
+                      }}
+                    />
                   </Col>
                   <Col xs={24} md={5}>
                     <Select placeholder="Đối tượng" value={filterEntityType} onChange={setFilterEntityType} allowClear style={{ width: '100%' }}
@@ -758,7 +796,19 @@ export default function AuditLogsPage() {
                 {selectedLog.targetCustomer && (
                   <Text><b>Khách hàng:</b> {selectedLog.targetCustomer.name} (ID: #{selectedLog.targetCustomer.id})</Text>
                 )}
-                <Text><b>Hành động:</b> {ACTION_META[selectedLog.action]?.label || selectedLog.action}</Text>
+                <Text><b>Hành động:</b> {getActionMeta(selectedLog.action).label}</Text>
+                {(() => {
+                  const s = getEntitySummary(selectedLog);
+                  if (selectedLog.entityType === 'customer' || selectedLog.entityType === 'auth') return null;
+                  return (
+                    <Text>
+                      <b>Đối tượng:</b> {ENTITY_TYPE_LABELS[selectedLog.entityType] || selectedLog.entityType}
+                      {s.name ? ` — ${s.name}` : ''}
+                      {s.subtitle ? ` (${s.subtitle})` : ''}
+                      {s.idLabel ? ` ${s.idLabel}` : ''}
+                    </Text>
+                  );
+                })()}
                 <Text><b>Thời gian:</b> {dayjs(selectedLog.createdAt).format('HH:mm:ss DD/MM/YYYY')}</Text>
               </Space>
             </Card>
