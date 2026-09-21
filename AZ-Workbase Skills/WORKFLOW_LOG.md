@@ -2959,3 +2959,53 @@ POST/PATCH/PUT/DELETE từng controller) để có bức tranh đầy đủ ai �
 > sau này, nhớ đối chiếu NGAY với `FIELD_LABELS`/`CONTEXTUAL_FIELD_LABELS` để tránh lặp lại đúng lớp bug này.
 
 ---
+
+## [2026-09-21 11:50] | Tooltip "Lý do" ở Nghỉ phép của tôi + Trim Mô tả/Ghi chú ở Tab Bảng Công việc Định kỳ | Status: Success
+
+**Actor:** Agent
+
+**Files Changed:**
+- `frontend/src/app/(dashboard)/nghi-phep/page.tsx`:
+  - Thêm `Tooltip` (import từ `antd`) + hằng `REASON_ELLIPSIS_STYLE` (mirror ĐÚNG hằng cùng tên đã có ở
+    `duyet-phep/page.tsx` — fix bug Tooltip định vị lệch do `<span>` không có `maxWidth`).
+  - Cột "Lý do": thêm `render` bọc `Tooltip` (trước đây chỉ có `ellipsis: true` trần, dựa vào tooltip
+    mặc định của trình duyệt).
+  - Cột "Lý do từ chối": đổi từ `<Text type="danger" italic>` trần sang cùng pattern `Tooltip` +
+    `REASON_ELLIPSIS_STYLE` (phát hiện thêm khi rà soát, ngoài phạm vi câu hỏi gốc — để nhất quán với
+    `duyet-phep`).
+- `frontend/src/app/(dashboard)/cong-viec-dinh-ky/page.tsx`:
+  - Thêm helper `truncateText(text, maxLength)` (trim CỨNG bằng `.slice()`, không dựa CSS).
+  - Cột "Công việc" (Tab Bảng, `view === 'table'`): 2 khối `Mô tả:`/`Ghi chú:` đổi từ AntD `Text ellipsis`
+    (CSS, dựa `maxWidth:100%`) sang `truncateText(..., 60)` — giữ nguyên `Tooltip` sẵn có hiện đầy đủ nội
+    dung khi hover.
+  - `<TaskTitlePill title={title} color={record.color} />` → thêm `maxLength={40}` (chỉ ở đây, KHÔNG đụng
+    `TaskMiniCard.tsx` dùng chung component cho Agenda/Kanban/Calendar).
+- `frontend/src/components/periodic-tasks/TaskTitlePill.tsx`:
+  - Thêm prop optional `maxLength?: number` — khi vượt quá sẽ cắt + `…`, bọc `Tooltip` hiện đầy đủ tiêu đề.
+    Không truyền = giữ hành vi cũ (wrap tự do, không cắt) → không ảnh hưởng `TaskMiniCard.tsx`.
+
+**Root Cause (bug fix phần Mô tả/Ghi chú):**
+> User gửi ảnh chụp Tab "Bảng" cho thấy `Mô tả:`/`Ghi chú:` với chuỗi dài LIỀN không khoảng trắng (vd
+> `ddddddd...`) tràn đè lên cột "Kỳ hạn"/"Trạng thái" bên cạnh dù code đã có AntD `Text ellipsis`. Nguyên
+> nhân: `Text ellipsis` set `display:inline-block; maxWidth:100%`, nhưng `%` này tính theo bề rộng CHA —
+> Table ở trang này có `scroll={{x:'max-content'}}` nên `table-layout` KHÔNG `fixed`, cột "Công việc" tự
+> NỞ RA vừa khít chuỗi dài đó (100% của 1 khung đã nở vô hạn = không giới hạn gì cả). Cùng lớp nguyên nhân
+> khiến lần sửa trước đó (dựa hoàn toàn vào CSS ellipsis, không trim JS) không đủ để chặn bug này.
+
+**Solution:**
+> Bỏ phụ thuộc CSS ellipsis cho 2 field này, trim bằng JS (`truncateText`, cắt cứng theo số ký tự) TRƯỚC
+> khi render — đảm bảo độ dài hiển thị luôn cố định bất kể `table-layout`/nội dung có khoảng trắng hay
+> không. Tooltip hiện đầy đủ nội dung gốc giữ nguyên. Áp dụng cùng kỹ thuật (trim JS + Tooltip) cho tiêu đề
+> Task qua `TaskTitlePill.maxLength` để phòng ngừa tiêu đề cực dài gây lỗi tương tự.
+> Phần Tooltip "Lý do" ở `nghi-phep`: mirror 1:1 pattern đã có sẵn ở `duyet-phep/page.tsx` (không phát
+> minh cách mới), theo đúng nguyên tắc nhất quán UI toàn app.
+
+**Notes:**
+> Verify thật: `npm install` (frontend), `npx tsc --noEmit` — 0 lỗi mới phát sinh trong 3 file sửa (4 lỗi
+> baseline cũ `logo.png`×4/`CountBadge.tsx` không liên quan, xác nhận qua `git stash` + chạy lại). `next
+> build` — build thành công đủ route, không lỗi biên tập. `package-lock.json` bị `npm install` đổi ngoài ý
+> muốn — đã `git checkout` revert lại theo đúng quy ước "Minimal diff noise". Chưa test trực quan trên
+> trình duyệt thật (cần user xác nhận qua ảnh chụp/thao tác thật, đặc biệt vị trí Tooltip và giá trị
+> `maxLength=40/60` có phù hợp thực tế hay cần chủ dự án tinh chỉnh thêm).
+
+---
