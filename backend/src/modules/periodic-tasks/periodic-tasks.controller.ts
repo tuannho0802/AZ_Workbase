@@ -149,7 +149,16 @@ export class PeriodicTasksController {
     const withSecondary = await this.periodicTaskSecondaryAssigneesService.attachSecondaryAssignees(withCustomers);
     // Phase 6: đính thêm `checklistItems` - cũng không cần ẩn theo quyền
     // (xem JSDoc `attachChecklistItems()`).
-    return this.periodicTaskChecklistItemsService.attachChecklistItems(withSecondary);
+    const withChecklist = await this.periodicTaskChecklistItemsService.attachChecklistItems(withSecondary);
+    // Phase 9: đính thêm `linkedChildrenChecklist` (Task con TRỰC TIẾP hiện
+    // dưới dạng "checklist tích hợp", tách biệt hoàn toàn khỏi `checklistItems`
+    // ở trên) - CÓ lọc lại theo scope người gọi, xem JSDoc `attachLinkedChildrenChecklist()`.
+    return this.periodicTaskChecklistItemsService.attachLinkedChildrenChecklist(
+      withChecklist,
+      user.id,
+      user.role,
+      scope,
+    );
   }
 
   @Patch(':id')

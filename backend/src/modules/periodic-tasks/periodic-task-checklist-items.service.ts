@@ -3,6 +3,7 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { PeriodicTaskChecklistItem } from '../../database/entities/periodic-task-checklist-item.entity';
 import { PeriodicTasksService, RequestingUser } from './periodic-tasks.service';
+import { PeriodicTaskLinksService, LinkedChildChecklistEntry } from './periodic-task-links.service';
 import { CreatePeriodicTaskChecklistItemDto } from './dto/create-periodic-task-checklist-item.dto';
 import { UpdatePeriodicTaskChecklistItemDto } from './dto/update-periodic-task-checklist-item.dto';
 import { ReorderPeriodicTaskChecklistItemsDto } from './dto/reorder-periodic-task-checklist-items.dto';
@@ -21,6 +22,11 @@ import { PeriodicTaskAuditService, PeriodicTaskAuditAction } from './periodic-ta
  * - CHỈ CẦN `periodic_tasks.edit` (đã gate ở Controller/`PermissionGuard`
  * cho các route sửa) và `periodic_tasks.view` (route GET danh sách) - thừa
  * hưởng nguyên vẹn quyền của chính Task cha.
+ *
+ * Phase 9 (tích hợp Task con vào chung Checklist): `attachLinkedChildrenChecklist()`
+ * dưới đây là 1 luồng HOÀN TOÀN TÁCH BIỆT khỏi `queryItems()`/CRUD ở trên -
+ * KHÔNG đọc/ghi bảng `periodic_task_checklist_items` chút nào, chỉ tính LIVE
+ * từ `PeriodicTaskLinksService.getChildrenChecklist()`. Xem JSDoc đầy đủ ở đó.
  */
 @Injectable()
 export class PeriodicTaskChecklistItemsService {
@@ -28,6 +34,7 @@ export class PeriodicTaskChecklistItemsService {
     @InjectRepository(PeriodicTaskChecklistItem)
     private readonly checklistRepo: Repository<PeriodicTaskChecklistItem>,
     private readonly tasksService: PeriodicTasksService,
+    private readonly linksService: PeriodicTaskLinksService,
     private readonly auditService: PeriodicTaskAuditService,
   ) {}
 
@@ -206,5 +213,34 @@ export class PeriodicTaskChecklistItemsService {
     const taskId = (task as unknown as { id: number }).id;
     const checklistItems = await this.queryItems(taskId);
     return { ...task, checklistItems };
+  }
+
+  /**
+   * attachLinkedChildrenChecklist - Phase 9: đính field `linkedChildrenChecklist`
+   * vào response 1 Task (dùng ở `PeriodicTasksController.findOne()`, sau
+   * `attachChecklistItems()`) - mirror CÁCH GẮN (`{...task, field}`) nhưng
+   * NGUỒN DỮ LIỆU hoàn toàn khác: gọi `PeriodicTaskLinksService.
+   * getChildrenChecklist()` (tính LIVE từ `periodic_task_links` + trạng thái
+   * THẬT của từng Task con), KHÔNG chạm bảng `periodic_task_checklist_items`.
+   *
+   * CỐ Ý nhận thêm `userId`/`userRole`/`scope` (khác `attachChecklistItems()`
+   * ở trên không cần) - vì `getChildrenChecklist()` lọc lại Task con theo
+   * phạm vi scope người gọi (xem JSDoc ở đó), không "ai xem được Task cha thì
+   * xem được hết" như checklist item thường.
+   */
+  async attachLinkedChildrenChecklist<T extends object>(
+    task: T,
+    userId: number,
+    userRole: string,
+    scope?: string | null,
+  ): Promise<T & { linkedChildrenChecklist: LinkedChildChecklistEntry[] }> {
+    const taskId = (task as unknown as { id: number }).id;
+    const linkedChildrenChecklist = await this.linksService.getChildrenChecklist(
+      taskId,
+      userId,
+      userRole,
+      scope,
+    );
+    return { ...task, linkedChildrenChecklist };
   }
 }

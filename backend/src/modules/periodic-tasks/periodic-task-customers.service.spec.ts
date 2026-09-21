@@ -1,52 +1,38 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { getRepositoryToken } from '@nestjs/typeorm';
 import { BadRequestException, ForbiddenException, NotFoundException } from '@nestjs/common';
-import { PeriodicTaskCustomersService } from './periodic-task-customers.service';
+import { PeriodicTaskChecklistItemsService } from './periodic-task-checklist-items.service';
 import { PeriodicTasksService } from './periodic-tasks.service';
-import { PermissionsService } from '../permissions/permissions.service';
-import { PeriodicTaskAuditService, PeriodicTaskAuditAction } from './periodic-task-audit.service';
-import { PeriodicTaskCustomer } from '../../database/entities/periodic-task-customer.entity';
-import { Customer } from '../../database/entities/customer.entity';
-import { PermissionScope } from '../../database/entities/role-permission.entity';
+import { PeriodicTaskLinksService } from './periodic-task-links.service';
+import { PeriodicTaskChecklistItem } from '../../database/entities/periodic-task-checklist-item.entity';
 import { Role } from '../../common/enums/role.enum';
+import { PeriodicTaskAuditService, PeriodicTaskAuditAction } from './periodic-task-audit.service';
 
-function makeFakeQueryBuilder(overrides: { getOne?: any; getMany?: any } = {}) {
-  const qb: any = {
+describe('PeriodicTaskChecklistItemsService', () => {
+  let service: PeriodicTaskChecklistItemsService;
+
+  const mockQb = {
     select: jest.fn().mockReturnThis(),
-    leftJoinAndSelect: jest.fn().mockReturnThis(),
-    innerJoin: jest.fn().mockReturnThis(),
     where: jest.fn().mockReturnThis(),
-    andWhere: jest.fn().mockReturnThis(),
-    getOne: jest.fn().mockResolvedValue(overrides.getOne ?? null),
-    getMany: jest.fn().mockResolvedValue(overrides.getMany ?? []),
+    getRawOne: jest.fn(),
   };
-  return qb;
-}
 
-describe('PeriodicTaskCustomersService', () => {
-  let service: PeriodicTaskCustomersService;
-
-  const mockLinkRepo = {
+  const mockChecklistRepo = {
     find: jest.fn(),
     findOne: jest.fn(),
     create: jest.fn((x) => x),
     save: jest.fn(),
     remove: jest.fn(),
+    update: jest.fn(),
+    createQueryBuilder: jest.fn(() => mockQb),
   };
-  const mockCustomerRepo = {
-    createQueryBuilder: jest.fn(),
-    // ⚠️ Mới - `addCustomers()`/`removeCustomer()` giờ fetch tên customer để
-    // dựng audit snapshot sạch (xem `buildDepositAuditSnapshot`-style fix ở
-    // `PeriodicTaskCustomersService`), KHÔNG còn chỉ dùng `createQueryBuilder`.
-    find: jest.fn(),
-    findOne: jest.fn(),
-  };
+
   const mockTasksService = {
     findOne: jest.fn(),
     assertEditableWhenLocked: jest.fn(),
   };
-  const mockPermissionsService = {
-    hasPermission: jest.fn(),
+  const mockLinksService = {
+    getChildrenChecklist: jest.fn(),
   };
   const mockAuditService = {
     logActionAsync: jest.fn(),
@@ -54,182 +40,236 @@ describe('PeriodicTaskCustomersService', () => {
 
   const taskId = 10;
   const employeeUser = { id: 1, role: Role.EMPLOYEE, isRootAdmin: false, departmentId: 2, positionId: null };
-  const rootAdminUser = { id: 99, role: Role.ADMIN, isRootAdmin: true, departmentId: null, positionId: null };
 
   beforeEach(async () => {
     jest.clearAllMocks();
-    mockTasksService.findOne.mockResolvedValue({ id: taskId });
+    mockTasksService.findOne.mockResolvedValue({ id: taskId, isLocked: false });
     mockTasksService.assertEditableWhenLocked.mockResolvedValue(undefined);
-    // Default an toàn cho các test KHÔNG quan tâm tới nội dung audit log -
-    // chỉ những test assert cụ thể tên customer trong log mới override lại.
-    mockCustomerRepo.find.mockResolvedValue([]);
-    mockCustomerRepo.findOne.mockResolvedValue(null);
 
     const module: TestingModule = await Test.createTestingModule({
       providers: [
-        PeriodicTaskCustomersService,
-        { provide: getRepositoryToken(PeriodicTaskCustomer), useValue: mockLinkRepo },
-        { provide: getRepositoryToken(Customer), useValue: mockCustomerRepo },
+        PeriodicTaskChecklistItemsService,
+        { provide: getRepositoryToken(PeriodicTaskChecklistItem), useValue: mockChecklistRepo },
         { provide: PeriodicTasksService, useValue: mockTasksService },
-        { provide: PermissionsService, useValue: mockPermissionsService },
+        { provide: PeriodicTaskLinksService, useValue: mockLinksService },
         { provide: PeriodicTaskAuditService, useValue: mockAuditService },
       ],
     }).compile();
 
-    service = module.get<PeriodicTaskCustomersService>(PeriodicTaskCustomersService);
+    service = module.get<PeriodicTaskChecklistItemsService>(PeriodicTaskChecklistItemsService);
   });
 
-  describe('addCustomers', () => {
-    it('ném ForbiddenException nếu thiếu periodic_tasks.link_customer (spec bắt buộc PLAN mục 6)', async () => {
-      mockPermissionsService.hasPermission.mockResolvedValueOnce({ allowed: false, scope: null }); // link_customer
+  describe('findAllForTask', () => {
+    it('gọi "1 cổng gác" tasksService.findOne() (periodic_tasks.view) trước khi trả danh sách', async () => {
+      mockChecklistRepo.find.mockResolvedValue([{ id: 1, taskId, position: 0 }]);
 
-      await expect(
-        service.addCustomers(taskId, { customerIds: [1] }, employeeUser, 'own'),
-      ).rejects.toThrow(ForbiddenException);
+      const result = await service.findAllForTask(taskId, employeeUser.id, employeeUser.role, 'own');
 
-      // Đã gọi "1 cổng gác" tasksService.findOne() TRƯỚC khi kiểm tra link_customer.
       expect(mockTasksService.findOne).toHaveBeenCalledWith(taskId, employeeUser.id, employeeUser.role, 'own');
-      expect(mockCustomerRepo.createQueryBuilder).not.toHaveBeenCalled();
+      expect(mockChecklistRepo.find).toHaveBeenCalledWith({
+        where: { taskId },
+        order: { position: 'ASC', id: 'ASC' },
+      });
+      expect(result).toEqual([{ id: 1, taskId, position: 0 }]);
     });
 
-    it('Root Admin bỏ qua mọi kiểm tra permission (link_customer + customers.view)', async () => {
-      const qb = makeFakeQueryBuilder({ getOne: { id: 1 } });
-      mockCustomerRepo.createQueryBuilder.mockReturnValue(qb);
-      mockLinkRepo.find.mockResolvedValue([]);
-      mockLinkRepo.save.mockResolvedValue([]);
-      // getLinkedCustomers() gọi lại createQueryBuilder lần 2 -> trả getMany rỗng.
-      const qbList = makeFakeQueryBuilder({ getMany: [] });
-      mockCustomerRepo.createQueryBuilder.mockReturnValueOnce(qb).mockReturnValueOnce(qbList);
-
-      await service.addCustomers(taskId, { customerIds: [1] }, rootAdminUser, 'all');
-
-      // Root Admin -> KHÔNG gọi permissionsService.hasPermission lần nào.
-      expect(mockPermissionsService.hasPermission).not.toHaveBeenCalled();
-    });
-
-    it('ném ForbiddenException nếu có link_customer nhưng KHÔNG có customers.view', async () => {
-      mockPermissionsService.hasPermission
-        .mockResolvedValueOnce({ allowed: true, scope: null }) // link_customer
-        .mockResolvedValueOnce({ allowed: false, scope: null }); // customers.view
+    it('ném NotFoundException nếu Task ngoài phạm vi scope (mirror findOne() của Task cha)', async () => {
+      mockTasksService.findOne.mockRejectedValue(new NotFoundException());
 
       await expect(
-        service.addCustomers(taskId, { customerIds: [1] }, employeeUser, 'own'),
-      ).rejects.toThrow(ForbiddenException);
-      expect(mockCustomerRepo.createQueryBuilder).not.toHaveBeenCalled();
+        service.findAllForTask(999, employeeUser.id, employeeUser.role, 'own'),
+      ).rejects.toThrow(NotFoundException);
+      expect(mockChecklistRepo.find).not.toHaveBeenCalled();
     });
+  });
 
-    it('ném BadRequestException nếu customer ngoài phạm vi quyền xem (scope customers.view) - spec bắt buộc PLAN mục 6', async () => {
-      mockPermissionsService.hasPermission
-        .mockResolvedValueOnce({ allowed: true, scope: null }) // link_customer
-        .mockResolvedValueOnce({ allowed: true, scope: PermissionScope.OWN }); // customers.view scope=own
+  describe('create', () => {
+    it('thêm item mới với position = MAX(position) hiện có + 1', async () => {
+      mockQb.getRawOne.mockResolvedValue({ max: 2 });
+      mockChecklistRepo.save.mockResolvedValue(undefined);
+      mockChecklistRepo.find.mockResolvedValue([
+        { id: 1, position: 0 },
+        { id: 2, position: 1 },
+        { id: 3, position: 3 },
+      ]);
 
-      const qb = makeFakeQueryBuilder({ getOne: null }); // customer không nằm trong applyViewFilter
-      mockCustomerRepo.createQueryBuilder.mockReturnValue(qb);
+      const result = await service.create(taskId, { content: 'Gọi khách' }, employeeUser, 'own');
 
-      await expect(
-        service.addCustomers(taskId, { customerIds: [5] }, employeeUser, 'own'),
-      ).rejects.toThrow(BadRequestException);
-    });
-
-    it('gắn thành công + bỏ qua customer đã gắn trước đó (idempotent)', async () => {
-      mockPermissionsService.hasPermission
-        .mockResolvedValueOnce({ allowed: true, scope: null }) // link_customer
-        .mockResolvedValueOnce({ allowed: true, scope: PermissionScope.ALL }) // customers.view (validate loop)
-        .mockResolvedValueOnce({ allowed: true, scope: PermissionScope.ALL }); // customers.view (getLinkedCustomers)
-
-      const qbValidate1 = makeFakeQueryBuilder({ getOne: { id: 1 } });
-      const qbValidate2 = makeFakeQueryBuilder({ getOne: { id: 2 } });
-      const qbList = makeFakeQueryBuilder({ getMany: [{ id: 1 }, { id: 2 }] });
-      mockCustomerRepo.createQueryBuilder
-        .mockReturnValueOnce(qbValidate1)
-        .mockReturnValueOnce(qbValidate2)
-        .mockReturnValueOnce(qbList);
-
-      // Customer id=1 đã có link sẵn -> KHÔNG insert lại, chỉ insert id=2.
-      mockLinkRepo.find.mockResolvedValue([{ customerId: 1 }]);
-      mockLinkRepo.save.mockResolvedValue([]);
-      // Resolve tên cho đúng 1 customer THẬT SỰ mới gắn (id=2) - dùng để
-      // dựng audit snapshot sạch.
-      mockCustomerRepo.find.mockResolvedValue([{ id: 2, name: 'Customer 2' }]);
-
-      const result = await service.addCustomers(taskId, { customerIds: [1, 2] }, employeeUser, 'all');
-
-      expect(mockLinkRepo.create).toHaveBeenCalledTimes(1);
-      expect(mockLinkRepo.create).toHaveBeenCalledWith({ taskId, customerId: 2, linkedById: employeeUser.id });
-      expect(result).toEqual([{ id: 1 }, { id: 2 }]);
-      // Phase 7 (PLAN mục 2.6): CHỈ log customerId THẬT SỰ mới thêm (id=2),
-      // KHÔNG log lại id=1 (đã tồn tại từ trước, idempotent add).
-      // ⚠️ FIX BUG THẬT (đợt rà soát audit log toàn bộ): giờ log resolve
-      // TÊN customer (`customers: [{id,name}]`), không còn mảng ID thô
-      // `customerIds` - xem `PeriodicTaskCustomersService.addCustomers()`.
+      expect(mockChecklistRepo.create).toHaveBeenCalledWith({
+        taskId,
+        content: 'Gọi khách',
+        position: 3,
+        createdById: employeeUser.id,
+      });
+      expect(mockChecklistRepo.save).toHaveBeenCalled();
+      expect(result).toHaveLength(3);
       expect(mockAuditService.logActionAsync).toHaveBeenCalledWith(
         taskId,
         employeeUser.id,
-        PeriodicTaskAuditAction.CUSTOMER_LINKED,
+        PeriodicTaskAuditAction.CHECKLIST_ITEM_ADDED,
         null,
-        { customers: [{ id: 2, name: 'Customer 2' }] },
+        { content: 'Gọi khách' },
       );
+    });
+
+    it('position = 0 khi Task chưa có item nào (MAX trả về null)', async () => {
+      mockQb.getRawOne.mockResolvedValue({ max: null });
+      mockChecklistRepo.save.mockResolvedValue(undefined);
+      mockChecklistRepo.find.mockResolvedValue([]);
+
+      await service.create(taskId, { content: 'Item đầu tiên' }, employeeUser, 'own');
+
+      expect(mockChecklistRepo.create).toHaveBeenCalledWith(
+        expect.objectContaining({ position: 0 }),
+      );
+    });
+
+    it('ném ForbiddenException nếu Task đang khoá và thiếu periodic_tasks.edit_locked (Phase 5)', async () => {
+      mockTasksService.assertEditableWhenLocked.mockRejectedValue(new ForbiddenException());
+
+      await expect(
+        service.create(taskId, { content: 'X' }, employeeUser, 'own'),
+      ).rejects.toThrow(ForbiddenException);
+      expect(mockChecklistRepo.create).not.toHaveBeenCalled();
     });
   });
 
-  describe('removeCustomer', () => {
-    it('ném ForbiddenException nếu thiếu periodic_tasks.link_customer', async () => {
-      mockPermissionsService.hasPermission.mockResolvedValueOnce({ allowed: false, scope: null });
+  describe('update', () => {
+    it('ném NotFoundException nếu item không tồn tại hoặc thuộc Task khác (không rò rỉ chéo Task)', async () => {
+      mockChecklistRepo.findOne.mockResolvedValue(null);
 
-      await expect(service.removeCustomer(taskId, 1, employeeUser, 'own')).rejects.toThrow(ForbiddenException);
-      expect(mockLinkRepo.findOne).not.toHaveBeenCalled();
+      await expect(
+        service.update(taskId, 999, { isDone: true }, employeeUser, 'own'),
+      ).rejects.toThrow(NotFoundException);
+      expect(mockChecklistRepo.findOne).toHaveBeenCalledWith({ where: { id: 999, taskId } });
+      expect(mockChecklistRepo.save).not.toHaveBeenCalled();
     });
 
-    it('ném NotFoundException nếu liên kết không tồn tại', async () => {
-      mockPermissionsService.hasPermission.mockResolvedValueOnce({ allowed: true, scope: null });
-      mockLinkRepo.findOne.mockResolvedValue(null);
+    it('sửa content/isDone thành công', async () => {
+      const existing = { id: 5, taskId, content: 'Cũ', isDone: false, position: 0 };
+      mockChecklistRepo.findOne.mockResolvedValue(existing);
+      mockChecklistRepo.save.mockResolvedValue(undefined);
+      mockChecklistRepo.find.mockResolvedValue([{ ...existing, content: 'Mới', isDone: true }]);
 
-      await expect(service.removeCustomer(taskId, 1, employeeUser, 'own')).rejects.toThrow(NotFoundException);
-    });
+      await service.update(taskId, 5, { content: 'Mới', isDone: true }, employeeUser, 'own');
 
-    it('gỡ liên kết thành công khi tồn tại (Root Admin, không cần hasPermission)', async () => {
-      mockLinkRepo.findOne.mockResolvedValue({ id: 1, taskId, customerId: 1 });
-      mockLinkRepo.remove.mockResolvedValue(undefined);
-      // ⚠️ FIX BUG THẬT (đợt rà soát audit log toàn bộ): `removeCustomer()`
-      // giờ resolve tên customer vừa gỡ (`customer: {id,name}`) thay vì log
-      // raw `customerId`.
-      mockCustomerRepo.findOne.mockResolvedValue({ id: 1, name: 'Customer 1' });
-
-      const result = await service.removeCustomer(taskId, 1, rootAdminUser, 'all');
-
-      expect(mockPermissionsService.hasPermission).not.toHaveBeenCalled();
-      expect(result).toEqual({ deleted: true });
+      expect(mockChecklistRepo.save).toHaveBeenCalledWith(
+        expect.objectContaining({ id: 5, content: 'Mới', isDone: true }),
+      );
       expect(mockAuditService.logActionAsync).toHaveBeenCalledWith(
         taskId,
-        rootAdminUser.id,
-        PeriodicTaskAuditAction.CUSTOMER_UNLINKED,
-        { customer: { id: 1, name: 'Customer 1' } },
+        employeeUser.id,
+        PeriodicTaskAuditAction.CHECKLIST_ITEM_UPDATED,
+        { itemId: 5, content: 'Cũ', isDone: false },
+        { itemId: 5, content: 'Mới', isDone: true },
       );
     });
   });
 
-  describe('attachLinkedCustomers', () => {
-    it('XOÁ HẲN key linkedCustomers nếu người xem không có customers.view (không trả mảng rỗng)', async () => {
-      mockPermissionsService.hasPermission.mockResolvedValueOnce({ allowed: false, scope: null });
+  describe('remove', () => {
+    it('ném NotFoundException nếu item không tồn tại trong Task', async () => {
+      mockChecklistRepo.findOne.mockResolvedValue(null);
 
-      const task = { id: taskId, title: 'Task A' };
-      const result = await service.attachLinkedCustomers(task, employeeUser);
-
-      expect(result).toEqual({ id: taskId, title: 'Task A' });
-      expect('linkedCustomers' in result).toBe(false);
-      expect(mockCustomerRepo.createQueryBuilder).not.toHaveBeenCalled();
+      await expect(service.remove(taskId, 999, employeeUser, 'own')).rejects.toThrow(NotFoundException);
+      expect(mockChecklistRepo.remove).not.toHaveBeenCalled();
     });
 
-    it('trả về mảng Customer đã lọc lại đúng phạm vi customers.view của người đang xem', async () => {
-      mockPermissionsService.hasPermission.mockResolvedValueOnce({ allowed: true, scope: PermissionScope.OWN });
-      const qb = makeFakeQueryBuilder({ getMany: [{ id: 3 }] });
-      mockCustomerRepo.createQueryBuilder.mockReturnValue(qb);
+    it('xoá thành công khi tồn tại (hard delete)', async () => {
+      const existing = { id: 5, taskId, content: 'Gọi khách' };
+      mockChecklistRepo.findOne.mockResolvedValue(existing);
+      mockChecklistRepo.remove.mockResolvedValue(undefined);
+      mockChecklistRepo.find.mockResolvedValue([]);
+
+      const result = await service.remove(taskId, 5, employeeUser, 'own');
+
+      expect(mockChecklistRepo.remove).toHaveBeenCalledWith(existing);
+      expect(result).toEqual([]);
+      expect(mockAuditService.logActionAsync).toHaveBeenCalledWith(
+        taskId,
+        employeeUser.id,
+        PeriodicTaskAuditAction.CHECKLIST_ITEM_REMOVED,
+        { itemId: 5, content: 'Gọi khách' },
+      );
+    });
+  });
+
+  describe('reorder', () => {
+    it('ném BadRequestException nếu itemIds thiếu 1 item hiện có', async () => {
+      mockChecklistRepo.find.mockResolvedValue([
+        { id: 1, position: 0 },
+        { id: 2, position: 1 },
+        { id: 3, position: 2 },
+      ]);
+
+      await expect(
+        service.reorder(taskId, { itemIds: [1, 2] }, employeeUser, 'own'),
+      ).rejects.toThrow(BadRequestException);
+      expect(mockChecklistRepo.update).not.toHaveBeenCalled();
+    });
+
+    it('ném BadRequestException nếu itemIds chứa ID không thuộc Task (thừa/lạ)', async () => {
+      mockChecklistRepo.find.mockResolvedValue([
+        { id: 1, position: 0 },
+        { id: 2, position: 1 },
+      ]);
+
+      await expect(
+        service.reorder(taskId, { itemIds: [1, 2, 999] }, employeeUser, 'own'),
+      ).rejects.toThrow(BadRequestException);
+      expect(mockChecklistRepo.update).not.toHaveBeenCalled();
+    });
+
+    it('sắp xếp lại thành công khi itemIds là hoán vị đầy đủ - ghi position theo đúng index', async () => {
+      mockChecklistRepo.find
+        .mockResolvedValueOnce([
+          { id: 1, position: 0 },
+          { id: 2, position: 1 },
+          { id: 3, position: 2 },
+        ])
+        .mockResolvedValueOnce([
+          { id: 3, position: 0 },
+          { id: 1, position: 1 },
+          { id: 2, position: 2 },
+        ]);
+      mockChecklistRepo.update.mockResolvedValue(undefined);
+
+      const result = await service.reorder(taskId, { itemIds: [3, 1, 2] }, employeeUser, 'own');
+
+      expect(mockChecklistRepo.update).toHaveBeenCalledWith({ id: 3, taskId }, { position: 0 });
+      expect(mockChecklistRepo.update).toHaveBeenCalledWith({ id: 1, taskId }, { position: 1 });
+      expect(mockChecklistRepo.update).toHaveBeenCalledWith({ id: 2, taskId }, { position: 2 });
+      expect(result[0].id).toBe(3);
+      expect(mockAuditService.logActionAsync).toHaveBeenCalledWith(
+        taskId,
+        employeeUser.id,
+        PeriodicTaskAuditAction.CHECKLIST_ITEMS_REORDERED,
+        null,
+        { itemIds: [3, 1, 2] },
+      );
+    });
+
+    it('ném ForbiddenException nếu Task đang khoá và thiếu periodic_tasks.edit_locked', async () => {
+      mockTasksService.assertEditableWhenLocked.mockRejectedValue(new ForbiddenException());
+
+      await expect(
+        service.reorder(taskId, { itemIds: [1, 2] }, employeeUser, 'own'),
+      ).rejects.toThrow(ForbiddenException);
+      expect(mockChecklistRepo.find).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('attachChecklistItems', () => {
+    it('luôn trả về mảng checklistItems (không ẩn theo quyền, mirror attachSecondaryAssignees Phase 4)', async () => {
+      mockChecklistRepo.find.mockResolvedValue([{ id: 1, taskId, content: 'A', position: 0 }]);
 
       const task = { id: taskId, title: 'Task A' };
-      const result: any = await service.attachLinkedCustomers(task, employeeUser);
+      const result = await service.attachChecklistItems(task);
 
-      expect(result.linkedCustomers).toEqual([{ id: 3 }]);
-      expect(qb.andWhere).toHaveBeenCalled(); // CustomerAccessHelper.applyViewFilter đã áp dụng
+      expect(result).toEqual({
+        id: taskId,
+        title: 'Task A',
+        checklistItems: [{ id: 1, taskId, content: 'A', position: 0 }],
+      });
     });
   });
 });

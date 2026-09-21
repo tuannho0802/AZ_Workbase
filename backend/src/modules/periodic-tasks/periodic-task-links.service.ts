@@ -3,11 +3,39 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, In } from 'typeorm';
 import { PeriodicTaskLink } from '../../database/entities/periodic-task-link.entity';
 import { PeriodicTask } from '../../database/entities/periodic-task.entity';
-import { PERIOD_RANK } from '../../common/enums/period-type.enum';
+import { PERIOD_RANK, PeriodType } from '../../common/enums/period-type.enum';
 import { PeriodicTasksService, RequestingUser } from './periodic-tasks.service';
 import { PeriodicTaskAccessHelper } from './helpers/periodic-task-access.helper';
 import { CreatePeriodicTaskLinkDto } from './dto/create-periodic-task-link.dto';
 import { PeriodicTaskAuditService, PeriodicTaskAuditAction } from './periodic-task-audit.service';
+
+/**
+ * LinkedChildChecklistEntry - "dòng checklist ảo" ứng với 1 Task con TRỰC
+ * TIẾP, dùng cho tính năng "tích hợp Task con vào chung Checklist của Task
+ * cha" (xem JSDoc đầy đủ ở `getChildrenChecklist()`).
+ *
+ * CỐ Ý khác hẳn shape `PeriodicTaskChecklistItem` (không có `id`/`position`/
+ * `content`/`createdById`) - đây KHÔNG phải checklist item thật, không có
+ * route PATCH/DELETE nào áp dụng lên nó (FE không thể lỡ gọi nhầm
+ * `/checklist-items/:itemId` với `childTaskId`, 2 khái niệm tách biệt hoàn
+ * toàn ngay từ tầng type).
+ */
+export interface LinkedChildChecklistEntry {
+  childTaskId: number;
+  title: string;
+  /** = `status.isDoneState` của CHÍNH Task con TẠI THỜI ĐIỂM gọi - tự động
+   * đổi theo, KHÔNG phải cờ lưu cứng cần đồng bộ thủ công. */
+  isDone: boolean;
+  status: {
+    id: number;
+    code: string;
+    name: string;
+    color: string;
+  };
+  periodType: PeriodType;
+  periodStartDate: string;
+  periodEndDate: string;
+}
 
 /**
  * PeriodicTaskLinksService - Phase 2 (PLAN mục 6): liên kết phân cấp DAG
@@ -177,6 +205,66 @@ export class PeriodicTaskLinksService {
       .andWhere('task.deletedAt IS NULL')
       .orderBy('task.periodStartDate', 'DESC')
       .getMany();
+  }
+
+  /**
+   * getChildrenChecklist - tích hợp Task con vào chung Checklist của Task
+   * cha: mỗi Task con TRỰC TIẾP (không đệ quy, đúng phạm vi `getChildren()`/
+   * `getRollup()`) trở thành 1 "dòng checklist ảo" (`LinkedChildChecklistEntry`)
+   * - tính LIVE mỗi lần gọi, KHÔNG lưu bản ghi riêng ở bảng nào (mirror đúng
+   * nguyên tắc "không denormalize" đã dùng ở `getRollup()`).
+   *
+   * `isDone` = `status.isDoneState` của CHÍNH Task con tại thời điểm gọi -
+   * Task con đổi sang trạng thái có `isDoneState=true` (Admin tự cấu hình
+   * danh mục trạng thái, KHÔNG hardcode 1 status cụ thể) thì dòng ảo này TỰ
+   * ĐỘNG hiện "đã tick" ngay lần fetch kế tiếp, không cần đồng bộ/ghi đè thủ
+   * công ở đâu cả - loại bỏ hẳn lớp bug "quên đồng bộ khi Task con đổi trạng
+   * thái" mà 1 thiết kế lưu bản ghi song song (denormalized) chắc chắn sẽ có.
+   *
+   * ⚠️ CHỦ Ý khác `getChildren()`: có thêm `PeriodicTaskAccessHelper.
+   * applyViewFilter()` lọc lại CHÍNH các Task CON theo phạm vi scope của
+   * NGƯỜI GỌI (`getChildren()` hiện tại chỉ check quyền trên Task CHA qua
+   * `tasksService.findOne()`, không lọc lại từng Task con - đủ an toàn cho
+   * `TaskLinksModal` hiện tại vì đó là hành động chủ động "xem liên kết").
+   * Ở đây dữ liệu Task con hiện NỔI BẬT ngay trong Checklist cho MỌI người
+   * xem được Task cha (không cần thao tác thêm), nên ưu tiên AN TOÀN hơn
+   * đồng nhất hành vi với `getChildren()` - Task con ngoài phạm vi scope của
+   * người xem (dù đã link vào Task cha) sẽ KHÔNG xuất hiện trong danh sách
+   * này, tránh lộ tiêu đề/trạng thái Task con ngoài phạm vi.
+   */
+  async getChildrenChecklist(
+    taskId: number,
+    userId: number,
+    userRole: string,
+    scope?: string | null,
+  ): Promise<LinkedChildChecklistEntry[]> {
+    await this.tasksService.findOne(taskId, userId, userRole, scope);
+
+    const qb = this.taskRepo
+      .createQueryBuilder('task')
+      .leftJoinAndSelect('task.status', 'status')
+      .innerJoin('periodic_task_links', 'link', 'link.child_task_id = task.id')
+      .where('link.parent_task_id = :taskId', { taskId })
+      .andWhere('task.deletedAt IS NULL');
+
+    PeriodicTaskAccessHelper.applyViewFilter(qb, userId, userRole, scope);
+
+    const children = await qb.orderBy('task.periodStartDate', 'DESC').getMany();
+
+    return children.map((child) => ({
+      childTaskId: child.id,
+      title: child.title,
+      isDone: child.status.isDoneState,
+      status: {
+        id: child.status.id,
+        code: child.status.code,
+        name: child.status.name,
+        color: child.status.color,
+      },
+      periodType: child.periodType,
+      periodStartDate: child.periodStartDate,
+      periodEndDate: child.periodEndDate,
+    }));
   }
 
   async getParents(
