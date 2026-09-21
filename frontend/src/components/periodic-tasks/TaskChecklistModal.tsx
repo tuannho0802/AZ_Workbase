@@ -1,6 +1,7 @@
 'use client';
 
 import { useState } from 'react';
+import dayjs from 'dayjs';
 import { Modal, Typography, Progress, Input, Button, App, Popconfirm, Checkbox, Space, Empty, Spin, Divider, Tag } from 'antd';
 import { DeleteOutlined, PlusOutlined, ArrowUpOutlined, ArrowDownOutlined, CheckOutlined, CloseOutlined } from '@ant-design/icons';
 import { useMyPermissions } from '@/lib/hooks/useMyPermissions';
@@ -386,9 +387,14 @@ export function TaskChecklistModal({ open, onClose, task }: Props) {
                                 </Text>
                             ),
                             description: (
-                                <Space size={4}>
+                                <Space size={4} wrap>
                                     <Tag>{PERIOD_TYPE_LABELS[c.periodType]}</Tag>
                                     <Tag color={c.status.color}>{c.status.name}</Tag>
+                                    <Text type="secondary" style={{ fontSize: 12 }}>
+                                        {dayjs(c.periodStartDate).format('DD/MM/YYYY')}
+                                        {c.periodStartDate !== c.periodEndDate &&
+                                            ` → ${dayjs(c.periodEndDate).format('DD/MM/YYYY')}`}
+                                    </Text>
                                 </Space>
                             ),
                         })}
