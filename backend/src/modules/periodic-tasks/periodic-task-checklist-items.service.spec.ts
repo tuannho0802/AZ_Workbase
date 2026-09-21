@@ -3,6 +3,7 @@ import { getRepositoryToken } from '@nestjs/typeorm';
 import { BadRequestException, ForbiddenException, NotFoundException } from '@nestjs/common';
 import { PeriodicTaskChecklistItemsService } from './periodic-task-checklist-items.service';
 import { PeriodicTasksService } from './periodic-tasks.service';
+import { PeriodicTaskLinksService } from './periodic-task-links.service';
 import { PeriodicTaskChecklistItem } from '../../database/entities/periodic-task-checklist-item.entity';
 import { Role } from '../../common/enums/role.enum';
 import { PeriodicTaskAuditService, PeriodicTaskAuditAction } from './periodic-task-audit.service';
@@ -30,6 +31,12 @@ describe('PeriodicTaskChecklistItemsService', () => {
     findOne: jest.fn(),
     assertEditableWhenLocked: jest.fn(),
   };
+  // Phase 9: constructor giờ nhận thêm PeriodicTaskLinksService (dùng ở
+  // attachLinkedChildrenChecklist()) - PHẢI mock ở đây, thiếu sẽ khiến
+  // Nest báo "can't resolve dependencies" khi compile TestingModule.
+  const mockLinksService = {
+    getChildrenChecklist: jest.fn(),
+  };
   const mockAuditService = {
     logActionAsync: jest.fn(),
   };
@@ -47,6 +54,7 @@ describe('PeriodicTaskChecklistItemsService', () => {
         PeriodicTaskChecklistItemsService,
         { provide: getRepositoryToken(PeriodicTaskChecklistItem), useValue: mockChecklistRepo },
         { provide: PeriodicTasksService, useValue: mockTasksService },
+        { provide: PeriodicTaskLinksService, useValue: mockLinksService },
         { provide: PeriodicTaskAuditService, useValue: mockAuditService },
       ],
     }).compile();
@@ -265,6 +273,83 @@ describe('PeriodicTaskChecklistItemsService', () => {
         title: 'Task A',
         checklistItems: [{ id: 1, taskId, content: 'A', position: 0 }],
       });
+    });
+  });
+
+  describe('attachLinkedChildrenChecklist', () => {
+    it('đính linkedChildrenChecklist lấy LIVE từ linksService.getChildrenChecklist(), tách biệt hoàn toàn checklistItems', async () => {
+      const linkedEntries = [
+        {
+          childTaskId: 20,
+          title: 'Task con A',
+          isDone: true,
+          status: { id: 1, code: 'done', name: 'Hoàn thành', color: '#52c41a' },
+          periodType: 'week',
+          periodStartDate: '2026-09-15',
+          periodEndDate: '2026-09-21',
+        },
+      ];
+      mockLinksService.getChildrenChecklist.mockResolvedValue(linkedEntries);
+
+      const task = { id: taskId, title: 'Task A', checklistItems: [{ id: 1, taskId, content: 'A' }] };
+      const result = await service.attachLinkedChildrenChecklist(
+        task,
+        employeeUser.id,
+        employeeUser.role,
+        'own',
+      );
+
+      expect(mockLinksService.getChildrenChecklist).toHaveBeenCalledWith(
+        taskId,
+        employeeUser.id,
+        employeeUser.role,
+        'own',
+      );
+      expect(result).toEqual({
+        id: taskId,
+        title: 'Task A',
+        checklistItems: [{ id: 1, taskId, content: 'A' }],
+        linkedChildrenChecklist: linkedEntries,
+      });
+      // KHÔNG chạm bảng periodic_task_checklist_items - luồng hoàn toàn tách biệt.
+      expect(mockChecklistRepo.find).not.toHaveBeenCalled();
+      expect(mockChecklistRepo.createQueryBuilder).not.toHaveBeenCalled();
+    });
+
+    it('linkedChildrenChecklist rỗng khi Task cha chưa có Task con nào liên kết', async () => {
+      mockLinksService.getChildrenChecklist.mockResolvedValue([]);
+
+      const result = await service.attachLinkedChildrenChecklist(
+        { id: taskId, title: 'Task A' },
+        employeeUser.id,
+        employeeUser.role,
+        'own',
+      );
+
+      expect(result.linkedChildrenChecklist).toEqual([]);
+    });
+
+    it('isDone của từng dòng phản ánh ĐÚNG status.isDoneState hiện tại của Task con (auto-tick, không cờ lưu cứng)', async () => {
+      mockLinksService.getChildrenChecklist.mockResolvedValue([
+        {
+          childTaskId: 21,
+          title: 'Task con chưa xong',
+          isDone: false,
+          status: { id: 2, code: 'pending', name: 'Đang làm', color: '#faad14' },
+          periodType: 'week',
+          periodStartDate: '2026-09-15',
+          periodEndDate: '2026-09-21',
+        },
+      ]);
+
+      const result = await service.attachLinkedChildrenChecklist(
+        { id: taskId, title: 'Task A' },
+        employeeUser.id,
+        employeeUser.role,
+        'own',
+      );
+
+      expect(result.linkedChildrenChecklist[0].isDone).toBe(false);
     });
   });
 });

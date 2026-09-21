@@ -220,6 +220,85 @@ describe('PeriodicTaskLinksService', () => {
     });
   });
 
+  describe('getChildrenChecklist (Phase 9 - tích hợp Task con vào chung Checklist)', () => {
+    function makeChildWithStatus(
+      id: number,
+      isDoneState: boolean,
+      overrides: Partial<PeriodicTask> = {},
+    ): PeriodicTask {
+      return {
+        id,
+        title: `Task con ${id}`,
+        periodType: PeriodType.WEEKLY,
+        periodStartDate: '2026-09-15',
+        periodEndDate: '2026-09-21',
+        status: { id: 1, code: isDoneState ? 'done' : 'pending', name: isDoneState ? 'Hoàn thành' : 'Đang làm', color: '#000', isDoneState },
+        ...overrides,
+      } as unknown as PeriodicTask;
+    }
+
+    it('gọi findOne() trước (1 cổng gác), query đúng chiều (parent_task_id = :taskId) và áp thêm applyViewFilter lên chính Task con', async () => {
+      mockTasksService.findOne.mockResolvedValue(makeTask(1, PeriodType.MONTHLY));
+      const qb = makeFakeQueryBuilder({ getMany: [makeChildWithStatus(2, false)] });
+      mockTaskRepo.createQueryBuilder.mockReturnValue(qb);
+
+      const result = await service.getChildrenChecklist(1, userId, userRole, scope);
+
+      expect(mockTasksService.findOne).toHaveBeenCalledWith(1, userId, userRole, scope);
+      expect(qb.innerJoin).toHaveBeenCalledWith('periodic_task_links', 'link', 'link.child_task_id = task.id');
+      expect(qb.where).toHaveBeenCalledWith('link.parent_task_id = :taskId', { taskId: 1 });
+      expect(qb.andWhere).toHaveBeenCalledWith('task.deletedAt IS NULL');
+      // scope 'own' (không phải ADMIN) -> applyViewFilter() PHẢI lọc lại chính
+      // Task con (khác getChildren() ở trên - chỉ check quyền trên Task cha).
+      expect(qb.andWhere).toHaveBeenCalledWith(
+        expect.stringContaining('task.createdById = :accessUserId'),
+        { accessUserId: userId },
+      );
+      expect(result).toHaveLength(1);
+    });
+
+    it('map đúng shape LinkedChildChecklistEntry - isDone = status.isDoneState CỦA TASK CON, không phải cờ lưu cứng', async () => {
+      mockTasksService.findOne.mockResolvedValue(makeTask(1, PeriodType.MONTHLY));
+      const doneChild = makeChildWithStatus(2, true);
+      const qb = makeFakeQueryBuilder({ getMany: [doneChild] });
+      mockTaskRepo.createQueryBuilder.mockReturnValue(qb);
+
+      const result = await service.getChildrenChecklist(1, userId, userRole, scope);
+
+      expect(result[0]).toEqual({
+        childTaskId: 2,
+        title: 'Task con 2',
+        isDone: true,
+        status: { id: 1, code: 'done', name: 'Hoàn thành', color: '#000' },
+        periodType: PeriodType.WEEKLY,
+        periodStartDate: '2026-09-15',
+        periodEndDate: '2026-09-21',
+      });
+    });
+
+    it('trả mảng rỗng khi Task cha chưa liên kết Task con nào (hoặc Task con ngoài phạm vi scope đã bị applyViewFilter lọc hết)', async () => {
+      mockTasksService.findOne.mockResolvedValue(makeTask(1, PeriodType.MONTHLY));
+      const qb = makeFakeQueryBuilder({ getMany: [] });
+      mockTaskRepo.createQueryBuilder.mockReturnValue(qb);
+
+      const result = await service.getChildrenChecklist(1, userId, userRole, scope);
+
+      expect(result).toEqual([]);
+    });
+
+    it('Admin không bị applyViewFilter lọc thêm theo scope (thấy mọi Task con đã liên kết)', async () => {
+      mockTasksService.findOne.mockResolvedValue(makeTask(1, PeriodType.MONTHLY));
+      const qb = makeFakeQueryBuilder({ getMany: [makeChildWithStatus(2, false)] });
+      mockTaskRepo.createQueryBuilder.mockReturnValue(qb);
+
+      await service.getChildrenChecklist(1, 99, Role.ADMIN, null);
+
+      // Chỉ có andWhere('task.deletedAt IS NULL') - KHÔNG có thêm andWhere lọc scope nào khác.
+      expect(qb.andWhere).toHaveBeenCalledTimes(1);
+      expect(qb.andWhere).toHaveBeenCalledWith('task.deletedAt IS NULL');
+    });
+  });
+
   describe('getLinksAmong (Phase 8 - batch cho UI nối/xếp hàng)', () => {
     it('trả rỗng ngay khi taskIds rỗng - KHÔNG query DB', async () => {
       const result = await service.getLinksAmong([], userId, userRole, scope);
