@@ -324,8 +324,12 @@ function CustomersPageContent() {
       // trang hoặc back/forward lại tự mở nhầm đúng khách hàng đó lần nữa.
       router.replace(pathname);
     }
+    // ⚠️ Phụ thuộc `searchParams` (trước đây `[]`, chỉ chạy lúc mount): bấm 1
+    // thông báo khi ĐANG đứng sẵn ở /customers chỉ đổi query, không remount
+    // trang - effect cũ không chạy lại nên Drawer không mở. Sau `replace(pathname)`
+    // effect chạy lại 1 lần với `id` rỗng → no-op.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [searchParams]);
 
   const [isDrawerOpen, setIsDrawerOpen] = useState(false);
 

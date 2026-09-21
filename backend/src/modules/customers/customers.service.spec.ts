@@ -15,6 +15,7 @@ import { Deposit } from '../../database/entities/deposit.entity';
 import { CustomerAssignment, AssignmentStatus } from '../../database/entities/customer-assignment.entity';
 import { CustomerGroupMembership } from '../../database/entities/customer-group-membership.entity';
 import { AuditService } from '../audit/audit.service';
+import { NotificationsService } from '../notifications/notifications.service';
 import {
   DuplicatePhoneException,
   UnauthorizedCustomerAccessException,
@@ -107,8 +108,19 @@ describe('CustomersService', () => {
     stripHiddenCustomerFields: jest.fn((customer: any) => customer),
   };
 
+  // ⚠️ Provider thứ 9 (Notification Phase 3) - mặc định TẮT flag (`isEnabled`
+  // = false) → toàn bộ test cũ chạy đúng như trước (không có query/emit thêm).
+  // Test cần kiểm thông báo tự bật ở describe 'Thông báo tự động (Phase 3)'.
+  const mockNotificationsService = {
+    isEnabled: jest.fn().mockReturnValue(false),
+    emit: jest.fn(),
+  };
+
   beforeEach(async () => {
     jest.clearAllMocks();
+    mockNotificationsService.isEnabled.mockReturnValue(false);
+    // mockReset (không chỉ clear): test 'emit ném lỗi' đặt mockImplementation - không được rò sang test khác.
+    mockNotificationsService.emit.mockReset();
     mockPermissionsService.hasPermission.mockResolvedValue({ allowed: false, scope: null });
     mockUiVisibilityService.getHiddenElementKeys.mockResolvedValue(new Set<string>());
     mockUiVisibilityService.stripHiddenCustomerFields.mockImplementation((customer: any) => customer);
@@ -132,6 +144,7 @@ describe('CustomersService', () => {
         { provide: AuditService, useValue: mockAuditService },
         { provide: PermissionsService, useValue: mockPermissionsService },
         { provide: UiVisibilityService, useValue: mockUiVisibilityService },
+        { provide: NotificationsService, useValue: mockNotificationsService },
       ],
     }).compile();
 
@@ -1004,6 +1017,325 @@ describe('CustomersService', () => {
       // Có dateFrom/dateTo thì KHÔNG được fallback 30 ngày
       expect(calls.some((c) => c.params && 'thirtyDaysAgo' in c.params)).toBe(false);
       expect(result.totalDepositAmount).toBe(500);
+    });
+  });
+  // ═══════════════════ Thông báo tự động (Notification Phase 3) ═══════════════════
+  describe('Thông báo tự động (Phase 3)', () => {
+    // notifySafely() là async - phần chuẩn bị cần đọc DB (createNote) chạy sau 1 tick.
+    const flush = () => new Promise<void>((resolve) => setImmediate(resolve));
+    const emitted = () => mockNotificationsService.emit.mock.calls.map((c) => c[0]);
+    const emittedOf = (type: string) => emitted().filter((e) => e.type === type);
+
+    describe('flag TẮT (mặc định)', () => {
+      it('create() không emit gì', async () => {
+        mockCustomerRepo.create.mockImplementation((input: any) => input);
+        mockCustomerRepo.save.mockImplementation((e: any) => Promise.resolve({ id: 1, ...e }));
+
+        await service.create({ name: 'A', phone: '0912345678', salesUserId: undefined } as any, 1);
+        await flush();
+
+        expect(mockNotificationsService.emit).not.toHaveBeenCalled();
+      });
+
+      it('remove() không thêm query snapshot nào (findOne của repo không được gọi)', async () => {
+        (mockCustomerRepo as any).findOne = jest.fn();
+        jest.spyOn(service, 'findOne').mockResolvedValue({ id: 5, name: 'X' } as any);
+        mockCustomerRepo.softDelete.mockResolvedValue({});
+        mockCustomerRepo.update.mockResolvedValue({});
+
+        await service.remove(5, 1, Role.ADMIN, null);
+        await flush();
+
+        expect((mockCustomerRepo as any).findOne).not.toHaveBeenCalled();
+        expect(mockNotificationsService.emit).not.toHaveBeenCalled();
+      });
+    });
+
+    describe('flag BẬT', () => {
+      beforeEach(() => {
+        mockNotificationsService.isEnabled.mockReturnValue(true);
+        (mockCustomerRepo as any).findOne = jest.fn();
+      });
+      afterEach(() => jest.restoreAllMocks());
+
+      it('create(): emit customer.created cho sales chính + marketing, KHÔNG kèm SĐT/email', async () => {
+        const userRepo = { findOneBy: jest.fn().mockResolvedValue({ id: 5, isActive: true, name: 'S' }) };
+        mockCustomerRepo.manager.getRepository.mockReturnValue(userRepo);
+        mockCustomerRepo.create.mockImplementation((input: any) => input);
+        mockCustomerRepo.save.mockImplementation((e: any) => Promise.resolve({ id: 77, ...e }));
+
+        await service.create(
+          { name: 'Nguyen A', phone: '0912345678', email: 'a@x.com', salesUserId: 5, marketingUserId: 6 } as any,
+          1,
+        );
+
+        const [event] = emittedOf('customer.created');
+        expect(event).toMatchObject({
+          actorId: 1,
+          entity: { type: 'customer', id: 77 },
+          entityName: 'Nguyen A',
+          recipients: { customer: { salesUserId: 5, marketingUserId: 6 } },
+        });
+        expect(JSON.stringify(event)).not.toContain('0912345678');
+        expect(JSON.stringify(event)).not.toContain('a@x.com');
+      });
+
+      it('create(): emit ném lỗi vẫn KHÔNG làm hỏng việc tạo khách hàng (nguyên tắc 1)', async () => {
+        mockCustomerRepo.create.mockImplementation((input: any) => input);
+        mockCustomerRepo.save.mockImplementation((e: any) => Promise.resolve({ id: 3, ...e }));
+        mockNotificationsService.emit.mockImplementation(() => {
+          throw new Error('boom');
+        });
+
+        await expect(service.create({ name: 'A', phone: '0912345678' } as any, 1)).resolves.toMatchObject({ id: 3 });
+      });
+
+      describe('update()', () => {
+        const pre = {
+          id: 50,
+          name: 'Khách 50',
+          salesUserId: 5,
+          marketingUserId: null,
+          createdById: 2,
+          status: 'pending',
+          closedDate: null,
+          departmentId: 1,
+        };
+        const userRepo = { findOneBy: jest.fn() };
+
+        beforeEach(() => {
+          mockCustomerRepo.manager.getRepository.mockReturnValue(userRepo);
+          userRepo.findOneBy.mockResolvedValue({ id: 8, isActive: true, name: 'S8' });
+          (mockCustomerRepo as any).findOne.mockResolvedValue({ ...pre });
+          mockAssignmentRepo.find.mockResolvedValue([{ assignedToId: 9 }]);
+          mockCustomerRepo.merge.mockImplementation((c: any, dto: any) => Object.assign(c, dto));
+          mockCustomerRepo.save.mockImplementation((c: any) => Promise.resolve(c));
+        });
+
+        const runUpdate = async (dto: any) => {
+          // Object mà findOne() của update() trả về CÓ THỂ đã bị UI Visibility xoá field
+          // → cố tình bỏ salesUserId để chứng minh diff dùng snapshot riêng, không dùng object này.
+          jest.spyOn(service, 'findOne').mockResolvedValue({ id: 50, name: 'Khách 50', status: 'pending' } as any);
+          await service.update(50, dto, 1, Role.ADMIN, PermissionScope.ALL);
+          await flush();
+        };
+
+        it('đổi Sales phụ trách → owner_changed (người mới/cũ) và KHÔNG báo customer.updated', async () => {
+          await runUpdate({ salesUserId: 8 });
+
+          expect(emittedOf('customer.owner_changed')).toHaveLength(1);
+          expect(emittedOf('customer.owner_changed')[0]).toMatchObject({
+            actorId: 1,
+            entity: { type: 'customer', id: 50 },
+            entityName: 'Khách 50',
+            recipients: { newUserIds: [8], previousUserIds: [5] },
+          });
+          expect(emittedOf('customer.updated')).toHaveLength(0);
+        });
+
+        it('đổi trạng thái → customer.updated, gồm sales chính/được chia (chuyển sang "closed" tự set closedDate nên có cả 2 field)', async () => {
+          await runUpdate({ status: 'closed' });
+
+          expect(emittedOf('customer.owner_changed')).toHaveLength(0);
+          const [ev] = emittedOf('customer.updated');
+          // update() tự đặt closedDate = hôm nay khi status chuyển 'closed' lần đầu
+          expect(ev.params).toEqual({ changedFields: ['status', 'closedDate'] });
+          expect(ev.recipients.customer).toMatchObject({ salesUserId: 5, sharedSalesUserIds: [9] });
+        });
+
+        it('sửa field NGOÀI allowlist (vd broker/ghi chú) → im lặng', async () => {
+          await runUpdate({ broker: 'XM', note: 'abc' });
+          expect(mockNotificationsService.emit).not.toHaveBeenCalled();
+        });
+
+        it('vừa đổi sales vừa đổi status → người mới nhận owner_changed, KHÔNG nhận thêm customer.updated', async () => {
+          await runUpdate({ salesUserId: 8, status: 'closed' });
+
+          expect(emittedOf('customer.owner_changed')).toHaveLength(1);
+          const [ev] = emittedOf('customer.updated');
+          expect(ev.recipients.customer.salesUserId).toBeNull(); // 8 đã bị loại
+          expect(ev.recipients.customer.sharedSalesUserIds).toEqual([9]);
+        });
+
+        it('gửi lại đúng giá trị cũ (không đổi gì) → im lặng', async () => {
+          await runUpdate({ status: 'pending', salesUserId: 5 });
+          expect(mockNotificationsService.emit).not.toHaveBeenCalled();
+        });
+      });
+
+      it('remove(): snapshot TRƯỚC khi xoá + emit customer.deleted với params.unavailable', async () => {
+        (mockCustomerRepo as any).findOne.mockResolvedValue({
+          id: 55, name: 'Khách 55', salesUserId: 5, marketingUserId: 6, createdById: 2,
+          status: 'pending', closedDate: null, departmentId: 1,
+        });
+        mockAssignmentRepo.find.mockResolvedValue([{ assignedToId: 9 }]);
+        jest.spyOn(service, 'findOne').mockResolvedValue({ id: 55, name: 'Khách 55' } as any);
+        const order: string[] = [];
+        (mockCustomerRepo as any).findOne.mockImplementation(() => {
+          order.push('snapshot');
+          return Promise.resolve({ id: 55, name: 'Khách 55', salesUserId: 5, marketingUserId: 6, createdById: 2, status: 'pending', closedDate: null, departmentId: 1 });
+        });
+        mockCustomerRepo.softDelete.mockImplementation(() => {
+          order.push('softDelete');
+          return Promise.resolve({});
+        });
+        mockCustomerRepo.update.mockResolvedValue({});
+
+        await service.remove(55, 1, Role.ADMIN, null);
+        await flush();
+
+        expect(order).toEqual(['snapshot', 'softDelete']);
+        const [ev] = emittedOf('customer.deleted');
+        expect(ev).toMatchObject({
+          actorId: 1,
+          entityName: 'Khách 55',
+          params: { unavailable: true },
+          recipients: { customer: { salesUserId: 5, marketingUserId: 6, sharedSalesUserIds: [9] } },
+        });
+      });
+
+      it('createNote(): emit customer.note_created (subEntity=note), KHÔNG kèm nội dung ghi chú', async () => {
+        const qb: any = {
+          select: jest.fn().mockReturnThis(),
+          where: jest.fn().mockReturnThis(),
+          andWhere: jest.fn().mockReturnThis(),
+          getOne: jest.fn().mockResolvedValue({ id: 60 }),
+        };
+        mockCustomerRepo.createQueryBuilder.mockReturnValue(qb);
+        (mockNoteRepo as any).create = jest.fn((x: any) => x);
+        (mockNoteRepo as any).save = jest.fn((x: any) => Promise.resolve({ id: 900, ...x }));
+        (mockNoteRepo as any).findOne = jest.fn().mockResolvedValue({ id: 900 });
+        (mockCustomerRepo as any).findOne.mockResolvedValue({
+          id: 60, name: 'Khách 60', salesUserId: 5, marketingUserId: null, createdById: 2,
+          status: 'pending', closedDate: null, departmentId: 1,
+        });
+        mockAssignmentRepo.find.mockResolvedValue([]);
+
+        await service.createNote(60, { note: 'SĐT 0999888777, nạp 5000$' } as any, 1, Role.ADMIN, PermissionScope.ALL);
+        await flush();
+
+        const [ev] = emittedOf('customer.note_created');
+        expect(ev).toMatchObject({
+          actorId: 1,
+          entity: { type: 'customer', id: 60 },
+          subEntity: { type: 'customer_note', id: 900 },
+          entityName: 'Khách 60',
+        });
+        expect(JSON.stringify(ev)).not.toContain('0999888777');
+      });
+
+      describe('bulkAssign() - gộp theo người nhận', () => {
+        beforeEach(() => {
+          const userRepo = {
+            find: jest.fn(({ where }: { where: { id: number }[] }) =>
+              Promise.resolve(where.map((w) => ({ id: w.id, isActive: true }))),
+            ),
+          };
+          mockCustomerRepo.manager.getRepository.mockReturnValue(userRepo);
+          (mockAssignmentRepo as any).insert = jest.fn().mockResolvedValue({});
+          mockCustomerRepo.createQueryBuilder.mockReturnValue({
+            update: jest.fn().mockReturnThis(),
+            set: jest.fn().mockReturnThis(),
+            whereInIds: jest.fn().mockReturnThis(),
+            execute: jest.fn().mockResolvedValue({}),
+          });
+        });
+
+        it('N khách × M sales → tối đa 2 thông báo/người (không 1/khách); phân biệt phụ trách chính vs được chia', async () => {
+          mockAssignmentRepo.find.mockResolvedValue([]);
+          mockCustomerRepo.find.mockResolvedValue([
+            { id: 100, name: 'K100', departmentId: null, salesUserId: null, createdById: 1 }, // chưa ai → 5 thành chính
+            { id: 101, name: 'K101', departmentId: null, salesUserId: 9, createdById: 1 }, // đã có sales → thành "được chia"
+          ]);
+
+          await service.bulkAssign([100, 101], [5, 6], 1, Role.ADMIN, undefined, PermissionScope.ALL);
+
+          const events = emittedOf('customer.assigned');
+          expect(events).toHaveLength(3); // 5-primary(1 khách), 5-shared(1 khách), 6-shared(2 khách)
+          const byKey = (uid: number, primary: boolean) =>
+            events.find((e) => e.recipients.newUserIds[0] === uid && e.params.isPrimary === primary);
+
+          expect(byKey(5, true)).toMatchObject({ count: 1, entity: { type: 'customer', id: 100 }, entityName: 'K100' });
+          expect(byKey(5, false)).toMatchObject({ count: 1, entity: { type: 'customer', id: 101 } });
+          expect(byKey(6, false)).toMatchObject({ count: 2, entity: { type: 'customer', id: null }, entityName: '' });
+          expect(byKey(6, false).params.entityIds).toEqual([100, 101]);
+          // dedupeSuffix khác nhau giữa các nhóm → không tự "nuốt" nhau qua uk_recipient_dedupe
+          expect(new Set(events.map((e) => e.dedupeSuffix)).size).toBe(3);
+        });
+
+        it('lượt gán ACTIVE đã tồn tại và không đổi vai trò → KHÔNG báo lặp', async () => {
+          mockAssignmentRepo.find.mockResolvedValue([{ customerId: 101, assignedToId: 5 }]);
+          mockCustomerRepo.find.mockResolvedValue([
+            { id: 101, name: 'K101', departmentId: null, salesUserId: 9, createdById: 1 },
+          ]);
+
+          await service.bulkAssign([101], [5], 1, Role.ADMIN, undefined, PermissionScope.ALL);
+
+          expect(emittedOf('customer.assigned')).toHaveLength(0);
+        });
+
+        it('khách bị từ chối phân quyền → không có thông báo cho khách đó', async () => {
+          mockAssignmentRepo.find.mockResolvedValue([]);
+          mockCustomerRepo.find.mockResolvedValue([
+            { id: 100, name: 'K100', departmentId: null, salesUserId: 99, createdById: 7 },
+          ]);
+
+          await service.bulkAssign([100], [5], 7, Role.EMPLOYEE, undefined, PermissionScope.OWN);
+
+          expect(mockNotificationsService.emit).not.toHaveBeenCalled();
+        });
+      });
+
+      describe('updateAssignment() / reclaimAssignment()', () => {
+        const userRepo = { findOneBy: jest.fn() };
+        beforeEach(() => mockCustomerRepo.manager.getRepository.mockReturnValue(userRepo));
+        const makeAssignment = () => ({
+          id: 10, customerId: 100, assignedById: 2, assignedToId: 5,
+          status: AssignmentStatus.ACTIVE, reason: 'cũ',
+          customer: { id: 100, name: 'K100', salesUserId: 5, updatedById: null },
+        });
+
+        it('đổi người → assignment_changed (mới/cũ + sales chính SAU khi đồng bộ)', async () => {
+          mockAssignmentRepo.findOne.mockResolvedValueOnce(makeAssignment()).mockResolvedValueOnce(null);
+          userRepo.findOneBy.mockResolvedValue({ id: 7, isActive: true, name: 'S7' });
+          mockAssignmentRepo.save.mockImplementation((a: any) => Promise.resolve(a));
+          mockCustomerRepo.save.mockResolvedValue({});
+
+          await service.updateAssignment(10, { assignedToId: 7 }, 1, Role.ADMIN, PermissionScope.ALL);
+
+          expect(emittedOf('customer.assignment_changed')[0]).toMatchObject({
+            actorId: 1,
+            entity: { type: 'customer', id: 100 },
+            entityName: 'K100',
+            recipients: { newUserIds: [7], previousUserIds: [5], customer: { salesUserId: 7 } },
+          });
+        });
+
+        it('chỉ đổi lý do → im lặng', async () => {
+          mockAssignmentRepo.findOne.mockResolvedValueOnce(makeAssignment());
+          mockAssignmentRepo.save.mockImplementation((a: any) => Promise.resolve(a));
+
+          await service.updateAssignment(10, { reason: 'mới' }, 1, Role.ADMIN, PermissionScope.ALL);
+
+          expect(mockNotificationsService.emit).not.toHaveBeenCalled();
+        });
+
+        it('reclaim → assignment_reclaimed cho ĐÚNG người bị thu hồi', async () => {
+          mockAssignmentRepo.findOne.mockResolvedValue(makeAssignment());
+          mockAssignmentRepo.save.mockResolvedValue({});
+          mockAssignmentRepo.find.mockResolvedValue([]);
+          mockCustomerRepo.save.mockResolvedValue({});
+
+          await service.reclaimAssignment(10, 1, Role.ADMIN, PermissionScope.ALL);
+
+          expect(emittedOf('customer.assignment_reclaimed')[0]).toMatchObject({
+            actorId: 1,
+            entity: { type: 'customer', id: 100 },
+            entityName: 'K100',
+            recipients: { previousUserIds: [5] },
+          });
+        });
+      });
     });
   });
 });

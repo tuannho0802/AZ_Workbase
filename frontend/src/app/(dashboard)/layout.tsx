@@ -10,6 +10,7 @@ import {
   MenuUnfoldOutlined,
   HomeOutlined,
   CalendarOutlined,
+  BellOutlined,
 } from '@ant-design/icons';
 import { useAuthStore } from '@/lib/stores/auth.store';
 import { getVisibleNavItems, NAV_ITEMS } from '@/lib/nav-config';
@@ -18,6 +19,8 @@ import { useSidebarBadgeCounts } from '@/lib/hooks/useSidebarBadgeCounts';
 import { useCachedImage, buildImageCacheKey } from '@/lib/hooks/useCachedImage';
 import { usersApi } from '@/lib/api/users.api';
 import { CountBadge } from '@/components/common/CountBadge';
+import { NotificationBell } from '@/components/notifications/NotificationBell';
+import { NotificationDetailModal } from '@/components/notifications/NotificationDetailModal';
 import { useRoleColorMap } from '@/lib/hooks/useRoleColorMap';
 import dayjs from 'dayjs';
 import 'dayjs/locale/vi';
@@ -35,6 +38,8 @@ const { Header, Content, Sider, Footer } = Layout;
 // không qua nav-config).
 const PAGE_META: Record<string, { label: string; icon: React.ReactNode }> = {
   home: { label: 'Trang chủ', icon: <HomeOutlined /> },
+  // Trang hộp thư đầy đủ (mở từ chuông ở Header) - không có mục sidebar riêng.
+  'thong-bao': { label: 'Thông báo', icon: <BellOutlined /> },
   ...Object.fromEntries(NAV_ITEMS.map((item) => [item.key, { label: item.label, icon: item.icon }])),
 };
 
@@ -248,6 +253,8 @@ export default function DashboardLayout({
       newKey = 'reports';
     } else if (pathname.includes('/phong-ban')) {
       newKey = 'phong-ban';
+    } else if (pathname.includes('/thong-bao')) {
+      newKey = 'thong-bao';
     } else if (pathname.includes('/storage-img')) {
       // Thiếu nhánh này sẽ để sidebar sáng nhầm mục cũ (đúng bug pattern
       // '/nguon-media' đã sửa trước đó - route mới luôn phải thêm vào đây).
@@ -386,6 +393,8 @@ export default function DashboardLayout({
                 {todayLabel}
               </span>
             )}
+            {/* Chuông thông báo (Notification Phase 4) - polling 60s + toast */}
+            <NotificationBell />
             <div style={{ width: 1, height: 28, background: '#eef0f2' }} />
             <Dropdown
               menu={{
@@ -431,6 +440,9 @@ export default function DashboardLayout({
             {children}
           </div>
         </Content>
+
+        {/* Modal chi tiết thông báo thủ công - mở qua useNotificationUiStore */}
+        <NotificationDetailModal />
 
         <Footer
           style={{

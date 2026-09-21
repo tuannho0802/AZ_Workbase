@@ -1,4 +1,4 @@
-import { Injectable, ForbiddenException } from '@nestjs/common';
+import { Injectable, ForbiddenException, Logger } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, Brackets, IsNull, In } from 'typeorm';
 import { Customer } from '../../database/entities/customer.entity';
@@ -37,6 +37,18 @@ import { CustomerAccessHelper } from './helpers/customer-access.helper';
 import { AuditService } from '../audit/audit.service';
 import { todayVnStr } from '../../common/utils/date-vn.util';
 import { UiVisibilityService } from '../ui-visibility/ui-visibility.service';
+import { NotificationsService } from '../notifications/notifications.service';
+import { randomBytes } from 'crypto';
+import { waitUntil } from '@vercel/functions';
+import {
+  CustomerNotifySnapshot,
+  diffCustomerForNotification,
+  excludeRecipients,
+  groupBulkAssignForNotification,
+  normalizeDateOnly,
+  pickDefined,
+  toRecipientCustomer,
+} from './helpers/customer-notification.helper';
 
 @Injectable()
 export class CustomersService {
@@ -64,7 +76,132 @@ export class CustomersService {
     // nơi DUY NHẤT trả object Customer đầy đủ ra ngoài response (xem PLAN
     // mục 2.5, JSDoc `UiVisibilityService.stripHiddenCustomerFields()`).
     private readonly uiVisibilityService: UiVisibilityService,
+    // ⚠️ MỚI (Notification Phase 3): NotificationsModule là @Global() (mirror
+    // AuditModule) nên không cần import module - tránh phụ thuộc vòng.
+    private readonly notificationsService: NotificationsService,
   ) {}
+
+  private readonly logger = new Logger(CustomersService.name);
+
+  // ═════════════════ THÔNG BÁO TỰ ĐỘNG (Notification Phase 3) ═════════════════
+  // Nguyên tắc (PLAN mục 3): (1) KHÔNG BAO GIỜ làm hỏng nghiệp vụ chính - mọi
+  // đoạn chuẩn bị thông báo bọc try/catch + Logger.error; (2) chỉ emit SAU KHI
+  // đã ghi DB nghiệp vụ thành công; (3) khi `NOTIFICATIONS_ENABLED` tắt thì
+  // KHÔNG thêm bất kỳ query nào vào luồng cũ.
+
+  /**
+   * Chạy phần chuẩn bị + `emit()` thông báo trong `waitUntil()` (như
+   * `AuditService.logActionAsync`), nuốt mọi lỗi. Phần code đồng bộ bên trong
+   * `task` chạy NGAY (trước `await` đầu tiên), nên emit từ dữ liệu có sẵn
+   * trong bộ nhớ không bị trễ. Trả về Promise CHỈ để test `await`.
+   */
+  private notifySafely(label: string, task: () => void | Promise<void>): Promise<void> {
+    const run = (async () => {
+      try {
+        if (!this.notificationsService.isEnabled()) return;
+        await task();
+      } catch (error) {
+        const err = error as Error;
+        this.logger.error(`Chuẩn bị thông báo thất bại (${label}): ${err?.message}`, err?.stack);
+      }
+    })();
+    try {
+      waitUntil(run);
+    } catch {
+      // Ngoài môi trường Vercel: promise vẫn chạy, không cần waitUntil.
+    }
+    return run;
+  }
+
+  /** Đọc lượt gán ACTIVE (Sales được chia) + các field cần thiết - KHÔNG lấy SĐT/email. */
+  private async loadNotifySnapshot(customerId: number): Promise<CustomerNotifySnapshot | null> {
+    const row = await this.customersRepository.findOne({
+      where: { id: customerId },
+      select: {
+        id: true,
+        name: true,
+        salesUserId: true,
+        marketingUserId: true,
+        createdById: true,
+        status: true,
+        closedDate: true,
+        departmentId: true,
+      },
+    });
+    if (!row) return null;
+    const active = await this.assignmentRepository.find({
+      where: { customerId, status: AssignmentStatus.ACTIVE },
+      select: { assignedToId: true },
+    });
+    return {
+      id: row.id,
+      name: row.name,
+      salesUserId: row.salesUserId ?? null,
+      marketingUserId: row.marketingUserId ?? null,
+      createdById: row.createdById ?? null,
+      status: row.status ?? null,
+      closedDate: normalizeDateOnly(row.closedDate),
+      departmentId: row.departmentId ?? null,
+      sharedSalesUserIds: active.map((a) => a.assignedToId),
+    };
+  }
+
+  /**
+   * Chụp trạng thái TRƯỚC khi sửa/xoá (chỉ khi flag bật, lỗi → null). Không dùng
+   * object `findOne()` của `update()`/`remove()` vì `UiVisibilityService` có thể
+   * đã xoá `salesUserId`/`marketingUserId`/`closedDate` khỏi object đó.
+   */
+  private async captureNotifySnapshot(customerId: number): Promise<CustomerNotifySnapshot | null> {
+    if (!this.notificationsService.isEnabled()) return null;
+    try {
+      return await this.loadNotifySnapshot(customerId);
+    } catch (error) {
+      const err = error as Error;
+      this.logger.error(`Chụp snapshot thông báo thất bại (customer ${customerId}): ${err?.message}`, err?.stack);
+      return null;
+    }
+  }
+
+  /** `customer.owner_changed` + `customer.updated` (allowlist) sau `update()`. */
+  private emitCustomerUpdateNotifications(
+    before: CustomerNotifySnapshot,
+    saved: Customer,
+    actorId: number,
+  ): void {
+    const after = {
+      salesUserId: pickDefined(saved.salesUserId, before.salesUserId),
+      marketingUserId: pickDefined(saved.marketingUserId, before.marketingUserId),
+      status: pickDefined(saved.status, before.status),
+      closedDate: normalizeDateOnly(pickDefined<unknown>(saved.closedDate, before.closedDate)),
+      departmentId: pickDefined(saved.departmentId, before.departmentId),
+    };
+    const diff = diffCustomerForNotification(before, after);
+    const entityName = saved.name ?? before.name;
+    const entity = { type: 'customer' as const, id: before.id };
+    const current = toRecipientCustomer({ ...before, ...after });
+
+    if (diff.newOwnerIds.length > 0 || diff.previousOwnerIds.length > 0) {
+      this.notificationsService.emit({
+        type: 'customer.owner_changed',
+        actorId,
+        entity,
+        entityName,
+        recipients: { newUserIds: diff.newOwnerIds, previousUserIds: diff.previousOwnerIds },
+      });
+    }
+
+    if (diff.changedFields.length > 0) {
+      this.notificationsService.emit({
+        type: 'customer.updated',
+        actorId,
+        entity,
+        entityName,
+        // Người vừa nhận `owner_changed` không nhận thêm `customer.updated`.
+        recipients: { customer: excludeRecipients(current, diff.newOwnerIds) },
+        params: { changedFields: diff.changedFields },
+      });
+    }
+  }
 
   private getTodayVn(): Date {
     const now = new Date();
@@ -167,6 +304,22 @@ export class CustomersService {
           salesUser: salesUserEntity,
           marketingUser: marketingUserEntity,
           department: departmentEntity,
+        }),
+      );
+
+      // Thông báo (Phase 3): sales chính + marketing phụ trách (≠ người tạo).
+      void this.notifySafely('create', () =>
+        this.notificationsService.emit({
+          type: 'customer.created',
+          actorId: userId,
+          entity: { type: 'customer', id: (saved as any).id },
+          entityName: (saved as any).name,
+          recipients: {
+            customer: {
+              salesUserId: (saved as any).salesUserId,
+              marketingUserId: (saved as any).marketingUserId,
+            },
+          },
         }),
       );
 
@@ -1040,6 +1193,21 @@ export class CustomersService {
       this.buildNoteAuditSnapshot(savedNote as any),
     );
 
+    // Thông báo (Phase 3): KHÔNG kèm nội dung ghi chú (có thể chứa PII). Cần
+    // đọc tên khách + người liên quan nên chạy nền, không làm chậm response.
+    void this.notifySafely('createNote', async () => {
+      const snap = await this.loadNotifySnapshot(customerId);
+      if (!snap) return;
+      this.notificationsService.emit({
+        type: 'customer.note_created',
+        actorId: userId,
+        entity: { type: 'customer', id: customerId },
+        subEntity: { type: 'customer_note', id: (savedNote as any).id },
+        entityName: snap.name,
+        recipients: { customer: toRecipientCustomer(snap) },
+      });
+    });
+
     return this.notesRepository.findOne({
       where: { id: (savedNote as any).id },
       relations: ['createdByUser'],
@@ -1328,6 +1496,10 @@ export class CustomersService {
     // (mirror `PeriodicTasksService.update()`, biến `before`/`beforeStatusId`).
     const before = this.buildCustomerAuditSnapshot(customer);
 
+    // Thông báo (Phase 3): chụp trạng thái "trước" TRƯỚC mọi mutation bên dưới
+    // (null nếu flag tắt → không thêm query nào vào luồng cũ).
+    const notifyBefore = await this.captureNotifySnapshot(id);
+
     const today = this.getTodayVn();
     const todayStr = today.toISOString().split('T')[0];
 
@@ -1458,6 +1630,12 @@ export class CustomersService {
         before,
         this.buildCustomerAuditSnapshot(saved, { department: newDepartment }),
       );
+
+      if (notifyBefore) {
+        void this.notifySafely('update', () =>
+          this.emitCustomerUpdateNotifications(notifyBefore, saved, userId),
+        );
+      }
       return saved;
     } catch (error: any) {
       if (error.code === 'ER_DUP_ENTRY') {
@@ -1501,6 +1679,9 @@ export class CustomersService {
       throw new CustomerNotFoundException();
     }
 
+    // Thông báo (Phase 3): phải chụp TRƯỚC khi xoá (người liên quan + Sales được chia).
+    const notifyBefore = await this.captureNotifySnapshot(id);
+
     await this.customersRepository.softDelete(id);
     // ⚠️ MỚI: `softDelete()` ở trên chỉ tự set `deleted_at` (hành vi mặc
     // định của TypeORM cho DeleteDateColumn) - KHÔNG có cách nào truyền
@@ -1525,6 +1706,20 @@ export class CustomersService {
       this.buildCustomerAuditSnapshot(customer),
       null,
     );
+
+    if (notifyBefore) {
+      void this.notifySafely('remove', () =>
+        this.notificationsService.emit({
+          type: 'customer.deleted',
+          actorId: userId,
+          entity: { type: 'customer', id },
+          entityName: notifyBefore.name,
+          recipients: { customer: toRecipientCustomer(notifyBefore) },
+          // Bản ghi đã vào thùng rác → FE không điều hướng (PLAN 7.6)
+          params: { unavailable: true },
+        }),
+      );
+    }
     return { message: 'Xóa khách hàng thành công' };
   }
 
@@ -1668,10 +1863,13 @@ export class CustomersService {
       // thay vì N*M lệnh save() riêng lẻ. Điều kiện "chỉ tạo nếu chưa tồn
       // tại" giữ nguyên y hệt bản gốc (kiểm tra qua existingSet).
       const newAssignments: Partial<CustomerAssignment>[] = [];
+      // Các cặp (khách, người) vừa tạo mới - dùng gộp thông báo ở Bước 6.
+      const createdPairKeys = new Set<string>();
       for (const customer of authorizedCustomers) {
         for (const targetUserId of salesUserIds) {
           const key = `${customer.id}-${targetUserId}`;
           if (!existingSet.has(key)) {
+            createdPairKeys.add(key);
             newAssignments.push({
               customerId: customer.id,
               assignedById: callerId,
@@ -1753,6 +1951,35 @@ export class CustomersService {
           null,
           { assignedTo: assignedToSnapshot },
         );
+      });
+
+      // Thông báo (Phase 3): GỘP THEO NGƯỜI NHẬN, ngoài vòng lặp audit ở trên
+      // (không 1 thông báo / khách - PLAN 0.6).
+      void this.notifySafely('bulkAssign', () => {
+        const groups = groupBulkAssignForNotification({
+          customers: authorizedCustomers,
+          salesUserIds,
+          createdPairKeys,
+        });
+        // Token riêng mỗi lần gọi: 2 lần chia liên tiếp trong cùng ms không
+        // bị `dedupe_key` nuốt mất.
+        const token = `${Date.now()}-${randomBytes(3).toString('hex')}`;
+        groups.forEach((group, index) => {
+          const single = group.customers.length === 1;
+          this.notificationsService.emit({
+            type: 'customer.assigned',
+            actorId: callerId,
+            entity: { type: 'customer', id: single ? group.customers[0].id : null },
+            entityName: single ? group.customers[0].name : '',
+            count: group.customers.length,
+            recipients: { newUserIds: [group.targetUserId] },
+            params: {
+              isPrimary: group.isPrimary,
+              ...(single ? {} : { entityIds: group.customers.map((c) => c.id) }),
+            },
+            dedupeSuffix: `${token}-${index}`,
+          });
+        });
       });
 
       results.success += authorizedCustomers.length;
@@ -2116,6 +2343,9 @@ export class CustomersService {
       assignment.reason = dto.reason;
     }
 
+    // Thông báo (Phase 3): chỉ báo khi ĐỔI NGƯỜI (đổi lý do thì im lặng).
+    let assigneeChange: { previousId: number; newId: number } | null = null;
+
     if (
       dto.assignedToId !== undefined &&
       dto.assignedToId !== assignment.assignedToId
@@ -2147,6 +2377,7 @@ export class CustomersService {
       }
 
       const oldAssignedToId = assignment.assignedToId;
+      assigneeChange = { previousId: oldAssignedToId, newId: dto.assignedToId };
       // ⚠️ FIX BUG THẬT (TypeORM Relation Precedence - xem
       // `SKILL_NESTJS_BACKEND.md` mục 13, mirror `CustomersService.update()`
       // đổi department): phải gán CẢ object quan hệ `previousAssignee`
@@ -2182,6 +2413,24 @@ export class CustomersService {
       // tạm `{ id }`).
       this.buildAssignmentAuditSnapshot(saved),
     );
+
+    if (assigneeChange) {
+      const change = assigneeChange;
+      void this.notifySafely('updateAssignment', () =>
+        this.notificationsService.emit({
+          type: 'customer.assignment_changed',
+          actorId: callerId,
+          entity: { type: 'customer', id: assignment.customerId },
+          entityName: assignment.customer?.name ?? '',
+          // `customer.salesUserId` đã được đồng bộ theo người mới ở trên (nếu là chính)
+          recipients: {
+            customer: { salesUserId: assignment.customer?.salesUserId ?? null },
+            newUserIds: [change.newId],
+            previousUserIds: [change.previousId],
+          },
+        }),
+      );
+    }
 
     return saved;
   }
@@ -2252,6 +2501,16 @@ export class CustomersService {
       assignment.id,
       { status: AssignmentStatus.ACTIVE },
       { status: AssignmentStatus.RECLAIMED },
+    );
+
+    void this.notifySafely('reclaimAssignment', () =>
+      this.notificationsService.emit({
+        type: 'customer.assignment_reclaimed',
+        actorId: callerId,
+        entity: { type: 'customer', id: assignment.customerId },
+        entityName: customer?.name ?? '',
+        recipients: { previousUserIds: [assignment.assignedToId] },
+      }),
     );
 
     return { message: 'Đã thu hồi lượt gán data thành công' };
