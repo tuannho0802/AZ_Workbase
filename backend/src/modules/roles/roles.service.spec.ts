@@ -7,7 +7,7 @@ import { Permission } from '../../database/entities/permission.entity';
 import { RolePermission, PermissionScope } from '../../database/entities/role-permission.entity';
 import { User } from '../../database/entities/user.entity';
 import { Position } from '../../database/entities/position.entity';
-import { DataSource } from 'typeorm';
+import { DataSource, FindOperator } from 'typeorm';
 import { PermissionsService } from '../permissions/permissions.service';
 import { AuditService } from '../audit/audit.service';
 
@@ -278,6 +278,147 @@ describe('RolesService', () => {
       expect(mockPermissionsService.invalidate).toHaveBeenCalledWith('admin');
     });
     });
+  // ⚠️ REGRESSION (bug thật): dòng override theo Vị trí được lưu với
+  // `departmentId = null` + `positionId = X`. Trước đây `findAllRoles()` và
+  // `updateRolePermissions()` chỉ lọc `departmentId IS NULL` nên coi NHẦM dòng
+  // override Vị trí là dòng Toàn cục -> (1) lưu ma trận Toàn cục XOÁ SẠCH mọi
+  // override Vị trí của role, (2) ma trận Toàn cục hiển thị lẫn dòng override.
+  // Định nghĩa ĐÚNG của "Toàn cục" = departmentId IS NULL AND positionId IS NULL
+  // (khớp PermissionsService.loadRolePermissionMap()).
+  //
+  // Dùng kho dữ liệu giả trong bộ nhớ + bộ so khớp FindOperator('isNull') để
+  // kiểm tra HÀNH VI thật (dòng nào còn/mất), không chỉ kiểm tra tham số gọi.
+  describe('Ma trận Toàn cục KHÔNG được đụng tới override Phòng ban / Vị trí', () => {
+    type FakeRow = {
+      id: number;
+      roleId: number;
+      permissionId: number;
+      departmentId: number | null;
+      positionId: number | null;
+      scope: string | null;
+      permission: { key: string };
+    };
+
+    let store: FakeRow[];
+    let txManager: { delete: jest.Mock; create: jest.Mock; save: jest.Mock };
+
+    const matches = (row: any, criteria: Record<string, any>): boolean =>
+      Object.entries(criteria).every(([key, cond]) => {
+        if (cond instanceof FindOperator) {
+          if (cond.type === 'isNull') return row[key] == null;
+          throw new Error(`Fake store chưa hỗ trợ operator "${cond.type}"`);
+        }
+        return row[key] === cond;
+      });
+
+    const seed = (): FakeRow[] => [
+      { id: 1, roleId: 1, permissionId: 10, departmentId: null, positionId: null, scope: 'all', permission: { key: 'customers.view' } }, // Toàn cục role 1
+      { id: 2, roleId: 1, permissionId: 10, departmentId: 7, positionId: null, scope: 'department', permission: { key: 'customers.view' } }, // Override Phòng ban role 1
+      { id: 3, roleId: 1, permissionId: 10, departmentId: null, positionId: 3, scope: 'own', permission: { key: 'customers.view' } }, // Override Vị trí role 1
+      { id: 4, roleId: 2, permissionId: 10, departmentId: null, positionId: null, scope: 'all', permission: { key: 'customers.view' } }, // Toàn cục role KHÁC
+      { id: 5, roleId: 2, permissionId: 10, departmentId: null, positionId: 9, scope: 'own', permission: { key: 'customers.view' } }, // Override Vị trí role KHÁC
+    ];
+
+    beforeEach(() => {
+      store = seed();
+
+      mockRoleRepo.findOne.mockResolvedValue({ id: 1, code: 'employee', isSystem: false });
+      mockRoleRepo.find.mockResolvedValue([
+        { id: 1, code: 'employee', name: 'Employee', isSystem: true, color: null },
+        { id: 2, code: 'manager', name: 'Manager', isSystem: true, color: null },
+      ]);
+      mockPermissionRepo.find.mockResolvedValue([{ id: 10, key: 'customers.view', supportsScope: true }]);
+      mockRolePermissionRepo.count.mockResolvedValue(5);
+      mockRolePermissionRepo.exists.mockResolvedValue(false);
+      mockRolePermissionRepo.find.mockImplementation(async (opts: any) =>
+        store.filter((row) => matches(row, opts.where)),
+      );
+
+      txManager = {
+        delete: jest.fn(async (_entity: unknown, criteria: Record<string, any>) => {
+          store = store.filter((row) => !matches(row, criteria));
+        }),
+        create: jest.fn((_entity: unknown, data: any) => data),
+        save: jest.fn(async (_entity: unknown, rows: any[]) => {
+          rows.forEach((r, i) =>
+            store.push({
+              id: 100 + i,
+              departmentId: null,
+              positionId: null,
+              permission: { key: 'customers.view' },
+              ...r,
+            }),
+          );
+        }),
+      };
+      mockDataSource.transaction.mockImplementationOnce((cb: any) => cb(txManager));
+    });
+
+    it('updateRolePermissions -> câu DELETE lọc CẢ departmentId IS NULL VÀ positionId IS NULL', async () => {
+      await service.updateRolePermissions(1, {
+        permissions: [{ permissionKey: 'customers.view', scope: PermissionScope.DEPARTMENT }],
+      });
+
+      expect(txManager.delete).toHaveBeenCalledTimes(1);
+      const [entity, criteria] = txManager.delete.mock.calls[0];
+      expect(entity).toBe(RolePermission);
+      expect(criteria.roleId).toBe(1);
+      expect(criteria.departmentId).toBeInstanceOf(FindOperator);
+      expect(criteria.departmentId.type).toBe('isNull');
+      expect(criteria.positionId).toBeInstanceOf(FindOperator);
+      expect(criteria.positionId.type).toBe('isNull');
+    });
+
+    it('updateRolePermissions -> lưu Toàn cục: override Vị trí + Phòng ban của CÙNG role vẫn còn nguyên', async () => {
+      await service.updateRolePermissions(1, {
+        permissions: [{ permissionKey: 'customers.view', scope: PermissionScope.DEPARTMENT }],
+      });
+
+      const ids = store.map((r) => r.id);
+      expect(ids).toContain(2); // override Phòng ban role 1
+      expect(ids).toContain(3); // override Vị trí role 1 (bug cũ: bị xoá mất)
+      expect(store.find((r) => r.id === 3)?.scope).toBe('own'); // giá trị không bị đổi
+    });
+
+    it('updateRolePermissions -> vẫn thay đúng dòng Toàn cục của role đang sửa và KHÔNG đụng role khác', async () => {
+      await service.updateRolePermissions(1, {
+        permissions: [{ permissionKey: 'customers.view', scope: PermissionScope.DEPARTMENT }],
+      });
+
+      expect(store.find((r) => r.id === 1)).toBeUndefined(); // dòng Toàn cục cũ bị thay
+      const newGlobal = store.filter((r) => r.roleId === 1 && r.departmentId == null && r.positionId == null);
+      expect(newGlobal).toHaveLength(1);
+      expect(newGlobal[0].scope).toBe(PermissionScope.DEPARTMENT); // dòng mới đúng scope
+      expect(store.map((r) => r.id)).toEqual(expect.arrayContaining([4, 5])); // role 2 nguyên vẹn (cả Toàn cục lẫn Vị trí)
+    });
+
+    it('updateRolePermissions -> lưu Toàn cục với danh sách rỗng: vẫn KHÔNG xoá override Vị trí/Phòng ban', async () => {
+      await service.updateRolePermissions(1, { permissions: [] });
+
+      expect(store.filter((r) => r.roleId === 1).map((r) => r.id).sort()).toEqual([2, 3]);
+    });
+
+    it('findAllRoles -> chỉ trả dòng Toàn cục, KHÔNG lẫn override Vị trí/Phòng ban', async () => {
+      const roles = await service.findAllRoles();
+
+      const role1 = roles.find((r) => r.id === 1)!;
+      // Bug cũ: trả 2 dòng (Toàn cục 'all' + override Vị trí 'own') cho cùng permissionKey.
+      expect(role1.permissions).toEqual([{ permissionKey: 'customers.view', scope: 'all' }]);
+      const role2 = roles.find((r) => r.id === 2)!;
+      expect(role2.permissions).toEqual([{ permissionKey: 'customers.view', scope: 'all' }]);
+    });
+
+    it('findAllRoles -> truy vấn có positionId IS NULL cùng departmentId IS NULL', async () => {
+      await service.findAllRoles();
+
+      const where = mockRolePermissionRepo.find.mock.calls[0][0].where;
+      expect(where.departmentId).toBeInstanceOf(FindOperator);
+      expect(where.departmentId.type).toBe('isNull');
+      expect(where.positionId).toBeInstanceOf(FindOperator);
+      expect(where.positionId.type).toBe('isNull');
+    });
+  });
+
   describe('Department Overrides', () => {
     it('getDepartmentOverrides -> nhóm đúng theo phòng ban', async () => {
       mockRoleRepo.findOneBy.mockResolvedValue({ id: 1 });
