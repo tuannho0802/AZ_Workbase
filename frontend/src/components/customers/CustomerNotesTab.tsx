@@ -30,7 +30,19 @@ export const CustomerNotesTab = ({ customerId, notes, onNoteAdded }: Props) => {
   const [loading, setLoading] = useState(false);
   const { message } = App.useApp();
   const currentUser = useAuthStore((s) => s.user);
-  const { scope } = useMyPermissions();
+  const { can, scope } = useMyPermissions();
+
+  // ⚠️ FIX BUG THẬT (báo cáo 18/9: user KHÔNG tạo được "phiếu gặp khách" -
+  // tức ghi chú noteType='meeting'): form "Thêm ghi chú mới" TRƯỚC ĐÂY luôn
+  // render bất kể role có `customer_notes.create` hay không - user vẫn bấm
+  // "Thêm" được, request tới BE mới bị chặn 403 (permission) hoặc 404
+  // (khách hàng ngoài phạm vi scope của quyền này) - vi phạm đúng rule bắt
+  // buộc của dự án (SKILL_FILE_MANAGEMENT / custom instructions mục 4):
+  // "Nếu BE 403 một endpoint, FE phải tự ẩn UI tương ứng trước khi user bấm
+  // được vào, không để lộ ra rồi báo lỗi 403." Giờ ẩn hẳn form nếu role
+  // không có `customer_notes.create` - đồng bộ với cách canEditNote/
+  // canDeleteNote đã làm bên dưới cho sửa/xoá.
+  const canCreateNote = can('customer_notes.create');
 
   // ⚠️ Đồng bộ với CustomersService.assertNoteManageable() (BE) - KHÔNG còn
   // bypass cứng "ghi chú của chính mình luôn sửa/xoá được" nữa. Giờ đây
@@ -117,24 +129,26 @@ export const CustomerNotesTab = ({ customerId, notes, onNoteAdded }: Props) => {
 
   return (
     <div style={{ padding: '0px 8px' }}>
-      <Card size="small" title="Thêm ghi chú mới" style={{ marginBottom: 16 }}>
-        <Form form={form} onFinish={handleSubmit} layout="vertical">
-          <Form.Item name="note" rules={[{ required: true, message: 'Vui lòng nhập nội dung' }]}>
-            <Input.TextArea placeholder="Nhập ghi chú quan trọng..." rows={3} />
-          </Form.Item>
-          <Space>
-            <Form.Item name="noteType" initialValue="general" style={{ marginBottom: 0 }}>
-              <Select style={{ width: 120 }} options={NOTE_TYPE_OPTIONS} />
+      {canCreateNote && (
+        <Card size="small" title="Thêm ghi chú mới" style={{ marginBottom: 16 }}>
+          <Form form={form} onFinish={handleSubmit} layout="vertical">
+            <Form.Item name="note" rules={[{ required: true, message: 'Vui lòng nhập nội dung' }]}>
+              <Input.TextArea placeholder="Nhập ghi chú quan trọng..." rows={3} />
             </Form.Item>
-            <Form.Item name="isImportant" valuePropName="checked" style={{ marginBottom: 0 }}>
-              <Switch checkedChildren="🔥" unCheckedChildren="Bình thường" />
-            </Form.Item>
-            <Button type="primary" htmlType="submit" loading={loading} icon={<PlusOutlined />}>
-              Thêm
-            </Button>
-          </Space>
-        </Form>
-      </Card>
+            <Space>
+              <Form.Item name="noteType" initialValue="general" style={{ marginBottom: 0 }}>
+                <Select style={{ width: 120 }} options={NOTE_TYPE_OPTIONS} />
+              </Form.Item>
+              <Form.Item name="isImportant" valuePropName="checked" style={{ marginBottom: 0 }}>
+                <Switch checkedChildren="🔥" unCheckedChildren="Bình thường" />
+              </Form.Item>
+              <Button type="primary" htmlType="submit" loading={loading} icon={<PlusOutlined />}>
+                Thêm
+              </Button>
+            </Space>
+          </Form>
+        </Card>
+      )}
 
       <div className="notes-list" style={{ marginTop: 16 }}>
         {notes.length === 0 ? (

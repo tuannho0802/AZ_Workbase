@@ -3093,3 +3093,53 @@ POST/PATCH/PUT/DELETE từng controller) để có bức tranh đầy đủ ai �
 > quyết định dứt khoát việc gộp % chung 2 hạng mục có đúng ý chủ dự án hay không - cần xác nhận.
 
 ---
+
+## [2026-09-21 16:39] | Fix (1 phần) bug "không tạo được phiếu gặp khách" (customer_notes.create) | [Status: In-Progress]
+
+**Actor:** Agent
+
+**Files Changed:**
+- `frontend/src/components/customers/CustomerNotesTab.tsx` — form "Thêm ghi chú mới" (tạo
+  `customer_notes`, bao gồm loại `meeting` = "phiếu gặp khách" theo cách gọi của người dùng) TRƯỚC ĐÂY
+  luôn render bất kể role hiện tại có permission `customer_notes.create` hay không. Đã bọc `canCreateNote
+  = can('customer_notes.create')` (từ `useMyPermissions`) quanh `<Card>` chứa form - đồng bộ với cách
+  `canEditNote`/`canDeleteNote` đã ẩn nút sửa/xoá theo permission ngay bên dưới cùng file. Vi phạm đúng
+  rule bắt buộc của dự án (custom instructions mục 4): "Nếu BE 403 một endpoint, FE phải tự ẩn UI tương
+  ứng trước khi user bấm được vào".
+
+**Root Cause (bug fix):**
+> Đây là 1 NGUYÊN NHÂN CÓ THỂ GÓP PHẦN vào báo cáo 18/9, KHÔNG PHẢI xác nhận 100% là nguyên nhân duy nhất
+> (chưa có log lỗi/role cụ thể của user gặp sự cố để đối chiếu DB thật - xem phần "Notes"). Cơ chế chặn
+> tạo ghi chú khách hàng gồm 2 lớp ở BE (`CustomersController.createNote` → `CustomersService.createNote`):
+>   1. `@RequirePermission('customer_notes.create')` - role phải được Admin cấp quyền này qua trang
+>      "Phân quyền" (bảng `role_permissions`). Quyền này KHÔNG tự động cấp cho role mới tạo sau migration
+>      `1779200000000-SplitCustomerNotesPermissions` (chỉ 4 role hệ thống gốc admin/manager/assistant/
+>      employee được seed sẵn) - role tuỳ chỉnh tạo sau đó qua UI "Phân quyền" mặc định KHÔNG có quyền
+>      này cho tới khi Admin bật tay.
+>   2. `assertCustomerAccessible()` (dùng `CustomerAccessHelper.applyViewFilter`, cùng scope
+>      own/department/all của CHÍNH `customer_notes.create`) - dù có quyền, khách hàng phải nằm trong
+>      phạm vi (chính mình tạo/là Sales chính/Marketing phụ trách/đang được gán active, hoặc phòng ban
+>      mình quản lý nếu scope='department') mới tạo ghi chú được, nếu không sẽ 404 "Không tìm thấy khách
+>      hàng".
+> FE trước đây không ẩn form theo (1) nên user vẫn bấm "Thêm" được dù chắc chắn sẽ bị BE chặn - trải
+> nghiệm giống "không cho tạo" mà không có gợi ý rõ vì sao.
+
+**Solution:**
+> Đã sửa (1): ẩn hẳn form "Thêm ghi chú mới" nếu role không có `customer_notes.create` - user sẽ không
+> thấy được nút bấm gây hiểu lầm nữa (nhất quán với `customers.assign` đã áp dụng kiểu ẩn tương tự ở
+> commit `d121edd`).
+> CHƯA sửa (2): đây là hành vi RBAC theo thiết kế (scope), không phải bug - nếu đúng là nguyên nhân thật
+> của báo cáo 18/9, hướng xử lý là Admin vào trang "Phân quyền" mở rộng scope của
+> `customer_notes.create` cho role đó (vd 'department'/'all' thay vì 'own'), hoặc gán KH đó
+> (customer_assignments) cho đúng user - KHÔNG cần sửa code.
+
+**Notes:**
+> Verify thật: `npx tsc --noEmit` (frontend) không phát sinh lỗi mới liên quan file đã sửa (chỉ còn 5 lỗi
+> baseline có từ trước: `logo.png`×4, `CountBadge` styled-jsx). `npx eslint` trên file đã sửa: 0 lỗi. CHƯA
+> chạy `npm run build`/test suite đầy đủ, CHƯA verify trên DB thật (không có quyền truy cập DB production
+> từ phiên này) - **CHƯA XÁC NHẬN** được chính xác role/permission của user gặp sự cố 18/9 khớp với giả
+> thuyết (1) hay (2) ở trên hay là nguyên nhân KHÁC hoàn toàn (vd lỗi mạng, lỗi FE khác lúc đó chưa được
+> fix bởi các commit sau này). Cần người dùng cung cấp: thông báo lỗi cụ thể lúc đó (đỏ ở góc màn hình nói
+> gì) + role của user đó, để phiên sau xác nhận dứt điểm và đóng Status thành Success.
+
+---
