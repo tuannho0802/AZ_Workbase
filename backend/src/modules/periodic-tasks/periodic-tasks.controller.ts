@@ -57,12 +57,21 @@ export class PeriodicTasksController {
   @Get()
   @RequirePermission('periodic_tasks.view')
   @ApiOperation({ summary: 'Danh sách Công việc định kỳ (có phân quyền + lọc theo kỳ hạn/khoảng thời gian)' })
-  findAll(
+  async findAll(
     @GetUser() user: any,
     @Query() filters: PeriodicTaskFiltersDto,
     @GetPermissionScope() scope: string | null | undefined,
   ) {
-    return this.periodicTasksService.findAll(filters, user.id, user.role, scope);
+    const result = await this.periodicTasksService.findAll(filters, user.id, user.role, scope);
+    // Đính `checklistProgress` ({done,total}) cho từng Task để FE hiện "X/Z"
+    // trên nút Checklist - xem JSDoc `attachChecklistProgressToList()`.
+    const data = await this.periodicTaskChecklistItemsService.attachChecklistProgressToList(
+      result.data,
+      user.id,
+      user.role,
+      scope,
+    );
+    return { ...result, data };
   }
 
   // ⚠️ Route tĩnh `links` PHẢI khai TRƯỚC route `:id` ngay bên dưới - mirror

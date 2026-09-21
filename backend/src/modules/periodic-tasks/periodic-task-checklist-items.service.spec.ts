@@ -36,6 +36,7 @@ describe('PeriodicTaskChecklistItemsService', () => {
   // Nest báo "can't resolve dependencies" khi compile TestingModule.
   const mockLinksService = {
     getChildrenChecklist: jest.fn(),
+    getChildrenChecklistProgressBatch: jest.fn(),
   };
   const mockAuditService = {
     logActionAsync: jest.fn(),
@@ -350,6 +351,57 @@ describe('PeriodicTaskChecklistItemsService', () => {
       );
 
       expect(result.linkedChildrenChecklist[0].isDone).toBe(false);
+    });
+  });
+  describe('attachChecklistProgressToList (X/Z cho danh sách)', () => {
+    function mockItemRows(rows: any[]) {
+      const qb: any = {
+        select: jest.fn().mockReturnThis(),
+        addSelect: jest.fn().mockReturnThis(),
+        where: jest.fn().mockReturnThis(),
+        groupBy: jest.fn().mockReturnThis(),
+        getRawMany: jest.fn().mockResolvedValue(rows),
+      };
+      mockChecklistRepo.createQueryBuilder.mockReturnValueOnce(qb);
+      return qb;
+    }
+
+    it('trả mảng rỗng và KHÔNG query khi danh sách rỗng', async () => {
+      const result = await service.attachChecklistProgressToList([], employeeUser.id, employeeUser.role, 'own');
+
+      expect(result).toEqual([]);
+      expect(mockChecklistRepo.createQueryBuilder).not.toHaveBeenCalled();
+      expect(mockLinksService.getChildrenChecklistProgressBatch).not.toHaveBeenCalled();
+    });
+
+    it('cộng checklist item thật + Task con (cùng cách đếm với modal), Task chưa có gì -> 0/0', async () => {
+      const qb = mockItemRows([{ taskId: '10', total: '2', done: '1' }]);
+      mockLinksService.getChildrenChecklistProgressBatch.mockResolvedValue(
+        new Map([
+          [10, { done: 1, total: 1 }],
+          [11, { done: 0, total: 2 }],
+        ]),
+      );
+
+      const result = await service.attachChecklistProgressToList(
+        [{ id: 10 }, { id: 11 }, { id: 12 }],
+        employeeUser.id,
+        employeeUser.role,
+        'own',
+      );
+
+      expect(qb.where).toHaveBeenCalledWith('item.task_id IN (:...taskIds)', { taskIds: [10, 11, 12] });
+      expect(mockLinksService.getChildrenChecklistProgressBatch).toHaveBeenCalledWith(
+        [10, 11, 12],
+        employeeUser.id,
+        employeeUser.role,
+        'own',
+      );
+      expect(result.map((t) => t.checklistProgress)).toEqual([
+        { done: 2, total: 3 },
+        { done: 0, total: 2 },
+        { done: 0, total: 0 },
+      ]);
     });
   });
 });

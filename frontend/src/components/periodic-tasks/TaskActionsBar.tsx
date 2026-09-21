@@ -11,6 +11,7 @@ import {
     DeleteOutlined,
 } from '@ant-design/icons';
 import { PeriodicTask } from '@/lib/api/periodic-tasks.api';
+import { getChecklistProgress, getChecklistTone } from '@/lib/utils/checklistProgress';
 
 /**
  * TaskActionsBar - nhóm nút Thao tác cho 1 `PeriodicTask`, tách ra từ cột
@@ -66,15 +67,32 @@ export function TaskActionsBar({
     // nút Sửa (biết mình có periodic_tasks.edit) nhưng disable kèm Tooltip,
     // tránh gọi PATCH ăn 403 mới biết - mirror ĐÚNG cột gốc.
     const editDisabled = task.isLocked && !canEditLocked;
+    const checklistProgress = getChecklistProgress(task);
 
     return (
         <Space size="small" wrap={wrap}>
             <Button size={size} icon={<ApartmentOutlined />} onClick={() => onLink(task)}>
                 Liên kết
             </Button>
-            <Button size={size} icon={<CheckSquareOutlined />} onClick={() => onChecklist(task)}>
-                Checklist
-            </Button>
+            {checklistProgress ? (
+                // Nhãn "X/Z" + màu theo tiến độ (đỏ < 1/2, vàng >= 1/2, xanh khi xong đủ) -
+                // xem `getChecklistTone()`. Dùng `color` preset của antd v6 nên hover/focus vẫn đúng chuẩn.
+                <Tooltip title={`Đã hoàn thành ${checklistProgress.done}/${checklistProgress.total} mục checklist`}>
+                    <Button
+                        size={size}
+                        color={getChecklistTone(checklistProgress)}
+                        variant="outlined"
+                        icon={<CheckSquareOutlined />}
+                        onClick={() => onChecklist(task)}
+                    >
+                        Checklist {checklistProgress.done}/{checklistProgress.total}
+                    </Button>
+                </Tooltip>
+            ) : (
+                <Button size={size} icon={<CheckSquareOutlined />} onClick={() => onChecklist(task)}>
+                    Checklist
+                </Button>
+            )}
             <Button size={size} icon={<HistoryOutlined />} onClick={() => onAudit(task)}>
                 Lịch sử
             </Button>

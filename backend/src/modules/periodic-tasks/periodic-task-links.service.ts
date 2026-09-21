@@ -267,6 +267,52 @@ export class PeriodicTaskLinksService {
     }));
   }
 
+  /**
+   * getChildrenChecklistProgressBatch - đếm (done/total) Task con TRỰC TIẾP
+   * của NHIỀU Task cha trong 1 query gom nhóm (dùng cho `GET /periodic-tasks`
+   * để FE hiện nhãn "X/Z" trên nút Checklist mà không phải N+1 gọi từng
+   * `getChildrenChecklist()`).
+   *
+   * Cùng quy tắc đếm với `getChildrenChecklist()`: chỉ Task con chưa xoá,
+   * `isDone` = `status.is_done_state`, và LỌC LẠI theo scope người gọi
+   * (`applyViewFilter`) - để số đếm ở danh sách luôn khớp số dòng người dùng
+   * thật sự thấy khi mở modal Checklist. KHÔNG gọi `tasksService.findOne()`
+   * từng Task cha vì caller (findAll) đã lọc scope các Task cha rồi.
+   * Task cha không có Task con nào -> KHÔNG có key trong Map (caller coi = 0/0).
+   */
+  async getChildrenChecklistProgressBatch(
+    parentTaskIds: number[],
+    userId: number,
+    userRole: string,
+    scope?: string | null,
+  ): Promise<Map<number, { done: number; total: number }>> {
+    const result = new Map<number, { done: number; total: number }>();
+    if (parentTaskIds.length === 0) return result;
+
+    const qb = this.taskRepo
+      .createQueryBuilder('task')
+      .innerJoin('task.status', 'status')
+      .innerJoin('periodic_task_links', 'link', 'link.child_task_id = task.id')
+      .select('link.parent_task_id', 'parentId')
+      .addSelect('COUNT(task.id)', 'total')
+      .addSelect('SUM(CASE WHEN status.is_done_state = 1 THEN 1 ELSE 0 END)', 'done')
+      .where('link.parent_task_id IN (:...parentTaskIds)', { parentTaskIds })
+      .andWhere('task.deletedAt IS NULL');
+
+    PeriodicTaskAccessHelper.applyViewFilter(qb, userId, userRole, scope);
+
+    const rows = await qb.groupBy('link.parent_task_id').getRawMany<{
+      parentId: number | string;
+      total: number | string;
+      done: number | string | null;
+    }>();
+
+    for (const row of rows) {
+      result.set(Number(row.parentId), { done: Number(row.done ?? 0), total: Number(row.total) });
+    }
+    return result;
+  }
+
   async getParents(
     taskId: number,
     userId: number,

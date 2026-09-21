@@ -243,4 +243,58 @@ export class PeriodicTaskChecklistItemsService {
     );
     return { ...task, linkedChildrenChecklist };
   }
+
+  /**
+   * attachChecklistProgressToList - đính `checklistProgress: { done, total }`
+   * vào từng Task của danh sách (dùng ở `PeriodicTasksController.findAll()`)
+   * để FE hiện nhãn "X/Z" trên nút Checklist ở MỌI view (Bảng/Ngày/Kanban)
+   * mà không cần gọi `GET /:id` từng Task.
+   *
+   * CÙNG cách đếm với modal Checklist: `total` = số checklist item thật +
+   * số Task con trực tiếp (Phase 9); `done` = item `is_done` + Task con có
+   * `status.is_done_state`. Chỉ 2 query gom nhóm cho cả trang (không N+1).
+   * Task chưa có gì -> `{ done: 0, total: 0 }` (FE ẩn nhãn, không tô màu).
+   */
+  async attachChecklistProgressToList<T extends { id: number }>(
+    tasks: T[],
+    userId: number,
+    userRole: string,
+    scope?: string | null,
+  ): Promise<Array<T & { checklistProgress: { done: number; total: number } }>> {
+    if (tasks.length === 0) return [];
+    const taskIds = tasks.map((t) => t.id);
+
+    const itemRows = await this.checklistRepo
+      .createQueryBuilder('item')
+      .select('item.task_id', 'taskId')
+      .addSelect('COUNT(item.id)', 'total')
+      .addSelect('SUM(CASE WHEN item.is_done = 1 THEN 1 ELSE 0 END)', 'done')
+      .where('item.task_id IN (:...taskIds)', { taskIds })
+      .groupBy('item.task_id')
+      .getRawMany<{ taskId: number | string; total: number | string; done: number | string | null }>();
+
+    const itemProgress = new Map<number, { done: number; total: number }>();
+    for (const row of itemRows) {
+      itemProgress.set(Number(row.taskId), { done: Number(row.done ?? 0), total: Number(row.total) });
+    }
+
+    const childProgress = await this.linksService.getChildrenChecklistProgressBatch(
+      taskIds,
+      userId,
+      userRole,
+      scope,
+    );
+
+    return tasks.map((task) => {
+      const items = itemProgress.get(task.id);
+      const children = childProgress.get(task.id);
+      return {
+        ...task,
+        checklistProgress: {
+          done: (items?.done ?? 0) + (children?.done ?? 0),
+          total: (items?.total ?? 0) + (children?.total ?? 0),
+        },
+      };
+    });
+  }
 }

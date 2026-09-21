@@ -986,7 +986,7 @@ export default function PeriodicTasksPage() {
             // như Sửa/Xoá bên dưới.
             title: 'Thao tác',
             key: 'action',
-            width: 500,
+            width: 540,
             fixed: 'right' as const,
             // Phase 8 (PLAN mục Phase 8): tách nhóm nút này ra `TaskActionsBar`
             // dùng chung cho cả 4 view (Table/Agenda/Kanban/Calendar) - xem

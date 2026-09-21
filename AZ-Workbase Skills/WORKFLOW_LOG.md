@@ -3236,3 +3236,29 @@ công 180 ngày cho Phase 6). Các quyết định UI/quyền của thông báo 
 > preferences/cron dọn dẹp (Phase 6), chưa móc `emit()` vào Task/Customer (Phase 2–3), chưa có FE (Phase 4).
 
 ---
+
+## [2026-09-21 10:55] | Công việc định kỳ — nhãn tiến độ "X/Z" + màu trên nút Checklist (mọi view) | [Status: Success]
+
+**Actor:** Agent
+
+**Files Changed:**
+- `backend/src/modules/periodic-tasks/periodic-task-links.service.ts` — thêm `getChildrenChecklistProgressBatch()` (đếm Task con theo nhóm, có `applyViewFilter`)
+- `backend/src/modules/periodic-tasks/periodic-task-checklist-items.service.ts` — thêm `attachChecklistProgressToList()` (item thật + Task con)
+- `backend/src/modules/periodic-tasks/periodic-tasks.controller.ts` — `findAll()` đính `checklistProgress: {done,total}` cho từng Task
+- `backend/src/modules/periodic-tasks/*.spec.ts` — test cho 2 hàm mới
+- `frontend/src/lib/utils/checklistProgress.ts` (+ `.test.ts`) — `getChecklistProgress()`/`getChecklistTone()`
+- `frontend/src/components/periodic-tasks/TaskActionsBar.tsx` — nút Checklist hiện "X/Z", màu đỏ (< 1/2) / vàng (≥ 1/2, chưa xong) / xanh (xong đủ)
+- `frontend/src/lib/api/periodic-tasks.api.ts` — thêm field `checklistProgress?`
+- `frontend/src/app/(dashboard)/cong-viec-dinh-ky/page.tsx` — cột Thao tác 500 → 540px
+
+**Solution:**
+> `GET /periodic-tasks` (danh sách) trước đây KHÔNG có dữ liệu checklist nên FE không đếm được ở Bảng/Ngày/Kanban.
+> BE nay đính `checklistProgress` bằng 2 query gom nhóm (không N+1), cùng cách đếm với `TaskChecklistModal`
+> (checklist item thật + Task con liên kết trực tiếp, Task con đã lọc theo scope người xem). `TaskActionsBar` dùng
+> chung nên cả 3 view tự có. Không có mục nào (total = 0) → giữ nút Checklist mặc định, không tô màu.
+
+**Notes:**
+> Không có migration/đổi schema. `tsc --noEmit` (BE+FE) sạch, `npm run build` FE sạch, jest `periodic-tasks`
+> 7 suite / 122 test pass, vitest util 7 test pass, eslint file đã sửa sạch. Chưa chạy trên DB thật.
+
+---

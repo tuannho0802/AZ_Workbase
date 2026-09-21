@@ -12,6 +12,8 @@ import { Role } from '../../common/enums/role.enum';
 function makeFakeQueryBuilder(overrides: { getMany?: any; getRawMany?: any } = {}) {
   const qb: any = {
     select: jest.fn().mockReturnThis(),
+    addSelect: jest.fn().mockReturnThis(),
+    groupBy: jest.fn().mockReturnThis(),
     leftJoinAndSelect: jest.fn().mockReturnThis(),
     innerJoin: jest.fn().mockReturnThis(),
     where: jest.fn().mockReturnThis(),
@@ -296,6 +298,41 @@ describe('PeriodicTaskLinksService', () => {
       // Chỉ có andWhere('task.deletedAt IS NULL') - KHÔNG có thêm andWhere lọc scope nào khác.
       expect(qb.andWhere).toHaveBeenCalledTimes(1);
       expect(qb.andWhere).toHaveBeenCalledWith('task.deletedAt IS NULL');
+    });
+  });
+
+  describe('getChildrenChecklistProgressBatch (đếm X/Z cho danh sách)', () => {
+    it('trả Map rỗng ngay khi không có Task cha nào - KHÔNG query DB', async () => {
+      const result = await service.getChildrenChecklistProgressBatch([], userId, userRole, scope);
+
+      expect(result.size).toBe(0);
+      expect(mockTaskRepo.createQueryBuilder).not.toHaveBeenCalled();
+    });
+
+    it('gom nhóm theo parent_task_id, ép số (MySQL trả SUM/COUNT dạng chuỗi) và áp applyViewFilter lên Task con', async () => {
+      const qb = makeFakeQueryBuilder({
+        getRawMany: [
+          { parentId: 1, total: '3', done: '2' },
+          { parentId: 2, total: '1', done: null },
+        ],
+      });
+      mockTaskRepo.createQueryBuilder.mockReturnValue(qb);
+
+      const result = await service.getChildrenChecklistProgressBatch([1, 2, 3], userId, userRole, scope);
+
+      expect(qb.innerJoin).toHaveBeenCalledWith('periodic_task_links', 'link', 'link.child_task_id = task.id');
+      expect(qb.where).toHaveBeenCalledWith('link.parent_task_id IN (:...parentTaskIds)', {
+        parentTaskIds: [1, 2, 3],
+      });
+      expect(qb.andWhere).toHaveBeenCalledWith('task.deletedAt IS NULL');
+      expect(qb.andWhere).toHaveBeenCalledWith(
+        expect.stringContaining('task.createdById = :accessUserId'),
+        { accessUserId: userId },
+      );
+      expect(qb.groupBy).toHaveBeenCalledWith('link.parent_task_id');
+      expect(result.get(1)).toEqual({ done: 2, total: 3 });
+      expect(result.get(2)).toEqual({ done: 0, total: 1 });
+      expect(result.has(3)).toBe(false);
     });
   });
 

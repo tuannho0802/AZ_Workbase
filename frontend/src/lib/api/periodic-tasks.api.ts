@@ -124,6 +124,15 @@ export interface PeriodicTask {
    * liên kết, xem JSDoc `PeriodicTaskLinksService.getChildrenChecklist()`).
    */
   linkedChildrenChecklist?: LinkedChildChecklistEntry[];
+  /**
+   * Tiến độ Checklist (đã xong/tổng) - CHỈ có mặt trên response của `GET /`
+   * (danh sách), do BE đính bằng 2 query gom nhóm để nhãn "X/Z" trên nút
+   * Checklist hiện được ở MỌI view mà không cần `GET /:id` từng Task. CÙNG
+   * cách đếm với `TaskChecklistModal`: checklist item thật + Task con liên
+   * kết trực tiếp (Phase 9). `total = 0` nghĩa là chưa có mục nào. Dùng qua
+   * `getChecklistProgress()` (`lib/utils/checklistProgress.ts`) thay vì đọc trực tiếp.
+   */
+  checklistProgress?: { done: number; total: number };
 }
 
 /**
