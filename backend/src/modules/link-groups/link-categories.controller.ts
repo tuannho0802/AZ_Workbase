@@ -14,6 +14,7 @@ import { ApiTags, ApiOperation, ApiBearerAuth, ApiQuery } from '@nestjs/swagger'
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { PermissionGuard } from '../../common/guards/permission.guard';
 import { RequirePermission } from '../../common/decorators/require-permission.decorator';
+import { GetUser } from '../../common/decorators/get-user.decorator';
 import { LinkCategoriesService } from './link-categories.service';
 import { CreateLinkCategoryDto } from './dto/create-link-category.dto';
 import { UpdateLinkCategoryDto } from './dto/update-link-category.dto';
@@ -42,29 +43,29 @@ export class LinkCategoriesController {
   @Post()
   @RequirePermission('link_groups.manage')
   @ApiOperation({ summary: 'Tạo category mới (Admin, Assistant)' })
-  async create(@Body() dto: CreateLinkCategoryDto) {
-    return this.categoriesService.create(dto);
+  async create(@Body() dto: CreateLinkCategoryDto, @GetUser() user: any) {
+    return this.categoriesService.create(dto, user.id);
   }
 
   @Patch(':id')
   @RequirePermission('link_groups.manage')
   @ApiOperation({ summary: 'Sửa tên/màu/thứ tự category (Admin, Assistant)' })
-  async update(@Param('id', ParseIntPipe) id: number, @Body() dto: UpdateLinkCategoryDto) {
-    return this.categoriesService.update(id, dto);
+  async update(@Param('id', ParseIntPipe) id: number, @Body() dto: UpdateLinkCategoryDto, @GetUser() user: any) {
+    return this.categoriesService.update(id, dto, user.id);
   }
 
   @Patch(':id/lock')
   @RequirePermission('link_groups.manage')
   @ApiOperation({ summary: 'Khoá category (Admin, Assistant)' })
-  async lock(@Param('id', ParseIntPipe) id: number) {
-    return this.categoriesService.setLocked(id, true);
+  async lock(@Param('id', ParseIntPipe) id: number, @GetUser() user: any) {
+    return this.categoriesService.setLocked(id, true, user.id);
   }
 
   @Patch(':id/unlock')
   @RequirePermission('link_groups.manage')
   @ApiOperation({ summary: 'Mở khoá category (Admin, Assistant)' })
-  async unlock(@Param('id', ParseIntPipe) id: number) {
-    return this.categoriesService.setLocked(id, false);
+  async unlock(@Param('id', ParseIntPipe) id: number, @GetUser() user: any) {
+    return this.categoriesService.setLocked(id, false, user.id);
   }
 
   // FIX PERMISSIONS.md mục 1 (quy tắc Xoá) + mục 2.4: Xoá luôn tách riêng,
@@ -77,7 +78,7 @@ export class LinkCategoriesController {
   @Delete(':id')
   @RequirePermission('link_groups.delete')
   @ApiOperation({ summary: 'Xoá category - chỉ được nếu chưa có group nào (chỉ Admin)' })
-  async remove(@Param('id', ParseIntPipe) id: number) {
-    return this.categoriesService.remove(id);
+  async remove(@Param('id', ParseIntPipe) id: number, @GetUser() user: any) {
+    return this.categoriesService.remove(id, user.id);
   }
 }

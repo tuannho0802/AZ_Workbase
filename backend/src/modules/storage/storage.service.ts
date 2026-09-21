@@ -15,6 +15,7 @@ import { Setting } from '../../database/entities/setting.entity';
 import { User } from '../../database/entities/user.entity';
 import { LeaveRequestAttachment } from '../../database/entities/leave-request-attachment.entity';
 import { ALLOWED_IMAGE_TYPES } from '../uploads/dto/presign-avatar.dto';
+import { AuditService } from '../audit/audit.service';
 import {
   StorageBucketKey,
   STORAGE_BUCKET_KEYS,
@@ -47,6 +48,7 @@ export class StorageService {
     private readonly userRepository: Repository<User>,
     @InjectRepository(LeaveRequestAttachment)
     private readonly attachmentRepository: Repository<LeaveRequestAttachment>,
+    private readonly auditService: AuditService,
   ) {
     this.s3 = new S3Client({
       region: this.configService.get<string>('B2_REGION'),
@@ -148,13 +150,46 @@ export class StorageService {
    * hơn nhiều so với việc lỡ dọn DB nhưng object S3 xoá thất bại (chỉ tốn
    * thêm dung lượng, không có ảnh vỡ hiển thị ra ngoài).
    */
-  async deleteMedia(bucket: StorageBucketKey, key: string): Promise<void> {
+  async deleteMedia(bucket: StorageBucketKey, key: string, callerId?: number): Promise<void> {
+    return this.deleteMediaInternal(bucket, key, callerId, false);
+  }
+
+  /**
+   * [AUDIT] Xoá media THẬT + ghi audit. Object trên B2 không phục hồi được và
+   * tham chiếu DB (users.avatar_url / leave_request_attachments) bị dọn TRƯỚC
+   * khi xoá, nên phải CHỤP LẠI các tham chiếu đó (ai đang dùng file này) ngay
+   * trước khi dọn - sau đó không còn cách nào truy ngược file này thuộc về ai.
+   *
+   * - Thành công: `DELETE_STORAGE_MEDIA` (old = bucket/key/tham chiếu đã dọn).
+   * - Xoá B2 lỗi NHƯNG DB đã bị dọn (đã có tham chiếu bị gỡ): vẫn ghi
+   *   `DELETE_STORAGE_MEDIA_FAILED` để không mất dấu thay đổi DB đã xảy ra.
+   * - Xoá B2 lỗi và không đụng DB gì: không ghi log (không có gì thay đổi).
+   */
+  private async deleteMediaInternal(
+    bucket: StorageBucketKey,
+    key: string,
+    callerId: number | undefined,
+    viaBulk: boolean,
+  ): Promise<void> {
+    let clearedReferences: Record<string, unknown>[] = [];
+
     if (bucket === 'avatars') {
       // Không throw nếu KHÔNG còn user nào tham chiếu key này (avatar cũ đã
       // mồ côi từ trước, hoặc user đã bị xoá) - vẫn cho xoá file bình
       // thường, đây chính là trường hợp "dọn rác" phổ biến nhất.
+      const users = await this.userRepository.find({
+        where: { avatarUrl: key },
+        select: ['id', 'name', 'email'],
+      });
+      clearedReferences = users.map((u) => ({ type: 'user_avatar', userId: u.id, name: u.name, email: u.email }));
       await this.userRepository.update({ avatarUrl: key }, { avatarUrl: null });
     } else if (bucket === 'leave-attachments') {
+      const attachments = await this.attachmentRepository.find({ where: { objectKey: key } });
+      clearedReferences = attachments.map((a) => ({
+        type: 'leave_request_attachment',
+        attachmentId: a.id,
+        leaveRequestId: a.leaveRequestId,
+      }));
       await this.attachmentRepository.delete({ objectKey: key });
     }
 
@@ -163,7 +198,28 @@ export class StorageService {
       await this.s3.send(new DeleteObjectCommand({ Bucket: bucketName, Key: key }));
     } catch (error) {
       this.logger.error(`Xoá media thất bại: ${bucket}/${key}`, error as Error);
+      if (callerId && clearedReferences.length > 0) {
+        this.auditService.logActionAsync(
+          callerId,
+          'DELETE_STORAGE_MEDIA_FAILED',
+          'storage_media',
+          0,
+          { bucket, key, clearedReferences, viaBulk, note: 'Đã gỡ tham chiếu DB nhưng xoá object trên B2 thất bại' },
+          null,
+        );
+      }
       throw new NotFoundException('Không tìm thấy hoặc không xoá được file này');
+    }
+
+    if (callerId) {
+      this.auditService.logActionAsync(
+        callerId,
+        'DELETE_STORAGE_MEDIA',
+        'storage_media',
+        0,
+        { bucket, key, clearedReferences, viaBulk },
+        null,
+      );
     }
   }
 
@@ -178,17 +234,31 @@ export class StorageService {
   async bulkDeleteMedia(
     bucket: StorageBucketKey,
     keys: string[],
+    callerId?: number,
   ): Promise<{ succeeded: string[]; failed: { key: string; reason: string }[] }> {
     const succeeded: string[] = [];
     const failed: { key: string; reason: string }[] = [];
 
     for (const key of keys) {
       try {
-        await this.deleteMedia(bucket, key);
+        // [AUDIT] mỗi file có 1 dòng log riêng (viaBulk=true) để tra được từng
+        // key + người dùng bị gỡ avatar; dòng tổng kết ở cuối cho biết cả đợt.
+        await this.deleteMediaInternal(bucket, key, callerId, true);
         succeeded.push(key);
       } catch (error) {
         failed.push({ key, reason: error instanceof Error ? error.message : 'Lỗi không xác định' });
       }
+    }
+
+    if (callerId) {
+      this.auditService.logActionAsync(
+        callerId,
+        'BULK_DELETE_STORAGE_MEDIA',
+        'storage_media',
+        0,
+        { bucket, requested: keys.length, succeeded, failed },
+        null,
+      );
     }
 
     return { succeeded, failed };
@@ -214,8 +284,20 @@ export class StorageService {
     return Number.isFinite(value) && value > 0 ? value : DEFAULT_STORAGE_SOFT_LIMIT_GB;
   }
 
-  async updateSoftLimitGb(gb: number): Promise<number> {
+  async updateSoftLimitGb(gb: number, callerId?: number): Promise<number> {
+    // [AUDIT] đọc giá trị CŨ trước khi ghi đè.
+    const oldGb = await this.getSoftLimitGb();
     await this.settingRepository.save({ key: STORAGE_SOFT_LIMIT_SETTING_KEY, value: String(gb) });
+    if (callerId) {
+      this.auditService.logActionAsync(
+        callerId,
+        'UPDATE_STORAGE_LIMIT',
+        'setting',
+        0,
+        { key: STORAGE_SOFT_LIMIT_SETTING_KEY, softLimitGb: oldGb },
+        { key: STORAGE_SOFT_LIMIT_SETTING_KEY, softLimitGb: gb },
+      );
+    }
     return gb;
   }
 

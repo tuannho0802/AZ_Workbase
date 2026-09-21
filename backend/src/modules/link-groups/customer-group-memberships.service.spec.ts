@@ -9,8 +9,13 @@ import { Customer } from '../../database/entities/customer.entity';
 import { Role } from '../../common/enums/role.enum';
 import { PermissionScope } from '../../database/entities/role-permission.entity';
 import { PermissionsService } from '../permissions/permissions.service';
+import { AuditService } from '../audit/audit.service';
 
 describe('CustomerGroupMembershipsService', () => {
+  const mockAuditService = {
+    logAction: jest.fn(),
+    logActionAsync: jest.fn(),
+  };
   let service: CustomerGroupMembershipsService;
 
   // QueryBuilder giả lập cho groupRepo (getMembershipsForCustomer) - mọi
@@ -92,6 +97,7 @@ describe('CustomerGroupMembershipsService', () => {
         { provide: getRepositoryToken(LinkGroup), useValue: mockGroupRepo },
         { provide: getRepositoryToken(Customer), useValue: mockCustomerRepo },
         { provide: PermissionsService, useValue: mockPermissionsService },
+        { provide: AuditService, useValue: mockAuditService },
       ],
     }).compile();
 
@@ -286,6 +292,52 @@ describe('CustomerGroupMembershipsService', () => {
         service.setMembership(1, 10, true, 7, Role.EMPLOYEE, PermissionScope.OWN),
       ).rejects.toThrow(NotFoundException);
       expect(mockGroupRepo.findOne).not.toHaveBeenCalled(); // dừng sớm, không đi tiếp
+    });
+  });
+
+  describe('audit log', () => {
+    it('đổi từ chưa join -> đã join: ghi SET_CUSTOMER_GROUP_MEMBERSHIP (entity = customer) với old.joined=false, new.joined=true', async () => {
+      mockCustomerRepo.findOne.mockResolvedValue({ id: 1 });
+      mockGroupRepo.findOne.mockResolvedValue({ id: 10, name: 'Nhóm Sales HN' });
+      mockMembershipRepo.findOne.mockResolvedValue(null);
+      mockMembershipRepo.create.mockReturnValue({ customerId: 1, groupId: 10 });
+      mockMembershipRepo.save.mockImplementation((m) => Promise.resolve(m));
+
+      await service.setMembership(1, 10, true, 5, Role.ADMIN, PermissionScope.ALL);
+
+      expect(mockAuditService.logActionAsync).toHaveBeenCalledWith(
+        5, 'SET_CUSTOMER_GROUP_MEMBERSHIP', 'customer', 1,
+        { groupId: 10, groupName: 'Nhóm Sales HN', joined: false },
+        { groupId: 10, groupName: 'Nhóm Sales HN', joined: true },
+      );
+    });
+
+    it('đổi từ đã join -> rời nhóm: old.joined=true (chụp TRƯỚC khi ghi đè), new.joined=false', async () => {
+      const existing = { id: 100, customerId: 1, groupId: 10, joined: true, joinedAt: new Date() };
+      mockCustomerRepo.findOne.mockResolvedValue({ id: 1 });
+      mockGroupRepo.findOne.mockResolvedValue({ id: 10, name: 'Nhóm Sales HN' });
+      mockMembershipRepo.findOne.mockResolvedValue(existing);
+      mockMembershipRepo.save.mockImplementation((m) => Promise.resolve(m));
+
+      await service.setMembership(1, 10, false, 9, Role.ADMIN, PermissionScope.ALL);
+
+      expect(mockAuditService.logActionAsync).toHaveBeenCalledWith(
+        9, 'SET_CUSTOMER_GROUP_MEMBERSHIP', 'customer', 1,
+        expect.objectContaining({ joined: true }),
+        expect.objectContaining({ joined: false }),
+      );
+    });
+
+    it('gửi lại đúng trạng thái cũ (không đổi gì) -> KHÔNG ghi log', async () => {
+      const existing = { id: 100, customerId: 1, groupId: 10, joined: true, joinedAt: new Date() };
+      mockCustomerRepo.findOne.mockResolvedValue({ id: 1 });
+      mockGroupRepo.findOne.mockResolvedValue({ id: 10, name: 'X' });
+      mockMembershipRepo.findOne.mockResolvedValue(existing);
+      mockMembershipRepo.save.mockImplementation((m) => Promise.resolve(m));
+
+      await service.setMembership(1, 10, true, 9, Role.ADMIN, PermissionScope.ALL);
+
+      expect(mockAuditService.logActionAsync).not.toHaveBeenCalled();
     });
   });
 });

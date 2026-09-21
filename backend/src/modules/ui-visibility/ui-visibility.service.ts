@@ -9,6 +9,7 @@ import { Role } from '../../common/enums/role.enum';
 import { UpdateUiVisibilityRulesDto } from './dto/update-ui-visibility-rules.dto';
 import { UiVisibilityScopeQueryDto } from './dto/ui-visibility-scope-query.dto';
 import { getElementKeysForResource, isValidResource } from './ui-visibility.constants';
+import { AuditService } from '../audit/audit.service';
 
 /**
  * ⚠️ Đọc PLAN_POSITION_FIELD_VISIBILITY_ASSIGNMENT_GROUPS.md mục 2.1/2.2/3.4
@@ -47,6 +48,7 @@ export class UiVisibilityService {
     @InjectRepository(Position)
     private readonly positionRepo: Repository<Position>,
     private readonly dataSource: DataSource,
+    private readonly auditService: AuditService,
   ) {}
 
   /**
@@ -278,7 +280,7 @@ export class UiVisibilityService {
    * định bởi `dto.departmentId`/`dto.positionId`, KHÔNG được set cả hai) -
    * cùng style "replace toàn bộ" với `RolesService.updateDepartmentOverride()`.
    */
-  async upsertRoleRules(roleId: number, dto: UpdateUiVisibilityRulesDto) {
+  async upsertRoleRules(roleId: number, dto: UpdateUiVisibilityRulesDto, callerId?: number) {
     const role = await this.getRoleOrThrow(roleId);
     this.assertValidResource(dto.resource);
 
@@ -308,6 +310,11 @@ export class UiVisibilityService {
     await queryRunner.connect();
     await queryRunner.startTransaction();
     try {
+      // [AUDIT] Chụp lại rule CŨ của đúng scope này TRƯỚC khi delete - đây là
+      // thao tác "ghi đè toàn bộ" nên nếu không lưu lại thì không thể truy vết
+      // được trước đó field/tab nào đang bị ẩn.
+      const oldRules = await queryRunner.manager.find(UiVisibilityRule, { where: deleteCriteria });
+
       await queryRunner.manager.delete(UiVisibilityRule, deleteCriteria);
 
       const newRows = dto.rules.map((r) =>
@@ -325,6 +332,17 @@ export class UiVisibilityService {
 
       this.invalidate(role.code, dto.departmentId ?? undefined, dto.positionId ?? undefined);
 
+      if (callerId) {
+        this.auditService.logActionAsync(
+          callerId,
+          'SET_ROLE_UI_VISIBILITY',
+          'role',
+          roleId,
+          this.buildVisibilityAuditPayload(role.code, dto.resource, dto.departmentId, dto.positionId, oldRules),
+          this.buildVisibilityAuditPayload(role.code, dto.resource, dto.departmentId, dto.positionId, newRows),
+        );
+      }
+
       return { success: true, count: newRows.length };
     } catch (err) {
       await queryRunner.rollbackTransaction();
@@ -335,7 +353,7 @@ export class UiVisibilityService {
   }
 
   /** Reset đúng 1 scope về mặc định (không còn rule nào -> mọi thứ HIỆN hết). */
-  async deleteRoleRules(roleId: number, query: UiVisibilityScopeQueryDto) {
+  async deleteRoleRules(roleId: number, query: UiVisibilityScopeQueryDto, callerId?: number) {
     const role = await this.getRoleOrThrow(roleId);
     this.assertValidResource(query.resource);
 
@@ -343,14 +361,51 @@ export class UiVisibilityService {
       throw new BadRequestException('Không được truyền cả departmentId lẫn positionId cùng lúc');
     }
 
-    await this.ruleRepo.delete({
+    const criteria = {
       roleId,
       resource: query.resource,
       departmentId: query.departmentId ?? IsNull(),
       positionId: query.positionId ?? IsNull(),
-    });
+    };
+
+    // [AUDIT] Lấy rule sẽ bị xoá TRƯỚC khi delete để truy vết được sau này.
+    const oldRules = await this.ruleRepo.find({ where: criteria });
+
+    await this.ruleRepo.delete(criteria);
 
     this.invalidate(role.code, query.departmentId ?? undefined, query.positionId ?? undefined);
+
+    if (callerId) {
+      this.auditService.logActionAsync(
+        callerId,
+        'DELETE_ROLE_UI_VISIBILITY',
+        'role',
+        roleId,
+        this.buildVisibilityAuditPayload(role.code, query.resource, query.departmentId, query.positionId, oldRules),
+        null,
+      );
+    }
     return { success: true };
+  }
+
+  /**
+   * Payload audit thống nhất cho SET/DELETE: kèm đủ scope (role/resource/
+   * phòng ban/vị trí) + danh sách rule gọn (elementKey, visible) - không lưu
+   * nguyên entity để log gọn và đọc được.
+   */
+  private buildVisibilityAuditPayload(
+    roleCode: string,
+    resource: string,
+    departmentId: number | null | undefined,
+    positionId: number | null | undefined,
+    rules: Array<{ elementKey: string; visible: boolean }>,
+  ) {
+    return {
+      roleCode,
+      resource,
+      departmentId: departmentId ?? null,
+      positionId: positionId ?? null,
+      rules: rules.map((r) => ({ elementKey: r.elementKey, visible: r.visible })),
+    };
   }
 }

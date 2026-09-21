@@ -13,6 +13,7 @@ import { LinkGroupContentStaff } from '../../database/entities/link-group-conten
 import { User } from '../../database/entities/user.entity';
 import { Role } from '../../common/enums/role.enum';
 import { PermissionsService } from '../permissions/permissions.service';
+import { AuditService } from '../audit/audit.service';
 
 // Relations dùng chung khi load 1 group đơn (loadGroupWithManagers) - khớp
 // ĐÚNG mảng thật trong link-group-managers.service.ts, tách hằng số ở đây để
@@ -49,6 +50,10 @@ const JOIN_ROW_RELATIONS = [
 ];
 
 describe('LinkGroupManagersService', () => {
+  const mockAuditService = {
+    logAction: jest.fn(),
+    logActionAsync: jest.fn(),
+  };
   let service: LinkGroupManagersService;
 
   const mockGroupRepo = {
@@ -102,6 +107,7 @@ describe('LinkGroupManagersService', () => {
         { provide: getRepositoryToken(LinkGroupContentStaff), useValue: mockContentStaffRepo },
         { provide: getRepositoryToken(User), useValue: mockUserRepo },
         { provide: PermissionsService, useValue: mockPermissionsService },
+        { provide: AuditService, useValue: mockAuditService },
       ],
     }).compile();
 
@@ -792,6 +798,83 @@ describe('LinkGroupManagersService', () => {
       await expect(service.removeContentStaff(999, 20, 5, Role.EMPLOYEE)).rejects.toThrow(
         NotFoundException,
       );
+    });
+  });
+
+  describe('audit log', () => {
+    const baseGroup = () => ({
+      id: 1,
+      name: 'Nhóm A',
+      primaryManagerId: 5,
+      primaryManager: fakeUser(5),
+      secondaryManagers: [] as any[],
+      contentStaff: [] as any[],
+    });
+
+    it('addSecondaryManager -> ADD_LINK_GROUP_MANAGER kèm tên/email người được thêm', async () => {
+      const group = baseGroup();
+      mockGroupRepo.findOne.mockResolvedValue(group);
+      mockUserRepo.findOneBy.mockResolvedValue({ id: 9, name: 'An', email: 'an@az.vn', isActive: true });
+      mockSecondaryRepo.create.mockReturnValue({});
+      mockSecondaryRepo.save.mockResolvedValue({});
+
+      await service.addSecondaryManager(1, 9, 5, Role.EMPLOYEE);
+
+      expect(mockAuditService.logActionAsync).toHaveBeenCalledWith(
+        5, 'ADD_LINK_GROUP_MANAGER', 'link_group', 1, null,
+        { groupId: 1, groupName: 'Nhóm A', userId: 9, userName: 'An', userEmail: 'an@az.vn', memberRole: 'secondary_manager' },
+      );
+    });
+
+    it('removeSecondaryManager -> REMOVE_LINK_GROUP_MANAGER lưu thông tin người bị gỡ (TRƯỚC khi remove)', async () => {
+      const group = baseGroup();
+      group.secondaryManagers = [{ userId: 9, user: fakeUser(9, 'An'), createdAt: new Date() }];
+      mockGroupRepo.findOne.mockResolvedValue(group);
+      mockSecondaryRepo.remove.mockResolvedValue({});
+
+      await service.removeSecondaryManager(1, 9, 5, Role.EMPLOYEE);
+
+      expect(mockAuditService.logActionAsync).toHaveBeenCalledWith(
+        5, 'REMOVE_LINK_GROUP_MANAGER', 'link_group', 1,
+        expect.objectContaining({ userId: 9, userName: 'An', memberRole: 'secondary_manager' }),
+        null,
+      );
+    });
+
+    it('addContentStaff -> ADD_LINK_GROUP_CONTENT_STAFF', async () => {
+      mockGroupRepo.findOne.mockResolvedValue(baseGroup());
+      mockUserRepo.findOneBy.mockResolvedValue({ id: 9, name: 'An', email: 'an@az.vn', isActive: true });
+      mockContentStaffRepo.create.mockReturnValue({});
+      mockContentStaffRepo.save.mockResolvedValue({});
+
+      await service.addContentStaff(1, 9, 5, Role.EMPLOYEE);
+
+      expect(mockAuditService.logActionAsync).toHaveBeenCalledWith(
+        5, 'ADD_LINK_GROUP_CONTENT_STAFF', 'link_group', 1, null,
+        expect.objectContaining({ userId: 9, memberRole: 'content_staff' }),
+      );
+    });
+
+    it('removeContentStaff -> REMOVE_LINK_GROUP_CONTENT_STAFF', async () => {
+      const group = baseGroup();
+      group.contentStaff = [{ userId: 9, user: fakeUser(9, 'An'), createdAt: new Date() }];
+      mockGroupRepo.findOne.mockResolvedValue(group);
+      mockContentStaffRepo.remove.mockResolvedValue({});
+
+      await service.removeContentStaff(1, 9, 5, Role.EMPLOYEE);
+
+      expect(mockAuditService.logActionAsync).toHaveBeenCalledWith(
+        5, 'REMOVE_LINK_GROUP_CONTENT_STAFF', 'link_group', 1,
+        expect.objectContaining({ userId: 9, userName: 'An', memberRole: 'content_staff' }),
+        null,
+      );
+    });
+
+    it('bị chặn quyền (Forbidden) -> KHÔNG ghi log', async () => {
+      mockGroupRepo.findOne.mockResolvedValue(baseGroup());
+
+      await expect(service.addSecondaryManager(1, 9, 77, Role.EMPLOYEE)).rejects.toThrow();
+      expect(mockAuditService.logActionAsync).not.toHaveBeenCalled();
     });
   });
 });

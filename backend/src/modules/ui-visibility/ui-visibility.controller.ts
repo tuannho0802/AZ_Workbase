@@ -50,14 +50,22 @@ export class UiVisibilityController {
     summary:
       'Ghi đè TOÀN BỘ rule ẩn/hiện ở ĐÚNG 1 scope (Global/1 Phòng ban/1 Vị trí - xác định bởi departmentId/positionId trong body, không được set cả hai)',
   })
-  upsertRoleRules(@Param('id', ParseIntPipe) roleId: number, @Body() dto: UpdateUiVisibilityRulesDto) {
-    return this.uiVisibilityService.upsertRoleRules(roleId, dto);
+  upsertRoleRules(
+    @Param('id', ParseIntPipe) roleId: number,
+    @Body() dto: UpdateUiVisibilityRulesDto,
+    @GetUser() user: any,
+  ) {
+    return this.uiVisibilityService.upsertRoleRules(roleId, dto, user.id);
   }
 
   @Delete('roles/:id/ui-visibility-rules')
   @RequirePermission('roles.manage')
   @ApiOperation({ summary: 'Reset 1 scope (Global/1 Phòng ban/1 Vị trí) về mặc định (không ẩn gì)' })
-  deleteRoleRules(@Param('id', ParseIntPipe) roleId: number, @Query() query: UiVisibilityScopeQueryDto) {
-    return this.uiVisibilityService.deleteRoleRules(roleId, query);
+  deleteRoleRules(
+    @Param('id', ParseIntPipe) roleId: number,
+    @Query() query: UiVisibilityScopeQueryDto,
+    @GetUser() user: any,
+  ) {
+    return this.uiVisibilityService.deleteRoleRules(roleId, query, user.id);
   }
 }

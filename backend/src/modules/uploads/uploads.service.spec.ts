@@ -4,6 +4,7 @@ import { ConfigService } from '@nestjs/config';
 import { BadRequestException } from '@nestjs/common';
 import { Setting } from '../../database/entities/setting.entity';
 import { User } from '../../database/entities/user.entity';
+import { AuditService } from '../audit/audit.service';
 
 // ----------------------------------------------------------------------
 // Mock AWS SDK - chỉ cần PutObjectCommand đi qua getSignedUrl() (presign),
@@ -40,6 +41,10 @@ describe('UploadsService', () => {
   const mockUserRepo = {
     findOne: jest.fn(),
   };
+  const mockAuditService = {
+    logAction: jest.fn(),
+    logActionAsync: jest.fn(),
+  };
 
   const validConfig: Record<string, string> = {
     B2_REGION: 'us-west-004',
@@ -56,6 +61,7 @@ describe('UploadsService', () => {
         UploadsService,
         { provide: getRepositoryToken(Setting), useValue: mockSettingRepo },
         { provide: getRepositoryToken(User), useValue: mockUserRepo },
+        { provide: AuditService, useValue: mockAuditService },
         { provide: ConfigService, useValue: { get: jest.fn((key: string) => validConfig[key]) } },
       ],
     }).compile();
@@ -183,6 +189,43 @@ describe('UploadsService', () => {
       expect(mockSend).toHaveBeenCalledTimes(2);
       const deleteCommand = mockSend.mock.calls[1][0];
       expect(deleteCommand.commandName).toBe('DeleteObjectCommand');
+    });
+  });
+
+  // ----------------------------------------------------------------------
+  // AUDIT LOG - PATCH /uploads/limits đổi cấu hình hệ thống.
+  // (presign avatar/attachment KHÔNG audit: không ghi DB.)
+  // ----------------------------------------------------------------------
+  describe('updateLimits - audit log', () => {
+    const dto = { avatarMaxSizeKb: 2048, leaveAttachmentMaxSizeKb: 3000, leaveAttachmentMaxCount: 8 };
+
+    it('ghi UPDATE_UPLOAD_LIMITS với old = giới hạn CŨ (đọc trước khi ghi) và new = giới hạn mới', async () => {
+      const rowsOld = [
+        { key: 'upload_avatar_max_size_kb', value: '1024' },
+        { key: 'upload_leave_attachment_max_size_kb', value: '1536' },
+        { key: 'upload_leave_attachment_max_count', value: '5' },
+      ];
+      const rowsNew = [
+        { key: 'upload_avatar_max_size_kb', value: '2048' },
+        { key: 'upload_leave_attachment_max_size_kb', value: '3000' },
+        { key: 'upload_leave_attachment_max_count', value: '8' },
+      ];
+      mockSettingRepo.find.mockResolvedValueOnce(rowsOld).mockResolvedValueOnce(rowsNew);
+
+      const result = await service.updateLimits(dto, 7);
+
+      expect(mockSettingRepo.find.mock.invocationCallOrder[0]).toBeLessThan(mockSettingRepo.save.mock.invocationCallOrder[0]);
+      expect(result).toEqual(dto);
+      expect(mockAuditService.logActionAsync).toHaveBeenCalledWith(
+        7, 'UPDATE_UPLOAD_LIMITS', 'setting', 0,
+        { avatarMaxSizeKb: 1024, leaveAttachmentMaxSizeKb: 1536, leaveAttachmentMaxCount: 5 },
+        dto,
+      );
+    });
+
+    it('không truyền callerId -> không ghi log', async () => {
+      await service.updateLimits(dto);
+      expect(mockAuditService.logActionAsync).not.toHaveBeenCalled();
     });
   });
 });

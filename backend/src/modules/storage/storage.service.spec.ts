@@ -5,6 +5,7 @@ import { BadRequestException, NotFoundException } from '@nestjs/common';
 import { Setting } from '../../database/entities/setting.entity';
 import { User } from '../../database/entities/user.entity';
 import { LeaveRequestAttachment } from '../../database/entities/leave-request-attachment.entity';
+import { AuditService } from '../audit/audit.service';
 import {
   STORAGE_USAGE_CACHE_SETTING_KEY,
   STORAGE_SOFT_LIMIT_SETTING_KEY,
@@ -50,10 +51,16 @@ describe('StorageService', () => {
   // (xem storage.service.ts constructor) - dùng để dọn tham chiếu DB trước khi xoá
   // object thật khi xoá bucket avatars/leave-attachments.
   const mockUserRepo = {
+    find: jest.fn().mockResolvedValue([]),
     update: jest.fn().mockResolvedValue({ affected: 1 }),
   };
   const mockAttachmentRepo = {
+    find: jest.fn().mockResolvedValue([]),
     delete: jest.fn().mockResolvedValue({ affected: 1 }),
+  };
+  const mockAuditService = {
+    logAction: jest.fn(),
+    logActionAsync: jest.fn(),
   };
 
   // Đủ cả 3 biến B2_BUCKET_* - test riêng "thiếu biến môi trường" sẽ build
@@ -75,6 +82,7 @@ describe('StorageService', () => {
         { provide: getRepositoryToken(Setting), useValue: mockSettingRepo },
         { provide: getRepositoryToken(User), useValue: mockUserRepo },
         { provide: getRepositoryToken(LeaveRequestAttachment), useValue: mockAttachmentRepo },
+        { provide: AuditService, useValue: mockAuditService },
         { provide: ConfigService, useValue: { get: jest.fn((key: string) => config[key]) } },
       ],
     }).compile();
@@ -88,6 +96,8 @@ describe('StorageService', () => {
     );
     mockUserRepo.update.mockResolvedValue({ affected: 1 });
     mockAttachmentRepo.delete.mockResolvedValue({ affected: 1 });
+    mockUserRepo.find.mockResolvedValue([]);
+    mockAttachmentRepo.find.mockResolvedValue([]);
     service = await buildService();
   });
 
@@ -384,6 +394,123 @@ describe('StorageService', () => {
       );
       const savedValue = mockSettingRepo.save.mock.calls[0][0].value;
       expect(() => JSON.parse(savedValue)).not.toThrow();
+    });
+  });
+
+  // ----------------------------------------------------------------------
+  // AUDIT LOG - xoá media KHÔNG phục hồi được nên phải chụp lại "file này
+  // đang thuộc về ai" TRƯỚC khi dọn tham chiếu DB / xoá object thật.
+  // ----------------------------------------------------------------------
+  describe('audit log', () => {
+    it('deleteMedia avatars: chụp user đang dùng avatar TRƯỚC khi update NULL, rồi ghi DELETE_STORAGE_MEDIA', async () => {
+      mockUserRepo.find.mockResolvedValueOnce([{ id: 12, name: 'Nguyễn Văn A', email: 'a@az.vn' }]);
+      mockSend.mockResolvedValueOnce({});
+
+      await service.deleteMedia('avatars', 'avatars/12/A.webp', 7);
+
+      // snapshot phải được đọc TRƯỚC khi gỡ tham chiếu
+      expect(mockUserRepo.find.mock.invocationCallOrder[0]).toBeLessThan(mockUserRepo.update.mock.invocationCallOrder[0]);
+      expect(mockAuditService.logActionAsync).toHaveBeenCalledWith(
+        7, 'DELETE_STORAGE_MEDIA', 'storage_media', 0,
+        {
+          bucket: 'avatars',
+          key: 'avatars/12/A.webp',
+          clearedReferences: [{ type: 'user_avatar', userId: 12, name: 'Nguyễn Văn A', email: 'a@az.vn' }],
+          viaBulk: false,
+        },
+        null,
+      );
+    });
+
+    it('deleteMedia leave-attachments: chụp attachment/đơn nghỉ phép bị gỡ TRƯỚC khi delete row', async () => {
+      mockAttachmentRepo.find.mockResolvedValueOnce([{ id: 3, leaveRequestId: 77, objectKey: 'leave-attachments/7/x.pdf' }]);
+      mockSend.mockResolvedValueOnce({});
+
+      await service.deleteMedia('leave-attachments', 'leave-attachments/7/x.pdf', 7);
+
+      expect(mockAttachmentRepo.find.mock.invocationCallOrder[0]).toBeLessThan(mockAttachmentRepo.delete.mock.invocationCallOrder[0]);
+      expect(mockAuditService.logActionAsync).toHaveBeenCalledWith(
+        7, 'DELETE_STORAGE_MEDIA', 'storage_media', 0,
+        expect.objectContaining({
+          bucket: 'leave-attachments',
+          clearedReferences: [{ type: 'leave_request_attachment', attachmentId: 3, leaveRequestId: 77 }],
+        }),
+        null,
+      );
+    });
+
+    it('deleteMedia media-library (không có tham chiếu DB): vẫn ghi log với clearedReferences rỗng', async () => {
+      mockSend.mockResolvedValueOnce({});
+
+      await service.deleteMedia('media-library', 'media-library/a.webp', 7);
+
+      expect(mockAuditService.logActionAsync).toHaveBeenCalledWith(
+        7, 'DELETE_STORAGE_MEDIA', 'storage_media', 0,
+        { bucket: 'media-library', key: 'media-library/a.webp', clearedReferences: [], viaBulk: false },
+        null,
+      );
+    });
+
+    it('B2 xoá lỗi NHƯNG DB đã gỡ tham chiếu -> ghi DELETE_STORAGE_MEDIA_FAILED (không mất dấu thay đổi DB), vẫn ném NotFoundException', async () => {
+      mockUserRepo.find.mockResolvedValueOnce([{ id: 12, name: 'A', email: 'a@az.vn' }]);
+      mockSend.mockRejectedValueOnce(new Error('NoSuchKey'));
+
+      await expect(service.deleteMedia('avatars', 'avatars/12/A.webp', 7)).rejects.toThrow(NotFoundException);
+
+      expect(mockAuditService.logActionAsync).toHaveBeenCalledTimes(1);
+      expect(mockAuditService.logActionAsync).toHaveBeenCalledWith(
+        7, 'DELETE_STORAGE_MEDIA_FAILED', 'storage_media', 0,
+        expect.objectContaining({ bucket: 'avatars', key: 'avatars/12/A.webp' }),
+        null,
+      );
+    });
+
+    it('B2 xoá lỗi và KHÔNG có tham chiếu DB nào bị gỡ -> KHÔNG ghi log (không có gì thay đổi)', async () => {
+      mockSend.mockRejectedValueOnce(new Error('NoSuchKey'));
+
+      await expect(service.deleteMedia('media-library', 'x.webp', 7)).rejects.toThrow(NotFoundException);
+      expect(mockAuditService.logActionAsync).not.toHaveBeenCalled();
+    });
+
+    it('không truyền callerId -> không ghi log', async () => {
+      mockSend.mockResolvedValueOnce({});
+      await service.deleteMedia('media-library', 'a.webp');
+      expect(mockAuditService.logActionAsync).not.toHaveBeenCalled();
+    });
+
+    it('bulkDeleteMedia: mỗi key thành công có 1 dòng log riêng (viaBulk=true) + 1 dòng tổng kết BULK_DELETE_STORAGE_MEDIA (gồm cả key lỗi)', async () => {
+      mockSend
+        .mockResolvedValueOnce({}) // a ok
+        .mockRejectedValueOnce(new Error('NoSuchKey')) // b lỗi
+        .mockResolvedValueOnce({}); // c ok
+
+      await service.bulkDeleteMedia('media-library', ['a.webp', 'b.webp', 'c.webp'], 7);
+
+      const calls = mockAuditService.logActionAsync.mock.calls;
+      const perFile = calls.filter((c) => c[1] === 'DELETE_STORAGE_MEDIA');
+      expect(perFile).toHaveLength(2);
+      expect(perFile.every((c) => c[4].viaBulk === true)).toBe(true);
+
+      const summary = calls.find((c) => c[1] === 'BULK_DELETE_STORAGE_MEDIA');
+      expect(summary).toBeDefined();
+      expect(summary![4]).toEqual({
+        bucket: 'media-library',
+        requested: 3,
+        succeeded: ['a.webp', 'c.webp'],
+        failed: [{ key: 'b.webp', reason: 'Không tìm thấy hoặc không xoá được file này' }],
+      });
+    });
+
+    it('updateSoftLimitGb -> UPDATE_STORAGE_LIMIT với old = hạn mức CŨ (đọc trước khi ghi đè)', async () => {
+      mockSettingRepo.findOne.mockResolvedValueOnce({ key: STORAGE_SOFT_LIMIT_SETTING_KEY, value: '80' });
+
+      await service.updateSoftLimitGb(120, 7);
+
+      expect(mockAuditService.logActionAsync).toHaveBeenCalledWith(
+        7, 'UPDATE_STORAGE_LIMIT', 'setting', 0,
+        { key: STORAGE_SOFT_LIMIT_SETTING_KEY, softLimitGb: 80 },
+        { key: STORAGE_SOFT_LIMIT_SETTING_KEY, softLimitGb: 120 },
+      );
     });
   });
 });

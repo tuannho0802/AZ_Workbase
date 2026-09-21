@@ -2797,3 +2797,23 @@ POST/PATCH/PUT/DELETE từng controller) để có bức tranh đầy đủ ai �
 > Verify: backend `tsc` 0 lỗi, `nest build` OK, `jest src/modules/customers` 67/67 pass. FE `tsc` chỉ còn lỗi cũ (logo.png, CountBadge) không liên quan.
 
 ---
+## [2026-09-21] | Audit log BE — xử lý nốt các module còn thiếu (ui-visibility, link-groups, media-sources, storage, uploads, zk-device, customers.import) | [Status: Success]
+
+**Actor:** Agent
+
+**Files Changed:**
+- `backend/src/modules/ui-visibility/*` — `SET_ROLE_UI_VISIBILITY`, `DELETE_ROLE_UI_VISIBILITY` (chụp rule cũ TRƯỚC khi ghi đè/xoá)
+- `backend/src/modules/link-groups/*` (4 service + 2 controller) — CREATE/UPDATE/DELETE/ACTIVATE/DEACTIVATE_LINK_GROUP, CREATE/UPDATE/DELETE/LOCK/UNLOCK_LINK_CATEGORY, ADD/REMOVE_LINK_GROUP_MANAGER, ADD/REMOVE_LINK_GROUP_CONTENT_STAFF, SET_CUSTOMER_GROUP_MEMBERSHIP
+- `backend/src/modules/media-sources/*` — CREATE/UPDATE/DELETE/LOCK/UNLOCK_MEDIA_SOURCE
+- `backend/src/modules/storage/*` — UPDATE_STORAGE_LIMIT, DELETE_STORAGE_MEDIA(_FAILED), BULK_DELETE_STORAGE_MEDIA (chụp user/đơn nghỉ phép đang tham chiếu file TRƯỚC khi gỡ)
+- `backend/src/modules/uploads/*` — UPDATE_UPLOAD_LIMITS
+- `backend/src/modules/zk-device/*` — MAP/UNMAP_ZK_DEVICE_USER, REMATCH/CLEANUP/SYNC_ATTENDANCE_LOGS (cleanup chụp thống kê dòng sắp xoá trước khi DELETE)
+- `backend/src/modules/customers/customers.import.service.ts` (+ spec mới) — IMPORT_CUSTOMERS (trước đây KHÔNG có audit vì insert thẳng, không qua customers.service.ts)
+
+**Solution:**
+> Service nhận `callerId?` (controller truyền `user.id`), gọi `auditService.logActionAsync`. Delete bằng `repo.remove()` phải snapshot trước vì TypeORM xoá `id` khỏi entity. Object không có id số dùng `entityId = 0`. KHÔNG audit: ADMS webhook, cron `sync-today`, `usage/refresh`, presign avatar/attachment.
+
+**Notes:**
+> Verify thật: `tsc --noEmit` 0 lỗi, `nest build` OK, `npx jest` toàn backend **37 suites / 714 test pass**. Chưa test trên DB thật. Chưa sửa FE: `ACTION_META`/`ENTITY_TYPE_LABELS` ở `audit-logs/page.tsx` còn thiếu nhãn cho các action mới thêm (cả đợt 2026-09-16 lẫn hôm nay).
+
+---

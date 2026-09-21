@@ -7,10 +7,14 @@ import { CustomerStatus } from '../../database/entities/customer-status.entity';
 import * as XLSX from 'xlsx';
 import 'multer';
 import { todayVnStr } from '../../common/utils/date-vn.util';
+import { AuditService } from '../audit/audit.service';
 
 @Injectable()
 export class CustomersImportService {
-  constructor(private dataSource: DataSource) {}
+  constructor(
+    private dataSource: DataSource,
+    private readonly auditService: AuditService,
+  ) {}
 
   async importExcel(file: Express.Multer.File, userId: number) {
     if (!file) {
@@ -239,6 +243,24 @@ export class CustomersImportService {
       } finally {
         await queryRunner.release();
       }
+    }
+
+    // [AUDIT] Import Excel chèn hàng loạt trực tiếp bằng `manager.insert()`,
+    // KHÔNG đi qua CustomersService.create() nên không có log CREATE_CUSTOMER
+    // từng dòng - ghi 1 dòng tổng kết cho cả đợt (ai import, file nào, bao
+    // nhiêu dòng vào/bỏ qua). `importedPhones` (SĐT là khoá duy nhất, đã lọc
+    // trùng) giúp truy ngược đúng những khách hàng nào thuộc đợt import này.
+    // Chỉ ghi khi thật sự có dòng được chèn vào DB.
+    if (successCount > 0) {
+      this.auditService.logActionAsync(userId, 'IMPORT_CUSTOMERS', 'customer', 0, null, {
+        fileName: file.originalname,
+        fileSizeBytes: file.size,
+        totalRows: normalizedData.length,
+        successCount,
+        skipCount,
+        errorCount: errors.length,
+        importedPhones: validCustomers.map((c) => c.phone),
+      });
     }
 
     return {

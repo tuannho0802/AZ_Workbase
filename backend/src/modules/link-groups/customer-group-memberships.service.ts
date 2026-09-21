@@ -7,6 +7,7 @@ import { Customer } from '../../database/entities/customer.entity';
 import { CustomerAccessHelper } from '../customers/helpers/customer-access.helper';
 import { PermissionsService } from '../permissions/permissions.service';
 import { Role } from '../../common/enums/role.enum';
+import { AuditService } from '../audit/audit.service';
 
 export interface GroupMembershipRow {
   categoryId: number;
@@ -52,6 +53,7 @@ export class CustomerGroupMembershipsService {
     @InjectRepository(Customer)
     private readonly customerRepo: Repository<Customer>,
     private readonly permissionsService: PermissionsService,
+    private readonly auditService: AuditService,
   ) {}
 
   /**
@@ -222,10 +224,26 @@ export class CustomerGroupMembershipsService {
       membership = this.membershipRepo.create({ customerId, groupId });
     }
 
+    // [AUDIT] trạng thái CŨ (chưa có row = chưa join) - chụp trước khi ghi đè.
+    const wasJoined = !!membership.joined;
+
     membership.joined = joined;
     membership.joinedAt = joined ? new Date() : null;
     membership.updatedBy = userId;
 
-    return this.membershipRepo.save(membership);
+    const saved = await this.membershipRepo.save(membership);
+
+    // Chỉ ghi log khi trạng thái THỰC SỰ đổi (tránh nhiễu khi FE gửi lại cùng giá trị).
+    if (wasJoined !== joined) {
+      this.auditService.logActionAsync(
+        userId,
+        'SET_CUSTOMER_GROUP_MEMBERSHIP',
+        'customer',
+        customerId,
+        { groupId, groupName: group.name, joined: wasJoined },
+        { groupId, groupName: group.name, joined },
+      );
+    }
+    return saved;
   }
 }

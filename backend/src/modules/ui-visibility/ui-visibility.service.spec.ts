@@ -8,6 +8,7 @@ import { RoleEntity } from '../../database/entities/role.entity';
 import { Department } from '../../database/entities/department.entity';
 import { Position } from '../../database/entities/position.entity';
 import { Role } from '../../common/enums/role.enum';
+import { AuditService } from '../audit/audit.service';
 
 describe('UiVisibilityService', () => {
   let service: UiVisibilityService;
@@ -32,6 +33,7 @@ describe('UiVisibilityService', () => {
     rollbackTransaction: jest.fn(),
     release: jest.fn(),
     manager: {
+      find: jest.fn().mockResolvedValue([]),
       delete: jest.fn(),
       create: jest.fn((_entity, data) => data),
       save: jest.fn(),
@@ -39,6 +41,10 @@ describe('UiVisibilityService', () => {
   };
   const mockDataSource = {
     createQueryRunner: jest.fn().mockReturnValue(mockQueryRunner),
+  };
+  const mockAuditService = {
+    logAction: jest.fn(),
+    logActionAsync: jest.fn(),
   };
 
   beforeEach(async () => {
@@ -52,6 +58,7 @@ describe('UiVisibilityService', () => {
         { provide: getRepositoryToken(Department), useValue: mockDepartmentRepo },
         { provide: getRepositoryToken(Position), useValue: mockPositionRepo },
         { provide: DataSource, useValue: mockDataSource },
+        { provide: AuditService, useValue: mockAuditService },
       ],
     }).compile();
 
@@ -261,6 +268,55 @@ describe('UiVisibilityService', () => {
       expect(result).toEqual({ success: true, count: 1 });
     });
 
+    it('AUDIT: ghi SET_ROLE_UI_VISIBILITY kèm rule CŨ (chụp TRƯỚC khi delete) và rule MỚI', async () => {
+      mockRoleRepo.findOneBy.mockResolvedValue({ id: 1, code: 'employee' });
+      mockQueryRunner.manager.find.mockResolvedValue([
+        { elementKey: 'field:closed_date', visible: false },
+      ]);
+      mockQueryRunner.manager.save.mockResolvedValue(undefined);
+
+      await service.upsertRoleRules(
+        1,
+        { resource: 'customers', rules: [{ elementKey: 'field:sales_assignment', visible: false }] } as any,
+        7,
+      );
+
+      // rule cũ phải được đọc TRƯỚC khi delete
+      const findOrder = mockQueryRunner.manager.find.mock.invocationCallOrder[0];
+      const deleteOrder = mockQueryRunner.manager.delete.mock.invocationCallOrder[0];
+      expect(findOrder).toBeLessThan(deleteOrder);
+
+      expect(mockAuditService.logActionAsync).toHaveBeenCalledWith(
+        7,
+        'SET_ROLE_UI_VISIBILITY',
+        'role',
+        1,
+        expect.objectContaining({
+          roleCode: 'employee',
+          resource: 'customers',
+          rules: [{ elementKey: 'field:closed_date', visible: false }],
+        }),
+        expect.objectContaining({
+          rules: [{ elementKey: 'field:sales_assignment', visible: false }],
+        }),
+      );
+    });
+
+    it('AUDIT: KHÔNG ghi log nếu transaction rollback (save lỗi)', async () => {
+      mockRoleRepo.findOneBy.mockResolvedValue({ id: 1, code: 'employee' });
+      mockQueryRunner.manager.save.mockRejectedValue(new Error('DB lỗi'));
+
+      await expect(
+        service.upsertRoleRules(
+          1,
+          { resource: 'customers', rules: [{ elementKey: 'field:sales_assignment', visible: false }] } as any,
+          7,
+        ),
+      ).rejects.toThrow('DB lỗi');
+
+      expect(mockAuditService.logActionAsync).not.toHaveBeenCalled();
+    });
+
     it('rollback transaction nếu save() lỗi giữa chừng', async () => {
       mockRoleRepo.findOneBy.mockResolvedValue({ id: 1, code: 'employee' });
       mockQueryRunner.manager.save.mockRejectedValue(new Error('DB lỗi'));
@@ -286,6 +342,28 @@ describe('UiVisibilityService', () => {
       await expect(
         service.deleteRoleRules(1, { resource: 'customers', departmentId: 2, positionId: 5 } as any),
       ).rejects.toThrow(BadRequestException);
+    });
+
+    it('AUDIT: DELETE_ROLE_UI_VISIBILITY lưu rule sẽ bị xoá (đọc TRƯỚC khi delete) làm oldData', async () => {
+      mockRoleRepo.findOneBy.mockResolvedValue({ id: 1, code: 'employee' });
+      mockRuleRepo.find.mockResolvedValue([{ elementKey: 'tab:deposits', visible: false }]);
+
+      await service.deleteRoleRules(1, { resource: 'customers', departmentId: 2 } as any, 9);
+
+      expect(mockRuleRepo.find.mock.invocationCallOrder[0]).toBeLessThan(mockRuleRepo.delete.mock.invocationCallOrder[0]);
+      expect(mockAuditService.logActionAsync).toHaveBeenCalledWith(
+        9,
+        'DELETE_ROLE_UI_VISIBILITY',
+        'role',
+        1,
+        expect.objectContaining({
+          roleCode: 'employee',
+          resource: 'customers',
+          departmentId: 2,
+          rules: [{ elementKey: 'tab:deposits', visible: false }],
+        }),
+        null,
+      );
     });
 
     it('xoá đúng scope Global khi không truyền departmentId/positionId', async () => {

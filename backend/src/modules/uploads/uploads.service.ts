@@ -14,6 +14,7 @@ import { Setting } from '../../database/entities/setting.entity';
 import { User } from '../../database/entities/user.entity';
 import { ALLOWED_IMAGE_TYPES } from './dto/presign-avatar.dto';
 import { UpdateUploadLimitsDto } from './dto/update-upload-limits.dto';
+import { AuditService } from '../audit/audit.service';
 import { buildReadableFileName, buildAttachmentFileName, formatShortDateVN } from '../../common/utils/vietnamese-slug.util';
 
 // TTL (giây) - xem PLAN_AVATAR_LEAVE_ATTACHMENT_BACKBLAZE_B2.md mục 7:
@@ -65,6 +66,7 @@ export class UploadsService {
     private readonly settingRepository: Repository<Setting>,
     @InjectRepository(User)
     private readonly userRepository: Repository<User>,
+    private readonly auditService: AuditService,
   ) {
     this.s3 = new S3Client({
       region: this.configService.get<string>('B2_REGION'),
@@ -127,7 +129,10 @@ export class UploadsService {
     }
   }
 
-  async updateLimits(dto: UpdateUploadLimitsDto) {
+  async updateLimits(dto: UpdateUploadLimitsDto, callerId?: number) {
+    // [AUDIT] đọc giới hạn CŨ (đã gộp mặc định) trước khi ghi đè.
+    const oldLimits = await this.getLimits();
+
     await Promise.all([
       this.settingRepository.save({ key: SETTING_KEYS.avatarMaxSizeKb, value: String(dto.avatarMaxSizeKb) }),
       this.settingRepository.save({
@@ -139,7 +144,19 @@ export class UploadsService {
         value: String(dto.leaveAttachmentMaxCount),
       }),
     ]);
-    return this.getLimits();
+    const newLimits = await this.getLimits();
+
+    if (callerId) {
+      this.auditService.logActionAsync(
+        callerId,
+        'UPDATE_UPLOAD_LIMITS',
+        'setting',
+        0,
+        { ...oldLimits },
+        { ...newLimits },
+      );
+    }
+    return newLimits;
   }
 
   // --- Presign PUT (upload) ---

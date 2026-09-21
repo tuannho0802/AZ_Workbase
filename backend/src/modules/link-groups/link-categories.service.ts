@@ -5,6 +5,7 @@ import { LinkCategory } from '../../database/entities/link-category.entity';
 import { LinkGroup } from '../../database/entities/link-group.entity';
 import { CreateLinkCategoryDto } from './dto/create-link-category.dto';
 import { UpdateLinkCategoryDto } from './dto/update-link-category.dto';
+import { AuditService } from '../audit/audit.service';
 
 @Injectable()
 export class LinkCategoriesService {
@@ -13,6 +14,7 @@ export class LinkCategoriesService {
     private readonly categoryRepo: Repository<LinkCategory>,
     @InjectRepository(LinkGroup)
     private readonly groupRepo: Repository<LinkGroup>,
+    private readonly auditService: AuditService,
   ) {}
 
   /**
@@ -27,7 +29,7 @@ export class LinkCategoriesService {
     });
   }
 
-  async create(dto: CreateLinkCategoryDto): Promise<LinkCategory> {
+  async create(dto: CreateLinkCategoryDto, callerId?: number): Promise<LinkCategory> {
     const existing = await this.categoryRepo.findOne({ where: { name: dto.name } });
     if (existing) {
       throw new ConflictException(`Category "${dto.name}" đã tồn tại`);
@@ -37,14 +39,19 @@ export class LinkCategoriesService {
       color: dto.color ?? '#1677ff',
       sortOrder: dto.sortOrder ?? 0,
     });
-    return this.categoryRepo.save(created);
+    const saved = await this.categoryRepo.save(created);
+    if (callerId) {
+      this.auditService.logActionAsync(callerId, 'CREATE_LINK_CATEGORY', 'link_category', saved.id, null, saved);
+    }
+    return saved;
   }
 
-  async update(id: number, dto: UpdateLinkCategoryDto): Promise<LinkCategory> {
+  async update(id: number, dto: UpdateLinkCategoryDto, callerId?: number): Promise<LinkCategory> {
     const category = await this.categoryRepo.findOne({ where: { id } });
     if (!category) {
       throw new NotFoundException('Không tìm thấy category này');
     }
+    const before = { ...category };
 
     if (dto.name && dto.name !== category.name) {
       const existing = await this.categoryRepo.findOne({ where: { name: dto.name } });
@@ -56,19 +63,35 @@ export class LinkCategoriesService {
     if (dto.color !== undefined) category.color = dto.color;
     if (dto.sortOrder !== undefined) category.sortOrder = dto.sortOrder;
 
-    return this.categoryRepo.save(category);
+    const saved = await this.categoryRepo.save(category);
+    if (callerId) {
+      this.auditService.logActionAsync(callerId, 'UPDATE_LINK_CATEGORY', 'link_category', saved.id, before, saved);
+    }
+    return saved;
   }
 
-  async setLocked(id: number, isLocked: boolean): Promise<LinkCategory> {
+  async setLocked(id: number, isLocked: boolean, callerId?: number): Promise<LinkCategory> {
     const category = await this.categoryRepo.findOne({ where: { id } });
     if (!category) {
       throw new NotFoundException('Không tìm thấy category này');
     }
+    const before = { id: category.id, name: category.name, isLocked: category.isLocked };
     category.isLocked = isLocked;
-    return this.categoryRepo.save(category);
+    const saved = await this.categoryRepo.save(category);
+    if (callerId) {
+      this.auditService.logActionAsync(
+        callerId,
+        isLocked ? 'LOCK_LINK_CATEGORY' : 'UNLOCK_LINK_CATEGORY',
+        'link_category',
+        saved.id,
+        before,
+        { id: saved.id, name: saved.name, isLocked: saved.isLocked },
+      );
+    }
+    return saved;
   }
 
-  async remove(id: number): Promise<{ deleted: true }> {
+  async remove(id: number, callerId?: number): Promise<{ deleted: true }> {
     const category = await this.categoryRepo.findOne({ where: { id } });
     if (!category) {
       throw new NotFoundException('Không tìm thấy category này');
@@ -81,7 +104,12 @@ export class LinkCategoriesService {
       );
     }
 
+    // [AUDIT] chụp snapshot TRƯỚC remove() (TypeORM xoá `id` khỏi entity sau khi xoá).
+    const snapshot = { ...category };
     await this.categoryRepo.remove(category);
+    if (callerId) {
+      this.auditService.logActionAsync(callerId, 'DELETE_LINK_CATEGORY', 'link_category', id, snapshot, null);
+    }
     return { deleted: true };
   }
 }

@@ -4,6 +4,7 @@ import { NotFoundException, ConflictException, BadRequestException } from '@nest
 import { MediaSourcesService } from './media-sources.service';
 import { MediaSource } from '../../database/entities/media-source.entity';
 import { Customer } from '../../database/entities/customer.entity';
+import { AuditService } from '../audit/audit.service';
 
 describe('MediaSourcesService', () => {
     let service: MediaSourcesService;
@@ -18,6 +19,10 @@ describe('MediaSourcesService', () => {
     const mockCustomerRepo = {
         count: jest.fn(),
     };
+    const mockAuditService = {
+        logAction: jest.fn(),
+        logActionAsync: jest.fn(),
+    };
 
     beforeEach(async () => {
         jest.clearAllMocks();
@@ -27,6 +32,7 @@ describe('MediaSourcesService', () => {
                 MediaSourcesService,
                 { provide: getRepositoryToken(MediaSource), useValue: mockMediaSourceRepo },
                 { provide: getRepositoryToken(Customer), useValue: mockCustomerRepo },
+                { provide: AuditService, useValue: mockAuditService },
             ],
         }).compile();
 
@@ -168,6 +174,74 @@ describe('MediaSourcesService', () => {
             mockMediaSourceRepo.findOne.mockResolvedValue(null);
 
             await expect(service.remove(999)).rejects.toThrow(NotFoundException);
+        });
+    });
+
+    describe('audit log', () => {
+        it('create -> CREATE_MEDIA_SOURCE', async () => {
+            mockMediaSourceRepo.findOne.mockResolvedValue(null);
+            mockMediaSourceRepo.create.mockReturnValue({ name: 'TikTok' });
+            mockMediaSourceRepo.save.mockResolvedValue({ id: 8, name: 'TikTok' });
+
+            await service.create({ name: 'TikTok' } as any, 7);
+
+            expect(mockAuditService.logActionAsync).toHaveBeenCalledWith(
+                7, 'CREATE_MEDIA_SOURCE', 'media_source', 8, null, expect.objectContaining({ id: 8 }),
+            );
+        });
+
+        it('update -> UPDATE_MEDIA_SOURCE với old = giá trị TRƯỚC khi sửa (đổi tên)', async () => {
+            mockMediaSourceRepo.findOne
+                .mockResolvedValueOnce({ id: 2, name: 'FB', color: '#111', sortOrder: 0 })
+                .mockResolvedValueOnce(null);
+            mockMediaSourceRepo.save.mockImplementation((m) => Promise.resolve(m));
+
+            await service.update(2, { name: 'Facebook' } as any, 7);
+
+            expect(mockAuditService.logActionAsync).toHaveBeenCalledWith(
+                7, 'UPDATE_MEDIA_SOURCE', 'media_source', 2,
+                expect.objectContaining({ name: 'FB' }),
+                expect.objectContaining({ name: 'Facebook' }),
+            );
+        });
+
+        it('setLocked -> LOCK_MEDIA_SOURCE / UNLOCK_MEDIA_SOURCE', async () => {
+            mockMediaSourceRepo.findOne.mockResolvedValue({ id: 1, name: 'FB', isLocked: false });
+            mockMediaSourceRepo.save.mockImplementation((m) => Promise.resolve(m));
+            await service.setLocked(1, true, 7);
+            expect(mockAuditService.logActionAsync).toHaveBeenLastCalledWith(
+                7, 'LOCK_MEDIA_SOURCE', 'media_source', 1,
+                { id: 1, name: 'FB', isLocked: false }, { id: 1, name: 'FB', isLocked: true },
+            );
+
+            mockMediaSourceRepo.findOne.mockResolvedValue({ id: 1, name: 'FB', isLocked: true });
+            await service.setLocked(1, false, 7);
+            expect(mockAuditService.logActionAsync).toHaveBeenLastCalledWith(
+                7, 'UNLOCK_MEDIA_SOURCE', 'media_source', 1,
+                { id: 1, name: 'FB', isLocked: true }, { id: 1, name: 'FB', isLocked: false },
+            );
+        });
+
+        it('remove -> DELETE_MEDIA_SOURCE lưu snapshot đầy đủ dù TypeORM remove() xoá id khỏi entity', async () => {
+            mockMediaSourceRepo.findOne.mockResolvedValue({ id: 4, name: 'Zalo', color: '#0068FF' });
+            mockCustomerRepo.count.mockResolvedValue(0);
+            mockMediaSourceRepo.remove.mockImplementation((m) => { delete m.id; return Promise.resolve(m); });
+
+            await service.remove(4, 7);
+
+            expect(mockAuditService.logActionAsync).toHaveBeenCalledWith(
+                7, 'DELETE_MEDIA_SOURCE', 'media_source', 4,
+                expect.objectContaining({ id: 4, name: 'Zalo', color: '#0068FF' }),
+                null,
+            );
+        });
+
+        it('remove bị chặn (đang có khách dùng) -> KHÔNG ghi log', async () => {
+            mockMediaSourceRepo.findOne.mockResolvedValue({ id: 4, name: 'Zalo' });
+            mockCustomerRepo.count.mockResolvedValue(5);
+
+            await expect(service.remove(4, 7)).rejects.toThrow(BadRequestException);
+            expect(mockAuditService.logActionAsync).not.toHaveBeenCalled();
         });
     });
 });

@@ -6,8 +6,13 @@ import { LinkGroup } from '../../database/entities/link-group.entity';
 import { LinkCategory } from '../../database/entities/link-category.entity';
 import { CustomerGroupMembership } from '../../database/entities/customer-group-membership.entity';
 import { User } from '../../database/entities/user.entity';
+import { AuditService } from '../audit/audit.service';
 
 describe('LinkGroupsService', () => {
+  const mockAuditService = {
+    logAction: jest.fn(),
+    logActionAsync: jest.fn(),
+  };
   let service: LinkGroupsService;
 
   const mockGroupRepo = {
@@ -37,6 +42,7 @@ describe('LinkGroupsService', () => {
         { provide: getRepositoryToken(LinkCategory), useValue: mockCategoryRepo },
         { provide: getRepositoryToken(CustomerGroupMembership), useValue: mockMembershipRepo },
         { provide: getRepositoryToken(User), useValue: mockUserRepo },
+        { provide: AuditService, useValue: mockAuditService },
       ],
     }).compile();
 
@@ -288,6 +294,86 @@ describe('LinkGroupsService', () => {
       mockGroupRepo.findOne.mockResolvedValue(null);
 
       await expect(service.remove(999)).rejects.toThrow(NotFoundException);
+    });
+  });
+
+  // ══════════════════════════════════════════════════════════════════════
+  // AUDIT LOG - mọi hành động ghi đều phải để lại dấu vết (đặc biệt DELETE
+  // phải lưu snapshot TRƯỚC khi xoá).
+  // ══════════════════════════════════════════════════════════════════════
+  describe('audit log', () => {
+    it('create -> CREATE_LINK_GROUP (old=null, new=bản ghi vừa tạo)', async () => {
+      mockCategoryRepo.findOne.mockResolvedValue({ id: 1, name: 'Zalo' });
+      mockGroupRepo.findOne.mockResolvedValue(null);
+      mockGroupRepo.create.mockReturnValue({ categoryId: 1, name: 'N' });
+      mockGroupRepo.save.mockResolvedValue({ id: 10, categoryId: 1, name: 'N' });
+
+      await service.create({ categoryId: 1, name: 'N', url: 'u' } as any, 7);
+
+      expect(mockAuditService.logActionAsync).toHaveBeenCalledWith(
+        7, 'CREATE_LINK_GROUP', 'link_group', 10, null, expect.objectContaining({ id: 10, name: 'N' }),
+      );
+    });
+
+    it('update -> UPDATE_LINK_GROUP với old = giá trị TRƯỚC khi sửa', async () => {
+      const group = { id: 3, categoryId: 1, name: 'Cũ', url: 'u1', sortOrder: 0, primaryManagerId: null };
+      mockGroupRepo.findOne.mockResolvedValueOnce(group).mockResolvedValueOnce(null);
+      mockGroupRepo.save.mockImplementation((g) => Promise.resolve(g));
+
+      await service.update(3, { name: 'Mới' } as any, 7);
+
+      expect(mockAuditService.logActionAsync).toHaveBeenCalledWith(
+        7, 'UPDATE_LINK_GROUP', 'link_group', 3,
+        expect.objectContaining({ name: 'Cũ' }),
+        expect.objectContaining({ name: 'Mới' }),
+      );
+    });
+
+    it('setActive(false)/(true) -> DEACTIVATE_LINK_GROUP / ACTIVATE_LINK_GROUP', async () => {
+      mockGroupRepo.findOne.mockResolvedValue({ id: 1, name: 'A', isActive: true });
+      mockGroupRepo.save.mockImplementation((g) => Promise.resolve(g));
+      await service.setActive(1, false, 7);
+      expect(mockAuditService.logActionAsync).toHaveBeenLastCalledWith(
+        7, 'DEACTIVATE_LINK_GROUP', 'link_group', 1,
+        { id: 1, name: 'A', isActive: true }, { id: 1, name: 'A', isActive: false },
+      );
+
+      mockGroupRepo.findOne.mockResolvedValue({ id: 1, name: 'A', isActive: false });
+      await service.setActive(1, true, 7);
+      expect(mockAuditService.logActionAsync).toHaveBeenLastCalledWith(
+        7, 'ACTIVATE_LINK_GROUP', 'link_group', 1,
+        { id: 1, name: 'A', isActive: false }, { id: 1, name: 'A', isActive: true },
+      );
+    });
+
+    it('remove -> DELETE_LINK_GROUP lưu snapshot ĐẦY ĐỦ (kể cả id) dù TypeORM remove() xoá id khỏi entity', async () => {
+      mockGroupRepo.findOne.mockResolvedValue({ id: 5, name: 'Nhóm X', url: 'https://x' });
+      mockMembershipRepo.count.mockResolvedValue(0);
+      // mô phỏng đúng hành vi thật của TypeORM: remove() xoá `id` khỏi object
+      mockGroupRepo.remove.mockImplementation((g) => { delete g.id; return Promise.resolve(g); });
+
+      await service.remove(5, 7);
+
+      expect(mockAuditService.logActionAsync).toHaveBeenCalledWith(
+        7, 'DELETE_LINK_GROUP', 'link_group', 5,
+        expect.objectContaining({ id: 5, name: 'Nhóm X', url: 'https://x' }),
+        null,
+      );
+    });
+
+    it('remove bị chặn (còn membership) -> KHÔNG ghi log', async () => {
+      mockGroupRepo.findOne.mockResolvedValue({ id: 5, name: 'X' });
+      mockMembershipRepo.count.mockResolvedValue(3);
+
+      await expect(service.remove(5, 7)).rejects.toThrow(BadRequestException);
+      expect(mockAuditService.logActionAsync).not.toHaveBeenCalled();
+    });
+
+    it('không truyền callerId -> không ghi log (tương thích call site cũ)', async () => {
+      mockGroupRepo.findOne.mockResolvedValue({ id: 1, name: 'A', isActive: true });
+      mockGroupRepo.save.mockImplementation((g) => Promise.resolve(g));
+      await service.setActive(1, false);
+      expect(mockAuditService.logActionAsync).not.toHaveBeenCalled();
     });
   });
 });

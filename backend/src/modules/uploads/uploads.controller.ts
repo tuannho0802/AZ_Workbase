@@ -3,6 +3,7 @@ import { ApiTags, ApiBearerAuth, ApiOperation } from '@nestjs/swagger';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { PermissionGuard } from '../../common/guards/permission.guard';
 import { RequirePermission } from '../../common/decorators/require-permission.decorator';
+import { GetUser } from '../../common/decorators/get-user.decorator';
 import { UploadsService } from './uploads.service';
 import { PresignAvatarDto } from './dto/presign-avatar.dto';
 import { UpdateUploadLimitsDto } from './dto/update-upload-limits.dto';
@@ -33,7 +34,7 @@ export class UploadsController {
   @Patch('limits')
   @RequirePermission('uploads.manage_limits')
   @ApiOperation({ summary: 'Cập nhật giới hạn số lượng/dung lượng ảnh (Admin/Assistant)' })
-  updateLimits(@Body() dto: UpdateUploadLimitsDto) {
-    return this.uploadsService.updateLimits(dto);
+  updateLimits(@Body() dto: UpdateUploadLimitsDto, @GetUser() user: any) {
+    return this.uploadsService.updateLimits(dto, user.id);
   }
 }

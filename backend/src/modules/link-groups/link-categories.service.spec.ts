@@ -4,8 +4,13 @@ import { NotFoundException, ConflictException, BadRequestException } from '@nest
 import { LinkCategoriesService } from './link-categories.service';
 import { LinkCategory } from '../../database/entities/link-category.entity';
 import { LinkGroup } from '../../database/entities/link-group.entity';
+import { AuditService } from '../audit/audit.service';
 
 describe('LinkCategoriesService', () => {
+  const mockAuditService = {
+    logAction: jest.fn(),
+    logActionAsync: jest.fn(),
+  };
   let service: LinkCategoriesService;
 
   const mockCategoryRepo = {
@@ -27,6 +32,7 @@ describe('LinkCategoriesService', () => {
         LinkCategoriesService,
         { provide: getRepositoryToken(LinkCategory), useValue: mockCategoryRepo },
         { provide: getRepositoryToken(LinkGroup), useValue: mockGroupRepo },
+        { provide: AuditService, useValue: mockAuditService },
       ],
     }).compile();
 
@@ -158,6 +164,64 @@ describe('LinkCategoriesService', () => {
       mockCategoryRepo.findOne.mockResolvedValue(null);
 
       await expect(service.remove(999)).rejects.toThrow(NotFoundException);
+    });
+  });
+
+  describe('audit log', () => {
+    it('create -> CREATE_LINK_CATEGORY', async () => {
+      mockCategoryRepo.findOne.mockResolvedValue(null);
+      mockCategoryRepo.create.mockReturnValue({ name: 'T' });
+      mockCategoryRepo.save.mockResolvedValue({ id: 5, name: 'T' });
+
+      await service.create({ name: 'T' } as any, 7);
+
+      expect(mockAuditService.logActionAsync).toHaveBeenCalledWith(
+        7, 'CREATE_LINK_CATEGORY', 'link_category', 5, null, expect.objectContaining({ id: 5 }),
+      );
+    });
+
+    it('update -> UPDATE_LINK_CATEGORY với old = giá trị TRƯỚC khi sửa', async () => {
+      mockCategoryRepo.findOne.mockResolvedValue({ id: 2, name: 'Cũ', color: '#111', sortOrder: 0 });
+      mockCategoryRepo.save.mockImplementation((c) => Promise.resolve(c));
+
+      await service.update(2, { color: '#222' } as any, 7);
+
+      expect(mockAuditService.logActionAsync).toHaveBeenCalledWith(
+        7, 'UPDATE_LINK_CATEGORY', 'link_category', 2,
+        expect.objectContaining({ color: '#111' }),
+        expect.objectContaining({ color: '#222' }),
+      );
+    });
+
+    it('setLocked -> LOCK_LINK_CATEGORY / UNLOCK_LINK_CATEGORY', async () => {
+      mockCategoryRepo.findOne.mockResolvedValue({ id: 1, name: 'Z', isLocked: false });
+      mockCategoryRepo.save.mockImplementation((c) => Promise.resolve(c));
+      await service.setLocked(1, true, 7);
+      expect(mockAuditService.logActionAsync).toHaveBeenLastCalledWith(
+        7, 'LOCK_LINK_CATEGORY', 'link_category', 1,
+        { id: 1, name: 'Z', isLocked: false }, { id: 1, name: 'Z', isLocked: true },
+      );
+
+      mockCategoryRepo.findOne.mockResolvedValue({ id: 1, name: 'Z', isLocked: true });
+      await service.setLocked(1, false, 7);
+      expect(mockAuditService.logActionAsync).toHaveBeenLastCalledWith(
+        7, 'UNLOCK_LINK_CATEGORY', 'link_category', 1,
+        { id: 1, name: 'Z', isLocked: true }, { id: 1, name: 'Z', isLocked: false },
+      );
+    });
+
+    it('remove -> DELETE_LINK_CATEGORY lưu snapshot đầy đủ dù TypeORM remove() xoá id', async () => {
+      mockCategoryRepo.findOne.mockResolvedValue({ id: 4, name: 'Zalo', color: '#0068FF' });
+      mockGroupRepo.count.mockResolvedValue(0);
+      mockCategoryRepo.remove.mockImplementation((c) => { delete c.id; return Promise.resolve(c); });
+
+      await service.remove(4, 7);
+
+      expect(mockAuditService.logActionAsync).toHaveBeenCalledWith(
+        7, 'DELETE_LINK_CATEGORY', 'link_category', 4,
+        expect.objectContaining({ id: 4, name: 'Zalo', color: '#0068FF' }),
+        null,
+      );
     });
   });
 });

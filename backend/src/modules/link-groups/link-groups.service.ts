@@ -7,6 +7,7 @@ import { CustomerGroupMembership } from '../../database/entities/customer-group-
 import { User } from '../../database/entities/user.entity';
 import { CreateLinkGroupDto } from './dto/create-link-group.dto';
 import { UpdateLinkGroupDto } from './dto/update-link-group.dto';
+import { AuditService } from '../audit/audit.service';
 
 @Injectable()
 export class LinkGroupsService {
@@ -19,6 +20,7 @@ export class LinkGroupsService {
     private readonly membershipRepo: Repository<CustomerGroupMembership>,
     @InjectRepository(User)
     private readonly userRepo: Repository<User>,
+    private readonly auditService: AuditService,
   ) {}
 
   /**
@@ -63,7 +65,7 @@ export class LinkGroupsService {
     }
   }
 
-  async create(dto: CreateLinkGroupDto): Promise<LinkGroup> {
+  async create(dto: CreateLinkGroupDto, callerId?: number): Promise<LinkGroup> {
     const category = await this.categoryRepo.findOne({ where: { id: dto.categoryId } });
     if (!category) {
       throw new NotFoundException('Không tìm thấy category này');
@@ -85,14 +87,19 @@ export class LinkGroupsService {
       sortOrder: dto.sortOrder ?? 0,
       primaryManagerId: dto.primaryManagerId ?? null,
     });
-    return this.groupRepo.save(created);
+    const saved = await this.groupRepo.save(created);
+    if (callerId) {
+      this.auditService.logActionAsync(callerId, 'CREATE_LINK_GROUP', 'link_group', saved.id, null, saved);
+    }
+    return saved;
   }
 
-  async update(id: number, dto: UpdateLinkGroupDto): Promise<LinkGroup> {
+  async update(id: number, dto: UpdateLinkGroupDto, callerId?: number): Promise<LinkGroup> {
     const group = await this.groupRepo.findOne({ where: { id } });
     if (!group) {
       throw new NotFoundException('Không tìm thấy nhóm này');
     }
+    const before = { ...group };
 
     if (dto.name && dto.name !== group.name) {
       const existing = await this.groupRepo.findOne({
@@ -110,19 +117,35 @@ export class LinkGroupsService {
       group.primaryManagerId = dto.primaryManagerId;
     }
 
-    return this.groupRepo.save(group);
+    const saved = await this.groupRepo.save(group);
+    if (callerId) {
+      this.auditService.logActionAsync(callerId, 'UPDATE_LINK_GROUP', 'link_group', saved.id, before, saved);
+    }
+    return saved;
   }
 
-  async setActive(id: number, isActive: boolean): Promise<LinkGroup> {
+  async setActive(id: number, isActive: boolean, callerId?: number): Promise<LinkGroup> {
     const group = await this.groupRepo.findOne({ where: { id } });
     if (!group) {
       throw new NotFoundException('Không tìm thấy nhóm này');
     }
+    const before = { id: group.id, name: group.name, isActive: group.isActive };
     group.isActive = isActive;
-    return this.groupRepo.save(group);
+    const saved = await this.groupRepo.save(group);
+    if (callerId) {
+      this.auditService.logActionAsync(
+        callerId,
+        isActive ? 'ACTIVATE_LINK_GROUP' : 'DEACTIVATE_LINK_GROUP',
+        'link_group',
+        saved.id,
+        before,
+        { id: saved.id, name: saved.name, isActive: saved.isActive },
+      );
+    }
+    return saved;
   }
 
-  async remove(id: number): Promise<{ deleted: true }> {
+  async remove(id: number, callerId?: number): Promise<{ deleted: true }> {
     const group = await this.groupRepo.findOne({ where: { id } });
     if (!group) {
       throw new NotFoundException('Không tìm thấy nhóm này');
@@ -135,7 +158,13 @@ export class LinkGroupsService {
       );
     }
 
+    // [AUDIT] `repo.remove(entity)` của TypeORM XOÁ `id` khỏi object sau khi
+    // xoá -> phải chụp snapshot TRƯỚC khi gọi remove().
+    const snapshot = { ...group };
     await this.groupRepo.remove(group);
+    if (callerId) {
+      this.auditService.logActionAsync(callerId, 'DELETE_LINK_GROUP', 'link_group', id, snapshot, null);
+    }
     return { deleted: true };
   }
 }

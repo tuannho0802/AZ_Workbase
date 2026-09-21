@@ -14,6 +14,7 @@ import { ApiTags, ApiOperation, ApiBearerAuth, ApiQuery } from '@nestjs/swagger'
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { PermissionGuard } from '../../common/guards/permission.guard';
 import { RequirePermission } from '../../common/decorators/require-permission.decorator';
+import { GetUser } from '../../common/decorators/get-user.decorator';
 import { LinkGroupsService } from './link-groups.service';
 import { CreateLinkGroupDto } from './dto/create-link-group.dto';
 import { UpdateLinkGroupDto } from './dto/update-link-group.dto';
@@ -52,29 +53,29 @@ export class LinkGroupsController {
   @Post()
   @RequirePermission('link_groups.manage')
   @ApiOperation({ summary: 'Tạo nhóm mới (Admin, Assistant)' })
-  async create(@Body() dto: CreateLinkGroupDto) {
-    return this.groupsService.create(dto);
+  async create(@Body() dto: CreateLinkGroupDto, @GetUser() user: any) {
+    return this.groupsService.create(dto, user.id);
   }
 
   @Patch(':id')
   @RequirePermission('link_groups.manage')
   @ApiOperation({ summary: 'Sửa tên/url/thứ tự nhóm (Admin, Assistant)' })
-  async update(@Param('id', ParseIntPipe) id: number, @Body() dto: UpdateLinkGroupDto) {
-    return this.groupsService.update(id, dto);
+  async update(@Param('id', ParseIntPipe) id: number, @Body() dto: UpdateLinkGroupDto, @GetUser() user: any) {
+    return this.groupsService.update(id, dto, user.id);
   }
 
   @Patch(':id/deactivate')
   @RequirePermission('link_groups.manage')
   @ApiOperation({ summary: 'Ẩn nhóm khỏi checklist (Admin, Assistant)' })
-  async deactivate(@Param('id', ParseIntPipe) id: number) {
-    return this.groupsService.setActive(id, false);
+  async deactivate(@Param('id', ParseIntPipe) id: number, @GetUser() user: any) {
+    return this.groupsService.setActive(id, false, user.id);
   }
 
   @Patch(':id/activate')
   @RequirePermission('link_groups.manage')
   @ApiOperation({ summary: 'Hiện lại nhóm (Admin, Assistant)' })
-  async activate(@Param('id', ParseIntPipe) id: number) {
-    return this.groupsService.setActive(id, true);
+  async activate(@Param('id', ParseIntPipe) id: number, @GetUser() user: any) {
+    return this.groupsService.setActive(id, true, user.id);
   }
 
   // FIX PERMISSIONS.md mục 1 (quy tắc Xoá) + mục 2.4: tách riêng Xoá, CHỈ
@@ -83,7 +84,7 @@ export class LinkGroupsController {
   @Delete(':id')
   @RequirePermission('link_groups.delete')
   @ApiOperation({ summary: 'Xoá nhóm - chỉ được nếu chưa có customer nào có dữ liệu join (chỉ Admin)' })
-  async remove(@Param('id', ParseIntPipe) id: number) {
-    return this.groupsService.remove(id);
+  async remove(@Param('id', ParseIntPipe) id: number, @GetUser() user: any) {
+    return this.groupsService.remove(id, user.id);
   }
 }

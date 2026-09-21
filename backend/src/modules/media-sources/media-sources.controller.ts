@@ -14,6 +14,7 @@ import { ApiTags, ApiOperation, ApiBearerAuth, ApiQuery } from '@nestjs/swagger'
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { PermissionGuard } from '../../common/guards/permission.guard';
 import { RequirePermission } from '../../common/decorators/require-permission.decorator';
+import { GetUser } from '../../common/decorators/get-user.decorator';
 import { MediaSourcesService } from './media-sources.service';
 import { CreateMediaSourceDto } from './dto/create-media-source.dto';
 import { UpdateMediaSourceDto } from './dto/update-media-source.dto';
@@ -50,29 +51,29 @@ export class MediaSourcesController {
     @Post()
     @RequirePermission('media_sources.manage')
     @ApiOperation({ summary: 'Tạo nguồn mới (Admin, Assistant)' })
-    async create(@Body() dto: CreateMediaSourceDto) {
-        return this.mediaSourcesService.create(dto);
+    async create(@Body() dto: CreateMediaSourceDto, @GetUser() user: any) {
+        return this.mediaSourcesService.create(dto, user.id);
     }
 
     @Patch(':id')
     @RequirePermission('media_sources.manage')
     @ApiOperation({ summary: 'Sửa tên/thứ tự nguồn (Admin, Assistant)' })
-    async update(@Param('id', ParseIntPipe) id: number, @Body() dto: UpdateMediaSourceDto) {
-        return this.mediaSourcesService.update(id, dto);
+    async update(@Param('id', ParseIntPipe) id: number, @Body() dto: UpdateMediaSourceDto, @GetUser() user: any) {
+        return this.mediaSourcesService.update(id, dto, user.id);
     }
 
     @Patch(':id/lock')
     @RequirePermission('media_sources.manage')
     @ApiOperation({ summary: 'Khoá nguồn - ẩn khỏi dropdown thêm khách hàng mới (Admin, Assistant)' })
-    async lock(@Param('id', ParseIntPipe) id: number) {
-        return this.mediaSourcesService.setLocked(id, true);
+    async lock(@Param('id', ParseIntPipe) id: number, @GetUser() user: any) {
+        return this.mediaSourcesService.setLocked(id, true, user.id);
     }
 
     @Patch(':id/unlock')
     @RequirePermission('media_sources.manage')
     @ApiOperation({ summary: 'Mở khoá nguồn (Admin, Assistant)' })
-    async unlock(@Param('id', ParseIntPipe) id: number) {
-        return this.mediaSourcesService.setLocked(id, false);
+    async unlock(@Param('id', ParseIntPipe) id: number, @GetUser() user: any) {
+        return this.mediaSourcesService.setLocked(id, false, user.id);
     }
 
     // FIX PERMISSIONS.md mục 1 (quy tắc Xoá) + mục 2.5: tách riêng Xoá, CHỈ
@@ -81,7 +82,7 @@ export class MediaSourcesController {
     @Delete(':id')
     @RequirePermission('media_sources.delete')
     @ApiOperation({ summary: 'Xoá nguồn - chỉ được nếu chưa có khách hàng nào dùng (chỉ Admin)' })
-    async remove(@Param('id', ParseIntPipe) id: number) {
-        return this.mediaSourcesService.remove(id);
+    async remove(@Param('id', ParseIntPipe) id: number, @GetUser() user: any) {
+        return this.mediaSourcesService.remove(id, user.id);
     }
 }

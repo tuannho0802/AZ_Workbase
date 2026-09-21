@@ -20,6 +20,7 @@ import {
   parseLocalDateEnd,
 } from '../../integrations/zk-device/decode-device-time.util';
 import { readAttendanceLogsSequential } from '../../integrations/zk-device/sequential-attendance-reader.util';
+import { AuditService } from '../audit/audit.service';
 
 // node-zklib chưa có type definition chính thức -> import kiểu require,
 // coi là "any" (tsconfig của project đã bật noImplicitAny: false).
@@ -95,6 +96,7 @@ export class ZkDeviceService {
     private readonly deviceUserCacheRepo: Repository<ZkDeviceUserCache>,
     @InjectRepository(Department)
     private readonly departmentRepo: Repository<Department>,
+    private readonly auditService: AuditService,
   ) {}
 
   /**
@@ -266,7 +268,21 @@ export class ZkDeviceService {
    * ADMS Push ghi log trong lúc mapping vừa được xoá/đổi (unmapUser rồi map
    * lại người khác vào đúng deviceUserId đó).
    */
-  async rematchUnmatchedLogs(): Promise<number> {
+  async rematchUnmatchedLogs(callerId?: number): Promise<number> {
+    const totalUpdated = await this.rematchUnmatchedLogsCore();
+
+    // [AUDIT] CHỈ ghi log khi do người dùng chủ động bấm (POST /rematch, có
+    // callerId). Lệnh gọi nội bộ từ mapUser()/syncNow() không truyền callerId
+    // (đã nằm trong log MAP_ZK_DEVICE_USER / SYNC_ATTENDANCE_LOGS của chúng).
+    if (callerId) {
+      this.auditService.logActionAsync(callerId, 'REMATCH_ATTENDANCE_LOGS', 'attendance_log', 0, null, {
+        updated: totalUpdated,
+      });
+    }
+    return totalUpdated;
+  }
+
+  private async rematchUnmatchedLogsCore(): Promise<number> {
     const mappedUsers = await this.userRepo.find({
       where: { zkDeviceUserId: Not(IsNull()) },
       select: ['id', 'zkDeviceUserId'],
@@ -327,9 +343,21 @@ export class ZkDeviceService {
       }
     }
 
+    // [AUDIT] chụp mã máy chấm công CŨ trước khi ghi đè.
+    const previousDeviceUserId = user.zkDeviceUserId ?? null;
+
     user.zkDeviceUserId = deviceUserId;
     const saved = await this.userRepo.save(user);
-    await this.rematchUnmatchedLogs();
+    const rematchedLogs = await this.rematchUnmatchedLogs();
+
+    this.auditService.logActionAsync(
+      callerId,
+      'MAP_ZK_DEVICE_USER',
+      'user',
+      userId,
+      { userId, name: user.name, email: user.email, zkDeviceUserId: previousDeviceUserId },
+      { userId, name: user.name, email: user.email, zkDeviceUserId: deviceUserId, rematchedLogs },
+    );
     return saved;
   }
 
@@ -360,8 +388,21 @@ export class ZkDeviceService {
       }
     }
 
+    // [AUDIT] chụp mã máy chấm công đang bị gỡ TRƯỚC khi set null.
+    const removedDeviceUserId = user.zkDeviceUserId ?? null;
+
     user.zkDeviceUserId = null;
-    return this.userRepo.save(user);
+    const saved = await this.userRepo.save(user);
+
+    this.auditService.logActionAsync(
+      callerId,
+      'UNMAP_ZK_DEVICE_USER',
+      'user',
+      userId,
+      { userId, name: user.name, email: user.email, zkDeviceUserId: removedDeviceUserId },
+      { userId, name: user.name, email: user.email, zkDeviceUserId: null },
+    );
+    return saved;
   }
 
   /**
@@ -458,7 +499,31 @@ export class ZkDeviceService {
    * `createQueryBuilder().delete()` sinh đúng 1 câu SQL, không load từng
    * entity vào RAM trước như `remove()` sẽ làm.
    */
-  async cleanupOldLogs(olderThan: string): Promise<{ deleted: number; olderThan: string }> {
+  async cleanupOldLogs(olderThan: string, callerId?: number): Promise<{ deleted: number; olderThan: string }> {
+    // [AUDIT] Xoá VĨNH VIỄN hàng loạt - không lưu nổi từng dòng, nhưng phải
+    // chụp lại "sắp xoá cái gì" (số dòng, khoảng thời gian, số nhân viên bị
+    // ảnh hưởng, số dòng chưa khớp nhân viên) TRƯỚC khi DELETE chạy.
+    let preview: Record<string, unknown> | null = null;
+    if (callerId) {
+      const raw = await this.attendanceLogRepo
+        .createQueryBuilder('log')
+        .select('COUNT(*)', 'total')
+        .addSelect("DATE_FORMAT(MIN(log.recordTime), '%Y-%m-%d %H:%i:%s')", 'earliest')
+        .addSelect("DATE_FORMAT(MAX(log.recordTime), '%Y-%m-%d %H:%i:%s')", 'latest')
+        .addSelect('COUNT(DISTINCT log.matchedUserId)', 'matchedUsers')
+        .addSelect('SUM(CASE WHEN log.matchedUserId IS NULL THEN 1 ELSE 0 END)', 'unmatched')
+        .where('log.recordTime < :olderThan', { olderThan: `${olderThan} 00:00:00` })
+        .getRawOne();
+      preview = {
+        olderThan,
+        totalRows: Number(raw?.total ?? 0),
+        earliestRecordTime: raw?.earliest ?? null,
+        latestRecordTime: raw?.latest ?? null,
+        distinctMatchedUsers: Number(raw?.matchedUsers ?? 0),
+        unmatchedRows: Number(raw?.unmatched ?? 0),
+      };
+    }
+
     const result = await this.attendanceLogRepo
       .createQueryBuilder()
       .delete()
@@ -470,6 +535,12 @@ export class ZkDeviceService {
     this.logger.warn(
       `[Cleanup] Đã xoá vĩnh viễn ${deleted} dòng attendance_logs cũ hơn ${olderThan}.`,
     );
+
+    if (callerId) {
+      this.auditService.logActionAsync(callerId, 'CLEANUP_ATTENDANCE_LOGS', 'attendance_log', 0, preview, {
+        deleted,
+      });
+    }
     return { deleted, olderThan };
   }
 
@@ -757,7 +828,7 @@ export class ZkDeviceService {
    * response trả về gọn hơn. KHÔNG giúp giảm rủi ro timeout khi tải từ máy
    * (vấn đề đó đã được xử lý riêng bởi `readAttendanceLogsSequential` ở trên).
    */
-  async syncNow(range?: { from?: Date; to?: Date }): Promise<SyncSummary> {
+  async syncNow(range?: { from?: Date; to?: Date }, callerId?: number): Promise<SyncSummary> {
     if (this.isSyncing) {
       throw new Error('Đang có 1 lượt đồng bộ khác chạy, vui lòng thử lại sau.');
     }
@@ -996,6 +1067,22 @@ export class ZkDeviceService {
       this.logger.log(
         `Đồng bộ xong: fetched=${summary.totalFetchedFromDevice}, inRange=${summary.recordsInRange}, insertedNew~=${summary.insertedNew}, matched=${summary.matchedToUser}, unmatchedUsers=${summary.unmatchedDeviceUserIds.length}, partialFetch=${partialFetch}`,
       );
+
+      // [AUDIT] CHỈ ghi khi do người dùng bấm (có callerId). Cron/ADMS tự động
+      // không có người dùng nên không audit (xem zk-device-cron.controller.ts).
+      if (callerId) {
+        this.auditService.logActionAsync(callerId, 'SYNC_ATTENDANCE_LOGS', 'attendance_log', 0, null, {
+          fromDate: summary.fromDate,
+          toDate: summary.toDate,
+          totalFetchedFromDevice: summary.totalFetchedFromDevice,
+          recordsInRange: summary.recordsInRange,
+          insertedNew: summary.insertedNew,
+          matchedToUser: summary.matchedToUser,
+          unmatchedDeviceUserCount: summary.unmatchedDeviceUserIds.length,
+          invalidTimeCount: summary.invalidTimeCount,
+          partialFetch: summary.partialFetch,
+        });
+      }
 
       return summary;
     } finally {

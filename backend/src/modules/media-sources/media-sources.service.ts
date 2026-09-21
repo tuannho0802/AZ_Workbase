@@ -5,6 +5,7 @@ import { MediaSource } from '../../database/entities/media-source.entity';
 import { Customer } from '../../database/entities/customer.entity';
 import { CreateMediaSourceDto } from './dto/create-media-source.dto';
 import { UpdateMediaSourceDto } from './dto/update-media-source.dto';
+import { AuditService } from '../audit/audit.service';
 
 @Injectable()
 export class MediaSourcesService {
@@ -13,6 +14,7 @@ export class MediaSourcesService {
         private readonly mediaSourceRepo: Repository<MediaSource>,
         @InjectRepository(Customer)
         private readonly customerRepo: Repository<Customer>,
+        private readonly auditService: AuditService,
     ) { }
 
     /**
@@ -27,7 +29,7 @@ export class MediaSourcesService {
         });
     }
 
-    async create(dto: CreateMediaSourceDto): Promise<MediaSource> {
+    async create(dto: CreateMediaSourceDto, callerId?: number): Promise<MediaSource> {
         const existing = await this.mediaSourceRepo.findOne({ where: { name: dto.name } });
         if (existing) {
             throw new ConflictException(`Nguồn "${dto.name}" đã tồn tại`);
@@ -37,14 +39,19 @@ export class MediaSourcesService {
             color: dto.color ?? '#1677ff',
             sortOrder: dto.sortOrder ?? 0,
         });
-        return this.mediaSourceRepo.save(created);
+        const saved = await this.mediaSourceRepo.save(created);
+        if (callerId) {
+            this.auditService.logActionAsync(callerId, 'CREATE_MEDIA_SOURCE', 'media_source', saved.id, null, saved);
+        }
+        return saved;
     }
 
-    async update(id: number, dto: UpdateMediaSourceDto): Promise<MediaSource> {
+    async update(id: number, dto: UpdateMediaSourceDto, callerId?: number): Promise<MediaSource> {
         const source = await this.mediaSourceRepo.findOne({ where: { id } });
         if (!source) {
             throw new NotFoundException('Không tìm thấy nguồn này');
         }
+        const before = { ...source };
 
         if (dto.name && dto.name !== source.name) {
             const existing = await this.mediaSourceRepo.findOne({ where: { name: dto.name } });
@@ -68,19 +75,35 @@ export class MediaSourcesService {
             source.sortOrder = dto.sortOrder;
         }
 
-        return this.mediaSourceRepo.save(source);
+        const saved = await this.mediaSourceRepo.save(source);
+        if (callerId) {
+            this.auditService.logActionAsync(callerId, 'UPDATE_MEDIA_SOURCE', 'media_source', saved.id, before, saved);
+        }
+        return saved;
     }
 
-    async setLocked(id: number, isLocked: boolean): Promise<MediaSource> {
+    async setLocked(id: number, isLocked: boolean, callerId?: number): Promise<MediaSource> {
         const source = await this.mediaSourceRepo.findOne({ where: { id } });
         if (!source) {
             throw new NotFoundException('Không tìm thấy nguồn này');
         }
+        const before = { id: source.id, name: source.name, isLocked: source.isLocked };
         source.isLocked = isLocked;
-        return this.mediaSourceRepo.save(source);
+        const saved = await this.mediaSourceRepo.save(source);
+        if (callerId) {
+            this.auditService.logActionAsync(
+                callerId,
+                isLocked ? 'LOCK_MEDIA_SOURCE' : 'UNLOCK_MEDIA_SOURCE',
+                'media_source',
+                saved.id,
+                before,
+                { id: saved.id, name: saved.name, isLocked: saved.isLocked },
+            );
+        }
+        return saved;
     }
 
-    async remove(id: number): Promise<{ deleted: true }> {
+    async remove(id: number, callerId?: number): Promise<{ deleted: true }> {
         const source = await this.mediaSourceRepo.findOne({ where: { id } });
         if (!source) {
             throw new NotFoundException('Không tìm thấy nguồn này');
@@ -99,7 +122,12 @@ export class MediaSourcesService {
             );
         }
 
+        // [AUDIT] chụp snapshot TRƯỚC remove() - TypeORM xoá `id` khỏi entity sau khi xoá.
+        const snapshot = { ...source };
         await this.mediaSourceRepo.remove(source);
+        if (callerId) {
+            this.auditService.logActionAsync(callerId, 'DELETE_MEDIA_SOURCE', 'media_source', id, snapshot, null);
+        }
         return { deleted: true };
     }
 }

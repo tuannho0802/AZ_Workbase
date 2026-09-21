@@ -10,6 +10,12 @@ import { DepartmentManager } from '../../database/entities/department-manager.en
 import { Role } from '../../common/enums/role.enum';
 import { PermissionScope } from '../../database/entities/role-permission.entity';
 import { ForbiddenException, NotFoundException } from '@nestjs/common';
+import { AuditService } from '../audit/audit.service';
+
+// syncNow(): thay bước ĐỌC LOG từ máy thật bằng mock - chỉ để kiểm tra audit.
+jest.mock('../../integrations/zk-device/sequential-attendance-reader.util', () => ({
+  readAttendanceLogsSequential: jest.fn().mockResolvedValue([]),
+}));
 
 describe('ZkDeviceService', () => {
   let service: ZkDeviceService;
@@ -17,7 +23,12 @@ describe('ZkDeviceService', () => {
   const mockUserRepo = {
     findOneByOrFail: jest.fn(),
     findOneBy: jest.fn(),
+    find: jest.fn().mockResolvedValue([]),
     save: jest.fn((u) => Promise.resolve(u)),
+  };
+  const mockAuditService = {
+    logAction: jest.fn(),
+    logActionAsync: jest.fn(),
   };
   const mockAttendanceLogRepo = {
     createQueryBuilder: jest.fn(),
@@ -61,6 +72,7 @@ describe('ZkDeviceService', () => {
         { provide: getRepositoryToken(ZkDeviceUserCache), useValue: mockZkDeviceUserCacheRepo },
         { provide: getRepositoryToken(Department), useValue: mockDepartmentRepo },
         { provide: ConfigService, useValue: { get: jest.fn() } },
+        { provide: AuditService, useValue: mockAuditService },
       ],
     }).compile();
 
@@ -166,6 +178,139 @@ describe('ZkDeviceService', () => {
 
       expect(qb.leftJoinAndSelect).toHaveBeenCalledWith('matchedUser.department', 'matchedUserDepartment');
       expect(qb.leftJoinAndSelect).toHaveBeenCalledWith('matchedUser.position', 'matchedUserPosition');
+    });
+  });
+
+  // ══════════════════════════════════════════════════════════════════════
+  // AUDIT LOG - map/unmap/rematch/cleanup/sync (webhook ADMS + cron tự động
+  // KHÔNG audit vì không phải hành động của người dùng).
+  // ══════════════════════════════════════════════════════════════════════
+  describe('audit log', () => {
+    it('mapUser -> MAP_ZK_DEVICE_USER: old = mã máy CŨ (chụp trước khi ghi đè), new = mã mới + số log khớp lại', async () => {
+      mockUserRepo.findOneByOrFail.mockResolvedValue({
+        id: 2, name: 'Nguyễn Văn A', email: 'a@az.vn', departmentId: 5, zkDeviceUserId: '11',
+      });
+      (service as any).rematchUnmatchedLogs.mockResolvedValue(4);
+
+      await service.mapUser(2, '22', 1, Role.ADMIN);
+
+      expect(mockAuditService.logActionAsync).toHaveBeenCalledWith(
+        1, 'MAP_ZK_DEVICE_USER', 'user', 2,
+        { userId: 2, name: 'Nguyễn Văn A', email: 'a@az.vn', zkDeviceUserId: '11' },
+        { userId: 2, name: 'Nguyễn Văn A', email: 'a@az.vn', zkDeviceUserId: '22', rematchedLogs: 4 },
+      );
+    });
+
+    it('mapUser bị chặn quyền phòng ban (Forbidden) -> KHÔNG ghi log', async () => {
+      mockUserRepo.findOneByOrFail.mockResolvedValue({ id: 2, departmentId: 9 });
+      mockDepartmentManagerRepo.find.mockResolvedValue([{ departmentId: 5 }]);
+
+      await expect(service.mapUser(2, '22', 1, 'custom_role', PermissionScope.DEPARTMENT)).rejects.toThrow(ForbiddenException);
+      expect(mockAuditService.logActionAsync).not.toHaveBeenCalled();
+    });
+
+    it('unmapUser -> UNMAP_ZK_DEVICE_USER lưu mã máy bị gỡ (chụp TRƯỚC khi set null)', async () => {
+      mockUserRepo.findOneBy.mockResolvedValue({
+        id: 3, name: 'Trần B', email: 'b@az.vn', departmentId: 5, zkDeviceUserId: '33',
+      });
+
+      await service.unmapUser(3, 1, Role.ADMIN);
+
+      expect(mockAuditService.logActionAsync).toHaveBeenCalledWith(
+        1, 'UNMAP_ZK_DEVICE_USER', 'user', 3,
+        { userId: 3, name: 'Trần B', email: 'b@az.vn', zkDeviceUserId: '33' },
+        { userId: 3, name: 'Trần B', email: 'b@az.vn', zkDeviceUserId: null },
+      );
+    });
+
+    it('rematchUnmatchedLogs(callerId) -> REMATCH_ATTENDANCE_LOGS; gọi nội bộ (không callerId) -> KHÔNG ghi log', async () => {
+      (service as any).rematchUnmatchedLogs.mockRestore();
+      jest.spyOn(service as any, 'rematchUnmatchedLogsCore').mockResolvedValue(7);
+
+      await service.rematchUnmatchedLogs(1);
+      expect(mockAuditService.logActionAsync).toHaveBeenCalledWith(
+        1, 'REMATCH_ATTENDANCE_LOGS', 'attendance_log', 0, null, { updated: 7 },
+      );
+
+      mockAuditService.logActionAsync.mockClear();
+      await service.rematchUnmatchedLogs();
+      expect(mockAuditService.logActionAsync).not.toHaveBeenCalled();
+    });
+
+    it('cleanupOldLogs -> CLEANUP_ATTENDANCE_LOGS: chụp thống kê dòng SẮP XOÁ trước khi DELETE, new = số dòng đã xoá', async () => {
+      const previewQb: any = {
+        select: jest.fn().mockReturnThis(),
+        addSelect: jest.fn().mockReturnThis(),
+        where: jest.fn().mockReturnThis(),
+        getRawOne: jest.fn().mockResolvedValue({
+          total: '1200', earliest: '2025-01-02 07:58:00', latest: '2025-12-30 17:30:00', matchedUsers: '18', unmatched: '35',
+        }),
+      };
+      const deleteQb: any = {
+        delete: jest.fn().mockReturnThis(),
+        from: jest.fn().mockReturnThis(),
+        where: jest.fn().mockReturnThis(),
+        execute: jest.fn().mockResolvedValue({ affected: 1200 }),
+      };
+      mockAttendanceLogRepo.createQueryBuilder.mockReturnValueOnce(previewQb).mockReturnValueOnce(deleteQb);
+
+      const result = await service.cleanupOldLogs('2026-01-01', 1);
+
+      expect(result).toEqual({ deleted: 1200, olderThan: '2026-01-01' });
+      // thống kê phải được đọc TRƯỚC khi DELETE chạy
+      expect(previewQb.getRawOne.mock.invocationCallOrder[0]).toBeLessThan(deleteQb.execute.mock.invocationCallOrder[0]);
+      expect(mockAuditService.logActionAsync).toHaveBeenCalledWith(
+        1, 'CLEANUP_ATTENDANCE_LOGS', 'attendance_log', 0,
+        {
+          olderThan: '2026-01-01',
+          totalRows: 1200,
+          earliestRecordTime: '2025-01-02 07:58:00',
+          latestRecordTime: '2025-12-30 17:30:00',
+          distinctMatchedUsers: 18,
+          unmatchedRows: 35,
+        },
+        { deleted: 1200 },
+      );
+    });
+
+    it('cleanupOldLogs không truyền callerId -> giữ hành vi cũ: KHÔNG query thống kê, KHÔNG ghi log', async () => {
+      const deleteQb: any = {
+        delete: jest.fn().mockReturnThis(),
+        from: jest.fn().mockReturnThis(),
+        where: jest.fn().mockReturnThis(),
+        execute: jest.fn().mockResolvedValue({ affected: 5 }),
+      };
+      mockAttendanceLogRepo.createQueryBuilder.mockReturnValueOnce(deleteQb);
+
+      await service.cleanupOldLogs('2026-01-01');
+
+      expect(mockAttendanceLogRepo.createQueryBuilder).toHaveBeenCalledTimes(1);
+      expect(mockAuditService.logActionAsync).not.toHaveBeenCalled();
+    });
+
+    it('syncNow(range, callerId) -> SYNC_ATTENDANCE_LOGS kèm tóm tắt; syncNow không callerId (cron) -> KHÔNG ghi log', async () => {
+      const fakeZk = {
+        createSocket: jest.fn().mockResolvedValue(undefined),
+        getInfo: jest.fn().mockResolvedValue({ logCounts: 0 }),
+        getUsers: jest.fn().mockResolvedValue({ data: [] }),
+        disconnect: jest.fn().mockResolvedValue(undefined),
+        zklibTcp: {},
+      };
+      jest.spyOn(service as any, 'createClient').mockReturnValue(fakeZk);
+      jest.spyOn(service as any, 'upsertDeviceUserCache').mockResolvedValue(undefined);
+
+      await service.syncNow(undefined, 1);
+
+      expect(mockAuditService.logActionAsync).toHaveBeenCalledWith(
+        1, 'SYNC_ATTENDANCE_LOGS', 'attendance_log', 0, null,
+        expect.objectContaining({
+          totalFetchedFromDevice: 0, insertedNew: 0, matchedToUser: 0, unmatchedDeviceUserCount: 0, partialFetch: false,
+        }),
+      );
+
+      mockAuditService.logActionAsync.mockClear();
+      await service.syncNow();
+      expect(mockAuditService.logActionAsync).not.toHaveBeenCalled();
     });
   });
 });

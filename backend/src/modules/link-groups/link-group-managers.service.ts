@@ -14,6 +14,7 @@ import { User } from '../../database/entities/user.entity';
 import { Role } from '../../common/enums/role.enum';
 import { LinkGroupAccessHelper } from './helpers/link-group-access.helper';
 import { PermissionsService } from '../permissions/permissions.service';
+import { AuditService } from '../audit/audit.service';
 
 export interface GroupManagersResult {
   groupId: number;
@@ -37,7 +38,29 @@ export class LinkGroupManagersService {
     @InjectRepository(User)
     private readonly userRepo: Repository<User>,
     private readonly permissionsService: PermissionsService,
+    private readonly auditService: AuditService,
   ) {}
+
+  /**
+   * [AUDIT] Payload thống nhất cho ADD/REMOVE manager & content-staff. Lưu cả
+   * tên/email người bị tác động (không chỉ id) để log vẫn đọc được sau khi
+   * user đó bị đổi tên/xoá.
+   */
+  private buildMemberAuditPayload(
+    group: LinkGroup,
+    target: { id: number; name?: string; email?: string } | null | undefined,
+    userId: number,
+    role: 'secondary_manager' | 'content_staff',
+  ) {
+    return {
+      groupId: group.id,
+      groupName: group.name,
+      userId,
+      userName: target?.name ?? null,
+      userEmail: target?.email ?? null,
+      memberRole: role,
+    };
+  }
 
   /**
    * "Quyền rộng" cho tính năng Quản lý chính/phụ - true nếu role được thấy/
@@ -254,6 +277,15 @@ export class LinkGroupManagersService {
     });
     await this.secondaryRepo.save(created);
 
+    this.auditService.logActionAsync(
+      requesterId,
+      'ADD_LINK_GROUP_MANAGER',
+      'link_group',
+      groupId,
+      null,
+      this.buildMemberAuditPayload(group, targetUser, userId, 'secondary_manager'),
+    );
+
     return this.getManagers(groupId, requesterId, requesterRole, requesterIsRootAdmin);
   }
 
@@ -284,7 +316,18 @@ export class LinkGroupManagersService {
       throw new NotFoundException('Người này không phải Quản lý phụ của nhóm - không có gì để xoá');
     }
 
+    // [AUDIT] dựng payload TRƯỚC remove() - TypeORM xoá `id` khỏi entity sau khi xoá.
+    const removedPayload = this.buildMemberAuditPayload(group, existing.user, userId, 'secondary_manager');
     await this.secondaryRepo.remove(existing);
+
+    this.auditService.logActionAsync(
+      requesterId,
+      'REMOVE_LINK_GROUP_MANAGER',
+      'link_group',
+      groupId,
+      removedPayload,
+      null,
+    );
 
     return this.getManagers(groupId, requesterId, requesterRole, requesterIsRootAdmin);
   }
@@ -338,6 +381,15 @@ export class LinkGroupManagersService {
     });
     await this.contentStaffRepo.save(created);
 
+    this.auditService.logActionAsync(
+      requesterId,
+      'ADD_LINK_GROUP_CONTENT_STAFF',
+      'link_group',
+      groupId,
+      null,
+      this.buildMemberAuditPayload(group, targetUser, userId, 'content_staff'),
+    );
+
     return this.getManagers(groupId, requesterId, requesterRole, requesterIsRootAdmin);
   }
 
@@ -368,7 +420,17 @@ export class LinkGroupManagersService {
       throw new NotFoundException('Người này không phải Nhân viên Content của nhóm - không có gì để xoá');
     }
 
+    const removedPayload = this.buildMemberAuditPayload(group, existing.user, userId, 'content_staff');
     await this.contentStaffRepo.remove(existing);
+
+    this.auditService.logActionAsync(
+      requesterId,
+      'REMOVE_LINK_GROUP_CONTENT_STAFF',
+      'link_group',
+      groupId,
+      removedPayload,
+      null,
+    );
 
     return this.getManagers(groupId, requesterId, requesterRole, requesterIsRootAdmin);
   }

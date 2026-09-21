@@ -88,8 +88,8 @@ export class ZkDeviceController {
     summary:
       'Quét lại toàn bộ log chấm công đang chưa khớp nhân viên (matched_user_id NULL), khớp lại theo mapping hiện tại - dùng khi vừa map thêm người nhưng chưa muốn/chưa thể chạy đồng bộ đầy đủ (không cần kết nối máy chấm công, chỉ đọc/ghi DB)',
   })
-  async rematch() {
-    const updated = await this.zkDeviceService.rematchUnmatchedLogs();
+  async rematch(@Request() req: any) {
+    const updated = await this.zkDeviceService.rematchUnmatchedLogs(req.user.id);
     return { updated };
   }
 
@@ -119,8 +119,8 @@ export class ZkDeviceController {
     summary:
       'Dọn dẹp (xoá vĩnh viễn) log chấm công cũ hơn 1 mốc ngày - dùng khi bảng attendance_logs đã tích luỹ quá lâu, chiếm nhiều dung lượng DB. KHÔNG THỂ HOÀN TÁC. Chỉ Admin.',
   })
-  async cleanupAttendanceLogs(@Query() query: CleanupAttendanceLogsDto) {
-    return this.zkDeviceService.cleanupOldLogs(query.olderThan);
+  async cleanupAttendanceLogs(@Query() query: CleanupAttendanceLogsDto, @Request() req: any) {
+    return this.zkDeviceService.cleanupOldLogs(query.olderThan, req.user.id);
   }
 
   @Get('attendance-summary')
@@ -139,12 +139,15 @@ export class ZkDeviceController {
     summary:
       'Kích hoạt đồng bộ log chấm công ngay lập tức (thủ công). Có thể truyền from/to (YYYY-MM-DD) để chỉ đồng bộ 1 khoảng ngày - giúp nhẹ hơn/nhanh hơn cho các lần sync định kỳ, thay vì luôn quét lại toàn bộ lịch sử. Bỏ trống from/to = đồng bộ toàn bộ như trước.',
   })
-  async syncNow(@Body() dto: SyncAttendanceDto) {
+  async syncNow(@Body() dto: SyncAttendanceDto, @Request() req: any) {
     try {
-      return await this.zkDeviceService.syncNow({
-        from: dto.from ? parseLocalDateStart(dto.from) : undefined,
-        to: dto.to ? parseLocalDateEnd(dto.to) : undefined,
-      });
+      return await this.zkDeviceService.syncNow(
+        {
+          from: dto.from ? parseLocalDateStart(dto.from) : undefined,
+          to: dto.to ? parseLocalDateEnd(dto.to) : undefined,
+        },
+        req.user.id,
+      );
     } catch (err) {
       throw new HttpException(
         `Đồng bộ thất bại: ${this.getErrorMessage(err)}`,
