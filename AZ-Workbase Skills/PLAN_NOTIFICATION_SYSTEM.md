@@ -1,6 +1,6 @@
 # 🔔 PLAN: Hệ thống Thông báo (Notification) — Tự động + Thủ công
 
-> **Trạng thái:** DỰ THẢO v2, chờ chủ dự án chốt các quyết định ở mục 11 trước khi code.
+> **Trạng thái:** DỰ THẢO v2. **Phase 0 + 1 đã xong (2026-09-21)** — xem `WORKFLOW_LOG.md`. Mục 11 vẫn chờ chủ dự án chốt (Phase 1 dùng đề xuất mặc định). **Đã lệch plan:** 5.1/11.13 `is_read` là cột ghi được (không phải cột sinh) — lý do trong WORKFLOW_LOG.
 > **v2 (2026-09-21):** thêm **Thông báo thủ công** (kiểu "email nội bộ": người gửi chọn 1/nhiều/toàn bộ user, theo dõi ai đã đọc/chưa đọc). Các mục có thay đổi/thêm mới được đánh dấu **[MỚI v2]**.
 > **Đối chiếu code:** HEAD `f8ea812` (2026-09-21; commit này chỉ sửa `roles.service.spec.ts`). Mọi khẳng định "hiện trạng" ở mục 0 đều đọc trực tiếp từ code/lệnh thật.
 > **Vị trí đặt file:** `AZ-Workbase Skills/PLAN_NOTIFICATION_SYSTEM.md` (cùng chỗ các `PLAN_*.md` khác).

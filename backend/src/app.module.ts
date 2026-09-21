@@ -30,6 +30,7 @@ import { PeriodicTasksModule } from './modules/periodic-tasks/periodic-tasks.mod
 import { PeriodicTaskStatusesModule } from './modules/periodic-task-statuses/periodic-task-statuses.module';
 import { UploadsModule } from './modules/uploads/uploads.module';
 import { StorageModule } from './modules/storage/storage.module';
+import { NotificationsModule } from './modules/notifications/notifications.module';
 import { KeepAliveController } from './keep-alive/keep-alive.controller';
 @Module({ 
   imports: [
@@ -87,6 +88,8 @@ import { KeepAliveController } from './keep-alive/keep-alive.controller';
     LeaveTypesModule,
     PeriodicTaskStatusesModule,
     PeriodicTasksModule,
+    // @Global - xem PLAN_NOTIFICATION_SYSTEM.md. Bật bằng env NOTIFICATIONS_ENABLED=true
+    NotificationsModule,
     ServeStaticModule.forRoot({
       rootPath: join(process.cwd(), 'public'),
       serveRoot: '/',

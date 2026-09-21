@@ -3190,3 +3190,49 @@ loại phép "Gặp khách" (`leave_types.code = 'meet_client'`). Entry trước
 > vào service). Chưa test trên DB thật (không có quyền truy cập DB production từ phiên này).
 
 ---
+## [2026-09-21] | Thông báo — Phase 0 + Phase 1 (BE nền tảng, chưa móc vào nghiệp vụ) | [Status: Success]
+
+**Actor:** Agent
+
+**Phase 0 (đối chiếu trước khi code):** `git pull` HEAD `238dfec`; `ls migrations` → lớn nhất `1783200000000`
+⇒ migration mới dùng `1783300000000`. Chưa nhận phản hồi cho mục 11 của plan ⇒ Phase 1 chỉ dùng phần liên
+quan với **đề xuất mặc định** của plan (mandatory/coalesce theo bảng 4.3–4.5, giữ tự động 30/90 ngày & thủ
+công 180 ngày cho Phase 6). Các quyết định UI/quyền của thông báo thủ công (11.14–11.21) chưa cần cho Phase 1.
+
+**Files Changed:**
+- `backend/src/database/entities/notification.entity.ts`, `notification-preference.entity.ts`,
+  `notification-broadcast.entity.ts` — 3 entity mới (index/FK đặt tên khớp migration).
+- `backend/src/database/migrations/1783300000000-CreateNotifications.ts` — tạo 3 bảng (broadcasts trước),
+  có sẵn `broadcast_id`/`dismissed_at`/`is_read` cho Phase M1; `up()/down()` đối xứng.
+- `backend/src/modules/notifications/` — `NotificationsModule` (@Global), `NotificationsService`
+  (`emit`/`emitNow`, `list`, `poll`, `markRead`, `markAllRead`, `remove`), `NotificationsController`,
+  `catalog/event-catalog.ts` (21 event, template theo relation, `sanitizeParams` allowlist chống PII),
+  `catalog/recipient-resolvers.ts` (hàm thuần), DTO, 4 file spec.
+- `backend/src/app.module.ts` — đăng ký `NotificationsModule`.
+- `AZ-Workbase Skills/PERMISSIONS.md` — ghi rõ inbox cá nhân chỉ cần đăng nhập.
+
+**Root Cause / Quyết định lệch khỏi plan (cần chủ dự án xác nhận — PLAN 11.13):**
+> Plan đề xuất `is_read` là **cột sinh** từ `read_at`. Thử thật trên MySQL 8: TypeORM 0.3 tra bảng
+> `typeorm_metadata` khi gặp cột sinh mà entity không khai `asExpression` ⇒ `migration:generate` của TOÀN
+> DỰ ÁN crash (`ER_NO_SUCH_TABLE`); khai `asExpression` thì mỗi lần generate lại sinh diff `CHANGE is_read`
+> giả. ⇒ Đã chọn phương án dự phòng: `is_read TINYINT(1) NOT NULL DEFAULT 0` **ghi được**, `read_at` vẫn là
+> nguồn sự thật (mọi truy vấn đọc/đếm dùng `read_at IS NULL`); `is_read` chỉ được set qua `buildReadPatch()`
+> (1 nơi duy nhất) — Phase 6 cron/M1 phải dùng lại hàm này.
+
+**Solution:**
+> Feature flag `NOTIFICATIONS_ENABLED` (mặc định TẮT; chỉ `'true'` mới bật) — tắt thì `emit()` no-op,
+> list/poll trả rỗng ⇒ deploy code trước khi chạy migration vẫn an toàn. Mọi cột thời gian ghi từ JS `Date`
+> (không dựa `DEFAULT CURRENT_TIMESTAMP`) để đi qua cùng 1 cơ chế quy đổi múi giờ của mysql2.
+> Thông báo thủ công: `remove` chỉ set `dismissed_at`; `list` chỉ nạp `broadcast.body` (không lộ `audience_params`).
+
+**Notes (verify thật):**
+> `tsc --noEmit` sạch; `nest build` sạch; `npx jest` **42 suite / 798 test pass** (62 test mới của module).
+> Mutation check: bỏ lọc actor / bỏ lọc `recipientId` ở `markRead` / đổi "ẩn" thành "xoá" thủ công ⇒ test
+> tương ứng đỏ. Đã chạy migration `up`/`down` + `SchemaBuilder.log()` trên **MySQL 8.0.46 thật** (DB tạm chỉ
+> có bảng `users` giả — chuỗi migration cũ không chạy được từ DB rỗng, lỗi có sẵn từ trước): diff của 3 bảng
+> mới = **0**. Kiểm thử tích hợp thật (emit/dedupe/coalesce/preference/batch/cursor/poll/IDOR/ẩn thủ công)
+> ở cả `TZ=Asia/Ho_Chi_Minh` lẫn `UTC` với MySQL `+00:00`: tất cả PASS. **Chưa chạy migration lên DB của
+> chủ dự án** — cần tự `npm run migration:run` rồi đặt `NOTIFICATIONS_ENABLED=true`. Chưa có endpoint
+> preferences/cron dọn dẹp (Phase 6), chưa móc `emit()` vào Task/Customer (Phase 2–3), chưa có FE (Phase 4).
+
+---
