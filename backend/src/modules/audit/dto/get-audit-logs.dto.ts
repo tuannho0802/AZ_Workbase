@@ -49,8 +49,14 @@ export class GetAuditLogsDto {
   @IsDateString()
   toDate?: string;
 
-  @ApiProperty({ required: false, description: 'Tìm kiếm theo tên người thực hiện' })
+  @ApiProperty({
+    required: false,
+    description:
+      'Tìm theo TÊN KHÁCH HÀNG (đối tượng bị tác động) - tách riêng khỏi `userId` (lọc chính xác người ' +
+      'thực hiện qua dropdown FE, xem `SalesUserSelect`). Trước đây field này (`search`) tìm đồng thời cả ' +
+      'user.name OR customer.name - đã bỏ nhánh user.name vì FE giờ dùng userId chính xác thay vì gõ tên.',
+  })
   @IsOptional()
   @IsString()
-  search?: string;
+  customerSearch?: string;
 }

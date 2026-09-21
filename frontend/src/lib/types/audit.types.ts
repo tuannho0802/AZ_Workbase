@@ -32,13 +32,15 @@ export interface AuditSettings {
 export interface AuditFilters {
   page?: number;
   limit?: number;
+  /** Lọc CHÍNH XÁC theo người thực hiện (chọn từ dropdown User, không phải gõ tên). */
   userId?: number;
   action?: string;
   entityType?: string;
   excludeEntityType?: string;
   fromDate?: string;
   toDate?: string;
-  search?: string;
+  /** Tìm theo TÊN KHÁCH HÀNG (đối tượng bị tác động) - tách riêng khỏi `userId`. */
+  customerSearch?: string;
 }
 
 export interface PaginatedAuditResponse {

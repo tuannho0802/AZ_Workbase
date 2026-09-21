@@ -146,7 +146,7 @@ export class AuditService {
       excludeEntityType,
       fromDate,
       toDate,
-      search,
+      customerSearch,
     } = filters;
 
     const qb = this.auditLogRepository
@@ -194,8 +194,12 @@ export class AuditService {
       qb.andWhere('log.createdAt < :toDate', { toDate: end.toISOString() });
     }
 
-    if (search) {
-      qb.andWhere('(user.name LIKE :search OR customer.name LIKE :search)', { search: `%${search}%` });
+    // ⚠️ FE giờ tách 2 ô riêng: "Người thực hiện" dùng `userId` (lọc chính
+    // xác qua dropdown, xem `SalesUserSelect`), chỉ còn ô này để tìm theo
+    // TÊN KHÁCH HÀNG (đối tượng bị tác động) - không còn OR với user.name
+    // như bản cũ.
+    if (customerSearch) {
+      qb.andWhere('customer.name LIKE :customerSearch', { customerSearch: `%${customerSearch}%` });
     }
 
     const [data, total] = await qb

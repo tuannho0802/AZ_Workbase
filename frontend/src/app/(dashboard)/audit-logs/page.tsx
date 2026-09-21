@@ -1,9 +1,9 @@
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useMemo } from 'react';
 import {
   Table, Card, Tag, Button, Space, Row, Col, Typography,
-  Tooltip, Input, Select, DatePicker, Drawer, App,
+  Tooltip, Input, Select, Cascader, DatePicker, Drawer, App,
   Badge, Avatar, Divider, Switch, InputNumber, Alert, Tabs, Pagination
 } from 'antd';
 import {
@@ -21,6 +21,7 @@ import dayjs from 'dayjs';
 import { AuditDiffViewer } from '@/components/audit/AuditDiffViewer';
 import { useMyPermissions } from '@/lib/hooks/useMyPermissions';
 import { useRoleColorMap } from '@/lib/hooks/useRoleColorMap';
+import { SalesUserSelect } from '@/components/customers/SalesUserSelect';
 import {
   ACTION_META,
   ACTION_GROUP_LABELS,
@@ -32,6 +33,23 @@ import {
 
 const { Text, Title, Link } = Typography;
 const { RangePicker } = DatePicker;
+
+// ─── Cascader "Loại hành động" (2 cấp: Nhóm nghiệp vụ -> Hành động cụ thể) ──
+// ~94 action nếu để phẳng 1 dropdown rất khó dò (yêu cầu người dùng: "dropdown
+// khá dài, cần filter dễ tìm hơn"). Cascader cho phép: (1) thu gọn theo nhóm,
+// chỉ mở nhóm cần xem, (2) gõ tìm - antd tự khớp trên CẢ 2 cấp (tên nhóm lẫn
+// tên action) khi bật `showSearch`, nên gõ "chấm công" hay gõ "khớp lại" đều
+// ra kết quả. Tính 1 lần ở module scope (không đổi theo state) - phần action
+// BE có thật nhưng FE chưa kịp gắn nhãn được gộp thêm động trong component
+// (phụ thuộc `availableActions` fetch từ API).
+const BASE_ACTION_CASCADER_OPTIONS = ACTION_GROUP_ORDER.filter((g) => g !== 'audit').map((groupKey) => ({
+  value: groupKey,
+  label: ACTION_GROUP_LABELS[groupKey],
+  children: Object.entries(ACTION_META)
+    .filter(([k, v]) => v.group === groupKey && k !== 'USER_LOGIN')
+    .map(([k, v]) => ({ value: k, label: v.label })),
+}));
+const UNKNOWN_ACTION_GROUP_VALUE = '__unknown__';
 
 const ROLE_LABELS: Record<string, string> = {
   admin: 'Admin',
@@ -160,10 +178,39 @@ export default function AuditLogsPage() {
   const [settingsLoading, setSettingsLoading] = useState(false);
 
   // Filters
-  const [search, setSearch] = useState('');
+  // ⚠️ Tách từ 1 ô "Tìm tên người thực hiện/khách hàng" (search mờ, OR cả 2)
+  // thành 2 filter riêng biệt theo yêu cầu người dùng: `filterUserId` lọc
+  // CHÍNH XÁC người thực hiện qua dropdown (chọn từ danh sách User thật,
+  // không gõ tay), `filterCustomerSearch` tìm theo tên khách hàng (vẫn gõ
+  // tay vì khách hàng không có sẵn dropdown ở trang này).
+  const [filterUserId, setFilterUserId] = useState<number | undefined>();
+  const [filterCustomerSearch, setFilterCustomerSearch] = useState('');
   const [filterAction, setFilterAction] = useState<string | undefined>();
   const [filterEntityType, setFilterEntityType] = useState<string | undefined>();
   const [dateRange, setDateRange] = useState<[dayjs.Dayjs | null, dayjs.Dayjs | null] | null>(null);
+
+  // Cascader value là 1 mảng path [group, action] - suy ra từ `filterAction`
+  // (state canonical vẫn chỉ lưu action lá, dùng chung với `fetchLogs`/query params).
+  const actionCascaderValue = useMemo(() => {
+    if (!filterAction) return undefined;
+    const group = ACTION_META[filterAction]?.group ?? UNKNOWN_ACTION_GROUP_VALUE;
+    return [group, filterAction];
+  }, [filterAction]);
+
+  // Action BE có thật nhưng FE chưa kịp gắn nhãn - gộp thêm 1 nhóm "Khác"
+  // vào cuối danh sách Cascader, không để biến mất khỏi bộ lọc.
+  const actionCascaderOptions = useMemo(() => {
+    const unknownActions = availableActions.filter((a) => a !== 'USER_LOGIN' && !ACTION_META[a]);
+    if (!unknownActions.length) return BASE_ACTION_CASCADER_OPTIONS;
+    return [
+      ...BASE_ACTION_CASCADER_OPTIONS,
+      {
+        value: UNKNOWN_ACTION_GROUP_VALUE,
+        label: 'Khác (chưa có nhãn)',
+        children: unknownActions.map((a) => ({ value: a, label: a })),
+      },
+    ];
+  }, [availableActions]);
 
   // ⚠️ Tab "Đăng nhập" tách riêng (yêu cầu người dùng: log đăng nhập gây
   // nhiễu tab chính, không filter/xử lý được gì thêm ở đó). State/pagination
@@ -174,7 +221,10 @@ export default function AuditLogsPage() {
   const [loginLoading, setLoginLoading] = useState(false);
   const [loginPage, setLoginPage] = useState(1);
   const [loginPageSize, setLoginPageSize] = useState(20);
-  const [loginSearch, setLoginSearch] = useState('');
+  // ⚠️ Đổi từ Input gõ tên -> dropdown chọn User (đồng bộ cách làm với tab
+  // chính) - lọc CHÍNH XÁC qua `userId`, không còn phụ thuộc field `search`
+  // cũ (đã bỏ, xem `customerSearch` mới chỉ dành cho tên khách hàng).
+  const [loginUserId, setLoginUserId] = useState<number | undefined>();
   const [loginDateRange, setLoginDateRange] = useState<[dayjs.Dayjs | null, dayjs.Dayjs | null] | null>(null);
   const [loginTabLoaded, setLoginTabLoaded] = useState(false);
 
@@ -202,7 +252,8 @@ export default function AuditLogsPage() {
       const filters: AuditFilters = {
         page: pg,
         limit: ps,
-        search: search || undefined,
+        userId: filterUserId,
+        customerSearch: filterCustomerSearch || undefined,
         action: filterAction,
         entityType: filterEntityType,
         // Tab chính luôn ẩn log đăng nhập - xem riêng ở tab "Đăng nhập".
@@ -225,7 +276,7 @@ export default function AuditLogsPage() {
     } finally {
       setLoading(false);
     }
-  }, [page, pageSize, search, filterAction, filterEntityType, dateRange, message]);
+  }, [page, pageSize, filterUserId, filterCustomerSearch, filterAction, filterEntityType, dateRange, message]);
 
   const fetchLoginLogs = useCallback(async (pg = loginPage, ps = loginPageSize) => {
     setLoginLoading(true);
@@ -233,7 +284,7 @@ export default function AuditLogsPage() {
       const filters: AuditFilters = {
         page: pg,
         limit: ps,
-        search: loginSearch || undefined,
+        userId: loginUserId,
         entityType: 'auth',
         fromDate: loginDateRange?.[0]?.startOf('day').toISOString(),
         toDate: loginDateRange?.[1]?.endOf('day').toISOString(),
@@ -253,7 +304,7 @@ export default function AuditLogsPage() {
     } finally {
       setLoginLoading(false);
     }
-  }, [loginPage, loginPageSize, loginSearch, loginDateRange, message]);
+  }, [loginPage, loginPageSize, loginUserId, loginDateRange, message]);
 
   useEffect(() => {
     // ⚠️ FIX BUG THẬT (rà soát UI Permission): trước đây check cứng
@@ -281,14 +332,15 @@ export default function AuditLogsPage() {
   // ── Handlers ───────────────────────────────────────────────────────────
   const handleSearch = () => { setPage(1); fetchLogs(1, pageSize); };
   const handleReset = () => {
-    setSearch(''); setFilterAction(undefined); setFilterEntityType(undefined);
+    setFilterUserId(undefined); setFilterCustomerSearch('');
+    setFilterAction(undefined); setFilterEntityType(undefined);
     setDateRange(null); setPage(1);
     setTimeout(() => fetchLogs(1, pageSize), 0);
   };
 
   const handleLoginSearch = () => { setLoginPage(1); fetchLoginLogs(1, loginPageSize); };
   const handleLoginReset = () => {
-    setLoginSearch(''); setLoginDateRange(null); setLoginPage(1);
+    setLoginUserId(undefined); setLoginDateRange(null); setLoginPage(1);
     setTimeout(() => fetchLoginLogs(1, loginPageSize), 0);
   };
   const handleTabChange = (key: string) => {
@@ -556,55 +608,48 @@ export default function AuditLogsPage() {
               {/* Filters */}
               <Card variant="outlined" style={{ marginBottom: 16, borderRadius: 8 }}>
                 <Row gutter={[12, 12]} align="middle">
-                  <Col xs={24} md={6}>
-                    <Input placeholder="Tìm tên người thực hiện/khách hàng..." prefix={<SearchOutlined />} 
-                      value={search} onChange={e => setSearch(e.target.value)} onPressEnter={handleSearch} allowClear />
-                  </Col>
+                  {/* ⚠️ Tách từ 1 ô "Tìm tên người thực hiện/khách hàng" thành 2 ô riêng
+                      theo yêu cầu người dùng: người thực hiện lọc CHÍNH XÁC qua dropdown
+                      chọn User (tái dùng SalesUserSelect - đã có sẵn showSearch theo
+                      tên/email + avatar/role tag), khách hàng vẫn gõ tay tìm theo tên. */}
                   <Col xs={24} md={5}>
-                    <Select
-                      placeholder="Loại hành động"
-                      value={filterAction}
-                      onChange={setFilterAction}
-                      allowClear
-                      showSearch
-                      optionFilterProp="label"
-                      style={{ width: '100%' }}
-                      // Gom nhóm theo ACTION_GROUP_ORDER (audit-meta.ts) - ~94 action nếu
-                      // để phẳng 1 danh sách rất khó dò, nhóm theo nghiệp vụ dễ tìm hơn.
-                      options={[
-                        ...ACTION_GROUP_ORDER.filter((g) => g !== 'audit').map((groupKey) => ({
-                          label: ACTION_GROUP_LABELS[groupKey],
-                          title: ACTION_GROUP_LABELS[groupKey],
-                          options: Object.entries(ACTION_META)
-                            .filter(([k, v]) => v.group === groupKey && k !== 'USER_LOGIN')
-                            .map(([k, v]) => ({
-                              label: v.label,
-                              value: k,
-                            })),
-                        })),
-                        // Action BE có thật nhưng FE chưa kịp thêm nhãn (fallback) - vẫn
-                        // cho lọc được, chỉ hiện tên kỹ thuật thay vì biến mất khỏi danh sách.
-                        ...(availableActions.filter((a) => a !== 'USER_LOGIN' && !ACTION_META[a]).length
-                          ? [{
-                            label: 'Khác (chưa có nhãn)',
-                            title: 'Khác (chưa có nhãn)',
-                            options: availableActions
-                              .filter((a) => a !== 'USER_LOGIN' && !ACTION_META[a])
-                              .map((a) => ({ label: a, value: a })),
-                          }]
-                          : []),
-                      ]}
-                      optionRender={(option) => {
-                        const meta = ACTION_META[option.value as string];
-                        return meta ? <Tag color={meta.color} style={{ marginInlineEnd: 0 }}>{meta.label}</Tag> : <Tag style={{ marginInlineEnd: 0 }}>{option.value}</Tag>;
-                      }}
+                    <SalesUserSelect
+                      value={filterUserId}
+                      onChange={(userId) => setFilterUserId(userId ?? undefined)}
+                      placeholder="Người thực hiện..."
+                      hidePreviewCard
                     />
                   </Col>
                   <Col xs={24} md={5}>
+                    <Input placeholder="Tìm tên khách hàng..." prefix={<SearchOutlined />}
+                      value={filterCustomerSearch} onChange={e => setFilterCustomerSearch(e.target.value)} onPressEnter={handleSearch} allowClear />
+                  </Col>
+                  <Col xs={24} md={5}>
+                    {/* Cascader 2 cấp (Nhóm -> Hành động) thay Select phẳng cũ - yêu
+                        cầu người dùng: "dropdown khá dài, cần filter dễ tìm hơn".
+                        `showSearch` khớp trên cả nhãn nhóm lẫn nhãn action, gõ
+                        "chấm công" hay gõ đúng tên action đều ra kết quả ngay,
+                        không cần cuộn qua hết ~94 dòng. */}
+                    <Cascader
+                      placeholder="Loại hành động"
+                      value={actionCascaderValue}
+                      onChange={(value) => setFilterAction(value ? (value[value.length - 1] as string) : undefined)}
+                      options={actionCascaderOptions}
+                      allowClear
+                      showSearch={{
+                        filter: (inputValue, path) =>
+                          path.some((option) => String(option.label ?? '').toLowerCase().includes(inputValue.toLowerCase())),
+                      }}
+                      displayRender={(labels) => labels[labels.length - 1]}
+                      style={{ width: '100%' }}
+                      expandTrigger="hover"
+                    />
+                  </Col>
+                  <Col xs={24} md={4}>
                     <Select placeholder="Đối tượng" value={filterEntityType} onChange={setFilterEntityType} allowClear style={{ width: '100%' }}
                       options={Object.entries(ENTITY_TYPE_LABELS).map(([k, v]) => ({ label: v, value: k }))} />
                   </Col>
-                  <Col xs={24} md={6}>
+                  <Col xs={24} md={3}>
                     <RangePicker style={{ width: '100%' }} format="DD/MM/YYYY" value={dateRange} onChange={v => setDateRange(v as any)} />
                   </Col>
                   <Col xs={24} md={2}>
@@ -680,8 +725,14 @@ export default function AuditLogsPage() {
               <Card variant="outlined" style={{ marginBottom: 16, borderRadius: 8 }}>
                 <Row gutter={[12, 12]} align="middle">
                   <Col xs={24} md={8}>
-                    <Input placeholder="Tìm theo tên người đăng nhập..." prefix={<SearchOutlined />}
-                      value={loginSearch} onChange={e => setLoginSearch(e.target.value)} onPressEnter={handleLoginSearch} allowClear />
+                    {/* Đổi từ Input gõ tên -> dropdown chọn User, đồng bộ cách làm với
+                        tab chính (lọc chính xác qua userId thay vì gõ tay). */}
+                    <SalesUserSelect
+                      value={loginUserId}
+                      onChange={(userId) => setLoginUserId(userId ?? undefined)}
+                      placeholder="Người đăng nhập..."
+                      hidePreviewCard
+                    />
                   </Col>
                   <Col xs={24} md={8}>
                     <RangePicker style={{ width: '100%' }} format="DD/MM/YYYY" value={loginDateRange} onChange={v => setLoginDateRange(v as [dayjs.Dayjs | null, dayjs.Dayjs | null] | null)} />
