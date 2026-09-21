@@ -1,6 +1,6 @@
 # 🔔 PLAN: Hệ thống Thông báo (Notification) — Tự động + Thủ công
 
-> **Trạng thái:** DỰ THẢO v2. **Phase 0 + 1 đã xong (2026-09-21)** — xem `WORKFLOW_LOG.md`. Mục 11 vẫn chờ chủ dự án chốt (Phase 1 dùng đề xuất mặc định). **Đã lệch plan:** 5.1/11.13 `is_read` là cột ghi được (không phải cột sinh) — lý do trong WORKFLOW_LOG.
+> **Trạng thái:** DỰ THẢO v2. **Phase 0 + 1 + 3 (BE) + 4 (FE, điều hướng cơ bản) đã xong (2026-09-21)** — xem `WORKFLOW_LOG.md`. **Phase 2 (móc Task) CHƯA làm** ⇒ thông báo Task chưa phát ra. Còn thiếu xác minh: `nest build`/`next build`/full test. Mục 11 vẫn chờ chủ dự án chốt (Phase 1 dùng đề xuất mặc định). **Đã lệch plan:** 5.1/11.13 `is_read` là cột ghi được (không phải cột sinh) — lý do trong WORKFLOW_LOG.
 > **v2 (2026-09-21):** thêm **Thông báo thủ công** (kiểu "email nội bộ": người gửi chọn 1/nhiều/toàn bộ user, theo dõi ai đã đọc/chưa đọc). Các mục có thay đổi/thêm mới được đánh dấu **[MỚI v2]**.
 > **Đối chiếu code:** HEAD `f8ea812` (2026-09-21; commit này chỉ sửa `roles.service.spec.ts`). Mọi khẳng định "hiện trạng" ở mục 0 đều đọc trực tiếp từ code/lệnh thật.
 > **Vị trí đặt file:** `AZ-Workbase Skills/PLAN_NOTIFICATION_SYSTEM.md` (cùng chỗ các `PLAN_*.md` khác).
@@ -507,9 +507,9 @@ CSS chung trong `globals.css`:
 |---|---|---|---|
 | **0** | Chốt mục 11; `git pull` + `ls migrations` lấy timestamp thật | S | Bắt buộc trước code |
 | **1** | BE nền tảng: **3 entity** (`notifications`, `notification_preferences`, `notification_broadcasts`) + migration, `NotificationsModule` (Global), catalog, resolver, `emit()`, endpoint list/poll/read/read-all/delete, test | L | Chưa móc vào nghiệp vụ nào. **[v2]** Tạo sẵn cột `broadcast_id/dismissed_at/is_read` ngay từ đầu để khỏi phải migration sửa bảng sau |
-| **2** | Móc **Task** (mirror 17 audit action, gồm coalesce checklist) | M | Làm Task trước: action đã chuẩn hoá |
-| **3** | Móc **Customer**: create/update (allowlist)/remove/note/assignment + **batch `bulkAssign`** | M–L | Ca khó nhất là gộp batch |
-| **4** | FE hộp thư: chuông, dropdown, `/thong-bao`, polling + toast, `resolve-link`, điều hướng cơ bản (dùng `?id=` hiện có) | M | Dùng được ngay không cần highlight |
+| **2** | ⏳ **CHƯA XONG** — Móc **Task** (mirror 17 audit action, gồm coalesce checklist) | M | Làm Task trước: action đã chuẩn hoá |
+| **3** | ✅ **XONG (2026-09-21)** — Móc **Customer**: create/update (allowlist)/remove/note/assignment + **batch `bulkAssign`** | M–L | Ca khó nhất là gộp batch |
+| **4** | ✅ **XONG (2026-09-21, mức cơ bản)** — FE hộp thư: chuông, dropdown, `/thong-bao`, polling + toast, `resolve-link`, điều hướng cơ bản (dùng `?id=` hiện có) | M | Dùng được ngay không cần highlight |
 | **M1 [MỚI v2]** | **BE thủ công:** migration seed 2 permission, `notification-broadcasts` (preview/send/list/detail/recipients), audience resolver, audit, throttle, test (mục 9) | M–L | **Chỉ phụ thuộc Phase 1** — có thể làm song song/ngay sau Phase 1, **không cần** Phase 2–3 |
 | **M2 [MỚI v2]** | **FE thủ công:** modal chi tiết trong hộp thư (cần Phase 4), 2 trang `/thong-bao/gui` + `/thong-bao/da-gui`, nav gating, form + preview + Drawer theo dõi đọc/chưa đọc | M | Cần Phase 4 (chuông/poll) + M1 |
 | **5** | Deep-link + highlight tự động: `useNotificationFocus`, CSS, BE `focusId` cho `GET /customers`, reset bộ lọc Task, banner, thẻ ghim, trợ năng | M | Phần tinh tế nhất |

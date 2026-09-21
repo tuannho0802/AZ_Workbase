@@ -10,7 +10,6 @@ import {
   MenuUnfoldOutlined,
   HomeOutlined,
   CalendarOutlined,
-  BellOutlined,
 } from '@ant-design/icons';
 import { useAuthStore } from '@/lib/stores/auth.store';
 import { getVisibleNavItems, NAV_ITEMS } from '@/lib/nav-config';
@@ -38,8 +37,6 @@ const { Header, Content, Sider, Footer } = Layout;
 // không qua nav-config).
 const PAGE_META: Record<string, { label: string; icon: React.ReactNode }> = {
   home: { label: 'Trang chủ', icon: <HomeOutlined /> },
-  // Trang hộp thư đầy đủ (mở từ chuông ở Header) - không có mục sidebar riêng.
-  'thong-bao': { label: 'Thông báo', icon: <BellOutlined /> },
   ...Object.fromEntries(NAV_ITEMS.map((item) => [item.key, { label: item.label, icon: item.icon }])),
 };
 

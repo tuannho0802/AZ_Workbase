@@ -3237,28 +3237,35 @@ công 180 ngày cho Phase 6). Các quyết định UI/quyền của thông báo 
 
 ---
 
-## [2026-09-21 10:55] | Công việc định kỳ — nhãn tiến độ "X/Z" + màu trên nút Checklist (mọi view) | [Status: Success]
+## [2026-09-21] | Thông báo — Phase 3 (móc Customer, BE) + Phase 4 (hộp thư FE) | [Status: Success — còn việc xác minh, xem Notes]
 
-**Actor:** Agent
+**Actor:** Agent (bàn giao qua 2 phiên; commit `fcc7e23`). Entry này ghi sau khi `git pull` HEAD `fcc7e23` và đọc trực tiếp code (không dựa vào báo cáo phiên trước).
 
-**Files Changed:**
-- `backend/src/modules/periodic-tasks/periodic-task-links.service.ts` — thêm `getChildrenChecklistProgressBatch()` (đếm Task con theo nhóm, có `applyViewFilter`)
-- `backend/src/modules/periodic-tasks/periodic-task-checklist-items.service.ts` — thêm `attachChecklistProgressToList()` (item thật + Task con)
-- `backend/src/modules/periodic-tasks/periodic-tasks.controller.ts` — `findAll()` đính `checklistProgress: {done,total}` cho từng Task
-- `backend/src/modules/periodic-tasks/*.spec.ts` — test cho 2 hàm mới
-- `frontend/src/lib/utils/checklistProgress.ts` (+ `.test.ts`) — `getChecklistProgress()`/`getChecklistTone()`
-- `frontend/src/components/periodic-tasks/TaskActionsBar.tsx` — nút Checklist hiện "X/Z", màu đỏ (< 1/2) / vàng (≥ 1/2, chưa xong) / xanh (xong đủ)
-- `frontend/src/lib/api/periodic-tasks.api.ts` — thêm field `checklistProgress?`
-- `frontend/src/app/(dashboard)/cong-viec-dinh-ky/page.tsx` — cột Thao tác 500 → 540px
+**Files Changed (24 file — 4 sửa, 20 mới):**
+- `backend/src/modules/customers/customers.service.ts` — chỉ THÊM: `notifySafely()` (try/catch + Logger, chạy trong `waitUntil`, no-op khi `NOTIFICATIONS_ENABLED` tắt), `captureNotifySnapshot()`, `emitCustomerUpdateNotifications()`; móc vào `create`, `update`, `remove`, `createNote`, `bulkAssign`, `updateAssignment`, `reclaimAssignment`.
+- `backend/src/modules/customers/helpers/customer-notification.helper.ts` (+ `.spec.ts`) — hàm thuần: diff theo allowlist, `groupBulkAssignForNotification`, `excludeRecipients`, `toRecipientCustomer`.
+- `backend/src/modules/customers/customers.service.spec.ts` — thêm test móc thông báo.
+- `frontend/src/lib/{types/notification.types.ts, api/notifications.api.ts, stores/notification-ui.store.ts, utils/relative-time.ts}`; `lib/hooks/{useNotifications, useNotificationActions, useNotificationPoll}.ts(x)`; `lib/notifications/{resolve-link, toast-plan}.ts` (+ test).
+- `frontend/src/components/notifications/{NotificationBell, NotificationPanel, NotificationRow, NotificationDetailModal}.tsx` (+ `NotificationRow.test.tsx`); trang `app/(dashboard)/thong-bao/page.tsx`.
+- `frontend/src/app/(dashboard)/layout.tsx` — gắn chuông ở Header + `NotificationDetailModal`, nav key `thong-bao`.
+- `frontend/src/app/(dashboard)/customers/page.tsx` — effect đọc `?id=` đổi deps `[]` → `[searchParams]`.
 
-**Solution:**
-> `GET /periodic-tasks` (danh sách) trước đây KHÔNG có dữ liệu checklist nên FE không đếm được ở Bảng/Ngày/Kanban.
-> BE nay đính `checklistProgress` bằng 2 query gom nhóm (không N+1), cùng cách đếm với `TaskChecklistModal`
-> (checklist item thật + Task con liên kết trực tiếp, Task con đã lọc theo scope người xem). `TaskActionsBar` dùng
-> chung nên cả 3 view tự có. Không có mục nào (total = 0) → giữ nút Checklist mặc định, không tô màu.
+**Event Customer đã phát (verify từ code):** `customer.created`, `customer.updated`, `customer.owner_changed`, `customer.deleted`, `customer.note_created`, `customer.assigned` (bulkAssign, gộp theo người nhận), `customer.assignment_changed`, `customer.assignment_reclaimed`.
 
-**Notes:**
-> Không có migration/đổi schema. `tsc --noEmit` (BE+FE) sạch, `npm run build` FE sạch, jest `periodic-tasks`
-> 7 suite / 122 test pass, vitest util 7 test pass, eslint file đã sửa sạch. Chưa chạy trên DB thật.
+**Root Cause / Quyết định lệch plan (cần chủ dự án xác nhận):**
+> 1. `bulkAssign` có thể phát tối đa 2 thông báo/người nhận (1 "phụ trách chính", 1 "được chia") vì template phân biệt 2 vai trò.
+> 2. `customer.updated` chỉ báo `status`, `closedDate`, `departmentId`; đổi người phụ trách đã có `customer.owner_changed` riêng, người vừa nhận `owner_changed` không nhận thêm `updated`.
+> 3. Đổi sang `status = closed` tự set `closedDate` ⇒ thông báo ghi cả 2 field.
+> 4. `update()`/`remove()` chụp snapshot bằng 1 query riêng vì `findOne()` có thể bị UI Visibility xoá `salesUserId`/`marketingUserId`.
+> 5. FE: bấm thông báo khi đang đứng sẵn ở `/customers` trước đây không mở Drawer (effect chỉ chạy lúc mount) ⇒ đổi deps sang `[searchParams]`.
+> 6. `NotificationDetailModal` (thuộc M2 theo plan) đã được dựng sẵn ở Phase 4 để chuông/modal gắn cùng layout.
+
+**Solution / Điều hướng hiện tại (mức cơ bản, Phase 5 sẽ nâng cấp):**
+> Khách đơn → `/customers?id=<id>`; batch → `/customers`; Task → `/cong-viec-dinh-ky?focus=<id>&nid=<id>` (hợp đồng URL cuối của PLAN 7.3) nhưng **trang Công việc định kỳ CHƯA đọc `focus`/`nid`** (Phase 5).
+
+**Notes (trung thực về mức xác minh):**
+> Số liệu test dưới đây do phiên trước báo, **phiên ghi log này KHÔNG chạy lại** (theo yêu cầu): `tsc --noEmit` BE sạch; `jest src/modules/customers` 4 suite / 100 test pass; vitest 4 file mới của Phase 4 = 27/27 pass (đã sửa test "version tăng → toast → bấm toast" bằng `waitFor`); có cố ý phá 3 chỗ logic ⇒ test đỏ tương ứng.
+> **CHƯA làm/chưa xác minh:** `nest build`, `next build`, full `jest`/`vitest`; 5 lỗi `tsc` FE ở `logo.png` (layout/error/global-error/not-found) + `CountBadge` (styled-jsx) nghi là baseline nhưng chưa đối chiếu bằng `git stash`; chênh 802 (bạn chạy) vs 798 (log Phase 1) test chưa giải thích.
+> **Phase 2 (móc Task) CHƯA có trong repo** — ngoài `customers.service`, không nơi nào gọi `notificationsService`, nên thông báo Task chưa phát ra dù FE đã có link `?focus=`. Chưa chạy migration `1783300000000` lên DB thật; cần `npm run migration:run` rồi đặt `NOTIFICATIONS_ENABLED=true`.
 
 ---

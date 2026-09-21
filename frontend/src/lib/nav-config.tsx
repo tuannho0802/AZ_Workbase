@@ -23,6 +23,7 @@ import {
   ScheduleOutlined,
   BgColorsOutlined,
   HistoryOutlined,
+  BellOutlined,
 } from '@ant-design/icons';
 
 export interface NavItem {
@@ -145,6 +146,18 @@ export const NAV_ITEMS: NavItem[] = [
     path: '/nghi-phep',
     roles: null,
     permission: 'leave_requests.request',
+  },
+  {
+    key: 'thong-bao',
+    label: 'Thông báo',
+    description: 'Hộp thư thông báo của bạn (khách hàng, công việc, thông báo từ quản lý)',
+    icon: <BellOutlined />,
+    path: '/thong-bao',
+    // Hộp thư CÁ NHÂN: chỉ cần đăng nhập, không có permission riêng (BE chỉ
+    // dùng JwtAuthGuard, `recipientId` luôn = user hiện tại - xem PERMISSIONS.md
+    // mục Thông báo) ⇒ `roles: null` và KHÔNG khai `permission` là ĐÚNG, khác
+    // các mục khác. Số chưa đọc hiện ở badge qua `useSidebarBadgeCounts()`.
+    roles: null,
   },
   {
     key: 'profile',
