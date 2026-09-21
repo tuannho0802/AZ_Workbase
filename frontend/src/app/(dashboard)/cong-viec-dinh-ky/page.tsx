@@ -81,6 +81,36 @@ const { Title, Text } = Typography;
 const { RangePicker } = DatePicker;
 
 /**
+ * Quick filter thời gian nhanh. Tuần luôn bắt đầu từ Thứ Hai (chuẩn VN),
+ * không phụ thuộc locale dayjs. Kết quả set thẳng vào `dateRange`, BE lọc theo
+ * kiểu giao khoảng (periodEndDate >= dateFrom && periodStartDate <= dateTo).
+ */
+type QuickRangeKey = 'today' | 'thisWeek' | 'thisMonth' | 'lastMonth';
+const QUICK_RANGES: { key: QuickRangeKey; label: string }[] = [
+    { key: 'today', label: 'Hôm nay' },
+    { key: 'thisWeek', label: 'Tuần này' },
+    { key: 'thisMonth', label: 'Tháng này' },
+    { key: 'lastMonth', label: 'Tháng trước' },
+];
+const getQuickRange = (key: QuickRangeKey): [Dayjs, Dayjs] => {
+    const now = dayjs();
+    switch (key) {
+        case 'today':
+            return [now.startOf('day'), now.endOf('day')];
+        case 'thisWeek': {
+            const monday = now.startOf('day').subtract((now.day() + 6) % 7, 'day');
+            return [monday, monday.add(6, 'day').endOf('day')];
+        }
+        case 'thisMonth':
+            return [now.startOf('month'), now.endOf('month')];
+        case 'lastMonth': {
+            const lm = now.subtract(1, 'month');
+            return [lm.startOf('month'), lm.endOf('month')];
+        }
+    }
+};
+
+/**
  * truncateText - Trim CỨNG bằng ký tự (JS `.slice`), KHÔNG dựa vào CSS
  * `ellipsis`/`maxWidth:100%` như trước. BUG THẬT (2026-09-21, chủ dự án báo
  * qua ảnh chụp Tab "Bảng"): chuỗi `Mô tả`/`Ghi chú` dài LIỀN không có khoảng
@@ -166,6 +196,15 @@ export default function PeriodicTasksPage() {
     const [primaryAssigneeId, setPrimaryAssigneeId] = useState<number | undefined>(undefined);
     const [departmentId, setDepartmentId] = useState<number | undefined>(undefined);
     const [dateRange, setDateRange] = useState<[Dayjs | null, Dayjs | null] | null>(null);
+    // Quick filter đang active = dateRange hiện tại khớp đúng 1 preset (chọn custom => tự bỏ highlight).
+    const activeQuickRange = useMemo(() => {
+        if (!dateRange?.[0] || !dateRange?.[1]) return null;
+        const found = QUICK_RANGES.find(({ key }) => {
+            const [from, to] = getQuickRange(key);
+            return dateRange[0]!.isSame(from, 'day') && dateRange[1]!.isSame(to, 'day');
+        });
+        return found?.key ?? null;
+    }, [dateRange]);
 
     const filters = useMemo(
         () => ({
@@ -1078,6 +1117,21 @@ export default function PeriodicTasksPage() {
                         value={dateRange as any}
                         onChange={(vals) => setDateRange(vals as [Dayjs | null, Dayjs | null] | null)}
                     />
+                </Col>
+                <Col span={24}>
+                    <Space size={8} wrap>
+                        <span style={{ color: 'rgba(0,0,0,0.45)', fontSize: 13 }}>Lọc nhanh:</span>
+                        {QUICK_RANGES.map(({ key, label }) => (
+                            <Button
+                                key={key}
+                                size="small"
+                                type={activeQuickRange === key ? 'primary' : 'default'}
+                                onClick={() => setDateRange(activeQuickRange === key ? null : getQuickRange(key))}
+                            >
+                                {label}
+                            </Button>
+                        ))}
+                    </Space>
                 </Col>
             </Row>
 
