@@ -492,7 +492,18 @@ function CustomersPageContent() {
   const fetchStats = async () => {
     setStatsLoading(true);
     try {
-      const data = await customersApi.getStats();
+      // [AGENT] Gửi CÙNG bộ lọc với bảng để thẻ "Tổng nạp" khớp cột "Nạp tiền"
+      const data = await customersApi.getStats({
+        search: debouncedSearch || undefined,
+        source,
+        status,
+        salesUserId,
+        marketingUserId,
+        creatorId,
+        dateFrom: dateFrom?.format('YYYY-MM-DD'),
+        dateTo: dateTo?.format('YYYY-MM-DD'),
+        joinedGroups,
+      });
       setStats(data);
     } catch (error) {
       console.error('Fetch stats error:', error);
@@ -503,7 +514,7 @@ function CustomersPageContent() {
 
   useEffect(() => {
     fetchStats();
-  }, [page, pageSize, debouncedSearch, source, status, salesUserId, dateFrom, dateTo, sortField, sortOrder]);
+  }, [debouncedSearch, source, status, salesUserId, marketingUserId, creatorId, dateFrom, dateTo, joinedGroups]);
 
   const handleDrawerUpdate = async () => {
     await refetchCustomers();
@@ -873,6 +884,7 @@ function CustomersPageContent() {
       loading={statsLoading} 
       onCardClick={(type) => setModalType(type)}
         hideDeposit={hideDepositsTab}
+        depositLabel={dateFrom || dateTo ? 'Tổng nạp (theo ngày lọc, USD)' : undefined}
     />
     
     <Card title="Danh sách khách hàng" extra={renderToolbar()}>

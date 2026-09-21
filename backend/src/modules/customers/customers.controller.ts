@@ -33,8 +33,12 @@ export class CustomersController {
   @Get('stats')
   @RequirePermission('customers.view')
   @ApiOperation({ summary: 'Lấy thống kê khách hàng (Option A - Theo quyền)' })
-  async getStats(@GetUser() user: any, @GetPermissionScope() scope: string | null | undefined) {
-    return this.customersService.getStats(user.id, user.role, scope);
+  async getStats(
+    @GetUser() user: any,
+    @GetPermissionScope() scope: string | null | undefined,
+    @Query() filters: CustomerFiltersDto,
+  ) {
+    return this.customersService.getStats(user.id, user.role, scope, filters);
   }
 
   @Get('stats/today')

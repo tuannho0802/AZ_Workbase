@@ -974,5 +974,36 @@ describe('CustomersService', () => {
       expect(dateCondition!.params).toHaveProperty('thirtyDaysAgo');
       expect(result.totalDepositAmount).toBe(10);
     });
+
+    it('Có filter (vd status=closed, dateFrom/dateTo) -> thẻ "Tổng nạp" áp CÙNG điều kiện customer + CÙNG khung ngày deposit với cột "Nạp tiền" trên bảng', async () => {
+      const countQb = makeCountQb();
+      mockCustomerRepo.createQueryBuilder.mockReturnValue(countQb);
+
+      const calls: { sql: string; params?: any }[] = [];
+      const depositQb: any = {
+        leftJoin: jest.fn().mockReturnThis(),
+        where: jest.fn().mockReturnThis(),
+        andWhere: jest.fn((sql: string, params?: any) => {
+          calls.push({ sql, params });
+          return depositQb;
+        }),
+        select: jest.fn().mockReturnThis(),
+        getRawOne: jest.fn().mockResolvedValue({ total: '500' }),
+      };
+      mockDepositRepo.createQueryBuilder = jest.fn().mockReturnValue(depositQb);
+
+      const result = await service.getStats(1, Role.ADMIN, undefined, {
+        status: 'closed',
+        dateFrom: '2026-09-01',
+        dateTo: '2026-09-21',
+      } as any);
+
+      expect(calls.some((c) => c.sql.includes('customer.status = :status') && c.params?.status === 'closed')).toBe(true);
+      expect(calls.some((c) => c.sql.includes('deposit.depositDate >= :dateFrom'))).toBe(true);
+      expect(calls.some((c) => c.sql.includes('deposit.depositDate <= :dateTo'))).toBe(true);
+      // Có dateFrom/dateTo thì KHÔNG được fallback 30 ngày
+      expect(calls.some((c) => c.params && 'thirtyDaysAgo' in c.params)).toBe(false);
+      expect(result.totalDepositAmount).toBe(500);
+    });
   });
 });

@@ -16,9 +16,11 @@ interface StatsCardsProps {
    * ở bảng khách hàng cùng hiển thị dữ liệu FTD, chung 1 trường dữ liệu với
    * tab "Lịch sử nạp tiền (FTD)" nên phải ẩn/hiện đồng bộ với nhau. */
   hideDeposit?: boolean;
+  /** Nhãn thẻ Tổng nạp - đổi khi người dùng lọc theo khoảng ngày (không còn là 30 ngày). */
+  depositLabel?: string;
 }
 
-export const StatsCards = ({ stats, loading, onCardClick, hideDeposit }: StatsCardsProps) => {
+export const StatsCards = ({ stats, loading, onCardClick, hideDeposit, depositLabel }: StatsCardsProps) => {
   const cardStyle: React.CSSProperties = {
     cursor: 'pointer',
     transition: 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
@@ -93,7 +95,7 @@ export const StatsCards = ({ stats, loading, onCardClick, hideDeposit }: StatsCa
             onMouseLeave={normalEffect}
           >
             <Statistic
-              title="Tổng nạp (30 ngày, USD)"
+              title={depositLabel || 'Tổng nạp (30 ngày, USD)'}
               value={stats?.totalDepositAmount || 0}
               styles={{ content: { color: '#faad14' } }}
               formatter={(value) => new Intl.NumberFormat('en-US', {

@@ -274,6 +274,30 @@ export class CustomersService {
   }
 
   /**
+   * Khung ngày cho SUM(deposit.amount) - NGUỒN DUY NHẤT dùng cho cả cột
+   * "Nạp tiền" (findAll) lẫn thẻ "Tổng nạp" (getStats). Có dateFrom/dateTo
+   * thì lọc theo depositDate; không có gì thì mặc định 30 ngày gần nhất.
+   * Alias bắt buộc là `deposit`.
+   */
+  private applyDepositDateRange(
+    qb: { andWhere: (cond: string, params?: Record<string, any>) => any },
+    dateFrom?: string,
+    dateTo?: string,
+  ) {
+    if (dateFrom) {
+      qb.andWhere('deposit.depositDate >= :dateFrom', { dateFrom });
+    }
+    if (dateTo) {
+      qb.andWhere('deposit.depositDate <= :dateTo', { dateTo });
+    } else if (!dateFrom) {
+      const thirtyDays = new Date();
+      thirtyDays.setDate(thirtyDays.getDate() - 30);
+      const thirtyDaysAgo = thirtyDays.toISOString().split('T')[0];
+      qb.andWhere('deposit.depositDate >= :thirtyDaysAgo', { thirtyDaysAgo });
+    }
+  }
+
+  /**
    * Áp dụng các điều kiện lọc (search/source/status/salesUser/department/date)
    * dùng chung cho cả query lấy dữ liệu và query đếm số lượng (COUNT).
    * Tách riêng để tránh lặp code và đảm bảo 2 query luôn đồng bộ điều kiện.
@@ -522,22 +546,9 @@ export class CustomersService {
       .select('SUM(deposit.amount)')
       .where('deposit.customerId = customer.id');
 
-    if (dateFrom) {
-      depositSubQuery.andWhere('deposit.depositDate >= :dateFrom', {
-        dateFrom,
-      });
-    }
-    if (dateTo) {
-      depositSubQuery.andWhere('deposit.depositDate <= :dateTo', { dateTo });
-    } else if (!dateFrom) {
-      // Default: 30 days
-      const thirtyDays = new Date();
-      thirtyDays.setDate(thirtyDays.getDate() - 30);
-      const thirtyDaysAgo = thirtyDays.toISOString().split('T')[0];
-      depositSubQuery.andWhere('deposit.depositDate >= :thirtyDaysAgo', {
-        thirtyDaysAgo,
-      });
-    }
+    // [AGENT] Khung ngày deposit dùng CHUNG với getStats() để cột "Nạp tiền"
+    // và thẻ "Tổng nạp" luôn khớp nhau (xem applyDepositDateRange()).
+    this.applyDepositDateRange(depositSubQuery, dateFrom, dateTo);
 
     queryBuilder.addSelect(
       `(${depositSubQuery.getQuery()})`,
@@ -748,7 +759,12 @@ export class CustomersService {
     };
   }
 
-  async getStats(userId: number, userRole: string, scope?: string | null) {
+  async getStats(
+    userId: number,
+    userRole: string,
+    scope?: string | null,
+    filters?: CustomerFiltersDto,
+  ) {
     const queryBuilder = this.customersRepository
       .createQueryBuilder('customer')
       .where('customer.deletedAt IS NULL');
@@ -812,10 +828,15 @@ export class CustomersService {
     // param), nên áp thẳng mặc định "30 ngày gần đây" giống hệt cách
     // findAll()/getAllDepositsStats() tự fallback khi thiếu dateFrom, để 2
     // con số luôn khớp nhau.
-    const thirtyDaysAgoDate = new Date();
-    thirtyDaysAgoDate.setDate(thirtyDaysAgoDate.getDate() - 30);
-    const thirtyDaysAgo = thirtyDaysAgoDate.toISOString().split('T')[0];
-    depositsQuery.andWhere('deposit.depositDate >= :thirtyDaysAgo', { thirtyDaysAgo });
+    // [AGENT] OLD CODE (giữ lại để rollback): luôn cứng 30 ngày + KHÔNG áp
+    // filter danh sách -> lọc "Đã chốt" thì cột Nạp tiền chỉ còn nạp của
+    // khách đã chốt nhưng thẻ vẫn cộng cả pending/potential/lost => lệch.
+    // const thirtyDaysAgoDate = new Date(); ... depositDate >= :thirtyDaysAgo
+    // [AGENT] NEW CODE: áp CÙNG bộ lọc + CÙNG khung ngày với findAll().
+    if (filters) {
+      this.applyCustomerListFilters(depositsQuery as any, filters);
+    }
+    this.applyDepositDateRange(depositsQuery, filters?.dateFrom, filters?.dateTo);
 
     const totalDepositRaw = await depositsQuery
       .select('SUM(deposit.amount)', 'total')

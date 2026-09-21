@@ -30,8 +30,8 @@ export const customersApi = {
     return response.data;
   },
 
-  getStats: async (): Promise<CustomerStats> => {
-    const response = await axiosInstance.get('/customers/stats');
+  getStats: async (params?: Record<string, unknown>): Promise<CustomerStats> => {
+    const response = await axiosInstance.get('/customers/stats', { params });
     return response.data;
   },
 

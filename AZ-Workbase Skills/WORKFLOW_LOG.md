@@ -2776,3 +2776,24 @@ POST/PATCH/PUT/DELETE từng controller) để có bức tranh đầy đủ ai �
 > Thứ tự ưu tiên đề xuất cho phiên sau: `ui-visibility` (nhạy cảm phân quyền) → `link-groups` (nhiều endpoint
 > nhất) → `media-sources`/`zk-device`/`storage`/`uploads` → `customers.import.service.ts` (xác minh) → fix
 > dropdown FE.
+## [2026-09-21] | Đồng bộ thẻ "Tổng nạp" với cột "Nạp tiền" khi lọc | [Status: Success]
+
+**Actor:** Agent
+
+**Files Changed:**
+- `backend/src/modules/customers/customers.service.ts` — `getStats()` nhận `filters`, áp `applyCustomerListFilters()` + helper mới `applyDepositDateRange()` (dùng chung với `findAll()`)
+- `backend/src/modules/customers/customers.controller.ts` — `GET /customers/stats` nhận `@Query() CustomerFiltersDto`
+- `backend/src/modules/customers/customers.service.spec.ts` — +1 test getStats có filter
+- `frontend/src/lib/api/customers.api.ts`, `frontend/src/app/(dashboard)/customers/page.tsx`, `frontend/src/components/customers/StatsCards.tsx` — FE gửi cùng bộ lọc, nhãn thẻ đổi khi lọc theo ngày
+
+**Root Cause:**
+> Thẻ "Tổng nạp" gọi `getStats()` không kèm filter (luôn cộng deposit 30 ngày của MỌI khách trong phạm vi xem),
+> còn bảng lọc "Đã chốt" chỉ cộng deposit của khách đã chốt -> hai con số khác phạm vi, không phải lỗi tính tiền.
+
+**Solution:**
+> `getStats()` áp cùng filter + cùng khung ngày deposit với `findAll()`. Các thẻ đếm khác giữ nguyên (toàn cục).
+
+**Notes:**
+> Verify: backend `tsc` 0 lỗi, `nest build` OK, `jest src/modules/customers` 67/67 pass. FE `tsc` chỉ còn lỗi cũ (logo.png, CountBadge) không liên quan.
+
+---
