@@ -106,6 +106,44 @@ export interface PeriodicTask {
    * (kể cả rỗng `[]`) khi Task đã tải xong.
    */
   checklistItems?: PeriodicTaskChecklistItem[];
+  /**
+   * Phase 9 (tích hợp Task con vào chung Checklist) - CHỈ có mặt trên
+   * response của `GET /:id` (mirror `checklistItems`, BE chỉ gọi
+   * `attachLinkedChildrenChecklist()` ở `findOne()`), KHÔNG có trên `GET /`.
+   *
+   * ⚠️ HOÀN TOÀN TÁCH BIỆT khỏi `checklistItems` - đây KHÔNG phải checklist
+   * item thật (không có `id`/`position` của bảng `periodic_task_checklist_items`),
+   * mà là danh sách Task con TRỰC TIẾP (từ `periodic_task_links`) hiển thị
+   * dưới dạng "dòng checklist ảo", tính LIVE mỗi lần tải Task cha. `isDone`
+   * = `status.isDoneState` của CHÍNH Task con TẠI THỜI ĐIỂM tải - tự động
+   * đổi theo khi Task con đổi trạng thái, KHÔNG có route sửa/xoá riêng nào
+   * (FE KHÔNG được tự chế nút xoá/tick tay cho mục này - chỉ hiển thị).
+   * Luôn là mảng (kể cả rỗng `[]`) khi Task đã tải xong - không có case
+   * `undefined` do thiếu quyền, nhưng ĐÃ được lọc lại theo scope người xem
+   * ngay ở BE (Task con ngoài phạm vi scope sẽ không xuất hiện ở đây dù đã
+   * liên kết, xem JSDoc `PeriodicTaskLinksService.getChildrenChecklist()`).
+   */
+  linkedChildrenChecklist?: LinkedChildChecklistEntry[];
+}
+
+/**
+ * LinkedChildChecklistEntry - khớp đúng response thật của
+ * `PeriodicTaskLinksService.getChildrenChecklist()` (Phase 9). Xem JSDoc
+ * đầy đủ ở field `linkedChildrenChecklist` trên `PeriodicTask` phía trên.
+ */
+export interface LinkedChildChecklistEntry {
+  childTaskId: number;
+  title: string;
+  isDone: boolean;
+  status: {
+    id: number;
+    code: string;
+    name: string;
+    color: string;
+  };
+  periodType: PeriodType;
+  periodStartDate: string;
+  periodEndDate: string;
 }
 
 /**

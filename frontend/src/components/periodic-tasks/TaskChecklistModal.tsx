@@ -1,7 +1,7 @@
 'use client';
 
 import { useState } from 'react';
-import { Modal, Typography, Progress, Input, Button, App, Popconfirm, Checkbox, Space, Empty, Spin } from 'antd';
+import { Modal, Typography, Progress, Input, Button, App, Popconfirm, Checkbox, Space, Empty, Spin, Divider, Tag } from 'antd';
 import { DeleteOutlined, PlusOutlined, ArrowUpOutlined, ArrowDownOutlined, CheckOutlined, CloseOutlined } from '@ant-design/icons';
 import { useMyPermissions } from '@/lib/hooks/useMyPermissions';
 import { usePeriodicTask } from '@/lib/hooks/usePeriodicTasks';
@@ -11,8 +11,9 @@ import {
     useRemoveTaskChecklistItem,
     useReorderTaskChecklistItems,
 } from '@/lib/hooks/usePeriodicTaskChecklistItems';
-import { PeriodicTask, PeriodicTaskChecklistItem } from '@/lib/api/periodic-tasks.api';
+import { PeriodicTask, PeriodicTaskChecklistItem, PERIOD_TYPE_LABELS } from '@/lib/api/periodic-tasks.api';
 import { getApiErrorMessage } from '@/lib/utils/error-message.util';
+import { SimpleList } from '@/components/common/SimpleList';
 
 const { Text } = Typography;
 
@@ -45,6 +46,15 @@ interface Props {
  * Trello" về mặt kết quả (sắp xếp lại được `position`), chỉ khác cơ chế
  * tương tác. Nếu sau này chủ dự án muốn kéo-thả chuột thật, đổi phần render
  * danh sách + `handleMove` này sang 1 thư viện DnD, KHÔNG cần đổi API/hook.
+ *
+ * Phase 9 (tích hợp Task con vào chung Checklist): thêm section "Task con
+ * liên kết" bên dưới, đọc `taskDetail.linkedChildrenChecklist` (field MỚI,
+ * HOÀN TOÀN tách biệt khỏi `checklistItems` ở trên - xem JSDoc field đó ở
+ * `periodic-tasks.api.ts`). Section này CHỈ hiển thị (checkbox luôn
+ * `disabled`, không có nút sửa/xoá/sắp xếp nào) - Task con tick "xong" tự
+ * động theo status thật của chính nó, không qua thao tác tay ở đây. % hoàn
+ * thành ở đầu modal gộp CẢ 2 hạng mục thành 1 con số chung (đúng nghĩa
+ * "chung 1 checklist"), nhưng 2 danh sách bên dưới vẫn hiển thị tách riêng.
  */
 export function TaskChecklistModal({ open, onClose, task }: Props) {
     const { message } = App.useApp();
@@ -64,7 +74,20 @@ export function TaskChecklistModal({ open, onClose, task }: Props) {
     const items = taskDetail?.checklistItems ?? [];
     const sortedItems = [...items].sort((a, b) => a.position - b.position);
     const doneCount = sortedItems.filter((i) => i.isDone).length;
-    const percent = sortedItems.length > 0 ? Math.round((doneCount / sortedItems.length) * 100) : 0;
+    // Phase 9: Task con liên kết (mảng "checklist ảo" tính LIVE ở BE, xem
+    // JSDoc field `linkedChildrenChecklist` ở `periodic-tasks.api.ts`) - HOÀN
+    // TOÀN tách biệt khỏi `items`/`sortedItems` ở trên (không đọc/ghi chung
+    // bảng `periodic_task_checklist_items`), không có id/position, không có
+    // route sửa/xoá nào áp lên được - CHỈ hiển thị, tick tự động theo đúng
+    // status hiện tại của Task con.
+    const linkedChildren = taskDetail?.linkedChildrenChecklist ?? [];
+    const linkedDoneCount = linkedChildren.filter((c) => c.isDone).length;
+    // "Tích hợp Task con vào CHUNG checklist" (đúng yêu cầu) - % hoàn thành
+    // ở đầu modal gộp CẢ 2 hạng mục làm 1 con số duy nhất, dù UI vẫn tách
+    // riêng 2 danh sách bên dưới.
+    const totalCount = sortedItems.length + linkedChildren.length;
+    const totalDoneCount = doneCount + linkedDoneCount;
+    const percent = totalCount > 0 ? Math.round((totalDoneCount / totalCount) * 100) : 0;
 
     const addMutation = useAddTaskChecklistItem();
     const updateMutation = useUpdateTaskChecklistItem();
@@ -183,11 +206,11 @@ export function TaskChecklistModal({ open, onClose, task }: Props) {
         >
             {task && (
                 <>
-                    {sortedItems.length > 0 && (
+                    {totalCount > 0 && (
                         <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 16 }}>
                             <Progress percent={percent} style={{ flex: 1 }} />
                             <Text type="secondary" style={{ whiteSpace: 'nowrap' }}>
-                                {doneCount}/{sortedItems.length} hoàn thành
+                                {totalDoneCount}/{totalCount} hoàn thành
                             </Text>
                         </div>
                     )}
@@ -333,6 +356,43 @@ export function TaskChecklistModal({ open, onClose, task }: Props) {
                                 : 'Bạn chỉ có quyền xem - cần quyền "Sửa Công việc định kỳ" để thêm/sửa/xoá Checklist.'}
                         </Text>
                     )}
+
+                    <Divider style={{ margin: '20px 0 12px' }} />
+
+                    <div style={{ marginBottom: 8 }}>
+                        <Text strong>Task con liên kết ({linkedChildren.length}):</Text>
+                        <Text type="secondary" style={{ marginLeft: 8, fontSize: 12 }}>
+                            Tự động tick khi Task con chuyển sang trạng thái hoàn thành - CHỈ hiển thị, không
+                            sửa/xoá được ở đây.
+                        </Text>
+                    </div>
+                    <SimpleList
+                        loading={taskDetailLoading}
+                        size="small"
+                        bordered
+                        dataSource={linkedChildren}
+                        rowKey={(c) => c.childTaskId}
+                        emptyText="Chưa liên kết Task con nào"
+                        renderMeta={(c) => ({
+                            avatar: <Checkbox checked={c.isDone} disabled />,
+                            title: (
+                                <Text
+                                    style={{
+                                        textDecoration: c.isDone ? 'line-through' : undefined,
+                                        color: c.isDone ? 'rgba(0,0,0,0.45)' : undefined,
+                                    }}
+                                >
+                                    {c.title}
+                                </Text>
+                            ),
+                            description: (
+                                <Space size={4}>
+                                    <Tag>{PERIOD_TYPE_LABELS[c.periodType]}</Tag>
+                                    <Tag color={c.status.color}>{c.status.name}</Tag>
+                                </Space>
+                            ),
+                        })}
+                    />
                 </>
             )}
         </Modal>
