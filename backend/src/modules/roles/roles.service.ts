@@ -52,7 +52,7 @@ export class RolesService {
     // dòng global và dòng override khiến Map ở FE (RolePermissionsEditor)
     // ghi đè lẫn nhau không theo thứ tự xác định.
     const allPermissions = await this.rolePermissionRepo.find({
-      where: { departmentId: IsNull() },
+      where: { departmentId: IsNull(), positionId: IsNull() },
       relations: ['permission'],
     });
 
@@ -229,7 +229,7 @@ export class RolesService {
       // Admin lưu ma trận Global (2 khái niệm khác nhau, phải tách delete
       // riêng - xem updateDepartmentOverride() bên dưới, nó tự xoá đúng
       // phạm vi departmentId của chính nó, không đụng gì tới dòng global).
-      await manager.delete(RolePermission, { roleId: id, departmentId: IsNull() });
+      await manager.delete(RolePermission, { roleId: id, departmentId: IsNull(), positionId: IsNull() });
       const rows = dto.permissions.map((entry) =>
         manager.create(RolePermission, {
           roleId: id,
