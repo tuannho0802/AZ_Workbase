@@ -92,7 +92,7 @@ function MyLeaveMobileCard({
         )}
       </div>
 
-      <AttachmentsViewerButton requestId={record.id} size="small" />
+      <AttachmentsViewerButton requestId={record.id} size="small" count={record.attachmentCount} />
 
       {record.status === 'pending' && (
         <Button
@@ -347,7 +347,7 @@ export default function LeaveRequestsPage() {
     {
       title: 'Đính kèm',
       render: (_: any, record: LeaveRequest) => (
-        <AttachmentsViewerButton requestId={record.id} />
+        <AttachmentsViewerButton requestId={record.id} count={record.attachmentCount} />
       )
     },
     {

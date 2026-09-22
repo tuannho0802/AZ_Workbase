@@ -116,7 +116,7 @@ function PendingMobileCard({
 
       {/* Actions */}
       <div style={{ display: 'flex', gap: 8 }}>
-        <AttachmentsViewerButton requestId={record.id} size="small" />
+        <AttachmentsViewerButton requestId={record.id} size="small" count={record.attachmentCount} />
         <Button
           type="primary"
           size="small"
@@ -214,7 +214,7 @@ function HistoryMobileCard({
       </div>
 
       <div style={{ marginTop: 10, display: 'flex', gap: 8 }}>
-        <AttachmentsViewerButton requestId={record.id} size="small" />
+        <AttachmentsViewerButton requestId={record.id} size="small" count={record.attachmentCount} />
         {canEdit && (record.status === 'pending' || record.status === 'approved') && (
           <Button size="small" icon={<EditOutlined />} onClick={() => onEdit(record)}>
             Sửa
@@ -548,7 +548,7 @@ export default function ApprovalPage() {
       title: 'Đính kèm',
       width: 100,
       render: (_: any, record: LeaveRequest) => (
-        <AttachmentsViewerButton requestId={record.id} />
+        <AttachmentsViewerButton requestId={record.id} count={record.attachmentCount} />
       )
     },
     {
@@ -662,7 +662,7 @@ export default function ApprovalPage() {
       title: 'Đính kèm',
       width: 100,
       render: (_: any, record: LeaveRequest) => (
-        <AttachmentsViewerButton requestId={record.id} />
+        <AttachmentsViewerButton requestId={record.id} count={record.attachmentCount} />
       )
     },
     {

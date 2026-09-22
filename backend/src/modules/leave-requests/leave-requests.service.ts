@@ -517,11 +517,18 @@ export class LeaveRequestsService {
    * Get requests for the current user (My Leave Requests)
    */
   async findAll(userId: number) {
-    return this.leaveRequestRepo.find({
-      where: { requesterId: userId },
-      relations: ['requester', 'approver'],
-      order: { createdAt: 'DESC' },
-    });
+    // Đổi từ repo.find({relations}) sang QueryBuilder - cần
+    // loadRelationCountAndMap() để đếm `attachmentCount` (KHÔNG load full
+    // attachments, chỉ 1 câu COUNT phụ, tránh N+1 kiểu load hết rồi đếm
+    // length ở JS). Giữ nguyên đúng field/order/where như bản cũ.
+    return this.leaveRequestRepo
+      .createQueryBuilder('leave')
+      .leftJoinAndSelect('leave.requester', 'requester')
+      .leftJoinAndSelect('leave.approver', 'approver')
+      .loadRelationCountAndMap('leave.attachmentCount', 'leave.attachments')
+      .where('leave.requesterId = :userId', { userId })
+      .orderBy('leave.createdAt', 'DESC')
+      .getMany();
   }
 
   /**
@@ -542,6 +549,10 @@ export class LeaveRequestsService {
       .createQueryBuilder('leave')
       .leftJoinAndSelect('leave.requester', 'requester')
       .leftJoinAndSelect('requester.department', 'department')
+      // Đếm số ảnh đính kèm ngay trong list - xem comment ở
+      // `LeaveRequest.attachmentCount` (entity) - FE hiện số lượng ở nút
+      // "Đính kèm" mà không cần bấm vào từng đơn.
+      .loadRelationCountAndMap('leave.attachmentCount', 'leave.attachments')
       .where('leave.status = :status', { status: LeaveStatus.PENDING });
 
     if (viewerRole !== Role.ADMIN && !isAllScope && isDeptScope) {
@@ -587,6 +598,8 @@ export class LeaveRequestsService {
       .leftJoinAndSelect('leave.requester', 'requester')
       .leftJoinAndSelect('requester.department', 'department')
       .leftJoinAndSelect('leave.approver', 'approver')
+      // Mirror findPending() - xem comment ở `LeaveRequest.attachmentCount`.
+      .loadRelationCountAndMap('leave.attachmentCount', 'leave.attachments')
       .where('leave.status IN (:...statuses)', {
         statuses: [LeaveStatus.APPROVED, LeaveStatus.REJECTED],
       });

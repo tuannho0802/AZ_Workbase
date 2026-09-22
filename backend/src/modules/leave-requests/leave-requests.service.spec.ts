@@ -96,6 +96,11 @@ describe('LeaveRequestsService - Phan quyen duyet (PERMISSIONS.md muc 2.6)', () 
       andWhere: jest.fn().mockReturnThis(),
       orderBy: jest.fn().mockReturnThis(),
       take: jest.fn().mockReturnThis(),
+      // Đếm attachmentCount ở findAll()/findPending()/findHistory() (xem
+      // LeaveRequest.attachmentCount) - mock chain, không cần test giá trị
+      // COUNT thật (đã có SQL thật chạy trong `nest build`/E2E ngoài phạm
+      // vi unit test này).
+      loadRelationCountAndMap: jest.fn().mockReturnThis(),
       getMany: jest.fn().mockResolvedValue(result),
     };
     return qb;
@@ -647,6 +652,48 @@ describe('LeaveRequestsService - Phan quyen duyet (PERMISSIONS.md muc 2.6)', () 
         expect.stringContaining('requester.role IN'),
       );
       expect(mockDepartmentManagerRepo.find).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('attachmentCount - dem so anh dinh kem trong list (khong can bam vao tung don)', () => {
+    it('findAll() goi loadRelationCountAndMap dung field leave.attachments -> leave.attachmentCount', async () => {
+      const qb = buildQueryBuilderMock([]);
+      mockLeaveRepo.createQueryBuilder.mockReturnValue(qb);
+
+      await service.findAll(5);
+
+      expect(qb.loadRelationCountAndMap).toHaveBeenCalledWith(
+        'leave.attachmentCount',
+        'leave.attachments',
+      );
+      expect(qb.where).toHaveBeenCalledWith(
+        'leave.requesterId = :userId',
+        { userId: 5 },
+      );
+    });
+
+    it('findPending() goi loadRelationCountAndMap dung field', async () => {
+      const qb = buildQueryBuilderMock([]);
+      mockLeaveRepo.createQueryBuilder.mockReturnValue(qb);
+
+      await service.findPending(1, Role.ADMIN, 'all');
+
+      expect(qb.loadRelationCountAndMap).toHaveBeenCalledWith(
+        'leave.attachmentCount',
+        'leave.attachments',
+      );
+    });
+
+    it('findHistory() goi loadRelationCountAndMap dung field', async () => {
+      const qb = buildQueryBuilderMock([]);
+      mockLeaveRepo.createQueryBuilder.mockReturnValue(qb);
+
+      await service.findHistory(1, Role.ADMIN, 'all');
+
+      expect(qb.loadRelationCountAndMap).toHaveBeenCalledWith(
+        'leave.attachmentCount',
+        'leave.attachments',
+      );
     });
   });
 

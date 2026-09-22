@@ -29,6 +29,11 @@ export interface LeaveRequest {
   createdAt: string;
   approvedAt: string | null;
   rejectedAt: string | null;
+  // Số ảnh đính kèm - BE tính qua loadRelationCountAndMap() ở findAll()/
+  // findPending()/findHistory() (xem LeaveRequest.attachmentCount ở entity),
+  // KHÔNG có ở response của các endpoint đơn lẻ (create/update/approve...).
+  // Optional vì lý do đó - FE fallback badge "0" khi field không có.
+  attachmentCount?: number;
 }
 
 export const leaveRequestsApi = {

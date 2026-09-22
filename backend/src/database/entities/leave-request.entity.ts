@@ -150,7 +150,16 @@ export class LeaveRequest {
   // GET on-demand, KHÔNG trả trực tiếp trong response mặc định.
   @OneToMany(() => LeaveRequestAttachment, (a) => a.leaveRequest)
   attachments: LeaveRequestAttachment[];
-  
+
+  // Đếm số ảnh đính kèm - KHÔNG phải cột DB thật (không @Column), chỉ map
+  // qua `loadRelationCountAndMap()` ở findAll()/findPending()/findHistory()
+  // (LeaveRequestsService) để FE hiện số lượng ngay ở nút "Đính kèm" mà
+  // KHÔNG cần bấm vào từng đơn mới biết có ảnh hay không (trước đây phải
+  // click mới gọi GET /:id/attachment-urls). `?` vì field này CHỈ có giá
+  // trị khi query đi qua đúng 3 hàm trên - findOne() thường (approve/
+  // reject/update...) không set field này.
+  attachmentCount?: number;
+
   // TIMESTAMPS
   @CreateDateColumn({ name: 'created_at', comment: 'Ngày tạo đơn' })
   createdAt: Date;
