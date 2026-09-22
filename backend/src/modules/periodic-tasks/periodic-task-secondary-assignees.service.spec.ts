@@ -24,6 +24,10 @@ describe('PeriodicTaskSecondaryAssigneesService', () => {
   const mockTasksService = {
     findOne: jest.fn(),
     assertEditableWhenLocked: jest.fn(),
+    // Notification Phase 2: mock rỗng (no-op mặc định, giống hành vi thật khi
+    // NOTIFICATIONS_ENABLED tắt) - test nghiệp vụ chính không quan tâm thông báo.
+    notifyTaskSafely: jest.fn(),
+    emitTaskNotification: jest.fn(),
   };
   const mockAuditService = {
     logActionAsync: jest.fn(),
