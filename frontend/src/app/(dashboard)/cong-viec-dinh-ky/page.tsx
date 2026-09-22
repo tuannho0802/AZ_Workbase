@@ -254,6 +254,44 @@ function PeriodicTasksPageContent() {
         return found?.key ?? null;
     }, [dateRange]);
 
+    // ── Đưa ĐÚNG Task vào tầm nhìn khi tới từ thông báo (PLAN 7.4): chỉ đọc
+    // `focus` (ở effect phía trên) là CHƯA ĐỦ - Task đó có thể đang nằm ngoài
+    // trang hiện tại hoặc bị các bộ lọc (Trạng thái/Người phụ trách/Phòng
+    // ban/khoảng ngày) che mất, nên dù có `rowClassName` tô sáng thì hàng đó
+    // cũng không hề xuất hiện trong `tableTasksSorted` để mà tô - đây là phần
+    // còn thiếu khiến "task chưa highlight như customer". Lấy chi tiết Task
+    // qua `usePeriodicTask`, xoá mọi bộ lọc khác + đặt `dateRange` đúng khoảng
+    // kỳ hạn của Task đó (mirror `focusId` của Khách hàng ở `customers/page.tsx`).
+    const focusedTaskQuery = usePeriodicTask(focusedTaskId);
+    // Chỉ áp dụng reset bộ lọc ĐÚNG 1 LẦN cho mỗi giá trị `focusedTaskId` mới -
+    // so `.current !== focusedTaskId` thay vì cờ boolean nên tự "mở khoá" khi
+    // người dùng bấm 1 thông báo Task KHÁC (focusedTaskId đổi), không cần
+    // effect đọc `focus` ở trên phải biết mà reset hộ.
+    const focusFiltersAppliedRef = useRef<number | null>(null);
+
+    useEffect(() => {
+        if (!focusedTaskId || focusFiltersAppliedRef.current === focusedTaskId) return;
+        if (focusedTaskQuery.isError) {
+            // Task đã bị xoá / hết quyền truy cập - báo nhẹ, không tô sáng gì
+            // cả (mirror PLAN 7.6 "Không khả dụng").
+            focusFiltersAppliedRef.current = focusedTaskId;
+            message.warning('Công việc không còn tồn tại hoặc bạn không còn quyền truy cập.');
+            clearFocus();
+            return;
+        }
+        const detail = focusedTaskQuery.data;
+        if (!detail) return; // đang tải chi tiết Task
+        focusFiltersAppliedRef.current = focusedTaskId;
+        setSearchInput('');
+        setPeriodType(undefined);
+        setStatusId(undefined);
+        setPrimaryAssigneeId(undefined);
+        setDepartmentId(undefined);
+        setPage(1);
+        setDateRange([dayjs(detail.periodStartDate), dayjs(detail.periodEndDate)]);
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [focusedTaskId, focusedTaskQuery.data, focusedTaskQuery.isError]);
+
     const filters = useMemo(
         () => ({
             page,
@@ -334,6 +372,18 @@ function PeriodicTasksPageContent() {
         () => getChainRunFlags(tableTasksSorted, chains, linksData?.edges ?? []),
         [tableTasksSorted, chains, linksData],
     );
+
+    // Cuộn tới đúng hàng SAU KHI bảng đã tải xong dữ liệu khớp bộ lọc mới ở
+    // trên (mirror `customers/page.tsx` §PLAN 7.5: "dữ liệu tải xong → tìm
+    // [data-row-key] → scrollIntoView"). Bảng Task không có Drawer che nên
+    // không cần xử lý thêm cho trường hợp đang mở Modal.
+    useEffect(() => {
+        if (!focusedTaskId || isLoading || isFetching) return;
+        if (!tableTasksSorted.some((t) => t.id === focusedTaskId)) return;
+        const el = document.querySelector(`[data-row-key="${focusedTaskId}"]`);
+        el?.scrollIntoView({ block: 'center', behavior: 'smooth' });
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [focusedTaskId, isLoading, isFetching, tableTasksSorted]);
 
     const { statuses } = usePeriodicTaskStatuses();
     const { departments } = useDepartments();
@@ -1209,6 +1259,17 @@ function PeriodicTasksPageContent() {
                     columns={columns}
                     dataSource={tableTasksSorted}
                     scroll={{ x: 'max-content' }}
+                    // Highlight "mục tiêu" khi tới từ thông báo (PLAN 7.5) - mirror
+                    // đúng bảng Khách hàng: nhấp nháy 3 lần rồi giữ viền cam.
+                    rowClassName={(record) =>
+                        focusedTaskId === record.id
+                            ? focusPhase === 'flash'
+                                ? 'notif-focus-flash'
+                                : focusPhase === 'marked'
+                                    ? 'notif-focus-marked'
+                                    : ''
+                            : ''
+                    }
                     pagination={{
                         current: page,
                         pageSize: limit,

@@ -397,9 +397,16 @@ export class NotificationsService {
   }
 
   /**
-   * - Tự động: xoá dòng.
-   * - Thủ công (`broadcast_id` khác NULL): CHỈ set `dismissed_at` - "ẩn" khác
-   *   "xoá", nếu xoá thì người gửi thấy sai số liệu đã đọc (nguyên tắc 13).
+   * Luôn CHỈ set `dismissed_at` - "ẩn" khỏi hộp thư, KHÔNG xoá cứng dòng nào,
+   * bất kể tự động (`broadcast_id IS NULL`) hay thủ công. "Ẩn" khác "xoá":
+   * người dùng xem lại + khôi phục ở tab "Đã ẩn" (`/thong-bao`); với thông
+   * báo thủ công còn thêm lý do người gửi cần số liệu đã đọc/chưa đọc không
+   * bị lệch (nguyên tắc 13) - nay áp dụng chung cho MỌI loại.
+   *
+   * ⚠️ ĐỔI (2026-09-22, phản hồi chủ dự án): trước đây tự động bị xoá cứng
+   * ngay khi bấm "Xoá" → tab "Đã ẩn" không có gì để xem lại cho Khách hàng/
+   * Công việc (đúng phản ánh lỗi thật). Dọn rác định kỳ (nếu có ở Phase sau)
+   * sẽ tự xoá cứng các dòng đã ẩn quá hạn, không cần xoá ngay tại đây.
    */
   async remove(
     userId: number,
@@ -411,14 +418,10 @@ export class NotificationsService {
     });
     if (!row) throw new NotFoundException('Không tìm thấy thông báo');
 
-    if (row.broadcastId !== null) {
-      await this.notificationRepository.update(
-        { id, recipientId: userId, dismissedAt: IsNull() },
-        { dismissedAt: new Date() },
-      );
-    } else {
-      await this.notificationRepository.delete({ id, recipientId: userId });
-    }
+    await this.notificationRepository.update(
+      { id, recipientId: userId, dismissedAt: IsNull() },
+      { dismissedAt: new Date() },
+    );
     return { id, removed: true };
   }
 

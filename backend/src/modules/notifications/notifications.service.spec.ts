@@ -480,11 +480,13 @@ describe('NotificationsService', () => {
       });
     });
 
-    it('thông báo TỰ ĐỘNG: xoá dòng', async () => {
+    it('thông báo TỰ ĐỘNG: CHỈ set dismissed_at, KHÔNG xoá dòng (ẩn để còn hiện ở tab "Đã ẩn")', async () => {
       notifRepo.findOne.mockResolvedValue({ id: 5, broadcastId: null });
       await service.remove(9, 5);
-      expect(notifRepo.delete).toHaveBeenCalledWith({ id: 5, recipientId: 9 });
-      expect(notifRepo.update).not.toHaveBeenCalled();
+      expect(notifRepo.delete).not.toHaveBeenCalled();
+      const [, patch] = notifRepo.update.mock.calls[0];
+      expect(Object.keys(patch)).toEqual(['dismissedAt']);
+      expect(patch.dismissedAt).toBeInstanceOf(Date);
     });
 
     it('thông báo THỦ CÔNG: CHỈ set dismissed_at, KHÔNG xoá dòng, KHÔNG đụng read_at (nguyên tắc 13)', async () => {

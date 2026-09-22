@@ -43,8 +43,9 @@ export function NotificationRow({ item, onOpen, onRemove, mode = 'active', onRes
   const meta = CATEGORY_META[item.category] ?? CATEGORY_META.manual;
   const unavailable = resolveNotificationTarget(item).kind === 'unavailable';
   const hidden = mode === 'hidden';
-  // Tự động = xoá dòng; thủ công = chỉ ẨN khỏi hộp thư (BE giữ dòng để người gửi thống kê đọc/chưa đọc).
-  const removeLabel = item.category === 'manual' ? 'Ẩn thông báo' : 'Xoá thông báo';
+  // Mọi loại (tự động lẫn thủ công) đều chỉ ẨN khỏi hộp thư (BE set
+  // `dismissed_at`, không xoá dòng) - xem lại + khôi phục ở tab "Đã ẩn".
+  const removeLabel = 'Ẩn thông báo';
 
   return (
     <div

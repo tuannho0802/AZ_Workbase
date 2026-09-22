@@ -17,9 +17,10 @@ const VIEW_OPTIONS: { label: string; value: ViewFilter }[] = [
   { label: 'Khách hàng', value: 'customer' },
   { label: 'Công việc', value: 'task' },
   { label: 'Thông báo', value: 'manual' },
-  // Chỉ thông báo THỦ CÔNG mới có khái niệm "ẩn" (dismissedAt) - tự động bị
-  // xoá cứng ngay khi bấm "Xoá" nên không có gì để xem lại ở đây (PLAN 7.1 mở
-  // rộng, xem `notifications.service.ts` `remove()`/`restore()`).
+  // Mọi loại (Khách hàng/Công việc/Thông báo thủ công) đều chỉ ẨN khỏi hộp
+  // thư khi bấm "Xoá" (set `dismissedAt`, không xoá cứng) nên đều xem lại +
+  // khôi phục được ở đây (PLAN 7.1 mở rộng - ĐỔI 2026-09-22: trước đây tự
+  // động bị xoá cứng ngay, xem `notifications.service.ts` `remove()`/`restore()`).
   { label: 'Đã ẩn', value: 'hidden' },
 ];
 
