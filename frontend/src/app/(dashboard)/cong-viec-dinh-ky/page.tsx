@@ -1,7 +1,7 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
-import { useRouter } from 'next/navigation';
+import { Suspense, useEffect, useMemo, useRef, useState } from 'react';
+import { useRouter, usePathname, useSearchParams } from 'next/navigation';
 import {
     Table,
     Button,
@@ -163,11 +163,59 @@ const truncateText = (text: string, maxLength: number): string =>
  * `PeriodicTaskAccessHelper` (xem `periodic-tasks.service.ts`) - FE chỉ việc
  * gọi `/periodic-tasks` bình thường, KHÔNG tự lọc lại theo user.
  */
-export default function PeriodicTasksPage() {
+function PeriodicTasksPageContent() {
     const { message } = App.useApp();
     const router = useRouter();
+    const pathname = usePathname();
+    const searchParams = useSearchParams();
     const user = useAuthStore((s) => s.user);
     const { can, isLoading: permissionsLoading } = useMyPermissions();
+
+    // ── Highlight "mục tiêu" khi bấm 1 thông báo Công việc (mirror ĐÚNG cơ
+    // chế đã làm cho Khách hàng ở `customers/page.tsx`) - `resolve-link.ts`
+    // đã điều hướng `/cong-viec-dinh-ky?focus=<taskId>&nid=<notifId>` từ lâu
+    // (Phase 4), nhưng trang này trước giờ CHƯA đọc `focus` nên bấm thông
+    // báo Công việc chỉ mở trang trơn, không có gì xảy ra - đúng phản ánh
+    // "task chưa highlight như customer". `nid` (id thông báo) không cần
+    // đọc ở đây - đánh dấu đã đọc đã xử lý ngay khi bấm ở `useNotificationActions`.
+    const [focusedTaskId, setFocusedTaskId] = useState<number | null>(null);
+    const [focusPhase, setFocusPhase] = useState<'flash' | 'marked' | null>(null);
+    const clearFocus = () => {
+        setFocusedTaskId(null);
+        setFocusPhase(null);
+    };
+    // Tránh auto-mở lại Modal Sửa nhiều lần cho CÙNG 1 lượt `focus=` (effect
+    // dò `tableTasksSorted` chạy lại mỗi khi list đổi - fetch lại/đổi trang).
+    const focusAutoOpenedRef = useRef(false);
+
+    useEffect(() => {
+        const focusParam = searchParams.get('focus');
+        if (focusParam) {
+            const parsedId = Number(focusParam);
+            if (!Number.isNaN(parsedId)) {
+                setFocusedTaskId(parsedId);
+                setFocusPhase('flash');
+                focusAutoOpenedRef.current = false;
+                // Agenda/Kanban/Lịch tháng (3 view mặc định/khác) chưa có
+                // `rowClassName` highlight - ép về view Bảng để CHẮC CHẮN
+                // thấy được viền cam, giống bảng Khách hàng.
+                setView('table');
+            }
+            // Xoá param khỏi URL sau khi dùng - tránh F5/back mở nhầm lại
+            // (mirror đúng pattern `customers/page.tsx`).
+            router.replace(pathname);
+        }
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [searchParams]);
+
+    // Nhấp nháy 0.8s × 3 rồi chuyển sang giữ viền cam tới khi người dùng bấm
+    // sang Task khác (xem `openEditModal` bên dưới) hoặc rời trang - KHÔNG
+    // xoá khi đóng Modal Sửa (mirror đúng hành vi Khách hàng vừa đổi).
+    useEffect(() => {
+        if (focusPhase !== 'flash') return;
+        const timer = setTimeout(() => setFocusPhase('marked'), 2400);
+        return () => clearTimeout(timer);
+    }, [focusPhase, focusedTaskId]);
 
     useEffect(() => {
         if (!permissionsLoading && user && !can('periodic_tasks.view')) {
@@ -500,6 +548,10 @@ export default function PeriodicTasksPage() {
     };
 
     const openEditModal = (task: PeriodicTask) => {
+        // Bấm sang Task KHÁC (nút Sửa ở dòng khác, Agenda/Kanban/Lịch tháng)
+        // thì bỏ highlight cũ - đúng hàng "bấm hàng khác" trong PLAN 7.5,
+        // mirror `onRow`/`onRowClick` của bảng Khách hàng.
+        if (task.id !== focusedTaskId) clearFocus();
         setEditingTask(task);
         form.setFieldsValue({
             title: task.title,
