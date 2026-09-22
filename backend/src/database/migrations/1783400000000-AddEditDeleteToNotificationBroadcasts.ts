@@ -22,18 +22,31 @@ export class AddEditDeleteToNotificationBroadcasts1783400000000
   name = 'AddEditDeleteToNotificationBroadcasts1783400000000';
 
   public async up(queryRunner: QueryRunner): Promise<void> {
-    await queryRunner.query(`
-      ALTER TABLE notification_broadcasts
-        ADD COLUMN IF NOT EXISTS updated_at DATETIME(3) NULL AFTER created_at,
-        ADD COLUMN IF NOT EXISTS deleted_at DATETIME(3) NULL AFTER updated_at
-    `);
+    // MySQL không hỗ trợ "ADD COLUMN IF NOT EXISTS" (gây lỗi cú pháp trên một
+    // số bản MySQL/MariaDB) - kiểm tra tồn tại trước qua getTable(), đúng
+    // pattern đã dùng ở AddIsRootAdminToUsers/AddPositionsTable.
+    const table = await queryRunner.getTable('notification_broadcasts');
+    if (!table?.findColumnByName('updated_at')) {
+      await queryRunner.query(`
+        ALTER TABLE notification_broadcasts
+        ADD COLUMN updated_at DATETIME(3) NULL AFTER created_at
+      `);
+    }
+    if (!table?.findColumnByName('deleted_at')) {
+      await queryRunner.query(`
+        ALTER TABLE notification_broadcasts
+        ADD COLUMN deleted_at DATETIME(3) NULL AFTER updated_at
+      `);
+    }
   }
 
   public async down(queryRunner: QueryRunner): Promise<void> {
-    await queryRunner.query(`
-      ALTER TABLE notification_broadcasts
-        DROP COLUMN IF EXISTS deleted_at,
-        DROP COLUMN IF EXISTS updated_at
-    `);
+    const table = await queryRunner.getTable('notification_broadcasts');
+    if (table?.findColumnByName('deleted_at')) {
+      await queryRunner.query(`ALTER TABLE notification_broadcasts DROP COLUMN deleted_at`);
+    }
+    if (table?.findColumnByName('updated_at')) {
+      await queryRunner.query(`ALTER TABLE notification_broadcasts DROP COLUMN updated_at`);
+    }
   }
 }
