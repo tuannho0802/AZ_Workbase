@@ -3425,3 +3425,64 @@ trước) theo đúng Custom Instructions của Project.
 > trong sandbox của Agent, chủ dự án cần tự áp dụng patch/tải file.
 
 ---
+## [2026-09-22 12:16] | Thông báo — Audit tab "Đã ẩn" (đóng nợ verify) + fix wiring `restore` + dọn warning deprecated Antd | [Status: Success — verify đầy đủ]
+
+**Actor:** Agent
+
+**Đối chiếu báo cáo phiên trước với code thật (trước khi làm tiếp):**
+> Transcript phiên trước dừng đột ngột giữa chừng (bị ngắt) ở 3 dòng cuối: "Adding dismissal support...",
+> "Adding a hidden mode with restore option...", "Adding a view mode tab...", KHÔNG có báo cáo hoàn tất, KHÔNG
+> có số liệu verify, và KHÔNG có entry log tương ứng — đúng dạng "báo cáo chưa xác nhận" theo Custom
+> Instructions §1/§3. Đọc code thật (pull mới nhất) xác nhận: cột `dismissed_at` đã có sẵn từ migration gốc
+> `1783300000000-CreateNotifications.ts` (không cần migration mới), BE (`notifications.service.ts`,
+> `.controller.ts`: filter `dismissed`, endpoint `PATCH :id/restore`) đã code đủ và đúng, FE
+> `thong-bao/page.tsx` đã có `Segmented` "Đã ẩn" + `NotificationRow` mode `hidden` + nút khôi phục — TOÀN BỘ
+> tính năng đã code xong thật, chỉ chưa được verify bằng build/test/log như quy trình yêu cầu.
+
+**Files Changed:**
+- `frontend/src/lib/hooks/useNotifications.ts` — **bug thật tìm thấy khi chạy `tsc --noEmit`**: hook
+  `useNotificationMutations()` chưa trả `restore` (chỉ có `markRead`/`markAllRead`/`remove`) trong khi
+  `thong-bao/page.tsx` đã gọi `restore.mutate(...)` — thêm `restore` mutation (mirror pattern `remove`, gọi
+  `notificationsApi.restore()` vốn đã có sẵn, invalidate cache qua `refresh()`).
+- 7 file dọn warning Antd deprecated (yêu cầu riêng của chủ dự án, không liên quan bug trên):
+  - `frontend/src/app/(dashboard)/thong-bao/da-gui/page.tsx` — 4 chỗ `<Space direction="vertical">` →
+    `orientation="vertical"`.
+  - `frontend/src/components/notifications/SendBroadcastModal.tsx`,
+    `frontend/src/app/(dashboard)/phan-quyen/{page.tsx,DepartmentOverridesPanel.tsx,PositionOverridesPanel.tsx}`,
+    `frontend/src/app/(dashboard)/reports/{RevenueReportTab.tsx,CustomerReportTab.tsx,QualityReportTab.tsx}`
+    — `<Alert message="...">` → `<Alert title="...">` (7 chỗ, giữ nguyên `description`).
+- `AZ-Workbase Skills/SKILL_NEXTJS_FRONTEND.md` — mục 8.4 cập nhật xác nhận chắc chắn (đã kiểm tra type định
+  nghĩa thật trong `antd@6.3.5`, không còn "may be replaced" mơ hồ); thêm mục 8.5 mới cho `Alert`
+  `message`→`title` (kèm lưu ý phân biệt với `error.message` không phải prop Alert).
+
+**Root Cause:**
+> Không phải bug logic — tính năng tab "Đã ẩn" vốn đã code đúng. Nguyên nhân chủ dự án "ẩn rồi không có
+> cách nào thấy lại" là vì phiên code trước bị ngắt quá sớm để verify, nên KHÔNG phát hiện ra 1 lỗi build
+> thật (thiếu wiring `restore` trong hook khiến `next build`/`tsc` sẽ đỏ nếu chạy) — nếu chưa build thử thì
+> tính năng coi như chưa chắc chạy được, đúng tinh thần "không tin báo cáo chưa chạy lệnh".
+
+**Solution:**
+> Audit toàn bộ chain BE→FE bằng cách đọc code thật (không dựa transcript), chạy build/test thật để lộ đúng
+> 1 lỗi duy nhất (hook thiếu `restore`), fix tối thiểu đúng pattern sẵn có trong file. Sau đó xử lý riêng yêu
+> cầu dọn Antd deprecated warnings bằng cách `grep` toàn bộ `frontend/src` cho `Space direction=` và `Alert
+> message=`, sửa từng chỗ, xác nhận bằng cách đọc `.d.ts` thật trong `node_modules/antd` để chắc đúng prop
+> thay thế (không đoán theo tên).
+
+**Verify (chạy lệnh thật, không suy diễn):**
+> Backend: `npm install` sạch, `npx tsc --noEmit` sạch, `npx nest build` sạch, `npx jest` = **46/46 suite,
+> 866/866 test PASS** (tăng 4 test so với lượt log trước — khớp phần restore/dismissed).
+> Frontend: `npm install` sạch, `npx tsc --noEmit` **sạch hoàn toàn** (0 lỗi — kể cả 2 lỗi noise cũ
+> `logo.png`/`CountBadge` từng ghi nhận trước đây cũng không còn xuất hiện ở lần chạy này), `npx next build`
+> (Turbopack) "Compiled successfully", đủ 36 route kể cả `/thong-bao`, `/thong-bao/gui`, `/thong-bao/da-gui`.
+> `npx vitest run` = **10/10 file, 79/79 test PASS** (tăng 1 test so với lượt trước).
+
+**Notes:**
+> Tab "Đã ẩn" (`/thong-bao`, `Segmented` value `hidden`) giờ đã verify chạy được thật (build xanh), khôi phục
+> qua nút "Khôi phục" trên `NotificationRow` mode `hidden` → gọi `restore.mutate`. Không có quyền push
+> GitHub (không có credential) — thay đổi hiện chỉ nằm trong sandbox Agent, chủ dự án cần tự áp dụng patch/
+> tải file để lên máy dev/production thật.
+> **Chưa làm/còn treo:** không phát hiện thêm việc dở dang nào khác ngoài phạm vi 2 yêu cầu trên trong lượt
+> này; các mục "chưa làm" liệt kê ở các entry log trước (Phase 5/6/M3, chạy migration `1783400000000`/
+> `1783500000000` lên DB thật, thêm `NOTIFICATIONS_ENABLED=true` vào `.env.development` thật) vẫn còn nguyên,
+> không đổi.
+

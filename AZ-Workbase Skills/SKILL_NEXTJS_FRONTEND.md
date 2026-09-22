@@ -842,10 +842,26 @@ For tables with many columns (like Customers list), always use `scroll={{ x: 'ma
 />
 ```
 
-#### 8.4. Space Component Deprecation (CRITICAL)
-In recent versions of Ant Design (v6+ preparation), the `direction` prop on the `<Space />` component is deprecated and may be replaced by the `orientation` prop.
+#### 8.4. Space Component Deprecation (CRITICAL) — CONFIRMED, đã áp dụng toàn repo
+Đã xác nhận với `antd` `6.3.5` hiện tại của repo (`node_modules/antd/es/space/index.d.ts`): `direction` bị
+đánh dấu `@deprecated please use 'orientation' instead`. KHÔNG còn ở diện "sắp deprecate" nữa — dùng
+`orientation` ngay từ đầu cho mọi `<Space />` mới.
 - **BAD:** `<Space direction="vertical" />`
-- **GOOD:** `<Space orientation="vertical" />` (Confirm warning in console before switching)
+- **GOOD:** `<Space orientation="vertical" />`
+
+(Đã quét sạch toàn bộ `frontend/src` — không còn chỗ nào dùng `direction` trên `<Space />`, xem
+`WORKFLOW_LOG.md` mục ngày sửa warning deprecated.)
+
+#### 8.5. Alert Component Deprecation (CRITICAL) — `message` → `title`
+Ant Design `6.x` đánh dấu prop `message` của `<Alert />` là `@deprecated please use 'title' instead`
+(`node_modules/antd/es/alert/Alert.d.ts`). `description` KHÔNG đổi — chỉ đổi tiêu đề chính.
+- **BAD:** `<Alert type="error" message="Không tải được dữ liệu" description="..." />`
+- **GOOD:** `<Alert type="error" title="Không tải được dữ liệu" description="..." />`
+
+Lưu ý: đừng nhầm với `description={error.message}` hay `.data?.message` (đọc field `message` từ object lỗi
+Axios/API) — đó không phải prop của `<Alert />`, không cần đổi.
+
+(Đã quét sạch toàn bộ `frontend/src` — không còn `<Alert message=... />` nào, xem `WORKFLOW_LOG.md`.)
 
 ```
 

@@ -82,7 +82,7 @@ export function DepartmentOverridesPanel({
       <Alert
         type="info"
         showIcon
-        message="Thiếu quyền departments.view"
+        title="Thiếu quyền departments.view"
         description="Bạn có quyền sửa ma trận quyền (roles.manage) nhưng chưa có quyền xem danh sách phòng ban (departments.view) - cần quyền này để chọn phòng ban muốn override."
       />
     );

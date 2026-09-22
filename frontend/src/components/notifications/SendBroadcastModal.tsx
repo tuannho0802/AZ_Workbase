@@ -254,7 +254,7 @@ export function SendBroadcastModal({ open, onClose, onSent }: SendBroadcastModal
             style={{ marginTop: 12 }}
             type={dirtySincePreview ? 'warning' : 'success'}
             showIcon
-            message={
+            title={
               dirtySincePreview
                 ? 'Đã đổi nội dung/người nhận - bấm "Xem trước" lại trước khi gửi'
                 : `Sẽ gửi tới ${previewResult.recipientCount} người${

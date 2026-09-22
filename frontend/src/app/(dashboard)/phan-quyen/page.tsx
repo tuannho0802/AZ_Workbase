@@ -421,7 +421,7 @@ function RolePermissionsEditor({
           type="info"
           showIcon
           icon={<LockOutlined />}
-          message="Chỉ xem - bạn không có quyền roles.manage nên không sửa được ma trận này."
+          title="Chỉ xem - bạn không có quyền roles.manage nên không sửa được ma trận này."
           style={{ marginBottom: 16 }}
         />
       )}

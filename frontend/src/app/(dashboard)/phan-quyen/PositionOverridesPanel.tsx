@@ -60,7 +60,7 @@ export function PositionOverridesPanel({
       <Alert
         type="info"
         showIcon
-        message="Thiếu quyền positions.view"
+        title="Thiếu quyền positions.view"
         description="Bạn có quyền sửa ma trận quyền (roles.manage) nhưng chưa có quyền xem danh mục Vị trí (positions.view) - cần quyền này để chọn Vị trí muốn override."
       />
     );
