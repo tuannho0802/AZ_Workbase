@@ -1,8 +1,10 @@
-import { Injectable, NotFoundException, BadRequestException, ForbiddenException } from '@nestjs/common';
+import { Injectable, NotFoundException, BadRequestException, ForbiddenException, Logger } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
+import { waitUntil } from '@vercel/functions';
 import { PeriodicTask } from '../../database/entities/periodic-task.entity';
 import { PeriodicTaskStatus } from '../../database/entities/periodic-task-status.entity';
+import { PeriodicTaskSecondaryAssignee } from '../../database/entities/periodic-task-secondary-assignee.entity';
 import { User } from '../../database/entities/user.entity';
 import { Department } from '../../database/entities/department.entity';
 import { DepartmentManager } from '../../database/entities/department-manager.entity';
@@ -15,6 +17,11 @@ import { PeriodicTaskFiltersDto } from './dto/periodic-task-filters.dto';
 import { LockPeriodicTaskDto } from './dto/lock-periodic-task.dto';
 import { PeriodicTaskAccessHelper } from './helpers/periodic-task-access.helper';
 import { PeriodicTaskAuditService, PeriodicTaskAuditAction } from './periodic-task-audit.service';
+// ⚠️ Notification Phase 2: NotificationsModule là @Global() (mirror
+// AuditModule/Customer Phase 3) nên không cần import module - tránh phụ
+// thuộc vòng. `EmitInput` re-export để các service con (checklist/customers/
+// secondary-assignees) build đúng shape khi gọi `emitTaskNotification()`.
+import { NotificationsService, EmitInput } from '../notifications/notifications.service';
 
 /** Chủ thể gọi request - đúng shape `GetUser()` decorator trả về (xem
  * `JwtStrategy.validate()`), mirror `RequestingUser` ở
@@ -52,9 +59,74 @@ export class PeriodicTasksService {
     private readonly departmentRepo: Repository<Department>,
     @InjectRepository(DepartmentManager)
     private readonly departmentManagerRepo: Repository<DepartmentManager>,
+    // ⚠️ Notification Phase 2: CHỈ dùng để đọc `secondaryAssigneeIds` làm
+    // recipients (xem `getSecondaryAssigneeIds()`) - không ghi gì vào bảng
+    // này (ghi/xoá vẫn thuộc `PeriodicTaskSecondaryAssigneesService`).
+    @InjectRepository(PeriodicTaskSecondaryAssignee)
+    private readonly secondaryAssigneeRepo: Repository<PeriodicTaskSecondaryAssignee>,
     private readonly permissionsService: PermissionsService,
     private readonly auditService: PeriodicTaskAuditService,
+    private readonly notificationsService: NotificationsService,
   ) {}
+
+  private readonly logger = new Logger(PeriodicTasksService.name);
+
+  // ═════════════════ THÔNG BÁO TỰ ĐỘNG (Notification Phase 2) ═════════════════
+  // Nguyên tắc mirror Y HỆT Customer Phase 3 (PLAN mục 3): (1) KHÔNG BAO GIỜ
+  // làm hỏng nghiệp vụ chính - mọi đoạn chuẩn bị thông báo bọc try/catch +
+  // Logger.error; (2) chỉ emit SAU KHI đã ghi DB nghiệp vụ thành công; (3)
+  // khi `NOTIFICATIONS_ENABLED` tắt thì KHÔNG thêm bất kỳ query nào vào
+  // luồng cũ. Khác Customer ở chỗ đây là "cổng DUY NHẤT" cho CẢ module Task
+  // (mirror ý tưởng "1 nguồn áp filter duy nhất" của RBAC nhưng áp cho
+  // notification): `PeriodicTaskChecklistItemsService`,
+  // `PeriodicTaskCustomersService`, `PeriodicTaskSecondaryAssigneesService`
+  // đều đã inject sẵn `PeriodicTasksService` (dùng cho `findOne()`/
+  // `assertEditableWhenLocked()`) nên gọi qua 2 hàm public bên dưới thay vì
+  // tự inject thêm `NotificationsService` ở 4 file khác nhau.
+
+  /** Pass-through `NotificationsService.emit()` - xem JSDoc ở trên. */
+  emitTaskNotification(input: EmitInput): void {
+    this.notificationsService.emit(input);
+  }
+
+  /**
+   * Chạy phần chuẩn bị + `emit()` thông báo trong `waitUntil()` (như
+   * `CustomersService.notifySafely()`), nuốt mọi lỗi. Trả về Promise CHỈ để
+   * test `await`.
+   */
+  notifyTaskSafely(label: string, run: () => void | Promise<void>): Promise<void> {
+    const task = (async () => {
+      try {
+        if (!this.notificationsService.isEnabled()) return;
+        await run();
+      } catch (error) {
+        const err = error as Error;
+        this.logger.error(`Chuẩn bị thông báo Task thất bại (${label}): ${err?.message}`, err?.stack);
+      }
+    })();
+    try {
+      waitUntil(task);
+    } catch {
+      // Ngoài môi trường Vercel: promise vẫn chạy, không cần waitUntil.
+    }
+    return task;
+  }
+
+  /**
+   * `secondaryAssigneeIds` hiện tại của 1 Task - dùng làm
+   * `recipients.task.secondaryAssigneeIds` cho các sự kiện gửi tới TOÀN BỘ
+   * "stakeholder" (chính + phụ), vd `task.updated`/`task.status_changed`/
+   * `task.checklist_changed`/`task.customer_linked`/`task.locked`/
+   * `task.deleted`. Trả mảng rỗng ngay khi tắt flag - không tốn query.
+   */
+  async getSecondaryAssigneeIds(taskId: number): Promise<number[]> {
+    if (!this.notificationsService.isEnabled()) return [];
+    const rows = await this.secondaryAssigneeRepo.find({
+      where: { taskId },
+      select: { userId: true },
+    });
+    return rows.map((r) => r.userId);
+  }
 
   /**
    * Trạng thái mặc định khi tạo Task không truyền `statusId` - dùng đúng
@@ -251,6 +323,18 @@ export class PeriodicTasksService {
       PeriodicTaskAuditAction.CREATED,
       null,
       this.buildAuditSnapshot(saved, { status, primaryAssignee, department }),
+    );
+
+    // Notification Phase 2 (PLAN mục 4.4): chỉ báo cho phụ trách chính -
+    // `emit()` tự loại nếu actor (người tạo) trùng chính người phụ trách.
+    void this.notifyTaskSafely('created', () =>
+      this.emitTaskNotification({
+        type: 'task.created',
+        actorId: userId,
+        entity: { type: 'periodic_task', id: saved.id },
+        entityName: saved.title,
+        recipients: { task: { primaryAssigneeId: saved.primaryAssigneeId } },
+      }),
     );
 
     return saved;
@@ -465,6 +549,71 @@ export class PeriodicTasksService {
       );
     }
 
+    // Notification Phase 2 (PLAN mục 4.4): 3 event ĐỘC LẬP có thể cùng phát
+    // ra từ 1 lần PATCH (đúng tinh thần audit log ở trên - không phải biến
+    // thể của nhau). `task.updated` CHỈ báo khi đổi title/kỳ hạn/mô tả (PLAN
+    // "chỉ báo khi đổi title, periodStartDate/EndDate, description") - đổi
+    // status/phụ trách/phòng ban/note/màu KHÔNG tự động kích `task.updated`
+    // (status/phụ trách đã có event riêng; phòng ban/note/màu cố ý im lặng).
+    const statusChanged = dto.statusId !== undefined && beforeStatusId !== saved.statusId;
+    const primaryChanged = dto.primaryAssigneeId !== undefined && beforePrimaryAssigneeId !== saved.primaryAssigneeId;
+    const coreFieldsChanged =
+      dto.title !== undefined ||
+      dto.periodStartDate !== undefined ||
+      dto.periodEndDate !== undefined ||
+      dto.description !== undefined;
+
+    if (statusChanged || primaryChanged || coreFieldsChanged) {
+      void this.notifyTaskSafely('update', async () => {
+        const entity = { type: 'periodic_task' as const, id: saved.id };
+        const entityName = saved.title;
+
+        if (primaryChanged) {
+          this.emitTaskNotification({
+            type: 'task.primary_changed',
+            actorId: user.id,
+            entity,
+            entityName,
+            recipients: {
+              newUserIds: saved.primaryAssigneeId != null ? [saved.primaryAssigneeId] : [],
+              previousUserIds: beforePrimaryAssigneeId != null ? [beforePrimaryAssigneeId] : [],
+            },
+          });
+        }
+
+        // 2 event còn lại gửi tới TOÀN BỘ stakeholder (chính + phụ) - chỉ
+        // query `secondaryAssigneeIds` 1 LẦN, dùng chung cho cả 2 nếu cần.
+        if (statusChanged || coreFieldsChanged) {
+          const secondaryAssigneeIds = await this.getSecondaryAssigneeIds(saved.id);
+          const stakeholders = {
+            primaryAssigneeId: saved.primaryAssigneeId,
+            secondaryAssigneeIds,
+          };
+
+          if (statusChanged) {
+            this.emitTaskNotification({
+              type: 'task.status_changed',
+              actorId: user.id,
+              entity,
+              entityName,
+              recipients: { task: { ...stakeholders, createdById: saved.createdById } },
+              params: { toStatus: newStatus?.name },
+            });
+          }
+
+          if (coreFieldsChanged) {
+            this.emitTaskNotification({
+              type: 'task.updated',
+              actorId: user.id,
+              entity,
+              entityName,
+              recipients: { task: stakeholders },
+            });
+          }
+        }
+      });
+    }
+
     return saved;
   }
 
@@ -506,6 +655,20 @@ export class PeriodicTasksService {
       { lockNote: saved.lockNote },
     );
 
+    // Notification Phase 2: báo cho toàn bộ stakeholder mỗi lần gọi lock()
+    // (kể cả gọi lại trên Task đã khoá sẵn - idempotent nhưng vẫn là 1 hành
+    // động lock thật, mirror đúng cách audit log không lọc trùng ở trên).
+    void this.notifyTaskSafely('locked', async () => {
+      const secondaryAssigneeIds = await this.getSecondaryAssigneeIds(saved.id);
+      this.emitTaskNotification({
+        type: 'task.locked',
+        actorId: user.id,
+        entity: { type: 'periodic_task', id: saved.id },
+        entityName: saved.title,
+        recipients: { task: { primaryAssigneeId: saved.primaryAssigneeId, secondaryAssigneeIds } },
+      });
+    });
+
     return saved;
   }
 
@@ -522,6 +685,17 @@ export class PeriodicTasksService {
     const saved = await this.taskRepo.save(task);
 
     this.auditService.logActionAsync(saved.id, user.id, PeriodicTaskAuditAction.UNLOCKED, null, null);
+
+    void this.notifyTaskSafely('unlocked', async () => {
+      const secondaryAssigneeIds = await this.getSecondaryAssigneeIds(saved.id);
+      this.emitTaskNotification({
+        type: 'task.unlocked',
+        actorId: user.id,
+        entity: { type: 'periodic_task', id: saved.id },
+        entityName: saved.title,
+        recipients: { task: { primaryAssigneeId: saved.primaryAssigneeId, secondaryAssigneeIds } },
+      });
+    });
 
     return saved;
   }
@@ -548,6 +722,26 @@ export class PeriodicTasksService {
     // cùng lý do đã sửa ở `create()`/`update()`: `task` có cả cột FK thô lẫn
     // object quan hệ, spread thẳng gây trùng dòng "Trạng thái" ở FE.
     this.auditService.logActionAsync(id, userId, PeriodicTaskAuditAction.DELETED, this.buildAuditSnapshot(task), null);
+
+    // Notification Phase 2: báo cho stakeholder + người tạo - dùng `task`
+    // (entity đã fetch trước `softDelete()`) làm nguồn dữ liệu, không cần
+    // query lại (giống cách `buildAuditSnapshot(task)` ở dòng trên).
+    void this.notifyTaskSafely('deleted', async () => {
+      const secondaryAssigneeIds = await this.getSecondaryAssigneeIds(id);
+      this.emitTaskNotification({
+        type: 'task.deleted',
+        actorId: userId,
+        entity: { type: 'periodic_task', id },
+        entityName: task.title,
+        recipients: {
+          task: {
+            primaryAssigneeId: task.primaryAssigneeId,
+            secondaryAssigneeIds,
+            createdById: task.createdById,
+          },
+        },
+      });
+    });
 
     return { deleted: true };
   }

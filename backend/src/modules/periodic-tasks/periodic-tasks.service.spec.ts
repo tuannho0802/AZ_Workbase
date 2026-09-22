@@ -4,11 +4,13 @@ import { NotFoundException, BadRequestException, ForbiddenException } from '@nes
 import { PeriodicTasksService } from './periodic-tasks.service';
 import { PeriodicTask } from '../../database/entities/periodic-task.entity';
 import { PeriodicTaskStatus } from '../../database/entities/periodic-task-status.entity';
+import { PeriodicTaskSecondaryAssignee } from '../../database/entities/periodic-task-secondary-assignee.entity';
 import { User } from '../../database/entities/user.entity';
 import { Department } from '../../database/entities/department.entity';
 import { DepartmentManager } from '../../database/entities/department-manager.entity';
 import { PermissionsService } from '../permissions/permissions.service';
 import { PeriodicTaskAuditService, PeriodicTaskAuditAction } from './periodic-task-audit.service';
+import { NotificationsService } from '../notifications/notifications.service';
 import { Role } from '../../common/enums/role.enum';
 import { PeriodType } from '../../common/enums/period-type.enum';
 
@@ -48,26 +50,44 @@ describe('PeriodicTasksService', () => {
   const mockDepartmentManagerRepo = {
     find: jest.fn(),
   };
+  // Notification Phase 2: repo CHỈ dùng để đọc `secondaryAssigneeIds` (xem
+  // `getSecondaryAssigneeIds()`) - mock rỗng mặc định, không ảnh hưởng các
+  // test nghiệp vụ chính vốn không quan tâm tới thông báo.
+  const mockSecondaryAssigneeRepo = {
+    find: jest.fn(),
+  };
   const mockPermissionsService = {
     hasPermission: jest.fn(),
   };
   const mockAuditService = {
     logActionAsync: jest.fn(),
   };
+  // Mặc định TẮT (mirror behaviour thật khi biến môi trường
+  // NOTIFICATIONS_ENABLED chưa set trong môi trường test) - `emit()`/
+  // `notifyTaskSafely()` tự no-op, các test nghiệp vụ chính không cần quan
+  // tâm gì thêm. Bật `true` riêng ở từng test muốn khoá hành vi emit.
+  const mockNotificationsService = {
+    isEnabled: jest.fn().mockReturnValue(false),
+    emit: jest.fn(),
+  };
 
   beforeEach(async () => {
     jest.clearAllMocks();
+    mockNotificationsService.isEnabled.mockReturnValue(false);
+    mockSecondaryAssigneeRepo.find.mockResolvedValue([]);
 
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         PeriodicTasksService,
         { provide: getRepositoryToken(PeriodicTask), useValue: mockTaskRepo },
         { provide: getRepositoryToken(PeriodicTaskStatus), useValue: mockStatusRepo },
+        { provide: getRepositoryToken(PeriodicTaskSecondaryAssignee), useValue: mockSecondaryAssigneeRepo },
         { provide: getRepositoryToken(User), useValue: mockUserRepo },
         { provide: getRepositoryToken(Department), useValue: mockDepartmentRepo },
         { provide: getRepositoryToken(DepartmentManager), useValue: mockDepartmentManagerRepo },
         { provide: PermissionsService, useValue: mockPermissionsService },
         { provide: PeriodicTaskAuditService, useValue: mockAuditService },
+        { provide: NotificationsService, useValue: mockNotificationsService },
       ],
     }).compile();
 

@@ -170,6 +170,23 @@ export class PeriodicTaskCustomersService {
       this.auditService.logActionAsync(taskId, user.id, PeriodicTaskAuditAction.CUSTOMER_LINKED, null, {
         customers: linkedCustomers.map((c) => ({ id: c.id, name: c.name })),
       });
+
+      // Notification Phase 2 (PLAN mục 4.4): báo cho stakeholder (chính +
+      // phụ) - CHỈ khi có dòng THẬT SỰ mới gắn (cùng điều kiện với audit
+      // log ở trên), không báo khi toàn bộ `customerIds` gửi lên đã tồn tại
+      // từ trước (idempotent add).
+      void this.tasksService.notifyTaskSafely('customer_linked', async () => {
+        const secondaryAssigneeIds = await this.tasksService.getSecondaryAssigneeIds(taskId);
+        this.tasksService.emitTaskNotification({
+          type: 'task.customer_linked',
+          actorId: user.id,
+          entity: { type: 'periodic_task', id: taskId },
+          entityName: task.title,
+          recipients: {
+            task: { primaryAssigneeId: task.primaryAssigneeId, secondaryAssigneeIds },
+          },
+        });
+      });
     }
 
     return this.getLinkedCustomers(taskId, user);
@@ -201,6 +218,19 @@ export class PeriodicTaskCustomersService {
     });
     this.auditService.logActionAsync(taskId, user.id, PeriodicTaskAuditAction.CUSTOMER_UNLINKED, {
       customer: { id: customerId, name: removedCustomer?.name ?? null },
+    });
+
+    void this.tasksService.notifyTaskSafely('customer_unlinked', async () => {
+      const secondaryAssigneeIds = await this.tasksService.getSecondaryAssigneeIds(taskId);
+      this.tasksService.emitTaskNotification({
+        type: 'task.customer_unlinked',
+        actorId: user.id,
+        entity: { type: 'periodic_task', id: taskId },
+        entityName: task.title,
+        recipients: {
+          task: { primaryAssigneeId: task.primaryAssigneeId, secondaryAssigneeIds },
+        },
+      });
     });
 
     return { deleted: true };

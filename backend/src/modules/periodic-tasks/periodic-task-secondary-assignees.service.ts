@@ -98,6 +98,19 @@ export class PeriodicTaskSecondaryAssigneesService {
       secondaryAssignee: { id: targetUser.id, name: targetUser.name },
     });
 
+    // Notification Phase 2 (PLAN mục 4.4, "Bắt buộc": người dùng không tắt
+    // được) - chỉ báo cho đúng người vừa được thêm, qua cổng chung của
+    // `PeriodicTasksService` (xem JSDoc ở đó).
+    void this.tasksService.notifyTaskSafely('secondary_added', () =>
+      this.tasksService.emitTaskNotification({
+        type: 'task.secondary_added',
+        actorId: user.id,
+        entity: { type: 'periodic_task', id: taskId },
+        entityName: task.title,
+        recipients: { newUserIds: [targetUser.id] },
+      }),
+    );
+
     return this.queryAssigneeUsers(taskId);
   }
 
@@ -125,6 +138,16 @@ export class PeriodicTaskSecondaryAssigneesService {
     this.auditService.logActionAsync(taskId, user.id, PeriodicTaskAuditAction.SECONDARY_ASSIGNEE_REMOVED, {
       secondaryAssignee: { id: targetUserId, name: removedUser?.name ?? null },
     });
+
+    void this.tasksService.notifyTaskSafely('secondary_removed', () =>
+      this.tasksService.emitTaskNotification({
+        type: 'task.secondary_removed',
+        actorId: user.id,
+        entity: { type: 'periodic_task', id: taskId },
+        entityName: task.title,
+        recipients: { previousUserIds: [targetUserId] },
+      }),
+    );
 
     return { deleted: true };
   }

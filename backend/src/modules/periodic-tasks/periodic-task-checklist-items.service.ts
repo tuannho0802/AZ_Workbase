@@ -2,6 +2,7 @@ import { Injectable, BadRequestException, NotFoundException } from '@nestjs/comm
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { PeriodicTaskChecklistItem } from '../../database/entities/periodic-task-checklist-item.entity';
+import { PeriodicTask } from '../../database/entities/periodic-task.entity';
 import { PeriodicTasksService, RequestingUser } from './periodic-tasks.service';
 import { PeriodicTaskLinksService, LinkedChildChecklistEntry } from './periodic-task-links.service';
 import { CreatePeriodicTaskChecklistItemDto } from './dto/create-periodic-task-checklist-item.dto';
@@ -37,6 +38,28 @@ export class PeriodicTaskChecklistItemsService {
     private readonly linksService: PeriodicTaskLinksService,
     private readonly auditService: PeriodicTaskAuditService,
   ) {}
+
+  /**
+   * Notification Phase 2 (PLAN mục 4.4): `task.checklist_changed` - GỘP
+   * (coalesce=true trong catalog) nên nhiều lượt thêm/sửa/xoá liên tiếp
+   * trong lúc người nhận CHƯA ĐỌC chỉ tăng `occurrences` trên 1 dòng, không
+   * spam nhiều dòng. Gọi cho `create()`/`update()`/`remove()` - CỐ Ý KHÔNG
+   * gọi cho `reorder()` (PLAN: "checklist_items_reordered im lặng").
+   */
+  private emitChecklistChanged(taskId: number, task: PeriodicTask, actorId: number): void {
+    void this.tasksService.notifyTaskSafely('checklist_changed', async () => {
+      const secondaryAssigneeIds = await this.tasksService.getSecondaryAssigneeIds(taskId);
+      this.tasksService.emitTaskNotification({
+        type: 'task.checklist_changed',
+        actorId,
+        entity: { type: 'periodic_task', id: taskId },
+        entityName: task.title,
+        recipients: {
+          task: { primaryAssigneeId: task.primaryAssigneeId, secondaryAssigneeIds },
+        },
+      });
+    });
+  }
 
   /** Danh sách item của 1 Task, sắp xếp theo `position` tăng dần. */
   private async queryItems(taskId: number): Promise<PeriodicTaskChecklistItem[]> {
@@ -104,6 +127,8 @@ export class PeriodicTaskChecklistItemsService {
       content: created.content,
     });
 
+    this.emitChecklistChanged(taskId, task, user.id);
+
     return this.queryItems(taskId);
   }
 
@@ -131,6 +156,8 @@ export class PeriodicTaskChecklistItemsService {
       { itemId, content: item.content, isDone: item.isDone },
     );
 
+    this.emitChecklistChanged(taskId, task, user.id);
+
     return this.queryItems(taskId);
   }
 
@@ -151,6 +178,8 @@ export class PeriodicTaskChecklistItemsService {
       itemId,
       content: item.content,
     });
+
+    this.emitChecklistChanged(taskId, task, user.id);
 
     return this.queryItems(taskId);
   }
