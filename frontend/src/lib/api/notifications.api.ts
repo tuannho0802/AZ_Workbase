@@ -40,4 +40,10 @@ export const notificationsApi = {
     const response = await axiosInstance.delete<{ id: number; removed: true }>(`/notifications/${id}`);
     return response.data;
   },
+
+  /** Đảo ngược `remove()` cho thông báo thủ công đã ẩn - tab "Đã ẩn". */
+  restore: async (id: number): Promise<{ id: number; restored: true }> => {
+    const response = await axiosInstance.patch<{ id: number; restored: true }>(`/notifications/${id}/restore`);
+    return response.data;
+  },
 };

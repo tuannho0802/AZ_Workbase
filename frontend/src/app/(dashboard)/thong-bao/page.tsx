@@ -7,30 +7,41 @@ import { useNotificationActions } from '@/lib/hooks/useNotificationActions';
 import { NotificationRow } from '@/components/notifications/NotificationRow';
 import type { NotificationCategory } from '@/lib/types/notification.types';
 
-type CategoryFilter = 'all' | NotificationCategory;
+type ViewFilter = 'all' | NotificationCategory | 'hidden';
 
-const CATEGORY_OPTIONS: { label: string; value: CategoryFilter }[] = [
+const VIEW_OPTIONS: { label: string; value: ViewFilter }[] = [
   { label: 'Tất cả', value: 'all' },
   { label: 'Khách hàng', value: 'customer' },
   { label: 'Công việc', value: 'task' },
   { label: 'Thông báo', value: 'manual' },
+  // Chỉ thông báo THỦ CÔNG mới có khái niệm "ẩn" (dismissedAt) - tự động bị
+  // xoá cứng ngay khi bấm "Xoá" nên không có gì để xem lại ở đây (PLAN 7.1 mở
+  // rộng, xem `notifications.service.ts` `remove()`/`restore()`).
+  { label: 'Đã ẩn', value: 'hidden' },
 ];
 
 /**
  * Trang đầy đủ hộp thư (PLAN 7.1): lọc theo loại + chỉ chưa đọc, cursor
- * "Tải thêm", Đọc tất cả (theo loại đang chọn), Xoá/Ẩn từng cái.
+ * "Tải thêm", Đọc tất cả (theo loại đang chọn), Xoá/Ẩn từng cái, và tab
+ * "Đã ẩn" để xem lại + khôi phục thông báo thủ công đã ẩn trước đó.
  * Chỉ cần đăng nhập - hộp thư luôn là của CHÍNH người dùng (BE lấy từ JWT).
  */
 export default function NotificationsPage() {
-  const [category, setCategory] = useState<CategoryFilter>('all');
+  const [view, setView] = useState<ViewFilter>('all');
   const [unreadOnly, setUnreadOnly] = useState(false);
+
+  const hiddenView = view === 'hidden';
+  const category = hiddenView || view === 'all' ? undefined : view;
 
   const list = useNotificationList({
     limit: 20,
-    unreadOnly: unreadOnly || undefined,
-    category: category === 'all' ? undefined : category,
+    // "Chỉ chưa đọc" không có ý nghĩa ở tab "Đã ẩn" (ẩn rồi thì không còn
+    // hiện badge chưa đọc) - luôn bỏ qua để tránh danh sách trống gây hiểu nhầm.
+    unreadOnly: !hiddenView && unreadOnly ? true : undefined,
+    dismissed: hiddenView || undefined,
+    category,
   });
-  const { markAllRead, remove } = useNotificationMutations();
+  const { markAllRead, remove, restore } = useNotificationMutations();
   const { open } = useNotificationActions();
 
   const items = list.data?.pages.flatMap((p) => p.data) ?? [];
@@ -47,19 +58,23 @@ export default function NotificationsPage() {
           marginBottom: 16,
         }}
       >
-        <Segmented<CategoryFilter> value={category} onChange={setCategory} options={CATEGORY_OPTIONS} />
+        <Segmented<ViewFilter> value={view} onChange={setView} options={VIEW_OPTIONS} />
         <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
-          <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13 }}>
-            <Switch size="small" checked={unreadOnly} onChange={setUnreadOnly} />
-            Chỉ chưa đọc
-          </label>
-          <Button
-            loading={markAllRead.isPending}
-            disabled={markAllRead.isPending}
-            onClick={() => markAllRead.mutate(category === 'all' ? undefined : category)}
-          >
-            Đọc tất cả
-          </Button>
+          {!hiddenView && (
+            <>
+              <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13 }}>
+                <Switch size="small" checked={unreadOnly} onChange={setUnreadOnly} />
+                Chỉ chưa đọc
+              </label>
+              <Button
+                loading={markAllRead.isPending}
+                disabled={markAllRead.isPending}
+                onClick={() => markAllRead.mutate(category)}
+              >
+                Đọc tất cả
+              </Button>
+            </>
+          )}
         </div>
       </div>
 
@@ -71,12 +86,25 @@ export default function NotificationsPage() {
         ) : items.length === 0 ? (
           <Empty
             image={Empty.PRESENTED_IMAGE_SIMPLE}
-            description={unreadOnly ? 'Không có thông báo chưa đọc' : 'Chưa có thông báo nào'}
+              description={
+                hiddenView
+                  ? 'Chưa ẩn thông báo nào'
+                  : unreadOnly
+                    ? 'Không có thông báo chưa đọc'
+                    : 'Chưa có thông báo nào'
+              }
             style={{ padding: '48px 0' }}
           />
         ) : (
           items.map((item) => (
-            <NotificationRow key={item.id} item={item} onOpen={open} onRemove={(n) => remove.mutate(n.id)} />
+            <NotificationRow
+              key={item.id}
+              item={item}
+              onOpen={open}
+              onRemove={(n) => remove.mutate(n.id)}
+              mode={hiddenView ? 'hidden' : 'active'}
+              onRestore={(n) => restore.mutate(n.id)}
+            />
           ))
         )}
       </div>

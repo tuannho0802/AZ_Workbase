@@ -1,7 +1,13 @@
 'use client';
 
 import { Button, Tag, Tooltip } from 'antd';
-import { CloseOutlined, NotificationOutlined, ScheduleOutlined, TeamOutlined } from '@ant-design/icons';
+import {
+  CloseOutlined,
+  NotificationOutlined,
+  RedoOutlined,
+  ScheduleOutlined,
+  TeamOutlined,
+} from '@ant-design/icons';
 import type { ReactNode } from 'react';
 import type { NotificationCategory, NotificationItem } from '@/lib/types/notification.types';
 import { resolveNotificationTarget } from '@/lib/notifications/resolve-link';
@@ -17,6 +23,12 @@ interface NotificationRowProps {
   item: NotificationItem;
   onOpen: (item: NotificationItem) => void;
   onRemove: (item: NotificationItem) => void;
+  /**
+   * `'hidden'` = đang ở tab "Đã ẩn" (`dismissed=true`) - nút hành động đổi
+   * thành "Khôi phục" (gọi `onRestore` thay vì `onRemove`). Mặc định `'active'`.
+   */
+  mode?: 'active' | 'hidden';
+  onRestore?: (item: NotificationItem) => void;
 }
 
 /**
@@ -26,9 +38,10 @@ interface NotificationRowProps {
  * (`white-space: pre-wrap`) - TUYỆT ĐỐI không `dangerouslySetInnerHTML`
  * (PLAN nguyên tắc 8): nội dung thông báo thủ công là văn bản tự do của người gửi.
  */
-export function NotificationRow({ item, onOpen, onRemove }: NotificationRowProps) {
+export function NotificationRow({ item, onOpen, onRemove, mode = 'active', onRestore }: NotificationRowProps) {
   const meta = CATEGORY_META[item.category] ?? CATEGORY_META.manual;
   const unavailable = resolveNotificationTarget(item).kind === 'unavailable';
+  const hidden = mode === 'hidden';
   // Tự động = xoá dòng; thủ công = chỉ ẨN khỏi hộp thư (BE giữ dòng để người gửi thống kê đọc/chưa đọc).
   const removeLabel = item.category === 'manual' ? 'Ẩn thông báo' : 'Xoá thông báo';
 
@@ -116,16 +129,29 @@ export function NotificationRow({ item, onOpen, onRemove }: NotificationRowProps
         )}
       </button>
 
-      <Tooltip title={removeLabel}>
-        <Button
-          type="text"
-          size="small"
-          icon={<CloseOutlined />}
-          aria-label={removeLabel}
-          onClick={() => onRemove(item)}
-          style={{ color: '#94a3b8', flexShrink: 0 }}
-        />
-      </Tooltip>
+      {hidden ? (
+        <Tooltip title="Khôi phục thông báo">
+          <Button
+            type="text"
+            size="small"
+            icon={<RedoOutlined />}
+            aria-label="Khôi phục thông báo"
+            onClick={() => onRestore?.(item)}
+            style={{ color: '#1890ff', flexShrink: 0 }}
+          />
+        </Tooltip>
+      ) : (
+          <Tooltip title={removeLabel}>
+            <Button
+              type="text"
+              size="small"
+              icon={<CloseOutlined />}
+              aria-label={removeLabel}
+              onClick={() => onRemove(item)}
+              style={{ color: '#94a3b8', flexShrink: 0 }}
+            />
+          </Tooltip>
+      )}
     </div>
   );
 }

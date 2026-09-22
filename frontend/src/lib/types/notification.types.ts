@@ -47,5 +47,7 @@ export interface ListNotificationsParams {
   cursor?: string;
   limit?: number;
   unreadOnly?: boolean;
+  /** true = CHỈ lấy thông báo ĐÃ ẨN (tab "Đã ẩn") - chỉ thông báo thủ công mới có trạng thái này. */
+  dismissed?: boolean;
   category?: NotificationCategory;
 }
