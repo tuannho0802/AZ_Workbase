@@ -3549,3 +3549,64 @@ trước) theo đúng Custom Instructions của Project.
 > **Chưa làm/còn treo:** chưa test thủ công trên UI thật (chỉ verify bằng build/tsc/test tự động — chủ dự
 > án nên tự bấm thử nút "Sửa" ở cả 2 tab, cả desktop lẫn mobile, trước khi coi là xong hẳn). Không phát
 > hiện thêm việc dở dang nào khác ngoài phạm vi yêu cầu lần này.
+## [2026-09-22 16:20] | Nghỉ phép — Hiện Badge số lượng ảnh đính kèm ở nút "Đính kèm" (BE loadRelationCountAndMap + FE Badge) | [Status: Success — verify đầy đủ]
+
+**Actor:** Agent
+
+**Đối chiếu code thật trước khi làm (repo đã có commit mới từ chủ dự án):**
+> `git fetch` phát hiện 2 commit mới trên `origin/main` (`d64eb73`, `ebabb57`) kể từ lượt log trước - chủ
+> dự án đã tự áp dụng patch nút "Sửa" + fix warning `useForm` đã giao ở 2 lượt trước. `git clone` lại sạch
+> (không dùng sandbox cũ) - xác nhận cả 2 thay đổi đó đã có trong code thật, không có sai lệch.
+
+**Files Changed:**
+- `backend/src/database/entities/leave-request.entity.ts` — thêm property transient
+  `attachmentCount?: number` (KHÔNG phải cột DB, không `@Column`) - chỉ được map qua
+  `loadRelationCountAndMap()` ở 3 hàm dưới.
+- `backend/src/modules/leave-requests/leave-requests.service.ts` — `findAll()` đổi từ
+  `repo.find({relations})` sang `createQueryBuilder()` (cần thiết để dùng
+  `loadRelationCountAndMap`); cả 3 hàm `findAll()`/`findPending()`/`findHistory()` đều thêm
+  `.loadRelationCountAndMap('leave.attachmentCount', 'leave.attachments')` — TypeORM tự chạy 1 câu COUNT
+  phụ theo `leave_request_id`, KHÔNG load full attachment rows, không N+1.
+- `backend/src/modules/leave-requests/leave-requests.service.spec.ts` — thêm
+  `loadRelationCountAndMap: jest.fn().mockReturnThis()` vào `buildQueryBuilderMock()` (helper dùng chung,
+  fix 3 test cũ bị vỡ do thiếu mock method mới) + describe block mới "attachmentCount..." (3 test khoá lại
+  cả 3 hàm đều gọi đúng field `leave.attachmentCount`/`leave.attachments`).
+- `frontend/src/lib/api/leave-requests.api.ts` — interface `LeaveRequest` thêm `attachmentCount?: number`.
+- `frontend/src/components/leave-requests/AttachmentsViewerButton.tsx` — thêm prop `count?: number`, bọc
+  Button trong `<Badge count={...} size="small" showZero={false}>`; khi `count === 0` (đã XÁC NHẬN không
+  có ảnh, không phải "chưa biết") đổi `type="text"` + màu xám nhạt để mắt lướt qua nhanh — KHÔNG disable
+  (vẫn bấm được, giữ nguyên hành vi mở Modal xem "Đơn này không có ảnh đính kèm" như trước).
+- `frontend/src/app/(dashboard)/duyet-phep/page.tsx` (4 chỗ) + `nghi-phep/page.tsx` (2 chỗ) — mọi
+  `<AttachmentsViewerButton requestId={record.id} ... />` đều truyền thêm `count={record.attachmentCount}`.
+
+**Root Cause:**
+> Chủ dự án phản ánh qua ảnh chụp: nút "Đính kèm" ở TẤT CẢ các dòng trong bảng "Lịch sử phê duyệt" đều
+> giống hệt nhau về mặt hình ảnh, không có cách nào biết đơn nào CÓ ảnh đính kèm mà không bấm thử từng
+> đơn một → mất thời gian kiểm tra thủ công. Nguyên nhân kỹ thuật (đã ghi sẵn trong JSDoc cũ của
+> `AttachmentsViewerButton.tsx`): BE `findAll()`/`findPending()`/`findHistory()` trước đây KHÔNG load
+> relation `attachments` trong danh sách đơn (chỉ load khi bấm vào 1 đơn cụ thể qua
+> `getAttachmentViewUrls()`), nên FE không có dữ liệu để hiện số lượng.
+
+**Solution:**
+> Thêm đếm số ảnh NGAY TRONG list query bằng `loadRelationCountAndMap()` (built-in TypeORM, chạy 1 câu
+> COUNT phụ theo `leave_request_id`, không kéo theo N+1 hay load thừa dữ liệu ảnh) - tránh cách làm tệ hơn
+> là `leftJoinAndSelect` full relation `attachments` (sẽ nhân dòng SQL theo số ảnh) hoặc gọi API riêng cho
+> từng dòng ở FE (N+1 ở tầng HTTP). FE hiện số qua `<Badge>` bọc quanh nút có sẵn, không đổi luồng bấm-mở-
+> Modal cũ, chỉ thêm tín hiệu nhìn nhanh.
+
+**Verify (chạy lệnh thật, không suy diễn):**
+> Backend: `npm install` sạch, `tsc --noEmit` sạch, `nest build` sạch, `npx jest` FULL = **46/46 suite,
+> 876/876 test PASS** (tăng 3 test mới cho `attachmentCount`).
+> Frontend: `npm install` sạch, `tsc --noEmit` — 0 lỗi mới (5 lỗi còn lại vẫn là pre-existing
+> `logo.png`/`CountBadge` không liên quan), `next build` (Turbopack) "Compiled successfully" đủ route kể
+> cả `/duyet-phep`/`/nghi-phep`, `npx vitest run` = **10/10 file, 79/79 test PASS** (không đổi số so với
+> lượt trước - phần Badge chưa có test riêng, xem Notes).
+
+**Notes:**
+> Không có quyền push GitHub trong sandbox Agent - thay đổi hiện chỉ nằm trong sandbox, chủ dự án cần tự
+> áp dụng patch/tải file để lên máy dev/production thật.
+> **Chưa làm/còn treo:** chưa viết test riêng cho `AttachmentsViewerButton.tsx` (component này trước giờ
+> chưa từng có file test, không phải quy chuẩn có sẵn của repo cho nhóm component này - xem các component
+> tương tự khác trong `components/leave-requests/`); chủ dự án nên tự kiểm tra bằng mắt trên UI thật
+> (Badge hiện đúng số, màu xám khi 0 ảnh, bấm vẫn mở Modal đúng) trước khi coi là xong hẳn. Không phát
+> hiện thêm việc dở dang nào khác ngoài phạm vi yêu cầu lần này.
