@@ -136,6 +136,41 @@ export class LeaveRequestsService {
   }
 
   /**
+   * Validate cặp Period Hours (Optional) - khung giờ Từ - Đến trong ngày,
+   * TÁCH BIỆT với `duration`/`totalDays`. Rule:
+   * - Cả 2 đều rỗng/undefined/null -> hợp lệ (không dùng Period Hours).
+   * - Chỉ có 1 trong 2 -> lỗi (phải khai đủ cặp).
+   * - Có đủ cặp -> phải đúng định dạng HH:mm hoặc HH:mm:ss VÀ start < end.
+   * Dùng chung cho cả create() lẫn update() (1 nguồn duy nhất).
+   */
+  private validatePeriodHours(
+    periodStartTime?: string | null,
+    periodEndTime?: string | null,
+  ): void {
+    const hasStart = periodStartTime !== undefined && periodStartTime !== null && periodStartTime !== '';
+    const hasEnd = periodEndTime !== undefined && periodEndTime !== null && periodEndTime !== '';
+
+    if (!hasStart && !hasEnd) {
+      return;
+    }
+
+    if (hasStart !== hasEnd) {
+      throw new BadRequestException(
+        'Period Hours cần khai đủ cả Giờ bắt đầu và Giờ kết thúc, hoặc để trống cả hai',
+      );
+    }
+
+    const timeRegex = /^([01]\d|2[0-3]):([0-5]\d)(:[0-5]\d)?$/;
+    if (!timeRegex.test(periodStartTime as string) || !timeRegex.test(periodEndTime as string)) {
+      throw new BadRequestException('Period Hours phải theo định dạng HH:mm (hoặc HH:mm:ss)');
+    }
+
+    if ((periodStartTime as string) >= (periodEndTime as string)) {
+      throw new BadRequestException('Giờ bắt đầu (Period Hours) phải trước Giờ kết thúc');
+    }
+  }
+
+  /**
    * Create new leave request
    * Validation: Balance check only (KHÔNG còn conflict/overlap check - xem
    * comment "BYPASS" bên trong)
@@ -158,6 +193,10 @@ export class LeaveRequestsService {
 
     // 2. Calculate total days
     const totalDays = this.calculateDays(startDate, endDate, dto.duration);
+
+    // 2b. Validate Period Hours (Optional) - xem validatePeriodHours() để
+    // biết rule đầy đủ. KHÔNG ảnh hưởng totalDays.
+    this.validatePeriodHours(dto.periodStartTime, dto.periodEndTime);
 
     // 3. ⚠️ BYPASS theo yêu cầu chủ dự án (22/9): TRƯỚC ĐÂY chặn "Bạn đã có
     // đơn nghỉ trong khoảng thời gian này" khi đơn mới overlap ngày với BẤT
@@ -220,6 +259,10 @@ export class LeaveRequestsService {
       totalDays,
       reason: dto.reason,
       status: LeaveStatus.PENDING,
+      // Period Hours (Optional) - undefined/'' đều chuẩn hoá về null, tránh
+      // ghi chuỗi rỗng xuống cột TIME.
+      periodStartTime: dto.periodStartTime || null,
+      periodEndTime: dto.periodEndTime || null,
     });
 
     const saved = await this.leaveRequestRepo.save(leaveRequest);
@@ -243,6 +286,8 @@ export class LeaveRequestsService {
         endDate: dto.endDate,
         totalDays: saved.totalDays,
         reason: saved.reason,
+        periodStartTime: saved.periodStartTime,
+        periodEndTime: saved.periodEndTime,
       },
     );
 
@@ -284,6 +329,9 @@ export class LeaveRequestsService {
       endDate?: string;
       duration?: LeaveDuration;
       reason?: string;
+      // Period Hours (Optional) - truyền '' hoặc null để xoá cặp giờ đã có.
+      periodStartTime?: string | null;
+      periodEndTime?: string | null;
     },
     editorId: number,
     editorRole: string,
@@ -357,6 +405,16 @@ export class LeaveRequestsService {
       newDuration,
     );
 
+    // Period Hours (Optional) - chỉ field nào THỰC SỰ có mặt trong dto mới
+    // đổi (partial update, giống các field khác ở update()); field không có
+    // trong dto giữ nguyên giá trị cũ. Chuẩn hoá '' về null (cách để FE xoá
+    // cặp giờ đã lưu).
+    const newPeriodStartTime =
+      dto.periodStartTime !== undefined ? dto.periodStartTime || null : request.periodStartTime;
+    const newPeriodEndTime =
+      dto.periodEndTime !== undefined ? dto.periodEndTime || null : request.periodEndTime;
+    this.validatePeriodHours(newPeriodStartTime, newPeriodEndTime);
+
     // Cân bằng lại phép năm - CHỈ áp dụng khi đơn đang APPROVED (xem JSDoc).
     if (request.status === LeaveStatus.APPROVED) {
       if (oldLeaveType?.deductsAnnualBalance) {
@@ -402,6 +460,8 @@ export class LeaveRequestsService {
       duration: request.duration,
       totalDays: request.totalDays,
       reason: request.reason,
+      periodStartTime: request.periodStartTime,
+      periodEndTime: request.periodEndTime,
     };
 
     request.leaveType = newLeaveTypeCode;
@@ -409,6 +469,8 @@ export class LeaveRequestsService {
     request.endDate = newEndDate;
     request.duration = newDuration;
     request.totalDays = newTotalDays;
+    request.periodStartTime = newPeriodStartTime;
+    request.periodEndTime = newPeriodEndTime;
     if (dto.reason !== undefined) {
       request.reason = dto.reason;
     }
@@ -428,6 +490,8 @@ export class LeaveRequestsService {
         duration: saved.duration,
         totalDays: saved.totalDays,
         reason: saved.reason,
+        periodStartTime: saved.periodStartTime,
+        periodEndTime: saved.periodEndTime,
       },
     );
 

@@ -7,6 +7,11 @@ export interface LeaveRequest {
   endDate: string;
   duration: 'full_day' | 'half_day_am' | 'half_day_pm';
   totalDays: number;
+  // Period Hours (Optional) - khung giờ Từ - Đến cụ thể trong ngày (vd
+  // '14:00:00' - '17:00:00'), TÁCH BIỆT với duration/totalDays. null khi
+  // không dùng Period Hours (mặc định). Format trả về từ BE: HH:mm:ss.
+  periodStartTime: string | null;
+  periodEndTime: string | null;
   reason: string;
   rejectionReason: string | null;
   status: 'pending' | 'approved' | 'rejected' | 'cancelled';
@@ -43,6 +48,11 @@ export const leaveRequestsApi = {
     endDate: string;   // YYYY-MM-DD
     duration: string;
     reason: string;
+    // Period Hours (Optional) - khung giờ Từ - Đến cụ thể trong ngày, dạng
+    // 'HH:mm' (vd '14:00'). Phải gửi ĐỦ CẢ HAI hoặc bỏ trống cả hai - xem
+    // LeaveRequestsService.validatePeriodHours() ở BE.
+    periodStartTime?: string;
+    periodEndTime?: string;
     // Object key trên B2 (bucket leave-attachments) đã PUT xong qua
     // presignAttachment() - KHÔNG PHẢI URL. Xem
     // LeaveRequestsService.create() ở BE (mục 5: validate + lưu ảnh).
@@ -125,6 +135,9 @@ export const leaveRequestsApi = {
       endDate?: string;   // YYYY-MM-DD
       duration?: string;
       reason?: string;
+      // Period Hours (Optional) - gửi '' hoặc null để xoá cặp giờ đã lưu.
+      periodStartTime?: string | null;
+      periodEndTime?: string | null;
     },
   ) {
     const res = await axiosInstance.patch(`/leave-requests/${id}`, data);

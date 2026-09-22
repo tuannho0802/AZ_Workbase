@@ -80,7 +80,30 @@ export class LeaveRequest {
     comment: 'Thời lượng nghỉ trong ngày' 
   })
   duration: LeaveDuration;
-  
+
+  // Period Hours (Optional) - khung giờ Từ - Đến trong ngày, dùng khi người
+  // xin nghỉ muốn khai báo rõ mốc giờ cụ thể (vd nghỉ 14:00 - 17:00) thay vì
+  // chỉ chọn `duration` (full/half day). KHÔNG bắt buộc - nếu không truyền,
+  // 2 cột này NULL và không ảnh hưởng gì tới `calculateDays()`/`totalDays`
+  // (totalDays vẫn tính hoàn toàn dựa trên duration như cũ). Validate cặp
+  // (phải có đủ cả 2 hoặc không cái nào, start < end) ở
+  // `LeaveRequestsService.validatePeriodHours()`, KHÔNG validate ở tầng DB.
+  @Column({
+    name: 'period_start_time',
+    type: 'time',
+    nullable: true,
+    comment: 'Giờ bắt đầu (optional, HH:mm:ss) - khung giờ cụ thể trong ngày, đi kèm periodEndTime',
+  })
+  periodStartTime: string | null;
+
+  @Column({
+    name: 'period_end_time',
+    type: 'time',
+    nullable: true,
+    comment: 'Giờ kết thúc (optional, HH:mm:ss) - đi kèm periodStartTime',
+  })
+  periodEndTime: string | null;
+
   // WHEN
   @Column({ 
     name: 'start_date',

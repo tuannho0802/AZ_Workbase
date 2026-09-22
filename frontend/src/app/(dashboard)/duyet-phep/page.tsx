@@ -54,6 +54,17 @@ const REASON_ELLIPSIS_STYLE: React.CSSProperties = {
   verticalAlign: 'top',
 };
 
+// Period Hours (Optional) - khung giờ Từ - Đến cụ thể trong ngày (vd
+// '14:00:00' - '17:00:00'), TÁCH BIỆT với startDate/endDate/totalDays. BE
+// trả về format HH:mm:ss (cột MySQL TIME) - chỉ cần cắt 5 ký tự đầu để hiện
+// HH:mm, KHÔNG dùng dayjs parse (đây là giờ-trong-ngày thuần, không phải
+// timestamp đầy đủ). Trả về null khi không dùng Period Hours (1 trong 2 cột
+// rỗng cũng coi như không có - BE luôn đảm bảo cặp đủ cả 2 hoặc null cả 2).
+function formatPeriodHours(record: LeaveRequest): string | null {
+  if (!record.periodStartTime || !record.periodEndTime) return null;
+  return `${record.periodStartTime.slice(0, 5)} - ${record.periodEndTime.slice(0, 5)}`;
+}
+
 // ── mobile card – pending ────────────────────────────────────────────────────
 function PendingMobileCard({
   record,
@@ -97,6 +108,12 @@ function PendingMobileCard({
             <Text strong style={{ color: '#1890ff', marginLeft: 6 }}>{record.totalDays} ngày</Text>
           </Text>
         </div>
+        {formatPeriodHours(record) && (
+          <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+            <ClockCircleOutlined style={{ color: '#722ed1', fontSize: 12 }} />
+            <Text style={{ fontSize: 12, color: '#722ed1' }}>{formatPeriodHours(record)}</Text>
+          </div>
+        )}
         {record.requester.department && (
           <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
             <UserOutlined style={{ color: '#8c8c8c', fontSize: 12 }} />
@@ -191,6 +208,12 @@ function HistoryMobileCard({
             <Text strong style={{ color: '#1890ff', marginLeft: 6 }}>{record.totalDays} ngày</Text>
           </Text>
         </div>
+        {formatPeriodHours(record) && (
+          <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+            <ClockCircleOutlined style={{ color: '#722ed1', fontSize: 12 }} />
+            <Text style={{ fontSize: 12, color: '#722ed1' }}>{formatPeriodHours(record)}</Text>
+          </div>
+        )}
         {record.reason && (
           <Text style={{ fontSize: 12, color: '#595959', fontStyle: 'italic' }}>
             Lý do: {record.reason}
@@ -529,6 +552,9 @@ export default function ApprovalPage() {
           <div>{dayjs(record.startDate).format('DD/MM/YYYY')}</div>
           <div style={{ fontSize: 12, color: '#888' }}>đến {dayjs(record.endDate).format('DD/MM/YYYY')}</div>
           <div style={{ fontSize: 12, color: '#1890ff' }}>{record.totalDays} ngày</div>
+          {formatPeriodHours(record) && (
+            <div style={{ fontSize: 12, color: '#722ed1' }}>{formatPeriodHours(record)}</div>
+          )}
         </div>
       )
     },
@@ -628,6 +654,9 @@ export default function ApprovalPage() {
           <div>{dayjs(record.startDate).format('DD/MM/YYYY')}</div>
           <div style={{ fontSize: 12, color: '#888' }}>đến {dayjs(record.endDate).format('DD/MM/YYYY')}</div>
           <div style={{ fontSize: 12, color: '#1890ff' }}>{record.totalDays} ngày</div>
+          {formatPeriodHours(record) && (
+            <div style={{ fontSize: 12, color: '#722ed1' }}>{formatPeriodHours(record)}</div>
+          )}
         </div>
       )
     },

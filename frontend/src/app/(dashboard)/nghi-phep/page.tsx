@@ -3,9 +3,9 @@
 import { useState, useEffect, useRef, useMemo } from 'react';
 import { useRouter } from 'next/navigation';
 import {
-  Table, Button, Modal, Form, Select, DatePicker, Input, Tag, App, Card, Divider, Typography, Row, Col, Tooltip
+  Table, Button, Modal, Form, Select, DatePicker, TimePicker, Input, Tag, App, Card, Divider, Typography, Row, Col, Tooltip
 } from 'antd';
-import { PlusOutlined, CloseCircleOutlined, CalendarOutlined, FileTextOutlined, UserOutlined, SearchOutlined } from '@ant-design/icons';
+import { PlusOutlined, CloseCircleOutlined, CalendarOutlined, ClockCircleOutlined, FileTextOutlined, UserOutlined, SearchOutlined } from '@ant-design/icons';
 import { leaveRequestsApi, LeaveRequest } from '@/lib/api/leave-requests.api';
 import { useMyPermissions } from '@/lib/hooks/useMyPermissions';
 import { useLeaveTypes } from '@/lib/hooks/useLeaveTypes';
@@ -14,6 +14,7 @@ import { AttachmentsViewerButton } from '@/components/leave-requests/Attachments
 import dayjs, { Dayjs } from 'dayjs';
 
 const { RangePicker } = DatePicker;
+const { RangePicker: TimeRangePicker } = TimePicker;
 const { TextArea } = Input;
 const { Text } = Typography;
 
@@ -36,6 +37,16 @@ const REASON_ELLIPSIS_STYLE: React.CSSProperties = {
   whiteSpace: 'nowrap',
   verticalAlign: 'top',
 };
+
+// Period Hours (Optional) - khung giờ Từ - Đến cụ thể trong ngày (vd
+// '14:00:00' - '17:00:00'), TÁCH BIỆT với startDate/endDate/totalDays. BE
+// trả về format HH:mm:ss (cột MySQL TIME) - chỉ cần cắt 5 ký tự đầu để hiện
+// HH:mm, KHÔNG dùng dayjs parse (đây là giờ-trong-ngày thuần, không phải
+// timestamp đầy đủ). Trả về null khi không dùng Period Hours.
+function formatPeriodHours(record: LeaveRequest): string | null {
+  if (!record.periodStartTime || !record.periodEndTime) return null;
+  return `${record.periodStartTime.slice(0, 5)} - ${record.periodEndTime.slice(0, 5)}`;
+}
 
 // ── Mobile Card ──────────────────────────────────────────────────────────────
 function MyLeaveMobileCard({
@@ -71,6 +82,12 @@ function MyLeaveMobileCard({
             <Text strong style={{ color: '#1890ff', marginLeft: 6 }}>{record.totalDays} ngày</Text>
           </Text>
         </div>
+        {formatPeriodHours(record) && (
+          <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+            <ClockCircleOutlined style={{ color: '#722ed1', fontSize: 12 }} />
+            <Text style={{ fontSize: 12, color: '#722ed1' }}>{formatPeriodHours(record)}</Text>
+          </div>
+        )}
         {record.reason && (
           <div style={{ display: 'flex', gap: 6, alignItems: 'flex-start' }}>
             <FileTextOutlined style={{ color: '#8c8c8c', fontSize: 12, marginTop: 3 }} />
@@ -217,6 +234,11 @@ export default function LeaveRequestsPage() {
     setSubmitting(true);
     try {
       const [startDate, endDate] = values.dateRange;
+      // Period Hours (Optional) - values.periodHours là mảng [Dayjs, Dayjs]
+      // từ TimeRangePicker, hoặc undefined nếu người dùng không chọn. Chỉ
+      // gửi lên BE khi có đủ cặp - BE tự validate lại (xem
+      // LeaveRequestsService.validatePeriodHours()).
+      const [periodStart, periodEnd] = values.periodHours || [];
 
       // Bước duy nhất trong toàn bộ luồng tạo đơn thật sự đụng tới B2: chỉ
       // presign + PUT đúng lúc người dùng bấm "Tạo đơn" (xem AttachmentUploader.uploadAll).
@@ -230,6 +252,8 @@ export default function LeaveRequestsPage() {
         endDate: endDate.format('YYYY-MM-DD'),
         duration: values.duration,
         reason: values.reason,
+        periodStartTime: periodStart ? periodStart.format('HH:mm') : undefined,
+        periodEndTime: periodEnd ? periodEnd.format('HH:mm') : undefined,
         attachmentKeys: uploadedKeys,
       });
 
@@ -308,6 +332,13 @@ export default function LeaveRequestsPage() {
       title: 'Số ngày',
       dataIndex: 'totalDays',
       render: (days: number) => `${days} ngày`
+    },
+    {
+      title: 'Khung giờ',
+      render: (_: any, record: LeaveRequest) => {
+        const hours = formatPeriodHours(record);
+        return hours ? <span style={{ color: '#722ed1' }}>{hours}</span> : '-';
+      }
     },
     {
       title: 'Lý do',
@@ -496,6 +527,20 @@ export default function LeaveRequestsPage() {
                 { value: 'half_day_am', label: 'Nửa ngày (Sáng)' },
                 { value: 'half_day_pm', label: 'Nửa ngày (Chiều)' },
               ]}
+            />
+          </Form.Item>
+
+          <Form.Item
+            name="periodHours"
+            label="Khung giờ (Period Hours) - Không bắt buộc"
+            extra="Nếu cần nghỉ theo khung giờ cụ thể trong ngày (vd 14:00 - 17:00), chọn cả Từ giờ và Đến giờ. Bỏ trống nếu không cần."
+          >
+            <TimeRangePicker
+              style={{ width: '100%' }}
+              format="HH:mm"
+              minuteStep={15}
+              placeholder={['Từ giờ', 'Đến giờ']}
+              allowEmpty={[true, true]}
             />
           </Form.Item>
 
