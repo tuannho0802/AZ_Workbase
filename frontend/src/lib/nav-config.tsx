@@ -24,6 +24,7 @@ import {
   BgColorsOutlined,
   HistoryOutlined,
   BellOutlined,
+  SendOutlined,
 } from '@ant-design/icons';
 
 export interface NavItem {
@@ -158,6 +159,24 @@ export const NAV_ITEMS: NavItem[] = [
     // mục Thông báo) ⇒ `roles: null` và KHÔNG khai `permission` là ĐÚNG, khác
     // các mục khác. Số chưa đọc hiện ở badge qua `useSidebarBadgeCounts()`.
     roles: null,
+  },
+  {
+    key: 'thong-bao-gui',
+    label: 'Gửi thông báo',
+    description: 'Soạn & gửi thông báo thủ công tới nhân viên/phòng ban',
+    icon: <SendOutlined />,
+    path: '/thong-bao/gui',
+    roles: null,
+    permission: 'notification_broadcasts.create',
+  },
+  {
+    key: 'thong-bao-da-gui',
+    label: 'Thông báo đã gửi',
+    description: 'Lịch sử thông báo thủ công đã gửi + tiến độ đọc/chưa đọc',
+    icon: <HistoryOutlined />,
+    path: '/thong-bao/da-gui',
+    roles: null,
+    permission: 'notification_broadcasts.view',
   },
   {
     key: 'profile',
