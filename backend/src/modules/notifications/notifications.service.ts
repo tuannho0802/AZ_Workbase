@@ -452,6 +452,38 @@ export class NotificationsService {
     return { id, restored: true };
   }
 
+  /**
+   * Xoá THẬT (hard delete, không thể khôi phục) - hành động BƯỚC 2 trong tab
+   * "Đã ẩn" (`/thong-bao`), sau khi `remove()` đã "ẩn" (bước 1). Áp dụng
+   * chung cho MỌI loại (tự động lẫn thủ công) - khác `remove()` ở chỗ đây
+   * xoá dòng thật, không set `dismissed_at`.
+   *
+   * ⚠️ CHỈ cho xoá dòng ĐANG ẩn (`dismissed_at IS NOT NULL`) - chặn xoá
+   * "tắt" 1 thông báo đang hiện mà chưa qua bước Ẩn (gọi thẳng API, bỏ qua
+   * UI) - tránh người dùng bấm nhầm mất luôn thông báo chưa kịp đọc.
+   */
+  async purge(
+    userId: number,
+    id: number,
+  ): Promise<{ id: number; purged: true }> {
+    const result = await this.notificationRepository.delete({
+      id,
+      recipientId: userId,
+      dismissedAt: Not(IsNull()),
+    });
+    if (!result.affected) {
+      const exists = await this.notificationRepository.exists({
+        where: { id, recipientId: userId },
+      });
+      throw new NotFoundException(
+        exists
+          ? 'Chỉ xoá vĩnh viễn được thông báo đã ẩn - hãy ẩn thông báo trước'
+          : 'Không tìm thấy thông báo',
+      );
+    }
+    return { id, purged: true };
+  }
+
   // ───────────────────────────── helpers ─────────────────────────────
 
   private toResponse(n: Notification): NotificationResponse {

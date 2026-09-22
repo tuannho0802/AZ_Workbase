@@ -84,9 +84,19 @@ export class NotificationsController {
   @HttpCode(200)
   @ApiOperation({
     summary:
-      'Xoá thông báo tự động / ẩn thông báo thủ công khỏi hộp thư của tôi',
+      'Ẩn thông báo khỏi hộp thư của tôi (khôi phục được ở tab "Đã ẩn")',
   })
   remove(@GetUser('id') userId: number, @Param('id', ParseIntPipe) id: number) {
     return this.notificationsService.remove(userId, id);
+  }
+
+  @Delete(':id/permanent')
+  @HttpCode(200)
+  @ApiOperation({
+    summary:
+      'Xoá VĨNH VIỄN 1 thông báo đã ẩn (không thể khôi phục) - chỉ dùng ở tab "Đã ẩn"',
+  })
+  purge(@GetUser('id') userId: number, @Param('id', ParseIntPipe) id: number) {
+    return this.notificationsService.purge(userId, id);
   }
 }
