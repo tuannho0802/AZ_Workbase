@@ -1,11 +1,14 @@
 'use client';
 
 import { useState } from 'react';
-import { Button, Empty, Segmented, Spin, Switch } from 'antd';
+import { Button, Empty, Segmented, Spin, Switch, Card, Typography } from 'antd';
+import { BellOutlined } from '@ant-design/icons';
 import { useNotificationList, useNotificationMutations } from '@/lib/hooks/useNotifications';
 import { useNotificationActions } from '@/lib/hooks/useNotificationActions';
 import { NotificationRow } from '@/components/notifications/NotificationRow';
 import type { NotificationCategory } from '@/lib/types/notification.types';
+
+const { Title } = Typography;
 
 type ViewFilter = 'all' | NotificationCategory | 'hidden';
 
@@ -25,6 +28,12 @@ const VIEW_OPTIONS: { label: string; value: ViewFilter }[] = [
  * "Tải thêm", Đọc tất cả (theo loại đang chọn), Xoá/Ẩn từng cái, và tab
  * "Đã ẩn" để xem lại + khôi phục thông báo thủ công đã ẩn trước đó.
  * Chỉ cần đăng nhập - hộp thư luôn là của CHÍNH người dùng (BE lấy từ JWT).
+ *
+ * ⚠️ ĐIỀU CHỈNH GIAO DIỆN (2026-09-22, phản hồi chủ dự án): trước đây trang
+ * không có tiêu đề/icon (đi thẳng vào hàng bộ lọc), khác với các trang khác
+ * trong app đều có header dạng "icon + tên trang" (vd `nghi-phep`,
+ * `duyet-phep`). Thêm header đồng bộ + bọc khối bộ lọc/danh sách trong
+ * `Card` (thay vì `div` border trần) cho nhất quán style toàn app.
  */
 export default function NotificationsPage() {
   const [view, setView] = useState<ViewFilter>('all');
@@ -48,37 +57,49 @@ export default function NotificationsPage() {
 
   return (
     <div style={{ maxWidth: 820, margin: '0 auto' }}>
-      <div
-        style={{
-          display: 'flex',
-          flexWrap: 'wrap',
-          alignItems: 'center',
-          justifyContent: 'space-between',
-          gap: 12,
-          marginBottom: 16,
-        }}
-      >
-        <Segmented<ViewFilter> value={view} onChange={setView} options={VIEW_OPTIONS} />
-        <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
-          {!hiddenView && (
-            <>
-              <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13 }}>
-                <Switch size="small" checked={unreadOnly} onChange={setUnreadOnly} />
-                Chỉ chưa đọc
-              </label>
-              <Button
-                loading={markAllRead.isPending}
-                disabled={markAllRead.isPending}
-                onClick={() => markAllRead.mutate(category)}
-              >
-                Đọc tất cả
-              </Button>
-            </>
-          )}
-        </div>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 20 }}>
+        <BellOutlined style={{ fontSize: 22, color: '#1890ff' }} />
+        <Title level={4} style={{ margin: 0 }}>
+          Thông báo
+        </Title>
       </div>
 
-      <div style={{ border: '1px solid #f0f0f0', borderRadius: 8, overflow: 'hidden' }}>
+      <Card
+        styles={{ body: { padding: '16px 16px 0' } }}
+        style={{ marginBottom: 16 }}
+      >
+        <div
+          style={{
+            display: 'flex',
+            flexWrap: 'wrap',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            gap: 12,
+            paddingBottom: 16,
+          }}
+        >
+          <Segmented<ViewFilter> value={view} onChange={setView} options={VIEW_OPTIONS} />
+          <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
+            {!hiddenView && (
+              <>
+                <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13 }}>
+                  <Switch size="small" checked={unreadOnly} onChange={setUnreadOnly} />
+                  Chỉ chưa đọc
+                </label>
+                <Button
+                  loading={markAllRead.isPending}
+                  disabled={markAllRead.isPending}
+                  onClick={() => markAllRead.mutate(category)}
+                >
+                  Đọc tất cả
+                </Button>
+              </>
+            )}
+          </div>
+        </div>
+      </Card>
+
+      <div style={{ border: '1px solid #f0f0f0', borderRadius: 8, overflow: 'hidden', background: '#fff' }}>
         {list.isLoading ? (
           <div style={{ padding: 48, textAlign: 'center' }}>
             <Spin />
