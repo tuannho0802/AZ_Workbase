@@ -3322,3 +3322,47 @@ trước) theo đúng Custom Instructions của Project.
 > `npm run migration:run` rồi xác nhận `NOTIFICATIONS_ENABLED=true` đang bật.
 
 ---
+## [2026-09-22 09:30] | Thông báo — Fix migration MySQL + hoàn thiện Phase 2 (Task) + Phase M2 (FE) | [Status: Success — chưa chạy test, xem Notes]
+
+**Actor:** Agent
+
+**Files Changed:**
+- `backend/src/database/migrations/1783400000000-AddEditDeleteToNotificationBroadcasts.ts` — sửa `up()`/`down()`: bỏ `ADD/DROP COLUMN IF EXISTS` (không hợp lệ trên MySQL thật của chủ dự án, gây `ER_PARSE_ERROR` khi `npm run migration:run`), đổi sang `queryRunner.getTable()`/`findColumnByName()` đúng pattern đã dùng ở `AddIsRootAdminToUsers1781000000000`.
+- `backend/src/modules/periodic-tasks/periodic-task-secondary-assignees.service.spec.ts` — thêm `notifyTaskSafely`/`emitTaskNotification` vào `mockTasksService` (còn thiếu từ lượt code Phase 2 trước, khiến spec crash vì gọi hàm không tồn tại trên mock).
+- `backend/src/modules/periodic-tasks/periodic-task-checklist-items.service.spec.ts` — thêm cả 3 (`notifyTaskSafely`/`emitTaskNotification`/`getSecondaryAssigneeIds`) vào `mockTasksService`.
+- `backend/src/modules/periodic-tasks/periodic-task-customers.service.spec.ts` — thêm cả 3 hàm tương tự.
+- `frontend/src/lib/api/notification-broadcasts.api.ts` (mới) — client cho 7 endpoint `/notification-broadcasts/*` (preview/send/listSent/getOne/listRecipients/update/remove), type đối chiếu trực tiếp từ `notification-broadcasts.controller.ts`/`*.service.ts`/DTO thật (không suy đoán theo câu chữ PLAN).
+- `frontend/src/lib/hooks/useNotificationBroadcasts.ts` (mới) — hooks React Query (`useInfiniteQuery` cursor pagination, mirror `useNotifications.ts`): preview/send/listSent/detail/recipients/update/remove.
+- `frontend/src/components/notifications/SendBroadcastModal.tsx` (mới) — Modal soạn & gửi (thay cho nội dung trực tiếp trên trang, theo yêu cầu bổ sung của chủ dự án): đếm ký tự tiêu đề/nội dung, `Radio.Group` người nhận (Users/Departments/Toàn bộ — "Toàn bộ" chỉ hiện khi `scope('notification_broadcasts.create') === 'all'`), bắt buộc "Xem trước người nhận" trước khi bật nút Gửi, tự bắt "đã đổi nội dung sau preview" để buộc preview lại, `modal.confirm` khi gửi `ALL`/≥20 người, chống bấm đúp (`confirmLoading`/`disabled`).
+- `frontend/src/app/(dashboard)/thong-bao/gui/page.tsx` (mới) — gate `notification_broadcasts.create` (mirror pattern redirect ở `audit-logs/page.tsx`), mở sẵn `SendBroadcastModal`.
+- `frontend/src/app/(dashboard)/thong-bao/da-gui/page.tsx` (mới) — gate `notification_broadcasts.view`; bảng lịch sử (Tiêu đề + nhãn "Đã chỉnh sửa", Người gửi, Thời gian, Tag đối tượng, `Progress` tiến độ đọc); nút Sửa/Xoá theo đúng `can('notification_broadcasts.edit'/'.delete')`; Drawer chi tiết: nội dung đầy đủ, thẻ Đã đọc/Chưa đọc, `Tabs` Tất cả/Chưa đọc/Đã đọc, bảng người nhận (avatar, tên, phòng ban, trạng thái — "Đã khoá" nếu `isActive=false`, không phải dựa vào `dismissed`), ô tìm theo tên, cursor "Tải thêm"; Sửa inline bằng `Form` trong Drawer; nút "Soạn thông báo mới" mở cùng `SendBroadcastModal`.
+- `frontend/src/lib/nav-config.tsx` — thêm 2 `NavItem`: "Gửi thông báo" (`/thong-bao/gui`, permission `notification_broadcasts.create`) và "Thông báo đã gửi" (`/thong-bao/da-gui`, permission `notification_broadcasts.view`), thêm import `SendOutlined`.
+- `AZ-Workbase Skills/PERMISSIONS.md` — cập nhật tiêu đề §2.12 (thêm Phase 2 + M2), sửa đoạn "Còn lại" (Phase 2 thực ra đã code xong từ lượt trước, không phải "chưa code" như đã ghi nhầm ở lượt M1), thêm cảnh báo "chưa verify bằng test" cho Phase 2 + M2, thêm 1 dòng lịch sử mới ở mục 3.
+- `AZ-Workbase Skills/PLAN_NOTIFICATION_SYSTEM.md` — cập nhật dòng trạng thái đầu file (Phase 2 + M2 đã code xong, chưa verify), bảng phân kỳ mục 10 (Phase 2, M2), mục 7.7 thêm ghi chú lệch plan (`send`→`create`, dùng Modal thay vì trang riêng).
+
+**Root Cause (bug migration):**
+> `ADD COLUMN IF NOT EXISTS` gộp nhiều cột trong 1 câu `ALTER TABLE` không hợp lệ cú pháp trên bản MySQL
+> đang chạy của chủ dự án (`ER_PARSE_ERROR` ngay khi `npm run migration:run`) — khác giả định lúc viết
+> migration (nghĩ mọi MySQL 8.0+ đều hỗ trợ). Repo đã có pattern an toàn hơn (`getTable()` +
+> `findColumnByName()`) dùng ở `AddIsRootAdminToUsers1781000000000` nhưng migration Thông báo không theo.
+
+**Solution:**
+> Đổi migration `1783400000000` sang kiểm tra cột tồn tại qua `queryRunner.getTable()` trước khi
+> `ALTER TABLE ADD/DROP COLUMN` (không dùng `IF NOT EXISTS`/`IF EXISTS` nữa) — đúng pattern đã có sẵn trong
+> repo, tự động idempotent giống ý định ban đầu. Đồng thời hoàn thiện 2 việc còn treo từ lượt trước (bổ sung
+> mock còn thiếu cho Phase 2, code toàn bộ Phase M2 FE) và đồng bộ lại 2 tài liệu đã ghi sai trạng thái
+> Phase 2 ("chưa code" trong khi thực ra đã code, chỉ thiếu mock spec).
+
+**Notes:**
+> **KHÔNG chạy `jest`/`tsc --noEmit`/`nest build`/`next build`** trong toàn bộ phiên này — chủ dự án yêu
+> cầu tạm dừng chạy test giữa chừng. Mọi thay đổi ở trên MỚI DỪNG Ở MỨC "đã viết code theo đúng pattern/API
+> thật đã đọc trực tiếp từ repo", CHƯA được xác nhận bằng build/test thật — lượt tiếp theo PHẢI chạy đầy đủ
+> (`tsc --noEmit` BE+FE, `nest build`, `next build`, `npx jest`, `npx vitest run` nếu FE có vitest cho phần
+> mới) trước khi coi Phase 2/M2 là Done thật sự, đúng nguyên tắc "không tin báo cáo chưa chạy lệnh" của
+> Custom Instructions. Không có quyền push code lên repo GitHub của chủ dự án (không có credential) — mọi
+> thay đổi hiện chỉ nằm trong sandbox của Agent, chủ dự án cần tự áp dụng patch/tải file.
+> **Chưa làm/còn treo:** chạy migration `1783400000000` (bản đã sửa) + `1783500000000` lên DB thật của chủ
+> dự án; build/test đầy đủ như trên; Phase 5/6/M3 (deep-link highlight, tuỳ chọn cá nhân, cron dọn dẹp,
+> "Nhắc người chưa đọc") vẫn chưa làm, không phải ưu tiên hiện tại.
+
+---

@@ -1,6 +1,6 @@
 # 🔔 PLAN: Hệ thống Thông báo (Notification) — Tự động + Thủ công
 
-> **Trạng thái:** DỰ THẢO v2. **Phase 0 + 1 + 3 (BE) + 4 (FE, điều hướng cơ bản) đã xong (2026-09-21)** — xem `WORKFLOW_LOG.md`. **Phase M1 (BE Thông báo thủ công) đã xong (2026-09-22)** — CRUD đầy đủ theo yêu cầu chủ dự án (mở rộng hơn dự kiến gốc chỉ 2 permission `send/view`, xem mục M1 bên dưới và `PERMISSIONS.md` §2.12). **Phase 2 (móc Task) CHƯA làm** ⇒ thông báo Task chưa phát ra. **Phase M2 (FE Thông báo thủ công) CHƯA làm.** Verify M1: `tsc --noEmit`/`nest build` sạch, **46/46 suite / 862/862 test pass**. Mục 11 vẫn chờ chủ dự án chốt (Phase 1 dùng đề xuất mặc định). **Đã lệch plan:** 5.1/11.13 `is_read` là cột ghi được (không phải cột sinh) — lý do trong WORKFLOW_LOG.
+> **Trạng thái:** DỰ THẢO v2. **Phase 0 + 1 + 3 (BE) + 4 (FE, điều hướng cơ bản) đã xong (2026-09-21)** — xem `WORKFLOW_LOG.md`. **Phase M1 (BE Thông báo thủ công) đã xong (2026-09-22)** — CRUD đầy đủ theo yêu cầu chủ dự án (mở rộng hơn dự kiến gốc chỉ 2 permission `send/view`, xem mục M1 bên dưới và `PERMISSIONS.md` §2.12). **Phase 2 (móc Task) đã CODE xong (2026-09-22)** — `emit()` gắn đủ ở `create/update/lock/unlock/remove` (`periodic-tasks.service.ts`) + 3 service phụ (secondary-assignees/checklist-items/customers). **Phase M2 (FE Thông báo thủ công) đã CODE xong (2026-09-22)** — 2 trang `/thong-bao/gui` + `/thong-bao/da-gui`, `SendBroadcastModal`, nav gating. ⚠️ **Phase 2 + M2 CHƯA chạy lại `tsc --noEmit`/`nest build`/`next build`/`jest` để verify** (tạm dừng chạy test theo yêu cầu chủ dự án trong phiên code) — số liệu `46/46 suite / 862/862 test pass` dưới đây là CỦA M1, TRƯỚC 2 phase này. Mục 11 vẫn chờ chủ dự án chốt (Phase 1 dùng đề xuất mặc định). **Đã lệch plan:** 5.1/11.13 `is_read` là cột ghi được (không phải cột sinh) — lý do trong WORKFLOW_LOG.
 > **v2 (2026-09-21):** thêm **Thông báo thủ công** (kiểu "email nội bộ": người gửi chọn 1/nhiều/toàn bộ user, theo dõi ai đã đọc/chưa đọc). Các mục có thay đổi/thêm mới được đánh dấu **[MỚI v2]**.
 > **Đối chiếu code:** HEAD `f8ea812` (2026-09-21; commit này chỉ sửa `roles.service.spec.ts`). Mọi khẳng định "hiện trạng" ở mục 0 đều đọc trực tiếp từ code/lệnh thật.
 > **Vị trí đặt file:** `AZ-Workbase Skills/PLAN_NOTIFICATION_SYSTEM.md` (cùng chỗ các `PLAN_*.md` khác).
@@ -453,6 +453,14 @@ CSS chung trong `globals.css`:
 
 ### 7.7. **[MỚI v2]** Thông báo thủ công — Frontend
 
+> ⚠️ **Đã lệch so với bản dự thảo dưới đây khi code thật (2026-09-22):** permission gửi thật tên là
+> `notification_broadcasts.create` (không phải `.send` như câu chữ gốc bên dưới — mirror đúng 4 permission
+> CRUD `view/create/edit/delete` đã seed ở M1, xem `PERMISSIONS.md` §2.12). Và theo yêu cầu bổ sung của chủ
+> dự án, phần "Soạn & gửi" được làm dưới dạng **Modal** (`SendBroadcastModal.tsx`) thay vì nội dung trực
+> tiếp trên trang `/thong-bao/gui` — trang đó chỉ còn là điểm vào có gate quyền, mở sẵn Modal; Modal này
+> cũng được tái dùng ở nút "Soạn thông báo mới" trên trang `/thong-bao/da-gui` để gửi nhanh không cần
+> chuyển trang.
+
 **Menu (sidebar, `nav-config.tsx`, dùng field `permission` — không hardcode role):**
 - "Gửi thông báo" → `/thong-bao/gui`, `permission: 'notification_broadcasts.send'`.
 - "Thông báo đã gửi" → `/thong-bao/da-gui`, `permission: 'notification_broadcasts.view'`.
@@ -519,11 +527,11 @@ CSS chung trong `globals.css`:
 |---|---|---|---|
 | **0** | Chốt mục 11; `git pull` + `ls migrations` lấy timestamp thật | S | Bắt buộc trước code |
 | **1** | BE nền tảng: **3 entity** (`notifications`, `notification_preferences`, `notification_broadcasts`) + migration, `NotificationsModule` (Global), catalog, resolver, `emit()`, endpoint list/poll/read/read-all/delete, test | L | Chưa móc vào nghiệp vụ nào. **[v2]** Tạo sẵn cột `broadcast_id/dismissed_at/is_read` ngay từ đầu để khỏi phải migration sửa bảng sau |
-| **2** | ⏳ **CHƯA XONG** — Móc **Task** (mirror 17 audit action, gồm coalesce checklist) | M | Làm Task trước: action đã chuẩn hoá |
+| **2** | ✅ **XONG (2026-09-22)** — Móc **Task** (mirror 17 audit action, gồm coalesce checklist). Code chính đã qua `tsc --noEmit` sạch ở lượt trước; 3 spec phụ vừa bổ sung mock ở lượt này **CHƯA chạy lại `jest`/`nest build`** để lấy số liệu mới | M | Làm Task trước: action đã chuẩn hoá |
 | **3** | ✅ **XONG (2026-09-21)** — Móc **Customer**: create/update (allowlist)/remove/note/assignment + **batch `bulkAssign`** | M–L | Ca khó nhất là gộp batch |
 | **4** | ✅ **XONG (2026-09-21, mức cơ bản)** — FE hộp thư: chuông, dropdown, `/thong-bao`, polling + toast, `resolve-link`, điều hướng cơ bản (dùng `?id=` hiện có) | M | Dùng được ngay không cần highlight |
 | **M1 [MỚI v2]** | ✅ **XONG (2026-09-22).** **BE thủ công, CRUD đầy đủ** (mở rộng hơn dự thảo gốc theo yêu cầu chủ dự án — không dừng ở 2 permission `send/view`): migration seed đủ 4 permission `notification_broadcasts.view/create/edit/delete`, `notification-broadcasts` (preview/send/list/detail/recipients/**update/remove**), audience resolver, audit, throttle, test (controller+service+resolver). Sửa → `updatedAt` + đồng bộ `title` vào `notifications` (nhãn "Đã chỉnh sửa"); Xoá → xoá cứng `notifications` liên quan (mất khỏi mọi hộp thư), soft-delete `notification_broadcasts` để giữ audit | **Chỉ phụ thuộc Phase 1** — đã làm ngay sau Phase 1, không cần Phase 2–3. Xem `PERMISSIONS.md` §2.12 |
-| **M2 [MỚI v2]** | ⏳ **CHƯA LÀM.** **FE thủ công:** modal chi tiết trong hộp thư (cần Phase 4), 2 trang `/thong-bao/gui` + `/thong-bao/da-gui` (kèm nút Sửa/Xoá gọi `PATCH`/`DELETE` đã có sẵn ở M1), nav gating, form + preview + Drawer theo dõi đọc/chưa đọc | M | Cần Phase 4 (chuông/poll, đã xong) + M1 (đã xong) — không còn phụ thuộc nào chưa sẵn sàng |
+| **M2 [MỚI v2]** | ✅ **XONG (2026-09-22).** **FE thủ công:** `SendBroadcastModal` (Modal soạn & gửi — theo yêu cầu bổ sung của chủ dự án, dùng chung cho `/thong-bao/gui` và nút "Soạn thông báo mới" ở `/thong-bao/da-gui`), trang `/thong-bao/da-gui` (bảng lịch sử + Drawer chi tiết Tabs Tất cả/Chưa đọc/Đã đọc + Sửa/Xoá gọi `PATCH`/`DELETE` có sẵn ở M1), nav gating động (`nav-config.tsx`). **CHƯA chạy** `tsc --noEmit`(FE)/`next build`/`vitest` để verify — cần làm ở lượt sau trước khi coi là Definition of Done | M | Cần Phase 4 (chuông/poll, đã xong) + M1 (đã xong) |
 | **5** | Deep-link + highlight tự động: `useNotificationFocus`, CSS, BE `focusId` cho `GET /customers`, reset bộ lọc Task, banner, thẻ ghim, trợ năng | M | Phần tinh tế nhất |
 | **6** | Tuỳ chọn cá nhân (`notification_preferences` + UI) + cron dọn dẹp (gồm quy tắc 180 ngày cho thủ công) | S–M | |
 | **M3 [MỚI v2] (tuỳ chọn)** | ~~`notification_broadcasts.delete`~~ **đã chuyển sang M1 và LÀM XONG** (chủ dự án yêu cầu CRUD đầy đủ ngay, không đợi optional). Còn lại: "Nhắc người chưa đọc", xuất danh sách, đính kèm Khách hàng/Task | S–M | Chỉ làm khi cần |

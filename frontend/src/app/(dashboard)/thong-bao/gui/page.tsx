@@ -191,7 +191,7 @@ export default function SentBroadcastsPage() {
           const total = record.readCount + record.unreadCount;
           const percent = total > 0 ? Math.round((record.readCount / total) * 100) : 0;
           return (
-            <Space direction="vertical" size={0} style={{ width: '100%' }}>
+            <Space orientation="vertical" size={0} style={{ width: '100%' }}>
               <Progress percent={percent} size="small" showInfo={false} />
               <Text type="secondary" style={{ fontSize: 12 }}>
                 {record.readCount}/{total} đã đọc
@@ -290,7 +290,7 @@ export default function SentBroadcastsPage() {
         title={selected?.title}
         open={!!selected}
         onClose={closeDetail}
-        width={560}
+        size={560}
         extra={
           selected && (
             <Space>

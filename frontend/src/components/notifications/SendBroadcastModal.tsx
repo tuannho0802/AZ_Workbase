@@ -177,7 +177,7 @@ export function SendBroadcastModal({ open, onClose, onSent }: SendBroadcastModal
         type="warning"
         showIcon
         style={{ marginBottom: 16 }}
-        message="Không đưa SĐT/email/số tiền của khách hàng vào nội dung. Người nhận được chốt tại thời điểm gửi."
+        title="Không đưa SĐT/email/số tiền của khách hàng vào nội dung. Người nhận được chốt tại thời điểm gửi."
       />
       <Form form={form} layout="vertical" onValuesChange={markDirty}>
         <Form.Item

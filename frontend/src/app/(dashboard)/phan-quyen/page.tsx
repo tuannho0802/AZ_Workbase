@@ -84,6 +84,7 @@ const RESOURCE_LABEL: Record<string, string> = {
   // Việt, không riêng 2 permission mới của Phase 5.
   periodic_tasks: 'Công việc định kỳ',
   periodic_task_statuses: 'Trạng thái công việc định kỳ',
+  notification_broadcasts: 'Thông báo thủ công'
 };
 
 const SCOPE_LABEL: Record<PermissionScope, string> = {

@@ -597,7 +597,7 @@ approve/lock (`periodic_tasks.approve`/`edit_locked`), checklist con kiểu Trel
 
 ---
 
-### 2.12. Thông báo (`modules/notifications`) — ✅ ĐÃ KHỚP (Phase 1 hộp thư cá nhân + M1 Thông báo thủ công)
+### 2.12. Thông báo (`modules/notifications`) — ✅ ĐÃ KHỚP (Phase 1 hộp thư cá nhân + Phase 2 Task + M1 Thông báo thủ công BE + M2 FE)
 
 Module có 2 controller tách biệt hoàn toàn về mô hình quyền — KHÔNG dùng chung 1 bộ rule:
 
@@ -639,12 +639,22 @@ trang "Phân quyền" nếu thực sự muốn — xem JSDoc đầu file migrati
 `notification-broadcasts.controller.spec.ts` (mới — khoá hợp đồng: đúng `@RequirePermission()` cho từng
 route, `JwtAuthGuard`+`PermissionGuard` ở mức class, không endpoint "lạ" nào ngoài 7 route đã khai). Verify
 (2026-09-22): `tsc --noEmit` sạch, `nest build` sạch, **46/46 suite / 862/862 test pass** (toàn bộ, không
-regression). Mutation check: đổi key `notification_broadcasts.delete` → `.edit` ở 1 route ⇒ spec tương ứng
-đỏ ngay, đã revert.
+regression) — **con số này là của M1**, TRƯỚC khi thêm Phase 2 (móc Task) và M2 (FE) ở các lượt sau. Mutation
+check: đổi key `notification_broadcasts.delete` → `.edit` ở 1 route ⇒ spec tương ứng đỏ ngay, đã revert.
+⚠️ Phase 2 (BE) đã sửa đủ 4 file service + spec mock (`periodic-tasks.service.ts` và 3 service phụ), nhưng
+**CHƯA chạy lại `jest`/`tsc`/`nest build` để lấy số liệu mới** (theo yêu cầu tạm dừng chạy test của chủ dự
+án) — lượt tiếp theo cần chạy full suite trước khi coi Phase 2 là "đã verify".
 
-**Còn lại (Phase 2 theo PLAN — chưa code):** móc `emit()` tự động cho sự kiện Task (`periodic_tasks`); FE
-M2 (2 trang `/thong-bao/gui` + `/thong-bao/da-gui`, form soạn + preview + Drawer theo dõi đọc/chưa đọc) —
-xem `PLAN_NOTIFICATION_SYSTEM.md` mục 6.3/M1/M2.
+**FE (M2, mới thêm):** `/thong-bao/gui` (gate `notification_broadcasts.create`, mở `SendBroadcastModal`)
+và `/thong-bao/da-gui` (gate `notification_broadcasts.view`, bảng lịch sử + Drawer chi tiết + Sửa/Xoá inline
+theo đúng `canEdit`/`canDelete`). Nav 2 mục mới trong `nav-config.tsx` dùng field `permission` động (không
+hardcode role) — tự ẩn/hiện đúng khi Admin đổi ma trận quyền, khớp nguyên tắc "API và UI đồng bộ" của dự án.
+`SendBroadcastModal` tự ẩn tuỳ chọn "Toàn bộ nhân viên" khi `scope('notification_broadcasts.create') !==
+'all'` (BE vẫn kiểm lại ở `BroadcastAudienceResolver` — FE chỉ là UX).
+
+**Còn lại:** không còn phần nào của module `notifications` theo PLAN v2 đang "chưa code" — chỉ còn các
+mục tuỳ chọn Phase 5/6/M3 (deep-link highlight tự động, `notification_preferences` UI, cron dọn dẹp, "Nhắc
+người chưa đọc") — xem `PLAN_NOTIFICATION_SYSTEM.md` mục 10.
 
 ---
 
@@ -668,6 +678,7 @@ xem `PLAN_NOTIFICATION_SYSTEM.md` mục 6.3/M1/M2.
 | 2026-09-15 (module MỚI "Công việc định kỳ" - Phase 1-3 xong) | Audit lại code thật (không tin transcript phiên trước) xác nhận BE Phase 1 (CRUD + RBAC own/department/all) và Phase 2 (liên kết DAG cha-con + rollup %, dùng chung `periodic_tasks.edit`) đã đúng rule, cả 2 đều đã có FE mount thật (không phải file mồ côi). Tiếp tục code Phase 3 (gắn Customer vào Task) - module ĐẦU TIÊN trong repo dùng 2 lớp permission độc lập cho cùng 1 endpoint (`periodic_tasks.edit` qua Guard + `periodic_tasks.link_customer` tự check thêm trong Service vì `@RequirePermission()` chỉ nhận 1 key/route), tái dùng `CustomerAccessHelper.applyViewFilter()` với scope thật của `customers.view` (module khác) để lọc Customer hợp lệ, xoá hẳn key `linkedCustomers` khỏi response khi thiếu quyền (không trả mảng rỗng) | Xem mục 2.11 (mới thêm), `PLAN_PERIODIC_TASKS_MODULE.md` mục 2.4/2.12/6, `1782400000000-CreatePeriodicTaskCustomers.ts`, `periodic-task-customers.service.ts` |
 | 2026-09-21 (Thông báo — Phase 1 BE nền tảng) | Thêm module `notifications` (`GET /notifications`, `/notifications/poll`, `PATCH /notifications/read-all`, `PATCH /notifications/:id/read`, `DELETE /notifications/:id`). **Hộp thư cá nhân CỐ Ý chỉ gắn `JwtAuthGuard`, KHÔNG `@RequirePermission`** — mọi user đăng nhập đều có hộp thư của CHÍNH MÌNH; `PermissionGuard` cho qua khi route không khai key nên đây là thiết kế, không phải sót guard. Chốt chặn thay thế: `recipientId` LUÔN lấy từ JWT (`@GetUser('id')`), không nhận từ param/body/query; đọc/sửa/xoá thông báo của người khác → 404 (spec khoá lại: `notifications.controller.spec.ts`, `notifications.service.spec.ts`). Chưa thêm permission key nào ở Phase 1; `notification_broadcasts.send/view` sẽ seed ở Phase M1 | Xem `PLAN_NOTIFICATION_SYSTEM.md` mục 6.5/6.7, `notifications.controller.ts` |
 | 2026-09-22 (Thông báo — Phase M1 Thông báo thủ công, CRUD đầy đủ theo Scope) | Theo yêu cầu chủ dự án: seed đủ 4 permission CRUD `notification_broadcasts.view/create/edit/delete` (Dynamic RBAC, mục 1.7) thay vì chỉ 2 permission `send/view` như dự kiến ban đầu ở Phase 1, để hỗ trợ Sửa (hiển thị "Đã chỉnh sửa") và Xoá (mất khỏi mọi hộp thư người nhận) đầy đủ. `git pull` HEAD `83b3e4b` (2 commit trước đó đã tự đánh dấu "Not yet done") rồi đọc trực tiếp code xác nhận: module đã wire vào `notifications.module.ts`, service/controller/resolver/DTO đã có đủ, nhưng thiếu spec khoá hợp đồng bảo mật cho Controller (dù đã có spec cho Service + Resolver) và 3 file tài liệu (`PERMISSIONS.md`, `PLAN_NOTIFICATION_SYSTEM.md`, `WORKFLOW_LOG.md`) chưa được cập nhật theo — đã bổ sung `notification-broadcasts.controller.spec.ts` (mirror `notifications.controller.spec.ts`: khoá `JwtAuthGuard`+`PermissionGuard` ở class, đúng `@RequirePermission()` cho từng route qua `it.each`, không endpoint lạ, `ThrottlerGuard` ở `send()`) và cập nhật cả 3 tài liệu. **Cố ý lệch nguyên tắc chung "Assistant = Admin trừ Xoá"** — module này không seed mặc định gì cho Assistant/Employee vì `create` giới hạn PHẠM VI NGƯỜI NHẬN chứ không phải phạm vi dữ liệu, seed rộng cho Assistant tương đương rủi ro spam toàn công ty (xem JSDoc migration `1783500000000`). Verify: `tsc --noEmit` sạch, `nest build` sạch, **46/46 suite / 862/862 test pass**; mutation check đổi permission key `delete`→`edit` ở 1 route ⇒ spec đỏ đúng chỗ, đã revert | Xem mục 2.12 (mới thêm), `PLAN_NOTIFICATION_SYSTEM.md` mục M1, `1783400000000-AddEditDeleteToNotificationBroadcasts.ts`, `1783500000000-SeedNotificationBroadcastPermissions.ts`, `notification-broadcasts.controller.spec.ts` |
+| 2026-09-22 (Thông báo — Fix migration + Phase 2 Task + M2 FE) | (1) Sửa migration `1783400000000`: `ADD COLUMN IF NOT EXISTS` gộp nhiều cột gây lỗi cú pháp trên MySQL thật của chủ dự án (`ER_PARSE_ERROR`) — đổi sang pattern `queryRunner.getTable()`/`findColumnByName()` đã dùng ở `AddIsRootAdminToUsers`. (2) Hoàn thiện nốt Phase 2 (móc `emit()` cho Task, đã code từ lượt trước nhưng 3 spec phụ còn thiếu mock `notifyTaskSafely`/`emitTaskNotification`/`getSecondaryAssigneeIds` trong `mockTasksService`) — bổ sung xong cả 3 (`periodic-task-secondary-assignees/checklist-items/customers.service.spec.ts`). (3) Code xong Phase M2 (FE Thông báo thủ công): `notification-broadcasts.api.ts`, `useNotificationBroadcasts.ts`, `SendBroadcastModal.tsx` (Modal soạn & gửi — theo yêu cầu bổ sung của chủ dự án, dùng chung cho cả `/thong-bao/gui` lẫn nút "Soạn thông báo mới" ở `/thong-bao/da-gui`), 2 trang `/thong-bao/gui` + `/thong-bao/da-gui`, 2 mục nav mới (`nav-config.tsx`, permission động). ⚠️ **CHƯA chạy `tsc --noEmit`/`nest build`/`next build`/`jest` cho các thay đổi (2)+(3)** — chủ dự án yêu cầu tạm dừng chạy test trong phiên này, cần chạy đầy đủ ở lượt kế tiếp trước khi coi là "đã verify" | Xem mục 2.12 (cập nhật), `PLAN_NOTIFICATION_SYSTEM.md` mục 10, `SendBroadcastModal.tsx`, `1783400000000-AddEditDeleteToNotificationBroadcasts.ts` |
 
 ---
 
