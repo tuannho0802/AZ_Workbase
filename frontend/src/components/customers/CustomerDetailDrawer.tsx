@@ -67,8 +67,17 @@ export const CustomerDetailDrawer = ({ open, customerId, onClose, onUpdate }: Cu
       const data = await customersApi.getCustomer(customerId);
       setCustomer(data);
     } catch {
+      // ⚠️ FIX BUG THẬT (2026-09-22): trước đây gọi `onClose()` ở đây - dù chỉ
+      // 1 lần fetch/refetch (vd bấm "Làm mới", hoặc 1 API phụ trong Drawer)
+      // lỗi thoáng qua (network blip, 401 đang refresh token...), `onClose`
+      // của Drawer ở `customers/page.tsx` KHÔNG chỉ đóng Drawer mà còn gọi
+      // `clearFocus()` - xoá luôn highlight "mục tiêu" đến từ thông báo. Hệ
+      // quả: đang xem đúng khách hàng từ thông báo, gặp 1 lỗi mạng thoáng
+      // qua là Drawer tự đóng + mất sạch highlight mà người dùng không hề
+      // chủ động đóng gì cả - đúng nguyên nhân hàng bị mất viền cam dù data-
+      // row-key vẫn khớp, dù không hề bấm đóng Drawer. Chỉ báo lỗi, KHÔNG tự
+      // đóng Drawer - để người dùng tự bấm "Làm mới" thử lại hoặc tự đóng.
       message.error('Không thể lấy thông tin khách hàng');
-      onClose();
     } finally {
       setLoading(false);
     }

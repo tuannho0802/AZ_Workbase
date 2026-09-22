@@ -321,9 +321,13 @@ function CustomersPageContent() {
 
   // ── Highlight "mục tiêu" khi tới từ thông báo (bổ trợ thêm cho việc chỉ
   // mở Drawer) - PLAN_NOTIFICATION_SYSTEM.md mục 7.5: nhấp nháy 3 lần rồi
-  // giữ viền cam cho tới khi người dùng bấm hàng khác / đóng Drawer / rời
-  // trang. `focusPhase` chạy độc lập với việc mở Drawer (vẫn tô sáng đúng
-  // hàng kể cả khi người dùng đóng Drawer ngay).
+  // giữ viền cam cho tới khi người dùng bấm sang hàng KHÁC hoặc rời trang.
+  // ⚠️ ĐỔI (2026-09-22, yêu cầu tường minh): "đóng Drawer" KHÔNG còn xoá
+  // highlight - đóng Drawer để nhìn lại cả bảng vẫn thấy đúng hàng đang tô
+  // sáng, mở lại Drawer đúng khách đó cũng không mất. Xem `onClose` của
+  // `CustomerDetailDrawer` bên dưới - không còn gọi `clearFocus()`.
+  // `focusPhase` chạy độc lập với việc mở Drawer (vẫn tô sáng đúng hàng kể
+  // cả khi người dùng đóng Drawer ngay).
   const [focusedCustomerId, setFocusedCustomerId] = useState<number | null>(null);
   const [focusPhase, setFocusPhase] = useState<'flash' | 'marked' | null>(null);
 
@@ -590,8 +594,6 @@ function CustomersPageContent() {
   };
 
   const renderAuditTrail = (record: Customer) => {
-    console.log('Tooltip record:', record);
-    console.log('Tooltip updatedBy:', record.updatedBy);
     const creatorName = record.createdBy?.fullName || record.createdBy?.name || 'Không xác định';
     const updaterName = record.updatedBy?.fullName || record.updatedBy?.name;
     const createdAt = record.createdAt ? dayjs(record.createdAt).format('HH:mm DD/MM/YYYY') : '—';
@@ -1103,7 +1105,14 @@ function CustomersPageContent() {
     <CustomerDetailDrawer
       open={isDrawerOpen}
       customerId={selectedCustomerId}
-      onClose={() => { setIsDrawerOpen(false); clearFocus(); }}
+        // ⚠️ ĐỔI HÀNH VI (2026-09-22, theo yêu cầu tường minh của chủ dự án):
+        // trước đây đóng Drawer (bấm X / bấm mask / Esc) LUÔN gọi `clearFocus()`
+        // - đóng xem xong 1 khách từ thông báo là mất luôn viền cam, dù chỉ
+        // đang tạm đóng Drawer để nhìn cả bảng. Giờ CHỈ xoá highlight khi
+        // người dùng bấm sang 1 hàng KHÁC (xem `onRow`/`onRowClick` bên dưới -
+        // đã có sẵn `if (id !== focusedCustomerId) clearFocus()`) hoặc rời
+        // trang - đóng/mở lại Drawer của ĐÚNG khách đó không còn xoá highlight.
+        onClose={() => setIsDrawerOpen(false)}
       onUpdate={handleDrawerUpdate}
     />
 
