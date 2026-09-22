@@ -132,32 +132,29 @@ export class NotificationBroadcastsService {
       const savedBroadcast = await manager.save(broadcast);
 
       const now = new Date();
-      const rows = resolved.userIds.map((userId) =>
-        manager.create(Notification, {
-          recipientId: userId,
-          actorId: senderId,
-          eventType: 'manual.broadcast',
-          category: 'manual',
-          relation: 'MANUAL_RECIPIENT',
-          entityType: null,
-          entityId: null,
-          broadcastId: savedBroadcast.id,
-          title: dto.title,
-          body: null,
-          params: { senderName },
-          coalesceKey: null,
-          dedupeKey: `manual:${savedBroadcast.id}:${userId}`,
-          createdAt: now,
-          sortAt: now,
-        }),
-      );
-      // Batch insert 1 lệnh - đủ nhỏ trong trần 2000 dòng (PLAN 6.7 bước 5).
-      await manager
-        .createQueryBuilder()
-        .insert()
-        .into(Notification)
-        .values(rows)
-        .execute();
+      // Dùng object thuần (không `manager.create()`) + `manager.insert()` -
+      // tránh TypeORM suy `_QueryDeepPartialEntity` từ instance đầy đủ của
+      // entity (bao gồm cả field quan hệ `broadcast`/`recipient` chưa gán,
+      // gây lỗi kiểu). Batch insert 1 lệnh - đủ nhỏ trong trần 2000 dòng
+      // (PLAN 6.7 bước 5).
+      const rows = resolved.userIds.map((userId) => ({
+        recipientId: userId,
+        actorId: senderId,
+        eventType: 'manual.broadcast',
+        category: 'manual',
+        relation: 'MANUAL_RECIPIENT',
+        entityType: null,
+        entityId: null,
+        broadcastId: savedBroadcast.id,
+        title: dto.title,
+        body: null,
+        params: { senderName },
+        coalesceKey: null,
+        dedupeKey: `manual:${savedBroadcast.id}:${userId}`,
+        createdAt: now,
+        sortAt: now,
+      }));
+      await manager.insert(Notification, rows);
 
       return savedBroadcast;
     });

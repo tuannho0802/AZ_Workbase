@@ -6,6 +6,8 @@ import { NotificationBroadcast } from '../../database/entities/notification-broa
 import { User } from '../../database/entities/user.entity';
 import { NotificationsService } from './notifications.service';
 import { NotificationsController } from './notifications.controller';
+import { NotificationBroadcastsService } from './broadcasts/notification-broadcasts.service';
+import { NotificationBroadcastsController } from './broadcasts/notification-broadcasts.controller';
 
 /**
  * @Global() theo đúng mẫu `AuditModule` (PLAN 0.2): mọi service nghiệp vụ
@@ -22,8 +24,11 @@ import { NotificationsController } from './notifications.controller';
       User,
     ]),
   ],
-  controllers: [NotificationsController],
-  providers: [NotificationsService],
-  exports: [NotificationsService],
+  // [M1] NotificationBroadcastsController dùng PermissionGuard (khác
+  // NotificationsController - hộp thư cá nhân chỉ JwtAuthGuard) -
+  // PermissionsService lấy từ PermissionsModule (@Global(), không cần import).
+  controllers: [NotificationsController, NotificationBroadcastsController],
+  providers: [NotificationsService, NotificationBroadcastsService],
+  exports: [NotificationsService, NotificationBroadcastsService],
 })
 export class NotificationsModule {}
