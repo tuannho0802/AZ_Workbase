@@ -30,6 +30,11 @@ describe('PeriodicTaskChecklistItemsService', () => {
   const mockTasksService = {
     findOne: jest.fn(),
     assertEditableWhenLocked: jest.fn(),
+    // Notification Phase 2: mock rỗng (no-op mặc định) - test nghiệp vụ
+    // chính không quan tâm thông báo.
+    notifyTaskSafely: jest.fn(),
+    emitTaskNotification: jest.fn(),
+    getSecondaryAssigneeIds: jest.fn().mockResolvedValue([]),
   };
   // Phase 9: constructor giờ nhận thêm PeriodicTaskLinksService (dùng ở
   // attachLinkedChildrenChecklist()) - PHẢI mock ở đây, thiếu sẽ khiến
