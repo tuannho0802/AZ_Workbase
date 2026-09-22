@@ -32,6 +32,10 @@ export interface BroadcastListItem {
   body: string;
   senderId: number | null;
   senderName: string | null;
+  // ⚠️ MỚI (PLAN 7.7 mở rộng, phản hồi chủ dự án 2026-09-22) - cột "Người
+  // gửi" ở FE cần Tag vai trò màu (đồng bộ audit-logs/page.tsx#"Người thực
+  // hiện"), trước đây chỉ có `senderName` (text trơn).
+  senderRole: string | null;
   audienceType: BroadcastAudienceType;
   audienceParams: { userIds?: number[]; departmentIds?: number[] } | null;
   recipientCount: number;
@@ -64,6 +68,26 @@ export interface ListRecipientsResponse {
   nextCursor: number | null;
 }
 
+/** Bộ lọc `/thong-bao/da-gui` - mirror ĐÚNG `ListBroadcastsDto` (BE). */
+export interface ListSentFilters {
+  cursor?: string;
+  limit?: number;
+  search?: string;
+  audienceType?: BroadcastAudienceType;
+  senderId?: number;
+  dateFrom?: string;
+  dateTo?: string;
+}
+
+/** "Người gửi" cho dropdown filter - CHỈ người đã từng gửi >=1 thông báo. */
+export interface BroadcastSenderOption {
+  id: number;
+  name: string;
+  role: string;
+  department: { id: number; name: string; color: string } | null;
+  position: { id: number; name: string; color: string } | null;
+}
+
 export const notificationBroadcastsApi = {
   preview: async (audience: BroadcastAudiencePayload): Promise<PreviewBroadcastResponse> => {
     const response = await axiosInstance.post<PreviewBroadcastResponse>(
@@ -85,8 +109,16 @@ export const notificationBroadcastsApi = {
     return response.data;
   },
 
-  listSent: async (params: { cursor?: string; limit?: number } = {}): Promise<ListSentResponse> => {
+  listSent: async (params: ListSentFilters = {}): Promise<ListSentResponse> => {
     const response = await axiosInstance.get<ListSentResponse>('/notification-broadcasts', { params });
+    return response.data;
+  },
+
+  /** Danh sách "Người gửi" cho dropdown filter - mirror `usersApi.getAllForSelect()`. */
+  getSenders: async (): Promise<BroadcastSenderOption[]> => {
+    const response = await axiosInstance.get<BroadcastSenderOption[]>(
+      '/notification-broadcasts/senders',
+    );
     return response.data;
   },
 

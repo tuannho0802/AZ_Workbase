@@ -3,15 +3,24 @@ import { Form, App } from 'antd';
 import { useQuery } from '@tanstack/react-query';
 import { usersApi } from '../api/users.api';
 import { departmentsApi } from '../api/departments.api';
+import type { Department } from '../api/departments.api';
 import { useMyPermissions } from './useMyPermissions';
 import { usePreviewBroadcast, useSendBroadcast } from './useNotificationBroadcasts';
 import type { BroadcastAudienceType } from '../api/notification-broadcasts.api';
 
-interface UserOption {
+// ⚠️ MỚI (đồng bộ Tag Vai trò/Phòng ban/Vị trí - mirror ĐÚNG `FilterUserOption`
+// ở CustomerFilters.tsx/`renderUserOption` ở cong-viec-dinh-ky/page.tsx) -
+// trước đây chỉ có {id,name}, dropdown "Chọn người nhận" hiện tên trơn,
+// không đồng bộ với các dropdown chọn nhân viên khác trong app (báo qua ảnh
+// chụp). `usersApi.getAllForSelect()` gọi cùng route `GET /users/all` đã
+// JOIN department+position (users.service.ts#findEmployees) nên KHÔNG cần
+// đổi nguồn dữ liệu, chỉ cần khai đủ field ở type này.
+export interface UserOption {
   id: number;
   name: string;
-  department?: { id: number; name: string };
-  position?: { name: string };
+  role?: string;
+  department?: { id: number; name: string; color?: string } | null;
+  position?: { id: number; name: string; color?: string } | null;
 }
 
 export interface UseBroadcastComposeOptions {
@@ -56,7 +65,7 @@ export function useBroadcastCompose({ enabled, onSent }: UseBroadcastComposeOpti
     staleTime: 5 * 60 * 1000,
     enabled,
   });
-  const { data: departments = [], isLoading: deptsLoading } = useQuery({
+  const { data: departments = [], isLoading: deptsLoading } = useQuery<Department[]>({
     queryKey: ['departments-for-select'],
     queryFn: () => departmentsApi.getAll(),
     staleTime: 5 * 60 * 1000,
@@ -66,16 +75,21 @@ export function useBroadcastCompose({ enabled, onSent }: UseBroadcastComposeOpti
   const preview = usePreviewBroadcast();
   const send = useSendBroadcast();
 
+  // Giữ `user`/`department` (object gốc) kèm theo mỗi option - cần cho
+  // `optionRender` (Tag màu) ở `BroadcastComposeFields.tsx`, mirror đúng
+  // pattern `options={salesUsers.map(u => ({ value: u.id, label: u.name, user: u }))}`
+  // ở CustomerFilters.tsx.
   const userOptions = useMemo(
     () =>
       users.map((u) => ({
         value: u.id,
         label: u.name,
+        user: u,
       })),
     [users],
   );
   const departmentOptions = useMemo(
-    () => departments.map((d) => ({ value: d.id, label: d.name })),
+    () => departments.map((d) => ({ value: d.id, label: d.name, department: d })),
     [departments],
   );
 

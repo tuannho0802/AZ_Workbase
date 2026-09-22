@@ -2,18 +2,22 @@
 
 import { useEffect, useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import dayjs from 'dayjs';
+import dayjs, { Dayjs } from 'dayjs';
 import {
   App,
   Avatar,
   Button,
   Card,
+  Col,
+  DatePicker,
   Drawer,
   Empty,
   Form,
   Input,
   Popconfirm,
   Progress,
+  Row,
+  Select,
   Space,
   Table,
   Tabs,
@@ -30,19 +34,30 @@ import {
 } from '@ant-design/icons';
 import { useMyPermissions } from '@/lib/hooks/useMyPermissions';
 import { useAuthStore } from '@/lib/stores/auth.store';
+import { useRoleColorMap, useRoleColors } from '@/lib/hooks/useRoleColorMap';
+import { resolveEntityColor } from '@/lib/utils/entityColor';
 import { SendBroadcastModal } from '@/components/notifications/SendBroadcastModal';
 import {
   useSentBroadcasts,
   useBroadcastRecipients,
+  useBroadcastSenders,
   useUpdateBroadcast,
   useRemoveBroadcast,
 } from '@/lib/hooks/useNotificationBroadcasts';
 import type {
+  BroadcastAudienceType,
   BroadcastListItem,
   BroadcastRecipientStatus,
 } from '@/lib/api/notification-broadcasts.api';
 
 const { Text, Paragraph } = Typography;
+const { RangePicker } = DatePicker;
+
+const AUDIENCE_TYPE_OPTIONS: { value: BroadcastAudienceType; label: string }[] = [
+  { value: 'USERS', label: 'Chọn người nhận' },
+  { value: 'DEPARTMENTS', label: 'Theo phòng ban' },
+  { value: 'ALL', label: 'Toàn bộ nhân viên' },
+];
 
 /** Tag "Đối tượng" (PLAN 7.7): "3 người" / "2 phòng ban" / "Toàn bộ". */
 function audienceTag(item: BroadcastListItem) {
@@ -67,14 +82,22 @@ const RECIPIENT_STATUS_TABS: { key: BroadcastRecipientStatus; label: string }[] 
  * `PATCH`/`DELETE` đã có sẵn ở M1).
  */
 export default function SentBroadcastsPage() {
-  const { can, isLoading: permissionsLoading } = useMyPermissions();
+  const { can, scope, isLoading: permissionsLoading } = useMyPermissions();
   const { user } = useAuthStore();
   const router = useRouter();
   const { message, modal } = App.useApp();
+  const { getRoleColor } = useRoleColorMap();
+  const { roleColors } = useRoleColors();
+  const roleNameMap = new Map(roleColors.map((r) => [r.code, r.name]));
+  const getRoleName = (code?: string | null) => (code ? roleNameMap.get(code) || code : '');
 
   const canCreate = can('notification_broadcasts.create');
   const canEdit = can('notification_broadcasts.edit');
   const canDelete = can('notification_broadcasts.delete');
+  // Bộ lọc "Người gửi" chỉ có ý nghĩa khi scope=all (Admin) - mirror ĐÚNG
+  // comment ở `ListBroadcastsDto.senderId` (BE): scope 'own'/'department' đã
+  // tự khoá senderId=callerId trước, hiện thêm dropdown này chỉ gây rối UI.
+  const canFilterBySender = scope('notification_broadcasts.view') === 'all';
 
   useEffect(() => {
     if (!permissionsLoading && user && !can('notification_broadcasts.view')) {
@@ -90,8 +113,28 @@ export default function SentBroadcastsPage() {
   const [recipientStatus, setRecipientStatus] = useState<BroadcastRecipientStatus>('all');
   const [recipientSearch, setRecipientSearch] = useState('');
 
-  const list = useSentBroadcasts(20);
+  // ⚠️ MỚI (PLAN 7.7 mở rộng, phản hồi chủ dự án 2026-09-22) - Filter cho
+  // bảng lịch sử, mirror ĐÚNG `ListBroadcastsDto` (BE): search (tiêu đề),
+  // audienceType, senderId (chỉ hiện khi scope=all), khoảng ngày gửi.
+  const [search, setSearch] = useState('');
+  const [audienceType, setAudienceType] = useState<BroadcastAudienceType | undefined>();
+  const [senderId, setSenderId] = useState<number | undefined>();
+  const [dateRange, setDateRange] = useState<[Dayjs | null, Dayjs | null] | null>(null);
+
+  const filters = useMemo(
+    () => ({
+      search: search || undefined,
+      audienceType,
+      senderId: canFilterBySender ? senderId : undefined,
+      dateFrom: dateRange?.[0] ? dateRange[0].format('YYYY-MM-DD') : undefined,
+      dateTo: dateRange?.[1] ? dateRange[1].format('YYYY-MM-DD') : undefined,
+    }),
+    [search, audienceType, senderId, dateRange, canFilterBySender],
+  );
+
+  const list = useSentBroadcasts(20, filters);
   const items = list.data?.pages.flatMap((p) => p.data) ?? [];
+  const senders = useBroadcastSenders();
 
   const recipients = useBroadcastRecipients(selected?.id ?? null, recipientStatus, recipientSearch);
   const recipientRows = recipients.data?.pages.flatMap((p) => p.data) ?? [];
@@ -165,10 +208,29 @@ export default function SentBroadcastsPage() {
       },
       {
         title: 'Người gửi',
-        dataIndex: 'senderName',
         key: 'senderName',
-        width: 150,
-        render: (name?: string | null) => name || '—',
+        width: 190,
+        render: (_, record) =>
+          record.senderName ? (
+            <Space size={6} align="center">
+              <Avatar size={24} style={{ backgroundColor: getRoleColor(record.senderRole), fontSize: 12 }}>
+                {record.senderName[0]?.toUpperCase()}
+              </Avatar>
+              <Space orientation="vertical" size={0}>
+                <Text style={{ fontSize: 13 }}>{record.senderName}</Text>
+                {record.senderRole && (
+                  <Tag
+                    color={getRoleColor(record.senderRole)}
+                    style={{ fontSize: 10, lineHeight: '16px', padding: '0 4px', margin: 0 }}
+                  >
+                    {getRoleName(record.senderRole)}
+                  </Tag>
+                )}
+              </Space>
+            </Space>
+          ) : (
+            <Text type="secondary">—</Text>
+          ),
       },
       {
         title: 'Thời gian',
@@ -235,7 +297,7 @@ export default function SentBroadcastsPage() {
         ),
       },
     ],
-    [canEdit, canDelete],
+    [canEdit, canDelete, roleColors],
   );
 
   if (permissionsLoading) return null;
@@ -260,6 +322,71 @@ export default function SentBroadcastsPage() {
           </Button>
         )}
       </div>
+
+      <Card style={{ marginBottom: 16 }}>
+        <Row gutter={16}>
+          <Col xs={24} sm={12} md={6}>
+            <Input.Search
+              placeholder="Tìm theo tiêu đề..."
+              allowClear
+              onSearch={setSearch}
+            />
+          </Col>
+          <Col xs={24} sm={12} md={5}>
+            <Select
+              allowClear
+              placeholder="Đối tượng"
+              style={{ width: '100%' }}
+              value={audienceType}
+              onChange={(v) => setAudienceType(v)}
+              options={AUDIENCE_TYPE_OPTIONS}
+            />
+          </Col>
+          {canFilterBySender && (
+            <Col xs={24} sm={12} md={6}>
+              <Select
+                allowClear
+                showSearch
+                placeholder="Người gửi"
+                style={{ width: '100%' }}
+                loading={senders.isLoading}
+                value={senderId}
+                onChange={(v) => setSenderId(v)}
+                optionFilterProp="label"
+                popupMatchSelectWidth={false}
+                optionRender={(option) => {
+                  const s = (senders.data ?? []).find((x) => x.id === option.data.value);
+                  if (!s) return option.data.label;
+                  return (
+                    <Space size={4} align="center">
+                      <Avatar size={20} style={{ backgroundColor: getRoleColor(s.role), fontSize: 11 }}>
+                        {s.name?.[0]?.toUpperCase()}
+                      </Avatar>
+                      <span style={{ fontSize: 13 }}>{s.name}</span>
+                      <Tag
+                        color={getRoleColor(s.role)}
+                        style={{ fontSize: 10, lineHeight: '16px', padding: '0 4px', margin: 0 }}
+                      >
+                        {getRoleName(s.role)}
+                      </Tag>
+                    </Space>
+                  );
+                }}
+                options={(senders.data ?? []).map((s) => ({ value: s.id, label: s.name }))}
+              />
+            </Col>
+          )}
+          <Col xs={24} sm={12} md={7}>
+            <RangePicker
+              style={{ width: '100%' }}
+              format="DD/MM/YYYY"
+              value={dateRange as [Dayjs, Dayjs] | null}
+              onChange={(v) => setDateRange(v as [Dayjs | null, Dayjs | null] | null)}
+              placeholder={['Từ ngày', 'Đến ngày']}
+            />
+          </Col>
+        </Row>
+      </Card>
 
       <Card>
         <Table<BroadcastListItem>
@@ -358,19 +485,19 @@ export default function SentBroadcastsPage() {
             )}
 
             <div style={{ margin: '16px 0', display: 'flex', gap: 24 }}>
-              <Space direction="vertical" size={0}>
+              <Space orientation="vertical" size={0}>
                 <Text type="secondary">Đã đọc</Text>
                 <Text strong style={{ fontSize: 18, color: '#52c41a' }}>
                   {selected.readCount}
                 </Text>
               </Space>
-              <Space direction="vertical" size={0}>
+              <Space orientation="vertical" size={0}>
                 <Text type="secondary">Chưa đọc</Text>
                 <Text strong style={{ fontSize: 18, color: '#faad14' }}>
                   {selected.unreadCount}
                 </Text>
               </Space>
-              <Space direction="vertical" size={0}>
+              <Space orientation="vertical" size={0}>
                 <Text type="secondary">Đối tượng</Text>
                 {audienceTag(selected)}
               </Space>

@@ -1,10 +1,62 @@
 'use client';
 
-import { Form, Input, Radio, Select, Alert, Space, Typography } from 'antd';
-import type { BroadcastComposeState } from '@/lib/hooks/useBroadcastCompose';
+import { Form, Input, Radio, Select, Alert, Avatar, Space, Tag, Typography } from 'antd';
+import type { BroadcastComposeState, UserOption } from '@/lib/hooks/useBroadcastCompose';
+import type { Department } from '@/lib/api/departments.api';
+import { useRoleColorMap, useRoleColors } from '@/lib/hooks/useRoleColorMap';
+import { resolveEntityColor } from '@/lib/utils/entityColor';
 
 const { TextArea } = Input;
 const { Text } = Typography;
+
+const OPTION_TAG_STYLE = { fontSize: 10, lineHeight: '16px', padding: '0 4px', margin: 0 };
+
+/**
+ * renderUserOption/renderDepartmentOption - mirror ĐÚNG pattern Tag màu
+ * (Avatar + Tag vai trò/phòng ban/vị trí) đã dùng ở CustomerFilters.tsx/
+ * cong-viec-dinh-ky/page.tsx, thay cho dropdown "Chọn người nhận"/"Theo
+ * phòng ban" hiện tên trơn (báo qua ảnh chụp 2026-09-22).
+ */
+function useOptionRenders() {
+  const { getRoleColor } = useRoleColorMap();
+  const { roleColors } = useRoleColors();
+  const roleNameMap = new Map(roleColors.map((r) => [r.code, r.name]));
+  const getRoleName = (code?: string) => (code ? roleNameMap.get(code) || code : '');
+
+  const renderUserOption = (option: { data: { user: UserOption } }) => {
+    const u = option.data.user;
+    return (
+      <Space size={4} align="center">
+        <Avatar size={20} style={{ backgroundColor: getRoleColor(u.role), fontSize: 11, flexShrink: 0 }}>
+          {u.name?.[0]?.toUpperCase()}
+        </Avatar>
+        <span style={{ fontSize: 13 }}>{u.name}</span>
+        {u.role && <Tag style={OPTION_TAG_STYLE} color={getRoleColor(u.role)}>{getRoleName(u.role)}</Tag>}
+        {u.department?.name && (
+          <Tag style={OPTION_TAG_STYLE} color={resolveEntityColor(u.department.color)}>
+            {u.department.name}
+          </Tag>
+        )}
+        {u.position?.name && (
+          <Tag style={OPTION_TAG_STYLE} color={resolveEntityColor(u.position.color)}>
+            {u.position.name}
+          </Tag>
+        )}
+      </Space>
+    );
+  };
+
+  const renderDepartmentOption = (option: { data: { department: Department } }) => {
+    const d = option.data.department;
+    return (
+      <Tag color={resolveEntityColor(d.color)} style={{ marginInlineEnd: 0 }}>
+        {d.name}
+      </Tag>
+    );
+  };
+
+  return { renderUserOption, renderDepartmentOption };
+}
 
 /**
  * Thân form soạn thông báo thủ công - tách khỏi khung hiển thị (Modal hoặc
@@ -27,6 +79,7 @@ export function BroadcastComposeFields({ state }: { state: BroadcastComposeState
     handlePreview,
     previewPending,
   } = state;
+  const { renderUserOption, renderDepartmentOption } = useOptionRenders();
 
   return (
     <Form form={form} layout="vertical" onValuesChange={markDirty}>
@@ -74,6 +127,8 @@ export function BroadcastComposeFields({ state }: { state: BroadcastComposeState
             loading={usersLoading}
             placeholder="Tìm và chọn nhân viên..."
             optionFilterProp="label"
+            optionRender={renderUserOption}
+            popupMatchSelectWidth={false}
             maxTagCount="responsive"
             options={userOptions}
           />
@@ -91,6 +146,8 @@ export function BroadcastComposeFields({ state }: { state: BroadcastComposeState
             loading={deptsLoading}
             placeholder="Chọn phòng ban..."
             optionFilterProp="label"
+            optionRender={renderDepartmentOption}
+            popupMatchSelectWidth={false}
             options={departmentOptions}
           />
         </Form.Item>
