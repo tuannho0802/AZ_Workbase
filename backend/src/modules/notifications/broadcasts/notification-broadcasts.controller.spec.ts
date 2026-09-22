@@ -27,6 +27,7 @@ describe('NotificationBroadcastsController', () => {
     ['preview', 'notification_broadcasts.create'],
     ['send', 'notification_broadcasts.create'],
     ['listSent', 'notification_broadcasts.view'],
+    ['getSenders', 'notification_broadcasts.view'],
     ['getOne', 'notification_broadcasts.view'],
     ['listRecipients', 'notification_broadcasts.view'],
     ['update', 'notification_broadcasts.edit'],
@@ -50,7 +51,7 @@ describe('NotificationBroadcastsController', () => {
     expect(methodGuards).toContain(ThrottlerGuard);
   });
 
-  it('không có endpoint "lạ" nào ngoài 7 endpoint đã khoá permission ở trên', () => {
+  it('không có endpoint "lạ" nào ngoài 8 endpoint đã khoá permission ở trên', () => {
     const proto = NotificationBroadcastsController.prototype as unknown as Record<
       string,
       unknown
@@ -59,7 +60,7 @@ describe('NotificationBroadcastsController', () => {
       (name) => name !== 'constructor',
     );
     expect(methodNames.sort()).toEqual(
-      ['preview', 'send', 'listSent', 'getOne', 'listRecipients', 'update', 'remove'].sort(),
+      ['preview', 'send', 'listSent', 'getSenders', 'getOne', 'listRecipients', 'update', 'remove'].sort(),
     );
   });
 

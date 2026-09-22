@@ -150,4 +150,134 @@ describe('NotificationBroadcastsService', () => {
       );
     });
   });
+
+  describe('listSent() - bộ lọc (PLAN 7.7 mở rộng)', () => {
+    /** Fluent mock QueryBuilder - ghi lại từng điều kiện `andWhere` đã gọi. */
+    function makeListSentQb(rows: any[] = []) {
+      const andWhereCalls: [string, any?][] = [];
+      const qb: any = {
+        leftJoin: jest.fn().mockReturnThis(),
+        addSelect: jest.fn().mockReturnThis(),
+        where: jest.fn().mockReturnThis(),
+        andWhere: jest.fn((cond: string, params?: any) => {
+          andWhereCalls.push([cond, params]);
+          return qb;
+        }),
+        orderBy: jest.fn().mockReturnThis(),
+        limit: jest.fn().mockReturnThis(),
+        getMany: jest.fn().mockResolvedValue(rows),
+      };
+      return { qb, andWhereCalls };
+    }
+
+    it('không truyền filter nào -> chỉ có điều kiện scope, KHÔNG thêm andWhere thừa', async () => {
+      const { qb, andWhereCalls } = makeListSentQb([]);
+      mockBroadcastRepo.createQueryBuilder.mockReturnValue(qb);
+
+      await service.listSent(1, 'admin', PermissionScope.ALL, {});
+
+      // scope=all -> applyViewScope() không thêm andWhere nào (xem code) ->
+      // danh sách andWhere phải RỖNG khi không có filter.
+      expect(andWhereCalls).toEqual([]);
+    });
+
+    it('truyền đủ search/audienceType/senderId/dateFrom/dateTo -> mỗi filter thành đúng 1 andWhere với đúng tham số', async () => {
+      const { qb, andWhereCalls } = makeListSentQb([]);
+      mockBroadcastRepo.createQueryBuilder.mockReturnValue(qb);
+
+      await service.listSent(1, 'admin', PermissionScope.ALL, {
+        search: 'Tết',
+        audienceType: 'DEPARTMENTS',
+        senderId: 5,
+        dateFrom: '2026-09-01',
+        dateTo: '2026-09-30',
+      });
+
+      expect(andWhereCalls).toEqual([
+        ['b.title LIKE :search', { search: '%Tết%' }],
+        ['b.audienceType = :audienceType', { audienceType: 'DEPARTMENTS' }],
+        ['b.senderId = :senderId', { senderId: 5 }],
+        ['b.createdAt >= :dateFrom', { dateFrom: '2026-09-01 00:00:00' }],
+        ['b.createdAt <= :dateTo', { dateTo: '2026-09-30 23:59:59' }],
+      ]);
+    });
+
+    it('scope own -> applyViewScope tự khoá senderId=callerId TRƯỚC khi áp filter khác', async () => {
+      const { qb, andWhereCalls } = makeListSentQb([]);
+      mockBroadcastRepo.createQueryBuilder.mockReturnValue(qb);
+
+      await service.listSent(9, 'manager', PermissionScope.OWN, { search: 'abc' });
+
+      expect(andWhereCalls[0]).toEqual(['b.senderId = :callerId', { callerId: 9 }]);
+      expect(andWhereCalls).toContainEqual(['b.title LIKE :search', { search: '%abc%' }]);
+    });
+  });
+
+  describe('getSendersList()', () => {
+    function makeSendersQb(rawRows: any[]) {
+      const qb: any = {
+        innerJoin: jest.fn().mockReturnThis(),
+        leftJoin: jest.fn().mockReturnThis(),
+        select: jest.fn().mockReturnThis(),
+        addSelect: jest.fn().mockReturnThis(),
+        where: jest.fn().mockReturnThis(),
+        andWhere: jest.fn().mockReturnThis(),
+        groupBy: jest.fn().mockReturnThis(),
+        addGroupBy: jest.fn().mockReturnThis(),
+        orderBy: jest.fn().mockReturnThis(),
+        getRawMany: jest.fn().mockResolvedValue(rawRows),
+      };
+      return qb;
+    }
+
+    it('map đúng shape department/position (null khi user không thuộc phòng ban/vị trí nào)', async () => {
+      const qb = makeSendersQb([
+        {
+          id: '1',
+          name: 'Admin',
+          role: 'admin',
+          departmentId: null,
+          departmentName: null,
+          departmentColor: null,
+          positionId: null,
+          positionName: null,
+          positionColor: null,
+        },
+        {
+          id: '2',
+          name: 'Manager',
+          role: 'manager',
+          departmentId: '3',
+          departmentName: 'Phòng Kinh doanh',
+          departmentColor: '#1890ff',
+          positionId: '7',
+          positionName: 'Trưởng phòng',
+          positionColor: '#52c41a',
+        },
+      ]);
+      mockBroadcastRepo.createQueryBuilder.mockReturnValue(qb);
+
+      const result = await service.getSendersList(1, 'admin', PermissionScope.ALL);
+
+      expect(result).toEqual([
+        { id: 1, name: 'Admin', role: 'admin', department: null, position: null },
+        {
+          id: 2,
+          name: 'Manager',
+          role: 'manager',
+          department: { id: 3, name: 'Phòng Kinh doanh', color: '#1890ff' },
+          position: { id: 7, name: 'Trưởng phòng', color: '#52c41a' },
+        },
+      ]);
+    });
+
+    it('scope own -> áp applyViewScope (chỉ chính người gọi)', async () => {
+      const qb = makeSendersQb([]);
+      mockBroadcastRepo.createQueryBuilder.mockReturnValue(qb);
+
+      await service.getSendersList(9, 'manager', PermissionScope.OWN);
+
+      expect(qb.andWhere).toHaveBeenCalledWith('b.senderId = :callerId', { callerId: 9 });
+    });
+  });
 });

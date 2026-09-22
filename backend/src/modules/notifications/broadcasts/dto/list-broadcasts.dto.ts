@@ -2,6 +2,7 @@ import { ApiPropertyOptional } from '@nestjs/swagger';
 import { Transform, Type } from 'class-transformer';
 import {
   IsBoolean,
+  IsDateString,
   IsIn,
   IsInt,
   IsOptional,
@@ -10,6 +11,8 @@ import {
   MaxLength,
   Min,
 } from 'class-validator';
+
+export const BROADCAST_AUDIENCE_TYPES = ['USERS', 'DEPARTMENTS', 'ALL'] as const;
 
 /** Cursor pagination - mirror `ListNotificationsDto` (mục 6.5 PLAN). */
 export class ListBroadcastsDto {
@@ -26,6 +29,36 @@ export class ListBroadcastsDto {
   @Min(1)
   @Max(50)
   limit?: number;
+
+  @ApiPropertyOptional({ description: 'Tìm theo tiêu đề (LIKE, không phân biệt hoa/thường)' })
+  @IsOptional()
+  @IsString()
+  @MaxLength(200)
+  search?: string;
+
+  @ApiPropertyOptional({ enum: BROADCAST_AUDIENCE_TYPES })
+  @IsOptional()
+  @IsIn(BROADCAST_AUDIENCE_TYPES as unknown as string[])
+  audienceType?: (typeof BROADCAST_AUDIENCE_TYPES)[number];
+
+  // ⚠️ Chỉ có ý nghĩa khi scope === 'all' (Admin) - `applyViewScope()` đã tự
+  // khoá `senderId = callerId` cho scope 'own', truyền field này ở scope đó
+  // không sai (kết hợp AND với chính điều kiện đó) nhưng vô nghĩa với UI.
+  @ApiPropertyOptional({ description: 'Lọc theo người gửi - chỉ áp dụng khi scope=all' })
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  senderId?: number;
+
+  @ApiPropertyOptional({ description: 'Từ ngày gửi (YYYY-MM-DD), theo createdAt' })
+  @IsOptional()
+  @IsDateString()
+  dateFrom?: string;
+
+  @ApiPropertyOptional({ description: 'Đến ngày gửi (YYYY-MM-DD), theo createdAt' })
+  @IsOptional()
+  @IsDateString()
+  dateTo?: string;
 }
 
 export const BROADCAST_RECIPIENT_STATUS = ['all', 'read', 'unread'] as const;

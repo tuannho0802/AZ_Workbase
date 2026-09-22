@@ -78,6 +78,22 @@ export class NotificationBroadcastsController {
     return this.service.listSent(userId, role, scope, query);
   }
 
+  // ⚠️ Thứ tự route: khai TRƯỚC `:id` (GET tĩnh) để không bị nuốt nhầm thành
+  // `id = 'senders'` (mirror lưu ý ở đầu file/`CustomersController#getCreators`).
+  @Get('senders')
+  @RequirePermission('notification_broadcasts.view')
+  @ApiOperation({
+    summary:
+      'Danh sách "Người gửi" đã từng gửi >=1 thông báo, dùng cho dropdown filter ở "Thông báo đã gửi"',
+  })
+  getSenders(
+    @GetUser('id') userId: number,
+    @GetUser('role') role: string,
+    @GetPermissionScope() scope: string | null,
+  ) {
+    return this.service.getSendersList(userId, role, scope);
+  }
+
   @Get(':id')
   @RequirePermission('notification_broadcasts.view')
   @ApiOperation({ summary: 'Chi tiết 1 lần gửi + thống kê đọc/chưa đọc' })

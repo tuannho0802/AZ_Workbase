@@ -28,6 +28,10 @@ export interface BroadcastListItem {
   body: string;
   senderId: number | null;
   senderName: string | null;
+  // ⚠️ MỚI (PLAN 7.7 mở rộng, phản hồi chủ dự án 2026-09-22) - cột "Người
+  // gửi" ở FE cần Tag vai trò màu (đồng bộ `audit-logs/page.tsx#"Người thực
+  // hiện"`), trước đây chỉ có `senderName` (text trơn).
+  senderRole: string | null;
   audienceType: string;
   audienceParams: Record<string, unknown> | null;
   recipientCount: number;
@@ -270,10 +274,30 @@ export class NotificationBroadcastsService {
     const qb = this.broadcastRepository
       .createQueryBuilder('b')
       .leftJoin('b.sender', 'sender')
-      .addSelect(['sender.id', 'sender.name'])
+      .addSelect(['sender.id', 'sender.name', 'sender.role'])
       .where('b.deletedAt IS NULL');
 
     this.applyViewScope(qb, callerId, callerRole, scope);
+
+    // ⚠️ Bộ lọc (PLAN 7.7 mở rộng, phản hồi chủ dự án 2026-09-22) - mirror
+    // pattern filter Khách hàng: search theo tiêu đề (LIKE), đối tượng gửi,
+    // người gửi (chỉ có tác dụng thật khi scope=all - `applyViewScope()` đã
+    // khoá senderId=callerId cho scope 'own'), khoảng ngày gửi theo createdAt.
+    if (dto.search) {
+      qb.andWhere('b.title LIKE :search', { search: `%${dto.search}%` });
+    }
+    if (dto.audienceType) {
+      qb.andWhere('b.audienceType = :audienceType', { audienceType: dto.audienceType });
+    }
+    if (dto.senderId) {
+      qb.andWhere('b.senderId = :senderId', { senderId: dto.senderId });
+    }
+    if (dto.dateFrom) {
+      qb.andWhere('b.createdAt >= :dateFrom', { dateFrom: `${dto.dateFrom} 00:00:00` });
+    }
+    if (dto.dateTo) {
+      qb.andWhere('b.createdAt <= :dateTo', { dateTo: `${dto.dateTo} 23:59:59` });
+    }
 
     if (dto.cursor) {
       const cursorId = Number(dto.cursor);
@@ -298,6 +322,69 @@ export class NotificationBroadcastsService {
       ),
       nextCursor: hasMore ? String(page[page.length - 1].id) : null,
     };
+  }
+
+  /**
+   * Danh sách "Người gửi" cho dropdown filter ở `/thong-bao/da-gui` - CHỈ
+   * người đã từng gửi >=1 thông báo (mirror `CustomersService.getCreatorsList()`),
+   * áp ĐÚNG cùng `applyViewScope` như `listSent()` để không lộ người gửi
+   * ngoài phạm vi (scope 'own' -> chỉ CHÍNH MÌNH, scope 'all' -> mọi người).
+   */
+  async getSendersList(
+    callerId: number,
+    callerRole: string,
+    scope: string | null | undefined,
+  ): Promise<
+    {
+      id: number;
+      name: string;
+      role: string;
+      department: { id: number; name: string; color: string } | null;
+      position: { id: number; name: string; color: string } | null;
+    }[]
+  > {
+    const qb = this.broadcastRepository
+      .createQueryBuilder('b')
+      .innerJoin('b.sender', 'sender')
+      .leftJoin('sender.department', 'department')
+      .leftJoin('sender.position', 'position')
+      .select('sender.id', 'id')
+      .addSelect('sender.name', 'name')
+      .addSelect('sender.role', 'role')
+      .addSelect('department.id', 'departmentId')
+      .addSelect('department.name', 'departmentName')
+      .addSelect('department.color', 'departmentColor')
+      .addSelect('position.id', 'positionId')
+      .addSelect('position.name', 'positionName')
+      .addSelect('position.color', 'positionColor')
+      .where('b.deletedAt IS NULL');
+
+    this.applyViewScope(qb, callerId, callerRole, scope);
+
+    const rows = await qb
+      .groupBy('sender.id')
+      .addGroupBy('sender.name')
+      .addGroupBy('sender.role')
+      .addGroupBy('department.id')
+      .addGroupBy('department.name')
+      .addGroupBy('department.color')
+      .addGroupBy('position.id')
+      .addGroupBy('position.name')
+      .addGroupBy('position.color')
+      .orderBy('sender.name', 'ASC')
+      .getRawMany();
+
+    return rows.map((r) => ({
+      id: Number(r.id),
+      name: r.name,
+      role: r.role,
+      department: r.departmentId
+        ? { id: Number(r.departmentId), name: r.departmentName, color: r.departmentColor }
+        : null,
+      position: r.positionId
+        ? { id: Number(r.positionId), name: r.positionName, color: r.positionColor }
+        : null,
+    }));
   }
 
   async getOne(
@@ -385,8 +472,14 @@ export class NotificationBroadcastsService {
     callerRole: string,
     scope: string | null | undefined,
   ): Promise<NotificationBroadcast> {
+    // ⚠️ FIX BUG THẬT (phát hiện khi rà soát thêm `senderRole` cho
+    // `toListItem()`): trước đây KHÔNG join `sender` ở đây -> `getOne()` và
+    // `update()` (cả 2 đều đi qua `findAccessible()`) luôn trả `senderName`
+    // rỗng (chỉ `listSent()` join đúng) - FE hiện chưa render field này ở 2
+    // luồng đó nên chưa lộ ra ngoài, nhưng vẫn là dữ liệu sai nếu dùng sau này.
     const broadcast = await this.broadcastRepository.findOne({
       where: { id, deletedAt: IsNull() },
+      relations: ['sender'],
     });
     if (!broadcast) throw new NotFoundException('Không tìm thấy thông báo đã gửi');
 
@@ -428,6 +521,7 @@ export class NotificationBroadcastsService {
       body: b.body,
       senderId: b.senderId,
       senderName: (b as any).sender?.name ?? null,
+      senderRole: (b as any).sender?.role ?? null,
       audienceType: b.audienceType,
       audienceParams: b.audienceParams,
       recipientCount: b.recipientCount,
