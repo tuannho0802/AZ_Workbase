@@ -3486,3 +3486,66 @@ trước) theo đúng Custom Instructions của Project.
 > `1783500000000` lên DB thật, thêm `NOTIFICATIONS_ENABLED=true` vào `.env.development` thật) vẫn còn nguyên,
 > không đổi.
 
+
+## [2026-09-22 14:30] | Nghỉ phép — Nút "Sửa" đơn (FE) khớp permission `leave_requests.edit` mới + fix audit label thiếu | [Status: Success — verify đầy đủ]
+
+**Actor:** Agent
+
+**Đối chiếu báo cáo phiên trước với code thật (trước khi làm tiếp):**
+> Transcript phiên trước báo đã hoàn tất ở BE: bỏ chặn overlap khi tạo đơn (bypass theo yêu cầu chủ dự
+> án), thêm `LeaveRequestsService.update()` + `PATCH /leave-requests/:id` (permission mới
+> `leave_requests.edit`, migration `1783600000000-SeedLeaveRequestsEditPermission.ts`), cập nhật
+> `PERMISSIONS.md` mục 2.6, verify `tsc`/`nest build` sạch + 873/873 test PASS. Pull code mới nhất, đọc
+> trực tiếp `leave-requests.controller.ts`/`leave-requests.service.ts`/migration — xác nhận ĐÚNG 100% như
+> báo cáo (không có sai lệch). Chạy lại thật: `tsc --noEmit` sạch, `nest build` sạch, `npx jest
+> src/modules/leave-requests` = 38/38 PASS. Phần dở dang đúng như báo cáo: FE hoàn toàn chưa có
+> `update()` trong `leave-requests.api.ts` và chưa có nút Sửa nào ở `duyet-phep/page.tsx`.
+
+**Files Changed:**
+- `frontend/src/lib/api/leave-requests.api.ts` — thêm `update(id, data)` gọi `PATCH /leave-requests/:id`
+  (mọi field optional, mirror đúng shape BE `LeaveRequestsService.update()`).
+- `frontend/src/app/(dashboard)/duyet-phep/page.tsx` — thêm nút "Sửa" (icon `EditOutlined`) ở CẢ 2 tab
+  ("Chờ phê duyệt" + "Lịch sử phê duyệt"), cả desktop Table lẫn mobile Card (`PendingMobileCard`/
+  `HistoryMobileCard` nhận thêm prop `onEdit`/`canEdit`). Gate bằng `can('leave_requests.edit')` (hook
+  `useMyPermissions`, KHÔNG hardcode role) — cột "Thao tác" ở `historyColumns` giờ có `.filter()` giống
+  `pendingColumns` để ẩn hẳn khi không có quyền. Nút chỉ hiện khi đơn đang `pending`/`approved` (khớp rule
+  chặn ở BE `update()`). Thêm Modal sửa (Loại phép/Thời gian nghỉ/Thời lượng/Lý do) prefill từ đơn đang
+  chọn, không có `disabledDate` (BE không chặn ngày quá khứ khi sửa, giống lúc tạo).
+- `frontend/src/app/(dashboard)/nghi-phep/page.tsx` — tiện thể fix 1 bug thật phát hiện ngoài phạm vi yêu
+  cầu: lỗi tạo đơn trước đây hiện `err.message` (vd "Request failed with status code 400") thay vì
+  `err.response?.data?.message` (thông điệp tiếng Việt thật từ BE) — sửa lại cho đúng, mirror cách các
+  handler khác trong cùng file đã làm.
+- `frontend/src/lib/api/audit-meta.ts` — **bug thật tìm thấy khi chạy `vitest`**: BE đã ghi audit action
+  `EDIT_LEAVE_REQUEST` (từ `LeaveRequestsService.update()`, phiên trước) nhưng FE chưa có nhãn tương ứng
+  trong `ACTION_META` → trang `/audit-logs` sẽ hiện action này không có label tiếng Việt. Thêm
+  `EDIT_LEAVE_REQUEST: m('Sửa đơn nghỉ phép', 'blue', 'leave')`, màu `blue` mirror đúng convention các
+  action `UPDATE_*`/sửa khác trong file.
+
+**Root Cause (bug audit-meta):**
+> Không phải lỗi logic nghiệp vụ — chỉ là thiếu đồng bộ khi BE thêm audit action mới nhưng chưa cập nhật
+> map nhãn ở FE (đúng loại lỗi mà test `audit-meta.test.ts > mọi action ghi vào audit_logs dùng chung phải
+> có nhãn trong ACTION_META` được viết ra để bắt).
+
+**Solution:**
+> Wiring FE đầy đủ cho tính năng "sửa hộ" đơn nghỉ phép đã có sẵn ở BE, gate đúng permission mới, không
+> đụng vào bất kỳ logic BE nào (không cần migration mới). Fix song song 2 bug thật phát hiện được trong
+> lúc verify (không phải yêu cầu ban đầu nhưng đúng tinh thần "phát hiện bug thật ngoài phạm vi → báo/sửa
+> ngay, đừng im lặng bỏ qua").
+
+**Verify (chạy lệnh thật, không suy diễn):**
+> Backend (không đổi code, chỉ verify lại claim phiên trước): `npm install` sạch, `tsc --noEmit` sạch,
+> `nest build` sạch, `npx jest src/modules/leave-requests` = **38/38 test PASS**.
+> Frontend: `npm install` sạch, `tsc --noEmit` — 0 lỗi mới (5 lỗi còn lại đã xác nhận PRE-EXISTING bằng
+> `git stash`/`git stash pop`: thiếu asset `logo.png` + type `styled-jsx` ở `CountBadge.tsx`, không liên
+> quan thay đổi lần này), `next build` (Turbopack) "Compiled successfully", đủ route kể cả `/duyet-phep`
+> và `/nghi-phep`. `npx vitest run` = **10/10 file, 79/79 test PASS** (79/79 đạt được SAU KHI fix
+> `audit-meta.ts` ở trên — trước khi fix là 78/79, 1 fail đúng do thiếu nhãn `EDIT_LEAVE_REQUEST`).
+
+**Notes:**
+> Không có quyền push GitHub (không có credential) trong sandbox Agent — toàn bộ thay đổi hiện chỉ nằm
+> trong sandbox, chủ dự án cần tự áp dụng patch/tải file để lên máy dev/production thật, sau đó tự chạy
+> migration `1783600000000-SeedLeaveRequestsEditPermission.ts` lên DB thật (đã có sẵn từ phiên trước,
+> KHÔNG cần migration mới cho phần FE này).
+> **Chưa làm/còn treo:** chưa test thủ công trên UI thật (chỉ verify bằng build/tsc/test tự động — chủ dự
+> án nên tự bấm thử nút "Sửa" ở cả 2 tab, cả desktop lẫn mobile, trước khi coi là xong hẳn). Không phát
+> hiện thêm việc dở dang nào khác ngoài phạm vi yêu cầu lần này.

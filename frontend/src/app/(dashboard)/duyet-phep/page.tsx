@@ -4,11 +4,11 @@ import { useState, useEffect, useMemo } from 'react';
 import { useRouter } from 'next/navigation';
 import {
   Table, Card, Button, Space, Tag, Badge, Tabs, Modal, Input, App, Typography, Divider, Tooltip,
-  Row, Col, Select, DatePicker
+  Row, Col, Select, DatePicker, Form
 } from 'antd';
 import {
   CheckOutlined, CloseOutlined, HistoryOutlined, HourglassOutlined,
-  UserOutlined, CalendarOutlined, ClockCircleOutlined, SearchOutlined
+  UserOutlined, CalendarOutlined, ClockCircleOutlined, SearchOutlined, EditOutlined
 } from '@ant-design/icons';
 import { leaveRequestsApi, LeaveRequest } from '@/lib/api/leave-requests.api';
 import { useMyPermissions } from '@/lib/hooks/useMyPermissions';
@@ -59,11 +59,15 @@ function PendingMobileCard({
   record,
   onApprove,
   onReject,
+  onEdit,
+  canEdit,
   leaveTypeMap,
 }: {
   record: LeaveRequest;
   onApprove: (id: number) => void;
   onReject: (id: number) => void;
+    onEdit: (record: LeaveRequest) => void;
+    canEdit: boolean;
     leaveTypeMap: Record<string, { text: string; color: string }>;
 }) {
   const lt = leaveTypeMap[record.leaveType] ?? { text: record.leaveType, color: 'default' };
@@ -131,6 +135,15 @@ function PendingMobileCard({
         >
           Từ chối
         </Button>
+        {canEdit && (
+          <Button
+            size="small"
+            icon={<EditOutlined />}
+            onClick={() => onEdit(record)}
+          >
+            Sửa
+          </Button>
+        )}
       </div>
     </Card>
   );
@@ -139,9 +152,13 @@ function PendingMobileCard({
 // ── mobile card – history ────────────────────────────────────────────────────
 function HistoryMobileCard({
   record,
+  onEdit,
+  canEdit,
   leaveTypeMap,
 }: {
   record: LeaveRequest;
+    onEdit: (record: LeaveRequest) => void;
+    canEdit: boolean;
   leaveTypeMap: Record<string, { text: string; color: string }>;
 }) {
   const lt = leaveTypeMap[record.leaveType] ?? { text: record.leaveType, color: 'default' };
@@ -196,8 +213,13 @@ function HistoryMobileCard({
         )}
       </div>
 
-      <div style={{ marginTop: 10 }}>
+      <div style={{ marginTop: 10, display: 'flex', gap: 8 }}>
         <AttachmentsViewerButton requestId={record.id} size="small" />
+        {canEdit && (record.status === 'pending' || record.status === 'approved') && (
+          <Button size="small" icon={<EditOutlined />} onClick={() => onEdit(record)}>
+            Sửa
+          </Button>
+        )}
       </div>
     </Card>
   );
@@ -213,6 +235,14 @@ export default function ApprovalPage() {
   const [rejectionReason, setRejectionReason] = useState('');
   const [isProcessing, setIsProcessing] = useState(false);
   const [isMobile, setIsMobile] = useState(false);
+
+  // Sửa đơn (User báo lỡ set sai ngày) - chỉ áp dụng cho đơn PENDING/APPROVED
+  // (khớp rule BE ở LeaveRequestsService.update()), gate riêng bằng quyền
+  // `leave_requests.edit` (tách khỏi `leave_requests.approve`/`view`).
+  const [editModalOpen, setEditModalOpen] = useState(false);
+  const [editingRequest, setEditingRequest] = useState<LeaveRequest | null>(null);
+  const [editSubmitting, setEditSubmitting] = useState(false);
+  const [editForm] = Form.useForm();
 
   // Filter: cả 2 tab đều là client-side (BE trả toàn bộ, không phân trang) -
   // dữ liệu nhiều người/phòng ban nên field cần nhiều hơn nghi-phep (của
@@ -305,6 +335,18 @@ export default function ApprovalPage() {
   // approve = xem danh sách chờ + có nút duyệt/từ chối
   const canView = can('leave_requests.view');
   const canApprove = can('leave_requests.approve');
+  // edit = "sửa hộ" ngày/loại phép/lý do của 1 đơn PENDING/APPROVED (khác
+  // hẳn approve/reject) - xem migration SeedLeaveRequestsEditPermission.
+  const canEdit = can('leave_requests.edit');
+  // Loại phép cho dropdown ở Modal sửa - mirror leaveTypeOptions ở nghi-phep/page.tsx
+  const editLeaveTypeOptions = useMemo(
+    () =>
+      leaveTypes.map((t) => ({
+        value: t.code,
+        label: <Tag color={t.color} style={{ marginInlineEnd: 0 }}>{t.name}</Tag>,
+      })),
+    [leaveTypes],
+  );
 
   useEffect(() => {
     const check = () => setIsMobile(window.innerWidth < 768);
@@ -385,6 +427,47 @@ export default function ApprovalPage() {
     }
   };
 
+  const openEditModal = (record: LeaveRequest) => {
+    setEditingRequest(record);
+    editForm.setFieldsValue({
+      leaveType: record.leaveType,
+      dateRange: [dayjs(record.startDate), dayjs(record.endDate)],
+      duration: record.duration,
+      reason: record.reason,
+    });
+    setEditModalOpen(true);
+  };
+
+  const closeEditModal = () => {
+    setEditModalOpen(false);
+    setEditingRequest(null);
+    editForm.resetFields();
+  };
+
+  const handleEditSubmit = async (values: any) => {
+    if (!editingRequest) return;
+    const [startDate, endDate] = values.dateRange;
+    setEditSubmitting(true);
+    try {
+      await leaveRequestsApi.update(editingRequest.id, {
+        leaveType: values.leaveType,
+        startDate: startDate.format('YYYY-MM-DD'),
+        endDate: endDate.format('YYYY-MM-DD'),
+        duration: values.duration,
+        reason: values.reason,
+      });
+      messageApi.success('Đã cập nhật đơn nghỉ phép');
+      closeEditModal();
+      await fetchAllData();
+    } catch (err: any) {
+      if (err.response?.status !== 401) {
+        messageApi.error(err.response?.data?.message || 'Cập nhật đơn thất bại');
+      }
+    } finally {
+      setEditSubmitting(false);
+    }
+  };
+
   // ── desktop columns ─────────────────────────────────────────────────────
   const pendingColumns = [
     {
@@ -455,7 +538,7 @@ export default function ApprovalPage() {
     },
     {
       title: 'Thao tác',
-      width: 160,
+      width: 220,
       render: (_: any, record: LeaveRequest) => (
         <Space>
           <Button type="primary" size="small" icon={<CheckOutlined />} onClick={() => handleApprove(record.id)}>
@@ -464,6 +547,11 @@ export default function ApprovalPage() {
           <Button danger size="small" icon={<CloseOutlined />} onClick={() => openRejectModal(record.id)}>
             Từ chối
           </Button>
+          {canEdit && (
+            <Button size="small" icon={<EditOutlined />} onClick={() => openEditModal(record)}>
+              Sửa
+            </Button>
+          )}
         </Space>
       )
     }
@@ -581,10 +669,20 @@ export default function ApprovalPage() {
             <span style={{ ...REASON_ELLIPSIS_STYLE, color: '#f5222d', fontStyle: 'italic' }}>{reason}</span>
           </Tooltip>
         ) : '-'
+    },
+    {
+      title: 'Thao tác',
+      width: 100,
+      render: (_: any, record: LeaveRequest) =>
+        (record.status === 'pending' || record.status === 'approved') && (
+          <Button size="small" icon={<EditOutlined />} onClick={() => openEditModal(record)}>
+            Sửa
+          </Button>
+        )
     }
-  ];
-  // Cùng lý do với `pendingTableWidth` ở trên - `historyColumns` không có
-  // `.filter()` nên tính thẳng, không cần `useMemo`.
+  ].filter((col: any) => canEdit || col.title !== 'Thao tác');
+  // Cùng lý do với `pendingTableWidth` ở trên - `historyColumns` giờ cũng có
+  // `.filter()` (ẩn "Thao tác" khi không có quyền `leave_requests.edit`).
   const historyTableWidth = historyColumns.reduce((sum: number, col: any) => sum + (col.width ?? 0), 0);
 
   // ── tab items ─────────────────────────────────────────────────────────────
@@ -646,6 +744,8 @@ export default function ApprovalPage() {
               record={r}
               onApprove={handleApprove}
               onReject={openRejectModal}
+                    onEdit={openEditModal}
+                    canEdit={canEdit}
               leaveTypeMap={leaveTypeMap}
             />
           ))
@@ -741,7 +841,13 @@ export default function ApprovalPage() {
           </div>
         ) : (
                 filteredHistory.map(r => (
-            <HistoryMobileCard key={r.id} record={r} leaveTypeMap={leaveTypeMap} />
+                  <HistoryMobileCard
+                    key={r.id}
+                    record={r}
+                    onEdit={openEditModal}
+                    canEdit={canEdit}
+                    leaveTypeMap={leaveTypeMap}
+                  />
           ))
         )
       ) : (
@@ -800,6 +906,64 @@ export default function ApprovalPage() {
             placeholder="Nhập lý do từ chối (bắt buộc)..."
           />
         </div>
+      </Modal>
+
+      {/* Edit Modal - "sửa hộ" ngày/loại phép/lý do (User báo lỡ set sai
+          ngày). Không check overlap (đối xứng bypass ở BE create()). Nếu đơn
+          đang APPROVED, BE tự cân bằng lại phép năm (hoàn số ngày cũ, trừ
+          lại số ngày mới) - không cần xử lý gì thêm ở FE. */}
+      <Modal
+        title={`Sửa đơn nghỉ phép${editingRequest ? ` — ${editingRequest.requester.name}` : ''}`}
+        open={editModalOpen}
+        onCancel={closeEditModal}
+        footer={null}
+        width={600}
+        destroyOnHidden
+      >
+        <Form
+          form={editForm}
+          layout="vertical"
+          onFinish={handleEditSubmit}
+        >
+          <Form.Item
+            name="leaveType"
+            label="Loại phép"
+            rules={[{ required: true, message: 'Vui lòng chọn loại phép' }]}
+          >
+            <Select placeholder="Chọn loại phép" options={editLeaveTypeOptions} />
+          </Form.Item>
+
+          <Form.Item
+            name="dateRange"
+            label="Thời gian nghỉ"
+            rules={[{ required: true, message: 'Vui lòng chọn thời gian' }]}
+          >
+            <DatePicker.RangePicker style={{ width: '100%' }} format="DD/MM/YYYY" />
+          </Form.Item>
+
+          <Form.Item name="duration" label="Thời lượng" initialValue="full_day">
+            <Select
+              options={[
+                { value: 'full_day', label: 'Cả ngày' },
+                { value: 'half_day_am', label: 'Nửa ngày (Sáng)' },
+                { value: 'half_day_pm', label: 'Nửa ngày (Chiều)' },
+              ]}
+            />
+          </Form.Item>
+
+          <Form.Item
+            name="reason"
+            label="Lý do"
+            rules={[{ required: true, message: 'Vui lòng nhập lý do' }]}
+          >
+            <TextArea rows={4} placeholder="Nhập lý do xin nghỉ phép..." />
+          </Form.Item>
+
+          <div className="flex justify-end gap-2" style={{ marginTop: 16 }}>
+            <Button onClick={closeEditModal} disabled={editSubmitting}>Hủy</Button>
+            <Button type="primary" htmlType="submit" loading={editSubmitting}>Lưu thay đổi</Button>
+          </div>
+        </Form>
       </Modal>
     </div>
   );

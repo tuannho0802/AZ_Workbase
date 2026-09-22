@@ -245,7 +245,7 @@ export default function LeaveRequestsPage() {
       if (uploadedKeys.length > 0) {
         leaveRequestsApi.discardAttachments(uploadedKeys).catch(() => undefined);
       }
-      message.error(err.message || 'Tạo đơn thất bại');
+      message.error(err.response?.data?.message || 'Tạo đơn thất bại');
     } finally {
       setSubmitting(false);
     }

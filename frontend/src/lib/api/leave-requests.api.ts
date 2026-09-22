@@ -107,6 +107,25 @@ export const leaveRequestsApi = {
     return res.data as LeaveRequest[];
   },
 
+  // "Sửa hộ" 1 đơn đang PENDING/APPROVED (permission `leave_requests.edit`,
+  // TÁCH hẳn khỏi `leave_requests.approve`) - dùng khi User báo lỡ set sai
+  // ngày. Không có overlap-check ở BE (đối xứng với bypass ở create()).
+  // Chỉ gửi field nào thực sự đổi - xem LeaveRequestsService.update() (mọi
+  // field đều optional, field không gửi giữ nguyên giá trị cũ).
+  async update(
+    id: number,
+    data: {
+      leaveType?: string;
+      startDate?: string; // YYYY-MM-DD
+      endDate?: string;   // YYYY-MM-DD
+      duration?: string;
+      reason?: string;
+    },
+  ) {
+    const res = await axiosInstance.patch(`/leave-requests/${id}`, data);
+    return res.data;
+  },
+
   async approve(id: number) {
     const res = await axiosInstance.patch(`/leave-requests/${id}/approve`);
     return res.data;

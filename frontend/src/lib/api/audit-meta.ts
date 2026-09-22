@@ -159,6 +159,11 @@ export const ACTION_META: Record<string, ActionMeta> = {
   APPROVE_LEAVE_REQUEST: m('Duyệt đơn nghỉ phép', 'success', 'leave'),
   REJECT_LEAVE_REQUEST: m('Từ chối đơn nghỉ phép', 'red', 'leave'),
   CANCEL_LEAVE_REQUEST: m('Hủy đơn nghỉ phép', 'default', 'leave'),
+  // "Sửa hộ" ngày/loại phép/lý do của 1 đơn PENDING/APPROVED - action mới
+  // ghi bởi LeaveRequestsService.update() (PATCH /leave-requests/:id,
+  // permission leave_requests.edit). Mirror màu 'blue' như các action
+  // UPDATE_*/EDIT_* khác trong file này.
+  EDIT_LEAVE_REQUEST: m('Sửa đơn nghỉ phép', 'blue', 'leave'),
 
   // ── Lưu trữ & Tải lên ──────────────────────────────────────────────────
   UPDATE_STORAGE_LIMIT: m('Đổi hạn mức dung lượng lưu trữ', 'blue', 'storage'),
