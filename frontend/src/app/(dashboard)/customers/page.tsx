@@ -189,6 +189,7 @@ const CustomerMobileCard = ({
     size="small"
     variant="outlined"
     className={focusClassName}
+      data-row-key={record.id}
     style={{ marginBottom: 8, cursor: 'pointer' }}
     onClick={() => onRowClick(record.id)}
   >
@@ -337,6 +338,15 @@ function CustomersPageContent() {
       const parsedId = Number(idParam);
       if (!Number.isNaN(parsedId)) {
         setSelectedCustomerId(parsedId);
+        // ⚠️ FIX BUG THẬT (2026-09-22): trước đây chỉ set state highlight mà
+        // KHÔNG BAO GIỜ gọi setIsDrawerOpen(true) - dù comment phía trên nói rõ
+        // mục đích effect này là "mở drawer chi tiết khi được điều hướng từ
+        // trang khác". Hệ quả: bấm 1 thông báo / 1 dòng Nhật ký hệ thống
+        // (audit-logs) / 1 tên khách ở "/chia-data" chỉ đổi URL thành
+        // `/customers?id=X` rồi router.replace về `/customers` NGAY LẬP TỨC mà
+        // không có gì xảy ra trên UI - cả 3 nơi gọi đều dùng chung route này
+        // (xem `resolve-link.ts`, `audit-logs/page.tsx`, `chia-data/page.tsx`).
+        setIsDrawerOpen(true);
         setFocusedCustomerId(parsedId);
         setFocusPhase('flash');
       }
@@ -433,6 +443,21 @@ function CustomersPageContent() {
 
   const customers = customersResponse?.data || [];
   const total = customersResponse?.total || 0;
+
+  // ⚠️ FIX BUG THẬT (2026-09-22, bổ sung cho phần "mở Drawer" ở trên): Drawer
+  // chi tiết che gần hết bảng, nên nếu chỉ set `focusPhase`/`rowClassName` mà
+  // không cuộn hàng vào tầm nhìn thì khi người dùng ĐÓNG Drawer ra, hàng được
+  // tô sáng (viền cam `notif-focus-marked`) có thể đang nằm ngoài khung nhìn
+  // hiện tại (dưới nhiều hàng khác, hoặc bảng đã cuộn dọc theo trang) -> nhìn
+  // như "vẫn chưa có highlight" dù state đã đúng. Theo đúng PLAN_NOTIFICATION_
+  // SYSTEM.md §7.5: "dữ liệu tải xong → tìm [data-row-key] → scrollIntoView".
+  useEffect(() => {
+    if (!focusedCustomerId || loading) return;
+    if (!customers.some((c) => c.id === focusedCustomerId)) return;
+    const el = document.querySelector(`[data-row-key="${focusedCustomerId}"]`);
+    el?.scrollIntoView({ block: 'center', behavior: 'smooth' });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [focusedCustomerId, loading, customers]);
 
   // Danh sách TOÀN BỘ user (không lọc role/phòng ban) - lấy 1 lần, sau đó
   // lọc CLIENT-SIDE thành 2 danh sách riêng theo ĐÚNG phòng ban (Kinh doanh
