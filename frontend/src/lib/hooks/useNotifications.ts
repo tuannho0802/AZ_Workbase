@@ -43,5 +43,10 @@ export function useNotificationMutations() {
     onSuccess: refresh,
   });
 
-  return { markRead, markAllRead, remove };
+  const restore = useMutation({
+    mutationFn: (id: number) => notificationsApi.restore(id),
+    onSuccess: refresh,
+  });
+
+  return { markRead, markAllRead, remove, restore };
 }
