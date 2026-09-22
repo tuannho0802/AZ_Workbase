@@ -427,14 +427,29 @@ export default function ApprovalPage() {
     }
   };
 
+  // ⚠️ FIX BUG THẬT (console warning "Instance created by useForm is not
+  // connected to any Form element") - mirror ĐÚNG root cause + fix đã ghi ở
+  // `CustomerAssignmentsTab.tsx` (openEdit/useEffect): Modal "Sửa đơn nghỉ
+  // phép" dùng destroyOnHidden nên <Form form={editForm}> chỉ thực sự mount
+  // SAU KHI editModalOpen=true re-render xong. Trước đây openEditModal() gọi
+  // editForm.setFieldsValue() NGAY trong cùng lần gọi hàm với setEditModalOpen
+  // (state update bất đồng bộ) - lúc setFieldsValue chạy, Modal vẫn đang
+  // open=false, <Form> chưa tồn tại trong cây DOM -> "chưa kết nối" -> warning.
+  // Dời sang useEffect để chỉ set giá trị SAU KHI React đã re-render và
+  // Modal/Form đã mount xong.
+  useEffect(() => {
+    if (editModalOpen && editingRequest) {
+      editForm.setFieldsValue({
+        leaveType: editingRequest.leaveType,
+        dateRange: [dayjs(editingRequest.startDate), dayjs(editingRequest.endDate)],
+        duration: editingRequest.duration,
+        reason: editingRequest.reason,
+      });
+    }
+  }, [editModalOpen, editingRequest, editForm]);
+
   const openEditModal = (record: LeaveRequest) => {
     setEditingRequest(record);
-    editForm.setFieldsValue({
-      leaveType: record.leaveType,
-      dateRange: [dayjs(record.startDate), dayjs(record.endDate)],
-      duration: record.duration,
-      reason: record.reason,
-    });
     setEditModalOpen(true);
   };
 

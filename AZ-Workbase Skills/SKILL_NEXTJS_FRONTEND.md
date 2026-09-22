@@ -863,6 +863,41 @@ Axios/API) — đó không phải prop của `<Alert />`, không cần đổi.
 
 (Đã quét sạch toàn bộ `frontend/src` — không còn `<Alert message=... />` nào, xem `WORKFLOW_LOG.md`.)
 
+#### 8.6. `useForm` warning "Instance created by useForm is not connected to any Form element" (CRITICAL)
+Xảy ra khi Modal chứa `<Form>` dùng `destroyOnHidden` (hoặc mặc định `destroyOnClose` ở bản cũ) — `<Form
+form={xForm}>` CHỈ thực sự mount vào DOM SAU KHI state `open`/`editing` re-render xong. Nếu hàm mở Modal
+gọi `xForm.setFieldsValue(...)` NGAY TRONG CÙNG 1 lần gọi với `setOpen(true)` (hoặc `setEditing(record)`),
+lúc `setFieldsValue` chạy thì state update chưa kịp áp dụng (bất đồng bộ) — Modal vẫn đang `open=false`,
+`<Form>` chưa tồn tại trong cây DOM → `xForm` "chưa kết nối" → warning này (đã gặp thật ở
+`CustomerAssignmentsTab.tsx` và `duyet-phep/page.tsx`).
+
+- **BAD** — set giá trị ngay trong hàm mở Modal:
+```typescript
+const openEditModal = (record: SomeRecord) => {
+  setEditing(record);
+  editForm.setFieldsValue({ name: record.name }); // ❌ Form chưa mount lúc này
+  setModalOpen(true);
+};
+```
+
+- **GOOD** — dời `setFieldsValue` sang `useEffect`, chỉ chạy SAU KHI React đã re-render và Modal/Form đã
+  mount xong:
+```typescript
+const openEditModal = (record: SomeRecord) => {
+  setEditing(record);
+  setModalOpen(true); // hàm mở Modal chỉ còn set state, KHÔNG đụng vào form instance
+};
+
+useEffect(() => {
+  if (modalOpen && editing) {
+    editForm.setFieldsValue({ name: editing.name });
+  }
+}, [modalOpen, editing, editForm]);
+```
+
+Nếu Modal dùng 1 state duy nhất vừa làm "đang mở" vừa làm "record đang sửa" (kiểu `editing: T | null`,
+không có `modalOpen` riêng — xem `CustomerAssignmentsTab.tsx`), `useEffect` chỉ cần phụ thuộc `editing`.
+
 ```
 
 **Customer Filters Component:**
