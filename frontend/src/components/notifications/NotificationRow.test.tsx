@@ -35,7 +35,7 @@ describe('NotificationRow', () => {
     expect(screen.queryByLabelText('Chưa đọc')).not.toBeInTheDocument();
   });
 
-  it('bấm nội dung → onOpen; bấm nút xoá → onRemove và KHÔNG kích hoạt onOpen', () => {
+  it('bấm nội dung → onOpen; bấm nút ẩn → onRemove và KHÔNG kích hoạt onOpen', () => {
     const onOpen = vi.fn();
     const onRemove = vi.fn();
     const item = make();
@@ -45,12 +45,12 @@ describe('NotificationRow', () => {
     expect(onOpen).toHaveBeenCalledWith(item);
 
     onOpen.mockClear();
-    fireEvent.click(screen.getByRole('button', { name: 'Xoá thông báo' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Ẩn thông báo' }));
     expect(onRemove).toHaveBeenCalledWith(item);
     expect(onOpen).not.toHaveBeenCalled();
   });
 
-  it('thông báo thủ công: nút là "Ẩn" (không phải xoá)', () => {
+  it('thông báo thủ công cũng dùng chung nút "Ẩn" (mọi loại đều chỉ ẩn, không xoá cứng)', () => {
     render(
       <NotificationRow
         item={make({ category: 'manual', eventType: 'manual.broadcast', entityType: null, entityId: null })}

@@ -1697,3 +1697,15 @@ function PeriodicTasksPageContent() {
         </div>
     );
 }
+
+// Wrapper bắt buộc cho useSearchParams() trong Next.js App Router - nếu không
+// có Suspense bọc ngoài, `next build` sẽ lỗi và chặn deploy Vercel (mirror
+// đúng `customers/page.tsx` - đây là "property 'default' is missing" gặp khi
+// build vì thiếu đúng khối này).
+export default function PeriodicTasksPage() {
+    return (
+        <Suspense fallback={null}>
+            <PeriodicTasksPageContent />
+        </Suspense>
+    );
+}
