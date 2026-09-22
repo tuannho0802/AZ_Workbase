@@ -153,7 +153,7 @@ export default function SentBroadcastsPage() {
         key: 'title',
         ellipsis: true,
         render: (title: string, record) => (
-          <Space direction="vertical" size={0}>
+          <Space orientation="vertical" size={0}>
             <Text strong>{title}</Text>
             {record.updatedAt && (
               <Text type="secondary" style={{ fontSize: 11 }}>
