@@ -171,7 +171,8 @@ const CustomerMobileCard = ({
   pageSize, 
   onRowClick,
   canDelete,
-  onDelete
+  onDelete,
+  focusClassName,
 }: { 
   record: Customer; 
   index: number; 
@@ -180,11 +181,14 @@ const CustomerMobileCard = ({
   onRowClick: (id: number) => void; 
   canDelete: boolean;
   onDelete: (id: number) => void;
+    /** Highlight "mục tiêu" khi tới từ thông báo (xem `notif-focus-*` ở globals.css). */
+    focusClassName?: string;
   }) => {
   return (
   <Card
     size="small"
     variant="outlined"
+      className={focusClassName}
     style={{ marginBottom: 8, cursor: 'pointer' }}
     onClick={() => onRowClick(record.id)}
   >
@@ -313,12 +317,28 @@ function CustomersPageContent() {
   const searchParams = useSearchParams();
   const router = useRouter();
   const pathname = usePathname();
+
+  // ── Highlight "mục tiêu" khi tới từ thông báo (bổ trợ thêm cho việc chỉ
+  // mở Drawer) - PLAN_NOTIFICATION_SYSTEM.md mục 7.5: nhấp nháy 3 lần rồi
+  // giữ viền cam cho tới khi người dùng bấm hàng khác / đóng Drawer / rời
+  // trang. `focusPhase` chạy độc lập với việc mở Drawer (vẫn tô sáng đúng
+  // hàng kể cả khi người dùng đóng Drawer ngay).
+  const [focusedCustomerId, setFocusedCustomerId] = useState<number | null>(null);
+  const [focusPhase, setFocusPhase] = useState<'flash' | 'marked' | null>(null);
+
+  const clearFocus = () => {
+    setFocusedCustomerId(null);
+    setFocusPhase(null);
+  };
+
   useEffect(() => {
     const idParam = searchParams.get('id');
     if (idParam) {
       const parsedId = Number(idParam);
       if (!Number.isNaN(parsedId)) {
         setSelectedCustomerId(parsedId);
+        setFocusedCustomerId(parsedId);
+        setFocusPhase('flash');
       }
       // Xoá param khỏi URL sau khi đã dùng xong - tránh việc bấm "Làm mới"
       // trang hoặc back/forward lại tự mở nhầm đúng khách hàng đó lần nữa.
@@ -330,6 +350,14 @@ function CustomersPageContent() {
     // effect chạy lại 1 lần với `id` rỗng → no-op.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [searchParams]);
+
+  // Nhấp nháy 0.8s × 3 = 2.4s rồi chuyển sang giữ viền (`marked`) tới khi
+  // người dùng tự bỏ (bấm hàng khác / đóng Drawer - xem `clearFocus`).
+  useEffect(() => {
+    if (focusPhase !== 'flash') return;
+    const timer = setTimeout(() => setFocusPhase('marked'), 2400);
+    return () => clearTimeout(timer);
+  }, [focusPhase, focusedCustomerId]);
 
   const [isDrawerOpen, setIsDrawerOpen] = useState(false);
 
@@ -957,9 +985,18 @@ function CustomersPageContent() {
               index={index}
               page={page}
               pageSize={pageSize}
-              onRowClick={(id) => { setSelectedCustomerId(id); setIsDrawerOpen(true); }}
+              onRowClick={(id) => { setSelectedCustomerId(id); setIsDrawerOpen(true); if (id !== focusedCustomerId) clearFocus(); }}
               canDelete={canDeleteCustomer}
               onDelete={handleDeleteCustomer}
+              focusClassName={
+                focusedCustomerId === record.id
+                  ? focusPhase === 'flash'
+                    ? 'notif-focus-flash notif-focus-flash-card'
+                    : focusPhase === 'marked'
+                      ? 'notif-focus-marked notif-focus-marked-card'
+                      : undefined
+                  : undefined
+              }
             />
           ))}
           <Pagination
@@ -1005,10 +1042,20 @@ function CustomersPageContent() {
           loading={loading}
           size="small"
           onChange={handleTableChange}
+                rowClassName={(record) =>
+                  focusedCustomerId === record.id
+                    ? focusPhase === 'flash'
+                      ? 'notif-focus-flash'
+                      : focusPhase === 'marked'
+                        ? 'notif-focus-marked'
+                        : ''
+                    : ''
+                }
           onRow={(record) => ({
             onClick: () => {
               setSelectedCustomerId(record.id);
               setIsDrawerOpen(true);
+              if (record.id !== focusedCustomerId) clearFocus();
             },
             style: { cursor: 'pointer' }
           })}
@@ -1031,7 +1078,7 @@ function CustomersPageContent() {
     <CustomerDetailDrawer
       open={isDrawerOpen}
       customerId={selectedCustomerId}
-      onClose={() => setIsDrawerOpen(false)}
+        onClose={() => { setIsDrawerOpen(false); clearFocus(); }}
       onUpdate={handleDrawerUpdate}
     />
 

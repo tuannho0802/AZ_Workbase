@@ -120,3 +120,34 @@ body {
     padding: 7px 10px !important;
   }
 }
+
+/* ────────────────────────────────────────────────────────────────────
+   Highlight "mục tiêu" khi bấm vào thông báo (PLAN_NOTIFICATION_SYSTEM.md
+   mục 7.5): nhấp nháy 3 lần rồi giữ viền khác biệt cho tới khi người dùng
+   rời đi (đóng Drawer / bấm hàng khác / rời trang) - áp dụng cho cả hàng
+   Table (desktop) và Card (mobile) ở trang Khách hàng.
+   ──────────────────────────────────────────────────────────────────── */
+@keyframes notif-focus-flash {
+  0%, 100% { background-color: transparent; }
+  50% { background-color: #fff3cd; }
+}
+.notif-focus-flash > td {
+  animation: notif-focus-flash 0.8s ease-in-out 3;
+}
+.notif-focus-flash.notif-focus-flash-card {
+  animation: notif-focus-flash 0.8s ease-in-out 3;
+}
+.notif-focus-marked > td {
+  box-shadow: inset 0 3px 0 0 #fa8c16, inset 0 -3px 0 0 #fa8c16;
+  background-color: #fffaf0 !important;
+}
+.notif-focus-marked.notif-focus-marked-card {
+  box-shadow: 0 0 0 2px #fa8c16;
+  background-color: #fffaf0 !important;
+}
+@media (prefers-reduced-motion: reduce) {
+  .notif-focus-flash > td,
+  .notif-focus-flash.notif-focus-flash-card {
+    animation: none;
+  }
+}

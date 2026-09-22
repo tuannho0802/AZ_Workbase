@@ -207,7 +207,15 @@ export class NotificationsService {
           ? userById.get(input.actorId)?.name
           : undefined) ??
         'Hệ thống';
-      const params = sanitizeParams(input.params);
+      // ⚠️ `entityName` đã có sẵn trong PARAM_ALLOWLIST nhưng trước đây KHÔNG
+      // BAO GIỜ được gộp vào `params` thực tế (chỉ dùng để render `title`
+      // rồi mất) - FE cần giá trị này để highlight tên khách hàng/task trong
+      // dòng thông báo (không suy ngược từ `title` vì actorName có thể trùng
+      // 1 phần chuỗi). Bỏ qua chuỗi rỗng (batch `entityName: ''`).
+      const params = sanitizeParams({
+        ...input.params,
+        ...(input.entityName ? { entityName: input.entityName } : {}),
+      });
       const paramsJson = params ? JSON.stringify(params) : null;
       const now = new Date();
       const coalesceKey = def.coalesce
