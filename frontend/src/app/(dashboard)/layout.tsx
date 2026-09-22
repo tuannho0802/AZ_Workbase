@@ -250,6 +250,16 @@ export default function DashboardLayout({
       newKey = 'reports';
     } else if (pathname.includes('/phong-ban')) {
       newKey = 'phong-ban';
+    } else if (pathname.includes('/thong-bao/gui')) {
+      // Check TRƯỚC nhánh '/thong-bao' generic bên dưới (cùng bug pattern
+      // '/customers/reports/invalid-data' trước '/customers'): 2 sub-route
+      // mới của Thông báo thủ công đều chứa '/thong-bao' nên phải đặt
+      // nhánh cụ thể hơn lên trước, nếu không sidebar luôn sáng nhầm mục
+      // cha "Thông báo" (hộp thư cá nhân) dù đang đứng ở "Gửi thông báo"/
+      // "Thông báo đã gửi".
+      newKey = 'thong-bao-gui';
+    } else if (pathname.includes('/thong-bao/da-gui')) {
+      newKey = 'thong-bao-da-gui';
     } else if (pathname.includes('/thong-bao')) {
       newKey = 'thong-bao';
     } else if (pathname.includes('/storage-img')) {
