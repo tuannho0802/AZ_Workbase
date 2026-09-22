@@ -1,6 +1,6 @@
 # 🔔 PLAN: Hệ thống Thông báo (Notification) — Tự động + Thủ công
 
-> **Trạng thái:** DỰ THẢO v2. **Phase 0 + 1 + 3 (BE) + 4 (FE, điều hướng cơ bản) đã xong (2026-09-21)** — xem `WORKFLOW_LOG.md`. **Phase 2 (móc Task) CHƯA làm** ⇒ thông báo Task chưa phát ra. Còn thiếu xác minh: `nest build`/`next build`/full test. Mục 11 vẫn chờ chủ dự án chốt (Phase 1 dùng đề xuất mặc định). **Đã lệch plan:** 5.1/11.13 `is_read` là cột ghi được (không phải cột sinh) — lý do trong WORKFLOW_LOG.
+> **Trạng thái:** DỰ THẢO v2. **Phase 0 + 1 + 3 (BE) + 4 (FE, điều hướng cơ bản) đã xong (2026-09-21)** — xem `WORKFLOW_LOG.md`. **Phase M1 (BE Thông báo thủ công) đã xong (2026-09-22)** — CRUD đầy đủ theo yêu cầu chủ dự án (mở rộng hơn dự kiến gốc chỉ 2 permission `send/view`, xem mục M1 bên dưới và `PERMISSIONS.md` §2.12). **Phase 2 (móc Task) CHƯA làm** ⇒ thông báo Task chưa phát ra. **Phase M2 (FE Thông báo thủ công) CHƯA làm.** Verify M1: `tsc --noEmit`/`nest build` sạch, **46/46 suite / 862/862 test pass**. Mục 11 vẫn chờ chủ dự án chốt (Phase 1 dùng đề xuất mặc định). **Đã lệch plan:** 5.1/11.13 `is_read` là cột ghi được (không phải cột sinh) — lý do trong WORKFLOW_LOG.
 > **v2 (2026-09-21):** thêm **Thông báo thủ công** (kiểu "email nội bộ": người gửi chọn 1/nhiều/toàn bộ user, theo dõi ai đã đọc/chưa đọc). Các mục có thay đổi/thêm mới được đánh dấu **[MỚI v2]**.
 > **Đối chiếu code:** HEAD `f8ea812` (2026-09-21; commit này chỉ sửa `roles.service.spec.ts`). Mọi khẳng định "hiện trạng" ở mục 0 đều đọc trực tiếp từ code/lệnh thật.
 > **Vị trí đặt file:** `AZ-Workbase Skills/PLAN_NOTIFICATION_SYSTEM.md` (cùng chỗ các `PLAN_*.md` khác).
@@ -325,26 +325,38 @@ Endpoint chấp nhận `x-cron-secret` / `?secret=` (mẫu hiện có) **và** `
 
 ### 6.7. **[MỚI v2]** Thông báo thủ công — Backend
 
-**Permission mới (seed bằng migration riêng, theo mẫu `SeedPeriodicTasksPermissions`):**
+> **✅ ĐÃ TRIỂN KHAI (2026-09-22, Phase M1) — CRUD đầy đủ, KHÁC dự thảo gốc bên dưới ở 2 điểm:**
+> chủ dự án yêu cầu seed đủ 4 permission (không dừng ở `send`/`view`) và có `update`/`remove` ngay từ
+> M1 (không đợi M3). Bảng permission + endpoint dưới đây đã được sửa lại cho khớp code thật — xem
+> `PERMISSIONS.md` §2.12 để biết chi tiết đầy đủ nhất (seed, hành vi Sửa/Xoá, spec test, số liệu verify).
+
+**Permission (seed bằng migration `1783500000000-SeedNotificationBroadcastPermissions`, theo mẫu
+`SeedPeriodicTasksPermissions`):**
 
 | Permission | supports_scope | Ý nghĩa | Seed mặc định |
 |---|---|---|---|
-| `notification_broadcasts.send` | TRUE | Soạn & gửi thông báo thủ công. **Scope giới hạn PHẠM VI NGƯỜI NHẬN:** `all` = bất kỳ user active + chọn "Toàn bộ"; `department` = chỉ user thuộc phòng ban mình quản lý (theo `UsersAccessHelper`/`department_managers`), **không** có "Toàn bộ"; `own`/không dòng = không được gửi | `admin = all`, `manager = department`. **Không seed** `assistant`/`employee` (Admin tự bật ở `/phan-quyen` nếu muốn — đúng ý "tuỳ role") |
+| `notification_broadcasts.create` | TRUE | (Đổi tên từ `send` dự thảo gốc, đồng bộ động từ CRUD chuẩn `view/create/edit/delete` của các module khác.) Soạn & gửi thông báo thủ công. **Scope giới hạn PHẠM VI NGƯỜI NHẬN:** `all` = bất kỳ user active + chọn "Toàn bộ"; `department` = chỉ user thuộc phòng ban mình quản lý (theo `UsersAccessHelper`/`department_managers`), **không** có "Toàn bộ"; `own`/không dòng = không được gửi | `admin = all`, `manager = department`. **Không seed** `assistant`/`employee` (Admin tự bật ở `/phan-quyen` nếu muốn — đúng ý "tuỳ role") |
 | `notification_broadcasts.view` | TRUE | Xem lịch sử thông báo đã gửi + danh sách đã đọc/chưa đọc. Scope `all` = mọi lần gửi của mọi người; các scope còn lại = **chỉ các lần do chính mình gửi** | `admin = all`, `manager = own` |
+| `notification_broadcasts.edit` | TRUE | **[MỚI so với dự thảo gốc]** Sửa `title`/`body` 1 lần đã gửi — người nhận thấy nhãn "Đã chỉnh sửa" (`updatedAt != null`). Scope mirror `view` | `admin = all`, `manager = own` |
+| `notification_broadcasts.delete` | TRUE, chỉ seed Admin | **[Đưa từ M3 lên M1 theo yêu cầu chủ dự án]** Xoá HẲN 1 lần gửi — xoá cứng khỏi MỌI hộp thư người nhận (không phải chỉ ẩn) | `admin = all`. **Không seed** cho role khác — đúng quy ước "chỉ Admin xoá cứng" |
 
-- Hai key tách riêng (theo nguyên tắc PERMISSIONS.md §1.7 "1 permission = 1 hành động rõ nghĩa") để Admin có thể cho 1 role "được gửi" nhưng "chỉ xem của mình", hoặc "xem tất cả để giám sát" mà không cho gửi.
-- Quyền **thu hồi/xoá** một lần gửi (`notification_broadcasts.delete`) **chưa seed** ở đợt này — PERMISSIONS.md cấm "quyền ảo" (key không endpoint nào enforce). Sẽ thêm bằng migration riêng cùng endpoint ở Phase M3.
-- Giữ lối thoát hiểm `role === 'admin'` (Root Admin) ở đủ 3 lớp (`PermissionGuard`, `RolesService.getMyPermissions()`, và helper kiểm scope người nhận). Test spec bắt buộc cho từng lớp.
+- 4 key tách riêng (theo nguyên tắc PERMISSIONS.md §1.7 "1 permission = 1 hành động rõ nghĩa") để Admin có
+  thể cho 1 role "được gửi" nhưng "chỉ xem của mình", hoặc "xem tất cả để giám sát" mà không cho gửi/sửa/xoá.
+- Root Admin bypass dùng đúng cơ chế HIỆN TẠI của repo (`role === 'admin' && isRootAdmin === true`, xem
+  `permission.guard.ts`) — hoạt động tự nhiên qua `PermissionGuard`, module này **không** tự cài thêm bypass
+  nào khác (không có `role === 'admin'` hardcode trong service/resolver của module).
 
 **Endpoint (`/notification-broadcasts`, `JwtAuthGuard + PermissionGuard`):**
 
 | Method | Path | Permission | Mục đích |
 |---|---|---|---|
-| POST | `/notification-broadcasts/preview` | `send` | Nhận đối tượng chọn → trả `{ recipientCount, sample: [5 tên đầu], excludedCount }` để hiện "Sẽ gửi tới N người" **trước khi bấm Gửi**. Không ghi DB |
-| POST | `/notification-broadcasts` | `send` | Gửi. Trả `{ id, recipientCount }` |
+| POST | `/notification-broadcasts/preview` | `create` | Nhận đối tượng chọn → trả `{ recipientCount, sample: [5 tên đầu], excludedCount }` để hiện "Sẽ gửi tới N người" **trước khi bấm Gửi**. Không ghi DB |
+| POST | `/notification-broadcasts` | `create` | Gửi. Trả `{ id, recipientCount }` |
 | GET | `/notification-broadcasts?cursor=&limit=` | `view` | Lịch sử đã gửi: tiêu đề, người gửi, thời gian, loại đối tượng, `recipientCount`, `readCount`, `unreadCount`. Scope quyết định "của tôi" hay "tất cả" |
 | GET | `/notification-broadcasts/:id` | `view` | Chi tiết + nội dung + thống kê. Ngoài scope → **404** |
 | GET | `/notification-broadcasts/:id/recipients?status=all\|read\|unread&search=&cursor=&limit=` | `view` | Danh sách người nhận: `userId, name, department, isRead, readAt, dismissed`. Lọc theo trạng thái. Cursor theo `notifications.id` |
+| PATCH | `/notification-broadcasts/:id` | `edit` | **[MỚI]** Sửa `title`/`body`. Set `updatedAt`, đồng bộ lại `title` vào từng dòng `notifications` (denormalized). Ngoài scope → 404 |
+| DELETE | `/notification-broadcasts/:id` | `delete` | **[MỚI]** Xoá cứng toàn bộ dòng `notifications` của broadcast này (mất khỏi mọi hộp thư ngay), soft-delete `notification_broadcasts` để giữ audit. Ngoài scope → 404 |
 
 **Luồng `send()` (đồng bộ, 1 transaction):**
 1. `@GetPermissionScope()` → `scope`. Không có quyền → 403 (do guard).
@@ -510,11 +522,11 @@ CSS chung trong `globals.css`:
 | **2** | ⏳ **CHƯA XONG** — Móc **Task** (mirror 17 audit action, gồm coalesce checklist) | M | Làm Task trước: action đã chuẩn hoá |
 | **3** | ✅ **XONG (2026-09-21)** — Móc **Customer**: create/update (allowlist)/remove/note/assignment + **batch `bulkAssign`** | M–L | Ca khó nhất là gộp batch |
 | **4** | ✅ **XONG (2026-09-21, mức cơ bản)** — FE hộp thư: chuông, dropdown, `/thong-bao`, polling + toast, `resolve-link`, điều hướng cơ bản (dùng `?id=` hiện có) | M | Dùng được ngay không cần highlight |
-| **M1 [MỚI v2]** | **BE thủ công:** migration seed 2 permission, `notification-broadcasts` (preview/send/list/detail/recipients), audience resolver, audit, throttle, test (mục 9) | M–L | **Chỉ phụ thuộc Phase 1** — có thể làm song song/ngay sau Phase 1, **không cần** Phase 2–3 |
-| **M2 [MỚI v2]** | **FE thủ công:** modal chi tiết trong hộp thư (cần Phase 4), 2 trang `/thong-bao/gui` + `/thong-bao/da-gui`, nav gating, form + preview + Drawer theo dõi đọc/chưa đọc | M | Cần Phase 4 (chuông/poll) + M1 |
+| **M1 [MỚI v2]** | ✅ **XONG (2026-09-22).** **BE thủ công, CRUD đầy đủ** (mở rộng hơn dự thảo gốc theo yêu cầu chủ dự án — không dừng ở 2 permission `send/view`): migration seed đủ 4 permission `notification_broadcasts.view/create/edit/delete`, `notification-broadcasts` (preview/send/list/detail/recipients/**update/remove**), audience resolver, audit, throttle, test (controller+service+resolver). Sửa → `updatedAt` + đồng bộ `title` vào `notifications` (nhãn "Đã chỉnh sửa"); Xoá → xoá cứng `notifications` liên quan (mất khỏi mọi hộp thư), soft-delete `notification_broadcasts` để giữ audit | **Chỉ phụ thuộc Phase 1** — đã làm ngay sau Phase 1, không cần Phase 2–3. Xem `PERMISSIONS.md` §2.12 |
+| **M2 [MỚI v2]** | ⏳ **CHƯA LÀM.** **FE thủ công:** modal chi tiết trong hộp thư (cần Phase 4), 2 trang `/thong-bao/gui` + `/thong-bao/da-gui` (kèm nút Sửa/Xoá gọi `PATCH`/`DELETE` đã có sẵn ở M1), nav gating, form + preview + Drawer theo dõi đọc/chưa đọc | M | Cần Phase 4 (chuông/poll, đã xong) + M1 (đã xong) — không còn phụ thuộc nào chưa sẵn sàng |
 | **5** | Deep-link + highlight tự động: `useNotificationFocus`, CSS, BE `focusId` cho `GET /customers`, reset bộ lọc Task, banner, thẻ ghim, trợ năng | M | Phần tinh tế nhất |
 | **6** | Tuỳ chọn cá nhân (`notification_preferences` + UI) + cron dọn dẹp (gồm quy tắc 180 ngày cho thủ công) | S–M | |
-| **M3 [MỚI v2] (tuỳ chọn)** | `notification_broadcasts.delete` (thu hồi/xoá 1 lần gửi, seed key kèm endpoint), "Nhắc người chưa đọc", xuất danh sách, đính kèm Khách hàng/Task | S–M | Chỉ làm khi cần |
+| **M3 [MỚI v2] (tuỳ chọn)** | ~~`notification_broadcasts.delete`~~ **đã chuyển sang M1 và LÀM XONG** (chủ dự án yêu cầu CRUD đầy đủ ngay, không đợi optional). Còn lại: "Nhắc người chưa đọc", xuất danh sách, đính kèm Khách hàng/Task | S–M | Chỉ làm khi cần |
 | **7** (tuỳ chọn) | Rule theo Vị trí/Phòng ban, thông báo chéo miền, realtime Pusher/Ably, outbox, kênh ngoài, hẹn giờ gửi | — | Chỉ khi có nhu cầu thật |
 
 **Thứ tự đề xuất nếu muốn có Thông báo thủ công sớm nhất:** 0 → 1 → 4 → M1 → M2 → (2, 3, 5, 6 sau). Triển khai theo: migration → BE (feature flag `NOTIFICATIONS_ENABLED`; `emit()` no-op khi tắt; **[v2]** flag này cũng che các route `/notification-broadcasts` và nav item) → FE.

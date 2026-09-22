@@ -597,6 +597,57 @@ approve/lock (`periodic_tasks.approve`/`edit_locked`), checklist con kiểu Trel
 
 ---
 
+### 2.12. Thông báo (`modules/notifications`) — ✅ ĐÃ KHỚP (Phase 1 hộp thư cá nhân + M1 Thông báo thủ công)
+
+Module có 2 controller tách biệt hoàn toàn về mô hình quyền — KHÔNG dùng chung 1 bộ rule:
+
+- **`NotificationsController` (`/notifications/*`, hộp thư cá nhân)** — CỐ Ý chỉ `JwtAuthGuard`, không
+  `@RequirePermission` nào (mọi user đăng nhập đều có hộp thư của CHÍNH MÌNH). Chốt chặn thay thế:
+  `recipientId` luôn lấy từ JWT (`@GetUser('id')`), không nhận từ param/body/query — đọc/sửa/xoá thông báo
+  của người khác → 404. Xem mục lịch sử 2026-09-21 (Phase 1).
+- **`NotificationBroadcastsController` (`/notification-broadcasts/*`, Thông báo THỦ CÔNG, thêm M1)** — dùng
+  Dynamic RBAC đầy đủ (mục 1.7), `@RequirePermission()` riêng cho từng hành động CRUD:
+
+| Permission | supports_scope | Seed mặc định (admin/manager) | Ý nghĩa scope |
+|---|---|---|---|
+| `notification_broadcasts.view` | true | all / own | `own` = chỉ lần DO CHÍNH MÌNH gửi (KHÔNG có `department` cho module này) |
+| `notification_broadcasts.create` | true | all / department | ⚠️ Khác mọi module khác: scope ở đây là phạm vi **NGƯỜI NHẬN** được phép chọn, không phải phạm vi dữ liệu xem/sửa — `department` = chỉ chọn được người nhận thuộc phòng ban mình quản lý, không có tuỳ chọn "Toàn bộ nhân viên" |
+| `notification_broadcasts.edit` | true | all / own | Sửa `title`/`body` 1 lần đã gửi — mirror `view` |
+| `notification_broadcasts.delete` | true, chỉ seed Admin | all / _(không seed)_ | Xoá HẲN khỏi mọi hộp thư người nhận — chỉ Admin, đúng quy ước "chỉ Admin xoá cứng" của các module khác |
+
+**Cố ý lệch nguyên tắc chung "Assistant = Admin trừ Xoá" (mục 1):** module này KHÔNG seed mặc định cho
+Assistant/Employee ở bất kỳ permission nào (kể cả `view`/`edit`) — vì `create` ở đây cho phép chọn người
+nhận hàng loạt (tối đa "Toàn bộ nhân viên"), cấp mặc định rộng cho Assistant tương đương rủi ro spam toàn
+công ty, khác hẳn bản chất "xem được toàn bộ khách hàng" ở các module khác. Admin vẫn có thể tự bật qua
+trang "Phân quyền" nếu thực sự muốn — xem JSDoc đầu file migration
+`1783500000000-SeedNotificationBroadcastPermissions.ts`.
+
+**Hành vi Sửa/Xoá (theo đúng yêu cầu chủ dự án — khác PLAN v2 gốc):**
+- **Sửa** (`PATCH /notification-broadcasts/:id`) — set `notification_broadcasts.updated_at`, đồng bộ lại
+  `title` vào từng dòng `notifications` (denormalized, `body` luôn đọc qua bảng gốc nên không cần đụng).
+  Người nhận thấy nhãn "Đã chỉnh sửa" dựa vào `updatedAt != null`.
+- **Xoá** (`DELETE /notification-broadcasts/:id`) — xoá CỨNG toàn bộ dòng `notifications` fan-out liên
+  quan (mất khỏi MỌI hộp thư người nhận ngay lập tức), còn dòng `notification_broadcasts` gốc chỉ
+  soft-delete (`deletedAt`) để giữ audit ai đã gửi gì. `findAccessible()` dùng làm "1 cổng gác" chung cho cả
+  `update`/`remove`/`getOne`/`listRecipients` — ngoài scope hoặc đã xoá → 404 (không lộ tồn tại).
+- Root Admin bypass đúng chuẩn hiện tại (`role === 'admin' && isRootAdmin === true`) — hoạt động tự nhiên
+  qua `PermissionGuard`/`GetPermissionScope`, module KHÔNG tự implement lại check nào khác (không có logic
+  hardcode `role === 'admin'` trong service/resolver).
+
+**Spec test:** `notifications.controller.spec.ts` (đã có, hộp thư cá nhân), `notifications.service.spec.ts`,
+`broadcast-audience.resolver.spec.ts`, `notification-broadcasts.service.spec.ts`,
+`notification-broadcasts.controller.spec.ts` (mới — khoá hợp đồng: đúng `@RequirePermission()` cho từng
+route, `JwtAuthGuard`+`PermissionGuard` ở mức class, không endpoint "lạ" nào ngoài 7 route đã khai). Verify
+(2026-09-22): `tsc --noEmit` sạch, `nest build` sạch, **46/46 suite / 862/862 test pass** (toàn bộ, không
+regression). Mutation check: đổi key `notification_broadcasts.delete` → `.edit` ở 1 route ⇒ spec tương ứng
+đỏ ngay, đã revert.
+
+**Còn lại (Phase 2 theo PLAN — chưa code):** móc `emit()` tự động cho sự kiện Task (`periodic_tasks`); FE
+M2 (2 trang `/thong-bao/gui` + `/thong-bao/da-gui`, form soạn + preview + Drawer theo dõi đọc/chưa đọc) —
+xem `PLAN_NOTIFICATION_SYSTEM.md` mục 6.3/M1/M2.
+
+---
+
 ## 3. Lịch sử quyết định & rà soát
 
 | Ngày | Nội dung | Chi tiết |
@@ -616,6 +667,7 @@ approve/lock (`periodic_tasks.approve`/`edit_locked`), checklist con kiểu Trel
 | 2026-09-11 (2 bug thật báo qua ảnh chụp: nav "Nhóm tôi quản lý" không gate quyền + fallback 403 lặp vô hạn) | Chủ dự án test 1 role chỉ bật `profile`/`nghi-phep`, tắt hết còn lại — phát hiện 2 vấn đề: **(A)** mục nav "Nhóm tôi quản lý" (`/nhom-toi-quan-ly`) vẫn hiện dù đã tắt hết quyền khác — kiểm tra `nav-config.tsx` xác nhận đây là mục DUY NHẤT (ngoài `profile`, vốn cố ý luôn hiện) có `roles: null` mà KHÔNG có `permission` nào — không đồng bộ với 14 mục nav khác đều đã migrate. **(B)** F5 ở trang không có quyền → mọi route guard đều `router.replace('/customers')` làm fallback — nếu `customers.view` CŨNG bị tắt (đúng tình huống test của chủ dự án), fallback này tự đâm vào 1 trang cũng 403, tạo cảm giác "loop lỗi". Rà soát toàn bộ repo bằng `grep -rn "router.replace('/customers')"` xác nhận **15 file** dùng chung pattern này. **Đã sửa**: (A) Thêm permission MỚI `link_groups.my_managed` (migration `1781600000000-AddLinkGroupsMyManagedPermission`, seed cả 4 role = bật, giữ nguyên hành vi hiện tại) — CỐ Ý không tái dùng `link_groups.view` vì khác mục đích (xem mục 2.4); gắn `permission: 'link_groups.my_managed'` ở `nav-config.tsx` + thêm route guard `useEffect` ở chính `page.tsx` (trước đây hoàn toàn không có). (B) Đổi TOÀN BỘ 15 chỗ `router.replace('/customers')` → `router.replace('/')` — trang chủ (`app/(dashboard)/page.tsx`) tự lọc theo `getVisibleNavItems()`, luôn an toàn làm đích fallback vì không tự đòi permission gì (hiện danh sách rỗng nếu user không có quyền nào, không bao giờ tự 403). Cập nhật `nav-config.test.tsx` (1 test cũ khẳng định sai hành vi "nhom-toi-quan-ly luôn hiện" — đổi thành test hành vi ĐÚNG theo `can()`). Verify: `tsc --noEmit` BE+FE sạch, `nest build`/`next build` sạch (đủ 27 route), `jest` BE 528/530 pass (2 fail pre-existing không liên quan), `vitest` FE 14/14 pass | Xem mục 1.7 (permission catalogue), mục 2.4 (route guard `/nhom-toi-quan-ly`), `1781600000000-AddLinkGroupsMyManagedPermission.ts`, `nav-config.tsx`, `nhom-toi-quan-ly/page.tsx` |
 | 2026-09-15 (module MỚI "Công việc định kỳ" - Phase 1-3 xong) | Audit lại code thật (không tin transcript phiên trước) xác nhận BE Phase 1 (CRUD + RBAC own/department/all) và Phase 2 (liên kết DAG cha-con + rollup %, dùng chung `periodic_tasks.edit`) đã đúng rule, cả 2 đều đã có FE mount thật (không phải file mồ côi). Tiếp tục code Phase 3 (gắn Customer vào Task) - module ĐẦU TIÊN trong repo dùng 2 lớp permission độc lập cho cùng 1 endpoint (`periodic_tasks.edit` qua Guard + `periodic_tasks.link_customer` tự check thêm trong Service vì `@RequirePermission()` chỉ nhận 1 key/route), tái dùng `CustomerAccessHelper.applyViewFilter()` với scope thật của `customers.view` (module khác) để lọc Customer hợp lệ, xoá hẳn key `linkedCustomers` khỏi response khi thiếu quyền (không trả mảng rỗng) | Xem mục 2.11 (mới thêm), `PLAN_PERIODIC_TASKS_MODULE.md` mục 2.4/2.12/6, `1782400000000-CreatePeriodicTaskCustomers.ts`, `periodic-task-customers.service.ts` |
 | 2026-09-21 (Thông báo — Phase 1 BE nền tảng) | Thêm module `notifications` (`GET /notifications`, `/notifications/poll`, `PATCH /notifications/read-all`, `PATCH /notifications/:id/read`, `DELETE /notifications/:id`). **Hộp thư cá nhân CỐ Ý chỉ gắn `JwtAuthGuard`, KHÔNG `@RequirePermission`** — mọi user đăng nhập đều có hộp thư của CHÍNH MÌNH; `PermissionGuard` cho qua khi route không khai key nên đây là thiết kế, không phải sót guard. Chốt chặn thay thế: `recipientId` LUÔN lấy từ JWT (`@GetUser('id')`), không nhận từ param/body/query; đọc/sửa/xoá thông báo của người khác → 404 (spec khoá lại: `notifications.controller.spec.ts`, `notifications.service.spec.ts`). Chưa thêm permission key nào ở Phase 1; `notification_broadcasts.send/view` sẽ seed ở Phase M1 | Xem `PLAN_NOTIFICATION_SYSTEM.md` mục 6.5/6.7, `notifications.controller.ts` |
+| 2026-09-22 (Thông báo — Phase M1 Thông báo thủ công, CRUD đầy đủ theo Scope) | Theo yêu cầu chủ dự án: seed đủ 4 permission CRUD `notification_broadcasts.view/create/edit/delete` (Dynamic RBAC, mục 1.7) thay vì chỉ 2 permission `send/view` như dự kiến ban đầu ở Phase 1, để hỗ trợ Sửa (hiển thị "Đã chỉnh sửa") và Xoá (mất khỏi mọi hộp thư người nhận) đầy đủ. `git pull` HEAD `83b3e4b` (2 commit trước đó đã tự đánh dấu "Not yet done") rồi đọc trực tiếp code xác nhận: module đã wire vào `notifications.module.ts`, service/controller/resolver/DTO đã có đủ, nhưng thiếu spec khoá hợp đồng bảo mật cho Controller (dù đã có spec cho Service + Resolver) và 3 file tài liệu (`PERMISSIONS.md`, `PLAN_NOTIFICATION_SYSTEM.md`, `WORKFLOW_LOG.md`) chưa được cập nhật theo — đã bổ sung `notification-broadcasts.controller.spec.ts` (mirror `notifications.controller.spec.ts`: khoá `JwtAuthGuard`+`PermissionGuard` ở class, đúng `@RequirePermission()` cho từng route qua `it.each`, không endpoint lạ, `ThrottlerGuard` ở `send()`) và cập nhật cả 3 tài liệu. **Cố ý lệch nguyên tắc chung "Assistant = Admin trừ Xoá"** — module này không seed mặc định gì cho Assistant/Employee vì `create` giới hạn PHẠM VI NGƯỜI NHẬN chứ không phải phạm vi dữ liệu, seed rộng cho Assistant tương đương rủi ro spam toàn công ty (xem JSDoc migration `1783500000000`). Verify: `tsc --noEmit` sạch, `nest build` sạch, **46/46 suite / 862/862 test pass**; mutation check đổi permission key `delete`→`edit` ở 1 route ⇒ spec đỏ đúng chỗ, đã revert | Xem mục 2.12 (mới thêm), `PLAN_NOTIFICATION_SYSTEM.md` mục M1, `1783400000000-AddEditDeleteToNotificationBroadcasts.ts`, `1783500000000-SeedNotificationBroadcastPermissions.ts`, `notification-broadcasts.controller.spec.ts` |
 
 ---
 

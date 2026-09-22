@@ -3269,3 +3269,56 @@ công 180 ngày cho Phase 6). Các quyết định UI/quyền của thông báo 
 > **Phase 2 (móc Task) CHƯA có trong repo** — ngoài `customers.service`, không nơi nào gọi `notificationsService`, nên thông báo Task chưa phát ra dù FE đã có link `?focus=`. Chưa chạy migration `1783300000000` lên DB thật; cần `npm run migration:run` rồi đặt `NOTIFICATIONS_ENABLED=true`.
 
 ---
+## [2026-09-22 04:00] | Thông báo — Phase M1 (BE Thông báo thủ công, CRUD đầy đủ theo Scope) | [Status: Success]
+
+**Actor:** Agent (bàn giao qua nhiều phiên — 2 commit trước đó, `6c935f3`/`83b3e4b`, tự đánh dấu "Not yet
+done"). Entry này ghi sau khi `git pull` HEAD `83b3e4b` và đọc trực tiếp code (không tin báo cáo phiên
+trước) theo đúng Custom Instructions của Project.
+
+**Đối chiếu báo cáo phiên trước với code thật (trước khi làm tiếp):**
+> Báo cáo phiên trước liệt kê "còn dở: nối `notifications.module.ts`, viết spec, chạy build/test thật, cập
+> nhật 3 tài liệu, đóng gói file". Đọc code xác nhận: module **ĐÃ được nối** vào `notifications.module.ts`
+> từ trước (không còn dở như báo cáo); entity/DTO/resolver/service/controller đã có đủ và đúng logic mô tả
+> (sửa → `updatedAt` + đồng bộ `title`; xoá → xoá cứng `notifications`, soft-delete `notification_broadcasts`).
+> Resolver + Service đã có spec, nhưng Controller **chưa có spec** (đúng như báo cáo) — đây là phần thật sự
+> còn thiếu, cùng với 3 tài liệu.
+
+**Files Changed:**
+- `backend/src/modules/notifications/broadcasts/notification-broadcasts.controller.spec.ts` (MỚI) — spec
+  khoá hợp đồng bảo mật, mirror `notifications.controller.spec.ts`: `JwtAuthGuard`+`PermissionGuard` ở mức
+  class, đúng `@RequirePermission()` cho từng route (`it.each` 7 route), `ThrottlerGuard` ở `send()`, không
+  endpoint "lạ" nào ngoài 7 route đã khai, tham số decorator (`userId`/`role`/`scope`) chuyển đúng xuống
+  service không lẫn lộn thứ tự.
+- `AZ-Workbase Skills/PERMISSIONS.md` — thêm mục §2.12 "Thông báo" (bảng 4 permission CRUD, lý do cố ý lệch
+  nguyên tắc chung "Assistant = Admin trừ Xoá", hành vi Sửa/Xoá, số liệu verify) + 1 dòng lịch sử ở mục 3.
+- `AZ-Workbase Skills/PLAN_NOTIFICATION_SYSTEM.md` — cập nhật banner trạng thái đầu file, bảng Phase (M1 ✅
+  xong, M2 chưa làm, M3 cắt bớt vì `delete` đã chuyển lên M1), mục 6.7 (bảng permission/endpoint sửa lại cho
+  khớp code thật: `send`→`create`, thêm `edit`/`delete`, thêm PATCH/DELETE; sửa mô tả Root Admin bypass theo
+  đúng cơ chế `isRootAdmin` hiện tại thay vì mô tả cũ "role==='admin' ở 3 lớp" đã lỗi thời).
+
+**Root Cause (không phải bug — chỉ là việc dở dang cần hoàn tất):**
+> Phiên trước dừng lại đúng lúc code BE đã chạy được nhưng chưa có lớp test khoá hợp đồng an ninh cho
+> Controller (khác Resolver/Service đã có), và tài liệu chưa theo kịp code.
+
+**Solution:**
+> Viết spec Controller theo đúng pattern đã có trong module (không tự sáng tác pattern mới). Chạy mutation
+> check thật: đổi `@RequirePermission('notification_broadcasts.delete')` → `.edit` ở route `remove()` để xác
+> nhận spec bắt được lỗi (đỏ đúng chỗ), sau đó `git checkout` revert lại. Cập nhật đủ 3 tài liệu theo đúng
+> mẫu các mục trước đó trong từng file (không viết lại toàn bộ file, chỉ chèn/sửa đoạn liên quan).
+
+**Notes (verify thật — không suy diễn):**
+> `npm install` xong (917 package). `tsc --noEmit` sạch. `nest build` sạch. `npx jest` (toàn bộ, không lọc
+> theo tên) → **46/46 test suite, 862/862 test PASS**, 20.3s, không regression so với baseline. Mutation
+> check ở trên: spec đỏ đúng vị trí kỳ vọng, đã revert bằng `git checkout --`, `git status --short` xác nhận
+> sạch trước khi tiếp tục.
+> **Phát hiện phụ (không phải bug, chỉ là tài liệu PLAN gốc lỗi thời):** mục 6.7 bản dự thảo gốc còn ghi tên
+> permission `send` (thay vì `create`) và mô tả bypass Root Admin theo cơ chế CŨ ("role==='admin' ở 3 lớp")
+> — thực tế `permission.guard.ts` đã đổi sang `role==='admin' && isRootAdmin===true` từ trước (migration
+> `AddIsRootAdminToUsers`), `PERMISSIONS.md` mục 2.11 đã ghi đúng cơ chế mới nhưng mục 6.7 của PLAN thì chưa
+> — đã sửa lại đồng bộ trong phiên này.
+> **CHƯA làm/còn treo:** Phase 2 (móc `emit()` cho sự kiện Task) vẫn chưa có trong repo; Phase M2 (2 trang FE
+> `/thong-bao/gui` + `/thong-bao/da-gui`, nav gating, form soạn + Drawer theo dõi đọc/chưa đọc) chưa code.
+> Chưa chạy migration `1783400000000`/`1783500000000` lên DB thật của chủ dự án — cần tự
+> `npm run migration:run` rồi xác nhận `NOTIFICATIONS_ENABLED=true` đang bật.
+
+---
