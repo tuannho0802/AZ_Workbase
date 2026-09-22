@@ -638,19 +638,42 @@ trang "Phân quyền" nếu thực sự muốn — xem JSDoc đầu file migrati
 `broadcast-audience.resolver.spec.ts`, `notification-broadcasts.service.spec.ts`,
 `notification-broadcasts.controller.spec.ts` (mới — khoá hợp đồng: đúng `@RequirePermission()` cho từng
 route, `JwtAuthGuard`+`PermissionGuard` ở mức class, không endpoint "lạ" nào ngoài 7 route đã khai). Verify
-(2026-09-22): `tsc --noEmit` sạch, `nest build` sạch, **46/46 suite / 862/862 test pass** (toàn bộ, không
-regression) — **con số này là của M1**, TRƯỚC khi thêm Phase 2 (móc Task) và M2 (FE) ở các lượt sau. Mutation
-check: đổi key `notification_broadcasts.delete` → `.edit` ở 1 route ⇒ spec tương ứng đỏ ngay, đã revert.
-⚠️ Phase 2 (BE) đã sửa đủ 4 file service + spec mock (`periodic-tasks.service.ts` và 3 service phụ), nhưng
-**CHƯA chạy lại `jest`/`tsc`/`nest build` để lấy số liệu mới** (theo yêu cầu tạm dừng chạy test của chủ dự
-án) — lượt tiếp theo cần chạy full suite trước khi coi Phase 2 là "đã verify".
+LẠI (2026-09-22, sau khi sửa route FE + audit-meta bên dưới): `tsc --noEmit` sạch, `nest build` sạch,
+**46/46 suite / 862/862 test pass** — con số này KHÔNG đổi so với M1 (thay đổi Phase 2/M2 chỉ là service
+Task + FE, không đụng backend Thông báo), tức Phase 2 (móc Task) chính thức đã verify sạch, không regression.
+Mutation check: đổi key `notification_broadcasts.delete` → `.edit` ở 1 route ⇒ spec tương ứng đỏ ngay, đã
+revert.
 
-**FE (M2, mới thêm):** `/thong-bao/gui` (gate `notification_broadcasts.create`, mở `SendBroadcastModal`)
-và `/thong-bao/da-gui` (gate `notification_broadcasts.view`, bảng lịch sử + Drawer chi tiết + Sửa/Xoá inline
-theo đúng `canEdit`/`canDelete`). Nav 2 mục mới trong `nav-config.tsx` dùng field `permission` động (không
-hardcode role) — tự ẩn/hiện đúng khi Admin đổi ma trận quyền, khớp nguyên tắc "API và UI đồng bộ" của dự án.
+**FE (M2 — đã sửa lại route bị lẫn, 2026-09-22):** `/thong-bao/gui` (gate `notification_broadcasts.create`,
+mở `SendBroadcastModal`) và `/thong-bao/da-gui` (gate `notification_broadcasts.view`, bảng lịch sử + Drawer
+chi tiết + Sửa/Xoá inline theo đúng `canEdit`/`canDelete`). ⚠️ **Bug đã sửa:** ở lượt code trước, toàn bộ nội
+dung trang "đã gửi" (bảng lịch sử) bị ghi nhầm vào file `thong-bao/gui/page.tsx` thay vì
+`thong-bao/da-gui/page.tsx` (route `/thong-bao/da-gui` do đó 404 — không có `page.tsx`), khiến nav "Gửi
+thông báo" mở nhầm sang trang "Thông báo đã gửi". Đã `git mv` đúng file về `da-gui/`, viết lại
+`gui/page.tsx` thành trang gate đơn giản mở `SendBroadcastModal` (đúng thiết kế ban đầu), `onSent` điều
+hướng sang `/thong-bao/da-gui`. `next build` xác nhận cả 2 route đều lên đúng (`○ /thong-bao/gui`,
+`○ /thong-bao/da-gui`). Nav 2 mục mới trong `nav-config.tsx` dùng field `permission` động (không hardcode
+role) — tự ẩn/hiện đúng khi Admin đổi ma trận quyền, khớp nguyên tắc "API và UI đồng bộ" của dự án.
 `SendBroadcastModal` tự ẩn tuỳ chọn "Toàn bộ nhân viên" khi `scope('notification_broadcasts.create') !==
 'all'` (BE vẫn kiểm lại ở `BroadcastAudienceResolver` — FE chỉ là UX).
+
+**Audit label (mới thêm, 2026-09-22):** 3 action `SEND_/UPDATE_/DELETE_NOTIFICATION_BROADCAST` +
+entityType `notification_broadcast` chưa có nhãn hiển thị ở `frontend/src/lib/api/audit-meta.ts` (test
+"lưới an toàn" `audit-meta.test.ts` bắt được — trước đó sẽ lộ tên kỹ thuật ra trang "Nhật ký hệ thống"). Đã
+thêm nhóm `notification` + 3 nhãn action + 1 nhãn entityType. `npx vitest run` (frontend): **10/10 file,
+78/78 test pass**.
+
+**⚠️ Cấu hình bắt buộc để dùng được tính năng (lỗi 400 "Tính năng thông báo đang tắt"):** endpoint
+`POST /notification-broadcasts` (và toàn bộ `emit()` tự động) phụ thuộc biến môi trường
+`NOTIFICATIONS_ENABLED=true` (chuỗi, không phải boolean) — mặc định TẮT nếu không set. File
+`backend/.env.development.example` trước đây KHÔNG có dòng này (thêm module sau khi ví dụ env đã tồn tại)
+→ máy nào copy `.env.development` từ trước sẽ thiếu, gây đúng lỗi 400 trong ảnh chụp màn hình chủ dự án gửi.
+Đã bổ sung dòng này (kèm comment) vào `.env.development.example`. **Chủ dự án cần tự thêm dòng
+`NOTIFICATIONS_ENABLED=true` vào `backend/.env.development` thật (file này không nằm trong repo) rồi
+restart backend** — Agent không có quyền/không nên tự sửa file `.env*` thật (SKILL_FILE_MANAGEMENT.md
+§3.1). Xác nhận thêm: RBAC/permission KHÔNG phải nguyên nhân — lỗi 400 xảy ra sau khi `PermissionGuard` đã
+cho qua (nếu thiếu quyền sẽ là 403), đúng với message "Tính năng thông báo đang tắt" khớp 100%
+`BadRequestException` ở `notification-broadcasts.service.ts` dòng `isEnabled()`.
 
 **Còn lại:** không còn phần nào của module `notifications` theo PLAN v2 đang "chưa code" — chỉ còn các
 mục tuỳ chọn Phase 5/6/M3 (deep-link highlight tự động, `notification_preferences` UI, cron dọn dẹp, "Nhắc

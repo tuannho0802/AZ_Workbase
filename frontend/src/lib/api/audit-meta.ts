@@ -22,6 +22,7 @@ export type ActionGroupKey =
   | 'leave'
   | 'storage'
   | 'attendance'
+  | 'notification'
   | 'audit';
 
 export const ACTION_GROUP_LABELS: Record<ActionGroupKey, string> = {
@@ -34,6 +35,7 @@ export const ACTION_GROUP_LABELS: Record<ActionGroupKey, string> = {
   leave: 'Nghỉ phép',
   storage: 'Lưu trữ & Tải lên',
   attendance: 'Chấm công',
+  notification: 'Thông báo thủ công',
   audit: 'Nhật ký hệ thống',
 };
 
@@ -47,6 +49,7 @@ export const ACTION_GROUP_ORDER: ActionGroupKey[] = [
   'leave',
   'storage',
   'attendance',
+  'notification',
   'audit',
 ];
 
@@ -171,6 +174,11 @@ export const ACTION_META: Record<string, ActionMeta> = {
   SYNC_ATTENDANCE_LOGS: m('Đồng bộ log chấm công', 'geekblue', 'attendance'),
   CLEANUP_ATTENDANCE_LOGS: m('Dọn dẹp log chấm công cũ', 'volcano', 'attendance'),
 
+  // ── Thông báo thủ công ─────────────────────────────────────────────────
+  SEND_NOTIFICATION_BROADCAST: m('Gửi thông báo thủ công', 'green', 'notification'),
+  UPDATE_NOTIFICATION_BROADCAST: m('Sửa thông báo thủ công', 'blue', 'notification'),
+  DELETE_NOTIFICATION_BROADCAST: m('Xóa thông báo thủ công', 'red', 'notification'),
+
   // ── Nhật ký hệ thống ───────────────────────────────────────────────────
   UPDATE_AUDIT_SETTINGS: m('Cập nhật cấu hình dọn dẹp nhật ký', 'default', 'audit'),
   ADMIN_CLEANUP_AUDIT_LOGS: m('Admin dọn dẹp nhật ký', 'volcano', 'audit'),
@@ -235,6 +243,7 @@ export const ENTITY_TYPE_LABELS: Record<string, string> = {
   periodic_task_audit_log: 'Nhật ký công việc định kỳ',
   setting: 'Cấu hình',
   audit_log: 'Nhật ký',
+  notification_broadcast: 'Thông báo thủ công',
 };
 
 export const getEntityTypeLabel = (entityType: string): string => ENTITY_TYPE_LABELS[entityType] || entityType;

@@ -3366,3 +3366,62 @@ trước) theo đúng Custom Instructions của Project.
 > "Nhắc người chưa đọc") vẫn chưa làm, không phải ưu tiên hiện tại.
 
 ---
+## [2026-09-22 10:15] | Thông báo — Fix lỗi 400 "Tính năng thông báo đang tắt" + route FE bị lẫn + audit label thiếu | [Status: Success — verify đầy đủ]
+
+**Actor:** Agent
+
+**Files Changed:**
+- `frontend/src/app/(dashboard)/thong-bao/da-gui/page.tsx` (mới, `git mv` từ `thong-bao/gui/page.tsx`) — nội dung trang "Thông báo đã gửi" (bảng lịch sử + Drawer) bị ghi nhầm vào đường dẫn `gui/` ở lượt trước; đã chuyển đúng về `da-gui/`.
+- `frontend/src/app/(dashboard)/thong-bao/gui/page.tsx` (viết lại toàn bộ) — trang gate đơn giản `notification_broadcasts.create`, mở sẵn `SendBroadcastModal`, `onSent` điều hướng sang `/thong-bao/da-gui` (đúng thiết kế ban đầu ở PLAN 7.7/PERMISSIONS.md §2.12).
+- `backend/.env.development.example` — thêm dòng `NOTIFICATIONS_ENABLED=true` kèm comment giải thích (biến này được thêm ở BE từ trước nhưng chưa từng vào file ví dụ env).
+- `frontend/src/lib/api/audit-meta.ts` — thêm nhóm `notification` (`ActionGroupKey`/`ACTION_GROUP_LABELS`/`ACTION_GROUP_ORDER`), 3 nhãn action (`SEND_/UPDATE_/DELETE_NOTIFICATION_BROADCAST`), 1 nhãn entityType (`notification_broadcast`) — do `audit-meta.test.ts` (lưới an toàn đối chiếu BE thật) bắt được thiếu.
+- `AZ-Workbase Skills/PERMISSIONS.md` — cập nhật §2.12: sửa đoạn FE (route đã fix), thêm đoạn giải thích lỗi 400 + cấu hình `NOTIFICATIONS_ENABLED`, thêm đoạn audit label.
+- `AZ-Workbase Skills/PLAN_NOTIFICATION_SYSTEM.md` — cập nhật dòng trạng thái đầu file: Phase 2 + M2 nay đã verify sạch (trước đó chỉ "đã code, chưa verify"), ghi rõ 2 bug đã fix.
+
+**Root Cause:**
+> Chủ dự án gửi ảnh chụp lỗi 400 khi bấm "Gửi tới N người" trong `SendBroadcastModal`, kèm alert
+> "Tính năng thông báo đang tắt". Điều tra bằng cách đọc trực tiếp code thật (không tin transcript phiên
+> trước — đúng Custom Instructions), phát hiện 2 vấn đề độc lập cộng dồn:
+> 1. **Vấn đề chính (gây đúng lỗi trong ảnh):** `notification-broadcasts.service.ts` có chốt chặn
+>    `if (!isEnabled()) throw new BadRequestException('Tính năng thông báo đang tắt')` với
+>    `isEnabled = () => process.env.NOTIFICATIONS_ENABLED === 'true'`. Biến này KHÔNG có trong
+>    `.env.development.example` (module Thông báo được thêm sau khi file ví dụ env đã tồn tại) — máy dev
+>    nào copy `.env.development` từ trước module này ra đời sẽ mặc định thiếu, khiến `isEnabled()` luôn trả
+>    `false`.
+> 2. **Vấn đề phụ (giải thích vì sao chủ dự án vào đúng trang gây nhầm lẫn):** khi code Phase M2 ở phiên
+>    trước, nội dung trang "Thông báo đã gửi" (bảng lịch sử + Drawer, ~450 dòng) bị ghi NHẦM vào file
+>    `thong-bao/gui/page.tsx` thay vì `thong-bao/da-gui/page.tsx` — bản thân file đó còn có JSDoc tự nhận
+>    "`/thong-bao/da-gui` — permission `notification_broadcasts.view`" nhưng lại nằm ở path `gui/`. Hệ quả:
+>    route `/thong-bao/da-gui` không tồn tại (404 nếu bấm nav "Thông báo đã gửi"), còn nav "Gửi thông báo"
+>    (trỏ `/thong-bao/gui`) lại mở ra đúng trang "Thông báo đã gửi" — khớp chính xác tiêu đề "Thông báo đã
+>    gửi" thấy trong ảnh chụp màn hình chủ dự án gửi, dù đang bấm nút gửi thông báo.
+> 3. **Phát hiện phụ khi chạy lại `vitest` (không liên quan lỗi 400 nhưng cùng module):** `audit-meta.test.ts`
+>    (lưới an toàn đối chiếu action/entityType thật ở BE) đỏ vì 3 action + 1 entityType của
+>    `notification_broadcasts` chưa có nhãn hiển thị ở FE — sẽ lộ tên kỹ thuật (`SEND_NOTIFICATION_BROADCAST`...)
+>    ra trang "Nhật ký hệ thống" nếu không sửa.
+
+**Solution:**
+> (1) `git mv` file về đúng path `da-gui/page.tsx`; viết lại `gui/page.tsx` thành trang gate + mở Modal đúng
+> thiết kế gốc, điều hướng sang `/thong-bao/da-gui` sau khi gửi thành công. (2) Thêm `NOTIFICATIONS_ENABLED=true`
+> vào `.env.development.example` kèm giải thích — nhưng KHÔNG tự sửa file `.env.development` THẬT của chủ dự
+> án (không có quyền theo `SKILL_FILE_MANAGEMENT.md` §3.1, file này cũng không nằm trong repo để Agent đọc/ghi
+> được) — xem hướng dẫn ở mục Notes. (3) Thêm đủ nhãn còn thiếu vào `audit-meta.ts`.
+
+**Verify (chạy lệnh thật, không suy diễn):**
+> Backend: `npm install` sạch, `npx tsc --noEmit` sạch, `npx nest build` sạch, `npx jest` = **46/46 suite,
+> 862/862 test PASS** (không regression — số liệu này giờ đã bao gồm cả Phase 2 Task, đóng nợ verify từ 2
+> lượt trước). Frontend: `npm install` sạch, `npx next build` (Turbopack) — "Compiled successfully", cả 2
+> route `○ /thong-bao/gui` và `○ /thong-bao/da-gui` lên đúng danh sách route; `npx vitest run` = **10/10
+> file, 78/78 test PASS** (2 test đỏ về audit-meta trước khi sửa, xanh sau khi thêm nhãn).
+
+**Notes:**
+> **Chủ dự án cần tự làm 1 việc thủ công** mà Agent không có quyền làm thay: thêm dòng
+> `NOTIFICATIONS_ENABLED=true` vào `backend/.env.development` (file thật trên máy chủ dự án, không nằm
+> trong repo/sandbox của Agent) rồi restart backend (`pm2 restart` hoặc khởi động lại `npm run start:dev`).
+> Sau đó thử lại luồng gửi thông báo — nếu vẫn lỗi khác (không phải "Tính năng thông báo đang tắt"), báo lại
+> để audit tiếp. Migration `1783400000000`/`1783500000000` không đổi gì thêm ở lượt này (đã đúng từ lượt
+> trước) — vẫn cần đảm bảo đã chạy `npm run migration:run` trên DB thật nếu chưa làm.
+> **Không có quyền push code** lên GitHub của chủ dự án (không có credential) — mọi thay đổi hiện chỉ nằm
+> trong sandbox của Agent, chủ dự án cần tự áp dụng patch/tải file.
+
+---
