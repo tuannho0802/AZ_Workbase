@@ -86,6 +86,38 @@ describe('NotificationRow', () => {
     expect(screen.getByText('<img src=x onerror=alert(1)><b>đậm</b>')).toBeInTheDocument();
   });
 
+  it('mode="hidden": hiện nút Khôi phục + Xoá vĩnh viễn (có Popconfirm xác nhận), không hiện nút Ẩn', async () => {
+    const onRestore = vi.fn();
+    const onPurge = vi.fn();
+    const item = make();
+    render(
+      <NotificationRow
+        item={item}
+        onOpen={vi.fn()}
+        onRemove={vi.fn()}
+        mode="hidden"
+        onRestore={onRestore}
+        onPurge={onPurge}
+      />,
+    );
+
+    expect(screen.queryByRole('button', { name: 'Ẩn thông báo' })).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Khôi phục thông báo' }));
+    expect(onRestore).toHaveBeenCalledWith(item);
+
+    // Xoá vĩnh viễn phải qua Popconfirm - bấm nút icon chỉ MỞ popover, chưa gọi onPurge.
+    fireEvent.click(screen.getByRole('button', { name: 'Xoá vĩnh viễn' }));
+    expect(onPurge).not.toHaveBeenCalled();
+    expect(await screen.findByText('Xoá vĩnh viễn thông báo này?')).toBeInTheDocument();
+
+    // Sau khi mở, có 2 phần tử tên "Xoá vĩnh viễn": nút icon gốc + nút xác nhận
+    // trong Popconfirm - bấm nút xác nhận (phần tử cuối) mới thực sự gọi onPurge.
+    const purgeButtons = screen.getAllByRole('button', { name: 'Xoá vĩnh viễn' });
+    fireEvent.click(purgeButtons[purgeButtons.length - 1]);
+    expect(onPurge).toHaveBeenCalledWith(item);
+  });
+
   it('có params.entityName khớp trong title → tô sáng bằng <mark>, không đổi nội dung chữ', () => {
     const { container } = render(
       <NotificationRow

@@ -48,5 +48,11 @@ export function useNotificationMutations() {
     onSuccess: refresh,
   });
 
-  return { markRead, markAllRead, remove, restore };
+  /** Xoá vĩnh viễn (chỉ hợp lệ với thông báo đang ở tab "Đã ẩn"). */
+  const purge = useMutation({
+    mutationFn: (id: number) => notificationsApi.purge(id),
+    onSuccess: refresh,
+  });
+
+  return { markRead, markAllRead, remove, restore, purge };
 }

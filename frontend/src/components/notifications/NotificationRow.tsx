@@ -1,7 +1,7 @@
 'use client';
 
-import { Button, Tag, Tooltip } from 'antd';
-import { CloseOutlined, RedoOutlined } from '@ant-design/icons';
+import { Button, Popconfirm, Tag, Tooltip } from 'antd';
+import { CloseOutlined, DeleteOutlined, RedoOutlined } from '@ant-design/icons';
 import type { NotificationItem } from '@/lib/types/notification.types';
 import { resolveNotificationTarget } from '@/lib/notifications/resolve-link';
 import { highlightEntityName } from '@/lib/notifications/highlight-entity-name';
@@ -18,6 +18,12 @@ interface NotificationRowProps {
    */
   mode?: 'active' | 'hidden';
   onRestore?: (item: NotificationItem) => void;
+  /**
+   * Xoá VĨNH VIỄN (hard delete, không khôi phục được) - chỉ hiện ở
+   * `mode="hidden"`, cạnh nút "Khôi phục". Bắt buộc xác nhận qua Popconfirm
+   * vì không thể hoàn tác (khác `onRemove` chỉ ẩn).
+   */
+  onPurge?: (item: NotificationItem) => void;
 }
 
 /**
@@ -27,7 +33,14 @@ interface NotificationRowProps {
  * (`white-space: pre-wrap`) - TUYỆT ĐỐI không `dangerouslySetInnerHTML`
  * (PLAN nguyên tắc 8): nội dung thông báo thủ công là văn bản tự do của người gửi.
  */
-export function NotificationRow({ item, onOpen, onRemove, mode = 'active', onRestore }: NotificationRowProps) {
+export function NotificationRow({
+  item,
+  onOpen,
+  onRemove,
+  mode = 'active',
+  onRestore,
+  onPurge,
+}: NotificationRowProps) {
   const unavailable = resolveNotificationTarget(item).kind === 'unavailable';
   const hidden = mode === 'hidden';
   // Mọi loại (tự động lẫn thủ công) đều chỉ ẨN khỏi hộp thư (BE set
@@ -103,16 +116,36 @@ export function NotificationRow({ item, onOpen, onRemove, mode = 'active', onRes
       </button>
 
       {hidden ? (
-        <Tooltip title="Khôi phục thông báo">
-          <Button
-            type="text"
-            size="small"
-            icon={<RedoOutlined />}
-            aria-label="Khôi phục thông báo"
-            onClick={() => onRestore?.(item)}
-            style={{ color: '#1890ff', flexShrink: 0 }}
-          />
-        </Tooltip>
+        <span style={{ display: 'flex', alignItems: 'center', gap: 2, flexShrink: 0 }}>
+          <Tooltip title="Khôi phục thông báo">
+            <Button
+              type="text"
+              size="small"
+              icon={<RedoOutlined />}
+              aria-label="Khôi phục thông báo"
+              onClick={() => onRestore?.(item)}
+              style={{ color: '#1890ff' }}
+            />
+          </Tooltip>
+          <Popconfirm
+            title="Xoá vĩnh viễn thông báo này?"
+            description="Không thể khôi phục sau khi xoá."
+            okText="Xoá vĩnh viễn"
+            okButtonProps={{ danger: true }}
+            cancelText="Huỷ"
+            onConfirm={() => onPurge?.(item)}
+          >
+            <Tooltip title="Xoá vĩnh viễn">
+              <Button
+                type="text"
+                size="small"
+                icon={<DeleteOutlined />}
+                aria-label="Xoá vĩnh viễn"
+                style={{ color: '#ff4d4f' }}
+              />
+            </Tooltip>
+          </Popconfirm>
+        </span>
       ) : (
           <Tooltip title={removeLabel}>
             <Button

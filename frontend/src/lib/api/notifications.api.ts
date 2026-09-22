@@ -46,4 +46,13 @@ export const notificationsApi = {
     const response = await axiosInstance.patch<{ id: number; restored: true }>(`/notifications/${id}/restore`);
     return response.data;
   },
+
+  /**
+   * Xoá VĨNH VIỄN (hard delete, không khôi phục được) - chỉ dùng ở tab "Đã ẩn"
+   * cho thông báo đã qua bước `remove()`. BE chặn 404 nếu chưa ẩn trước.
+   */
+  purge: async (id: number): Promise<{ id: number; purged: true }> => {
+    const response = await axiosInstance.delete<{ id: number; purged: true }>(`/notifications/${id}/permanent`);
+    return response.data;
+  },
 };

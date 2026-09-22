@@ -18,3 +18,17 @@ if (typeof window !== 'undefined' && !window.matchMedia) {
         dispatchEvent: () => false,
     }) as unknown as MediaQueryList;
 }
+
+// ⚠️ Polyfill `ResizeObserver` - jsdom KHÔNG cài sẵn, nhưng bất kỳ overlay nào
+// của Ant Design canh vị trí theo kích thước phần tử neo (Popover/Popconfirm/
+// Tooltip khi thực sự mở, Select dropdown...) đều dùng `@rc-component/resize-
+// observer` ngầm bên trong, ném "ResizeObserver is not defined" và crash test
+// ngay khi overlay đó mount - không riêng gì component gọi trực tiếp.
+if (typeof window !== 'undefined' && !window.ResizeObserver) {
+    class ResizeObserverPolyfill {
+        observe() { }
+        unobserve() { }
+        disconnect() { }
+    }
+    window.ResizeObserver = ResizeObserverPolyfill as unknown as typeof ResizeObserver;
+}

@@ -57,7 +57,7 @@ export default function NotificationsPage() {
     dismissed: hiddenView || undefined,
     category,
   });
-  const { markAllRead, remove, restore } = useNotificationMutations();
+  const { markAllRead, remove, restore, purge } = useNotificationMutations();
   const { open } = useNotificationActions();
 
   const items = list.data?.pages.flatMap((p) => p.data) ?? [];
@@ -128,6 +128,7 @@ export default function NotificationsPage() {
               onRemove={(n) => remove.mutate(n.id)}
               mode={hiddenView ? 'hidden' : 'active'}
               onRestore={(n) => restore.mutate(n.id)}
+              onPurge={(n) => purge.mutate(n.id)}
             />
           ))
         )}
