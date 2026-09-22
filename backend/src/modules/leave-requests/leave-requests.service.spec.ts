@@ -148,11 +148,12 @@ describe('LeaveRequestsService - Phan quyen duyet (PERMISSIONS.md muc 2.6)', () 
     },
   });
 
-  // ⚠️ MỚI: bao phủ bug THẬT báo cáo 18/9 - tạo đơn Nửa ngày (Chiều) "Gặp
-  // khách" bị chặn nhầm "Bạn đã có đơn nghỉ trong khoảng thời gian này" dù
-  // đơn CÙNG NGÀY đã có là Nửa ngày (Sáng), khác buổi, không chồng giờ thực
-  // tế. create() TRƯỚC ĐÂY chưa có test nào - đây là lần đầu bao phủ.
-  describe('create() - check trung lich (fix bug 18/9: bo qua duration cu)', () => {
+  // ⚠️ CẬP NHẬT (22/9): create() KHÔNG còn conflict/overlap check nữa (bypass
+  // theo yêu cầu chủ dự án - xem comment "BYPASS" trong create()). Test cũ ở
+  // đây từng khoá hành vi "vẫn conflict" cho vài case - nay đảo ngược lại
+  // thành "không còn chặn nữa" để khoá đúng hành vi MỚI, tránh regression vô
+  // tình bật lại chặn trong tương lai.
+  describe('create() - KHONG con chan trung lich (bypass 22/9)', () => {
     const meetClientType = {
       code: 'meet_client',
       deductsAnnualBalance: false,
@@ -163,24 +164,36 @@ describe('LeaveRequestsService - Phan quyen duyet (PERMISSIONS.md muc 2.6)', () 
       mockLeaveTypesService.assertExists.mockResolvedValue(meetClientType);
       mockAttachmentRepo.create.mockImplementation((x: any) => x);
       mockAttachmentRepo.save.mockResolvedValue([]);
-    });
-
-    it('da co don Nua ngay (Sang) CUNG NGAY, tao them Nua ngay (Chieu) -> KHONG conflict (fix)', async () => {
-      const existingMorning = {
-        id: 10,
-        startDate: '2026-09-18',
-        endDate: '2026-09-18',
-        duration: 'half_day_am',
-      };
-      const qb = buildQueryBuilderMock([existingMorning]);
-      mockLeaveRepo.createQueryBuilder.mockReturnValue(qb);
       mockLeaveRepo.save.mockResolvedValue({
         id: 20,
         totalDays: 0.5,
         startDate: '2026-09-18',
         endDate: '2026-09-18',
       });
+    });
 
+    it('da co don Nua ngay (Sang) CUNG NGAY, tao them Nua ngay (Sang) TRUNG BUOI -> KHONG con bi chan', async () => {
+      await expect(
+        service.create(
+          {
+            leaveType: 'meet_client',
+            startDate: '2026-09-18',
+            endDate: '2026-09-18',
+            duration: 'half_day_am',
+            reason: 'gap khach ten: tuyen',
+          },
+          100,
+        ),
+      ).resolves.toBeDefined();
+
+      // createQueryBuilder KHÔNG còn được gọi ở create() nữa (đã bỏ hẳn bước
+      // query overlap, không chỉ bỏ bước chặn) - khoá luôn để bắt regression
+      // nếu ai đó lỡ thêm lại logic đọc overlapping mà quên bỏ query.
+      expect(mockLeaveRepo.createQueryBuilder).not.toHaveBeenCalled();
+      expect(mockLeaveRepo.save).toHaveBeenCalled();
+    });
+
+    it('da co don FULL DAY cung ngay (kieu KHAC han), tao them Nua ngay (Chieu) -> KHONG con bi chan', async () => {
       await expect(
         service.create(
           {
@@ -193,70 +206,9 @@ describe('LeaveRequestsService - Phan quyen duyet (PERMISSIONS.md muc 2.6)', () 
           100,
         ),
       ).resolves.toBeDefined();
-
-      expect(mockLeaveRepo.save).toHaveBeenCalled();
     });
 
-    it('da co don Nua ngay (Sang) CUNG NGAY, tao them Nua ngay (Sang) TRUNG BUOI -> van conflict', async () => {
-      const existingMorning = {
-        id: 11,
-        startDate: '2026-09-18',
-        endDate: '2026-09-18',
-        duration: 'half_day_am',
-      };
-      const qb = buildQueryBuilderMock([existingMorning]);
-      mockLeaveRepo.createQueryBuilder.mockReturnValue(qb);
-
-      await expect(
-        service.create(
-          {
-            leaveType: 'meet_client',
-            startDate: '2026-09-18',
-            endDate: '2026-09-18',
-            duration: 'half_day_am',
-            reason: 'gap khach ten: tuyen',
-          },
-          100,
-        ),
-      ).rejects.toThrow(BadRequestException);
-
-      expect(mockLeaveRepo.save).not.toHaveBeenCalled();
-    });
-
-    it('da co don FULL DAY cung ngay, tao them Nua ngay (Chieu) -> van conflict (full_day chiem het ngay)', async () => {
-      const existingFullDay = {
-        id: 12,
-        startDate: '2026-09-18',
-        endDate: '2026-09-18',
-        duration: 'full_day',
-      };
-      const qb = buildQueryBuilderMock([existingFullDay]);
-      mockLeaveRepo.createQueryBuilder.mockReturnValue(qb);
-
-      await expect(
-        service.create(
-          {
-            leaveType: 'meet_client',
-            startDate: '2026-09-18',
-            endDate: '2026-09-18',
-            duration: 'half_day_pm',
-            reason: 'gap khach ten: tuyen',
-          },
-          100,
-        ),
-      ).rejects.toThrow(BadRequestException);
-    });
-
-    it('khong co don nao trung ngay -> tao binh thuong, khong conflict', async () => {
-      const qb = buildQueryBuilderMock([]);
-      mockLeaveRepo.createQueryBuilder.mockReturnValue(qb);
-      mockLeaveRepo.save.mockResolvedValue({
-        id: 21,
-        totalDays: 0.5,
-        startDate: '2026-09-19',
-        endDate: '2026-09-19',
-      });
-
+    it('khong co don nao trung ngay -> tao binh thuong nhu truoc gio', async () => {
       await expect(
         service.create(
           {
@@ -269,6 +221,229 @@ describe('LeaveRequestsService - Phan quyen duyet (PERMISSIONS.md muc 2.6)', () 
           100,
         ),
       ).resolves.toBeDefined();
+    });
+  });
+
+  describe('update() - sua don (User bao lo set sai ngay, PERMISSIONS.md muc 2.6)', () => {
+    const annualType = { code: 'annual', deductsAnnualBalance: true };
+    const unpaidType = { code: 'unpaid', deductsAnnualBalance: false };
+
+    beforeEach(() => {
+      mockLeaveTypesService.getByCode.mockResolvedValue(annualType);
+      mockLeaveTypesService.assertExists.mockResolvedValue(unpaidType);
+      (mockUserRepo as any).increment = jest.fn();
+      (mockUserRepo as any).findOne = jest.fn();
+    });
+
+    it('khong tim thay don -> NotFoundException', async () => {
+      mockLeaveRepo.findOne.mockResolvedValue(null);
+      await expect(
+        service.update(999, { startDate: '2026-09-01' }, 1, Role.ADMIN, 'all'),
+      ).rejects.toThrow(NotFoundException);
+    });
+
+    it('don da CANCELLED -> khong cho sua (BadRequestException)', async () => {
+      mockLeaveRepo.findOne.mockResolvedValue({
+        id: 1,
+        status: LeaveStatus.CANCELLED,
+        requester: { departmentId: 1, leaveApproverId: null },
+      });
+      await expect(
+        service.update(1, { startDate: '2026-09-01' }, 1, Role.ADMIN, 'all'),
+      ).rejects.toThrow(BadRequestException);
+    });
+
+    it('editor khong du quyen (khong phai admin, scope khong khop) -> ForbiddenException', async () => {
+      mockLeaveRepo.findOne.mockResolvedValue({
+        id: 1,
+        status: LeaveStatus.PENDING,
+        requesterId: 100,
+        leaveType: 'annual',
+        totalDays: 1,
+        duration: 'full_day',
+        requester: { departmentId: 1, leaveApproverId: null },
+      });
+      mockDepartmentManagerRepo.find.mockResolvedValue([]);
+      await expect(
+        service.update(
+          1,
+          { startDate: '2026-09-01' },
+          200,
+          Role.MANAGER,
+          PermissionScope.DEPARTMENT,
+        ),
+      ).rejects.toThrow(ForbiddenException);
+    });
+
+    it('admin sua ngay 1 don PENDING - khong dung den balance (chua tung approve)', async () => {
+      const request = {
+        id: 1,
+        status: LeaveStatus.PENDING,
+        requesterId: 100,
+        leaveType: 'annual',
+        startDate: '2026-09-01',
+        endDate: '2026-09-01',
+        duration: 'full_day',
+        totalDays: 1,
+        reason: 'ly do cu',
+        requester: { departmentId: 1, leaveApproverId: null },
+      };
+      mockLeaveRepo.findOne.mockResolvedValue(request);
+      mockLeaveRepo.save.mockImplementation((x: any) => x);
+
+      const result = await service.update(
+        1,
+        { startDate: '2026-09-05', endDate: '2026-09-05' },
+        1,
+        Role.ADMIN,
+        'all',
+      );
+
+      expect(result.startDate.getTime()).toBe(new Date('2026-09-05').getTime());
+      expect(mockUserRepo.decrement).not.toHaveBeenCalled();
+      expect((mockUserRepo as any).increment).not.toHaveBeenCalled();
+    });
+
+    it('admin sua ngay 1 don APPROVED (van cung loai phep tru phep nam) -> hoan cu, tru lai moi', async () => {
+      const request = {
+        id: 1,
+        status: LeaveStatus.APPROVED,
+        requesterId: 100,
+        leaveType: 'annual',
+        startDate: '2026-09-01',
+        endDate: '2026-09-01',
+        duration: 'full_day',
+        totalDays: 1,
+        reason: 'ly do cu',
+        requester: { departmentId: 1, leaveApproverId: null },
+      };
+      mockLeaveRepo.findOne.mockResolvedValue(request);
+      mockLeaveRepo.save.mockImplementation((x: any) => x);
+      (mockUserRepo as any).findOne.mockResolvedValue({
+        id: 100,
+        annualLeaveBalance: 10,
+      });
+
+      // Doi sang 2 ngay (2026-09-05 -> 2026-09-06) -> totalDays moi = 2.
+      const result = await service.update(
+        1,
+        { startDate: '2026-09-05', endDate: '2026-09-06' },
+        1,
+        Role.ADMIN,
+        'all',
+      );
+
+      expect((mockUserRepo as any).increment).toHaveBeenCalledWith(
+        { id: 100 },
+        'annualLeaveBalance',
+        1, // hoan lai totalDays CU
+      );
+      expect(mockUserRepo.decrement).toHaveBeenCalledWith(
+        { id: 100 },
+        'annualLeaveBalance',
+        2, // tru lai totalDays MOI
+      );
+      expect(result.totalDays).toBe(2);
+    });
+
+    it('admin sua APPROVED khong du phep nam moi -> BadRequestException, hoan lai balance cu (khong de user thiet)', async () => {
+      const request = {
+        id: 1,
+        status: LeaveStatus.APPROVED,
+        requesterId: 100,
+        leaveType: 'annual',
+        startDate: '2026-09-01',
+        endDate: '2026-09-01',
+        duration: 'full_day',
+        totalDays: 1,
+        reason: 'ly do cu',
+        requester: { departmentId: 1, leaveApproverId: null },
+      };
+      mockLeaveRepo.findOne.mockResolvedValue(request);
+      (mockUserRepo as any).findOne.mockResolvedValue({
+        id: 100,
+        annualLeaveBalance: 0, // sau khi hoan 1 ngay cu van khong du 5 ngay moi
+      });
+
+      await expect(
+        service.update(
+          1,
+          { startDate: '2026-09-05', endDate: '2026-09-09' }, // 5 ngay
+          1,
+          Role.ADMIN,
+          'all',
+        ),
+      ).rejects.toThrow(BadRequestException);
+
+      // Da hoan 1 ngay cu, roi phai tru lai dung 1 ngay do vi khong du -
+      // khong duoc de user "du ra" 1 ngay phep chi vi sua don that bai.
+      expect((mockUserRepo as any).increment).toHaveBeenCalledWith(
+        { id: 100 },
+        'annualLeaveBalance',
+        1,
+      );
+      expect(mockUserRepo.decrement).toHaveBeenCalledWith(
+        { id: 100 },
+        'annualLeaveBalance',
+        1,
+      );
+      expect(mockLeaveRepo.save).not.toHaveBeenCalled();
+    });
+
+    it('admin doi loai phep APPROVED tu annual (tru phep) sang unpaid (khong tru) -> chi hoan, khong tru lai', async () => {
+      const request = {
+        id: 1,
+        status: LeaveStatus.APPROVED,
+        requesterId: 100,
+        leaveType: 'annual',
+        startDate: '2026-09-01',
+        endDate: '2026-09-01',
+        duration: 'full_day',
+        totalDays: 1,
+        reason: 'ly do cu',
+        requester: { departmentId: 1, leaveApproverId: null },
+      };
+      mockLeaveRepo.findOne.mockResolvedValue(request);
+      mockLeaveRepo.save.mockImplementation((x: any) => x);
+
+      const result = await service.update(
+        1,
+        { leaveType: 'unpaid' },
+        1,
+        Role.ADMIN,
+        'all',
+      );
+
+      expect((mockUserRepo as any).increment).toHaveBeenCalledWith(
+        { id: 100 },
+        'annualLeaveBalance',
+        1,
+      );
+      expect(mockUserRepo.decrement).not.toHaveBeenCalled();
+      expect(result.leaveType).toBe('unpaid');
+    });
+
+    it('ngay bat dau sau ngay ket thuc -> BadRequestException', async () => {
+      mockLeaveRepo.findOne.mockResolvedValue({
+        id: 1,
+        status: LeaveStatus.PENDING,
+        requesterId: 100,
+        leaveType: 'annual',
+        startDate: '2026-09-01',
+        endDate: '2026-09-01',
+        duration: 'full_day',
+        totalDays: 1,
+        requester: { departmentId: 1, leaveApproverId: null },
+      });
+      await expect(
+        service.update(
+          1,
+          { startDate: '2026-09-10', endDate: '2026-09-05' },
+          1,
+          Role.ADMIN,
+          'all',
+        ),
+      ).rejects.toThrow(BadRequestException);
     });
   });
 

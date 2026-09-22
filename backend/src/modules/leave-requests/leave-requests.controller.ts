@@ -45,7 +45,28 @@ export class LeaveRequestsController {
   async create(@Body() dto: any, @Request() req) {
     return this.leaveRequestsService.create(dto, req.user.id);
   }
-  
+
+  // Sửa đơn (User báo lỡ set sai ngày) - hành động QUẢN TRỊ "sửa hộ", tách
+  // hẳn quyền với `leave_requests.request` (chỉ tạo/xem đơn của CHÍNH
+  // MÌNH). Không giới hạn ':id/...' đứng sau route tĩnh nào ở controller
+  // này nên không có rủi ro route-order như 'poll'/'read-all' ở Thông báo.
+  @Patch(':id')
+  @RequirePermission('leave_requests.edit')
+  async update(
+    @Param('id') id: string,
+    @Body() dto: any,
+    @Request() req,
+    @GetPermissionScope() scope?: string | null,
+  ) {
+    return this.leaveRequestsService.update(
+      parseInt(id),
+      dto,
+      req.user.id,
+      req.user.role,
+      scope,
+    );
+  }
+
   @Get()
   @RequirePermission('leave_requests.request')
   async findAll(@Request() req) {

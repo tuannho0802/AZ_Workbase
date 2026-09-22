@@ -137,7 +137,8 @@ export class LeaveRequestsService {
 
   /**
    * Create new leave request
-   * Validation: Balance check + Conflict check
+   * Validation: Balance check only (KHÔNG còn conflict/overlap check - xem
+   * comment "BYPASS" bên trong)
    */
   async create(dto: any, requesterId: number) {
     // 0. Validate leaveType tồn tại trong `leave_types` - cột leave_type giờ
@@ -158,68 +159,16 @@ export class LeaveRequestsService {
     // 2. Calculate total days
     const totalDays = this.calculateDays(startDate, endDate, dto.duration);
 
-    // 3. Check conflict (no overlapping approved/pending requests)
-    // ⚠️ FIX BUG THẬT (báo cáo 18/9: tạo thêm 1 đơn "Gặp khách" Nửa ngày
-    // (Chiều) bị chặn "Bạn đã có đơn nghỉ trong khoảng thời gian này" dù
-    // buổi sáng CÙNG NGÀY đó không hề trùng giờ với đơn đã có):
-    //
-    // Nguyên nhân gốc: query CŨ chỉ `startDate: Between(startDate, endDate)`
-    // - tức chỉ kiểm tra xem đơn ĐÃ CÓ có `startDate` rơi vào khoảng
-    // [startDate, endDate] của đơn MỚI hay không, HOÀN TOÀN bỏ qua cột
-    // `duration` (full_day/half_day_am/half_day_pm). Hệ quả: chỉ cần user
-    // ĐÃ CÓ 1 đơn PENDING/APPROVED bất kỳ (loại phép nào, kể cả Nửa ngày
-    // Sáng) đúng ngày đó là mọi đơn Nửa ngày Chiều khác tạo sau đều bị chặn
-    // nhầm, dù 2 buổi không chồng giờ thực tế trong ngày (business rule
-    // đúng ở `calculateDays()`: Nửa ngày CHỈ có ý nghĩa khi đơn gói gọn
-    // trong ĐÚNG 1 ngày - startDate === endDate).
-    //
-    // Sửa: (a) đổi sang overlap ĐÚNG khoảng ngày (startDate <= to AND
-    // endDate >= from - cùng pattern đã dùng ở `findApprovedInRange()`),
-    // KHÔNG chỉ mỗi startDate của đơn cũ; (b) thêm 1 NGOẠI LỆ DUY NHẤT:
-    // nếu CẢ 2 đơn (mới và đã có) đều là đơn 1-NGÀY-DUY-NHẤT (start=end),
-    // CÙNG 1 ngày, và khác buổi (1 half_day_am + 1 half_day_pm) thì KHÔNG
-    // tính là trùng. Mọi trường hợp overlap khác (full_day, nhiều ngày,
-    // hoặc trùng buổi) vẫn chặn như cũ.
-    const overlapping = await this.leaveRequestRepo
-      .createQueryBuilder('leave')
-      .where('leave.requesterId = :requesterId', { requesterId })
-      .andWhere('leave.status NOT IN (:...excludedStatuses)', {
-        excludedStatuses: [LeaveStatus.REJECTED, LeaveStatus.CANCELLED],
-      })
-      .andWhere('leave.startDate <= :endDate', { endDate: dto.endDate })
-      .andWhere('leave.endDate >= :startDate', { startDate: dto.startDate })
-      .getMany();
-
-    const newIsSingleDay = startDate.getTime() === endDate.getTime();
-    const newIsHalfDay =
-      newIsSingleDay && dto.duration !== LeaveDuration.FULL_DAY;
-
-    const conflict = overlapping.find((existing) => {
-      const existingStart = new Date(existing.startDate).getTime();
-      const existingEnd = new Date(existing.endDate).getTime();
-      const existingIsSingleDay = existingStart === existingEnd;
-      const existingIsHalfDay =
-        existingIsSingleDay && existing.duration !== LeaveDuration.FULL_DAY;
-
-      const bothSameDayHalfDay =
-        newIsHalfDay &&
-        existingIsHalfDay &&
-        existingStart === startDate.getTime();
-
-      // Khác buổi (1 Sáng + 1 Chiều) trong CÙNG 1 ngày -> không chồng giờ
-      // thực tế, bỏ qua, không tính là trùng.
-      if (bothSameDayHalfDay && existing.duration !== dto.duration) {
-        return false;
-      }
-
-      return true;
-    });
-
-    if (conflict) {
-      throw new BadRequestException(
-        `Bạn đã có đơn nghỉ trong khoảng thời gian này (ID: ${conflict.id})`,
-      );
-    }
+    // 3. ⚠️ BYPASS theo yêu cầu chủ dự án (22/9): TRƯỚC ĐÂY chặn "Bạn đã có
+    // đơn nghỉ trong khoảng thời gian này" khi đơn mới overlap ngày với BẤT
+    // KỲ đơn PENDING/APPROVED nào đã có của cùng người (kể cả khác loại phép
+    // - vd đã có đơn "Không lương" cả tháng, không tạo được đơn "Gặp khách"
+    // ngày bất kỳ trong tháng đó dù không xung đột thực tế về nghiệp vụ).
+    // Chủ dự án xác nhận đây không phải rule mong muốn -> bỏ hẳn việc chặn
+    // tạo đơn theo overlap ngày. Không xoá hẳn dữ liệu lịch sử/logic tính
+    // ngày (`calculateDays()`) - chỉ bỏ bước validate này. Nếu sau này cần
+    // bật lại, xem lịch sử git của khối code này (đã có sẵn logic phân biệt
+    // half_day/full_day đúng, chỉ cần gọi lại).
 
     // 4. Check balance (loại phép có deductsAnnualBalance=true, mặc định
     // đúng 2 code cũ 'annual'/'sick' - xem seed CreateLeaveTypes1781500000000)
@@ -292,6 +241,191 @@ export class LeaveRequestsService {
         leaveType: leaveType.name,
         startDate: dto.startDate,
         endDate: dto.endDate,
+        totalDays: saved.totalDays,
+        reason: saved.reason,
+      },
+    );
+
+    return saved;
+  }
+
+  /**
+   * Sửa 1 đơn nghỉ phép ĐÃ TỒN TẠI (PENDING hoặc APPROVED) - phục vụ trường
+   * hợp User báo lỡ set sai ngày sau khi đã gửi (hoặc đã được duyệt rồi).
+   * CHỈ người có quyền `leave_requests.edit` (không phải chính requester -
+   * đây là hành động QUẢN TRỊ "sửa hộ", khác hẳn `cancel()` vốn do chính chủ
+   * tự huỷ đơn của mình) mới gọi được, theo đúng rule role-cặp
+   * `isEligibleApprover` (mirror approve()/reject(): admin=all, hoặc
+   * Manager/Assistant quản lý đúng phòng ban requester / được gán
+   * `leave_approver_id` riêng).
+   *
+   * Field cho sửa: `leaveType`/`startDate`/`endDate`/`duration`/`reason` -
+   * TẤT CẢ optional, chỉ đổi field nào thực sự có mặt trong dto (partial
+   * update, giống pattern PATCH thông thường trong repo). Không cho sửa đơn
+   * đã CANCELLED/REJECTED (đơn đã đóng - muốn đổi thì tạo đơn mới), chỉ
+   * PENDING/APPROVED.
+   *
+   * ⚠️ KHÔNG check overlap/conflict khi sửa - đối xứng với `create()` đã
+   * bypass theo yêu cầu chủ dự án 22/9 (xem comment "BYPASS" ở create()).
+   *
+   * ⚠️ QUAN TRỌNG - cân bằng lại `annualLeaveBalance` nếu đơn đang
+   * APPROVED: `approve()` đã trừ `totalDays` CŨ vào balance rồi (nếu loại
+   * phép cũ `deductsAnnualBalance`) - sửa ngày/loại phép ở đây làm
+   * `totalDays` đổi, nên phải HOÀN lại đúng số cũ trước, rồi TRỪ lại đúng số
+   * MỚI (nếu loại phép mới cũng `deductsAnnualBalance`), tránh lệch số dư
+   * phép năm vĩnh viễn. Đơn đang PENDING thì `approve()` chưa từng chạy nên
+   * chưa đụng balance - không cần hoàn/trừ gì ở bước này.
+   */
+  async update(
+    requestId: number,
+    dto: {
+      leaveType?: string;
+      startDate?: string;
+      endDate?: string;
+      duration?: LeaveDuration;
+      reason?: string;
+    },
+    editorId: number,
+    editorRole: string,
+    scope?: string | null,
+  ) {
+    const request = await this.leaveRequestRepo.findOne({
+      where: { id: requestId },
+      relations: ['requester'],
+    });
+
+    if (!request) {
+      throw new NotFoundException('Không tìm thấy đơn nghỉ phép');
+    }
+
+    if (
+      request.status !== LeaveStatus.PENDING &&
+      request.status !== LeaveStatus.APPROVED
+    ) {
+      throw new BadRequestException(
+        'Chỉ sửa được đơn đang Chờ duyệt hoặc Đã duyệt',
+      );
+    }
+
+    const allowed = await this.isEligibleApprover(
+      request.requester.departmentId,
+      editorId,
+      editorRole,
+      scope,
+      request.requester.leaveApproverId,
+    );
+    if (!allowed) {
+      throw new ForbiddenException(
+        'Bạn không có quyền sửa đơn nghỉ phép của người này',
+      );
+    }
+
+    // Loại phép cũ (trước khi sửa) - cần để hoàn balance đúng nếu đơn đang
+    // APPROVED. Đọc động qua LeaveTypesService (không so sánh cứng), đúng
+    // pattern approve() - coi như false nếu loại phép đã bị xoá (hiếm).
+    const oldLeaveType = await this.leaveTypesService.getByCode(
+      request.leaveType,
+    );
+    const oldTotalDays = request.totalDays;
+
+    let newLeaveTypeCode = request.leaveType;
+    let newLeaveTypeRow = oldLeaveType;
+    if (dto.leaveType !== undefined && dto.leaveType !== request.leaveType) {
+      newLeaveTypeRow = await this.leaveTypesService.assertExists(
+        dto.leaveType,
+      );
+      newLeaveTypeCode = dto.leaveType;
+    }
+
+    // ⚠️ new Date(...) LUÔN BỌC CẢ 2 NHÁNH (kể cả khi giữ nguyên giá trị cũ) -
+    // request.startDate/endDate lấy từ TypeORM cho cột `date` có thể trả về
+    // dạng khác Date instance tuỳ driver, `calculateDays()` bên dưới gọi
+    // thẳng `.getTime()` nên phải chuẩn hoá chắc chắn là Date ở cả 2 nhánh.
+    const newStartDate = new Date(dto.startDate ?? request.startDate);
+    const newEndDate = new Date(dto.endDate ?? request.endDate);
+    const newDuration = dto.duration ?? request.duration;
+
+    if (newStartDate > newEndDate) {
+      throw new BadRequestException(
+        'Ngày bắt đầu không được sau ngày kết thúc',
+      );
+    }
+
+    const newTotalDays = this.calculateDays(
+      newStartDate,
+      newEndDate,
+      newDuration,
+    );
+
+    // Cân bằng lại phép năm - CHỈ áp dụng khi đơn đang APPROVED (xem JSDoc).
+    if (request.status === LeaveStatus.APPROVED) {
+      if (oldLeaveType?.deductsAnnualBalance) {
+        await this.userRepo.increment(
+          { id: request.requesterId },
+          'annualLeaveBalance',
+          oldTotalDays,
+        );
+      }
+      if (newLeaveTypeRow?.deductsAnnualBalance) {
+        const user = await this.userRepo.findOne({
+          where: { id: request.requesterId },
+        });
+        if (!user) {
+          throw new NotFoundException('User not found');
+        }
+        if (user.annualLeaveBalance < newTotalDays) {
+          // Đã lỡ hoàn balance cũ ở trên (nếu có) - trừ lại ĐÚNG bằng đó để
+          // không để user "dư" phép khi dừng giữa chừng vì thiếu phép mới.
+          if (oldLeaveType?.deductsAnnualBalance) {
+            await this.userRepo.decrement(
+              { id: request.requesterId },
+              'annualLeaveBalance',
+              oldTotalDays,
+            );
+          }
+          throw new BadRequestException(
+            `Không đủ phép năm để sửa đơn. Còn lại: ${user.annualLeaveBalance} ngày, cần: ${newTotalDays} ngày`,
+          );
+        }
+        await this.userRepo.decrement(
+          { id: request.requesterId },
+          'annualLeaveBalance',
+          newTotalDays,
+        );
+      }
+    }
+
+    const before = {
+      leaveType: request.leaveType,
+      startDate: request.startDate,
+      endDate: request.endDate,
+      duration: request.duration,
+      totalDays: request.totalDays,
+      reason: request.reason,
+    };
+
+    request.leaveType = newLeaveTypeCode;
+    request.startDate = newStartDate;
+    request.endDate = newEndDate;
+    request.duration = newDuration;
+    request.totalDays = newTotalDays;
+    if (dto.reason !== undefined) {
+      request.reason = dto.reason;
+    }
+
+    const saved = await this.leaveRequestRepo.save(request);
+
+    this.auditService.logActionAsync(
+      editorId,
+      'EDIT_LEAVE_REQUEST',
+      'leave_request',
+      saved.id,
+      before,
+      {
+        leaveType: saved.leaveType,
+        startDate: saved.startDate,
+        endDate: saved.endDate,
+        duration: saved.duration,
         totalDays: saved.totalDays,
         reason: saved.reason,
       },

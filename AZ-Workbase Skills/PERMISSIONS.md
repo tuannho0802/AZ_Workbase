@@ -457,7 +457,29 @@ const ELIGIBLE_APPROVER_ROLES: Record<string, string[]> = {
 nhất: `assistant` KHÔNG tự duyệt được cho `assistant` khác dù cùng "priority" theo cách hiểu cũ; `manager`
 khác phòng ban bị chặn dù đúng role).
 
+> ⚠️ **Bảng `ELIGIBLE_APPROVER_ROLES`/`VIEWER_SEES_REQUESTER_ROLES` ở trên đã LỖI THỜI** — đọc trực tiếp
+> `leave-requests.service.ts` (comment đầu file, mục "PERMISSIONS.md mục 2.6 - ĐÃ ĐƯỢC GENERALIZE") xác
+> nhận cơ chế role cứng này đã được thay bằng scope động (`leave_requests.approve` với `scope='all'` hoặc
+> `scope='department'` qua bảng `department_managers`, cộng ngoại lệ `leave_approver_id` gán tay) từ trước
+> — mục này chưa được viết lại cho khớp, chỉ mới cập nhật 2 điểm mới bên dưới. Không dùng bảng trên làm căn
+> cứ khi audit module này — đọc code thật.
+
+**[2026-09-22] 2 thay đổi mới theo yêu cầu chủ dự án:**
+1. **Bỏ chặn trùng lịch khi tạo đơn (`create()`)** — TRƯỚC ĐÂY chặn "Bạn đã có đơn nghỉ trong khoảng thời
+   gian này" nếu đơn mới overlap ngày với BẤT KỲ đơn PENDING/APPROVED nào khác của cùng người, kể cả khác
+   hẳn loại phép (vd đã có đơn "Không lương" nguyên tháng thì không tạo được đơn "Gặp khách" 1 ngày bất kỳ
+   trong tháng đó). Chủ dự án xác nhận đây không phải rule mong muốn → đã bỏ hẳn bước validate này (xem
+   comment "BYPASS" trong `create()`). Không còn conflict check nào ở `create()` nữa.
+2. **Permission mới `leave_requests.edit`** (`supports_scope=TRUE`, seed mặc định mirror `leave_requests.approve`:
+   admin=all, manager=department, assistant=all, employee=không có) — endpoint `PATCH /leave-requests/:id`,
+   cho phép người có quyền này (dùng chung rule `isEligibleApprover` với approve/reject) sửa
+   `leaveType`/`startDate`/`endDate`/`duration`/`reason` của 1 đơn đang PENDING hoặc APPROVED. Dùng khi User
+   báo lỡ set sai ngày sau khi đã gửi/đã duyệt. Nếu đơn đang APPROVED, `update()` tự cân bằng lại
+   `annualLeaveBalance` (hoàn số ngày cũ, trừ lại số ngày mới) để không lệch số dư phép năm. KHÔNG check
+   overlap/conflict khi sửa (đối xứng với bypass ở `create()`).
+
 ### 2.7. Audit Logs (`modules/audit`) — ✅ ĐÃ KHỚP
+
 
 **Đối chiếu trực tiếp `audit.controller.ts` (2026-08-28) — xác nhận cả 6/6 endpoint đã đồng nhất
 `@Roles(Role.ADMIN, Role.ASSISTANT)`** (`GET /`, `GET /actions`, `GET /settings`, `POST /settings`,
