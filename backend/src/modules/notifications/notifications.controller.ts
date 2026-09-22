@@ -69,6 +69,17 @@ export class NotificationsController {
     return this.notificationsService.markRead(userId, id);
   }
 
+  @Patch(':id/restore')
+  @ApiOperation({
+    summary: 'Khôi phục 1 thông báo thủ công đã ẩn (đảo ngược DELETE :id)',
+  })
+  restore(
+    @GetUser('id') userId: number,
+    @Param('id', ParseIntPipe) id: number,
+  ) {
+    return this.notificationsService.restore(userId, id);
+  }
+
   @Delete(':id')
   @HttpCode(200)
   @ApiOperation({

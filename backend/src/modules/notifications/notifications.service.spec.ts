@@ -1,4 +1,5 @@
 import { NotFoundException, BadRequestException } from '@nestjs/common';
+import { IsNull, Not } from 'typeorm';
 import {
   NotificationsService,
   decodeCursor,
@@ -317,6 +318,13 @@ describe('NotificationsService', () => {
       });
     });
 
+    it('dismissed=true → lọc NGƯỢC LẠI, chỉ lấy dòng ĐÃ ẨN (tab "Đã ẩn")', async () => {
+      const qb = fakeQb([]);
+      await service.list(9, { dismissed: true });
+      expect(qb.andWhere).toHaveBeenCalledWith('n.dismissedAt IS NOT NULL');
+      expect(qb.andWhere).not.toHaveBeenCalledWith('n.dismissedAt IS NULL');
+    });
+
     it('thủ công: body lấy từ broadcast; KHÔNG trả đối tượng broadcast (tránh lộ audience_params)', async () => {
       fakeQb([
         row(1, {
@@ -471,6 +479,35 @@ describe('NotificationsService', () => {
       const [, patch] = notifRepo.update.mock.calls[0];
       expect(Object.keys(patch)).toEqual(['dismissedAt']);
       expect(patch.dismissedAt).toBeInstanceOf(Date);
+    });
+  });
+
+  describe('restore', () => {
+    it('đảo ngược remove(): set dismissedAt = null, CHỈ match dòng đang ẩn', async () => {
+      notifRepo.update.mockResolvedValue({ affected: 1 });
+      await service.restore(9, 5);
+      expect(notifRepo.update).toHaveBeenCalledWith(
+        { id: 5, recipientId: 9, dismissedAt: Not(IsNull()) },
+        { dismissedAt: null },
+      );
+      expect(notifRepo.exists).not.toHaveBeenCalled();
+    });
+
+    it('IDOR: không phải của mình / không tồn tại → 404', async () => {
+      notifRepo.update.mockResolvedValue({ affected: 0 });
+      notifRepo.exists.mockResolvedValue(false);
+      await expect(service.restore(9, 5)).rejects.toBeInstanceOf(
+        NotFoundException,
+      );
+    });
+
+    it('tồn tại nhưng đang KHÔNG ẩn (đã restore trước đó) → idempotent, không throw', async () => {
+      notifRepo.update.mockResolvedValue({ affected: 0 });
+      notifRepo.exists.mockResolvedValue(true);
+      await expect(service.restore(9, 5)).resolves.toEqual({
+        id: 5,
+        restored: true,
+      });
     });
   });
 });

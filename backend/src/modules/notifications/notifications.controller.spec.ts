@@ -37,6 +37,7 @@ describe('NotificationsController', () => {
       poll: jest.fn(),
       markAllRead: jest.fn(),
       markRead: jest.fn(),
+      restore: jest.fn(),
       remove: jest.fn(),
     };
     const c = new NotificationsController(service);
@@ -44,11 +45,13 @@ describe('NotificationsController', () => {
     c.poll(7);
     c.readAll(7, { category: 'task' });
     c.markRead(7, 11);
+    c.restore(7, 11);
     c.remove(7, 11);
     expect(service.list).toHaveBeenCalledWith(7, { limit: 5 });
     expect(service.poll).toHaveBeenCalledWith(7);
     expect(service.markAllRead).toHaveBeenCalledWith(7, 'task');
     expect(service.markRead).toHaveBeenCalledWith(7, 11);
+    expect(service.restore).toHaveBeenCalledWith(7, 11);
     expect(service.remove).toHaveBeenCalledWith(7, 11);
   });
 });

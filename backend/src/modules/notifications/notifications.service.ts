@@ -5,7 +5,7 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { In, IsNull, Repository } from 'typeorm';
+import { In, IsNull, Not, Repository } from 'typeorm';
 import { waitUntil } from '@vercel/functions';
 import { Notification } from '../../database/entities/notification.entity';
 import { NotificationPreference } from '../../database/entities/notification-preference.entity';
@@ -297,7 +297,7 @@ export class NotificationsService {
       .leftJoin('n.broadcast', 'b')
       .addSelect(['b.id', 'b.body'])
       .where('n.recipientId = :userId', { userId })
-      .andWhere('n.dismissedAt IS NULL');
+      .andWhere(dto.dismissed ? 'n.dismissedAt IS NOT NULL' : 'n.dismissedAt IS NULL');
 
     if (dto.unreadOnly) qb.andWhere('n.readAt IS NULL');
     if (dto.category)
@@ -412,6 +412,33 @@ export class NotificationsService {
       await this.notificationRepository.delete({ id, recipientId: userId });
     }
     return { id, removed: true };
+  }
+
+  /**
+   * Khôi phục 1 thông báo THỦ CÔNG đã ẩn (đảo ngược `remove()` cho trường
+   * hợp `broadcastId != null`) - tab "Đã ẩn" ở trang `/thong-bao` (PLAN 7.1
+   * mở rộng). Thông báo TỰ ĐỘNG không có khái niệm này (đã xoá cứng, không
+   * còn dòng để khôi phục) - route chỉ có ý nghĩa với thủ công, nhưng vẫn
+   * chấp nhận gọi cho tự động (không match `dismissedAt IS NOT NULL` nào →
+   * `affected = 0` → 404, không cần nhánh check riêng theo `broadcastId`).
+   */
+  async restore(
+    userId: number,
+    id: number,
+  ): Promise<{ id: number; restored: true }> {
+    const result = await this.notificationRepository.update(
+      { id, recipientId: userId, dismissedAt: Not(IsNull()) },
+      { dismissedAt: null },
+    );
+    if (!result.affected) {
+      const exists = await this.notificationRepository.exists({
+        where: { id, recipientId: userId },
+      });
+      if (!exists) throw new NotFoundException('Không tìm thấy thông báo');
+      // Tồn tại nhưng không match `dismissedAt IS NOT NULL` - đã ở trạng
+      // thái hiện sẵn (không phải lỗi, giữ idempotent như `markRead`).
+    }
+    return { id, restored: true };
   }
 
   // ───────────────────────────── helpers ─────────────────────────────

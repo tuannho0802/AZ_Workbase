@@ -40,6 +40,15 @@ export class ListNotificationsDto {
   @IsBoolean()
   unreadOnly?: boolean;
 
+  @ApiPropertyOptional({
+    description:
+      'true = CHỈ lấy thông báo ĐÃ ẨN (dismissedAt khác NULL, chỉ thông báo thủ công mới có trạng thái này - xem `remove()`); mặc định (false/không truyền) = lấy thông báo đang hiện như cũ.',
+  })
+  @IsOptional()
+  @Transform(({ value }) => value === true || value === 'true' || value === '1')
+  @IsBoolean()
+  dismissed?: boolean;
+
   @ApiPropertyOptional({ enum: NOTIFICATION_CATEGORY_VALUES })
   @IsOptional()
   @IsIn(NOTIFICATION_CATEGORY_VALUES as unknown as string[])
