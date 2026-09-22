@@ -85,6 +85,32 @@ describe('NotificationRow', () => {
     expect(container.querySelector('b')).toBeNull();
     expect(screen.getByText('<img src=x onerror=alert(1)><b>đậm</b>')).toBeInTheDocument();
   });
+
+  it('có params.entityName khớp trong title → tô sáng bằng <mark>, không đổi nội dung chữ', () => {
+    const { container } = render(
+      <NotificationRow
+        item={make({ params: { entityName: 'Nguyễn Văn B' } })}
+        onOpen={vi.fn()}
+        onRemove={vi.fn()}
+      />,
+    );
+    const mark = container.querySelector('mark');
+    expect(mark).not.toBeNull();
+    expect(mark?.textContent).toBe('Nguyễn Văn B');
+    expect(container.textContent).toContain('An vừa cập nhật khách hàng Nguyễn Văn B.');
+  });
+
+  it('params.entityName KHÔNG khớp title (vd bị truncate) → không tô, vẫn hiện đủ text', () => {
+    const { container } = render(
+      <NotificationRow
+        item={make({ params: { entityName: 'Không tồn tại trong title' } })}
+        onOpen={vi.fn()}
+        onRemove={vi.fn()}
+      />,
+    );
+    expect(container.querySelector('mark')).toBeNull();
+    expect(screen.getByText('An vừa cập nhật khách hàng Nguyễn Văn B.')).toBeInTheDocument();
+  });
 });
 
 describe('NotificationDetailModal', () => {

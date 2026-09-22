@@ -1,31 +1,39 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect } from 'react';
 import { useRouter } from 'next/navigation';
-import { App, Card, Empty, Typography } from 'antd';
+import { App, Button, Card, Spin, Typography } from 'antd';
 import { SendOutlined } from '@ant-design/icons';
 import { useMyPermissions } from '@/lib/hooks/useMyPermissions';
 import { useAuthStore } from '@/lib/stores/auth.store';
-import { SendBroadcastModal } from '@/components/notifications/SendBroadcastModal';
+import { useBroadcastCompose } from '@/lib/hooks/useBroadcastCompose';
+import { BroadcastComposeFields } from '@/components/notifications/BroadcastComposeFields';
 
-const { Text } = Typography;
+const { Title } = Typography;
 
 /**
  * `/thong-bao/gui` (PLAN mục 7.7) — permission `notification_broadcasts.create`.
- * Chỉ là điểm vào có gate quyền, mở sẵn `SendBroadcastModal` (Modal soạn &
- * gửi dùng chung với nút "Soạn thông báo mới" ở `/thong-bao/da-gui`).
  *
- * ⚠️ Trước đây nội dung file này từng bị lẫn với trang "Thông báo đã gửi"
- * (bảng lịch sử + Drawer) — đã tách lại đúng theo PLAN, phần bảng lịch sử
- * chuyển về `/thong-bao/da-gui/page.tsx`.
+ * ⚠️ ĐIỀU CHỈNH GIAO DIỆN (2026-09-22, phản hồi chủ dự án): trước đây trang
+ * này chỉ là 1 Card `Empty` rỗng đứng sau, với `<Modal>` THẬT tự mở sẵn
+ * (`useState(true)`) đè lên trên — vào trang là bị "giật" 1 modal bật lên,
+ * đóng modal lại thì lộ ra trang trống trơn phía sau rất khó hiểu ("khá
+ * phiền" theo đúng lời chủ dự án). Đổi cách làm: trang này KHÔNG dùng antd
+ * `<Modal>` nữa — nội dung form nằm THẲNG trong 1 `Card` được style GIỐNG
+ * hệt 1 Modal (thanh tiêu đề + khung bo góc/đổ bóng + thanh nút dưới cùng),
+ * nhưng bản chất là nội dung trang bình thường, không có hành vi "tự bật
+ * lên" nào cả — bấm vào `/thong-bao/gui` (menu/link) thấy ngay đúng cái
+ * "hộp thoại" này, không còn khoảng trắng/nhấp nháy modal nữa.
+ *
+ * Logic soạn/gửi dùng chung với `SendBroadcastModal` (Modal thật ở nút
+ * "Soạn thông báo mới" của `/thong-bao/da-gui`) qua `useBroadcastCompose` +
+ * `BroadcastComposeFields` - sửa 1 chỗ, cả 2 nơi cùng đúng.
  */
 export default function SendBroadcastEntryPage() {
   const { can, isLoading: permissionsLoading } = useMyPermissions();
   const { user } = useAuthStore();
   const router = useRouter();
   const { message } = App.useApp();
-
-  const [open, setOpen] = useState(true);
 
   useEffect(() => {
     if (!permissionsLoading && user && !can('notification_broadcasts.create')) {
@@ -34,30 +42,70 @@ export default function SendBroadcastEntryPage() {
     }
   }, [user, permissionsLoading, can, router, message]);
 
-  if (permissionsLoading) return null;
+  const state = useBroadcastCompose({
+    enabled: true,
+    onSent: () => router.push('/thong-bao/da-gui'),
+  });
+  const { previewResult, dirtySincePreview, handleSend, sendPending, reset } = state;
+
+  if (permissionsLoading) {
+    return (
+      <div style={{ padding: 48, textAlign: 'center' }}>
+        <Spin />
+      </div>
+    );
+  }
 
   return (
-    <div style={{ padding: 24 }}>
-      <Card>
-        <Empty
-          image={<SendOutlined style={{ fontSize: 48, color: '#1890ff' }} />}
-          description={
-            <Text type="secondary">
-              Soạn thông báo thủ công gửi tới người dùng, phòng ban, hoặc toàn bộ nhân viên.
-            </Text>
-          }
+    <div style={{ maxWidth: 620, margin: '0 auto' }}>
+      {/*
+        Card style GIỐNG Modal antd: bo góc 8px, đổ bóng, thanh tiêu đề +
+        thanh nút dưới cùng có đường viền phân cách - KHÔNG phải Modal thật
+        (không có overlay/backdrop, không "nổi" trên trang khác).
+      */}
+      <Card
+        style={{ borderRadius: 8, boxShadow: '0 6px 16px -8px rgba(0,0,0,.12), 0 9px 28px 0 rgba(0,0,0,.05)' }}
+        styles={{ body: { padding: 0 } }}
+      >
+        <div
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            gap: 10,
+            padding: '16px 24px',
+            borderBottom: '1px solid #f0f0f0',
+          }}
         >
-          <a onClick={() => setOpen(true)}>Mở lại form soạn thông báo</a>
-        </Empty>
-      </Card>
+          <SendOutlined style={{ fontSize: 18, color: '#1890ff' }} />
+          <Title level={5} style={{ margin: 0 }}>
+            Soạn & gửi thông báo
+          </Title>
+        </div>
 
-      <SendBroadcastModal
-        open={open}
-        onClose={() => setOpen(false)}
-        onSent={() => {
-          router.push('/thong-bao/da-gui');
-        }}
-      />
+        <div style={{ padding: '20px 24px' }}>
+          <BroadcastComposeFields state={state} />
+        </div>
+
+        <div
+          style={{
+            display: 'flex',
+            justifyContent: 'flex-end',
+            gap: 8,
+            padding: '10px 16px',
+            borderTop: '1px solid #f0f0f0',
+          }}
+        >
+          <Button onClick={reset}>Huỷ</Button>
+          <Button
+            type="primary"
+            loading={sendPending}
+            disabled={!previewResult || dirtySincePreview || sendPending}
+            onClick={handleSend}
+          >
+            {previewResult && !dirtySincePreview ? `Gửi tới ${previewResult.recipientCount} người` : 'Gửi'}
+          </Button>
+        </div>
+      </Card>
     </div>
   );
 }

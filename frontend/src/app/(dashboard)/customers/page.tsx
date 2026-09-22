@@ -181,14 +181,14 @@ const CustomerMobileCard = ({
   onRowClick: (id: number) => void; 
   canDelete: boolean;
   onDelete: (id: number) => void;
-    /** Highlight "mục tiêu" khi tới từ thông báo (xem `notif-focus-*` ở globals.css). */
-    focusClassName?: string;
+  /** Highlight "mục tiêu" khi tới từ thông báo (xem `notif-focus-*` ở globals.css). */
+  focusClassName?: string;
   }) => {
   return (
   <Card
     size="small"
     variant="outlined"
-      className={focusClassName}
+    className={focusClassName}
     style={{ marginBottom: 8, cursor: 'pointer' }}
     onClick={() => onRowClick(record.id)}
   >
@@ -1042,15 +1042,15 @@ function CustomersPageContent() {
           loading={loading}
           size="small"
           onChange={handleTableChange}
-                rowClassName={(record) =>
-                  focusedCustomerId === record.id
-                    ? focusPhase === 'flash'
-                      ? 'notif-focus-flash'
-                      : focusPhase === 'marked'
-                        ? 'notif-focus-marked'
-                        : ''
-                    : ''
-                }
+          rowClassName={(record) =>
+            focusedCustomerId === record.id
+              ? focusPhase === 'flash'
+                ? 'notif-focus-flash'
+                : focusPhase === 'marked'
+                  ? 'notif-focus-marked'
+                  : ''
+              : ''
+          }
           onRow={(record) => ({
             onClick: () => {
               setSelectedCustomerId(record.id);
@@ -1078,7 +1078,7 @@ function CustomersPageContent() {
     <CustomerDetailDrawer
       open={isDrawerOpen}
       customerId={selectedCustomerId}
-        onClose={() => { setIsDrawerOpen(false); clearFocus(); }}
+      onClose={() => { setIsDrawerOpen(false); clearFocus(); }}
       onUpdate={handleDrawerUpdate}
     />
 

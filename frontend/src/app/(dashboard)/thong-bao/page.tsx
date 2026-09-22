@@ -29,11 +29,17 @@ const VIEW_OPTIONS: { label: string; value: ViewFilter }[] = [
  * "Đã ẩn" để xem lại + khôi phục thông báo thủ công đã ẩn trước đó.
  * Chỉ cần đăng nhập - hộp thư luôn là của CHÍNH người dùng (BE lấy từ JWT).
  *
- * ⚠️ ĐIỀU CHỈNH GIAO DIỆN (2026-09-22, phản hồi chủ dự án): trước đây trang
+ * ⚠️ ĐIỀU CHỈNH GIAO DIỆN (2026-09-22, phản hồi chủ dự án lần 1): trước đây trang
  * không có tiêu đề/icon (đi thẳng vào hàng bộ lọc), khác với các trang khác
  * trong app đều có header dạng "icon + tên trang" (vd `nghi-phep`,
  * `duyet-phep`). Thêm header đồng bộ + bọc khối bộ lọc/danh sách trong
  * `Card` (thay vì `div` border trần) cho nhất quán style toàn app.
+ *
+ * ⚠️ ĐIỀU CHỈNH GIAO DIỆN (2026-09-22, phản hồi lần 2): lần 1 vẫn tách 2 khối
+ * (Card bộ lọc riêng + `div` viền riêng cho danh sách) → có khoảng trắng lộ
+ * ra ở giữa, nhìn rời rạc/"gãy" hơn 1 khối liền mạch. Gộp lại thành DUY NHẤT
+ * 1 `Card`: hàng bộ lọc + danh sách + nút "Tải thêm" đều nằm trong cùng thân
+ * Card, ngăn cách bằng 1 đường `borderBottom` mảnh thay vì 2 khối tách biệt.
  */
 export default function NotificationsPage() {
   const [view, setView] = useState<ViewFilter>('all');
@@ -64,10 +70,7 @@ export default function NotificationsPage() {
         </Title>
       </div>
 
-      <Card
-        styles={{ body: { padding: '16px 16px 0' } }}
-        style={{ marginBottom: 16 }}
-      >
+      <Card styles={{ body: { padding: 0 } }}>
         <div
           style={{
             display: 'flex',
@@ -75,7 +78,8 @@ export default function NotificationsPage() {
             alignItems: 'center',
             justifyContent: 'space-between',
             gap: 12,
-            paddingBottom: 16,
+            padding: '16px 16px',
+            borderBottom: '1px solid #f0f0f0',
           }}
         >
           <Segmented<ViewFilter> value={view} onChange={setView} options={VIEW_OPTIONS} />
@@ -97,9 +101,7 @@ export default function NotificationsPage() {
             )}
           </div>
         </div>
-      </Card>
 
-      <div style={{ border: '1px solid #f0f0f0', borderRadius: 8, overflow: 'hidden', background: '#fff' }}>
         {list.isLoading ? (
           <div style={{ padding: 48, textAlign: 'center' }}>
             <Spin />
@@ -128,15 +130,15 @@ export default function NotificationsPage() {
             />
           ))
         )}
-      </div>
 
-      {list.hasNextPage && (
-        <div style={{ marginTop: 16, textAlign: 'center' }}>
-          <Button loading={list.isFetchingNextPage} onClick={() => list.fetchNextPage()}>
-            Tải thêm
-          </Button>
-        </div>
-      )}
+        {list.hasNextPage && (
+          <div style={{ padding: 12, textAlign: 'center' }}>
+            <Button loading={list.isFetchingNextPage} onClick={() => list.fetchNextPage()}>
+              Tải thêm
+            </Button>
+          </div>
+        )}
+      </Card>
     </div>
   );
 }

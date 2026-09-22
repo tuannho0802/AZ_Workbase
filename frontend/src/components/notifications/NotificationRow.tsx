@@ -11,6 +11,7 @@ import {
 import type { ReactNode } from 'react';
 import type { NotificationCategory, NotificationItem } from '@/lib/types/notification.types';
 import { resolveNotificationTarget } from '@/lib/notifications/resolve-link';
+import { highlightEntityName } from '@/lib/notifications/highlight-entity-name';
 import { formatFullTime, formatRelative } from '@/lib/utils/relative-time';
 
 const CATEGORY_META: Record<NotificationCategory, { icon: ReactNode; color: string; label: string }> = {
@@ -104,7 +105,7 @@ export function NotificationRow({ item, onOpen, onRemove, mode = 'active', onRes
               fontWeight: item.isRead ? 400 : 600,
             }}
           >
-            {item.title}
+            {highlightEntityName(item.title, item.params)}
           </span>
           <span style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12, color: '#94a3b8' }}>
             <Tooltip title={formatFullTime(item.sortAt)}>
