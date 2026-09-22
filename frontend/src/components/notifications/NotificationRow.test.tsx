@@ -100,12 +100,26 @@ describe('NotificationDetailModal', () => {
     expect(screen.queryByText('Họp toàn công ty')).not.toBeInTheDocument();
 
     useNotificationUiStore.getState().openDetail(item);
-    expect(await screen.findByText('Thông báo từ Quản trị viên')).toBeInTheDocument();
+    expect(await screen.findByText('Người gửi')).toBeInTheDocument();
+    expect(screen.getByText('Quản trị viên')).toBeInTheDocument();
     expect(screen.getByText('Họp toàn công ty')).toBeInTheDocument();
     expect(document.body.querySelector('script')).toBeNull();
     expect(container).toBeTruthy();
 
     fireEvent.click(screen.getByRole('button', { name: 'Đóng' }));
     expect(useNotificationUiStore.getState().detail).toBeNull();
+  });
+
+  it('không có senderName (thông báo hệ thống cũ) → hiện "Hệ thống" thay vì để trống', async () => {
+    const item = make({
+      category: 'manual',
+      eventType: 'manual.broadcast',
+      title: 'Bảo trì hệ thống',
+      body: null,
+      params: null,
+    });
+    render(<NotificationDetailModal />);
+    useNotificationUiStore.getState().openDetail(item);
+    expect(await screen.findByText('Hệ thống')).toBeInTheDocument();
   });
 });
