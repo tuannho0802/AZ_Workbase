@@ -13,6 +13,14 @@ export interface UserMiniCardProps {
     getRoleName: (code?: string) => string;
     /** Nội dung phụ hiện ngay sau tên (vd "(tên trên máy)") - tuỳ chỗ gọi. */
     subtitle?: React.ReactNode;
+    /**
+     * Ẩn Tag Vai trò (chỉ còn Avatar + tên) - dùng ở chỗ cột hẹp, Tag dễ bị
+     * xuống dòng (vd cột "Người tạo" ở /chia-data). Avatar vẫn tô màu theo
+     * `getRoleColor(role)` như cũ, chỉ ẩn phần Tag text.
+     */
+    hideRoleTag?: boolean;
+    /** Cỡ chữ tên, mặc định 13 - truyền nhỏ hơn cho chỗ cần gọn (vd 12). */
+    nameFontSize?: number;
 }
 
 /**
@@ -35,6 +43,8 @@ export function UserMiniCard({
     getRoleColor,
     getRoleName,
     subtitle,
+    hideRoleTag = false,
+    nameFontSize = 13,
 }: UserMiniCardProps) {
     const tagStyle: React.CSSProperties = { fontSize: 10, lineHeight: '16px', padding: '0 4px', margin: 0 };
     return (
@@ -53,11 +63,11 @@ export function UserMiniCard({
             <Avatar size={20} style={{ backgroundColor: getRoleColor(role), fontSize: 11, flexShrink: 0 }}>
                 {name?.[0]?.toUpperCase()}
             </Avatar>
-            <Text strong style={{ fontSize: 13 }}>
+            <Text strong style={{ fontSize: nameFontSize }}>
                 {name}
             </Text>
             {subtitle}
-            {role && (
+            {role && !hideRoleTag && (
                 <Tag style={tagStyle} color={getRoleColor(role)}>
                     {getRoleName(role)}
                 </Tag>

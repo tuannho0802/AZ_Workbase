@@ -627,6 +627,8 @@ export default function ChiaDataPage() {
                 role={r.createdBy.role}
                 getRoleColor={getRoleColor}
                 getRoleName={getRoleName}
+                hideRoleTag
+                nameFontSize={12}
               />
             ) : (
               <Text type="secondary">Hệ thống</Text>
@@ -745,6 +747,8 @@ export default function ChiaDataPage() {
                 role={r.createdBy.role}
                 getRoleColor={getRoleColor}
                 getRoleName={getRoleName}
+                hideRoleTag
+                nameFontSize={12}
               />
             ) : (
               <Text type="secondary">Hệ thống</Text>
