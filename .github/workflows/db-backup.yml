@@ -14,7 +14,7 @@ jobs:
         run: sudo apt-get update && sudo apt-get install -y mysql-client
 
       - name: Ghi CA certificate của Aiven ra file
-        run: echo "${{ secrets.AIVEN_CA_CERT }}" > ca.pem
+        run: echo "${{ secrets.AIVEN_CA_CERT }}" | base64 -d > ca.pem
 
       - name: Dump toàn bộ database (schema + data + routines/triggers)
         run: |
