@@ -69,9 +69,26 @@ describe('CustomersService', () => {
   // này thiếu hẳn mock cho nó, khiến NestJS không dựng nổi TestingModule
   // (lỗi "Nest can't resolve dependencies... CustomerGroupMembershipRepository")
   // -> TOÀN BỘ test trong file đều fail ngay ở bước khởi tạo module, không
-  // liên quan gì tới logic nghiệp vụ nào. Không method nào trong service
-  // đang được test ở đây thực sự gọi tới repo này, nên object rỗng là đủ.
-  const mockGroupMembershipRepo = {};
+  // liên quan gì tới logic nghiệp vụ nào.
+  // ⚠️ CẬP NHẬT (thêm filter/cột "Đã tham gia nhóm" cho report - xem
+  // `attachJoinedGroups()`): comment cũ ở trên KHÔNG CÒN ĐÚNG - giờ
+  // `getInvalidDataReport()`/`getDuplicateContactReport()` (đang test ở file
+  // này) ĐỀU gọi `createQueryBuilder()` trên repo này khi data trả về không
+  // rỗng. Cho default trả về mảng rỗng (không có nhóm nào) để các test cũ
+  // không cố ý kiểm tra field `joinedGroups` vẫn chạy được bình thường - test
+  // nào cần kiểm tra riêng field này có thể tự override bằng
+  // `mockGroupMembershipRepo.createQueryBuilder.mockReturnValueOnce(...)`.
+  const mockGroupMembershipRepo = {
+    createQueryBuilder: jest.fn().mockReturnValue({
+      innerJoin: jest.fn().mockReturnThis(),
+      select: jest.fn().mockReturnThis(),
+      addSelect: jest.fn().mockReturnThis(),
+      where: jest.fn().mockReturnThis(),
+      andWhere: jest.fn().mockReturnThis(),
+      orderBy: jest.fn().mockReturnThis(),
+      getRawMany: jest.fn().mockResolvedValue([]),
+    }),
+  };
   // ⚠️ Provider thứ 6 (Setup dynamic Customer Status -
   // CreateCustomerStatuses1781400000000) - dùng trong
   // `assertValidStatus()` gọi từ create()/update() để đối chiếu
