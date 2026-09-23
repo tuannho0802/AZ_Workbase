@@ -31,6 +31,16 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
       id: user.id, 
       email: user.email, 
       role: user.role,
+      // ⚠️ FIX BUG THẬT (2026-09-23): trước đây object này KHÔNG có field
+      // `name` - customers.controller.ts#exportExcel gọi `user.name` để
+      // build tên file "Khach-Hang-ExportBy-{Tên}" nhưng luôn nhận
+      // `undefined` (vì `request.user` chỉ có đúng các field khai TẠI ĐÂY,
+      // không phải nguyên bản User entity), nên tên file luôn rơi về
+      // fallback cũ "KhachHang..." dù code buildFilename() nhìn qua tưởng
+      // đã đúng - lỗi im lặng, không throw, rất khó phát hiện nếu không
+      // test thật. Thêm `name` để MỌI route dùng `@GetUser()`/`req.user`
+      // (không chỉ export khách hàng) đều có sẵn tên người dùng khi cần.
+      name: user.name,
       // ⚠️ BẮT BUỘC - PermissionGuard/RolesController/UiVisibilityController
       // đều đọc field này để quyết định lối thoát hiểm Admin (xem JSDoc
       // User.isRootAdmin). Lấy LIVE từ DB mỗi request giống departmentId/
