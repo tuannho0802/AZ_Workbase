@@ -3610,3 +3610,93 @@ trước) theo đúng Custom Instructions của Project.
 > tương tự khác trong `components/leave-requests/`); chủ dự án nên tự kiểm tra bằng mắt trên UI thật
 > (Badge hiện đúng số, màu xám khi 0 ảnh, bấm vẫn mở Modal đúng) trước khi coi là xong hẳn. Không phát
 > hiện thêm việc dở dang nào khác ngoài phạm vi yêu cầu lần này.
+
+---
+## [2026-09-23 09:00] | Duyệt phép — Fix sort bug (createdAt thay vì updatedAt) + gộp theo tuần (Collapse) + thêm cột "Khung giờ" | [Status: Success — verify bằng build/test thật]
+
+**Actor:** Agent
+
+**Files Changed:**
+- `backend/src/modules/leave-requests/leave-requests.service.ts` — `findHistory()`: đổi
+  `.orderBy('leave.updatedAt', 'DESC')` → `.orderBy('leave.createdAt', 'DESC')`. `findPending()` vốn đã
+  đúng `createdAt DESC` từ trước, không đụng vào.
+- `frontend/src/components/leave-requests/WeekGroupedRequests.tsx` (MỚI) — component dùng chung cho cả 2
+  tab, gộp danh sách theo TUẦN (Thứ 2 → CN, tự tính tay bằng `.day()`, KHÔNG dùng plugin `isoWeek` của
+  dayjs — mirror lưu ý đã ghi ở `PeriodSelector.tsx`), render bằng antd `<Collapse items={...}>`. Tuần mới
+  nhất lên đầu, trong từng tuần sort theo `createdAt` mới nhất trước. Mặc định mở panel tuần HIỆN TẠI, gập
+  các tuần trước — mirror đúng pattern Collapse "mở hôm nay, gập ngày khác" đã có sẵn ở
+  `PeriodicTasksAgendaView.tsx` (chỉ set active key mặc định 1 LẦN khi có dữ liệu, không tự đóng lại panel
+  user vừa mở tay sau mỗi lần refetch).
+- `frontend/src/app/(dashboard)/duyet-phep/page.tsx` — thêm cột "Khung giờ" RIÊNG (tách khỏi cột "Thời
+  gian", trước đây `periodStartTime`/`periodEndTime` chỉ hiện lồng nhỏ bên trong) ở cả `pendingColumns` và
+  `historyColumns`; thay khối render phẳng (`isMobile ? cards : <Table>`) ở cả 2 tab bằng
+  `<WeekGroupedRequests>`; bỏ import `Table` không còn dùng trực tiếp trong file.
+
+**Root Cause:**
+> Chủ dự án phản ánh: sort mặc định phải theo ngày TẠO đơn mới nhất lên đầu, nhưng đơn nào vừa được "Sửa
+> hộ" lại tự nhảy lên đầu danh sách. Nguyên nhân: `findHistory()` (tab "Lịch sử phê duyệt") đang sort theo
+> `updatedAt` — mọi thao tác ghi (Sửa/Duyệt/Từ chối) đều cập nhật `updatedAt`, kéo record đó lên đầu dù
+> ngày tạo cũ hơn nhiều. `findPending()` (tab "Chờ phê duyệt") vốn đã dùng đúng `createdAt` nên không có
+> bug này.
+
+**Solution:**
+> Đổi `findHistory()` sang `createdAt DESC` cho khớp `findPending()`. Đồng thời build thêm UI gộp theo
+> tuần (yêu cầu mới, không phải fix bug) bằng 1 component tái sử dụng `WeekGroupedRequests.tsx` thay vì
+> viết lặp lại logic gộp/Collapse riêng ở từng tab, và tách cột "Khung giờ" thành cột độc lập cho dễ nhìn
+> theo yêu cầu (trước đây thiếu hẳn cột này ở cả 2 tab).
+
+**Verify (chạy lệnh thật, không suy diễn):**
+> Backend: `npm install` sạch, `tsc --noEmit` sạch, `npx jest leave-requests` = **41/41 test PASS**.
+> Frontend: `npm install` sạch, `next build` (Turbopack) "Compiled successfully" đủ route kể cả
+> `/duyet-phep`, không phát sinh lỗi mới so với baseline.
+
+**Notes:**
+> Không có quyền push GitHub trong sandbox Agent — thay đổi hiện chỉ nằm trong sandbox/máy chủ dự án đã
+> tự check nhưng CHƯA push lên remote (chủ dự án tự xác nhận). Chưa migration/đổi schema gì (không cần).
+> **Chưa làm/còn treo:** chưa test thủ công trên UI thật (đặc biệt hành vi mở/gập tuần trên mobile) — chủ
+> dự án nên tự kiểm tra trước khi coi là xong hẳn.
+
+---
+## [2026-09-23 09:45] | Sidebar — Thêm Badge cho Thông báo "Chưa đọc" + Task trạng thái To-Do (not_started) | [Status: Success — verify bằng build/test thật]
+
+**Actor:** Agent
+
+**Files Changed:**
+- `frontend/src/lib/hooks/useSidebarBadgeCounts.ts` — thêm đúng 2 khối `useQuery` mới (mirror convention
+  có sẵn của chính file này, không sửa gì ở `layout.tsx`/nơi tiêu thụ):
+  1. `counts['thong-bao']` = số thông báo CHƯA ĐỌC — dùng CHUNG `queryKey: notificationKeys.poll` với
+     `useNotificationPoll()` (đang chạy trong `NotificationBell` ở Header) để React Query GỘP CHUNG 1
+     request polling `/notifications/poll`, không tạo thêm luồng polling riêng.
+  2. `counts['cong-viec-dinh-ky']` = số Công việc định kỳ đang ở trạng thái To-Do — tra `statusId` thật
+     của status hệ thống `code = 'not_started'` (seed cứng `isSystem: true` ở migration
+     `CreatePeriodicTaskStatuses`, ID phụ thuộc DB nên không đoán cứng) qua `periodic-task-statuses` (dùng
+     chung queryKey với `usePeriodicTaskStatuses.ts` để gộp cache), sau đó gọi
+     `periodicTasksApi.getAll({ statusId, limit: 1 })` đọc `.total`. BE tự lọc theo scope quyền của viewer
+     (own/phòng ban/tất cả) ở `PeriodicTasksService.findAll()`, KHÔNG lọc lại theo user/phòng ban ở FE —
+     mirror đúng cách nguồn badge "duyet-phep" (đơn chờ duyệt) đã làm từ trước.
+
+**Root Cause:**
+> Không phải bug — yêu cầu tính năng mới: sidebar chưa có Badge số lượng cho mục "Thông báo" và "Công việc
+> định kỳ" (trạng thái To-Do), trong khi cơ chế Badge tổng quát (`useSidebarBadgeCounts()` +
+> `<CountBadge count={badgeCounts[item.key]}>` ở `layout.tsx`) đã có sẵn cho các mục khác (Thùng rác, Nhân
+> viên chờ duyệt, Đơn nghỉ phép...).
+
+**Solution:**
+> Chỉ cần thêm đúng 1 khối `useQuery` mới cho mỗi nguồn badge (key khớp `nav-config.tsx`) vào
+> `useSidebarBadgeCounts.ts` — đúng như JSDoc sẵn có của chính hook này mô tả, không cần sửa
+> `layout.tsx`. Tận dụng lại API/hook đã tồn tại (`notificationsApi.poll()`, `periodicTaskStatusesApi`,
+> `periodicTasksApi`) và dùng chung queryKey với các hook polling/cache đã có để tránh gọi API trùng lặp.
+
+**Verify (chạy lệnh thật, không suy diễn):**
+> Frontend: `npm install` sạch, `next build` (Turbopack) "Compiled successfully" đủ route, `npx vitest run
+> nav-config useNotificationPoll` = **14/14 test PASS** (không có test riêng cho
+> `useSidebarBadgeCounts.ts` — chưa từng có file test cho hook này từ trước, không phải quy chuẩn có sẵn
+> của repo cho hook badge).
+
+**Notes:**
+> Không có quyền push GitHub trong sandbox Agent — thay đổi hiện chỉ nằm trong sandbox/máy chủ dự án đã
+> tự check nhưng CHƯA push lên remote (chủ dự án tự xác nhận). Không đổi backend, không cần migration.
+> **Chưa làm/còn treo:** chưa viết test riêng cho `useSidebarBadgeCounts.ts`; chủ dự án nên tự kiểm tra
+> bằng mắt trên UI thật (Badge "Thông báo" đổi số khi có thông báo mới, Badge "Công việc định kỳ" đúng số
+> Task `not_started` trong phạm vi quyền của từng role) trước khi coi là xong hẳn. Không phát hiện thêm
+> việc dở dang nào khác ngoài phạm vi yêu cầu lần này.
