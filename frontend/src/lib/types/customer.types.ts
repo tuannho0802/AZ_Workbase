@@ -170,6 +170,11 @@ export interface Customer {
     email?: string;
     role?: string;
   } | null;
+  // Chỉ có mặt ở report `GET /customers/reports/invalid-data?invalidType=
+  // duplicate_phone|duplicate_email` (getDuplicateContactReport() BE) — giá
+  // trị SĐT/Email đã chuẩn hoá (LOWER/TRIM cho email) dùng để nhóm các
+  // dòng bị trùng lại gần nhau khi tô màu ở CustomerDuplicateReportPage.
+  duplicateGroupKey?: string | null;
 }
 
 export interface PaginatedResponse<T> {

@@ -3169,6 +3169,27 @@ export class CustomersService {
   ) {
     const todayStr = todayVnStr();
 
+    // ⚠️ MỚI (2026-09-23): 'duplicate_phone'/'duplicate_email' — cảnh báo
+    // khách hàng bị trùng SĐT hoặc Email (KHÔNG tính trùng Tên, theo đúng
+    // yêu cầu người dùng). Tách thành nhánh riêng, return sớm, vì cần 2
+    // bước query (bước 1: tìm ra các GIÁ TRỊ phone/email nào đang bị trùng
+    // ≥2 khách; bước 2: lấy danh sách khách hàng thuộc các giá trị đó) —
+    // không dùng chung được khung `qb` 1 bước của các loại lỗi khác bên
+    // dưới. Permission `customers.invalid_report` vốn đã seed sẵn mô tả
+    // "Xem danh sách khách hàng bị trùng lặp/lỗi" từ migration
+    // UpdateCustomerPermissionDescriptions — tính năng này giờ mới thật sự
+    // lấp đúng phần "trùng lặp" đó, không cần permission mới.
+    if (invalidType === 'duplicate_phone' || invalidType === 'duplicate_email') {
+      return this.getDuplicateContactReport(
+        userId,
+        userRole,
+        invalidType === 'duplicate_email',
+        page,
+        limit,
+        scope,
+      );
+    }
+
     const qb = this.customersRepository
       .createQueryBuilder('customer')
       .leftJoinAndSelect('customer.salesUser', 'salesUser')
@@ -3203,6 +3224,102 @@ export class CustomersService {
       totalPages: Math.ceil(total / limit),
       checkedAgainst: todayStr,
       invalidType,
+    };
+  }
+
+  /**
+   * Report con của getInvalidDataReport(): khách hàng bị trùng SĐT hoặc
+   * Email (không tính Tên). Chạy 2 bước, CẢ 2 đều áp `applyViewFilter` —
+   * thiếu ở bước 1 sẽ khiến 1 user phạm vi hẹp (vd scope='own') thấy cờ
+   * "trùng" dựa trên khách hàng của người khác mà họ không có quyền xem;
+   * thiếu ở bước 2 thì lộ thẳng data ngoài phạm vi trong danh sách trả về.
+   *
+   * Bước 1: GROUP BY giá trị đã chuẩn hoá (SĐT dùng nguyên văn — cột này
+   * vốn đã UNIQUE ở DB nên nếu có ≥2 dòng trùng nghĩa là dữ liệu cũ trước
+   * khi có ràng buộc, hoặc bypass qua đường khác ngoài create()/update();
+   * Email dùng LOWER(TRIM(...)) vì "A@gmail.com" và "a@gmail.com" nên tính
+   * là cùng 1 địa chỉ) HAVING COUNT(*) > 1 → danh sách giá trị đang trùng.
+   * Bước 2: lấy toàn bộ khách hàng có giá trị nằm trong danh sách đó, sắp
+   * theo đúng giá trị trùng để các dòng cùng 1 nhóm luôn đứng cạnh nhau
+   * (FE tô màu xen kẽ theo nhóm dựa vào field `duplicateGroupKey` trả kèm
+   * mỗi dòng — xem CustomerDuplicateReportPage.tsx).
+   */
+  private async getDuplicateContactReport(
+    userId: number,
+    userRole: string,
+    isEmail: boolean,
+    page: number,
+    limit: number,
+    scope?: string | null,
+  ) {
+    const groupExpr = isEmail ? 'LOWER(TRIM(customer.email))' : 'customer.phone';
+    const nonEmptyCondition = isEmail
+      ? "customer.email IS NOT NULL AND TRIM(customer.email) != ''"
+      : "customer.phone IS NOT NULL AND customer.phone != ''";
+
+    const dupKeysQb = this.customersRepository
+      .createQueryBuilder('customer')
+      .select(groupExpr, 'dupKey')
+      .where('customer.deletedAt IS NULL')
+      .andWhere(nonEmptyCondition);
+
+    CustomerAccessHelper.applyViewFilter(dupKeysQb, userId, userRole, scope);
+
+    const dupRows = await dupKeysQb
+      .groupBy(groupExpr)
+      .having('COUNT(*) > 1')
+      .getRawMany<{ dupKey: string }>();
+
+    const dupKeys = dupRows.map((r) => r.dupKey).filter((k): k is string => !!k);
+
+    const invalidType = isEmail ? 'duplicate_email' : 'duplicate_phone';
+
+    if (dupKeys.length === 0) {
+      return {
+        data: [],
+        total: 0,
+        page,
+        limit,
+        totalPages: 0,
+        checkedAgainst: todayVnStr(),
+        invalidType,
+        duplicateGroupCount: 0,
+      };
+    }
+
+    const qb = this.customersRepository
+      .createQueryBuilder('customer')
+      .leftJoinAndSelect('customer.salesUser', 'salesUser')
+      .leftJoinAndSelect('customer.createdBy', 'createdBy')
+      .where('customer.deletedAt IS NULL')
+      .andWhere(`${groupExpr} IN (:...dupKeys)`, { dupKeys });
+
+    CustomerAccessHelper.applyViewFilter(qb, userId, userRole, scope);
+
+    const [rawData, total] = await qb
+      .orderBy(groupExpr, 'ASC')
+      .addOrderBy('customer.createdAt', 'ASC')
+      .skip((page - 1) * limit)
+      .take(limit)
+      .getManyAndCount();
+
+    // Gắn thêm `duplicateGroupKey` (giá trị SĐT/Email đã chuẩn hoá) vào mỗi
+    // dòng — FE dùng field này để tô nhóm liền kề, không cần tự chuẩn hoá
+    // lại LOWER/TRIM ở phía client (né lệch logic 2 bên).
+    const data = rawData.map((c) => ({
+      ...c,
+      duplicateGroupKey: isEmail ? (c.email ?? '').trim().toLowerCase() : c.phone,
+    }));
+
+    return {
+      data,
+      total,
+      page,
+      limit,
+      totalPages: Math.ceil(total / limit),
+      checkedAgainst: todayVnStr(),
+      invalidType,
+      duplicateGroupCount: dupKeys.length,
     };
   }
 }

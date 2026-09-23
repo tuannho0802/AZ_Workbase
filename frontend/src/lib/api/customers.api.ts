@@ -49,12 +49,24 @@ export const customersApi = {
    * Report data cũ đang vi phạm quy tắc "Ngày nhập data không được ở
    * tương lai" (inputDate > hôm nay theo giờ VN) — hữu ích để rà soát các
    * bản ghi nhập sai từ trước khi có validation này.
+   *
+   * `invalidType` cũng nhận 'duplicate_phone'/'duplicate_email' (cảnh báo
+   * khách hàng bị trùng SĐT/Email, không tính trùng Tên) — 2 loại này BE
+   * trả kèm `duplicateGroupCount` (số GIÁ TRỊ đang bị trùng, khác `total`
+   * là số DÒNG khách hàng) và mỗi dòng data có thêm `duplicateGroupKey` để
+   * FE tô nhóm liền kề — xem customer.types.ts.
    */
   getInvalidDataReport: async (params?: {
     invalidType?: string;
     page?: number;
     limit?: number;
-  }): Promise<PaginatedResponse<Customer> & { checkedAgainst: string; invalidType: string }> => {
+  }): Promise<
+    PaginatedResponse<Customer> & {
+      checkedAgainst: string;
+      invalidType: string;
+      duplicateGroupCount?: number;
+    }
+  > => {
     const response = await axiosInstance.get('/customers/reports/invalid-data', { params });
     return response.data;
   },
