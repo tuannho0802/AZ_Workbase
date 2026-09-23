@@ -3784,3 +3784,50 @@ trước) theo đúng Custom Instructions của Project.
 > **Chưa làm/còn treo:** chưa viết test riêng (unit/component) cho trang report này (chưa từng có test trước đó cho trang này); rowSpan gộp nhóm chỉ đảm bảo đúng trong PHẠM VI 1 TRANG hiện tại — nếu 1 nhóm bị BE cắt giữa 2 trang (hiếm, chỉ xảy ra khi nhóm đó nằm sát ranh giới `limit`), mỗi trang sẽ tự hiển thị đúng phần của nó (không hiện sai dữ liệu), chỉ là phần nhóm ở 2 trang sẽ không merge được với nhau — chấp nhận được vì đây là hạn chế cố hữu của mọi kiểu gộp nhóm có phân trang. Chủ dự án nên tự kiểm tra bằng mắt trên UI thật (mở 2 loại "Trùng SĐT"/"Trùng Email", xác nhận ô SĐT/Email được gộp đúng, màu nền/viền phân nhóm rõ ràng, UserMiniCard hiện đúng Avatar+tên, bấm Tag ở cột "Trùng với ai" điều hướng đúng khách hàng, Search/Filter Trạng thái lọc đúng).
 
 ---
+---
+## [2026-09-23 18:30] | Chèn nốt JSX filter bar (Sales/Marketing/Người tạo/Đã tham gia nhóm) vào trang Báo cáo dữ liệu không hợp lệ | [Status: Success — verify bằng build/test thật]
+
+**Actor:** Agent
+
+**⚠️ Xác nhận khi pull code thật:** đúng như người dùng báo — logic filter (state, handler, gửi API) đã có sẵn từ log trước, nhưng JSX 4 ô `<Select>` (Sales phụ trách/Marketing phụ trách/Người tạo/Đã tham gia nhóm) CHƯA từng được chèn vào thanh filter — trang chỉ hiện 3 ô cũ (Loại kiểm tra/Trạng thái/Tìm kiếm). Xác nhận qua grep trực tiếp trước khi sửa.
+
+**Files Changed:**
+- `frontend/src/app/(dashboard)/customers/reports/invalid-data/page.tsx` — chèn 4 ô `<Select>` mới vào thanh filter (giữa "Trạng thái" và "Tìm kiếm"), dùng đúng state/handler đã có sẵn (`salesUserId/marketingUserId/creatorId/joinedGroups` + `handle*Change`). Thêm `renderUserOption()` local (mirror đúng `CustomerFilters.tsx`: Avatar tô màu theo Vai trò + Tag Vai trò/Phòng ban/Vị trí) cho 3 dropdown Sales/Marketing/Người tạo. Dropdown "Đã tham gia nhóm" dùng đúng 2 option y hệt `/customers` ("Đã joined ít nhất 1 nhóm"/"Chưa joined nhóm nào"). Thêm import `React` (default, cần cho `React.CSSProperties`), `Avatar` (antd), `resolveEntityColor` (`@/lib/utils/entityColor`).
+
+**Root Cause:**
+> Lượt trước dừng đúng lúc vừa nối xong data-fetching layer (hooks lấy user list, state, handler, gửi filter lên BE) nhưng chưa kịp chèn phần JSX render — đã ghi rõ "còn thiếu" trong log/báo cáo trước, nhưng có thể người dùng đọc thấy dropdown Trạng thái/Tìm kiếm hoạt động nên tưởng đã xong hết.
+
+**Verify (chạy lệnh thật, không suy diễn):**
+> Frontend: `npm install` sạch. `tsc --noEmit` — 0 lỗi MỚI (5 lỗi pre-existing `logo.png`×4/`CountBadge` `style jsx` như các log trước, không liên quan file vừa sửa). `next build` (Turbopack) "Compiled successfully", đủ 36 route kể cả `/customers/reports/invalid-data`. `npx vitest run` = **10/10 file, 87/87 test PASS** (không regression).
+> Không đổi Backend (đã đúng/đủ từ log trước) — không cần `jest`/`nest build` lại.
+
+**Notes:**
+> Không có quyền push GitHub trong sandbox Agent — thay đổi hiện chỉ nằm trong sandbox, chủ dự án cần tự áp dụng patch/tải file lên máy dev/production thật.
+> Bug URL `/customers?id=53693` kẹt lại khi F5 (đã ghi ở log trước, hướng sửa dự kiến: `window.history.replaceState()` thay `router.replace()`) — CHƯA áp dụng trong lượt này, vẫn còn treo, cần làm ở lượt tiếp theo.
+> Chưa có test riêng (unit/component) cho trang report này. Chủ dự án nên tự kiểm tra bằng mắt trên UI thật (mở trang, xác nhận đủ 6 ô filter hiện ra đúng thứ tự, chọn từng ô lọc đúng, "Xóa bộ lọc" reset đủ cả 6, avatar/tag màu trong dropdown Sales/Marketing/Người tạo hiển thị đúng).
+
+---
+
+---
+## [2026-09-23 18:45] | Fix bug URL `/customers?id=X` kẹt lại kể cả sau F5 | [Status: Success — verify bằng build/test thật]
+
+**Actor:** Agent
+
+**Files Changed:**
+- `frontend/src/app/(dashboard)/customers/page.tsx` — đổi `router.replace(pathname)` thành `window.history.replaceState(null, '', pathname)` ở effect xoá query param `id` sau khi đã dùng xong (mở Drawer chi tiết khách hàng khi điều hướng từ `/chia-data`, `audit-logs`, thông báo...). Bỏ luôn `const router = useRouter()` + import `useRouter` (không còn nơi nào dùng trong file này sau khi sửa).
+
+**Root Cause:**
+> `router.replace(pathname)` của Next.js App Router có known-issue khi pathname đích TRÙNG pathname hiện tại (chỉ khác query string): Next.js đôi khi coi đây là "soft navigation" nội bộ và không cập nhật lại thanh địa chỉ trình duyệt dù state/searchParams nội bộ đã đổi — đặc biệt ngay sau khi vừa F5 (route vừa mount, router cache chưa ổn định). Hệ quả đúng như người dùng báo: mở `/customers?id=53693` rồi F5 lại, URL vẫn kẹt nguyên `?id=53693` trên thanh địa chỉ dù Drawer/state bên trong có thể đã tự đóng.
+
+**Solution:**
+> Gọi thẳng History API (`window.history.replaceState`) thay vì qua `router.replace()` của Next.js — không phụ thuộc route-segment cache/optimization nội bộ của Next, sửa URL trên thanh địa chỉ NGAY LẬP TỨC, không đổi hành vi nào khác của effect (vẫn xoá param `id` sau khi đã dùng để mở Drawer, vẫn không ảnh hưởng back/forward vì `replaceState` không tạo entry lịch sử mới, giống hệt `router.replace`).
+
+**Verify (chạy lệnh thật, không suy diễn):**
+> Frontend: `tsc --noEmit` (xoá cache `.tsbuildinfo` trước để chắc không bị cache che lỗi) = **0 lỗi** (kể cả 5 lỗi pre-existing `logo.png`/`CountBadge` ghi ở các log trước cũng không còn xuất hiện lại trong lần chạy sạch cache này). `next build` (Turbopack) "Compiled successfully", đủ 36 route kể cả `/customers`. `npx vitest run` = **10/10 file, 87/87 test PASS** (không regression).
+
+**Notes:**
+> Không có quyền push GitHub trong sandbox Agent — thay đổi hiện chỉ nằm trong sandbox, chủ dự án cần tự áp dụng patch/tải file lên máy dev/production thật.
+> Chủ dự án nên tự kiểm tra bằng mắt trên UI thật: mở `/customers?id=<id hợp lệ>` (hoặc bấm 1 dòng ở `/chia-data`/thông báo/audit-logs dẫn tới đó), xác nhận Drawer mở đúng khách + highlight đúng hàng, F5 lại trang, xác nhận thanh địa chỉ đã rụng hẳn `?id=...` về `/customers` sạch (không kẹt lại như trước).
+> Với việc này, cả 2 việc treo từ log trước (chèn JSX filter invalid-data + fix bug URL kẹt) đã xong.
+
+---

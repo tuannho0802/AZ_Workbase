@@ -5,7 +5,7 @@ import { Table, Card, Tag, App, Button, Space, Typography, Tooltip, Divider, Col
 import { UploadOutlined, DownloadOutlined, UsergroupAddOutlined, ReloadOutlined, PlusOutlined, InfoCircleOutlined, DeleteOutlined } from '@ant-design/icons';
 import type { ColumnsType, TablePaginationConfig } from 'antd/es/table';
 import type { FilterValue, SorterResult } from 'antd/es/table/interface';
-import { useSearchParams, useRouter, usePathname } from 'next/navigation';
+import { useSearchParams, usePathname } from 'next/navigation';
 import { customersApi } from '@/lib/api/customers.api';
 import { Customer, CustomerStats, RecentNote } from '@/lib/types/customer.types';
 import { useAuthStore } from '@/lib/stores/auth.store';
@@ -323,7 +323,6 @@ function CustomersPageContent() {
   // thấy drawer/tab "Gán data" + nút Sửa/Thu hồi nào - đây chính là lý do
   // "UI chưa có nút để thao tác" dù code các nút đó đã viết xong và đúng.
   const searchParams = useSearchParams();
-  const router = useRouter();
   const pathname = usePathname();
 
   // ── Highlight "mục tiêu" khi tới từ thông báo (bổ trợ thêm cho việc chỉ
@@ -363,7 +362,17 @@ function CustomersPageContent() {
       }
       // Xoá param khỏi URL sau khi đã dùng xong - tránh việc bấm "Làm mới"
       // trang hoặc back/forward lại tự mở nhầm đúng khách hàng đó lần nữa.
-      router.replace(pathname);
+      // ⚠️ FIX BUG THẬT (URL kẹt ở `/customers?id=X` kể cả sau F5 - báo cáo
+      // qua ảnh chụp màn hình): `router.replace(pathname)` của Next.js App
+      // Router có known-issue khi pathname đích TRÙNG pathname hiện tại (chỉ
+      // khác query) - Next.js đôi khi coi đây là "soft navigation" và không
+      // cập nhật lại thanh địa chỉ trình duyệt dù state nội bộ (searchParams)
+      // đã đổi, nhất là ngay sau khi vừa F5 (route vừa mount, router cache
+      // chưa ổn định). Gọi thẳng History API (`window.history.replaceState`)
+      // thay vì qua `router.replace()` - không phụ thuộc route-segment cache
+      // của Next, sửa URL trên thanh địa chỉ NGAY LẬP TỨC và đồng bộ 100% với
+      // logic xoá param đang có (không đổi hành vi nào khác của effect này).
+      window.history.replaceState(null, '', pathname);
     }
     // ⚠️ Phụ thuộc `searchParams` (trước đây `[]`, chỉ chạy lúc mount): bấm 1
     // thông báo khi ĐANG đứng sẵn ở /customers chỉ đổi query, không remount
