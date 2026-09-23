@@ -3700,3 +3700,5 @@ trước) theo đúng Custom Instructions của Project.
 > bằng mắt trên UI thật (Badge "Thông báo" đổi số khi có thông báo mới, Badge "Công việc định kỳ" đúng số
 > Task `not_started` trong phạm vi quyền của từng role) trước khi coi là xong hẳn. Không phát hiện thêm
 > việc dở dang nào khác ngoài phạm vi yêu cầu lần này.
+
+Now [deploy]
