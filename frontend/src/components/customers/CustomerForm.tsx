@@ -1,9 +1,11 @@
 'use client';
 
 import React, { useState, useEffect, useMemo } from 'react';
-import { Modal, Form, Input, Select, DatePicker, Row, Col, App, Tag, Typography, Button } from 'antd';
+import { Modal, Form, Input, Select, DatePicker, Row, Col, App, Tag, Typography, Button, Space } from 'antd';
 import { PlusOutlined, WarningOutlined } from '@ant-design/icons';
 import { customersApi } from '@/lib/api/customers.api';
+import { UserMiniCard } from '@/app/(dashboard)/attendance-device/UserMiniCard';
+import { resolveEntityColor } from '@/lib/utils/entityColor';
 import { useMediaSources } from '@/lib/hooks/useMediaSources';
 import { useCustomerStatuses } from '@/lib/hooks/useCustomerStatuses';
 import { useAllActiveLinkGroups } from '@/lib/hooks/useLinkGroups';
@@ -252,26 +254,64 @@ export const CustomerForm: React.FC<CustomerFormProps> = ({ open, customer, onCl
       });
       if (!dup.hasDuplicate) return true;
 
+      // ⚠️ MỚI (theo yêu cầu người dùng, xem ảnh chụp Modal cũ): thay vì hiện
+      // tên người tạo/Sales phụ trách bằng chữ thường trơn, dùng CHUNG
+      // <UserMiniCard> (Avatar + tên trong khối bo tròn) - ĐÚNG component đã
+      // dùng ở /chia-data, tab Máy chấm công... để đồng bộ UI toàn hệ thống.
+      // "Bỏ role": response của checkDuplicateContact() CHỈ trả creatorName/
+      // salesUserName dạng chuỗi (cố tình không trả role - xem JSDoc BE), nên
+      // không có gì để tô Tag Vai trò -> luôn `hideRoleTag`, dùng màu Avatar
+      // mặc định (`resolveEntityColor(undefined)`, ĐÚNG fallback màu chung
+      // toàn hệ thống khi thiếu dữ liệu role - xem `entityColor.ts`) thay vì
+      // tự bịa 1 màu riêng ở đây.
       const describeMatch = (
         label: string,
         value: string,
         match: { creatorName: string; salesUserName: string | null; groupNames: string[] },
-      ) => {
-        const salesPart =
-          match.salesUserName && match.salesUserName !== match.creatorName
-            ? ` (Sales phụ trách: ${match.salesUserName})`
-            : '';
+        key: string,
+      ): React.ReactNode => {
+        const hasSales = !!match.salesUserName && match.salesUserName !== match.creatorName;
         const groupPart =
-          match.groupNames.length > 0 ? ` và đã tham gia nhóm ${match.groupNames.join(', ')}` : '';
-        return `${label} ${value} đã được ${match.creatorName} thêm vào danh sách Khách hàng${salesPart}${groupPart}.`;
+          match.groupNames.length > 0 ? `và đã tham gia nhóm ${match.groupNames.join(', ')}` : '';
+        // Cỡ chữ 13 - khớp `nameFontSize` mặc định của <UserMiniCard> (13),
+        // để dòng chữ thường đứng cạnh mini-card không bị lệch cỡ (chữ
+        // paragraph mặc định của Modal.confirm là 14, to hơn 1 chút so với
+        // tên trong mini-card, đứng cạnh nhau nhìn lệch).
+        const textStyle: React.CSSProperties = { fontSize: 13 };
+        return (
+          <Space key={key} size={4} align="center" wrap style={{ rowGap: 4, marginBottom: 8 }}>
+            <Text style={textStyle}>{label} {value} đã được</Text>
+            <UserMiniCard
+              name={match.creatorName}
+              getRoleColor={() => resolveEntityColor(undefined)}
+              getRoleName={() => ''}
+              hideRoleTag
+              nameFontSize={13}
+            />
+            <Text style={textStyle}>thêm vào danh sách Khách hàng</Text>
+            {hasSales && (
+              <>
+                <Text style={textStyle}>, Sales phụ trách</Text>
+                <UserMiniCard
+                  name={match.salesUserName as string}
+                  getRoleColor={() => resolveEntityColor(undefined)}
+                  getRoleName={() => ''}
+                  hideRoleTag
+                  nameFontSize={13}
+                />
+              </>
+            )}
+            <Text style={textStyle}>{groupPart}.</Text>
+          </Space>
+        );
       };
 
-      const lines: string[] = [];
+      const lines: React.ReactNode[] = [];
       if (dup.phoneMatch && phoneValue) {
-        lines.push(describeMatch('Số điện thoại', phoneValue, dup.phoneMatch));
+        lines.push(describeMatch('Số điện thoại', phoneValue, dup.phoneMatch, 'phone'));
       }
       if (dup.emailMatch && emailValue) {
-        lines.push(describeMatch('Email', emailValue, dup.emailMatch));
+        lines.push(describeMatch('Email', emailValue, dup.emailMatch, 'email'));
       }
 
       return await new Promise<boolean>((resolve) => {
@@ -281,10 +321,8 @@ export const CustomerForm: React.FC<CustomerFormProps> = ({ open, customer, onCl
           width: 480,
           content: (
             <div>
-              {lines.map((line, idx) => (
-                <p key={idx} style={{ marginBottom: 8 }}>{line}</p>
-              ))}
-              <p style={{ marginBottom: 0 }}>
+              {lines}
+              <p style={{ marginBottom: 0, fontSize: 13 }}>
                 Bạn vẫn muốn {customer ? 'lưu thay đổi cho' : 'thêm'} khách hàng này?
               </p>
             </div>
