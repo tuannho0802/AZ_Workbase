@@ -231,7 +231,7 @@ export default function InvalidDataReportPage() {
               showIcon
               icon={<WarningOutlined />}
               title={`Phát hiện ${duplicateGroupCount} ${duplicateLabel.toLowerCase()} bị trùng`}
-              description={`Tổng cộng ${affectedCustomerCount} khách hàng liên quan đến ${duplicateGroupCount} ${duplicateLabel.toLowerCase()} bị lặp lại — mỗi màu Tag ở cột "${duplicateLabel}" bên dưới là 1 nhóm đang trùng nhau. Vì SĐT vốn đã được ràng buộc UNIQUE ở hệ thống, các trùng lặp còn sót lại thường là data nhập từ trước khi có ràng buộc này — cần rà soát thủ công (gộp/xoá bớt) để tránh 2 Sales cùng chăm 1 khách mà không biết.`}
+              description={`Tổng cộng ${affectedCustomerCount} khách hàng liên quan đến ${duplicateGroupCount} ${duplicateLabel.toLowerCase()} bị lặp lại — mỗi màu Tag ở cột "${duplicateLabel}" bên dưới là 1 nhóm đang trùng nhau. Hệ thống KHÔNG chặn việc nhập trùng SĐT/Email (để không cản trở nghiệp vụ khi nhiều Sales/phòng ban cùng làm việc) — nguyên nhân phổ biến nhất là Nhân viên chỉ thấy được data của mình (phân quyền OWN) nên vô tình nhập lại khách đã có người khác thêm trước đó. Cần rà soát thủ công (gộp/xoá bớt, hoặc gán chung 1 khách cho đúng Sales phụ trách) để tránh 2 Sales cùng chăm 1 khách mà không biết.`}
             />
           ) : (
             <Alert

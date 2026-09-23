@@ -1527,11 +1527,14 @@ describe('CustomersService', () => {
     });
 
     it('email chuẩn hoá LOWER/TRIM trước khi so khớp trùng', async () => {
-      const phoneQb = makeCustomerLookupQb(null);
+      // phone=null → nhánh phone bị bỏ qua hoàn toàn trong service (không
+      // gọi createQueryBuilder() lần nào cho phone) → CHỈ được queue đúng 1
+      // giá trị (emailQb) ở đây. Trước đó test này lỡ queue thêm phoneQb ở
+      // đầu hàng đợi dù nhánh phone không chạy → giá trị đó bị dùng NHẦM cho
+      // lần gọi createQueryBuilder() duy nhất (email), khiến assertion dưới
+      // kiểm tra sai object (phoneQb.andWhere thay vì emailQb.andWhere).
       const emailQb = makeCustomerLookupQb({ id: 5, createdBy: null, salesUser: null });
-      mockCustomerRepo.createQueryBuilder
-        .mockReturnValueOnce(phoneQb)
-        .mockReturnValueOnce(emailQb);
+      mockCustomerRepo.createQueryBuilder.mockReturnValueOnce(emailQb);
       mockCustomerRepo.manager.getRepository.mockReturnValue(makeMembershipRepo([]));
 
       await service.checkDuplicateContact(null, '  A@Gmail.com  ');

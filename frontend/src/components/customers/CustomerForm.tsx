@@ -214,7 +214,100 @@ export const CustomerForm: React.FC<CustomerFormProps> = ({ open, customer, onCl
     }
   }, [open, customer, form, sources, statuses]);
 
+  /**
+   * ⚠️ MỚI: Kiểm tra trùng SĐT/Email TRƯỚC khi thực sự tạo/sửa khách hàng.
+   *
+   * Use case thật: Employee chỉ thấy được data trong phạm vi quyền của
+   * mình (OWN) nên không biết khách này đã được người khác (Sales/phòng
+   * ban khác) nhập từ trước -> vô tình tạo trùng. `checkDuplicateContact()`
+   * ở BE cố tình bypass RBAC (xem xuyên mọi phạm vi) CHỈ để trả về đúng 3
+   * thông tin tối thiểu (người tạo/sales phụ trách/tên nhóm) phục vụ đúng
+   * cảnh báo này - không lộ thêm id/SĐT/Email/note của bản ghi đã tồn tại.
+   *
+   * Hệ thống KHÔNG chặn nhập trùng (không có UNIQUE constraint) - đây chỉ
+   * là CẢNH BÁO, người dùng xem xong vẫn có thể chọn "Vẫn tạo/Vẫn lưu" để
+   * tiếp tục bình thường (đúng yêu cầu "vẫn cho nhập trùng").
+   *
+   * Trả về `true` nếu được phép tiếp tục submit (không trùng, hoặc trùng
+   * nhưng người dùng đã xác nhận vẫn muốn tiếp tục), `false` nếu người
+   * dùng huỷ.
+   */
+  const confirmDuplicateIfNeeded = async (values: any): Promise<boolean> => {
+    const phoneValue: string | undefined = values.phone?.trim() || undefined;
+    const emailValue: string | undefined = values.email?.trim() || undefined;
+    if (!phoneValue && !emailValue) return true;
+
+    // Khi SỬA: chỉ cần kiểm tra lại field nào THỰC SỰ vừa bị đổi so với giá
+    // trị đã lưu - tránh làm phiền người dùng mỗi lần bấm "Lưu thay đổi"
+    // cho 1 khách vốn đã trùng từ trước (không đụng gì tới SĐT/Email).
+    const phoneChanged = !customer || (customer.phone ?? '') !== (phoneValue ?? '');
+    const emailChanged = !customer || (customer.email ?? '') !== (emailValue ?? '');
+    if (!phoneChanged && !emailChanged) return true;
+
+    try {
+      const dup = await customersApi.checkDuplicateContact({
+        phone: phoneChanged ? phoneValue : undefined,
+        email: emailChanged ? emailValue : undefined,
+        excludeId: customer?.id,
+      });
+      if (!dup.hasDuplicate) return true;
+
+      const describeMatch = (
+        label: string,
+        value: string,
+        match: { creatorName: string; salesUserName: string | null; groupNames: string[] },
+      ) => {
+        const salesPart =
+          match.salesUserName && match.salesUserName !== match.creatorName
+            ? ` (Sales phụ trách: ${match.salesUserName})`
+            : '';
+        const groupPart =
+          match.groupNames.length > 0 ? ` và đã tham gia nhóm ${match.groupNames.join(', ')}` : '';
+        return `${label} ${value} đã được ${match.creatorName} thêm vào danh sách Khách hàng${salesPart}${groupPart}.`;
+      };
+
+      const lines: string[] = [];
+      if (dup.phoneMatch && phoneValue) {
+        lines.push(describeMatch('Số điện thoại', phoneValue, dup.phoneMatch));
+      }
+      if (dup.emailMatch && emailValue) {
+        lines.push(describeMatch('Email', emailValue, dup.emailMatch));
+      }
+
+      return await new Promise<boolean>((resolve) => {
+        modal.confirm({
+          title: 'Phát hiện dữ liệu có thể bị trùng',
+          icon: <WarningOutlined style={{ color: '#faad14' }} />,
+          width: 480,
+          content: (
+            <div>
+              {lines.map((line, idx) => (
+                <p key={idx} style={{ marginBottom: 8 }}>{line}</p>
+              ))}
+              <p style={{ marginBottom: 0 }}>
+                Bạn vẫn muốn {customer ? 'lưu thay đổi cho' : 'thêm'} khách hàng này?
+              </p>
+            </div>
+          ),
+          okText: customer ? 'Vẫn lưu' : 'Vẫn tạo',
+          cancelText: 'Huỷ',
+          onOk: () => resolve(true),
+          onCancel: () => resolve(false),
+        });
+      });
+    } catch (err) {
+      // Không chặn việc tạo/sửa khách hàng chỉ vì bước kiểm tra trùng bị lỗi
+      // (vd mất mạng tạm thời, timeout) - im lặng bỏ qua, coi như không phát
+      // hiện trùng, để không cản trở nghiệp vụ chính.
+      console.error('Kiểm tra trùng SĐT/Email thất bại (bỏ qua, vẫn cho tiếp tục):', err);
+      return true;
+    }
+  };
+
   const handleSubmit = async (values: any) => {
+    const canProceed = await confirmDuplicateIfNeeded(values);
+    if (!canProceed) return;
+
     setLoading(true);
     try {
       const payload = {

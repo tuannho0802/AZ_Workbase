@@ -3728,3 +3728,29 @@ trước) theo đúng Custom Instructions của Project.
 **Notes:**
 > Chưa chạy `next build` đầy đủ, chưa test bằng mắt trên DB thật. Không phát hiện thêm bug thật nào khác trong phạm vi này.
 
+
+---
+## [2026-09-23 16:58] | Hoàn thiện tính năng cảnh báo trùng SĐT/Email khi tạo/sửa Khách hàng (nối tiếp phiên trước, đã xong) | [Status: Success — verify bằng build/test thật]
+
+**Actor:** Agent
+
+**Files Changed:**
+- `backend/src/modules/customers/customers.service.spec.ts` — sửa 1 test bug thật ("email chuẩn hoá LOWER/TRIM trước khi so khớp trùng"): test truyền `phone=null` (nhánh phone không hề gọi `createQueryBuilder()`) nhưng vẫn queue 2 giá trị mock (`phoneQb` trước, `emailQb` sau) → lần gọi `createQueryBuilder()` duy nhất (email) bị nhận nhầm `phoneQb` → assertion kiểm tra sai object. Sửa: chỉ queue đúng 1 giá trị (`emailQb`) khớp đúng số lần service thực sự gọi.
+- `frontend/src/components/customers/CustomerForm.tsx` — thêm `confirmDuplicateIfNeeded()`: gọi `customersApi.checkDuplicateContact()` trước khi thực sự submit (cả tạo mới lẫn sửa — sửa thì CHỈ kiểm tra lại khi SĐT/Email THỰC SỰ bị đổi so với giá trị đã lưu, tránh làm phiền mỗi lần lưu 1 khách vốn đã trùng từ trước). Nếu phát hiện trùng, hiện `Modal.confirm` liệt kê "SĐT/Email X đã được <người tạo> thêm vào danh sách Khách hàng (Sales phụ trách: Y) và đã tham gia nhóm A, B." + hỏi "Bạn vẫn muốn thêm/lưu khách hàng này?" — Huỷ thì dừng lại, Vẫn tạo/Vẫn lưu thì tiếp tục luồng cũ y nguyên (KHÔNG chặn tạo trùng — hệ thống cố tình không có UNIQUE constraint trên phone/email, đây chỉ là cảnh báo). Lỗi khi gọi API kiểm tra (mất mạng...) bị nuốt và cho qua, không chặn nghiệp vụ chính.
+- `frontend/src/app/(dashboard)/customers/reports/invalid-data/page.tsx` — sửa bug thật: cả 2 chỗ dùng `<Alert>` truyền prop `title=` (Alert của antd không có prop này, đúng phải là `message=`) khiến dòng tiêu đề cảnh báo "Phát hiện X trùng..."/"Không phát hiện..." không hiển thị. Đồng thời sửa nội dung mô tả đang SAI THỰC TẾ hệ thống ("Vì SĐT vốn đã được ràng buộc UNIQUE ở hệ thống...") — hệ thống KHÔNG có UNIQUE constraint, cố tình cho phép nhập trùng — đổi lại đúng nguyên nhân thật (Employee chỉ thấy data theo phạm vi quyền OWN nên vô tình nhập trùng khách người khác đã thêm).
+
+**Root Cause:**
+> Phiên trước đã code xong phần lớn Backend (`checkDuplicateContact()`, endpoint `GET /customers/check-duplicate`, sửa bug 500 ở report trùng lặp) nhưng còn treo: 1 test tsc/jest lỗi thật, Frontend (`CustomerForm.tsx`) chưa hề gọi API kiểm tra trùng nào, và 1 bug Alert `title` phát hiện tình cờ chưa được sửa.
+
+**Solution:**
+> Hoàn thiện đúng 3 việc còn treo đã ghi rõ ở lượt trước — không đổi lại logic Backend đã đúng, chỉ sửa 1 test bug thật + nối luồng Frontend + sửa bug Alert.
+
+**Verify (chạy lệnh thật, không suy diễn):**
+> Backend: `npm install` sạch, `tsc --noEmit` sạch, `nest build` sạch, `npx jest` FULL = **47/47 suite, 900/900 test PASS** (không regression).
+> Frontend: `npm install` sạch, `tsc --noEmit` — 0 lỗi mới (5 lỗi pre-existing `logo.png`/`CountBadge` như log cũ đã ghi, không liên quan), `next build` (Turbopack) "Compiled successfully" đủ route kể cả `/customers` và `/customers/reports/invalid-data`, `npx vitest run` = **10/10 file, 87/87 test PASS**.
+
+**Notes:**
+> Không có quyền push GitHub trong sandbox Agent — thay đổi hiện chỉ nằm trong sandbox, chủ dự án cần tự áp dụng patch/tải file lên máy dev/production thật.
+> **Chưa làm/còn treo:** chưa viết test riêng (unit/component) cho `confirmDuplicateIfNeeded()` ở FE (chưa có quy chuẩn test cho `CustomerForm.tsx` từ trước — component này chưa từng có file test); chủ dự án nên tự kiểm tra bằng mắt trên UI thật (tạo khách trùng SĐT với khách có sẵn → Modal hiện đúng tên người tạo/Sales/nhóm, bấm "Vẫn tạo" vẫn tạo được bình thường, bấm "Huỷ" thì dừng lại không gọi API tạo). Không phát hiện thêm việc dở dang nào khác ngoài phạm vi yêu cầu lần này.
+
+---
