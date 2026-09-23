@@ -193,13 +193,15 @@ describe('NotificationsService', () => {
         recipients: { customer: { salesUserId: 2 } },
       });
       const paramsJson = notifRepo.query.mock.calls[0][1][11];
-      // `entityName` (từ `baseEmit`) được BE tự gộp vào params (để FE
-      // highlight tên khách/task trong `title` - xem `emitNow`) - SĐT/số
-      // tiền vẫn bị allowlist loại bỏ.
-      expect(paramsJson).toBe('{"count":4,"entityName":"Nguyễn A"}');
+      // `entityName`/`actorName` (từ `baseEmit`) được BE tự gộp vào params
+      // (để FE highlight tên khách/task VÀ tên actor trong `title` bằng
+      // `UserMiniCard` - xem `emitNow`) - SĐT/số tiền vẫn bị allowlist loại bỏ.
+      expect(paramsJson).toBe(
+        '{"count":4,"entityName":"Nguyễn A","actorName":"Actor"}',
+      );
     });
 
-    it('entityName rỗng (batch) → KHÔNG gộp vào params', async () => {
+    it('entityName rỗng (batch) → KHÔNG gộp entityName vào params, actorName vẫn gộp', async () => {
       userRepo.find.mockResolvedValue([activeUser(2)]);
       await service.emitNow({
         ...baseEmit,
@@ -208,7 +210,20 @@ describe('NotificationsService', () => {
         recipients: { customer: { salesUserId: 2 } },
       });
       const paramsJson = notifRepo.query.mock.calls[0][1][11];
-      expect(paramsJson).toBe('{"count":4}');
+      expect(paramsJson).toBe('{"count":4,"actorName":"Actor"}');
+    });
+
+    it('actor = Hệ thống (actorId null) → KHÔNG gộp actorName vào params', async () => {
+      userRepo.find.mockResolvedValue([activeUser(2)]);
+      await service.emitNow({
+        ...baseEmit,
+        actorId: null,
+        actorName: undefined,
+        params: { count: 4 },
+        recipients: { customer: { salesUserId: 2 } },
+      });
+      const paramsJson = notifRepo.query.mock.calls[0][1][11];
+      expect(paramsJson).toBe('{"count":4,"entityName":"Nguyễn A"}');
     });
 
     it('batch (entity.id = null) → khoá dùng "batch", không lỗi', async () => {

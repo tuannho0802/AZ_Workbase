@@ -7,6 +7,20 @@ import { resolveNotificationTarget } from '@/lib/notifications/resolve-link';
 import { highlightEntityName } from '@/lib/notifications/highlight-entity-name';
 import { formatFullTime, formatRelative } from '@/lib/utils/relative-time';
 import { CategoryIconBadge } from '@/lib/notifications/category-meta';
+// ⚠️ MỚI (2026-09-23, yêu cầu chủ dự án) - dòng "Từ ... đến ..." riêng cho
+// thông báo THỦ CÔNG (category='manual'), dùng CHUNG <UserMiniCard> (Avatar +
+// tên, bỏ Tag Vai trò), ĐÚNG pattern cột "Người tạo" ở /chia-data thay vì tự
+// vẽ text trơn. Người nhận = CHÍNH người đang xem hộp thư (mỗi dòng
+// `notifications` là 1 bản ghi/1 recipient) - lấy thẳng từ `useAuthStore`,
+// không cần BE trả thêm field nào.
+import { UserMiniCard } from '@/app/(dashboard)/attendance-device/UserMiniCard';
+import { useAuthStore } from '@/lib/stores/auth.store';
+import { resolveEntityColor } from '@/lib/utils/entityColor';
+
+// Xem JSDoc đầy đủ ở `highlight-entity-name.tsx` - "bỏ role" là yêu cầu rõ
+// ràng của chủ dự án cho khối này, không phải thiếu dữ liệu.
+const getRoleColorNoop = () => resolveEntityColor(undefined);
+const getRoleNameNoop = () => '';
 
 interface NotificationRowProps {
   item: NotificationItem;
@@ -46,6 +60,10 @@ export function NotificationRow({
   // Mọi loại (tự động lẫn thủ công) đều chỉ ẨN khỏi hộp thư (BE set
   // `dismissed_at`, không xoá dòng) - xem lại + khôi phục ở tab "Đã ẩn".
   const removeLabel = 'Ẩn thông báo';
+
+  // "Từ ... đến ..." - CHỈ thông báo thủ công (xem JSDoc import ở đầu file).
+  const currentUserName = useAuthStore((s) => s.user?.name);
+  const senderName = typeof item.params?.senderName === 'string' ? item.params.senderName : null;
 
   return (
     <div
@@ -105,6 +123,27 @@ export function NotificationRow({
               <Tag style={{ margin: 0, lineHeight: '16px', fontSize: 11 }}>Không khả dụng</Tag>
             )}
           </span>
+
+          {item.category === 'manual' && (
+            <span style={{ display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: 6, fontSize: 12 }}>
+              <span style={{ color: '#94a3b8' }}>Từ</span>
+              <UserMiniCard
+                name={senderName ?? 'Hệ thống'}
+                getRoleColor={getRoleColorNoop}
+                getRoleName={getRoleNameNoop}
+                hideRoleTag
+                nameFontSize={12}
+              />
+              <span style={{ color: '#94a3b8' }}>đến</span>
+              <UserMiniCard
+                name={currentUserName ?? 'Bạn'}
+                getRoleColor={getRoleColorNoop}
+                getRoleName={getRoleNameNoop}
+                hideRoleTag
+                nameFontSize={12}
+              />
+            </span>
+          )}
         </span>
 
         {!item.isRead && (

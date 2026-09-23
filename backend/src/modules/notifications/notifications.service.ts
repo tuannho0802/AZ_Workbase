@@ -212,9 +212,17 @@ export class NotificationsService {
       // rồi mất) - FE cần giá trị này để highlight tên khách hàng/task trong
       // dòng thông báo (không suy ngược từ `title` vì actorName có thể trùng
       // 1 phần chuỗi). Bỏ qua chuỗi rỗng (batch `entityName: ''`).
+      // ⚠️ MỚI (2026-09-23, yêu cầu chủ dự án) - `actorName` cũng gộp vào
+      // `params` theo ĐÚNG lý do trên: FE (`highlight-entity-name.tsx`) giờ
+      // thay chỗ tô `<mark>` tên actor bằng component `UserMiniCard` dùng
+      // chung (Avatar + tên, bỏ Tag Vai trò) - cần giá trị THẬT (không suy
+      // ngược từ `title`) để tìm đúng vị trí thay thế. Actor "Hệ thống" (actor
+      // null) KHÔNG gộp vào (không phải user thật, không có gì để render
+      // UserMiniCard).
       const params = sanitizeParams({
         ...input.params,
         ...(input.entityName ? { entityName: input.entityName } : {}),
+        ...(input.actorId !== null ? { actorName } : {}),
       });
       const paramsJson = params ? JSON.stringify(params) : null;
       const now = new Date();
