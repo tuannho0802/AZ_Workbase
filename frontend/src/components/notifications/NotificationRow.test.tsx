@@ -3,6 +3,7 @@ import { render, screen, fireEvent } from '@testing-library/react';
 import { NotificationRow } from './NotificationRow';
 import { NotificationDetailModal } from './NotificationDetailModal';
 import { useNotificationUiStore } from '@/lib/stores/notification-ui.store';
+import { useAuthStore } from '@/lib/stores/auth.store';
 import type { NotificationItem } from '@/lib/types/notification.types';
 
 const make = (over: Partial<NotificationItem> = {}): NotificationItem => ({
@@ -142,6 +143,84 @@ describe('NotificationRow', () => {
     );
     expect(container.querySelector('mark')).toBeNull();
     expect(screen.getByText('An vừa cập nhật khách hàng Nguyễn Văn B.')).toBeInTheDocument();
+  });
+
+  it('có params.actorName khớp trong title → thay bằng UserMiniCard (Avatar + tên), KHÔNG hiện Tag Vai trò (yêu cầu "bỏ role")', () => {
+    const { container } = render(
+      <NotificationRow
+        item={make({ params: { actorName: 'An' } })}
+        onOpen={vi.fn()}
+        onRemove={vi.fn()}
+      />,
+    );
+    // Tên actor vẫn hiện đủ (bên trong UserMiniCard) - không split mất chữ.
+    expect(screen.getAllByText('An').length).toBeGreaterThan(0);
+    // "bỏ role" - UserMiniCard nhận hideRoleTag, không có Tag nào render.
+    expect(container.querySelector('.ant-tag')).toBeNull();
+    // entityName (nếu có) vẫn tô <mark> song song, không bị actorName che mất.
+    expect(screen.getByText('Nguyễn Văn B.', { exact: false })).toBeInTheDocument();
+  });
+
+  it('có cả params.actorName VÀ params.entityName → actorName ra UserMiniCard, entityName vẫn ra <mark>, không chồng lấn', () => {
+    const { container } = render(
+      <NotificationRow
+        item={make({ params: { actorName: 'An', entityName: 'Nguyễn Văn B' } })}
+        onOpen={vi.fn()}
+        onRemove={vi.fn()}
+      />,
+    );
+    const mark = container.querySelector('mark');
+    expect(mark).not.toBeNull();
+    expect(mark?.textContent).toBe('Nguyễn Văn B');
+    expect(screen.getAllByText('An').length).toBeGreaterThan(0);
+    expect(container.textContent).toContain('vừa cập nhật khách hàng');
+  });
+
+  it('category="manual" → hiện dòng "Từ [sender] đến [người đang xem]" dùng UserMiniCard, bỏ role', () => {
+    useAuthStore.setState({ isAuthenticated: true, user: { id: 9, name: 'Nguyễn Văn Xem' } as never });
+    const { container } = render(
+      <NotificationRow
+        item={make({
+          category: 'manual',
+          eventType: 'manual.broadcast',
+          entityType: null,
+          entityId: null,
+          title: 'Họp toàn công ty lúc 9h',
+          params: { senderName: 'Quản trị viên' },
+        })}
+        onOpen={vi.fn()}
+        onRemove={vi.fn()}
+      />,
+    );
+    expect(screen.getByText('Từ')).toBeInTheDocument();
+    expect(screen.getByText('đến')).toBeInTheDocument();
+    expect(screen.getByText('Quản trị viên')).toBeInTheDocument();
+    expect(screen.getByText('Nguyễn Văn Xem')).toBeInTheDocument();
+    expect(container.querySelector('.ant-tag')).toBeNull();
+    useAuthStore.setState({ isAuthenticated: false, user: null });
+  });
+
+  it('category="manual" thiếu senderName (thông báo hệ thống cũ) → fallback "Hệ thống"', () => {
+    render(
+      <NotificationRow
+        item={make({
+          category: 'manual',
+          eventType: 'manual.broadcast',
+          entityType: null,
+          entityId: null,
+          params: null,
+        })}
+        onOpen={vi.fn()}
+        onRemove={vi.fn()}
+      />,
+    );
+    expect(screen.getByText('Hệ thống')).toBeInTheDocument();
+  });
+
+  it('category !== "manual" → KHÔNG hiện dòng "Từ ... đến ..."', () => {
+    render(<NotificationRow item={make()} onOpen={vi.fn()} onRemove={vi.fn()} />);
+    expect(screen.queryByText('Từ')).not.toBeInTheDocument();
+    expect(screen.queryByText('đến')).not.toBeInTheDocument();
   });
 });
 
