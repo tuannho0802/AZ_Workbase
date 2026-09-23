@@ -3754,3 +3754,33 @@ trước) theo đúng Custom Instructions của Project.
 > **Chưa làm/còn treo:** chưa viết test riêng (unit/component) cho `confirmDuplicateIfNeeded()` ở FE (chưa có quy chuẩn test cho `CustomerForm.tsx` từ trước — component này chưa từng có file test); chủ dự án nên tự kiểm tra bằng mắt trên UI thật (tạo khách trùng SĐT với khách có sẵn → Modal hiện đúng tên người tạo/Sales/nhóm, bấm "Vẫn tạo" vẫn tạo được bình thường, bấm "Huỷ" thì dừng lại không gọi API tạo). Không phát hiện thêm việc dở dang nào khác ngoài phạm vi yêu cầu lần này.
 
 ---
+## [2026-09-23 17:35] | Hoàn thiện UI trang Báo cáo dữ liệu không hợp lệ (gộp nhóm trùng, UserMiniCard, emoji dropdown, Search/Filter) | [Status: Success — verify bằng build/test thật]
+
+**Actor:** Agent
+
+**⚠️ Lưu ý phát hiện khi pull code thật:** log `[2026-09-23 16:58]` phía trên ghi đã sửa bug `<Alert title=...>` thành `message=` ở `invalid-data/page.tsx`, nhưng đọc trực tiếp file thật (vừa `git clone` lại) thì bug đó VẪN CÒN NGUYÊN (đúng như ảnh chụp màn hình người dùng gửi kèm — khung cảnh báo trống trơn không hiện chữ). Có thể thay đổi đó chưa từng được push, hoặc bị ghi đè bởi commit sau (`c800c1c "Add new search and filter for UI (Not yet done)"`). Không suy diễn thêm — chỉ ghi nhận thực tế đã verify và sửa lại đúng trong lượt này.
+
+**Files Changed:**
+- `frontend/src/app/(dashboard)/customers/reports/invalid-data/page.tsx` — viết lại toàn bộ:
+  - **Gộp nhóm trực quan** (yêu cầu người dùng: "row nào trùng nhau thì thành 1 group bất chấp ngày hay gì"): BE (`getDuplicateContactReport`) vốn đã sắp các dòng cùng `duplicateGroupKey` liền kề nhau trong mỗi trang — giờ FE merge ô SĐT/Email của cả nhóm thành 1 ô duy nhất (`rowSpan` theo pattern chuẩn của antd Table), cộng thêm tô nền xen kẽ theo NHÓM (không phải theo dòng lẻ) + viền phân cách đậm ở dòng đầu mỗi nhóm mới (`.dup-group-even/-odd/-start` — thêm vào `globals.css`, mirror đúng cách dùng class `> td` như `.notif-focus-flash` đã có sẵn, KHÔNG dùng `<style jsx>` vì đó chính là nguyên nhân gây lỗi tsc pre-existing ở `CountBadge.tsx`).
+  - **UserMiniCard** (yêu cầu người dùng): cột "Sales" và "Người tạo" đổi từ text trơn sang `<UserMiniCard>` (Avatar tô màu theo Vai trò + tên), đúng pattern đã dùng ở `/chia-data` — dùng `useRoleColorMap()`/`useRoleColors()` (route `/roles/colors`, KHÔNG cần quyền `roles.view`, an toàn cho Employee/Assistant).
+  - **Emoji cho dropdown** (yêu cầu người dùng): cả 5 lựa chọn "Loại kiểm tra" đều có emoji riêng biệt (📅/📵/📭/⚠️📞/⚠️✉️), không chỉ 2 loại trùng lặp như trước.
+  - **Cột "Trùng với ai" (MỚI)**: BE/type đã sẵn `duplicatePeers` (id+tên các khách khác đang trùng, đã có từ trước nhưng FE chưa dùng) — giờ hiển thị Tag bấm được, điều hướng thẳng `/customers?id=`.
+  - **Search + Filter Trạng thái (MỚI)**: BE đã hỗ trợ `search`/`status` từ trước (commit `c8f27ff`) nhưng FE chưa có UI gọi — thêm `Input.Search` + `Select` Trạng thái (nguồn động từ `/customer-statuses`) + nút "Xóa bộ lọc", áp dụng cho MỌI loại report (không riêng 2 loại trùng lặp).
+  - Cột "Trạng thái" đổi sang `<StatusTag>` (đúng màu/tên cấu hình ở `/quan-ly-status-khach`) thay vì in thẳng `code` thô.
+  - **FIX BUG THẬT**: `<Alert>` của antd không có prop `title` — đổi đúng thành `message` (tiêu đề) + `description` (mô tả) ở cả 2 nhánh cảnh báo trùng lặp.
+  - Card giờ có `title` động (emoji + tên loại đang xem) và `extra` hiện nhanh số khách hàng/số nhóm trùng.
+- `frontend/src/app/globals.css` — thêm 3 class `.dup-group-even/-odd/-start` (mô tả ở trên).
+
+**Root Cause:**
+> Yêu cầu người dùng trực tiếp qua ảnh chụp màn hình + chat: gộp nhóm trực quan, áp UserMiniCard, thêm emoji dropdown, "handle giúp phần này" (hoàn thiện các việc còn treo đã ghi ở log `16:58` — Search/Filter UI, cột "Trùng với ai" — vốn BE/type đã sẵn sàng từ trước nhưng FE chưa nối).
+
+**Verify (chạy lệnh thật, không suy diễn):**
+> Frontend: `npm install` sạch. `tsc --noEmit` — 0 lỗi MỚI (5 lỗi pre-existing `logo.png`×4/`CountBadge` `style jsx` như các log trước đã ghi, đã tự confirm lại bằng `git stash` — không liên quan file vừa sửa). `next build` (Turbopack) "Compiled successfully", đủ 36 route kể cả `/customers/reports/invalid-data`. `npx vitest run` = **10/10 file, 87/87 test PASS** (không regression, không có test riêng cho trang report này từ trước).
+> Không đổi Backend — không cần `jest`/`nest build` lại trong lượt này.
+
+**Notes:**
+> Không có quyền push GitHub trong sandbox Agent — thay đổi hiện chỉ nằm trong sandbox, chủ dự án cần tự áp dụng patch/tải file lên máy dev/production thật.
+> **Chưa làm/còn treo:** chưa viết test riêng (unit/component) cho trang report này (chưa từng có test trước đó cho trang này); rowSpan gộp nhóm chỉ đảm bảo đúng trong PHẠM VI 1 TRANG hiện tại — nếu 1 nhóm bị BE cắt giữa 2 trang (hiếm, chỉ xảy ra khi nhóm đó nằm sát ranh giới `limit`), mỗi trang sẽ tự hiển thị đúng phần của nó (không hiện sai dữ liệu), chỉ là phần nhóm ở 2 trang sẽ không merge được với nhau — chấp nhận được vì đây là hạn chế cố hữu của mọi kiểu gộp nhóm có phân trang. Chủ dự án nên tự kiểm tra bằng mắt trên UI thật (mở 2 loại "Trùng SĐT"/"Trùng Email", xác nhận ô SĐT/Email được gộp đúng, màu nền/viền phân nhóm rõ ràng, UserMiniCard hiện đúng Avatar+tên, bấm Tag ở cột "Trùng với ai" điều hướng đúng khách hàng, Search/Filter Trạng thái lọc đúng).
+
+---

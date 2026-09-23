@@ -145,6 +145,23 @@ body {
   box-shadow: 0 0 0 2px #fa8c16;
   background-color: #fffaf0 !important;
 }
+/* ────────────────────────────────────────────────────────────────────
+   Report "Trùng SĐT/Email" (invalid-data): các dòng có cùng
+   `duplicateGroupKey` phải NHÌN RÕ là 1 nhóm dù không đứng cạnh nhau về
+   ngày/trạng thái - tô nền xen kẽ theo nhóm (không phải theo dòng lẻ) +
+   viền trên đậm hơn ở dòng đầu mỗi nhóm mới để mắt thường thấy ranh giới.
+   Mirror đúng cách dùng class `> td` như `.notif-focus-flash` phía trên.
+   ──────────────────────────────────────────────────────────────────── */
+.dup-group-even > td {
+  background-color: #fff !important;
+}
+.dup-group-odd > td {
+  background-color: #fafcff !important;
+}
+.dup-group-start > td {
+  border-top: 2px solid #91caff !important;
+}
+
 @media (prefers-reduced-motion: reduce) {
   .notif-focus-flash > td,
   .notif-focus-flash.notif-focus-flash-card {
