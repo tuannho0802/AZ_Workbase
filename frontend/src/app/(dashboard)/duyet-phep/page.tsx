@@ -540,9 +540,14 @@ export default function ApprovalPage() {
       title: 'Loại phép',
       dataIndex: 'leaveType',
       width: 100,
-      render: (type: string) => {
+      render: (type: string, record: LeaveRequest) => {
         const info = leaveTypeMap[type] ?? { text: type, color: 'default' };
-        return <Tag color={info.color}>{info.text}</Tag>;
+        return (
+          <>
+            <Tag color={info.color}>{info.text}</Tag>
+            {record.isSupplementary && <Tag color="gold">Đơn bổ sung</Tag>}
+          </>
+        );
       }
     },
     {
@@ -647,9 +652,14 @@ export default function ApprovalPage() {
       title: 'Loại phép',
       dataIndex: 'leaveType',
       width: 100,
-      render: (type: string) => {
+      render: (type: string, record: LeaveRequest) => {
         const info = leaveTypeMap[type] ?? { text: type, color: 'default' };
-        return <Tag color={info.color}>{info.text}</Tag>;
+        return (
+          <>
+            <Tag color={info.color}>{info.text}</Tag>
+            {record.isSupplementary && <Tag color="gold">Đơn bổ sung</Tag>}
+          </>
+        );
       }
     },
     {
