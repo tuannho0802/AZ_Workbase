@@ -37,6 +37,10 @@ import { resolveEntityColor } from '@/lib/utils/entityColor';
 // usersData - không tự động áp rule 'sales', nên bấm "Chọn Sales nhận data" vẫn
 // ra tất cả user (kể cả Admin/phòng ban khác) nếu không tự tay lọc.
 import { useAssignmentGroupUsers } from '@/lib/hooks/useAssignmentGroups';
+// ⚠️ MỚI - dùng CHUNG component "mini-card" nhân viên đã có sẵn (Avatar +
+// tên + Tag Vai trò), ĐÚNG pattern trash-can/duyet-phep/phong-ban đang dùng,
+// thay vì tự vẽ text trơn cho cột "Người tạo".
+import { UserMiniCard } from '@/app/(dashboard)/attendance-device/UserMiniCard';
 // ⚠️ MỚI - cột "Ghi chú gần nhất" giờ lấy từ bảng customer_notes (batch
 // attachRecentNotes() ở BE), Y CHANG cột cùng tên ở /customers - dùng
 // chung type RecentNote đã export sẵn ở đó thay vì tự định nghĩa lại.
@@ -103,8 +107,11 @@ interface Customer {
   inputDate: string | null;
   salesUser: { id: number; name: string; fullName?: string } | null;
   marketingUser: { id: number; name: string; fullName?: string } | null;
-  createdBy: { id: number; name: string; fullName?: string } | null;
-  updatedBy?: { id: number; name: string; fullName?: string } | null;
+  // ⚠️ MỚI - thêm `role` (BE trả sẵn, User entity không `select: false` cho
+  // cột này) để render bằng <UserMiniCard> (Avatar + Tag màu Vai trò) thay
+  // vì text trơn, ĐÚNG pattern đã dùng ở trash-can/duyet-phep/phong-ban.
+  createdBy: { id: number; name: string; fullName?: string; role?: string } | null;
+  updatedBy?: { id: number; name: string; fullName?: string; role?: string } | null;
   createdAt: string;
   updatedAt?: string;
 }
@@ -606,10 +613,25 @@ export default function ChiaDataPage() {
       render: (_: any, r: Customer) => renderRecentNotesCell(r, recentNotesCount),
     },
     {
-      title: 'Người tạo', width: 130,
+      // ⚠️ SỬA (yêu cầu người dùng) - "Người tạo" trước đây chỉ hiện text
+      // trơn - giờ dùng CHUNG <UserMiniCard> (Avatar + Tag Vai trò), ĐÚNG
+      // pattern trash-can/duyet-phep - vẫn giữ Tooltip renderAuditTrail bọc
+      // ngoài (hiện giờ:phút tạo + sửa cuối khi di chuột).
+      title: 'Người tạo', width: 190,
       render: (_: any, r: Customer) => (
         <Tooltip title={renderAuditTrail(r)}>
-          <span style={{ cursor: 'help' }}>{r.createdBy?.name || 'Hệ thống'}</span>
+          <span style={{ cursor: 'help', display: 'inline-block' }}>
+            {r.createdBy ? (
+              <UserMiniCard
+                name={r.createdBy.name}
+                role={r.createdBy.role}
+                getRoleColor={getRoleColor}
+                getRoleName={getRoleName}
+              />
+            ) : (
+              <Text type="secondary">Hệ thống</Text>
+            )}
+          </span>
         </Tooltip>
       ),
     },
@@ -711,10 +733,23 @@ export default function ChiaDataPage() {
       render: (_: any, r: Customer) => renderRecentNotesCell(r, recentNotesCount),
     },
     {
-      title: 'Người tạo', width: 130,
+      // ⚠️ SỬA (yêu cầu người dùng) - đồng bộ đúng <UserMiniCard> như bảng
+      // "Có thể chia" ở trên, xem comment đầy đủ ở unassignedColumns.
+      title: 'Người tạo', width: 190,
       render: (_: any, r: Customer) => (
         <Tooltip title={renderAuditTrail(r)}>
-          <span style={{ cursor: 'help' }}>{r.createdBy?.name || 'Hệ thống'}</span>
+          <span style={{ cursor: 'help', display: 'inline-block' }}>
+            {r.createdBy ? (
+              <UserMiniCard
+                name={r.createdBy.name}
+                role={r.createdBy.role}
+                getRoleColor={getRoleColor}
+                getRoleName={getRoleName}
+              />
+            ) : (
+              <Text type="secondary">Hệ thống</Text>
+            )}
+          </span>
         </Tooltip>
       ),
     },
