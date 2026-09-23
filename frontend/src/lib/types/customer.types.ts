@@ -150,6 +150,12 @@ export interface Customer {
     name: string;
     fullName?: string;
     email?: string;
+    // ⚠️ MỚI (report Invalid Data - UserMiniCard cột "Người tạo"): BE
+    // (leftJoinAndSelect('customer.createdBy')) trả về toàn bộ User entity
+    // (trừ password - @Column({select:false})), field `role` LUÔN có mặt
+    // thật trên response dù trước đây type ở đây thiếu khai báo - thêm vào
+    // để UserMiniCard tô đúng màu Avatar theo vai trò.
+    role?: string;
   };
   updatedBy?: {
     id: number;
@@ -175,6 +181,12 @@ export interface Customer {
   // trị SĐT/Email đã chuẩn hoá (LOWER/TRIM cho email) dùng để nhóm các
   // dòng bị trùng lại gần nhau khi tô màu ở CustomerDuplicateReportPage.
   duplicateGroupKey?: string | null;
+  // ⚠️ MỚI (yêu cầu người dùng - cột "Trùng với ai" ở report Invalid Data):
+  // danh sách các khách hàng KHÁC đang trùng CÙNG SĐT/Email với dòng này
+  // (đã loại trừ chính nó) - chỉ có mặt ở 2 loại report duplicate_* (BE
+  // getDuplicateContactReport()). Dùng `id` để điều hướng thẳng tới khách
+  // hàng đó (`/customers?id=`).
+  duplicatePeers?: Array<{ id: number; name: string }>;
 }
 
 export interface PaginatedResponse<T> {

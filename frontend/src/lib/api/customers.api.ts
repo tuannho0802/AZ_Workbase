@@ -60,6 +60,8 @@ export const customersApi = {
     invalidType?: string;
     page?: number;
     limit?: number;
+    search?: string;
+    status?: string;
   }): Promise<
     PaginatedResponse<Customer> & {
       checkedAgainst: string;
