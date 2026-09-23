@@ -56,6 +56,15 @@ function colorForGroupKey(key: string): string {
   return GROUP_COLORS[idx];
 }
 
+// ⚠️ MỚI (yêu cầu người dùng: "Email bị trùng thì thêm Tag check lỗi
+// Format") - regex kiểm tra format cơ bản, ĐÚNG pattern đang dùng ở
+// `SKILL_NEXTJS_FRONTEND.md` (`lib/utils/validators.ts`: isValidEmail).
+// Chỉ là cảnh báo hiển thị (không phải validate BE) - mục đích giúp người
+// rà soát thấy ngay giá trị trùng nào còn SAI cú pháp (VD thiếu "@", thiếu
+// domain do lỗi nhập liệu/paste từ Excel) chứ không chỉ là bị trùng.
+const EMAIL_FORMAT_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+const isValidEmailFormat = (email: string) => EMAIL_FORMAT_REGEX.test(email);
+
 /**
  * ⚠️ FIX BUG THẬT (rà soát permission 2026-09): trước đây trang này KHÔNG
  * check `customers.invalid_report` gì cả dù nav-config đã gate mục sidebar
@@ -252,7 +261,21 @@ export default function InvalidDataReportPage() {
     // use onCell instead").
     render: (val: string, record) => {
       if (!isDuplicateView) return val || '-';
-      return <Tag color={colorForGroupKey(record.duplicateGroupKey || val || '')}>{val || '-'}</Tag>;
+      const groupTag = (
+        <Tag color={colorForGroupKey(record.duplicateGroupKey || val || '')}>{val || '-'}</Tag>
+      );
+      // Chỉ áp dụng cho view trùng Email - trùng SĐT không cần check format
+      // ở đây (đã có validate riêng cho SĐT ở chỗ khác).
+      const isBadFormat = contactDataIndex === 'email' && !!val && !isValidEmailFormat(val);
+      if (!isBadFormat) return groupTag;
+      return (
+        <Space size={4} wrap>
+          {groupTag}
+          <Tooltip title="Email không đúng định dạng chuẩn (thiếu @ hoặc thiếu tên miền)">
+            <Tag color="red">Sai định dạng</Tag>
+          </Tooltip>
+        </Space>
+      );
     },
     onCell: isDuplicateView
       ? (_record, index) => ({ rowSpan: getGroupRowSpan(index ?? 0) })
