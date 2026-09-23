@@ -208,10 +208,8 @@ const UnassignedMobileCard = ({ record, user, renderAuditTrail, onNameClick, onD
         <span>📞 {record.phone || 'Chưa có SĐT'}</span>
         <span>📅 {record.inputDate ? dayjs(record.inputDate).format('DD/MM/YY') : '-'}</span>
       </div>
-      {record.note && (
-        <div style={{ fontSize: 11, color: '#8c8c8c', marginBottom: 4 }}>
-          📝 {record.note}
-        </div>
+      {record.recentNotes && record.recentNotes.length > 0 && (
+        <div style={{ marginBottom: 4 }}>📝 {renderRecentNotesCell(record, 3)}</div>
       )}
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: 11, color: '#8c8c8c' }}>
         <span>UTM: {record.campaign || '-'}</span>
@@ -279,10 +277,8 @@ const AssignedMobileCard = ({ record, user, renderAuditTrail, onNameClick, onDel
         </Space>
         <Text type="secondary" style={{ fontSize: 11 }}>Tạo bởi: {record.createdBy?.name || 'Hệ thống'}</Text>
       </div>
-      {record.note && (
-        <div style={{ fontSize: 11, color: '#8c8c8c', marginTop: 4 }}>
-          📝 {record.note}
-        </div>
+      {record.recentNotes && record.recentNotes.length > 0 && (
+        <div style={{ marginTop: 4 }}>📝 {renderRecentNotesCell(record, 3)}</div>
       )}
     </Card>
   );
@@ -341,6 +337,11 @@ export default function ChiaDataPage() {
   //   customer_assignments active, KHÔNG tính nếu user đó đang là Primary).
   const [filterPrimaryUser, setFilterPrimaryUser] = useState<number | null>(null);
   const [filterSharedUser, setFilterSharedUser] = useState<number | null>(null);
+
+  // Số ghi chú gần nhất hiển thị trong tooltip cột "Ghi chú gần nhất" - ĐÚNG
+  // pattern `recentNotesCount` ở /customers (chung 1 state cho cả 2 tab, vì
+  // đây là 1 trang duy nhất, khác /customers vốn chỉ có 1 bảng).
+  const [recentNotesCount, setRecentNotesCount] = useState<3 | 5>(3);
 
   // Trạng thái động (bảng customer_statuses) - dùng chung cho cả 2 tab, đồng
   // bộ với dropdown "Trạng thái" ở /customers (CustomerFilters.tsx).
@@ -595,11 +596,14 @@ export default function ChiaDataPage() {
       render: (v: string | null) => v || '-',
     },
     {
-      title: 'Ghi chú', dataIndex: 'note', width: 180,
-      ellipsis: true,
-      render: (v: string | null) => v
-        ? <Tooltip title={v}><span>{v}</span></Tooltip>
-        : <Text type="secondary">-</Text>,
+      // ⚠️ SỬA (yêu cầu người dùng) - "Ghi chú" trước đây lấy thẳng
+      // `customer.note` (1 cột text đơn trên bảng customers, gần như không
+      // ai dùng thực tế) - giờ đổi sang "Ghi chú gần nhất" lấy từ bảng
+      // `customer_notes` (nhiều ghi chú theo thời gian, có người tạo), ĐÚNG
+      // NGUYÊN VĂN cột cùng tên ở /customers (`renderRecentNotesCell`, BE đã
+      // gắn sẵn qua `attachRecentNotes()` - xem đầu file).
+      title: 'Ghi chú gần nhất', key: 'recentNotes', width: 180,
+      render: (_: any, r: Customer) => renderRecentNotesCell(r, recentNotesCount),
     },
     {
       title: 'Người tạo', width: 130,
@@ -700,11 +704,11 @@ export default function ChiaDataPage() {
         ? <SourceTag source={v} /> : '-',
     },
     {
-      title: 'Ghi chú', dataIndex: 'note', width: 180,
-      ellipsis: true,
-      render: (v: string | null) => v
-        ? <Tooltip title={v}><span>{v}</span></Tooltip>
-        : <Text type="secondary">-</Text>,
+      // ⚠️ SỬA (yêu cầu người dùng) - đồng bộ đúng cột "Ghi chú gần nhất"
+      // (customer_notes) như bảng "Có thể chia" ở trên, xem comment đầy đủ
+      // ở unassignedColumns.
+      title: 'Ghi chú gần nhất', key: 'recentNotes', width: 180,
+      render: (_: any, r: Customer) => renderRecentNotesCell(r, recentNotesCount),
     },
     {
       title: 'Người tạo', width: 130,
@@ -1030,6 +1034,20 @@ export default function ChiaDataPage() {
                       />
                     </Tooltip>
                   </Col>
+                  <Col>
+                    <Tooltip title='Số ghi chú gần nhất hiển thị trong tooltip cột "Ghi chú gần nhất"'>
+                      <Select
+                        size="middle"
+                        value={recentNotesCount}
+                        style={{ width: 100 }}
+                        onChange={(val: 3 | 5) => setRecentNotesCount(val)}
+                        options={[
+                          { value: 3, label: '3 gần nhất' },
+                          { value: 5, label: '5 gần nhất' },
+                        ]}
+                      />
+                    </Tooltip>
+                  </Col>
                   <Col flex="auto" />
                   {/* NÚT CHIA — chỉ hiện khi đã chọn */}
                   {selectedIds.length > 0 && !isMobile && (
@@ -1254,6 +1272,20 @@ export default function ChiaDataPage() {
                           setAssignedCreatedAtTo(vals?.[1] ?? null);
                           setAssignedPage(1);
                         }}
+                      />
+                    </Tooltip>
+                  </Col>
+                  <Col>
+                    <Tooltip title='Số ghi chú gần nhất hiển thị trong tooltip cột "Ghi chú gần nhất"'>
+                      <Select
+                        size="middle"
+                        value={recentNotesCount}
+                        style={{ width: 100 }}
+                        onChange={(val: 3 | 5) => setRecentNotesCount(val)}
+                        options={[
+                          { value: 3, label: '3 gần nhất' },
+                          { value: 5, label: '5 gần nhất' },
+                        ]}
                       />
                     </Tooltip>
                   </Col>
