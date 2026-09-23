@@ -3267,10 +3267,16 @@ export class CustomersService {
   async getInvalidDataReport(
     userId: number,
     userRole: string,
-    invalidType: string = 'future_date',
+    // ⚠️ SỬA (yêu cầu người dùng 2026-09-23): mặc định giờ là
+    // 'duplicate_phone' (trước đây 'future_date') - đây là loại kiểm tra
+    // hữu ích nhất/hay dùng nhất theo phản hồi, muốn nó tự hiện ra ngay khi
+    // vào trang thay vì phải tự đổi dropdown mỗi lần.
+    invalidType: string = 'duplicate_phone',
     page = 1,
     limit = 20,
     scope?: string | null,
+    search?: string,
+    status?: string,
   ) {
     const todayStr = todayVnStr();
 
@@ -3292,6 +3298,8 @@ export class CustomersService {
         page,
         limit,
         scope,
+        search,
+        status,
       );
     }
 
@@ -3309,6 +3317,18 @@ export class CustomersService {
       qb.andWhere('(customer.email IS NULL OR customer.email = \'\')');
     } else {
       qb.andWhere('customer.inputDate > :todayStr', { todayStr });
+    }
+
+    // ⚠️ MỚI (yêu cầu người dùng): thêm Search + Filter trạng thái cho
+    // trang report - trước đây chỉ có dropdown "Loại kiểm tra", không lọc
+    // thêm được gì trong 1 loại lỗi đang xem. Dùng lại đúng
+    // `applyCustomerSearch()` (FULLTEXT name/email/campaign + prefix phone)
+    // đã có sẵn cho /customers, không viết search riêng dễ lệch hành vi.
+    if (search) {
+      this.applyCustomerSearch(qb, search);
+    }
+    if (status) {
+      qb.andWhere('customer.status = :status', { status });
     }
 
     // FIX BUG THẬT (rà soát dynamic RBAC): thiếu tham số `scope`, xem giải
@@ -3356,11 +3376,24 @@ export class CustomersService {
     page: number,
     limit: number,
     scope?: string | null,
+    search?: string,
+    status?: string,
   ) {
     const groupExpr = isEmail ? 'LOWER(TRIM(customer.email))' : 'customer.phone';
     const nonEmptyCondition = isEmail
       ? "customer.email IS NOT NULL AND TRIM(customer.email) != ''"
       : "customer.phone IS NOT NULL AND customer.phone != ''";
+
+    // ⚠️ MỚI (yêu cầu người dùng): áp CÙNG 1 bộ Search/Trạng thái vào cả 4
+    // truy vấn con bên dưới (tìm dupKeys, đếm total, lấy id theo trang, lấy
+    // peers) - để nghĩa của filter là "chỉ tìm trùng lặp TRONG PHẠM VI đã
+    // lọc" (vd "trùng SĐT trong các khách đang pending"), nhất quán ở mọi
+    // bước thay vì chỉ lọc mỗi bước hiển thị cuối (dễ gây khó hiểu khi 1
+    // khách hiện ra nhưng "khách trùng với nó" lại bị ẩn do khác filter).
+    const applyExtraFilters = (q: ReturnType<Repository<Customer>['createQueryBuilder']>) => {
+      if (search) this.applyCustomerSearch(q, search);
+      if (status) q.andWhere('customer.status = :status', { status });
+    };
 
     const dupKeysQb = this.customersRepository
       .createQueryBuilder('customer')
@@ -3369,6 +3402,7 @@ export class CustomersService {
       .andWhere(nonEmptyCondition);
 
     CustomerAccessHelper.applyViewFilter(dupKeysQb, userId, userRole, scope);
+    applyExtraFilters(dupKeysQb);
 
     const dupRows = await dupKeysQb
       .groupBy(groupExpr)
@@ -3392,45 +3426,121 @@ export class CustomersService {
       };
     }
 
-    const qb = this.customersRepository
+    // ⚠️ FIX BUG THẬT (500 "Duplicate column name 'dup_key'" khi bấm "Trùng
+    // SĐT"): bản trước dùng 1 QueryBuilder VỪA có leftJoinAndSelect
+    // (salesUser/createdBy) VỪA có addSelect(groupExpr,'dup_key') + orderBy
+    // theo alias đó + skip()/take() cùng lúc. TypeORM (0.3.28), khi query có
+    // JOIN + skip/take, tự bọc thêm 1 subquery "phân trang theo khoá chính"
+    // bên trong để tránh nhân dòng do JOIN - subquery này tự ĐEM THEO cột
+    // đang orderBy() vào SELECT của chính nó. Vì cột orderBy ở đây là alias
+    // tính toán (`dup_key`) do addSelect() thủ công khai riêng, TypeORM add
+    // nó vào subquery ĐÚP LẦN (1 lần tự động do orderBy, 1 lần theo
+    // addSelect đã khai) → MySQL báo "Duplicate column name 'dup_key'".
+    // Đây là hạn chế thật của TypeORM khi kết hợp JOIN + skip/take + orderBy
+    // bằng alias KHÔNG PHẢI cột thật, không phải lỗi cú pháp SQL của mình.
+    //
+    // SỬA (đúng pattern `findAll()`/`countQueryBuilder` phía trên - tách
+    // câu COUNT khỏi câu JOIN): tách hẳn phân trang ra khỏi bước JOIN.
+    //   Bước A - `idsQb`: query THUẦN alias `customer`, KHÔNG join gì cả -
+    //     để lấy ĐÚNG id của trang đang cần, sắp theo nhóm liền kề. Không có
+    //     JOIN nên TypeORM không bọc thêm subquery nào - skip/take +
+    //     orderBy(dup_key) chạy an toàn.
+    //   Bước B - `countQb`: đếm tổng số dòng, cũng KHÔNG join, KHÔNG
+    //     addSelect/orderBy gì thêm - nhẹ và an toàn tuyệt đối.
+    //   Bước C - `peersQb`: lấy (id, tên) của TOÀN BỘ khách thuộc các nhóm
+    //     đang trùng (không phân trang) - dùng để trả kèm mỗi dòng ở bước D
+    //     danh sách "Trùng với ai" (`duplicatePeers`), vì 1 nhóm trùng có
+    //     thể bị cắt giữa 2 trang, nếu chỉ dựa vào dữ liệu của riêng trang
+    //     hiện tại sẽ thiếu peer nằm ở trang khác.
+    //   Bước D - lấy dữ liệu đầy đủ (kèm salesUser/createdBy) cho ĐÚNG các
+    //     id ở bước A bằng IN(...) (không skip/take), rồi sắp lại theo ĐÚNG
+    //     thứ tự id đã tính ở bước A (IN() không tự đảm bảo thứ tự trả về).
+    const countQb = this.customersRepository
       .createQueryBuilder('customer')
-      .leftJoinAndSelect('customer.salesUser', 'salesUser')
-      .leftJoinAndSelect('customer.createdBy', 'createdBy')
       .where('customer.deletedAt IS NULL')
       .andWhere(`${groupExpr} IN (:...dupKeys)`, { dupKeys });
+    CustomerAccessHelper.applyViewFilter(countQb, userId, userRole, scope);
+    applyExtraFilters(countQb);
+    const total = await countQb.getCount();
 
-    CustomerAccessHelper.applyViewFilter(qb, userId, userRole, scope);
+    const idsQb = this.customersRepository
+      .createQueryBuilder('customer')
+      .select('customer.id', 'id')
+      .addSelect(groupExpr, 'dup_key')
+      .where('customer.deletedAt IS NULL')
+      .andWhere(`${groupExpr} IN (:...dupKeys)`, { dupKeys });
+    CustomerAccessHelper.applyViewFilter(idsQb, userId, userRole, scope);
+    applyExtraFilters(idsQb);
 
-    // FIX BUG THẬT (500 khi xem "Trùng email"): KHÔNG được orderBy() thẳng
-    // bằng biểu thức raw chứa dấu "." (vd `LOWER(TRIM(customer.email))`).
-    // TypeORM (SelectQueryBuilder.createOrderByCombinedWithSelectExpression)
-    // hễ thấy orderBy key có ký tự "." là tự tách theo `split('.')` rồi coi
-    // PHẦN ĐẦU là 1 alias đã join để tìm cột - với chuỗi trên, phần đầu tách
-    // ra là `LOWER(TRIM(customer` (không phải alias nào cả) -> ném đúng lỗi
-    // `"LOWER(TRIM(customer" alias was not found` (đã thấy trong log thật).
-    // Trường hợp `duplicate_phone` không vỡ vì groupExpr lúc đó chỉ là
-    // `customer.phone` - đúng định dạng alias.column thật nên tách ra vẫn
-    // khớp alias `customer` có thật. Cách sửa CHUẨN của TypeORM cho orderBy
-    // theo biểu thức tính toán: đăng ký nó qua `addSelect(expr, alias)` rồi
-    // orderBy bằng CHÍNH alias đó (không có dấu ".") - khớp đúng nhánh an
-    // toàn (so alias theo `select.aliasName === orderCriteria`), không đi
-    // qua nhánh tách chuỗi nói trên nữa.
-    qb.addSelect(groupExpr, 'dup_key');
-
-    const [rawData, total] = await qb
+    const idRows = await idsQb
       .orderBy('dup_key', 'ASC')
       .addOrderBy('customer.createdAt', 'ASC')
       .skip((page - 1) * limit)
       .take(limit)
-      .getManyAndCount();
+      .getRawMany<{ id: number; dup_key: string }>();
 
-    // Gắn thêm `duplicateGroupKey` (giá trị SĐT/Email đã chuẩn hoá) vào mỗi
-    // dòng — FE dùng field này để tô nhóm liền kề, không cần tự chuẩn hoá
-    // lại LOWER/TRIM ở phía client (né lệch logic 2 bên).
-    const data = rawData.map((c) => ({
-      ...c,
-      duplicateGroupKey: isEmail ? (c.email ?? '').trim().toLowerCase() : c.phone,
-    }));
+    const orderedIds = idRows.map((r) => Number(r.id));
+
+    const duplicateGroupCount = dupKeys.length;
+
+    if (orderedIds.length === 0) {
+      return {
+        data: [],
+        total,
+        page,
+        limit,
+        totalPages: Math.ceil(total / limit),
+        checkedAgainst: todayVnStr(),
+        invalidType,
+        duplicateGroupCount,
+      };
+    }
+
+    // Bước C: toàn bộ (id, tên) của các khách thuộc các nhóm đang trùng
+    // (KHÔNG skip/take) - dựng map `dupKey -> [{id, name}]` để gắn
+    // `duplicatePeers` (loại trừ chính mình) cho mỗi dòng ở bước D. Đáp ứng
+    // yêu cầu "hiển thị rõ 1 cột trùng với ai" + "cho direct ra customer
+    // luôn" (FE dùng `id` để điều hướng `/customers?id=`).
+    const peersQb = this.customersRepository
+      .createQueryBuilder('customer')
+      .select('customer.id', 'id')
+      .addSelect('customer.name', 'name')
+      .addSelect(groupExpr, 'dup_key')
+      .where('customer.deletedAt IS NULL')
+      .andWhere(`${groupExpr} IN (:...dupKeys)`, { dupKeys });
+    CustomerAccessHelper.applyViewFilter(peersQb, userId, userRole, scope);
+    applyExtraFilters(peersQb);
+    const peerRows = await peersQb.getRawMany<{ id: number; name: string; dup_key: string }>();
+
+    const peersByKey = new Map<string, Array<{ id: number; name: string }>>();
+    for (const r of peerRows) {
+      const arr = peersByKey.get(r.dup_key) || [];
+      arr.push({ id: Number(r.id), name: r.name });
+      peersByKey.set(r.dup_key, arr);
+    }
+
+    // Bước D
+    const rawData = await this.customersRepository
+      .createQueryBuilder('customer')
+      .leftJoinAndSelect('customer.salesUser', 'salesUser')
+      .leftJoinAndSelect('customer.createdBy', 'createdBy')
+      .where('customer.id IN (:...orderedIds)', { orderedIds })
+      .getMany();
+
+    const byId = new Map(rawData.map((c) => [c.id, c]));
+
+    // Gắn thêm `duplicateGroupKey` (giá trị SĐT/Email đã chuẩn hoá) và
+    // `duplicatePeers` (những khách khác đang trùng cùng giá trị này, trừ
+    // chính nó) vào mỗi dòng - FE dùng để tô nhóm liền kề + hiện cột "Trùng
+    // với" có link đi thẳng tới khách hàng đó.
+    const data = orderedIds
+      .map((id) => byId.get(id))
+      .filter((c): c is Customer => !!c)
+      .map((c) => {
+        const key = isEmail ? (c.email ?? '').trim().toLowerCase() : (c.phone ?? '');
+        const peers = (peersByKey.get(key) || []).filter((p) => p.id !== c.id);
+        return { ...c, duplicateGroupKey: key, duplicatePeers: peers };
+      });
 
     return {
       data,
@@ -3440,7 +3550,7 @@ export class CustomersService {
       totalPages: Math.ceil(total / limit),
       checkedAgainst: todayVnStr(),
       invalidType,
-      duplicateGroupCount: dupKeys.length,
+      duplicateGroupCount,
     };
   }
 }

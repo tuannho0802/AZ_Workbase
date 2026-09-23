@@ -1339,12 +1339,18 @@ describe('CustomersService', () => {
     });
   });
 
-  // ⚠️ FIX BUG THẬT (500 khi vào /customers/reports/invalid-data?invalidType=
-  // duplicate_email): khoá lại đúng cách sửa - KHÔNG được orderBy() thẳng
-  // bằng biểu thức raw chứa dấu "." (xem chú thích chi tiết trong
-  // getDuplicateContactReport()). Trước đây file này KHÔNG có test nào cho
-  // getInvalidDataReport()/getDuplicateContactReport() - đây là bug lẽ ra
-  // 1 test đơn giản kiểu này đã bắt được từ trước khi lên tới người dùng.
+  // ⚠️ FIX BUG THẬT (500 "Duplicate column name 'dup_key'" khi vào
+  // /customers/reports/invalid-data?invalidType=duplicate_phone): bản cũ
+  // dùng 1 QueryBuilder VỪA leftJoinAndSelect VỪA addSelect(dup_key) +
+  // orderBy(dup_key) + skip/take + getManyAndCount() cùng lúc - TypeORM
+  // 0.3.28 bọc thêm 1 subquery phân trang khi có JOIN, add trùng cột
+  // `dup_key` vào đó -> MySQL báo "Duplicate column name 'dup_key'". Sửa:
+  // tách hẳn thành 5 bước/QueryBuilder độc lập (dupKeysQb tìm giá trị trùng
+  // -> countQb đếm tổng -> idsQb lấy id đã sắp/phân trang, KHÔNG JOIN gì ->
+  // peersQb lấy toàn bộ (id,tên) của các nhóm trùng để tính "trùng với ai"
+  // -> query cuối lấy full data theo id bằng IN(), KHÔNG skip/take). Test
+  // dưới đây khoá lại ĐÚNG hình dạng mới này, không còn addSelect/orderBy
+  // dup_key trên 1 query có JOIN nữa.
   describe('getInvalidDataReport / getDuplicateContactReport - Báo cáo trùng SĐT/Email', () => {
     function makeDupKeysQb(dupRows: { dupKey: string }[]) {
       const qb: any = {
@@ -1358,45 +1364,89 @@ describe('CustomersService', () => {
       return qb;
     }
 
-    function makeMainQb(rows: any[], total: number) {
+    function makeCountQb(total: number) {
       const qb: any = {
-        leftJoinAndSelect: jest.fn().mockReturnThis(),
         where: jest.fn().mockReturnThis(),
         andWhere: jest.fn().mockReturnThis(),
-        addSelect: jest.fn().mockReturnThis(),
-        orderBy: jest.fn().mockReturnThis(),
-        addOrderBy: jest.fn().mockReturnThis(),
-        skip: jest.fn().mockReturnThis(),
-        take: jest.fn().mockReturnThis(),
-        getManyAndCount: jest.fn().mockResolvedValue([rows, total]),
+        getCount: jest.fn().mockResolvedValue(total),
       };
       return qb;
     }
 
-    it('duplicate_email: KHÔNG được orderBy() thẳng bằng biểu thức raw chứa "." - phải addSelect(...,\'dup_key\') rồi orderBy(\'dup_key\')', async () => {
+    function makeIdsQb(idRows: { id: number; dup_key: string }[]) {
+      const qb: any = {
+        select: jest.fn().mockReturnThis(),
+        addSelect: jest.fn().mockReturnThis(),
+        where: jest.fn().mockReturnThis(),
+        andWhere: jest.fn().mockReturnThis(),
+        orderBy: jest.fn().mockReturnThis(),
+        addOrderBy: jest.fn().mockReturnThis(),
+        skip: jest.fn().mockReturnThis(),
+        take: jest.fn().mockReturnThis(),
+        getRawMany: jest.fn().mockResolvedValue(idRows),
+      };
+      return qb;
+    }
+
+    function makePeersQb(peerRows: { id: number; name: string; dup_key: string }[]) {
+      const qb: any = {
+        select: jest.fn().mockReturnThis(),
+        addSelect: jest.fn().mockReturnThis(),
+        where: jest.fn().mockReturnThis(),
+        andWhere: jest.fn().mockReturnThis(),
+        getRawMany: jest.fn().mockResolvedValue(peerRows),
+      };
+      return qb;
+    }
+
+    function makeFinalQb(rows: any[]) {
+      const qb: any = {
+        leftJoinAndSelect: jest.fn().mockReturnThis(),
+        where: jest.fn().mockReturnThis(),
+        andWhere: jest.fn().mockReturnThis(),
+        getMany: jest.fn().mockResolvedValue(rows),
+      };
+      return qb;
+    }
+
+    it('duplicate_email: KHÔNG addSelect/orderBy dup_key trên query có JOIN - idsQb (không JOIN) mới là nơi order/skip/take', async () => {
       const dupKeysQb = makeDupKeysQb([{ dupKey: 'a@gmail.com' }]);
-      const mainQb = makeMainQb(
-        [{ id: 1, email: 'a@gmail.com', name: 'A' }, { id: 2, email: 'A@Gmail.com', name: 'B' }],
-        2,
-      );
+      const countQb = makeCountQb(2);
+      const idsQb = makeIdsQb([
+        { id: 1, dup_key: 'a@gmail.com' },
+        { id: 2, dup_key: 'a@gmail.com' },
+      ]);
+      const peersQb = makePeersQb([
+        { id: 1, name: 'A', dup_key: 'a@gmail.com' },
+        { id: 2, name: 'B', dup_key: 'a@gmail.com' },
+      ]);
+      const finalQb = makeFinalQb([
+        { id: 1, email: 'a@gmail.com', name: 'A' },
+        { id: 2, email: 'A@Gmail.com', name: 'B' },
+      ]);
       mockCustomerRepo.createQueryBuilder
         .mockReturnValueOnce(dupKeysQb)
-        .mockReturnValueOnce(mainQb);
+        .mockReturnValueOnce(countQb)
+        .mockReturnValueOnce(idsQb)
+        .mockReturnValueOnce(peersQb)
+        .mockReturnValueOnce(finalQb);
 
       const result: any = await service.getInvalidDataReport(
         1, Role.ADMIN, 'duplicate_email', 1, 20, PermissionScope.ALL,
       );
 
-      // Chốt đúng cách sửa: orderBy KHÔNG được gọi với chuỗi chứa "." (dấu
-      // hiệu của biểu thức raw) - phải gọi bằng alias thường (không dấu
-      // chấm) đã đăng ký qua addSelect() ngay trước đó.
-      expect(mainQb.addSelect).toHaveBeenCalledWith(
-        'LOWER(TRIM(customer.email))',
-        'dup_key',
-      );
-      const orderByArg = mainQb.orderBy.mock.calls[0][0];
+      // idsQb - KHÔNG có leftJoinAndSelect nào (không có key này) - đây là
+      // điểm mấu chốt né được bug "Duplicate column name" của TypeORM.
+      expect(idsQb.leftJoinAndSelect).toBeUndefined();
+      expect(idsQb.addSelect).toHaveBeenCalledWith('LOWER(TRIM(customer.email))', 'dup_key');
+      const orderByArg = idsQb.orderBy.mock.calls[0][0];
       expect(orderByArg).not.toContain('.');
-      expect(mainQb.orderBy).toHaveBeenCalledWith('dup_key', 'ASC');
+      expect(idsQb.orderBy).toHaveBeenCalledWith('dup_key', 'ASC');
+      expect(idsQb.skip).toHaveBeenCalled();
+      expect(idsQb.take).toHaveBeenCalledWith(20);
+
+      // finalQb (có JOIN) không hề gọi skip/take/orderBy theo dup_key.
+      expect(finalQb.leftJoinAndSelect).toHaveBeenCalled();
 
       expect(result.invalidType).toBe('duplicate_email');
       expect(result.duplicateGroupCount).toBe(1);
@@ -1404,29 +1454,45 @@ describe('CustomersService', () => {
       expect(result.data[0].duplicateGroupKey).toBe('a@gmail.com');
       // Chuẩn hoá LOWER/TRIM đúng yêu cầu (không phân biệt hoa/thường).
       expect(result.data[1].duplicateGroupKey).toBe('a@gmail.com');
+      // "Trùng với ai" - mỗi dòng thấy đúng dòng còn lại trong nhóm, loại
+      // trừ chính mình.
+      expect(result.data[0].duplicatePeers).toEqual([{ id: 2, name: 'B' }]);
+      expect(result.data[1].duplicatePeers).toEqual([{ id: 1, name: 'A' }]);
     });
 
     it('duplicate_phone: vẫn hoạt động bình thường (groupExpr là alias.column thật, không phải biểu thức raw)', async () => {
       const dupKeysQb = makeDupKeysQb([{ dupKey: '0901234567' }]);
-      const mainQb = makeMainQb(
-        [{ id: 1, phone: '0901234567', name: 'A' }, { id: 2, phone: '0901234567', name: 'B' }],
-        2,
-      );
+      const countQb = makeCountQb(2);
+      const idsQb = makeIdsQb([
+        { id: 1, dup_key: '0901234567' },
+        { id: 2, dup_key: '0901234567' },
+      ]);
+      const peersQb = makePeersQb([
+        { id: 1, name: 'A', dup_key: '0901234567' },
+        { id: 2, name: 'B', dup_key: '0901234567' },
+      ]);
+      const finalQb = makeFinalQb([
+        { id: 1, phone: '0901234567', name: 'A' },
+        { id: 2, phone: '0901234567', name: 'B' },
+      ]);
       mockCustomerRepo.createQueryBuilder
         .mockReturnValueOnce(dupKeysQb)
-        .mockReturnValueOnce(mainQb);
+        .mockReturnValueOnce(countQb)
+        .mockReturnValueOnce(idsQb)
+        .mockReturnValueOnce(peersQb)
+        .mockReturnValueOnce(finalQb);
 
       const result: any = await service.getInvalidDataReport(
         1, Role.ADMIN, 'duplicate_phone', 1, 20, PermissionScope.ALL,
       );
 
-      expect(mainQb.addSelect).toHaveBeenCalledWith('customer.phone', 'dup_key');
-      expect(mainQb.orderBy).toHaveBeenCalledWith('dup_key', 'ASC');
+      expect(idsQb.addSelect).toHaveBeenCalledWith('customer.phone', 'dup_key');
+      expect(idsQb.orderBy).toHaveBeenCalledWith('dup_key', 'ASC');
       expect(result.duplicateGroupCount).toBe(1);
       expect(result.data[0].duplicateGroupKey).toBe('0901234567');
     });
 
-    it('không có giá trị nào trùng → trả về rỗng, KHÔNG gọi tới query chính (tránh query thừa)', async () => {
+    it('không có giá trị nào trùng → trả về rỗng, KHÔNG gọi tới các query sau (tránh query thừa)', async () => {
       const dupKeysQb = makeDupKeysQb([]);
       mockCustomerRepo.createQueryBuilder.mockReturnValueOnce(dupKeysQb);
 

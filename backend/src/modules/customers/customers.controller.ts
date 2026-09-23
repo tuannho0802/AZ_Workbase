@@ -84,6 +84,8 @@ export class CustomersController {
     @Query('invalidType') invalidType?: string,
     @Query('page') page?: string,
     @Query('limit') limit?: string,
+    @Query('search') search?: string,
+    @Query('status') status?: string,
   ) {
     return this.customersService.getInvalidDataReport(
       user.id,
@@ -92,6 +94,8 @@ export class CustomersController {
       page ? parseInt(page, 10) : 1,
       limit ? parseInt(limit, 10) : 20,
       scope,
+      search,
+      status,
     );
   }
 
