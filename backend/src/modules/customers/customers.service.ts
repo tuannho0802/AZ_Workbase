@@ -36,6 +36,7 @@ import {
 import { CustomerAccessHelper } from './helpers/customer-access.helper';
 import { AuditService } from '../audit/audit.service';
 import { todayVnStr } from '../../common/utils/date-vn.util';
+import { normalizeSearchableText } from '../../common/utils/text-normalize.util';
 import { UiVisibilityService } from '../ui-visibility/ui-visibility.service';
 import { NotificationsService } from '../notifications/notifications.service';
 import { randomBytes } from 'crypto';
@@ -274,6 +275,13 @@ export class CustomersService {
       const today = this.getTodayVn();
       const customer = this.customersRepository.create({
         ...createCustomerDto,
+        // FIX (2026-09-23): chặn NBSP/zero-width space... lọt vào DB ngay từ
+        // lúc tạo mới - lớp phòng thủ đầu tiên trong 3 lớp fix bug search.
+        name:
+          normalizeSearchableText(createCustomerDto.name) ??
+          createCustomerDto.name,
+        email: normalizeSearchableText(createCustomerDto.email),
+        campaign: normalizeSearchableText(createCustomerDto.campaign),
         phone:
           createCustomerDto.phone?.trim() === ''
             ? null
@@ -399,7 +407,11 @@ export class CustomersService {
     queryBuilder: ReturnType<Repository<Customer>['createQueryBuilder']>,
     search: string,
   ) {
-    const trimmed = search.trim();
+    // FIX (2026-09-23): normalize trước khi trim - né NBSP/zero-width space/
+    // ideographic space dính khi paste từ Excel/Zalo/FB Ads. Không normalize
+    // ở đây thì query "test lại" (dấu cách ASCII) không khớp được data đã lỡ
+    // lưu "test<NBSP>lại" (2 chuỗi ngram hoá khác nhau dù nhìn giống hệt).
+    const trimmed = normalizeSearchableText(search) ?? '';
     if (!trimmed) return;
 
     // ⚠️ QUAN TRỌNG: dùng BOOLEAN MODE, KHÔNG dùng NATURAL LANGUAGE MODE.
@@ -1596,8 +1608,33 @@ export class CustomersService {
     await this.assertValidStatus(updateCustomerDto.status);
 
     try {
+      // FIX (2026-09-23): chỉ normalize field THẬT SỰ có gửi lên (tránh
+      // normalizeSearchableText(undefined) === null ghi đè mất field người
+      // dùng không hề đụng tới - PATCH là partial update).
+      const normalizedFields: {
+        name?: string;
+        email?: string | null;
+        campaign?: string | null;
+      } = {};
+      if (updateCustomerDto.name !== undefined) {
+        normalizedFields.name =
+          normalizeSearchableText(updateCustomerDto.name) ??
+          updateCustomerDto.name;
+      }
+      if (updateCustomerDto.email !== undefined) {
+        normalizedFields.email = normalizeSearchableText(
+          updateCustomerDto.email,
+        );
+      }
+      if (updateCustomerDto.campaign !== undefined) {
+        normalizedFields.campaign = normalizeSearchableText(
+          updateCustomerDto.campaign,
+        );
+      }
+
       this.customersRepository.merge(customer, {
         ...updateCustomerDto,
+        ...normalizedFields,
         phone:
           updateCustomerDto.phone?.trim() === ''
             ? null
