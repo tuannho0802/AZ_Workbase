@@ -70,6 +70,33 @@ function colorForGroupKey(key: string): string {
 const EMAIL_FORMAT_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const isValidEmailFormat = (email: string) => EMAIL_FORMAT_REGEX.test(email);
 
+// ⚠️ MỚI (yêu cầu người dùng: "Đã tham gia nhóm" - "Nhóm nào list ra như
+// customer page") - copy ĐÚNG y hệt `renderJoinedGroupsTag` của
+// `/customers/page.tsx` (nhóm đầu tiên hiện tên thật, các nhóm còn lại gộp
+// "+N", hover Tooltip xem đủ tên) - không export dùng chung từ đó vì
+// `customers/page.tsx` không export hàm này, tách riêng bản local ở đây để
+// không phải sửa file kia chỉ để export 1 hàm nhỏ.
+const renderJoinedGroupsTag = (record: any) => {
+  const groups: Array<{ id: number; name: string }> = record.joinedGroups || [];
+
+  if (groups.length === 0) {
+    return <Tag color="default">Chưa join</Tag>;
+  }
+
+  const [first, ...rest] = groups;
+
+  return (
+    <Space size={[0, 4]} align="center" wrap>
+      <Tag color="green" title="Nhóm đã join">{first.name}</Tag>
+      {rest.length > 0 && (
+        <Tooltip title={`Nhóm khác đã join:\n${rest.map((g) => g.name).join(', ')}`}>
+          <Tag color="cyan">+{rest.length}</Tag>
+        </Tooltip>
+      )}
+    </Space>
+  );
+};
+
 /**
  * ⚠️ FIX BUG THẬT (rà soát permission 2026-09): trước đây trang này KHÔNG
  * check `customers.invalid_report` gì cả dù nav-config đã gate mục sidebar
@@ -124,6 +151,9 @@ export default function InvalidDataReportPage() {
   const [salesUserId, setSalesUserId] = useState<number | undefined>(undefined);
   const [marketingUserId, setMarketingUserId] = useState<number | undefined>(undefined);
   const [creatorId, setCreatorId] = useState<number | undefined>(undefined);
+  // ⚠️ MỚI (yêu cầu người dùng: "Đã tham gia nhóm" - ĐÚNG hành vi/label y hệt
+  // dropdown "Đã joined nhóm" ở /customers).
+  const [joinedGroups, setJoinedGroups] = useState<'joined' | 'not_joined' | undefined>(undefined);
   // Chỉ BE trả field này khi invalidType là 1 trong 2 loại trùng lặp - số
   // GIÁ TRỊ (SĐT/Email) đang bị trùng, KHÁC `pagination.total` là số DÒNG
   // khách hàng (1 giá trị trùng có thể ứng với ≥2 dòng).
@@ -155,6 +185,7 @@ export default function InvalidDataReportPage() {
     salesUserId?: number;
     marketingUserId?: number;
     creatorId?: number;
+    joinedGroups?: 'joined' | 'not_joined';
   }) => {
     const type = opts.type ?? invalidType;
     const page = opts.page ?? (pagination.current || 1);
@@ -164,6 +195,7 @@ export default function InvalidDataReportPage() {
     const su = opts.salesUserId !== undefined ? opts.salesUserId : salesUserId;
     const mu = opts.marketingUserId !== undefined ? opts.marketingUserId : marketingUserId;
     const cr = opts.creatorId !== undefined ? opts.creatorId : creatorId;
+    const jg = opts.joinedGroups !== undefined ? opts.joinedGroups : joinedGroups;
 
     setLoading(true);
     try {
@@ -176,6 +208,7 @@ export default function InvalidDataReportPage() {
         salesUserId: su || undefined,
         marketingUserId: mu || undefined,
         creatorId: cr || undefined,
+        joinedGroups: jg || undefined,
       });
       setData(res.data);
       setDuplicateGroupCount(res.duplicateGroupCount);
@@ -225,6 +258,11 @@ export default function InvalidDataReportPage() {
     fetchData({ creatorId: val, page: 1 });
   };
 
+  const handleJoinedGroupsChange = (val?: 'joined' | 'not_joined') => {
+    setJoinedGroups(val);
+    fetchData({ joinedGroups: val, page: 1 });
+  };
+
   const handleSearch = (val: string) => {
     setSearch(val);
     fetchData({ search: val, page: 1 });
@@ -236,12 +274,14 @@ export default function InvalidDataReportPage() {
     setSalesUserId(undefined);
     setMarketingUserId(undefined);
     setCreatorId(undefined);
+    setJoinedGroups(undefined);
     fetchData({
       search: '',
       status: undefined,
       salesUserId: undefined,
       marketingUserId: undefined,
       creatorId: undefined,
+      joinedGroups: undefined,
       page: 1,
     });
   };
@@ -411,6 +451,25 @@ export default function InvalidDataReportPage() {
         ),
     },
     {
+      // ⚠️ MỚI (yêu cầu người dùng: "thêm cột marketing phụ trách luôn") -
+      // ĐÚNG pattern cột "Sales" ở trên (UserMiniCard, ẩn Role Tag).
+      title: 'Marketing phụ trách',
+      key: 'marketingUser',
+      render: (_, record) =>
+        record.marketingUser ? (
+          <UserMiniCard
+            name={record.marketingUser.name}
+            role={record.marketingUser.role}
+            getRoleColor={getRoleColor}
+            getRoleName={getRoleName}
+            hideRoleTag
+            nameFontSize={12}
+          />
+        ) : (
+          <Text type="secondary">Chưa gán</Text>
+        ),
+    },
+    {
       title: 'Người tạo',
       key: 'createdBy',
       render: (_, record) =>
@@ -427,6 +486,14 @@ export default function InvalidDataReportPage() {
           <Text type="secondary">Hệ thống</Text>
         ),
     },
+    {
+      // ⚠️ MỚI (yêu cầu người dùng: "Đã tham gia nhóm" - "Nhóm nào list ra
+      // như customer page") - ĐÚNG pattern cột "Đã joined nhóm" ở /customers.
+      title: 'Đã tham gia nhóm',
+      key: 'joinedGroups',
+      align: 'center',
+      render: (_, record) => renderJoinedGroupsTag(record),
+    },
   ];
 
   // Số dòng thật sự đang có mặt trong data (khác `duplicateGroupCount` -
@@ -436,7 +503,7 @@ export default function InvalidDataReportPage() {
   const duplicateLabel = invalidType === 'duplicate_email' ? 'Email' : 'Số điện thoại';
   const activeMeta = TYPE_META[invalidType];
   const hasActiveFilters =
-    !!search || !!status || !!salesUserId || !!marketingUserId || !!creatorId;
+    !!search || !!status || !!salesUserId || !!marketingUserId || !!creatorId || !!joinedGroups;
 
   return (
     <div className="space-y-6">

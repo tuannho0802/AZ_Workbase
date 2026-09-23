@@ -67,6 +67,9 @@ export const customersApi = {
     salesUserId?: number;
     marketingUserId?: number;
     creatorId?: number;
+    // ⚠️ MỚI (yêu cầu người dùng: filter + cột "Đã tham gia nhóm") - ĐÚNG
+    // tên param/kiểu dữ liệu dùng chung với getCustomers() ở /customers.
+    joinedGroups?: 'joined' | 'not_joined';
   }): Promise<
     PaginatedResponse<Customer> & {
       checkedAgainst: string;
