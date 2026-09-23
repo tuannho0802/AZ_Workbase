@@ -426,14 +426,56 @@ export class CustomersService {
     const safeSearch = trimmed.replace(/"/g, '');
     const searchPhrase = `"${safeSearch}"`;
 
+    // ⚠️ BUG THẬT (2026-09-23, verify trực tiếp trên Aiven production bằng
+    // MATCH...AGAINST + OPTIMIZE TABLE): InnoDB FULLTEXT với parser `ngram`
+    // KHÔNG sync ngay hàng vừa INSERT vào on-disk index - phải đợi
+    // `innodb_ft_cache_size` đầy tự flush, server restart, hoặc OPTIMIZE
+    // TABLE thủ công (nặng, recreate cả bảng - KHÔNG chạy cron thường
+    // xuyên). Trước optimize: match cả 1 từ đơn "test" cũng ra score 0 dù
+    // row tồn tại rõ ràng trong bảng. Sau optimize: score = 12.05.
+    //
+    // Fix: thêm fallback LIKE riêng cho hàng MỚI TẠO/SỬA gần đây (dùng index
+    // có sẵn trên createdAt để giới hạn phạm vi quét, không full-scan cả
+    // bảng), đảm bảo hàng mới luôn tìm được trong lúc chờ ngram index sync,
+    // trong khi phần data lớn/ổn định vẫn hưởng hiệu năng FULLTEXT như cũ.
+    // 72h là biên an toàn (không có cách nào query trực tiếp "row này đã
+    // sync index chưa" trên managed hosting không có quyền SUPER/PROCESS để
+    // đọc INFORMATION_SCHEMA.INNODB_FT_INDEX_CACHE).
+    const recentFallbackSince = new Date(Date.now() - 72 * 60 * 60 * 1000);
+    const likeSearch = `%${safeSearch}%`;
+
     queryBuilder.andWhere(
       new Brackets((qb) => {
         qb.where(
           'MATCH(customer.name, customer.email, customer.campaign) AGAINST(:searchPhrase IN BOOLEAN MODE)',
           { searchPhrase },
-        ).orWhere('customer.phone LIKE :phonePrefix', {
-          phonePrefix: `${trimmed}%`,
-        });
+        )
+          .orWhere('customer.phone LIKE :phonePrefix', {
+            phonePrefix: `${trimmed}%`,
+          })
+          .orWhere(
+            new Brackets((qb2) => {
+              qb2
+                .where('customer.createdAt >= :recentFallbackSince', {
+                  recentFallbackSince,
+                })
+                .orWhere('customer.updatedAt >= :recentFallbackSince', {
+                  recentFallbackSince,
+                });
+              qb2.andWhere(
+                new Brackets((qb3) => {
+                  qb3
+                    .where('customer.name LIKE :likeSearch', { likeSearch })
+                    .orWhere('customer.email LIKE :likeSearch', {
+                      likeSearch,
+                    })
+                    .orWhere('customer.campaign LIKE :likeSearch', {
+                      likeSearch,
+                    });
+                }),
+              );
+            }),
+          );
       }),
     );
   }
