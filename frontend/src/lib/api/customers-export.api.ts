@@ -37,16 +37,46 @@ async function rethrowWithParsedBlobError(error: any): Promise<never> {
   throw error;
 }
 
-/** "YYYY-MM-DD" -> "DD-MM-YY" - PHẢI khớp isoDateToFileToken() phía FE cũ
- * (attendance-export.api.ts) chỉ để tên file thân thiện, KHÔNG cần khớp
- * chính xác backend (backend tự đặt tên riêng qua Content-Disposition,
- * nhưng browser tải bằng `a.download` nên vẫn cần tự dựng tên ở đây). */
+/**
+ * ⚠️ FIX BUG THẬT (2026-09-23): trước đây hàm này TỰ dựng tên file ở FE
+ * (`KhachHang ...xlsx`) và HOÀN TOÀN bỏ qua header `Content-Disposition` mà
+ * backend đã set (xem `customers.controller.ts#exportExcel` +
+ * `customers-export.service.ts#buildFilename`) - tên file backend build có
+ * đoạn "Khach-Hang-ExportBy-{TênNgườiXuất}" theo đúng yêu cầu chủ dự án,
+ * nhưng người dùng tải về lại thấy tên CŨ không hề có đoạn đó vì FE ghi đè
+ * bằng `a.download` của chính nó. Sửa: đọc tên file THẬT từ header trả về,
+ * chỉ fallback về cách dựng tên cũ khi (hiếm) không đọc được header (vd bị
+ * chặn CORS ở môi trường lạ).
+ *
+ * ⚠️ Cũng sửa luôn lỗi kiểu dữ liệu: tham số dưới đây trước đây khai
+ * `Omit<CustomerFilters, ...>` trong khi type import ở trên là
+ * `CustomerFilterParams` - `CustomerFilters` KHÔNG hề tồn tại ở bất kỳ đâu
+ * trong codebase (chỉ là tên gõ nhầm), lẽ ra phải fail `tsc --noEmit`.
+ */
+function extractFilenameFromContentDisposition(header?: string | null): string | null {
+  if (!header) return null;
+  // Ưu tiên `filename*` (RFC 5987 - hỗ trợ tên có dấu/khoảng trắng), đúng
+  // định dạng BE đang set: `filename*=UTF-8''<encoded>`.
+  const starMatch = header.match(/filename\*=UTF-8''([^;]+)/i);
+  if (starMatch) {
+    try {
+      return decodeURIComponent(starMatch[1]);
+    } catch {
+      // Rơi xuống thử filename= thường bên dưới.
+    }
+  }
+  const plainMatch = header.match(/filename="?([^";]+)"?/i);
+  return plainMatch ? plainMatch[1] : null;
+}
+
+/** "YYYY-MM-DD" -> "DD-MM-YY" - chỉ dùng cho fallback khi không đọc được
+ * Content-Disposition (xem JSDoc `extractFilenameFromContentDisposition`). */
 function isoDateToFileToken(iso: string): string {
   const [y, m, d] = iso.split('-');
   return `${d}-${m}-${y.slice(2)}`;
 }
 
-function buildExportFilename(from?: string, to?: string): string {
+function buildFallbackFilename(from?: string, to?: string): string {
   if (from && to) {
     return `KhachHang ${isoDateToFileToken(from)} - ${isoDateToFileToken(to)}.xlsx`;
   }
@@ -55,20 +85,24 @@ function buildExportFilename(from?: string, to?: string): string {
 
 export const customersExportApi = {
   /**
-   * Xuất Excel danh sách khách hàng - nhận ĐÚNG bộ filter đang áp dụng trên
-   * bảng chính (trang /customers) để đảm bảo dữ liệu xuất ra khớp với
-   * những gì người dùng đang xem, đồng thời để backend áp lại đúng RBAC
-   * scope (`customers.export`) khi build lại danh sách.
+   * Xuất Excel danh sách khách hàng - nhận ĐÚNG bộ filter đang áp dụng
+   * (từ trang /customers hoặc từ Modal xuất - xem ExportCustomersModal.tsx)
+   * để đảm bảo dữ liệu xuất ra khớp với những gì người dùng đang lọc, đồng
+   * thời để backend áp lại đúng RBAC scope (`customers.export`) khi build
+   * lại danh sách.
    */
   exportCustomers: async (
-    filters: Omit<CustomerFilters, 'page' | 'limit'>,
+    filters: Omit<CustomerFilterParams, 'page' | 'limit'>,
   ) => {
     try {
       const response = await axiosInstance.get('/customers/export', {
         params: filters,
         responseType: 'blob',
       });
-      triggerBrowserDownload(response.data, buildExportFilename(filters.dateFrom, filters.dateTo));
+      const filename =
+        extractFilenameFromContentDisposition(response.headers?.['content-disposition']) ||
+        buildFallbackFilename(filters.dateFrom, filters.dateTo);
+      triggerBrowserDownload(response.data, filename);
     } catch (error) {
       await rethrowWithParsedBlobError(error);
     }

@@ -7,10 +7,10 @@ import type { ColumnsType, TablePaginationConfig } from 'antd/es/table';
 import type { FilterValue, SorterResult } from 'antd/es/table/interface';
 import { useSearchParams, useRouter, usePathname } from 'next/navigation';
 import { customersApi } from '@/lib/api/customers.api';
-import { customersExportApi } from '@/lib/api/customers-export.api';
 import { Customer, CustomerStats, RecentNote } from '@/lib/types/customer.types';
 import { useAuthStore } from '@/lib/stores/auth.store';
 import { ImportExcelModal } from '@/components/customers/ImportExcelModal';
+import { ExportCustomersModal } from '@/components/customers/ExportCustomersModal';
 import { BulkAssignModal } from '@/components/customers/BulkAssignModal';
 import { CustomerForm } from '@/components/customers/CustomerForm';
 import { StatsCards } from '@/components/customers/StatsCards';
@@ -304,7 +304,12 @@ function CustomersPageContent() {
   const hideDepositsTab = hiddenKeys.includes('tab:deposits');
   const [selectedRowKeys, setSelectedRowKeys] = useState<React.Key[]>([]);
   const [isImportOpen, setIsImportOpen] = useState(false);
-  const [isExporting, setIsExporting] = useState(false);
+  // ⚠️ MỚI (2026-09-23, yêu cầu tường minh): nút "Xuất Excel" trước đây bấm
+  // là xuất NGAY theo đúng filter đang áp trên bảng - giờ đổi thành mở 1
+  // Modal riêng (ExportCustomersModal) cho phép chọn LẠI bộ filter cho file
+  // xuất, chỉ tự điền sẵn (sync) từ filter của trang khi trang ĐANG lọc ít
+  // nhất 1 tiêu chí - xem JSDoc `pageFilters` ở ExportCustomersModal.tsx.
+  const [isExportOpen, setIsExportOpen] = useState(false);
   const [isAssignOpen, setIsAssignOpen] = useState(false);
   const [isCreateOpen, setIsCreateOpen] = useState(false);
   const [stats, setStats] = useState<CustomerStats | null>(null);
@@ -880,35 +885,6 @@ function CustomersPageContent() {
     }
   };
 
-  // Xuất Excel - CỐ Ý dùng lại đúng bộ filter đang truyền cho useCustomers()
-  // ở trên (search/source/status/salesUserId/marketingUserId/creatorId/
-  // dateFrom/dateTo/joinedGroups), KHÔNG có page/limit - để backend tự build
-  // lại đúng danh sách đang hiển thị (RBAC + filter giống hệt), đúng rule
-  // "đồng bộ tuyệt đối với UI" trong custom instructions.
-  const handleExport = async () => {
-    if (isExporting) return;
-    setIsExporting(true);
-    try {
-      await customersExportApi.exportCustomers({
-        search: debouncedSearch,
-        source,
-        status,
-        salesUserId,
-        marketingUserId,
-        creatorId,
-        sortField,
-        sortOrder,
-        dateFrom: dateFrom?.format('YYYY-MM-DD'),
-        dateTo: dateTo?.format('YYYY-MM-DD'),
-        joinedGroups,
-      });
-    } catch (error: any) {
-      message.error(error?.response?.data?.message || 'Không thể xuất Excel');
-    } finally {
-      setIsExporting(false);
-    }
-  };
-
   const renderToolbar = () => (
     <Space className="mobile-toolbar" size={isLaptop ? 4 : 8}>
       {!isMobile && (
@@ -958,8 +934,7 @@ function CustomersPageContent() {
       {canExport && (
         <Button
           icon={<DownloadOutlined />}
-          onClick={handleExport}
-          loading={isExporting}
+          onClick={() => setIsExportOpen(true)}
           title="Xuất Excel"
           size={isLaptop ? 'small' : 'middle'}
         >
@@ -1164,6 +1139,29 @@ function CustomersPageContent() {
       onClose={() => setIsImportOpen(false)}
       onSuccess={() => refetchCustomers()}
     />
+
+      <ExportCustomersModal
+        open={isExportOpen}
+        onClose={() => setIsExportOpen(false)}
+        pageFilters={{
+          search: debouncedSearch,
+          source,
+          status,
+          salesUserId,
+          marketingUserId,
+          creatorId,
+          dateFrom: dateFrom?.format('YYYY-MM-DD'),
+          dateTo: dateTo?.format('YYYY-MM-DD'),
+          joinedGroups,
+        }}
+        sortField={sortField}
+        sortOrder={sortOrder}
+        salesUsers={salesUsersInDept}
+        marketingUsers={marketingUsersInDept}
+        creatorUsers={creatorUsers}
+        hideSalesFilter={hideSalesField}
+        hideMarketingFilter={hideMarketingField}
+      />
 
     <BulkAssignModal
       open={isAssignOpen}
