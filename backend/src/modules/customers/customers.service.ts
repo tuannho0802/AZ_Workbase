@@ -3264,6 +3264,48 @@ export class CustomersService {
    * -> so sánh trực tiếp trong SQL (customer.inputDate > CURDATE dạng VN),
    * không load toàn bộ bảng vào RAM rồi filter bằng JS.
    */
+  /**
+   * ⚠️ MỚI (yêu cầu người dùng: filter + cột "Đã tham gia nhóm" cho trang
+   * report, ĐÚNG hành vi/param `joinedGroups` đã có ở `applyCustomerListFilters()`
+   * cho /customers - tách ra thành helper riêng để dùng lại được ở CẢ 2 nhánh
+   * của `getInvalidDataReport()` (nhánh thường + `getDuplicateContactReport()`),
+   * không phải chỉ ở `findAll()` như hiện có. 1 query JOIN duy nhất cho CẢ
+   * TRANG (không phải N query/khách hàng), y hệt nguyên tắc đã áp dụng ở
+   * `findAll()` (`joinedGroupsRaw`) - copy logic đó ra đây để tái dùng thay vì
+   * lặp lại y nguyên 25 dòng ở 2 nơi.
+   */
+  private async attachJoinedGroups(entities: Customer[]): Promise<void> {
+    if (entities.length === 0) return;
+
+    const joinedGroupsRaw = await this.customerGroupMembershipRepository
+      .createQueryBuilder('cgm')
+      .innerJoin('cgm.group', 'grp')
+      .select('cgm.customer_id', 'customerId')
+      .addSelect('grp.id', 'groupId')
+      .addSelect('grp.name', 'groupName')
+      .where('cgm.customer_id IN (:...ids)', {
+        ids: entities.map((e) => e.id),
+      })
+      .andWhere('cgm.joined = true')
+      .orderBy('grp.name', 'ASC')
+      .getRawMany();
+
+    const joinedGroupsByCustomerId = new Map<number, Array<{ id: number; name: string }>>();
+    for (const row of joinedGroupsRaw) {
+      const customerId = Number(row.customerId);
+      if (!joinedGroupsByCustomerId.has(customerId)) {
+        joinedGroupsByCustomerId.set(customerId, []);
+      }
+      joinedGroupsByCustomerId.get(customerId)!.push({ id: Number(row.groupId), name: row.groupName });
+    }
+
+    entities.forEach((customer) => {
+      const groups = joinedGroupsByCustomerId.get(customer.id) ?? [];
+      (customer as any).joinedGroups = groups;
+      (customer as any).joinedGroupsCount = groups.length;
+    });
+  }
+
   async getInvalidDataReport(
     userId: number,
     userRole: string,
@@ -3286,6 +3328,9 @@ export class CustomersService {
     salesUserId?: number,
     marketingUserId?: number,
     creatorId?: number,
+    // ⚠️ MỚI (yêu cầu người dùng): filter "Đã tham gia nhóm" - ĐÚNG kiểu +
+    // hành vi EXISTS/NOT EXISTS đã dùng ở `applyCustomerListFilters()`.
+    joinedGroups?: 'joined' | 'not_joined',
   ) {
     const todayStr = todayVnStr();
 
@@ -3312,6 +3357,7 @@ export class CustomersService {
         salesUserId,
         marketingUserId,
         creatorId,
+        joinedGroups,
       );
     }
 
@@ -3352,6 +3398,19 @@ export class CustomersService {
     if (creatorId) {
       qb.andWhere('customer.createdById = :creatorId', { creatorId });
     }
+    // "Đã tham gia nhóm" - EXISTS/NOT EXISTS y hệt `applyCustomerListFilters()`
+    // (không JOIN thẳng để tránh nhân dòng do 1 customer join nhiều nhóm).
+    if (joinedGroups === 'joined') {
+      qb.andWhere(
+        'EXISTS (SELECT 1 FROM customer_group_memberships cgm ' +
+        'WHERE cgm.customer_id = customer.id AND cgm.joined = true)',
+      );
+    } else if (joinedGroups === 'not_joined') {
+      qb.andWhere(
+        'NOT EXISTS (SELECT 1 FROM customer_group_memberships cgm ' +
+        'WHERE cgm.customer_id = customer.id AND cgm.joined = true)',
+      );
+    }
 
     // FIX BUG THẬT (rà soát dynamic RBAC): thiếu tham số `scope`, xem giải
     // thích đầy đủ ở getStatsByStatus() phía trên.
@@ -3362,6 +3421,10 @@ export class CustomersService {
       .skip((page - 1) * limit)
       .take(limit)
       .getManyAndCount();
+
+    // "Đã tham gia nhóm" cho cột hiển thị - 1 query JOIN duy nhất cho cả
+    // trang (xem `attachJoinedGroups()`), KHÔNG N+1.
+    await this.attachJoinedGroups(data);
 
     return {
       data,
@@ -3403,6 +3466,7 @@ export class CustomersService {
     salesUserId?: number,
     marketingUserId?: number,
     creatorId?: number,
+    joinedGroups?: 'joined' | 'not_joined',
   ) {
     const groupExpr = isEmail ? 'LOWER(TRIM(customer.email))' : 'customer.phone';
     const nonEmptyCondition = isEmail
@@ -3424,6 +3488,19 @@ export class CustomersService {
         q.andWhere('customer.marketingUserId = :marketingUserId', { marketingUserId });
       }
       if (creatorId) q.andWhere('customer.createdById = :creatorId', { creatorId });
+      // "Đã tham gia nhóm" - áp CÙNG bộ EXISTS/NOT EXISTS vào cả 4 truy vấn
+      // con (dupKeys/count/ids/peers), nhất quán với các filter khác ở trên.
+      if (joinedGroups === 'joined') {
+        q.andWhere(
+          'EXISTS (SELECT 1 FROM customer_group_memberships cgm ' +
+          'WHERE cgm.customer_id = customer.id AND cgm.joined = true)',
+        );
+      } else if (joinedGroups === 'not_joined') {
+        q.andWhere(
+          'NOT EXISTS (SELECT 1 FROM customer_group_memberships cgm ' +
+          'WHERE cgm.customer_id = customer.id AND cgm.joined = true)',
+        );
+      }
     };
 
     const dupKeysQb = this.customersRepository
@@ -3558,6 +3635,9 @@ export class CustomersService {
       .leftJoinAndSelect('customer.createdBy', 'createdBy')
       .where('customer.id IN (:...orderedIds)', { orderedIds })
       .getMany();
+
+    // "Đã tham gia nhóm" cho cột hiển thị - xem `attachJoinedGroups()`.
+    await this.attachJoinedGroups(rawData);
 
     const byId = new Map(rawData.map((c) => [c.id, c]));
 

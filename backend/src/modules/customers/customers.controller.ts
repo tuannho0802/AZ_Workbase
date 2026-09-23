@@ -89,6 +89,7 @@ export class CustomersController {
     @Query('salesUserId') salesUserId?: string,
     @Query('marketingUserId') marketingUserId?: string,
     @Query('creatorId') creatorId?: string,
+    @Query('joinedGroups') joinedGroups?: 'joined' | 'not_joined',
   ) {
     return this.customersService.getInvalidDataReport(
       user.id,
@@ -102,6 +103,7 @@ export class CustomersController {
       salesUserId ? parseInt(salesUserId, 10) : undefined,
       marketingUserId ? parseInt(marketingUserId, 10) : undefined,
       creatorId ? parseInt(creatorId, 10) : undefined,
+      joinedGroups,
     );
   }
 
