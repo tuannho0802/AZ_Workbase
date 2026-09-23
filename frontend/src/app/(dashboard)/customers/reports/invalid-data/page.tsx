@@ -85,7 +85,10 @@ export default function InvalidDataReportPage() {
 
   const [data, setData] = useState<Customer[]>([]);
   const [loading, setLoading] = useState(false);
-  const [invalidType, setInvalidType] = useState<string>('future_date');
+  // ⚠️ MỚI (yêu cầu người dùng): mặc định mở trang / F5 luôn vào thẳng view
+  // "Trùng số điện thoại" (loại hay dùng nhất để rà soát), thay vì
+  // "future_date" như trước.
+  const [invalidType, setInvalidType] = useState<string>('duplicate_phone');
   const [search, setSearch] = useState('');
   const [status, setStatus] = useState<string | undefined>(undefined);
   // Chỉ BE trả field này khi invalidType là 1 trong 2 loại trùng lặp - số
@@ -242,11 +245,18 @@ export default function InvalidDataReportPage() {
       : (isDuplicateView ? 'Số điện thoại (trùng lặp)' : 'Số điện thoại'),
     dataIndex: contactDataIndex,
     key: contactDataIndex,
-    render: (val: string, record, index) => {
+    // Chỉ RENDER nội dung ở đây - việc merge (rowSpan) chuyển hẳn sang
+    // `onCell` bên dưới (KHÔNG return `{children, props}` từ `render` nữa -
+    // antd 6 đã deprecate cách này vì tốn hiệu năng, cảnh báo thẳng ra
+    // console: "columns.render return cell props is deprecated ... please
+    // use onCell instead").
+    render: (val: string, record) => {
       if (!isDuplicateView) return val || '-';
-      const tag = <Tag color={colorForGroupKey(record.duplicateGroupKey || val || '')}>{val || '-'}</Tag>;
-      return { children: tag, props: { rowSpan: getGroupRowSpan(index) } };
+      return <Tag color={colorForGroupKey(record.duplicateGroupKey || val || '')}>{val || '-'}</Tag>;
     },
+    onCell: isDuplicateView
+      ? (_record, index) => ({ rowSpan: getGroupRowSpan(index ?? 0) })
+      : undefined,
   };
 
   // ⚠️ MỚI (yêu cầu người dùng, hoàn thiện việc còn treo từ lượt trước) -
@@ -389,7 +399,16 @@ export default function InvalidDataReportPage() {
               allowClear
               placeholder="Tất cả trạng thái"
               style={{ width: 200 }}
-              options={allCustomerStatuses.map((s) => ({ value: s.code, label: s.name }))}
+              // ⚠️ MỚI (yêu cầu người dùng: "các trạng thái này phải có
+              // color tag") - `label` là 1 React node (Tag đã tô đúng màu
+              // từ /quan-ly-status-khach), KHÔNG phải string - Select hiển
+              // thị y nguyên node này CẢ ở dropdown lẫn ở ô đã chọn (không
+              // cần optionRender/labelRender riêng vì Select không bật
+              // showSearch ở đây, không cần label dạng string để filter).
+              options={allCustomerStatuses.map((s) => ({
+                value: s.code,
+                label: <Tag color={s.color} style={{ margin: 0 }}>{s.name}</Tag>,
+              }))}
             />
           </div>
           <div>
@@ -422,10 +441,11 @@ export default function InvalidDataReportPage() {
            hiện" rồi đổi ngay sang có dữ liệu khi loading). Không tính
            trùng Tên - đúng yêu cầu người dùng, vì tên trùng (VD 2 khách
            tên "Ken") là chuyện bình thường, không phải dấu hiệu data lỗi.
-           ⚠️ FIX BUG THẬT (phát hiện qua ảnh chụp màn hình): `<Alert>` của
-           antd không có prop `title` - phần tiêu đề/mô tả không hề hiển
-           thị dù component vẫn render (chỉ thấy khung vàng trống). Prop
-           đúng là `message` (tiêu đề) + `description` (mô tả). */}
+           ⚠️ SỬA LẠI ĐÚNG (yêu cầu người dùng): bản trước đổi `title` thành
+           `message` do nhầm với API antd 4/5 (`message` là prop đúng ở bản
+           đó). Project này đã lên **antd 6.3.5** - ở bản này `title` mới là
+           prop CHÍNH THỨC (`message` giờ chỉ còn là alias @deprecated, xem
+           `node_modules/antd/es/alert/Alert.d.ts`) - đổi lại đúng `title`. */}
         {isDuplicateView && !loading && (
           duplicateGroupCount ? (
             <Alert
