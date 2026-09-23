@@ -455,25 +455,48 @@ export class CustomersService {
           })
           .orWhere(
             new Brackets((qb2) => {
+              // ⚠️ FIX BUG THẬT (2026-09-23, tái hiện bằng ts-node +
+              // better-sqlite3, dùng ĐÚNG hàm applyCustomerSearch() gốc,
+              // xem sqltest/repro.ts): bản trước gọi
+              // qb2.where(createdAt).orWhere(updatedAt) rồi qb2.andWhere(...)
+              // NGAY TRÊN CÙNG qb2 — TypeORM không tự nhóm 2 điều kiện đầu
+              // lại, nên SQL sinh ra là:
+              //   createdAt >= ? OR updatedAt >= ? AND (name LIKE ...)
+              // AND mạnh hơn OR trong SQL nên tách thành:
+              //   createdAt >= ? OR (updatedAt >= ? AND (name LIKE ...))
+              // => Chỉ cần customer có createdAt trong 72h gần đây là toàn
+              // bộ nhánh OR này TRUE, bất kể có khớp search hay không. Vì
+              // production liên tục có khách mới trong 72h, gần như MỌI
+              // khách mới đều lọt vào kết quả search bất kể gõ gì (đúng
+              // triệu chứng "KHANH DUONG" lọt vào khi tìm "Test lai", và
+              // list kết quả trên production không liên quan gì đến từ
+              // khoá tìm kiếm). Fix: bọc (createdAt OR updatedAt) vào 1
+              // Brackets RIÊNG (qbTime) trước khi andWhere nhóm LIKE, y hệt
+              // cách đã làm đúng cho qb3 bên dưới.
               qb2
-                .where('customer.createdAt >= :recentFallbackSince', {
-                  recentFallbackSince,
-                })
-                .orWhere('customer.updatedAt >= :recentFallbackSince', {
-                  recentFallbackSince,
-                });
-              qb2.andWhere(
-                new Brackets((qb3) => {
-                  qb3
-                    .where('customer.name LIKE :likeSearch', { likeSearch })
-                    .orWhere('customer.email LIKE :likeSearch', {
-                      likeSearch,
-                    })
-                    .orWhere('customer.campaign LIKE :likeSearch', {
-                      likeSearch,
-                    });
-                }),
-              );
+                .where(
+                  new Brackets((qbTime) => {
+                    qbTime
+                      .where('customer.createdAt >= :recentFallbackSince', {
+                        recentFallbackSince,
+                      })
+                      .orWhere('customer.updatedAt >= :recentFallbackSince', {
+                        recentFallbackSince,
+                      });
+                  }),
+                )
+                .andWhere(
+                  new Brackets((qb3) => {
+                    qb3
+                      .where('customer.name LIKE :likeSearch', { likeSearch })
+                      .orWhere('customer.email LIKE :likeSearch', {
+                        likeSearch,
+                      })
+                      .orWhere('customer.campaign LIKE :likeSearch', {
+                        likeSearch,
+                      });
+                  }),
+                );
             }),
           );
       }),
