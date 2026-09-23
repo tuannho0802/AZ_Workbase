@@ -125,14 +125,14 @@ export function NotificationRow({
           </span>
 
           {item.category === 'manual' && (
-            <span style={{ display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: 6, fontSize: 12 }}>
+            <span style={{ display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: 6, fontSize: 10 }}>
               <span style={{ color: '#94a3b8' }}>Từ</span>
               <UserMiniCard
                 name={senderName ?? 'Hệ thống'}
                 getRoleColor={getRoleColorNoop}
                 getRoleName={getRoleNameNoop}
                 hideRoleTag
-                nameFontSize={12}
+                nameFontSize={11}
               />
               <span style={{ color: '#94a3b8' }}>đến</span>
               <UserMiniCard
@@ -140,7 +140,7 @@ export function NotificationRow({
                 getRoleColor={getRoleColorNoop}
                 getRoleName={getRoleNameNoop}
                 hideRoleTag
-                nameFontSize={12}
+                nameFontSize={11}
               />
             </span>
           )}
