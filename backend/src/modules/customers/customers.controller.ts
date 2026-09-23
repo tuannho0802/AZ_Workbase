@@ -1,9 +1,11 @@
-import { Controller, Get, Post, Body, Patch, Param, Delete, Query, UseGuards, UploadedFile, UseInterceptors } from '@nestjs/common';
+import { Controller, Get, Post, Body, Patch, Param, Delete, Query, UseGuards, UploadedFile, UseInterceptors, Res } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
+import type { Response } from 'express';
 import { ApiTags, ApiOperation, ApiResponse, ApiBearerAuth, ApiConsumes, ApiBody } from '@nestjs/swagger';
 import 'multer';
 import { CustomersService } from './customers.service';
 import { CustomersImportService } from './customers.import.service';
+import { CustomersExportService } from './customers-export.service';
 import { CreateCustomerDto } from './dto/create-customer.dto';
 import { UpdateCustomerDto } from './dto/update-customer.dto';
 import { CustomerFiltersDto } from './dto/customer-filters.dto';
@@ -27,7 +29,8 @@ import { CacheControlInterceptor } from '../../common/interceptors/cache-control
 export class CustomersController {
   constructor(
     private readonly customersService: CustomersService,
-    private readonly customersImportService: CustomersImportService
+    private readonly customersImportService: CustomersImportService,
+    private readonly customersExportService: CustomersExportService,
   ) {}
 
   @Get('stats')
@@ -100,6 +103,37 @@ export class CustomersController {
   @ApiBody({ type: ImportCustomerDto })
   async importExcel(@UploadedFile() file: Express.Multer.File, @GetUser('id') userId: number) {
     return this.customersImportService.importExcel(file, userId);
+  }
+
+  @Get('export')
+  @RequirePermission('customers.export')
+  @ApiOperation({
+    summary:
+      'Xuất Excel danh sách khách hàng (kèm sheet Ghi chú) - dữ liệu ĐỒNG BỘ TUYỆT ĐỐI với bảng đang hiển thị ở trang Khách hàng (cùng RBAC/scope, cùng bộ filter, cùng field bị ẩn theo UI Visibility)',
+  })
+  async exportExcel(
+    @GetUser() user: any,
+    @Query() filters: CustomerFiltersDto,
+    @GetPermissionScope() scope: string | null | undefined,
+    @Res() res: Response,
+  ) {
+    const { buffer, filename } = await this.customersExportService.exportCustomers(
+      filters,
+      user.id,
+      user.role,
+      scope,
+      user.departmentId,
+      user.positionId,
+      user.isRootAdmin,
+    );
+    res.set({
+      'Content-Type': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+      // encodeURIComponent để tên file có dấu tiếng Việt/khoảng trắng vẫn
+      // tải xuống đúng tên trên mọi trình duyệt (RFC 5987 - filename*), cùng
+      // pattern với attendance-export.controller.ts.
+      'Content-Disposition': `attachment; filename*=UTF-8''${encodeURIComponent(filename)}`,
+    });
+    res.send(buffer);
   }
 
   @Patch('bulk-assign')
