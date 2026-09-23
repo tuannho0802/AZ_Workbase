@@ -37,8 +37,59 @@ import { resolveEntityColor } from '@/lib/utils/entityColor';
 // usersData - không tự động áp rule 'sales', nên bấm "Chọn Sales nhận data" vẫn
 // ra tất cả user (kể cả Admin/phòng ban khác) nếu không tự tay lọc.
 import { useAssignmentGroupUsers } from '@/lib/hooks/useAssignmentGroups';
+// ⚠️ MỚI - cột "Ghi chú gần nhất" giờ lấy từ bảng customer_notes (batch
+// attachRecentNotes() ở BE), Y CHANG cột cùng tên ở /customers - dùng
+// chung type RecentNote đã export sẵn ở đó thay vì tự định nghĩa lại.
+import type { RecentNote } from '@/lib/types/customer.types';
 
 const { Text } = Typography;
+
+// ── HELPERS Ghi chú gần nhất (copy nguyên logic từ customers/page.tsx theo
+// đúng yêu cầu "làm y chang page customers") ────────────────────────────
+const formatRecentNoteLine = (note: RecentNote) =>
+  `${note.createdByName || 'Không xác định'}: ${note.note} (${dayjs(note.createdAt).format('D/M/YY')})`;
+
+const truncateAtWordBoundary = (text: string, maxLength = 20): string => {
+  if (text.length <= maxLength) return text;
+  const cut = text.slice(0, maxLength);
+  const cuttingMidWord = text[maxLength] !== ' ';
+  const safeCut = cuttingMidWord ? cut.slice(0, cut.lastIndexOf(' ')) : cut;
+  const finalText = safeCut.trim().length > 0 ? safeCut.trimEnd() : cut;
+  return `${finalText}...`;
+};
+
+const renderRecentNotesCell = (record: Customer, count: number) => {
+  const allNotes = record.recentNotes || [];
+  if (allNotes.length === 0) {
+    return <span style={{ color: '#bbb', fontStyle: 'italic', fontSize: '11px' }}>Chưa có ghi chú</span>;
+  }
+
+  const visibleNotes = allNotes.slice(0, count);
+  const fullLatestLine = formatRecentNoteLine(visibleNotes[0]);
+  const latestLine = truncateAtWordBoundary(fullLatestLine, 20);
+
+  const tooltipContent = (
+    <div style={{ minWidth: 220, maxWidth: 320, fontSize: 12 }}>
+      {visibleNotes.map((n, idx) => (
+        <div key={n.id} style={idx < visibleNotes.length - 1 ? { marginBottom: 8 } : undefined}>
+          <strong>{n.createdByName || 'Không xác định'}:</strong> {n.note}
+          <br />
+          <span style={{ fontSize: 10, color: 'rgba(255,255,255,0.65)' }}>
+            {dayjs(n.createdAt).format('HH:mm DD/MM/YYYY')}
+          </span>
+        </div>
+      ))}
+    </div>
+  );
+
+  return (
+    <Tooltip title={tooltipContent} mouseEnterDelay={0.3}>
+      <div style={{ maxWidth: '100%', overflow: 'hidden', whiteSpace: 'nowrap', cursor: 'help', fontSize: 12 }}>
+        {latestLine}
+      </div>
+    </Tooltip>
+  );
+};
 
 // ── TYPES ──────────────────────────────────────────────
 interface Customer {
@@ -47,8 +98,10 @@ interface Customer {
   phone: string | null;
   source: string | null;
   campaign: string | null;
+  recentNotes?: RecentNote[];
   inputDate: string | null;
   salesUser: { id: number; name: string; fullName?: string } | null;
+  marketingUser: { id: number; name: string; fullName?: string } | null;
   createdBy: { id: number; name: string; fullName?: string } | null;
   updatedBy?: { id: number; name: string; fullName?: string } | null;
   createdAt: string;
@@ -154,6 +207,11 @@ const UnassignedMobileCard = ({ record, user, renderAuditTrail, onNameClick, onD
         <span>📞 {record.phone || 'Chưa có SĐT'}</span>
         <span>📅 {record.inputDate ? dayjs(record.inputDate).format('DD/MM/YY') : '-'}</span>
       </div>
+      {record.note && (
+        <div style={{ fontSize: 11, color: '#8c8c8c', marginBottom: 4 }}>
+          📝 {record.note}
+        </div>
+      )}
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: 11, color: '#8c8c8c' }}>
         <span>UTM: {record.campaign || '-'}</span>
         <span>Tạo bởi: {record.createdBy?.name || 'Hệ thống'}</span>
@@ -220,6 +278,11 @@ const AssignedMobileCard = ({ record, user, renderAuditTrail, onNameClick, onDel
         </Space>
         <Text type="secondary" style={{ fontSize: 11 }}>Tạo bởi: {record.createdBy?.name || 'Hệ thống'}</Text>
       </div>
+      {record.note && (
+        <div style={{ fontSize: 11, color: '#8c8c8c', marginTop: 4 }}>
+          📝 {record.note}
+        </div>
+      )}
     </Card>
   );
 };
@@ -503,6 +566,13 @@ export default function ChiaDataPage() {
       render: (v: string | null) => v || '-',
     },
     {
+      title: 'Ghi chú', dataIndex: 'note', width: 180,
+      ellipsis: true,
+      render: (v: string | null) => v
+        ? <Tooltip title={v}><span>{v}</span></Tooltip>
+        : <Text type="secondary">-</Text>,
+    },
+    {
       title: 'Người tạo', width: 130,
       render: (_: any, r: Customer) => (
         <Tooltip title={renderAuditTrail(r)}>
@@ -515,6 +585,19 @@ export default function ChiaDataPage() {
       render: (v: string | null) => v
         ? dayjs(v).format('DD/MM/YYYY')
         : '-',
+    },
+    {
+      // ⚠️ MỚI - "Ngày nhập thực tế" = customer.createdAt (khác "Ngày nhập"
+      // = inputDate, cột trên chỉ có ngày do người nhập tự chọn/không giờ
+      // phút). Cột này lấy timestamp THẬT lúc bản ghi được tạo trong hệ
+      // thống (có giờ:phút) - hiện rút gọn dd/mm/yy, hover xem đủ giờ:phút +
+      // ai tạo qua chung tooltip renderAuditTrail.
+      title: 'Ngày nhập thực tế', dataIndex: 'createdAt', width: 130,
+      render: (v: string, r: Customer) => (
+        <Tooltip title={renderAuditTrail(r)}>
+          <span style={{ cursor: 'help' }}>{v ? dayjs(v).format('DD/MM/YY') : '-'}</span>
+        </Tooltip>
+      ),
     },
     ...(canDeleteCustomer ? [{
       title: 'Thao tác', width: 60, align: 'center' as const,
@@ -588,6 +671,13 @@ export default function ChiaDataPage() {
         ? <SourceTag source={v} /> : '-',
     },
     {
+      title: 'Ghi chú', dataIndex: 'note', width: 180,
+      ellipsis: true,
+      render: (v: string | null) => v
+        ? <Tooltip title={v}><span>{v}</span></Tooltip>
+        : <Text type="secondary">-</Text>,
+    },
+    {
       title: 'Người tạo', width: 130,
       render: (_: any, r: Customer) => (
         <Tooltip title={renderAuditTrail(r)}>
@@ -599,6 +689,16 @@ export default function ChiaDataPage() {
       title: 'Ngày nhập', dataIndex: 'inputDate', width: 110,
       render: (v: string | null) => v
         ? dayjs(v).format('DD/MM/YYYY') : '-',
+    },
+    {
+      // ⚠️ MỚI - đồng bộ đúng cột "Ngày nhập thực tế" (createdAt, có giờ:phút)
+      // như bảng "Có thể chia" ở trên, xem comment đầy đủ ở unassignedColumns.
+      title: 'Ngày nhập thực tế', dataIndex: 'createdAt', width: 130,
+      render: (v: string, r: Customer) => (
+        <Tooltip title={renderAuditTrail(r)}>
+          <span style={{ cursor: 'help' }}>{v ? dayjs(v).format('DD/MM/YY') : '-'}</span>
+        </Tooltip>
+      ),
     },
     ...(canDeleteCustomer ? [{
       title: 'Thao tác', width: 60, align: 'center' as const,
@@ -987,6 +1087,7 @@ export default function ChiaDataPage() {
                     rowKey="id"
                     loading={loadingUnassigned}
                     size="small"
+                      scroll={{ x: 'max-content' }}
                     pagination={{
                       current: unassignedPage,
                       pageSize: 20,
@@ -1130,6 +1231,7 @@ export default function ChiaDataPage() {
                     rowKey="id"
                     loading={loadingAssigned}
                     size="small"
+                      scroll={{ x: 'max-content' }}
                     pagination={{
                       current: assignedPage,
                       pageSize: 20,

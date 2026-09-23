@@ -145,6 +145,10 @@ export class CustomersController {
     @Query('status') status?: string,
     @Query('dateFrom') dateFrom?: string,
     @Query('dateTo') dateTo?: string,
+    @Query('createdAtFrom') createdAtFrom?: string,
+    @Query('createdAtTo') createdAtTo?: string,
+    @Query('primaryUserId') primaryUserId?: string,
+    @Query('sharedUserId') sharedUserId?: string,
   ) {
     return this.customersService.getAssigned({
       page: parseInt(page, 10),
@@ -155,6 +159,10 @@ export class CustomersController {
       status,
       dateFrom,
       dateTo,
+      createdAtFrom,
+      createdAtTo,
+      primaryUserId: primaryUserId ? parseInt(primaryUserId, 10) : null,
+      sharedUserId: sharedUserId ? parseInt(sharedUserId, 10) : null,
       userId: user.id,
       userRole: user.role,
       scope,

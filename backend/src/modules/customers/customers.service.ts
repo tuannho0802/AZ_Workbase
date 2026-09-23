@@ -1991,6 +1991,51 @@ export class CustomersService {
     };
   }
 
+  /**
+   * Gắn `recentNotes` (tối đa 5 ghi chú gần nhất, mới nhất trước) vào từng
+   * customer trong mảng truyền vào - batch 1 query duy nhất cho CẢ MẢNG
+   * (không N+1), ĐÚNG NGUYÊN VĂN logic đã dùng ở `findAll()` (xem comment
+   * đầy đủ ở đó). Tách thành helper riêng để dùng LẠI cho `getUnassigned()`
+   * và `getAssigned()` (trang /chia-data) - trước đây 2 hàm này KHÔNG có
+   * cột "Ghi chú gần nhất" như /customers, theo yêu cầu người dùng "Lấy ghi
+   * chú từ customer_note... làm y chang page customers".
+   */
+  private async attachRecentNotes(customers: Customer[]): Promise<void> {
+    if (customers.length === 0) return;
+
+    const MAX_RECENT_NOTES = 5;
+    const noteRows = await this.notesRepository
+      .createQueryBuilder('note')
+      .leftJoinAndSelect('note.createdByUser', 'noteCreator')
+      .where('note.customer_id IN (:...ids)', {
+        ids: customers.map((c) => c.id),
+      })
+      .orderBy('note.customer_id', 'ASC')
+      .addOrderBy('note.created_at', 'DESC')
+      .getMany();
+
+    const recentNotesByCustomerId = new Map<
+      number,
+      Array<{ id: number; note: string; createdAt: Date; createdByName: string | null }>
+    >();
+    for (const noteRow of noteRows) {
+      const list = recentNotesByCustomerId.get(noteRow.customerId) ?? [];
+      if (list.length < MAX_RECENT_NOTES) {
+        list.push({
+          id: noteRow.id,
+          note: noteRow.note,
+          createdAt: noteRow.createdAt,
+          createdByName: noteRow.createdByUser?.name ?? null,
+        });
+      }
+      recentNotesByCustomerId.set(noteRow.customerId, list);
+    }
+
+    customers.forEach((customer) => {
+      (customer as any).recentNotes = recentNotesByCustomerId.get(customer.id) ?? [];
+    });
+  }
+
   /** Lấy danh sách khách chưa assign (salesUserId IS NULL) */
   async getUnassigned(
     filters: CustomerFiltersDto,
@@ -1998,7 +2043,7 @@ export class CustomersService {
     userRole: string,
     scope?: string | null,
   ) {
-    const { page = 1, limit = 20, search, source, creatorId, status, dateFrom, dateTo } = filters;
+    const { page = 1, limit = 20, search, source, creatorId, status, dateFrom, dateTo, createdAtFrom, createdAtTo } = filters;
 
     const qb = this.customersRepository
       .createQueryBuilder('customer')
@@ -2075,6 +2120,17 @@ export class CustomersService {
       qb.andWhere('customer.inputDate <= :dateTo', { dateTo });
     }
 
+    // ⚠️ MỚI - khoảng ngày RIÊNG cho "Ngày nhập thực tế" (createdAt, có
+    // giờ:phút) - độc lập với dateFrom/dateTo ở trên (lọc inputDate).
+    if (createdAtFrom) {
+      qb.andWhere('customer.createdAt >= :createdAtFrom', { createdAtFrom });
+    }
+    if (createdAtTo) {
+      const end = new Date(createdAtTo);
+      end.setDate(end.getDate() + 1);
+      qb.andWhere('customer.createdAt < :createdAtToEnd', { createdAtToEnd: end.toISOString() });
+    }
+
     if (search) {
       this.applyCustomerSearch(qb, search);
     }
@@ -2084,6 +2140,10 @@ export class CustomersService {
       .take(limit);
 
     const [customers, total] = await qb.getManyAndCount();
+
+    // "Ghi chú gần nhất" - giống hệt cột ở /customers (yêu cầu người dùng).
+    await this.attachRecentNotes(customers);
+
     return {
       customers,
       pagination: {
@@ -2105,16 +2165,34 @@ export class CustomersService {
     status?: string;
     dateFrom?: string;
     dateTo?: string;
+    createdAtFrom?: string;
+    createdAtTo?: string;
+    // ⚠️ MỚI (yêu cầu người dùng - trang /chia-data): "Người phụ trách
+    // chính" giờ gộp CẢ Sales lẫn Marketing (customer.salesUserId HOẶC
+    // customer.marketingUserId) - khác `salesUserId` ở trên (chỉ khớp cột
+    // Sales, giữ lại để không phá tương thích ngược với
+    // `assignments.api.ts#getAssignedCustomers` đang gọi endpoint này).
+    primaryUserId?: number | null;
+    // Lọc theo "Sales ĐƯỢC CHIA" (shared, khác Primary) - dựa trên bảng
+    // customer_assignments đang active, LOẠI TRỪ trường hợp user này đang
+    // là chính Primary Sales của khách đó (đã hiện riêng ở Tag xanh dương,
+    // tránh trùng nghĩa với chính nó).
+    sharedUserId?: number | null;
     userId: number;
     userRole: string;
     scope?: string | null;
   }) {
-    const { page, limit, salesUserId, sourceUserId, search, status, dateFrom, dateTo, userId, userRole, scope } = params;
+    const {
+      page, limit, salesUserId, sourceUserId, search, status,
+      dateFrom, dateTo, createdAtFrom, createdAtTo,
+      primaryUserId, sharedUserId, userId, userRole, scope,
+    } = params;
     const skip = (page - 1) * limit;
 
     const query = this.customersRepository
       .createQueryBuilder('customer')
       .leftJoinAndSelect('customer.salesUser', 'salesUser')
+      .leftJoinAndSelect('customer.marketingUser', 'marketingUser')
       .leftJoinAndSelect('customer.createdBy', 'createdBy')
       .where('customer.deletedAt IS NULL')
       .andWhere('customer.salesUserId IS NOT NULL'); // Đã assign
@@ -2139,6 +2217,22 @@ export class CustomersService {
       query.andWhere('customer.salesUserId = :salesUserId', { salesUserId });
     }
 
+    if (primaryUserId) {
+      query.andWhere(
+        '(customer.salesUserId = :primaryUserId OR customer.marketingUserId = :primaryUserId)',
+        { primaryUserId },
+      );
+    }
+
+    if (sharedUserId) {
+      query.andWhere(
+        'customer.id IN (SELECT ca.customer_id FROM customer_assignments ca ' +
+        'WHERE ca.status = :activeStatus AND ca.assigned_to_id = :sharedUserId) ' +
+        'AND (customer.salesUserId IS NULL OR customer.salesUserId != :sharedUserId)',
+        { activeStatus: 'active', sharedUserId },
+      );
+    }
+
     if (sourceUserId) {
       query.andWhere('customer.createdById = :sourceUserId', { sourceUserId });
     }
@@ -2153,6 +2247,17 @@ export class CustomersService {
 
     if (dateTo) {
       query.andWhere('customer.inputDate <= :dateTo', { dateTo });
+    }
+
+    // ⚠️ MỚI - khoảng ngày RIÊNG cho "Ngày nhập thực tế" (createdAt), độc
+    // lập với dateFrom/dateTo (lọc inputDate) - cùng pattern getUnassigned().
+    if (createdAtFrom) {
+      query.andWhere('customer.createdAt >= :createdAtFrom', { createdAtFrom });
+    }
+    if (createdAtTo) {
+      const end = new Date(createdAtTo);
+      end.setDate(end.getDate() + 1);
+      query.andWhere('customer.createdAt < :createdAtToEnd', { createdAtToEnd: end.toISOString() });
     }
 
     if (search?.trim()) {
@@ -2193,6 +2298,9 @@ export class CustomersService {
         );
       });
     }
+
+    // "Ghi chú gần nhất" - giống hệt cột ở /customers (yêu cầu người dùng).
+    await this.attachRecentNotes(customers);
 
     return {
       customers,

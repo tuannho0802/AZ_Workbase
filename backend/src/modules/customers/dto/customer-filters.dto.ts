@@ -72,6 +72,21 @@ export class CustomerFiltersDto {
   @IsString()
   dateTo?: string;
 
+  // ⚠️ MỚI (yêu cầu người dùng - trang /chia-data): tách riêng khoảng ngày
+  // lọc theo `createdAt` ("Ngày nhập thực tế" - timestamp THẬT lúc tạo bản
+  // ghi, có giờ:phút) khỏi `dateFrom`/`dateTo` ở trên (đang lọc `inputDate`
+  // - ngày người nhập tự chọn/không giờ phút). 2 khoảng ngày độc lập, không
+  // đè lên nhau.
+  @ApiPropertyOptional({ example: '2026-01-01', description: 'Lọc theo Ngày nhập THỰC TẾ (createdAt) từ ngày - KHÁC dateFrom (lọc inputDate)' })
+  @IsOptional()
+  @IsString()
+  createdAtFrom?: string;
+
+  @ApiPropertyOptional({ example: '2026-01-31', description: 'Lọc theo Ngày nhập THỰC TẾ (createdAt) đến ngày - KHÁC dateTo (lọc inputDate)' })
+  @IsOptional()
+  @IsString()
+  createdAtTo?: string;
+
   @ApiPropertyOptional({ example: 3, description: 'Lọc theo người tạo (Data Owner) - dùng cho tab Chia Data' })
   @IsOptional()
   @Type(() => Number)
