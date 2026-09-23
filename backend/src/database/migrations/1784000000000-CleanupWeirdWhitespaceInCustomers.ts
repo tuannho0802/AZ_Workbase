@@ -17,32 +17,50 @@ import { MigrationInterface, QueryRunner } from 'typeorm';
  *
  * ⚠️ Yêu cầu MySQL 8.0.4+ cho REGEXP_REPLACE (project đã dùng MySQL 8.0+,
  * xem README_AZWORKBASE_PROJECT.md).
+ *
+ * ⚠️ BUG THẬT ĐÃ GẶP (2026-09-23, log chạy thật trên máy người dùng):
+ * `ER_REGEXP_INVALID_RANGE`. Nguyên nhân: bản đầu nhúng thẳng pattern
+ * `\x{00A0}...` vào TEXT của câu SQL bằng template string. Backslash đơn
+ * trong 1 chuỗi literal `'...'` của MySQL KHÔNG phải escape sequence hợp lệ
+ * (`\x` không nằm trong danh sách MySQL công nhận: \n \t \\ \' \" \0 \b \r
+ * \Z \% \_) → MySQL tự ÂM THẦM XOÁ backslash đó trước khi đưa cho regex
+ * engine, biến `\x{00A0}` thành `x{00A0}` (mất `\`) → ICU regex hiểu nhầm
+ * thành 1 character-class chứa range `0}-x` ngược thứ tự → lỗi
+ * "[x-y] character range where x comes after y". Fix triệt để: KHÔNG BAO
+ * GIỜ nhúng pattern chứa backslash vào text SQL bằng string interpolation -
+ * luôn truyền qua bound parameter (`?`), vì tham số được driver gửi dưới
+ * dạng data thuần, không đi qua bước parse escape của MySQL string literal.
  */
 const WEIRD_WHITESPACE_PATTERN =
-  '[\\x{00A0}\\x{1680}\\x{2000}-\\x{200A}\\x{200B}\\x{202F}\\x{205F}\\x{3000}\\x{FEFF}]';
+  '[\\u00A0\\u1680\\u2000-\\u200A\\u200B\\u202F\\u205F\\u3000\\uFEFF]';
+const COLLAPSE_MULTI_SPACE_PATTERN = ' {2,}';
+const HAS_ISSUE_PATTERN = '( {2,})|(^ )|( $)';
 
 export class CleanupWeirdWhitespaceInCustomers1784000000000
   implements MigrationInterface
 {
   public async up(queryRunner: QueryRunner): Promise<void> {
     for (const column of ['name', 'email', 'campaign']) {
-      // Bước 1: quy toàn bộ ký tự "giống dấu cách" lạ về dấu cách ASCII (U+0020).
-      await queryRunner.query(`
-        UPDATE customers
-        SET ${column} = REGEXP_REPLACE(${column}, '${WEIRD_WHITESPACE_PATTERN}', ' ')
-        WHERE ${column} IS NOT NULL
-          AND ${column} REGEXP '${WEIRD_WHITESPACE_PATTERN}';
-      `);
+      // Bước 1: quy toàn bộ ký tự "giống dấu cách" lạ về dấu cách ASCII
+      // (U+0020). Pattern truyền qua `?` - KHÔNG interpolate vào text SQL.
+      await queryRunner.query(
+        `UPDATE customers
+         SET ${column} = REGEXP_REPLACE(${column}, ?, ' ')
+         WHERE ${column} IS NOT NULL
+           AND ${column} REGEXP ?`,
+        [WEIRD_WHITESPACE_PATTERN, WEIRD_WHITESPACE_PATTERN],
+      );
 
       // Bước 2: gộp nhiều dấu cách liên tiếp thành 1 + trim 2 đầu (chạy
       // riêng, không gộp chung Bước 1, để không phụ thuộc thứ tự evaluate
       // của REGEXP_REPLACE lồng nhau trên MySQL).
-      await queryRunner.query(`
-        UPDATE customers
-        SET ${column} = TRIM(REGEXP_REPLACE(${column}, ' {2,}', ' '))
-        WHERE ${column} IS NOT NULL
-          AND ${column} REGEXP '( {2,})|(^ )|( \$)';
-      `);
+      await queryRunner.query(
+        `UPDATE customers
+         SET ${column} = TRIM(REGEXP_REPLACE(${column}, ?, ' '))
+         WHERE ${column} IS NOT NULL
+           AND ${column} REGEXP ?`,
+        [COLLAPSE_MULTI_SPACE_PATTERN, HAS_ISSUE_PATTERN],
+      );
     }
 
     console.log(
