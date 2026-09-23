@@ -13,6 +13,9 @@ export interface LeaveRequest {
   periodStartTime: string | null;
   periodEndTime: string | null;
   reason: string;
+  // Đơn bổ sung - BE tính tự động lúc create() khi startDate sớm hơn ngày
+  // tạo đơn (tạo bù, quên tạo trước ngày nghỉ). Không đổi lại khi update().
+  isSupplementary: boolean;
   rejectionReason: string | null;
   status: 'pending' | 'approved' | 'rejected' | 'cancelled';
   requester: {

@@ -10,6 +10,7 @@ import {
 } from 'typeorm';
 import { User } from './user.entity';
 import { DecimalTransformer } from '../transformers/decimal.transformer';
+import { BooleanTransformer } from '../transformers/boolean.transformer';
 import { LeaveRequestAttachment } from './leave-request-attachment.entity';
 
 // ⚠️ [DEPRECATED] Enum này KHÔNG còn là nguồn sự thật cho loại phép kể từ
@@ -131,6 +132,22 @@ export class LeaveRequest {
   })
   totalDays: number;
   
+  // Nghỉ phép Bổ sung - đánh dấu TỰ ĐỘNG lúc create() khi `startDate` (ngày
+  // xin nghỉ) SỚM HƠN ngày tạo đơn (createdAt, tức đơn tạo trễ hơn ngày
+  // nghỉ thực tế) - dùng cho case User quên tạo đơn TRƯỚC ngày nghỉ, giờ tạo
+  // bù lại. Chỉ tính 1 LẦN ở create() (xem
+  // `LeaveRequestsService.computeIsSupplementary()`), KHÔNG tính lại khi
+  // update() - đây là dấu vết lịch sử tại thời điểm tạo đơn, sửa ngày sau đó
+  // không đổi lại cờ này.
+  @Column({
+    name: 'is_supplementary',
+    type: 'tinyint',
+    default: 0,
+    comment: 'Đơn bổ sung - startDate sớm hơn ngày tạo đơn (tạo bù, quên tạo trước)',
+    transformer: new BooleanTransformer(),
+  })
+  isSupplementary: boolean;
+
   // WHY
   @Column({ 
     type: 'text',

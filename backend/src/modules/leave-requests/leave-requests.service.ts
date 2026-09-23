@@ -171,6 +171,20 @@ export class LeaveRequestsService {
   }
 
   /**
+   * Đơn bổ sung (Nghỉ phép Bổ sung): startDate (ngày xin nghỉ) SỚM HƠN ngày
+   * tạo đơn (hôm nay, so sánh chỉ theo ngày - bỏ giờ phút giây) => người
+   * dùng đang tạo bù cho ngày đã qua (quên tạo trước). Chỉ gọi Ở create(),
+   * KHÔNG gọi lại ở update() - xem comment ở `LeaveRequest.isSupplementary`.
+   */
+  private computeIsSupplementary(startDate: Date): boolean {
+    const todayOnly = new Date();
+    todayOnly.setHours(0, 0, 0, 0);
+    const startOnly = new Date(startDate);
+    startOnly.setHours(0, 0, 0, 0);
+    return startOnly.getTime() < todayOnly.getTime();
+  }
+
+  /**
    * Create new leave request
    * Validation: Balance check only (KHÔNG còn conflict/overlap check - xem
    * comment "BYPASS" bên trong)
@@ -263,6 +277,8 @@ export class LeaveRequestsService {
       // ghi chuỗi rỗng xuống cột TIME.
       periodStartTime: dto.periodStartTime || null,
       periodEndTime: dto.periodEndTime || null,
+      // Đơn bổ sung - xem computeIsSupplementary()
+      isSupplementary: this.computeIsSupplementary(startDate),
     });
 
     const saved = await this.leaveRequestRepo.save(leaveRequest);
