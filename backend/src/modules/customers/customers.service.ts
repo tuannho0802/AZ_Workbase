@@ -2219,20 +2219,45 @@ export class CustomersService {
       query.andWhere('customer.salesUserId = :salesUserId', { salesUserId });
     }
 
-    if (primaryUserId) {
+    // ⚠️ FIX BUG THẬT (báo cáo qua ảnh chụp - filter "Sales Phụ trách chính"
+    // và "Sales được chia" chọn CÙNG 1 user -> bảng luôn rỗng): trước đây 2
+    // điều kiện primaryUserId và sharedUserId được AND lại (2 khối `andWhere`
+    // riêng bên dưới). Nhưng điều kiện sharedUserId đã tự loại trừ chính
+    // trường hợp `salesUserId = user đó` (`AND (salesUserId IS NULL OR
+    // salesUserId != :sharedUserId)`) - vì 1 khách KHÔNG BAO GIỜ có cùng 1
+    // người vừa là Primary vừa là Shared. Nên khi primaryUserId === sharedUserId,
+    // AND của 2 khối luôn cho tập rỗng (trừ case hiếm marketingUserId=user
+    // nhưng salesUserId khác user - gần như không xảy ra trong data thật).
+    // Sửa: khi 2 dropdown trùng cùng 1 user, đổi sang OR - hiển thị khách mà
+    // user này là Primary HOẶC đang là Shared (đúng ý người dùng: "xuất hiện
+    // cả 2 loại data có nó"). Khi 2 dropdown khác user nhau, giữ nguyên AND
+    // như cũ (tìm khách có Primary = A VÀ đồng thời Shared = B).
+    if (primaryUserId && sharedUserId && primaryUserId === sharedUserId) {
       query.andWhere(
-        '(customer.salesUserId = :primaryUserId OR customer.marketingUserId = :primaryUserId)',
-        { primaryUserId },
+        '(' +
+        '(customer.salesUserId = :bothUserId OR customer.marketingUserId = :bothUserId)' +
+        ' OR ' +
+        '(customer.id IN (SELECT ca.customer_id FROM customer_assignments ca ' +
+        'WHERE ca.status = :activeStatus AND ca.assigned_to_id = :bothUserId))' +
+        ')',
+        { bothUserId: primaryUserId, activeStatus: 'active' },
       );
-    }
+    } else {
+      if (primaryUserId) {
+        query.andWhere(
+          '(customer.salesUserId = :primaryUserId OR customer.marketingUserId = :primaryUserId)',
+          { primaryUserId },
+        );
+      }
 
-    if (sharedUserId) {
-      query.andWhere(
-        'customer.id IN (SELECT ca.customer_id FROM customer_assignments ca ' +
-        'WHERE ca.status = :activeStatus AND ca.assigned_to_id = :sharedUserId) ' +
-        'AND (customer.salesUserId IS NULL OR customer.salesUserId != :sharedUserId)',
-        { activeStatus: 'active', sharedUserId },
-      );
+      if (sharedUserId) {
+        query.andWhere(
+          'customer.id IN (SELECT ca.customer_id FROM customer_assignments ca ' +
+          'WHERE ca.status = :activeStatus AND ca.assigned_to_id = :sharedUserId) ' +
+          'AND (customer.salesUserId IS NULL OR customer.salesUserId != :sharedUserId)',
+          { activeStatus: 'active', sharedUserId },
+        );
+      }
     }
 
     if (sourceUserId) {
