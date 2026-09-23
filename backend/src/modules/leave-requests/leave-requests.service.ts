@@ -687,7 +687,13 @@ export class LeaveRequestsService {
     // ⚠️ Trước đây không có take()/skip() nào - số đơn phép đã duyệt/từ chối
     // sẽ tích luỹ vô hạn theo thời gian sử dụng. Cap lại 200 bản ghi gần
     // nhất để tránh phình to dần mà không đổi contract (vẫn trả về mảng).
-    return query.orderBy('leave.updatedAt', 'DESC').take(200).getMany();
+    // ⚠️ FIX BUG THẬT (2026-09-23, User báo "đơn Sửa bị nhảy lên đầu"): trước
+    // đây sort theo `updatedAt` - mỗi lần "Sửa hộ" (update()) hoặc chính thao
+    // tác duyệt/từ chối (cũng ghi updatedAt) đều đẩy record đó lên đầu danh
+    // sách, sai với kỳ vọng "sort theo ngày TẠO mới nhất". Đổi sang
+    // `createdAt DESC` - mirror đúng findPending() (đã đúng từ đầu, không
+    // đụng vào).
+    return query.orderBy('leave.createdAt', 'DESC').take(200).getMany();
   }
 
   /**

@@ -3,7 +3,7 @@
 import { useState, useEffect, useMemo } from 'react';
 import { useRouter } from 'next/navigation';
 import {
-  Table, Card, Button, Space, Tag, Badge, Tabs, Modal, Input, App, Typography, Divider, Tooltip,
+  Card, Button, Space, Tag, Badge, Tabs, Modal, Input, App, Typography, Divider, Tooltip,
   Row, Col, Select, DatePicker, Form
 } from 'antd';
 import {
@@ -14,6 +14,7 @@ import { leaveRequestsApi, LeaveRequest } from '@/lib/api/leave-requests.api';
 import { useMyPermissions } from '@/lib/hooks/useMyPermissions';
 import { useLeaveTypes } from '@/lib/hooks/useLeaveTypes';
 import { AttachmentsViewerButton } from '@/components/leave-requests/AttachmentsViewerButton';
+import { WeekGroupedRequests } from '@/components/leave-requests/WeekGroupedRequests';
 import { resolveEntityColor } from '@/lib/utils/entityColor';
 import dayjs, { Dayjs } from 'dayjs';
 
@@ -552,11 +553,16 @@ export default function ApprovalPage() {
           <div>{dayjs(record.startDate).format('DD/MM/YYYY')}</div>
           <div style={{ fontSize: 12, color: '#888' }}>đến {dayjs(record.endDate).format('DD/MM/YYYY')}</div>
           <div style={{ fontSize: 12, color: '#1890ff' }}>{record.totalDays} ngày</div>
-          {formatPeriodHours(record) && (
-            <div style={{ fontSize: 12, color: '#722ed1' }}>{formatPeriodHours(record)}</div>
-          )}
         </div>
       )
+    },
+    {
+      title: 'Khung giờ',
+      width: 110,
+      render: (_: any, record: LeaveRequest) =>
+        formatPeriodHours(record) ? (
+          <span style={{ color: '#722ed1' }}>{formatPeriodHours(record)}</span>
+        ) : '-'
     },
     {
       title: 'Lý do',
@@ -654,11 +660,16 @@ export default function ApprovalPage() {
           <div>{dayjs(record.startDate).format('DD/MM/YYYY')}</div>
           <div style={{ fontSize: 12, color: '#888' }}>đến {dayjs(record.endDate).format('DD/MM/YYYY')}</div>
           <div style={{ fontSize: 12, color: '#1890ff' }}>{record.totalDays} ngày</div>
-          {formatPeriodHours(record) && (
-            <div style={{ fontSize: 12, color: '#722ed1' }}>{formatPeriodHours(record)}</div>
-          )}
         </div>
       )
+    },
+    {
+      title: 'Khung giờ',
+      width: 110,
+      render: (_: any, record: LeaveRequest) =>
+        formatPeriodHours(record) ? (
+          <span style={{ color: '#722ed1' }}>{formatPeriodHours(record)}</span>
+        ) : '-'
     },
     {
       title: 'Trạng thái',
@@ -776,37 +787,25 @@ export default function ApprovalPage() {
               />
             </Col>
           </Row>
-          {isMobile ? (
-            filteredPending.length === 0 ? (
-          <div style={{ padding: '24px 0', textAlign: 'center', color: '#8c8c8c' }}>
-            ✅ Không có đơn chờ duyệt
-          </div>
-        ) : (
-                filteredPending.map(r => (
-            <PendingMobileCard
-              key={r.id}
-              record={r}
-              onApprove={handleApprove}
-              onReject={openRejectModal}
-                    onEdit={openEditModal}
-                    canEdit={canEdit}
-              leaveTypeMap={leaveTypeMap}
-            />
-          ))
-        )
-      ) : (
-        <Table
-          columns={pendingColumns}
-                dataSource={filteredPending}
-          rowKey="id"
-          loading={loading}
-          pagination={false}
-            size="small"
-            tableLayout="fixed"
-                scroll={{ x: pendingTableWidth }}
-          locale={{ emptyText: '✅ Không có đơn chờ duyệt' }}
-        />
-          )}
+          <WeekGroupedRequests
+            records={filteredPending}
+            isMobile={isMobile}
+            loading={loading}
+            columns={pendingColumns as any}
+            tableWidth={pendingTableWidth}
+            emptyText="✅ Không có đơn chờ duyệt"
+            renderMobileCard={(record) => (
+              <PendingMobileCard
+                key={record.id}
+                record={record}
+                onApprove={handleApprove}
+                onReject={openRejectModal}
+                onEdit={openEditModal}
+                canEdit={canEdit}
+                leaveTypeMap={leaveTypeMap}
+              />
+            )}
+          />
         </>
       )
     } : null,
@@ -878,35 +877,23 @@ export default function ApprovalPage() {
               />
             </Col>
           </Row>
-          {isMobile ? (
-            filteredHistory.length === 0 ? (
-          <div style={{ padding: '24px 0', textAlign: 'center', color: '#8c8c8c' }}>
-            Chưa có lịch sử xử lý
-          </div>
-        ) : (
-                filteredHistory.map(r => (
-                  <HistoryMobileCard
-                    key={r.id}
-                    record={r}
-                    onEdit={openEditModal}
-                    canEdit={canEdit}
-                    leaveTypeMap={leaveTypeMap}
-                  />
-          ))
-        )
-      ) : (
-        <Table
-          columns={historyColumns}
-                dataSource={filteredHistory}
-          rowKey="id"
-          loading={loading}
-          pagination={{ pageSize: 10 }}
-            size="small"
-            tableLayout="fixed"
-                scroll={{ x: historyTableWidth }}
-          locale={{ emptyText: 'Chưa có lịch sử xử lý' }}
-        />
-          )}
+          <WeekGroupedRequests
+            records={filteredHistory}
+            isMobile={isMobile}
+            loading={loading}
+            columns={historyColumns as any}
+            tableWidth={historyTableWidth}
+            emptyText="Chưa có lịch sử xử lý"
+            renderMobileCard={(record) => (
+              <HistoryMobileCard
+                key={record.id}
+                record={record}
+                onEdit={openEditModal}
+                canEdit={canEdit}
+                leaveTypeMap={leaveTypeMap}
+              />
+            )}
+          />
         </>
       )
     } : null,
