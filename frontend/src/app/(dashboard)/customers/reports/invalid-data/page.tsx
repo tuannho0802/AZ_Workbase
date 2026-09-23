@@ -1,8 +1,8 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { App, Table, Card, Typography, Select, Space, Button, Alert, Tag, Input, Tooltip } from 'antd';
+import { App, Table, Card, Typography, Select, Space, Button, Alert, Tag, Input, Tooltip, Avatar } from 'antd';
 import type { ColumnsType, TablePaginationConfig } from 'antd/es/table';
 import { customersApi } from '@/lib/api/customers.api';
 import { Customer } from '@/lib/types/customer.types';
@@ -13,6 +13,7 @@ import { useRoleColorMap, useRoleColors } from '@/lib/hooks/useRoleColorMap';
 import { useCustomerStatuses } from '@/lib/hooks/useCustomerStatuses';
 import { StatusTag } from '@/components/customers/StatusTag';
 import { UserMiniCard } from '@/app/(dashboard)/attendance-device/UserMiniCard';
+import { resolveEntityColor } from '@/lib/utils/entityColor';
 // ⚠️ MỚI (yêu cầu người dùng: filter Sales/Marketing phụ trách) - dùng
 // ĐÚNG nguồn danh sách user hợp lệ theo assignment-group ('sales'/
 // 'marketing') y hệt pattern `/customers`, `CustomerForm.tsx` - KHÔNG tự
@@ -290,6 +291,32 @@ export default function InvalidDataReportPage() {
     fetchData({ page: newPagination.current, limit: newPagination.pageSize });
   };
 
+  // ⚠️ MỚI (yêu cầu người dùng: "filter thêm Người tạo, Sales phụ trách,
+  // Marketing phụ trách") - mirror ĐÚNG `renderUserOption` của
+  // `CustomerFilters.tsx` (Avatar tô màu theo Vai trò + Tag Vai trò/Phòng
+  // ban/Vị trí) để 3 dropdown filter mới nhất quán giao diện với `/customers`.
+  const renderUserOption = (option: { data: { user: { id: number; name: string; role?: string; department?: { name: string; color?: string } | null; position?: { name: string; color?: string } | null } } }) => {
+    const u = option.data.user;
+    const tagStyle: React.CSSProperties = { fontSize: 10, lineHeight: '16px', padding: '0 4px', margin: 0 };
+    return (
+      <Space size={4} align="center">
+        <Avatar size={20} style={{ backgroundColor: getRoleColor(u.role), fontSize: 11, flexShrink: 0 }}>
+          {u.name?.[0]?.toUpperCase()}
+        </Avatar>
+        <span style={{ fontSize: 13 }}>{u.name}</span>
+        {u.role && (
+          <Tag style={tagStyle} color={getRoleColor(u.role)}>{getRoleName(u.role)}</Tag>
+        )}
+        {u.department?.name && (
+          <Tag style={tagStyle} color={resolveEntityColor(u.department.color)}>{u.department.name}</Tag>
+        )}
+        {u.position?.name && (
+          <Tag style={tagStyle} color={resolveEntityColor(u.position.color)}>{u.position.name}</Tag>
+        )}
+      </Space>
+    );
+  };
+
   const isDuplicateView = isDuplicateType(invalidType);
 
   // ⚠️ MỚI (gộp nhóm trực quan): BE (`getDuplicateContactReport`) đã sắp
@@ -558,6 +585,65 @@ export default function InvalidDataReportPage() {
                 value: s.code,
                 label: <Tag color={s.color} style={{ margin: 0 }}>{s.name}</Tag>,
               }))}
+            />
+          </div>
+          <div>
+            <div className="mb-1"><Text strong>Sales phụ trách</Text></div>
+            <Select
+              value={salesUserId}
+              onChange={handleSalesUserChange}
+              allowClear
+              showSearch={{ optionFilterProp: 'label' }}
+              placeholder="Chọn Sales"
+              style={{ width: 200 }}
+              optionLabelProp="label"
+              optionRender={renderUserOption}
+              popupMatchSelectWidth={false}
+              options={salesUsers.map((u) => ({ value: u.id, label: u.name, user: u }))}
+            />
+          </div>
+          <div>
+            <div className="mb-1"><Text strong>Marketing phụ trách</Text></div>
+            <Select
+              value={marketingUserId}
+              onChange={handleMarketingUserChange}
+              allowClear
+              showSearch={{ optionFilterProp: 'label' }}
+              placeholder="Chọn Marketing"
+              style={{ width: 200 }}
+              optionLabelProp="label"
+              optionRender={renderUserOption}
+              popupMatchSelectWidth={false}
+              options={marketingUsers.map((u) => ({ value: u.id, label: u.name, user: u }))}
+            />
+          </div>
+          <div>
+            <div className="mb-1"><Text strong>Người tạo</Text></div>
+            <Select
+              value={creatorId}
+              onChange={handleCreatorChange}
+              allowClear
+              showSearch={{ optionFilterProp: 'label' }}
+              placeholder="Chọn người tạo"
+              style={{ width: 200 }}
+              optionLabelProp="label"
+              optionRender={renderUserOption}
+              popupMatchSelectWidth={false}
+              options={creatorUsers.map((u) => ({ value: u.id, label: u.name, user: u }))}
+            />
+          </div>
+          <div>
+            <div className="mb-1"><Text strong>Đã tham gia nhóm</Text></div>
+            <Select
+              value={joinedGroups}
+              onChange={handleJoinedGroupsChange}
+              allowClear
+              placeholder="Tất cả"
+              style={{ width: 200 }}
+              options={[
+                { value: 'joined', label: 'Đã joined ít nhất 1 nhóm' },
+                { value: 'not_joined', label: 'Chưa joined nhóm nào' },
+              ]}
             />
           </div>
           <div>
