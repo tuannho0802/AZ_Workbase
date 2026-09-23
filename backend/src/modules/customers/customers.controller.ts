@@ -289,6 +289,34 @@ export class CustomersController {
     return this.customersService.hardDelete(+id, user.id);
   }
 
+  /**
+   * ⚠️ MỚI: Kiểm tra trùng SĐT/Email TRƯỚC khi tạo khách hàng - phục vụ
+   * Modal cảnh báo ở FE ("SĐT này đã được X thêm, vẫn muốn tạo?"). Cố tình
+   * gắn `customers.create` (KHÔNG phải `customers.view`) - vì đây chính là
+   * bước tiền-tạo, người gọi chắc chắn đã có quyền tạo khách hàng rồi.
+   *
+   * Đặt route TĨNH này TRƯỚC `@Get(':id')` bên dưới - NestJS khớp route
+   * theo đúng thứ tự khai báo, nếu đảo ngược thứ tự thì `/check-duplicate`
+   * sẽ bị nuốt nhầm vào `:id` (lỗi 400 "id không hợp lệ").
+   */
+  @Get('check-duplicate')
+  @RequirePermission('customers.create')
+  @ApiOperation({
+    summary:
+      'Kiểm tra SĐT/Email đã tồn tại ở khách hàng khác chưa (mọi phạm vi, KHÔNG chỉ trong quyền xem của người gọi) - trả về thông tin tối thiểu (tên người tạo/sales, tên nhóm), KHÔNG trả full record',
+  })
+  checkDuplicateContact(
+    @Query('phone') phone?: string,
+    @Query('email') email?: string,
+    @Query('excludeId') excludeId?: string,
+  ) {
+    return this.customersService.checkDuplicateContact(
+      phone,
+      email,
+      excludeId ? +excludeId : undefined,
+    );
+  }
+
   @Get(':id')
   @RequirePermission('customers.view')
   @ApiOperation({ summary: 'Lấy thông tin chi tiết khách hàng' })

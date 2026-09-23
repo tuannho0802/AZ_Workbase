@@ -341,6 +341,111 @@ export class CustomersService {
   }
 
   /**
+   * ⚠️ MỚI: Kiểm tra SĐT/Email đã tồn tại ở khách hàng NÀO ĐÓ trong hệ
+   * thống chưa - phục vụ Modal cảnh báo trước khi tạo khách hàng mới, theo
+   * đúng use case người dùng mô tả: "Employee chỉ thấy data của mình (scope
+   * own) nên vô tình nhập trùng khách của Employee khác - cần cảnh báo
+   * TRƯỚC khi tạo, thay vì để lọt vào DB rồi mới rà soát sau ở report".
+   *
+   * ⚠️ CỐ TÌNH BYPASS `CustomerAccessHelper.applyViewFilter()` (KHÔNG lọc
+   * theo scope/RBAC như mọi query khác trong service này) - đây LÀ đúng
+   * "exception tạm thời" người dùng yêu cầu, vì mục đích của endpoint này
+   * là phát hiện trùng lặp XUYÊN SUỐT mọi phạm vi (kể cả khách hàng nằm
+   * ngoài quyền xem của người gọi), không thì Employee A sẽ không bao giờ
+   * biết khách đã tồn tại ở Employee B - đúng nguyên nhân gốc gây trùng data.
+   *
+   * ĐỂ AN TOÀN (không biến đây thành lỗ hổng lộ data ngoài phạm vi quyền):
+   * hàm này CHỈ trả về đúng 3 thứ tối thiểu cần cho câu cảnh báo - tên
+   * người tạo, tên sales phụ trách, tên các nhóm liên kết đã join - TUYỆT
+   * ĐỐI KHÔNG trả `id`/SĐT/Email đầy đủ/note hay bất kỳ field nhạy cảm nào
+   * khác của bản ghi khách hàng đã tồn tại đó. Không có `id` nghĩa là FE
+   * cũng không thể lợi dụng response này để suy ra rồi gọi tiếp
+   * `GET /customers/:id` xem full - endpoint đó vẫn tự kiểm tra
+   * `applyViewFilter` riêng như bình thường, không bị ảnh hưởng bởi đây.
+   *
+   * `excludeCustomerId`: dùng khi SỬA 1 khách hàng đã tồn tại (đổi SĐT/Email
+   * của chính nó) - loại trừ chính bản ghi đang sửa ra khỏi kết quả trùng,
+   * tránh báo "trùng với chính nó".
+   */
+  async checkDuplicateContact(
+    phone?: string | null,
+    email?: string | null,
+    excludeCustomerId?: number,
+  ): Promise<{
+    hasDuplicate: boolean;
+    phoneMatch: { creatorName: string; salesUserName: string | null; groupNames: string[] } | null;
+    emailMatch: { creatorName: string; salesUserName: string | null; groupNames: string[] } | null;
+  }> {
+    const result: {
+      hasDuplicate: boolean;
+      phoneMatch: { creatorName: string; salesUserName: string | null; groupNames: string[] } | null;
+      emailMatch: { creatorName: string; salesUserName: string | null; groupNames: string[] } | null;
+    } = { hasDuplicate: false, phoneMatch: null, emailMatch: null };
+
+    const trimmedPhone = phone?.trim();
+    if (trimmedPhone) {
+      const qb = this.customersRepository
+        .createQueryBuilder('customer')
+        .leftJoinAndSelect('customer.createdBy', 'createdBy')
+        .leftJoinAndSelect('customer.salesUser', 'salesUser')
+        .where('customer.deletedAt IS NULL')
+        .andWhere('customer.phone = :phone', { phone: trimmedPhone });
+      if (excludeCustomerId) {
+        qb.andWhere('customer.id != :excludeId', { excludeId: excludeCustomerId });
+      }
+      const existing = await qb.getOne();
+      if (existing) {
+        result.hasDuplicate = true;
+        result.phoneMatch = await this.buildDuplicateMatchInfo(existing);
+      }
+    }
+
+    // Chuẩn hoá LOWER/TRIM giống hệt `getDuplicateContactReport()` -
+    // "A@Gmail.com" và "a@gmail.com" phải tính là 1 địa chỉ.
+    const normalizedEmail = email?.trim().toLowerCase();
+    if (normalizedEmail) {
+      const qb = this.customersRepository
+        .createQueryBuilder('customer')
+        .leftJoinAndSelect('customer.createdBy', 'createdBy')
+        .leftJoinAndSelect('customer.salesUser', 'salesUser')
+        .where('customer.deletedAt IS NULL')
+        .andWhere('LOWER(TRIM(customer.email)) = :email', { email: normalizedEmail });
+      if (excludeCustomerId) {
+        qb.andWhere('customer.id != :excludeId', { excludeId: excludeCustomerId });
+      }
+      const existing = await qb.getOne();
+      if (existing) {
+        result.hasDuplicate = true;
+        result.emailMatch = await this.buildDuplicateMatchInfo(existing);
+      }
+    }
+
+    return result;
+  }
+
+  /** Helper của checkDuplicateContact() - dựng thông tin TỐI THIỂU (không
+   * có id/SĐT/Email/note) để hiển thị trong Modal cảnh báo. */
+  private async buildDuplicateMatchInfo(
+    existing: Customer,
+  ): Promise<{ creatorName: string; salesUserName: string | null; groupNames: string[] }> {
+    const memberships = await this.customersRepository.manager
+      .getRepository(CustomerGroupMembership)
+      .createQueryBuilder('membership')
+      .leftJoinAndSelect('membership.group', 'group')
+      .where('membership.customerId = :customerId', { customerId: existing.id })
+      .andWhere('membership.joined = true')
+      .getMany();
+
+    return {
+      creatorName: existing.createdBy?.name ?? 'Không xác định',
+      salesUserName: existing.salesUser?.name ?? null,
+      groupNames: memberships
+        .map((m) => m.group?.name)
+        .filter((name): name is string => !!name),
+    };
+  }
+
+  /**
    * ⚠️ CẢI TIẾN AUDIT LOG (mirror ĐÚNG `PeriodicTasksService.
    * buildAuditSnapshot()` - báo lỗi thật từ người dùng: trang "Nhật ký hệ
    * thống" hiển thị "Nhân viên sales: 3" / "Dữ liệu phức hợp" thay vì tên đọc
@@ -3296,8 +3401,24 @@ export class CustomersService {
 
     CustomerAccessHelper.applyViewFilter(qb, userId, userRole, scope);
 
+    // FIX BUG THẬT (500 khi xem "Trùng email"): KHÔNG được orderBy() thẳng
+    // bằng biểu thức raw chứa dấu "." (vd `LOWER(TRIM(customer.email))`).
+    // TypeORM (SelectQueryBuilder.createOrderByCombinedWithSelectExpression)
+    // hễ thấy orderBy key có ký tự "." là tự tách theo `split('.')` rồi coi
+    // PHẦN ĐẦU là 1 alias đã join để tìm cột - với chuỗi trên, phần đầu tách
+    // ra là `LOWER(TRIM(customer` (không phải alias nào cả) -> ném đúng lỗi
+    // `"LOWER(TRIM(customer" alias was not found` (đã thấy trong log thật).
+    // Trường hợp `duplicate_phone` không vỡ vì groupExpr lúc đó chỉ là
+    // `customer.phone` - đúng định dạng alias.column thật nên tách ra vẫn
+    // khớp alias `customer` có thật. Cách sửa CHUẨN của TypeORM cho orderBy
+    // theo biểu thức tính toán: đăng ký nó qua `addSelect(expr, alias)` rồi
+    // orderBy bằng CHÍNH alias đó (không có dấu ".") - khớp đúng nhánh an
+    // toàn (so alias theo `select.aliasName === orderCriteria`), không đi
+    // qua nhánh tách chuỗi nói trên nữa.
+    qb.addSelect(groupExpr, 'dup_key');
+
     const [rawData, total] = await qb
-      .orderBy(groupExpr, 'ASC')
+      .orderBy('dup_key', 'ASC')
       .addOrderBy('customer.createdAt', 'ASC')
       .skip((page - 1) * limit)
       .take(limit)

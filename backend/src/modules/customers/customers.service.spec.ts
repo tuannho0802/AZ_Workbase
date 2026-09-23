@@ -1338,4 +1338,217 @@ describe('CustomersService', () => {
       });
     });
   });
+
+  // ⚠️ FIX BUG THẬT (500 khi vào /customers/reports/invalid-data?invalidType=
+  // duplicate_email): khoá lại đúng cách sửa - KHÔNG được orderBy() thẳng
+  // bằng biểu thức raw chứa dấu "." (xem chú thích chi tiết trong
+  // getDuplicateContactReport()). Trước đây file này KHÔNG có test nào cho
+  // getInvalidDataReport()/getDuplicateContactReport() - đây là bug lẽ ra
+  // 1 test đơn giản kiểu này đã bắt được từ trước khi lên tới người dùng.
+  describe('getInvalidDataReport / getDuplicateContactReport - Báo cáo trùng SĐT/Email', () => {
+    function makeDupKeysQb(dupRows: { dupKey: string }[]) {
+      const qb: any = {
+        select: jest.fn().mockReturnThis(),
+        where: jest.fn().mockReturnThis(),
+        andWhere: jest.fn().mockReturnThis(),
+        groupBy: jest.fn().mockReturnThis(),
+        having: jest.fn().mockReturnThis(),
+        getRawMany: jest.fn().mockResolvedValue(dupRows),
+      };
+      return qb;
+    }
+
+    function makeMainQb(rows: any[], total: number) {
+      const qb: any = {
+        leftJoinAndSelect: jest.fn().mockReturnThis(),
+        where: jest.fn().mockReturnThis(),
+        andWhere: jest.fn().mockReturnThis(),
+        addSelect: jest.fn().mockReturnThis(),
+        orderBy: jest.fn().mockReturnThis(),
+        addOrderBy: jest.fn().mockReturnThis(),
+        skip: jest.fn().mockReturnThis(),
+        take: jest.fn().mockReturnThis(),
+        getManyAndCount: jest.fn().mockResolvedValue([rows, total]),
+      };
+      return qb;
+    }
+
+    it('duplicate_email: KHÔNG được orderBy() thẳng bằng biểu thức raw chứa "." - phải addSelect(...,\'dup_key\') rồi orderBy(\'dup_key\')', async () => {
+      const dupKeysQb = makeDupKeysQb([{ dupKey: 'a@gmail.com' }]);
+      const mainQb = makeMainQb(
+        [{ id: 1, email: 'a@gmail.com', name: 'A' }, { id: 2, email: 'A@Gmail.com', name: 'B' }],
+        2,
+      );
+      mockCustomerRepo.createQueryBuilder
+        .mockReturnValueOnce(dupKeysQb)
+        .mockReturnValueOnce(mainQb);
+
+      const result: any = await service.getInvalidDataReport(
+        1, Role.ADMIN, 'duplicate_email', 1, 20, PermissionScope.ALL,
+      );
+
+      // Chốt đúng cách sửa: orderBy KHÔNG được gọi với chuỗi chứa "." (dấu
+      // hiệu của biểu thức raw) - phải gọi bằng alias thường (không dấu
+      // chấm) đã đăng ký qua addSelect() ngay trước đó.
+      expect(mainQb.addSelect).toHaveBeenCalledWith(
+        'LOWER(TRIM(customer.email))',
+        'dup_key',
+      );
+      const orderByArg = mainQb.orderBy.mock.calls[0][0];
+      expect(orderByArg).not.toContain('.');
+      expect(mainQb.orderBy).toHaveBeenCalledWith('dup_key', 'ASC');
+
+      expect(result.invalidType).toBe('duplicate_email');
+      expect(result.duplicateGroupCount).toBe(1);
+      expect(result.total).toBe(2);
+      expect(result.data[0].duplicateGroupKey).toBe('a@gmail.com');
+      // Chuẩn hoá LOWER/TRIM đúng yêu cầu (không phân biệt hoa/thường).
+      expect(result.data[1].duplicateGroupKey).toBe('a@gmail.com');
+    });
+
+    it('duplicate_phone: vẫn hoạt động bình thường (groupExpr là alias.column thật, không phải biểu thức raw)', async () => {
+      const dupKeysQb = makeDupKeysQb([{ dupKey: '0901234567' }]);
+      const mainQb = makeMainQb(
+        [{ id: 1, phone: '0901234567', name: 'A' }, { id: 2, phone: '0901234567', name: 'B' }],
+        2,
+      );
+      mockCustomerRepo.createQueryBuilder
+        .mockReturnValueOnce(dupKeysQb)
+        .mockReturnValueOnce(mainQb);
+
+      const result: any = await service.getInvalidDataReport(
+        1, Role.ADMIN, 'duplicate_phone', 1, 20, PermissionScope.ALL,
+      );
+
+      expect(mainQb.addSelect).toHaveBeenCalledWith('customer.phone', 'dup_key');
+      expect(mainQb.orderBy).toHaveBeenCalledWith('dup_key', 'ASC');
+      expect(result.duplicateGroupCount).toBe(1);
+      expect(result.data[0].duplicateGroupKey).toBe('0901234567');
+    });
+
+    it('không có giá trị nào trùng → trả về rỗng, KHÔNG gọi tới query chính (tránh query thừa)', async () => {
+      const dupKeysQb = makeDupKeysQb([]);
+      mockCustomerRepo.createQueryBuilder.mockReturnValueOnce(dupKeysQb);
+
+      const result: any = await service.getInvalidDataReport(
+        1, Role.ADMIN, 'duplicate_phone', 1, 20, PermissionScope.ALL,
+      );
+
+      expect(result.data).toEqual([]);
+      expect(result.total).toBe(0);
+      expect(result.duplicateGroupCount).toBe(0);
+      expect(mockCustomerRepo.createQueryBuilder).toHaveBeenCalledTimes(1);
+    });
+  });
+
+  // ⚠️ MỚI: khoá lại 2 điểm quan trọng nhất của checkDuplicateContact() -
+  // (1) CỐ TÌNH bypass applyViewFilter (không có andWhere phân quyền nào
+  // được gọi thêm ngoài `deletedAt IS NULL` + điều kiện phone/email) - đúng
+  // ý đồ "exception tạm thời xem xuyên phạm vi quyền" người dùng yêu cầu;
+  // (2) response CHỈ chứa đúng 3 field tối thiểu, không có `id`/full record.
+  describe('checkDuplicateContact - Kiểm tra trùng SĐT/Email trước khi tạo (Modal cảnh báo)', () => {
+    // ⚠️ QUAN TRỌNG: `jest.clearAllMocks()` ở beforeEach ngoài cùng (dòng
+    // 120) chỉ xoá LỊCH SỬ gọi (mock.calls), KHÔNG xoá hàng đợi
+    // `mockReturnValueOnce()` chưa dùng hết - nếu 1 test chỉ trigger ÍT hơn
+    // số lần createQueryBuilder() đã queue (vd truyền phone=null nên nhánh
+    // phone không hề gọi tới), giá trị dư sẽ TRÔI SANG test kế tiếp và làm
+    // sai lệch kết quả (đã thật sự gặp lỗi này khi viết). `mockReset()`
+    // riêng ở đây xoá sạch cả hàng đợi, đảm bảo mỗi test luôn bắt đầu từ
+    // hàng đợi rỗng.
+    beforeEach(() => {
+      mockCustomerRepo.createQueryBuilder.mockReset();
+    });
+
+    function makeCustomerLookupQb(found: any) {
+      const qb: any = {
+        leftJoinAndSelect: jest.fn().mockReturnThis(),
+        where: jest.fn().mockReturnThis(),
+        andWhere: jest.fn().mockReturnThis(),
+        getOne: jest.fn().mockResolvedValue(found),
+      };
+      return qb;
+    }
+
+    function makeMembershipRepo(groupNames: string[]) {
+      const qb: any = {
+        leftJoinAndSelect: jest.fn().mockReturnThis(),
+        where: jest.fn().mockReturnThis(),
+        andWhere: jest.fn().mockReturnThis(),
+        getMany: jest.fn().mockResolvedValue(groupNames.map((name) => ({ group: { name } }))),
+      };
+      return { createQueryBuilder: jest.fn().mockReturnValue(qb) };
+    }
+
+    it('không trùng SĐT lẫn Email -> hasDuplicate=false, không match nào', async () => {
+      const phoneQb = makeCustomerLookupQb(null);
+      const emailQb = makeCustomerLookupQb(null);
+      mockCustomerRepo.createQueryBuilder
+        .mockReturnValueOnce(phoneQb)
+        .mockReturnValueOnce(emailQb);
+
+      const result = await service.checkDuplicateContact('0901234567', 'a@gmail.com');
+
+      expect(result).toEqual({ hasDuplicate: false, phoneMatch: null, emailMatch: null });
+      // KHÔNG có andWhere phân quyền nào ngoài đúng 1 điều kiện phone/email -
+      // xác nhận applyViewFilter() KHÔNG được gọi (bypass đúng ý đồ).
+      expect(phoneQb.andWhere).toHaveBeenCalledTimes(1);
+      expect(emailQb.andWhere).toHaveBeenCalledTimes(1);
+    });
+
+    it('trùng SĐT với khách của người khác -> trả về ĐÚNG 3 field tối thiểu, KHÔNG có id/note/phone', async () => {
+      const existing = {
+        id: 999,
+        phone: '0901234567',
+        note: 'Ghi chú riêng tư',
+        createdBy: { name: 'Lê Hoàng Tuấn' },
+        salesUser: { name: 'Nguyễn Sales' },
+      };
+      const phoneQb = makeCustomerLookupQb(existing);
+      const emailQb = makeCustomerLookupQb(null);
+      mockCustomerRepo.createQueryBuilder
+        .mockReturnValueOnce(phoneQb)
+        .mockReturnValueOnce(emailQb);
+      mockCustomerRepo.manager.getRepository.mockReturnValue(
+        makeMembershipRepo(['Nhóm Zalo A', 'Nhóm FB B']),
+      );
+
+      const result = await service.checkDuplicateContact('0901234567', null);
+
+      expect(result.hasDuplicate).toBe(true);
+      expect(result.phoneMatch).toEqual({
+        creatorName: 'Lê Hoàng Tuấn',
+        salesUserName: 'Nguyễn Sales',
+        groupNames: ['Nhóm Zalo A', 'Nhóm FB B'],
+      });
+      // Không lộ id/phone/note của bản ghi đã tồn tại ra response.
+      expect(result.phoneMatch).not.toHaveProperty('id');
+      expect(result.phoneMatch).not.toHaveProperty('note');
+      expect(result.phoneMatch).not.toHaveProperty('phone');
+    });
+
+    it('email chuẩn hoá LOWER/TRIM trước khi so khớp trùng', async () => {
+      const phoneQb = makeCustomerLookupQb(null);
+      const emailQb = makeCustomerLookupQb({ id: 5, createdBy: null, salesUser: null });
+      mockCustomerRepo.createQueryBuilder
+        .mockReturnValueOnce(phoneQb)
+        .mockReturnValueOnce(emailQb);
+      mockCustomerRepo.manager.getRepository.mockReturnValue(makeMembershipRepo([]));
+
+      await service.checkDuplicateContact(null, '  A@Gmail.com  ');
+
+      expect(emailQb.andWhere).toHaveBeenCalledWith(
+        'LOWER(TRIM(customer.email)) = :email',
+        { email: 'a@gmail.com' },
+      );
+    });
+
+    it('excludeCustomerId -> loại trừ chính bản ghi đang sửa khỏi kết quả trùng', async () => {
+      const phoneQb = makeCustomerLookupQb(null);
+      mockCustomerRepo.createQueryBuilder.mockReturnValueOnce(phoneQb);
+
+      await service.checkDuplicateContact('0901234567', null, 42);
+
+      expect(phoneQb.andWhere).toHaveBeenCalledWith('customer.id != :excludeId', { excludeId: 42 });
+    });
+  });
 });
