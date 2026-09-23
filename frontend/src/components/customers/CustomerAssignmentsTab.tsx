@@ -149,10 +149,15 @@ export const CustomerAssignmentsTab = ({ customerId, primarySalesUserId, onUpdat
   // nút cho gọn UI, chặn thật sự luôn nằm ở BE (có thể vẫn 403 nếu sai
   // phòng ban dù nút hiện ra).
   const canModify = (a: AssignmentHistory) =>
-    currentUser?.role === 'admin' ||
-    currentUser?.role === 'assistant' ||
-    currentUser?.role === 'manager' ||
-    a.assignedById === currentUser?.id;
+    // ⚠️ MỚI (Tag "Sales chính" - bắt buộc hiển thị): dòng "ảo" (isVirtual)
+    // do BE tự chèn thêm để đảm bảo Sales chính luôn xuất hiện, KHÔNG phải
+    // 1 bản ghi customer_assignments thật (id âm) -> không cho Sửa/Thu hồi,
+    // dù role có quyền gì cũng vậy, tránh gọi PATCH lên id không tồn tại.
+    !a.isVirtual &&
+    (currentUser?.role === 'admin' ||
+      currentUser?.role === 'assistant' ||
+      currentUser?.role === 'manager' ||
+      a.assignedById === currentUser?.id);
 
   const handleReclaim = async (a: AssignmentHistory) => {
     try {
@@ -267,7 +272,16 @@ export const CustomerAssignmentsTab = ({ customerId, primarySalesUserId, onUpdat
     {
       title: 'Người nhận',
       key: 'assignedTo',
-      render: (_: unknown, a: AssignmentHistory) => a.assignedTo?.name || `#${a.assignedToId}`,
+      render: (_: unknown, a: AssignmentHistory) => (
+        <Space size={4}>
+          <span>{a.assignedTo?.name || `#${a.assignedToId}`}</span>
+          {/* ⚠️ MỚI (yêu cầu 23/09): Tag "Sales chính" cho dòng khớp
+              customer.salesUserId - kể cả dòng "ảo" (isVirtual) do BE chèn
+              thêm khi Sales chính được gán trực tiếp, không qua lịch sử gán,
+              để LUÔN thấy rõ ai đang là Sales phụ trách chính trong tab này. */}
+          {a.isPrimary && <Tag color="gold">Sales chính</Tag>}
+        </Space>
+      ),
     },
     {
       title: 'Trạng thái',

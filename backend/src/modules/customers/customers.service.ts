@@ -2313,13 +2313,41 @@ export class CustomersService {
     };
   }
 
-  /** Lịch sử gán data của 1 khách hàng */
+  /**
+   * Lịch sử gán data của 1 khách hàng.
+   *
+   * ⚠️ FIX BUG THẬT (báo qua ảnh chụp 23/09 - tag "Sales chính" trong tab
+   * "Chia data" của Drawer): `customer.salesUserId` có 2 đường được set,
+   * nhưng chỉ 1 đường tạo dòng `customer_assignments`:
+   *   1. Qua `bulkAssign()` ("Gán thêm Sales") -> CÓ insert vào
+   *      `customer_assignments` (xem `newAssignments` ở dưới).
+   *   2. Set trực tiếp lúc tạo/sửa khách hàng (`create()`/`update()` khi
+   *      DTO có `salesUserId`) -> CHỈ ghi `customer.salesUserId`, KHÔNG tạo
+   *      dòng lịch sử tương ứng.
+   * -> Cùng là khách hàng "đang có Sales phụ trách chính", nhưng tab "Chia
+   * data" tuỳ khách mà CÓ hoặc KHÔNG có dòng nào cho Sales đó (đúng hiện
+   * tượng trong ảnh: "Trần Văn Hòa" có 1 dòng active vì gán qua Bulk assign,
+   * "Hà" có 0 dòng dù đã có Sales phụ trách chính).
+   *
+   * Fix "bắt buộc" theo đúng yêu cầu (không sửa migration/backfill dữ liệu
+   * cũ, xử lý ngay tại thời điểm đọc để áp dụng được cho MỌI khách hàng có
+   * sẵn từ trước lẫn về sau):
+   *   - Đánh dấu `isPrimary: true` cho dòng active nào có `assignedToId`
+   *     trùng `customer.salesUserId` (FE dùng field này để gắn Tag "Sales
+   *     chính").
+   *   - Nếu KHÔNG có dòng active nào khớp (customer.salesUserId được set
+   *     trực tiếp, không qua assignment) -> chèn thêm 1 dòng "ảo"
+   *     (`isVirtual: true`, `id` âm, KHÔNG lưu DB) đại diện cho Sales phụ
+   *     trách chính, đảm bảo họ LUÔN xuất hiện trong danh sách. FE dựa vào
+   *     `isVirtual` để ẩn nút Sửa/Thu hồi (không phải 1 lượt gán thật, không
+   *     có id hợp lệ để gọi PATCH `/customers/assignments/:id`).
+   */
   async getAssignmentHistory(customerId: number, userId: number, userRole: string, scope?: string | null) {
     // ⚠️ FIX PERMISSIONS.md mục 2.1/4.0b: trước đây KHÔNG check phạm vi -
     // ai cũng xem được lịch sử gán/thu hồi sales của customer bất kỳ.
     await this.assertCustomerAccessible(customerId, userId, userRole, scope);
 
-    return this.assignmentRepository.find({
+    const history = await this.assignmentRepository.find({
       where: { customerId },
       relations: [
         'assignedBy',
@@ -2329,6 +2357,44 @@ export class CustomersService {
       ],
       order: { assignedAt: 'DESC' },
     });
+
+    const customer = await this.customersRepository.findOne({
+      where: { id: customerId },
+      relations: ['salesUser', 'createdBy'],
+    });
+
+    const result = history.map((a) => ({
+      ...a,
+      isPrimary:
+        a.status === AssignmentStatus.ACTIVE &&
+        customer?.salesUserId != null &&
+        a.assignedToId === customer.salesUserId,
+    }));
+
+    const hasPrimaryActiveRow = result.some((a) => a.isPrimary);
+
+    if (customer?.salesUserId != null && customer.salesUser && !hasPrimaryActiveRow) {
+      result.unshift({
+        id: -customer.salesUserId, // âm -> FE nhận biết dòng ảo, không phải assignment thật
+        customerId: customer.id,
+        assignedById: customer.createdById ?? customer.salesUserId,
+        assignedToId: customer.salesUserId,
+        previousAssigneeId: null,
+        status: AssignmentStatus.ACTIVE,
+        reason: 'Sales phụ trách chính (gán trực tiếp, không qua lịch sử Chia data)',
+        assignedAt: customer.createdAt,
+        reclaimedAt: null,
+        reclaimedById: null,
+        assignedBy: customer.createdBy ?? customer.salesUser,
+        assignedTo: customer.salesUser,
+        previousAssignee: null,
+        reclaimedBy: null,
+        isPrimary: true,
+        isVirtual: true,
+      } as unknown as CustomerAssignment & { isPrimary: boolean; isVirtual: boolean });
+    }
+
+    return result;
   }
 
   /**

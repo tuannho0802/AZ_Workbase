@@ -14,6 +14,12 @@ export interface AssignmentHistory {
   assignedBy?: { id: number; name: string; email?: string };
   assignedTo?: { id: number; name: string; email?: string };
   previousAssignee?: { id: number; name: string; email?: string } | null;
+  /** BE đánh dấu dòng khớp customer.salesUserId (đang active) - FE gắn Tag "Sales chính" */
+  isPrimary?: boolean;
+  /** BE chèn dòng "ảo" (không có trong DB) khi Sales chính được gán trực tiếp lúc
+   * tạo/sửa khách hàng, không qua flow "Gán thêm Sales" nên không có bản ghi thật -
+   * dùng để ẩn nút Sửa/Thu hồi (id âm, không map tới assignment thật nào). */
+  isVirtual?: boolean;
 }
 
 export const assignmentsApi = {
