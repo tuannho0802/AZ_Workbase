@@ -1,0 +1,67 @@
+name: Weekly Database Backup
+
+on:
+  schedule:
+    # 02:00 UTC Chủ nhật hàng tuần (~9h sáng giờ VN)
+    - cron: '0 2 * * 0'
+  workflow_dispatch: {}  # cho phép bấm "Run workflow" thủ công để test
+
+jobs:
+  backup:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Cài mysql-client
+        run: sudo apt-get update && sudo apt-get install -y mysql-client
+
+      - name: Ghi CA certificate của Aiven ra file
+        run: echo "${{ secrets.AIVEN_CA_CERT }}" > ca.pem
+
+      - name: Dump toàn bộ database (schema + data + routines/triggers)
+        run: |
+          mysqldump \
+            --ssl-ca=ca.pem \
+            --ssl-mode=VERIFY_CA \
+            -h "${{ secrets.DB_HOST }}" \
+            -P "${{ secrets.DB_PORT }}" \
+            -u "${{ secrets.DB_USER }}" \
+            -p"${{ secrets.DB_PASSWORD }}" \
+            --single-transaction \
+            --routines \
+            --triggers \
+            --events \
+            "${{ secrets.DB_NAME }}" > backup.sql
+
+      - name: Nén
+        run: gzip backup.sql
+
+      - name: Mã hoá (AES-256)
+        run: |
+          openssl enc -aes-256-cbc -pbkdf2 -salt \
+            -in backup.sql.gz \
+            -out "backup_$(date +%Y%m%d).sql.gz.enc" \
+            -pass pass:"${{ secrets.BACKUP_ENCRYPT_KEY }}"
+
+      - name: Cài rclone
+        run: curl https://rclone.org/install.sh | sudo bash
+
+      - name: Upload lên Google Drive
+        env:
+          RCLONE_CONFIG_GDRIVE_TYPE: drive
+          RCLONE_CONFIG_GDRIVE_CLIENT_ID: ${{ secrets.GDRIVE_CLIENT_ID }}
+          RCLONE_CONFIG_GDRIVE_CLIENT_SECRET: ${{ secrets.GDRIVE_CLIENT_SECRET }}
+          RCLONE_CONFIG_GDRIVE_SCOPE: drive
+          RCLONE_CONFIG_GDRIVE_TOKEN: ${{ secrets.GDRIVE_TOKEN }}
+        run: rclone copy backup_*.sql.gz.enc "gdrive:AZWorkbase-Backups/"
+
+      - name: Rotation - xoá backup cũ hơn 90 ngày
+        env:
+          RCLONE_CONFIG_GDRIVE_TYPE: drive
+          RCLONE_CONFIG_GDRIVE_CLIENT_ID: ${{ secrets.GDRIVE_CLIENT_ID }}
+          RCLONE_CONFIG_GDRIVE_CLIENT_SECRET: ${{ secrets.GDRIVE_CLIENT_SECRET }}
+          RCLONE_CONFIG_GDRIVE_SCOPE: drive
+          RCLONE_CONFIG_GDRIVE_TOKEN: ${{ secrets.GDRIVE_TOKEN }}
+        run: rclone delete "gdrive:AZWorkbase-Backups/" --min-age 90d
+
+      - name: Dọn file tạm trên runner
+        if: always()
+        run: rm -f ca.pem backup.sql.gz backup_*.sql.gz.enc
