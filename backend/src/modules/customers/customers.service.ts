@@ -807,8 +807,9 @@ export class CustomersService {
         const assignmentsForCustomer = activeAssignments.filter(
           (a) => a.customerId === customer.id,
         );
-        (customer as any).activeAssignees = assignmentsForCustomer.map(
-          (a) => a.assignedTo,
+        (customer as any).activeAssignees = this.mergePrimarySalesIntoAssignees(
+          customer,
+          assignmentsForCustomer.map((a) => a.assignedTo),
         );
       });
 
@@ -1099,8 +1100,9 @@ export class CustomersService {
       .andWhere('assignment.customer_id = :id', { id })
       .getMany();
 
-    (customer as any).activeAssignees = activeAssignments.map(
-      (a) => a.assignedTo,
+    (customer as any).activeAssignees = this.mergePrimarySalesIntoAssignees(
+      customer,
+      activeAssignments.map((a) => a.assignedTo),
     );
 
     // ⚠️ UI Visibility (Phase 3) - GIỐNG HỆT findAll(), phải xoá SAU khi gán
@@ -2293,8 +2295,9 @@ export class CustomersService {
         const assignmentsForCustomer = activeAssignments.filter(
           (a) => a.customerId === customer.id,
         );
-        (customer as any).activeAssignees = assignmentsForCustomer.map(
-          (a) => a.assignedTo,
+        (customer as any).activeAssignees = this.mergePrimarySalesIntoAssignees(
+          customer,
+          assignmentsForCustomer.map((a) => a.assignedTo),
         );
       });
     }
@@ -2311,6 +2314,28 @@ export class CustomersService {
         totalPages: Math.ceil(total / limit),
       },
     };
+  }
+
+  /**
+   * Đảm bảo Sales phụ trách chính (customer.salesUserId) LUÔN có mặt trong
+   * `activeAssignees`, kể cả khi `salesUserId` được set TRỰC TIẾP lúc tạo/
+   * sửa khách hàng (không qua `bulkAssign()` nên không có dòng
+   * `customer_assignments` active tương ứng - CÙNG gốc bug với
+   * `getAssignmentHistory()`, xem chú thích chi tiết ở hàm đó).
+   *
+   * Không xử lý ở đây thì Tag "Sales chính"/"+N Sales được chia"
+   * (`CustomerInfoTab.tsx`) và badge đếm "Chia data (N)"
+   * (`CustomerDetailDrawer.tsx`) đều đếm THIẾU 1 người cho các khách hàng
+   * loại này - dùng chung 1 hàm để 3 nơi gọi `activeAssignees`
+   * (`findAll()`/`findOne()`/`getAssigned()`) luôn đồng bộ, sửa 1 chỗ áp
+   * dụng cho cả 3.
+   */
+  private mergePrimarySalesIntoAssignees(customer: Customer, assignees: User[]): User[] {
+    const salesUserId = customer.salesUserId;
+    const salesUser = customer.salesUser;
+    if (salesUserId == null || !salesUser) return assignees;
+    const alreadyIncluded = assignees.some((u) => u?.id === salesUserId);
+    return alreadyIncluded ? assignees : [salesUser, ...assignees];
   }
 
   /**
