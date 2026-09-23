@@ -132,7 +132,14 @@ async function createApp(): Promise<NestExpressApplication> {
     credentials: true,
     methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
     allowedHeaders: ['Content-Type', 'Authorization'],
-    exposedHeaders: ['Authorization'],
+    // ⚠️ MỚI (2026-09-23): thêm 'Content-Disposition' - dù FE hiện KHÔNG
+    // còn phụ thuộc header này để đặt tên file export nữa (đã đổi sang tự
+    // dựng tên ở FE, xem customers-export.api.ts), việc thiếu header này
+    // trong whitelist CORS chính là lý do gốc khiến `response.headers`
+    // luôn rỗng phía trình duyệt cho MỌI request cross-origin (FE/BE khác
+    // domain) trả file đính kèm - thêm vào đây để không lặp lại lỗi tương
+    // tự nếu sau này có chỗ khác thử đọc lại header này.
+    exposedHeaders: ['Authorization', 'Content-Disposition'],
     maxAge: 3600,
   });
 
