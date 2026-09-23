@@ -62,6 +62,11 @@ export const customersApi = {
     limit?: number;
     search?: string;
     status?: string;
+    // ⚠️ MỚI (yêu cầu người dùng): filter Người tạo/Sales phụ trách/
+    // Marketing phụ trách - ĐÚNG tên param dùng chung với getCustomers().
+    salesUserId?: number;
+    marketingUserId?: number;
+    creatorId?: number;
   }): Promise<
     PaginatedResponse<Customer> & {
       checkedAgainst: string;

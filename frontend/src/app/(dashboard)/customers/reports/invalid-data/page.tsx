@@ -13,6 +13,11 @@ import { useRoleColorMap, useRoleColors } from '@/lib/hooks/useRoleColorMap';
 import { useCustomerStatuses } from '@/lib/hooks/useCustomerStatuses';
 import { StatusTag } from '@/components/customers/StatusTag';
 import { UserMiniCard } from '@/app/(dashboard)/attendance-device/UserMiniCard';
+// ⚠️ MỚI (yêu cầu người dùng: filter Sales/Marketing phụ trách) - dùng
+// ĐÚNG nguồn danh sách user hợp lệ theo assignment-group ('sales'/
+// 'marketing') y hệt pattern `/customers`, `CustomerForm.tsx` - KHÔNG tự
+// gọi `/users` riêng (route đó đòi quyền khác, dễ 403 với role hẹp).
+import { useAssignmentGroupUsers } from '@/lib/hooks/useAssignmentGroups';
 
 const { Title, Text } = Typography;
 
@@ -92,6 +97,22 @@ export default function InvalidDataReportPage() {
   // hình ở /quan-ly-status-khach.
   const { statuses: allCustomerStatuses } = useCustomerStatuses();
 
+  // ⚠️ MỚI (yêu cầu người dùng: "filter thêm Người tạo, Sales phụ trách,
+  // Marketing phụ trách") - ĐÚNG nguồn dữ liệu đang dùng ở /customers:
+  // `useAssignmentGroupUsers('sales'|'marketing')` cho 2 dropdown Sales/
+  // Marketing (danh sách user hợp lệ theo config nhóm phụ trách, không
+  // phải toàn bộ `/users`), và `customersApi.getCreators()` cho "Người
+  // nhập Data" (chỉ user đã từng tạo ≥1 khách hàng).
+  const { users: salesUsers } = useAssignmentGroupUsers('sales');
+  const { users: marketingUsers } = useAssignmentGroupUsers('marketing');
+  const [creatorUsers, setCreatorUsers] = useState<{ id: number; name: string }[]>([]);
+  useEffect(() => {
+    customersApi
+      .getCreators()
+      .then(setCreatorUsers)
+      .catch((error) => console.error('Failed to fetch creators list:', error));
+  }, []);
+
   const [data, setData] = useState<Customer[]>([]);
   const [loading, setLoading] = useState(false);
   // ⚠️ MỚI (yêu cầu người dùng): mặc định mở trang / F5 luôn vào thẳng view
@@ -100,6 +121,9 @@ export default function InvalidDataReportPage() {
   const [invalidType, setInvalidType] = useState<string>('duplicate_phone');
   const [search, setSearch] = useState('');
   const [status, setStatus] = useState<string | undefined>(undefined);
+  const [salesUserId, setSalesUserId] = useState<number | undefined>(undefined);
+  const [marketingUserId, setMarketingUserId] = useState<number | undefined>(undefined);
+  const [creatorId, setCreatorId] = useState<number | undefined>(undefined);
   // Chỉ BE trả field này khi invalidType là 1 trong 2 loại trùng lặp - số
   // GIÁ TRỊ (SĐT/Email) đang bị trùng, KHÁC `pagination.total` là số DÒNG
   // khách hàng (1 giá trị trùng có thể ứng với ≥2 dòng).
@@ -128,12 +152,18 @@ export default function InvalidDataReportPage() {
     limit?: number;
     search?: string;
     status?: string;
+    salesUserId?: number;
+    marketingUserId?: number;
+    creatorId?: number;
   }) => {
     const type = opts.type ?? invalidType;
     const page = opts.page ?? (pagination.current || 1);
     const limit = opts.limit ?? (pagination.pageSize || 20);
     const s = opts.search !== undefined ? opts.search : search;
     const st = opts.status !== undefined ? opts.status : status;
+    const su = opts.salesUserId !== undefined ? opts.salesUserId : salesUserId;
+    const mu = opts.marketingUserId !== undefined ? opts.marketingUserId : marketingUserId;
+    const cr = opts.creatorId !== undefined ? opts.creatorId : creatorId;
 
     setLoading(true);
     try {
@@ -143,6 +173,9 @@ export default function InvalidDataReportPage() {
         limit,
         search: s || undefined,
         status: st || undefined,
+        salesUserId: su || undefined,
+        marketingUserId: mu || undefined,
+        creatorId: cr || undefined,
       });
       setData(res.data);
       setDuplicateGroupCount(res.duplicateGroupCount);
@@ -177,6 +210,21 @@ export default function InvalidDataReportPage() {
     fetchData({ status: val, page: 1 });
   };
 
+  const handleSalesUserChange = (val?: number) => {
+    setSalesUserId(val);
+    fetchData({ salesUserId: val, page: 1 });
+  };
+
+  const handleMarketingUserChange = (val?: number) => {
+    setMarketingUserId(val);
+    fetchData({ marketingUserId: val, page: 1 });
+  };
+
+  const handleCreatorChange = (val?: number) => {
+    setCreatorId(val);
+    fetchData({ creatorId: val, page: 1 });
+  };
+
   const handleSearch = (val: string) => {
     setSearch(val);
     fetchData({ search: val, page: 1 });
@@ -185,7 +233,17 @@ export default function InvalidDataReportPage() {
   const handleResetFilters = () => {
     setSearch('');
     setStatus(undefined);
-    fetchData({ search: '', status: undefined, page: 1 });
+    setSalesUserId(undefined);
+    setMarketingUserId(undefined);
+    setCreatorId(undefined);
+    fetchData({
+      search: '',
+      status: undefined,
+      salesUserId: undefined,
+      marketingUserId: undefined,
+      creatorId: undefined,
+      page: 1,
+    });
   };
 
   const handleTableChange = (newPagination: TablePaginationConfig) => {
@@ -377,7 +435,8 @@ export default function InvalidDataReportPage() {
 
   const duplicateLabel = invalidType === 'duplicate_email' ? 'Email' : 'Số điện thoại';
   const activeMeta = TYPE_META[invalidType];
-  const hasActiveFilters = !!search || !!status;
+  const hasActiveFilters =
+    !!search || !!status || !!salesUserId || !!marketingUserId || !!creatorId;
 
   return (
     <div className="space-y-6">

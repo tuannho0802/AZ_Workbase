@@ -86,6 +86,9 @@ export class CustomersController {
     @Query('limit') limit?: string,
     @Query('search') search?: string,
     @Query('status') status?: string,
+    @Query('salesUserId') salesUserId?: string,
+    @Query('marketingUserId') marketingUserId?: string,
+    @Query('creatorId') creatorId?: string,
   ) {
     return this.customersService.getInvalidDataReport(
       user.id,
@@ -96,6 +99,9 @@ export class CustomersController {
       scope,
       search,
       status,
+      salesUserId ? parseInt(salesUserId, 10) : undefined,
+      marketingUserId ? parseInt(marketingUserId, 10) : undefined,
+      creatorId ? parseInt(creatorId, 10) : undefined,
     );
   }
 

@@ -3277,6 +3277,15 @@ export class CustomersService {
     scope?: string | null,
     search?: string,
     status?: string,
+    // ⚠️ MỚI (yêu cầu người dùng): thêm filter Người tạo/Sales phụ
+    // trách/Marketing phụ trách cho trang report - ĐÚNG tên param
+    // (`salesUserId`/`marketingUserId`/`creatorId`) đã dùng ở
+    // `applyCustomerListFilters()` cho /customers, để nhất quán toàn hệ
+    // thống (creatorId map cột `createdById`, tách riêng marketingUserId vì
+    // người nhập data có thể khác Marketing phụ trách).
+    salesUserId?: number,
+    marketingUserId?: number,
+    creatorId?: number,
   ) {
     const todayStr = todayVnStr();
 
@@ -3300,12 +3309,16 @@ export class CustomersService {
         scope,
         search,
         status,
+        salesUserId,
+        marketingUserId,
+        creatorId,
       );
     }
 
     const qb = this.customersRepository
       .createQueryBuilder('customer')
       .leftJoinAndSelect('customer.salesUser', 'salesUser')
+      .leftJoinAndSelect('customer.marketingUser', 'marketingUser')
       .leftJoinAndSelect('customer.createdBy', 'createdBy')
       .where('customer.deletedAt IS NULL');
 
@@ -3329,6 +3342,15 @@ export class CustomersService {
     }
     if (status) {
       qb.andWhere('customer.status = :status', { status });
+    }
+    if (salesUserId) {
+      qb.andWhere('customer.salesUserId = :salesUserId', { salesUserId });
+    }
+    if (marketingUserId) {
+      qb.andWhere('customer.marketingUserId = :marketingUserId', { marketingUserId });
+    }
+    if (creatorId) {
+      qb.andWhere('customer.createdById = :creatorId', { creatorId });
     }
 
     // FIX BUG THẬT (rà soát dynamic RBAC): thiếu tham số `scope`, xem giải
@@ -3378,21 +3400,30 @@ export class CustomersService {
     scope?: string | null,
     search?: string,
     status?: string,
+    salesUserId?: number,
+    marketingUserId?: number,
+    creatorId?: number,
   ) {
     const groupExpr = isEmail ? 'LOWER(TRIM(customer.email))' : 'customer.phone';
     const nonEmptyCondition = isEmail
       ? "customer.email IS NOT NULL AND TRIM(customer.email) != ''"
       : "customer.phone IS NOT NULL AND customer.phone != ''";
 
-    // ⚠️ MỚI (yêu cầu người dùng): áp CÙNG 1 bộ Search/Trạng thái vào cả 4
-    // truy vấn con bên dưới (tìm dupKeys, đếm total, lấy id theo trang, lấy
-    // peers) - để nghĩa của filter là "chỉ tìm trùng lặp TRONG PHẠM VI đã
-    // lọc" (vd "trùng SĐT trong các khách đang pending"), nhất quán ở mọi
-    // bước thay vì chỉ lọc mỗi bước hiển thị cuối (dễ gây khó hiểu khi 1
-    // khách hiện ra nhưng "khách trùng với nó" lại bị ẩn do khác filter).
+    // ⚠️ MỚI (yêu cầu người dùng): áp CÙNG 1 bộ Search/Trạng thái/Người
+    // tạo/Sales/Marketing vào cả 4 truy vấn con bên dưới (tìm dupKeys, đếm
+    // total, lấy id theo trang, lấy peers) - để nghĩa của filter là "chỉ
+    // tìm trùng lặp TRONG PHẠM VI đã lọc" (vd "trùng SĐT của Sales A"),
+    // nhất quán ở mọi bước thay vì chỉ lọc mỗi bước hiển thị cuối (dễ gây
+    // khó hiểu khi 1 khách hiện ra nhưng "khách trùng với nó" lại bị ẩn do
+    // khác filter).
     const applyExtraFilters = (q: ReturnType<Repository<Customer>['createQueryBuilder']>) => {
       if (search) this.applyCustomerSearch(q, search);
       if (status) q.andWhere('customer.status = :status', { status });
+      if (salesUserId) q.andWhere('customer.salesUserId = :salesUserId', { salesUserId });
+      if (marketingUserId) {
+        q.andWhere('customer.marketingUserId = :marketingUserId', { marketingUserId });
+      }
+      if (creatorId) q.andWhere('customer.createdById = :creatorId', { creatorId });
     };
 
     const dupKeysQb = this.customersRepository
@@ -3523,6 +3554,7 @@ export class CustomersService {
     const rawData = await this.customersRepository
       .createQueryBuilder('customer')
       .leftJoinAndSelect('customer.salesUser', 'salesUser')
+      .leftJoinAndSelect('customer.marketingUser', 'marketingUser')
       .leftJoinAndSelect('customer.createdBy', 'createdBy')
       .where('customer.id IN (:...orderedIds)', { orderedIds })
       .getMany();
