@@ -16,6 +16,15 @@ jobs:
       - name: Ghi CA certificate của Aiven ra file
         run: echo "${{ secrets.AIVEN_CA_CERT_B64 }}" | base64 -d > ca.pem
 
+      - name: (Debug) Kiểm tra ca.pem hợp lệ
+        run: |
+          echo "Số dòng trong ca.pem:"
+          wc -l ca.pem
+          echo "--- Nội dung (không nhạy cảm, là chứng chỉ công khai) ---"
+          cat ca.pem
+          echo "--- Kiểm tra bằng openssl ---"
+          openssl x509 -in ca.pem -noout -text | head -5
+
       - name: Dump toàn bộ database (schema + data + routines/triggers)
         run: |
           mysqldump \
