@@ -14,10 +14,10 @@ import { MigrationInterface, QueryRunner } from 'typeorm';
  * Cột kiểu TINYINT(1) NOT NULL DEFAULT 0 - toàn bộ đơn cũ mặc định = false
  * (không hồi tố, chỉ áp dụng cho đơn tạo mới sau migration này).
  */
-export class AddIsSupplementaryToLeaveRequests1783800000000
+export class AddIsSupplementaryToLeaveRequests1783900000000
   implements MigrationInterface
 {
-  name = 'AddIsSupplementaryToLeaveRequests1783800000000';
+  name = 'AddIsSupplementaryToLeaveRequests1783900000000';
 
   public async up(queryRunner: QueryRunner): Promise<void> {
     const table = await queryRunner.getTable('leave_requests');
