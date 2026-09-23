@@ -3700,5 +3700,31 @@ trước) theo đúng Custom Instructions của Project.
 > bằng mắt trên UI thật (Badge "Thông báo" đổi số khi có thông báo mới, Badge "Công việc định kỳ" đúng số
 > Task `not_started` trong phạm vi quyền của từng role) trước khi coi là xong hẳn. Không phát hiện thêm
 > việc dở dang nào khác ngoài phạm vi yêu cầu lần này.
+## [2026-09-23 05:05] | Thêm spec test cho CustomersExportService (nối tiếp phiên trước) | [Status: Success]
 
-Now [deploy]
+**Actor:** Agent
+
+**Files Changed:**
+- `backend/src/modules/customers/customers-export.service.spec.ts` — **MỚI**, mirror pattern `attendance-export.service.spec.ts` (đọc lại buffer xlsx thật bằng chính `exceljs` để xác nhận nội dung, không chỉ mock suông). 9 test case:
+  1. Gọi `CustomersService.findAll()` với `page=1, limit=20000 (EXPORT_MAX_ROWS)`, giữ nguyên filter + đúng userId/role/scope/departmentId/positionId/isRootAdmin.
+  2. Gọi `UiVisibilityService.getHiddenElementKeys()` đúng tham số của NGƯỜI GỌI (không phải của khách hàng).
+  3. Sheet "Khách hàng" đủ 17 cột + đúng dữ liệu khi không ẩn field nào.
+  4. Bỏ hẳn cột Sales/Marketing/Nạp tiền khỏi Sheet khi UiVisibility báo ẩn (đồng bộ hành vi FE bỏ hẳn cột).
+  5. Hiện "Chưa gán" khi chưa có Sales/Marketing phụ trách.
+  6. Fallback đúng `code` khi `status` không còn tồn tại trong bảng `customer_statuses` (data cũ).
+  7. Sheet "Ghi chú khách hàng" xuất TOÀN BỘ notes (không chỉ `recentNotes`), query `customer_id IN (...)` CHỈ giới hạn đúng các id đã lọt qua RBAC/filter của `findAll()` — khoá đúng rule "không rò rỉ ghi chú ngoài phạm vi được xem".
+  8. Không query `notesRepository` khi danh sách khách hàng rỗng.
+  9. Tên file `KhachHang ToanBo.xlsx` khi không có filter ngày.
+
+**Root Cause:**
+> Việc còn treo được ghi rõ ở lượt trước: repo có sẵn pattern spec cho service export khác (`attendance-export.service.spec.ts`) nhưng `customers-export.service.ts` (dù đã code đúng và build sạch) chưa có spec riêng khoá lại hành vi.
+
+**Solution:**
+> Viết spec mirror đúng pattern có sẵn: chỉ mock `CustomersService.findAll()` (KHÔNG dựng lại toàn bộ `CustomersService` thật — export service cố ý không tự viết lại logic RBAC/filter), mock `UiVisibilityService`/`CustomerStatus` repo/`CustomerNote` repo (`createQueryBuilder()` chain). Phát hiện + tự sửa 1 vấn đề kỹ thuật khi viết: sau khi ghi buffer xlsx rồi load lại bằng `exceljs`, `row.getCell(key)` theo tên cột KHÔNG round-trip đáng tin cậy — phải đọc theo index số cột, khớp đúng thứ tự mảng `columns` thật trong service.
+
+**Verify (chạy lệnh thật):**
+> `tsc --noEmit` BE = 0 lỗi. `jest customers` = **123/123 test PASS (6/6 suite)** — 114 test cũ + 9 test mới, không có regression.
+
+**Notes:**
+> Chưa chạy `next build` đầy đủ, chưa test bằng mắt trên DB thật. Không phát hiện thêm bug thật nào khác trong phạm vi này.
+

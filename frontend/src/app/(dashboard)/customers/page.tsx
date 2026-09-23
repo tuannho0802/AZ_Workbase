@@ -2,11 +2,12 @@
 
 import { useEffect, useState, useMemo, useRef, Suspense } from 'react';
 import { Table, Card, Tag, App, Button, Space, Typography, Tooltip, Divider, Collapse, Pagination, Grid, Popconfirm, Select } from 'antd';
-import { UploadOutlined, UsergroupAddOutlined, ReloadOutlined, PlusOutlined, InfoCircleOutlined, DeleteOutlined } from '@ant-design/icons';
+import { UploadOutlined, DownloadOutlined, UsergroupAddOutlined, ReloadOutlined, PlusOutlined, InfoCircleOutlined, DeleteOutlined } from '@ant-design/icons';
 import type { ColumnsType, TablePaginationConfig } from 'antd/es/table';
 import type { FilterValue, SorterResult } from 'antd/es/table/interface';
 import { useSearchParams, useRouter, usePathname } from 'next/navigation';
 import { customersApi } from '@/lib/api/customers.api';
+import { customersExportApi } from '@/lib/api/customers-export.api';
 import { Customer, CustomerStats, RecentNote } from '@/lib/types/customer.types';
 import { useAuthStore } from '@/lib/stores/auth.store';
 import { ImportExcelModal } from '@/components/customers/ImportExcelModal';
@@ -303,6 +304,7 @@ function CustomersPageContent() {
   const hideDepositsTab = hiddenKeys.includes('tab:deposits');
   const [selectedRowKeys, setSelectedRowKeys] = useState<React.Key[]>([]);
   const [isImportOpen, setIsImportOpen] = useState(false);
+  const [isExporting, setIsExporting] = useState(false);
   const [isAssignOpen, setIsAssignOpen] = useState(false);
   const [isCreateOpen, setIsCreateOpen] = useState(false);
   const [stats, setStats] = useState<CustomerStats | null>(null);
@@ -521,6 +523,7 @@ function CustomersPageContent() {
   // nút này vẫn hiện/ẩn sai cho tới khi có người nhớ sửa lại danh sách cứng
   // ở đây - đúng loại lỗi "UI và API lệch nhau" đã cảnh báo ở nav-config.tsx.
   const canImport = can('customers.import');
+  const canExport = can('customers.export');
   const canAssign = can('customers.assign');
   const canDeleteCustomer = can('customers.delete');
   // ⚠️ FIX BUG THẬT: bị bỏ sót so với canImport/canAssign/canDeleteCustomer
@@ -877,6 +880,35 @@ function CustomersPageContent() {
     }
   };
 
+  // Xuất Excel - CỐ Ý dùng lại đúng bộ filter đang truyền cho useCustomers()
+  // ở trên (search/source/status/salesUserId/marketingUserId/creatorId/
+  // dateFrom/dateTo/joinedGroups), KHÔNG có page/limit - để backend tự build
+  // lại đúng danh sách đang hiển thị (RBAC + filter giống hệt), đúng rule
+  // "đồng bộ tuyệt đối với UI" trong custom instructions.
+  const handleExport = async () => {
+    if (isExporting) return;
+    setIsExporting(true);
+    try {
+      await customersExportApi.exportCustomers({
+        search: debouncedSearch,
+        source,
+        status,
+        salesUserId,
+        marketingUserId,
+        creatorId,
+        sortField,
+        sortOrder,
+        dateFrom: dateFrom?.format('YYYY-MM-DD'),
+        dateTo: dateTo?.format('YYYY-MM-DD'),
+        joinedGroups,
+      });
+    } catch (error: any) {
+      message.error(error?.response?.data?.message || 'Không thể xuất Excel');
+    } finally {
+      setIsExporting(false);
+    }
+  };
+
   const renderToolbar = () => (
     <Space className="mobile-toolbar" size={isLaptop ? 4 : 8}>
       {!isMobile && (
@@ -921,6 +953,17 @@ function CustomersPageContent() {
           size={isLaptop ? 'small' : 'middle'}
         >
           {!isMobile && !isLaptop && 'Nhập Excel'}
+        </Button>
+      )}
+      {canExport && (
+        <Button
+          icon={<DownloadOutlined />}
+          onClick={handleExport}
+          loading={isExporting}
+          title="Xuất Excel"
+          size={isLaptop ? 'small' : 'middle'}
+        >
+          {!isMobile && !isLaptop && 'Xuất Excel'}
         </Button>
       )}
       {canAssign && selectedRowKeys.length > 0 && !isMobile && (
