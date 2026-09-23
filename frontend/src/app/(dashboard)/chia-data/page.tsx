@@ -20,6 +20,13 @@ import { CustomerDetailDrawer } from '@/components/customers/CustomerDetailDrawe
 import { useMediaSources } from '@/lib/hooks/useMediaSources';
 import { useMyPermissions } from '@/lib/hooks/useMyPermissions';
 import { SourceTag } from '@/components/customers/SourceTag';
+// ⚠️ MỚI (yêu cầu người dùng) - có filter Trạng thái ở cả 2 tab nhưng thiếu
+// hẳn cột "Trạng thái" trong bảng (không có gì để đối chiếu filter đang lọc
+// ra đúng data hay không). Dùng CHUNG <StatusTag> (đọc màu/tên từ
+// `customer_statuses`, ĐÚNG pattern StatusTag.tsx đang dùng ở /customers) -
+// CHỈ hiển thị tĩnh, KHÔNG có dropdown sửa nhanh như `CustomerStatusSelect`
+// ở /customers (yêu cầu rõ: trang này chỉ lấy data, không cho quick-edit).
+import { StatusTag } from '@/components/customers/StatusTag';
 // ⚠️ MỚI (2026-09-10) - dropdown lọc "Chọn Sales nhận data" theo Phòng ban/
 // Vai trò/Vị trí (yêu cầu người dùng). CHỈ lọc danh sách candidate hiển thị
 // trong Select ở Modal chia data - KHÔNG đụng tới rules phân quyền dữ liệu
@@ -114,6 +121,9 @@ interface Customer {
   updatedBy?: { id: number; name: string; fullName?: string; role?: string } | null;
   createdAt: string;
   updatedAt?: string;
+  // ⚠️ MỚI - BE (`getUnassigned`/`getAssigned`) đã trả sẵn field này (không
+  // `.select()` giới hạn cột) - trước đây FE chỉ chưa khai báo/hiển thị.
+  status?: string | null;
 }
 
 interface User {
@@ -598,6 +608,12 @@ export default function ChiaDataPage() {
         : <Text type="secondary">-</Text>,
     },
     {
+      // ⚠️ MỚI (yêu cầu người dùng) - chỉ hiển thị, KHÔNG cho quick-edit
+      // (khác /customers) - xem comment đầy đủ ở import StatusTag đầu file.
+      title: 'Trạng thái', dataIndex: 'status', width: 120,
+      render: (v: string | null) => <StatusTag code={v} fallback={<Text type="secondary">-</Text>} />,
+    },
+    {
       title: 'Campaign', dataIndex: 'campaign', width: 160,
       ellipsis: true,
       render: (v: string | null) => v || '-',
@@ -726,6 +742,13 @@ export default function ChiaDataPage() {
       title: 'Nguồn', dataIndex: 'source', width: 100,
       render: (v: string | null) => v
         ? <SourceTag source={v} /> : '-',
+    },
+    {
+      // ⚠️ MỚI (yêu cầu người dùng) - đồng bộ đúng cột "Trạng thái" như
+      // bảng "Có thể chia" ở trên - chỉ hiển thị, KHÔNG cho quick-edit, xem
+      // comment đầy đủ ở import StatusTag đầu file.
+      title: 'Trạng thái', dataIndex: 'status', width: 120,
+      render: (v: string | null) => <StatusTag code={v} fallback={<Text type="secondary">-</Text>} />,
     },
     {
       // ⚠️ SỬA (yêu cầu người dùng) - đồng bộ đúng cột "Ghi chú gần nhất"
