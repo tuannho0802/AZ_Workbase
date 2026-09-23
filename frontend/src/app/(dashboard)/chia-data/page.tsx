@@ -98,6 +98,7 @@ interface Customer {
   phone: string | null;
   source: string | null;
   campaign: string | null;
+  note: string | null;
   recentNotes?: RecentNote[];
   inputDate: string | null;
   salesUser: { id: number; name: string; fullName?: string } | null;
@@ -312,14 +313,34 @@ export default function ChiaDataPage() {
   const [filterStatus, setFilterStatus] = useState<string | null>(null);
   const [unassignedDateFrom, setUnassignedDateFrom] = useState<Dayjs | null>(null);
   const [unassignedDateTo, setUnassignedDateTo] = useState<Dayjs | null>(null);
+  // ⚠️ MỚI - tách riêng khoảng ngày lọc theo "Ngày nhập thực tế" (createdAt,
+  // có giờ:phút) khỏi unassignedDateFrom/To ở trên (đang lọc inputDate -
+  // ngày người nhập tự chọn). 2 RangePicker độc lập, không đè lên nhau.
+  const [unassignedCreatedAtFrom, setUnassignedCreatedAtFrom] = useState<Dayjs | null>(null);
+  const [unassignedCreatedAtTo, setUnassignedCreatedAtTo] = useState<Dayjs | null>(null);
 
   // State: filters cho bảng Đã assign
   const [assignedPage, setAssignedPage] = useState(1);
   const [assignedSearch, setAssignedSearch] = useState('');
-  const [filterAssignedTo, setFilterAssignedTo] = useState<number | null>(null);
   const [filterAssignedStatus, setFilterAssignedStatus] = useState<string | null>(null);
   const [assignedDateFrom, setAssignedDateFrom] = useState<Dayjs | null>(null);
   const [assignedDateTo, setAssignedDateTo] = useState<Dayjs | null>(null);
+  // ⚠️ MỚI - tương tự tab "Có thể chia", tách riêng khoảng ngày lọc theo
+  // "Ngày nhập thực tế" (createdAt) khỏi assignedDateFrom/To (inputDate).
+  const [assignedCreatedAtFrom, setAssignedCreatedAtFrom] = useState<Dayjs | null>(null);
+  const [assignedCreatedAtTo, setAssignedCreatedAtTo] = useState<Dayjs | null>(null);
+  // ⚠️ MỚI (yêu cầu người dùng - tab "Đã assign"): 2 dropdown lọc thêm.
+  // - filterPrimaryUser -> `primaryUserId` (BE: OR giữa salesUserId VÀ
+  //   marketingUserId - gộp cả Sales lẫn Marketing "phụ trách chính").
+  //   Thay thế hẳn dropdown "Lọc theo Sales" cũ (-> `salesUserId`, chỉ khớp
+  //   cột Sales, đã bỏ khỏi UI) vì primaryUserId là superset đúng ý người
+  //   dùng yêu cầu ("bao gồm Sales và Marketing"). `salesUserId` vẫn còn
+  //   nguyên trên BE (route/service) để không phá `assignments.api.ts` -
+  //   một chỗ KHÁC đang gọi cùng endpoint - chỉ riêng UI trang này đổi.
+  // - filterSharedUser -> `sharedUserId` (BE: khách đang có user này trong
+  //   customer_assignments active, KHÔNG tính nếu user đó đang là Primary).
+  const [filterPrimaryUser, setFilterPrimaryUser] = useState<number | null>(null);
+  const [filterSharedUser, setFilterSharedUser] = useState<number | null>(null);
 
   // Trạng thái động (bảng customer_statuses) - dùng chung cho cả 2 tab, đồng
   // bộ với dropdown "Trạng thái" ở /customers (CustomerFilters.tsx).
@@ -376,7 +397,8 @@ export default function ChiaDataPage() {
   const { data: unassignedData, isLoading: loadingUnassigned } = useQuery({
     queryKey: ['unassigned', unassignedPage, unassignedSearch,
       filterSource, filterDataOwner, filterStatus,
-      unassignedDateFrom?.format('YYYY-MM-DD'), unassignedDateTo?.format('YYYY-MM-DD')],
+      unassignedDateFrom?.format('YYYY-MM-DD'), unassignedDateTo?.format('YYYY-MM-DD'),
+      unassignedCreatedAtFrom?.format('YYYY-MM-DD'), unassignedCreatedAtTo?.format('YYYY-MM-DD')],
     queryFn: () => api.getUnassigned({
       page: unassignedPage, limit: 20,
       search: unassignedSearch || undefined,
@@ -385,21 +407,28 @@ export default function ChiaDataPage() {
       status: filterStatus || undefined,
       dateFrom: unassignedDateFrom?.format('YYYY-MM-DD') || undefined,
       dateTo: unassignedDateTo?.format('YYYY-MM-DD') || undefined,
+      createdAtFrom: unassignedCreatedAtFrom?.format('YYYY-MM-DD') || undefined,
+      createdAtTo: unassignedCreatedAtTo?.format('YYYY-MM-DD') || undefined,
     }).then(r => r.data),
     staleTime: 30_000,
     enabled: isHydrated && isAuthenticated, // Chỉ chạy khi đã nạp xong token
   });
 
   const { data: assignedData, isLoading: loadingAssigned } = useQuery({
-    queryKey: ['assigned', assignedPage, assignedSearch, filterAssignedTo,
-      filterAssignedStatus, assignedDateFrom?.format('YYYY-MM-DD'), assignedDateTo?.format('YYYY-MM-DD')],
+    queryKey: ['assigned', assignedPage, assignedSearch,
+      filterAssignedStatus, assignedDateFrom?.format('YYYY-MM-DD'), assignedDateTo?.format('YYYY-MM-DD'),
+      assignedCreatedAtFrom?.format('YYYY-MM-DD'), assignedCreatedAtTo?.format('YYYY-MM-DD'),
+      filterPrimaryUser, filterSharedUser],
     queryFn: () => api.getAssigned({
       page: assignedPage, limit: 20,
       search: assignedSearch || undefined,
-      salesUserId: filterAssignedTo || undefined,
       status: filterAssignedStatus || undefined,
       dateFrom: assignedDateFrom?.format('YYYY-MM-DD') || undefined,
       dateTo: assignedDateTo?.format('YYYY-MM-DD') || undefined,
+      createdAtFrom: assignedCreatedAtFrom?.format('YYYY-MM-DD') || undefined,
+      createdAtTo: assignedCreatedAtTo?.format('YYYY-MM-DD') || undefined,
+      primaryUserId: filterPrimaryUser || undefined,
+      sharedUserId: filterSharedUser || undefined,
     }).then(r => r.data),
     staleTime: 30_000,
     enabled: isHydrated && isAuthenticated,
@@ -972,17 +1001,34 @@ export default function ChiaDataPage() {
                     />
                   </Col>
                   <Col flex="260px">
-                    <DatePicker.RangePicker
-                      style={{ width: '100%' }}
-                      format="DD/MM/YYYY"
-                      placeholder={['Từ ngày', 'Đến ngày']}
-                      value={[unassignedDateFrom, unassignedDateTo]}
-                      onChange={(vals) => {
-                        setUnassignedDateFrom(vals?.[0] ?? null);
-                        setUnassignedDateTo(vals?.[1] ?? null);
-                        setUnassignedPage(1);
-                      }}
-                    />
+                    <Tooltip title="Lọc theo Ngày nhập (inputDate - ngày người nhập tự chọn)">
+                      <DatePicker.RangePicker
+                        style={{ width: '100%' }}
+                        format="DD/MM/YYYY"
+                        placeholder={['Ngày nhập từ', 'đến']}
+                        value={[unassignedDateFrom, unassignedDateTo]}
+                        onChange={(vals) => {
+                          setUnassignedDateFrom(vals?.[0] ?? null);
+                          setUnassignedDateTo(vals?.[1] ?? null);
+                          setUnassignedPage(1);
+                        }}
+                      />
+                    </Tooltip>
+                  </Col>
+                  <Col flex="260px">
+                    <Tooltip title="Lọc theo Ngày nhập THỰC TẾ (createdAt - lúc tạo bản ghi, có giờ:phút)">
+                      <DatePicker.RangePicker
+                        style={{ width: '100%' }}
+                        format="DD/MM/YYYY"
+                        placeholder={['Nhập thực tế từ', 'đến']}
+                        value={[unassignedCreatedAtFrom, unassignedCreatedAtTo]}
+                        onChange={(vals) => {
+                          setUnassignedCreatedAtFrom(vals?.[0] ?? null);
+                          setUnassignedCreatedAtTo(vals?.[1] ?? null);
+                          setUnassignedPage(1);
+                        }}
+                      />
+                    </Tooltip>
                   </Col>
                   <Col flex="auto" />
                   {/* NÚT CHIA — chỉ hiện khi đã chọn */}
@@ -1131,20 +1177,42 @@ export default function ChiaDataPage() {
                   </Col>
                   {viewScopeUsers.length > 0 && (
                     <Col flex="220px">
-                      <Select
-                        allowClear
-                        placeholder="Lọc theo Sales"
-                        style={{ width: '100%' }}
-                        options={viewScopeUserOptions}
-                        optionLabelProp="label"
-                        optionRender={renderUserOption}
-                        popupMatchSelectWidth={false}
-                        showSearch={{ optionFilterProp: 'label' }}
-                        onChange={v => {
-                          setFilterAssignedTo(v ?? null);
-                          setAssignedPage(1);
-                        }}
-                      />
+                      <Tooltip title="Lọc theo người phụ trách chính (Sales HOẶC Marketing)">
+                        <Select
+                          allowClear
+                          placeholder="Người phụ trách chính"
+                          style={{ width: '100%' }}
+                          options={viewScopeUserOptions}
+                          optionLabelProp="label"
+                          optionRender={renderUserOption}
+                          popupMatchSelectWidth={false}
+                          showSearch={{ optionFilterProp: 'label' }}
+                          onChange={v => {
+                            setFilterPrimaryUser(v ?? null);
+                            setAssignedPage(1);
+                          }}
+                        />
+                      </Tooltip>
+                    </Col>
+                  )}
+                  {viewScopeUsers.length > 0 && (
+                    <Col flex="220px">
+                      <Tooltip title="Lọc theo Sales được chia (shared, không tính Primary)">
+                        <Select
+                          allowClear
+                          placeholder="Sales được chia"
+                          style={{ width: '100%' }}
+                          options={viewScopeUserOptions}
+                          optionLabelProp="label"
+                          optionRender={renderUserOption}
+                          popupMatchSelectWidth={false}
+                          showSearch={{ optionFilterProp: 'label' }}
+                          onChange={v => {
+                            setFilterSharedUser(v ?? null);
+                            setAssignedPage(1);
+                          }}
+                        />
+                      </Tooltip>
                     </Col>
                   )}
                   <Col flex="160px">
@@ -1160,17 +1228,34 @@ export default function ChiaDataPage() {
                     />
                   </Col>
                   <Col flex="260px">
-                    <DatePicker.RangePicker
-                      style={{ width: '100%' }}
-                      format="DD/MM/YYYY"
-                      placeholder={['Từ ngày', 'Đến ngày']}
-                      value={[assignedDateFrom, assignedDateTo]}
-                      onChange={(vals) => {
-                        setAssignedDateFrom(vals?.[0] ?? null);
-                        setAssignedDateTo(vals?.[1] ?? null);
-                        setAssignedPage(1);
-                      }}
-                    />
+                    <Tooltip title="Lọc theo Ngày nhập (inputDate - ngày người nhập tự chọn)">
+                      <DatePicker.RangePicker
+                        style={{ width: '100%' }}
+                        format="DD/MM/YYYY"
+                        placeholder={['Ngày nhập từ', 'đến']}
+                        value={[assignedDateFrom, assignedDateTo]}
+                        onChange={(vals) => {
+                          setAssignedDateFrom(vals?.[0] ?? null);
+                          setAssignedDateTo(vals?.[1] ?? null);
+                          setAssignedPage(1);
+                        }}
+                      />
+                    </Tooltip>
+                  </Col>
+                  <Col flex="260px">
+                    <Tooltip title="Lọc theo Ngày nhập THỰC TẾ (createdAt - lúc tạo bản ghi, có giờ:phút)">
+                      <DatePicker.RangePicker
+                        style={{ width: '100%' }}
+                        format="DD/MM/YYYY"
+                        placeholder={['Nhập thực tế từ', 'đến']}
+                        value={[assignedCreatedAtFrom, assignedCreatedAtTo]}
+                        onChange={(vals) => {
+                          setAssignedCreatedAtFrom(vals?.[0] ?? null);
+                          setAssignedCreatedAtTo(vals?.[1] ?? null);
+                          setAssignedPage(1);
+                        }}
+                      />
+                    </Tooltip>
                   </Col>
                   <Col>
                     <Tooltip title="Làm mới">
