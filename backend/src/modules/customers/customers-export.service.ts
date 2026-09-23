@@ -7,6 +7,7 @@ import { CustomerFiltersDto } from './dto/customer-filters.dto';
 import { CustomerNote } from '../../database/entities/customer-note.entity';
 import { CustomerStatus } from '../../database/entities/customer-status.entity';
 import { UiVisibilityService } from '../ui-visibility/ui-visibility.service';
+import { toPascalSlug } from '../../common/utils/vietnamese-slug.util';
 
 // Giới hạn an toàn cho 1 lần export - cùng tinh thần EXPORT_MAX_ROWS ở
 // attendance-export.service.ts (tránh 1 request kéo cả trăm nghìn dòng làm
@@ -79,13 +80,25 @@ export class CustomersExportService {
     return `${hh}:${mi} ${dd}/${mm}/${d.getFullYear()}`;
   }
 
-  private buildFilename(filters: CustomerFiltersDto): string {
+  /**
+   * Yêu cầu tường minh của chủ dự án (2026-09-23): tên file PHẢI có đoạn
+   * "ExportBy-{TênNgườiXuất}" để phân biệt ai đã xuất file nào (VD nhiều
+   * Sales cùng export cùng lúc). Dùng lại NGUYÊN `toPascalSlug()` có sẵn ở
+   * `vietnamese-slug.util.ts` (đã dùng cho tên file avatar/đính kèm nghỉ
+   * phép) thay vì viết lại logic bỏ dấu - đúng VD chủ dự án cho:
+   * "Lê Hoàng Tuấn" -> "LeHoangTuan". Nếu không có tên (trường hợp hiếm -
+   * JWT cũ chưa có field `name`, hoặc gọi nội bộ không qua HTTP) thì fallback
+   * về đúng format cũ "KhachHang..." (không chèn "-ExportBy-" rỗng vô nghĩa).
+   */
+  private buildFilename(filters: CustomerFiltersDto, exportedByName?: string): string {
+    const nameSlug = exportedByName ? toPascalSlug(exportedByName) : '';
+    const prefix = nameSlug ? `Khach-Hang-ExportBy-${nameSlug}` : 'KhachHang';
     if (filters.dateFrom && filters.dateTo) {
       const from = filters.dateFrom.split('-').reverse().join('-');
       const to = filters.dateTo.split('-').reverse().join('-');
-      return `KhachHang ${from} - ${to}.xlsx`;
+      return `${prefix} ${from} - ${to}.xlsx`;
     }
-    return `KhachHang ToanBo.xlsx`;
+    return `${prefix} ToanBo.xlsx`;
   }
 
   /**
@@ -107,6 +120,10 @@ export class CustomersExportService {
     callerDepartmentId?: number | null,
     callerPositionId?: number | null,
     callerIsRootAdmin?: boolean,
+    // ⚠️ MỚI (2026-09-23) - tên người ĐANG xuất file (KHÔNG phải người tạo/
+    // sửa Customer) - dùng để đặt tên file "Khach-Hang-ExportBy-{Tên}", xem
+    // buildFilename() bên dưới.
+    exportedByName?: string,
   ): Promise<{ buffer: Buffer; filename: string }> {
     const { data: customers } = await this.customersService.findAll(
       { ...filters, page: 1, limit: EXPORT_MAX_ROWS },
@@ -282,7 +299,7 @@ export class CustomersExportService {
 
     return {
       buffer: await this.toBuffer(workbook),
-      filename: this.buildFilename(filters),
+      filename: this.buildFilename(filters, exportedByName),
     };
   }
 }

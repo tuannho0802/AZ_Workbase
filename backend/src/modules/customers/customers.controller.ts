@@ -125,6 +125,7 @@ export class CustomersController {
       user.departmentId,
       user.positionId,
       user.isRootAdmin,
+      user.name,
     );
     res.set({
       'Content-Type': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
