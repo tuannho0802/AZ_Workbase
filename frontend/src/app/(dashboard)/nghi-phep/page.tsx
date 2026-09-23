@@ -227,6 +227,34 @@ export default function LeaveRequestsPage() {
     setAttachmentUploaderKey((k) => k + 1);
   };
 
+  /**
+   * Cảnh báo khi Ngày bắt đầu nghỉ được chọn SỚM HƠN hôm nay (quá khứ) -
+   * RangePicker không còn disabledDate chặn cứng (xem comment ở Form.Item
+   * "dateRange"). Chỉ cảnh báo dựa trên `dates[0]` (Ngày bắt đầu) - đúng
+   * điều kiện BE tính `isSupplementary` (`computeIsSupplementary()` so
+   * `startDate` với hôm nay, KHÔNG liên quan `endDate`).
+   * Bấm "Huỷ" ở modal -> xoá lựa chọn (clear field), bắt chọn lại. Bấm
+   * "Xác nhận" -> giữ nguyên giá trị đã chọn (không làm gì thêm, Form đã tự
+   * cập nhật state qua trigger onChange mặc định).
+   */
+  const handleDateRangeChange = (dates: [Dayjs | null, Dayjs | null] | null) => {
+    const startDate = dates?.[0];
+    if (startDate && startDate.isBefore(dayjs().startOf('day'))) {
+      modal.confirm({
+        title: 'Chọn ngày nghỉ trong quá khứ',
+        content:
+          `Ngày bắt đầu nghỉ (${startDate.format('DD/MM/YYYY')}) đã qua so với hôm nay. ` +
+          'Đơn này sẽ được hệ thống tự động đánh dấu là "Đơn bổ sung" (tạo bù cho ngày đã nghỉ). ' +
+          'Bạn có chắc chắn muốn tiếp tục?',
+        okText: 'Xác nhận',
+        cancelText: 'Huỷ',
+        onCancel: () => {
+          form.setFieldValue('dateRange', null);
+        },
+      });
+    }
+  };
+
   const handleCreateRequest = async (values: any) => {
     // Giữ lại key vừa upload (nếu có) ở scope ngoài try - cần để dọn rác
     // trong catch nếu bước tạo đơn thất bại SAU KHI ảnh đã lỡ lên B2 rồi.
@@ -514,10 +542,17 @@ export default function LeaveRequestsPage() {
             label="Thời gian nghỉ"
             rules={[{ required: true, message: 'Vui lòng chọn thời gian' }]}
           >
+            {/* ⚠️ MỚI - cho phép chọn Ngày bắt đầu ở QUÁ KHỨ (trước đây bị
+              disabledDate chặn cứng < hôm nay) - phục vụ case "Nghỉ phép Bổ
+              sung" (xem is_supplementary ở entity/migration): User quên tạo
+              đơn trước ngày nghỉ, giờ vào tạo bù. KHÔNG còn disabledDate -
+              cảnh báo bằng modal.confirm ở onChange thay vì chặn hẳn ở UI,
+              để User biết trước hậu quả (đơn sẽ bị đánh dấu "Đơn bổ sung")
+              nhưng vẫn được chọn tiếp nếu đúng ý. */}
             <RangePicker
               style={{ width: '100%' }}
               format="DD/MM/YYYY"
-              disabledDate={(current) => current && current < dayjs().startOf('day')}
+              onChange={handleDateRangeChange}
             />
           </Form.Item>
 
