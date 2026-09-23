@@ -40,15 +40,8 @@ jobs:
             --events \
             "${{ secrets.DB_DATABASE }}" > backup.sql
 
-      - name: Nén
-        run: gzip backup.sql
-
-      - name: Mã hoá (AES-256)
-        run: |
-          openssl enc -aes-256-cbc -pbkdf2 -salt \
-            -in backup.sql.gz \
-            -out "backup_$(date +%Y%m%d).sql.gz.enc" \
-            -pass pass:"${{ secrets.BACKUP_ENCRYPT_KEY }}"
+      - name: Đổi tên file kèm ngày tháng
+        run: mv backup.sql "backup_$(date +%Y%m%d).sql"
 
       - name: Cài rclone
         run: curl https://rclone.org/install.sh | sudo bash
@@ -60,7 +53,7 @@ jobs:
           RCLONE_CONFIG_GDRIVE_CLIENT_SECRET: ${{ secrets.GDRIVE_CLIENT_SECRET }}
           RCLONE_CONFIG_GDRIVE_SCOPE: drive
           RCLONE_CONFIG_GDRIVE_TOKEN: ${{ secrets.GDRIVE_TOKEN }}
-        run: rclone copy backup_*.sql.gz.enc "gdrive:AZWorkbase-Backups/"
+        run: rclone copy backup_*.sql "gdrive:AZWorkbase-Backups/"
 
       - name: Rotation - xoá backup cũ hơn 90 ngày
         env:
@@ -73,4 +66,4 @@ jobs:
 
       - name: Dọn file tạm trên runner
         if: always()
-        run: rm -f ca.pem backup.sql.gz backup_*.sql.gz.enc
+        run: rm -f ca.pem backup_*.sql
