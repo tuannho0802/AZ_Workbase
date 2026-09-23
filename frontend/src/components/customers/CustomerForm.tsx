@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect, useMemo } from 'react';
 import { Modal, Form, Input, Select, DatePicker, Row, Col, App, Tag, Typography, Button } from 'antd';
-import { PlusOutlined } from '@ant-design/icons';
+import { PlusOutlined, WarningOutlined } from '@ant-design/icons';
 import { customersApi } from '@/lib/api/customers.api';
 import { useMediaSources } from '@/lib/hooks/useMediaSources';
 import { useCustomerStatuses } from '@/lib/hooks/useCustomerStatuses';
@@ -29,7 +29,7 @@ interface CustomerFormProps {
 export const CustomerForm: React.FC<CustomerFormProps> = ({ open, customer, onClose, onSuccess }) => {
   const [form] = Form.useForm();
   const [loading, setLoading] = useState(false);
-  const { message } = App.useApp();
+  const { message, modal } = App.useApp();
   // ⚠️ Trước đây danh sách "Nguồn" hardcode cứng trong component
   // (Facebook/TikTok/Google/Instagram/Other) - admin không có cách nào thêm
   // nguồn mới mà không sửa code. Giờ lấy động từ /media-sources (chỉ nguồn

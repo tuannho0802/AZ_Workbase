@@ -71,6 +71,27 @@ export const customersApi = {
     return response.data;
   },
 
+  /**
+   * Kiểm tra SĐT/Email đã tồn tại ở khách hàng khác (BẤT KỲ phạm vi nào,
+   * không chỉ trong quyền xem của người gọi) TRƯỚC khi tạo/sửa - phục vụ
+   * Modal cảnh báo "SĐT này đã được X thêm..." ở `CustomerForm.tsx`.
+   * BE cố tình chỉ trả về thông tin TỐI THIỂU (không có id/SĐT/Email đầy
+   * đủ/note của khách hàng đã tồn tại đó) - xem
+   * `CustomersService.checkDuplicateContact()`.
+   */
+  checkDuplicateContact: async (params: {
+    phone?: string;
+    email?: string;
+    excludeId?: number;
+  }): Promise<{
+    hasDuplicate: boolean;
+    phoneMatch: { creatorName: string; salesUserName: string | null; groupNames: string[] } | null;
+    emailMatch: { creatorName: string; salesUserName: string | null; groupNames: string[] } | null;
+  }> => {
+    const response = await axiosInstance.get('/customers/check-duplicate', { params });
+    return response.data;
+  },
+
   getAllDepositsStats: async (params?: { 
     startDate?: string; 
     endDate?: string;

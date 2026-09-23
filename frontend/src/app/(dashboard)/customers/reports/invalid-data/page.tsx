@@ -238,7 +238,7 @@ export default function InvalidDataReportPage() {
               className="mb-4"
               type="success"
               showIcon
-              title={`Không phát hiện ${duplicateLabel.toLowerCase()} nào bị trùng`}
+                title={`Không phát hiện ${duplicateLabel.toLowerCase()} nào bị trùng`}
             />
           )
         )}
