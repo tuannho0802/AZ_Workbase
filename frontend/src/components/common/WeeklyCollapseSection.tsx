@@ -8,6 +8,16 @@ import { getWeekStart } from '@/lib/utils/week';
 
 const { Text } = Typography;
 
+/** Lấy key ổn định cho 1 record (dùng ở nhánh mobile - không có Table lo giúp). */
+function resolveRowKey<T>(record: T, rowKey: TableProps<T>['rowKey'], index: number): React.Key {
+  if (typeof rowKey === 'function') return rowKey(record);
+  if (rowKey !== undefined) {
+    const v = (record as Record<PropertyKey, unknown>)[rowKey as PropertyKey];
+    if (typeof v === 'string' || typeof v === 'number') return v;
+  }
+  return index;
+}
+
 export interface WeeklyCollapsePaginationProps {
   current: number;
   pageSize: number;

@@ -3915,3 +3915,26 @@ trước) theo đúng Custom Instructions của Project.
 **Notes:** Verify được thực hiện SAU khi `git clone` lại bản mới nhất từ GitHub (commit `4b3ebf6`) và đọc trực tiếp code thật — không dựa vào transcript/báo cáo phiên trước. Không push được GitHub từ sandbox (không có credential) — chủ dự án tự áp dụng entry log này (chỉ APPEND, không sửa entry cũ).
 
 ---
+## [2026-09-24 10:53] | Hoàn thiện gom theo TUẦN (Collapse) cho audit-logs, lich-su-cong-viec, attendance-device (Bảng chấm công + Logs chấm công) — vá lỗi build của commit f549565 | [Status: Success — verify bằng build/test thật]
+
+**Actor:** Agent
+
+**Files Changed:**
+- `frontend/src/lib/utils/week.ts` — **MỚI**: `getWeekStart()` (Thứ 2 00:00, tự tính bằng `.day()`, không dùng plugin isoWeek) dùng chung.
+- `frontend/src/lib/utils/week.test.ts` — **MỚI**: 5 test (Thứ 2, giữa tuần, Chủ nhật thuộc tuần trước, qua ranh giới năm, reset giờ).
+- `frontend/src/components/common/WeeklyCollapseSection.tsx` — thêm helper `resolveRowKey()` (nhánh mobile không có Table lo key).
+- `frontend/src/components/leave-requests/WeekGroupedRequests.tsx` — bỏ bản `getWeekStart` cục bộ, import từ `@/lib/utils/week` (hành vi không đổi).
+
+**Root Cause:**
+> Commit `f549565` ("Add WeeklyCollapse...") đã nối `WeeklyCollapseSection` vào 5 vị trí (audit-logs tab Nhật ký + tab Đăng nhập cả desktop/mobile, lich-su-cong-viec, AttendanceSummaryTab, AttendanceLogsTab) nhưng **không commit `lib/utils/week.ts`** và component gọi `resolveRowKey` **chưa được định nghĩa** -> `tsc` báo TS2307 + TS2304, `next build` sẽ FAIL nếu deploy.
+
+**Solution:** Bổ sung 2 phần thiếu ở trên, không đổi logic phân trang/fetch của các trang (page/pageSize vẫn do trang cha giữ, truyền qua prop `pagination`).
+
+**Verify:** `tsc --noEmit` 0 lỗi (sau `next build`; các lỗi `logo.png`/`CountBadge` ghi trước đây thực chất do thiếu `next-env.d.ts` — file Next tự sinh khi build). `next build` compiled OK, 36/36 trang. `vitest run` 95/95 PASS (90 cũ + 5 mới). ESLint: số lỗi/cảnh báo TRƯỚC và SAU y hệt trên 5 file liên quan (không phát sinh lỗi mới; lỗi `any`/`set-state-in-effect` ở các file này đã có sẵn từ trước); 3 file mới/sửa (`week.ts`, `week.test.ts`, `WeeklyCollapseSection.tsx`) sạch lint.
+
+**Notes:**
+> - Phạm vi đã phủ: audit-logs (tab Nhật ký + tab Đăng nhập, desktop + mobile), /lich-su-cong-viec (desktop + mobile), /attendance-device tab "Bảng chấm công" (`date`) và "Logs chấm công" (`recordTime`). Tab "Bảng chấm công tháng" và "Ánh xạ thiết bị" không thuộc yêu cầu nên giữ nguyên Table.
+> - **Giới hạn đã biết:** gom tuần chỉ áp lên TRANG hiện tại (phân trang vẫn server-side) → 1 tuần vắt qua 2 trang sẽ tách làm 2 panel cùng nhãn, số Badge đếm theo từng trang, không phải tổng cả tuần. Muốn đếm chính xác theo tuần cần API gom theo tuần ở BE (chưa làm).
+> - Verify sau khi `git clone` bản mới nhất (HEAD `f549565`), đọc code thật, không dựa transcript phiên trước. Không push được GitHub từ sandbox — chủ dự án tự áp dụng patch (chỉ APPEND log, không sửa entry cũ).
+
+---
