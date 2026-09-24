@@ -1,7 +1,8 @@
 'use client';
 
 import { useMemo, useState } from 'react';
-import { Table, Select, DatePicker, Space, Tag, Button, Modal, App, Typography, Avatar } from 'antd';
+import { Select, DatePicker, Space, Tag, Button, Modal, App, Typography, Avatar } from 'antd';
+import { WeeklyCollapseSection } from '@/components/common/WeeklyCollapseSection';
 import { ReloadOutlined, DeleteOutlined, FileExcelOutlined, UserOutlined } from '@ant-design/icons';
 import dayjs, { Dayjs } from 'dayjs';
 import { useAttendanceLogs, useCleanupAttendanceLogs, useExportAttendanceLogs, useDeviceUsers } from '@/lib/hooks/useZkDevice';
@@ -340,11 +341,16 @@ export default function AttendanceLogsTab() {
         }}
       />
 
-      <Table
+      {/* ⚠️ MỚI (yêu cầu người dùng: gom "Logs chấm công" theo tuần bằng
+          Collapse, vẫn giữ phân trang thật) - `recordTime` là field ngày
+          dùng để xác định tuần. */}
+      <WeeklyCollapseSection<AttendanceLog>
+        records={data?.data || []}
+        getDate={(r) => r.recordTime}
         rowKey="id"
-        loading={isLoading}
         columns={columns}
-        dataSource={data?.data || []}
+        loading={isLoading}
+        emptyText="Chưa có log chấm công"
         pagination={{
           current: page,
           pageSize: limit,

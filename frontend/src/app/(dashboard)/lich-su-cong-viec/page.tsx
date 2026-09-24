@@ -2,8 +2,8 @@
 
 import { useState, useEffect, useCallback } from 'react';
 import {
-  Table, Card, Tag, Button, Space, Row, Col, Typography,
-  Input, Select, DatePicker, App, Badge, Avatar, Pagination,
+  Card, Tag, Button, Space, Row, Col, Typography,
+  Input, Select, DatePicker, App, Badge, Avatar,
 } from 'antd';
 import {
   SearchOutlined, ReloadOutlined, UserOutlined, HistoryOutlined,
@@ -20,6 +20,7 @@ import {
 } from '@/lib/types/periodic-task-audit.types';
 import { PERIODIC_TASK_FIELD_LABELS } from '@/components/periodic-tasks/TaskAuditLogsModal';
 import { AuditDiffViewer } from '@/components/audit/AuditDiffViewer';
+import { WeeklyCollapseSection } from '@/components/common/WeeklyCollapseSection';
 import dayjs from 'dayjs';
 import { useMyPermissions } from '@/lib/hooks/useMyPermissions';
 import { useRoleColorMap } from '@/lib/hooks/useRoleColorMap';
@@ -392,35 +393,36 @@ export default function TaskHistoryPage() {
         </Row>
       </Card>
 
-      {/* Table / Card List */}
+      {/* ⚠️ MỚI (yêu cầu người dùng: đồng bộ y hệt `/audit-logs` - gom theo
+          tuần bằng `WeeklyCollapseSection`, phân trang thật giữ nguyên). */}
       {isMobile ? (
         <div style={{ padding: '0 4px' }}>
-          {loading && logs.length === 0 ? (
-            <div style={{ padding: '24px 0', textAlign: 'center', color: '#8c8c8c' }}>Đang tải...</div>
-          ) : logs.length === 0 ? (
-            <div style={{ padding: '24px 0', textAlign: 'center', color: '#8c8c8c' }}>Chưa có lịch sử ghi nhận</div>
-          ) : (
-            logs.map((record) => <TaskHistoryMobileCard key={record.id} record={record} />)
-          )}
-          <Pagination
-            current={page}
-            pageSize={pageSize}
-            total={total}
-            size="small"
-            simple
-            onChange={(p, ps) => { setPage(p); setPageSize(ps || pageSize); }}
-            style={{ textAlign: 'center', marginTop: 12 }}
+          <WeeklyCollapseSection<PeriodicTaskAuditLogGlobal>
+            records={logs}
+            getDate={(r) => r.createdAt}
+            rowKey="id"
+            columns={columns}
+            isMobile
+            loading={loading}
+            emptyText="Chưa có lịch sử ghi nhận"
+            renderMobileCard={(record) => <TaskHistoryMobileCard key={record.id} record={record} />}
+            pagination={{
+              current: page, pageSize, total,
+              onChange: (p, ps) => { setPage(p); setPageSize(ps || pageSize); },
+            }}
           />
         </div>
       ) : (
         <Card variant="outlined" style={{ borderRadius: 8 }}>
-          <Table<PeriodicTaskAuditLogGlobal>
-            columns={columns}
-            dataSource={logs}
-            rowKey="id"
+            <WeeklyCollapseSection<PeriodicTaskAuditLogGlobal>
+              records={logs}
+              getDate={(r) => r.createdAt}
+              rowKey="id"
+              columns={columns}
             loading={loading}
             size="middle"
             rowSelection={rowSelection}
+              emptyText="Chưa có lịch sử ghi nhận"
             expandable={{
               expandedRowRender: (record) => (
                 <div style={{ padding: '0 48px 16px' }}>

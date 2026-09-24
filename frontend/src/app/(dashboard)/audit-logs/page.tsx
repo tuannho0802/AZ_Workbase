@@ -2,9 +2,9 @@
 
 import { useState, useEffect, useCallback, useMemo } from 'react';
 import {
-  Table, Card, Tag, Button, Space, Row, Col, Typography,
+  Card, Tag, Button, Space, Row, Col, Typography,
   Tooltip, Input, Select, Cascader, DatePicker, Drawer, App,
-  Badge, Avatar, Divider, Switch, InputNumber, Alert, Tabs, Pagination
+  Badge, Avatar, Divider, Switch, InputNumber, Alert, Tabs
 } from 'antd';
 import {
   SearchOutlined, ReloadOutlined, InfoCircleOutlined,
@@ -22,6 +22,7 @@ import { AuditDiffViewer } from '@/components/audit/AuditDiffViewer';
 import { useMyPermissions } from '@/lib/hooks/useMyPermissions';
 import { useRoleColorMap } from '@/lib/hooks/useRoleColorMap';
 import { SalesUserSelect } from '@/components/customers/SalesUserSelect';
+import { WeeklyCollapseSection } from '@/components/common/WeeklyCollapseSection';
 import {
   ACTION_META,
   ACTION_GROUP_LABELS,
@@ -661,41 +662,46 @@ export default function AuditLogsPage() {
                 </Row>
               </Card>
 
-              {/* Table / Card List */}
+              {/* ⚠️ MỚI (yêu cầu người dùng: "gom thành 1 ant-collapse-item tính
+                  bằng tuần, vẫn có phân trang") - thay Table/list phẳng bằng
+                  `WeeklyCollapseSection`: gom TRANG hiện tại (đã phân trang từ
+                  server, không đổi logic fetch) thành các Collapse item theo
+                  tuần của `createdAt`; phân trang thật vẫn render y hệt cũ ở
+                  dưới Collapse (page/pageSize không đổi state/API). */}
               {isMobile ? (
                 <div style={{ padding: '0 4px' }}>
-                  {loading && logs.length === 0 ? (
-                    <div style={{ padding: '24px 0', textAlign: 'center', color: '#8c8c8c' }}>Đang tải...</div>
-                  ) : logs.length === 0 ? (
-                    <div style={{ padding: '24px 0', textAlign: 'center', color: '#8c8c8c' }}>Chưa có nhật ký ghi nhận</div>
-                  ) : (
-                    logs.map((record) => (
+                  <WeeklyCollapseSection<AuditLog>
+                    records={logs}
+                    getDate={(r) => r.createdAt}
+                    rowKey="id"
+                    columns={columns}
+                    isMobile
+                    loading={loading}
+                    emptyText="Chưa có nhật ký ghi nhận"
+                    renderMobileCard={(record) => (
                       <AuditLogMobileCard
                         key={record.id}
                         record={record}
                         onShowDetail={() => { setSelectedLog(record); setDrawerOpen(true); }}
                       />
-                    ))
-                  )}
-                  <Pagination
-                    current={page}
-                    pageSize={pageSize}
-                    total={total}
-                    size="small"
-                    simple
-                    onChange={(p, ps) => { setPage(p); setPageSize(ps || pageSize); }}
-                    style={{ textAlign: 'center', marginTop: 12 }}
+                    )}
+                    pagination={{
+                      current: page, pageSize, total,
+                      onChange: (p, ps) => { setPage(p); setPageSize(ps || pageSize); },
+                    }}
                   />
                 </div>
               ) : (
                 <Card variant="outlined" style={{ borderRadius: 8 }}>
-                  <Table<AuditLog>
-                    columns={columns}
-                    dataSource={logs}
-                    rowKey="id"
+                    <WeeklyCollapseSection<AuditLog>
+                      records={logs}
+                      getDate={(r) => r.createdAt}
+                      rowKey="id"
+                      columns={columns}
                     loading={loading}
                     size="middle"
                     rowSelection={rowSelection}
+                      emptyText="Chưa có nhật ký ghi nhận"
                     expandable={{
                       expandedRowRender: (record) => (
                         <div style={{ padding: '0 48px 16px' }}>
@@ -746,39 +752,41 @@ export default function AuditLogsPage() {
                 </Row>
               </Card>
 
+              {/* ⚠️ MỚI - đồng bộ gom theo tuần với tab "Danh sách nhật ký" ở
+                  trên (`WeeklyCollapseSection`), phân trang thật giữ nguyên. */}
               {isMobile ? (
                 <div style={{ padding: '0 4px' }}>
-                  {loginLoading && loginLogs.length === 0 ? (
-                    <div style={{ padding: '24px 0', textAlign: 'center', color: '#8c8c8c' }}>Đang tải...</div>
-                  ) : loginLogs.length === 0 ? (
-                    <div style={{ padding: '24px 0', textAlign: 'center', color: '#8c8c8c' }}>Chưa có lượt đăng nhập nào</div>
-                  ) : (
-                    loginLogs.map((record) => (
+                  <WeeklyCollapseSection<AuditLog>
+                    records={loginLogs}
+                    getDate={(r) => r.createdAt}
+                    rowKey="id"
+                    columns={columns.filter(c => c.key !== 'entity')}
+                    isMobile
+                    loading={loginLoading}
+                    emptyText="Chưa có lượt đăng nhập nào"
+                    renderMobileCard={(record) => (
                       <AuditLogMobileCard
                         key={record.id}
                         record={record}
                         onShowDetail={() => { setSelectedLog(record); setDrawerOpen(true); }}
                       />
-                    ))
-                  )}
-                  <Pagination
-                    current={loginPage}
-                    pageSize={loginPageSize}
-                    total={loginTotal}
-                    size="small"
-                    simple
-                    onChange={(p, ps) => { setLoginPage(p); setLoginPageSize(ps || loginPageSize); }}
-                    style={{ textAlign: 'center', marginTop: 12 }}
+                    )}
+                    pagination={{
+                      current: loginPage, pageSize: loginPageSize, total: loginTotal,
+                      onChange: (p, ps) => { setLoginPage(p); setLoginPageSize(ps || loginPageSize); },
+                    }}
                   />
                 </div>
               ) : (
                 <Card variant="outlined" style={{ borderRadius: 8 }}>
-                  <Table<AuditLog>
-                    columns={columns.filter(c => c.key !== 'entity')}
-                    dataSource={loginLogs}
-                    rowKey="id"
+                    <WeeklyCollapseSection<AuditLog>
+                      records={loginLogs}
+                      getDate={(r) => r.createdAt}
+                      rowKey="id"
+                      columns={columns.filter(c => c.key !== 'entity')}
                     loading={loginLoading}
                     size="middle"
+                      emptyText="Chưa có lượt đăng nhập nào"
                     pagination={{
                       current: loginPage, pageSize: loginPageSize, total: loginTotal, showSizeChanger: true,
                       pageSizeOptions: ['20', '50', '100'],

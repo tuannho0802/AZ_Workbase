@@ -1,7 +1,8 @@
 'use client';
 
 import { useMemo, useState } from 'react';
-import { Table, Select, DatePicker, Space, Tag, Button, Tooltip, App, Avatar } from 'antd';
+import { Select, DatePicker, Space, Tag, Button, Tooltip, App, Avatar } from 'antd';
+import { WeeklyCollapseSection } from '@/components/common/WeeklyCollapseSection';
 import { ReloadOutlined, FileExcelOutlined } from '@ant-design/icons';
 import dayjs, { Dayjs } from 'dayjs';
 import { useAttendanceSummary, useExportAttendanceSummary } from '@/lib/hooks/useZkDevice';
@@ -218,19 +219,19 @@ export default function AttendanceSummaryTab() {
         }}
       />
 
-      <Table
-        // ⚠️ Không dùng thẳng `${r.userId}_${r.date}` - nhiều device user
-        // CHƯA MAP đều có userId=null, nếu cùng ngày sẽ ra key trùng
-        // (vd "null_2026-08-25") -> React cảnh báo duplicate key, dòng có
-        // thể bị mất/nhân đôi khi render. Dùng deviceUserId (luôn có, kể cả
-        // chưa map) làm phần phân biệt cho nhánh chưa map - giống pattern
-        // đã dùng ở AttendanceMonthlyTab.tsx (rowKey `u-${id}` / `d-${deviceUserId}`).
+      {/* ⚠️ MỚI (yêu cầu người dùng: gom "Bảng chấm công" theo tuần bằng
+          Collapse, vẫn giữ phân trang thật) - `date` là field ngày dùng để
+          xác định tuần. rowKey giữ nguyên logic cũ (không dùng thẳng
+          `${r.userId}_${r.date}` vì device user chưa map có userId=null). */}
+      <WeeklyCollapseSection<AttendanceSummaryRow>
+        records={data?.data || []}
+        getDate={(r) => r.date}
         rowKey={(r: AttendanceSummaryRow) =>
           r.isMapped ? `u-${r.userId}_${r.date}` : `d-${r.deviceUserId}_${r.date}`
         }
-        loading={isLoading}
         columns={columns}
-        dataSource={data?.data || []}
+        loading={isLoading}
+        emptyText="Chưa có dữ liệu chấm công"
         pagination={{
           current: page,
           pageSize: limit,
