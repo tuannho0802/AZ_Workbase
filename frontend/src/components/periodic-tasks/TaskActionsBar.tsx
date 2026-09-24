@@ -29,7 +29,8 @@ export interface TaskActionsBarProps {
     canEdit: boolean;
     canEditLocked: boolean;
     canApprove: boolean;
-    canDelete: boolean;
+    /** boolean, hoặc hàm theo từng Task (xoá theo scope 'own' cần biết Task của ai). */
+    canDelete: boolean | ((task: PeriodicTask) => boolean);
     onLink: (task: PeriodicTask) => void;
     onChecklist: (task: PeriodicTask) => void;
     onAudit: (task: PeriodicTask) => void;
@@ -120,7 +121,7 @@ export function TaskActionsBar({
                         Khoá
                     </Button>
                 ))}
-            {canDelete && (
+            {(typeof canDelete === 'function' ? canDelete(task) : canDelete) && (
                 <Button size={size} danger icon={<DeleteOutlined />} onClick={() => onDelete(task)}>
                     Xoá
                 </Button>

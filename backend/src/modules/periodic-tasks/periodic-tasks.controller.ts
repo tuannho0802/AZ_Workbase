@@ -1,4 +1,4 @@
-import { Controller, Get, Post, Body, Patch, Param, Delete, Query, UseGuards, ParseIntPipe, NotFoundException } from '@nestjs/common';
+import { Controller, Get, Post, Body, Patch, Param, Delete, Query, UseGuards, ParseIntPipe, NotFoundException, ForbiddenException } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiResponse, ApiBearerAuth } from '@nestjs/swagger';
 import { PeriodicTasksService } from './periodic-tasks.service';
 import { PeriodicTaskLinksService } from './periodic-task-links.service';
@@ -27,6 +27,7 @@ import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { PermissionGuard } from '../../common/guards/permission.guard';
 import { RequirePermission } from '../../common/decorators/require-permission.decorator';
 import { GetUser } from '../../common/decorators/get-user.decorator';
+import { Role } from '../../common/enums/role.enum';
 import { GetPermissionScope } from '../../common/decorators/get-permission-scope.decorator';
 
 /**
@@ -136,23 +137,38 @@ export class PeriodicTasksController {
     return log;
   }
 
-  // Xoá/dọn dẹp: đồng nhất permission `periodic_tasks.delete` (permission
-  // này vốn "chỉ seed Admin", xem PERMISSIONS.md) - KHÔNG có ngoại lệ theo
-  // scope cho hành động xoá, mirror đúng quy ước "Xoá = chỉ Admin" chung của
-  // dự án (CustomerAccessHelper/PeriodicTaskAccessHelper.canDelete()).
+  // Xoá Task giờ THEO SCOPE của `periodic_tasks.delete` (own/department/all,
+  // đổi 2026-09-24). ⚠️ Bulk-xoá/dọn dẹp LOG lịch sử dùng chung permission này
+  // nhưng là thao tác vận hành toàn hệ thống -> BẮT BUỘC scope `all` (hoặc
+  // Admin), tránh Employee scope `own` được cấp quyền xoá Task của mình lại
+  // xoá luôn được log của người khác.
+  private assertCanManageAuditLogs(user: any, scope: string | null | undefined): void {
+    if (user?.role === Role.ADMIN || scope === 'all') return;
+    throw new ForbiddenException('Chỉ quyền xoá phạm vi "Toàn bộ" mới được xoá/dọn dẹp lịch sử Công việc');
+  }
 
   @Delete('audit-logs/bulk')
   @RequirePermission('periodic_tasks.delete')
   @ApiOperation({ summary: 'Xoá hàng loạt log lịch sử theo ID' })
-  bulkDeleteAuditLogs(@Body() dto: BulkDeletePeriodicTaskAuditLogsDto, @GetUser('id') adminId: number) {
-    return this.periodicTaskAuditService.bulkDelete(dto.ids, adminId);
+  bulkDeleteAuditLogs(
+    @Body() dto: BulkDeletePeriodicTaskAuditLogsDto,
+    @GetUser() user: any,
+    @GetPermissionScope() scope: string | null | undefined,
+  ) {
+    this.assertCanManageAuditLogs(user, scope);
+    return this.periodicTaskAuditService.bulkDelete(dto.ids, user.id);
   }
 
   @Delete('audit-logs/cleanup')
   @RequirePermission('periodic_tasks.delete')
   @ApiOperation({ summary: 'Dọn dẹp log lịch sử theo khoảng ngày' })
-  cleanupAuditLogs(@Query() dto: CleanupPeriodicTaskAuditLogsDto, @GetUser('id') adminId: number) {
-    return this.periodicTaskAuditService.cleanupByDateRange(dto.from, dto.to, adminId);
+  cleanupAuditLogs(
+    @Query() dto: CleanupPeriodicTaskAuditLogsDto,
+    @GetUser() user: any,
+    @GetPermissionScope() scope: string | null | undefined,
+  ) {
+    this.assertCanManageAuditLogs(user, scope);
+    return this.periodicTaskAuditService.cleanupByDateRange(dto.from, dto.to, user.id);
   }
 
   @Get(':id')
@@ -199,9 +215,13 @@ export class PeriodicTasksController {
 
   @Delete(':id')
   @RequirePermission('periodic_tasks.delete')
-  @ApiOperation({ summary: 'Xoá mềm Công việc định kỳ - CHỈ Admin' })
-  remove(@Param('id', ParseIntPipe) id: number, @GetUser() user: any) {
-    return this.periodicTasksService.remove(id, user.id, user.role);
+  @ApiOperation({ summary: 'Xoá mềm Công việc định kỳ - theo scope own/department/all' })
+  remove(
+    @Param('id', ParseIntPipe) id: number,
+    @GetUser() user: any,
+    @GetPermissionScope() scope: string | null | undefined,
+  ) {
+    return this.periodicTasksService.remove(id, user.id, user.role, scope);
   }
 
   // ── Phase 2: Liên kết phân cấp DAG (multi-parent, skip-level) + Rollup % ──

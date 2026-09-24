@@ -112,17 +112,26 @@ describe('PeriodicTaskAccessHelper', () => {
       );
     });
 
-    it('ASSISTANT -> false (chỉ Admin được xoá)', () => {
-      expect(
-        PeriodicTaskAccessHelper.canDelete({} as any, 1, Role.ASSISTANT),
-      ).toBe(false);
+    it('scope=all/department -> true (Task đã được findOne() lọc theo scope)', () => {
+      const task: any = { createdById: 9, primaryAssigneeId: 9 };
+      expect(PeriodicTaskAccessHelper.canDelete(task, 1, 'custom', 'all')).toBe(true);
+      expect(PeriodicTaskAccessHelper.canDelete(task, 1, 'custom', 'department')).toBe(true);
     });
 
-    it('EMPLOYEE -> false, KỂ CẢ khi chính họ là người tạo/phụ trách chính', () => {
-      const task: any = { createdById: 1, primaryAssigneeId: 1 };
-      expect(PeriodicTaskAccessHelper.canDelete(task, 1, Role.EMPLOYEE)).toBe(
-        false,
-      );
+    it('scope=own -> true nếu là người tạo HOẶC Phụ trách chính', () => {
+      expect(PeriodicTaskAccessHelper.canDelete({ createdById: 1, primaryAssigneeId: 9 } as any, 1, Role.EMPLOYEE, 'own')).toBe(true);
+      expect(PeriodicTaskAccessHelper.canDelete({ createdById: 9, primaryAssigneeId: 1 } as any, 1, Role.EMPLOYEE, 'own')).toBe(true);
+    });
+
+    it('scope=own -> false nếu chỉ là Phụ trách PHỤ / Task của người khác', () => {
+      const task: any = { createdById: 9, primaryAssigneeId: 8 };
+      expect(PeriodicTaskAccessHelper.canDelete(task, 1, Role.EMPLOYEE, 'own')).toBe(false);
+    });
+
+    it('không có scope (null/undefined) -> xử lý như own', () => {
+      const task: any = { createdById: 9, primaryAssigneeId: 8 };
+      expect(PeriodicTaskAccessHelper.canDelete(task, 1, Role.EMPLOYEE)).toBe(false);
+      expect(PeriodicTaskAccessHelper.canDelete(task, 1, Role.EMPLOYEE, null)).toBe(false);
     });
   });
 

@@ -701,19 +701,22 @@ export class PeriodicTasksService {
   }
 
   /**
-   * Xoá mềm - CHỈ Admin (PLAN mục 2.7, mirror `customers.delete`). Vẫn gọi
-   * `findOne()` trước để 404 đúng cách nếu Task không tồn tại/đã xoá, sau đó
-   * mới kiểm tra quyền Admin qua `PeriodicTaskAccessHelper.canDelete()`.
+   * Xoá mềm THEO SCOPE của `periodic_tasks.delete` (own/department/all - đổi
+   * 2026-09-24, trước đây cứng "chỉ Admin"). `findOne()` lọc theo ĐÚNG scope
+   * của permission xoá (404 nếu Task nằm ngoài phạm vi), rồi
+   * `PeriodicTaskAccessHelper.canDelete()` siết thêm nhánh `own` (chỉ người
+   * tạo/Phụ trách chính, không cho Phụ trách phụ).
    */
-  async remove(id: number, userId: number, userRole: string): Promise<{ deleted: true }> {
-    // Admin có scope='all' cho `periodic_tasks.view` theo seed mặc định nên
-    // truyền scope='all' ở đây là AN TOÀN cho luồng xoá (chỉ Admin gọi được
-    // route này do @RequirePermission('periodic_tasks.delete') đã chặn ở
-    // Controller/PermissionGuard trước khi chạm Service).
-    const task = await this.findOne(id, userId, userRole, 'all');
+  async remove(
+    id: number,
+    userId: number,
+    userRole: string,
+    scope?: string | null,
+  ): Promise<{ deleted: true }> {
+    const task = await this.findOne(id, userId, userRole, scope);
 
-    if (!PeriodicTaskAccessHelper.canDelete(task, userId, userRole)) {
-      throw new ForbiddenException('Chỉ Admin mới có quyền xoá Công việc định kỳ');
+    if (!PeriodicTaskAccessHelper.canDelete(task, userId, userRole, scope)) {
+      throw new ForbiddenException('Bạn chỉ được xoá Công việc do mình tạo hoặc mình phụ trách chính');
     }
 
     await this.taskRepo.softDelete(id);

@@ -3988,3 +3988,23 @@ trước) theo đúng Custom Instructions của Project.
 > - Không push được GitHub từ sandbox — chủ dự án tự áp dụng patch.
 
 ---
+
+## [2026-09-24 17:00] | Task định kỳ: cho phép xoá THEO SCOPE (Employee scope "Chỉ của mình" xoá được Task của chính mình) | [Status: Success — verify bằng build/test thật]
+
+**Actor:** Agent
+
+**Files Changed:**
+- `backend/src/modules/periodic-tasks/helpers/periodic-task-access.helper.ts` — `canDelete(task, userId, role, scope)`: Admin/scope all/department → true; scope own (hoặc null) chỉ Task mình TẠO hoặc mình Phụ trách CHÍNH (Phụ trách phụ không được xoá).
+- `backend/src/modules/periodic-tasks/periodic-tasks.service.ts` — `remove(id, userId, role, scope)`: `findOne()` lọc theo scope thật của `periodic_tasks.delete` (trước hardcode `'all'` + chặn non-Admin).
+- `backend/src/modules/periodic-tasks/periodic-tasks.controller.ts` — `DELETE :id` truyền `@GetPermissionScope()`; `audit-logs/bulk` + `audit-logs/cleanup` (dùng chung permission) giờ BẮT BUỘC Admin hoặc scope `all` để Employee scope own không xoá được log người khác.
+- `backend/src/database/migrations/1784200000000-UpdatePeriodicTasksDeleteDescription.ts` — **MỚI**: chỉ đổi mô tả permission (không đụng `role_permissions`).
+- `helpers/periodic-task-access.helper.spec.ts`, `periodic-tasks.service.spec.ts` — cập nhật/thêm test.
+- FE: `cong-viec-dinh-ky/page.tsx` (`canDelete` thành hàm theo từng Task), `TaskActionsBar.tsx` (nhận `boolean | (task)=>boolean`), `lich-su-cong-viec/page.tsx` (`canManage` chỉ khi scope all), `periodic-tasks.api.ts` (comment).
+
+**Root Cause:**
+> Ma trận Phân quyền cho tick `periodic_tasks.delete` + scope "Chỉ của mình" cho Employee, nhưng BE `remove()` hardcode `findOne(..., 'all')` + `canDelete()` chỉ Admin → Employee vẫn bị 403.
+
+**Notes:**
+> Verify (HEAD `2c5981a`): BE `tsc --noEmit` sạch, jest periodic-tasks 125/125; FE `tsc --noEmit` sạch, vitest 106/106. Cần chạy migration `1784200000000` (chỉ đổi mô tả). Cấu hình role_permissions của Employee giữ nguyên như đã tick trên UI.
+
+---

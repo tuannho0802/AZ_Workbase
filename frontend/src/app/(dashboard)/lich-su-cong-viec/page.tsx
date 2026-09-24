@@ -100,7 +100,7 @@ const TaskHistoryMobileCard = ({ record }: { record: PeriodicTaskAuditLogGlobal 
  * `/audit-logs`.
  */
 export default function TaskHistoryPage() {
-  const { can, isLoading: permissionsLoading } = useMyPermissions();
+  const { can, scope, isLoading: permissionsLoading } = useMyPermissions();
 
   const [isMobile, setIsMobile] = useState(false);
   useEffect(() => {
@@ -114,7 +114,8 @@ export default function TaskHistoryPage() {
   const router = useRouter();
   const { message, modal } = App.useApp();
   const { getRoleColor } = useRoleColorMap();
-  const canManage = can('periodic_tasks.delete');
+  // Bulk-xoá/dọn dẹp log CHỈ cho scope 'all' (BE cũng chặn) - scope 'own' chỉ để xoá Task của mình.
+  const canManage = can('periodic_tasks.delete') && scope('periodic_tasks.delete') === 'all';
 
   useEffect(() => {
     if (!permissionsLoading && user && !can('periodic_tasks.audit_view')) {

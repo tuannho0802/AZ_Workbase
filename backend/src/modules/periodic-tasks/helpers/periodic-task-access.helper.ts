@@ -74,9 +74,17 @@ export class PeriodicTaskAccessHelper {
     return query;
   }
 
-  /** Quyền XOÁ 1 Task - CHỈ Admin, không có ngoại lệ (mirror `CustomerAccessHelper.canDelete()`). */
-  static canDelete(_task: PeriodicTask, _userId: number, userRole: string): boolean {
-    return userRole === Role.ADMIN;
+  /**
+   * Quyền XOÁ 1 Task, THEO SCOPE của `periodic_tasks.delete` (đổi 2026-09-24 -
+   * trước đây cứng "chỉ Admin"): Admin luôn được; scope `all`/`department` được
+   * (Task đã qua `findOne()` lọc theo đúng scope trước khi tới đây); scope
+   * `own` (hoặc null - phòng hờ) CHỈ được xoá Task do MÌNH TẠO hoặc mình là
+   * Phụ trách CHÍNH - Phụ trách PHỤ được xem/sửa nhưng KHÔNG được xoá.
+   */
+  static canDelete(task: PeriodicTask, userId: number, userRole: string, scope?: string | null): boolean {
+    if (userRole === Role.ADMIN) return true;
+    if (scope === PermissionScope.ALL || scope === PermissionScope.DEPARTMENT) return true;
+    return task.createdById === userId || task.primaryAssigneeId === userId;
   }
 
   /**

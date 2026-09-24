@@ -227,8 +227,7 @@ export const periodicTasksApi = {
     return response.data;
   },
 
-  /** Xoá mềm - CHỈ Admin thấy nút này ở FE (permission `periodic_tasks.delete`
-   * không có scope, khác view/create/edit - xem PLAN mục 2.7). */
+  /** Xoá mềm - theo scope của `periodic_tasks.delete` (own = Task mình tạo/phụ trách chính). */
   remove: async (id: number): Promise<{ deleted: true }> => {
     const response = await axiosInstance.delete<{ deleted: true }>(`/periodic-tasks/${id}`);
     return response.data;

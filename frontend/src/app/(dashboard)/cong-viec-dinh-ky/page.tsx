@@ -161,7 +161,7 @@ function PeriodicTasksPageContent() {
     const pathname = usePathname();
     const searchParams = useSearchParams();
     const user = useAuthStore((s) => s.user);
-    const { can, isLoading: permissionsLoading } = useMyPermissions();
+    const { can, scope, isLoading: permissionsLoading } = useMyPermissions();
 
     // ── Highlight "mục tiêu" khi bấm 1 thông báo Công việc (mirror ĐÚNG cơ
     // chế đã làm cho Khách hàng ở `customers/page.tsx`) - `resolve-link.ts`
@@ -217,10 +217,15 @@ function PeriodicTasksPageContent() {
 
     const canCreate = can('periodic_tasks.create');
     const canEdit = can('periodic_tasks.edit');
-    // Xoá KHÔNG có scope - chỉ Admin mới có permission này (seed
-    // `1782100000000-SeedPeriodicTasksPermissions.ts`: delete chỉ role
-    // admin, scope 'all'), khác hẳn view/create/edit có 3 mức own/department/all.
-    const canDelete = can('periodic_tasks.delete');
+    // Xoá THEO SCOPE (đổi 2026-09-24, trước đây chỉ Admin): scope 'own' chỉ
+    // hiện nút Xoá ở Task do MÌNH TẠO hoặc mình Phụ trách CHÍNH - khớp
+    // `PeriodicTaskAccessHelper.canDelete()` ở BE (BE vẫn là chốt chặn thật).
+    const canDelete = (task: PeriodicTask): boolean => {
+        if (!can('periodic_tasks.delete')) return false;
+        const s = scope('periodic_tasks.delete');
+        if (s === 'all' || s === 'department') return true;
+        return !!user && (task.createdById === user.id || task.primaryAssigneeId === user.id);
+    };
     const canManageStatuses = can('periodic_task_statuses.view');
     // Phase 5 (PLAN mục 2.9) - 2 permission tách bạch, xem JSDoc đầu file.
     const canApprove = can('periodic_tasks.approve');

@@ -373,12 +373,21 @@ describe('PeriodicTasksService', () => {
       await expect(service.remove(999, 1, Role.ADMIN)).rejects.toThrow(NotFoundException);
     });
 
-    it('ném ForbiddenException nếu không phải Admin', async () => {
-      const task: any = { id: 1, createdById: 1 };
+    it('scope=own: ném ForbiddenException nếu Task không phải do mình tạo/phụ trách chính', async () => {
+      const task: any = { id: 1, createdById: 9, primaryAssigneeId: 8 };
       mockTaskRepo.createQueryBuilder.mockReturnValue(makeFakeQueryBuilder({ getOne: task }));
 
-      await expect(service.remove(1, 1, Role.EMPLOYEE)).rejects.toThrow(ForbiddenException);
+      await expect(service.remove(1, 1, Role.EMPLOYEE, 'own')).rejects.toThrow(ForbiddenException);
       expect(mockTaskRepo.softDelete).not.toHaveBeenCalled();
+    });
+
+    it('scope=own: Employee xoá được Task do chính mình tạo', async () => {
+      const task: any = { id: 1, createdById: 1, primaryAssigneeId: 5 };
+      mockTaskRepo.createQueryBuilder.mockReturnValue(makeFakeQueryBuilder({ getOne: task }));
+      mockTaskRepo.softDelete.mockResolvedValue(undefined);
+
+      await expect(service.remove(1, 1, Role.EMPLOYEE, 'own')).resolves.toEqual({ deleted: true });
+      expect(mockTaskRepo.softDelete).toHaveBeenCalledWith(1);
     });
 
     it('Admin xoá mềm thành công', async () => {
