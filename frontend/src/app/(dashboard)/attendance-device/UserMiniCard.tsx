@@ -21,6 +21,10 @@ export interface UserMiniCardProps {
     hideRoleTag?: boolean;
     /** Cỡ chữ tên, mặc định 13 - truyền nhỏ hơn cho chỗ cần gọn (vd 12). */
     nameFontSize?: number;
+    /** Bo góc card, mặc định 20 (dạng viên thuốc) - truyền nhỏ (vd 6) cho dạng "vuông". */
+    borderRadius?: number;
+    /** Hình Avatar, mặc định `circle` - `square` cho đồng bộ với card vuông. */
+    avatarShape?: 'circle' | 'square';
 }
 
 /**
@@ -45,6 +49,8 @@ export function UserMiniCard({
     subtitle,
     hideRoleTag = false,
     nameFontSize = 13,
+    borderRadius = 20,
+    avatarShape = 'circle',
 }: UserMiniCardProps) {
     const tagStyle: React.CSSProperties = { fontSize: 10, lineHeight: '16px', padding: '0 4px', margin: 0 };
     // ⚠️ FIX BUG UI THẬT (tên dài làm card cao lên/xấu, thấy rõ ở cột Sales/
@@ -70,7 +76,7 @@ export function UserMiniCard({
                 boxSizing: 'border-box',
                 verticalAlign: 'middle',
                 padding: '3px 10px 3px 3px',
-                borderRadius: 20,
+                borderRadius,
                 background: '#fafafa',
                 border: '1px solid #f0f0f0',
             }}
@@ -84,7 +90,7 @@ export function UserMiniCard({
                     maxWidth: '100%',
                 }}
             >
-                <Avatar size={20} style={{ backgroundColor: getRoleColor(role), fontSize: 11, flexShrink: 0 }}>
+                <Avatar size={20} shape={avatarShape} style={{ backgroundColor: getRoleColor(role), fontSize: 11, flexShrink: 0 }}>
                     {name?.[0]?.toUpperCase()}
                 </Avatar>
                 <Text

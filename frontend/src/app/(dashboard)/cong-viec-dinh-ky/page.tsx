@@ -1099,8 +1099,8 @@ function PeriodicTasksPageContent() {
         {
             title: 'Phụ trách',
             key: 'primaryAssignee',
-            width: 200,
-            render: (_: any, record: PeriodicTask) => <TaskAssignees task={record} layout="stacked" />,
+            width: 260,
+            render: (_: any, record: PeriodicTask) => <TaskAssignees task={record} />,
         },
         {
             title: 'Phòng ban',

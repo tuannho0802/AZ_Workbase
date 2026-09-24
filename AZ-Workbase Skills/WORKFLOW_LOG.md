@@ -4079,3 +4079,31 @@ trước) theo đúng Custom Instructions của Project.
 > - Không cần migration mới (index `task_id, position` đã có từ migration Phase 6).
 
 ---
+
+## [2026-09-24 18:10] | Phụ trách chính/phụ dùng UserMiniCard (chữ nhỏ, bỏ Vai trò) | [Status: Success]
+
+**Actor:** Agent
+
+**Files Changed:**
+- `frontend/src/components/periodic-tasks/TaskAssignees.tsx` — dùng `UserMiniCard` (`hideRoleTag`, `nameFontSize=11`) cho cả chính và phụ; CHỈ khi có phụ trách phụ mới hiện Tag "Phụ trách chính"; tối đa 2 card phụ, còn lại "+N" (Tooltip). Thêm `variant="text"` cho Tooltip của Lịch (nền tối). Bỏ prop `layout`.
+- `TaskMiniCard.tsx` — phần phụ trách tách ra dòng riêng dưới ngày (card không nhét vừa dòng ngày).
+- `cong-viec-dinh-ky/page.tsx` — cột "Phụ trách" rộng 260; `PeriodicTasksCalendarView.tsx` — `variant="text"`.
+- `TaskAssignees.test.tsx` — cập nhật 5 test.
+
+**Notes:**
+> - Verify: `vitest` 118/118, `next build` OK. Vai trò không hiện vì list chỉ trả `{id,name}`; màu Avatar dùng màu mặc định.
+
+---
+
+## [2026-09-24 18:40] | TaskAssignees: card vuông + Tag "Phụ trách chính" nằm TRONG card | [Status: Success]
+
+**Actor:** Agent
+
+**Files Changed:**
+- `attendance-device/UserMiniCard.tsx` — thêm prop tuỳ chọn `borderRadius` (mặc định 20) và `avatarShape` (mặc định `circle`) — KHÔNG đổi giao diện các nơi đang dùng.
+- `components/periodic-tasks/TaskAssignees.tsx` — card `borderRadius=6` + Avatar vuông; Tag "Phụ trách chính" truyền qua `subtitle` để nằm trong card người chính.
+
+**Notes:**
+> - Verify: `vitest` toàn bộ + `next build` (xem lượt chat).
+
+---

@@ -195,9 +195,10 @@ export function TaskMiniCard({
                     {dayjs(task.periodStartDate).format('DD/MM/YYYY')}
                     {task.periodStartDate !== task.periodEndDate &&
                         ` → ${dayjs(task.periodEndDate).format('DD/MM/YYYY')}`}
-                    {' · '}
-                    <TaskAssignees task={task} />
                 </Text>
+            </div>
+            <div style={{ marginTop: 6 }}>
+                <TaskAssignees task={task} />
             </div>
 
             {footer && <div style={{ marginTop: 8 }}>{footer}</div>}
