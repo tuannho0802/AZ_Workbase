@@ -9,6 +9,7 @@ import {
 } from './dto/get-periodic-task-audit-logs.dto';
 import { PeriodicTaskAccessHelper } from './helpers/periodic-task-access.helper';
 import { AuditService } from '../audit/audit.service';
+import { paginateByWeek, weekStartSqlFromUtcColumn } from '../../common/utils/week-window.util';
 
 /**
  * Danh sách action chuẩn hoá cho `periodic_task_audit_logs` (PLAN mục 2.6),
@@ -159,7 +160,7 @@ export class PeriodicTaskAuditService {
     viewerRole: string,
     scope?: string | null,
   ) {
-    const { page = 1, limit = 20, taskId, userId, action, fromDate, toDate, search } = filters;
+    const { page = 1, limit = 20, taskId, userId, action, fromDate, toDate, search, weeksPerPage } = filters;
 
     const qb = this.auditLogRepository
       .createQueryBuilder('log')
@@ -189,6 +190,24 @@ export class PeriodicTaskAuditService {
     }
     if (search) {
       qb.andWhere('(task.title LIKE :search OR user.name LIKE :search)', { search: `%${search}%` });
+    }
+
+    // ⚠️ WEEK-MODE (FE gom Collapse theo tuần): phân trang theo N TUẦN thay vì N
+    // bản ghi - xem `week-window.util.ts`. Đặt SAU khi đã áp scope + filter.
+    if (weeksPerPage) {
+      const r = await paginateByWeek(qb, {
+        weekExpr: weekStartSqlFromUtcColumn('log.createdAt'),
+        page,
+        weeksPerPage,
+      });
+      return {
+        data: r.data,
+        total: r.total,
+        page,
+        limit: weeksPerPage,
+        totalPages: r.totalPages,
+        ...r.meta,
+      };
     }
 
     const [data, total] = await qb

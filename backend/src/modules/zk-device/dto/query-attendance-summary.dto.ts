@@ -1,5 +1,5 @@
 import { Type } from 'class-transformer';
-import { IsInt, IsOptional, IsDateString, Min } from 'class-validator';
+import { IsInt, IsOptional, IsDateString, Min, Max } from 'class-validator';
 
 export class QueryAttendanceSummaryDto {
   @IsOptional()
@@ -13,6 +13,16 @@ export class QueryAttendanceSummaryDto {
   @IsInt()
   @Min(1)
   limit?: number = 31;
+
+  // Bật PHÂN TRANG THEO TUẦN: khi truyền, `page` = trang tuần (mỗi trang gồm
+  // ĐỦ dòng tổng hợp của N tuần Thứ 2-CN có dữ liệu, mới nhất trước) và
+  // `limit` bị bỏ qua. Không truyền = phân trang theo dòng như cũ.
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
+  @Max(12)
+  weeksPerPage?: number;
 
   @IsOptional()
   @Type(() => Number)

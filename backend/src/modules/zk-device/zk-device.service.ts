@@ -21,6 +21,15 @@ import {
 } from '../../integrations/zk-device/decode-device-time.util';
 import { readAttendanceLogsSequential } from '../../integrations/zk-device/sequential-attendance-reader.util';
 import { AuditService } from '../audit/audit.service';
+import {
+  WEEK_MODE_MAX_ROWS,
+  WeekModeMeta,
+  bucketDatesByWeek,
+  computeWeekPageWindow,
+  getWeekStartOfDateString,
+  paginateByWeek,
+  weekStartSqlFromNaiveColumn,
+} from '../../common/utils/week-window.util';
 
 // node-zklib chưa có type definition chính thức -> import kiểu require,
 // coi là "any" (tsconfig của project đã bật noImplicitAny: false).
@@ -412,7 +421,7 @@ export class ZkDeviceService {
    * máy) - API này chỉ SELECT.
    */
   async getAttendanceLogs(query: QueryAttendanceLogDto, viewerId: number, viewerRole: string, scope?: string | null) {
-    const { page = 1, limit = 20, userId, deviceUserId, matched, from, to } = query;
+    const { page = 1, limit = 20, userId, deviceUserId, matched, from, to, weeksPerPage } = query;
 
     const qb = this.attendanceLogRepo
       .createQueryBuilder('log')
@@ -463,10 +472,29 @@ export class ZkDeviceService {
       );
     }
 
-    const [data, total] = await qb
-      .skip((page - 1) * limit)
-      .take(limit)
-      .getManyAndCount();
+    // ⚠️ WEEK-MODE (FE gom Collapse theo tuần): phân trang theo N TUẦN thay vì N
+    // bản ghi - xem `week-window.util.ts`. `recordTime` là giờ VN "naive" nên
+    // dùng `weekStartSqlFromNaiveColumn` (KHÔNG CONVERT_TZ thêm).
+    let data: AttendanceLog[];
+    let total: number;
+    let weekMeta: WeekModeMeta | null = null;
+    let totalPagesOverride: number | null = null;
+    if (weeksPerPage) {
+      const r = await paginateByWeek(qb, {
+        weekExpr: weekStartSqlFromNaiveColumn('log.recordTime'),
+        page,
+        weeksPerPage,
+      });
+      data = r.data;
+      total = r.total;
+      weekMeta = r.meta;
+      totalPagesOverride = r.totalPages;
+    } else {
+      [data, total] = await qb
+        .skip((page - 1) * limit)
+        .take(limit)
+        .getManyAndCount();
+    }
 
     // Gắn thêm tên user TRÊN MÁY (từ cache) cho MỌI log - không chỉ log
     // CHƯA khớp - để UI (tab "Logs chấm công") không bao giờ phải hiện trơ
@@ -485,6 +513,9 @@ export class ZkDeviceService {
       deviceUserName: deviceNameByUserId.get(log.deviceUserId) ?? null,
     }));
 
+    if (weekMeta) {
+      return { data: enriched, total, page, limit: weeksPerPage, totalPages: totalPagesOverride ?? 0, ...weekMeta };
+    }
     return { data: enriched, total, page, limit, totalPages: Math.ceil(total / limit) };
   }
 
@@ -611,7 +642,7 @@ export class ZkDeviceService {
    * để không phụ thuộc session timezone của DB, luôn đúng theo giờ VN.
    */
   async getAttendanceSummary(query: QueryAttendanceSummaryDto, viewerId: number, viewerRole: string, scope?: string | null) {
-    const { page = 1, limit = 31, userId, from, to } = query;
+    const { page = 1, limit = 31, userId, from, to, weeksPerPage } = query;
     const { WORK_START_MINUTES, WORK_END_MINUTES, DUPLICATE_TAP_GAP_MS } =
       ZkDeviceService;
 
@@ -784,6 +815,27 @@ export class ZkDeviceService {
           Number(b.isMapped) - Number(a.isMapped) || // đã map hiện trước, chưa map dồn xuống dưới
           a.userName.localeCompare(b.userName),
       );
+
+    // ⚠️ WEEK-MODE (FE gom Collapse theo tuần): cắt trang theo N TUẦN thay vì N
+    // dòng. `results` đã là kết quả gộp trong RAM (xem trên) nên chỉ cần nhóm
+    // theo Thứ 2 của `date` (chuỗi 'YYYY-MM-DD' - không đụng múi giờ), không
+    // cần query thêm - xem `week-window.util.ts`.
+    if (weeksPerPage) {
+      const win = computeWeekPageWindow(bucketDatesByWeek(results.map((r) => r.date)), page, weeksPerPage);
+      const inWindow = new Set(win.weekStarts);
+      const pageRows = results.filter((r) => inWindow.has(getWeekStartOfDateString(r.date)));
+      const data = pageRows.slice(0, WEEK_MODE_MAX_ROWS);
+      return {
+        data,
+        total: win.totalRecords,
+        page,
+        limit: weeksPerPage,
+        totalPages: win.totalPages,
+        totalWeeks: win.totalWeeks,
+        weeksPerPage,
+        truncated: pageRows.length > data.length,
+      };
+    }
 
     const total = results.length;
     const data = results.slice((page - 1) * limit, (page - 1) * limit + limit);

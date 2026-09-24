@@ -6,6 +6,7 @@ import { AuditLog } from '../../database/entities/audit-log.entity';
 import { Setting } from '../../database/entities/setting.entity';
 import { Customer } from '../../database/entities/customer.entity';
 import { GetAuditLogsDto } from './dto/get-audit-logs.dto';
+import { paginateByWeek, weekStartSqlFromUtcColumn } from '../../common/utils/week-window.util';
 // ⚠️ KHÔNG dùng @nestjs/schedule - app chạy trên Vercel serverless, không có
 // process nào sống đủ lâu để cron tự kích hoạt. handleCleanupCron() bên dưới
 // vẫn giữ lại nhưng chỉ gọi được thủ công (qua 1 endpoint admin sau này),
@@ -147,6 +148,7 @@ export class AuditService {
       fromDate,
       toDate,
       customerSearch,
+      weeksPerPage,
     } = filters;
 
     const qb = this.auditLogRepository
@@ -200,6 +202,24 @@ export class AuditService {
     // như bản cũ.
     if (customerSearch) {
       qb.andWhere('customer.name LIKE :customerSearch', { customerSearch: `%${customerSearch}%` });
+    }
+
+    // ⚠️ WEEK-MODE (FE gom Collapse theo tuần): phân trang theo N TUẦN thay vì N
+    // bản ghi - xem `week-window.util.ts`. Đặt SAU khi đã áp đủ filter ở trên.
+    if (weeksPerPage) {
+      const r = await paginateByWeek(qb, {
+        weekExpr: weekStartSqlFromUtcColumn('log.createdAt'),
+        page,
+        weeksPerPage,
+      });
+      return {
+        data: r.data,
+        total: r.total,
+        page,
+        limit: weeksPerPage,
+        totalPages: r.totalPages,
+        ...r.meta,
+      };
     }
 
     const [data, total] = await qb

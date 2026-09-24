@@ -49,6 +49,19 @@ export class GetPeriodicTaskAuditLogsGlobalDto {
   @Max(100)
   limit?: number = 20;
 
+  @ApiProperty({
+    required: false,
+    description:
+      'Bật PHÂN TRANG THEO TUẦN: khi truyền, `page` = trang tuần (mỗi trang gồm ĐỦ bản ghi của N tuần Thứ 2-CN có dữ liệu, ' +
+      'mới nhất trước) và `limit` bị bỏ qua. Không truyền = phân trang theo bản ghi như cũ.',
+  })
+  @IsOptional()
+  @Type(() => Number)
+  @IsNumber()
+  @Min(1)
+  @Max(12)
+  weeksPerPage?: number;
+
   @ApiProperty({ required: false, description: 'Lọc theo 1 Task cụ thể' })
   @IsOptional()
   @Type(() => Number)

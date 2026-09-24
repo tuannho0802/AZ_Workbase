@@ -5,6 +5,7 @@ import {
     IsIn,
     IsDateString,
     Min,
+    Max,
 } from 'class-validator';
 
 export class QueryAttendanceLogDto {
@@ -19,6 +20,16 @@ export class QueryAttendanceLogDto {
     @IsInt()
     @Min(1)
     limit?: number = 20;
+
+    // Bật PHÂN TRANG THEO TUẦN: khi truyền, `page` = trang tuần (mỗi trang gồm
+    // ĐỦ log của N tuần Thứ 2-CN có dữ liệu, mới nhất trước) và `limit` bị bỏ
+    // qua. Không truyền = phân trang theo bản ghi như cũ.
+    @IsOptional()
+    @Type(() => Number)
+    @IsInt()
+    @Min(1)
+    @Max(12)
+    weeksPerPage?: number;
 
     // Lọc theo nhân viên đã map trong hệ thống (users.id) - KHÔNG phải deviceUserId.
     @IsOptional()
