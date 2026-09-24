@@ -18,14 +18,6 @@ import { SelectQueryBuilder, ObjectLiteral } from 'typeorm';
  * "4 tuần/trang").
  */
 
-/**
- * Giới hạn cứng số bản ghi trả về cho 1 trang week-mode. BE deploy dạng
- * serverless (Vercel, giới hạn ~4.5MB/response) mà log audit mang theo
- * `oldData`/`newData` (JSON) - 4 tuần có thể vượt xa nếu hệ thống bận. Vượt
- * ngưỡng thì cắt phần CŨ NHẤT của trang và trả `truncated: true` để FE cảnh báo.
- */
-export const WEEK_MODE_MAX_ROWS = 1000;
-
 /** Quy đổi TIMESTAMP (lưu UTC) sang giờ VN để chia tuần - cùng quy ước với `customers.service.ts`. */
 const TO_VN = (col: string) => `CONVERT_TZ(${col}, '+00:00', '+07:00')`;
 
@@ -45,6 +37,24 @@ export function weekStartSqlFromUtcColumn(col: string): string {
  */
 export function weekStartSqlFromNaiveColumn(col: string): string {
   return `DATE_FORMAT(DATE_SUB(DATE(${col}), INTERVAL WEEKDAY(${col}) DAY), '%Y-%m-%d')`;
+}
+
+/**
+ * `alias.week_start` - tham chiếu tới cột GENERATED `week_start` đã đánh
+ * index (migration `AddWeekStartGeneratedColumns`), dùng cho `weekExpr` của
+ * `paginateByWeek()` THAY VÌ `weekStartSqlFromUtcColumn`/
+ * `weekStartSqlFromNaiveColumn` - 2 hàm đó tính lại biểu thức mỗi lần query
+ * (bọc hàm lên cột `created_at`/`record_time`, MySQL không dùng được index
+ * cho GROUP BY/WHERE trên biểu thức đó, xem JSDoc migration). Tham chiếu cột
+ * generated thay vì tính lại giúp MySQL index-seek trực tiếp trên `week_start`.
+ *
+ * `weekStartSqlFromUtcColumn`/`weekStartSqlFromNaiveColumn` VẪN giữ lại làm
+ * nguồn công thức DUY NHẤT cho chính cột generated đó (dùng trong migration)
+ * và cho các chỗ tính tuần THUẦN JS/trong RAM (không có cột DB để tựa vào,
+ * vd `getAttendanceSummary()` gộp dữ liệu ĐÃ fetch chứ không query lại).
+ */
+export function weekStartColumnRef(alias: string): string {
+  return `${alias}.week_start`;
 }
 
 /** Thứ 2 đầu tuần của 1 chuỗi 'YYYY-MM-DD' (tính thuần UTC, không phụ thuộc múi giờ tiến trình). */
@@ -109,24 +119,70 @@ export function computeWeekPageWindow(
 export interface WeekModeMeta {
   totalWeeks: number;
   weeksPerPage: number;
-  truncated: boolean;
+}
+
+export interface WeekPageOptions {
+  /** Biểu thức/cột SQL trả 'YYYY-MM-DD' Thứ 2 - dùng `weekStartColumnRef()`
+   * (khuyến nghị, có index) chứ KHÔNG dùng `weekStartSqlFromUtcColumn`/
+   * `weekStartSqlFromNaiveColumn` ở đây nữa (2 hàm đó bọc hàm lên cột, mất
+   * index - xem JSDoc từng hàm). */
+  weekExpr: string;
+  /** Trang CỬA SỔ TUẦN (1-based) - xác định `weeksPerPage` tuần nào đang ở
+   * trang này, dùng để trả `weeks` (badge/khung Collapse của MỌI tuần trong
+   * trang, kể cả tuần chưa mở). */
+  page: number;
+  weeksPerPage: number;
+  /** Chỉ truyền khi FE thực sự đang MỞ 1 panel tuần cụ thể (lazy-load) - lúc
+   * đó hàm mới fetch bản ghi thật, CHỈ của đúng tuần này. Không truyền =
+   * "phase tóm tắt": trả `weeks` (đếm theo tuần) nhưng KHÔNG fetch bản ghi
+   * nào (`data: []`) - rất nhẹ vì chỉ là 1 query GROUP BY, không kéo JSON/
+   * cột nặng nào về. */
+  weekStart?: string;
+  /** Trang BÊN TRONG `weekStart` (1-based, mặc định 1) - chỉ có ý nghĩa khi
+   * có `weekStart`. */
+  weekPage?: number;
+  /** Số bản ghi/trang BÊN TRONG `weekStart` (mặc định 20). */
+  weekLimit?: number;
+}
+
+export interface WeekPageResult<T> {
+  /** Bản ghi CỦA ĐÚNG `weekStart` đã yêu cầu (rỗng nếu không truyền
+   * `weekStart`, hoặc `weekStart` không thuộc trang `page`/`weeksPerPage`
+   * hiện tại - vd người dùng đổi filter làm lệch trang giữa 2 lần gọi). */
+  data: T[];
+  /** Tổng số bản ghi của TẤT CẢ tuần khớp filter (không riêng trang này) -
+   * dùng cho dòng "Tổng cộng X bản ghi" ở FE. */
+  total: number;
+  /** Số trang week-window = ceil(totalWeeks / weeksPerPage). */
+  totalPages: number;
+  /** Các tuần thuộc trang week-window này (weekStart + count TỪNG tuần) - FE
+   * dùng để vẽ Badge/khung mọi panel Collapse, kể cả panel chưa mở. */
+  weeks: WeekBucket[];
+  /** Tổng số bản ghi CỦA RIÊNG `weekStart` - dùng cho `<Pagination>` con bên
+   * trong panel đó. Chỉ có khi `weekStart` hợp lệ (thuộc trang hiện tại). */
+  weekTotal?: number;
+  meta: WeekModeMeta;
 }
 
 /**
- * Chạy week-mode trên 1 QueryBuilder ĐÃ áp đủ filter/scope/quyền xem (không
- * áp skip/take/orderBy riêng - hàm này tự lo):
- *   1) đếm số bản ghi theo tuần (GROUP BY) trên bản sao của qb;
- *   2) cắt ra `weeksPerPage` tuần của trang `page`;
- *   3) lấy ĐỦ bản ghi của các tuần đó (giữ nguyên orderBy của qb), tối đa
- *      WEEK_MODE_MAX_ROWS.
+ * Chạy week-mode 2 PHA trên 1 QueryBuilder ĐÃ áp đủ filter/scope/quyền xem
+ * (không áp skip/take/orderBy riêng - hàm này tự lo):
  *
- * @param weekExpr biểu thức SQL trả 'YYYY-MM-DD' Thứ 2 (xem `weekStartSql*`).
+ * PHA 1 - LUÔN chạy (nhẹ, chỉ 1 query `GROUP BY week_start` nhờ index, xem
+ * `weekStartColumnRef()`): đếm số bản ghi theo tuần, cắt ra `weeksPerPage`
+ * tuần của trang `page`, trả về `weeks` (không kèm bản ghi nào).
+ *
+ * PHA 2 - CHỈ chạy khi có `weekStart` (FE thực sự mở 1 panel): fetch ĐÚNG
+ * bản ghi của tuần đó, phân trang THẬT bằng `skip`/`take` ở DB (`weekPage`/
+ * `weekLimit`) - không còn giới hạn cứng kiểu "tối đa N dòng rồi cắt" như
+ * bản cũ, vì giờ luôn phân trang thật nên số dòng trả về luôn nhỏ (mặc định
+ * 20), không phụ thuộc 1 tuần có bao nhiêu nghìn bản ghi.
  */
 export async function paginateByWeek<T extends ObjectLiteral>(
   qb: SelectQueryBuilder<T>,
-  opts: { weekExpr: string; page: number; weeksPerPage: number },
-): Promise<{ data: T[]; total: number; totalPages: number; meta: WeekModeMeta }> {
-  const { weekExpr, page, weeksPerPage } = opts;
+  opts: WeekPageOptions,
+): Promise<WeekPageResult<T>> {
+  const { weekExpr, page, weeksPerPage, weekStart, weekPage = 1, weekLimit = 20 } = opts;
 
   const rows = await qb
     .clone()
@@ -139,29 +195,26 @@ export async function paginateByWeek<T extends ObjectLiteral>(
 
   const buckets: WeekBucket[] = rows.map((r) => ({ weekStart: String(r.weekStart), count: Number(r.cnt) }));
   const win = computeWeekPageWindow(buckets, page, weeksPerPage);
+  const weekStartsInPage = new Set(win.weekStarts);
+  const weeks = buckets.filter((b) => weekStartsInPage.has(b.weekStart));
+  const meta: WeekModeMeta = { totalWeeks: win.totalWeeks, weeksPerPage };
 
-  if (win.weekStarts.length === 0) {
-    return {
-      data: [],
-      total: win.totalRecords,
-      totalPages: win.totalPages,
-      meta: { totalWeeks: win.totalWeeks, weeksPerPage, truncated: false },
-    };
+  if (!weekStart || !weekStartsInPage.has(weekStart)) {
+    return { data: [], total: win.totalRecords, totalPages: win.totalPages, weeks, meta };
   }
 
   const data = await qb
-    .andWhere(`${weekExpr} IN (:...weekWindowStarts)`, { weekWindowStarts: win.weekStarts })
-    .take(WEEK_MODE_MAX_ROWS)
+    .andWhere(`${weekExpr} = :weekStartExact`, { weekStartExact: weekStart })
+    .skip((weekPage - 1) * weekLimit)
+    .take(weekLimit)
     .getMany();
 
   return {
     data,
     total: win.totalRecords,
     totalPages: win.totalPages,
-    meta: {
-      totalWeeks: win.totalWeeks,
-      weeksPerPage,
-      truncated: win.pageRecords > data.length,
-    },
+    weeks,
+    weekTotal: weeks.find((b) => b.weekStart === weekStart)?.count ?? data.length,
+    meta,
   };
 }
