@@ -1,4 +1,4 @@
-import { Controller, Get, Post, Delete, Query, Body, UseGuards, Req } from '@nestjs/common';
+import { Controller, Get, Post, Delete, Query, Body, Param, ParseIntPipe, NotFoundException, UseGuards, Req } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { AuditService } from './audit.service';
 import { GetAuditLogsDto } from './dto/get-audit-logs.dto';
@@ -40,6 +40,20 @@ export class AuditController {
   @ApiOperation({ summary: 'Lấy cấu hình dọn dẹp nhật ký' })
   async getSettings() {
     return this.auditService.getCleanupSettings();
+  }
+
+  // ⚠️ Route TĨNH ('actions'/'settings' ở trên) PHẢI khai TRƯỚC route
+  // `:id` này - Nest khớp route theo ĐÚNG thứ tự khai báo, khai `:id` trước
+  // sẽ nuốt mất 'actions'/'settings' (hiểu nhầm thành id).
+  @Get(':id')
+  @RequirePermission('audit.view')
+  @ApiOperation({ summary: 'Chi tiết 1 dòng nhật ký (kèm old_data/new_data) - dùng khi mở Drawer/expand row' })
+  async getLogDetail(@Param('id', ParseIntPipe) id: number) {
+    const log = await this.auditService.getLogDetail(id);
+    if (!log) {
+      throw new NotFoundException(`Không tìm thấy nhật ký #${id}`);
+    }
+    return log;
   }
 
   @Post('settings')

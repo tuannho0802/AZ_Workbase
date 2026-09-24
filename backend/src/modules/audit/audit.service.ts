@@ -156,6 +156,22 @@ export class AuditService {
 
     const qb = this.auditLogRepository
       .createQueryBuilder('log')
+      // ⚠️ Chọn cột tường minh (KHÔNG lấy `log.oldData`/`log.newData`) cho
+      // danh sách - 2 cột JSON này có thể rất nặng, không cần cho bảng/list,
+      // chỉ tải khi người dùng thực sự mở 1 dòng cụ thể (xem `getLogDetail()`
+      // + `GET /audit-logs/:id`). PHẢI đặt TRƯỚC các `leftJoinAndSelect`/
+      // `leftJoinAndMapOne` bên dưới - chúng dùng `addSelect` (cộng dồn),
+      // không ghi đè `.select()` này.
+      .select([
+        'log.id',
+        'log.userId',
+        'log.action',
+        'log.entityType',
+        'log.entityId',
+        'log.ipAddress',
+        'log.userAgent',
+        'log.createdAt',
+      ])
       .leftJoinAndSelect('log.user', 'user')
       // Join with Customer to get the name, including soft-deleted ones
       .leftJoinAndMapOne(
@@ -242,6 +258,27 @@ export class AuditService {
       limit,
       totalPages: Math.ceil(total / limit),
     };
+  }
+
+  /**
+   * Chi tiết 1 dòng nhật ký, KÈM `oldData`/`newData` (2 cột JSON đã bị loại
+   * khỏi `getLogs()` danh sách - xem comment `.select()` ở đó). Dùng cho
+   * Drawer/expand-row ở FE khi người dùng thực sự mở 1 dòng cụ thể, thay vì
+   * tải sẵn 2 cột nặng này cho MỌI dòng của cả trang.
+   */
+  async getLogDetail(id: number): Promise<AuditLog | null> {
+    return this.auditLogRepository
+      .createQueryBuilder('log')
+      .leftJoinAndSelect('log.user', 'user')
+      .leftJoinAndMapOne(
+        'log.targetCustomer',
+        Customer,
+        'customer',
+        'log.entityType = :customerType AND log.entityId = customer.id',
+        { customerType: 'customer' },
+      )
+      .where('log.id = :id', { id })
+      .getOne();
   }
 
   async getDistinctActions(): Promise<string[]> {

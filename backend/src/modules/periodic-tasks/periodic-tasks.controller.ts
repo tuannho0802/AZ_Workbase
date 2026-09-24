@@ -1,4 +1,4 @@
-import { Controller, Get, Post, Body, Patch, Param, Delete, Query, UseGuards, ParseIntPipe } from '@nestjs/common';
+import { Controller, Get, Post, Body, Patch, Param, Delete, Query, UseGuards, ParseIntPipe, NotFoundException } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiResponse, ApiBearerAuth } from '@nestjs/swagger';
 import { PeriodicTasksService } from './periodic-tasks.service';
 import { PeriodicTaskLinksService } from './periodic-task-links.service';
@@ -119,6 +119,21 @@ export class PeriodicTasksController {
   @ApiOperation({ summary: 'Danh sách action dùng để dựng bộ lọc "Loại hành động"' })
   getAuditLogActions() {
     return this.periodicTaskAuditService.getDistinctActions();
+  }
+
+  @Get('audit-logs/:id')
+  @RequirePermission('periodic_tasks.audit_view')
+  @ApiOperation({ summary: 'Chi tiết 1 dòng nhật ký GỘP (kèm old_data/new_data) - dùng khi mở Drawer/expand row' })
+  async getGlobalAuditLogDetail(
+    @Param('id', ParseIntPipe) id: number,
+    @GetUser() user: any,
+    @GetPermissionScope() scope: string | null | undefined,
+  ) {
+    const log = await this.periodicTaskAuditService.getGlobalLogDetail(id, user.id, user.role, scope);
+    if (!log) {
+      throw new NotFoundException(`Không tìm thấy nhật ký #${id}`);
+    }
+    return log;
   }
 
   // Xoá/dọn dẹp: đồng nhất permission `periodic_tasks.delete` (permission

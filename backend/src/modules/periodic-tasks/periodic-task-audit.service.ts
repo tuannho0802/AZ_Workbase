@@ -164,6 +164,11 @@ export class PeriodicTaskAuditService {
 
     const qb = this.auditLogRepository
       .createQueryBuilder('log')
+      // ⚠️ Chọn cột tường minh (KHÔNG lấy `log.oldData`/`log.newData`) cho
+      // danh sách - mirror đúng lý do đã áp dụng ở `AuditService.getLogs()`.
+      // PHẢI đặt TRƯỚC `innerJoin`/`leftJoinAndSelect` - chúng dùng
+      // `addSelect`, cộng dồn chứ không ghi đè `.select()` này.
+      .select(['log.id', 'log.taskId', 'log.userId', 'log.action', 'log.ipAddress', 'log.userAgent', 'log.createdAt'])
       .innerJoin('log.task', 'task')
       .addSelect(['task.id', 'task.title', 'task.deletedAt'])
       .leftJoinAndSelect('log.user', 'user')
@@ -221,6 +226,30 @@ export class PeriodicTaskAuditService {
       .getManyAndCount();
 
     return { data, total, page, limit, totalPages: Math.ceil(total / limit) };
+  }
+
+  /**
+   * Chi tiết 1 dòng nhật ký, KÈM `oldData`/`newData` (đã loại khỏi
+   * `getGlobalLogs()` danh sách - xem comment `.select()` ở đó). Vẫn áp
+   * `PeriodicTaskAccessHelper.applyViewFilter()` để không lộ log của Task
+   * ngoài phạm vi scope người xem, dù đã biết đúng `id`.
+   */
+  async getGlobalLogDetail(
+    id: number,
+    viewerId: number,
+    viewerRole: string,
+    scope?: string | null,
+  ): Promise<PeriodicTaskAuditLog | null> {
+    const qb = this.auditLogRepository
+      .createQueryBuilder('log')
+      .innerJoin('log.task', 'task')
+      .addSelect(['task.id', 'task.title', 'task.deletedAt'])
+      .leftJoinAndSelect('log.user', 'user')
+      .where('log.id = :id', { id });
+
+    PeriodicTaskAccessHelper.applyViewFilter(qb, viewerId, viewerRole, scope);
+
+    return qb.getOne();
   }
 
   /**
