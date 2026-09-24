@@ -32,7 +32,12 @@ export default function AttendanceSummaryTab() {
   const { message } = App.useApp();
   const { users } = useUsersList();
   const [page, setPage] = useState(1);
-  const [limit, setLimit] = useState(31);
+  // ⚠️ WEEK-MODE (đồng bộ `/audit-logs`, `/lich-su-cong-viec` - yêu cầu người
+  // dùng: "1 trang = 4 tuần") - thay `limit` (số BẢN GHI/trang) bằng
+  // `weeksPerPage` (số TUẦN/trang) truyền lên BE (`AttendanceSummaryQuery`).
+  // KHÔNG áp dụng cho `AttendanceMonthlyTab` (dùng chung hook nhưng không
+  // truyền `weeksPerPage` -> BE giữ hành vi cũ theo page/limit bản ghi).
+  const [weeksPerPage, setWeeksPerPage] = useState(4);
   const [userId, setUserId] = useState<number | undefined>(undefined);
   const [range, setRange] = useState<[Dayjs, Dayjs]>([dayjs().startOf('month'), dayjs()]);
   const [exportModalOpen, setExportModalOpen] = useState(false);
@@ -59,7 +64,7 @@ export default function AttendanceSummaryTab() {
 
   const { data, isLoading, refetch, isFetching } = useAttendanceSummary({
     page,
-    limit,
+    weeksPerPage,
     userId,
     from: range?.[0]?.format('YYYY-MM-DD'),
     to: range?.[1]?.format('YYYY-MM-DD'),
@@ -232,14 +237,17 @@ export default function AttendanceSummaryTab() {
         columns={columns}
         loading={isLoading}
         emptyText="Chưa có dữ liệu chấm công"
+        truncated={data?.truncated}
         pagination={{
           current: page,
-          pageSize: limit,
-          total: data?.total || 0,
+          pageSize: weeksPerPage,
+          total: data?.totalWeeks || 0,
           showSizeChanger: true,
+          pageSizeOptions: ['2', '4', '8'],
+          showTotal: (t) => `${t} tuần (${(data?.total || 0).toLocaleString()} dòng)`,
           onChange: (p, ps) => {
             setPage(p);
-            setLimit(ps);
+            setWeeksPerPage(ps);
           },
         }}
       />

@@ -58,6 +58,11 @@ export interface PaginatedPeriodicTaskAuditLogsGlobal {
   page: number;
   limit: number;
   totalPages: number;
+  /** Chỉ có khi request kèm `weeksPerPage` (week-mode - xem `week-window.util.ts` BE). */
+  totalWeeks?: number;
+  weeksPerPage?: number;
+  /** true nếu BE đã cắt bớt bản ghi của trang vì vượt `WEEK_MODE_MAX_ROWS`. */
+  truncated?: boolean;
 }
 
 /** Filter cho `GET /periodic-tasks/audit-logs` - khớp `GetPeriodicTaskAuditLogsGlobalDto` (BE). */
@@ -70,6 +75,8 @@ export interface PeriodicTaskAuditLogFilters {
   fromDate?: string;
   toDate?: string;
   search?: string;
+  /** Bật PHÂN TRANG THEO TUẦN - `page` trở thành trang TUẦN, `limit` bị BE bỏ qua. */
+  weeksPerPage?: number;
 }
 
 /**

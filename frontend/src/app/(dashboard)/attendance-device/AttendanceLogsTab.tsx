@@ -53,7 +53,9 @@ export default function AttendanceLogsTab() {
   const { can } = useMyPermissions();
   const canCleanup = can('attendance.delete');
   const [page, setPage] = useState(1);
-  const [limit, setLimit] = useState(20);
+  // ⚠️ WEEK-MODE (đồng bộ các trang khác) - thay `limit` (bản ghi/trang) bằng
+  // `weeksPerPage` (tuần/trang) truyền lên BE (`AttendanceLogQuery`).
+  const [weeksPerPage, setWeeksPerPage] = useState(4);
   const [userId, setUserId] = useState<number | undefined>(undefined);
   // Chọn 1 user CHƯA map (qua mã trên máy) trong dropdown "Lọc theo nhân
   // viên" - luôn tách riêng với `userId` (chỉ 1 trong 2 có giá trị tại 1
@@ -115,7 +117,7 @@ export default function AttendanceLogsTab() {
 
   const { data, isLoading, refetch, isFetching } = useAttendanceLogs({
     page,
-    limit,
+    weeksPerPage,
     userId,
     deviceUserId,
     matched,
@@ -351,14 +353,17 @@ export default function AttendanceLogsTab() {
         columns={columns}
         loading={isLoading}
         emptyText="Chưa có log chấm công"
+        truncated={data?.truncated}
         pagination={{
           current: page,
-          pageSize: limit,
-          total: data?.total || 0,
+          pageSize: weeksPerPage,
+          total: data?.totalWeeks || 0,
           showSizeChanger: true,
+          pageSizeOptions: ['2', '4', '8'],
+          showTotal: (t) => `${t} tuần (${(data?.total || 0).toLocaleString()} log)`,
           onChange: (p, ps) => {
             setPage(p);
-            setLimit(ps);
+            setWeeksPerPage(ps);
           },
         }}
       />

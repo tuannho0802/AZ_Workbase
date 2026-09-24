@@ -125,7 +125,12 @@ export default function TaskHistoryPage() {
   const [total, setTotal] = useState(0);
   const [loading, setLoading] = useState(false);
   const [page, setPage] = useState(1);
-  const [pageSize, setPageSize] = useState(20);
+  // ⚠️ WEEK-MODE (đồng bộ `/audit-logs` - yêu cầu người dùng: "1 trang = 4
+  // tuần") - thay `pageSize` (số BẢN GHI/trang) bằng `weeksPerPage` (số
+  // TUẦN/trang), xem `PeriodicTaskAuditLogFilters.weeksPerPage`.
+  const [weeksPerPage, setWeeksPerPage] = useState(4);
+  const [totalWeeks, setTotalWeeks] = useState(0);
+  const [truncated, setTruncated] = useState(false);
   const [availableActions, setAvailableActions] = useState<string[]>([]);
   const [selectedRowKeys, setSelectedRowKeys] = useState<React.Key[]>([]);
 
@@ -138,12 +143,12 @@ export default function TaskHistoryPage() {
     periodicTaskAuditLogsApi.getActions().then(setAvailableActions).catch(() => {});
   }, []);
 
-  const fetchLogs = useCallback(async (pg = page, ps = pageSize) => {
+  const fetchLogs = useCallback(async (pg = page, wpp = weeksPerPage) => {
     setLoading(true);
     try {
       const filters: PeriodicTaskAuditLogFilters = {
         page: pg,
-        limit: ps,
+        weeksPerPage: wpp,
         search: search || undefined,
         action: filterAction,
         fromDate: dateRange?.[0]?.startOf('day').toISOString(),
@@ -152,26 +157,28 @@ export default function TaskHistoryPage() {
       const res = await periodicTaskAuditLogsApi.getGlobal(filters);
       setLogs(res?.data ?? []);
       setTotal(res?.total ?? 0);
+      setTotalWeeks(res?.totalWeeks ?? 0);
+      setTruncated(!!res?.truncated);
     } catch (error) {
       message.error(getApiErrorMessage(error, 'Không thể tải lịch sử Công việc định kỳ'));
       setLogs([]);
     } finally {
       setLoading(false);
     }
-  }, [page, pageSize, search, filterAction, dateRange, message]);
+  }, [page, weeksPerPage, search, filterAction, dateRange, message]);
 
   useEffect(() => {
     if (user && can('periodic_tasks.audit_view')) {
-      fetchLogs(page, pageSize);
+      fetchLogs(page, weeksPerPage);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [page, pageSize, fetchLogs, user]);
+  }, [page, weeksPerPage, fetchLogs, user]);
 
   // ── Handlers ───────────────────────────────────────────────────────────
-  const handleSearch = () => { setPage(1); fetchLogs(1, pageSize); };
+  const handleSearch = () => { setPage(1); fetchLogs(1, weeksPerPage); };
   const handleReset = () => {
     setSearch(''); setFilterAction(undefined); setDateRange(null); setPage(1);
-    setTimeout(() => fetchLogs(1, pageSize), 0);
+    setTimeout(() => fetchLogs(1, weeksPerPage), 0);
   };
 
   const handleBulkDelete = () => {
@@ -406,9 +413,11 @@ export default function TaskHistoryPage() {
             loading={loading}
             emptyText="Chưa có lịch sử ghi nhận"
             renderMobileCard={(record) => <TaskHistoryMobileCard key={record.id} record={record} />}
+            truncated={truncated}
             pagination={{
-              current: page, pageSize, total,
-              onChange: (p, ps) => { setPage(p); setPageSize(ps || pageSize); },
+              current: page, pageSize: weeksPerPage, total: totalWeeks,
+              showTotal: (t) => `${t} tuần (${total.toLocaleString()} bản ghi)`,
+              onChange: (p, ps) => { setPage(p); setWeeksPerPage(ps || weeksPerPage); },
             }}
           />
         </div>
@@ -436,11 +445,12 @@ export default function TaskHistoryPage() {
               ),
               rowExpandable: (record) => !!(record.oldData || record.newData),
             }}
+              truncated={truncated}
             pagination={{
-              current: page, pageSize, total, showSizeChanger: true,
-              pageSizeOptions: ['20', '50', '100'],
-              showTotal: (t) => `Tổng cộng ${t.toLocaleString()} bản ghi`,
-              onChange: (p, ps) => { setPage(p); setPageSize(ps); },
+              current: page, pageSize: weeksPerPage, total: totalWeeks, showSizeChanger: true,
+              pageSizeOptions: ['2', '4', '8'],
+              showTotal: (t) => `Tổng cộng ${t} tuần (${total.toLocaleString()} bản ghi)`,
+              onChange: (p, ps) => { setPage(p); setWeeksPerPage(ps); },
             }}
           />
         </Card>

@@ -67,6 +67,10 @@ export interface AttendanceLogQuery {
   matched?: 'matched' | 'unmatched';
   from?: string;
   to?: string;
+  /** Bật PHÂN TRANG THEO TUẦN (xem `week-window.util.ts` BE) - `page` trở
+   * thành trang TUẦN, `limit` bị BE bỏ qua. Dùng cho `WeeklyCollapseSection`
+   * ở tab "Logs chấm công" - KHÔNG dùng ở `AttendanceMonthlyTab`. */
+  weeksPerPage?: number;
 }
 
 export interface PaginatedAttendanceLogs {
@@ -75,6 +79,11 @@ export interface PaginatedAttendanceLogs {
   page: number;
   limit: number;
   totalPages: number;
+  /** Chỉ có khi request kèm `weeksPerPage` (week-mode). */
+  totalWeeks?: number;
+  weeksPerPage?: number;
+  /** true nếu BE đã cắt bớt bản ghi của trang vì vượt `WEEK_MODE_MAX_ROWS`. */
+  truncated?: boolean;
 }
 
 export type AttendanceStatus =
@@ -110,6 +119,10 @@ export interface AttendanceSummaryQuery {
   userId?: number;
   from?: string;
   to?: string;
+  /** Bật PHÂN TRANG THEO TUẦN (xem `week-window.util.ts` BE) - `page` trở
+   * thành trang TUẦN, `limit` bị BE bỏ qua. Dùng cho `WeeklyCollapseSection`
+   * ở tab "Bảng chấm công" - KHÔNG dùng ở `AttendanceMonthlyTab`. */
+  weeksPerPage?: number;
 }
 
 export interface PaginatedAttendanceSummary {
@@ -118,4 +131,9 @@ export interface PaginatedAttendanceSummary {
   page: number;
   limit: number;
   totalPages: number;
+  /** Chỉ có khi request kèm `weeksPerPage` (week-mode). */
+  totalWeeks?: number;
+  weeksPerPage?: number;
+  /** true nếu BE đã cắt bớt bản ghi của trang vì vượt `WEEK_MODE_MAX_ROWS`. */
+  truncated?: boolean;
 }

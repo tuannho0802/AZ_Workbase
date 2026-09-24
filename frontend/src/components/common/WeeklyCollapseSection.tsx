@@ -1,7 +1,7 @@
 'use client';
 
 import { useMemo, useState } from 'react';
-import { Collapse, Badge, Tag, Typography, Table, Pagination, Empty } from 'antd';
+import { Collapse, Badge, Tag, Typography, Table, Pagination, Empty, Alert } from 'antd';
 import type { TableProps } from 'antd';
 import dayjs from 'dayjs';
 import { getWeekStart } from '@/lib/utils/week';
@@ -45,8 +45,21 @@ export interface WeeklyCollapseSectionProps<T> {
   scroll?: TableProps<T>['scroll'];
   size?: TableProps<T>['size'];
   /** Phân trang THẬT (server-side) - render bên dưới Collapse, KHÔNG mất đi
-   * khi gom nhóm theo tuần (yêu cầu người dùng: "vẫn có phân trang nhé"). */
+   * khi gom nhóm theo tuần (yêu cầu người dùng: "vẫn có phân trang nhé").
+   *
+   * ⚠️ WEEK-MODE (phân trang theo TUẦN thay vì theo bản ghi - xem BE
+   * `week-window.util.ts`): component này không quan tâm đơn vị của
+   * `pagination.total`/`pageSize` là bản ghi hay tuần - nó chỉ render 1
+   * `<Pagination>` chuẩn. Khi dùng week-mode, TRUYỀN `total = totalWeeks` và
+   * `pageSize = weeksPerPage` (không phải số bản ghi) để `<Pagination>` tự
+   * tính đúng số trang = ceil(totalWeeks / weeksPerPage), khớp `totalPages`
+   * BE trả về. `onChange(page, weeksPerPage)` ở phía gọi component set lại
+   * state `weeksPerPage` (không phải "số bản ghi/trang" như chế độ cũ). */
   pagination: WeeklyCollapsePaginationProps;
+  /** Week-mode: true khi BE đã cắt bớt bản ghi của trang vì vượt
+   * `WEEK_MODE_MAX_ROWS` (dữ liệu 1 vài tuần trong trang quá nhiều). Hiện
+   * cảnh báo để người dùng biết cần thu hẹp bộ lọc/giảm `weeksPerPage`. */
+  truncated?: boolean;
 }
 
 /**
@@ -77,6 +90,7 @@ export function WeeklyCollapseSection<T>({
   scroll,
   size = 'middle',
   pagination,
+  truncated,
 }: WeeklyCollapseSectionProps<T>) {
   const groups = useMemo(() => {
     const map = new Map<string, T[]>();
@@ -135,6 +149,14 @@ export function WeeklyCollapseSection<T>({
 
   return (
     <>
+      {truncated && (
+        <Alert
+          type="warning"
+          showIcon
+          style={{ marginBottom: 12 }}
+          title="Dữ liệu của trang này quá nhiều nên đã bị cắt bớt. Hãy thu hẹp bộ lọc hoặc giảm số tuần/trang để xem đầy đủ."
+        />
+      )}
       <Collapse
         activeKey={activeKeys}
         onChange={(keys) => setActiveKeys(Array.isArray(keys) ? keys : [keys])}

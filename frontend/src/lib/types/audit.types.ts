@@ -41,6 +41,9 @@ export interface AuditFilters {
   toDate?: string;
   /** Tìm theo TÊN KHÁCH HÀNG (đối tượng bị tác động) - tách riêng khỏi `userId`. */
   customerSearch?: string;
+  /** Bật PHÂN TRANG THEO TUẦN (xem `week-window.util.ts` BE) - `page` trở
+   * thành trang TUẦN, `limit` bị BE bỏ qua. Dùng cho `WeeklyCollapseSection`. */
+  weeksPerPage?: number;
 }
 
 export interface PaginatedAuditResponse {
@@ -49,4 +52,9 @@ export interface PaginatedAuditResponse {
   page: number;
   limit: number;
   totalPages: number;
+  /** Chỉ có khi request kèm `weeksPerPage` (week-mode). */
+  totalWeeks?: number;
+  weeksPerPage?: number;
+  /** true nếu BE đã cắt bớt bản ghi của trang vì vượt `WEEK_MODE_MAX_ROWS`. */
+  truncated?: boolean;
 }

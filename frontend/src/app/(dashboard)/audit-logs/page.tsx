@@ -166,7 +166,14 @@ export default function AuditLogsPage() {
   const [total, setTotal] = useState(0);
   const [loading, setLoading] = useState(false);
   const [page, setPage] = useState(1);
-  const [pageSize, setPageSize] = useState(20);
+  // ⚠️ WEEK-MODE (yêu cầu người dùng: "1 trang = 4 tuần, không cứng 20 bản
+  // ghi nữa") - thay `pageSize` (số BẢN GHI/trang) bằng `weeksPerPage` (số
+  // TUẦN/trang) truyền lên BE qua `AuditFilters.weeksPerPage` (xem
+  // `week-window.util.ts`). `totalWeeks`/`truncated` lấy từ response BE khi
+  // ở week-mode - dùng làm `total`/cảnh báo cho `WeeklyCollapseSection`.
+  const [weeksPerPage, setWeeksPerPage] = useState(4);
+  const [totalWeeks, setTotalWeeks] = useState(0);
+  const [truncated, setTruncated] = useState(false);
   const [selectedLog, setSelectedLog] = useState<AuditLog | null>(null);
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [availableActions, setAvailableActions] = useState<string[]>([]);
@@ -221,7 +228,9 @@ export default function AuditLogsPage() {
   const [loginTotal, setLoginTotal] = useState(0);
   const [loginLoading, setLoginLoading] = useState(false);
   const [loginPage, setLoginPage] = useState(1);
-  const [loginPageSize, setLoginPageSize] = useState(20);
+  const [loginWeeksPerPage, setLoginWeeksPerPage] = useState(4);
+  const [loginTotalWeeks, setLoginTotalWeeks] = useState(0);
+  const [loginTruncated, setLoginTruncated] = useState(false);
   // ⚠️ Đổi từ Input gõ tên -> dropdown chọn User (đồng bộ cách làm với tab
   // chính) - lọc CHÍNH XÁC qua `userId`, không còn phụ thuộc field `search`
   // cũ (đã bỏ, xem `customerSearch` mới chỉ dành cho tên khách hàng).
@@ -247,12 +256,12 @@ export default function AuditLogsPage() {
     }
   }, [canManageAudit]);
 
-  const fetchLogs = useCallback(async (pg = page, ps = pageSize) => {
+  const fetchLogs = useCallback(async (pg = page, wpp = weeksPerPage) => {
     setLoading(true);
     try {
       const filters: AuditFilters = {
         page: pg,
-        limit: ps,
+        weeksPerPage: wpp,
         userId: filterUserId,
         customerSearch: filterCustomerSearch || undefined,
         action: filterAction,
@@ -266,9 +275,13 @@ export default function AuditLogsPage() {
       if (res && res.data) {
         setLogs(res.data);
         setTotal(res.total || 0);
+        setTotalWeeks(res.totalWeeks || 0);
+        setTruncated(!!res.truncated);
       } else {
         setLogs([]);
         setTotal(0);
+        setTotalWeeks(0);
+        setTruncated(false);
       }
     } catch (error) {
       console.error('Fetch logs error:', error);
@@ -277,14 +290,14 @@ export default function AuditLogsPage() {
     } finally {
       setLoading(false);
     }
-  }, [page, pageSize, filterUserId, filterCustomerSearch, filterAction, filterEntityType, dateRange, message]);
+  }, [page, weeksPerPage, filterUserId, filterCustomerSearch, filterAction, filterEntityType, dateRange, message]);
 
-  const fetchLoginLogs = useCallback(async (pg = loginPage, ps = loginPageSize) => {
+  const fetchLoginLogs = useCallback(async (pg = loginPage, wpp = loginWeeksPerPage) => {
     setLoginLoading(true);
     try {
       const filters: AuditFilters = {
         page: pg,
-        limit: ps,
+        weeksPerPage: wpp,
         userId: loginUserId,
         entityType: 'auth',
         fromDate: loginDateRange?.[0]?.startOf('day').toISOString(),
@@ -294,9 +307,13 @@ export default function AuditLogsPage() {
       if (res && res.data) {
         setLoginLogs(res.data);
         setLoginTotal(res.total || 0);
+        setLoginTotalWeeks(res.totalWeeks || 0);
+        setLoginTruncated(!!res.truncated);
       } else {
         setLoginLogs([]);
         setLoginTotal(0);
+        setLoginTotalWeeks(0);
+        setLoginTruncated(false);
       }
     } catch (error) {
       console.error('Fetch login logs error:', error);
@@ -305,7 +322,7 @@ export default function AuditLogsPage() {
     } finally {
       setLoginLoading(false);
     }
-  }, [loginPage, loginPageSize, loginUserId, loginDateRange, message]);
+  }, [loginPage, loginWeeksPerPage, loginUserId, loginDateRange, message]);
 
   useEffect(() => {
     // ⚠️ FIX BUG THẬT (rà soát UI Permission): trước đây check cứng
@@ -317,32 +334,32 @@ export default function AuditLogsPage() {
     // trang trống vĩnh viễn dù có quyền. Dùng lại đúng 1 nguồn permission
     // duy nhất cho cả 2 chỗ.
     if (user && can('audit.view')) {
-      fetchLogs(page, pageSize);
+      fetchLogs(page, weeksPerPage);
     }
-  }, [page, pageSize, fetchLogs, user]);
+  }, [page, weeksPerPage, fetchLogs, user]);
 
   // Tab "Đăng nhập" chỉ fetch LẦN ĐẦU khi người dùng thực sự mở tab đó (lazy)
   // - tránh gọi thêm 1 API không cần thiết mỗi lần trang audit-logs mount,
   // vì phần lớn người dùng chỉ xem tab chính.
   useEffect(() => {
     if (loginTabLoaded && user && can('audit.view')) {
-      fetchLoginLogs(loginPage, loginPageSize);
+      fetchLoginLogs(loginPage, loginWeeksPerPage);
     }
-  }, [loginPage, loginPageSize, loginTabLoaded, fetchLoginLogs, user]);
+  }, [loginPage, loginWeeksPerPage, loginTabLoaded, fetchLoginLogs, user]);
 
   // ── Handlers ───────────────────────────────────────────────────────────
-  const handleSearch = () => { setPage(1); fetchLogs(1, pageSize); };
+  const handleSearch = () => { setPage(1); fetchLogs(1, weeksPerPage); };
   const handleReset = () => {
     setFilterUserId(undefined); setFilterCustomerSearch('');
     setFilterAction(undefined); setFilterEntityType(undefined);
     setDateRange(null); setPage(1);
-    setTimeout(() => fetchLogs(1, pageSize), 0);
+    setTimeout(() => fetchLogs(1, weeksPerPage), 0);
   };
 
-  const handleLoginSearch = () => { setLoginPage(1); fetchLoginLogs(1, loginPageSize); };
+  const handleLoginSearch = () => { setLoginPage(1); fetchLoginLogs(1, loginWeeksPerPage); };
   const handleLoginReset = () => {
     setLoginUserId(undefined); setLoginDateRange(null); setLoginPage(1);
-    setTimeout(() => fetchLoginLogs(1, loginPageSize), 0);
+    setTimeout(() => fetchLoginLogs(1, loginWeeksPerPage), 0);
   };
   const handleTabChange = (key: string) => {
     if (key === '2' && !loginTabLoaded) {
@@ -685,9 +702,11 @@ export default function AuditLogsPage() {
                         onShowDetail={() => { setSelectedLog(record); setDrawerOpen(true); }}
                       />
                     )}
+                    truncated={truncated}
                     pagination={{
-                      current: page, pageSize, total,
-                      onChange: (p, ps) => { setPage(p); setPageSize(ps || pageSize); },
+                      current: page, pageSize: weeksPerPage, total: totalWeeks,
+                      showTotal: (t) => `${t} tuần (${total.toLocaleString()} bản ghi)`,
+                      onChange: (p, ps) => { setPage(p); setWeeksPerPage(ps || weeksPerPage); },
                     }}
                   />
                 </div>
@@ -710,11 +729,13 @@ export default function AuditLogsPage() {
                       ),
                       rowExpandable: (record) => !!(record.oldData || record.newData) || record.action === 'USER_LOGIN',
                     }}
+                      truncated={truncated}
                     pagination={{
-                      current: page, pageSize, total, showSizeChanger: true,
-                      pageSizeOptions: ['20', '50', '100'],
-                      showTotal: (t) => `Tổng cộng ${t.toLocaleString()} bản ghi`,
-                      onChange: (p, ps) => { setPage(p); setPageSize(ps); },
+                      current: page, pageSize: weeksPerPage, total: totalWeeks, showSizeChanger: true,
+                      // ⚠️ Số tuần/trang (2/4/8), KHÔNG phải số bản ghi/trang nữa.
+                      pageSizeOptions: ['2', '4', '8'],
+                      showTotal: (t) => `Tổng cộng ${t} tuần (${total.toLocaleString()} bản ghi)`,
+                      onChange: (p, ps) => { setPage(p); setWeeksPerPage(ps); },
                     }}
                   />
                 </Card>
@@ -771,9 +792,11 @@ export default function AuditLogsPage() {
                         onShowDetail={() => { setSelectedLog(record); setDrawerOpen(true); }}
                       />
                     )}
+                    truncated={loginTruncated}
                     pagination={{
-                      current: loginPage, pageSize: loginPageSize, total: loginTotal,
-                      onChange: (p, ps) => { setLoginPage(p); setLoginPageSize(ps || loginPageSize); },
+                      current: loginPage, pageSize: loginWeeksPerPage, total: loginTotalWeeks,
+                      showTotal: (t) => `${t} tuần (${loginTotal.toLocaleString()} lượt)`,
+                      onChange: (p, ps) => { setLoginPage(p); setLoginWeeksPerPage(ps || loginWeeksPerPage); },
                     }}
                   />
                 </div>
@@ -787,11 +810,12 @@ export default function AuditLogsPage() {
                     loading={loginLoading}
                     size="middle"
                       emptyText="Chưa có lượt đăng nhập nào"
+                      truncated={loginTruncated}
                     pagination={{
-                      current: loginPage, pageSize: loginPageSize, total: loginTotal, showSizeChanger: true,
-                      pageSizeOptions: ['20', '50', '100'],
-                      showTotal: (t) => `Tổng cộng ${t.toLocaleString()} lượt đăng nhập`,
-                      onChange: (p, ps) => { setLoginPage(p); setLoginPageSize(ps); },
+                      current: loginPage, pageSize: loginWeeksPerPage, total: loginTotalWeeks, showSizeChanger: true,
+                      pageSizeOptions: ['2', '4', '8'],
+                      showTotal: (t) => `Tổng cộng ${t} tuần (${loginTotal.toLocaleString()} lượt đăng nhập)`,
+                      onChange: (p, ps) => { setLoginPage(p); setLoginWeeksPerPage(ps); },
                     }}
                   />
                 </Card>
