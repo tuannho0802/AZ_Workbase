@@ -31,6 +31,31 @@ export class GetAuditLogsDto {
   @Max(12)
   weeksPerPage?: number;
 
+  @ApiProperty({
+    required: false,
+    description:
+      'CHỈ dùng kèm `weeksPerPage`: FE truyền khi thực sự MỞ 1 panel tuần cụ thể (lazy-load), ' +
+      'dạng "YYYY-MM-DD" của Thứ 2 đầu tuần. Không truyền = chỉ trả `weeks` (đếm theo tuần), KHÔNG fetch bản ghi nào.',
+  })
+  @IsOptional()
+  @IsString()
+  weekStart?: string;
+
+  @ApiProperty({ required: false, default: 1, description: 'Trang BÊN TRONG `weekStart` (chỉ có ý nghĩa khi có `weekStart`).' })
+  @IsOptional()
+  @Type(() => Number)
+  @IsNumber()
+  @Min(1)
+  weekPage?: number;
+
+  @ApiProperty({ required: false, default: 20, description: 'Số bản ghi/trang BÊN TRONG `weekStart`.' })
+  @IsOptional()
+  @Type(() => Number)
+  @IsNumber()
+  @Min(1)
+  @Max(100)
+  weekLimit?: number;
+
   @ApiProperty({ required: false, description: 'Lọc theo user ID' })
   @IsOptional()
   @Type(() => Number)

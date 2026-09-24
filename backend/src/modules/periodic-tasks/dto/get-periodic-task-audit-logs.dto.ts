@@ -62,6 +62,30 @@ export class GetPeriodicTaskAuditLogsGlobalDto {
   @Max(12)
   weeksPerPage?: number;
 
+  @ApiProperty({
+    required: false,
+    description:
+      'CHỈ dùng kèm `weeksPerPage`: truyền khi thực sự MỞ 1 panel tuần cụ thể (lazy-load), dạng "YYYY-MM-DD" của Thứ 2 đầu tuần.',
+  })
+  @IsOptional()
+  @IsString()
+  weekStart?: string;
+
+  @ApiProperty({ required: false, default: 1, description: 'Trang BÊN TRONG `weekStart`.' })
+  @IsOptional()
+  @Type(() => Number)
+  @IsNumber()
+  @Min(1)
+  weekPage?: number;
+
+  @ApiProperty({ required: false, default: 20, description: 'Số bản ghi/trang BÊN TRONG `weekStart`.' })
+  @IsOptional()
+  @Type(() => Number)
+  @IsNumber()
+  @Min(1)
+  @Max(100)
+  weekLimit?: number;
+
   @ApiProperty({ required: false, description: 'Lọc theo 1 Task cụ thể' })
   @IsOptional()
   @Type(() => Number)

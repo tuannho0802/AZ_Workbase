@@ -22,13 +22,12 @@ import {
 import { readAttendanceLogsSequential } from '../../integrations/zk-device/sequential-attendance-reader.util';
 import { AuditService } from '../audit/audit.service';
 import {
-  WEEK_MODE_MAX_ROWS,
   WeekModeMeta,
   bucketDatesByWeek,
   computeWeekPageWindow,
   getWeekStartOfDateString,
   paginateByWeek,
-  weekStartSqlFromNaiveColumn,
+  weekStartColumnRef,
 } from '../../common/utils/week-window.util';
 
 // node-zklib chưa có type definition chính thức -> import kiểu require,
@@ -421,7 +420,7 @@ export class ZkDeviceService {
    * máy) - API này chỉ SELECT.
    */
   async getAttendanceLogs(query: QueryAttendanceLogDto, viewerId: number, viewerRole: string, scope?: string | null) {
-    const { page = 1, limit = 20, userId, deviceUserId, matched, from, to, weeksPerPage } = query;
+    const { page = 1, limit = 20, userId, deviceUserId, matched, from, to, weeksPerPage, weekStart, weekPage, weekLimit } = query;
 
     const qb = this.attendanceLogRepo
       .createQueryBuilder('log')
@@ -474,21 +473,28 @@ export class ZkDeviceService {
 
     // ⚠️ WEEK-MODE (FE gom Collapse theo tuần): phân trang theo N TUẦN thay vì N
     // bản ghi - xem `week-window.util.ts`. `recordTime` là giờ VN "naive" nên
-    // dùng `weekStartSqlFromNaiveColumn` (KHÔNG CONVERT_TZ thêm).
+    // dùng cột generated đã đánh index `week_start` thay vì tính lại biểu thức.
     let data: AttendanceLog[];
     let total: number;
     let weekMeta: WeekModeMeta | null = null;
     let totalPagesOverride: number | null = null;
+    let weeksOverride: unknown = undefined;
+    let weekTotalOverride: number | undefined;
     if (weeksPerPage) {
       const r = await paginateByWeek(qb, {
-        weekExpr: weekStartSqlFromNaiveColumn('log.recordTime'),
+        weekExpr: weekStartColumnRef('log'),
         page,
         weeksPerPage,
+        weekStart,
+        weekPage,
+        weekLimit,
       });
       data = r.data;
       total = r.total;
       weekMeta = r.meta;
       totalPagesOverride = r.totalPages;
+      weeksOverride = r.weeks;
+      weekTotalOverride = r.weekTotal;
     } else {
       [data, total] = await qb
         .skip((page - 1) * limit)
@@ -514,7 +520,16 @@ export class ZkDeviceService {
     }));
 
     if (weekMeta) {
-      return { data: enriched, total, page, limit: weeksPerPage, totalPages: totalPagesOverride ?? 0, ...weekMeta };
+      return {
+        data: enriched,
+        total,
+        page,
+        limit: weeksPerPage,
+        totalPages: totalPagesOverride ?? 0,
+        weeks: weeksOverride,
+        weekTotal: weekTotalOverride,
+        ...weekMeta,
+      };
     }
     return { data: enriched, total, page, limit, totalPages: Math.ceil(total / limit) };
   }
@@ -626,6 +641,17 @@ export class ZkDeviceService {
    * lịch sử quẹt thật phục vụ tra soát khi cần.
    */
   private static readonly DUPLICATE_TAP_GAP_MS = 2 * 60 * 60 * 1000; // 2 tiếng
+
+  /**
+   * CHỈ dùng cho `getAttendanceSummary()` (tổng hợp trong RAM, không query
+   * lại theo tuần như `paginateByWeek()`): số dòng tối đa trả về cho 1 trang
+   * week-window, phòng khi 1 cửa sổ nhiều tuần có quá nhiều nhân viên/ngày.
+   * KHÁC với model 2 pha của `paginateByWeek()` (không giới hạn cứng vì luôn
+   * phân trang thật trong DB) - hàm này giữ nguyên cơ chế cắt-rồi-báo-
+   * `truncated` cũ vì dữ liệu đầu vào (`results`) đã nằm sẵn trong RAM, không
+   * có "trang con" để phân trang thêm.
+   */
+  private static readonly WEEK_MODE_MAX_ROWS = 1000;
 
   /**
    * Bảng chấm công tổng hợp theo ngày: mỗi dòng = 1 nhân viên trong 1 ngày,
@@ -824,7 +850,7 @@ export class ZkDeviceService {
       const win = computeWeekPageWindow(bucketDatesByWeek(results.map((r) => r.date)), page, weeksPerPage);
       const inWindow = new Set(win.weekStarts);
       const pageRows = results.filter((r) => inWindow.has(getWeekStartOfDateString(r.date)));
-      const data = pageRows.slice(0, WEEK_MODE_MAX_ROWS);
+      const data = pageRows.slice(0, ZkDeviceService.WEEK_MODE_MAX_ROWS);
       return {
         data,
         total: win.totalRecords,

@@ -31,6 +31,26 @@ export class QueryAttendanceLogDto {
     @Max(12)
     weeksPerPage?: number;
 
+    // CHỈ dùng kèm weeksPerPage: truyền khi thực sự MỞ 1 panel tuần cụ thể
+    // (lazy-load), dạng "YYYY-MM-DD" của Thứ 2 đầu tuần.
+    @IsOptional()
+    weekStart?: string;
+
+    // Trang BÊN TRONG weekStart.
+    @IsOptional()
+    @Type(() => Number)
+    @IsInt()
+    @Min(1)
+    weekPage?: number;
+
+    // Số bản ghi/trang BÊN TRONG weekStart.
+    @IsOptional()
+    @Type(() => Number)
+    @IsInt()
+    @Min(1)
+    @Max(100)
+    weekLimit?: number;
+
     // Lọc theo nhân viên đã map trong hệ thống (users.id) - KHÔNG phải deviceUserId.
     @IsOptional()
     @Type(() => Number)
