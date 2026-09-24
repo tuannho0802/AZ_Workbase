@@ -1684,4 +1684,48 @@ describe('CustomersService', () => {
       expect(qb.addOrderBy).toHaveBeenCalledWith('customer.id', 'DESC');
     });
   });
+  describe('applyJoinedGroupsFilter - filter "Đã tham gia nhóm" (có/không chọn cụ thể 1 nhóm)', () => {
+    const run = (joinedGroups?: 'joined' | 'not_joined', groupId?: number) => {
+      const qb = { andWhere: jest.fn() };
+      (service as any).applyJoinedGroupsFilter(qb, joinedGroups, groupId);
+      return qb.andWhere.mock.calls;
+    };
+
+    it('không truyền gì -> KHÔNG thêm điều kiện', () => {
+      expect(run()).toHaveLength(0);
+    });
+
+    it('joined, không groupId -> EXISTS bất kỳ nhóm (hành vi cũ, không tham số)', () => {
+      const [[sql, params]] = run('joined');
+      expect(sql).toMatch(/^EXISTS/);
+      expect(sql).not.toContain('group_id');
+      expect(params).toBeUndefined();
+    });
+
+    it('not_joined, không groupId -> NOT EXISTS bất kỳ nhóm (hành vi cũ)', () => {
+      const [[sql]] = run('not_joined');
+      expect(sql).toMatch(/^NOT EXISTS/);
+      expect(sql).not.toContain('group_id');
+    });
+
+    it('chỉ groupId -> "đã join ĐÚNG nhóm này" (EXISTS + group_id)', () => {
+      const [[sql, params]] = run(undefined, 7);
+      expect(sql).toMatch(/^EXISTS/);
+      expect(sql).toContain('cgm.group_id = :cgmGroupId');
+      expect(params).toEqual({ cgmGroupId: 7 });
+    });
+
+    it('joined + groupId -> giống chỉ groupId', () => {
+      const [[sql, params]] = run('joined', 7);
+      expect(sql).toMatch(/^EXISTS/);
+      expect(params).toEqual({ cgmGroupId: 7 });
+    });
+
+    it('not_joined + groupId -> "chưa join nhóm này" (NOT EXISTS + group_id)', () => {
+      const [[sql, params]] = run('not_joined', 7);
+      expect(sql).toMatch(/^NOT EXISTS/);
+      expect(sql).toContain('cgm.group_id = :cgmGroupId');
+      expect(params).toEqual({ cgmGroupId: 7 });
+    });
+  });
 });

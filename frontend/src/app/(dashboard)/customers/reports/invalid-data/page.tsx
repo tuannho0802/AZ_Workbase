@@ -19,6 +19,7 @@ import { resolveEntityColor } from '@/lib/utils/entityColor';
 // 'marketing') y hệt pattern `/customers`, `CustomerForm.tsx` - KHÔNG tự
 // gọi `/users` riêng (route đó đòi quyền khác, dễ 403 với role hẹp).
 import { useAssignmentGroupUsers } from '@/lib/hooks/useAssignmentGroups';
+import { linkGroupsApi, LinkGroup } from '@/lib/api/link-groups.api';
 
 const { Title, Text } = Typography;
 
@@ -155,6 +156,19 @@ export default function InvalidDataReportPage() {
   // ⚠️ MỚI (yêu cầu người dùng: "Đã tham gia nhóm" - ĐÚNG hành vi/label y hệt
   // dropdown "Đã joined nhóm" ở /customers).
   const [joinedGroups, setJoinedGroups] = useState<'joined' | 'not_joined' | undefined>(undefined);
+  // ⚠️ MỚI (yêu cầu người dùng: "Filter nhóm và cụ thể là nhóm nào") - chọn
+  // CỤ THỂ 1 nhóm liên kết. Khi có `groupId`, dropdown "Đã tham gia nhóm" ở
+  // cạnh áp dụng cho ĐÚNG nhóm này (Đã join / Chưa join nhóm này).
+  const [groupId, setGroupId] = useState<number | undefined>(undefined);
+  // Lấy TẤT CẢ nhóm (kể cả nhóm đã bị ẩn) - khách có thể đã join 1 nhóm
+  // giờ đã ẩn, vẫn cần lọc được. GET /link-groups mở cho mọi role đã đăng nhập.
+  const [linkGroups, setLinkGroups] = useState<LinkGroup[]>([]);
+  useEffect(() => {
+    linkGroupsApi
+      .getAll()
+      .then(setLinkGroups)
+      .catch((error) => console.error('Fetch link groups error:', error));
+  }, []);
   // Chỉ BE trả field này khi invalidType là 1 trong 2 loại trùng lặp - số
   // GIÁ TRỊ (SĐT/Email) đang bị trùng, KHÁC `pagination.total` là số DÒNG
   // khách hàng (1 giá trị trùng có thể ứng với ≥2 dòng).
@@ -187,6 +201,7 @@ export default function InvalidDataReportPage() {
     marketingUserId?: number;
     creatorId?: number;
     joinedGroups?: 'joined' | 'not_joined';
+    groupId?: number;
   }) => {
     const type = opts.type ?? invalidType;
     const page = opts.page ?? (pagination.current || 1);
@@ -197,6 +212,7 @@ export default function InvalidDataReportPage() {
     const mu = opts.marketingUserId !== undefined ? opts.marketingUserId : marketingUserId;
     const cr = opts.creatorId !== undefined ? opts.creatorId : creatorId;
     const jg = opts.joinedGroups !== undefined ? opts.joinedGroups : joinedGroups;
+    const gid = 'groupId' in opts ? opts.groupId : groupId;
 
     setLoading(true);
     try {
@@ -210,6 +226,7 @@ export default function InvalidDataReportPage() {
         marketingUserId: mu || undefined,
         creatorId: cr || undefined,
         joinedGroups: jg || undefined,
+        groupId: gid || undefined,
       });
       setData(res.data);
       setDuplicateGroupCount(res.duplicateGroupCount);
@@ -264,6 +281,11 @@ export default function InvalidDataReportPage() {
     fetchData({ joinedGroups: val, page: 1 });
   };
 
+  const handleGroupChange = (val?: number) => {
+    setGroupId(val);
+    fetchData({ groupId: val, page: 1 });
+  };
+
   const handleSearch = (val: string) => {
     setSearch(val);
     fetchData({ search: val, page: 1 });
@@ -276,6 +298,7 @@ export default function InvalidDataReportPage() {
     setMarketingUserId(undefined);
     setCreatorId(undefined);
     setJoinedGroups(undefined);
+    setGroupId(undefined);
     fetchData({
       search: '',
       status: undefined,
@@ -283,6 +306,7 @@ export default function InvalidDataReportPage() {
       marketingUserId: undefined,
       creatorId: undefined,
       joinedGroups: undefined,
+      groupId: undefined,
       page: 1,
     });
   };
@@ -316,6 +340,23 @@ export default function InvalidDataReportPage() {
       </Space>
     );
   };
+
+  // Options chọn nhóm: gom theo Category (như trang quản lý nhóm liên kết),
+  // nhóm đã ẩn có hậu tố "(đã ẩn)". Tìm kiếm theo tên nhóm qua `label`.
+  const groupOptions = (() => {
+    const byCategory = new Map<string, { label: string; options: { value: number; label: string }[] }>();
+    for (const g of linkGroups) {
+      const key = String(g.categoryId);
+      if (!byCategory.has(key)) {
+        byCategory.set(key, { label: g.category?.name ?? 'Khác', options: [] });
+      }
+      byCategory.get(key)!.options.push({
+        value: g.id,
+        label: g.isActive ? g.name : `${g.name} (đã ẩn)`,
+      });
+    }
+    return Array.from(byCategory.values());
+  })();
 
   const isDuplicateView = isDuplicateType(invalidType);
 
@@ -463,6 +504,7 @@ export default function InvalidDataReportPage() {
       // thay vì text trơn, ĐÚNG pattern cột "Người tạo" ở /chia-data.
       title: 'Sales',
       key: 'salesUser',
+      width: 190,
       render: (_, record) =>
         record.salesUser ? (
           <UserMiniCard
@@ -482,6 +524,7 @@ export default function InvalidDataReportPage() {
       // ĐÚNG pattern cột "Sales" ở trên (UserMiniCard, ẩn Role Tag).
       title: 'Marketing phụ trách',
       key: 'marketingUser',
+      width: 190,
       render: (_, record) =>
         record.marketingUser ? (
           <UserMiniCard
@@ -499,6 +542,7 @@ export default function InvalidDataReportPage() {
     {
       title: 'Người tạo',
       key: 'createdBy',
+      width: 190,
       render: (_, record) =>
         record.createdBy ? (
           <UserMiniCard
@@ -530,7 +574,7 @@ export default function InvalidDataReportPage() {
   const duplicateLabel = invalidType === 'duplicate_email' ? 'Email' : 'Số điện thoại';
   const activeMeta = TYPE_META[invalidType];
   const hasActiveFilters =
-    !!search || !!status || !!salesUserId || !!marketingUserId || !!creatorId || !!joinedGroups;
+    !!search || !!status || !!salesUserId || !!marketingUserId || !!creatorId || !!joinedGroups || !!groupId;
 
   return (
     <div className="space-y-6">
@@ -633,17 +677,39 @@ export default function InvalidDataReportPage() {
             />
           </div>
           <div>
+            <div className="mb-1"><Text strong>Nhóm cụ thể</Text></div>
+            <Select
+              value={groupId}
+              onChange={handleGroupChange}
+              allowClear
+              showSearch
+              optionFilterProp="label"
+              placeholder="Tất cả nhóm"
+              style={{ width: 220 }}
+              popupMatchSelectWidth={false}
+              options={groupOptions}
+              notFoundContent="Không có nhóm nào"
+            />
+          </div>
+          <div>
             <div className="mb-1"><Text strong>Đã tham gia nhóm</Text></div>
             <Select
               value={joinedGroups}
               onChange={handleJoinedGroupsChange}
               allowClear
-              placeholder="Tất cả"
+              placeholder={groupId ? 'Đã joined nhóm này' : 'Tất cả'}
               style={{ width: 200 }}
-              options={[
-                { value: 'joined', label: 'Đã joined ít nhất 1 nhóm' },
-                { value: 'not_joined', label: 'Chưa joined nhóm nào' },
-              ]}
+              options={
+                groupId
+                  ? [
+                      { value: 'joined', label: 'Đã joined nhóm này' },
+                      { value: 'not_joined', label: 'Chưa joined nhóm này' },
+                    ]
+                  : [
+                      { value: 'joined', label: 'Đã joined ít nhất 1 nhóm' },
+                      { value: 'not_joined', label: 'Chưa joined nhóm nào' },
+                    ]
+              }
             />
           </div>
           <div>

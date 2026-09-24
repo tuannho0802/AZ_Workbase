@@ -637,6 +637,33 @@ export class CustomersService {
    * dùng chung cho cả query lấy dữ liệu và query đếm số lượng (COUNT).
    * Tách riêng để tránh lặp code và đảm bảo 2 query luôn đồng bộ điều kiện.
    */
+  /**
+   * Filter "Đã tham gia nhóm" - DÙNG CHUNG cho `applyCustomerListFilters()`
+   * và 2 nhánh của `getInvalidDataReport()` (trước đây copy y hệt 3 nơi).
+   * Dùng EXISTS/NOT EXISTS (không JOIN) để 1 customer join nhiều nhóm
+   * không bị nhân dòng làm sai phân trang/COUNT.
+   * - Không có `groupId`: "đã join >=1 nhóm bất kỳ" / "chưa join nhóm nào".
+   * - Có `groupId` (chọn CỤ THỂ 1 nhóm): `joined`/không truyền = "đã join
+   *   ĐÚNG nhóm này"; `not_joined` = "chưa join nhóm này".
+   */
+  private applyJoinedGroupsFilter(
+    qb: { andWhere: (where: string, params?: Record<string, unknown>) => unknown },
+    joinedGroups?: 'joined' | 'not_joined',
+    groupId?: number,
+  ) {
+    if (!joinedGroups && !groupId) return;
+    const groupCond = groupId ? ' AND cgm.group_id = :cgmGroupId' : '';
+    const params = groupId ? { cgmGroupId: groupId } : undefined;
+    const exists =
+      'EXISTS (SELECT 1 FROM customer_group_memberships cgm ' +
+      `WHERE cgm.customer_id = customer.id AND cgm.joined = true${groupCond})`;
+    if (joinedGroups === 'not_joined') {
+      qb.andWhere(`NOT ${exists}`, params);
+    } else {
+      qb.andWhere(exists, params);
+    }
+  }
+
   private applyCustomerListFilters(
     queryBuilder: ReturnType<Repository<Customer>['createQueryBuilder']>,
     filters: Pick<
@@ -727,17 +754,7 @@ export class CustomersService {
     // lúc - nếu JOIN thẳng vào customer_group_memberships, 1 customer sẽ
     // xuất hiện lặp lại N lần theo N nhóm đã join, làm sai cả phân trang
     // lẫn COUNT). EXISTS chỉ trả về true/false, không nhân dòng.
-    if (joinedGroups === 'joined') {
-      queryBuilder.andWhere(
-        'EXISTS (SELECT 1 FROM customer_group_memberships cgm ' +
-        'WHERE cgm.customer_id = customer.id AND cgm.joined = true)',
-      );
-    } else if (joinedGroups === 'not_joined') {
-      queryBuilder.andWhere(
-        'NOT EXISTS (SELECT 1 FROM customer_group_memberships cgm ' +
-        'WHERE cgm.customer_id = customer.id AND cgm.joined = true)',
-      );
-    }
+    this.applyJoinedGroupsFilter(queryBuilder, joinedGroups, undefined);
   }
 
   /**
@@ -3421,6 +3438,9 @@ export class CustomersService {
     // ⚠️ MỚI (yêu cầu người dùng): filter "Đã tham gia nhóm" - ĐÚNG kiểu +
     // hành vi EXISTS/NOT EXISTS đã dùng ở `applyCustomerListFilters()`.
     joinedGroups?: 'joined' | 'not_joined',
+    // ⚠️ MỚI: lọc theo CỤ THỂ 1 nhóm liên kết (link_groups.id) - xem
+    // `applyJoinedGroupsFilter()` để biết nghĩa khi kết hợp với `joinedGroups`.
+    groupId?: number,
   ) {
     const todayStr = todayVnStr();
 
@@ -3448,6 +3468,7 @@ export class CustomersService {
         marketingUserId,
         creatorId,
         joinedGroups,
+        groupId,
       );
     }
 
@@ -3490,17 +3511,7 @@ export class CustomersService {
     }
     // "Đã tham gia nhóm" - EXISTS/NOT EXISTS y hệt `applyCustomerListFilters()`
     // (không JOIN thẳng để tránh nhân dòng do 1 customer join nhiều nhóm).
-    if (joinedGroups === 'joined') {
-      qb.andWhere(
-        'EXISTS (SELECT 1 FROM customer_group_memberships cgm ' +
-        'WHERE cgm.customer_id = customer.id AND cgm.joined = true)',
-      );
-    } else if (joinedGroups === 'not_joined') {
-      qb.andWhere(
-        'NOT EXISTS (SELECT 1 FROM customer_group_memberships cgm ' +
-        'WHERE cgm.customer_id = customer.id AND cgm.joined = true)',
-      );
-    }
+    this.applyJoinedGroupsFilter(qb, joinedGroups, groupId);
 
     // FIX BUG THẬT (rà soát dynamic RBAC): thiếu tham số `scope`, xem giải
     // thích đầy đủ ở getStatsByStatus() phía trên.
@@ -3557,6 +3568,7 @@ export class CustomersService {
     marketingUserId?: number,
     creatorId?: number,
     joinedGroups?: 'joined' | 'not_joined',
+    groupId?: number,
   ) {
     const groupExpr = isEmail ? 'LOWER(TRIM(customer.email))' : 'customer.phone';
     const nonEmptyCondition = isEmail
@@ -3580,17 +3592,7 @@ export class CustomersService {
       if (creatorId) q.andWhere('customer.createdById = :creatorId', { creatorId });
       // "Đã tham gia nhóm" - áp CÙNG bộ EXISTS/NOT EXISTS vào cả 4 truy vấn
       // con (dupKeys/count/ids/peers), nhất quán với các filter khác ở trên.
-      if (joinedGroups === 'joined') {
-        q.andWhere(
-          'EXISTS (SELECT 1 FROM customer_group_memberships cgm ' +
-          'WHERE cgm.customer_id = customer.id AND cgm.joined = true)',
-        );
-      } else if (joinedGroups === 'not_joined') {
-        q.andWhere(
-          'NOT EXISTS (SELECT 1 FROM customer_group_memberships cgm ' +
-          'WHERE cgm.customer_id = customer.id AND cgm.joined = true)',
-        );
-      }
+      this.applyJoinedGroupsFilter(q, joinedGroups, groupId);
     };
 
     const dupKeysQb = this.customersRepository

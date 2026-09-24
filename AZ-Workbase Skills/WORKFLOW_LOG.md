@@ -3852,3 +3852,24 @@ trước) theo đúng Custom Instructions của Project.
 **Notes:** Không push được GitHub từ sandbox — chủ dự án tự apply patch. Chưa test bằng mắt trên UI thật.
 
 ---
+## [2026-09-24 10:30] | UserMiniCard tên dài bị đẩy cao card + thêm filter "Nhóm cụ thể" cho trang invalid-data | [Status: Success — verify bằng build/test thật]
+
+**Actor:** Agent
+
+**Files Changed:**
+- `frontend/src/app/(dashboard)/attendance-device/UserMiniCard.tsx` — thay `<Space wrap>` bằng flex container: Avatar + tên nằm chung 1 nhóm KHÔNG xuống dòng, tên `nowrap + ellipsis` (hover `title` xem đủ), `maxWidth:100%`/`minWidth:0`; chỉ Tag/subtitle mới được wrap. Sửa ở component dùng chung nên áp dụng cho mọi nơi dùng UserMiniCard.
+- `frontend/src/app/(dashboard)/attendance-device/UserMiniCard.test.tsx` — test mới (3 test).
+- `frontend/src/app/(dashboard)/customers/reports/invalid-data/page.tsx` — thêm dropdown "Nhóm cụ thể" (gom theo Category, có tìm kiếm, nhóm ẩn có hậu tố "(đã ẩn)"); dropdown "Đã tham gia nhóm" đổi nhãn thành "Đã/Chưa joined nhóm này" khi đã chọn nhóm; 3 cột Sales/Marketing/Người tạo `width: 190`.
+- `frontend/src/lib/api/customers.api.ts` — `getInvalidDataReport` nhận `groupId`.
+- `backend/src/modules/customers/customers.service.ts` — tách `applyJoinedGroupsFilter()` (trước copy y hệt 3 nơi) + thêm `groupId`; áp cho cả nhánh thường và nhánh trùng SĐT/Email của `getInvalidDataReport`.
+- `backend/src/modules/customers/customers.controller.ts` — nhận query `groupId`.
+- `backend/src/modules/customers/customers.service.spec.ts` — 6 test mới cho `applyJoinedGroupsFilter`.
+
+**Root Cause:**
+> UserMiniCard: Avatar + tên + Tag chung 1 `<Space wrap>`, tên dài hơn cột thì cả khối tên bị đẩy xuống dòng 2 -> card cao gấp đôi. Filter nhóm: BE/FE chỉ có "có/không tham gia nhóm nào", không có tham số nhóm cụ thể.
+
+**Verify:** BE `tsc` + `nest build` sạch, `jest src/modules/customers` 126/126 PASS. FE `next build` OK, `vitest run` 90/90 PASS; `tsc --noEmit` chỉ còn 5 lỗi pre-existing (`logo.png`×4, `CountBadge`).
+
+**Notes:** Chưa xem bằng mắt trên UI thật. Không push được GitHub từ sandbox.
+
+---

@@ -1,6 +1,6 @@
 'use client';
 
-import { Avatar, Space, Tag, Typography } from 'antd';
+import { Avatar, Tag, Typography } from 'antd';
 
 const { Text } = Typography;
 
@@ -47,25 +47,60 @@ export function UserMiniCard({
     nameFontSize = 13,
 }: UserMiniCardProps) {
     const tagStyle: React.CSSProperties = { fontSize: 10, lineHeight: '16px', padding: '0 4px', margin: 0 };
+    // ⚠️ FIX BUG UI THẬT (tên dài làm card cao lên/xấu, thấy rõ ở cột Sales/
+    // Marketing/Người tạo của /customers/reports/invalid-data): trước đây cả
+    // Avatar + tên + Tag nằm chung 1 `<Space wrap>` - khi tên dài hơn bề
+    // rộng cột, Space đẩy nguyên khối tên xuống DÒNG 2 (dưới Avatar) làm
+    // card cao gấp đôi, lệch hàng. Giờ: Avatar + tên luôn gói trong 1 nhóm
+    // KHÔNG xuống dòng, tên tự cắt bằng "…" (hover xem đủ tên qua `title`);
+    // chỉ các Tag/subtitle phía sau mới được xuống dòng (giữ hành vi cũ ở
+    // chỗ có Tag Vai trò/Phòng ban/Vị trí). `maxWidth: 100%` + `minWidth: 0`
+    // để card không bao giờ tràn ra ngoài ô chứa nó. Sửa ở component dùng
+    // chung nên áp dụng cho MỌI nơi dùng UserMiniCard (/chia-data, thùng
+    // rác, phòng ban, máy chấm công, thông báo, form khách hàng...).
     return (
-        <Space
-            size={6}
-            align="center"
-            wrap
+        <div
             style={{
                 display: 'inline-flex',
+                alignItems: 'center',
+                flexWrap: 'wrap',
+                gap: 6,
+                maxWidth: '100%',
+                minWidth: 0,
+                boxSizing: 'border-box',
+                verticalAlign: 'middle',
                 padding: '3px 10px 3px 3px',
                 borderRadius: 20,
                 background: '#fafafa',
                 border: '1px solid #f0f0f0',
             }}
         >
-            <Avatar size={20} style={{ backgroundColor: getRoleColor(role), fontSize: 11, flexShrink: 0 }}>
-                {name?.[0]?.toUpperCase()}
-            </Avatar>
-            <Text strong style={{ fontSize: nameFontSize }}>
-                {name}
-            </Text>
+            <span
+                style={{
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    gap: 6,
+                    minWidth: 0,
+                    maxWidth: '100%',
+                }}
+            >
+                <Avatar size={20} style={{ backgroundColor: getRoleColor(role), fontSize: 11, flexShrink: 0 }}>
+                    {name?.[0]?.toUpperCase()}
+                </Avatar>
+                <Text
+                    strong
+                    title={name}
+                    style={{
+                        fontSize: nameFontSize,
+                        minWidth: 0,
+                        whiteSpace: 'nowrap',
+                        overflow: 'hidden',
+                        textOverflow: 'ellipsis',
+                    }}
+                >
+                    {name}
+                </Text>
+            </span>
             {subtitle}
             {role && !hideRoleTag && (
                 <Tag style={tagStyle} color={getRoleColor(role)}>
@@ -82,6 +117,6 @@ export function UserMiniCard({
                     {positionName}
                 </Tag>
             )}
-        </Space>
+        </div>
     );
 }
