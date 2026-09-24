@@ -75,6 +75,7 @@ import { buildTaskLinkChains, sortTasksByChain, getChainRunFlags } from '@/lib/u
 import { useTaskLinksAmong } from '@/lib/hooks/usePeriodicTaskLinks';
 import { customerPhoneDisplay, customerPlainLabel, renderCustomerOption } from '@/components/common/customer-option-render';
 import { SimpleList } from '@/components/common/SimpleList';
+import { LinkifiedText } from '@/components/common/LinkifiedText';
 import { CustomerQuickFilterButton, CustomerQuickFilters, EMPTY_CUSTOMER_QUICK_FILTERS } from '@/components/common/customer-quick-filter';
 
 const { Title, Text } = Typography;
@@ -110,20 +111,11 @@ const getQuickRange = (key: QuickRangeKey): [Dayjs, Dayjs] => {
     }
 };
 
-/**
- * truncateText - Trim CỨNG bằng ký tự (JS `.slice`), KHÔNG dựa vào CSS
- * `ellipsis`/`maxWidth:100%` như trước. BUG THẬT (2026-09-21, chủ dự án báo
- * qua ảnh chụp Tab "Bảng"): chuỗi `Mô tả`/`Ghi chú` dài LIỀN không có khoảng
- * trắng (vd "ddddddd...") khiến CSS ellipsis không kẹp được - `Text
- * ellipsis` của AntD set `display:inline-block; maxWidth:100%` nhưng % này
- * tính theo bề rộng CHA, mà Table có `scroll={{x:'max-content'}}` nên
- * `table-layout` KHÔNG `fixed` - cột "Công việc" tự NỞ RA theo đúng bề rộng
- * chuỗi dài đó (100% của 1 khung đã nở vô hạn = không giới hạn gì cả), tràn
- * đè lên cột "Kỳ hạn"/"Trạng thái" bên cạnh. Trim bằng JS trước khi render
- * đảm bảo độ dài hiển thị luôn cố định, không phụ thuộc layout Table.
+/*
+ * Cắt CỨNG Mô tả/Ghi chú theo ký tự (không dựa CSS ellipsis - xem bug 2026-09-21:
+ * chuỗi dài liền làm cột Table tự nở) nay do `<LinkifiedText maxLength={60} />`
+ * đảm nhiệm để không làm hỏng URL (href giữ đủ, chỉ chữ hiển thị bị cắt).
  */
-const truncateText = (text: string, maxLength: number): string =>
-    text.length > maxLength ? `${text.slice(0, maxLength)}…` : text;
 
 /**
  * Trang chính "Công việc định kỳ" (Phase 1 + 2 + 5 + 6 -
@@ -988,13 +980,13 @@ function PeriodicTasksPageContent() {
                                 <Tooltip
                                     title={
                                         <div style={{ maxWidth: 280, whiteSpace: 'pre-wrap', overflowWrap: 'anywhere' }}>
-                                            <span style={{ fontWeight: 600, fontSize: 13 }}>Mô tả:</span> {record.description}
+                                            <span style={{ fontWeight: 600, fontSize: 13 }}>Mô tả:</span> <LinkifiedText text={record.description} linkColor="#69b1ff" />
                                         </div>
                                     }
                                 >
                                     <Text type="secondary" style={{ fontSize: 12, display: 'inline-block', maxWidth: '100%', verticalAlign: 'top' }}>
                                         <span style={{ fontWeight: 600, fontSize: 13, color: 'rgba(0,0,0,0.75)' }}>Mô tả:</span>{' '}
-                                        {truncateText(record.description, 60)}
+                                        <LinkifiedText text={record.description} maxLength={60} />
                                     </Text>
                                 </Tooltip>
                             </div>
@@ -1004,7 +996,7 @@ function PeriodicTasksPageContent() {
                                 <Tooltip
                                     title={
                                         <div style={{ maxWidth: 280, whiteSpace: 'pre-wrap', overflowWrap: 'anywhere' }}>
-                                            <span style={{ fontWeight: 600, fontSize: 13 }}>Ghi chú:</span> {record.note}
+                                            <span style={{ fontWeight: 600, fontSize: 13 }}>Ghi chú:</span> <LinkifiedText text={record.note} linkColor="#69b1ff" />
                                         </div>
                                     }
                                 >
@@ -1012,7 +1004,7 @@ function PeriodicTasksPageContent() {
                                         <span style={{ fontWeight: 600, fontSize: 13, color: 'rgba(0,0,0,0.75)', fontStyle: 'normal' }}>
                                             Ghi chú:
                                         </span>{' '}
-                                        {truncateText(record.note, 60)}
+                                        <LinkifiedText text={record.note} maxLength={60} />
                                     </Text>
                                 </Tooltip>
                             </div>

@@ -8,6 +8,7 @@ import { DEFAULT_ENTITY_COLOR, resolveEntityColor } from '@/lib/utils/entityColo
 import { useUsersList } from '@/lib/hooks/useUsers';
 import { TaskTitlePill, TaskChainBadge } from './TaskTitlePill';
 import { TaskChainInfo } from '@/lib/utils/taskLinkChains';
+import { LinkifiedText } from '@/components/common/LinkifiedText';
 
 const { Text } = Typography;
 
@@ -132,13 +133,13 @@ export function TaskMiniCard({
                             <Tooltip
                                 title={
                                     <div style={{ maxWidth: 280, whiteSpace: 'pre-wrap', overflowWrap: 'anywhere' }}>
-                                        <span style={{ fontWeight: 600, fontSize: 13 }}>Mô tả:</span> {task.description}
+                                        <span style={{ fontWeight: 600, fontSize: 13 }}>Mô tả:</span> <LinkifiedText text={task.description ?? ''} linkColor="#69b1ff" />
                                     </div>
                                 }
                             >
                                 <Text type="secondary" style={ellipsisTextStyle} ellipsis>
                                     <span style={{ fontWeight: 600, fontSize: 13, color: 'rgba(0,0,0,0.75)' }}>Mô tả:</span>{' '}
-                                    {task.description}
+                                    <LinkifiedText text={task.description ?? ''} />
                                 </Text>
                             </Tooltip>
                         </div>
@@ -148,7 +149,7 @@ export function TaskMiniCard({
                             <Tooltip
                                 title={
                                     <div style={{ maxWidth: 280, whiteSpace: 'pre-wrap', overflowWrap: 'anywhere' }}>
-                                        <span style={{ fontWeight: 600, fontSize: 13 }}>Ghi chú:</span> {task.note}
+                                        <span style={{ fontWeight: 600, fontSize: 13 }}>Ghi chú:</span> <LinkifiedText text={task.note ?? ''} linkColor="#69b1ff" />
                                     </div>
                                 }
                             >
@@ -156,7 +157,7 @@ export function TaskMiniCard({
                                     <span style={{ fontWeight: 600, fontSize: 13, color: 'rgba(0,0,0,0.75)', fontStyle: 'normal' }}>
                                         Ghi chú:
                                     </span>{' '}
-                                    {task.note}
+                                    <LinkifiedText text={task.note ?? ''} />
                                 </Text>
                             </Tooltip>
                         </div>

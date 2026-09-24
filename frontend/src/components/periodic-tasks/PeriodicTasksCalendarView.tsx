@@ -8,6 +8,7 @@ import dayjs from 'dayjs';
 import { PeriodicTask, PERIOD_TYPE_LABELS } from '@/lib/api/periodic-tasks.api';
 import { resolveEntityColor } from '@/lib/utils/entityColor';
 import { TaskChainInfo } from '@/lib/utils/taskLinkChains';
+import { LinkifiedText } from '@/components/common/LinkifiedText';
 
 const { Text } = Typography;
 
@@ -87,12 +88,12 @@ export function PeriodicTasksCalendarView({ tasks, onSelectTask, chains, resolve
                                         `TaskMiniCard.tsx`/Table. */}
                                     {task.description && (
                                         <div style={{ fontSize: 12, marginTop: 4, borderTop: '1px solid rgba(255,255,255,0.2)', paddingTop: 4, maxWidth: 240, whiteSpace: 'pre-wrap', overflowWrap: 'anywhere' }}>
-                                            <strong style={{ fontSize: 13 }}>Mô tả:</strong> {task.description}
+                                            <strong style={{ fontSize: 13 }}>Mô tả:</strong> <LinkifiedText text={task.description ?? ''} linkColor="#69b1ff" />
                                         </div>
                                     )}
                                     {task.note && (
                                         <div style={{ fontSize: 12, marginTop: 4, borderTop: task.description ? undefined : '1px solid rgba(255,255,255,0.2)', paddingTop: 4, maxWidth: 240, whiteSpace: 'pre-wrap', overflowWrap: 'anywhere' }}>
-                                            <strong style={{ fontSize: 13 }}>Ghi chú:</strong> {task.note}
+                                            <strong style={{ fontSize: 13 }}>Ghi chú:</strong> <LinkifiedText text={task.note ?? ''} linkColor="#69b1ff" />
                                         </div>
                                     )}
                                     {chain && resolveChainTask && (

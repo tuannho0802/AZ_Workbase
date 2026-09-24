@@ -3938,3 +3938,18 @@ trước) theo đúng Custom Instructions của Project.
 > - Verify sau khi `git clone` bản mới nhất (HEAD `f549565`), đọc code thật, không dựa transcript phiên trước. Không push được GitHub từ sandbox — chủ dự án tự áp dụng patch (chỉ APPEND log, không sửa entry cũ).
 
 ---
+
+## [2026-09-24 13:00] | Task định kỳ: tự nhận URL trong Checklist/Mô tả/Ghi chú → link bấm được + Modal xác nhận trước khi mở | [Status: Success — verify bằng build/test thật]
+
+**Actor:** Agent
+
+**Files Changed:**
+- `frontend/src/lib/utils/linkify.ts` — **MỚI**: `parseLinks()` (nhận http/https/`www.`, bỏ dấu câu dính đuôi, chặn `javascript:`), `truncateSegments()` (cắt chữ hiển thị nhưng giữ `href` đủ).
+- `frontend/src/lib/utils/linkify.test.ts` — **MỚI**: 9 test.
+- `frontend/src/components/common/LinkifiedText.tsx` — **MỚI**: render link, bấm → `modal.confirm` "Mở liên kết ngoài?" → `window.open(..., 'noopener,noreferrer')`; `stopPropagation` để không kích hoạt onClick của Card/Checklist (sửa item).
+- `frontend/src/components/periodic-tasks/TaskMiniCard.tsx`, `PeriodicTasksCalendarView.tsx`, `TaskChecklistModal.tsx`, `frontend/src/app/(dashboard)/cong-viec-dinh-ky/page.tsx` — thay text thuần bằng `<LinkifiedText>` ở Mô tả/Ghi chú (preview + Tooltip) và nội dung checklist item; bỏ `truncateText` cục bộ ở page (thay bằng `maxLength` của LinkifiedText).
+
+**Notes:**
+> Link không đặt `href` thật để Ctrl/Middle-click không qua mặt Modal. Verify sau `git clone` HEAD `fcc96e2`: `vitest run` 104/104 PASS, `next build` OK, `tsc --noEmit` 0 lỗi, ESLint sạch trên file mới/sửa. Không push được GitHub từ sandbox — chủ dự án tự áp dụng patch.
+
+---

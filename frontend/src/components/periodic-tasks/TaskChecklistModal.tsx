@@ -15,6 +15,7 @@ import {
 import { PeriodicTask, PeriodicTaskChecklistItem, PERIOD_TYPE_LABELS } from '@/lib/api/periodic-tasks.api';
 import { getApiErrorMessage } from '@/lib/utils/error-message.util';
 import { SimpleList } from '@/components/common/SimpleList';
+import { LinkifiedText } from '@/components/common/LinkifiedText';
 
 const { Text } = Typography;
 
@@ -265,7 +266,7 @@ export function TaskChecklistModal({ open, onClose, task }: Props) {
                                                     }}
                                                     onClick={() => canEdit && startEdit(item)}
                                                 >
-                                                    {item.content}
+                                                    <LinkifiedText text={item.content} />
                                                 </Text>
                                             )}
 
