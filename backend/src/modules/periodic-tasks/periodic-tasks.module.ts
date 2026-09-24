@@ -19,6 +19,10 @@ import { PeriodicTaskChecklistItemsService } from './periodic-task-checklist-ite
 import { PeriodicTaskAuditService } from './periodic-task-audit.service';
 import { PeriodicTaskTrashService } from './periodic-task-trash.service';
 import { PeriodicTasksController } from './periodic-tasks.controller';
+import { PeriodicTaskPerformanceService } from './periodic-task-performance.service';
+import { PeriodicTaskPerformanceController } from './periodic-task-performance.controller';
+import { PeriodicTaskRemindersService } from './periodic-task-reminders.service';
+import { PeriodicTaskRemindersCronController } from './periodic-task-reminders-cron.controller';
 
 // PermissionsService KHÔNG cần import ở `imports` - PermissionsModule là
 // @Global() (xem permissions.module.ts), inject thẳng vào
@@ -39,7 +43,11 @@ import { PeriodicTasksController } from './periodic-tasks.controller';
       DepartmentManager,
     ]),
   ],
-  controllers: [PeriodicTasksController],
+  controllers: [
+    PeriodicTasksController,
+    PeriodicTaskPerformanceController,
+    PeriodicTaskRemindersCronController,
+  ],
   providers: [
     PeriodicTasksService,
     PeriodicTaskLinksService,
@@ -48,6 +56,8 @@ import { PeriodicTasksController } from './periodic-tasks.controller';
     PeriodicTaskChecklistItemsService,
     PeriodicTaskAuditService,
     PeriodicTaskTrashService,
+    PeriodicTaskPerformanceService,
+    PeriodicTaskRemindersService,
   ],
   exports: [
     PeriodicTasksService,

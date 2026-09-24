@@ -61,6 +61,7 @@ export const NOTIFICATION_EVENT_TYPES = [
   'task.locked',
   'task.unlocked',
   'task.deleted',
+  'task.deadline_reminder',
   // Manual (không đi qua emit(); do notification-broadcasts ghi ở Phase M1)
   'manual.broadcast',
 ] as const;
@@ -471,6 +472,23 @@ export const EVENT_CATALOG: Record<NotificationEventType, EventDefinition> = {
     relations: [...TASK_STAKEHOLDERS, R.TASK_CREATOR],
     templates: {
       default: t((i) => `${i.actorName} đã xoá công việc ${i.entityName}.`),
+    },
+  },
+  // Nhắc hạn TỰ ĐỘNG (Hiệu suất công việc - xem `PeriodicTaskRemindersService`,
+  // `helpers/deadline-reminder.helper.ts`). `actorId=null` -> "Hệ thống".
+  // `coalesce=false` + `dedupeSuffix=<ngày VN>` (đặt ở call site) đảm bảo mỗi
+  // Task chỉ nhận ĐÚNG 1 dòng nhắc / ngày dù cron gọi lặp lại nhiều lần.
+  'task.deadline_reminder': {
+    type: 'task.deadline_reminder',
+    category: NotificationCategory.TASK,
+    entityType: 'periodic_task',
+    mandatory: false,
+    coalesce: false,
+    defaultEnabled: true,
+    emittable: true,
+    relations: TASK_STAKEHOLDERS,
+    templates: {
+      default: t((i) => `${i.actorName} nhắc bạn: công việc ${i.entityName} sắp đến hạn, kiểm tra và hoàn thành trước khi hết hạn nhé.`),
     },
   },
 
