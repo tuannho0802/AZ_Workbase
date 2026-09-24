@@ -6,6 +6,7 @@ import { PeriodicTaskSecondaryAssignee } from '../../database/entities/periodic-
 import { PeriodType } from '../../common/enums/period-type.enum';
 import { getNowVn, todayVnStr } from '../../common/utils/date-vn.util';
 import { computeReminderDate } from './helpers/deadline-reminder.helper';
+import { rawDateToYmd } from './helpers/raw-date.helper';
 import { NotificationsService } from '../notifications/notifications.service';
 
 export interface RunDueRemindersResult {
@@ -84,16 +85,16 @@ export class PeriodicTaskRemindersService {
         id: number;
         title: string;
         period_type: PeriodType;
-        period_start_date: string;
-        period_end_date: string;
+        period_start_date: string | Date;
+        period_end_date: string | Date;
         primary_assignee_id: number;
       }>();
 
     const dueTasks = candidates.filter((c) => {
       const reminderDate = computeReminderDate({
         periodType: c.period_type,
-        periodStartDate: String(c.period_start_date).slice(0, 10),
-        periodEndDate: String(c.period_end_date).slice(0, 10),
+        periodStartDate: rawDateToYmd(c.period_start_date),
+        periodEndDate: rawDateToYmd(c.period_end_date),
       });
       return reminderDate === todayVn;
     });

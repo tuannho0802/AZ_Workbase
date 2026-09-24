@@ -4228,3 +4228,20 @@ trước) theo đúng Custom Instructions của Project.
 > Không thêm test FE theo yêu cầu. Nhãn "Hoàn thành muộn/Quá hạn chưa xong" ở Drawer FE suy từ trạng thái hiện tại (BE không trả nhãn).
 
 ---
+
+## [2026-09-24 23:59] | Fix 500 `RangeError: Invalid time value` ở /periodic-tasks-performance/summary | [Status: Success — jest 6 suite / 59 test pass, tsc sạch]
+
+**Actor:** Agent
+
+**Files Changed:**
+- `backend/src/modules/periodic-tasks/helpers/raw-date.helper.ts` (+ `.spec.ts`) (MỚI) — `rawDateToYmd()`.
+- `periodic-task-performance.service.ts` (summary + flagged-tasks), `periodic-task-reminders.service.ts` — thay `String(x).slice(0, 10)` bằng `rawDateToYmd(x)`.
+- `periodic-task-performance.service.spec.ts` — thêm test hồi quy dùng `Date` thật.
+
+**Root Cause:**
+> `getRawMany()` trả thẳng giá trị mysql2: cột DATE là đối tượng `Date`, `String(date).slice(0, 10)` ra "Tue Sep 29" -> `addDaysToDateString` ném RangeError. Spec cũ truyền sẵn chuỗi nên không bắt được. Cron nhắc hạn cũng dính cùng lỗi.
+
+**Solution:**
+> Chuẩn hoá qua `rawDateToYmd()` (getter local, khớp cách mysql2 dựng Date cho DATE).
+
+---

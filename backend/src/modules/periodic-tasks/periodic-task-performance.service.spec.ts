@@ -104,6 +104,29 @@ describe('PeriodicTaskPerformanceService - grace period 7 ngày', () => {
     expect(result.rows[0].completedLate).toBe(0);
   });
 
+  it('REGRESSION: period_end_date là đối tượng Date (mysql2 getRawMany trả cột DATE) -> KHÔNG ném RangeError', async () => {
+    jest.spyOn(dateVnUtil, 'todayVnStr').mockReturnValue('2026-09-24');
+
+    mockTaskRepo.createQueryBuilder.mockReturnValue(
+      makeQb([
+        {
+          task_id: 9,
+          primary_assignee_id: 7,
+          status_id: 10,
+          period_end_date: new Date(2026, 8, 10), // 2026-09-10 nửa đêm local, đúng kiểu mysql2
+          created_at: new Date('2026-09-01T00:00:00.000Z'),
+          is_excluded_from_rollup: 0,
+        },
+      ]),
+    );
+    mockAuditLogRepo.find.mockResolvedValue([]);
+
+    const result = await service.getSummary({}, ADMIN_USER as any);
+
+    // 2026-09-10 + 7 = 2026-09-17 < hôm nay 2026-09-24 và chưa xong -> quá hạn.
+    expect(result.rows[0].overdueNotCompleted).toBe(1);
+  });
+
   it('chuyển sang completed SAU 7 ngày ân hạn -> completedLate', async () => {
     jest.spyOn(dateVnUtil, 'todayVnStr').mockReturnValue('2026-09-24');
 

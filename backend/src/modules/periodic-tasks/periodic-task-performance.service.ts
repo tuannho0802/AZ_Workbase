@@ -11,6 +11,7 @@ import { PermissionScope } from '../../database/entities/role-permission.entity'
 import { Role } from '../../common/enums/role.enum';
 import { todayVnStr, toVnDateStr } from '../../common/utils/date-vn.util';
 import { resolveListWindow, addDaysToDateString } from './helpers/list-window.helper';
+import { rawDateToYmd } from './helpers/raw-date.helper';
 import { PeriodicTaskAuditAction } from './periodic-task-audit.service';
 import { PeriodicTaskPerformanceFiltersDto } from './dto/periodic-task-performance-filters.dto';
 import { RequestingUser } from './periodic-tasks.service';
@@ -275,7 +276,7 @@ export class PeriodicTaskPerformanceService {
       task_id: number;
       primary_assignee_id: number;
       status_id: number;
-      period_end_date: string;
+      period_end_date: string | Date;
       created_at: string;
       is_excluded_from_rollup: 0 | 1;
     }> = await qb.getRawMany();
@@ -311,7 +312,7 @@ export class PeriodicTaskPerformanceService {
       }
 
       row.total += 1;
-      const periodEndDate = String(r.period_end_date).slice(0, 10);
+      const periodEndDate = rawDateToYmd(r.period_end_date);
       const graceDate = addDaysToDateString(periodEndDate, LATE_GRACE_DAYS);
       const reachedDate = reachedMap.get(r.task_id) ?? null;
 
@@ -390,7 +391,7 @@ export class PeriodicTaskPerformanceService {
     const raw = await qb.getRawMany<{
       task_id: number;
       status_id: number;
-      period_end_date: string;
+      period_end_date: string | Date;
       created_at: string;
       is_excluded_from_rollup: 0 | 1;
     }>();
@@ -402,7 +403,7 @@ export class PeriodicTaskPerformanceService {
 
     const flaggedTaskIds = rollupRows
       .filter((r) => {
-        const periodEndDate = String(r.period_end_date).slice(0, 10);
+        const periodEndDate = rawDateToYmd(r.period_end_date);
         const graceDate = addDaysToDateString(periodEndDate, LATE_GRACE_DAYS);
         const reachedDate = reachedMap.get(r.task_id) ?? null;
         if (reachedDate) return reachedDate > graceDate; // hoàn thành muộn (sau ân hạn)
