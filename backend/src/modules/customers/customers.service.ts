@@ -1,6 +1,6 @@
 import { Injectable, ForbiddenException, Logger } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository, Brackets, IsNull, In } from 'typeorm';
+import { Repository, Brackets, IsNull, In, SelectQueryBuilder } from 'typeorm';
 import { Customer } from '../../database/entities/customer.entity';
 import { CustomerStatus } from '../../database/entities/customer-status.entity';
 import { CreateCustomerDto } from './dto/create-customer.dto';
@@ -792,6 +792,112 @@ export class CustomersService {
     }));
   }
 
+  /**
+   * Sắp xếp danh sách khách hàng - DÙNG CHUNG cho `findAll()` và
+   * `locateInList()` để 2 nơi LUÔN cho ra đúng cùng 1 thứ tự (nếu lệch, vị
+   * trí/trang tính ở `locateInList` sẽ sai so với bảng thật).
+   * `customer.id DESC` luôn là tiêu chí phụ cuối cùng (tie-break ổn định).
+   * Riêng `totalDeposit30Days` cần queryBuilder đã có `addSelect(..., 'totalDepositSum')`.
+   */
+  private applyCustomerListSort(
+    qb: SelectQueryBuilder<Customer>,
+    sortField: string,
+    sortOrder: 'ASC' | 'DESC',
+  ) {
+    if (sortField === 'name') {
+      qb.orderBy('customer.name', sortOrder);
+    } else if (sortField === 'status') {
+      qb.orderBy('customer.status', sortOrder);
+    } else if (sortField === 'phone') {
+      qb.orderBy('customer.phone', sortOrder);
+    } else if (sortField === 'totalDeposit30Days') {
+      qb.orderBy('totalDepositSum', sortOrder);
+    } else if (sortField === 'inputDate') {
+      qb.orderBy('customer.inputDate', sortOrder);
+    } else if (sortField === 'closedDate') {
+      qb.orderBy('customer.closedDate', sortOrder);
+    } else {
+      qb.orderBy('customer.createdAt', sortOrder);
+    }
+    qb.addOrderBy('customer.id', 'DESC');
+  }
+
+  /**
+   * Xác định khách hàng `customerId` đang nằm ở TRANG nào của bảng /customers
+   * với đúng bộ lọc + sắp xếp + phân quyền hiện tại. Dùng cho deep-link
+   * `/customers?id=X` (từ thông báo, audit-logs, /chia-data...): trước đây FE
+   * chỉ mở Drawer, còn bảng luôn ở trang 1 nên khách nằm từ trang 2 trở đi
+   * không bao giờ được highlight/cuộn tới.
+   * Chỉ SELECT id (không join, không phân trang) rồi tìm vị trí - nhẹ hơn
+   * nhiều so với tải cả dữ liệu; `found=false` nếu khách không thuộc tập kết
+   * quả (bị lọc mất / không có quyền xem / đã xoá mềm).
+   */
+  async locateInList(
+    customerId: number,
+    filters: CustomerFiltersDto,
+    userId: number,
+    userRole: string,
+    scope?: string | null,
+  ): Promise<{ found: boolean; position: number | null; page: number; limit: number }> {
+    const {
+      limit = 20,
+      sortField = 'inputDate',
+      sortOrder = 'DESC',
+      search,
+      source,
+      status,
+      salesUserId,
+      marketingUserId,
+      creatorId,
+      departmentId,
+      dateFrom,
+      dateTo,
+      joinedGroups,
+    } = filters;
+
+    const qb = this.customersRepository
+      .createQueryBuilder('customer')
+      .select('customer.id', 'id')
+      .where('customer.deletedAt IS NULL');
+
+    CustomerAccessHelper.applyViewFilter(qb, userId, userRole, scope);
+    this.applyCustomerListFilters(qb, {
+      search,
+      source,
+      status,
+      salesUserId,
+      marketingUserId,
+      creatorId,
+      departmentId,
+      dateFrom,
+      dateTo,
+      joinedGroups,
+    });
+
+    if (sortField === 'totalDeposit30Days') {
+      const depositSubQuery = this.depositsRepository
+        .createQueryBuilder('deposit')
+        .select('SUM(deposit.amount)')
+        .where('deposit.customerId = customer.id');
+      this.applyDepositDateRange(depositSubQuery, dateFrom, dateTo);
+      qb.addSelect(`(${depositSubQuery.getQuery()})`, 'totalDepositSum');
+      qb.setParameters(depositSubQuery.getParameters());
+    }
+    this.applyCustomerListSort(qb, sortField, sortOrder);
+
+    const rows = await qb.getRawMany<{ id: number | string }>();
+    const index = rows.findIndex((r) => Number(r.id) === customerId);
+    if (index < 0) {
+      return { found: false, position: null, page: 1, limit };
+    }
+    return {
+      found: true,
+      position: index + 1,
+      page: Math.floor(index / limit) + 1,
+      limit,
+    };
+  }
+
   async findAll(
     filters: CustomerFiltersDto,
     userId: number,
@@ -902,23 +1008,7 @@ export class CustomersService {
     // CÙNG (id là khoá duy nhất, tăng dần theo thời gian tạo) để đảm bảo
     // thứ tự luôn nhất quán, deterministic - mới nhất theo id lên trước khi
     // 2 dòng trùng giá trị cột sort chính.
-    if (sortField === 'name') {
-      queryBuilder.orderBy('customer.name', sortOrder);
-    } else if (sortField === 'status') {
-      queryBuilder.orderBy('customer.status', sortOrder);
-    } else if (sortField === 'phone') {
-      queryBuilder.orderBy('customer.phone', sortOrder);
-    } else if (sortField === 'totalDeposit30Days') {
-      // Sort by the calculated sum
-      queryBuilder.orderBy('totalDepositSum', sortOrder);
-    } else if (sortField === 'inputDate') {
-      queryBuilder.orderBy('customer.inputDate', sortOrder);
-    } else if (sortField === 'closedDate') {
-      queryBuilder.orderBy('customer.closedDate', sortOrder);
-    } else {
-      queryBuilder.orderBy('customer.createdAt', sortOrder);
-    }
-    queryBuilder.addOrderBy('customer.id', 'DESC');
+    this.applyCustomerListSort(queryBuilder, sortField, sortOrder);
 
     // Pagination
     queryBuilder.skip((page - 1) * limit).take(limit);

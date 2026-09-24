@@ -359,6 +359,55 @@ function CustomersPageContent() {
         setIsDrawerOpen(true);
         setFocusedCustomerId(parsedId);
         setFocusPhase('flash');
+
+        // ⚠️ FIX BUG THẬT (khách nằm từ trang 2 trở đi không được định vị):
+        // trước đây chỉ mở Drawer, bảng vẫn ở `page=1` nên hàng của khách
+        // không có trong dữ liệu đang hiển thị -> effect cuộn/highlight bên
+        // dưới bỏ qua (`customers.some(...)` = false) và không có gì chuyển
+        // bảng sang đúng trang. Hỏi BE khách đang ở trang nào (cùng bộ lọc +
+        // sắp xếp + phân quyền với bảng) rồi nhảy tới trang đó. Nếu khách bị
+        // bộ lọc hiện tại loại mất (vd đang lọc trạng thái khác) -> xoá bộ
+        // lọc, định vị lại trên toàn danh sách.
+        const baseParams = {
+          limit: pageSize,
+          sortField,
+          sortOrder,
+        };
+        const currentFilters = {
+          search: debouncedSearch || undefined,
+          source,
+          status,
+          salesUserId,
+          marketingUserId,
+          creatorId,
+          dateFrom: dateFrom?.format('YYYY-MM-DD'),
+          dateTo: dateTo?.format('YYYY-MM-DD'),
+          joinedGroups,
+        };
+        (async () => {
+          try {
+            let located = await customersApi.locateInList(parsedId, { ...baseParams, ...currentFilters });
+            if (!located.found) {
+              const hasFilter = Object.values(currentFilters).some((v) => v !== undefined);
+              if (hasFilter) {
+                setSearchText('');
+                setSource(undefined);
+                setStatus(undefined);
+                setSalesUserId(undefined);
+                setMarketingUserId(undefined);
+                setCreatorId(undefined);
+                setDateFrom(null);
+                setDateTo(null);
+                setJoinedGroups(undefined);
+                located = await customersApi.locateInList(parsedId, baseParams);
+              }
+            }
+            if (located.found) setPage(located.page);
+          } catch {
+            // Lỗi định vị không chặn Drawer - người dùng vẫn xem được chi tiết,
+            // chỉ là bảng không tự nhảy tới trang chứa khách.
+          }
+        })();
       }
       // Xoá param khỏi URL sau khi đã dùng xong - tránh việc bấm "Làm mới"
       // trang hoặc back/forward lại tự mở nhầm đúng khách hàng đó lần nữa.

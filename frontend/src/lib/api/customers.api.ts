@@ -22,6 +22,16 @@ export const customersApi = {
     return response.data;
   },
 
+  // Deep-link `/customers?id=X`: BE trả khách X đang nằm ở TRANG nào của bảng
+  // với đúng bộ lọc + sắp xếp hiện tại (xem CustomersService.locateInList()).
+  locateInList: async (
+    id: number,
+    params?: Record<string, unknown>,
+  ): Promise<{ found: boolean; position: number | null; page: number; limit: number }> => {
+    const response = await axiosInstance.get(`/customers/${id}/locate`, { params });
+    return response.data;
+  },
+
   // Danh sách "Người nhập Data" cho dropdown filter - CHỈ user đã từng tạo
   // >=1 khách hàng (tách riêng khỏi Marketing vì người nhập data có thể ở
   // phòng ban khác) - xem CustomersController.getCreators().

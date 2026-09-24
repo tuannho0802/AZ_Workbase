@@ -3831,3 +3831,24 @@ trước) theo đúng Custom Instructions của Project.
 > Với việc này, cả 2 việc treo từ log trước (chèn JSX filter invalid-data + fix bug URL kẹt) đã xong.
 
 ---
+
+---
+## [2026-09-24 09:30] | Fix deep-link `/customers?id=X` chỉ mở Drawer, bảng không nhảy tới trang chứa khách (trang 2 trở đi) | [Status: Success — verify bằng build/test thật]
+
+**Actor:** Agent
+
+**Files Changed:**
+- `backend/src/modules/customers/customers.service.ts` — thêm `locateInList()` (chỉ SELECT id, cùng filter + phân quyền + sort với `findAll`, trả `{found, position, page, limit}`); tách `applyCustomerListSort()` dùng chung cho `findAll` và `locateInList` để 2 nơi không lệch thứ tự.
+- `backend/src/modules/customers/customers.controller.ts` — thêm `GET /customers/:id/locate` (`customers.view`).
+- `backend/src/modules/customers/customers.service.spec.ts` — 4 test mới cho `locateInList`.
+- `frontend/src/lib/api/customers.api.ts` — thêm `locateInList()`.
+- `frontend/src/app/(dashboard)/customers/page.tsx` — effect đọc `?id=` gọi `locateInList` rồi `setPage(page)`; nếu khách bị filter hiện tại loại mất thì xoá filter và định vị lại.
+
+**Root Cause:**
+> Effect deep-link chỉ `setIsDrawerOpen(true)` + set focus, còn `page` luôn = 1. Effect cuộn/highlight có guard `customers.some(c => c.id === focusedCustomerId)` nên khách nằm ngoài trang 1 bị bỏ qua — không có gì chuyển bảng sang đúng trang.
+
+**Verify:** BE `tsc` + `nest build` sạch, `jest src/modules/customers` 120/120 PASS. FE `vitest run` 87/87 PASS; `tsc --noEmit` chỉ còn 5 lỗi pre-existing (`logo.png`×4, `CountBadge`), không thuộc file vừa sửa.
+
+**Notes:** Không push được GitHub từ sandbox — chủ dự án tự apply patch. Chưa test bằng mắt trên UI thật.
+
+---

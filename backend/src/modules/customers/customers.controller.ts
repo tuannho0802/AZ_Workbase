@@ -329,6 +329,20 @@ export class CustomersController {
     );
   }
 
+  @Get(':id/locate')
+  @RequirePermission('customers.view')
+  @UseInterceptors(new CacheControlInterceptor(0, true))
+  @ApiOperation({ summary: 'Xác định trang chứa khách hàng trong danh sách (deep-link /customers?id=X)' })
+  @ApiResponse({ status: 200, description: '{ found, position, page, limit } theo đúng bộ lọc + sắp xếp + phân quyền hiện tại' })
+  locateInList(
+    @GetUser() user: any,
+    @Param('id') id: string,
+    @Query() filters: CustomerFiltersDto,
+    @GetPermissionScope() scope: string | null | undefined,
+  ) {
+    return this.customersService.locateInList(+id, filters, user.id, user.role, scope);
+  }
+
   @Get(':id')
   @RequirePermission('customers.view')
   @ApiOperation({ summary: 'Lấy thông tin chi tiết khách hàng' })

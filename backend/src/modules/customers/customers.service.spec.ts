@@ -1637,4 +1637,51 @@ describe('CustomersService', () => {
       expect(phoneQb.andWhere).toHaveBeenCalledWith('customer.id != :excludeId', { excludeId: 42 });
     });
   });
+  describe('locateInList - Định vị trang chứa khách (deep-link /customers?id=X)', () => {
+    function makeQb(ids: number[]) {
+      const qb: any = {
+        select: jest.fn().mockReturnThis(),
+        addSelect: jest.fn().mockReturnThis(),
+        where: jest.fn().mockReturnThis(),
+        andWhere: jest.fn().mockReturnThis(),
+        orderBy: jest.fn().mockReturnThis(),
+        addOrderBy: jest.fn().mockReturnThis(),
+        setParameters: jest.fn().mockReturnThis(),
+        getRawMany: jest.fn().mockResolvedValue(ids.map((id) => ({ id }))),
+      };
+      return qb;
+    }
+
+    it('khách ở vị trí 25 (limit 20) -> nằm ở TRANG 2 (đúng bug: trước đây bảng luôn kẹt trang 1)', async () => {
+      const ids = Array.from({ length: 60 }, (_, i) => 1000 - i);
+      const qb = makeQb(ids);
+      mockCustomerRepo.createQueryBuilder.mockReturnValue(qb);
+
+      const res = await service.locateInList(ids[24], { limit: 20 } as any, 1, Role.ADMIN);
+
+      expect(res).toEqual({ found: true, position: 25, page: 2, limit: 20 });
+    });
+
+    it('khách ở vị trí cuối trang 1 (20) và đầu trang 2 (21) -> ranh giới trang đúng', async () => {
+      const ids = Array.from({ length: 60 }, (_, i) => 500 - i);
+      mockCustomerRepo.createQueryBuilder.mockReturnValue(makeQb(ids));
+      expect((await service.locateInList(ids[19], { limit: 20 } as any, 1, Role.ADMIN)).page).toBe(1);
+      mockCustomerRepo.createQueryBuilder.mockReturnValue(makeQb(ids));
+      expect((await service.locateInList(ids[20], { limit: 20 } as any, 1, Role.ADMIN)).page).toBe(2);
+    });
+
+    it('khách không thuộc tập kết quả (bị lọc/không có quyền/đã xoá mềm) -> found=false', async () => {
+      mockCustomerRepo.createQueryBuilder.mockReturnValue(makeQb([3, 2, 1]));
+      const res = await service.locateInList(999, { limit: 20 } as any, 1, Role.ADMIN);
+      expect(res).toEqual({ found: false, position: null, page: 1, limit: 20 });
+    });
+
+    it('luôn tie-break theo customer.id DESC (cùng thứ tự với findAll)', async () => {
+      const qb = makeQb([1]);
+      mockCustomerRepo.createQueryBuilder.mockReturnValue(qb);
+      await service.locateInList(1, { limit: 20, sortField: 'inputDate', sortOrder: 'DESC' } as any, 1, Role.ADMIN);
+      expect(qb.orderBy).toHaveBeenCalledWith('customer.inputDate', 'DESC');
+      expect(qb.addOrderBy).toHaveBeenCalledWith('customer.id', 'DESC');
+    });
+  });
 });
