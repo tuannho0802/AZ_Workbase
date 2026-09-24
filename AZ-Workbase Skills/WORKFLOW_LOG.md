@@ -3892,3 +3892,26 @@ trước) theo đúng Custom Instructions của Project.
 **Verify:** Chạy `getInvalidDataReport` thật trên MariaDB 10.11 (schema sync từ entity, 3 cụm + 1 khách đơn): bản cũ chọn G1 -> 0 cụm; bản mới -> hiện đủ cụm chứa G1. `jest src/modules/customers` 130/130 PASS, BE `tsc` sạch; FE `tsc` chỉ còn lỗi cũ (logo.png/CountBadge).
 
 ---
+## [2026-09-24 13:00] | Thêm cột + filter "Ngày nhập thực tế" (createdAt) cho trang invalid-data, đổi sort mặc định, tổng quát hoá fix "khớp cụm" sang mọi filter | [Status: Success — verify bằng build/test thật]
+
+**Actor:** Agent
+
+**Files Changed:**
+- `backend/src/modules/customers/customers.controller.ts` — endpoint `GET /customers/reports/invalid-data` nhận thêm `dateFrom`/`dateTo` (lọc `inputDate`) và `createdAtFrom`/`createdAtTo` (lọc `createdAt`), cùng tên tham số với `getUnassigned()`/`getAssigned()` ở `/chia-data`.
+- `backend/src/modules/customers/customers.service.ts`:
+  - `getInvalidDataReport()` (nhánh thường): áp 2 khoảng ngày mới; đổi sort mặc định `inputDate DESC` → `createdAt DESC`.
+  - `getDuplicateContactReport()` (nhánh Trùng SĐT/Email — mặc định của trang): **tổng quát hoá** cơ chế "khớp cụm" (trước chỉ áp cho filter Nhóm) sang **TẤT CẢ** filter hẹp (Search/Trạng thái/Sales/Marketing/Người tạo/2 khoảng ngày mới) — đổi `applyExtraFilters` (áp trực tiếp lên từng dòng ở cả 4 truy vấn con) thành `applyNarrowFilters` + bước lọc phụ `matchQb`: xác định `dupKeys` từ TOÀN BỘ khách (không áp filter), sau đó chỉ giữ lại `dupKey` nào có ÍT NHẤT 1 khách khớp mọi filter đang bật, rồi hiện ĐỦ cả cụm. Thêm cột ảo `group_max_created_at` (MAX(createdAt) theo cụm) làm tiêu chí sort chính (mới nhất lên đầu, các dòng cùng cụm vẫn đứng liền nhau), `dup_key` tie-break, `createdAt DESC` sort trong nội bộ cụm.
+- `backend/src/modules/customers/customers.service.spec.ts` — cập nhật/thêm test cho 2 khoảng ngày mới và cơ chế `matchQb`.
+- `frontend/src/lib/api/customers.api.ts` — `getInvalidDataReport()` nhận thêm `dateFrom`/`dateTo`/`createdAtFrom`/`createdAtTo`.
+- `frontend/src/app/(dashboard)/customers/reports/invalid-data/page.tsx` — thêm cột "Ngày nhập thực tế" (`createdAt`, format `DD/MM/YYYY HH:mm`, đặt cạnh "Ngày nhập data"); thêm 2 `DatePicker.RangePicker` độc lập ("Ngày nhập" / "Ngày nhập thực tế", đúng pattern `/chia-data`) kèm Tooltip giải thích khác biệt; cập nhật `fetchData`/`handleResetFilters`/`hasActiveFilters`; tăng `scroll.x` từ `900/1100` → `1100/1300`.
+
+**Root Cause (bug filter đi kèm — yêu cầu người dùng "Fix: filter đang bắt buộc toàn cụm phải trùng tên User"):**
+> `applyExtraFilters` cũ áp Search/Trạng thái/Sales/Marketing/Người tạo TRỰC TIẾP lên từng dòng ở CẢ 4 truy vấn con (kể cả bước đếm `COUNT(*) > 1` xác định thế nào là "trùng"). Cụm trùng SĐT có 2 khách (Sales A và Sales B), lọc `salesUserId = A` → khách của Sales B bị loại NGAY TỪ bước đếm → cụm chỉ còn 1 dòng → không còn được coi là "trùng" → biến mất khỏi báo cáo dù đúng ra vẫn là 1 cặp trùng cần cảnh báo. Đây là lỗi tương tự đã từng gặp và fix riêng cho filter Nhóm (`groupCond`/`HAVING SUM`) ở phiên trước, nhưng chưa áp dụng cho Sales/Marketing/Người tạo/khoảng ngày.
+
+**Solution:** Cụm trùng nào có ÍT NHẤT 1 khách thoả TẤT CẢ filter đang bật thì cụm đó vào kết quả và hiện ĐỦ MỌI khách trong cụm. Tách `applyNarrowFilters` (chỉ dùng ở bước lọc phụ `matchQb`, tái sử dụng `applyCustomerSearch()` nên không viết lại logic FULLTEXT) ra khỏi bước tính `dupKeys` (chỉ áp `scope`/quyền xem, không áp filter nào khác) — áp dụng thống nhất cho MỌI filter loại này (Search/Trạng thái/Sales/Marketing/Người tạo/2 khoảng ngày/Nhóm), không riêng gì Nhóm như bản trước.
+
+**Verify:** BE `tsc --noEmit` sạch, `nest build` sạch, `jest src/modules/customers` 131/131 PASS. FE `next build` (Turbopack) thành công, `vitest run` 90/90 PASS; `tsc --noEmit` chỉ còn 5 lỗi pre-existing (`logo.png`×4, `CountBadge` styled-jsx) không thuộc phạm vi thay đổi.
+
+**Notes:** Verify được thực hiện SAU khi `git clone` lại bản mới nhất từ GitHub (commit `4b3ebf6`) và đọc trực tiếp code thật — không dựa vào transcript/báo cáo phiên trước. Không push được GitHub từ sandbox (không có credential) — chủ dự án tự áp dụng entry log này (chỉ APPEND, không sửa entry cũ).
+
+---
