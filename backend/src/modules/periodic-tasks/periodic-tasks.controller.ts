@@ -78,7 +78,12 @@ export class PeriodicTasksController {
     );
     // Đính `secondaryAssignees` ({id,name}[]) - 1 query gom nhóm cho cả trang.
     const withSecondary = await this.periodicTaskSecondaryAssigneesService.attachSecondaryAssigneesToList(data);
-    return { ...result, data: withSecondary };
+    // Đính `customerCount` (số Khách hàng liên quan, đã lọc theo phạm vi
+    // `customers.view` của người xem) - 1 query gom nhóm cho cả trang, dùng
+    // để FE quyết định hiện nút "Khách hàng liên quan (N)" mà không cần gọi
+    // `GET /:id` cho từng Task (tránh N+1) - xem JSDoc `attachCustomerCountToList()`.
+    const withCustomerCount = await this.periodicTaskCustomersService.attachCustomerCountToList(withSecondary, user);
+    return { ...result, data: withCustomerCount };
   }
 
   // ⚠️ Route tĩnh `links` PHẢI khai TRƯỚC route `:id` ngay bên dưới - mirror

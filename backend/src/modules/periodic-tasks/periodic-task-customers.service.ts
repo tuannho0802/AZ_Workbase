@@ -290,4 +290,55 @@ export class PeriodicTaskCustomersService {
     const linkedCustomers = await this.queryLinkedCustomers(taskId, user, scope);
     return { ...task, linkedCustomers };
   }
+
+  /**
+   * attachCustomerCountToList - đính `customerCount` (số Khách hàng đang gắn,
+   * ĐÃ lọc theo đúng phạm vi `customers.view` của người xem) vào TỪNG Task
+   * của danh sách (`GET /periodic-tasks`) - mirror
+   * `PeriodicTaskSecondaryAssigneesService.attachSecondaryAssigneesToList()`
+   * về nguyên tắc "1 query gom nhóm cho cả trang, KHÔNG N+1", nhưng khác 2 ý:
+   *  1. Chỉ đính field KHI người xem CÓ quyền `customers.view` (mirror
+   *     `attachLinkedCustomers()` ở trên) - không có quyền -> XOÁ HẲN field
+   *     `customerCount` khỏi object trả về, KHÔNG phải số `0`, để FE phân
+   *     biệt được "không có quyền xem" (ẩn hẳn nút) với "0 Khách hàng" (có
+   *     quyền, chỉ là Task này chưa gắn ai).
+   *  2. Đếm CÓ áp `CustomerAccessHelper.applyViewFilter()` (khác
+   *     `secondaryAssignees` - thông tin phân công nội bộ không cần lọc theo
+   *     `customers.view`) - 2 người khác phạm vi xem Khách hàng có thể thấy
+   *     SỐ khác nhau cho CÙNG 1 Task, đúng nguyên tắc `queryLinkedCustomers()`.
+   * CHỈ trả về SỐ ĐẾM (không kéo object Customer đầy đủ) - dùng để FE quyết
+   * định có hiện nút "Khách hàng liên quan (N)" hay không ở bảng danh sách;
+   * bấm nút mới gọi `GET /:id` để lấy `linkedCustomers` đầy đủ (mirror cách
+   * `TaskLinksModal`/`TaskChecklistModal` chỉ tải chi tiết khi modal mở).
+   */
+  async attachCustomerCountToList<T extends { id: number }>(
+    tasks: T[],
+    user: RequestingUser,
+  ): Promise<Array<T & { customerCount?: number }>> {
+    if (tasks.length === 0) return [];
+
+    const { hasAccess, scope } = await this.getCustomersViewAccess(user);
+    if (!hasAccess) {
+      return tasks as Array<T & { customerCount?: number }>;
+    }
+
+    const taskIds = tasks.map((t) => t.id);
+    const qb = this.customerRepo
+      .createQueryBuilder('customer')
+      .innerJoin('periodic_task_customers', 'ptc', 'ptc.customer_id = customer.id')
+      .select('ptc.task_id', 'taskId')
+      .addSelect('COUNT(DISTINCT customer.id)', 'count')
+      .where('ptc.task_id IN (:...taskIds)', { taskIds })
+      .andWhere('customer.deletedAt IS NULL')
+      .groupBy('ptc.task_id');
+    CustomerAccessHelper.applyViewFilter(qb, user.id, user.role, scope);
+
+    const rows = await qb.getRawMany<{ taskId: string; count: string }>();
+    const byTask = new Map<number, number>();
+    for (const row of rows) {
+      byTask.set(Number(row.taskId), Number(row.count));
+    }
+
+    return tasks.map((task) => ({ ...task, customerCount: byTask.get(task.id) ?? 0 }));
+  }
 }

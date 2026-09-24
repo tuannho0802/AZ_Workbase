@@ -100,6 +100,18 @@ export interface PeriodicTask {
   /** Có mặt trên CẢ `GET /:id` (đủ User) lẫn `GET /` (danh sách - chỉ `{id,name}`, do BE đính bằng 1 query gom nhóm). */
   secondaryAssignees?: RefUser[];
   /**
+   * Số Khách hàng liên quan (đã lọc theo phạm vi `customers.view` của người
+   * xem) - CHỈ có mặt trên response của `GET /` (danh sách), do BE đính bằng
+   * 1 query gom nhóm cho cả trang (`attachCustomerCountToList()`, mirror
+   * cách đính `secondaryAssignees` ở trên). `GET /:id` KHÔNG có field này
+   * (đã có sẵn `linkedCustomers` đầy đủ, không cần đếm riêng).
+   * - `undefined` (key không tồn tại) → người xem KHÔNG có quyền
+   *   `customers.view`, mirror `linkedCustomers` - ẩn hẳn nút "Khách hàng
+   *   liên quan" thay vì hiện "(0)" gây hiểu nhầm.
+   * - `0` → CÓ quyền, chỉ là Task này chưa gắn Khách hàng nào.
+   */
+  customerCount?: number;
+  /**
    * Phase 6 (PLAN mục 6): checklist con kiểu Trello - CHỈ có mặt trên response
    * của `GET /:id` (mirror `secondaryAssignees`, BE chỉ gọi
    * `attachChecklistItems()` ở `findOne()`), KHÔNG có trên `GET /` (danh
