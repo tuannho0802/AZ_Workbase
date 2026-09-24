@@ -17,6 +17,7 @@ import { PeriodicTaskCustomersService } from './periodic-task-customers.service'
 import { PeriodicTaskSecondaryAssigneesService } from './periodic-task-secondary-assignees.service';
 import { PeriodicTaskChecklistItemsService } from './periodic-task-checklist-items.service';
 import { PeriodicTaskAuditService } from './periodic-task-audit.service';
+import { PeriodicTaskTrashService } from './periodic-task-trash.service';
 import { PeriodicTasksController } from './periodic-tasks.controller';
 
 // PermissionsService KHÔNG cần import ở `imports` - PermissionsModule là
@@ -46,6 +47,7 @@ import { PeriodicTasksController } from './periodic-tasks.controller';
     PeriodicTaskSecondaryAssigneesService,
     PeriodicTaskChecklistItemsService,
     PeriodicTaskAuditService,
+    PeriodicTaskTrashService,
   ],
   exports: [
     PeriodicTasksService,

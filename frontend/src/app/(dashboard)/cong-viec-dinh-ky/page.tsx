@@ -67,6 +67,7 @@ import { TaskLinksModal } from '@/components/periodic-tasks/TaskLinksModal';
 import { TaskChecklistModal } from '@/components/periodic-tasks/TaskChecklistModal';
 import { TaskAuditLogsModal } from '@/components/periodic-tasks/TaskAuditLogsModal';
 import { TaskActionsBar } from '@/components/periodic-tasks/TaskActionsBar';
+import { TaskTrashTab } from '@/components/periodic-tasks/TaskTrashTab';
 import { PeriodicTasksAgendaView } from '@/components/periodic-tasks/PeriodicTasksAgendaView';
 import { PeriodicTasksKanbanView } from '@/components/periodic-tasks/PeriodicTasksKanbanView';
 import { PeriodicTasksCalendarView } from '@/components/periodic-tasks/PeriodicTasksCalendarView';
@@ -227,6 +228,8 @@ function PeriodicTasksPageContent() {
         return !!user && (task.createdById === user.id || task.primaryAssigneeId === user.id);
     };
     const canManageStatuses = can('periodic_task_statuses.view');
+    // Thùng rác (xoá vĩnh viễn Task đã xoá mềm) - 1 permission nhị phân, mặc định chỉ Admin.
+    const canTrash = can('periodic_tasks.trash_manage');
     // Phase 5 (PLAN mục 2.9) - 2 permission tách bạch, xem JSDoc đầu file.
     const canApprove = can('periodic_tasks.approve');
     const canEditLocked = can('periodic_tasks.edit_locked');
@@ -312,7 +315,7 @@ function PeriodicTasksPageContent() {
     // vì tái dùng `filters` (vốn có `page`/`limit` nhỏ cho Table). Chỉ BẬT
     // đúng 1 trong 2 query tại 1 thời điểm (`enabled`) - tránh gọi cả 2 API
     // song song khi người dùng chỉ đang xem 1 view.
-    const [view, setView] = useState<'table' | 'agenda' | 'kanban' | 'calendar'>('agenda');
+    const [view, setView] = useState<'table' | 'agenda' | 'kanban' | 'calendar' | 'trash'>('agenda');
 
     const { data, isLoading, isFetching } = usePeriodicTasks(filters, view === 'table');
     const tasks = data?.data ?? [];
@@ -342,7 +345,7 @@ function PeriodicTasksPageContent() {
     );
     const { data: viewData, isLoading: viewLoading, isFetching: viewFetching } = usePeriodicTasks(
         nonTableFilters,
-        view !== 'table',
+        view !== 'table' && view !== 'trash',
     );
     const viewTasks = viewData?.data ?? [];
 
@@ -1246,6 +1249,7 @@ function PeriodicTasksPageContent() {
                     { label: 'Xem theo Ngày', value: 'agenda', icon: <UnorderedListOutlined /> },
                     { label: 'Kanban', value: 'kanban', icon: <AppstoreOutlined /> },
                     { label: 'Lịch tháng', value: 'calendar', icon: <CalendarOutlined /> },
+                    ...(canTrash ? [{ label: 'Thùng rác', value: 'trash', icon: <DeleteOutlined /> }] : []),
                 ]}
             />
 
@@ -1324,6 +1328,8 @@ function PeriodicTasksPageContent() {
                     isUnlocking={(id) => unlockMutation.isPending && unlockMutation.variables === id}
                 />
             )}
+
+            {view === 'trash' && canTrash && <TaskTrashTab />}
 
             {view === 'calendar' && (
                 <PeriodicTasksCalendarView

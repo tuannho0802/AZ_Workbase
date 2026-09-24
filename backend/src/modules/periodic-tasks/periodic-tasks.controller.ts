@@ -8,6 +8,8 @@ import { PeriodicTaskChecklistItemsService } from './periodic-task-checklist-ite
 import { CreatePeriodicTaskDto } from './dto/create-periodic-task.dto';
 import { UpdatePeriodicTaskDto } from './dto/update-periodic-task.dto';
 import { PeriodicTaskFiltersDto } from './dto/periodic-task-filters.dto';
+import { PeriodicTaskTrashFiltersDto, HardDeletePeriodicTasksDto } from './dto/periodic-task-trash.dto';
+import { PeriodicTaskTrashService } from './periodic-task-trash.service';
 import { CreatePeriodicTaskLinkDto } from './dto/create-periodic-task-link.dto';
 import { LinkPeriodicTaskCustomersDto } from './dto/link-periodic-task-customers.dto';
 import { AddPeriodicTaskSecondaryAssigneeDto } from './dto/add-periodic-task-secondary-assignee.dto';
@@ -45,6 +47,7 @@ export class PeriodicTasksController {
     private readonly periodicTaskSecondaryAssigneesService: PeriodicTaskSecondaryAssigneesService,
     private readonly periodicTaskChecklistItemsService: PeriodicTaskChecklistItemsService,
     private readonly periodicTaskAuditService: PeriodicTaskAuditService,
+    private readonly periodicTaskTrashService: PeriodicTaskTrashService,
   ) { }
 
   @Post()
@@ -145,6 +148,32 @@ export class PeriodicTasksController {
   private assertCanManageAuditLogs(user: any, scope: string | null | undefined): void {
     if (user?.role === Role.ADMIN || scope === 'all') return;
     throw new ForbiddenException('Chỉ quyền xoá phạm vi "Toàn bộ" mới được xoá/dọn dẹp lịch sử Công việc');
+  }
+
+  // ── Thùng rác Công việc (xoá vĩnh viễn Task đã xoá mềm) ──
+  // 1 permission duy nhất `periodic_tasks.trash_manage` (nhị phân, mặc định
+  // chỉ Admin). ⚠️ PHẢI khai báo TRƯỚC `@Get(':id')`/`@Delete(':id')` bên dưới
+  // - nếu không "trash" bị ParseIntPipe hiểu là id và trả 400.
+
+  @Get('trash')
+  @RequirePermission('periodic_tasks.trash_manage')
+  @ApiOperation({ summary: 'Thùng rác: danh sách Công việc đã xoá mềm' })
+  getTrash(@Query() dto: PeriodicTaskTrashFiltersDto) {
+    return this.periodicTaskTrashService.getTrash(dto);
+  }
+
+  @Delete('trash/bulk')
+  @RequirePermission('periodic_tasks.trash_manage')
+  @ApiOperation({ summary: 'Thùng rác: xoá VĨNH VIỄN các Công việc đã chọn (KHÔNG thể khôi phục)' })
+  hardDeleteTrash(@Body() dto: HardDeletePeriodicTasksDto, @GetUser('id') adminId: number) {
+    return this.periodicTaskTrashService.hardDelete(dto.ids, adminId);
+  }
+
+  @Delete('trash/empty')
+  @RequirePermission('periodic_tasks.trash_manage')
+  @ApiOperation({ summary: 'Thùng rác: dọn sạch - xoá VĨNH VIỄN toàn bộ Công việc đã xoá mềm' })
+  emptyTrash(@GetUser('id') adminId: number) {
+    return this.periodicTaskTrashService.emptyTrash(adminId);
   }
 
   @Delete('audit-logs/bulk')

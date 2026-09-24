@@ -4008,3 +4008,19 @@ trước) theo đúng Custom Instructions của Project.
 > Verify (HEAD `2c5981a`): BE `tsc --noEmit` sạch, jest periodic-tasks 125/125; FE `tsc --noEmit` sạch, vitest 106/106. Cần chạy migration `1784200000000` (chỉ đổi mô tả). Cấu hình role_permissions của Employee giữ nguyên như đã tick trên UI.
 
 ---
+
+## [2026-09-24 18:00] | Thùng rác Công việc định kỳ: Tab xoá VĨNH VIỄN Task đã xoá mềm + permission `periodic_tasks.trash_manage` | [Status: Success — verify bằng build/test thật]
+
+**Actor:** Agent
+
+**Files Changed:**
+- `backend/src/database/migrations/1784300000000-SeedPeriodicTasksTrashManagePermission.ts` — **MỚI**: permission nhị phân `periodic_tasks.trash_manage`, seed CHỈ role `admin` (scope NULL), idempotent, có `down()`.
+- `backend/src/modules/periodic-tasks/periodic-task-trash.service.ts` (+ `.spec.ts`) — **MỚI**: `getTrash()` (phân trang + tìm tiêu đề, người xoá lấy từ log `deleted`), `hardDelete(ids)` (chỉ xoá Task ĐÃ xoá mềm, bỏ qua Task còn dùng), `emptyTrash()`; ghi `audit_logs` chung (`HARD_DELETE_PERIODIC_TASKS`/`EMPTY_PERIODIC_TASK_TRASH`).
+- `backend/src/modules/periodic-tasks/dto/periodic-task-trash.dto.ts` — **MỚI**; `periodic-tasks.controller.ts` — thêm `GET trash`, `DELETE trash/bulk`, `DELETE trash/empty` (khai báo TRƯỚC `:id`); `periodic-tasks.module.ts` — provider mới.
+- FE: `lib/api/periodic-task-trash.api.ts` (**MỚI**), `components/periodic-tasks/TaskTrashTab.tsx` (**MỚI**), `cong-viec-dinh-ky/page.tsx` (thêm view "Thùng rác" trong Segmented, chỉ hiện khi `can('periodic_tasks.trash_manage')`, tắt query danh sách khi ở view này), `lib/api/audit-meta.ts` (nhãn 2 action + entity `periodic_task`).
+- `PERMISSIONS.md` — thêm dòng `trash_manage`, cập nhật dòng `delete`.
+
+**Notes:**
+> Xoá cứng cascade (FK `ON DELETE CASCADE`): checklist, liên kết cha-con, gắn Khách hàng, Phụ trách phụ, `periodic_task_audit_logs` của Task đó — KHÔNG khôi phục được. "Dọn sạch" bắt gõ cụm xác nhận. Chưa làm "Khôi phục" (ngoài yêu cầu). Verify (HEAD `0875108`): BE `tsc` sạch, jest periodic-tasks 131/131; SQL DELETE/list đã sinh thử từ TypeORM (`DELETE FROM periodic_tasks WHERE id IN (...) AND deleted_at IS NOT NULL`); FE `tsc` sạch, vitest 106/106 (gồm test đối chiếu action BE↔audit-meta), ESLint sạch file mới. Cần chạy migration `1784300000000`.
+
+---

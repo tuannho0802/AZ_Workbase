@@ -137,6 +137,8 @@ export const ACTION_META: Record<string, ActionMeta> = {
   CREATE_PERIODIC_TASK_STATUS: m('Tạo trạng thái công việc định kỳ', 'green', 'catalog'),
   UPDATE_PERIODIC_TASK_STATUS: m('Sửa trạng thái công việc định kỳ', 'blue', 'catalog'),
   DELETE_PERIODIC_TASK_STATUS: m('Xóa trạng thái công việc định kỳ', 'red', 'catalog'),
+  HARD_DELETE_PERIODIC_TASKS: m('Xóa vĩnh viễn công việc định kỳ', 'volcano', 'catalog'),
+  EMPTY_PERIODIC_TASK_TRASH: m('Dọn sạch thùng rác công việc định kỳ', 'volcano', 'catalog'),
 
   // ── Nhóm liên kết ──────────────────────────────────────────────────────
   CREATE_LINK_CATEGORY: m('Tạo category nhóm liên kết', 'green', 'link_group'),
@@ -244,6 +246,7 @@ export const ENTITY_TYPE_LABELS: Record<string, string> = {
   link_group: 'Nhóm liên kết',
   storage_media: 'File lưu trữ',
   attendance_log: 'Log chấm công',
+  periodic_task: 'Công việc định kỳ',
   periodic_task_status: 'Trạng thái công việc định kỳ',
   periodic_task_audit_log: 'Nhật ký công việc định kỳ',
   setting: 'Cấu hình',
@@ -299,6 +302,8 @@ const FIXED_SUBJECT_BY_ACTION: Record<string, string> = {
   ADMIN_BULK_DELETE_AUDIT_LOGS: 'Nhật ký hệ thống',
   ADMIN_CLEANUP_TASK_AUDIT_LOGS: 'Nhật ký công việc định kỳ',
   ADMIN_BULK_DELETE_TASK_AUDIT_LOGS: 'Nhật ký công việc định kỳ',
+  HARD_DELETE_PERIODIC_TASKS: 'Thùng rác công việc định kỳ',
+  EMPTY_PERIODIC_TASK_TRASH: 'Thùng rác công việc định kỳ',
   REMATCH_ATTENDANCE_LOGS: 'Log chấm công chưa khớp nhân viên',
   SYNC_ATTENDANCE_LOGS: 'Máy chấm công',
   CLEANUP_ATTENDANCE_LOGS: 'Log chấm công cũ',
