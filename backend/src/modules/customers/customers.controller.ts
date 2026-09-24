@@ -91,6 +91,15 @@ export class CustomersController {
     @Query('creatorId') creatorId?: string,
     @Query('joinedGroups') joinedGroups?: 'joined' | 'not_joined',
     @Query('groupId') groupId?: string,
+    // ⚠️ MỚI (yêu cầu người dùng): thêm 2 khoảng ngày lọc RIÊNG - `dateFrom`/
+    // `dateTo` lọc "Ngày nhập" (inputDate, ngày người nhập tự chọn) và
+    // `createdAtFrom`/`createdAtTo` lọc "Ngày nhập thực tế" (createdAt, có
+    // giờ:phút) - ĐÚNG tên param dùng chung với getUnassigned()/getAssigned()
+    // ở /chia-data để nhất quán toàn hệ thống.
+    @Query('dateFrom') dateFrom?: string,
+    @Query('dateTo') dateTo?: string,
+    @Query('createdAtFrom') createdAtFrom?: string,
+    @Query('createdAtTo') createdAtTo?: string,
   ) {
     return this.customersService.getInvalidDataReport(
       user.id,
@@ -106,6 +115,10 @@ export class CustomersController {
       creatorId ? parseInt(creatorId, 10) : undefined,
       joinedGroups,
       groupId ? parseInt(groupId, 10) : undefined,
+      dateFrom,
+      dateTo,
+      createdAtFrom,
+      createdAtTo,
     );
   }
 

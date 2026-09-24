@@ -1458,7 +1458,13 @@ describe('CustomersService', () => {
       expect(idsQb.addSelect).toHaveBeenCalledWith('LOWER(TRIM(customer.email))', 'dup_key');
       const orderByArg = idsQb.orderBy.mock.calls[0][0];
       expect(orderByArg).not.toContain('.');
-      expect(idsQb.orderBy).toHaveBeenCalledWith('dup_key', 'ASC');
+      // ⚠️ SỬA (yêu cầu người dùng: "mặc định sort theo Ngày nhập thực tế,
+      // mới nhất lên trên") - sort chính giờ là `group_max_created_at DESC`
+      // (ngày tạo MỚI NHẤT của cả cụm), `dup_key` chỉ còn là tie-break phụ
+      // (xem `addOrderBy`) - không còn là tiêu chí sort CHÍNH như trước.
+      expect(idsQb.orderBy).toHaveBeenCalledWith('group_max_created_at', 'DESC');
+      expect(idsQb.addOrderBy).toHaveBeenCalledWith('dup_key', 'ASC');
+      expect(idsQb.addOrderBy).toHaveBeenCalledWith('customer.createdAt', 'DESC');
       expect(idsQb.skip).toHaveBeenCalled();
       expect(idsQb.take).toHaveBeenCalledWith(20);
 
@@ -1504,9 +1510,51 @@ describe('CustomersService', () => {
       );
 
       expect(idsQb.addSelect).toHaveBeenCalledWith('customer.phone', 'dup_key');
-      expect(idsQb.orderBy).toHaveBeenCalledWith('dup_key', 'ASC');
+      expect(idsQb.orderBy).toHaveBeenCalledWith('group_max_created_at', 'DESC');
       expect(result.duplicateGroupCount).toBe(1);
       expect(result.data[0].duplicateGroupKey).toBe('0901234567');
+    });
+
+    it('FIX BUG: filter salesUserId chỉ khớp 1/2 khách trong cụm trùng → vẫn hiện ĐỦ cả cụm (không đòi toàn cụm phải khớp)', async () => {
+      const dupKeysQb = makeDupKeysQb([{ dupKey: '0901234567' }]);
+      // matchQb: khách A (salesUserId=5) khớp filter, khách B thì không -
+      // nhưng CHỈ CẦN 1 khách khớp là dupKey '0901234567' vẫn được giữ lại.
+      const matchQb = makeDupKeysQb([{ dupKey: '0901234567' }]);
+      const countQb = makeCountQb(2);
+      const idsQb = makeIdsQb([
+        { id: 1, dup_key: '0901234567' },
+        { id: 2, dup_key: '0901234567' },
+      ]);
+      const peersQb = makePeersQb([
+        { id: 1, name: 'A', dup_key: '0901234567' },
+        { id: 2, name: 'B', dup_key: '0901234567' },
+      ]);
+      const finalQb = makeFinalQb([
+        { id: 1, phone: '0901234567', name: 'A' },
+        { id: 2, phone: '0901234567', name: 'B' },
+      ]);
+      mockCustomerRepo.createQueryBuilder
+        .mockReturnValueOnce(dupKeysQb)
+        .mockReturnValueOnce(matchQb)
+        .mockReturnValueOnce(countQb)
+        .mockReturnValueOnce(idsQb)
+        .mockReturnValueOnce(peersQb)
+        .mockReturnValueOnce(finalQb);
+
+      const result: any = await service.getInvalidDataReport(
+        1, Role.ADMIN, 'duplicate_phone', 1, 20, PermissionScope.ALL,
+        undefined, undefined, 5, // salesUserId = 5
+      );
+
+      // matchQb PHẢI được lọc theo salesUserId (bước xác định "cụm nào có
+      // ít nhất 1 khách khớp"), nhưng countQb/idsQb/peersQb thì KHÔNG được
+      // lọc theo salesUserId nữa (chỉ lọc theo dupKeys) - để hiện ĐỦ cả cụm.
+      expect(matchQb.andWhere).toHaveBeenCalledWith('customer.salesUserId = :salesUserId', { salesUserId: 5 });
+      // Cả 2 khách (kể cả khách KHÔNG thuộc Sales 5) vẫn xuất hiện đủ.
+      expect(result.duplicateGroupCount).toBe(1);
+      expect(result.total).toBe(2);
+      expect(result.data).toHaveLength(2);
+      expect(result.data.map((c: any) => c.id).sort()).toEqual([1, 2]);
     });
 
     it('không có giá trị nào trùng → trả về rỗng, KHÔNG gọi tới các query sau (tránh query thừa)', async () => {

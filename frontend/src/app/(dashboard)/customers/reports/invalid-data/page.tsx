@@ -2,11 +2,11 @@
 
 import React, { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { App, Table, Card, Typography, Select, Space, Button, Alert, Tag, Input, Tooltip, Avatar } from 'antd';
+import { App, Table, Card, Typography, Select, Space, Button, Alert, Tag, Input, Tooltip, Avatar, DatePicker } from 'antd';
 import type { ColumnsType, TablePaginationConfig } from 'antd/es/table';
 import { customersApi } from '@/lib/api/customers.api';
 import { Customer } from '@/lib/types/customer.types';
-import dayjs from 'dayjs';
+import dayjs, { Dayjs } from 'dayjs';
 import { ReloadOutlined, WarningOutlined, ClearOutlined } from '@ant-design/icons';
 import { useMyPermissions } from '@/lib/hooks/useMyPermissions';
 import { useRoleColorMap, useRoleColors } from '@/lib/hooks/useRoleColorMap';
@@ -160,6 +160,14 @@ export default function InvalidDataReportPage() {
   // CỤ THỂ 1 nhóm liên kết. Khi có `groupId`, dropdown "Đã tham gia nhóm" ở
   // cạnh áp dụng cho ĐÚNG nhóm này (Đã join / Chưa join nhóm này).
   const [groupId, setGroupId] = useState<number | undefined>(undefined);
+  // ⚠️ MỚI (yêu cầu người dùng: "thêm filter cho 2 thời gian: Ngày nhập và
+  // Ngày nhập thực tế") - ĐÚNG pattern/tên state đã dùng ở /chia-data
+  // (unassignedDateFrom/To lọc inputDate, unassignedCreatedAtFrom/To lọc
+  // createdAt) - 2 RangePicker độc lập, không đè lên nhau.
+  const [inputDateFrom, setInputDateFrom] = useState<Dayjs | null>(null);
+  const [inputDateTo, setInputDateTo] = useState<Dayjs | null>(null);
+  const [createdAtFrom, setCreatedAtFrom] = useState<Dayjs | null>(null);
+  const [createdAtTo, setCreatedAtTo] = useState<Dayjs | null>(null);
   // Lấy TẤT CẢ nhóm (kể cả nhóm đã bị ẩn) - khách có thể đã join 1 nhóm
   // giờ đã ẩn, vẫn cần lọc được. GET /link-groups mở cho mọi role đã đăng nhập.
   const [linkGroups, setLinkGroups] = useState<LinkGroup[]>([]);
@@ -202,6 +210,13 @@ export default function InvalidDataReportPage() {
     creatorId?: number;
     joinedGroups?: 'joined' | 'not_joined';
     groupId?: number;
+    // ⚠️ MỚI - khoảng ngày lọc "Ngày nhập" (inputDate)/"Ngày nhập thực tế"
+    // (createdAt), truyền dạng string 'YYYY-MM-DD' đã format sẵn (giống các
+    // opts khác ở trên, không truyền thẳng Dayjs vào fetchData).
+    dateFrom?: string;
+    dateTo?: string;
+    createdAtFrom?: string;
+    createdAtTo?: string;
   }) => {
     const type = opts.type ?? invalidType;
     const page = opts.page ?? (pagination.current || 1);
@@ -213,6 +228,10 @@ export default function InvalidDataReportPage() {
     const cr = opts.creatorId !== undefined ? opts.creatorId : creatorId;
     const jg = opts.joinedGroups !== undefined ? opts.joinedGroups : joinedGroups;
     const gid = 'groupId' in opts ? opts.groupId : groupId;
+    const df = opts.dateFrom !== undefined ? opts.dateFrom : (inputDateFrom?.format('YYYY-MM-DD') || undefined);
+    const dt = opts.dateTo !== undefined ? opts.dateTo : (inputDateTo?.format('YYYY-MM-DD') || undefined);
+    const caf = opts.createdAtFrom !== undefined ? opts.createdAtFrom : (createdAtFrom?.format('YYYY-MM-DD') || undefined);
+    const cat = opts.createdAtTo !== undefined ? opts.createdAtTo : (createdAtTo?.format('YYYY-MM-DD') || undefined);
 
     setLoading(true);
     try {
@@ -227,6 +246,10 @@ export default function InvalidDataReportPage() {
         creatorId: cr || undefined,
         joinedGroups: jg || undefined,
         groupId: gid || undefined,
+        dateFrom: df || undefined,
+        dateTo: dt || undefined,
+        createdAtFrom: caf || undefined,
+        createdAtTo: cat || undefined,
       });
       setData(res.data);
       setDuplicateGroupCount(res.duplicateGroupCount);
@@ -291,6 +314,33 @@ export default function InvalidDataReportPage() {
     fetchData({ search: val, page: 1 });
   };
 
+  // ⚠️ MỚI - ĐÚNG pattern các handler khác ở trên: đổi state rồi gọi
+  // fetchData ngay với giá trị MỚI (không đợi state cập nhật xong qua
+  // useEffect, tránh 1 nhịp fetch với filter cũ do closure).
+  const handleInputDateRangeChange = (vals: [Dayjs | null, Dayjs | null] | null) => {
+    const from = vals?.[0] ?? null;
+    const to = vals?.[1] ?? null;
+    setInputDateFrom(from);
+    setInputDateTo(to);
+    fetchData({
+      dateFrom: from?.format('YYYY-MM-DD') || undefined,
+      dateTo: to?.format('YYYY-MM-DD') || undefined,
+      page: 1,
+    });
+  };
+
+  const handleCreatedAtRangeChange = (vals: [Dayjs | null, Dayjs | null] | null) => {
+    const from = vals?.[0] ?? null;
+    const to = vals?.[1] ?? null;
+    setCreatedAtFrom(from);
+    setCreatedAtTo(to);
+    fetchData({
+      createdAtFrom: from?.format('YYYY-MM-DD') || undefined,
+      createdAtTo: to?.format('YYYY-MM-DD') || undefined,
+      page: 1,
+    });
+  };
+
   const handleResetFilters = () => {
     setSearch('');
     setStatus(undefined);
@@ -299,6 +349,10 @@ export default function InvalidDataReportPage() {
     setCreatorId(undefined);
     setJoinedGroups(undefined);
     setGroupId(undefined);
+    setInputDateFrom(null);
+    setInputDateTo(null);
+    setCreatedAtFrom(null);
+    setCreatedAtTo(null);
     fetchData({
       search: '',
       status: undefined,
@@ -307,6 +361,10 @@ export default function InvalidDataReportPage() {
       creatorId: undefined,
       joinedGroups: undefined,
       groupId: undefined,
+      dateFrom: undefined,
+      dateTo: undefined,
+      createdAtFrom: undefined,
+      createdAtTo: undefined,
       page: 1,
     });
   };
@@ -491,7 +549,21 @@ export default function InvalidDataReportPage() {
       title: 'Ngày nhập data',
       dataIndex: 'inputDate',
       key: 'inputDate',
+      width: 120,
       render: (val) => val ? dayjs(val).format('DD/MM/YYYY') : '-',
+    },
+    {
+      // ⚠️ MỚI (yêu cầu người dùng: "thêm 1 cột ngày nhập thực tế, check
+      // page chia-data làm ref") - ĐÚNG pattern cột "Ngày nhập thực tế" ở
+      // `/chia-data` (dataIndex 'createdAt', timestamp THẬT lúc bản ghi
+      // được tạo trong hệ thống, có giờ:phút - khác "Ngày nhập data" =
+      // inputDate chỉ có ngày do người nhập tự chọn). Đây cũng là tiêu chí
+      // BE dùng để SORT MẶC ĐỊNH của cả trang report (mới nhất lên đầu).
+      title: 'Ngày nhập thực tế',
+      dataIndex: 'createdAt',
+      key: 'createdAt',
+      width: 140,
+      render: (val: string) => val ? dayjs(val).format('DD/MM/YYYY HH:mm') : '-',
     },
     {
       title: 'Trạng thái',
@@ -574,7 +646,8 @@ export default function InvalidDataReportPage() {
   const duplicateLabel = invalidType === 'duplicate_email' ? 'Email' : 'Số điện thoại';
   const activeMeta = TYPE_META[invalidType];
   const hasActiveFilters =
-    !!search || !!status || !!salesUserId || !!marketingUserId || !!creatorId || !!joinedGroups || !!groupId;
+    !!search || !!status || !!salesUserId || !!marketingUserId || !!creatorId || !!joinedGroups || !!groupId ||
+    !!inputDateFrom || !!inputDateTo || !!createdAtFrom || !!createdAtTo;
 
   return (
     <div className="space-y-6">
@@ -723,6 +796,36 @@ export default function InvalidDataReportPage() {
             />
           </div>
           <div>
+            <div className="mb-1">
+              <Tooltip title="Lọc theo Ngày nhập (inputDate - ngày người nhập tự chọn)">
+                <Text strong>Ngày nhập</Text>
+              </Tooltip>
+            </div>
+            <DatePicker.RangePicker
+              value={[inputDateFrom, inputDateTo]}
+              onChange={handleInputDateRangeChange}
+              format="DD/MM/YYYY"
+              placeholder={['Từ ngày', 'Đến ngày']}
+              style={{ width: 240 }}
+              allowClear
+            />
+          </div>
+          <div>
+            <div className="mb-1">
+              <Tooltip title="Lọc theo Ngày nhập THỰC TẾ (createdAt - lúc bản ghi được tạo trong hệ thống, có giờ:phút)">
+                <Text strong>Ngày nhập thực tế</Text>
+              </Tooltip>
+            </div>
+            <DatePicker.RangePicker
+              value={[createdAtFrom, createdAtTo]}
+              onChange={handleCreatedAtRangeChange}
+              format="DD/MM/YYYY"
+              placeholder={['Từ ngày', 'Đến ngày']}
+              style={{ width: 240 }}
+              allowClear
+            />
+          </div>
+          <div>
             <div className="mb-1"><Text strong>Tìm kiếm</Text></div>
             <Input.Search
               defaultValue={search}
@@ -785,7 +888,7 @@ export default function InvalidDataReportPage() {
           loading={loading}
           onChange={handleTableChange}
           rowClassName={rowClassName}
-          scroll={{ x: isDuplicateView ? 1100 : 900 }}
+          scroll={{ x: isDuplicateView ? 1300 : 1100 }}
         />
       </Card>
     </div>

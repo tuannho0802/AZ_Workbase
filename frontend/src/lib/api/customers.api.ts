@@ -83,6 +83,14 @@ export const customersApi = {
     // Lọc theo CỤ THỂ 1 nhóm liên kết (link_groups.id) - kết hợp với
     // `joinedGroups`: không truyền/joined = đã join nhóm này, not_joined = chưa join.
     groupId?: number;
+    // ⚠️ MỚI (yêu cầu người dùng): 2 khoảng ngày lọc RIÊNG - ĐÚNG tên param
+    // dùng chung với getUnassigned()/getAssigned() ở /chia-data. `dateFrom`/
+    // `dateTo` lọc "Ngày nhập" (inputDate), `createdAtFrom`/`createdAtTo`
+    // lọc "Ngày nhập thực tế" (createdAt, có giờ:phút).
+    dateFrom?: string;
+    dateTo?: string;
+    createdAtFrom?: string;
+    createdAtTo?: string;
   }): Promise<
     PaginatedResponse<Customer> & {
       checkedAgainst: string;

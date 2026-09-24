@@ -3447,6 +3447,14 @@ export class CustomersService {
     // ⚠️ MỚI: lọc theo CỤ THỂ 1 nhóm liên kết (link_groups.id) - xem
     // `applyJoinedGroupsFilter()` để biết nghĩa khi kết hợp với `joinedGroups`.
     groupId?: number,
+    // ⚠️ MỚI (yêu cầu người dùng): 2 khoảng ngày lọc RIÊNG, ĐÚNG tên/hành vi
+    // đã dùng ở getUnassigned()/getAssigned() (/chia-data) - `dateFrom`/
+    // `dateTo` lọc "Ngày nhập" (inputDate), `createdAtFrom`/`createdAtTo`
+    // lọc "Ngày nhập thực tế" (createdAt, có giờ:phút).
+    dateFrom?: string,
+    dateTo?: string,
+    createdAtFrom?: string,
+    createdAtTo?: string,
   ) {
     const todayStr = todayVnStr();
 
@@ -3475,6 +3483,10 @@ export class CustomersService {
         creatorId,
         joinedGroups,
         groupId,
+        dateFrom,
+        dateTo,
+        createdAtFrom,
+        createdAtTo,
       );
     }
 
@@ -3515,6 +3527,25 @@ export class CustomersService {
     if (creatorId) {
       qb.andWhere('customer.createdById = :creatorId', { creatorId });
     }
+    // ⚠️ MỚI (yêu cầu người dùng): 2 khoảng ngày lọc RIÊNG - ĐÚNG pattern
+    // getUnassigned()/getAssigned() (/chia-data): `dateFrom`/`dateTo` lọc
+    // "Ngày nhập" (inputDate), `createdAtFrom`/`createdAtTo` lọc "Ngày nhập
+    // thực tế" (createdAt, có giờ:phút - cộng thêm 1 ngày cho mốc `To` để
+    // bao trọn hết giờ trong ngày cuối, vì createdAt luôn có giờ:phút khác 0h).
+    if (dateFrom) {
+      qb.andWhere('customer.inputDate >= :dateFrom', { dateFrom });
+    }
+    if (dateTo) {
+      qb.andWhere('customer.inputDate <= :dateTo', { dateTo });
+    }
+    if (createdAtFrom) {
+      qb.andWhere('customer.createdAt >= :createdAtFrom', { createdAtFrom });
+    }
+    if (createdAtTo) {
+      const end = new Date(createdAtTo);
+      end.setDate(end.getDate() + 1);
+      qb.andWhere('customer.createdAt < :createdAtToEnd', { createdAtToEnd: end.toISOString() });
+    }
     // "Đã tham gia nhóm" - EXISTS/NOT EXISTS y hệt `applyCustomerListFilters()`
     // (không JOIN thẳng để tránh nhân dòng do 1 customer join nhiều nhóm).
     this.applyJoinedGroupsFilter(qb, joinedGroups, groupId);
@@ -3523,8 +3554,12 @@ export class CustomersService {
     // thích đầy đủ ở getStatsByStatus() phía trên.
     CustomerAccessHelper.applyViewFilter(qb, userId, userRole, scope);
 
+    // ⚠️ SỬA (yêu cầu người dùng): mặc định sort theo "Ngày nhập thực tế"
+    // (createdAt) MỚI NHẤT trước - trước đây sort theo `inputDate` (ngày
+    // người nhập tự chọn, dễ bị nhập tay sai/không phản ánh đúng thời điểm
+    // bản ghi thực sự được tạo trong hệ thống).
     const [data, total] = await qb
-      .orderBy('customer.inputDate', 'DESC')
+      .orderBy('customer.createdAt', 'DESC')
       .skip((page - 1) * limit)
       .take(limit)
       .getManyAndCount();
@@ -3575,20 +3610,48 @@ export class CustomersService {
     creatorId?: number,
     joinedGroups?: 'joined' | 'not_joined',
     groupId?: number,
+    // ⚠️ MỚI (yêu cầu người dùng): ĐÚNG 4 tham số khoảng ngày như
+    // `getInvalidDataReport()` phía trên - `dateFrom`/`dateTo` lọc "Ngày
+    // nhập" (inputDate), `createdAtFrom`/`createdAtTo` lọc "Ngày nhập thực
+    // tế" (createdAt). Áp dụng theo cơ chế "khớp CỤM" (xem
+    // `applyNarrowFilters`/`matchQb` bên dưới) - chỉ cần ÍT NHẤT 1 khách
+    // trong cụm trùng khớp là hiện ĐỦ cả cụm, không đòi TOÀN BỘ cụm phải khớp.
+    dateFrom?: string,
+    dateTo?: string,
+    createdAtFrom?: string,
+    createdAtTo?: string,
   ) {
     const groupExpr = isEmail ? 'LOWER(TRIM(customer.email))' : 'customer.phone';
     const nonEmptyCondition = isEmail
       ? "customer.email IS NOT NULL AND TRIM(customer.email) != ''"
       : "customer.phone IS NOT NULL AND customer.phone != ''";
 
-    // ⚠️ MỚI (yêu cầu người dùng): áp CÙNG 1 bộ Search/Trạng thái/Người
-    // tạo/Sales/Marketing vào cả 4 truy vấn con bên dưới (tìm dupKeys, đếm
-    // total, lấy id theo trang, lấy peers) - để nghĩa của filter là "chỉ
-    // tìm trùng lặp TRONG PHẠM VI đã lọc" (vd "trùng SĐT của Sales A"),
-    // nhất quán ở mọi bước thay vì chỉ lọc mỗi bước hiển thị cuối (dễ gây
-    // khó hiểu khi 1 khách hiện ra nhưng "khách trùng với nó" lại bị ẩn do
-    // khác filter).
-    const applyExtraFilters = (q: ReturnType<Repository<Customer>['createQueryBuilder']>) => {
+    // ⚠️ FIX BUG THẬT (yêu cầu người dùng 2026-09-24: "đang bắt buộc toàn
+    // cụm phải trùng tên User nó mới hiện, chỉnh lại điều kiện chỉ cần
+    // trong cụm trùng 1 tên User thì Select"): bản trước áp Search/Trạng
+    // thái/Sales/Marketing/Người tạo/2 khoảng ngày (dateFrom-dateTo lọc
+    // inputDate, createdAtFrom-createdAtTo lọc createdAt) TRỰC TIẾP lên
+    // TỪNG DÒNG ở cả 4 truy vấn con (dupKeys/count/ids/peers) - y hệt lỗi
+    // cũ đã từng gặp với filter nhóm (xem comment `groupCond` trước đây):
+    // nếu 1 cụm trùng SĐT có 2 khách (Sales A và Sales B) mà lọc
+    // `salesUserId = A`, khách của Sales B bị loại khỏi CHÍNH bước đếm
+    // COUNT(*) > 1 -> cụm chỉ còn 1 dòng -> không còn được coi là "trùng"
+    // -> biến mất khỏi báo cáo dù ĐÚNG RA vẫn là 1 cặp trùng cần cảnh báo.
+    //
+    // Nghĩa ĐÚNG (áp dụng thống nhất cho MỌI filter loại này, không riêng
+    // gì filter nhóm): cụm trùng nào có ÍT NHẤT 1 khách thoả TẤT CẢ điều
+    // kiện lọc đang bật thì cụm đó vào kết quả và hiện ĐỦ MỌI khách trong
+    // cụm (kể cả khách không khớp điều kiện) - để người rà soát luôn thấy
+    // trọn vẹn cả cặp/nhóm đang trùng, không bị cắt xén.
+    //
+    // Cách làm: TÁCH riêng "tìm khách nào khớp filter" (`applyNarrowFilters`,
+    // dùng lại ĐÚNG `applyCustomerSearch()` nên không phải viết lại logic
+    // search FULLTEXT phức tạp bằng raw SQL) ra khỏi bước xác định
+    // dupKeys - dupKeys giờ tính từ TOÀN BỘ khách (chỉ áp `scope`/quyền xem,
+    // KHÔNG áp filter) rồi mới LỌC LẠI danh sách dupKeys đó bằng 1 query
+    // phụ (`matchQb`) kiểm tra "trong dupKeys này, giá trị nào có ít nhất 1
+    // khách khớp filter" - xem ngay bên dưới.
+    const applyNarrowFilters = (q: ReturnType<Repository<Customer>['createQueryBuilder']>) => {
       if (search) this.applyCustomerSearch(q, search);
       if (status) q.andWhere('customer.status = :status', { status });
       if (salesUserId) q.andWhere('customer.salesUserId = :salesUserId', { salesUserId });
@@ -3596,22 +3659,27 @@ export class CustomersService {
         q.andWhere('customer.marketingUserId = :marketingUserId', { marketingUserId });
       }
       if (creatorId) q.andWhere('customer.createdById = :creatorId', { creatorId });
-      // ⚠️ "Đã tham gia nhóm"/"Nhóm cụ thể" KHÔNG áp ở đây (không lọc từng
-      // khách) - xem `groupCond` bên dưới: filter nhóm ở report trùng lọc
-      // theo CỤM, không theo từng dòng.
+      if (dateFrom) q.andWhere('customer.inputDate >= :dateFrom', { dateFrom });
+      if (dateTo) q.andWhere('customer.inputDate <= :dateTo', { dateTo });
+      if (createdAtFrom) q.andWhere('customer.createdAt >= :createdAtFrom', { createdAtFrom });
+      if (createdAtTo) {
+        const end = new Date(createdAtTo);
+        end.setDate(end.getDate() + 1);
+        q.andWhere('customer.createdAt < :createdAtToEnd', { createdAtToEnd: end.toISOString() });
+      }
     };
-
-    // ⚠️ FIX BUG THẬT (filter nhóm làm vỡ cụm trùng): trước đây filter nhóm
-    // áp lên TỪNG khách ở cả 4 truy vấn con -> chọn nhóm A thì khách cùng
-    // cụm SĐT nhưng thuộc nhóm B (hoặc chưa join) bị loại, cụm chỉ còn 1
-    // dòng nên không còn được coi là "trùng" và biến mất khỏi báo cáo.
-    // Nghĩa đúng: cụm trùng nào có ÍT NHẤT 1 khách thoả điều kiện nhóm thì
-    // cụm đó vào kết quả và hiện ĐỦ mọi khách trong cụm (kể cả khách không
-    // thuộc nhóm đó). Thực hiện bằng HAVING SUM(điều kiện) > 0 ở bước tìm
-    // các giá trị trùng (dupKeys); các bước sau (count/ids/peers) chỉ cần
-    // lọc theo dupKeys nên tự có đủ thành viên.
+    const hasNarrowFilters = !!(
+      search || status || salesUserId || marketingUserId || creatorId ||
+      dateFrom || dateTo || createdAtFrom || createdAtTo
+    );
+    // "Đã tham gia nhóm"/"Nhóm cụ thể" - ĐÚNG cơ chế "khớp CỤM" y hệt trên,
+    // giờ dùng CHUNG 1 bước lọc lại dupKeys với các filter khác (xem
+    // `matchQb` bên dưới) thay vì HAVING SUM riêng như bản trước.
     const groupCond = this.buildJoinedGroupsCondition(joinedGroups, groupId);
 
+    // Bước 1: xác định giá trị (SĐT/Email) nào đang bị TRÙNG THẬT - chỉ áp
+    // `scope` (quyền xem), KHÔNG áp bất kỳ filter nào khác, để KHÔNG làm vỡ
+    // cụm trùng (1 khách bị filter loại vẫn phải được TÍNH vào COUNT(*)).
     const dupKeysQb = this.customersRepository
       .createQueryBuilder('customer')
       .select(groupExpr, 'dupKey')
@@ -3619,17 +3687,45 @@ export class CustomersService {
       .andWhere(nonEmptyCondition);
 
     CustomerAccessHelper.applyViewFilter(dupKeysQb, userId, userRole, scope);
-    applyExtraFilters(dupKeysQb);
-
     dupKeysQb.groupBy(groupExpr).having('COUNT(*) > 1');
-    if (groupCond) {
-      dupKeysQb.andHaving(`SUM(${groupCond.sql}) > 0`, groupCond.params);
-    }
     const dupRows = await dupKeysQb.getRawMany<{ dupKey: string }>();
 
-    const dupKeys = dupRows.map((r) => r.dupKey).filter((k): k is string => !!k);
+    let dupKeys = dupRows.map((r) => r.dupKey).filter((k): k is string => !!k);
 
     const invalidType = isEmail ? 'duplicate_email' : 'duplicate_phone';
+
+    if (dupKeys.length === 0) {
+      return {
+        data: [],
+        total: 0,
+        page,
+        limit,
+        totalPages: 0,
+        checkedAgainst: todayVnStr(),
+        invalidType,
+        duplicateGroupCount: 0,
+      };
+    }
+
+    // Bước 1b: trong các giá trị ĐANG TRÙNG ở bước 1, chỉ giữ lại giá trị
+    // nào có ÍT NHẤT 1 khách (trong phạm vi `scope`) khớp TẤT CẢ filter
+    // đang bật (Search/Trạng thái/Sales/Marketing/Người tạo/2 khoảng ngày/
+    // Đã tham gia nhóm) - bỏ qua bước này hoàn toàn nếu không filter nào
+    // đang bật (tránh 1 query phụ không cần thiết).
+    if (hasNarrowFilters || groupCond) {
+      const matchQb = this.customersRepository
+        .createQueryBuilder('customer')
+        .select(groupExpr, 'dupKey')
+        .where('customer.deletedAt IS NULL')
+        .andWhere(`${groupExpr} IN (:...dupKeys)`, { dupKeys });
+      CustomerAccessHelper.applyViewFilter(matchQb, userId, userRole, scope);
+      applyNarrowFilters(matchQb);
+      if (groupCond) matchQb.andWhere(groupCond.sql, groupCond.params);
+      matchQb.groupBy(groupExpr);
+      const matchRows = await matchQb.getRawMany<{ dupKey: string }>();
+      const matchSet = new Set(matchRows.map((r) => r.dupKey).filter((k): k is string => !!k));
+      dupKeys = dupKeys.filter((k) => matchSet.has(k));
+    }
 
     if (dupKeys.length === 0) {
       return {
@@ -3678,21 +3774,39 @@ export class CustomersService {
       .where('customer.deletedAt IS NULL')
       .andWhere(`${groupExpr} IN (:...dupKeys)`, { dupKeys });
     CustomerAccessHelper.applyViewFilter(countQb, userId, userRole, scope);
-    applyExtraFilters(countQb);
     const total = await countQb.getCount();
+
+    // ⚠️ MỚI (yêu cầu người dùng: "mặc định sort theo Ngày nhập thực tế,
+    // mới nhất lên trên") - trước đây sort `dup_key ASC` (theo thứ tự
+    // alphabet của SĐT/Email) rồi `createdAt ASC` trong từng cụm. Vẫn PHẢI
+    // giữ các dòng cùng cụm trùng đứng LIỀN NHAU (yêu cầu cũ, phục vụ
+    // rowSpan/tô nhóm ở FE) - nên KHÔNG thể order thẳng theo
+    // `customer.createdAt` của từng dòng (sẽ xé lẻ cụm nếu 2 khách trong 1
+    // cụm có ngày tạo khác xa nhau). Giải pháp: tính "ngày tạo MỚI NHẤT của
+    // cả cụm" (`group_max_created_at`, subquery tương quan theo đúng SĐT/
+    // Email đã chuẩn hoá) làm tiêu chí sort CHÍNH - mọi dòng cùng 1 cụm luôn
+    // có cùng giá trị này nên tự động đứng liền nhau, đồng thời cụm có
+    // khách MỚI NHẤT sẽ lên đầu bảng. `dup_key ASC` giữ làm tie-break phòng
+    // trường hợp 2 cụm khác nhau trùng giờ:phút y hệt (hiếm nhưng vẫn phải
+    // đảm bảo không xé cụm). `customer.createdAt DESC` sort thứ tự các dòng
+    // BÊN TRONG cùng 1 cụm (mới nhất lên trước).
+    const groupMaxCreatedAtExpr = isEmail
+      ? `(SELECT MAX(c2.created_at) FROM customers c2 WHERE LOWER(TRIM(c2.email)) = ${groupExpr} AND c2.deleted_at IS NULL)`
+      : `(SELECT MAX(c2.created_at) FROM customers c2 WHERE c2.phone = ${groupExpr} AND c2.deleted_at IS NULL)`;
 
     const idsQb = this.customersRepository
       .createQueryBuilder('customer')
       .select('customer.id', 'id')
       .addSelect(groupExpr, 'dup_key')
+      .addSelect(groupMaxCreatedAtExpr, 'group_max_created_at')
       .where('customer.deletedAt IS NULL')
       .andWhere(`${groupExpr} IN (:...dupKeys)`, { dupKeys });
     CustomerAccessHelper.applyViewFilter(idsQb, userId, userRole, scope);
-    applyExtraFilters(idsQb);
 
     const idRows = await idsQb
-      .orderBy('dup_key', 'ASC')
-      .addOrderBy('customer.createdAt', 'ASC')
+      .orderBy('group_max_created_at', 'DESC')
+      .addOrderBy('dup_key', 'ASC')
+      .addOrderBy('customer.createdAt', 'DESC')
       .skip((page - 1) * limit)
       .take(limit)
       .getRawMany<{ id: number; dup_key: string }>();
@@ -3727,7 +3841,6 @@ export class CustomersService {
       .where('customer.deletedAt IS NULL')
       .andWhere(`${groupExpr} IN (:...dupKeys)`, { dupKeys });
     CustomerAccessHelper.applyViewFilter(peersQb, userId, userRole, scope);
-    applyExtraFilters(peersQb);
     const peerRows = await peersQb.getRawMany<{ id: number; name: string; dup_key: string }>();
 
     const peersByKey = new Map<string, Array<{ id: number; name: string }>>();
