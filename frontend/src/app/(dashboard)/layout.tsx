@@ -222,6 +222,8 @@ export default function DashboardLayout({
       newKey = 'cong-viec-dinh-ky';
     } else if (pathname.includes('/lich-su-cong-viec')) {
       newKey = 'lich-su-cong-viec';
+    } else if (pathname.includes('/hieu-suat-cong-viec')) {
+      newKey = 'hieu-suat-cong-viec';
     } else if (pathname.includes('/trash-can')) {
       newKey = 'trash-can';
     } else if (pathname.includes('/quan-ly-phu-trach')) {

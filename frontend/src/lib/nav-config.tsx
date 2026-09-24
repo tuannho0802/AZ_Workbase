@@ -25,6 +25,7 @@ import {
   HistoryOutlined,
   BellOutlined,
   SendOutlined,
+  LineChartOutlined,
 } from '@ant-design/icons';
 
 export interface NavItem {
@@ -138,6 +139,21 @@ export const NAV_ITEMS: NavItem[] = [
     // để VÀO trang.
     roles: null,
     permission: 'periodic_tasks.audit_view',
+  },
+  {
+    key: 'hieu-suat-cong-viec',
+    label: 'Hiệu suất công việc',
+    description: 'Thống kê % hoàn thành, hoàn thành muộn và checklist của Công việc định kỳ theo nhân viên',
+    icon: <LineChartOutlined />,
+    path: '/hieu-suat-cong-viec',
+    // ⚠️ CỐ Ý `roles: null` + KHÔNG khai `permission` (khác mọi mục
+    // `periodic_tasks.*` khác): permission `periodic_tasks.performance_view`
+    // là công tắc bật/tắt PHẠM VI XEM chứ KHÔNG phải điều kiện vào trang -
+    // tắt vẫn xem được hiệu suất của CHÍNH MÌNH (BE
+    // `PeriodicTaskPerformanceController` chỉ dùng JwtAuthGuard, tự fallback
+    // scope `own` trong `resolveScope()`). Gate menu theo permission này sẽ
+    // ẩn nhầm trang với đúng những người được phép xem phần của mình.
+    roles: null,
   },
   {
     key: 'nghi-phep',

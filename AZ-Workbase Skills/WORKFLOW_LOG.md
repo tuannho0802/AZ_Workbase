@@ -4191,3 +4191,40 @@ trước) theo đúng Custom Instructions của Project.
 > Verify: `tsc --noEmit` sạch, `nest build` OK, `npx jest` (toàn repo) **52 suites / 959 tests pass** (bao gồm 9 test mới). `in_review` là 1 `code` động trong `periodic_task_statuses` (Admin tự thêm qua UI CRUD sẵn có trên Production) — LOCAL CHƯA có row này, code chỉ so `code` string nên không lỗi, chỉ đơn giản không match được (đã có test case riêng cho trường hợp DB chưa seed status qualify). CHƯA làm FE (bảng/biểu đồ Hiệu suất) — việc tiếp theo.
 
 ---
+
+## [2026-09-24 23:59] | Công việc định kỳ: cho phép liên kết cha-con NGANG HÀNG Ngày-Ngày và Tuần-Tuần | [Status: Success — verify bằng build/test thật]
+
+**Actor:** Agent
+
+**Files Changed:**
+- `backend/src/common/enums/period-type.enum.ts` — thêm `SAME_PERIOD_LINKABLE` + `canLinkAsParent()` (quy tắc duy nhất: cha lớn kỳ hơn con, hoặc cùng kỳ Ngày/Tuần).
+- `backend/src/modules/periodic-tasks/periodic-task-links.service.ts` — `addLink()` dùng `canLinkAsParent()` thay cho so sánh `PERIOD_RANK <=`; cập nhật message/comment.
+- `frontend/src/lib/api/periodic-tasks.api.ts` — mirror `SAME_PERIOD_LINKABLE`/`canLinkAsParent()`.
+- `frontend/src/components/periodic-tasks/TaskLinksModal.tsx` — `parentCandidates`/`childCandidates` dùng `canLinkAsParent()`.
+- Spec/test mới: `period-type.enum.spec.ts`, `periodic-task-links.service.spec.ts` (cập nhật), `periodic-tasks.api.test.ts`.
+
+**Solution:**
+> Không đổi DB/migration. Chống vòng lặp vẫn dựa vào `wouldCreateCycle()` (Ngày A->B rồi B->A bị chặn). Tháng-Tháng/Năm-Năm vẫn chặn. Độ sâu chuỗi không còn bị chặn cứng ở 4 tầng.
+
+**Notes:**
+> Verify (HEAD `88e7540`): jest BE 966/966, `nest build` OK, vitest FE 130/130, `tsc --noEmit` FE chỉ còn 2 lỗi nền cũ (logo.png, CountBadge).
+
+---
+
+## [2026-09-24 23:59] | FE trang "Hiệu suất công việc" (/hieu-suat-cong-viec) | [Status: Success — verify bằng next build thật]
+
+**Actor:** Agent
+
+**Files Changed:**
+- `frontend/src/app/(dashboard)/hieu-suat-cong-viec/page.tsx` (MỚI) — bộ lọc (khoảng ngày mặc định Tháng này, Loại kỳ, Phòng ban, tìm tên), 5 thẻ KPI, biểu đồ cột xếp chồng, bảng theo nhân viên, ghi chú rule ân hạn.
+- `frontend/src/components/periodic-tasks/PerformanceStackedChart.tsx`, `PerformanceFlaggedDrawer.tsx` (MỚI) — biểu đồ Recharts; Drawer drill-down Task muộn/quá hạn.
+- `frontend/src/lib/api/periodic-task-performance.api.ts`, `lib/hooks/usePeriodicTaskPerformance.ts`, `lib/utils/periodicTaskPerformance.ts` (MỚI).
+- `frontend/src/lib/nav-config.tsx`, `app/(dashboard)/layout.tsx` — thêm mục sidebar + highlight key.
+
+**Solution:**
+> Đọc `GET /periodic-tasks-performance/summary` và `/users/:id/flagged-tasks`. Mục nav CỐ Ý không gate theo `periodic_tasks.performance_view` (tắt quyền vẫn xem được phần của mình); permission chỉ quyết định scope (own/department/all) — FE lấy scope từ response BE.
+
+**Notes:**
+> Không thêm test FE theo yêu cầu. Nhãn "Hoàn thành muộn/Quá hạn chưa xong" ở Drawer FE suy từ trạng thái hiện tại (BE không trả nhãn).
+
+---
