@@ -78,10 +78,15 @@ export interface WeeklyCollapseSectionProps<T> {
  * cha sở hữu và truyền vào qua prop `pagination`, component này không tự ý
  * fetch thêm dữ liệu.
  *
- * Mặc định MỞ HẾT mọi tuần có trong trang hiện tại mỗi khi dữ liệu trang đổi
- * (khác `WeekGroupedRequests` - chỉ mở tuần hiện tại/tuần gần nhất - vì ở
- * đây phạm vi hiển thị đã bị giới hạn bởi phân trang server nên số tuần/trang
- * thường rất ít, mở hết để không phải bấm thêm 1 bước mới thấy dữ liệu).
+ * Mặc định CHỈ MỞ tuần gần nhất (đầu danh sách, đã sort mới nhất trước) -
+ * các tuần còn lại đóng, và AntD `Collapse` (không bật `forceRender`) chỉ
+ * mount `Table`/danh sách con của 1 panel khi panel đó ĐƯỢC MỞ LẦN ĐẦU
+ * (lazy render có sẵn của AntD) - tránh render hàng nghìn dòng của MỌI tuần
+ * cùng lúc lúc mới vào trang, gây lag (yêu cầu người dùng: "chỉ load khi
+ * data cần dùng đến"). Kèm `destroyOnHidden` để khi đóng lại 1 panel, DOM
+ * của Table bên trong được GIẢI PHÓNG (không giữ mãi trong bộ nhớ) - mở lại
+ * sau đó sẽ mount lại từ đầu, giữ trang nhẹ dù người dùng bấm mở nhiều tuần
+ * trong 1 phiên dài.
  */
 export function WeeklyCollapseSection<T>({
   records,
@@ -117,13 +122,14 @@ export function WeeklyCollapseSection<T>({
 
   const currentWeekKey = getWeekStart(dayjs()).format('YYYY-MM-DD');
 
-  // ⚠️ Mở lại HẾT các tuần mỗi khi dữ liệu trang đổi (đổi trang/filter) - dùng
-  // pattern "adjust state during render" (so sánh chữ ký `groups` trong lúc
-  // render, KHÔNG dùng useEffect gọi setState) theo đúng khuyến nghị của React
-  // (tránh cascading render bị eslint `react-hooks/set-state-in-effect` cảnh
-  // báo) - xem https://react.dev/learn/you-might-not-need-an-effect.
+  // ⚠️ Chỉ tự mở tuần ĐẦU TIÊN (gần nhất) mỗi khi dữ liệu trang đổi (đổi
+  // trang/filter) - dùng pattern "adjust state during render" (so sánh chữ ký
+  // `groups` trong lúc render, KHÔNG dùng useEffect gọi setState) theo đúng
+  // khuyến nghị của React (tránh cascading render bị eslint
+  // `react-hooks/set-state-in-effect` cảnh báo) - xem
+  // https://react.dev/learn/you-might-not-need-an-effect.
   const groupsSignature = groups.map(([key]) => key).join(',');
-  const [activeKeys, setActiveKeys] = useState<string[]>(() => groups.map(([key]) => key));
+  const [activeKeys, setActiveKeys] = useState<string[]>(() => (groups[0] ? [groups[0][0]] : []));
   // Phân trang con (20 item/tuần mặc định) - key = weekKey, value = trang
   // hiện tại (1-based) TRONG tuần đó. Tách riêng state cho từng tuần vì mỗi
   // panel cuộn độc lập với nhau.
@@ -131,7 +137,7 @@ export function WeeklyCollapseSection<T>({
   const [lastSignature, setLastSignature] = useState(groupsSignature);
   if (groupsSignature !== lastSignature) {
     setLastSignature(groupsSignature);
-    setActiveKeys(groups.map(([key]) => key));
+    setActiveKeys(groups[0] ? [groups[0][0]] : []);
     setWeekPages({});
   }
 
@@ -173,6 +179,11 @@ export function WeeklyCollapseSection<T>({
       <Collapse
         activeKey={activeKeys}
         onChange={(keys) => setActiveKeys(Array.isArray(keys) ? keys : [keys])}
+        // Panel đóng -> unmount hẳn Table/list con khỏi DOM (không chỉ ẩn
+        // bằng CSS) - kết hợp với lazy-render mặc định của AntD Collapse
+        // (không bật `forceRender`) => 1 panel CHỈ tốn chi phí render khi
+        // người dùng thực sự mở nó, và trả lại chi phí đó khi đóng lại.
+        destroyOnHidden
         items={groups.map(([weekKey, weekRecords]) => {
           const weekStart = dayjs(weekKey);
           const weekEnd = weekStart.add(6, 'day');
