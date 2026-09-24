@@ -21,7 +21,7 @@ import { useCustomerStatuses } from '@/lib/hooks/useCustomerStatuses';
 import { useUsersList } from '@/lib/hooks/useUsers';
 import { customerPhoneDisplay, customerPlainLabel, renderCustomerOption } from '@/components/common/customer-option-render';
 import { CustomerQuickFilterButton, CustomerQuickFilters, EMPTY_CUSTOMER_QUICK_FILTERS } from '@/components/common/customer-quick-filter';
-import { PeriodicTask, PERIOD_TYPE_LABELS, PERIOD_RANK } from '@/lib/api/periodic-tasks.api';
+import { PeriodicTask, PERIOD_TYPE_LABELS, canLinkAsParent } from '@/lib/api/periodic-tasks.api';
 import { Customer } from '@/lib/types/customer.types';
 import { getApiErrorMessage } from '@/lib/utils/error-message.util';
 import { SimpleList } from '@/components/common/SimpleList';
@@ -47,7 +47,7 @@ interface Props {
  *   gọi CÙNG 1 API nhưng đảo vai trò: `:id` = Task con được chọn,
  *   `parentTaskId` = `task.id` hiện tại (xem `handleAddChild`/
  *   `handleRemoveChild`).
- * - Rank (cha phải "lớn kỳ hạn hơn" con) + chống chu trình (cycle) ĐỀU được
+ * - Rank (cha "lớn kỳ hạn hơn" con, hoặc cùng kỳ Ngày-Ngày / Tuần-Tuần) + chống chu trình (cycle) ĐỀU được
  *   BE validate lại 100% (`PeriodicTaskLinksService`) - FE chỉ lọc TRƯỚC
  *   danh sách gợi ý cho gọn (`parentCandidates`/`childCandidates`), KHÔNG
  *   phải lớp bảo vệ duy nhất.
@@ -208,14 +208,14 @@ export function TaskLinksModal({ open, onClose, task }: Props) {
     const parentCandidates = useMemo(() => {
         if (!task) return [];
         return allTasks.filter(
-            (t) => t.id !== task.id && !parentIds.has(t.id) && PERIOD_RANK[t.periodType] > PERIOD_RANK[task.periodType],
+            (t) => t.id !== task.id && !parentIds.has(t.id) && canLinkAsParent(t.periodType, task.periodType),
         );
     }, [allTasks, task, parentIds]);
 
     const childCandidates = useMemo(() => {
         if (!task) return [];
         return allTasks.filter(
-            (t) => t.id !== task.id && !childIds.has(t.id) && PERIOD_RANK[t.periodType] < PERIOD_RANK[task.periodType],
+            (t) => t.id !== task.id && !childIds.has(t.id) && canLinkAsParent(task.periodType, t.periodType),
         );
     }, [allTasks, task, childIds]);
 

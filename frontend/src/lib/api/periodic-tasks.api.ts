@@ -17,6 +17,18 @@ export const PERIOD_TYPE_LABELS: Record<PeriodType, string> = {
  * `PeriodicTaskLinksService.addLink()`. */
 export const PERIOD_RANK: Record<PeriodType, number> = { daily: 1, weekly: 2, monthly: 3, yearly: 4 };
 
+/** Mirror ĐÚNG `SAME_PERIOD_LINKABLE` ở BE - các loại kỳ được liên kết NGANG
+ * HÀNG (cha & con cùng loại kỳ): hiện chỉ Ngày-Ngày và Tuần-Tuần. */
+export const SAME_PERIOD_LINKABLE: readonly PeriodType[] = ['daily', 'weekly'];
+
+/** Mirror ĐÚNG `canLinkAsParent()` ở BE: cha lớn kỳ hơn con, HOẶC cùng loại
+ * kỳ nằm trong `SAME_PERIOD_LINKABLE`. Chỉ để lọc gợi ý ở FE - BE vẫn validate
+ * lại 100%. */
+export function canLinkAsParent(parentType: PeriodType, childType: PeriodType): boolean {
+  if (PERIOD_RANK[parentType] > PERIOD_RANK[childType]) return true;
+  return parentType === childType && SAME_PERIOD_LINKABLE.includes(parentType);
+}
+
 interface RefUser {
   id: number;
   name: string;

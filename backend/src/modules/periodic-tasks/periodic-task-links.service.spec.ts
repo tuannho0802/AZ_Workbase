@@ -123,14 +123,53 @@ describe('PeriodicTaskLinksService', () => {
       expect(mockLinkRepo.save).not.toHaveBeenCalled();
     });
 
-    it('chặn rank ngang hàng (Weekly không được làm cha của Weekly khác)', async () => {
-      const child = makeTask(1, PeriodType.WEEKLY);
-      const parent = makeTask(2, PeriodType.WEEKLY);
+    it.each([
+      [PeriodType.DAILY, 'Ngày-Ngày'],
+      [PeriodType.WEEKLY, 'Tuần-Tuần'],
+    ])('cho phép liên kết ngang hàng %s (%s)', async (periodType) => {
+      const child = makeTask(1, periodType);
+      const parent = makeTask(2, periodType);
       mockTasksService.findOne.mockResolvedValueOnce(child).mockResolvedValueOnce(parent);
+      mockTasksService.assertEditableWhenLocked.mockResolvedValue(undefined);
+      mockLinkRepo.findOne.mockResolvedValue(null);
+      mockLinkRepo.find.mockResolvedValue([]);
+      mockLinkRepo.create.mockImplementation((data) => data);
+      mockLinkRepo.save.mockImplementation((data) => Promise.resolve({ id: 99, ...data }));
+
+      const result = await service.addLink(1, { parentTaskId: 2 }, user, scope);
+
+      expect(result).toMatchObject({ childTaskId: 1, parentTaskId: 2 });
+    });
+
+    it.each([PeriodType.MONTHLY, PeriodType.YEARLY])(
+      'vẫn chặn liên kết ngang hàng %s-%s (chưa mở)',
+      async (periodType) => {
+        const child = makeTask(1, periodType);
+        const parent = makeTask(2, periodType);
+        mockTasksService.findOne.mockResolvedValueOnce(child).mockResolvedValueOnce(parent);
+
+        await expect(
+          service.addLink(1, { parentTaskId: 2 }, user, scope),
+        ).rejects.toThrow(BadRequestException);
+        expect(mockLinkRepo.save).not.toHaveBeenCalled();
+      },
+    );
+
+    it('chặn vòng lặp 2 chiều giữa 2 Task cùng kỳ (Ngày A -> B rồi B -> A)', async () => {
+      // Đã có cạnh (child=2, parent=1) tức 1 là cha của 2. Giờ cố gán 2 làm
+      // cha của 1 (child=1, parent=2) -> rank ngang hàng Ngày-Ngày hợp lệ,
+      // nên chính cycle detection phải là lớp chặn.
+      const child = makeTask(1, PeriodType.DAILY);
+      const parent = makeTask(2, PeriodType.DAILY);
+      mockTasksService.findOne.mockResolvedValueOnce(child).mockResolvedValueOnce(parent);
+      mockTasksService.assertEditableWhenLocked.mockResolvedValue(undefined);
+      mockLinkRepo.findOne.mockResolvedValue(null);
+      mockLinkRepo.find.mockResolvedValueOnce([{ childTaskId: 2, parentTaskId: 1 }]);
 
       await expect(
         service.addLink(1, { parentTaskId: 2 }, user, scope),
       ).rejects.toThrow(BadRequestException);
+      expect(mockLinkRepo.save).not.toHaveBeenCalled();
     });
 
     it('chặn trùng cạnh đã tồn tại', async () => {

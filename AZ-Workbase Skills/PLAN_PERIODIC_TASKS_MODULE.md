@@ -107,13 +107,14 @@ const PERIOD_RANK: Record<PeriodType, number> = { daily: 1, weekly: 2, monthly: 
 Bảng `periodic_task_links` (child_task_id, parent_task_id) là **cạnh của 1 đồ thị có hướng**. Khi tạo
 1 liên kết mới, Service PHẢI:
 1. Validate `PERIOD_RANK[parent.periodType] > PERIOD_RANK[child.periodType]` (parent phải "lớn kỳ
-   hạn hơn" — skip-level OK, nhưng không cho phép ngang hàng hoặc ngược chiều, vd Weekly không được
-   làm cha của Monthly).
+   hạn hơn" — skip-level OK, không cho phép ngược chiều, vd Weekly không được làm cha của Monthly.
+   **Ngoại lệ (2026-09-24):** cho phép ngang hàng CÙNG kỳ với Ngày-Ngày và Tuần-Tuần — xem
+   `canLinkAsParent()` + `SAME_PERIOD_LINKABLE` ở `period-type.enum.ts`; Tháng-Tháng/Năm-Năm vẫn chặn).
 2. **Chống chu trình (cycle detection)**: trước khi lưu cạnh `(child, parent)`, chạy BFS/DFS từ
    `parent` đi ngược lên theo các cạnh đã có (`parent` của `parent`...) — nếu gặp lại `child` giữa
    đường, nghĩa là thêm cạnh này sẽ tạo vòng lặp → từ chối (400 Bad Request, thông báo rõ ràng).
-   Vì tối đa chỉ 4 tầng (`PERIOD_RANK` chặn ngay từ bước 1 rồi) nên độ sâu duyệt cực nhỏ, không lo
-   hiệu năng.
+   Từ khi mở Ngày-Ngày/Tuần-Tuần, độ sâu không còn bị chặn cứng ở 4 tầng — BFS dùng `visited` nên
+   luôn dừng, chuỗi thực tế ngắn nên vẫn đủ nhanh.
 3. Không cho phép trùng cạnh (`UNIQUE(child_task_id, parent_task_id)`).
 
 **Vì sao không dùng closure table đầy đủ:** với độ sâu tối đa cố định là 4 (do `PERIOD_RANK` chặn

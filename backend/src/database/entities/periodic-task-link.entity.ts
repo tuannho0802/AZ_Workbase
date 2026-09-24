@@ -24,7 +24,7 @@ import { User } from './user.entity';
  * áp dụng tương tự tinh thần "không cần audit trail riêng ở chính bảng này",
  * audit thật sự nằm ở `periodic_task_audit_logs` - Phase 7).
  *
- * Validate rank (`PERIOD_RANK[parent] > PERIOD_RANK[child]`) và chống chu
+ * Validate rank (`canLinkAsParent()`: parent lớn kỳ hơn child, hoặc cùng kỳ Ngày-Ngày/Tuần-Tuần) và chống chu
  * trình (cycle detection) được thực hiện ở `PeriodicTaskLinksService`, KHÔNG
  * phải ở tầng entity/DB (MySQL không có CHECK constraint linh hoạt đủ để
  * validate quan hệ đệ quy này).

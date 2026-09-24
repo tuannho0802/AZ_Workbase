@@ -11,7 +11,7 @@ import { PeriodicTask } from './periodic-tasks.api';
  *   GET    /periodic-tasks/:id/parents
  *   GET    /periodic-tasks/:id/rollup
  *
- * Rank (`parent` phải "lớn kỳ hạn hơn" `child`) + chống chu trình (cycle)
+ * Rank (`parent` "lớn kỳ hạn hơn" `child`, hoặc cùng kỳ Ngày-Ngày/Tuần-Tuần) + chống chu trình (cycle)
  * ĐỀU được BE validate lại 100% (`PeriodicTaskLinksService`) - hàm FE này
  * chỉ gọi thẳng API, KHÔNG tự validate lại.
  */

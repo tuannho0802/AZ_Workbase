@@ -7,7 +7,7 @@ import { Type } from 'class-transformer';
  * (`:id` = child, `parentTaskId` = cha muốn gán) - xem PLAN mục 5, 2.2.
  */
 export class CreatePeriodicTaskLinkDto {
-  @ApiProperty({ example: 12, description: 'ID Task cha muốn gán (phải có period_type "lớn kỳ hạn hơn" Task con)' })
+  @ApiProperty({ example: 12, description: 'ID Task cha muốn gán (phải có period_type "lớn kỳ hạn hơn" Task con, hoặc cùng kỳ nếu là Ngày-Ngày / Tuần-Tuần)' })
   @Type(() => Number)
   @IsInt({ message: 'parentTaskId phải là số nguyên' })
   parentTaskId: number;

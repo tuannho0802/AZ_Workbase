@@ -3,7 +3,7 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, In } from 'typeorm';
 import { PeriodicTaskLink } from '../../database/entities/periodic-task-link.entity';
 import { PeriodicTask } from '../../database/entities/periodic-task.entity';
-import { PERIOD_RANK, PeriodType } from '../../common/enums/period-type.enum';
+import { PeriodType, canLinkAsParent } from '../../common/enums/period-type.enum';
 import { PeriodicTasksService, RequestingUser } from './periodic-tasks.service';
 import { PeriodicTaskAccessHelper } from './helpers/periodic-task-access.helper';
 import { CreatePeriodicTaskLinkDto } from './dto/create-periodic-task-link.dto';
@@ -63,8 +63,10 @@ export class PeriodicTaskLinksService {
    * qua các cạnh đã có (tìm cha của `parentId`, rồi cha của cha...) - nếu
    * gặp lại `childId` giữa đường, nghĩa là `childId` đang là TỔ TIÊN của
    * `parentId` -> thêm cạnh (childId, parentId) sẽ tạo vòng lặp.
-   * Độ sâu tối đa 4 tầng (do PERIOD_RANK chặn cứng ở bước 1) nên không lo
-   * hiệu năng dù duyệt bằng vòng lặp thay vì CTE đệ quy.
+   * Bước 1 cho phép liên kết ngang hàng Ngày-Ngày / Tuần-Tuần nên độ sâu KHÔNG
+   * còn bị chặn cứng ở 4 tầng - vẫn an toàn vì `visited` đảm bảo mỗi node chỉ
+   * duyệt 1 lần (luôn dừng, kể cả khi dữ liệu cũ lỡ có vòng); chuỗi thực tế
+   * ngắn nên duyệt bằng vòng lặp thay vì CTE đệ quy là đủ nhanh.
    */
   private async wouldCreateCycle(childId: number, parentId: number): Promise<boolean> {
     let frontier = [parentId];
@@ -92,7 +94,7 @@ export class PeriodicTaskLinksService {
 
   /**
    * Gán `parentTaskId` (dto) làm cha của `childId` (:id path) - validate rank
-   * (PLAN mục 2.2 bước 1), chống trùng cạnh (bước 3), chống chu trình (bước 2).
+   * qua `canLinkAsParent()` (PLAN mục 2.2 bước 1, đã mở thêm Ngày-Ngày/Tuần-Tuần), chống trùng cạnh (bước 3), chống chu trình (bước 2).
    * Phase 5: kiểm tra thêm `assertEditableWhenLocked()` trên Task CON (`:id`
    * path - phía đang bị PATCH) - Task cha bị khoá không chặn (không phải
    * Task đang được sửa trực tiếp qua route này).
@@ -115,9 +117,9 @@ export class PeriodicTaskLinksService {
     const parent = await this.tasksService.findOne(parentId, user.id, user.role, scope);
     await this.tasksService.assertEditableWhenLocked(child, user);
 
-    if (PERIOD_RANK[parent.periodType] <= PERIOD_RANK[child.periodType]) {
+    if (!canLinkAsParent(parent.periodType, child.periodType)) {
       throw new BadRequestException(
-        `Công việc cha (kỳ "${parent.periodType}") phải có kỳ hạn LỚN HƠN Công việc con (kỳ "${child.periodType}") - không cho phép ngang hàng hoặc ngược chiều`,
+        `Công việc cha (kỳ "${parent.periodType}") phải có kỳ hạn LỚN HƠN Công việc con (kỳ "${child.periodType}"), hoặc cùng kỳ nếu là Ngày-Ngày / Tuần-Tuần - không cho phép ngược chiều hay ngang hàng các kỳ khác`,
       );
     }
 

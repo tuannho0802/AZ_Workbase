@@ -26,3 +26,27 @@ export const PERIOD_RANK: Record<PeriodType, number> = {
   [PeriodType.MONTHLY]: 3,
   [PeriodType.YEARLY]: 4,
 };
+
+/**
+ * Các loại kỳ được phép liên kết NGANG HÀNG (cha & con CÙNG loại kỳ) - hiện
+ * chỉ Ngày-Ngày và Tuần-Tuần. Tháng-Tháng / Năm-Năm vẫn bị chặn (chưa có nhu
+ * cầu nghiệp vụ). Thêm loại kỳ vào mảng này là đủ để mở thêm - mirror ở FE
+ * (`SAME_PERIOD_LINKABLE` trong `periodic-tasks.api.ts`), nhớ sửa CẢ 2 nơi.
+ */
+export const SAME_PERIOD_LINKABLE: readonly PeriodType[] = [PeriodType.DAILY, PeriodType.WEEKLY];
+
+/**
+ * canLinkAsParent - quy tắc DUY NHẤT quyết định `parentType` có được làm cha
+ * của `childType` hay không:
+ *  - `parent` LỚN kỳ hơn `child` (rank cao hơn, cho phép skip-level), HOẶC
+ *  - `parent` và `child` CÙNG loại kỳ và loại đó nằm trong `SAME_PERIOD_LINKABLE`.
+ * Chiều ngược (cha nhỏ kỳ hơn con) luôn bị chặn.
+ *
+ * ⚠️ Khi cho phép ngang hàng, độ sâu chuỗi KHÔNG còn bị PERIOD_RANK chặn ở 4
+ * tầng (vd Ngày -> Ngày -> Ngày...), chống vòng lặp hoàn toàn dựa vào
+ * `wouldCreateCycle()` ở `PeriodicTaskLinksService`.
+ */
+export function canLinkAsParent(parentType: PeriodType, childType: PeriodType): boolean {
+  if (PERIOD_RANK[parentType] > PERIOD_RANK[childType]) return true;
+  return parentType === childType && SAME_PERIOD_LINKABLE.includes(parentType);
+}
