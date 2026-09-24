@@ -68,6 +68,13 @@ import { TaskChecklistModal } from '@/components/periodic-tasks/TaskChecklistMod
 import { TaskAuditLogsModal } from '@/components/periodic-tasks/TaskAuditLogsModal';
 import { TaskActionsBar } from '@/components/periodic-tasks/TaskActionsBar';
 import { TaskTrashTab } from '@/components/periodic-tasks/TaskTrashTab';
+import {
+    MAX_TASK_RANGE_DAYS,
+    clampRange,
+    getMonthRange,
+    getThisWeekRange,
+    type DateRangeTuple,
+} from '@/lib/utils/periodicTaskRange';
 import { PeriodicTasksAgendaView } from '@/components/periodic-tasks/PeriodicTasksAgendaView';
 import { PeriodicTasksKanbanView } from '@/components/periodic-tasks/PeriodicTasksKanbanView';
 import { PeriodicTasksCalendarView } from '@/components/periodic-tasks/PeriodicTasksCalendarView';
@@ -241,15 +248,39 @@ function PeriodicTasksPageContent() {
     const search = useDebounce(searchInput, 300);
     const [periodType, setPeriodType] = useState<PeriodType | undefined>(undefined);
     const [statusId, setStatusId] = useState<number | undefined>(undefined);
-    const [primaryAssigneeId, setPrimaryAssigneeId] = useState<number | undefined>(undefined);
+    // ⚠️ MẶC ĐỊNH khi vào trang (yêu cầu chủ dự án - danh sách KHÔNG BAO GIỜ tải toàn
+    // bộ để khi Task tăng vẫn nhanh): chỉ Công việc TUẦN NÀY mà MÌNH phụ trách (chính
+    // hoặc phụ - BE `assigneeId`). Bỏ chọn Phụ trách để xem của mọi người; khoảng ngày
+    // luôn có giá trị (xoá/bỏ chọn => quay về Tuần này, tối đa 93 ngày).
+    const [assigneeId, setAssigneeId] = useState<number | undefined>(() => user?.id);
+    // `user` có thể chưa hydrate ở lần render đầu -> gán mặc định ĐÚNG 1 LẦN khi có user.
+    const assigneeDefaultedRef = useRef(!!user);
+    useEffect(() => {
+        if (!assigneeDefaultedRef.current && user) {
+            assigneeDefaultedRef.current = true;
+            setAssigneeId(user.id);
+        }
+    }, [user]);
     const [departmentId, setDepartmentId] = useState<number | undefined>(undefined);
-    const [dateRange, setDateRange] = useState<[Dayjs | null, Dayjs | null] | null>(null);
+    const [dateRange, setDateRangeRaw] = useState<DateRangeTuple>(() => getThisWeekRange());
+    // Mọi thay đổi khoảng ngày đi qua đây: không cho rỗng (=> Tuần này) và không cho
+    // vượt giới hạn BE (cắt + báo).
+    const setDateRange = (vals: [Dayjs | null, Dayjs | null] | null) => {
+        if (!vals?.[0] || !vals?.[1]) {
+            setDateRangeRaw(getThisWeekRange());
+            return;
+        }
+        const { range, clamped } = clampRange(vals[0], vals[1]);
+        if (clamped) {
+            message.warning(`Khoảng thời gian tối đa ${MAX_TASK_RANGE_DAYS} ngày - đã tự thu hẹp lại.`);
+        }
+        setDateRangeRaw(range);
+    };
     // Quick filter đang active = dateRange hiện tại khớp đúng 1 preset (chọn custom => tự bỏ highlight).
     const activeQuickRange = useMemo(() => {
-        if (!dateRange?.[0] || !dateRange?.[1]) return null;
         const found = QUICK_RANGES.find(({ key }) => {
             const [from, to] = getQuickRange(key);
-            return dateRange[0]!.isSame(from, 'day') && dateRange[1]!.isSame(to, 'day');
+            return dateRange[0].isSame(from, 'day') && dateRange[1].isSame(to, 'day');
         });
         return found?.key ?? null;
     }, [dateRange]);
@@ -285,9 +316,10 @@ function PeriodicTasksPageContent() {
         setSearchInput('');
         setPeriodType(undefined);
         setStatusId(undefined);
-        setPrimaryAssigneeId(undefined);
+        setAssigneeId(undefined);
         setDepartmentId(undefined);
         setPage(1);
+        // Task Năm dài hơn giới hạn 93 ngày -> cắt còn cửa sổ đầu Kỳ hạn (vẫn chứa Task).
         setDateRange([dayjs(detail.periodStartDate), dayjs(detail.periodEndDate)]);
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [focusedTaskId, focusedTaskQuery.data, focusedTaskQuery.isError]);
@@ -299,12 +331,12 @@ function PeriodicTasksPageContent() {
             search: search || undefined,
             periodType,
             statusId,
-            primaryAssigneeId,
+            assigneeId,
             departmentId,
-            dateFrom: dateRange?.[0] ? dateRange[0].format('YYYY-MM-DD') : undefined,
-            dateTo: dateRange?.[1] ? dateRange[1].format('YYYY-MM-DD') : undefined,
+            dateFrom: dateRange[0].format('YYYY-MM-DD'),
+            dateTo: dateRange[1].format('YYYY-MM-DD'),
         }),
-        [page, limit, search, periodType, statusId, primaryAssigneeId, departmentId, dateRange],
+        [page, limit, search, periodType, statusId, assigneeId, departmentId, dateRange],
     );
 
     // ---- Phase 8 (PLAN mục Phase 8) - View switcher ----
@@ -336,12 +368,12 @@ function PeriodicTasksPageContent() {
             search: search || undefined,
             periodType,
             statusId,
-            primaryAssigneeId,
+            assigneeId,
             departmentId,
-            dateFrom: dateRange?.[0] ? dateRange[0].format('YYYY-MM-DD') : undefined,
-            dateTo: dateRange?.[1] ? dateRange[1].format('YYYY-MM-DD') : undefined,
+            dateFrom: dateRange[0].format('YYYY-MM-DD'),
+            dateTo: dateRange[1].format('YYYY-MM-DD'),
         }),
-        [search, periodType, statusId, primaryAssigneeId, departmentId, dateRange],
+        [search, periodType, statusId, assigneeId, departmentId, dateRange],
     );
     const { data: viewData, isLoading: viewLoading, isFetching: viewFetching } = usePeriodicTasks(
         nonTableFilters,
@@ -435,7 +467,7 @@ function PeriodicTasksPageContent() {
     // Reset về trang 1 khi đổi filter (trừ chính page) để tránh trang trống.
     useEffect(() => {
         setPage(1);
-    }, [search, periodType, statusId, primaryAssigneeId, departmentId, dateRange]);
+    }, [search, periodType, statusId, assigneeId, departmentId, dateRange]);
 
     // ---- Modal Thêm/Sửa ----
     const [modalOpen, setModalOpen] = useState(false);
@@ -1188,10 +1220,10 @@ function PeriodicTasksPageContent() {
                     <Select
                         allowClear
                         showSearch={{ optionFilterProp: 'label' }}
-                        placeholder="Phụ trách chính"
+                        placeholder="Phụ trách (chính + phụ)"
                         style={{ width: '100%' }}
-                        value={primaryAssigneeId}
-                        onChange={(v) => setPrimaryAssigneeId(v)}
+                        value={assigneeId}
+                        onChange={(v) => setAssigneeId(v)}
                         optionLabelProp="label"
                         optionRender={renderUserOption}
                         popupMatchSelectWidth={false}
@@ -1216,7 +1248,8 @@ function PeriodicTasksPageContent() {
                         style={{ width: '100%' }}
                         format="DD/MM/YYYY"
                         placeholder={['Từ ngày', 'Đến ngày']}
-                        value={dateRange as any}
+                        value={dateRange}
+                        allowClear={false}
                         onChange={(vals) => setDateRange(vals as [Dayjs | null, Dayjs | null] | null)}
                     />
                 </Col>
@@ -1228,7 +1261,7 @@ function PeriodicTasksPageContent() {
                                 key={key}
                                 size="small"
                                 type={activeQuickRange === key ? 'primary' : 'default'}
-                                onClick={() => setDateRange(activeQuickRange === key ? null : getQuickRange(key))}
+                                onClick={() => setDateRange(activeQuickRange === key ? getThisWeekRange() : getQuickRange(key))}
                             >
                                 {label}
                             </Button>
@@ -1243,7 +1276,12 @@ function PeriodicTasksPageContent() {
             <Segmented
                 style={{ marginBottom: 16 }}
                 value={view}
-                onChange={(v) => setView(v as typeof view)}
+                onChange={(v) => {
+                    const next = v as typeof view;
+                    setView(next);
+                    // Lịch tháng hiển thị cả tháng -> tải đúng tháng hiện tại (bounded, <= 31 ngày).
+                    if (next === 'calendar') setDateRange(getMonthRange(dayjs()));
+                }}
                 options={[
                     { label: 'Bảng', value: 'table', icon: <TableOutlined /> },
                     { label: 'Xem theo Ngày', value: 'agenda', icon: <UnorderedListOutlined /> },
@@ -1252,6 +1290,17 @@ function PeriodicTasksPageContent() {
                     ...(canTrash ? [{ label: 'Thùng rác', value: 'trash', icon: <DeleteOutlined /> }] : []),
                 ]}
             />
+
+            {/* 3 view không phân trang chỉ tải tối đa 100 Task - nếu khoảng lọc có nhiều
+                hơn thì báo rõ (thay vì im lặng cắt bớt). */}
+            {view !== 'table' && view !== 'trash' && viewData && viewData.total > viewTasks.length && (
+                <Alert
+                    type="warning"
+                    showIcon
+                    style={{ marginBottom: 12 }}
+                    message={`Đang hiển thị ${viewTasks.length}/${viewData.total} Công việc - hãy thu hẹp bộ lọc (ngày/phụ trách/trạng thái) để xem đầy đủ, hoặc dùng view Bảng (có phân trang).`}
+                />
+            )}
 
             {view === 'table' && (
                 <Table
@@ -1333,6 +1382,7 @@ function PeriodicTasksPageContent() {
 
             {view === 'calendar' && (
                 <PeriodicTasksCalendarView
+                    onPanelChange={(d) => setDateRange(getMonthRange(d))}
                     tasks={viewTasks}
                     onSelectTask={canEdit ? openEditModal : undefined}
                     chains={chains}

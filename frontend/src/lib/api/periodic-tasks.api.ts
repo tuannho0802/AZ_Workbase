@@ -197,11 +197,13 @@ export interface PeriodicTaskFilterParams {
   periodType?: PeriodType;
   /** Khớp CHÍNH XÁC 1 kỳ (vd đúng "2026-09-14"). */
   periodStartDate?: string;
-  /** Khớp theo KHOẢNG (overlap) - kết hợp AND được với periodStartDate. */
+  /** Khớp theo KHOẢNG (overlap). ⚠️ BE KHÔNG bao giờ tải toàn bộ: bỏ trống cả 2 => mặc định TUẦN NÀY, tối đa 93 ngày. */
   dateFrom?: string;
   dateTo?: string;
   statusId?: number;
   primaryAssigneeId?: number;
+  /** Phụ trách = CHÍNH hoặc PHỤ (BE `assigneeId`) - dùng cho bộ lọc "Phụ trách" của trang. */
+  assigneeId?: number;
   departmentId?: number;
   search?: string;
 }

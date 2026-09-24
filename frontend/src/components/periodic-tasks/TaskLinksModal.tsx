@@ -1,6 +1,8 @@
 'use client';
 
 import { useMemo, useState } from 'react';
+import dayjs from 'dayjs';
+import { clampRange } from '@/lib/utils/periodicTaskRange';
 import { Modal, Typography, Divider, Progress, Select, Button, App, Popconfirm, Tag, Space } from 'antd';
 import { DeleteOutlined, PlusOutlined } from '@ant-design/icons';
 import { useMyPermissions } from '@/lib/hooks/useMyPermissions';
@@ -129,7 +131,17 @@ export function TaskLinksModal({ open, onClose, task }: Props) {
 
     const { users: allUsers } = useUsersList();
 
-    const { data: candidatesData, isLoading: candidatesLoading } = usePeriodicTasks({ page: 1, limit: 100 });
+    // Ứng viên cha/con = Task có Kỳ hạn CHỒNG LẤN Kỳ hạn của Task đang xem (Task cha
+    // Tuần/Tháng/Năm bao trùm Task con; Task con nằm trong Kỳ hạn của cha). BE KHÔNG
+    // bao giờ tải toàn bộ - phải truyền khoảng ngày (tối đa 93 ngày, cắt bớt với Task
+    // Năm) và chỉ tải khi modal đang mở.
+    const candidateParams = useMemo(() => {
+        const base = { page: 1, limit: 100 };
+        if (!task) return base;
+        const { range } = clampRange(dayjs(task.periodStartDate), dayjs(task.periodEndDate));
+        return { ...base, dateFrom: range[0].format('YYYY-MM-DD'), dateTo: range[1].format('YYYY-MM-DD') };
+    }, [task]);
+    const { data: candidatesData, isLoading: candidatesLoading } = usePeriodicTasks(candidateParams, open && !!task);
     const allTasks = useMemo(() => candidatesData?.data ?? [], [candidatesData]);
 
     // Search server-side (mirror `useCustomers.ts`) - CHỈ chạy khi modal cho

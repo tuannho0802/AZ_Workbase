@@ -24,6 +24,9 @@ export interface PeriodicTasksCalendarViewProps {
      * Agenda - chỉ tô viền màu chuỗi lên Tag + liệt kê trong Tooltip. */
     chains?: Map<number, TaskChainInfo>;
     resolveChainTask?: (taskId: number) => Pick<PeriodicTask, 'title' | 'periodStartDate'> | undefined;
+    /** Người dùng chuyển tháng/năm trên lịch - trang cha đổi khoảng ngày tải dữ liệu
+     * sang đúng tháng đang xem (BE không bao giờ tải toàn bộ, chỉ tải khoảng đang lọc). */
+    onPanelChange?: (date: Dayjs) => void;
 }
 
 /**
@@ -38,7 +41,7 @@ export interface PeriodicTasksCalendarViewProps {
  * Không phân trang - nhận `tasks` đã tải với `limit` đủ lớn từ trang cha
  * (mirror Agenda/Kanban, xem `page.tsx` phần chọn `viewLimit`).
  */
-export function PeriodicTasksCalendarView({ tasks, onSelectTask, chains, resolveChainTask }: PeriodicTasksCalendarViewProps) {
+export function PeriodicTasksCalendarView({ tasks, onSelectTask, chains, resolveChainTask, onPanelChange }: PeriodicTasksCalendarViewProps) {
     // Index theo NGÀY (YYYY-MM-DD) -> danh sách Task phủ ngày đó. Tính 1 lần
     // cho toàn bộ `tasks` hiện có (quy mô dự án hiện tại nhỏ - vài chục Task
     // - lặp qua từng ngày trong khoảng của mỗi Task là đủ rẻ, không cần tối
@@ -155,7 +158,7 @@ export function PeriodicTasksCalendarView({ tasks, onSelectTask, chains, resolve
             <Text type="secondary" style={{ display: 'block', marginBottom: 8 }}>
                 Mỗi ô hiển thị Công việc có Kỳ hạn phủ ngày đó {onSelectTask ? '- bấm vào tên để sửa nhanh.' : '.'}
             </Text>
-            <Calendar cellRender={(date, info) => (info.type === 'date' ? cellRender(date) : info.originNode)} />
+            <Calendar onPanelChange={(d) => onPanelChange?.(d)} cellRender={(date, info) => (info.type === 'date' ? cellRender(date) : info.originNode)} />
         </div>
     );
 }

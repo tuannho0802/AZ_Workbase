@@ -16,6 +16,7 @@ import { UpdatePeriodicTaskDto } from './dto/update-periodic-task.dto';
 import { PeriodicTaskFiltersDto } from './dto/periodic-task-filters.dto';
 import { LockPeriodicTaskDto } from './dto/lock-periodic-task.dto';
 import { PeriodicTaskAccessHelper } from './helpers/periodic-task-access.helper';
+import { resolveListWindow } from './helpers/list-window.helper';
 import { PeriodicTaskAuditService, PeriodicTaskAuditAction } from './periodic-task-audit.service';
 // ⚠️ Notification Phase 2: NotificationsModule là @Global() (mirror
 // AuditModule/Customer Phase 3) nên không cần import module - tránh phụ
@@ -350,9 +351,14 @@ export class PeriodicTasksService {
       dateTo,
       statusId,
       primaryAssigneeId,
+      assigneeId,
       departmentId,
       search,
     } = filters;
+
+    // KHÔNG BAO GIỜ tải toàn bộ: luôn có khoảng ngày (mặc định Tuần này, tối đa
+    // 93 ngày) - xem `list-window.helper.ts`.
+    const dateWindow = resolveListWindow({ periodStartDate, dateFrom, dateTo });
 
     const qb = this.taskRepo
       .createQueryBuilder('task')
@@ -374,11 +380,11 @@ export class PeriodicTasksService {
     }
 
     // Khớp theo KHOẢNG (range, overlap) - kết hợp AND được với điều kiện trên.
-    if (dateFrom) {
-      qb.andWhere('task.periodEndDate >= :dateFrom', { dateFrom });
+    if (dateWindow.dateFrom) {
+      qb.andWhere('task.periodEndDate >= :dateFrom', { dateFrom: dateWindow.dateFrom });
     }
-    if (dateTo) {
-      qb.andWhere('task.periodStartDate <= :dateTo', { dateTo });
+    if (dateWindow.dateTo) {
+      qb.andWhere('task.periodStartDate <= :dateTo', { dateTo: dateWindow.dateTo });
     }
 
     if (statusId) {
@@ -386,6 +392,14 @@ export class PeriodicTasksService {
     }
     if (primaryAssigneeId) {
       qb.andWhere('task.primaryAssigneeId = :primaryAssigneeId', { primaryAssigneeId });
+    }
+    // "Phụ trách" = chính HOẶC phụ (cùng subquery với `applyViewFilter` nhánh own).
+    if (assigneeId) {
+      qb.andWhere(
+        '(task.primaryAssigneeId = :filterAssigneeId OR ' +
+        'task.id IN (SELECT psa2.task_id FROM periodic_task_secondary_assignees psa2 WHERE psa2.user_id = :filterAssigneeId))',
+        { filterAssigneeId: assigneeId },
+      );
     }
     if (departmentId) {
       qb.andWhere('task.departmentId = :departmentId', { departmentId });
@@ -399,7 +413,16 @@ export class PeriodicTasksService {
 
     const [data, total] = await qb.getManyAndCount();
 
-    return { data, total, page, limit, totalPages: Math.ceil(total / limit) };
+    // `dateFrom`/`dateTo` trả về = khoảng ĐÃ ÁP THẬT (kể cả khi tự mặc định Tuần này).
+    return {
+      data,
+      total,
+      page,
+      limit,
+      totalPages: Math.ceil(total / limit),
+      dateFrom: dateWindow.dateFrom,
+      dateTo: dateWindow.dateTo,
+    };
   }
 
   async findOne(id: number, userId: number, userRole: string, scope?: string | null): Promise<PeriodicTask> {

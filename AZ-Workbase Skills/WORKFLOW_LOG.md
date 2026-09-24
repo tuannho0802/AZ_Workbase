@@ -4040,3 +4040,21 @@ trước) theo đúng Custom Instructions của Project.
 > Liên kết/checklist/khách hàng gắn kèm không bị xoá lúc xoá mềm nên tự sống lại cùng Task. Nếu Phụ trách chính đã bị xoá mềm sau đó, Task khôi phục sẽ hiện "—" ở cột đó (chưa chặn). Verify (HEAD `a2319da`): BE `tsc` sạch, jest periodic-tasks 133/133, SQL restore đã sinh thử từ TypeORM; FE `tsc` sạch, vitest 106/106, ESLint sạch.
 
 ---
+
+## [2026-09-24 20:00] | Công việc định kỳ: KHÔNG BAO GIỜ tải toàn bộ - mặc định TUẦN NÀY + Phụ trách = mình (chính + phụ), cả BE lẫn FE | [Status: Success — verify bằng build/test thật]
+
+**Actor:** Agent
+
+**Files Changed:**
+- `backend/src/modules/periodic-tasks/helpers/list-window.helper.ts` (+ `.spec.ts`) — **MỚI**: `resolveListWindow()` — không truyền ngày => Tuần này (T2→CN, giờ VN); 1 biên => bù ±6 ngày; đủ 2 biên => tối đa `MAX_LIST_RANGE_DAYS = 93` ngày (vượt/đảo ngược/ngày sai => 400). Chỉ khi khớp CHÍNH XÁC `periodStartDate` mới không ép khoảng.
+- `periodic-tasks.service.ts` `findAll()` — luôn áp khoảng (lọc giao khoảng như cũ), thêm filter `assigneeId` (= Phụ trách CHÍNH **hoặc** PHỤ), trả thêm `dateFrom/dateTo` đã áp; `dto/periodic-task-filters.dto.ts` — field `assigneeId` (giữ nguyên `primaryAssigneeId` cũ = chỉ chính).
+- `database/entities/periodic-task.entity.ts` + migration `1784400000000-AddPeriodicTasksPeriodRangeIndex.ts` — index ghép `(period_start_date, period_end_date)`, idempotent (tự kiểm information_schema).
+- FE: `lib/utils/periodicTaskRange.ts` (+test) — Tuần này/tháng/giới hạn 93 ngày; `cong-viec-dinh-ky/page.tsx` — mặc định `dateRange` = Tuần này (không cho rỗng, bỏ chọn/xoá => Tuần này, vượt 93 ngày => tự cắt + cảnh báo), mặc định Phụ trách = user hiện tại (gán 1 lần, tự hydrate muộn), filter đổi sang `assigneeId`, view Lịch tháng tải đúng tháng đang xem (đổi tháng => đổi khoảng), cảnh báo khi 3 view không phân trang bị cắt ở 100 Task; `TaskLinksModal.tsx` — ứng viên cha/con chỉ tải khi mở modal và theo khoảng Kỳ hạn của Task (trước đây tải 100 Task bất kỳ ngay khi vào trang); `PeriodicTasksCalendarView.tsx` — prop `onPanelChange`; `lib/api/periodic-tasks.api.ts` — type `assigneeId`.
+
+**Notes:**
+> - Đổi hành vi có chủ đích: badge sidebar "Công việc định kỳ" (`getAll({statusId,limit:1})`) giờ đếm To-Do của TUẦN NÀY (do BE mặc định), không còn đếm mọi tuần.
+> - Focus từ thông báo: đặt khoảng = Kỳ hạn Task (Task Năm > 93 ngày bị cắt còn 93 ngày đầu Kỳ hạn, vẫn chứa Task), bỏ lọc Phụ trách.
+> - Giới hạn đã biết: ứng viên cha/con của Task Năm chỉ lấy trong 93 ngày đầu Kỳ hạn; 3 view không phân trang tối đa 100 Task/khoảng (có cảnh báo).
+> - Cần chạy migration `1784400000000`. Verify (HEAD `388a387`): BE `tsc`/`nest build` sạch, jest toàn bộ 940/940; FE `tsc` sạch, `next build` OK, vitest 113/113.
+
+---

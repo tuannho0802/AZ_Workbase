@@ -199,13 +199,67 @@ describe('PeriodicTasksService', () => {
   });
 
   describe('findAll', () => {
-    it('trả về danh sách kèm phân trang', async () => {
+    const TODAY = new Date('2026-09-24T05:00:00Z'); // Thứ Năm -> tuần này 2026-09-21 .. 2026-09-27
+
+    beforeEach(() => {
+      jest.useFakeTimers().setSystemTime(TODAY);
+    });
+    afterEach(() => {
+      jest.useRealTimers();
+    });
+
+    it('trả về danh sách kèm phân trang + khoảng ngày đã áp', async () => {
       const tasks = [{ id: 1 }, { id: 2 }];
       mockTaskRepo.createQueryBuilder.mockReturnValue(makeFakeQueryBuilder({ getManyAndCount: [tasks, 2] }));
 
       const result = await service.findAll({ page: 1, limit: 20 } as any, 1, Role.ADMIN, 'all');
 
-      expect(result).toEqual({ data: tasks, total: 2, page: 1, limit: 20, totalPages: 1 });
+      expect(result).toEqual({
+        data: tasks, total: 2, page: 1, limit: 20, totalPages: 1,
+        dateFrom: '2026-09-21', dateTo: '2026-09-27',
+      });
+    });
+
+    it('KHÔNG truyền ngày -> BẮT BUỘC lọc Tuần này (không bao giờ tải toàn bộ)', async () => {
+      const qb = makeFakeQueryBuilder();
+      mockTaskRepo.createQueryBuilder.mockReturnValue(qb);
+
+      await service.findAll({} as any, 1, Role.ADMIN, 'all');
+
+      expect(qb.andWhere).toHaveBeenCalledWith('task.periodEndDate >= :dateFrom', { dateFrom: '2026-09-21' });
+      expect(qb.andWhere).toHaveBeenCalledWith('task.periodStartDate <= :dateTo', { dateTo: '2026-09-27' });
+    });
+
+    it('truyền khoảng riêng -> dùng khoảng đó, không ghi đè bằng Tuần này', async () => {
+      const qb = makeFakeQueryBuilder();
+      mockTaskRepo.createQueryBuilder.mockReturnValue(qb);
+
+      await service.findAll({ dateFrom: '2026-09-01', dateTo: '2026-09-30' } as any, 1, Role.ADMIN, 'all');
+
+      expect(qb.andWhere).toHaveBeenCalledWith('task.periodEndDate >= :dateFrom', { dateFrom: '2026-09-01' });
+      expect(qb.andWhere).toHaveBeenCalledWith('task.periodStartDate <= :dateTo', { dateTo: '2026-09-30' });
+    });
+
+    it('khoảng vượt giới hạn -> 400 và KHÔNG chạy truy vấn', async () => {
+      const qb = makeFakeQueryBuilder();
+      mockTaskRepo.createQueryBuilder.mockReturnValue(qb);
+
+      await expect(
+        service.findAll({ dateFrom: '2026-01-01', dateTo: '2026-12-31' } as any, 1, Role.ADMIN, 'all'),
+      ).rejects.toThrow(BadRequestException);
+      expect(qb.getManyAndCount).not.toHaveBeenCalled();
+    });
+
+    it('assigneeId -> lọc Phụ trách CHÍNH hoặc PHỤ', async () => {
+      const qb = makeFakeQueryBuilder();
+      mockTaskRepo.createQueryBuilder.mockReturnValue(qb);
+
+      await service.findAll({ assigneeId: 7 } as any, 1, Role.ADMIN, 'all');
+
+      const call = qb.andWhere.mock.calls.find(([sql]: [string]) => sql.includes('periodic_task_secondary_assignees'));
+      expect(call).toBeDefined();
+      expect(call[0]).toContain('task.primaryAssigneeId = :filterAssigneeId');
+      expect(call[1]).toEqual({ filterAssigneeId: 7 });
     });
   });
 

@@ -38,6 +38,7 @@ import { PeriodType } from '../../common/enums/period-type.enum';
 @Index(['primaryAssigneeId'])
 @Index(['departmentId'])
 @Index(['periodStartDate'])
+@Index('idx_periodic_tasks_period_range', ['periodStartDate', 'periodEndDate'])
 @Index(['deletedAt'])
 export class PeriodicTask {
   @PrimaryGeneratedColumn()

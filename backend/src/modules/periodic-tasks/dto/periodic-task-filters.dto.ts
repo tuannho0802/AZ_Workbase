@@ -36,7 +36,7 @@ export class PeriodicTaskFiltersDto {
   @IsDateString({}, { message: 'periodStartDate phải đúng định dạng ngày YYYY-MM-DD' })
   periodStartDate?: string;
 
-  @ApiPropertyOptional({ example: '2026-09-01', description: 'Lọc theo khoảng - biên dưới (chồng lấn với period_start_date/period_end_date)' })
+  @ApiPropertyOptional({ example: '2026-09-01', description: 'Lọc theo khoảng - biên dưới (chồng lấn với period_start_date/period_end_date). Không truyền dateFrom/dateTo => MẶC ĐỊNH TUẦN NÀY; tối đa 93 ngày' })
   @IsOptional()
   @IsDateString({}, { message: 'dateFrom phải đúng định dạng ngày YYYY-MM-DD' })
   dateFrom?: string;
@@ -57,6 +57,15 @@ export class PeriodicTaskFiltersDto {
   @Type(() => Number)
   @IsInt()
   primaryAssigneeId?: number;
+
+  @ApiPropertyOptional({
+    example: 5,
+    description: 'Lọc theo NGƯỜI PHỤ TRÁCH = là Phụ trách CHÍNH **hoặc** Phụ trách PHỤ của Task',
+  })
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  assigneeId?: number;
 
   @ApiPropertyOptional({ example: 1, description: 'Lọc theo phòng ban' })
   @IsOptional()

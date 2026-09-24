@@ -119,7 +119,10 @@ export function useSidebarBadgeCounts(): Record<string, number> {
   });
   const notStartedStatusId = taskStatuses.data?.find((s) => s.code === 'not_started')?.id;
 
-  // 7b. Số Công việc định kỳ đang ở trạng thái To-Do (not_started) TRONG
+  // 7b. (BE `GET /periodic-tasks` KHÔNG bao giờ tải toàn bộ: không truyền dateFrom/
+  // dateTo => mặc định TUẦN NÀY, nên số này là To-Do của TUẦN NÀY - khớp đúng với
+  // danh sách mặc định khi bấm vào trang.)
+  // Số Công việc định kỳ đang ở trạng thái To-Do (not_started) TRONG
   // PHẠM VI QUYỀN của viewer - BE tự lọc theo scope (own/department/all) ở
   // `PeriodicTasksService.findAll()`, mirror đúng cách nguồn (4) ở trên dựa
   // vào `findPending()` tự lọc scope cho đơn nghỉ phép - không lọc lại theo
