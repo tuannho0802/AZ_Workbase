@@ -3,10 +3,21 @@ export function getNowVn(): Date {
 }
 
 export function todayVnStr(): string {
-  const now = getNowVn();
-  const year = now.getFullYear();
-  const month = String(now.getMonth() + 1).padStart(2, '0');
-  const day = String(now.getDate()).padStart(2, '0');
+  return toVnDateStr(getNowVn());
+}
+
+/**
+ * Quy đổi 1 Date bất kỳ (VD `created_at` của audit log) về chuỗi ngày
+ * "YYYY-MM-DD" theo giờ VN - mirror ĐÚNG cách tính của `todayVnStr()` (trước
+ * đây chỉ áp cho "hôm nay"), tách riêng thành hàm chung để tái dùng cho các
+ * mốc thời gian khác (VD `PeriodicTaskPerformanceService` cần quy đổi
+ * `periodic_task_audit_logs.created_at`).
+ */
+export function toVnDateStr(date: Date | string): string {
+  const d = new Date(new Date(date).toLocaleString('en-US', { timeZone: 'Asia/Ho_Chi_Minh' }));
+  const year = d.getFullYear();
+  const month = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
   return `${year}-${month}-${day}`;
 }
 

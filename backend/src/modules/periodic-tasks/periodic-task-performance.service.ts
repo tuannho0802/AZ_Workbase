@@ -3,27 +3,38 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { In, Repository } from 'typeorm';
 import { PeriodicTask } from '../../database/entities/periodic-task.entity';
 import { PeriodicTaskChecklistItem } from '../../database/entities/periodic-task-checklist-item.entity';
+import { PeriodicTaskStatus } from '../../database/entities/periodic-task-status.entity';
+import { PeriodicTaskAuditLog } from '../../database/entities/periodic-task-audit-log.entity';
 import { User } from '../../database/entities/user.entity';
 import { PermissionsService } from '../permissions/permissions.service';
 import { PermissionScope } from '../../database/entities/role-permission.entity';
 import { Role } from '../../common/enums/role.enum';
-import { todayVnStr } from '../../common/utils/date-vn.util';
-import { resolveListWindow } from './helpers/list-window.helper';
+import { todayVnStr, toVnDateStr } from '../../common/utils/date-vn.util';
+import { resolveListWindow, addDaysToDateString } from './helpers/list-window.helper';
+import { PeriodicTaskAuditAction } from './periodic-task-audit.service';
 import { PeriodicTaskPerformanceFiltersDto } from './dto/periodic-task-performance-filters.dto';
 import { RequestingUser } from './periodic-tasks.service';
+
+/** Số ngày ân hạn (grace period) SAU `period_end_date` - chốt nghiệp vụ mới
+ * nhất của chủ dự án (2026-09-24, xem JSDoc `resolveReachedReviewOrDoneAt`
+ * bên dưới): "trong 7 ngày tính từ ngày kỳ hạn mà chưa chuyển sang in_review
+ * hoặc completed thì sau đó nếu chuyển trạng thái sẽ báo là trễ". THAY THẾ
+ * HOÀN TOÀN quy tắc cũ so `completed_at > period_end_date` (xem bug thật ghi
+ * chú bên dưới). */
+export const LATE_GRACE_DAYS = 7;
 
 export interface PerformanceUserRow {
   userId: number;
   userName: string;
   /** Tổng Task trong kỳ, ĐÃ TRỪ status `is_excluded_from_rollup=true` (mirror PLAN mục 2.3 - rollup %). */
   total: number;
-  /** Đã hoàn thành ĐÚNG hạn (completed_at NULL hoặc completed_at <= period_end_date). */
+  /** Đã đạt in_review/done, trong vòng `period_end_date + LATE_GRACE_DAYS` (xem JSDoc class). */
   completedOnTime: number;
-  /** Đã hoàn thành nhưng TRỄ (completed_at > period_end_date - xem PLAN yêu cầu "hoàn thành muộn"). */
+  /** Đã đạt in_review/done nhưng SAU `period_end_date + LATE_GRACE_DAYS`. */
   completedLate: number;
-  /** CHƯA hoàn thành và ĐÃ quá `period_end_date` (today > period_end_date). */
+  /** CHƯA đạt in_review/done và hôm nay ĐÃ QUA khỏi `period_end_date + LATE_GRACE_DAYS`. */
   overdueNotCompleted: number;
-  /** CHƯA hoàn thành nhưng CHƯA tới hạn (period_end_date >= today) - KHÔNG tính là "trễ/thiếu sót", chỉ để tham khảo. */
+  /** CHƯA đạt in_review/done nhưng vẫn còn trong (hoặc chưa tới) khoảng ân hạn - KHÔNG tính là "trễ/thiếu sót", chỉ để tham khảo. */
   pendingFuture: number;
   /** % (completedOnTime + completedLate) / total, làm tròn 1 số lẻ. `null` nếu total=0. */
   completionRatePercent: number | null;
@@ -50,12 +61,45 @@ export interface PerformanceSummaryResult {
  * đang hiểu là "người CHỊU TRÁCH NHIỆM chính", mirror nghĩa `primaryAssigneeId`
  * ở mọi nơi khác trong module này).
  *
- * ⚠️ "Hoàn thành muộn" = `status.is_done_state=true` VÀ `completed_at` (lấy
- * phần NGÀY, giờ VN) > `period_end_date`. "Chưa hoàn thành" chỉ bị tính là
- * THIẾU SÓT (`overdueNotCompleted`) khi `period_end_date` đã QUA - Task chưa
- * tới hạn được xếp riêng vào `pendingFuture`, KHÔNG trừ điểm (đúng yêu cầu
- * chủ dự án: "Chừa lại các ngày tương lai vì hiện tại có thể User quên đánh
- * dấu là hoàn thành").
+ * ⚠️ BUG THẬT PHÁT HIỆN 2026-09-24 (báo cho chủ dự án, ngoài phạm vi câu hỏi
+ * đang hỏi - đúng mục 8 Custom Instructions): cột `periodic_tasks.completed_at`
+ * KHÔNG BAO GIỜ được set ở bất kỳ đâu trong `periodic-tasks.service.ts` (grep
+ * toàn bộ module chỉ thấy nó ở SELECT của file NÀY) - bản implement TRƯỚC ĐÓ
+ * của Phase này dựa vào `completed_at > period_end_date` để tính "hoàn thành
+ * muộn" do đó LUÔN LUÔN trả `completedOnTime` cho mọi Task đã xong, không
+ * bao giờ phát hiện được trễ thật. Bản implement NÀY bỏ hẳn `completed_at`,
+ * thay bằng mốc lấy từ `periodic_task_audit_logs` (xem
+ * `resolveReachedReviewOrDoneAt()`).
+ *
+ * ⚠️ "Hoàn thành (đúng hạn/muộn)" - CHỐT LẠI 2026-09-24 (thay thế hoàn toàn
+ * quy tắc `completed_at` cũ): Task được coi là "đã xong" khi lần ĐẦU TIÊN nó
+ * chuyển sang trạng thái có `code = 'in_review'` HOẶC `is_done_state = true`
+ * (không hardcode riêng `code = 'completed'` - để đúng ý "in_review HOẶC
+ * completed" của chủ dự án, đồng thời tương thích mọi status "hoàn thành"
+ * khác Admin tự thêm sau này qua `is_done_state`). Mốc thời gian này lấy từ
+ * `periodic_task_audit_logs` (action=`status_changed`, JSON `new_data.status.id`
+ * đầu tiên khớp) - KHÔNG dùng `completed_at` (xem bug thật ở trên).
+ *  - `completedOnTime`: mốc đó (lấy NGÀY, giờ VN) <= `period_end_date + 7
+ *    ngày` (`LATE_GRACE_DAYS`, ân hạn chủ dự án chốt 2026-09-24 - cho phép
+ *    User có vài ngày sau kỳ hạn để tick/chuyển review mà KHÔNG bị tính trễ).
+ *  - `completedLate`: mốc đó > `period_end_date + 7 ngày`.
+ *  - `overdueNotCompleted`: CHƯA từng đạt in_review/done VÀ hôm nay đã QUA
+ *    khỏi `period_end_date + 7 ngày` (áp dụng ân hạn NHẤT QUÁN, không chỉ
+ *    riêng lúc tính trễ - tránh 2 mốc "trễ" khác nhau cho cùng 1 khái niệm).
+ *  - `pendingFuture`: CHƯA đạt in_review/done nhưng vẫn còn trong (hoặc chưa
+ *    tới) khoảng ân hạn - KHÔNG trừ điểm (đúng yêu cầu chủ dự án: "Chừa lại
+ *    các ngày tương lai vì hiện tại có thể User quên đánh dấu là hoàn
+ *    thành").
+ *  - Task tạo THẲNG với status đã qualify (in_review/done) ngay từ đầu, KHÔNG
+ *    hề qua audit log `status_changed` nào (VD tạo qua API với `statusId`
+ *    truyền sẵn) -> fallback dùng `task.createdAt` làm mốc (xem
+ *    `resolveReachedReviewOrDoneAt`).
+ *  - `in_review` là 1 `code` trong bảng động `periodic_task_statuses` (Admin
+ *    tự CRUD, xem `SKILL_NESTJS_BACKEND.md`/entity JSDoc) - chủ dự án XÁC
+ *    NHẬN đã tự thêm status này trên Production qua UI có sẵn, môi trường
+ *    local CHƯA có row này -> CỐ TÌNH không kèm migration seed cho `in_review`
+ *    ở đây, code chỉ so sánh theo `code` string, tự nhiên "vô hại" (không lỗi,
+ *    chỉ không match được gì) nếu DB chưa có row đó.
  *
  * Phạm vi xem (scope) KHÔNG dùng `PeriodicTaskAccessHelper` (đo theo
  * `createdBy`/Phụ trách chính+phụ của NGƯỜI XEM) mà tự định nghĩa lại theo
@@ -75,10 +119,69 @@ export class PeriodicTaskPerformanceService {
     private readonly taskRepo: Repository<PeriodicTask>,
     @InjectRepository(PeriodicTaskChecklistItem)
     private readonly checklistRepo: Repository<PeriodicTaskChecklistItem>,
+    @InjectRepository(PeriodicTaskStatus)
+    private readonly statusRepo: Repository<PeriodicTaskStatus>,
+    @InjectRepository(PeriodicTaskAuditLog)
+    private readonly auditLogRepo: Repository<PeriodicTaskAuditLog>,
     @InjectRepository(User)
     private readonly userRepo: Repository<User>,
     private readonly permissionsService: PermissionsService,
   ) {}
+
+  /** `code = 'in_review'` (Admin tự thêm trên Production, xem JSDoc class)
+   * HOẶC `is_done_state = true` (bao gồm `completed` seed sẵn + mọi status
+   * "hoàn thành" khác Admin thêm sau này). */
+  private async loadQualifyingStatusIds(): Promise<Set<number>> {
+    const statuses = await this.statusRepo.find({ select: { id: true, code: true, isDoneState: true } });
+    return new Set(statuses.filter((s) => s.code === 'in_review' || s.isDoneState).map((s) => s.id));
+  }
+
+  /**
+   * Map<taskId, "YYYY-MM-DD"> = ngày (giờ VN) Task lần ĐẦU TIÊN đạt trạng
+   * thái in_review/done, đọc từ `periodic_task_audit_logs` (action=
+   * `status_changed`, sắp ASC theo `created_at`, giữ lần khớp SỚM NHẤT).
+   * Task nào KHÔNG có key trong Map = CHƯA TỪNG đạt in_review/done.
+   *
+   * Fallback `task.createdAt`: Task tạo THẲNG với status đã qualify ngay từ
+   * đầu (không hề có audit log `status_changed` nào vì statusId chưa từng
+   * "đổi") - `currentStatusId`/`taskCreatedAtById` do caller truyền vào để
+   * xử lý case này mà không cần query lại `periodic_tasks`.
+   */
+  private async resolveReachedReviewOrDoneAt(
+    tasks: Array<{ taskId: number; currentStatusId: number; createdAt: Date }>,
+  ): Promise<Map<number, string>> {
+    const result = new Map<number, string>();
+    if (tasks.length === 0) return result;
+
+    const qualifyingIds = await this.loadQualifyingStatusIds();
+    if (qualifyingIds.size === 0) return result;
+
+    const taskIds = tasks.map((t) => t.taskId);
+    const logs = await this.auditLogRepo.find({
+      where: { taskId: In(taskIds), action: PeriodicTaskAuditAction.STATUS_CHANGED },
+      select: { taskId: true, newData: true, createdAt: true },
+      order: { createdAt: 'ASC' },
+    });
+
+    for (const log of logs) {
+      if (result.has(log.taskId)) continue; // đã có mốc SỚM HƠN (order ASC) - giữ nguyên, không ghi đè
+      const statusId = (log.newData as { status?: { id?: number } } | null)?.status?.id;
+      if (statusId != null && qualifyingIds.has(statusId)) {
+        result.set(log.taskId, toVnDateStr(log.createdAt));
+      }
+    }
+
+    // Fallback: status hiện tại đã qualify nhưng KHÔNG tìm thấy audit log
+    // nào khớp ở trên (tạo thẳng với statusId đó, chưa từng qua PATCH đổi
+    // status) -> dùng createdAt của chính Task.
+    for (const t of tasks) {
+      if (!result.has(t.taskId) && qualifyingIds.has(t.currentStatusId)) {
+        result.set(t.taskId, toVnDateStr(t.createdAt));
+      }
+    }
+
+    return result;
+  }
 
   /**
    * Quyền "View bật/tắt" ĐÚNG NGHĨA ĐEN (xem JSDoc migration seed): KHÔNG
@@ -130,9 +233,9 @@ export class PeriodicTaskPerformanceService {
       .select([
         'task.id AS task_id',
         'task.primaryAssigneeId AS primary_assignee_id',
+        'task.statusId AS status_id',
         'task.periodEndDate AS period_end_date',
-        'task.completedAt AS completed_at',
-        'status.isDoneState AS is_done_state',
+        'task.createdAt AS created_at',
         'status.isExcludedFromRollup AS is_excluded_from_rollup',
       ])
       .where('task.deletedAt IS NULL');
@@ -171,11 +274,16 @@ export class PeriodicTaskPerformanceService {
     const raw: Array<{
       task_id: number;
       primary_assignee_id: number;
+      status_id: number;
       period_end_date: string;
-      completed_at: string | null;
-      is_done_state: 0 | 1;
+      created_at: string;
       is_excluded_from_rollup: 0 | 1;
     }> = await qb.getRawMany();
+
+    const rollupRows = raw.filter((r) => Number(r.is_excluded_from_rollup) !== 1); // (PLAN mục 2.3)
+    const reachedMap = await this.resolveReachedReviewOrDoneAt(
+      rollupRows.map((r) => ({ taskId: r.task_id, currentStatusId: r.status_id, createdAt: new Date(r.created_at) })),
+    );
 
     const byUser = new Map<number, PerformanceUserRow>();
     const taskIdToUser = new Map<number, number>();
@@ -203,17 +311,17 @@ export class PeriodicTaskPerformanceService {
       }
 
       row.total += 1;
-      const isDone = Number(r.is_done_state) === 1;
       const periodEndDate = String(r.period_end_date).slice(0, 10);
+      const graceDate = addDaysToDateString(periodEndDate, LATE_GRACE_DAYS);
+      const reachedDate = reachedMap.get(r.task_id) ?? null;
 
-      if (isDone) {
-        const completedDate = r.completed_at ? String(r.completed_at).slice(0, 10) : null;
-        if (completedDate && completedDate > periodEndDate) {
+      if (reachedDate) {
+        if (reachedDate > graceDate) {
           row.completedLate += 1;
         } else {
           row.completedOnTime += 1;
         }
-      } else if (periodEndDate < today) {
+      } else if (today > graceDate) {
         row.overdueNotCompleted += 1;
       } else {
         row.pendingFuture += 1;
@@ -281,22 +389,24 @@ export class PeriodicTaskPerformanceService {
 
     const raw = await qb.getRawMany<{
       task_id: number;
+      status_id: number;
       period_end_date: string;
-      completed_at: string | null;
-      is_done_state: 0 | 1;
+      created_at: string;
       is_excluded_from_rollup: 0 | 1;
     }>();
 
-    const flaggedTaskIds = raw
-      .filter((r) => Number(r.is_excluded_from_rollup) !== 1)
+    const rollupRows = raw.filter((r) => Number(r.is_excluded_from_rollup) !== 1);
+    const reachedMap = await this.resolveReachedReviewOrDoneAt(
+      rollupRows.map((r) => ({ taskId: r.task_id, currentStatusId: r.status_id, createdAt: new Date(r.created_at) })),
+    );
+
+    const flaggedTaskIds = rollupRows
       .filter((r) => {
         const periodEndDate = String(r.period_end_date).slice(0, 10);
-        const isDone = Number(r.is_done_state) === 1;
-        if (isDone) {
-          const completedDate = r.completed_at ? String(r.completed_at).slice(0, 10) : null;
-          return !!completedDate && completedDate > periodEndDate; // hoàn thành muộn
-        }
-        return periodEndDate < today; // quá hạn chưa xong
+        const graceDate = addDaysToDateString(periodEndDate, LATE_GRACE_DAYS);
+        const reachedDate = reachedMap.get(r.task_id) ?? null;
+        if (reachedDate) return reachedDate > graceDate; // hoàn thành muộn (sau ân hạn)
+        return today > graceDate; // quá hạn chưa xong (đã qua cả ân hạn)
       })
       .map((r) => r.task_id);
 
