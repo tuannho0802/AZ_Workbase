@@ -4172,3 +4172,22 @@ trước) theo đúng Custom Instructions của Project.
 
 ---
 
+## [2026-09-25 00:10] | Hiệu suất công việc: chốt lại rule "hoàn thành muộn" (ân hạn 7 ngày, in_review/completed), phát hiện + fix bug `completed_at` không bao giờ được set | [Status: Success — verify bằng build/test thật, CHƯA đụng FE]
+
+**Actor:** Agent
+
+**Files Changed:**
+- `backend/src/modules/periodic-tasks/periodic-task-performance.service.ts` — Bỏ HOÀN TOÀN cách tính cũ dựa vào `task.completed_at`. Thêm `resolveReachedReviewOrDoneAt()`: lấy mốc "Task lần đầu đạt status `code='in_review'` HOẶC `is_done_state=true`" từ `periodic_task_audit_logs` (action=`status_changed`, JSON `new_data.status.id`), fallback `task.createdAt` nếu Task tạo thẳng với status đã qualify. So mốc đó với `period_end_date + LATE_GRACE_DAYS` (hằng số mới, = 7) để phân loại `completedOnTime`/`completedLate`/`overdueNotCompleted`/`pendingFuture`. Áp dụng ở cả `getSummary()` lẫn `getUserFlaggedTasks()`.
+- `backend/src/common/utils/date-vn.util.ts` — Thêm `toVnDateStr(date)` (tách từ logic sẵn có của `todayVnStr()`, tổng quát hoá cho mọi Date chứ không chỉ "hôm nay").
+- `backend/src/modules/periodic-tasks/periodic-task-performance.service.spec.ts` (MỚI) — 9 test cho rule ân hạn (đúng biên/quá biên/`in_review`/chưa đạt trong-ngoài ân hạn/fallback `createdAt`/loại rollup/DB chưa seed status qualify).
+
+**Root Cause (bug thật phát hiện ngoài phạm vi câu hỏi, đúng mục 8 Custom Instructions):**
+> `periodic_tasks.completed_at` được khai trong entity nhưng KHÔNG hề được set ở bất kỳ đâu trong `periodic-tasks.service.ts` (grep toàn repo chỉ thấy nó ở SELECT của service Hiệu suất). Bản implement TRƯỚC (`e619dce`) dựa hẳn vào cột này để tính "hoàn thành muộn" -> LUÔN LUÔN trả `completedOnTime` cho mọi Task đã xong, không bao giờ phát hiện trễ thật.
+
+**Solution:**
+> Chủ dự án chốt lại rule (2026-09-24, thay thế yêu cầu ban đầu): Task coi là "xong" khi đạt `in_review` HOẶC `completed` (không phải lúc "hoàn thành" theo nghĩa cũ), có ân hạn 7 ngày sau `period_end_date` trước khi bị tính là trễ. Rule mới KHÔNG cần cột `completed_at` (đang hỏng) — lấy mốc trực tiếp từ audit log lịch sử đổi status đã có sẵn từ Phase 7, chính xác hơn nhiều so với 1 cột không bao giờ được ghi.
+
+**Notes:**
+> Verify: `tsc --noEmit` sạch, `nest build` OK, `npx jest` (toàn repo) **52 suites / 959 tests pass** (bao gồm 9 test mới). `in_review` là 1 `code` động trong `periodic_task_statuses` (Admin tự thêm qua UI CRUD sẵn có trên Production) — LOCAL CHƯA có row này, code chỉ so `code` string nên không lỗi, chỉ đơn giản không match được (đã có test case riêng cho trường hợp DB chưa seed status qualify). CHƯA làm FE (bảng/biểu đồ Hiệu suất) — việc tiếp theo.
+
+---
