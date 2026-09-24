@@ -3968,3 +3968,23 @@ trước) theo đúng Custom Instructions của Project.
 > Không push được GitHub từ sandbox — chủ dự án tự áp dụng patch.
 
 ---
+
+## [2026-09-24 16:00] | FE tối ưu theo tuần: lazy-fetch từng tuần (B) + lazy old_data/new_data (C) | [Status: Success — verify bằng build/test thật]
+
+**Actor:** Agent
+
+**Files Changed:**
+- `frontend/src/components/common/WeeklyLazySection.tsx` — **MỚI**: nhận `weeks` (PHA 1) + `fetchWeek`, chỉ fetch bản ghi tuần khi panel mở (react-query, phân trang trong tuần server-side, mặc định 20).
+- `frontend/src/components/common/WeeklyLazySection.test.tsx` — **MỚI**: 2 test (chỉ fetch tuần đang mở; empty).
+- `frontend/src/components/audit/LazyAuditDiff.tsx` — **MỚI**: fetch oldData/newData theo id khi mở expand-row/Drawer.
+- `frontend/src/lib/api/audit.api.ts`, `periodic-task-audit-logs.api.ts` — thêm `getLogDetail`/`getGlobalDetail`.
+- `frontend/src/lib/types/{audit,periodic-task-audit,zk-device}.types.ts` — thêm `weekStart/weekPage/weekLimit` (request), `weeks/weekTotal` (response).
+- `audit-logs/page.tsx` (2 tab, desktop+mobile), `lich-su-cong-viec/page.tsx`, `attendance-device/AttendanceLogsTab.tsx` — đổi sang `WeeklyLazySection`; expand/Drawer/mobile dùng `LazyAuditDiff`.
+
+**Notes:**
+> - `AttendanceSummaryTab` GIỮ NGUYÊN `WeeklyCollapseSection` (BE `getAttendanceSummary` gộp RAM, không 2 pha).
+> - **Đổi hành vi đã biết:** list `/audit-logs` không còn `oldData/newData` nên cột "Đối tượng" của entity không phải customer (link_group, media_source...) mất phần tên suy từ `getEntitySummary` (chỉ còn loại + #id); Drawer vẫn đủ diff. Muốn khôi phục tên ở list cần BE trả thêm cột tóm tắt.
+> - Verify (clone HEAD `9dca015` + patch): `vitest run` 106/106 PASS, `next build` OK, `tsc --noEmit` chỉ còn các lỗi cũ (logo.png/CountBadge do thiếu next-env.d.ts khi chưa build), BE `nest build` OK + jest 127/127.
+> - Không push được GitHub từ sandbox — chủ dự án tự áp dụng patch.
+
+---

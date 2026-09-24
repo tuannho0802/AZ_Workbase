@@ -1,5 +1,5 @@
 import axiosInstance from './axios-instance';
-import { AuditFilters, PaginatedAuditResponse, AuditSettings } from '../types/audit.types';
+import { AuditFilters, AuditLog, PaginatedAuditResponse, AuditSettings } from '../types/audit.types';
 
 export const auditApi = {
   getLogs: async (filters: AuditFilters): Promise<PaginatedAuditResponse> => {
@@ -7,6 +7,12 @@ export const auditApi = {
     // Remove undefined values
     Object.keys(params).forEach(k => params[k] === undefined && delete params[k]);
     const response = await axiosInstance.get('/audit-logs', { params });
+    return response.data;
+  },
+
+  /** Chi tiết 1 dòng (kèm oldData/newData - list KHÔNG còn trả 2 trường này). */
+  getLogDetail: async (id: number): Promise<AuditLog> => {
+    const response = await axiosInstance.get(`/audit-logs/${id}`);
     return response.data;
   },
 

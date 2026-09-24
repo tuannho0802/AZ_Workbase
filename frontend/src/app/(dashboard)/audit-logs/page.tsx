@@ -18,11 +18,11 @@ import { useRouter } from 'next/navigation';
 import { auditApi } from '@/lib/api/audit.api';
 import { AuditLog, AuditFilters, AuditSettings } from '@/lib/types/audit.types';
 import dayjs from 'dayjs';
-import { AuditDiffViewer } from '@/components/audit/AuditDiffViewer';
+import { LazyAuditDiff } from '@/components/audit/LazyAuditDiff';
 import { useMyPermissions } from '@/lib/hooks/useMyPermissions';
 import { useRoleColorMap } from '@/lib/hooks/useRoleColorMap';
 import { SalesUserSelect } from '@/components/customers/SalesUserSelect';
-import { WeeklyCollapseSection } from '@/components/common/WeeklyCollapseSection';
+import { WeeklyLazySection, type WeekBucketDto } from '@/components/common/WeeklyLazySection';
 import {
   ACTION_META,
   ACTION_GROUP_LABELS,
@@ -174,6 +174,11 @@ export default function AuditLogsPage() {
   const [weeksPerPage, setWeeksPerPage] = useState(4);
   const [totalWeeks, setTotalWeeks] = useState(0);
   const [truncated, setTruncated] = useState(false);
+  // Week-mode 2 pha: `weeks` = PHA 1 (danh sách tuần), `weekFilters` = filter của lần fetch PHA 1
+  // gần nhất (PHA 2 dùng lại đúng bộ lọc này), `fetchToken` = khoá bỏ cache các tuần.
+  const [weeks, setWeeks] = useState<WeekBucketDto[]>([]);
+  const [weekFilters, setWeekFilters] = useState<AuditFilters>({});
+  const [fetchToken, setFetchToken] = useState(0);
   const [selectedLog, setSelectedLog] = useState<AuditLog | null>(null);
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [availableActions, setAvailableActions] = useState<string[]>([]);
@@ -231,6 +236,9 @@ export default function AuditLogsPage() {
   const [loginWeeksPerPage, setLoginWeeksPerPage] = useState(4);
   const [loginTotalWeeks, setLoginTotalWeeks] = useState(0);
   const [loginTruncated, setLoginTruncated] = useState(false);
+  const [loginWeeks, setLoginWeeks] = useState<WeekBucketDto[]>([]);
+  const [loginWeekFilters, setLoginWeekFilters] = useState<AuditFilters>({});
+  const [loginFetchToken, setLoginFetchToken] = useState(0);
   // ⚠️ Đổi từ Input gõ tên -> dropdown chọn User (đồng bộ cách làm với tab
   // chính) - lọc CHÍNH XÁC qua `userId`, không còn phụ thuộc field `search`
   // cũ (đã bỏ, xem `customerSearch` mới chỉ dành cho tên khách hàng).
@@ -274,11 +282,15 @@ export default function AuditLogsPage() {
       const res = await auditApi.getLogs(filters);
       if (res && res.data) {
         setLogs(res.data);
+        setWeeks(res.weeks ?? []);
+        setWeekFilters(filters);
+        setFetchToken((t) => t + 1);
         setTotal(res.total || 0);
         setTotalWeeks(res.totalWeeks || 0);
         setTruncated(!!res.truncated);
       } else {
         setLogs([]);
+        setWeeks([]);
         setTotal(0);
         setTotalWeeks(0);
         setTruncated(false);
@@ -306,11 +318,15 @@ export default function AuditLogsPage() {
       const res = await auditApi.getLogs(filters);
       if (res && res.data) {
         setLoginLogs(res.data);
+        setLoginWeeks(res.weeks ?? []);
+        setLoginWeekFilters(filters);
+        setLoginFetchToken((t) => t + 1);
         setLoginTotal(res.total || 0);
         setLoginTotalWeeks(res.totalWeeks || 0);
         setLoginTruncated(!!res.truncated);
       } else {
         setLoginLogs([]);
+        setLoginWeeks([]);
         setLoginTotal(0);
         setLoginTotalWeeks(0);
         setLoginTruncated(false);
@@ -323,6 +339,22 @@ export default function AuditLogsPage() {
       setLoginLoading(false);
     }
   }, [loginPage, loginWeeksPerPage, loginUserId, loginDateRange, message]);
+
+  // PHA 2: lấy đúng bản ghi của 1 tuần khi panel được mở (dùng lại filter của PHA 1).
+  const fetchWeekLogs = useCallback(
+    async (weekStart: string, weekPage: number, weekLimit: number) => {
+      const r = await auditApi.getLogs({ ...weekFilters, weekStart, weekPage, weekLimit });
+      return { data: r.data ?? [], weekTotal: r.weekTotal };
+    },
+    [weekFilters],
+  );
+  const fetchWeekLoginLogs = useCallback(
+    async (weekStart: string, weekPage: number, weekLimit: number) => {
+      const r = await auditApi.getLogs({ ...loginWeekFilters, weekStart, weekPage, weekLimit });
+      return { data: r.data ?? [], weekTotal: r.weekTotal };
+    },
+    [loginWeekFilters],
+  );
 
   useEffect(() => {
     // ⚠️ FIX BUG THẬT (rà soát UI Permission): trước đây check cứng
@@ -687,9 +719,10 @@ export default function AuditLogsPage() {
                   dưới Collapse (page/pageSize không đổi state/API). */}
               {isMobile ? (
                 <div style={{ padding: '0 4px' }}>
-                  <WeeklyCollapseSection<AuditLog>
-                    records={logs}
-                    getDate={(r) => r.createdAt}
+                  <WeeklyLazySection<AuditLog>
+                    weeks={weeks}
+                    fetchWeek={fetchWeekLogs}
+                    resetKey={fetchToken}
                     rowKey="id"
                     columns={columns}
                     isMobile
@@ -702,7 +735,6 @@ export default function AuditLogsPage() {
                         onShowDetail={() => { setSelectedLog(record); setDrawerOpen(true); }}
                       />
                     )}
-                    truncated={truncated}
                     pagination={{
                       current: page, pageSize: weeksPerPage, total: totalWeeks,
                       showTotal: (t) => `${t} tuần (${total.toLocaleString()} bản ghi)`,
@@ -712,9 +744,10 @@ export default function AuditLogsPage() {
                 </div>
               ) : (
                 <Card variant="outlined" style={{ borderRadius: 8 }}>
-                    <WeeklyCollapseSection<AuditLog>
-                      records={logs}
-                      getDate={(r) => r.createdAt}
+                    <WeeklyLazySection<AuditLog>
+                      weeks={weeks}
+                      fetchWeek={fetchWeekLogs}
+                      resetKey={fetchToken}
                       rowKey="id"
                       columns={columns}
                     loading={loading}
@@ -724,12 +757,11 @@ export default function AuditLogsPage() {
                     expandable={{
                       expandedRowRender: (record) => (
                         <div style={{ padding: '0 48px 16px' }}>
-                          <AuditDiffViewer oldData={record.oldData} newData={record.newData} action={record.action} />
+                          <LazyAuditDiff logId={record.id} action={record.action} scope="audit" fetchDetail={auditApi.getLogDetail} />
                         </div>
                       ),
-                      rowExpandable: (record) => !!(record.oldData || record.newData) || record.action === 'USER_LOGIN',
+                      rowExpandable: () => true, // list không còn trả oldData/newData -> fetch lazy khi mở
                     }}
-                      truncated={truncated}
                     pagination={{
                       current: page, pageSize: weeksPerPage, total: totalWeeks, showSizeChanger: true,
                       // ⚠️ Số tuần/trang (2/4/8), KHÔNG phải số bản ghi/trang nữa.
@@ -777,9 +809,10 @@ export default function AuditLogsPage() {
                   trên (`WeeklyCollapseSection`), phân trang thật giữ nguyên. */}
               {isMobile ? (
                 <div style={{ padding: '0 4px' }}>
-                  <WeeklyCollapseSection<AuditLog>
-                    records={loginLogs}
-                    getDate={(r) => r.createdAt}
+                  <WeeklyLazySection<AuditLog>
+                    weeks={loginWeeks}
+                    fetchWeek={fetchWeekLoginLogs}
+                    resetKey={loginFetchToken}
                     rowKey="id"
                     columns={columns.filter(c => c.key !== 'entity')}
                     isMobile
@@ -792,7 +825,6 @@ export default function AuditLogsPage() {
                         onShowDetail={() => { setSelectedLog(record); setDrawerOpen(true); }}
                       />
                     )}
-                    truncated={loginTruncated}
                     pagination={{
                       current: loginPage, pageSize: loginWeeksPerPage, total: loginTotalWeeks,
                       showTotal: (t) => `${t} tuần (${loginTotal.toLocaleString()} lượt)`,
@@ -802,15 +834,15 @@ export default function AuditLogsPage() {
                 </div>
               ) : (
                 <Card variant="outlined" style={{ borderRadius: 8 }}>
-                    <WeeklyCollapseSection<AuditLog>
-                      records={loginLogs}
-                      getDate={(r) => r.createdAt}
+                    <WeeklyLazySection<AuditLog>
+                      weeks={loginWeeks}
+                      fetchWeek={fetchWeekLoginLogs}
+                      resetKey={loginFetchToken}
                       rowKey="id"
                       columns={columns.filter(c => c.key !== 'entity')}
                     loading={loginLoading}
                     size="middle"
                       emptyText="Chưa có lượt đăng nhập nào"
-                      truncated={loginTruncated}
                     pagination={{
                       current: loginPage, pageSize: loginWeeksPerPage, total: loginTotalWeeks, showSizeChanger: true,
                       pageSizeOptions: ['2', '4', '8'],
@@ -897,7 +929,7 @@ export default function AuditLogsPage() {
             </Card>
             
             <Title level={5}>Dữ liệu thay đổi</Title>
-            <AuditDiffViewer oldData={selectedLog.oldData} newData={selectedLog.newData} action={selectedLog.action} />
+            <LazyAuditDiff logId={selectedLog.id} action={selectedLog.action} scope="audit" fetchDetail={auditApi.getLogDetail} />
           </div>
         )}
       </Drawer>

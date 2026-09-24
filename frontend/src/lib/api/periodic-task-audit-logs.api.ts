@@ -3,6 +3,7 @@ import {
   PaginatedPeriodicTaskAuditLogs,
   PaginatedPeriodicTaskAuditLogsGlobal,
   PeriodicTaskAuditLogFilters,
+  PeriodicTaskAuditLogGlobal,
 } from '../types/periodic-task-audit.types';
 
 /**
@@ -42,6 +43,12 @@ export const periodicTaskAuditLogsApi = {
       '/periodic-tasks/audit-logs',
       { params: filters },
     );
+    return response.data;
+  },
+
+  /** Chi tiết 1 dòng GỘP (kèm oldData/newData - list KHÔNG còn trả 2 trường này). */
+  getGlobalDetail: async (id: number) => {
+    const response = await axiosInstance.get<PeriodicTaskAuditLogGlobal>(`/periodic-tasks/audit-logs/${id}`);
     return response.data;
   },
 

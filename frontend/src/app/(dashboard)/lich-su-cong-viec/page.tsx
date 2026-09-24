@@ -19,8 +19,8 @@ import {
   PERIODIC_TASK_AUDIT_ACTION_META,
 } from '@/lib/types/periodic-task-audit.types';
 import { PERIODIC_TASK_FIELD_LABELS } from '@/components/periodic-tasks/TaskAuditLogsModal';
-import { AuditDiffViewer } from '@/components/audit/AuditDiffViewer';
-import { WeeklyCollapseSection } from '@/components/common/WeeklyCollapseSection';
+import { LazyAuditDiff } from '@/components/audit/LazyAuditDiff';
+import { WeeklyLazySection, type WeekBucketDto } from '@/components/common/WeeklyLazySection';
 import dayjs from 'dayjs';
 import { useMyPermissions } from '@/lib/hooks/useMyPermissions';
 import { useRoleColorMap } from '@/lib/hooks/useRoleColorMap';
@@ -39,6 +39,7 @@ const ROLE_LABELS: Record<string, string> = {
 const TaskHistoryMobileCard = ({ record }: { record: PeriodicTaskAuditLogGlobal }) => {
   const meta = PERIODIC_TASK_AUDIT_ACTION_META[record.action];
   const { getRoleColor } = useRoleColorMap();
+  const [showDiff, setShowDiff] = useState(false);
 
   return (
     <Card size="small" variant="outlined" style={{ marginBottom: 8 }}>
@@ -65,12 +66,18 @@ const TaskHistoryMobileCard = ({ record }: { record: PeriodicTaskAuditLogGlobal 
       </Space>
 
       <div style={{ marginTop: 8 }}>
-        <AuditDiffViewer
-          oldData={record.oldData}
-          newData={record.newData}
-          action={record.action}
-          extraFieldLabels={PERIODIC_TASK_FIELD_LABELS}
-        />
+        <Button type="link" size="small" style={{ padding: 0 }} onClick={() => setShowDiff((v) => !v)}>
+          {showDiff ? 'Ẩn chi tiết' : 'Xem chi tiết'}
+        </Button>
+        {showDiff && (
+          <LazyAuditDiff
+            logId={record.id}
+            action={record.action}
+            scope="task-audit"
+            fetchDetail={periodicTaskAuditLogsApi.getGlobalDetail}
+            extraFieldLabels={PERIODIC_TASK_FIELD_LABELS}
+          />
+        )}
       </div>
     </Card>
   );
@@ -131,6 +138,10 @@ export default function TaskHistoryPage() {
   const [weeksPerPage, setWeeksPerPage] = useState(4);
   const [totalWeeks, setTotalWeeks] = useState(0);
   const [truncated, setTruncated] = useState(false);
+  // Week-mode 2 pha (xem WeeklyLazySection): PHA 1 = `weeks`, PHA 2 dùng lại `weekFilters`.
+  const [weeks, setWeeks] = useState<WeekBucketDto[]>([]);
+  const [weekFilters, setWeekFilters] = useState<PeriodicTaskAuditLogFilters>({});
+  const [fetchToken, setFetchToken] = useState(0);
   const [availableActions, setAvailableActions] = useState<string[]>([]);
   const [selectedRowKeys, setSelectedRowKeys] = useState<React.Key[]>([]);
 
@@ -156,16 +167,29 @@ export default function TaskHistoryPage() {
       };
       const res = await periodicTaskAuditLogsApi.getGlobal(filters);
       setLogs(res?.data ?? []);
+      setWeeks(res?.weeks ?? []);
+      setWeekFilters(filters);
+      setFetchToken((t) => t + 1);
       setTotal(res?.total ?? 0);
       setTotalWeeks(res?.totalWeeks ?? 0);
       setTruncated(!!res?.truncated);
     } catch (error) {
       message.error(getApiErrorMessage(error, 'Không thể tải lịch sử Công việc định kỳ'));
       setLogs([]);
+      setWeeks([]);
     } finally {
       setLoading(false);
     }
   }, [page, weeksPerPage, search, filterAction, dateRange, message]);
+
+  // PHA 2: lấy đúng bản ghi của 1 tuần khi panel được mở.
+  const fetchWeekLogs = useCallback(
+    async (weekStart: string, weekPage: number, weekLimit: number) => {
+      const r = await periodicTaskAuditLogsApi.getGlobal({ ...weekFilters, weekStart, weekPage, weekLimit });
+      return { data: r?.data ?? [], weekTotal: r?.weekTotal };
+    },
+    [weekFilters],
+  );
 
   useEffect(() => {
     if (user && can('periodic_tasks.audit_view')) {
@@ -404,16 +428,16 @@ export default function TaskHistoryPage() {
           tuần bằng `WeeklyCollapseSection`, phân trang thật giữ nguyên). */}
       {isMobile ? (
         <div style={{ padding: '0 4px' }}>
-          <WeeklyCollapseSection<PeriodicTaskAuditLogGlobal>
-            records={logs}
-            getDate={(r) => r.createdAt}
+          <WeeklyLazySection<PeriodicTaskAuditLogGlobal>
+            weeks={weeks}
+            fetchWeek={fetchWeekLogs}
+            resetKey={fetchToken}
             rowKey="id"
             columns={columns}
             isMobile
             loading={loading}
             emptyText="Chưa có lịch sử ghi nhận"
             renderMobileCard={(record) => <TaskHistoryMobileCard key={record.id} record={record} />}
-            truncated={truncated}
             pagination={{
               current: page, pageSize: weeksPerPage, total: totalWeeks,
               showTotal: (t) => `${t} tuần (${total.toLocaleString()} bản ghi)`,
@@ -423,9 +447,10 @@ export default function TaskHistoryPage() {
         </div>
       ) : (
         <Card variant="outlined" style={{ borderRadius: 8 }}>
-            <WeeklyCollapseSection<PeriodicTaskAuditLogGlobal>
-              records={logs}
-              getDate={(r) => r.createdAt}
+            <WeeklyLazySection<PeriodicTaskAuditLogGlobal>
+              weeks={weeks}
+              fetchWeek={fetchWeekLogs}
+              resetKey={fetchToken}
               rowKey="id"
               columns={columns}
             loading={loading}
@@ -435,17 +460,17 @@ export default function TaskHistoryPage() {
             expandable={{
               expandedRowRender: (record) => (
                 <div style={{ padding: '0 48px 16px' }}>
-                  <AuditDiffViewer
-                    oldData={record.oldData}
-                    newData={record.newData}
+                  <LazyAuditDiff
+                    logId={record.id}
                     action={record.action}
+                    scope="task-audit"
+                    fetchDetail={periodicTaskAuditLogsApi.getGlobalDetail}
                     extraFieldLabels={PERIODIC_TASK_FIELD_LABELS}
                   />
                 </div>
               ),
-              rowExpandable: (record) => !!(record.oldData || record.newData),
+              rowExpandable: () => true, // list không còn trả oldData/newData -> fetch lazy khi mở
             }}
-              truncated={truncated}
             pagination={{
               current: page, pageSize: weeksPerPage, total: totalWeeks, showSizeChanger: true,
               pageSizeOptions: ['2', '4', '8'],

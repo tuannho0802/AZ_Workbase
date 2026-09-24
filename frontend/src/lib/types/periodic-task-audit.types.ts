@@ -61,6 +61,10 @@ export interface PaginatedPeriodicTaskAuditLogsGlobal {
   /** Chỉ có khi request kèm `weeksPerPage` (week-mode - xem `week-window.util.ts` BE). */
   totalWeeks?: number;
   weeksPerPage?: number;
+  /** PHA 1 (week-mode): tóm tắt các tuần của trang (không kèm bản ghi). */
+  weeks?: { weekStart: string; count: number }[];
+  /** PHA 2: tổng bản ghi của tuần đang fetch (`weekStart`). */
+  weekTotal?: number;
   /** true nếu BE đã cắt bớt bản ghi của trang vì vượt `WEEK_MODE_MAX_ROWS`. */
   truncated?: boolean;
 }
@@ -77,6 +81,10 @@ export interface PeriodicTaskAuditLogFilters {
   search?: string;
   /** Bật PHÂN TRANG THEO TUẦN - `page` trở thành trang TUẦN, `limit` bị BE bỏ qua. */
   weeksPerPage?: number;
+  /** PHA 2 (week-mode): chỉ lấy bản ghi của đúng 1 tuần ('YYYY-MM-DD' của Thứ 2). */
+  weekStart?: string;
+  weekPage?: number;
+  weekLimit?: number;
 }
 
 /**

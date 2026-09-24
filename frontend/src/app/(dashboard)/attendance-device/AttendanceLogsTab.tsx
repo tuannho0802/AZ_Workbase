@@ -2,7 +2,8 @@
 
 import { useMemo, useState } from 'react';
 import { Select, DatePicker, Space, Tag, Button, Modal, App, Typography, Avatar } from 'antd';
-import { WeeklyCollapseSection } from '@/components/common/WeeklyCollapseSection';
+import { WeeklyLazySection } from '@/components/common/WeeklyLazySection';
+import { zkDeviceApi } from '@/lib/api/zk-device.api';
 import { ReloadOutlined, DeleteOutlined, FileExcelOutlined, UserOutlined } from '@ant-design/icons';
 import dayjs, { Dayjs } from 'dayjs';
 import { useAttendanceLogs, useCleanupAttendanceLogs, useExportAttendanceLogs, useDeviceUsers } from '@/lib/hooks/useZkDevice';
@@ -115,7 +116,7 @@ export default function AttendanceLogsTab() {
   const cleanupMutation = useCleanupAttendanceLogs();
   const exportMutation = useExportAttendanceLogs();
 
-  const { data, isLoading, refetch, isFetching } = useAttendanceLogs({
+  const logsQuery = {
     page,
     weeksPerPage,
     userId,
@@ -123,7 +124,14 @@ export default function AttendanceLogsTab() {
     matched,
     from: range?.[0]?.format('YYYY-MM-DD'),
     to: range?.[1]?.format('YYYY-MM-DD'),
-  });
+  };
+  // PHA 1: chỉ lấy danh sách tuần (`data.weeks`), KHÔNG kèm bản ghi.
+  const { data, isLoading, refetch, isFetching, dataUpdatedAt } = useAttendanceLogs(logsQuery);
+  // PHA 2: lấy bản ghi của đúng 1 tuần khi panel được mở (cùng bộ lọc với PHA 1).
+  const fetchWeek = async (weekStart: string, weekPage: number, weekLimit: number) => {
+    const r = await zkDeviceApi.getAttendanceLogs({ ...logsQuery, weekStart, weekPage, weekLimit });
+    return { data: r.data ?? [], weekTotal: r.weekTotal };
+  };
 
   const columns = [
     {
@@ -346,14 +354,14 @@ export default function AttendanceLogsTab() {
       {/* ⚠️ MỚI (yêu cầu người dùng: gom "Logs chấm công" theo tuần bằng
           Collapse, vẫn giữ phân trang thật) - `recordTime` là field ngày
           dùng để xác định tuần. */}
-      <WeeklyCollapseSection<AttendanceLog>
-        records={data?.data || []}
-        getDate={(r) => r.recordTime}
+      <WeeklyLazySection<AttendanceLog>
+        weeks={data?.weeks ?? []}
+        fetchWeek={fetchWeek}
+        resetKey={`${JSON.stringify(logsQuery)}|${dataUpdatedAt}`}
         rowKey="id"
         columns={columns}
         loading={isLoading}
         emptyText="Chưa có log chấm công"
-        truncated={data?.truncated}
         pagination={{
           current: page,
           pageSize: weeksPerPage,

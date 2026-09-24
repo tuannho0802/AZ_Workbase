@@ -71,6 +71,10 @@ export interface AttendanceLogQuery {
    * thành trang TUẦN, `limit` bị BE bỏ qua. Dùng cho `WeeklyCollapseSection`
    * ở tab "Logs chấm công" - KHÔNG dùng ở `AttendanceMonthlyTab`. */
   weeksPerPage?: number;
+  /** PHA 2 (week-mode): chỉ lấy bản ghi của đúng 1 tuần ('YYYY-MM-DD' của Thứ 2). */
+  weekStart?: string;
+  weekPage?: number;
+  weekLimit?: number;
 }
 
 export interface PaginatedAttendanceLogs {
@@ -82,6 +86,10 @@ export interface PaginatedAttendanceLogs {
   /** Chỉ có khi request kèm `weeksPerPage` (week-mode). */
   totalWeeks?: number;
   weeksPerPage?: number;
+  /** PHA 1 (week-mode): tóm tắt các tuần của trang (không kèm bản ghi). */
+  weeks?: { weekStart: string; count: number }[];
+  /** PHA 2: tổng bản ghi của tuần đang fetch (`weekStart`). */
+  weekTotal?: number;
   /** true nếu BE đã cắt bớt bản ghi của trang vì vượt `WEEK_MODE_MAX_ROWS`. */
   truncated?: boolean;
 }
