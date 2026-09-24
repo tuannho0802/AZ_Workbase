@@ -646,22 +646,28 @@ export class CustomersService {
    * - Có `groupId` (chọn CỤ THỂ 1 nhóm): `joined`/không truyền = "đã join
    *   ĐÚNG nhóm này"; `not_joined` = "chưa join nhóm này".
    */
+  private buildJoinedGroupsCondition(
+    joinedGroups?: 'joined' | 'not_joined',
+    groupId?: number,
+  ): { sql: string; params?: Record<string, unknown> } | null {
+    if (!joinedGroups && !groupId) return null;
+    const groupCond = groupId ? ' AND cgm.group_id = :cgmGroupId' : '';
+    const exists =
+      'EXISTS (SELECT 1 FROM customer_group_memberships cgm ' +
+      `WHERE cgm.customer_id = customer.id AND cgm.joined = true${groupCond})`;
+    return {
+      sql: joinedGroups === 'not_joined' ? `NOT ${exists}` : exists,
+      params: groupId ? { cgmGroupId: groupId } : undefined,
+    };
+  }
+
   private applyJoinedGroupsFilter(
     qb: { andWhere: (where: string, params?: Record<string, unknown>) => unknown },
     joinedGroups?: 'joined' | 'not_joined',
     groupId?: number,
   ) {
-    if (!joinedGroups && !groupId) return;
-    const groupCond = groupId ? ' AND cgm.group_id = :cgmGroupId' : '';
-    const params = groupId ? { cgmGroupId: groupId } : undefined;
-    const exists =
-      'EXISTS (SELECT 1 FROM customer_group_memberships cgm ' +
-      `WHERE cgm.customer_id = customer.id AND cgm.joined = true${groupCond})`;
-    if (joinedGroups === 'not_joined') {
-      qb.andWhere(`NOT ${exists}`, params);
-    } else {
-      qb.andWhere(exists, params);
-    }
+    const cond = this.buildJoinedGroupsCondition(joinedGroups, groupId);
+    if (cond) qb.andWhere(cond.sql, cond.params);
   }
 
   private applyCustomerListFilters(
@@ -3590,10 +3596,21 @@ export class CustomersService {
         q.andWhere('customer.marketingUserId = :marketingUserId', { marketingUserId });
       }
       if (creatorId) q.andWhere('customer.createdById = :creatorId', { creatorId });
-      // "Đã tham gia nhóm" - áp CÙNG bộ EXISTS/NOT EXISTS vào cả 4 truy vấn
-      // con (dupKeys/count/ids/peers), nhất quán với các filter khác ở trên.
-      this.applyJoinedGroupsFilter(q, joinedGroups, groupId);
+      // ⚠️ "Đã tham gia nhóm"/"Nhóm cụ thể" KHÔNG áp ở đây (không lọc từng
+      // khách) - xem `groupCond` bên dưới: filter nhóm ở report trùng lọc
+      // theo CỤM, không theo từng dòng.
     };
+
+    // ⚠️ FIX BUG THẬT (filter nhóm làm vỡ cụm trùng): trước đây filter nhóm
+    // áp lên TỪNG khách ở cả 4 truy vấn con -> chọn nhóm A thì khách cùng
+    // cụm SĐT nhưng thuộc nhóm B (hoặc chưa join) bị loại, cụm chỉ còn 1
+    // dòng nên không còn được coi là "trùng" và biến mất khỏi báo cáo.
+    // Nghĩa đúng: cụm trùng nào có ÍT NHẤT 1 khách thoả điều kiện nhóm thì
+    // cụm đó vào kết quả và hiện ĐỦ mọi khách trong cụm (kể cả khách không
+    // thuộc nhóm đó). Thực hiện bằng HAVING SUM(điều kiện) > 0 ở bước tìm
+    // các giá trị trùng (dupKeys); các bước sau (count/ids/peers) chỉ cần
+    // lọc theo dupKeys nên tự có đủ thành viên.
+    const groupCond = this.buildJoinedGroupsCondition(joinedGroups, groupId);
 
     const dupKeysQb = this.customersRepository
       .createQueryBuilder('customer')
@@ -3604,10 +3621,11 @@ export class CustomersService {
     CustomerAccessHelper.applyViewFilter(dupKeysQb, userId, userRole, scope);
     applyExtraFilters(dupKeysQb);
 
-    const dupRows = await dupKeysQb
-      .groupBy(groupExpr)
-      .having('COUNT(*) > 1')
-      .getRawMany<{ dupKey: string }>();
+    dupKeysQb.groupBy(groupExpr).having('COUNT(*) > 1');
+    if (groupCond) {
+      dupKeysQb.andHaving(`SUM(${groupCond.sql}) > 0`, groupCond.params);
+    }
+    const dupRows = await dupKeysQb.getRawMany<{ dupKey: string }>();
 
     const dupKeys = dupRows.map((r) => r.dupKey).filter((k): k is string => !!k);
 

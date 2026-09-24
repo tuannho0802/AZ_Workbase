@@ -677,7 +677,17 @@ export default function InvalidDataReportPage() {
             />
           </div>
           <div>
-            <div className="mb-1"><Text strong>Nhóm cụ thể</Text></div>
+            <div className="mb-1">
+              <Tooltip
+                title={
+                  isDuplicateView
+                    ? 'Ở báo cáo Trùng SĐT/Email: chỉ cần trong cụm trùng có ÍT NHẤT 1 khách thoả điều kiện nhóm thì hiện cả cụm (đủ mọi khách trong cụm).'
+                    : undefined
+                }
+              >
+                <Text strong>Nhóm cụ thể</Text>
+              </Tooltip>
+            </div>
             <Select
               value={groupId}
               onChange={handleGroupChange}

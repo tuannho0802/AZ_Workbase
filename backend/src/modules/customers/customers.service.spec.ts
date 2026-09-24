@@ -1728,4 +1728,30 @@ describe('CustomersService', () => {
       expect(params).toEqual({ cgmGroupId: 7 });
     });
   });
+  describe('buildJoinedGroupsCondition - điều kiện nhóm dùng cho lọc theo CỤM (report trùng SĐT/Email)', () => {
+    const build = (j?: 'joined' | 'not_joined', g?: number) =>
+      (service as any).buildJoinedGroupsCondition(j, g);
+
+    it('không truyền gì -> null (không lọc)', () => {
+      expect(build()).toBeNull();
+    });
+
+    it('groupId -> EXISTS theo đúng nhóm, kèm tham số cgmGroupId', () => {
+      const c = build(undefined, 5);
+      expect(c.sql).toMatch(/^EXISTS/);
+      expect(c.sql).toContain('cgm.group_id = :cgmGroupId');
+      expect(c.params).toEqual({ cgmGroupId: 5 });
+    });
+
+    it('not_joined + groupId -> NOT EXISTS theo đúng nhóm', () => {
+      const c = build('not_joined', 5);
+      expect(c.sql).toMatch(/^NOT EXISTS/);
+      expect(c.params).toEqual({ cgmGroupId: 5 });
+    });
+
+    it('biểu thức là boolean thuần (bọc được trong SUM(...) > 0 ở HAVING)', () => {
+      const c = build('joined');
+      expect(`SUM(${c.sql}) > 0`).toMatch(/^SUM\(EXISTS \(SELECT 1 FROM customer_group_memberships cgm/);
+    });
+  });
 });

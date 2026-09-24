@@ -3873,3 +3873,22 @@ trước) theo đúng Custom Instructions của Project.
 **Notes:** Chưa xem bằng mắt trên UI thật. Không push được GitHub từ sandbox.
 
 ---
+
+---
+## [2026-09-24 12:00] | Fix filter "Nhóm cụ thể"/"Đã tham gia nhóm" làm vỡ cụm trùng SĐT/Email ở invalid-data | [Status: Success — verify trên MariaDB thật + build/test]
+
+**Actor:** Agent
+
+**Files Changed:**
+- `backend/src/modules/customers/customers.service.ts` — tách `buildJoinedGroupsCondition()` (dùng lại bởi `applyJoinedGroupsFilter()`); ở `getDuplicateContactReport()` bỏ filter nhóm khỏi `applyExtraFilters` (không lọc từng khách), thay bằng `HAVING SUM(<điều kiện nhóm>) > 0` ở bước tìm `dupKeys` -> lọc theo CỤM.
+- `backend/src/modules/customers/customers.service.spec.ts` — 4 test mới cho `buildJoinedGroupsCondition`.
+- `frontend/src/app/(dashboard)/customers/reports/invalid-data/page.tsx` — Tooltip giải thích nghĩa filter nhóm ở tab Trùng.
+
+**Root Cause:**
+> Filter nhóm áp lên TỪNG khách ở cả 4 truy vấn con (dupKeys/count/ids/peers): chọn nhóm A thì khách cùng cụm SĐT nhưng thuộc nhóm khác/chưa join bị loại trước khi đếm trùng -> cụm chỉ còn 1 dòng, không còn được coi là "trùng" và biến mất (hoặc mất bớt thành viên).
+
+**Solution:** Cụm nào có ÍT NHẤT 1 khách thoả điều kiện nhóm thì hiện cả cụm với đủ mọi khách. Áp cho cả `groupId` lẫn `joinedGroups` (joined/not_joined) ở tab Trùng SĐT/Email; các loại lỗi khác (future_date/missing_*) vẫn lọc từng dòng.
+
+**Verify:** Chạy `getInvalidDataReport` thật trên MariaDB 10.11 (schema sync từ entity, 3 cụm + 1 khách đơn): bản cũ chọn G1 -> 0 cụm; bản mới -> hiện đủ cụm chứa G1. `jest src/modules/customers` 130/130 PASS, BE `tsc` sạch; FE `tsc` chỉ còn lỗi cũ (logo.png/CountBadge).
+
+---
