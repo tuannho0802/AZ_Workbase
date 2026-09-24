@@ -97,6 +97,7 @@ export interface PeriodicTask {
    * mảng (kể cả rỗng `[]`) khi Task đã tải xong, không có case `undefined`
    * do thiếu quyền (đây là thông tin phân công nội bộ, không phải Customer).
    */
+  /** Có mặt trên CẢ `GET /:id` (đủ User) lẫn `GET /` (danh sách - chỉ `{id,name}`, do BE đính bằng 1 query gom nhóm). */
   secondaryAssignees?: RefUser[];
   /**
    * Phase 6 (PLAN mục 6): checklist con kiểu Trello - CHỈ có mặt trên response
@@ -105,6 +106,7 @@ export interface PeriodicTask {
    * sách). KHÔNG ẩn theo quyền (giống `secondaryAssignees`) - luôn là mảng
    * (kể cả rỗng `[]`) khi Task đã tải xong.
    */
+  /** @deprecated `GET /:id` KHÔNG còn đính field này - dùng `useTaskChecklistPage()` (phân trang 10 dòng/trang). */
   checklistItems?: PeriodicTaskChecklistItem[];
   /**
    * Phase 9 (tích hợp Task con vào chung Checklist) - CHỈ có mặt trên
@@ -123,6 +125,7 @@ export interface PeriodicTask {
    * ngay ở BE (Task con ngoài phạm vi scope sẽ không xuất hiện ở đây dù đã
    * liên kết, xem JSDoc `PeriodicTaskLinksService.getChildrenChecklist()`).
    */
+  /** @deprecated `GET /:id` KHÔNG còn đính field này - dùng `useLinkedChildrenChecklistPage()` (phân trang). */
   linkedChildrenChecklist?: LinkedChildChecklistEntry[];
   /**
    * Tiến độ Checklist (đã xong/tổng) - CHỈ có mặt trên response của `GET /`
@@ -170,6 +173,20 @@ export interface PeriodicTaskChecklistItem {
   createdById: number | null;
   createdAt: string;
   updatedAt: string;
+}
+
+/**
+ * Response phân trang của modal Checklist (`GET /:id/checklist-items` và
+ * `GET /:id/linked-children-checklist`) - tối đa 10 dòng/trang. `total`/`done`
+ * là của TOÀN BỘ danh sách (không chỉ trang này) để FE tính % + số trang.
+ */
+export interface PeriodicTaskChecklistPage<T> {
+  data: T[];
+  total: number;
+  done: number;
+  page: number;
+  limit: number;
+  totalPages: number;
 }
 
 export interface CreatePeriodicTaskPayload {

@@ -17,6 +17,7 @@ import { LockPeriodicTaskDto } from './dto/lock-periodic-task.dto';
 import { CreatePeriodicTaskChecklistItemDto } from './dto/create-periodic-task-checklist-item.dto';
 import { UpdatePeriodicTaskChecklistItemDto } from './dto/update-periodic-task-checklist-item.dto';
 import { ReorderPeriodicTaskChecklistItemsDto } from './dto/reorder-periodic-task-checklist-items.dto';
+import { PeriodicTaskChecklistPageDto, MovePeriodicTaskChecklistItemDto } from './dto/periodic-task-checklist-page.dto';
 import {
   GetPeriodicTaskAuditLogsDto,
   GetPeriodicTaskAuditLogsGlobalDto,
@@ -75,7 +76,9 @@ export class PeriodicTasksController {
       user.role,
       scope,
     );
-    return { ...result, data };
+    // Đính `secondaryAssignees` ({id,name}[]) - 1 query gom nhóm cho cả trang.
+    const withSecondary = await this.periodicTaskSecondaryAssigneesService.attachSecondaryAssigneesToList(data);
+    return { ...result, data: withSecondary };
   }
 
   // ⚠️ Route tĩnh `links` PHẢI khai TRƯỚC route `:id` ngay bên dưới - mirror
@@ -223,18 +226,10 @@ export class PeriodicTasksController {
     // Phase 4: đính thêm `secondaryAssignees` - không cần ẩn theo quyền
     // (xem JSDoc `attachSecondaryAssignees()`).
     const withSecondary = await this.periodicTaskSecondaryAssigneesService.attachSecondaryAssignees(withCustomers);
-    // Phase 6: đính thêm `checklistItems` - cũng không cần ẩn theo quyền
-    // (xem JSDoc `attachChecklistItems()`).
-    const withChecklist = await this.periodicTaskChecklistItemsService.attachChecklistItems(withSecondary);
-    // Phase 9: đính thêm `linkedChildrenChecklist` (Task con TRỰC TIẾP hiện
-    // dưới dạng "checklist tích hợp", tách biệt hoàn toàn khỏi `checklistItems`
-    // ở trên) - CÓ lọc lại theo scope người gọi, xem JSDoc `attachLinkedChildrenChecklist()`.
-    return this.periodicTaskChecklistItemsService.attachLinkedChildrenChecklist(
-      withChecklist,
-      user.id,
-      user.role,
-      scope,
-    );
+    // Checklist (item thật + Task con liên kết) KHÔNG còn đính vào `GET /:id` - modal
+    // Checklist tự phân trang qua `GET /:id/checklist-items` và
+    // `GET /:id/linked-children-checklist` (tối đa 10 dòng/trang), tránh kéo cả checklist mỗi lần mở.
+    return withSecondary;
   }
 
   @Patch(':id')
@@ -410,10 +405,30 @@ export class PeriodicTasksController {
   @ApiOperation({ summary: 'Danh sách checklist item của Công việc, sắp xếp theo position' })
   getChecklistItems(
     @Param('id', ParseIntPipe) id: number,
+    @Query() page: PeriodicTaskChecklistPageDto,
     @GetUser() user: any,
     @GetPermissionScope() scope: string | null | undefined,
   ) {
-    return this.periodicTaskChecklistItemsService.findAllForTask(id, user.id, user.role, scope);
+    return this.periodicTaskChecklistItemsService.findPage(id, page, user.id, user.role, scope);
+  }
+
+  @Get(':id/linked-children-checklist')
+  @RequirePermission('periodic_tasks.view')
+  @ApiOperation({ summary: 'Task con liên kết (checklist tích hợp) - phân trang tối đa 10 dòng/trang' })
+  getLinkedChildrenChecklist(
+    @Param('id', ParseIntPipe) id: number,
+    @Query() page: PeriodicTaskChecklistPageDto,
+    @GetUser() user: any,
+    @GetPermissionScope() scope: string | null | undefined,
+  ) {
+    return this.periodicTaskLinksService.getChildrenChecklistPage(
+      id,
+      page.page ?? 1,
+      page.limit ?? 10,
+      user.id,
+      user.role,
+      scope,
+    );
   }
 
   @Post(':id/checklist-items')
@@ -442,6 +457,19 @@ export class PeriodicTasksController {
     @GetPermissionScope() scope: string | null | undefined,
   ) {
     return this.periodicTaskChecklistItemsService.reorder(id, dto, user, scope);
+  }
+
+  @Patch(':id/checklist-items/:itemId/move')
+  @RequirePermission('periodic_tasks.edit')
+  @ApiOperation({ summary: 'Đổi chỗ 1 checklist item với item liền kề (lên/xuống, xuyên trang)' })
+  moveChecklistItem(
+    @Param('id', ParseIntPipe) id: number,
+    @Param('itemId', ParseIntPipe) itemId: number,
+    @Body() dto: MovePeriodicTaskChecklistItemDto,
+    @GetUser() user: any,
+    @GetPermissionScope() scope: string | null | undefined,
+  ) {
+    return this.periodicTaskChecklistItemsService.move(id, itemId, dto.direction, user, scope);
   }
 
   @Patch(':id/checklist-items/:itemId')

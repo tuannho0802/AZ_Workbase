@@ -3,6 +3,7 @@
 import { Card, Tag, Tooltip, Typography } from 'antd';
 import { LockOutlined } from '@ant-design/icons';
 import dayjs from 'dayjs';
+import { TaskAssignees } from './TaskAssignees';
 import { PeriodicTask, PERIOD_TYPE_LABELS } from '@/lib/api/periodic-tasks.api';
 import { DEFAULT_ENTITY_COLOR, resolveEntityColor } from '@/lib/utils/entityColor';
 import { useUsersList } from '@/lib/hooks/useUsers';
@@ -195,7 +196,7 @@ export function TaskMiniCard({
                     {task.periodStartDate !== task.periodEndDate &&
                         ` → ${dayjs(task.periodEndDate).format('DD/MM/YYYY')}`}
                     {' · '}
-                    {task.primaryAssignee?.name ?? '—'}
+                    <TaskAssignees task={task} />
                 </Text>
             </div>
 

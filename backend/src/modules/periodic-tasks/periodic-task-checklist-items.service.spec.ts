@@ -13,8 +13,14 @@ describe('PeriodicTaskChecklistItemsService', () => {
 
   const mockQb = {
     select: jest.fn().mockReturnThis(),
+    addSelect: jest.fn().mockReturnThis(),
     where: jest.fn().mockReturnThis(),
+    andWhere: jest.fn().mockReturnThis(),
+    orderBy: jest.fn().mockReturnThis(),
+    addOrderBy: jest.fn().mockReturnThis(),
+    limit: jest.fn().mockReturnThis(),
     getRawOne: jest.fn(),
+    getOne: jest.fn(),
   };
 
   const mockChecklistRepo = {
@@ -29,6 +35,7 @@ describe('PeriodicTaskChecklistItemsService', () => {
 
   const mockTasksService = {
     findOne: jest.fn(),
+    assertCanView: jest.fn(),
     assertEditableWhenLocked: jest.fn(),
     // Notification Phase 2: mock rỗng (no-op mặc định) - test nghiệp vụ
     // chính không quan tâm thông báo.
@@ -54,6 +61,7 @@ describe('PeriodicTaskChecklistItemsService', () => {
     jest.clearAllMocks();
     mockTasksService.findOne.mockResolvedValue({ id: taskId, isLocked: false });
     mockTasksService.assertEditableWhenLocked.mockResolvedValue(undefined);
+    mockTasksService.assertCanView.mockResolvedValue(undefined);
 
     const module: TestingModule = await Test.createTestingModule({
       providers: [
@@ -68,39 +76,48 @@ describe('PeriodicTaskChecklistItemsService', () => {
     service = module.get<PeriodicTaskChecklistItemsService>(PeriodicTaskChecklistItemsService);
   });
 
-  describe('findAllForTask', () => {
-    it('gọi "1 cổng gác" tasksService.findOne() (periodic_tasks.view) trước khi trả danh sách', async () => {
-      mockChecklistRepo.find.mockResolvedValue([{ id: 1, taskId, position: 0 }]);
+  describe('findPage (phân trang checklist, tối đa 10/trang)', () => {
+    it('dùng cổng gác NHẸ assertCanView (không findOne nặng), trả trang + tổng/xong của TOÀN Task', async () => {
+      mockQb.getRawOne.mockResolvedValue({ total: '23', done: '7' });
+      mockChecklistRepo.find.mockResolvedValue([{ id: 11, taskId, position: 10 }]);
 
-      const result = await service.findAllForTask(taskId, employeeUser.id, employeeUser.role, 'own');
+      const result = await service.findPage(taskId, { page: 2, limit: 10 }, employeeUser.id, employeeUser.role, 'own');
 
-      expect(mockTasksService.findOne).toHaveBeenCalledWith(taskId, employeeUser.id, employeeUser.role, 'own');
+      expect(mockTasksService.assertCanView).toHaveBeenCalledWith(taskId, employeeUser.id, employeeUser.role, 'own');
+      expect(mockTasksService.findOne).not.toHaveBeenCalled();
       expect(mockChecklistRepo.find).toHaveBeenCalledWith({
         where: { taskId },
         order: { position: 'ASC', id: 'ASC' },
+        skip: 10,
+        take: 10,
       });
-      expect(result).toEqual([{ id: 1, taskId, position: 0 }]);
+      expect(result).toEqual({ data: [{ id: 11, taskId, position: 10 }], total: 23, done: 7, page: 2, limit: 10, totalPages: 3 });
     });
 
-    it('ném NotFoundException nếu Task ngoài phạm vi scope (mirror findOne() của Task cha)', async () => {
-      mockTasksService.findOne.mockRejectedValue(new NotFoundException());
+    it('mặc định trang 1, 10 dòng; Task chưa có item -> total 0, totalPages 0', async () => {
+      mockQb.getRawOne.mockResolvedValue({ total: '0', done: null });
+      mockChecklistRepo.find.mockResolvedValue([]);
 
-      await expect(
-        service.findAllForTask(999, employeeUser.id, employeeUser.role, 'own'),
-      ).rejects.toThrow(NotFoundException);
+      const result = await service.findPage(taskId, {}, employeeUser.id, employeeUser.role, 'own');
+
+      expect(mockChecklistRepo.find).toHaveBeenCalledWith(expect.objectContaining({ skip: 0, take: 10 }));
+      expect(result).toMatchObject({ total: 0, done: 0, page: 1, limit: 10, totalPages: 0 });
+    });
+
+    it('ném NotFoundException nếu Task ngoài phạm vi scope và KHÔNG chạm dữ liệu checklist', async () => {
+      mockTasksService.assertCanView.mockRejectedValue(new NotFoundException());
+
+      await expect(service.findPage(999, {}, employeeUser.id, employeeUser.role, 'own')).rejects.toThrow(NotFoundException);
       expect(mockChecklistRepo.find).not.toHaveBeenCalled();
     });
   });
 
   describe('create', () => {
     it('thêm item mới với position = MAX(position) hiện có + 1', async () => {
-      mockQb.getRawOne.mockResolvedValue({ max: 2 });
+      mockQb.getRawOne
+        .mockResolvedValueOnce({ max: 2 }) // MAX(position)
+        .mockResolvedValueOnce({ total: '4', done: '1' }); // getSummary
       mockChecklistRepo.save.mockResolvedValue(undefined);
-      mockChecklistRepo.find.mockResolvedValue([
-        { id: 1, position: 0 },
-        { id: 2, position: 1 },
-        { id: 3, position: 3 },
-      ]);
 
       const result = await service.create(taskId, { content: 'Gọi khách' }, employeeUser, 'own');
 
@@ -111,7 +128,12 @@ describe('PeriodicTaskChecklistItemsService', () => {
         createdById: employeeUser.id,
       });
       expect(mockChecklistRepo.save).toHaveBeenCalled();
-      expect(result).toHaveLength(3);
+      expect(result).toEqual({
+        item: { taskId, content: 'Gọi khách', position: 3, createdById: employeeUser.id },
+        total: 4,
+        done: 1,
+      });
+      expect(mockChecklistRepo.find).not.toHaveBeenCalled();
       expect(mockAuditService.logActionAsync).toHaveBeenCalledWith(
         taskId,
         employeeUser.id,
@@ -122,9 +144,10 @@ describe('PeriodicTaskChecklistItemsService', () => {
     });
 
     it('position = 0 khi Task chưa có item nào (MAX trả về null)', async () => {
-      mockQb.getRawOne.mockResolvedValue({ max: null });
+      mockQb.getRawOne
+        .mockResolvedValueOnce({ max: null })
+        .mockResolvedValueOnce({ total: '1', done: '0' });
       mockChecklistRepo.save.mockResolvedValue(undefined);
-      mockChecklistRepo.find.mockResolvedValue([]);
 
       await service.create(taskId, { content: 'Item đầu tiên' }, employeeUser, 'own');
 
@@ -158,9 +181,11 @@ describe('PeriodicTaskChecklistItemsService', () => {
       const existing = { id: 5, taskId, content: 'Cũ', isDone: false, position: 0 };
       mockChecklistRepo.findOne.mockResolvedValue(existing);
       mockChecklistRepo.save.mockResolvedValue(undefined);
-      mockChecklistRepo.find.mockResolvedValue([{ ...existing, content: 'Mới', isDone: true }]);
 
-      await service.update(taskId, 5, { content: 'Mới', isDone: true }, employeeUser, 'own');
+      const updated = await service.update(taskId, 5, { content: 'Mới', isDone: true }, employeeUser, 'own');
+
+      expect(updated).toMatchObject({ id: 5, content: 'Mới', isDone: true });
+      expect(mockChecklistRepo.find).not.toHaveBeenCalled();
 
       expect(mockChecklistRepo.save).toHaveBeenCalledWith(
         expect.objectContaining({ id: 5, content: 'Mới', isDone: true }),
@@ -187,18 +212,74 @@ describe('PeriodicTaskChecklistItemsService', () => {
       const existing = { id: 5, taskId, content: 'Gọi khách' };
       mockChecklistRepo.findOne.mockResolvedValue(existing);
       mockChecklistRepo.remove.mockResolvedValue(undefined);
-      mockChecklistRepo.find.mockResolvedValue([]);
 
       const result = await service.remove(taskId, 5, employeeUser, 'own');
 
       expect(mockChecklistRepo.remove).toHaveBeenCalledWith(existing);
-      expect(result).toEqual([]);
+      expect(result).toEqual({ deleted: true });
+      expect(mockChecklistRepo.find).not.toHaveBeenCalled();
       expect(mockAuditService.logActionAsync).toHaveBeenCalledWith(
         taskId,
         employeeUser.id,
         PeriodicTaskAuditAction.CHECKLIST_ITEM_REMOVED,
         { itemId: 5, content: 'Gọi khách' },
       );
+    });
+  });
+
+  describe('move (đổi chỗ với item liền kề, xuyên trang)', () => {
+    it('đổi position với item liền kề khi position khác nhau, ghi log', async () => {
+      mockChecklistRepo.findOne.mockResolvedValue({ id: 5, taskId, position: 10 });
+      mockQb.getOne.mockResolvedValue({ id: 4, taskId, position: 9 });
+      mockChecklistRepo.update.mockResolvedValue(undefined);
+
+      const result = await service.move(taskId, 5, 'up', employeeUser, 'own');
+
+      expect(result).toEqual({ moved: true });
+      expect(mockChecklistRepo.update).toHaveBeenCalledWith({ id: 5, taskId }, { position: 9 });
+      expect(mockChecklistRepo.update).toHaveBeenCalledWith({ id: 4, taskId }, { position: 10 });
+      expect(mockQb.orderBy).toHaveBeenCalledWith('item.position', 'DESC');
+      expect(mockAuditService.logActionAsync).toHaveBeenCalledWith(
+        taskId, employeeUser.id, PeriodicTaskAuditAction.CHECKLIST_ITEMS_REORDERED, null, { itemId: 5, direction: 'up' },
+      );
+    });
+
+    it('xuống: sắp xếp neighbor tăng dần', async () => {
+      mockChecklistRepo.findOne.mockResolvedValue({ id: 5, taskId, position: 1 });
+      mockQb.getOne.mockResolvedValue({ id: 6, taskId, position: 2 });
+
+      await service.move(taskId, 5, 'down', employeeUser, 'own');
+
+      expect(mockQb.orderBy).toHaveBeenCalledWith('item.position', 'ASC');
+    });
+
+    it('không có item liền kề (đã ở đầu/cuối) -> moved=false, không ghi gì', async () => {
+      mockChecklistRepo.findOne.mockResolvedValue({ id: 1, taskId, position: 0 });
+      mockQb.getOne.mockResolvedValue(null);
+
+      expect(await service.move(taskId, 1, 'up', employeeUser, 'own')).toEqual({ moved: false });
+      expect(mockChecklistRepo.update).not.toHaveBeenCalled();
+      expect(mockAuditService.logActionAsync).not.toHaveBeenCalled();
+    });
+
+    it('2 item trùng position -> đánh lại số thứ tự cả Task để phép đổi chỗ có hiệu lực', async () => {
+      mockChecklistRepo.findOne.mockResolvedValue({ id: 5, taskId, position: 3 });
+      mockQb.getOne.mockResolvedValue({ id: 4, taskId, position: 3 });
+      mockChecklistRepo.find.mockResolvedValue([{ id: 3 }, { id: 4 }, { id: 5 }]);
+
+      await service.move(taskId, 5, 'up', employeeUser, 'own');
+
+      expect(mockChecklistRepo.update).toHaveBeenCalledWith({ id: 3, taskId }, { position: 0 });
+      expect(mockChecklistRepo.update).toHaveBeenCalledWith({ id: 5, taskId }, { position: 1 });
+      expect(mockChecklistRepo.update).toHaveBeenCalledWith({ id: 4, taskId }, { position: 2 });
+    });
+
+    it('ném NotFoundException nếu item không thuộc Task; ForbiddenException nếu Task khoá', async () => {
+      mockChecklistRepo.findOne.mockResolvedValue(null);
+      await expect(service.move(taskId, 999, 'up', employeeUser, 'own')).rejects.toThrow(NotFoundException);
+
+      mockTasksService.assertEditableWhenLocked.mockRejectedValue(new ForbiddenException());
+      await expect(service.move(taskId, 5, 'up', employeeUser, 'own')).rejects.toThrow(ForbiddenException);
     });
   });
 

@@ -4058,3 +4058,24 @@ trước) theo đúng Custom Instructions của Project.
 > - Cần chạy migration `1784400000000`. Verify (HEAD `388a387`): BE `tsc`/`nest build` sạch, jest toàn bộ 940/940; FE `tsc` sạch, `next build` OK, vitest 113/113.
 
 ---
+
+## [2026-09-24 17:30] | Công việc định kỳ: phân trang Checklist (≤10/trang) + hiện Phụ trách phụ ở mọi view | [Status: Success — verify bằng build/test thật]
+
+**Actor:** Agent
+
+**Files Changed:**
+- BE `dto/periodic-task-checklist-page.dto.ts` (MỚI: `CHECKLIST_PAGE_SIZE=10`, query phân trang, DTO move).
+- BE `periodic-tasks.service.ts` — `assertCanView()` cổng gác XEM siêu nhẹ (không join) cho endpoint đọc checklist.
+- BE `periodic-task-checklist-items.service.ts` — `findPage()` (COUNT/SUM + LIMIT/OFFSET chạy song song, dùng index `task_id,position`), `move()` đổi chỗ với item liền kề XUYÊN TRANG (tự đánh lại position khi trùng); `create` trả `{item,total,done}`, `update` trả item, `remove` trả `{deleted}` (không còn trả cả danh sách); bỏ `findAllForTask`.
+- BE `periodic-task-links.service.ts` — `getChildrenChecklistPage()` phân trang Task con liên kết (total/done từ query gom nhóm, cùng bộ lọc scope).
+- BE `periodic-task-secondary-assignees.service.ts` — `attachSecondaryAssigneesToList()` (1 query gom nhóm/trang, chỉ `{id,name}`).
+- BE `periodic-tasks.controller.ts` — `GET /:id/checklist-items?page&limit` (phân trang), `GET /:id/linked-children-checklist`, `PATCH /:id/checklist-items/:itemId/move`; `GET /` đính `secondaryAssignees`; `GET /:id` KHÔNG còn đính `checklistItems`/`linkedChildrenChecklist`.
+- BE specs: cập nhật `periodic-task-checklist-items.service.spec.ts`, thêm test links/secondary; XOÁ `periodic-task-customers.service.spec.ts` (bản sao lỗi thời của spec checklist, gọi `findAllForTask` đã bỏ).
+- FE `TaskChecklistModal.tsx` (2 danh sách phân trang 10 dòng, không còn gọi `GET /:id`), hooks/api checklist (`useTaskChecklistPage`, `useLinkedChildrenChecklistPage`, `useMoveTaskChecklistItem`), `TaskAssignees.tsx` (MỚI) dùng ở Bảng/TaskMiniCard (Ngày+Kanban)/Lịch.
+
+**Notes:**
+> - Verify: BE `tsc` sạch, `nest build` OK, jest periodic-tasks 143/143. FE `vitest` 116/116, `next build` OK.
+> - Đổi API contract (create/update/remove checklist) — deploy BE + FE CÙNG LÚC.
+> - Không cần migration mới (index `task_id, position` đã có từ migration Phase 6).
+
+---

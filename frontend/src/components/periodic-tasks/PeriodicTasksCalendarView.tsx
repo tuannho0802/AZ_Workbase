@@ -1,5 +1,6 @@
 'use client';
 
+import { TaskAssignees } from './TaskAssignees';
 import { useMemo } from 'react';
 import { Calendar, Tag, Tooltip, Badge, Typography } from 'antd';
 import { LinkOutlined } from '@ant-design/icons';
@@ -81,7 +82,7 @@ export function PeriodicTasksCalendarView({ tasks, onSelectTask, chains, resolve
                                     <div>{task.title}</div>
                                     <div style={{ fontSize: 12, opacity: 0.8 }}>
                                         {PERIOD_TYPE_LABELS[task.periodType]} · {task.status?.name ?? '—'} ·{' '}
-                                        {task.primaryAssignee?.name ?? '—'}
+                                        <TaskAssignees task={task} />
                                     </div>
                                     {/* Trước đây thiếu HẲN Mô tả/Ghi chú ở Calendar (bug chủ
                                         dự án báo 2026-09-16) - thêm để đồng nhất với

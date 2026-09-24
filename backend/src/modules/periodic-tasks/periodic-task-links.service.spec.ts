@@ -19,6 +19,9 @@ function makeFakeQueryBuilder(overrides: { getMany?: any; getRawMany?: any } = {
     where: jest.fn().mockReturnThis(),
     andWhere: jest.fn().mockReturnThis(),
     orderBy: jest.fn().mockReturnThis(),
+    addOrderBy: jest.fn().mockReturnThis(),
+    skip: jest.fn().mockReturnThis(),
+    take: jest.fn().mockReturnThis(),
     getMany: jest.fn().mockResolvedValue(overrides.getMany ?? []),
     getRawMany: jest.fn().mockResolvedValue(overrides.getRawMany ?? []),
   };
@@ -48,6 +51,7 @@ describe('PeriodicTaskLinksService', () => {
   };
   const mockTasksService = {
     findOne: jest.fn(),
+    assertCanView: jest.fn(),
     assertEditableWhenLocked: jest.fn(),
   };
   const mockAuditService = {
@@ -219,6 +223,43 @@ describe('PeriodicTaskLinksService', () => {
 
       expect(qb.innerJoin).toHaveBeenCalledWith('periodic_task_links', 'link', 'link.parent_task_id = task.id');
       expect(qb.where).toHaveBeenCalledWith('link.child_task_id = :taskId', { taskId: 1 });
+    });
+  });
+
+  describe('getChildrenChecklistPage (phân trang Task con, tối đa 10/trang)', () => {
+    it('cổng gác nhẹ assertCanView, skip/take đúng trang, total/done từ 1 query gom nhóm', async () => {
+      mockTasksService.assertCanView.mockResolvedValue(undefined);
+      const child = {
+        id: 21,
+        title: 'Con 21',
+        periodType: PeriodType.WEEKLY,
+        periodStartDate: '2026-09-15',
+        periodEndDate: '2026-09-21',
+        status: { id: 1, code: 'done', name: 'Xong', color: '#0f0', isDoneState: true },
+      };
+      const pageQb = makeFakeQueryBuilder({ getMany: [child] });
+      const progressQb = makeFakeQueryBuilder({ getRawMany: [{ parentId: 1, total: '25', done: '4' }] });
+      mockTaskRepo.createQueryBuilder.mockReturnValueOnce(pageQb).mockReturnValueOnce(progressQb);
+
+      const result = await service.getChildrenChecklistPage(1, 3, 10, userId, userRole, scope);
+
+      expect(mockTasksService.assertCanView).toHaveBeenCalledWith(1, userId, userRole, scope);
+      expect(mockTasksService.findOne).not.toHaveBeenCalled();
+      expect(pageQb.skip).toHaveBeenCalledWith(20);
+      expect(pageQb.take).toHaveBeenCalledWith(10);
+      expect(result).toMatchObject({ total: 25, done: 4, page: 3, limit: 10, totalPages: 3 });
+      expect(result.data).toEqual([expect.objectContaining({ childTaskId: 21, isDone: true })]);
+    });
+
+    it('Task chưa có Task con -> total 0, totalPages 0', async () => {
+      mockTasksService.assertCanView.mockResolvedValue(undefined);
+      mockTaskRepo.createQueryBuilder
+        .mockReturnValueOnce(makeFakeQueryBuilder({ getMany: [] }))
+        .mockReturnValueOnce(makeFakeQueryBuilder({ getRawMany: [] }));
+
+      const result = await service.getChildrenChecklistPage(1, 1, 10, userId, userRole, scope);
+
+      expect(result).toEqual({ data: [], total: 0, done: 0, page: 1, limit: 10, totalPages: 0 });
     });
   });
 

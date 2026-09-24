@@ -1,5 +1,9 @@
 import axiosInstance from './axios-instance';
-import { PeriodicTaskChecklistItem } from './periodic-tasks.api';
+import type {
+  PeriodicTaskChecklistItem,
+  PeriodicTaskChecklistPage,
+  LinkedChildChecklistEntry,
+} from './periodic-tasks.api';
 
 /**
  * periodicTaskChecklistItemsApi - Phase 6 (PLAN_PERIODIC_TASKS_MODULE.md
@@ -12,26 +16,39 @@ import { PeriodicTaskChecklistItem } from './periodic-tasks.api';
  *   PATCH  /periodic-tasks/:id/checklist-items/:itemId
  *   DELETE /periodic-tasks/:id/checklist-items/:itemId
  *
- * Mọi hàm sửa dữ liệu (add/update/reorder/remove) đều trả về TOÀN BỘ danh
- * sách checklist item mới nhất của Task (không phải chỉ item vừa đổi) - mirror
- * `periodicTaskSecondaryAssigneesApi.addSecondaryAssignee()`, đơn giản hoá
- * việc đồng bộ state phía FE (chỉ cần set lại data, không cần tự merge).
+ * Danh sách được PHÂN TRANG server-side (tối đa 10 dòng/trang - `CHECKLIST_PAGE_SIZE`).
+ * `create` trả item vừa tạo + tổng mới, `update` trả item vừa sửa, `remove`/`move`
+ * trả cờ - KHÔNG còn trả lại cả danh sách (FE refetch đúng trang đang xem).
  * Không có permission/scope riêng - CHỈ cần `periodic_tasks.view` (đọc) và
  * `periodic_tasks.edit` (sửa) của chính Task cha (đã gate ở BE Controller).
  */
+export const CHECKLIST_PAGE_SIZE = 10;
+
 export const periodicTaskChecklistItemsApi = {
-  getAll: async (taskId: number): Promise<PeriodicTaskChecklistItem[]> => {
-    const response = await axiosInstance.get<PeriodicTaskChecklistItem[]>(
+  getPage: async (taskId: number, page: number): Promise<PeriodicTaskChecklistPage<PeriodicTaskChecklistItem>> => {
+    const response = await axiosInstance.get<PeriodicTaskChecklistPage<PeriodicTaskChecklistItem>>(
       `/periodic-tasks/${taskId}/checklist-items`,
+      { params: { page, limit: CHECKLIST_PAGE_SIZE } },
     );
     return response.data;
   },
 
-  create: async (taskId: number, content: string): Promise<PeriodicTaskChecklistItem[]> => {
-    const response = await axiosInstance.post<PeriodicTaskChecklistItem[]>(
-      `/periodic-tasks/${taskId}/checklist-items`,
-      { content },
+  getLinkedChildrenPage: async (
+    taskId: number,
+    page: number,
+  ): Promise<PeriodicTaskChecklistPage<LinkedChildChecklistEntry>> => {
+    const response = await axiosInstance.get<PeriodicTaskChecklistPage<LinkedChildChecklistEntry>>(
+      `/periodic-tasks/${taskId}/linked-children-checklist`,
+      { params: { page, limit: CHECKLIST_PAGE_SIZE } },
     );
+    return response.data;
+  },
+
+  create: async (
+    taskId: number,
+    content: string,
+  ): Promise<{ item: PeriodicTaskChecklistItem; total: number; done: number }> => {
+    const response = await axiosInstance.post(`/periodic-tasks/${taskId}/checklist-items`, { content });
     return response.data;
   },
 
@@ -39,28 +56,24 @@ export const periodicTaskChecklistItemsApi = {
     taskId: number,
     itemId: number,
     data: { content?: string; isDone?: boolean },
-  ): Promise<PeriodicTaskChecklistItem[]> => {
-    const response = await axiosInstance.patch<PeriodicTaskChecklistItem[]>(
+  ): Promise<PeriodicTaskChecklistItem> => {
+    const response = await axiosInstance.patch<PeriodicTaskChecklistItem>(
       `/periodic-tasks/${taskId}/checklist-items/${itemId}`,
       data,
     );
     return response.data;
   },
 
-  remove: async (taskId: number, itemId: number): Promise<PeriodicTaskChecklistItem[]> => {
-    const response = await axiosInstance.delete<PeriodicTaskChecklistItem[]>(
-      `/periodic-tasks/${taskId}/checklist-items/${itemId}`,
-    );
+  remove: async (taskId: number, itemId: number): Promise<{ deleted: true }> => {
+    const response = await axiosInstance.delete<{ deleted: true }>(`/periodic-tasks/${taskId}/checklist-items/${itemId}`);
     return response.data;
   },
 
-  /** `itemIds` PHẢI là hoán vị ĐẦY ĐỦ của toàn bộ item hiện có trong Task
-   * (khớp 1-1, không thiếu/thừa) - xem `ReorderPeriodicTaskChecklistItemsDto`
-   * ở BE, thiếu/thừa sẽ ăn 400. */
-  reorder: async (taskId: number, itemIds: number[]): Promise<PeriodicTaskChecklistItem[]> => {
-    const response = await axiosInstance.patch<PeriodicTaskChecklistItem[]>(
-      `/periodic-tasks/${taskId}/checklist-items/reorder`,
-      { itemIds },
+  /** Đổi chỗ với item liền kề (xuyên trang). `moved=false` khi đã ở đầu/cuối. */
+  move: async (taskId: number, itemId: number, direction: 'up' | 'down'): Promise<{ moved: boolean }> => {
+    const response = await axiosInstance.patch<{ moved: boolean }>(
+      `/periodic-tasks/${taskId}/checklist-items/${itemId}/move`,
+      { direction },
     );
     return response.data;
   },

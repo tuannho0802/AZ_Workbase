@@ -446,6 +446,27 @@ export class PeriodicTasksService {
   }
 
   /**
+   * Cổng gác XEM siêu nhẹ - CHỈ kiểm tra Task tồn tại + nằm trong phạm vi scope
+   * (404 nếu không), KHÔNG join/hydrate status/assignee/department/createdBy/
+   * updatedBy như `findOne()`. Dùng cho các endpoint đọc dữ liệu con hay gọi
+   * (vd phân trang Checklist) - chỉ cần biết "được xem hay không".
+   */
+  async assertCanView(id: number, userId: number, userRole: string, scope?: string | null): Promise<void> {
+    const qb = this.taskRepo
+      .createQueryBuilder('task')
+      .select('task.id')
+      .where('task.id = :id', { id })
+      .andWhere('task.deletedAt IS NULL');
+
+    PeriodicTaskAccessHelper.applyViewFilter(qb, userId, userRole, scope);
+
+    const found = await qb.getOne();
+    if (!found) {
+      throw new NotFoundException(`Không tìm thấy Công việc định kỳ với ID ${id}`);
+    }
+  }
+
+  /**
    * ⚠️ Nguyên tắc "1 cổng gác" (đúng PLAN mục 5): PATCH luôn gọi findOne()
    * (đã áp `PeriodicTaskAccessHelper.applyViewFilter`) TRƯỚC khi sửa - Task
    * ngoài phạm vi scope sẽ tự 404 trước khi kịp chạm bước update, không cần

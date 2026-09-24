@@ -17,6 +17,7 @@ describe('PeriodicTaskSecondaryAssigneesService', () => {
     create: jest.fn((x) => x),
     save: jest.fn(),
     remove: jest.fn(),
+    createQueryBuilder: jest.fn(),
   };
   const mockUserRepo = {
     findOne: jest.fn(),
@@ -136,6 +137,38 @@ describe('PeriodicTaskSecondaryAssigneesService', () => {
         PeriodicTaskAuditAction.SECONDARY_ASSIGNEE_REMOVED,
         { secondaryAssignee: { id: 5, name: 'User 5' } },
       );
+    });
+  });
+
+  describe('attachSecondaryAssigneesToList (hiện phụ trách phụ ở mọi view danh sách)', () => {
+    it('trả [] và KHÔNG query khi danh sách rỗng', async () => {
+      expect(await service.attachSecondaryAssigneesToList([])).toEqual([]);
+      expect(mockSecondaryRepo.createQueryBuilder).not.toHaveBeenCalled();
+    });
+
+    it('1 query gom cho cả trang, chỉ {id,name}, Task không có phụ -> []', async () => {
+      const qb: any = {
+        leftJoinAndSelect: jest.fn().mockReturnThis(),
+        select: jest.fn().mockReturnThis(),
+        where: jest.fn().mockReturnThis(),
+        orderBy: jest.fn().mockReturnThis(),
+        getMany: jest.fn().mockResolvedValue([
+          { taskId: 1, user: { id: 5, name: 'A' } },
+          { taskId: 1, user: { id: 6, name: 'B' } },
+          { taskId: 2, user: null },
+        ]),
+      };
+      mockSecondaryRepo.createQueryBuilder.mockReturnValue(qb);
+
+      const result = await service.attachSecondaryAssigneesToList([{ id: 1 }, { id: 2 }, { id: 3 }]);
+
+      expect(qb.where).toHaveBeenCalledWith('sa.taskId IN (:...taskIds)', { taskIds: [1, 2, 3] });
+      expect(mockSecondaryRepo.createQueryBuilder).toHaveBeenCalledTimes(1);
+      expect(result).toEqual([
+        { id: 1, secondaryAssignees: [{ id: 5, name: 'A' }, { id: 6, name: 'B' }] },
+        { id: 2, secondaryAssignees: [] },
+        { id: 3, secondaryAssignees: [] },
+      ]);
     });
   });
 

@@ -2,17 +2,19 @@
 
 import { useState } from 'react';
 import dayjs from 'dayjs';
-import { Modal, Typography, Progress, Input, Button, App, Popconfirm, Checkbox, Space, Empty, Spin, Divider, Tag } from 'antd';
+import { Modal, Typography, Progress, Input, Button, App, Popconfirm, Checkbox, Space, Empty, Spin, Divider, Tag, Pagination } from 'antd';
 import { DeleteOutlined, PlusOutlined, ArrowUpOutlined, ArrowDownOutlined, CheckOutlined, CloseOutlined } from '@ant-design/icons';
 import { useMyPermissions } from '@/lib/hooks/useMyPermissions';
-import { usePeriodicTask } from '@/lib/hooks/usePeriodicTasks';
 import {
     useAddTaskChecklistItem,
     useUpdateTaskChecklistItem,
     useRemoveTaskChecklistItem,
-    useReorderTaskChecklistItems,
+    useMoveTaskChecklistItem,
+    useTaskChecklistPage,
+    useLinkedChildrenChecklistPage,
 } from '@/lib/hooks/usePeriodicTaskChecklistItems';
 import { PeriodicTask, PeriodicTaskChecklistItem, PERIOD_TYPE_LABELS } from '@/lib/api/periodic-tasks.api';
+import { CHECKLIST_PAGE_SIZE } from '@/lib/api/periodic-task-checklist-items.api';
 import { getApiErrorMessage } from '@/lib/utils/error-message.util';
 import { SimpleList } from '@/components/common/SimpleList';
 import { LinkifiedText } from '@/components/common/LinkifiedText';
@@ -50,7 +52,7 @@ interface Props {
  * danh sách + `handleMove` này sang 1 thư viện DnD, KHÔNG cần đổi API/hook.
  *
  * Phase 9 (tích hợp Task con vào chung Checklist): thêm section "Task con
- * liên kết" bên dưới, đọc `taskDetail.linkedChildrenChecklist` (field MỚI,
+ * liên kết" bên dưới, đọc trang `GET /:id/linked-children-checklist` (phân trang 10 dòng) (field MỚI,
  * HOÀN TOÀN tách biệt khỏi `checklistItems` ở trên - xem JSDoc field đó ở
  * `periodic-tasks.api.ts`). Section này CHỈ hiển thị (checkbox luôn
  * `disabled`, không có nút sửa/xoá/sắp xếp nào) - Task con tick "xong" tự
@@ -65,36 +67,33 @@ export function TaskChecklistModal({ open, onClose, task }: Props) {
     const canEditLocked = can('periodic_tasks.edit_locked');
 
     const taskId = task?.id ?? null;
-    // `task` prop (từ danh sách) KHÔNG có `checklistItems` - phải fetch riêng
-    // qua `GET /:id` (mirror `TaskLinksModal` với `linkedCustomers`).
-    const { data: taskDetail, isLoading: taskDetailLoading } = usePeriodicTask(taskId);
-    const isLocked = taskDetail?.isLocked ?? task?.isLocked ?? false;
+    // Khoá/quyền lấy từ `task` prop (danh sách đã có `isLocked`) - KHÔNG gọi `GET /:id`
+    // nặng chỉ để đọc cờ này. 2 danh sách bên dưới tự PHÂN TRANG SERVER-SIDE (tối đa
+    // `CHECKLIST_PAGE_SIZE` = 10 dòng/trang), chỉ fetch khi modal đang mở.
+    const isLocked = task?.isLocked ?? false;
     const lockBlocksEdit = isLocked && !canEditLocked;
     const canEdit = hasEditPermission && !lockBlocksEdit;
-    // Không có case `undefined` do thiếu quyền (mirror `secondaryAssignees`,
-    // xem JSDoc `attachChecklistItems()` ở BE) - mặc định mảng rỗng lúc tải.
-    const items = taskDetail?.checklistItems ?? [];
-    const sortedItems = [...items].sort((a, b) => a.position - b.position);
-    const doneCount = sortedItems.filter((i) => i.isDone).length;
-    // Phase 9: Task con liên kết (mảng "checklist ảo" tính LIVE ở BE, xem
-    // JSDoc field `linkedChildrenChecklist` ở `periodic-tasks.api.ts`) - HOÀN
-    // TOÀN tách biệt khỏi `items`/`sortedItems` ở trên (không đọc/ghi chung
-    // bảng `periodic_task_checklist_items`), không có id/position, không có
-    // route sửa/xoá nào áp lên được - CHỈ hiển thị, tick tự động theo đúng
-    // status hiện tại của Task con.
-    const linkedChildren = taskDetail?.linkedChildrenChecklist ?? [];
-    const linkedDoneCount = linkedChildren.filter((c) => c.isDone).length;
-    // "Tích hợp Task con vào CHUNG checklist" (đúng yêu cầu) - % hoàn thành
-    // ở đầu modal gộp CẢ 2 hạng mục làm 1 con số duy nhất, dù UI vẫn tách
-    // riêng 2 danh sách bên dưới.
-    const totalCount = sortedItems.length + linkedChildren.length;
-    const totalDoneCount = doneCount + linkedDoneCount;
+
+    const [itemPage, setItemPage] = useState(1);
+    const [childPage, setChildPage] = useState(1);
+    const { data: itemsData, isLoading: itemsLoading, isFetching: itemsFetching } = useTaskChecklistPage(taskId, itemPage, open);
+    const { data: childrenData, isLoading: childrenLoading } = useLinkedChildrenChecklistPage(taskId, childPage, open);
+
+    const items = itemsData?.data ?? [];
+    const linkedChildren = childrenData?.data ?? [];
+    // `total`/`done` là của TOÀN BỘ danh sách (không chỉ trang đang xem) - % gộp CẢ
+    // checklist item thật + Task con liên kết thành 1 con số chung, như trước.
+    const itemsTotal = itemsData?.total ?? 0;
+    const childrenTotal = childrenData?.total ?? 0;
+    const totalCount = itemsTotal + childrenTotal;
+    const totalDoneCount = (itemsData?.done ?? 0) + (childrenData?.done ?? 0);
     const percent = totalCount > 0 ? Math.round((totalDoneCount / totalCount) * 100) : 0;
+    const itemTotalPages = itemsData?.totalPages ?? 0;
 
     const addMutation = useAddTaskChecklistItem();
     const updateMutation = useUpdateTaskChecklistItem();
     const removeMutation = useRemoveTaskChecklistItem();
-    const reorderMutation = useReorderTaskChecklistItems();
+    const moveMutation = useMoveTaskChecklistItem();
 
     const [newContent, setNewContent] = useState('');
     const [editingItemId, setEditingItemId] = useState<number | null>(null);
@@ -105,9 +104,11 @@ export function TaskChecklistModal({ open, onClose, task }: Props) {
         addMutation.mutate(
             { taskId: task.id, content: newContent.trim() },
             {
-                onSuccess: () => {
+                onSuccess: (res) => {
                     message.success('Đã thêm checklist item');
                     setNewContent('');
+                    // Item mới nằm CUỐI danh sách -> nhảy tới trang cuối để người dùng thấy ngay.
+                    setItemPage(Math.max(1, Math.ceil(res.total / CHECKLIST_PAGE_SIZE)));
                 },
                 onError: (err) => message.error(getApiErrorMessage(err, 'Thêm checklist item thất bại')),
             },
@@ -162,25 +163,21 @@ export function TaskChecklistModal({ open, onClose, task }: Props) {
         removeMutation.mutate(
             { taskId: task.id, itemId: item.id },
             {
-                onSuccess: () => message.success('Đã xoá checklist item'),
+                onSuccess: () => {
+                    message.success('Đã xoá checklist item');
+                    // Xoá dòng duy nhất của trang cuối -> lùi 1 trang, tránh dừng ở trang trống.
+                    if (items.length === 1 && itemPage > 1) setItemPage(itemPage - 1);
+                },
                 onError: (err) => message.error(getApiErrorMessage(err, 'Xoá checklist item thất bại')),
             },
         );
     };
 
-    // Đổi chỗ item ở `index` với item liền kề (lên: index-1, xuống: index+1)
-    // rồi gửi lại TOÀN BỘ mảng ID theo thứ tự mới - khớp đúng hợp đồng
-    // `ReorderPeriodicTaskChecklistItemsDto` (hoán vị đầy đủ) ở BE.
-    const handleMove = (index: number, direction: 'up' | 'down') => {
+    // Đổi chỗ với item liền kề (BE lo, xuyên trang) - chỉ gửi hướng, không gửi cả thứ tự.
+    const handleMove = (item: PeriodicTaskChecklistItem, direction: 'up' | 'down') => {
         if (!task) return;
-        const targetIndex = direction === 'up' ? index - 1 : index + 1;
-        if (targetIndex < 0 || targetIndex >= sortedItems.length) return;
-
-        const reordered = [...sortedItems];
-        [reordered[index], reordered[targetIndex]] = [reordered[targetIndex], reordered[index]];
-
-        reorderMutation.mutate(
-            { taskId: task.id, itemIds: reordered.map((i) => i.id) },
+        moveMutation.mutate(
+            { taskId: task.id, itemId: item.id, direction },
             {
                 onError: (err) => message.error(getApiErrorMessage(err, 'Sắp xếp lại thất bại')),
             },
@@ -195,6 +192,8 @@ export function TaskChecklistModal({ open, onClose, task }: Props) {
         setNewContent('');
         setEditingItemId(null);
         setEditingContent('');
+        setItemPage(1);
+        setChildPage(1);
         onClose();
     };
 
@@ -217,17 +216,17 @@ export function TaskChecklistModal({ open, onClose, task }: Props) {
                         </div>
                     )}
 
-                    <Spin spinning={taskDetailLoading}>
-                        {sortedItems.length === 0 ? (
+                    <Spin spinning={itemsLoading || (itemsFetching && !itemsData)}>
+                        {itemsTotal === 0 ? (
                             <Empty description="Chưa có checklist item nào" image={Empty.PRESENTED_IMAGE_SIMPLE} />
                         ) : (
                             <div style={{ border: '1px solid #f0f0f0', borderRadius: 8, overflow: 'hidden' }}>
-                                {sortedItems.map((item, index) => {
+                                {items.map((item, index) => {
                                     const isEditing = editingItemId === item.id;
                                     const isBusy =
                                         (updateMutation.isPending && updateMutation.variables?.itemId === item.id) ||
                                         (removeMutation.isPending && removeMutation.variables?.itemId === item.id) ||
-                                        reorderMutation.isPending;
+                                        moveMutation.isPending;
 
                                     return (
                                         <div
@@ -237,7 +236,7 @@ export function TaskChecklistModal({ open, onClose, task }: Props) {
                                                 alignItems: 'center',
                                                 gap: 8,
                                                 padding: '10px 12px',
-                                                borderBottom: index === sortedItems.length - 1 ? 'none' : '1px solid #f0f0f0',
+                                                borderBottom: index === items.length - 1 ? 'none' : '1px solid #f0f0f0',
                                                 opacity: isBusy ? 0.6 : 1,
                                             }}
                                         >
@@ -292,15 +291,15 @@ export function TaskChecklistModal({ open, onClose, task }: Props) {
                                                                 size="small"
                                                                 type="text"
                                                                 icon={<ArrowUpOutlined />}
-                                                                disabled={index === 0}
-                                                                onClick={() => handleMove(index, 'up')}
+                                                                disabled={itemPage === 1 && index === 0}
+                                                                onClick={() => handleMove(item, 'up')}
                                                             />
                                                             <Button
                                                                 size="small"
                                                                 type="text"
                                                                 icon={<ArrowDownOutlined />}
-                                                                disabled={index === sortedItems.length - 1}
-                                                                onClick={() => handleMove(index, 'down')}
+                                                                disabled={itemPage === itemTotalPages && index === items.length - 1}
+                                                                onClick={() => handleMove(item, 'down')}
                                                             />
                                                             <Popconfirm
                                                                 title="Xoá checklist item này?"
@@ -329,6 +328,19 @@ export function TaskChecklistModal({ open, onClose, task }: Props) {
                             </div>
                         )}
                     </Spin>
+
+                    {itemsTotal > CHECKLIST_PAGE_SIZE && (
+                        <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: 8 }}>
+                            <Pagination
+                                size="small"
+                                current={itemPage}
+                                pageSize={CHECKLIST_PAGE_SIZE}
+                                total={itemsTotal}
+                                showSizeChanger={false}
+                                onChange={setItemPage}
+                            />
+                        </div>
+                    )}
 
                     {canEdit && (
                         <div style={{ marginTop: 12, display: 'flex', gap: 8 }}>
@@ -362,14 +374,14 @@ export function TaskChecklistModal({ open, onClose, task }: Props) {
                     <Divider style={{ margin: '20px 0 12px' }} />
 
                     <div style={{ marginBottom: 8 }}>
-                        <Text strong>Task con liên kết ({linkedChildren.length}):</Text>
+                        <Text strong>Task con liên kết ({childrenTotal}):</Text>
                         <Text type="secondary" style={{ marginLeft: 8, fontSize: 12 }}>
                             Tự động tick khi Task con chuyển sang trạng thái hoàn thành - CHỈ hiển thị, không
                             sửa/xoá được ở đây.
                         </Text>
                     </div>
                     <SimpleList
-                        loading={taskDetailLoading}
+                        loading={childrenLoading}
                         size="small"
                         bordered
                         dataSource={linkedChildren}
@@ -400,6 +412,18 @@ export function TaskChecklistModal({ open, onClose, task }: Props) {
                             ),
                         })}
                     />
+                    {childrenTotal > CHECKLIST_PAGE_SIZE && (
+                        <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: 8 }}>
+                            <Pagination
+                                size="small"
+                                current={childPage}
+                                pageSize={CHECKLIST_PAGE_SIZE}
+                                total={childrenTotal}
+                                showSizeChanger={false}
+                                onChange={setChildPage}
+                            />
+                        </div>
+                    )}
                 </>
             )}
         </Modal>

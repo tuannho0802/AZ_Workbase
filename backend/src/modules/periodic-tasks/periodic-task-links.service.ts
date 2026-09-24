@@ -313,6 +313,68 @@ export class PeriodicTaskLinksService {
     return result;
   }
 
+  /**
+   * getChildrenChecklistPage - bản PHÂN TRANG SERVER-SIDE của `getChildrenChecklist()`
+   * cho modal Checklist (tối đa 10 dòng/trang). Cùng quy tắc: chỉ Task con TRỰC
+   * TIẾP chưa xoá, lọc lại theo scope người gọi, `isDone` = `status.isDoneState`.
+   * `total`/`done` lấy từ `getChildrenChecklistProgressBatch()` (1 query gom nhóm,
+   * cùng bộ lọc scope) nên khớp số dòng thật; trang dữ liệu chạy song song.
+   * Cổng gác dùng `assertCanView()` (nhẹ) thay vì `findOne()`.
+   */
+  async getChildrenChecklistPage(
+    taskId: number,
+    page: number,
+    limit: number,
+    userId: number,
+    userRole: string,
+    scope?: string | null,
+  ) {
+    await this.tasksService.assertCanView(taskId, userId, userRole, scope);
+
+    const qb = this.taskRepo
+      .createQueryBuilder('task')
+      .leftJoinAndSelect('task.status', 'status')
+      .innerJoin('periodic_task_links', 'link', 'link.child_task_id = task.id')
+      .where('link.parent_task_id = :taskId', { taskId })
+      .andWhere('task.deletedAt IS NULL');
+    PeriodicTaskAccessHelper.applyViewFilter(qb, userId, userRole, scope);
+
+    const [progress, children] = await Promise.all([
+      this.getChildrenChecklistProgressBatch([taskId], userId, userRole, scope),
+      qb
+        .orderBy('task.periodStartDate', 'DESC')
+        .addOrderBy('task.id', 'DESC')
+        .skip((page - 1) * limit)
+        .take(limit)
+        .getMany(),
+    ]);
+
+    const summary = progress.get(taskId) ?? { done: 0, total: 0 };
+    const data: LinkedChildChecklistEntry[] = children.map((child) => ({
+      childTaskId: child.id,
+      title: child.title,
+      isDone: child.status.isDoneState,
+      status: {
+        id: child.status.id,
+        code: child.status.code,
+        name: child.status.name,
+        color: child.status.color,
+      },
+      periodType: child.periodType,
+      periodStartDate: child.periodStartDate,
+      periodEndDate: child.periodEndDate,
+    }));
+
+    return {
+      data,
+      total: summary.total,
+      done: summary.done,
+      page,
+      limit,
+      totalPages: Math.ceil(summary.total / limit),
+    };
+  }
+
   async getParents(
     taskId: number,
     userId: number,

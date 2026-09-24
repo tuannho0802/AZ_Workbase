@@ -9,6 +9,7 @@ import { CreatePeriodicTaskChecklistItemDto } from './dto/create-periodic-task-c
 import { UpdatePeriodicTaskChecklistItemDto } from './dto/update-periodic-task-checklist-item.dto';
 import { ReorderPeriodicTaskChecklistItemsDto } from './dto/reorder-periodic-task-checklist-items.dto';
 import { PeriodicTaskAuditService, PeriodicTaskAuditAction } from './periodic-task-audit.service';
+import { CHECKLIST_PAGE_SIZE, PeriodicTaskChecklistPageDto } from './dto/periodic-task-checklist-page.dto';
 
 /**
  * PeriodicTaskChecklistItemsService - Phase 6 (PLAN mục 6): checklist con
@@ -69,19 +70,56 @@ export class PeriodicTaskChecklistItemsService {
     });
   }
 
+  /** Tổng số item + số item đã xong của Task - ĐÚNG 1 query gom nhóm (không kéo dữ liệu về đếm). */
+  private async getSummary(taskId: number): Promise<{ total: number; done: number }> {
+    const row = await this.checklistRepo
+      .createQueryBuilder('item')
+      .select('COUNT(item.id)', 'total')
+      .addSelect('SUM(CASE WHEN item.is_done = 1 THEN 1 ELSE 0 END)', 'done')
+      .where('item.task_id = :taskId', { taskId })
+      .getRawOne<{ total: number | string | null; done: number | string | null }>();
+    return { total: Number(row?.total ?? 0), done: Number(row?.done ?? 0) };
+  }
+
   /**
-   * Danh sách checklist item của 1 Task, có kiểm tra quyền xem qua
-   * `tasksService.findOne()` (mirror pattern `getChildren()`/`getParents()`
-   * của Phase 2 - `periodic_tasks.view`, không cần `periodic_tasks.edit`).
+   * Checklist item của 1 Task, PHÂN TRANG SERVER-SIDE (tối đa `CHECKLIST_PAGE_SIZE`
+   * dòng/trang). Chỉ 3 truy vấn nhẹ, KHÔNG kéo cả checklist về:
+   *  1. cổng gác xem `assertCanView()` (không join),
+   *  2. `getSummary()` - COUNT/SUM toàn Task (để FE tính % và số trang),
+   *  3. trang dữ liệu `ORDER BY position, id LIMIT/OFFSET` (dùng index
+   *     `idx_periodic_task_checklist_items_task_position`).
+   * (2) và (3) chạy song song. `total`/`done` là của TOÀN BỘ Task, không chỉ trang này.
    */
-  async findAllForTask(
+  async findPage(
     taskId: number,
+    dto: PeriodicTaskChecklistPageDto,
     userId: number,
     userRole: string,
     scope?: string | null,
-  ): Promise<PeriodicTaskChecklistItem[]> {
-    await this.tasksService.findOne(taskId, userId, userRole, scope);
-    return this.queryItems(taskId);
+  ) {
+    await this.tasksService.assertCanView(taskId, userId, userRole, scope);
+
+    const page = dto.page ?? 1;
+    const limit = dto.limit ?? CHECKLIST_PAGE_SIZE;
+
+    const [summary, data] = await Promise.all([
+      this.getSummary(taskId),
+      this.checklistRepo.find({
+        where: { taskId },
+        order: { position: 'ASC', id: 'ASC' },
+        skip: (page - 1) * limit,
+        take: limit,
+      }),
+    ]);
+
+    return {
+      data,
+      total: summary.total,
+      done: summary.done,
+      page,
+      limit,
+      totalPages: Math.ceil(summary.total / limit),
+    };
   }
 
   /**
@@ -103,7 +141,7 @@ export class PeriodicTaskChecklistItemsService {
     dto: CreatePeriodicTaskChecklistItemDto,
     user: RequestingUser,
     scope?: string | null,
-  ): Promise<PeriodicTaskChecklistItem[]> {
+  ): Promise<{ item: PeriodicTaskChecklistItem; total: number; done: number }> {
     const task = await this.tasksService.findOne(taskId, user.id, user.role, scope);
     await this.tasksService.assertEditableWhenLocked(task, user);
 
@@ -129,7 +167,10 @@ export class PeriodicTaskChecklistItemsService {
 
     this.emitChecklistChanged(taskId, task, user.id);
 
-    return this.queryItems(taskId);
+    // Trả item vừa tạo + tổng mới (FE nhảy tới trang cuối để thấy item vừa thêm) -
+    // KHÔNG trả lại cả danh sách.
+    const summary = await this.getSummary(taskId);
+    return { item: created, total: summary.total, done: summary.done };
   }
 
   /** Sửa nội dung và/hoặc `isDone` của 1 checklist item. */
@@ -139,7 +180,7 @@ export class PeriodicTaskChecklistItemsService {
     dto: UpdatePeriodicTaskChecklistItemDto,
     user: RequestingUser,
     scope?: string | null,
-  ): Promise<PeriodicTaskChecklistItem[]> {
+  ): Promise<PeriodicTaskChecklistItem> {
     const task = await this.tasksService.findOne(taskId, user.id, user.role, scope);
     await this.tasksService.assertEditableWhenLocked(task, user);
 
@@ -158,7 +199,7 @@ export class PeriodicTaskChecklistItemsService {
 
     this.emitChecklistChanged(taskId, task, user.id);
 
-    return this.queryItems(taskId);
+    return item;
   }
 
   /** Xoá 1 checklist item (hard delete, mirror `removeSecondaryAssignee()`). */
@@ -167,7 +208,7 @@ export class PeriodicTaskChecklistItemsService {
     itemId: number,
     user: RequestingUser,
     scope?: string | null,
-  ): Promise<PeriodicTaskChecklistItem[]> {
+  ): Promise<{ deleted: true }> {
     const task = await this.tasksService.findOne(taskId, user.id, user.role, scope);
     await this.tasksService.assertEditableWhenLocked(task, user);
 
@@ -181,7 +222,66 @@ export class PeriodicTaskChecklistItemsService {
 
     this.emitChecklistChanged(taskId, task, user.id);
 
-    return this.queryItems(taskId);
+    return { deleted: true };
+  }
+
+  /**
+   * Đổi chỗ 1 item với item LIỀN KỀ (lên/xuống) theo thứ tự toàn Task - hoạt động
+   * XUYÊN TRANG (FE chỉ có 10 item/trang nên không thể gửi hoán vị đầy đủ như
+   * `reorder()`). Không có item liền kề (đã ở đầu/cuối) -> `{ moved: false }`.
+   * Nếu 2 item trùng `position` (hiếm - 2 lượt thêm đồng thời) thì đánh lại số
+   * thứ tự cho cả Task để phép đổi chỗ có hiệu lực thật.
+   */
+  async move(
+    taskId: number,
+    itemId: number,
+    direction: 'up' | 'down',
+    user: RequestingUser,
+    scope?: string | null,
+  ): Promise<{ moved: boolean }> {
+    const task = await this.tasksService.findOne(taskId, user.id, user.role, scope);
+    await this.tasksService.assertEditableWhenLocked(task, user);
+
+    const item = await this.findItemOrFail(taskId, itemId);
+    const up = direction === 'up';
+
+    const neighbor = await this.checklistRepo
+      .createQueryBuilder('item')
+      .where('item.taskId = :taskId', { taskId })
+      .andWhere(
+        up
+          ? '(item.position < :pos OR (item.position = :pos AND item.id < :id))'
+          : '(item.position > :pos OR (item.position = :pos AND item.id > :id))',
+        { pos: item.position, id: item.id },
+      )
+      .orderBy('item.position', up ? 'DESC' : 'ASC')
+      .addOrderBy('item.id', up ? 'DESC' : 'ASC')
+      .limit(1)
+      .getOne();
+
+    if (!neighbor) return { moved: false };
+
+    if (neighbor.position !== item.position) {
+      await Promise.all([
+        this.checklistRepo.update({ id: item.id, taskId }, { position: neighbor.position }),
+        this.checklistRepo.update({ id: neighbor.id, taskId }, { position: item.position }),
+      ]);
+    } else {
+      const all = await this.queryItems(taskId);
+      const ids = all.map((i) => i.id);
+      const a = ids.indexOf(item.id);
+      const b = ids.indexOf(neighbor.id);
+      [ids[a], ids[b]] = [ids[b], ids[a]];
+      await Promise.all(ids.map((id, index) => this.checklistRepo.update({ id, taskId }, { position: index })));
+    }
+
+    // Im lặng như `reorder()` (PLAN: "checklist_items_reordered im lặng") - chỉ ghi lịch sử.
+    this.auditService.logActionAsync(taskId, user.id, PeriodicTaskAuditAction.CHECKLIST_ITEMS_REORDERED, null, {
+      itemId,
+      direction,
+    });
+
+    return { moved: true };
   }
 
   /**

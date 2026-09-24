@@ -43,6 +43,38 @@ export class PeriodicTaskSecondaryAssigneesService {
   }
 
   /**
+   * attachSecondaryAssigneesToList - đính `secondaryAssignees: {id, name}[]` vào
+   * TỪNG Task của danh sách (`GET /periodic-tasks`) để mọi view (Bảng/Ngày/Kanban/
+   * Lịch) hiện được ai là phụ trách phụ mà KHÔNG phải gọi `GET /:id` từng Task.
+   * ĐÚNG 1 query cho cả trang (không N+1), chỉ lấy `id`/`name` (không kéo cả User).
+   * Task không có phụ trách phụ -> `[]`.
+   */
+  async attachSecondaryAssigneesToList<T extends { id: number }>(
+    tasks: T[],
+  ): Promise<Array<T & { secondaryAssignees: { id: number; name: string }[] }>> {
+    if (tasks.length === 0) return [];
+    const taskIds = tasks.map((t) => t.id);
+
+    const rows = await this.secondaryRepo
+      .createQueryBuilder('sa')
+      .leftJoinAndSelect('sa.user', 'user')
+      .select(['sa.id', 'sa.taskId', 'sa.createdAt', 'user.id', 'user.name'])
+      .where('sa.taskId IN (:...taskIds)', { taskIds })
+      .orderBy('sa.createdAt', 'ASC')
+      .getMany();
+
+    const byTask = new Map<number, { id: number; name: string }[]>();
+    for (const row of rows) {
+      if (!row.user) continue;
+      const list = byTask.get(row.taskId) ?? [];
+      list.push({ id: row.user.id, name: row.user.name });
+      byTask.set(row.taskId, list);
+    }
+
+    return tasks.map((task) => ({ ...task, secondaryAssignees: byTask.get(task.id) ?? [] }));
+  }
+
+  /**
    * Thêm 1 phụ trách phụ vào Task (PLAN mục 2.5, endpoint mục 5).
    * `taskScope` = scope của `periodic_tasks.edit` (đã tính sẵn ở
    * `PermissionGuard`/Controller cho route này) - dùng để "1 cổng gác" qua

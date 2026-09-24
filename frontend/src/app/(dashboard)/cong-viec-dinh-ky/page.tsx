@@ -64,6 +64,7 @@ import { Customer } from '@/lib/types/customer.types';
 import { getApiErrorMessage } from '@/lib/utils/error-message.util';
 import { useRoleColorMap, useRoleColors } from '@/lib/hooks/useRoleColorMap';
 import { TaskLinksModal } from '@/components/periodic-tasks/TaskLinksModal';
+import { TaskAssignees } from '@/components/periodic-tasks/TaskAssignees';
 import { TaskChecklistModal } from '@/components/periodic-tasks/TaskChecklistModal';
 import { TaskAuditLogsModal } from '@/components/periodic-tasks/TaskAuditLogsModal';
 import { TaskActionsBar } from '@/components/periodic-tasks/TaskActionsBar';
@@ -1096,11 +1097,10 @@ function PeriodicTasksPageContent() {
             ),
         },
         {
-            title: 'Phụ trách chính',
+            title: 'Phụ trách',
             key: 'primaryAssignee',
-            width: 160,
-            ellipsis: true,
-            render: (_: any, record: PeriodicTask) => record.primaryAssignee?.name ?? '—',
+            width: 200,
+            render: (_: any, record: PeriodicTask) => <TaskAssignees task={record} layout="stacked" />,
         },
         {
             title: 'Phòng ban',
