@@ -107,6 +107,7 @@ export const PERIODIC_TASK_AUDIT_ACTION_META: Record<string, { label: string; co
   locked: { label: 'Khoá', color: 'volcano' },
   unlocked: { label: 'Mở khoá', color: 'gold' },
   deleted: { label: 'Xoá', color: 'red' },
+  restored: { label: 'Khôi phục', color: 'green' },
   checklist_item_added: { label: 'Thêm Checklist item', color: 'cyan' },
   checklist_item_updated: { label: 'Sửa Checklist item', color: 'blue' },
   checklist_item_removed: { label: 'Xoá Checklist item', color: 'orange' },

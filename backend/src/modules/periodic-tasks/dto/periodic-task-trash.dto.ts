@@ -25,6 +25,16 @@ export class PeriodicTaskTrashFiltersDto {
   search?: string;
 }
 
+/** `PATCH /periodic-tasks/trash/restore` - khôi phục các Task đã chọn (cùng dạng body với xoá vĩnh viễn). */
+export class RestorePeriodicTasksDto {
+  @ApiProperty({ example: [1, 2, 3] })
+  @IsArray()
+  @ArrayNotEmpty()
+  @ArrayMaxSize(500)
+  @IsInt({ each: true })
+  ids: number[];
+}
+
 /** `DELETE /periodic-tasks/trash/bulk` - xoá vĩnh viễn các Task đã chọn. */
 export class HardDeletePeriodicTasksDto {
   @ApiProperty({ example: [1, 2, 3] })

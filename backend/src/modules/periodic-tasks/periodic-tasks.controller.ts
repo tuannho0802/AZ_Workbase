@@ -8,7 +8,7 @@ import { PeriodicTaskChecklistItemsService } from './periodic-task-checklist-ite
 import { CreatePeriodicTaskDto } from './dto/create-periodic-task.dto';
 import { UpdatePeriodicTaskDto } from './dto/update-periodic-task.dto';
 import { PeriodicTaskFiltersDto } from './dto/periodic-task-filters.dto';
-import { PeriodicTaskTrashFiltersDto, HardDeletePeriodicTasksDto } from './dto/periodic-task-trash.dto';
+import { PeriodicTaskTrashFiltersDto, HardDeletePeriodicTasksDto, RestorePeriodicTasksDto } from './dto/periodic-task-trash.dto';
 import { PeriodicTaskTrashService } from './periodic-task-trash.service';
 import { CreatePeriodicTaskLinkDto } from './dto/create-periodic-task-link.dto';
 import { LinkPeriodicTaskCustomersDto } from './dto/link-periodic-task-customers.dto';
@@ -160,6 +160,13 @@ export class PeriodicTasksController {
   @ApiOperation({ summary: 'Thùng rác: danh sách Công việc đã xoá mềm' })
   getTrash(@Query() dto: PeriodicTaskTrashFiltersDto) {
     return this.periodicTaskTrashService.getTrash(dto);
+  }
+
+  @Patch('trash/restore')
+  @RequirePermission('periodic_tasks.trash_manage')
+  @ApiOperation({ summary: 'Thùng rác: khôi phục các Công việc đã chọn' })
+  restoreTrash(@Body() dto: RestorePeriodicTasksDto, @GetUser('id') adminId: number) {
+    return this.periodicTaskTrashService.restore(dto.ids, adminId);
   }
 
   @Delete('trash/bulk')

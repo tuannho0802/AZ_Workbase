@@ -4,7 +4,7 @@ import { In, IsNull, Not, Repository } from 'typeorm';
 import { PeriodicTask } from '../../database/entities/periodic-task.entity';
 import { PeriodicTaskAuditLog } from '../../database/entities/periodic-task-audit-log.entity';
 import { AuditService } from '../audit/audit.service';
-import { PeriodicTaskAuditAction } from './periodic-task-audit.service';
+import { PeriodicTaskAuditAction, PeriodicTaskAuditService } from './periodic-task-audit.service';
 import { PeriodicTaskTrashFiltersDto } from './dto/periodic-task-trash.dto';
 
 /**
@@ -13,6 +13,8 @@ import { PeriodicTaskTrashFiltersDto } from './dto/periodic-task-trash.dto';
  *  1. `getTrash()`      - liệt kê Task đã xoá mềm (`deleted_at IS NOT NULL`).
  *  2. `hardDelete()`    - xoá VĨNH VIỄN các Task đã chọn (chỉ nhận Task ĐÃ xoá mềm).
  *  3. `emptyTrash()`    - xoá vĩnh viễn TOÀN BỘ Task đã xoá mềm.
+ *  4. `restore()`       - KHÔI PHỤC các Task đã chọn (`deleted_at = NULL`), ghi log `restored`
+ *                        vào lịch sử riêng của từng Task (Task sống lại nên log còn nguyên).
  *
  * Các bảng con (checklist, liên kết cha-con, gắn Khách hàng, Phụ trách phụ,
  * `periodic_task_audit_logs`) đều `ON DELETE CASCADE` theo `task_id` nên tự dọn
@@ -29,6 +31,7 @@ export class PeriodicTaskTrashService {
     @InjectRepository(PeriodicTaskAuditLog)
     private readonly auditLogRepo: Repository<PeriodicTaskAuditLog>,
     private readonly auditService: AuditService,
+    private readonly periodicTaskAuditService: PeriodicTaskAuditService,
   ) {}
 
   async getTrash(dto: PeriodicTaskTrashFiltersDto) {
@@ -91,6 +94,41 @@ export class PeriodicTaskTrashService {
       limit,
       totalPages: Math.ceil(total / limit),
     };
+  }
+
+  /**
+   * Khôi phục các Task đã chọn. Chỉ tác động Task ĐANG xoá mềm (Task còn dùng
+   * bị bỏ qua). Liên kết/checklist/khách hàng gắn kèm vốn KHÔNG bị xoá lúc
+   * xoá mềm nên tự "sống lại" cùng Task.
+   */
+  async restore(ids: number[], adminId: number): Promise<{ restored: number; skipped: number }> {
+    const uniqueIds = [...new Set(ids)];
+
+    const trashed = await this.taskRepo.find({
+      where: { id: In(uniqueIds), deletedAt: Not(IsNull()) },
+      withDeleted: true,
+      select: { id: true, title: true },
+    });
+    if (trashed.length === 0) {
+      throw new NotFoundException('Không có Công việc nào trong thùng rác khớp danh sách đã chọn');
+    }
+
+    const result = await this.taskRepo
+      .createQueryBuilder()
+      .restore()
+      .where('id IN (:...ids)', { ids: trashed.map((t) => t.id) })
+      .andWhere('deleted_at IS NOT NULL')
+      .execute();
+    const restored = result.affected ?? trashed.length;
+
+    for (const t of trashed) {
+      this.periodicTaskAuditService.logActionAsync(t.id, adminId, PeriodicTaskAuditAction.RESTORED, null, {
+        title: t.title,
+      });
+    }
+    this.logger.log(`Admin #${adminId} restored ${restored} periodic task(s)`);
+
+    return { restored, skipped: uniqueIds.length - trashed.length };
   }
 
   /** Xoá vĩnh viễn các Task đã chọn - Task CHƯA xoá mềm bị bỏ qua (không bao giờ xoá nhầm Task đang dùng). */

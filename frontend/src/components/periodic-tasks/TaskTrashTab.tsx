@@ -4,7 +4,7 @@ import { useState } from 'react';
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Alert, App, Button, Input, Modal, Space, Table, Tag, Typography } from 'antd';
 import type { ColumnsType } from 'antd/es/table';
-import { DeleteOutlined, ExclamationCircleOutlined } from '@ant-design/icons';
+import { DeleteOutlined, ExclamationCircleOutlined, UndoOutlined } from '@ant-design/icons';
 import dayjs from 'dayjs';
 import { periodicTaskTrashApi, TrashedPeriodicTask } from '@/lib/api/periodic-task-trash.api';
 import { PERIOD_TYPE_LABELS } from '@/lib/api/periodic-tasks.api';
@@ -19,9 +19,10 @@ const TRASH_KEY = ['periodic-tasks-trash'];
 
 /**
  * Tab "Thùng rác" của Công việc định kỳ - gate bằng `periodic_tasks.trash_manage`
- * (trang cha chỉ render khi có quyền; BE vẫn là chốt chặn thật). Chỉ có 2 hành
- * động, đều KHÔNG thể hoàn tác: xoá vĩnh viễn các Task đã chọn, và dọn sạch cả
- * thùng rác (bắt gõ cụm xác nhận để tránh bấm nhầm).
+ * (trang cha chỉ render khi có quyền; BE vẫn là chốt chặn thật). Hành động:
+ * Khôi phục (từng dòng hoặc nhiều dòng đã chọn - Task sống lại y nguyên), xoá
+ * vĩnh viễn các Task đã chọn, và dọn sạch cả thùng rác. Hai hành động xoá
+ * KHÔNG thể hoàn tác; "dọn sạch" bắt gõ cụm xác nhận để tránh bấm nhầm.
  */
 export function TaskTrashTab() {
   const { message, modal } = App.useApp();
@@ -42,6 +43,18 @@ export function TaskTrashTab() {
   });
   const rows = data?.data ?? [];
   const total = data?.total ?? 0;
+
+  const restoreMutation = useMutation({
+    mutationFn: (ids: number[]) => periodicTaskTrashApi.restore(ids),
+    onSuccess: (res) => {
+      message.success(`Đã khôi phục ${res.restored} Công việc`);
+      setSelectedIds([]);
+      queryClient.invalidateQueries({ queryKey: TRASH_KEY });
+      // Task vừa khôi phục phải hiện lại ở các view Bảng/Ngày/Kanban/Lịch.
+      queryClient.invalidateQueries({ queryKey: ['periodic-tasks'] });
+    },
+    onError: (err) => message.error(getApiErrorMessage(err, 'Không thể khôi phục')),
+  });
 
   const afterDelete = () => {
     setSelectedIds([]);
@@ -68,6 +81,17 @@ export function TaskTrashTab() {
     },
     onError: (err) => message.error(getApiErrorMessage(err, 'Không thể dọn sạch thùng rác')),
   });
+
+  const confirmRestore = (ids: number[]) => {
+    modal.confirm({
+      title: `Khôi phục ${ids.length} Công việc?`,
+      icon: <UndoOutlined />,
+      content: 'Công việc sẽ hiện lại như trước khi xoá (kèm checklist, liên kết, khách hàng gắn kèm).',
+      okText: 'Khôi phục',
+      cancelText: 'Hủy',
+      onOk: () => restoreMutation.mutateAsync(ids),
+    });
+  };
 
   const confirmHardDelete = () => {
     modal.confirm({
@@ -127,6 +151,22 @@ export function TaskTrashTab() {
       width: 150,
       render: (v: string) => dayjs(v).format('HH:mm DD/MM/YYYY'),
     },
+    {
+      title: 'Thao tác',
+      key: 'action',
+      width: 120,
+      fixed: 'right',
+      render: (_, r) => (
+        <Button
+          size="small"
+          icon={<UndoOutlined />}
+          loading={restoreMutation.isPending && restoreMutation.variables?.includes(r.id)}
+          onClick={() => confirmRestore([r.id])}
+        >
+          Khôi phục
+        </Button>
+      ),
+    },
   ];
 
   return (
@@ -135,7 +175,7 @@ export function TaskTrashTab() {
         type="warning"
         showIcon
         style={{ marginBottom: 12 }}
-        message="Thùng rác chứa các Công việc đã xoá mềm. Xoá vĩnh viễn KHÔNG thể khôi phục và xoá luôn checklist, liên kết, khách hàng gắn kèm và lịch sử của Công việc đó."
+        message="Thùng rác chứa các Công việc đã xoá mềm - có thể Khôi phục. Xoá vĩnh viễn thì KHÔNG thể khôi phục và xoá luôn checklist, liên kết, khách hàng gắn kèm và lịch sử của Công việc đó."
       />
 
       <Space wrap style={{ marginBottom: 12 }}>
@@ -149,6 +189,14 @@ export function TaskTrashTab() {
             setPage(1);
           }}
         />
+        <Button
+          icon={<UndoOutlined />}
+          disabled={selectedIds.length === 0}
+          loading={restoreMutation.isPending}
+          onClick={() => confirmRestore(selectedIds)}
+        >
+          Khôi phục đã chọn ({selectedIds.length})
+        </Button>
         <Button
           danger
           icon={<DeleteOutlined />}

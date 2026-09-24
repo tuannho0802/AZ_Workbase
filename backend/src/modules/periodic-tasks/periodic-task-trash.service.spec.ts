@@ -5,6 +5,7 @@ import { PeriodicTask } from '../../database/entities/periodic-task.entity';
 import { PeriodicTaskAuditLog } from '../../database/entities/periodic-task-audit-log.entity';
 import { AuditService } from '../audit/audit.service';
 import { PeriodicTaskTrashService } from './periodic-task-trash.service';
+import { PeriodicTaskAuditService } from './periodic-task-audit.service';
 
 describe('PeriodicTaskTrashService', () => {
   let service: PeriodicTaskTrashService;
@@ -13,6 +14,7 @@ describe('PeriodicTaskTrashService', () => {
   deleteQb.delete = jest.fn().mockReturnValue(deleteQb);
   deleteQb.where = jest.fn().mockReturnValue(deleteQb);
   deleteQb.andWhere = jest.fn().mockReturnValue(deleteQb);
+  deleteQb.restore = jest.fn().mockReturnValue(deleteQb);
   deleteQb.execute = jest.fn();
 
   const listQb: any = {};
@@ -24,6 +26,7 @@ describe('PeriodicTaskTrashService', () => {
   const mockTaskRepo = { find: jest.fn(), createQueryBuilder: jest.fn() };
   const mockAuditLogRepo = { find: jest.fn() };
   const mockAuditService = { logAction: jest.fn() };
+  const mockTaskAudit = { logActionAsync: jest.fn() };
 
   beforeEach(async () => {
     jest.clearAllMocks();
@@ -34,6 +37,7 @@ describe('PeriodicTaskTrashService', () => {
         { provide: getRepositoryToken(PeriodicTask), useValue: mockTaskRepo },
         { provide: getRepositoryToken(PeriodicTaskAuditLog), useValue: mockAuditLogRepo },
         { provide: AuditService, useValue: mockAuditService },
+        { provide: PeriodicTaskAuditService, useValue: mockTaskAudit },
       ],
     }).compile();
     service = module.get(PeriodicTaskTrashService);
@@ -61,6 +65,28 @@ describe('PeriodicTaskTrashService', () => {
       const res = await service.getTrash({});
       expect(res.data).toEqual([]);
       expect(mockAuditLogRepo.find).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('restore', () => {
+    it('ném NotFoundException nếu không có Task nào trong thùng rác khớp', async () => {
+      mockTaskRepo.find.mockResolvedValue([]);
+      await expect(service.restore([1], 9)).rejects.toThrow(NotFoundException);
+      expect(deleteQb.restore).not.toHaveBeenCalled();
+    });
+
+    it('chỉ khôi phục Task đang xoá mềm, báo số bỏ qua và ghi log `restored` cho từng Task', async () => {
+      mockTaskRepo.find.mockResolvedValue([{ id: 1, title: 'T1' }, { id: 3, title: 'T3' }]);
+      deleteQb.execute.mockResolvedValue({ affected: 2 });
+
+      const res = await service.restore([1, 2, 3], 9);
+
+      expect(deleteQb.restore).toHaveBeenCalled();
+      expect(deleteQb.where).toHaveBeenCalledWith('id IN (:...ids)', { ids: [1, 3] });
+      expect(deleteQb.andWhere).toHaveBeenCalledWith('deleted_at IS NOT NULL');
+      expect(res).toEqual({ restored: 2, skipped: 1 });
+      expect(mockTaskAudit.logActionAsync).toHaveBeenCalledTimes(2);
+      expect(mockTaskAudit.logActionAsync).toHaveBeenCalledWith(1, 9, 'restored', null, { title: 'T1' });
     });
   });
 

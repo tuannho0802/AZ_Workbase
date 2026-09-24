@@ -579,7 +579,7 @@ Admin (đồng bộ mục 1).
 |---|---|---|---|
 | `periodic_tasks.view/create/edit` | true (own/department/all) | all/all/department/own | Mirror đúng khuôn `customers.view/create/edit` |
 | `periodic_tasks.delete` | true (own/department/all) | all/_(không seed)_/_(không seed)_/_(không seed)_ | Xoá mềm THEO SCOPE (đổi 2026-09-24): own = Task mình tạo/phụ trách chính; bulk-xoá/dọn dẹp log lịch sử chỉ Admin hoặc scope `all` |
-| `periodic_tasks.trash_manage` | false (nhị phân) | bật/tắt/tắt/tắt | Thùng rác Task: xem Task đã xoá mềm + xoá VĨNH VIỄN + dọn sạch (mặc định chỉ Admin, migration `1784300000000`) |
+| `periodic_tasks.trash_manage` | false (nhị phân) | bật/tắt/tắt/tắt | Thùng rác Task: xem Task đã xoá mềm + KHÔI PHỤC + xoá VĨNH VIỄN + dọn sạch (mặc định chỉ Admin, migration `1784300000000`) |
 | `periodic_tasks.link_customer` | false (nhị phân) | bật/bật/tắt/tắt | Bật/tắt tính năng gắn Khách hàng vào Task — xem mục 2.4 của PLAN |
 
 **Phase 1 (nền tảng CRUD)** — `PeriodicTaskAccessHelper.applyViewFilter()` mirror 1-1

@@ -4024,3 +4024,19 @@ trước) theo đúng Custom Instructions của Project.
 > Xoá cứng cascade (FK `ON DELETE CASCADE`): checklist, liên kết cha-con, gắn Khách hàng, Phụ trách phụ, `periodic_task_audit_logs` của Task đó — KHÔNG khôi phục được. "Dọn sạch" bắt gõ cụm xác nhận. Chưa làm "Khôi phục" (ngoài yêu cầu). Verify (HEAD `0875108`): BE `tsc` sạch, jest periodic-tasks 131/131; SQL DELETE/list đã sinh thử từ TypeORM (`DELETE FROM periodic_tasks WHERE id IN (...) AND deleted_at IS NOT NULL`); FE `tsc` sạch, vitest 106/106 (gồm test đối chiếu action BE↔audit-meta), ESLint sạch file mới. Cần chạy migration `1784300000000`.
 
 ---
+
+## [2026-09-24 19:00] | Thùng rác Công việc định kỳ: thêm KHÔI PHỤC Task đã xoá mềm ngay trong TrashTab | [Status: Success — verify bằng build/test thật]
+
+**Actor:** Agent
+
+**Files Changed:**
+- `backend/src/modules/periodic-tasks/periodic-task-trash.service.ts` (+ `.spec.ts`) — `restore(ids, adminId)`: chỉ tác động Task đang xoá mềm (`UPDATE periodic_tasks SET deleted_at = NULL ... AND deleted_at IS NOT NULL`), ghi log `restored` vào lịch sử riêng từng Task; trả `{ restored, skipped }`.
+- `backend/src/modules/periodic-tasks/periodic-task-audit.service.ts` — thêm action `RESTORED: 'restored'`.
+- `backend/src/modules/periodic-tasks/dto/periodic-task-trash.dto.ts`, `periodic-tasks.controller.ts` — `PATCH /periodic-tasks/trash/restore` (cùng permission `periodic_tasks.trash_manage`, KHÔNG cần migration mới).
+- FE: `lib/api/periodic-task-trash.api.ts` (`restore`), `TaskTrashTab.tsx` (nút "Khôi phục" từng dòng + "Khôi phục đã chọn", invalidate cả list Task), `lib/types/periodic-task-audit.types.ts` (nhãn `restored`).
+- `PERMISSIONS.md` — cập nhật mô tả `trash_manage`.
+
+**Notes:**
+> Liên kết/checklist/khách hàng gắn kèm không bị xoá lúc xoá mềm nên tự sống lại cùng Task. Nếu Phụ trách chính đã bị xoá mềm sau đó, Task khôi phục sẽ hiện "—" ở cột đó (chưa chặn). Verify (HEAD `a2319da`): BE `tsc` sạch, jest periodic-tasks 133/133, SQL restore đã sinh thử từ TypeORM; FE `tsc` sạch, vitest 106/106, ESLint sạch.
+
+---

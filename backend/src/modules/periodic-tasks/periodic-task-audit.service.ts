@@ -34,6 +34,7 @@ export const PeriodicTaskAuditAction = {
   LOCKED: 'locked',
   UNLOCKED: 'unlocked',
   DELETED: 'deleted',
+  RESTORED: 'restored',
   CHECKLIST_ITEM_ADDED: 'checklist_item_added',
   CHECKLIST_ITEM_UPDATED: 'checklist_item_updated',
   CHECKLIST_ITEM_REMOVED: 'checklist_item_removed',

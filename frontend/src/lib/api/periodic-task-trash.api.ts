@@ -33,6 +33,12 @@ export const periodicTaskTrashApi = {
     return res.data;
   },
 
+  /** Khôi phục các Task đã chọn (Task sống lại y nguyên, kể cả checklist/liên kết). */
+  restore: async (ids: number[]): Promise<{ restored: number; skipped: number }> => {
+    const res = await axiosInstance.patch<{ restored: number; skipped: number }>('/periodic-tasks/trash/restore', { ids });
+    return res.data;
+  },
+
   /** Xoá VĨNH VIỄN các Task đã chọn (chỉ Task đã xoá mềm mới bị xoá). */
   hardDelete: async (ids: number[]): Promise<{ deleted: number; skipped: number }> => {
     const res = await axiosInstance.delete<{ deleted: number; skipped: number }>('/periodic-tasks/trash/bulk', {
