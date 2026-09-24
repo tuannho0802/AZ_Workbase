@@ -678,6 +678,19 @@ function PeriodicTasksPageContent() {
                 periodEndDate: periodRange[1].format('YYYY-MM-DD'),
             };
 
+            // ⚠️ FIX BUG THẬT (báo cáo 2026-09-24): người dùng chọn Khách
+            // hàng/Phụ trách phụ trong ô tìm rồi bấm "Lưu" LUÔN mà QUÊN bấm
+            // "Gán" trước - lựa chọn TẠM (`pendingCustomerIdsToAdd`/
+            // `pendingSecondaryUserIds`) không hề nằm trong `customerIds`/
+            // `secondaryAssigneeIds` nên bị mất hoàn toàn (không có gì để
+            // diff/gửi lên BE). Coi bấm "Lưu" như tự động "Gán" nốt phần
+            // đang chọn dở trước khi diff, để không phụ thuộc việc người
+            // dùng có nhớ bấm "Gán" hay không.
+            const finalCustomerIds = Array.from(new Set([...customerIds, ...pendingCustomerIdsToAdd]));
+            const finalSecondaryAssigneeIds = Array.from(
+                new Set([...secondaryAssigneeIds, ...pendingSecondaryUserIds]),
+            );
+
             if (editingTask) {
                 const editingTaskId = editingTask.id;
                 updateMutation.mutate(
@@ -690,8 +703,8 @@ function PeriodicTasksPageContent() {
                             // không có quyền, field bị ẩn nên 2 mảng luôn giống
                             // nhau [], không có gì để gọi).
                             if (canLinkCustomer) {
-                                const toAdd = customerIds.filter((id) => !originalCustomerIds.includes(id));
-                                const toRemove = originalCustomerIds.filter((id) => !customerIds.includes(id));
+                                const toAdd = finalCustomerIds.filter((id) => !originalCustomerIds.includes(id));
+                                const toRemove = originalCustomerIds.filter((id) => !finalCustomerIds.includes(id));
                                 if (toAdd.length > 0) {
                                     addTaskCustomersMutation.mutate(
                                         { taskId: editingTaskId, customerIds: toAdd },
@@ -717,11 +730,11 @@ function PeriodicTasksPageContent() {
                             // ẩn riêng như `link_customer` - xem JSDoc đầu
                             // `TaskLinksModal.tsx`).
                             if (canEdit) {
-                                const secondaryToAdd = secondaryAssigneeIds.filter(
+                                const secondaryToAdd = finalSecondaryAssigneeIds.filter(
                                     (id) => !originalSecondaryAssigneeIds.includes(id),
                                 );
                                 const secondaryToRemove = originalSecondaryAssigneeIds.filter(
-                                    (id) => !secondaryAssigneeIds.includes(id),
+                                    (id) => !finalSecondaryAssigneeIds.includes(id),
                                 );
                                 secondaryToAdd.forEach((userId) => {
                                     addSecondaryMutation.mutate(
@@ -754,9 +767,9 @@ function PeriodicTasksPageContent() {
                         // Gắn Khách hàng đã chọn (nếu có) NGAY SAU KHI tạo -
                         // BE không nhận `customerIds` trong `POST /periodic-tasks`,
                         // phải gọi tiếp `POST /:id/customers` với id vừa tạo.
-                        if (canLinkCustomer && customerIds.length > 0) {
+                        if (canLinkCustomer && finalCustomerIds.length > 0) {
                             addTaskCustomersMutation.mutate(
-                                { taskId: newTask.id, customerIds },
+                                { taskId: newTask.id, customerIds: finalCustomerIds },
                                 {
                                     onError: (err) =>
                                         message.error(
@@ -772,8 +785,8 @@ function PeriodicTasksPageContent() {
                         // cùng lý do với Customer ở trên (BE không nhận field
                         // này trong `POST /periodic-tasks`), gọi tuần tự từng
                         // người (endpoint chỉ nhận 1 userId/lần).
-                        if (canEdit && secondaryAssigneeIds.length > 0) {
-                            secondaryAssigneeIds.forEach((userId) => {
+                        if (canEdit && finalSecondaryAssigneeIds.length > 0) {
+                            finalSecondaryAssigneeIds.forEach((userId) => {
                                 addSecondaryMutation.mutate(
                                     { taskId: newTask.id, userId },
                                     {

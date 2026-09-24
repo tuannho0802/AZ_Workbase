@@ -4122,3 +4122,21 @@ trước) theo đúng Custom Instructions của Project.
 > - Verify: `vitest` 118/118, `next build` OK. Cần bạn thử tay: Sửa Task có phụ trách phụ -> Hủy -> Sửa lại phải thấy đủ.
 
 ---
+
+## [2026-09-24 21:15] | Modal Sửa/Tạo Task: Lưu khi chưa bấm "Gán" làm mất lựa chọn Khách hàng/Phụ trách phụ | [Status: Success — verify bằng build/test thật]
+
+**Actor:** Agent
+
+**Files Changed:**
+- `frontend/src/app/(dashboard)/cong-viec-dinh-ky/page.tsx` — `handleSubmit()`: tính `finalCustomerIds`/`finalSecondaryAssigneeIds` = gộp `customerIds`/`secondaryAssigneeIds` (đã "Gán") với `pendingCustomerIdsToAdd`/`pendingSecondaryUserIds` (đang chọn dở trong ô tìm, chưa bấm "Gán") ngay đầu hàm; toàn bộ diff (add/remove) ở cả 2 nhánh Sửa và Tạo mới đổi sang dùng 2 mảng `final*` này thay vì mảng gốc.
+
+**Root Cause:**
+> Người dùng chọn Khách hàng/Phụ trách phụ trong ô "Tìm để gắn" nhưng bấm "Lưu" ngay mà quên bấm nút "Gán" trước (UX 2 bước "chọn -> Gán" là cố ý, mirror `TaskLinksModal.tsx`). `handleSubmit()` chỉ đọc `customerIds`/`secondaryAssigneeIds` (đã "Gán") để diff, không hề biết đến `pendingCustomerIdsToAdd`/`pendingSecondaryUserIds` -> lựa chọn đang chọn dở bị mất hoàn toàn, không có gì được gửi lên BE.
+
+**Solution:**
+> Coi bấm "Lưu" như tự động "Gán" nốt phần đang chọn dở: gộp pending vào final trước khi diff/gửi API. Không đổi UI/UX 2 bước hiện có — bấm "Gán" vẫn hoạt động như cũ, chỉ thêm 1 lớp an toàn khi người dùng quên bấm.
+
+**Notes:**
+> Verify (HEAD `c6699c9`): FE `next build` OK (TypeScript pass trong build), `tsc --noEmit` sạch, `vitest` 118/118, ESLint không phát sinh lỗi mới (baseline vốn có sẵn 14 lỗi `no-explicit-any` nợ cũ ở file này, so sánh qua `git stash` — số lượng y hệt sau fix).
+
+---
