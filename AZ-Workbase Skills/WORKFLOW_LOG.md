@@ -4140,3 +4140,22 @@ trước) theo đúng Custom Instructions của Project.
 > Verify (HEAD `c6699c9`): FE `next build` OK (TypeScript pass trong build), `tsc --noEmit` sạch, `vitest` 118/118, ESLint không phát sinh lỗi mới (baseline vốn có sẵn 14 lỗi `no-explicit-any` nợ cũ ở file này, so sánh qua `git stash` — số lượng y hệt sau fix).
 
 ---
+
+## [2026-09-24 23:00] | Task view: nút "Khách hàng (N)" + modal mini table Khách hàng liên quan | [Status: Success — verify bằng build/test thật]
+
+**Actor:** Agent
+
+**Files Changed:**
+- `frontend/src/components/periodic-tasks/TaskCustomersModal.tsx` (MỚI) — modal mini table (STT, Ngày nhập, Họ tên, SĐT, Nguồn, Sales chính, Trạng thái), phân trang client 10/trang, đọc `linkedCustomers` từ `usePeriodicTask(id)` (chỉ fetch khi mở).
+- `frontend/src/components/periodic-tasks/TaskActionsBar.tsx` — prop `onCustomers?`; nút hiện khi `customerCount > 0`.
+- `PeriodicTasksAgendaView.tsx`, `PeriodicTasksKanbanView.tsx`, `cong-viec-dinh-ky/page.tsx` — truyền `onCustomers`, thêm state `customersTask` + render modal.
+- `TaskCustomersModal.test.tsx` (MỚI) — 7 test. Cột "Ngày nhập" của mini table: hover hiện Tooltip `createdAt` thực tế (HH:mm DD/MM/YYYY).
+
+**Solution:**
+> BE (`attachCustomerCountToList`, commit 4b8233d) đã trả `customerCount` (lọc theo `customers.view`; thiếu quyền -> không có key). FE dùng field đó để ẩn/hiện nút. Giới hạn 2 phụ trách phụ + "+N" Tooltip đã có sẵn ở `TaskAssignees.tsx`, không đổi.
+
+**Notes:**
+> Verify: vitest 124/124, `next build` OK, jest periodic-task-customers pass, `nest build` OK. Cần thử tay: Task có Khách hàng gắn -> thấy nút; >10 KH -> có phân trang.
+
+---
+

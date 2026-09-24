@@ -24,7 +24,7 @@ function capitalizeVietnameseWeekday(weekday: string): string {
 
 type ActionHandlers = Pick<
     TaskActionsBarProps,
-    'canEdit' | 'canEditLocked' | 'canApprove' | 'canDelete' | 'onLink' | 'onChecklist' | 'onAudit' | 'onEdit' | 'onLock' | 'onUnlock' | 'onDelete'
+    'canEdit' | 'canEditLocked' | 'canApprove' | 'canDelete' | 'onLink' | 'onChecklist' | 'onCustomers' | 'onAudit' | 'onEdit' | 'onLock' | 'onUnlock' | 'onDelete'
 > & {
     isUnlocking: (taskId: number) => boolean;
 };
@@ -151,6 +151,7 @@ export function PeriodicTasksAgendaView({ tasks, loading, chains, edges, resolve
                                             canDelete={actions.canDelete}
                                             onLink={actions.onLink}
                                             onChecklist={actions.onChecklist}
+                                            onCustomers={actions.onCustomers}
                                             onAudit={actions.onAudit}
                                             onEdit={actions.onEdit}
                                             onLock={actions.onLock}

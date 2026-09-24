@@ -64,6 +64,7 @@ import { Customer } from '@/lib/types/customer.types';
 import { getApiErrorMessage } from '@/lib/utils/error-message.util';
 import { useRoleColorMap, useRoleColors } from '@/lib/hooks/useRoleColorMap';
 import { TaskLinksModal } from '@/components/periodic-tasks/TaskLinksModal';
+import { TaskCustomersModal } from '@/components/periodic-tasks/TaskCustomersModal';
 import { TaskAssignees } from '@/components/periodic-tasks/TaskAssignees';
 import { TaskChecklistModal } from '@/components/periodic-tasks/TaskChecklistModal';
 import { TaskAuditLogsModal } from '@/components/periodic-tasks/TaskAuditLogsModal';
@@ -815,6 +816,8 @@ function PeriodicTasksPageContent() {
 
     // ---- Modal Liên kết & Tiến độ (Phase 2) ----
     const [linkingTask, setLinkingTask] = useState<PeriodicTask | null>(null);
+    // Nút "Khách hàng (N)" -> modal mini table Khách hàng liên quan (chỉ xem).
+    const [customersTask, setCustomersTask] = useState<PeriodicTask | null>(null);
     // Phase 6 (PLAN mục 6) - checklist con kiểu Trello, mở qua `TaskChecklistModal`
     // riêng (không nhét vào `TaskLinksModal`), xem JSDoc file đó.
     const [checklistingTask, setChecklistingTask] = useState<PeriodicTask | null>(null);
@@ -1154,6 +1157,7 @@ function PeriodicTasksPageContent() {
                     canDelete={canDelete}
                     onLink={setLinkingTask}
                     onChecklist={setChecklistingTask}
+                    onCustomers={setCustomersTask}
                     onAudit={setAuditingTask}
                     onEdit={openEditModal}
                     onLock={setLockingTask}
@@ -1367,6 +1371,7 @@ function PeriodicTasksPageContent() {
                     canDelete={canDelete}
                     onLink={setLinkingTask}
                     onChecklist={setChecklistingTask}
+                    onCustomers={setCustomersTask}
                     onAudit={setAuditingTask}
                     onEdit={openEditModal}
                     onLock={setLockingTask}
@@ -1389,6 +1394,7 @@ function PeriodicTasksPageContent() {
                     canDelete={canDelete}
                     onLink={setLinkingTask}
                     onChecklist={setChecklistingTask}
+                    onCustomers={setCustomersTask}
                     onAudit={setAuditingTask}
                     onEdit={openEditModal}
                     onLock={setLockingTask}
@@ -1757,6 +1763,7 @@ function PeriodicTasksPageContent() {
 
             {/* Modal Liên kết & Tiến độ (Phase 2) */}
             <TaskLinksModal open={!!linkingTask} onClose={() => setLinkingTask(null)} task={linkingTask} />
+            <TaskCustomersModal open={!!customersTask} onClose={() => setCustomersTask(null)} task={customersTask} />
 
             {/* Modal Checklist con kiểu Trello (Phase 6) */}
             <TaskChecklistModal

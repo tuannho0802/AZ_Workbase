@@ -5,6 +5,7 @@ import {
     ApartmentOutlined,
     CheckSquareOutlined,
     HistoryOutlined,
+    TeamOutlined,
     EditOutlined,
     LockOutlined,
     UnlockOutlined,
@@ -33,6 +34,8 @@ export interface TaskActionsBarProps {
     canDelete: boolean | ((task: PeriodicTask) => boolean);
     onLink: (task: PeriodicTask) => void;
     onChecklist: (task: PeriodicTask) => void;
+    /** Mở modal "Khách hàng liên quan". Nút chỉ hiện khi có prop này VÀ `task.customerCount > 0`. */
+    onCustomers?: (task: PeriodicTask) => void;
     onAudit: (task: PeriodicTask) => void;
     onEdit: (task: PeriodicTask) => void;
     onLock: (task: PeriodicTask) => void;
@@ -55,6 +58,7 @@ export function TaskActionsBar({
     canDelete,
     onLink,
     onChecklist,
+    onCustomers,
     onAudit,
     onEdit,
     onLock,
@@ -92,6 +96,11 @@ export function TaskActionsBar({
             ) : (
                 <Button size={size} icon={<CheckSquareOutlined />} onClick={() => onChecklist(task)}>
                     Checklist
+                </Button>
+            )}
+            {onCustomers && (task.customerCount ?? 0) > 0 && (
+                <Button size={size} icon={<TeamOutlined />} onClick={() => onCustomers(task)}>
+                    Khách hàng ({task.customerCount})
                 </Button>
             )}
             <Button size={size} icon={<HistoryOutlined />} onClick={() => onAudit(task)}>
