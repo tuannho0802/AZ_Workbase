@@ -4107,3 +4107,18 @@ trước) theo đúng Custom Instructions của Project.
 > - Verify: `vitest` toàn bộ + `next build` (xem lượt chat).
 
 ---
+
+## [2026-09-24 19:10] | Fix modal Sửa Task không nạp lại Khách hàng/Phụ trách phụ khi mở lại | [Status: Success — chưa tái hiện được trên trình duyệt, xác minh bằng suy luận code]
+
+**Actor:** Agent
+
+**Files Changed:**
+- `frontend/src/app/(dashboard)/cong-viec-dinh-ky/page.tsx` — 2 `useEffect` nạp `customerIds`/`secondaryAssigneeIds` thêm `modalOpen` vào điều kiện + deps.
+
+**Root Cause:**
+> `editingTask` không về `null` khi đóng modal Sửa, và react-query giữ nguyên reference `linkedCustomers`/`secondaryAssignees` khi dữ liệu không đổi (structural sharing). Mở Sửa lại đúng Task đó: `openEditModal()` reset state về `[]` nhưng effect không chạy lại (deps không đổi) -> state kẹt rỗng, trong khi modal Liên kết (fetch riêng) vẫn thấy đủ. Hệ quả phụ: bấm Lưu với state rỗng sẽ cố `POST` thêm người đã có -> 409.
+
+**Notes:**
+> - Verify: `vitest` 118/118, `next build` OK. Cần bạn thử tay: Sửa Task có phụ trách phụ -> Hủy -> Sửa lại phải thấy đủ.
+
+---

@@ -547,13 +547,19 @@ function PeriodicTasksPageContent() {
 
     // Nạp `customerIds`/`originalCustomerIds` từ dữ liệu THẬT ngay khi Task
     // đang Sửa tải xong (async - không thể set đồng bộ lúc bấm nút Sửa).
+    // ⚠️ FIX BUG SYNC (báo cáo qua ảnh: modal Sửa hiện "Chưa gắn Khách hàng"/"Chưa có Phụ trách phụ"
+    // trong khi modal Liên kết vẫn thấy đủ): `editingTask` KHÔNG bao giờ về `null` khi đóng modal Sửa,
+    // và react-query giữ NGUYÊN reference `linkedCustomers`/`secondaryAssignees` (structural sharing)
+    // khi dữ liệu không đổi -> mở Sửa lại đúng Task đó, `openEditModal()` reset state về [] nhưng
+    // effect KHÔNG chạy lại (deps không đổi) nên state kẹt rỗng. Thêm `modalOpen` vào điều kiện + deps
+    // để MỖI LẦN mở modal đều nạp lại từ dữ liệu cache/thật.
     useEffect(() => {
-        if (editingTask && editingLinkedCustomers) {
+        if (modalOpen && editingTask && editingLinkedCustomers) {
             const ids = editingLinkedCustomers.map((c) => c.id);
             setCustomerIds(ids);
             setOriginalCustomerIds(ids);
         }
-    }, [editingTask, editingLinkedCustomers]);
+    }, [modalOpen, editingTask, editingLinkedCustomers]);
 
     // ⚠️ FIX BUG THẬT (2026-09-16, báo cáo trực tiếp qua ảnh chụp "Lọc Khách
     // hàng ... chưa có tác dụng"): TRƯỚC ĐÂY options của Select "Tìm để gắn"
@@ -607,13 +613,14 @@ function PeriodicTasksPageContent() {
     // `secondaryAssigneeIds` là state ngoài form.
     const watchedPrimaryAssigneeId = Form.useWatch('primaryAssigneeId', form);
 
+    // Cùng lý do với effect nạp `customerIds` phía trên: chạy lại mỗi lần mở modal Sửa.
     useEffect(() => {
-        if (editingTask && editingSecondaryAssignees) {
+        if (modalOpen && editingTask && editingSecondaryAssignees) {
             const ids = editingSecondaryAssignees.map((u) => u.id);
             setSecondaryAssigneeIds(ids);
             setOriginalSecondaryAssigneeIds(ids);
         }
-    }, [editingTask, editingSecondaryAssignees]);
+    }, [modalOpen, editingTask, editingSecondaryAssignees]);
 
     const openCreateModal = () => {
         setEditingTask(null);
