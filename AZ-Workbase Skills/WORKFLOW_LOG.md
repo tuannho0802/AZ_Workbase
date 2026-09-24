@@ -4159,3 +4159,16 @@ trước) theo đúng Custom Instructions của Project.
 
 ---
 
+## [2026-09-24 23:40] | Công việc định kỳ: Tag màu cho Loại kỳ (Ngày/Tuần/Tháng/Năm) | [Status: Success — verify bằng build/test thật]
+
+**Actor:** Agent
+
+**Files Changed:**
+- `frontend/src/components/periodic-tasks/PeriodTypeTag.tsx` (MỚI) — `PeriodTypeTag` + `PERIOD_TYPE_COLORS` hardcode (daily=cyan, weekly=geekblue, monthly=magenta, yearly=volcano; tránh trùng màu Trạng thái Task).
+- `page.tsx` (cột Kỳ hạn + 2 Select Loại kỳ), `TaskMiniCard.tsx`, `TaskLinksModal.tsx`, `TaskChecklistModal.tsx` — thay `<Tag>{PERIOD_TYPE_LABELS[..]}</Tag>` bằng `<PeriodTypeTag />`.
+
+**Notes:**
+> Không đổi BE/DB (enum cố định 4 giá trị). Tooltip dark của view Lịch và tab Thùng rác giữ chữ thuần.
+
+---
+

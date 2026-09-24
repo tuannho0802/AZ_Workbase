@@ -25,6 +25,7 @@ import { PeriodicTask, PERIOD_TYPE_LABELS, PERIOD_RANK } from '@/lib/api/periodi
 import { Customer } from '@/lib/types/customer.types';
 import { getApiErrorMessage } from '@/lib/utils/error-message.util';
 import { SimpleList } from '@/components/common/SimpleList';
+import { PeriodTypeTag } from './PeriodTypeTag';
 
 const { Text } = Typography;
 
@@ -387,7 +388,7 @@ export function TaskLinksModal({ open, onClose, task }: Props) {
                             title: p.title,
                             description: (
                                 <Space size={4}>
-                                    <Tag>{PERIOD_TYPE_LABELS[p.periodType]}</Tag>
+                                    <PeriodTypeTag type={p.periodType} />
                                     {p.status && <Tag color={p.status.color}>{p.status.name}</Tag>}
                                 </Space>
                             ),
@@ -457,7 +458,7 @@ export function TaskLinksModal({ open, onClose, task }: Props) {
                             title: c.title,
                             description: (
                                 <Space size={4}>
-                                    <Tag>{PERIOD_TYPE_LABELS[c.periodType]}</Tag>
+                                    <PeriodTypeTag type={c.periodType} />
                                     {c.status && <Tag color={c.status.color}>{c.status.name}</Tag>}
                                 </Space>
                             ),

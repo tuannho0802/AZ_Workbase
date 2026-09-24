@@ -13,11 +13,12 @@ import {
     useTaskChecklistPage,
     useLinkedChildrenChecklistPage,
 } from '@/lib/hooks/usePeriodicTaskChecklistItems';
-import { PeriodicTask, PeriodicTaskChecklistItem, PERIOD_TYPE_LABELS } from '@/lib/api/periodic-tasks.api';
+import { PeriodicTask, PeriodicTaskChecklistItem } from '@/lib/api/periodic-tasks.api';
 import { CHECKLIST_PAGE_SIZE } from '@/lib/api/periodic-task-checklist-items.api';
 import { getApiErrorMessage } from '@/lib/utils/error-message.util';
 import { SimpleList } from '@/components/common/SimpleList';
 import { LinkifiedText } from '@/components/common/LinkifiedText';
+import { PeriodTypeTag } from './PeriodTypeTag';
 
 const { Text } = Typography;
 
@@ -401,7 +402,7 @@ export function TaskChecklistModal({ open, onClose, task }: Props) {
                             ),
                             description: (
                                 <Space size={4} wrap>
-                                    <Tag>{PERIOD_TYPE_LABELS[c.periodType]}</Tag>
+                                    <PeriodTypeTag type={c.periodType} />
                                     <Tag color={c.status.color}>{c.status.name}</Tag>
                                     <Text type="secondary" style={{ fontSize: 12 }}>
                                         {dayjs(c.periodStartDate).format('DD/MM/YYYY')}

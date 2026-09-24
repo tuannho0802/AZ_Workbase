@@ -4,12 +4,13 @@ import { Card, Tag, Tooltip, Typography } from 'antd';
 import { LockOutlined } from '@ant-design/icons';
 import dayjs from 'dayjs';
 import { TaskAssignees } from './TaskAssignees';
-import { PeriodicTask, PERIOD_TYPE_LABELS } from '@/lib/api/periodic-tasks.api';
+import { PeriodicTask } from '@/lib/api/periodic-tasks.api';
 import { DEFAULT_ENTITY_COLOR, resolveEntityColor } from '@/lib/utils/entityColor';
 import { useUsersList } from '@/lib/hooks/useUsers';
 import { TaskTitlePill, TaskChainBadge } from './TaskTitlePill';
 import { TaskChainInfo } from '@/lib/utils/taskLinkChains';
 import { LinkifiedText } from '@/components/common/LinkifiedText';
+import { PeriodTypeTag } from './PeriodTypeTag';
 
 const { Text } = Typography;
 
@@ -168,7 +169,7 @@ export function TaskMiniCard({
             </div>
 
             <div style={{ marginTop: 8, display: 'flex', flexWrap: 'wrap', gap: 4, alignItems: 'center' }}>
-                <Tag>{PERIOD_TYPE_LABELS[task.periodType]}</Tag>
+                <PeriodTypeTag type={task.periodType} />
                 <Tag color={task.status?.color ?? DEFAULT_ENTITY_COLOR}>{task.status?.name ?? '—'}</Tag>
                 {task.department && (
                     <Tag color={resolveEntityColor(task.department.color)}>{task.department.name}</Tag>

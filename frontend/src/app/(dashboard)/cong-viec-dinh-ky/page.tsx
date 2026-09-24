@@ -87,6 +87,7 @@ import { customerPhoneDisplay, customerPlainLabel, renderCustomerOption } from '
 import { SimpleList } from '@/components/common/SimpleList';
 import { LinkifiedText } from '@/components/common/LinkifiedText';
 import { CustomerQuickFilterButton, CustomerQuickFilters, EMPTY_CUSTOMER_QUICK_FILTERS } from '@/components/common/customer-quick-filter';
+import { PeriodTypeTag } from '@/components/periodic-tasks/PeriodTypeTag';
 
 const { Title, Text } = Typography;
 const { RangePicker } = DatePicker;
@@ -1083,7 +1084,7 @@ function PeriodicTasksPageContent() {
             width: 190,
             render: (_: any, record: PeriodicTask) => (
                 <Space orientation="vertical" size={0}>
-                    <Tag>{PERIOD_TYPE_LABELS[record.periodType]}</Tag>
+                    <PeriodTypeTag type={record.periodType} />
                     <Text style={{ fontSize: 12 }}>
                         {dayjs(record.periodStartDate).format('DD/MM/YYYY')}
                         {record.periodStartDate !== record.periodEndDate &&
@@ -1223,7 +1224,7 @@ function PeriodicTasksPageContent() {
                         onChange={(v) => setPeriodType(v)}
                         options={(Object.keys(PERIOD_TYPE_LABELS) as PeriodType[]).map((pt) => ({
                             value: pt,
-                            label: PERIOD_TYPE_LABELS[pt],
+                            label: <PeriodTypeTag type={pt} style={{ marginInlineEnd: 0 }} />,
                         }))}
                     />
                 </Col>
@@ -1449,7 +1450,7 @@ function PeriodicTasksPageContent() {
                                 <Select
                                     options={(Object.keys(PERIOD_TYPE_LABELS) as PeriodType[]).map((pt) => ({
                                         value: pt,
-                                        label: PERIOD_TYPE_LABELS[pt],
+                                        label: <PeriodTypeTag type={pt} style={{ marginInlineEnd: 0 }} />,
                                     }))}
                                 />
                             </Form.Item>
