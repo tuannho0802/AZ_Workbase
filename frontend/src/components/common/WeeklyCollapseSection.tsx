@@ -60,6 +60,13 @@ export interface WeeklyCollapseSectionProps<T> {
    * `WEEK_MODE_MAX_ROWS` (dữ liệu 1 vài tuần trong trang quá nhiều). Hiện
    * cảnh báo để người dùng biết cần thu hẹp bộ lọc/giảm `weeksPerPage`. */
   truncated?: boolean;
+  /** Số bản ghi hiển thị/trang BÊN TRONG 1 panel tuần (yêu cầu người dùng:
+   * "kiểu phân trang cũ 20 item cho mỗi tuần" - vì 1 tuần có thể chứa hàng
+   * trăm bản ghi (tối đa tới `WEEK_MODE_MAX_ROWS`), render hết vào 1 Table
+   * không phân trang gây lag). Mặc định 20, truyền `false` để tắt hẳn (giữ
+   * hành vi cũ - render hết). Đây CHỈ là phân trang client-side trên dữ liệu
+   * đã có sẵn trong `records` (không gọi thêm API). */
+  weekPageSize?: number | false;
 }
 
 /**
@@ -91,6 +98,7 @@ export function WeeklyCollapseSection<T>({
   size = 'middle',
   pagination,
   truncated,
+  weekPageSize = 20,
 }: WeeklyCollapseSectionProps<T>) {
   const groups = useMemo(() => {
     const map = new Map<string, T[]>();
@@ -116,10 +124,15 @@ export function WeeklyCollapseSection<T>({
   // báo) - xem https://react.dev/learn/you-might-not-need-an-effect.
   const groupsSignature = groups.map(([key]) => key).join(',');
   const [activeKeys, setActiveKeys] = useState<string[]>(() => groups.map(([key]) => key));
+  // Phân trang con (20 item/tuần mặc định) - key = weekKey, value = trang
+  // hiện tại (1-based) TRONG tuần đó. Tách riêng state cho từng tuần vì mỗi
+  // panel cuộn độc lập với nhau.
+  const [weekPages, setWeekPages] = useState<Record<string, number>>({});
   const [lastSignature, setLastSignature] = useState(groupsSignature);
   if (groupsSignature !== lastSignature) {
     setLastSignature(groupsSignature);
     setActiveKeys(groups.map(([key]) => key));
+    setWeekPages({});
   }
 
   const paginationNode = (
@@ -164,6 +177,27 @@ export function WeeklyCollapseSection<T>({
           const weekStart = dayjs(weekKey);
           const weekEnd = weekStart.add(6, 'day');
           const isCurrent = weekKey === currentWeekKey;
+
+          // Cắt trang con trong tuần (client-side, dữ liệu đã có sẵn trong
+          // `weekRecords`). `weekPageSize === false` -> giữ hành vi cũ (render hết).
+          const wp = weekPages[weekKey] ?? 1;
+          const pagedRecords = weekPageSize
+            ? weekRecords.slice((wp - 1) * weekPageSize, wp * weekPageSize)
+            : weekRecords;
+          const needsWeekPagination = !!weekPageSize && weekRecords.length > weekPageSize;
+          const weekPaginationNode = needsWeekPagination ? (
+            <div style={{ display: 'flex', justifyContent: isMobile ? 'center' : 'flex-end', marginTop: 12 }}>
+              <Pagination
+                current={wp}
+                pageSize={weekPageSize as number}
+                total={weekRecords.length}
+                size="small"
+                simple={isMobile}
+                onChange={(p) => setWeekPages((prev) => ({ ...prev, [weekKey]: p }))}
+              />
+            </div>
+          ) : null;
+
           return {
             key: weekKey,
             label: (
@@ -177,24 +211,28 @@ export function WeeklyCollapseSection<T>({
             ),
             children: isMobile ? (
               <>
-                {weekRecords.map((r, i) => (
+                {pagedRecords.map((r, i) => (
                   <div key={resolveRowKey(r, rowKey, i)}>
                     {renderMobileCard?.(r)}
                   </div>
                 ))}
+                {weekPaginationNode}
               </>
             ) : (
-              <Table<T>
-                columns={columns}
-                dataSource={weekRecords}
-                rowKey={rowKey}
-                loading={loading}
-                pagination={false}
-                size={size}
-                scroll={scroll}
-                rowSelection={rowSelection}
-                expandable={expandable}
-              />
+                <>
+                  <Table<T>
+                    columns={columns}
+                    dataSource={pagedRecords}
+                    rowKey={rowKey}
+                    loading={loading}
+                    pagination={false}
+                    size={size}
+                    scroll={scroll}
+                    rowSelection={rowSelection}
+                    expandable={expandable}
+                  />
+                  {weekPaginationNode}
+                </>
             ),
           };
         })}
