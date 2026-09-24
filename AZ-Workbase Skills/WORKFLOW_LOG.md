@@ -3953,3 +3953,18 @@ trước) theo đúng Custom Instructions của Project.
 > Link không đặt `href` thật để Ctrl/Middle-click không qua mặt Modal. Verify sau `git clone` HEAD `fcc96e2`: `vitest run` 104/104 PASS, `next build` OK, `tsc --noEmit` 0 lỗi, ESLint sạch trên file mới/sửa. Không push được GitHub từ sandbox — chủ dự án tự áp dụng patch.
 
 ---
+
+## [2026-09-24 15:00] | Tối ưu query theo tuần: xác minh BE wiring (A/B/C phía BE) + sửa spec | [Status: In-Progress — FE chưa xong]
+
+**Actor:** Agent
+
+**Files Changed:**
+- `backend/src/modules/audit/audit.service.spec.ts` — thêm `select` vào mock QueryBuilder (service giờ gọi `.select([...])` để bỏ old_data/new_data khỏi list)
+- `backend/src/modules/periodic-tasks/periodic-task-audit.service.spec.ts` — như trên
+
+**Notes:**
+> Verify sau `git clone` HEAD `9dca015`: BE đã nối `weekStartColumnRef` + `weekStart/weekPage/weekLimit` (3 service), có `GET /audit-logs/:id`. `tsc --noEmit` sạch, `nest build` OK, jest audit+periodic-tasks 127/127 PASS.
+> **Còn thiếu (FE):** (1) `WeeklyCollapseSection` chưa lazy-fetch theo `weekStart` (thêm prop `fetchWeek`, cập nhật audit-logs, lich-su-cong-viec, AttendanceSummaryTab, AttendanceLogsTab). (2) FE chưa gọi endpoint chi tiết → `AuditDiffViewer`/TaskAuditLogsModal hiện mất old_data/new_data vì list không còn trả 2 trường này — cần fix trước khi deploy BE.
+> Không push được GitHub từ sandbox — chủ dự án tự áp dụng patch.
+
+---

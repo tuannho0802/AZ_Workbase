@@ -21,6 +21,7 @@ describe('PeriodicTaskAuditService', () => {
 
   function makeFakeQueryBuilder(overrides: { getManyAndCount?: any } = {}) {
     const qb: any = {
+      select: jest.fn().mockReturnThis(),
       leftJoinAndSelect: jest.fn().mockReturnThis(),
       innerJoin: jest.fn().mockReturnThis(),
       addSelect: jest.fn().mockReturnThis(),

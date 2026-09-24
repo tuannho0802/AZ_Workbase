@@ -19,6 +19,7 @@ describe('AuditService.getLogs', () => {
   function makeFakeQb() {
     const andWhereCalls: Array<{ sql: string; params?: any }> = [];
     const qb: any = {
+      select: jest.fn().mockReturnThis(),
       leftJoinAndSelect: jest.fn().mockReturnThis(),
       leftJoinAndMapOne: jest.fn().mockReturnThis(),
       orderBy: jest.fn().mockReturnThis(),
