@@ -285,4 +285,88 @@ describe('PeriodicTaskPerformanceService - grace period 7 ngày', () => {
     expect(result.rows[0].overdueNotCompleted).toBe(1);
     expect(mockAuditLogRepo.find).not.toHaveBeenCalled(); // early-return khi qualifyingIds rỗng
   });
+
+  describe('MỚI (2026-09-25) - inProgressCount/inReviewCount (snapshot trạng thái hiện tại)', () => {
+    it('đếm đúng Task đang status_code=in_progress / in_review, độc lập với completedOnTime/overdueNotCompleted', async () => {
+      jest.spyOn(dateVnUtil, 'todayVnStr').mockReturnValue('2026-09-24');
+      // status_id 50 = in_progress (KHÔNG qualify hoàn thành - is_done_state=false, code khác in_review).
+      mockStatusRepo.find.mockResolvedValue([...STATUSES, { id: 50, code: 'in_progress', isDoneState: false }]);
+
+      const taskRows = [
+        {
+          // Đang in_progress, còn hạn (chưa qua ân hạn) -> pendingFuture=1, inProgressCount=1.
+          task_id: 1,
+          primary_assignee_id: 7,
+          status_id: 50,
+          period_end_date: '2026-09-30',
+          created_at: '2026-09-01T00:00:00.000Z',
+          is_excluded_from_rollup: 0,
+          status_code: 'in_progress',
+        },
+        {
+          // Đang in_progress NHƯNG đã quá hạn ân hạn -> vẫn overdueNotCompleted=1 THEO
+          // MỐC hoàn thành, ĐỒNG THỜI inProgressCount=1 THEO trạng thái hiện tại (2 field
+          // độc lập - đúng JSDoc `inProgressCount`).
+          task_id: 2,
+          primary_assignee_id: 7,
+          status_id: 50,
+          period_end_date: '2026-09-01',
+          created_at: '2026-08-01T00:00:00.000Z',
+          is_excluded_from_rollup: 0,
+          status_code: 'in_progress',
+        },
+        {
+          // Đang in_review -> completedOnTime=1 (qualify) VÀ inReviewCount=1.
+          task_id: 3,
+          primary_assignee_id: 7,
+          status_id: 40,
+          period_end_date: '2026-09-20',
+          created_at: '2026-09-01T00:00:00.000Z',
+          is_excluded_from_rollup: 0,
+          status_code: 'in_review',
+        },
+      ];
+      mockTaskRepo.createQueryBuilder.mockReturnValue(makeQb(taskRows));
+      mockAuditLogRepo.find.mockResolvedValue([
+        { taskId: 3, newData: { status: { id: 40 } }, createdAt: new Date('2026-09-15T00:00:00.000Z') },
+      ]);
+
+      const result = await service.getSummary({}, ADMIN_USER as any);
+
+      expect(result.rows).toHaveLength(1);
+      const row = result.rows[0];
+      expect(row.total).toBe(3);
+      expect(row.inProgressCount).toBe(2);
+      expect(row.inReviewCount).toBe(1);
+      expect(row.inProgressRatePercent).toBeCloseTo((2 / 3) * 100, 1);
+      expect(row.inReviewRatePercent).toBeCloseTo((1 / 3) * 100, 1);
+      // Xác nhận 2 field mới KHÔNG can thiệp vào logic hoàn thành/trễ hạn cũ.
+      expect(row.overdueNotCompleted).toBe(1); // task_id 2
+      expect(row.pendingFuture).toBe(1); // task_id 1
+      expect(row.completedOnTime).toBe(1); // task_id 3
+    });
+
+    it('không có Task nào in_progress/in_review -> cả 2 field = 0, % = 0 (không phải null vì total > 0)', async () => {
+      jest.spyOn(dateVnUtil, 'todayVnStr').mockReturnValue('2026-09-24');
+      const taskRows = [
+        {
+          task_id: 5,
+          primary_assignee_id: 7,
+          status_id: 10, // not_started
+          period_end_date: '2026-09-30',
+          created_at: '2026-09-01T00:00:00.000Z',
+          is_excluded_from_rollup: 0,
+          status_code: 'not_started',
+        },
+      ];
+      mockTaskRepo.createQueryBuilder.mockReturnValue(makeQb(taskRows));
+
+      const result = await service.getSummary({}, ADMIN_USER as any);
+
+      expect(result.rows[0].inProgressCount).toBe(0);
+      expect(result.rows[0].inReviewCount).toBe(0);
+      expect(result.rows[0].inProgressRatePercent).toBe(0);
+      expect(result.rows[0].inReviewRatePercent).toBe(0);
+    });
+  });
 });

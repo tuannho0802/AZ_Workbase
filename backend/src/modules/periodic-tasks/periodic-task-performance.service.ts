@@ -41,6 +41,22 @@ export interface PerformanceUserRow {
   completionRatePercent: number | null;
   /** % completedLate / (completedOnTime + completedLate) - trong số ĐÃ xong, bao nhiêu % là xong trễ. `null` nếu chưa có task nào xong. */
   lateRatePercent: number | null;
+  /** Số Task đang có `status.code = 'in_progress'` NGAY TẠI THỜI ĐIỂM XEM (trạng thái
+   * HIỆN TẠI, không phải lịch sử) - YÊU CẦU chủ dự án 2026-09-25: thêm "% đang làm" bên
+   * cạnh % hoàn thành/muộn đã có. KHÔNG loại trừ lẫn với `completedOnTime`/`completedLate`/
+   * `overdueNotCompleted` (những field đó tính theo KẾT QUẢ hoàn thành đúng/trễ hạn, còn
+   * đây chỉ là snapshot trạng thái hiện tại - 1 Task "Quá hạn chưa xong" vẫn có thể đang
+   * `in_progress`, sẽ được đếm ở CẢ 2 chỗ, đúng ý nghĩa từng field). */
+  inProgressCount: number;
+  /** Số Task đang có `status.code = 'in_review'` hiện tại (mirror `inProgressCount`).
+   * ⚠️ Khác `completedOnTime`/`completedLate`: 2 field đó tính theo MỐC đầu tiên đạt
+   * in_review/done (có thể Task đã bị chuyển tiếp sang trạng thái khác SAU ĐÓ) - còn đây
+   * là đang đứng Ở ĐÚNG cột `in_review` ngay lúc này. */
+  inReviewCount: number;
+  /** % inProgressCount / total. `null` nếu total=0. */
+  inProgressRatePercent: number | null;
+  /** % inReviewCount / total. `null` nếu total=0. */
+  inReviewRatePercent: number | null;
   checklistDone: number;
   checklistTotal: number;
 }
@@ -112,6 +128,18 @@ export interface PerformanceSummaryResult {
  *  - `department`: Task có `department_id` thuộc phòng ban mình quản lý
  *    (`department_managers`, mirror `PeriodicTaskAccessHelper`).
  *  - `all`: toàn bộ.
+ *
+ * ⚠️ MỚI (2026-09-25, yêu cầu chủ dự án - KHÔNG cần migration vì `in_progress`
+ * cũng là code Admin đã tự tạo sẵn trên Production, mirror đúng `in_review`):
+ * thêm `inProgressCount`/`inReviewCount` (+ % tương ứng) = đếm Task đang có
+ * `status.code` khớp NGAY TẠI THỜI ĐIỂM XEM (snapshot trạng thái hiện tại,
+ * KHÔNG phải mốc lịch sử như `completedOnTime`/`completedLate` ở trên) - dùng
+ * hiển thị thêm "% Đang làm"/"% Đang xem xét" ở bảng tổng hợp FE. Cả 2 field
+ * này ĐỘC LẬP hoàn toàn với `completedOnTime`/`completedLate`/
+ * `overdueNotCompleted`/`pendingFuture` (không cộng dồn vừa đủ = `total`) -
+ * 1 Task có thể vừa `overdueNotCompleted` (theo mốc hoàn thành) vừa
+ * `inProgressCount` (theo trạng thái hiện tại) cùng lúc, đúng bản chất 2 khái
+ * niệm khác nhau.
  */
 @Injectable()
 export class PeriodicTaskPerformanceService {
@@ -238,6 +266,10 @@ export class PeriodicTaskPerformanceService {
         'task.periodEndDate AS period_end_date',
         'task.createdAt AS created_at',
         'status.isExcludedFromRollup AS is_excluded_from_rollup',
+        // MỚI (2026-09-25) - dùng đếm "% Đang làm (in_progress)" / "% Đang xem xét
+        // (in_review)" ở getSummary(). Chỉ so theo `code` string (giống
+        // loadQualifyingStatusIds()) - vô hại nếu DB chưa có status với code này.
+        'status.code AS status_code',
       ])
       .where('task.deletedAt IS NULL');
 
@@ -279,6 +311,7 @@ export class PeriodicTaskPerformanceService {
       period_end_date: string | Date;
       created_at: string;
       is_excluded_from_rollup: 0 | 1;
+      status_code: string | null;
     }> = await qb.getRawMany();
 
     const rollupRows = raw.filter((r) => Number(r.is_excluded_from_rollup) !== 1); // (PLAN mục 2.3)
@@ -305,6 +338,10 @@ export class PeriodicTaskPerformanceService {
           pendingFuture: 0,
           completionRatePercent: null,
           lateRatePercent: null,
+          inProgressCount: 0,
+          inReviewCount: 0,
+          inProgressRatePercent: null,
+          inReviewRatePercent: null,
           checklistDone: 0,
           checklistTotal: 0,
         };
@@ -312,6 +349,11 @@ export class PeriodicTaskPerformanceService {
       }
 
       row.total += 1;
+      // Snapshot trạng thái HIỆN TẠI (độc lập với completedOnTime/Late/overdue ở dưới -
+      // xem JSDoc field `inProgressCount`/`inReviewCount`).
+      if (r.status_code === 'in_progress') row.inProgressCount += 1;
+      else if (r.status_code === 'in_review') row.inReviewCount += 1;
+
       const periodEndDate = rawDateToYmd(r.period_end_date);
       const graceDate = addDaysToDateString(periodEndDate, LATE_GRACE_DAYS);
       const reachedDate = reachedMap.get(r.task_id) ?? null;
@@ -362,6 +404,8 @@ export class PeriodicTaskPerformanceService {
         const completedTotal = row.completedOnTime + row.completedLate;
         row.completionRatePercent = row.total > 0 ? Math.round((completedTotal / row.total) * 1000) / 10 : null;
         row.lateRatePercent = completedTotal > 0 ? Math.round((row.completedLate / completedTotal) * 1000) / 10 : null;
+        row.inProgressRatePercent = row.total > 0 ? Math.round((row.inProgressCount / row.total) * 1000) / 10 : null;
+        row.inReviewRatePercent = row.total > 0 ? Math.round((row.inReviewCount / row.total) * 1000) / 10 : null;
       }
     }
 
