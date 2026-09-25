@@ -850,79 +850,171 @@ export default function LeaveRequestsPage() {
         </Button>
       </div>
 
-      <Row gutter={[12, 12]} style={{ marginBottom: 16 }}>
-        <Col xs={24} sm={12} md={6}>
-          <Input
-            allowClear
-            placeholder="Tìm theo lý do..."
-            prefix={<SearchOutlined />}
-            value={searchText}
-            onChange={(e) => setSearchText(e.target.value)}
-          />
-        </Col>
-        <Col xs={12} sm={6} md={4}>
-          <Select
-            allowClear
-            placeholder="Loại phép"
-            style={{ width: '100%' }}
-            value={filterLeaveType}
-            onChange={(v) => setFilterLeaveType(v ?? null)}
-            options={leaveTypeOptions}
-          />
-        </Col>
-        <Col xs={12} sm={6} md={4}>
-          <Select
-            allowClear
-            placeholder="Trạng thái"
-            style={{ width: '100%' }}
-            value={filterStatus}
-            onChange={(v) => setFilterStatus(v ?? null)}
-            options={Object.entries(STATUS_MAP).map(([code, s]) => ({
-              value: code,
-              label: <Tag color={s.color} style={{ marginInlineEnd: 0 }}>{s.text}</Tag>,
-            }))}
-          />
-        </Col>
-        <Col xs={24} sm={12} md={6}>
-          <RangePicker
-            style={{ width: '100%' }}
-            format="DD/MM/YYYY"
-            placeholder={['Từ ngày', 'Đến ngày']}
-            value={filterDateRange as any}
-            onChange={(vals) => setFilterDateRange(vals as [Dayjs | null, Dayjs | null] | null)}
-          />
-        </Col>
-      </Row>
-
-      <WeeklyLazySection<LeaveRequest>
-        weeks={weeks}
-        fetchWeek={fetchWeek}
-        resetKey={fetchToken}
-        rowKey="id"
-        columns={columns as any}
-        isMobile={isMobile}
-        loading={loading}
-        emptyText="Chưa có đơn nghỉ phép nào"
-        renderMobileCard={(record) => (
-          <MyLeaveMobileCard
-            key={record.id}
-            record={record}
-            onCancel={handleCancel}
-            leaveTypeMap={leaveTypeMap}
-          />
-        )}
-        pagination={{
-          current: page,
-          pageSize: weeksPerPage,
-          total: totalWeeks,
-          pageSizeOptions: ['2', '4', '8'],
-          showTotal: (t) => `${t} tuần (${total.toLocaleString()} đơn)`,
-          onChange: (p, ps) => {
-            setPage(p);
-            setWeeksPerPage(ps || weeksPerPage);
-            fetchRequests(p, ps || weeksPerPage);
-          },
+      <Tabs
+        defaultActiveKey="my"
+        type="card"
+        className="bg-white p-4 rounded-lg shadow-sm"
+        onChange={(key) => {
+          // Tab "Thùng rác" chỉ fetch LẦN ĐẦU khi thực sự mở (lazy) - mirror
+          // ĐÚNG pattern `trashTabLoaded` ở duyet-phep/page.tsx.
+          if (key === 'trash' && !trashTabLoaded) {
+            setTrashTabLoaded(true);
+            fetchMyTrash(1, trashWeeksPerPage);
+          }
         }}
+        items={[
+          {
+            key: 'my',
+            label: (
+              <span>
+                <CalendarOutlined />
+                {' '}Đơn của tôi
+              </span>
+            ),
+            children: (
+              <>
+                <Row gutter={[12, 12]} style={{ marginBottom: 16 }}>
+                  <Col xs={24} sm={12} md={6}>
+                    <Input
+                      allowClear
+                      placeholder="Tìm theo lý do..."
+                      prefix={<SearchOutlined />}
+                      value={searchText}
+                      onChange={(e) => setSearchText(e.target.value)}
+                    />
+                  </Col>
+                  <Col xs={12} sm={6} md={4}>
+                    <Select
+                      allowClear
+                      placeholder="Loại phép"
+                      style={{ width: '100%' }}
+                      value={filterLeaveType}
+                      onChange={(v) => setFilterLeaveType(v ?? null)}
+                      options={leaveTypeOptions}
+                    />
+                  </Col>
+                  <Col xs={12} sm={6} md={4}>
+                    <Select
+                      allowClear
+                      placeholder="Trạng thái"
+                      style={{ width: '100%' }}
+                      value={filterStatus}
+                      onChange={(v) => setFilterStatus(v ?? null)}
+                      options={Object.entries(STATUS_MAP).map(([code, s]) => ({
+                        value: code,
+                        label: <Tag color={s.color} style={{ marginInlineEnd: 0 }}>{s.text}</Tag>,
+                      }))}
+                    />
+                  </Col>
+                  <Col xs={24} sm={12} md={6}>
+                    <RangePicker
+                      style={{ width: '100%' }}
+                      format="DD/MM/YYYY"
+                      placeholder={['Từ ngày', 'Đến ngày']}
+                      value={filterDateRange as any}
+                      onChange={(vals) => setFilterDateRange(vals as [Dayjs | null, Dayjs | null] | null)}
+                    />
+                  </Col>
+                </Row>
+
+                <WeeklyLazySection<LeaveRequest>
+                  weeks={weeks}
+                  fetchWeek={fetchWeek}
+                  resetKey={fetchToken}
+                  rowKey="id"
+                  columns={columns as any}
+                  scroll={{ x: sumColumnWidths(columns) }}
+                  size="small"
+                  isMobile={isMobile}
+                  loading={loading}
+                  emptyText="Chưa có đơn nghỉ phép nào"
+                  renderMobileCard={(record) => (
+                    <MyLeaveMobileCard
+                      key={record.id}
+                      record={record}
+                      onCancel={handleCancel}
+                      onSelfDelete={handleSelfDelete}
+                      leaveTypeMap={leaveTypeMap}
+                    />
+                  )}
+                  pagination={{
+                    current: page,
+                    pageSize: weeksPerPage,
+                    total: totalWeeks,
+                    pageSizeOptions: ['2', '4', '8'],
+                    showTotal: (t) => `${t} tuần (${total.toLocaleString()} đơn)`,
+                    onChange: (p, ps) => {
+                      setPage(p);
+                      setWeeksPerPage(ps || weeksPerPage);
+                      fetchRequests(p, ps || weeksPerPage);
+                    },
+                  }}
+                />
+              </>
+            ),
+          },
+          {
+            key: 'trash',
+            label: (
+              <span>
+                <DeleteOutlined />
+                {' '}Thùng rác{' '}
+                {trashTabLoaded && trashTotal > 0 && (
+                  <Badge count={trashTotal} offset={[10, -5]} size="small" />
+                )}
+              </span>
+            ),
+            children: (
+              <>
+                <Row gutter={[12, 12]} style={{ marginBottom: 16 }}>
+                  <Col xs={24} sm={12} md={8}>
+                    <Input
+                      allowClear
+                      placeholder="Tìm theo lý do..."
+                      prefix={<SearchOutlined />}
+                      value={trashSearch}
+                      onChange={(e) => setTrashSearch(e.target.value)}
+                    />
+                  </Col>
+                </Row>
+
+                <WeeklyLazySection<LeaveRequest>
+                  weeks={trashWeeks}
+                  fetchWeek={fetchWeekMyTrash}
+                  resetKey={trashFetchToken}
+                  rowKey="id"
+                  columns={trashColumns as any}
+                  scroll={{ x: sumColumnWidths(trashColumns) }}
+                  size="small"
+                  isMobile={isMobile}
+                  loading={trashLoading}
+                  emptyText="🗑️ Thùng rác trống"
+                  renderMobileCard={(record) => (
+                    <MyTrashMobileCard
+                      key={record.id}
+                      record={record}
+                      onRestore={handleSelfRestore}
+                      onHardDelete={handleSelfHardDelete}
+                      leaveTypeMap={leaveTypeMap}
+                    />
+                  )}
+                  pagination={{
+                    current: trashPage,
+                    pageSize: trashWeeksPerPage,
+                    total: trashTotalWeeks,
+                    pageSizeOptions: ['2', '4', '8'],
+                    showTotal: (t) => `${t} tuần (${trashTotal.toLocaleString()} đơn)`,
+                    onChange: (p, ps) => {
+                      setTrashPage(p);
+                      setTrashWeeksPerPage(ps || trashWeeksPerPage);
+                      fetchMyTrash(p, ps || trashWeeksPerPage);
+                    },
+                  }}
+                />
+              </>
+            ),
+          },
+        ]}
       />
 
       {/* Create Modal */}
