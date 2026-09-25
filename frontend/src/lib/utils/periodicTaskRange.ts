@@ -15,9 +15,20 @@ export function getThisWeekRange(now: Dayjs = dayjs()): DateRangeTuple {
   return [monday, monday.add(6, 'day').endOf('day')];
 }
 
+/** Hôm nay: 00:00 -> 23:59:59.999 cùng ngày. */
+export function getTodayRange(now: Dayjs = dayjs()): DateRangeTuple {
+  return [now.startOf('day'), now.endOf('day')];
+}
+
 /** Cả tháng chứa `date`. */
 export function getMonthRange(date: Dayjs): DateRangeTuple {
   return [date.startOf('month'), date.endOf('month')];
+}
+
+/** Tháng này - tiện dùng làm preset nút bấm (mirror `getThisWeekRange`),
+ * thực chất chỉ là `getMonthRange(now)` với `now` mặc định. */
+export function getThisMonthRange(now: Dayjs = dayjs()): DateRangeTuple {
+  return getMonthRange(now);
 }
 
 /** Số ngày (gồm cả 2 đầu) của khoảng. */

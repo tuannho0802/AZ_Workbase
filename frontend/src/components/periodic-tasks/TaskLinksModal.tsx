@@ -97,10 +97,20 @@ interface Props {
  * Danh sách ứng viên con KHÔNG dùng chung `allTasks` (khoảng ngày cố định
  * theo Kỳ hạn Task cha) như "Công việc cha" nữa - có `TaskPeriodFilterButton`
  * riêng để người dùng tự chọn khoảng Ngày kỳ (mặc định "Tuần này"), tách
- * thành `childCandidateParams`/`childCandidatesData` riêng. Dropdown "Công
- * việc cha" GIỮ NGUYÊN nguồn dữ liệu cũ (`candidateParams`/`allTasks`, khoá
- * theo Kỳ hạn Task hiện tại) - KHÔNG có nút Filter riêng, chỉ đổi cách hiển
- * thị option.
+ * thành `childCandidateParams`/`childCandidatesData` riêng.
+ *
+ * Dropdown "Công việc cha" (MỚI, ảnh chụp "Thiếu Filter" - lần trước chỉ
+ * đồng bộ cách HIỂN THỊ option, chưa có nút Filter) giờ cũng có
+ * `TaskPeriodFilterButton` riêng (`parentPeriodOverride`), nhưng khác
+ * `childPeriodFilter` ở chỗ mặc định KHÔNG cố định "Tuần này" mà khoá theo
+ * Kỳ hạn của `task` hiện tại (`defaultParentPeriod`, giữ nguyên hành vi mặc
+ * định cũ - hợp lý hơn vì Task cha bắt buộc phải có Kỳ hạn bao trùm `task`)
+ * - `parentPeriodOverride === null` nghĩa là đang dùng mặc định đó, khác
+ * hẳn 1 `DateRangeTuple` cụ thể do người dùng tự chọn qua Filter.
+ * `TaskPeriodFilterButton` giờ dùng CHUNG cho cả 2 dropdown, có thêm 2
+ * preset "Hôm nay"/"Tháng này" cạnh "Tuần này" đã có trước đó, và nhận
+ * thêm prop `label` để đổi tiêu đề Popover/tooltip cho đúng ngữ cảnh
+ * (cha/con) mà không phải viết 2 component riêng.
  */
 export function TaskLinksModal({ open, onClose, task }: Props) {
     const { message } = App.useApp();
@@ -154,6 +164,16 @@ export function TaskLinksModal({ open, onClose, task }: Props) {
     // dùng cho cả 2 dropdown cha/con trước đây). Mặc định "Tuần này" theo
     // đúng yêu cầu chủ dự án (xem JSDoc `TaskPeriodFilterButton`).
     const [childPeriodFilter, setChildPeriodFilter] = useState<DateRangeTuple>(() => getThisWeekRange());
+    // Khoảng Ngày kỳ để tìm ứng viên "Công việc cha" - MỚI (yêu cầu chủ dự
+    // án, ảnh chụp "Thiếu Filter": dropdown cha trước đây khoá CỨNG theo Kỳ
+    // hạn của `task` hiện tại, không có nút Filter riêng). `null` = "chưa
+    // đụng vào filter, dùng mặc định theo Kỳ hạn Task" - GIỮ NGUYÊN hành vi
+    // mặc định cũ (khác `childPeriodFilter` vốn mặc định cố định "Tuần này")
+    // vì Task cha PHẢI có Kỳ hạn bao trùm Kỳ hạn `task`, tìm quanh đúng Kỳ
+    // hạn đó vẫn hợp lý nhất khi chưa lọc gì - tách biệt `null` với 1
+    // `DateRangeTuple` cụ thể để phân biệt rõ "chưa chọn" với "chọn lại đúng
+    // y hệt mặc định".
+    const [parentPeriodOverride, setParentPeriodOverride] = useState<DateRangeTuple | null>(null);
 
     const { users: allUsers } = useUsersList();
     const { getRoleColor } = useRoleColorMap();
@@ -162,12 +182,18 @@ export function TaskLinksModal({ open, onClose, task }: Props) {
     // Tuần/Tháng/Năm bao trùm Task con; Task con nằm trong Kỳ hạn của cha). BE KHÔNG
     // bao giờ tải toàn bộ - phải truyền khoảng ngày (tối đa 93 ngày, cắt bớt với Task
     // Năm) và chỉ tải khi modal đang mở.
-    const candidateParams = useMemo(() => {
-        const base = { page: 1, limit: 100 };
-        if (!task) return base;
-        const { range } = clampRange(dayjs(task.periodStartDate), dayjs(task.periodEndDate));
-        return { ...base, dateFrom: range[0].format('YYYY-MM-DD'), dateTo: range[1].format('YYYY-MM-DD') };
+    // Mặc định khoá theo Kỳ hạn của `task` hiện tại (`parentPeriodOverride === null`)
+    // - giữ NGUYÊN hành vi cũ; `TaskPeriodFilterButton` cho phép người dùng tự đổi
+    // (3 preset Hôm nay/Tuần này/Tháng này + RangePicker tuỳ ý).
+    const defaultParentPeriod = useMemo<DateRangeTuple>(() => {
+        if (!task) return getThisWeekRange();
+        return clampRange(dayjs(task.periodStartDate), dayjs(task.periodEndDate)).range;
     }, [task]);
+    const parentPeriodFilter = parentPeriodOverride ?? defaultParentPeriod;
+    const candidateParams = useMemo(() => {
+        const { range } = clampRange(parentPeriodFilter[0], parentPeriodFilter[1]);
+        return { page: 1, limit: 100, dateFrom: range[0].format('YYYY-MM-DD'), dateTo: range[1].format('YYYY-MM-DD') };
+    }, [parentPeriodFilter]);
     const { data: candidatesData, isLoading: candidatesLoading } = usePeriodicTasks(candidateParams, open && !!task);
     const allTasks = useMemo(() => candidatesData?.data ?? [], [candidatesData]);
 
@@ -311,6 +337,7 @@ export function TaskLinksModal({ open, onClose, task }: Props) {
         setCustomerQuickFilters(EMPTY_CUSTOMER_QUICK_FILTERS);
         setSelectedSecondaryUserIds([]);
         setChildPeriodFilter(getThisWeekRange());
+        setParentPeriodOverride(null);
         onClose();
     };
 
@@ -510,6 +537,7 @@ export function TaskLinksModal({ open, onClose, task }: Props) {
                                 options={parentOptions}
                                 notFoundContent={candidatesLoading ? 'Đang tải...' : 'Không có Task nào đủ điều kiện làm cha'}
                             />
+                            <TaskPeriodFilterButton value={parentPeriodFilter} onChange={setParentPeriodOverride} label="Công việc cha" />
                             <Button
                                 type="primary"
                                 icon={<PlusOutlined />}

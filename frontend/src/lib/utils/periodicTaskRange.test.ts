@@ -1,6 +1,14 @@
 import { describe, it, expect } from 'vitest';
 import dayjs from 'dayjs';
-import { MAX_TASK_RANGE_DAYS, clampRange, getMonthRange, getThisWeekRange, rangeSpanDays } from './periodicTaskRange';
+import {
+  MAX_TASK_RANGE_DAYS,
+  clampRange,
+  getMonthRange,
+  getThisWeekRange,
+  getTodayRange,
+  getThisMonthRange,
+  rangeSpanDays,
+} from './periodicTaskRange';
 
 const f = (d: dayjs.Dayjs) => d.format('YYYY-MM-DD');
 
@@ -22,6 +30,20 @@ describe('getThisWeekRange', () => {
 describe('getMonthRange', () => {
   it('cả tháng', () => {
     const [a, b] = getMonthRange(dayjs('2026-02-10'));
+    expect([f(a), f(b)]).toEqual(['2026-02-01', '2026-02-28']);
+  });
+});
+
+describe('getTodayRange', () => {
+  it('đúng 1 ngày, cùng ngày với "now"', () => {
+    const [a, b] = getTodayRange(dayjs('2026-09-24T15:30:00'));
+    expect([f(a), f(b)]).toEqual(['2026-09-24', '2026-09-24']);
+  });
+});
+
+describe('getThisMonthRange', () => {
+  it('mirror getMonthRange với "now" mặc định', () => {
+    const [a, b] = getThisMonthRange(dayjs('2026-02-10'));
     expect([f(a), f(b)]).toEqual(['2026-02-01', '2026-02-28']);
   });
 });

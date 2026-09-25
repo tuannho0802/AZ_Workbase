@@ -4286,3 +4286,26 @@ trước) theo đúng Custom Instructions của Project.
 > Verify: `npm install` + `npx tsc --noEmit` (frontend) — 0 lỗi ở 3 file thay đổi/thêm; 2 lỗi nền cũ không liên quan (`logo.png` thiếu asset, `CountBadge.tsx` styled-jsx typing) đã tồn tại từ trước. CHƯA chạy `next build`/`vitest` đầy đủ trong phiên này — nên chạy lại trước khi merge production. Diff đầy đủ: xem file `az_workbase_task_links_dropdown.diff` đính kèm (đã gộp cả 2 lần sửa).
 
 ---
+
+## [2026-09-25 09:xx] | Thêm Filter cho dropdown "Công việc cha" + 2 preset Hôm nay/Tháng này | [Status: Success]
+
+**Actor:** Agent
+
+**Files Changed:**
+- `frontend/src/lib/utils/periodicTaskRange.ts` — thêm `getTodayRange()`, `getThisMonthRange()`.
+- `frontend/src/lib/utils/periodicTaskRange.test.ts` — thêm test cho 2 hàm mới.
+- `frontend/src/components/periodic-tasks/TaskPeriodFilterButton.tsx` — bỏ nút "Về Tuần này" đơn lẻ, thay bằng 3 nút preset (Hôm nay/Tuần này/Tháng này); badge chấm đỏ giờ phản ánh "đang chọn khoảng ngày tuỳ ý" thay vì "khác Tuần này"; thêm prop `label` để tái dùng cho cả dropdown cha lẫn con.
+- `frontend/src/components/periodic-tasks/TaskLinksModal.tsx` — thêm `parentPeriodOverride` (state, mặc định `null` = khoá theo Kỳ hạn Task hiện tại, giữ nguyên hành vi mặc định cũ), gắn `TaskPeriodFilterButton` vào dropdown "Công việc cha" (trước đây chỉ có ở dropdown con).
+
+**Root Cause (bug fix):**
+> Dropdown "Công việc cha" thiếu nút Filter (ảnh chụp `1790303997378_image.png`) — trước đó chỉ dropdown "Công việc con" có `TaskPeriodFilterButton`.
+
+**Solution:**
+> Refactor `candidateParams` (cha) từ khoá cứng theo `task.periodStartDate/periodEndDate` sang đọc từ `parentPeriodFilter = parentPeriodOverride ?? defaultParentPeriod` — `defaultParentPeriod` vẫn tính y hệt công thức cũ nên hành vi mặc định KHÔNG đổi khi chưa đụng filter. Gắn `<TaskPeriodFilterButton label="Công việc cha" />` cạnh Select cha. Nâng cấp `TaskPeriodFilterButton` dùng chung: thêm 2 preset "Hôm nay"/"Tháng này" cạnh "Tuần này" đã có (yêu cầu chủ dự án), refactor "isDefault" cũ thành "isCustomRange" (không khớp preset nào) vì cha/con có khái niệm mặc định khác nhau.
+
+**Verify thật đã chạy:**
+- `npx tsc --noEmit` (frontend) — 0 lỗi ở 4 file thay đổi (chỉ còn 2 lỗi nền cũ không liên quan: `logo.png` thiếu asset, `CountBadge.tsx` styled-jsx — đã ghi nhận từ lần trước).
+- `npx vitest run src/lib/utils/periodicTaskRange.test.ts` — 9/9 test pass.
+
+**Notes:**
+> Dropdown con (`childPeriodFilter`) không đổi hành vi mặc định (vẫn "Tuần này" cố định) — chỉ dùng chung UI component đã nâng cấp.
