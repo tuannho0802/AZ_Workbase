@@ -33,3 +33,13 @@ export function clampRange(from: Dayjs, to: Dayjs): { range: DateRangeTuple; cla
   if (rangeSpanDays(from, to) <= MAX_TASK_RANGE_DAYS) return { range: [from, to], clamped: false };
   return { range: [from, from.add(MAX_TASK_RANGE_DAYS - 1, 'day').endOf('day')], clamped: true };
 }
+
+/** Nhãn hiển thị 1 khoảng Kỳ hạn Task (`periodStartDate`/`periodEndDate`),
+ * gộp về 1 ngày khi trùng nhau (Task Ngày) - mirror ĐÚNG cách hiển thị đã có
+ * ở `PerformanceFlaggedDrawer.tsx`, tách ra đây làm util CHUNG để tái dùng ở
+ * `TaskLinksModal.tsx` (dropdown "Công việc con") mà không lặp lại logic. */
+export function formatPeriodRange(t: { periodStartDate: string; periodEndDate: string }): string {
+  return t.periodStartDate === t.periodEndDate
+    ? dayjs(t.periodEndDate).format('DD/MM/YYYY')
+    : `${dayjs(t.periodStartDate).format('DD/MM')} - ${dayjs(t.periodEndDate).format('DD/MM/YYYY')}`;
+}

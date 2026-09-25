@@ -4266,3 +4266,23 @@ trước) theo đúng Custom Instructions của Project.
 > - File patch đính kèm riêng: `leave-request-over-7-days-warning.patch` (chỉ chứa thay đổi ở `nghi-phep/page.tsx`, không bao gồm entry log này).
 
 ---
+
+## [2026-09-25 02:40] | Nâng cấp dropdown "Công việc cha"/"Công việc con" ở TaskLinksModal (ColorTag/UserMiniCard/Trim+Tooltip/PeriodDate/Filter) | [Status: Success — verify bằng tsc thật]
+
+**Actor:** Agent
+
+**Files Changed:**
+- `frontend/src/components/periodic-tasks/TaskLinksModal.tsx` — CẢ 2 dropdown "Công việc cha" và "Công việc con" đổi sang option rich dùng CHUNG 1 hàm `renderTaskCandidateOption()` (`optionLabelProp="label"` + `optionRender`): `TaskTitlePill` (ColorTag đúng màu Task + tự trim/Tooltip khi tiêu đề dài), `UserMiniCard` cho Phụ trách chính, nhãn khoảng Ngày kỳ. Tách nguồn ứng viên con thành `childCandidateParams`/`childCandidatesData`/`childAllTasks` riêng (cha vẫn giữ nguồn cũ, khoá theo Kỳ hạn Task hiện tại). Xoá `toOption()` cũ (dead code, đã thay bằng `parentOptions`/`childOptions`).
+- `frontend/src/components/periodic-tasks/TaskPeriodFilterButton.tsx` (MỚI) — nút phễu lọc ứng viên CON theo khoảng Ngày kỳ, mặc định "Tuần này" (`getThisWeekRange()`), mirror UX `CustomerQuickFilterButton`. CHỈ ở dropdown con (yêu cầu chủ dự án không nhắc filter cho cha).
+- `frontend/src/lib/utils/periodicTaskRange.ts` — thêm `formatPeriodRange()` (tách từ pattern đã lặp ở `PerformanceFlaggedDrawer.tsx`).
+
+**Root Cause (yêu cầu, không phải bug):**
+> Chủ dự án phản hồi qua 2 ảnh chụp: (1) dropdown "Công việc con" hiện text trơn, không biết màu Task/ai phụ trách chính/khoảng ngày, Task dài bị tràn; (2) sau khi sửa (1), phản hồi tiếp dropdown "Công việc cha" vẫn còn text trơn ("Test link task (Tuần)") - cần đồng bộ CẢ 2 chỗ, không riêng dropdown con.
+
+**Solution:**
+> Tái dùng tối đa component có sẵn: `TaskTitlePill` (đã có sẵn ColorTag + trim + Tooltip), `UserMiniCard` (đã dùng ở `TaskAssignees.tsx`), `getThisWeekRange()`/`clampRange()` (đã có ở `periodicTaskRange.ts`). Gộp chung logic render option cho cả 2 dropdown vào `renderTaskCandidateOption()` để tránh lặp code. Chỉ dropdown "Công việc con" có `TaskPeriodFilterButton` - dropdown cha giữ nguyên nguồn dữ liệu cũ, chỉ đổi cách hiển thị option.
+
+**Notes:**
+> Verify: `npm install` + `npx tsc --noEmit` (frontend) — 0 lỗi ở 3 file thay đổi/thêm; 2 lỗi nền cũ không liên quan (`logo.png` thiếu asset, `CountBadge.tsx` styled-jsx typing) đã tồn tại từ trước. CHƯA chạy `next build`/`vitest` đầy đủ trong phiên này — nên chạy lại trước khi merge production. Diff đầy đủ: xem file `az_workbase_task_links_dropdown.diff` đính kèm (đã gộp cả 2 lần sửa).
+
+---

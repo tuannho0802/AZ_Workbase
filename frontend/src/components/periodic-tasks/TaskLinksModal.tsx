@@ -2,10 +2,12 @@
 
 import { useMemo, useState } from 'react';
 import dayjs from 'dayjs';
-import { clampRange } from '@/lib/utils/periodicTaskRange';
+import { clampRange, getThisWeekRange, formatPeriodRange, DateRangeTuple } from '@/lib/utils/periodicTaskRange';
 import { Modal, Typography, Divider, Progress, Select, Button, App, Popconfirm, Tag, Space } from 'antd';
 import { DeleteOutlined, PlusOutlined } from '@ant-design/icons';
 import { useMyPermissions } from '@/lib/hooks/useMyPermissions';
+import { useRoleColorMap } from '@/lib/hooks/useRoleColorMap';
+import { UserMiniCard } from '@/app/(dashboard)/attendance-device/UserMiniCard';
 import { usePeriodicTasks, usePeriodicTask } from '@/lib/hooks/usePeriodicTasks';
 import {
     useTaskChildren,
@@ -26,6 +28,8 @@ import { Customer } from '@/lib/types/customer.types';
 import { getApiErrorMessage } from '@/lib/utils/error-message.util';
 import { SimpleList } from '@/components/common/SimpleList';
 import { PeriodTypeTag } from './PeriodTypeTag';
+import { TaskTitlePill } from './TaskTitlePill';
+import { TaskPeriodFilterButton } from './TaskPeriodFilterButton';
 
 const { Text } = Typography;
 
@@ -81,6 +85,22 @@ interface Props {
  * như `link_customer`. Endpoint BE chỉ nhận 1 `userId`/lần
  * (`POST .../secondary-assignees` body `{ userId }`) - chọn nhiều trên UI
  * rồi gọi tuần tự từng người, KHÔNG phải batch như Customer.
+ *
+ * Dropdown "Công việc cha" và "Công việc con" (yêu cầu chủ dự án qua ảnh
+ * chụp, MỚI - lần đầu chỉ áp cho dropdown con, ảnh chụp thứ 2 phản hồi cha
+ * cũng phải đồng bộ) - CẢ 2 option đều hiển thị RICH thay vì text trơn:
+ * `TaskTitlePill` (màu ĐÚNG của Task + tự trim/Tooltip khi tiêu đề dài),
+ * `UserMiniCard` cho Phụ trách CHÍNH, và nhãn khoảng Ngày kỳ
+ * (`formatPeriodRange`) - dùng CHUNG 1 hàm `renderTaskCandidateOption()`.
+ * Dùng `optionLabelProp="label"` (mirror `customer-quick-filter.tsx`) để ô
+ * Select sau khi chọn chỉ hiện tên trơn, không hiện nguyên khối rich vừa chọn.
+ * Danh sách ứng viên con KHÔNG dùng chung `allTasks` (khoảng ngày cố định
+ * theo Kỳ hạn Task cha) như "Công việc cha" nữa - có `TaskPeriodFilterButton`
+ * riêng để người dùng tự chọn khoảng Ngày kỳ (mặc định "Tuần này"), tách
+ * thành `childCandidateParams`/`childCandidatesData` riêng. Dropdown "Công
+ * việc cha" GIỮ NGUYÊN nguồn dữ liệu cũ (`candidateParams`/`allTasks`, khoá
+ * theo Kỳ hạn Task hiện tại) - KHÔNG có nút Filter riêng, chỉ đổi cách hiển
+ * thị option.
  */
 export function TaskLinksModal({ open, onClose, task }: Props) {
     const { message } = App.useApp();
@@ -129,8 +149,14 @@ export function TaskLinksModal({ open, onClose, task }: Props) {
     // `cong-viec-dinh-ky/page.tsx` (xem JSDoc đầy đủ ở `customer-quick-filter.tsx`).
     const [customerQuickFilters, setCustomerQuickFilters] = useState<CustomerQuickFilters>(EMPTY_CUSTOMER_QUICK_FILTERS);
     const [selectedSecondaryUserIds, setSelectedSecondaryUserIds] = useState<number[]>([]);
+    // Khoảng Ngày kỳ để tìm ứng viên "Công việc con" - ĐỘC LẬP với
+    // `candidateParams` bên dưới (vốn khoá cứng theo Kỳ hạn của `task` cha,
+    // dùng cho cả 2 dropdown cha/con trước đây). Mặc định "Tuần này" theo
+    // đúng yêu cầu chủ dự án (xem JSDoc `TaskPeriodFilterButton`).
+    const [childPeriodFilter, setChildPeriodFilter] = useState<DateRangeTuple>(() => getThisWeekRange());
 
     const { users: allUsers } = useUsersList();
+    const { getRoleColor } = useRoleColorMap();
 
     // Ứng viên cha/con = Task có Kỳ hạn CHỒNG LẤN Kỳ hạn của Task đang xem (Task cha
     // Tuần/Tháng/Năm bao trùm Task con; Task con nằm trong Kỳ hạn của cha). BE KHÔNG
@@ -144,6 +170,22 @@ export function TaskLinksModal({ open, onClose, task }: Props) {
     }, [task]);
     const { data: candidatesData, isLoading: candidatesLoading } = usePeriodicTasks(candidateParams, open && !!task);
     const allTasks = useMemo(() => candidatesData?.data ?? [], [candidatesData]);
+
+    // Ứng viên "Công việc con" - khoảng ngày do `TaskPeriodFilterButton` quyết
+    // định (mặc định Tuần này), KHÔNG dùng chung `candidateParams`/`allTasks`
+    // ở trên nữa (chỗ đó vẫn giữ nguyên cho dropdown "Công việc cha"). Chỉ
+    // fetch khi có quyền sửa link (`canEditLinks`) - mirror lý do gate
+    // `canLinkCustomer` ở `customerCandidates` bên dưới (tránh gọi API thừa
+    // cho user chỉ có quyền xem, xem JSDoc BUG THẬT 2026-09-15 ở trên).
+    const childCandidateParams = useMemo(() => {
+        const { range } = clampRange(childPeriodFilter[0], childPeriodFilter[1]);
+        return { page: 1, limit: 100, dateFrom: range[0].format('YYYY-MM-DD'), dateTo: range[1].format('YYYY-MM-DD') };
+    }, [childPeriodFilter]);
+    const { data: childCandidatesData, isLoading: childCandidatesLoading } = usePeriodicTasks(
+        childCandidateParams,
+        open && !!task && canEditLinks,
+    );
+    const childAllTasks = useMemo(() => childCandidatesData?.data ?? [], [childCandidatesData]);
 
     // Search server-side (mirror `useCustomers.ts`) - CHỈ chạy khi modal cho
     // phép gắn Customer, tránh gọi API thừa cho user không có quyền.
@@ -214,10 +256,52 @@ export function TaskLinksModal({ open, onClose, task }: Props) {
 
     const childCandidates = useMemo(() => {
         if (!task) return [];
-        return allTasks.filter(
+        return childAllTasks.filter(
             (t) => t.id !== task.id && !childIds.has(t.id) && canLinkAsParent(task.periodType, t.periodType),
         );
-    }, [allTasks, task, childIds]);
+    }, [childAllTasks, task, childIds]);
+
+    // Option rich dùng CHUNG cho CẢ 2 dropdown "Công việc cha" và "Công việc
+    // con" (yêu cầu chủ dự án qua ảnh chụp thứ 2: dropdown cha vẫn text trơn
+    // "Test link task (Tuần)" - PHẢI đồng bộ style với dropdown con, không
+    // chỉ riêng dropdown con). Giữ `label` là text trơn để
+    // `optionLabelProp="label"` hiện đúng tên gọn trong ô Select sau khi chọn
+    // (mirror `customerCandidates.map()` bên dưới).
+    const parentOptions = useMemo(
+        () => parentCandidates.map((t) => ({ value: t.id, label: t.title, task: t })),
+        [parentCandidates],
+    );
+    const childOptions = useMemo(
+        () => childCandidates.map((t) => ({ value: t.id, label: t.title, task: t })),
+        [childCandidates],
+    );
+    const renderTaskCandidateOption = (option: { data: { task: PeriodicTask } }) => {
+        const t = option.data.task;
+        return (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 4, padding: '2px 0' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
+                    <TaskTitlePill title={t.title} color={t.color} maxLength={28} />
+                    <PeriodTypeTag type={t.periodType} />
+                </div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+                    {t.primaryAssignee && (
+                        <UserMiniCard
+                            name={t.primaryAssignee.name}
+                            hideRoleTag
+                            nameFontSize={11}
+                            borderRadius={6}
+                            avatarShape="square"
+                            getRoleColor={getRoleColor}
+                            getRoleName={() => ''}
+                        />
+                    )}
+                    <Text type="secondary" style={{ fontSize: 11 }}>
+                        {formatPeriodRange(t)}
+                    </Text>
+                </div>
+            </div>
+        );
+    };
 
     const resetAndClose = () => {
         setSelectedParentId(undefined);
@@ -226,6 +310,7 @@ export function TaskLinksModal({ open, onClose, task }: Props) {
         setCustomerSearch('');
         setCustomerQuickFilters(EMPTY_CUSTOMER_QUICK_FILTERS);
         setSelectedSecondaryUserIds([]);
+        setChildPeriodFilter(getThisWeekRange());
         onClose();
     };
 
@@ -332,11 +417,6 @@ export function TaskLinksModal({ open, onClose, task }: Props) {
         );
     };
 
-    const toOption = (t: PeriodicTask) => ({
-        value: t.id,
-        label: `${t.title} (${PERIOD_TYPE_LABELS[t.periodType]})`,
-    });
-
     return (
         <Modal
             title={`Liên kết & Tiến độ${task ? ` - "${task.title}"` : ''}`}
@@ -420,11 +500,14 @@ export function TaskLinksModal({ open, onClose, task }: Props) {
                             <Select
                                 style={{ flex: 1 }}
                                 showSearch={{ optionFilterProp: 'label' }}
+                                optionLabelProp="label"
+                                optionRender={renderTaskCandidateOption}
+                                popupMatchSelectWidth={false}
                                 placeholder="Chọn Công việc cha để gán"
                                 loading={candidatesLoading}
                                 value={selectedParentId}
                                 onChange={setSelectedParentId}
-                                options={parentCandidates.map(toOption)}
+                                options={parentOptions}
                                 notFoundContent={candidatesLoading ? 'Đang tải...' : 'Không có Task nào đủ điều kiện làm cha'}
                             />
                             <Button
@@ -490,13 +573,19 @@ export function TaskLinksModal({ open, onClose, task }: Props) {
                             <Select
                                 style={{ flex: 1 }}
                                 showSearch={{ optionFilterProp: 'label' }}
+                                optionLabelProp="label"
+                                optionRender={renderTaskCandidateOption}
+                                popupMatchSelectWidth={false}
                                 placeholder="Chọn Công việc con để gán"
-                                loading={candidatesLoading}
+                                loading={childCandidatesLoading}
                                 value={selectedChildId}
                                 onChange={setSelectedChildId}
-                                options={childCandidates.map(toOption)}
-                                notFoundContent={candidatesLoading ? 'Đang tải...' : 'Không có Task nào đủ điều kiện làm con'}
+                                options={childOptions}
+                                notFoundContent={
+                                    childCandidatesLoading ? 'Đang tải...' : 'Không có Task nào đủ điều kiện làm con'
+                                }
                             />
+                            <TaskPeriodFilterButton value={childPeriodFilter} onChange={setChildPeriodFilter} />
                             <Button
                                 type="primary"
                                 icon={<PlusOutlined />}
