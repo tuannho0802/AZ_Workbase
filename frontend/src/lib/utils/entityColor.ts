@@ -15,3 +15,16 @@ export const DEFAULT_ENTITY_COLOR = '#1890ff';
 export function resolveEntityColor(color?: string | null): string {
   return color && /^#[0-9A-Fa-f]{6}$/.test(color) ? color : DEFAULT_ENTITY_COLOR;
 }
+
+/** Làm TỐI 1 màu hex theo `percent` (0-1, vd 0.4 = tối hơn 40%) - nhân từng
+ * kênh RGB với `(1 - percent)` rồi làm tròn, KHÔNG đổi hue (khác pha trộn với
+ * đen/trắng theo tỉ lệ khác). Dùng để border Card tối hơn nền/Tag cùng 1 màu
+ * gốc (yêu cầu chủ dự án 2026-09-25: border Task Card ở Kanban/Agenda/... lấy
+ * đúng `task.color`, tối hơn 40% để vẫn nổi trên nền card trắng). */
+export function darkenColor(hex: string, percent: number): string {
+  const m = /^#([0-9A-Fa-f]{2})([0-9A-Fa-f]{2})([0-9A-Fa-f]{2})$/.exec(hex);
+  if (!m) return hex;
+  const factor = 1 - Math.min(1, Math.max(0, percent));
+  const channel = (h: string) => Math.round(parseInt(h, 16) * factor).toString(16).padStart(2, '0');
+  return `#${channel(m[1])}${channel(m[2])}${channel(m[3])}`;
+}

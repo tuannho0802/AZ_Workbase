@@ -5,7 +5,7 @@ import { LockOutlined } from '@ant-design/icons';
 import dayjs from 'dayjs';
 import { TaskAssignees } from './TaskAssignees';
 import { PeriodicTask } from '@/lib/api/periodic-tasks.api';
-import { DEFAULT_ENTITY_COLOR, resolveEntityColor } from '@/lib/utils/entityColor';
+import { DEFAULT_ENTITY_COLOR, darkenColor, resolveEntityColor } from '@/lib/utils/entityColor';
 import { useUsersList } from '@/lib/hooks/useUsers';
 import { TaskTitlePill, TaskChainBadge } from './TaskTitlePill';
 import { TaskChainInfo } from '@/lib/utils/taskLinkChains';
@@ -102,16 +102,18 @@ export function TaskMiniCard({
         verticalAlign: 'top',
     };
 
-    // BUG THẬT (2026-09-25, chủ dự án gửi ảnh Drawer "Chi tiết công việc" -
-    // border mặc định AntD (#f0f0f0) quá mảnh/nhạt, các Task xếp liền nhau
-    // nhìn dính thành 1 khối, khó phân biệt ranh giới từng Task khi cuộn
-    // nhanh): border đậm hơn rõ rệt + shadow nhẹ tách khối theo chiều sâu +
-    // bo góc lớn hơn + khoảng cách giữa các Card rộng hơn (8 -> 14px). Style
-    // đặt TRƯỚC `...style` để view gọi vẫn override được khi cần (vd overlay
-    // kéo-thả ở Kanban tự thêm `boxShadow` đậm hơn cho bản đang kéo).
+    // MỚI (2026-09-25, yêu cầu chủ dự án - áp dụng cho TOÀN BỘ ant-Card Task,
+    // vì đây là component DUY NHẤT render Card cho Task ở mọi view): border
+    // không còn màu xám cố định nữa, đổi sang lấy ĐÚNG `task.color` (cột màu
+    // Task đã chọn - cùng màu đang tô `TaskTitlePill`) rồi làm TỐI hơn 40%
+    // (`darkenColor`) để border luôn tương phản rõ với nền pill/nền Card
+    // trắng, đồng thời tự nhận diện Task nào cùng nhóm màu ngay từ viền
+    // ngoài, không cần nhìn vào pill tiêu đề nữa.
+    const borderColor = darkenColor(resolveEntityColor(task.color), 0.4);
+
     const cardStyle: React.CSSProperties = {
         marginBottom: 14,
-        border: '2px solid #d0d5dd',
+        border: `2px solid ${borderColor}`,
         borderRadius: 10,
         boxShadow: '0 1px 3px rgba(16, 24, 40, 0.06)',
         ...style,
