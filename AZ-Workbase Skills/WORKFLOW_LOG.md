@@ -4381,3 +4381,33 @@ trước) theo đúng Custom Instructions của Project.
 > Diff đầy đủ của TOÀN BỘ 2 lần sửa (orientation + orientationMargin) gộp chung 1 file: xem `az_workbase_performance_drawer_fix.diff` đính kèm (đã cập nhật lại, thay bản cũ).
 
 ---
+
+## [2026-09-25 11:05] | View "own" chi tiết + Drawer xem User khác mới (filter riêng + Task Phụ trách phụ) | [Status: Success]
+
+**Actor:** Agent
+
+**Files Changed:**
+- `frontend/src/components/periodic-tasks/UserTasksPanel.tsx` (MỚI) — tách phần render Card (Phụ trách chính/phụ, đổi trạng thái nhanh, `TaskChecklistInline`) ra 1 component dùng CHUNG cho cả Drawer (xem User khác) và view "own" nhúng thẳng trên trang, tránh lặp lại logic đã có ở bản Drawer cũ.
+- `frontend/src/components/periodic-tasks/PerformanceRangeFilter.tsx` (MỚI) — RangePicker + 3 nút Lọc nhanh "Hôm nay"/"Tuần này"/"Tháng này", mặc định Tuần này (dùng `getTodayRange`/`getThisWeekRange`/`getThisMonthRange` sẵn có ở `periodicTaskRange.ts`, không viết lại).
+- `frontend/src/components/periodic-tasks/PerformanceUserTasksDrawer.tsx` (MỚI, THAY `PerformanceFlaggedDrawer.tsx` đã XOÁ) — đổi nguồn dữ liệu từ `getUserFlaggedTasks` (chỉ Task muộn/quá hạn) sang `getUserTasks` (đầy đủ Task, tách Phụ trách chính/phụ) — xem được BẤT KỲ LÚC NÀO, có bộ lọc ngày RIÊNG trong Drawer (độc lập bộ lọc trang ngoài).
+- `frontend/src/components/periodic-tasks/OwnPerformanceDetail.tsx` (MỚI) — view chi tiết cho `viewScope === 'own'`, nhúng thẳng dưới bảng tổng hợp (Card nền xanh nhạt để phân biệt rõ với bảng số liệu phía trên), tái dùng `UserTasksPanel` + `PerformanceRangeFilter`.
+- `frontend/src/components/periodic-tasks/PerformanceFlaggedDrawer.tsx` (XOÁ) — toàn bộ chức năng đã chuyển sang `PerformanceUserTasksDrawer.tsx` + `UserTasksPanel.tsx`.
+- `frontend/src/app/(dashboard)/hieu-suat-cong-viec/page.tsx` — bỏ `disabled={flagged === 0}` ở nút "Chi tiết" (role cao hơn xem được chi tiết bất kỳ User nào, không cần đang có Task "cần lưu ý"); gắn `PerformanceUserTasksDrawer` thay `PerformanceFlaggedDrawer`; render thêm `<OwnPerformanceDetail>` khi `!canSeeOthers` (lấy `currentUserId` từ `useAuthStore`).
+
+**Thiết kế/Trade-off (tóm tắt kiểu `engineering:system-design`):**
+> - BE (`getUserTasks()`, endpoint `GET /periodic-tasks-performance/users/:userId/tasks`) đã có sẵn từ trước (commit `271ae43`, đã pull và xác nhận lại bằng `tsc --noEmit` + `jest` 15/15 pass) — không phải sửa gì thêm ở BE, đúng tinh thần "Kiểm tra Schema/API Contract TRƯỚC khi chạm Frontend" của `SKILL_FILE_MANAGEMENT.md`.
+> - Quyết định TÁCH `UserTasksPanel` khỏi `PerformanceUserTasksDrawer`/`OwnPerformanceDetail` thay vì viết 2 bản trùng: đánh đổi thêm 1 file/1 lớp gián tiếp để đổi hành vi Card (thêm cột, đổi nút...) chỉ cần sửa 1 chỗ, tránh lệch giữa 2 nơi hiển thị như đã từng xảy ra với `Divider` antd 6.
+> - Bộ lọc Drawer/OwnDetail dùng state RIÊNG (không dùng chung `dateRange` của trang ngoài) vì 2 mục đích khác nhau: trang ngoài mặc định Tháng này cho SỐ LIỆU rollup, còn xem chi tiết Task nên hẹp hơn — mặc định Tuần này (đúng yêu cầu chủ dự án) để danh sách không quá dài.
+> - `PerformanceUserTasksDrawer` dùng pattern `key={user.id}` remount con thay vì `useEffect(() => setDateRange(...), [user?.id])` — ESLint plugin `react-hooks` (bản mới) coi `setState` đồng bộ trong effect là lỗi cứng (`react-hooks/set-state-in-effect`), đổi sang remount qua `key` vừa hết lỗi vừa tự nhiên hơn (không cần đồng bộ 2 nguồn state).
+
+**Verify thật đã chạy (sandbox, clone mới từ `main`, commit `271ae43`):**
+- Backend: `npx tsc --noEmit` — 0 lỗi. `npx jest periodic-task-performance` — 15/15 test pass (không đổi code BE, chỉ verify lại phần đã có).
+- Frontend: `npx tsc --noEmit` — đúng 5 lỗi baseline cũ (`logo.png` x4, `CountBadge.tsx` styled-jsx), KHÔNG có lỗi mới.
+- Frontend: `npx eslint` trên 5 file thay đổi/mới — 0 lỗi/cảnh báo (đã sửa 1 lỗi `react-hooks/set-state-in-effect` phát hiện thật trong lượt này).
+- Frontend: `npm run build` (`next build`, Turbopack) — build production THẬT thành công, đủ 37 route, không lỗi TypeScript.
+
+**Notes:**
+> Diff đầy đủ (6 file, +384/-216 dòng, không đụng `package-lock.json`): xem `az_workbase_performance_own_detail_and_drawer.diff` đính kèm. Chưa commit/push lên `main` — chủ dự án tự áp patch (`git apply`) và verify trên môi trường của mình trước khi merge.
+> Chưa làm: chưa có test riêng (unit/E2E) cho 4 component FE mới này — dự án hiện chưa có test FE nào cho `periodic-tasks/*` (chỉ verify bằng `tsc`+`eslint`+`build` thật, đúng mức đã áp dụng cho các Drawer cũ trước đó).
+
+---

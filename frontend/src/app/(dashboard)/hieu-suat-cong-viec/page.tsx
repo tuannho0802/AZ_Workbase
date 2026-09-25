@@ -14,7 +14,9 @@ import { aggregateRows, completionColor, lateRateColor, percentOf } from '@/lib/
 import { clampRange, getMonthRange, getThisWeekRange, MAX_TASK_RANGE_DAYS } from '@/lib/utils/periodicTaskRange';
 import { resolveEntityColor } from '@/lib/utils/entityColor';
 import { PerformanceStackedChart, CHART_MAX_USERS } from '@/components/periodic-tasks/PerformanceStackedChart';
-import { PerformanceFlaggedDrawer } from '@/components/periodic-tasks/PerformanceFlaggedDrawer';
+import { PerformanceUserTasksDrawer } from '@/components/periodic-tasks/PerformanceUserTasksDrawer';
+import { OwnPerformanceDetail } from '@/components/periodic-tasks/OwnPerformanceDetail';
+import { useAuthStore } from '@/lib/stores/auth.store';
 
 const { Title, Text } = Typography;
 const { RangePicker } = DatePicker;
@@ -54,6 +56,7 @@ export default function TaskPerformancePage() {
   const { message } = App.useApp();
   const { scope: permissionScope } = useMyPermissions();
   const { departments } = useDepartments();
+  const currentUserId = useAuthStore((s) => s.user?.id);
 
   // Mặc định THÁNG NÀY (BE mặc định tuần này, nhưng với "hiệu suất" tuần này
   // phần lớn Task còn trong ân hạn nên số liệu gần như trống).
@@ -224,13 +227,13 @@ export default function TaskPerformancePage() {
       width: 110,
       render: (_, r) => {
         const flagged = r.completedLate + r.overdueNotCompleted;
+        // MỚI (2026-09-25, yêu cầu chủ dự án): bỏ `disabled={flagged === 0}` -
+        // role cao hơn (department/all) phải xem được chi tiết Task của 1
+        // User BẤT KỲ LÚC NÀO, không chỉ khi User đó đang có Task "cần lưu
+        // ý". Số `(N)` sau "Chi tiết" vẫn giữ làm gợi ý nhanh có bao nhiêu
+        // Task muộn/quá hạn, nhưng không còn khoá nút khi N = 0.
         return (
-          <Button
-            type="link"
-            size="small"
-            disabled={flagged === 0}
-            onClick={() => setDrawerUser({ id: r.userId, name: r.userName })}
-          >
+          <Button type="link" size="small" onClick={() => setDrawerUser({ id: r.userId, name: r.userName })}>
             Chi tiết{flagged > 0 ? ` (${flagged})` : ''}
           </Button>
         );
@@ -447,7 +450,14 @@ export default function TaskPerformancePage() {
         </Text>
       </Card>
 
-      <PerformanceFlaggedDrawer user={drawerUser} params={params} onClose={() => setDrawerUser(null)} />
+      {/* MỚI (2026-09-25, yêu cầu chủ dự án): khi `performance_view` TẮT
+          (hoặc BẬT nhưng resolve về 'own' - CÙNG 1 logic, xem JSDoc
+          `resolveScope()` BE) thì bảng tổng hợp phía trên gần như vô nghĩa
+          (luôn đúng 1 dòng của chính mình) - hiển thị THÊM view chi tiết
+          hơn, khác hẳn giao diện bảng tổng hợp, để xem trực tiếp từng Task. */}
+      {!canSeeOthers && currentUserId != null && <OwnPerformanceDetail userId={currentUserId} periodType={periodType} />}
+
+      <PerformanceUserTasksDrawer user={drawerUser} periodType={periodType} onClose={() => setDrawerUser(null)} />
     </div>
   );
 }
