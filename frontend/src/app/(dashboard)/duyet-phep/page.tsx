@@ -892,7 +892,8 @@ export default function ApprovalPage() {
   // 'max-content' - lúc đó `tableLayout="fixed"` mới thực sự ép mỗi cột
   // đúng `width` đã khai, "Lý do" mới bị cắt (ellipsis) và cần hover mới
   // thấy đủ (Tooltip đã có sẵn, không cần sửa thêm).
-  const pendingTableWidth = pendingColumns.reduce((sum: number, col: any) => sum + (col.width ?? 0), 0);
+  // pendingTableWidth không còn cần - WeeklyLazySection tự set scroll, không
+  // đọc tổng width cột như `WeekGroupedRequests` cũ.
 
   const historyColumns = [
     {
@@ -1028,9 +1029,7 @@ export default function ApprovalPage() {
       )
     }
   ].filter((col: any) => canEdit || canDelete || col.title !== 'Thao tác');
-  // Cùng lý do với `pendingTableWidth` ở trên - `historyColumns` giờ cũng có
-  // `.filter()` (ẩn "Thao tác" khi không có quyền `leave_requests.edit`/`leave_requests.delete`).
-  const historyTableWidth = historyColumns.reduce((sum: number, col: any) => sum + (col.width ?? 0), 0);
+  // historyTableWidth không còn cần - lý do giống pendingTableWidth ở trên.
 
   // Cột riêng cho tab "Thùng rác" - gọn hơn 2 bảng trên (không cần sửa/duyệt),
   // thêm "Người xoá"/"Ngày xoá" (mirror trang khách hàng - trash tab).
@@ -1111,9 +1110,16 @@ export default function ApprovalPage() {
       )
     }
   ];
-  const trashTableWidth = trashColumns.reduce((sum: number, col: any) => sum + (col.width ?? 0), 0);
+  // trashTableWidth không còn cần - WeeklyLazySection tự set scroll qua prop
+  // `scroll`, không đọc tổng width cột như `WeekGroupedRequests` cũ.
 
   // ── tab items ─────────────────────────────────────────────────────────────
+  // ⚠️ ĐỔI: cả 3 tab giờ dùng `WeeklyLazySection` (phân trang THEO TUẦN thật ở
+  // BE, lazy-load từng tuần khi mở panel) thay cho `WeekGroupedRequests` cũ
+  // (nhận nguyên mảng đã tải hết) - mirror ĐÚNG pattern `nghi-phep/page.tsx`.
+  // Badge đếm "Chờ phê duyệt" đổi sang đọc `pendingState.total` (tổng số đơn
+  // PHA 1 trả về) thay vì `.length` của mảng đã filter client (không còn tồn
+  // tại nữa vì filter giờ chạy server-side).
   const tabItems = [
     canApprove ? {
       key: 'pending',
@@ -1121,7 +1127,7 @@ export default function ApprovalPage() {
         <span>
           <HourglassOutlined />
           {' '}Chờ phê duyệt{' '}
-          {pendingRequests.length > 0 && <Badge count={pendingRequests.length} offset={[10, -5]} size="small" />}
+          {pendingState.total > 0 && <Badge count={pendingState.total} offset={[10, -5]} size="small" />}
         </span>
       ),
       children: (
@@ -1143,7 +1149,7 @@ export default function ApprovalPage() {
                 style={{ width: '100%' }}
                 value={pendingDept}
                 onChange={(v) => setPendingDept(v ?? null)}
-                options={pendingDeptOptions}
+                options={departmentOptions}
               />
             </Col>
             <Col xs={12} sm={6} md={5}>
@@ -1160,12 +1166,14 @@ export default function ApprovalPage() {
               />
             </Col>
           </Row>
-          <WeekGroupedRequests
-            records={filteredPending}
-            isMobile={isMobile}
-            loading={loading}
+          <WeeklyLazySection<LeaveRequest>
+            weeks={pendingState.weeks}
+            fetchWeek={fetchWeekPending}
+            resetKey={pendingState.fetchToken}
+            rowKey="id"
             columns={pendingColumns as any}
-            tableWidth={pendingTableWidth}
+            isMobile={isMobile}
+            loading={pendingState.loading}
             emptyText="✅ Không có đơn chờ duyệt"
             renderMobileCard={(record) => (
               <PendingMobileCard
@@ -1178,6 +1186,14 @@ export default function ApprovalPage() {
                 leaveTypeMap={leaveTypeMap}
               />
             )}
+            pagination={{
+              current: pendingState.page,
+              pageSize: pendingState.weeksPerPage,
+              total: pendingState.totalWeeks,
+              pageSizeOptions: ['2', '4', '8'],
+              showTotal: (t) => `${t} tuần (${pendingState.total.toLocaleString()} đơn)`,
+              onChange: (p, ps) => fetchPending(p, ps || pendingState.weeksPerPage),
+            }}
           />
         </>
       )
@@ -1209,7 +1225,7 @@ export default function ApprovalPage() {
                 style={{ width: '100%' }}
                 value={historyDept}
                 onChange={(v) => setHistoryDept(v ?? null)}
-                options={historyDeptOptions}
+                options={departmentOptions}
               />
             </Col>
             <Col xs={12} sm={6} md={4}>
@@ -1250,12 +1266,14 @@ export default function ApprovalPage() {
               />
             </Col>
           </Row>
-          <WeekGroupedRequests
-            records={filteredHistory}
-            isMobile={isMobile}
-            loading={loading}
+          <WeeklyLazySection<LeaveRequest>
+            weeks={historyState.weeks}
+            fetchWeek={fetchWeekHistory}
+            resetKey={historyState.fetchToken}
+            rowKey="id"
             columns={historyColumns as any}
-            tableWidth={historyTableWidth}
+            isMobile={isMobile}
+            loading={historyState.loading}
             emptyText="Chưa có lịch sử xử lý"
             renderMobileCard={(record) => (
               <HistoryMobileCard
@@ -1266,6 +1284,76 @@ export default function ApprovalPage() {
                 leaveTypeMap={leaveTypeMap}
               />
             )}
+            pagination={{
+              current: historyState.page,
+              pageSize: historyState.weeksPerPage,
+              total: historyState.totalWeeks,
+              pageSizeOptions: ['2', '4', '8'],
+              showTotal: (t) => `${t} tuần (${historyState.total.toLocaleString()} đơn)`,
+              onChange: (p, ps) => fetchHistory(p, ps || historyState.weeksPerPage),
+            }}
+          />
+        </>
+      )
+    } : null,
+    canDelete ? {
+      key: 'trash',
+      label: (
+        <span>
+          <DeleteOutlined />
+          {' '}Thùng rác
+        </span>
+      ),
+      children: (
+        <>
+          <Row gutter={[12, 12]} style={{ marginBottom: 16 }}>
+            <Col xs={24} sm={12} md={8}>
+              <Input
+                allowClear
+                placeholder="Tìm theo tên, email, lý do..."
+                prefix={<SearchOutlined />}
+                value={trashSearch}
+                onChange={(e) => setTrashSearch(e.target.value)}
+              />
+            </Col>
+            <Col xs={12} sm={6} md={5}>
+              <Select
+                allowClear
+                placeholder="Phòng ban"
+                style={{ width: '100%' }}
+                value={trashDept}
+                onChange={(v) => setTrashDept(v ?? null)}
+                options={departmentOptions}
+              />
+            </Col>
+          </Row>
+          <WeeklyLazySection<LeaveRequest>
+            weeks={trashState.weeks}
+            fetchWeek={fetchWeekTrash}
+            resetKey={trashState.fetchToken}
+            rowKey="id"
+            columns={trashColumns as any}
+            isMobile={isMobile}
+            loading={trashState.loading}
+            emptyText="🗑️ Thùng rác trống"
+            renderMobileCard={(record) => (
+              <TrashMobileCard
+                key={record.id}
+                record={record}
+                onRestore={handleRestore}
+                onHardDelete={handleHardDelete}
+                canHardDelete={canHardDelete}
+                leaveTypeMap={leaveTypeMap}
+              />
+            )}
+            pagination={{
+              current: trashState.page,
+              pageSize: trashState.weeksPerPage,
+              total: trashState.totalWeeks,
+              pageSizeOptions: ['2', '4', '8'],
+              showTotal: (t) => `${t} tuần (${trashState.total.toLocaleString()} đơn)`,
+              onChange: (p, ps) => fetchTrash(p, ps || trashState.weeksPerPage),
+            }}
           />
         </>
       )
@@ -1283,6 +1371,13 @@ export default function ApprovalPage() {
         items={tabItems}
         type="card"
         className="bg-white p-4 rounded-lg shadow-sm"
+        onChange={(key) => {
+          // Tab "Thùng rác" chỉ fetch LẦN ĐẦU khi thực sự mở (lazy) - tránh
+          // gọi API thừa cho người không bao giờ mở tab này.
+          if (key === 'trash' && !trashTabLoaded) {
+            setTrashTabLoaded(true);
+          }
+        }}
       />
 
       {/* Reject Modal */}
