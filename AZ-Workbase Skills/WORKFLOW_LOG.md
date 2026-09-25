@@ -4309,3 +4309,23 @@ trước) theo đúng Custom Instructions của Project.
 
 **Notes:**
 > Dropdown con (`childPeriodFilter`) không đổi hành vi mặc định (vẫn "Tuần này" cố định) — chỉ dùng chung UI component đã nâng cấp.
+
+## [2026-09-25 10:xx] | Fix SidebarBadgeCount "Công việc định kỳ" chỉ đếm Task CỦA MÌNH | [Status: Success]
+
+**Actor:** Agent
+
+**Files Changed:**
+- `frontend/src/lib/hooks/useSidebarBadgeCounts.ts` — badge đếm To-Do (`not_started`) giờ truyền thêm `assigneeId = currentUserId` (đọc từ `useAuthStore((s) => s.user?.id)`) khi gọi `periodicTasksApi.getAll()`.
+
+**Root Cause (bug fix):**
+> Badge trước đây đếm MỌI Task `not_started` trong PHẠM VI QUYỀN XEM của viewer (own/department/all do `PeriodicTaskAccessHelper.applyViewFilter()` quyết định) - với scope `department`/`all` (Manager/Assistant/Admin), số badge ra số To-Do của CẢ PHÒNG BAN/CẢ CÔNG TY, không phải "việc của riêng tôi cần làm". Với scope `own`, badge còn tính cả Task do mình TẠO nhưng không phải Phụ trách (chính lẫn phụ) - không đúng ý "task liên quan đến tôi" mà chủ dự án muốn (chỉ tính khi mình là Phụ trách chính HOẶC phụ).
+
+**Solution:**
+> BE đã có sẵn tham số `assigneeId` ở `PeriodicTaskFiltersDto`/`PeriodicTasksService.findAll()` — lọc CHÍNH XÁC "Phụ trách chính HOẶC phụ" (`task.primaryAssigneeId = :id OR task.id IN (SELECT ... periodic_task_secondary_assignees WHERE user_id = :id)`), KHÔNG cần sửa gì ở BE. Chỉ cần FE truyền `assigneeId: currentUserId` vào query badge - kết hợp AND với `applyViewFilter()` sẵn có, tự động thu hẹp đúng về "Task tôi là Phụ trách (chính/phụ) VÀ đang To-Do", bất kể scope role nào.
+
+**Verify thật đã chạy:**
+- `npx tsc --noEmit` (frontend) — 0 lỗi ở file thay đổi (chỉ còn 2 lỗi nền cũ không liên quan: `logo.png`, `CountBadge.tsx` styled-jsx).
+- Đối chiếu logic BE thật (`periodic-tasks.service.ts` dòng 397-403, `periodic-task-access.helper.ts`) để xác nhận AND giữa `assigneeId` filter và `applyViewFilter()` scope `own` sẽ tự loại Task chỉ do mình TẠO (không phải Phụ trách) - không cần code BE mới.
+
+**Notes:**
+> Vẫn giữ nguyên khoảng ngày mặc định "Tuần này" (không truyền `dateFrom`/`dateTo`) như trước - chỉ đổi phạm vi người, không đổi phạm vi thời gian. Nếu sau này muốn badge đếm không giới hạn tuần (mọi Task To-Do của tôi bất kể ngày), cần bàn thêm vì sẽ đổi ý nghĩa số hiển thị so với trang mặc định.

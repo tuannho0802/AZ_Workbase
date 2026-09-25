@@ -27,6 +27,7 @@ const REFRESH_INTERVAL_MS = 60_000;
 export function useSidebarBadgeCounts(): Record<string, number> {
   const { can, isLoading } = useMyPermissions();
   const isAuthenticated = useAuthStore((s) => s.isAuthenticated);
+  const currentUserId = useAuthStore((s) => s.user?.id);
 
   // Disable fetches until permissions are loaded
   const canSeeInvalidData = !isLoading && can('customers.invalid_report'); 
@@ -122,16 +123,26 @@ export function useSidebarBadgeCounts(): Record<string, number> {
   // 7b. (BE `GET /periodic-tasks` KHÔNG bao giờ tải toàn bộ: không truyền dateFrom/
   // dateTo => mặc định TUẦN NÀY, nên số này là To-Do của TUẦN NÀY - khớp đúng với
   // danh sách mặc định khi bấm vào trang.)
-  // Số Công việc định kỳ đang ở trạng thái To-Do (not_started) TRONG
-  // PHẠM VI QUYỀN của viewer - BE tự lọc theo scope (own/department/all) ở
-  // `PeriodicTasksService.findAll()`, mirror đúng cách nguồn (4) ở trên dựa
-  // vào `findPending()` tự lọc scope cho đơn nghỉ phép - không lọc lại theo
-  // user/department ở FE.
+  // Số Công việc định kỳ đang ở trạng thái To-Do (not_started) MÀ MÌNH CÓ LIÊN
+  // QUAN - truyền `assigneeId = currentUserId` (BE lọc "Phụ trách chính HOẶC
+  // phụ", xem `PeriodicTasksService.findAll()` nhánh `assigneeId`) - KHÔNG phải
+  // đếm mọi Task To-Do trong phạm vi quyền xem (own/phòng ban/tất cả) như trước
+  // đây (bug thật: Admin/Manager xem "tất cả" sẽ ra số To-Do của CẢ PHÒNG/CẢ
+  // CÔNG TY, không phải của riêng mình - yêu cầu chủ dự án đã chỉnh lại đúng
+  // ngữ nghĩa "việc CỦA TÔI cần làm"). Badge chỉ tính khi đã có `currentUserId`
+  // (tránh gọi API sai `assigneeId=undefined` lúc chưa hydrate xong auth store).
   const taskTodo = useQuery({
-    queryKey: ['badge-count', 'cong-viec-dinh-ky', notStartedStatusId],
+    queryKey: ['badge-count', 'cong-viec-dinh-ky', notStartedStatusId, currentUserId],
     queryFn: async () =>
-      (await periodicTasksApi.getAll({ statusId: notStartedStatusId, page: 1, limit: 1 })).total,
-    enabled: canSeeTaskTodo && notStartedStatusId !== undefined,
+      (
+        await periodicTasksApi.getAll({
+          statusId: notStartedStatusId,
+          assigneeId: currentUserId,
+          page: 1,
+          limit: 1,
+        })
+      ).total,
+    enabled: canSeeTaskTodo && notStartedStatusId !== undefined && currentUserId !== undefined,
     refetchInterval: REFRESH_INTERVAL_MS,
     staleTime: REFRESH_INTERVAL_MS,
   });
