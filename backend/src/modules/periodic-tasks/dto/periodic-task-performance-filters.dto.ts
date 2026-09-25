@@ -37,4 +37,24 @@ export class PeriodicTaskPerformanceFiltersDto {
   @Type(() => Number)
   @IsInt()
   userId?: number;
+
+  @ApiPropertyOptional({
+    example: 1,
+    description:
+      'CHỈ dùng cho `GET /users/:userId/tasks` - trang hiện tại của nhóm "Phụ trách chính" (phân trang SERVER-SIDE, ' +
+      'kích thước trang cố định ở BE - xem `USER_TASKS_PAGE_SIZE`). Mặc định 1.',
+  })
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  primaryPage?: number;
+
+  @ApiPropertyOptional({
+    example: 1,
+    description: 'CHỈ dùng cho `GET /users/:userId/tasks` - trang hiện tại của nhóm "Phụ trách phụ" (tương tự `primaryPage`). Mặc định 1.',
+  })
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  secondaryPage?: number;
 }

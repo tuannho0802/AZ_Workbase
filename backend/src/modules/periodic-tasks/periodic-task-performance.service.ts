@@ -25,6 +25,21 @@ import { RequestingUser } from './periodic-tasks.service';
  * chú bên dưới). */
 export const LATE_GRACE_DAYS = 7;
 
+/** Số Task tối đa / trang / nhóm ("Phụ trách chính"/"Phụ trách phụ") ở
+ * `getUserTasks()` (yêu cầu chủ dự án 2026-09-25: phân trang THẬT ở BE, tránh
+ * tải hết rồi cắt trang ở FE, để Drawer/view "own" không bị quá dài). */
+export const USER_TASKS_PAGE_SIZE = 2;
+
+/** 1 nhóm Task đã phân trang ("Phụ trách chính" HOẶC "Phụ trách phụ") -
+ * `total` là TOÀN BỘ số Task khớp bộ lọc (không chỉ trang đang xem), để FE vẽ
+ * `<Pagination>`. */
+export interface PaginatedUserTasks {
+  items: PeriodicTask[];
+  total: number;
+  page: number;
+  pageSize: number;
+}
+
 export interface PerformanceUserRow {
   userId: number;
   userName: string;
@@ -515,9 +530,25 @@ export class PeriodicTaskPerformanceService {
    *     trước), để User role cao hơn (Admin/Manager) rà soát được toàn bộ
    *     công việc của Nhân viên mình quản lý.
    *
-   * Trả 2 danh sách TÁCH RIÊNG (không gộp 1 mảng kèm cờ) vì FE cần hiển thị
-   * 2 khối khác nhau ("Phụ trách chính" luôn hiện trước, "Phụ trách phụ" ở
-   * dưới - yêu cầu chủ dự án) - tách sẵn ở BE để FE khỏi tự lọc lại.
+   * Trả 2 nhóm TÁCH RIÊNG (không gộp 1 mảng kèm cờ) vì FE cần hiển thị 2 khối
+   * khác nhau ("Phụ trách chính" luôn hiện trước, "Phụ trách phụ" ở dưới -
+   * yêu cầu chủ dự án) - tách sẵn ở BE để FE khỏi tự lọc lại.
+   *
+   * PHÂN TRANG SERVER-SIDE (MỚI 2026-09-25, yêu cầu chủ dự án): mỗi nhóm tối
+   * đa `USER_TASKS_PAGE_SIZE` (= 2) Task/trang, `primaryPage`/`secondaryPage`
+   * ĐỘC LẬP nhau (FE có thể lật trang nhóm "Phụ trách phụ" mà không ảnh hưởng
+   * trang đang xem của nhóm "Phụ trách chính") - dùng `skip`/`take` +
+   * `getManyAndCount()` (KHÔNG `getMany()` rồi `.slice()` ở FE) để tránh tải
+   * dư dữ liệu khi 1 User có hàng trăm Task trong khoảng lọc.
+   *
+   * SẮP XẾP (MỚI 2026-09-25, yêu cầu chủ dự án): Task có `periodEndDate`
+   * GẦN ngày hôm nay nhất (giờ VN, `todayVnStr()`) hiển thị TRƯỚC - dùng
+   * `ABS(DATEDIFF(period_end_date, :today))` ASC thay vì `periodEndDate` DESC/
+   * ASC đơn thuần, vì cả Task "sắp tới" (tương lai gần) lẫn Task "vừa qua hạn"
+   * (quá khứ gần) đều cần ưu tiên hiện trước Task ở xa cả 2 hướng thời gian.
+   * `periodEndDate DESC` làm tiêu chí phụ (tie-break) khi khoảng cách bằng
+   * nhau (vd Task hôm qua vs Task ngày mai, cùng cách 1 ngày - ưu tiên Task
+   * gần đây hơn/mới hơn lên trước).
    *
    * Quyền xem = ĐÚNG `resolveScope()` (permission `periodic_tasks.performance_view`)
    * y hệt `getSummary()`/`getUserFlaggedTasks()`, KHÔNG tạo permission mới -
@@ -528,13 +559,16 @@ export class PeriodicTaskPerformanceService {
     targetUserId: number,
     filters: PeriodicTaskPerformanceFiltersDto,
     user: RequestingUser,
-  ): Promise<{ scope: PermissionScope | 'own'; primaryTasks: PeriodicTask[]; secondaryTasks: PeriodicTask[] }> {
+  ): Promise<{ scope: PermissionScope | 'own'; primary: PaginatedUserTasks; secondary: PaginatedUserTasks }> {
     const scope = await this.resolveScope(user);
     if (scope === PermissionScope.OWN && targetUserId !== user.id) {
       throw new ForbiddenException('Bạn chỉ được xem công việc của chính mình.');
     }
 
     const dateWindow = resolveListWindow({ dateFrom: filters.dateFrom, dateTo: filters.dateTo });
+    const today = todayVnStr();
+    const primaryPage = Math.max(1, filters.primaryPage ?? 1);
+    const secondaryPage = Math.max(1, filters.secondaryPage ?? 1);
 
     const applyCommon = (qb: ReturnType<Repository<PeriodicTask>['createQueryBuilder']>) => {
       qb.where('task.deletedAt IS NULL');
@@ -547,25 +581,37 @@ export class PeriodicTaskPerformanceService {
         .leftJoinAndSelect('task.status', 'status')
         .leftJoinAndSelect('task.primaryAssignee', 'primaryAssignee')
         .leftJoinAndSelect('task.department', 'department')
-        .orderBy('task.periodEndDate', 'DESC');
+        // Xem JSDoc "SẮP XẾP" ở trên - gần ngày hôm nay nhất lên đầu.
+        .orderBy('ABS(DATEDIFF(task.period_end_date, :perfToday))', 'ASC')
+        .addOrderBy('task.periodEndDate', 'DESC')
+        .setParameter('perfToday', today);
     };
 
-    const primaryQb = applyCommon(this.taskRepo.createQueryBuilder('task')).andWhere(
-      'task.primaryAssigneeId = :perfTargetUserId',
-      { perfTargetUserId: targetUserId },
-    );
+    const primaryQb = applyCommon(this.taskRepo.createQueryBuilder('task'))
+      .andWhere('task.primaryAssigneeId = :perfTargetUserId', { perfTargetUserId: targetUserId })
+      .skip((primaryPage - 1) * USER_TASKS_PAGE_SIZE)
+      .take(USER_TASKS_PAGE_SIZE);
 
-    const secondaryQb = applyCommon(this.taskRepo.createQueryBuilder('task')).andWhere(
-      'task.id IN (SELECT psa.task_id FROM periodic_task_secondary_assignees psa WHERE psa.user_id = :perfSecTargetUserId)',
-      { perfSecTargetUserId: targetUserId },
-    );
+    const secondaryQb = applyCommon(this.taskRepo.createQueryBuilder('task'))
+      .andWhere('task.id IN (SELECT psa.task_id FROM periodic_task_secondary_assignees psa WHERE psa.user_id = :perfSecTargetUserId)', {
+        perfSecTargetUserId: targetUserId,
+      })
+      .skip((secondaryPage - 1) * USER_TASKS_PAGE_SIZE)
+      .take(USER_TASKS_PAGE_SIZE);
 
-    const [primaryTasksRaw, secondaryTasksRaw] = await Promise.all([primaryQb.getMany(), secondaryQb.getMany()]);
+    const [[primaryTasksRaw, primaryTotal], [secondaryTasksRaw, secondaryTotal]] = await Promise.all([
+      primaryQb.getManyAndCount(),
+      secondaryQb.getManyAndCount(),
+    ]);
     const [primaryTasks, secondaryTasks] = await Promise.all([
       this.secondaryAssigneesService.attachSecondaryAssigneesToList(primaryTasksRaw),
       this.secondaryAssigneesService.attachSecondaryAssigneesToList(secondaryTasksRaw),
     ]);
 
-    return { scope, primaryTasks: primaryTasks as PeriodicTask[], secondaryTasks: secondaryTasks as PeriodicTask[] };
+    return {
+      scope,
+      primary: { items: primaryTasks as PeriodicTask[], total: primaryTotal, page: primaryPage, pageSize: USER_TASKS_PAGE_SIZE },
+      secondary: { items: secondaryTasks as PeriodicTask[], total: secondaryTotal, page: secondaryPage, pageSize: USER_TASKS_PAGE_SIZE },
+    };
   }
 }

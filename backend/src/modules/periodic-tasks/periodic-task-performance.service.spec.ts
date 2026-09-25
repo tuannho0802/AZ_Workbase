@@ -381,14 +381,19 @@ describe('PeriodicTaskPerformanceService - grace period 7 ngày', () => {
   });
 
   describe('MỚI (2026-09-25) - getUserTasks() (danh sách ĐẦY ĐỦ, không chỉ Task bị flag)', () => {
-    /** QB riêng cho `getUserTasks()` - dùng `getMany()` (entity thật) thay vì `getRawMany()`. */
-    function makeEntityQb(tasks: any[]) {
+    /** QB riêng cho `getUserTasks()` - dùng `getManyAndCount()` (entity thật,
+     * phân trang server-side MỚI 2026-09-25) thay vì `getMany()` cũ. */
+    function makeEntityQb(tasks: any[], total = tasks.length) {
       return {
         where: jest.fn().mockReturnThis(),
         andWhere: jest.fn().mockReturnThis(),
         leftJoinAndSelect: jest.fn().mockReturnThis(),
         orderBy: jest.fn().mockReturnThis(),
-        getMany: jest.fn().mockResolvedValue(tasks),
+        addOrderBy: jest.fn().mockReturnThis(),
+        setParameter: jest.fn().mockReturnThis(),
+        skip: jest.fn().mockReturnThis(),
+        take: jest.fn().mockReturnThis(),
+        getManyAndCount: jest.fn().mockResolvedValue([tasks, total]),
       };
     }
 
@@ -414,8 +419,8 @@ describe('PeriodicTaskPerformanceService - grace period 7 ngày', () => {
       const result = await service.getUserTasks(7, {}, EMPLOYEE_USER as any);
 
       expect(result.scope).toBe(PermissionScope.OWN);
-      expect(result.primaryTasks).toHaveLength(1);
-      expect(result.secondaryTasks).toHaveLength(1);
+      expect(result.primary.items).toHaveLength(1);
+      expect(result.secondary.items).toHaveLength(1);
       // QUAN TRỌNG: KHÔNG được áp lại `applyScopeFilter()` kiểu 'own' cũ
       // (ép `primaryAssigneeId = user.id`) lên truy vấn secondary - nếu áp
       // nhầm, secondaryQb.andWhere sẽ bị gọi với điều kiện đó và (do mock
