@@ -168,7 +168,13 @@ export function PerformanceFlaggedDrawer({ user, params, onClose }: Props) {
           <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="Không có công việc nào cần lưu ý trong khoảng đã chọn" style={{ padding: 48 }} />
         ) : (
           <>
-            <Divider orientation="left" orientationMargin={0} style={{ marginTop: 0 }}>
+            {/* BUG THẬT (2026-09-25, phát hiện khi verify `tsc --noEmit`): antd 6
+                đổi nghĩa prop `orientation` của `Divider` (giờ chỉ nhận
+                'horizontal'|'vertical' - điều khiển hướng kẻ, KHÔNG còn nhận
+                'left'/'right'/'center' như antd 5). Vị trí Title giờ dùng prop
+                RIÊNG `titlePlacement` (giữ nguyên các giá trị 'left'/'right'/
+                'center'/'start'/'end' như `orientation` cũ). */}
+            <Divider titlePlacement="left" orientationMargin={0} style={{ marginTop: 0 }}>
               <Text strong>Đang làm trở lên ({startedTasks.length})</Text>
             </Divider>
             {startedTasks.length === 0 ? (
@@ -179,7 +185,7 @@ export function PerformanceFlaggedDrawer({ user, params, onClose }: Props) {
               startedTasks.map(renderTaskCard)
             )}
 
-            <Divider orientation="left" orientationMargin={0}>
+            <Divider titlePlacement="left" orientationMargin={0}>
               <Text strong>Chưa hoàn thành / Quá hạn ({notStartedTasks.length})</Text>
             </Divider>
             {notStartedTasks.length === 0 ? (
