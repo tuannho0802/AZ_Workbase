@@ -37,6 +37,10 @@ export interface LeaveRequest {
   createdAt: string;
   approvedAt: string | null;
   rejectedAt: string | null;
+  // Thùng rác (xoá mềm) - chỉ có giá trị ở response của `getTrash()`. Mirror
+  // ĐÚNG `deletedAt`/`deletedBy` của `customer.types.ts`.
+  deletedAt?: string | null;
+  deletedBy?: { id: number; name: string } | null;
   // Số ảnh đính kèm - BE tính qua loadRelationCountAndMap() ở findAll()/
   // findPending()/findHistory() (xem LeaveRequest.attachmentCount ở entity),
   // KHÔNG có ở response của các endpoint đơn lẻ (create/update/approve...).
@@ -44,16 +48,29 @@ export interface LeaveRequest {
   attachmentCount?: number;
 }
 
+/** Tóm tắt 1 tuần (PHA 1 của BE, week-mode) - mirror `WeekBucket` ở `week-window.util.ts`. */
+export interface WeekBucketDto {
+  /** 'YYYY-MM-DD' của Thứ 2. */
+  weekStart: string;
+  count: number;
+}
+
 // Shape trả về từ `GET /leave-requests`, `/pending`, `/history`, `/trash` -
 // mirror ĐÚNG `paginateList()` ở BE (xem `leave-requests.service.ts`).
-// `weeks`/`weekTotal` chỉ có khi gọi kèm `weeksPerPage` (week-mode).
+// `weeks`/`totalWeeks`/`weekTotal` chỉ có khi gọi kèm `weeksPerPage`
+// (week-mode) - mirror ĐÚNG `AuditFilters`/response ở `audit.types.ts`.
+// ⚠️ FIX BUG THẬT: `weeks` trước đây khai sai kiểu `number` (phải là mảng
+// `WeekBucketDto[]` - BE trả PHA 1 là danh sách tuần kèm count, không phải 1
+// con số đơn) và thiếu hẳn `totalWeeks` (tổng số tuần, dùng làm `total` của
+// `<Pagination>` ở `WeeklyLazySection`) - chưa ai dùng tới nên chưa lộ ra.
 export interface PaginatedLeaveRequests {
   data: LeaveRequest[];
   total: number;
   page: number;
   limit: number;
   totalPages: number;
-  weeks?: number;
+  weeks?: WeekBucketDto[];
+  totalWeeks?: number;
   weekTotal?: number;
 }
 

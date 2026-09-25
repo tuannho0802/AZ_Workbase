@@ -1,16 +1,17 @@
 'use client';
 
-import { useState, useEffect, useRef, useMemo } from 'react';
+import { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import {
-  Table, Button, Modal, Form, Select, DatePicker, TimePicker, Input, Tag, App, Card, Divider, Typography, Row, Col, Tooltip
+  Button, Modal, Form, Select, DatePicker, TimePicker, Input, Tag, App, Card, Divider, Typography, Row, Col, Tooltip
 } from 'antd';
 import { PlusOutlined, CloseCircleOutlined, CalendarOutlined, ClockCircleOutlined, FileTextOutlined, UserOutlined, SearchOutlined } from '@ant-design/icons';
-import { leaveRequestsApi, LeaveRequest } from '@/lib/api/leave-requests.api';
+import { leaveRequestsApi, LeaveRequest, LeaveRequestsQuery, WeekBucketDto } from '@/lib/api/leave-requests.api';
 import { useMyPermissions } from '@/lib/hooks/useMyPermissions';
 import { useLeaveTypes } from '@/lib/hooks/useLeaveTypes';
 import { AttachmentUploader, AttachmentUploaderHandle } from '@/components/leave-requests/AttachmentUploader';
 import { AttachmentsViewerButton } from '@/components/leave-requests/AttachmentsViewerButton';
+import { WeeklyLazySection } from '@/components/common/WeeklyLazySection';
 import dayjs, { Dayjs } from 'dayjs';
 
 const { RangePicker } = DatePicker;
@@ -129,17 +130,28 @@ function MyLeaveMobileCard({
 
 // ── Main Component ───────────────────────────────────────────────────────────
 export default function LeaveRequestsPage() {
-  const [requests, setRequests] = useState<LeaveRequest[]>([]);
   const [loading, setLoading] = useState(false);
   const [modalOpen, setModalOpen] = useState(false);
   const [attachmentUploaderKey, setAttachmentUploaderKey] = useState(0);
   const [isMobile, setIsMobile] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [form] = Form.useForm();
-  // Filter: đơn nghỉ của tôi thường không quá nhiều, nên lọc CLIENT-SIDE
-  // (BE /leave-requests trả toàn bộ, không phân trang) - đủ nhẹ, không cần
-  // thêm query param BE. Trường ít vì đây là dữ liệu CỦA CHÍNH mình (không
-  // cần lọc theo người/phòng ban như duyet-phep).
+  // ⚠️ ĐỔI sang PHÂN TRANG THEO TUẦN thật ở BE (yêu cầu "1 trang chỉ chứa 4
+  // tuần") thay vì tải tối đa 100 đơn/lần rồi lọc client - mirror ĐÚNG
+  // `audit-logs/page.tsx` (`WeeklyLazySection` 2 pha): `weeks` = PHA 1 (đếm
+  // theo tuần của trang hiện tại), `fetchToken` = khoá bỏ cache các tuần khi
+  // filter/trang đổi, `weekFilters` = bộ lọc PHA 1 gần nhất (PHA 2 dùng lại
+  // khi mở 1 panel tuần cụ thể).
+  const [weeks, setWeeks] = useState<WeekBucketDto[]>([]);
+  const [weekFilters, setWeekFilters] = useState<LeaveRequestsQuery>({});
+  const [fetchToken, setFetchToken] = useState(0);
+  const [page, setPage] = useState(1);
+  const [weeksPerPage, setWeeksPerPage] = useState(4);
+  const [totalWeeks, setTotalWeeks] = useState(0);
+  const [total, setTotal] = useState(0);
+  // Filter - giờ lọc SERVER-SIDE (gửi kèm mỗi lần fetch page/tuần), khớp
+  // đúng field `QueryLeaveRequestsDto` ở BE. Trường ít vì đây là dữ liệu CỦA
+  // CHÍNH mình (không cần lọc theo người/phòng ban như duyet-phep).
   const [searchText, setSearchText] = useState('');
   const [filterLeaveType, setFilterLeaveType] = useState<string | null>(null);
   const [filterStatus, setFilterStatus] = useState<string | null>(null);
@@ -198,27 +210,76 @@ export default function LeaveRequestsPage() {
       return;
     }
     if (!permissionsLoading && canRequest) {
-      fetchRequests();
+      fetchRequests(1, weeksPerPage);
+      setPage(1);
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [canRequest, permissionsLoading]);
 
-  const fetchRequests = async () => {
+  // PHA 1: đếm theo tuần cho trang `pg` (không kéo bản ghi nào ngoài tuần
+  // mới nhất - `WeeklyLazySection` tự mở panel đầu tiên và trigger PHA 2 qua
+  // `fetchWeek`). Nhận `pg`/`wpp` làm tham số (không chỉ đọc từ state) để
+  // handler gọi lại ngay được với giá trị MỚI mà không cần chờ re-render.
+  const fetchRequests = async (pg = page, wpp = weeksPerPage) => {
     setLoading(true);
     try {
-      // TODO(week-pagination): trang này còn tải tối đa 100 đơn/lần (trần
-      // DTO) rồi lọc/hiển thị phẳng client-side - CHƯA chuyển sang
-      // `WeeklyLazySection` (phân trang thật theo tuần, lazy per-week) như
-      // `duyet-phep` đang làm dở. Đơn của 1 người thường không nhiều nên tạm
-      // chấp nhận được, nhưng cần làm nốt để nhất quán + tránh cắt dữ liệu
-      // nếu 1 user có >100 đơn.
-      const res = await leaveRequestsApi.getAll({ limit: 100 });
-      setRequests(res.data);
+      const filters: LeaveRequestsQuery = {
+        page: pg,
+        weeksPerPage: wpp,
+        search: searchText.trim() || undefined,
+        leaveType: filterLeaveType || undefined,
+        status: filterStatus || undefined,
+        dateFrom: filterDateRange?.[0] ? filterDateRange[0].format('YYYY-MM-DD') : undefined,
+        dateTo: filterDateRange?.[1] ? filterDateRange[1].format('YYYY-MM-DD') : undefined,
+      };
+      const res = await leaveRequestsApi.getAll(filters);
+      setWeeks(res.weeks ?? []);
+      setWeekFilters(filters);
+      setFetchToken((t) => t + 1);
+      setTotal(res.total || 0);
+      setTotalWeeks(res.totalWeeks || 0);
     } catch {
       message.error('Không thể tải danh sách đơn nghỉ phép');
+      setWeeks([]);
     } finally {
       setLoading(false);
     }
   };
+
+  // PHA 2: lấy đúng bản ghi của 1 tuần khi panel được mở (dùng lại filter
+  // của PHA 1 gần nhất, KHÔNG phải state filter hiện tại - tránh lệch nếu
+  // người dùng đổi filter ngay khi 1 panel khác đang tải).
+  const fetchWeek = useCallback(
+    async (weekStart: string, weekPage: number, weekLimit: number) => {
+      const r = await leaveRequestsApi.getAll({ ...weekFilters, weekStart, weekPage, weekLimit });
+      return { data: r.data ?? [], weekTotal: r.weekTotal };
+    },
+    [weekFilters],
+  );
+
+  // Tìm kiếm debounce 300ms (setTimeout thuần - repo chưa có dependency
+  // `lodash` cài sẵn, tránh thêm package mới chỉ vì 1 chỗ debounce) - các
+  // filter còn lại (Select/RangePicker) fetch ngay lúc đổi, không cần debounce.
+  const searchDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  useEffect(() => {
+    if (!canRequest) return;
+    if (searchDebounceRef.current) clearTimeout(searchDebounceRef.current);
+    searchDebounceRef.current = setTimeout(() => {
+      setPage(1);
+      fetchRequests(1, weeksPerPage);
+    }, 300);
+    return () => {
+      if (searchDebounceRef.current) clearTimeout(searchDebounceRef.current);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [searchText]);
+
+  useEffect(() => {
+    if (!canRequest) return;
+    setPage(1);
+    fetchRequests(1, weeksPerPage);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [filterLeaveType, filterStatus, filterDateRange]);
 
   /**
    * Đóng/huỷ Modal tạo đơn KHÔNG qua bấm "Tạo đơn" (nút "Hủy" hoặc bấm X).
@@ -359,24 +420,6 @@ export default function LeaveRequestsPage() {
       }
     });
   };
-
-  const filteredRequests = useMemo(() => {
-    return requests.filter((r) => {
-      if (filterLeaveType && r.leaveType !== filterLeaveType) return false;
-      if (filterStatus && r.status !== filterStatus) return false;
-      if (searchText.trim()) {
-        const q = searchText.trim().toLowerCase();
-        if (!(r.reason || '').toLowerCase().includes(q)) return false;
-      }
-      if (filterDateRange && filterDateRange[0] && filterDateRange[1]) {
-        const [from, to] = filterDateRange;
-        // Đơn "trong khoảng" nếu khoảng nghỉ [startDate,endDate] giao với [from,to]
-        const overlap = !dayjs(r.startDate).isAfter(to, 'day') && !dayjs(r.endDate).isBefore(from, 'day');
-        if (!overlap) return false;
-      }
-      return true;
-    });
-  }, [requests, filterLeaveType, filterStatus, searchText, filterDateRange]);
 
   const columns = [
     {
@@ -529,30 +572,36 @@ export default function LeaveRequestsPage() {
         </Col>
       </Row>
 
-      {isMobile ? (
-        filteredRequests.length === 0 ? (
-          <div style={{ padding: '24px 0', textAlign: 'center', color: '#8c8c8c' }}>
-            Chưa có đơn nghỉ phép nào
-          </div>
-        ) : (
-            filteredRequests.map(r => (
-            <MyLeaveMobileCard
-              key={r.id}
-              record={r}
-              onCancel={handleCancel}
-              leaveTypeMap={leaveTypeMap}
-            />
-          ))
-        )
-      ) : (
-        <Table
-          columns={columns}
-            dataSource={filteredRequests}
-          rowKey="id"
-          loading={loading}
-          pagination={{ pageSize: 10 }}
-        />
-      )}
+      <WeeklyLazySection<LeaveRequest>
+        weeks={weeks}
+        fetchWeek={fetchWeek}
+        resetKey={fetchToken}
+        rowKey="id"
+        columns={columns as any}
+        isMobile={isMobile}
+        loading={loading}
+        emptyText="Chưa có đơn nghỉ phép nào"
+        renderMobileCard={(record) => (
+          <MyLeaveMobileCard
+            key={record.id}
+            record={record}
+            onCancel={handleCancel}
+            leaveTypeMap={leaveTypeMap}
+          />
+        )}
+        pagination={{
+          current: page,
+          pageSize: weeksPerPage,
+          total: totalWeeks,
+          pageSizeOptions: ['2', '4', '8'],
+          showTotal: (t) => `${t} tuần (${total.toLocaleString()} đơn)`,
+          onChange: (p, ps) => {
+            setPage(p);
+            setWeeksPerPage(ps || weeksPerPage);
+            fetchRequests(p, ps || weeksPerPage);
+          },
+        }}
+      />
 
       {/* Create Modal */}
       <Modal
