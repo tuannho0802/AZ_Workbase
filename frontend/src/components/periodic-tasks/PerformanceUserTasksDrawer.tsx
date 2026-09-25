@@ -1,19 +1,26 @@
 'use client';
 
 import { useState } from 'react';
-import { Alert, Drawer } from 'antd';
+import { Alert, Drawer, Select } from 'antd';
 import type { Dayjs } from 'dayjs';
 import { getDefaultPerformanceRange, PerformanceRangeFilter } from './PerformanceRangeFilter';
 import { UserTasksPanel } from './UserTasksPanel';
+import { PeriodTypeTag } from './PeriodTypeTag';
+import { PERIOD_TYPE_LABELS, type PeriodType } from '@/lib/api/periodic-tasks.api';
 
 const FMT = 'YYYY-MM-DD';
 
 interface Props {
   /** `null` = đóng Drawer (và không fetch). */
   user: { id: number; name: string } | null;
-  /** `periodType`/`departmentId` kế thừa từ bảng tổng hợp để đồng bộ ngữ cảnh
-   * đang xem - riêng khoảng ngày Drawer có bộ lọc RIÊNG (xem `dateRange` bên
-   * dưới), không dùng chung với bảng tổng hợp. */
+  /** Giá trị KHỞI TẠO cho bộ lọc "Loại kỳ" RIÊNG của Drawer (xem
+   * `DrawerBody` bên dưới) - kế thừa từ bảng tổng hợp để đồng bộ ngữ cảnh
+   * đang xem lúc mở Drawer, nhưng sau đó User có thể tự đổi/bỏ lọc NGAY
+   * trong Drawer (yêu cầu chủ dự án 2026-09-25: thêm Select "Loại kỳ" độc
+   * lập, có colorTag đúng `PERIOD_TYPE_COLORS`) mà KHÔNG ảnh hưởng ngược lại
+   * bộ lọc của bảng tổng hợp ngoài trang. Riêng khoảng ngày Drawer đã có bộ
+   * lọc RIÊNG từ trước (xem `dateRange` bên dưới) - không dùng chung với
+   * bảng tổng hợp, cùng tinh thần với `periodType` giờ cũng vậy. */
   periodType?: string;
   onClose: () => void;
 }
@@ -53,19 +60,35 @@ export function PerformanceUserTasksDrawer({ user, periodType, onClose }: Props)
 
 function DrawerBody({ userId, periodType }: { userId: number; periodType?: string }) {
   const [dateRange, setDateRange] = useState<[Dayjs, Dayjs]>(getDefaultPerformanceRange);
+  // Khởi tạo từ giá trị kế thừa (bảng tổng hợp), sau đó ĐỘC LẬP hoàn toàn -
+  // đổi/bỏ lọc ở đây không ghi ngược lại state của trang ngoài (xem JSDoc `Props.periodType`).
+  const [filterPeriodType, setFilterPeriodType] = useState<PeriodType | undefined>(periodType as PeriodType | undefined);
 
   const params = {
     dateFrom: dateRange[0].format(FMT),
     dateTo: dateRange[1].format(FMT),
-    periodType: periodType as never,
+    periodType: filterPeriodType,
   };
 
   return (
     <>
-      <PerformanceRangeFilter value={dateRange} onChange={setDateRange} />
-      {/* `key` = khoảng ngày -> đổi ngày remount Panel, tự đưa phân trang của
-          CẢ 2 nhóm về lại trang 1 (mirror pattern `key={user.id}` ở trên). */}
-      <UserTasksPanel key={`${params.dateFrom}_${params.dateTo}`} userId={userId} params={params} />
+      <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 12, marginBottom: 12 }}>
+        <PerformanceRangeFilter value={dateRange} onChange={setDateRange} />
+        <Select
+          allowClear
+          placeholder="Loại kỳ"
+          style={{ minWidth: 160 }}
+          value={filterPeriodType}
+          onChange={(v) => setFilterPeriodType(v)}
+          options={(Object.keys(PERIOD_TYPE_LABELS) as PeriodType[]).map((pt) => ({
+            value: pt,
+            label: <PeriodTypeTag type={pt} style={{ marginInlineEnd: 0 }} />,
+          }))}
+        />
+      </div>
+      {/* `key` = khoảng ngày + Loại kỳ -> đổi filter remount Panel, tự đưa
+          phân trang của CẢ 2 nhóm về lại trang 1 (mirror pattern `key={user.id}` ở trên). */}
+      <UserTasksPanel key={`${params.dateFrom}_${params.dateTo}_${filterPeriodType ?? 'all'}`} userId={userId} params={params} />
     </>
   );
 }

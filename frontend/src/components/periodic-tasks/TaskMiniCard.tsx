@@ -5,7 +5,7 @@ import { LockOutlined } from '@ant-design/icons';
 import dayjs from 'dayjs';
 import { TaskAssignees } from './TaskAssignees';
 import { PeriodicTask } from '@/lib/api/periodic-tasks.api';
-import { DEFAULT_ENTITY_COLOR, darkenColor, getTaskCardBackground, resolveEntityColor } from '@/lib/utils/entityColor';
+import { DEFAULT_ENTITY_COLOR, darkenColor, getTaskCardBackground, lightenColor, resolveEntityColor } from '@/lib/utils/entityColor';
 import { useUsersList } from '@/lib/hooks/useUsers';
 import { TaskTitlePill, TaskChainBadge } from './TaskTitlePill';
 import { TaskChainInfo } from '@/lib/utils/taskLinkChains';
@@ -102,15 +102,23 @@ export function TaskMiniCard({
         verticalAlign: 'top',
     };
 
-    // MỚI (2026-09-25, yêu cầu chủ dự án - áp dụng cho TOÀN BỘ ant-Card Task,
-    // vì đây là component DUY NHẤT render Card cho Task ở mọi view): border
-    // không còn màu xám cố định nữa, đổi sang lấy ĐÚNG `task.color` (cột màu
-    // Task đã chọn - cùng màu đang tô `TaskTitlePill`) rồi làm TỐI hơn 40%
-    // (`darkenColor`) để border luôn tương phản rõ với nền pill/nền Card
-    // trắng, đồng thời tự nhận diện Task nào cùng nhóm màu ngay từ viền
-    // ngoài, không cần nhìn vào pill tiêu đề nữa.
+    // MỚI (2026-09-25, chủ dự án phản hồi "màu/nút bấm/element trong Card
+    // đang rời rạc với BG" - đã research cách Trello xử lý màu Task/Card):
+    // Trello KHÔNG tô nguyên khối Card 1 màu bão hoà rồi để mọi thứ tự xoay
+    // xở - Label (tương đương `task.color` ở đây) LUÔN là 1 dải màu THUẦN
+    // (không pha loãng/làm tối) đặt Ở NGOÀI RÌA card (dải nhỏ phía trên tên
+    // card), còn phần thân Card + toàn bộ badge/icon (ngày hết hạn, checklist,
+    // avatar) giữ nền TRUNG TÍNH (trắng/xám nhạt) không ăn theo màu Label -
+    // đây là lý do UI Trello dù mỗi Card 1 màu khác nhau vẫn không bao giờ
+    // "chỏi" nhau: chỉ CÓ 1 điểm neo màu rõ, mọi thứ còn lại trung tính.
+    // Áp dụng: thêm dải viền trái 4px dùng ĐÚNG `task.color` gốc (không pha
+    // loãng/làm tối, giữ nguyên độ bão hoà) làm điểm neo màu DUY NHẤT thật rõ
+    // - border 3 cạnh còn lại làm NHẠT hơn trước (0.35 thay 0.4, do giờ nền
+    // Card đã có màu chứ không còn trắng thuần, viền không cần gắt bằng lúc
+    // trước mới nổi được) để không tạo 1 vòng viền đậm bao quanh cạnh tranh
+    // với dải neo bên trái.
     const resolvedTaskColor = resolveEntityColor(task.color);
-    const borderColor = darkenColor(resolvedTaskColor, 0.4);
+    const borderColor = darkenColor(resolvedTaskColor, 0.35);
     // MỚI (2026-09-25, yêu cầu chủ dự án - lượt 2 sau khi xem ảnh Kanban thật):
     // BG từng Task Card dùng `getTaskCardBackground(task.color)` - sáng hơn màu
     // gốc 90% (không phải 50% như lượt đầu, ảnh chụp cho thấy 50% còn đậm, đè
@@ -121,6 +129,10 @@ export function TaskMiniCard({
     const cardStyle: React.CSSProperties = {
         marginBottom: 14,
         border: `1px solid ${borderColor}`,
+        // Đặt SAU `border` trong object để override riêng cạnh trái (React set
+        // style theo thứ tự key trong object - key sau ghi đè key trước cho
+        // cùng 1 thuộc tính CSS cuối cùng, ở đây là cạnh trái của border).
+        borderLeft: `4px solid ${resolvedTaskColor}`,
         borderRadius: 10,
         boxShadow: '0 1px 3px rgba(16, 24, 40, 0.06)',
         backgroundColor: bgColor,
@@ -227,7 +239,31 @@ export function TaskMiniCard({
                 <TaskAssignees task={task} />
             </div>
 
-            {footer && <div style={{ marginTop: 8 }}>{footer}</div>}
+            {/* MỚI (2026-09-25, research Trello - xem comment `cardStyle` ở
+                trên): mọi nút bấm/Select thao tác (Liên kết/Checklist/Sửa/
+                Khoá/Xoá ở `TaskActionsBar`, Select "Đổi trạng thái nhanh" +
+                checklist inline ở `UserTasksPanel`) đi qua `footer` prop, gộp
+                CHUNG 1 điểm bọc DUY NHẤT ở đây - đúng tinh thần "sửa 1 chỗ",
+                không phải sửa riêng từng nơi gọi `TaskMiniCard`. Bọc 1 lớp
+                nền trắng bán trong suốt (KHÔNG trắng tuyệt đối - vẫn thấy lờ
+                mờ màu Card bên dưới, không bị "cắt rời" khỏi Card) làm 1 "khay"
+                trung tính riêng cho khu thao tác, mirror ĐÚNG cách Trello giữ
+                icon/badge (ngày hết hạn, checklist, avatar) luôn trung tính
+                bất kể màu cover Card - chỉ dải màu neo bên trái mới giữ màu
+                thật, còn khu vực dày đặc nút bấm/control thì KHÔNG. */}
+            {footer && (
+                <div
+                    style={{
+                        marginTop: 10,
+                        background: 'rgba(255,255,255,0.6)',
+                        border: `1px solid ${lightenColor(resolvedTaskColor, 0.85)}`,
+                        borderRadius: 8,
+                        padding: 8,
+                    }}
+                >
+                    {footer}
+                </div>
+            )}
         </Card>
     );
 }
