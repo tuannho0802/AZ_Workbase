@@ -1,4 +1,4 @@
-import { Controller, Get, Post, Patch, Delete, Body, Param, UseGuards, Request, Query, BadRequestException } from '@nestjs/common';
+import { Controller, Get, Post, Patch, Body, Param, UseGuards, Request, Query, BadRequestException } from '@nestjs/common';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { PermissionGuard } from '../../common/guards/permission.guard';
 import { RequirePermission } from '../../common/decorators/require-permission.decorator';
@@ -7,7 +7,6 @@ import { LeaveRequestsService } from './leave-requests.service';
 import { UploadsService } from '../uploads/uploads.service';
 import { PresignAttachmentDto } from '../uploads/dto/presign-attachment.dto';
 import { DiscardAttachmentsDto } from './dto/discard-attachments.dto';
-import { QueryLeaveRequestsDto } from './dto/query-leave-requests.dto';
 
 @Controller('leave-requests')
 @UseGuards(JwtAuthGuard, PermissionGuard)
@@ -70,51 +69,20 @@ export class LeaveRequestsController {
 
   @Get()
   @RequirePermission('leave_requests.request')
-  async findAll(@Request() req, @Query() query: QueryLeaveRequestsDto) {
-    return this.leaveRequestsService.findAll(req.user.id, query);
+  async findAll(@Request() req) {
+    return this.leaveRequestsService.findAll(req.user.id);
   }
   
   @Get('pending')
   @RequirePermission('leave_requests.approve')
-  async findPending(
-    @Request() req,
-    @Query() query: QueryLeaveRequestsDto,
-    @GetPermissionScope() scope?: string | null,
-  ) {
-    return this.leaveRequestsService.findPending(req.user.id, req.user.role, scope, query);
+  async findPending(@Request() req, @GetPermissionScope() scope?: string | null) {
+    return this.leaveRequestsService.findPending(req.user.id, req.user.role, scope);
   }
   
   @Get('history')
   @RequirePermission('leave_requests.view')
-  async findHistory(
-    @Request() req,
-    @Query() query: QueryLeaveRequestsDto,
-    @GetPermissionScope() scope?: string | null,
-  ) {
-    return this.leaveRequestsService.findHistory(req.user.id, req.user.role, scope, query);
-  }
-
-  // Tab "Thùng rác" ở duyet-phep - đơn ĐÃ xoá mềm, cùng phạm vi scope với
-  // quyền `leave_requests.delete` (ai xoá được đơn nào thì xem/khôi phục
-  // được đúng đơn đó trong thùng rác - xem findTrash() ở Service).
-  @Get('trash')
-  @RequirePermission('leave_requests.delete')
-  async findTrash(
-    @Request() req,
-    @Query() query: QueryLeaveRequestsDto,
-    @GetPermissionScope() scope?: string | null,
-  ) {
-    return this.leaveRequestsService.findTrash(req.user.id, req.user.role, scope, query);
-  }
-
-  // Tab "Thùng rác" ở nghi-phep/page.tsx - CHỈ đơn CỦA CHÍNH VIEWER, gate
-  // bởi `leave_requests.request` (ai xin nghỉ cũng có) - KHÔNG cần
-  // `leave_requests.delete` (quyền đó dành riêng cho approver xem/xoá đơn
-  // NGƯỜI KHÁC, xem GET 'trash' phía trên).
-  @Get('my-trash')
-  @RequirePermission('leave_requests.request')
-  async findMyTrash(@Request() req, @Query() query: QueryLeaveRequestsDto) {
-    return this.leaveRequestsService.findMyTrash(req.user.id, query);
+  async findHistory(@Request() req, @GetPermissionScope() scope?: string | null) {
+    return this.leaveRequestsService.findHistory(req.user.id, req.user.role, scope);
   }
 
   @Get('approved-range')
@@ -167,55 +135,5 @@ export class LeaveRequestsController {
       parseInt(id),
       req.user.id
     );
-  }
-
-  // Xoá mềm (đưa vào Thùng rác) - phạm vi scope giống isEligibleApprover()
-  // (mirror approve/reject: admin/scope='all' -> mọi đơn, scope='department'
-  // -> chỉ đơn của nhân viên phòng ban mình quản lý).
-  @Delete(':id')
-  @RequirePermission('leave_requests.delete')
-  async softDelete(@Param('id') id: string, @Request() req, @GetPermissionScope() scope?: string | null) {
-    return this.leaveRequestsService.softDelete(parseInt(id), req.user.id, req.user.role, scope);
-  }
-
-  @Patch('trash/:id/restore')
-  @RequirePermission('leave_requests.delete')
-  async restoreFromTrash(@Param('id') id: string, @Request() req, @GetPermissionScope() scope?: string | null) {
-    return this.leaveRequestsService.restoreFromTrash(parseInt(id), req.user.id, req.user.role, scope);
-  }
-
-  // Xoá vĩnh viễn - permission RIÊNG `leave_requests.hard_delete`, mặc định
-  // chỉ Admin (xem migration SeedLeaveRequestsDeletePermissions). Service
-  // CHỈ chấp nhận scope='all', không đủ với scope='department'.
-  @Delete('trash/:id/hard-delete')
-  @RequirePermission('leave_requests.hard_delete')
-  async hardDelete(@Param('id') id: string, @Request() req, @GetPermissionScope() scope?: string | null) {
-    return this.leaveRequestsService.hardDelete(parseInt(id), req.user.id, req.user.role, scope);
-  }
-
-  // ── Tự phục vụ (nghi-phep/page.tsx) - đơn CỦA CHÍNH MÌNH, gate bởi
-  // `leave_requests.request` (KHÔNG cần leave_requests.delete/hard_delete -
-  // 2 quyền đó dành cho approver/admin thao tác đơn NGƯỜI KHÁC ở trên).
-  // Đặt SAU cùng để không lẫn với các route ':id'/'trash/:id/...' phía
-  // trên (khác số segment/literal, không thực sự xung đột nhưng để đọc dễ
-  // theo nhóm chức năng).
-
-  // Alias: DELETE :id/self -> goi cancel() (Owner huy don PENDING cua chinh minh)
-  @Delete(':id/self')
-  @RequirePermission('leave_requests.request')
-  async selfCancel(@Param('id') id: string, @Request() req) {
-    return this.leaveRequestsService.cancel(parseInt(id), req.user.id);
-  }
-
-  @Patch('my-trash/:id/restore')
-  @RequirePermission('leave_requests.request')
-  async selfRestoreFromTrash(@Param('id') id: string, @Request() req) {
-    return this.leaveRequestsService.selfRestoreFromTrash(parseInt(id), req.user.id);
-  }
-
-  @Delete('my-trash/:id/hard-delete')
-  @RequirePermission('leave_requests.request')
-  async selfHardDelete(@Param('id') id: string, @Request() req) {
-    return this.leaveRequestsService.selfHardDelete(parseInt(id), req.user.id);
   }
 }

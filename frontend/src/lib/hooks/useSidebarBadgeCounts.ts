@@ -71,10 +71,7 @@ export function useSidebarBadgeCounts(): Record<string, number> {
   // Manager chỉ thấy đơn phòng ban mình quản lý, xem findPending() ở BE)
   const pendingLeaveApprovals = useQuery({
     queryKey: ['badge-count', 'duyet-phep'],
-    // ⚠️ ĐỔI: `getPending()` giờ trả `{data, total, ...}` (không còn mảng
-    // trần) - xem comment ở `leaveRequestsApi.getAll()`. `limit: 1` để BE
-    // không phải tải/trả nguyên danh sách chỉ để đếm badge.
-    queryFn: async () => (await leaveRequestsApi.getPending({ page: 1, limit: 1 })).total,
+    queryFn: async () => (await leaveRequestsApi.getPending()).length,
     enabled: canApproveLeave,
     refetchInterval: REFRESH_INTERVAL_MS,
     staleTime: REFRESH_INTERVAL_MS,
@@ -85,11 +82,10 @@ export function useSidebarBadgeCounts(): Record<string, number> {
   // phải lọc lại theo user id ở đây - chỉ cần lọc status.
   const myPendingLeave = useQuery({
     queryKey: ['badge-count', 'nghi-phep'],
-    // ⚠️ ĐỔI: lọc `status=pending` NGAY Ở BE (`QueryLeaveRequestsDto.status`)
-    // thay vì tải toàn bộ đơn của mình về rồi filter client-side như trước -
-    // `limit: 1` + đọc `.total`, không cần `.data`.
-    queryFn: async () =>
-      (await leaveRequestsApi.getAll({ status: 'pending', page: 1, limit: 1 })).total,
+    queryFn: async () => {
+      const all = await leaveRequestsApi.getAll();
+      return (all as Array<{ status: string }>).filter((r) => r.status === 'pending').length;
+    },
     enabled: canRequestLeave,
     refetchInterval: REFRESH_INTERVAL_MS,
     staleTime: REFRESH_INTERVAL_MS,

@@ -23,8 +23,6 @@ import { PermissionScope } from '../../database/entities/role-permission.entity'
 import { UploadsService } from '../uploads/uploads.service';
 import { LeaveTypesService } from '../leave-types/leave-types.service';
 import { AuditService } from '../audit/audit.service';
-import { paginateByWeek, weekStartColumnRef } from '../../common/utils/week-window.util';
-import { QueryLeaveRequestsDto } from './dto/query-leave-requests.dto';
 
 /**
  * PERMISSIONS.md mục 2.6 - ĐÃ ĐƯỢC GENERALIZE sang scope-based:
@@ -135,95 +133,6 @@ export class LeaveRequestsService {
       departmentManagerRepo,
       managerId,
     );
-  }
-
-  /**
-   * Áp các filter DÙNG CHUNG cho 4 endpoint danh sách (`findAll`/
-   * `findPending`/`findHistory`/`findTrash`) lên 1 QueryBuilder ĐÃ join sẵn
-   * `requester` với alias 'requester' - xem `QueryLeaveRequestsDto`. Field
-   * nào không có trong `options` thì bỏ qua, không phải endpoint nào cũng
-   * dùng hết mọi field (vd `findAll` của riêng mình không cần `departmentId`
-   * nhưng có join `requester` sẵn nên không sao nếu FE lỡ truyền).
-   */
-  private applyListFilters(
-    qb: ReturnType<Repository<LeaveRequest>['createQueryBuilder']>,
-    alias: string,
-    options: QueryLeaveRequestsDto,
-  ): void {
-    if (options.leaveType) {
-      qb.andWhere(`${alias}.leaveType = :leaveType`, { leaveType: options.leaveType });
-    }
-    if (options.status) {
-      qb.andWhere(`${alias}.status = :status`, { status: options.status });
-    }
-    if (options.departmentId) {
-      qb.andWhere('requester.departmentId = :departmentId', { departmentId: options.departmentId });
-    }
-    if (options.search?.trim()) {
-      const search = `%${options.search.trim()}%`;
-      qb.andWhere(
-        new Brackets((sub) => {
-          sub
-            .where('requester.name LIKE :search', { search })
-            .orWhere('requester.email LIKE :search', { search })
-            .orWhere(`${alias}.reason LIKE :search`, { search });
-        }),
-      );
-    }
-    // Giao khoảng ngày [dateFrom, dateTo] với [startDate, endDate] của đơn -
-    // mirror ĐÚNG logic `overlap` FE đang lọc client-side trước đây.
-    if (options.dateFrom && options.dateTo) {
-      qb.andWhere(`${alias}.startDate <= :dateTo AND ${alias}.endDate >= :dateFrom`, {
-        dateFrom: options.dateFrom,
-        dateTo: options.dateTo,
-      });
-    }
-  }
-
-  /**
-   * Chạy phân trang (item-mode HOẶC week-mode tuỳ `options.weeksPerPage`)
-   * trên 1 QueryBuilder ĐÃ áp đủ where/scope/filter - mirror ĐÚNG
-   * `AuditService.getLogs()`. Dùng chung cho `findAll`/`findPending`/
-   * `findHistory`/`findTrash` để 4 hàm đó không phải chép lại logic này.
-   */
-  private async paginateList(
-    qb: ReturnType<Repository<LeaveRequest>['createQueryBuilder']>,
-    alias: string,
-    options: QueryLeaveRequestsDto,
-    orderByColumn: string,
-  ) {
-    const page = Math.max(1, options.page ?? 1);
-    const limit = Math.min(100, Math.max(1, options.limit ?? 20));
-
-    qb.orderBy(`${alias}.${orderByColumn}`, 'DESC');
-
-    if (options.weeksPerPage) {
-      const r = await paginateByWeek(qb, {
-        weekExpr: weekStartColumnRef(alias),
-        page,
-        weeksPerPage: options.weeksPerPage,
-        weekStart: options.weekStart,
-        weekPage: options.weekPage ?? 1,
-        weekLimit: options.weekLimit ?? 20,
-      });
-      return {
-        data: r.data,
-        total: r.total,
-        page,
-        limit: options.weeksPerPage,
-        totalPages: r.totalPages,
-        weeks: r.weeks,
-        weekTotal: r.weekTotal,
-        ...r.meta,
-      };
-    }
-
-    const [data, total] = await qb
-      .skip((page - 1) * limit)
-      .take(limit)
-      .getManyAndCount();
-
-    return { data, total, page, limit, totalPages: Math.ceil(total / limit) || 1 };
   }
 
   /**
@@ -686,53 +595,37 @@ export class LeaveRequestsService {
 
   /**
    * Get requests for the current user (My Leave Requests)
-   *
-   * ⚠️ ĐỔI (yêu cầu người dùng: "Phân trang cho nghi-phep ... để data lớn
-   * lên không bị Lag"): trước đây trả THẲNG mảng đầy đủ, FE tự lọc/gộp tuần
-   * ở RAM (`WeekGroupedRequests` cũ) - giờ filter/pagination chuyển hẳn
-   * xuống DB qua `applyListFilters()`/`paginateList()` (mirror
-   * `AuditService.getLogs()`), hỗ trợ CẢ item-mode (page/limit) lẫn
-   * week-mode (`weeksPerPage`, dùng cho trang "4 tuần"). Trả về
-   * `{data, total, page, limit, totalPages, [weeks]}` thay vì mảng trần -
-   * xem `useSidebarBadgeCounts.ts` (đã đổi sang đọc `.total`).
    */
-  async findAll(userId: number, options: QueryLeaveRequestsDto = {}) {
-    const qb = this.leaveRequestRepo
+  async findAll(userId: number) {
+    // Đổi từ repo.find({relations}) sang QueryBuilder - cần
+    // loadRelationCountAndMap() để đếm `attachmentCount` (KHÔNG load full
+    // attachments, chỉ 1 câu COUNT phụ, tránh N+1 kiểu load hết rồi đếm
+    // length ở JS). Giữ nguyên đúng field/order/where như bản cũ.
+    return this.leaveRequestRepo
       .createQueryBuilder('leave')
       .leftJoinAndSelect('leave.requester', 'requester')
       .leftJoinAndSelect('leave.approver', 'approver')
       .loadRelationCountAndMap('leave.attachmentCount', 'leave.attachments')
       .where('leave.requesterId = :userId', { userId })
-      .andWhere('leave.cancelledAt IS NULL');
-
-    this.applyListFilters(qb, 'leave', options);
-
-    return this.paginateList(qb, 'leave', options, 'createdAt');
+      .orderBy('leave.createdAt', 'DESC')
+      .getMany();
   }
 
   /**
    * Danh sách đơn đang chờ duyệt MÀ VIEWER CÓ QUYỀN DUYỆT - theo scope.
-   *
-   * ⚠️ ĐỔI (yêu cầu người dùng, mirror `findAll()` ở trên): filter (search/
-   * phòng ban/loại phép) + phân trang (item HOẶC week-mode) giờ chạy Ở DB
-   * qua `applyListFilters()`/`paginateList()`, KHÔNG còn trả nguyên mảng để
-   * FE tự lọc/gộp tuần client-side như bản cũ.
    */
   async findPending(
     viewerId: number,
     viewerRole: string,
     scope?: string | null,
-    options: QueryLeaveRequestsDto = {},
   ) {
     // Thuần theo scope từ role_permissions - không fallback cứng theo Role.
     const isDeptScope = scope === PermissionScope.DEPARTMENT;
     const isAllScope = scope === PermissionScope.ALL;
 
-    if (viewerRole !== Role.ADMIN && !isAllScope && !isDeptScope) {
-      return { data: [], total: 0, page: options.page ?? 1, limit: options.limit ?? 20, totalPages: 1 };
-    }
+    if (viewerRole !== Role.ADMIN && !isAllScope && !isDeptScope) return [];
 
-    const qb = this.leaveRequestRepo
+    const query = this.leaveRequestRepo
       .createQueryBuilder('leave')
       .leftJoinAndSelect('leave.requester', 'requester')
       .leftJoinAndSelect('requester.department', 'department')
@@ -740,8 +633,7 @@ export class LeaveRequestsService {
       // `LeaveRequest.attachmentCount` (entity) - FE hiện số lượng ở nút
       // "Đính kèm" mà không cần bấm vào từng đơn.
       .loadRelationCountAndMap('leave.attachmentCount', 'leave.attachments')
-      .where('leave.status = :status', { status: LeaveStatus.PENDING })
-      .andWhere('leave.cancelledAt IS NULL');
+      .where('leave.status = :status', { status: LeaveStatus.PENDING });
 
     if (viewerRole !== Role.ADMIN && !isAllScope && isDeptScope) {
       const managedIds = await this.getManagedDepartmentIds(viewerId);
@@ -751,11 +643,11 @@ export class LeaveRequestsService {
       // ban nào NHƯNG có ngoại lệ gán riêng, vẫn phải thấy - không return
       // [] sớm như trước migration AddLeaveApproverOverrideToUsers nữa.
       if (managedIds.length === 0) {
-        qb.andWhere('requester.leaveApproverId = :viewerId', { viewerId });
+        query.andWhere('requester.leaveApproverId = :viewerId', { viewerId });
       } else {
-        qb.andWhere(
-          new Brackets((sub) => {
-            sub.where('requester.departmentId IN (:...deptIds)', {
+        query.andWhere(
+          new Brackets((qb) => {
+            qb.where('requester.departmentId IN (:...deptIds)', {
               deptIds: managedIds,
             }).orWhere('requester.leaveApproverId = :viewerId', { viewerId });
           }),
@@ -763,35 +655,25 @@ export class LeaveRequestsService {
       }
     }
 
-    this.applyListFilters(qb, 'leave', options);
-
-    return this.paginateList(qb, 'leave', options, 'createdAt');
+    return query.orderBy('leave.createdAt', 'DESC').getMany();
   }
 
   /**
    * Lịch sử duyệt (Approved/Rejected) trong phạm vi VIEWER CÓ QUYỀN DUYỆT -
    * cùng bộ lọc scope với findPending().
-   *
-   * ⚠️ ĐỔI (yêu cầu người dùng, mirror `findPending()`): filter + phân trang
-   * (item/week-mode) chuyển xuống DB, KHÔNG còn cap cứng "200 bản ghi gần
-   * nhất" của bản trước - week-mode/item-mode đều đã phân trang thật ở DB
-   * nên không cần cap nữa (dữ liệu nhiều lên vẫn nhẹ, xem `paginateList()`).
    */
   async findHistory(
     viewerId: number,
     viewerRole: string,
     scope?: string | null,
-    options: QueryLeaveRequestsDto = {},
   ) {
     // Thuần theo scope từ role_permissions - không fallback cứng theo Role.
     const isDeptScopeH = scope === PermissionScope.DEPARTMENT;
     const isAllScopeH = scope === PermissionScope.ALL;
 
-    if (viewerRole !== Role.ADMIN && !isAllScopeH && !isDeptScopeH) {
-      return { data: [], total: 0, page: options.page ?? 1, limit: options.limit ?? 20, totalPages: 1 };
-    }
+    if (viewerRole !== Role.ADMIN && !isAllScopeH && !isDeptScopeH) return [];
 
-    const qb = this.leaveRequestRepo
+    const query = this.leaveRequestRepo
       .createQueryBuilder('leave')
       .leftJoinAndSelect('leave.requester', 'requester')
       .leftJoinAndSelect('requester.department', 'department')
@@ -800,18 +682,17 @@ export class LeaveRequestsService {
       .loadRelationCountAndMap('leave.attachmentCount', 'leave.attachments')
       .where('leave.status IN (:...statuses)', {
         statuses: [LeaveStatus.APPROVED, LeaveStatus.REJECTED],
-      })
-      .andWhere('leave.cancelledAt IS NULL');
+      });
 
     if (viewerRole !== Role.ADMIN && !isAllScopeH && isDeptScopeH) {
       const managedIds = await this.getManagedDepartmentIds(viewerId);
       // Đối xứng với findPending()/isEligibleApprover() - xem comment ở đó.
       if (managedIds.length === 0) {
-        qb.andWhere('requester.leaveApproverId = :viewerId', { viewerId });
+        query.andWhere('requester.leaveApproverId = :viewerId', { viewerId });
       } else {
-        qb.andWhere(
-          new Brackets((sub) => {
-            sub.where('requester.departmentId IN (:...deptIds)', {
+        query.andWhere(
+          new Brackets((qb) => {
+            qb.where('requester.departmentId IN (:...deptIds)', {
               deptIds: managedIds,
             }).orWhere('requester.leaveApproverId = :viewerId', { viewerId });
           }),
@@ -819,61 +700,16 @@ export class LeaveRequestsService {
       }
     }
 
-    this.applyListFilters(qb, 'leave', options);
-
-    // ⚠️ FIX BUG THẬT (2026-09-23, User báo "đơn Sửa bị nhảy lên đầu"): sort
-    // theo `createdAt` (không phải `updatedAt`) - mirror đúng findPending(),
-    // giữ nguyên qua lần đổi sang phân trang thật này.
-    return this.paginateList(qb, 'leave', options, 'createdAt');
-  }
-
-  /**
-   * Thùng rác (Tab "Thùng rác" ở `duyet-phep`) - đơn đã bị HUỶ bởi Admin/Approver
-   * SAU KHI đã có quyết định (APPROVED/REJECTED). Đơn PENDING bị Owner tự huỷ
-   * KHÔNG xuất hiện ở đây (trôi vào Thùng rác trang Nghỉ phép của chính Owner).
-   */
-  async findTrash(
-    viewerId: number,
-    viewerRole: string,
-    scope: string | null | undefined,
-    options: QueryLeaveRequestsDto = {},
-  ) {
-    const isDeptScope = scope === PermissionScope.DEPARTMENT;
-    const isAllScope = scope === PermissionScope.ALL;
-
-    if (viewerRole !== Role.ADMIN && !isAllScope && !isDeptScope) {
-      return { data: [], total: 0, page: options.page ?? 1, limit: options.limit ?? 20, totalPages: 1 };
-    }
-
-    const qb = this.leaveRequestRepo
-      .createQueryBuilder('leave')
-      .leftJoinAndSelect('leave.requester', 'requester')
-      .leftJoinAndSelect('requester.department', 'department')
-      .leftJoinAndSelect('leave.deletedBy', 'deletedBy')
-      .loadRelationCountAndMap('leave.attachmentCount', 'leave.attachments')
-      .where('leave.cancelledAt IS NOT NULL')
-      .andWhere('leave.status IN (:...statuses)', {
-        statuses: [LeaveStatus.APPROVED, LeaveStatus.REJECTED],
-      });
-
-    if (viewerRole !== Role.ADMIN && !isAllScope && isDeptScope) {
-      const managedIds = await this.getManagedDepartmentIds(viewerId);
-      if (managedIds.length === 0) {
-        qb.andWhere('requester.leaveApproverId = :viewerId', { viewerId });
-      } else {
-        qb.andWhere(
-          new Brackets((sub) => {
-            sub.where('requester.departmentId IN (:...deptIds)', {
-              deptIds: managedIds,
-            }).orWhere('requester.leaveApproverId = :viewerId', { viewerId });
-          }),
-        );
-      }
-    }
-
-    this.applyListFilters(qb, 'leave', options);
-
-    return this.paginateList(qb, 'leave', options, 'cancelledAt');
+    // ⚠️ Trước đây không có take()/skip() nào - số đơn phép đã duyệt/từ chối
+    // sẽ tích luỹ vô hạn theo thời gian sử dụng. Cap lại 200 bản ghi gần
+    // nhất để tránh phình to dần mà không đổi contract (vẫn trả về mảng).
+    // ⚠️ FIX BUG THẬT (2026-09-23, User báo "đơn Sửa bị nhảy lên đầu"): trước
+    // đây sort theo `updatedAt` - mỗi lần "Sửa hộ" (update()) hoặc chính thao
+    // tác duyệt/từ chối (cũng ghi updatedAt) đều đẩy record đó lên đầu danh
+    // sách, sai với kỳ vọng "sort theo ngày TẠO mới nhất". Đổi sang
+    // `createdAt DESC` - mirror đúng findPending() (đã đúng từ đầu, không
+    // đụng vào).
+    return query.orderBy('leave.createdAt', 'DESC').take(200).getMany();
   }
 
   /**
@@ -1017,12 +853,19 @@ export class LeaveRequestsService {
   }
 
   /**
-   * Hủy đơn CỦA CHÍNH MÌNH (by requester) - chỉ áp dụng khi đơn đang PENDING.
-   * Đánh dấu cancelledAt = now, đơn trôi vào Thùng rác "Nghỉ phép" của owner.
+   * Cancel request (by requester)
+   *
+   * ⚠️ CẬP NHẬT (theo yêu cầu): huỷ đơn giờ dọn luôn ảnh đính kèm (nếu có) -
+   * cả object thật trên B2 lẫn dòng `leave_request_attachments` trong DB.
+   * Đơn đã huỷ không còn nghiệp vụ nào cần giữ ảnh (thường là giấy khám
+   * bệnh - dữ liệu sức khoẻ nhạy cảm), không nên để tồn tại vô thời hạn.
+   * Xoá B2 làm BEST-EFFORT (log warn nếu lỗi) - KHÔNG chặn việc huỷ đơn
+   * nếu bước xoá ảnh gặp sự cố (giống pattern `deleteAvatar` ở uploads.service.ts).
    */
   async cancel(requestId: number, requesterId: number) {
     const request = await this.leaveRequestRepo.findOne({
       where: { id: requestId, requesterId },
+      relations: ['attachments'],
     });
 
     if (!request) {
@@ -1033,178 +876,23 @@ export class LeaveRequestsService {
       throw new BadRequestException('Chỉ có thể hủy đơn đang chờ duyệt');
     }
 
-    if (request.cancelledAt) {
-      throw new BadRequestException('Đơn này đã bị huỷ trước đó');
-    }
+    request.status = LeaveStatus.CANCELLED;
+    request.cancelledAt = new Date();
 
-    await this.leaveRequestRepo.update(requestId, {
-      cancelledAt: new Date(),
-      deletedById: requesterId,
-    });
-
-    this.auditService.logActionAsync(
-      requesterId,
-      'CANCEL_LEAVE_REQUEST',
-      'leave_request',
-      requestId,
-      { cancelledAt: null },
-      { cancelledAt: new Date(), status: request.status },
-    );
-
-    return { message: 'Đã huỷ đơn nghỉ phép' };
-  }
-
-  /**
-   * Xoá MỀM (đưa vào Thùng rác) - permission `leave_requests.delete`, dùng
-   * LẠI đúng `isEligibleApprover()` (cùng scope với approve/reject/xem
-  /**
-   * Huỷ đơn bởi Admin/Approver - CHỈ được huỷ đơn đã có quyết định (APPROVED/REJECTED).
-   * Đơn PENDING chỉ Owner mới được huỷ (qua cancel()).
-   * Đơn huỷ trôi vào Thùng rác "Duyệt phép" (tab Admin).
-   */
-  async softDelete(
-    id: number,
-    actorId: number,
-    actorRole: string,
-    scope?: string | null,
-  ) {
-    const request = await this.leaveRequestRepo.findOne({
-      where: { id },
-      relations: ['requester'],
-    });
-
-    if (!request) {
-      throw new NotFoundException('Không tìm thấy đơn nghỉ phép');
-    }
-
-    if (request.cancelledAt) {
-      throw new BadRequestException('Đơn này đã bị huỷ trước đó');
-    }
-
-    // Đơn PENDING chỉ Owner mới được tự huỷ
-    if (request.status === LeaveStatus.PENDING && request.requesterId !== actorId) {
-      throw new ForbiddenException('Bạn hãy duyệt đơn để được xoá đơn');
-    }
-
-    const allowed = await this.isEligibleApprover(
-      request.requester.departmentId,
-      actorId,
-      actorRole,
-      scope,
-      request.requester.leaveApproverId,
-    );
-    if (!allowed) {
-      throw new ForbiddenException('Bạn không có quyền xoá đơn nghỉ phép này');
-    }
-
-    await this.leaveRequestRepo.update(id, {
-      cancelledAt: new Date(),
-      deletedById: actorId,
-    });
-
-    this.auditService.logActionAsync(
-      actorId,
-      'CANCEL_LEAVE_REQUEST',
-      'leave_request',
-      id,
-      { cancelledAt: null },
-      {
-        cancelledAt: new Date(),
-        requester: { id: request.requesterId, name: request.requester.name },
-        status: request.status,
-      },
-    );
-
-    return { message: 'Đã huỷ đơn nghỉ phép' };
-  }
-
-  /**
-   * Khôi phục đơn từ Thùng rác "Duyệt phép" (Admin/Approver).
-   */
-  async restoreFromTrash(
-    id: number,
-    actorId: number,
-    actorRole: string,
-    scope?: string | null,
-  ) {
-    const request = await this.leaveRequestRepo.findOne({
-      where: { id },
-      relations: ['requester'],
-    });
-
-    if (!request) {
-      throw new NotFoundException('Không tìm thấy đơn nghỉ phép');
-    }
-    if (!request.cancelledAt) {
-      throw new BadRequestException('Đơn nghỉ phép này chưa bị huỷ');
-    }
-
-    const allowed = await this.isEligibleApprover(
-      request.requester.departmentId,
-      actorId,
-      actorRole,
-      scope,
-      request.requester.leaveApproverId,
-    );
-    if (!allowed) {
-      throw new ForbiddenException('Bạn không có quyền khôi phục đơn nghỉ phép này');
-    }
-
-    await this.leaveRequestRepo.update(id, {
-      cancelledAt: null,
-      deletedById: null,
-    });
-
-    this.auditService.logActionAsync(
-      actorId,
-      'RESTORE_LEAVE_REQUEST',
-      'leave_request',
-      id,
-      null,
-      { restored: true },
-    );
-
-    return { message: 'Đã khôi phục đơn nghỉ phép' };
-  }
-
-  /**
-   * Xoá VĨNH VIỄN (irreversible) bởi Admin - chỉ áp dụng cho đơn đã bị huỷ (cancelledAt IS NOT NULL).
-   */
-  async hardDelete(
-    id: number,
-    actorId: number,
-    actorRole: string,
-    scope?: string | null,
-  ) {
-    if (actorRole !== Role.ADMIN && scope !== PermissionScope.ALL) {
-      throw new ForbiddenException(
-        'Chỉ Admin (hoặc quyền phạm vi "Toàn bộ") mới được xoá vĩnh viễn đơn nghỉ phép',
-      );
-    }
-
-    const request = await this.leaveRequestRepo.findOne({
-      where: { id },
-      relations: ['requester', 'attachments'],
-    });
-
-    if (!request) {
-      throw new NotFoundException('Không tìm thấy đơn nghỉ phép');
-    }
-    if (!request.cancelledAt) {
-      throw new BadRequestException(
-        'Chỉ có thể xoá vĩnh viễn đơn nghỉ phép đã bị huỷ',
-      );
-    }
+    const saved = await this.leaveRequestRepo.save(request);
 
     const attachments = request.attachments || [];
     if (attachments.length > 0) {
       await Promise.all(
         attachments.map((a) =>
           this.uploadsService
-            .deleteObject(this.uploadsService.leaveAttachmentsBucket, a.objectKey)
+            .deleteObject(
+              this.uploadsService.leaveAttachmentsBucket,
+              a.objectKey,
+            )
             .catch((err) =>
               this.logger.warn(
-                `Không xoá được ảnh đính kèm khi hard-delete đơn: ${a.objectKey}`,
+                `Không xoá được ảnh đính kèm khi huỷ đơn: ${a.objectKey}`,
                 err,
               ),
             ),
@@ -1213,137 +901,17 @@ export class LeaveRequestsService {
       await this.attachmentRepo.remove(attachments);
     }
 
-    const snapshot = {
-      requester: { id: request.requesterId, name: request.requester?.name },
-      leaveType: request.leaveType,
-      status: request.status,
-      startDate: request.startDate,
-      endDate: request.endDate,
-      totalDays: request.totalDays,
-    };
-
-    await this.leaveRequestRepo.delete(id);
-
-    this.auditService.logActionAsync(
-      actorId,
-      'HARD_DELETE_LEAVE_REQUEST',
-      'leave_request',
-      id,
-      snapshot,
-      null,
-    );
-
-    return { message: 'Đã xoá vĩnh viễn đơn nghỉ phép' };
-  }
-
-  /**
-   * Thùng rác CỦA CHÍNH MÌNH - đơn PENDING đã bị Owner tự huỷ (cancelledAt IS NOT NULL).
-   */
-  async findMyTrash(userId: number, options: QueryLeaveRequestsDto = {}) {
-    const qb = this.leaveRequestRepo
-      .createQueryBuilder('leave')
-      .leftJoinAndSelect('leave.requester', 'requester')
-      .leftJoinAndSelect('leave.approver', 'approver')
-      .leftJoinAndSelect('leave.deletedBy', 'deletedBy')
-      .loadRelationCountAndMap('leave.attachmentCount', 'leave.attachments')
-      .where('leave.requesterId = :userId', { userId })
-      .andWhere('leave.cancelledAt IS NOT NULL')
-      .andWhere('leave.status = :status', { status: LeaveStatus.PENDING });
-
-    this.applyListFilters(qb, 'leave', options);
-
-    return this.paginateList(qb, 'leave', options, 'cancelledAt');
-  }
-
-  /**
-   * Khôi phục đơn CỦA CHÍNH MÌNH từ Thùng rác Nghỉ phép.
-   */
-  async selfRestoreFromTrash(id: number, requesterId: number) {
-    const request = await this.leaveRequestRepo.findOne({
-      where: { id, requesterId },
-    });
-
-    if (!request) {
-      throw new NotFoundException('Không tìm thấy đơn nghỉ phép trong thùng rác');
-    }
-    if (!request.cancelledAt) {
-      throw new BadRequestException('Đơn nghỉ phép này chưa bị huỷ');
-    }
-
-    await this.leaveRequestRepo.update(id, {
-      cancelledAt: null,
-      deletedById: null,
-    });
-
     this.auditService.logActionAsync(
       requesterId,
-      'RESTORE_LEAVE_REQUEST',
+      'CANCEL_LEAVE_REQUEST',
       'leave_request',
-      id,
-      null,
-      { restored: true, selfRestore: true },
+      saved.id,
+      { status: LeaveStatus.PENDING },
+      { status: LeaveStatus.CANCELLED },
     );
 
-    return { message: 'Đã khôi phục đơn nghỉ phép' };
+    return saved;
   }
-
-  /**
-   * Xoá VĨNH VIỄN đơn CỦA CHÍNH MÌNH khỏi Thùng rác Nghỉ phép.
-   */
-  async selfHardDelete(id: number, requesterId: number) {
-    const request = await this.leaveRequestRepo.findOne({
-      where: { id, requesterId },
-      relations: ['attachments'],
-    });
-
-    if (!request) {
-      throw new NotFoundException('Không tìm thấy đơn nghỉ phép');
-    }
-    if (!request.cancelledAt) {
-      throw new BadRequestException(
-        'Chỉ có thể xoá vĩnh viễn đơn nghỉ phép đã bị huỷ',
-      );
-    }
-
-    const attachments = request.attachments || [];
-    if (attachments.length > 0) {
-      await Promise.all(
-        attachments.map((a) =>
-          this.uploadsService
-            .deleteObject(this.uploadsService.leaveAttachmentsBucket, a.objectKey)
-            .catch((err) =>
-              this.logger.warn(
-                `Không xoá được ảnh đính kèm khi tự xoá vĩnh viễn đơn: ${a.objectKey}`,
-                err,
-              ),
-            ),
-        ),
-      );
-      await this.attachmentRepo.remove(attachments);
-    }
-
-    const snapshot = {
-      leaveType: request.leaveType,
-      status: request.status,
-      startDate: request.startDate,
-      endDate: request.endDate,
-      totalDays: request.totalDays,
-    };
-
-    await this.leaveRequestRepo.delete(id);
-
-    this.auditService.logActionAsync(
-      requesterId,
-      'HARD_DELETE_LEAVE_REQUEST',
-      'leave_request',
-      id,
-      snapshot,
-      null,
-    );
-
-    return { message: 'Đã xoá vĩnh viễn đơn nghỉ phép' };
-  }
-
 
   /**
    * Xoá 1 ảnh đính kèm ĐÃ upload thẳng lên B2 (qua presign) nhưng CHƯA

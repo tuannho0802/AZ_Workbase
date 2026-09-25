@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useMemo, useCallback, useRef } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { useRouter } from 'next/navigation';
 import {
   Card, Button, Space, Tag, Badge, Tabs, Modal, Input, App, Typography, Divider, Tooltip,
@@ -8,15 +8,13 @@ import {
 } from 'antd';
 import {
   CheckOutlined, CloseOutlined, HistoryOutlined, HourglassOutlined,
-  UserOutlined, CalendarOutlined, ClockCircleOutlined, SearchOutlined, EditOutlined,
-  DeleteOutlined, UndoOutlined, DeleteRowOutlined
+  UserOutlined, CalendarOutlined, ClockCircleOutlined, SearchOutlined, EditOutlined
 } from '@ant-design/icons';
-import { leaveRequestsApi, LeaveRequest, LeaveRequestsQuery } from '@/lib/api/leave-requests.api';
+import { leaveRequestsApi, LeaveRequest } from '@/lib/api/leave-requests.api';
 import { useMyPermissions } from '@/lib/hooks/useMyPermissions';
 import { useLeaveTypes } from '@/lib/hooks/useLeaveTypes';
-import { useDepartments } from '@/lib/hooks/useDepartments';
 import { AttachmentsViewerButton } from '@/components/leave-requests/AttachmentsViewerButton';
-import { WeeklyLazySection, WeekBucketDto } from '@/components/common/WeeklyLazySection';
+import { WeekGroupedRequests } from '@/components/leave-requests/WeekGroupedRequests';
 import { resolveEntityColor } from '@/lib/utils/entityColor';
 import dayjs, { Dayjs } from 'dayjs';
 
@@ -66,22 +64,6 @@ const REASON_ELLIPSIS_STYLE: React.CSSProperties = {
 function formatPeriodHours(record: LeaveRequest): string | null {
   if (!record.periodStartTime || !record.periodEndTime) return null;
   return `${record.periodStartTime.slice(0, 5)} - ${record.periodEndTime.slice(0, 5)}`;
-}
-
-/**
- * FIX BUG THẬT (báo qua ảnh chụp: nút "Khôi phục"/"Xoá vĩnh viễn" ở cột
- * "Thao tác" tab Thùng rác tràn hẳn ra ngoài bảng): trước đây CẢ 3 bảng
- * (Chờ duyệt/Lịch sử/Thùng rác) không hề truyền `scroll` cho `<Table>` dù
- * mỗi cột đã khai `width` cố định - thiếu `scroll.x` (số pixel cụ thể,
- * KHÔNG dùng 'max-content' - xem comment ở `pendingColumns` bên dưới) thì
- * antd không ép `tableLayout: fixed` thật sự, nội dung Ô (đặc biệt Ô nhiều
- * nút bấm) tự do tràn ra ngoài biên cột/bảng thay vì bị cắt/xuống dòng.
- * Hàm này cộng tổng `width` của các cột ĐANG HIỂN THỊ (sau khi `.filter()`
- * ẩn/hiện theo quyền) để làm `scroll.x` - dùng CHUNG cho cả 3 bảng, tự động
- * đúng dù sau này thêm/bớt cột hay đổi quyền hiển thị "Thao tác".
- */
-function sumColumnWidths(columns: { width?: number }[]): number {
-  return columns.reduce((sum, col) => sum + (col.width ?? 120), 0);
 }
 
 // ── mobile card – pending ────────────────────────────────────────────────────
@@ -267,105 +249,11 @@ function HistoryMobileCard({
   );
 }
 
-// ── mobile card – trash ──────────────────────────────────────────────────────
-function TrashMobileCard({
-  record,
-  onRestore,
-  onHardDelete,
-  canHardDelete,
-  leaveTypeMap,
-}: {
-  record: LeaveRequest;
-  onRestore: (record: LeaveRequest) => void;
-  onHardDelete: (record: LeaveRequest) => void;
-  canHardDelete: boolean;
-  leaveTypeMap: Record<string, { text: string; color: string }>;
-}) {
-  const lt = leaveTypeMap[record.leaveType] ?? { text: record.leaveType, color: 'default' };
-  const st = STATUS_MAP[record.status] ?? { text: record.status, color: 'default' };
-  return (
-    <Card
-      variant="outlined"
-      style={{ marginBottom: 10 }}
-      styles={{ body: { padding: '12px 14px' } }}
-    >
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 8 }}>
-        <div>
-          <div style={{ fontWeight: 600, fontSize: 14 }}>{record.requester.name}</div>
-          <div style={{ fontSize: 11, color: '#8c8c8c' }}>{record.requester.email}</div>
-        </div>
-        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 4 }}>
-          <Tag color={lt.color}>{lt.text}</Tag>
-          <Tag color={st.color}>{st.text}</Tag>
-        </div>
-      </div>
-
-      <Divider style={{ margin: '8px 0' }} />
-
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 4, marginBottom: 10 }}>
-        <Text style={{ fontSize: 12 }}>
-          {dayjs(record.startDate).format('DD/MM/YYYY')} → {dayjs(record.endDate).format('DD/MM/YYYY')}
-          <Text strong style={{ color: '#1890ff', marginLeft: 6 }}>{record.totalDays} ngày</Text>
-        </Text>
-        <Text style={{ fontSize: 12, color: '#8c8c8c' }}>
-          Người xoá: <Text strong>{record.deletedBy?.name || '-'}</Text>
-        </Text>
-        {record.deletedAt && (
-          <Text style={{ fontSize: 12, color: '#8c8c8c' }}>
-            Ngày xoá: {dayjs(record.deletedAt).format('DD/MM/YYYY HH:mm')}
-          </Text>
-        )}
-      </div>
-
-      <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-        <Button
-          size="small"
-          icon={<UndoOutlined />}
-          style={{ flex: 1, minWidth: 110 }}
-          onClick={() => onRestore(record)}
-        >
-          Khôi phục
-        </Button>
-        {canHardDelete && (
-          <Button
-            danger
-            size="small"
-            icon={<DeleteRowOutlined />}
-            style={{ flex: 1 }}
-            onClick={() => onHardDelete(record)}
-          >
-            Xoá vĩnh viễn
-          </Button>
-        )}
-      </div>
-    </Card>
-  );
-}
-
 // ── main page ────────────────────────────────────────────────────────────────
-// Trạng thái nội bộ dùng chung cho CẢ 3 tab (Chờ duyệt/Lịch sử/Thùng rác) -
-// mỗi tab là 1 "phân trang theo tuần" ĐỘC LẬP (weeks/weekFilters/fetchToken
-// riêng), mirror ĐÚNG cách `audit-logs/page.tsx` tách 2 tab (chính/Đăng
-// nhập). Gom vào 1 type để 3 khối state/fetch dưới đây không lặp lại tên.
-interface WeekTabState {
-  weeks: WeekBucketDto[];
-  weekFilters: LeaveRequestsQuery;
-  fetchToken: number;
-  page: number;
-  weeksPerPage: number;
-  totalWeeks: number;
-  total: number;
-  loading: boolean;
-}
-const INITIAL_TAB_STATE: WeekTabState = {
-  weeks: [], weekFilters: {}, fetchToken: 0, page: 1, weeksPerPage: 4, totalWeeks: 0, total: 0, loading: false,
-};
-
 export default function ApprovalPage() {
-  const [pendingState, setPendingState] = useState<WeekTabState>(INITIAL_TAB_STATE);
-  const [historyState, setHistoryState] = useState<WeekTabState>(INITIAL_TAB_STATE);
-  const [trashState, setTrashState] = useState<WeekTabState>(INITIAL_TAB_STATE);
-  const [trashTabLoaded, setTrashTabLoaded] = useState(false);
+  const [pendingRequests, setPendingRequests] = useState<LeaveRequest[]>([]);
+  const [historyRequests, setHistoryRequests] = useState<LeaveRequest[]>([]);
+  const [loading, setLoading] = useState(false);
   const [rejectModalOpen, setRejectModalOpen] = useState(false);
   const [selectedRequest, setSelectedRequest] = useState<number | null>(null);
   const [rejectionReason, setRejectionReason] = useState('');
@@ -380,11 +268,10 @@ export default function ApprovalPage() {
   const [editSubmitting, setEditSubmitting] = useState(false);
   const [editForm] = Form.useForm();
 
-  // Filter: giờ lọc SERVER-SIDE (gửi kèm mỗi lần fetch page/tuần) thay vì
-  // tải hết rồi lọc client - dữ liệu nhiều người/phòng ban nên field cần
-  // nhiều hơn nghi-phep (của riêng mình): search theo tên/email người gửi +
-  // lý do, phòng ban, loại phép; tab Lịch sử/Thùng rác có thêm Trạng thái +
-  // khoảng ngày.
+  // Filter: cả 2 tab đều là client-side (BE trả toàn bộ, không phân trang) -
+  // dữ liệu nhiều người/phòng ban nên field cần nhiều hơn nghi-phep (của
+  // riêng mình): search theo tên/email người gửi + lý do, phòng ban, loại
+  // phép; tab Lịch sử có thêm Trạng thái + khoảng ngày (đã xử lý xong).
   const [pendingSearch, setPendingSearch] = useState('');
   const [pendingDept, setPendingDept] = useState<string | null>(null);
   const [pendingLeaveType, setPendingLeaveType] = useState<string | null>(null);
@@ -394,9 +281,6 @@ export default function ApprovalPage() {
   const [historyLeaveType, setHistoryLeaveType] = useState<string | null>(null);
   const [historyStatus, setHistoryStatus] = useState<string | null>(null);
   const [historyDateRange, setHistoryDateRange] = useState<[Dayjs | null, Dayjs | null] | null>(null);
-
-  const [trashSearch, setTrashSearch] = useState('');
-  const [trashDept, setTrashDept] = useState<string | null>(null);
 
   // Antd Hooks to fix "Static function" warning
   const { message: messageApi, modal } = App.useApp();
@@ -411,19 +295,64 @@ export default function ApprovalPage() {
     [leaveTypes],
   );
 
-  // ⚠️ ĐỔI: dropdown Phòng ban giờ lấy từ `useDepartments()` (nguồn thật,
-  // danh sách ĐẦY ĐỦ mọi phòng ban) thay vì suy từ data đã tải - vì giờ mỗi
-  // panel tuần chỉ tải ĐÚNG bản ghi của tuần đó (lazy), không còn "toàn bộ
-  // danh sách đơn hiện có" trong RAM để suy ra nữa.
-  const { departments } = useDepartments();
-  const departmentOptions = useMemo(
-    () =>
-      departments.map((d) => ({
-        value: String(d.id),
-        label: <Tag color={resolveEntityColor(d.color)} style={{ marginInlineEnd: 0 }}>{d.name}</Tag>,
-      })),
-    [departments],
-  );
+  // Phòng ban dùng cho dropdown filter - suy trực tiếp từ data đã tải (danh
+  // sách đơn nghỉ, không có phòng ban nào lạ hơn danh sách này), tránh phải
+  // gọi thêm 1 API riêng chỉ để phục vụ 1 dropdown lọc.
+  const pendingDeptOptions = useMemo(() => {
+    const map = new Map<string, { name: string; color?: string }>();
+    pendingRequests.forEach((r) => {
+      if (r.requester.department) map.set(String(r.requester.department.id), { name: r.requester.department.name, color: r.requester.department.color });
+    });
+    return Array.from(map, ([value, info]) => ({
+      value,
+      label: <Tag color={resolveEntityColor(info.color)} style={{ marginInlineEnd: 0 }}>{info.name}</Tag>,
+    }));
+  }, [pendingRequests]);
+
+  const historyDeptOptions = useMemo(() => {
+    const map = new Map<string, { name: string; color?: string }>();
+    historyRequests.forEach((r) => {
+      if (r.requester.department) map.set(String(r.requester.department.id), { name: r.requester.department.name, color: r.requester.department.color });
+    });
+    return Array.from(map, ([value, info]) => ({
+      value,
+      label: <Tag color={resolveEntityColor(info.color)} style={{ marginInlineEnd: 0 }}>{info.name}</Tag>,
+    }));
+  }, [historyRequests]);
+
+  const matchesRequesterSearch = (r: LeaveRequest, q: string) => {
+    const s = q.trim().toLowerCase();
+    if (!s) return true;
+    return (
+      r.requester.name.toLowerCase().includes(s) ||
+      r.requester.email.toLowerCase().includes(s) ||
+      (r.reason || '').toLowerCase().includes(s)
+    );
+  };
+
+  const filteredPending = useMemo(() => {
+    return pendingRequests.filter((r) => {
+      if (!matchesRequesterSearch(r, pendingSearch)) return false;
+      if (pendingDept && String(r.requester.department?.id) !== pendingDept) return false;
+      if (pendingLeaveType && r.leaveType !== pendingLeaveType) return false;
+      return true;
+    });
+  }, [pendingRequests, pendingSearch, pendingDept, pendingLeaveType]);
+
+  const filteredHistory = useMemo(() => {
+    return historyRequests.filter((r) => {
+      if (!matchesRequesterSearch(r, historySearch)) return false;
+      if (historyDept && String(r.requester.department?.id) !== historyDept) return false;
+      if (historyLeaveType && r.leaveType !== historyLeaveType) return false;
+      if (historyStatus && r.status !== historyStatus) return false;
+      if (historyDateRange && historyDateRange[0] && historyDateRange[1]) {
+        const [from, to] = historyDateRange;
+        const overlap = !dayjs(r.startDate).isAfter(to, 'day') && !dayjs(r.endDate).isBefore(from, 'day');
+        if (!overlap) return false;
+      }
+      return true;
+    });
+  }, [historyRequests, historySearch, historyDept, historyLeaveType, historyStatus, historyDateRange]);
 
   // Phân biệt quyền:
   // view = xem lịch sử duyệt (của người khác)
@@ -433,11 +362,6 @@ export default function ApprovalPage() {
   // edit = "sửa hộ" ngày/loại phép/lý do của 1 đơn PENDING/APPROVED (khác
   // hẳn approve/reject) - xem migration SeedLeaveRequestsEditPermission.
   const canEdit = can('leave_requests.edit');
-  // Xoá mềm (Thùng rác) + xem/khôi phục - permission `leave_requests.delete`
-  // (mặc định chỉ Admin, Admin tự mở rộng qua trang Phân quyền). Xoá VĨNH
-  // VIỄN tách riêng permission `leave_requests.hard_delete`.
-  const canDelete = can('leave_requests.delete');
-  const canHardDelete = can('leave_requests.hard_delete');
   // Loại phép cho dropdown ở Modal sửa - mirror leaveTypeOptions ở nghi-phep/page.tsx
   const editLeaveTypeOptions = useMemo(
     () =>
@@ -455,107 +379,6 @@ export default function ApprovalPage() {
     return () => window.removeEventListener('resize', check);
   }, []);
 
-  // PHA 1 dùng chung cho cả 3 tab - nhận endpoint (`getPending`/`getHistory`/
-  // `getTrash`), state setter riêng của tab đó và bộ filter hiện tại, trả về
-  // đúng shape `WeekTabState` mới. Tách hàm chung để không lặp lại 3 lần
-  // cùng 1 khối try/catch/setState.
-  const fetchTab = useCallback(
-    async (
-      endpoint: (params?: LeaveRequestsQuery) => Promise<ReturnType<typeof leaveRequestsApi.getAll> extends Promise<infer R> ? R : never>,
-      setState: React.Dispatch<React.SetStateAction<WeekTabState>>,
-      filters: LeaveRequestsQuery,
-      errorMessage: string,
-    ) => {
-      setState((s) => ({ ...s, loading: true }));
-      try {
-        const res = await endpoint(filters);
-        setState((s) => ({
-          ...s,
-          weeks: res.weeks ?? [],
-          weekFilters: filters,
-          fetchToken: s.fetchToken + 1,
-          total: res.total || 0,
-          totalWeeks: res.totalWeeks || 0,
-          page: filters.page ?? s.page,
-          weeksPerPage: filters.weeksPerPage ?? s.weeksPerPage,
-          loading: false,
-        }));
-      } catch (err: any) {
-        if (err.response?.status !== 403) {
-          messageApi.error(errorMessage);
-        }
-        setState((s) => ({ ...s, weeks: [], loading: false }));
-      }
-    },
-    [messageApi],
-  );
-
-  const fetchPending = useCallback(
-    (pg = pendingState.page, wpp = pendingState.weeksPerPage) =>
-      fetchTab(leaveRequestsApi.getPending, setPendingState, {
-        page: pg,
-        weeksPerPage: wpp,
-        search: pendingSearch.trim() || undefined,
-        departmentId: pendingDept ? Number(pendingDept) : undefined,
-        leaveType: pendingLeaveType || undefined,
-      }, 'Không thể tải danh sách chờ duyệt'),
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [fetchTab, pendingSearch, pendingDept, pendingLeaveType],
-  );
-
-  const fetchHistory = useCallback(
-    (pg = historyState.page, wpp = historyState.weeksPerPage) =>
-      fetchTab(leaveRequestsApi.getHistory, setHistoryState, {
-        page: pg,
-        weeksPerPage: wpp,
-        search: historySearch.trim() || undefined,
-        departmentId: historyDept ? Number(historyDept) : undefined,
-        leaveType: historyLeaveType || undefined,
-        status: historyStatus || undefined,
-        dateFrom: historyDateRange?.[0] ? historyDateRange[0].format('YYYY-MM-DD') : undefined,
-        dateTo: historyDateRange?.[1] ? historyDateRange[1].format('YYYY-MM-DD') : undefined,
-      }, 'Không thể tải lịch sử phê duyệt'),
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [fetchTab, historySearch, historyDept, historyLeaveType, historyStatus, historyDateRange],
-  );
-
-  const fetchTrash = useCallback(
-    (pg = trashState.page, wpp = trashState.weeksPerPage) =>
-      fetchTab(leaveRequestsApi.getTrash, setTrashState, {
-        page: pg,
-        weeksPerPage: wpp,
-        search: trashSearch.trim() || undefined,
-        departmentId: trashDept ? Number(trashDept) : undefined,
-      }, 'Không thể tải thùng rác'),
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [fetchTab, trashSearch, trashDept],
-  );
-
-  // PHA 2 dùng chung - lấy đúng bản ghi của 1 tuần khi panel được mở, dùng
-  // lại filter PHA 1 gần nhất CỦA ĐÚNG TAB đó (không phải state filter hiện
-  // tại - tránh lệch nếu người dùng đổi filter ngay khi 1 panel đang tải).
-  const fetchWeekPending = useCallback(
-    async (weekStart: string, weekPage: number, weekLimit: number) => {
-      const r = await leaveRequestsApi.getPending({ ...pendingState.weekFilters, weekStart, weekPage, weekLimit });
-      return { data: r.data ?? [], weekTotal: r.weekTotal };
-    },
-    [pendingState.weekFilters],
-  );
-  const fetchWeekHistory = useCallback(
-    async (weekStart: string, weekPage: number, weekLimit: number) => {
-      const r = await leaveRequestsApi.getHistory({ ...historyState.weekFilters, weekStart, weekPage, weekLimit });
-      return { data: r.data ?? [], weekTotal: r.weekTotal };
-    },
-    [historyState.weekFilters],
-  );
-  const fetchWeekTrash = useCallback(
-    async (weekStart: string, weekPage: number, weekLimit: number) => {
-      const r = await leaveRequestsApi.getTrash({ ...trashState.weekFilters, weekStart, weekPage, weekLimit });
-      return { data: r.data ?? [], weekTotal: r.weekTotal };
-    },
-    [trashState.weekFilters],
-  );
-
   useEffect(() => {
     if (permissionsLoading) return;
     // Cần ít nhất 1 trong 2 quyền mới vào được trang này
@@ -564,64 +387,19 @@ export default function ApprovalPage() {
       router.replace('/customers');
       return;
     }
-    if (canApprove) fetchPending(1, pendingState.weeksPerPage);
-    if (canView) fetchHistory(1, historyState.weeksPerPage);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    fetchAllData();
   }, [canView, canApprove, permissionsLoading]);
 
-  // Debounce 300ms cho ô tìm kiếm (setTimeout thuần, repo chưa cài `lodash`)
-  // - Select/RangePicker fetch ngay lúc đổi, không cần debounce.
-  const pendingSearchRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  useEffect(() => {
-    if (!canApprove) return;
-    if (pendingSearchRef.current) clearTimeout(pendingSearchRef.current);
-    pendingSearchRef.current = setTimeout(() => fetchPending(1, pendingState.weeksPerPage), 300);
-    return () => { if (pendingSearchRef.current) clearTimeout(pendingSearchRef.current); };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [pendingSearch]);
-  useEffect(() => {
-    if (!canApprove) return;
-    fetchPending(1, pendingState.weeksPerPage);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [pendingDept, pendingLeaveType]);
-
-  const historySearchRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  useEffect(() => {
-    if (!canView) return;
-    if (historySearchRef.current) clearTimeout(historySearchRef.current);
-    historySearchRef.current = setTimeout(() => fetchHistory(1, historyState.weeksPerPage), 300);
-    return () => { if (historySearchRef.current) clearTimeout(historySearchRef.current); };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [historySearch]);
-  useEffect(() => {
-    if (!canView) return;
-    fetchHistory(1, historyState.weeksPerPage);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [historyDept, historyLeaveType, historyStatus, historyDateRange]);
-
-  // Tab "Thùng rác" chỉ fetch LẦN ĐẦU khi người dùng thực sự mở tab đó
-  // (lazy) - mirror `loginTabLoaded` ở audit-logs/page.tsx.
-  const trashSearchRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  useEffect(() => {
-    if (!trashTabLoaded || !canDelete) return;
-    if (trashSearchRef.current) clearTimeout(trashSearchRef.current);
-    trashSearchRef.current = setTimeout(() => fetchTrash(1, trashState.weeksPerPage), 300);
-    return () => { if (trashSearchRef.current) clearTimeout(trashSearchRef.current); };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [trashTabLoaded, trashSearch]);
-  useEffect(() => {
-    if (!trashTabLoaded || !canDelete) return;
-    fetchTrash(1, trashState.weeksPerPage);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [trashDept]);
-
-  // Refetch cả pending + history sau hành động duyệt/từ chối/sửa/xoá - gọi ở
-  // trang hiện tại của MỖI tab (không reset về trang 1) trừ khi hành động đó
-  // tự đứng ra reset (softDelete/restore/hardDelete reset về trang 1 vì bản
-  // ghi vừa biến mất khỏi danh sách, giữ nguyên trang dễ lệch/trống).
-  const refetchAfterAction = () => {
-    if (canApprove) fetchPending(pendingState.page, pendingState.weeksPerPage);
-    if (canView) fetchHistory(historyState.page, historyState.weeksPerPage);
+  // Tách riêng: 403 ở 1 api không kill api kia
+  const fetchAllData = async () => {
+    setLoading(true);
+    const results = await Promise.allSettled([
+      canApprove ? leaveRequestsApi.getPending() : Promise.resolve([]),
+      canView ? leaveRequestsApi.getHistory() : Promise.resolve([]),
+    ]);
+    if (results[0].status === 'fulfilled') setPendingRequests(results[0].value as LeaveRequest[]);
+    if (results[1].status === 'fulfilled') setHistoryRequests(results[1].value as LeaveRequest[]);
+    setLoading(false);
   };
 
   const handleApprove = async (id: number) => {
@@ -634,7 +412,7 @@ export default function ApprovalPage() {
         try {
           await leaveRequestsApi.approve(id);
           messageApi.success('Đã duyệt đơn');
-          refetchAfterAction();
+          await fetchAllData();
         } catch (err: any) {
           if (err.response?.status !== 401) {
             messageApi.error(err.response?.data?.message || 'Duyệt đơn thất bại');
@@ -663,7 +441,7 @@ export default function ApprovalPage() {
       setRejectModalOpen(false);
       setRejectionReason('');
       setSelectedRequest(null);
-      refetchAfterAction();
+      await fetchAllData();
     } catch (err: any) {
       if (err.response?.status !== 401) {
         messageApi.error('Từ chối đơn thất bại');
@@ -719,7 +497,7 @@ export default function ApprovalPage() {
       });
       messageApi.success('Đã cập nhật đơn nghỉ phép');
       closeEditModal();
-      refetchAfterAction();
+      await fetchAllData();
     } catch (err: any) {
       if (err.response?.status !== 401) {
         messageApi.error(err.response?.data?.message || 'Cập nhật đơn thất bại');
@@ -727,69 +505,6 @@ export default function ApprovalPage() {
     } finally {
       setEditSubmitting(false);
     }
-  };
-
-  // ── Xoá mềm / Khôi phục / Xoá vĩnh viễn (Thùng rác) ─────────────────────
-  // `leave_requests.delete` (mặc định chỉ Admin, có thể mở rộng scope qua
-  // trang Phân quyền). Xoá mềm áp dụng cho CẢ đơn đang chờ duyệt lẫn đã xử
-  // lý (lịch sử) - đơn biến mất khỏi 2 tab đó, xuất hiện ở tab Thùng rác.
-  const handleSoftDelete = (record: LeaveRequest) => {
-    modal.confirm({
-      title: 'Huỷ đơn nghỉ phép?',
-      content: `Đơn của "${record.requester.name}" sẽ được đánh dấu huỷ và chuyển vào Thùng rác. Bạn có thể khôi phục lại sau.`,
-      okButtonProps: { danger: true },
-      okText: 'Huỷ đơn',
-      cancelText: 'Bỏ qua',
-      onOk: async () => {
-        try {
-          await leaveRequestsApi.softDelete(record.id);
-          messageApi.success('Đã huỷ đơn và chuyển vào Thùng rác');
-          refetchAfterAction();
-          if (trashTabLoaded) fetchTrash(1, trashState.weeksPerPage);
-        } catch (err: any) {
-          if (err.response?.status !== 401) {
-            messageApi.error(err.response?.data?.message || 'Huỷ đơn thất bại');
-          }
-        }
-      },
-    });
-  };
-
-  const handleRestore = async (record: LeaveRequest) => {
-    try {
-      await leaveRequestsApi.restoreFromTrash(record.id);
-      messageApi.success('Đã khôi phục đơn nghỉ phép');
-      fetchTrash(1, trashState.weeksPerPage);
-      refetchAfterAction();
-    } catch (err: any) {
-      if (err.response?.status !== 401) {
-        messageApi.error(err.response?.data?.message || 'Khôi phục thất bại');
-      }
-    }
-  };
-
-  // Xoá VĨNH VIỄN - permission riêng `leave_requests.hard_delete`, không thể
-  // hoàn tác (mirror pattern `customers.hard_delete`) - luôn hỏi lại 2 lần
-  // (modal.confirm với nội dung nhấn mạnh "không thể khôi phục").
-  const handleHardDelete = (record: LeaveRequest) => {
-    modal.confirm({
-      title: 'Xoá VĨNH VIỄN đơn nghỉ phép?',
-      content: `Đơn của "${record.requester.name}" sẽ bị xoá HOÀN TOÀN khỏi hệ thống, KHÔNG THỂ khôi phục. Bạn chắc chắn chứ?`,
-      okButtonProps: { danger: true },
-      okText: 'Xoá vĩnh viễn',
-      cancelText: 'Huỷ',
-      onOk: async () => {
-        try {
-          await leaveRequestsApi.hardDelete(record.id);
-          messageApi.success('Đã xoá vĩnh viễn');
-          fetchTrash(1, trashState.weeksPerPage);
-        } catch (err: any) {
-          if (err.response?.status !== 401) {
-            messageApi.error(err.response?.data?.message || 'Xoá vĩnh viễn thất bại');
-          }
-        }
-      },
-    });
   };
 
   // ── desktop columns ─────────────────────────────────────────────────────
@@ -877,11 +592,7 @@ export default function ApprovalPage() {
       title: 'Thao tác',
       width: 220,
       render: (_: any, record: LeaveRequest) => (
-        // `wrap` - dù có thêm nút (canEdit/canDelete) hay cột hẹp lại, các
-        // nút tự xuống dòng BÊN TRONG ô này thay vì tràn ra ngoài (xem
-        // JSDoc `sumColumnWidths` ở trên - kết hợp `scroll.x` số pixel cụ
-        // thể để `tableLayout: fixed` thực sự ép đúng width cột).
-        <Space wrap size={[6, 6]}>
+        <Space>
           <Button type="primary" size="small" icon={<CheckOutlined />} onClick={() => handleApprove(record.id)}>
             Duyệt
           </Button>
@@ -893,7 +604,6 @@ export default function ApprovalPage() {
               Sửa
             </Button>
           )}
-
         </Space>
       )
     }
@@ -908,8 +618,7 @@ export default function ApprovalPage() {
   // 'max-content' - lúc đó `tableLayout="fixed"` mới thực sự ép mỗi cột
   // đúng `width` đã khai, "Lý do" mới bị cắt (ellipsis) và cần hover mới
   // thấy đủ (Tooltip đã có sẵn, không cần sửa thêm).
-  // pendingTableWidth không còn cần - WeeklyLazySection tự set scroll, không
-  // đọc tổng width cột như `WeekGroupedRequests` cũ.
+  const pendingTableWidth = pendingColumns.reduce((sum: number, col: any) => sum + (col.width ?? 0), 0);
 
   const historyColumns = [
     {
@@ -1028,117 +737,20 @@ export default function ApprovalPage() {
     },
     {
       title: 'Thao tác',
-      width: 160,
-      render: (_: any, record: LeaveRequest) => (
-        <Space wrap size={[6, 6]}>
-          {canEdit && (record.status === 'pending' || record.status === 'approved') && (
-            <Button size="small" icon={<EditOutlined />} onClick={() => openEditModal(record)}>
-              Sửa
-            </Button>
-          )}
-          {canDelete && (
-            <Button size="small" danger icon={<DeleteOutlined />} onClick={() => handleSoftDelete(record)}>
-              Huỷ
-            </Button>
-          )}
-        </Space>
-      )
-    }
-  ].filter((col: any) => canEdit || canDelete || col.title !== 'Thao tác');
-  // historyTableWidth không còn cần - lý do giống pendingTableWidth ở trên.
-
-  // Cột riêng cho tab "Thùng rác" - gọn hơn 2 bảng trên (không cần sửa/duyệt),
-  // thêm "Người xoá"/"Ngày xoá" (mirror trang khách hàng - trash tab).
-  const trashColumns = [
-    {
-      title: 'Người gửi',
-      dataIndex: ['requester', 'name'],
-      width: 170,
-      render: (name: string, record: LeaveRequest) => (
-        <div>
-          <div style={{ fontWeight: 500 }}>{name}</div>
-          <div style={{ fontSize: 12, color: '#888' }}>{record.requester.email}</div>
-        </div>
-      )
-    },
-    {
-      title: 'Phòng ban',
-      width: 120,
-      render: (_: any, record: LeaveRequest) =>
-        record.requester.department ? (
-          <Tag color={resolveEntityColor(record.requester.department.color)}>{record.requester.department.name}</Tag>
-        ) : (
-          <Tag>Chưa gán</Tag>
-        )
-    },
-    {
-      title: 'Loại phép',
-      dataIndex: 'leaveType',
       width: 100,
-      render: (type: string) => {
-        const info = leaveTypeMap[type] ?? { text: type, color: 'default' };
-        return <Tag color={info.color}>{info.text}</Tag>;
-      }
-    },
-    {
-      title: 'Thời gian nghỉ',
-      width: 150,
-      render: (_: any, record: LeaveRequest) => (
-        <div>
-          <div>{dayjs(record.startDate).format('DD/MM/YYYY')} → {dayjs(record.endDate).format('DD/MM/YYYY')}</div>
-          <div style={{ fontSize: 12, color: '#1890ff' }}>{record.totalDays} ngày</div>
-        </div>
-      )
-    },
-    {
-      title: 'Trạng thái (trước khi xoá)',
-      dataIndex: 'status',
-      width: 140,
-      render: (status: string) => {
-        const info = STATUS_MAP[status] ?? { text: status, color: 'default' };
-        return <Tag color={info.color}>{info.text}</Tag>;
-      }
-    },
-    {
-      title: 'Người xoá',
-      width: 130,
-      render: (_: any, record: LeaveRequest) => record.deletedBy?.name || '-'
-    },
-    {
-      title: 'Ngày huỷ',
-      width: 140,
-      render: (_: any, record: LeaveRequest) => record.cancelledAt ? dayjs(record.cancelledAt).format('DD/MM/YYYY HH:mm') : '-'
-    },
-    {
-      // Rộng hơn pendingColumns/historyColumns vì "Xoá vĩnh viễn" là text dài
-      // nhất trong toàn bộ trang - vẫn có `wrap` bên dưới làm lớp bảo hiểm
-      // cuối cùng nếu sau này thêm nút/co hẹp cột.
-      title: 'Thao tác',
-      width: 240,
-      render: (_: any, record: LeaveRequest) => (
-        <Space wrap size={[6, 6]}>
-          <Button size="small" icon={<UndoOutlined />} onClick={() => handleRestore(record)}>
-            Khôi phục
+      render: (_: any, record: LeaveRequest) =>
+        (record.status === 'pending' || record.status === 'approved') && (
+          <Button size="small" icon={<EditOutlined />} onClick={() => openEditModal(record)}>
+            Sửa
           </Button>
-          {canHardDelete && (
-            <Button size="small" danger icon={<DeleteRowOutlined />} onClick={() => handleHardDelete(record)}>
-              Xoá
-            </Button>
-          )}
-        </Space>
-      )
+        )
     }
-  ];
-  // trashTableWidth không còn cần - WeeklyLazySection tự set scroll qua prop
-  // `scroll`, không đọc tổng width cột như `WeekGroupedRequests` cũ.
+  ].filter((col: any) => canEdit || col.title !== 'Thao tác');
+  // Cùng lý do với `pendingTableWidth` ở trên - `historyColumns` giờ cũng có
+  // `.filter()` (ẩn "Thao tác" khi không có quyền `leave_requests.edit`).
+  const historyTableWidth = historyColumns.reduce((sum: number, col: any) => sum + (col.width ?? 0), 0);
 
   // ── tab items ─────────────────────────────────────────────────────────────
-  // ⚠️ ĐỔI: cả 3 tab giờ dùng `WeeklyLazySection` (phân trang THEO TUẦN thật ở
-  // BE, lazy-load từng tuần khi mở panel) thay cho `WeekGroupedRequests` cũ
-  // (nhận nguyên mảng đã tải hết) - mirror ĐÚNG pattern `nghi-phep/page.tsx`.
-  // Badge đếm "Chờ phê duyệt" đổi sang đọc `pendingState.total` (tổng số đơn
-  // PHA 1 trả về) thay vì `.length` của mảng đã filter client (không còn tồn
-  // tại nữa vì filter giờ chạy server-side).
   const tabItems = [
     canApprove ? {
       key: 'pending',
@@ -1146,7 +758,7 @@ export default function ApprovalPage() {
         <span>
           <HourglassOutlined />
           {' '}Chờ phê duyệt{' '}
-          {pendingState.total > 0 && <Badge count={pendingState.total} offset={[10, -5]} size="small" />}
+          {pendingRequests.length > 0 && <Badge count={pendingRequests.length} offset={[10, -5]} size="small" />}
         </span>
       ),
       children: (
@@ -1168,7 +780,7 @@ export default function ApprovalPage() {
                 style={{ width: '100%' }}
                 value={pendingDept}
                 onChange={(v) => setPendingDept(v ?? null)}
-                options={departmentOptions}
+                options={pendingDeptOptions}
               />
             </Col>
             <Col xs={12} sm={6} md={5}>
@@ -1185,16 +797,12 @@ export default function ApprovalPage() {
               />
             </Col>
           </Row>
-          <WeeklyLazySection<LeaveRequest>
-            weeks={pendingState.weeks}
-            fetchWeek={fetchWeekPending}
-            resetKey={pendingState.fetchToken}
-            rowKey="id"
-            columns={pendingColumns as any}
-            scroll={{ x: sumColumnWidths(pendingColumns) }}
-            size="small"
+          <WeekGroupedRequests
+            records={filteredPending}
             isMobile={isMobile}
-            loading={pendingState.loading}
+            loading={loading}
+            columns={pendingColumns as any}
+            tableWidth={pendingTableWidth}
             emptyText="✅ Không có đơn chờ duyệt"
             renderMobileCard={(record) => (
               <PendingMobileCard
@@ -1207,14 +815,6 @@ export default function ApprovalPage() {
                 leaveTypeMap={leaveTypeMap}
               />
             )}
-            pagination={{
-              current: pendingState.page,
-              pageSize: pendingState.weeksPerPage,
-              total: pendingState.totalWeeks,
-              pageSizeOptions: ['2', '4', '8'],
-              showTotal: (t) => `${t} tuần (${pendingState.total.toLocaleString()} đơn)`,
-              onChange: (p, ps) => fetchPending(p, ps || pendingState.weeksPerPage),
-            }}
           />
         </>
       )
@@ -1246,7 +846,7 @@ export default function ApprovalPage() {
                 style={{ width: '100%' }}
                 value={historyDept}
                 onChange={(v) => setHistoryDept(v ?? null)}
-                options={departmentOptions}
+                options={historyDeptOptions}
               />
             </Col>
             <Col xs={12} sm={6} md={4}>
@@ -1287,16 +887,12 @@ export default function ApprovalPage() {
               />
             </Col>
           </Row>
-          <WeeklyLazySection<LeaveRequest>
-            weeks={historyState.weeks}
-            fetchWeek={fetchWeekHistory}
-            resetKey={historyState.fetchToken}
-            rowKey="id"
-            columns={historyColumns as any}
-            scroll={{ x: sumColumnWidths(historyColumns) }}
-            size="small"
+          <WeekGroupedRequests
+            records={filteredHistory}
             isMobile={isMobile}
-            loading={historyState.loading}
+            loading={loading}
+            columns={historyColumns as any}
+            tableWidth={historyTableWidth}
             emptyText="Chưa có lịch sử xử lý"
             renderMobileCard={(record) => (
               <HistoryMobileCard
@@ -1307,81 +903,6 @@ export default function ApprovalPage() {
                 leaveTypeMap={leaveTypeMap}
               />
             )}
-            pagination={{
-              current: historyState.page,
-              pageSize: historyState.weeksPerPage,
-              total: historyState.totalWeeks,
-              pageSizeOptions: ['2', '4', '8'],
-              showTotal: (t) => `${t} tuần (${historyState.total.toLocaleString()} đơn)`,
-              onChange: (p, ps) => fetchHistory(p, ps || historyState.weeksPerPage),
-            }}
-          />
-        </>
-      )
-    } : null,
-    canDelete ? {
-      key: 'trash',
-      label: (
-        <span>
-          <DeleteOutlined />
-          {' '}Thùng rác{' '}
-          {trashTabLoaded && trashState.total > 0 && (
-            <Badge count={trashState.total} offset={[10, -5]} size="small" />
-          )}
-        </span>
-      ),
-      children: (
-        <>
-          <Row gutter={[12, 12]} style={{ marginBottom: 16 }}>
-            <Col xs={24} sm={12} md={8}>
-              <Input
-                allowClear
-                placeholder="Tìm theo tên, email, lý do..."
-                prefix={<SearchOutlined />}
-                value={trashSearch}
-                onChange={(e) => setTrashSearch(e.target.value)}
-              />
-            </Col>
-            <Col xs={12} sm={6} md={5}>
-              <Select
-                allowClear
-                placeholder="Phòng ban"
-                style={{ width: '100%' }}
-                value={trashDept}
-                onChange={(v) => setTrashDept(v ?? null)}
-                options={departmentOptions}
-              />
-            </Col>
-          </Row>
-          <WeeklyLazySection<LeaveRequest>
-            weeks={trashState.weeks}
-            fetchWeek={fetchWeekTrash}
-            resetKey={trashState.fetchToken}
-            rowKey="id"
-            columns={trashColumns as any}
-            scroll={{ x: sumColumnWidths(trashColumns) }}
-            size="small"
-            isMobile={isMobile}
-            loading={trashState.loading}
-            emptyText="🗑️ Thùng rác trống"
-            renderMobileCard={(record) => (
-              <TrashMobileCard
-                key={record.id}
-                record={record}
-                onRestore={handleRestore}
-                onHardDelete={handleHardDelete}
-                canHardDelete={canHardDelete}
-                leaveTypeMap={leaveTypeMap}
-              />
-            )}
-            pagination={{
-              current: trashState.page,
-              pageSize: trashState.weeksPerPage,
-              total: trashState.totalWeeks,
-              pageSizeOptions: ['2', '4', '8'],
-              showTotal: (t) => `${t} tuần (${trashState.total.toLocaleString()} đơn)`,
-              onChange: (p, ps) => fetchTrash(p, ps || trashState.weeksPerPage),
-            }}
           />
         </>
       )
@@ -1399,13 +920,6 @@ export default function ApprovalPage() {
         items={tabItems}
         type="card"
         className="bg-white p-4 rounded-lg shadow-sm"
-        onChange={(key) => {
-          // Tab "Thùng rác" chỉ fetch LẦN ĐẦU khi thực sự mở (lazy) - tránh
-          // gọi API thừa cho người không bao giờ mở tab này.
-          if (key === 'trash' && !trashTabLoaded) {
-            setTrashTabLoaded(true);
-          }
-        }}
       />
 
       {/* Reject Modal */}

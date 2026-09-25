@@ -30,14 +30,6 @@ describe('LeaveRequestsService - Phan quyen duyet (PERMISSIONS.md muc 2.6)', () 
     create: jest.fn((x: any) => x),
     save: jest.fn(),
     createQueryBuilder: jest.fn(),
-    // ⚠️ MỚI: softDelete()/restoreFromTrash()/hardDelete() (+ 3 hàm "tự
-    // phục vụ" selfSoftDelete()/selfRestoreFromTrash()/selfHardDelete())
-    // dùng thêm các method repo này - mock rỗng, chỉ test ForbiddenException
-    // và điều kiện gọi/không gọi, không assert side-effect DB thật.
-    softDelete: jest.fn(),
-    restore: jest.fn(),
-    delete: jest.fn(),
-    update: jest.fn(),
   };
   const mockUserRepo = {
     decrement: jest.fn(),
@@ -103,13 +95,6 @@ describe('LeaveRequestsService - Phan quyen duyet (PERMISSIONS.md muc 2.6)', () 
       where: jest.fn().mockReturnThis(),
       andWhere: jest.fn().mockReturnThis(),
       orderBy: jest.fn().mockReturnThis(),
-      // ⚠️ MỚI: findAll()/findPending()/findHistory()/findTrash() giờ phân
-      // trang THẬT ở DB qua `paginateList()` (item-mode: .skip().take()
-      // .getManyAndCount()) thay vì trả nguyên mảng qua .getMany() như
-      // trước - mock phải khớp đúng chain method mới, nếu không
-      // `paginateList()` (item-mode, không truyền `weeksPerPage`) sẽ ném
-      // TypeError ngay ở bước `.skip()`.
-      skip: jest.fn().mockReturnThis(),
       take: jest.fn().mockReturnThis(),
       // Đếm attachmentCount ở findAll()/findPending()/findHistory() (xem
       // LeaveRequest.attachmentCount) - mock chain, không cần test giá trị
@@ -117,7 +102,6 @@ describe('LeaveRequestsService - Phan quyen duyet (PERMISSIONS.md muc 2.6)', () 
       // vi unit test này).
       loadRelationCountAndMap: jest.fn().mockReturnThis(),
       getMany: jest.fn().mockResolvedValue(result),
-      getManyAndCount: jest.fn().mockResolvedValue([result, result.length]),
     };
     return qb;
   };
@@ -622,11 +606,8 @@ describe('LeaveRequestsService - Phan quyen duyet (PERMISSIONS.md muc 2.6)', () 
 
   describe('findPending()/findHistory() - loc theo VIEWER_SEES_REQUESTER_ROLES + phong ban Manager', () => {
     it('EMPLOYEE goi findPending -> tra ve [] ngay, khong query DB', async () => {
-      // ⚠️ MỚI: findPending() giờ trả về shape phân trang chuẩn
-      // `{data, total, page, limit, totalPages}` (mirror mọi nhánh khác của
-      // paginateList()), không còn trả mảng trần `[]` như trước.
       const result = await service.findPending(1, Role.EMPLOYEE);
-      expect(result).toEqual({ data: [], total: 0, page: 1, limit: 20, totalPages: 1 });
+      expect(result).toEqual([]);
       expect(mockLeaveRepo.createQueryBuilder).not.toHaveBeenCalled();
     });
 
@@ -653,14 +634,12 @@ describe('LeaveRequestsService - Phan quyen duyet (PERMISSIONS.md muc 2.6)', () 
 
       const result = await service.findPending(7, Role.MANAGER, 'department');
 
-      expect(result).toEqual({ data: [], total: 0, page: 1, limit: 20, totalPages: 1 });
+      expect(result).toEqual([]);
       expect(qb.andWhere).toHaveBeenCalledWith(
         'requester.leaveApproverId = :viewerId',
         { viewerId: 7 },
       );
-      // ⚠️ MỚI: item-mode phân trang thật giờ dùng .getManyAndCount() (không
-      // còn .getMany() trần) - xem paginateList().
-      expect(qb.getManyAndCount).toHaveBeenCalled();
+      expect(qb.getMany).toHaveBeenCalled();
     });
 
     it('ADMIN goi findPending: thay moi role, khong filter phong ban', async () => {
@@ -718,7 +697,7 @@ describe('LeaveRequestsService - Phan quyen duyet (PERMISSIONS.md muc 2.6)', () 
     });
   });
 
-  describe('cancel() - huy don bang cancelledAt (khong dung softDelete)', () => {
+  describe('cancel() - huy don TU DONG don anh dinh kem (theo yeu cau moi)', () => {
     it('nem NotFoundException neu khong tim thay don cua chinh requester', async () => {
       mockLeaveRepo.findOne.mockResolvedValue(null);
       await expect(service.cancel(1, 100)).rejects.toThrow(NotFoundException);
@@ -728,45 +707,47 @@ describe('LeaveRequestsService - Phan quyen duyet (PERMISSIONS.md muc 2.6)', () 
       mockLeaveRepo.findOne.mockResolvedValue({
         ...pendingRequest(Role.EMPLOYEE, 1),
         status: LeaveStatus.APPROVED,
-        cancelledAt: null,
       });
       await expect(service.cancel(1, 100)).rejects.toThrow(BadRequestException);
     });
 
-    it('nem BadRequestException neu don da bi huy truoc do (cancelledAt != null)', async () => {
+    it('don KHONG co anh dinh kem: huy binh thuong, khong goi deleteObject/remove', async () => {
       mockLeaveRepo.findOne.mockResolvedValue({
         ...pendingRequest(Role.EMPLOYEE, 1),
-        cancelledAt: new Date(),
+        attachments: [],
       });
-      await expect(service.cancel(1, 100)).rejects.toThrow(BadRequestException);
-    });
-
-    it('goi update() voi cancelledAt va deletedById, KHONG goi softDelete hay xoa anh dinh kem', async () => {
-      mockLeaveRepo.findOne.mockResolvedValue({
-        ...pendingRequest(Role.EMPLOYEE, 1),
-        id: 1,
-        status: LeaveStatus.PENDING,
-        cancelledAt: null,
-      });
-      mockLeaveRepo.update.mockResolvedValue({ affected: 1 });
+      mockLeaveRepo.save.mockImplementation((r: any) => Promise.resolve(r));
 
       const result = await service.cancel(1, 100);
 
-      // Phai goi update voi cancelledAt
-      expect(mockLeaveRepo.update).toHaveBeenCalledWith(1, expect.objectContaining({
-        cancelledAt: expect.any(Date),
-        deletedById: 100,
-      }));
-
-      // KHONG duoc goi softDelete (TypeORM soft delete)
-      expect(mockLeaveRepo.softDelete).not.toHaveBeenCalled();
-
-      // Khong xoa anh dinh kem tren B2
+      expect(result.status).toBe(LeaveStatus.CANCELLED);
       expect(mockUploadsService.deleteObject).not.toHaveBeenCalled();
       expect(mockAttachmentRepo.remove).not.toHaveBeenCalled();
+    });
 
-      // Tra ve message
-      expect(result).toEqual({ message: 'Đã huỷ đơn nghỉ phép' });
+    it('don CO anh dinh kem: xoa het object tren B2 + xoa dong DB, khong chan huy don neu B2 loi', async () => {
+      const attachments = [
+        { id: 1, objectKey: 'leave-attachments/100/A_1_1-1-26.png' },
+        { id: 2, objectKey: 'leave-attachments/100/A_2_1-1-26.png' },
+      ];
+      mockLeaveRepo.findOne.mockResolvedValue({
+        ...pendingRequest(Role.EMPLOYEE, 1),
+        attachments,
+      });
+      mockLeaveRepo.save.mockImplementation((r: any) => Promise.resolve(r));
+      mockUploadsService.deleteObject
+        .mockRejectedValueOnce(new Error('B2 down'))
+        .mockResolvedValueOnce(undefined);
+
+      const result = await service.cancel(1, 100);
+
+      expect(result.status).toBe(LeaveStatus.CANCELLED);
+      expect(mockUploadsService.deleteObject).toHaveBeenCalledTimes(2);
+      expect(mockUploadsService.deleteObject).toHaveBeenCalledWith(
+        'az-imgs-leave-request-workbase',
+        'leave-attachments/100/A_1_1-1-26.png',
+      );
+      expect(mockAttachmentRepo.remove).toHaveBeenCalledWith(attachments);
     });
   });
 

@@ -37,61 +37,11 @@ export interface LeaveRequest {
   createdAt: string;
   approvedAt: string | null;
   rejectedAt: string | null;
-  // Thùng rác - đánh dấu huỷ mềm bằng cancelledAt (thay vì deleted_at/TypeORM soft delete).
-  // cancelledAt IS NOT NULL + status PENDING -> Thùng rác "Nghỉ phép" (Owner).
-  // cancelledAt IS NOT NULL + status APPROVED/REJECTED -> Thùng rác "Duyệt phép" (Admin).
-  cancelledAt?: string | null;
-  deletedAt?: string | null;
-  deletedBy?: { id: number; name: string } | null;
   // Số ảnh đính kèm - BE tính qua loadRelationCountAndMap() ở findAll()/
   // findPending()/findHistory() (xem LeaveRequest.attachmentCount ở entity),
   // KHÔNG có ở response của các endpoint đơn lẻ (create/update/approve...).
   // Optional vì lý do đó - FE fallback badge "0" khi field không có.
   attachmentCount?: number;
-}
-
-/** Tóm tắt 1 tuần (PHA 1 của BE, week-mode) - mirror `WeekBucket` ở `week-window.util.ts`. */
-export interface WeekBucketDto {
-  /** 'YYYY-MM-DD' của Thứ 2. */
-  weekStart: string;
-  count: number;
-}
-
-// Shape trả về từ `GET /leave-requests`, `/pending`, `/history`, `/trash` -
-// mirror ĐÚNG `paginateList()` ở BE (xem `leave-requests.service.ts`).
-// `weeks`/`totalWeeks`/`weekTotal` chỉ có khi gọi kèm `weeksPerPage`
-// (week-mode) - mirror ĐÚNG `AuditFilters`/response ở `audit.types.ts`.
-// ⚠️ FIX BUG THẬT: `weeks` trước đây khai sai kiểu `number` (phải là mảng
-// `WeekBucketDto[]` - BE trả PHA 1 là danh sách tuần kèm count, không phải 1
-// con số đơn) và thiếu hẳn `totalWeeks` (tổng số tuần, dùng làm `total` của
-// `<Pagination>` ở `WeeklyLazySection`) - chưa ai dùng tới nên chưa lộ ra.
-export interface PaginatedLeaveRequests {
-  data: LeaveRequest[];
-  total: number;
-  page: number;
-  limit: number;
-  totalPages: number;
-  weeks?: WeekBucketDto[];
-  totalWeeks?: number;
-  weekTotal?: number;
-}
-
-// Mirror ĐÚNG `QueryLeaveRequestsDto` ở BE - ValidationPipe global bật
-// `forbidNonWhitelisted: true` nên field nào KHÔNG khai ở DTO (vd `_t` cache-
-// busting kiểu cũ) sẽ bị BE trả 400. Không tự thêm field lạ vào params.
-export interface LeaveRequestsQuery {
-  page?: number;
-  limit?: number;
-  weeksPerPage?: number;
-  weekStart?: string;
-  weekPage?: number;
-  weekLimit?: number;
-  search?: string;
-  departmentId?: number;
-  leaveType?: string;
-  status?: string;
-  dateFrom?: string;
-  dateTo?: string;
 }
 
 export const leaveRequestsApi = {
@@ -151,77 +101,19 @@ export const leaveRequestsApi = {
     return res.data;
   },
   
-  // ⚠️ ĐỔI: BE giờ LUÔN trả `{data, total, page, limit, totalPages}` (không
-  // còn mảng trần) - xem comment ở `LeaveRequestsService.findAll()`. Đã bỏ
-  // cache-busting `_t=${Date.now()}` kiểu cũ: ValidationPipe global
-  // (`forbidNonWhitelisted: true`) từ chối field lạ không khai ở
-  // `QueryLeaveRequestsDto` -> từng gây 400 Bad Request hàng loạt (kể cả ở
-  // badge sidebar, ảnh hưởng MỌI trang). BE đã tự set Cache-Control phù hợp
-  // qua `CacheControlInterceptor` nên không cần workaround này nữa.
-  // `limit` mặc định 100 (trần tối đa DTO cho phép) để giữ gần đúng hành vi
-  // "tải hết" cũ trong lúc CHỜ 2 trang nghi-phep/duyet-phep chuyển hẳn sang
-  // `WeeklyLazySection` (phân trang thật theo tuần) - xem TODO ở 2 trang đó.
-  async getAll(params?: LeaveRequestsQuery): Promise<PaginatedLeaveRequests> {
-    const res = await axiosInstance.get('/leave-requests', { params });
+  async getAll() {
+    // Adding timestamp as a query param to bypass potential browser/proxy caching
+    const res = await axiosInstance.get(`/leave-requests?_t=${Date.now()}`);
+    return res.data;
+  },
+  
+  async getPending() {
+    const res = await axiosInstance.get(`/leave-requests/pending?_t=${Date.now()}`);
     return res.data;
   },
 
-  async getPending(params?: LeaveRequestsQuery): Promise<PaginatedLeaveRequests> {
-    const res = await axiosInstance.get('/leave-requests/pending', { params });
-    return res.data;
-  },
-
-  async getHistory(params?: LeaveRequestsQuery): Promise<PaginatedLeaveRequests> {
-    const res = await axiosInstance.get('/leave-requests/history', { params });
-    return res.data;
-  },
-
-  async getTrash(params?: LeaveRequestsQuery): Promise<PaginatedLeaveRequests> {
-    const res = await axiosInstance.get('/leave-requests/trash', { params });
-    return res.data;
-  },
-
-  // Tab "Thùng rác" ở nghi-phep/page.tsx - CHỈ đơn CỦA CHÍNH viewer (permission
-  // `leave_requests.request`, KHÔNG cần `leave_requests.delete` - xem
-  // LeaveRequestsController.findMyTrash() ở BE).
-  async getMyTrash(params?: LeaveRequestsQuery): Promise<PaginatedLeaveRequests> {
-    const res = await axiosInstance.get('/leave-requests/my-trash', { params });
-    return res.data;
-  },
-
-  // Tự xoá mềm đơn CỦA CHÍNH MÌNH (nút "Xoá" ở nghi-phep/page.tsx) - chỉ khi
-  // đơn đang PENDING (BE tự chặn nếu đã có quyết định - xem selfSoftDelete()
-  // ở LeaveRequestsService). KHÁC hẳn cancel() - xoá đưa đơn vào Thùng rác.
-  async selfSoftDelete(id: number) {
-    const res = await axiosInstance.delete(`/leave-requests/${id}/self`);
-    return res.data;
-  },
-
-  // Khôi phục đơn CỦA CHÍNH MÌNH từ Thùng rác.
-  async selfRestoreFromTrash(id: number) {
-    const res = await axiosInstance.patch(`/leave-requests/my-trash/${id}/restore`);
-    return res.data;
-  },
-
-  // Xoá VĨNH VIỄN đơn CỦA CHÍNH MÌNH khỏi Thùng rác - không thể hoàn tác.
-  async selfHardDelete(id: number) {
-    const res = await axiosInstance.delete(`/leave-requests/my-trash/${id}/hard-delete`);
-    return res.data;
-  },
-
-  async restoreFromTrash(id: number) {
-    const res = await axiosInstance.patch(`/leave-requests/trash/${id}/restore`);
-    return res.data;
-  },
-
-  async hardDelete(id: number) {
-    const res = await axiosInstance.delete(`/leave-requests/trash/${id}/hard-delete`);
-    return res.data;
-  },
-
-  // Xoá mềm (đưa vào Thùng rác) - permission `leave_requests.delete`.
-  async softDelete(id: number) {
-    const res = await axiosInstance.delete(`/leave-requests/${id}`);
+  async getHistory() {
+    const res = await axiosInstance.get(`/leave-requests/history?_t=${Date.now()}`);
     return res.data;
   },
 
