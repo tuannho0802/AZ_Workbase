@@ -318,12 +318,18 @@ export function TaskChecklistModal({ open, onClose, task }: Props) {
                 />
 
                 {isEditing ? (
-                    <Input
+                    <Input.TextArea
                         autoFocus
+                        autoSize={{ minRows: 1, maxRows: 8 }}
                         value={editingContent}
                         maxLength={500}
                         onChange={(e) => setEditingContent(e.target.value)}
-                        onPressEnter={() => handleSaveEdit(item)}
+                        onPressEnter={(e) => {
+                            if (!e.shiftKey) {
+                                e.preventDefault();
+                                handleSaveEdit(item);
+                            }
+                        }}
                         style={{ flex: 1 }}
                     />
                 ) : (
@@ -483,13 +489,20 @@ export function TaskChecklistModal({ open, onClose, task }: Props) {
                     )}
 
                     {canEdit && (
-                        <div style={{ marginTop: 12, display: 'flex', gap: 8 }}>
-                            <Input
+                        <div style={{ marginTop: 12, display: 'flex', gap: 8, alignItems: 'flex-end' }}>
+                            <Input.TextArea
                                 placeholder="Thêm checklist item mới..."
+                                autoSize={{ minRows: 1, maxRows: 8 }}
                                 maxLength={500}
                                 value={newContent}
                                 onChange={(e) => setNewContent(e.target.value)}
-                                onPressEnter={handleAdd}
+                                onPressEnter={(e) => {
+                                    if (!e.shiftKey) {
+                                        e.preventDefault();
+                                        handleAdd();
+                                    }
+                                }}
+                                style={{ flex: 1 }}
                             />
                             <Button
                                 type="primary"

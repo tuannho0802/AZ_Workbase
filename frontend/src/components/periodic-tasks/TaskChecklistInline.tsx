@@ -198,13 +198,19 @@ export function TaskChecklistInline({ taskId, canEdit, onOpenFull }: Props) {
             >
                 <Checkbox checked={item.isDone} disabled={!canEdit} onChange={() => handleToggleDone(item)} style={{ marginTop: 2 }} />
                 {isEditing ? (
-                    <Input
+                    <Input.TextArea
                         autoFocus
                         size="small"
+                        autoSize={{ minRows: 1, maxRows: 6 }}
                         value={editingContent}
                         maxLength={500}
                         onChange={(e) => setEditingContent(e.target.value)}
-                        onPressEnter={() => handleSaveEdit(item)}
+                        onPressEnter={(e) => {
+                            if (!e.shiftKey) {
+                                e.preventDefault();
+                                handleSaveEdit(item);
+                            }
+                        }}
                         style={{ flex: 1 }}
                     />
                 ) : (
@@ -318,14 +324,21 @@ export function TaskChecklistInline({ taskId, canEdit, onOpenFull }: Props) {
             )}
 
             {canEdit && (
-                <div style={{ marginTop: 6, display: 'flex', gap: 6 }}>
-                    <Input
+                <div style={{ marginTop: 6, display: 'flex', gap: 6, alignItems: 'flex-end' }}>
+                    <Input.TextArea
                         size="small"
                         placeholder="Thêm checklist item mới..."
+                        autoSize={{ minRows: 1, maxRows: 6 }}
                         maxLength={500}
                         value={newContent}
                         onChange={(e) => setNewContent(e.target.value)}
-                        onPressEnter={handleAdd}
+                        onPressEnter={(e) => {
+                            if (!e.shiftKey) {
+                                e.preventDefault();
+                                handleAdd();
+                            }
+                        }}
+                        style={{ flex: 1 }}
                     />
                     <Button
                         size="small"
