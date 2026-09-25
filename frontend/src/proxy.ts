@@ -45,32 +45,43 @@ export function proxy(request: NextRequest) {
     return NextResponse.next();
   }
 
-  // CRITICAL: Đọc cookie
-  const authCookie = request.cookies.get('auth-storage')?.value;
+  // ⚠️ FIX BUG THẬT (2026-09-25) - xem giải thích đầy đủ trong
+  // `lib/stores/auth.store.ts`: trước đây route này parse NGUYÊN CỤC state
+  // (token + user + avatarUrl dài) từ cookie `auth-storage` - đúng cái
+  // cookie dễ vượt trần ~4KB khiến trình duyệt âm thầm không ghi được giá
+  // trị mới, làm cookie "đóng băng" ở token cũ/đã revoke -> user đăng nhập
+  // lâu ở 1 profile bị kẹt vô thời hạn cho tới khi xoá tay cookie này. Giờ
+  // chỉ cần kiểm tra 1 cờ nhỏ `azw-session` (không chứa token/user, không
+  // bao giờ phình to) - state thật nằm ở `localStorage` (client tự đọc,
+  // không qua middleware này).
+  const sessionCookie = request.cookies.get('azw-session')?.value;
 
-  if (!authCookie) {
-    console.log('[PROXY] No auth cookie, redirect to /login');
+  if (sessionCookie === '1') {
+    return NextResponse.next();
+  }
+
+  // Fallback tương thích ngược: ngay sau lần deploy fix này, trình duyệt
+  // của user đang đăng nhập từ TRƯỚC có thể còn cookie `auth-storage` cũ mà
+  // CHƯA kịp chạy JS phía client để migrate sang cookie `azw-session` mới
+  // (vd họ F5 trang trước khi bất kỳ tab nào của họ mount lại app). Đọc tạm
+  // cookie cũ y như logic trước đây để không văng họ ra ngoài oan uổng -
+  // fallback này có thể xoá sau khi chắc chắn mọi session cũ đã hết hạn
+  // (7 ngày kể từ ngày deploy fix).
+  const legacyCookie = request.cookies.get('auth-storage')?.value;
+  if (!legacyCookie) {
     return NextResponse.redirect(new URL('/login', request.url));
   }
 
   try {
-    const parsed = JSON.parse(decodeURIComponent(authCookie));
-
-    // CRITICAL: Check nested state.state (Zustand persist structure)
+    const parsed = JSON.parse(decodeURIComponent(legacyCookie));
     const isAuthenticated = parsed?.state?.isAuthenticated;
 
-    console.log('[PROXY] Cookie exists:', !!authCookie);
-    console.log('[PROXY] Parsed state:', parsed?.state);
-    console.log('[PROXY] Is authenticated:', isAuthenticated);
-
     if (!isAuthenticated) {
-      console.log('[PROXY] Not authenticated, redirect to /login');
       return NextResponse.redirect(new URL('/login', request.url));
     }
 
     return NextResponse.next();
   } catch (e) {
-    console.error('[PROXY] Parse cookie failed:', e);
     return NextResponse.redirect(new URL('/login', request.url));
   }
 }

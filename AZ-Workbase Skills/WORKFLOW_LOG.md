@@ -4434,3 +4434,58 @@ trước) theo đúng Custom Instructions của Project.
 > Chưa commit/push lên `main` — chủ dự án tự áp patch/diff và verify trên môi trường của mình trước khi merge. Sort "gần ngày hôm nay nhất" và phân trang server-side đã hoàn toàn nằm ở BE (không sửa gì thêm) — lượt này chỉ là wiring FE cho đúng.
 
 ---
+## [2026-09-25 12:00] | Fix bug 429/CORS đăng nhập chỉ ở 1 profile Chrome sau phiên đăng nhập dài | [Status: Success]
+
+**Actor:** Agent
+
+**Bối cảnh/Yêu cầu:** Chủ dự án báo lỗi prod: 1 profile Chrome cụ thể (không phải máy/IP) bị 429 kèm CORS
+khi login lại, hoặc CORS giữa lúc đang dùng dở sau khi đã đăng nhập lâu; ẩn danh/profile khác không bị;
+chỉ hết khi F12 → Application → Cookies → xoá tay cookie `auth-storage` (xoá cache/cookie thường không ăn
+thua). Chủ dự án có dán 1 bản chẩn đoán từ Gemini (cho rằng do Vercel Firewall/Rate-limit chặn theo IP,
+đề xuất tự thêm CORS header vào response 429 của chính mình) — được yêu cầu verify đúng/sai bằng code thật.
+
+**Đã verify (đọc code thật, KHÔNG suy đoán):**
+- `backend/src/modules/auth/auth.controller.ts` + `app.module.ts`: `POST /auth/login` và `POST /auth/refresh`
+  KHÔNG hề gắn `ThrottlerGuard`/`@Throttle` nào — chỉ `POST /auth/register` (5 lần/10 phút) và 1 endpoint
+  gửi thông báo có rate-limit. `ThrottlerModule.forRoot()` ở `app.module.ts` chỉ đăng ký storage dùng
+  chung, KHÔNG bind `APP_GUARD` toàn cục (đã grep xác nhận không có `APP_GUARD` nào áp `ThrottlerGuard`).
+  → Kết luận: 429 KHÔNG đến từ code NestJS của mình cho 2 route này — phần đề xuất sửa của Gemini (tự
+  thêm CORS header vào response 429 do code mình trả) không áp dụng được vì mình không phải nơi tạo ra
+  response 429 đó (khớp 1 phần nhận định "chặn ở tầng Edge trước khi vào Function" của Gemini, nhưng đó
+  là do Vercel Firewall/Bot Protection ở tầng platform — xem `frontend/src/app/api/auth/register/route.ts`
+  dòng comment đã ghi nhận sẵn: Vercel Firewall có setting "Challenge requests from non-browser sources"
+  từng phải xin bypass riêng qua Custom Rule cho đúng 1 route — không sửa được bằng code BE).
+
+**Root cause đã sửa (khớp đúng triệu chứng "chỉ 1 profile, phiên dài, chỉ hết khi xoá tay đúng cookie
+`auth-storage`"):** `frontend/src/lib/stores/auth.store.ts` trước đây `persist` TOÀN BỘ state (accessToken +
+refreshToken JWT + object `user` có `avatarUrl` là URL Presigned B2/S3 dài) vào 1 COOKIE duy nhất qua
+js-cookie — cookie có trần cứng ~4096 byte (RFC 6265), vượt trần thì trình duyệt ÂM THẦM không ghi được
+giá trị mới (không lỗi), khiến cookie "đóng băng" ở token cũ/đã bị Refresh Token Rotation thu hồi cho tới
+khi bị xoá tay. Đây là 1 anti-pattern thật (dù đo thử với payload thông thường ~1.4KB, chưa chắc luôn vượt
+4KB — xem Notes) cần sửa bất kể có phải nguyên nhân duy nhất của đúng lần báo lỗi này hay không.
+
+**Files Changed:**
+- `frontend/src/lib/stores/auth.store.ts` — bỏ `cookieStorage` (ghi toàn bộ state vào 1 cookie), đổi
+  `persist` sang `localStorage` (không giới hạn 4KB, không đi kèm mọi HTTP request); thêm cookie phụ nhỏ
+  `azw-session=1` (không chứa token/user) chỉ để `proxy.ts` (Edge Middleware, không đọc được localStorage)
+  gate trang; có migrate 1 lần từ cookie `auth-storage` cũ sang `localStorage` để user đang đăng nhập
+  KHÔNG bị văng ra ngoài ngay sau khi deploy.
+- `frontend/src/proxy.ts` — đổi sang kiểm tra cookie `azw-session` thay vì parse nguyên JSON từ cookie
+  `auth-storage` cũ; giữ fallback đọc cookie cũ (tương thích ngược, có thể xoá sau ~7 ngày kể từ khi mọi
+  session cũ hết hạn).
+
+**Verify thật đã chạy (sandbox, clone mới từ `main`, commit `de0e3da`):**
+- `npx tsc --noEmit -p tsconfig.json` — đúng 5 lỗi baseline PRE-EXISTING (`logo.png` x4, `CountBadge.tsx`
+  styled-jsx — đã xác nhận bằng `git stash` là có sẵn từ trước, không do lượt sửa này), không có lỗi mới.
+- `npm run build` (`next build`, Turbopack) — build production THẬT thành công đủ 37 route + Proxy
+  (Middleware) build đúng.
+- `npx vitest run` — 19/19 test file pass, 132/132 test pass (không có test riêng cho `auth.store.ts`).
+
+**Notes:**
+> Mô phỏng số liệu (Node script, payload JWT `{sub,email,role}` + avatarUrl B2 presigned thật dài) ra
+> ~1.4KB, CHƯA chắc luôn vượt 4096 byte với 1 tài khoản thông thường — nên KHÔNG khẳng định chắc chắn
+> 100% đây là nguyên nhân DUY NHẤT của đúng lần báo lỗi này (Vercel Firewall/Bot Protection ở tầng
+> platform vẫn là khả năng còn lại, không kiểm chứng được vì Agent không có quyền vào Vercel Dashboard) —
+> đã báo rõ trong câu trả lời cho chủ dự án, kèm hướng dẫn tự kiểm tra thêm (xem cột Size của cookie
+> `auth-storage` trong DevTools lúc bị lỗi lần sau; xem chi tiết lý do bị "Challenged" trong Vercel
+> Firewall Dashboard). Chưa commit/push lên `main` — đính kèm diff, chủ dự án tự áp và deploy.
