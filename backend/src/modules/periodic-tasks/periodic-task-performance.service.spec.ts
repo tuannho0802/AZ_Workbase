@@ -7,6 +7,7 @@ import { PeriodicTaskStatus } from '../../database/entities/periodic-task-status
 import { PeriodicTaskAuditLog } from '../../database/entities/periodic-task-audit-log.entity';
 import { User } from '../../database/entities/user.entity';
 import { PermissionsService } from '../permissions/permissions.service';
+import { PeriodicTaskSecondaryAssigneesService } from './periodic-task-secondary-assignees.service';
 import { PermissionScope } from '../../database/entities/role-permission.entity';
 import { Role } from '../../common/enums/role.enum';
 import * as dateVnUtil from '../../common/utils/date-vn.util';
@@ -38,6 +39,7 @@ describe('PeriodicTaskPerformanceService - grace period 7 ngày', () => {
   let mockAuditLogRepo: { find: jest.Mock };
   let mockUserRepo: { find: jest.Mock };
   let mockPermissionsService: { hasPermission: jest.Mock };
+  let mockSecondaryAssigneesService: { attachSecondaryAssigneesToList: jest.Mock };
 
   const ADMIN_USER = { id: 1, role: Role.ADMIN, isRootAdmin: true };
 
@@ -55,6 +57,13 @@ describe('PeriodicTaskPerformanceService - grace period 7 ngày', () => {
     mockAuditLogRepo = { find: jest.fn().mockResolvedValue([]) };
     mockUserRepo = { find: jest.fn().mockResolvedValue([{ id: 7, name: 'Nhân viên A' }]) };
     mockPermissionsService = { hasPermission: jest.fn() };
+    // `getUserTasks()` đính `secondaryAssignees` qua service này (xem JSDoc
+    // constructor) - mock pass-through: trả nguyên input, thêm `secondaryAssignees: []`.
+    mockSecondaryAssigneesService = {
+      attachSecondaryAssigneesToList: jest.fn().mockImplementation((tasks: any[]) =>
+        Promise.resolve(tasks.map((t) => ({ ...t, secondaryAssignees: [] }))),
+      ),
+    };
 
     const module: TestingModule = await Test.createTestingModule({
       providers: [
@@ -65,6 +74,7 @@ describe('PeriodicTaskPerformanceService - grace period 7 ngày', () => {
         { provide: getRepositoryToken(PeriodicTaskAuditLog), useValue: mockAuditLogRepo },
         { provide: getRepositoryToken(User), useValue: mockUserRepo },
         { provide: PermissionsService, useValue: mockPermissionsService },
+        { provide: PeriodicTaskSecondaryAssigneesService, useValue: mockSecondaryAssigneesService },
       ],
     }).compile();
 
@@ -367,6 +377,69 @@ describe('PeriodicTaskPerformanceService - grace period 7 ngày', () => {
       expect(result.rows[0].inReviewCount).toBe(0);
       expect(result.rows[0].inProgressRatePercent).toBe(0);
       expect(result.rows[0].inReviewRatePercent).toBe(0);
+    });
+  });
+
+  describe('MỚI (2026-09-25) - getUserTasks() (danh sách ĐẦY ĐỦ, không chỉ Task bị flag)', () => {
+    /** QB riêng cho `getUserTasks()` - dùng `getMany()` (entity thật) thay vì `getRawMany()`. */
+    function makeEntityQb(tasks: any[]) {
+      return {
+        where: jest.fn().mockReturnThis(),
+        andWhere: jest.fn().mockReturnThis(),
+        leftJoinAndSelect: jest.fn().mockReturnThis(),
+        orderBy: jest.fn().mockReturnThis(),
+        getMany: jest.fn().mockResolvedValue(tasks),
+      };
+    }
+
+    const EMPLOYEE_USER = { id: 7, role: Role.EMPLOYEE, isRootAdmin: false, departmentId: 1 };
+    const MANAGER_USER = { id: 3, role: Role.MANAGER, isRootAdmin: false, departmentId: 1 };
+
+    it('scope=own, targetUserId KHÁC user.id -> ForbiddenException', async () => {
+      mockPermissionsService.hasPermission.mockResolvedValue({ allowed: false, scope: null });
+
+      await expect(service.getUserTasks(99, {}, EMPLOYEE_USER as any)).rejects.toThrow(
+        'Bạn chỉ được xem công việc của chính mình.',
+      );
+    });
+
+    it('scope=own, targetUserId = chính mình -> trả CẢ 2 mảng primary/secondary, KHÔNG throw', async () => {
+      mockPermissionsService.hasPermission.mockResolvedValue({ allowed: false, scope: null });
+
+      const primaryQb = makeEntityQb([{ id: 1, primaryAssigneeId: 7 }]);
+      const secondaryQb = makeEntityQb([{ id: 2, primaryAssigneeId: 99 }]);
+      let call = 0;
+      mockTaskRepo.createQueryBuilder.mockImplementation(() => (call++ === 0 ? primaryQb : secondaryQb));
+
+      const result = await service.getUserTasks(7, {}, EMPLOYEE_USER as any);
+
+      expect(result.scope).toBe(PermissionScope.OWN);
+      expect(result.primaryTasks).toHaveLength(1);
+      expect(result.secondaryTasks).toHaveLength(1);
+      // QUAN TRỌNG: KHÔNG được áp lại `applyScopeFilter()` kiểu 'own' cũ
+      // (ép `primaryAssigneeId = user.id`) lên truy vấn secondary - nếu áp
+      // nhầm, secondaryQb.andWhere sẽ bị gọi với điều kiện đó và (do mock
+      // luôn `mockReturnThis()`) test này không tự phát hiện được bằng cách
+      // đếm - assert TRỰC TIẾP câu SQL điều kiện đã dùng cho secondary:
+      const secondaryCalls = secondaryQb.andWhere.mock.calls.map((c: any[]) => c[0]);
+      expect(secondaryCalls.some((sql: string) => sql.includes('periodic_task_secondary_assignees'))).toBe(true);
+      expect(secondaryCalls.some((sql: string) => sql.includes('task.primaryAssigneeId ='))).toBe(false);
+    });
+
+    it('scope=department -> áp thêm điều kiện department_managers cho CẢ primary lẫn secondary query', async () => {
+      mockPermissionsService.hasPermission.mockResolvedValue({ allowed: true, scope: PermissionScope.DEPARTMENT });
+
+      const primaryQb = makeEntityQb([]);
+      const secondaryQb = makeEntityQb([]);
+      let call = 0;
+      mockTaskRepo.createQueryBuilder.mockImplementation(() => (call++ === 0 ? primaryQb : secondaryQb));
+
+      await service.getUserTasks(42, {}, MANAGER_USER as any);
+
+      for (const qb of [primaryQb, secondaryQb]) {
+        const sqls = qb.andWhere.mock.calls.map((c: any[]) => c[0]);
+        expect(sqls.some((sql: string) => sql.includes('department_managers'))).toBe(true);
+      }
     });
   });
 });

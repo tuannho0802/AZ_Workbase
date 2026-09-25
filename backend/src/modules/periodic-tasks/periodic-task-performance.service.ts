@@ -7,6 +7,7 @@ import { PeriodicTaskStatus } from '../../database/entities/periodic-task-status
 import { PeriodicTaskAuditLog } from '../../database/entities/periodic-task-audit-log.entity';
 import { User } from '../../database/entities/user.entity';
 import { PermissionsService } from '../permissions/permissions.service';
+import { PeriodicTaskSecondaryAssigneesService } from './periodic-task-secondary-assignees.service';
 import { PermissionScope } from '../../database/entities/role-permission.entity';
 import { Role } from '../../common/enums/role.enum';
 import { todayVnStr, toVnDateStr } from '../../common/utils/date-vn.util';
@@ -155,6 +156,11 @@ export class PeriodicTaskPerformanceService {
     @InjectRepository(User)
     private readonly userRepo: Repository<User>,
     private readonly permissionsService: PermissionsService,
+    // MỚI (2026-09-25, `getUserTasks()`) - đính `secondaryAssignees` vào Task
+    // trả về, để FE hiện được "Phụ trách phụ" trên `TaskMiniCard` (mirror
+    // ĐÚNG cách `PeriodicTasksController` đính cho `GET /periodic-tasks`,
+    // KHÔNG tự viết lại query join này lần 2).
+    private readonly secondaryAssigneesService: PeriodicTaskSecondaryAssigneesService,
   ) {}
 
   /** `code = 'in_review'` (Admin tự thêm trên Production, xem JSDoc class)
@@ -250,6 +256,37 @@ export class PeriodicTaskPerformanceService {
 
     // 'own' (mặc định khi tắt permission, hoặc scope='own' thật sự).
     qb.andWhere('task.primaryAssigneeId = :perfOwnUserId', { perfOwnUserId: user.id });
+    return qb;
+  }
+
+  /**
+   * Scope filter DÀNH RIÊNG cho `getUserTasks()` (khác `applyScopeFilter()` ở
+   * trên dùng cho `getSummary()`/`getUserFlaggedTasks()`): 2 hàm đó lọc theo
+   * DANH TÍNH NGƯỜI XEM (viewer) - nhánh 'own' ép `primaryAssigneeId =
+   * user.id` (đúng cho "tổng hợp hiệu suất của TÔI"), nhưng `getUserTasks()`
+   * đã CHỐT SẴN `targetUserId` cụ thể (được `resolveScope()` + guard ở đầu
+   * `getUserTasks()` xác nhận hợp lệ) và cần trả CẢ Task Phụ trách phụ (không
+   * phải `primaryAssigneeId`) của đúng `targetUserId` đó - áp lại nhánh 'own'
+   * của `applyScopeFilter()` ở đây sẽ xoá sạch nhầm danh sách Phụ trách phụ
+   * (vì `primaryAssigneeId` của Task đó KHÁC `targetUserId`). Chỉ còn cần
+   * chặn thêm 1 lớp cho scope='department': Manager chỉ xem được Task thuộc
+   * phòng ban mình quản lý (mirror ĐÚNG nhánh `department` của
+   * `applyScopeFilter()`) - chặn cả trường hợp Manager tự sửa `userId` trên
+   * URL để dò xem Nhân viên phòng ban khác (Task của họ thuộc phòng ban khác
+   * sẽ không khớp điều kiện này, trả về rỗng thay vì rò rỉ dữ liệu).
+   */
+  private applyDepartmentOnlyScopeFilter(
+    qb: ReturnType<Repository<PeriodicTask>['createQueryBuilder']>,
+    user: RequestingUser,
+    scope: PermissionScope | 'own',
+  ) {
+    if (user.role === Role.ADMIN && user.isRootAdmin) return qb;
+    if (scope !== PermissionScope.DEPARTMENT) return qb; // 'all': không giới hạn thêm. 'own': targetUserId đã tự giới hạn đủ.
+    qb.andWhere(
+      'task.department_id IN ' +
+      '(SELECT dm.department_id FROM department_managers dm WHERE dm.user_id = :perfManagerId)',
+      { perfManagerId: user.id },
+    );
     return qb;
   }
 
@@ -462,5 +499,73 @@ export class PeriodicTaskPerformanceService {
       relations: ['status', 'primaryAssignee', 'department'],
       order: { periodEndDate: 'DESC' },
     });
+  }
+
+  /**
+   * getUserTasks - MỚI (2026-09-25, yêu cầu chủ dự án): danh sách ĐẦY ĐỦ Task
+   * của 1 User trong khoảng lọc, KHÔNG giới hạn "hoàn thành muộn/quá hạn" như
+   * `getUserFlaggedTasks()` (mục đích khác nhau - hàm đó phục vụ nút "Chi
+   * tiết" chỉ bật khi có Task cần lưu ý, hàm NÀY phục vụ:
+   *  1) Trang "Hiệu suất công việc" khi scope resolve ra 'own' (permission
+   *     tắt hoặc bật nhưng scope='own') - hiển thị TOÀN BỘ Task của chính
+   *     mình dạng Card chi tiết (mirror `PeriodicTasksAgendaView`), không chỉ
+   *     1 dòng số liệu tổng như bảng hiện tại.
+   *  2) Drawer "Chi tiết" cho User khác khi scope='department'/'all' - CHO
+   *     PHÉP xem bất kỳ lúc nào (không cần điều kiện "có Task cần lưu ý" như
+   *     trước), để User role cao hơn (Admin/Manager) rà soát được toàn bộ
+   *     công việc của Nhân viên mình quản lý.
+   *
+   * Trả 2 danh sách TÁCH RIÊNG (không gộp 1 mảng kèm cờ) vì FE cần hiển thị
+   * 2 khối khác nhau ("Phụ trách chính" luôn hiện trước, "Phụ trách phụ" ở
+   * dưới - yêu cầu chủ dự án) - tách sẵn ở BE để FE khỏi tự lọc lại.
+   *
+   * Quyền xem = ĐÚNG `resolveScope()` (permission `periodic_tasks.performance_view`)
+   * y hệt `getSummary()`/`getUserFlaggedTasks()`, KHÔNG tạo permission mới -
+   * xem Task đầy đủ của 1 User vẫn là 1 dạng "xem hiệu suất/công việc của
+   * User đó", đúng phạm vi permission đã có.
+   */
+  async getUserTasks(
+    targetUserId: number,
+    filters: PeriodicTaskPerformanceFiltersDto,
+    user: RequestingUser,
+  ): Promise<{ scope: PermissionScope | 'own'; primaryTasks: PeriodicTask[]; secondaryTasks: PeriodicTask[] }> {
+    const scope = await this.resolveScope(user);
+    if (scope === PermissionScope.OWN && targetUserId !== user.id) {
+      throw new ForbiddenException('Bạn chỉ được xem công việc của chính mình.');
+    }
+
+    const dateWindow = resolveListWindow({ dateFrom: filters.dateFrom, dateTo: filters.dateTo });
+
+    const applyCommon = (qb: ReturnType<Repository<PeriodicTask>['createQueryBuilder']>) => {
+      qb.where('task.deletedAt IS NULL');
+      if (filters.periodType) qb.andWhere('task.periodType = :perfPeriodType', { perfPeriodType: filters.periodType });
+      if (dateWindow.dateFrom) qb.andWhere('task.periodEndDate >= :perfDateFrom', { perfDateFrom: dateWindow.dateFrom });
+      if (dateWindow.dateTo) qb.andWhere('task.periodStartDate <= :perfDateTo', { perfDateTo: dateWindow.dateTo });
+      if (filters.departmentId) qb.andWhere('task.departmentId = :perfDepartmentId', { perfDepartmentId: filters.departmentId });
+      this.applyDepartmentOnlyScopeFilter(qb, user, scope);
+      return qb
+        .leftJoinAndSelect('task.status', 'status')
+        .leftJoinAndSelect('task.primaryAssignee', 'primaryAssignee')
+        .leftJoinAndSelect('task.department', 'department')
+        .orderBy('task.periodEndDate', 'DESC');
+    };
+
+    const primaryQb = applyCommon(this.taskRepo.createQueryBuilder('task')).andWhere(
+      'task.primaryAssigneeId = :perfTargetUserId',
+      { perfTargetUserId: targetUserId },
+    );
+
+    const secondaryQb = applyCommon(this.taskRepo.createQueryBuilder('task')).andWhere(
+      'task.id IN (SELECT psa.task_id FROM periodic_task_secondary_assignees psa WHERE psa.user_id = :perfSecTargetUserId)',
+      { perfSecTargetUserId: targetUserId },
+    );
+
+    const [primaryTasksRaw, secondaryTasksRaw] = await Promise.all([primaryQb.getMany(), secondaryQb.getMany()]);
+    const [primaryTasks, secondaryTasks] = await Promise.all([
+      this.secondaryAssigneesService.attachSecondaryAssigneesToList(primaryTasksRaw),
+      this.secondaryAssigneesService.attachSecondaryAssigneesToList(secondaryTasksRaw),
+    ]);
+
+    return { scope, primaryTasks: primaryTasks as PeriodicTask[], secondaryTasks: secondaryTasks as PeriodicTask[] };
   }
 }

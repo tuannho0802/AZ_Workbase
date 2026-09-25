@@ -44,4 +44,19 @@ export class PeriodicTaskPerformanceController {
   ) {
     return this.performanceService.getUserFlaggedTasks(userId, filters, user);
   }
+
+  @Get('users/:userId/tasks')
+  @ApiOperation({
+    summary:
+      'Danh sách ĐẦY ĐỦ Task (Phụ trách chính + Phụ trách phụ, tách riêng 2 mảng) của 1 User trong khoảng lọc - ' +
+      'KHÔNG giới hạn "hoàn thành muộn/quá hạn" như /flagged-tasks. Dùng cho trang chi tiết khi scope=own, và ' +
+      'Drawer "Chi tiết" xem User khác (được phép xem bất kỳ lúc nào khi scope=department/all).',
+  })
+  getUserTasks(
+    @Param('userId', ParseIntPipe) userId: number,
+    @Query() filters: PeriodicTaskPerformanceFiltersDto,
+    @GetUser() user: RequestingUser,
+  ) {
+    return this.performanceService.getUserTasks(userId, filters, user);
+  }
 }

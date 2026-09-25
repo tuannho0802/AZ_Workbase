@@ -58,6 +58,16 @@ export interface PerformanceFilterParams {
   userId?: number;
 }
 
+/** Khớp response `GET /users/:userId/tasks` (MỚI 2026-09-25) - xem JSDoc
+ * `PeriodicTaskPerformanceService.getUserTasks()`. */
+export interface UserTasksResult {
+  scope: PermissionScope | 'own';
+  /** Task có `primaryAssigneeId` = User được xem. */
+  primaryTasks: PeriodicTask[];
+  /** Task User được xem CHỈ là Phụ trách phụ (không phải Phụ trách chính). */
+  secondaryTasks: PeriodicTask[];
+}
+
 export const periodicTaskPerformanceApi = {
   getSummary: async (params: PerformanceFilterParams): Promise<PerformanceSummaryResult> => {
     const response = await axiosInstance.get<PerformanceSummaryResult>(
@@ -74,6 +84,21 @@ export const periodicTaskPerformanceApi = {
   ): Promise<PeriodicTask[]> => {
     const response = await axiosInstance.get<PeriodicTask[]>(
       `/periodic-tasks-performance/users/${userId}/flagged-tasks`,
+      { params },
+    );
+    return response.data;
+  },
+
+  /** Danh sách ĐẦY ĐỦ Task (chính + phụ, tách riêng) của 1 User - KHÔNG giới
+   * hạn "hoàn thành muộn/quá hạn" như `getUserFlaggedTasks`. Dùng cho trang
+   * chi tiết scope='own' và Drawer xem User khác (luôn xem được, không cần
+   * điều kiện "có Task cần lưu ý"). */
+  getUserTasks: async (
+    userId: number,
+    params: PerformanceFilterParams,
+  ): Promise<UserTasksResult> => {
+    const response = await axiosInstance.get<UserTasksResult>(
+      `/periodic-tasks-performance/users/${userId}/tasks`,
       { params },
     );
     return response.data;

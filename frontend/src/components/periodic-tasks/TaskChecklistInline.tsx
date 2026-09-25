@@ -1,7 +1,7 @@
 'use client';
 
-import { useState } from 'react';
-import { App, Button, Checkbox, Empty, Input, Popconfirm, Progress, Space, Spin, Typography } from 'antd';
+import { useMemo, useState } from 'react';
+import { App, Button, Checkbox, Collapse, Empty, Input, Popconfirm, Progress, Space, Spin, Typography } from 'antd';
 import { CheckOutlined, CloseOutlined, DeleteOutlined, PlusOutlined } from '@ant-design/icons';
 import { useQueryClient } from '@tanstack/react-query';
 import {
@@ -10,6 +10,9 @@ import {
     useRemoveTaskChecklistItem,
     useTaskChecklistPage,
 } from '@/lib/hooks/usePeriodicTaskChecklistItems';
+import { useUsersList } from '@/lib/hooks/useUsers';
+import { useRoleColorMap } from '@/lib/hooks/useRoleColorMap';
+import { UserMiniCard } from '@/app/(dashboard)/attendance-device/UserMiniCard';
 import { PeriodicTaskChecklistItem } from '@/lib/api/periodic-tasks.api';
 import { CHECKLIST_PAGE_SIZE } from '@/lib/api/periodic-task-checklist-items.api';
 import { getApiErrorMessage } from '@/lib/utils/error-message.util';
@@ -40,6 +43,13 @@ interface Props {
  *  - MỖI mutation invalidate THÊM namespace `periodic-task-performance`
  *    (khác 3 hook gốc chỉ invalidate `periodic-tasks`) để bảng tổng hợp Hiệu
  *    suất (cột Checklist) tự cập nhật ngay khi tick/thêm/xoá trong Drawer này.
+ *  - MỚI (2026-09-25, yêu cầu chủ dự án - "áp dụng separator tương tự Task
+ *    checklist"): mirror ĐÚNG cơ chế gom nhóm theo Người tạo (`createdById`)
+ *    của `TaskChecklistModal` - CHỈ gom (bọc `Collapse.Panel`, border của nó
+ *    đóng vai trò "separator" giữa các nhóm) khi trang 1 hiện tại có TỪ 2
+ *    người tạo khác nhau trở lên, ngược lại giữ nguyên danh sách phẳng như
+ *    trước. Panel header dùng `UserMiniCard` y hệt Modal gốc (không lặp lại
+ *    style riêng ở đây để tránh lệch UI giữa Modal đầy đủ và bản rút gọn này).
  */
 export function TaskChecklistInline({ taskId, canEdit, onOpenFull }: Props) {
     const { message } = App.useApp();
@@ -52,6 +62,25 @@ export function TaskChecklistInline({ taskId, canEdit, onOpenFull }: Props) {
     const done = data?.done ?? 0;
     const percent = total > 0 ? Math.round((done / total) * 100) : 0;
     const hasMore = total > CHECKLIST_PAGE_SIZE;
+
+    // Gom nhóm theo Người tạo (mirror ĐÚNG `TaskChecklistModal` - xem JSDoc đầu file).
+    const { users: allUsers } = useUsersList();
+    const { getRoleColor } = useRoleColorMap();
+    const userNameById = useMemo(
+        () => new Map<number, string>((allUsers as Array<{ id: number; name: string }>).map((u) => [u.id, u.name])),
+        [allUsers],
+    );
+    const groupedByCreator = useMemo(() => {
+        const map = new Map<string, PeriodicTaskChecklistItem[]>();
+        for (const it of items) {
+            const key = it.createdById == null ? 'unknown' : String(it.createdById);
+            const bucket = map.get(key);
+            if (bucket) bucket.push(it);
+            else map.set(key, [it]);
+        }
+        return map;
+    }, [items]);
+    const shouldGroupByCreator = groupedByCreator.size >= 2;
 
     const addMutation = useAddTaskChecklistItem();
     const updateMutation = useUpdateTaskChecklistItem();
@@ -125,6 +154,80 @@ export function TaskChecklistInline({ taskId, canEdit, onOpenFull }: Props) {
         );
     };
 
+    // Render 1 dòng checklist item - dùng CHUNG cho cả danh sách phẳng lẫn
+    // bên trong từng `Collapse.Panel` khi có gom nhóm (mirror `TaskChecklistModal`).
+    const renderItemRow = (item: PeriodicTaskChecklistItem, isLast: boolean) => {
+        const isEditing = editingItemId === item.id;
+        const isBusy =
+            (updateMutation.isPending && updateMutation.variables?.itemId === item.id) ||
+            (removeMutation.isPending && removeMutation.variables?.itemId === item.id);
+        return (
+            <div
+                key={item.id}
+                style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: 6,
+                    padding: '6px 8px',
+                    borderBottom: isLast ? 'none' : '1px solid #f0f0f0',
+                    opacity: isBusy ? 0.6 : 1,
+                }}
+            >
+                <Checkbox checked={item.isDone} disabled={!canEdit} onChange={() => handleToggleDone(item)} />
+                {isEditing ? (
+                    <Input
+                        autoFocus
+                        size="small"
+                        value={editingContent}
+                        maxLength={500}
+                        onChange={(e) => setEditingContent(e.target.value)}
+                        onPressEnter={() => handleSaveEdit(item)}
+                        style={{ flex: 1 }}
+                    />
+                ) : (
+                    <Text
+                        style={{
+                            flex: 1,
+                            fontSize: 13,
+                            textDecoration: item.isDone ? 'line-through' : undefined,
+                            color: item.isDone ? 'rgba(0,0,0,0.45)' : undefined,
+                            cursor: canEdit ? 'pointer' : undefined,
+                        }}
+                        onClick={() => canEdit && startEdit(item)}
+                    >
+                        <LinkifiedText text={item.content} />
+                    </Text>
+                )}
+                {canEdit && (
+                    <Space size={2}>
+                        {isEditing ? (
+                            <>
+                                <Button
+                                    size="small"
+                                    type="text"
+                                    icon={<CheckOutlined />}
+                                    loading={updateMutation.isPending && updateMutation.variables?.itemId === item.id}
+                                    onClick={() => handleSaveEdit(item)}
+                                />
+                                <Button size="small" type="text" icon={<CloseOutlined />} onClick={cancelEdit} />
+                            </>
+                        ) : (
+                            <Popconfirm title="Xoá checklist item này?" onConfirm={() => handleRemove(item)} okText="Xoá" cancelText="Huỷ">
+                                <Button
+                                    size="small"
+                                    danger
+                                    type="text"
+                                    icon={<DeleteOutlined />}
+                                    loading={removeMutation.isPending && removeMutation.variables?.itemId === item.id}
+                                />
+                            </Popconfirm>
+                        )}
+                    </Space>
+                )}
+            </div>
+        );
+    };
+
     return (
         <div onClick={(e) => e.stopPropagation()}>
             {total > 0 && (
@@ -139,79 +242,43 @@ export function TaskChecklistInline({ taskId, canEdit, onOpenFull }: Props) {
             <Spin spinning={isLoading}>
                 {total === 0 ? (
                     <Empty description="Chưa có checklist item nào" image={Empty.PRESENTED_IMAGE_SIMPLE} style={{ margin: '4px 0' }} />
-                ) : (
-                    <div style={{ border: '1px solid #f0f0f0', borderRadius: 6, overflow: 'hidden' }}>
-                        {items.map((item, index) => {
-                            const isEditing = editingItemId === item.id;
-                            const isBusy =
-                                (updateMutation.isPending && updateMutation.variables?.itemId === item.id) ||
-                                (removeMutation.isPending && removeMutation.variables?.itemId === item.id);
-                            return (
-                                <div
-                                    key={item.id}
-                                    style={{
-                                        display: 'flex',
-                                        alignItems: 'center',
-                                        gap: 6,
-                                        padding: '6px 8px',
-                                        borderBottom: index === items.length - 1 ? 'none' : '1px solid #f0f0f0',
-                                        opacity: isBusy ? 0.6 : 1,
-                                    }}
-                                >
-                                    <Checkbox checked={item.isDone} disabled={!canEdit} onChange={() => handleToggleDone(item)} />
-                                    {isEditing ? (
-                                        <Input
-                                            autoFocus
-                                            size="small"
-                                            value={editingContent}
-                                            maxLength={500}
-                                            onChange={(e) => setEditingContent(e.target.value)}
-                                            onPressEnter={() => handleSaveEdit(item)}
-                                            style={{ flex: 1 }}
+                ) : shouldGroupByCreator ? (
+                    <Collapse
+                        size="small"
+                        defaultActiveKey={[...groupedByCreator.keys()]}
+                        items={[...groupedByCreator.entries()].map(([creatorKey, groupItems]) => {
+                            const creatorId = creatorKey === 'unknown' ? null : Number(creatorKey);
+                            const creatorName = creatorId != null ? userNameById.get(creatorId) ?? `User #${creatorId}` : 'Không xác định';
+                            const doneInGroup = groupItems.filter((i) => i.isDone).length;
+                            return {
+                                key: creatorKey,
+                                label: (
+                                    <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                                        <UserMiniCard
+                                            name={creatorName}
+                                            hideRoleTag
+                                            nameFontSize={11}
+                                            borderRadius={6}
+                                            avatarShape="square"
+                                            getRoleColor={getRoleColor}
+                                            getRoleName={() => ''}
                                         />
-                                    ) : (
-                                        <Text
-                                            style={{
-                                                flex: 1,
-                                                fontSize: 13,
-                                                textDecoration: item.isDone ? 'line-through' : undefined,
-                                                color: item.isDone ? 'rgba(0,0,0,0.45)' : undefined,
-                                                cursor: canEdit ? 'pointer' : undefined,
-                                            }}
-                                            onClick={() => canEdit && startEdit(item)}
-                                        >
-                                            <LinkifiedText text={item.content} />
+                                        <Text type="secondary" style={{ fontSize: 11 }}>
+                                            {doneInGroup}/{groupItems.length} hoàn thành
                                         </Text>
-                                    )}
-                                    {canEdit && (
-                                        <Space size={2}>
-                                            {isEditing ? (
-                                                <>
-                                                    <Button
-                                                        size="small"
-                                                        type="text"
-                                                        icon={<CheckOutlined />}
-                                                        loading={updateMutation.isPending && updateMutation.variables?.itemId === item.id}
-                                                        onClick={() => handleSaveEdit(item)}
-                                                    />
-                                                    <Button size="small" type="text" icon={<CloseOutlined />} onClick={cancelEdit} />
-                                                </>
-                                            ) : (
-                                                <Popconfirm title="Xoá checklist item này?" onConfirm={() => handleRemove(item)} okText="Xoá" cancelText="Huỷ">
-                                                    <Button
-                                                        size="small"
-                                                        danger
-                                                        type="text"
-                                                        icon={<DeleteOutlined />}
-                                                        loading={removeMutation.isPending && removeMutation.variables?.itemId === item.id}
-                                                    />
-                                                </Popconfirm>
-                                            )}
-                                        </Space>
-                                    )}
-                                </div>
-                            );
+                                    </div>
+                                ),
+                                children: (
+                                    <div style={{ border: '1px solid #f0f0f0', borderRadius: 6, overflow: 'hidden' }}>
+                                        {groupItems.map((item, idxInGroup) => renderItemRow(item, idxInGroup === groupItems.length - 1))}
+                                    </div>
+                                ),
+                            };
                         })}
+                        />
+                    ) : (
+                        <div style={{ border: '1px solid #f0f0f0', borderRadius: 6, overflow: 'hidden' }}>
+                            {items.map((item, index) => renderItemRow(item, index === items.length - 1))}
                     </div>
                 )}
             </Spin>

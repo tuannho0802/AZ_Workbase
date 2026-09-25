@@ -22,3 +22,12 @@ export const useUserFlaggedTasks = (userId: number | null, params: PerformanceFi
     queryFn: () => periodicTaskPerformanceApi.getUserFlaggedTasks(userId as number, params),
     enabled: userId != null,
   });
+
+/** Danh sách ĐẦY ĐỦ Task (chính + phụ) của 1 User - dùng cho trang chi tiết
+ * scope='own' và Drawer "Chi tiết" xem User khác (MỚI 2026-09-25). */
+export const useUserTasks = (userId: number | null, params: PerformanceFilterParams) =>
+  useQuery({
+    queryKey: [KEY, 'tasks', userId, params],
+    queryFn: () => periodicTaskPerformanceApi.getUserTasks(userId as number, params),
+    enabled: userId != null,
+  });
