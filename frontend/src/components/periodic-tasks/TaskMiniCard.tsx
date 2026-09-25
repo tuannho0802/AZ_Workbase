@@ -5,7 +5,7 @@ import { LockOutlined } from '@ant-design/icons';
 import dayjs from 'dayjs';
 import { TaskAssignees } from './TaskAssignees';
 import { PeriodicTask } from '@/lib/api/periodic-tasks.api';
-import { DEFAULT_ENTITY_COLOR, darkenColor, resolveEntityColor } from '@/lib/utils/entityColor';
+import { DEFAULT_ENTITY_COLOR, darkenColor, getTaskCardBackground, resolveEntityColor } from '@/lib/utils/entityColor';
 import { useUsersList } from '@/lib/hooks/useUsers';
 import { TaskTitlePill, TaskChainBadge } from './TaskTitlePill';
 import { TaskChainInfo } from '@/lib/utils/taskLinkChains';
@@ -109,13 +109,21 @@ export function TaskMiniCard({
     // (`darkenColor`) để border luôn tương phản rõ với nền pill/nền Card
     // trắng, đồng thời tự nhận diện Task nào cùng nhóm màu ngay từ viền
     // ngoài, không cần nhìn vào pill tiêu đề nữa.
-    const borderColor = darkenColor(resolveEntityColor(task.color), 0.4);
+    const resolvedTaskColor = resolveEntityColor(task.color);
+    const borderColor = darkenColor(resolvedTaskColor, 0.4);
+    // MỚI (2026-09-25, yêu cầu chủ dự án - lượt 2 sau khi xem ảnh Kanban thật):
+    // BG từng Task Card dùng `getTaskCardBackground(task.color)` - sáng hơn màu
+    // gốc 90% (không phải 50% như lượt đầu, ảnh chụp cho thấy 50% còn đậm, đè
+    // chữ đen trong Card), riêng màu quá đậm/gần Đen thì hàm này tự ép về xám
+    // trung tính gần trắng thay vì tiếp tục trộn theo tỉ lệ (xem JSDoc hàm).
+    const bgColor = getTaskCardBackground(task.color);
 
     const cardStyle: React.CSSProperties = {
         marginBottom: 14,
         border: `1px solid ${borderColor}`,
         borderRadius: 10,
         boxShadow: '0 1px 3px rgba(16, 24, 40, 0.06)',
+        backgroundColor: bgColor,
         ...style,
     };
 
