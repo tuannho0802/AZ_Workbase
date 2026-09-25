@@ -388,6 +388,11 @@ describe('PeriodicTaskPerformanceService - grace period 7 ngày', () => {
         where: jest.fn().mockReturnThis(),
         andWhere: jest.fn().mockReturnThis(),
         leftJoinAndSelect: jest.fn().mockReturnThis(),
+        // MỚI (fix lỗi 500 thật "ABS(DATEDIFF(task" alias was not found -
+        // xem comment "BUG THẬT" trong `periodic-task-performance.service.ts`):
+        // service đổi từ `orderBy(raw string chứa dấu '.')` sang
+        // `addSelect(raw, alias).orderBy(alias)` - mock phải có `addSelect`.
+        addSelect: jest.fn().mockReturnThis(),
         orderBy: jest.fn().mockReturnThis(),
         addOrderBy: jest.fn().mockReturnThis(),
         setParameter: jest.fn().mockReturnThis(),

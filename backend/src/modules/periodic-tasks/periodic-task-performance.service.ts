@@ -577,14 +577,39 @@ export class PeriodicTaskPerformanceService {
       if (dateWindow.dateTo) qb.andWhere('task.periodStartDate <= :perfDateTo', { perfDateTo: dateWindow.dateTo });
       if (filters.departmentId) qb.andWhere('task.departmentId = :perfDepartmentId', { perfDepartmentId: filters.departmentId });
       this.applyDepartmentOnlyScopeFilter(qb, user, scope);
-      return qb
-        .leftJoinAndSelect('task.status', 'status')
-        .leftJoinAndSelect('task.primaryAssignee', 'primaryAssignee')
-        .leftJoinAndSelect('task.department', 'department')
-        // Xem JSDoc "SẮP XẾP" ở trên - gần ngày hôm nay nhất lên đầu.
-        .orderBy('ABS(DATEDIFF(task.period_end_date, :perfToday))', 'ASC')
-        .addOrderBy('task.periodEndDate', 'DESC')
-        .setParameter('perfToday', today);
+      return (
+        qb
+          .leftJoinAndSelect('task.status', 'status')
+          .leftJoinAndSelect('task.primaryAssignee', 'primaryAssignee')
+          .leftJoinAndSelect('task.department', 'department')
+          // BUG THẬT đã gặp (2026-09-25, lỗi 500 thật trên môi trường dev):
+          // `.orderBy('ABS(DATEDIFF(task.period_end_date, :perfToday))', 'ASC')`
+          // ném `TypeORMError: "ABS(DATEDIFF(task" alias was not found` khi
+          // query có CẢ join (`leftJoinAndSelect`) LẪN `skip()/take()` - TypeORM
+          // (`SelectQueryBuilder.executeEntitiesAndRawResults()`) bật nhánh
+          // "distinct pagination" bất cứ khi nào `(skip || take) && joinAttributes.length > 0`
+          // (đúng trường hợp của mình, VÌ có 3 `leftJoinAndSelect` ở trên), và
+          // nhánh đó gọi `createOrderByCombinedWithSelectExpression()` - hàm
+          // này parse MỌI chuỗi `orderBy` bằng cách SPLIT theo dấu `.` đầu
+          // tiên rồi coi phần trước là 1 alias JOIN đã khai báo (`alias.column`)
+          // - với raw expression như trên, nó cắt nhầm `"ABS(DATEDIFF(task"`
+          // làm alias (do gặp dấu `.` trong `task.period_end_date`) rồi tra
+          // `findAliasByName()` không thấy -> throw. KHÔNG liên quan MySQL
+          // thật hay không - đã tái hiện lại 100% lỗi này OFFLINE bằng
+          // `better-sqlite3` in-memory (join + skip/take + raw orderBy chứa
+          // dấu `.`), không cần kết nối DB thật của dự án.
+          //
+          // FIX: đưa biểu thức raw vào `addSelect(..., alias)` (không chứa
+          // dấu `.`) rồi `orderBy(alias)` - alias đơn (không có `.`) đi thẳng
+          // vào nhánh `else` của hàm trên (so khớp theo tên select đã thêm),
+          // không bị parse nhầm thành `alias.column` nữa. Đã verify lại bằng
+          // repro tương tự (join + skip/take) - chạy đúng, không lỗi.
+          .addSelect('ABS(DATEDIFF(task.period_end_date, :perfToday))', 'date_diff_order')
+          .orderBy('date_diff_order', 'ASC')
+          // Xem JSDoc "SẮP XẾP" ở trên - gần ngày hôm nay nhất lên đầu, tie-break bằng periodEndDate DESC.
+          .addOrderBy('task.periodEndDate', 'DESC')
+          .setParameter('perfToday', today)
+      );
     };
 
     const primaryQb = applyCommon(this.taskRepo.createQueryBuilder('task'))
