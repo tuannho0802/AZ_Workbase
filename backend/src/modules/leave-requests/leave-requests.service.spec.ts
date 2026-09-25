@@ -718,7 +718,7 @@ describe('LeaveRequestsService - Phan quyen duyet (PERMISSIONS.md muc 2.6)', () 
     });
   });
 
-  describe('cancel() - huy don TU DONG don anh dinh kem (theo yeu cau moi)', () => {
+  describe('cancel() - huy don qua soft delete', () => {
     it('nem NotFoundException neu khong tim thay don cua chinh requester', async () => {
       mockLeaveRepo.findOne.mockResolvedValue(null);
       await expect(service.cancel(1, 100)).rejects.toThrow(NotFoundException);
@@ -732,43 +732,29 @@ describe('LeaveRequestsService - Phan quyen duyet (PERMISSIONS.md muc 2.6)', () 
       await expect(service.cancel(1, 100)).rejects.toThrow(BadRequestException);
     });
 
-    it('don KHONG co anh dinh kem: huy binh thuong, khong goi deleteObject/remove', async () => {
+    it('thuc hien softDelete va cap nhat cancelledAt, khong xoa anh dinh kem', async () => {
       mockLeaveRepo.findOne.mockResolvedValue({
         ...pendingRequest(Role.EMPLOYEE, 1),
-        attachments: [],
+        id: 1,
+        status: LeaveStatus.PENDING,
+        attachments: [{ id: 1, objectKey: 'leave-attachments/100/A_1.png' }],
       });
-      mockLeaveRepo.save.mockImplementation((r: any) => Promise.resolve(r));
-
+      
       const result = await service.cancel(1, 100);
 
-      expect(result.status).toBe(LeaveStatus.CANCELLED);
+      expect(mockLeaveRepo.softDelete).toHaveBeenCalledWith(1);
+      expect(mockLeaveRepo.update).toHaveBeenCalledWith(1, expect.objectContaining({
+        deletedById: 100,
+        cancelledAt: expect.any(Date)
+      }));
+      
+      expect(result.deletedAt).toBeInstanceOf(Date);
+      expect(result.cancelledAt).toBeInstanceOf(Date);
+      expect(result.deletedById).toBe(100);
+      
+      // Đảm bảo không xóa object đính kèm trên B2
       expect(mockUploadsService.deleteObject).not.toHaveBeenCalled();
       expect(mockAttachmentRepo.remove).not.toHaveBeenCalled();
-    });
-
-    it('don CO anh dinh kem: xoa het object tren B2 + xoa dong DB, khong chan huy don neu B2 loi', async () => {
-      const attachments = [
-        { id: 1, objectKey: 'leave-attachments/100/A_1_1-1-26.png' },
-        { id: 2, objectKey: 'leave-attachments/100/A_2_1-1-26.png' },
-      ];
-      mockLeaveRepo.findOne.mockResolvedValue({
-        ...pendingRequest(Role.EMPLOYEE, 1),
-        attachments,
-      });
-      mockLeaveRepo.save.mockImplementation((r: any) => Promise.resolve(r));
-      mockUploadsService.deleteObject
-        .mockRejectedValueOnce(new Error('B2 down'))
-        .mockResolvedValueOnce(undefined);
-
-      const result = await service.cancel(1, 100);
-
-      expect(result.status).toBe(LeaveStatus.CANCELLED);
-      expect(mockUploadsService.deleteObject).toHaveBeenCalledTimes(2);
-      expect(mockUploadsService.deleteObject).toHaveBeenCalledWith(
-        'az-imgs-leave-request-workbase',
-        'leave-attachments/100/A_1_1-1-26.png',
-      );
-      expect(mockAttachmentRepo.remove).toHaveBeenCalledWith(attachments);
     });
   });
 

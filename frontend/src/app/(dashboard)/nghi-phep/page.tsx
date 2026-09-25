@@ -748,14 +748,6 @@ export default function LeaveRequestsPage() {
             <Button
               size="small"
               danger
-              icon={<CloseCircleOutlined />}
-              onClick={() => handleCancel(record.id)}
-            >
-              Hủy
-            </Button>
-            <Button
-              size="small"
-              danger
               icon={<DeleteOutlined />}
               onClick={() => handleSelfDelete(record.id)}
             >

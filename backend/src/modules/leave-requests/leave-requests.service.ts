@@ -1038,41 +1038,26 @@ export class LeaveRequestsService {
       throw new BadRequestException('Chỉ có thể hủy đơn đang chờ duyệt');
     }
 
-    request.status = LeaveStatus.CANCELLED;
+    await this.leaveRequestRepo.softDelete(requestId);
+    await this.leaveRequestRepo.update(requestId, { 
+      deletedById: requesterId,
+      cancelledAt: new Date()
+    });
+
+    request.deletedAt = new Date();
     request.cancelledAt = new Date();
-
-    const saved = await this.leaveRequestRepo.save(request);
-
-    const attachments = request.attachments || [];
-    if (attachments.length > 0) {
-      await Promise.all(
-        attachments.map((a) =>
-          this.uploadsService
-            .deleteObject(
-              this.uploadsService.leaveAttachmentsBucket,
-              a.objectKey,
-            )
-            .catch((err) =>
-              this.logger.warn(
-                `Không xoá được ảnh đính kèm khi huỷ đơn: ${a.objectKey}`,
-                err,
-              ),
-            ),
-        ),
-      );
-      await this.attachmentRepo.remove(attachments);
-    }
+    request.deletedById = requesterId;
 
     this.auditService.logActionAsync(
       requesterId,
-      'CANCEL_LEAVE_REQUEST',
+      'DELETE_LEAVE_REQUEST',
       'leave_request',
-      saved.id,
-      { status: LeaveStatus.PENDING },
-      { status: LeaveStatus.CANCELLED },
+      request.id,
+      { deletedAt: null },
+      { deletedAt: new Date(), status: request.status, selfDelete: true, cancelledAt: request.cancelledAt },
     );
 
-    return saved;
+    return request;
   }
 
   /**
@@ -1106,7 +1091,7 @@ export class LeaveRequestsService {
     // chặn. Đặt TRƯỚC isEligibleApprover() - áp dụng bất kể scope/role.
     if (request.status === LeaveStatus.PENDING && request.requesterId !== actorId) {
       throw new ForbiddenException(
-        'Đơn đang chờ duyệt chỉ có thể được xoá bởi chính người tạo đơn',
+        'Bạn hãy duyệt đơn để được xoá đơn',
       );
     }
 
@@ -1318,7 +1303,10 @@ export class LeaveRequestsService {
     }
 
     await this.leaveRequestRepo.softDelete(id);
-    await this.leaveRequestRepo.update(id, { deletedById: requesterId });
+    await this.leaveRequestRepo.update(id, { 
+      deletedById: requesterId,
+      cancelledAt: new Date()
+    });
 
     this.auditService.logActionAsync(
       requesterId,
