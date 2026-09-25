@@ -239,6 +239,8 @@ export default function LeaveRequestsPage() {
    */
   const handleDateRangeChange = (dates: [Dayjs | null, Dayjs | null] | null) => {
     const startDate = dates?.[0];
+    const endDate = dates?.[1];
+
     if (startDate && startDate.isBefore(dayjs().startOf('day'))) {
       modal.confirm({
         title: 'Chọn ngày nghỉ trong quá khứ',
@@ -252,6 +254,39 @@ export default function LeaveRequestsPage() {
           form.setFieldValue('dateRange', null);
         },
       });
+      // Ưu tiên cảnh báo ngày quá khứ trước - tránh hiện chồng 2 Modal cùng
+      // lúc nếu người dùng chọn 1 khoảng vừa ở quá khứ vừa dài hơn 7 ngày.
+      // Người dùng chọn lại ngày sau khi xử lý cảnh báo này sẽ tự kích hoạt
+      // lại handleDateRangeChange và được kiểm tra >7 ngày ở lượt sau.
+      return;
+    }
+
+    // MỚI - Cảnh báo khi tổng thời gian nghỉ được chọn > 7 ngày. Tính theo
+    // lịch (bao gồm cả ngày bắt đầu + kết thúc), KHÔNG trừ cuối tuần - mirror
+    // đúng cách BE tính ở `LeaveRequestsService.calculateDays()` (chỉ khác:
+    // ở đây chưa biết `duration`, nhưng half-day chỉ áp dụng khi đúng 1 ngày
+    // nên không ảnh hưởng ngưỡng >7). Chỉ NHẮC NHỞ, không chặn tạo đơn - nêu
+    // rõ khoảng ngày cụ thể + tổng số ngày, cho phép Tiếp tục tạo đơn hoặc
+    // Chọn lại ngày (giống UX của cảnh báo ngày quá khứ ở trên).
+    if (startDate && endDate) {
+      const totalDays = endDate.startOf('day').diff(startDate.startOf('day'), 'day') + 1;
+      if (totalDays > 7) {
+        modal.confirm({
+          title: 'Thời gian nghỉ dài hơn 7 ngày',
+          content: (
+            <>
+              Bạn đang chọn nghỉ từ <b>{startDate.format('DD/MM/YYYY')}</b> đến{' '}
+              <b>{endDate.format('DD/MM/YYYY')}</b>, tổng cộng <b>{totalDays} ngày</b> (vượt quá 7
+              ngày). Bạn có muốn tiếp tục tạo đơn với khoảng thời gian này không?
+            </>
+          ),
+          okText: 'Tiếp tục tạo đơn',
+          cancelText: 'Chọn lại ngày',
+          onCancel: () => {
+            form.setFieldValue('dateRange', null);
+          },
+        });
+      }
     }
   };
 

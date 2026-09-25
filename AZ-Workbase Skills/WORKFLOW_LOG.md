@@ -4245,3 +4245,24 @@ trước) theo đúng Custom Instructions của Project.
 > Chuẩn hoá qua `rawDateToYmd()` (getter local, khớp cách mysql2 dựng Date cho DATE).
 
 ---
+
+## [2026-09-25 00:00] | Cảnh báo Modal khi chọn >7 ngày ở form Tạo đơn nghỉ phép | [Status: Success]
+
+**Actor:** Agent
+
+**Files Changed:**
+- `frontend/src/app/(dashboard)/nghi-phep/page.tsx` — Thêm kiểm tra trong `handleDateRangeChange`: nếu tổng số ngày nghỉ được chọn (tính theo lịch, gồm cả ngày bắt đầu/kết thúc, mirror `LeaveRequestsService.calculateDays()` ở BE) > 7 ngày, hiển thị `modal.confirm` nêu rõ ngày bắt đầu, ngày kết thúc và tổng số ngày; có 2 nút "Tiếp tục tạo đơn" (giữ nguyên lựa chọn) và "Chọn lại ngày" (reset field `dateRange`).
+
+**Root Cause (nếu là bug fix):**
+> Không phải bug fix — đây là yêu cầu tính năng mới từ chủ dự án: cần nhắc người dùng khi chọn thời gian nghỉ dài (>7 ngày) trước khi họ bấm "Tạo đơn", tránh tạo nhầm đơn dài ngày.
+
+**Solution:**
+> Tái sử dụng đúng pattern `modal.confirm` đã có sẵn cho cảnh báo "ngày nghỉ trong quá khứ" (cùng file, cùng hàm `handleDateRangeChange`) để đồng bộ UX. Cảnh báo ngày quá khứ được ưu tiên kiểm tra trước (return sớm) để tránh hiện chồng 2 Modal cùng lúc nếu khoảng ngày vừa ở quá khứ vừa dài hơn 7 ngày; người dùng xử lý xong cảnh báo đó và chọn lại ngày thì lượt `onChange` kế tiếp sẽ tự kiểm tra điều kiện >7 ngày. Không đổi bất kỳ logic BE nào (`calculateDays()`, validate balance...) — đây thuần là cảnh báo UI, không chặn submit.
+
+**Notes:**
+> - Đã pull code mới nhất từ `https://github.com/tuannho0802/AZ_Workbase` (branch `main`, commit `ad3c94e`) trước khi sửa, đúng quy tắc dự án.
+> - Đã chạy `npx tsc --noEmit` trong `frontend/` sau khi sửa: không phát sinh lỗi mới ở `nghi-phep/page.tsx`. 5 lỗi tsc còn lại (`logo.png` không tìm thấy module, `CountBadge.tsx` lỗi `styled-jsx`) đã tồn tại sẵn trước khi sửa (verify bằng `git stash` rồi chạy lại tsc) — không thuộc phạm vi thay đổi này.
+> - Chưa chạy `next build` full (thiếu `.env`/biến môi trường kết nối BE thật trong sandbox) — đề nghị người dùng tự chạy `npm run build` ở máy có đủ env trước khi deploy để chắc chắn 100%.
+> - File patch đính kèm riêng: `leave-request-over-7-days-warning.patch` (chỉ chứa thay đổi ở `nghi-phep/page.tsx`, không bao gồm entry log này).
+
+---
