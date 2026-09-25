@@ -66,6 +66,15 @@ const DARK_COLOR_LUMINANCE_THRESHOLD = 60;
  * % sáng lên 0.9 (thay vì 0.5 lượt trước) để BG chỉ còn là 1 lớp "tint" rất
  * nhạt, không lấn át chữ/Tag bên trong Card nữa.
  *
+ * MỚI (2026-09-25, phản hồi chủ dự án lần 3 - yêu cầu "sáng hơn 120%"): công
+ * thức trộn với trắng (`lightenColor`) GIỚI HẠN toán học ở đúng 100% (channel
+ * + (255-channel)*1 = 255 với MỌI channel) - từ 100% trở lên MỌI màu gốc đều
+ * ra `#FFFFFF` giống hệt nhau, không còn cách nào "sáng hơn nữa". Đã hỏi lại
+ * và chủ dự án chọn KHÔNG muốn trắng thuần (mất khả năng phân biệt màu giữa
+ * các Task Card, dù border/pill vẫn còn giữ màu) - chốt 0.95 (thay vì 0.9)
+ * làm điểm cân bằng: vẫn còn 1 lớp tint RẤT nhạt để phân biệt được, nhưng
+ * sáng hơn hẳn so với 0.9 trước đó.
+ *
  * QUY ƯỚC MỚI (yêu cầu chủ dự án cùng lượt): nếu `task.color` gốc quá ĐẬM
  * (vd Đen #000000, Xám than gần đen) thì KHÔNG dùng `lightenColor` bình
  * thường nữa - vì trộn tỉ lệ với trắng trên 1 màu gần-đen-nhưng-không-thuần-
@@ -88,5 +97,5 @@ export function getTaskCardBackground(hex?: string | null): string {
   if (luminance < DARK_COLOR_LUMINANCE_THRESHOLD) {
     return NEAR_BLACK_FALLBACK_BG;
   }
-  return lightenColor(color, 0.9);
+  return lightenColor(color, 0.96);
 }
