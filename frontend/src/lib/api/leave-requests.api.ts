@@ -37,8 +37,10 @@ export interface LeaveRequest {
   createdAt: string;
   approvedAt: string | null;
   rejectedAt: string | null;
-  // Thùng rác (xoá mềm) - chỉ có giá trị ở response của `getTrash()`. Mirror
-  // ĐÚNG `deletedAt`/`deletedBy` của `customer.types.ts`.
+  // Thùng rác - đánh dấu huỷ mềm bằng cancelledAt (thay vì deleted_at/TypeORM soft delete).
+  // cancelledAt IS NOT NULL + status PENDING -> Thùng rác "Nghỉ phép" (Owner).
+  // cancelledAt IS NOT NULL + status APPROVED/REJECTED -> Thùng rác "Duyệt phép" (Admin).
+  cancelledAt?: string | null;
   deletedAt?: string | null;
   deletedBy?: { id: number; name: string } | null;
   // Số ảnh đính kèm - BE tính qua loadRelationCountAndMap() ở findAll()/

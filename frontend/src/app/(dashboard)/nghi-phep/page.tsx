@@ -575,14 +575,18 @@ export default function LeaveRequestsPage() {
   const handleCancel = async (id: number) => {
     modal.confirm({
       title: 'Hủy đơn nghỉ phép?',
-      content: 'Bạn chắc chắn muốn hủy đơn này?',
+      content: 'Đơn sẽ được chuyển vào Thùng rác. Bạn có thể khôi phục lại sau.',
+      okButtonProps: { danger: true },
+      okText: 'Hủy đơn',
+      cancelText: 'Bỏ qua',
       onOk: async () => {
         try {
           await leaveRequestsApi.cancel(id);
           message.success('Đã hủy đơn');
           fetchRequests();
-        } catch {
-          message.error('Hủy đơn thất bại');
+          if (trashTabLoaded) fetchMyTrash(1, trashWeeksPerPage);
+        } catch (err: any) {
+          message.error(err.response?.data?.message || 'Hủy đơn thất bại');
         }
       }
     });
@@ -748,10 +752,10 @@ export default function LeaveRequestsPage() {
             <Button
               size="small"
               danger
-              icon={<DeleteOutlined />}
-              onClick={() => handleSelfDelete(record.id)}
+              icon={<CloseCircleOutlined />}
+              onClick={() => handleCancel(record.id)}
             >
-              Xoá
+              Hủy
             </Button>
           </Space>
         )
@@ -809,9 +813,9 @@ export default function LeaveRequestsPage() {
         ) : '-'
     },
     {
-      title: 'Ngày xoá',
+      title: 'Ngày huỷ',
       width: 150,
-      render: (_: any, record: LeaveRequest) => record.deletedAt ? dayjs(record.deletedAt).format('DD/MM/YYYY HH:mm') : '-'
+      render: (_: any, record: LeaveRequest) => record.cancelledAt ? dayjs(record.cancelledAt).format('DD/MM/YYYY HH:mm') : '-'
     },
     {
       title: 'Thao tác',
@@ -822,7 +826,7 @@ export default function LeaveRequestsPage() {
             Khôi phục
           </Button>
           <Button size="small" danger icon={<DeleteRowOutlined />} onClick={() => handleSelfHardDelete(record)}>
-            Xoá vĩnh viễn
+            Xoá
           </Button>
         </Space>
       )

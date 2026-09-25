@@ -718,7 +718,7 @@ describe('LeaveRequestsService - Phan quyen duyet (PERMISSIONS.md muc 2.6)', () 
     });
   });
 
-  describe('cancel() - huy don qua soft delete', () => {
+  describe('cancel() - huy don bang cancelledAt (khong dung softDelete)', () => {
     it('nem NotFoundException neu khong tim thay don cua chinh requester', async () => {
       mockLeaveRepo.findOne.mockResolvedValue(null);
       await expect(service.cancel(1, 100)).rejects.toThrow(NotFoundException);
@@ -728,33 +728,45 @@ describe('LeaveRequestsService - Phan quyen duyet (PERMISSIONS.md muc 2.6)', () 
       mockLeaveRepo.findOne.mockResolvedValue({
         ...pendingRequest(Role.EMPLOYEE, 1),
         status: LeaveStatus.APPROVED,
+        cancelledAt: null,
       });
       await expect(service.cancel(1, 100)).rejects.toThrow(BadRequestException);
     });
 
-    it('thuc hien softDelete va cap nhat cancelledAt, khong xoa anh dinh kem', async () => {
+    it('nem BadRequestException neu don da bi huy truoc do (cancelledAt != null)', async () => {
+      mockLeaveRepo.findOne.mockResolvedValue({
+        ...pendingRequest(Role.EMPLOYEE, 1),
+        cancelledAt: new Date(),
+      });
+      await expect(service.cancel(1, 100)).rejects.toThrow(BadRequestException);
+    });
+
+    it('goi update() voi cancelledAt va deletedById, KHONG goi softDelete hay xoa anh dinh kem', async () => {
       mockLeaveRepo.findOne.mockResolvedValue({
         ...pendingRequest(Role.EMPLOYEE, 1),
         id: 1,
         status: LeaveStatus.PENDING,
-        attachments: [{ id: 1, objectKey: 'leave-attachments/100/A_1.png' }],
+        cancelledAt: null,
       });
-      
+      mockLeaveRepo.update.mockResolvedValue({ affected: 1 });
+
       const result = await service.cancel(1, 100);
 
-      expect(mockLeaveRepo.softDelete).toHaveBeenCalledWith(1);
+      // Phai goi update voi cancelledAt
       expect(mockLeaveRepo.update).toHaveBeenCalledWith(1, expect.objectContaining({
+        cancelledAt: expect.any(Date),
         deletedById: 100,
-        cancelledAt: expect.any(Date)
       }));
-      
-      expect(result.deletedAt).toBeInstanceOf(Date);
-      expect(result.cancelledAt).toBeInstanceOf(Date);
-      expect(result.deletedById).toBe(100);
-      
-      // Đảm bảo không xóa object đính kèm trên B2
+
+      // KHONG duoc goi softDelete (TypeORM soft delete)
+      expect(mockLeaveRepo.softDelete).not.toHaveBeenCalled();
+
+      // Khong xoa anh dinh kem tren B2
       expect(mockUploadsService.deleteObject).not.toHaveBeenCalled();
       expect(mockAttachmentRepo.remove).not.toHaveBeenCalled();
+
+      // Tra ve message
+      expect(result).toEqual({ message: 'Đã huỷ đơn nghỉ phép' });
     });
   });
 

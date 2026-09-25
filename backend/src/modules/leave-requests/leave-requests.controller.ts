@@ -200,11 +200,11 @@ export class LeaveRequestsController {
   // trên (khác số segment/literal, không thực sự xung đột nhưng để đọc dễ
   // theo nhóm chức năng).
 
-  // Xoá mềm đơn CỦA CHÍNH MÌNH - chỉ khi đơn đang PENDING (xem Service).
+  // Alias: DELETE :id/self -> goi cancel() (Owner huy don PENDING cua chinh minh)
   @Delete(':id/self')
   @RequirePermission('leave_requests.request')
-  async selfSoftDelete(@Param('id') id: string, @Request() req) {
-    return this.leaveRequestsService.selfSoftDelete(parseInt(id), req.user.id);
+  async selfCancel(@Param('id') id: string, @Request() req) {
+    return this.leaveRequestsService.cancel(parseInt(id), req.user.id);
   }
 
   @Patch('my-trash/:id/restore')

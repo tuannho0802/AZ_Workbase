@@ -735,20 +735,20 @@ export default function ApprovalPage() {
   // lý (lịch sử) - đơn biến mất khỏi 2 tab đó, xuất hiện ở tab Thùng rác.
   const handleSoftDelete = (record: LeaveRequest) => {
     modal.confirm({
-      title: 'Xoá đơn nghỉ phép?',
-      content: `Đơn của "${record.requester.name}" sẽ được chuyển vào Thùng rác. Bạn có thể khôi phục lại sau.`,
+      title: 'Huỷ đơn nghỉ phép?',
+      content: `Đơn của "${record.requester.name}" sẽ được đánh dấu huỷ và chuyển vào Thùng rác. Bạn có thể khôi phục lại sau.`,
       okButtonProps: { danger: true },
-      okText: 'Xoá',
-      cancelText: 'Huỷ',
+      okText: 'Huỷ đơn',
+      cancelText: 'Bỏ qua',
       onOk: async () => {
         try {
           await leaveRequestsApi.softDelete(record.id);
-          messageApi.success('Đã chuyển vào Thùng rác');
+          messageApi.success('Đã huỷ đơn và chuyển vào Thùng rác');
           refetchAfterAction();
           if (trashTabLoaded) fetchTrash(1, trashState.weeksPerPage);
         } catch (err: any) {
           if (err.response?.status !== 401) {
-            messageApi.error(err.response?.data?.message || 'Xoá đơn thất bại');
+            messageApi.error(err.response?.data?.message || 'Huỷ đơn thất bại');
           }
         }
       },
@@ -893,11 +893,7 @@ export default function ApprovalPage() {
               Sửa
             </Button>
           )}
-          {canDelete && (
-            <Button size="small" danger icon={<DeleteOutlined />} onClick={() => handleSoftDelete(record)}>
-              Xoá
-            </Button>
-          )}
+
         </Space>
       )
     }
@@ -1042,7 +1038,7 @@ export default function ApprovalPage() {
           )}
           {canDelete && (
             <Button size="small" danger icon={<DeleteOutlined />} onClick={() => handleSoftDelete(record)}>
-              Xoá
+              Huỷ
             </Button>
           )}
         </Space>
@@ -1109,9 +1105,9 @@ export default function ApprovalPage() {
       render: (_: any, record: LeaveRequest) => record.deletedBy?.name || '-'
     },
     {
-      title: 'Ngày xoá',
+      title: 'Ngày huỷ',
       width: 140,
-      render: (_: any, record: LeaveRequest) => record.deletedAt ? dayjs(record.deletedAt).format('DD/MM/YYYY HH:mm') : '-'
+      render: (_: any, record: LeaveRequest) => record.cancelledAt ? dayjs(record.cancelledAt).format('DD/MM/YYYY HH:mm') : '-'
     },
     {
       // Rộng hơn pendingColumns/historyColumns vì "Xoá vĩnh viễn" là text dài
@@ -1126,7 +1122,7 @@ export default function ApprovalPage() {
           </Button>
           {canHardDelete && (
             <Button size="small" danger icon={<DeleteRowOutlined />} onClick={() => handleHardDelete(record)}>
-              Xoá vĩnh viễn
+              Xoá
             </Button>
           )}
         </Space>

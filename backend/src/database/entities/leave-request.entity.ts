@@ -7,7 +7,6 @@ import {
   JoinColumn,
   CreateDateColumn,
   UpdateDateColumn,
-  DeleteDateColumn
 } from 'typeorm';
 import { User } from './user.entity';
 import { DecimalTransformer } from '../transformers/decimal.transformer';
@@ -242,7 +241,7 @@ export class LeaveRequest {
   // khôi phục thùng rác) và `leave_requests.hard_delete` (xoá vĩnh viễn,
   // TÁCH RIÊNG, mirror `customers.hard_delete`) - xem
   // `LeaveRequestsService.softDelete()/restoreFromTrash()/hardDelete()`.
-  @DeleteDateColumn({ name: 'deleted_at', nullable: true })
+  @Column({ type: 'datetime', name: 'deleted_at', nullable: true })
   deletedAt: Date | null;
 
   // Ai đã bấm xoá (mềm) - cột "Người xóa" ở Tab Thùng rác. SET NULL nếu
