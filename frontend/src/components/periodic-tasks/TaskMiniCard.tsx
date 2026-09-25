@@ -102,8 +102,23 @@ export function TaskMiniCard({
         verticalAlign: 'top',
     };
 
+    // BUG THẬT (2026-09-25, chủ dự án gửi ảnh Drawer "Chi tiết công việc" -
+    // border mặc định AntD (#f0f0f0) quá mảnh/nhạt, các Task xếp liền nhau
+    // nhìn dính thành 1 khối, khó phân biệt ranh giới từng Task khi cuộn
+    // nhanh): border đậm hơn rõ rệt + shadow nhẹ tách khối theo chiều sâu +
+    // bo góc lớn hơn + khoảng cách giữa các Card rộng hơn (8 -> 14px). Style
+    // đặt TRƯỚC `...style` để view gọi vẫn override được khi cần (vd overlay
+    // kéo-thả ở Kanban tự thêm `boxShadow` đậm hơn cho bản đang kéo).
+    const cardStyle: React.CSSProperties = {
+        marginBottom: 14,
+        border: '2px solid #d0d5dd',
+        borderRadius: 10,
+        boxShadow: '0 1px 3px rgba(16, 24, 40, 0.06)',
+        ...style,
+    };
+
     return (
-        <Card size={size} style={{ marginBottom: 8, ...style }} onClick={onClick} className={className}>
+        <Card size={size} style={cardStyle} onClick={onClick} className={className}>
             <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 8, width: '100%' }}>
                 <div style={{ flex: 1, minWidth: 0 }}>
                     <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'flex-start', gap: 4 }}>

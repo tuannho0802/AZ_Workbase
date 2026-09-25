@@ -1,7 +1,7 @@
 'use client';
 
 import { useState } from 'react';
-import { App, Empty, Pagination, Select, Spin, Tag, Tooltip, Typography } from 'antd';
+import { App, Divider, Empty, Pagination, Select, Spin, Tag, Tooltip, Typography } from 'antd';
 import { useQueryClient } from '@tanstack/react-query';
 import { useUpdatePeriodicTask } from '@/lib/hooks/usePeriodicTasks';
 import { usePeriodicTaskStatuses } from '@/lib/hooks/usePeriodicTaskStatuses';
@@ -130,6 +130,19 @@ export function UserTasksPanel({ userId, params }: Props) {
     );
   };
 
+  // MỚI (2026-09-25, chủ dự án khoanh đỏ ảnh chụp Drawer): border/shadow riêng
+  // của `TaskMiniCard` vẫn chưa đủ RÕ giữa 2 Task liền kề khi Task phía trên có
+  // Checklist dài (nhiều dòng) - thêm hẳn 1 `Divider` kẻ ngang giữa các Card
+  // (không thêm trước Card đầu tiên của nhóm, group header đã đóng vai trò
+  // ranh giới đó rồi).
+  const renderTaskList = (items: PeriodicTask[]) =>
+    items.map((task, idx) => (
+      <div key={task.id}>
+        {idx > 0 && <Divider style={{ margin: '4px 10 14px', borderColor: '#c9ced6' }} />}
+        {renderTaskCard(task)}
+      </div>
+    ));
+
   /** Header nhóm - khối nền màu RÕ NÉT (thay `Divider` mảnh cũ) + Pagination
    * ở góc phải khi nhóm có nhiều hơn 1 trang. */
   const renderGroupHeader = (label: string, group: PaginatedUserTasksResult, color: 'blue' | 'purple', onPageChange: (p: number) => void) => (
@@ -179,7 +192,7 @@ export function UserTasksPanel({ userId, params }: Props) {
           Không có Task nào ở vai trò Phụ trách chính.
         </Text>
       ) : (
-        primary.items.map(renderTaskCard)
+          renderTaskList(primary.items)
       )}
 
       <div style={{ marginTop: 16 }}>{renderGroupHeader('Phụ trách phụ', secondary, 'purple', setSecondaryPage)}</div>
@@ -188,7 +201,7 @@ export function UserTasksPanel({ userId, params }: Props) {
           Không có Task nào được thêm làm Phụ trách phụ.
         </Text>
       ) : (
-        secondary.items.map(renderTaskCard)
+          renderTaskList(secondary.items)
       )}
 
       <TaskChecklistModal open={!!checklistTask} onClose={() => setChecklistTask(null)} task={checklistTask} />
