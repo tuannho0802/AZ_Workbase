@@ -4329,3 +4329,31 @@ trước) theo đúng Custom Instructions của Project.
 
 **Notes:**
 > Vẫn giữ nguyên khoảng ngày mặc định "Tuần này" (không truyền `dateFrom`/`dateTo`) như trước - chỉ đổi phạm vi người, không đổi phạm vi thời gian. Nếu sau này muốn badge đếm không giới hạn tuần (mọi Task To-Do của tôi bất kể ngày), cần bàn thêm vì sẽ đổi ý nghĩa số hiển thị so với trang mặc định.
+
+## [2026-09-25 10:02] | Hoàn tất % in_progress/in_review + Drawer "Công việc cần lưu ý" kiểu Card + fix build lỗi antd 6 | [Status: Success]
+
+**Actor:** Agent
+
+**Files Changed:**
+- `frontend/src/components/periodic-tasks/PerformanceFlaggedDrawer.tsx` — fix 2 lỗi `tsc` thật: `Divider orientation="left"` không còn hợp lệ ở antd 6 (prop đổi nghĩa thành chỉ nhận `'horizontal'|'vertical'`), đổi sang `titlePlacement="left"` (prop mới đảm nhiệm đúng vai trò cũ). Không đổi logic/cấu trúc nào khác — phần viết lại Drawer thành danh sách Card (2 nhóm "Đang làm trở lên"/"Chưa hoàn thành hoặc Quá hạn", Select đổi trạng thái nhanh, `TaskChecklistInline` luôn hiển thị) đã đúng và đủ từ commit `f9a92ad` trước đó, chỉ còn lỗi build này chặn.
+
+**Root Cause (bug fix):**
+> Commit trước (`f9a92ad`, đánh dấu "Not yet done") để lại lỗi `tsc` thật do dùng nhầm API `Divider` kiểu antd 5 (`orientation="left"` để canh Title trái) — antd 6 (`^6.3.5`, xem `package.json`) đã tách `orientation` (hướng kẻ ngang/dọc) khỏi `titlePlacement` (vị trí Title), gây lỗi kiểu `Type '"left"' is not assignable to type 'Orientation | undefined'` chặn `next build`.
+
+**Solution:**
+> Đổi `orientation="left"` → `titlePlacement="left"` ở cả 2 chỗ dùng `Divider` trong Drawer (2 nhóm Card). Đã verify TOÀN BỘ yêu cầu chủ dự án trong lượt này đều đã đúng sẵn trong code đã pull, không cần sửa thêm gì khác:
+> - BE `getSummary()`/`getUserFlaggedTasks()` dùng CHUNG `buildFilteredTaskQuery()` (đã đọc trực tiếp code, xác nhận lại) → Drawer tự động không tính Task quá khứ, đúng yêu cầu.
+> - `page.tsx` đã có 2 Card + 2 cột bảng "% Đang làm"/"% Đang xem xét" (snapshot `status.code` hiện tại, độc lập cột hoàn thành/muộn/quá hạn).
+> - `PerformanceFlaggedDrawer.tsx` đã hiển thị Task dạng Card (tái dùng `TaskMiniCard`), chia đúng 2 group bằng `hasStartedWorking()`, có Select đổi trạng thái nhanh + `TaskChecklistInline` (CRUD checklist rút gọn) luôn hiện sẵn, không cần mở Modal riêng.
+> - `TaskChecklistInline.tsx` đã tự `stopPropagation` trên click, và mọi mutation (thêm/sửa/tick/xoá) đều tự invalidate thêm `periodic-task-performance` để bảng tổng hợp cập nhật ngay không cần F5.
+
+**Verify thật đã chạy (sandbox, clone mới từ `main`):**
+- `npx tsc --noEmit` (frontend) — trước fix: 7 lỗi (5 baseline `logo.png`/`CountBadge` + 2 lỗi `Divider` mới). Sau fix: đúng 5 lỗi baseline, diff xác nhận 2 lỗi mới đã hết, KHÔNG phát sinh lỗi khác.
+- `npx eslint` trên 5 file liên quan (`PerformanceFlaggedDrawer.tsx`, `TaskChecklistInline.tsx`, `page.tsx`, `periodic-task-performance.api.ts`, `periodicTaskPerformance.ts`) — 0 lỗi/cảnh báo.
+- `npm run build` (frontend, `next build`) — **build production THẬT thành công**, toàn bộ 37 route generate OK, không lỗi TypeScript trong quá trình build.
+- Backend: `npx tsc --noEmit` — 0 lỗi. `npx jest periodic-task-performance.service.spec.ts` — 12/12 test pass (gồm 2 test mới `inProgressCount`/`inReviewCount` đã có sẵn từ trước).
+
+**Notes:**
+> Không cần migration (đúng xác nhận chủ dự án — status `in_review`/`in_progress` đã có sẵn trong DB). Diff đầy đủ (chỉ 1 file, 8 dòng thêm/2 dòng sửa): xem file `az_workbase_performance_drawer_fix.diff` đính kèm. Chưa commit/push lên `main` — chủ dự án tự áp patch và verify trên môi trường của mình trước khi merge.
+
+---
