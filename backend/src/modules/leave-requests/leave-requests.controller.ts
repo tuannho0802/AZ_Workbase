@@ -159,13 +159,28 @@ export class LeaveRequestsController {
     );
   }
 
-  // Xoá mềm (đưa vào Thùng rác) - phạm vi scope giống isEligibleApprover()
-  // (mirror approve/reject: admin/scope='all' -> mọi đơn, scope='department'
-  // -> chỉ đơn của nhân viên phòng ban mình quản lý).
+  // Xoá mềm (đưa vào Thùng rác). ⚠️ ĐỔI (yêu cầu người dùng 2026-09-25):
+  // đơn ĐANG CHỜ DUYỆT (pending) giờ CHỈ CHÍNH CHỦ (người tạo đơn) mới được
+  // xoá - kể cả Admin/Manager có quyền `leave_requests.delete` KHÔNG được
+  // xoá hộ đơn pending của người khác nữa (tránh cấp trên âm thầm xoá đơn
+  // trước khi nhân viên kịp biết). Đơn ĐÃ xử lý (approved/rejected/
+  // cancelled) vẫn theo permission `leave_requests.delete` + scope như cũ.
+  // Vì route này giờ phục vụ CẢ 2 case (permission NỀN khác nhau tuỳ
+  // trạng thái đơn - không thể biết trước lúc gắn decorator), guard đổi
+  // sang permission NỀN `leave_requests.request` (ai tạo được đơn cũng gọi
+  // được endpoint) - toàn bộ phân quyền THẬT (owner-only cho pending /
+  // `leave_requests.delete` cho đã xử lý) chuyển hẳn vào
+  // LeaveRequestsService.softDelete() làm "hard guard" - xem JSDoc ở đó.
   @Delete(':id')
-  @RequirePermission('leave_requests.delete')
-  async softDelete(@Param('id') id: string, @Request() req, @GetPermissionScope() scope?: string | null) {
-    return this.leaveRequestsService.softDelete(parseInt(id), req.user.id, req.user.role, scope);
+  @RequirePermission('leave_requests.request')
+  async softDelete(@Param('id') id: string, @Request() req) {
+    return this.leaveRequestsService.softDelete(
+      parseInt(id),
+      req.user.id,
+      req.user.role,
+      req.user.departmentId,
+      req.user.positionId,
+    );
   }
 
   @Patch('trash/:id/restore')

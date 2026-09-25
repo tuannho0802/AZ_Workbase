@@ -21,6 +21,7 @@ import { PermissionScope } from '../../database/entities/role-permission.entity'
 import { UploadsService } from '../uploads/uploads.service';
 import { LeaveTypesService } from '../leave-types/leave-types.service';
 import { AuditService } from '../audit/audit.service';
+import { PermissionsService } from '../permissions/permissions.service';
 
 describe('LeaveRequestsService - Phan quyen duyet (PERMISSIONS.md muc 2.6)', () => {
   let service: LeaveRequestsService;
@@ -30,6 +31,10 @@ describe('LeaveRequestsService - Phan quyen duyet (PERMISSIONS.md muc 2.6)', () 
     create: jest.fn((x: any) => x),
     save: jest.fn(),
     createQueryBuilder: jest.fn(),
+    // ⚠️ MỚI: softDelete() (xoá mềm thùng rác) gọi 2 hàm này của Repository -
+    // trước đây không test nào chạm tới softDelete() nên chưa cần mock.
+    softDelete: jest.fn(),
+    update: jest.fn(),
   };
   const mockUserRepo = {
     decrement: jest.fn(),
@@ -88,6 +93,15 @@ describe('LeaveRequestsService - Phan quyen duyet (PERMISSIONS.md muc 2.6)', () 
     logActionAsync: jest.fn(),
     logAction: jest.fn(),
   };
+  // ⚠️ MỚI: softDelete() giờ tự gọi PermissionsService.hasPermission() cho
+  // case "xoá đơn đã xử lý" (xem JSDoc ở service) - mock mặc định cho phép
+  // (allowed=true, scope='all'), không có test nào ở file này assert
+  // tham số gọi cụ thể.
+  const mockPermissionsService = {
+    hasPermission: jest
+      .fn()
+      .mockResolvedValue({ allowed: true, scope: PermissionScope.ALL }),
+  };
 
   const buildQueryBuilderMock = (result: any[]) => {
     const qb: any = {
@@ -133,6 +147,7 @@ describe('LeaveRequestsService - Phan quyen duyet (PERMISSIONS.md muc 2.6)', () 
         { provide: UploadsService, useValue: mockUploadsService },
         { provide: LeaveTypesService, useValue: mockLeaveTypesService },
         { provide: AuditService, useValue: mockAuditService },
+        { provide: PermissionsService, useValue: mockPermissionsService },
       ],
     }).compile();
 
@@ -816,6 +831,81 @@ describe('LeaveRequestsService - Phan quyen duyet (PERMISSIONS.md muc 2.6)', () 
       const result = await service.discardOrphanAttachments(100, [key]);
 
       expect(result).toEqual([{ key, deleted: false, reason: 'error' }]);
+    });
+  });
+
+  // ⚠️ MỚI (2026-09-25): "công bằng trong nghỉ phép" - đơn PENDING chỉ chính
+  // chủ mới được xoá, kể cả Admin/quyền leave_requests.delete scope='all'
+  // cũng KHÔNG được xoá hộ nữa. Đơn đã xử lý vẫn theo permission cũ.
+  describe('softDelete() - chi chinh chu duoc xoa don PENDING (cong bang)', () => {
+    it('nem NotFoundException neu khong tim thay don', async () => {
+      mockLeaveRepo.findOne.mockResolvedValue(null);
+      await expect(
+        service.softDelete(999, 100, Role.ADMIN, null, null),
+      ).rejects.toThrow(NotFoundException);
+    });
+
+    it('don PENDING: chinh chu (requesterId === actorId) tu xoa duoc, khong can goi PermissionsService', async () => {
+      mockLeaveRepo.findOne.mockResolvedValue(
+        pendingRequest(Role.EMPLOYEE, 1),
+      );
+      mockLeaveRepo.softDelete.mockResolvedValue(undefined);
+      mockLeaveRepo.update.mockResolvedValue(undefined);
+
+      await service.softDelete(1, 100, Role.EMPLOYEE, null, null);
+
+      expect(mockLeaveRepo.softDelete).toHaveBeenCalledWith(1);
+      expect(mockPermissionsService.hasPermission).not.toHaveBeenCalled();
+    });
+
+    it('don PENDING: KHONG phai chinh chu -> ForbiddenException, du la Admin', async () => {
+      mockLeaveRepo.findOne.mockResolvedValue(
+        pendingRequest(Role.EMPLOYEE, 1),
+      );
+
+      await expect(
+        service.softDelete(1, 999, Role.ADMIN, null, null),
+      ).rejects.toThrow(ForbiddenException);
+      expect(mockLeaveRepo.softDelete).not.toHaveBeenCalled();
+    });
+
+    it('don da xu ly (APPROVED): khong phai chinh chu nhung co leave_requests.delete scope=all -> xoa duoc', async () => {
+      mockLeaveRepo.findOne.mockResolvedValue({
+        ...pendingRequest(Role.EMPLOYEE, 1),
+        status: LeaveStatus.APPROVED,
+      });
+      mockPermissionsService.hasPermission.mockResolvedValueOnce({
+        allowed: true,
+        scope: PermissionScope.ALL,
+      });
+      mockLeaveRepo.softDelete.mockResolvedValue(undefined);
+      mockLeaveRepo.update.mockResolvedValue(undefined);
+
+      await service.softDelete(1, 999, Role.MANAGER, null, null);
+
+      expect(mockPermissionsService.hasPermission).toHaveBeenCalledWith(
+        Role.MANAGER,
+        'leave_requests.delete',
+        null,
+        null,
+      );
+      expect(mockLeaveRepo.softDelete).toHaveBeenCalledWith(1);
+    });
+
+    it('don da xu ly (APPROVED): khong co quyen leave_requests.delete -> ForbiddenException', async () => {
+      mockLeaveRepo.findOne.mockResolvedValue({
+        ...pendingRequest(Role.EMPLOYEE, 1),
+        status: LeaveStatus.APPROVED,
+      });
+      mockPermissionsService.hasPermission.mockResolvedValueOnce({
+        allowed: false,
+        scope: null,
+      });
+
+      await expect(
+        service.softDelete(1, 999, Role.EMPLOYEE, null, null),
+      ).rejects.toThrow(ForbiddenException);
+      expect(mockLeaveRepo.softDelete).not.toHaveBeenCalled();
     });
   });
 });

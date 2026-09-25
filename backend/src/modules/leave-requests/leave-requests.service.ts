@@ -23,6 +23,7 @@ import { PermissionScope } from '../../database/entities/role-permission.entity'
 import { UploadsService } from '../uploads/uploads.service';
 import { LeaveTypesService } from '../leave-types/leave-types.service';
 import { AuditService } from '../audit/audit.service';
+import { PermissionsService } from '../permissions/permissions.service';
 import { paginateByWeek, weekStartColumnRef } from '../../common/utils/week-window.util';
 import { QueryLeaveRequestsDto } from './dto/query-leave-requests.dto';
 
@@ -64,6 +65,14 @@ export class LeaveRequestsService {
     // để lại dấu vết ở trang /audit-logs. AuditModule là @Global() nên chỉ
     // cần inject thẳng, không cần khai báo import ở leave-requests.module.ts.
     private readonly auditService: AuditService,
+    // ⚠️ MỚI (2026-09-25): dùng để tự tra `leave_requests.delete` bên trong
+    // softDelete() - route đó giờ gắn `@RequirePermission('leave_requests.
+    // request')` ở controller (permission NỀN, không còn đúng permission
+    // cần kiểm tra thật), nên KHÔNG thể tin `@GetPermissionScope()` (nó trả
+    // scope theo `leave_requests.request` chứ không phải `leave_requests.
+    // delete`) - phải tự gọi lại PermissionsService.hasPermission() với
+    // ĐÚNG key cần cho case "xoá đơn đã xử lý". Xem JSDoc ở softDelete().
+    private readonly permissionsService: PermissionsService,
   ) {}
 
   /**
@@ -1076,17 +1085,31 @@ export class LeaveRequestsService {
   }
 
   /**
-   * Xoá MỀM (đưa vào Thùng rác) - permission `leave_requests.delete`, dùng
-   * LẠI đúng `isEligibleApprover()` (cùng scope với approve/reject/xem
-   * pending-history): admin/scope='all' -> mọi đơn, scope='department' ->
-   * chỉ đơn của nhân viên phòng ban mình quản lý (hoặc ngoại lệ
-   * leaveApproverId gán riêng). Không cho xoá đơn đã xoá mềm trước đó.
+   * Xoá MỀM (đưa vào Thùng rác).
+   *
+   * ⚠️ QUY TẮC MỚI (yêu cầu người dùng 2026-09-25, "công bằng trong nghỉ
+   * phép" - tránh role cao hơn âm thầm xoá đơn của người khác mà không báo):
+   * - Đơn CÒN Ở TRẠNG THÁI PENDING (chưa Duyệt/Từ chối): CHỈ CHÍNH CHỦ
+   *   (`request.requesterId === actorId`) mới được xoá - KHÔNG có ngoại lệ
+   *   nào khác (kể cả Admin/`leave_requests.delete` scope='all') - đây là
+   *   "hard guard" thật sự nằm Ở TẦNG SERVICE (route đã đổi sang permission
+   *   nền `leave_requests.request` ở Controller nên guard/decorator không
+   *   còn tự chặn được nữa, phải chặn cứng tại đây).
+   * - Đơn ĐÃ XỬ LÝ (approved/rejected/cancelled): giữ nguyên hành vi cũ -
+   *   permission `leave_requests.delete` + `isEligibleApprover()` (admin/
+   *   scope='all' -> mọi đơn, scope='department' -> chỉ đơn nhân viên
+   *   phòng ban mình quản lý/ngoại lệ leaveApproverId). KHÔNG tin
+   *   `@GetPermissionScope()` truyền từ Controller nữa (nó phản ánh scope
+   *   của `leave_requests.request`, sai permission) - tự gọi lại
+   *   `PermissionsService.hasPermission()` với ĐÚNG key
+   *   'leave_requests.delete' ngay tại đây.
    */
   async softDelete(
     id: number,
     actorId: number,
     actorRole: string,
-    scope?: string | null,
+    actorDepartmentId?: number | null,
+    actorPositionId?: number | null,
   ) {
     const request = await this.leaveRequestRepo.findOne({
       where: { id },
@@ -1097,15 +1120,33 @@ export class LeaveRequestsService {
       throw new NotFoundException('Không tìm thấy đơn nghỉ phép');
     }
 
-    const allowed = await this.isEligibleApprover(
-      request.requester.departmentId,
-      actorId,
-      actorRole,
-      scope,
-      request.requester.leaveApproverId,
-    );
-    if (!allowed) {
-      throw new ForbiddenException('Bạn không có quyền xoá đơn nghỉ phép này');
+    const isOwner = request.requesterId === actorId;
+
+    if (request.status === LeaveStatus.PENDING) {
+      if (!isOwner) {
+        throw new ForbiddenException(
+          'Đơn đang chờ duyệt chỉ có thể được xoá bởi chính người tạo đơn',
+        );
+      }
+    } else {
+      const { allowed, scope } = await this.permissionsService.hasPermission(
+        actorRole,
+        'leave_requests.delete',
+        actorDepartmentId,
+        actorPositionId,
+      );
+      const eligible =
+        allowed &&
+        (await this.isEligibleApprover(
+          request.requester.departmentId,
+          actorId,
+          actorRole,
+          scope,
+          request.requester.leaveApproverId,
+        ));
+      if (!eligible) {
+        throw new ForbiddenException('Bạn không có quyền xoá đơn nghỉ phép này');
+      }
     }
 
     await this.leaveRequestRepo.softDelete(id);
