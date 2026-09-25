@@ -1076,6 +1076,185 @@ export class LeaveRequestsService {
   }
 
   /**
+   * Xoá MỀM (đưa vào Thùng rác) - permission `leave_requests.delete`, dùng
+   * LẠI đúng `isEligibleApprover()` (cùng scope với approve/reject/xem
+   * pending-history): admin/scope='all' -> mọi đơn, scope='department' ->
+   * chỉ đơn của nhân viên phòng ban mình quản lý (hoặc ngoại lệ
+   * leaveApproverId gán riêng). Không cho xoá đơn đã xoá mềm trước đó.
+   */
+  async softDelete(
+    id: number,
+    actorId: number,
+    actorRole: string,
+    scope?: string | null,
+  ) {
+    const request = await this.leaveRequestRepo.findOne({
+      where: { id },
+      relations: ['requester'],
+    });
+
+    if (!request) {
+      throw new NotFoundException('Không tìm thấy đơn nghỉ phép');
+    }
+
+    const allowed = await this.isEligibleApprover(
+      request.requester.departmentId,
+      actorId,
+      actorRole,
+      scope,
+      request.requester.leaveApproverId,
+    );
+    if (!allowed) {
+      throw new ForbiddenException('Bạn không có quyền xoá đơn nghỉ phép này');
+    }
+
+    await this.leaveRequestRepo.softDelete(id);
+    // softDelete() chỉ tự set `deleted_at` - ghi riêng `deletedById` ngay sau
+    // đó để cột "Người xóa" ở Tab Thùng rác có dữ liệu (mirror customers).
+    await this.leaveRequestRepo.update(id, { deletedById: actorId });
+
+    this.auditService.logActionAsync(
+      actorId,
+      'DELETE_LEAVE_REQUEST',
+      'leave_request',
+      id,
+      { deletedAt: null },
+      {
+        deletedAt: new Date(),
+        requester: { id: request.requesterId, name: request.requester.name },
+        status: request.status,
+      },
+    );
+
+    return { message: 'Đã đưa đơn nghỉ phép vào thùng rác' };
+  }
+
+  /**
+   * Khôi phục từ Thùng rác - cùng permission/scope với `softDelete()` (ai
+   * xoá được đơn nào thì khôi phục được đúng đơn đó).
+   */
+  async restoreFromTrash(
+    id: number,
+    actorId: number,
+    actorRole: string,
+    scope?: string | null,
+  ) {
+    const request = await this.leaveRequestRepo.findOne({
+      where: { id },
+      withDeleted: true,
+      relations: ['requester'],
+    });
+
+    if (!request) {
+      throw new NotFoundException('Không tìm thấy đơn nghỉ phép trong thùng rác');
+    }
+    if (!request.deletedAt) {
+      throw new BadRequestException('Đơn nghỉ phép này chưa bị xoá');
+    }
+
+    const allowed = await this.isEligibleApprover(
+      request.requester.departmentId,
+      actorId,
+      actorRole,
+      scope,
+      request.requester.leaveApproverId,
+    );
+    if (!allowed) {
+      throw new ForbiddenException('Bạn không có quyền khôi phục đơn nghỉ phép này');
+    }
+
+    await this.leaveRequestRepo.restore(id);
+    // Xoá dấu vết "Người xóa" cũ - đối xứng với customersService.restore().
+    await this.leaveRequestRepo.update(id, { deletedById: null });
+
+    this.auditService.logActionAsync(
+      actorId,
+      'RESTORE_LEAVE_REQUEST',
+      'leave_request',
+      id,
+      null,
+      { restored: true },
+    );
+
+    return { message: 'Đã khôi phục đơn nghỉ phép' };
+  }
+
+  /**
+   * Xoá VĨNH VIỄN (irreversible) - permission RIÊNG `leave_requests.hard_delete`,
+   * mặc định chỉ Admin. Mirror `CustomersService.hardDelete()` + `cancel()`
+   * (dọn ảnh đính kèm trên B2 best-effort). CHỈ chấp nhận scope='all' (không
+   * đủ dù được cấp scope='department' qua Phân quyền) - an toàn hơn 1 bậc
+   * cho hành động không thể hoàn tác, xem comment ở migration
+   * SeedLeaveRequestsDeletePermissions.
+   */
+  async hardDelete(
+    id: number,
+    actorId: number,
+    actorRole: string,
+    scope?: string | null,
+  ) {
+    if (actorRole !== Role.ADMIN && scope !== PermissionScope.ALL) {
+      throw new ForbiddenException(
+        'Chỉ Admin (hoặc quyền phạm vi "Toàn bộ") mới được xoá vĩnh viễn đơn nghỉ phép',
+      );
+    }
+
+    const request = await this.leaveRequestRepo.findOne({
+      where: { id },
+      withDeleted: true,
+      relations: ['requester', 'attachments'],
+    });
+
+    if (!request) {
+      throw new NotFoundException('Không tìm thấy đơn nghỉ phép');
+    }
+    if (!request.deletedAt) {
+      throw new BadRequestException(
+        'Chỉ có thể xoá vĩnh viễn đơn nghỉ phép đã ở trong thùng rác',
+      );
+    }
+
+    const attachments = request.attachments || [];
+    if (attachments.length > 0) {
+      await Promise.all(
+        attachments.map((a) =>
+          this.uploadsService
+            .deleteObject(this.uploadsService.leaveAttachmentsBucket, a.objectKey)
+            .catch((err) =>
+              this.logger.warn(
+                `Không xoá được ảnh đính kèm khi hard-delete đơn: ${a.objectKey}`,
+                err,
+              ),
+            ),
+        ),
+      );
+      await this.attachmentRepo.remove(attachments);
+    }
+
+    const snapshot = {
+      requester: { id: request.requesterId, name: request.requester?.name },
+      leaveType: request.leaveType,
+      status: request.status,
+      startDate: request.startDate,
+      endDate: request.endDate,
+      totalDays: request.totalDays,
+    };
+
+    await this.leaveRequestRepo.delete(id);
+
+    this.auditService.logActionAsync(
+      actorId,
+      'HARD_DELETE_LEAVE_REQUEST',
+      'leave_request',
+      id,
+      snapshot,
+      null,
+    );
+
+    return { message: 'Đã xoá vĩnh viễn đơn nghỉ phép' };
+  }
+
+  /**
    * Xoá 1 ảnh đính kèm ĐÃ upload thẳng lên B2 (qua presign) nhưng CHƯA
    * (hoặc không còn) gắn vào đơn nghỉ phép thật nào - dùng khi:
    *  - Người dùng bấm xoá ảnh khỏi picker TRƯỚC khi bấm "Tạo đơn".

@@ -95,6 +95,13 @@ describe('LeaveRequestsService - Phan quyen duyet (PERMISSIONS.md muc 2.6)', () 
       where: jest.fn().mockReturnThis(),
       andWhere: jest.fn().mockReturnThis(),
       orderBy: jest.fn().mockReturnThis(),
+      // ⚠️ MỚI: findAll()/findPending()/findHistory()/findTrash() giờ phân
+      // trang THẬT ở DB qua `paginateList()` (item-mode: .skip().take()
+      // .getManyAndCount()) thay vì trả nguyên mảng qua .getMany() như
+      // trước - mock phải khớp đúng chain method mới, nếu không
+      // `paginateList()` (item-mode, không truyền `weeksPerPage`) sẽ ném
+      // TypeError ngay ở bước `.skip()`.
+      skip: jest.fn().mockReturnThis(),
       take: jest.fn().mockReturnThis(),
       // Đếm attachmentCount ở findAll()/findPending()/findHistory() (xem
       // LeaveRequest.attachmentCount) - mock chain, không cần test giá trị
@@ -102,6 +109,7 @@ describe('LeaveRequestsService - Phan quyen duyet (PERMISSIONS.md muc 2.6)', () 
       // vi unit test này).
       loadRelationCountAndMap: jest.fn().mockReturnThis(),
       getMany: jest.fn().mockResolvedValue(result),
+      getManyAndCount: jest.fn().mockResolvedValue([result, result.length]),
     };
     return qb;
   };
@@ -606,8 +614,11 @@ describe('LeaveRequestsService - Phan quyen duyet (PERMISSIONS.md muc 2.6)', () 
 
   describe('findPending()/findHistory() - loc theo VIEWER_SEES_REQUESTER_ROLES + phong ban Manager', () => {
     it('EMPLOYEE goi findPending -> tra ve [] ngay, khong query DB', async () => {
+      // ⚠️ MỚI: findPending() giờ trả về shape phân trang chuẩn
+      // `{data, total, page, limit, totalPages}` (mirror mọi nhánh khác của
+      // paginateList()), không còn trả mảng trần `[]` như trước.
       const result = await service.findPending(1, Role.EMPLOYEE);
-      expect(result).toEqual([]);
+      expect(result).toEqual({ data: [], total: 0, page: 1, limit: 20, totalPages: 1 });
       expect(mockLeaveRepo.createQueryBuilder).not.toHaveBeenCalled();
     });
 
@@ -634,12 +645,14 @@ describe('LeaveRequestsService - Phan quyen duyet (PERMISSIONS.md muc 2.6)', () 
 
       const result = await service.findPending(7, Role.MANAGER, 'department');
 
-      expect(result).toEqual([]);
+      expect(result).toEqual({ data: [], total: 0, page: 1, limit: 20, totalPages: 1 });
       expect(qb.andWhere).toHaveBeenCalledWith(
         'requester.leaveApproverId = :viewerId',
         { viewerId: 7 },
       );
-      expect(qb.getMany).toHaveBeenCalled();
+      // ⚠️ MỚI: item-mode phân trang thật giờ dùng .getManyAndCount() (không
+      // còn .getMany() trần) - xem paginateList().
+      expect(qb.getManyAndCount).toHaveBeenCalled();
     });
 
     it('ADMIN goi findPending: thay moi role, khong filter phong ban', async () => {
