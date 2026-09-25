@@ -6,7 +6,8 @@ import {
   OneToMany,
   JoinColumn,
   CreateDateColumn,
-  UpdateDateColumn
+  UpdateDateColumn,
+  DeleteDateColumn
 } from 'typeorm';
 import { User } from './user.entity';
 import { DecimalTransformer } from '../transformers/decimal.transformer';
@@ -231,6 +232,28 @@ export class LeaveRequest {
   })
   cancelledAt: Date | null;
   
+  // XOÁ MỀM (Thùng rác) - mirror ĐÚNG pattern `customer.entity.ts`
+  // (`deletedAt`/`deletedById`/`deletedBy`), xem migration
+  // `AddLeaveRequestSoftDelete`. `@DeleteDateColumn` khiến TypeORM tự loại
+  // các dòng đã xoá mềm khỏi MỌI `find()`/`findOne()`/QueryBuilder mặc định
+  // (trừ khi gọi `.withDeleted()`) - approve()/reject()/cancel()/update() ở
+  // Service KHÔNG cần sửa gì thêm để tự động "không thấy" đơn đã vào thùng
+  // rác. Permission gác hành động: `leave_requests.delete` (xoá mềm + xem/
+  // khôi phục thùng rác) và `leave_requests.hard_delete` (xoá vĩnh viễn,
+  // TÁCH RIÊNG, mirror `customers.hard_delete`) - xem
+  // `LeaveRequestsService.softDelete()/restoreFromTrash()/hardDelete()`.
+  @DeleteDateColumn({ name: 'deleted_at', nullable: true })
+  deletedAt: Date | null;
+
+  // Ai đã bấm xoá (mềm) - cột "Người xóa" ở Tab Thùng rác. SET NULL nếu
+  // chính người xóa sau này cũng bị xóa tài khoản (mirror customer.entity.ts).
+  @Column({ name: 'deleted_by_id', nullable: true })
+  deletedById: number | null;
+
+  @ManyToOne(() => User, { nullable: true, onDelete: 'SET NULL' })
+  @JoinColumn({ name: 'deleted_by_id' })
+  deletedBy: User | null;
+
   // RELATIONS
   @ManyToOne(() => User, { onDelete: 'CASCADE' })
   @JoinColumn({ name: 'requester_id' })
