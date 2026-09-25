@@ -1,6 +1,7 @@
 'use client';
 
 import { useMemo, useState } from 'react';
+import dayjs from 'dayjs';
 import { App, Button, Checkbox, Collapse, Empty, Input, Popconfirm, Progress, Space, Spin, Typography } from 'antd';
 import { CheckOutlined, CloseOutlined, DeleteOutlined, PlusOutlined } from '@ant-design/icons';
 import { useQueryClient } from '@tanstack/react-query';
@@ -154,6 +155,28 @@ export function TaskChecklistInline({ taskId, canEdit, onOpenFull }: Props) {
         );
     };
 
+    /**
+     * Dòng log nhỏ "Tạo lúc ... • hoàn thành lúc ..." dưới nội dung mỗi
+     * checklist item - mirror ĐÚNG `formatChecklistTimestampLine` ở
+     * `TaskChecklistModal` (yêu cầu chủ dự án: áp dụng tương tự cho trang
+     * Hiệu suất, không viết lại logic riêng để tránh lệch 2 nơi).
+     */
+    const formatChecklistTimestampLine = (item: PeriodicTaskChecklistItem): string => {
+        const created = dayjs(item.createdAt);
+        const createdText = `Tạo lúc ${created.format('HH:mm DD/MM/YYYY')}`;
+
+        if (!item.isDone) return createdText;
+
+        const updated = dayjs(item.updatedAt);
+        if (!updated.isValid() || !updated.isAfter(created)) return createdText;
+
+        const completedText = updated.isSame(created, 'day')
+            ? `hoàn thành lúc ${updated.format('HH:mm')}`
+            : `hoàn thành lúc ${updated.format('HH:mm DD/MM/YYYY')}`;
+
+        return `${createdText} • ${completedText}`;
+    };
+
     // Render 1 dòng checklist item - dùng CHUNG cho cả danh sách phẳng lẫn
     // bên trong từng `Collapse.Panel` khi có gom nhóm (mirror `TaskChecklistModal`).
     const renderItemRow = (item: PeriodicTaskChecklistItem, isLast: boolean) => {
@@ -166,14 +189,14 @@ export function TaskChecklistInline({ taskId, canEdit, onOpenFull }: Props) {
                 key={item.id}
                 style={{
                     display: 'flex',
-                    alignItems: 'center',
+                    alignItems: 'flex-start',
                     gap: 6,
                     padding: '6px 8px',
                     borderBottom: isLast ? 'none' : '1px solid #f0f0f0',
                     opacity: isBusy ? 0.6 : 1,
                 }}
             >
-                <Checkbox checked={item.isDone} disabled={!canEdit} onChange={() => handleToggleDone(item)} />
+                <Checkbox checked={item.isDone} disabled={!canEdit} onChange={() => handleToggleDone(item)} style={{ marginTop: 2 }} />
                 {isEditing ? (
                     <Input
                         autoFocus
@@ -185,21 +208,26 @@ export function TaskChecklistInline({ taskId, canEdit, onOpenFull }: Props) {
                         style={{ flex: 1 }}
                     />
                 ) : (
-                    <Text
-                        style={{
-                            flex: 1,
-                            fontSize: 13,
-                            textDecoration: item.isDone ? 'line-through' : undefined,
-                            color: item.isDone ? 'rgba(0,0,0,0.45)' : undefined,
-                            cursor: canEdit ? 'pointer' : undefined,
-                        }}
-                        onClick={() => canEdit && startEdit(item)}
-                    >
-                        <LinkifiedText text={item.content} />
-                    </Text>
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                        <Text
+                            style={{
+                                display: 'block',
+                                fontSize: 13,
+                                textDecoration: item.isDone ? 'line-through' : undefined,
+                                color: item.isDone ? 'rgba(0,0,0,0.45)' : undefined,
+                                cursor: canEdit ? 'pointer' : undefined,
+                            }}
+                            onClick={() => canEdit && startEdit(item)}
+                        >
+                            <LinkifiedText text={item.content} />
+                        </Text>
+                        <Text type="secondary" style={{ display: 'block', fontSize: 10, marginTop: 1 }}>
+                            {formatChecklistTimestampLine(item)}
+                        </Text>
+                    </div>
                 )}
                 {canEdit && (
-                    <Space size={2}>
+                    <Space size={2} style={{ marginTop: 1 }}>
                         {isEditing ? (
                             <>
                                 <Button

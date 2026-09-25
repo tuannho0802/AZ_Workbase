@@ -1,12 +1,14 @@
 'use client';
 
 import { useMemo, useState } from 'react';
-import { App, Alert, Button, Card, Col, Empty, Input, Progress, Row, Select, Space, Statistic, Table, Tag, Tooltip, Typography, DatePicker } from 'antd';
+import { App, Alert, Avatar, Button, Card, Col, Empty, Progress, Row, Select, Space, Statistic, Table, Tag, Tooltip, Typography, DatePicker } from 'antd';
 import { BarChartOutlined, InfoCircleOutlined, ReloadOutlined, SearchOutlined } from '@ant-design/icons';
 import type { ColumnsType } from 'antd/es/table';
 import dayjs, { Dayjs } from 'dayjs';
 import { useMyPermissions } from '@/lib/hooks/useMyPermissions';
 import { useDepartments } from '@/lib/hooks/useDepartments';
+import { useUsersList } from '@/lib/hooks/useUsers';
+import { useRoleColorMap, useRoleColors } from '@/lib/hooks/useRoleColorMap';
 import { usePeriodicTaskPerformanceSummary } from '@/lib/hooks/usePeriodicTaskPerformance';
 import { LATE_GRACE_DAYS, type PerformanceUserRow } from '@/lib/api/periodic-task-performance.api';
 import { PERIOD_TYPE_LABELS, type PeriodType } from '@/lib/api/periodic-tasks.api';
@@ -16,6 +18,7 @@ import { resolveEntityColor } from '@/lib/utils/entityColor';
 import { PerformanceStackedChart, CHART_MAX_USERS } from '@/components/periodic-tasks/PerformanceStackedChart';
 import { PerformanceUserTasksDrawer } from '@/components/periodic-tasks/PerformanceUserTasksDrawer';
 import { OwnPerformanceDetail } from '@/components/periodic-tasks/OwnPerformanceDetail';
+import { PeriodTypeTag } from '@/components/periodic-tasks/PeriodTypeTag';
 import { useAuthStore } from '@/lib/stores/auth.store';
 
 const { Title, Text } = Typography;
@@ -58,12 +61,58 @@ export default function TaskPerformancePage() {
   const { departments } = useDepartments();
   const currentUserId = useAuthStore((s) => s.user?.id);
 
+  // Avatar + Tag Vai trò/Phòng ban màu cho dropdown "Tìm tên nhân viên" - mirror
+  // ĐÚNG `renderUserOption` ở `cong-viec-dinh-ky/page.tsx`/`CustomerFilters.tsx`
+  // (yêu cầu chủ dự án qua ảnh chụp: dropdown nhân viên ở trang này trước đó
+  // hiện tên trơn, không đồng bộ Tag màu Vai trò/Phòng ban như các dropdown
+  // khác trong app).
+  const { users: allUsers } = useUsersList();
+  const { getRoleColor } = useRoleColorMap();
+  const { roleColors: allRoles } = useRoleColors();
+  const roleNameMap = new Map(allRoles.map((r) => [r.code, r.name]));
+  const getRoleName = (code?: string) => (code ? roleNameMap.get(code) || code : '');
+  const userById = useMemo(
+    () => new Map<number, (typeof allUsers)[number]>(allUsers.map((u: any) => [u.id, u])),
+    [allUsers],
+  );
+  const optionTagStyle: React.CSSProperties = { fontSize: 10, lineHeight: '16px', padding: '0 4px', margin: 0 };
+  const renderUserOption = (option: { data: { user?: any; label?: React.ReactNode } }) => {
+    const u = option.data.user;
+    if (!u) return <span style={{ fontSize: 13 }}>{option.data.label}</span>;
+    return (
+      <Space size={4} align="center">
+        <Avatar size={20} style={{ backgroundColor: getRoleColor(u.role), fontSize: 11, flexShrink: 0 }}>
+          {u.name?.[0]?.toUpperCase()}
+        </Avatar>
+        <span style={{ fontSize: 13 }}>{u.name}</span>
+        {u.role && <Tag style={optionTagStyle} color={getRoleColor(u.role)}>{getRoleName(u.role)}</Tag>}
+        {u.department?.name && (
+          <Tag style={optionTagStyle} color={resolveEntityColor(u.department.color)}>{u.department.name}</Tag>
+        )}
+        {u.position?.name && (
+          <Tag style={optionTagStyle} color={resolveEntityColor(u.position.color)}>{u.position.name}</Tag>
+        )}
+      </Space>
+    );
+  };
+
   // Mặc định THÁNG NÀY (BE mặc định tuần này, nhưng với "hiệu suất" tuần này
   // phần lớn Task còn trong ân hạn nên số liệu gần như trống).
   const [dateRange, setDateRange] = useState<[Dayjs, Dayjs]>(() => getMonthRange(dayjs()));
   const [periodType, setPeriodType] = useState<PeriodType | undefined>();
   const [departmentId, setDepartmentId] = useState<number | undefined>();
-  const [searchText, setSearchText] = useState('');
+  // ⚠️ MỚI (yêu cầu chủ dự án qua ảnh chụp): đổi từ ô nhập text lọc theo
+  // chuỗi con thành dropdown `Select mode="multiple"` + `showSearch` (đúng
+  // pattern "Sales"/"Marketing" ở `CustomerFilters.tsx`, "Phụ trách" ở
+  // `cong-viec-dinh-ky/page.tsx`) - chọn ĐÍCH DANH 1 hoặc nhiều nhân viên
+  // thay vì gõ khớp chuỗi con. BE `GET /periodic-tasks-performance` KHÔNG có
+  // tham số lọc theo danh sách userId (chỉ có `userId` đơn cho endpoint chi
+  // tiết 1 người) nên vẫn lọc PHÍA CLIENT trên `rows` đã tải theo
+  // dateRange/periodType/departmentId hiện tại - giữ nguyên cơ chế cũ, chỉ
+  // đổi UI chọn từ "gõ tên" sang "chọn từ danh sách nhân viên đang có Task
+  // trong kỳ" (options lấy từ chính `rows`, không lấy toàn bộ nhân viên công
+  // ty - tránh cho chọn được người chắc chắn sẽ ra bảng rỗng).
+  const [selectedUserIds, setSelectedUserIds] = useState<number[]>([]);
   const [drawerUser, setDrawerUser] = useState<{ id: number; name: string } | null>(null);
 
   const params = useMemo(
@@ -85,10 +134,25 @@ export default function TaskPerformancePage() {
   const rows = useMemo(() => data?.rows ?? [], [data]);
   const totals = useMemo(() => aggregateRows(rows), [rows]);
 
-  const filteredRows = useMemo(() => {
-    const q = searchText.trim().toLowerCase();
-    return q ? rows.filter((r) => r.userName.toLowerCase().includes(q)) : rows;
-  }, [rows, searchText]);
+  // Options dropdown nhân viên: lấy từ chính `rows` (đúng nhân viên đang có
+  // mặt trong kỳ/phòng ban đang lọc), sắp theo tên cho dễ tìm khi `showSearch`.
+  // Đính kèm `user` (tra qua `userById` - danh sách đầy đủ role/phòng ban từ
+  // `useUsersList()`) để `renderUserOption` vẽ được Avatar + Tag màu, đồng bộ
+  // các dropdown chọn nhân viên khác trong app; nếu không tra được (hiếm -
+  // user đã bị vô hiệu hoá/xoá nhưng vẫn còn Task cũ trong kỳ) vẫn fallback
+  // hiện tên trơn qua `label`, không chặn hiển thị.
+  const employeeOptions = useMemo(
+    () =>
+      [...rows]
+        .sort((a, b) => a.userName.localeCompare(b.userName))
+        .map((r) => ({ value: r.userId, label: r.userName, user: userById.get(r.userId) })),
+    [rows, userById],
+  );
+
+  const filteredRows = useMemo(
+    () => (selectedUserIds.length === 0 ? rows : rows.filter((r) => selectedUserIds.includes(r.userId))),
+    [rows, selectedUserIds],
+  );
 
   const activeQuick = QUICK_RANGES.find(({ key }) => {
     const [f, t] = getQuickRange(key);
@@ -285,7 +349,10 @@ export default function TaskPerformancePage() {
               style={{ width: '100%' }}
               value={periodType}
               onChange={(v) => setPeriodType(v ?? undefined)}
-              options={(Object.keys(PERIOD_TYPE_LABELS) as PeriodType[]).map((k) => ({ value: k, label: PERIOD_TYPE_LABELS[k] }))}
+              options={(Object.keys(PERIOD_TYPE_LABELS) as PeriodType[]).map((k) => ({
+                value: k,
+                label: <PeriodTypeTag type={k} style={{ marginInlineEnd: 0 }} />,
+              }))}
             />
           </Col>
           {canSeeOthers && (
@@ -308,12 +375,25 @@ export default function TaskPerformancePage() {
           )}
           {canSeeOthers && (
             <Col xs={24} md={6}>
-              <Input
+              <Select
+                mode="multiple"
                 allowClear
-                prefix={<SearchOutlined />}
-                placeholder="Tìm tên nhân viên..."
-                value={searchText}
-                onChange={(e) => setSearchText(e.target.value)}
+                showSearch
+                optionFilterProp="label"
+                optionLabelProp="label"
+                optionRender={renderUserOption}
+                popupMatchSelectWidth={false}
+                maxTagCount="responsive"
+                placeholder={
+                  <>
+                    <SearchOutlined /> Tìm tên nhân viên...
+                  </>
+                }
+                style={{ width: '100%' }}
+                value={selectedUserIds}
+                onChange={(v) => setSelectedUserIds(v)}
+                options={employeeOptions}
+                notFoundContent={rows.length === 0 ? 'Chưa có nhân viên nào trong kỳ đã chọn' : undefined}
               />
             </Col>
           )}

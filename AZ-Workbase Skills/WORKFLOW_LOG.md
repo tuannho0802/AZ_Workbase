@@ -4411,3 +4411,26 @@ trước) theo đúng Custom Instructions của Project.
 > Chưa làm: chưa có test riêng (unit/E2E) cho 4 component FE mới này — dự án hiện chưa có test FE nào cho `periodic-tasks/*` (chỉ verify bằng `tsc`+`eslint`+`build` thật, đúng mức đã áp dụng cho các Drawer cũ trước đó).
 
 ---
+## [2026-09-25 11:20] | Wiring FE cho phân trang server-side `getUserTasks` (BE đã có sẵn từ `98038a9`) + timestamp checklist ở `TaskChecklistInline` + Separator rõ nét | [Status: Success]
+
+**Actor:** Agent
+
+**Files Changed:**
+- `frontend/src/lib/api/periodic-task-performance.api.ts` — thêm `primaryPage`/`secondaryPage` vào `PerformanceFilterParams`; đổi `UserTasksResult.primaryTasks/secondaryTasks` (mảng phẳng) → `primary/secondary: PaginatedUserTasksResult` (`{ items, total, page, pageSize }`) khớp đúng response BE mới của commit `98038a9`.
+- `frontend/src/components/periodic-tasks/UserTasksPanel.tsx` — chuyển từ nhận `data` fetch sẵn từ ngoài sang TỰ gọi `useUserTasks(userId, { ...params, primaryPage, secondaryPage })` bên trong, tự quản lý state phân trang 2 nhóm ĐỘC LẬP nhau; thêm `<Pagination size="small" simple>` cho từng nhóm khi `total > pageSize`; đổi header nhóm từ `Divider` mảnh sang khối nền màu (xanh dương "Phụ trách chính" / tím "Phụ trách phụ") RÕ NÉT hơn (yêu cầu chủ dự án qua ảnh chụp, khoanh đỏ 2 dòng "Phụ trách chính (1)"/"Phụ trách phụ (1)").
+- `frontend/src/components/periodic-tasks/PerformanceUserTasksDrawer.tsx`, `OwnPerformanceDetail.tsx` — bỏ gọi `useUserTasks` trùng lặp (giờ `UserTasksPanel` tự fetch), chỉ truyền `userId` + `params` (không gồm `primaryPage`/`secondaryPage`); thêm `key={dateFrom_dateTo}` để đổi khoảng ngày tự remount Panel, đưa phân trang 2 nhóm về lại trang 1 (mirror pattern `key={user.id}` đã dùng ở Drawer, tránh lỗi lint `react-hooks/set-state-in-effect`).
+- `frontend/src/components/periodic-tasks/TaskChecklistInline.tsx` — mirror ĐÚNG `formatChecklistTimestampLine()` của `TaskChecklistModal.tsx` (commit `70be687`, lúc đó CHỈ sửa Modal, chưa sửa bản Inline dùng ở trang Hiệu suất) — thêm dòng "Tạo lúc ... • hoàn thành lúc ..." (fontSize 10, nhỏ hơn Modal 1px cho gọn trong Card) dưới mỗi checklist item; đổi `alignItems: 'center'` → `'flex-start'` để dòng phụ không kéo lệch checkbox.
+
+**Root cách/Bối cảnh:**
+> Phiên trước (`98038a9`) đã làm ĐÚNG phần BE (phân trang `USER_TASKS_PAGE_SIZE = 2`/nhóm, sort `ABS(DATEDIFF(period_end_date, today))` ASC) nhưng CHƯA đụng tới FE — đã tự pull lại `main`, đọc trực tiếp diff `98038a9`/`70be687`/`280a558` để xác nhận đúng những gì còn thiếu trước khi code tiếp (đúng tinh thần Custom Instructions: không tin báo cáo cũ, luôn đọc code thật).
+
+**Verify thật đã chạy (sandbox, clone mới từ `main`, commit `98038a9`):**
+- Backend: `npx tsc --noEmit` — 0 lỗi (không đổi code BE lượt này). `npx jest periodic-task-performance` — 15/15 pass.
+- Frontend: `npx tsc --noEmit` — đúng 5 lỗi baseline cũ (`logo.png` x4, `CountBadge.tsx` styled-jsx), không có lỗi mới.
+- Frontend: `npx eslint` trên 5 file thay đổi — 0 lỗi (1 warning `exhaustive-deps` PRE-EXISTING ở dòng không đụng tới trong `TaskChecklistInline.tsx`, đã đối chiếu không phải do lượt sửa này gây ra).
+- Frontend: `npm run build` (`next build`, Turbopack) — build production THẬT thành công, đủ 37 route.
+
+**Notes:**
+> Chưa commit/push lên `main` — chủ dự án tự áp patch/diff và verify trên môi trường của mình trước khi merge. Sort "gần ngày hôm nay nhất" và phân trang server-side đã hoàn toàn nằm ở BE (không sửa gì thêm) — lượt này chỉ là wiring FE cho đúng.
+
+---

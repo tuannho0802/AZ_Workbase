@@ -56,16 +56,31 @@ export interface PerformanceFilterParams {
   /** BE chỉ áp dụng khi scope là department/all. */
   departmentId?: number;
   userId?: number;
+  /** CHỈ dùng cho `getUserTasks` - trang hiện tại nhóm "Phụ trách chính"
+   * (mirror `primaryPage` ở BE DTO, mặc định 1). Các endpoint khác bỏ qua. */
+  primaryPage?: number;
+  /** CHỈ dùng cho `getUserTasks` - trang hiện tại nhóm "Phụ trách phụ". */
+  secondaryPage?: number;
+}
+
+/** Khớp `PaginatedUserTasks` ở BE (MỚI 2026-09-25, phân trang SERVER-SIDE
+ * cho `GET /users/:userId/tasks` - mỗi nhóm tối đa `pageSize` Task/trang,
+ * `total` là TOÀN BỘ số Task khớp bộ lọc để FE vẽ `<Pagination>`). */
+export interface PaginatedUserTasksResult {
+  items: PeriodicTask[];
+  total: number;
+  page: number;
+  pageSize: number;
 }
 
 /** Khớp response `GET /users/:userId/tasks` (MỚI 2026-09-25) - xem JSDoc
  * `PeriodicTaskPerformanceService.getUserTasks()`. */
 export interface UserTasksResult {
   scope: PermissionScope | 'own';
-  /** Task có `primaryAssigneeId` = User được xem. */
-  primaryTasks: PeriodicTask[];
-  /** Task User được xem CHỈ là Phụ trách phụ (không phải Phụ trách chính). */
-  secondaryTasks: PeriodicTask[];
+  /** Task có `primaryAssigneeId` = User được xem (đã phân trang). */
+  primary: PaginatedUserTasksResult;
+  /** Task User được xem CHỈ là Phụ trách phụ (đã phân trang). */
+  secondary: PaginatedUserTasksResult;
 }
 
 export const periodicTaskPerformanceApi = {

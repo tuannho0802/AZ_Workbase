@@ -4,7 +4,6 @@ import { useState } from 'react';
 import { Card, Space, Typography } from 'antd';
 import { UnorderedListOutlined } from '@ant-design/icons';
 import type { Dayjs } from 'dayjs';
-import { useUserTasks } from '@/lib/hooks/usePeriodicTaskPerformance';
 import { getDefaultPerformanceRange, PerformanceRangeFilter } from './PerformanceRangeFilter';
 import { UserTasksPanel } from './UserTasksPanel';
 
@@ -42,8 +41,6 @@ export function OwnPerformanceDetail({ userId, periodType }: Props) {
     periodType: periodType as never,
   };
 
-  const { data, isLoading, isError } = useUserTasks(userId, params);
-
   return (
     <Card
       size="small"
@@ -56,7 +53,8 @@ export function OwnPerformanceDetail({ userId, periodType }: Props) {
       }
     >
       <PerformanceRangeFilter value={dateRange} onChange={setDateRange} />
-      <UserTasksPanel data={data} isLoading={isLoading} isError={isError} />
+      {/* `key` = khoảng ngày -> đổi ngày remount Panel, tự đưa phân trang về lại trang 1. */}
+      <UserTasksPanel key={`${params.dateFrom}_${params.dateTo}`} userId={userId} params={params} />
     </Card>
   );
 }

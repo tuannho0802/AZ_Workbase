@@ -3,7 +3,6 @@
 import { useState } from 'react';
 import { Alert, Drawer } from 'antd';
 import type { Dayjs } from 'dayjs';
-import { useUserTasks } from '@/lib/hooks/usePeriodicTaskPerformance';
 import { getDefaultPerformanceRange, PerformanceRangeFilter } from './PerformanceRangeFilter';
 import { UserTasksPanel } from './UserTasksPanel';
 
@@ -61,12 +60,12 @@ function DrawerBody({ userId, periodType }: { userId: number; periodType?: strin
     periodType: periodType as never,
   };
 
-  const { data, isLoading, isError } = useUserTasks(userId, params);
-
   return (
     <>
       <PerformanceRangeFilter value={dateRange} onChange={setDateRange} />
-      <UserTasksPanel data={data} isLoading={isLoading} isError={isError} />
+      {/* `key` = khoảng ngày -> đổi ngày remount Panel, tự đưa phân trang của
+          CẢ 2 nhóm về lại trang 1 (mirror pattern `key={user.id}` ở trên). */}
+      <UserTasksPanel key={`${params.dateFrom}_${params.dateTo}`} userId={userId} params={params} />
     </>
   );
 }
