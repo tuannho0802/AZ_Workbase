@@ -107,6 +107,16 @@ export class LeaveRequestsController {
     return this.leaveRequestsService.findTrash(req.user.id, req.user.role, scope, query);
   }
 
+  // Tab "Thùng rác" ở nghi-phep/page.tsx - CHỈ đơn CỦA CHÍNH VIEWER, gate
+  // bởi `leave_requests.request` (ai xin nghỉ cũng có) - KHÔNG cần
+  // `leave_requests.delete` (quyền đó dành riêng cho approver xem/xoá đơn
+  // NGƯỜI KHÁC, xem GET 'trash' phía trên).
+  @Get('my-trash')
+  @RequirePermission('leave_requests.request')
+  async findMyTrash(@Request() req, @Query() query: QueryLeaveRequestsDto) {
+    return this.leaveRequestsService.findMyTrash(req.user.id, query);
+  }
+
   @Get('approved-range')
   @RequirePermission('leave_requests.view')
   async findApprovedInRange(
@@ -159,28 +169,13 @@ export class LeaveRequestsController {
     );
   }
 
-  // Xoá mềm (đưa vào Thùng rác). ⚠️ ĐỔI (yêu cầu người dùng 2026-09-25):
-  // đơn ĐANG CHỜ DUYỆT (pending) giờ CHỈ CHÍNH CHỦ (người tạo đơn) mới được
-  // xoá - kể cả Admin/Manager có quyền `leave_requests.delete` KHÔNG được
-  // xoá hộ đơn pending của người khác nữa (tránh cấp trên âm thầm xoá đơn
-  // trước khi nhân viên kịp biết). Đơn ĐÃ xử lý (approved/rejected/
-  // cancelled) vẫn theo permission `leave_requests.delete` + scope như cũ.
-  // Vì route này giờ phục vụ CẢ 2 case (permission NỀN khác nhau tuỳ
-  // trạng thái đơn - không thể biết trước lúc gắn decorator), guard đổi
-  // sang permission NỀN `leave_requests.request` (ai tạo được đơn cũng gọi
-  // được endpoint) - toàn bộ phân quyền THẬT (owner-only cho pending /
-  // `leave_requests.delete` cho đã xử lý) chuyển hẳn vào
-  // LeaveRequestsService.softDelete() làm "hard guard" - xem JSDoc ở đó.
+  // Xoá mềm (đưa vào Thùng rác) - phạm vi scope giống isEligibleApprover()
+  // (mirror approve/reject: admin/scope='all' -> mọi đơn, scope='department'
+  // -> chỉ đơn của nhân viên phòng ban mình quản lý).
   @Delete(':id')
-  @RequirePermission('leave_requests.request')
-  async softDelete(@Param('id') id: string, @Request() req) {
-    return this.leaveRequestsService.softDelete(
-      parseInt(id),
-      req.user.id,
-      req.user.role,
-      req.user.departmentId,
-      req.user.positionId,
-    );
+  @RequirePermission('leave_requests.delete')
+  async softDelete(@Param('id') id: string, @Request() req, @GetPermissionScope() scope?: string | null) {
+    return this.leaveRequestsService.softDelete(parseInt(id), req.user.id, req.user.role, scope);
   }
 
   @Patch('trash/:id/restore')
@@ -196,5 +191,31 @@ export class LeaveRequestsController {
   @RequirePermission('leave_requests.hard_delete')
   async hardDelete(@Param('id') id: string, @Request() req, @GetPermissionScope() scope?: string | null) {
     return this.leaveRequestsService.hardDelete(parseInt(id), req.user.id, req.user.role, scope);
+  }
+
+  // ── Tự phục vụ (nghi-phep/page.tsx) - đơn CỦA CHÍNH MÌNH, gate bởi
+  // `leave_requests.request` (KHÔNG cần leave_requests.delete/hard_delete -
+  // 2 quyền đó dành cho approver/admin thao tác đơn NGƯỜI KHÁC ở trên).
+  // Đặt SAU cùng để không lẫn với các route ':id'/'trash/:id/...' phía
+  // trên (khác số segment/literal, không thực sự xung đột nhưng để đọc dễ
+  // theo nhóm chức năng).
+
+  // Xoá mềm đơn CỦA CHÍNH MÌNH - chỉ khi đơn đang PENDING (xem Service).
+  @Delete(':id/self')
+  @RequirePermission('leave_requests.request')
+  async selfSoftDelete(@Param('id') id: string, @Request() req) {
+    return this.leaveRequestsService.selfSoftDelete(parseInt(id), req.user.id);
+  }
+
+  @Patch('my-trash/:id/restore')
+  @RequirePermission('leave_requests.request')
+  async selfRestoreFromTrash(@Param('id') id: string, @Request() req) {
+    return this.leaveRequestsService.selfRestoreFromTrash(parseInt(id), req.user.id);
+  }
+
+  @Delete('my-trash/:id/hard-delete')
+  @RequirePermission('leave_requests.request')
+  async selfHardDelete(@Param('id') id: string, @Request() req) {
+    return this.leaveRequestsService.selfHardDelete(parseInt(id), req.user.id);
   }
 }
