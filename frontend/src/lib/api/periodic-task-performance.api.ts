@@ -26,6 +26,16 @@ export interface PerformanceUserRow {
   completionRatePercent: number | null;
   /** `null` nếu chưa có Task nào xong. */
   lateRatePercent: number | null;
+  /** Số Task đang có `status.code = 'in_progress'` NGAY TẠI THỜI ĐIỂM XEM
+   * (snapshot trạng thái hiện tại, ĐỘC LẬP với completedOnTime/Late/overdue -
+   * mirror JSDoc field cùng tên ở BE `PerformanceUserRow`). */
+  inProgressCount: number;
+  /** Số Task đang có `status.code = 'in_review'` hiện tại (mirror `inProgressCount`). */
+  inReviewCount: number;
+  /** % inProgressCount / total. `null` nếu total = 0. */
+  inProgressRatePercent: number | null;
+  /** % inReviewCount / total. `null` nếu total = 0. */
+  inReviewRatePercent: number | null;
   checklistDone: number;
   checklistTotal: number;
 }

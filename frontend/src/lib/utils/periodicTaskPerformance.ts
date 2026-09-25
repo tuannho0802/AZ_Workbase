@@ -7,10 +7,14 @@ export interface PerformanceTotals {
   completedLate: number;
   overdueNotCompleted: number;
   pendingFuture: number;
+  inProgressCount: number;
+  inReviewCount: number;
   checklistDone: number;
   checklistTotal: number;
   completionRatePercent: number | null;
   lateRatePercent: number | null;
+  inProgressRatePercent: number | null;
+  inReviewRatePercent: number | null;
   checklistRatePercent: number | null;
 }
 
@@ -29,16 +33,30 @@ export function aggregateRows(rows: PerformanceUserRow[]): PerformanceTotals {
       completedLate: acc.completedLate + r.completedLate,
       overdueNotCompleted: acc.overdueNotCompleted + r.overdueNotCompleted,
       pendingFuture: acc.pendingFuture + r.pendingFuture,
+      inProgressCount: acc.inProgressCount + r.inProgressCount,
+      inReviewCount: acc.inReviewCount + r.inReviewCount,
       checklistDone: acc.checklistDone + r.checklistDone,
       checklistTotal: acc.checklistTotal + r.checklistTotal,
     }),
-    { total: 0, completedOnTime: 0, completedLate: 0, overdueNotCompleted: 0, pendingFuture: 0, checklistDone: 0, checklistTotal: 0 },
+    {
+      total: 0,
+      completedOnTime: 0,
+      completedLate: 0,
+      overdueNotCompleted: 0,
+      pendingFuture: 0,
+      inProgressCount: 0,
+      inReviewCount: 0,
+      checklistDone: 0,
+      checklistTotal: 0,
+    },
   );
   const completed = sum.completedOnTime + sum.completedLate;
   return {
     ...sum,
     completionRatePercent: percentOf(completed, sum.total),
     lateRatePercent: percentOf(sum.completedLate, completed),
+    inProgressRatePercent: percentOf(sum.inProgressCount, sum.total),
+    inReviewRatePercent: percentOf(sum.inReviewCount, sum.total),
     checklistRatePercent: percentOf(sum.checklistDone, sum.checklistTotal),
   };
 }
@@ -71,4 +89,21 @@ export type FlaggedKind = 'late' | 'overdue';
 export function classifyFlaggedTask(task: Pick<PeriodicTask, 'status'>): FlaggedKind {
   const s = task.status;
   return s?.isDoneState || s?.code === 'in_review' ? 'late' : 'overdue';
+}
+
+/**
+ * hasStartedWorking - dùng để chia Drawer "Công việc cần lưu ý" thành 2 nhóm
+ * (yêu cầu chủ dự án 2026-09-25): "Đang làm trở lên" (đã bắt đầu động vào -
+ * `in_progress`/`in_review`/đã xong) vs phần còn lại (status TRƯỚC
+ * `in_progress`, vd `pending`/`todo` - coi như CHƯA động vào).
+ *
+ * ⚠️ GIẢ ĐỊNH CẦN XÁC NHẬN LẠI: dựa trên `status.code` hiện tại, KHÔNG dựa
+ * trên `sortOrder` (bảng `periodic_task_statuses` là danh sách ĐỘNG do Admin
+ * tự CRUD) - nếu dự án có thêm status trung gian khác NGOÀI `in_progress`/
+ * `in_review`/`is_done_state` (vd 1 status "Chờ duyệt" riêng), status đó sẽ
+ * bị xếp nhầm vào nhóm "chưa động vào" dù thực tế đã có người xử lý.
+ */
+export function hasStartedWorking(task: Pick<PeriodicTask, 'status'>): boolean {
+  const s = task.status;
+  return !!s && (s.code === 'in_progress' || s.code === 'in_review' || s.isDoneState);
 }

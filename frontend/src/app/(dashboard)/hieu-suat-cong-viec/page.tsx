@@ -167,6 +167,42 @@ export default function TaskPerformancePage() {
       render: (v: number | null) => (v == null ? '—' : <Tag color={lateRateColor(v)}>{v}%</Tag>),
     },
     {
+      title: (
+        <Tooltip title="Số Task ĐANG có trạng thái 'Đang làm' ngay tại thời điểm xem (snapshot hiện tại) - độc lập với các cột Đúng hạn/Xong muộn/Quá hạn ở trên.">
+          % Đang làm <InfoCircleOutlined />
+        </Tooltip>
+      ),
+      dataIndex: 'inProgressRatePercent',
+      key: 'inProgressRatePercent',
+      width: 120,
+      align: 'center',
+      sorter: (a, b) => (a.inProgressRatePercent ?? -1) - (b.inProgressRatePercent ?? -1),
+      render: (v: number | null, r) =>
+        v == null ? '—' : (
+          <Tooltip title={`${r.inProgressCount}/${r.total} Task`}>
+            <Tag color="processing">{v}%</Tag>
+          </Tooltip>
+        ),
+    },
+    {
+      title: (
+        <Tooltip title="Số Task ĐANG có trạng thái 'Đang xem xét (In review)' ngay tại thời điểm xem (snapshot hiện tại) - độc lập với các cột Đúng hạn/Xong muộn/Quá hạn ở trên.">
+          % Đang xem xét <InfoCircleOutlined />
+        </Tooltip>
+      ),
+      dataIndex: 'inReviewRatePercent',
+      key: 'inReviewRatePercent',
+      width: 130,
+      align: 'center',
+      sorter: (a, b) => (a.inReviewRatePercent ?? -1) - (b.inReviewRatePercent ?? -1),
+      render: (v: number | null, r) =>
+        v == null ? '—' : (
+          <Tooltip title={`${r.inReviewCount}/${r.total} Task`}>
+            <Tag color="purple">{v}%</Tag>
+          </Tooltip>
+        ),
+    },
+    {
       title: 'Checklist',
       key: 'checklist',
       width: 130,
@@ -353,6 +389,30 @@ export default function TaskPerformancePage() {
             <Text type="secondary" style={{ fontSize: 12 }}>{totals.checklistDone}/{totals.checklistTotal} mục</Text>
           </Card>
         </Col>
+        <Col xs={12} md={8} xl={5}>
+          <Card size="small" variant="outlined">
+            <Statistic
+              title="% Đang làm"
+              value={totals.inProgressRatePercent ?? '—'}
+              suffix={totals.inProgressRatePercent == null ? undefined : '%'}
+              styles={{ content: { color: '#1677ff' } }}
+              loading={isLoading}
+            />
+            <Text type="secondary" style={{ fontSize: 12 }}>{totals.inProgressCount}/{totals.total} Task</Text>
+          </Card>
+        </Col>
+        <Col xs={12} md={8} xl={5}>
+          <Card size="small" variant="outlined">
+            <Statistic
+              title="% Đang xem xét"
+              value={totals.inReviewRatePercent ?? '—'}
+              suffix={totals.inReviewRatePercent == null ? undefined : '%'}
+              styles={{ content: { color: '#722ed1' } }}
+              loading={isLoading}
+            />
+            <Text type="secondary" style={{ fontSize: 12 }}>{totals.inReviewCount}/{totals.total} Task</Text>
+          </Card>
+        </Col>
       </Row>
 
       {canSeeOthers && rows.length > 1 && (
@@ -374,14 +434,16 @@ export default function TaskPerformancePage() {
           loading={isLoading}
           columns={columns}
           dataSource={filteredRows}
-          scroll={{ x: 1300 }}
+          scroll={{ x: 1550 }}
           pagination={{ pageSize: 20, hideOnSinglePage: true, showSizeChanger: false, showTotal: (t) => `${t} nhân viên` }}
           locale={{ emptyText: <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="Không có Task nào trong khoảng đã chọn" /> }}
         />
         <Text type="secondary" style={{ fontSize: 12, display: 'block', marginTop: 12 }}>
           <InfoCircleOutlined /> Hiệu suất tính theo người Phụ trách chính. Task được coi là hoàn thành khi chuyển sang In review hoặc Hoàn thành;
           bị tính muộn nếu việc đó xảy ra sau kỳ hạn + {LATE_GRACE_DAYS} ngày. Task chưa xong nhưng còn trong {LATE_GRACE_DAYS} ngày ân hạn
-          hiển thị ở cột &quot;Đang trong hạn&quot;. Trạng thái bị loại khỏi rollup không được tính.
+          hiển thị ở cột &quot;Đang trong hạn&quot;. Trạng thái bị loại khỏi rollup không được tính. Cột &quot;% Đang làm&quot;/&quot;% Đang xem xét&quot;
+          là snapshot trạng thái HIỆN TẠI của Task, tách biệt hoàn toàn với các cột hoàn thành/muộn/quá hạn ở trên - 1 Task có thể vừa
+          &quot;Quá hạn chưa xong&quot; vừa đang &quot;Đang làm&quot; cùng lúc.
         </Text>
       </Card>
 
