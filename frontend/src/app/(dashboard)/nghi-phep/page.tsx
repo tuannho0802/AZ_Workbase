@@ -3,9 +3,13 @@
 import { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import {
-  Button, Modal, Form, Select, DatePicker, TimePicker, Input, Tag, App, Card, Divider, Typography, Row, Col, Tooltip
+  Button, Modal, Form, Select, DatePicker, TimePicker, Input, Tag, App, Card, Divider, Typography, Row, Col, Tooltip,
+  Tabs, Badge, Space
 } from 'antd';
-import { PlusOutlined, CloseCircleOutlined, CalendarOutlined, ClockCircleOutlined, FileTextOutlined, UserOutlined, SearchOutlined } from '@ant-design/icons';
+import {
+  PlusOutlined, CloseCircleOutlined, CalendarOutlined, ClockCircleOutlined, FileTextOutlined, UserOutlined,
+  SearchOutlined, DeleteOutlined, UndoOutlined, DeleteRowOutlined,
+} from '@ant-design/icons';
 import { leaveRequestsApi, LeaveRequest, LeaveRequestsQuery, WeekBucketDto } from '@/lib/api/leave-requests.api';
 import { useMyPermissions } from '@/lib/hooks/useMyPermissions';
 import { useLeaveTypes } from '@/lib/hooks/useLeaveTypes';
@@ -49,14 +53,29 @@ function formatPeriodHours(record: LeaveRequest): string | null {
   return `${record.periodStartTime.slice(0, 5)} - ${record.periodEndTime.slice(0, 5)}`;
 }
 
+/**
+ * Mirror ĐÚNG `sumColumnWidths()` ở `duyet-phep/page.tsx` - cộng tổng
+ * `width` các cột ĐANG HIỂN THỊ để làm `scroll.x` DẠNG SỐ PIXEL cụ thể
+ * (KHÔNG dùng 'max-content'). Kết hợp `<Space wrap>` ở cột "Thao tác" làm 2
+ * lớp bảo hiểm: cột không bao giờ tràn ra ngoài bảng dù sau này thêm nút
+ * hay thêm cột (xem JSDoc đầy đủ ở file kia).
+ */
+function sumColumnWidths(columns: { width?: number }[]): number {
+  return columns.reduce((sum, col) => sum + (col.width ?? 120), 0);
+}
+
 // ── Mobile Card ──────────────────────────────────────────────────────────────
 function MyLeaveMobileCard({
   record,
   onCancel,
+  onSelfDelete,
   leaveTypeMap,
 }: {
   record: LeaveRequest;
   onCancel: (id: number) => void;
+    // Xoá mềm (vào Thùng rác) đơn CỦA CHÍNH MÌNH - KHÁC hẳn onCancel (chỉ đổi
+    // status), chỉ áp dụng khi đơn đang PENDING (BE tự chặn nếu không).
+    onSelfDelete: (id: number) => void;
     leaveTypeMap: Record<string, { text: string; color: string }>;
 }) {
   const lt = leaveTypeMap[record.leaveType] || { text: record.leaveType, color: 'default' };
@@ -113,17 +132,100 @@ function MyLeaveMobileCard({
       <AttachmentsViewerButton requestId={record.id} size="small" count={record.attachmentCount} />
 
       {record.status === 'pending' && (
+        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginTop: 4 }}>
+          <Button
+            danger
+            type="primary"
+            size="small"
+            icon={<CloseCircleOutlined />}
+            style={{ flex: 1, minWidth: 110 }}
+            onClick={() => onCancel(record.id)}
+          >
+            Hủy đơn
+          </Button>
+          <Button
+            danger
+            size="small"
+            icon={<DeleteOutlined />}
+            style={{ flex: 1, minWidth: 90 }}
+            onClick={() => onSelfDelete(record.id)}
+          >
+            Xoá
+          </Button>
+        </div>
+      )}
+    </Card>
+  );
+}
+
+// ── Mobile Card - Thùng rác (tự phục vụ) ────────────────────────────────────
+function MyTrashMobileCard({
+  record,
+  onRestore,
+  onHardDelete,
+  leaveTypeMap,
+}: {
+  record: LeaveRequest;
+  onRestore: (record: LeaveRequest) => void;
+  onHardDelete: (record: LeaveRequest) => void;
+  leaveTypeMap: Record<string, { text: string; color: string }>;
+}) {
+  const lt = leaveTypeMap[record.leaveType] || { text: record.leaveType, color: 'default' };
+  const st = STATUS_MAP[record.status] || { text: record.status, color: 'default' };
+
+  return (
+    <Card
+      variant="outlined"
+      style={{ marginBottom: 10 }}
+      styles={{ body: { padding: '12px 14px' } }}
+    >
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 8 }}>
+        <Tag color={lt.color}>{lt.text}</Tag>
+        <Tag color={st.color}>{st.text}</Tag>
+      </div>
+
+      <Divider style={{ margin: '8px 0' }} />
+
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 4, marginBottom: 10 }}>
+        <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+          <CalendarOutlined style={{ color: '#1890ff', fontSize: 12 }} />
+          <Text style={{ fontSize: 12 }}>
+            {dayjs(record.startDate).format('DD/MM/YYYY')} → {dayjs(record.endDate).format('DD/MM/YYYY')}
+            <Text strong style={{ color: '#1890ff', marginLeft: 6 }}>{record.totalDays} ngày</Text>
+          </Text>
+        </div>
+        {record.reason && (
+          <div style={{ display: 'flex', gap: 6, alignItems: 'flex-start' }}>
+            <FileTextOutlined style={{ color: '#8c8c8c', fontSize: 12, marginTop: 3 }} />
+            <Text style={{ fontSize: 12, color: '#595959' }}>{record.reason}</Text>
+          </div>
+        )}
+        {record.deletedAt && (
+          <Text style={{ fontSize: 12, color: '#8c8c8c' }}>
+            Ngày xoá: {dayjs(record.deletedAt).format('DD/MM/YYYY HH:mm')}
+          </Text>
+        )}
+      </div>
+
+      <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+        <Button
+          size="small"
+          icon={<UndoOutlined />}
+          style={{ flex: 1, minWidth: 110 }}
+          onClick={() => onRestore(record)}
+        >
+          Khôi phục
+        </Button>
         <Button
           danger
-          type="primary"
           size="small"
-          icon={<CloseCircleOutlined />}
-          style={{ width: '100%', marginTop: 4 }}
-          onClick={() => onCancel(record.id)}
+          icon={<DeleteRowOutlined />}
+          style={{ flex: 1, minWidth: 110 }}
+          onClick={() => onHardDelete(record)}
         >
-          Hủy đơn
+          Xoá vĩnh viễn
         </Button>
-      )}
+      </div>
     </Card>
   );
 }
@@ -156,6 +258,21 @@ export default function LeaveRequestsPage() {
   const [filterLeaveType, setFilterLeaveType] = useState<string | null>(null);
   const [filterStatus, setFilterStatus] = useState<string | null>(null);
   const [filterDateRange, setFilterDateRange] = useState<[Dayjs | null, Dayjs | null] | null>(null);
+
+  // ── Tab "Thùng rác" (tự phục vụ) - CHỈ đơn CỦA CHÍNH MÌNH, mirror ĐÚNG
+  // pattern PHA 1/PHA 2 của tab "Đơn của tôi" ở trên (weeks/fetchToken/
+  // page/weeksPerPage/totalWeeks/total riêng). Lazy - chỉ fetch LẦN ĐẦU khi
+  // người dùng thực sự mở tab (mirror `trashTabLoaded` ở duyet-phep/page.tsx).
+  const [trashWeeks, setTrashWeeks] = useState<WeekBucketDto[]>([]);
+  const [trashWeekFilters, setTrashWeekFilters] = useState<LeaveRequestsQuery>({});
+  const [trashFetchToken, setTrashFetchToken] = useState(0);
+  const [trashPage, setTrashPage] = useState(1);
+  const [trashWeeksPerPage, setTrashWeeksPerPage] = useState(4);
+  const [trashTotalWeeks, setTrashTotalWeeks] = useState(0);
+  const [trashTotal, setTrashTotal] = useState(0);
+  const [trashLoading, setTrashLoading] = useState(false);
+  const [trashTabLoaded, setTrashTabLoaded] = useState(false);
+  const [trashSearch, setTrashSearch] = useState('');
   // Ảnh đính kèm giờ chỉ nằm trong RAM trình duyệt (xem AttachmentUploader) -
   // component cha gọi `uploadAll()` qua ref đúng lúc submit, KHÔNG còn bind
   // value/onChange kiểu controlled field qua Form nữa.
@@ -257,6 +374,40 @@ export default function LeaveRequestsPage() {
     [weekFilters],
   );
 
+  // PHA 1 cho tab "Thùng rác" - mirror ĐÚNG `fetchRequests()` ở trên, dùng
+  // `getMyTrash()` (CHỈ đơn của chính mình, gate `leave_requests.request` -
+  // xem LeaveRequestsController.findMyTrash() ở BE).
+  const fetchMyTrash = async (pg = trashPage, wpp = trashWeeksPerPage) => {
+    setTrashLoading(true);
+    try {
+      const filters: LeaveRequestsQuery = {
+        page: pg,
+        weeksPerPage: wpp,
+        search: trashSearch.trim() || undefined,
+      };
+      const res = await leaveRequestsApi.getMyTrash(filters);
+      setTrashWeeks(res.weeks ?? []);
+      setTrashWeekFilters(filters);
+      setTrashFetchToken((t) => t + 1);
+      setTrashTotal(res.total || 0);
+      setTrashTotalWeeks(res.totalWeeks || 0);
+    } catch {
+      message.error('Không thể tải thùng rác');
+      setTrashWeeks([]);
+    } finally {
+      setTrashLoading(false);
+    }
+  };
+
+  // PHA 2 cho tab "Thùng rác" - mirror ĐÚNG `fetchWeek()` ở trên.
+  const fetchWeekMyTrash = useCallback(
+    async (weekStart: string, weekPage: number, weekLimit: number) => {
+      const r = await leaveRequestsApi.getMyTrash({ ...trashWeekFilters, weekStart, weekPage, weekLimit });
+      return { data: r.data ?? [], weekTotal: r.weekTotal };
+    },
+    [trashWeekFilters],
+  );
+
   // Tìm kiếm debounce 300ms (setTimeout thuần - repo chưa có dependency
   // `lodash` cài sẵn, tránh thêm package mới chỉ vì 1 chỗ debounce) - các
   // filter còn lại (Select/RangePicker) fetch ngay lúc đổi, không cần debounce.
@@ -280,6 +431,22 @@ export default function LeaveRequestsPage() {
     fetchRequests(1, weeksPerPage);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [filterLeaveType, filterStatus, filterDateRange]);
+
+  // Tab "Thùng rác" chỉ fetch LẦN ĐẦU khi người dùng thực sự mở tab đó
+  // (lazy) - mirror ĐÚNG `trashTabLoaded` ở duyet-phep/page.tsx.
+  const trashSearchDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  useEffect(() => {
+    if (!trashTabLoaded || !canRequest) return;
+    if (trashSearchDebounceRef.current) clearTimeout(trashSearchDebounceRef.current);
+    trashSearchDebounceRef.current = setTimeout(() => {
+      setTrashPage(1);
+      fetchMyTrash(1, trashWeeksPerPage);
+    }, 300);
+    return () => {
+      if (trashSearchDebounceRef.current) clearTimeout(trashSearchDebounceRef.current);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [trashTabLoaded, trashSearch]);
 
   /**
    * Đóng/huỷ Modal tạo đơn KHÔNG qua bấm "Tạo đơn" (nút "Hủy" hoặc bấm X).
@@ -421,10 +588,75 @@ export default function LeaveRequestsPage() {
     });
   };
 
+  // ── Xoá mềm / Khôi phục / Xoá vĩnh viễn (Thùng rác - tự phục vụ) ────────
+  // Xoá mềm CHỈ áp dụng cho đơn đang PENDING (BE tự chặn nếu không - xem
+  // LeaveRequestsService.selfSoftDelete()) - KHÁC hẳn handleCancel() (chỉ
+  // đổi status, KHÔNG đưa vào Thùng rác).
+  const handleSelfDelete = (id: number) => {
+    modal.confirm({
+      title: 'Xoá đơn nghỉ phép?',
+      content: 'Đơn sẽ được chuyển vào Thùng rác. Bạn có thể khôi phục lại sau.',
+      okButtonProps: { danger: true },
+      okText: 'Xoá',
+      cancelText: 'Huỷ',
+      onOk: async () => {
+        try {
+          await leaveRequestsApi.selfSoftDelete(id);
+          message.success('Đã chuyển vào Thùng rác');
+          fetchRequests();
+          if (trashTabLoaded) fetchMyTrash(1, trashWeeksPerPage);
+        } catch (err: any) {
+          message.error(err.response?.data?.message || 'Xoá đơn thất bại');
+        }
+      },
+    });
+  };
+
+  const handleSelfRestore = async (record: LeaveRequest) => {
+    try {
+      await leaveRequestsApi.selfRestoreFromTrash(record.id);
+      message.success('Đã khôi phục đơn nghỉ phép');
+      fetchMyTrash(1, trashWeeksPerPage);
+      fetchRequests();
+    } catch (err: any) {
+      message.error(err.response?.data?.message || 'Khôi phục thất bại');
+    }
+  };
+
+  // Xoá VĨNH VIỄN - không thể hoàn tác, luôn hỏi lại rõ ràng (mirror pattern
+  // `handleHardDelete` ở duyet-phep/page.tsx).
+  const handleSelfHardDelete = (record: LeaveRequest) => {
+    modal.confirm({
+      title: 'Xoá VĨNH VIỄN đơn nghỉ phép?',
+      content: 'Đơn sẽ bị xoá HOÀN TOÀN khỏi hệ thống, KHÔNG THỂ khôi phục. Bạn chắc chắn chứ?',
+      okButtonProps: { danger: true },
+      okText: 'Xoá vĩnh viễn',
+      cancelText: 'Huỷ',
+      onOk: async () => {
+        try {
+          await leaveRequestsApi.selfHardDelete(record.id);
+          message.success('Đã xoá vĩnh viễn');
+          fetchMyTrash(1, trashWeeksPerPage);
+        } catch (err: any) {
+          message.error(err.response?.data?.message || 'Xoá vĩnh viễn thất bại');
+        }
+      },
+    });
+  };
+
+  // ⚠️ FIX BUG THẬT (báo qua ảnh chụp - mirror ĐÚNG bug ở duyet-phep/page.tsx):
+  // trước đây KHÔNG cột nào khai `width`, bảng không có `scroll` -> antd
+  // không ép `tableLayout: fixed` thật sự, nội dung Ô (đặc biệt cột "Thao
+  // tác" khi có ≥2 nút) tự do tràn ra ngoài biên bảng. Giờ MỌI cột đều khai
+  // `width` cố định + bảng truyền `scroll.x = sumColumnWidths(columns)`
+  // (số pixel cụ thể, KHÔNG dùng 'max-content') + cột "Thao tác" dùng
+  // `<Space wrap>` làm lớp bảo hiểm thứ 2 - đảm bảo KHÔNG BAO GIỜ tràn dù
+  // sau này thêm nút hay thêm cột (xem JSDoc `sumColumnWidths` ở trên).
   const columns = [
     {
       title: 'Loại phép',
       dataIndex: 'leaveType',
+      width: 150,
       render: (type: string, record: LeaveRequest) => {
         const info = leaveTypeMap[type] || { text: type, color: 'default' };
         return (
@@ -438,20 +670,24 @@ export default function LeaveRequestsPage() {
     {
       title: 'Từ ngày',
       dataIndex: 'startDate',
+      width: 100,
       render: (date: string) => dayjs(date).format('DD/MM/YYYY')
     },
     {
       title: 'Đến ngày',
       dataIndex: 'endDate',
+      width: 100,
       render: (date: string) => dayjs(date).format('DD/MM/YYYY')
     },
     {
       title: 'Số ngày',
       dataIndex: 'totalDays',
+      width: 90,
       render: (days: number) => `${days} ngày`
     },
     {
       title: 'Khung giờ',
+      width: 110,
       render: (_: any, record: LeaveRequest) => {
         const hours = formatPeriodHours(record);
         return hours ? <span style={{ color: '#722ed1' }}>{hours}</span> : '-';
@@ -460,6 +696,7 @@ export default function LeaveRequestsPage() {
     {
       title: 'Lý do',
       dataIndex: 'reason',
+      width: 160,
       ellipsis: true,
       render: (reason: string) =>
         reason ? (
@@ -471,6 +708,7 @@ export default function LeaveRequestsPage() {
     {
       title: 'Trạng thái',
       dataIndex: 'status',
+      width: 110,
       render: (status: string) => {
         const info = STATUS_MAP[status] || { text: status, color: 'default' };
         return <Tag color={info.color}>{info.text}</Tag>;
@@ -479,11 +717,13 @@ export default function LeaveRequestsPage() {
     {
       title: 'Người duyệt',
       dataIndex: ['approver', 'name'],
+      width: 130,
       render: (name: string) => name || '-'
     },
     {
       title: 'Lý do từ chối',
       dataIndex: 'rejectionReason',
+      width: 150,
       ellipsis: true,
       render: (rejectionReason: string | null, record: LeaveRequest) =>
         record.status === 'rejected' && rejectionReason ? (
@@ -494,23 +734,105 @@ export default function LeaveRequestsPage() {
     },
     {
       title: 'Đính kèm',
+      width: 100,
       render: (_: any, record: LeaveRequest) => (
         <AttachmentsViewerButton requestId={record.id} count={record.attachmentCount} />
       )
     },
     {
       title: 'Thao tác',
+      width: 160,
       render: (_: any, record: LeaveRequest) => (
         record.status === 'pending' && (
-          <Button
-            type="link"
-            danger
-            icon={<CloseCircleOutlined />}
-            onClick={() => handleCancel(record.id)}
-          >
-            Hủy
-          </Button>
+          <Space wrap size={[6, 6]}>
+            <Button
+              size="small"
+              danger
+              icon={<CloseCircleOutlined />}
+              onClick={() => handleCancel(record.id)}
+            >
+              Hủy
+            </Button>
+            <Button
+              size="small"
+              danger
+              icon={<DeleteOutlined />}
+              onClick={() => handleSelfDelete(record.id)}
+            >
+              Xoá
+            </Button>
+          </Space>
         )
+      )
+    }
+  ];
+
+  // Cột riêng cho tab "Thùng rác" (tự phục vụ) - gọn hơn (không cần
+  // Người duyệt/Người gửi vì tất cả đều là đơn CỦA CHÍNH MÌNH), thêm
+  // "Ngày xoá" - mirror `trashColumns` ở duyet-phep/page.tsx.
+  const trashColumns = [
+    {
+      title: 'Loại phép',
+      dataIndex: 'leaveType',
+      width: 150,
+      render: (type: string, record: LeaveRequest) => {
+        const info = leaveTypeMap[type] || { text: type, color: 'default' };
+        return (
+          <>
+            <Tag color={info.color}>{info.text}</Tag>
+            {record.isSupplementary && <Tag color="gold">Đơn bổ sung</Tag>}
+          </>
+        );
+      }
+    },
+    {
+      title: 'Thời gian nghỉ',
+      width: 170,
+      render: (_: any, record: LeaveRequest) => (
+        <div>
+          <div>{dayjs(record.startDate).format('DD/MM/YYYY')} → {dayjs(record.endDate).format('DD/MM/YYYY')}</div>
+          <div style={{ fontSize: 12, color: '#1890ff' }}>{record.totalDays} ngày</div>
+        </div>
+      )
+    },
+    {
+      title: 'Trạng thái (trước khi xoá)',
+      dataIndex: 'status',
+      width: 160,
+      render: (status: string) => {
+        const info = STATUS_MAP[status] || { text: status, color: 'default' };
+        return <Tag color={info.color}>{info.text}</Tag>;
+      }
+    },
+    {
+      title: 'Lý do',
+      dataIndex: 'reason',
+      width: 180,
+      ellipsis: true,
+      render: (reason: string) =>
+        reason ? (
+          <Tooltip title={reason}>
+            <span style={REASON_ELLIPSIS_STYLE}>{reason}</span>
+          </Tooltip>
+        ) : '-'
+    },
+    {
+      title: 'Ngày xoá',
+      width: 150,
+      render: (_: any, record: LeaveRequest) => record.deletedAt ? dayjs(record.deletedAt).format('DD/MM/YYYY HH:mm') : '-'
+    },
+    {
+      title: 'Thao tác',
+      width: 240,
+      render: (_: any, record: LeaveRequest) => (
+        <Space wrap size={[6, 6]}>
+          <Button size="small" icon={<UndoOutlined />} onClick={() => handleSelfRestore(record)}>
+            Khôi phục
+          </Button>
+          <Button size="small" danger icon={<DeleteRowOutlined />} onClick={() => handleSelfHardDelete(record)}>
+            Xoá vĩnh viễn
+          </Button>
+        </Space>
       )
     }
   ];

@@ -68,6 +68,22 @@ function formatPeriodHours(record: LeaveRequest): string | null {
   return `${record.periodStartTime.slice(0, 5)} - ${record.periodEndTime.slice(0, 5)}`;
 }
 
+/**
+ * FIX BUG THẬT (báo qua ảnh chụp: nút "Khôi phục"/"Xoá vĩnh viễn" ở cột
+ * "Thao tác" tab Thùng rác tràn hẳn ra ngoài bảng): trước đây CẢ 3 bảng
+ * (Chờ duyệt/Lịch sử/Thùng rác) không hề truyền `scroll` cho `<Table>` dù
+ * mỗi cột đã khai `width` cố định - thiếu `scroll.x` (số pixel cụ thể,
+ * KHÔNG dùng 'max-content' - xem comment ở `pendingColumns` bên dưới) thì
+ * antd không ép `tableLayout: fixed` thật sự, nội dung Ô (đặc biệt Ô nhiều
+ * nút bấm) tự do tràn ra ngoài biên cột/bảng thay vì bị cắt/xuống dòng.
+ * Hàm này cộng tổng `width` của các cột ĐANG HIỂN THỊ (sau khi `.filter()`
+ * ẩn/hiện theo quyền) để làm `scroll.x` - dùng CHUNG cho cả 3 bảng, tự động
+ * đúng dù sau này thêm/bớt cột hay đổi quyền hiển thị "Thao tác".
+ */
+function sumColumnWidths(columns: { width?: number }[]): number {
+  return columns.reduce((sum, col) => sum + (col.width ?? 120), 0);
+}
+
 // ── mobile card – pending ────────────────────────────────────────────────────
 function PendingMobileCard({
   record,
@@ -301,11 +317,11 @@ function TrashMobileCard({
         )}
       </div>
 
-      <div style={{ display: 'flex', gap: 8 }}>
+      <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
         <Button
           size="small"
           icon={<UndoOutlined />}
-          style={{ flex: 1 }}
+          style={{ flex: 1, minWidth: 110 }}
           onClick={() => onRestore(record)}
         >
           Khôi phục
@@ -861,7 +877,11 @@ export default function ApprovalPage() {
       title: 'Thao tác',
       width: 220,
       render: (_: any, record: LeaveRequest) => (
-        <Space>
+        // `wrap` - dù có thêm nút (canEdit/canDelete) hay cột hẹp lại, các
+        // nút tự xuống dòng BÊN TRONG ô này thay vì tràn ra ngoài (xem
+        // JSDoc `sumColumnWidths` ở trên - kết hợp `scroll.x` số pixel cụ
+        // thể để `tableLayout: fixed` thực sự ép đúng width cột).
+        <Space wrap size={[6, 6]}>
           <Button type="primary" size="small" icon={<CheckOutlined />} onClick={() => handleApprove(record.id)}>
             Duyệt
           </Button>
@@ -1014,7 +1034,7 @@ export default function ApprovalPage() {
       title: 'Thao tác',
       width: 160,
       render: (_: any, record: LeaveRequest) => (
-        <Space>
+        <Space wrap size={[6, 6]}>
           {canEdit && (record.status === 'pending' || record.status === 'approved') && (
             <Button size="small" icon={<EditOutlined />} onClick={() => openEditModal(record)}>
               Sửa
@@ -1094,10 +1114,13 @@ export default function ApprovalPage() {
       render: (_: any, record: LeaveRequest) => record.deletedAt ? dayjs(record.deletedAt).format('DD/MM/YYYY HH:mm') : '-'
     },
     {
+      // Rộng hơn pendingColumns/historyColumns vì "Xoá vĩnh viễn" là text dài
+      // nhất trong toàn bộ trang - vẫn có `wrap` bên dưới làm lớp bảo hiểm
+      // cuối cùng nếu sau này thêm nút/co hẹp cột.
       title: 'Thao tác',
-      width: 200,
+      width: 240,
       render: (_: any, record: LeaveRequest) => (
-        <Space>
+        <Space wrap size={[6, 6]}>
           <Button size="small" icon={<UndoOutlined />} onClick={() => handleRestore(record)}>
             Khôi phục
           </Button>
@@ -1172,6 +1195,8 @@ export default function ApprovalPage() {
             resetKey={pendingState.fetchToken}
             rowKey="id"
             columns={pendingColumns as any}
+            scroll={{ x: sumColumnWidths(pendingColumns) }}
+            size="small"
             isMobile={isMobile}
             loading={pendingState.loading}
             emptyText="✅ Không có đơn chờ duyệt"
@@ -1272,6 +1297,8 @@ export default function ApprovalPage() {
             resetKey={historyState.fetchToken}
             rowKey="id"
             columns={historyColumns as any}
+            scroll={{ x: sumColumnWidths(historyColumns) }}
+            size="small"
             isMobile={isMobile}
             loading={historyState.loading}
             emptyText="Chưa có lịch sử xử lý"
@@ -1301,7 +1328,10 @@ export default function ApprovalPage() {
       label: (
         <span>
           <DeleteOutlined />
-          {' '}Thùng rác
+          {' '}Thùng rác{' '}
+          {trashTabLoaded && trashState.total > 0 && (
+            <Badge count={trashState.total} offset={[10, -5]} size="small" />
+          )}
         </span>
       ),
       children: (
@@ -1333,6 +1363,8 @@ export default function ApprovalPage() {
             resetKey={trashState.fetchToken}
             rowKey="id"
             columns={trashColumns as any}
+            scroll={{ x: sumColumnWidths(trashColumns) }}
+            size="small"
             isMobile={isMobile}
             loading={trashState.loading}
             emptyText="🗑️ Thùng rác trống"
