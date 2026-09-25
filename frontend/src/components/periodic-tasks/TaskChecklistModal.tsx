@@ -248,6 +248,41 @@ export function TaskChecklistModal({ open, onClose, task }: Props) {
         onClose();
     };
 
+    /**
+     * Dòng log nhỏ "Tạo lúc ... • hoàn thành lúc ..." hiển thị dưới nội dung
+     * mỗi checklist item (yêu cầu chủ dự án qua ảnh chụp modal Checklist).
+     *
+     * BE KHÔNG có cột `completed_at` riêng - `updatedAt` cập nhật ở MỌI thay
+     * đổi của item (tick/bỏ tick, sửa nội dung, đổi vị trí khi "Lên"/"Xuống"
+     * - xem `@UpdateDateColumn` ở `periodic-task-checklist-item.entity.ts`).
+     * Vì vậy CHỈ diễn giải `updatedAt` là mốc "hoàn thành" khi item đang
+     * `isDone === true` tại thời điểm hiển thị - đúng nghĩa "thời điểm
+     * checklist ĐÃ xong". Khi đang chưa xong (chưa tick, hoặc vừa bỏ tick =
+     * "undo") chỉ hiển thị mốc Tạo, tránh gắn nhãn "hoàn thành" sai cho 1
+     * item hiện KHÔNG ở trạng thái xong.
+     *
+     * Quy tắc hiển thị mốc hoàn thành (đúng ví dụ chủ dự án đưa ra): nếu
+     * cùng ngày với lúc tạo -> chỉ hiện giờ ("hoàn thành lúc 13:00"); khác
+     * ngày -> hiện đầy đủ giờ + ngày ("hoàn thành lúc 10:00 26/09/2026").
+     */
+    const formatChecklistTimestampLine = (item: PeriodicTaskChecklistItem): string => {
+        const created = dayjs(item.createdAt);
+        const createdText = `Tạo lúc ${created.format('HH:mm DD/MM/YYYY')}`;
+
+        if (!item.isDone) return createdText;
+
+        const updated = dayjs(item.updatedAt);
+        // `updatedAt` chưa từng đổi so với `createdAt` (item vừa tạo đã ở
+        // trạng thái xong, hiếm gặp) -> không có mốc hoàn thành riêng để hiện.
+        if (!updated.isValid() || !updated.isAfter(created)) return createdText;
+
+        const completedText = updated.isSame(created, 'day')
+            ? `hoàn thành lúc ${updated.format('HH:mm')}`
+            : `hoàn thành lúc ${updated.format('HH:mm DD/MM/YYYY')}`;
+
+        return `${createdText} • ${completedText}`;
+    };
+
     // Render 1 dòng checklist item - dùng CHUNG cho cả danh sách phẳng (khi
     // KHÔNG gom nhóm) lẫn bên trong từng `Collapse.Panel` (khi CÓ gom nhóm,
     // xem JSDoc đầu file). `index` LUÔN là vị trí trong TOÀN BỘ trang `items`
@@ -268,14 +303,19 @@ export function TaskChecklistModal({ open, onClose, task }: Props) {
                 key={item.id}
                 style={{
                     display: 'flex',
-                    alignItems: 'center',
+                    alignItems: 'flex-start',
                     gap: 8,
                     padding: '10px 12px',
                     borderBottom: isLast ? 'none' : '1px solid #f0f0f0',
                     opacity: isBusy ? 0.6 : 1,
                 }}
             >
-                <Checkbox checked={item.isDone} disabled={!canEdit} onChange={() => handleToggleDone(item)} />
+                <Checkbox
+                    checked={item.isDone}
+                    disabled={!canEdit}
+                    onChange={() => handleToggleDone(item)}
+                    style={{ marginTop: 3 }}
+                />
 
                 {isEditing ? (
                     <Input
@@ -287,21 +327,26 @@ export function TaskChecklistModal({ open, onClose, task }: Props) {
                         style={{ flex: 1 }}
                     />
                 ) : (
-                    <Text
-                        style={{
-                            flex: 1,
-                            textDecoration: item.isDone ? 'line-through' : undefined,
-                            color: item.isDone ? 'rgba(0,0,0,0.45)' : undefined,
-                            cursor: canEdit ? 'pointer' : undefined,
-                        }}
-                        onClick={() => canEdit && startEdit(item)}
-                    >
-                        <LinkifiedText text={item.content} />
-                    </Text>
+                        <div style={{ flex: 1, minWidth: 0 }}>
+                            <Text
+                                style={{
+                                    display: 'block',
+                                    textDecoration: item.isDone ? 'line-through' : undefined,
+                                    color: item.isDone ? 'rgba(0,0,0,0.45)' : undefined,
+                                    cursor: canEdit ? 'pointer' : undefined,
+                                }}
+                                onClick={() => canEdit && startEdit(item)}
+                            >
+                                <LinkifiedText text={item.content} />
+                            </Text>
+                            <Text type="secondary" style={{ display: 'block', fontSize: 11, marginTop: 2 }}>
+                                {formatChecklistTimestampLine(item)}
+                            </Text>
+                        </div>
                 )}
 
                 {canEdit && (
-                    <Space size={4}>
+                    <Space size={4} style={{ marginTop: 1 }}>
                         {isEditing ? (
                             <>
                                 <Button
