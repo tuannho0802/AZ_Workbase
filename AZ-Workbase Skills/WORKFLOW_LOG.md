@@ -4357,3 +4357,27 @@ trước) theo đúng Custom Instructions của Project.
 > Không cần migration (đúng xác nhận chủ dự án — status `in_review`/`in_progress` đã có sẵn trong DB). Diff đầy đủ (chỉ 1 file, 8 dòng thêm/2 dòng sửa): xem file `az_workbase_performance_drawer_fix.diff` đính kèm. Chưa commit/push lên `main` — chủ dự án tự áp patch và verify trên môi trường của mình trước khi merge.
 
 ---
+
+## [2026-09-25 10:18] | Sửa warning deprecated `Divider.orientationMargin` (PerformanceFlaggedDrawer) + ghi nhận gotcha vào Skill | [Status: Success]
+
+**Actor:** Agent
+
+**Files Changed:**
+- `frontend/src/components/periodic-tasks/PerformanceFlaggedDrawer.tsx` — đổi `orientationMargin={0}` (deprecated, `ts(6385)`) → `styles={{ content: { margin: 0 } }}` ở cả 2 `<Divider>`; cập nhật lại comment giải thích ngay phía trên cho khớp (mirror pattern comment "BUG THẬT" đã có trong file).
+- `AZ-Workbase Skills/SKILL_NEXTJS_FRONTEND.md` — thêm mục **8.7. Divider Component Breaking Change** vào phần "Ant Design Best Practices & Gotchas" (sau mục 8.6), ghi nhận CẢ 2 thay đổi API `Divider` giữa antd 5→6 đã gặp thật trong repo này: `orientation` đổi nghĩa (giờ chỉ nhận `'horizontal'|'vertical'`, vị trí Title chuyển sang `titlePlacement`) VÀ `orientationMargin` deprecated → `styles.content.margin`, kèm ví dụ BAD/GOOD để phiên sau không lặp lại.
+
+**Root Cause (bug fix, mức warning không chặn build):**
+> Sau khi sửa lỗi `orientation="left"` (entry log trước), giữ nguyên `orientationMargin={0}` — cũng đã bị antd 6 đánh dấu `@deprecated please use 'styles.content.margin'`. Không chặn `tsc`/build (chỉ là suggestion-diagnostic `ts(6385)`, IDE hiện gạch chân), nhưng chủ dự án yêu cầu dọn sạch để tránh warning tồn đọng và tránh phiên sau copy lại prop cũ.
+
+**Solution:**
+> Đổi sang prop `styles` (kiểu `DividerStylesType`, có field `content?: React.CSSProperties`) — `styles={{ content: { margin: 0 } }}` giữ đúng hành vi cũ (margin quanh Title = 0). Không đổi `titlePlacement` (đã đúng từ lần sửa trước).
+
+**Verify thật đã chạy:**
+- `npx tsc --noEmit` (frontend) — 0 lỗi (baseline `logo.png`/`CountBadge` lúc này cũng không còn hiện — do đã có `.next/types` cache sinh ra từ lần `next build` trước, KHÔNG phải do thay đổi lần này; đã xác nhận qua `npx tsc --noEmit --listFiles` không đổi số file được include liên quan).
+- `npx eslint` trên file đã sửa — 0 lỗi/cảnh báo.
+- `npm run build` (frontend) — build production thành công, không lỗi.
+
+**Notes:**
+> Diff đầy đủ của TOÀN BỘ 2 lần sửa (orientation + orientationMargin) gộp chung 1 file: xem `az_workbase_performance_drawer_fix.diff` đính kèm (đã cập nhật lại, thay bản cũ).
+
+---

@@ -173,8 +173,11 @@ export function PerformanceFlaggedDrawer({ user, params, onClose }: Props) {
                 'horizontal'|'vertical' - điều khiển hướng kẻ, KHÔNG còn nhận
                 'left'/'right'/'center' như antd 5). Vị trí Title giờ dùng prop
                 RIÊNG `titlePlacement` (giữ nguyên các giá trị 'left'/'right'/
-                'center'/'start'/'end' như `orientation` cũ). */}
-            <Divider titlePlacement="left" orientationMargin={0} style={{ marginTop: 0 }}>
+                'center'/'start'/'end' như `orientation` cũ). Tương tự,
+                `orientationMargin` (margin quanh Title) đã bị deprecated -
+                thay bằng `styles.content.margin` (xem thêm ghi chú đã thêm ở
+                `SKILL_NEXTJS_FRONTEND.md` mục Ant Design Gotchas). */}
+                  <Divider titlePlacement="left" styles={{ content: { margin: 0 } }} style={{ marginTop: 0 }}>
               <Text strong>Đang làm trở lên ({startedTasks.length})</Text>
             </Divider>
             {startedTasks.length === 0 ? (
@@ -185,7 +188,7 @@ export function PerformanceFlaggedDrawer({ user, params, onClose }: Props) {
               startedTasks.map(renderTaskCard)
             )}
 
-            <Divider titlePlacement="left" orientationMargin={0}>
+                  <Divider titlePlacement="left" styles={{ content: { margin: 0 } }}>
               <Text strong>Chưa hoàn thành / Quá hạn ({notStartedTasks.length})</Text>
             </Divider>
             {notStartedTasks.length === 0 ? (
