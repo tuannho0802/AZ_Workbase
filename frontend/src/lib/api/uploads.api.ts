@@ -44,13 +44,32 @@ export const uploadsApi = {
  * mọi quyền hạn đã nằm sẵn trong URL đã ký (presigned URL).
  */
 export async function putFileToPresignedUrl(uploadUrl: string, file: File | Blob, contentType: string): Promise<void> {
-    const res = await fetch(uploadUrl, {
-        method: 'PUT',
-        headers: { 'Content-Type': contentType },
-        body: file,
-    });
+    let res: Response;
+    try {
+        res = await fetch(uploadUrl, {
+            method: 'PUT',
+            headers: { 'Content-Type': contentType },
+            body: file,
+        });
+    } catch {
+        // fetch() ném TypeError "Failed to fetch" (KHÔNG có response nào) khi
+        // trình duyệt chặn ngay từ bước CORS (preflight/response thiếu
+        // Access-Control-Allow-Origin cho đúng origin đang gọi) - phân biệt rõ
+        // với nhánh !res.ok bên dưới (có response nhưng B2 từ chối bằng mã lỗi)
+        // để người debug không nhầm 2 nguyên nhân khác nhau (CORS Rule trên B2
+        // vs quyền của Application Key/chữ ký hết hạn).
+        throw new Error(
+            'Upload lên B2 thất bại: bị chặn bởi CORS (trình duyệt không nhận được Access-Control-Allow-Origin từ B2 cho origin hiện tại). Kiểm tra lại CORS Rules của bucket trên Backblaze B2 (b2 bucket get <bucket>).',
+        );
+    }
     if (!res.ok) {
-        throw new Error(`Upload lên B2 thất bại (HTTP ${res.status})`);
+        // Đọc thêm response body (XML lỗi S3-compatible của B2, vd
+        // <Code>AccessDenied</Code>/<Code>SignatureDoesNotMatch</Code>) để biết
+        // NGAY nguyên nhân thật thay vì chỉ có mã HTTP - 403 có thể do CORS Rule
+        // thiếu origin, do Application Key không có quyền ghi lên đúng bucket
+        // này, hoặc do presigned URL đã hết hạn (TTL 5 phút).
+        const bodyText = await res.text().catch(() => '');
+        throw new Error(`Upload lên B2 thất bại (HTTP ${res.status})${bodyText ? `: ${bodyText}` : ''}`);
     }
 }
 
