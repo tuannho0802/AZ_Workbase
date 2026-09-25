@@ -113,7 +113,7 @@ export function TaskMiniCard({
 
     const cardStyle: React.CSSProperties = {
         marginBottom: 14,
-        border: `2px solid ${borderColor}`,
+        border: `1px solid ${borderColor}`,
         borderRadius: 10,
         boxShadow: '0 1px 3px rgba(16, 24, 40, 0.06)',
         ...style,
