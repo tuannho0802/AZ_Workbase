@@ -391,14 +391,23 @@ export default function ApprovalPage() {
   }, [canView, canApprove, permissionsLoading]);
 
   // Tách riêng: 403 ở 1 api không kill api kia
+  // TODO(week-pagination): còn tải tối đa 100 đơn/lần (trần DTO) rồi vẫn
+  // dùng `WeekGroupedRequests` gộp tuần Ở CLIENT như bản cũ - CHƯA chuyển
+  // sang `WeeklyLazySection` (phân trang thật theo tuần, lazy per-week ở BE)
+  // như yêu cầu gốc ("1 trang chỉ chứa 4 tuần"). Cũng CHƯA có tab "Thùng
+  // rác" (`leaveRequestsApi.getTrash()`). Cả 2 việc này cần làm ở lượt sau.
   const fetchAllData = async () => {
     setLoading(true);
     const results = await Promise.allSettled([
-      canApprove ? leaveRequestsApi.getPending() : Promise.resolve([]),
-      canView ? leaveRequestsApi.getHistory() : Promise.resolve([]),
+      canApprove ? leaveRequestsApi.getPending({ limit: 100 }) : Promise.resolve(null),
+      canView ? leaveRequestsApi.getHistory({ limit: 100 }) : Promise.resolve(null),
     ]);
-    if (results[0].status === 'fulfilled') setPendingRequests(results[0].value as LeaveRequest[]);
-    if (results[1].status === 'fulfilled') setHistoryRequests(results[1].value as LeaveRequest[]);
+    if (results[0].status === 'fulfilled' && results[0].value) {
+      setPendingRequests(results[0].value.data);
+    }
+    if (results[1].status === 'fulfilled' && results[1].value) {
+      setHistoryRequests(results[1].value.data);
+    }
     setLoading(false);
   };
 

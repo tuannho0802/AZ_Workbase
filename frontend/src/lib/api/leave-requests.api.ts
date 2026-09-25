@@ -44,6 +44,37 @@ export interface LeaveRequest {
   attachmentCount?: number;
 }
 
+// Shape trả về từ `GET /leave-requests`, `/pending`, `/history`, `/trash` -
+// mirror ĐÚNG `paginateList()` ở BE (xem `leave-requests.service.ts`).
+// `weeks`/`weekTotal` chỉ có khi gọi kèm `weeksPerPage` (week-mode).
+export interface PaginatedLeaveRequests {
+  data: LeaveRequest[];
+  total: number;
+  page: number;
+  limit: number;
+  totalPages: number;
+  weeks?: number;
+  weekTotal?: number;
+}
+
+// Mirror ĐÚNG `QueryLeaveRequestsDto` ở BE - ValidationPipe global bật
+// `forbidNonWhitelisted: true` nên field nào KHÔNG khai ở DTO (vd `_t` cache-
+// busting kiểu cũ) sẽ bị BE trả 400. Không tự thêm field lạ vào params.
+export interface LeaveRequestsQuery {
+  page?: number;
+  limit?: number;
+  weeksPerPage?: number;
+  weekStart?: string;
+  weekPage?: number;
+  weekLimit?: number;
+  search?: string;
+  departmentId?: number;
+  leaveType?: string;
+  status?: string;
+  dateFrom?: string;
+  dateTo?: string;
+}
+
 export const leaveRequestsApi = {
   async create(data: {
     leaveType: string;
@@ -101,19 +132,49 @@ export const leaveRequestsApi = {
     return res.data;
   },
   
-  async getAll() {
-    // Adding timestamp as a query param to bypass potential browser/proxy caching
-    const res = await axiosInstance.get(`/leave-requests?_t=${Date.now()}`);
-    return res.data;
-  },
-  
-  async getPending() {
-    const res = await axiosInstance.get(`/leave-requests/pending?_t=${Date.now()}`);
+  // ⚠️ ĐỔI: BE giờ LUÔN trả `{data, total, page, limit, totalPages}` (không
+  // còn mảng trần) - xem comment ở `LeaveRequestsService.findAll()`. Đã bỏ
+  // cache-busting `_t=${Date.now()}` kiểu cũ: ValidationPipe global
+  // (`forbidNonWhitelisted: true`) từ chối field lạ không khai ở
+  // `QueryLeaveRequestsDto` -> từng gây 400 Bad Request hàng loạt (kể cả ở
+  // badge sidebar, ảnh hưởng MỌI trang). BE đã tự set Cache-Control phù hợp
+  // qua `CacheControlInterceptor` nên không cần workaround này nữa.
+  // `limit` mặc định 100 (trần tối đa DTO cho phép) để giữ gần đúng hành vi
+  // "tải hết" cũ trong lúc CHỜ 2 trang nghi-phep/duyet-phep chuyển hẳn sang
+  // `WeeklyLazySection` (phân trang thật theo tuần) - xem TODO ở 2 trang đó.
+  async getAll(params?: LeaveRequestsQuery): Promise<PaginatedLeaveRequests> {
+    const res = await axiosInstance.get('/leave-requests', { params });
     return res.data;
   },
 
-  async getHistory() {
-    const res = await axiosInstance.get(`/leave-requests/history?_t=${Date.now()}`);
+  async getPending(params?: LeaveRequestsQuery): Promise<PaginatedLeaveRequests> {
+    const res = await axiosInstance.get('/leave-requests/pending', { params });
+    return res.data;
+  },
+
+  async getHistory(params?: LeaveRequestsQuery): Promise<PaginatedLeaveRequests> {
+    const res = await axiosInstance.get('/leave-requests/history', { params });
+    return res.data;
+  },
+
+  async getTrash(params?: LeaveRequestsQuery): Promise<PaginatedLeaveRequests> {
+    const res = await axiosInstance.get('/leave-requests/trash', { params });
+    return res.data;
+  },
+
+  async restoreFromTrash(id: number) {
+    const res = await axiosInstance.patch(`/leave-requests/trash/${id}/restore`);
+    return res.data;
+  },
+
+  async hardDelete(id: number) {
+    const res = await axiosInstance.delete(`/leave-requests/trash/${id}/hard-delete`);
+    return res.data;
+  },
+
+  // Xoá mềm (đưa vào Thùng rác) - permission `leave_requests.delete`.
+  async softDelete(id: number) {
+    const res = await axiosInstance.delete(`/leave-requests/${id}`);
     return res.data;
   },
 

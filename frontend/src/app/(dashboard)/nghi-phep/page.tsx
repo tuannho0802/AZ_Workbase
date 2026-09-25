@@ -205,8 +205,14 @@ export default function LeaveRequestsPage() {
   const fetchRequests = async () => {
     setLoading(true);
     try {
-      const data = await leaveRequestsApi.getAll();
-      setRequests(data);
+      // TODO(week-pagination): trang này còn tải tối đa 100 đơn/lần (trần
+      // DTO) rồi lọc/hiển thị phẳng client-side - CHƯA chuyển sang
+      // `WeeklyLazySection` (phân trang thật theo tuần, lazy per-week) như
+      // `duyet-phep` đang làm dở. Đơn của 1 người thường không nhiều nên tạm
+      // chấp nhận được, nhưng cần làm nốt để nhất quán + tránh cắt dữ liệu
+      // nếu 1 user có >100 đơn.
+      const res = await leaveRequestsApi.getAll({ limit: 100 });
+      setRequests(res.data);
     } catch {
       message.error('Không thể tải danh sách đơn nghỉ phép');
     } finally {
