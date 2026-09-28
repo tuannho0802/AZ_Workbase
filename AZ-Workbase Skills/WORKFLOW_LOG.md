@@ -4555,3 +4555,24 @@ khi bị xoá tay. Đây là 1 anti-pattern thật (dù đo thử với payload 
 > Giới hạn checklist thật = 500 ký tự (khớp DTO/entity), không phải 200. Task bị status `is_excluded_from_rollup` loại khỏi số liệu phụ trách phụ. Không có migration. Chưa test trên MySQL/trình duyệt thật. Chưa commit/push.
 
 ---
+
+---
+## [2026-09-28 18:00] | Hiệu suất công việc: chữ theo "đang xem ai" + Card click ra mini table Task/checklist | [Status: Success — BE tsc sạch, jest periodic-tasks 188/188 (+5), FE vitest 137/137; FE tsc/eslint chỉ còn lỗi có sẵn (styled-jsx, `any` ở page.tsx dòng renderUserOption)]
+
+**Actor:** Agent
+
+**Files Changed:**
+- `backend/src/modules/periodic-tasks/periodic-task-performance.service.ts` — thêm `getMetricTasks()`; tách `buildSecondaryPairsQuery()` từ `addSecondaryStats()` (dùng chung 1 logic scope).
+- `backend/.../dto/periodic-task-performance-metric.dto.ts` (MỚI), `periodic-task-performance.controller.ts` (`GET metric-tasks`), `.service.spec.ts` (+5 test).
+- `frontend/src/components/periodic-tasks/MetricTasksModal.tsx` (MỚI), `lib/api/periodic-task-performance.api.ts`, `lib/hooks/usePeriodicTaskPerformance.ts`, `app/(dashboard)/hieu-suat-cong-viec/page.tsx`.
+
+**Root Cause:**
+> Tag luôn ghi "Phạm vi xem: Toàn bộ" (quyền xem) dù đang lọc 1 người/chính mình; Card tính trên `rows` chưa lọc nên chọn nhân viên không đổi số Card.
+
+**Solution:**
+> `viewContext` (self/single/multi) đổi chữ Tag + tiêu đề Card; Card/biểu đồ/bảng cùng dùng `filteredRows`; thêm Segmented "Chỉ của tôi"; mọi Card click -> Modal mini table (BE `metric-tasks`, phân trang 10, checklist mở rộng được).
+
+**Notes:**
+> Không có migration. Card phụ trách phụ ở chế độ nhiều nhân viên cộng theo từng người (1 Task nhiều người phụ có thể đếm nhiều lần), mini table khử trùng theo Task nên có thể ít hơn số trên Card. Chưa test trên MySQL/trình duyệt thật. Chưa commit/push.
+
+---

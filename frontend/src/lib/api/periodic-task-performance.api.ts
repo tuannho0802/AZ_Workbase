@@ -89,6 +89,46 @@ export interface UserTasksResult {
   secondary: PaginatedUserTasksResult;
 }
 
+/** Khớp enum `PerformanceMetric` ở BE - mỗi Card ở trang Hiệu suất ↔ 1 metric. */
+export type PerformanceMetric =
+  | 'primary_total'
+  | 'secondary_total'
+  | 'completed'
+  | 'completed_late'
+  | 'overdue'
+  | 'in_progress'
+  | 'in_review'
+  | 'checklist_primary'
+  | 'checklist_secondary';
+
+export type MetricVerdict = 'on_time' | 'late' | 'overdue' | 'pending';
+
+/** Khớp `MetricTaskRow` ở BE (`getMetricTasks`). */
+export interface MetricTaskRow {
+  task: PeriodicTask;
+  role: 'primary' | 'secondary';
+  verdict: MetricVerdict | null;
+  checklistDone: number;
+  checklistTotal: number;
+  checklistItems: Array<{ id: number; content: string; isDone: boolean }>;
+}
+
+export interface MetricTasksResult {
+  scope: PermissionScope | 'own';
+  metric: PerformanceMetric;
+  total: number;
+  page: number;
+  pageSize: number;
+  items: MetricTaskRow[];
+}
+
+export interface MetricTasksParams extends PerformanceFilterParams {
+  metric: PerformanceMetric;
+  /** Thu hẹp thêm theo nhân viên đã chọn (BE gửi CSV, không nới scope). */
+  userIds?: number[];
+  page?: number;
+}
+
 export const periodicTaskPerformanceApi = {
   getSummary: async (params: PerformanceFilterParams): Promise<PerformanceSummaryResult> => {
     const response = await axiosInstance.get<PerformanceSummaryResult>(
@@ -122,6 +162,15 @@ export const periodicTaskPerformanceApi = {
       `/periodic-tasks-performance/users/${userId}/tasks`,
       { params },
     );
+    return response.data;
+  },
+
+  /** Mini table khi click 1 Card: Task (kèm checklist) đứng sau con số trên Card. */
+  getMetricTasks: async (params: MetricTasksParams): Promise<MetricTasksResult> => {
+    const { userIds, ...rest } = params;
+    const response = await axiosInstance.get<MetricTasksResult>('/periodic-tasks-performance/metric-tasks', {
+      params: { ...rest, userIds: userIds && userIds.length > 0 ? userIds.join(',') : undefined },
+    });
     return response.data;
   },
 };

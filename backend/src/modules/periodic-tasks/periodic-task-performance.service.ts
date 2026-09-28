@@ -16,6 +16,7 @@ import { resolveListWindow, addDaysToDateString } from './helpers/list-window.he
 import { rawDateToYmd } from './helpers/raw-date.helper';
 import { PeriodicTaskAuditAction } from './periodic-task-audit.service';
 import { PeriodicTaskPerformanceFiltersDto } from './dto/periodic-task-performance-filters.dto';
+import { PerformanceMetric, PeriodicTaskPerformanceMetricDto } from './dto/periodic-task-performance-metric.dto';
 import { RequestingUser } from './periodic-tasks.service';
 
 /** Số ngày ân hạn (grace period) SAU `period_end_date` - chốt nghiệp vụ mới
@@ -30,6 +31,33 @@ export const LATE_GRACE_DAYS = 7;
  * `getUserTasks()` (yêu cầu chủ dự án 2026-09-25: phân trang THẬT ở BE, tránh
  * tải hết rồi cắt trang ở FE, để Drawer/view "own" không bị quá dài). */
 export const USER_TASKS_PAGE_SIZE = 2;
+
+/** Số Task / trang của mini table drill-down khi click Card. */
+export const METRIC_TASKS_PAGE_SIZE = 10;
+
+type PerformanceChecklistItemLite = { id: number; content: string; isDone: boolean };
+
+export type MetricVerdict = 'on_time' | 'late' | 'overdue' | 'pending';
+
+export interface MetricTaskRow {
+  task: PeriodicTask;
+  /** Người xem đang nhìn Task này ở vai Phụ trách chính hay phụ. */
+  role: 'primary' | 'secondary';
+  /** Chỉ có với role='primary' (Phụ trách phụ không tính vào các %). */
+  verdict: MetricVerdict | null;
+  checklistDone: number;
+  checklistTotal: number;
+  checklistItems: Array<{ id: number; content: string; isDone: boolean }>;
+}
+
+export interface MetricTasksResult {
+  scope: PermissionScope | 'own';
+  metric: PerformanceMetric;
+  total: number;
+  page: number;
+  pageSize: number;
+  items: MetricTaskRow[];
+}
 
 /** 1 nhóm Task đã phân trang ("Phụ trách chính" HOẶC "Phụ trách phụ") -
  * `total` là TOÀN BỘ số Task khớp bộ lọc (không chỉ trang đang xem), để FE vẽ
@@ -356,20 +384,17 @@ export class PeriodicTaskPerformanceService {
   }
 
   /**
-   * MỚI (2026-09-28, yêu cầu chủ dự án): bổ sung số liệu Phụ trách PHỤ vào từng
-   * dòng User - `secondaryTotal` + `checklistSecondaryDone/Total` (checklist của
-   * Task NGƯỜI KHÁC mà User này là Phụ trách phụ). KHÔNG đụng `total`/% cũ.
-   * Scope mirror `applyScopeFilter()` nhưng khoá theo NGƯỜI PHỤ TRÁCH PHỤ:
-   *  - own: chỉ chính người xem; department: Task thuộc phòng ban mình quản lý; all: không giới hạn.
-   * Task có status `is_excluded_from_rollup` bị loại (đồng nhất phạm vi rollup).
-   * User chỉ có Task phụ (không có Task chính) vẫn được tạo dòng (total = 0).
+   * Query cặp (user_id, task_id) Phụ trách phụ theo scope/bộ lọc - TÁCH RA từ
+   * `addSecondaryStats()` (2026-09-28) để `getMetricTasks()` (mini table khi
+   * click Card) dùng CHUNG đúng 1 logic scope, không copy lại rồi lệch.
+   * `userIds` (tuỳ chọn) chỉ thu hẹp thêm, không bao giờ nới scope.
    */
-  private async addSecondaryStats(
-    byUser: Map<number, PerformanceUserRow>,
+  private buildSecondaryPairsQuery(
     filters: PeriodicTaskPerformanceFiltersDto,
     user: RequestingUser,
     scope: PermissionScope | 'own',
-  ): Promise<void> {
+    userIds?: number[],
+  ) {
     const dateWindow = resolveListWindow({ dateFrom: filters.dateFrom, dateTo: filters.dateTo });
     const isRootAdmin = user.role === Role.ADMIN && user.isRootAdmin;
 
@@ -397,8 +422,27 @@ export class PeriodicTaskPerformanceService {
     if (dateWindow.dateFrom) qb.andWhere('task.periodEndDate >= :perfDateFrom', { perfDateFrom: dateWindow.dateFrom });
     if (dateWindow.dateTo) qb.andWhere('task.periodStartDate <= :perfDateTo', { perfDateTo: dateWindow.dateTo });
     if (filters.departmentId) qb.andWhere('task.departmentId = :perfDepartmentId', { perfDepartmentId: filters.departmentId });
+    if (userIds && userIds.length > 0) qb.andWhere('psa.userId IN (:...perfSecUserIds)', { perfSecUserIds: userIds });
 
-    const pairs = await qb.getRawMany<{ user_id: number; task_id: number }>();
+    return qb;
+  }
+
+  /**
+   * MỚI (2026-09-28, yêu cầu chủ dự án): bổ sung số liệu Phụ trách PHỤ vào từng
+   * dòng User - `secondaryTotal` + `checklistSecondaryDone/Total` (checklist của
+   * Task NGƯỜI KHÁC mà User này là Phụ trách phụ). KHÔNG đụng `total`/% cũ.
+   * Scope mirror `applyScopeFilter()` nhưng khoá theo NGƯỜI PHỤ TRÁCH PHỤ:
+   *  - own: chỉ chính người xem; department: Task thuộc phòng ban mình quản lý; all: không giới hạn.
+   * Task có status `is_excluded_from_rollup` bị loại (đồng nhất phạm vi rollup).
+   * User chỉ có Task phụ (không có Task chính) vẫn được tạo dòng (total = 0).
+   */
+  private async addSecondaryStats(
+    byUser: Map<number, PerformanceUserRow>,
+    filters: PeriodicTaskPerformanceFiltersDto,
+    user: RequestingUser,
+    scope: PermissionScope | 'own',
+  ): Promise<void> {
+    const pairs = await this.buildSecondaryPairsQuery(filters, user, scope).getRawMany<{ user_id: number; task_id: number }>();
     if (!pairs || pairs.length === 0) return;
 
     const usersByTask = new Map<number, number[]>();
@@ -630,6 +674,129 @@ export class PeriodicTaskPerformanceService {
       relations: ['status', 'primaryAssignee', 'department'],
       order: { periodEndDate: 'DESC' },
     });
+  }
+
+  /**
+   * getMetricTasks - MỚI (2026-09-28, yêu cầu chủ dự án): mini table khi click 1
+   * Card ở trang Hiệu suất. Trả ĐÚNG tập Task đứng sau con số trên Card (cùng
+   * scope/bộ lọc/quy tắc rollup/ân hạn với `getSummary()`), kèm checklist từng
+   * Task. `userIds` chỉ THU HẸP thêm (đúng dropdown "Tìm tên nhân viên" ở FE),
+   * scope 'own' luôn bị khoá về chính người xem.
+   */
+  async getMetricTasks(filters: PeriodicTaskPerformanceMetricDto, user: RequestingUser): Promise<MetricTasksResult> {
+    const scope = await this.resolveScope(user);
+    let userIds = filters.userIds ?? [];
+    if (scope === PermissionScope.OWN) {
+      if (userIds.some((id) => id !== user.id)) throw new ForbiddenException('Bạn chỉ được xem công việc của chính mình.');
+      userIds = [user.id];
+    }
+
+    const page = Math.max(1, filters.page ?? 1);
+    const metric = filters.metric;
+    const isSecondary = metric === PerformanceMetric.SECONDARY_TOTAL || metric === PerformanceMetric.CHECKLIST_SECONDARY;
+    const today = todayVnStr();
+
+    // 1) Tập id Task ứng viên (+ verdict nếu là Phụ trách chính).
+    const verdictByTask = new Map<number, MetricVerdict>();
+    let taskIds: number[] = [];
+
+    if (isSecondary) {
+      const pairs = await this.buildSecondaryPairsQuery(filters, user, scope, userIds).getRawMany<{ user_id: number; task_id: number }>();
+      taskIds = [...new Set((pairs ?? []).map((p) => Number(p.task_id)))];
+    } else {
+      const { qb } = this.buildFilteredTaskQuery(filters, user, scope);
+      if (userIds.length > 0) qb.andWhere('task.primaryAssigneeId IN (:...perfMetricUserIds)', { perfMetricUserIds: userIds });
+      const raw = await qb.getRawMany<{
+        task_id: number;
+        status_id: number;
+        period_end_date: string | Date;
+        created_at: string;
+        is_excluded_from_rollup: 0 | 1;
+        status_code: string | null;
+      }>();
+      const rollupRows = raw.filter((r) => Number(r.is_excluded_from_rollup) !== 1);
+      const reachedMap = await this.resolveReachedReviewOrDoneAt(
+        rollupRows.map((r) => ({ taskId: r.task_id, currentStatusId: r.status_id, createdAt: new Date(r.created_at) })),
+      );
+
+      for (const r of rollupRows) {
+        const graceDate = addDaysToDateString(rawDateToYmd(r.period_end_date), LATE_GRACE_DAYS);
+        const reachedDate = reachedMap.get(r.task_id) ?? null;
+        const verdict: MetricVerdict = reachedDate ? (reachedDate > graceDate ? 'late' : 'on_time') : today > graceDate ? 'overdue' : 'pending';
+        verdictByTask.set(r.task_id, verdict);
+
+        const keep =
+          metric === PerformanceMetric.PRIMARY_TOTAL ||
+          metric === PerformanceMetric.CHECKLIST_PRIMARY ||
+          (metric === PerformanceMetric.COMPLETED && (verdict === 'on_time' || verdict === 'late')) ||
+          (metric === PerformanceMetric.COMPLETED_LATE && verdict === 'late') ||
+          (metric === PerformanceMetric.OVERDUE && verdict === 'overdue') ||
+          (metric === PerformanceMetric.IN_PROGRESS && r.status_code === 'in_progress') ||
+          (metric === PerformanceMetric.IN_REVIEW && r.status_code === 'in_review');
+        if (keep) taskIds.push(r.task_id);
+      }
+    }
+
+    // 2) Card Checklist: chỉ giữ Task CÓ checklist.
+    const isChecklistMetric = metric === PerformanceMetric.CHECKLIST_PRIMARY || metric === PerformanceMetric.CHECKLIST_SECONDARY;
+    if (isChecklistMetric && taskIds.length > 0) {
+      const withChecklist = await this.checklistRepo
+        .createQueryBuilder('item')
+        .select('DISTINCT item.taskId', 'task_id')
+        .where('item.taskId IN (:...metricTaskIds)', { metricTaskIds: taskIds })
+        .getRawMany<{ task_id: number }>();
+      const set = new Set(withChecklist.map((c) => Number(c.task_id)));
+      taskIds = taskIds.filter((id) => set.has(id));
+    }
+
+    if (taskIds.length === 0) return { scope, metric, total: 0, page, pageSize: METRIC_TASKS_PAGE_SIZE, items: [] };
+
+    // 3) Sắp xếp + phân trang (period_end_date mới nhất trước) rồi mới tải chi tiết.
+    const ordered = await this.taskRepo
+      .createQueryBuilder('task')
+      .select(['task.id AS id'])
+      .where('task.id IN (:...metricTaskIds)', { metricTaskIds: taskIds })
+      .orderBy('task.periodEndDate', 'DESC')
+      .addOrderBy('task.id', 'DESC')
+      .getRawMany<{ id: number }>();
+    const orderedIds = ordered.map((o) => Number(o.id));
+    const pageIds = orderedIds.slice((page - 1) * METRIC_TASKS_PAGE_SIZE, page * METRIC_TASKS_PAGE_SIZE);
+
+    const tasksRaw = await this.taskRepo.find({
+      where: { id: In(pageIds) },
+      relations: ['status', 'primaryAssignee', 'department'],
+    });
+    const tasks = (await this.secondaryAssigneesService.attachSecondaryAssigneesToList(tasksRaw)) as PeriodicTask[];
+    const taskById = new Map(tasks.map((t) => [t.id, t]));
+
+    const items = await this.checklistRepo.find({ where: { taskId: In(pageIds) }, order: { position: 'ASC', id: 'ASC' } });
+    const itemsByTask = new Map<number, PerformanceChecklistItemLite[]>();
+    for (const it of items) {
+      const list = itemsByTask.get(it.taskId) ?? [];
+      list.push({ id: it.id, content: it.content, isDone: !!it.isDone });
+      itemsByTask.set(it.taskId, list);
+    }
+
+    return {
+      scope,
+      metric,
+      total: orderedIds.length,
+      page,
+      pageSize: METRIC_TASKS_PAGE_SIZE,
+      items: pageIds
+        .filter((id) => taskById.has(id))
+        .map((id) => {
+          const list = itemsByTask.get(id) ?? [];
+          return {
+            task: taskById.get(id) as PeriodicTask,
+            role: isSecondary ? ('secondary' as const) : ('primary' as const),
+            verdict: isSecondary ? null : (verdictByTask.get(id) ?? null),
+            checklistDone: list.filter((i) => i.isDone).length,
+            checklistTotal: list.length,
+            checklistItems: list,
+          };
+        }),
+    };
   }
 
   /**

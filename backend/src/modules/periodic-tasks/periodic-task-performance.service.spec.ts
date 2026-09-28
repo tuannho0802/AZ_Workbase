@@ -526,4 +526,90 @@ describe('PeriodicTaskPerformanceService - grace period 7 ngày', () => {
       }
     });
   });
+  describe('MỚI (2026-09-28) - getMetricTasks() (mini table khi click Card)', () => {
+    const row = (id: number, statusId: number, code: string, end = '2026-09-10') => ({
+      task_id: id,
+      primary_assignee_id: 7,
+      status_id: statusId,
+      period_end_date: end,
+      created_at: '2026-09-01T00:00:00.000Z',
+      is_excluded_from_rollup: 0,
+      status_code: code,
+    });
+    const orderQb = (ids: number[]) => ({
+      select: jest.fn().mockReturnThis(),
+      where: jest.fn().mockReturnThis(),
+      orderBy: jest.fn().mockReturnThis(),
+      addOrderBy: jest.fn().mockReturnThis(),
+      getRawMany: jest.fn().mockResolvedValue(ids.map((id) => ({ id }))),
+    });
+    const setupPrimary = (rows: any[], orderedIds: number[]) => {
+      mockTaskRepo.createQueryBuilder.mockReturnValueOnce(makeQb(rows)).mockReturnValueOnce(orderQb(orderedIds));
+      (mockTaskRepo as any).find = jest.fn().mockImplementation(({ where }: any) =>
+        Promise.resolve(where.id.value.map((id: number) => ({ id, title: 'T' + id }))),
+      );
+      (mockChecklistRepo as any).find = jest.fn().mockResolvedValue([
+        { id: 1, taskId: 1, content: 'a', isDone: true, position: 0 },
+        { id: 2, taskId: 1, content: 'b', isDone: false, position: 1 },
+      ]);
+    };
+
+    it('metric=overdue chỉ giữ Task quá hạn (đã qua ân hạn, chưa đạt in_review/done)', async () => {
+      jest.spyOn(dateVnUtil, 'todayVnStr').mockReturnValue('2026-09-24');
+      // Task 1: quá hạn (hạn 09-10 + 7 = 09-17 < hôm nay). Task 2: còn trong ân hạn.
+      setupPrimary([row(1, 10, 'not_started'), row(2, 10, 'not_started', '2026-09-20')], [1]);
+
+      const res = await service.getMetricTasks({ metric: 'overdue' } as any, ADMIN_USER as any);
+
+      expect(res.total).toBe(1);
+      expect(res.items[0].task.id).toBe(1);
+      expect(res.items[0].verdict).toBe('overdue');
+      expect(res.items[0].checklistDone).toBe(1);
+      expect(res.items[0].checklistTotal).toBe(2);
+    });
+
+    it('metric=in_progress lọc theo status_code hiện tại, độc lập verdict', async () => {
+      jest.spyOn(dateVnUtil, 'todayVnStr').mockReturnValue('2026-09-24');
+      setupPrimary([row(1, 10, 'in_progress'), row(2, 10, 'not_started')], [1]);
+
+      const res = await service.getMetricTasks({ metric: 'in_progress' } as any, ADMIN_USER as any);
+
+      expect(res.total).toBe(1);
+      expect(res.items[0].task.id).toBe(1);
+    });
+
+    it('scope OWN + userIds chứa người khác -> ForbiddenException', async () => {
+      mockPermissionsService.hasPermission.mockResolvedValue({ allowed: false, scope: null });
+      await expect(
+        service.getMetricTasks({ metric: 'primary_total', userIds: [99] } as any, { id: 5, role: Role.EMPLOYEE } as any),
+      ).rejects.toThrow('chính mình');
+    });
+
+    it('scope OWN: userIds bị khoá về chính người xem (không dò được người khác)', async () => {
+      mockPermissionsService.hasPermission.mockResolvedValue({ allowed: false, scope: null });
+      const qb = makeQb([]);
+      mockTaskRepo.createQueryBuilder.mockReturnValueOnce(qb);
+
+      const res = await service.getMetricTasks({ metric: 'primary_total' } as any, { id: 5, role: Role.EMPLOYEE } as any);
+
+      expect(res.items).toEqual([]);
+      const params = qb.andWhere.mock.calls.map((c: any[]) => c[1]).filter(Boolean);
+      expect(params.some((p: any) => Array.isArray(p.perfMetricUserIds) && p.perfMetricUserIds[0] === 5)).toBe(true);
+    });
+
+    it('metric=secondary_total dùng đúng query Phụ trách phụ và gắn role=secondary, verdict=null', async () => {
+      const pairsQb = makeQb([{ user_id: 7, task_id: 3 }]);
+      mockSecondaryRepo.createQueryBuilder.mockReturnValue(pairsQb);
+      mockTaskRepo.createQueryBuilder.mockReturnValueOnce(orderQb([3]));
+      (mockTaskRepo as any).find = jest.fn().mockResolvedValue([{ id: 3, title: 'T3' }]);
+      (mockChecklistRepo as any).find = jest.fn().mockResolvedValue([]);
+
+      const res = await service.getMetricTasks({ metric: 'secondary_total', userIds: [7] } as any, ADMIN_USER as any);
+
+      expect(res.items[0].role).toBe('secondary');
+      expect(res.items[0].verdict).toBeNull();
+      const params = pairsQb.andWhere.mock.calls.map((c: any[]) => c[1]).filter(Boolean);
+      expect(params.some((p: any) => Array.isArray(p.perfSecUserIds))).toBe(true);
+    });
+  });
 });

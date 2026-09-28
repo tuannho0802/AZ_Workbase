@@ -1,8 +1,8 @@
 'use client';
 
 import { useMemo, useState } from 'react';
-import { App, Alert, Avatar, Button, Card, Col, Empty, Progress, Row, Select, Space, Statistic, Table, Tag, Tooltip, Typography, DatePicker } from 'antd';
-import { BarChartOutlined, InfoCircleOutlined, ReloadOutlined, SearchOutlined } from '@ant-design/icons';
+import { App, Alert, Avatar, Button, Card, Col, Empty, Progress, Row, Segmented, Select, Space, Statistic, Table, Tag, Tooltip, Typography, DatePicker } from 'antd';
+import { BarChartOutlined, InfoCircleOutlined, ReloadOutlined, SearchOutlined, UnorderedListOutlined } from '@ant-design/icons';
 import type { ColumnsType } from 'antd/es/table';
 import dayjs, { Dayjs } from 'dayjs';
 import { useMyPermissions } from '@/lib/hooks/useMyPermissions';
@@ -10,7 +10,7 @@ import { useDepartments } from '@/lib/hooks/useDepartments';
 import { useUsersList } from '@/lib/hooks/useUsers';
 import { useRoleColorMap, useRoleColors } from '@/lib/hooks/useRoleColorMap';
 import { usePeriodicTaskPerformanceSummary } from '@/lib/hooks/usePeriodicTaskPerformance';
-import { LATE_GRACE_DAYS, type PerformanceUserRow } from '@/lib/api/periodic-task-performance.api';
+import { LATE_GRACE_DAYS, type PerformanceMetric, type PerformanceUserRow } from '@/lib/api/periodic-task-performance.api';
 import { PERIOD_TYPE_LABELS, type PeriodType } from '@/lib/api/periodic-tasks.api';
 import { aggregateRows, completionColor, lateRateColor, percentOf } from '@/lib/utils/periodicTaskPerformance';
 import { clampRange, getMonthRange, getThisWeekRange, MAX_TASK_RANGE_DAYS } from '@/lib/utils/periodicTaskRange';
@@ -18,6 +18,7 @@ import { resolveEntityColor } from '@/lib/utils/entityColor';
 import { PerformanceStackedChart, CHART_MAX_USERS } from '@/components/periodic-tasks/PerformanceStackedChart';
 import { PerformanceUserTasksDrawer } from '@/components/periodic-tasks/PerformanceUserTasksDrawer';
 import { OwnPerformanceDetail } from '@/components/periodic-tasks/OwnPerformanceDetail';
+import { MetricTasksModal } from '@/components/periodic-tasks/MetricTasksModal';
 import { PeriodTypeTag } from '@/components/periodic-tasks/PeriodTypeTag';
 import { useAuthStore } from '@/lib/stores/auth.store';
 
@@ -26,11 +27,15 @@ const { RangePicker } = DatePicker;
 
 const PERMISSION_KEY = 'periodic_tasks.performance_view';
 
+// Quyền xem (permission scope) - KHÁC với "đang xem ai" (viewContext bên dưới):
+// có quyền 'Toàn bộ' vẫn có thể đang lọc riêng 1 người hoặc chính mình.
 const SCOPE_META = {
   own: { label: 'Chỉ của tôi', color: 'default' },
   department: { label: 'Theo phòng ban', color: 'blue' },
   all: { label: 'Toàn bộ', color: 'green' },
 } as const;
+
+type ViewMode = 'self' | 'single' | 'multi';
 
 type QuickKey = 'thisWeek' | 'thisMonth' | 'lastMonth' | 'last90';
 const QUICK_RANGES: { key: QuickKey; label: string }[] = [
@@ -114,6 +119,8 @@ export default function TaskPerformancePage() {
   // ty - tránh cho chọn được người chắc chắn sẽ ra bảng rỗng).
   const [selectedUserIds, setSelectedUserIds] = useState<number[]>([]);
   const [drawerUser, setDrawerUser] = useState<{ id: number; name: string } | null>(null);
+  // Card đang được click -> mở mini table Task + checklist (xem `MetricTasksModal`).
+  const [metricModal, setMetricModal] = useState<{ key: PerformanceMetric; title: string } | null>(null);
 
   const params = useMemo(
     () => ({
@@ -132,7 +139,6 @@ export default function TaskPerformancePage() {
   const canSeeOthers = viewScope !== 'own';
 
   const rows = useMemo(() => data?.rows ?? [], [data]);
-  const totals = useMemo(() => aggregateRows(rows), [rows]);
 
   // Options dropdown nhân viên: lấy từ chính `rows` (đúng nhân viên đang có
   // mặt trong kỳ/phòng ban đang lọc), sắp theo tên cho dễ tìm khi `showSearch`.
@@ -141,18 +147,51 @@ export default function TaskPerformancePage() {
   // các dropdown chọn nhân viên khác trong app; nếu không tra được (hiếm -
   // user đã bị vô hiệu hoá/xoá nhưng vẫn còn Task cũ trong kỳ) vẫn fallback
   // hiện tên trơn qua `label`, không chặn hiển thị.
-  const employeeOptions = useMemo(
-    () =>
-      [...rows]
-        .sort((a, b) => a.userName.localeCompare(b.userName))
-        .map((r) => ({ value: r.userId, label: r.userName, user: userById.get(r.userId) })),
-    [rows, userById],
-  );
+  const employeeOptions = useMemo(() => {
+    const opts = [...rows]
+      .sort((a, b) => a.userName.localeCompare(b.userName))
+      .map((r) => ({ value: r.userId, label: r.userName, user: userById.get(r.userId) }));
+    // Nút "Chỉ của tôi" có thể chọn chính mình dù mình chưa có Task trong kỳ - thêm option để
+    // dropdown hiện tên thay vì số id.
+    const me = currentUserId != null ? userById.get(currentUserId) : undefined;
+    if (me && !opts.some((o) => o.value === me.id)) opts.push({ value: me.id, label: me.name, user: me });
+    return opts;
+  }, [rows, userById, currentUserId]);
 
   const filteredRows = useMemo(
     () => (selectedUserIds.length === 0 ? rows : rows.filter((r) => selectedUserIds.includes(r.userId))),
     [rows, selectedUserIds],
   );
+
+  // BUG cũ (2026-09-28): Card tổng hợp tính trên `rows` (chưa lọc) nên chọn nhân viên ở dropdown
+  // chỉ đổi bảng, Card vẫn hiện số của TẤT CẢ. Nay Card/biểu đồ/bảng cùng dùng `filteredRows`.
+  const totals = useMemo(() => aggregateRows(filteredRows), [filteredRows]);
+
+  // "Đang xem ai" - quyết định chữ trên Tag + tiêu đề Card, thay cho việc luôn ghi cứng quyền xem.
+  const viewContext = useMemo(() => {
+    const deptName = departments.find((d) => d.id === departmentId)?.name;
+    const nameOf = (id: number) => rows.find((r) => r.userId === id)?.userName ?? userById.get(id)?.name ?? `#${id}`;
+    let mode: ViewMode = 'multi';
+    let singleId: number | undefined;
+    if (!canSeeOthers) {
+      mode = 'self';
+    } else if (selectedUserIds.length === 1) {
+      singleId = selectedUserIds[0];
+      mode = singleId === currentUserId ? 'self' : 'single';
+    } else if (selectedUserIds.length === 0 && rows.length === 1) {
+      singleId = rows[0].userId;
+      mode = singleId === currentUserId ? 'self' : 'single';
+    }
+    const n = filteredRows.length;
+    let source = viewScope === 'department' ? 'Phòng ban của tôi' : 'Toàn bộ';
+    if (selectedUserIds.length > 1) source = 'Nhân viên đã chọn';
+    else if (deptName) source = `Phòng ban ${deptName}`;
+
+    const label =
+      mode === 'self' ? 'Chỉ của tôi' : mode === 'single' ? `Nhân viên: ${nameOf(singleId as number)}` : `${source} · ${n} nhân viên`;
+    const who = mode === 'self' ? 'mình' : mode === 'single' ? 'nhân viên này' : 'các nhân viên';
+    return { mode, label, who, isMulti: mode === 'multi' };
+  }, [canSeeOthers, selectedUserIds, rows, filteredRows.length, currentUserId, departments, departmentId, viewScope, userById]);
 
   const activeQuick = QUICK_RANGES.find(({ key }) => {
     const [f, t] = getQuickRange(key);
@@ -346,6 +385,84 @@ export default function TaskPerformancePage() {
     },
   ];
 
+  // Danh sách Card - chữ đổi theo `viewContext` (mình / 1 nhân viên / nhiều nhân viên) để không
+  // ghi "của mình" khi đang xem cả nhóm. `key` = metric mở mini table khi click.
+  const isSelf = viewContext.mode === 'self';
+  const multiNote = viewContext.isMulti ? ' (cộng theo từng nhân viên)' : '';
+  const statCards: Array<{
+    key: PerformanceMetric;
+    title: string;
+    value: number | null;
+    suffix?: string;
+    color?: string;
+    sub?: string;
+  }> = [
+    {
+      key: 'primary_total',
+      title: isSelf ? 'Tổng Task của mình' : 'Tổng Task phụ trách chính',
+      value: totals.total,
+      sub: isSelf ? 'Phụ trách chính, trong kỳ' : `Phụ trách chính của ${viewContext.who}, trong kỳ`,
+    },
+    {
+      key: 'secondary_total',
+      title: 'Tổng Task phụ trách phụ',
+      value: totals.secondaryTotal,
+      sub: `Task người khác, ${viewContext.who} là phụ trách phụ${multiNote}`,
+    },
+    {
+      key: 'completed',
+      title: '% Hoàn thành',
+      value: totals.completionRatePercent,
+      suffix: '%',
+      color: completionColor(totals.completionRatePercent),
+      sub: `${totals.completedOnTime + totals.completedLate}/${totals.total} Task`,
+    },
+    {
+      key: 'completed_late',
+      title: '% Xong muộn',
+      value: totals.lateRatePercent,
+      suffix: '%',
+      color: totals.lateRatePercent ? '#d48806' : undefined,
+      sub: `${totals.completedLate} Task xong muộn`,
+    },
+    {
+      key: 'overdue',
+      title: 'Quá hạn chưa xong',
+      value: totals.overdueNotCompleted,
+      color: totals.overdueNotCompleted > 0 ? '#f5222d' : undefined,
+    },
+    {
+      key: 'checklist_primary',
+      title: isSelf ? 'Checklist Task của mình' : 'Checklist Task phụ trách chính',
+      value: totals.checklistRatePercent,
+      suffix: '%',
+      sub: `${totals.checklistDone}/${totals.checklistTotal} mục`,
+    },
+    {
+      key: 'checklist_secondary',
+      title: 'Checklist Task phụ trách phụ',
+      value: totals.checklistSecondaryRatePercent,
+      suffix: '%',
+      sub: `${totals.checklistSecondaryDone}/${totals.checklistSecondaryTotal} mục${multiNote}`,
+    },
+    {
+      key: 'in_progress',
+      title: '% Đang làm',
+      value: totals.inProgressRatePercent,
+      suffix: '%',
+      color: '#1677ff',
+      sub: `${totals.inProgressCount}/${totals.total} Task`,
+    },
+    {
+      key: 'in_review',
+      title: '% Đang xem xét',
+      value: totals.inReviewRatePercent,
+      suffix: '%',
+      color: '#722ed1',
+      sub: `${totals.inReviewCount}/${totals.total} Task`,
+    },
+  ];
+
   const scopeMeta = SCOPE_META[viewScope];
 
   return (
@@ -355,7 +472,14 @@ export default function TaskPerformancePage() {
           <Title level={3} style={{ margin: 0 }}>
             <BarChartOutlined /> Hiệu suất công việc
           </Title>
-          <Tag color={scopeMeta.color}>Phạm vi xem: {scopeMeta.label}</Tag>
+          <Tag color={viewContext.mode === 'multi' ? scopeMeta.color : 'geekblue'} style={{ fontSize: 13, padding: '2px 10px' }}>
+            Đang xem: {viewContext.label}
+          </Tag>
+          {canSeeOthers && (
+            <Tooltip title="Quyền xem được cấp cho vai trò của bạn (periodic_tasks.performance_view). Đang xem ai thì theo bộ lọc bên dưới.">
+              <Text type="secondary" style={{ fontSize: 12 }}>Quyền xem: {scopeMeta.label}</Text>
+            </Tooltip>
+          )}
         </Space>
         <Button icon={<ReloadOutlined />} loading={isFetching} onClick={() => refetch()}>
           Làm mới
@@ -438,6 +562,22 @@ export default function TaskPerformancePage() {
               />
             </Col>
           )}
+          {canSeeOthers && currentUserId != null && (
+            <Col span={24}>
+              <Space size={8} wrap>
+                <Text type="secondary" style={{ fontSize: 13 }}>Chế độ xem:</Text>
+                <Segmented
+                  size="small"
+                  value={selectedUserIds.length === 1 && selectedUserIds[0] === currentUserId ? 'me' : 'all'}
+                  onChange={(v) => setSelectedUserIds(v === 'me' ? [currentUserId] : [])}
+                  options={[
+                    { value: 'all', label: viewScope === 'department' ? 'Cả phòng ban' : 'Nhiều nhân viên' },
+                    { value: 'me', label: 'Chỉ của tôi' },
+                  ]}
+                />
+              </Space>
+            </Col>
+          )}
           <Col span={24}>
             <Space size={8} wrap>
               <Text type="secondary" style={{ fontSize: 13 }}>Lọc nhanh:</Text>
@@ -460,116 +600,50 @@ export default function TaskPerformancePage() {
         <Alert type="error" showIcon style={{ marginBottom: 12 }} title="Không tải được dữ liệu hiệu suất. Vui lòng thử lại." />
       )}
 
+      <Text type="secondary" style={{ fontSize: 12, display: 'block', marginBottom: 8 }}>
+        <UnorderedListOutlined /> Bấm vào từng thẻ để xem nhanh danh sách Task và checklist tương ứng.
+      </Text>
       <Row gutter={[12, 12]} style={{ marginBottom: 16 }}>
-        <Col xs={12} md={8} xl={5}>
-          <Card size="small" variant="outlined">
-            <Statistic title="Tổng Task của mình" value={totals.total} loading={isLoading} />
-            <Text type="secondary" style={{ fontSize: 12 }}>
-              Phụ trách chính, trong kỳ
-            </Text>
-          </Card>
-        </Col>
-        <Col xs={12} md={8} xl={5}>
-          <Card size="small" variant="outlined">
-            <Statistic title="Tổng Task phụ trách phụ" value={totals.secondaryTotal} loading={isLoading} />
-            <Text type="secondary" style={{ fontSize: 12 }}>
-              Task người khác, mình là phụ trách phụ
-            </Text>
-          </Card>
-        </Col>
-        <Col xs={12} md={8} xl={5}>
-          <Card size="small" variant="outlined">
-            <Statistic
-              title="% Hoàn thành"
-              value={totals.completionRatePercent ?? '—'}
-              suffix={totals.completionRatePercent == null ? undefined : '%'}
-              styles={{ content: { color: completionColor(totals.completionRatePercent) } }}
-              loading={isLoading}
-            />
-            <Text type="secondary" style={{ fontSize: 12 }}>
-              {totals.completedOnTime + totals.completedLate}/{totals.total} Task
-            </Text>
-          </Card>
-        </Col>
-        <Col xs={12} md={8} xl={5}>
-          <Card size="small" variant="outlined">
-            <Statistic
-              title="% Xong muộn"
-              value={totals.lateRatePercent ?? '—'}
-              suffix={totals.lateRatePercent == null ? undefined : '%'}
-              styles={{ content: { color: totals.lateRatePercent ? '#d48806' : undefined } }}
-              loading={isLoading}
-            />
-            <Text type="secondary" style={{ fontSize: 12 }}>{totals.completedLate} Task xong muộn</Text>
-          </Card>
-        </Col>
-        <Col xs={12} md={8} xl={5}>
-          <Card size="small" variant="outlined">
-            <Statistic
-              title="Quá hạn chưa xong"
-              value={totals.overdueNotCompleted}
-              styles={{ content: { color: totals.overdueNotCompleted > 0 ? '#f5222d' : undefined } }}
-              loading={isLoading}
-            />
-          </Card>
-        </Col>
-        <Col xs={12} md={8} xl={5}>
-          <Card size="small" variant="outlined">
-            <Statistic
-              title="Checklist Task của mình"
-              value={totals.checklistRatePercent ?? '—'}
-              suffix={totals.checklistRatePercent == null ? undefined : '%'}
-              loading={isLoading}
-            />
-            <Text type="secondary" style={{ fontSize: 12 }}>{totals.checklistDone}/{totals.checklistTotal} mục</Text>
-          </Card>
-        </Col>
-        <Col xs={12} md={8} xl={5}>
-          <Card size="small" variant="outlined">
-            <Statistic
-              title="Checklist Task phụ trách phụ"
-              value={totals.checklistSecondaryRatePercent ?? '—'}
-              suffix={totals.checklistSecondaryRatePercent == null ? undefined : '%'}
-              loading={isLoading}
-            />
-            <Text type="secondary" style={{ fontSize: 12 }}>{totals.checklistSecondaryDone}/{totals.checklistSecondaryTotal} mục</Text>
-          </Card>
-        </Col>
-        <Col xs={12} md={8} xl={5}>
-          <Card size="small" variant="outlined">
-            <Statistic
-              title="% Đang làm"
-              value={totals.inProgressRatePercent ?? '—'}
-              suffix={totals.inProgressRatePercent == null ? undefined : '%'}
-              styles={{ content: { color: '#1677ff' } }}
-              loading={isLoading}
-            />
-            <Text type="secondary" style={{ fontSize: 12 }}>{totals.inProgressCount}/{totals.total} Task</Text>
-          </Card>
-        </Col>
-        <Col xs={12} md={8} xl={5}>
-          <Card size="small" variant="outlined">
-            <Statistic
-              title="% Đang xem xét"
-              value={totals.inReviewRatePercent ?? '—'}
-              suffix={totals.inReviewRatePercent == null ? undefined : '%'}
-              styles={{ content: { color: '#722ed1' } }}
-              loading={isLoading}
-            />
-            <Text type="secondary" style={{ fontSize: 12 }}>{totals.inReviewCount}/{totals.total} Task</Text>
-          </Card>
-        </Col>
+        {statCards.map((c) => (
+          <Col key={c.key} xs={12} md={8} xl={5}>
+            <Card
+              size="small"
+              variant="outlined"
+              hoverable
+              role="button"
+              tabIndex={0}
+              aria-label={`${c.title} - bấm để xem chi tiết`}
+              onClick={() => setMetricModal({ key: c.key, title: c.title })}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' || e.key === ' ') {
+                  e.preventDefault();
+                  setMetricModal({ key: c.key, title: c.title });
+                }
+              }}
+              style={{ cursor: 'pointer', height: '100%' }}
+            >
+              <Statistic
+                title={c.title}
+                value={c.value ?? '—'}
+                suffix={c.value == null ? undefined : c.suffix}
+                styles={c.color ? { content: { color: c.color } } : undefined}
+                loading={isLoading}
+              />
+              {c.sub && <Text type="secondary" style={{ fontSize: 12 }}>{c.sub}</Text>}
+            </Card>
+          </Col>
+        ))}
       </Row>
 
-      {canSeeOthers && rows.length > 1 && (
+      {canSeeOthers && filteredRows.length > 1 && (
         <Card
           size="small"
           variant="outlined"
           style={{ marginBottom: 16 }}
           title="Phân bổ Task theo nhân viên"
-          extra={rows.length > CHART_MAX_USERS ? <Text type="secondary" style={{ fontSize: 12 }}>Top {CHART_MAX_USERS} theo số Task - xem đủ ở bảng bên dưới</Text> : null}
+          extra={filteredRows.length > CHART_MAX_USERS ? <Text type="secondary" style={{ fontSize: 12 }}>Top {CHART_MAX_USERS} theo số Task - xem đủ ở bảng bên dưới</Text> : null}
         >
-          <PerformanceStackedChart rows={rows} />
+          <PerformanceStackedChart rows={filteredRows} />
         </Card>
       )}
 
@@ -599,6 +673,14 @@ export default function TaskPerformancePage() {
           (luôn đúng 1 dòng của chính mình) - hiển thị THÊM view chi tiết
           hơn, khác hẳn giao diện bảng tổng hợp, để xem trực tiếp từng Task. */}
       {!canSeeOthers && currentUserId != null && <OwnPerformanceDetail userId={currentUserId} periodType={periodType} />}
+
+      <MetricTasksModal
+        metric={metricModal}
+        contextLabel={`Đang xem: ${viewContext.label}`}
+        params={params}
+        userIds={canSeeOthers && selectedUserIds.length > 0 ? selectedUserIds : undefined}
+        onClose={() => setMetricModal(null)}
+      />
 
       <PerformanceUserTasksDrawer user={drawerUser} periodType={periodType} onClose={() => setDrawerUser(null)} />
     </div>

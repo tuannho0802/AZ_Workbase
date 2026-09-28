@@ -4,6 +4,7 @@ import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { GetUser } from '../../common/decorators/get-user.decorator';
 import { PeriodicTaskPerformanceService } from './periodic-task-performance.service';
 import { PeriodicTaskPerformanceFiltersDto } from './dto/periodic-task-performance-filters.dto';
+import { PeriodicTaskPerformanceMetricDto } from './dto/periodic-task-performance-metric.dto';
 import type { RequestingUser } from './periodic-tasks.service';
 
 /**
@@ -31,6 +32,16 @@ export class PeriodicTaskPerformanceController {
   })
   getSummary(@Query() filters: PeriodicTaskPerformanceFiltersDto, @GetUser() user: RequestingUser) {
     return this.performanceService.getSummary(filters, user);
+  }
+
+  @Get('metric-tasks')
+  @ApiOperation({
+    summary:
+      'Mini table khi click Card ở trang Hiệu suất: danh sách Task (kèm checklist) đứng sau 1 con số. ' +
+      'Cùng scope/bộ lọc với /summary; userIds chỉ thu hẹp thêm.',
+  })
+  getMetricTasks(@Query() filters: PeriodicTaskPerformanceMetricDto, @GetUser() user: RequestingUser) {
+    return this.performanceService.getMetricTasks(filters, user);
   }
 
   @Get('users/:userId/flagged-tasks')

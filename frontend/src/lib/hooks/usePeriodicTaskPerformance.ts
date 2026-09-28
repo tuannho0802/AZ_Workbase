@@ -2,6 +2,7 @@ import { keepPreviousData, useQuery } from '@tanstack/react-query';
 import {
   periodicTaskPerformanceApi,
   PerformanceFilterParams,
+  MetricTasksParams,
 } from '../api/periodic-task-performance.api';
 
 const KEY = 'periodic-task-performance';
@@ -30,4 +31,13 @@ export const useUserTasks = (userId: number | null, params: PerformanceFilterPar
     queryKey: [KEY, 'tasks', userId, params],
     queryFn: () => periodicTaskPerformanceApi.getUserTasks(userId as number, params),
     enabled: userId != null,
+  });
+
+/** Mini table khi click Card - chỉ fetch khi Modal đang mở (`enabled`). */
+export const useMetricTasks = (params: MetricTasksParams, enabled: boolean) =>
+  useQuery({
+    queryKey: [KEY, 'metric-tasks', params],
+    queryFn: () => periodicTaskPerformanceApi.getMetricTasks(params),
+    enabled,
+    placeholderData: keepPreviousData,
   });
