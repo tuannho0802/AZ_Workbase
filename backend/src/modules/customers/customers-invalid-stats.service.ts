@@ -3,13 +3,16 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { In, Repository, SelectQueryBuilder } from 'typeorm';
 import { Customer } from '../../database/entities/customer.entity';
 import { User } from '../../database/entities/user.entity';
+import { CustomerGroupMembership } from '../../database/entities/customer-group-membership.entity';
 import { todayVnStr, toVnDateStr } from '../../common/utils/date-vn.util';
 import { CustomerAccessHelper } from './helpers/customer-access.helper';
 
 /** Kỳ tối đa (ngày) khi có đủ 2 mốc - vượt thì tự co `dateFrom` lại. */
 export const STATS_MAX_RANGE_DAYS = 366;
-/** Số phần tử tối đa của các bảng/biểu đồ xếp hạng (Top người tạo, Top cụm trùng). */
+/** Số phần tử tối đa của các bảng/biểu đồ xếp hạng (Top người tạo, Top cụm trùng, Top Marketing). */
 export const STATS_TOP_N = 10;
+/** Số nhóm liên kết tối đa liệt kê ở bảng "Nhóm bị trùng khách" (nhiều nhóm hơn -> chỉ lấy nhóm hay bị trùng nhất). */
+export const STATS_TOP_GROUPS = 20;
 /** Kỳ ≤ ngưỡng này vẽ theo NGÀY, dài hơn gộp theo THÁNG để biểu đồ đọc được. */
 export const STATS_DAY_BUCKET_MAX_SPAN = 92;
 /** Chia nhỏ danh sách giá trị khi `IN (...)` để không vượt giới hạn placeholder của MySQL. */
@@ -54,6 +57,29 @@ export interface DuplicateStatsDetail {
   /** Cụm có ≥ 2 Sales phụ trách KHÁC NHAU - nguy cơ 2 Sales cùng chăm 1 khách. */
   crossSalesGroups: number;
   sameSalesGroups: number;
+  /** Cụm có ≥ 2 Marketing (marketingUserId) KHÁC NHAU nhập cùng 1 khách. */
+  crossMarketingClusters: number;
+  /** Cụm có bản ghi gán Marketing nhưng chỉ 1 người duy nhất. */
+  sameMarketingClusters: number;
+  /** Cụm mà MỌI bản ghi đều chưa gán Marketing phụ trách. */
+  noMarketingClusters: number;
+  /**
+   * Cụm có các bản ghi "ĐÃ VÀO" (joined = true) trải trên ≥ 2 nhóm liên kết khác nhau -
+   * dấu hiệu rõ nhất của nguyên nhân trùng: 1 khách được nhập lại khi vào group mới.
+   */
+  crossGroupClusters: number;
+  /** Cụm chỉ có mặt trong đúng 1 nhóm liên kết (hoặc mọi bản ghi trùng nhóm nhau). */
+  singleGroupClusters: number;
+  /** Cụm không có bản ghi nào đã vào nhóm liên kết nào. */
+  noGroupClusters: number;
+  /** Bản dư (trong kỳ) mà bản ghi CHƯA gán Marketing - không quy được trách nhiệm cho ai. */
+  unassignedMarketingRedundant: number;
+  /** Marketing tạo nhiều bản dư nhất trong kỳ (chỉ tính bản ghi đã gán Marketing). */
+  topMarketers: Array<{ userId: number; name: string; redundantCount: number; clusterCount: number }>;
+  /** Từng nhóm liên kết: số cụm trùng có ≥ 1 bản ghi đã vào nhóm này + số bản dư (trong kỳ) thuộc nhóm. */
+  groupStats: Array<{ groupId: number; name: string; clusterCount: number; redundantCount: number }>;
+  /** Cặp nhóm hay "dính" cùng 1 cụm trùng nhất - gợi ý 2 nhóm hay được Marketing nhập trùng khách qua lại. */
+  groupPairs: Array<{ groupAId: number; groupAName: string; groupBId: number; groupBName: string; clusterCount: number }>;
   sizeDistribution: Array<{ label: string; groups: number }>;
   /** Bản ghi trùng phát sinh theo NGÀY (hoặc THÁNG - xem `period.granularity`); `date` = 'YYYY-MM-DD' | 'YYYY-MM'. */
   trend: Array<{ date: string; redundant: number }>;
@@ -65,6 +91,12 @@ export interface DuplicateStatsDetail {
     newInPeriod: number;
     distinctSales: number;
     salesNames: string[];
+    /** Số Marketing (marketingUserId) khác nhau đã nhập vào cụm này. */
+    distinctMarketing: number;
+    marketingNames: string[];
+    /** Số nhóm liên kết khác nhau mà thành viên cụm này ĐÃ VÀO (joined = true). */
+    distinctGroups: number;
+    groupNames: string[];
     latestCreatedAt: string;
   }>;
 }
@@ -95,6 +127,9 @@ interface DupRow {
   key: string;
   salesUserId: number | null;
   createdById: number | null;
+  marketingUserId: number | null;
+  /** Các nhóm liên kết mà bản ghi ĐÃ VÀO (joined = true); chỉ được nạp khi phân tích có `withGroups`. */
+  groupIds: number[];
   createdAt: Date;
   /** 'YYYY-MM-DD' theo giờ VN của createdAt. */
   day: string;
@@ -214,6 +249,8 @@ export class CustomersInvalidStatsService {
     private readonly customerRepo: Repository<Customer>,
     @InjectRepository(User)
     private readonly userRepo: Repository<User>,
+    @InjectRepository(CustomerGroupMembership)
+    private readonly membershipRepo: Repository<CustomerGroupMembership>,
   ) {}
 
   private static groupExpr(isEmail: boolean) {
@@ -255,7 +292,10 @@ export class CustomersInvalidStatsService {
     userId: number,
     userRole: string,
     scope?: string | null,
-  ): Promise<{ clusters: DupCluster[]; totalWithValue: number }> {
+    /** `true` khi đang xem chi tiết loại này - nạp thêm nhóm liên kết (join thêm bảng, chỉ cần cho loại đang hiển thị). */
+    withGroups = false,
+  ): Promise<{ clusters: DupCluster[]; totalWithValue: number; groupNames: Map<number, string> }> {
+    const groupNames = new Map<number, string>();
     const expr = CustomersInvalidStatsService.groupExpr(isEmail);
     const nonEmpty = CustomersInvalidStatsService.nonEmptyCondition(isEmail);
     const bounded = !!(range.from || range.to);
@@ -263,7 +303,7 @@ export class CustomersInvalidStatsService {
     const totalQb = this.baseQb(userId, userRole, scope).andWhere(nonEmpty);
     CustomersInvalidStatsService.applyCreatedRange(totalQb, range);
     const totalWithValue = await totalQb.getCount();
-    if (totalWithValue === 0) return { clusters: [], totalWithValue };
+    if (totalWithValue === 0) return { clusters: [], totalWithValue, groupNames };
 
     // (1) Khoá ứng viên = khoá của khách nhập trong kỳ (bỏ qua bước này khi xem toàn bộ).
     let candidateChunks: Array<string[] | null> = [null];
@@ -272,7 +312,7 @@ export class CustomersInvalidStatsService {
       CustomersInvalidStatsService.applyCreatedRange(candQb, range);
       const candRows = await candQb.getRawMany<{ dupKey: string }>();
       const cand = candRows.map((r) => r.dupKey).filter((k) => !!k);
-      if (cand.length === 0) return { clusters: [], totalWithValue };
+      if (cand.length === 0) return { clusters: [], totalWithValue, groupNames };
       candidateChunks = [];
       for (let i = 0; i < cand.length; i += KEY_CHUNK_SIZE) candidateChunks.push(cand.slice(i, i + KEY_CHUNK_SIZE));
     }
@@ -289,7 +329,7 @@ export class CustomersInvalidStatsService {
       const rows = await qb.getRawMany<{ dupKey: string }>();
       rows.forEach((r) => r.dupKey && dupKeys.push(r.dupKey));
     }
-    if (dupKeys.length === 0) return { clusters: [], totalWithValue };
+    if (dupKeys.length === 0) return { clusters: [], totalWithValue, groupNames };
 
     // (3) Chỉ tải thành viên của các cụm trùng đó.
     const byKey = new Map<string, DupRow[]>();
@@ -300,6 +340,7 @@ export class CustomersInvalidStatsService {
         .addSelect(expr, 'dup_key')
         .addSelect('customer.salesUserId', 'sales_user_id')
         .addSelect('customer.createdById', 'created_by_id')
+        .addSelect('customer.marketingUserId', 'marketing_user_id')
         .addSelect('customer.createdAt', 'created_at')
         .andWhere(`${expr} IN (:...statsKeys)`, { statsKeys: chunk })
         .getRawMany<{
@@ -307,6 +348,7 @@ export class CustomersInvalidStatsService {
           dup_key: string;
           sales_user_id: number | string | null;
           created_by_id: number | string | null;
+          marketing_user_id: number | string | null;
           created_at: Date | string;
         }>();
       for (const r of raw) {
@@ -316,6 +358,8 @@ export class CustomersInvalidStatsService {
           key: r.dup_key,
           salesUserId: r.sales_user_id == null ? null : Number(r.sales_user_id),
           createdById: r.created_by_id == null ? null : Number(r.created_by_id),
+          marketingUserId: r.marketing_user_id == null ? null : Number(r.marketing_user_id),
+          groupIds: [],
           createdAt,
           day: toVnDateStr(createdAt),
         };
@@ -332,7 +376,39 @@ export class CustomersInvalidStatsService {
       const redundantInRange = members.slice(1).filter((m) => this.inRange(m.day, range));
       if (redundantInRange.length > 0) clusters.push({ key, members, redundantInRange });
     }
-    return { clusters, totalWithValue };
+    if (withGroups && clusters.length > 0) {
+      await this.attachGroups(clusters.flatMap((c) => c.members), groupNames);
+    }
+    return { clusters, totalWithValue, groupNames };
+  }
+
+  /**
+   * Nạp các nhóm liên kết "ĐÃ VÀO" (joined = true - cùng quy ước với `getCustomers()`/
+   * cột "Đã tham gia nhóm") cho các bản ghi thành viên CỦA CỤM TRÙNG đang xét - chỉ
+   * truy vấn đúng các khách nằm trong cụm, không quét toàn bộ bảng membership.
+   */
+  private async attachGroups(rows: DupRow[], groupNames: Map<number, string>): Promise<void> {
+    const byId = new Map(rows.map((r) => [r.id, r]));
+    const ids = [...byId.keys()];
+    for (let i = 0; i < ids.length; i += KEY_CHUNK_SIZE) {
+      const chunk = ids.slice(i, i + KEY_CHUNK_SIZE);
+      const raw = await this.membershipRepo
+        .createQueryBuilder('m')
+        .innerJoin('m.group', 'g')
+        .select('m.customerId', 'customer_id')
+        .addSelect('m.groupId', 'group_id')
+        .addSelect('g.name', 'group_name')
+        .where('m.joined = true')
+        .andWhere('m.customerId IN (:...statsMemberIds)', { statsMemberIds: chunk })
+        .getRawMany<{ customer_id: number | string; group_id: number | string; group_name: string }>();
+      for (const r of raw) {
+        const row = byId.get(Number(r.customer_id));
+        if (!row) continue;
+        const gid = Number(r.group_id);
+        if (!row.groupIds.includes(gid)) row.groupIds.push(gid);
+        groupNames.set(gid, r.group_name);
+      }
+    }
   }
 
   private static summarize(clusters: DupCluster[]): DuplicateOverviewItem {
@@ -366,8 +442,10 @@ export class CustomersInvalidStatsService {
       counted("(customer.phone IS NULL OR customer.phone = '')"),
       counted("(customer.email IS NULL OR customer.email = '')"),
       futureCreatedQb.getCount(),
-      this.analyzeDuplicates(false, range, userId, userRole, scope),
-      this.analyzeDuplicates(true, range, userId, userRole, scope),
+      // Nạp nhóm liên kết (join thêm bảng) CHỈ cho loại đang xem chi tiết - loại còn lại
+      // chỉ cần số tổng quan (thẻ Trùng SĐT/Trùng Email) nên không cần thông tin nhóm.
+      this.analyzeDuplicates(false, range, userId, userRole, scope, invalidType === 'duplicate_phone'),
+      this.analyzeDuplicates(true, range, userId, userRole, scope, invalidType === 'duplicate_email'),
     ]);
 
     const overview: InvalidDataOverview = {
@@ -419,11 +497,11 @@ export class CustomersInvalidStatsService {
   }
 
   private async buildDuplicateDetail(
-    analysis: { clusters: DupCluster[]; totalWithValue: number },
+    analysis: { clusters: DupCluster[]; totalWithValue: number; groupNames: Map<number, string> },
     period: StatsPeriod,
     previousRedundantCount: number | null,
   ): Promise<DuplicateStatsDetail> {
-    const { clusters, totalWithValue } = analysis;
+    const { clusters, totalWithValue, groupNames } = analysis;
 
     const trendMap = new Map<string, number>();
     for (const b of buildBuckets(period.from, period.to, period.granularity)) trendMap.set(b, 0);
@@ -439,7 +517,29 @@ export class CustomersInvalidStatsService {
       ['5+ bản ghi', 0],
     ]);
     const creatorCounts = new Map<number, number>();
-    const groupSummaries: Array<{ key: string; size: number; newInPeriod: number; salesIds: number[]; latest: Date }> = [];
+    const groupSummaries: Array<{
+      key: string;
+      size: number;
+      newInPeriod: number;
+      salesIds: number[];
+      marketingIds: number[];
+      linkGroupIds: number[];
+      latest: Date;
+    }> = [];
+
+    // Marketing/nhóm liên kết.
+    let crossMarketingClusters = 0;
+    let sameMarketingClusters = 0;
+    let noMarketingClusters = 0;
+    let crossGroupClusters = 0;
+    let singleGroupClusters = 0;
+    let noGroupClusters = 0;
+    let unassignedMarketingRedundant = 0;
+    const marketerRedundant = new Map<number, number>();
+    const marketerClusterKeys = new Map<number, Set<string>>();
+    const groupClusterCount = new Map<number, number>();
+    const groupRedundantCount = new Map<number, number>();
+    const pairClusterCount = new Map<string, number>();
 
     for (const c of clusters) {
       const size = c.members.length;
@@ -451,9 +551,36 @@ export class CustomersInvalidStatsService {
       const salesIds = [...new Set(c.members.map((m) => m.salesUserId).filter((s): s is number => s != null))];
       if (salesIds.length >= 2) crossSalesGroups += 1;
 
+      const marketingIds = [...new Set(c.members.map((m) => m.marketingUserId).filter((s): s is number => s != null))];
+      if (marketingIds.length >= 2) crossMarketingClusters += 1;
+      else if (marketingIds.length === 1) sameMarketingClusters += 1;
+      else noMarketingClusters += 1;
+
+      // Nhóm liên kết mà CỤM NÀY có mặt = hợp các nhóm (đã vào) của mọi thành viên.
+      const linkGroupIds = [...new Set(c.members.flatMap((m) => m.groupIds))].sort((a, b) => a - b);
+      if (linkGroupIds.length >= 2) crossGroupClusters += 1;
+      else if (linkGroupIds.length === 1) singleGroupClusters += 1;
+      else noGroupClusters += 1;
+      for (const gid of linkGroupIds) groupClusterCount.set(gid, (groupClusterCount.get(gid) ?? 0) + 1);
+      for (let i = 0; i < linkGroupIds.length; i++) {
+        for (let j = i + 1; j < linkGroupIds.length; j++) {
+          const pairKey = `${linkGroupIds[i]}-${linkGroupIds[j]}`;
+          pairClusterCount.set(pairKey, (pairClusterCount.get(pairKey) ?? 0) + 1);
+        }
+      }
+
       for (const m of c.redundantInRange) {
         redundantCount += 1;
         if (m.createdById != null) creatorCounts.set(m.createdById, (creatorCounts.get(m.createdById) ?? 0) + 1);
+        if (m.marketingUserId == null) {
+          unassignedMarketingRedundant += 1;
+        } else {
+          marketerRedundant.set(m.marketingUserId, (marketerRedundant.get(m.marketingUserId) ?? 0) + 1);
+          const set = marketerClusterKeys.get(m.marketingUserId) ?? new Set<string>();
+          set.add(c.key);
+          marketerClusterKeys.set(m.marketingUserId, set);
+        }
+        for (const gid of m.groupIds) groupRedundantCount.set(gid, (groupRedundantCount.get(gid) ?? 0) + 1);
         const b = bucketOf(m.day, period.granularity);
         if (trendMap.has(b)) trendMap.set(b, (trendMap.get(b) ?? 0) + 1);
       }
@@ -462,6 +589,8 @@ export class CustomersInvalidStatsService {
         size,
         newInPeriod: c.redundantInRange.length,
         salesIds,
+        marketingIds,
+        linkGroupIds,
         latest: c.members[c.members.length - 1].createdAt,
       });
     }
@@ -471,10 +600,21 @@ export class CustomersInvalidStatsService {
     const topGroupsRaw = [...groupSummaries]
       .sort((a, b) => b.size - a.size || b.latest.getTime() - a.latest.getTime() || a.key.localeCompare(b.key))
       .slice(0, STATS_TOP_N);
+    const topMarketerEntries = [...marketerRedundant.entries()].sort((a, b) => b[1] - a[1] || a[0] - b[0]).slice(0, STATS_TOP_N);
+    const groupStatEntries = [...groupClusterCount.entries()]
+      .sort((a, b) => b[1] - a[1] || (groupRedundantCount.get(b[0]) ?? 0) - (groupRedundantCount.get(a[0]) ?? 0) || a[0] - b[0])
+      .slice(0, STATS_TOP_GROUPS);
+    const pairEntries = [...pairClusterCount.entries()]
+      .sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))
+      .slice(0, STATS_TOP_N);
 
-    // Tên người dùng cho Top người tạo + tên Sales của Top cụm (1 query duy nhất).
+    // Tên người dùng cho Top người tạo/Top Marketing + tên Sales/Marketing của Top cụm (1 query duy nhất).
     const userIds = new Set<number>(topCreatorEntries.map(([id]) => id));
-    topGroupsRaw.forEach((g) => g.salesIds.forEach((id) => userIds.add(id)));
+    topMarketerEntries.forEach(([id]) => userIds.add(id));
+    topGroupsRaw.forEach((g) => {
+      g.salesIds.forEach((id) => userIds.add(id));
+      g.marketingIds.forEach((id) => userIds.add(id));
+    });
     const nameById = new Map<number, string>();
     if (userIds.size > 0) {
       const users = await this.userRepo.find({ where: { id: In([...userIds]) }, select: { id: true, name: true } });
@@ -491,6 +631,35 @@ export class CustomersInvalidStatsService {
       maxGroupSize,
       crossSalesGroups,
       sameSalesGroups: groupCount - crossSalesGroups,
+      crossMarketingClusters,
+      sameMarketingClusters,
+      noMarketingClusters,
+      crossGroupClusters,
+      singleGroupClusters,
+      noGroupClusters,
+      unassignedMarketingRedundant,
+      topMarketers: topMarketerEntries.map(([id, count]) => ({
+        userId: id,
+        name: nameById.get(id) ?? `#${id}`,
+        redundantCount: count,
+        clusterCount: marketerClusterKeys.get(id)?.size ?? 0,
+      })),
+      groupStats: groupStatEntries.map(([gid, clusterCount]) => ({
+        groupId: gid,
+        name: groupNames.get(gid) ?? `#${gid}`,
+        clusterCount,
+        redundantCount: groupRedundantCount.get(gid) ?? 0,
+      })),
+      groupPairs: pairEntries.map(([pairKey, clusterCount]) => {
+        const [a, b] = pairKey.split('-').map(Number);
+        return {
+          groupAId: a,
+          groupAName: groupNames.get(a) ?? `#${a}`,
+          groupBId: b,
+          groupBName: groupNames.get(b) ?? `#${b}`,
+          clusterCount,
+        };
+      }),
       sizeDistribution: [...sizeBuckets.entries()].map(([label, groups]) => ({ label, groups })),
       trend: [...trendMap.entries()].map(([date, redundant]) => ({ date, redundant })),
       topCreators: topCreatorEntries.map(([id, count]) => ({ userId: id, name: nameById.get(id) ?? `#${id}`, redundantCount: count })),
@@ -500,6 +669,10 @@ export class CustomersInvalidStatsService {
         newInPeriod: g.newInPeriod,
         distinctSales: g.salesIds.length,
         salesNames: g.salesIds.slice(0, 3).map((id) => nameById.get(id) ?? `#${id}`),
+        distinctMarketing: g.marketingIds.length,
+        marketingNames: g.marketingIds.slice(0, 3).map((id) => nameById.get(id) ?? `#${id}`),
+        distinctGroups: g.linkGroupIds.length,
+        groupNames: g.linkGroupIds.slice(0, 3).map((gid) => groupNames.get(gid) ?? `#${gid}`),
         latestCreatedAt: g.latest.toISOString(),
       })),
     };

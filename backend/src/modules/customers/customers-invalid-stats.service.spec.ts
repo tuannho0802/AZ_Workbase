@@ -16,8 +16,17 @@ interface Fx {
   email: string | null;
   salesUserId: number | null;
   createdById: number | null;
+  marketingUserId?: number | null;
   createdAt: Date;
   inputDate?: string;
+}
+
+/** 1 dòng "membership giả" - tương đương 1 bản ghi `customer_group_memberships`. */
+interface Ms {
+  customerId: number;
+  groupId: number;
+  groupName: string;
+  joined: boolean;
 }
 
 const utcStr = (s: unknown) => new Date(`${String(s).replace(' ', 'T')}Z`);
@@ -26,7 +35,7 @@ const utcStr = (s: unknown) => new Date(`${String(s).replace(' ', 'T')}Z`);
  * "DB giả" đánh giá THẬT các điều kiện service dùng (kỳ createdAt, IN, GROUP BY/HAVING,
  * NULL/rỗng...) trên danh sách khách cố định. `applyViewFilter` với role 'admin' không thêm điều kiện.
  */
-function makeService(customers: Fx[], users: Array<{ id: number; name: string }> = []) {
+function makeService(customers: Fx[], users: Array<{ id: number; name: string }> = [], memberships: Ms[] = []) {
   const createQueryBuilder = jest.fn().mockImplementation(() => {
     const st = { selects: [] as string[], wheres: [] as string[], params: {} as Record<string, unknown>, distinct: false, having: false };
     const qb: Record<string, unknown> = {};
@@ -67,6 +76,7 @@ function makeService(customers: Fx[], users: Array<{ id: number; name: string }>
           dup_key: keyOf(c),
           sales_user_id: c.salesUserId,
           created_by_id: c.createdById,
+          marketing_user_id: c.marketingUserId ?? null,
           created_at: c.createdAt,
         }));
       }
@@ -78,8 +88,30 @@ function makeService(customers: Fx[], users: Array<{ id: number; name: string }>
     return qb;
   });
   const userRepo = { find: jest.fn().mockResolvedValue(users) };
-  const service = new CustomersInvalidStatsService({ createQueryBuilder } as never, userRepo as never);
-  return { service, userRepo, createQueryBuilder };
+
+  // Repo membership giả: chỉ trả các dòng joined = true thuộc đúng danh sách khách được
+  // truyền vào (giống hệt truy vấn SQL thật - chỉ tải thành viên của cụm đang xét).
+  const membershipQb = jest.fn().mockImplementation(() => {
+    const params: Record<string, unknown> = {};
+    const qb: Record<string, unknown> = {};
+    const chain = () => jest.fn().mockImplementation(() => qb);
+    qb.innerJoin = chain();
+    qb.select = chain();
+    qb.addSelect = chain();
+    qb.where = jest.fn().mockImplementation((_c: string) => qb);
+    qb.andWhere = jest.fn().mockImplementation((_c: string, p: Record<string, unknown>) => (Object.assign(params, p), qb));
+    qb.getRawMany = jest.fn().mockImplementation(async () => {
+      const ids = (params.statsMemberIds ?? []) as number[];
+      return memberships
+        .filter((m) => m.joined && ids.includes(m.customerId))
+        .map((m) => ({ customer_id: m.customerId, group_id: m.groupId, group_name: m.groupName }));
+    });
+    return qb;
+  });
+  const membershipRepo = { createQueryBuilder: membershipQb };
+
+  const service = new CustomersInvalidStatsService({ createQueryBuilder } as never, userRepo as never, membershipRepo as never);
+  return { service, userRepo, createQueryBuilder, membershipQb };
 }
 
 const at = (iso: string) => new Date(iso);
@@ -87,11 +119,11 @@ const base = { salesUserId: null, createdById: null, email: null as string | nul
 
 // Hôm nay (giờ VN) = 2026-09-28. Kỳ "7 ngày" = 2026-09-22 .. 2026-09-28.
 const DATA: Fx[] = [
-  { ...base, id: 1, phone: '0901111111', salesUserId: 10, createdById: 5, createdAt: at('2026-08-01T03:00:00Z') },
-  { ...base, id: 2, phone: '0901111111', salesUserId: 11, createdById: 6, createdAt: at('2026-09-27T10:00:00Z') },
-  { ...base, id: 3, phone: '0901111111', salesUserId: 11, createdById: 6, createdAt: at('2026-09-28T02:00:00Z') },
-  { ...base, id: 4, phone: '0902222222', salesUserId: 10, createdById: 5, createdAt: at('2026-01-05T03:00:00Z') },
-  { ...base, id: 5, phone: '0902222222', salesUserId: 10, createdById: 5, createdAt: at('2026-09-23T10:00:00Z') },
+  { ...base, id: 1, phone: '0901111111', salesUserId: 10, createdById: 5, marketingUserId: 20, createdAt: at('2026-08-01T03:00:00Z') },
+  { ...base, id: 2, phone: '0901111111', salesUserId: 11, createdById: 6, marketingUserId: 21, createdAt: at('2026-09-27T10:00:00Z') },
+  { ...base, id: 3, phone: '0901111111', salesUserId: 11, createdById: 6, marketingUserId: 21, createdAt: at('2026-09-28T02:00:00Z') },
+  { ...base, id: 4, phone: '0902222222', salesUserId: 10, createdById: 5, marketingUserId: 20, createdAt: at('2026-01-05T03:00:00Z') },
+  { ...base, id: 5, phone: '0902222222', salesUserId: 10, createdById: 5, marketingUserId: 20, createdAt: at('2026-09-23T10:00:00Z') },
   { ...base, id: 6, phone: '0903333333', salesUserId: 10, createdById: 5, createdAt: at('2026-03-01T03:00:00Z') },
   { ...base, id: 7, phone: '0903333333', salesUserId: 10, createdById: 5, createdAt: at('2026-03-02T03:00:00Z') },
   { ...base, id: 13, phone: '0904444444', salesUserId: 10, createdById: 5, createdAt: at('2026-09-01T03:00:00Z') },
@@ -107,6 +139,21 @@ const USERS = [
   { id: 6, name: 'Nhân viên 6' },
   { id: 10, name: 'Sales 10' },
   { id: 11, name: 'Sales 11' },
+  { id: 20, name: 'Marketing 20' },
+  { id: 21, name: 'Marketing 21' },
+];
+
+/**
+ * Membership giả cho cụm SĐT (0901111111: id 1,2,3 / 0902222222: id 4,5).
+ * id2 còn 1 dòng joined=false (Nhóm Ba) để kiểm tra bị loại đúng quy ước "Đã tham gia nhóm".
+ */
+const MEMBERSHIPS: Ms[] = [
+  { customerId: 1, groupId: 1, groupName: 'Nhóm Một', joined: true },
+  { customerId: 2, groupId: 2, groupName: 'Nhóm Hai', joined: true },
+  { customerId: 2, groupId: 3, groupName: 'Nhóm Ba', joined: false },
+  { customerId: 3, groupId: 2, groupName: 'Nhóm Hai', joined: true },
+  { customerId: 4, groupId: 1, groupName: 'Nhóm Một', joined: true },
+  { customerId: 5, groupId: 1, groupName: 'Nhóm Một', joined: true },
 ];
 
 describe('date helpers', () => {
@@ -267,5 +314,82 @@ describe('CustomersInvalidStatsService.getStats', () => {
     const res = await service.getStats(1, 'admin', null, 'duplicate_phone', '2026-09-22', '2026-09-28');
     expect(res.overview.duplicate_phone.redundant).toBe(3);
     expect(res.futureCreatedCount).toBe(2);
+  });
+});
+
+describe('CustomersInvalidStatsService.getStats - Marketing & Nhóm liên kết', () => {
+  beforeEach(() => {
+    jest.useFakeTimers({ now: new Date('2026-09-28T05:00:00Z'), doNotFake: ['nextTick', 'setImmediate', 'setTimeout', 'clearTimeout'] });
+  });
+  afterEach(() => jest.useRealTimers());
+
+  it('phân loại cụm theo Marketing và theo nhóm liên kết (chỉ tính joined = true)', async () => {
+    const { service } = makeService(DATA, USERS, MEMBERSHIPS);
+    const d = (await service.getStats(1, 'admin', null, 'duplicate_phone', '2026-09-22', '2026-09-28')).duplicate!;
+
+    // Cụm 0901111111: Marketing 20 (id1) + 21 (id2,3) -> khác nhau. Cụm 0902222222: chỉ Marketing 20.
+    expect(d.crossMarketingClusters).toBe(1);
+    expect(d.sameMarketingClusters).toBe(1);
+    expect(d.noMarketingClusters).toBe(0);
+    // Cụm 0901111111: nhóm 1 (id1) + nhóm 2 (id2,3; nhóm 3 chưa vào nên bỏ) -> 2 nhóm khác nhau.
+    // Cụm 0902222222: chỉ nhóm 1 (id4, id5).
+    expect(d.crossGroupClusters).toBe(1);
+    expect(d.singleGroupClusters).toBe(1);
+    expect(d.noGroupClusters).toBe(0);
+  });
+
+  it('Top Marketing tạo nhiều bản dư nhất + thống kê theo từng nhóm + cặp nhóm hay trùng chung khách', async () => {
+    const { service } = makeService(DATA, USERS, MEMBERSHIPS);
+    const d = (await service.getStats(1, 'admin', null, 'duplicate_phone', '2026-09-22', '2026-09-28')).duplicate!;
+
+    // Bản dư trong kỳ: id2,id3 (Marketing 21, cụm 0901111111) + id5 (Marketing 20, cụm 0902222222).
+    expect(d.unassignedMarketingRedundant).toBe(0);
+    expect(d.topMarketers).toEqual([
+      { userId: 21, name: 'Marketing 21', redundantCount: 2, clusterCount: 1 },
+      { userId: 20, name: 'Marketing 20', redundantCount: 1, clusterCount: 1 },
+    ]);
+    // Nhóm 1: có mặt ở CẢ 2 cụm (clusterCount 2), bản dư chỉ id5 (redundantCount 1).
+    // Nhóm 2: chỉ ở cụm 0901111111 (clusterCount 1), bản dư id2+id3 (redundantCount 2).
+    expect(d.groupStats).toEqual([
+      { groupId: 1, name: 'Nhóm Một', clusterCount: 2, redundantCount: 1 },
+      { groupId: 2, name: 'Nhóm Hai', clusterCount: 1, redundantCount: 2 },
+    ]);
+    expect(d.groupPairs).toEqual([
+      { groupAId: 1, groupAName: 'Nhóm Một', groupBId: 2, groupBName: 'Nhóm Hai', clusterCount: 1 },
+    ]);
+    expect(d.topGroups[0]).toMatchObject({
+      key: '0901111111',
+      distinctMarketing: 2,
+      marketingNames: ['Marketing 20', 'Marketing 21'],
+      distinctGroups: 2,
+      groupNames: ['Nhóm Một', 'Nhóm Hai'],
+    });
+  });
+
+  it('bản dư CHƯA gán Marketing được đếm riêng (unassignedMarketingRedundant), không quy nhầm cho ai', async () => {
+    const noMkt = DATA.map((c) => (c.id === 3 ? { ...c, marketingUserId: null } : c));
+    const { service } = makeService(noMkt, USERS, MEMBERSHIPS);
+    const d = (await service.getStats(1, 'admin', null, 'duplicate_phone', '2026-09-22', '2026-09-28')).duplicate!;
+    expect(d.unassignedMarketingRedundant).toBe(1);
+    expect(d.topMarketers.find((m) => m.userId === 21)?.redundantCount).toBe(1);
+  });
+
+  it('chỉ nạp nhóm liên kết cho loại ĐANG xem chi tiết - loại lỗi khác và kỳ liền trước không truy vấn membership', async () => {
+    const { service, membershipQb } = makeService(DATA, USERS, MEMBERSHIPS);
+    await service.getStats(1, 'admin', null, 'missing_phone', '2026-09-22', '2026-09-28');
+    expect(membershipQb).not.toHaveBeenCalled();
+
+    const again = makeService(DATA, USERS, MEMBERSHIPS);
+    await again.service.getStats(1, 'admin', null, 'duplicate_phone', '2026-09-22', '2026-09-28');
+    // 1 lần cho phone của kỳ HIỆN TẠI (kỳ liền trước không cần nhóm; email song song cũng không được chọn).
+    expect(again.membershipQb).toHaveBeenCalledTimes(1);
+  });
+
+  it('không có membership nào: mọi cụm rơi vào noGroupClusters, groupStats/groupPairs rỗng', async () => {
+    const { service } = makeService(DATA, USERS, []);
+    const d = (await service.getStats(1, 'admin', null, 'duplicate_phone', '2026-09-22', '2026-09-28')).duplicate!;
+    expect(d.noGroupClusters).toBe(2);
+    expect(d.groupStats).toEqual([]);
+    expect(d.groupPairs).toEqual([]);
   });
 });

@@ -4636,3 +4636,24 @@ khi bị xoá tay. Đây là 1 anti-pattern thật (dù đo thử với payload 
 > Không có migration/schema. Chưa test trên MySQL/trình duyệt thật (service test bằng fake QueryBuilder). Kỳ tối đa 366 ngày.
 
 ---
+
+## [2026-09-28 12:35] | invalid-data Thống kê: thêm phân tích trùng theo Marketing + theo Nhóm liên kết | [Status: Success — BE tsc/nest build sạch, jest full 1031/1031 (+5 test mới); FE next build OK, vitest 137/137, tsc chỉ còn 5 lỗi có sẵn không liên quan (logo.png x4, CountBadge styled-jsx)]
+
+**Actor:** Agent (làm trên `origin/main` HEAD `9bc26f1`)
+
+**Bối cảnh:** Người dùng báo 1 nguyên nhân phổ biến gây trùng khách là Marketing (hoặc người nhập data khác) nhập lại CÙNG 1 khách mỗi khi khách đó được thêm vào 1 nhóm liên kết mới (1 khách nằm ≥2 nhóm). Tab "Thống kê" trước đó mới chỉ phân tích theo Sales (`crossSalesGroups`), chưa có Marketing/Nhóm. Một phiên Claude khác trước đó đã thiết kế + chạy thử hướng này trên MySQL/jest local nhưng **chưa từng commit/push** — đã verify lại bằng cách đọc code thật trên `origin/main` (không có field nào của Marketing/Nhóm trong service) trước khi làm tiếp, không tin transcript cũ.
+
+**Files Changed:**
+- `backend/src/modules/customers/customers-invalid-stats.service.ts` — `analyzeDuplicates()` nhận thêm `withGroups` (chỉ join `customer_group_memberships` cho loại lỗi ĐANG xem chi tiết, không quét cho loại còn lại/kỳ liền trước — giữ đúng tinh thần "chỉ truy vấn phần cần cho kỳ đang chọn" đã ghi trong docblock cũ); thêm `attachGroups()` nạp nhóm "ĐÃ VÀO" (`joined = true`, đúng quy ước có sẵn ở `customers.service.ts`) cho các thành viên cụm trùng. `buildDuplicateDetail()` tính thêm: `crossMarketingClusters/sameMarketingClusters/noMarketingClusters`, `crossGroupClusters/singleGroupClusters/noGroupClusters`, `unassignedMarketingRedundant`, `topMarketers`, `groupStats` (tối đa `STATS_TOP_GROUPS`=20), `groupPairs`; mở rộng `topGroups` với `distinctMarketing/marketingNames/distinctGroups/groupNames`.
+- `backend/src/modules/customers/customers-invalid-stats.service.spec.ts` — fixtures thêm `marketingUserId` + fake `membershipRepo`/`Ms[]`; 5 test mới (phân loại Marketing/Nhóm theo `joined=true`, Top Marketing + groupStats + groupPairs đúng số, bản dư chưa gán Marketing không quy nhầm, chỉ query membership cho đúng loại đang xem, không có membership -> mọi cụm vào `noGroupClusters`).
+- `frontend/src/lib/api/customers.api.ts` — `DuplicateStatsDetail` khớp field mới ở BE.
+- `frontend/src/components/customers/InvalidDataStatsTab.tsx` — thêm 2 KPI card (Trùng khác Marketing, Khách nằm nhiều nhóm) + alert bản dư chưa gán Marketing; 2 pie chart mức độ nghiêm trọng (Marketing, Nhóm liên kết); bar chart Top Marketing; bảng "Nhóm liên kết bị trùng khách nhiều nhất" (`groupStats`) + bảng "Cặp nhóm hay trùng chung khách" (`groupPairs`); bảng Top cụm thêm 2 cột (Marketing phụ trách, Nhóm liên kết).
+
+**Root Cause:** Không phải bug fix — tính năng mới theo yêu cầu người dùng (thống kê hiện tại thiếu chiều Marketing/Nhóm liên kết khi phân tích nguyên nhân trùng).
+
+**Solution:** Xem "Files Changed" ở trên.
+
+**Notes:**
+> Không có migration/schema mới — `marketingUserId` (customer.entity.ts) và `customer_group_memberships` đã có sẵn từ trước. `attachGroups()` chỉ truy vấn đúng các `customer_id` nằm trong cụm trùng đang xét (không quét toàn bảng membership), chia chunk `KEY_CHUNK_SIZE` như phần còn lại của service. Chưa test trên MySQL/trình duyệt thật (service test bằng fake QueryBuilder/Repository, giống các test cũ trong file). Chưa commit/push — chỉ xuất file `.patch` để người dùng tự áp và review trước khi merge.
+
+---

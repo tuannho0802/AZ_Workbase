@@ -17,6 +17,26 @@ export interface DuplicateStatsDetail {
   maxGroupSize: number;
   crossSalesGroups: number;
   sameSalesGroups: number;
+  /** Cụm có ≥ 2 Marketing (marketingUserId) khác nhau cùng nhập 1 khách. */
+  crossMarketingClusters: number;
+  /** Cụm có bản ghi gán Marketing nhưng chỉ 1 người duy nhất. */
+  sameMarketingClusters: number;
+  /** Cụm mà mọi bản ghi đều chưa gán Marketing phụ trách. */
+  noMarketingClusters: number;
+  /** Cụm có thành viên "đã vào" ≥ 2 nhóm liên kết khác nhau - nguyên nhân phổ biến gây trùng. */
+  crossGroupClusters: number;
+  /** Cụm chỉ nằm trong đúng 1 nhóm liên kết. */
+  singleGroupClusters: number;
+  /** Cụm không có bản ghi nào đã vào nhóm liên kết nào. */
+  noGroupClusters: number;
+  /** Bản dư (trong kỳ) mà bản ghi chưa gán Marketing - không quy được cho ai. */
+  unassignedMarketingRedundant: number;
+  /** Marketing tạo nhiều bản dư nhất trong kỳ (chỉ tính bản ghi đã gán Marketing). */
+  topMarketers: Array<{ userId: number; name: string; redundantCount: number; clusterCount: number }>;
+  /** Từng nhóm liên kết: số cụm trùng có mặt + số bản dư (trong kỳ) thuộc nhóm đó. */
+  groupStats: Array<{ groupId: number; name: string; clusterCount: number; redundantCount: number }>;
+  /** Cặp nhóm liên kết hay "dính" cùng 1 cụm trùng nhất. */
+  groupPairs: Array<{ groupAId: number; groupAName: string; groupBId: number; groupBName: string; clusterCount: number }>;
   sizeDistribution: Array<{ label: string; groups: number }>;
   /** `date` = 'YYYY-MM-DD' (granularity day) hoặc 'YYYY-MM' (month). */
   trend: Array<{ date: string; redundant: number }>;
@@ -27,6 +47,10 @@ export interface DuplicateStatsDetail {
     newInPeriod: number;
     distinctSales: number;
     salesNames: string[];
+    distinctMarketing: number;
+    marketingNames: string[];
+    distinctGroups: number;
+    groupNames: string[];
     latestCreatedAt: string;
   }>;
 }

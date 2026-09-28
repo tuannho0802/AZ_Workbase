@@ -299,6 +299,17 @@ function DuplicateDetail({ d, period, label, dupType, loading, onOpenList }: Det
     { name: 'Trùng khác Sales', value: d.crossSalesGroups, color: COLORS.danger },
     { name: 'Cùng Sales / chưa gán', value: d.sameSalesGroups, color: COLORS.warning },
   ].filter((x) => x.value > 0);
+  const marketingSeverityData = [
+    { name: 'Trùng khác Marketing', value: d.crossMarketingClusters, color: COLORS.danger },
+    { name: 'Cùng 1 Marketing', value: d.sameMarketingClusters, color: COLORS.warning },
+    { name: 'Chưa gán Marketing', value: d.noMarketingClusters, color: COLORS.muted },
+  ].filter((x) => x.value > 0);
+  const groupSeverityData = [
+    { name: 'Khách nằm ≥2 nhóm', value: d.crossGroupClusters, color: COLORS.danger },
+    { name: 'Chỉ 1 nhóm', value: d.singleGroupClusters, color: COLORS.warning },
+    { name: 'Chưa vào nhóm nào', value: d.noGroupClusters, color: COLORS.muted },
+  ].filter((x) => x.value > 0);
+  const topMarketersHeight = Math.max(180, d.topMarketers.length * 34 + 40);
 
   const prev = d.previousRedundantCount;
   const delta = prev == null ? null : d.redundantCount - prev;
@@ -345,6 +356,42 @@ function DuplicateDetail({ d, period, label, dupType, loading, onOpenList }: Det
             {r.distinctSales >= 2 && (
               <Tooltip title="Nhiều Sales cùng phụ trách 1 khách - nguy cơ 2 Sales cùng chăm 1 khách mà không biết.">
                 <Tag color="red" icon={<WarningOutlined />}>Khác Sales</Tag>
+              </Tooltip>
+            )}
+          </Space>
+        ),
+    },
+    {
+      title: 'Marketing phụ trách',
+      key: 'marketing',
+      render: (_, r) =>
+        r.marketingNames.length === 0 ? (
+          <Text type="secondary">Chưa gán</Text>
+        ) : (
+          <Space size={[0, 4]} wrap>
+            {r.marketingNames.map((n) => <Tag key={n}>{n}</Tag>)}
+            {r.distinctMarketing > r.marketingNames.length && <Tag>+{r.distinctMarketing - r.marketingNames.length}</Tag>}
+            {r.distinctMarketing >= 2 && (
+              <Tooltip title="Nhiều Marketing cùng nhập 1 khách - nguyên nhân phổ biến của trùng data.">
+                <Tag color="red" icon={<WarningOutlined />}>Khác Marketing</Tag>
+              </Tooltip>
+            )}
+          </Space>
+        ),
+    },
+    {
+      title: 'Nhóm liên kết',
+      key: 'groups',
+      render: (_, r) =>
+        r.groupNames.length === 0 ? (
+          <Text type="secondary">Chưa vào nhóm</Text>
+        ) : (
+          <Space size={[0, 4]} wrap>
+            {r.groupNames.map((n) => <Tag key={n} color="blue">{n}</Tag>)}
+            {r.distinctGroups > r.groupNames.length && <Tag>+{r.distinctGroups - r.groupNames.length}</Tag>}
+            {r.distinctGroups >= 2 && (
+              <Tooltip title="Khách nằm trong nhiều nhóm liên kết - thường bị nhập lại mỗi khi vào nhóm mới.">
+                <Tag color="purple">Nhiều nhóm</Tag>
               </Tooltip>
             )}
           </Space>
@@ -429,7 +476,44 @@ function DuplicateDetail({ d, period, label, dupType, loading, onOpenList }: Det
             />
           </Card>
         </Col>
+        <Col xs={12} md={8} xl={{ flex: '1 1 0' }}>
+          <Card size="small" loading={loading}>
+            <Statistic
+              title={
+                <Tooltip title="Cụm có từ 2 Marketing (nhân viên phụ trách nhập/chăm data) khác nhau trở lên - nguyên nhân phổ biến của trùng khách.">
+                  Trùng khác Marketing
+                </Tooltip>
+              }
+              value={d.crossMarketingClusters}
+              suffix={`/ ${fmt(d.groupCount)} cụm`}
+              styles={{ content: { color: d.crossMarketingClusters > 0 ? COLORS.danger : COLORS.ok } }}
+            />
+          </Card>
+        </Col>
+        <Col xs={12} md={8} xl={{ flex: '1 1 0' }}>
+          <Card size="small" loading={loading}>
+            <Statistic
+              title={
+                <Tooltip title="Cụm có thành viên đã tham gia từ 2 nhóm liên kết khác nhau - thường do 1 khách được nhập lại mỗi khi vào nhóm mới.">
+                  Khách nằm nhiều nhóm
+                </Tooltip>
+              }
+              value={d.crossGroupClusters}
+              suffix={`/ ${fmt(d.groupCount)} cụm`}
+              styles={{ content: { color: d.crossGroupClusters > 0 ? COLORS.danger : COLORS.ok } }}
+            />
+          </Card>
+        </Col>
       </Row>
+
+      {d.unassignedMarketingRedundant > 0 && (
+        <Alert
+          type="warning"
+          showIcon
+          title={`${fmt(d.unassignedMarketingRedundant)} bản ghi trùng phát sinh trong kỳ chưa gán Marketing phụ trách`}
+          description="Không quy được trách nhiệm nhắc nhở cho ai - cân nhắc gán Marketing cho các bản ghi này trước khi rà soát."
+        />
+      )}
 
       {/* 3. Xu hướng + mức nghiêm trọng */}
       <Row gutter={[12, 12]}>
@@ -501,6 +585,68 @@ function DuplicateDetail({ d, period, label, dupType, loading, onOpenList }: Det
         </Col>
       </Row>
 
+      {/* 3b. Mức độ nghiêm trọng theo Marketing + theo Nhóm liên kết */}
+      <Row gutter={[12, 12]}>
+        <Col xs={24} xl={12}>
+          <Card size="small" loading={loading} title="Mức độ nghiêm trọng (theo Marketing)">
+            <Text type="secondary" style={{ fontSize: 12 }}>
+              1 khách được nhiều Marketing khác nhau nhập là nguyên nhân phổ biến gây trùng - cần nhắc Marketing kiểm tra khách đã tồn tại trước khi nhập.
+            </Text>
+            {marketingSeverityData.length === 0 ? (
+              <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} />
+            ) : (
+              <ResponsiveContainer width="100%" height={240}>
+                <PieChart>
+                  <Pie
+                    data={marketingSeverityData}
+                    dataKey="value"
+                    nameKey="name"
+                    innerRadius={55}
+                    outerRadius={90}
+                    paddingAngle={2}
+                    isAnimationActive={false}
+                    label={(e) => String(e.value)}
+                  >
+                    {marketingSeverityData.map((s) => <Cell key={s.name} fill={s.color} />)}
+                  </Pie>
+                  <ChartTooltip formatter={(v) => [`${fmt(Number(v))} cụm`, '']} />
+                  <Legend />
+                </PieChart>
+              </ResponsiveContainer>
+            )}
+          </Card>
+        </Col>
+        <Col xs={24} xl={12}>
+          <Card size="small" loading={loading} title="Mức độ nghiêm trọng (theo Nhóm liên kết)">
+            <Text type="secondary" style={{ fontSize: 12 }}>
+              Cụm mà thành viên đã vào ≥ 2 nhóm khác nhau - dấu hiệu 1 khách bị nhập lại mỗi lần vào nhóm mới.
+            </Text>
+            {groupSeverityData.length === 0 ? (
+              <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} />
+            ) : (
+              <ResponsiveContainer width="100%" height={240}>
+                <PieChart>
+                  <Pie
+                    data={groupSeverityData}
+                    dataKey="value"
+                    nameKey="name"
+                    innerRadius={55}
+                    outerRadius={90}
+                    paddingAngle={2}
+                    isAnimationActive={false}
+                    label={(e) => String(e.value)}
+                  >
+                    {groupSeverityData.map((s) => <Cell key={s.name} fill={s.color} />)}
+                  </Pie>
+                  <ChartTooltip formatter={(v) => [`${fmt(Number(v))} cụm`, '']} />
+                  <Legend />
+                </PieChart>
+              </ResponsiveContainer>
+            )}
+          </Card>
+        </Col>
+      </Row>
+
       {/* 4. Top người nhập trùng + phân bố kích thước cụm */}
       <Row gutter={[12, 12]}>
         <Col xs={24} xl={12}>
@@ -552,9 +698,110 @@ function DuplicateDetail({ d, period, label, dupType, loading, onOpenList }: Det
         </Col>
       </Row>
 
+      {/* 4b. Top Marketing tạo nhiều bản dư nhất + Nhóm liên kết hay bị trùng khách nhiều nhất */}
+      <Row gutter={[12, 12]}>
+        <Col xs={24} xl={12}>
+          <Card size="small" loading={loading} title="Marketing nhập nhiều bản ghi trùng nhất (trong kỳ)">
+            <Text type="secondary" style={{ fontSize: 12 }}>
+              Đếm bản dư (nhập SAU bản gốc) do Marketing phụ trách - thường do 1 khách được nhập lại mỗi lần vào nhóm mới.
+            </Text>
+            {d.topMarketers.length === 0 ? (
+              <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="Không có bản dư nào đã gán Marketing trong kỳ" />
+            ) : (
+              <ResponsiveContainer width="100%" height={topMarketersHeight}>
+                <BarChart data={d.topMarketers} layout="vertical" margin={{ top: 8, right: 24, left: 8, bottom: 0 }} maxBarSize={22}>
+                  <CartesianGrid strokeDasharray="3 3" horizontal={false} />
+                  <XAxis type="number" allowDecimals={false} domain={COUNT_DOMAIN} tick={{ fontSize: 12 }} />
+                  <YAxis type="category" dataKey="name" width={130} tick={{ fontSize: 12 }} />
+                  <ChartTooltip
+                    formatter={(v, n, p) => [`${fmt(Number(v))} bản (${p.payload.clusterCount} cụm)`, 'Bản ghi trùng']}
+                  />
+                  <Bar
+                    dataKey="redundantCount"
+                    name="Bản ghi trùng"
+                    fill={COLORS.danger}
+                    radius={[0, 4, 4, 0]}
+                    label={{ position: 'right', fontSize: 12 }}
+                    isAnimationActive={false}
+                  />
+                </BarChart>
+              </ResponsiveContainer>
+            )}
+          </Card>
+        </Col>
+        <Col xs={24} xl={12}>
+          <Card size="small" loading={loading} title="Nhóm liên kết bị trùng khách nhiều nhất">
+            <Text type="secondary" style={{ fontSize: 12 }}>
+              Số cụm trùng có ≥ 1 khách đã tham gia nhóm này + số bản dư (trong kỳ) thuộc nhóm - móc nối được data trùng theo từng nhóm.
+            </Text>
+            {d.groupStats.length === 0 ? (
+              <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="Không có cụm trùng nào có khách đã vào nhóm liên kết" />
+            ) : (
+              <Table
+                size="small"
+                pagination={false}
+                rowKey="groupId"
+                dataSource={d.groupStats}
+                scroll={{ y: Math.min(320, topMarketersHeight) }}
+                columns={[
+                  { title: 'Nhóm liên kết', dataIndex: 'name', key: 'name' },
+                  {
+                    title: <Tooltip title="Số cụm trùng có ≥ 1 khách đã vào nhóm này">Số cụm</Tooltip>,
+                    dataIndex: 'clusterCount',
+                    key: 'clusterCount',
+                    width: 90,
+                    align: 'right',
+                    sorter: (a, b) => a.clusterCount - b.clusterCount,
+                  },
+                  {
+                    title: <Tooltip title="Bản dư phát sinh trong kỳ thuộc nhóm này">Bản dư (kỳ)</Tooltip>,
+                    dataIndex: 'redundantCount',
+                    key: 'redundantCount',
+                    width: 110,
+                    align: 'right',
+                    render: (v: number) => <Text style={{ color: v > 0 ? COLORS.warning : undefined }}>{fmt(v)}</Text>,
+                  },
+                ]}
+              />
+            )}
+          </Card>
+        </Col>
+      </Row>
+
+      {/* 4c. Cặp nhóm hay bị trùng chung khách */}
+      {d.groupPairs.length > 0 && (
+        <Card
+          size="small"
+          loading={loading}
+          title="Cặp nhóm liên kết hay trùng chung khách nhất"
+          extra={<Tooltip title="Số cụm trùng có mặt ở CẢ 2 nhóm - gợi ý 2 nhóm mà Marketing hay nhập trùng khách qua lại.">
+            <Text type="secondary" style={{ fontSize: 12 }}>Móc nối data theo cặp nhóm</Text>
+          </Tooltip>}
+        >
+          <Table
+            size="small"
+            pagination={false}
+            rowKey={(r) => `${r.groupAId}-${r.groupBId}`}
+            dataSource={d.groupPairs}
+            columns={[
+              { title: 'Nhóm A', dataIndex: 'groupAName', key: 'a', render: (v: string) => <Tag color="blue">{v}</Tag> },
+              { title: 'Nhóm B', dataIndex: 'groupBName', key: 'b', render: (v: string) => <Tag color="purple">{v}</Tag> },
+              {
+                title: 'Số cụm trùng chung',
+                dataIndex: 'clusterCount',
+                key: 'clusterCount',
+                width: 150,
+                align: 'right',
+                render: (v: number) => <Tag color={v >= 2 ? 'red' : 'gold'}>{v}</Tag>,
+              },
+            ]}
+          />
+        </Card>
+      )}
+
       {/* 5. Top cụm trùng */}
       <Card size="small" loading={loading} title={`Top ${d.topGroups.length} ${label.toLowerCase()} trùng nhiều nhất`}>
-        <Table columns={columns} dataSource={d.topGroups} rowKey="key" size="small" pagination={false} scroll={{ x: 900 }} />
+        <Table columns={columns} dataSource={d.topGroups} rowKey="key" size="small" pagination={false} scroll={{ x: 1500 }} />
       </Card>
     </div>
   );
