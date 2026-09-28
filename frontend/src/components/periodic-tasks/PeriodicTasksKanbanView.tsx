@@ -1,7 +1,8 @@
 'use client';
 
 import { useMemo, useState } from 'react';
-import { App, Badge, Empty, Spin, Typography } from 'antd';
+import { App, Badge, Button, Empty, Segmented, Spin, Switch, Tooltip, Typography } from 'antd';
+import { DownOutlined, UpOutlined } from '@ant-design/icons';
 import {
     CollisionDetection,
     DndContext,
@@ -22,7 +23,8 @@ import { PeriodicTask } from '@/lib/api/periodic-tasks.api';
 import { PeriodicTaskStatus } from '@/lib/api/periodic-task-statuses.api';
 import { useUpdatePeriodicTask } from '@/lib/hooks/usePeriodicTasks';
 import { getApiErrorMessage } from '@/lib/utils/error-message.util';
-import { TaskMiniCard } from './TaskMiniCard';
+import { TaskCardDensity, TaskMiniCard } from './TaskMiniCard';
+import { getChecklistProgress } from '@/lib/utils/checklistProgress';
 import { TaskActionsBar, TaskActionsBarProps } from './TaskActionsBar';
 import { TaskChainInfo } from '@/lib/utils/taskLinkChains';
 
@@ -47,6 +49,27 @@ export interface PeriodicTasksKanbanViewProps extends ActionHandlers {
     chains?: Map<number, TaskChainInfo>;
     resolveChainTask?: (taskId: number) => Pick<PeriodicTask, 'title' | 'periodStartDate'> | undefined;
 }
+
+/**
+ * Chế độ mật độ toàn Kanban (MỚI 2026-09-28 - Cột "Hoàn thành" quá nhiều Task kéo dài):
+ *  - 'auto'      : theo tiến độ checklist - 100% => 'mini' (thu gọn 1-2 dòng); từ 50% đến <100% => 'compact'
+ *                  (ẩn Mô tả/Ghi chú + nút thao tác chỉ icon); dưới 50% hoặc chưa có checklist => 'full' (nổi bật).
+ *  - 'expanded'  : mọi Task 'full'.
+ *  - 'collapsed' : mọi Task 'mini'.
+ * Từng Task vẫn tự mở/thu được bằng nút mũi tên ở góc card (ghi đè tạm, reset khi đổi chế độ).
+ */
+type KanbanDensityMode = 'auto' | 'expanded' | 'collapsed';
+
+export function getAutoDensity(task: PeriodicTask): TaskCardDensity {
+    const progress = getChecklistProgress(task);
+    if (!progress) return 'full';
+    if (progress.done >= progress.total) return 'mini';
+    if (progress.done * 2 >= progress.total) return 'compact';
+    return 'full';
+}
+
+/** Chiều cao tối đa phần danh sách Task của 1 cột - vượt thì cuộn trong cột thay vì kéo dài cả trang. */
+const COLUMN_MAX_HEIGHT = 'calc(100vh - 300px)';
 
 const TASK_PREFIX = 'task-';
 const COLUMN_PREFIX = 'col-';
@@ -80,6 +103,25 @@ export function PeriodicTasksKanbanView({ tasks, statuses, loading, chains, reso
     // đợi PATCH rồi mới nhảy đúng cột khi query invalidate xong.
     const [pendingOverride, setPendingOverride] = useState<Record<number, number>>({});
     const [activeTaskId, setActiveTaskId] = useState<number | null>(null);
+
+    // Mật độ hiển thị: chế độ chung + ghi đè theo từng Task + thanh nút thao tác chỉ-icon.
+    const [densityMode, setDensityMode] = useState<KanbanDensityMode>('auto');
+    const [densityOverride, setDensityOverride] = useState<Record<number, TaskCardDensity>>({});
+    const [iconActions, setIconActions] = useState(false);
+
+    const densityOf = (task: PeriodicTask): TaskCardDensity => {
+        const override = densityOverride[task.id];
+        if (override) return override;
+        if (densityMode === 'expanded') return 'full';
+        if (densityMode === 'collapsed') return 'mini';
+        return getAutoDensity(task);
+    };
+    const toggleTaskDensity = (task: PeriodicTask) =>
+        setDensityOverride((prev) => ({ ...prev, [task.id]: densityOf(task) === 'mini' ? 'full' : 'mini' }));
+    const changeDensityMode = (mode: KanbanDensityMode) => {
+        setDensityMode(mode);
+        setDensityOverride({});
+    };
 
     const effectiveStatusId = (task: PeriodicTask) => pendingOverride[task.id] ?? task.statusId;
 
@@ -209,6 +251,24 @@ export function PeriodicTasksKanbanView({ tasks, statuses, loading, chains, reso
             onDragStart={handleDragStart}
             onDragEnd={handleDragEnd}
         >
+            <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 12, marginBottom: 12 }}>
+                <Tooltip title="Tự động: Checklist 100% thu gọn; từ 50% gọn vừa; dưới 50% hiển thị đầy đủ">
+                    <Segmented
+                        size="small"
+                        value={densityMode}
+                        onChange={(v) => changeDensityMode(v as KanbanDensityMode)}
+                        options={[
+                            { label: 'Tự động', value: 'auto' },
+                            { label: 'Mở rộng tất cả', value: 'expanded' },
+                            { label: 'Thu gọn tất cả', value: 'collapsed' },
+                        ]}
+                    />
+                </Tooltip>
+                <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+                    <Switch size="small" checked={iconActions} onChange={setIconActions} />
+                    <Text type="secondary" style={{ fontSize: 12 }}>Nút thao tác gọn (chỉ icon)</Text>
+                </span>
+            </div>
             <div style={{ display: 'flex', gap: 12, overflowX: 'auto', paddingBottom: 12 }}>
                 {columns.map((status) => {
                     const columnTasks = tasksByStatus.get(status.id) ?? [];
@@ -218,6 +278,9 @@ export function PeriodicTasksKanbanView({ tasks, statuses, loading, chains, reso
                                 <KanbanCard
                                     key={task.id}
                                     task={task}
+                                    density={densityOf(task)}
+                                    iconActions={iconActions}
+                                    onToggleDensity={() => toggleTaskDensity(task)}
                                     disabled={!canDragTask(task)}
                                     actions={actions}
                                     chainInfo={chains?.get(task.id)}
@@ -234,7 +297,13 @@ export function PeriodicTasksKanbanView({ tasks, statuses, loading, chains, reso
                 })}
             </div>
             <DragOverlay>
-                {activeTask && <TaskMiniCard task={activeTask} style={{ width: 280, boxShadow: '0 4px 12px rgba(0,0,0,0.15)' }} />}
+                {activeTask && (
+                    <TaskMiniCard
+                        task={activeTask}
+                        density={densityOf(activeTask)}
+                        style={{ width: 280, boxShadow: '0 4px 12px rgba(0,0,0,0.15)' }}
+                    />
+                )}
             </DragOverlay>
         </DndContext>
     );
@@ -271,7 +340,7 @@ function KanbanColumn({
                 <Badge count={taskIds.length} color={status.color} showZero />
             </div>
             <SortableContext items={taskIds} strategy={verticalListSortingStrategy}>
-                <div style={{ minHeight: 40 }}>{children}</div>
+                <div style={{ minHeight: 40, maxHeight: COLUMN_MAX_HEIGHT, overflowY: 'auto', paddingRight: 2 }}>{children}</div>
             </SortableContext>
         </div>
     );
@@ -279,12 +348,18 @@ function KanbanColumn({
 
 function KanbanCard({
     task,
+    density,
+    iconActions,
+    onToggleDensity,
     disabled,
     actions,
     chainInfo,
     resolveChainTask,
 }: {
     task: PeriodicTask;
+    density: TaskCardDensity;
+    iconActions: boolean;
+    onToggleDensity: () => void;
     disabled: boolean;
     actions: ActionHandlers;
         chainInfo?: TaskChainInfo;
@@ -308,10 +383,27 @@ function KanbanCard({
         >
             <TaskMiniCard
                 task={task}
+                density={density}
+                showProgress
                 chainInfo={chainInfo}
                 resolveChainTask={resolveChainTask}
+                extra={
+                    <Tooltip title={density === 'mini' ? 'Mở rộng' : 'Thu gọn'}>
+                        <Button
+                            type="text"
+                            size="small"
+                            icon={density === 'mini' ? <DownOutlined /> : <UpOutlined />}
+                            // Chặn dnd-kit bắt đầu kéo khi bấm nút này.
+                            onPointerDown={(e) => e.stopPropagation()}
+                            onClick={(e) => {
+                                e.stopPropagation();
+                                onToggleDensity();
+                            }}
+                        />
+                    </Tooltip>
+                }
                 footer={
-                    <TaskActionsBar
+                    density === 'mini' ? undefined : <TaskActionsBar
                         task={task}
                         canEdit={actions.canEdit}
                         canEditLocked={actions.canEditLocked}
@@ -327,6 +419,7 @@ function KanbanCard({
                         onDelete={actions.onDelete}
                         unlockLoading={actions.isUnlocking(task.id)}
                         wrap
+                        iconOnly={iconActions || density === 'compact'}
                     />
                 }
             />

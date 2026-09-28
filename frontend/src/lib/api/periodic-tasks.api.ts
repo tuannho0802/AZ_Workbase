@@ -245,6 +245,8 @@ export interface PeriodicTaskFilterParams {
   primaryAssigneeId?: number;
   /** Phụ trách = CHÍNH hoặc PHỤ (BE `assigneeId`) - dùng cho bộ lọc "Phụ trách" của trang. */
   assigneeId?: number;
+  /** Chỉ lọc Phụ trách PHỤ (tách riêng khỏi `assigneeId`); kết hợp AND với `primaryAssigneeId`. */
+  secondaryAssigneeId?: number;
   departmentId?: number;
   search?: string;
 }

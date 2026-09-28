@@ -99,7 +99,15 @@ export default function TaskPerformancePage() {
   // đổi UI chọn từ "gõ tên" sang "chọn từ danh sách nhân viên đang có Task
   // trong kỳ" (options lấy từ chính `rows`, không lấy toàn bộ nhân viên công
   // ty - tránh cho chọn được người chắc chắn sẽ ra bảng rỗng).
-  const [selectedUserIds, setSelectedUserIds] = useState<number[]>([]);
+  // MỚI (2026-09-28): tách thành 2 dropdown riêng "Phụ trách chính" / "Phụ trách phụ".
+  // `selectedUserIds` (dùng ở phần còn lại của trang: bảng/Card/MetricTasksModal) = HỢP của 2 ô -
+  // vẫn thu hẹp theo đúng nhân viên đã chọn, không cần đổi API/BE.
+  const [primaryUserIds, setPrimaryUserIds] = useState<number[]>([]);
+  const [secondaryUserIds, setSecondaryUserIds] = useState<number[]>([]);
+  const selectedUserIds = useMemo(
+    () => Array.from(new Set([...primaryUserIds, ...secondaryUserIds])),
+    [primaryUserIds, secondaryUserIds],
+  );
   const [drawerUser, setDrawerUser] = useState<{ id: number; name: string } | null>(null);
   // Card đang được click -> mở mini table Task + checklist (xem `MetricTasksModal`).
   const [metricModal, setMetricModal] = useState<{ key: PerformanceMetric; title: string } | null>(null);
@@ -139,6 +147,17 @@ export default function TaskPerformancePage() {
     if (me && !opts.some((o) => o.value === me.id)) opts.push({ value: me.id, label: me.name, user: me });
     return opts;
   }, [rows, userById, currentUserId]);
+
+  // Chính: nhân viên có Task Phụ trách CHÍNH trong kỳ; Phụ: nhân viên có Task Phụ trách PHỤ trong kỳ
+  // (giữ lại các id đang chọn dù không còn khớp, để Select không hiện số id trần).
+  const primaryOptions = useMemo(() => {
+    const ids = new Set(rows.filter((r) => (r.total ?? 0) > 0).map((r) => r.userId));
+    return employeeOptions.filter((o) => ids.has(o.value) || primaryUserIds.includes(o.value));
+  }, [employeeOptions, rows, primaryUserIds]);
+  const secondaryOptions = useMemo(() => {
+    const ids = new Set(rows.filter((r) => (r.secondaryTotal ?? 0) > 0).map((r) => r.userId));
+    return employeeOptions.filter((o) => ids.has(o.value) || secondaryUserIds.includes(o.value));
+  }, [employeeOptions, rows, secondaryUserIds]);
 
   const filteredRows = useMemo(
     () => (selectedUserIds.length === 0 ? rows : rows.filter((r) => selectedUserIds.includes(r.userId))),
@@ -533,13 +552,37 @@ export default function TaskPerformancePage() {
                 maxTagCount="responsive"
                 placeholder={
                   <>
-                    <SearchOutlined /> Tìm tên nhân viên...
+                    <SearchOutlined /> Phụ trách chính...
                   </>
                 }
                 style={{ width: '100%' }}
-                value={selectedUserIds}
-                onChange={(v) => setSelectedUserIds(v)}
-                options={employeeOptions}
+                value={primaryUserIds}
+                onChange={(v) => setPrimaryUserIds(v)}
+                options={primaryOptions}
+                notFoundContent={rows.length === 0 ? 'Chưa có nhân viên nào trong kỳ đã chọn' : undefined}
+              />
+            </Col>
+          )}
+          {canSeeOthers && (
+            <Col xs={24} md={6}>
+              <Select
+                mode="multiple"
+                allowClear
+                showSearch
+                optionFilterProp="label"
+                optionLabelProp="label"
+                optionRender={renderUserOption}
+                popupMatchSelectWidth={false}
+                maxTagCount="responsive"
+                placeholder={
+                  <>
+                    <SearchOutlined /> Phụ trách phụ...
+                  </>
+                }
+                style={{ width: '100%' }}
+                value={secondaryUserIds}
+                onChange={(v) => setSecondaryUserIds(v)}
+                options={secondaryOptions}
                 notFoundContent={rows.length === 0 ? 'Chưa có nhân viên nào trong kỳ đã chọn' : undefined}
               />
             </Col>
@@ -551,7 +594,10 @@ export default function TaskPerformancePage() {
                 <Segmented
                   size="small"
                   value={selectedUserIds.length === 1 && selectedUserIds[0] === currentUserId ? 'me' : 'all'}
-                  onChange={(v) => setSelectedUserIds(v === 'me' ? [currentUserId] : [])}
+                  onChange={(v) => {
+                    setPrimaryUserIds(v === 'me' ? [currentUserId] : []);
+                    setSecondaryUserIds([]);
+                  }}
                   options={[
                     { value: 'all', label: viewScope === 'department' ? 'Cả phòng ban' : 'Nhiều nhân viên' },
                     { value: 'me', label: 'Chỉ của tôi' },

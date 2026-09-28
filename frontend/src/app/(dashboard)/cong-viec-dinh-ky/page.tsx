@@ -264,6 +264,10 @@ function PeriodicTasksPageContent() {
             setAssigneeId(user.id);
         }
     }, [user]);
+    // MỚI (2026-09-28): tách riêng 2 dropdown "Phụ trách chính" / "Phụ trách phụ" (kết hợp AND).
+    // Chọn 1 trong 2 => tự bỏ `assigneeId` (chính+phụ mặc định "Của tôi") để 2 kiểu lọc không chồng nhau.
+    const [primaryAssigneeId, setPrimaryAssigneeId] = useState<number | undefined>(undefined);
+    const [secondaryAssigneeId, setSecondaryAssigneeId] = useState<number | undefined>(undefined);
     const [departmentId, setDepartmentId] = useState<number | undefined>(undefined);
     const [dateRange, setDateRangeRaw] = useState<DateRangeTuple>(() => getThisWeekRange());
     // Mọi thay đổi khoảng ngày đi qua đây: không cho rỗng (=> Tuần này) và không cho
@@ -320,6 +324,8 @@ function PeriodicTasksPageContent() {
         setPeriodType(undefined);
         setStatusId(undefined);
         setAssigneeId(undefined);
+        setPrimaryAssigneeId(undefined);
+        setSecondaryAssigneeId(undefined);
         setDepartmentId(undefined);
         setPage(1);
         // Task Năm dài hơn giới hạn 93 ngày -> cắt còn cửa sổ đầu Kỳ hạn (vẫn chứa Task).
@@ -335,11 +341,13 @@ function PeriodicTasksPageContent() {
             periodType,
             statusId,
             assigneeId,
+            primaryAssigneeId,
+            secondaryAssigneeId,
             departmentId,
             dateFrom: dateRange[0].format('YYYY-MM-DD'),
             dateTo: dateRange[1].format('YYYY-MM-DD'),
         }),
-        [page, limit, search, periodType, statusId, assigneeId, departmentId, dateRange],
+        [page, limit, search, periodType, statusId, assigneeId, primaryAssigneeId, secondaryAssigneeId, departmentId, dateRange],
     );
 
     // ---- Phase 8 (PLAN mục Phase 8) - View switcher ----
@@ -372,11 +380,13 @@ function PeriodicTasksPageContent() {
             periodType,
             statusId,
             assigneeId,
+            primaryAssigneeId,
+            secondaryAssigneeId,
             departmentId,
             dateFrom: dateRange[0].format('YYYY-MM-DD'),
             dateTo: dateRange[1].format('YYYY-MM-DD'),
         }),
-        [search, periodType, statusId, assigneeId, departmentId, dateRange],
+        [search, periodType, statusId, assigneeId, primaryAssigneeId, secondaryAssigneeId, departmentId, dateRange],
     );
     const { data: viewData, isLoading: viewLoading, isFetching: viewFetching } = usePeriodicTasks(
         nonTableFilters,
@@ -470,7 +480,7 @@ function PeriodicTasksPageContent() {
     // Reset về trang 1 khi đổi filter (trừ chính page) để tránh trang trống.
     useEffect(() => {
         setPage(1);
-    }, [search, periodType, statusId, assigneeId, departmentId, dateRange]);
+    }, [search, periodType, statusId, assigneeId, primaryAssigneeId, secondaryAssigneeId, departmentId, dateRange]);
 
     // ---- Modal Thêm/Sửa ----
     const [modalOpen, setModalOpen] = useState(false);
@@ -1242,13 +1252,53 @@ function PeriodicTasksPageContent() {
                     />
                 </Col>
                 <Col xs={12} sm={6} md={4}>
+                    <Tooltip title="Công việc mình phụ trách (chính hoặc phụ). Chọn Phụ trách chính/phụ ở bên cạnh sẽ tắt chế độ này.">
+                        <Button
+                            block
+                            type={user && assigneeId === user.id ? 'primary' : 'default'}
+                            onClick={() => {
+                                if (!user) return;
+                                if (assigneeId === user.id) {
+                                    setAssigneeId(undefined);
+                                } else {
+                                    setAssigneeId(user.id);
+                                    setPrimaryAssigneeId(undefined);
+                                    setSecondaryAssigneeId(undefined);
+                                }
+                            }}
+                        >
+                            Của tôi (chính + phụ)
+                        </Button>
+                    </Tooltip>
+                </Col>
+                <Col xs={12} sm={6} md={4}>
                     <Select
                         allowClear
                         showSearch={{ optionFilterProp: 'label' }}
-                        placeholder="Phụ trách (chính + phụ)"
+                        placeholder="Phụ trách chính"
                         style={{ width: '100%' }}
-                        value={assigneeId}
-                        onChange={(v) => setAssigneeId(v)}
+                        value={primaryAssigneeId}
+                        onChange={(v) => {
+                            setPrimaryAssigneeId(v ?? undefined);
+                            setAssigneeId(undefined);
+                        }}
+                        optionLabelProp="label"
+                        optionRender={renderUserOption}
+                        popupMatchSelectWidth={false}
+                        options={users.map((u: any) => ({ value: u.id, label: u.name, user: u }))}
+                    />
+                </Col>
+                <Col xs={12} sm={6} md={4}>
+                    <Select
+                        allowClear
+                        showSearch={{ optionFilterProp: 'label' }}
+                        placeholder="Phụ trách phụ"
+                        style={{ width: '100%' }}
+                        value={secondaryAssigneeId}
+                        onChange={(v) => {
+                            setSecondaryAssigneeId(v ?? undefined);
+                            setAssigneeId(undefined);
+                        }}
                         optionLabelProp="label"
                         optionRender={renderUserOption}
                         popupMatchSelectWidth={false}

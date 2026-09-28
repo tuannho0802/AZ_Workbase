@@ -352,6 +352,7 @@ export class PeriodicTasksService {
       statusId,
       primaryAssigneeId,
       assigneeId,
+      secondaryAssigneeId,
       departmentId,
       search,
     } = filters;
@@ -399,6 +400,13 @@ export class PeriodicTasksService {
         '(task.primaryAssigneeId = :filterAssigneeId OR ' +
         'task.id IN (SELECT psa2.task_id FROM periodic_task_secondary_assignees psa2 WHERE psa2.user_id = :filterAssigneeId))',
         { filterAssigneeId: assigneeId },
+      );
+    }
+    // "Phụ trách PHỤ" riêng (tách khỏi assigneeId chính+phụ). Kết hợp AND với primaryAssigneeId.
+    if (secondaryAssigneeId) {
+      qb.andWhere(
+        'task.id IN (SELECT psa3.task_id FROM periodic_task_secondary_assignees psa3 WHERE psa3.user_id = :filterSecondaryAssigneeId)',
+        { filterSecondaryAssigneeId: secondaryAssigneeId },
       );
     }
     if (departmentId) {

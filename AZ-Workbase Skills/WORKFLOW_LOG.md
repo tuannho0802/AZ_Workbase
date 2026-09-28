@@ -4671,3 +4671,22 @@ khi bị xoá tay. Đây là 1 anti-pattern thật (dù đo thử với payload 
 > Không có migration. Danh sách/đếm KHÔNG lọc theo scope `customers.view` (quản lý nhóm cần thấy đủ thành viên) nên số N luôn khớp mini table. Chưa test trên MySQL/trình duyệt thật. Chưa commit/push.
 
 ---
+
+---
+## [2026-09-28 16:00] | Kanban Task: thu gọn theo tiến độ checklist; tách filter Phụ trách chính/phụ (trang Task + Hiệu suất) | [Status: Success — BE tsc sạch, jest periodic-tasks 190/190 (+2 test); FE next build OK, vitest 141/141 (+4 test), tsc chỉ còn 5 lỗi có sẵn (logo.png x4, CountBadge)]
+
+**Actor:** Agent (làm trên `origin/main` HEAD `ac8ba85`)
+
+**Files Changed:**
+- `frontend/src/components/periodic-tasks/PeriodicTasksKanbanView.tsx` — thanh công cụ: Segmented "Tự động / Mở rộng tất cả / Thu gọn tất cả" + Switch "Nút thao tác gọn (chỉ icon)"; `getAutoDensity()`: checklist 100% → `mini`, 50%..<100% → `compact`, <50% hoặc chưa có checklist → `full`; nút mũi tên thu/mở từng card; phần danh sách trong cột có `maxHeight` + cuộn (cột "Hoàn thành" không còn kéo dài trang).
+- `frontend/src/components/periodic-tasks/TaskMiniCard.tsx` — thêm prop `density` (`full|compact|mini`, mặc định `full` nên Agenda/nơi khác không đổi) + `showProgress` (thanh tiến độ checklist).
+- `frontend/src/components/periodic-tasks/TaskActionsBar.tsx` — thêm prop `iconOnly` (chữ → Tooltip).
+- `frontend/src/app/(dashboard)/cong-viec-dinh-ky/page.tsx` — tách dropdown "Phụ trách chính" / "Phụ trách phụ" + nút "Của tôi (chính + phụ)" (giữ mặc định cũ `assigneeId = user.id`; chọn dropdown nào thì tắt chế độ "Của tôi").
+- `frontend/src/app/(dashboard)/hieu-suat-cong-viec/page.tsx` — 2 dropdown chính/phụ (lọc client-side, options lấy từ `total>0` / `secondaryTotal>0`; `selectedUserIds` = hợp 2 ô nên bảng/Card/MetricTasksModal không đổi).
+- `frontend/src/lib/api/periodic-tasks.api.ts`, `backend/.../dto/periodic-task-filters.dto.ts`, `periodic-tasks.service.ts` (+`.spec.ts`) — thêm `secondaryAssigneeId` (chỉ lọc Phụ trách phụ, AND với `primaryAssigneeId`).
+- `frontend/src/components/periodic-tasks/PeriodicTasksKanbanView.test.ts` — MỚI, test `getAutoDensity`.
+
+**Notes:**
+> Không có migration. Chưa test trên MySQL/trình duyệt thật. Trang Hiệu suất: chọn cả 2 ô = HỢP nhân viên (không phải giao), vì BE tổng hợp theo từng user. Chưa commit/push — chỉ xuất `.patch`.
+
+---

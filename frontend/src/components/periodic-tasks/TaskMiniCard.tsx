@@ -1,6 +1,6 @@
 'use client';
 
-import { Card, Tag, Tooltip, Typography } from 'antd';
+import { Card, Progress, Tag, Tooltip, Typography } from 'antd';
 import { LockOutlined } from '@ant-design/icons';
 import dayjs from 'dayjs';
 import { TaskAssignees } from './TaskAssignees';
@@ -11,6 +11,17 @@ import { TaskTitlePill, TaskChainBadge } from './TaskTitlePill';
 import { TaskChainInfo } from '@/lib/utils/taskLinkChains';
 import { LinkifiedText } from '@/components/common/LinkifiedText';
 import { PeriodTypeTag } from './PeriodTypeTag';
+import { getChecklistProgress, getChecklistTone } from '@/lib/utils/checklistProgress';
+
+const TONE_COLOR = { red: '#ff4d4f', gold: '#faad14', green: '#52c41a' } as const;
+
+/**
+ * Mật độ hiển thị (Kanban, 2026-09-28):
+ *  - 'full'    : đầy đủ (mặc định - Agenda/Table/Kanban Task chưa xong nhiều).
+ *  - 'compact' : ẩn Mô tả/Ghi chú, giữ tiêu đề + thẻ + ngày + phụ trách + thao tác.
+ *  - 'mini'    : 1-2 dòng (tiêu đề + tiến độ checklist + ngày), không có thao tác.
+ */
+export type TaskCardDensity = 'full' | 'compact' | 'mini';
 
 const { Text } = Typography;
 
@@ -40,6 +51,10 @@ export interface TaskMiniCardProps {
     /** Tra tiêu đề/ngày của từng thành viên trong chuỗi (mirror
      * `TaskChainBadgeProps.resolveTask`) - bắt buộc truyền cùng `chainInfo`. */
     resolveChainTask?: (taskId: number) => Pick<PeriodicTask, 'title' | 'periodStartDate'> | undefined;
+    /** Mật độ hiển thị, mặc định 'full' (giữ nguyên hành vi cũ ở mọi nơi khác). */
+    density?: TaskCardDensity;
+    /** Hiện thanh tiến độ checklist (chỉ khi Task có checklist). */
+    showProgress?: boolean;
 }
 
 export function TaskMiniCard({
@@ -52,7 +67,14 @@ export function TaskMiniCard({
     className,
     chainInfo,
     resolveChainTask,
+    density = 'full',
+    showProgress = false,
 }: TaskMiniCardProps) {
+    const isMini = density === 'mini';
+    const isCompact = density === 'compact';
+    const checklist = getChecklistProgress(task);
+    const checklistPercent = checklist ? Math.round((checklist.done / checklist.total) * 100) : 0;
+    const checklistColor = checklist ? TONE_COLOR[getChecklistTone(checklist)] : undefined;
     // `lockedById` KHÔNG kèm object quan hệ từ BE (xem JSDoc
     // `PeriodicTask.lockedById` ở periodic-tasks.api.ts) - tự tra tên qua
     // `useUsersList()`, mirror ĐÚNG `userNameById` ở page gốc.
@@ -69,8 +91,8 @@ export function TaskMiniCard({
     // (bắt buộc để flex item CHO PHÉP co nhỏ hơn nội dung của nó - đây là chỗ
     // hay bị quên nhất khi debug tràn chữ trong flexbox), cột `extra` giữ
     // nguyên kích thước (`flexShrink: 0`).
-    const hasNote = !!task.note;
-    const hasDescription = !!task.description;
+    const hasNote = !!task.note && !isCompact && !isMini;
+    const hasDescription = !!task.description && !isCompact && !isMini;
 
     // BUG THẬT #2 (2026-09-16, chủ dự án gửi ảnh 2 - vẫn tràn chữ dù đã fix
     // #1 ở trên, xảy ra khi Ghi chú/Mô tả là 1 "từ" dài liền không có
@@ -127,7 +149,7 @@ export function TaskMiniCard({
     const bgColor = getTaskCardBackground(task.color);
 
     const cardStyle: React.CSSProperties = {
-        marginBottom: 14,
+        marginBottom: isMini ? 6 : isCompact ? 10 : 14,
         border: `1px solid ${borderColor}`,
         // Đặt SAU `border` trong object để override riêng cạnh trái (React set
         // style theo thứ tự key trong object - key sau ghi đè key trước cho
@@ -138,6 +160,26 @@ export function TaskMiniCard({
         backgroundColor: bgColor,
         ...style,
     };
+
+    if (isMini) {
+        return (
+            <Card size={size} style={cardStyle} onClick={onClick} className={className} styles={{ body: { padding: '6px 10px' } }}>
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                        <TaskTitlePill title={task.title} color={task.color} />
+                    </div>
+                    {extra && <div style={{ flexShrink: 0 }}>{extra}</div>}
+                </div>
+                <div style={{ marginTop: 2, display: 'flex', alignItems: 'center', gap: 8 }}>
+                    {checklist && <Tag color="success" style={{ marginInlineEnd: 0 }}>✓ {checklist.done}/{checklist.total}</Tag>}
+                    <Text type="secondary" style={{ fontSize: 12 }}>
+                        {dayjs(task.periodStartDate).format('DD/MM/YYYY')}
+                        {task.periodStartDate !== task.periodEndDate && ` → ${dayjs(task.periodEndDate).format('DD/MM/YYYY')}`}
+                    </Text>
+                </div>
+            </Card>
+        );
+    }
 
     return (
         <Card size={size} style={cardStyle} onClick={onClick} className={className}>
@@ -235,6 +277,13 @@ export function TaskMiniCard({
                         ` → ${dayjs(task.periodEndDate).format('DD/MM/YYYY')}`}
                 </Text>
             </div>
+            {showProgress && checklist && (
+                <Tooltip title={`Checklist ${checklist.done}/${checklist.total} (${checklistPercent}%)`}>
+                    <div style={{ marginTop: 4 }}>
+                        <Progress percent={checklistPercent} size="small" strokeColor={checklistColor} format={() => `${checklist.done}/${checklist.total}`} />
+                    </div>
+                </Tooltip>
+            )}
             <div style={{ marginTop: 6 }}>
                 <TaskAssignees task={task} />
             </div>

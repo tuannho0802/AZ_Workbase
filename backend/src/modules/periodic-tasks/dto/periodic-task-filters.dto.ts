@@ -67,6 +67,15 @@ export class PeriodicTaskFiltersDto {
   @IsInt()
   assigneeId?: number;
 
+  @ApiPropertyOptional({
+    example: 5,
+    description: 'Lọc theo người là Phụ trách PHỤ của Task (tách riêng khỏi `assigneeId` chính+phụ)',
+  })
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  secondaryAssigneeId?: number;
+
   @ApiPropertyOptional({ example: 1, description: 'Lọc theo phòng ban' })
   @IsOptional()
   @Type(() => Number)

@@ -261,6 +261,30 @@ describe('PeriodicTasksService', () => {
       expect(call[0]).toContain('task.primaryAssigneeId = :filterAssigneeId');
       expect(call[1]).toEqual({ filterAssigneeId: 7 });
     });
+
+    it('secondaryAssigneeId -> chỉ lọc Phụ trách PHỤ (không dính Phụ trách chính)', async () => {
+      const qb = makeFakeQueryBuilder();
+      mockTaskRepo.createQueryBuilder.mockReturnValue(qb);
+
+      await service.findAll({ secondaryAssigneeId: 9 } as any, 1, Role.ADMIN, 'all');
+
+      const call = qb.andWhere.mock.calls.find(([sql]: [string]) => sql.includes('filterSecondaryAssigneeId'));
+      expect(call).toBeDefined();
+      expect(call[0]).toContain('periodic_task_secondary_assignees');
+      expect(call[0]).not.toContain('primaryAssigneeId');
+      expect(call[1]).toEqual({ filterSecondaryAssigneeId: 9 });
+    });
+
+    it('primaryAssigneeId + secondaryAssigneeId -> AND cả 2 điều kiện', async () => {
+      const qb = makeFakeQueryBuilder();
+      mockTaskRepo.createQueryBuilder.mockReturnValue(qb);
+
+      await service.findAll({ primaryAssigneeId: 3, secondaryAssigneeId: 9 } as any, 1, Role.ADMIN, 'all');
+
+      const sqls = qb.andWhere.mock.calls.map(([sql]: [string]) => sql);
+      expect(sqls).toContain('task.primaryAssigneeId = :primaryAssigneeId');
+      expect(sqls.some((s: string) => s.includes('filterSecondaryAssigneeId'))).toBe(true);
+    });
   });
 
   describe('update', () => {

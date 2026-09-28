@@ -48,6 +48,8 @@ export interface TaskActionsBarProps {
     /** Cho phép nút xuống dòng (dùng ở Card hẹp của Agenda/Kanban) thay vì
      * tràn ngang như ở Table gốc. */
     wrap?: boolean;
+    /** MỚI (2026-09-28, Kanban): chỉ hiện icon (nhãn chữ chuyển thành Tooltip) để thanh nút nhỏ lại. */
+    iconOnly?: boolean;
 }
 
 export function TaskActionsBar({
@@ -67,18 +69,25 @@ export function TaskActionsBar({
     unlockLoading,
     size = 'small',
     wrap = false,
+    iconOnly = false,
 }: TaskActionsBarProps) {
     // Phase 5 (PLAN mục 2.9) - Task khoá mà thiếu `edit_locked` -> vẫn HIỆN
     // nút Sửa (biết mình có periodic_tasks.edit) nhưng disable kèm Tooltip,
     // tránh gọi PATCH ăn 403 mới biết - mirror ĐÚNG cột gốc.
     const editDisabled = task.isLocked && !canEditLocked;
     const checklistProgress = getChecklistProgress(task);
+    // Chế độ icon: ẩn chữ, đưa nhãn vào Tooltip.
+    const lbl = (text: string) => (iconOnly ? null : text);
+    const tip = (title: string, node: React.ReactElement) => (iconOnly ? <Tooltip title={title}>{node}</Tooltip> : node);
 
     return (
         <Space size="small" wrap={wrap}>
-            <Button size={size} icon={<ApartmentOutlined />} onClick={() => onLink(task)}>
-                Liên kết
-            </Button>
+            {tip(
+                'Liên kết',
+                <Button size={size} icon={<ApartmentOutlined />} onClick={() => onLink(task)}>
+                    {lbl('Liên kết')}
+                </Button>,
+            )}
             {checklistProgress ? (
                 // Nhãn "X/Z" + màu theo tiến độ (đỏ < 1/2, vàng >= 1/2, xanh khi xong đủ) -
                 // xem `getChecklistTone()`. Dùng `color` preset của antd v6 nên hover/focus vẫn đúng chuẩn.
@@ -90,26 +99,35 @@ export function TaskActionsBar({
                         icon={<CheckSquareOutlined />}
                         onClick={() => onChecklist(task)}
                     >
-                        Checklist {checklistProgress.done}/{checklistProgress.total}
+                        {lbl('Checklist')} {checklistProgress.done}/{checklistProgress.total}
                     </Button>
                 </Tooltip>
             ) : (
-                <Button size={size} icon={<CheckSquareOutlined />} onClick={() => onChecklist(task)}>
-                    Checklist
-                </Button>
+                tip(
+                    'Checklist',
+                    <Button size={size} icon={<CheckSquareOutlined />} onClick={() => onChecklist(task)}>
+                        {lbl('Checklist')}
+                    </Button>,
+                )
             )}
             {onCustomers && (task.customerCount ?? 0) > 0 && (
-                <Button size={size} icon={<TeamOutlined />} onClick={() => onCustomers(task)}>
-                    Khách hàng ({task.customerCount})
-                </Button>
+                tip(
+                    `Khách hàng (${task.customerCount})`,
+                    <Button size={size} icon={<TeamOutlined />} onClick={() => onCustomers(task)}>
+                        {iconOnly ? task.customerCount : `Khách hàng (${task.customerCount})`}
+                    </Button>,
+                )
             )}
-            <Button size={size} icon={<HistoryOutlined />} onClick={() => onAudit(task)}>
-                Lịch sử
-            </Button>
+            {tip(
+                'Lịch sử',
+                <Button size={size} icon={<HistoryOutlined />} onClick={() => onAudit(task)}>
+                    {lbl('Lịch sử')}
+                </Button>,
+            )}
             {canEdit && (
-                <Tooltip title={editDisabled ? 'Công việc đang bị khoá - cần quyền "Sửa khi đang khoá"' : ''}>
+                <Tooltip title={editDisabled ? 'Công việc đang bị khoá - cần quyền "Sửa khi đang khoá"' : iconOnly ? 'Sửa' : ''}>
                     <Button size={size} icon={<EditOutlined />} disabled={editDisabled} onClick={() => onEdit(task)}>
-                        Sửa
+                        {lbl('Sửa')}
                     </Button>
                 </Tooltip>
             )}
@@ -121,19 +139,28 @@ export function TaskActionsBar({
                         okText="Mở khoá"
                         cancelText="Huỷ"
                     >
-                        <Button size={size} icon={<UnlockOutlined />} loading={unlockLoading}>
-                            Mở khoá
-                        </Button>
+                        {tip(
+                            'Mở khoá',
+                            <Button size={size} icon={<UnlockOutlined />} loading={unlockLoading}>
+                                {lbl('Mở khoá')}
+                            </Button>,
+                        )}
                     </Popconfirm>
                 ) : (
-                    <Button size={size} icon={<LockOutlined />} onClick={() => onLock(task)}>
-                        Khoá
-                    </Button>
+                    tip(
+                        'Khoá',
+                        <Button size={size} icon={<LockOutlined />} onClick={() => onLock(task)}>
+                            {lbl('Khoá')}
+                        </Button>,
+                    )
                 ))}
             {(typeof canDelete === 'function' ? canDelete(task) : canDelete) && (
-                <Button size={size} danger icon={<DeleteOutlined />} onClick={() => onDelete(task)}>
-                    Xoá
-                </Button>
+                tip(
+                    'Xoá',
+                    <Button size={size} danger icon={<DeleteOutlined />} onClick={() => onDelete(task)}>
+                        {lbl('Xoá')}
+                    </Button>,
+                )
             )}
         </Space>
     );
