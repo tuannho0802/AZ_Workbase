@@ -13,7 +13,7 @@ import { usePeriodicTaskPerformanceSummary } from '@/lib/hooks/usePeriodicTaskPe
 import { LATE_GRACE_DAYS, type PerformanceMetric, type PerformanceUserRow } from '@/lib/api/periodic-task-performance.api';
 import { PERIOD_TYPE_LABELS, type PeriodType } from '@/lib/api/periodic-tasks.api';
 import { aggregateRows, completionColor, lateRateColor, percentOf } from '@/lib/utils/periodicTaskPerformance';
-import { clampRange, getMonthRange, getThisWeekRange, MAX_TASK_RANGE_DAYS } from '@/lib/utils/periodicTaskRange';
+import { clampRange, getMonthRange, getPerformanceQuickRange, MAX_TASK_RANGE_DAYS, PERFORMANCE_QUICK_RANGES } from '@/lib/utils/periodicTaskRange';
 import { resolveEntityColor } from '@/lib/utils/entityColor';
 import { PerformanceStackedChart, CHART_MAX_USERS } from '@/components/periodic-tasks/PerformanceStackedChart';
 import { PerformanceUserTasksDrawer } from '@/components/periodic-tasks/PerformanceUserTasksDrawer';
@@ -37,26 +37,8 @@ const SCOPE_META = {
 
 type ViewMode = 'self' | 'single' | 'multi';
 
-type QuickKey = 'thisWeek' | 'thisMonth' | 'lastMonth' | 'last90';
-const QUICK_RANGES: { key: QuickKey; label: string }[] = [
-  { key: 'thisWeek', label: 'Tuần này' },
-  { key: 'thisMonth', label: 'Tháng này' },
-  { key: 'lastMonth', label: 'Tháng trước' },
-  { key: 'last90', label: '90 ngày gần đây' },
-];
-const getQuickRange = (key: QuickKey): [Dayjs, Dayjs] => {
-  const now = dayjs();
-  switch (key) {
-    case 'thisWeek':
-      return getThisWeekRange(now);
-    case 'thisMonth':
-      return getMonthRange(now);
-    case 'lastMonth':
-      return getMonthRange(now.subtract(1, 'month'));
-    case 'last90':
-      return [now.subtract(89, 'day').startOf('day'), now.endOf('day')];
-  }
-};
+const QUICK_RANGES = PERFORMANCE_QUICK_RANGES;
+const getQuickRange = getPerformanceQuickRange;
 
 const FMT = 'YYYY-MM-DD';
 

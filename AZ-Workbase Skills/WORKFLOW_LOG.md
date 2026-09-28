@@ -4576,3 +4576,17 @@ khi bị xoá tay. Đây là 1 anti-pattern thật (dù đo thử với payload 
 > Không có migration. Card phụ trách phụ ở chế độ nhiều nhân viên cộng theo từng người (1 Task nhiều người phụ có thể đếm nhiều lần), mini table khử trùng theo Task nên có thể ít hơn số trên Card. Chưa test trên MySQL/trình duyệt thật. Chưa commit/push.
 
 ---
+
+---
+## [2026-09-28 19:00] | Modal mini table Hiệu suất: dài/rộng hơn + bộ lọc đồng bộ theo trang | [Status: Success — FE tsc/vitest OK; eslint chỉ còn 2 lỗi `any` có sẵn ở page.tsx]
+
+**Actor:** Agent (làm trên `origin/main` HEAD `16e1532`)
+
+**Files Changed:**
+- `frontend/src/components/periodic-tasks/MetricTasksModal.tsx` — rộng `min(1280px,96vw)`, bảng cao theo viewport (sticky header), cột Task rộng 280; thêm RangePicker + Lọc nhanh + Loại kỳ + nút "Đồng bộ theo trang". Khởi tạo = bộ lọc của trang; đổi trong Modal KHÔNG ghi ngược lên trang.
+- `frontend/src/lib/utils/periodicTaskRange.ts` — `PERFORMANCE_QUICK_RANGES` + `getPerformanceQuickRange()` dùng chung trang + Modal.
+- `frontend/src/app/(dashboard)/hieu-suat-cong-viec/page.tsx` — dùng util chung thay bản copy cục bộ.
+
+**Notes:** Không đổi BE, không migration. Chưa test trên trình duyệt thật. Chưa commit/push.
+
+---

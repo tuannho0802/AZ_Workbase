@@ -1,16 +1,20 @@
 'use client';
 
 import { useState } from 'react';
-import { Empty, Modal, Progress, Space, Table, Tag, Typography } from 'antd';
+import { App, Button, DatePicker, Empty, Modal, Progress, Select, Space, Table, Tag, Typography } from 'antd';
 import { CheckCircleFilled, MinusCircleOutlined } from '@ant-design/icons';
 import type { ColumnsType } from 'antd/es/table';
-import dayjs from 'dayjs';
+import dayjs, { type Dayjs } from 'dayjs';
 import { useMetricTasks } from '@/lib/hooks/usePeriodicTaskPerformance';
 import type { MetricTaskRow, MetricVerdict, PerformanceFilterParams, PerformanceMetric } from '@/lib/api/periodic-task-performance.api';
+import { PERIOD_TYPE_LABELS, type PeriodType } from '@/lib/api/periodic-tasks.api';
+import { clampRange, getPerformanceQuickRange, MAX_TASK_RANGE_DAYS, PERFORMANCE_QUICK_RANGES } from '@/lib/utils/periodicTaskRange';
 import { PeriodTypeTag } from './PeriodTypeTag';
 import { TaskAssignees } from './TaskAssignees';
 
 const { Text } = Typography;
+const { RangePicker } = DatePicker;
+const FMT = 'YYYY-MM-DD';
 
 const VERDICT_TAG: Record<MetricVerdict, { color: string; text: string }> = {
   on_time: { color: 'success', text: 'Đúng hạn' },
@@ -37,6 +41,11 @@ interface Props {
  * mà không phải mở Drawer từng người. Cùng bộ lọc/scope với Card (BE
  * `GET /periodic-tasks-performance/metric-tasks`), phân trang server-side.
  * Card Checklist mở sẵn mọi dòng; các Card khác bấm mũi tên để xem checklist.
+ *
+ * Bộ lọc riêng trong Modal (Khoảng ngày + Lọc nhanh + Loại kỳ): KHỞI TẠO ĐÚNG
+ * bằng bộ lọc đang chọn ở trang (`params`) nên số dòng khớp số trên Card; đổi
+ * trong Modal chỉ ảnh hưởng bảng này, không ghi ngược lại trang. Nút "Đồng bộ
+ * theo trang" đưa về đúng bộ lọc của trang.
  */
 export function MetricTasksModal({ metric, contextLabel, params, userIds, onClose }: Props) {
   return (
@@ -44,7 +53,8 @@ export function MetricTasksModal({ metric, contextLabel, params, userIds, onClos
       open={!!metric}
       onCancel={onClose}
       footer={null}
-      width={980}
+      width="min(1280px, 96vw)"
+      style={{ top: 24 }}
       destroyOnHidden
       title={
         metric ? (
@@ -62,14 +72,37 @@ export function MetricTasksModal({ metric, contextLabel, params, userIds, onClos
 }
 
 function Body({ metricKey, params, userIds }: { metricKey: PerformanceMetric; params: Props['params']; userIds?: number[] }) {
+  const { message } = App.useApp();
   const [page, setPage] = useState(1);
+  // Bộ lọc cục bộ, khởi tạo = bộ lọc của trang (xem JSDoc MetricTasksModal).
+  const pageRange: [Dayjs, Dayjs] = [dayjs(params.dateFrom), dayjs(params.dateTo)];
+  const [range, setRange] = useState<[Dayjs, Dayjs]>(pageRange);
+  const [periodType, setPeriodType] = useState<PeriodType | undefined>(params.periodType);
   // Task đã bị người dùng bấm đổi trạng thái mở rộng. Card Checklist mặc định MỞ hết nên
   // `toggled` ở đó nghĩa là "đã đóng"; Card khác mặc định ĐÓNG nên `toggled` là "đã mở".
   const [toggled, setToggled] = useState<Set<number>>(new Set());
   const isChecklist = CHECKLIST_METRICS.includes(metricKey);
 
-  const { data, isLoading, isError } = useMetricTasks({ ...params, metric: metricKey, userIds, page }, true);
+  const dateFrom = range[0].format(FMT);
+  const dateTo = range[1].format(FMT);
+  const { data, isLoading, isError } = useMetricTasks({ ...params, dateFrom, dateTo, periodType, metric: metricKey, userIds, page }, true);
   const items = data?.items ?? [];
+
+  const resetPaging = () => {
+    setPage(1);
+    setToggled(new Set());
+  };
+  const applyRange = (from: Dayjs, to: Dayjs) => {
+    const { range: next, clamped } = clampRange(from, to);
+    if (clamped) message.warning(`Khoảng ngày tối đa ${MAX_TASK_RANGE_DAYS} ngày - đã tự cắt bớt ngày kết thúc.`);
+    setRange(next);
+    resetPaging();
+  };
+  const activeQuick = PERFORMANCE_QUICK_RANGES.find(({ key }) => {
+    const [f, t] = getPerformanceQuickRange(key);
+    return f.format(FMT) === dateFrom && t.format(FMT) === dateTo;
+  })?.key;
+  const isSyncedWithPage = dateFrom === params.dateFrom && dateTo === params.dateTo && periodType === params.periodType;
 
   const isExpanded = (id: number) => (isChecklist ? !toggled.has(id) : toggled.has(id));
   const flip = (id: number) =>
@@ -84,6 +117,7 @@ function Body({ metricKey, params, userIds }: { metricKey: PerformanceMetric; pa
     {
       title: 'Task',
       key: 'title',
+      width: 280,
       render: (_, r) => (
         <Space orientation="vertical" size={0}>
           <Text strong>{r.task.title}</Text>
@@ -95,7 +129,7 @@ function Body({ metricKey, params, userIds }: { metricKey: PerformanceMetric; pa
     {
       title: 'Kỳ hạn',
       key: 'period',
-      width: 150,
+      width: 160,
       render: (_, r) => {
         const from = dayjs(r.task.periodStartDate).format('DD/MM');
         const to = dayjs(r.task.periodEndDate).format('DD/MM/YYYY');
@@ -132,13 +166,58 @@ function Body({ metricKey, params, userIds }: { metricKey: PerformanceMetric; pa
   ];
 
   return (
+    <>
+    <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 8, marginBottom: 12 }}>
+      <RangePicker
+        size="small"
+        format="DD/MM/YYYY"
+        placeholder={['Từ ngày', 'Đến ngày']}
+        allowClear={false}
+        value={range}
+        onChange={(vals) => vals?.[0] && vals?.[1] && applyRange(vals[0], vals[1])}
+      />
+      <Text type="secondary" style={{ fontSize: 12 }}>Lọc nhanh:</Text>
+      {PERFORMANCE_QUICK_RANGES.map(({ key, label }) => (
+        <Button key={key} size="small" type={activeQuick === key ? 'primary' : 'default'} onClick={() => applyRange(...getPerformanceQuickRange(key))}>
+          {label}
+        </Button>
+      ))}
+      <Select
+        allowClear
+        size="small"
+        placeholder="Loại kỳ"
+        style={{ minWidth: 130 }}
+        value={periodType}
+        onChange={(v) => {
+          setPeriodType(v ?? undefined);
+          resetPaging();
+        }}
+        options={(Object.keys(PERIOD_TYPE_LABELS) as PeriodType[]).map((k) => ({
+          value: k,
+          label: <PeriodTypeTag type={k} style={{ marginInlineEnd: 0 }} />,
+        }))}
+      />
+      <Button
+        size="small"
+        type="link"
+        disabled={isSyncedWithPage}
+        onClick={() => {
+          setRange(pageRange);
+          setPeriodType(params.periodType);
+          resetPaging();
+        }}
+      >
+        Đồng bộ theo trang
+      </Button>
+    </div>
     <Table<MetricTaskRow>
       rowKey={(r) => r.task.id}
       size="small"
       loading={isLoading}
       columns={columns}
       dataSource={items}
-      scroll={{ x: 900 }}
+      scroll={{ x: 1000, y: 'calc(100vh - 360px)' }}
+      sticky
       locale={{
         emptyText: <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description={isError ? 'Không tải được danh sách Task' : 'Không có Task nào'} />,
       }}
@@ -170,5 +249,6 @@ function Body({ metricKey, params, userIds }: { metricKey: PerformanceMetric; pa
         ),
       }}
     />
+    </>
   );
 }

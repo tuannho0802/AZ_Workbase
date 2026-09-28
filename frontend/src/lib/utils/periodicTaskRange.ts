@@ -54,3 +54,24 @@ export function formatPeriodRange(t: { periodStartDate: string; periodEndDate: s
     ? dayjs(t.periodEndDate).format('DD/MM/YYYY')
     : `${dayjs(t.periodStartDate).format('DD/MM')} - ${dayjs(t.periodEndDate).format('DD/MM/YYYY')}`;
 }
+
+/** Lọc nhanh của trang Hiệu suất - dùng CHUNG cho trang và `MetricTasksModal` để 2 nơi không lệch nhau. */
+export type PerformanceQuickKey = 'thisWeek' | 'thisMonth' | 'lastMonth' | 'last90';
+export const PERFORMANCE_QUICK_RANGES: { key: PerformanceQuickKey; label: string }[] = [
+  { key: 'thisWeek', label: 'Tuần này' },
+  { key: 'thisMonth', label: 'Tháng này' },
+  { key: 'lastMonth', label: 'Tháng trước' },
+  { key: 'last90', label: '90 ngày gần đây' },
+];
+export function getPerformanceQuickRange(key: PerformanceQuickKey, now: Dayjs = dayjs()): DateRangeTuple {
+  switch (key) {
+    case 'thisWeek':
+      return getThisWeekRange(now);
+    case 'thisMonth':
+      return getMonthRange(now);
+    case 'lastMonth':
+      return getMonthRange(now.subtract(1, 'month'));
+    case 'last90':
+      return [now.subtract(89, 'day').startOf('day'), now.endOf('day')];
+  }
+}
