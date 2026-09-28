@@ -11,12 +11,19 @@ import { CHECKLIST_CONTENT_MAX_LENGTH } from '@/lib/api/periodic-task-checklist-
  * chạm giới hạn) + Tooltip cảnh báo khi đã đạt giới hạn (chỉ hiện lúc đang
  * focus để không che UI khi user không còn gõ).
  */
-export function ChecklistTextArea({ value, onFocus, onBlur, ...rest }: TextAreaProps) {
+interface ChecklistTextAreaProps extends TextAreaProps {
+  /** antd vẽ bộ đếm ký tự BÊN DƯỚI ô nhập (ngoài khung) nên có thể bị phần tử
+   * kế tiếp (vd Pagination) đè lên - bật cờ này ở ô SỬA item (nằm giữa danh
+   * sách) để chừa sẵn khoảng trống cho bộ đếm. */
+  reserveCountSpace?: boolean;
+}
+
+export function ChecklistTextArea({ value, onFocus, onBlur, reserveCountSpace, ...rest }: ChecklistTextAreaProps) {
   const [focused, setFocused] = useState(false);
   const length = typeof value === 'string' ? value.length : 0;
   const atLimit = length >= CHECKLIST_CONTENT_MAX_LENGTH;
 
-  return (
+  const input = (
     <Tooltip
       open={atLimit && focused}
       placement="topRight"
@@ -25,6 +32,7 @@ export function ChecklistTextArea({ value, onFocus, onBlur, ...rest }: TextAreaP
     >
       <Input.TextArea
         {...rest}
+        style={reserveCountSpace ? { ...rest.style, width: '100%' } : rest.style}
         value={value}
         maxLength={CHECKLIST_CONTENT_MAX_LENGTH}
         status={atLimit ? 'warning' : undefined}
@@ -47,4 +55,7 @@ export function ChecklistTextArea({ value, onFocus, onBlur, ...rest }: TextAreaP
       />
     </Tooltip>
   );
+
+  if (!reserveCountSpace) return input;
+  return <div style={{ flex: 1, minWidth: 0, paddingBottom: 22 }}>{input}</div>;
 }

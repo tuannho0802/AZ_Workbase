@@ -320,6 +320,7 @@ export function TaskChecklistModal({ open, onClose, task }: Props) {
 
                 {isEditing ? (
                     <ChecklistTextArea
+                        reserveCountSpace
                         autoFocus
                         autoSize={{ minRows: 1, maxRows: 8 }}
                         value={editingContent}

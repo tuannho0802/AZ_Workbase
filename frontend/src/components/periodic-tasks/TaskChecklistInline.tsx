@@ -200,6 +200,7 @@ export function TaskChecklistInline({ taskId, canEdit, onOpenFull }: Props) {
                 <Checkbox checked={item.isDone} disabled={!canEdit} onChange={() => handleToggleDone(item)} style={{ marginTop: 2 }} />
                 {isEditing ? (
                     <ChecklistTextArea
+                        reserveCountSpace
                         autoFocus
                         size="small"
                         autoSize={{ minRows: 1, maxRows: 6 }}
