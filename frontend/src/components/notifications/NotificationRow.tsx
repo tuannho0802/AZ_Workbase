@@ -186,7 +186,7 @@ export function NotificationRow({
           </Popconfirm>
         </span>
       ) : (
-          <Tooltip title={removeLabel}>frontend/src/lib/utils
+          <Tooltip title={removeLabel}>
             <Button
               type="text"
               size="small"
