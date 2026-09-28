@@ -4781,3 +4781,25 @@ khi bị xoá tay. Đây là 1 anti-pattern thật (dù đo thử với payload 
 > Không migration. Cần env `CRON_SECRET` trên Vercel. Lần chạy đầu sẽ đánh dấu hàng loạt Task cũ chưa xong → gọi `auto-overdue?dryRun=true` xem trước. Task đánh dấu trong ân hạn sẽ tính "quá hạn" ngay trong hiệu suất (giống nút đánh dấu tay). Chưa test trên MySQL/trình duyệt thật. Chưa commit/push.
 
 ---
+---
+## [2026-09-29 00:30] | Cron zk sync-today: chấp nhận Bearer CRON_SECRET + thêm Vercel Cron daily; bỏ Vercel cron auto-overdue | [Status: Success — BE tsc sạch, jest zk-device 16/16]
+
+**Actor:** Agent (trên `origin/main` HEAD `22da75b`)
+
+**Files Changed:**
+- `backend/.../zk-device-cron.controller.ts` — nhận thêm `Authorization: Bearer <CRON_SECRET>` (Vercel Cron).
+- `backend/vercel.json` — cron `/api/zk-device-cron/sync-today` 16:00 UTC (23:00 giờ VN); bỏ cron `auto-overdue` (Hobby tối đa 2 cron; auto-overdue vẫn chạy kèm `deadline-reminders` qua Uptime).
+
+**Notes:**
+> Không tái hiện được lỗi thật (không gọi được prod từ sandbox). Logic cron/secret/module đã kiểm tra đúng; nghi vấn chính là dịch vụ Uptime bị Vercel chặn hoặc timeout phía client. Chưa commit/push.
+---
+
+---
+## [2026-09-29 01:00] | keep-alive chuyển sang Uptime; Vercel Cron còn zk sync-today + auto-overdue | [Status: Success]
+
+**Files Changed:**
+- `backend/vercel.json` — bỏ cron `/api/keep-alive` (Uptime gọi thay), thêm lại cron `/api/periodic-tasks-cron/auto-overdue` 17:05 UTC.
+
+**Notes:**
+> Uptime cần monitor `GET https://<domain>/api/keep-alive` (public, không secret). Chưa commit/push.
+---

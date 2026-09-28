@@ -5,7 +5,10 @@
       "src": "src/main.ts",
       "use": "@vercel/node",
       "config": {
-        "includeFiles": ["public/**/*", "dist/public/**/*"],
+        "includeFiles": [
+          "public/**/*",
+          "dist/public/**/*"
+        ],
         "maxLambdaSize": "50mb",
         "bundle": true
       }
@@ -23,8 +26,8 @@
   ],
   "crons": [
     {
-      "path": "/api/keep-alive",
-      "schedule": "0 5 * * *"
+      "path": "/api/zk-device-cron/sync-today",
+      "schedule": "0 16 * * *"
     },
     {
       "path": "/api/periodic-tasks-cron/auto-overdue",

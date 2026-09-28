@@ -22,8 +22,13 @@ import {
  *
  * Cấu hình dịch vụ Uptime trỏ tới:
  *   GET https://<domain>/api/zk-device-cron/sync-today?secret=<CRON_SECRET>
- * (hoặc header `x-cron-secret: <CRON_SECRET>` nếu dịch vụ hỗ trợ header tuỳ chỉnh)
+ * (hoặc header `x-cron-secret: <CRON_SECRET>` / `Authorization: Bearer <CRON_SECRET>` - Vercel Cron dùng kiểu này)
  */
+/** IP thuộc dải mạng nội bộ / loopback - không truy cập được từ Vercel. */
+function isPrivateHost(host: string): boolean {
+  return /^(10\.|127\.|192\.168\.|172\.(1[6-9]|2\d|3[01])\.|localhost$)/.test(host.trim());
+}
+
 @ApiTags('ZK Device Cron (nội bộ - dùng cho Uptime)')
 @Controller('zk-device-cron')
 export class ZkDeviceCronController {
@@ -40,9 +45,12 @@ export class ZkDeviceCronController {
   async syncToday(
     @Query('secret') secretQuery?: string,
     @Headers('x-cron-secret') secretHeader?: string,
+    @Headers('authorization') authorization?: string,
   ) {
     const expected = process.env.CRON_SECRET;
-    const provided = secretHeader || secretQuery;
+    // Vercel Cron tự gửi `Authorization: Bearer <CRON_SECRET>` khi env CRON_SECRET được đặt.
+    const bearer = authorization?.startsWith('Bearer ') ? authorization.slice(7) : undefined;
+    const provided = secretHeader || bearer || secretQuery;
 
     if (!expected) {
       // Chưa cấu hình CRON_SECRET -> CHẶN HẲN thay vì mở public không giới
@@ -54,6 +62,17 @@ export class ZkDeviceCronController {
     }
     if (!provided || provided !== expected) {
       throw new HttpException('Secret không hợp lệ.', HttpStatus.UNAUTHORIZED);
+    }
+
+    // Trên Vercel (serverless) KHÔNG với tới được IP LAN của máy chấm công -> nếu không có ZK_DEVICE_IP công khai
+    // (IP/domain đã port-forward) thì báo lỗi rõ ràng ngay, thay vì chờ timeout 10s rồi trả lỗi khó hiểu.
+    const deviceHost = process.env.ZK_DEVICE_IP;
+    if (process.env.VERCEL && (!deviceHost || isPrivateHost(deviceHost))) {
+      throw new HttpException(
+        'Sync qua cron KHÔNG chạy được trên Vercel khi ZK_DEVICE_IP trống hoặc là IP LAN (192.168.x/10.x/172.16-31.x). ' +
+          'Hãy đặt ZK_DEVICE_IP/ZK_DEVICE_PORT là IP/domain công khai đã port-forward tới máy chấm công, hoặc dùng ADMS Push (máy tự đẩy log).',
+        HttpStatus.SERVICE_UNAVAILABLE,
+      );
     }
 
     const todayIso = getVnTodayIsoDate();
