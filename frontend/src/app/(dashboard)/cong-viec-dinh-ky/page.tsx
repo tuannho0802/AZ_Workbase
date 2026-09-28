@@ -659,6 +659,11 @@ function PeriodicTasksPageContent() {
         // mirror `onRow`/`onRowClick` của bảng Khách hàng.
         if (task.id !== focusedTaskId) clearFocus();
         setEditingTask(task);
+        // FIX warning "There may be circular references" (rc-component isEqual): Task 1 ngày
+        // (daily) khiến RangePicker giữ CÙNG 1 instance dayjs cho cả 2 đầu `periodRange`; lần
+        // mở Sửa kế tiếp, `setFieldsValue` deepEqual(giá trị cũ, mới) gặp lại instance đó ->
+        // báo giả "circular". Xoá giá trị cũ trước (mirror `openCreateModal`) để không so sánh.
+        form.resetFields();
         form.setFieldsValue({
             title: task.title,
             description: task.description ?? undefined,
