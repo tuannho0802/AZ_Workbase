@@ -1,7 +1,7 @@
 'use client';
 
 import { useMemo, useState } from 'react';
-import { App, Badge, Button, Empty, Segmented, Spin, Switch, Tooltip, Typography } from 'antd';
+import { App, Badge, Button, Empty, Segmented, Spin, Tooltip, Typography } from 'antd';
 import { DownOutlined, UpOutlined } from '@ant-design/icons';
 import {
     CollisionDetection,
@@ -48,12 +48,14 @@ export interface PeriodicTasksKanbanViewProps extends ActionHandlers {
      * đáng đánh đổi cho 1 chi tiết trang trí. */
     chains?: Map<number, TaskChainInfo>;
     resolveChainTask?: (taskId: number) => Pick<PeriodicTask, 'title' | 'periodStartDate'> | undefined;
+    /** Nút thao tác chỉ icon - do toggle ở page (dùng chung mọi view) quyết định, KHÔNG phụ thuộc mật độ card. */
+    iconActions?: boolean;
 }
 
 /**
  * Chế độ mật độ toàn Kanban (MỚI 2026-09-28 - Cột "Hoàn thành" quá nhiều Task kéo dài):
  *  - 'auto'      : theo tiến độ checklist - 100% => 'mini' (thu gọn 1-2 dòng); từ 50% đến <100% => 'compact'
- *                  (ẩn Mô tả/Ghi chú + nút thao tác chỉ icon); dưới 50% hoặc chưa có checklist => 'full' (nổi bật).
+ *                  (ẩn Mô tả/Ghi chú; KHÔNG ảnh hưởng nút thao tác - do toggle icon riêng quyết định); dưới 50% hoặc chưa có checklist => 'full' (nổi bật).
  *  - 'expanded'  : mọi Task 'full'.
  *  - 'collapsed' : mọi Task 'mini'.
  * Từng Task vẫn tự mở/thu được bằng nút mũi tên ở góc card (ghi đè tạm, reset khi đổi chế độ).
@@ -94,7 +96,7 @@ const COLUMN_PREFIX = 'col-';
  * trong cùng cột) KHÔNG làm gì, vì Task không có cột `position` riêng theo
  * từng status để lưu thứ tự trong 1 cột.
  */
-export function PeriodicTasksKanbanView({ tasks, statuses, loading, chains, resolveChainTask, ...actions }: PeriodicTasksKanbanViewProps) {
+export function PeriodicTasksKanbanView({ tasks, statuses, loading, chains, resolveChainTask, iconActions = true, ...actions }: PeriodicTasksKanbanViewProps) {
     const { message } = App.useApp();
     const updateMutation = useUpdatePeriodicTask();
 
@@ -104,10 +106,9 @@ export function PeriodicTasksKanbanView({ tasks, statuses, loading, chains, reso
     const [pendingOverride, setPendingOverride] = useState<Record<number, number>>({});
     const [activeTaskId, setActiveTaskId] = useState<number | null>(null);
 
-    // Mật độ hiển thị: chế độ chung + ghi đè theo từng Task + thanh nút thao tác chỉ-icon.
+    // Mật độ hiển thị (chỉ tác động lên card): chế độ chung + ghi đè theo từng Task.
     const [densityMode, setDensityMode] = useState<KanbanDensityMode>('auto');
     const [densityOverride, setDensityOverride] = useState<Record<number, TaskCardDensity>>({});
-    const [iconActions, setIconActions] = useState(false);
 
     const densityOf = (task: PeriodicTask): TaskCardDensity => {
         const override = densityOverride[task.id];
@@ -264,10 +265,6 @@ export function PeriodicTasksKanbanView({ tasks, statuses, loading, chains, reso
                         ]}
                     />
                 </Tooltip>
-                <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
-                    <Switch size="small" checked={iconActions} onChange={setIconActions} />
-                    <Text type="secondary" style={{ fontSize: 12 }}>Nút thao tác gọn (chỉ icon)</Text>
-                </span>
             </div>
             <div style={{ display: 'flex', gap: 12, overflowX: 'auto', paddingBottom: 12 }}>
                 {columns.map((status) => {
@@ -419,7 +416,7 @@ function KanbanCard({
                         onDelete={actions.onDelete}
                         unlockLoading={actions.isUnlocking(task.id)}
                         wrap
-                        iconOnly={iconActions || density === 'compact'}
+                        iconOnly={iconActions}
                     />
                 }
             />

@@ -32,6 +32,8 @@ type ActionHandlers = Pick<
 export interface PeriodicTasksAgendaViewProps extends ActionHandlers {
     tasks: PeriodicTask[];
     loading?: boolean;
+    /** Nút thao tác chỉ icon - do toggle ở page quyết định. */
+    iconActions?: boolean;
     /** Phase 8 - chuỗi liên kết đã tính từ TOÀN BỘ `tasks` (không chỉ trong
      * 1 ngày) - Agenda tự sắp lại thành viên LIỀN NHAU trong TỪNG panel
      * ngày (2 Task cùng chuỗi nhưng khác ngày sẽ KHÔNG được nối - chỉ hiện
@@ -62,7 +64,7 @@ export interface PeriodicTasksAgendaViewProps extends ActionHandlers {
  * filter từ trang cha (`cong-viec-dinh-ky/page.tsx`), mirror đúng nguyên tắc
  * "FE chỉ việc gọi bình thường" ở JSDoc đầu file đó.
  */
-export function PeriodicTasksAgendaView({ tasks, loading, chains, edges, resolveChainTask, ...actions }: PeriodicTasksAgendaViewProps) {
+export function PeriodicTasksAgendaView({ tasks, loading, chains, edges, resolveChainTask, iconActions = true, ...actions }: PeriodicTasksAgendaViewProps) {
     const groups = useMemo(() => {
         const map = new Map<string, PeriodicTask[]>();
         for (const t of tasks) {
@@ -159,6 +161,7 @@ export function PeriodicTasksAgendaView({ tasks, loading, chains, edges, resolve
                                             onDelete={actions.onDelete}
                                             unlockLoading={actions.isUnlocking(task.id)}
                                             wrap
+                                            iconOnly={iconActions}
                                         />
                                     }
                                 />

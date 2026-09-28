@@ -21,6 +21,7 @@ import {
     Alert,
     Avatar,
     Segmented,
+    Switch,
 } from 'antd';
 import {
     PlusOutlined,
@@ -359,6 +360,9 @@ function PeriodicTasksPageContent() {
     // đúng 1 trong 2 query tại 1 thời điểm (`enabled`) - tránh gọi cả 2 API
     // song song khi người dùng chỉ đang xem 1 view.
     const [view, setView] = useState<'table' | 'agenda' | 'kanban' | 'calendar' | 'trash'>('agenda');
+    // Nút thao tác chỉ-icon: 1 toggle DUY NHẤT cho mọi view (Bảng/Ngày/Kanban), mặc định BẬT.
+    // Tách biệt hoàn toàn với chế độ mật độ card Kanban (Tự động/Mở rộng/Thu gọn).
+    const [iconActions, setIconActions] = useState(true);
 
     const { data, isLoading, isFetching } = usePeriodicTasks(filters, view === 'table');
     const tasks = data?.data ?? [];
@@ -1175,6 +1179,7 @@ function PeriodicTasksPageContent() {
                     onUnlock={handleUnlock}
                     onDelete={setDeletingTask}
                     unlockLoading={unlockMutation.isPending && unlockMutation.variables === record.id}
+                    iconOnly={iconActions}
                 />
             ),
         },
@@ -1348,8 +1353,8 @@ function PeriodicTasksPageContent() {
             {/* Phase 8 (PLAN mục Phase 8) - View switcher. 'agenda' mặc định
                 (giải quyết đúng phản ánh "khó kiểm tra ngày giờ" ở bảng gốc),
                 người dùng tự đổi sang 'table' nếu muốn giao diện quen thuộc. */}
+            <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 12, marginBottom: 16 }}>
             <Segmented
-                style={{ marginBottom: 16 }}
                 value={view}
                 onChange={(v) => {
                     const next = v as typeof view;
@@ -1365,6 +1370,13 @@ function PeriodicTasksPageContent() {
                     ...(canTrash ? [{ label: 'Thùng rác', value: 'trash', icon: <DeleteOutlined /> }] : []),
                 ]}
             />
+            {(view === 'table' || view === 'agenda' || view === 'kanban') && (
+                <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+                    <Switch size="small" checked={iconActions} onChange={setIconActions} />
+                    <Text type="secondary" style={{ fontSize: 12 }}>Nút thao tác gọn (chỉ icon)</Text>
+                </span>
+            )}
+            </div>
 
             {/* 3 view không phân trang chỉ tải tối đa 100 Task - nếu khoảng lọc có nhiều
                 hơn thì báo rõ (thay vì im lặng cắt bớt). */}
@@ -1411,6 +1423,7 @@ function PeriodicTasksPageContent() {
 
             {view === 'agenda' && (
                 <PeriodicTasksAgendaView
+                    iconActions={iconActions}
                     tasks={viewTasks}
                     loading={viewLoading || viewFetching}
                     chains={chains}
@@ -1434,6 +1447,7 @@ function PeriodicTasksPageContent() {
 
             {view === 'kanban' && (
                 <PeriodicTasksKanbanView
+                    iconActions={iconActions}
                     tasks={viewTasks}
                     statuses={statuses}
                     loading={viewLoading || viewFetching}
