@@ -33,7 +33,7 @@ interface Props {
  *    KỲ LÚC NÀO, không cần User đó đang có Task "cần lưu ý" (nút "Chi tiết"
  *    ở `page.tsx` không còn `disabled` theo `flagged === 0` nữa).
  *  - Có bộ lọc RIÊNG trong Drawer (RangePicker + Lọc nhanh Hôm nay/Tuần này/
- *    Tháng này, mặc định Tuần này) - ĐỘC LẬP với bộ lọc ngày của bảng tổng
+ *    Tuần trước/Tháng này/Tháng trước + Toggle "Chỉ Task quá hạn", mặc định Tuần này) - ĐỘC LẬP với bộ lọc ngày của bảng tổng
  *    hợp ngoài trang (trang ngoài mặc định Tháng này cho số liệu rollup, còn
  *    Drawer xem chi tiết Task nên mặc định hẹp hơn - Tuần này).
  *  - Phần hiển thị Card/Checklist/đổi trạng thái tách ra `UserTasksPanel`
@@ -64,16 +64,19 @@ function DrawerBody({ userId, periodType }: { userId: number; periodType?: strin
   // đổi/bỏ lọc ở đây không ghi ngược lại state của trang ngoài (xem JSDoc `Props.periodType`).
   const [filterPeriodType, setFilterPeriodType] = useState<PeriodType | undefined>(periodType as PeriodType | undefined);
 
+  const [overdueOnly, setOverdueOnly] = useState(false);
+
   const params = {
     dateFrom: dateRange[0].format(FMT),
     dateTo: dateRange[1].format(FMT),
     periodType: filterPeriodType,
+    overdueOnly: overdueOnly || undefined,
   };
 
   return (
     <>
       <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 12, marginBottom: 12 }}>
-        <PerformanceRangeFilter value={dateRange} onChange={setDateRange} />
+        <PerformanceRangeFilter value={dateRange} onChange={setDateRange} overdueOnly={overdueOnly} onOverdueOnlyChange={setOverdueOnly} />
         <Select
           allowClear
           placeholder="Loại kỳ"
@@ -88,7 +91,7 @@ function DrawerBody({ userId, periodType }: { userId: number; periodType?: strin
       </div>
       {/* `key` = khoảng ngày + Loại kỳ -> đổi filter remount Panel, tự đưa
           phân trang của CẢ 2 nhóm về lại trang 1 (mirror pattern `key={user.id}` ở trên). */}
-      <UserTasksPanel key={`${params.dateFrom}_${params.dateTo}_${filterPeriodType ?? 'all'}`} userId={userId} params={params} />
+      <UserTasksPanel key={`${params.dateFrom}_${params.dateTo}_${filterPeriodType ?? 'all'}_${overdueOnly ? 'overdue' : 'any'}`} userId={userId} params={params} />
     </>
   );
 }

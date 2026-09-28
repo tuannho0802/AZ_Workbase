@@ -39,3 +39,14 @@ export const isManualOverdueActive = (
 
 /** Cho phép "Gỡ quá hạn" khi Task đang mang dấu (kể cả khi dấu đã hết hiệu lực vì kéo dài kỳ - để dọn dữ liệu). */
 export const canUnmarkOverdue = (task: Pick<PeriodicTask, 'overdueMarkedAt'>): boolean => !!task.overdueMarkedAt;
+
+/** Task QUÁ HẠN để hiện cờ / lọc "Chỉ Task quá hạn": đã qua deadline kỳ và chưa in_review/done.
+ * Khớp điều kiện `overdueOnly` ở BE (`getUserTasks`). Độc lập với ân hạn 7 ngày của hiệu suất. */
+export const isTaskOverdue = (
+  task: Pick<PeriodicTask, 'periodEndDate' | 'status'>,
+  today = todayVnYmd(),
+): boolean => !isCompleted(task) && isPastPeriodEnd(task, today);
+
+/** Số ngày đã quá hạn (>= 1 khi `isTaskOverdue`), 0 nếu chưa quá hạn. */
+export const getOverdueDays = (task: Pick<PeriodicTask, 'periodEndDate'>, today = todayVnYmd()): number =>
+  Math.max(0, dayjs(today).diff(dayjs(endYmd(task)), 'day'));

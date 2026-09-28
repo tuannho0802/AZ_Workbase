@@ -67,6 +67,8 @@ export interface PerformanceFilterParams {
   primaryPage?: number;
   /** CHỈ dùng cho `getUserTasks` - trang hiện tại nhóm "Phụ trách phụ". */
   secondaryPage?: number;
+  /** CHỈ dùng cho `getUserTasks` - true = chỉ Task QUÁ HẠN (lọc ở BE để phân trang đúng). */
+  overdueOnly?: boolean;
 }
 
 /** Khớp `PaginatedUserTasks` ở BE (MỚI 2026-09-25, phân trang SERVER-SIDE

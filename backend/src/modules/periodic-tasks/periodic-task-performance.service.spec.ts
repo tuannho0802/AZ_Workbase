@@ -525,6 +525,41 @@ describe('PeriodicTaskPerformanceService - grace period 7 ngày', () => {
         expect(sqls.some((sql: string) => sql.includes('department_managers'))).toBe(true);
       }
     });
+
+    it('overdueOnly=true -> CẢ primary lẫn secondary query lọc qua hạn kỳ + chưa in_review/done', async () => {
+      mockPermissionsService.hasPermission.mockResolvedValue({ allowed: true, scope: PermissionScope.ALL });
+      jest.spyOn(dateVnUtil, 'todayVnStr').mockReturnValue('2026-09-28');
+
+      const primaryQb = makeEntityQb([]);
+      const secondaryQb = makeEntityQb([]);
+      let call = 0;
+      mockTaskRepo.createQueryBuilder.mockImplementation(() => (call++ === 0 ? primaryQb : secondaryQb));
+
+      await service.getUserTasks(42, { overdueOnly: true }, MANAGER_USER as any);
+
+      for (const qb of [primaryQb, secondaryQb]) {
+        const calls = qb.andWhere.mock.calls as any[][];
+        const endCall = calls.find((c) => String(c[0]).includes('task.periodEndDate < :perfOverdueToday'));
+        expect(endCall?.[1]).toEqual({ perfOverdueToday: '2026-09-28' });
+        const statusCall = calls.find((c) => String(c[0]).includes('status.code NOT IN'));
+        expect(statusCall?.[1]).toEqual({ perfCompletedCodes: ['in_review', 'done'] });
+      }
+    });
+
+    it('không truyền overdueOnly -> KHÔNG thêm điều kiện quá hạn (giữ hành vi cũ)', async () => {
+      mockPermissionsService.hasPermission.mockResolvedValue({ allowed: true, scope: PermissionScope.ALL });
+      const primaryQb = makeEntityQb([]);
+      const secondaryQb = makeEntityQb([]);
+      let call = 0;
+      mockTaskRepo.createQueryBuilder.mockImplementation(() => (call++ === 0 ? primaryQb : secondaryQb));
+
+      await service.getUserTasks(42, {}, MANAGER_USER as any);
+
+      for (const qb of [primaryQb, secondaryQb]) {
+        const sqls = qb.andWhere.mock.calls.map((c: any[]) => String(c[0]));
+        expect(sqls.some((sql: string) => sql.includes('perfOverdueToday'))).toBe(false);
+      }
+    });
   });
   describe('MỚI (2026-09-28) - getMetricTasks() (mini table khi click Card)', () => {
     const row = (id: number, statusId: number, code: string, end = '2026-09-10') => ({

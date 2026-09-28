@@ -1,6 +1,6 @@
 import { ApiPropertyOptional } from '@nestjs/swagger';
-import { IsOptional, IsInt, IsDateString, IsEnum } from 'class-validator';
-import { Type } from 'class-transformer';
+import { IsOptional, IsInt, IsDateString, IsEnum, IsBoolean } from 'class-validator';
+import { Transform, Type } from 'class-transformer';
 import { PeriodType } from '../../../common/enums/period-type.enum';
 
 /**
@@ -57,4 +57,15 @@ export class PeriodicTaskPerformanceFiltersDto {
   @Type(() => Number)
   @IsInt()
   secondaryPage?: number;
+
+  @ApiPropertyOptional({
+    example: true,
+    description:
+      'CHỈ dùng cho `GET /users/:userId/tasks` - true = chỉ trả Task QUÁ HẠN (đã qua `period_end_date` và chưa đạt in_review/done). ' +
+      'Lọc ở BE để `total`/phân trang đúng.',
+  })
+  @IsOptional()
+  @Transform(({ value }) => (value === 'true' || value === true ? true : value === 'false' || value === false ? false : value))
+  @IsBoolean()
+  overdueOnly?: boolean;
 }

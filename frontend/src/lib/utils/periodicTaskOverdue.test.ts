@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { canMarkOverdue, isManualOverdueActive, canUnmarkOverdue } from './periodicTaskOverdue';
+import { canMarkOverdue, isManualOverdueActive, canUnmarkOverdue, isTaskOverdue, getOverdueDays } from './periodicTaskOverdue';
 
 const t = (over: Record<string, unknown> = {}) =>
   ({ periodEndDate: '2026-09-10', status: { code: 'in_progress' }, overdueMarkedAt: null, ...over }) as never;
@@ -29,5 +29,24 @@ describe('periodicTaskOverdue', () => {
   it('canUnmarkOverdue: chỉ khi có dấu', () => {
     expect(canUnmarkOverdue(t())).toBe(false);
     expect(canUnmarkOverdue(t({ overdueMarkedAt: '2026-09-12T00:00:00Z' }))).toBe(true);
+  });
+});
+
+describe('isTaskOverdue / getOverdueDays', () => {
+  it('đúng ngày cuối kỳ -> chưa quá hạn', () => {
+    expect(isTaskOverdue(t(), '2026-09-10')).toBe(false);
+    expect(getOverdueDays(t(), '2026-09-10')).toBe(0);
+  });
+  it('qua hạn 1 ngày, chưa xong -> quá hạn 1 ngày (không cần ân hạn, không cần đánh dấu tay)', () => {
+    expect(isTaskOverdue(t(), '2026-09-11')).toBe(true);
+    expect(getOverdueDays(t(), '2026-09-11')).toBe(1);
+  });
+  it('qua ngày ân hạn 7 ngày vẫn là quá hạn', () => {
+    expect(isTaskOverdue(t(), '2026-09-28')).toBe(true);
+    expect(getOverdueDays(t(), '2026-09-28')).toBe(18);
+  });
+  it('đã in_review / done -> không quá hạn dù trễ deadline', () => {
+    expect(isTaskOverdue(t({ status: { code: 'in_review' } }), '2026-09-28')).toBe(false);
+    expect(isTaskOverdue(t({ status: { code: 'done' } }), '2026-09-28')).toBe(false);
   });
 });

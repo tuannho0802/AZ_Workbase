@@ -4726,3 +4726,19 @@ khi bị xoá tay. Đây là 1 anti-pattern thật (dù đo thử với payload 
 > Cần chạy migration. Nút "Đánh dấu" chỉ hiện khi đã qua deadline, chưa in_review/done và còn trong ân hạn 7 ngày; "Gỡ" hiện khi Task đang có dấu. Chưa gửi notification. ESLint còn 2 lỗi `no-explicit-any` có sẵn ở hieu-suat-cong-viec/page.tsx. Chưa test trên MySQL/trình duyệt thật. Chưa commit/push — chỉ xuất `.patch`.
 
 ---
+
+---
+## [2026-09-28 22:00] | Drawer "Chi tiết công việc": Toggle "Chỉ Task quá hạn" + Cờ quá hạn; Lọc nhanh Tuần trước/Tháng trước | [Status: Success — BE tsc sạch, jest periodic-tasks 203/203 (+2 test); FE vitest 157/157 (+10 test)]
+
+**Actor:** Agent (làm trên `origin/main` HEAD `6f35043`)
+
+**Files Changed:**
+- `backend/.../dto/periodic-task-performance-filters.dto.ts`, `periodic-task-performance.service.ts` (+spec) — `overdueOnly` cho `GET /users/:userId/tasks`: lọc ở BE `period_end_date < hôm nay` và status không thuộc in_review/done (để `total`/phân trang đúng).
+- FE: `periodicTaskRange.ts` (+test) — `getLastWeekRange`, `getLastMonthRange`, preset `lastWeek` trong `PERFORMANCE_QUICK_RANGES` (trang Hiệu suất + `MetricTasksModal` tự có "Tuần trước").
+- FE: `PerformanceRangeFilter.tsx` — thêm nút Tuần trước/Tháng trước + Switch "Chỉ hiển thị Task quá hạn" (tuỳ chọn); `PerformanceUserTasksDrawer.tsx`, `OwnPerformanceDetail.tsx` bật Switch, `key` Panel theo `overdueOnly`.
+- FE: `periodicTaskOverdue.ts` (+test) — `isTaskOverdue`, `getOverdueDays`; `TaskMiniCard.tsx` prop `flagOverdue` (Tag đỏ có cờ "Quá hạn N ngày" + viền đỏ), `UserTasksPanel.tsx` bật `flagOverdue`.
+
+**Notes:**
+> Không có migration. "Quá hạn" ở toggle/cờ = qua hạn kỳ + chưa xong (KHÔNG chờ ân hạn 7 ngày như số liệu hiệu suất). Kanban/Agenda giữ nguyên (`flagOverdue` mặc định false). 5 lỗi tsc có sẵn (logo.png, CountBadge). Chưa test trên MySQL/trình duyệt thật. Chưa commit/push.
+
+---

@@ -14,7 +14,7 @@ import { Role } from '../../common/enums/role.enum';
 import { todayVnStr, toVnDateStr } from '../../common/utils/date-vn.util';
 import { resolveListWindow, addDaysToDateString } from './helpers/list-window.helper';
 import { rawDateToYmd } from './helpers/raw-date.helper';
-import { isOverdueNotCompleted } from './helpers/overdue.helper';
+import { COMPLETED_STATUS_CODES, isOverdueNotCompleted } from './helpers/overdue.helper';
 import { PeriodicTaskAuditAction } from './periodic-task-audit.service';
 import { PeriodicTaskPerformanceFiltersDto } from './dto/periodic-task-performance-filters.dto';
 import { PerformanceMetric, PeriodicTaskPerformanceMetricDto } from './dto/periodic-task-performance-metric.dto';
@@ -872,6 +872,15 @@ export class PeriodicTaskPerformanceService {
       if (dateWindow.dateFrom) qb.andWhere('task.periodEndDate >= :perfDateFrom', { perfDateFrom: dateWindow.dateFrom });
       if (dateWindow.dateTo) qb.andWhere('task.periodStartDate <= :perfDateTo', { perfDateTo: dateWindow.dateTo });
       if (filters.departmentId) qb.andWhere('task.departmentId = :perfDepartmentId', { perfDepartmentId: filters.departmentId });
+      // Toggle "Chỉ hiển thị Task quá hạn": đã QUA hạn kỳ (đúng ngày cuối kỳ thì CHƯA quá hạn - khớp
+      // `isPastPeriodEnd`) và chưa đạt in_review/done (khớp `COMPLETED_STATUS_CODES`). Lọc ở BE để
+      // `total` + phân trang của từng nhóm đúng (lọc ở FE chỉ đúng trong 1 trang 2 Task).
+      if (filters.overdueOnly) {
+        qb.andWhere('task.periodEndDate < :perfOverdueToday', { perfOverdueToday: today });
+        qb.andWhere('(status.code IS NULL OR status.code NOT IN (:...perfCompletedCodes))', {
+          perfCompletedCodes: [...COMPLETED_STATUS_CODES],
+        });
+      }
       this.applyDepartmentOnlyScopeFilter(qb, user, scope);
       return (
         qb

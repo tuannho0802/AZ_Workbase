@@ -90,6 +90,7 @@ export function UserTasksPanel({ userId, params }: Props) {
       <TaskMiniCard
         key={task.id}
         task={task}
+        flagOverdue
         footer={
           <div>
             <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8, flexWrap: 'wrap' }}>
@@ -181,7 +182,7 @@ export function UserTasksPanel({ userId, params }: Props) {
   const { primary, secondary } = data;
 
   if (primary.total === 0 && secondary.total === 0) {
-    return <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="Không có công việc nào trong khoảng đã chọn" style={{ padding: 48 }} />;
+    return <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description={params.overdueOnly ? 'Không có Task quá hạn nào trong khoảng đã chọn 🎉' : 'Không có công việc nào trong khoảng đã chọn'} style={{ padding: 48 }} />;
   }
 
   return (

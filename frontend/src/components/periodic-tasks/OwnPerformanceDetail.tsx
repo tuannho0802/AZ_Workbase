@@ -35,10 +35,13 @@ interface Props {
 export function OwnPerformanceDetail({ userId, periodType }: Props) {
   const [dateRange, setDateRange] = useState<[Dayjs, Dayjs]>(getDefaultPerformanceRange);
 
+  const [overdueOnly, setOverdueOnly] = useState(false);
+
   const params = {
     dateFrom: dateRange[0].format(FMT),
     dateTo: dateRange[1].format(FMT),
     periodType: periodType as never,
+    overdueOnly: overdueOnly || undefined,
   };
 
   return (
@@ -52,9 +55,9 @@ export function OwnPerformanceDetail({ userId, periodType }: Props) {
         </Space>
       }
     >
-      <PerformanceRangeFilter value={dateRange} onChange={setDateRange} />
+      <PerformanceRangeFilter value={dateRange} onChange={setDateRange} overdueOnly={overdueOnly} onOverdueOnlyChange={setOverdueOnly} />
       {/* `key` = khoảng ngày -> đổi ngày remount Panel, tự đưa phân trang về lại trang 1. */}
-      <UserTasksPanel key={`${params.dateFrom}_${params.dateTo}`} userId={userId} params={params} />
+      <UserTasksPanel key={`${params.dateFrom}_${params.dateTo}_${overdueOnly ? 'overdue' : 'any'}`} userId={userId} params={params} />
     </Card>
   );
 }

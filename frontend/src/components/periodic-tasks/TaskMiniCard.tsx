@@ -1,7 +1,7 @@
 'use client';
 
 import { Card, Progress, Tag, Tooltip, Typography } from 'antd';
-import { ExclamationCircleOutlined, LockOutlined } from '@ant-design/icons';
+import { ExclamationCircleOutlined, FlagFilled, LockOutlined } from '@ant-design/icons';
 import dayjs from 'dayjs';
 import { TaskAssignees } from './TaskAssignees';
 import { PeriodicTask } from '@/lib/api/periodic-tasks.api';
@@ -12,7 +12,7 @@ import { TaskChainInfo } from '@/lib/utils/taskLinkChains';
 import { LinkifiedText } from '@/components/common/LinkifiedText';
 import { PeriodTypeTag } from './PeriodTypeTag';
 import { getChecklistProgress, getChecklistTone } from '@/lib/utils/checklistProgress';
-import { isManualOverdueActive } from '@/lib/utils/periodicTaskOverdue';
+import { getOverdueDays, isManualOverdueActive, isTaskOverdue } from '@/lib/utils/periodicTaskOverdue';
 
 const TONE_COLOR = { red: '#ff4d4f', gold: '#faad14', green: '#52c41a' } as const;
 
@@ -56,6 +56,9 @@ export interface TaskMiniCardProps {
     density?: TaskCardDensity;
     /** Hiện thanh tiến độ checklist (chỉ khi Task có checklist). */
     showProgress?: boolean;
+    /** Đánh cờ ĐỎ mọi Task quá hạn (qua hạn kỳ + chưa in_review/done), kể cả khi chưa ai
+     * "Đánh dấu quá hạn" thủ công. Mặc định false = giữ nguyên hành vi cũ (chỉ Tag khi có dấu thủ công). */
+    flagOverdue?: boolean;
 }
 
 export function TaskMiniCard({
@@ -70,7 +73,10 @@ export function TaskMiniCard({
     resolveChainTask,
     density = 'full',
     showProgress = false,
+    flagOverdue = false,
 }: TaskMiniCardProps) {
+    const autoOverdue = flagOverdue && isTaskOverdue(task);
+    const overdueDays = autoOverdue ? getOverdueDays(task) : 0;
     const isMini = density === 'mini';
     const isCompact = density === 'compact';
     const checklist = getChecklistProgress(task);
@@ -157,7 +163,7 @@ export function TaskMiniCard({
         // cùng 1 thuộc tính CSS cuối cùng, ở đây là cạnh trái của border).
         borderLeft: `4px solid ${resolvedTaskColor}`,
         borderRadius: 10,
-        boxShadow: '0 1px 3px rgba(16, 24, 40, 0.06)',
+        boxShadow: autoOverdue ? '0 0 0 1px #ff4d4f, 0 1px 3px rgba(255, 77, 79, 0.25)' : '0 1px 3px rgba(16, 24, 40, 0.06)',
         backgroundColor: bgColor,
         ...style,
     };
@@ -254,17 +260,23 @@ export function TaskMiniCard({
                 {task.department && (
                     <Tag color={resolveEntityColor(task.department.color)}>{task.department.name}</Tag>
                 )}
-                {isManualOverdueActive(task) && (
+                {(autoOverdue || isManualOverdueActive(task)) && (
                     <Tooltip
                         title={
                             <>
-                                <div>Đánh dấu quá hạn thủ công</div>
-                                {task.overdueMarkedAt && <div>Lúc: {dayjs(task.overdueMarkedAt).format('HH:mm DD/MM/YYYY')}</div>}
+                                <div>Hạn kỳ: {dayjs(task.periodEndDate).format('DD/MM/YYYY')}</div>
+                                {overdueDays > 0 && <div>Đã quá hạn {overdueDays} ngày, chưa hoàn thành</div>}
+                                {isManualOverdueActive(task) && (
+                                    <div>
+                                        Đánh dấu quá hạn thủ công
+                                        {task.overdueMarkedAt && ` lúc ${dayjs(task.overdueMarkedAt).format('HH:mm DD/MM/YYYY')}`}
+                                    </div>
+                                )}
                             </>
                         }
                     >
-                        <Tag color="error" icon={<ExclamationCircleOutlined />}>
-                            Quá hạn
+                        <Tag color="error" icon={autoOverdue ? <FlagFilled /> : <ExclamationCircleOutlined />}>
+                            {overdueDays > 0 ? `Quá hạn ${overdueDays} ngày` : 'Quá hạn'}
                         </Tag>
                     </Tooltip>
                 )}
