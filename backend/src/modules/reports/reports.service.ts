@@ -7,7 +7,7 @@ import { CustomerStatus } from '../../database/entities/customer-status.entity';
 import { Role } from '../../common/enums/role.enum';
 import { PermissionScope } from '../../database/entities/role-permission.entity';
 import { CustomerAccessHelper } from '../customers/helpers/customer-access.helper';
-import { getReportPeriodRange, getNowVn } from '../../common/utils/date-vn.util';
+import { resolveReportRange } from './report-range.util';
 import { QueryReportDto } from './dto/query-report.dto';
 
 interface PersonalBreakdownRow {
@@ -93,22 +93,8 @@ export class ReportsService {
    * `from`/`to` (naive) là đủ, KHÔNG dùng `fromUtc`/`toUtc` cho 2 cột này.
    */
   private resolveRange(query: QueryReportDto) {
-    const anchor = query.anchor ? new Date(`${query.anchor}T00:00:00`) : getNowVn();
-    const { start, end } = getReportPeriodRange(
-      query.period,
-      anchor,
-      query.customFrom,
-      query.customTo,
-    );
-    const fmt = (d: Date) =>
-      `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')} ${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}:${String(d.getSeconds()).padStart(2, '0')}`;
-    const VN_OFFSET_MS = 7 * 60 * 60 * 1000;
-    return {
-      from: fmt(start),
-      to: fmt(end),
-      fromUtc: fmt(new Date(start.getTime() - VN_OFFSET_MS)),
-      toUtc: fmt(new Date(end.getTime() - VN_OFFSET_MS)),
-    };
+    // Logic đã tách sang report-range.util.ts (dùng chung với ReportsMarketingService).
+    return resolveReportRange(query);
   }
 
   // ═══════════════════════════ DOANH THU (TIỀN) ═══════════════════════════

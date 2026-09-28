@@ -4817,3 +4817,24 @@ khi bị xoá tay. Đây là 1 anti-pattern thật (dù đo thử với payload 
 **Notes:**
 > Task `not_started` tick mục thường: hỏi "Bạn đang làm Task này?" Có => tick + `in_progress`, Không => KHÔNG tick. Tick mục CUỐI (kể cả Task con liên kết) khi Task chưa in_review/done: hỏi "Task đã xong?" Có => tick + `in_review`, Không => KHÔNG tick (ưu tiên hơn hỏi "đang làm"). Bỏ tick không hỏi. Chỉ FE, BE không ép. Cần status có code `in_progress`/`in_review`. Chưa test trên trình duyệt thật. Chưa commit/push.
 ---
+
+---
+## [2026-09-29 11:00] | /reports: hoàn thiện tab "Marketing" (phân tích theo Marketing phụ trách + Người tạo data) | [Status: Success — BE tsc sạch, jest 1080/1080; FE vitest 181/181]
+
+**Actor:** Agent (trên `origin/main` HEAD `56480a4`)
+
+**Root Cause (commit trước bị thiếu):**
+> Commit `56480a4` chỉ push `reports-marketing.service.ts` + 2 component FE, nhưng THIẾU các file mà chúng import → BE/FE không compile: `report-range.util.ts`, `dto/query-marketing-report.dto.ts`, endpoint controller, wiring module (thiếu `User` repo), FE `lib/utils/marketingReport.ts`, type/api/hook Marketing, và tab chưa gắn vào `page.tsx`.
+
+**Files Changed:**
+- BE MỚI: `reports/report-range.util.ts` (tách logic kỳ + kỳ liền trước, dùng chung), `reports/dto/query-marketing-report.dto.ts`, `reports/reports-marketing.service.spec.ts`.
+- BE: `reports.controller.ts` (+`GET /reports/marketing`, dùng lại `reports.view`), `reports.module.ts` (+`User`, +service), `reports.service.ts` (`resolveRange` gọi util chung — không đổi hành vi).
+- FE MỚI: `lib/utils/marketingReport.ts` (+test), `reports/MarketingReportTab.test.tsx`.
+- FE: `lib/types/reports.types.ts`, `lib/api/reports.api.ts`, `lib/hooks/useReports.ts` (`useMarketingReport`), `reports/page.tsx` (+tab Marketing).
+
+**Solution:**
+> Doanh số/khách nạp quy về CẢ Marketing phụ trách (`marketing_user_id`) lẫn Người tạo (`created_by_id`), độc lập Sales. Có KPI so kỳ trước, xu hướng ngày/tháng (điền 0), xếp hạng, tỷ trọng, đối soát Marketing vs Người tạo, chất lượng theo status, theo nguồn, bảng chi tiết + drill-down.
+
+**Notes:**
+> Không migration, không permission key mới (dùng `reports.view`). scope='own' (không phải Admin) chỉ thấy dòng của chính mình. Tỷ lệ duy nhất hợp lệ = `cohortDeposited / totalCustomers` (các chỉ số khác dùng cột ngày khác nhau). SQL đã sinh thử bằng metadata TypeORM thật (không cần DB) — chưa chạy trên MySQL/trình duyệt thật. Chưa commit/push.
+---

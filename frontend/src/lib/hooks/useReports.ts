@@ -1,6 +1,6 @@
-import { useQuery } from '@tanstack/react-query';
+import { keepPreviousData, useQuery } from '@tanstack/react-query';
 import { reportsApi } from '../api/reports.api';
-import { ReportQuery } from '../types/reports.types';
+import { MarketingReportFilters, ReportQuery } from '../types/reports.types';
 
 /**
  * `enabled: isQueryReady(query)` - period=custom cần ĐỦ customFrom+customTo
@@ -36,5 +36,16 @@ export const useCustomerQualityReport = (query: ReportQuery) => {
         queryFn: () => reportsApi.getCustomerQualityReport(query),
         enabled: isQueryReady(query),
         staleTime: 60 * 1000,
+    });
+};
+
+export const useMarketingReport = (query: ReportQuery & MarketingReportFilters) => {
+    return useQuery({
+        queryKey: ['reports', 'marketing', query],
+        queryFn: () => reportsApi.getMarketingReport(query),
+        enabled: isQueryReady(query),
+        staleTime: 60 * 1000,
+        // Đổi bộ lọc/kỳ: giữ số cũ (mờ đi bằng Spin) thay vì nháy về skeleton toàn trang.
+        placeholderData: keepPreviousData,
     });
 };

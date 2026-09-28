@@ -1,6 +1,8 @@
 import { Controller, Get, Query, UseGuards, Request } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiBearerAuth } from '@nestjs/swagger';
 import { ReportsService } from './reports.service';
+import { ReportsMarketingService } from './reports-marketing.service';
+import { QueryMarketingReportDto } from './dto/query-marketing-report.dto';
 import { QueryReportDto } from './dto/query-report.dto';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { PermissionGuard } from '../../common/guards/permission.guard';
@@ -20,7 +22,10 @@ import { GetPermissionScope } from '../../common/decorators/get-permission-scope
   @UseGuards(JwtAuthGuard, PermissionGuard)
 @Controller('reports')
 export class ReportsController {
-  constructor(private readonly reportsService: ReportsService) {}
+  constructor(
+    private readonly reportsService: ReportsService,
+    private readonly reportsMarketingService: ReportsMarketingService,
+  ) {}
 
   @Get('revenue')
   @RequirePermission('reports.view')
@@ -62,5 +67,19 @@ export class ReportsController {
     @GetPermissionScope() scope: string | null,
   ) {
     return this.reportsService.getCustomerQualityReport(query, req.user.id, req.user.role, scope);
+  }
+
+  @Get('marketing')
+  @RequirePermission('reports.view')
+  @ApiOperation({
+    summary:
+      'Báo cáo MARKETING đa chiều: doanh số/khách nạp quy về Marketing phụ trách + Người tạo data (độc lập với Sales), kèm xu hướng, so kỳ trước, đối soát 2 chiều - phạm vi theo scope (xem reports-marketing.service.ts)',
+  })
+  async getMarketingReport(
+    @Query() query: QueryMarketingReportDto,
+    @Request() req: any,
+    @GetPermissionScope() scope: string | null,
+  ) {
+    return this.reportsMarketingService.getMarketingReport(query, req.user.id, req.user.role, scope);
   }
 }

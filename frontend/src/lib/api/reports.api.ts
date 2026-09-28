@@ -1,5 +1,12 @@
 import axiosInstance from './axios-instance';
-import { ReportQuery, RevenueReport, CustomerReport, QualityReport } from '../types/reports.types';
+import {
+    ReportQuery,
+    RevenueReport,
+    CustomerReport,
+    QualityReport,
+    MarketingReport,
+    MarketingReportFilters,
+} from '../types/reports.types';
 
 export const reportsApi = {
     getRevenueReport: async (query: ReportQuery): Promise<RevenueReport> => {
@@ -14,6 +21,12 @@ export const reportsApi = {
 
     getCustomerQualityReport: async (query: ReportQuery): Promise<QualityReport> => {
         const response = await axiosInstance.get<QualityReport>('/reports/quality', { params: query });
+        return response.data;
+    },
+
+    getMarketingReport: async (query: ReportQuery & MarketingReportFilters): Promise<MarketingReport> => {
+        // axios bỏ qua key undefined; marketingUserId/createdById = 0 vẫn được gửi (0 = "chưa gán").
+        const response = await axiosInstance.get<MarketingReport>('/reports/marketing', { params: query });
         return response.data;
     },
 };
