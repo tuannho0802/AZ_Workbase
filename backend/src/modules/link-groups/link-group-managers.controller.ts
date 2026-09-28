@@ -6,12 +6,17 @@ import {
   Body,
   Param,
   ParseIntPipe,
+  Query,
   UseGuards,
 } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiBearerAuth } from '@nestjs/swagger';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { GetUser } from '../../common/decorators/get-user.decorator';
 import { LinkGroupManagersService } from './link-group-managers.service';
+import { LinkGroupCustomersService } from './link-group-customers.service';
+import { GroupCustomersQueryDto } from './dto/group-customers-query.dto';
+import { PermissionGuard } from '../../common/guards/permission.guard';
+import { RequirePermission } from '../../common/decorators/require-permission.decorator';
 import { AddGroupManagerDto } from './dto/add-group-manager.dto';
 import { AddContentStaffDto } from './dto/add-content-staff.dto';
 
@@ -25,10 +30,35 @@ import { AddContentStaffDto } from './dto/add-content-staff.dto';
  */
 @ApiTags('Link Group Managers (Quản lý chính/phụ theo từng nhóm)')
 @ApiBearerAuth()
-@UseGuards(JwtAuthGuard)
+@UseGuards(JwtAuthGuard, PermissionGuard)
 @Controller('link-groups')
 export class LinkGroupManagersController {
-  constructor(private readonly managersService: LinkGroupManagersService) {}
+  constructor(
+    private readonly managersService: LinkGroupManagersService,
+    private readonly customersService: LinkGroupCustomersService,
+  ) {}
+
+  // Số khách đã join của các nhóm user được xem (nút "Xem khách hàng (N)").
+  // Khai báo TRƯỚC các route ':id/...' - đường dẫn tĩnh.
+  @Get('customer-counts')
+  @RequirePermission('customers.view')
+  @ApiOperation({ summary: '{ [groupId]: số khách đã join } cho các nhóm mình được xem' })
+  async getCustomerCounts(@GetUser() user: any) {
+    return this.customersService.getCounts(user);
+  }
+
+  @Get(':id/customers')
+  @RequirePermission('customers.view')
+  @ApiOperation({
+    summary: 'Khách hàng đã join 1 nhóm (mini table) - chỉ người được xem nhóm đó (admin/chính/phụ/content)',
+  })
+  async getGroupCustomers(
+    @Param('id', ParseIntPipe) id: number,
+    @Query() query: GroupCustomersQueryDto,
+    @GetUser() user: any,
+  ) {
+    return this.customersService.listCustomers(id, query, user);
+  }
 
   @Get('managed-by-me')
   @ApiOperation({

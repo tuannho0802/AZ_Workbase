@@ -13,6 +13,8 @@ import { LinkGroupsService } from './link-groups.service';
 import { LinkGroupsController } from './link-groups.controller';
 import { LinkGroupManagersService } from './link-group-managers.service';
 import { LinkGroupManagersController } from './link-group-managers.controller';
+import { LinkGroupCustomersService } from './link-group-customers.service';
+import { UiVisibilityModule } from '../ui-visibility/ui-visibility.module';
 import { CustomerGroupMembershipsService } from './customer-group-memberships.service';
 import { CustomerGroupMembershipsController } from './customer-group-memberships.controller';
 
@@ -27,6 +29,7 @@ import { CustomerGroupMembershipsController } from './customer-group-memberships
       Customer,
       User,
     ]),
+    UiVisibilityModule,
   ],
   controllers: [
     LinkCategoriesController,
@@ -38,6 +41,7 @@ import { CustomerGroupMembershipsController } from './customer-group-memberships
     LinkCategoriesService,
     LinkGroupsService,
     LinkGroupManagersService,
+    LinkGroupCustomersService,
     CustomerGroupMembershipsService,
   ],
   exports: [

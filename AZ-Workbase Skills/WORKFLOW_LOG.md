@@ -4657,3 +4657,17 @@ khi bị xoá tay. Đây là 1 anti-pattern thật (dù đo thử với payload 
 > Không có migration/schema mới — `marketingUserId` (customer.entity.ts) và `customer_group_memberships` đã có sẵn từ trước. `attachGroups()` chỉ truy vấn đúng các `customer_id` nằm trong cụm trùng đang xét (không quét toàn bảng membership), chia chunk `KEY_CHUNK_SIZE` như phần còn lại của service. Chưa test trên MySQL/trình duyệt thật (service test bằng fake QueryBuilder/Repository, giống các test cũ trong file). Chưa commit/push — chỉ xuất file `.patch` để người dùng tự áp và review trước khi merge.
 
 ---
+## [2026-09-28 14:00] | Nhóm tôi quản lý: nút "Xem khách hàng (N)" + mini table có filter; filter "Nhóm cụ thể" ở trang Khách hàng | [Status: Success — BE nest build sạch, jest 1036/1036 (+5 test mới); FE vitest 137/137, tsc chỉ còn 5 lỗi có sẵn (logo.png x4, CountBadge)]
+
+**Actor:** Agent (làm trên `origin/main` HEAD `0063169`)
+
+**Files Changed:**
+- `backend/src/modules/link-groups/link-group-customers.service.ts` (+`.spec.ts`, `dto/group-customers-query.dto.ts`) — MỚI: `getCounts()` (khách đã join `joined=true`, chưa xoá mềm, theo nhóm caller được xem) và `listCustomers()` (lọc search/status/source/sales/marketing/ngày nhập + phân trang, strip field theo UI Visibility). Quyền xem nhóm tái dùng `LinkGroupManagersService.getManagers()`.
+- `backend/src/modules/link-groups/link-group-managers.controller.ts` — thêm `GET link-groups/customer-counts` và `GET link-groups/:id/customers` (`@RequirePermission('customers.view')`, thêm `PermissionGuard`; route cũ không gắn decorator nên không đổi hành vi). `link-groups.module.ts` import `UiVisibilityModule`.
+- `backend/src/modules/customers/dto/customer-filters.dto.ts`, `customers.service.ts` — `GET /customers` nhận thêm `groupId` (dùng lại `buildJoinedGroupsCondition`, đã có sẵn cho báo cáo invalid-data).
+- FE: `GroupCustomersModal.tsx` (mới), `nhom-toi-quan-ly/page.tsx`, `useLinkGroups.ts`, `link-groups.api.ts`, `CustomerFilters.tsx` (dropdown "Nhóm cụ thể"), `customers/page.tsx`, `customers.api.ts`, `useCustomers.ts`, `ExportCustomersModal.tsx` (truyền `groupId`).
+
+**Notes:**
+> Không có migration. Danh sách/đếm KHÔNG lọc theo scope `customers.view` (quản lý nhóm cần thấy đủ thành viên) nên số N luôn khớp mini table. Chưa test trên MySQL/trình duyệt thật. Chưa commit/push.
+
+---

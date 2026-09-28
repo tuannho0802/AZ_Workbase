@@ -16,6 +16,7 @@ export interface CustomerFilterParams {
   dateFrom?: string;
   dateTo?: string;
   joinedGroups?: 'joined' | 'not_joined';
+  groupId?: number;
 }
 
 /**

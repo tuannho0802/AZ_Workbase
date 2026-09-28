@@ -98,6 +98,8 @@ export const customersApi = {
     dateFrom?: string;
     dateTo?: string;
     joinedGroups?: 'joined' | 'not_joined';
+    // Lọc khách đã join ĐÚNG 1 nhóm liên kết (link_groups.id).
+    groupId?: number;
   }): Promise<PaginatedResponse<Customer>> => {
     const response = await axiosInstance.get('/customers', { params });
     return response.data;

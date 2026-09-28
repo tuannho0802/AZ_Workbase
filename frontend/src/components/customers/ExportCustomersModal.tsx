@@ -26,6 +26,7 @@ export interface ExportFilterState {
   dateFrom?: string;
   dateTo?: string;
   joinedGroups?: 'joined' | 'not_joined';
+  groupId?: number;
 }
 
 interface ExportCustomersModalProps {

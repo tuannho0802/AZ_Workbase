@@ -4,6 +4,7 @@ import { SearchOutlined } from '@ant-design/icons';
 import dayjs, { Dayjs } from 'dayjs';
 import { useMediaSources } from '@/lib/hooks/useMediaSources';
 import { useCustomerStatuses } from '@/lib/hooks/useCustomerStatuses';
+import { useAllActiveLinkGroups } from '@/lib/hooks/useLinkGroups';
 import { SourceTag } from './SourceTag';
 import { useRoleColorMap, useRoleColors } from '@/lib/hooks/useRoleColorMap';
 import { resolveEntityColor } from '@/lib/utils/entityColor';
@@ -36,6 +37,8 @@ interface CustomerFiltersProps {
     dateFrom?: string;
     dateTo?: string;
     joinedGroups?: 'joined' | 'not_joined';
+    // Lọc CỤ THỂ 1 nhóm liên kết (link_groups.id) - kết hợp với joinedGroups.
+    groupId?: number;
   };
   salesUsers: FilterUserOption[];
   marketingUsers: FilterUserOption[];
@@ -76,6 +79,8 @@ export const CustomerFilters: React.FC<CustomerFiltersProps> = ({
   // CreateCustomerStatuses1781400000000) - dropdown lọc "Trạng thái" trước
   // đây hardcode 5 giá trị cố định trong chính component này.
   const { statuses: allCustomerStatuses } = useCustomerStatuses();
+  // Dropdown "Nhóm cụ thể": GET /link-groups mở cho mọi user đã đăng nhập.
+  const { groups: allGroups } = useAllActiveLinkGroups();
   const { getRoleColor } = useRoleColorMap();
   // ⚠️ FIX BUG THẬT (403 "GET /api/roles" mỗi lần vào trang Khách hàng, kể cả
   // F5): trước đây dùng `useRoles()` (GET /roles) - route đòi `roles.view`,
@@ -292,6 +297,38 @@ export const CustomerFilters: React.FC<CustomerFiltersProps> = ({
               { value: 'joined', label: 'Đã joined ít nhất 1 nhóm' },
               { value: 'not_joined', label: 'Chưa joined nhóm nào' },
             ]}
+          />
+        </Col>
+
+        <Col xs={24} sm={12} md={4}>
+          <label className="block text-sm font-medium mb-1">Nhóm cụ thể</label>
+          <Select
+            placeholder="Chọn nhóm"
+            allowClear
+            showSearch={{ optionFilterProp: 'label' }}
+            style={{ width: '100%' }}
+            value={filters.groupId}
+            onChange={(val) => onFiltersChange({ ...filters, groupId: val, page: 1 })}
+            popupMatchSelectWidth={false}
+            optionLabelProp="label"
+            options={allGroups.map((g) => ({
+              value: g.id,
+              label: g.name,
+              group: g,
+            }))}
+            optionRender={(option) => {
+              const g = (option.data as { group: (typeof allGroups)[number] }).group;
+              return (
+                <Space size={4}>
+                  {g.category?.name && (
+                    <Tag color={resolveEntityColor(g.category.color)} style={{ marginInlineEnd: 0, fontSize: 10 }}>
+                      {g.category.name}
+                    </Tag>
+                  )}
+                  <span>{g.name}</span>
+                </Space>
+              );
+            }}
           />
         </Col>
 

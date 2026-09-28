@@ -163,6 +163,41 @@ export const linkGroupsApi = {
   },
 };
 
+/** 1 dòng của mini table "Xem khách hàng (N)" - GET /link-groups/:id/customers */
+export interface GroupCustomerRow {
+  id: number;
+  name: string;
+  phone: string | null;
+  source: string;
+  status: string;
+  inputDate: string | null;
+  createdAt: string;
+  joinedAt: string | null;
+  // Bị BE strip khi role/phòng ban/vị trí của người xem ẩn field tương ứng (UI Visibility).
+  salesUser?: { id: number; name: string } | null;
+  marketingUser?: { id: number; name: string } | null;
+}
+
+export interface GroupCustomersParams {
+  page?: number;
+  limit?: number;
+  search?: string;
+  status?: string;
+  source?: string;
+  salesUserId?: number;
+  marketingUserId?: number;
+  dateFrom?: string;
+  dateTo?: string;
+}
+
+export interface GroupCustomersResponse {
+  data: GroupCustomerRow[];
+  total: number;
+  page: number;
+  limit: number;
+  totalPages: number;
+}
+
 export const linkGroupManagersApi = {
   /**
    * Danh sách nhóm mà user hiện tại được xem trong tính năng "Quản lý nhóm
@@ -171,6 +206,18 @@ export const linkGroupManagersApi = {
    */
   listManagedByMe: async (): Promise<GroupManagersResult[]> => {
     const response = await axiosInstance.get<GroupManagersResult[]>('/link-groups/managed-by-me');
+    return response.data;
+  },
+
+  /** `{ [groupId]: số khách đã join }` cho các nhóm mình được xem - GET /link-groups/customer-counts */
+  getCustomerCounts: async (): Promise<Record<number, number>> => {
+    const response = await axiosInstance.get<Record<number, number>>('/link-groups/customer-counts');
+    return response.data;
+  },
+
+  /** Khách đã join 1 nhóm (có lọc + phân trang) - BE tự chặn 403 nếu không được xem nhóm */
+  getGroupCustomers: async (groupId: number, params: GroupCustomersParams): Promise<GroupCustomersResponse> => {
+    const response = await axiosInstance.get<GroupCustomersResponse>(`/link-groups/${groupId}/customers`, { params });
     return response.data;
   },
 

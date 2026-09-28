@@ -7,6 +7,7 @@ import {
   LinkCategory,
   LinkGroup,
   GroupManagersResult,
+  GroupCustomersParams,
 } from '../api/link-groups.api';
 
 const CATEGORY_KEY = ['link-categories'];
@@ -252,5 +253,33 @@ export const useRemoveContentStaff = () => {
       queryClient.invalidateQueries({ queryKey: GROUP_KEY });
       queryClient.invalidateQueries({ queryKey: groupManagersKey(variables.groupId) });
     },
+  });
+};
+
+const GROUP_CUSTOMER_COUNTS_KEY = ['link-groups', 'customer-counts'];
+const EMPTY_COUNTS: Record<number, number> = {};
+
+/**
+ * `{ [groupId]: N khách đã join }` cho nút "Xem khách hàng (N)". `enabled=false`
+ * khi user thiếu `customers.view` (BE sẽ 403) - tránh gọi API vô ích.
+ */
+export const useGroupCustomerCounts = (enabled = true) => {
+  const { data, isLoading } = useQuery({
+    queryKey: GROUP_CUSTOMER_COUNTS_KEY,
+    queryFn: () => linkGroupManagersApi.getCustomerCounts(),
+    enabled,
+    staleTime: 30 * 1000,
+  });
+  return { counts: data ?? EMPTY_COUNTS, isLoading: enabled && isLoading };
+};
+
+/** Khách đã join 1 nhóm - chỉ fetch khi có `groupId` (modal đang mở). */
+export const useGroupCustomers = (groupId: number | null, params: GroupCustomersParams) => {
+  return useQuery({
+    queryKey: ['link-groups', groupId, 'customers', params],
+    queryFn: () => linkGroupManagersApi.getGroupCustomers(groupId as number, params),
+    enabled: groupId != null,
+    staleTime: 15 * 1000,
+    placeholderData: (prev) => prev,
   });
 };

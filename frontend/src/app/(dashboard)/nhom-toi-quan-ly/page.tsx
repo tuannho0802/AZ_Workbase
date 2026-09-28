@@ -3,11 +3,12 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { Table, Tag, Typography, Space, Button, Empty, App } from 'antd';
-import { LinkOutlined, TeamOutlined, CrownOutlined } from '@ant-design/icons';
+import { LinkOutlined, TeamOutlined, CrownOutlined, UserOutlined } from '@ant-design/icons';
 import { useAuthStore } from '@/lib/stores/auth.store';
-import { useManagedByMe, useAllLinkGroups } from '@/lib/hooks/useLinkGroups';
+import { useManagedByMe, useAllLinkGroups, useGroupCustomerCounts } from '@/lib/hooks/useLinkGroups';
 import { useMyPermissions } from '@/lib/hooks/useMyPermissions';
 import { GroupManagersModal } from '@/components/link-groups/GroupManagersModal';
+import { GroupCustomersModal } from '@/components/link-groups/GroupCustomersModal';
 import { ListFilterBar } from '@/components/common/ListFilterBar';
 import { resolveEntityColor } from '@/lib/utils/entityColor';
 
@@ -37,6 +38,12 @@ export default function MyManagedLinkGroupsPage() {
   }, [permissionsLoading, can, router, message]);
 
   const [managingGroup, setManagingGroup] = useState<{ id: number; name: string } | null>(null);
+  const [viewingCustomersGroup, setViewingCustomersGroup] = useState<{ id: number; name: string } | null>(null);
+
+  // Nút "Xem khách hàng (N)": BE đòi `customers.view` (+ phải là người được xem
+  // nhóm đó) - thiếu quyền thì ẩn hẳn nút và không gọi API đếm.
+  const canViewCustomers = can('customers.view');
+  const { counts: customerCounts } = useGroupCustomerCounts(canViewCustomers);
 
   // Search/filter CLIENT-SIDE: danh sách chỉ chứa nhóm mà chính user này
   // quản lý (chính hoặc phụ) - BOUNDED, không phân trang thật ở BE, giống
@@ -151,15 +158,26 @@ export default function MyManagedLinkGroupsPage() {
     {
       title: 'Thao tác',
       key: 'action',
-      width: 130,
+      width: canViewCustomers ? 300 : 130,
       render: (_: unknown, row: (typeof rows)[number]) => (
-        <Button
-          size="small"
-          icon={<TeamOutlined />}
-          onClick={() => setManagingGroup({ id: row.groupId, name: row.groupName })}
-        >
-          Quản lý
-        </Button>
+        <Space size={8} wrap>
+          <Button
+            size="small"
+            icon={<TeamOutlined />}
+            onClick={() => setManagingGroup({ id: row.groupId, name: row.groupName })}
+          >
+            Quản lý
+          </Button>
+          {canViewCustomers && (
+            <Button
+              size="small"
+              icon={<UserOutlined />}
+              onClick={() => setViewingCustomersGroup({ id: row.groupId, name: row.groupName })}
+            >
+              Xem khách hàng ({customerCounts[row.groupId] ?? 0})
+            </Button>
+          )}
+        </Space>
       ),
     },
   ];
@@ -235,6 +253,13 @@ export default function MyManagedLinkGroupsPage() {
         onClose={() => setManagingGroup(null)}
         groupId={managingGroup?.id ?? null}
         groupName={managingGroup?.name}
+      />
+
+      <GroupCustomersModal
+        open={!!viewingCustomersGroup}
+        onClose={() => setViewingCustomersGroup(null)}
+        groupId={viewingCustomersGroup?.id ?? null}
+        groupName={viewingCustomersGroup?.name}
       />
     </div>
   );

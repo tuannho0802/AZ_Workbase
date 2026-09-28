@@ -102,6 +102,16 @@ export class CustomerFiltersDto {
   @IsEnum(['joined', 'not_joined'])
   joinedGroups?: 'joined' | 'not_joined';
 
+  @ApiPropertyOptional({
+    example: 5,
+    description:
+      'Lọc khách đã join ĐÚNG 1 nhóm liên kết cụ thể (id nhóm). Kết hợp với joinedGroups=not_joined = khách CHƯA join nhóm đó.',
+  })
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  groupId?: number;
+
   @ApiPropertyOptional({ example: 5, description: 'Lọc theo người đã xóa mềm (Người xóa) - chỉ dùng ở GET /customers/trash' })
   @IsOptional()
   @Type(() => Number)

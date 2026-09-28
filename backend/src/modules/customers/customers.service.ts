@@ -684,6 +684,7 @@ export class CustomersService {
       | 'dateFrom'
       | 'dateTo'
       | 'joinedGroups'
+      | 'groupId'
     >,
   ) {
     const {
@@ -697,6 +698,7 @@ export class CustomersService {
       dateFrom,
       dateTo,
       joinedGroups,
+      groupId,
     } = filters;
 
     // Search
@@ -760,7 +762,7 @@ export class CustomersService {
     // lúc - nếu JOIN thẳng vào customer_group_memberships, 1 customer sẽ
     // xuất hiện lặp lại N lần theo N nhóm đã join, làm sai cả phân trang
     // lẫn COUNT). EXISTS chỉ trả về true/false, không nhân dòng.
-    this.applyJoinedGroupsFilter(queryBuilder, joinedGroups, undefined);
+    this.applyJoinedGroupsFilter(queryBuilder, joinedGroups, groupId);
   }
 
   /**
@@ -876,6 +878,7 @@ export class CustomersService {
       dateFrom,
       dateTo,
       joinedGroups,
+      groupId,
     } = filters;
 
     const qb = this.customersRepository
@@ -895,6 +898,7 @@ export class CustomersService {
       dateFrom,
       dateTo,
       joinedGroups,
+      groupId,
     });
 
     if (sortField === 'totalDeposit30Days') {
@@ -962,6 +966,7 @@ export class CustomersService {
       dateFrom,
       dateTo,
       joinedGroups,
+      groupId,
     } = filters;
 
     // ===== Query chính: lấy dữ liệu (có joins + subquery deposit) =====
@@ -1002,6 +1007,7 @@ export class CustomersService {
       dateFrom,
       dateTo,
       joinedGroups,
+      groupId,
     });
 
     // Calculate and alias the deposit sum based on date range (or default 30 days)
@@ -1061,6 +1067,7 @@ export class CustomersService {
       dateFrom,
       dateTo,
       joinedGroups,
+      groupId,
     });
 
     // Chạy song song 2 query độc lập thay vì tuần tự -> giảm tổng thời gian chờ

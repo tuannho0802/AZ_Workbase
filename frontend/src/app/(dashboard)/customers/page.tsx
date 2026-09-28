@@ -383,6 +383,7 @@ function CustomersPageContent() {
           dateFrom: dateFrom?.format('YYYY-MM-DD'),
           dateTo: dateTo?.format('YYYY-MM-DD'),
           joinedGroups,
+          groupId,
         };
         (async () => {
           try {
@@ -399,6 +400,7 @@ function CustomersPageContent() {
                 setDateFrom(null);
                 setDateTo(null);
                 setJoinedGroups(undefined);
+                setGroupId(undefined);
                 located = await customersApi.locateInList(parsedId, baseParams);
               }
             }
@@ -453,6 +455,8 @@ function CustomersPageContent() {
   const [dateFrom, setDateFrom] = useState<dayjs.Dayjs | null>(null);
   const [dateTo, setDateTo] = useState<dayjs.Dayjs | null>(null);
   const [joinedGroups, setJoinedGroups] = useState<'joined' | 'not_joined' | undefined>(undefined);
+  // Lọc CỤ THỂ 1 nhóm liên kết (link_groups.id) - kết hợp với joinedGroups.
+  const [groupId, setGroupId] = useState<number | undefined>(undefined);
   // Số ghi chú gần nhất hiển thị trong tooltip cột "Ghi chú gần nhất" - BE
   // luôn trả tối đa 5 (MAX_RECENT_NOTES ở customers.service.ts), FE cho
   // người dùng CHỌN xem 3 hay 5 trong số đó (cắt bớt ở đây, không gọi lại
@@ -508,6 +512,7 @@ function CustomersPageContent() {
     dateFrom: dateFrom?.format('YYYY-MM-DD'),
     dateTo: dateTo?.format('YYYY-MM-DD'),
     joinedGroups,
+    groupId,
   });
 
   const customers = customersResponse?.data || [];
@@ -630,6 +635,7 @@ function CustomersPageContent() {
         dateFrom: dateFrom?.format('YYYY-MM-DD'),
         dateTo: dateTo?.format('YYYY-MM-DD'),
         joinedGroups,
+        groupId,
       });
       setStats(data);
     } catch (error) {
@@ -641,7 +647,7 @@ function CustomersPageContent() {
 
   useEffect(() => {
     fetchStats();
-  }, [debouncedSearch, source, status, salesUserId, marketingUserId, creatorId, dateFrom, dateTo, joinedGroups]);
+  }, [debouncedSearch, source, status, salesUserId, marketingUserId, creatorId, dateFrom, dateTo, joinedGroups, groupId]);
 
   const handleDrawerUpdate = async () => {
     await refetchCustomers();
@@ -918,6 +924,7 @@ function CustomersPageContent() {
     if ('dateFrom' in newFilters) setDateFrom(newFilters.dateFrom ? dayjs(newFilters.dateFrom) : null);
     if ('dateTo' in newFilters) setDateTo(newFilters.dateTo ? dayjs(newFilters.dateTo) : null);
     if ('joinedGroups' in newFilters) setJoinedGroups(newFilters.joinedGroups);
+    if ('groupId' in newFilters) setGroupId(newFilters.groupId);
     if (newFilters.page) setPage(newFilters.page);
   };
 
@@ -1044,6 +1051,7 @@ function CustomersPageContent() {
                       dateFrom: dateFrom?.format('YYYY-MM-DD'),
                       dateTo: dateTo?.format('YYYY-MM-DD'),
                       joinedGroups,
+                      groupId,
                     }}
                     salesUsers={salesUsersInDept}
                     marketingUsers={marketingUsersInDept}
@@ -1069,6 +1077,7 @@ function CustomersPageContent() {
             dateFrom: dateFrom?.format('YYYY-MM-DD'),
             dateTo: dateTo?.format('YYYY-MM-DD'),
             joinedGroups,
+            groupId,
           }}
               salesUsers={salesUsersInDept}
               marketingUsers={marketingUsersInDept}
@@ -1211,6 +1220,7 @@ function CustomersPageContent() {
           dateFrom: dateFrom?.format('YYYY-MM-DD'),
           dateTo: dateTo?.format('YYYY-MM-DD'),
           joinedGroups,
+          groupId,
         }}
         sortField={sortField}
         sortOrder={sortOrder}
