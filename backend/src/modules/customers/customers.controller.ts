@@ -134,14 +134,17 @@ export class CustomersController {
     @GetUser() user: any,
     @GetPermissionScope() scope: string | null | undefined,
     @Query('invalidType') invalidType?: string,
-    @Query('days') days?: string,
+    // Kỳ thống kê theo "Ngày nhập thực tế" (giờ VN, YYYY-MM-DD). Không truyền = toàn bộ thời gian.
+    @Query('dateFrom') dateFrom?: string,
+    @Query('dateTo') dateTo?: string,
   ) {
     return this.customersInvalidStatsService.getStats(
       user.id,
       user.role,
       scope,
       invalidType || 'duplicate_phone',
-      days ? parseInt(days, 10) : undefined,
+      dateFrom,
+      dateTo,
     );
   }
 

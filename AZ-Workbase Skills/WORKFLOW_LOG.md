@@ -4614,3 +4614,25 @@ khi bị xoá tay. Đây là 1 anti-pattern thật (dù đo thử với payload 
 > Không có migration, không đổi schema. Drill-down dùng `search` (SĐT khớp tiền tố; Email khớp FULLTEXT phrase) nên SĐT có thể khớp thêm số dài hơn bắt đầu bằng cùng chuỗi. Chưa test trên MySQL/trình duyệt thật (service chỉ được test với QueryBuilder mock).
 
 ---
+
+## [2026-09-28 12:00] | Thống kê data lỗi: chuyển sang bộ lọc KỲ (dateFrom/dateTo) đồng bộ mọi thẻ/biểu đồ | Success
+
+**Actor:** Agent
+**Files Changed:**
+- `backend/src/modules/customers/customers-invalid-stats.service.ts` — viết lại: `days` -> `dateFrom/dateTo` (giờ VN, theo createdAt); mọi số liệu tính theo kỳ; trục xu hướng luôn kéo đến hết kỳ (đến hôm nay), kỳ > 92 ngày gộp theo tháng; so sánh kỳ liền trước; chỉ truy vấn cụm liên quan đến kỳ (3 bước: khoá ứng viên -> khoá trùng -> thành viên); thêm `futureCreatedCount`.
+- `backend/src/modules/customers/customers.controller.ts` — query `days` -> `dateFrom`, `dateTo`.
+- `backend/src/modules/customers/customers-invalid-stats.service.spec.ts` — viết lại (fake DB đánh giá điều kiện thật), 14 test.
+- `frontend/src/lib/api/customers.api.ts`, `frontend/src/lib/hooks/useInvalidDataStats.ts` — type/hook theo kỳ.
+- `frontend/src/components/customers/InvalidDataStatsTab.tsx` — bộ lọc Kỳ (7/30/90 ngày, tháng này/trước, tuỳ chọn, toàn bộ), thẻ tổng quan theo kỳ, cảnh báo bản ghi có Ngày nhập thực tế ở tương lai.
+- `frontend/src/app/(dashboard)/customers/reports/invalid-data/page.tsx` — drill-down nhận `OpenListOptions` (key + khoảng ngày).
+
+**Root Cause:**
+> (1) Các thẻ tổng quan không nhận tham số kỳ. (2) Trục xu hướng chỉ tới hôm nay trong khi bản trùng duy nhất có createdAt 06/10/2026 (tương lai) nên biểu đồ trống. (3) Recharts với `isAnimationActive` mặc định render Pie/Bar rỗng (0 sector/rect) khi mount trong ResponsiveContainer.
+
+**Solution:**
+> Toàn bộ số liệu dùng cùng 1 kỳ; tắt animation cho mọi chart; hiển thị cảnh báo riêng cho dữ liệu tương lai.
+
+**Notes:**
+> Không có migration/schema. Chưa test trên MySQL/trình duyệt thật (service test bằng fake QueryBuilder). Kỳ tối đa 366 ngày.
+
+---

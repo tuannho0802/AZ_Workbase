@@ -20,7 +20,7 @@ import { resolveEntityColor } from '@/lib/utils/entityColor';
 // gọi `/users` riêng (route đó đòi quyền khác, dễ 403 với role hẹp).
 import { useAssignmentGroupUsers } from '@/lib/hooks/useAssignmentGroups';
 import { linkGroupsApi, LinkGroup } from '@/lib/api/link-groups.api';
-import { InvalidDataStatsTab } from '@/components/customers/InvalidDataStatsTab';
+import { InvalidDataStatsTab, type OpenListOptions } from '@/components/customers/InvalidDataStatsTab';
 
 const { Title, Text } = Typography;
 
@@ -380,13 +380,17 @@ export default function InvalidDataReportPage() {
     });
   };
 
-  // Drill-down từ tab Thống kê: sang tab Danh sách với loại lỗi tương ứng; `key`
-  // (SĐT/Email của cụm) được đưa vào ô tìm kiếm để chỉ thấy đúng cụm đó. Xoá mọi
-  // bộ lọc khác để không bị ẩn mất thành viên của cụm (thống kê tính trên toàn bộ dữ liệu).
-  const handleOpenListFromStats = (type: string, key?: string) => {
+  // Drill-down từ tab Thống kê: sang tab Danh sách với loại lỗi tương ứng.
+  //  - `opts.key` (SĐT/Email của cụm) -> ô tìm kiếm, để chỉ thấy đúng cụm đó (bản gốc có thể
+  //    nhập ngoài kỳ nên KHÔNG kèm khoảng ngày).
+  //  - `opts.dateFrom/dateTo` (mở từ thẻ lỗi) -> lọc "Ngày nhập thực tế" đúng kỳ đang xem.
+  // Luôn xoá các bộ lọc khác để không ẩn mất bản ghi (thống kê không áp các bộ lọc đó).
+  const handleOpenListFromStats = (type: string, opts?: OpenListOptions) => {
+    const from = opts?.dateFrom ? dayjs(opts.dateFrom) : null;
+    const to = opts?.dateTo ? dayjs(opts.dateTo) : null;
     setActiveTab('list');
     setInvalidType(type);
-    setSearch(key ?? '');
+    setSearch(opts?.key ?? '');
     setSearchInputKey((k) => k + 1);
     setStatus(undefined);
     setSalesUserId(undefined);
@@ -396,11 +400,11 @@ export default function InvalidDataReportPage() {
     setGroupId(undefined);
     setInputDateFrom(null);
     setInputDateTo(null);
-    setCreatedAtFrom(null);
-    setCreatedAtTo(null);
+    setCreatedAtFrom(from);
+    setCreatedAtTo(to);
     fetchData({
       type,
-      search: key ?? '',
+      search: opts?.key ?? '',
       status: undefined,
       salesUserId: undefined,
       marketingUserId: undefined,
@@ -409,8 +413,8 @@ export default function InvalidDataReportPage() {
       groupId: undefined,
       dateFrom: undefined,
       dateTo: undefined,
-      createdAtFrom: undefined,
-      createdAtTo: undefined,
+      createdAtFrom: opts?.dateFrom,
+      createdAtTo: opts?.dateTo,
       page: 1,
     });
   };

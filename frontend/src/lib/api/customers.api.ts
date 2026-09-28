@@ -1,40 +1,59 @@
 import axiosInstance from './axios-instance';
 import { Customer, PaginatedResponse, CustomerStats, Deposit } from '../types/customer.types';
 
-/** Chi tiết thống kê 1 loại trùng lặp (SĐT/Email) - khớp `DuplicateStatsDetail` ở BE `customers-invalid-stats.service.ts`. */
+/** Chi tiết thống kê 1 loại trùng lặp TRONG KỲ - khớp `DuplicateStatsDetail` ở BE `customers-invalid-stats.service.ts`. */
 export interface DuplicateStatsDetail {
+  /** Khách nhập trong kỳ có SĐT/Email (mẫu số của tỷ lệ). */
   totalWithValue: number;
-  affectedCustomers: number;
-  groupCount: number;
+  /** Bản ghi trùng (nhập SAU bản gốc) phát sinh trong kỳ. */
   redundantCount: number;
+  /** Số cụm có bản trùng phát sinh trong kỳ. */
+  groupCount: number;
+  /** Tổng khách trong các cụm đó (gồm bản gốc, kể cả nhập ngoài kỳ). */
+  affectedCustomers: number;
   duplicateRatePercent: number | null;
+  /** `redundantCount` của kỳ liền trước cùng độ dài; `null` khi kỳ không đủ 2 mốc. */
+  previousRedundantCount: number | null;
   maxGroupSize: number;
   crossSalesGroups: number;
   sameSalesGroups: number;
   sizeDistribution: Array<{ label: string; groups: number }>;
+  /** `date` = 'YYYY-MM-DD' (granularity day) hoặc 'YYYY-MM' (month). */
   trend: Array<{ date: string; redundant: number }>;
   topCreators: Array<{ userId: number; name: string; redundantCount: number }>;
   topGroups: Array<{
     key: string;
     size: number;
+    newInPeriod: number;
     distinctSales: number;
     salesNames: string[];
     latestCreatedAt: string;
   }>;
 }
 
+export interface InvalidDataStatsPeriod {
+  from: string;
+  to: string;
+  allTime: boolean;
+  granularity: 'day' | 'month';
+  spanDays: number;
+}
+
 export interface InvalidDataStats {
   generatedAt: string;
   invalidType: string;
-  days: number;
+  period: InvalidDataStatsPeriod;
   overview: {
+    /** Khách nhập trong kỳ. */
     totalCustomers: number;
     future_date: number;
     missing_phone: number;
     missing_email: number;
-    duplicate_phone: { customers: number; groups: number };
-    duplicate_email: { customers: number; groups: number };
+    duplicate_phone: { redundant: number; groups: number };
+    duplicate_email: { redundant: number; groups: number };
   };
+  /** Khách có "Ngày nhập thực tế" sau hôm nay (dữ liệu bất thường, độc lập với kỳ). */
+  futureCreatedCount: number;
   /** `null` khi `invalidType` không phải loại trùng lặp. */
   duplicate: DuplicateStatsDetail | null;
 }
@@ -144,7 +163,12 @@ export const customersApi = {
    * Thống kê data lỗi cho tab "Thống kê" của trang /customers/reports/invalid-data.
    * Cùng permission `customers.invalid_report` + phạm vi xem với báo cáo danh sách.
    */
-  getInvalidDataStats: async (params?: { invalidType?: string; days?: number }): Promise<InvalidDataStats> => {
+  getInvalidDataStats: async (params?: {
+    invalidType?: string;
+    /** Kỳ theo "Ngày nhập thực tế" (YYYY-MM-DD, giờ VN). Bỏ trống cả 2 = toàn bộ thời gian. */
+    dateFrom?: string;
+    dateTo?: string;
+  }): Promise<InvalidDataStats> => {
     const response = await axiosInstance.get('/customers/reports/invalid-data/stats', { params });
     return response.data;
   },
