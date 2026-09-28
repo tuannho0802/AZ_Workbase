@@ -83,3 +83,20 @@ export const useUnlockPeriodicTask = () => {
     onSuccess: invalidate,
   });
 };
+
+/** Đánh dấu / gỡ "Quá hạn" thủ công - invalidate CẢ namespace (bảng, Kanban, Agenda, hiệu suất). */
+export const useMarkPeriodicTaskOverdue = () => {
+  const invalidate = useInvalidatePeriodicTasks();
+  return useMutation({
+    mutationFn: (id: number) => periodicTasksApi.markOverdue(id),
+    onSuccess: invalidate,
+  });
+};
+
+export const useUnmarkPeriodicTaskOverdue = () => {
+  const invalidate = useInvalidatePeriodicTasks();
+  return useMutation({
+    mutationFn: (id: number) => periodicTasksApi.unmarkOverdue(id),
+    onSuccess: invalidate,
+  });
+};

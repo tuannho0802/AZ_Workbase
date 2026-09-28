@@ -29,6 +29,7 @@ import {
     SearchOutlined,
     SettingOutlined,
     LockOutlined,
+    ExclamationCircleOutlined,
     TableOutlined,
     UnorderedListOutlined,
     AppstoreOutlined,
@@ -81,6 +82,7 @@ import {
 import { PeriodicTasksAgendaView } from '@/components/periodic-tasks/PeriodicTasksAgendaView';
 import { PeriodicTasksKanbanView } from '@/components/periodic-tasks/PeriodicTasksKanbanView';
 import { PeriodicTasksCalendarView } from '@/components/periodic-tasks/PeriodicTasksCalendarView';
+import { isManualOverdueActive } from '@/lib/utils/periodicTaskOverdue';
 import { TaskTitlePill, TaskChainBadge } from '@/components/periodic-tasks/TaskTitlePill';
 import { buildTaskLinkChains, sortTasksByChain, getChainRunFlags } from '@/lib/utils/taskLinkChains';
 import { useTaskLinksAmong } from '@/lib/hooks/usePeriodicTaskLinks';
@@ -1121,6 +1123,22 @@ function PeriodicTasksPageContent() {
             render: (_: any, record: PeriodicTask) => (
                 <Space orientation="vertical" size={4}>
                     <Tag color={record.status?.color ?? DEFAULT_ENTITY_COLOR}>{record.status?.name ?? '—'}</Tag>
+                    {isManualOverdueActive(record) && (
+                        <Tooltip
+                            title={
+                                <>
+                                    <div>Đánh dấu quá hạn thủ công</div>
+                                    {record.overdueMarkedAt && (
+                                        <div>Lúc: {dayjs(record.overdueMarkedAt).format('HH:mm DD/MM/YYYY')}</div>
+                                    )}
+                                </>
+                            }
+                        >
+                            <Tag color="error" icon={<ExclamationCircleOutlined />}>
+                                Quá hạn
+                            </Tag>
+                        </Tooltip>
+                    )}
                     {record.isLocked && (
                         <Tooltip
                             title={

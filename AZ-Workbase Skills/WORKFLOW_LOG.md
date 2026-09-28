@@ -4707,3 +4707,22 @@ khi bị xoá tay. Đây là 1 anti-pattern thật (dù đo thử với payload 
 > Không có migration. Sort/lọc làm phía server vì checklist phân trang 10 dòng (client-side chỉ đúng trong 1 trang). Mặc định (không gửi param) giữ nguyên hành vi cũ. ESLint còn 3 lỗi `no-explicit-any` có sẵn trong CustomerForm. Chưa test trên MySQL/trình duyệt thật. Chưa commit/push — chỉ xuất `.patch`.
 
 ---
+
+---
+## [2026-09-28 20:00] | Đánh dấu / Gỡ "Quá hạn" thủ công cho Công việc định kỳ; bỏ tooltip "Quyền xem" ở trang Hiệu suất | [Status: Success — BE tsc sạch, jest toàn bộ 1049/1049 (+9 test); FE next build OK, tsc sạch, vitest 147/147 (+6 test)]
+
+**Actor:** Agent (làm trên `origin/main` HEAD `9d211d4`)
+
+**Files Changed:**
+- `backend/src/database/migrations/1784800000000-AddOverdueMarkToPeriodicTasks.ts` — MỚI: cột `overdue_marked_at` (DATETIME NULL) + `overdue_marked_by_id` (FK users, SET NULL). Không seed permission mới.
+- `backend/src/database/entities/periodic-task.entity.ts` — thêm `overdueMarkedAt`, `overdueMarkedById`.
+- `backend/.../periodic-tasks.service.ts` (+spec) — `markOverdue()` (400 nếu chưa qua `periodEndDate` hoặc status in_review/done), `unmarkOverdue()` (idempotent); `update()` tự gỡ dấu khi kéo dài `periodEndDate` tới hôm nay/tương lai.
+- `backend/.../periodic-tasks.controller.ts` — `PATCH :id/mark-overdue`, `PATCH :id/unmark-overdue`, dùng lại `periodic_tasks.approve` (admin/assistant=all, manager=department).
+- `backend/.../helpers/overdue.helper.ts` (+spec) — MỚI `isOverdueNotCompleted()`; `periodic-task-performance.service.ts` dùng ở 3 nơi (summary, danh sách flagged, metric tasks) → Task đánh dấu tay được tính vào "Quá hạn chưa xong" ngay sau hạn kỳ, không đợi hết ân hạn 7 ngày.
+- `periodic-task-audit.service.ts` — action `overdue_marked` / `overdue_unmarked`.
+- FE: `periodic-tasks.api.ts`, `usePeriodicTasks.ts`, `lib/utils/periodicTaskOverdue.ts` (+test), `TaskActionsBar.tsx` (nút "Đánh dấu quá hạn"/"Gỡ quá hạn", tự gọi mutation, chỉ hiện khi `canApprove`), `TaskMiniCard.tsx` + `cong-viec-dinh-ky/page.tsx` (Tag "Quá hạn"), `periodic-task-audit.types.ts` (nhãn), `hieu-suat-cong-viec/page.tsx` (bỏ Tooltip "Quyền xem được cấp cho vai trò của bạn...").
+
+**Notes:**
+> Cần chạy migration. Nút "Đánh dấu" chỉ hiện khi đã qua deadline, chưa in_review/done và còn trong ân hạn 7 ngày; "Gỡ" hiện khi Task đang có dấu. Chưa gửi notification. ESLint còn 2 lỗi `no-explicit-any` có sẵn ở hieu-suat-cong-viec/page.tsx. Chưa test trên MySQL/trình duyệt thật. Chưa commit/push — chỉ xuất `.patch`.
+
+---

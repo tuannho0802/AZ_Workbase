@@ -91,6 +91,10 @@ export interface PeriodicTask {
   lockedById: number | null;
   lockedAt: string | null;
   lockNote: string | null;
+  /** Đánh dấu "Quá hạn" thủ công (ISO). `null` = không đánh dấu. Chỉ có hiệu lực khi Task đã qua
+   * `periodEndDate` và chưa in_review/done - xem `lib/utils/periodicTaskOverdue.ts`. */
+  overdueMarkedAt: string | null;
+  overdueMarkedById: number | null;
   /**
    * Phase 3 (PLAN mục 2.4): CHỈ có mặt trên response của `GET /:id`
    * (`getOne()`) - `GET /` (`getAll()`) KHÔNG đính field này (BE chỉ gọi
@@ -293,6 +297,18 @@ export const periodicTasksApi = {
   /** Mở khoá - tự do gọi lại bất kỳ lúc nào, không giới hạn số lần lock↔unlock. */
   unlock: async (id: number): Promise<PeriodicTask> => {
     const response = await axiosInstance.patch<PeriodicTask>(`/periodic-tasks/${id}/unlock`);
+    return response.data;
+  },
+
+  /** Đánh dấu Quá hạn thủ công - BE chỉ cho khi đã qua `periodEndDate` và Task chưa xong. */
+  markOverdue: async (id: number): Promise<PeriodicTask> => {
+    const response = await axiosInstance.patch<PeriodicTask>(`/periodic-tasks/${id}/mark-overdue`);
+    return response.data;
+  },
+
+  /** Gỡ đánh dấu Quá hạn thủ công - idempotent. */
+  unmarkOverdue: async (id: number): Promise<PeriodicTask> => {
+    const response = await axiosInstance.patch<PeriodicTask>(`/periodic-tasks/${id}/unmark-overdue`);
     return response.data;
   },
 };

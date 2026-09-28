@@ -402,6 +402,31 @@ export class PeriodicTasksController {
     return this.periodicTasksService.unlock(id, user, scope);
   }
 
+  // ── Đánh dấu / gỡ "Quá hạn" thủ công (dùng chung permission `periodic_tasks.approve`) ──
+
+  @Patch(':id/mark-overdue')
+  @RequirePermission('periodic_tasks.approve')
+  @ApiOperation({ summary: 'Đánh dấu Quá hạn thủ công - chỉ khi Task đã qua period_end_date và chưa hoàn thành' })
+  @ApiResponse({ status: 400, description: 'Chưa qua hạn kỳ hoặc Task đã hoàn thành' })
+  markOverdue(
+    @Param('id', ParseIntPipe) id: number,
+    @GetUser() user: any,
+    @GetPermissionScope() scope: string | null | undefined,
+  ) {
+    return this.periodicTasksService.markOverdue(id, user, scope);
+  }
+
+  @Patch(':id/unmark-overdue')
+  @RequirePermission('periodic_tasks.approve')
+  @ApiOperation({ summary: 'Gỡ đánh dấu Quá hạn thủ công - idempotent' })
+  unmarkOverdue(
+    @Param('id', ParseIntPipe) id: number,
+    @GetUser() user: any,
+    @GetPermissionScope() scope: string | null | undefined,
+  ) {
+    return this.periodicTasksService.unmarkOverdue(id, user, scope);
+  }
+
   // ── Phase 6: Checklist con kiểu Trello (không có permission riêng - thừa
   // hưởng periodic_tasks.view/edit của chính Task cha, xem PLAN mục 6) ──
 

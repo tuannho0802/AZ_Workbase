@@ -134,6 +134,15 @@ export class PeriodicTask {
   @Column({ name: 'lock_note', type: 'varchar', length: 500, nullable: true })
   lockNote: string | null;
 
+  // Đánh dấu "Quá hạn" THỦ CÔNG (Manager+ đánh giá sớm khi Task đã qua `period_end_date`
+  // nhưng chưa hết ân hạn `LATE_GRACE_DAYS`). `overdue_marked_at` khác NULL = đang được
+  // đánh dấu; gỡ dấu = set lại NULL. Không cascade sang Task con/cha.
+  @Column({ name: 'overdue_marked_at', type: 'datetime', nullable: true })
+  overdueMarkedAt: Date | null;
+
+  @Column({ name: 'overdue_marked_by_id', type: 'int', nullable: true })
+  overdueMarkedById: number | null;
+
   @CreateDateColumn({ name: 'created_at' })
   createdAt: Date;
 

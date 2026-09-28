@@ -1,7 +1,7 @@
 'use client';
 
 import { Card, Progress, Tag, Tooltip, Typography } from 'antd';
-import { LockOutlined } from '@ant-design/icons';
+import { ExclamationCircleOutlined, LockOutlined } from '@ant-design/icons';
 import dayjs from 'dayjs';
 import { TaskAssignees } from './TaskAssignees';
 import { PeriodicTask } from '@/lib/api/periodic-tasks.api';
@@ -12,6 +12,7 @@ import { TaskChainInfo } from '@/lib/utils/taskLinkChains';
 import { LinkifiedText } from '@/components/common/LinkifiedText';
 import { PeriodTypeTag } from './PeriodTypeTag';
 import { getChecklistProgress, getChecklistTone } from '@/lib/utils/checklistProgress';
+import { isManualOverdueActive } from '@/lib/utils/periodicTaskOverdue';
 
 const TONE_COLOR = { red: '#ff4d4f', gold: '#faad14', green: '#52c41a' } as const;
 
@@ -252,6 +253,20 @@ export function TaskMiniCard({
                 <Tag color={task.status?.color ?? DEFAULT_ENTITY_COLOR}>{task.status?.name ?? '—'}</Tag>
                 {task.department && (
                     <Tag color={resolveEntityColor(task.department.color)}>{task.department.name}</Tag>
+                )}
+                {isManualOverdueActive(task) && (
+                    <Tooltip
+                        title={
+                            <>
+                                <div>Đánh dấu quá hạn thủ công</div>
+                                {task.overdueMarkedAt && <div>Lúc: {dayjs(task.overdueMarkedAt).format('HH:mm DD/MM/YYYY')}</div>}
+                            </>
+                        }
+                    >
+                        <Tag color="error" icon={<ExclamationCircleOutlined />}>
+                            Quá hạn
+                        </Tag>
+                    </Tooltip>
                 )}
                 {task.isLocked && (
                     <Tooltip

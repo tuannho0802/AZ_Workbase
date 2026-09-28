@@ -1,6 +1,6 @@
 'use client';
 
-import { Button, Space, Tooltip, Popconfirm } from 'antd';
+import { App, Button, Space, Tooltip, Popconfirm } from 'antd';
 import {
     ApartmentOutlined,
     CheckSquareOutlined,
@@ -10,9 +10,79 @@ import {
     LockOutlined,
     UnlockOutlined,
     DeleteOutlined,
+    ExclamationCircleOutlined,
+    RollbackOutlined,
 } from '@ant-design/icons';
 import { PeriodicTask } from '@/lib/api/periodic-tasks.api';
 import { getChecklistProgress, getChecklistTone } from '@/lib/utils/checklistProgress';
+import { canMarkOverdue, canUnmarkOverdue } from '@/lib/utils/periodicTaskOverdue';
+import { useMarkPeriodicTaskOverdue, useUnmarkPeriodicTaskOverdue } from '@/lib/hooks/usePeriodicTasks';
+import { getApiErrorMessage } from '@/lib/utils/error-message.util';
+
+/**
+ * Nút "Đánh dấu quá hạn" / "Gỡ quá hạn" - TỰ GỌI mutation (không phải prop) để 4 view dùng
+ * chung `TaskActionsBar` không phải truyền thêm handler. Là component riêng để hook chỉ chạy
+ * khi nút thật sự hiện (người có `canApprove` + Task đủ điều kiện). Cùng permission
+ * `periodic_tasks.approve` với Khoá/Mở khoá.
+ */
+function OverdueMarkButton({
+    task,
+    size,
+    iconOnly,
+}: {
+    task: PeriodicTask;
+    size: 'small' | 'middle';
+    iconOnly: boolean;
+}) {
+    const { message } = App.useApp();
+    const markMutation = useMarkPeriodicTaskOverdue();
+    const unmarkMutation = useUnmarkPeriodicTaskOverdue();
+
+    if (canUnmarkOverdue(task)) {
+        return (
+            <Popconfirm
+                title="Gỡ đánh dấu quá hạn?"
+                description="Dùng khi Task được kéo dài kỳ hoặc đánh dấu nhầm."
+                okText="Gỡ"
+                cancelText="Huỷ"
+                onConfirm={() =>
+                    unmarkMutation.mutate(task.id, {
+                        onSuccess: () => message.success(`Đã gỡ đánh dấu quá hạn "${task.title}"`),
+                        onError: (err) => message.error(getApiErrorMessage(err, 'Gỡ đánh dấu quá hạn thất bại')),
+                    })
+                }
+            >
+                <Tooltip title={iconOnly ? 'Gỡ quá hạn' : ''}>
+                    <Button size={size} icon={<RollbackOutlined />} loading={unmarkMutation.isPending}>
+                        {iconOnly ? null : 'Gỡ quá hạn'}
+                    </Button>
+                </Tooltip>
+            </Popconfirm>
+        );
+    }
+
+    if (!canMarkOverdue(task)) return null;
+    return (
+        <Popconfirm
+            title="Đánh dấu Task này là quá hạn?"
+            description="Task đã qua deadline nhưng chưa hết ân hạn 7 ngày. Bạn có thể gỡ dấu sau."
+            okText="Đánh dấu"
+            cancelText="Huỷ"
+            onConfirm={() =>
+                markMutation.mutate(task.id, {
+                    onSuccess: () => message.success(`Đã đánh dấu quá hạn "${task.title}"`),
+                    onError: (err) => message.error(getApiErrorMessage(err, 'Đánh dấu quá hạn thất bại')),
+                })
+            }
+        >
+            <Tooltip title={iconOnly ? 'Đánh dấu quá hạn' : ''}>
+                <Button size={size} danger icon={<ExclamationCircleOutlined />} loading={markMutation.isPending}>
+                    {iconOnly ? null : 'Đánh dấu quá hạn'}
+                </Button>
+            </Tooltip>
+        </Popconfirm>
+    );
+}
 
 /**
  * TaskActionsBar - nhóm nút Thao tác cho 1 `PeriodicTask`, tách ra từ cột
@@ -154,6 +224,7 @@ export function TaskActionsBar({
                         </Button>,
                     )
                 ))}
+            {canApprove && <OverdueMarkButton task={task} size={size} iconOnly={iconOnly} />}
             {(typeof canDelete === 'function' ? canDelete(task) : canDelete) && (
                 tip(
                     'Xoá',

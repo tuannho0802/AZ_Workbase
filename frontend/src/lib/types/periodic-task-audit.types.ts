@@ -106,6 +106,8 @@ export const PERIODIC_TASK_AUDIT_ACTION_META: Record<string, { label: string; co
   customer_unlinked: { label: 'Gỡ Khách hàng', color: 'orange' },
   locked: { label: 'Khoá', color: 'volcano' },
   unlocked: { label: 'Mở khoá', color: 'gold' },
+  overdue_marked: { label: 'Đánh dấu quá hạn', color: 'red' },
+  overdue_unmarked: { label: 'Gỡ đánh dấu quá hạn', color: 'gold' },
   deleted: { label: 'Xoá', color: 'red' },
   restored: { label: 'Khôi phục', color: 'green' },
   checklist_item_added: { label: 'Thêm Checklist item', color: 'cyan' },

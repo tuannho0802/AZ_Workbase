@@ -477,9 +477,7 @@ export default function TaskPerformancePage() {
             Đang xem: {viewContext.label}
           </Tag>
           {canSeeOthers && (
-            <Tooltip title="Quyền xem được cấp cho vai trò của bạn (periodic_tasks.performance_view). Đang xem ai thì theo bộ lọc bên dưới.">
-              <Text type="secondary" style={{ fontSize: 12 }}>Quyền xem: {scopeMeta.label}</Text>
-            </Tooltip>
+            <Text type="secondary" style={{ fontSize: 12 }}>Quyền xem: {scopeMeta.label}</Text>
           )}
         </Space>
         <Button icon={<ReloadOutlined />} loading={isFetching} onClick={() => refetch()}>

@@ -555,4 +555,59 @@ describe('PeriodicTasksService', () => {
       );
     });
   });
+  describe('markOverdue / unmarkOverdue (đánh dấu Quá hạn thủ công)', () => {
+    const admin = { id: 9, role: Role.ADMIN };
+    const mockFind = (task: any) => {
+      mockTaskRepo.createQueryBuilder.mockReturnValue(makeFakeQueryBuilder({ getOne: task }));
+      mockTaskRepo.save.mockImplementation((t) => Promise.resolve(t));
+    };
+
+    it('đánh dấu thành công khi đã qua period_end_date + ghi audit overdue_marked', async () => {
+      mockFind({ id: 1, periodEndDate: '2000-01-01', status: { code: 'in_progress' }, overdueMarkedAt: null });
+
+      const result = await service.markOverdue(1, admin, 'all');
+
+      expect(result.overdueMarkedAt).toBeInstanceOf(Date);
+      expect(result.overdueMarkedById).toBe(9);
+      expect(mockAuditService.logActionAsync).toHaveBeenCalledWith(
+        1,
+        9,
+        PeriodicTaskAuditAction.OVERDUE_MARKED,
+        null,
+        { periodEndDate: '2000-01-01' },
+      );
+    });
+
+    it('từ chối (400) khi Task CHƯA qua hạn kỳ', async () => {
+      mockFind({ id: 1, periodEndDate: '2999-12-31', status: { code: 'in_progress' } });
+      await expect(service.markOverdue(1, admin, 'all')).rejects.toThrow(BadRequestException);
+      expect(mockTaskRepo.save).not.toHaveBeenCalled();
+    });
+
+    it('từ chối (400) khi Task đã in_review/done', async () => {
+      mockFind({ id: 1, periodEndDate: '2000-01-01', status: { code: 'done' } });
+      await expect(service.markOverdue(1, admin, 'all')).rejects.toThrow(BadRequestException);
+    });
+
+    it('gỡ dấu: xoá overdueMarkedAt/By + ghi audit overdue_unmarked; chưa đánh dấu thì bỏ qua (idempotent)', async () => {
+      mockFind({ id: 1, periodEndDate: '2000-01-01', overdueMarkedAt: new Date(), overdueMarkedById: 9 });
+      const result = await service.unmarkOverdue(1, admin, 'all');
+      expect(result.overdueMarkedAt).toBeNull();
+      expect(result.overdueMarkedById).toBeNull();
+      expect(mockAuditService.logActionAsync).toHaveBeenCalledWith(
+        1,
+        9,
+        PeriodicTaskAuditAction.OVERDUE_UNMARKED,
+        null,
+        null,
+      );
+
+      mockAuditService.logActionAsync.mockClear();
+      mockTaskRepo.save.mockClear();
+      mockFind({ id: 2, periodEndDate: '2000-01-01', overdueMarkedAt: null });
+      await service.unmarkOverdue(2, admin, 'all');
+      expect(mockTaskRepo.save).not.toHaveBeenCalled();
+      expect(mockAuditService.logActionAsync).not.toHaveBeenCalled();
+    });
+  });
 });

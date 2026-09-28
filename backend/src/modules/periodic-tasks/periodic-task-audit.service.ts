@@ -33,6 +33,8 @@ export const PeriodicTaskAuditAction = {
   CUSTOMER_UNLINKED: 'customer_unlinked',
   LOCKED: 'locked',
   UNLOCKED: 'unlocked',
+  OVERDUE_MARKED: 'overdue_marked',
+  OVERDUE_UNMARKED: 'overdue_unmarked',
   DELETED: 'deleted',
   RESTORED: 'restored',
   CHECKLIST_ITEM_ADDED: 'checklist_item_added',

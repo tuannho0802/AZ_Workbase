@@ -14,6 +14,7 @@ import { Role } from '../../common/enums/role.enum';
 import { todayVnStr, toVnDateStr } from '../../common/utils/date-vn.util';
 import { resolveListWindow, addDaysToDateString } from './helpers/list-window.helper';
 import { rawDateToYmd } from './helpers/raw-date.helper';
+import { isOverdueNotCompleted } from './helpers/overdue.helper';
 import { PeriodicTaskAuditAction } from './periodic-task-audit.service';
 import { PeriodicTaskPerformanceFiltersDto } from './dto/periodic-task-performance-filters.dto';
 import { PerformanceMetric, PeriodicTaskPerformanceMetricDto } from './dto/periodic-task-performance-metric.dto';
@@ -357,6 +358,7 @@ export class PeriodicTaskPerformanceService {
         'task.statusId AS status_id',
         'task.periodEndDate AS period_end_date',
         'task.createdAt AS created_at',
+        'task.overdueMarkedAt AS overdue_marked_at',
         'status.isExcludedFromRollup AS is_excluded_from_rollup',
         // MỚI (2026-09-25) - dùng đếm "% Đang làm (in_progress)" / "% Đang xem xét
         // (in_review)" ở getSummary(). Chỉ so theo `code` string (giống
@@ -517,6 +519,7 @@ export class PeriodicTaskPerformanceService {
       status_id: number;
       period_end_date: string | Date;
       created_at: string;
+      overdue_marked_at: Date | string | null;
       is_excluded_from_rollup: 0 | 1;
       status_code: string | null;
     }> = await qb.getRawMany();
@@ -574,7 +577,7 @@ export class PeriodicTaskPerformanceService {
         } else {
           row.completedOnTime += 1;
         }
-      } else if (today > graceDate) {
+      } else if (isOverdueNotCompleted(periodEndDate, r.overdue_marked_at, today, LATE_GRACE_DAYS)) {
         row.overdueNotCompleted += 1;
       } else {
         row.pendingFuture += 1;
@@ -649,6 +652,7 @@ export class PeriodicTaskPerformanceService {
       status_id: number;
       period_end_date: string | Date;
       created_at: string;
+      overdue_marked_at: Date | string | null;
       is_excluded_from_rollup: 0 | 1;
     }>();
 
@@ -663,7 +667,8 @@ export class PeriodicTaskPerformanceService {
         const graceDate = addDaysToDateString(periodEndDate, LATE_GRACE_DAYS);
         const reachedDate = reachedMap.get(r.task_id) ?? null;
         if (reachedDate) return reachedDate > graceDate; // hoàn thành muộn (sau ân hạn)
-        return today > graceDate; // quá hạn chưa xong (đã qua cả ân hạn)
+        // quá hạn chưa xong: qua cả ân hạn HOẶC được đánh dấu thủ công (sau hạn kỳ)
+        return isOverdueNotCompleted(periodEndDate, r.overdue_marked_at, today, LATE_GRACE_DAYS);
       })
       .map((r) => r.task_id);
 
@@ -711,6 +716,7 @@ export class PeriodicTaskPerformanceService {
         status_id: number;
         period_end_date: string | Date;
         created_at: string;
+        overdue_marked_at: Date | string | null;
         is_excluded_from_rollup: 0 | 1;
         status_code: string | null;
       }>();
@@ -720,9 +726,16 @@ export class PeriodicTaskPerformanceService {
       );
 
       for (const r of rollupRows) {
-        const graceDate = addDaysToDateString(rawDateToYmd(r.period_end_date), LATE_GRACE_DAYS);
+        const periodEndYmd = rawDateToYmd(r.period_end_date);
+        const graceDate = addDaysToDateString(periodEndYmd, LATE_GRACE_DAYS);
         const reachedDate = reachedMap.get(r.task_id) ?? null;
-        const verdict: MetricVerdict = reachedDate ? (reachedDate > graceDate ? 'late' : 'on_time') : today > graceDate ? 'overdue' : 'pending';
+        const verdict: MetricVerdict = reachedDate
+          ? reachedDate > graceDate
+            ? 'late'
+            : 'on_time'
+          : isOverdueNotCompleted(periodEndYmd, r.overdue_marked_at, today, LATE_GRACE_DAYS)
+            ? 'overdue'
+            : 'pending';
         verdictByTask.set(r.task_id, verdict);
 
         const keep =

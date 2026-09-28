@@ -17,6 +17,8 @@ import { PeriodicTaskFiltersDto } from './dto/periodic-task-filters.dto';
 import { LockPeriodicTaskDto } from './dto/lock-periodic-task.dto';
 import { PeriodicTaskAccessHelper } from './helpers/periodic-task-access.helper';
 import { resolveListWindow } from './helpers/list-window.helper';
+import { COMPLETED_STATUS_CODES, isPastPeriodEnd } from './helpers/overdue.helper';
+import { todayVnStr } from '../../common/utils/date-vn.util';
 import { PeriodicTaskAuditService, PeriodicTaskAuditAction } from './periodic-task-audit.service';
 // ⚠️ Notification Phase 2: NotificationsModule là @Global() (mirror
 // AuditModule/Customer Phase 3) nên không cần import module - tránh phụ
@@ -549,7 +551,14 @@ export class PeriodicTasksService {
     if (dto.description !== undefined) task.description = dto.description ?? null;
     if (dto.periodType !== undefined) task.periodType = dto.periodType;
     if (dto.periodStartDate !== undefined) task.periodStartDate = dto.periodStartDate;
-    if (dto.periodEndDate !== undefined) task.periodEndDate = dto.periodEndDate;
+    if (dto.periodEndDate !== undefined) {
+      task.periodEndDate = dto.periodEndDate;
+      // Kéo dài kỳ tới hôm nay/tương lai -> dấu "Quá hạn" thủ công không còn ý nghĩa, tự gỡ.
+      if (task.overdueMarkedAt && !isPastPeriodEnd(dto.periodEndDate, todayVnStr())) {
+        task.overdueMarkedAt = null;
+        task.overdueMarkedById = null;
+      }
+    }
     // Sửa tự do sau khi tạo, kể cả về null (PLAN mục 2.10) - CHỈ áp dụng khi
     // field THẬT SỰ có mặt trong body (không phải "undefined nghĩa là xoá").
     if (dto.departmentId !== undefined) {
@@ -721,6 +730,44 @@ export class PeriodicTasksService {
       });
     });
 
+    return saved;
+  }
+
+  /**
+   * Đánh dấu "Quá hạn" THỦ CÔNG (cùng permission/scope `periodic_tasks.approve` với khoá/mở
+   * khoá). Điều kiện: Task đã QUA `period_end_date` (giờ VN) và chưa đạt in_review/done.
+   * Idempotent - gọi lại chỉ cập nhật người/thời điểm đánh dấu mới nhất.
+   */
+  async markOverdue(id: number, user: RequestingUser, scope?: string | null): Promise<PeriodicTask> {
+    const task = await this.findOne(id, user.id, user.role, scope);
+
+    if (!isPastPeriodEnd(task.periodEndDate, todayVnStr())) {
+      throw new BadRequestException('Chỉ đánh dấu quá hạn được khi Task đã qua ngày kết thúc kỳ (deadline).');
+    }
+    if (task.status && (COMPLETED_STATUS_CODES as readonly string[]).includes(task.status.code)) {
+      throw new BadRequestException('Task đã hoàn thành/đang xem xét, không thể đánh dấu quá hạn.');
+    }
+
+    task.overdueMarkedAt = new Date();
+    task.overdueMarkedById = user.id;
+    const saved = await this.taskRepo.save(task);
+
+    this.auditService.logActionAsync(saved.id, user.id, PeriodicTaskAuditAction.OVERDUE_MARKED, null, {
+      periodEndDate: saved.periodEndDate,
+    });
+    return saved;
+  }
+
+  /** Gỡ dấu "Quá hạn" thủ công - vd Task được kéo dài kỳ. Idempotent (chưa đánh dấu -> không lỗi). */
+  async unmarkOverdue(id: number, user: RequestingUser, scope?: string | null): Promise<PeriodicTask> {
+    const task = await this.findOne(id, user.id, user.role, scope);
+    if (task.overdueMarkedAt == null) return task;
+
+    task.overdueMarkedAt = null;
+    task.overdueMarkedById = null;
+    const saved = await this.taskRepo.save(task);
+
+    this.auditService.logActionAsync(saved.id, user.id, PeriodicTaskAuditAction.OVERDUE_UNMARKED, null, null);
     return saved;
   }
 
