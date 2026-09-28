@@ -4761,3 +4761,23 @@ khi bị xoá tay. Đây là 1 anti-pattern thật (dù đo thử với payload 
 > Không có migration. Cần đã có `CRON_SECRET` + Uptime job gọi `deadline-reminders`. Lần chạy ĐẦU sẽ khoá/đánh dấu toàn bộ Task cũ chưa xong đã quá ân hạn - nên gọi `auto-overdue?dryRun=true` xem trước. Chỉ áp cho Task CHƯA xong. Không ghi `periodic_task_audit_logs` (bảng bắt buộc user_id) - chỉ Logger. Không gửi notification. Chưa test trên MySQL/trình duyệt thật. Chưa commit/push.
 
 ---
+
+---
+## [2026-09-28 23:59] | Fix Drawer không refresh sau "Đánh dấu quá hạn" + sweep tự đánh dấu khi qua deadline + Vercel Cron | [Status: Success — BE tsc sạch, jest periodic-tasks 209/209]
+
+**Actor:** Agent (làm trên `origin/main` HEAD `108fbab`)
+
+**Root Cause:**
+> (1) `useMarkPeriodicTaskOverdue/Unmark` chỉ invalidate `['periodic-tasks']`, còn Drawer dùng key `['periodic-task-performance']` → UI không đổi, nút vẫn bấm lại được; BE `markOverdue` lại ghi đè người/thời điểm mỗi lần. (2) `runSweep` chỉ đánh dấu Task quá ÂN HẠN 7 ngày, không khớp cờ "Quá hạn" trên UI (period_end < hôm nay). (3) Không có scheduler nào gọi endpoint (Vercel chỉ có cron keep-alive) nên `overdue_marked_at` không bao giờ tự set.
+
+**Files Changed:**
+- `frontend/src/lib/hooks/usePeriodicTasks.ts` — mark/unmark invalidate thêm `periodic-task-performance`.
+- `backend/.../periodic-tasks.service.ts` — `markOverdue` idempotent (đã có dấu thì trả nguyên trạng).
+- `backend/.../periodic-task-auto-overdue.service.ts` (+spec) — đánh dấu khi `period_end_date < hôm nay`; chỉ KHOÁ khi quá ân hạn 7 ngày.
+- `backend/.../periodic-task-reminders-cron.controller.ts` — chấp nhận `Authorization: Bearer <CRON_SECRET>` (Vercel Cron).
+- `backend/vercel.json` — cron `/api/periodic-tasks-cron/auto-overdue` mỗi ngày 17:05 UTC (00:05 giờ VN).
+
+**Notes:**
+> Không migration. Cần env `CRON_SECRET` trên Vercel. Lần chạy đầu sẽ đánh dấu hàng loạt Task cũ chưa xong → gọi `auto-overdue?dryRun=true` xem trước. Task đánh dấu trong ân hạn sẽ tính "quá hạn" ngay trong hiệu suất (giống nút đánh dấu tay). Chưa test trên MySQL/trình duyệt thật. Chưa commit/push.
+
+---

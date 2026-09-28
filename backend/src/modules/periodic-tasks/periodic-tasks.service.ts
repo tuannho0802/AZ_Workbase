@@ -745,7 +745,7 @@ export class PeriodicTasksService {
   /**
    * Đánh dấu "Quá hạn" THỦ CÔNG (cùng permission/scope `periodic_tasks.approve` với khoá/mở
    * khoá). Điều kiện: Task đã QUA `period_end_date` (giờ VN) và chưa đạt in_review/done.
-   * Idempotent - gọi lại chỉ cập nhật người/thời điểm đánh dấu mới nhất.
+   * Idempotent - Task đã có dấu thì trả về nguyên trạng (không ghi đè, không audit lặp).
    */
   async markOverdue(id: number, user: RequestingUser, scope?: string | null): Promise<PeriodicTask> {
     const task = await this.findOne(id, user.id, user.role, scope);
@@ -756,6 +756,9 @@ export class PeriodicTasksService {
     if (task.status && (COMPLETED_STATUS_CODES as readonly string[]).includes(task.status.code)) {
       throw new BadRequestException('Task đã hoàn thành/đang xem xét, không thể đánh dấu quá hạn.');
     }
+
+    // Đã có dấu (thủ công hoặc do hệ thống tự đánh dấu) -> giữ nguyên, không ghi đè người/thời điểm và không ghi audit lặp.
+    if (task.overdueMarkedAt != null) return task;
 
     task.overdueMarkedAt = new Date();
     task.overdueMarkedById = user.id;

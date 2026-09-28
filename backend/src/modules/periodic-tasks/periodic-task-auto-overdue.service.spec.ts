@@ -39,31 +39,34 @@ describe('PeriodicTaskAutoOverdueService', () => {
   });
   afterEach(() => jest.restoreAllMocks());
 
-  it('mốc quá ân hạn = hôm nay - 7 ngày (period_end_date < 2026-09-21)', async () => {
+  it('đánh dấu khi period_end_date < hôm nay; mốc khoá quá ân hạn = hôm nay - 7 ngày (< 2026-09-21)', async () => {
     const { service, selectQb } = setup([]);
     const res = await service.runSweep();
     expect(res.cutoffPeriodEnd).toBe('2026-09-21');
-    const cutoffCall = (selectQb.andWhere.mock.calls as any[][]).find((c) => String(c[0]).includes('task.periodEndDate < :cutoff'));
-    expect(cutoffCall?.[1]).toEqual({ cutoff: '2026-09-21' });
+    const todayCall = (selectQb.andWhere.mock.calls as any[][]).find((c) => String(c[0]).includes('task.periodEndDate < :today'));
+    expect(todayCall?.[1]).toEqual({ today: '2026-09-28' });
+    const cutoffCall = (selectQb.andWhere.mock.calls as any[][]).find((c) => String(c[0]).includes(':cutoff'));
+    expect(cutoffCall?.[1]).toEqual({ notLocked: 0, cutoff: '2026-09-21' });
     const statusCall = (selectQb.andWhere.mock.calls as any[][]).find((c) => String(c[0]).includes('status.code'));
     expect(statusCall?.[1]).toEqual({ doneCodes: ['in_review', 'done'] });
   });
 
-  it('chưa đánh dấu -> đánh dấu; chưa khoá -> khoá; đã đánh dấu + đã khoá thì không đụng', async () => {
+  it('chưa đánh dấu -> đánh dấu; chỉ khoá khi quá ân hạn; Task còn trong ân hạn chỉ được đánh dấu', async () => {
     const { service, updateQbs } = setup([
-      { id: 1, overdueMarkedAt: null, isLocked: false }, // cả 2
-      { id: 2, overdueMarkedAt: new Date(), isLocked: false }, // chỉ khoá
-      { id: 3, overdueMarkedAt: null, isLocked: true }, // chỉ đánh dấu (khoá tay giữ nguyên)
+      { id: 1, periodEndDate: '2026-09-10', overdueMarkedAt: null, isLocked: false }, // quá ân hạn: cả 2
+      { id: 2, periodEndDate: '2026-09-10', overdueMarkedAt: new Date(), isLocked: false }, // chỉ khoá
+      { id: 3, periodEndDate: '2026-09-10', overdueMarkedAt: null, isLocked: true }, // chỉ đánh dấu (khoá tay giữ nguyên)
+      { id: 4, periodEndDate: '2026-09-25', overdueMarkedAt: null, isLocked: false }, // trong ân hạn: chỉ đánh dấu, KHÔNG khoá
     ]);
     const res = await service.runSweep();
 
-    expect(res.candidates).toBe(3);
-    expect(res.markedTaskIds).toEqual([1, 3]);
+    expect(res.candidates).toBe(4);
+    expect(res.markedTaskIds).toEqual([1, 3, 4]);
     expect(res.lockedTaskIds).toEqual([1, 2]);
 
     const markQb = updateQbs.find((q) => 'overdueMarkedAt' in q.set.mock.calls[0][0]);
     expect(markQb.set.mock.calls[0][0]).toMatchObject({ overdueMarkedById: null });
-    expect(markQb.whereInIds).toHaveBeenCalledWith([1, 3]);
+    expect(markQb.whereInIds).toHaveBeenCalledWith([1, 3, 4]);
 
     const lockQb = updateQbs.find((q) => 'isLocked' in q.set.mock.calls[0][0]);
     expect(lockQb.set.mock.calls[0][0]).toMatchObject({ isLocked: true, lockedById: null, lockNote: AUTO_LOCK_NOTE });
@@ -71,7 +74,7 @@ describe('PeriodicTaskAutoOverdueService', () => {
   });
 
   it('dryRun=true -> chỉ đếm, KHÔNG update', async () => {
-    const { service, updateQbs } = setup([{ id: 1, overdueMarkedAt: null, isLocked: false }]);
+    const { service, updateQbs } = setup([{ id: 1, periodEndDate: '2026-09-10', overdueMarkedAt: null, isLocked: false }]);
     const res = await service.runSweep({ dryRun: true });
     expect(res).toMatchObject({ dryRun: true, markedOverdue: 1, locked: 1 });
     expect(updateQbs).toHaveLength(0);

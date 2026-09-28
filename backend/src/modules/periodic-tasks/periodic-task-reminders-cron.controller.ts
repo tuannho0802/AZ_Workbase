@@ -15,7 +15,7 @@ import { PeriodicTaskAutoOverdueService } from './periodic-task-auto-overdue.ser
  *   GET https://<domain>/api/periodic-tasks-cron/deadline-reminders?secret=<CRON_SECRET>
  * (hoặc header `x-cron-secret: <CRON_SECRET>`)
  *
- * Mỗi lần gọi endpoint trên còn TỰ CHẠY THÊM `auto-overdue` (đánh dấu quá hạn + khoá Task quá ân hạn 7
+ * Mỗi lần gọi endpoint trên còn TỰ CHẠY THÊM `auto-overdue` (đánh dấu quá hạn khi qua deadline + khoá Task quá ân hạn 7
  * ngày) nên KHÔNG cần cấu hình thêm job Uptime mới. Có thể gọi riêng:
  *   GET https://<domain>/api/periodic-tasks-cron/auto-overdue?secret=<CRON_SECRET>[&dryRun=true]
  */
@@ -29,9 +29,11 @@ export class PeriodicTaskRemindersCronController {
     private readonly autoOverdueService: PeriodicTaskAutoOverdueService,
   ) {}
 
-  private assertSecret(secretQuery?: string, secretHeader?: string): void {
+  private assertSecret(secretQuery?: string, secretHeader?: string, authorization?: string): void {
     const expected = process.env.CRON_SECRET;
-    const provided = secretHeader || secretQuery;
+    // Vercel Cron tự gửi `Authorization: Bearer <CRON_SECRET>` khi env CRON_SECRET được đặt.
+    const bearer = authorization?.startsWith('Bearer ') ? authorization.slice(7) : undefined;
+    const provided = secretHeader || bearer || secretQuery;
 
     if (!expected) {
       throw new HttpException(
@@ -55,8 +57,9 @@ export class PeriodicTaskRemindersCronController {
     @Query('secret') secretQuery?: string,
     @Query('dryRun') dryRun?: string,
     @Headers('x-cron-secret') secretHeader?: string,
+    @Headers('authorization') authorization?: string,
   ) {
-    this.assertSecret(secretQuery, secretHeader);
+    this.assertSecret(secretQuery, secretHeader, authorization);
     try {
       return await this.autoOverdueService.runSweep({ dryRun: dryRun === 'true' });
     } catch (err) {
@@ -75,8 +78,9 @@ export class PeriodicTaskRemindersCronController {
   async runDeadlineReminders(
     @Query('secret') secretQuery?: string,
     @Headers('x-cron-secret') secretHeader?: string,
+    @Headers('authorization') authorization?: string,
   ) {
-    this.assertSecret(secretQuery, secretHeader);
+    this.assertSecret(secretQuery, secretHeader, authorization);
 
     // Việc dọn Task quá ân hạn chạy TRƯỚC mốc 18:00 của nhắc hạn (thoát sớm) và không được làm hỏng nhắc hạn nếu lỗi.
     let autoOverdue: Awaited<ReturnType<PeriodicTaskAutoOverdueService['runSweep']>> | { error: string } | undefined;

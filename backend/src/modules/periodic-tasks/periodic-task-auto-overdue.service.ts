@@ -22,10 +22,10 @@ export interface AutoOverdueSweepResult {
 const CHUNK = 500;
 
 /**
- * Tự động xử lý Task QUÁ ÂN HẠN (hôm nay > `period_end_date` + `LATE_GRACE_DAYS` ngày, giờ VN) mà
- * CHƯA đạt in_review/done:
- *  1. Set `overdue_marked_at` (nếu đang null) - `overdue_marked_by_id` để null = do hệ thống.
- *  2. Khoá Task (`is_locked`) nếu chưa khoá - `locked_by_id` null + `lock_note = AUTO_LOCK_NOTE`.
+ * Tự động xử lý Task chưa đạt in_review/done (giờ VN):
+ *  1. QUA deadline kỳ (hôm nay > `period_end_date`): set `overdue_marked_at` (nếu đang null) -
+ *     `overdue_marked_by_id` để null = do hệ thống. Khớp cờ "Quá hạn" trên UI.
+ *  2. QUÁ ÂN HẠN (hôm nay > `period_end_date` + `LATE_GRACE_DAYS` ngày): khoá Task (`is_locked`) nếu chưa khoá - `locked_by_id` null + `lock_note = AUTO_LOCK_NOTE`.
  *     Task đã khoá tay được GIỮ NGUYÊN (không ghi đè người khoá/ghi chú).
  *
  * ⚠️ Vercel serverless -> KHÔNG có cron nội bộ; method này phải được gọi định kỳ từ bên ngoài, xem
@@ -50,18 +50,25 @@ export class PeriodicTaskAutoOverdueService {
     // hôm nay > end + grace  <=>  end < hôm nay - grace
     const cutoffPeriodEnd = addDaysToDateString(todayVn, -LATE_GRACE_DAYS);
 
+    // Đánh dấu quá hạn ngay khi QUA deadline kỳ (khớp cờ "Quá hạn" trên UI: period_end_date < hôm nay);
+    // chỉ KHOÁ khi đã quá thêm ân hạn (period_end_date < cutoffPeriodEnd).
     const candidates = await this.taskRepo
       .createQueryBuilder('task')
       .leftJoin('task.status', 'status')
-      .select(['task.id', 'task.overdueMarkedAt', 'task.isLocked'])
+      .select(['task.id', 'task.periodEndDate', 'task.overdueMarkedAt', 'task.isLocked'])
       .where('task.deletedAt IS NULL')
-      .andWhere('task.periodEndDate < :cutoff', { cutoff: cutoffPeriodEnd })
+      .andWhere('task.periodEndDate < :today', { today: todayVn })
       .andWhere('(status.code IS NULL OR status.code NOT IN (:...doneCodes))', { doneCodes: [...COMPLETED_STATUS_CODES] })
-      .andWhere('(task.overdueMarkedAt IS NULL OR task.isLocked = :notLocked)', { notLocked: 0 })
+      .andWhere('(task.overdueMarkedAt IS NULL OR (task.isLocked = :notLocked AND task.periodEndDate < :cutoff))', {
+        notLocked: 0,
+        cutoff: cutoffPeriodEnd,
+      })
       .getMany();
 
     const toMark = candidates.filter((t) => t.overdueMarkedAt == null).map((t) => t.id);
-    const toLock = candidates.filter((t) => !t.isLocked).map((t) => t.id);
+    const toLock = candidates
+      .filter((t) => !t.isLocked && String(t.periodEndDate).slice(0, 10) < cutoffPeriodEnd)
+      .map((t) => t.id);
 
     if (!dryRun) {
       const now = new Date();

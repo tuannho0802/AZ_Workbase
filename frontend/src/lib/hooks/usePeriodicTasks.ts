@@ -39,6 +39,18 @@ function useInvalidatePeriodicTasks() {
   return () => queryClient.invalidateQueries({ queryKey: [LIST_KEY] });
 }
 
+/** Mark/Unmark quá hạn ảnh hưởng CẢ số liệu + danh sách Task trong Drawer/trang Hiệu suất (query key
+ * `periodic-task-performance`, KHÔNG nằm trong namespace `periodic-tasks`) - nếu không invalidate thì Drawer
+ * không đổi gì sau khi đánh dấu và nút vẫn bấm lại được. */
+function useInvalidateOverdueViews() {
+  const queryClient = useQueryClient();
+  return () =>
+    Promise.all([
+      queryClient.invalidateQueries({ queryKey: [LIST_KEY] }),
+      queryClient.invalidateQueries({ queryKey: ['periodic-task-performance'] }),
+    ]);
+}
+
 export const useCreatePeriodicTask = () => {
   const invalidate = useInvalidatePeriodicTasks();
   return useMutation({
@@ -86,7 +98,7 @@ export const useUnlockPeriodicTask = () => {
 
 /** Đánh dấu / gỡ "Quá hạn" thủ công - invalidate CẢ namespace (bảng, Kanban, Agenda, hiệu suất). */
 export const useMarkPeriodicTaskOverdue = () => {
-  const invalidate = useInvalidatePeriodicTasks();
+  const invalidate = useInvalidateOverdueViews();
   return useMutation({
     mutationFn: (id: number) => periodicTasksApi.markOverdue(id),
     onSuccess: invalidate,
@@ -94,7 +106,7 @@ export const useMarkPeriodicTaskOverdue = () => {
 };
 
 export const useUnmarkPeriodicTaskOverdue = () => {
-  const invalidate = useInvalidatePeriodicTasks();
+  const invalidate = useInvalidateOverdueViews();
   return useMutation({
     mutationFn: (id: number) => periodicTasksApi.unmarkOverdue(id),
     onSuccess: invalidate,
