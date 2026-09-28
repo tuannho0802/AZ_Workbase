@@ -22,6 +22,9 @@ export interface ReportPeriodInfo {
 export interface RevenuePersonalRow {
     userId: number;
     userName: string;
+    /** Phòng ban CỦA NHÂN VIÊN (tên + màu cấu hình ở /phong-ban) - để vẽ Tag. */
+    departmentName?: string | null;
+    departmentColor?: string | null;
     amount: number;
 }
 
@@ -51,6 +54,9 @@ export interface CustomerBreakdownCounts {
 export interface CustomerPersonalRow extends CustomerBreakdownCounts {
     userId: number;
     userName: string;
+    /** Phòng ban CỦA NHÂN VIÊN (tên + màu cấu hình ở /phong-ban) - để vẽ Tag. */
+    departmentName?: string | null;
+    departmentColor?: string | null;
 }
 
 export interface CustomerDepartmentRow extends CustomerBreakdownCounts {
@@ -79,6 +85,9 @@ export interface QualityStatusMeta {
 export interface QualityPersonalRow {
     userId: number;
     userName: string;
+    /** Phòng ban CỦA NHÂN VIÊN (tên + màu cấu hình ở /phong-ban) - để vẽ Tag. */
+    departmentName?: string | null;
+    departmentColor?: string | null;
     total: number;
     /** Luôn đủ mặt mọi `statuses[].code` (kể cả = 0) - xem BE `zeroByStatus()`. */
     byStatus: Record<string, number>;
@@ -108,8 +117,6 @@ export interface QualityReport {
 export interface MarketingReportFilters {
     marketingUserId?: number;
     createdById?: number;
-    /** Phòng ban của KHÁCH HÀNG (không phải của nhân viên). */
-    departmentId?: number;
     source?: string;
 }
 
@@ -135,6 +142,7 @@ export interface MarketingUserRow extends MarketingMetrics {
     /** Phòng ban CỦA NHÂN VIÊN. */
     departmentId: number | null;
     departmentName: string | null;
+    departmentColor?: string | null;
     /** Data mới theo status hiện tại - đủ mặt mọi `statuses[].code` (kể cả 0). */
     byStatus: Record<string, number>;
 }
@@ -156,6 +164,7 @@ export interface MarketingUserOption {
     id: number;
     name: string;
     departmentName: string | null;
+    departmentColor?: string | null;
 }
 
 export interface MarketingReport {
@@ -167,7 +176,6 @@ export interface MarketingReport {
     options: {
         marketers: MarketingUserOption[];
         creators: MarketingUserOption[];
-        departments: { id: number; name: string }[];
         sources: string[];
     };
     statuses: QualityStatusMeta[];
@@ -186,4 +194,74 @@ export interface MarketingReport {
     creators: MarketingUserRow[];
     bySource: MarketingSourceRow[];
     trend: MarketingTrendPoint[];
+}
+
+// ── Danh sách khách drill-down (Mini Table mở từ thẻ/số của báo cáo) ──────
+// Khớp `ReportsCustomerListService.getList()` ở BE.
+
+export type ReportCustomerListMetric =
+    | 'total'
+    | 'closed'
+    | 'joined'
+    | 'deposited'
+    | 'cohort_deposited'
+    | 'unassigned_marketing';
+
+export type ReportCustomerListQuick = 'no_marketing' | 'no_sales' | 'no_phone';
+
+/** Bộ lọc gắn cứng theo ngữ cảnh bấm (vd bấm số của 1 nhân viên) + bộ lọc người dùng chọn trong modal. */
+export interface ReportCustomerListFilters {
+    /** 0 = chưa gán. */
+    marketingUserId?: number;
+    createdById?: number;
+    salesUserId?: number;
+    source?: string;
+    status?: string;
+    search?: string;
+    dateFrom?: string;
+    dateTo?: string;
+    quick?: ReportCustomerListQuick;
+}
+
+export interface ReportCustomerListQuery extends ReportQuery, ReportCustomerListFilters {
+    metric: ReportCustomerListMetric;
+    context?: 'customers' | 'marketing';
+    page?: number;
+    limit?: number;
+}
+
+export interface ReportListUser {
+    id: number;
+    name: string;
+    departmentName: string | null;
+    departmentColor?: string | null;
+}
+
+export interface ReportCustomerListRow {
+    id: number;
+    name: string;
+    phone: string | null;
+    email: string | null;
+    source: string | null;
+    status: string | null;
+    inputDate: string | null;
+    createdAt: string;
+    closedDate: string | null;
+    salesUser: ReportListUser | null;
+    marketingUser: ReportListUser | null;
+    createdBy: ReportListUser | null;
+    /** Chỉ có khi metric='deposited' - tổng tiền nạp TRONG KỲ. */
+    depositAmount?: number;
+    /** Chỉ có khi metric='joined' - nhóm đã join TRONG KỲ. */
+    joinedGroups?: string[];
+}
+
+export interface ReportCustomerList {
+    metric: ReportCustomerListMetric;
+    period: ReportPeriodInfo;
+    data: ReportCustomerListRow[];
+    total: number;
+    page: number;
+    limit: number;
+    totalPages: number;
 }

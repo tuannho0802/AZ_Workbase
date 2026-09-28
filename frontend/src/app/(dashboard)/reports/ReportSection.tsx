@@ -37,6 +37,9 @@ interface ReportSectionProps<T extends object> {
    * đồ - để mỗi report tự quyết định filter nào cần, ReportSection không
    * hardcode logic filter nào cả. */
   extraFilters?: ReactNode;
+  /** Tiêu đề + mô tả của khối (cùng format Card của tab Marketing). */
+  title?: ReactNode;
+  description?: ReactNode;
 }
 
 const VIEW_OPTIONS: { label: ReactNode; value: 'table' | 'chart' }[] = [
@@ -112,6 +115,8 @@ export function ReportSection<T extends object>({
   emptyText,
   stackable = false,
   extraFilters,
+  title,
+  description,
 }: ReportSectionProps<T>) {
   const [view, setView] = useState<'table' | 'chart'>('table');
   const [chartType, setChartType] = useState<ChartType>('column');
@@ -119,7 +124,12 @@ export function ReportSection<T extends object>({
   const [pieMetric, setPieMetric] = useState<string>(series[0]?.key);
 
   return (
-    <Card size="small" style={{ borderRadius: 10 }} styles={{ body: { padding: 16 } }}>
+    <Card size="small" title={title} style={{ borderRadius: 10 }} styles={{ body: { padding: 16 } }}>
+      {description && (
+        <div style={{ marginBottom: 10 }}>
+          <Text type="secondary" style={{ fontSize: 12 }}>{description}</Text>
+        </div>
+      )}
       <div
         style={{
           display: 'flex',

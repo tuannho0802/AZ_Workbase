@@ -1,6 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Brackets, In, Repository, SelectQueryBuilder } from 'typeorm';
+import { In, Repository, SelectQueryBuilder } from 'typeorm';
 import { Customer } from '../../database/entities/customer.entity';
 import { CustomerGroupMembership } from '../../database/entities/customer-group-membership.entity';
 import { CustomerStatus } from '../../database/entities/customer-status.entity';
@@ -9,6 +9,7 @@ import { PermissionScope } from '../../database/entities/role-permission.entity'
 import { Role } from '../../common/enums/role.enum';
 import { CustomerAccessHelper } from '../customers/helpers/customer-access.helper';
 import { QueryMarketingReportDto } from './dto/query-marketing-report.dto';
+import { applyMarketingOwnOnly } from './report-scope.util';
 import {
   ResolvedReportRange,
   resolvePreviousReportRange,
@@ -45,6 +46,7 @@ export interface MarketingUserRow extends MarketingMetrics {
   /** Phòng ban CỦA NHÂN VIÊN (không phải của khách hàng). */
   departmentId: number | null;
   departmentName: string | null;
+  departmentColor: string | null;
   /** Phân bố data mới trong kỳ theo status hiện tại - đủ mặt mọi status (kể cả 0). */
   byStatus: Record<string, number>;
 }
@@ -74,7 +76,6 @@ const zeroMetrics = (): MarketingMetrics => ({
 export interface FilterSet {
   marketingUserId?: number;
   createdById?: number;
-  departmentId?: number;
   source?: string;
 }
 
@@ -90,7 +91,12 @@ interface GroupSpec {
   expr: string;
 }
 
-export type UserInfo = { name: string; departmentId: number | null; departmentName: string | null };
+export type UserInfo = {
+  name: string;
+  departmentId: number | null;
+  departmentName: string | null;
+  departmentColor: string | null;
+};
 
 /**
  * BÁO CÁO MARKETING - phân tích ĐA CHIỀU theo "Marketing phụ trách"
@@ -144,7 +150,6 @@ export class ReportsMarketingService {
     const filters: FilterSet = {
       marketingUserId: query.marketingUserId,
       createdById: query.createdById,
-      departmentId: query.departmentId,
       source: query.source,
     };
     const ctx: Ctx = { viewerId, viewerRole, scope, filters, range };
@@ -227,7 +232,9 @@ export class ReportsMarketingService {
     const nameOf = (id: number) => users.get(id)?.name ?? '(Không rõ)';
     const label = (id: number) => {
       const u = users.get(id);
-      return u ? { id, name: u.name, departmentName: u.departmentName } : { id, name: nameOf(id), departmentName: null };
+      return u
+        ? { id, name: u.name, departmentName: u.departmentName, departmentColor: u.departmentColor }
+        : { id, name: nameOf(id), departmentName: null, departmentColor: null };
     };
 
     return {
@@ -245,7 +252,6 @@ export class ReportsMarketingService {
       options: {
         marketers: optionsRaw.marketerIds.map(label).sort((a, b) => a.name.localeCompare(b.name, 'vi')),
         creators: optionsRaw.creatorIds.map(label).sort((a, b) => a.name.localeCompare(b.name, 'vi')),
-        departments: optionsRaw.departments,
         sources: optionsRaw.sources,
       },
       statuses: statusMeta,
@@ -278,16 +284,7 @@ export class ReportsMarketingService {
     const qb = this.customerRepo.createQueryBuilder('customer');
     CustomerAccessHelper.applyViewFilter(qb, ctx.viewerId, ctx.viewerRole, ctx.scope);
 
-    if (this.isOwnOnly(ctx)) {
-      qb.andWhere(
-        new Brackets((b) => {
-          b.where('customer.marketingUserId = :selfId', { selfId: ctx.viewerId }).orWhere(
-            'customer.createdById = :selfId',
-            { selfId: ctx.viewerId },
-          );
-        }),
-      );
-    }
+    if (this.isOwnOnly(ctx)) applyMarketingOwnOnly(qb, ctx.viewerId);
 
     if (!applyUserFilters) return qb;
     const f = ctx.filters;
@@ -299,7 +296,6 @@ export class ReportsMarketingService {
       if (f.createdById === UNASSIGNED_KEY) qb.andWhere('customer.createdById IS NULL');
       else qb.andWhere('customer.createdById = :fCreator', { fCreator: f.createdById });
     }
-    if (f.departmentId !== undefined) qb.andWhere('customer.departmentId = :fDept', { fDept: f.departmentId });
     if (f.source) qb.andWhere('customer.source = :fSource', { fSource: f.source });
     return qb;
   }
@@ -508,7 +504,7 @@ export class ReportsMarketingService {
    */
   private async loadOptionIds(ctx: Ctx) {
     const base = () => this.baseQb(ctx, false);
-    const [marketerRows, creatorRows, deptRows, sourceRows] = await Promise.all([
+    const [marketerRows, creatorRows, sourceRows] = await Promise.all([
       base()
         .select('customer.marketingUserId', 'id')
         .andWhere('customer.marketingUserId IS NOT NULL')
@@ -519,14 +515,6 @@ export class ReportsMarketingService {
         .andWhere('customer.createdById IS NOT NULL')
         .groupBy('customer.createdById')
         .getRawMany(),
-      base()
-        .leftJoin('customer.department', 'department')
-        .select('customer.departmentId', 'id')
-        .addSelect('department.name', 'name')
-        .andWhere('customer.departmentId IS NOT NULL')
-        .groupBy('customer.departmentId')
-        .addGroupBy('department.name')
-        .getRawMany(),
       base().select('customer.source', 'source').groupBy('customer.source').getRawMany(),
     ]);
 
@@ -536,9 +524,6 @@ export class ReportsMarketingService {
     return {
       marketerIds: ids(marketerRows),
       creatorIds: ids(creatorRows),
-      departments: deptRows
-        .map((r) => ({ id: Number(r.id), name: (r.name as string) ?? '(Không rõ)' }))
-        .sort((a, b) => a.name.localeCompare(b.name, 'vi')),
       sources: sourceRows
         .map((r) => String(r.source ?? ''))
         .filter(Boolean)
@@ -562,6 +547,7 @@ export class ReportsMarketingService {
         name: u.name,
         departmentId: u.departmentId ?? null,
         departmentName: u.department?.name ?? null,
+        departmentColor: u.department?.color ?? null,
       });
     }
     return map;
@@ -587,6 +573,7 @@ export class ReportsMarketingService {
         userName: userId === UNASSIGNED_KEY ? unassignedLabel : (u?.name ?? '(Không rõ)'),
         departmentId: u?.departmentId ?? null,
         departmentName: u?.departmentName ?? null,
+        departmentColor: u?.departmentColor ?? null,
         ...m,
         byStatus,
       });

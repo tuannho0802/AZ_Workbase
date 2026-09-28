@@ -6,6 +6,8 @@ import type { ColumnsType } from 'antd/es/table';
 import type { MarketingUserRow } from '@/lib/types/reports.types';
 import { filterUserRows, fmtCount, formatUsd, pct, rowRates, sumRows } from '@/lib/utils/marketingReport';
 import ReportNameFilter from './ReportNameFilter';
+import ReportUserName from './ReportUserName';
+import type { CustomerDrill } from './ReportCustomersModal';
 
 const { Text } = Typography;
 
@@ -18,6 +20,8 @@ interface Props {
   activeMarketingId?: number;
   activeCreatorId?: number;
   /** Bấm "Lọc" ở 1 dòng -> áp bộ lọc ở tab cha (drill-down: mọi biểu đồ/KPI cùng lọc theo người đó). */
+  /** Bấm 1 con số -> mở Mini Table khách đứng sau con số đó (đã kèm bộ lọc theo dòng được bấm). */
+  onDrill: (drill: CustomerDrill) => void;
   onFilterMarketing: (userId: number) => void;
   onFilterCreator: (userId: number) => void;
 }
@@ -31,6 +35,7 @@ export default function MarketingBreakdownTable({
   marketing,
   creators,
   loading,
+  onDrill,
   activeMarketingId,
   activeCreatorId,
   onFilterMarketing,
@@ -59,6 +64,18 @@ export default function MarketingBreakdownTable({
 
   const nameLabel = dimension === 'marketing' ? 'Marketing phụ trách' : 'Người tạo data';
 
+
+  /** Con số bấm được -> Mini Table khách của đúng dòng này (0 thì để chữ mờ, không bấm). */
+  const drillCell = (v: number, r: MarketingUserRow, metric: CustomerDrill['metric'], strong = false) => {
+    if (v <= 0) return <Text type="secondary">0</Text>;
+    const preset = dimension === 'marketing' ? { marketingUserId: r.userId } : { createdById: r.userId };
+    return (
+      <Button type="link" size="small" style={{ padding: 0, height: 'auto', fontWeight: strong ? 600 : undefined }} onClick={() => onDrill({ metric, label: r.userName, preset })}>
+        {fmtCount(v)}
+      </Button>
+    );
+  };
+
   const columns: ColumnsType<MarketingUserRow> = [
     {
       title: nameLabel,
@@ -66,14 +83,7 @@ export default function MarketingBreakdownTable({
       fixed: 'left',
       width: 230,
       render: (_, r) => (
-        <div>
-          <Text strong type={r.userId === 0 ? 'secondary' : undefined}>{r.userName}</Text>
-          {r.departmentName && (
-            <div>
-              <Tag style={{ marginInlineEnd: 0, fontSize: 11 }}>{r.departmentName}</Tag>
-            </div>
-          )}
-        </div>
+        <ReportUserName name={r.userName} departmentName={r.departmentName} departmentColor={r.departmentColor} muted={r.userId === 0} />
       ),
     },
     {
@@ -84,7 +94,7 @@ export default function MarketingBreakdownTable({
       key: 'totalCustomers',
       align: 'right',
       width: 100,
-      render: (v: number) => fmtCount(v),
+      render: (v: number, r) => drillCell(v, r, 'total'),
       sorter: (a, b) => a.totalCustomers - b.totalCustomers,
     },
     {
@@ -93,7 +103,7 @@ export default function MarketingBreakdownTable({
       key: 'closedCustomers',
       align: 'right',
       width: 100,
-      render: (v: number) => fmtCount(v),
+      render: (v: number, r) => drillCell(v, r, 'closed'),
       sorter: (a, b) => a.closedCustomers - b.closedCustomers,
     },
     {
@@ -102,7 +112,7 @@ export default function MarketingBreakdownTable({
       key: 'joinedGroupCustomers',
       align: 'right',
       width: 100,
-      render: (v: number) => fmtCount(v),
+      render: (v: number, r) => drillCell(v, r, 'joined'),
       sorter: (a, b) => a.joinedGroupCustomers - b.joinedGroupCustomers,
     },
     {
@@ -115,7 +125,7 @@ export default function MarketingBreakdownTable({
       key: 'depositedCustomers',
       align: 'right',
       width: 110,
-      render: (v: number) => <Text strong={v > 0}>{fmtCount(v)}</Text>,
+      render: (v: number, r) => drillCell(v, r, 'deposited', true),
       sorter: (a, b) => a.depositedCustomers - b.depositedCustomers,
     },
     {

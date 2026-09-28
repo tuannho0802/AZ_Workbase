@@ -6,12 +6,13 @@ import { CustomerStatus } from '../../database/entities/customer-status.entity';
 import { User } from '../../database/entities/user.entity';
 import { ReportsService } from './reports.service';
 import { ReportsMarketingService } from './reports-marketing.service';
+import { ReportsCustomerListService } from './reports-customer-list.service';
 import { ReportsController } from './reports.controller';
 
 @Module({
   imports: [TypeOrmModule.forFeature([Customer, CustomerGroupMembership, CustomerStatus, User])],
   controllers: [ReportsController],
-  providers: [ReportsService, ReportsMarketingService],
+  providers: [ReportsService, ReportsMarketingService, ReportsCustomerListService],
   exports: [ReportsService],
 })
 export class ReportsModule { }

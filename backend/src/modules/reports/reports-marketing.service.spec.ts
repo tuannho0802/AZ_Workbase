@@ -241,15 +241,15 @@ describe('ReportsMarketingService', () => {
       expect(main.params.fMarketing).toBeUndefined();
     });
 
-    it('marketingUserId=7 + createdById=3 + source + departmentId -> tham số hoá đúng', async () => {
+    it('marketingUserId=7 + createdById=3 + source -> tham số hoá đúng', async () => {
       await service.getMarketingReport(
-        { ...monthQuery, marketingUserId: 7, createdById: 3, source: 'Facebook', departmentId: 2 },
+        { ...monthQuery, marketingUserId: 7, createdById: 3, source: 'Facebook' },
         1,
         Role.ADMIN,
         PermissionScope.ALL,
       );
       const main = states.find((s) => s.aliases.includes('cohortDeposited'))!;
-      expect(main.params).toMatchObject({ fMarketing: 7, fCreator: 3, fSource: 'Facebook', fDept: 2 });
+      expect(main.params).toMatchObject({ fMarketing: 7, fCreator: 3, fSource: 'Facebook' });
     });
 
     it('options dropdown KHÔNG bị lọc theo user đã chọn', async () => {
@@ -261,7 +261,6 @@ describe('ReportsMarketingService', () => {
     it('options trả tên kèm phòng ban', async () => {
       const r = await service.getMarketingReport(monthQuery, 1, Role.ADMIN, PermissionScope.ALL);
       expect(r.options.marketers.map((m) => m.name)).toEqual(['Mai Marketing', 'Nam Marketing']);
-      expect(r.options.departments).toEqual([{ id: 1, name: 'Marketing' }]);
       expect(r.options.sources).toEqual(['Facebook', 'TikTok']);
     });
   });

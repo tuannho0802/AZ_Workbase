@@ -23,13 +23,6 @@ export class QueryMarketingReportDto extends QueryReportDto {
   @Min(0)
   createdById?: number;
 
-  @ApiPropertyOptional({ description: 'Lọc theo phòng ban CỦA KHÁCH HÀNG (không phải phòng ban nhân viên).' })
-  @IsOptional()
-  @Type(() => Number)
-  @IsInt()
-  @Min(1)
-  departmentId?: number;
-
   @ApiPropertyOptional({ description: 'Lọc theo nguồn khách (media_sources.name).' })
   @IsOptional()
   @IsString()

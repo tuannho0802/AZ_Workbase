@@ -6,6 +6,8 @@ import {
     QualityReport,
     MarketingReport,
     MarketingReportFilters,
+    ReportCustomerList,
+    ReportCustomerListQuery,
 } from '../types/reports.types';
 
 export const reportsApi = {
@@ -27,6 +29,11 @@ export const reportsApi = {
     getMarketingReport: async (query: ReportQuery & MarketingReportFilters): Promise<MarketingReport> => {
         // axios bỏ qua key undefined; marketingUserId/createdById = 0 vẫn được gửi (0 = "chưa gán").
         const response = await axiosInstance.get<MarketingReport>('/reports/marketing', { params: query });
+        return response.data;
+    },
+
+    getCustomerList: async (query: ReportCustomerListQuery): Promise<ReportCustomerList> => {
+        const response = await axiosInstance.get<ReportCustomerList>('/reports/customer-list', { params: query });
         return response.data;
     },
 };

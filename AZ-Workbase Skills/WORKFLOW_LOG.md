@@ -4838,3 +4838,21 @@ khi bị xoá tay. Đây là 1 anti-pattern thật (dù đo thử với payload 
 **Notes:**
 > Không migration, không permission key mới (dùng `reports.view`). scope='own' (không phải Admin) chỉ thấy dòng của chính mình. Tỷ lệ duy nhất hợp lệ = `cohortDeposited / totalCustomers` (các chỉ số khác dùng cột ngày khác nhau). SQL đã sinh thử bằng metadata TypeORM thật (không cần DB) — chưa chạy trên MySQL/trình duyệt thật. Chưa commit/push.
 ---
+
+## [2026-09-28 11:00] | Trang /reports — Mini Table drill-down, bỏ "Theo phòng ban", Tag User/Phòng ban, thẻ Status | [Status: Success — chưa test trên MySQL/trình duyệt thật]
+
+**Actor:** Agent
+
+**Files Changed:**
+- BE MỚI: `reports/reports-customer-list.service.ts` (+spec), `reports/dto/query-report-customer-list.dto.ts`, `reports/report-scope.util.ts` (siết scope=own chiều Marketing, dùng chung).
+- BE: `reports.controller.ts` (+`GET /reports/customer-list`, dùng lại `reports.view`), `reports.module.ts`, `reports.service.ts` (dòng "Cá nhân" thêm `departmentName/departmentColor`, `@Optional() userRepo`), `reports-marketing.service.ts` + DTO + spec (bỏ lọc phòng ban KHÁCH, thêm `departmentColor`).
+- FE MỚI: `reports/ReportCustomersModal.tsx` (+test), `ReportKpiCard.tsx`, `ReportUserName.tsx`.
+- FE: `CustomerReportTab.tsx` (làm lại theo format tab Marketing), `QualityReportTab.tsx` (+thẻ từng Status), `RevenueReportTab.tsx`, `MarketingReportTab.tsx`, `MarketingBreakdownTable.tsx`, `ReportSection.tsx` (+title/description), `lib/types/reports.types.ts`, `lib/api/reports.api.ts`, `lib/hooks/useReports.ts`.
+
+**Solution:**
+> Bấm thẻ KPI/số của từng nhân viên/nút "chưa gán Marketing" -> modal Mini Table (10 dòng/trang, tìm kiếm, lọc Trạng thái/Nguồn/Ngày nhập, lọc nhanh). Mỗi metric dùng ĐÚNG cột ngày + múi giờ của con số (created/joined = UTC, closed/deposit = naive). Bỏ khối "Theo phòng ban" ở cả 3 tab (khách luôn thuộc Kinh doanh) + bỏ filter "Phòng ban khách hàng" ở tab Marketing. Tag Phòng ban đúng màu (`resolveEntityColor`) ở mọi bảng.
+
+**Notes:**
+> Không migration, không permission key mới. BE `department` của /reports/revenue|customers|quality vẫn còn trong response (FE không dùng nữa). Chưa commit/push.
+
+---

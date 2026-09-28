@@ -1,9 +1,10 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, Optional } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { In, Repository } from 'typeorm';
 import { Customer } from '../../database/entities/customer.entity';
 import { CustomerGroupMembership } from '../../database/entities/customer-group-membership.entity';
 import { CustomerStatus } from '../../database/entities/customer-status.entity';
+import { User } from '../../database/entities/user.entity';
 import { Role } from '../../common/enums/role.enum';
 import { PermissionScope } from '../../database/entities/role-permission.entity';
 import { CustomerAccessHelper } from '../customers/helpers/customer-access.helper';
@@ -64,7 +65,36 @@ export class ReportsService {
     private readonly customerRepo: Repository<Customer>,
     @InjectRepository(CustomerStatus)
     private readonly customerStatusRepo: Repository<CustomerStatus>,
+    // @Optional: chỉ để làm giàu Tag phòng ban (tên + màu) cho dòng "Cá nhân" - thiếu thì trả null, không ảnh hưởng số liệu.
+    @Optional()
+    @InjectRepository(User)
+    private readonly userRepo?: Repository<User>,
   ) { }
+
+  /**
+   * Gắn phòng ban CỦA NHÂN VIÊN (tên + màu) vào các dòng "Cá nhân" để FE vẽ Tag phòng ban đúng màu
+   * cấu hình ở /phong-ban. withDeleted: nhân viên đã nghỉ vẫn hiện đúng trong báo cáo lịch sử.
+   */
+  private async attachDepartment<T extends { userId: number }>(
+    rows: T[],
+  ): Promise<(T & { departmentName?: string | null; departmentColor?: string | null })[]> {
+    if (!this.userRepo) return rows;
+    const ids = [...new Set(rows.map((r) => r.userId).filter((id) => id > 0))];
+    const map = new Map<number, { name: string | null; color: string | null }>();
+    if (ids.length > 0) {
+      const users = await this.userRepo.find({
+        where: { id: In(ids) },
+        relations: { department: true },
+        withDeleted: true,
+      });
+      for (const u of users) map.set(u.id, { name: u.department?.name ?? null, color: u.department?.color ?? null });
+    }
+    return rows.map((r) => ({
+      ...r,
+      departmentName: map.get(r.userId)?.name ?? null,
+      departmentColor: map.get(r.userId)?.color ?? null,
+    }));
+  }
 
   /**
    * Suy ra khoảng ngày [from, to] (dạng chuỗi 'YYYY-MM-DD HH:mm:ss', KHÔNG
@@ -138,11 +168,13 @@ export class ReportsService {
     const personalRaw = await personalQb.getRawMany<
       PersonalBreakdownRow & { amount: string }
     >();
-    const personal = personalRaw.map((r) => ({
-      userId: Number(r.userId),
-      userName: r.userName ?? '(Không rõ)',
-      amount: Number(r.amount) || 0,
-    }));
+    const personal = await this.attachDepartment(
+      personalRaw.map((r) => ({
+        userId: Number(r.userId),
+        userName: r.userName ?? '(Không rõ)',
+        amount: Number(r.amount) || 0,
+      })),
+    );
 
     // ── Phòng ban (scope='own' KHÔNG có mục này - thuần theo scope) ──
     let department: { departmentId: number; departmentName: string; amount: number }[] | null =
@@ -278,11 +310,13 @@ export class ReportsService {
         (r: any) => Number(r.userId) === viewerId,
       );
     }
-    const personal = this.mergeBreakdown(
+    const personal = await this.attachDepartment(
+      this.mergeBreakdown(
       personalMainFiltered,
       personalJoinedRaw,
       'userId',
       (r: any) => ({ userId: Number(r.userId), userName: r.userName ?? '(Không rõ)' }),
+      ),
     );
 
     // ── Phòng ban (scope='own' KHÔNG có mục này - thuần theo scope) ──
@@ -409,10 +443,12 @@ export class ReportsService {
       status: string;
       count: string;
     }>();
-    const personal = this.pivotByStatus(personalRaw, 'userId', zeroByStatus, (r) => ({
-      userId: Number(r.userId),
-      userName: r.userName ?? '(Không rõ)',
-    }));
+    const personal = await this.attachDepartment(
+      this.pivotByStatus(personalRaw, 'userId', zeroByStatus, (r) => ({
+        userId: Number(r.userId),
+        userName: r.userName ?? '(Không rõ)',
+      })),
+    );
 
     // ── Phòng ban (scope='own' KHÔNG có mục này - thuần theo scope) ──
     let department: any[] | null = null;

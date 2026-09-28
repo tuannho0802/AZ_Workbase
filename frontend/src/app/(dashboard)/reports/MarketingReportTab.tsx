@@ -26,7 +26,6 @@ import { getApiErrorMessage } from '@/lib/utils/error-message.util';
 import {
   RANK_METRIC_LABEL,
   countActiveFilters,
-  deltaOf,
   fmtCount,
   formatUsd,
   formatUsdCompact,
@@ -37,12 +36,14 @@ import {
   type RankMetric,
 } from '@/lib/utils/marketingReport';
 import PeriodSelector from './PeriodSelector';
+import ReportKpiCard, { REPORT_COLORS } from './ReportKpiCard';
+import ReportCustomersModal, { type CustomerDrill } from './ReportCustomersModal';
 import { CHART_COLORS } from './ReportChart';
 import MarketingBreakdownTable from './MarketingBreakdownTable';
 
 const { Text } = Typography;
 
-const COLORS = { danger: '#f5222d', warning: '#fa8c16', primary: '#1677ff', muted: '#bfbfbf', ok: '#52c41a', gold: '#faad14' };
+const COLORS = REPORT_COLORS;
 /** Trục Y đếm số nguyên: luôn có mốc 0 và ≥ 1. */
 const COUNT_DOMAIN: [number, (dataMax: number) => number] = [0, (dataMax) => Math.max(dataMax, 1)];
 const fmtDay = (s: string) => dayjs(s).format('DD/MM/YYYY');
@@ -56,44 +57,6 @@ const isMoney = (m: RankMetric) => m === 'revenue';
 interface Props {
   query: ReportQuery;
   onQueryChange: (next: ReportQuery) => void;
-}
-
-/** Thẻ KPI + chênh lệch so với kỳ liền trước. */
-function KpiCard(props: {
-  title: ReactNode;
-  value: number;
-  previous?: number;
-  money?: boolean;
-  color?: string;
-  loading: boolean;
-  hint?: ReactNode;
-}) {
-  const { title, value, previous, money, color, loading, hint } = props;
-  const d = previous == null ? null : deltaOf(value, previous);
-  const fmtVal = money ? formatUsd : fmtCount;
-  return (
-    <Card size="small" loading={loading} style={{ height: '100%' }}>
-      <Statistic
-        title={title}
-        value={value}
-        formatter={(v) => fmtVal(Number(v))}
-        styles={{ content: { color, fontSize: 24 } }}
-      />
-      {d && (
-        <Text
-          style={{
-            fontSize: 12,
-            color: d.direction === 'up' ? COLORS.ok : d.direction === 'down' ? COLORS.danger : COLORS.muted,
-          }}
-        >
-          {d.direction === 'flat'
-            ? `Bằng kỳ trước (${fmtVal(previous!)})`
-            : `${d.direction === 'up' ? '▲ +' : '▼ '}${fmtVal(d.diff)}${d.percent != null ? ` (${d.diff > 0 ? '+' : ''}${d.percent}%)` : ''} so với kỳ trước (${fmtVal(previous!)})`}
-        </Text>
-      )}
-      {hint && <div><Text type="secondary" style={{ fontSize: 12 }}>{hint}</Text></div>}
-    </Card>
-  );
 }
 
 const userOptions = (list: MarketingUserOption[], unassignedLabel: string) => [
@@ -112,11 +75,23 @@ const userOptions = (list: MarketingUserOption[], unassignedLabel: string) => [
 export default function MarketingReportTab({ query, onQueryChange }: Props) {
   const [filters, setFilters] = useState<MarketingReportFilters>({});
   const [rankMetric, setRankMetric] = useState<RankMetric>('revenue');
+  const [drill, setDrill] = useState<CustomerDrill | null>(null);
 
   const { data, isLoading, isFetching, isError, error, refetch } = useMarketingReport({ ...query, ...filters });
 
   const setFilter = (patch: Partial<MarketingReportFilters>) => setFilters((f) => ({ ...f, ...patch }));
   const activeFilters = countActiveFilters(filters);
+  // Mini Table luôn kế thừa bộ lọc đang bật của tab để danh sách KHỚP con số trên thẻ.
+  const openDrill = (d: CustomerDrill) =>
+    setDrill({
+      ...d,
+      preset: {
+        marketingUserId: filters.marketingUserId,
+        createdById: filters.createdById,
+        source: filters.source,
+        ...(d.preset ?? {}),
+      },
+    });
 
   const cur = data?.summary.current;
   const prev = data?.summary.previous;
@@ -191,7 +166,7 @@ export default function MarketingReportTab({ query, onQueryChange }: Props) {
         </div>
 
         <Row gutter={[12, 12]} style={{ marginTop: 12 }}>
-          <Col xs={24} sm={12} xl={6}>
+          <Col xs={24} sm={12} xl={8}>
             <div className="mb-1"><Text strong>Marketing phụ trách</Text></div>
             <Select
               allowClear
@@ -204,7 +179,7 @@ export default function MarketingReportTab({ query, onQueryChange }: Props) {
               options={userOptions(data?.options.marketers ?? [], '(Chưa gán Marketing)')}
             />
           </Col>
-          <Col xs={24} sm={12} xl={6}>
+          <Col xs={24} sm={12} xl={8}>
             <div className="mb-1"><Text strong>Người tạo data</Text></div>
             <Select
               allowClear
@@ -217,24 +192,7 @@ export default function MarketingReportTab({ query, onQueryChange }: Props) {
               options={userOptions(data?.options.creators ?? [], '(Không rõ người tạo)')}
             />
           </Col>
-          <Col xs={24} sm={12} xl={6}>
-            <div className="mb-1">
-              <Tooltip title="Phòng ban của KHÁCH HÀNG (không phải phòng ban của nhân viên).">
-                <Text strong>Phòng ban khách hàng</Text>
-              </Tooltip>
-            </div>
-            <Select
-              allowClear
-              showSearch
-              optionFilterProp="label"
-              style={{ width: '100%' }}
-              placeholder="Tất cả phòng ban"
-              value={filters.departmentId}
-              onChange={(v) => setFilter({ departmentId: v })}
-              options={(data?.options.departments ?? []).map((d) => ({ value: d.id, label: d.name }))}
-            />
-          </Col>
-          <Col xs={24} sm={12} xl={6}>
+          <Col xs={24} sm={12} xl={8}>
             <div className="mb-1"><Text strong>Nguồn</Text></div>
             <Select
               allowClear
@@ -270,9 +228,14 @@ export default function MarketingReportTab({ query, onQueryChange }: Props) {
           title={`${fmtCount(unassigned)}${unassignedPct != null ? ` (${unassignedPct}%)` : ''} data mới trong kỳ chưa gán Marketing phụ trách`}
           description={'Phần này không quy được cho Marketing nào ở chiều "Marketing phụ trách" (vẫn có ở chiều "Người tạo data"). Gán Marketing cho các khách này để doanh số theo Marketing đầy đủ.'}
           action={
-            filters.marketingUserId !== 0 ? (
-              <Button size="small" onClick={() => setFilter({ marketingUserId: 0 })}>Xem phần chưa gán</Button>
-            ) : undefined
+            <Space>
+              <Button size="small" type="primary" onClick={() => openDrill({ metric: 'unassigned_marketing', preset: { marketingUserId: undefined } })}>
+                Xem danh sách khách
+              </Button>
+              {filters.marketingUserId !== 0 && (
+                <Button size="small" onClick={() => setFilter({ marketingUserId: 0 })}>Lọc cả báo cáo</Button>
+              )}
+            </Space>
           }
         />
       )}
@@ -282,28 +245,39 @@ export default function MarketingReportTab({ query, onQueryChange }: Props) {
           {/* ── KPI ── */}
           <Row gutter={[12, 12]}>
             <Col xs={24} md={12} xl={8}>
-              <KpiCard title="Data mới trong kỳ" value={cur?.totalCustomers ?? 0} previous={prev?.totalCustomers} color={COLORS.primary} loading={loading} />
+              <ReportKpiCard title="Data mới trong kỳ" value={cur?.totalCustomers ?? 0} previous={prev?.totalCustomers} color={COLORS.primary} loading={loading}
+                onClick={() => openDrill({ metric: 'total' })} />
             </Col>
             <Col xs={24} md={12} xl={8}>
-              <KpiCard
+              <ReportKpiCard
                 title={<Tooltip title="Số khách có ≥ 1 khoản nạp trong kỳ - tính theo ngày nạp, bất kể khách được tạo lúc nào.">Khách đã nạp tiền</Tooltip>}
                 value={cur?.depositedCustomers ?? 0}
                 previous={prev?.depositedCustomers}
                 color={COLORS.ok}
                 loading={loading}
+                onClick={() => openDrill({ metric: 'deposited' })}
               />
             </Col>
             <Col xs={24} md={12} xl={8}>
-              <KpiCard title="Doanh thu (nạp)" value={cur?.revenue ?? 0} previous={prev?.revenue} money color={COLORS.gold} loading={loading} />
+              <ReportKpiCard title="Doanh thu (nạp)" value={cur?.revenue ?? 0} previous={prev?.revenue} money color={COLORS.gold} loading={loading}
+                onClick={() => openDrill({ metric: 'deposited' })} />
             </Col>
             <Col xs={24} md={12} xl={8}>
-              <KpiCard title="Đã chốt" value={cur?.closedCustomers ?? 0} previous={prev?.closedCustomers} color={COLORS.ok} loading={loading} />
+              <ReportKpiCard title="Đã chốt" value={cur?.closedCustomers ?? 0} previous={prev?.closedCustomers} color={COLORS.ok} loading={loading}
+                onClick={() => openDrill({ metric: 'closed' })} />
             </Col>
             <Col xs={24} md={12} xl={8}>
-              <KpiCard title="Đã join nhóm" value={cur?.joinedGroupCustomers ?? 0} previous={prev?.joinedGroupCustomers} color={COLORS.gold} loading={loading} />
+              <ReportKpiCard title="Đã join nhóm" value={cur?.joinedGroupCustomers ?? 0} previous={prev?.joinedGroupCustomers} color={COLORS.gold} loading={loading}
+                onClick={() => openDrill({ metric: 'joined' })} />
             </Col>
             <Col xs={24} md={12} xl={8}>
-              <Card size="small" loading={loading} style={{ height: '100%' }}>
+              <Card
+                size="small"
+                loading={loading}
+                hoverable
+                style={{ height: '100%', cursor: 'pointer' }}
+                onClick={() => openDrill({ metric: 'cohort_deposited' })}
+              >
                 <Statistic
                   title={
                     <Tooltip title="Trong số data MỚI của kỳ, tỷ lệ khách đã từng nạp (bất kỳ lúc nào) - cùng nhóm khách nên luôn ≤ 100%.">
@@ -318,6 +292,7 @@ export default function MarketingReportTab({ query, onQueryChange }: Props) {
                   {cur ? `${fmtCount(cur.cohortDepositedCustomers)} / ${fmtCount(cur.totalCustomers)} khách` : ''}
                   {prevCohortRate != null && cohortRate != null ? ` · kỳ trước ${prevCohortRate}%` : ''}
                 </Text>
+                <div><Text type="secondary" style={{ fontSize: 12 }}>Xem danh sách khách đã nạp</Text></div>
               </Card>
             </Col>
           </Row>
@@ -538,6 +513,7 @@ export default function MarketingReportTab({ query, onQueryChange }: Props) {
             loading={loading}
             activeMarketingId={filters.marketingUserId}
             activeCreatorId={filters.createdById}
+            onDrill={(d) => openDrill(d)}
             onFilterMarketing={(id) => {
               setFilter({ marketingUserId: id });
               window.scrollTo({ top: 0, behavior: 'smooth' });
@@ -549,6 +525,8 @@ export default function MarketingReportTab({ query, onQueryChange }: Props) {
           />
         </div>
       </Spin>
+
+      {drill && <ReportCustomersModal drill={drill} onClose={() => setDrill(null)} query={query} context="marketing" />}
     </div>
   );
 }

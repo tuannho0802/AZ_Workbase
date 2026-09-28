@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
-import { render, screen } from '@testing-library/react';
+import { fireEvent, render, screen } from '@testing-library/react';
 import type { MarketingReport, MarketingUserRow } from '@/lib/types/reports.types';
 
 const mk = (o: Partial<MarketingUserRow>): MarketingUserRow => ({
@@ -27,7 +27,6 @@ const fixture: MarketingReport = {
   options: {
     marketers: [{ id: 7, name: 'Mai Marketing', departmentName: 'Marketing' }],
     creators: [{ id: 3, name: 'Lan Creator', departmentName: 'Marketing' }],
-    departments: [{ id: 1, name: 'Marketing' }],
     sources: ['Facebook'],
   },
   statuses: [
@@ -44,6 +43,11 @@ const fixture: MarketingReport = {
 
 let hookResult: Record<string, unknown> = {};
 vi.mock('@/lib/hooks/useReports', () => ({ useMarketingReport: () => hookResult }));
+
+// Modal Mini Table có hook riêng cần QueryClient -> thay bằng stub để kiểm tra đúng "bấm gì thì mở gì".
+vi.mock('./ReportCustomersModal', () => ({
+  default: ({ drill }: { drill: { metric: string } | null }) => <div data-testid="drill">{drill?.metric}</div>,
+}));
 
 import MarketingReportTab from './MarketingReportTab';
 
@@ -68,5 +72,21 @@ describe('MarketingReportTab', () => {
   it('chưa có data (đang tải) không crash', () => {
     hookResult = { data: undefined, isLoading: true, isFetching: true, isError: false, error: null, refetch: vi.fn() };
     expect(() => render(<MarketingReportTab {...props} />)).not.toThrow();
+  });
+
+  it('không còn bộ lọc phòng ban khách hàng', () => {
+    hookResult = { data: fixture, isLoading: false, isFetching: false, isError: false, error: null, refetch: vi.fn() };
+    render(<MarketingReportTab {...props} />);
+    expect(screen.queryByText('Phòng ban khách hàng')).toBeNull();
+  });
+
+  it('bấm thẻ KPI / nút của cảnh báo chưa gán -> mở Mini Table đúng chỉ số', () => {
+    hookResult = { data: fixture, isLoading: false, isFetching: false, isError: false, error: null, refetch: vi.fn() };
+    render(<MarketingReportTab {...props} />);
+    expect(screen.queryByTestId('drill')).toBeNull();
+    fireEvent.click(screen.getByText('Khách đã nạp tiền'));
+    expect(screen.getByTestId('drill').textContent).toBe('deposited');
+    fireEvent.click(screen.getByText('Xem danh sách khách'));
+    expect(screen.getByTestId('drill').textContent).toBe('unassigned_marketing');
   });
 });

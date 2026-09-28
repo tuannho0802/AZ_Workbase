@@ -4,14 +4,16 @@ import { useMemo, useState } from 'react';
 import { Card, Statistic, Typography, Alert } from 'antd';
 import { DollarOutlined } from '@ant-design/icons';
 import { useRevenueReport } from '@/lib/hooks/useReports';
-import { ReportQuery, RevenuePersonalRow, RevenueDepartmentRow } from '@/lib/types/reports.types';
+import { ReportQuery, RevenuePersonalRow } from '@/lib/types/reports.types';
 import { getApiErrorMessage } from '@/lib/utils/error-message.util';
 import { ReportSection } from './ReportSection';
 import { CHART_COLORS } from './ReportChart';
 import PeriodSelector from './PeriodSelector';
 import ReportNameFilter from './ReportNameFilter';
+import ReportUserName from './ReportUserName';
 
 const { Title } = Typography;
+// Không còn khối "Theo phòng ban": doanh thu quy theo phòng ban của KHÁCH (luôn là Kinh doanh) nên vô nghĩa.
 
 /** Cùng định dạng USD với StatsCards.tsx (trang Khách hàng) - nhất quán 1
  * kiểu hiển thị tiền trong toàn app, không tạo thêm quy ước riêng ở đây. */
@@ -38,7 +40,6 @@ interface Props {
 export default function RevenueReportTab({ query, onQueryChange }: Props) {
   const { data, isLoading, isError, error } = useRevenueReport(query);
   const [personalSearch, setPersonalSearch] = useState('');
-  const [departmentSearch, setDepartmentSearch] = useState('');
 
   const filteredPersonal = useMemo(() => {
     const rows = data?.personal || [];
@@ -47,15 +48,14 @@ export default function RevenueReportTab({ query, onQueryChange }: Props) {
     return rows.filter((r) => r.userName.toLowerCase().includes(q));
   }, [data?.personal, personalSearch]);
 
-  const filteredDepartment = useMemo(() => {
-    const rows = data?.department || [];
-    if (!departmentSearch.trim()) return rows;
-    const q = departmentSearch.trim().toLowerCase();
-    return rows.filter((r) => r.departmentName.toLowerCase().includes(q));
-  }, [data?.department, departmentSearch]);
-
   const personalColumns = [
-    { title: 'Nhân viên', dataIndex: 'userName', key: 'userName' },
+    {
+      title: 'Nhân viên',
+      key: 'userName',
+      render: (_: unknown, r: RevenuePersonalRow) => (
+        <ReportUserName name={r.userName} departmentName={r.departmentName} departmentColor={r.departmentColor} />
+      ),
+    },
     {
       title: 'Doanh thu',
       dataIndex: 'amount',
@@ -63,19 +63,6 @@ export default function RevenueReportTab({ query, onQueryChange }: Props) {
       align: 'right' as const,
       render: (v: number) => formatUsd(v),
       sorter: (a: RevenuePersonalRow, b: RevenuePersonalRow) => a.amount - b.amount,
-      defaultSortOrder: 'descend' as const,
-    },
-  ];
-
-  const departmentColumns = [
-    { title: 'Phòng ban', dataIndex: 'departmentName', key: 'departmentName' },
-    {
-      title: 'Doanh thu',
-      dataIndex: 'amount',
-      key: 'amount',
-      align: 'right' as const,
-      render: (v: number) => formatUsd(v),
-      sorter: (a: RevenueDepartmentRow, b: RevenueDepartmentRow) => a.amount - b.amount,
       defaultSortOrder: 'descend' as const,
     },
   ];
@@ -127,26 +114,6 @@ export default function RevenueReportTab({ query, onQueryChange }: Props) {
         />
       </div>
 
-      {/* Theo phòng ban - Employee không có mục này (BE trả null) */}
-      {data?.department != null && (
-        <>
-          <Title level={5}>Theo phòng ban</Title>
-          <ReportSection<RevenueDepartmentRow>
-            rowKey="departmentId"
-            loading={isLoading}
-            columns={departmentColumns}
-            data={filteredDepartment}
-            nameKey="departmentName"
-            series={REVENUE_SERIES}
-            valueFormatter={formatUsd}
-            axisFormatter={formatUsdCompact}
-            emptyText={departmentSearch ? 'Không tìm thấy phòng ban phù hợp' : 'Không có doanh thu trong kỳ này'}
-            extraFilters={
-              <ReportNameFilter value={departmentSearch} onChange={setDepartmentSearch} placeholder="Tìm theo tên phòng ban..." />
-            }
-          />
-        </>
-      )}
     </div>
   );
 }

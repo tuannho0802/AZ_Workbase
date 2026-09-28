@@ -3,6 +3,8 @@ import { ApiTags, ApiOperation, ApiBearerAuth } from '@nestjs/swagger';
 import { ReportsService } from './reports.service';
 import { ReportsMarketingService } from './reports-marketing.service';
 import { QueryMarketingReportDto } from './dto/query-marketing-report.dto';
+import { ReportsCustomerListService } from './reports-customer-list.service';
+import { QueryReportCustomerListDto } from './dto/query-report-customer-list.dto';
 import { QueryReportDto } from './dto/query-report.dto';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { PermissionGuard } from '../../common/guards/permission.guard';
@@ -25,6 +27,7 @@ export class ReportsController {
   constructor(
     private readonly reportsService: ReportsService,
     private readonly reportsMarketingService: ReportsMarketingService,
+    private readonly reportsCustomerListService: ReportsCustomerListService,
   ) {}
 
   @Get('revenue')
@@ -81,5 +84,19 @@ export class ReportsController {
     @GetPermissionScope() scope: string | null,
   ) {
     return this.reportsMarketingService.getMarketingReport(query, req.user.id, req.user.role, scope);
+  }
+
+  @Get('customer-list')
+  @RequirePermission('reports.view')
+  @ApiOperation({
+    summary:
+      'Danh sách KHÁCH đứng sau 1 con số của báo cáo (Tổng data/Đã chốt/Đã join nhóm/Đã nạp/Chưa gán Marketing) - Mini Table drill-down, có tìm kiếm + lọc nhanh + phân trang; phạm vi khớp tab đang xem',
+  })
+  async getCustomerList(
+    @Query() query: QueryReportCustomerListDto,
+    @Request() req: any,
+    @GetPermissionScope() scope: string | null,
+  ) {
+    return this.reportsCustomerListService.getList(query, req.user.id, req.user.role, scope);
   }
 }

@@ -1,6 +1,6 @@
 import { keepPreviousData, useQuery } from '@tanstack/react-query';
 import { reportsApi } from '../api/reports.api';
-import { MarketingReportFilters, ReportQuery } from '../types/reports.types';
+import { MarketingReportFilters, ReportCustomerListQuery, ReportQuery } from '../types/reports.types';
 
 /**
  * `enabled: isQueryReady(query)` - period=custom cần ĐỦ customFrom+customTo
@@ -46,6 +46,17 @@ export const useMarketingReport = (query: ReportQuery & MarketingReportFilters) 
         enabled: isQueryReady(query),
         staleTime: 60 * 1000,
         // Đổi bộ lọc/kỳ: giữ số cũ (mờ đi bằng Spin) thay vì nháy về skeleton toàn trang.
+        placeholderData: keepPreviousData,
+    });
+};
+
+/** Danh sách khách của Mini Table drill-down - chỉ gọi khi modal đang mở. */
+export const useReportCustomerList = (query: ReportCustomerListQuery, enabled: boolean) => {
+    return useQuery({
+        queryKey: ['reports', 'customer-list', query],
+        queryFn: () => reportsApi.getCustomerList(query),
+        enabled: enabled && isQueryReady(query),
+        staleTime: 30 * 1000,
         placeholderData: keepPreviousData,
     });
 };
