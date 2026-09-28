@@ -2,7 +2,7 @@
 
 import React, { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { App, Table, Card, Typography, Select, Space, Button, Alert, Tag, Input, Tooltip, Avatar, DatePicker } from 'antd';
+import { App, Table, Card, Typography, Select, Space, Button, Alert, Tag, Input, Tooltip, Avatar, DatePicker, Tabs } from 'antd';
 import type { ColumnsType, TablePaginationConfig } from 'antd/es/table';
 import { customersApi } from '@/lib/api/customers.api';
 import { Customer } from '@/lib/types/customer.types';
@@ -20,6 +20,7 @@ import { resolveEntityColor } from '@/lib/utils/entityColor';
 // gọi `/users` riêng (route đó đòi quyền khác, dễ 403 với role hẹp).
 import { useAssignmentGroupUsers } from '@/lib/hooks/useAssignmentGroups';
 import { linkGroupsApi, LinkGroup } from '@/lib/api/link-groups.api';
+import { InvalidDataStatsTab } from '@/components/customers/InvalidDataStatsTab';
 
 const { Title, Text } = Typography;
 
@@ -149,6 +150,10 @@ export default function InvalidDataReportPage() {
   // "future_date" như trước.
   const [invalidType, setInvalidType] = useState<string>('duplicate_phone');
   const [search, setSearch] = useState('');
+  // Remount ô Input.Search (uncontrolled `defaultValue`) khi search bị đổi từ bên ngoài
+  // (Xóa bộ lọc / drill-down từ tab Thống kê) - nếu không ô nhập vẫn hiện chữ cũ.
+  const [searchInputKey, setSearchInputKey] = useState(0);
+  const [activeTab, setActiveTab] = useState<'list' | 'stats'>('list');
   const [status, setStatus] = useState<string | undefined>(undefined);
   const [salesUserId, setSalesUserId] = useState<number | undefined>(undefined);
   const [marketingUserId, setMarketingUserId] = useState<number | undefined>(undefined);
@@ -221,17 +226,22 @@ export default function InvalidDataReportPage() {
     const type = opts.type ?? invalidType;
     const page = opts.page ?? (pagination.current || 1);
     const limit = opts.limit ?? (pagination.pageSize || 20);
-    const s = opts.search !== undefined ? opts.search : search;
-    const st = opts.status !== undefined ? opts.status : status;
-    const su = opts.salesUserId !== undefined ? opts.salesUserId : salesUserId;
-    const mu = opts.marketingUserId !== undefined ? opts.marketingUserId : marketingUserId;
-    const cr = opts.creatorId !== undefined ? opts.creatorId : creatorId;
-    const jg = opts.joinedGroups !== undefined ? opts.joinedGroups : joinedGroups;
+    // FIX: dùng `'key' in opts` thay vì `opts.key !== undefined` - truyền tường
+    // minh `undefined` nghĩa là "đã xoá bộ lọc này" (allowClear / Xóa bộ lọc /
+    // drill-down từ tab Thống kê), KHÔNG được rơi về state cũ trong closure
+    // (trước đây xoá 1 bộ lọc vẫn gửi lại giá trị cũ lên API). Không truyền key
+    // = giữ nguyên state hiện tại.
+    const s = 'search' in opts ? opts.search : search;
+    const st = 'status' in opts ? opts.status : status;
+    const su = 'salesUserId' in opts ? opts.salesUserId : salesUserId;
+    const mu = 'marketingUserId' in opts ? opts.marketingUserId : marketingUserId;
+    const cr = 'creatorId' in opts ? opts.creatorId : creatorId;
+    const jg = 'joinedGroups' in opts ? opts.joinedGroups : joinedGroups;
     const gid = 'groupId' in opts ? opts.groupId : groupId;
-    const df = opts.dateFrom !== undefined ? opts.dateFrom : (inputDateFrom?.format('YYYY-MM-DD') || undefined);
-    const dt = opts.dateTo !== undefined ? opts.dateTo : (inputDateTo?.format('YYYY-MM-DD') || undefined);
-    const caf = opts.createdAtFrom !== undefined ? opts.createdAtFrom : (createdAtFrom?.format('YYYY-MM-DD') || undefined);
-    const cat = opts.createdAtTo !== undefined ? opts.createdAtTo : (createdAtTo?.format('YYYY-MM-DD') || undefined);
+    const df = 'dateFrom' in opts ? opts.dateFrom : (inputDateFrom?.format('YYYY-MM-DD') || undefined);
+    const dt = 'dateTo' in opts ? opts.dateTo : (inputDateTo?.format('YYYY-MM-DD') || undefined);
+    const caf = 'createdAtFrom' in opts ? opts.createdAtFrom : (createdAtFrom?.format('YYYY-MM-DD') || undefined);
+    const cat = 'createdAtTo' in opts ? opts.createdAtTo : (createdAtTo?.format('YYYY-MM-DD') || undefined);
 
     setLoading(true);
     try {
@@ -343,6 +353,7 @@ export default function InvalidDataReportPage() {
 
   const handleResetFilters = () => {
     setSearch('');
+    setSearchInputKey((k) => k + 1);
     setStatus(undefined);
     setSalesUserId(undefined);
     setMarketingUserId(undefined);
@@ -355,6 +366,41 @@ export default function InvalidDataReportPage() {
     setCreatedAtTo(null);
     fetchData({
       search: '',
+      status: undefined,
+      salesUserId: undefined,
+      marketingUserId: undefined,
+      creatorId: undefined,
+      joinedGroups: undefined,
+      groupId: undefined,
+      dateFrom: undefined,
+      dateTo: undefined,
+      createdAtFrom: undefined,
+      createdAtTo: undefined,
+      page: 1,
+    });
+  };
+
+  // Drill-down từ tab Thống kê: sang tab Danh sách với loại lỗi tương ứng; `key`
+  // (SĐT/Email của cụm) được đưa vào ô tìm kiếm để chỉ thấy đúng cụm đó. Xoá mọi
+  // bộ lọc khác để không bị ẩn mất thành viên của cụm (thống kê tính trên toàn bộ dữ liệu).
+  const handleOpenListFromStats = (type: string, key?: string) => {
+    setActiveTab('list');
+    setInvalidType(type);
+    setSearch(key ?? '');
+    setSearchInputKey((k) => k + 1);
+    setStatus(undefined);
+    setSalesUserId(undefined);
+    setMarketingUserId(undefined);
+    setCreatorId(undefined);
+    setJoinedGroups(undefined);
+    setGroupId(undefined);
+    setInputDateFrom(null);
+    setInputDateTo(null);
+    setCreatedAtFrom(null);
+    setCreatedAtTo(null);
+    fetchData({
+      type,
+      search: key ?? '',
       status: undefined,
       salesUserId: undefined,
       marketingUserId: undefined,
@@ -649,6 +695,243 @@ export default function InvalidDataReportPage() {
     !!search || !!status || !!salesUserId || !!marketingUserId || !!creatorId || !!joinedGroups || !!groupId ||
     !!inputDateFrom || !!inputDateTo || !!createdAtFrom || !!createdAtTo;
 
+  const listCard = (
+    <Card
+      title={
+        <Space size={8}>
+          <span style={{ fontSize: 16 }}>{activeMeta?.emoji}</span>
+          <span>{activeMeta?.label}</span>
+        </Space>
+      }
+      extra={
+        <Space size={8} wrap>
+          <Tag color="blue" style={{ marginInlineEnd: 0 }}>{affectedCustomerCount} khách hàng</Tag>
+          {isDuplicateView && duplicateGroupCount !== undefined && (
+            <Tag color="orange" style={{ marginInlineEnd: 0 }}>{duplicateGroupCount} nhóm trùng</Tag>
+          )}
+        </Space>
+      }
+    >
+      <Space className="mb-4" size="middle" wrap align="end">
+        <div>
+          <div className="mb-1"><Text strong>Loại kiểm tra</Text></div>
+          <Select
+            value={invalidType}
+            onChange={handleTypeChange}
+            style={{ width: 260 }}
+            options={TYPE_OPTIONS}
+          />
+        </div>
+        <div>
+          <div className="mb-1"><Text strong>Trạng thái</Text></div>
+          <Select
+            value={status}
+            onChange={handleStatusChange}
+            allowClear
+            placeholder="Tất cả trạng thái"
+            style={{ width: 200 }}
+            // ⚠️ MỚI (yêu cầu người dùng: "các trạng thái này phải có
+            // color tag") - `label` là 1 React node (Tag đã tô đúng màu
+            // từ /quan-ly-status-khach), KHÔNG phải string - Select hiển
+            // thị y nguyên node này CẢ ở dropdown lẫn ở ô đã chọn (không
+            // cần optionRender/labelRender riêng vì Select không bật
+            // showSearch ở đây, không cần label dạng string để filter).
+            options={allCustomerStatuses.map((s) => ({
+              value: s.code,
+              label: <Tag color={s.color} style={{ margin: 0 }}>{s.name}</Tag>,
+            }))}
+          />
+        </div>
+        <div>
+          <div className="mb-1"><Text strong>Sales phụ trách</Text></div>
+          <Select
+            value={salesUserId}
+            onChange={handleSalesUserChange}
+            allowClear
+            showSearch={{ optionFilterProp: 'label' }}
+            placeholder="Chọn Sales"
+            style={{ width: 200 }}
+            optionLabelProp="label"
+            optionRender={renderUserOption}
+            popupMatchSelectWidth={false}
+            options={salesUsers.map((u) => ({ value: u.id, label: u.name, user: u }))}
+          />
+        </div>
+        <div>
+          <div className="mb-1"><Text strong>Marketing phụ trách</Text></div>
+          <Select
+            value={marketingUserId}
+            onChange={handleMarketingUserChange}
+            allowClear
+            showSearch={{ optionFilterProp: 'label' }}
+            placeholder="Chọn Marketing"
+            style={{ width: 200 }}
+            optionLabelProp="label"
+            optionRender={renderUserOption}
+            popupMatchSelectWidth={false}
+            options={marketingUsers.map((u) => ({ value: u.id, label: u.name, user: u }))}
+          />
+        </div>
+        <div>
+          <div className="mb-1"><Text strong>Người tạo</Text></div>
+          <Select
+            value={creatorId}
+            onChange={handleCreatorChange}
+            allowClear
+            showSearch={{ optionFilterProp: 'label' }}
+            placeholder="Chọn người tạo"
+            style={{ width: 200 }}
+            optionLabelProp="label"
+            optionRender={renderUserOption}
+            popupMatchSelectWidth={false}
+            options={creatorUsers.map((u) => ({ value: u.id, label: u.name, user: u }))}
+          />
+        </div>
+        <div>
+          <div className="mb-1">
+            <Tooltip
+              title={
+                isDuplicateView
+                  ? 'Ở báo cáo Trùng SĐT/Email: chỉ cần trong cụm trùng có ÍT NHẤT 1 khách thoả điều kiện nhóm thì hiện cả cụm (đủ mọi khách trong cụm).'
+                  : undefined
+              }
+            >
+              <Text strong>Nhóm cụ thể</Text>
+            </Tooltip>
+          </div>
+          <Select
+            value={groupId}
+            onChange={handleGroupChange}
+            allowClear
+            showSearch
+            optionFilterProp="label"
+            placeholder="Tất cả nhóm"
+            style={{ width: 220 }}
+            popupMatchSelectWidth={false}
+            options={groupOptions}
+            notFoundContent="Không có nhóm nào"
+          />
+        </div>
+        <div>
+          <div className="mb-1"><Text strong>Đã tham gia nhóm</Text></div>
+          <Select
+            value={joinedGroups}
+            onChange={handleJoinedGroupsChange}
+            allowClear
+            placeholder={groupId ? 'Đã joined nhóm này' : 'Tất cả'}
+            style={{ width: 200 }}
+            options={
+              groupId
+                ? [
+                    { value: 'joined', label: 'Đã joined nhóm này' },
+                    { value: 'not_joined', label: 'Chưa joined nhóm này' },
+                  ]
+                : [
+                    { value: 'joined', label: 'Đã joined ít nhất 1 nhóm' },
+                    { value: 'not_joined', label: 'Chưa joined nhóm nào' },
+                  ]
+            }
+          />
+        </div>
+        <div>
+          <div className="mb-1">
+            <Tooltip title="Lọc theo Ngày nhập (inputDate - ngày người nhập tự chọn)">
+              <Text strong>Ngày nhập</Text>
+            </Tooltip>
+          </div>
+          <DatePicker.RangePicker
+            value={[inputDateFrom, inputDateTo]}
+            onChange={handleInputDateRangeChange}
+            format="DD/MM/YYYY"
+            placeholder={['Từ ngày', 'Đến ngày']}
+            style={{ width: 240 }}
+            allowClear
+          />
+        </div>
+        <div>
+          <div className="mb-1">
+            <Tooltip title="Lọc theo Ngày nhập THỰC TẾ (createdAt - lúc bản ghi được tạo trong hệ thống, có giờ:phút)">
+              <Text strong>Ngày nhập thực tế</Text>
+            </Tooltip>
+          </div>
+          <DatePicker.RangePicker
+            value={[createdAtFrom, createdAtTo]}
+            onChange={handleCreatedAtRangeChange}
+            format="DD/MM/YYYY"
+            placeholder={['Từ ngày', 'Đến ngày']}
+            style={{ width: 240 }}
+            allowClear
+          />
+        </div>
+        <div>
+          <div className="mb-1"><Text strong>Tìm kiếm</Text></div>
+          <Input.Search
+            key={searchInputKey}
+            defaultValue={search}
+            allowClear
+            placeholder="Tên, SĐT, Email..."
+            style={{ width: 240 }}
+            onSearch={handleSearch}
+          />
+        </div>
+        <Space>
+          {hasActiveFilters && (
+            <Button icon={<ClearOutlined />} onClick={handleResetFilters}>
+              Xóa bộ lọc
+            </Button>
+          )}
+          <Button
+            icon={<ReloadOutlined />}
+            onClick={() => fetchData({})}
+          >
+            Làm mới
+          </Button>
+        </Space>
+      </Space>
+
+      {/* Banner cảnh báo riêng cho 2 loại trùng lặp - chỉ hiện sau khi đã
+         fetch xong lần đầu cho loại đang chọn (tránh nháy "Không phát
+         hiện" rồi đổi ngay sang có dữ liệu khi loading). Không tính
+         trùng Tên - đúng yêu cầu người dùng, vì tên trùng (VD 2 khách
+         tên "Ken") là chuyện bình thường, không phải dấu hiệu data lỗi.
+         ⚠️ SỬA LẠI ĐÚNG (yêu cầu người dùng): bản trước đổi `title` thành
+         `message` do nhầm với API antd 4/5 (`message` là prop đúng ở bản
+         đó). Project này đã lên **antd 6.3.5** - ở bản này `title` mới là
+         prop CHÍNH THỨC (`message` giờ chỉ còn là alias @deprecated, xem
+         `node_modules/antd/es/alert/Alert.d.ts`) - đổi lại đúng `title`. */}
+      {isDuplicateView && !loading && (
+        duplicateGroupCount ? (
+          <Alert
+            className="mb-4"
+            type="warning"
+            showIcon
+            icon={<WarningOutlined />}
+            title={`Phát hiện ${duplicateGroupCount} ${duplicateLabel.toLowerCase()} bị trùng`}
+            description={`Tổng cộng ${affectedCustomerCount} khách hàng liên quan đến ${duplicateGroupCount} ${duplicateLabel.toLowerCase()} bị lặp lại — các dòng cùng màu Tag ở cột "${duplicateLabel}" bên dưới đã được gộp thành 1 nhóm. Hệ thống KHÔNG chặn việc nhập trùng SĐT/Email (để không cản trở nghiệp vụ khi nhiều Sales/phòng ban cùng làm việc) — nguyên nhân phổ biến nhất là Nhân viên chỉ thấy được data của mình (phân quyền OWN) nên vô tình nhập lại khách đã có người khác thêm trước đó. Cần rà soát thủ công (gộp/xoá bớt, hoặc gán chung 1 khách cho đúng Sales phụ trách) để tránh 2 Sales cùng chăm 1 khách mà không biết.`}
+          />
+        ) : (
+          <Alert
+            className="mb-4"
+            type="success"
+            showIcon
+              title={`Không phát hiện ${duplicateLabel.toLowerCase()} nào bị trùng${hasActiveFilters ? ' (trong phạm vi bộ lọc đang chọn)' : ''}`}
+          />
+        )
+      )}
+
+      <Table
+        columns={columns}
+        dataSource={data}
+        rowKey="id"
+        pagination={pagination}
+        loading={loading}
+        onChange={handleTableChange}
+        rowClassName={rowClassName}
+        scroll={{ x: isDuplicateView ? 1300 : 1100 }}
+      />
+    </Card>
+  );
+
   return (
     <div className="space-y-6">
       <div className="flex justify-between items-center">
@@ -658,239 +941,20 @@ export default function InvalidDataReportPage() {
         </div>
       </div>
 
-      <Card
-        title={
-          <Space size={8}>
-            <span style={{ fontSize: 16 }}>{activeMeta?.emoji}</span>
-            <span>{activeMeta?.label}</span>
-          </Space>
-        }
-        extra={
-          <Space size={8} wrap>
-            <Tag color="blue" style={{ marginInlineEnd: 0 }}>{affectedCustomerCount} khách hàng</Tag>
-            {isDuplicateView && duplicateGroupCount !== undefined && (
-              <Tag color="orange" style={{ marginInlineEnd: 0 }}>{duplicateGroupCount} nhóm trùng</Tag>
-            )}
-          </Space>
-        }
-      >
-        <Space className="mb-4" size="middle" wrap align="end">
-          <div>
-            <div className="mb-1"><Text strong>Loại kiểm tra</Text></div>
-            <Select
-              value={invalidType}
-              onChange={handleTypeChange}
-              style={{ width: 260 }}
-              options={TYPE_OPTIONS}
-            />
-          </div>
-          <div>
-            <div className="mb-1"><Text strong>Trạng thái</Text></div>
-            <Select
-              value={status}
-              onChange={handleStatusChange}
-              allowClear
-              placeholder="Tất cả trạng thái"
-              style={{ width: 200 }}
-              // ⚠️ MỚI (yêu cầu người dùng: "các trạng thái này phải có
-              // color tag") - `label` là 1 React node (Tag đã tô đúng màu
-              // từ /quan-ly-status-khach), KHÔNG phải string - Select hiển
-              // thị y nguyên node này CẢ ở dropdown lẫn ở ô đã chọn (không
-              // cần optionRender/labelRender riêng vì Select không bật
-              // showSearch ở đây, không cần label dạng string để filter).
-              options={allCustomerStatuses.map((s) => ({
-                value: s.code,
-                label: <Tag color={s.color} style={{ margin: 0 }}>{s.name}</Tag>,
-              }))}
-            />
-          </div>
-          <div>
-            <div className="mb-1"><Text strong>Sales phụ trách</Text></div>
-            <Select
-              value={salesUserId}
-              onChange={handleSalesUserChange}
-              allowClear
-              showSearch={{ optionFilterProp: 'label' }}
-              placeholder="Chọn Sales"
-              style={{ width: 200 }}
-              optionLabelProp="label"
-              optionRender={renderUserOption}
-              popupMatchSelectWidth={false}
-              options={salesUsers.map((u) => ({ value: u.id, label: u.name, user: u }))}
-            />
-          </div>
-          <div>
-            <div className="mb-1"><Text strong>Marketing phụ trách</Text></div>
-            <Select
-              value={marketingUserId}
-              onChange={handleMarketingUserChange}
-              allowClear
-              showSearch={{ optionFilterProp: 'label' }}
-              placeholder="Chọn Marketing"
-              style={{ width: 200 }}
-              optionLabelProp="label"
-              optionRender={renderUserOption}
-              popupMatchSelectWidth={false}
-              options={marketingUsers.map((u) => ({ value: u.id, label: u.name, user: u }))}
-            />
-          </div>
-          <div>
-            <div className="mb-1"><Text strong>Người tạo</Text></div>
-            <Select
-              value={creatorId}
-              onChange={handleCreatorChange}
-              allowClear
-              showSearch={{ optionFilterProp: 'label' }}
-              placeholder="Chọn người tạo"
-              style={{ width: 200 }}
-              optionLabelProp="label"
-              optionRender={renderUserOption}
-              popupMatchSelectWidth={false}
-              options={creatorUsers.map((u) => ({ value: u.id, label: u.name, user: u }))}
-            />
-          </div>
-          <div>
-            <div className="mb-1">
-              <Tooltip
-                title={
-                  isDuplicateView
-                    ? 'Ở báo cáo Trùng SĐT/Email: chỉ cần trong cụm trùng có ÍT NHẤT 1 khách thoả điều kiện nhóm thì hiện cả cụm (đủ mọi khách trong cụm).'
-                    : undefined
-                }
-              >
-                <Text strong>Nhóm cụ thể</Text>
-              </Tooltip>
-            </div>
-            <Select
-              value={groupId}
-              onChange={handleGroupChange}
-              allowClear
-              showSearch
-              optionFilterProp="label"
-              placeholder="Tất cả nhóm"
-              style={{ width: 220 }}
-              popupMatchSelectWidth={false}
-              options={groupOptions}
-              notFoundContent="Không có nhóm nào"
-            />
-          </div>
-          <div>
-            <div className="mb-1"><Text strong>Đã tham gia nhóm</Text></div>
-            <Select
-              value={joinedGroups}
-              onChange={handleJoinedGroupsChange}
-              allowClear
-              placeholder={groupId ? 'Đã joined nhóm này' : 'Tất cả'}
-              style={{ width: 200 }}
-              options={
-                groupId
-                  ? [
-                      { value: 'joined', label: 'Đã joined nhóm này' },
-                      { value: 'not_joined', label: 'Chưa joined nhóm này' },
-                    ]
-                  : [
-                      { value: 'joined', label: 'Đã joined ít nhất 1 nhóm' },
-                      { value: 'not_joined', label: 'Chưa joined nhóm nào' },
-                    ]
-              }
-            />
-          </div>
-          <div>
-            <div className="mb-1">
-              <Tooltip title="Lọc theo Ngày nhập (inputDate - ngày người nhập tự chọn)">
-                <Text strong>Ngày nhập</Text>
-              </Tooltip>
-            </div>
-            <DatePicker.RangePicker
-              value={[inputDateFrom, inputDateTo]}
-              onChange={handleInputDateRangeChange}
-              format="DD/MM/YYYY"
-              placeholder={['Từ ngày', 'Đến ngày']}
-              style={{ width: 240 }}
-              allowClear
-            />
-          </div>
-          <div>
-            <div className="mb-1">
-              <Tooltip title="Lọc theo Ngày nhập THỰC TẾ (createdAt - lúc bản ghi được tạo trong hệ thống, có giờ:phút)">
-                <Text strong>Ngày nhập thực tế</Text>
-              </Tooltip>
-            </div>
-            <DatePicker.RangePicker
-              value={[createdAtFrom, createdAtTo]}
-              onChange={handleCreatedAtRangeChange}
-              format="DD/MM/YYYY"
-              placeholder={['Từ ngày', 'Đến ngày']}
-              style={{ width: 240 }}
-              allowClear
-            />
-          </div>
-          <div>
-            <div className="mb-1"><Text strong>Tìm kiếm</Text></div>
-            <Input.Search
-              defaultValue={search}
-              allowClear
-              placeholder="Tên, SĐT, Email..."
-              style={{ width: 240 }}
-              onSearch={handleSearch}
-            />
-          </div>
-          <Space>
-            {hasActiveFilters && (
-              <Button icon={<ClearOutlined />} onClick={handleResetFilters}>
-                Xóa bộ lọc
-              </Button>
-            )}
-            <Button
-              icon={<ReloadOutlined />}
-              onClick={() => fetchData({})}
-            >
-              Làm mới
-            </Button>
-          </Space>
-        </Space>
-
-        {/* Banner cảnh báo riêng cho 2 loại trùng lặp - chỉ hiện sau khi đã
-           fetch xong lần đầu cho loại đang chọn (tránh nháy "Không phát
-           hiện" rồi đổi ngay sang có dữ liệu khi loading). Không tính
-           trùng Tên - đúng yêu cầu người dùng, vì tên trùng (VD 2 khách
-           tên "Ken") là chuyện bình thường, không phải dấu hiệu data lỗi.
-           ⚠️ SỬA LẠI ĐÚNG (yêu cầu người dùng): bản trước đổi `title` thành
-           `message` do nhầm với API antd 4/5 (`message` là prop đúng ở bản
-           đó). Project này đã lên **antd 6.3.5** - ở bản này `title` mới là
-           prop CHÍNH THỨC (`message` giờ chỉ còn là alias @deprecated, xem
-           `node_modules/antd/es/alert/Alert.d.ts`) - đổi lại đúng `title`. */}
-        {isDuplicateView && !loading && (
-          duplicateGroupCount ? (
-            <Alert
-              className="mb-4"
-              type="warning"
-              showIcon
-              icon={<WarningOutlined />}
-              title={`Phát hiện ${duplicateGroupCount} ${duplicateLabel.toLowerCase()} bị trùng`}
-              description={`Tổng cộng ${affectedCustomerCount} khách hàng liên quan đến ${duplicateGroupCount} ${duplicateLabel.toLowerCase()} bị lặp lại — các dòng cùng màu Tag ở cột "${duplicateLabel}" bên dưới đã được gộp thành 1 nhóm. Hệ thống KHÔNG chặn việc nhập trùng SĐT/Email (để không cản trở nghiệp vụ khi nhiều Sales/phòng ban cùng làm việc) — nguyên nhân phổ biến nhất là Nhân viên chỉ thấy được data của mình (phân quyền OWN) nên vô tình nhập lại khách đã có người khác thêm trước đó. Cần rà soát thủ công (gộp/xoá bớt, hoặc gán chung 1 khách cho đúng Sales phụ trách) để tránh 2 Sales cùng chăm 1 khách mà không biết.`}
-            />
-          ) : (
-            <Alert
-              className="mb-4"
-              type="success"
-              showIcon
-                title={`Không phát hiện ${duplicateLabel.toLowerCase()} nào bị trùng${hasActiveFilters ? ' (trong phạm vi bộ lọc đang chọn)' : ''}`}
-            />
-          )
-        )}
-
-        <Table
-          columns={columns}
-          dataSource={data}
-          rowKey="id"
-          pagination={pagination}
-          loading={loading}
-          onChange={handleTableChange}
-          rowClassName={rowClassName}
-          scroll={{ x: isDuplicateView ? 1300 : 1100 }}
-        />
-      </Card>
+      <Tabs
+        activeKey={activeTab}
+        onChange={(k) => setActiveTab(k as 'list' | 'stats')}
+        items={[
+          { key: 'list', label: 'Danh sách', children: listCard },
+          {
+            key: 'stats',
+            label: 'Thống kê',
+            children: (
+              <InvalidDataStatsTab active={activeTab === 'stats' && can('customers.invalid_report')} onOpenList={handleOpenListFromStats} />
+            ),
+          },
+        ]}
+      />
     </div>
   );
 }

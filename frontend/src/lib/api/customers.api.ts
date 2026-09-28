@@ -1,6 +1,44 @@
 import axiosInstance from './axios-instance';
 import { Customer, PaginatedResponse, CustomerStats, Deposit } from '../types/customer.types';
 
+/** Chi tiết thống kê 1 loại trùng lặp (SĐT/Email) - khớp `DuplicateStatsDetail` ở BE `customers-invalid-stats.service.ts`. */
+export interface DuplicateStatsDetail {
+  totalWithValue: number;
+  affectedCustomers: number;
+  groupCount: number;
+  redundantCount: number;
+  duplicateRatePercent: number | null;
+  maxGroupSize: number;
+  crossSalesGroups: number;
+  sameSalesGroups: number;
+  sizeDistribution: Array<{ label: string; groups: number }>;
+  trend: Array<{ date: string; redundant: number }>;
+  topCreators: Array<{ userId: number; name: string; redundantCount: number }>;
+  topGroups: Array<{
+    key: string;
+    size: number;
+    distinctSales: number;
+    salesNames: string[];
+    latestCreatedAt: string;
+  }>;
+}
+
+export interface InvalidDataStats {
+  generatedAt: string;
+  invalidType: string;
+  days: number;
+  overview: {
+    totalCustomers: number;
+    future_date: number;
+    missing_phone: number;
+    missing_email: number;
+    duplicate_phone: { customers: number; groups: number };
+    duplicate_email: { customers: number; groups: number };
+  };
+  /** `null` khi `invalidType` không phải loại trùng lặp. */
+  duplicate: DuplicateStatsDetail | null;
+}
+
 export const customersApi = {
   getCustomers: async (params?: {
     page?: number;
@@ -99,6 +137,15 @@ export const customersApi = {
     }
   > => {
     const response = await axiosInstance.get('/customers/reports/invalid-data', { params });
+    return response.data;
+  },
+
+  /**
+   * Thống kê data lỗi cho tab "Thống kê" của trang /customers/reports/invalid-data.
+   * Cùng permission `customers.invalid_report` + phạm vi xem với báo cáo danh sách.
+   */
+  getInvalidDataStats: async (params?: { invalidType?: string; days?: number }): Promise<InvalidDataStats> => {
+    const response = await axiosInstance.get('/customers/reports/invalid-data/stats', { params });
     return response.data;
   },
 

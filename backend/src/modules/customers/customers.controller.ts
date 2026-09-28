@@ -6,6 +6,7 @@ import 'multer';
 import { CustomersService } from './customers.service';
 import { CustomersImportService } from './customers.import.service';
 import { CustomersExportService } from './customers-export.service';
+import { CustomersInvalidStatsService } from './customers-invalid-stats.service';
 import { CreateCustomerDto } from './dto/create-customer.dto';
 import { UpdateCustomerDto } from './dto/update-customer.dto';
 import { CustomerFiltersDto } from './dto/customer-filters.dto';
@@ -31,6 +32,7 @@ export class CustomersController {
     private readonly customersService: CustomersService,
     private readonly customersImportService: CustomersImportService,
     private readonly customersExportService: CustomersExportService,
+    private readonly customersInvalidStatsService: CustomersInvalidStatsService,
   ) {}
 
   @Get('stats')
@@ -119,6 +121,27 @@ export class CustomersController {
       dateTo,
       createdAtFrom,
       createdAtTo,
+    );
+  }
+
+  @Get('reports/invalid-data/stats')
+  @RequirePermission('customers.invalid_report')
+  @ApiOperation({
+    summary:
+      'Thống kê data lỗi (tab Thống kê của trang invalid-data): tổng quan mọi loại lỗi + chi tiết trùng SĐT/Email (KPI, xu hướng, Top người nhập, Top cụm trùng)',
+  })
+  async getInvalidDataStats(
+    @GetUser() user: any,
+    @GetPermissionScope() scope: string | null | undefined,
+    @Query('invalidType') invalidType?: string,
+    @Query('days') days?: string,
+  ) {
+    return this.customersInvalidStatsService.getStats(
+      user.id,
+      user.role,
+      scope,
+      invalidType || 'duplicate_phone',
+      days ? parseInt(days, 10) : undefined,
     );
   }
 

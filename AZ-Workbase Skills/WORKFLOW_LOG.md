@@ -4590,3 +4590,27 @@ khi bị xoá tay. Đây là 1 anti-pattern thật (dù đo thử với payload 
 **Notes:** Không đổi BE, không migration. Chưa test trên trình duyệt thật. Chưa commit/push.
 
 ---
+
+---
+## [2026-09-28 20:00] | invalid-data: hoàn thiện tab "Thống kê" (nối dây BE + FE, drill-down) | [Status: Success — BE tsc/nest build sạch, jest customers 138/138 (+6 spec mới), FE next build OK, vitest 137/137; FE tsc chỉ còn 2 lỗi có sẵn (logo.png, CountBadge)]
+
+**Actor:** Agent (làm trên `origin/main` HEAD `97cad81`)
+
+**Files Changed:**
+- `backend/src/modules/customers/customers.module.ts` — đăng ký `CustomersInvalidStatsService`.
+- `backend/src/modules/customers/customers.controller.ts` — thêm `GET customers/reports/invalid-data/stats` (`customers.invalid_report`, query `invalidType`, `days`).
+- `backend/src/modules/customers/customers-invalid-stats.service.spec.ts` (MỚI) — 6 test (KPI, khung xu hướng, Top người nhập/cụm, kẹp `days`, cụm bị thu hẹp do scope, chia 0).
+- `frontend/src/lib/api/customers.api.ts` — type `DuplicateStatsDetail`/`InvalidDataStats` + `getInvalidDataStats()`.
+- `frontend/src/lib/hooks/useInvalidDataStats.ts` (MỚI).
+- `frontend/src/app/(dashboard)/customers/reports/invalid-data/page.tsx` — bọc trang thành 2 Tab (Danh sách / Thống kê); drill-down `handleOpenListFromStats`; remount ô tìm kiếm qua `searchInputKey`.
+
+**Root Cause (bug có sẵn, sửa kèm):**
+> `fetchData` dùng `opts.x !== undefined ? opts.x : x` nên truyền `undefined` (xoá bộ lọc Trạng thái/Sales/Marketing/Người tạo/Nhóm đã join/khoảng ngày, hoặc nút "Xóa bộ lọc") lại rơi về state cũ trong closure -> API vẫn nhận giá trị cũ. Ô Input.Search dùng `defaultValue` nên không cập nhật khi search đổi từ bên ngoài.
+
+**Solution:**
+> Đổi sang `'key' in opts` (giống `groupId` vốn đã đúng); thêm `searchInputKey` để remount ô tìm kiếm khi Xóa bộ lọc/drill-down.
+
+**Notes:**
+> Không có migration, không đổi schema. Drill-down dùng `search` (SĐT khớp tiền tố; Email khớp FULLTEXT phrase) nên SĐT có thể khớp thêm số dài hơn bắt đầu bằng cùng chuỗi. Chưa test trên MySQL/trình duyệt thật (service chỉ được test với QueryBuilder mock).
+
+---

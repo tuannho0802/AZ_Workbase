@@ -3,6 +3,7 @@ import { TypeOrmModule } from '@nestjs/typeorm';
 import { CustomersService } from './customers.service';
 import { CustomersImportService } from './customers.import.service';
 import { CustomersExportService } from './customers-export.service';
+import { CustomersInvalidStatsService } from './customers-invalid-stats.service';
 import { CustomersController } from './customers.controller';
 import { Customer } from '../../database/entities/customer.entity';
 import { CustomerStatus } from '../../database/entities/customer-status.entity';
@@ -21,7 +22,7 @@ import { UiVisibilityModule } from '../ui-visibility/ui-visibility.module';
     UiVisibilityModule,
   ],
   controllers: [CustomersController],
-  providers: [CustomersService, CustomersImportService, CustomersExportService],
+  providers: [CustomersService, CustomersImportService, CustomersExportService, CustomersInvalidStatsService],
   exports: [CustomersService],
 })
 export class CustomersModule { }
