@@ -284,7 +284,7 @@ export function TaskMiniCard({
                     <Tooltip
                         title={
                             <>
-                                <div>Khoá bởi: {lockedByName ?? '—'}</div>
+                                <div>Khoá bởi: {lockedByName ?? (task.lockedById == null ? 'Hệ thống (tự động)' : '—')}</div>
                                 {task.lockedAt && <div>Lúc: {dayjs(task.lockedAt).format('HH:mm DD/MM/YYYY')}</div>}
                                 {task.lockNote && <div>Ghi chú: {task.lockNote}</div>}
                             </>

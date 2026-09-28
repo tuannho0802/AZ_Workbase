@@ -4,7 +4,7 @@ import { useMemo, useState } from 'react';
 import dayjs from 'dayjs';
 import { App, Button, Checkbox, Collapse, Empty, Popconfirm, Progress, Space, Spin, Typography } from 'antd';
 import { ChecklistTextArea } from './ChecklistTextArea';
-import { CheckOutlined, CloseOutlined, DeleteOutlined, PlusOutlined } from '@ant-design/icons';
+import { CaretDownOutlined, CaretRightOutlined, CheckOutlined, CloseOutlined, DeleteOutlined, PlusOutlined } from '@ant-design/icons';
 import { useQueryClient } from '@tanstack/react-query';
 import {
     useAddTaskChecklistItem,
@@ -28,6 +28,8 @@ interface Props {
     canEdit: boolean;
     /** Mở `TaskChecklistModal` đầy đủ (xem hết trang, sắp xếp lại, Task con liên kết). */
     onOpenFull: () => void;
+    /** Mặc định THU GỌN (checklist dài làm Drawer rất dài) - chỉ hiện thanh tiến độ + nút "Hiện checklist". */
+    defaultCollapsed?: boolean;
 }
 
 /**
@@ -53,7 +55,8 @@ interface Props {
  *    trước. Panel header dùng `UserMiniCard` y hệt Modal gốc (không lặp lại
  *    style riêng ở đây để tránh lệch UI giữa Modal đầy đủ và bản rút gọn này).
  */
-export function TaskChecklistInline({ taskId, canEdit, onOpenFull }: Props) {
+export function TaskChecklistInline({ taskId, canEdit, onOpenFull, defaultCollapsed = true }: Props) {
+    const [collapsed, setCollapsed] = useState(defaultCollapsed);
     const { message } = App.useApp();
     const queryClient = useQueryClient();
     const invalidatePerformance = () => queryClient.invalidateQueries({ queryKey: ['periodic-task-performance'] });
@@ -265,15 +268,29 @@ export function TaskChecklistInline({ taskId, canEdit, onOpenFull }: Props) {
 
     return (
         <div onClick={(e) => e.stopPropagation()}>
-            {total > 0 && (
-                <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6 }}>
-                    <Progress percent={percent} size="small" style={{ flex: 1 }} />
-                    <Text type="secondary" style={{ fontSize: 12, whiteSpace: 'nowrap' }}>
-                        {done}/{total}
-                    </Text>
-                </div>
-            )}
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: collapsed ? 0 : 6 }}>
+                <Button
+                    type="link"
+                    size="small"
+                    style={{ padding: 0, height: 'auto', fontSize: 12 }}
+                    aria-expanded={!collapsed}
+                    icon={collapsed ? <CaretRightOutlined /> : <CaretDownOutlined />}
+                    onClick={() => setCollapsed((v) => !v)}
+                >
+                    {collapsed ? `Hiện checklist (${total})` : 'Thu gọn checklist'}
+                </Button>
+                {total > 0 && (
+                    <>
+                        <Progress percent={percent} size="small" style={{ flex: 1, margin: 0 }} />
+                        <Text type="secondary" style={{ fontSize: 12, whiteSpace: 'nowrap' }}>
+                            {done}/{total}
+                        </Text>
+                    </>
+                )}
+            </div>
 
+            {!collapsed && (
+                <>
             <Spin spinning={isLoading}>
                 {total === 0 ? (
                     <Empty description="Chưa có checklist item nào" image={Empty.PRESENTED_IMAGE_SIMPLE} style={{ margin: '4px 0' }} />
@@ -351,6 +368,8 @@ export function TaskChecklistInline({ taskId, canEdit, onOpenFull }: Props) {
                         Thêm
                     </Button>
                 </div>
+            )}
+                </>
             )}
         </div>
     );

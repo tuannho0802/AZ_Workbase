@@ -4742,3 +4742,22 @@ khi bị xoá tay. Đây là 1 anti-pattern thật (dù đo thử với payload 
 > Không có migration. "Quá hạn" ở toggle/cờ = qua hạn kỳ + chưa xong (KHÔNG chờ ân hạn 7 ngày như số liệu hiệu suất). Kanban/Agenda giữ nguyên (`flagOverdue` mặc định false). 5 lỗi tsc có sẵn (logo.png, CountBadge). Chưa test trên MySQL/trình duyệt thật. Chưa commit/push.
 
 ---
+
+---
+## [2026-09-28 23:30] | Auto đánh dấu quá hạn + auto khoá Task quá ân hạn 7 ngày; nút "Đánh dấu quá hạn" trong Drawer; nút Thu gọn checklist (mặc định thu gọn) | [Status: Success — BE tsc sạch, jest toàn bộ 1057/1057 (+8 test); FE next build OK, vitest 157/157]
+
+**Actor:** Agent (làm trên `origin/main` HEAD `5d12494`)
+
+**Root Cause (nút "Đánh dấu quá hạn" không thấy):**
+> `OverdueMarkButton` chỉ nằm trong `TaskActionsBar` (Agenda/Kanban/Bảng); Drawer/`UserTasksPanel` không dùng thanh đó.
+
+**Files Changed:**
+- `backend/.../periodic-task-auto-overdue.service.ts` (+spec) — MỚI `runSweep({dryRun})`: Task chưa in_review/done, `period_end_date < hôm nay - 7` → set `overdue_marked_at` (by = null) nếu chưa có, và khoá (`is_locked`, `locked_by_id` null, `lock_note = AUTO_LOCK_NOTE`) nếu chưa khoá (khoá tay giữ nguyên).
+- `backend/.../periodic-task-reminders-cron.controller.ts` — endpoint `GET periodic-tasks-cron/auto-overdue?secret=&dryRun=`; `deadline-reminders` cũng tự chạy sweep (try/catch, kết quả trả trong `autoOverdue`) nên Uptime job hiện có đã đủ. `periodic-tasks.module.ts` đăng ký provider.
+- `backend/.../helpers/overdue.helper.ts` — `AUTO_LOCK_NOTE`; `periodic-tasks.service.ts::update()` (+spec) — kéo dài kỳ tới hôm nay/tương lai → gỡ dấu quá hạn VÀ tự mở khoá TỰ ĐỘNG (khoá tay không đụng).
+- FE: `TaskActionsBar.tsx` export `OverdueMarkButton`; `UserTasksPanel.tsx` hiện nút khi `can('periodic_tasks.approve')`; `TaskChecklistInline.tsx` nút Hiện/Thu gọn checklist (prop `defaultCollapsed`, mặc định thu gọn, thanh tiến độ luôn hiện); `TaskMiniCard.tsx` tooltip khoá "Hệ thống (tự động)".
+
+**Notes:**
+> Không có migration. Cần đã có `CRON_SECRET` + Uptime job gọi `deadline-reminders`. Lần chạy ĐẦU sẽ khoá/đánh dấu toàn bộ Task cũ chưa xong đã quá ân hạn - nên gọi `auto-overdue?dryRun=true` xem trước. Chỉ áp cho Task CHƯA xong. Không ghi `periodic_task_audit_logs` (bảng bắt buộc user_id) - chỉ Logger. Không gửi notification. Chưa test trên MySQL/trình duyệt thật. Chưa commit/push.
+
+---

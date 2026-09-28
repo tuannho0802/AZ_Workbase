@@ -13,6 +13,7 @@ import { getApiErrorMessage } from '@/lib/utils/error-message.util';
 import { TaskMiniCard } from './TaskMiniCard';
 import { TaskChecklistInline } from './TaskChecklistInline';
 import { TaskChecklistModal } from './TaskChecklistModal';
+import { OverdueMarkButton } from './TaskActionsBar';
 
 const { Text } = Typography;
 
@@ -55,6 +56,8 @@ export function UserTasksPanel({ userId, params }: Props) {
   const { can } = useMyPermissions();
   const hasEditPermission = can('periodic_tasks.edit');
   const canEditLocked = can('periodic_tasks.edit_locked');
+  // Cùng permission với Khoá/Mở khoá ở `TaskActionsBar` (BE vẫn kiểm scope own/department/all).
+  const canApprove = can('periodic_tasks.approve');
 
   const { statuses } = usePeriodicTaskStatuses();
   const updateStatusMutation = useUpdatePeriodicTask();
@@ -123,6 +126,9 @@ export function UserTasksPanel({ userId, params }: Props) {
                   }))}
                 />
               </Tooltip>
+              {/* Trước đây nút này CHỈ có trong `TaskActionsBar` (Agenda/Kanban/Bảng), Drawer này không dùng
+                  thanh đó nên không thấy nút. Tự ẩn khi Task không đủ điều kiện (chưa qua hạn/đã xong/hết ân hạn). */}
+              {canApprove && <OverdueMarkButton task={task} size="small" iconOnly={false} />}
             </div>
             <TaskChecklistInline taskId={task.id} canEdit={canEditTask} onOpenFull={() => setChecklistTask(task)} />
           </div>

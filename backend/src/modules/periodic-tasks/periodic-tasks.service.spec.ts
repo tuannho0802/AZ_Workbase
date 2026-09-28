@@ -1,3 +1,4 @@
+import { AUTO_LOCK_NOTE } from './helpers/overdue.helper';
 import { Test, TestingModule } from '@nestjs/testing';
 import { getRepositoryToken } from '@nestjs/typeorm';
 import { NotFoundException, BadRequestException, ForbiddenException } from '@nestjs/common';
@@ -328,6 +329,50 @@ describe('PeriodicTasksService', () => {
         expect.anything(),
         expect.anything(),
       );
+    });
+
+    it('kéo dài kỳ tới tương lai -> tự mở KHOÁ TỰ ĐỘNG (locked_by null + AUTO_LOCK_NOTE) và gỡ dấu quá hạn', async () => {
+      const task: any = {
+        id: 1,
+        periodStartDate: '2026-09-01',
+        periodEndDate: '2026-09-10',
+        isLocked: true,
+        lockedById: null,
+        lockedAt: new Date(),
+        lockNote: AUTO_LOCK_NOTE,
+        overdueMarkedAt: new Date(),
+        overdueMarkedById: null,
+      };
+      mockTaskRepo.createQueryBuilder.mockReturnValue(makeFakeQueryBuilder({ getOne: task }));
+      mockTaskRepo.save.mockImplementation((t) => Promise.resolve(t));
+      // Task đang khoá -> người sửa cần `periodic_tasks.edit_locked`.
+      mockPermissionsService.hasPermission.mockResolvedValue({ allowed: true, scope: 'all' });
+
+      const result = await service.update(1, { periodEndDate: '2999-01-01' }, { id: 9, role: Role.ADMIN }, 'all');
+
+      expect(result.isLocked).toBe(false);
+      expect(result.lockNote).toBeNull();
+      expect(result.overdueMarkedAt).toBeNull();
+    });
+
+    it('kéo dài kỳ KHÔNG mở khoá THỦ CÔNG (có lockedById)', async () => {
+      const task: any = {
+        id: 1,
+        periodStartDate: '2026-09-01',
+        periodEndDate: '2026-09-10',
+        isLocked: true,
+        lockedById: 5,
+        lockNote: 'Khoá tay',
+      };
+      mockTaskRepo.createQueryBuilder.mockReturnValue(makeFakeQueryBuilder({ getOne: task }));
+      mockTaskRepo.save.mockImplementation((t) => Promise.resolve(t));
+      // Task đang khoá -> người sửa cần `periodic_tasks.edit_locked`.
+      mockPermissionsService.hasPermission.mockResolvedValue({ allowed: true, scope: 'all' });
+
+      const result = await service.update(1, { periodEndDate: '2999-01-01' }, { id: 9, role: Role.ADMIN }, 'all');
+
+      expect(result.isLocked).toBe(true);
+      expect(result.lockNote).toBe('Khoá tay');
     });
 
     it('đổi statusId ghi THÊM audit log status_changed (PLAN mục 2.6)', async () => {

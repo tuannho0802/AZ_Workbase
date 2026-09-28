@@ -25,7 +25,7 @@ import { getApiErrorMessage } from '@/lib/utils/error-message.util';
  * khi nút thật sự hiện (người có `canApprove` + Task đủ điều kiện). Cùng permission
  * `periodic_tasks.approve` với Khoá/Mở khoá.
  */
-function OverdueMarkButton({
+export function OverdueMarkButton({
     task,
     size,
     iconOnly,

@@ -23,3 +23,7 @@ export function isOverdueNotCompleted(
   if (today > addDaysToDateString(periodEndDate, graceDays)) return true;
   return overdueMarkedAt != null && isPastPeriodEnd(periodEndDate, today);
 }
+
+/** `lock_note` của lần khoá TỰ ĐỘNG (Task quá ân hạn) - nhận diện khoá tự động (kèm `locked_by_id IS NULL`)
+ * để tự mở lại khi Task được kéo dài kỳ. */
+export const AUTO_LOCK_NOTE = 'Tự động khoá: quá hạn kỳ hơn 7 ngày (ân hạn) mà chưa hoàn thành';

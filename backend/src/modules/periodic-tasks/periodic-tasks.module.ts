@@ -22,6 +22,7 @@ import { PeriodicTasksController } from './periodic-tasks.controller';
 import { PeriodicTaskPerformanceService } from './periodic-task-performance.service';
 import { PeriodicTaskPerformanceController } from './periodic-task-performance.controller';
 import { PeriodicTaskRemindersService } from './periodic-task-reminders.service';
+import { PeriodicTaskAutoOverdueService } from './periodic-task-auto-overdue.service';
 import { PeriodicTaskRemindersCronController } from './periodic-task-reminders-cron.controller';
 
 // PermissionsService KHÔNG cần import ở `imports` - PermissionsModule là
@@ -58,6 +59,7 @@ import { PeriodicTaskRemindersCronController } from './periodic-task-reminders-c
     PeriodicTaskTrashService,
     PeriodicTaskPerformanceService,
     PeriodicTaskRemindersService,
+    PeriodicTaskAutoOverdueService,
   ],
   exports: [
     PeriodicTasksService,

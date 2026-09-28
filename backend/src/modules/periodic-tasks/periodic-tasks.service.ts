@@ -17,7 +17,7 @@ import { PeriodicTaskFiltersDto } from './dto/periodic-task-filters.dto';
 import { LockPeriodicTaskDto } from './dto/lock-periodic-task.dto';
 import { PeriodicTaskAccessHelper } from './helpers/periodic-task-access.helper';
 import { resolveListWindow } from './helpers/list-window.helper';
-import { COMPLETED_STATUS_CODES, isPastPeriodEnd } from './helpers/overdue.helper';
+import { AUTO_LOCK_NOTE, COMPLETED_STATUS_CODES, isPastPeriodEnd } from './helpers/overdue.helper';
 import { todayVnStr } from '../../common/utils/date-vn.util';
 import { PeriodicTaskAuditService, PeriodicTaskAuditAction } from './periodic-task-audit.service';
 // ⚠️ Notification Phase 2: NotificationsModule là @Global() (mirror
@@ -554,9 +554,18 @@ export class PeriodicTasksService {
     if (dto.periodEndDate !== undefined) {
       task.periodEndDate = dto.periodEndDate;
       // Kéo dài kỳ tới hôm nay/tương lai -> dấu "Quá hạn" thủ công không còn ý nghĩa, tự gỡ.
-      if (task.overdueMarkedAt && !isPastPeriodEnd(dto.periodEndDate, todayVnStr())) {
-        task.overdueMarkedAt = null;
-        task.overdueMarkedById = null;
+      if (!isPastPeriodEnd(dto.periodEndDate, todayVnStr())) {
+        if (task.overdueMarkedAt) {
+          task.overdueMarkedAt = null;
+          task.overdueMarkedById = null;
+        }
+        // Khoá TỰ ĐỘNG (quá ân hạn 7 ngày, xem `PeriodicTaskAutoOverdueService`) mất lý do tồn tại khi kỳ
+        // được kéo dài -> tự mở. Khoá THỦ CÔNG (có `lockedById`) được giữ nguyên.
+        if (task.isLocked && task.lockedById == null && task.lockNote === AUTO_LOCK_NOTE) {
+          task.isLocked = false;
+          task.lockedAt = null;
+          task.lockNote = null;
+        }
       }
     }
     // Sửa tự do sau khi tạo, kể cả về null (PLAN mục 2.10) - CHỈ áp dụng khi
