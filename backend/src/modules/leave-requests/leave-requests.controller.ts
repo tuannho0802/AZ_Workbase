@@ -7,6 +7,7 @@ import { LeaveRequestsService } from './leave-requests.service';
 import { UploadsService } from '../uploads/uploads.service';
 import { PresignAttachmentDto } from '../uploads/dto/presign-attachment.dto';
 import { DiscardAttachmentsDto } from './dto/discard-attachments.dto';
+import { QueryLeaveRequestsDto } from './dto/query-leave-requests.dto';
 
 @Controller('leave-requests')
 @UseGuards(JwtAuthGuard, PermissionGuard)
@@ -65,6 +66,50 @@ export class LeaveRequestsController {
       req.user.role,
       scope,
     );
+  }
+
+  // ── WEEK-MODE (phân trang theo TUẦN, lazy-load từng tuần) ───────────────────
+  // Thay findAll()/findPending()/findHistory() ở 2 trang /nghi-phep và
+  // /duyet-phep để dữ liệu lớn dần không làm lag. 3 route cũ bên dưới VẪN
+  // giữ nguyên (không đổi contract) cho các nơi gọi khác. Route tĩnh
+  // ('mine/...', 'pending/...', 'history/...') không đụng ':id/...' vì khác
+  // segment cuối.
+  @Get('mine/paged')
+  @RequirePermission('leave_requests.request')
+  async findMinePaged(@Request() req, @Query() query: QueryLeaveRequestsDto) {
+    return this.leaveRequestsService.findMinePaged(req.user.id, query);
+  }
+
+  @Get('mine/pending-count')
+  @RequirePermission('leave_requests.request')
+  async countMyPending(@Request() req) {
+    return this.leaveRequestsService.countMyPending(req.user.id);
+  }
+
+  @Get('pending/paged')
+  @RequirePermission('leave_requests.approve')
+  async findPendingPaged(
+    @Request() req,
+    @Query() query: QueryLeaveRequestsDto,
+    @GetPermissionScope() scope?: string | null,
+  ) {
+    return this.leaveRequestsService.findPendingPaged(req.user.id, req.user.role, scope, query);
+  }
+
+  @Get('pending/count')
+  @RequirePermission('leave_requests.approve')
+  async countPending(@Request() req, @GetPermissionScope() scope?: string | null) {
+    return this.leaveRequestsService.countPending(req.user.id, req.user.role, scope);
+  }
+
+  @Get('history/paged')
+  @RequirePermission('leave_requests.view')
+  async findHistoryPaged(
+    @Request() req,
+    @Query() query: QueryLeaveRequestsDto,
+    @GetPermissionScope() scope?: string | null,
+  ) {
+    return this.leaveRequestsService.findHistoryPaged(req.user.id, req.user.role, scope, query);
   }
 
   @Get()

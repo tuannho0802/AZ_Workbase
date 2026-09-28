@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useMemo } from 'react';
 import { useRouter } from 'next/navigation';
+import { useQuery } from '@tanstack/react-query';
 import {
   Card, Button, Space, Tag, Badge, Tabs, Modal, Input, App, Typography, Divider, Tooltip,
   Row, Col, Select, DatePicker, Form
@@ -14,7 +15,10 @@ import { leaveRequestsApi, LeaveRequest } from '@/lib/api/leave-requests.api';
 import { useMyPermissions } from '@/lib/hooks/useMyPermissions';
 import { useLeaveTypes } from '@/lib/hooks/useLeaveTypes';
 import { AttachmentsViewerButton } from '@/components/leave-requests/AttachmentsViewerButton';
-import { WeekGroupedRequests } from '@/components/leave-requests/WeekGroupedRequests';
+import { WeeklyLazySection } from '@/components/common/WeeklyLazySection';
+import { useLeaveWeekList, useInvalidateLeaveLists } from '@/lib/hooks/useLeaveWeekList';
+import { useDepartments } from '@/lib/hooks/useDepartments';
+import { useDebounce } from '@/lib/hooks/useDebounce';
 import { resolveEntityColor } from '@/lib/utils/entityColor';
 import dayjs, { Dayjs } from 'dayjs';
 
@@ -251,9 +255,6 @@ function HistoryMobileCard({
 
 // ── main page ────────────────────────────────────────────────────────────────
 export default function ApprovalPage() {
-  const [pendingRequests, setPendingRequests] = useState<LeaveRequest[]>([]);
-  const [historyRequests, setHistoryRequests] = useState<LeaveRequest[]>([]);
-  const [loading, setLoading] = useState(false);
   const [rejectModalOpen, setRejectModalOpen] = useState(false);
   const [selectedRequest, setSelectedRequest] = useState<number | null>(null);
   const [rejectionReason, setRejectionReason] = useState('');
@@ -268,19 +269,25 @@ export default function ApprovalPage() {
   const [editSubmitting, setEditSubmitting] = useState(false);
   const [editForm] = Form.useForm();
 
-  // Filter: cả 2 tab đều là client-side (BE trả toàn bộ, không phân trang) -
-  // dữ liệu nhiều người/phòng ban nên field cần nhiều hơn nghi-phep (của
-  // riêng mình): search theo tên/email người gửi + lý do, phòng ban, loại
-  // phép; tab Lịch sử có thêm Trạng thái + khoảng ngày (đã xử lý xong).
+  // Filter + phân trang: cả 2 tab chạy ở SERVER (BE `GET /leave-requests/
+  // pending/paged` & `/history/paged`, week-mode) - client chỉ giữ 1 tuần/lần
+  // (lazy-load khi mở panel) nên không còn lọc client-side trên toàn bộ dữ
+  // liệu được nữa. Field nhiều hơn nghi-phep vì là dữ liệu nhiều người/phòng
+  // ban: search theo tên/email người gửi + lý do, phòng ban, loại phép; tab
+  // Lịch sử thêm Trạng thái + khoảng ngày. Mỗi tab có trang TUẦN riêng.
   const [pendingSearch, setPendingSearch] = useState('');
-  const [pendingDept, setPendingDept] = useState<string | null>(null);
+  const [pendingDept, setPendingDept] = useState<number | null>(null);
   const [pendingLeaveType, setPendingLeaveType] = useState<string | null>(null);
 
   const [historySearch, setHistorySearch] = useState('');
-  const [historyDept, setHistoryDept] = useState<string | null>(null);
+  const [historyDept, setHistoryDept] = useState<number | null>(null);
   const [historyLeaveType, setHistoryLeaveType] = useState<string | null>(null);
   const [historyStatus, setHistoryStatus] = useState<string | null>(null);
   const [historyDateRange, setHistoryDateRange] = useState<[Dayjs | null, Dayjs | null] | null>(null);
+  const [pendingPage, setPendingPage] = useState(1);
+  const [pendingWeeksPerPage, setPendingWeeksPerPage] = useState(4);
+  const [historyPage, setHistoryPage] = useState(1);
+  const [historyWeeksPerPage, setHistoryWeeksPerPage] = useState(4);
 
   // Antd Hooks to fix "Static function" warning
   const { message: messageApi, modal } = App.useApp();
@@ -294,65 +301,6 @@ export default function ApprovalPage() {
     () => Object.fromEntries(leaveTypes.map((t) => [t.code, { text: t.name, color: t.color }])),
     [leaveTypes],
   );
-
-  // Phòng ban dùng cho dropdown filter - suy trực tiếp từ data đã tải (danh
-  // sách đơn nghỉ, không có phòng ban nào lạ hơn danh sách này), tránh phải
-  // gọi thêm 1 API riêng chỉ để phục vụ 1 dropdown lọc.
-  const pendingDeptOptions = useMemo(() => {
-    const map = new Map<string, { name: string; color?: string }>();
-    pendingRequests.forEach((r) => {
-      if (r.requester.department) map.set(String(r.requester.department.id), { name: r.requester.department.name, color: r.requester.department.color });
-    });
-    return Array.from(map, ([value, info]) => ({
-      value,
-      label: <Tag color={resolveEntityColor(info.color)} style={{ marginInlineEnd: 0 }}>{info.name}</Tag>,
-    }));
-  }, [pendingRequests]);
-
-  const historyDeptOptions = useMemo(() => {
-    const map = new Map<string, { name: string; color?: string }>();
-    historyRequests.forEach((r) => {
-      if (r.requester.department) map.set(String(r.requester.department.id), { name: r.requester.department.name, color: r.requester.department.color });
-    });
-    return Array.from(map, ([value, info]) => ({
-      value,
-      label: <Tag color={resolveEntityColor(info.color)} style={{ marginInlineEnd: 0 }}>{info.name}</Tag>,
-    }));
-  }, [historyRequests]);
-
-  const matchesRequesterSearch = (r: LeaveRequest, q: string) => {
-    const s = q.trim().toLowerCase();
-    if (!s) return true;
-    return (
-      r.requester.name.toLowerCase().includes(s) ||
-      r.requester.email.toLowerCase().includes(s) ||
-      (r.reason || '').toLowerCase().includes(s)
-    );
-  };
-
-  const filteredPending = useMemo(() => {
-    return pendingRequests.filter((r) => {
-      if (!matchesRequesterSearch(r, pendingSearch)) return false;
-      if (pendingDept && String(r.requester.department?.id) !== pendingDept) return false;
-      if (pendingLeaveType && r.leaveType !== pendingLeaveType) return false;
-      return true;
-    });
-  }, [pendingRequests, pendingSearch, pendingDept, pendingLeaveType]);
-
-  const filteredHistory = useMemo(() => {
-    return historyRequests.filter((r) => {
-      if (!matchesRequesterSearch(r, historySearch)) return false;
-      if (historyDept && String(r.requester.department?.id) !== historyDept) return false;
-      if (historyLeaveType && r.leaveType !== historyLeaveType) return false;
-      if (historyStatus && r.status !== historyStatus) return false;
-      if (historyDateRange && historyDateRange[0] && historyDateRange[1]) {
-        const [from, to] = historyDateRange;
-        const overlap = !dayjs(r.startDate).isAfter(to, 'day') && !dayjs(r.endDate).isBefore(from, 'day');
-        if (!overlap) return false;
-      }
-      return true;
-    });
-  }, [historyRequests, historySearch, historyDept, historyLeaveType, historyStatus, historyDateRange]);
 
   // Phân biệt quyền:
   // view = xem lịch sử duyệt (của người khác)
@@ -387,20 +335,57 @@ export default function ApprovalPage() {
       router.replace('/customers');
       return;
     }
-    fetchAllData();
   }, [canView, canApprove, permissionsLoading]);
 
-  // Tách riêng: 403 ở 1 api không kill api kia
-  const fetchAllData = async () => {
-    setLoading(true);
-    const results = await Promise.allSettled([
-      canApprove ? leaveRequestsApi.getPending() : Promise.resolve([]),
-      canView ? leaveRequestsApi.getHistory() : Promise.resolve([]),
-    ]);
-    if (results[0].status === 'fulfilled') setPendingRequests(results[0].value as LeaveRequest[]);
-    if (results[1].status === 'fulfilled') setHistoryRequests(results[1].value as LeaveRequest[]);
-    setLoading(false);
-  };
+  // ── Danh sách week-mode 2 pha (xem `useLeaveWeekList`) ────────────────────
+  // Mỗi tab tự fetch độc lập (403 ở 1 tab không kill tab kia - tương đương
+  // Promise.allSettled cũ) và chỉ chạy khi có quyền tương ứng.
+  const invalidateLeaveLists = useInvalidateLeaveLists();
+  const debouncedPendingSearch = useDebounce(pendingSearch, 400);
+  const debouncedHistorySearch = useDebounce(historySearch, 400);
+  const pendingFilters = useMemo(
+    () => ({
+      search: debouncedPendingSearch.trim() || undefined,
+      departmentId: pendingDept ?? undefined,
+      leaveType: pendingLeaveType ?? undefined,
+    }),
+    [debouncedPendingSearch, pendingDept, pendingLeaveType],
+  );
+  const historyFilters = useMemo(
+    () => ({
+      search: debouncedHistorySearch.trim() || undefined,
+      departmentId: historyDept ?? undefined,
+      leaveType: historyLeaveType ?? undefined,
+      status: historyStatus ?? undefined,
+      fromDate: historyDateRange?.[0]?.format('YYYY-MM-DD'),
+      toDate: historyDateRange?.[1]?.format('YYYY-MM-DD'),
+    }),
+    [debouncedHistorySearch, historyDept, historyLeaveType, historyStatus, historyDateRange],
+  );
+  const pendingList = useLeaveWeekList('pending', pendingFilters, pendingPage, pendingWeeksPerPage, !permissionsLoading && canApprove);
+  const historyList = useLeaveWeekList('history', historyFilters, historyPage, historyWeeksPerPage, !permissionsLoading && canView);
+
+  // Badge tab "Chờ phê duyệt" = TỔNG đơn đang chờ (không phụ thuộc filter/trang
+  // hiện tại) - dùng CHUNG queryKey + endpoint COUNT với badge sidebar.
+  const pendingCountQuery = useQuery({
+    queryKey: ['badge-count', 'duyet-phep'],
+    queryFn: () => leaveRequestsApi.getPendingCount(),
+    enabled: !permissionsLoading && canApprove,
+    staleTime: 30_000,
+  });
+  const pendingCount = pendingCountQuery.data ?? 0;
+
+  // Dropdown phòng ban: lấy từ danh sách phòng ban (trước đây suy từ data đã
+  // tải - không còn khả thi khi data được lazy-load từng tuần).
+  const { departments } = useDepartments();
+  const departmentOptions = useMemo(
+    () =>
+      departments.map((d) => ({
+        value: d.id,
+        label: <Tag color={resolveEntityColor(d.color)} style={{ marginInlineEnd: 0 }}>{d.name}</Tag>,
+      })),
+    [departments],
+  );
 
   const handleApprove = async (id: number) => {
     modal.confirm({
@@ -412,7 +397,7 @@ export default function ApprovalPage() {
         try {
           await leaveRequestsApi.approve(id);
           messageApi.success('Đã duyệt đơn');
-          await fetchAllData();
+          invalidateLeaveLists();
         } catch (err: any) {
           if (err.response?.status !== 401) {
             messageApi.error(err.response?.data?.message || 'Duyệt đơn thất bại');
@@ -441,7 +426,7 @@ export default function ApprovalPage() {
       setRejectModalOpen(false);
       setRejectionReason('');
       setSelectedRequest(null);
-      await fetchAllData();
+      invalidateLeaveLists();
     } catch (err: any) {
       if (err.response?.status !== 401) {
         messageApi.error('Từ chối đơn thất bại');
@@ -497,7 +482,7 @@ export default function ApprovalPage() {
       });
       messageApi.success('Đã cập nhật đơn nghỉ phép');
       closeEditModal();
-      await fetchAllData();
+      invalidateLeaveLists();
     } catch (err: any) {
       if (err.response?.status !== 401) {
         messageApi.error(err.response?.data?.message || 'Cập nhật đơn thất bại');
@@ -758,7 +743,7 @@ export default function ApprovalPage() {
         <span>
           <HourglassOutlined />
           {' '}Chờ phê duyệt{' '}
-          {pendingRequests.length > 0 && <Badge count={pendingRequests.length} offset={[10, -5]} size="small" />}
+          {pendingCount > 0 && <Badge count={pendingCount} offset={[10, -5]} size="small" />}
         </span>
       ),
       children: (
@@ -770,7 +755,7 @@ export default function ApprovalPage() {
                 placeholder="Tìm theo tên, email, lý do..."
                 prefix={<SearchOutlined />}
                 value={pendingSearch}
-                onChange={(e) => setPendingSearch(e.target.value)}
+                onChange={(e) => { setPendingSearch(e.target.value); setPendingPage(1); }}
               />
             </Col>
             <Col xs={12} sm={6} md={5}>
@@ -779,8 +764,8 @@ export default function ApprovalPage() {
                 placeholder="Phòng ban"
                 style={{ width: '100%' }}
                 value={pendingDept}
-                onChange={(v) => setPendingDept(v ?? null)}
-                options={pendingDeptOptions}
+                onChange={(v) => { setPendingDept(v ?? null); setPendingPage(1); }}
+                options={departmentOptions}
               />
             </Col>
             <Col xs={12} sm={6} md={5}>
@@ -789,7 +774,7 @@ export default function ApprovalPage() {
                 placeholder="Loại phép"
                 style={{ width: '100%' }}
                 value={pendingLeaveType}
-                onChange={(v) => setPendingLeaveType(v ?? null)}
+                onChange={(v) => { setPendingLeaveType(v ?? null); setPendingPage(1); }}
                 options={leaveTypes.map((t) => ({
                   value: t.code,
                   label: <Tag color={t.color} style={{ marginInlineEnd: 0 }}>{t.name}</Tag>,
@@ -797,12 +782,16 @@ export default function ApprovalPage() {
               />
             </Col>
           </Row>
-          <WeekGroupedRequests
-            records={filteredPending}
-            isMobile={isMobile}
-            loading={loading}
+          <WeeklyLazySection<LeaveRequest>
+            weeks={pendingList.weeks}
+            fetchWeek={pendingList.fetchWeek}
+            resetKey={pendingList.resetKey}
+            rowKey="id"
             columns={pendingColumns as any}
-            tableWidth={pendingTableWidth}
+            scroll={{ x: pendingTableWidth }}
+            size="small"
+            isMobile={isMobile}
+            loading={pendingList.isFetching}
             emptyText="✅ Không có đơn chờ duyệt"
             renderMobileCard={(record) => (
               <PendingMobileCard
@@ -815,6 +804,19 @@ export default function ApprovalPage() {
                 leaveTypeMap={leaveTypeMap}
               />
             )}
+            pagination={{
+              current: pendingPage,
+              pageSize: pendingWeeksPerPage,
+              total: pendingList.totalWeeks,
+              showSizeChanger: true,
+              // Số TUẦN/trang (không phải số bản ghi/trang).
+              pageSizeOptions: ['2', '4', '8'],
+              showTotal: (t) => `Tổng cộng ${t} tuần (${pendingList.totalRecords.toLocaleString()} đơn)`,
+              onChange: (p, ps) => {
+                setPendingPage(ps !== pendingWeeksPerPage ? 1 : p);
+                setPendingWeeksPerPage(ps);
+              },
+            }}
           />
         </>
       )
@@ -836,7 +838,7 @@ export default function ApprovalPage() {
                 placeholder="Tìm theo tên, email, lý do..."
                 prefix={<SearchOutlined />}
                 value={historySearch}
-                onChange={(e) => setHistorySearch(e.target.value)}
+                onChange={(e) => { setHistorySearch(e.target.value); setHistoryPage(1); }}
               />
             </Col>
             <Col xs={12} sm={6} md={4}>
@@ -845,8 +847,8 @@ export default function ApprovalPage() {
                 placeholder="Phòng ban"
                 style={{ width: '100%' }}
                 value={historyDept}
-                onChange={(v) => setHistoryDept(v ?? null)}
-                options={historyDeptOptions}
+                onChange={(v) => { setHistoryDept(v ?? null); setHistoryPage(1); }}
+                options={departmentOptions}
               />
             </Col>
             <Col xs={12} sm={6} md={4}>
@@ -855,7 +857,7 @@ export default function ApprovalPage() {
                 placeholder="Loại phép"
                 style={{ width: '100%' }}
                 value={historyLeaveType}
-                onChange={(v) => setHistoryLeaveType(v ?? null)}
+                onChange={(v) => { setHistoryLeaveType(v ?? null); setHistoryPage(1); }}
                 options={leaveTypes.map((t) => ({
                   value: t.code,
                   label: <Tag color={t.color} style={{ marginInlineEnd: 0 }}>{t.name}</Tag>,
@@ -868,9 +870,10 @@ export default function ApprovalPage() {
                 placeholder="Trạng thái"
                 style={{ width: '100%' }}
                 value={historyStatus}
-                onChange={(v) => setHistoryStatus(v ?? null)}
+                onChange={(v) => { setHistoryStatus(v ?? null); setHistoryPage(1); }}
                 options={Object.entries(STATUS_MAP)
-                  .filter(([code]) => code !== 'pending')
+                  // BE history chỉ trả approved/rejected - 'cancelled' không bao giờ khớp.
+                  .filter(([code]) => code === 'approved' || code === 'rejected')
                   .map(([code, s]) => ({
                     value: code,
                     label: <Tag color={s.color} style={{ marginInlineEnd: 0 }}>{s.text}</Tag>,
@@ -883,16 +886,20 @@ export default function ApprovalPage() {
                 format="DD/MM/YYYY"
                 placeholder={['Từ ngày', 'Đến ngày']}
                 value={historyDateRange as any}
-                onChange={(vals) => setHistoryDateRange(vals as [Dayjs | null, Dayjs | null] | null)}
+                onChange={(vals) => { setHistoryDateRange(vals as [Dayjs | null, Dayjs | null] | null); setHistoryPage(1); }}
               />
             </Col>
           </Row>
-          <WeekGroupedRequests
-            records={filteredHistory}
-            isMobile={isMobile}
-            loading={loading}
+          <WeeklyLazySection<LeaveRequest>
+            weeks={historyList.weeks}
+            fetchWeek={historyList.fetchWeek}
+            resetKey={historyList.resetKey}
+            rowKey="id"
             columns={historyColumns as any}
-            tableWidth={historyTableWidth}
+            scroll={{ x: historyTableWidth }}
+            size="small"
+            isMobile={isMobile}
+            loading={historyList.isFetching}
             emptyText="Chưa có lịch sử xử lý"
             renderMobileCard={(record) => (
               <HistoryMobileCard
@@ -903,6 +910,18 @@ export default function ApprovalPage() {
                 leaveTypeMap={leaveTypeMap}
               />
             )}
+            pagination={{
+              current: historyPage,
+              pageSize: historyWeeksPerPage,
+              total: historyList.totalWeeks,
+              showSizeChanger: true,
+              pageSizeOptions: ['2', '4', '8'],
+              showTotal: (t) => `Tổng cộng ${t} tuần (${historyList.totalRecords.toLocaleString()} đơn)`,
+              onChange: (p, ps) => {
+                setHistoryPage(ps !== historyWeeksPerPage ? 1 : p);
+                setHistoryWeeksPerPage(ps);
+              },
+            }}
           />
         </>
       )

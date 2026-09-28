@@ -71,21 +71,18 @@ export function useSidebarBadgeCounts(): Record<string, number> {
   // Manager chỉ thấy đơn phòng ban mình quản lý, xem findPending() ở BE)
   const pendingLeaveApprovals = useQuery({
     queryKey: ['badge-count', 'duyet-phep'],
-    queryFn: async () => (await leaveRequestsApi.getPending()).length,
+    queryFn: () => leaveRequestsApi.getPendingCount(),
     enabled: canApproveLeave,
     refetchInterval: REFRESH_INTERVAL_MS,
     staleTime: REFRESH_INTERVAL_MS,
   });
 
-  // 5. Đơn nghỉ phép CỦA CHÍNH MÌNH đang pending - getAll() ở BE đã tự lọc
-  // theo requesterId = mình (xem LeaveRequestsService.findAll()), không
-  // phải lọc lại theo user id ở đây - chỉ cần lọc status.
+  // 5. Đơn nghỉ phép CỦA CHÍNH MÌNH đang pending - endpoint COUNT riêng
+  // (BE lọc requesterId = mình + status pending), không tải cả danh sách
+  // rồi đếm ở client như trước (lag khi số đơn lớn dần).
   const myPendingLeave = useQuery({
     queryKey: ['badge-count', 'nghi-phep'],
-    queryFn: async () => {
-      const all = await leaveRequestsApi.getAll();
-      return (all as Array<{ status: string }>).filter((r) => r.status === 'pending').length;
-    },
+    queryFn: () => leaveRequestsApi.getMyPendingCount(),
     enabled: canRequestLeave,
     refetchInterval: REFRESH_INTERVAL_MS,
     staleTime: REFRESH_INTERVAL_MS,

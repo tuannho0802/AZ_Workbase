@@ -44,6 +44,41 @@ export interface LeaveRequest {
   attachmentCount?: number;
 }
 
+/** Bộ lọc + tham số week-mode của 3 endpoint list (mine/pending/history). */
+export interface LeaveListFilters {
+  page?: number;         // trang TUẦN (1-based)
+  weeksPerPage?: number; // mặc định 4
+  // PHA 2 (lazy-load 1 tuần): 'YYYY-MM-DD' của Thứ 2. Không truyền = chỉ lấy `weeks`.
+  weekStart?: string;
+  weekPage?: number;
+  weekLimit?: number;
+  search?: string;
+  departmentId?: number;
+  leaveType?: string;
+  status?: string;
+  fromDate?: string; // YYYY-MM-DD
+  toDate?: string;   // YYYY-MM-DD
+}
+
+export interface LeaveWeekModeResponse<T> {
+  data: T[];
+  /** Tổng bản ghi của TẤT CẢ tuần khớp filter (không riêng trang này). */
+  total: number;
+  page: number;
+  totalPages: number;
+  totalWeeks: number;
+  weeksPerPage: number;
+  weeks: { weekStart: string; count: number }[];
+  weekTotal?: number;
+}
+
+/** Bỏ field rỗng ('' / null / undefined) để không gửi query param thừa lên BE. */
+function cleanParams(f: LeaveListFilters): LeaveListFilters {
+  return Object.fromEntries(
+    Object.entries(f).filter(([, v]) => v !== undefined && v !== null && v !== ''),
+  ) as LeaveListFilters;
+}
+
 export const leaveRequestsApi = {
   async create(data: {
     leaveType: string;
@@ -101,6 +136,36 @@ export const leaveRequestsApi = {
     return res.data;
   },
   
+  // ── WEEK-MODE: phân trang theo TUẦN + lazy-load từng tuần (xem BE
+  // LeaveRequestsService.findMinePaged/findPendingPaged/findHistoryPaged).
+  // KHÔNG gửi `_t` - DTO BE bật forbidNonWhitelisted (từng gây 400 ở /history).
+  async getMinePaged(filters: LeaveListFilters): Promise<LeaveWeekModeResponse<LeaveRequest>> {
+    const res = await axiosInstance.get('/leave-requests/mine/paged', { params: cleanParams(filters) });
+    return res.data;
+  },
+
+  async getPendingPaged(filters: LeaveListFilters): Promise<LeaveWeekModeResponse<LeaveRequest>> {
+    const res = await axiosInstance.get('/leave-requests/pending/paged', { params: cleanParams(filters) });
+    return res.data;
+  },
+
+  async getHistoryPaged(filters: LeaveListFilters): Promise<LeaveWeekModeResponse<LeaveRequest>> {
+    const res = await axiosInstance.get('/leave-requests/history/paged', { params: cleanParams(filters) });
+    return res.data;
+  },
+
+  /** Số đơn đang chờ MÌNH duyệt (badge) - nhẹ, không tải danh sách. */
+  async getPendingCount(): Promise<number> {
+    const res = await axiosInstance.get('/leave-requests/pending/count');
+    return Number(res.data?.count ?? 0);
+  },
+
+  /** Số đơn CỦA MÌNH đang pending (badge) - nhẹ, không tải danh sách. */
+  async getMyPendingCount(): Promise<number> {
+    const res = await axiosInstance.get('/leave-requests/mine/pending-count');
+    return Number(res.data?.count ?? 0);
+  },
+
   async getAll() {
     // Adding timestamp as a query param to bypass potential browser/proxy caching
     const res = await axiosInstance.get(`/leave-requests?_t=${Date.now()}`);

@@ -3,7 +3,7 @@
 import { useState, useEffect, useRef, useMemo } from 'react';
 import { useRouter } from 'next/navigation';
 import {
-  Table, Button, Modal, Form, Select, DatePicker, TimePicker, Input, Tag, App, Card, Divider, Typography, Row, Col, Tooltip
+  Button, Modal, Form, Select, DatePicker, TimePicker, Input, Tag, App, Card, Divider, Typography, Row, Col, Tooltip
 } from 'antd';
 import { PlusOutlined, CloseCircleOutlined, CalendarOutlined, ClockCircleOutlined, FileTextOutlined, UserOutlined, SearchOutlined } from '@ant-design/icons';
 import { leaveRequestsApi, LeaveRequest } from '@/lib/api/leave-requests.api';
@@ -11,6 +11,9 @@ import { useMyPermissions } from '@/lib/hooks/useMyPermissions';
 import { useLeaveTypes } from '@/lib/hooks/useLeaveTypes';
 import { AttachmentUploader, AttachmentUploaderHandle } from '@/components/leave-requests/AttachmentUploader';
 import { AttachmentsViewerButton } from '@/components/leave-requests/AttachmentsViewerButton';
+import { WeeklyLazySection } from '@/components/common/WeeklyLazySection';
+import { useLeaveWeekList, useInvalidateLeaveLists } from '@/lib/hooks/useLeaveWeekList';
+import { useDebounce } from '@/lib/hooks/useDebounce';
 import dayjs, { Dayjs } from 'dayjs';
 
 const { RangePicker } = DatePicker;
@@ -129,21 +132,22 @@ function MyLeaveMobileCard({
 
 // ── Main Component ───────────────────────────────────────────────────────────
 export default function LeaveRequestsPage() {
-  const [requests, setRequests] = useState<LeaveRequest[]>([]);
-  const [loading, setLoading] = useState(false);
   const [modalOpen, setModalOpen] = useState(false);
   const [attachmentUploaderKey, setAttachmentUploaderKey] = useState(0);
   const [isMobile, setIsMobile] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [form] = Form.useForm();
-  // Filter: đơn nghỉ của tôi thường không quá nhiều, nên lọc CLIENT-SIDE
-  // (BE /leave-requests trả toàn bộ, không phân trang) - đủ nhẹ, không cần
-  // thêm query param BE. Trường ít vì đây là dữ liệu CỦA CHÍNH mình (không
-  // cần lọc theo người/phòng ban như duyet-phep).
+  // Filter + phân trang: chạy ở SERVER (BE `GET /leave-requests/mine/paged`,
+  // week-mode) - client chỉ giữ 1 tuần/lần (lazy-load khi mở panel) nên không
+  // còn lọc client-side trên toàn bộ dữ liệu được nữa. Trường ít vì đây là dữ
+  // liệu CỦA CHÍNH mình (không cần lọc theo người/phòng ban).
   const [searchText, setSearchText] = useState('');
   const [filterLeaveType, setFilterLeaveType] = useState<string | null>(null);
   const [filterStatus, setFilterStatus] = useState<string | null>(null);
   const [filterDateRange, setFilterDateRange] = useState<[Dayjs | null, Dayjs | null] | null>(null);
+  // Phân trang THEO TUẦN (1 trang = 4 tuần) - đổi filter phải về trang 1.
+  const [page, setPage] = useState(1);
+  const [weeksPerPage, setWeeksPerPage] = useState(4);
   // Ảnh đính kèm giờ chỉ nằm trong RAM trình duyệt (xem AttachmentUploader) -
   // component cha gọi `uploadAll()` qua ref đúng lúc submit, KHÔNG còn bind
   // value/onChange kiểu controlled field qua Form nữa.
@@ -197,22 +201,30 @@ export default function LeaveRequestsPage() {
       router.replace('/customers');
       return;
     }
-    if (!permissionsLoading && canRequest) {
-      fetchRequests();
-    }
   }, [canRequest, permissionsLoading]);
 
-  const fetchRequests = async () => {
-    setLoading(true);
-    try {
-      const data = await leaveRequestsApi.getAll();
-      setRequests(data);
-    } catch {
-      message.error('Không thể tải danh sách đơn nghỉ phép');
-    } finally {
-      setLoading(false);
-    }
-  };
+  // Danh sách: week-mode 2 pha (PHA 1 chỉ lấy tuần + số đơn, PHA 2 lazy-load
+  // đơn của tuần khi mở panel) - xem `useLeaveWeekList`. Ô tìm kiếm debounce
+  // để không bắn 1 request/phím gõ.
+  const debouncedSearch = useDebounce(searchText, 400);
+  const listFilters = useMemo(
+    () => ({
+      search: debouncedSearch.trim() || undefined,
+      leaveType: filterLeaveType ?? undefined,
+      status: filterStatus ?? undefined,
+      fromDate: filterDateRange?.[0]?.format('YYYY-MM-DD'),
+      toDate: filterDateRange?.[1]?.format('YYYY-MM-DD'),
+    }),
+    [debouncedSearch, filterLeaveType, filterStatus, filterDateRange],
+  );
+  const { weeks, totalWeeks, totalRecords, isFetching, fetchWeek, resetKey } = useLeaveWeekList(
+    'mine',
+    listFilters,
+    page,
+    weeksPerPage,
+    !permissionsLoading && canRequest,
+  );
+  const invalidateLeaveLists = useInvalidateLeaveLists();
 
   /**
    * Đóng/huỷ Modal tạo đơn KHÔNG qua bấm "Tạo đơn" (nút "Hủy" hoặc bấm X).
@@ -324,7 +336,7 @@ export default function LeaveRequestsPage() {
       setModalOpen(false);
       form.resetFields();
       setAttachmentUploaderKey((k) => k + 1);
-      fetchRequests();
+      invalidateLeaveLists();
     } catch (err: any) {
       // Ảnh đã PUT lên B2 xong (uploadAll thành công) nhưng bước tạo đơn
       // sau đó lại lỗi (network/validate BE...) -> ảnh mồ côi, dọn ngay
@@ -346,31 +358,13 @@ export default function LeaveRequestsPage() {
         try {
           await leaveRequestsApi.cancel(id);
           message.success('Đã hủy đơn');
-          fetchRequests();
+          invalidateLeaveLists();
         } catch {
           message.error('Hủy đơn thất bại');
         }
       }
     });
   };
-
-  const filteredRequests = useMemo(() => {
-    return requests.filter((r) => {
-      if (filterLeaveType && r.leaveType !== filterLeaveType) return false;
-      if (filterStatus && r.status !== filterStatus) return false;
-      if (searchText.trim()) {
-        const q = searchText.trim().toLowerCase();
-        if (!(r.reason || '').toLowerCase().includes(q)) return false;
-      }
-      if (filterDateRange && filterDateRange[0] && filterDateRange[1]) {
-        const [from, to] = filterDateRange;
-        // Đơn "trong khoảng" nếu khoảng nghỉ [startDate,endDate] giao với [from,to]
-        const overlap = !dayjs(r.startDate).isAfter(to, 'day') && !dayjs(r.endDate).isBefore(from, 'day');
-        if (!overlap) return false;
-      }
-      return true;
-    });
-  }, [requests, filterLeaveType, filterStatus, searchText, filterDateRange]);
 
   const columns = [
     {
@@ -486,7 +480,7 @@ export default function LeaveRequestsPage() {
             placeholder="Tìm theo lý do..."
             prefix={<SearchOutlined />}
             value={searchText}
-            onChange={(e) => setSearchText(e.target.value)}
+            onChange={(e) => { setSearchText(e.target.value); setPage(1); }}
           />
         </Col>
         <Col xs={12} sm={6} md={4}>
@@ -495,7 +489,7 @@ export default function LeaveRequestsPage() {
             placeholder="Loại phép"
             style={{ width: '100%' }}
             value={filterLeaveType}
-            onChange={(v) => setFilterLeaveType(v ?? null)}
+            onChange={(v) => { setFilterLeaveType(v ?? null); setPage(1); }}
             options={leaveTypeOptions}
           />
         </Col>
@@ -505,7 +499,7 @@ export default function LeaveRequestsPage() {
             placeholder="Trạng thái"
             style={{ width: '100%' }}
             value={filterStatus}
-            onChange={(v) => setFilterStatus(v ?? null)}
+            onChange={(v) => { setFilterStatus(v ?? null); setPage(1); }}
             options={Object.entries(STATUS_MAP).map(([code, s]) => ({
               value: code,
               label: <Tag color={s.color} style={{ marginInlineEnd: 0 }}>{s.text}</Tag>,
@@ -518,35 +512,42 @@ export default function LeaveRequestsPage() {
             format="DD/MM/YYYY"
             placeholder={['Từ ngày', 'Đến ngày']}
             value={filterDateRange as any}
-            onChange={(vals) => setFilterDateRange(vals as [Dayjs | null, Dayjs | null] | null)}
+            onChange={(vals) => { setFilterDateRange(vals as [Dayjs | null, Dayjs | null] | null); setPage(1); }}
           />
         </Col>
       </Row>
 
-      {isMobile ? (
-        filteredRequests.length === 0 ? (
-          <div style={{ padding: '24px 0', textAlign: 'center', color: '#8c8c8c' }}>
-            Chưa có đơn nghỉ phép nào
-          </div>
-        ) : (
-            filteredRequests.map(r => (
-            <MyLeaveMobileCard
-              key={r.id}
-              record={r}
-              onCancel={handleCancel}
-              leaveTypeMap={leaveTypeMap}
-            />
-          ))
-        )
-      ) : (
-        <Table
-          columns={columns}
-            dataSource={filteredRequests}
-          rowKey="id"
-          loading={loading}
-          pagination={{ pageSize: 10 }}
-        />
-      )}
+      <WeeklyLazySection<LeaveRequest>
+        weeks={weeks}
+        fetchWeek={fetchWeek}
+        resetKey={resetKey}
+        rowKey="id"
+        columns={columns as any}
+        isMobile={isMobile}
+        loading={isFetching}
+        emptyText="Chưa có đơn nghỉ phép nào"
+        renderMobileCard={(r) => (
+          <MyLeaveMobileCard
+            key={r.id}
+            record={r}
+            onCancel={handleCancel}
+            leaveTypeMap={leaveTypeMap}
+          />
+        )}
+        pagination={{
+          current: page,
+          pageSize: weeksPerPage,
+          total: totalWeeks,
+          showSizeChanger: true,
+          // Số TUẦN/trang (không phải số bản ghi/trang).
+          pageSizeOptions: ['2', '4', '8'],
+          showTotal: (t) => `Tổng cộng ${t} tuần (${totalRecords.toLocaleString()} đơn)`,
+          onChange: (p, ps) => {
+            setPage(ps !== weeksPerPage ? 1 : p);
+            setWeeksPerPage(ps);
+          },
+        }}
+      />
 
       {/* Create Modal */}
       <Modal

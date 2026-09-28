@@ -5,7 +5,7 @@ import type { Dayjs } from 'dayjs';
  * của dayjs - xem ghi chú ở `PeriodSelector.tsx` ("picker=week dễ lệch nếu
  * locale/plugin isoWeek khác giả định") - tự tính tay bằng `.day()`
  * (0=CN...6=T7) để không phụ thuộc locale/plugin phải extend đúng chỗ.
- * Dùng chung cho `WeekGroupedRequests` và `WeeklyCollapseSection`.
+ * Dùng chung cho `WeeklyCollapseSection` và `WeeklyLazySection`.
  */
 export function getWeekStart(d: Dayjs): Dayjs {
   const day = d.day();

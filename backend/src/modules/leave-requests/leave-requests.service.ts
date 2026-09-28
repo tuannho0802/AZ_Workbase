@@ -7,7 +7,7 @@ import {
   Logger,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository, In, Brackets } from 'typeorm';
+import { Repository, In, Brackets, SelectQueryBuilder } from 'typeorm';
 import {
   LeaveRequest,
   LeaveStatus,
@@ -23,6 +23,8 @@ import { PermissionScope } from '../../database/entities/role-permission.entity'
 import { UploadsService } from '../uploads/uploads.service';
 import { LeaveTypesService } from '../leave-types/leave-types.service';
 import { AuditService } from '../audit/audit.service';
+import { paginateByWeek } from '../../common/utils/week-window.util';
+import { QueryLeaveRequestsDto } from './dto/query-leave-requests.dto';
 
 /**
  * PERMISSIONS.md mục 2.6 - ĐÃ ĐƯỢC GENERALIZE sang scope-based:
@@ -635,27 +637,204 @@ export class LeaveRequestsService {
       .loadRelationCountAndMap('leave.attachmentCount', 'leave.attachments')
       .where('leave.status = :status', { status: LeaveStatus.PENDING });
 
-    if (viewerRole !== Role.ADMIN && !isAllScope && isDeptScope) {
-      const managedIds = await this.getManagedDepartmentIds(viewerId);
-      // Đối xứng với isEligibleApprover(): ngoài phòng ban đang quản lý,
-      // cộng thêm những requester gán riêng leave_approver_id = viewerId
-      // (ngoại lệ, không cùng phòng ban). Nếu Manager không quản lý phòng
-      // ban nào NHƯNG có ngoại lệ gán riêng, vẫn phải thấy - không return
-      // [] sớm như trước migration AddLeaveApproverOverrideToUsers nữa.
-      if (managedIds.length === 0) {
-        query.andWhere('requester.leaveApproverId = :viewerId', { viewerId });
-      } else {
-        query.andWhere(
-          new Brackets((qb) => {
-            qb.where('requester.departmentId IN (:...deptIds)', {
-              deptIds: managedIds,
-            }).orWhere('requester.leaveApproverId = :viewerId', { viewerId });
-          }),
-        );
-      }
-    }
+    await this.applyApproverScope(query, viewerId, viewerRole, scope);
 
     return query.orderBy('leave.createdAt', 'DESC').getMany();
+  }
+
+  /**
+   * Người xem có phạm vi duyệt/xem hợp lệ không (Admin luôn có; còn lại cần
+   * scope 'all' hoặc 'department' từ role_permissions). false -> list rỗng.
+   */
+  private hasApproverScope(viewerRole: string, scope?: string | null): boolean {
+    return (
+      viewerRole === Role.ADMIN ||
+      scope === PermissionScope.ALL ||
+      scope === PermissionScope.DEPARTMENT
+    );
+  }
+
+  /**
+   * Thu hẹp query theo phạm vi của người xem - NGUỒN DUY NHẤT cho
+   * findPending()/findHistory()/*Paged()/countPending() (trước đây chép 2 bản).
+   * Admin/scope='all' -> không lọc. scope='department' -> phòng ban đang quản
+   * lý HOẶC requester gán riêng `leaveApproverId = viewerId` (đối xứng với
+   * isEligibleApprover(): Manager không quản lý phòng ban nào nhưng có ngoại
+   * lệ gán riêng vẫn phải thấy). Cần alias `requester` đã join sẵn.
+   */
+  private async applyApproverScope(
+    query: SelectQueryBuilder<LeaveRequest>,
+    viewerId: number,
+    viewerRole: string,
+    scope?: string | null,
+  ): Promise<void> {
+    const isAll = scope === PermissionScope.ALL;
+    const isDept = scope === PermissionScope.DEPARTMENT;
+    if (viewerRole === Role.ADMIN || isAll || !isDept) return;
+
+    const managedIds = await this.getManagedDepartmentIds(viewerId);
+    if (managedIds.length === 0) {
+      query.andWhere('requester.leaveApproverId = :viewerId', { viewerId });
+    } else {
+      query.andWhere(
+        new Brackets((qb) => {
+          qb.where('requester.departmentId IN (:...deptIds)', {
+            deptIds: managedIds,
+          }).orWhere('requester.leaveApproverId = :viewerId', { viewerId });
+        }),
+      );
+    }
+  }
+
+  /** Escape % _ \ để search người dùng gõ không bị hiểu thành wildcard LIKE. */
+  private likeTerm(raw: string): string {
+    return '%' + raw.trim().replace(/[\\%_]/g, (c) => '\\' + c) + '%';
+  }
+
+  /**
+   * Áp bộ lọc của UI (search/phòng ban/loại phép/trạng thái/khoảng ngày) lên
+   * query - chạy ở SERVER vì client chỉ còn giữ 1 tuần/lần (lazy), không thể
+   * lọc trên toàn bộ dữ liệu nữa. `includeRequester`: true ở pending/history
+   * (search cả tên/email người gửi + lọc phòng ban), false ở "đơn của tôi".
+   */
+  private applyListFilters(
+    query: SelectQueryBuilder<LeaveRequest>,
+    q: QueryLeaveRequestsDto,
+    opts: { includeRequester: boolean; allowedStatuses?: LeaveStatus[] },
+  ): void {
+    if (q.search?.trim()) {
+      const like = this.likeTerm(q.search);
+      if (opts.includeRequester) {
+        query.andWhere(
+          new Brackets((qb) => {
+            qb.where('requester.name LIKE :like', { like })
+              .orWhere('requester.email LIKE :like', { like })
+              .orWhere('leave.reason LIKE :like', { like });
+          }),
+        );
+      } else {
+        query.andWhere('leave.reason LIKE :like', { like });
+      }
+    }
+    if (opts.includeRequester && q.departmentId) {
+      query.andWhere('requester.departmentId = :filterDeptId', { filterDeptId: q.departmentId });
+    }
+    if (q.leaveType) {
+      query.andWhere('leave.leaveType = :filterLeaveType', { filterLeaveType: q.leaveType });
+    }
+    if (q.status && (!opts.allowedStatuses || opts.allowedStatuses.includes(q.status as LeaveStatus))) {
+      query.andWhere('leave.status = :filterStatus', { filterStatus: q.status });
+    }
+    // Giao khoảng: startDate <= toDate AND endDate >= fromDate (khớp overlap cũ ở FE).
+    if (q.toDate) query.andWhere('leave.startDate <= :filterTo', { filterTo: q.toDate });
+    if (q.fromDate) query.andWhere('leave.endDate >= :filterFrom', { filterFrom: q.fromDate });
+  }
+
+  /** Chạy week-mode 2 pha trên query đã áp scope + filter; đóng gói response như audit-logs. */
+  private async runWeekMode(query: SelectQueryBuilder<LeaveRequest>, q: QueryLeaveRequestsDto) {
+    const page = q.page ?? 1;
+    const weeksPerPage = q.weeksPerPage ?? 4;
+    // orderBy đặt TRƯỚC: pha 1 của paginateByWeek tự reset orderBy trên bản clone,
+    // pha 2 (lấy bản ghi 1 tuần) cần thứ tự ngày TẠO mới nhất -> cũ nhất.
+    query.orderBy('leave.createdAt', 'DESC').addOrderBy('leave.id', 'DESC');
+    const r = await paginateByWeek(query, {
+      // ⚠️ Alias 'leave' TRÙNG từ khoá dành riêng của MySQL (LEAVE). TypeORM tự
+      // đặt backtick cho `leave.status`... (cột có metadata) nhưng để NGUYÊN
+      // chuỗi raw `leave.week_start` (cột generated không map vào entity) ->
+      // MySQL báo lỗi cú pháp. Bọc backtick thủ công (đã xác nhận bằng getQuery()).
+      weekExpr: '`leave`.`week_start`',
+      page,
+      weeksPerPage,
+      weekStart: q.weekStart,
+      weekPage: q.weekPage,
+      weekLimit: q.weekLimit,
+    });
+    return {
+      data: r.data,
+      total: r.total,
+      page,
+      limit: weeksPerPage,
+      totalPages: r.totalPages,
+      weeks: r.weeks,
+      weekTotal: r.weekTotal,
+      ...r.meta,
+    };
+  }
+
+  private emptyWeekModeResponse(q: QueryLeaveRequestsDto) {
+    const weeksPerPage = q.weeksPerPage ?? 4;
+    return {
+      data: [],
+      total: 0,
+      page: q.page ?? 1,
+      limit: weeksPerPage,
+      totalPages: 0,
+      weeks: [],
+      totalWeeks: 0,
+      weeksPerPage,
+    };
+  }
+
+  /** "Đơn của tôi" - week-mode (thay findAll() cho trang /nghi-phep). */
+  async findMinePaged(userId: number, q: QueryLeaveRequestsDto) {
+    const query = this.leaveRequestRepo
+      .createQueryBuilder('leave')
+      .leftJoinAndSelect('leave.requester', 'requester')
+      .leftJoinAndSelect('leave.approver', 'approver')
+      .loadRelationCountAndMap('leave.attachmentCount', 'leave.attachments')
+      .where('leave.requesterId = :userId', { userId });
+    this.applyListFilters(query, q, { includeRequester: false });
+    return this.runWeekMode(query, q);
+  }
+
+  /** Chờ duyệt trong phạm vi người xem - week-mode (thay findPending() cho /duyet-phep). */
+  async findPendingPaged(viewerId: number, viewerRole: string, scope: string | null | undefined, q: QueryLeaveRequestsDto) {
+    if (!this.hasApproverScope(viewerRole, scope)) return this.emptyWeekModeResponse(q);
+    const query = this.leaveRequestRepo
+      .createQueryBuilder('leave')
+      .leftJoinAndSelect('leave.requester', 'requester')
+      .leftJoinAndSelect('requester.department', 'department')
+      .loadRelationCountAndMap('leave.attachmentCount', 'leave.attachments')
+      .where('leave.status = :status', { status: LeaveStatus.PENDING });
+    await this.applyApproverScope(query, viewerId, viewerRole, scope);
+    // status không áp dụng cho tab Chờ duyệt (luôn pending) nên bỏ qua q.status.
+    this.applyListFilters(query, { ...q, status: undefined }, { includeRequester: true });
+    return this.runWeekMode(query, q);
+  }
+
+  /** Lịch sử duyệt (approved/rejected) - week-mode (thay findHistory(), bỏ luôn cap cứng 200). */
+  async findHistoryPaged(viewerId: number, viewerRole: string, scope: string | null | undefined, q: QueryLeaveRequestsDto) {
+    if (!this.hasApproverScope(viewerRole, scope)) return this.emptyWeekModeResponse(q);
+    const statuses = [LeaveStatus.APPROVED, LeaveStatus.REJECTED];
+    const query = this.leaveRequestRepo
+      .createQueryBuilder('leave')
+      .leftJoinAndSelect('leave.requester', 'requester')
+      .leftJoinAndSelect('requester.department', 'department')
+      .leftJoinAndSelect('leave.approver', 'approver')
+      .loadRelationCountAndMap('leave.attachmentCount', 'leave.attachments')
+      .where('leave.status IN (:...statuses)', { statuses });
+    await this.applyApproverScope(query, viewerId, viewerRole, scope);
+    this.applyListFilters(query, q, { includeRequester: true, allowedStatuses: statuses });
+    return this.runWeekMode(query, q);
+  }
+
+  /** Số đơn đang chờ MÌNH duyệt - cho badge sidebar (thay tải cả list rồi .length). */
+  async countPending(viewerId: number, viewerRole: string, scope?: string | null): Promise<{ count: number }> {
+    if (!this.hasApproverScope(viewerRole, scope)) return { count: 0 };
+    const query = this.leaveRequestRepo
+      .createQueryBuilder('leave')
+      .leftJoin('leave.requester', 'requester')
+      .where('leave.status = :status', { status: LeaveStatus.PENDING });
+    await this.applyApproverScope(query, viewerId, viewerRole, scope);
+    return { count: await query.getCount() };
+  }
+
+  /** Số đơn của CHÍNH MÌNH đang pending - cho badge sidebar. */
+  async countMyPending(userId: number): Promise<{ count: number }> {
+    const count = await this.leaveRequestRepo.count({
+      where: { requesterId: userId, status: LeaveStatus.PENDING },
+    });
+    return { count };
   }
 
   /**
@@ -684,21 +863,7 @@ export class LeaveRequestsService {
         statuses: [LeaveStatus.APPROVED, LeaveStatus.REJECTED],
       });
 
-    if (viewerRole !== Role.ADMIN && !isAllScopeH && isDeptScopeH) {
-      const managedIds = await this.getManagedDepartmentIds(viewerId);
-      // Đối xứng với findPending()/isEligibleApprover() - xem comment ở đó.
-      if (managedIds.length === 0) {
-        query.andWhere('requester.leaveApproverId = :viewerId', { viewerId });
-      } else {
-        query.andWhere(
-          new Brackets((qb) => {
-            qb.where('requester.departmentId IN (:...deptIds)', {
-              deptIds: managedIds,
-            }).orWhere('requester.leaveApproverId = :viewerId', { viewerId });
-          }),
-        );
-      }
-    }
+    await this.applyApproverScope(query, viewerId, viewerRole, scope);
 
     // ⚠️ Trước đây không có take()/skip() nào - số đơn phép đã duyệt/từ chối
     // sẽ tích luỹ vô hạn theo thời gian sử dụng. Cap lại 200 bản ghi gần

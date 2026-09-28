@@ -21,6 +21,14 @@ import { PermissionScope } from '../../database/entities/role-permission.entity'
 import { UploadsService } from '../uploads/uploads.service';
 import { LeaveTypesService } from '../leave-types/leave-types.service';
 import { AuditService } from '../audit/audit.service';
+import { paginateByWeek } from '../../common/utils/week-window.util';
+
+// Chỉ mock paginateByWeek (SQL GROUP BY thật nằm ngoài phạm vi unit test, đã có
+// ở week-window.util) - giữ nguyên các export còn lại.
+jest.mock('../../common/utils/week-window.util', () => ({
+  ...jest.requireActual('../../common/utils/week-window.util'),
+  paginateByWeek: jest.fn(),
+}));
 
 describe('LeaveRequestsService - Phan quyen duyet (PERMISSIONS.md muc 2.6)', () => {
   let service: LeaveRequestsService;
@@ -30,6 +38,7 @@ describe('LeaveRequestsService - Phan quyen duyet (PERMISSIONS.md muc 2.6)', () 
     create: jest.fn((x: any) => x),
     save: jest.fn(),
     createQueryBuilder: jest.fn(),
+    count: jest.fn(),
   };
   const mockUserRepo = {
     decrement: jest.fn(),
@@ -803,6 +812,110 @@ describe('LeaveRequestsService - Phan quyen duyet (PERMISSIONS.md muc 2.6)', () 
       const result = await service.discardOrphanAttachments(100, [key]);
 
       expect(result).toEqual([{ key, deleted: false, reason: 'error' }]);
+    });
+  });
+
+  describe('Week-mode: findMinePaged/findPendingPaged/findHistoryPaged/count*', () => {
+    const weekResult = {
+      data: [{ id: 1 }],
+      total: 7,
+      totalPages: 2,
+      weeks: [{ weekStart: '2026-09-21', count: 3 }],
+      weekTotal: 3,
+      meta: { totalWeeks: 5, weeksPerPage: 4 },
+    };
+
+    const buildPagedQb = () => {
+      const qb: any = {
+        leftJoin: jest.fn().mockReturnThis(),
+        leftJoinAndSelect: jest.fn().mockReturnThis(),
+        loadRelationCountAndMap: jest.fn().mockReturnThis(),
+        where: jest.fn().mockReturnThis(),
+        andWhere: jest.fn().mockReturnThis(),
+        orderBy: jest.fn().mockReturnThis(),
+        addOrderBy: jest.fn().mockReturnThis(),
+        getCount: jest.fn().mockResolvedValue(9),
+      };
+      mockLeaveRepo.createQueryBuilder.mockReturnValue(qb);
+      return qb;
+    };
+
+    beforeEach(() => {
+      (paginateByWeek as jest.Mock).mockReset();
+      (paginateByWeek as jest.Mock).mockResolvedValue(weekResult);
+    });
+
+    it('findPendingPaged: role KHONG co scope -> tra rong ngay, khong query DB', async () => {
+      const r = await service.findPendingPaged(5, Role.EMPLOYEE, null, {});
+      expect(r.data).toEqual([]);
+      expect(r.weeks).toEqual([]);
+      expect(mockLeaveRepo.createQueryBuilder).not.toHaveBeenCalled();
+      expect(paginateByWeek).not.toHaveBeenCalled();
+    });
+
+    it('findPendingPaged ADMIN: goi paginateByWeek voi week_start + mac dinh 4 tuan/trang, sort createdAt DESC', async () => {
+      const qb = buildPagedQb();
+      const r = await service.findPendingPaged(1, Role.ADMIN, null, { weekStart: '2026-09-21', weekPage: 2, weekLimit: 10 });
+
+      expect(qb.where).toHaveBeenCalledWith('leave.status = :status', { status: LeaveStatus.PENDING });
+      expect(qb.orderBy).toHaveBeenCalledWith('leave.createdAt', 'DESC');
+      expect(paginateByWeek).toHaveBeenCalledWith(
+        qb,
+        expect.objectContaining({ weekExpr: '`leave`.`week_start`', page: 1, weeksPerPage: 4, weekStart: '2026-09-21', weekPage: 2, weekLimit: 10 }),
+      );
+      expect(r).toEqual(expect.objectContaining({ total: 7, totalPages: 2, totalWeeks: 5, weeksPerPage: 4, weekTotal: 3, limit: 4 }));
+      expect(r.weeks).toEqual(weekResult.weeks);
+    });
+
+    it('findPendingPaged MANAGER scope=department: van ap filter phong ban/ngoai le nhu findPending()', async () => {
+      const qb = buildPagedQb();
+      mockDepartmentManagerRepo.find.mockResolvedValue([{ departmentId: 3 }]);
+      await service.findPendingPaged(20, Role.MANAGER, PermissionScope.DEPARTMENT, {});
+      expect(qb.andWhere.mock.calls.some((c: any[]) => c[0] instanceof Brackets)).toBe(true);
+    });
+
+    it('findPendingPaged: loc search/phong ban/loai phep o SERVER; bo qua `status` (tab luon pending)', async () => {
+      const qb = buildPagedQb();
+      await service.findPendingPaged(1, Role.ADMIN, null, { search: 'an', departmentId: 3, leaveType: 'sick', status: 'approved' });
+      const sqls = qb.andWhere.mock.calls.map((c: any[]) => (typeof c[0] === 'string' ? c[0] : 'BRACKETS'));
+      expect(sqls).toEqual(expect.arrayContaining(['BRACKETS', 'requester.departmentId = :filterDeptId', 'leave.leaveType = :filterLeaveType']));
+      expect(sqls).not.toContain('leave.status = :filterStatus');
+    });
+
+    it('findHistoryPaged: status chi nhan approved/rejected (cancelled bi bo qua), loc khoang ngay theo giao', async () => {
+      const qb = buildPagedQb();
+      await service.findHistoryPaged(1, Role.ADMIN, null, { status: 'cancelled', fromDate: '2026-09-01', toDate: '2026-09-30' });
+      const sqls = qb.andWhere.mock.calls.map((c: any[]) => c[0]);
+      expect(sqls).not.toContain('leave.status = :filterStatus');
+      expect(sqls).toEqual(expect.arrayContaining(['leave.startDate <= :filterTo', 'leave.endDate >= :filterFrom']));
+
+      const qb2 = buildPagedQb();
+      await service.findHistoryPaged(1, Role.ADMIN, null, { status: 'rejected' });
+      expect(qb2.andWhere).toHaveBeenCalledWith('leave.status = :filterStatus', { filterStatus: 'rejected' });
+    });
+
+    it('findMinePaged: chi don cua chinh minh, search CHI tren ly do (khong lo ten/email), escape % _ trong LIKE', async () => {
+      const qb = buildPagedQb();
+      await service.findMinePaged(42, { search: '50%_', status: 'cancelled' });
+      expect(qb.where).toHaveBeenCalledWith('leave.requesterId = :userId', { userId: 42 });
+      expect(qb.andWhere).toHaveBeenCalledWith('leave.reason LIKE :like', { like: '%50\\%\\_%' });
+      // mine cho phep loc moi trang thai (ke ca cancelled)
+      expect(qb.andWhere).toHaveBeenCalledWith('leave.status = :filterStatus', { filterStatus: 'cancelled' });
+    });
+
+    it('countPending: khong co scope -> 0 khong query; ADMIN -> getCount()', async () => {
+      expect(await service.countPending(5, Role.EMPLOYEE, null)).toEqual({ count: 0 });
+      expect(mockLeaveRepo.createQueryBuilder).not.toHaveBeenCalled();
+
+      const qb = buildPagedQb();
+      expect(await service.countPending(1, Role.ADMIN, null)).toEqual({ count: 9 });
+      expect(qb.getCount).toHaveBeenCalled();
+    });
+
+    it('countMyPending: dem don pending cua chinh requester', async () => {
+      mockLeaveRepo.count.mockResolvedValue(2);
+      expect(await service.countMyPending(42)).toEqual({ count: 2 });
+      expect(mockLeaveRepo.count).toHaveBeenCalledWith({ where: { requesterId: 42, status: LeaveStatus.PENDING } });
     });
   });
 });

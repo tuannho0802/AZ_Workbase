@@ -4489,3 +4489,30 @@ khi bị xoá tay. Đây là 1 anti-pattern thật (dù đo thử với payload 
 > đã báo rõ trong câu trả lời cho chủ dự án, kèm hướng dẫn tự kiểm tra thêm (xem cột Size của cookie
 > `auth-storage` trong DevTools lúc bị lỗi lần sau; xem chi tiết lý do bị "Challenged" trong Vercel
 > Firewall Dashboard). Chưa commit/push lên `main` — đính kèm diff, chủ dự án tự áp và deploy.
+
+---
+## [2026-09-28 10:00] | Phân trang theo TUẦN (4 tuần/trang, lazy-load) cho /nghi-phep và /duyet-phep | [Status: Success — tsc sạch, jest 49/49, vitest 132/132, next build OK]
+
+**Actor:** Agent
+
+**Bối cảnh/Yêu cầu:** Dữ liệu nghỉ phép/duyệt phép sẽ lớn dần -> cần phân trang + chỉ tải khi cần ở cả BE và FE (1 trang = 4 tuần). Trước đó chủ dự án đã revert mạnh tay các implement sai (còn trong git history) nên lượt này làm lại từ `main` mới pull (HEAD `62f93a0`).
+
+**Giải pháp:** TÁI DÙNG hạ tầng week-mode có sẵn (audit-logs/attendance) thay vì viết mới: BE `paginateByWeek()` + cột generated `week_start`; FE `WeeklyLazySection` (PHA 1: chỉ lấy danh sách tuần + số đơn; PHA 2: tải đơn của 1 tuần khi user MỞ panel). Filter (search/phòng ban/loại phép/trạng thái/khoảng ngày) chuyển từ client sang SERVER vì client không còn giữ toàn bộ dữ liệu.
+
+**Files Changed:**
+- `backend/src/database/migrations/1784600000000-AddWeekStartToLeaveRequests.ts` — MỚI: cột VIRTUAL `week_start` (công thức lấy từ `weekStartSqlFromUtcColumn('created_at')`) + index `(status, week_start)` và `(requester_id, week_start)`; idempotent, có `down()`.
+- `backend/src/modules/leave-requests/dto/query-leave-requests.dto.ts` — MỚI: query DTO (page, weeksPerPage<=12, weekStart/weekPage/weekLimit, search, departmentId, leaveType, status, fromDate/toDate).
+- `backend/src/modules/leave-requests/leave-requests.service.ts` — tách helper scope `applyApproverScope()`/`hasApproverScope()` (nguồn duy nhất, findPending/findHistory cũ dùng lại, hành vi không đổi); thêm `findMinePaged/findPendingPaged/findHistoryPaged/countPending/countMyPending`.
+- `backend/src/modules/leave-requests/leave-requests.controller.ts` — thêm `GET mine/paged`, `mine/pending-count` (`leave_requests.request`), `pending/paged`, `pending/count` (`leave_requests.approve`), `history/paged` (`leave_requests.view`). 3 route cũ giữ nguyên.
+- `backend/src/modules/leave-requests/leave-requests.service.spec.ts` — thêm 8 test cho week-mode/count (41 -> 49 test).
+- `frontend/src/lib/api/leave-requests.api.ts`, `lib/hooks/useLeaveWeekList.ts` (MỚI), `lib/hooks/useSidebarBadgeCounts.ts` — API mới + hook 2 pha; badge sidebar dùng endpoint COUNT thay vì tải cả danh sách rồi `.length`.
+- `frontend/src/app/(dashboard)/nghi-phep/page.tsx`, `duyet-phep/page.tsx` — dùng `WeeklyLazySection` + filter server-side + debounce search; dropdown phòng ban lấy từ `useDepartments`.
+- `frontend/src/components/leave-requests/WeekGroupedRequests.tsx` — XOÁ (không còn nơi dùng; còn trong git history).
+
+**Root Cause / Gotcha đã gặp (ghi lại để lần sau khỏi dẫm):**
+> Alias `leave` trùng từ khoá dành riêng `LEAVE` của MySQL. TypeORM tự backtick `leave.status`… (cột có metadata) nhưng giữ NGUYÊN chuỗi raw `leave.week_start` (cột generated không map vào entity) -> lỗi cú pháp MySQL. Đã truyền `weekExpr` có backtick thủ công (`` `leave`.`week_start` ``) và xác nhận bằng `getQuery()` cho cả 2 pha. Audit-logs không bị vì dùng alias `log`.
+
+**Notes:**
+> Chủ dự án CẦN tự chạy `npm run migration:run` (không tự chạy lên DB thật) TRƯỚC khi deploy BE, nếu không `week_start` chưa tồn tại -> 3 endpoint `*/paged` lỗi 500. Chưa commit/push.
+> Tab "Lịch sử": bỏ option lọc "Đã hủy" vì BE history chỉ trả approved/rejected (option cũ không bao giờ khớp đơn nào).
+> Tuần chia theo `created_at` giả định DB session timezone = UTC (cùng giả định audit_logs).
