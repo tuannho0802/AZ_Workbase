@@ -37,6 +37,10 @@ export interface LeaveRequest {
   createdAt: string;
   approvedAt: string | null;
   rejectedAt: string | null;
+  // Thời điểm huỷ/xoá mềm - có giá trị = đơn đang ở THÙNG RÁC (tab Thùng rác ở
+  // /duyet-phep). Do chủ đơn huỷ đơn pending, hoặc người có `leave_requests.delete`
+  // chuyển đơn đã duyệt/từ chối vào thùng rác.
+  cancelledAt?: string | null;
   // Số ảnh đính kèm - BE tính qua loadRelationCountAndMap() ở findAll()/
   // findPending()/findHistory() (xem LeaveRequest.attachmentCount ở entity),
   // KHÔNG có ở response của các endpoint đơn lẻ (create/update/approve...).
@@ -70,6 +74,25 @@ export interface LeaveWeekModeResponse<T> {
   weeksPerPage: number;
   weeks: { weekStart: string; count: number }[];
   weekTotal?: number;
+}
+
+/** Kết quả thao tác hàng loạt - từng đơn độc lập (partial success). */
+export interface BulkLeaveResult {
+  succeeded: number[];
+  failed: { id: number; reason: string }[];
+}
+
+/** BE giới hạn 100 id/lần (BULK_LEAVE_MAX) - FE tự cắt lô nếu chọn nhiều hơn. */
+const BULK_CHUNK = 100;
+
+async function postBulkChunked(url: string, ids: number[]): Promise<BulkLeaveResult> {
+  const merged: BulkLeaveResult = { succeeded: [], failed: [] };
+  for (let i = 0; i < ids.length; i += BULK_CHUNK) {
+    const res = await axiosInstance.post<BulkLeaveResult>(url, { ids: ids.slice(i, i + BULK_CHUNK) });
+    merged.succeeded.push(...(res.data?.succeeded ?? []));
+    merged.failed.push(...(res.data?.failed ?? []));
+  }
+  return merged;
 }
 
 /** Bỏ field rỗng ('' / null / undefined) để không gửi query param thừa lên BE. */
@@ -154,6 +177,12 @@ export const leaveRequestsApi = {
     return res.data;
   },
 
+  /** Thùng rác (đơn có cancelledAt) - cùng phạm vi xem với lịch sử duyệt. */
+  async getTrashPaged(filters: LeaveListFilters): Promise<LeaveWeekModeResponse<LeaveRequest>> {
+    const res = await axiosInstance.get('/leave-requests/trash/paged', { params: cleanParams(filters) });
+    return res.data;
+  },
+
   /** Số đơn đang chờ MÌNH duyệt (badge) - nhẹ, không tải danh sách. */
   async getPendingCount(): Promise<number> {
     const res = await axiosInstance.get('/leave-requests/pending/count');
@@ -222,8 +251,29 @@ export const leaveRequestsApi = {
     return res.data;
   },
   
+  // Chủ đơn tự huỷ đơn PENDING (-> vào thùng rác) - permission `leave_requests.request`.
   async cancel(id: number) {
     const res = await axiosInstance.patch(`/leave-requests/${id}/cancel`);
     return res.data;
-  }
+  },
+
+  // Đơn ĐÃ DUYỆT/TỪ CHỐI -> thùng rác (nút "Huỷ" ở tab Lịch sử) - `leave_requests.delete`.
+  async trash(id: number) {
+    const res = await axiosInstance.patch(`/leave-requests/${id}/trash`);
+    return res.data;
+  },
+
+  // Xoá vĩnh viễn - CHỈ đơn đang ở thùng rác (BE chặn nếu chưa huỷ) - `leave_requests.delete`.
+  async hardDelete(id: number) {
+    const res = await axiosInstance.delete(`/leave-requests/${id}`);
+    return res.data;
+  },
+
+  bulkTrash(ids: number[]): Promise<BulkLeaveResult> {
+    return postBulkChunked('/leave-requests/bulk-trash', ids);
+  },
+
+  bulkHardDelete(ids: number[]): Promise<BulkLeaveResult> {
+    return postBulkChunked('/leave-requests/trash/bulk-delete', ids);
+  },
 };

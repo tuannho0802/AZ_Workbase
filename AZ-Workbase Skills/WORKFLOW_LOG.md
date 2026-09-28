@@ -4516,3 +4516,28 @@ khi bị xoá tay. Đây là 1 anti-pattern thật (dù đo thử với payload 
 > Chủ dự án CẦN tự chạy `npm run migration:run` (không tự chạy lên DB thật) TRƯỚC khi deploy BE, nếu không `week_start` chưa tồn tại -> 3 endpoint `*/paged` lỗi 500. Chưa commit/push.
 > Tab "Lịch sử": bỏ option lọc "Đã hủy" vì BE history chỉ trả approved/rejected (option cũ không bao giờ khớp đơn nào).
 > Tuần chia theo `created_at` giả định DB session timezone = UTC (cùng giả định audit_logs).
+
+---
+## [2026-09-28 14:00] | Thùng rác + xoá mềm/xoá cứng + bulk cho /duyet-phep | [Status: Success — tsc sạch, nest build OK, jest 1004/1004 (leave-requests 49→69), vitest 135/135, next build OK]
+
+**Actor:** Agent
+
+**Bối cảnh/Yêu cầu:** Xoá mềm (`cancelled_at`) + xoá thật đơn nghỉ phép, phân quyền theo scope (mặc định chỉ Admin); tab Thùng rác ở /duyet-phep; đơn PENDING chỉ chủ đơn huỷ được; xoá cứng chỉ trong Thùng rác; bulk (không khôi phục). Làm trên `main` HEAD `cbf19ae`.
+
+**Files Changed:**
+- `backend/src/database/migrations/1784700000000-MakeLeaveRequestsDeleteScoped.ts` — MỚI: `leave_requests.delete` → `supports_scope=TRUE`, dòng cũ scope NULL → 'all'. Chỉ đổi DATA, không đổi schema.
+- `backend/src/modules/leave-requests/leave-requests.service.ts` — thêm `findTrashPaged`, `trash`, `hardDelete`, `bulkTrash`, `bulkHardDelete` (`runBulk` tuần tự, partial success).
+- `backend/src/modules/leave-requests/leave-requests.controller.ts` — `GET trash/paged` (view), `PATCH :id/trash`, `DELETE :id`, `POST bulk-trash`, `POST trash/bulk-delete` (delete).
+- `backend/src/modules/leave-requests/dto/bulk-leave-ids.dto.ts` — MỚI (1..100 id, unique).
+- `backend/src/modules/leave-requests/leave-requests.service.spec.ts` — +20 test.
+- `frontend/src/lib/api/leave-requests.api.ts`, `lib/hooks/useLeaveWeekList.ts` (kind `trash`), `lib/hooks/useIdSelection.ts(+test)` (MỚI, chọn xuyên tuần theo delta), `lib/api/audit-meta.ts` (TRASH_/DELETE_LEAVE_REQUEST), `app/(dashboard)/duyet-phep/page.tsx` (tab Thùng rác, nút Huỷ ở Lịch sử, thanh bulk).
+
+**Quyết định thiết kế (cần biết khi đọc lại):**
+> Huỷ đơn APPROVED chuyển `status`→cancelled và HOÀN `annualLeaveBalance` (nếu loại phép trừ phép năm); UPDATE có điều kiện `(id, status cũ, cancelled_at IS NULL)`, chỉ hoàn khi `affected=1` để bulk/request song song không hoàn 2 lần.
+> Ảnh đính kèm: chủ đơn huỷ pending vẫn bị dọn ngay (`cancel()` giữ nguyên); huỷ từ Lịch sử GIỮ ảnh, chỉ xoá khi xoá vĩnh viễn.
+> Nguồn gốc đơn trong Thùng rác suy từ `approved_at`/`rejected_at` (không thêm cột `cancelled_by`). Tuần trong Thùng rác vẫn chia theo `created_at` (dùng `week_start` có sẵn).
+
+**Notes:**
+> Chủ dự án tự chạy `npm run migration:run` (không tự chạy lên DB thật). Chưa chạy trên MySQL thật/trình duyệt thật. Chưa commit/push.
+
+---

@@ -4,12 +4,13 @@ import { useCallback, useMemo } from 'react';
 import { keepPreviousData, useQuery, useQueryClient } from '@tanstack/react-query';
 import { leaveRequestsApi, LeaveListFilters, LeaveRequest } from '../api/leave-requests.api';
 
-export type LeaveListKind = 'mine' | 'pending' | 'history';
+export type LeaveListKind = 'mine' | 'pending' | 'history' | 'trash';
 
 const FETCHERS = {
   mine: leaveRequestsApi.getMinePaged,
   pending: leaveRequestsApi.getPendingPaged,
   history: leaveRequestsApi.getHistoryPaged,
+  trash: leaveRequestsApi.getTrashPaged,
 } as const;
 
 /** Prefix queryKey PHA 1 - dùng để invalidate sau approve/reject/edit/create/cancel. */

@@ -39,9 +39,12 @@ describe('LeaveRequestsService - Phan quyen duyet (PERMISSIONS.md muc 2.6)', () 
     save: jest.fn(),
     createQueryBuilder: jest.fn(),
     count: jest.fn(),
+    update: jest.fn(),
+    delete: jest.fn(),
   };
   const mockUserRepo = {
     decrement: jest.fn(),
+    increment: jest.fn(),
   };
   // ⚠️ MỚI: isEligibleApprover()/getManagedDepartmentIds() giờ lấy
   // DepartmentManagerRepository qua `departmentRepo.manager.getRepository
@@ -916,6 +919,220 @@ describe('LeaveRequestsService - Phan quyen duyet (PERMISSIONS.md muc 2.6)', () 
       mockLeaveRepo.count.mockResolvedValue(2);
       expect(await service.countMyPending(42)).toEqual({ count: 2 });
       expect(mockLeaveRepo.count).toHaveBeenCalledWith({ where: { requesterId: 42, status: LeaveStatus.PENDING } });
+    });
+  });
+  describe('Thung rac: trash()/hardDelete()/bulk*/findTrashPaged()', () => {
+    const processed = (status: LeaveStatus, extra: any = {}) => ({
+      ...pendingRequest(Role.EMPLOYEE, 1),
+      status,
+      cancelledAt: null,
+      attachments: [],
+      ...extra,
+    });
+
+    beforeEach(() => {
+      mockLeaveRepo.update.mockResolvedValue({ affected: 1 });
+      mockLeaveRepo.delete.mockResolvedValue({ affected: 1 });
+    });
+
+    describe('trash() - xoa mem don DA XU LY tu tab Lich su', () => {
+      it('don PENDING bi chan voi MOI role (ke ca Admin) - chi chu don duoc huy qua cancel()', async () => {
+        mockLeaveRepo.findOne.mockResolvedValue(processed(LeaveStatus.PENDING));
+        await expect(service.trash(1, 1, Role.ADMIN, PermissionScope.ALL)).rejects.toThrow(ForbiddenException);
+        expect(mockLeaveRepo.update).not.toHaveBeenCalled();
+      });
+
+      it('khong du scope (department khac) -> 403, khong cap nhat', async () => {
+        mockLeaveRepo.findOne.mockResolvedValue(processed(LeaveStatus.APPROVED));
+        mockDepartmentManagerRepo.findOne.mockResolvedValue(null);
+        await expect(service.trash(1, 20, Role.MANAGER, PermissionScope.DEPARTMENT)).rejects.toThrow(ForbiddenException);
+        expect(mockLeaveRepo.update).not.toHaveBeenCalled();
+      });
+
+      it('scope null (khong co quyen) -> 403', async () => {
+        mockLeaveRepo.findOne.mockResolvedValue(processed(LeaveStatus.APPROVED));
+        await expect(service.trash(1, 5, Role.EMPLOYEE, null)).rejects.toThrow(ForbiddenException);
+      });
+
+      it('don da o thung rac -> 400', async () => {
+        mockLeaveRepo.findOne.mockResolvedValue(
+          processed(LeaveStatus.CANCELLED, { cancelledAt: new Date() }),
+        );
+        await expect(service.trash(1, 1, Role.ADMIN, PermissionScope.ALL)).rejects.toThrow(BadRequestException);
+      });
+
+      it('don khong ton tai -> 404', async () => {
+        mockLeaveRepo.findOne.mockResolvedValue(null);
+        await expect(service.trash(9, 1, Role.ADMIN, PermissionScope.ALL)).rejects.toThrow(NotFoundException);
+      });
+
+      it('APPROVED: chuyen cancelled + cancelledAt bang UPDATE co dieu kien, HOAN phep nam (loai phep tru phep)', async () => {
+        mockLeaveRepo.findOne.mockResolvedValue(processed(LeaveStatus.APPROVED, { totalDays: 2 }));
+        const r = await service.trash(1, 1, Role.ADMIN, PermissionScope.ALL);
+
+        expect(mockLeaveRepo.update).toHaveBeenCalledWith(
+          expect.objectContaining({ id: 1, status: LeaveStatus.APPROVED }),
+          expect.objectContaining({ status: LeaveStatus.CANCELLED, cancelledAt: expect.any(Date) }),
+        );
+        expect(mockUserRepo.increment).toHaveBeenCalledWith({ id: 100 }, 'annualLeaveBalance', 2);
+        expect(r).toEqual({ id: 1, status: LeaveStatus.CANCELLED, refundedDays: 2 });
+        expect(mockAuditService.logActionAsync).toHaveBeenCalledWith(
+          1, 'TRASH_LEAVE_REQUEST', 'leave_request', 1, expect.anything(), expect.anything(),
+        );
+      });
+
+      it('APPROVED nhung loai phep KHONG tru phep nam -> khong hoan', async () => {
+        mockLeaveRepo.findOne.mockResolvedValue(processed(LeaveStatus.APPROVED));
+        mockLeaveTypesService.getByCode.mockResolvedValueOnce({ code: 'unpaid', deductsAnnualBalance: false });
+        const r = await service.trash(1, 1, Role.ADMIN, PermissionScope.ALL);
+        expect(mockUserRepo.increment).not.toHaveBeenCalled();
+        expect(r.refundedDays).toBe(0);
+      });
+
+      it('REJECTED: vao thung rac, KHONG hoan phep (chua tung tru)', async () => {
+        mockLeaveRepo.findOne.mockResolvedValue(processed(LeaveStatus.REJECTED));
+        await service.trash(1, 1, Role.ADMIN, PermissionScope.ALL);
+        expect(mockLeaveRepo.update).toHaveBeenCalled();
+        expect(mockUserRepo.increment).not.toHaveBeenCalled();
+      });
+
+      it('UPDATE co dieu kien khong khop (race) -> 400 va KHONG hoan phep 2 lan', async () => {
+        mockLeaveRepo.findOne.mockResolvedValue(processed(LeaveStatus.APPROVED));
+        mockLeaveRepo.update.mockResolvedValue({ affected: 0 });
+        await expect(service.trash(1, 1, Role.ADMIN, PermissionScope.ALL)).rejects.toThrow(BadRequestException);
+        expect(mockUserRepo.increment).not.toHaveBeenCalled();
+      });
+
+      it('MANAGER scope=department dung phong ban -> duoc phep', async () => {
+        mockLeaveRepo.findOne.mockResolvedValue(processed(LeaveStatus.REJECTED));
+        mockDepartmentManagerRepo.findOne.mockResolvedValue({ departmentId: 1, userId: 20 });
+        await expect(service.trash(1, 20, Role.MANAGER, PermissionScope.DEPARTMENT)).resolves.toBeDefined();
+      });
+    });
+
+    describe('hardDelete() - chi xoa vinh vien don DA o thung rac', () => {
+      it('don chua co cancelledAt (approved/pending/rejected) -> 400, khong xoa gi', async () => {
+        for (const st of [LeaveStatus.PENDING, LeaveStatus.APPROVED, LeaveStatus.REJECTED]) {
+          mockLeaveRepo.findOne.mockResolvedValue(processed(st));
+          await expect(service.hardDelete(1, 1, Role.ADMIN, PermissionScope.ALL)).rejects.toThrow(BadRequestException);
+        }
+        expect(mockLeaveRepo.delete).not.toHaveBeenCalled();
+        expect(mockUploadsService.deleteObject).not.toHaveBeenCalled();
+      });
+
+      it('khong du scope -> 403 (kiem tra TRUOC khi lo trang thai don)', async () => {
+        mockLeaveRepo.findOne.mockResolvedValue(processed(LeaveStatus.CANCELLED, { cancelledAt: new Date() }));
+        await expect(service.hardDelete(1, 5, Role.EMPLOYEE, null)).rejects.toThrow(ForbiddenException);
+        expect(mockLeaveRepo.delete).not.toHaveBeenCalled();
+      });
+
+      it('don PENDING da bi chu don huy (cancelledAt co gia tri) -> XOA DUOC du status goc la pending', async () => {
+        mockLeaveRepo.findOne.mockResolvedValue(
+          processed(LeaveStatus.CANCELLED, { cancelledAt: new Date() }),
+        );
+        await expect(service.hardDelete(1, 1, Role.ADMIN, PermissionScope.ALL)).resolves.toEqual({ id: 1 });
+        expect(mockLeaveRepo.delete).toHaveBeenCalledWith(1);
+        expect(mockAuditService.logActionAsync).toHaveBeenCalledWith(
+          1, 'DELETE_LEAVE_REQUEST', 'leave_request', 1, expect.anything(), null,
+        );
+      });
+
+      it('don co anh: xoa object B2 (best-effort, B2 loi khong chan) + dong attachments + dong don', async () => {
+        const attachments = [
+          { id: 1, objectKey: 'leave-attachments/100/a.png' },
+          { id: 2, objectKey: 'leave-attachments/100/b.png' },
+        ];
+        mockLeaveRepo.findOne.mockResolvedValue(
+          processed(LeaveStatus.CANCELLED, { cancelledAt: new Date(), attachments }),
+        );
+        mockUploadsService.deleteObject.mockRejectedValueOnce(new Error('B2 down')).mockResolvedValueOnce(undefined);
+
+        await service.hardDelete(1, 1, Role.ADMIN, PermissionScope.ALL);
+
+        expect(mockUploadsService.deleteObject).toHaveBeenCalledTimes(2);
+        expect(mockAttachmentRepo.remove).toHaveBeenCalledWith(attachments);
+        expect(mockLeaveRepo.delete).toHaveBeenCalledWith(1);
+      });
+    });
+
+    describe('bulkTrash()/bulkHardDelete() - partial success', () => {
+      it('bulkTrash: don loi (pending/khong ton tai) vao failed, don hop le van xu ly', async () => {
+        mockLeaveRepo.findOne
+          .mockResolvedValueOnce(processed(LeaveStatus.APPROVED, { id: 1 }))
+          .mockResolvedValueOnce(processed(LeaveStatus.PENDING, { id: 2 }))
+          .mockResolvedValueOnce(null);
+
+        const r = await service.bulkTrash([1, 2, 3], 1, Role.ADMIN, PermissionScope.ALL);
+
+        expect(r.succeeded).toEqual([1]);
+        expect(r.failed.map((f) => f.id)).toEqual([2, 3]);
+        expect(r.failed.every((f) => typeof f.reason === 'string' && f.reason.length > 0)).toBe(true);
+      });
+
+      it('bulkHardDelete: chi xoa don trong thung rac, don chua huy nam trong failed', async () => {
+        mockLeaveRepo.findOne
+          .mockResolvedValueOnce(processed(LeaveStatus.CANCELLED, { cancelledAt: new Date() }))
+          .mockResolvedValueOnce(processed(LeaveStatus.APPROVED));
+
+        const r = await service.bulkHardDelete([10, 11], 1, Role.ADMIN, PermissionScope.ALL);
+
+        expect(r.succeeded).toEqual([10]);
+        expect(r.failed).toEqual([expect.objectContaining({ id: 11 })]);
+        expect(mockLeaveRepo.delete).toHaveBeenCalledTimes(1);
+      });
+
+      it('loi bat ngo (khong phai HttpException) -> reason chung, khong lo message noi bo', async () => {
+        mockLeaveRepo.findOne.mockRejectedValueOnce(new Error('ER_LOCK_DEADLOCK secret detail'));
+        const r = await service.bulkTrash([1], 1, Role.ADMIN, PermissionScope.ALL);
+        expect(r.failed).toEqual([{ id: 1, reason: 'Lỗi hệ thống' }]);
+      });
+    });
+
+    describe('findTrashPaged()', () => {
+      const buildQb = () => {
+        const qb: any = {
+          leftJoin: jest.fn().mockReturnThis(),
+          leftJoinAndSelect: jest.fn().mockReturnThis(),
+          loadRelationCountAndMap: jest.fn().mockReturnThis(),
+          where: jest.fn().mockReturnThis(),
+          andWhere: jest.fn().mockReturnThis(),
+          orderBy: jest.fn().mockReturnThis(),
+          addOrderBy: jest.fn().mockReturnThis(),
+        };
+        mockLeaveRepo.createQueryBuilder.mockReturnValue(qb);
+        return qb;
+      };
+
+      beforeEach(() => {
+        (paginateByWeek as jest.Mock).mockReset();
+        (paginateByWeek as jest.Mock).mockResolvedValue({
+          data: [], total: 0, totalPages: 0, weeks: [], weekTotal: 0, meta: { totalWeeks: 0, weeksPerPage: 4 },
+        });
+      });
+
+      it('khong co scope -> rong, khong query DB', async () => {
+        const r = await service.findTrashPaged(5, Role.EMPLOYEE, null, {});
+        expect(r.data).toEqual([]);
+        expect(mockLeaveRepo.createQueryBuilder).not.toHaveBeenCalled();
+      });
+
+      it('loc theo cancelledAt IS NOT NULL, bo qua `status` tu client, dung week_start', async () => {
+        const qb = buildQb();
+        await service.findTrashPaged(1, Role.ADMIN, null, { status: 'approved', leaveType: 'sick' });
+
+        expect(qb.where).toHaveBeenCalledWith('leave.cancelledAt IS NOT NULL');
+        const sqls = qb.andWhere.mock.calls.map((c: any[]) => c[0]);
+        expect(sqls).not.toContain('leave.status = :filterStatus');
+        expect(sqls).toContain('leave.leaveType = :filterLeaveType');
+        expect(paginateByWeek).toHaveBeenCalledWith(qb, expect.objectContaining({ weekExpr: '`leave`.`week_start`' }));
+      });
+
+      it('MANAGER scope=department: ap filter phong ban nhu lich su', async () => {
+        const qb = buildQb();
+        mockDepartmentManagerRepo.find.mockResolvedValue([{ departmentId: 3 }]);
+        await service.findTrashPaged(20, Role.MANAGER, PermissionScope.DEPARTMENT, {});
+        expect(qb.andWhere.mock.calls.some((c: any[]) => c[0] instanceof Brackets)).toBe(true);
+      });
     });
   });
 });

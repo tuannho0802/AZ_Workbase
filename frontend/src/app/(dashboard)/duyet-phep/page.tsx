@@ -5,13 +5,15 @@ import { useRouter } from 'next/navigation';
 import { useQuery } from '@tanstack/react-query';
 import {
   Card, Button, Space, Tag, Badge, Tabs, Modal, Input, App, Typography, Divider, Tooltip,
-  Row, Col, Select, DatePicker, Form
+  Row, Col, Select, DatePicker, Form, Checkbox
 } from 'antd';
 import {
   CheckOutlined, CloseOutlined, HistoryOutlined, HourglassOutlined,
-  UserOutlined, CalendarOutlined, ClockCircleOutlined, SearchOutlined, EditOutlined
+  UserOutlined, CalendarOutlined, ClockCircleOutlined, SearchOutlined, EditOutlined,
+  DeleteOutlined, ExclamationCircleOutlined
 } from '@ant-design/icons';
-import { leaveRequestsApi, LeaveRequest } from '@/lib/api/leave-requests.api';
+import { leaveRequestsApi, LeaveRequest, BulkLeaveResult } from '@/lib/api/leave-requests.api';
+import { useIdSelection } from '@/lib/hooks/useIdSelection';
 import { useMyPermissions } from '@/lib/hooks/useMyPermissions';
 import { useLeaveTypes } from '@/lib/hooks/useLeaveTypes';
 import { AttachmentsViewerButton } from '@/components/leave-requests/AttachmentsViewerButton';
@@ -68,6 +70,47 @@ const REASON_ELLIPSIS_STYLE: React.CSSProperties = {
 function formatPeriodHours(record: LeaveRequest): string | null {
   if (!record.periodStartTime || !record.periodEndTime) return null;
   return `${record.periodStartTime.slice(0, 5)} - ${record.periodEndTime.slice(0, 5)}`;
+}
+
+// Đơn trong THÙNG RÁC: nguồn gốc suy từ mốc thời gian đã có (không cần cột mới):
+// có approvedAt = đã duyệt rồi bị xoá từ Lịch sử; có rejectedAt = tương tự đơn
+// bị từ chối; không có cả 2 = chủ đơn tự huỷ khi còn chờ duyệt.
+function trashOrigin(record: LeaveRequest): { text: string; color: string } {
+  if (record.approvedAt) return { text: 'Đã duyệt', color: 'success' };
+  if (record.rejectedAt) return { text: 'Từ chối', color: 'error' };
+  return { text: 'Chờ duyệt (chủ đơn huỷ)', color: 'processing' };
+}
+
+// Thanh thao tác hàng loạt - chỉ hiện khi đang chọn >= 1 đơn.
+function BulkBar({
+  count,
+  actionLabel,
+  onAction,
+  onClear,
+  loading,
+}: {
+  count: number;
+  actionLabel: string;
+  onAction: () => void;
+  onClear: () => void;
+  loading: boolean;
+}) {
+  if (count === 0) return null;
+  return (
+    <div
+      style={{
+        display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap',
+        padding: '8px 12px', marginBottom: 12, background: '#fff1f0',
+        border: '1px solid #ffccc7', borderRadius: 6,
+      }}
+    >
+      <Text>Đã chọn <b>{count}</b> đơn</Text>
+      <Button danger size="small" icon={<DeleteOutlined />} loading={loading} onClick={onAction}>
+        {actionLabel}
+      </Button>
+      <Button type="link" size="small" disabled={loading} onClick={onClear}>Bỏ chọn</Button>
+    </div>
+  );
 }
 
 // ── mobile card – pending ────────────────────────────────────────────────────
@@ -176,11 +219,19 @@ function HistoryMobileCard({
   record,
   onEdit,
   canEdit,
+  canDelete,
+  onTrash,
+  selected,
+  onToggleSelect,
   leaveTypeMap,
 }: {
   record: LeaveRequest;
     onEdit: (record: LeaveRequest) => void;
     canEdit: boolean;
+  canDelete: boolean;
+  onTrash: (id: number) => void;
+  selected: boolean;
+  onToggleSelect: (id: number, selected: boolean) => void;
   leaveTypeMap: Record<string, { text: string; color: string }>;
 }) {
   const lt = leaveTypeMap[record.leaveType] ?? { text: record.leaveType, color: 'default' };
@@ -193,9 +244,14 @@ function HistoryMobileCard({
       styles={{ body: { padding: '12px 14px' } }}
     >
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 8 }}>
-        <div>
-          <div style={{ fontWeight: 600, fontSize: 14 }}>{record.requester.name}</div>
-          <div style={{ fontSize: 11, color: '#8c8c8c' }}>{record.requester.email}</div>
+        <div style={{ display: 'flex', gap: 8 }}>
+          {canDelete && (
+            <Checkbox checked={selected} onChange={(e) => onToggleSelect(record.id, e.target.checked)} />
+          )}
+          <div>
+            <div style={{ fontWeight: 600, fontSize: 14 }}>{record.requester.name}</div>
+            <div style={{ fontSize: 11, color: '#8c8c8c' }}>{record.requester.email}</div>
+          </div>
         </div>
         <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 4 }}>
           <Tag color={lt.color}>{lt.text}</Tag>
@@ -248,6 +304,73 @@ function HistoryMobileCard({
             Sửa
           </Button>
         )}
+        {canDelete && (
+          <Button size="small" danger icon={<DeleteOutlined />} onClick={() => onTrash(record.id)}>
+            Huỷ
+          </Button>
+        )}
+      </div>
+    </Card>
+  );
+}
+
+// ── mobile card – trash ──────────────────────────────────────────────────────
+function TrashMobileCard({
+  record,
+  canDelete,
+  onHardDelete,
+  selected,
+  onToggleSelect,
+  leaveTypeMap,
+}: {
+  record: LeaveRequest;
+  canDelete: boolean;
+  onHardDelete: (id: number) => void;
+  selected: boolean;
+  onToggleSelect: (id: number, selected: boolean) => void;
+  leaveTypeMap: Record<string, { text: string; color: string }>;
+}) {
+  const lt = leaveTypeMap[record.leaveType] ?? { text: record.leaveType, color: 'default' };
+  const origin = trashOrigin(record);
+  return (
+    <Card variant="outlined" style={{ marginBottom: 10 }} styles={{ body: { padding: '12px 14px' } }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 8 }}>
+        <div style={{ display: 'flex', gap: 8 }}>
+          {canDelete && (
+            <Checkbox checked={selected} onChange={(e) => onToggleSelect(record.id, e.target.checked)} />
+          )}
+          <div>
+            <div style={{ fontWeight: 600, fontSize: 14 }}>{record.requester.name}</div>
+            <div style={{ fontSize: 11, color: '#8c8c8c' }}>{record.requester.email}</div>
+          </div>
+        </div>
+        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 4 }}>
+          <Tag color={lt.color}>{lt.text}</Tag>
+          <Tag color={origin.color}>{origin.text}</Tag>
+        </div>
+      </div>
+      <Divider style={{ margin: '8px 0' }} />
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+        <Text style={{ fontSize: 12 }}>
+          {dayjs(record.startDate).format('DD/MM/YYYY')} → {dayjs(record.endDate).format('DD/MM/YYYY')}
+          <Text strong style={{ color: '#1890ff', marginLeft: 6 }}>{record.totalDays} ngày</Text>
+        </Text>
+        {record.reason && (
+          <Text style={{ fontSize: 12, color: '#595959', fontStyle: 'italic' }}>Lý do: {record.reason}</Text>
+        )}
+        {record.cancelledAt && (
+          <Text style={{ fontSize: 12, color: '#8c8c8c' }}>
+            Ngày xoá: {dayjs(record.cancelledAt).format('DD/MM/YYYY HH:mm')}
+          </Text>
+        )}
+      </div>
+      <div style={{ marginTop: 10, display: 'flex', gap: 8 }}>
+        <AttachmentsViewerButton requestId={record.id} size="small" count={record.attachmentCount} />
+        {canDelete && (
+          <Button size="small" danger icon={<DeleteOutlined />} onClick={() => onHardDelete(record.id)}>
+            Xoá vĩnh viễn
+          </Button>
+        )}
       </div>
     </Card>
   );
@@ -289,6 +412,19 @@ export default function ApprovalPage() {
   const [historyPage, setHistoryPage] = useState(1);
   const [historyWeeksPerPage, setHistoryWeeksPerPage] = useState(4);
 
+  // Thùng rác (đơn có cancelledAt) - filter/phân trang tuần riêng như 2 tab kia.
+  const [trashSearch, setTrashSearch] = useState('');
+  const [trashDept, setTrashDept] = useState<number | null>(null);
+  const [trashLeaveType, setTrashLeaveType] = useState<string | null>(null);
+  const [trashDateRange, setTrashDateRange] = useState<[Dayjs | null, Dayjs | null] | null>(null);
+  const [trashPage, setTrashPage] = useState(1);
+  const [trashWeeksPerPage, setTrashWeeksPerPage] = useState(4);
+
+  // Chọn nhiều đơn để thao tác hàng loạt (xuyên tuần) - mỗi tab 1 bộ riêng.
+  const historySel = useIdSelection();
+  const trashSel = useIdSelection();
+  const [bulkProcessing, setBulkProcessing] = useState(false);
+
   // Antd Hooks to fix "Static function" warning
   const { message: messageApi, modal } = App.useApp();
   const router = useRouter();
@@ -310,6 +446,11 @@ export default function ApprovalPage() {
   // edit = "sửa hộ" ngày/loại phép/lý do của 1 đơn PENDING/APPROVED (khác
   // hẳn approve/reject) - xem migration SeedLeaveRequestsEditPermission.
   const canEdit = can('leave_requests.edit');
+  // delete = (1) Huỷ (xoá mềm) đơn đã duyệt/từ chối ở tab Lịch sử, (2) Xoá vĩnh
+  // viễn đơn ở tab Thùng rác, (3) 2 thao tác đó hàng loạt. Có scope ở BE
+  // (mặc định chỉ Admin). Đơn PENDING KHÔNG có nút huỷ ở đây - chỉ chủ đơn huỷ
+  // được, ở trang /nghi-phep. Xem Thùng rác dùng chung quyền `view`.
+  const canDelete = can('leave_requests.delete');
   // Loại phép cho dropdown ở Modal sửa - mirror leaveTypeOptions ở nghi-phep/page.tsx
   const editLeaveTypeOptions = useMemo(
     () =>
@@ -362,8 +503,26 @@ export default function ApprovalPage() {
     }),
     [debouncedHistorySearch, historyDept, historyLeaveType, historyStatus, historyDateRange],
   );
+  const debouncedTrashSearch = useDebounce(trashSearch, 400);
+  const trashFilters = useMemo(
+    () => ({
+      search: debouncedTrashSearch.trim() || undefined,
+      departmentId: trashDept ?? undefined,
+      leaveType: trashLeaveType ?? undefined,
+      fromDate: trashDateRange?.[0]?.format('YYYY-MM-DD'),
+      toDate: trashDateRange?.[1]?.format('YYYY-MM-DD'),
+    }),
+    [debouncedTrashSearch, trashDept, trashLeaveType, trashDateRange],
+  );
   const pendingList = useLeaveWeekList('pending', pendingFilters, pendingPage, pendingWeeksPerPage, !permissionsLoading && canApprove);
   const historyList = useLeaveWeekList('history', historyFilters, historyPage, historyWeeksPerPage, !permissionsLoading && canView);
+  const trashList = useLeaveWeekList('trash', trashFilters, trashPage, trashWeeksPerPage, !permissionsLoading && canView);
+
+  // Đổi filter/trang -> bỏ lựa chọn cũ (tránh xoá nhầm đơn không còn nhìn thấy).
+  const { clear: clearHistorySel } = historySel;
+  const { clear: clearTrashSel } = trashSel;
+  useEffect(() => { clearHistorySel(); }, [historyFilters, historyPage, historyWeeksPerPage, clearHistorySel]);
+  useEffect(() => { clearTrashSel(); }, [trashFilters, trashPage, trashWeeksPerPage, clearTrashSel]);
 
   // Badge tab "Chờ phê duyệt" = TỔNG đơn đang chờ (không phụ thuộc filter/trang
   // hiện tại) - dùng CHUNG queryKey + endpoint COUNT với badge sidebar.
@@ -408,6 +567,100 @@ export default function ApprovalPage() {
       }
     });
   };
+
+  // ── Xoá mềm / xoá vĩnh viễn (đơn lẻ + hàng loạt) ─────────────────────────
+  const reportBulk = (verb: string, res: BulkLeaveResult) => {
+    if (res.succeeded.length > 0) messageApi.success(`Đã ${verb} ${res.succeeded.length} đơn`);
+    if (res.failed.length > 0) {
+      modal.warning({
+        title: `${res.failed.length} đơn không xử lý được`,
+        content: (
+          <ul style={{ paddingLeft: 18, margin: 0, maxHeight: 240, overflow: 'auto' }}>
+            {res.failed.slice(0, 20).map((f) => (
+              <li key={f.id}>Đơn #{f.id}: {f.reason}</li>
+            ))}
+            {res.failed.length > 20 && <li>... và {res.failed.length - 20} đơn khác</li>}
+          </ul>
+        ),
+      });
+    }
+  };
+
+  const TRASH_CONTENT =
+    'Đơn sẽ chuyển vào tab Thùng rác. Nếu đơn đã được duyệt, số ngày phép năm đã trừ (nếu loại phép có trừ phép năm) sẽ được hoàn lại cho nhân viên.';
+  const HARD_DELETE_CONTENT = 'Đơn bị xoá vĩnh viễn cùng ảnh đính kèm và KHÔNG thể khôi phục.';
+
+  const confirmTrash = (ids: number[]) => {
+    const many = ids.length > 1;
+    modal.confirm({
+      title: many ? `Chuyển ${ids.length} đơn vào thùng rác?` : 'Chuyển đơn vào thùng rác?',
+      icon: <ExclamationCircleOutlined />,
+      content: TRASH_CONTENT,
+      okText: 'Chuyển vào thùng rác',
+      okButtonProps: { danger: true },
+      onOk: async () => {
+        setBulkProcessing(true);
+        try {
+          let res: BulkLeaveResult;
+          if (many) {
+            res = await leaveRequestsApi.bulkTrash(ids);
+          } else {
+            await leaveRequestsApi.trash(ids[0]);
+            res = { succeeded: [ids[0]], failed: [] };
+          }
+          reportBulk('chuyển vào thùng rác', res);
+          historySel.clear();
+          invalidateLeaveLists();
+        } catch (err: any) {
+          if (err.response?.status !== 401) {
+            messageApi.error(err.response?.data?.message || 'Không thể chuyển đơn vào thùng rác');
+          }
+        } finally {
+          setBulkProcessing(false);
+        }
+      },
+    });
+  };
+
+  const confirmHardDelete = (ids: number[]) => {
+    const many = ids.length > 1;
+    modal.confirm({
+      title: many ? `Xoá vĩnh viễn ${ids.length} đơn?` : 'Xoá vĩnh viễn đơn này?',
+      icon: <ExclamationCircleOutlined />,
+      content: HARD_DELETE_CONTENT,
+      okText: 'Xoá vĩnh viễn',
+      okButtonProps: { danger: true },
+      onOk: async () => {
+        setBulkProcessing(true);
+        try {
+          let res: BulkLeaveResult;
+          if (many) {
+            res = await leaveRequestsApi.bulkHardDelete(ids);
+          } else {
+            await leaveRequestsApi.hardDelete(ids[0]);
+            res = { succeeded: [ids[0]], failed: [] };
+          }
+          reportBulk('xoá vĩnh viễn', res);
+          trashSel.clear();
+          invalidateLeaveLists();
+        } catch (err: any) {
+          if (err.response?.status !== 401) {
+            messageApi.error(err.response?.data?.message || 'Không thể xoá đơn');
+          }
+        } finally {
+          setBulkProcessing(false);
+        }
+      },
+    });
+  };
+
+  // rowSelection cho <Table> của từng tuần - cập nhật theo delta (xem useIdSelection).
+  const buildRowSelection = (sel: ReturnType<typeof useIdSelection>) => ({
+    selectedRowKeys: sel.keys,
+    onSelect: (record: LeaveRequest, selected: boolean) => sel.toggle(record.id, selected),
+    onSelectAll: (selected: boolean, _rows: LeaveRequest[], changeRows: LeaveRequest[]) =>
+      sel.setMany(changeRows.map((r) => r.id), selected),
+  });
 
   const openRejectModal = (id: number) => {
     setSelectedRequest(id);
@@ -722,18 +975,121 @@ export default function ApprovalPage() {
     },
     {
       title: 'Thao tác',
-      width: 100,
-      render: (_: any, record: LeaveRequest) =>
-        (record.status === 'pending' || record.status === 'approved') && (
-          <Button size="small" icon={<EditOutlined />} onClick={() => openEditModal(record)}>
-            Sửa
-          </Button>
-        )
+      width: canEdit && canDelete ? 170 : 100,
+      render: (_: any, record: LeaveRequest) => (
+        <Space size={4}>
+          {canEdit && (record.status === 'pending' || record.status === 'approved') && (
+            <Button size="small" icon={<EditOutlined />} onClick={() => openEditModal(record)}>
+              Sửa
+            </Button>
+          )}
+          {/* Nút Huỷ (xoá mềm) CHỈ có ở Lịch sử (đơn đã duyệt/từ chối). Tab Chờ
+              duyệt không có - đơn pending chỉ chủ đơn huỷ được. */}
+          {canDelete && (
+            <Button size="small" danger icon={<DeleteOutlined />} onClick={() => confirmTrash([record.id])}>
+              Huỷ
+            </Button>
+          )}
+        </Space>
+      )
     }
-  ].filter((col: any) => canEdit || col.title !== 'Thao tác');
+  ].filter((col: any) => canEdit || canDelete || col.title !== 'Thao tác');
   // Cùng lý do với `pendingTableWidth` ở trên - `historyColumns` giờ cũng có
   // `.filter()` (ẩn "Thao tác" khi không có quyền `leave_requests.edit`).
   const historyTableWidth = historyColumns.reduce((sum: number, col: any) => sum + (col.width ?? 0), 0);
+
+  const trashColumns = [
+    {
+      title: 'Người gửi',
+      dataIndex: ['requester', 'name'],
+      width: 170,
+      render: (name: string, record: LeaveRequest) => (
+        <div>
+          <div style={{ fontWeight: 500 }}>{name}</div>
+          <div style={{ fontSize: 12, color: '#888' }}>{record.requester.email}</div>
+        </div>
+      )
+    },
+    {
+      title: 'Ngày gửi',
+      dataIndex: 'createdAt',
+      width: 100,
+      render: (date: string) => dayjs(date).format('DD/MM/YYYY')
+    },
+    {
+      title: 'Phòng ban',
+      width: 120,
+      render: (_: any, record: LeaveRequest) =>
+        record.requester.department ? (
+          <Tag color={resolveEntityColor(record.requester.department.color)}>{record.requester.department.name}</Tag>
+        ) : (
+          <Tag>Chưa gán</Tag>
+        )
+    },
+    {
+      title: 'Loại phép',
+      dataIndex: 'leaveType',
+      width: 100,
+      render: (type: string) => {
+        const info = leaveTypeMap[type] ?? { text: type, color: 'default' };
+        return <Tag color={info.color}>{info.text}</Tag>;
+      }
+    },
+    {
+      title: 'Thời gian',
+      width: 130,
+      render: (_: any, record: LeaveRequest) => (
+        <div>
+          <div>{dayjs(record.startDate).format('DD/MM/YYYY')}</div>
+          <div style={{ fontSize: 12, color: '#888' }}>đến {dayjs(record.endDate).format('DD/MM/YYYY')}</div>
+          <div style={{ fontSize: 12, color: '#1890ff' }}>{record.totalDays} ngày</div>
+        </div>
+      )
+    },
+    {
+      title: 'Trước khi xoá',
+      width: 170,
+      render: (_: any, record: LeaveRequest) => {
+        const o = trashOrigin(record);
+        return <Tag color={o.color}>{o.text}</Tag>;
+      }
+    },
+    {
+      title: 'Lý do',
+      dataIndex: 'reason',
+      width: 150,
+      ellipsis: true,
+      render: (reason: string) =>
+        reason ? (
+          <Tooltip title={reason}>
+            <span style={REASON_ELLIPSIS_STYLE}>{reason}</span>
+          </Tooltip>
+        ) : '-'
+    },
+    {
+      title: 'Đính kèm',
+      width: 100,
+      render: (_: any, record: LeaveRequest) => (
+        <AttachmentsViewerButton requestId={record.id} count={record.attachmentCount} />
+      )
+    },
+    {
+      title: 'Ngày xoá',
+      dataIndex: 'cancelledAt',
+      width: 130,
+      render: (date?: string | null) => (date ? dayjs(date).format('DD/MM/YYYY HH:mm') : '-')
+    },
+    {
+      title: 'Thao tác',
+      width: 140,
+      render: (_: any, record: LeaveRequest) => (
+        <Button size="small" danger icon={<DeleteOutlined />} onClick={() => confirmHardDelete([record.id])}>
+          Xoá vĩnh viễn
+        </Button>
+      )
+    }
+  ].filter((col: any) => canDelete || col.title !== 'Thao tác');
+  const trashTableWidth = trashColumns.reduce((sum: number, col: any) => sum + (col.width ?? 0), 0);
 
   // ── tab items ─────────────────────────────────────────────────────────────
   const tabItems = [
@@ -890,12 +1246,22 @@ export default function ApprovalPage() {
               />
             </Col>
           </Row>
+          {canDelete && (
+            <BulkBar
+              count={historySel.count}
+              actionLabel="Chuyển vào thùng rác"
+              loading={bulkProcessing}
+              onAction={() => confirmTrash(historySel.keys)}
+              onClear={historySel.clear}
+            />
+          )}
           <WeeklyLazySection<LeaveRequest>
             weeks={historyList.weeks}
             fetchWeek={historyList.fetchWeek}
             resetKey={historyList.resetKey}
             rowKey="id"
             columns={historyColumns as any}
+            rowSelection={canDelete ? buildRowSelection(historySel) : undefined}
             scroll={{ x: historyTableWidth }}
             size="small"
             isMobile={isMobile}
@@ -907,6 +1273,10 @@ export default function ApprovalPage() {
                 record={record}
                 onEdit={openEditModal}
                 canEdit={canEdit}
+                canDelete={canDelete}
+                onTrash={(id) => confirmTrash([id])}
+                selected={historySel.ids.has(record.id)}
+                onToggleSelect={historySel.toggle}
                 leaveTypeMap={leaveTypeMap}
               />
             )}
@@ -920,6 +1290,107 @@ export default function ApprovalPage() {
               onChange: (p, ps) => {
                 setHistoryPage(ps !== historyWeeksPerPage ? 1 : p);
                 setHistoryWeeksPerPage(ps);
+              },
+            }}
+          />
+        </>
+      )
+    } : null,
+    canView ? {
+      key: 'trash',
+      label: (
+        <span>
+          <DeleteOutlined />
+          {' '}Thùng rác
+        </span>
+      ),
+      children: (
+        <>
+          <Row gutter={[12, 12]} style={{ marginBottom: 16 }}>
+            <Col xs={24} sm={12} md={7}>
+              <Input
+                allowClear
+                placeholder="Tìm theo tên, email, lý do..."
+                prefix={<SearchOutlined />}
+                value={trashSearch}
+                onChange={(e) => { setTrashSearch(e.target.value); setTrashPage(1); }}
+              />
+            </Col>
+            <Col xs={12} sm={6} md={5}>
+              <Select
+                allowClear
+                placeholder="Phòng ban"
+                style={{ width: '100%' }}
+                value={trashDept}
+                onChange={(v) => { setTrashDept(v ?? null); setTrashPage(1); }}
+                options={departmentOptions}
+              />
+            </Col>
+            <Col xs={12} sm={6} md={5}>
+              <Select
+                allowClear
+                placeholder="Loại phép"
+                style={{ width: '100%' }}
+                value={trashLeaveType}
+                onChange={(v) => { setTrashLeaveType(v ?? null); setTrashPage(1); }}
+                options={leaveTypes.map((t) => ({
+                  value: t.code,
+                  label: <Tag color={t.color} style={{ marginInlineEnd: 0 }}>{t.name}</Tag>,
+                }))}
+              />
+            </Col>
+            <Col xs={24} sm={12} md={7}>
+              <DatePicker.RangePicker
+                style={{ width: '100%' }}
+                format="DD/MM/YYYY"
+                placeholder={['Từ ngày', 'Đến ngày']}
+                value={trashDateRange as any}
+                onChange={(vals) => { setTrashDateRange(vals as [Dayjs | null, Dayjs | null] | null); setTrashPage(1); }}
+              />
+            </Col>
+          </Row>
+          {canDelete && (
+            <BulkBar
+              count={trashSel.count}
+              actionLabel="Xoá vĩnh viễn"
+              loading={bulkProcessing}
+              onAction={() => confirmHardDelete(trashSel.keys)}
+              onClear={trashSel.clear}
+            />
+          )}
+          <WeeklyLazySection<LeaveRequest>
+            weeks={trashList.weeks}
+            fetchWeek={trashList.fetchWeek}
+            resetKey={trashList.resetKey}
+            rowKey="id"
+            columns={trashColumns as any}
+            rowSelection={canDelete ? buildRowSelection(trashSel) : undefined}
+            scroll={{ x: trashTableWidth }}
+            size="small"
+            isMobile={isMobile}
+            loading={trashList.isFetching}
+            emptyText="Thùng rác trống"
+            renderMobileCard={(record) => (
+              <TrashMobileCard
+                key={record.id}
+                record={record}
+                canDelete={canDelete}
+                onHardDelete={(id) => confirmHardDelete([id])}
+                selected={trashSel.ids.has(record.id)}
+                onToggleSelect={trashSel.toggle}
+                leaveTypeMap={leaveTypeMap}
+              />
+            )}
+            pagination={{
+              current: trashPage,
+              pageSize: trashWeeksPerPage,
+              total: trashList.totalWeeks,
+              showSizeChanger: true,
+              pageSizeOptions: ['2', '4', '8'],
+              showTotal: (t) => `Tổng cộng ${t} tuần (${trashList.totalRecords.toLocaleString()} đơn)`,
+              onChange: (p, ps) => {
+                setTrashPage(ps !== trashWeeksPerPage ? 1 : p);
+                setTrashWeeksPerPage(ps);
               },
             }}
           />

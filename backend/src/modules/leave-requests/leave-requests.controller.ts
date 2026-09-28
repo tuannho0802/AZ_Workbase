@@ -1,4 +1,4 @@
-import { Controller, Get, Post, Patch, Body, Param, UseGuards, Request, Query, BadRequestException } from '@nestjs/common';
+import { Controller, Get, Post, Patch, Delete, Body, Param, UseGuards, Request, Query, BadRequestException } from '@nestjs/common';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { PermissionGuard } from '../../common/guards/permission.guard';
 import { RequirePermission } from '../../common/decorators/require-permission.decorator';
@@ -8,6 +8,7 @@ import { UploadsService } from '../uploads/uploads.service';
 import { PresignAttachmentDto } from '../uploads/dto/presign-attachment.dto';
 import { DiscardAttachmentsDto } from './dto/discard-attachments.dto';
 import { QueryLeaveRequestsDto } from './dto/query-leave-requests.dto';
+import { BulkLeaveIdsDto } from './dto/bulk-leave-ids.dto';
 
 @Controller('leave-requests')
 @UseGuards(JwtAuthGuard, PermissionGuard)
@@ -112,6 +113,42 @@ export class LeaveRequestsController {
     return this.leaveRequestsService.findHistoryPaged(req.user.id, req.user.role, scope, query);
   }
 
+  // ── THÙNG RÁC + XOÁ (xem LeaveRequestsService.trash/hardDelete) ─────────────
+  // Xem thùng rác dùng chung quyền `view` (cùng phạm vi lịch sử duyệt); mọi
+  // hành động xoá gate `leave_requests.delete` (có scope, mặc định chỉ Admin).
+  // Đơn PENDING chỉ chủ đơn huỷ được (PATCH :id/cancel bên dưới) - `:id/trash`
+  // từ chối pending với MỌI role. Route tĩnh 'trash/...'/'bulk-trash' không đụng
+  // ':id/...' (khác số segment / method).
+  @Get('trash/paged')
+  @RequirePermission('leave_requests.view')
+  async findTrashPaged(
+    @Request() req,
+    @Query() query: QueryLeaveRequestsDto,
+    @GetPermissionScope() scope?: string | null,
+  ) {
+    return this.leaveRequestsService.findTrashPaged(req.user.id, req.user.role, scope, query);
+  }
+
+  @Post('bulk-trash')
+  @RequirePermission('leave_requests.delete')
+  async bulkTrash(
+    @Body() dto: BulkLeaveIdsDto,
+    @Request() req,
+    @GetPermissionScope() scope?: string | null,
+  ) {
+    return this.leaveRequestsService.bulkTrash(dto.ids, req.user.id, req.user.role, scope);
+  }
+
+  @Post('trash/bulk-delete')
+  @RequirePermission('leave_requests.delete')
+  async bulkHardDelete(
+    @Body() dto: BulkLeaveIdsDto,
+    @Request() req,
+    @GetPermissionScope() scope?: string | null,
+  ) {
+    return this.leaveRequestsService.bulkHardDelete(dto.ids, req.user.id, req.user.role, scope);
+  }
+
   @Get()
   @RequirePermission('leave_requests.request')
   async findAll(@Request() req) {
@@ -180,5 +217,19 @@ export class LeaveRequestsController {
       parseInt(id),
       req.user.id
     );
+  }
+
+  // Chuyển đơn ĐÃ DUYỆT/TỪ CHỐI vào thùng rác (nút "Huỷ" ở tab Lịch sử).
+  @Patch(':id/trash')
+  @RequirePermission('leave_requests.delete')
+  async trash(@Param('id') id: string, @Request() req, @GetPermissionScope() scope?: string | null) {
+    return this.leaveRequestsService.trash(parseInt(id), req.user.id, req.user.role, scope);
+  }
+
+  // Xoá vĩnh viễn - CHỈ đơn đã ở thùng rác (service chặn nếu chưa có cancelled_at).
+  @Delete(':id')
+  @RequirePermission('leave_requests.delete')
+  async hardDelete(@Param('id') id: string, @Request() req, @GetPermissionScope() scope?: string | null) {
+    return this.leaveRequestsService.hardDelete(parseInt(id), req.user.id, req.user.role, scope);
   }
 }

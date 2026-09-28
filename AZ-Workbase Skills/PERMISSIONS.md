@@ -125,7 +125,7 @@ dùng `@Roles()` enum tĩnh. Danh mục permission đầy đủ trong DB (sau 2 
 | `leave_requests.request` | leave_requests | Tạo/xem đơn của mình |
 | `leave_requests.view` | leave_requests | Xem đơn của người khác |
 | `leave_requests.approve` | leave_requests | Duyệt/từ chối đơn |
-| `leave_requests.delete` | leave_requests | Xoá đơn — chỉ Admin |
+| `leave_requests.delete` | leave_requests | Huỷ (xoá mềm) đơn đã duyệt/từ chối + xoá vĩnh viễn đơn trong Thùng rác — **có scope** (`all`/`department`), mặc định chỉ Admin |
 | `attendance.view` | attendance | Xem bảng chấm công |
 | `attendance.manage` | attendance | Đồng bộ/map chấm công |
 | `attendance.delete` | attendance | Xoá log — chỉ Admin |
@@ -477,6 +477,17 @@ khác phòng ban bị chặn dù đúng role).
    báo lỡ set sai ngày sau khi đã gửi/đã duyệt. Nếu đơn đang APPROVED, `update()` tự cân bằng lại
    `annualLeaveBalance` (hoàn số ngày cũ, trừ lại số ngày mới) để không lệch số dư phép năm. KHÔNG check
    overlap/conflict khi sửa (đối xứng với bypass ở `create()`).
+
+**[2026-09-28] Thùng rác + xoá mềm/xoá cứng đơn nghỉ phép (`leave_requests.delete` NAY CÓ SCOPE):**
+- Xoá mềm = `status='cancelled'` + `cancelled_at` (không có cột `deleted_at`). **Đơn PENDING chỉ CHỦ ĐƠN huỷ được**
+  (`PATCH :id/cancel`, quyền `request`, ở /nghi-phep) — `PATCH :id/trash` từ chối đơn pending với MỌI role kể cả Admin.
+  Người khác chỉ huỷ được đơn ĐÃ duyệt/từ chối, từ nút "Huỷ" ở tab Lịch sử (`leave_requests.delete` + scope, cùng rule
+  `isEligibleApprover` với duyệt/sửa hộ). Huỷ đơn APPROVED hoàn lại `annualLeaveBalance` (UPDATE có điều kiện, chỉ hoàn khi `affected=1`).
+- Xoá vĩnh viễn (`DELETE :id`, `POST trash/bulk-delete`) CHỈ áp dụng đơn có `cancelled_at` (đơn trong Thùng rác), kể cả đơn
+  từng pending do chủ đơn huỷ. Không có khôi phục. Dọn ảnh B2 best-effort.
+- Xem tab Thùng rác dùng `leave_requests.view` (cùng phạm vi Lịch sử); mọi nút xoá gate `leave_requests.delete`.
+- Bulk (`POST bulk-trash`, `POST trash/bulk-delete`, tối đa 100 id/lần): từng đơn độc lập, trả `{succeeded, failed[{id,reason}]}`.
+- Migration `1784700000000-MakeLeaveRequestsDeleteScoped`: `supports_scope=TRUE`, dòng `role_permissions` cũ scope NULL → `all`.
 
 ### 2.7. Audit Logs (`modules/audit`) — ✅ ĐÃ KHỚP
 

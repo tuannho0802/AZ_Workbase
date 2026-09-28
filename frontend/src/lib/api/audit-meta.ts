@@ -161,6 +161,10 @@ export const ACTION_META: Record<string, ActionMeta> = {
   APPROVE_LEAVE_REQUEST: m('Duyệt đơn nghỉ phép', 'success', 'leave'),
   REJECT_LEAVE_REQUEST: m('Từ chối đơn nghỉ phép', 'red', 'leave'),
   CANCEL_LEAVE_REQUEST: m('Hủy đơn nghỉ phép', 'default', 'leave'),
+  // Đơn đã duyệt/từ chối -> thùng rác (LeaveRequestsService.trash) và xoá vĩnh
+  // viễn đơn trong thùng rác (LeaveRequestsService.hardDelete).
+  TRASH_LEAVE_REQUEST: m('Chuyển đơn nghỉ phép vào thùng rác', 'orange', 'leave'),
+  DELETE_LEAVE_REQUEST: m('Xóa vĩnh viễn đơn nghỉ phép', 'red', 'leave'),
   // "Sửa hộ" ngày/loại phép/lý do của 1 đơn PENDING/APPROVED - action mới
   // ghi bởi LeaveRequestsService.update() (PATCH /leave-requests/:id,
   // permission leave_requests.edit). Mirror màu 'blue' như các action

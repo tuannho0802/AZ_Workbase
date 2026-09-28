@@ -4,10 +4,11 @@ import {
   ForbiddenException,
   NotFoundException,
   InternalServerErrorException,
+  HttpException,
   Logger,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository, In, Brackets, SelectQueryBuilder } from 'typeorm';
+import { Repository, In, IsNull, Brackets, SelectQueryBuilder } from 'typeorm';
 import {
   LeaveRequest,
   LeaveStatus,
@@ -818,6 +819,28 @@ export class LeaveRequestsService {
     return this.runWeekMode(query, q);
   }
 
+  /**
+   * THÙNG RÁC - đơn đã bị huỷ/xoá mềm (`cancelled_at IS NOT NULL`), week-mode.
+   * Gồm 2 nguồn: (1) đơn PENDING do chính chủ huỷ (`cancel()`), (2) đơn
+   * APPROVED/REJECTED bị người có `leave_requests.delete` chuyển vào thùng rác
+   * (`trash()`). Cùng phạm vi xem với lịch sử duyệt (`applyApproverScope`).
+   * Tuần vẫn chia theo `created_at` (cột generated `week_start` có sẵn, không
+   * thêm cột mới). Lọc `status` bị bỏ qua - mọi dòng ở đây đều là 'cancelled'.
+   */
+  async findTrashPaged(viewerId: number, viewerRole: string, scope: string | null | undefined, q: QueryLeaveRequestsDto) {
+    if (!this.hasApproverScope(viewerRole, scope)) return this.emptyWeekModeResponse(q);
+    const query = this.leaveRequestRepo
+      .createQueryBuilder('leave')
+      .leftJoinAndSelect('leave.requester', 'requester')
+      .leftJoinAndSelect('requester.department', 'department')
+      .leftJoinAndSelect('leave.approver', 'approver')
+      .loadRelationCountAndMap('leave.attachmentCount', 'leave.attachments')
+      .where('leave.cancelledAt IS NOT NULL');
+    await this.applyApproverScope(query, viewerId, viewerRole, scope);
+    this.applyListFilters(query, { ...q, status: undefined }, { includeRequester: true });
+    return this.runWeekMode(query, q);
+  }
+
   /** Số đơn đang chờ MÌNH duyệt - cho badge sidebar (thay tải cả list rồi .length). */
   async countPending(viewerId: number, viewerRole: string, scope?: string | null): Promise<{ count: number }> {
     if (!this.hasApproverScope(viewerRole, scope)) return { count: 0 };
@@ -1076,6 +1099,204 @@ export class LeaveRequestsService {
     );
 
     return saved;
+  }
+
+  /**
+   * XOÁ MỀM đơn ĐÃ XỬ LÝ (APPROVED/REJECTED) -> chuyển vào Thùng rác
+   * (`status=cancelled` + `cancelled_at`, KHÔNG thêm cột mới). Dùng cho nút
+   * "Huỷ" ở tab Lịch sử duyệt phép, gate `leave_requests.delete` + scope (cùng
+   * rule `isEligibleApprover` với duyệt/sửa hộ).
+   *
+   * RULE CỐT LÕI: đơn PENDING KHÔNG bao giờ đi qua đây (kể cả Admin) - chỉ
+   * CHỦ ĐƠN được huỷ đơn đang chờ, qua `cancel()`. Người khác muốn bỏ đơn
+   * pending phải đợi duyệt/từ chối rồi mới huỷ từ Lịch sử.
+   *
+   * Đơn APPROVED đã trừ phép năm ở `approve()` -> HOÀN lại đúng `totalDays`
+   * (nếu loại phép `deductsAnnualBalance`). Chuyển trạng thái bằng UPDATE có
+   * điều kiện (`status` cũ + `cancelled_at IS NULL`) và CHỈ hoàn phép khi
+   * `affected=1` -> 2 request/bulk chạy song song không hoàn phép 2 lần.
+   * Ảnh đính kèm được GIỮ (lưu trữ), chỉ bị dọn khi xoá vĩnh viễn.
+   */
+  async trash(requestId: number, actorId: number, actorRole: string, scope?: string | null) {
+    const request = await this.leaveRequestRepo.findOne({
+      where: { id: requestId },
+      relations: ['requester'],
+    });
+    if (!request) {
+      throw new NotFoundException('Leave request not found');
+    }
+
+    const allowed = await this.isEligibleApprover(
+      request.requester.departmentId,
+      actorId,
+      actorRole,
+      scope,
+      request.requester.leaveApproverId,
+    );
+    if (!allowed) {
+      throw new ForbiddenException('Bạn không có quyền xoá đơn của người này');
+    }
+
+    if (request.cancelledAt || request.status === LeaveStatus.CANCELLED) {
+      throw new BadRequestException('Đơn đã nằm trong thùng rác');
+    }
+    if (request.status === LeaveStatus.PENDING) {
+      throw new ForbiddenException(
+        'Đơn đang chờ duyệt - chỉ người tạo đơn mới được huỷ. Hãy duyệt/từ chối trước.',
+      );
+    }
+
+    const previousStatus = request.status;
+    const result = await this.leaveRequestRepo.update(
+      { id: requestId, status: previousStatus, cancelledAt: IsNull() },
+      { status: LeaveStatus.CANCELLED, cancelledAt: new Date() },
+    );
+    if (!result.affected) {
+      // Có request khác vừa xử lý cùng đơn (đã vào thùng rác/đổi trạng thái).
+      throw new BadRequestException('Đơn vừa được xử lý bởi người khác, vui lòng tải lại');
+    }
+
+    let refundedDays = 0;
+    if (previousStatus === LeaveStatus.APPROVED) {
+      const leaveTypeRow = await this.leaveTypesService.getByCode(request.leaveType);
+      if (leaveTypeRow?.deductsAnnualBalance) {
+        await this.userRepo.increment(
+          { id: request.requesterId },
+          'annualLeaveBalance',
+          request.totalDays,
+        );
+        refundedDays = request.totalDays;
+      }
+    }
+
+    this.auditService.logActionAsync(
+      actorId,
+      'TRASH_LEAVE_REQUEST',
+      'leave_request',
+      requestId,
+      { status: previousStatus, cancelledAt: null },
+      {
+        status: LeaveStatus.CANCELLED,
+        requester: { id: request.requesterId, name: request.requester.name },
+        leaveType: request.leaveType,
+        totalDays: request.totalDays,
+        refundedDays,
+      },
+    );
+
+    return { id: requestId, status: LeaveStatus.CANCELLED, refundedDays };
+  }
+
+  /**
+   * XOÁ VĨNH VIỄN 1 đơn - CHỈ khi đơn đã ở Thùng rác (`cancelled_at` có giá
+   * trị), kể cả đơn từng PENDING (chủ đơn đã tự huỷ nên mới vào thùng rác).
+   * Không có đường xoá cứng ngoài thùng rác. Gate `leave_requests.delete` +
+   * scope (cùng `isEligibleApprover`). Không khôi phục được (theo yêu cầu).
+   * Dọn ảnh B2 BEST-EFFORT (log warn, không chặn) rồi xoá dòng attachments +
+   * dòng đơn.
+   */
+  async hardDelete(requestId: number, actorId: number, actorRole: string, scope?: string | null) {
+    const request = await this.leaveRequestRepo.findOne({
+      where: { id: requestId },
+      relations: ['requester', 'attachments'],
+    });
+    if (!request) {
+      throw new NotFoundException('Leave request not found');
+    }
+
+    const allowed = await this.isEligibleApprover(
+      request.requester.departmentId,
+      actorId,
+      actorRole,
+      scope,
+      request.requester.leaveApproverId,
+    );
+    if (!allowed) {
+      throw new ForbiddenException('Bạn không có quyền xoá đơn của người này');
+    }
+
+    if (!request.cancelledAt) {
+      throw new BadRequestException(
+        'Chỉ xoá vĩnh viễn được đơn trong thùng rác. Hãy huỷ đơn trước.',
+      );
+    }
+
+    const attachments = request.attachments || [];
+    if (attachments.length > 0) {
+      await Promise.all(
+        attachments.map((a) =>
+          this.uploadsService
+            .deleteObject(this.uploadsService.leaveAttachmentsBucket, a.objectKey)
+            .catch((err) =>
+              this.logger.warn(
+                `Không xoá được ảnh đính kèm khi xoá vĩnh viễn đơn: ${a.objectKey}`,
+                err,
+              ),
+            ),
+        ),
+      );
+      await this.attachmentRepo.remove(attachments);
+    }
+
+    await this.leaveRequestRepo.delete(requestId);
+
+    this.auditService.logActionAsync(
+      actorId,
+      'DELETE_LEAVE_REQUEST',
+      'leave_request',
+      requestId,
+      {
+        requester: { id: request.requesterId, name: request.requester.name },
+        leaveType: request.leaveType,
+        startDate: request.startDate,
+        endDate: request.endDate,
+        totalDays: request.totalDays,
+        cancelledAt: request.cancelledAt,
+        approvedAt: request.approvedAt,
+        rejectedAt: request.rejectedAt,
+      },
+      null,
+    );
+
+    return { id: requestId };
+  }
+
+  /** Xoá mềm hàng loạt (tab Lịch sử). Từng đơn độc lập: lỗi 1 đơn không huỷ cả lô. */
+  async bulkTrash(ids: number[], actorId: number, actorRole: string, scope?: string | null) {
+    return this.runBulk(ids, (id) => this.trash(id, actorId, actorRole, scope));
+  }
+
+  /** Xoá vĩnh viễn hàng loạt (tab Thùng rác) - cùng cơ chế partial-success. */
+  async bulkHardDelete(ids: number[], actorId: number, actorRole: string, scope?: string | null) {
+    return this.runBulk(ids, (id) => this.hardDelete(id, actorId, actorRole, scope));
+  }
+
+  /**
+   * Chạy tuần tự (không song song: tránh race khi cộng/trừ phép năm cùng 1
+   * user) và gom kết quả từng đơn. Lỗi nghiệp vụ (HttpException) -> đưa vào
+   * `failed[].reason` để FE hiển thị; lỗi bất ngờ -> log error + reason chung
+   * (không lộ chi tiết nội bộ ra client).
+   */
+  private async runBulk(ids: number[], fn: (id: number) => Promise<unknown>) {
+    const succeeded: number[] = [];
+    const failed: { id: number; reason: string }[] = [];
+    for (const id of ids) {
+      try {
+        await fn(id);
+        succeeded.push(id);
+      } catch (err) {
+        if (err instanceof HttpException) {
+          failed.push({ id, reason: err.message });
+        } else {
+          this.logger.error(
+            `Bulk leave-request #${id} thất bại ngoài dự kiến`,
+            err instanceof Error ? err.stack : String(err),
+          );
+          failed.push({ id, reason: 'Lỗi hệ thống' });
+        }
+      }
+    }
+    return { succeeded, failed };
   }
 
   /**
