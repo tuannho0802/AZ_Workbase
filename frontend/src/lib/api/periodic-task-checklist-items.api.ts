@@ -24,11 +24,33 @@ import type {
  */
 export const CHECKLIST_PAGE_SIZE = 10;
 
+/** `position` = thứ tự tay (mặc định cũ); `newest`/`oldest` = theo ngày tạo. */
+export type ChecklistSortMode = 'position' | 'newest' | 'oldest';
+
+export interface ChecklistListOptions {
+  sort?: ChecklistSortMode;
+  /** true = ẩn item đã hoàn thành. */
+  hideDone?: boolean;
+}
+
 export const periodicTaskChecklistItemsApi = {
-  getPage: async (taskId: number, page: number): Promise<PeriodicTaskChecklistPage<PeriodicTaskChecklistItem>> => {
+  getPage: async (
+    taskId: number,
+    page: number,
+    options: ChecklistListOptions = {},
+  ): Promise<PeriodicTaskChecklistPage<PeriodicTaskChecklistItem>> => {
+    const { sort = 'position', hideDone = false } = options;
     const response = await axiosInstance.get<PeriodicTaskChecklistPage<PeriodicTaskChecklistItem>>(
       `/periodic-tasks/${taskId}/checklist-items`,
-      { params: { page, limit: CHECKLIST_PAGE_SIZE } },
+      {
+        params: {
+          page,
+          limit: CHECKLIST_PAGE_SIZE,
+          // Chỉ gửi khi khác mặc định -> request mặc định giữ nguyên như cũ.
+          ...(sort !== 'position' ? { sort } : {}),
+          ...(hideDone ? { hideDone: true } : {}),
+        },
+      },
     );
     return response.data;
   },

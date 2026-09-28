@@ -4690,3 +4690,20 @@ khi bị xoá tay. Đây là 1 anti-pattern thật (dù đo thử với payload 
 > Không có migration. Chưa test trên MySQL/trình duyệt thật. Trang Hiệu suất: chọn cả 2 ô = HỢP nhân viên (không phải giao), vì BE tổng hợp theo từng user. Chưa commit/push — chỉ xuất `.patch`.
 
 ---
+
+---
+## [2026-09-28 18:00] | Task mới mặc định Phụ trách chính = bản thân; Customer mới mặc định Sales/Marketing phụ trách = bản thân theo nhóm phụ trách; Checklist: Sort mới nhất/cũ nhất + ẩn/hiện hoàn thành | [Status: Success — BE tsc sạch, jest periodic-tasks 192/192 (+2 test); FE next build OK, tsc sạch, vitest 141/141]
+
+**Actor:** Agent (làm trên `origin/main` HEAD `4046f11`)
+
+**Files Changed:**
+- `frontend/src/app/(dashboard)/cong-viec-dinh-ky/page.tsx` — `openCreateModal` set `primaryAssigneeId = user.id` (phòng ban để trống → BE tự lấy theo người phụ trách chính như cũ).
+- `frontend/src/components/customers/CustomerForm.tsx` — khi TẠO MỚI: user thuộc nhóm phụ trách `sales` → tự điền "Sales phụ trách"; thuộc `marketing` → tự điền "Marketing phụ trách" (dùng `useAssignmentGroupUsers`, tôn trọng field bị ẩn qua UI Visibility; nạp trong effect reset form để không bị `resetFields()` đè).
+- `backend/.../dto/periodic-task-checklist-page.dto.ts` — `PeriodicTaskChecklistItemsQueryDto` (`sort=newest|oldest`, `hideDone`); `periodic-tasks.controller.ts` dùng DTO mới cho `GET :id/checklist-items`.
+- `backend/.../periodic-task-checklist-items.service.ts` (+`.spec.ts`) — `findPage` sort theo `createdAt` / lọc `isDone=false`; response thêm `filteredTotal` (phân trang), `total`/`done` vẫn của toàn Task.
+- FE: `periodic-task-checklist-items.api.ts`, `usePeriodicTaskChecklistItems.ts`, `periodic-tasks.api.ts`, `TaskChecklistModal.tsx` — Select sắp xếp + Switch "Ẩn đã hoàn thành"; đổi → về trang 1; nút Lên/Xuống bị vô hiệu khi đang sort theo ngày/ẩn hoàn thành.
+
+**Notes:**
+> Không có migration. Sort/lọc làm phía server vì checklist phân trang 10 dòng (client-side chỉ đúng trong 1 trang). Mặc định (không gửi param) giữ nguyên hành vi cũ. ESLint còn 3 lỗi `no-explicit-any` có sẵn trong CustomerForm. Chưa test trên MySQL/trình duyệt thật. Chưa commit/push — chỉ xuất `.patch`.
+
+---

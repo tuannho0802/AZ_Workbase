@@ -91,7 +91,7 @@ describe('PeriodicTaskChecklistItemsService', () => {
         skip: 10,
         take: 10,
       });
-      expect(result).toEqual({ data: [{ id: 11, taskId, position: 10 }], total: 23, done: 7, page: 2, limit: 10, totalPages: 3 });
+      expect(result).toEqual({ data: [{ id: 11, taskId, position: 10 }], total: 23, done: 7, filteredTotal: 23, page: 2, limit: 10, totalPages: 3 });
     });
 
     it('mặc định trang 1, 10 dòng; Task chưa có item -> total 0, totalPages 0', async () => {
@@ -102,6 +102,33 @@ describe('PeriodicTaskChecklistItemsService', () => {
 
       expect(mockChecklistRepo.find).toHaveBeenCalledWith(expect.objectContaining({ skip: 0, take: 10 }));
       expect(result).toMatchObject({ total: 0, done: 0, page: 1, limit: 10, totalPages: 0 });
+    });
+
+    it('sort=newest -> ORDER BY createdAt DESC, id DESC; sort=oldest -> ASC', async () => {
+      mockQb.getRawOne.mockResolvedValue({ total: '5', done: '2' });
+      mockChecklistRepo.find.mockResolvedValue([]);
+
+      await service.findPage(taskId, { sort: 'newest' }, employeeUser.id, employeeUser.role, 'own');
+      expect(mockChecklistRepo.find).toHaveBeenLastCalledWith(
+        expect.objectContaining({ order: { createdAt: 'DESC', id: 'DESC' } }),
+      );
+
+      await service.findPage(taskId, { sort: 'oldest' }, employeeUser.id, employeeUser.role, 'own');
+      expect(mockChecklistRepo.find).toHaveBeenLastCalledWith(
+        expect.objectContaining({ order: { createdAt: 'ASC', id: 'ASC' } }),
+      );
+    });
+
+    it('hideDone=true -> lọc isDone=false, phân trang theo filteredTotal nhưng total/done vẫn của toàn Task', async () => {
+      mockQb.getRawOne.mockResolvedValue({ total: '25', done: '15' });
+      mockChecklistRepo.find.mockResolvedValue([]);
+
+      const result = await service.findPage(taskId, { hideDone: true }, employeeUser.id, employeeUser.role, 'own');
+
+      expect(mockChecklistRepo.find).toHaveBeenCalledWith(
+        expect.objectContaining({ where: { taskId, isDone: false } }),
+      );
+      expect(result).toMatchObject({ total: 25, done: 15, filteredTotal: 10, totalPages: 1 });
     });
 
     it('ném NotFoundException nếu Task ngoài phạm vi scope và KHÔNG chạm dữ liệu checklist', async () => {

@@ -208,6 +208,9 @@ export interface PeriodicTaskChecklistPage<T> {
   data: T[];
   total: number;
   done: number;
+  /** Số dòng SAU bộ lọc ẩn/hiện hoàn thành - dùng cho phân trang. Chỉ có ở
+   * `GET /:id/checklist-items` (endpoint Task con liên kết không trả field này). */
+  filteredTotal?: number;
   page: number;
   limit: number;
   totalPages: number;

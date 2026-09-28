@@ -1,5 +1,5 @@
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { periodicTaskChecklistItemsApi } from '../api/periodic-task-checklist-items.api';
+import { periodicTaskChecklistItemsApi, type ChecklistListOptions } from '../api/periodic-task-checklist-items.api';
 
 /** CÙNG namespace `'periodic-tasks'` (mirror `usePeriodicTaskSecondaryAssignees.ts`) -
  * các query trang checklist nằm dưới namespace này nên mọi mutation chỉ cần invalidate
@@ -55,10 +55,15 @@ export const useMoveTaskChecklistItem = () => {
 };
 
 /** 1 trang checklist item (tối đa 10). `keepPreviousData` để chuyển trang không nháy trắng. */
-export const useTaskChecklistPage = (taskId: number | null, page: number, enabled = true) =>
+export const useTaskChecklistPage = (
+  taskId: number | null,
+  page: number,
+  enabled = true,
+  options: ChecklistListOptions = {},
+) =>
   useQuery({
-    queryKey: [LIST_KEY, 'checklist-page', taskId, page],
-    queryFn: () => periodicTaskChecklistItemsApi.getPage(taskId as number, page),
+    queryKey: [LIST_KEY, 'checklist-page', taskId, page, options.sort ?? 'position', options.hideDone ?? false],
+    queryFn: () => periodicTaskChecklistItemsApi.getPage(taskId as number, page, options),
     enabled: enabled && taskId != null,
     placeholderData: keepPreviousData,
   });

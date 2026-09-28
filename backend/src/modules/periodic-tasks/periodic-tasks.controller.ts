@@ -17,7 +17,7 @@ import { LockPeriodicTaskDto } from './dto/lock-periodic-task.dto';
 import { CreatePeriodicTaskChecklistItemDto } from './dto/create-periodic-task-checklist-item.dto';
 import { UpdatePeriodicTaskChecklistItemDto } from './dto/update-periodic-task-checklist-item.dto';
 import { ReorderPeriodicTaskChecklistItemsDto } from './dto/reorder-periodic-task-checklist-items.dto';
-import { PeriodicTaskChecklistPageDto, MovePeriodicTaskChecklistItemDto } from './dto/periodic-task-checklist-page.dto';
+import { PeriodicTaskChecklistPageDto, PeriodicTaskChecklistItemsQueryDto, MovePeriodicTaskChecklistItemDto } from './dto/periodic-task-checklist-page.dto';
 import {
   GetPeriodicTaskAuditLogsDto,
   GetPeriodicTaskAuditLogsGlobalDto,
@@ -410,7 +410,7 @@ export class PeriodicTasksController {
   @ApiOperation({ summary: 'Danh sách checklist item của Công việc, sắp xếp theo position' })
   getChecklistItems(
     @Param('id', ParseIntPipe) id: number,
-    @Query() page: PeriodicTaskChecklistPageDto,
+    @Query() page: PeriodicTaskChecklistItemsQueryDto,
     @GetUser() user: any,
     @GetPermissionScope() scope: string | null | undefined,
   ) {

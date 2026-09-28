@@ -2,7 +2,7 @@
 
 import { useMemo, useState } from 'react';
 import dayjs from 'dayjs';
-import { Modal, Typography, Progress, Button, App, Popconfirm, Checkbox, Space, Empty, Spin, Divider, Tag, Pagination, Collapse } from 'antd';
+import { Modal, Typography, Progress, Button, App, Popconfirm, Checkbox, Space, Empty, Spin, Divider, Tag, Pagination, Collapse, Select, Switch, Tooltip } from 'antd';
 import { ChecklistTextArea } from './ChecklistTextArea';
 import { DeleteOutlined, PlusOutlined, ArrowUpOutlined, ArrowDownOutlined, CheckOutlined, CloseOutlined } from '@ant-design/icons';
 import { useMyPermissions } from '@/lib/hooks/useMyPermissions';
@@ -18,7 +18,7 @@ import {
     useLinkedChildrenChecklistPage,
 } from '@/lib/hooks/usePeriodicTaskChecklistItems';
 import { PeriodicTask, PeriodicTaskChecklistItem } from '@/lib/api/periodic-tasks.api';
-import { CHECKLIST_PAGE_SIZE } from '@/lib/api/periodic-task-checklist-items.api';
+import { CHECKLIST_PAGE_SIZE, type ChecklistSortMode } from '@/lib/api/periodic-task-checklist-items.api';
 import { getApiErrorMessage } from '@/lib/utils/error-message.util';
 import { SimpleList } from '@/components/common/SimpleList';
 import { LinkifiedText } from '@/components/common/LinkifiedText';
@@ -80,6 +80,13 @@ interface Props {
  * `useUsersList()` (mirror `TaskLinksModal.tsx` dùng `allUsers` cho
  * `UserMiniCard` của Phụ trách chính) - `createdById === null` (dữ liệu cũ
  * trước khi có cột này) gom vào 1 nhóm riêng "Không xác định".
+ * Sort + ẩn/hiện hoàn thành (MỚI): 2 điều khiển ở thanh công cụ trên danh sách
+ * - Select "Thứ tự tay / Mới nhất / Cũ nhất" và Switch "Ẩn đã hoàn thành". Vì
+ * danh sách PHÂN TRANG server-side nên cả 2 gửi thẳng lên BE (`sort`,
+ * `hideDone`) chứ không sort/lọc client-side (sẽ chỉ đúng trong 1 trang 10
+ * dòng). Đổi 1 trong 2 -> về trang 1. Khi đang sort theo ngày hoặc đang ẩn
+ * item, nút Lên/Xuống bị vô hiệu (thứ tự hiển thị không còn khớp `position`
+ * nên "liền kề" trên màn hình khác "liền kề" trong DB).
  * `<Collapse key={itemPage}>` CỐ Ý remount mỗi lần đổi trang - `items` là
  * TRANG ĐANG XEM (không phải toàn bộ checklist), gom nhóm chỉ có ý nghĩa
  * trong phạm vi trang đó; remount để nhóm mới của trang mới luôn mở sẵn
@@ -101,7 +108,13 @@ export function TaskChecklistModal({ open, onClose, task }: Props) {
 
     const [itemPage, setItemPage] = useState(1);
     const [childPage, setChildPage] = useState(1);
-    const { data: itemsData, isLoading: itemsLoading, isFetching: itemsFetching } = useTaskChecklistPage(taskId, itemPage, open);
+    const [sortMode, setSortMode] = useState<ChecklistSortMode>('position');
+    const [hideDone, setHideDone] = useState(false);
+    const reorderDisabled = sortMode !== 'position' || hideDone;
+    const { data: itemsData, isLoading: itemsLoading, isFetching: itemsFetching } = useTaskChecklistPage(taskId, itemPage, open, {
+        sort: sortMode,
+        hideDone,
+    });
     const { data: childrenData, isLoading: childrenLoading } = useLinkedChildrenChecklistPage(taskId, childPage, open);
 
     const items = itemsData?.data ?? [];
@@ -114,6 +127,8 @@ export function TaskChecklistModal({ open, onClose, task }: Props) {
     const totalDoneCount = (itemsData?.done ?? 0) + (childrenData?.done ?? 0);
     const percent = totalCount > 0 ? Math.round((totalDoneCount / totalCount) * 100) : 0;
     const itemTotalPages = itemsData?.totalPages ?? 0;
+    // Số dòng SAU lọc (dùng cho phân trang/Empty); BE cũ chưa có field này -> rơi về `total`.
+    const itemsFilteredTotal = itemsData?.filteredTotal ?? itemsTotal;
 
     // Gom nhóm theo Người tạo (xem JSDoc đầu file) - chỉ trong phạm vi trang
     // `items` đang xem. `allUsers` để tra tên hiển thị từ `createdById` thô
@@ -159,8 +174,11 @@ export function TaskChecklistModal({ open, onClose, task }: Props) {
                 onSuccess: (res) => {
                     message.success('Đã thêm checklist item');
                     setNewContent('');
-                    // Item mới nằm CUỐI danh sách -> nhảy tới trang cuối để người dùng thấy ngay.
-                    setItemPage(Math.max(1, Math.ceil(res.total / CHECKLIST_PAGE_SIZE)));
+                    // Item mới nằm CUỐI danh sách (thứ tự tay/cũ nhất) -> nhảy tới trang cuối;
+                    // sort "Mới nhất" thì item mới ở ĐẦU -> trang 1. Item mới luôn chưa xong nên
+                    // khi ẩn hoàn thành, tổng hiển thị = total - done.
+                    const visibleTotal = hideDone ? res.total - res.done : res.total;
+                    setItemPage(sortMode === 'newest' ? 1 : Math.max(1, Math.ceil(visibleTotal / CHECKLIST_PAGE_SIZE)));
                 },
                 onError: (err) => message.error(getApiErrorMessage(err, 'Thêm checklist item thất bại')),
             },
@@ -246,6 +264,8 @@ export function TaskChecklistModal({ open, onClose, task }: Props) {
         setEditingContent('');
         setItemPage(1);
         setChildPage(1);
+        setSortMode('position');
+        setHideDone(false);
         onClose();
     };
 
@@ -371,14 +391,14 @@ export function TaskChecklistModal({ open, onClose, task }: Props) {
                                     size="small"
                                     type="text"
                                     icon={<ArrowUpOutlined />}
-                                    disabled={itemPage === 1 && index === 0}
+                                    disabled={reorderDisabled || (itemPage === 1 && index === 0)}
                                     onClick={() => handleMove(item, 'up')}
                                 />
                                 <Button
                                     size="small"
                                     type="text"
                                     icon={<ArrowDownOutlined />}
-                                    disabled={itemPage === itemTotalPages && index === items.length - 1}
+                                    disabled={reorderDisabled || (itemPage === itemTotalPages && index === items.length - 1)}
                                     onClick={() => handleMove(item, 'down')}
                                 />
                                 <Popconfirm
@@ -422,9 +442,49 @@ export function TaskChecklistModal({ open, onClose, task }: Props) {
                         </div>
                     )}
 
+                    {itemsTotal > 0 && (
+                        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, marginBottom: 8, flexWrap: 'wrap' }}>
+                            <Space size={8}>
+                                <Text type="secondary" style={{ fontSize: 12 }}>Sắp xếp:</Text>
+                                <Select<ChecklistSortMode>
+                                    size="small"
+                                    value={sortMode}
+                                    style={{ width: 150 }}
+                                    onChange={(v) => {
+                                        setSortMode(v);
+                                        setItemPage(1);
+                                    }}
+                                    options={[
+                                        { value: 'position', label: 'Thứ tự tay' },
+                                        { value: 'newest', label: 'Mới nhất' },
+                                        { value: 'oldest', label: 'Cũ nhất' },
+                                    ]}
+                                />
+                            </Space>
+                            <Space size={6}>
+                                <Switch
+                                    size="small"
+                                    checked={hideDone}
+                                    onChange={(v) => {
+                                        setHideDone(v);
+                                        setItemPage(1);
+                                    }}
+                                />
+                                <Text style={{ fontSize: 12 }}>Ẩn đã hoàn thành</Text>
+                                {reorderDisabled && canEdit && (
+                                    <Tooltip title='Nút Lên/Xuống chỉ dùng được khi sắp xếp "Thứ tự tay" và không ẩn item hoàn thành'>
+                                        <Text type="secondary" style={{ fontSize: 12, cursor: 'help' }}>ⓘ</Text>
+                                    </Tooltip>
+                                )}
+                            </Space>
+                        </div>
+                    )}
+
                     <Spin spinning={itemsLoading || (itemsFetching && !itemsData)}>
                         {itemsTotal === 0 ? (
                             <Empty description="Chưa có checklist item nào" image={Empty.PRESENTED_IMAGE_SIMPLE} />
+                        ) : itemsFilteredTotal === 0 ? (
+                            <Empty description="Tất cả checklist item đã hoàn thành (đang ẩn)" image={Empty.PRESENTED_IMAGE_SIMPLE} />
                         ) : shouldGroupByCreator ? (
                             <Collapse
                                 key={itemPage}
@@ -476,13 +536,13 @@ export function TaskChecklistModal({ open, onClose, task }: Props) {
                         )}
                     </Spin>
 
-                    {itemsTotal > CHECKLIST_PAGE_SIZE && (
+                    {itemsFilteredTotal > CHECKLIST_PAGE_SIZE && (
                         <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: 8 }}>
                             <Pagination
                                 size="small"
                                 current={itemPage}
                                 pageSize={CHECKLIST_PAGE_SIZE}
-                                total={itemsTotal}
+                                total={itemsFilteredTotal}
                                 showSizeChanger={false}
                                 onChange={setItemPage}
                             />

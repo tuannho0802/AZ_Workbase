@@ -9,7 +9,7 @@ import { CreatePeriodicTaskChecklistItemDto } from './dto/create-periodic-task-c
 import { UpdatePeriodicTaskChecklistItemDto } from './dto/update-periodic-task-checklist-item.dto';
 import { ReorderPeriodicTaskChecklistItemsDto } from './dto/reorder-periodic-task-checklist-items.dto';
 import { PeriodicTaskAuditService, PeriodicTaskAuditAction } from './periodic-task-audit.service';
-import { CHECKLIST_PAGE_SIZE, PeriodicTaskChecklistPageDto } from './dto/periodic-task-checklist-page.dto';
+import { CHECKLIST_PAGE_SIZE, PeriodicTaskChecklistItemsQueryDto } from './dto/periodic-task-checklist-page.dto';
 
 /**
  * PeriodicTaskChecklistItemsService - Phase 6 (PLAN mục 6): checklist con
@@ -92,7 +92,7 @@ export class PeriodicTaskChecklistItemsService {
    */
   async findPage(
     taskId: number,
-    dto: PeriodicTaskChecklistPageDto,
+    dto: PeriodicTaskChecklistItemsQueryDto,
     userId: number,
     userRole: string,
     scope?: string | null,
@@ -101,24 +101,39 @@ export class PeriodicTaskChecklistItemsService {
 
     const page = dto.page ?? 1;
     const limit = dto.limit ?? CHECKLIST_PAGE_SIZE;
+    const hideDone = dto.hideDone === true;
+
+    // Sort theo ngày tạo (mới nhất/cũ nhất) - `id` làm tie-breaker ổn định. Bỏ trống =
+    // thứ tự tay (`position`) như trước đây nên client cũ không đổi hành vi.
+    const order =
+      dto.sort === 'newest'
+        ? { createdAt: 'DESC' as const, id: 'DESC' as const }
+        : dto.sort === 'oldest'
+          ? { createdAt: 'ASC' as const, id: 'ASC' as const }
+          : { position: 'ASC' as const, id: 'ASC' as const };
 
     const [summary, data] = await Promise.all([
       this.getSummary(taskId),
       this.checklistRepo.find({
-        where: { taskId },
-        order: { position: 'ASC', id: 'ASC' },
+        where: hideDone ? { taskId, isDone: false } : { taskId },
+        order,
         skip: (page - 1) * limit,
         take: limit,
       }),
     ]);
 
+    // `total`/`done` luôn là của TOÀN BỘ Task (FE tính % tiến độ); `filteredTotal` là số dòng
+    // sau khi áp bộ lọc ẩn/hiện hoàn thành - dùng cho phân trang.
+    const filteredTotal = hideDone ? summary.total - summary.done : summary.total;
+
     return {
       data,
       total: summary.total,
       done: summary.done,
+      filteredTotal,
       page,
       limit,
-      totalPages: Math.ceil(summary.total / limit),
+      totalPages: Math.ceil(filteredTotal / limit),
     };
   }
 

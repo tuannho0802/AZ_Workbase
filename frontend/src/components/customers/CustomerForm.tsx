@@ -18,6 +18,7 @@ import { Customer } from '@/lib/types/customer.types';
 import dayjs, { Dayjs } from 'dayjs';
 import { isFutureVnDate } from '@/lib/utils/date-vn';
 import { useMyHiddenElements } from '@/lib/hooks/useUiVisibility';
+import { useAuthStore } from '@/lib/stores/auth.store';
 
 const { Text } = Typography;
 
@@ -92,6 +93,23 @@ export const CustomerForm: React.FC<CustomerFormProps> = ({ open, customer, onCl
       })),
     [marketingCandidatesRaw],
   );
+
+  // Mặc định người phụ trách = chính mình KHI TẠO MỚI, tuỳ nhóm phụ trách của user:
+  // nằm trong nhóm `sales` (vd Phòng Kinh doanh) -> tự điền "Sales phụ trách"; nằm trong
+  // nhóm `marketing` -> tự điền "Marketing phụ trách". Dùng đúng nguồn ứng viên của dropdown
+  // (config ở /quan-ly-phu-trach) thay vì dò tên phòng ban cứng, nên luôn khớp option hiển
+  // thị. Field bị ẩn qua UI Visibility thì không điền. Được nạp trong effect reset form bên
+  // dưới (không dùng effect riêng) để `resetFields()` chạy lại khi dữ liệu tải muộn không đè mất.
+  const currentUserId = useAuthStore((s) => s.user?.id);
+  const defaultAssignees = useMemo(() => {
+    const result: { salesUserId?: number; marketingUserId?: number } = {};
+    if (currentUserId == null) return result;
+    if (!hideSalesField && salesCandidates.some((u) => u.id === currentUserId)) result.salesUserId = currentUserId;
+    if (!hideMarketingField && marketingCandidates.some((u) => u.id === currentUserId)) {
+      result.marketingUserId = currentUserId;
+    }
+    return result;
+  }, [currentUserId, hideSalesField, hideMarketingField, salesCandidates, marketingCandidates]);
 
   // ── "Tham gia nhóm" - chọn TỰ DO, KHÔNG còn ràng buộc trùng Category với
   // Nguồn đã chọn nữa. Trước đây bắt buộc trùng tên (Nguồn "Facebook" chỉ
@@ -211,10 +229,11 @@ export const CustomerForm: React.FC<CustomerFormProps> = ({ open, customer, onCl
           // nếu admin đã khoá/xoá Facebook, hardcode sẽ trỏ vào 1 option
           // không còn tồn tại trong dropdown.
           source: sources[0]?.name,
+          ...defaultAssignees,
         });
       }
     }
-  }, [open, customer, form, sources, statuses]);
+  }, [open, customer, form, sources, statuses, defaultAssignees]);
 
   /**
    * ⚠️ MỚI: Kiểm tra trùng SĐT/Email TRƯỚC khi thực sự tạo/sửa khách hàng.

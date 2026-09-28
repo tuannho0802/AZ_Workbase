@@ -641,7 +641,9 @@ function PeriodicTasksPageContent() {
     const openCreateModal = () => {
         setEditingTask(null);
         form.resetFields();
-        form.setFieldsValue({ periodType: 'daily', color: '#1890ff' });
+        // Mặc định Người phụ trách chính = chính mình (sửa tự do). Phòng ban để trống -> BE tự
+        // lấy theo phòng ban của người phụ trách chính (xem tooltip field "Phòng ban").
+        form.setFieldsValue({ periodType: 'daily', color: '#1890ff', primaryAssigneeId: user?.id });
         setCustomerIds([]);
         setOriginalCustomerIds([]);
         setCustomerSearchInput('');
