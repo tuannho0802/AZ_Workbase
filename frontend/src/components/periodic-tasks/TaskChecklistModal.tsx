@@ -17,6 +17,7 @@ import {
     useTaskChecklistPage,
     useLinkedChildrenChecklistPage,
 } from '@/lib/hooks/usePeriodicTaskChecklistItems';
+import { useChecklistTickGuard } from '@/lib/hooks/useChecklistTickGuard';
 import { PeriodicTask, PeriodicTaskChecklistItem } from '@/lib/api/periodic-tasks.api';
 import { CHECKLIST_PAGE_SIZE, type ChecklistSortMode } from '@/lib/api/periodic-task-checklist-items.api';
 import { getApiErrorMessage } from '@/lib/utils/error-message.util';
@@ -185,14 +186,18 @@ export function TaskChecklistModal({ open, onClose, task }: Props) {
         );
     };
 
+    const { guardTick } = useChecklistTickGuard();
     const handleToggleDone = (item: PeriodicTaskChecklistItem) => {
         if (!task) return;
-        updateMutation.mutate(
-            { taskId: task.id, itemId: item.id, data: { isDone: !item.isDone } },
-            {
-                onError: (err) => message.error(getApiErrorMessage(err, 'Cập nhật trạng thái thất bại')),
-            },
-        );
+        const doTick = (onTicked?: () => void) =>
+            updateMutation.mutate(
+                { taskId: task.id, itemId: item.id, data: { isDone: !item.isDone } },
+                {
+                    onSuccess: () => onTicked?.(),
+                    onError: (err) => message.error(getApiErrorMessage(err, 'Cập nhật trạng thái thất bại')),
+                },
+            );
+        guardTick(task, { isTicking: !item.isDone, remainingUndone: totalCount - totalDoneCount }, doTick);
     };
 
     const startEdit = (item: PeriodicTaskChecklistItem) => {

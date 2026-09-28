@@ -130,7 +130,7 @@ export function UserTasksPanel({ userId, params }: Props) {
                   thanh đó nên không thấy nút. Tự ẩn khi Task không đủ điều kiện (chưa qua hạn/đã xong/hết ân hạn). */}
               {canApprove && <OverdueMarkButton task={task} size="small" iconOnly={false} />}
             </div>
-            <TaskChecklistInline taskId={task.id} canEdit={canEditTask} onOpenFull={() => setChecklistTask(task)} />
+            <TaskChecklistInline taskId={task.id} task={task} canEdit={canEditTask} onOpenFull={() => setChecklistTask(task)} />
           </div>
         }
       />

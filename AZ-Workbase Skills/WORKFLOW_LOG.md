@@ -4803,3 +4803,17 @@ khi bị xoá tay. Đây là 1 anti-pattern thật (dù đo thử với payload 
 **Notes:**
 > Uptime cần monitor `GET https://<domain>/api/keep-alive` (public, không secret). Chưa commit/push.
 ---
+
+---
+## [2026-09-29 10:00] | Modal xác nhận khi tick checklist (To-do / mục cuối) + lọc nhanh "Tuần trước" trang Công việc định kỳ | [Status: Success — FE tsc không lỗi mới, vitest +6 test]
+
+**Actor:** Agent (trên `origin/main` HEAD `38b0647`)
+
+**Files Changed:**
+- FE MỚI: `lib/utils/checklistTickGuard.ts` (+test) — `getTickPrompt`; `lib/hooks/useChecklistTickGuard.ts` — `modal.confirm` + đổi status sau khi tick thành công.
+- FE: `TaskChecklistInline.tsx` (prop `task`, tính mục còn lại gồm cả Task con), `TaskChecklistModal.tsx`, `UserTasksPanel.tsx` truyền `task`.
+- FE: `cong-viec-dinh-ky/page.tsx` — thêm `lastWeek` vào `QUICK_RANGES` (dùng `getLastWeekRange`).
+
+**Notes:**
+> Task `not_started` tick mục thường: hỏi "Bạn đang làm Task này?" Có => tick + `in_progress`, Không => KHÔNG tick. Tick mục CUỐI (kể cả Task con liên kết) khi Task chưa in_review/done: hỏi "Task đã xong?" Có => tick + `in_review`, Không => KHÔNG tick (ưu tiên hơn hỏi "đang làm"). Bỏ tick không hỏi. Chỉ FE, BE không ép. Cần status có code `in_progress`/`in_review`. Chưa test trên trình duyệt thật. Chưa commit/push.
+---

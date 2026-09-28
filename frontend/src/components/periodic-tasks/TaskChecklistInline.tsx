@@ -11,7 +11,9 @@ import {
     useUpdateTaskChecklistItem,
     useRemoveTaskChecklistItem,
     useTaskChecklistPage,
+    useLinkedChildrenChecklistPage,
 } from '@/lib/hooks/usePeriodicTaskChecklistItems';
+import { useChecklistTickGuard, type TickGuardTask } from '@/lib/hooks/useChecklistTickGuard';
 import { useUsersList } from '@/lib/hooks/useUsers';
 import { useRoleColorMap } from '@/lib/hooks/useRoleColorMap';
 import { UserMiniCard } from '@/app/(dashboard)/attendance-device/UserMiniCard';
@@ -24,6 +26,8 @@ const { Text } = Typography;
 
 interface Props {
     taskId: number;
+    /** Task đang hiển thị - cần để hỏi xác nhận khi tick (To-do / mục cuối) và đổi status. Thiếu thì tick thẳng. */
+    task?: TickGuardTask;
     /** Đã gộp sẵn `periodic_tasks.edit` + khoá (mirror `canEdit` ở `TaskChecklistModal`). */
     canEdit: boolean;
     /** Mở `TaskChecklistModal` đầy đủ (xem hết trang, sắp xếp lại, Task con liên kết). */
@@ -55,7 +59,7 @@ interface Props {
  *    trước. Panel header dùng `UserMiniCard` y hệt Modal gốc (không lặp lại
  *    style riêng ở đây để tránh lệch UI giữa Modal đầy đủ và bản rút gọn này).
  */
-export function TaskChecklistInline({ taskId, canEdit, onOpenFull, defaultCollapsed = true }: Props) {
+export function TaskChecklistInline({ taskId, task, canEdit, onOpenFull, defaultCollapsed = true }: Props) {
     const [collapsed, setCollapsed] = useState(defaultCollapsed);
     const { message } = App.useApp();
     const queryClient = useQueryClient();
@@ -65,6 +69,10 @@ export function TaskChecklistInline({ taskId, canEdit, onOpenFull, defaultCollap
     const items = data?.data ?? [];
     const total = data?.total ?? 0;
     const done = data?.done ?? 0;
+    // Task con liên kết cũng tính vào "mục cuối" (mirror `TaskChecklistModal`) - chỉ tải khi đang mở checklist.
+    const { data: childrenData } = useLinkedChildrenChecklistPage(taskId, 1, !collapsed);
+    const remainingUndone = total - done + ((childrenData?.total ?? 0) - (childrenData?.done ?? 0));
+    const { guardTick } = useChecklistTickGuard();
     const percent = total > 0 ? Math.round((done / total) * 100) : 0;
     const hasMore = total > CHECKLIST_PAGE_SIZE;
 
@@ -110,13 +118,19 @@ export function TaskChecklistInline({ taskId, canEdit, onOpenFull, defaultCollap
     };
 
     const handleToggleDone = (item: PeriodicTaskChecklistItem) => {
-        updateMutation.mutate(
-            { taskId, itemId: item.id, data: { isDone: !item.isDone } },
-            {
-                onSuccess: invalidatePerformance,
-                onError: (err) => message.error(getApiErrorMessage(err, 'Cập nhật trạng thái thất bại')),
-            },
-        );
+        const doTick = (onTicked?: () => void) =>
+            updateMutation.mutate(
+                { taskId, itemId: item.id, data: { isDone: !item.isDone } },
+                {
+                    onSuccess: () => {
+                        invalidatePerformance();
+                        onTicked?.();
+                    },
+                    onError: (err) => message.error(getApiErrorMessage(err, 'Cập nhật trạng thái thất bại')),
+                },
+            );
+        if (!task) return doTick();
+        guardTick(task, { isTicking: !item.isDone, remainingUndone }, doTick);
     };
 
     const startEdit = (item: PeriodicTaskChecklistItem) => {

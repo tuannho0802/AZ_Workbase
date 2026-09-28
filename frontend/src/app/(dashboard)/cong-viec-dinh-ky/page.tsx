@@ -77,6 +77,7 @@ import {
     clampRange,
     getMonthRange,
     getThisWeekRange,
+    getLastWeekRange,
     type DateRangeTuple,
 } from '@/lib/utils/periodicTaskRange';
 import { PeriodicTasksAgendaView } from '@/components/periodic-tasks/PeriodicTasksAgendaView';
@@ -100,10 +101,11 @@ const { RangePicker } = DatePicker;
  * không phụ thuộc locale dayjs. Kết quả set thẳng vào `dateRange`, BE lọc theo
  * kiểu giao khoảng (periodEndDate >= dateFrom && periodStartDate <= dateTo).
  */
-type QuickRangeKey = 'today' | 'thisWeek' | 'thisMonth' | 'lastMonth';
+type QuickRangeKey = 'today' | 'thisWeek' | 'lastWeek' | 'thisMonth' | 'lastMonth';
 const QUICK_RANGES: { key: QuickRangeKey; label: string }[] = [
     { key: 'today', label: 'Hôm nay' },
     { key: 'thisWeek', label: 'Tuần này' },
+    { key: 'lastWeek', label: 'Tuần trước' },
     { key: 'thisMonth', label: 'Tháng này' },
     { key: 'lastMonth', label: 'Tháng trước' },
 ];
@@ -116,6 +118,8 @@ const getQuickRange = (key: QuickRangeKey): [Dayjs, Dayjs] => {
             const monday = now.startOf('day').subtract((now.day() + 6) % 7, 'day');
             return [monday, monday.add(6, 'day').endOf('day')];
         }
+        case 'lastWeek':
+            return getLastWeekRange(now);
         case 'thisMonth':
             return [now.startOf('month'), now.endOf('month')];
         case 'lastMonth': {
