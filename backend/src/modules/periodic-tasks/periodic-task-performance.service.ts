@@ -5,6 +5,7 @@ import { PeriodicTask } from '../../database/entities/periodic-task.entity';
 import { PeriodicTaskChecklistItem } from '../../database/entities/periodic-task-checklist-item.entity';
 import { PeriodicTaskStatus } from '../../database/entities/periodic-task-status.entity';
 import { PeriodicTaskAuditLog } from '../../database/entities/periodic-task-audit-log.entity';
+import { PeriodicTaskSecondaryAssignee } from '../../database/entities/periodic-task-secondary-assignee.entity';
 import { User } from '../../database/entities/user.entity';
 import { PermissionsService } from '../permissions/permissions.service';
 import { PeriodicTaskSecondaryAssigneesService } from './periodic-task-secondary-assignees.service';
@@ -73,8 +74,16 @@ export interface PerformanceUserRow {
   inProgressRatePercent: number | null;
   /** % inReviewCount / total. `null` nếu total=0. */
   inReviewRatePercent: number | null;
+  /** Checklist của Task mà User là Phụ trách CHÍNH (giữ tên cũ để không vỡ FE cũ). */
   checklistDone: number;
   checklistTotal: number;
+  /** MỚI (2026-09-28): Tổng Task trong kỳ mà User là Phụ trách PHỤ (đã trừ status
+   * `is_excluded_from_rollup`). CHỈ là số đếm hiển thị - KHÔNG cộng vào `total` và
+   * các % ở trên (các % vẫn tính trên Task Phụ trách chính, không đổi nghiệp vụ cũ). */
+  secondaryTotal: number;
+  /** MỚI (2026-09-28): Checklist thuộc Task người khác mà User là Phụ trách phụ. */
+  checklistSecondaryDone: number;
+  checklistSecondaryTotal: number;
 }
 
 export interface PerformanceSummaryResult {
@@ -170,6 +179,9 @@ export class PeriodicTaskPerformanceService {
     private readonly auditLogRepo: Repository<PeriodicTaskAuditLog>,
     @InjectRepository(User)
     private readonly userRepo: Repository<User>,
+    // MỚI (2026-09-28) - đếm Task/checklist Phụ trách phụ ở getSummary().
+    @InjectRepository(PeriodicTaskSecondaryAssignee)
+    private readonly secondaryRepo: Repository<PeriodicTaskSecondaryAssignee>,
     private readonly permissionsService: PermissionsService,
     // MỚI (2026-09-25, `getUserTasks()`) - đính `secondaryAssignees` vào Task
     // trả về, để FE hiện được "Phụ trách phụ" trên `TaskMiniCard` (mirror
@@ -343,6 +355,105 @@ export class PeriodicTaskPerformanceService {
     return { qb, dateWindow };
   }
 
+  /**
+   * MỚI (2026-09-28, yêu cầu chủ dự án): bổ sung số liệu Phụ trách PHỤ vào từng
+   * dòng User - `secondaryTotal` + `checklistSecondaryDone/Total` (checklist của
+   * Task NGƯỜI KHÁC mà User này là Phụ trách phụ). KHÔNG đụng `total`/% cũ.
+   * Scope mirror `applyScopeFilter()` nhưng khoá theo NGƯỜI PHỤ TRÁCH PHỤ:
+   *  - own: chỉ chính người xem; department: Task thuộc phòng ban mình quản lý; all: không giới hạn.
+   * Task có status `is_excluded_from_rollup` bị loại (đồng nhất phạm vi rollup).
+   * User chỉ có Task phụ (không có Task chính) vẫn được tạo dòng (total = 0).
+   */
+  private async addSecondaryStats(
+    byUser: Map<number, PerformanceUserRow>,
+    filters: PeriodicTaskPerformanceFiltersDto,
+    user: RequestingUser,
+    scope: PermissionScope | 'own',
+  ): Promise<void> {
+    const dateWindow = resolveListWindow({ dateFrom: filters.dateFrom, dateTo: filters.dateTo });
+    const isRootAdmin = user.role === Role.ADMIN && user.isRootAdmin;
+
+    const qb = this.secondaryRepo
+      .createQueryBuilder('psa')
+      .innerJoin('psa.task', 'task')
+      .leftJoin('task.status', 'status')
+      .select(['psa.userId AS user_id', 'task.id AS task_id'])
+      .where('task.deletedAt IS NULL')
+      .andWhere('(status.isExcludedFromRollup IS NULL OR status.isExcludedFromRollup = FALSE)')
+      .andWhere('task.primaryAssigneeId <> psa.userId');
+
+    if (!isRootAdmin && scope !== PermissionScope.ALL) {
+      if (scope === PermissionScope.DEPARTMENT) {
+        qb.andWhere(
+          'task.department_id IN (SELECT dm.department_id FROM department_managers dm WHERE dm.user_id = :perfSecManagerId)',
+          { perfSecManagerId: user.id },
+        );
+      } else {
+        qb.andWhere('psa.userId = :perfSecOwnUserId', { perfSecOwnUserId: user.id });
+      }
+    }
+    if (filters.userId) qb.andWhere('psa.userId = :perfSecFilterUserId', { perfSecFilterUserId: filters.userId });
+    if (filters.periodType) qb.andWhere('task.periodType = :perfPeriodType', { perfPeriodType: filters.periodType });
+    if (dateWindow.dateFrom) qb.andWhere('task.periodEndDate >= :perfDateFrom', { perfDateFrom: dateWindow.dateFrom });
+    if (dateWindow.dateTo) qb.andWhere('task.periodStartDate <= :perfDateTo', { perfDateTo: dateWindow.dateTo });
+    if (filters.departmentId) qb.andWhere('task.departmentId = :perfDepartmentId', { perfDepartmentId: filters.departmentId });
+
+    const pairs = await qb.getRawMany<{ user_id: number; task_id: number }>();
+    if (!pairs || pairs.length === 0) return;
+
+    const usersByTask = new Map<number, number[]>();
+    for (const p of pairs) {
+      const uid = Number(p.user_id);
+      const tid = Number(p.task_id);
+      let row = byUser.get(uid);
+      if (!row) {
+        row = {
+          userId: uid,
+          userName: '',
+          total: 0,
+          completedOnTime: 0,
+          completedLate: 0,
+          overdueNotCompleted: 0,
+          pendingFuture: 0,
+          completionRatePercent: null,
+          lateRatePercent: null,
+          inProgressCount: 0,
+          inReviewCount: 0,
+          inProgressRatePercent: null,
+          inReviewRatePercent: null,
+          checklistDone: 0,
+          checklistTotal: 0,
+          secondaryTotal: 0,
+          checklistSecondaryDone: 0,
+          checklistSecondaryTotal: 0,
+        };
+        byUser.set(uid, row);
+      }
+      row.secondaryTotal += 1;
+      const list = usersByTask.get(tid) ?? [];
+      list.push(uid);
+      usersByTask.set(tid, list);
+    }
+
+    const checklistRows = await this.checklistRepo
+      .createQueryBuilder('item')
+      .select('item.taskId', 'task_id')
+      .addSelect('COUNT(*)', 'total')
+      .addSelect('SUM(CASE WHEN item.isDone = TRUE THEN 1 ELSE 0 END)', 'done')
+      .where('item.taskId IN (:...secTaskIds)', { secTaskIds: [...usersByTask.keys()] })
+      .groupBy('item.taskId')
+      .getRawMany<{ task_id: number; total: string; done: string }>();
+
+    for (const c of checklistRows) {
+      for (const uid of usersByTask.get(Number(c.task_id)) ?? []) {
+        const row = byUser.get(uid);
+        if (!row) continue;
+        row.checklistSecondaryTotal += Number(c.total);
+        row.checklistSecondaryDone += Number(c.done);
+      }
+    }
+  }
+
   async getSummary(filters: PeriodicTaskPerformanceFiltersDto, user: RequestingUser): Promise<PerformanceSummaryResult> {
     const scope = await this.resolveScope(user);
 
@@ -396,6 +507,9 @@ export class PeriodicTaskPerformanceService {
           inReviewRatePercent: null,
           checklistDone: 0,
           checklistTotal: 0,
+          secondaryTotal: 0,
+          checklistSecondaryDone: 0,
+          checklistSecondaryTotal: 0,
         };
         byUser.set(r.primary_assignee_id, row);
       }
@@ -446,6 +560,8 @@ export class PeriodicTaskPerformanceService {
         row.checklistDone += Number(c.done);
       }
     }
+
+    await this.addSecondaryStats(byUser, filters, user, scope);
 
     const userIds = [...byUser.keys()];
     if (userIds.length > 0) {

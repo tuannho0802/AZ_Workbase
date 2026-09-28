@@ -2,7 +2,8 @@
 
 import { useMemo, useState } from 'react';
 import dayjs from 'dayjs';
-import { Modal, Typography, Progress, Input, Button, App, Popconfirm, Checkbox, Space, Empty, Spin, Divider, Tag, Pagination, Collapse } from 'antd';
+import { Modal, Typography, Progress, Button, App, Popconfirm, Checkbox, Space, Empty, Spin, Divider, Tag, Pagination, Collapse } from 'antd';
+import { ChecklistTextArea } from './ChecklistTextArea';
 import { DeleteOutlined, PlusOutlined, ArrowUpOutlined, ArrowDownOutlined, CheckOutlined, CloseOutlined } from '@ant-design/icons';
 import { useMyPermissions } from '@/lib/hooks/useMyPermissions';
 import { useUsersList } from '@/lib/hooks/useUsers';
@@ -318,11 +319,10 @@ export function TaskChecklistModal({ open, onClose, task }: Props) {
                 />
 
                 {isEditing ? (
-                    <Input.TextArea
+                    <ChecklistTextArea
                         autoFocus
                         autoSize={{ minRows: 1, maxRows: 8 }}
                         value={editingContent}
-                        maxLength={500}
                         onChange={(e) => setEditingContent(e.target.value)}
                         onPressEnter={(e) => {
                             if (!e.shiftKey) {
@@ -490,11 +490,10 @@ export function TaskChecklistModal({ open, onClose, task }: Props) {
 
                     {canEdit && (
                         <div style={{ marginTop: 12, display: 'flex', gap: 8, alignItems: 'flex-end' }}>
-                            <Input.TextArea
+                            <ChecklistTextArea
                                 placeholder="Thêm checklist item mới..."
                                 autoSize={{ minRows: 1, maxRows: 8 }}
-                                maxLength={500}
-                                value={newContent}
+                                        value={newContent}
                                 onChange={(e) => setNewContent(e.target.value)}
                                 onPressEnter={(e) => {
                                     if (!e.shiftKey) {

@@ -175,7 +175,31 @@ export default function TaskPerformancePage() {
       sorter: (a, b) => a.userName.localeCompare(b.userName),
       render: (name: string) => <Text strong>{name}</Text>,
     },
-    { title: 'Tổng Task', dataIndex: 'total', key: 'total', width: 100, align: 'right', sorter: (a, b) => a.total - b.total },
+    {
+      title: (
+        <Tooltip title="Task mà nhân viên là Phụ trách CHÍNH. Các % bên dưới đều tính trên nhóm này.">
+          Tổng Task của mình <InfoCircleOutlined />
+        </Tooltip>
+      ),
+      dataIndex: 'total',
+      key: 'total',
+      width: 130,
+      align: 'right',
+      sorter: (a, b) => a.total - b.total,
+    },
+    {
+      title: (
+        <Tooltip title="Task của người khác mà nhân viên là Phụ trách PHỤ (không tính vào các %).">
+          Tổng Task phụ trách phụ <InfoCircleOutlined />
+        </Tooltip>
+      ),
+      dataIndex: 'secondaryTotal',
+      key: 'secondaryTotal',
+      width: 150,
+      align: 'right',
+      sorter: (a, b) => (a.secondaryTotal ?? 0) - (b.secondaryTotal ?? 0),
+      render: (v: number) => v ?? 0,
+    },
     {
       title: 'Đúng hạn',
       dataIndex: 'completedOnTime',
@@ -270,9 +294,9 @@ export default function TaskPerformancePage() {
         ),
     },
     {
-      title: 'Checklist',
+      title: 'Checklist Task của mình',
       key: 'checklist',
-      width: 130,
+      width: 170,
       align: 'right',
       sorter: (a, b) => (percentOf(a.checklistDone, a.checklistTotal) ?? -1) - (percentOf(b.checklistDone, b.checklistTotal) ?? -1),
       render: (_, r) =>
@@ -281,6 +305,23 @@ export default function TaskPerformancePage() {
         ) : (
           <Tooltip title={`${percentOf(r.checklistDone, r.checklistTotal)}%`}>
             {r.checklistDone}/{r.checklistTotal}
+          </Tooltip>
+        ),
+    },
+    {
+      title: 'Checklist Task phụ trách phụ',
+      key: 'checklistSecondary',
+      width: 200,
+      align: 'right',
+      sorter: (a, b) =>
+        (percentOf(a.checklistSecondaryDone ?? 0, a.checklistSecondaryTotal ?? 0) ?? -1) -
+        (percentOf(b.checklistSecondaryDone ?? 0, b.checklistSecondaryTotal ?? 0) ?? -1),
+      render: (_, r) =>
+        !r.checklistSecondaryTotal ? (
+          '—'
+        ) : (
+          <Tooltip title={`${percentOf(r.checklistSecondaryDone, r.checklistSecondaryTotal)}%`}>
+            {r.checklistSecondaryDone}/{r.checklistSecondaryTotal}
           </Tooltip>
         ),
     },
@@ -422,7 +463,18 @@ export default function TaskPerformancePage() {
       <Row gutter={[12, 12]} style={{ marginBottom: 16 }}>
         <Col xs={12} md={8} xl={5}>
           <Card size="small" variant="outlined">
-            <Statistic title="Tổng Task trong kỳ" value={totals.total} loading={isLoading} />
+            <Statistic title="Tổng Task của mình" value={totals.total} loading={isLoading} />
+            <Text type="secondary" style={{ fontSize: 12 }}>
+              Phụ trách chính, trong kỳ
+            </Text>
+          </Card>
+        </Col>
+        <Col xs={12} md={8} xl={5}>
+          <Card size="small" variant="outlined">
+            <Statistic title="Tổng Task phụ trách phụ" value={totals.secondaryTotal} loading={isLoading} />
+            <Text type="secondary" style={{ fontSize: 12 }}>
+              Task người khác, mình là phụ trách phụ
+            </Text>
           </Card>
         </Col>
         <Col xs={12} md={8} xl={5}>
@@ -461,15 +513,26 @@ export default function TaskPerformancePage() {
             />
           </Card>
         </Col>
-        <Col xs={24} md={8} xl={4}>
+        <Col xs={12} md={8} xl={5}>
           <Card size="small" variant="outlined">
             <Statistic
-              title="Checklist"
+              title="Checklist Task của mình"
               value={totals.checklistRatePercent ?? '—'}
               suffix={totals.checklistRatePercent == null ? undefined : '%'}
               loading={isLoading}
             />
             <Text type="secondary" style={{ fontSize: 12 }}>{totals.checklistDone}/{totals.checklistTotal} mục</Text>
+          </Card>
+        </Col>
+        <Col xs={12} md={8} xl={5}>
+          <Card size="small" variant="outlined">
+            <Statistic
+              title="Checklist Task phụ trách phụ"
+              value={totals.checklistSecondaryRatePercent ?? '—'}
+              suffix={totals.checklistSecondaryRatePercent == null ? undefined : '%'}
+              loading={isLoading}
+            />
+            <Text type="secondary" style={{ fontSize: 12 }}>{totals.checklistSecondaryDone}/{totals.checklistSecondaryTotal} mục</Text>
           </Card>
         </Col>
         <Col xs={12} md={8} xl={5}>

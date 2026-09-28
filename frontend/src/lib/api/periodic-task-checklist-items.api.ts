@@ -78,3 +78,7 @@ export const periodicTaskChecklistItemsApi = {
     return response.data;
   },
 };
+
+/** Giới hạn ký tự 1 checklist item - KHỚP `@MaxLength(500)` ở BE DTO
+ * (create/update-periodic-task-checklist-item.dto.ts) và cột `varchar(500)`. */
+export const CHECKLIST_CONTENT_MAX_LENGTH = 500;

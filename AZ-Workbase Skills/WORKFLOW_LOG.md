@@ -4541,3 +4541,17 @@ khi bị xoá tay. Đây là 1 anti-pattern thật (dù đo thử với payload 
 > Chủ dự án tự chạy `npm run migration:run` (không tự chạy lên DB thật). Chưa chạy trên MySQL thật/trình duyệt thật. Chưa commit/push.
 
 ---
+## [2026-09-28 16:00] | Hiệu suất công việc: tách Task/Checklist "của mình" vs "phụ trách phụ" + đếm ký tự checklist | [Status: Success — BE tsc sạch, jest periodic-tasks 183/183, FE vitest 137/137; FE tsc chỉ còn 14 lỗi có sẵn (logo.png/styled-jsx), không thuộc file đã sửa]
+
+**Actor:** Agent
+
+**Files Changed:**
+- `backend/src/modules/periodic-tasks/periodic-task-performance.service.ts` — thêm `secondaryTotal`, `checklistSecondaryDone/Total` vào `PerformanceUserRow`; hàm mới `addSecondaryStats()` (inject `PeriodicTaskSecondaryAssignee` repo). KHÔNG đổi `total`/các % cũ (vẫn tính trên Phụ trách chính).
+- `backend/src/modules/periodic-tasks/periodic-task-performance.service.spec.ts` — +3 test (phụ trách phụ, user chỉ có Task phụ, scope OWN).
+- `frontend/src/lib/api/periodic-task-performance.api.ts`, `lib/utils/periodicTaskPerformance.ts(+test)`, `app/(dashboard)/hieu-suat-cong-viec/page.tsx` — 2 Card + 2 cột Tổng Task, 2 Card + 2 cột Checklist.
+- `frontend/src/components/periodic-tasks/ChecklistTextArea.tsx` (MỚI) + `TaskChecklistModal.tsx`, `TaskChecklistInline.tsx`, `lib/api/periodic-task-checklist-items.api.ts` — bộ đếm `n/500` + Tooltip cảnh báo khi chạm giới hạn.
+
+**Notes:**
+> Giới hạn checklist thật = 500 ký tự (khớp DTO/entity), không phải 200. Task bị status `is_excluded_from_rollup` loại khỏi số liệu phụ trách phụ. Không có migration. Chưa test trên MySQL/trình duyệt thật. Chưa commit/push.
+
+---

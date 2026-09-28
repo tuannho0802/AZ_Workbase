@@ -11,11 +11,15 @@ export interface PerformanceTotals {
   inReviewCount: number;
   checklistDone: number;
   checklistTotal: number;
+  secondaryTotal: number;
+  checklistSecondaryDone: number;
+  checklistSecondaryTotal: number;
   completionRatePercent: number | null;
   lateRatePercent: number | null;
   inProgressRatePercent: number | null;
   inReviewRatePercent: number | null;
   checklistRatePercent: number | null;
+  checklistSecondaryRatePercent: number | null;
 }
 
 /** Làm tròn 1 số lẻ, `null` nếu mẫu số = 0 (cùng quy ước với BE). */
@@ -37,6 +41,9 @@ export function aggregateRows(rows: PerformanceUserRow[]): PerformanceTotals {
       inReviewCount: acc.inReviewCount + r.inReviewCount,
       checklistDone: acc.checklistDone + r.checklistDone,
       checklistTotal: acc.checklistTotal + r.checklistTotal,
+      secondaryTotal: acc.secondaryTotal + (r.secondaryTotal ?? 0),
+      checklistSecondaryDone: acc.checklistSecondaryDone + (r.checklistSecondaryDone ?? 0),
+      checklistSecondaryTotal: acc.checklistSecondaryTotal + (r.checklistSecondaryTotal ?? 0),
     }),
     {
       total: 0,
@@ -48,6 +55,9 @@ export function aggregateRows(rows: PerformanceUserRow[]): PerformanceTotals {
       inReviewCount: 0,
       checklistDone: 0,
       checklistTotal: 0,
+      secondaryTotal: 0,
+      checklistSecondaryDone: 0,
+      checklistSecondaryTotal: 0,
     },
   );
   const completed = sum.completedOnTime + sum.completedLate;
@@ -58,6 +68,7 @@ export function aggregateRows(rows: PerformanceUserRow[]): PerformanceTotals {
     inProgressRatePercent: percentOf(sum.inProgressCount, sum.total),
     inReviewRatePercent: percentOf(sum.inReviewCount, sum.total),
     checklistRatePercent: percentOf(sum.checklistDone, sum.checklistTotal),
+    checklistSecondaryRatePercent: percentOf(sum.checklistSecondaryDone, sum.checklistSecondaryTotal),
   };
 }
 

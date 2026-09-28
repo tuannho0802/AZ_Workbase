@@ -5,6 +5,7 @@ import { PeriodicTask } from '../../database/entities/periodic-task.entity';
 import { PeriodicTaskChecklistItem } from '../../database/entities/periodic-task-checklist-item.entity';
 import { PeriodicTaskStatus } from '../../database/entities/periodic-task-status.entity';
 import { PeriodicTaskAuditLog } from '../../database/entities/periodic-task-audit-log.entity';
+import { PeriodicTaskSecondaryAssignee } from '../../database/entities/periodic-task-secondary-assignee.entity';
 import { User } from '../../database/entities/user.entity';
 import { PermissionsService } from '../permissions/permissions.service';
 import { PeriodicTaskSecondaryAssigneesService } from './periodic-task-secondary-assignees.service';
@@ -22,6 +23,7 @@ import * as dateVnUtil from '../../common/utils/date-vn.util';
 function makeQb(rawRows: any[]) {
   return {
     leftJoin: jest.fn().mockReturnThis(),
+    innerJoin: jest.fn().mockReturnThis(),
     select: jest.fn().mockReturnThis(),
     addSelect: jest.fn().mockReturnThis(),
     where: jest.fn().mockReturnThis(),
@@ -35,6 +37,7 @@ describe('PeriodicTaskPerformanceService - grace period 7 ngày', () => {
   let service: PeriodicTaskPerformanceService;
   let mockTaskRepo: { createQueryBuilder: jest.Mock };
   let mockChecklistRepo: { createQueryBuilder: jest.Mock };
+  let mockSecondaryRepo: { createQueryBuilder: jest.Mock };
   let mockStatusRepo: { find: jest.Mock };
   let mockAuditLogRepo: { find: jest.Mock };
   let mockUserRepo: { find: jest.Mock };
@@ -53,6 +56,7 @@ describe('PeriodicTaskPerformanceService - grace period 7 ngày', () => {
   beforeEach(async () => {
     mockTaskRepo = { createQueryBuilder: jest.fn() };
     mockChecklistRepo = { createQueryBuilder: jest.fn().mockReturnValue(makeQb([])) };
+    mockSecondaryRepo = { createQueryBuilder: jest.fn().mockReturnValue(makeQb([])) };
     mockStatusRepo = { find: jest.fn().mockResolvedValue(STATUSES) };
     mockAuditLogRepo = { find: jest.fn().mockResolvedValue([]) };
     mockUserRepo = { find: jest.fn().mockResolvedValue([{ id: 7, name: 'Nhân viên A' }]) };
@@ -73,6 +77,7 @@ describe('PeriodicTaskPerformanceService - grace period 7 ngày', () => {
         { provide: getRepositoryToken(PeriodicTaskStatus), useValue: mockStatusRepo },
         { provide: getRepositoryToken(PeriodicTaskAuditLog), useValue: mockAuditLogRepo },
         { provide: getRepositoryToken(User), useValue: mockUserRepo },
+        { provide: getRepositoryToken(PeriodicTaskSecondaryAssignee), useValue: mockSecondaryRepo },
         { provide: PermissionsService, useValue: mockPermissionsService },
         { provide: PeriodicTaskSecondaryAssigneesService, useValue: mockSecondaryAssigneesService },
       ],
@@ -377,6 +382,75 @@ describe('PeriodicTaskPerformanceService - grace period 7 ngày', () => {
       expect(result.rows[0].inReviewCount).toBe(0);
       expect(result.rows[0].inProgressRatePercent).toBe(0);
       expect(result.rows[0].inReviewRatePercent).toBe(0);
+    });
+  });
+
+  describe('MỚI (2026-09-28) - Phụ trách PHỤ: secondaryTotal + checklistSecondary', () => {
+    const primaryTask = {
+      task_id: 1,
+      primary_assignee_id: 7,
+      status_id: 10,
+      period_end_date: '2026-09-10',
+      created_at: '2026-09-01T00:00:00.000Z',
+      is_excluded_from_rollup: 0,
+      status_code: 'not_started',
+    };
+
+    it('đếm secondaryTotal + checklist của Task người khác mà User là phụ trách phụ, KHÔNG cộng vào total/checklist chính', async () => {
+      jest.spyOn(dateVnUtil, 'todayVnStr').mockReturnValue('2026-09-24');
+      mockTaskRepo.createQueryBuilder.mockReturnValue(makeQb([primaryTask]));
+      // User 7 là phụ trách phụ của Task 100 (checklist 4 mục, xong 3) và Task 101 (2 mục, xong 0)
+      mockSecondaryRepo.createQueryBuilder.mockReturnValue(
+        makeQb([
+          { user_id: 7, task_id: 100 },
+          { user_id: 7, task_id: 101 },
+        ]),
+      );
+      mockChecklistRepo.createQueryBuilder
+        .mockReturnValueOnce(makeQb([{ task_id: 1, total: '5', done: '2' }])) // checklist Task chính
+        .mockReturnValueOnce(
+          makeQb([
+            { task_id: 100, total: '4', done: '3' },
+            { task_id: 101, total: '2', done: '0' },
+          ]),
+        );
+
+      const result = await service.getSummary({}, ADMIN_USER as any);
+      const row = result.rows[0];
+
+      expect(row.total).toBe(1); // Task chính, không đổi
+      expect(row.checklistTotal).toBe(5);
+      expect(row.checklistDone).toBe(2);
+      expect(row.secondaryTotal).toBe(2);
+      expect(row.checklistSecondaryTotal).toBe(6);
+      expect(row.checklistSecondaryDone).toBe(3);
+    });
+
+    it('User CHỈ có Task phụ (không có Task chính) vẫn có dòng riêng, total = 0', async () => {
+      jest.spyOn(dateVnUtil, 'todayVnStr').mockReturnValue('2026-09-24');
+      mockTaskRepo.createQueryBuilder.mockReturnValue(makeQb([]));
+      mockSecondaryRepo.createQueryBuilder.mockReturnValue(makeQb([{ user_id: 7, task_id: 100 }]));
+      mockChecklistRepo.createQueryBuilder.mockReturnValue(makeQb([{ task_id: 100, total: '3', done: '1' }]));
+
+      const result = await service.getSummary({}, ADMIN_USER as any);
+
+      expect(result.rows).toHaveLength(1);
+      expect(result.rows[0].total).toBe(0);
+      expect(result.rows[0].completionRatePercent).toBeNull();
+      expect(result.rows[0].secondaryTotal).toBe(1);
+      expect(result.rows[0].checklistSecondaryDone).toBe(1);
+      expect(result.rows[0].checklistSecondaryTotal).toBe(3);
+    });
+
+    it('scope OWN: query phụ trách phụ bị khoá theo chính người xem', async () => {
+      mockPermissionsService.hasPermission.mockResolvedValue({ allowed: false, scope: null });
+      mockTaskRepo.createQueryBuilder.mockReturnValue(makeQb([]));
+      const secQb = makeQb([]);
+      mockSecondaryRepo.createQueryBuilder.mockReturnValue(secQb);
+
+      await service.getSummary({}, { id: 7, role: Role.EMPLOYEE, isRootAdmin: false } as any);
+
+      expect(secQb.andWhere).toHaveBeenCalledWith('psa.userId = :perfSecOwnUserId', { perfSecOwnUserId: 7 });
     });
   });
 

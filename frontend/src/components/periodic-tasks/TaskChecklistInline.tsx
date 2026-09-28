@@ -2,7 +2,8 @@
 
 import { useMemo, useState } from 'react';
 import dayjs from 'dayjs';
-import { App, Button, Checkbox, Collapse, Empty, Input, Popconfirm, Progress, Space, Spin, Typography } from 'antd';
+import { App, Button, Checkbox, Collapse, Empty, Popconfirm, Progress, Space, Spin, Typography } from 'antd';
+import { ChecklistTextArea } from './ChecklistTextArea';
 import { CheckOutlined, CloseOutlined, DeleteOutlined, PlusOutlined } from '@ant-design/icons';
 import { useQueryClient } from '@tanstack/react-query';
 import {
@@ -198,12 +199,11 @@ export function TaskChecklistInline({ taskId, canEdit, onOpenFull }: Props) {
             >
                 <Checkbox checked={item.isDone} disabled={!canEdit} onChange={() => handleToggleDone(item)} style={{ marginTop: 2 }} />
                 {isEditing ? (
-                    <Input.TextArea
+                    <ChecklistTextArea
                         autoFocus
                         size="small"
                         autoSize={{ minRows: 1, maxRows: 6 }}
                         value={editingContent}
-                        maxLength={500}
                         onChange={(e) => setEditingContent(e.target.value)}
                         onPressEnter={(e) => {
                             if (!e.shiftKey) {
@@ -325,11 +325,10 @@ export function TaskChecklistInline({ taskId, canEdit, onOpenFull }: Props) {
 
             {canEdit && (
                 <div style={{ marginTop: 6, display: 'flex', gap: 6, alignItems: 'flex-end' }}>
-                    <Input.TextArea
+                    <ChecklistTextArea
                         size="small"
                         placeholder="Thêm checklist item mới..."
                         autoSize={{ minRows: 1, maxRows: 6 }}
-                        maxLength={500}
                         value={newContent}
                         onChange={(e) => setNewContent(e.target.value)}
                         onPressEnter={(e) => {

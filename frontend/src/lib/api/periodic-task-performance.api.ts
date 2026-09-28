@@ -36,8 +36,14 @@ export interface PerformanceUserRow {
   inProgressRatePercent: number | null;
   /** % inReviewCount / total. `null` nếu total = 0. */
   inReviewRatePercent: number | null;
+  /** Checklist của Task mà User là Phụ trách CHÍNH. */
   checklistDone: number;
   checklistTotal: number;
+  /** Tổng Task trong kỳ mà User là Phụ trách PHỤ (không cộng vào `total`/các %). */
+  secondaryTotal: number;
+  /** Checklist thuộc Task người khác mà User là Phụ trách phụ. */
+  checklistSecondaryDone: number;
+  checklistSecondaryTotal: number;
 }
 
 export interface PerformanceSummaryResult {
