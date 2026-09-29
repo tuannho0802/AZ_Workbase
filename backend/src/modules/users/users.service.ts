@@ -283,6 +283,11 @@ export class UsersService {
   private async generateNextEmployeeCode(): Promise<string> {
     const result = await this.usersRepository
       .createQueryBuilder('user')
+      // [AGENT] FIX: bắt buộc withDeleted() - cột employee_code UNIQUE áp dụng cả
+      // cho user đã xóa mềm (deleted_at != NULL). Thiếu dòng này, QueryBuilder tự
+      // thêm `deleted_at IS NULL` -> bỏ sót mã lớn nhất đang nằm trong thùng rác
+      // -> sinh lại đúng mã đó -> ER_DUP_ENTRY (500 khi đăng ký/tạo nhân viên).
+      .withDeleted()
       .select(
         'MAX(CAST(SUBSTRING(user.employee_code, 3) AS UNSIGNED))',
         'maxNum',
@@ -1276,7 +1281,11 @@ export class UsersService {
       } catch (error: any) {
         lastError = error;
         if (error.code === 'ER_DUP_ENTRY') {
-          continue;
+          // [AGENT] Trùng EMAIL (race 2 request cùng lúc) -> 409 rõ ràng, KHÔNG retry
+          if (String(error.message).includes('email')) {
+            throw new ConflictException('Email đã được đăng ký');
+          }
+          continue; // trùng mã nhân viên -> sinh lại mã rồi thử tiếp
         }
         throw error;
       }
