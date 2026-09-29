@@ -353,9 +353,9 @@ export default function QuanLyUtmPage() {
 
       <UtmFormModal open={!!formTarget} onClose={() => setFormTarget(null)} utm={formTarget?.utm ?? null} />
       <UtmManagersModal open={!!managing} onClose={() => setManaging(null)} utmId={managing?.id ?? null} utmName={managing?.name} />
-      <UtmCustomersModal key={viewing?.id ?? 'none'} open={!!viewing} onClose={() => setViewing(null)} utmId={viewing?.id ?? null} utmName={viewing?.name} />
+      <UtmCustomersModal key={`customers-${viewing?.id ?? 'none'}`} open={!!viewing} onClose={() => setViewing(null)} utmId={viewing?.id ?? null} utmName={viewing?.name} />
       <UtmMergeModal
-        key={merging ? `${merging.source.id}-${merging.defaultTargetId ?? 0}` : 'none'}
+        key={merging ? `merge-${merging.source.id}-${merging.defaultTargetId ?? 0}` : 'merge-none'}
         open={!!merging}
         onClose={() => setMerging(null)}
         source={merging?.source ?? null}
