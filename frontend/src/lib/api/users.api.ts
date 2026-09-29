@@ -133,6 +133,8 @@ export interface UserDetail {
   phone: string | null;
   role: string;
   isActive: boolean;
+  /** Tài khoản tự đăng ký chưa được duyệt = 'pending' (vẫn `isActive=true` nhưng CHƯA đăng nhập được). */
+  approvalStatus?: 'pending' | 'approved' | 'rejected';
   // ⚠️ MỚI (AddIsRootAdminToUsers1781000000000) - xem chú thích ở
   // auth.types.ts::User.isRootAdmin.
   isRootAdmin?: boolean;

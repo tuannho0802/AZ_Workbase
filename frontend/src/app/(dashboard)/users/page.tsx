@@ -26,6 +26,21 @@ import { resolveEntityColor } from '@/lib/utils/entityColor';
 import { useDebounce } from '@/lib/hooks/useDebounce';
 import { ListFilterBar } from '@/components/common/ListFilterBar';
 
+
+/**
+ * Tag Trạng thái của 1 nhân viên: tài khoản tự đăng ký CHƯA duyệt (`approvalStatus='pending'`) hiện "Đang chờ duyệt"
+ * (dù `isActive=true`), không được hiện "Đang hoạt động" vì chưa đăng nhập được. `short` = nhãn ngắn cho thẻ mobile.
+ */
+function renderUserStatusTag(record: { isActive?: boolean; approvalStatus?: string }, short = false) {
+  if (record.approvalStatus === 'pending') return <Tag color="orange">Đang chờ duyệt</Tag>;
+  if (record.approvalStatus === 'rejected') return <Tag color="red">Đã bị từ chối</Tag>;
+  return record.isActive ? (
+    <Tag color="green">{short ? 'Hoạt động' : 'Đang hoạt động'}</Tag>
+  ) : (
+    <Tag color="red">{short ? 'Bị khóa' : 'Không hoạt động'}</Tag>
+  );
+}
+
 const { Text } = Typography;
 
 // ── mobile card ──────────────────────────────────────────────────────────────
@@ -70,9 +85,7 @@ function UserMobileCard({
           {record.isRootAdmin && (
             <Tag color="gold" icon={<CrownOutlined />}>Root Admin</Tag>
           )}
-          <Tag color={record.isActive ? 'green' : 'red'}>
-            {record.isActive ? 'Hoạt động' : 'Bị khóa'}
-          </Tag>
+          {renderUserStatusTag(record, true)}
         </div>
       </div>
 
@@ -463,9 +476,8 @@ export default function UsersPage() {
     },
     {
       title: 'Trạng thái',
-      dataIndex: 'isActive',
-      render: (val: any) =>
-        val ? <Tag color="green">Đang hoạt động</Tag> : <Tag color="red">Không hoạt động</Tag>
+      key: 'status',
+      render: (_: unknown, record: any) => renderUserStatusTag(record),
     },
     {
       title: 'Thao tác',
