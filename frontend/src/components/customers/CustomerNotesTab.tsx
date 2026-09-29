@@ -22,7 +22,7 @@ const NOTE_TYPE_OPTIONS = [
 interface Props {
   customerId: number;
   notes: CustomerNote[];
-  onNoteAdded: () => void;
+  onNoteAdded: (created?: CustomerNote) => void;
 }
 
 export const CustomerNotesTab = ({ customerId, notes, onNoteAdded }: Props) => {
@@ -75,10 +75,10 @@ export const CustomerNotesTab = ({ customerId, notes, onNoteAdded }: Props) => {
   const handleSubmit = async (values: { note: string; noteType: string; isImportant?: boolean }) => {
     setLoading(true);
     try {
-      await customersApi.createNote(customerId, values);
+      const created = await customersApi.createNote(customerId, values);
       message.success('Đã thêm ghi chú');
       form.resetFields();
-      onNoteAdded();
+      onNoteAdded(created as CustomerNote); // truyền note vừa tạo để parent hiện ngay (optimistic)
     } catch (error) {
       message.error(getApiErrorMessage(error, 'Lỗi khi thêm ghi chú'));
     } finally {

@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { 
   Drawer, 
   Tabs, 
@@ -19,7 +19,8 @@ import {
   UsergroupAddOutlined,
   ApartmentOutlined
 } from '@ant-design/icons';
-import { Customer } from '@/lib/types/customer.types';
+import { Customer, CustomerNote } from '@/lib/types/customer.types';
+import { useAuthStore } from '@/lib/stores/auth.store';
 import { customersApi } from '@/lib/api/customers.api';
 import { useMyHiddenElements } from '@/lib/hooks/useUiVisibility';
 import { CustomerDepositTable } from './CustomerDepositTable';
@@ -60,13 +61,22 @@ export const CustomerDetailDrawer = ({ open, customerId, onClose, onUpdate }: Cu
   const { hiddenKeys } = useMyHiddenElements('customers');
   const isTabHidden = (elementKey: string) => hiddenKeys.includes(elementKey);
 
+  // [AGENT] FIX đồng bộ ghi chú: đếm thứ tự request để CHỈ áp dụng response của
+  // lần fetch MỚI NHẤT. Trước đây fetch chậm (vd lúc mở drawer) về SAU fetch
+  // refetch-sau-khi-thêm-ghi-chú sẽ ghi đè state bằng dữ liệu cũ (chưa có note).
+  const fetchSeqRef = useRef(0);
+  const currentUser = useAuthStore((s) => s.user);
+
   const fetchDetail = useCallback(async () => {
     if (!customerId) return;
+    const seq = ++fetchSeqRef.current;
     setLoading(true);
     try {
       const data = await customersApi.getCustomer(customerId);
+      if (seq !== fetchSeqRef.current) return; // response cũ -> bỏ
       setCustomer(data);
     } catch {
+      if (seq !== fetchSeqRef.current) return;
       // ⚠️ FIX BUG THẬT (2026-09-22): trước đây gọi `onClose()` ở đây - dù chỉ
       // 1 lần fetch/refetch (vd bấm "Làm mới", hoặc 1 API phụ trong Drawer)
       // lỗi thoáng qua (network blip, 401 đang refresh token...), `onClose`
@@ -79,9 +89,12 @@ export const CustomerDetailDrawer = ({ open, customerId, onClose, onUpdate }: Cu
       // đóng Drawer - để người dùng tự bấm "Làm mới" thử lại hoặc tự đóng.
       message.error('Không thể lấy thông tin khách hàng');
     } finally {
-      setLoading(false);
+      if (seq === fetchSeqRef.current) setLoading(false);
     }
-  }, [customerId, message, onClose]);
+    // [AGENT] OLD deps: [customerId, message, onClose] - `onClose` KHÔNG được dùng
+    // trong hàm, nhưng parent truyền arrow inline nên đổi identity mỗi render ->
+    // useEffect bên dưới refetch liên tục mỗi lần parent render lại.
+  }, [customerId, message]);
 
   useEffect(() => {
     if (open && customerId) {
@@ -93,8 +106,26 @@ export const CustomerDetailDrawer = ({ open, customerId, onClose, onUpdate }: Cu
     }
   }, [open, customerId, fetchDetail]);
 
-  const handleNoteAdded = () => {
-    fetchDetail();
+  const handleNoteAdded = (created?: CustomerNote) => {
+    // [AGENT] Optimistic: hiện NGAY ghi chú vừa tạo (dùng response của POST) thay vì
+    // chờ refetch cả customer (nặng: join deposits/assignments...) - tránh khoảng
+    // trống user thấy toast "Đã thêm" nhưng danh sách vẫn "Chưa có ghi chú nào".
+    if (created) {
+      setCustomer((prev) => {
+        if (!prev) return prev;
+        const exists = (prev.notes || []).some((n) => n.id === created.id);
+        if (exists) return prev;
+        const enriched: CustomerNote = {
+          ...created,
+          createdByUser: created.createdByUser ?? (currentUser
+            ? { id: currentUser.id, name: currentUser.name, fullName: (currentUser as { fullName?: string }).fullName, email: currentUser.email }
+            : undefined),
+          createdAt: created.createdAt ?? new Date().toISOString(),
+        };
+        return { ...prev, notes: [enriched, ...(prev.notes || [])] };
+      });
+    }
+    fetchDetail(); // đối soát với server (nguồn sự thật)
     onUpdate?.();
   };
 
