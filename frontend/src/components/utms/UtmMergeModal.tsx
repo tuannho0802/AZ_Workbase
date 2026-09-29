@@ -67,7 +67,7 @@ export function UtmMergeModal({ open, onClose, source, candidates, defaultTarget
         type="warning"
         showIcon
         style={{ marginBottom: 12 }}
-        message="Không thể hoàn tác"
+        title="Không thể hoàn tác"
         description={`Toàn bộ khách hàng đang dùng UTM "${source?.name ?? ''}" sẽ chuyển sang UTM đích, sau đó UTM này bị xoá (cả danh sách Quản lý phụ của nó).`}
       />
       <Text strong>Gộp vào UTM đích:</Text>
