@@ -1,0 +1,493 @@
+import {
+  Injectable,
+  Logger,
+  NotFoundException,
+  ForbiddenException,
+  BadRequestException,
+  ConflictException,
+} from '@nestjs/common';
+import { InjectRepository } from '@nestjs/typeorm';
+import { DataSource, Repository } from 'typeorm';
+import { Utm } from '../../database/entities/utm.entity';
+import { UtmSecondaryManager } from '../../database/entities/utm-secondary-manager.entity';
+import { DepartmentManager } from '../../database/entities/department-manager.entity';
+import { Role } from '../../common/enums/role.enum';
+import { normalizeSearchableText } from '../../common/utils/text-normalize.util';
+import { PermissionsService } from '../permissions/permissions.service';
+import { AuditService } from '../audit/audit.service';
+import { DepartmentManagerHelper } from '../departments/helpers/department-manager.helper';
+import { UtmAccessHelper, UtmRelation, UtmRelationContext } from './helpers/utm-access.helper';
+import { CreateUtmDto } from './dto/create-utm.dto';
+import { UpdateUtmDto } from './dto/update-utm.dto';
+import { UtmQueryDto } from './dto/utm-query.dto';
+
+/** Phần của `request.user` mà module UTM cần (xem JwtStrategy.validate). */
+export interface UtmCaller {
+  id: number;
+  role: string;
+  isRootAdmin?: boolean;
+  departmentId?: number | null;
+  positionId?: number | null;
+}
+
+/** Scope hiệu lực (own/department/all) của từng permission scoped; null = không có quyền. */
+export interface UtmScopes {
+  view: string | null;
+  edit: string | null;
+  assign: string | null;
+  delete: string | null;
+}
+
+export interface UtmCapabilities {
+  canEditIdentity: boolean;
+  canEditMeta: boolean;
+  canAssign: boolean;
+  canDelete: boolean;
+}
+
+export interface UtmView {
+  id: number;
+  name: string;
+  description: string | null;
+  color: string;
+  visibility: 'shared' | 'restricted';
+  isActive: boolean;
+  sortOrder: number;
+  primaryManager: { id: number; name: string } | null;
+  secondaryManagers: Array<{ id: number; name: string }>;
+  myRole: 'primary' | 'secondary' | null;
+  capabilities: UtmCapabilities;
+  createdAt: Date;
+  updatedAt: Date;
+}
+
+const CASCADE_BATCH = 5000;
+
+@Injectable()
+export class UtmsService {
+  private readonly logger = new Logger(UtmsService.name);
+
+  constructor(
+    @InjectRepository(Utm)
+    private readonly utmRepo: Repository<Utm>,
+    @InjectRepository(UtmSecondaryManager)
+    private readonly secondaryRepo: Repository<UtmSecondaryManager>,
+    private readonly dataSource: DataSource,
+    private readonly permissionsService: PermissionsService,
+    private readonly auditService: AuditService,
+  ) {}
+
+  // ---------------------------------------------------------------------------
+  // Scope / context (dùng chung với UtmManagersService)
+  // ---------------------------------------------------------------------------
+
+  /**
+   * Scope hiệu lực của 1 permission cho người gọi. Root Admin (role=admin VÀ isRootAdmin) luôn 'all'
+   * - lối thoát hiểm cứng, không phụ thuộc DB (cùng PermissionGuard/RolesService). Thiếu quyền hoặc
+   * scope NULL ở key có scope -> null (fail-closed).
+   */
+  async scopeOf(user: UtmCaller, key: string): Promise<string | null> {
+    if (user.role === Role.ADMIN && user.isRootAdmin) return 'all';
+    const { allowed, scope } = await this.permissionsService.hasPermission(
+      user.role,
+      key,
+      user.departmentId,
+      user.positionId,
+    );
+    if (!allowed) return null;
+    return scope ?? null;
+  }
+
+  async resolveScopes(user: UtmCaller): Promise<UtmScopes> {
+    const [view, edit, assign, del] = await Promise.all([
+      this.scopeOf(user, 'utms.view'),
+      this.scopeOf(user, 'utms.edit'),
+      this.scopeOf(user, 'utms.assign'),
+      this.scopeOf(user, 'utms.delete'),
+    ]);
+    return { view, edit, assign, delete: del };
+  }
+
+  async managedDepartmentIds(userId: number): Promise<number[]> {
+    return DepartmentManagerHelper.getManagedDepartmentIds(
+      this.utmRepo.manager.getRepository(DepartmentManager),
+      userId,
+    );
+  }
+
+  buildContext(utm: Utm, userId: number, managedDepartmentIds: number[]): UtmRelationContext {
+    return {
+      userId,
+      primaryManagerId: utm.primaryManagerId,
+      secondaryManagerUserIds: (utm.secondaryManagers ?? []).map((m) => m.userId),
+      primaryManagerDepartmentId: utm.primaryManager?.departmentId ?? null,
+      managedDepartmentIds,
+    };
+  }
+
+  /** Nạp UTM kèm chính (để biết phòng ban) + phụ. */
+  async loadUtm(id: number): Promise<Utm> {
+    const utm = await this.utmRepo.findOne({
+      where: { id },
+      relations: ['primaryManager', 'secondaryManagers', 'secondaryManagers.user'],
+    });
+    if (!utm) throw new NotFoundException('Không tìm thấy UTM này');
+    return utm;
+  }
+
+  capabilities(utm: Utm, userId: number, scopes: UtmScopes, managedIds: number[]): UtmCapabilities {
+    const ctx = this.buildContext(utm, userId, managedIds);
+    const editRel = UtmAccessHelper.relation(scopes.edit, ctx);
+    const assignRel = UtmAccessHelper.relation(scopes.assign, ctx);
+    const deleteRel = UtmAccessHelper.relation(scopes.delete, ctx);
+    return {
+      canEditIdentity: UtmAccessHelper.canEditIdentity(editRel),
+      canEditMeta: UtmAccessHelper.canEditMeta(editRel),
+      canAssign: UtmAccessHelper.canEditSecondaryManagers(assignRel),
+      canDelete: UtmAccessHelper.canDelete(deleteRel),
+    };
+  }
+
+  toView(utm: Utm, userId: number, scopes: UtmScopes, managedIds: number[]): UtmView {
+    const isPrimary = utm.primaryManagerId != null && utm.primaryManagerId === userId;
+    const isSecondary = (utm.secondaryManagers ?? []).some((m) => m.userId === userId);
+    return {
+      id: utm.id,
+      name: utm.name,
+      description: utm.description,
+      color: utm.color,
+      visibility: utm.visibility,
+      isActive: !!utm.isActive,
+      sortOrder: utm.sortOrder,
+      primaryManager: utm.primaryManager ? { id: utm.primaryManager.id, name: utm.primaryManager.name } : null,
+      secondaryManagers: (utm.secondaryManagers ?? [])
+        .filter((m) => m.user)
+        .map((m) => ({ id: m.user.id, name: m.user.name })),
+      myRole: isPrimary ? 'primary' : isSecondary ? 'secondary' : null,
+      capabilities: this.capabilities(utm, userId, scopes, managedIds),
+      createdAt: utm.createdAt,
+      updatedAt: utm.updatedAt,
+    };
+  }
+
+  private async detail(id: number, user: UtmCaller): Promise<UtmView> {
+    const [utm, scopes, managed] = await Promise.all([
+      this.loadUtm(id),
+      this.resolveScopes(user),
+      this.managedDepartmentIds(user.id),
+    ]);
+    return this.toView(utm, user.id, scopes, managed);
+  }
+
+  private isDupEntry(err: any): boolean {
+    return err?.code === 'ER_DUP_ENTRY' || err?.driverError?.code === 'ER_DUP_ENTRY';
+  }
+
+  // ---------------------------------------------------------------------------
+  // Đọc
+  // ---------------------------------------------------------------------------
+
+  /**
+   * `GET /utms` - dropdown cho form khách hàng. CỐ Ý không gắn @RequirePermission ở controller
+   * (Employee vẫn phải chọn được UTM mà không dính 403). Chỉ trả UTM ĐƯỢC DÙNG: `shared`, hoặc
+   * `restricted` mà mình là chính/phụ, hoặc scope `utms.view` phủ tới (all / department).
+   * Kèm `myRole` để FE biết mình là chính/phụ.
+   */
+  async findUsable(user: UtmCaller, query: UtmQueryDto) {
+    const viewScope = await this.scopeOf(user, 'utms.view');
+    const limit = query.limit ?? 50;
+
+    const qb = this.utmRepo.createQueryBuilder('utm').orderBy('utm.sortOrder', 'ASC').addOrderBy('utm.name', 'ASC').take(limit);
+
+    if (query.activeOnly) qb.andWhere('utm.isActive = :active', { active: 1 });
+    if (query.q?.trim()) {
+      // LIKE theo collation cột (utf8mb4_unicode_ci) -> không phân biệt hoa/thường và dấu.
+      qb.andWhere('utm.name LIKE :q', { q: `%${query.q.trim().replace(/[\\%_]/g, '\\$&')}%` });
+    }
+
+    if (viewScope !== 'all') {
+      const managed = viewScope === 'department' ? await this.managedDepartmentIds(user.id) : [];
+      const clauses = [
+        `utm.visibility = 'shared'`,
+        'utm.primaryManagerId = :uid',
+        'utm.id IN (SELECT sm.utm_id FROM utm_secondary_managers sm WHERE sm.user_id = :uid)',
+      ];
+      const params: Record<string, unknown> = { uid: user.id };
+      if (viewScope === 'department' && managed.length > 0) {
+        clauses.push('utm.primary_manager_id IN (SELECT u.id FROM users u WHERE u.department_id IN (:...managed))');
+        params.managed = managed;
+      }
+      qb.andWhere(`(${clauses.join(' OR ')})`, params);
+    }
+
+    const utms = await qb.getMany();
+    const memberRows = await this.secondaryRepo.find({ where: { userId: user.id }, select: ['utmId'] });
+    const secondarySet = new Set(memberRows.map((r) => r.utmId));
+
+    return utms.map((u) => ({
+      id: u.id,
+      name: u.name,
+      description: u.description,
+      color: u.color,
+      visibility: u.visibility,
+      isActive: !!u.isActive,
+      primaryManagerId: u.primaryManagerId,
+      myRole:
+        u.primaryManagerId != null && u.primaryManagerId === user.id
+          ? ('primary' as const)
+          : secondarySet.has(u.id)
+            ? ('secondary' as const)
+            : null,
+    }));
+  }
+
+  /** `GET /utms/managed-by-me` - UTM mình là Quản lý chính/phụ (không cần permission: dữ liệu tự lọc theo user). */
+  async listManagedByMe(user: UtmCaller): Promise<UtmView[]> {
+    const secondaryRows = await this.secondaryRepo.find({ where: { userId: user.id }, select: ['utmId'] });
+    const secondaryIds = secondaryRows.map((r) => r.utmId);
+
+    const qb = this.utmRepo
+      .createQueryBuilder('utm')
+      .leftJoinAndSelect('utm.primaryManager', 'primaryManager')
+      .leftJoinAndSelect('utm.secondaryManagers', 'secondaryManagers')
+      .leftJoinAndSelect('secondaryManagers.user', 'secondaryUser')
+      .orderBy('utm.sortOrder', 'ASC')
+      .addOrderBy('utm.id', 'ASC');
+    if (secondaryIds.length > 0) {
+      qb.where('(utm.primaryManagerId = :uid OR utm.id IN (:...sids))', { uid: user.id, sids: secondaryIds });
+    } else {
+      qb.where('utm.primaryManagerId = :uid', { uid: user.id });
+    }
+
+    const [utms, scopes, managed] = await Promise.all([
+      qb.getMany(),
+      this.resolveScopes(user),
+      this.managedDepartmentIds(user.id),
+    ]);
+    return utms.map((u) => this.toView(u, user.id, scopes, managed));
+  }
+
+  /** `GET /utms/scoped` (@RequirePermission utms.view) - tab "Tất cả UTM", lọc theo scope của utms.view. */
+  async listScoped(user: UtmCaller): Promise<UtmView[]> {
+    const scopes = await this.resolveScopes(user);
+    if (!scopes.view) return [];
+    const managed = await this.managedDepartmentIds(user.id);
+
+    const utms = await this.utmRepo.find({
+      relations: ['primaryManager', 'secondaryManagers', 'secondaryManagers.user'],
+      order: { sortOrder: 'ASC', id: 'ASC' },
+    });
+    // Lọc bằng CHÍNH helper (1 nguồn sự thật) - số UTM ở mức vài trăm nên lọc trong bộ nhớ là đủ.
+    const visible = utms.filter(
+      (u) => UtmAccessHelper.relation(scopes.view, this.buildContext(u, user.id, managed)) !== null,
+    );
+    return visible.map((u) => this.toView(u, user.id, scopes, managed));
+  }
+
+  async getOne(id: number, user: UtmCaller): Promise<UtmView> {
+    return this.detail(id, user);
+  }
+
+  // ---------------------------------------------------------------------------
+  // Ghi
+  // ---------------------------------------------------------------------------
+
+  /** Chuẩn hoá tên: NBSP/zero-width -> dấu cách, gộp khoảng trắng, trim. Rỗng -> 400. */
+  private normalizeName(raw: string): string {
+    const name = normalizeSearchableText(raw);
+    if (!name) throw new BadRequestException('Tên UTM không được để trống');
+    return name;
+  }
+
+  private async assertNameFree(name: string, exceptId?: number): Promise<void> {
+    // So sánh theo collation cột => không phân biệt hoa/thường và dấu (cùng UNIQUE ở DB).
+    const existing = await this.utmRepo.findOne({ where: { name }, relations: ['primaryManager'] });
+    if (existing && existing.id !== exceptId) {
+      throw new ConflictException(this.conflictMessage(existing));
+    }
+  }
+
+  private conflictMessage(existing: Utm): string {
+    const owner = existing.primaryManager?.name;
+    return owner
+      ? `UTM "${existing.name}" đã tồn tại — nhờ ${owner} (Quản lý chính) thêm bạn làm Quản lý phụ`
+      : `UTM "${existing.name}" đã tồn tại`;
+  }
+
+  /** `POST /utms` (@RequirePermission utms.create). Người tạo = Quản lý chính. */
+  async create(dto: CreateUtmDto, user: UtmCaller): Promise<UtmView> {
+    const name = this.normalizeName(dto.name);
+    await this.assertNameFree(name);
+
+    let saved: Utm;
+    try {
+      saved = await this.utmRepo.save(
+        this.utmRepo.create({
+          name,
+          description: dto.description?.trim() ? dto.description.trim() : null,
+          ...(dto.color ? { color: dto.color } : {}),
+          visibility: dto.visibility ?? 'shared',
+          isActive: true,
+          primaryManagerId: user.id,
+          createdById: user.id,
+        }),
+      );
+    } catch (err) {
+      if (this.isDupEntry(err)) {
+        // 2 người tạo cùng tên cùng lúc: UNIQUE ở DB bắt được (PLAN mục 5, case 6).
+        const existing = await this.utmRepo.findOne({ where: { name }, relations: ['primaryManager'] });
+        throw new ConflictException(existing ? this.conflictMessage(existing) : `UTM "${name}" đã tồn tại`);
+      }
+      throw err;
+    }
+
+    this.auditService.logActionAsync(user.id, 'CREATE_UTM', 'utm', saved.id, null, {
+      utmId: saved.id,
+      utmName: saved.name,
+      visibility: saved.visibility,
+    });
+    return this.detail(saved.id, user);
+  }
+
+  /**
+   * `PATCH /utms/:id` (@RequirePermission utms.edit).
+   *  - name / visibility: Quản lý chính hoặc scope rộng (D9). Đổi tên => cascade `customers.campaign`
+   *    (snapshot) trong CÙNG transaction, KHÔNG đổi `customers.updated_at` (tránh "Sửa cuối" nhảy hàng loạt).
+   *  - description / color: cả Quản lý phụ.
+   */
+  async update(id: number, dto: UpdateUtmDto, user: UtmCaller): Promise<UtmView> {
+    const utm = await this.loadUtm(id);
+    const [editScope, managed] = await Promise.all([this.scopeOf(user, 'utms.edit'), this.managedDepartmentIds(user.id)]);
+    const rel = UtmAccessHelper.relation(editScope, this.buildContext(utm, user.id, managed));
+
+    if (!UtmAccessHelper.canEditMeta(rel)) {
+      throw new ForbiddenException('Bạn không có quyền sửa UTM này (không phải Quản lý chính/phụ và ngoài phạm vi quyền)');
+    }
+
+    const wantsRename = dto.name !== undefined;
+    const wantsVisibility = dto.visibility !== undefined && dto.visibility !== utm.visibility;
+    if ((wantsRename || wantsVisibility) && !UtmAccessHelper.canEditIdentity(rel)) {
+      throw new ForbiddenException('Chỉ Quản lý chính (hoặc người có quyền rộng) mới được đổi tên hoặc chế độ hiển thị UTM');
+    }
+
+    const before = { name: utm.name, description: utm.description, color: utm.color, visibility: utm.visibility };
+    let renamedTo: string | null = null;
+
+    if (wantsRename) {
+      const name = this.normalizeName(dto.name as string);
+      if (name !== utm.name) {
+        await this.assertNameFree(name, utm.id);
+        renamedTo = name;
+        utm.name = name;
+      }
+    }
+    if (dto.description !== undefined) utm.description = dto.description?.trim() ? dto.description.trim() : null;
+    if (dto.color !== undefined) utm.color = dto.color;
+    if (dto.visibility !== undefined) utm.visibility = dto.visibility;
+
+    let affectedCustomers = 0;
+    try {
+      await this.dataSource.transaction(async (manager) => {
+        // Chỉ ghi các cột của bảng utms (không save cả cây quan hệ đã nạp).
+        await manager.update(Utm, utm.id, {
+          name: utm.name,
+          description: utm.description,
+          color: utm.color,
+          visibility: utm.visibility,
+        });
+        if (renamedTo) affectedCustomers = await this.cascadeSnapshot(manager, utm.id, renamedTo);
+      });
+    } catch (err) {
+      if (this.isDupEntry(err)) throw new ConflictException(`UTM "${renamedTo ?? utm.name}" đã tồn tại`);
+      throw err;
+    }
+
+    this.auditService.logActionAsync(
+      user.id,
+      'UPDATE_UTM',
+      'utm',
+      utm.id,
+      before,
+      {
+        name: utm.name,
+        description: utm.description,
+        color: utm.color,
+        visibility: utm.visibility,
+        ...(renamedTo ? { affectedCustomers } : {}),
+      },
+    );
+    return this.detail(utm.id, user);
+  }
+
+  /** Cập nhật `customers.campaign = tên mới` theo lô, giữ nguyên `updated_at`. Trả về số KH đã đổi. */
+  private async cascadeSnapshot(
+    manager: { query: (sql: string, params?: unknown[]) => Promise<any> },
+    utmId: number,
+    newName: string,
+  ): Promise<number> {
+    let total = 0;
+    // Mỗi lượt chỉ chạm dòng còn lệch tên -> vòng lặp tự dừng khi không còn dòng nào.
+    for (;;) {
+      const res = await manager.query(
+        `UPDATE customers SET campaign = ?, updated_at = updated_at
+         WHERE utm_id = ? AND (campaign IS NULL OR BINARY campaign <> BINARY ?)
+         LIMIT ${CASCADE_BATCH}`,
+        [newName, utmId, newName],
+      );
+      const affected = Number(res?.affectedRows ?? 0);
+      total += affected;
+      if (affected < CASCADE_BATCH) break;
+    }
+    return total;
+  }
+
+  /** `PATCH /utms/:id/activate|deactivate` (@RequirePermission utms.edit) - chính, phụ hoặc scope rộng. */
+  async setActive(id: number, active: boolean, user: UtmCaller): Promise<UtmView> {
+    const utm = await this.loadUtm(id);
+    const [editScope, managed] = await Promise.all([this.scopeOf(user, 'utms.edit'), this.managedDepartmentIds(user.id)]);
+    const rel = UtmAccessHelper.relation(editScope, this.buildContext(utm, user.id, managed));
+    if (!UtmAccessHelper.canEditMeta(rel)) {
+      throw new ForbiddenException('Bạn không có quyền khoá/mở khoá UTM này');
+    }
+    if (!!utm.isActive !== active) {
+      await this.utmRepo.update(utm.id, { isActive: active });
+      this.auditService.logActionAsync(
+        user.id,
+        active ? 'ACTIVATE_UTM' : 'DEACTIVATE_UTM',
+        'utm',
+        utm.id,
+        { isActive: !active },
+        { isActive: active, utmName: utm.name },
+      );
+    }
+    return this.detail(utm.id, user);
+  }
+
+  /**
+   * `DELETE /utms/:id` (@RequirePermission utms.delete). Chỉ khi 0 KH tham chiếu - TÍNH CẢ KH đã xoá mềm
+   * (raw SQL không lọc deleted_at) để không làm mất liên kết dữ liệu (D8).
+   */
+  async remove(id: number, user: UtmCaller): Promise<{ success: true }> {
+    const utm = await this.loadUtm(id);
+    const [deleteScope, managed] = await Promise.all([this.scopeOf(user, 'utms.delete'), this.managedDepartmentIds(user.id)]);
+    const rel = UtmAccessHelper.relation(deleteScope, this.buildContext(utm, user.id, managed));
+    if (!UtmAccessHelper.canDelete(rel)) {
+      throw new ForbiddenException('Bạn không có quyền xoá UTM này');
+    }
+
+    const rows: Array<{ c: string | number }> = await this.utmRepo.query(
+      'SELECT COUNT(*) AS c FROM customers WHERE utm_id = ?',
+      [utm.id],
+    );
+    const inUse = Number(rows?.[0]?.c ?? 0);
+    if (inUse > 0) {
+      throw new BadRequestException(
+        `UTM "${utm.name}" còn ${inUse} khách hàng đang dùng (kể cả trong Thùng rác) — hãy Khoá UTM này hoặc Gộp sang UTM khác thay vì xoá`,
+      );
+    }
+
+    await this.utmRepo.delete(utm.id); // utm_secondary_managers tự CASCADE ở DB
+    this.auditService.logActionAsync(user.id, 'DELETE_UTM', 'utm', utm.id, { utmId: utm.id, utmName: utm.name }, null);
+    return { success: true };
+  }
+}

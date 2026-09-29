@@ -140,6 +140,12 @@ dùng `@Roles()` enum tĩnh. Danh mục permission đầy đủ trong DB (sau 2 
 | `link_groups.manage` | link_groups | Tạo/sửa nhóm |
 | `link_groups.delete` | link_groups | Xoá nhóm — chỉ Admin |
 | `link_groups.my_managed` | link_groups | **MỚI (2026-09-11).** Xem trang "Nhóm tôi quản lý" (`/nhom-toi-quan-ly` — nhóm liên kết bản thân là quản lý chính/phụ). Permission RIÊNG, KHÔNG dùng chung `link_groups.view` (trang CRUD chung `/nhom-lien-ket` của Admin/Assistant) — đây là trang CÁ NHÂN theo mô hình quyền tài nguyên cụ thể (xem mục 1.6/2.4), 1 Employee có thể được gán quản lý 1 group dù không có `link_groups.view`. `supportsScope=false` (nhị phân — dữ liệu bên trong đã tự lọc theo user đăng nhập ở `GET /link-groups/managed-by-me`, không cần thêm scope). Seed mặc định CẢ 4 role = bật, đúng hành vi cũ (`roles: null` trước khi có permission này) |
+| `utms.view` | utms | **MỚI (2026-09-29, PLAN_UTM_MANAGEMENT Phần 2).** Xem tab "Tất cả UTM" (`GET /utms/scoped`). **Có scope**: own = UTM mình là chính/phụ, department = UTM có Quản lý CHÍNH thuộc phòng ban mình quản lý (`department_managers`) + UTM của mình, all = tất cả. Seed: Admin/Assistant=`all`, Manager=`department`, Employee=KHÔNG (chỉ override phòng ban Marketing = `own`) |
+| `utms.create` | utms | Tạo UTM (người tạo = Quản lý chính). Nhị phân. Seed: Admin/Assistant/Manager; Employee chỉ override Marketing |
+| `utms.edit` | utms | Sửa UTM. Có scope. Tên/visibility/chuyển chính: chỉ Quản lý CHÍNH hoặc scope rộng; mô tả/màu/khoá-mở: cả Quản lý phụ. Seed như `utms.view` |
+| `utms.assign` | utms | Thêm/gỡ Quản lý phụ (assignee) + chuyển chính. Có scope, chỉ chính hoặc scope rộng. Seed như `utms.view` |
+| `utms.delete` | utms | Xoá UTM khi 0 KH tham chiếu (tính cả Thùng rác). Có scope. Seed: CHỈ Admin=`all` (Employee Marketing KHÔNG có) |
+| `utms.my_managed` | utms | Vào trang "Quản lý UTM" (tab "UTM tôi quản lý"). Nhị phân. Seed: Admin/Assistant/Manager; Employee chỉ override Marketing |
 | `media_sources.view` | media_sources | Xem nguồn media |
 | `media_sources.manage` | media_sources | Tạo/sửa nguồn media |
 | `media_sources.delete` | media_sources | Xoá nguồn — chỉ Admin |
@@ -714,6 +720,16 @@ mục tuỳ chọn Phase 5/6/M3 (deep-link highlight tự động, `notification
 người chưa đọc") — xem `PLAN_NOTIFICATION_SYSTEM.md` mục 10.
 
 ---
+
+### 2.13. UTM (`modules/utms`) — ✅ BE Phần 2 xong (FE + tích hợp Customers ở các phần sau)
+
+- Bảng `utms` + `utm_secondary_managers` (migration `1785000000000`), backfill từ `customers.campaign` (`1785100000000`), seed permission `1785200000000-SeedUtmPermissions`.
+- **Scope KHÁC Nhóm liên kết**: không có key `manage` nhị phân; "quyền rộng" = scope `all` của `utms.edit`/`assign`/`delete` (Root Admin luôn `all`, bypass cứng ở `UtmsService.scopeOf()`). Quan hệ người gọi ↔ UTM tính ở hàm thuần `UtmAccessHelper.relation()` (all / department / primary / secondary / null).
+- UTM chưa có Quản lý chính (backfill) chỉ scope `all` thao tác được. `department` xét phòng ban của Quản lý CHÍNH ∈ `department_managers` của người gọi, cộng UTM mình là chính/phụ.
+- **`GET /utms`, `/utms/managed-by-me`, `/utms/:id`, `/utms/:id/managers` CỐ Ý không `@RequirePermission`**: Employee không có `utms.view`/`create` vẫn chọn UTM ở form KH và thấy tag mà không 403 (UTM `restricted` tự lọc ở service). FE phải tự ẩn trang/nút theo `can()` + `capabilities` trả về, không được gọi `GET /utms/scoped` khi thiếu `utms.view`.
+- Override phòng ban **Marketing** (tên chứa "marketing", không phân biệt hoa/thường) cho employee: `view/edit/assign=own`, `create`, `my_managed`; KHÔNG `delete`.
+- Đổi tên UTM cascade `customers.campaign` theo lô 5.000 trong cùng transaction, giữ `updated_at` của khách. Quản lý UTM KHÔNG mở rộng quyền xem khách hàng.
+- Chưa làm: `customer-counts`, `:id/customers` (áp scope `customers.view`), Gộp UTM, tích hợp `CustomersService`/Import, FE.
 
 ## 3. Lịch sử quyết định & rà soát
 

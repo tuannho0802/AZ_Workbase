@@ -5002,3 +5002,20 @@ khi bị xoá tay. Đây là 1 anti-pattern thật (dù đo thử với payload 
 > Chưa có module/API/FE UTM, chưa seed permission `utms.*` (làm ở các phần sau). Migration cần chạy tay trên DB thật (`npm run migration:run`) sau khi backup DB. Backfill KHÔNG đổi `updated_at` của khách; giữ nguyên `customers.campaign` (snapshot = tên UTM).
 
 ---
+
+---
+
+## [2026-09-29 17:00] | UTM Phần 2: permission `utms.*` + UtmAccessHelper + CRUD/Quản lý chính-phụ (BE) | [Status: Success — BE tsc sạch + nest build OK + jest 69 suite / 1211 test; seed migration chạy thật trên MySQL 8.0]
+
+**Actor:** Agent (trên `origin/main` HEAD `c778beb`)
+
+**Files Changed:**
+- BE MỚI: migration `1785200000000-SeedUtmPermissions.ts` (6 key; Admin/Assistant=all, Manager=department, Employee chỉ override phòng ban Marketing: view/edit/assign=own + create + my_managed, KHÔNG delete).
+- BE MỚI: `modules/utms/` — `helpers/utm-access.helper.ts`, `utms.service.ts`, `utm-managers.service.ts`, `utms.controller.ts`, `utms.module.ts`, 4 DTO, 4 spec (65 test, có test khoá permission từng route).
+- BE: `app.module.ts` đăng ký `UtmsModule`.
+- Docs: `PERMISSIONS.md` (+6 key, §2.13).
+
+**Notes:**
+> Đã kiểm: chạy `up()` 2 lần = 21 dòng role_permissions (idempotent), `down()` dọn sạch; mutation check (nới `canEditIdentity`) làm 4 test đỏ. Chưa làm: FE, tích hợp Customers/Import, `customer-counts`, Gộp UTM. Chuỗi migration từ DB TRỐNG hiện lỗi ở 1 migration cũ (DROP INDEX trên `customers`) — có sẵn từ trước, không do UTM. Migration cần chạy tay trên DB thật sau khi backup.
+
+---

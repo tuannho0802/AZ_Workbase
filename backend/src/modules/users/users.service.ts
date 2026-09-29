@@ -1114,7 +1114,7 @@ export class UsersService {
    *    `customer_note.updated_by`, `customer_group_membership.updated_by`,
    *    `leave_requests.approver_id`/`requester_id`, `link_group.primary_
    *    manager_id`, `link_group_secondary_manager.*`, `link_group_content_
-   *    staff.*`, `users.deleted_by_id`) - KHÔNG cần xử lý tay, DB tự lo khi
+   *    staff.*`, `users.deleted_by_id`, `utms.primary_manager_id`/`created_by_id` = SET NULL, `utm_secondary_managers.user_id` = CASCADE / `added_by_id` = SET NULL) - KHÔNG cần xử lý tay, DB tự lo khi
    *    chạy lệnh DELETE cuối cùng.
    *
    * ⚠️ Khi thêm cột FK trỏ tới `users.id` mới ở bảng khác trong tương lai,

@@ -19,6 +19,7 @@ import { ZkDeviceModule } from './modules/zk-device/zk-device.module';
 import { AttendanceExportModule } from './modules/attendance-export/attendance-export.module';
 import { MediaSourcesModule } from './modules/media-sources/media-sources.module';
 import { LinkGroupsModule } from './modules/link-groups/link-groups.module';
+import { UtmsModule } from './modules/utms/utms.module';
 import { ReportsModule } from './modules/reports/reports.module';
 import { PermissionsModule } from './modules/permissions/permissions.module';
 import { RolesModule } from './modules/roles/roles.module';
@@ -77,6 +78,7 @@ import { KeepAliveController } from './keep-alive/keep-alive.controller';
     AttendanceExportModule,
     MediaSourcesModule,
     LinkGroupsModule,
+    UtmsModule,
     ReportsModule,
     // PermissionsModule (@Global) PHẢI import trước RolesModule để
     // PermissionsService sẵn sàng cho PermissionGuard dùng ở mọi route.
