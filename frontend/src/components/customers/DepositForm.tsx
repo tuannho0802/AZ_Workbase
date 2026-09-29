@@ -6,6 +6,9 @@ import { PlusOutlined } from '@ant-design/icons';
 import dayjs from 'dayjs';
 import { customersApi } from '@/lib/api/customers.api';
 
+// Khớp @MaxLength ở backend/src/modules/customers/dto/create-deposit.dto.ts
+const NOTE_MAX_LENGTH = 1000;
+
 interface Props {
   customerId: number;
   onSuccess: () => void;
@@ -29,8 +32,12 @@ export const DepositForm = ({ customerId, onSuccess }: Props) => {
     try {
       const sanitizedAmount = sanitizeAmount(values.amount);
       
+      // Ghi chú nạp (cột `deposits.note`): trim, rỗng -> không gửi (tránh lưu chuỗi '')
+      const trimmedNote = typeof values.note === 'string' ? values.note.trim() : '';
+
       await customersApi.createDeposit(customerId, {
         ...values,
+        note: trimmedNote || undefined,
         amount: sanitizedAmount,
         depositDate: values.depositDate.format('YYYY-MM-DD')
       });
@@ -70,6 +77,14 @@ export const DepositForm = ({ customerId, onSuccess }: Props) => {
         </Row>
         <Form.Item name="broker" label="Sàn giao dịch">
           <Input placeholder="BCR, OEXN..." />
+        </Form.Item>
+        <Form.Item name="note" label="Ghi chú nạp">
+          <Input.TextArea
+            rows={2}
+            maxLength={NOTE_MAX_LENGTH}
+            showCount
+            placeholder="Nội dung giao dịch, mã tham chiếu, lưu ý..."
+          />
         </Form.Item>
         <Button type="primary" htmlType="submit" loading={submitLoading} block icon={<PlusOutlined />}>
           Xác nhận nạp tiền

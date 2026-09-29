@@ -1,4 +1,4 @@
-import { IsNumber, IsDateString, IsString, IsOptional, Min } from 'class-validator';
+import { IsNumber, IsDateString, IsString, IsOptional, Min, MaxLength } from 'class-validator';
 import { ApiProperty } from '@nestjs/swagger';
 
 export class CreateDepositDto {
@@ -19,5 +19,6 @@ export class CreateDepositDto {
   @ApiProperty({ example: 'Ghi chú về giao dịch', required: false })
   @IsOptional()
   @IsString()
+  @MaxLength(1000, { message: 'Ghi chú nạp tối đa 1000 ký tự' })
   note?: string;
 }

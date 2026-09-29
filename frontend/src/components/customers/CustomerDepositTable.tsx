@@ -8,7 +8,7 @@ import { Deposit } from '@/lib/types/customer.types';
 import { useMyPermissions } from '@/lib/hooks/useMyPermissions';
 import dayjs from 'dayjs';
 
-const { Text } = Typography;
+const { Text, Paragraph } = Typography;
 
 interface Props {
   customerId: number;
@@ -93,6 +93,21 @@ export const CustomerDepositTable = ({ customerId, refreshTrigger }: Props) => {
                 ${Number(record.amount).toLocaleString(undefined, { minimumFractionDigits: 2 })}
               </Text>
             </div>
+            {record.note && (
+              <Paragraph
+                style={{
+                  margin: '0 0 6px',
+                  padding: '4px 8px',
+                  background: '#fafafa',
+                  borderRadius: 4,
+                  whiteSpace: 'pre-wrap',
+                  wordBreak: 'break-word',
+                }}
+                ellipsis={{ rows: 2, expandable: true, symbol: 'Xem thêm' }}
+              >
+                📝 {record.note}
+              </Paragraph>
+            )}
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
               <Text type="secondary" style={{ fontSize: 12 }}>
                 Sàn: {record.broker || '-'} | Tạo bởi: {record.createdBy?.name || 'Hệ thống'}
