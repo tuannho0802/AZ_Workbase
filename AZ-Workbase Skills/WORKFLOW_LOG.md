@@ -5103,3 +5103,22 @@ khi bị xoá tay. Đây là 1 anti-pattern thật (dù đo thử với payload 
 
 ---
 
+
+## [2026-09-29 12:00] | UTM: modal "Khách hàng (n)" liệt kê cả khách trong Thùng rác + Khôi phục/Xoá vĩnh viễn tại chỗ | [Status: Success — BE tsc sạch + jest utms 5 suite / 106 test; FE tsc chỉ còn lỗi cũ logo.png/CountBadge, vitest 36 file / 248 test; CHƯA chạy `next build`, CHƯA xem trình duyệt thật]
+
+**Actor:** Agent (trên `origin/main` HEAD `3df454b`)
+
+**Files Changed:**
+- BE: `utms/dto/utm-customers-query.dto.ts` (+`trashed`: `exclude`|`include`|`only`, mặc định `exclude`); `utms/utm-customers.service.ts` (inject `PermissionsService`; `include`/`only` đòi `customers.trash_manage` nếu không thì 403; `withDeleted()`; vẫn áp `applyViewFilter`; trả thêm `deletedAt`); `utms/utm-customers.service.spec.ts` (+6 test Thùng rác).
+- FE: `lib/api/utms.api.ts` (+`trashed`, +`deletedAt`); `components/utms/UtmCustomersModal.tsx` (bộ chọn Tất cả/Đang dùng/Chỉ Thùng rác cho người có `customers.trash_manage`, tag "Thùng rác", nút Khôi phục và Xoá vĩnh viễn theo `customers.hard_delete`, làm mới `utms`/`customers`/badge Thùng rác).
+
+**Root Cause:**
+> Nút "Khách hàng (n)" và danh sách chỉ đếm khách chưa xoá mềm, trong khi `UtmsService.remove()` cố ý chặn xoá UTM nếu còn khách Thùng rác (D8) → UTM hiện 0 khách vẫn không xoá được và người dùng không có chỗ xem khách nào đang chặn.
+
+**Solution:**
+> Cho modal liệt kê khách Thùng rác (cùng cổng quyền `customers.trash_manage` như trang /trash-can) và thao tác xoá vĩnh viễn/khôi phục dùng lại endpoint hiện có (`customers.hard_delete` do BE tự kiểm).
+
+**Notes:**
+> Số ở nút "Khách hàng (n)" ngoài bảng vẫn không tính Thùng rác. Khách Thùng rác vẫn bị lọc theo scope `customers.view`, nên người thấy khách ít hơn số thật vẫn có thể bị chặn xoá UTM.
+
+---

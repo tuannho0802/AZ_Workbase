@@ -1,4 +1,4 @@
-import { IsOptional, IsString, IsInt, Min, Max } from 'class-validator';
+import { IsOptional, IsString, IsInt, IsIn, Min, Max } from 'class-validator';
 import { Type } from 'class-transformer';
 import { ApiPropertyOptional } from '@nestjs/swagger';
 
@@ -27,4 +27,14 @@ export class UtmCustomersQueryDto {
   @IsOptional()
   @IsString()
   status?: string;
+
+  @ApiPropertyOptional({
+    enum: ['exclude', 'include', 'only'],
+    default: 'exclude',
+    description:
+      'Khách trong Thùng rác: exclude = ẩn (mặc định), include = hiện lẫn, only = chỉ Thùng rác. include/only đòi quyền customers.trash_manage.',
+  })
+  @IsOptional()
+  @IsIn(['exclude', 'include', 'only'])
+  trashed?: 'exclude' | 'include' | 'only';
 }

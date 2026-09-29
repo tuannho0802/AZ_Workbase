@@ -1,7 +1,9 @@
-import { Injectable } from '@nestjs/common';
+import { ForbiddenException, Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { Customer } from '../../database/entities/customer.entity';
+import { Role } from '../../common/enums/role.enum';
+import { PermissionsService } from '../permissions/permissions.service';
 import { CustomerAccessHelper } from '../customers/helpers/customer-access.helper';
 import { UiVisibilityService } from '../ui-visibility/ui-visibility.service';
 import { UtmManagersService } from './utm-managers.service';
@@ -20,7 +22,20 @@ export class UtmCustomersService {
     private readonly customerRepo: Repository<Customer>,
     private readonly managersService: UtmManagersService,
     private readonly uiVisibilityService: UiVisibilityService,
+    private readonly permissionsService: PermissionsService,
   ) {}
+
+  /** Permission nhị phân (không scope) - cùng quy tắc `UtmsService.hasBinary` (Root Admin luôn được). */
+  private async hasBinary(caller: UtmCaller, key: string): Promise<boolean> {
+    if (caller.role === Role.ADMIN && caller.isRootAdmin) return true;
+    const { allowed } = await this.permissionsService.hasPermission(
+      caller.role,
+      key,
+      caller.departmentId,
+      caller.positionId,
+    );
+    return allowed;
+  }
 
   /** `{ [utmId]: số KH trong phạm vi xem }` - 1 truy vấn GROUP BY, không N+1. UTM không có khách -> không có key. */
   async getCounts(caller: UtmCaller, scope: string | null | undefined): Promise<Record<number, number>> {
@@ -46,12 +61,26 @@ export class UtmCustomersService {
     const page = query.page ?? 1;
     const limit = query.limit ?? 10;
 
+    // Khách trong Thùng rác chỉ hiện cho người có `customers.trash_manage` (cùng cổng với trang Thùng rác) và VẪN
+    // bị lọc theo scope `customers.view` - quản lý UTM không mở rộng quyền xem khách.
+    const trashed = query.trashed ?? 'exclude';
+    if (trashed !== 'exclude' && !(await this.hasBinary(caller, 'customers.trash_manage'))) {
+      throw new ForbiddenException('Bạn không có quyền xem khách hàng trong Thùng rác');
+    }
+    const deletedClause = {
+      exclude: 'customer.deletedAt IS NULL',
+      only: 'customer.deletedAt IS NOT NULL',
+      include: '1 = 1',
+    }[trashed];
+
     const qb = this.customerRepo
       .createQueryBuilder('customer')
       .leftJoinAndSelect('customer.salesUser', 'salesUser')
       .leftJoinAndSelect('customer.marketingUser', 'marketingUser')
-      .where('customer.deletedAt IS NULL')
+      .where(deletedClause)
       .andWhere('customer.utmId = :utmId', { utmId });
+    // Mặc định TypeORM tự thêm `deleted_at IS NULL` - phải withDeleted() thì mới thấy dòng Thùng rác.
+    if (trashed !== 'exclude') qb.withDeleted();
     CustomerAccessHelper.applyViewFilter(qb, caller.id, caller.role, scope);
 
     if (query.search?.trim()) {
@@ -82,6 +111,7 @@ export class UtmCustomersService {
         status: c.status,
         inputDate: c.inputDate ?? null,
         createdAt: c.createdAt,
+        deletedAt: c.deletedAt ?? null,
         salesUserId: c.salesUser?.id,
         salesUser: c.salesUser ? { id: c.salesUser.id, name: c.salesUser.name } : null,
         marketingUserId: c.marketingUser?.id,

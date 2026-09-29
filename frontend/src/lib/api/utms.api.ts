@@ -71,6 +71,8 @@ export interface UtmCustomerRow {
   status: string;
   inputDate: string | null;
   createdAt: string;
+  /** Có giá trị = khách đang nằm trong Thùng rác (chỉ xuất hiện khi gọi với `trashed` include/only). */
+  deletedAt?: string | null;
   salesUser?: { id: number; name: string } | null;
   marketingUser?: { id: number; name: string } | null;
 }
@@ -80,6 +82,8 @@ export interface UtmCustomersParams {
   limit?: number;
   search?: string;
   status?: string;
+  /** exclude (mặc định) | include (lẫn Thùng rác) | only (chỉ Thùng rác) - include/only đòi `customers.trash_manage`. */
+  trashed?: 'exclude' | 'include' | 'only';
 }
 
 export interface UtmCustomersResponse {
