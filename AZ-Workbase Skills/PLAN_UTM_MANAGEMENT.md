@@ -2,7 +2,7 @@
 
 > **Đặt file tại:** `AZ-Workbase Skills/PLAN_UTM_MANAGEMENT.md`
 > **Cơ sở:** đọc trực tiếp code trên `origin/main` HEAD `aaaa7dd` (2026-09-29). Mọi `file:dòng` bên dưới là vị trí thật tại thời điểm đó.
-> **Trạng thái:** KẾ HOẠCH — chưa code. Có **7 câu hỏi cần chủ dự án chốt** ở mục 12 (kèm đề xuất mặc định để làm được ngay).
+> **Trạng thái (cập nhật 2026-09-29):** ĐANG THỰC HIỆN — BE GĐ 1–3 xong, còn FE (GĐ 4–5), Gộp UTM/gợi ý (GĐ 6), QA/rollout (GĐ 7). Xem mục **0.1** (tiến độ) và **0.2** (điều chỉnh so với plan gốc). Các mục 3–12 bên dưới là thiết kế GỐC — khi khác mục 0.2 thì **0.2 thắng**.
 
 ---
 
@@ -15,6 +15,35 @@
 | **Không conflict** khi match data cũ | Xử lý 12 tình huống xung đột cụ thể (mục 5): khác hoa/thường/dấu, rỗng, KH đã xoá mềm, ghi song song, import Excel… |
 | Mỗi UTM **do User tạo**, **trao quyền qua quản lý phụ** (giống Nhóm liên kết) | `primary_manager_id` (người tạo) + bảng `utm_secondary_managers`; chính thêm/xoá phụ; phân quyền Dynamic RBAC (mục 6) |
 | Có **migration** cho bảng đó và **phân quyền** | 3 migration tách bạch (DDL / dữ liệu / permission) + 5 permission key (mục 4, 6) |
+
+
+### 0.1. Tiến độ thực tế
+
+| GĐ | Nội dung | Trạng thái | Commit / ghi chú |
+|---|---|---|---|
+| 0 | Chốt Q1–Q7 | ✅ Xong | Xem 0.2 (Q5 đổi: Employee mặc định KHÔNG tạo UTM) |
+| 1 | Entity + Migration DDL + module UTM (CRUD, quản lý chính/phụ, `UtmAccessHelper`) | ✅ Xong | `c778beb`, `5600c30` |
+| 2 | Migration backfill + `npm run utm:backfill` | ✅ Xong (code) — ⏳ **chủ dự án cần chạy pre-flight 4.0 + migration trên DB thật** | `c778beb` |
+| 2b | Migration seed permission `utms.*` | ✅ Xong (`1785200000000`) — ⏳ chạy tay sau khi backup | `5600c30` |
+| 3 | Tích hợp Customers BE: DTO `utmId`, create/update (resolve + validate), lọc `utmId`, join `utm{id,name,color}` ở list + detail, audit snapshot, Import Excel (gom theo tên, lỗi theo dòng, `createdUtms`), `hardDeleteUser` | ✅ Xong (chưa commit tại thời điểm ghi) | jest 69 suite / 1229 test, `tsc` + `nest build` sạch |
+| 3b | Còn thiếu ở BE | ⏳ `GET /utms/customer-counts`, `GET /utms/:id/customers` (áp scope `customers.view`), `reports-customer-detail` trả `utm`; audit `MERGE_UTM` chờ GĐ 6 | |
+| 4 | FE: `UtmSelect`, `CustomerForm`, cột/lọc bảng, thống nhất nhãn "UTM", types | ⬜ Chưa | |
+| 5 | FE: trang `/quan-ly-utm`, modal quản lý phụ, nav, `audit-meta` | ⬜ Chưa | |
+| 6 | Gộp UTM, `/utms/duplicates`, `/utms/recent`, gợi ý chủ | ⬜ Chưa | |
+| 7 | QA, tài liệu, rollout theo 9.1 | ⬜ Chưa | |
+
+### 0.2. Điều chỉnh so với plan gốc (đã chốt với chủ dự án — ƯU TIÊN hơn mục 3–12)
+
+| Nội dung | Plan gốc | Thực tế đã làm |
+|---|---|---|
+| Permission | 5 key nhị phân (`view/create/manage/delete/my_managed`) | 6 key: `utms.view/edit/assign` **có scope** (own/department/all), `utms.create`/`utms.my_managed` nhị phân, `utms.delete` có scope. **Không có `utms.manage`**: "quyền rộng" = scope `all` |
+| Mặc định Employee | `view`+`create` cho cả 4 role | Employee KHÔNG có `utms.view/create`; **chỉ override phòng ban Marketing**: view/edit/assign=own, create, my_managed; **không delete** |
+| Xoá UTM | admin | Chỉ Admin (Assistant cũng không xoá) |
+| Manager | quyền nhị phân | Scope `department`: theo phòng ban của **Quản lý chính** ∈ `department_managers` của Manager |
+| Endpoint đọc | `GET /utms` không permission | Thêm `GET /utms/scoped` (cần `utms.view`) cho tab "Tất cả UTM"; `GET /utms`, `/managed-by-me`, `/:id`, `/:id/managers` không permission |
+| Gộp dấu | "Mua" = "Múa" (D5) | Giữ nguyên, đã xác nhận OK |
+| Employee không có `utms.create` gửi `campaign` text (chế độ tương thích D7) | tạo mới | UTM chưa có → **400** "bạn không có quyền tạo UTM mới"; Import Excel → lỗi theo dòng |
+| Chuỗi migration từ DB trống | — | Lỗi sẵn từ 1 migration cũ (DROP INDEX trên `customers`), không do UTM; DB thật không bị ảnh hưởng |
 
 ---
 

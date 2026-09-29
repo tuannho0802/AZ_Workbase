@@ -721,13 +721,14 @@ người chưa đọc") — xem `PLAN_NOTIFICATION_SYSTEM.md` mục 10.
 
 ---
 
-### 2.13. UTM (`modules/utms`) — ✅ BE Phần 2 xong (FE + tích hợp Customers ở các phần sau)
+### 2.13. UTM (`modules/utms`) — ✅ BE xong (CRUD/quản lý chính-phụ + tích hợp Customers); FE ở các phần sau
 
 - Bảng `utms` + `utm_secondary_managers` (migration `1785000000000`), backfill từ `customers.campaign` (`1785100000000`), seed permission `1785200000000-SeedUtmPermissions`.
 - **Scope KHÁC Nhóm liên kết**: không có key `manage` nhị phân; "quyền rộng" = scope `all` của `utms.edit`/`assign`/`delete` (Root Admin luôn `all`, bypass cứng ở `UtmsService.scopeOf()`). Quan hệ người gọi ↔ UTM tính ở hàm thuần `UtmAccessHelper.relation()` (all / department / primary / secondary / null).
 - UTM chưa có Quản lý chính (backfill) chỉ scope `all` thao tác được. `department` xét phòng ban của Quản lý CHÍNH ∈ `department_managers` của người gọi, cộng UTM mình là chính/phụ.
 - **`GET /utms`, `/utms/managed-by-me`, `/utms/:id`, `/utms/:id/managers` CỐ Ý không `@RequirePermission`**: Employee không có `utms.view`/`create` vẫn chọn UTM ở form KH và thấy tag mà không 403 (UTM `restricted` tự lọc ở service). FE phải tự ẩn trang/nút theo `can()` + `capabilities` trả về, không được gọi `GET /utms/scoped` khi thiếu `utms.view`.
 - Override phòng ban **Marketing** (tên chứa "marketing", không phân biệt hoa/thường) cho employee: `view/edit/assign=own`, `create`, `my_managed`; KHÔNG `delete`.
+- **Tích hợp Customers (BE)**: `POST /customers`/`PATCH /customers/:id` nhận `utmId` (chuẩn) hoặc `campaign` (tương thích, deprecated) → `UtmsService.resolveForCustomer()`; `campaign` luôn = tên UTM (snapshot). Chỉ validate khi UTM **thay đổi** (UTM đã khoá / restricted vẫn giữ được trên KH cũ); UTM khoá → 400, restricted không được dùng → 403, UTM chưa có + không có `utms.create` → 400. Quyền chọn UTM ở form KH **không** đòi `utms.view` (UTM `shared` ai cũng chọn). Lọc danh sách: `GET /customers?utmId=`. Import Excel: cột "Chiến dịch" resolve theo tên (cache theo tên), thiếu quyền tạo → lỗi dòng, kết quả trả `createdUtms`.
 - Đổi tên UTM cascade `customers.campaign` theo lô 5.000 trong cùng transaction, giữ `updated_at` của khách. Quản lý UTM KHÔNG mở rộng quyền xem khách hàng.
 - Chưa làm: `customer-counts`, `:id/customers` (áp scope `customers.view`), Gộp UTM, tích hợp `CustomersService`/Import, FE.
 

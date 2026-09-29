@@ -210,4 +210,57 @@ describe('UtmsService', () => {
       expect(v.capabilities).toEqual({ canEditIdentity: true, canEditMeta: true, canAssign: true, canDelete: false });
     });
   });
+
+  describe('resolveForCustomer', () => {
+    it('không gửi utmId/campaign -> null (không đổi)', async () => {
+      expect(await svc.resolveForCustomer({}, emp)).toBeNull();
+    });
+    it('utmId=null -> xoá cả utm_id lẫn snapshot', async () => {
+      expect(await svc.resolveForCustomer({ utmId: null }, emp)).toEqual({ utmId: null, campaign: null });
+    });
+    it('utmId hợp lệ: campaign = tên UTM, BỎ QUA campaign gửi kèm (case 11)', async () => {
+      utmRepo.findOne.mockResolvedValueOnce(mk({ id: 3, name: 'FB_Q4' }));
+      expect(await svc.resolveForCustomer({ utmId: 3, campaign: 'khác' }, emp)).toEqual({ utmId: 3, campaign: 'FB_Q4' });
+    });
+    it('utmId không tồn tại -> 400', async () => {
+      utmRepo.findOne.mockResolvedValueOnce(null);
+      await expect(svc.resolveForCustomer({ utmId: 99 }, emp)).rejects.toBeInstanceOf(BadRequestException);
+    });
+    it('UTM khoá: chọn mới -> 400, nhưng giữ nguyên giá trị hiện tại vẫn OK (case 8)', async () => {
+      utmRepo.findOne.mockResolvedValue(mk({ id: 3, isActive: false }));
+      await expect(svc.resolveForCustomer({ utmId: 3 }, emp, 5)).rejects.toBeInstanceOf(BadRequestException);
+      expect(await svc.resolveForCustomer({ utmId: 3 }, emp, 3)).toEqual({ utmId: 3, campaign: 'FB_Q4' });
+    });
+    it('UTM restricted, người gọi không phải chính/phụ và scope view không phải all -> 403; đang giữ sẵn thì OK (case 9)', async () => {
+      const restricted = mk({ id: 3, visibility: 'restricted', primaryManagerId: 99, primaryManager: { id: 99, name: 'X', departmentId: 7 } });
+      utmRepo.findOne.mockResolvedValue(restricted);
+      scopes['utms.view'] = 'own';
+      await expect(svc.resolveForCustomer({ utmId: 3 }, emp, null)).rejects.toBeInstanceOf(ForbiddenException);
+      expect(await svc.resolveForCustomer({ utmId: 3 }, emp, 3)).toEqual({ utmId: 3, campaign: 'FB_Q4' });
+    });
+    it('UTM restricted: người gọi là Quản lý chính -> được dùng', async () => {
+      utmRepo.findOne.mockResolvedValue(mk({ id: 3, visibility: 'restricted' })); // primaryManagerId=10=emp
+      scopes['utms.view'] = 'own';
+      expect((await svc.resolveForCustomer({ utmId: 3 }, emp, null))?.utmId).toBe(3);
+    });
+    it('chỉ có campaign (tương thích): tìm thấy theo tên -> dùng UTM có sẵn, snapshot = tên chuẩn', async () => {
+      utmRepo.findOne.mockResolvedValueOnce(mk({ id: 4, name: 'Mua' }));
+      expect(await svc.resolveForCustomer({ campaign: ' múa ' }, emp)).toEqual({ utmId: 4, campaign: 'Mua' });
+    });
+    it('campaign rỗng/NBSP -> xoá UTM', async () => {
+      expect(await svc.resolveForCustomer({ campaign: ' \u00A0 ' }, emp)).toEqual({ utmId: null, campaign: null });
+    });
+    it('campaign chưa có + KHÔNG có utms.create -> 400, không tạo', async () => {
+      utmRepo.findOne.mockResolvedValue(null);
+      await expect(svc.resolveForCustomer({ campaign: 'MỚI' }, emp)).rejects.toThrow(/không có quyền tạo/);
+      expect(utmRepo.save).not.toHaveBeenCalled();
+    });
+    it('campaign chưa có + có utms.create (nhị phân, scope null) -> tạo mới', async () => {
+      scopes['utms.create'] = null;
+      utmRepo.findOne.mockResolvedValueOnce(null).mockResolvedValueOnce(null); // resolve + assertNameFree
+      utmRepo.save.mockResolvedValue({ id: 8, name: 'MỚI', visibility: 'shared' });
+      utmRepo.findOne.mockResolvedValue(mk({ id: 8, name: 'MỚI' })); // detail
+      expect(await svc.resolveForCustomer({ campaign: 'MỚI' }, emp)).toEqual({ utmId: 8, campaign: 'MỚI' });
+    });
+  });
 });

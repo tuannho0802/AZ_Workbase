@@ -98,6 +98,13 @@ export class UtmsService {
     return scope ?? null;
   }
 
+  /** Permission nhị phân (không scope): scopeOf() trả null cho loại này nên phải đọc `allowed`. */
+  async hasBinary(user: UtmCaller, key: string): Promise<boolean> {
+    if (user.role === Role.ADMIN && user.isRootAdmin) return true;
+    const { allowed } = await this.permissionsService.hasPermission(user.role, key, user.departmentId, user.positionId);
+    return allowed;
+  }
+
   async resolveScopes(user: UtmCaller): Promise<UtmScopes> {
     const [view, edit, assign, del] = await Promise.all([
       this.scopeOf(user, 'utms.view'),
@@ -312,6 +319,65 @@ export class UtmsService {
     return owner
       ? `UTM "${existing.name}" đã tồn tại — nhờ ${owner} (Quản lý chính) thêm bạn làm Quản lý phụ`
       : `UTM "${existing.name}" đã tồn tại`;
+  }
+
+  /**
+   * Resolve UTM cho khách hàng (PLAN 7.3 + mục 5). Trả `null` = không đổi gì (cả `utmId` và `campaign` đều undefined).
+   *  - `utmId === null`            -> xoá cả utm_id lẫn snapshot campaign.
+   *  - `utmId` là số               -> chuẩn; BỎ QUA `campaign` gửi kèm (case 11).
+   *  - chỉ có `campaign` (tương thích D7) -> tìm theo tên (CI+AI); chưa có thì tạo nếu có `utms.create`, không thì 400.
+   * Chỉ validate (tồn tại / khoá / được dùng) khi UTM THAY ĐỔI so với `currentUtmId` (case 8, 9).
+   */
+  async resolveForCustomer(
+    input: { utmId?: number | null; campaign?: string | null },
+    user: UtmCaller,
+    currentUtmId?: number | null,
+  ): Promise<{ utmId: number | null; campaign: string | null } | null> {
+    if (input.utmId === null) return { utmId: null, campaign: null };
+
+    if (typeof input.utmId === 'number') {
+      const utm = await this.utmRepo.findOne({ where: { id: input.utmId } });
+      if (!utm) throw new BadRequestException('UTM không tồn tại');
+      if (utm.id !== currentUtmId) await this.assertUsableForCustomer(utm, user);
+      return { utmId: utm.id, campaign: utm.name };
+    }
+
+    if (input.campaign === undefined) return null;
+
+    const name = normalizeSearchableText(input.campaign);
+    if (!name) return { utmId: null, campaign: null };
+
+    let utm = await this.utmRepo.findOne({ where: { name } });
+    if (!utm) {
+      const canCreate = await this.hasBinary(user, 'utms.create');
+      if (!canCreate) {
+        throw new BadRequestException(`UTM "${name}" chưa tồn tại và bạn không có quyền tạo UTM mới`);
+      }
+      try {
+        const created = await this.create({ name } as CreateUtmDto, user);
+        return { utmId: created.id, campaign: created.name };
+      } catch (err) {
+        if (!(err instanceof ConflictException)) throw err;
+        utm = await this.utmRepo.findOne({ where: { name } }); // race: người khác vừa tạo
+        if (!utm) throw err;
+      }
+    }
+    if (utm.id !== currentUtmId) await this.assertUsableForCustomer(utm, user);
+    return { utmId: utm.id, campaign: utm.name };
+  }
+
+  /** 400 nếu UTM đang khoá; 403 nếu UTM restricted mà người gọi không được dùng. */
+  private async assertUsableForCustomer(utm: Utm, user: UtmCaller): Promise<void> {
+    if (!utm.isActive) throw new BadRequestException(`UTM "${utm.name}" đã bị khoá, không thể chọn mới`);
+    if (utm.visibility === 'shared') return;
+    const full = await this.loadUtm(utm.id);
+    const viewScope = await this.scopeOf(user, 'utms.view');
+    const ctx = this.buildContext(full, user.id, viewScope === 'department' ? await this.managedDepartmentIds(user.id) : []);
+    const isMember = ctx.primaryManagerId === user.id || ctx.secondaryManagerUserIds.includes(user.id);
+    const viewRel = UtmAccessHelper.relation(viewScope, ctx);
+    if (!UtmAccessHelper.canUse('restricted', isMember, viewRel)) {
+      throw new ForbiddenException(`Bạn không có quyền dùng UTM "${utm.name}"`);
+    }
   }
 
   /** `POST /utms` (@RequirePermission utms.create). Người tạo = Quản lý chính. */

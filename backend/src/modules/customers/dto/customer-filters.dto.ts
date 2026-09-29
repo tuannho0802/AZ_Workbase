@@ -112,6 +112,12 @@ export class CustomerFiltersDto {
   @IsInt()
   groupId?: number;
 
+  @ApiPropertyOptional({ example: 3, description: 'Lọc theo UTM (id trong /utms)' })
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  utmId?: number;
+
   @ApiPropertyOptional({ example: 5, description: 'Lọc theo người đã xóa mềm (Người xóa) - chỉ dùng ở GET /customers/trash' })
   @IsOptional()
   @Type(() => Number)

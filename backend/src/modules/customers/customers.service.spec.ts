@@ -16,6 +16,8 @@ import { CustomerAssignment, AssignmentStatus } from '../../database/entities/cu
 import { CustomerGroupMembership } from '../../database/entities/customer-group-membership.entity';
 import { AuditService } from '../audit/audit.service';
 import { NotificationsService } from '../notifications/notifications.service';
+import { UtmsService } from '../utms/utms.service';
+const mockUtmsService = { resolveForCustomer: jest.fn() };
 import {
   DuplicatePhoneException,
   UnauthorizedCustomerAccessException,
@@ -162,6 +164,7 @@ describe('CustomersService', () => {
         { provide: PermissionsService, useValue: mockPermissionsService },
         { provide: UiVisibilityService, useValue: mockUiVisibilityService },
         { provide: NotificationsService, useValue: mockNotificationsService },
+        { provide: UtmsService, useValue: mockUtmsService },
       ],
     }).compile();
 
@@ -199,6 +202,33 @@ describe('CustomersService', () => {
           createdBy_OLD: 1,
         }),
       );
+    });
+
+    it('UTM: có caller -> resolve, lưu utmId + campaign = tên UTM chuẩn (bỏ qua campaign text gửi kèm)', async () => {
+      const caller: any = { id: 1, role: 'employee' };
+      mockUtmsService.resolveForCustomer.mockResolvedValue({ utmId: 5, campaign: 'FB_Q4' });
+      mockCustomerRepo.create.mockImplementation((input: any) => input);
+      mockCustomerRepo.save.mockImplementation((e: any) => Promise.resolve({ id: 1, ...e }));
+
+      await service.create({ name: 'T', phone: '0912345678', utmId: 5, campaign: 'khác' } as any, 1, caller);
+
+      expect(mockUtmsService.resolveForCustomer).toHaveBeenCalledWith({ utmId: 5, campaign: 'khác' }, caller);
+      expect(mockCustomerRepo.create).toHaveBeenCalledWith(expect.objectContaining({ utmId: 5, campaign: 'FB_Q4' }));
+    });
+
+    it('UTM: resolve ném lỗi (403/400) -> KHÔNG lưu khách', async () => {
+      mockUtmsService.resolveForCustomer.mockRejectedValue(new BadRequestException('UTM đã khoá'));
+      await expect(service.create({ name: 'T', phone: '0912345678', utmId: 5 } as any, 1, { id: 1, role: 'employee' } as any)).rejects.toThrow('UTM đã khoá');
+      expect(mockCustomerRepo.save).not.toHaveBeenCalled();
+    });
+
+    it('UTM: gọi nội bộ không có caller -> giữ hành vi cũ (không resolve, utmId null)', async () => {
+      mockUtmsService.resolveForCustomer.mockClear();
+      mockCustomerRepo.create.mockImplementation((input: any) => input);
+      mockCustomerRepo.save.mockImplementation((e: any) => Promise.resolve({ id: 1, ...e }));
+      await service.create({ name: 'T', phone: '0912345678', campaign: ' X ' } as any, 1);
+      expect(mockUtmsService.resolveForCustomer).not.toHaveBeenCalled();
+      expect(mockCustomerRepo.create).toHaveBeenCalledWith(expect.objectContaining({ campaign: 'X', utmId: null }));
     });
 
     it('nên ném lỗi DuplicatePhoneException khi dính rào cản ER_DUP_ENTRY', async () => {

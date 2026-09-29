@@ -5019,3 +5019,17 @@ khi bị xoá tay. Đây là 1 anti-pattern thật (dù đo thử với payload 
 > Đã kiểm: chạy `up()` 2 lần = 21 dòng role_permissions (idempotent), `down()` dọn sạch; mutation check (nới `canEditIdentity`) làm 4 test đỏ. Chưa làm: FE, tích hợp Customers/Import, `customer-counts`, Gộp UTM. Chuỗi migration từ DB TRỐNG hiện lỗi ở 1 migration cũ (DROP INDEX trên `customers`) — có sẵn từ trước, không do UTM. Migration cần chạy tay trên DB thật sau khi backup.
 
 ---
+
+## [2026-09-29 19:30] | UTM Phần 3: tích hợp Customers (BE) + cập nhật PLAN theo tiến độ | [Status: Success — BE tsc sạch + nest build OK + jest 69 suite / 1229 test]
+
+**Actor:** Agent (trên `origin/main` HEAD `5600c30`)
+
+**Files Changed:**
+- BE: `utms.service.ts` (+`resolveForCustomer`, `hasBinary`, `assertUsableForCustomer`); `customers.service.ts` (create/update nhận `caller`, resolve UTM, lọc `utmId`, join `utm{id,name,color}` ở list + findOne, audit snapshot `utmId`, gán relation `utm` tường minh khi update); `customers.controller.ts` (truyền `user`); `customers.module.ts` (import `UtmsModule`); `customers.import.service.ts` (resolve UTM theo tên, lỗi theo dòng, `createdUtms`); DTO `create-customer` (+`utmId`), `customer-filters` (+`utmId`).
+- Test: `utms.service.spec.ts` (+11), `customers.service.spec.ts` (+3, mock `UtmsService`), `customers.import.service.spec.ts` (+4, mock `UtmsService`/`Utm` repo).
+- Docs: `PLAN_UTM_MANAGEMENT.md` (mục 0.1 tiến độ + 0.2 điều chỉnh so với plan gốc), `PERMISSIONS.md` §2.13.
+
+**Notes:**
+> Gọi `create()`/`update()` không truyền `caller` (nội bộ) giữ hành vi cũ, không resolve UTM. Chưa làm: `GET /utms/customer-counts`, `GET /utms/:id/customers`, `utm` trong report chi tiết KH, Gộp UTM, toàn bộ FE. Chưa test trên DB/trình duyệt thật. Pre-flight 4.0 + `migration:run` + `utm:backfill` vẫn cần chủ dự án chạy tay sau khi backup.
+
+---

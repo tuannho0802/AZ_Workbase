@@ -8,6 +8,8 @@ import { Customer } from '../../database/entities/customer.entity';
 import { User } from '../../database/entities/user.entity';
 import { MediaSource } from '../../database/entities/media-source.entity';
 import { CustomerStatus } from '../../database/entities/customer-status.entity';
+import { Utm } from '../../database/entities/utm.entity';
+import { UtmsService } from '../utms/utms.service';
 
 /** Dựng file .xlsx thật trong bộ nhớ (multer memoryStorage cho ra đúng dạng này). */
 function buildXlsxFile(rows: Record<string, string>[], name = 'khach.xlsx'): Express.Multer.File {
@@ -30,6 +32,8 @@ describe('CustomersImportService', () => {
   const mockCustomerRepo = { find: jest.fn() };
   const mockMediaSourceRepo = { find: jest.fn() };
   const mockStatusRepo = { find: jest.fn() };
+  const mockUtmRepo = { findOne: jest.fn() };
+  const mockUtmsService = { resolveForCustomer: jest.fn() };
   const mockManager = { insert: jest.fn() };
   const mockQueryRunner = {
     connect: jest.fn(),
@@ -45,6 +49,7 @@ describe('CustomersImportService', () => {
       if (entity === Customer) return mockCustomerRepo;
       if (entity === MediaSource) return mockMediaSourceRepo;
       if (entity === CustomerStatus) return mockStatusRepo;
+      if (entity === Utm) return mockUtmRepo;
       throw new Error('unexpected repo');
     }),
     createQueryRunner: jest.fn(() => mockQueryRunner),
@@ -58,12 +63,16 @@ describe('CustomersImportService', () => {
     mockMediaSourceRepo.find.mockResolvedValue([{ name: 'Facebook' }]);
     mockStatusRepo.find.mockResolvedValue([{ code: 'pending' }, { code: 'closed' }]);
     mockManager.insert.mockResolvedValue(undefined);
+    mockUtmRepo.findOne.mockReset();
+    mockUtmRepo.findOne.mockResolvedValue(null);
+    mockUtmsService.resolveForCustomer.mockReset();
 
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         CustomersImportService,
         { provide: DataSource, useValue: mockDataSource },
         { provide: AuditService, useValue: mockAuditService },
+        { provide: UtmsService, useValue: mockUtmsService },
       ],
     }).compile();
     service = module.get(CustomersImportService);
@@ -123,5 +132,42 @@ describe('CustomersImportService', () => {
     expect(result.successCount).toBe(0);
     expect(mockManager.insert).not.toHaveBeenCalled();
     expect(mockAuditService.logActionAsync).not.toHaveBeenCalled();
+  });
+
+  describe('UTM (cột "Chiến dịch")', () => {
+    const row = (phone: string, utm?: string) => ({ 'Họ và tên': 'A ' + phone, 'Số điện thoại': phone, ...(utm !== undefined ? { 'Chiến dịch': utm } : {}) });
+
+    it('gom theo tên: 2 dòng cùng UTM (khác hoa/thường) chỉ resolve 1 lần; insert có utmId + snapshot tên chuẩn', async () => {
+      mockUtmsService.resolveForCustomer.mockResolvedValue({ utmId: 5, campaign: 'FB_Q4' });
+      const result: any = await service.importExcel(buildXlsxFile([row('0901234567', 'FB_Q4'), row('0912345678', 'fb_q4')]), 7);
+      expect(mockUtmsService.resolveForCustomer).toHaveBeenCalledTimes(1);
+      expect(mockManager.insert.mock.calls[0][1]).toEqual([
+        expect.objectContaining({ utmId: 5, campaign: 'FB_Q4' }),
+        expect.objectContaining({ utmId: 5, campaign: 'FB_Q4' }),
+      ]);
+      expect(result.createdUtms).toEqual(['FB_Q4']); // chưa tồn tại trước import -> liệt kê là UTM mới
+    });
+
+    it('UTM đã tồn tại trước import -> KHÔNG nằm trong createdUtms', async () => {
+      mockUtmRepo.findOne.mockResolvedValue({ id: 5 });
+      mockUtmsService.resolveForCustomer.mockResolvedValue({ utmId: 5, campaign: 'FB_Q4' });
+      const result: any = await service.importExcel(buildXlsxFile([row('0901234567', 'FB_Q4')]), 7);
+      expect(result.createdUtms).toEqual([]);
+    });
+
+    it('không có quyền tạo UTM mới / UTM bị khoá -> lỗi dòng, dòng không được chèn', async () => {
+      mockUtmsService.resolveForCustomer.mockRejectedValue(new BadRequestException('UTM "X" chưa tồn tại và bạn không có quyền tạo UTM mới'));
+      const result: any = await service.importExcel(buildXlsxFile([row('0901234567', 'X'), row('0912345678', 'X'), row('0923456789')]), 7);
+      expect(result.successCount).toBe(1); // chỉ dòng không có UTM
+      expect(result.errors).toHaveLength(2);
+      expect(result.errors[0].reason).toMatch(/không có quyền tạo/);
+      expect(mockUtmsService.resolveForCustomer).toHaveBeenCalledTimes(1); // lỗi cũng được cache theo tên
+    });
+
+    it('ô UTM trống -> utmId null, campaign null, không gọi resolve', async () => {
+      await service.importExcel(buildXlsxFile([row('0901234567')]), 7);
+      expect(mockUtmsService.resolveForCustomer).not.toHaveBeenCalled();
+      expect(mockManager.insert.mock.calls[0][1][0]).toEqual(expect.objectContaining({ utmId: null, campaign: null }));
+    });
   });
 });

@@ -14,12 +14,14 @@ import { User } from '../../database/entities/user.entity';
 import { DepositsModule } from '../deposits/deposits.module';
 import { Deposit } from '../../database/entities/deposit.entity';
 import { UiVisibilityModule } from '../ui-visibility/ui-visibility.module';
+import { UtmsModule } from '../utms/utms.module';
 
 @Module({
   imports: [
     TypeOrmModule.forFeature([Customer, User, CustomerNote, CustomerAssignment, CustomerGroupMembership, Deposit, CustomerStatus]),
     DepositsModule,
     UiVisibilityModule,
+    UtmsModule,
   ],
   controllers: [CustomersController],
   providers: [CustomersService, CustomersImportService, CustomersExportService, CustomersInvalidStatsService],

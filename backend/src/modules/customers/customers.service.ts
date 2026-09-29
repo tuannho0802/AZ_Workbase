@@ -11,6 +11,7 @@ import { Role } from '../../common/enums/role.enum';
 import { PermissionScope } from '../../database/entities/role-permission.entity';
 import { User } from '../../database/entities/user.entity';
 import { Department } from '../../database/entities/department.entity';
+import { Utm } from '../../database/entities/utm.entity';
 import { DepartmentManager } from '../../database/entities/department-manager.entity';
 import { DepartmentManagerHelper } from '../departments/helpers/department-manager.helper';
 import {
@@ -41,6 +42,7 @@ import { normalizeSearchableText } from '../../common/utils/text-normalize.util'
 import { UiVisibilityService } from '../ui-visibility/ui-visibility.service';
 import { NotificationsService } from '../notifications/notifications.service';
 import { randomBytes } from 'crypto';
+import { UtmsService, UtmCaller } from '../utms/utms.service';
 import { waitUntil } from '@vercel/functions';
 import {
   CustomerNotifySnapshot,
@@ -81,6 +83,8 @@ export class CustomersService {
     // ⚠️ MỚI (Notification Phase 3): NotificationsModule là @Global() (mirror
     // AuditModule) nên không cần import module - tránh phụ thuộc vòng.
     private readonly notificationsService: NotificationsService,
+    // UTM (PLAN 7.3): resolve utmId/campaign -> utm_id + snapshot campaign.
+    private readonly utmsService: UtmsService,
   ) {}
 
   private readonly logger = new Logger(CustomersService.name);
@@ -229,7 +233,7 @@ export class CustomersService {
     }
   }
 
-  async create(createCustomerDto: CreateCustomerDto, userId: number) {
+  async create(createCustomerDto: CreateCustomerDto, userId: number, caller?: UtmCaller) {
     const userRepo = this.customersRepository.manager.getRepository(User);
 
     // ⚠️ Giữ lại kết quả tra cứu (trước đây chỉ dùng để validate rồi bỏ) -
@@ -272,6 +276,14 @@ export class CustomersService {
 
     await this.assertValidStatus(createCustomerDto.status);
 
+    // UTM: có `caller` -> resolve + validate (tồn tại/khoá/được dùng); thiếu caller (gọi nội bộ) -> giữ hành vi cũ.
+    const utmResolved = caller
+      ? await this.utmsService.resolveForCustomer(
+          { utmId: createCustomerDto.utmId, campaign: createCustomerDto.campaign },
+          caller,
+        )
+      : null;
+
     try {
       const today = this.getTodayVn();
       const customer = this.customersRepository.create({
@@ -282,7 +294,10 @@ export class CustomersService {
           normalizeSearchableText(createCustomerDto.name) ??
           createCustomerDto.name,
         email: normalizeSearchableText(createCustomerDto.email),
-        campaign: normalizeSearchableText(createCustomerDto.campaign),
+        campaign: utmResolved
+          ? utmResolved.campaign
+          : normalizeSearchableText(createCustomerDto.campaign),
+        utmId: utmResolved ? utmResolved.utmId : (createCustomerDto.utmId ?? null),
         phone:
           createCustomerDto.phone?.trim() === ''
             ? null
@@ -482,6 +497,7 @@ export class CustomersService {
       email: customer.email,
       source: customer.source,
       campaign: customer.campaign,
+      utmId: customer.utmId ?? null,
       status: customer.status,
       broker: customer.broker,
       closedDate: customer.closedDate,
@@ -686,6 +702,7 @@ export class CustomersService {
       | 'dateTo'
       | 'joinedGroups'
       | 'groupId'
+      | 'utmId'
     >,
   ) {
     const {
@@ -700,6 +717,7 @@ export class CustomersService {
       dateTo,
       joinedGroups,
       groupId,
+      utmId,
     } = filters;
 
     // Search
@@ -710,6 +728,9 @@ export class CustomersService {
     // Basic Filters
     if (source) {
       queryBuilder.andWhere('customer.source = :source', { source });
+    }
+    if (utmId) {
+      queryBuilder.andWhere('customer.utmId = :utmId', { utmId });
     }
     if (status) {
       queryBuilder.andWhere('customer.status = :status', { status });
@@ -880,6 +901,7 @@ export class CustomersService {
       dateTo,
       joinedGroups,
       groupId,
+      utmId,
     } = filters;
 
     const qb = this.customersRepository
@@ -900,6 +922,7 @@ export class CustomersService {
       dateTo,
       joinedGroups,
       groupId,
+      utmId,
     });
 
     if (sortField === 'totalDeposit30Days') {
@@ -968,6 +991,7 @@ export class CustomersService {
       dateTo,
       joinedGroups,
       groupId,
+      utmId,
     } = filters;
 
     // ===== Query chính: lấy dữ liệu (có joins + subquery deposit) =====
@@ -984,6 +1008,8 @@ export class CustomersService {
     queryBuilder.leftJoinAndSelect('customer.marketingUser', 'marketingUser');
     queryBuilder.leftJoinAndSelect('marketingUser.position', 'marketingUserPosition');
     queryBuilder.leftJoinAndSelect('customer.department', 'department');
+    // UTM: chỉ chọn id/name/color (không kéo cả entity + quản lý)
+    queryBuilder.leftJoin('customer.utm', 'utm').addSelect(['utm.id', 'utm.name', 'utm.color']);
     queryBuilder.leftJoinAndSelect('customer.createdBy', 'createdBy');
     queryBuilder.leftJoinAndSelect('customer.updatedBy', 'updatedBy');
 
@@ -1009,6 +1035,7 @@ export class CustomersService {
       dateTo,
       joinedGroups,
       groupId,
+      utmId,
     });
 
     // Calculate and alias the deposit sum based on date range (or default 30 days)
@@ -1069,6 +1096,7 @@ export class CustomersService {
       dateTo,
       joinedGroups,
       groupId,
+      utmId,
     });
 
     // Chạy song song 2 query độc lập thay vì tuần tự -> giảm tổng thời gian chờ
@@ -1359,6 +1387,8 @@ export class CustomersService {
       .leftJoinAndSelect('customer.marketingUser', 'marketingUser')
       .leftJoinAndSelect('marketingUser.position', 'marketingUserPosition')
       .leftJoinAndSelect('customer.department', 'department')
+      .leftJoin('customer.utm', 'utm')
+      .addSelect(['utm.id', 'utm.name', 'utm.color'])
       .leftJoinAndSelect('customer.deposits', 'deposits')
       .leftJoinAndSelect('customer.notes', 'notes')
       .leftJoinAndSelect('notes.createdByUser', 'noteCreator')
@@ -1824,6 +1854,7 @@ export class CustomersService {
     userId: number,
     userRole: string,
     scope?: string | null,
+    caller?: UtmCaller,
   ) {
     const customer = await this.findOne(id, userId, userRole, scope);
 
@@ -1947,6 +1978,7 @@ export class CustomersService {
         name?: string;
         email?: string | null;
         campaign?: string | null;
+        utmId?: number | null;
       } = {};
       if (updateCustomerDto.name !== undefined) {
         normalizedFields.name =
@@ -1963,6 +1995,18 @@ export class CustomersService {
           updateCustomerDto.campaign,
         );
       }
+      // UTM: chỉ validate khi utmId THAY ĐỔI so với hiện tại (UTM đã khoá/restricted vẫn giữ được, PLAN case 8-9).
+      if (caller && (updateCustomerDto.utmId !== undefined || updateCustomerDto.campaign !== undefined)) {
+        const resolved = await this.utmsService.resolveForCustomer(
+          { utmId: updateCustomerDto.utmId, campaign: updateCustomerDto.campaign },
+          caller,
+          customer.utmId ?? null,
+        );
+        if (resolved) {
+          normalizedFields.campaign = resolved.campaign;
+          normalizedFields.utmId = resolved.utmId;
+        }
+      }
 
       this.customersRepository.merge(customer, {
         ...updateCustomerDto,
@@ -1974,6 +2018,11 @@ export class CustomersService {
         updatedById: userId,
         updatedBy_OLD: userId, // ← Populate legacy nullable or NOT NULL column
       } as any);
+
+      // TypeORM relation precedence (SKILL_NESTJS_BACKEND §13): findOne() đã nạp `utm` -> gán relation tường minh.
+      if ('utmId' in normalizedFields) {
+        customer.utm = normalizedFields.utmId ? ({ id: normalizedFields.utmId } as Utm) : null;
+      }
 
       // FIX For TypeORM relation precedence: Ensure the actual relation is updated
       customer.updatedBy = { id: userId } as User;

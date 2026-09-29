@@ -8,12 +8,16 @@ import * as XLSX from 'xlsx';
 import 'multer';
 import { todayVnStr } from '../../common/utils/date-vn.util';
 import { AuditService } from '../audit/audit.service';
+import { UtmsService } from '../utms/utms.service';
+import { Utm } from '../../database/entities/utm.entity';
+import { normalizeSearchableText } from '../../common/utils/text-normalize.util';
 
 @Injectable()
 export class CustomersImportService {
   constructor(
     private dataSource: DataSource,
     private readonly auditService: AuditService,
+    private readonly utmsService: UtmsService,
   ) {}
 
   async importExcel(file: Express.Multer.File, userId: number) {
@@ -118,6 +122,10 @@ export class CustomersImportService {
     // đến mức treo server, nhưng là loop thừa không cần thiết -> đổi sang
     // tra cứu bằng Set (O(1) mỗi lần check) để không phải duyệt lại mảng.
     const phonesInValidCustomers = new Set<string>();
+    // UTM (PLAN case 7): resolve theo tên (CI+AI), gom theo tên để tạo tối đa 1 lần cho cả file.
+    const utmCache = new Map<string, { utmId: number; campaign: string } | { error: string }>();
+    const createdUtms: string[] = [];
+    const utmRepo = this.dataSource.getRepository(Utm);
     const todayStr = todayVnStr();
 
     for (let i = 0; i < normalizedData.length; i++) {
@@ -209,13 +217,43 @@ export class CustomersImportService {
         continue;
       }
 
+      // UTM: chưa có + có `utms.create` -> tạo; không có quyền / UTM khoá / restricted -> lỗi dòng.
+      let utmId: number | null = null;
+      let campaignSnapshot: string | null = campaign ? String(campaign) : null;
+      const utmName = normalizeSearchableText(campaign ? String(campaign) : null);
+      if (utmName) {
+        const key = utmName.toLowerCase();
+        let hit = utmCache.get(key);
+        if (!hit) {
+          const existed = await utmRepo.findOne({ where: { name: utmName }, select: ['id'] });
+          try {
+            const r = await this.utmsService.resolveForCustomer({ campaign: utmName }, user);
+            hit = r && r.utmId != null ? { utmId: r.utmId, campaign: r.campaign as string } : { error: 'UTM không hợp lệ' };
+            if (!existed && r?.utmId != null) createdUtms.push(r.campaign as string);
+          } catch (e: any) {
+            hit = { error: e?.message || 'UTM không hợp lệ' };
+          }
+          utmCache.set(key, hit);
+        }
+        if ('error' in hit) {
+          errors.push({ row: rowNum, phone: rawPhone, name, reason: `UTM "${utmName}": ${hit.error}` });
+          skipCount++;
+          continue;
+        }
+        utmId = hit.utmId;
+        campaignSnapshot = hit.campaign;
+      } else {
+        campaignSnapshot = null;
+      }
+
       phonesInValidCustomers.add(rawPhone);
       validCustomers.push({
          name,
          phone: rawPhone,
          email: email || null,
          source,
-         campaign: campaign || null,
+         campaign: campaignSnapshot,
+         utmId,
         status: validStatusCodes.includes(status) ? status : 'pending',
          broker: broker || null,
          closedDate: closedDateObj,
@@ -268,7 +306,8 @@ export class CustomersImportService {
       totalRows: normalizedData.length,
       successCount,
       skipCount,
-      errors
+      errors,
+      createdUtms,
     };
   }
 }

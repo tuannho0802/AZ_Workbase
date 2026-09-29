@@ -290,8 +290,8 @@ export class CustomersController {
   @ApiOperation({ summary: 'Tạo khách hàng mới' })
   @ApiResponse({ status: 201, description: 'Khách hàng tạo thành công' })
   @ApiResponse({ status: 400, description: 'Lỗi validation hoặc trùng số điện thoại' })
-  create(@GetUser('id') userId: number, @Body() createCustomerDto: CreateCustomerDto) {
-    return this.customersService.create(createCustomerDto, userId);
+  create(@GetUser() user: any, @Body() createCustomerDto: CreateCustomerDto) {
+    return this.customersService.create(createCustomerDto, user.id, user);
   }
 
   @Get()
@@ -516,7 +516,7 @@ export class CustomersController {
     @Body() updateCustomerDto: UpdateCustomerDto,
     @GetPermissionScope() scope: string | null | undefined,
   ) {
-    return this.customersService.update(+id, updateCustomerDto, user.id, user.role, scope);
+    return this.customersService.update(+id, updateCustomerDto, user.id, user.role, scope, user);
   }
 
   @Delete(':id')

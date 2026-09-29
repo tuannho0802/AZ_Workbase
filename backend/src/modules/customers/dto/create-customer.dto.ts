@@ -47,10 +47,16 @@ export class CreateCustomerDto {
   @Length(1, 100, { message: 'Tên nguồn tối đa 100 ký tự' })
   source: string;
 
-  @ApiPropertyOptional({ example: 'Chiến dịch Mùa Hè', description: 'Tên chiến dịch' })
+  @ApiPropertyOptional({ example: 'Chiến dịch Mùa Hè', description: '[DEPRECATED - chế độ tương thích] Tên UTM; BE resolve sang utmId. Nếu gửi cả utmId thì campaign bị bỏ qua.' })
   @IsOptional()
   @IsString()
   campaign?: string;
+
+  @ApiPropertyOptional({ example: 3, nullable: true, description: 'ID UTM (danh mục /utms). null = bỏ UTM' })
+  @IsOptional()
+  @IsInt({ message: 'utmId phải là số nguyên' })
+  @Type(() => Number)
+  utmId?: number | null;
 
   @ApiProperty({ example: 2, description: 'ID của nhân viên Sales phụ trách' })
   @IsOptional()
