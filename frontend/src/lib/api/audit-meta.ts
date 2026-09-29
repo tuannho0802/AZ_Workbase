@@ -73,6 +73,7 @@ export const ACTION_META: Record<string, ActionMeta> = {
   UPDATE_ASSIGNMENT: m('Sửa lượt gán data', 'purple', 'customer'),
   RECLAIM_ASSIGNMENT: m('Thu hồi lượt gán data', 'magenta', 'customer'),
   CREATE_DEPOSIT: m('Nạp tiền', 'gold', 'customer'),
+  UPDATE_DEPOSIT_NOTE: m('Sửa ghi chú phiếu nạp', 'blue', 'customer'),
   DELETE_DEPOSIT: m('Xóa phiếu nạp tiền', 'red', 'customer'),
   CREATE_NOTE: m('Tạo ghi chú', 'cyan', 'customer'),
   UPDATE_NOTE: m('Sửa ghi chú', 'blue', 'customer'),

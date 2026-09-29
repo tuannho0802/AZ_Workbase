@@ -274,6 +274,12 @@ export const customersApi = {
     return response.data;
   },
 
+  // Chỉ sửa GHI CHÚ phiếu nạp (số tiền cố định - sai thì Xoá). note='' = xoá ghi chú.
+  updateDepositNote: async (id: number, note: string): Promise<Deposit> => {
+    const response = await axiosInstance.patch<Deposit>(`/customers/deposits/${id}`, { note });
+    return response.data;
+  },
+
   deleteDeposit: async (id: number) => {
     const response = await axiosInstance.delete(`/customers/deposits/${id}`);
     return response.data;

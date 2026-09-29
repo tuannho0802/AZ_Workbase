@@ -58,7 +58,7 @@ describe('CustomersService', () => {
     merge?: jest.Mock;
     save?: jest.Mock;
   } = {};
-  const mockDepositRepo: { createQueryBuilder?: jest.Mock } = {};
+  const mockDepositRepo: { createQueryBuilder?: jest.Mock; findOne?: jest.Mock; save?: jest.Mock } = {};
   const mockAssignmentRepo = {
     findOne: jest.fn(),
     find: jest.fn(),
@@ -1800,6 +1800,76 @@ describe('CustomersService', () => {
     it('biểu thức là boolean thuần (bọc được trong SUM(...) > 0 ở HAVING)', () => {
       const c = build('joined');
       expect(`SUM(${c.sql}) > 0`).toMatch(/^SUM\(EXISTS \(SELECT 1 FROM customer_group_memberships cgm/);
+    });
+  });
+  /**
+   * Sửa GHI CHÚ phiếu nạp - số tiền cố định, không sửa được. Dùng
+   * `jest.spyOn(service as any, 'assertCustomerAccessible')` để chỉ kiểm logic
+   * của hàm này (cổng phạm vi đã có test riêng ở các describe khác).
+   */
+  describe('updateDepositNote - Sửa ghi chú phiếu nạp', () => {
+    beforeEach(() => {
+      mockDepositRepo.findOne = jest.fn();
+      mockDepositRepo.save = jest.fn().mockImplementation(async (d: any) => d);
+      mockAuditService.logActionAsync.mockClear();
+    });
+    afterEach(() => {
+      jest.restoreAllMocks();
+    });
+
+    it('sửa note: trim, KHÔNG đụng amount/depositDate/broker, ghi audit note cũ->mới', async () => {
+      const deposit: any = { id: 9, customerId: 3, amount: 500, depositDate: '2026-09-01', broker: 'XM', note: 'cũ' };
+      mockDepositRepo.findOne!
+        .mockResolvedValueOnce(deposit)
+        .mockResolvedValueOnce({ ...deposit, note: 'mới', createdBy: { id: 1 } });
+      const accessSpy = jest.spyOn(service as any, 'assertCustomerAccessible').mockResolvedValue(undefined);
+
+      const result: any = await service.updateDepositNote(9, { note: '  mới  ' }, 7, Role.EMPLOYEE, PermissionScope.OWN);
+
+      expect(accessSpy).toHaveBeenCalledWith(3, 7, Role.EMPLOYEE, PermissionScope.OWN);
+      const saved = mockDepositRepo.save!.mock.calls[0][0];
+      expect(saved.note).toBe('mới');
+      expect(saved.amount).toBe(500);
+      expect(saved.broker).toBe('XM');
+      expect(mockAuditService.logActionAsync).toHaveBeenCalledWith(
+        7,
+        'UPDATE_DEPOSIT_NOTE',
+        'deposit',
+        9,
+        expect.objectContaining({ note: 'cũ', amount: 500 }),
+        expect.objectContaining({ note: 'mới', amount: 500 }),
+      );
+      expect(result.note).toBe('mới');
+    });
+
+    it('note rỗng/toàn khoảng trắng -> xoá ghi chú (lưu NULL)', async () => {
+      const deposit: any = { id: 9, customerId: 3, amount: 500, note: 'cũ' };
+      mockDepositRepo.findOne!.mockResolvedValueOnce(deposit).mockResolvedValueOnce(deposit);
+      jest.spyOn(service as any, 'assertCustomerAccessible').mockResolvedValue(undefined);
+
+      await service.updateDepositNote(9, { note: '   ' }, 1, Role.ADMIN, PermissionScope.ALL);
+
+      expect(mockDepositRepo.save!.mock.calls[0][0].note).toBeNull();
+    });
+
+    it('phiếu không tồn tại -> NotFound, KHÔNG lưu', async () => {
+      mockDepositRepo.findOne!.mockResolvedValueOnce(null);
+
+      await expect(
+        service.updateDepositNote(999, { note: 'x' }, 1, Role.ADMIN, PermissionScope.ALL),
+      ).rejects.toBeInstanceOf(NotFoundException);
+      expect(mockDepositRepo.save).not.toHaveBeenCalled();
+    });
+
+    it('khách của phiếu nằm NGOÀI phạm vi -> lỗi từ assertCustomerAccessible được ném ra, KHÔNG lưu, KHÔNG audit', async () => {
+      mockDepositRepo.findOne!.mockResolvedValueOnce({ id: 9, customerId: 3, amount: 500, note: 'cũ' });
+      jest.spyOn(service as any, 'assertCustomerAccessible').mockRejectedValue(new CustomerNotFoundException());
+
+      await expect(
+        service.updateDepositNote(9, { note: 'x' }, 7, Role.EMPLOYEE, PermissionScope.OWN),
+      ).rejects.toBeInstanceOf(CustomerNotFoundException);
+      expect(mockDepositRepo.save).not.toHaveBeenCalled();
+      expect(mockAuditService.logActionAsync).not.toHaveBeenCalled();
     });
   });
 });

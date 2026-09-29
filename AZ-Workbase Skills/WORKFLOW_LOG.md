@@ -4919,3 +4919,17 @@ khi bị xoá tay. Đây là 1 anti-pattern thật (dù đo thử với payload 
 > Tổng hợp theo TỪNG nhóm join thẳng membership; mọi truy vấn KHÔNG group theo nhóm join bảng thu gọn 1 dòng/khách để không nhân đôi SUM tiền nạp khi khách ở nhiều nhóm. Không migration. Chưa test trên MySQL/trình duyệt thật.
 
 ---
+
+## [2026-09-29 12:30] | Nạp tiền: thêm sửa GHI CHÚ phiếu nạp (số tiền cố định, chỉ Xoá) | [Status: Success — BE tsc sạch + nest build OK + jest customers 159/159; FE vitest 229/229 (34 file), tsc FE không lỗi mới]
+
+**Actor:** Agent (trên `origin/main` HEAD `b8bc84e`)
+
+**Files Changed:**
+- BE MỚI: `customers/dto/update-deposit-note.dto.ts` (+spec) — chỉ nhận `note`, field khác (amount/depositDate/broker) bị `forbidNonWhitelisted` chặn 400.
+- BE: `customers.controller.ts` (`PATCH /customers/deposits/:id`, `@RequirePermission('customers.edit')`), `customers.service.ts` (`updateDepositNote`: qua `assertCustomerAccessible`, note rỗng -> NULL, audit `UPDATE_DEPOSIT_NOTE`), `customers.service.spec.ts` (+4 test).
+- FE: `CustomerDepositTable.tsx` (sửa/thêm/xoá ghi chú inline, gate `can('customers.edit')`), `customers.api.ts` (`updateDepositNote`), `audit-meta.ts` (label), `CustomerDepositTable.test.tsx` MỚI (4 test).
+
+**Notes:**
+> KHÔNG migration, KHÔNG permission key mới (dùng lại `customers.edit`, đã seed). Bảng `deposits` không có `updated_by` nên "ai sửa" nằm ở audit log. Chưa test trên MySQL/trình duyệt thật.
+
+---

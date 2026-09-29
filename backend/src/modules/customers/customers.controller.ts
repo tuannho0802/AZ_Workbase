@@ -16,6 +16,7 @@ import { UpdateAssignmentDto } from './dto/update-assignment.dto';
 import { CreateCustomerNoteDto } from './dto/create-customer-note.dto';
 import { UpdateCustomerNoteDto } from './dto/update-customer-note.dto';
 import { CreateDepositDto } from './dto/create-deposit.dto';
+import { UpdateDepositNoteDto } from './dto/update-deposit-note.dto';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { PermissionGuard } from '../../common/guards/permission.guard';
 import { RequirePermission } from '../../common/decorators/require-permission.decorator';
@@ -480,6 +481,22 @@ export class CustomersController {
     @GetPermissionScope() scope: string | null | undefined,
   ) {
     return this.customersService.getAssignmentHistory(+id, user.id, user.role, scope);
+  }
+
+  // Sửa GHI CHÚ phiếu nạp - KHÔNG migration, KHÔNG permission key mới: dùng lại
+  // `customers.edit` (cùng key với tạo phiếu nạp ở POST :id/deposits ngay trên).
+  // Số tiền cố định, không sửa được (xem UpdateDepositNoteDto) - chỉ Xoá.
+  // Path 2 đoạn `deposits/:id` nên KHÔNG đụng `@Patch(':id')` (1 đoạn) ở dưới.
+  @Patch('deposits/:id')
+  @RequirePermission('customers.edit')
+  @ApiOperation({ summary: 'Sửa ghi chú phiếu nạp tiền (không sửa được số tiền) - phạm vi kiểm tra trong service' })
+  async updateDepositNote(
+    @Param('id') id: string,
+    @Body() dto: UpdateDepositNoteDto,
+    @GetUser() user: any,
+    @GetPermissionScope() scope: string | null | undefined,
+  ) {
+    return this.customersService.updateDepositNote(+id, dto, user.id, user.role, scope);
   }
 
   @Delete('deposits/:id')

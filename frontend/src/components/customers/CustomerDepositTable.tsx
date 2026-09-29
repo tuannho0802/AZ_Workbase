@@ -1,14 +1,18 @@
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';
-import { Table, Button, Space, Typography, Popconfirm, App, Card } from 'antd';
-import { DeleteOutlined, ReloadOutlined } from '@ant-design/icons';
+import { Button, Space, Typography, Popconfirm, App, Card, Input } from 'antd';
+import { CheckOutlined, CloseOutlined, DeleteOutlined, EditOutlined, PlusOutlined, ReloadOutlined } from '@ant-design/icons';
 import { customersApi } from '@/lib/api/customers.api';
 import { Deposit } from '@/lib/types/customer.types';
 import { useMyPermissions } from '@/lib/hooks/useMyPermissions';
+import { getApiErrorMessage } from '@/lib/utils/error-message.util';
 import dayjs from 'dayjs';
 
 const { Text, Paragraph } = Typography;
+
+// Khớp @MaxLength ở backend/src/modules/customers/dto/update-deposit-note.dto.ts
+const NOTE_MAX_LENGTH = 1000;
 
 interface Props {
   customerId: number;
@@ -28,6 +32,13 @@ export const CustomerDepositTable = ({ customerId, refreshTrigger }: Props) => {
   // role==='admin' khiến nút Xoá không hiện cho role tuỳ chỉnh dù Admin đã
   // cấp customers.delete qua trang Phân quyền.
   const canDelete = can('customers.delete');
+  // Sửa GHI CHÚ phiếu nạp dùng lại `customers.edit` (cùng key với tạo phiếu nạp,
+  // KHÔNG permission key mới/migration). Số tiền cố định - không có UI sửa số tiền.
+  const canEditNote = can('customers.edit');
+
+  const [editingId, setEditingId] = useState<number | null>(null);
+  const [editValue, setEditValue] = useState('');
+  const [editSaving, setEditSaving] = useState(false);
 
   const fetchDeposits = useCallback(async () => {
     if (!customerId) return;
@@ -45,6 +56,33 @@ export const CustomerDepositTable = ({ customerId, refreshTrigger }: Props) => {
   useEffect(() => {
     fetchDeposits();
   }, [fetchDeposits, refreshTrigger]);
+
+  const startEdit = (record: Deposit) => {
+    setEditingId(record.id);
+    setEditValue(record.note || '');
+  };
+
+  const cancelEdit = () => {
+    setEditingId(null);
+    setEditValue('');
+  };
+
+  const saveEdit = async (id: number) => {
+    if (editSaving) return; // chống bấm đúp
+    setEditSaving(true);
+    try {
+      const trimmed = editValue.trim();
+      const updated = await customersApi.updateDepositNote(id, trimmed);
+      // Dùng response của PATCH để cập nhật NGAY tại chỗ (không chờ refetch)
+      setDeposits((prev) => prev.map((d) => (d.id === id ? { ...d, ...updated } : d)));
+      message.success(trimmed ? 'Đã cập nhật ghi chú nạp' : 'Đã xóa ghi chú nạp');
+      cancelEdit();
+    } catch (error) {
+      message.error(getApiErrorMessage(error, 'Lỗi khi sửa ghi chú nạp'));
+    } finally {
+      setEditSaving(false);
+    }
+  };
 
   const handleDelete = async (id: number) => {
     try {
@@ -93,7 +131,33 @@ export const CustomerDepositTable = ({ customerId, refreshTrigger }: Props) => {
                 ${Number(record.amount).toLocaleString(undefined, { minimumFractionDigits: 2 })}
               </Text>
             </div>
-            {record.note && (
+            {editingId === record.id ? (
+              <div style={{ marginBottom: 6 }}>
+                <Input.TextArea
+                  autoFocus
+                  rows={2}
+                  maxLength={NOTE_MAX_LENGTH}
+                  showCount
+                  value={editValue}
+                  onChange={(e) => setEditValue(e.target.value)}
+                  placeholder="Ghi chú nạp (để trống = xóa ghi chú)"
+                />
+                <Space size={4} style={{ marginTop: 6 }}>
+                  <Button
+                    size="small"
+                    type="primary"
+                    icon={<CheckOutlined />}
+                    loading={editSaving}
+                    onClick={() => saveEdit(record.id)}
+                  >
+                    Lưu
+                  </Button>
+                  <Button size="small" icon={<CloseOutlined />} disabled={editSaving} onClick={cancelEdit}>
+                    Hủy
+                  </Button>
+                </Space>
+              </div>
+            ) : record.note ? (
               <Paragraph
                 style={{
                   margin: '0 0 6px',
@@ -107,11 +171,23 @@ export const CustomerDepositTable = ({ customerId, refreshTrigger }: Props) => {
               >
                 📝 {record.note}
               </Paragraph>
-            )}
+            ) : null}
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
               <Text type="secondary" style={{ fontSize: 12 }}>
                 Sàn: {record.broker || '-'} | Tạo bởi: {record.createdBy?.name || 'Hệ thống'}
               </Text>
+              <Space size={0}>
+              {canEditNote && editingId !== record.id && (
+                <Button
+                  type="text"
+                  size="small"
+                  icon={record.note ? <EditOutlined /> : <PlusOutlined />}
+                  onClick={() => startEdit(record)}
+                  title={record.note ? 'Sửa ghi chú' : 'Thêm ghi chú'}
+                >
+                  {record.note ? null : 'Ghi chú'}
+                </Button>
+              )}
               {canDelete && (
                 <Popconfirm
                   title="Xóa bản ghi"
@@ -129,6 +205,7 @@ export const CustomerDepositTable = ({ customerId, refreshTrigger }: Props) => {
                   />
                 </Popconfirm>
               )}
+              </Space>
             </div>
           </Card>
         ))

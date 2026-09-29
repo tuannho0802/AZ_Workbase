@@ -29,6 +29,7 @@ import { CreateCustomerNoteDto } from './dto/create-customer-note.dto';
 import { UpdateCustomerNoteDto } from './dto/update-customer-note.dto';
 import { PermissionsService } from '../permissions/permissions.service';
 import { CreateDepositDto } from './dto/create-deposit.dto';
+import { UpdateDepositNoteDto } from './dto/update-deposit-note.dto';
 import {
   NotFoundException,
   BadRequestException,
@@ -1754,6 +1755,47 @@ export class CustomersService {
       .addOrderBy('deposit.createdAt', 'DESC')
       .take(5)
       .getMany();
+  }
+
+  /**
+   * Sửa GHI CHÚ phiếu nạp. Số tiền/ngày/sàn cố định (DTO không nhận).
+   * Không có cột `updated_by` trên `deposits` (và không thêm - tránh migration),
+   * nên "ai sửa" được ghi ở audit log (`UPDATE_DEPOSIT_NOTE`, kèm note cũ/mới);
+   * `updated_at` tự cập nhật nhờ @UpdateDateColumn.
+   */
+  async updateDepositNote(
+    depositId: number,
+    dto: UpdateDepositNoteDto,
+    userId: number,
+    userRole: string,
+    scope?: string | null,
+  ) {
+    const deposit = await this.depositsRepository.findOne({ where: { id: depositId } });
+    if (!deposit) {
+      throw new NotFoundException('Không tìm thấy bản ghi nạp tiền');
+    }
+
+    // Cùng cổng gác phạm vi với createDeposit(): ngoài phạm vi -> 404 như findOne().
+    await this.assertCustomerAccessible(deposit.customerId, userId, userRole, scope);
+
+    const before = this.buildDepositAuditSnapshot(deposit);
+    const newNote = (dto.note ?? '').trim();
+    deposit.note = newNote === '' ? (null as unknown as string) : newNote;
+    await this.depositsRepository.save(deposit);
+
+    this.auditService.logActionAsync(
+      userId,
+      'UPDATE_DEPOSIT_NOTE',
+      'deposit',
+      depositId,
+      before,
+      this.buildDepositAuditSnapshot(deposit),
+    );
+
+    return this.depositsRepository.findOne({
+      where: { id: depositId },
+      relations: ['createdBy'],
+    });
   }
 
   async deleteDeposit(id: number, userId?: number) {
