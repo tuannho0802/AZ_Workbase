@@ -614,7 +614,7 @@ export default function ChiaDataPage() {
       render: (v: string | null) => <StatusTag code={v} fallback={<Text type="secondary">-</Text>} />,
     },
     {
-      title: 'Campaign', dataIndex: 'campaign', width: 160,
+      title: 'UTM', dataIndex: 'campaign', width: 160,
       ellipsis: true,
       render: (v: string | null) => v || '-',
     },

@@ -58,6 +58,8 @@ const RESOURCE_LABEL: Record<string, string> = {
   roles: 'Phân quyền',
   departments: 'Phòng ban',
   link_groups: 'Nhóm liên kết',
+  // 6 key utms.* (migration SeedUtmPermissions) - tránh rơi vào fallback `?? resource`.
+  utms: 'UTM',
   media_sources: 'Nguồn Media',
   audit: 'Nhật ký hệ thống',
   // ⚠️ BỔ SUNG (2026-09-10, cùng lúc tách `assignment_groups.manage` thành

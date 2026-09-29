@@ -26,6 +26,7 @@ import {
   BellOutlined,
   SendOutlined,
   LineChartOutlined,
+  LinkOutlined,
 } from '@ant-design/icons';
 
 export interface NavItem {
@@ -369,6 +370,16 @@ export const NAV_ITEMS: NavItem[] = [
     // + link-groups.controller.ts.
     roles: null,
     permission: 'link_groups.view',
+  },
+  {
+    key: 'quan-ly-utm',
+    label: 'Quản lý UTM',
+    description: 'UTM bạn là quản lý chính/phụ, khách hàng theo UTM',
+    icon: <LinkOutlined />,
+    path: '/quan-ly-utm',
+    // Khớp `utms.my_managed` (migration SeedUtmPermissions1785200000000) + route guard ở quan-ly-utm/page.tsx.
+    roles: null,
+    permission: 'utms.my_managed',
   },
   {
     key: 'attendance-device',

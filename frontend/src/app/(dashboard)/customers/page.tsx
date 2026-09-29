@@ -28,6 +28,7 @@ import { CustomerFilters } from '@/components/customers/CustomerFilters';
 import { SourceTag } from '@/components/customers/SourceTag';
 import { CustomerStatusSelect } from '@/components/customers/CustomerStatusSelect';
 import { StatusTag } from '@/components/customers/StatusTag';
+import { UtmTag } from '@/components/utms/UtmTag';
 
 const { Text } = Typography;
 
@@ -212,9 +213,14 @@ const CustomerMobileCard = ({
           {renderMarketingTag(record)}
       </Space>
     </div>
-    {record.campaign && (
+    {(record.utm || record.campaign) && (
       <div style={{ marginBottom: 4 }}>
-        <Text type="secondary" style={{ fontSize: 11 }} ellipsis={{ tooltip: record.campaign }}>UTM: {record.campaign}</Text>
+        <Text type="secondary" style={{ fontSize: 11 }}>UTM: </Text>
+        {record.utm ? (
+          <UtmTag name={record.utm.name} color={record.utm.color} />
+        ) : (
+          <Text type="secondary" style={{ fontSize: 11 }} ellipsis={{ tooltip: record.campaign }}>{record.campaign}</Text>
+        )}
       </div>
     )}
     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 4 }}>
@@ -384,6 +390,7 @@ function CustomersPageContent() {
           dateTo: dateTo?.format('YYYY-MM-DD'),
           joinedGroups,
           groupId,
+          utmId,
         };
         (async () => {
           try {
@@ -401,6 +408,7 @@ function CustomersPageContent() {
                 setDateTo(null);
                 setJoinedGroups(undefined);
                 setGroupId(undefined);
+                setUtmId(undefined);
                 located = await customersApi.locateInList(parsedId, baseParams);
               }
             }
@@ -457,6 +465,8 @@ function CustomersPageContent() {
   const [joinedGroups, setJoinedGroups] = useState<'joined' | 'not_joined' | undefined>(undefined);
   // Lọc CỤ THỂ 1 nhóm liên kết (link_groups.id) - kết hợp với joinedGroups.
   const [groupId, setGroupId] = useState<number | undefined>(undefined);
+  // Lọc theo UTM (utms.id) - đi cùng groupId ở mọi nơi build filter (list, stats, export, URL).
+  const [utmId, setUtmId] = useState<number | undefined>(undefined);
   // Số ghi chú gần nhất hiển thị trong tooltip cột "Ghi chú gần nhất" - BE
   // luôn trả tối đa 5 (MAX_RECENT_NOTES ở customers.service.ts), FE cho
   // người dùng CHỌN xem 3 hay 5 trong số đó (cắt bớt ở đây, không gọi lại
@@ -513,6 +523,7 @@ function CustomersPageContent() {
     dateTo: dateTo?.format('YYYY-MM-DD'),
     joinedGroups,
     groupId,
+    utmId,
   });
 
   const customers = customersResponse?.data || [];
@@ -636,6 +647,7 @@ function CustomersPageContent() {
         dateTo: dateTo?.format('YYYY-MM-DD'),
         joinedGroups,
         groupId,
+        utmId,
       });
       setStats(data);
     } catch (error) {
@@ -647,7 +659,7 @@ function CustomersPageContent() {
 
   useEffect(() => {
     fetchStats();
-  }, [debouncedSearch, source, status, salesUserId, marketingUserId, creatorId, dateFrom, dateTo, joinedGroups, groupId]);
+  }, [debouncedSearch, source, status, salesUserId, marketingUserId, creatorId, dateFrom, dateTo, joinedGroups, groupId, utmId]);
 
   const handleDrawerUpdate = async () => {
     await refetchCustomers();
@@ -750,8 +762,11 @@ function CustomersPageContent() {
       title: 'UTM',
       dataIndex: 'campaign',
       key: 'campaign',
-      width: isLaptop ? 90 : 100,
+      width: isLaptop ? 110 : 130,
       ellipsis: { showTitle: true },
+      // Có `utm` (đã backfill/chọn từ danh mục) → Tag màu; chưa có → hiện text snapshot cũ.
+      render: (campaign: string | undefined, record: Customer) =>
+        record.utm ? <UtmTag name={record.utm.name} color={record.utm.color} /> : campaign || '',
     },
     ...(hideSalesField ? [] : [{
       title: 'Sales (Chính + Phụ)',
@@ -925,6 +940,7 @@ function CustomersPageContent() {
     if ('dateTo' in newFilters) setDateTo(newFilters.dateTo ? dayjs(newFilters.dateTo) : null);
     if ('joinedGroups' in newFilters) setJoinedGroups(newFilters.joinedGroups);
     if ('groupId' in newFilters) setGroupId(newFilters.groupId);
+    if ('utmId' in newFilters) setUtmId(newFilters.utmId);
     if (newFilters.page) setPage(newFilters.page);
   };
 
@@ -1052,6 +1068,7 @@ function CustomersPageContent() {
                       dateTo: dateTo?.format('YYYY-MM-DD'),
                       joinedGroups,
                       groupId,
+                      utmId,
                     }}
                     salesUsers={salesUsersInDept}
                     marketingUsers={marketingUsersInDept}
@@ -1078,6 +1095,7 @@ function CustomersPageContent() {
             dateTo: dateTo?.format('YYYY-MM-DD'),
             joinedGroups,
             groupId,
+            utmId,
           }}
               salesUsers={salesUsersInDept}
               marketingUsers={marketingUsersInDept}
@@ -1221,6 +1239,7 @@ function CustomersPageContent() {
           dateTo: dateTo?.format('YYYY-MM-DD'),
           joinedGroups,
           groupId,
+          utmId,
         }}
         sortField={sortField}
         sortOrder={sortOrder}

@@ -11,7 +11,7 @@ import ReportCustomerDetailModal from './ReportCustomerDetailModal';
 const user = { id: 2, name: 'Sales One', departmentName: 'Phòng Kinh doanh', departmentColor: '#1677ff' };
 const detail = {
   customer: {
-    id: 1, name: 'Nguyễn Văn A', phone: null, email: 'a@x.vn', source: 'Facebook', campaign: null, broker: null, status: 'closed', note: null,
+    id: 1, name: 'Nguyễn Văn A', phone: null, email: 'a@x.vn', source: 'Facebook', campaign: null, utm: null, broker: null, status: 'closed', note: null,
     inputDate: '2026-09-01', assignedDate: '2026-09-02', closedDate: '2026-09-10', createdAt: '2026-09-01T03:00:00.000Z',
     salesUser: user, marketingUser: null, createdBy: null,
   },

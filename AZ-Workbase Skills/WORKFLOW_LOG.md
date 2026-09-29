@@ -5046,3 +5046,16 @@ khi bị xoá tay. Đây là 1 anti-pattern thật (dù đo thử với payload 
 > Gộp/gợi ý trùng chỉ cho `utms.edit` scope `all`; merge chuyển cả KH đã xoá mềm, giữ `updated_at`, cùng 1 transaction, audit `MERGE_UTM`. Không có migration mới. Chưa làm: toàn bộ FE. Chưa test trên DB thật.
 
 ---
+
+## [2026-09-29 22:30] | UTM Phần 5: FE (trang /quan-ly-utm, UtmSelect, tích hợp Customers) | [Status: Success — FE tsc sạch (chỉ còn lỗi cũ logo.png/CountBadge của sandbox), next build OK, vitest 34 file / 231 test, eslint sạch cho file UTM]
+
+**Actor:** Agent (trên `origin/main` HEAD `1b2a9f2` + patch BE part 4)
+
+**Files Changed:**
+- FE mới: `lib/api/utms.api.ts`, `lib/hooks/useUtms.ts`, `components/utms/{UtmTag,UtmSelect,UtmFilterSelect,UtmFormModal,UtmManagersModal,UtmCustomersModal,UtmMergeModal}.tsx`, `app/(dashboard)/quan-ly-utm/page.tsx`.
+- FE sửa: `nav-config.tsx` (menu gate `utms.my_managed`), `phan-quyen/page.tsx` (nhãn `utms`), `audit-meta.ts` (9 action UTM + entity `utm`), `customers/page.tsx` + `CustomerFilters` + `ExportCustomersModal` + `customers.api.ts` + `useCustomers.ts` (lọc `utmId`), `CustomerForm` (UtmSelect, chỉ gửi `utmId` khi đổi), `CustomerInfoTab`, `ImportExcelModal` (hiện `createdUtms`), `AuditDiffViewer`, `reports.types.ts` + `ReportCustomerDetailModal`, `chia-data/page.tsx` (nhãn), `customer.types.ts` (`utmId`, `utm`).
+
+**Notes:**
+> Modal dùng `key` để reset state thay vì setState trong effect (rule react-hooks/set-state-in-effect). Tab "Gợi ý trùng"/nút Gộp đòi cả `utms.view` (danh sách đích lấy từ /utms/scoped) lẫn `utms.edit` scope `all`. Chưa test trình duyệt/DB thật.
+
+---

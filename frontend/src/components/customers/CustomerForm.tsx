@@ -19,6 +19,7 @@ import dayjs, { Dayjs } from 'dayjs';
 import { isFutureVnDate } from '@/lib/utils/date-vn';
 import { useMyHiddenElements } from '@/lib/hooks/useUiVisibility';
 import { useAuthStore } from '@/lib/stores/auth.store';
+import { UtmSelect } from '@/components/utms/UtmSelect';
 
 const { Text } = Typography;
 
@@ -213,6 +214,7 @@ export const CustomerForm: React.FC<CustomerFormProps> = ({ open, customer, onCl
           closedDate: customer.closedDate ? dayjs(customer.closedDate) : null,
           salesUserId: customer.salesUser?.id,
           marketingUserId: customer.marketingUser?.id,
+          utmId: customer.utmId ?? customer.utm?.id ?? undefined,
         });
       } else {
         form.resetFields();
@@ -367,8 +369,22 @@ export const CustomerForm: React.FC<CustomerFormProps> = ({ open, customer, onCl
 
     setLoading(true);
     try {
+      // UTM: gửi `utmId` (chuẩn), KHÔNG gửi `campaign` text - BE tự lưu snapshot theo tên UTM.
+      // Khi sửa chỉ gửi `utmId` nếu người dùng ĐÃ ĐỔI ô UTM, để khách cũ còn campaign text chưa backfill
+      // không bị xoá mất text khi sửa các trường khác.
+      const { campaign: _legacyCampaign, utmId: formUtmId, ...restValues } = values;
+      void _legacyCampaign;
+      const originalUtmId = customer ? (customer.utmId ?? customer.utm?.id ?? undefined) : undefined;
+      const utmPart = customer
+        ? formUtmId !== originalUtmId
+          ? { utmId: formUtmId ?? null }
+          : {}
+        : formUtmId != null
+          ? { utmId: formUtmId }
+          : {};
       const payload = {
-        ...values,
+        ...restValues,
+        ...utmPart,
         salesUserId: values.salesUserId ? Number(values.salesUserId) : null,
         marketingUserId: values.marketingUserId ? Number(values.marketingUserId) : null,
         inputDate: values.inputDate.format('YYYY-MM-DD'),
@@ -477,8 +493,9 @@ export const CustomerForm: React.FC<CustomerFormProps> = ({ open, customer, onCl
 
         <Row gutter={16}>
           <Col span={12}>
-            <Form.Item name="campaign" label="UTM">
-              <Input placeholder="Ví dụ: D_T01_BOT_AP" />
+            <Form.Item name="utmId" label="UTM">
+              {/* fallback: UTM hiện tại của khách (có thể đang khoá/riêng tư nên không nằm trong danh sách được chọn) */}
+              <UtmSelect fallback={customer?.utm ?? null} placeholder="Chọn hoặc tạo UTM..." />
             </Form.Item>
           </Col>
           <Col span={12}>

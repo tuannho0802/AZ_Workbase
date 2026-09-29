@@ -157,6 +157,17 @@ export const ACTION_META: Record<string, ActionMeta> = {
   ADD_LINK_GROUP_CONTENT_STAFF: m('Thêm Nhân viên Content của nhóm', 'green', 'link_group'),
   REMOVE_LINK_GROUP_CONTENT_STAFF: m('Gỡ Nhân viên Content của nhóm', 'orange', 'link_group'),
 
+  // ── UTM (dùng chung nhóm "Nhóm liên kết" cho gọn bộ lọc) ─────────────
+  CREATE_UTM: m('Tạo UTM', 'green', 'link_group'),
+  UPDATE_UTM: m('Sửa UTM', 'blue', 'link_group'),
+  DELETE_UTM: m('Xóa UTM', 'red', 'link_group'),
+  ACTIVATE_UTM: m('Mở khóa UTM', 'lime', 'link_group'),
+  DEACTIVATE_UTM: m('Khóa UTM', 'orange', 'link_group'),
+  ADD_UTM_MANAGER: m('Thêm Quản lý phụ của UTM', 'green', 'link_group'),
+  REMOVE_UTM_MANAGER: m('Gỡ Quản lý phụ của UTM', 'orange', 'link_group'),
+  TRANSFER_UTM_OWNER: m('Chuyển Quản lý chính của UTM', 'purple', 'link_group'),
+  MERGE_UTM: m('Gộp UTM', 'volcano', 'link_group'),
+
   // ── Nghỉ phép ──────────────────────────────────────────────────────────
   CREATE_LEAVE_REQUEST: m('Tạo đơn nghỉ phép', 'green', 'leave'),
   APPROVE_LEAVE_REQUEST: m('Duyệt đơn nghỉ phép', 'success', 'leave'),
@@ -249,6 +260,7 @@ export const ENTITY_TYPE_LABELS: Record<string, string> = {
   media_source: 'Nguồn khách hàng',
   link_category: 'Category nhóm liên kết',
   link_group: 'Nhóm liên kết',
+  utm: 'UTM',
   storage_media: 'File lưu trữ',
   attendance_log: 'Log chấm công',
   periodic_task: 'Công việc định kỳ',

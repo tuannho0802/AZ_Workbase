@@ -398,6 +398,7 @@ export interface ReportCustomerDetail {
         email: string | null;
         source: string | null;
         campaign: string | null;
+        utm: { id: number; name: string; color: string } | null;
         broker: string | null;
         status: string | null;
         note: string | null;

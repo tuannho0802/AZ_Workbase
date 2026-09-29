@@ -6,6 +6,7 @@ import { useMediaSources } from '@/lib/hooks/useMediaSources';
 import { useCustomerStatuses } from '@/lib/hooks/useCustomerStatuses';
 import { useAllActiveLinkGroups } from '@/lib/hooks/useLinkGroups';
 import { SourceTag } from './SourceTag';
+import { UtmFilterSelect } from '@/components/utms/UtmFilterSelect';
 import { useRoleColorMap, useRoleColors } from '@/lib/hooks/useRoleColorMap';
 import { resolveEntityColor } from '@/lib/utils/entityColor';
 
@@ -39,6 +40,7 @@ interface CustomerFiltersProps {
     joinedGroups?: 'joined' | 'not_joined';
     // Lọc CỤ THỂ 1 nhóm liên kết (link_groups.id) - kết hợp với joinedGroups.
     groupId?: number;
+    utmId?: number;
   };
   salesUsers: FilterUserOption[];
   marketingUsers: FilterUserOption[];
@@ -297,6 +299,15 @@ export const CustomerFilters: React.FC<CustomerFiltersProps> = ({
               { value: 'joined', label: 'Đã joined ít nhất 1 nhóm' },
               { value: 'not_joined', label: 'Chưa joined nhóm nào' },
             ]}
+          />
+        </Col>
+
+        <Col xs={24} sm={12} md={4}>
+          <label className="block text-sm font-medium mb-1">UTM</label>
+          <UtmFilterSelect
+            value={filters.utmId}
+            onChange={(val) => onFiltersChange({ ...filters, utmId: val, page: 1 })}
+            placeholder="Chọn UTM"
           />
         </Col>
 

@@ -1,5 +1,6 @@
 'use client';
 
+import { UtmTag } from '@/components/utms/UtmTag';
 import { Descriptions, Tag, Button, Typography, Space } from 'antd';
 import { CalendarOutlined, EditOutlined } from '@ant-design/icons';
 import { Customer } from '@/lib/types/customer.types';
@@ -74,7 +75,9 @@ export const CustomerInfoTab = ({ customer, onEdit }: Props) => {
         <Descriptions.Item label="Trạng thái">
           <StatusTag code={customer.status} />
         </Descriptions.Item>
-        <Descriptions.Item label="Chiến dịch">{customer.campaign || '-'}</Descriptions.Item>
+        <Descriptions.Item label="UTM">
+          {customer.utm ? <UtmTag name={customer.utm.name} color={customer.utm.color} /> : customer.campaign || '-'}
+        </Descriptions.Item>
         <Descriptions.Item label="Người tạo data">
           {customer.createdBy?.name || 'Hệ thống'}
         </Descriptions.Item>

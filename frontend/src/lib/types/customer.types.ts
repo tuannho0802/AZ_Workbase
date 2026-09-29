@@ -88,7 +88,11 @@ export interface Customer {
   // cứng ở DB) - xem media-sources.api.ts. Giữ string thay vì union cứng để
   // không lệch với dữ liệu thật (vd admin thêm "Zalo" sẽ không khớp type cũ).
   source: string;
+  // Snapshot TÊN UTM (= utm.name khi có utmId) - giữ để tìm kiếm/xuất Excel không đổi.
   campaign?: string;
+  // FK tới danh mục UTM. BE list + chi tiết trả kèm `utm` (không cần gọi thêm /utms → Employee không dính 403).
+  utmId?: number | null;
+  utm?: { id: number; name: string; color: string } | null;
   salesUser?: {
     id: number;
     name: string;

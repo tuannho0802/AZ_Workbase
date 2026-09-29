@@ -30,13 +30,16 @@ export const ImportExcelModal: React.FC<ImportExcelModalProps> = ({ open, onClos
         headers: { 'Content-Type': 'multipart/form-data' },
       });
       const data = response.data;
-      
+      // UTM chưa có trong danh mục nhưng người nhập có quyền `utms.create` → BE tự tạo (tối đa 1 lần/tên/file).
+      const createdUtms: string[] = Array.isArray(data.createdUtms) ? data.createdUtms : [];
+      const utmNote = createdUtms.length > 0 ? `Đã tạo ${createdUtms.length} UTM mới: ${createdUtms.join(', ')}` : undefined;
+
       if (data.skipCount === 0) {
-        notification.success({ message: `✅ Nhập thành công ${data.successCount} khách hàng` });
+        notification.success({ message: `✅ Nhập thành công ${data.successCount} khách hàng`, description: utmNote });
         onSuccess();
         handleClose();
       } else {
-        notification.warning({ message: `⚠️ Đã nhập ${data.successCount} khách hàng. Bỏ qua ${data.skipCount} dòng bị lỗi.` });
+        notification.warning({ message: `⚠️ Đã nhập ${data.successCount} khách hàng. Bỏ qua ${data.skipCount} dòng bị lỗi.`, description: utmNote });
         setErrorData(data.errors);
         onSuccess();
       }

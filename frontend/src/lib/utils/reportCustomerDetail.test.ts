@@ -44,7 +44,7 @@ describe('filterDepositsByRange', () => {
 describe('buildCustomerTimeline', () => {
   const detail = {
     customer: {
-      id: 1, name: 'A', phone: null, email: null, source: null, campaign: null, broker: null, status: 'closed', note: null,
+      id: 1, name: 'A', phone: null, email: null, source: null, campaign: null, utm: null, broker: null, status: 'closed', note: null,
       inputDate: '2026-09-01', assignedDate: '2026-09-02', closedDate: '2026-09-10', createdAt: '2026-08-31T20:00:00.000Z',
       salesUser: { id: 2, name: 'Sales', departmentName: null }, marketingUser: null, createdBy: null,
     },

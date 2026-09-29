@@ -1,5 +1,6 @@
 'use client';
 
+import { UtmTag } from '@/components/utms/UtmTag';
 import { useMemo, useState } from 'react';
 import dayjs from 'dayjs';
 import { Alert, Card, Col, Descriptions, Empty, Grid, Modal, Row, Skeleton, Space, Statistic, Table, Tabs, Tag, Timeline, Typography } from 'antd';
@@ -111,7 +112,9 @@ export default function ReportCustomerDetailModal({ customerId, context, onClose
       <Descriptions.Item label="SĐT">{c.phone || <Text type="secondary" italic>Chưa có SĐT</Text>}</Descriptions.Item>
       <Descriptions.Item label="Email">{c.email || <Text type="secondary" italic>Chưa có email</Text>}</Descriptions.Item>
       <Descriptions.Item label="Nguồn"><SourceTag source={c.source} /></Descriptions.Item>
-      <Descriptions.Item label="Chiến dịch">{c.campaign || '—'}</Descriptions.Item>
+      <Descriptions.Item label="UTM">
+        {c.utm ? <UtmTag name={c.utm.name} color={c.utm.color} /> : c.campaign || '—'}
+      </Descriptions.Item>
       <Descriptions.Item label="Sales chính">{userCell(c.salesUser)}</Descriptions.Item>
       <Descriptions.Item label="Marketing phụ trách">{c.marketingUser ? userCell(c.marketingUser) : <Tag>Chưa gán</Tag>}</Descriptions.Item>
       <Descriptions.Item label="Người tạo">{userCell(c.createdBy)}</Descriptions.Item>

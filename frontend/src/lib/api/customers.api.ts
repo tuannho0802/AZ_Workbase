@@ -100,6 +100,8 @@ export const customersApi = {
     joinedGroups?: 'joined' | 'not_joined';
     // Lọc khách đã join ĐÚNG 1 nhóm liên kết (link_groups.id).
     groupId?: number;
+    // Lọc theo UTM (utms.id).
+    utmId?: number;
   }): Promise<PaginatedResponse<Customer>> => {
     const response = await axiosInstance.get('/customers', { params });
     return response.data;
@@ -166,6 +168,8 @@ export const customersApi = {
     // Lọc theo CỤ THỂ 1 nhóm liên kết (link_groups.id) - kết hợp với
     // `joinedGroups`: không truyền/joined = đã join nhóm này, not_joined = chưa join.
     groupId?: number;
+    // Lọc theo UTM (utms.id).
+    utmId?: number;
     // ⚠️ MỚI (yêu cầu người dùng): 2 khoảng ngày lọc RIÊNG - ĐÚNG tên param
     // dùng chung với getUnassigned()/getAssigned() ở /chia-data. `dateFrom`/
     // `dateTo` lọc "Ngày nhập" (inputDate), `createdAtFrom`/`createdAtTo`
