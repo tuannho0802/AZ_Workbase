@@ -119,4 +119,54 @@ describe('ReportsCustomerListService', () => {
     // Tổng số ghi chú tính đủ (khách 1 có 4 dù chỉ trả 3 gần nhất).
     expect(res.data.map((d) => d.noteCount)).toEqual([4, 1, 0]);
   });
+
+  describe('metric của tab Chất lượng nhóm (group_*)', () => {
+    const run = async (metric: any, extra: Record<string, unknown> = {}, ctx: any = {}) => {
+      const f = build();
+      await f.svc.getList({ ...base, metric, context: 'groups', ...extra } as any, ctx.id ?? 1, ctx.role ?? Role.ADMIN, ctx.scope ?? PermissionScope.ALL);
+      return f;
+    };
+    const memberWhere = (w: string[]) => w.find((x) => x.includes('customer_group_memberships gm') && x.includes('gm.joined = true'));
+
+    it('group_members / group_deposited / group_no_deposit / group_closed đều bắt đầu từ "thành viên joined=true"', async () => {
+      for (const m of ['group_members', 'group_deposited', 'group_no_deposit', 'group_closed']) {
+        const f = await run(m);
+        expect(memberWhere(f.wheres)).toBeDefined();
+      }
+      expect((await run('group_deposited')).wheres).toContain('EXISTS (SELECT 1 FROM deposits gd WHERE gd.customer_id = customer.id)');
+      expect((await run('group_no_deposit')).wheres).toContain('NOT EXISTS (SELECT 1 FROM deposits gd WHERE gd.customer_id = customer.id)');
+      expect((await run('group_closed')).wheres).toContain("customer.status = 'closed'");
+    });
+
+    it('group_new_joins / cohort join trong kỳ dùng joined_at bằng mốc UTC, không phải giờ VN naive', async () => {
+      for (const m of ['group_new_joins', 'group_new_deposited', 'group_new_closed']) {
+        const f = await run(m);
+        expect(memberWhere(f.wheres)).toContain('gm.joined_at BETWEEN :gjFrom AND :gjTo');
+        expect(String(f.params.gjFrom)).toBe('2026-09-20 17:00:00');
+      }
+      const noPeriod = await run('group_members');
+      expect(memberWhere(noPeriod.wheres)).not.toContain('joined_at');
+    });
+
+    it('groupId/categoryId thu hẹp thành viên theo đúng nhóm/Category', async () => {
+      const f = await run('group_members', { groupId: 4, categoryId: 2 });
+      expect(memberWhere(f.wheres)).toContain('gm.group_id = :gGroup');
+      expect(memberWhere(f.wheres)).toContain('gl.category_id = :gCategory');
+      expect(f.params).toMatchObject({ gGroup: 4, gCategory: 2 });
+    });
+
+    it('new_no_group = data mới trong kỳ (created_at UTC) và KHÔNG có membership joined nào', async () => {
+      const f = await run('new_no_group');
+      expect(f.wheres.some((w) => w.includes('customer.createdAt BETWEEN'))).toBe(true);
+      expect(f.wheres.some((w) => w.startsWith('NOT EXISTS') && w.includes('gn.joined = true'))).toBe(true);
+    });
+
+    it("context 'groups' + scope=own KHÔNG siết thêm Sales chính (khớp báo cáo nhóm, chỉ applyViewFilter)", async () => {
+      const groups = await run('group_members', {}, { id: 7, role: Role.EMPLOYEE, scope: PermissionScope.OWN });
+      expect(groups.params.ownSalesId).toBeUndefined();
+      const f = build();
+      await f.svc.getList({ ...base, metric: 'total', context: 'customers' } as any, 7, Role.EMPLOYEE, PermissionScope.OWN);
+      expect(f.params.ownSalesId).toBe(7);
+    });
+  });
 });

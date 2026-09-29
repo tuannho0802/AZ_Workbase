@@ -11,7 +11,7 @@ import { StatusTag } from '@/components/customers/StatusTag';
 import { getApiErrorMessage } from '@/lib/utils/error-message.util';
 import { formatUsd } from '@/lib/utils/marketingReport';
 import { buildCustomerTimeline, DEPOSIT_STAGE_LABEL, filterDepositsByRange } from '@/lib/utils/reportCustomerDetail';
-import type { ReportCareNote, ReportDepositStage, ReportListUser } from '@/lib/types/reports.types';
+import type { ReportCareNote, ReportContext, ReportDepositStage, ReportListUser } from '@/lib/types/reports.types';
 import ReportUserName from './ReportUserName';
 import ReportQuickRangeFilter, { type QuickRangeValue } from './ReportQuickRangeFilter';
 
@@ -20,7 +20,7 @@ const { RangePicker } = DatePicker;
 
 interface Props {
   customerId: number | null;
-  context: 'customers' | 'marketing';
+  context: ReportContext;
   onClose: () => void;
 }
 

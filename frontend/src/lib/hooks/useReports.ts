@@ -1,6 +1,6 @@
 import { keepPreviousData, useQuery } from '@tanstack/react-query';
 import { reportsApi } from '../api/reports.api';
-import { MarketingReportFilters, ReportCustomerListQuery, ReportQuery } from '../types/reports.types';
+import { GroupQualityFilters, MarketingReportFilters, ReportContext, ReportCustomerListQuery, ReportQuery } from '../types/reports.types';
 
 /**
  * `enabled: isQueryReady(query)` - period=custom cần ĐỦ customFrom+customTo
@@ -50,6 +50,17 @@ export const useMarketingReport = (query: ReportQuery & MarketingReportFilters) 
     });
 };
 
+/** Báo cáo chất lượng nhóm liên kết (tab "Chất lượng nhóm"). */
+export const useGroupQualityReport = (query: ReportQuery & GroupQualityFilters) => {
+    return useQuery({
+        queryKey: ['reports', 'group-quality', query],
+        queryFn: () => reportsApi.getGroupQualityReport(query),
+        enabled: isQueryReady(query),
+        staleTime: 60 * 1000,
+        placeholderData: keepPreviousData,
+    });
+};
+
 /** Danh sách khách của Mini Table drill-down - chỉ gọi khi modal đang mở. */
 export const useReportCustomerList = (query: ReportCustomerListQuery, enabled: boolean) => {
     return useQuery({
@@ -62,7 +73,7 @@ export const useReportCustomerList = (query: ReportCustomerListQuery, enabled: b
 };
 
 /** Chi tiết 1 khách cho modal "Thông tin" - chỉ gọi khi modal đang mở. */
-export const useReportCustomerDetail = (id: number | null, context: 'customers' | 'marketing') => {
+export const useReportCustomerDetail = (id: number | null, context: ReportContext) => {
     return useQuery({
         queryKey: ['reports', 'customer-detail', id, context],
         queryFn: () => reportsApi.getCustomerDetail(id as number, context),

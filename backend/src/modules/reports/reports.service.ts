@@ -77,22 +77,45 @@ export class ReportsService {
    */
   private async attachDepartment<T extends { userId: number }>(
     rows: T[],
-  ): Promise<(T & { departmentName?: string | null; departmentColor?: string | null })[]> {
+  ): Promise<
+    (T & {
+      departmentName?: string | null;
+      departmentColor?: string | null;
+      role?: string | null;
+      positionName?: string | null;
+      positionColor?: string | null;
+    })[]
+  > {
     if (!this.userRepo) return rows;
     const ids = [...new Set(rows.map((r) => r.userId).filter((id) => id > 0))];
-    const map = new Map<number, { name: string | null; color: string | null }>();
+    const map = new Map<
+      number,
+      { name: string | null; color: string | null; role: string | null; posName: string | null; posColor: string | null }
+    >();
     if (ids.length > 0) {
       const users = await this.userRepo.find({
         where: { id: In(ids) },
-        relations: { department: true },
+        relations: { department: true, position: true },
         withDeleted: true,
       });
-      for (const u of users) map.set(u.id, { name: u.department?.name ?? null, color: u.department?.color ?? null });
+      for (const u of users) {
+        map.set(u.id, {
+          name: u.department?.name ?? null,
+          color: u.department?.color ?? null,
+          role: u.role ?? null,
+          posName: u.position?.name ?? null,
+          posColor: u.position?.color ?? null,
+        });
+      }
     }
     return rows.map((r) => ({
       ...r,
       departmentName: map.get(r.userId)?.name ?? null,
       departmentColor: map.get(r.userId)?.color ?? null,
+      // Role + Vị trí: để dropdown chọn Sales ở tab Doanh thu hiện Tag giống trang Khách hàng.
+      role: map.get(r.userId)?.role ?? null,
+      positionName: map.get(r.userId)?.posName ?? null,
+      positionColor: map.get(r.userId)?.posColor ?? null,
     }));
   }
 

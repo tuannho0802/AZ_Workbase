@@ -96,6 +96,10 @@ export type UserInfo = {
   departmentId: number | null;
   departmentName: string | null;
   departmentColor: string | null;
+  // Đủ để FE vẽ dropdown user GIỐNG trang Khách hàng (Avatar theo màu vai trò + Tag Vai trò/Phòng ban/Vị trí).
+  role: string | null;
+  positionName: string | null;
+  positionColor: string | null;
 };
 
 /**
@@ -233,8 +237,24 @@ export class ReportsMarketingService {
     const label = (id: number) => {
       const u = users.get(id);
       return u
-        ? { id, name: u.name, departmentName: u.departmentName, departmentColor: u.departmentColor }
-        : { id, name: nameOf(id), departmentName: null, departmentColor: null };
+        ? {
+            id,
+            name: u.name,
+            departmentName: u.departmentName,
+            departmentColor: u.departmentColor,
+            role: u.role,
+            positionName: u.positionName,
+            positionColor: u.positionColor,
+          }
+        : {
+            id,
+            name: nameOf(id),
+            departmentName: null,
+            departmentColor: null,
+            role: null,
+            positionName: null,
+            positionColor: null,
+          };
     };
 
     return {
@@ -539,7 +559,7 @@ export class ReportsMarketingService {
     // withDeleted: nhân viên đã nghỉ/xoá vẫn phải hiện đúng tên trong báo cáo lịch sử.
     const users = await this.userRepo.find({
       where: { id: In(ids) },
-      relations: { department: true },
+      relations: { department: true, position: true },
       withDeleted: true,
     });
     for (const u of users) {
@@ -548,6 +568,9 @@ export class ReportsMarketingService {
         departmentId: u.departmentId ?? null,
         departmentName: u.department?.name ?? null,
         departmentColor: u.department?.color ?? null,
+        role: u.role ?? null,
+        positionName: u.position?.name ?? null,
+        positionColor: u.position?.color ?? null,
       });
     }
     return map;

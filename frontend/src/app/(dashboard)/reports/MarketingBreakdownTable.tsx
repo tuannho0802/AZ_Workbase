@@ -1,12 +1,13 @@
 'use client';
 
 import { useMemo, useState } from 'react';
-import { Button, Card, Empty, Progress, Segmented, Select, Switch, Table, Tag, Tooltip, Typography } from 'antd';
+import { Button, Card, Empty, Progress, Segmented, Switch, Table, Tag, Tooltip, Typography } from 'antd';
 import type { ColumnsType } from 'antd/es/table';
 import type { MarketingUserRow } from '@/lib/types/reports.types';
 import { filterUserRows, fmtCount, formatUsd, pct, rowRates, sumRows } from '@/lib/utils/marketingReport';
 import ReportNameFilter from './ReportNameFilter';
 import ReportUserName from './ReportUserName';
+import { ReportDepartmentSelect } from './ReportUserSelect';
 import { rateColor, rateTextColor } from '@/lib/utils/rateColor';
 import type { CustomerDrill } from './ReportCustomersModal';
 
@@ -52,9 +53,13 @@ export default function MarketingBreakdownTable({
   const onFilter = dimension === 'marketing' ? onFilterMarketing : onFilterCreator;
 
   const departmentOptions = useMemo(() => {
-    const map = new Map<number, string>();
-    for (const r of source) if (r.departmentId != null && r.departmentName) map.set(r.departmentId, r.departmentName);
-    return [...map.entries()].map(([value, label]) => ({ value, label }));
+    const map = new Map<number, { id: number; name: string; color?: string | null }>();
+    for (const r of source) {
+      if (r.departmentId != null && r.departmentName) {
+        map.set(r.departmentId, { id: r.departmentId, name: r.departmentName, color: r.departmentColor });
+      }
+    }
+    return [...map.values()];
   }, [source]);
 
   const rows = useMemo(
@@ -207,13 +212,11 @@ export default function MarketingBreakdownTable({
           ]}
         />
         <ReportNameFilter value={search} onChange={setSearch} placeholder="Tìm theo tên..." />
-        <Select
-          allowClear
-          style={{ width: 200 }}
+        <ReportDepartmentSelect
+          departments={departmentOptions}
           placeholder="Phòng ban của nhân viên"
           value={staffDepartmentId}
-          onChange={(v) => setStaffDepartmentId(v)}
-          options={departmentOptions}
+          onChange={setStaffDepartmentId}
         />
         <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
           <Switch size="small" checked={hideEmpty} onChange={setHideEmpty} />

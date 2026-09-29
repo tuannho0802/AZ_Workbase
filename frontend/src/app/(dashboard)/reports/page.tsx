@@ -4,13 +4,14 @@ import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { App, Tabs, Typography } from 'antd';
 import dayjs from 'dayjs';
-import { DollarOutlined, TeamOutlined, SafetyCertificateOutlined, FundProjectionScreenOutlined } from '@ant-design/icons';
+import { DollarOutlined, TeamOutlined, SafetyCertificateOutlined, FundProjectionScreenOutlined, UsergroupAddOutlined } from '@ant-design/icons';
 import { ReportQuery } from '@/lib/types/reports.types';
 import { useMyPermissions } from '@/lib/hooks/useMyPermissions';
 import RevenueReportTab from './RevenueReportTab';
 import CustomerReportTab from './CustomerReportTab';
 import QualityReportTab from './QualityReportTab';
 import MarketingReportTab from './MarketingReportTab';
+import GroupQualityReportTab from './GroupQualityReportTab';
 
 const { Title, Text } = Typography;
 
@@ -107,6 +108,15 @@ export default function ReportsPage() {
               </span>
             ),
             children: <MarketingReportTab query={query} onQueryChange={setQuery} />,
+          },
+          {
+            key: 'group-quality',
+            label: (
+              <span>
+                <UsergroupAddOutlined /> Chất lượng nhóm
+              </span>
+            ),
+            children: <GroupQualityReportTab query={query} onQueryChange={setQuery} />,
           },
         ]}
       />

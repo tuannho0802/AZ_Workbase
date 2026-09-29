@@ -1,7 +1,7 @@
 'use client';
 
 import { useMemo, useState } from 'react';
-import { Alert, Button, Card, Col, Empty, Row, Select, Space, Typography } from 'antd';
+import { Alert, Button, Card, Col, Empty, Row, Space, Typography } from 'antd';
 import { CheckCircleOutlined, DollarOutlined, ReloadOutlined, TeamOutlined, UserAddOutlined, UserSwitchOutlined } from '@ant-design/icons';
 import type { ColumnsType } from 'antd/es/table';
 import { Bar, CartesianGrid, ComposedChart, Legend, Line, ResponsiveContainer, Tooltip as ChartTooltip, XAxis, YAxis } from 'recharts';
@@ -15,6 +15,7 @@ import { CHART_COLORS } from './ReportChart';
 import PeriodSelector from './PeriodSelector';
 import ReportNameFilter from './ReportNameFilter';
 import ReportUserName from './ReportUserName';
+import { ReportUserSelect, type ReportSelectableUser } from './ReportUserSelect';
 import ReportKpiCard, { REPORT_COLORS } from './ReportKpiCard';
 import ReportCustomersModal, { type CustomerDrill } from './ReportCustomersModal';
 
@@ -71,11 +72,23 @@ export default function RevenueReportTab({ query, onQueryChange }: Props) {
     return rows.filter((r) => r.userName.toLowerCase().includes(q));
   }, [data?.personal, personalSearch]);
 
-  const salesOptions = useMemo(() => {
-    const map = new Map<number, string>();
-    (customerData?.personal ?? []).forEach((r) => map.set(r.userId, r.userName));
-    (data?.personal ?? []).forEach((r) => map.set(r.userId, r.userName));
-    return [...map.entries()].map(([value, label]) => ({ value, label }));
+  // Dropdown "Kiểm tra khách của 1 Sales": đủ Tag Vai trò/Phòng ban/Vị trí như trang Khách hàng. Dòng của tab Doanh thu
+  // đè lên dòng của tab Doanh số khách (cùng 1 nhân viên, dữ liệu user như nhau).
+  const salesUsers = useMemo<ReportSelectableUser[]>(() => {
+    const map = new Map<number, ReportSelectableUser>();
+    const put = (r: { userId: number; userName: string; role?: string | null; departmentName?: string | null; departmentColor?: string | null; positionName?: string | null; positionColor?: string | null }) =>
+      map.set(r.userId, {
+        id: r.userId,
+        name: r.userName,
+        role: r.role,
+        departmentName: r.departmentName,
+        departmentColor: r.departmentColor,
+        positionName: r.positionName,
+        positionColor: r.positionColor,
+      });
+    (customerData?.personal ?? []).forEach(put);
+    (data?.personal ?? []).forEach(put);
+    return [...map.values()].sort((a, b) => a.name.localeCompare(b.name, 'vi'));
   }, [customerData?.personal, data?.personal]);
 
   const openMetric = (metric: ReportCustomerListMetric, extra?: Partial<CustomerDrill>) => () => setDrill({ metric, ...extra });
@@ -192,18 +205,14 @@ export default function RevenueReportTab({ query, onQueryChange }: Props) {
         <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap', alignItems: 'flex-start' }}>
           <PeriodSelector value={query} onChange={onQueryChange} resolvedPeriod={data?.period} />
           <Space wrap>
-            <Select
-              showSearch
-              allowClear
+            <ReportUserSelect
               style={{ width: 260 }}
               placeholder="Kiểm tra khách của 1 Sales..."
-              optionFilterProp="label"
-              options={salesOptions}
+              users={salesUsers}
               value={null}
-              onChange={(id: number | null) => {
+              onChange={(id) => {
                 if (id == null) return;
-                const opt = salesOptions.find((o) => o.value === id);
-                openSales(id, opt?.label ?? `Sales #${id}`);
+                openSales(id, salesUsers.find((u) => u.id === id)?.name ?? `Sales #${id}`);
               }}
             />
             <Button icon={<ReloadOutlined />} loading={isFetching && !isLoading} onClick={() => refetch()}>

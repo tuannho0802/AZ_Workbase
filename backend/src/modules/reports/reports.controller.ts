@@ -3,6 +3,8 @@ import { ApiTags, ApiOperation, ApiBearerAuth } from '@nestjs/swagger';
 import { ReportsService } from './reports.service';
 import { ReportsMarketingService } from './reports-marketing.service';
 import { QueryMarketingReportDto } from './dto/query-marketing-report.dto';
+import { ReportsGroupQualityService } from './reports-group-quality.service';
+import { QueryGroupQualityReportDto } from './dto/query-group-quality-report.dto';
 import { ReportsCustomerListService } from './reports-customer-list.service';
 import { ReportsCustomerDetailService } from './reports-customer-detail.service';
 import { QueryReportCustomerListDto } from './dto/query-report-customer-list.dto';
@@ -30,6 +32,7 @@ export class ReportsController {
     private readonly reportsMarketingService: ReportsMarketingService,
     private readonly reportsCustomerListService: ReportsCustomerListService,
     private readonly reportsCustomerDetailService: ReportsCustomerDetailService,
+    private readonly reportsGroupQualityService: ReportsGroupQualityService,
   ) {}
 
   @Get('revenue')
@@ -88,6 +91,20 @@ export class ReportsController {
     return this.reportsMarketingService.getMarketingReport(query, req.user.id, req.user.role, scope);
   }
 
+  @Get('group-quality')
+  @RequirePermission('reports.view')
+  @ApiOperation({
+    summary:
+      'Báo cáo CHẤT LƯỢNG NHÓM: mỗi nhóm liên kết có bao nhiêu khách join, đã nạp/đã chốt, doanh thu, thời gian từ join tới nạp, cơ cấu status/nguồn/Sales - phạm vi theo scope (xem reports-group-quality.service.ts)',
+  })
+  async getGroupQualityReport(
+    @Query() query: QueryGroupQualityReportDto,
+    @Request() req: any,
+    @GetPermissionScope() scope: string | null,
+  ) {
+    return this.reportsGroupQualityService.getGroupQualityReport(query, req.user.id, req.user.role, scope);
+  }
+
   @Get('customer-list')
   @RequirePermission('reports.view')
   @ApiOperation({
@@ -114,7 +131,7 @@ export class ReportsController {
     @Request() req: any,
     @GetPermissionScope() scope: string | null,
   ) {
-    const ctx = context === 'marketing' ? 'marketing' : 'customers';
+    const ctx = context === 'marketing' ? 'marketing' : context === 'groups' ? 'groups' : 'customers';
     return this.reportsCustomerDetailService.getDetail(id, ctx, req.user.id, req.user.role, scope);
   }
 }

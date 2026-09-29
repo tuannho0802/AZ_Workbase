@@ -57,7 +57,7 @@ export class ReportsCustomerDetailService {
 
   async getDetail(
     id: number,
-    context: 'customers' | 'marketing' | undefined,
+    context: 'customers' | 'marketing' | 'groups' | undefined,
     viewerId: number,
     viewerRole: string,
     scope?: string | null,
@@ -75,7 +75,8 @@ export class ReportsCustomerDetailService {
     CustomerAccessHelper.applyViewFilter(qb, viewerId, viewerRole, scope);
     if (scope === PermissionScope.OWN && viewerRole !== Role.ADMIN) {
       if (context === 'marketing') applyMarketingOwnOnly(qb, viewerId);
-      else qb.andWhere('customer.salesUserId = :ownSalesId', { ownSalesId: viewerId });
+      // context='groups': khớp báo cáo Chất lượng nhóm - chỉ siết bằng applyViewFilter ở trên.
+      else if (context !== 'groups') qb.andWhere('customer.salesUserId = :ownSalesId', { ownSalesId: viewerId });
     }
 
     const c = await qb.getOne();

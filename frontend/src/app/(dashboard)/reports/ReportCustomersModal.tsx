@@ -13,6 +13,7 @@ import { StatusTag } from '@/components/customers/StatusTag';
 import { getApiErrorMessage } from '@/lib/utils/error-message.util';
 import { formatUsd } from '@/lib/utils/marketingReport';
 import type {
+  ReportContext,
   ReportCustomerListFilters,
   ReportCustomerListMetric,
   ReportCustomerListQuick,
@@ -41,6 +42,14 @@ export const METRIC_TITLE: Record<ReportCustomerListMetric, string> = {
   ftd: 'Khách nạp lần đầu (FTD) trong kỳ',
   redeposit: 'Khách nạp lại trong kỳ',
   unassigned_marketing: 'Data mới chưa gán Marketing',
+  group_members: 'Thành viên đã join nhóm',
+  group_new_joins: 'Khách join nhóm trong kỳ',
+  group_deposited: 'Thành viên nhóm đã từng nạp',
+  group_no_deposit: 'Thành viên nhóm chưa nạp lần nào',
+  group_closed: 'Thành viên nhóm đã chốt',
+  group_new_deposited: 'Khách join nhóm trong kỳ và đã từng nạp',
+  group_new_closed: 'Khách join nhóm trong kỳ và đã chốt',
+  new_no_group: 'Data mới trong kỳ chưa join nhóm nào',
 };
 
 /** Yêu cầu mở modal - do tab cha tạo khi bấm thẻ/số. */
@@ -49,7 +58,7 @@ export interface CustomerDrill {
   /** Nhãn phụ hiển thị sau tiêu đề (vd tên nhân viên, tên trạng thái). */
   label?: string;
   /** Bộ lọc gắn cứng theo chỗ được bấm (người dùng KHÔNG đổi được trong modal). */
-  preset?: Pick<ReportCustomerListFilters, 'marketingUserId' | 'createdById' | 'salesUserId' | 'source'>;
+  preset?: Pick<ReportCustomerListFilters, 'marketingUserId' | 'createdById' | 'salesUserId' | 'source' | 'groupId' | 'categoryId'>;
   /** Giá trị khởi tạo của ô lọc trạng thái (người dùng vẫn đổi được). */
   initialStatus?: string;
   /** Có -> hiện thanh chuyển chỉ số ngay trong modal (vd "Khách của 1 Sales": Data mới / Đã chốt / Đã nạp...). */
@@ -62,7 +71,7 @@ interface Props {
   drill: CustomerDrill | null;
   onClose: () => void;
   query: ReportQuery;
-  context: 'customers' | 'marketing';
+  context: ReportContext;
 }
 
 const DEPOSIT_METRICS: ReportCustomerListMetric[] = ['deposited', 'ftd', 'redeposit'];
@@ -240,7 +249,7 @@ export default function ReportCustomersModal({ drill, onClose, query, context }:
         { title: 'Nạp gần nhất', key: 'depLast', width: 105, render: (_, r) => (r.lastDepositDate ? dayjs(r.lastDepositDate).format('DD/MM/YYYY') : '—') },
       );
     }
-    if (metric === 'joined') {
+    if (metric === 'joined' || metric.startsWith('group_')) {
       cols.push({
         title: 'Nhóm đã join',
         key: 'groups',

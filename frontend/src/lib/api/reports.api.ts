@@ -9,6 +9,9 @@ import {
     ReportCustomerList,
     ReportCustomerListQuery,
     ReportCustomerDetail,
+    ReportContext,
+    GroupQualityReport,
+    GroupQualityFilters,
 } from '../types/reports.types';
 
 export const reportsApi = {
@@ -33,12 +36,17 @@ export const reportsApi = {
         return response.data;
     },
 
+    getGroupQualityReport: async (query: ReportQuery & GroupQualityFilters): Promise<GroupQualityReport> => {
+        const response = await axiosInstance.get<GroupQualityReport>('/reports/group-quality', { params: query });
+        return response.data;
+    },
+
     getCustomerList: async (query: ReportCustomerListQuery): Promise<ReportCustomerList> => {
         const response = await axiosInstance.get<ReportCustomerList>('/reports/customer-list', { params: query });
         return response.data;
     },
 
-    getCustomerDetail: async (id: number, context: 'customers' | 'marketing'): Promise<ReportCustomerDetail> => {
+    getCustomerDetail: async (id: number, context: ReportContext): Promise<ReportCustomerDetail> => {
         const response = await axiosInstance.get<ReportCustomerDetail>(`/reports/customer-detail/${id}`, { params: { context } });
         return response.data;
     },

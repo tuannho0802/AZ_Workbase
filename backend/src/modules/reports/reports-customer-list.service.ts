@@ -66,10 +66,11 @@ export class ReportsCustomerListService {
     CustomerAccessHelper.applyViewFilter(qb, viewerId, viewerRole, scope);
     if (isOwnOnly) {
       if (context === 'marketing') applyMarketingOwnOnly(qb, viewerId);
-      else qb.andWhere('customer.salesUserId = :ownSalesId', { ownSalesId: viewerId });
+      // context='groups': báo cáo Chất lượng nhóm CHỈ siết bằng applyViewFilter (không thêm rule Sales chính) -> danh sách khớp số.
+      else if (context === 'customers') qb.andWhere('customer.salesUserId = :ownSalesId', { ownSalesId: viewerId });
     }
 
-    this.applyMetric(qb, query.metric, range);
+    this.applyMetric(qb, query.metric, range, query);
     this.applyFilters(qb, query);
 
     if (query.metric === 'closed') qb.orderBy('customer.closedDate', 'DESC').addOrderBy('customer.id', 'DESC');
@@ -85,8 +86,13 @@ export class ReportsCustomerListService {
     const depositByCustomer = isDepositMetric
       ? await this.loadDeposits(ids, range)
       : new Map<number, { amount: number; count: number; lastDate: string | null }>();
+    const isGroupMetric = query.metric.startsWith('group_');
     const groupsByCustomer =
-      query.metric === 'joined' ? await this.loadJoinedGroups(ids, range) : new Map<number, string[]>();
+      query.metric === 'joined'
+        ? await this.loadJoinedGroups(ids, range)
+        : isGroupMetric
+          ? await this.loadJoinedGroups(ids, undefined, query.categoryId)
+          : new Map<number, string[]>();
 
     const { recent: notesByCustomer, counts: noteCounts } = await this.loadRecentNotes(ids);
 
@@ -113,7 +119,7 @@ export class ReportsCustomerListService {
             lastDepositDate: depositByCustomer.get(c.id)?.lastDate ?? null,
           }
         : {}),
-      ...(query.metric === 'joined' ? { joinedGroups: groupsByCustomer.get(c.id) ?? [] } : {}),
+      ...(query.metric === 'joined' || isGroupMetric ? { joinedGroups: groupsByCustomer.get(c.id) ?? [] } : {}),
     }));
 
     return {
@@ -128,14 +134,79 @@ export class ReportsCustomerListService {
   }
 
   /** Điều kiện của TỪNG chỉ số - mirror con số ở báo cáo (xem JSDoc class). */
-  private applyMetric(qb: SelectQueryBuilder<Customer>, metric: ReportCustomerListMetric, range: ResolvedReportRange) {
+  private applyMetric(
+    qb: SelectQueryBuilder<Customer>,
+    metric: ReportCustomerListMetric,
+    range: ResolvedReportRange,
+    query?: Pick<QueryReportCustomerListDto, 'groupId' | 'categoryId'>,
+  ) {
     const created = () =>
       qb.andWhere('customer.createdAt BETWEEN :createdFrom AND :createdTo', {
         createdFrom: range.fromUtc,
         createdTo: range.toUtc,
       });
 
+    // Khách là THÀNH VIÊN (joined=true) của nhóm đang xem (lọc groupId/categoryId nếu có) + điều kiện phụ `extra`.
+    const groupMember = (extra = '', params: Record<string, unknown> = {}) => {
+      let cond = 'gm.customer_id = customer.id AND gm.joined = true';
+      const p: Record<string, unknown> = { ...params };
+      if (query?.groupId) {
+        cond += ' AND gm.group_id = :gGroup';
+        p.gGroup = query.groupId;
+      }
+      if (query?.categoryId) {
+        cond += ' AND gl.category_id = :gCategory';
+        p.gCategory = query.categoryId;
+      }
+      qb.andWhere(
+        `EXISTS (SELECT 1 FROM customer_group_memberships gm INNER JOIN link_groups gl ON gl.id = gm.group_id WHERE ${cond}${extra})`,
+        p,
+      );
+    };
+    const inJoinPeriod = () => ({
+      sql: ' AND gm.joined_at BETWEEN :gjFrom AND :gjTo',
+      params: { gjFrom: range.fromUtc, gjTo: range.toUtc },
+    });
+
     switch (metric) {
+      case 'group_members':
+        groupMember();
+        break;
+      case 'group_new_joins': {
+        const j = inJoinPeriod();
+        groupMember(j.sql, j.params);
+        break;
+      }
+      case 'group_deposited':
+        groupMember();
+        qb.andWhere('EXISTS (SELECT 1 FROM deposits gd WHERE gd.customer_id = customer.id)');
+        break;
+      case 'group_no_deposit':
+        groupMember();
+        qb.andWhere('NOT EXISTS (SELECT 1 FROM deposits gd WHERE gd.customer_id = customer.id)');
+        break;
+      case 'group_closed':
+        groupMember();
+        qb.andWhere("customer.status = 'closed'");
+        break;
+      case 'group_new_deposited': {
+        const j = inJoinPeriod();
+        groupMember(j.sql, j.params);
+        qb.andWhere('EXISTS (SELECT 1 FROM deposits gd WHERE gd.customer_id = customer.id)');
+        break;
+      }
+      case 'group_new_closed': {
+        const j = inJoinPeriod();
+        groupMember(j.sql, j.params);
+        qb.andWhere("customer.status = 'closed'");
+        break;
+      }
+      case 'new_no_group':
+        created();
+        qb.andWhere(
+          'NOT EXISTS (SELECT 1 FROM customer_group_memberships gn WHERE gn.customer_id = customer.id AND gn.joined = true)',
+        );
+        break;
       case 'total':
         created();
         break;
@@ -254,20 +325,30 @@ export class ReportsCustomerListService {
   }
 
   /** Tên các nhóm khách đã join TRONG KỲ (1 query cho cả trang). */
-  private async loadJoinedGroups(ids: number[], range: ResolvedReportRange): Promise<Map<number, string[]>> {
+  /**
+   * Tên các nhóm khách đã join. Có `range` -> chỉ nhóm join TRONG KỲ (metric 'joined'); không có -> mọi nhóm đã join
+   * (các metric group_*), tuỳ chọn thu hẹp theo Category để khớp bộ lọc của báo cáo nhóm.
+   */
+  private async loadJoinedGroups(
+    ids: number[],
+    range?: ResolvedReportRange,
+    categoryId?: number,
+  ): Promise<Map<number, string[]>> {
     const map = new Map<number, string[]>();
     if (ids.length === 0) return map;
-    const rows = await this.customerRepo.manager
+    const gq = this.customerRepo.manager
       .createQueryBuilder()
       .select('m.customerId', 'customerId')
       .addSelect('g.name', 'name')
       .from(CustomerGroupMembership, 'm')
       .innerJoin('m.group', 'g')
       .where('m.customerId IN (:...ids)', { ids })
-      .andWhere('m.joined = true')
-      .andWhere('m.joinedAt BETWEEN :joinedFrom AND :joinedTo', { joinedFrom: range.fromUtc, joinedTo: range.toUtc })
-      .orderBy('m.joinedAt', 'ASC')
-      .getRawMany();
+      .andWhere('m.joined = true');
+    if (range) {
+      gq.andWhere('m.joinedAt BETWEEN :joinedFrom AND :joinedTo', { joinedFrom: range.fromUtc, joinedTo: range.toUtc });
+    }
+    if (categoryId) gq.andWhere('g.categoryId = :gcat', { gcat: categoryId });
+    const rows = await gq.orderBy('m.joinedAt', 'ASC').getRawMany();
     for (const r of rows) {
       const list = map.get(Number(r.customerId)) ?? [];
       list.push(String(r.name));

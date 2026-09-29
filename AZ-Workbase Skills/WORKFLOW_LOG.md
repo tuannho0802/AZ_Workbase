@@ -4904,3 +4904,18 @@ khi bị xoá tay. Đây là 1 anti-pattern thật (dù đo thử với payload 
 > Không migration, không permission key mới. Chưa test trên MySQL/trình duyệt thật.
 
 ---
+
+## [2026-09-29 18:00] | /reports: User Tag + Department Color cho mọi dropdown + Tab mới "Chất lượng nhóm" | [Status: Success — BE tsc sạch + jest reports 68/68; FE vitest 223/223 (32 file); tsc FE chỉ còn 5 lỗi có sẵn ở logo.png/CountBadge]
+
+**Actor:** Agent (trên `origin/main` HEAD `5cfc347`)
+
+**Files Changed:**
+- BE MỚI: `reports/reports-group-quality.service.ts` (+spec), `reports/dto/query-group-quality-report.dto.ts`; endpoint `GET /reports/group-quality` (`reports.view`, không permission key mới).
+- BE: `reports.service.ts`, `reports-marketing.service.ts` (trả thêm `role`/`positionName`/`positionColor` cho user rows + options), `reports-customer-list.service.ts` (+spec) & DTO (8 metric `group_*`/`new_no_group`, `groupId`/`categoryId`, context `groups`), `reports-customer-detail.service.ts`, `reports.controller.ts`, `reports.module.ts`.
+- FE MỚI: `ReportUserSelect.tsx` (dropdown user Avatar+Tag Vai trò/Phòng ban/Vị trí giống trang Khách hàng; Select Tag màu cho Phòng ban/Category), `GroupQualityReportTab.tsx`, `lib/utils/groupQuality.ts` (+test).
+- FE: `MarketingReportTab.tsx`, `MarketingBreakdownTable.tsx`, `RevenueReportTab.tsx` (dùng dropdown mới), `ReportCustomersModal.tsx`, `ReportCustomerDetailModal.tsx`, `page.tsx` (tab "Chất lượng nhóm"), `reports.types.ts`, `reports.api.ts`, `useReports.ts`.
+
+**Notes:**
+> Tổng hợp theo TỪNG nhóm join thẳng membership; mọi truy vấn KHÔNG group theo nhóm join bảng thu gọn 1 dòng/khách để không nhân đôi SUM tiền nạp khi khách ở nhiều nhóm. Không migration. Chưa test trên MySQL/trình duyệt thật.
+
+---

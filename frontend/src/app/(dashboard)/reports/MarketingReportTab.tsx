@@ -21,7 +21,7 @@ import {
 } from 'recharts';
 import dayjs from 'dayjs';
 import { useMarketingReport } from '@/lib/hooks/useReports';
-import type { MarketingReportFilters, MarketingUserOption, ReportQuery } from '@/lib/types/reports.types';
+import type { MarketingReportFilters, ReportQuery } from '@/lib/types/reports.types';
 import { getApiErrorMessage } from '@/lib/utils/error-message.util';
 import {
   RANK_METRIC_LABEL,
@@ -36,6 +36,7 @@ import {
   type RankMetric,
 } from '@/lib/utils/marketingReport';
 import PeriodSelector from './PeriodSelector';
+import { ReportUserSelect } from './ReportUserSelect';
 import ReportKpiCard, { REPORT_COLORS } from './ReportKpiCard';
 import { rateColor, rateTextColor } from '@/lib/utils/rateColor';
 import ReportCustomersModal, { type CustomerDrill } from './ReportCustomersModal';
@@ -59,11 +60,6 @@ interface Props {
   query: ReportQuery;
   onQueryChange: (next: ReportQuery) => void;
 }
-
-const userOptions = (list: MarketingUserOption[], unassignedLabel: string) => [
-  { value: 0, label: unassignedLabel },
-  ...list.map((u) => ({ value: u.id, label: u.departmentName ? `${u.name} · ${u.departmentName}` : u.name })),
-];
 
 /**
  * Tab "Marketing" - phân tích ĐA CHIỀU theo Marketing phụ trách + Người tạo data, quy doanh số/khách
@@ -169,28 +165,22 @@ export default function MarketingReportTab({ query, onQueryChange }: Props) {
         <Row gutter={[12, 12]} style={{ marginTop: 12 }}>
           <Col xs={24} sm={12} xl={8}>
             <div className="mb-1"><Text strong>Marketing phụ trách</Text></div>
-            <Select
-              allowClear
-              showSearch
-              optionFilterProp="label"
-              style={{ width: '100%' }}
+            <ReportUserSelect
+              users={data?.options.marketers ?? []}
               placeholder="Tất cả Marketing"
               value={filters.marketingUserId}
               onChange={(v) => setFilter({ marketingUserId: v })}
-              options={userOptions(data?.options.marketers ?? [], '(Chưa gán Marketing)')}
+              extraOptions={[{ value: 0, label: '(Chưa gán Marketing)' }]}
             />
           </Col>
           <Col xs={24} sm={12} xl={8}>
             <div className="mb-1"><Text strong>Người tạo data</Text></div>
-            <Select
-              allowClear
-              showSearch
-              optionFilterProp="label"
-              style={{ width: '100%' }}
+            <ReportUserSelect
+              users={data?.options.creators ?? []}
               placeholder="Tất cả người tạo"
               value={filters.createdById}
               onChange={(v) => setFilter({ createdById: v })}
-              options={userOptions(data?.options.creators ?? [], '(Không rõ người tạo)')}
+              extraOptions={[{ value: 0, label: '(Không rõ người tạo)' }]}
             />
           </Col>
           <Col xs={24} sm={12} xl={8}>

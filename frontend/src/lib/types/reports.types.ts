@@ -25,6 +25,10 @@ export interface RevenuePersonalRow {
     /** Phòng ban CỦA NHÂN VIÊN (tên + màu cấu hình ở /phong-ban) - để vẽ Tag. */
     departmentName?: string | null;
     departmentColor?: string | null;
+    /** Vai trò (users.role = roles.code) + Vị trí (tên/màu) - để dropdown chọn user vẽ Tag GIỐNG trang Khách hàng. */
+    role?: string | null;
+    positionName?: string | null;
+    positionColor?: string | null;
     amount: number;
     /** Số khoản nạp trong kỳ. */
     depositCount: number;
@@ -100,6 +104,10 @@ export interface CustomerPersonalRow extends CustomerBreakdownCounts {
     /** Phòng ban CỦA NHÂN VIÊN (tên + màu cấu hình ở /phong-ban) - để vẽ Tag. */
     departmentName?: string | null;
     departmentColor?: string | null;
+    /** Vai trò (users.role = roles.code) + Vị trí (tên/màu) - để dropdown chọn user vẽ Tag GIỐNG trang Khách hàng. */
+    role?: string | null;
+    positionName?: string | null;
+    positionColor?: string | null;
 }
 
 export interface CustomerDepartmentRow extends CustomerBreakdownCounts {
@@ -131,6 +139,10 @@ export interface QualityPersonalRow {
     /** Phòng ban CỦA NHÂN VIÊN (tên + màu cấu hình ở /phong-ban) - để vẽ Tag. */
     departmentName?: string | null;
     departmentColor?: string | null;
+    /** Vai trò (users.role = roles.code) + Vị trí (tên/màu) - để dropdown chọn user vẽ Tag GIỐNG trang Khách hàng. */
+    role?: string | null;
+    positionName?: string | null;
+    positionColor?: string | null;
     total: number;
     /** Luôn đủ mặt mọi `statuses[].code` (kể cả = 0) - xem BE `zeroByStatus()`. */
     byStatus: Record<string, number>;
@@ -208,6 +220,9 @@ export interface MarketingUserOption {
     name: string;
     departmentName: string | null;
     departmentColor?: string | null;
+    role?: string | null;
+    positionName?: string | null;
+    positionColor?: string | null;
 }
 
 export interface MarketingReport {
@@ -252,7 +267,16 @@ export type ReportCustomerListMetric =
     | 'cohort_joined'
     | 'ftd'
     | 'redeposit'
-    | 'unassigned_marketing';
+    | 'unassigned_marketing'
+    // Tab "Chất lượng nhóm" (lọc thêm bằng groupId/categoryId)
+    | 'group_members'
+    | 'group_new_joins'
+    | 'group_deposited'
+    | 'group_no_deposit'
+    | 'group_closed'
+    | 'group_new_deposited'
+    | 'group_new_closed'
+    | 'new_no_group';
 
 export type ReportCustomerListQuick = 'no_marketing' | 'no_sales' | 'no_phone';
 
@@ -268,11 +292,17 @@ export interface ReportCustomerListFilters {
     dateFrom?: string;
     dateTo?: string;
     quick?: ReportCustomerListQuick;
+    /** Chỉ cho metric group_* : 1 nhóm liên kết / 1 Category. */
+    groupId?: number;
+    categoryId?: number;
 }
+
+/** Tab đang xem - quyết định cách BE siết scope="own" cho khớp con số trên thẻ. */
+export type ReportContext = 'customers' | 'marketing' | 'groups';
 
 export interface ReportCustomerListQuery extends ReportQuery, ReportCustomerListFilters {
     metric: ReportCustomerListMetric;
-    context?: 'customers' | 'marketing';
+    context?: ReportContext;
     page?: number;
     limit?: number;
 }
@@ -384,4 +414,126 @@ export interface ReportCustomerDetail {
     /** Ghi chú CHĂM SÓC (bảng customer_notes), mới nhất trước. Khác `customer.note` (ghi chú chung). */
     careNotes: ReportCareNote[];
     groups: { id: number; name: string; joinedAt: string | null }[];
+}
+
+// ── Chất lượng nhóm (theo nhóm liên kết) ────────────────────────────────────
+// Khớp `ReportsGroupQualityService.getGroupQualityReport()` ở BE.
+
+export interface GroupQualityFilters {
+    groupId?: number;
+    categoryId?: number;
+}
+
+export interface GroupQualityMetrics {
+    /** Khách đã join nhóm (mọi thời điểm). */
+    members: number;
+    /** Khách join nhóm TRONG KỲ. */
+    newJoins: number;
+    /** Trong số thành viên: đã từng nạp. Luôn <= members. */
+    depositedMembers: number;
+    /** Trong số thành viên: trạng thái hiện tại = đã chốt. Luôn <= members. */
+    closedMembers: number;
+    /** Cohort: khách join TRONG KỲ đã từng nạp. Luôn <= newJoins. */
+    newJoinsDeposited: number;
+    /** Cohort: khách join TRONG KỲ đã chốt. Luôn <= newJoins. */
+    newJoinsClosed: number;
+    /** Thành viên có nạp trong kỳ (theo ngày nạp). */
+    periodDepositors: number;
+    /** Tiền nạp trong kỳ của thành viên (USD). */
+    periodRevenue: number;
+    /** Tổng tiền nạp mọi thời điểm của thành viên (USD). */
+    lifetimeRevenue: number;
+    /** TB số ngày từ join nhóm tới khoản nạp đầu tiên. null = chưa có mẫu. */
+    avgDaysToFirstDeposit: number | null;
+}
+
+export interface GroupUserBrief {
+    id: number;
+    name: string;
+    role: string | null;
+    departmentName: string | null;
+    departmentColor: string | null;
+    positionName: string | null;
+    positionColor: string | null;
+}
+
+export interface GroupQualityRow extends GroupQualityMetrics {
+    groupId: number;
+    groupName: string;
+    categoryId: number;
+    categoryName: string | null;
+    categoryColor: string | null;
+    isActive: boolean;
+    primaryManager: GroupUserBrief | null;
+    /** Thành viên theo status hiện tại - đủ mặt mọi `statuses[].code` (kể cả 0). */
+    byStatus: Record<string, number>;
+}
+
+export interface GroupSourceRow {
+    source: string;
+    members: number;
+    depositedMembers: number;
+    closedMembers: number;
+    lifetimeRevenue: number;
+}
+
+export interface GroupSalesRow {
+    /** 0 = khách chưa có Sales phụ trách. */
+    userId: number;
+    userName: string;
+    role: string | null;
+    departmentName: string | null;
+    departmentColor: string | null;
+    positionName: string | null;
+    positionColor: string | null;
+    members: number;
+    depositedMembers: number;
+    closedMembers: number;
+    lifetimeRevenue: number;
+}
+
+export interface GroupTrendPoint {
+    date: string;
+    newJoins: number;
+    revenue: number;
+    depositors: number;
+}
+
+export interface GroupOption {
+    id: number;
+    name: string;
+    categoryId: number;
+    categoryName: string | null;
+    categoryColor: string | null;
+    isActive: boolean;
+}
+
+export interface GroupCategoryOption {
+    id: number;
+    name: string;
+    color: string | null;
+}
+
+export interface GroupQualityReport {
+    period: ReportPeriodInfo & { granularity: 'day' | 'month'; spanDays: number };
+    previousPeriod: { from: string; to: string };
+    appliedFilters: GroupQualityFilters;
+    /** true = chỉ thấy phần khách của chính mình trong nhóm. */
+    ownOnly: boolean;
+    options: { groups: GroupOption[]; categories: GroupCategoryOption[] };
+    statuses: QualityStatusMeta[];
+    summary: {
+        current: GroupQualityMetrics;
+        previous: { newJoins: number; periodRevenue: number; periodDepositors: number };
+        groupCount: number;
+        emptyGroups: number;
+        /** Data mới trong kỳ (theo ngày tạo) & số khách trong đó chưa join nhóm nào. */
+        newCustomers: number;
+        newCustomersNoGroup: number;
+        totalByStatus: Record<string, number>;
+    };
+    groups: GroupQualityRow[];
+    bySource: GroupSourceRow[];
+    bySales: GroupSalesRow[];
+    trend: GroupTrendPoint[];
 }

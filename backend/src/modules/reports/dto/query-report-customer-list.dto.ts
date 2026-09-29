@@ -15,6 +15,15 @@ export const REPORT_CUSTOMER_LIST_METRICS = [
   'ftd',
   'redeposit',
   'unassigned_marketing',
+  // ── Tab "Chất lượng nhóm": khách đứng sau các con số của nhóm liên kết (lọc thêm bằng groupId/categoryId) ──
+  'group_members', // thành viên đã join (mọi thời điểm)
+  'group_new_joins', // join nhóm TRONG KỲ
+  'group_deposited', // thành viên đã từng nạp
+  'group_no_deposit', // thành viên CHƯA nạp lần nào (cần chăm sóc)
+  'group_closed', // thành viên đã chốt
+  'group_new_deposited', // cohort: join trong kỳ VÀ đã từng nạp
+  'group_new_closed', // cohort: join trong kỳ VÀ đã chốt
+  'new_no_group', // data mới trong kỳ chưa join nhóm nào
 ] as const;
 export type ReportCustomerListMetric = (typeof REPORT_CUSTOMER_LIST_METRICS)[number];
 
@@ -32,13 +41,13 @@ export class QueryReportCustomerListDto extends QueryReportDto {
   metric: ReportCustomerListMetric;
 
   @ApiPropertyOptional({
-    enum: ['customers', 'marketing'],
+    enum: ['customers', 'marketing', 'groups'],
     description:
-      'Tab đang xem - quyết định cách siết scope="own" cho khớp con số trên thẻ: customers = theo Sales chính; marketing = theo Marketing phụ trách/Người tạo.',
+      'Tab đang xem - quyết định cách siết scope="own" cho khớp con số trên thẻ: customers = theo Sales chính; marketing = theo Marketing phụ trách/Người tạo; groups = chỉ theo CustomerAccessHelper (đúng như báo cáo Chất lượng nhóm).',
   })
   @IsOptional()
-  @IsIn(['customers', 'marketing'])
-  context?: 'customers' | 'marketing';
+  @IsIn(['customers', 'marketing', 'groups'])
+  context?: 'customers' | 'marketing' | 'groups';
 
   @ApiPropertyOptional({ default: 1 })
   @IsOptional()
@@ -108,4 +117,18 @@ export class QueryReportCustomerListDto extends QueryReportDto {
   @IsOptional()
   @IsIn(REPORT_CUSTOMER_LIST_QUICK as unknown as string[])
   quick?: ReportCustomerListQuick;
+
+  @ApiPropertyOptional({ description: 'Chỉ dùng cho các metric group_* : lọc 1 nhóm liên kết (link_groups.id).' })
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
+  groupId?: number;
+
+  @ApiPropertyOptional({ description: 'Chỉ dùng cho các metric group_* : lọc theo Category/nền tảng (link_categories.id).' })
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
+  categoryId?: number;
 }
