@@ -268,6 +268,10 @@ export default function DashboardLayout({
       // Thiếu nhánh này sẽ để sidebar sáng nhầm mục cũ (đúng bug pattern
       // '/nguon-media' đã sửa trước đó - route mới luôn phải thêm vào đây).
       newKey = 'storage-img';
+    } else if (pathname.includes('/quan-ly-utm')) {
+      // Thiếu nhánh này thì /quan-ly-utm rơi về default 'customers' -> Header hiện
+      // "Khách hàng" và sidebar sáng nhầm mục Khách hàng (key khớp nav-config.tsx).
+      newKey = 'quan-ly-utm';
     }
     
     setSelectedKey(newKey);

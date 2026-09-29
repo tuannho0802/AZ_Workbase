@@ -5,7 +5,7 @@ import { App, Form, Input, Modal, Radio } from 'antd';
 import type { UtmView, UtmVisibility } from '@/lib/api/utms.api';
 import { useCreateUtm, useUpdateUtm } from '@/lib/hooks/useUtms';
 import { ColorPickerField } from '@/components/common/ColorPickerField';
-import { getApiErrorMessage } from '@/lib/utils/error-message.util';
+import { toastApiError } from '@/lib/utils/error-message.util';
 
 interface Props {
   open: boolean;
@@ -63,12 +63,12 @@ export function UtmFormModal({ open, onClose, utm }: Props) {
     if (utm) {
       updateMutation.mutate(
         { id: utm.id, data: payload },
-        { onSuccess: () => done('Đã cập nhật UTM'), onError: (e) => message.error(getApiErrorMessage(e, 'Cập nhật UTM thất bại')) },
+        { onSuccess: () => done('Đã cập nhật UTM'), onError: (e) => toastApiError(message, e, 'Cập nhật UTM thất bại') },
       );
     } else {
       createMutation.mutate(
         { ...payload, name: values.name.trim() },
-        { onSuccess: () => done('Đã tạo UTM'), onError: (e) => message.error(getApiErrorMessage(e, 'Tạo UTM thất bại')) },
+        { onSuccess: () => done('Đã tạo UTM'), onError: (e) => toastApiError(message, e, 'Tạo UTM thất bại') },
       );
     }
   };

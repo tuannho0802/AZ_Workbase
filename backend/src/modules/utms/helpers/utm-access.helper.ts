@@ -56,6 +56,15 @@ export class UtmAccessHelper {
     return UtmAccessHelper.canEditIdentity(rel);
   }
 
+  /**
+   * Quan hệ "rộng" (scope all/department phủ tới UTM). Dùng để cho người có quyền SỬA UTM (`utms.edit`)
+   * với scope lớn cũng sửa lại được Quản lý chính/phụ (đặt nhầm thì đặt lại được), dù không có `utms.assign`.
+   * CỐ Ý không tính 'primary'/'secondary': scope `own` của utms.edit không mở rộng sang chính/phụ.
+   */
+  static isBroad(rel: UtmRelation): boolean {
+    return rel === 'all' || rel === 'department';
+  }
+
   static canDelete(rel: UtmRelation): boolean {
     return UtmAccessHelper.canEditIdentity(rel);
   }

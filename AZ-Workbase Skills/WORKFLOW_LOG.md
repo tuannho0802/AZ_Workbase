@@ -5081,3 +5081,25 @@ khi bị xoá tay. Đây là 1 anti-pattern thật (dù đo thử với payload 
 > Guard `customers.view` CHỈ ở FE (menu sidebar/trang chủ + route guard). `GET /utms/managed-by-me` ở BE vẫn CỐ Ý không `@RequirePermission` (Employee cần chọn UTM ở form KH) nên chưa khoá theo `customers.view` — nếu muốn chặn cả API phải tách endpoint riêng cho trang này. Các chỗ khác hiển thị UTM (`UtmTag`/`UtmSelect`/`UtmFilterSelect`) đều nằm trong luồng khách hàng nên đã gián tiếp cần `customers.view`. `PERMISSIONS.md` §2.13/dòng `utms.my_managed` chưa ghi điều kiện AND mới này — cần bổ sung nếu muốn tài liệu khớp code. Sort "Nhiều khách hàng nhất" dựa vào `customer-counts` (đã luôn có quyền vì page guard đòi `customers.view`).
 
 ---
+
+## [2026-09-29 23:45] | UTM Phần 7: sửa chính/phụ theo `utms.edit` scope rộng + thông báo xoá UTM rõ Thùng rác + hết toast trùng + khai báo `/quan-ly-utm` ở layout.tsx | [Status: Success — BE tsc sạch + nest build OK + jest 70 suite / 1253 test; FE tsc sạch (chỉ còn lỗi cũ logo.png/CountBadge của sandbox), vitest 36 file / 248 test; CHƯA chạy `next build`, CHƯA xem trình duyệt thật]
+
+**Actor:** Agent (trên `origin/main` HEAD `b5eb284`)
+
+**Files Changed:**
+- BE: `utms/helpers/utm-access.helper.ts` (+`isBroad`); `utms/utm-managers.service.ts` (`assignRelation` → `canManageManagers`: được sửa chính/phụ nếu scope `utms.assign` cho phép HOẶC `utms.edit` scope `all`/`department` phủ tới UTM; áp cho thêm/gỡ phụ, chuyển chính và cờ `canEdit`); `utms/utms.service.ts` (`remove()` đếm tách active/Thùng rác + `buildInUseMessage`).
+- BE test: `utm-managers.service.spec.ts` (+4: edit-all, edit-department đúng/sai phòng ban, edit-own không đủ, `canEdit`), `utms.service.spec.ts` (sửa mock query + 2 test thông báo), `utm-access.helper.spec.ts` (+`isBroad`).
+- FE: `app/(dashboard)/layout.tsx` (+nhánh `/quan-ly-utm` → key `quan-ly-utm`), `lib/utils/error-message.util.ts` (+`hasGlobalErrorToast`, `toastApiError`), `lib/utils/error-message.util.test.ts` (MỚI), và thay `message.error(getApiErrorMessage(...))` bằng `toastApiError(...)` ở `quan-ly-utm/page.tsx`, `UtmFormModal`, `UtmMergeModal`, `UtmManagersModal`, `UtmSelect`.
+- Docs: `PERMISSIONS.md` (dòng `utms.assign` + `utms.my_managed`).
+
+**Root Cause:**
+> (1) Header hiện "Khách hàng"/sidebar sáng nhầm ở `/quan-ly-utm`: chuỗi `else if (pathname.includes(...))` ở `layout.tsx` thiếu nhánh cho route mới nên rơi về default `'customers'`. (2) Xoá UTM báo "còn 1 khách hàng" trong khi nút hiện "Khách hàng (0)": nút đếm KH chưa xoá mềm và bị lọc theo scope `customers.view`, còn `remove()` đếm mọi KH kể cả Thùng rác (cố ý, D8) mà thông báo không phân biệt. (3) Toast lỗi hiện 2 lần: interceptor `axios-instance.ts` đã tự toast mọi lỗi HTTP non-401, `onError` của mutation lại `message.error` thêm lần nữa.
+
+**Solution:**
+> Thêm nhánh route; thông báo xoá nay nói rõ "N khách hàng đang dùng"/"M khách hàng trong Thùng rác" kèm hướng dẫn (xoá vĩnh viễn ở Thùng rác / Khoá / Gộp); `toastApiError` chỉ toast khi lỗi KHÔNG có response (lỗi mạng bị interceptor mute); sửa chính/phụ mở cho `utms.edit` scope rộng.
+
+**Notes:**
+> Quy tắc còn nguyên: UTM CHƯA có Quản lý chính chỉ scope `all` thao tác được (không mở cho `department`). Role scope `department` sau khi chuyển chính sang người NGOÀI phòng ban mình quản lý sẽ mất quyền với UTM đó (chỉ `all` đặt lại được) — Popconfirm chuyển chính đã cảnh báo. Toast trùng có thể còn ở các trang khác dùng cùng pattern `message.error` trong `onError` (chưa rà ngoài phạm vi UTM). Chưa test trình duyệt/DB thật.
+
+---
+

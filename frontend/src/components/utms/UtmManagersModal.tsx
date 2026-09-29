@@ -13,7 +13,7 @@ import {
 } from '@/lib/hooks/useUtms';
 import { SimpleList } from '@/components/common/SimpleList';
 import { SalesUserSelect, type UserOption } from '@/components/customers/SalesUserSelect';
-import { getApiErrorMessage } from '@/lib/utils/error-message.util';
+import { toastApiError } from '@/lib/utils/error-message.util';
 
 const { Text } = Typography;
 
@@ -70,7 +70,7 @@ export function UtmManagersModal({ open, onClose, utmId, utmName }: Props) {
           message.success('Đã thêm Quản lý phụ');
           setAddUserId(undefined);
         },
-        onError: (e) => message.error(getApiErrorMessage(e, 'Thêm Quản lý phụ thất bại')),
+        onError: (e) => toastApiError(message, e, 'Thêm Quản lý phụ thất bại'),
       },
     );
   };
@@ -81,7 +81,7 @@ export function UtmManagersModal({ open, onClose, utmId, utmName }: Props) {
       { utmId, userId },
       {
         onSuccess: () => message.success(`Đã gỡ "${name}" khỏi Quản lý phụ`),
-        onError: (e) => message.error(getApiErrorMessage(e, 'Gỡ Quản lý phụ thất bại')),
+        onError: (e) => toastApiError(message, e, 'Gỡ Quản lý phụ thất bại'),
       },
     );
   };
@@ -95,7 +95,7 @@ export function UtmManagersModal({ open, onClose, utmId, utmName }: Props) {
           message.success('Đã chuyển Quản lý chính');
           setTransferUserId(undefined);
         },
-        onError: (e) => message.error(getApiErrorMessage(e, 'Chuyển Quản lý chính thất bại')),
+        onError: (e) => toastApiError(message, e, 'Chuyển Quản lý chính thất bại'),
       },
     );
   };

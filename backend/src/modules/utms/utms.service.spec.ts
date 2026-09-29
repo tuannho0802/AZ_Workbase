@@ -156,16 +156,27 @@ describe('UtmsService', () => {
       await expect(svc.remove(1, emp)).rejects.toBeInstanceOf(ForbiddenException);
       expect(utmRepo.delete).not.toHaveBeenCalled();
     });
-    it('còn KH tham chiếu (kể cả xoá mềm) -> 400, không xoá', async () => {
+    it('còn KH đang dùng -> 400, không xoá; đếm cả KH xoá mềm (không lọc deleted_at ở WHERE)', async () => {
       utmRepo.findOne.mockResolvedValue(mk());
-      utmRepo.query.mockResolvedValue([{ c: '3' }]);
+      utmRepo.query.mockResolvedValue([{ active: '3', trashed: '0' }]);
       await expect(svc.remove(1, root)).rejects.toBeInstanceOf(BadRequestException);
-      expect(utmRepo.query.mock.calls[0][0]).not.toMatch(/deleted_at/);
+      expect(utmRepo.query.mock.calls[0][0]).not.toMatch(/WHERE[^]*deleted_at/);
       expect(utmRepo.delete).not.toHaveBeenCalled();
+    });
+    it('chỉ còn KH trong Thùng rác -> 400 và thông báo nói rõ Thùng rác (nút Khách hàng hiện 0)', async () => {
+      utmRepo.findOne.mockResolvedValue(mk());
+      utmRepo.query.mockResolvedValue([{ active: '0', trashed: '1' }]);
+      await expect(svc.remove(1, root)).rejects.toThrow(/1 khách hàng trong Thùng rác/);
+      expect(utmRepo.delete).not.toHaveBeenCalled();
+    });
+    it('buildInUseMessage: cả đang dùng và Thùng rác', () => {
+      const m = UtmsService.buildInUseMessage('X', 2, 1);
+      expect(m).toContain('2 khách hàng đang dùng và 1 khách hàng trong Thùng rác');
+      expect(UtmsService.buildInUseMessage('X', 2, 0)).not.toContain('Thùng rác');
     });
     it('0 KH -> xoá + audit', async () => {
       utmRepo.findOne.mockResolvedValue(mk());
-      utmRepo.query.mockResolvedValue([{ c: '0' }]);
+      utmRepo.query.mockResolvedValue([{ active: '0', trashed: '0' }]);
       await svc.remove(1, root);
       expect(utmRepo.delete).toHaveBeenCalledWith(1);
       expect(audit.logActionAsync).toHaveBeenCalledWith(1, 'DELETE_UTM', 'utm', 1, expect.any(Object), null);

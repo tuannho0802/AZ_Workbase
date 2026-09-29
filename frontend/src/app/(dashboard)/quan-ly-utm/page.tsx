@@ -43,7 +43,7 @@ import {
   type UtmStatusFilter,
   type UtmVisibilityFilter,
 } from '@/lib/utils/utm-list.util';
-import { getApiErrorMessage } from '@/lib/utils/error-message.util';
+import { toastApiError } from '@/lib/utils/error-message.util';
 
 const { Title, Text } = Typography;
 
@@ -110,14 +110,14 @@ export default function QuanLyUtmPage() {
       { id: u.id, active: !u.isActive },
       {
         onSuccess: () => message.success(u.isActive ? `Đã khoá UTM "${u.name}"` : `Đã mở khoá UTM "${u.name}"`),
-        onError: (e) => message.error(getApiErrorMessage(e, 'Đổi trạng thái UTM thất bại')),
+        onError: (e) => toastApiError(message, e, 'Đổi trạng thái UTM thất bại'),
       },
     );
 
   const handleDelete = (u: UtmView) =>
     deleteMutation.mutate(u.id, {
       onSuccess: () => message.success(`Đã xoá UTM "${u.name}"`),
-      onError: (e) => message.error(getApiErrorMessage(e, 'Xoá UTM thất bại')),
+      onError: (e) => toastApiError(message, e, 'Xoá UTM thất bại'),
     });
 
   const columns: ColumnsType<UtmView> = [

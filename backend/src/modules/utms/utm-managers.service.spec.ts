@@ -41,6 +41,42 @@ describe('UtmManagersService', () => {
     expect(secondaryRepo.save).toHaveBeenCalledWith({ utmId: 1, userId: 5, addedById: 10 });
     expect(audit.logActionAsync).toHaveBeenCalledWith(10, 'ADD_UTM_MANAGER', 'utm', 1, null, expect.objectContaining({ userId: 5, userName: 'Nhân' }));
   });
+  it('không có utms.assign nhưng utms.edit scope ALL -> thêm/gỡ phụ + chuyển chính được', async () => {
+    scopes['utms.assign'] = null;
+    scopes['utms.edit'] = 'all';
+    current = utm({ primaryManagerId: 99, secondaryManagers: [{ userId: 6, user: { id: 6, name: 'P', email: 'p@x' } }] });
+    await svc.addSecondaryManager(1, 5, me);
+    await svc.removeSecondaryManager(1, 6, me);
+    await svc.transferPrimary(1, 5, me);
+    expect(secondaryRepo.save).toHaveBeenCalled();
+    expect(secondaryRepo.remove).toHaveBeenCalled();
+    expect(tx.update).toHaveBeenCalledWith(Utm, 1, { primaryManagerId: 5 });
+  });
+  it('utms.edit scope DEPARTMENT: được khi chính của UTM thuộc phòng ban mình quản lý, không thì 403', async () => {
+    scopes['utms.assign'] = null;
+    scopes['utms.edit'] = 'department';
+    current = utm({ primaryManagerId: 99, primaryManager: { id: 99, name: 'C', email: 'c@x', role: 'employee', departmentId: 5 } });
+    (utmsService.managedDepartmentIds as jest.Mock).mockResolvedValueOnce([5]);
+    await svc.addSecondaryManager(1, 5, me);
+    expect(secondaryRepo.save).toHaveBeenCalled();
+    secondaryRepo.save.mockClear();
+    (utmsService.managedDepartmentIds as jest.Mock).mockResolvedValueOnce([7]);
+    await expect(svc.addSecondaryManager(1, 5, me)).rejects.toBeInstanceOf(ForbiddenException);
+    expect(secondaryRepo.save).not.toHaveBeenCalled();
+  });
+  it('utms.edit scope OWN (dù là chính) KHÔNG tự cho sửa chính/phụ nếu thiếu utms.assign -> 403', async () => {
+    scopes['utms.assign'] = null;
+    scopes['utms.edit'] = 'own';
+    await expect(svc.addSecondaryManager(1, 5, me)).rejects.toBeInstanceOf(ForbiddenException);
+    await expect(svc.transferPrimary(1, 5, me)).rejects.toBeInstanceOf(ForbiddenException);
+  });
+  it('getManagers.canEdit phản ánh quyền sửa theo utms.edit scope rộng', async () => {
+    scopes['utms.assign'] = null;
+    scopes['utms.edit'] = 'all';
+    scopes['utms.view'] = 'all';
+    current = utm({ primaryManagerId: 99 });
+    expect((await svc.getManagers(1, me)).canEdit).toBe(true);
+  });
   it('Quản lý phụ KHÔNG được thêm phụ khác -> 403', async () => {
     current = utm({ primaryManagerId: 99, secondaryManagers: [{ userId: 10, user: { id: 10 } }] });
     await expect(svc.addSecondaryManager(1, 5, me)).rejects.toBeInstanceOf(ForbiddenException);

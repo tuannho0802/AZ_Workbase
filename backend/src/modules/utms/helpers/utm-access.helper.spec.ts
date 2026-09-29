@@ -73,3 +73,13 @@ describe('UtmAccessHelper quyền theo relation', () => {
     expect(UtmAccessHelper.canViewManagers(false, null)).toBe(false);
   });
 });
+
+describe('UtmAccessHelper.isBroad', () => {
+  it('chỉ all/department là rộng; primary/secondary/null thì không', () => {
+    expect(UtmAccessHelper.isBroad('all')).toBe(true);
+    expect(UtmAccessHelper.isBroad('department')).toBe(true);
+    expect(UtmAccessHelper.isBroad('primary')).toBe(false);
+    expect(UtmAccessHelper.isBroad('secondary')).toBe(false);
+    expect(UtmAccessHelper.isBroad(null)).toBe(false);
+  });
+});

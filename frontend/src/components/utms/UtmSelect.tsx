@@ -7,7 +7,7 @@ import { useDebounce } from '@/lib/hooks/useDebounce';
 import { useMyPermissions } from '@/lib/hooks/useMyPermissions';
 import { useCreateUtm, useRecentUtms, useUsableUtms } from '@/lib/hooks/useUtms';
 import type { UtmBrief } from '@/lib/api/utms.api';
-import { getApiErrorMessage } from '@/lib/utils/error-message.util';
+import { toastApiError } from '@/lib/utils/error-message.util';
 import { UtmTag } from './UtmTag';
 
 const { Text } = Typography;
@@ -91,7 +91,7 @@ export function UtmSelect({ value, onChange, fallback, disabled, placeholder = '
           setSearch('');
           message.success(`Đã tạo UTM "${created.name}"`);
         },
-        onError: (err) => message.error(getApiErrorMessage(err, 'Tạo UTM thất bại')),
+        onError: (err) => toastApiError(message, err, 'Tạo UTM thất bại'),
       },
     );
   };

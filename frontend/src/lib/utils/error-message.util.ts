@@ -16,3 +16,25 @@ export function getApiErrorMessage(err: unknown, fallback: string): string {
     }
     return fallback;
 }
+
+/**
+ * Interceptor axios (`axios-instance.ts`) ĐÃ tự toast mọi lỗi HTTP có response (trừ 401). Nếu `onError` của
+ * mutation lại `message.error(...)` nữa thì người dùng thấy 2 toast y hệt nhau. Hàm này cho biết lỗi đó
+ * đã được toast toàn cục chưa.
+ */
+export function hasGlobalErrorToast(err: unknown): boolean {
+    if (typeof err !== 'object' || err === null || !('response' in err)) return false;
+    const response = (err as { response?: { status?: number } | null }).response;
+    if (typeof response !== 'object' || response === null) return false;
+    return response.status !== 401;
+}
+
+/** Toast lỗi ở tầng component CHỈ khi interceptor chưa toast (vd lỗi mạng/timeout không có response). */
+export function toastApiError(
+    message: { error: (content: string) => unknown },
+    err: unknown,
+    fallback: string,
+): void {
+    if (hasGlobalErrorToast(err)) return;
+    message.error(getApiErrorMessage(err, fallback));
+}

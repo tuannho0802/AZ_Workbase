@@ -542,20 +542,33 @@ export class UtmsService {
       throw new ForbiddenException('Bạn không có quyền xoá UTM này');
     }
 
-    const rows: Array<{ c: string | number }> = await this.utmRepo.query(
-      'SELECT COUNT(*) AS c FROM customers WHERE utm_id = ?',
+    // Đếm KHÔNG lọc scope xem của người gọi và KHÔNG lọc xoá mềm; tách active/Thùng rác để thông báo đúng
+    // (nút "Khách hàng (n)" ở FE chỉ đếm KH chưa xoá trong phạm vi xem nên có thể hiện 0 khi UTM còn KH trong Thùng rác).
+    const rows: Array<{ active: string | number | null; trashed: string | number | null }> = await this.utmRepo.query(
+      'SELECT COALESCE(SUM(deleted_at IS NULL), 0) AS active, COALESCE(SUM(deleted_at IS NOT NULL), 0) AS trashed FROM customers WHERE utm_id = ?',
       [utm.id],
     );
-    const inUse = Number(rows?.[0]?.c ?? 0);
-    if (inUse > 0) {
-      throw new BadRequestException(
-        `UTM "${utm.name}" còn ${inUse} khách hàng đang dùng (kể cả trong Thùng rác) — hãy Khoá UTM này hoặc Gộp sang UTM khác thay vì xoá`,
-      );
+    const active = Number(rows?.[0]?.active ?? 0);
+    const trashed = Number(rows?.[0]?.trashed ?? 0);
+    if (active + trashed > 0) {
+      throw new BadRequestException(UtmsService.buildInUseMessage(utm.name, active, trashed));
     }
 
     await this.utmRepo.delete(utm.id); // utm_secondary_managers tự CASCADE ở DB
     this.auditService.logActionAsync(user.id, 'DELETE_UTM', 'utm', utm.id, { utmId: utm.id, utmName: utm.name }, null);
     return { success: true };
+  }
+
+  /** Thông báo không xoá được UTM: nói rõ bao nhiêu KH đang dùng và bao nhiêu nằm trong Thùng rác. */
+  static buildInUseMessage(name: string, active: number, trashed: number): string {
+    const parts: string[] = [];
+    if (active > 0) parts.push(`${active} khách hàng đang dùng`);
+    if (trashed > 0) parts.push(`${trashed} khách hàng trong Thùng rác`);
+    const hint =
+      trashed > 0
+        ? 'Số ở nút "Khách hàng" không tính Thùng rác. Hãy xoá vĩnh viễn các khách đó trong Thùng rác, hoặc Khoá UTM này, hoặc Gộp sang UTM khác thay vì xoá'
+        : 'Hãy Khoá UTM này hoặc Gộp sang UTM khác thay vì xoá';
+    return `UTM "${name}" còn ${parts.join(' và ')} — ${hint}`;
   }
 
   /** Khoá so sánh "gần giống": bỏ dấu, hạ chữ, bỏ mọi ký tự không phải chữ/số (FB-Q4 = FB_Q4 = fbq4). */

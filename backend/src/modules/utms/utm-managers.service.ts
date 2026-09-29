@@ -50,16 +50,24 @@ export class UtmManagersService {
     };
   }
 
-  private async assignRelation(utm: Utm, user: UtmCaller) {
-    const [scope, managed] = await Promise.all([
+  /**
+   * Có được sửa Quản lý chính/phụ của UTM này không: (a) theo scope `utms.assign` (chính hoặc scope rộng) HOẶC
+   * (b) có `utms.edit` với scope RỘNG (all/department) phủ tới UTM - để role sửa-UTM-scope-lớn đặt lại được khi lỡ đặt nhầm.
+   * Root Admin luôn 'all' ở cả hai. Scope `own` của utms.edit KHÔNG đủ (chỉ (a) mới cho chính/phụ tự quản).
+   */
+  private async canManageManagers(utm: Utm, user: UtmCaller): Promise<boolean> {
+    const [assignScope, editScope, managed] = await Promise.all([
       this.utmsService.scopeOf(user, 'utms.assign'),
+      this.utmsService.scopeOf(user, 'utms.edit'),
       this.utmsService.managedDepartmentIds(user.id),
     ]);
-    return UtmAccessHelper.relation(scope, this.utmsService.buildContext(utm, user.id, managed));
+    const ctx = this.utmsService.buildContext(utm, user.id, managed);
+    if (UtmAccessHelper.canEditSecondaryManagers(UtmAccessHelper.relation(assignScope, ctx))) return true;
+    return UtmAccessHelper.isBroad(UtmAccessHelper.relation(editScope, ctx));
   }
 
   private async toResult(utm: Utm, user: UtmCaller): Promise<UtmManagersResult> {
-    const canEdit = UtmAccessHelper.canEditSecondaryManagers(await this.assignRelation(utm, user));
+    const canEdit = await this.canManageManagers(utm, user);
     return {
       utmId: utm.id,
       utmName: utm.name,
@@ -95,7 +103,7 @@ export class UtmManagersService {
 
   async addSecondaryManager(utmId: number, userId: number, user: UtmCaller): Promise<UtmManagersResult> {
     const utm = await this.utmsService.loadUtm(utmId);
-    if (!UtmAccessHelper.canEditSecondaryManagers(await this.assignRelation(utm, user))) {
+    if (!(await this.canManageManagers(utm, user))) {
       throw new ForbiddenException('Chỉ Quản lý chính (hoặc người có quyền rộng) mới được thêm Quản lý phụ cho UTM này');
     }
     if (utm.primaryManagerId === userId) {
@@ -130,7 +138,7 @@ export class UtmManagersService {
 
   async removeSecondaryManager(utmId: number, userId: number, user: UtmCaller): Promise<UtmManagersResult> {
     const utm = await this.utmsService.loadUtm(utmId);
-    if (!UtmAccessHelper.canEditSecondaryManagers(await this.assignRelation(utm, user))) {
+    if (!(await this.canManageManagers(utm, user))) {
       throw new ForbiddenException('Chỉ Quản lý chính (hoặc người có quyền rộng) mới được gỡ Quản lý phụ của UTM này');
     }
     const existing = (utm.secondaryManagers ?? []).find((m) => m.userId === userId);
@@ -150,7 +158,7 @@ export class UtmManagersService {
    */
   async transferPrimary(utmId: number, userId: number, user: UtmCaller): Promise<UtmManagersResult> {
     const utm = await this.utmsService.loadUtm(utmId);
-    if (!UtmAccessHelper.canEditSecondaryManagers(await this.assignRelation(utm, user))) {
+    if (!(await this.canManageManagers(utm, user))) {
       throw new ForbiddenException('Chỉ Quản lý chính (hoặc người có quyền rộng) mới được chuyển quyền Quản lý chính');
     }
     if (utm.primaryManagerId === userId) {

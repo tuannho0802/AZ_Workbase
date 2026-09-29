@@ -3,7 +3,7 @@
 import { useState } from 'react';
 import { Alert, App, Modal, Select, Typography } from 'antd';
 import { useMergeUtm } from '@/lib/hooks/useUtms';
-import { getApiErrorMessage } from '@/lib/utils/error-message.util';
+import { toastApiError } from '@/lib/utils/error-message.util';
 import { UtmTag } from './UtmTag';
 
 const { Text } = Typography;
@@ -46,7 +46,7 @@ export function UtmMergeModal({ open, onClose, source, candidates, defaultTarget
           message.success(`Đã gộp "${source.name}" vào "${res.target.name}" — chuyển ${res.movedCustomers} khách hàng`);
           onClose();
         },
-        onError: (e) => message.error(getApiErrorMessage(e, 'Gộp UTM thất bại')),
+        onError: (e) => toastApiError(message, e, 'Gộp UTM thất bại'),
       },
     );
   };

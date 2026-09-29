@@ -143,9 +143,9 @@ dùng `@Roles()` enum tĩnh. Danh mục permission đầy đủ trong DB (sau 2 
 | `utms.view` | utms | **MỚI (2026-09-29, PLAN_UTM_MANAGEMENT Phần 2).** Xem tab "Tất cả UTM" (`GET /utms/scoped`). **Có scope**: own = UTM mình là chính/phụ, department = UTM có Quản lý CHÍNH thuộc phòng ban mình quản lý (`department_managers`) + UTM của mình, all = tất cả. Seed: Admin/Assistant=`all`, Manager=`department`, Employee=KHÔNG (chỉ override phòng ban Marketing = `own`) |
 | `utms.create` | utms | Tạo UTM (người tạo = Quản lý chính). Nhị phân. Seed: Admin/Assistant/Manager; Employee chỉ override Marketing |
 | `utms.edit` | utms | Sửa UTM. Có scope. Tên/visibility/chuyển chính: chỉ Quản lý CHÍNH hoặc scope rộng; mô tả/màu/khoá-mở: cả Quản lý phụ. Seed như `utms.view` |
-| `utms.assign` | utms | Thêm/gỡ Quản lý phụ (assignee) + chuyển chính. Có scope, chỉ chính hoặc scope rộng. Seed như `utms.view` |
+| `utms.assign` | utms | Thêm/gỡ Quản lý phụ (assignee) + chuyển chính. Có scope, chỉ chính hoặc scope rộng. Seed như `utms.view`. **Bổ sung (2026-09-29):** người có `utms.edit` với scope RỘNG (`all`/`department` phủ tới UTM) cũng sửa lại được Quản lý chính/phụ dù không có `utms.assign` (đặt nhầm thì đặt lại được); `utms.edit` scope `own` KHÔNG đủ. Logic ở `UtmManagersService.canManageManagers()` |
 | `utms.delete` | utms | Xoá UTM khi 0 KH tham chiếu (tính cả Thùng rác). Có scope. Seed: CHỈ Admin=`all` (Employee Marketing KHÔNG có) |
-| `utms.my_managed` | utms | Vào trang "Quản lý UTM" (tab "UTM tôi quản lý"). Nhị phân. Seed: Admin/Assistant/Manager; Employee chỉ override Marketing |
+| `utms.my_managed` | utms | Vào trang "Quản lý UTM" (tab "UTM tôi quản lý"). **FE còn đòi thêm `customers.view`** (guard AND: `requireAll` ở `nav-config.tsx` + route guard ở `quan-ly-utm/page.tsx`) — role không xem được khách hàng thì không thấy/không vào được trang UTM; BE `GET /utms/managed-by-me` vẫn cố ý không gate. Nhị phân. Seed: Admin/Assistant/Manager; Employee chỉ override Marketing |
 | `media_sources.view` | media_sources | Xem nguồn media |
 | `media_sources.manage` | media_sources | Tạo/sửa nguồn media |
 | `media_sources.delete` | media_sources | Xoá nguồn — chỉ Admin |
