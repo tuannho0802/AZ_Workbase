@@ -1,9 +1,14 @@
 import { describe, expect, it, vi } from 'vitest';
-import { render, screen } from '@testing-library/react';
+import { fireEvent, render, screen } from '@testing-library/react';
 
 let listResult: Record<string, unknown> = {};
 const listSpy = vi.fn();
+const detailSpy = vi.fn();
 vi.mock('@/lib/hooks/useReports', () => ({
+  useReportCustomerDetail: (id: number | null, ctx: string) => {
+    detailSpy(id, ctx);
+    return { data: undefined, isLoading: id != null, isError: false };
+  },
   useReportCustomerList: (q: unknown, enabled: boolean) => {
     listSpy(q, enabled);
     return listResult;
@@ -51,5 +56,67 @@ describe('ReportCustomersModal', () => {
     );
     const q = listSpy.mock.calls.at(-1)![0];
     expect(q).toMatchObject({ metric: 'total', context: 'customers', salesUserId: 5, limit: 10, period: 'week' });
+  });
+
+  const withRow = () => {
+    listResult = { data: { data: [row], total: 1, page: 1, limit: 10, totalPages: 1 }, isLoading: false, isFetching: false, isError: false };
+  };
+  const headers = () => Array.from(document.querySelectorAll('th')).map((th) => th.textContent?.trim());
+
+  it('lọc nhanh "Chưa có Sales" -> bỏ cột Sales chính, thêm cột Marketing phụ trách', () => {
+    withRow();
+    render(<ReportCustomersModal drill={{ metric: 'total' }} onClose={vi.fn()} query={query} context="customers" />);
+    expect(headers()).toContain('Sales chính');
+    expect(headers()).not.toContain('Marketing phụ trách');
+    fireEvent.click(screen.getByText('Chưa có Sales'));
+    expect(headers()).not.toContain('Sales chính');
+    expect(headers()).toContain('Marketing phụ trách');
+    expect(listSpy.mock.calls.at(-1)![0]).toMatchObject({ quick: 'no_sales' });
+  });
+
+  it('lọc nhanh "Chưa có SĐT" -> bỏ cột SĐT, thay bằng cột Email', () => {
+    withRow();
+    render(<ReportCustomersModal drill={{ metric: 'total' }} onClose={vi.fn()} query={query} context="customers" />);
+    expect(headers()).toContain('SĐT');
+    fireEvent.click(screen.getAllByText('Chưa có SĐT')[0]);
+    expect(headers()).not.toContain('SĐT');
+    expect(headers()).toContain('Email');
+    expect(screen.getByText('Chưa có email')).toBeTruthy();
+  });
+
+  it('cột "Thông tin": bấm Xem mở modal chi tiết của ĐÚNG khách (kèm context)', () => {
+    withRow();
+    render(<ReportCustomersModal drill={{ metric: 'total' }} onClose={vi.fn()} query={query} context="customers" />);
+    expect(headers()).toContain('Thông tin');
+    fireEvent.click(screen.getByText('Xem'));
+    expect(detailSpy.mock.calls.at(-1)).toEqual([1, 'customers']);
+  });
+
+  it('lọc nhanh ngày "Tuần trước" gửi dateFrom/dateTo (Thứ 2 -> CN); bấm lại để bỏ', () => {
+    withRow();
+    render(<ReportCustomersModal drill={{ metric: 'total' }} onClose={vi.fn()} query={query} context="customers" />);
+    fireEvent.click(screen.getByText('Tuần trước'));
+    const q = listSpy.mock.calls.at(-1)![0];
+    expect(q.dateFrom).toMatch(/^\d{4}-\d{2}-\d{2}$/);
+    expect(new Date(q.dateFrom).getDay()).toBe(1);
+    expect(new Date(q.dateTo).getDay()).toBe(0);
+    fireEvent.click(screen.getByText('Tuần trước'));
+    expect(listSpy.mock.calls.at(-1)![0].dateFrom).toBeUndefined();
+  });
+
+  it('metricTabs + summary: chuyển "Đã chốt" gửi đúng metric; hiện dải số tóm tắt', () => {
+    withRow();
+    render(
+      <ReportCustomersModal
+        drill={{ metric: 'total', label: 'Khách của Sales One', preset: { salesUserId: 5 }, metricTabs: [{ metric: 'total', label: 'Data mới' }, { metric: 'closed', label: 'Đã chốt' }], summary: [{ label: 'Đã chốt trong kỳ', value: '7' }] }}
+        onClose={vi.fn()}
+        query={query}
+        context="customers"
+      />,
+    );
+    expect(screen.getByText('Khách của Sales One')).toBeTruthy();
+    expect(screen.getByText('7')).toBeTruthy();
+    fireEvent.click(screen.getByText('Đã chốt'));
+    expect(listSpy.mock.calls.at(-1)![0]).toMatchObject({ metric: 'closed', salesUserId: 5 });
   });
 });

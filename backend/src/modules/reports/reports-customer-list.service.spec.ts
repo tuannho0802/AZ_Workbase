@@ -84,4 +84,24 @@ describe('ReportsCustomerListService', () => {
     expect(one.data[0].salesUser).toEqual({ id: 2, name: 'S', departmentName: 'KD', departmentColor: '#111111' });
     expect(one.data[0].marketingUser).toBeNull();
   });
+
+  it("metric cohort_closed/cohort_joined = data mới trong kỳ (UTC) + tình trạng hiện tại", async () => {
+    const a = build();
+    await a.svc.getList({ ...base, metric: 'cohort_closed' }, 1, Role.ADMIN, PermissionScope.ALL);
+    expect(a.wheres.some((w) => w.includes('customer.createdAt BETWEEN'))).toBe(true);
+    expect(a.wheres).toContain("customer.status = 'closed'");
+    const b = build();
+    await b.svc.getList({ ...base, metric: 'cohort_joined' }, 1, Role.ADMIN, PermissionScope.ALL);
+    expect(b.wheres.some((w) => w.includes('customer_group_memberships') && w.includes('mj.joined = true'))).toBe(true);
+  });
+
+  it("metric ftd = khoản nạp ĐẦU TIÊN trong kỳ; redeposit = khoản nạp KHÔNG phải đầu tiên (dùng cột date naive)", async () => {
+    const f = build();
+    await f.svc.getList({ ...base, metric: 'ftd' }, 1, Role.ADMIN, PermissionScope.ALL);
+    expect(f.wheres.some((w) => w.includes('d.id = (SELECT d2.id') && w.includes('ORDER BY d2.deposit_date ASC, d2.id ASC LIMIT 1'))).toBe(true);
+    expect(String(f.params.depFrom).startsWith('2026-09-21')).toBe(true);
+    const r = build();
+    await r.svc.getList({ ...base, metric: 'redeposit' }, 1, Role.ADMIN, PermissionScope.ALL);
+    expect(r.wheres.some((w) => w.includes('d.id <> (SELECT d2.id'))).toBe(true);
+  });
 });

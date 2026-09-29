@@ -4856,3 +4856,24 @@ khi bị xoá tay. Đây là 1 anti-pattern thật (dù đo thử với payload 
 > Không migration, không permission key mới. BE `department` của /reports/revenue|customers|quality vẫn còn trong response (FE không dùng nữa). Chưa commit/push.
 
 ---
+
+## [2026-09-29 12:00] | /reports: FTD/nạp lại, tỷ lệ cohort chốt/join/nạp, modal chi tiết khách + lịch sử nạp, lọc nhanh ngày | [Status: Success — BE tsc sạch + jest 1094/1094 + nest build; FE tsc sạch + vitest 205/205 + eslint sạch (1 lỗi `any` còn lại thuộc `date-vn.ts`, có TRƯỚC đợt sửa này, không đụng tới) + next build]
+
+**Actor:** Agent (trên `origin/main` HEAD `fe431d8`, đã `git clone` mới trước khi sửa)
+
+**Files Changed:**
+- BE MỚI: `reports/reports-customer-detail.service.ts` (+spec) — chi tiết 1 khách (chỉ xem): thông tin chung, LỊCH SỬ NẠP chia giai đoạn (nạp đầu/nạp lại, luỹ kế, khoảng cách ngày), nhóm đã join. Endpoint `GET /reports/customer-detail/:id?context=`.
+- BE: `reports.service.ts` (doanh thu: thêm `summary`/`trend`/cột FTD-nạp lại cho `personal`; doanh số khách: thêm `cohortClosedCustomers`/`cohortJoinedCustomers`/`cohortDepositedCustomers` cho `personal`/`total`), `reports-customer-list.service.ts` (+metric `cohort_closed`/`cohort_joined`/`ftd`/`redeposit`, +`depositCount`/`lastDepositDate`), `dto/query-report-customer-list.dto.ts`, `reports.controller.ts`, `reports.module.ts`.
+- FE MỚI: `ReportCustomerDetailModal.tsx` (+test) — modal "Thông tin" (Tabs: chung/lịch sử nạp có lọc nhanh Hôm nay-Tuần này-Tuần trước-Tháng này/dòng thời gian), `ReportQuickRangeFilter.tsx`, `lib/utils/reportCustomerDetail.ts` (+test, dùng lại `periodicTaskRange.ts` có sẵn), `lib/utils/customerReportRates.ts` (+test, tỷ lệ COHORT: data mới trong kỳ hiện đã chốt/join/nạp / tổng data mới — luôn ≤ 100%, khác các số dùng cột ngày khác).
+- FE: `ReportCustomersModal.tsx` (cột "Thông tin" mở modal chi tiết; lọc nhanh "Chưa có Sales" → bỏ cột Sales chính, thêm Marketing phụ trách; "Chưa có SĐT" → bỏ cột SĐT, thêm Email; +lọc nhanh ngày; +`metricTabs`/`summary` cho modal "Khách của 1 Sales"), `RevenueReportTab.tsx` (viết lại: KPI khách nạp/FTD/nạp lại/tỷ lệ nạp/tỷ lệ chốt, biểu đồ giai đoạn nạp xếp chồng FTD+nạp lại, bảng theo nhân viên có cột FTD/nạp lại/TB mỗi khách, ô chọn + nút "Xem khách" mở Mini Table riêng của 1 Sales), `CustomerReportTab.tsx`/`QualityReportTab.tsx` (+3 KPI tỷ lệ chốt/join/nạp, cột tỷ lệ ở bảng theo nhân viên).
+
+**Root Cause (yêu cầu người dùng):**
+> Trang /reports thiếu: bỏ cột "Sales chính"/"SĐT" khi lọc nhanh loại trừ chính field đó (vì luôn rỗng); chưa có cách xem chi tiết 1 khách nhanh (như Drawer cũ) kèm lọc nhanh ngày; chưa biết khách nào đã nạp (chỉ có tổng tiền theo Sales); chưa có nút xem khách của 1 Sales + số đã chốt; mỗi tab thiếu tỷ lệ (nạp/chốt/join); chưa có lịch sử nạp theo giai đoạn.
+
+**Solution:**
+> Tỷ lệ DUY NHẤT hợp lệ để chia = cohort (data mới trong kỳ) / data mới trong kỳ — dùng chung 1 util `customerRates()` cho cả 3 tab, tránh > 100%. FTD = khoản nạp có `deposit_date`+`id` nhỏ nhất của khách; nạp lại = các khoản còn lại — cả BE (SQL subquery tương quan) và FE (modal chi tiết) tính THEO KHOẢN NẠP nên FTD+nạp lại luôn = tổng tiền. Modal chi tiết khách dùng lại `GET /reports/customer-detail/:id`, phạm vi quyền giống hệt Mini Table đang mở (context=customers/marketing, scope=own siết đúng chiều).
+
+**Notes:**
+> Không migration, không permission key mới (dùng `reports.view`). Chưa commit/push — đã đóng gói patch `reports-improvements.patch` giao cho người dùng tự áp + tự chạy migration/deploy (không tự ý push theo đúng quy tắc file). Chưa test trên MySQL/trình duyệt thật, chỉ test bằng mock QueryBuilder + Jest/Vitest.
+
+---

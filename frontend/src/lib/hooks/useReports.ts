@@ -60,3 +60,13 @@ export const useReportCustomerList = (query: ReportCustomerListQuery, enabled: b
         placeholderData: keepPreviousData,
     });
 };
+
+/** Chi tiết 1 khách cho modal "Thông tin" - chỉ gọi khi modal đang mở. */
+export const useReportCustomerDetail = (id: number | null, context: 'customers' | 'marketing') => {
+    return useQuery({
+        queryKey: ['reports', 'customer-detail', id, context],
+        queryFn: () => reportsApi.getCustomerDetail(id as number, context),
+        enabled: id != null,
+        staleTime: 30 * 1000,
+    });
+};

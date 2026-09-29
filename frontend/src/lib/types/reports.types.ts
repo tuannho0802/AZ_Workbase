@@ -26,6 +26,39 @@ export interface RevenuePersonalRow {
     departmentName?: string | null;
     departmentColor?: string | null;
     amount: number;
+    /** Số khoản nạp trong kỳ. */
+    depositCount: number;
+    /** Số KHÁCH có nạp trong kỳ. */
+    depositorCount: number;
+    /** Khoản nạp ĐẦU TIÊN của khách (FTD) rơi trong kỳ: số khoản = số khách nạp lần đầu. */
+    ftdCount: number;
+    ftdAmount: number;
+    /** Nạp lại: các khoản nạp trong kỳ không phải khoản đầu tiên của khách. FTD + nạp lại = tổng tiền. */
+    redepositCount: number;
+    redepositAmount: number;
+}
+
+/** Cùng bộ số dùng cho cả dòng cá nhân, tổng hợp và điểm xu hướng. */
+export interface RevenueStats {
+    amount: number;
+    depositCount: number;
+    depositorCount: number;
+    ftdCount: number;
+    ftdAmount: number;
+    redepositCount: number;
+    redepositAmount: number;
+}
+
+export interface RevenueSummary extends RevenueStats {
+    /** TB tiền / khoản nạp. */
+    averagePerDeposit: number;
+    /** TB tiền / khách nạp. */
+    averagePerDepositor: number;
+}
+
+export interface RevenueTrendPoint extends RevenueStats {
+    /** 'YYYY-MM-DD' (granularity=day) hoặc 'YYYY-MM' (granularity=month). Chỉ có ngày/tháng CÓ nạp. */
+    date: string;
 }
 
 export interface RevenueDepartmentRow {
@@ -41,6 +74,10 @@ export interface RevenueReport {
     department: RevenueDepartmentRow[] | null;
     /** null nếu role không có quyền xem Tổng tất cả (chỉ Admin/Assistant mới có) */
     total: number | null;
+    /** Tổng hợp giai đoạn nạp theo PHẠM VI xem được của người xem (scope=own: chỉ của mình). */
+    summary: RevenueSummary;
+    trend: RevenueTrendPoint[];
+    granularity: 'day' | 'month';
 }
 
 // ── Doanh số khách ────────────────────────────────────────────────────────
@@ -49,6 +86,12 @@ export interface CustomerBreakdownCounts {
     totalCustomers: number;
     closedCustomers: number;
     joinedGroupCustomers: number;
+    /** Trong số data MỚI của kỳ (theo ngày tạo): hiện đã chốt. Luôn <= totalCustomers. */
+    cohortClosedCustomers: number;
+    /** Trong số data MỚI của kỳ: đã join >= 1 nhóm (bất kể join lúc nào). Luôn <= totalCustomers. */
+    cohortJoinedCustomers: number;
+    /** Trong số data MỚI của kỳ: đã từng nạp. Luôn <= totalCustomers. */
+    cohortDepositedCustomers: number;
 }
 
 export interface CustomerPersonalRow extends CustomerBreakdownCounts {
@@ -205,6 +248,10 @@ export type ReportCustomerListMetric =
     | 'joined'
     | 'deposited'
     | 'cohort_deposited'
+    | 'cohort_closed'
+    | 'cohort_joined'
+    | 'ftd'
+    | 'redeposit'
     | 'unassigned_marketing';
 
 export type ReportCustomerListQuick = 'no_marketing' | 'no_sales' | 'no_phone';
@@ -250,8 +297,11 @@ export interface ReportCustomerListRow {
     salesUser: ReportListUser | null;
     marketingUser: ReportListUser | null;
     createdBy: ReportListUser | null;
-    /** Chỉ có khi metric='deposited' - tổng tiền nạp TRONG KỲ. */
+    /** Chỉ có khi metric là deposited/ftd/redeposit - tổng tiền nạp TRONG KỲ. */
     depositAmount?: number;
+    /** Số khoản nạp trong kỳ / ngày nạp gần nhất trong kỳ (cùng điều kiện với depositAmount). */
+    depositCount?: number;
+    lastDepositDate?: string | null;
     /** Chỉ có khi metric='joined' - nhóm đã join TRONG KỲ. */
     joinedGroups?: string[];
 }
@@ -264,4 +314,59 @@ export interface ReportCustomerList {
     page: number;
     limit: number;
     totalPages: number;
+}
+
+// ── Chi tiết 1 khách (modal "Thông tin" - chỉ xem) ─────────────────────────
+// Khớp `ReportsCustomerDetailService.getDetail()` ở BE.
+
+export interface ReportDepositStage {
+    id: number;
+    /** 1 = nạp lần đầu (FTD), >= 2 = nạp lại. */
+    order: number;
+    stage: 'ftd' | 'redeposit';
+    amount: number;
+    /** 'YYYY-MM-DD' */
+    depositDate: string;
+    /** Tổng nạp luỹ kế tới hết khoản này. */
+    cumulative: number;
+    /** Số ngày kể từ khoản nạp liền trước (null với khoản đầu). */
+    daysSincePrevious: number | null;
+    broker: string | null;
+    note: string | null;
+    createdBy: { id: number; name: string } | null;
+}
+
+export interface ReportDepositSummary {
+    totalAmount: number;
+    depositCount: number;
+    averageAmount: number;
+    maxAmount: number;
+    firstDepositDate: string | null;
+    lastDepositDate: string | null;
+    daysToFirstDeposit: number | null;
+    depositSpanDays: number | null;
+}
+
+export interface ReportCustomerDetail {
+    customer: {
+        id: number;
+        name: string;
+        phone: string | null;
+        email: string | null;
+        source: string | null;
+        campaign: string | null;
+        broker: string | null;
+        status: string | null;
+        note: string | null;
+        inputDate: string | null;
+        assignedDate: string | null;
+        closedDate: string | null;
+        createdAt: string;
+        salesUser: ReportListUser | null;
+        marketingUser: ReportListUser | null;
+        createdBy: ReportListUser | null;
+    };
+    deposits: ReportDepositStage[];
+    depositSummary: ReportDepositSummary;
+    groups: { id: number; name: string; joinedAt: string | null }[];
 }

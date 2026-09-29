@@ -2,12 +2,13 @@
 
 import { useMemo, useState } from 'react';
 import { Alert, Button, Card, Col, Progress, Row, Select, Space, Tag, Typography } from 'antd';
-import { ReloadOutlined, SafetyCertificateOutlined } from '@ant-design/icons';
+import { CheckCircleOutlined, DollarOutlined, ReloadOutlined, SafetyCertificateOutlined, UsergroupAddOutlined } from '@ant-design/icons';
 import type { ColumnsType } from 'antd/es/table';
-import { useCustomerQualityReport } from '@/lib/hooks/useReports';
+import { useCustomerQualityReport, useCustomerReport } from '@/lib/hooks/useReports';
 import type { QualityStatusMeta, ReportQuery } from '@/lib/types/reports.types';
 import { getApiErrorMessage } from '@/lib/utils/error-message.util';
 import { fmtCount } from '@/lib/utils/marketingReport';
+import { customerRates, sumCustomerRows } from '@/lib/utils/customerReportRates';
 import { ReportSection } from './ReportSection';
 import PeriodSelector from './PeriodSelector';
 import ReportNameFilter from './ReportNameFilter';
@@ -52,6 +53,10 @@ interface FlatQualityRow {
  */
 export default function QualityReportTab({ query, onQueryChange }: Props) {
   const { data, isLoading, isFetching, isError, error, refetch } = useCustomerQualityReport(query);
+  // Tỷ lệ chốt/join/nạp lấy từ báo cáo khách (cùng kỳ, cùng cohort data mới, cùng phạm vi quyền).
+  const { data: customerData, isLoading: ratesLoading } = useCustomerReport(query);
+  const rateTotals = useMemo(() => customerData?.total ?? sumCustomerRows(customerData?.personal ?? []), [customerData]);
+  const rates = customerRates(rateTotals);
   const [search, setSearch] = useState('');
   const [highlightStatus, setHighlightStatus] = useState<string | null>(null);
   const [drill, setDrill] = useState<CustomerDrill | null>(null);
@@ -224,6 +229,18 @@ export default function QualityReportTab({ query, onQueryChange }: Props) {
             </Col>
           );
         })}
+      </Row>
+
+      <Row gutter={[12, 12]}>
+        <Col xs={24} md={8}>
+          <ReportKpiCard title="Tỷ lệ chốt" value={rates.closeRate ?? 0} suffix="%" icon={<CheckCircleOutlined />} color={REPORT_COLORS.ok} loading={ratesLoading} hint={`${fmtCount(rateTotals.cohortClosedCustomers)} / ${fmtCount(rateTotals.totalCustomers)} data mới trong kỳ đã chốt`} onClick={() => setDrill({ metric: 'cohort_closed' })} />
+        </Col>
+        <Col xs={24} md={8}>
+          <ReportKpiCard title="Tỷ lệ join nhóm" value={rates.joinRate ?? 0} suffix="%" icon={<UsergroupAddOutlined />} color={REPORT_COLORS.gold} loading={ratesLoading} hint={`${fmtCount(rateTotals.cohortJoinedCustomers)} / ${fmtCount(rateTotals.totalCustomers)} data mới trong kỳ đã join nhóm`} onClick={() => setDrill({ metric: 'cohort_joined' })} />
+        </Col>
+        <Col xs={24} md={8}>
+          <ReportKpiCard title="Tỷ lệ nạp tiền" value={rates.depositRate ?? 0} suffix="%" icon={<DollarOutlined />} color={REPORT_COLORS.primary} loading={ratesLoading} hint={`${fmtCount(rateTotals.cohortDepositedCustomers)} / ${fmtCount(rateTotals.totalCustomers)} data mới trong kỳ đã từng nạp`} onClick={() => setDrill({ metric: 'cohort_deposited' })} />
+        </Col>
       </Row>
 
       <ReportSection<FlatQualityRow>

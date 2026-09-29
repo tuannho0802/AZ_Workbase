@@ -2,12 +2,13 @@
 
 import { useMemo, useState } from 'react';
 import { Alert, Button, Card, Col, Row, Space, Typography } from 'antd';
-import { CheckCircleOutlined, ReloadOutlined, TeamOutlined, UsergroupAddOutlined } from '@ant-design/icons';
+import { CheckCircleOutlined, DollarOutlined, ReloadOutlined, TeamOutlined, UsergroupAddOutlined } from '@ant-design/icons';
 import type { ColumnsType } from 'antd/es/table';
 import { useCustomerReport } from '@/lib/hooks/useReports';
 import type { CustomerBreakdownCounts, CustomerPersonalRow, ReportCustomerListMetric, ReportQuery } from '@/lib/types/reports.types';
 import { getApiErrorMessage } from '@/lib/utils/error-message.util';
 import { fmtCount } from '@/lib/utils/marketingReport';
+import { customerRates, fmtRate, sumCustomerRows } from '@/lib/utils/customerReportRates';
 import { ReportSection } from './ReportSection';
 import { CHART_COLORS } from './ReportChart';
 import PeriodSelector from './PeriodSelector';
@@ -43,19 +44,8 @@ export default function CustomerReportTab({ query, onQueryChange }: Props) {
   const personal = useMemo(() => data?.personal ?? [], [data?.personal]);
 
   // BE chỉ trả `total` cho scope=all/Admin; role khác thì tổng = số của chính mình (personal).
-  const totals: CustomerBreakdownCounts = useMemo(
-    () =>
-      data?.total ??
-      personal.reduce(
-        (a, r) => ({
-          totalCustomers: a.totalCustomers + r.totalCustomers,
-          closedCustomers: a.closedCustomers + r.closedCustomers,
-          joinedGroupCustomers: a.joinedGroupCustomers + r.joinedGroupCustomers,
-        }),
-        { totalCustomers: 0, closedCustomers: 0, joinedGroupCustomers: 0 },
-      ),
-    [data?.total, personal],
-  );
+  const totals: CustomerBreakdownCounts = useMemo(() => data?.total ?? sumCustomerRows(personal), [data?.total, personal]);
+  const rates = customerRates(totals);
 
   const rows = useMemo(() => {
     const q = search.trim().toLowerCase();
@@ -84,6 +74,31 @@ export default function CustomerReportTab({ query, onQueryChange }: Props) {
     ...extra,
   } as ColumnsType<CustomerPersonalRow>[number]);
 
+  /** Cột tỷ lệ COHORT: (data mới trong kỳ hiện đã chốt/join/nạp) / data mới trong kỳ. Bấm số tử để xem danh sách. */
+  const rateCol = (
+    title: string,
+    key: 'cohortClosedCustomers' | 'cohortJoinedCustomers' | 'cohortDepositedCustomers',
+    metric: ReportCustomerListMetric,
+  ): ColumnsType<CustomerPersonalRow>[number] => ({
+    title,
+    key,
+    align: 'right',
+    sorter: (a: CustomerPersonalRow, b: CustomerPersonalRow) => (a.totalCustomers ? a[key] / a.totalCustomers : -1) - (b.totalCustomers ? b[key] / b.totalCustomers : -1),
+    render: (_: unknown, r: CustomerPersonalRow) => {
+      const rate = r.totalCustomers > 0 ? Math.round((r[key] / r.totalCustomers) * 1000) / 10 : null;
+      return (
+        <span>
+          <Text strong>{fmtRate(rate)}</Text>
+          {r[key] > 0 && (
+            <Button type="link" size="small" style={{ paddingInline: 4, height: 'auto' }} onClick={() => setDrill({ metric, label: r.userName, preset: { salesUserId: r.userId } })}>
+              ({fmtCount(r[key])})
+            </Button>
+          )}
+        </span>
+      );
+    },
+  });
+
   const columns: ColumnsType<CustomerPersonalRow> = [
     {
       title: 'Nhân viên (Sales chính)',
@@ -93,6 +108,9 @@ export default function CustomerReportTab({ query, onQueryChange }: Props) {
     countCol('Tổng data', 'totalCustomers', 'total', { defaultSortOrder: 'descend' }),
     countCol('Đã chốt', 'closedCustomers', 'closed'),
     countCol('Đã join nhóm', 'joinedGroupCustomers', 'joined'),
+    rateCol('Tỷ lệ chốt', 'cohortClosedCustomers', 'cohort_closed'),
+    rateCol('Tỷ lệ join nhóm', 'cohortJoinedCustomers', 'cohort_joined'),
+    rateCol('Tỷ lệ nạp', 'cohortDepositedCustomers', 'cohort_deposited'),
   ];
 
   const openTotal = (metric: ReportCustomerListMetric) => () => setDrill({ metric });
@@ -126,9 +144,21 @@ export default function CustomerReportTab({ query, onQueryChange }: Props) {
         </Col>
       </Row>
 
+      <Row gutter={[12, 12]}>
+        <Col xs={24} md={8}>
+          <ReportKpiCard title="Tỷ lệ chốt" value={rates.closeRate ?? 0} suffix="%" icon={<CheckCircleOutlined />} color={REPORT_COLORS.ok} loading={isLoading} hint={`${fmtCount(totals.cohortClosedCustomers)} / ${fmtCount(totals.totalCustomers)} data mới trong kỳ đã chốt`} onClick={openTotal('cohort_closed')} />
+        </Col>
+        <Col xs={24} md={8}>
+          <ReportKpiCard title="Tỷ lệ join nhóm" value={rates.joinRate ?? 0} suffix="%" icon={<UsergroupAddOutlined />} color={REPORT_COLORS.gold} loading={isLoading} hint={`${fmtCount(totals.cohortJoinedCustomers)} / ${fmtCount(totals.totalCustomers)} data mới trong kỳ đã join nhóm`} onClick={openTotal('cohort_joined')} />
+        </Col>
+        <Col xs={24} md={8}>
+          <ReportKpiCard title="Tỷ lệ nạp tiền" value={rates.depositRate ?? 0} suffix="%" icon={<DollarOutlined />} color={REPORT_COLORS.primary} loading={isLoading} hint={`${fmtCount(totals.cohortDepositedCustomers)} / ${fmtCount(totals.totalCustomers)} data mới trong kỳ đã từng nạp`} onClick={openTotal('cohort_deposited')} />
+        </Col>
+      </Row>
+
       <ReportSection<CustomerPersonalRow>
         title="Doanh số khách theo nhân viên"
-        description="Data mới tính theo ngày tạo, đã chốt theo ngày chốt, join nhóm theo ngày join. Bấm vào 1 con số để xem danh sách khách."
+        description="Data mới tính theo ngày tạo, đã chốt theo ngày chốt, join nhóm theo ngày join. Các tỷ lệ tính trên data mới của kỳ (tình trạng hiện tại) nên không vượt 100%. Bấm vào 1 con số để xem danh sách khách."
         rowKey="userId"
         loading={isLoading}
         columns={columns}

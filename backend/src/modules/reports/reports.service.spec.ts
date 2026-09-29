@@ -121,11 +121,55 @@ describe('ReportsService', () => {
       );
 
       expect(spy).toHaveBeenCalledWith(expect.anything(), 99, Role.ADMIN, PermissionScope.ALL);
-      expect(result.personal).toEqual([{ userId: 1, userName: 'Sales A', amount: 1500000 }]);
+      expect(result.personal).toMatchObject([{ userId: 1, userName: 'Sales A', amount: 1500000 }]);
       expect(result.department).toEqual([
         { departmentId: 2, departmentName: 'Kinh doanh', amount: 3000000 },
       ]);
       expect(result.total).toBe(5000000);
+    });
+
+    it('giai đoạn nạp: FTD + nạp lại = tổng tiền; summary/trend cùng công thức, kèm số khách nạp & TB/lần', async () => {
+      rawManyQueue = [
+        // personal
+        [{ userId: '1', userName: 'A', amount: '1500.00', depositCount: '4', depositorCount: '3', ftdCount: '3', ftdAmount: '1000.00' }],
+        [], // department
+        // (total = getRawOne #1) ; summary = getRawOne #2 ; trend = getRawMany #3
+        [{ b: '2026-09-02', amount: '600.00', depositCount: '2', depositorCount: '2', ftdCount: '2', ftdAmount: '500.00' }],
+      ];
+      rawOneQueue = [
+        { total: '1500.00' },
+        { amount: '1500.00', depositCount: '4', depositorCount: '3', ftdCount: '3', ftdAmount: '1000.00' },
+      ];
+      const result: any = await service.getRevenueReport({ period: 'month', anchor: '2026-09-15' } as any, 1, Role.ADMIN, PermissionScope.ALL);
+
+      expect(result.personal[0]).toMatchObject({
+        amount: 1500,
+        depositCount: 4,
+        depositorCount: 3,
+        ftdCount: 3,
+        ftdAmount: 1000,
+        redepositCount: 1,
+        redepositAmount: 500,
+      });
+      expect(result.summary).toMatchObject({
+        amount: 1500,
+        depositorCount: 3,
+        ftdAmount: 1000,
+        redepositAmount: 500,
+        averagePerDeposit: 375,
+        averagePerDepositor: 500,
+      });
+      expect(result.granularity).toBe('day');
+      expect(result.trend).toEqual([
+        expect.objectContaining({ date: '2026-09-02', amount: 600, redepositCount: 0, redepositAmount: 100 }),
+      ]);
+    });
+
+    it('khoảng > 62 ngày (quý/năm) -> gom xu hướng theo THÁNG', async () => {
+      const result: any = await service.getRevenueReport({ period: 'year', anchor: '2026-06-01' } as any, 1, Role.ADMIN, PermissionScope.ALL);
+      expect(result.granularity).toBe('month');
+      expect(result.trend).toEqual([]);
+      expect(result.summary).toMatchObject({ amount: 0, averagePerDeposit: 0, averagePerDepositor: 0 });
     });
 
     it('EMPLOYEE: department=null, total=null, personal LUÔN bị ép về đúng selfId (bất kể applyViewFilter cho xem rộng hơn)', async () => {
@@ -140,7 +184,7 @@ describe('ReportsService', () => {
 
       expect(result.department).toBeNull();
       expect(result.total).toBeNull();
-      expect(result.personal).toEqual([{ userId: 7, userName: 'Tôi', amount: 900000 }]);
+      expect(result.personal).toMatchObject([{ userId: 7, userName: 'Tôi', amount: 900000 }]);
       // Xác nhận CÓ andWhere ép salesUserId = selfId (7) - không chỉ dựa vào applyViewFilter
       expect(
         capturedAndWhere.some(
@@ -242,7 +286,7 @@ describe('ReportsService', () => {
         Role.ADMIN,
       );
 
-      expect(result.total).toEqual({ totalCustomers: 10, closedCustomers: 4, joinedGroupCustomers: 3 });
+      expect(result.total).toMatchObject({ totalCustomers: 10, closedCustomers: 4, joinedGroupCustomers: 3 });
     });
 
     it('EMPLOYEE: department=null, total=null', async () => {
@@ -289,7 +333,7 @@ describe('ReportsService', () => {
 
       const result = await service.getCustomerReport({ period: 'month' } as any, 1, Role.ADMIN);
 
-      expect(result.personal).toEqual([
+      expect(result.personal).toMatchObject([
         { userId: 1, userName: 'A', totalCustomers: 5, closedCustomers: 2, joinedGroupCustomers: 0 },
       ]);
     });
@@ -302,7 +346,7 @@ describe('ReportsService', () => {
 
       const result = await service.getCustomerReport({ period: 'month' } as any, 1, Role.ADMIN);
 
-      expect(result.personal).toEqual([
+      expect(result.personal).toMatchObject([
         { userId: 2, userName: '(Không rõ)', totalCustomers: 0, closedCustomers: 0, joinedGroupCustomers: 3 },
       ]);
     });

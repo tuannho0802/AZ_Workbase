@@ -1,9 +1,10 @@
-import { Controller, Get, Query, UseGuards, Request } from '@nestjs/common';
+import { Controller, Get, Param, ParseIntPipe, Query, UseGuards, Request } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiBearerAuth } from '@nestjs/swagger';
 import { ReportsService } from './reports.service';
 import { ReportsMarketingService } from './reports-marketing.service';
 import { QueryMarketingReportDto } from './dto/query-marketing-report.dto';
 import { ReportsCustomerListService } from './reports-customer-list.service';
+import { ReportsCustomerDetailService } from './reports-customer-detail.service';
 import { QueryReportCustomerListDto } from './dto/query-report-customer-list.dto';
 import { QueryReportDto } from './dto/query-report.dto';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
@@ -28,6 +29,7 @@ export class ReportsController {
     private readonly reportsService: ReportsService,
     private readonly reportsMarketingService: ReportsMarketingService,
     private readonly reportsCustomerListService: ReportsCustomerListService,
+    private readonly reportsCustomerDetailService: ReportsCustomerDetailService,
   ) {}
 
   @Get('revenue')
@@ -98,5 +100,21 @@ export class ReportsController {
     @GetPermissionScope() scope: string | null,
   ) {
     return this.reportsCustomerListService.getList(query, req.user.id, req.user.role, scope);
+  }
+
+  @Get('customer-detail/:id')
+  @RequirePermission('reports.view')
+  @ApiOperation({
+    summary:
+      'Chi tiết 1 khách (chỉ xem) cho Mini Table báo cáo: thông tin chung, lịch sử nạp chia giai đoạn (nạp đầu/nạp lại), nhóm đã join - phạm vi khớp tab đang xem',
+  })
+  async getCustomerDetail(
+    @Param('id', ParseIntPipe) id: number,
+    @Query('context') context: string | undefined,
+    @Request() req: any,
+    @GetPermissionScope() scope: string | null,
+  ) {
+    const ctx = context === 'marketing' ? 'marketing' : 'customers';
+    return this.reportsCustomerDetailService.getDetail(id, ctx, req.user.id, req.user.role, scope);
   }
 }

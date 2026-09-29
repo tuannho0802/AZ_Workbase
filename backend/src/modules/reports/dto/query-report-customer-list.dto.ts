@@ -10,6 +10,10 @@ export const REPORT_CUSTOMER_LIST_METRICS = [
   'joined',
   'deposited',
   'cohort_deposited',
+  'cohort_closed',
+  'cohort_joined',
+  'ftd',
+  'redeposit',
   'unassigned_marketing',
 ] as const;
 export type ReportCustomerListMetric = (typeof REPORT_CUSTOMER_LIST_METRICS)[number];

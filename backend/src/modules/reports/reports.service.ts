@@ -8,7 +8,7 @@ import { User } from '../../database/entities/user.entity';
 import { Role } from '../../common/enums/role.enum';
 import { PermissionScope } from '../../database/entities/role-permission.entity';
 import { CustomerAccessHelper } from '../customers/helpers/customer-access.helper';
-import { resolveReportRange } from './report-range.util';
+import { resolveReportRange, spanDaysOf } from './report-range.util';
 import { QueryReportDto } from './dto/query-report.dto';
 
 interface PersonalBreakdownRow {
@@ -145,12 +145,41 @@ export class ReportsService {
       .andWhere('deposit.depositDate BETWEEN :from AND :to', { from, to });
     CustomerAccessHelper.applyViewFilter(baseQb, viewerId, viewerRole, scope);
 
+    // Khoản nạp ĐẦU TIÊN của khách (deposit_date, id nhỏ nhất) = "FTD"; các khoản còn lại = "nạp lại".
+    // Phân loại theo TỪNG KHOẢN NẠP nên FTD + nạp lại luôn = tổng tiền; số khoản FTD = số khách nạp lần đầu trong kỳ.
+    const isFtd =
+      'deposit.id = (SELECT d2.id FROM deposits d2 WHERE d2.customer_id = deposit.customer_id ORDER BY d2.deposit_date ASC, d2.id ASC LIMIT 1)';
+    const addDepositStats = (qb: typeof baseQb) =>
+      qb
+        .addSelect('SUM(deposit.amount)', 'amount')
+        .addSelect('COUNT(*)', 'depositCount')
+        .addSelect('COUNT(DISTINCT customer.id)', 'depositorCount')
+        .addSelect(`SUM(CASE WHEN ${isFtd} THEN 1 ELSE 0 END)`, 'ftdCount')
+        .addSelect(`SUM(CASE WHEN ${isFtd} THEN deposit.amount ELSE 0 END)`, 'ftdAmount');
+    const num = (v: unknown) => Number(v) || 0;
+    const toStats = (r: any) => {
+      const amount = num(r?.amount);
+      const depositCount = num(r?.depositCount);
+      const ftdCount = num(r?.ftdCount);
+      const ftdAmount = num(r?.ftdAmount);
+      return {
+        amount,
+        depositCount,
+        depositorCount: num(r?.depositorCount),
+        ftdCount,
+        ftdAmount,
+        redepositCount: Math.max(0, depositCount - ftdCount),
+        redepositAmount: Math.round((amount - ftdAmount) * 100) / 100,
+      };
+    };
+
     // ── Cá nhân ──
-    const personalQb = baseQb
-      .clone()
-      .select('customer.salesUserId', 'userId')
-      .addSelect('salesUser.name', 'userName')
-      .addSelect('SUM(deposit.amount)', 'amount')
+    const personalQb = addDepositStats(
+      baseQb
+        .clone()
+        .select('customer.salesUserId', 'userId')
+        .addSelect('salesUser.name', 'userName'),
+    )
       .andWhere('customer.salesUserId IS NOT NULL')
       .groupBy('customer.salesUserId')
       .addGroupBy('salesUser.name')
@@ -165,14 +194,12 @@ export class ReportsService {
       personalQb.andWhere('customer.salesUserId = :selfId', { selfId: viewerId });
     }
 
-    const personalRaw = await personalQb.getRawMany<
-      PersonalBreakdownRow & { amount: string }
-    >();
+    const personalRaw = await personalQb.getRawMany<PersonalBreakdownRow & Record<string, string>>();
     const personal = await this.attachDepartment(
       personalRaw.map((r) => ({
         userId: Number(r.userId),
         userName: r.userName ?? '(Không rõ)',
-        amount: Number(r.amount) || 0,
+        ...toStats(r),
       })),
     );
 
@@ -204,7 +231,37 @@ export class ReportsService {
       total = Number(totalRaw?.total) || 0;
     }
 
-    return { period: { type: query.period, from, to }, personal, department, total };
+    // ── Tổng hợp giai đoạn nạp (theo phạm vi xem được; scope='own' chỉ của mình) ──
+    const summaryQb = addDepositStats(baseQb.clone().select('1', '_dummy'));
+    if (scope === PermissionScope.OWN) summaryQb.andWhere('customer.salesUserId = :selfId', { selfId: viewerId });
+    const summaryRaw = await summaryQb.getRawOne();
+    const summaryStats = toStats(summaryRaw);
+    const summary = {
+      ...summaryStats,
+      averagePerDeposit: summaryStats.depositCount > 0 ? Math.round((summaryStats.amount / summaryStats.depositCount) * 100) / 100 : 0,
+      averagePerDepositor:
+        summaryStats.depositorCount > 0 ? Math.round((summaryStats.amount / summaryStats.depositorCount) * 100) / 100 : 0,
+    };
+
+    // ── Xu hướng nạp theo ngày/tháng (giai đoạn nạp) ──
+    const monthly = spanDaysOf({ from, to }) > 62;
+    const bucketExpr = `DATE_FORMAT(deposit.depositDate, '${monthly ? '%Y-%m' : '%Y-%m-%d'}')`;
+    const trendQb = addDepositStats(baseQb.clone().select(bucketExpr, 'b'))
+      .groupBy(bucketExpr)
+      .orderBy('b', 'ASC');
+    if (scope === PermissionScope.OWN) trendQb.andWhere('customer.salesUserId = :selfId', { selfId: viewerId });
+    const trendRaw = await trendQb.getRawMany();
+    const trend = trendRaw.map((r) => ({ date: String(r.b), ...toStats(r) }));
+
+    return {
+      period: { type: query.period, from, to },
+      personal,
+      department,
+      total,
+      summary,
+      trend,
+      granularity: monthly ? 'month' : 'day',
+    };
   }
 
   // ═══════════════════════════ DOANH SỐ KHÁCH ═══════════════════════════
@@ -258,6 +315,20 @@ export class ReportsService {
         .addSelect(
           `SUM(CASE WHEN customer.status = 'closed' AND customer.closedDate BETWEEN :closedFrom AND :closedTo THEN 1 ELSE 0 END)`,
           'closedCustomers',
+        )
+        // Cohort = data MỚI đổ về trong kỳ (createdAt trong kỳ), xét tình trạng HIỆN TẠI - cùng tập với totalCustomers
+        // nên tỷ lệ cohort* / totalCustomers luôn <= 100% (khác closedCustomers dùng cột ngày khác).
+        .addSelect(
+          `SUM(CASE WHEN customer.createdAt BETWEEN :createdFrom AND :createdTo AND customer.status = 'closed' THEN 1 ELSE 0 END)`,
+          'cohortClosedCustomers',
+        )
+        .addSelect(
+          `SUM(CASE WHEN customer.createdAt BETWEEN :createdFrom AND :createdTo AND EXISTS (SELECT 1 FROM customer_group_memberships mj WHERE mj.customer_id = customer.id AND mj.joined = true) THEN 1 ELSE 0 END)`,
+          'cohortJoinedCustomers',
+        )
+        .addSelect(
+          `SUM(CASE WHEN customer.createdAt BETWEEN :createdFrom AND :createdTo AND EXISTS (SELECT 1 FROM deposits dd WHERE dd.customer_id = customer.id) THEN 1 ELSE 0 END)`,
+          'cohortDepositedCustomers',
         )
         .setParameters({ createdFrom: fromUtc, createdTo: toUtc, closedFrom: from, closedTo: to });
 
@@ -354,7 +425,14 @@ export class ReportsService {
     }
 
     // ── Tổng tất cả (scope='all', hoặc Admin - ngoại lệ duy nhất) ──
-    let total: { totalCustomers: number; closedCustomers: number; joinedGroupCustomers: number } | null =
+    let total: {
+      totalCustomers: number;
+      closedCustomers: number;
+      joinedGroupCustomers: number;
+      cohortClosedCustomers: number;
+      cohortJoinedCustomers: number;
+      cohortDepositedCustomers: number;
+    } | null =
       null;
     if (scope === PermissionScope.ALL || viewerRole === Role.ADMIN) {
       // ⚠️ PHẢI tự gọi .select() với ĐÚNG 1 cột giả trước khi buildMainSelect()
@@ -375,6 +453,9 @@ export class ReportsService {
         totalCustomers: Number(totalMainRaw?.totalCustomers) || 0,
         closedCustomers: Number(totalMainRaw?.closedCustomers) || 0,
         joinedGroupCustomers: Number(totalJoinedRaw?.joinedGroupCustomers) || 0,
+        cohortClosedCustomers: Number(totalMainRaw?.cohortClosedCustomers) || 0,
+        cohortJoinedCustomers: Number(totalMainRaw?.cohortJoinedCustomers) || 0,
+        cohortDepositedCustomers: Number(totalMainRaw?.cohortDepositedCustomers) || 0,
       };
     }
 
@@ -539,6 +620,9 @@ export class ReportsService {
         totalCustomers: Number(row.totalCustomers) || 0,
         closedCustomers: Number(row.closedCustomers) || 0,
         joinedGroupCustomers: 0,
+        cohortClosedCustomers: Number(row.cohortClosedCustomers) || 0,
+        cohortJoinedCustomers: Number(row.cohortJoinedCustomers) || 0,
+        cohortDepositedCustomers: Number(row.cohortDepositedCustomers) || 0,
       });
     }
     for (const row of joinedRows) {
@@ -553,6 +637,9 @@ export class ReportsService {
           totalCustomers: 0,
           closedCustomers: 0,
           joinedGroupCustomers: joinedCount,
+          cohortClosedCustomers: 0,
+          cohortJoinedCustomers: 0,
+          cohortDepositedCustomers: 0,
         });
       }
     }

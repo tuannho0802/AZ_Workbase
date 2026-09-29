@@ -77,8 +77,10 @@ export class ReportsCustomerListService {
       .getManyAndCount();
 
     const ids = rows.map((r) => r.id);
-    const depositByCustomer =
-      query.metric === 'deposited' ? await this.loadDeposits(ids, range) : new Map<number, number>();
+    const isDepositMetric = ['deposited', 'ftd', 'redeposit'].includes(query.metric);
+    const depositByCustomer = isDepositMetric
+      ? await this.loadDeposits(ids, range)
+      : new Map<number, { amount: number; count: number; lastDate: string | null }>();
     const groupsByCustomer =
       query.metric === 'joined' ? await this.loadJoinedGroups(ids, range) : new Map<number, string[]>();
 
@@ -95,7 +97,13 @@ export class ReportsCustomerListService {
       salesUser: userBrief(c.salesUser as UserLike | null),
       marketingUser: userBrief(c.marketingUser as UserLike | null),
       createdBy: userBrief(c.createdBy as UserLike | null),
-      ...(query.metric === 'deposited' ? { depositAmount: depositByCustomer.get(c.id) ?? 0 } : {}),
+      ...(isDepositMetric
+        ? {
+            depositAmount: depositByCustomer.get(c.id)?.amount ?? 0,
+            depositCount: depositByCustomer.get(c.id)?.count ?? 0,
+            lastDepositDate: depositByCustomer.get(c.id)?.lastDate ?? null,
+          }
+        : {}),
       ...(query.metric === 'joined' ? { joinedGroups: groupsByCustomer.get(c.id) ?? [] } : {}),
     }));
 
@@ -145,6 +153,32 @@ export class ReportsCustomerListService {
         created();
         qb.andWhere('EXISTS (SELECT 1 FROM deposits dd WHERE dd.customer_id = customer.id)');
         break;
+      case 'cohort_closed':
+        created();
+        qb.andWhere("customer.status = 'closed'");
+        break;
+      case 'cohort_joined':
+        created();
+        qb.andWhere(
+          'EXISTS (SELECT 1 FROM customer_group_memberships mj WHERE mj.customer_id = customer.id AND mj.joined = true)',
+        );
+        break;
+      case 'ftd':
+        // Khách có KHOẢN NẠP ĐẦU TIÊN (deposit_date, id nhỏ nhất) rơi trong kỳ - khớp `ftdCount` ở báo cáo doanh thu.
+        qb.andWhere(
+          'EXISTS (SELECT 1 FROM deposits d WHERE d.customer_id = customer.id AND d.deposit_date BETWEEN :depFrom AND :depTo ' +
+            'AND d.id = (SELECT d2.id FROM deposits d2 WHERE d2.customer_id = d.customer_id ORDER BY d2.deposit_date ASC, d2.id ASC LIMIT 1))',
+          { depFrom: range.from, depTo: range.to },
+        );
+        break;
+      case 'redeposit':
+        // Khách có khoản nạp trong kỳ KHÔNG phải khoản nạp đầu tiên của họ (nạp lại).
+        qb.andWhere(
+          'EXISTS (SELECT 1 FROM deposits d WHERE d.customer_id = customer.id AND d.deposit_date BETWEEN :depFrom AND :depTo ' +
+            'AND d.id <> (SELECT d2.id FROM deposits d2 WHERE d2.customer_id = d.customer_id ORDER BY d2.deposit_date ASC, d2.id ASC LIMIT 1))',
+          { depFrom: range.from, depTo: range.to },
+        );
+        break;
       case 'unassigned_marketing':
         created();
         qb.andWhere('customer.marketingUserId IS NULL');
@@ -182,20 +216,31 @@ export class ReportsCustomerListService {
     else if (q.quick === 'no_phone') qb.andWhere("(customer.phone IS NULL OR customer.phone = '')");
   }
 
-  /** Tổng tiền nạp TRONG KỲ của các khách trong trang hiện tại (1 query cho cả trang). */
-  private async loadDeposits(ids: number[], range: ResolvedReportRange): Promise<Map<number, number>> {
-    const map = new Map<number, number>();
+  /** Tổng tiền / số lần / ngày nạp gần nhất TRONG KỲ của các khách trong trang hiện tại (1 query cho cả trang). */
+  private async loadDeposits(
+    ids: number[],
+    range: ResolvedReportRange,
+  ): Promise<Map<number, { amount: number; count: number; lastDate: string | null }>> {
+    const map = new Map<number, { amount: number; count: number; lastDate: string | null }>();
     if (ids.length === 0) return map;
     const rows = await this.customerRepo.manager
       .createQueryBuilder()
       .select('d.customerId', 'customerId')
       .addSelect('SUM(d.amount)', 'amount')
+      .addSelect('COUNT(*)', 'cnt')
+      .addSelect('MAX(d.depositDate)', 'lastDate')
       .from(Deposit, 'd')
       .where('d.customerId IN (:...ids)', { ids })
       .andWhere('d.depositDate BETWEEN :depFrom AND :depTo', { depFrom: range.from, depTo: range.to })
       .groupBy('d.customerId')
       .getRawMany();
-    for (const r of rows) map.set(Number(r.customerId), Number(r.amount) || 0);
+    for (const r of rows) {
+      map.set(Number(r.customerId), {
+        amount: Number(r.amount) || 0,
+        count: Number(r.cnt) || 0,
+        lastDate: r.lastDate ? String(r.lastDate).slice(0, 10) : null,
+      });
+    }
     return map;
   }
 
