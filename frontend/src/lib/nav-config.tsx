@@ -62,6 +62,14 @@ export interface NavItem {
    * cho đúng badge này, xác nhận `.view` một mình không đủ).
    */
   permission?: string | string[];
+  /**
+   * Guard BỔ SUNG kiểu AND: mục chỉ hiện khi role có ĐỦ TẤT CẢ các key này, DÙ đã
+   * thoả `permission` (OR ở trên). Áp dụng cho cả mục có `permission` lẫn mục chỉ
+   * có `roles`. Dùng khi trang đích phụ thuộc dữ liệu của module khác - vd
+   * `/quan-ly-utm` đòi thêm `customers.view` vì UTM gắn với khách hàng.
+   * Cũng phải tự chặn tương ứng ở route guard của trang (chống mở bằng URL).
+   */
+  requireAll?: string[];
 }
 
 /**
@@ -380,6 +388,9 @@ export const NAV_ITEMS: NavItem[] = [
     // Khớp `utms.my_managed` (migration SeedUtmPermissions1785200000000) + route guard ở quan-ly-utm/page.tsx.
     roles: null,
     permission: 'utms.my_managed',
+    // UTM gắn với khách hàng: role không xem được khách hàng thì KHÔNG hiện mục UTM.
+    // Khớp route guard ở quan-ly-utm/page.tsx (cùng đòi customers.view).
+    requireAll: ['customers.view'],
   },
   {
     key: 'attendance-device',
@@ -442,6 +453,8 @@ export const getVisibleNavItems = (
   can?: (permissionKey: string) => boolean,
 ) =>
   NAV_ITEMS.filter((item) => {
+    // Guard AND bổ sung: thiếu bất kỳ key nào (hoặc không có can()) -> ẩn.
+    if (item.requireAll && !item.requireAll.every((key) => !!can?.(key))) return false;
     if (!item.permission) return !item.roles || item.roles.includes(role || '');
     const keys = Array.isArray(item.permission) ? item.permission : [item.permission];
     // OR: chỉ cần CÓ ÍT NHẤT 1 trong các key - khớp đúng cách trang đích tự

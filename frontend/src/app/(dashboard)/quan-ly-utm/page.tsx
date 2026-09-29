@@ -61,13 +61,16 @@ export default function QuanLyUtmPage() {
   const { message } = App.useApp();
   const { can, scope, isLoading: permissionsLoading } = useMyPermissions();
 
-  // Khớp nav-config (`utms.my_managed`) - không cho mở bằng URL trực tiếp khi thiếu quyền.
+  // Khớp nav-config (`utms.my_managed` + `requireAll: ['customers.view']`) - không cho mở
+  // bằng URL trực tiếp khi thiếu quyền. UTM gắn với khách hàng nên role không xem được
+  // khách hàng thì không vào trang UTM.
+  const canAccessPage = can('utms.my_managed') && can('customers.view');
   useEffect(() => {
-    if (!permissionsLoading && !can('utms.my_managed')) {
+    if (!permissionsLoading && !canAccessPage) {
       message.warning('Bạn không có quyền truy cập trang này');
       router.replace('/');
     }
-  }, [permissionsLoading, can, router, message]);
+  }, [permissionsLoading, canAccessPage, router, message]);
 
   const canView = can('utms.view');
   const canCreate = can('utms.create');
@@ -75,7 +78,7 @@ export default function QuanLyUtmPage() {
   // Gộp cần danh sách đích từ tab "Tất cả" (GET /utms/scoped cần utms.view) nên đòi cả hai.
   const canMerge = canView && scope('utms.edit') === 'all';
 
-  const { utms: mine, isLoading: loadingMine } = useManagedUtms(!permissionsLoading && can('utms.my_managed'));
+  const { utms: mine, isLoading: loadingMine } = useManagedUtms(!permissionsLoading && canAccessPage);
   const { utms: allScoped, isLoading: loadingAll } = useScopedUtms(canView);
   const { counts } = useUtmCustomerCounts(canViewCustomers);
   const { groups: dupGroups, isLoading: loadingDup } = useUtmDuplicates(canMerge);
@@ -325,6 +328,9 @@ export default function QuanLyUtmPage() {
         ]
       : []),
   ];
+
+  // Guard: chưa có quyền (hoặc đang tải quyền) thì KHÔNG render UTM - effect ở trên sẽ redirect.
+  if (permissionsLoading || !canAccessPage) return null;
 
   return (
     <div style={{ padding: 24 }}>

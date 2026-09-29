@@ -96,4 +96,18 @@ describe('nav-config: getVisibleNavItems', () => {
     const items3 = getVisibleNavItems('employee', canNeither);
     expect(items3.some((i) => i.key === 'duyet-phep')).toBe(false);
   });
+  it('quan-ly-utm: có utms.my_managed nhưng KHÔNG có customers.view -> ẨN (guard AND)', () => {
+    const can = (key: string) => key === 'utms.my_managed';
+    expect(getVisibleNavItems('employee', can).some((i) => i.key === 'quan-ly-utm')).toBe(false);
+  });
+
+  it('quan-ly-utm: có customers.view nhưng KHÔNG có utms.my_managed -> ẨN', () => {
+    const can = (key: string) => key === 'customers.view';
+    expect(getVisibleNavItems('employee', can).some((i) => i.key === 'quan-ly-utm')).toBe(false);
+  });
+
+  it('quan-ly-utm: có ĐỦ utms.my_managed + customers.view -> HIỆN', () => {
+    const can = (key: string) => key === 'utms.my_managed' || key === 'customers.view';
+    expect(getVisibleNavItems('employee', can).some((i) => i.key === 'quan-ly-utm')).toBe(true);
+  });
 });
