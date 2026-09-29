@@ -166,6 +166,9 @@ export interface TrashedUser {
   position?: { id: number; name: string } | null;
   deletedAt: string;
   deletedBy?: { id: number; name: string } | null;
+  /** 'rejected' = bị từ chối đăng ký (xoá mềm khi từ chối) - kèm `rejectionReason` nếu người duyệt có nhập. */
+  approvalStatus?: 'pending' | 'approved' | 'rejected';
+  rejectionReason?: string | null;
 }
 
 // Tài khoản tự đăng ký đang chờ duyệt (role LUÔN là 'employee' - hardcode ở

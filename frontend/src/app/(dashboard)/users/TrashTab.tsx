@@ -139,6 +139,19 @@ export const TrashTab = ({ onCountChange, onRestored }: Props) => {
       render: (_: unknown, record: TrashedUser) => record.deletedBy?.name || <Text type="secondary">—</Text>,
     },
     {
+      title: 'Lý do xoá',
+      key: 'reason',
+      render: (_: unknown, record: TrashedUser) =>
+        record.approvalStatus === 'rejected' ? (
+          <Space orientation="vertical" size={0}>
+            <Tag color="red">Bị từ chối đăng ký</Tag>
+            {record.rejectionReason ? <Text type="secondary">{record.rejectionReason}</Text> : null}
+          </Space>
+        ) : (
+          <Text type="secondary">—</Text>
+        ),
+    },
+    {
       title: 'Thao tác',
       key: 'action',
       render: (_: unknown, record: TrashedUser) => (

@@ -4953,3 +4953,19 @@ khi bị xoá tay. Đây là 1 anti-pattern thật (dù đo thử với payload 
 > KHÔNG migration, KHÔNG permission key mới. Chưa test trên MySQL/trình duyệt thật. Item tick sẵn từ dữ liệu cũ trong Task To-do không tự dọn (chỉ chặn tick mới).
 
 ---
+
+## [2026-09-29 14:30] | Users: Từ chối đăng ký = xoá mềm (Thùng rác) + login báo "đã bị từ chối/đã bị xoá" | [Status: Success — BE tsc sạch + nest build OK + jest 1143/1143; FE vitest 231/231, tsc FE chỉ còn 5 lỗi CŨ (logo.png x4, styled-jsx CountBadge)]
+
+**Actor:** Agent (trên `origin/main` HEAD `f43c73e`)
+
+**Files Changed:**
+- BE: `users.service.ts` — `rejectUser()` set thêm `deletedAt`/`deletedById` + thu hồi refresh token; `restoreUser()` đưa tài khoản rejected về PENDING (xoá lý do); `findAll()` loại `approval_status='rejected'`; thêm `findByEmailIncludingDeleted()`.
+- BE: `auth.service.ts` — `login()` dùng hàm trên: rejected -> "Tài khoản đã bị từ chối. Lý do: …" (hoặc không lý do), đã xoá mềm -> "Tài khoản đã bị xoá."; `register()` báo 409 nếu email thuộc tài khoản đã xoá mềm (trước đây dễ ER_DUP_ENTRY).
+- BE MỚI: migration `1784900000000-SoftDeleteRejectedUsers.ts` — xoá mềm các tài khoản rejected CŨ để rời trang Users.
+- BE: spec users/auth (+5 test).
+- FE: `account-status/page.tsx` (nhận diện theo tiền tố + kiểu `deleted`), `users.api.ts` (`TrashedUser` thêm `approvalStatus`/`rejectionReason`), `TrashTab.tsx` (cột "Lý do xoá").
+
+**Notes:**
+> Migration cần chạy trên DB thật (`npm run migration:run`). Chưa test trên MySQL/trình duyệt thật.
+
+---

@@ -39,31 +39,34 @@ export class AuthService {
  }
 
   async login(loginDto: LoginDto) {
-    const user = await this.usersService.findByEmail(loginDto.email);
-    // Removed verbose debug log
+    // Kèm tài khoản đã xoá mềm: tài khoản bị từ chối/xoá phải nhận đúng thông báo, không phải "không tồn tại".
+    const user = await this.usersService.findByEmailIncludingDeleted(loginDto.email);
 
-    
     if (!user) {
       throw new UnauthorizedException('Tài khoản không tồn tại');
+    }
+
+    // Bị TỪ CHỐI đăng ký (đã xoá mềm ở `rejectUser()`, hoặc dòng cũ chưa dọn): báo rõ + lý do nếu có. Kiểm tra
+    // TRƯỚC `deletedAt` để tài khoản rejected không bị báo chung chung là "đã bị xoá".
+    if (user.approvalStatus === ApprovalStatus.REJECTED) {
+      throw new ForbiddenException(
+        user.rejectionReason
+          ? `Tài khoản đã bị từ chối. Lý do: ${user.rejectionReason}`
+          : 'Tài khoản đã bị từ chối.',
+      );
+    }
+    if (user.deletedAt != null) {
+      throw new ForbiddenException('Tài khoản đã bị xoá.');
     }
 
     if (Number(user.isActive) === 0) {
       throw new ForbiddenException('Tài khoản bị khóa');
     }
 
-    // ⚠️ Chặn đăng nhập nếu tài khoản (tự đăng ký qua /auth/register) chưa
-    // được Admin/Assistant duyệt - kiểm tra TRƯỚC khi so khớp mật khẩu, để
-    // không lộ thông tin "mật khẩu đúng/sai" cho tài khoản chưa được phép
-    // đăng nhập (không có ý nghĩa gì để biết password đúng nếu chưa duyệt).
+    // ⚠️ Chặn đăng nhập nếu tài khoản (tự đăng ký qua /auth/register) chưa được Admin/Assistant duyệt - kiểm tra
+    // TRƯỚC khi so khớp mật khẩu (không lộ "mật khẩu đúng/sai" cho tài khoản chưa được phép đăng nhập).
     if (user.approvalStatus === ApprovalStatus.PENDING) {
       throw new ForbiddenException('Tài khoản đang chờ Admin/Assistant duyệt. Vui lòng quay lại sau.');
-    }
-    if (user.approvalStatus === ApprovalStatus.REJECTED) {
-      throw new ForbiddenException(
-        user.rejectionReason
-          ? `Yêu cầu đăng ký đã bị từ chối: ${user.rejectionReason}`
-          : 'Yêu cầu đăng ký đã bị từ chối.',
-      );
     }
 
     if (!user.password) {
@@ -171,7 +174,8 @@ export class AuthService {
       };
     }
 
-    const existing = await this.usersService.findByEmail(dto.email);
+    // Kèm tài khoản đã xoá mềm: email vẫn bị UNIQUE giữ chỗ -> báo 409 thay vì để DB ném ER_DUP_ENTRY (500).
+    const existing = await this.usersService.findByEmailIncludingDeleted(dto.email);
     if (existing) {
       throw new ConflictException('Email đã được đăng ký');
     }

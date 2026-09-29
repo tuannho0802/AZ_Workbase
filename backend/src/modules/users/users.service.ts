@@ -138,6 +138,19 @@ export class UsersService {
       .getOne();
   }
 
+  /**
+   * Như `findByEmail()` nhưng KÈM tài khoản đã xoá mềm (thùng rác) - dùng cho luồng login (để báo đúng "đã bị
+   * từ chối/đã bị xoá" thay vì "không tồn tại") và đăng ký (email của tài khoản đã xoá vẫn bị UNIQUE giữ chỗ).
+   */
+  async findByEmailIncludingDeleted(email: string): Promise<User | null> {
+    return this.usersRepository
+      .createQueryBuilder('user')
+      .withDeleted()
+      .addSelect('user.password')
+      .where('user.email = :email', { email })
+      .getOne();
+  }
+
   // ⚠️ MỚI - thêm tham số `relations` (mặc định RỖNG - giữ nguyên hành vi
   // cũ cho hot-path `JwtStrategy.validate()` chạy trên MỌI request đã đăng
   // nhập, không cần JOIN gì thêm vì chỉ đọc field scalar departmentId/
@@ -243,6 +256,10 @@ export class UsersService {
     // Assistant thấy tất cả; Manager chỉ phòng ban mình quản lý (+ chính
     // mình); Employee chỉ chính mình.
     UsersAccessHelper.applyViewFilter(queryBuilder, userId, userRole, scope);
+
+    // Tài khoản bị từ chối đăng ký không thuộc danh sách Nhân viên (đã xoá mềm ở rejectUser(); dòng cũ chưa dọn
+    // cũng bị loại ở đây cho chắc).
+    queryBuilder.andWhere('user.approvalStatus != :rejected', { rejected: ApprovalStatus.REJECTED });
 
     if (role) {
       queryBuilder.andWhere('user.role = :role', { role });
@@ -1045,9 +1062,13 @@ export class UsersService {
       throw new NotFoundException('Không tìm thấy tài khoản trong thùng rác');
     }
 
+    // Tài khoản bị TỪ CHỐI đăng ký được khôi phục -> quay về chờ duyệt (xoá lý do cũ), tránh kẹt ở rejected mà lại
+    // hiện trong danh sách Nhân viên.
+    const wasRejected = user.approvalStatus === ApprovalStatus.REJECTED;
     await this.usersRepository.update(targetId, {
       deletedAt: null,
       deletedById: null,
+      ...(wasRejected ? { approvalStatus: ApprovalStatus.PENDING, rejectionReason: null } : {}),
     } as any);
 
     this.auditService.logActionAsync(
@@ -1428,10 +1449,9 @@ export class UsersService {
   }
 
   /**
-   * Từ chối 1 tài khoản tự đăng ký. KHÔNG xoá tài khoản (giữ lại lịch sử +
-   * lý do từ chối) - chỉ chuyển approvalStatus sang REJECTED, chặn đăng nhập
-   * vĩnh viễn (khác PENDING - có thể duyệt sau, REJECTED thì không tự động
-   * "chuyển lại" được, cần admin sửa tay qua update() nếu muốn đảo ngược).
+   * Từ chối 1 tài khoản tự đăng ký: chuyển approvalStatus sang REJECTED (kèm lý do) VÀ xoá mềm luôn
+   * (`deletedAt`/`deletedById`) -> hiện ở Thùng rác, không còn trong danh sách Nhân viên, không đăng nhập được.
+   * Khôi phục từ Thùng rác một tài khoản rejected sẽ đưa về PENDING để duyệt lại (xem `restoreUser()`).
    *
    * FIX PERMISSIONS.md mục 2.8: cùng rule với approveUser() - Manager chỉ
    * từ chối được tài khoản đăng ký vào đúng phòng ban mình quản lý.
@@ -1464,12 +1484,19 @@ export class UsersService {
       }
     }
 
+    // Từ chối = XOÁ MỀM luôn: tài khoản biến khỏi danh sách Nhân viên, nằm ở Thùng rác (GET /users/trash) với
+    // approvalStatus=rejected + lý do. `login()` đọc 2 trường này để báo "đã bị từ chối" kèm lý do.
+    const now = new Date();
     user.approvalStatus = ApprovalStatus.REJECTED;
     user.approvedById = approverId;
-    user.approvedAt = new Date();
+    user.approvedAt = now;
     user.rejectionReason = reason?.trim() || null;
+    user.deletedAt = now;
+    user.deletedById = approverId;
 
     const saved = await this.usersRepository.save(user);
+    // Chặn phiên/refresh token đang có (tài khoản chưa duyệt thường chưa có, thu hồi cho chắc - mirror softDeleteUser).
+    await this.saveRefreshToken(id, null);
 
     this.auditService.logActionAsync(
       approverId,

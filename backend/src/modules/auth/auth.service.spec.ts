@@ -12,7 +12,7 @@ describe('AuthService - Đăng ký công khai + chặn đăng nhập chưa duy�
   let service: AuthService;
 
   const mockUsersService = {
-    findByEmail: jest.fn(),
+    findByEmailIncludingDeleted: jest.fn(),
     createPendingRegistration: jest.fn(),
     saveRefreshToken: jest.fn(),
     updateLastLogin: jest.fn(),
@@ -47,7 +47,7 @@ describe('AuthService - Đăng ký công khai + chặn đăng nhập chưa duy�
 
   describe('register - Đăng ký công khai', () => {
     it('ném ConflictException nếu email đã tồn tại', async () => {
-      mockUsersService.findByEmail.mockResolvedValue({ id: 1, email: 'a@example.com' });
+      mockUsersService.findByEmailIncludingDeleted.mockResolvedValue({ id: 1, email: 'a@example.com' });
 
       await expect(
         service.register({
@@ -62,7 +62,7 @@ describe('AuthService - Đăng ký công khai + chặn đăng nhập chưa duy�
     });
 
     it('hash password trước khi lưu (KHÔNG lưu plaintext)', async () => {
-      mockUsersService.findByEmail.mockResolvedValue(null);
+      mockUsersService.findByEmailIncludingDeleted.mockResolvedValue(null);
       mockUsersService.createPendingRegistration.mockResolvedValue({
         id: 5,
         email: 'a@example.com',
@@ -81,7 +81,7 @@ describe('AuthService - Đăng ký công khai + chặn đăng nhập chưa duy�
     });
 
     it('KHÔNG trả về access_token/refresh_token - chỉ trả message chờ duyệt', async () => {
-      mockUsersService.findByEmail.mockResolvedValue(null);
+      mockUsersService.findByEmailIncludingDeleted.mockResolvedValue(null);
       mockUsersService.createPendingRegistration.mockResolvedValue({
         id: 5,
         email: 'a@example.com',
@@ -108,13 +108,13 @@ describe('AuthService - Đăng ký công khai + chặn đăng nhập chưa duy�
         website: 'http://spam.example.com',
       } as any);
 
-      expect(mockUsersService.findByEmail).not.toHaveBeenCalled();
+      expect(mockUsersService.findByEmailIncludingDeleted).not.toHaveBeenCalled();
       expect(mockUsersService.createPendingRegistration).not.toHaveBeenCalled();
       expect(result.message).toMatch(/chờ.*duyệt/i);
     });
 
     it('Honeypot chỉ chứa khoảng trắng KHÔNG bị coi là bot (trim về rỗng trước khi so sánh, tránh false-positive chặn nhầm người dùng thật nếu trình duyệt/extension tự điền khoảng trắng vào field ẩn)', async () => {
-      mockUsersService.findByEmail.mockResolvedValue(null);
+      mockUsersService.findByEmailIncludingDeleted.mockResolvedValue(null);
       mockUsersService.createPendingRegistration.mockResolvedValue({
         id: 6,
         email: 'real-user@example.com',
@@ -146,7 +146,7 @@ describe('AuthService - Đăng ký công khai + chặn đăng nhập chưa duy�
     });
 
     it('ném ForbiddenException nếu tài khoản đang PENDING (chờ duyệt) - kể cả khi mật khẩu đúng', async () => {
-      mockUsersService.findByEmail.mockResolvedValue(
+      mockUsersService.findByEmailIncludingDeleted.mockResolvedValue(
         baseUser({ approvalStatus: ApprovalStatus.PENDING }),
       );
 
@@ -159,7 +159,7 @@ describe('AuthService - Đăng ký công khai + chặn đăng nhập chưa duy�
     });
 
     it('ném ForbiddenException nếu tài khoản đã bị REJECTED, kèm lý do trong message', async () => {
-      mockUsersService.findByEmail.mockResolvedValue(
+      mockUsersService.findByEmailIncludingDeleted.mockResolvedValue(
         baseUser({
           approvalStatus: ApprovalStatus.REJECTED,
           rejectionReason: 'Không xác định được danh tính',
@@ -171,8 +171,33 @@ describe('AuthService - Đăng ký công khai + chặn đăng nhập chưa duy�
       ).rejects.toThrow('Không xác định được danh tính');
     });
 
+    it('REJECTED có lý do -> "Tài khoản đã bị từ chối. Lý do: ..." (dù đã xoá mềm)', async () => {
+      mockUsersService.findByEmailIncludingDeleted.mockResolvedValue(
+        baseUser({ approvalStatus: ApprovalStatus.REJECTED, rejectionReason: 'Sai thông tin', deletedAt: new Date() }),
+      );
+      await expect(service.login({ email: 'a@example.com', password: 'x' })).rejects.toThrow(
+        'Tài khoản đã bị từ chối. Lý do: Sai thông tin',
+      );
+      expect(mockUsersService.saveRefreshToken).not.toHaveBeenCalled();
+    });
+
+    it('REJECTED không có lý do -> chỉ "Tài khoản đã bị từ chối."', async () => {
+      mockUsersService.findByEmailIncludingDeleted.mockResolvedValue(
+        baseUser({ approvalStatus: ApprovalStatus.REJECTED, rejectionReason: null, deletedAt: new Date() }),
+      );
+      await expect(service.login({ email: 'a@example.com', password: 'x' })).rejects.toThrow(
+        /^Tài khoản đã bị từ chối\.$/,
+      );
+    });
+
+    it('đã xoá mềm (không phải rejected) -> "Tài khoản đã bị xoá."', async () => {
+      mockUsersService.findByEmailIncludingDeleted.mockResolvedValue(baseUser({ deletedAt: new Date() }));
+      await expect(service.login({ email: 'a@example.com', password: 'x' })).rejects.toThrow('Tài khoản đã bị xoá.');
+      expect(mockUsersService.saveRefreshToken).not.toHaveBeenCalled();
+    });
+
     it('cho đăng nhập bình thường nếu approvalStatus=APPROVED (hành vi cũ không đổi)', async () => {
-      mockUsersService.findByEmail.mockResolvedValue(baseUser());
+      mockUsersService.findByEmailIncludingDeleted.mockResolvedValue(baseUser());
       mockUsersService.saveRefreshToken.mockResolvedValue(undefined);
       mockUsersService.updateLastLogin.mockResolvedValue(undefined);
 
@@ -183,7 +208,7 @@ describe('AuthService - Đăng ký công khai + chặn đăng nhập chưa duy�
     });
 
     it('trả về avatarUrl đã ký (Presigned GET) trong response login nếu user có avatar', async () => {
-      mockUsersService.findByEmail.mockResolvedValue(baseUser({ avatarUrl: 'avatars/1/abc.webp' }));
+      mockUsersService.findByEmailIncludingDeleted.mockResolvedValue(baseUser({ avatarUrl: 'avatars/1/abc.webp' }));
       mockUsersService.saveRefreshToken.mockResolvedValue(undefined);
       mockUsersService.updateLastLogin.mockResolvedValue(undefined);
       mockUsersService.signAvatarUrl.mockResolvedValue({
@@ -197,7 +222,7 @@ describe('AuthService - Đăng ký công khai + chặn đăng nhập chưa duy�
     });
 
     it('trả về avatarUrl=null nếu user chưa từng upload avatar (KHÔNG lộ object key thô)', async () => {
-      mockUsersService.findByEmail.mockResolvedValue(baseUser());
+      mockUsersService.findByEmailIncludingDeleted.mockResolvedValue(baseUser());
       mockUsersService.saveRefreshToken.mockResolvedValue(undefined);
       mockUsersService.updateLastLogin.mockResolvedValue(undefined);
       mockUsersService.signAvatarUrl.mockResolvedValue(baseUser());
@@ -208,7 +233,7 @@ describe('AuthService - Đăng ký công khai + chặn đăng nhập chưa duy�
     });
 
     it('vẫn ném UnauthorizedException khi sai mật khẩu (không bị đổi hành vi bởi approvalStatus check)', async () => {
-      mockUsersService.findByEmail.mockResolvedValue(baseUser());
+      mockUsersService.findByEmailIncludingDeleted.mockResolvedValue(baseUser());
 
       await expect(
         service.login({ email: 'a@example.com', password: 'sai-mat-khau' }),

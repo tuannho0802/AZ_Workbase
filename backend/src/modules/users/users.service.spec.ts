@@ -526,6 +526,17 @@ describe('UsersService - Approval workflow (đăng ký công khai chờ duyệt)
       );
     });
 
+    it('từ chối = XOÁ MỀM luôn: set deletedAt + deletedById = người từ chối', async () => {
+      mockUsersRepo.findOne.mockResolvedValue(pendingUser());
+      mockUsersRepo.save.mockImplementation((u: any) => Promise.resolve(u));
+
+      await service.rejectUser(11, 5, Role.ADMIN, 'all', 'Không hợp lệ');
+
+      expect(mockUsersRepo.save).toHaveBeenCalledWith(
+        expect.objectContaining({ deletedAt: expect.any(Date), deletedById: 5 }),
+      );
+    });
+
     it('lưu rejectionReason = null nếu không truyền lý do (hoặc chuỗi rỗng)', async () => {
       mockUsersRepo.findOne.mockResolvedValue(pendingUser());
       mockUsersRepo.save.mockImplementation((u: any) => Promise.resolve(u));
@@ -1007,6 +1018,25 @@ describe('UsersService - Approval workflow (đăng ký công khai chờ duyệt)
         null,
         expect.any(Object),
       );
+    });
+
+    it('khôi phục tài khoản bị TỪ CHỐI -> về PENDING, xoá lý do cũ', async () => {
+      mockUsersRepo.findOne.mockResolvedValue({
+        id: 2,
+        deletedAt: new Date(),
+        approvalStatus: ApprovalStatus.REJECTED,
+        rejectionReason: 'Sai thông tin',
+      });
+      mockUsersRepo.update.mockResolvedValue(undefined);
+
+      await service.restoreUser(2, 1);
+
+      expect(mockUsersRepo.update).toHaveBeenCalledWith(2, {
+        deletedAt: null,
+        deletedById: null,
+        approvalStatus: ApprovalStatus.PENDING,
+        rejectionReason: null,
+      });
     });
   });
 

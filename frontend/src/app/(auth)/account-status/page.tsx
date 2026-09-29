@@ -12,7 +12,7 @@ import {
 
 const { Title, Paragraph } = Typography;
 
-type StatusKind = 'pending' | 'rejected' | 'locked' | 'generic';
+type StatusKind = 'pending' | 'rejected' | 'deleted' | 'locked' | 'generic';
 
 // Đoán loại trạng thái từ NỘI DUNG message thật của backend (không hardcode
 // message riêng ở FE) - để luôn khớp đúng lý do thật, kể cả khi BE đổi câu
@@ -20,6 +20,9 @@ type StatusKind = 'pending' | 'rejected' | 'locked' | 'generic';
 // chỉ quyết định icon/màu sắc cho đẹp, không ảnh hưởng tính đúng đắn).
 function detectStatusKind(message: string): StatusKind {
   const lower = message.toLowerCase();
+  // Lý do từ chối do Admin nhập tự do (có thể chứa chữ "duyệt"/"khoá") -> nhận diện theo TIỀN TỐ cố định của BE trước.
+  if (lower.startsWith('tài khoản đã bị từ chối')) return 'rejected';
+  if (lower.startsWith('tài khoản đã bị xoá') || lower.startsWith('tài khoản đã bị xóa')) return 'deleted';
   if (lower.includes('chờ') || lower.includes('duyệt')) return 'pending';
   if (lower.includes('từ chối')) return 'rejected';
   if (lower.includes('khóa') || lower.includes('khoá')) return 'locked';
@@ -38,7 +41,12 @@ const STATUS_CONFIG: Record<
   rejected: {
     icon: <CloseCircleOutlined style={{ fontSize: 56, color: '#ff4d4f' }} />,
     color: '#ff4d4f',
-    title: 'Yêu cầu bị từ chối',
+    title: 'Tài khoản đã bị từ chối',
+  },
+  deleted: {
+    icon: <CloseCircleOutlined style={{ fontSize: 56, color: '#8c8c8c' }} />,
+    color: '#8c8c8c',
+    title: 'Tài khoản đã bị xoá',
   },
   locked: {
     icon: <LockOutlined style={{ fontSize: 56, color: '#ff4d4f' }} />,
