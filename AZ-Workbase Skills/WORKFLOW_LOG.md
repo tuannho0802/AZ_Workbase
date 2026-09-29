@@ -5033,3 +5033,16 @@ khi bị xoá tay. Đây là 1 anti-pattern thật (dù đo thử với payload 
 > Gọi `create()`/`update()` không truyền `caller` (nội bộ) giữ hành vi cũ, không resolve UTM. Chưa làm: `GET /utms/customer-counts`, `GET /utms/:id/customers`, `utm` trong report chi tiết KH, Gộp UTM, toàn bộ FE. Chưa test trên DB/trình duyệt thật. Pre-flight 4.0 + `migration:run` + `utm:backfill` vẫn cần chủ dự án chạy tay sau khi backup.
 
 ---
+
+## [2026-09-29 21:00] | UTM Phần 4: nốt BE (counts, /:id/customers, merge, duplicates, recent, utm trong report) | [Status: Success — BE tsc sạch + nest build OK + jest 70 suite / 1246 test]
+
+**Actor:** Agent (trên `origin/main` HEAD `1b2a9f2`)
+
+**Files Changed:**
+- BE: `utm-customers.service.ts` (MỚI: `getCounts` GROUP BY + `listCustomers`, cả hai qua `CustomerAccessHelper.applyViewFilter` — quản lý UTM KHÔNG mở rộng quyền xem KH); `utms.service.ts` (+`similarityKey`, `findDuplicates`, `findRecent`, `merge`); `utms.controller.ts` (+5 endpoint: `recent`, `customer-counts`, `duplicates` khai TRƯỚC `:id`; `:id/customers`, `:id/merge`); `utms.module.ts` (+`Customer`, `UiVisibilityModule`); DTO `merge-utm`, `utm-customers-query`; `reports-customer-detail.service.ts` (+`utm{id,name,color}`).
+- Test: `utm-customers.service.spec.ts` (MỚI, 4), `utms.service.spec.ts` (+8), `utms.controller.spec.ts` (khoá 18 endpoint + thứ tự route), sửa mock `reports-customer-detail.service.spec.ts` (+`leftJoin`,`addSelect`).
+
+**Notes:**
+> Gộp/gợi ý trùng chỉ cho `utms.edit` scope `all`; merge chuyển cả KH đã xoá mềm, giữ `updated_at`, cùng 1 transaction, audit `MERGE_UTM`. Không có migration mới. Chưa làm: toàn bộ FE. Chưa test trên DB thật.
+
+---

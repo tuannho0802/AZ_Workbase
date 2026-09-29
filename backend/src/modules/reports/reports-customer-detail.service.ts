@@ -70,6 +70,8 @@ export class ReportsCustomerDetailService {
       .leftJoinAndSelect('marketingUser.department', 'marketingDept')
       .leftJoinAndSelect('customer.createdBy', 'createdBy')
       .leftJoinAndSelect('createdBy.department', 'createdByDept')
+      .leftJoin('customer.utm', 'utm')
+      .addSelect(['utm.id', 'utm.name', 'utm.color'])
       .where('customer.id = :id', { id });
 
     CustomerAccessHelper.applyViewFilter(qb, viewerId, viewerRole, scope);
@@ -155,6 +157,7 @@ export class ReportsCustomerDetailService {
         email: c.email ?? null,
         source: c.source ?? null,
         campaign: c.campaign ?? null,
+        utm: c.utm ? { id: c.utm.id, name: c.utm.name, color: c.utm.color } : null,
         broker: c.broker ?? null,
         status: c.status ?? null,
         note: c.note ?? null,

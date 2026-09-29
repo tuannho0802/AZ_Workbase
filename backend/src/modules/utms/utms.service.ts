@@ -20,6 +20,7 @@ import { UtmAccessHelper, UtmRelation, UtmRelationContext } from './helpers/utm-
 import { CreateUtmDto } from './dto/create-utm.dto';
 import { UpdateUtmDto } from './dto/update-utm.dto';
 import { UtmQueryDto } from './dto/utm-query.dto';
+import { MergeUtmDto } from './dto/merge-utm.dto';
 
 /** Phần của `request.user` mà module UTM cần (xem JwtStrategy.validate). */
 export interface UtmCaller {
@@ -555,5 +556,93 @@ export class UtmsService {
     await this.utmRepo.delete(utm.id); // utm_secondary_managers tự CASCADE ở DB
     this.auditService.logActionAsync(user.id, 'DELETE_UTM', 'utm', utm.id, { utmId: utm.id, utmName: utm.name }, null);
     return { success: true };
+  }
+
+  /** Khoá so sánh "gần giống": bỏ dấu, hạ chữ, bỏ mọi ký tự không phải chữ/số (FB-Q4 = FB_Q4 = fbq4). */
+  static similarityKey(name: string): string {
+    return name
+      .normalize('NFD')
+      .replace(/[\u0300-\u036f]/g, '')
+      .replace(/đ/gi, 'd')
+      .toLowerCase()
+      .replace(/[^a-z0-9]/g, '');
+  }
+
+  /** Scope rộng = `all` của utms.edit (Root Admin luôn all). Dùng cho Gộp + gợi ý trùng. */
+  private async assertBroadEdit(user: UtmCaller, action: string): Promise<void> {
+    if ((await this.scopeOf(user, 'utms.edit')) !== 'all') {
+      throw new ForbiddenException(`Chỉ người có quyền sửa UTM phạm vi "Tất cả" mới được ${action}`);
+    }
+  }
+
+  /** `GET /utms/duplicates` - nhóm UTM có tên gần giống nhau (KHÔNG tự gộp). Chỉ scope rộng. */
+  async findDuplicates(user: UtmCaller) {
+    await this.assertBroadEdit(user, 'xem gợi ý UTM trùng');
+    const utms = await this.utmRepo.find({ order: { name: 'ASC' } });
+    const groups = new Map<string, Utm[]>();
+    for (const u of utms) {
+      const k = UtmsService.similarityKey(u.name);
+      if (!k) continue;
+      groups.set(k, [...(groups.get(k) ?? []), u]);
+    }
+    const dup = [...groups.values()].filter((g) => g.length > 1);
+    if (dup.length === 0) return [];
+    const ids = dup.flat().map((u) => u.id);
+    const rows: Array<{ utm_id: number; c: string | number }> = await this.utmRepo.query(
+      `SELECT utm_id, COUNT(*) AS c FROM customers WHERE deleted_at IS NULL AND utm_id IN (${ids.map(() => '?').join(',')}) GROUP BY utm_id`,
+      ids,
+    );
+    const cnt = new Map(rows.map((r) => [Number(r.utm_id), Number(r.c)]));
+    return dup.map((g) => ({
+      utms: g.map((u) => ({ id: u.id, name: u.name, isActive: !!u.isActive, customerCount: cnt.get(u.id) ?? 0 })),
+    }));
+  }
+
+  /** `GET /utms/recent` - UTM đang hoạt động mà user đã gán gần đây nhất cho khách do mình tạo. */
+  async findRecent(user: UtmCaller, limit = 5) {
+    const rows: Array<{ id: number; name: string; color: string }> = await this.utmRepo.query(
+      `SELECT u.id, u.name, u.color, MAX(c.created_at) AS last_used
+       FROM customers c JOIN utms u ON u.id = c.utm_id
+       WHERE c.created_by_id = ? AND c.deleted_at IS NULL AND u.is_active = 1
+       GROUP BY u.id, u.name, u.color ORDER BY last_used DESC LIMIT ?`,
+      [user.id, Math.min(Math.max(limit, 1), 20)],
+    );
+    return rows.map((r) => ({ id: Number(r.id), name: r.name, color: r.color }));
+  }
+
+  /**
+   * `POST /utms/:id/merge {targetId}` - chuyển mọi KH (kể cả đã xoá mềm) của UTM nguồn sang UTM đích
+   * (utm_id + snapshot campaign, giữ `updated_at`), rồi xoá UTM nguồn (quản lý phụ tự CASCADE).
+   * Cùng 1 transaction; chỉ scope rộng.
+   */
+  async merge(sourceId: number, dto: MergeUtmDto, user: UtmCaller): Promise<{ success: true; movedCustomers: number; target: UtmView }> {
+    await this.assertBroadEdit(user, 'gộp UTM');
+    if (sourceId === dto.targetId) throw new BadRequestException('UTM nguồn và UTM đích phải khác nhau');
+    const [source, target] = await Promise.all([this.loadUtm(sourceId), this.loadUtm(dto.targetId)]);
+    if (!target.isActive) throw new BadRequestException(`UTM đích "${target.name}" đang bị khoá`);
+
+    let moved = 0;
+    await this.dataSource.transaction(async (manager) => {
+      for (;;) {
+        const res = await manager.query(
+          `UPDATE customers SET utm_id = ?, campaign = ?, updated_at = updated_at WHERE utm_id = ? LIMIT ${CASCADE_BATCH}`,
+          [target.id, target.name, source.id],
+        );
+        const affected = Number(res?.affectedRows ?? 0);
+        moved += affected;
+        if (affected < CASCADE_BATCH) break;
+      }
+      await manager.query('DELETE FROM utms WHERE id = ?', [source.id]);
+    });
+
+    this.auditService.logActionAsync(
+      user.id,
+      'MERGE_UTM',
+      'utm',
+      target.id,
+      { sourceUtmId: source.id, sourceUtmName: source.name },
+      { targetUtmId: target.id, targetUtmName: target.name, movedCustomers: moved },
+    );
+    return { success: true, movedCustomers: moved, target: await this.detail(target.id, user) };
   }
 }

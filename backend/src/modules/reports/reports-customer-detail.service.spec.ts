@@ -7,7 +7,7 @@ function fakeQb<T>(result: T, many = false) {
   const wheres: string[] = [];
   const params: Record<string, unknown> = {};
   const qb: any = {};
-  for (const m of ['leftJoinAndSelect', 'innerJoinAndSelect', 'orderBy', 'addOrderBy']) qb[m] = () => qb;
+  for (const m of ['leftJoinAndSelect', 'leftJoin', 'addSelect', 'innerJoinAndSelect', 'orderBy', 'addOrderBy']) qb[m] = () => qb;
   qb.where = (sql: string, p?: Record<string, unknown>) => {
     wheres.push(sql);
     Object.assign(params, p ?? {});

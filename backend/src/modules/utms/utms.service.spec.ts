@@ -263,4 +263,65 @@ describe('UtmsService', () => {
       expect(await svc.resolveForCustomer({ campaign: 'MỚI' }, emp)).toEqual({ utmId: 8, campaign: 'MỚI' });
     });
   });
+
+  describe('similarityKey / findDuplicates / merge / findRecent', () => {
+    it('similarityKey: bỏ dấu, hạ chữ, bỏ ký tự đặc biệt', () => {
+      expect(UtmsService.similarityKey('FB-Q4')).toBe('fbq4');
+      expect(UtmsService.similarityKey('fb_q4 ')).toBe('fbq4');
+      expect(UtmsService.similarityKey('Đông Xuân')).toBe('dongxuan');
+      expect(UtmsService.similarityKey('---')).toBe('');
+    });
+
+    it('findDuplicates: chỉ scope all; gom nhóm gần giống kèm số KH', async () => {
+      scopes['utms.edit'] = 'department';
+      await expect(svc.findDuplicates(emp)).rejects.toBeInstanceOf(ForbiddenException);
+      utmRepo.find.mockResolvedValue([mk({ id: 1, name: 'FB-Q4' }), mk({ id: 2, name: 'FB_Q4' }), mk({ id: 3, name: 'TikTok' })]);
+      utmRepo.query.mockResolvedValue([{ utm_id: 1, c: '5' }]);
+      const res = await svc.findDuplicates(root);
+      expect(res).toHaveLength(1);
+      expect(res[0].utms.map((u) => [u.id, u.customerCount])).toEqual([[1, 5], [2, 0]]);
+    });
+    it('findDuplicates: không có nhóm trùng -> [] và không truy vấn đếm', async () => {
+      utmRepo.find.mockResolvedValue([mk({ id: 1, name: 'A' }), mk({ id: 2, name: 'B' })]);
+      expect(await svc.findDuplicates(root)).toEqual([]);
+      expect(utmRepo.query).not.toHaveBeenCalled();
+    });
+
+    it('merge: không phải scope all -> 403, không đụng DB', async () => {
+      scopes['utms.edit'] = 'own';
+      await expect(svc.merge(1, { targetId: 2 }, emp)).rejects.toBeInstanceOf(ForbiddenException);
+      expect(dataSource.transaction).not.toHaveBeenCalled();
+    });
+    it('merge: nguồn = đích -> 400; đích đang khoá -> 400', async () => {
+      await expect(svc.merge(1, { targetId: 1 }, root)).rejects.toBeInstanceOf(BadRequestException);
+      utmRepo.findOne.mockResolvedValueOnce(mk({ id: 1 })).mockResolvedValueOnce(mk({ id: 2, isActive: false }));
+      await expect(svc.merge(1, { targetId: 2 }, root)).rejects.toBeInstanceOf(BadRequestException);
+      expect(dataSource.transaction).not.toHaveBeenCalled();
+    });
+    it('merge: chuyển KH sang đích (utm_id + snapshot, giữ updated_at), xoá nguồn cùng transaction, audit MERGE_UTM', async () => {
+      utmRepo.findOne
+        .mockResolvedValueOnce(mk({ id: 1, name: 'FB-Q4' }))
+        .mockResolvedValueOnce(mk({ id: 2, name: 'FB_Q4' }))
+        .mockResolvedValue(mk({ id: 2, name: 'FB_Q4' }));
+      txManager.query.mockResolvedValueOnce({ affectedRows: 7 }).mockResolvedValueOnce({});
+      const res = await svc.merge(1, { targetId: 2 }, root);
+      expect(res.movedCustomers).toBe(7);
+      expect(txManager.query.mock.calls[0][0]).toMatch(/updated_at = updated_at/);
+      expect(txManager.query.mock.calls[0][1]).toEqual([2, 'FB_Q4', 1]);
+      expect(txManager.query.mock.calls[1][0]).toMatch(/DELETE FROM utms/);
+      expect(audit.logActionAsync).toHaveBeenCalledWith(1, 'MERGE_UTM', 'utm', 2, expect.any(Object), expect.objectContaining({ movedCustomers: 7 }));
+    });
+    it('merge: lặp theo lô đến khi hết dòng', async () => {
+      utmRepo.findOne.mockResolvedValue(mk({ id: 2 })).mockResolvedValueOnce(mk({ id: 1 })).mockResolvedValueOnce(mk({ id: 2 }));
+      txManager.query.mockResolvedValueOnce({ affectedRows: 5000 }).mockResolvedValueOnce({ affectedRows: 30 }).mockResolvedValueOnce({});
+      const res = await svc.merge(1, { targetId: 2 }, root);
+      expect(res.movedCustomers).toBe(5030);
+    });
+
+    it('findRecent: truy vấn theo người tạo là mình, kẹp limit', async () => {
+      utmRepo.query.mockResolvedValue([{ id: '3', name: 'A', color: '#111' }]);
+      expect(await svc.findRecent(emp, 999)).toEqual([{ id: 3, name: 'A', color: '#111' }]);
+      expect(utmRepo.query.mock.calls[0][1]).toEqual([10, 20]);
+    });
+  });
 });

@@ -22,6 +22,10 @@ import { CreateUtmDto } from './dto/create-utm.dto';
 import { UpdateUtmDto } from './dto/update-utm.dto';
 import { UtmUserIdDto } from './dto/utm-user-id.dto';
 import { UtmQueryDto } from './dto/utm-query.dto';
+import { MergeUtmDto } from './dto/merge-utm.dto';
+import { UtmCustomersQueryDto } from './dto/utm-customers-query.dto';
+import { UtmCustomersService } from './utm-customers.service';
+import { GetPermissionScope } from '../../common/decorators/get-permission-scope.decorator';
 
 /**
  * UTM (danh mục chiến dịch, thay cho `customers.campaign` nhập tay). Mirror link-groups.
@@ -39,6 +43,7 @@ export class UtmsController {
   constructor(
     private readonly utmsService: UtmsService,
     private readonly managersService: UtmManagersService,
+    private readonly customersService: UtmCustomersService,
   ) {}
 
   @Get()
@@ -51,6 +56,26 @@ export class UtmsController {
   @ApiOperation({ summary: 'UTM mà mình là Quản lý chính/phụ' })
   managedByMe(@GetUser() user: any) {
     return this.utmsService.listManagedByMe(user);
+  }
+
+  @Get('recent')
+  @ApiOperation({ summary: 'UTM dùng gần đây của mình (dropdown "Dùng gần đây")' })
+  recent(@GetUser() user: any) {
+    return this.utmsService.findRecent(user);
+  }
+
+  @Get('customer-counts')
+  @RequirePermission('customers.view')
+  @ApiOperation({ summary: 'Số KH theo UTM - ĐÃ áp scope customers.view của người xem' })
+  customerCounts(@GetUser() user: any, @GetPermissionScope() scope: string | null | undefined) {
+    return this.customersService.getCounts(user, scope);
+  }
+
+  @Get('duplicates')
+  @RequirePermission('utms.edit')
+  @ApiOperation({ summary: 'Gợi ý UTM tên gần giống nhau - chỉ scope utms.edit = all' })
+  duplicates(@GetUser() user: any) {
+    return this.utmsService.findDuplicates(user);
   }
 
   @Get('scoped')
@@ -94,6 +119,25 @@ export class UtmsController {
   @ApiOperation({ summary: 'Mở khoá UTM' })
   activate(@Param('id', ParseIntPipe) id: number, @GetUser() user: any) {
     return this.utmsService.setActive(id, true, user);
+  }
+
+  @Get(':id/customers')
+  @RequirePermission('customers.view')
+  @ApiOperation({ summary: 'KH thuộc UTM - thành viên UTM/scope utms.view; luôn lọc theo scope customers.view' })
+  listCustomers(
+    @Param('id', ParseIntPipe) id: number,
+    @Query() query: UtmCustomersQueryDto,
+    @GetUser() user: any,
+    @GetPermissionScope() scope: string | null | undefined,
+  ) {
+    return this.customersService.listCustomers(id, query, user, scope);
+  }
+
+  @Post(':id/merge')
+  @RequirePermission('utms.edit')
+  @ApiOperation({ summary: 'Gộp UTM (:id = nguồn) vào UTM đích - chỉ scope utms.edit = all' })
+  merge(@Param('id', ParseIntPipe) id: number, @Body() dto: MergeUtmDto, @GetUser() user: any) {
+    return this.utmsService.merge(id, dto, user);
   }
 
   @Delete(':id')
