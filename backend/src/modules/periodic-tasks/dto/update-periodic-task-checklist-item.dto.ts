@@ -1,5 +1,7 @@
 import { ApiPropertyOptional } from '@nestjs/swagger';
-import { IsBoolean, IsOptional, IsString, MaxLength, IsNotEmpty } from 'class-validator';
+import { IsBoolean, IsIn, IsOptional, IsString, MaxLength, IsNotEmpty } from 'class-validator';
+import { CHECKLIST_NEXT_STATUS_CODES } from '../helpers/task-status.helper';
+import type { ChecklistNextStatusCode } from '../helpers/task-status.helper';
 
 /**
  * UpdatePeriodicTaskChecklistItemDto - body của
@@ -19,4 +21,12 @@ export class UpdatePeriodicTaskChecklistItemDto {
   @IsOptional()
   @IsBoolean({ message: 'isDone phải là boolean' })
   isDone?: boolean;
+
+  @ApiPropertyOptional({
+    enum: CHECKLIST_NEXT_STATUS_CODES,
+    description: 'Chỉ dùng khi tick (isDone=true): BE đổi status Task NGAY trong request này (chỉ tiến lên, không hạ).',
+  })
+  @IsOptional()
+  @IsIn(CHECKLIST_NEXT_STATUS_CODES, { message: 'nextStatusCode phải là "in_progress" hoặc "in_review"' })
+  nextStatusCode?: ChecklistNextStatusCode;
 }

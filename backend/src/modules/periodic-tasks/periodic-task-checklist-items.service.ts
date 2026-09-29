@@ -9,6 +9,7 @@ import { CreatePeriodicTaskChecklistItemDto } from './dto/create-periodic-task-c
 import { UpdatePeriodicTaskChecklistItemDto } from './dto/update-periodic-task-checklist-item.dto';
 import { ReorderPeriodicTaskChecklistItemsDto } from './dto/reorder-periodic-task-checklist-items.dto';
 import { PeriodicTaskAuditService, PeriodicTaskAuditAction } from './periodic-task-audit.service';
+import { isCompletedTask, resolveTickTargetStatus } from './helpers/task-status.helper';
 import { CHECKLIST_PAGE_SIZE, PeriodicTaskChecklistItemsQueryDto } from './dto/periodic-task-checklist-page.dto';
 
 /**
@@ -160,6 +161,12 @@ export class PeriodicTaskChecklistItemsService {
     const task = await this.tasksService.findOne(taskId, user.id, user.role, scope);
     await this.tasksService.assertEditableWhenLocked(task, user);
 
+    // Guard "thêm checklist vào Task ĐÃ HOÀN THÀNH": FE hỏi lại, chọn "Chưa hoàn thành, cần làm tiếp" -> reopen=true.
+    // Đổi status/kỳ TRƯỚC khi ghi item (đổi lỗi -> item chưa được tạo, không lệch trạng thái).
+    if (dto.reopen === true && isCompletedTask(task.status)) {
+      await this.tasksService.changeStatusByCode(task, 'in_progress', user, scope, { extendPeriodEndToToday: true });
+    }
+
     const maxPosition = await this.checklistRepo
       .createQueryBuilder('item')
       .select('MAX(item.position)', 'max')
@@ -201,7 +208,16 @@ export class PeriodicTaskChecklistItemsService {
 
     const item = await this.findItemOrFail(taskId, itemId);
     const before = { ...item };
-    Object.assign(item, dto);
+    const { nextStatusCode, ...itemChanges } = dto;
+
+    // Guard ÉP TRONG BE: tick (chưa xong -> xong) trên Task To-do luôn kéo Task sang in_progress (hoặc status FE xin
+    // nếu tiến lên). Đổi status TRƯỚC khi lưu tick: lỗi thì tick chưa lưu -> không bao giờ có tick trong Task To-do.
+    if (itemChanges.isDone === true && !item.isDone) {
+      const target = resolveTickTargetStatus(task.status?.code, nextStatusCode);
+      if (target) await this.tasksService.changeStatusByCode(task, target, user, scope);
+    }
+
+    Object.assign(item, itemChanges);
     await this.checklistRepo.save(item);
 
     this.auditService.logActionAsync(

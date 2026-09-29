@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { getTickPrompt } from './checklistTickGuard';
+import { getTickPrompt, isCompletedStatus } from './checklistTickGuard';
 
 describe('getTickPrompt', () => {
     it('bỏ tick -> không hỏi', () => {
@@ -20,5 +20,18 @@ describe('getTickPrompt', () => {
     it('Task đã in_review/done -> không hỏi kể cả mục cuối', () => {
         expect(getTickPrompt({ statusCode: 'in_review', isTicking: true, remainingUndone: 1 })).toBeNull();
         expect(getTickPrompt({ statusCode: 'done', isTicking: true, remainingUndone: 1 })).toBeNull();
+    });
+});
+
+describe('isCompletedStatus', () => {
+    it('in_review/done/isDoneState -> true', () => {
+        expect(isCompletedStatus({ code: 'in_review' })).toBe(true);
+        expect(isCompletedStatus({ code: 'done' })).toBe(true);
+        expect(isCompletedStatus({ code: 'custom', isDoneState: true })).toBe(true);
+    });
+    it('not_started/in_progress/null -> false', () => {
+        expect(isCompletedStatus({ code: 'not_started' })).toBe(false);
+        expect(isCompletedStatus({ code: 'in_progress' })).toBe(false);
+        expect(isCompletedStatus(null)).toBe(false);
     });
 });

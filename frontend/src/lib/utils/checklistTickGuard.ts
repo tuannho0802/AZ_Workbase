@@ -30,3 +30,11 @@ export function getTickPrompt(params: {
     if (statusCode === STATUS_NOT_STARTED) return { kind: 'start', nextStatusCode: STATUS_IN_PROGRESS };
     return null;
 }
+
+export type NextStatusCode = typeof STATUS_IN_PROGRESS | typeof STATUS_IN_REVIEW;
+
+/** Task đã hoàn thành (in_review/done hoặc status có `isDoneState`) - khớp `isCompletedTask` ở BE. */
+export function isCompletedStatus(status: { code?: string | null; isDoneState?: boolean } | null | undefined): boolean {
+    if (!status) return false;
+    return status.isDoneState === true || status.code === STATUS_IN_REVIEW || status.code === STATUS_DONE;
+}

@@ -42,6 +42,7 @@ describe('PeriodicTaskChecklistItemsService', () => {
     notifyTaskSafely: jest.fn(),
     emitTaskNotification: jest.fn(),
     getSecondaryAssigneeIds: jest.fn().mockResolvedValue([]),
+    changeStatusByCode: jest.fn().mockResolvedValue(undefined),
   };
   // Phase 9: constructor giờ nhận thêm PeriodicTaskLinksService (dùng ở
   // attachLinkedChildrenChecklist()) - PHẢI mock ở đây, thiếu sẽ khiến
@@ -139,6 +140,50 @@ describe('PeriodicTaskChecklistItemsService', () => {
     });
   });
 
+  describe('create - Guard mở lại Task đã hoàn thành', () => {
+    beforeEach(() => {
+      mockQb.getRawOne.mockResolvedValueOnce({ max: 0 }).mockResolvedValueOnce({ total: '2', done: '1' });
+      mockChecklistRepo.save.mockResolvedValue(undefined);
+    });
+    afterEach(() => {
+      mockQb.getRawOne.mockReset(); // xoá giá trị Once chưa dùng (test lỗi không chạm tới), tránh rò sang test khác
+    });
+
+    it('Task done + reopen=true -> đổi in_progress + kéo period_end tới hôm nay, TRƯỚC khi ghi item', async () => {
+      const order: string[] = [];
+      mockTasksService.findOne.mockResolvedValue({ id: taskId, isLocked: false, status: { code: 'done' } });
+      mockTasksService.changeStatusByCode.mockImplementation(async () => { order.push('status'); });
+      mockChecklistRepo.save.mockImplementation(async () => { order.push('save'); });
+
+      await service.create(taskId, { content: 'Thêm', reopen: true }, employeeUser, 'own');
+
+      expect(mockTasksService.changeStatusByCode).toHaveBeenCalledWith(
+        expect.objectContaining({ id: taskId }), 'in_progress', employeeUser, 'own', { extendPeriodEndToToday: true },
+      );
+      expect(order).toEqual(['status', 'save']);
+    });
+
+    it('Task done + không reopen ("Đã hoàn thành") -> chỉ thêm item, KHÔNG đổi status', async () => {
+      mockTasksService.findOne.mockResolvedValue({ id: taskId, isLocked: false, status: { code: 'done' } });
+      await service.create(taskId, { content: 'Thêm' }, employeeUser, 'own');
+      expect(mockTasksService.changeStatusByCode).not.toHaveBeenCalled();
+      expect(mockChecklistRepo.save).toHaveBeenCalled();
+    });
+
+    it('Task đang in_progress + reopen=true -> bỏ qua (không phải Task đã xong)', async () => {
+      mockTasksService.findOne.mockResolvedValue({ id: taskId, isLocked: false, status: { code: 'in_progress' } });
+      await service.create(taskId, { content: 'Thêm', reopen: true }, employeeUser, 'own');
+      expect(mockTasksService.changeStatusByCode).not.toHaveBeenCalled();
+    });
+
+    it('đổi status lỗi -> KHÔNG tạo item', async () => {
+      mockTasksService.findOne.mockResolvedValue({ id: taskId, isLocked: false, status: { code: 'done' } });
+      mockTasksService.changeStatusByCode.mockRejectedValue(new Error('boom'));
+      await expect(service.create(taskId, { content: 'Thêm', reopen: true }, employeeUser, 'own')).rejects.toThrow('boom');
+      expect(mockChecklistRepo.save).not.toHaveBeenCalled();
+    });
+  });
+
   describe('create', () => {
     it('thêm item mới với position = MAX(position) hiện có + 1', async () => {
       mockQb.getRawOne
@@ -190,6 +235,62 @@ describe('PeriodicTaskChecklistItemsService', () => {
         service.create(taskId, { content: 'X' }, employeeUser, 'own'),
       ).rejects.toThrow(ForbiddenException);
       expect(mockChecklistRepo.create).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('update - Guard ép status khi TICK (To-do không được có checklist đã tick)', () => {
+    const mkItem = () => ({ id: 5, taskId, content: 'A', isDone: false, position: 0 });
+
+    it('Task To-do tick thường (FE không gửi gì) -> ÉP in_progress TRƯỚC khi lưu tick', async () => {
+      const order: string[] = [];
+      mockTasksService.findOne.mockResolvedValue({ id: taskId, isLocked: false, status: { code: 'not_started' } });
+      mockTasksService.changeStatusByCode.mockImplementation(async () => { order.push('status'); });
+      mockChecklistRepo.findOne.mockResolvedValue(mkItem());
+      mockChecklistRepo.save.mockImplementation(async () => { order.push('save'); });
+
+      await service.update(taskId, 5, { isDone: true }, employeeUser, 'own');
+
+      expect(mockTasksService.changeStatusByCode).toHaveBeenCalledWith(
+        expect.objectContaining({ id: taskId }), 'in_progress', employeeUser, 'own',
+      );
+      expect(order).toEqual(['status', 'save']);
+    });
+
+    it('FE xin in_review -> ép in_review và KHÔNG lưu nextStatusCode vào item', async () => {
+      mockTasksService.findOne.mockResolvedValue({ id: taskId, isLocked: false, status: { code: 'in_progress' } });
+      const item = mkItem();
+      mockChecklistRepo.findOne.mockResolvedValue(item);
+
+      await service.update(taskId, 5, { isDone: true, nextStatusCode: 'in_review' }, employeeUser, 'own');
+
+      expect(mockTasksService.changeStatusByCode).toHaveBeenCalledWith(
+        expect.objectContaining({ id: taskId }), 'in_review', employeeUser, 'own',
+      );
+      expect(item).not.toHaveProperty('nextStatusCode');
+    });
+
+    it('đổi status lỗi -> tick KHÔNG được lưu', async () => {
+      mockTasksService.findOne.mockResolvedValue({ id: taskId, isLocked: false, status: { code: 'not_started' } });
+      mockTasksService.changeStatusByCode.mockRejectedValue(new Error('boom'));
+      mockChecklistRepo.findOne.mockResolvedValue(mkItem());
+      await expect(service.update(taskId, 5, { isDone: true }, employeeUser, 'own')).rejects.toThrow('boom');
+      expect(mockChecklistRepo.save).not.toHaveBeenCalled();
+    });
+
+    it('bỏ tick / task in_progress tick thường / task in_review -> không đổi status', async () => {
+      mockChecklistRepo.findOne.mockResolvedValue({ ...mkItem(), isDone: true });
+      mockTasksService.findOne.mockResolvedValue({ id: taskId, isLocked: false, status: { code: 'not_started' } });
+      await service.update(taskId, 5, { isDone: false }, employeeUser, 'own');
+
+      mockChecklistRepo.findOne.mockResolvedValue(mkItem());
+      mockTasksService.findOne.mockResolvedValue({ id: taskId, isLocked: false, status: { code: 'in_progress' } });
+      await service.update(taskId, 5, { isDone: true }, employeeUser, 'own');
+
+      mockChecklistRepo.findOne.mockResolvedValue(mkItem());
+      mockTasksService.findOne.mockResolvedValue({ id: taskId, isLocked: false, status: { code: 'in_review' } });
+      await service.update(taskId, 5, { isDone: true, nextStatusCode: 'in_progress' }, employeeUser, 'own');
+
+      expect(mockTasksService.changeStatusByCode).not.toHaveBeenCalled();
     });
   });
 

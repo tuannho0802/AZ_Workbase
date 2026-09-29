@@ -72,7 +72,7 @@ export function TaskChecklistInline({ taskId, task, canEdit, onOpenFull, default
     // Task con liên kết cũng tính vào "mục cuối" (mirror `TaskChecklistModal`) - chỉ tải khi đang mở checklist.
     const { data: childrenData } = useLinkedChildrenChecklistPage(taskId, 1, !collapsed);
     const remainingUndone = total - done + ((childrenData?.total ?? 0) - (childrenData?.done ?? 0));
-    const { guardTick } = useChecklistTickGuard();
+    const { guardTick, guardAdd } = useChecklistTickGuard();
     const percent = total > 0 ? Math.round((done / total) * 100) : 0;
     const hasMore = total > CHECKLIST_PAGE_SIZE;
 
@@ -105,8 +105,12 @@ export function TaskChecklistInline({ taskId, task, canEdit, onOpenFull, default
 
     const handleAdd = () => {
         if (!newContent.trim()) return;
+        if (!task) return doAdd();
+        guardAdd(task, (reopen) => doAdd(reopen));
+    };
+    const doAdd = (reopen?: boolean) => {
         addMutation.mutate(
-            { taskId, content: newContent.trim() },
+            { taskId, content: newContent.trim(), reopen },
             {
                 onSuccess: () => {
                     setNewContent('');
@@ -118,14 +122,11 @@ export function TaskChecklistInline({ taskId, task, canEdit, onOpenFull, default
     };
 
     const handleToggleDone = (item: PeriodicTaskChecklistItem) => {
-        const doTick = (onTicked?: () => void) =>
+        const doTick = (nextStatusCode?: 'in_progress' | 'in_review') =>
             updateMutation.mutate(
-                { taskId, itemId: item.id, data: { isDone: !item.isDone } },
+                { taskId, itemId: item.id, data: { isDone: !item.isDone, ...(nextStatusCode ? { nextStatusCode } : {}) } },
                 {
-                    onSuccess: () => {
-                        invalidatePerformance();
-                        onTicked?.();
-                    },
+                    onSuccess: () => invalidatePerformance(),
                     onError: (err) => message.error(getApiErrorMessage(err, 'Cập nhật trạng thái thất bại')),
                 },
             );

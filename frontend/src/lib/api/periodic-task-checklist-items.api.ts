@@ -69,15 +69,20 @@ export const periodicTaskChecklistItemsApi = {
   create: async (
     taskId: number,
     content: string,
+    /** true = Task đã hoàn thành được mở lại (BE đổi in_progress + kéo period_end tới hôm nay nếu kỳ đã qua). */
+    reopen?: boolean,
   ): Promise<{ item: PeriodicTaskChecklistItem; total: number; done: number }> => {
-    const response = await axiosInstance.post(`/periodic-tasks/${taskId}/checklist-items`, { content });
+    const response = await axiosInstance.post(`/periodic-tasks/${taskId}/checklist-items`, {
+      content,
+      ...(reopen ? { reopen: true } : {}),
+    });
     return response.data;
   },
 
   update: async (
     taskId: number,
     itemId: number,
-    data: { content?: string; isDone?: boolean },
+    data: { content?: string; isDone?: boolean; nextStatusCode?: 'in_progress' | 'in_review' },
   ): Promise<PeriodicTaskChecklistItem> => {
     const response = await axiosInstance.patch<PeriodicTaskChecklistItem>(
       `/periodic-tasks/${taskId}/checklist-items/${itemId}`,

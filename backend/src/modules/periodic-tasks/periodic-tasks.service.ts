@@ -19,6 +19,7 @@ import { PeriodicTaskAccessHelper } from './helpers/periodic-task-access.helper'
 import { resolveListWindow } from './helpers/list-window.helper';
 import { AUTO_LOCK_NOTE, COMPLETED_STATUS_CODES, isPastPeriodEnd } from './helpers/overdue.helper';
 import { todayVnStr } from '../../common/utils/date-vn.util';
+import { extendedPeriodEndForReopen } from './helpers/task-status.helper';
 import { PeriodicTaskAuditService, PeriodicTaskAuditAction } from './periodic-task-audit.service';
 // ⚠️ Notification Phase 2: NotificationsModule là @Global() (mirror
 // AuditModule/Customer Phase 3) nên không cần import module - tránh phụ
@@ -474,6 +475,32 @@ export class PeriodicTasksService {
     if (!found) {
       throw new NotFoundException(`Không tìm thấy Công việc định kỳ với ID ${id}`);
     }
+  }
+
+  /**
+   * Đổi status Task theo `code` cho Guard checklist: BE ép ngay trong request tick/thêm checklist
+   * (không để FE gọi PATCH thứ 2 dễ hỏng làm Task kẹt To-do dù checklist đã tick). Đi qua ĐÚNG `update()`
+   * nên vẫn đủ: kiểm tra khoá, audit `status_changed`, notification, tự gỡ dấu/khoá quá hạn.
+   * `extendPeriodEndToToday`: mở lại Task đã xong mà kỳ đã qua -> kéo `period_end_date` tới hôm nay.
+   * Không có status mang `code` -> 400 (caller gọi hàm này TRƯỚC khi ghi checklist nên checklist chưa đổi).
+   */
+  async changeStatusByCode(
+    task: PeriodicTask,
+    code: string,
+    user: RequestingUser,
+    scope?: string | null,
+    options: { extendPeriodEndToToday?: boolean } = {},
+  ): Promise<PeriodicTask> {
+    const status = await this.statusRepo.findOne({ where: { code } });
+    if (!status) {
+      throw new BadRequestException(`Không tìm thấy trạng thái "${code}" - vui lòng đổi trạng thái Task thủ công`);
+    }
+    const dto: UpdatePeriodicTaskDto = { statusId: status.id };
+    if (options.extendPeriodEndToToday) {
+      const extended = extendedPeriodEndForReopen(task.periodEndDate, todayVnStr());
+      if (extended) dto.periodEndDate = extended;
+    }
+    return this.update(task.id, dto, user, scope);
   }
 
   /**

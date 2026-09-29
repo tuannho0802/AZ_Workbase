@@ -169,8 +169,12 @@ export function TaskChecklistModal({ open, onClose, task }: Props) {
 
     const handleAdd = () => {
         if (!task || !newContent.trim()) return;
+        // Guard Task ĐÃ HOÀN THÀNH: hỏi lại; "Chưa hoàn thành" -> reopen (BE đổi in_progress + kéo kỳ tới hôm nay).
+        guardAdd(task, (reopen) => doAdd(task.id, reopen));
+    };
+    const doAdd = (taskId: number, reopen?: boolean) => {
         addMutation.mutate(
-            { taskId: task.id, content: newContent.trim() },
+            { taskId, content: newContent.trim(), reopen },
             {
                 onSuccess: (res) => {
                     message.success('Đã thêm checklist item');
@@ -186,14 +190,13 @@ export function TaskChecklistModal({ open, onClose, task }: Props) {
         );
     };
 
-    const { guardTick } = useChecklistTickGuard();
+    const { guardTick, guardAdd } = useChecklistTickGuard();
     const handleToggleDone = (item: PeriodicTaskChecklistItem) => {
         if (!task) return;
-        const doTick = (onTicked?: () => void) =>
+        const doTick = (nextStatusCode?: 'in_progress' | 'in_review') =>
             updateMutation.mutate(
-                { taskId: task.id, itemId: item.id, data: { isDone: !item.isDone } },
+                { taskId: task.id, itemId: item.id, data: { isDone: !item.isDone, ...(nextStatusCode ? { nextStatusCode } : {}) } },
                 {
-                    onSuccess: () => onTicked?.(),
                     onError: (err) => message.error(getApiErrorMessage(err, 'Cập nhật trạng thái thất bại')),
                 },
             );

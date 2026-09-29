@@ -1,5 +1,5 @@
-import { ApiProperty } from '@nestjs/swagger';
-import { IsNotEmpty, IsString, MaxLength } from 'class-validator';
+import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
+import { IsBoolean, IsNotEmpty, IsOptional, IsString, MaxLength } from 'class-validator';
 
 /**
  * CreatePeriodicTaskChecklistItemDto - body của
@@ -13,4 +13,13 @@ export class CreatePeriodicTaskChecklistItemDto {
   @IsString({ message: 'Nội dung phải là chuỗi' })
   @MaxLength(500, { message: 'Nội dung tối đa 500 ký tự' })
   content: string;
+
+  @ApiPropertyOptional({
+    example: true,
+    description:
+      'Chỉ có tác dụng khi Task ĐÃ HOÀN THÀNH: true = mở lại (status -> in_progress, kỳ đã qua thì kéo period_end tới hôm nay).',
+  })
+  @IsOptional()
+  @IsBoolean({ message: 'reopen phải là boolean' })
+  reopen?: boolean;
 }

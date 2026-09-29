@@ -4933,3 +4933,23 @@ khi bị xoá tay. Đây là 1 anti-pattern thật (dù đo thử với payload 
 > KHÔNG migration, KHÔNG permission key mới (dùng lại `customers.edit`, đã seed). Bảng `deposits` không có `updated_by` nên "ai sửa" nằm ở audit log. Chưa test trên MySQL/trình duyệt thật.
 
 ---
+
+## [2026-09-29 13:30] | Guard checklist: To-do không có tick (BE ép status) + thêm checklist vào Task đã xong -> mở lại | [Status: Success — BE tsc sạch + nest build OK + jest 1138/1138; FE vitest 231/231, tsc FE chỉ còn 5 lỗi CŨ (logo.png x4, styled-jsx CountBadge)]
+
+**Actor:** Agent (trên `origin/main` HEAD `61234cd`)
+
+**Root Cause:**
+> Đổi status nằm ở PATCH thứ 2 của FE (`onTicked -> updateTask.mutate`) nên tick đã lưu mà status kẹt To-do nếu PATCH hỏng/`statuses` chưa nạp; `TaskChecklistInline` còn `if (!task) return doTick()` bỏ qua Guard.
+
+**Solution:**
+> BE ép đổi status NGAY trong request tick (đổi status TRƯỚC khi lưu tick; lỗi thì tick không lưu). Thêm `nextStatusCode` (tick) và `reopen` (thêm item). FE chỉ hỏi + truyền ý định, bỏ PATCH thứ 2.
+
+**Files Changed:**
+- BE MỚI: `periodic-tasks/helpers/task-status.helper.ts` (+spec) — `resolveTickTargetStatus` (chỉ tiến lên, không hạ), `isCompletedTask`, `extendedPeriodEndForReopen`.
+- BE: `periodic-tasks.service.ts` (`changeStatusByCode` đi qua `update()` nên giữ khoá/audit/notification/tự gỡ khoá quá hạn), `periodic-task-checklist-items.service.ts` (`update`: tick trên To-do ép in_progress; `create`: `reopen` trên Task đã xong -> in_progress + kéo `period_end` tới hôm nay nếu kỳ đã qua), 2 DTO checklist, spec (+8 test).
+- FE: `useChecklistTickGuard.ts` (thêm `guardAdd`, bỏ PATCH thứ 2), `checklistTickGuard.ts` (+`isCompletedStatus`), `periodic-task-checklist-items.api.ts`, `usePeriodicTaskChecklistItems.ts`, `TaskChecklistModal.tsx`, `TaskChecklistInline.tsx`, test.
+
+**Notes:**
+> KHÔNG migration, KHÔNG permission key mới. Chưa test trên MySQL/trình duyệt thật. Item tick sẵn từ dữ liệu cũ trong Task To-do không tự dọn (chỉ chặn tick mới).
+
+---

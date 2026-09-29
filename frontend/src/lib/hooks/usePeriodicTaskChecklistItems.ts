@@ -8,14 +8,18 @@ const LIST_KEY = 'periodic-tasks';
 
 function useInvalidatePeriodicTaskChecklistItems() {
   const queryClient = useQueryClient();
-  return () => queryClient.invalidateQueries({ queryKey: [LIST_KEY] });
+  // BE có thể đổi status/kỳ Task ngay trong request tick/thêm checklist (Guard) -> làm tươi cả hiệu suất.
+  return () => {
+    queryClient.invalidateQueries({ queryKey: [LIST_KEY] });
+    queryClient.invalidateQueries({ queryKey: ['periodic-task-performance'] });
+  };
 }
 
 export const useAddTaskChecklistItem = () => {
   const invalidate = useInvalidatePeriodicTaskChecklistItems();
   return useMutation({
-    mutationFn: ({ taskId, content }: { taskId: number; content: string }) =>
-      periodicTaskChecklistItemsApi.create(taskId, content),
+    mutationFn: ({ taskId, content, reopen }: { taskId: number; content: string; reopen?: boolean }) =>
+      periodicTaskChecklistItemsApi.create(taskId, content, reopen),
     onSuccess: invalidate,
   });
 };
@@ -30,7 +34,7 @@ export const useUpdateTaskChecklistItem = () => {
     }: {
       taskId: number;
       itemId: number;
-      data: { content?: string; isDone?: boolean };
+      data: { content?: string; isDone?: boolean; nextStatusCode?: 'in_progress' | 'in_review' };
     }) => periodicTaskChecklistItemsApi.update(taskId, itemId, data),
     onSuccess: invalidate,
   });
