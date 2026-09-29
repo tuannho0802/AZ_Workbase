@@ -4988,3 +4988,17 @@ khi bị xoá tay. Đây là 1 anti-pattern thật (dù đo thử với payload 
 > KHÔNG migration, KHÔNG permission key mới, BE không đổi.
 
 ---
+
+## [2026-09-29 15:30] | UTM Phần 1: bảng `utms` + đồng bộ toàn bộ `customers.campaign` cũ | [Status: Success — BE tsc sạch + nest build OK + jest 1147/1147; migration + backfill đã chạy thử trên MySQL 8.0 thật với 12.012 KH dữ liệu bẩn]
+
+**Actor:** Agent (trên `origin/main` HEAD `1e84e1e`)
+
+**Files Changed:**
+- BE MỚI: `entities/utm.entity.ts`, `entities/utm-secondary-manager.entity.ts`; `customer.entity.ts` thêm `utmId`/`utm`.
+- BE MỚI: migration `1785000000000-CreateUtmsSystem.ts` (DDL: utms, utm_secondary_managers, customer_campaign_backup, customers.utm_id) và `1785100000000-BackfillUtmsFromCustomerCampaign.ts` (DML backfill + đối soát).
+- BE MỚI: `database/utils/utm-backfill.util.ts` (+spec), `database/seeds/backfill-utms.ts`, script `npm run utm:backfill`.
+
+**Notes:**
+> Chưa có module/API/FE UTM, chưa seed permission `utms.*` (làm ở các phần sau). Migration cần chạy tay trên DB thật (`npm run migration:run`) sau khi backup DB. Backfill KHÔNG đổi `updated_at` của khách; giữ nguyên `customers.campaign` (snapshot = tên UTM).
+
+---

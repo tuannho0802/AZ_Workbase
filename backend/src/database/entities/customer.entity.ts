@@ -3,6 +3,7 @@ import { User } from './user.entity';
 import { Department } from './department.entity';
 import { Deposit } from './deposit.entity';
 import { CustomerNote } from './customer-note.entity';
+import { Utm } from './utm.entity';
 
 @Entity('customers')
 @Index(['name'])
@@ -38,8 +39,17 @@ export class Customer {
   @Column({ type: 'varchar', length: 100 })
   source: string;
 
+  // Snapshot TÊN UTM (= utm.name khi có utmId). Giữ lại để FULLTEXT/export/report không đổi.
   @Column({ length: 100, nullable: true })
   campaign: string;
+
+  // FK tới danh mục `utms` (PLAN_UTM_MANAGEMENT). NULL = khách không có UTM (hợp lệ).
+  @Column({ name: 'utm_id', type: 'int', nullable: true, default: null })
+  utmId: number | null;
+
+  @ManyToOne(() => Utm, { nullable: true, onDelete: 'RESTRICT' })
+  @JoinColumn({ name: 'utm_id' })
+  utm: Utm | null;
 
   @Column({ name: 'sales_user_id', nullable: true, default: null })
   salesUserId: number | null;
