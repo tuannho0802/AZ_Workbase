@@ -5059,3 +5059,25 @@ khi bị xoá tay. Đây là 1 anti-pattern thật (dù đo thử với payload 
 > Modal dùng `key` để reset state thay vì setState trong effect (rule react-hooks/set-state-in-effect). Tab "Gợi ý trùng"/nút Gộp đòi cả `utms.view` (danh sách đích lấy từ /utms/scoped) lẫn `utms.edit` scope `all`. Chưa test trình duyệt/DB thật.
 
 ---
+## [2026-09-29 23:00] | UTM Phần 6: sửa key trùng + guard `customers.view` + cột/filter/sort mới cho /quan-ly-utm | [Status: Success — FE tsc sạch (chỉ còn lỗi cũ logo.png/CountBadge của sandbox), vitest 234/234 sau bước guard, 20/20 cho `utm-list.util.test.ts` + `nav-config.test.tsx` sau bước UI; CHƯA chạy `next build`, CHƯA xem trình duyệt thật]
+
+**Actor:** Agent (trên `origin/main` HEAD `66d5530`) + User (push từng bước, tự sửa deprecated `<Alert message>` ở `4a75f6e`)
+
+**Files Changed:**
+- `frontend/src/app/(dashboard)/quan-ly-utm/page.tsx` — (1) key fallback của `UtmCustomersModal`/`UtmMergeModal` đổi thành `customers-…`/`merge-…` (trước đó cả hai cùng `'none'` → cảnh báo "two children with the same key"); (2) route guard đòi cả `utms.my_managed` VÀ `customers.view`, trả `null` khi đang tải/thiếu quyền; (3) bỏ dòng mô tả nhỏ dưới tên UTM, thêm cột **Mô tả** (ellipsis + Tooltip) và cột **Ngày tạo** (`DD/MM/YYYY HH:mm`); (4) thêm filter Quản lý chính (option lấy từ chính danh sách, có "Chưa gán"), Hiển thị (Công khai/Riêng tư), khoảng Ngày tạo; (5) thêm Sắp xếp, mặc định **Mới nhất**; đổi tab reset các filter mới (giữ sort).
+- `frontend/src/lib/nav-config.tsx` — thêm field `requireAll?: string[]` (guard AND, khác `permission` mảng là OR) vào `NavItem`; mục `quan-ly-utm` gắn `requireAll: ['customers.view']`. `getVisibleNavItems` ẩn mục nếu thiếu bất kỳ key nào.
+- `frontend/src/lib/nav-config.test.tsx` — +3 test guard (thiếu `customers.view`, thiếu `utms.my_managed`, đủ cả hai).
+- `frontend/src/lib/utils/utm-list.util.ts` (MỚI) — chuyển `filterUtmRows` ra khỏi `page.tsx` (Next không cho export lạ ở file page), mở rộng nhận filter phụ; thêm `sortUtmRows` (`newest` mặc định — hoà thì `id` giảm dần vì UTM backfill cùng `createdAt`, `oldest`, `name_asc/desc`, `customers_desc`).
+- `frontend/src/lib/utils/utm-list.util.test.ts` (MỚI) — 9 test lọc/sắp xếp.
+- `frontend/src/components/common/ListFilterBar.tsx` — thêm prop tùy chọn `extra`/`extraMdSpan` (tương thích ngược) để đặt RangePicker cùng hàng filter.
+
+**Root Cause (bug key trùng):**
+> Hai modal anh em cùng dùng `'none'` làm key khi đang đóng (`viewing`/`merging` = null) → trùng key trong cùng 1 parent.
+
+**Solution:**
+> Prefix key riêng theo modal; cơ chế remount theo `id` để reset state modal giữ nguyên.
+
+**Notes:**
+> Guard `customers.view` CHỈ ở FE (menu sidebar/trang chủ + route guard). `GET /utms/managed-by-me` ở BE vẫn CỐ Ý không `@RequirePermission` (Employee cần chọn UTM ở form KH) nên chưa khoá theo `customers.view` — nếu muốn chặn cả API phải tách endpoint riêng cho trang này. Các chỗ khác hiển thị UTM (`UtmTag`/`UtmSelect`/`UtmFilterSelect`) đều nằm trong luồng khách hàng nên đã gián tiếp cần `customers.view`. `PERMISSIONS.md` §2.13/dòng `utms.my_managed` chưa ghi điều kiện AND mới này — cần bổ sung nếu muốn tài liệu khớp code. Sort "Nhiều khách hàng nhất" dựa vào `customer-counts` (đã luôn có quyền vì page guard đòi `customers.view`).
+
+---
