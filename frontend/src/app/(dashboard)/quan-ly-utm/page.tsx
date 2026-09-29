@@ -290,7 +290,7 @@ export default function QuanLyUtmPage() {
                   type="info"
                   showIcon
                   style={{ marginBottom: 12 }}
-                  message="Các UTM có tên gần giống nhau (khác dấu, gạch nối, gạch dưới, khoảng trắng...). Hệ thống KHÔNG tự gộp — bạn quyết định UTM nào là bản chuẩn."
+                  title="Các UTM có tên gần giống nhau (khác dấu, gạch nối, gạch dưới, khoảng trắng...). Hệ thống KHÔNG tự gộp — bạn quyết định UTM nào là bản chuẩn."
                 />
                 {dupGroups.length === 0 && !loadingDup ? (
                   <Empty description="Không có UTM nào trùng lặp" />
