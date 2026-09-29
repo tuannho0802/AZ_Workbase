@@ -4891,3 +4891,16 @@ khi bị xoá tay. Đây là 1 anti-pattern thật (dù đo thử với payload 
 > Không migration, không permission key mới. Chưa commit/push, chưa test trên MySQL/trình duyệt thật.
 
 ---
+
+## [2026-09-29 16:00] | /reports: màu % ở tab Chất lượng Data + tooltip 3 ghi chú gần nhất trên nút "Xem" | [Status: Success — BE tsc sạch + jest reports 53/53; FE tsc không lỗi mới + vitest (reports+lib) 162/162 + eslint 0 lỗi]
+
+**Actor:** Agent (trên `origin/main` HEAD `12d02e7`)
+
+**Files Changed:**
+- BE: `reports/reports-customer-list.service.ts` (+spec) — mỗi dòng trả thêm `recentNotes` (tối đa 3 ghi chú `customer_notes`, mới nhất trước, 1 query cho cả trang).
+- FE: `ReportCustomersModal.tsx` (+test) — Tooltip trên nút "Xem" (rê chuột 0.3s), `QualityReportTab.tsx` (màu % từng trạng thái, thanh tỷ lệ, hint "% tổng data"; bỏ ngưỡng cũ 60/30), `lib/types/reports.types.ts`.
+
+**Notes:**
+> Không migration, không permission key mới. Chưa test trên MySQL/trình duyệt thật.
+
+---

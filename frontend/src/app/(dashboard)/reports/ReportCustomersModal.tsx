@@ -90,6 +90,22 @@ export function getQuickOptions(
   });
 }
 
+/** Tooltip nhanh 3 ghi chú chăm sóc gần nhất (cùng kiểu cột "Ghi chú gần nhất" ở trang Khách hàng). */
+const renderRecentNotesTooltip = (notes?: ReportCustomerListRow['recentNotes']) => {
+  if (!notes || notes.length === 0) return <span style={{ fontSize: 12 }}>Chưa có ghi chú</span>;
+  return (
+    <div style={{ minWidth: 220, maxWidth: 320, fontSize: 12 }}>
+      {notes.map((n, idx) => (
+        <div key={n.id} style={idx < notes.length - 1 ? { marginBottom: 8 } : undefined}>
+          <strong>{n.createdByName || 'Không xác định'}:</strong> <span style={{ whiteSpace: 'pre-wrap' }}>{n.note}</span>
+          <br />
+          <span style={{ fontSize: 10, color: 'rgba(255,255,255,0.65)' }}>{dayjs(n.createdAt).format('HH:mm DD/MM/YYYY')}</span>
+        </div>
+      ))}
+    </div>
+  );
+};
+
 const userCell = (u: ReportListUser | null) =>
   u ? <ReportUserName name={u.name} departmentName={u.departmentName} departmentColor={u.departmentColor} /> : <Text type="secondary">—</Text>;
 
@@ -235,13 +251,15 @@ export default function ReportCustomersModal({ drill, onClose, query, context }:
     cols.push({
       title: 'Thông tin',
       key: 'info',
-      width: 100,
+      width: 140,
       align: 'center',
       fixed: 'right',
       render: (_, r) => (
-        <Button type="link" size="small" icon={<EyeOutlined />} onClick={() => setDetailId(r.id)}>
-          Xem
-        </Button>
+        <Tooltip title={renderRecentNotesTooltip(r.recentNotes)} mouseEnterDelay={0.3}>
+          <Button type="link" size="small" icon={<EyeOutlined />} onClick={() => setDetailId(r.id)}>
+            {r.noteCount ? `Xem (Note +${r.noteCount})` : 'Xem'}
+          </Button>
+        </Tooltip>
       ),
     });
     return cols;

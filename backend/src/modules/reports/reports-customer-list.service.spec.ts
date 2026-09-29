@@ -22,11 +22,14 @@ function fakeQb(rows: any[] = [], total = 0) {
   return { qb, wheres, params };
 }
 
-const build = (rows: any[] = [], total = 0) => {
+const build = (rows: any[] = [], total = 0, notes: any[] = []) => {
   const f = fakeQb(rows, total);
+  const notesQb: any = {};
+  for (const m of ['leftJoinAndSelect', 'where', 'orderBy', 'addOrderBy']) notesQb[m] = () => notesQb;
+  notesQb.getMany = async () => notes;
   const svc = new ReportsCustomerListService({
     createQueryBuilder: () => f.qb,
-    manager: { createQueryBuilder: () => ({ select: () => ({ addSelect: () => ({ from: () => ({ where: () => ({ andWhere: () => ({ groupBy: () => ({ getRawMany: async () => [] }) }) }) }) }) }) }) },
+    manager: { createQueryBuilder: (entity?: unknown) => (entity ? notesQb : { select: () => ({ addSelect: () => ({ from: () => ({ where: () => ({ andWhere: () => ({ groupBy: () => ({ getRawMany: async () => [] }) }) }) }) }) }) }) },
   } as any);
   return { svc, ...f };
 };
@@ -103,5 +106,17 @@ describe('ReportsCustomerListService', () => {
     const r = build();
     await r.svc.getList({ ...base, metric: 'redeposit' }, 1, Role.ADMIN, PermissionScope.ALL);
     expect(r.wheres.some((w) => w.includes('d.id <> (SELECT d2.id'))).toBe(true);
+  });
+
+  it('trả kèm tối đa 3 ghi chú chăm sóc gần nhất mỗi khách (mới nhất trước)', async () => {
+    const mk = (id: number, customerId: number, day: number) => ({ id, customerId, note: `n${id}`, createdAt: new Date(2026, 8, day), createdByUser: { name: 'NV' } });
+    const notes = [mk(5, 1, 20), mk(4, 1, 19), mk(3, 1, 18), mk(2, 1, 17), mk(9, 2, 10)];
+    const { svc } = build([{ id: 1, name: 'A' }, { id: 2, name: 'B' }, { id: 3, name: 'C' }], 3, notes);
+    const res = await svc.getList({ ...base, metric: 'total' }, 1, Role.ADMIN, PermissionScope.ALL);
+    expect(res.data[0].recentNotes.map((n) => n.id)).toEqual([5, 4, 3]);
+    expect(res.data[1].recentNotes).toEqual([{ id: 9, note: 'n9', createdAt: expect.any(Date), createdByName: 'NV' }]);
+    expect(res.data[2].recentNotes).toEqual([]);
+    // Tổng số ghi chú tính đủ (khách 1 có 4 dù chỉ trả 3 gần nhất).
+    expect(res.data.map((d) => d.noteCount)).toEqual([4, 1, 0]);
   });
 });

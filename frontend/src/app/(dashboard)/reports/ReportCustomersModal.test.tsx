@@ -140,4 +140,22 @@ describe('ReportCustomersModal', () => {
     expect(vals('unassigned_marketing')).toEqual(['all', 'no_sales', 'no_phone']);
     expect(vals('unassigned_marketing', { marketingUserId: 3 })).toEqual(['all', 'no_sales', 'no_phone']);
   });
+
+  it('rê chuột vào nút \"Xem\" -> tooltip hiện các ghi chú chăm sóc gần nhất', async () => {
+    listResult = {
+      data: { data: [{ ...row, noteCount: 5, recentNotes: [{ id: 1, note: 'Gọi lại chiều mai', createdAt: '2026-09-25T03:00:00.000Z', createdByName: 'Lê Tuấn' }] }], total: 1, page: 1, limit: 10, totalPages: 1 },
+      isLoading: false, isFetching: false, isError: false,
+    };
+    render(<ReportCustomersModal drill={{ metric: 'total' }} onClose={vi.fn()} query={query} context="customers" />);
+    fireEvent.mouseEnter(screen.getByText('Xem (Note +5)'));
+    expect(await screen.findByText('Gọi lại chiều mai', {}, { timeout: 2000 })).toBeTruthy();
+    expect(screen.getByText('Lê Tuấn:')).toBeTruthy();
+  });
+
+  it('khách chưa có ghi chú -> tooltip \"Chưa có ghi chú\"', async () => {
+    withRow();
+    render(<ReportCustomersModal drill={{ metric: 'total' }} onClose={vi.fn()} query={query} context="customers" />);
+    fireEvent.mouseEnter(screen.getByText('Xem'));
+    expect(await screen.findByText('Chưa có ghi chú', {}, { timeout: 2000 })).toBeTruthy();
+  });
 });

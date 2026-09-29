@@ -297,6 +297,10 @@ export interface ReportCustomerListRow {
     salesUser: ReportListUser | null;
     marketingUser: ReportListUser | null;
     createdBy: ReportListUser | null;
+    /** Tối đa 3 ghi chú chăm sóc (customer_notes) mới nhất - hiện ở tooltip nút "Xem". */
+    /** Tổng số ghi chú chăm sóc (customer_notes) của khách. */
+    noteCount?: number;
+    recentNotes?: { id: number; note: string; createdAt: string; createdByName: string | null }[];
     /** Chỉ có khi metric là deposited/ftd/redeposit - tổng tiền nạp TRONG KỲ. */
     depositAmount?: number;
     /** Số khoản nạp trong kỳ / ngày nạp gần nhất trong kỳ (cùng điều kiện với depositAmount). */

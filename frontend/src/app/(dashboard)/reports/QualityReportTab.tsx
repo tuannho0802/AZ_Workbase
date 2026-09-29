@@ -14,18 +14,15 @@ import PeriodSelector from './PeriodSelector';
 import ReportNameFilter from './ReportNameFilter';
 import ReportKpiCard, { REPORT_COLORS } from './ReportKpiCard';
 import ReportUserName from './ReportUserName';
+import { rateColor, rateTextColor } from '@/lib/utils/rateColor';
 import ReportCustomersModal, { type CustomerDrill } from './ReportCustomersModal';
 
 const { Text } = Typography;
 
 const percentOf = (count: number, total: number) => (total > 0 ? Math.round((count / total) * 1000) / 10 : 0);
 
-/** Màu Progress theo tỉ lệ - xanh (tốt) -> vàng -> đỏ; dùng chung cho mọi status vì danh sách status là ĐỘNG. */
-function progressColor(pct: number): string {
-  if (pct >= 60) return '#52c41a';
-  if (pct >= 30) return '#faad14';
-  return '#f5222d';
-}
+/** Màu Progress theo tỉ lệ - dùng chung ngưỡng với mọi % ở báo cáo (< 40% đỏ, 40-80% vàng, > 80% xanh). */
+const progressColor = (pct: number): string => rateColor(pct) ?? '#f5222d';
 
 const hexOrUndefined = (c?: string) => (c && c.startsWith('#') ? c : undefined);
 
@@ -150,7 +147,7 @@ export default function QualityReportTab({ query, onQueryChange }: Props) {
         return (
           <span>
             {linkCount(count, r, s)}{' '}
-            <Text type="secondary" style={{ fontSize: 12 }}>({percentOf(count, r.total)}%)</Text>
+            <Text style={{ fontSize: 12, color: rateTextColor(percentOf(count, r.total)) }}>({percentOf(count, r.total)}%)</Text>
           </span>
         );
       },
@@ -163,7 +160,7 @@ export default function QualityReportTab({ query, onQueryChange }: Props) {
             width: 160,
             render: (_: unknown, r: FlatQualityRow) => {
               const pct = percentOf(r.byStatus[effectiveHighlight] || 0, r.total);
-              return <Progress percent={pct} size="small" strokeColor={progressColor(pct)} />;
+              return <Progress percent={pct} size="small" strokeColor={progressColor(pct)} format={(p) => <span style={{ color: rateTextColor(p) }}>{p}%</span>} />;
             },
             sorter: (a: FlatQualityRow, b: FlatQualityRow) => (a.byStatus[effectiveHighlight] || 0) - (b.byStatus[effectiveHighlight] || 0),
             defaultSortOrder: 'descend' as const,
@@ -223,7 +220,7 @@ export default function QualityReportTab({ query, onQueryChange }: Props) {
                 value={count}
                 color={hexOrUndefined(s.color)}
                 loading={isLoading}
-                hint={`${percentOf(count, totals.total)}% tổng data`}
+                hint={<span style={{ color: rateTextColor(percentOf(count, totals.total)) }}>{percentOf(count, totals.total)}% tổng data</span>}
                 onClick={() => setDrill({ metric: 'total', label: s.name, initialStatus: s.code })}
               />
             </Col>

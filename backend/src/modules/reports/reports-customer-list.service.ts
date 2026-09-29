@@ -3,6 +3,7 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, SelectQueryBuilder } from 'typeorm';
 import { Customer } from '../../database/entities/customer.entity';
 import { CustomerGroupMembership } from '../../database/entities/customer-group-membership.entity';
+import { CustomerNote } from '../../database/entities/customer-note.entity';
 import { Deposit } from '../../database/entities/deposit.entity';
 import { PermissionScope } from '../../database/entities/role-permission.entity';
 import { Role } from '../../common/enums/role.enum';
@@ -12,6 +13,9 @@ import { resolveReportRange, ResolvedReportRange } from './report-range.util';
 import { applyMarketingOwnOnly } from './report-scope.util';
 
 export const REPORT_CUSTOMER_LIST_DEFAULT_LIMIT = 10;
+
+/** Số ghi chú chăm sóc gần nhất trả kèm mỗi dòng (hiện ở tooltip nút "Xem" của Mini Table). */
+export const REPORT_RECENT_NOTES_LIMIT = 3;
 
 type UserLike = { id: number; name: string; department?: { name: string; color?: string | null } | null };
 
@@ -84,6 +88,8 @@ export class ReportsCustomerListService {
     const groupsByCustomer =
       query.metric === 'joined' ? await this.loadJoinedGroups(ids, range) : new Map<number, string[]>();
 
+    const { recent: notesByCustomer, counts: noteCounts } = await this.loadRecentNotes(ids);
+
     const data = rows.map((c) => ({
       id: c.id,
       name: c.name,
@@ -97,6 +103,9 @@ export class ReportsCustomerListService {
       salesUser: userBrief(c.salesUser as UserLike | null),
       marketingUser: userBrief(c.marketingUser as UserLike | null),
       createdBy: userBrief(c.createdBy as UserLike | null),
+      recentNotes: notesByCustomer.get(c.id) ?? [],
+      /** TỔNG số ghi chú chăm sóc (customer_notes) - khác `recentNotes` chỉ giữ tối đa 3. */
+      noteCount: noteCounts.get(c.id) ?? 0,
       ...(isDepositMetric
         ? {
             depositAmount: depositByCustomer.get(c.id)?.amount ?? 0,
@@ -265,5 +274,33 @@ export class ReportsCustomerListService {
       map.set(Number(r.customerId), list);
     }
     return map;
+  }
+
+  /** Tối đa 3 ghi chú CHĂM SÓC (customer_notes) mới nhất của mỗi khách - 1 query cho cả trang, không N+1. */
+  private async loadRecentNotes(
+    ids: number[],
+  ): Promise<{
+    recent: Map<number, { id: number; note: string; createdAt: Date; createdByName: string | null }[]>;
+    counts: Map<number, number>;
+  }> {
+    const map = new Map<number, { id: number; note: string; createdAt: Date; createdByName: string | null }[]>();
+    const counts = new Map<number, number>();
+    if (ids.length === 0) return { recent: map, counts };
+    const rows = await this.customerRepo.manager
+      .createQueryBuilder(CustomerNote, 'n')
+      .leftJoinAndSelect('n.createdByUser', 'nBy')
+      .where('n.customerId IN (:...ids)', { ids })
+      .orderBy('n.createdAt', 'DESC')
+      .addOrderBy('n.id', 'DESC')
+      .getMany();
+    for (const n of rows) {
+      counts.set(n.customerId, (counts.get(n.customerId) ?? 0) + 1);
+      const list = map.get(n.customerId) ?? [];
+      if (list.length < REPORT_RECENT_NOTES_LIMIT) {
+        list.push({ id: n.id, note: n.note, createdAt: n.createdAt, createdByName: n.createdByUser?.name ?? null });
+        map.set(n.customerId, list);
+      }
+    }
+    return { recent: map, counts };
   }
 }
