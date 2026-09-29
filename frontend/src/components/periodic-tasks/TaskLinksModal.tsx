@@ -116,7 +116,9 @@ export function TaskLinksModal({ open, onClose, task }: Props) {
     const { message } = App.useApp();
     const { can } = useMyPermissions();
     const hasEditPermission = can('periodic_tasks.edit');
-    const hasLinkCustomerPermission = can('periodic_tasks.link_customer');
+    // Không có `customers.view` -> ẩn hẳn phần Khách hàng liên quan + không fetch GET /customers.
+    const canViewCustomers = can('customers.view');
+    const hasLinkCustomerPermission = can('periodic_tasks.link_customer') && canViewCustomers;
     // Phase 5 (PLAN mục 2.9) - BE áp `assertEditableWhenLocked()` ở CẢ 3 chỗ
     // sửa dữ liệu trong modal này (links cha/con, Customer, Phụ trách phụ),
     // không riêng PATCH nội dung Task ở `page.tsx`. Thiếu gate FE ở đây thì
@@ -634,6 +636,8 @@ export function TaskLinksModal({ open, onClose, task }: Props) {
                         </Text>
                     )}
 
+                    {canViewCustomers && (
+                        <>
                     <Divider style={{ margin: '20px 0 12px' }} />
 
                     <div style={{ marginBottom: 8 }}>
@@ -737,6 +741,8 @@ export function TaskLinksModal({ open, onClose, task }: Props) {
                                 ? 'Công việc đang bị khoá - cần quyền "Sửa khi đang khoá" để gán/gỡ Khách hàng.'
                                 : 'Bạn chỉ có quyền xem Khách hàng liên quan - cần thêm quyền "Gắn Khách hàng vào Công việc định kỳ" để gán/gỡ.'}
                         </Text>
+                    )}
+                        </>
                     )}
 
                     <Divider style={{ margin: '20px 0 12px' }} />

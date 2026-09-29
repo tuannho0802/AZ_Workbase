@@ -507,7 +507,11 @@ function PeriodicTasksPageContent() {
     //    sánh (diff) danh sách gốc với danh sách người dùng vừa chỉnh để
     //    biết cần THÊM (`addCustomers`) hay GỠ (`removeCustomer`, không có
     //    endpoint gỡ hàng loạt nên gọi riêng từng cái).
-    const canLinkCustomer = can('periodic_tasks.link_customer');
+    // Gắn Khách hàng cần CẢ 2 quyền: `periodic_tasks.link_customer` VÀ `customers.view`
+    // (BE addCustomers/removeCustomer 403 nếu thiếu 1 trong 2; ô tìm gọi GET /customers
+    // cũng cần customers.view). Thiếu 1 -> ẩn hẳn UI + không fetch.
+    const canViewCustomers = can('customers.view');
+    const canLinkCustomer = can('periodic_tasks.link_customer') && canViewCustomers;
     const [customerIds, setCustomerIds] = useState<number[]>([]);
     // Chỉ có ý nghĩa ở chế độ Sửa - danh sách Customer ĐÃ gắn lúc mở modal,
     // dùng để diff lúc lưu. Rỗng ở chế độ Tạo mới (không có gì để diff).
@@ -1201,7 +1205,7 @@ function PeriodicTasksPageContent() {
                     canDelete={canDelete}
                     onLink={setLinkingTask}
                     onChecklist={setChecklistingTask}
-                    onCustomers={setCustomersTask}
+                    onCustomers={canViewCustomers ? setCustomersTask : undefined}
                     onAudit={setAuditingTask}
                     onEdit={openEditModal}
                     onLock={setLockingTask}
@@ -1464,7 +1468,7 @@ function PeriodicTasksPageContent() {
                     canDelete={canDelete}
                     onLink={setLinkingTask}
                     onChecklist={setChecklistingTask}
-                    onCustomers={setCustomersTask}
+                    onCustomers={canViewCustomers ? setCustomersTask : undefined}
                     onAudit={setAuditingTask}
                     onEdit={openEditModal}
                     onLock={setLockingTask}
@@ -1488,7 +1492,7 @@ function PeriodicTasksPageContent() {
                     canDelete={canDelete}
                     onLink={setLinkingTask}
                     onChecklist={setChecklistingTask}
-                    onCustomers={setCustomersTask}
+                    onCustomers={canViewCustomers ? setCustomersTask : undefined}
                     onAudit={setAuditingTask}
                     onEdit={openEditModal}
                     onLock={setLockingTask}
@@ -1721,11 +1725,6 @@ function PeriodicTasksPageContent() {
                                 </Button>
                             </div>
                         </Form.Item>
-                    )}
-                    {canLinkCustomer && editingTask && !editingTaskDetailLoading && editingLinkedCustomers === undefined && (
-                        <Text type="secondary" style={{ display: 'block', marginTop: -12, marginBottom: 12 }}>
-                            Bạn không có quyền xem Khách hàng nên không thể xem/sửa phần này.
-                        </Text>
                     )}
 
                     {/* Phụ trách phụ - MỚI thêm vào modal Tạo/Sửa (yêu cầu chủ

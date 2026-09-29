@@ -4969,3 +4969,22 @@ khi bị xoá tay. Đây là 1 anti-pattern thật (dù đo thử với payload 
 > Migration cần chạy trên DB thật (`npm run migration:run`). Chưa test trên MySQL/trình duyệt thật.
 
 ---
+
+## [2026-09-29 14:30] | Task định kỳ: ẩn "Khách hàng liên quan" + không fetch /customers khi thiếu `customers.view` | [Status: Success — FE vitest 231/231, tsc FE chỉ còn 5 lỗi CŨ (logo.png x4, styled-jsx CountBadge); chưa test trình duyệt thật]
+
+**Actor:** Agent (trên `origin/main` HEAD `b9e9448`)
+
+**Root Cause:**
+> FE chỉ gate bằng `periodic_tasks.link_customer`. Role có `link_customer` nhưng KHÔNG có `customers.view` (đặt theo Position) vẫn thấy khối Khách hàng và ô tìm bắn `GET /customers` -> 403 (BE `addCustomers` cũng đòi `customers.view`).
+
+**Solution:**
+> Gate cả 2 quyền: `canLinkCustomer = link_customer && customers.view`; `enabled` của `useCustomers` dùng cờ này nên không fetch khi thiếu quyền.
+
+**Files Changed:**
+- `frontend/src/app/(dashboard)/cong-viec-dinh-ky/page.tsx` — thêm `canViewCustomers`, gộp vào `canLinkCustomer`, bỏ dòng cảnh báo thừa, ẩn nút "Khách hàng (N)" khi thiếu `customers.view`.
+- `frontend/src/components/periodic-tasks/TaskLinksModal.tsx` — `hasLinkCustomerPermission` gộp `customers.view`, ẩn cả section Khách hàng liên quan khi thiếu quyền.
+
+**Notes:**
+> KHÔNG migration, KHÔNG permission key mới, BE không đổi.
+
+---
