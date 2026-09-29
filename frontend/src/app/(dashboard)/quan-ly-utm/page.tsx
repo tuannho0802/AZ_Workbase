@@ -2,7 +2,9 @@
 
 import { useEffect, useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { Alert, App, Button, Empty, Popconfirm, Space, Table, Tabs, Tag, Tooltip, Typography } from 'antd';
+import { Alert, App, Button, DatePicker, Empty, Popconfirm, Space, Table, Tabs, Tag, Tooltip, Typography } from 'antd';
+import type { Dayjs } from 'dayjs';
+import dayjs from 'dayjs';
 import type { ColumnsType } from 'antd/es/table';
 import {
   CrownOutlined,
@@ -31,30 +33,29 @@ import { UtmFormModal } from '@/components/utms/UtmFormModal';
 import { UtmManagersModal } from '@/components/utms/UtmManagersModal';
 import { UtmCustomersModal } from '@/components/utms/UtmCustomersModal';
 import { UtmMergeModal, type MergeCandidate } from '@/components/utms/UtmMergeModal';
-import { normalizeUtmName } from '@/components/utms/UtmSelect';
+import {
+  DEFAULT_UTM_SORT,
+  filterUtmRows,
+  sortUtmRows,
+  type UtmPrimaryFilter,
+  type UtmRoleFilter,
+  type UtmSortKey,
+  type UtmStatusFilter,
+  type UtmVisibilityFilter,
+} from '@/lib/utils/utm-list.util';
 import { getApiErrorMessage } from '@/lib/utils/error-message.util';
 
 const { Title, Text } = Typography;
 
-type StatusFilter = 'active' | 'inactive';
-type RoleFilter = 'primary' | 'secondary';
+const { RangePicker } = DatePicker;
 
-/** Lọc client-side: danh sách UTM là BOUNDED, không phân trang ở BE (giống "Nhóm tôi quản lý"). */
-export const filterUtmRows = (
-  rows: UtmView[],
-  q: string,
-  status: StatusFilter | undefined,
-  role: RoleFilter | undefined,
-): UtmView[] => {
-  const key = normalizeUtmName(q);
-  return rows.filter((r) => {
-    if (key && !normalizeUtmName(r.name).includes(key) && !normalizeUtmName(r.description ?? '').includes(key)) return false;
-    if (status === 'active' && !r.isActive) return false;
-    if (status === 'inactive' && r.isActive) return false;
-    if (role && r.myRole !== role) return false;
-    return true;
-  });
-};
+const SORT_OPTIONS: { value: UtmSortKey; label: string }[] = [
+  { value: 'newest', label: 'Mới nhất (mặc định)' },
+  { value: 'oldest', label: 'Cũ nhất' },
+  { value: 'name_asc', label: 'Tên A → Z' },
+  { value: 'name_desc', label: 'Tên Z → A' },
+  { value: 'customers_desc', label: 'Nhiều khách hàng nhất' },
+];
 
 export default function QuanLyUtmPage() {
   const router = useRouter();
@@ -87,8 +88,12 @@ export default function QuanLyUtmPage() {
   const deleteMutation = useDeleteUtm();
 
   const [searchText, setSearchText] = useState('');
-  const [statusFilter, setStatusFilter] = useState<StatusFilter | undefined>();
-  const [roleFilter, setRoleFilter] = useState<RoleFilter | undefined>();
+  const [statusFilter, setStatusFilter] = useState<UtmStatusFilter | undefined>();
+  const [roleFilter, setRoleFilter] = useState<UtmRoleFilter | undefined>();
+  const [primaryFilter, setPrimaryFilter] = useState<UtmPrimaryFilter | undefined>();
+  const [visibilityFilter, setVisibilityFilter] = useState<UtmVisibilityFilter | undefined>();
+  const [createdRange, setCreatedRange] = useState<[Dayjs | null, Dayjs | null] | null>(null);
+  const [sortKey, setSortKey] = useState<UtmSortKey>(DEFAULT_UTM_SORT);
 
   const [formTarget, setFormTarget] = useState<{ utm: UtmView | null } | null>(null);
   const [managing, setManaging] = useState<{ id: number; name: string } | null>(null);
@@ -130,9 +135,23 @@ export default function QuanLyUtmPage() {
             )}
             {!u.isActive && <Tag color="default">Đã khoá</Tag>}
           </Space>
-          {u.description && <Text type="secondary" style={{ fontSize: 12 }}>{u.description}</Text>}
         </Space>
       ),
+    },
+    {
+      title: 'Mô tả',
+      key: 'description',
+      dataIndex: 'description',
+      width: 240,
+      ellipsis: { showTitle: false },
+      render: (d: string | null) =>
+        d ? (
+          <Tooltip title={d} placement="topLeft">
+            <Text>{d}</Text>
+          </Tooltip>
+        ) : (
+          <Text type="secondary">—</Text>
+        ),
     },
     {
       title: 'Quản lý chính',
@@ -166,6 +185,13 @@ export default function QuanLyUtmPage() {
         ) : (
           <Text type="secondary">—</Text>
         ),
+    },
+    {
+      title: 'Ngày tạo',
+      key: 'createdAt',
+      dataIndex: 'createdAt',
+      width: 140,
+      render: (d: string) => (d ? dayjs(d).format('DD/MM/YYYY HH:mm') : '—'),
     },
     {
       title: 'Thao tác',
@@ -226,20 +252,54 @@ export default function QuanLyUtmPage() {
   ];
 
   const renderTable = (rows: UtmView[], loading: boolean, emptyText: string) => {
-    const filtered = filterUtmRows(rows, searchText, statusFilter, roleFilter);
-    const filtering = !!(searchText || statusFilter || roleFilter);
+    const filtered = sortUtmRows(
+      filterUtmRows(rows, searchText, statusFilter, roleFilter, {
+        primary: primaryFilter,
+        visibility: visibilityFilter,
+        createdRange,
+      }),
+      sortKey,
+      counts,
+    );
+    const filtering = !!(
+      searchText ||
+      statusFilter ||
+      roleFilter ||
+      primaryFilter !== undefined ||
+      visibilityFilter ||
+      createdRange?.[0] ||
+      createdRange?.[1]
+    );
+    // Options Quản lý chính lấy từ chính danh sách đang xem (không gọi thêm API).
+    const primaryOptions: { value: UtmPrimaryFilter; label: string }[] = [
+      { value: 'none', label: 'Chưa gán' },
+      ...Array.from(new Map(rows.filter((r) => r.primaryManager).map((r) => [r.primaryManager!.id, r.primaryManager!.name])).entries())
+        .sort((a, b) => a[1].localeCompare(b[1], 'vi'))
+        .map(([id, name]) => ({ value: id as UtmPrimaryFilter, label: name })),
+    ];
     return (
       <>
         <ListFilterBar
           searchValue={searchText}
           onSearchChange={setSearchText}
           searchPlaceholder="Tìm theo tên/mô tả UTM..."
+          searchMdSpan={8}
+          extra={
+            <RangePicker
+              style={{ width: '100%' }}
+              format="DD/MM/YYYY"
+              placeholder={['Tạo từ ngày', 'Đến ngày']}
+              value={createdRange}
+              onChange={(v) => setCreatedRange(v ? [v[0], v[1]] : null)}
+            />
+          }
           dropdowns={[
             {
               key: 'status',
               placeholder: 'Trạng thái',
               value: statusFilter,
               onChange: setStatusFilter,
+              mdSpan: 4,
               options: [
                 { value: 'active', label: 'Đang hoạt động' },
                 { value: 'inactive', label: 'Đã khoá' },
@@ -250,10 +310,39 @@ export default function QuanLyUtmPage() {
               placeholder: 'Vai trò của tôi',
               value: roleFilter,
               onChange: setRoleFilter,
+              mdSpan: 4,
               options: [
                 { value: 'primary', label: 'Quản lý chính' },
                 { value: 'secondary', label: 'Quản lý phụ' },
               ],
+            },
+            {
+              key: 'primaryManager',
+              placeholder: 'Quản lý chính',
+              value: primaryFilter,
+              onChange: setPrimaryFilter,
+              mdSpan: 4,
+              options: primaryOptions,
+            },
+            {
+              key: 'visibility',
+              placeholder: 'Hiển thị',
+              value: visibilityFilter,
+              onChange: setVisibilityFilter,
+              mdSpan: 4,
+              options: [
+                { value: 'shared', label: 'Công khai' },
+                { value: 'restricted', label: 'Riêng tư' },
+              ],
+            },
+            {
+              key: 'sort',
+              placeholder: 'Sắp xếp',
+              value: sortKey,
+              // Xoá lựa chọn -> quay về mặc định (Mới nhất).
+              onChange: (v: UtmSortKey | undefined) => setSortKey(v ?? DEFAULT_UTM_SORT),
+              mdSpan: 4,
+              options: SORT_OPTIONS,
             },
           ]}
         />
@@ -262,7 +351,7 @@ export default function QuanLyUtmPage() {
           loading={loading}
           columns={columns}
           dataSource={filtered}
-          scroll={{ x: 900 }}
+          scroll={{ x: 1400 }}
           pagination={{ pageSize: 20, hideOnSinglePage: true }}
           locale={{ emptyText: <Empty description={filtering ? 'Không có UTM nào khớp bộ lọc' : emptyText} /> }}
         />
@@ -354,6 +443,9 @@ export default function QuanLyUtmPage() {
           setSearchText('');
           setStatusFilter(undefined);
           setRoleFilter(undefined);
+          setPrimaryFilter(undefined);
+          setVisibilityFilter(undefined);
+          setCreatedRange(null);
         }}
       />
 

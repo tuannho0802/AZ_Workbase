@@ -44,6 +44,10 @@ interface ListFilterBarProps {
    * (string/number/boolean) nên buộc dùng `any` ở đây (type-erase có chủ đích). */
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   dropdowns?: ListFilterDropdown<any>[];
+  /** Control thêm ở cuối hàng (vd RangePicker) - không bắt buộc. */
+  extra?: ReactNode;
+  /** Độ rộng cột `extra` ở breakpoint md (thang 24) - mặc định 8 */
+  extraMdSpan?: number;
   style?: React.CSSProperties;
 }
 
@@ -53,6 +57,8 @@ export function ListFilterBar({
   searchPlaceholder = 'Tìm kiếm...',
   searchMdSpan,
   dropdowns = [],
+  extra,
+  extraMdSpan = 8,
   style,
 }: ListFilterBarProps) {
   const defaultSearchSpan = dropdowns.length === 0 ? 24 : dropdowns.length === 1 ? 12 : 8;
@@ -80,6 +86,11 @@ export function ListFilterBar({
           />
         </Col>
       ))}
+      {extra && (
+        <Col xs={24} sm={12} md={extraMdSpan}>
+          {extra}
+        </Col>
+      )}
     </Row>
   );
 }
