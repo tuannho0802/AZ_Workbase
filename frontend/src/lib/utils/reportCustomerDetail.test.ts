@@ -50,6 +50,7 @@ describe('buildCustomerTimeline', () => {
     },
     deposits: [dep(1, 1, '2026-09-10', 500), dep(2, 2, '2026-09-20', 250)],
     depositSummary: {} as never,
+    careNotes: [],
     groups: [{ id: 7, name: 'Nhóm VIP', joinedAt: '2026-09-05T03:00:00.000Z' }],
   } as ReportCustomerDetail;
 

@@ -273,7 +273,7 @@ export default function RevenueReportTab({ query, onQueryChange }: Props) {
           <ReportKpiCard
             title="Tỷ lệ nạp (data mới)"
             value={rates.depositRate ?? 0}
-            suffix="%"
+            suffix="%" rateColored
             icon={<CheckCircleOutlined />}
             color={REPORT_COLORS.primary}
             loading={isLoading}
@@ -285,7 +285,7 @@ export default function RevenueReportTab({ query, onQueryChange }: Props) {
           <ReportKpiCard
             title="Tỷ lệ chốt (data mới)"
             value={rates.closeRate ?? 0}
-            suffix="%"
+            suffix="%" rateColored
             icon={<CheckCircleOutlined />}
             color={REPORT_COLORS.ok}
             loading={isLoading}

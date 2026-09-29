@@ -74,6 +74,22 @@ const QUICK_OPTIONS: { value: ReportCustomerListQuick | 'all'; label: string }[]
   { value: 'no_phone', label: 'Chưa có SĐT' },
 ];
 
+/**
+ * Các nút Lọc nhanh hiển thị theo NGỮ CẢNH modal:
+ *  - Đang xem khách của 1 Sales cụ thể (preset.salesUserId) -> bỏ "Chưa có Sales" (luôn rỗng vì đã lọc đúng Sales đó).
+ *  - Chỉ số "Data mới chưa gán Marketing" -> bỏ "Chưa có Marketing" (trùng điều kiện gốc).
+ */
+export function getQuickOptions(
+  metric: ReportCustomerListMetric,
+  preset?: CustomerDrill['preset'],
+): { value: ReportCustomerListQuick | 'all'; label: string }[] {
+  return QUICK_OPTIONS.filter((o) => {
+    if (o.value === 'no_sales' && preset?.salesUserId !== undefined) return false;
+    if (o.value === 'no_marketing' && metric === 'unassigned_marketing') return false;
+    return true;
+  });
+}
+
 const userCell = (u: ReportListUser | null) =>
   u ? <ReportUserName name={u.name} departmentName={u.departmentName} departmentColor={u.departmentColor} /> : <Text type="secondary">—</Text>;
 
@@ -124,6 +140,10 @@ export default function ReportCustomersModal({ drill, onClose, query, context }:
     return () => clearTimeout(t);
   }, [searchInput]);
 
+  const quickOptions = getQuickOptions(activeMetric, drill?.preset);
+  // Đổi chỉ số (Segmented metricTabs) có thể làm nút đang chọn biến mất -> coi như "Tất cả" (không gửi lọc thừa lên BE).
+  const effectiveQuick = quickOptions.some((o) => o.value === quick) ? quick : 'all';
+
   const listQuery = useMemo(
     () => ({
       ...query,
@@ -136,23 +156,22 @@ export default function ReportCustomersModal({ drill, onClose, query, context }:
       // preset.source (nếu có) thắng ô lọc Nguồn.
       source: drill?.preset?.source ?? source,
       search: search || undefined,
-      quick: quick === 'all' ? undefined : quick,
+      quick: effectiveQuick === 'all' ? undefined : effectiveQuick,
       dateFrom: range?.[0]?.format('YYYY-MM-DD'),
       dateTo: range?.[1]?.format('YYYY-MM-DD'),
     }),
-    [query, drill, activeMetric, context, page, status, source, search, quick, range],
+    [query, drill, activeMetric, context, page, status, source, search, effectiveQuick, range],
   );
 
   const { data, isLoading, isFetching, isError, error } = useReportCustomerList(listQuery, open);
   const metric = activeMetric;
 
-  const quickOptions = QUICK_OPTIONS.filter((o) => !(metric === 'unassigned_marketing' && o.value === 'no_marketing'));
 
   const columns: ColumnsType<ReportCustomerListRow> = useMemo(() => {
     // Lọc nhanh "Chưa có SĐT" -> cột SĐT toàn trống, thay bằng Email. "Chưa có Sales" -> cột Sales chính toàn trống,
     // bỏ đi và (nếu chưa có) thêm cột Marketing phụ trách.
-    const noPhone = quick === 'no_phone';
-    const noSales = quick === 'no_sales';
+    const noPhone = effectiveQuick === 'no_phone';
+    const noSales = effectiveQuick === 'no_sales';
     const cols: ColumnsType<ReportCustomerListRow> = [
       { title: 'STT', key: 'stt', width: 50, align: 'center', render: (_, __, i) => (page - 1) * PAGE_SIZE + i + 1 },
       {
@@ -226,13 +245,13 @@ export default function ReportCustomersModal({ drill, onClose, query, context }:
       ),
     });
     return cols;
-  }, [page, context, metric, quick]);
+  }, [page, context, metric, effectiveQuick]);
 
   const title = drill ? `${drill.metricTabs ? (drill.label ?? '') : METRIC_TITLE[metric]}${!drill.metricTabs && drill.label ? ` — ${drill.label}` : ''}` : '';
   const period = data?.period;
 
   return (
-    <Modal open={open} onCancel={onClose} footer={null} width={context === 'marketing' || quick === 'no_sales' ? 1240 : 1080} destroyOnHidden title={title}>
+    <Modal open={open} onCancel={onClose} footer={null} width={context === 'marketing' || effectiveQuick === 'no_sales' ? 1240 : 1080} destroyOnHidden title={title}>
       {drill?.summary && (
         <div style={{ display: 'flex', gap: 24, flexWrap: 'wrap', marginBottom: 12, padding: '8px 12px', background: '#fafafa', borderRadius: 6 }}>
           {drill.summary.map((it) => (
@@ -290,7 +309,7 @@ export default function ReportCustomersModal({ drill, onClose, query, context }:
       <div style={{ marginBottom: 12 }}>
         <Segmented
           size="small"
-          value={quick}
+          value={effectiveQuick}
           options={quickOptions}
           onChange={(v) => { setQuick(v as ReportCustomerListQuick | 'all'); setPage(1); }}
         />

@@ -347,6 +347,15 @@ export interface ReportDepositSummary {
     depositSpanDays: number | null;
 }
 
+export interface ReportCareNote {
+    id: number;
+    note: string;
+    noteType: 'general' | 'call' | 'meeting' | 'follow_up' | string;
+    isImportant: boolean;
+    createdAt: string;
+    createdBy: { id: number; name: string } | null;
+}
+
 export interface ReportCustomerDetail {
     customer: {
         id: number;
@@ -368,5 +377,7 @@ export interface ReportCustomerDetail {
     };
     deposits: ReportDepositStage[];
     depositSummary: ReportDepositSummary;
+    /** Ghi chú CHĂM SÓC (bảng customer_notes), mới nhất trước. Khác `customer.note` (ghi chú chung). */
+    careNotes: ReportCareNote[];
     groups: { id: number; name: string; joinedAt: string | null }[];
 }

@@ -37,6 +37,7 @@ import {
 } from '@/lib/utils/marketingReport';
 import PeriodSelector from './PeriodSelector';
 import ReportKpiCard, { REPORT_COLORS } from './ReportKpiCard';
+import { rateColor, rateTextColor } from '@/lib/utils/rateColor';
 import ReportCustomersModal, { type CustomerDrill } from './ReportCustomersModal';
 import { CHART_COLORS } from './ReportChart';
 import MarketingBreakdownTable from './MarketingBreakdownTable';
@@ -286,7 +287,7 @@ export default function MarketingReportTab({ query, onQueryChange }: Props) {
                   }
                   value={cohortRate ?? '—'}
                   suffix={cohortRate == null ? undefined : '%'}
-                  styles={{ content: { fontSize: 24, color: cohortRate == null ? undefined : cohortRate >= 20 ? COLORS.ok : cohortRate >= 8 ? COLORS.gold : COLORS.danger } }}
+                  styles={{ content: { fontSize: 24, color: rateColor(cohortRate) } }}
                 />
                 <Text type="secondary" style={{ fontSize: 12 }}>
                   {cur ? `${fmtCount(cur.cohortDepositedCustomers)} / ${fmtCount(cur.totalCustomers)} khách` : ''}
@@ -494,7 +495,7 @@ export default function MarketingReportTab({ query, onQueryChange }: Props) {
                           align: 'right',
                           render: (_: unknown, r: { cohortDepositedCustomers: number; totalCustomers: number }) => {
                             const p = pct(r.cohortDepositedCustomers, r.totalCustomers);
-                            return p == null ? '—' : `${p}%`;
+                            return p == null ? '—' : <span style={{ color: rateTextColor(p), fontWeight: 600 }}>{p}%</span>;
                           },
                         },
                         { title: 'Doanh thu', dataIndex: 'revenue', key: 'r', align: 'right', render: formatUsd },

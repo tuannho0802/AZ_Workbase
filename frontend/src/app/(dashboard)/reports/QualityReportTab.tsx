@@ -233,13 +233,13 @@ export default function QualityReportTab({ query, onQueryChange }: Props) {
 
       <Row gutter={[12, 12]}>
         <Col xs={24} md={8}>
-          <ReportKpiCard title="Tỷ lệ chốt" value={rates.closeRate ?? 0} suffix="%" icon={<CheckCircleOutlined />} color={REPORT_COLORS.ok} loading={ratesLoading} hint={`${fmtCount(rateTotals.cohortClosedCustomers)} / ${fmtCount(rateTotals.totalCustomers)} data mới trong kỳ đã chốt`} onClick={() => setDrill({ metric: 'cohort_closed' })} />
+          <ReportKpiCard title="Tỷ lệ chốt" value={rates.closeRate ?? 0} suffix="%" rateColored icon={<CheckCircleOutlined />} color={REPORT_COLORS.ok} loading={ratesLoading} hint={`${fmtCount(rateTotals.cohortClosedCustomers)} / ${fmtCount(rateTotals.totalCustomers)} data mới trong kỳ đã chốt`} onClick={() => setDrill({ metric: 'cohort_closed' })} />
         </Col>
         <Col xs={24} md={8}>
-          <ReportKpiCard title="Tỷ lệ join nhóm" value={rates.joinRate ?? 0} suffix="%" icon={<UsergroupAddOutlined />} color={REPORT_COLORS.gold} loading={ratesLoading} hint={`${fmtCount(rateTotals.cohortJoinedCustomers)} / ${fmtCount(rateTotals.totalCustomers)} data mới trong kỳ đã join nhóm`} onClick={() => setDrill({ metric: 'cohort_joined' })} />
+          <ReportKpiCard title="Tỷ lệ join nhóm" value={rates.joinRate ?? 0} suffix="%" rateColored icon={<UsergroupAddOutlined />} color={REPORT_COLORS.gold} loading={ratesLoading} hint={`${fmtCount(rateTotals.cohortJoinedCustomers)} / ${fmtCount(rateTotals.totalCustomers)} data mới trong kỳ đã join nhóm`} onClick={() => setDrill({ metric: 'cohort_joined' })} />
         </Col>
         <Col xs={24} md={8}>
-          <ReportKpiCard title="Tỷ lệ nạp tiền" value={rates.depositRate ?? 0} suffix="%" icon={<DollarOutlined />} color={REPORT_COLORS.primary} loading={ratesLoading} hint={`${fmtCount(rateTotals.cohortDepositedCustomers)} / ${fmtCount(rateTotals.totalCustomers)} data mới trong kỳ đã từng nạp`} onClick={() => setDrill({ metric: 'cohort_deposited' })} />
+          <ReportKpiCard title="Tỷ lệ nạp tiền" value={rates.depositRate ?? 0} suffix="%" rateColored icon={<DollarOutlined />} color={REPORT_COLORS.primary} loading={ratesLoading} hint={`${fmtCount(rateTotals.cohortDepositedCustomers)} / ${fmtCount(rateTotals.totalCustomers)} data mới trong kỳ đã từng nạp`} onClick={() => setDrill({ metric: 'cohort_deposited' })} />
         </Col>
       </Row>
 

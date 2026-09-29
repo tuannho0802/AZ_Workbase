@@ -4,6 +4,7 @@ import type { KeyboardEvent, ReactNode } from 'react';
 import { Card, Statistic, Typography } from 'antd';
 import { RightOutlined } from '@ant-design/icons';
 import { deltaOf, fmtCount, formatUsd } from '@/lib/utils/marketingReport';
+import { rateColor } from '@/lib/utils/rateColor';
 
 const { Text } = Typography;
 
@@ -27,6 +28,8 @@ interface Props {
   hint?: ReactNode;
   icon?: ReactNode;
   suffix?: string;
+  /** true -> màu số lớn theo ngưỡng tỷ lệ (< 40% đỏ, 40-80% vàng, > 80% xanh), đè lên `color`. Dùng cho thẻ TỶ LỆ %. */
+  rateColored?: boolean;
   /** Có -> thẻ bấm được, mở Mini Table danh sách khách phía sau con số. */
   onClick?: () => void;
 }
@@ -35,7 +38,7 @@ interface Props {
  * Thẻ KPI dùng CHUNG cho cả 4 tab báo cáo. `onClick` -> thẻ thành nút (hover, Enter/Space) mở Mini Table
  * khách hàng đứng sau con số (drill-down).
  */
-export default function ReportKpiCard({ title, value, previous, money, color, loading, hint, icon, suffix, onClick }: Props) {
+export default function ReportKpiCard({ title, value, previous, money, color, loading, hint, icon, suffix, rateColored, onClick }: Props) {
   const d = previous == null ? null : deltaOf(value, previous);
   const fmtVal = money ? formatUsd : fmtCount;
   const onKey = (e: KeyboardEvent) => {
@@ -61,7 +64,7 @@ export default function ReportKpiCard({ title, value, previous, money, color, lo
         prefix={icon}
         suffix={suffix}
         formatter={(v) => fmtVal(Number(v))}
-        styles={{ content: { color, fontSize: 24 } }}
+        styles={{ content: { color: (rateColored ? rateColor(value) : undefined) ?? color, fontSize: 24 } }}
       />
       {d && (
         <Text

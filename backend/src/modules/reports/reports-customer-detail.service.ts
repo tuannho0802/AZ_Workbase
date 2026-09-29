@@ -3,6 +3,7 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { Customer } from '../../database/entities/customer.entity';
 import { CustomerGroupMembership } from '../../database/entities/customer-group-membership.entity';
+import { CustomerNote } from '../../database/entities/customer-note.entity';
 import { Deposit } from '../../database/entities/deposit.entity';
 import { PermissionScope } from '../../database/entities/role-permission.entity';
 import { Role } from '../../common/enums/role.enum';
@@ -135,6 +136,16 @@ export class ReportsCustomerDetailService {
       .orderBy('m.joinedAt', 'ASC')
       .getMany();
 
+    // Ghi chú CHĂM SÓC (bảng customer_notes) - khác `customer.note` (ghi chú chung, cột của bảng customers).
+    // Chỉ xem: cùng phạm vi khách đã qua `applyViewFilter` ở trên nên không cần gác thêm.
+    const noteRows = await this.customerRepo.manager
+      .createQueryBuilder(CustomerNote, 'n')
+      .leftJoinAndSelect('n.createdByUser', 'nBy')
+      .where('n.customerId = :id', { id })
+      .orderBy('n.createdAt', 'DESC')
+      .addOrderBy('n.id', 'DESC')
+      .getMany();
+
     return {
       customer: {
         id: c.id,
@@ -156,6 +167,14 @@ export class ReportsCustomerDetailService {
       },
       deposits,
       depositSummary: summary,
+      careNotes: noteRows.map((n) => ({
+        id: n.id,
+        note: n.note,
+        noteType: n.noteType,
+        isImportant: !!n.isImportant,
+        createdAt: n.createdAt,
+        createdBy: n.createdByUser ? { id: n.createdByUser.id, name: n.createdByUser.name } : null,
+      })),
       groups: memberships.map((m) => ({ id: m.groupId, name: m.group?.name ?? '—', joinedAt: m.joinedAt })),
     };
   }

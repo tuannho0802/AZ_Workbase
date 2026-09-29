@@ -2,7 +2,7 @@
 
 import { useMemo, useState } from 'react';
 import dayjs from 'dayjs';
-import { Alert, Col, Descriptions, Empty, Grid, Modal, Row, Skeleton, Space, Statistic, Table, Tabs, Tag, Timeline, Typography } from 'antd';
+import { Alert, Card, Col, Descriptions, Empty, Grid, Modal, Row, Skeleton, Space, Statistic, Table, Tabs, Tag, Timeline, Typography } from 'antd';
 import type { ColumnsType } from 'antd/es/table';
 import { DatePicker } from 'antd';
 import { useReportCustomerDetail } from '@/lib/hooks/useReports';
@@ -11,7 +11,7 @@ import { StatusTag } from '@/components/customers/StatusTag';
 import { getApiErrorMessage } from '@/lib/utils/error-message.util';
 import { formatUsd } from '@/lib/utils/marketingReport';
 import { buildCustomerTimeline, DEPOSIT_STAGE_LABEL, filterDepositsByRange } from '@/lib/utils/reportCustomerDetail';
-import type { ReportDepositStage, ReportListUser } from '@/lib/types/reports.types';
+import type { ReportCareNote, ReportDepositStage, ReportListUser } from '@/lib/types/reports.types';
 import ReportUserName from './ReportUserName';
 import ReportQuickRangeFilter, { type QuickRangeValue } from './ReportQuickRangeFilter';
 
@@ -23,6 +23,13 @@ interface Props {
   context: 'customers' | 'marketing';
   onClose: () => void;
 }
+
+const NOTE_TYPE_LABEL: Record<string, string> = {
+  general: 'Chung',
+  call: 'Cuộc gọi',
+  meeting: 'Cuộc họp',
+  follow_up: 'Theo dõi',
+};
 
 const fmtDate = (v?: string | null) => (v ? dayjs(v).format('DD/MM/YYYY') : '—');
 const userCell = (u: ReportListUser | null) =>
@@ -116,9 +123,6 @@ export default function ReportCustomerDetailModal({ customerId, context, onClose
       <Descriptions.Item label="Nhóm đã join" span={infoColumn}>
         {data?.groups.length ? data.groups.map((g) => <Tag key={g.id}>{g.name}{g.joinedAt ? ` · ${dayjs(g.joinedAt).format('DD/MM/YYYY')}` : ''}</Tag>) : '—'}
       </Descriptions.Item>
-      <Descriptions.Item label="Ghi chú" span={infoColumn}>
-        <span style={{ whiteSpace: 'pre-wrap' }}>{c.note || '—'}</span>
-      </Descriptions.Item>
     </Descriptions>
   );
 
@@ -164,6 +168,36 @@ export default function ReportCustomerDetailModal({ customerId, context, onClose
     </div>
   );
 
+  // Ghi chú chia 2 loại: GHI CHÚ CHUNG (cột `note` của bảng customers) và GHI CHÚ CHĂM SÓC (bảng customer_notes,
+  // giống tab Ghi chú ở Drawer chi tiết khách - ở đây chỉ xem).
+  const careNotes: ReportCareNote[] = data?.careNotes ?? [];
+  const notesTab = (
+    <Space orientation="vertical" size={12} style={{ width: '100%' }}>
+      <Card size="small" title="Ghi chú chung">
+        {c?.note ? <span style={{ whiteSpace: 'pre-wrap' }}>{c.note}</span> : <Text type="secondary">Chưa có ghi chú chung</Text>}
+      </Card>
+      <Card size="small" title={`Ghi chú chăm sóc (${careNotes.length})`}>
+        {careNotes.length === 0 ? (
+          <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="Chưa có ghi chú chăm sóc" />
+        ) : (
+          careNotes.map((n) => (
+            <div
+              key={n.id}
+              style={{ padding: 12, borderBottom: '1px solid #f0f0f0', background: n.isImportant ? '#fff1f0' : undefined, borderRadius: n.isImportant ? 4 : 0 }}
+            >
+              <Space size={8} wrap style={{ marginBottom: 4 }}>
+                <Text strong>{n.createdBy?.name ?? 'Hệ thống'}</Text>
+                <Tag color={n.isImportant ? 'error' : 'default'}>{NOTE_TYPE_LABEL[n.noteType] ?? n.noteType}</Tag>
+                <Text type="secondary" style={{ fontSize: 12 }}>{dayjs(n.createdAt).format('DD/MM/YYYY HH:mm')}</Text>
+              </Space>
+              <div style={{ whiteSpace: 'pre-wrap', color: '#262626' }}>{n.note}</div>
+            </div>
+          ))
+        )}
+      </Card>
+    </Space>
+  );
+
   const timelineTab = (
     <Timeline
       style={{ marginTop: 8 }}
@@ -199,6 +233,7 @@ export default function ReportCustomerDetailModal({ customerId, context, onClose
           items={[
             { key: 'info', label: 'Thông tin chung', children: infoTab },
             { key: 'deposits', label: `Lịch sử nạp (${data.deposits.length})`, children: depositTab },
+            { key: 'notes', label: `Ghi chú (${careNotes.length + (c?.note ? 1 : 0)})`, children: notesTab },
             { key: 'timeline', label: 'Dòng thời gian', children: timelineTab },
           ]}
         />

@@ -20,6 +20,7 @@ const detail = {
     { id: 2, order: 2, stage: 'redeposit', amount: 250, depositDate: '2026-09-25', cumulative: 750, daysSincePrevious: 20, broker: null, note: null, createdBy: null },
   ],
   depositSummary: { totalAmount: 750, depositCount: 2, averageAmount: 375, maxAmount: 500, firstDepositDate: '2026-09-05', lastDepositDate: '2026-09-25', daysToFirstDeposit: 4, depositSpanDays: 20 },
+  careNotes: [] as unknown[],
   groups: [],
 };
 
@@ -65,5 +66,32 @@ describe('ReportCustomerDetailModal', () => {
     render(<ReportCustomerDetailModal customerId={1} context="customers" onClose={vi.fn()} />);
     fireEvent.click(screen.getByText('Lịch sử nạp (0)'));
     expect(screen.getByText('Khách chưa nạp lần nào')).toBeTruthy();
+  });
+
+  it('tab Ghi chú tách Ghi chú chung (customers.note) và Ghi chú chăm sóc (customer_notes)', () => {
+    detailResult = {
+      data: {
+        ...detail,
+        customer: { ...detail.customer, note: 'Khách VIP' },
+        careNotes: [{ id: 9, note: 'Gọi lại chiều mai', noteType: 'call', isImportant: true, createdAt: '2026-09-20T03:00:00.000Z', createdBy: { id: 3, name: 'Lê Tuấn' } }],
+      },
+      isLoading: false,
+      isError: false,
+    };
+    render(<ReportCustomerDetailModal customerId={1} context="customers" onClose={vi.fn()} />);
+    fireEvent.click(screen.getByText('Ghi chú (2)'));
+    expect(screen.getByText('Ghi chú chung')).toBeTruthy();
+    expect(screen.getByText('Khách VIP')).toBeTruthy();
+    expect(screen.getByText('Ghi chú chăm sóc (1)')).toBeTruthy();
+    expect(screen.getByText('Gọi lại chiều mai')).toBeTruthy();
+    expect(screen.getByText('Cuộc gọi')).toBeTruthy();
+  });
+
+  it('không có ghi chú nào -> hiện trạng thái rỗng cho cả 2 loại', () => {
+    detailResult = { data: detail, isLoading: false, isError: false };
+    render(<ReportCustomerDetailModal customerId={1} context="customers" onClose={vi.fn()} />);
+    fireEvent.click(screen.getByText('Ghi chú (0)'));
+    expect(screen.getByText('Chưa có ghi chú chung')).toBeTruthy();
+    expect(screen.getByText('Chưa có ghi chú chăm sóc')).toBeTruthy();
   });
 });

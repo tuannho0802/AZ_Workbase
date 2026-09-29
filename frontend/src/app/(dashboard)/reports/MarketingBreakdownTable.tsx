@@ -7,6 +7,7 @@ import type { MarketingUserRow } from '@/lib/types/reports.types';
 import { filterUserRows, fmtCount, formatUsd, pct, rowRates, sumRows } from '@/lib/utils/marketingReport';
 import ReportNameFilter from './ReportNameFilter';
 import ReportUserName from './ReportUserName';
+import { rateColor, rateTextColor } from '@/lib/utils/rateColor';
 import type { CustomerDrill } from './ReportCustomersModal';
 
 const { Text } = Typography;
@@ -162,7 +163,7 @@ export default function MarketingBreakdownTable({
         if (rate == null) return <Text type="secondary">—</Text>;
         return (
           <Tooltip title={`${fmtCount(r.cohortDepositedCustomers)} / ${fmtCount(r.totalCustomers)} khách`}>
-            <Progress percent={rate} size="small" strokeColor={rate >= 20 ? '#52c41a' : rate >= 8 ? '#faad14' : '#f5222d'} />
+            <Progress percent={rate} size="small" strokeColor={rateColor(rate)} />
           </Tooltip>
         );
       },
@@ -247,7 +248,7 @@ export default function MarketingBreakdownTable({
                 <Table.Summary.Cell index={6}>
                   {(() => {
                     const rate = pct(totals.cohortDepositedCustomers, totals.totalCustomers);
-                    return rate == null ? '—' : <Text strong>{rate}%</Text>;
+                    return rate == null ? '—' : <Text strong style={{ color: rateTextColor(rate) }}>{rate}%</Text>;
                   })()}
                 </Table.Summary.Cell>
                 <Table.Summary.Cell index={7} align="right">

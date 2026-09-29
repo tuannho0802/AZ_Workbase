@@ -15,6 +15,7 @@ import PeriodSelector from './PeriodSelector';
 import ReportNameFilter from './ReportNameFilter';
 import ReportKpiCard, { REPORT_COLORS } from './ReportKpiCard';
 import ReportUserName from './ReportUserName';
+import { rateTextColor } from '@/lib/utils/rateColor';
 import ReportCustomersModal, { type CustomerDrill } from './ReportCustomersModal';
 
 const { Text } = Typography;
@@ -88,7 +89,7 @@ export default function CustomerReportTab({ query, onQueryChange }: Props) {
       const rate = r.totalCustomers > 0 ? Math.round((r[key] / r.totalCustomers) * 1000) / 10 : null;
       return (
         <span>
-          <Text strong>{fmtRate(rate)}</Text>
+          <Text strong style={{ color: rateTextColor(rate) }}>{fmtRate(rate)}</Text>
           {r[key] > 0 && (
             <Button type="link" size="small" style={{ paddingInline: 4, height: 'auto' }} onClick={() => setDrill({ metric, label: r.userName, preset: { salesUserId: r.userId } })}>
               ({fmtCount(r[key])})
@@ -146,13 +147,13 @@ export default function CustomerReportTab({ query, onQueryChange }: Props) {
 
       <Row gutter={[12, 12]}>
         <Col xs={24} md={8}>
-          <ReportKpiCard title="Tỷ lệ chốt" value={rates.closeRate ?? 0} suffix="%" icon={<CheckCircleOutlined />} color={REPORT_COLORS.ok} loading={isLoading} hint={`${fmtCount(totals.cohortClosedCustomers)} / ${fmtCount(totals.totalCustomers)} data mới trong kỳ đã chốt`} onClick={openTotal('cohort_closed')} />
+          <ReportKpiCard title="Tỷ lệ chốt" value={rates.closeRate ?? 0} suffix="%" rateColored icon={<CheckCircleOutlined />} color={REPORT_COLORS.ok} loading={isLoading} hint={`${fmtCount(totals.cohortClosedCustomers)} / ${fmtCount(totals.totalCustomers)} data mới trong kỳ đã chốt`} onClick={openTotal('cohort_closed')} />
         </Col>
         <Col xs={24} md={8}>
-          <ReportKpiCard title="Tỷ lệ join nhóm" value={rates.joinRate ?? 0} suffix="%" icon={<UsergroupAddOutlined />} color={REPORT_COLORS.gold} loading={isLoading} hint={`${fmtCount(totals.cohortJoinedCustomers)} / ${fmtCount(totals.totalCustomers)} data mới trong kỳ đã join nhóm`} onClick={openTotal('cohort_joined')} />
+          <ReportKpiCard title="Tỷ lệ join nhóm" value={rates.joinRate ?? 0} suffix="%" rateColored icon={<UsergroupAddOutlined />} color={REPORT_COLORS.gold} loading={isLoading} hint={`${fmtCount(totals.cohortJoinedCustomers)} / ${fmtCount(totals.totalCustomers)} data mới trong kỳ đã join nhóm`} onClick={openTotal('cohort_joined')} />
         </Col>
         <Col xs={24} md={8}>
-          <ReportKpiCard title="Tỷ lệ nạp tiền" value={rates.depositRate ?? 0} suffix="%" icon={<DollarOutlined />} color={REPORT_COLORS.primary} loading={isLoading} hint={`${fmtCount(totals.cohortDepositedCustomers)} / ${fmtCount(totals.totalCustomers)} data mới trong kỳ đã từng nạp`} onClick={openTotal('cohort_deposited')} />
+          <ReportKpiCard title="Tỷ lệ nạp tiền" value={rates.depositRate ?? 0} suffix="%" rateColored icon={<DollarOutlined />} color={REPORT_COLORS.primary} loading={isLoading} hint={`${fmtCount(totals.cohortDepositedCustomers)} / ${fmtCount(totals.totalCustomers)} data mới trong kỳ đã từng nạp`} onClick={openTotal('cohort_deposited')} />
         </Col>
       </Row>
 

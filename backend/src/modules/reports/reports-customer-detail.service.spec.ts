@@ -23,9 +23,9 @@ function fakeQb<T>(result: T, many = false) {
   return { qb, wheres, params };
 }
 
-const build = (customer: any, deposits: any[], groups: any[] = []) => {
+const build = (customer: any, deposits: any[], groups: any[] = [], notes: any[] = []) => {
   const c = fakeQb(customer);
-  const queue = [fakeQb(deposits, true).qb, fakeQb(groups, true).qb];
+  const queue = [fakeQb(deposits, true).qb, fakeQb(groups, true).qb, fakeQb(notes, true).qb];
   const svc = new ReportsCustomerDetailService({
     createQueryBuilder: () => c.qb,
     manager: { createQueryBuilder: () => queue.shift() },
@@ -70,6 +70,20 @@ describe('ReportsCustomerDetailService', () => {
     });
     expect(res.groups).toEqual([{ id: 7, name: 'Nhóm VIP', joinedAt: expect.any(Date) }]);
     expect(res.customer.salesUser).toEqual({ id: 2, name: 'Sales', departmentName: 'KD', departmentColor: '#111' });
+  });
+
+  it('ghi chú chăm sóc (customer_notes) trả kèm, tách khỏi ghi chú chung', async () => {
+    const notes = [
+      { id: 9, note: 'Gọi lại chiều', noteType: 'call', isImportant: 1, createdAt: new Date('2026-09-20T03:00:00Z'), createdByUser: { id: 3, name: 'NV', email: 'x' } },
+      { id: 8, note: 'Đã gửi tài liệu', noteType: 'general', isImportant: false, createdAt: new Date('2026-09-18T03:00:00Z'), createdByUser: null },
+    ];
+    const { svc } = build({ ...customer, note: 'Ghi chú chung' }, [], [], notes);
+    const res = await svc.getDetail(5, 'customers', 1, Role.ADMIN, PermissionScope.ALL);
+    expect(res.customer.note).toBe('Ghi chú chung');
+    expect(res.careNotes).toEqual([
+      { id: 9, note: 'Gọi lại chiều', noteType: 'call', isImportant: true, createdAt: expect.any(Date), createdBy: { id: 3, name: 'NV' } },
+      { id: 8, note: 'Đã gửi tài liệu', noteType: 'general', isImportant: false, createdAt: expect.any(Date), createdBy: null },
+    ]);
   });
 
   it('khách chưa nạp: tóm tắt = 0, các mốc null', async () => {

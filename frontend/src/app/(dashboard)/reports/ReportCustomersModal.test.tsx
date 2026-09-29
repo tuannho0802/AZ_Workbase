@@ -19,7 +19,7 @@ vi.mock('@/lib/hooks/useMediaSources', () => ({ useMediaSources: () => ({ source
 vi.mock('@/components/customers/SourceTag', () => ({ SourceTag: ({ source }: { source?: string }) => <span>{source}</span> }));
 vi.mock('@/components/customers/StatusTag', () => ({ StatusTag: ({ code }: { code?: string }) => <span>{code}</span> }));
 
-import ReportCustomersModal from './ReportCustomersModal';
+import ReportCustomersModal, { getQuickOptions } from './ReportCustomersModal';
 
 const query = { period: 'week' as const, anchor: '2026-09-27' };
 const row = {
@@ -118,5 +118,26 @@ describe('ReportCustomersModal', () => {
     expect(screen.getByText('7')).toBeTruthy();
     fireEvent.click(screen.getByText('Đã chốt'));
     expect(listSpy.mock.calls.at(-1)![0]).toMatchObject({ metric: 'closed', salesUserId: 5 });
+  });
+
+  it('xem khách của 1 Sales cụ thể (preset.salesUserId) -> ẩn nút lọc nhanh \"Chưa có Sales\"', () => {
+    withRow();
+    render(<ReportCustomersModal drill={{ metric: 'total', preset: { salesUserId: 5 } }} onClose={vi.fn()} query={query} context="customers" />);
+    expect(screen.queryByText('Chưa có Sales')).toBeNull();
+    expect(screen.getByText('Chưa có Marketing')).toBeTruthy();
+  });
+
+  it('không preset Sales (xem tổng) -> vẫn hiện \"Chưa có Sales\"', () => {
+    withRow();
+    render(<ReportCustomersModal drill={{ metric: 'total' }} onClose={vi.fn()} query={query} context="customers" />);
+    expect(screen.getByText('Chưa có Sales')).toBeTruthy();
+  });
+
+  it('getQuickOptions: ẩn/hiện động theo metric + preset', () => {
+    const vals = (m: Parameters<typeof getQuickOptions>[0], p?: Parameters<typeof getQuickOptions>[1]) => getQuickOptions(m, p).map((o) => o.value);
+    expect(vals('total')).toEqual(['all', 'no_marketing', 'no_sales', 'no_phone']);
+    expect(vals('total', { salesUserId: 1 })).toEqual(['all', 'no_marketing', 'no_phone']);
+    expect(vals('unassigned_marketing')).toEqual(['all', 'no_sales', 'no_phone']);
+    expect(vals('unassigned_marketing', { marketingUserId: 3 })).toEqual(['all', 'no_sales', 'no_phone']);
   });
 });

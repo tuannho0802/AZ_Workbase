@@ -4877,3 +4877,17 @@ khi bị xoá tay. Đây là 1 anti-pattern thật (dù đo thử với payload 
 > Không migration, không permission key mới (dùng `reports.view`). Chưa commit/push — đã đóng gói patch `reports-improvements.patch` giao cho người dùng tự áp + tự chạy migration/deploy (không tự ý push theo đúng quy tắc file). Chưa test trên MySQL/trình duyệt thật, chỉ test bằng mock QueryBuilder + Jest/Vitest.
 
 ---
+
+## [2026-09-29 15:00] | /reports: màu % theo ngưỡng, ẩn "Chưa có Sales" động, ghi chú chung/chăm sóc trong modal khách | [Status: Success — BE tsc sạch + jest reports 52/52; FE tsc không lỗi mới + vitest 213/213 + eslint 0 lỗi]
+
+**Actor:** Agent (trên `origin/main` HEAD `4012e65`)
+
+**Files Changed:**
+- BE: `reports/reports-customer-detail.service.ts` (+spec) — trả thêm `careNotes` (bảng `customer_notes`, mới nhất trước).
+- FE MỚI: `lib/utils/rateColor.ts` (+test) — <40% đỏ, 40–80% vàng, >80% xanh.
+- FE: `ReportKpiCard.tsx` (+prop `rateColored`), `CustomerReportTab.tsx`, `QualityReportTab.tsx`, `RevenueReportTab.tsx`, `MarketingReportTab.tsx`, `MarketingBreakdownTable.tsx` (áp màu cho các tỷ lệ chốt/join/nạp; bỏ ngưỡng cũ 20/8), `ReportCustomersModal.tsx` (+`getQuickOptions()`: ẩn nút "Chưa có Sales" khi preset.salesUserId), `ReportCustomerDetailModal.tsx` (tab "Ghi chú": Ghi chú chung + Ghi chú chăm sóc), `lib/types/reports.types.ts`.
+
+**Notes:**
+> Không migration, không permission key mới. Chưa commit/push, chưa test trên MySQL/trình duyệt thật.
+
+---
