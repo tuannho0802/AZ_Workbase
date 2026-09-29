@@ -2,7 +2,7 @@
 
 import { useMemo, useState } from 'react';
 import dayjs from 'dayjs';
-import { Alert, Col, Descriptions, Empty, Modal, Row, Skeleton, Space, Statistic, Table, Tabs, Tag, Timeline, Typography } from 'antd';
+import { Alert, Col, Descriptions, Empty, Grid, Modal, Row, Skeleton, Space, Statistic, Table, Tabs, Tag, Timeline, Typography } from 'antd';
 import type { ColumnsType } from 'antd/es/table';
 import { DatePicker } from 'antd';
 import { useReportCustomerDetail } from '@/lib/hooks/useReports';
@@ -47,6 +47,11 @@ export default function ReportCustomerDetailModal({ customerId, context, onClose
   const open = customerId != null;
   const { data, isLoading, isError, error } = useReportCustomerDetail(customerId, context);
   const [range, setRange] = useState<QuickRangeValue>(null);
+  // Descriptions không nhận `column` responsive khi item có `span` cố định (span > column ở màn hẹp ->
+  // warning "Sum of column span not match column") - tự tính SỐ CỘT hiện tại qua breakpoint, dùng làm
+  // `column` (number, không phải object) VÀ `span` của 2 item "full width" (Nhóm đã join/Ghi chú) -> luôn khớp.
+  const screens = Grid.useBreakpoint();
+  const infoColumn = screens.sm ? 2 : 1;
 
   // Đổi sang khách khác -> bỏ lọc ngày cũ (điều chỉnh state theo prop ngay lúc render, không dùng effect).
   const [prevId, setPrevId] = useState(customerId);
@@ -93,7 +98,7 @@ export default function ReportCustomerDetailModal({ customerId, context, onClose
   const s = data?.depositSummary;
 
   const infoTab = c && (
-    <Descriptions size="small" bordered column={{ xs: 1, sm: 2 }} labelStyle={{ width: 150 }}>
+    <Descriptions size="small" bordered column={infoColumn} styles={{ label: { width: 150 } }}>
       <Descriptions.Item label="Họ và tên">{c.name}</Descriptions.Item>
       <Descriptions.Item label="Trạng thái"><StatusTag code={c.status} fallback="—" /></Descriptions.Item>
       <Descriptions.Item label="SĐT">{c.phone || <Text type="secondary" italic>Chưa có SĐT</Text>}</Descriptions.Item>
@@ -108,10 +113,10 @@ export default function ReportCustomerDetailModal({ customerId, context, onClose
       <Descriptions.Item label="Ngày gán Sales">{fmtDate(c.assignedDate)}</Descriptions.Item>
       <Descriptions.Item label="Ngày chốt">{fmtDate(c.closedDate)}</Descriptions.Item>
       <Descriptions.Item label="Tạo lúc">{dayjs(c.createdAt).format('HH:mm DD/MM/YYYY')}</Descriptions.Item>
-      <Descriptions.Item label="Nhóm đã join" span={2}>
+      <Descriptions.Item label="Nhóm đã join" span={infoColumn}>
         {data?.groups.length ? data.groups.map((g) => <Tag key={g.id}>{g.name}{g.joinedAt ? ` · ${dayjs(g.joinedAt).format('DD/MM/YYYY')}` : ''}</Tag>) : '—'}
       </Descriptions.Item>
-      <Descriptions.Item label="Ghi chú" span={2}>
+      <Descriptions.Item label="Ghi chú" span={infoColumn}>
         <span style={{ whiteSpace: 'pre-wrap' }}>{c.note || '—'}</span>
       </Descriptions.Item>
     </Descriptions>

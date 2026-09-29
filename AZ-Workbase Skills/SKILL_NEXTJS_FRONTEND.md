@@ -898,6 +898,38 @@ useEffect(() => {
 Nếu Modal dùng 1 state duy nhất vừa làm "đang mở" vừa làm "record đang sửa" (kiểu `editing: T | null`,
 không có `modalOpen` riêng — xem `CustomerAssignmentsTab.tsx`), `useEffect` chỉ cần phụ thuộc `editing`.
 
+#### 8.7. Descriptions — `labelStyle` deprecated + KHÔNG dùng `span` cố định với `column` responsive
+Gặp thật ở `ReportCustomerDetailModal.tsx` (trang `/reports`, xem `WORKFLOW_LOG.md` mục sửa 2 warning này):
+
+1. **`labelStyle`/`contentStyle` deprecated** — dùng `styles={{ label: {...}, content: {...} }}` (cùng pattern
+   `styles.content` đã dùng ở `Statistic`).
+   - **BAD:** `<Descriptions labelStyle={{ width: 150 }} />`
+   - **GOOD:** `<Descriptions styles={{ label: { width: 150 } }} />`
+
+2. **`column={{ xs: 1, sm: 2 }}` (object responsive) + `<Descriptions.Item span={2}>` cố định → warning
+   "Sum of column `span` in a line not match `column`"**. Nguyên nhân: `span` của `Descriptions.Item` LUÔN là
+   số cố định (không nhận object responsive như `column`) — ở breakpoint `xs` (column thực tế = 1), item khai
+   `span={2}` vượt quá số cột hiện tại → lệch tổng.
+   - **BAD:**
+     ```tsx
+     <Descriptions column={{ xs: 1, sm: 2 }}>
+       <Descriptions.Item label="Ghi chú" span={2}>...</Descriptions.Item>
+     </Descriptions>
+     ```
+   - **GOOD:** tự tính SỐ CỘT hiện tại bằng `Grid.useBreakpoint()`, dùng chung 1 biến `number` cho cả
+     `column` của `<Descriptions>` lẫn `span` của các item muốn chiếm trọn 1 hàng — luôn khớp ở mọi breakpoint:
+     ```tsx
+     import { Grid } from 'antd';
+     const screens = Grid.useBreakpoint();
+     const infoColumn = screens.sm ? 2 : 1;
+     // ...
+     <Descriptions column={infoColumn} styles={{ label: { width: 150 } }}>
+       <Descriptions.Item label="Ghi chú" span={infoColumn}>...</Descriptions.Item>
+     </Descriptions>
+     ```
+   `Grid.useBreakpoint()` cần `window.matchMedia` — trong Vitest đã có polyfill sẵn ở `vitest.setup.ts`,
+   không cần thêm gì khi viết test cho component dùng hook này.
+
 ```
 
 **Customer Filters Component:**
