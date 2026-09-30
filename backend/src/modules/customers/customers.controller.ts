@@ -12,6 +12,7 @@ import { UpdateCustomerDto } from './dto/update-customer.dto';
 import { CustomerFiltersDto } from './dto/customer-filters.dto';
 import { ImportCustomerDto } from './dto/import-customer.dto';
 import { BulkAssignDto } from './dto/bulk-assign.dto';
+import { BulkRemoveUtmDto } from './dto/bulk-remove-utm.dto';
 import { UpdateAssignmentDto } from './dto/update-assignment.dto';
 import { CreateCustomerNoteDto } from './dto/create-customer-note.dto';
 import { UpdateCustomerNoteDto } from './dto/update-customer-note.dto';
@@ -207,6 +208,18 @@ export class CustomersController {
       dto.reason,
       scope,
     );
+  }
+
+  // Khai TRƯỚC `@Patch(':id')` (Nest khớp theo thứ tự).
+  @Patch('bulk-remove-utm')
+  @RequirePermission('customers.edit')
+  @ApiOperation({ summary: 'Gỡ UTM khỏi nhiều khách hàng - từng khách vẫn qua update() (scope + audit), trả { succeeded, failed }' })
+  bulkRemoveUtm(
+    @Body() dto: BulkRemoveUtmDto,
+    @GetUser() user: any,
+    @GetPermissionScope() scope: string | null | undefined,
+  ) {
+    return this.customersService.bulkRemoveUtm(dto.utmId, dto.customerIds, user, scope);
   }
 
   @Get('unassigned')

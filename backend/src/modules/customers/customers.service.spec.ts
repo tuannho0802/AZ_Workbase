@@ -1902,4 +1902,33 @@ describe('CustomersService', () => {
       expect(mockAuditService.logActionAsync).not.toHaveBeenCalled();
     });
   });
+  describe('bulkRemoveUtm - Gỡ UTM hàng loạt', () => {
+    const caller: any = { id: 7, role: Role.EMPLOYEE };
+
+    it('gỡ qua update({utmId:null}) từng khách; khách sai UTM/không tồn tại/bị 403 chỉ vào failed', async () => {
+      mockCustomerRepo.find.mockResolvedValue([
+        { id: 1, utmId: 5 },
+        { id: 2, utmId: 5 },
+        { id: 3, utmId: 9 }, // đã đổi sang UTM khác
+      ]);
+      const upd = jest
+        .spyOn(service, 'update')
+        .mockResolvedValueOnce({} as any)
+        .mockRejectedValueOnce(new CustomerNotFoundException());
+
+      const r = await service.bulkRemoveUtm(5, [1, 2, 3, 4, 1], caller, PermissionScope.OWN);
+
+      expect(upd).toHaveBeenCalledTimes(2);
+      expect(upd).toHaveBeenCalledWith(1, { utmId: null }, 7, Role.EMPLOYEE, PermissionScope.OWN, caller);
+      expect(r.succeeded).toEqual([1]);
+      expect(r.failed.map((f) => f.id).sort()).toEqual([2, 3, 4]);
+      expect(r.failed).toHaveLength(3);
+    });
+
+    it('lỗi hệ thống (không phải HttpException) vẫn ném ra', async () => {
+      mockCustomerRepo.find.mockResolvedValue([{ id: 1, utmId: 5 }]);
+      jest.spyOn(service, 'update').mockRejectedValue(new Error('db down'));
+      await expect(service.bulkRemoveUtm(5, [1], caller)).rejects.toThrow('db down');
+    });
+  });
 });

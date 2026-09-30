@@ -103,6 +103,12 @@ export interface CreateUtmPayload {
   visibility?: UtmVisibility;
 }
 
+/** Kết quả thao tác hàng loạt (BE luôn trả 200; từng ID lỗi nằm trong `failed`). */
+export interface BulkResult {
+  succeeded: number[];
+  failed: Array<{ id: number; reason: string }>;
+}
+
 export const utmsApi = {
   /** Dropdown: UTM ĐƯỢC PHÉP DÙNG - mọi role đăng nhập (BE không gắn permission). */
   getUsable: async (params?: { q?: string; activeOnly?: boolean; limit?: number }): Promise<UtmOption[]> =>
@@ -127,6 +133,12 @@ export const utmsApi = {
   activate: async (id: number): Promise<UtmView> => (await axiosInstance.patch<UtmView>(`/utms/${id}/activate`)).data,
 
   remove: async (id: number): Promise<{ success: true }> => (await axiosInstance.delete(`/utms/${id}`)).data,
+
+  bulkSetActive: async (ids: number[], active: boolean): Promise<BulkResult> =>
+    (await axiosInstance.post<BulkResult>('/utms/bulk/status', { ids, active })).data,
+
+  bulkDelete: async (ids: number[]): Promise<BulkResult> =>
+    (await axiosInstance.post<BulkResult>('/utms/bulk/delete', { ids })).data,
 
   /** `{ [utmId]: số KH }` đã áp scope `customers.view` - cần `customers.view`. */
   getCustomerCounts: async (): Promise<Record<number, number>> =>

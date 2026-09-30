@@ -1,6 +1,6 @@
 'use client';
 
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import dayjs from 'dayjs';
 import { Alert, App, Button, Col, Input, Modal, Popconfirm, Row, Select, Space, Table, Tag, Tooltip, Typography } from 'antd';
 import { useQueryClient } from '@tanstack/react-query';
@@ -18,6 +18,8 @@ import { useCustomerStatuses } from '@/lib/hooks/useCustomerStatuses';
 import { SourceTag } from '@/components/customers/SourceTag';
 import { StatusTag } from '@/components/customers/StatusTag';
 import { getApiErrorMessage, toastApiError } from '@/lib/utils/error-message.util';
+import { BulkActionBar } from '@/components/common/BulkActionBar';
+import { pruneSelection, summarizeBulkResult } from '@/lib/utils/bulk-result.util';
 
 const { Text } = Typography;
 
@@ -44,7 +46,7 @@ export function UtmCustomersModal({ open, onClose, utmId, utmName }: Props) {
   const debounced = useDebounce(searchText, 300);
   const [status, setStatus] = useState<string | undefined>();
   const { statuses } = useCustomerStatuses();
-  const { message } = App.useApp();
+  const { message, modal } = App.useApp();
   const queryClient = useQueryClient();
   const { can } = useMyPermissions();
   const canTrash = can('customers.trash_manage');
@@ -54,6 +56,10 @@ export function UtmCustomersModal({ open, onClose, utmId, utmName }: Props) {
   const [editingCustomer, setEditingCustomer] = useState<Customer | null>(null);
   const [trashedMode, setTrashedMode] = useState<TrashedMode>('include');
   const [busyId, setBusyId] = useState<number | null>(null);
+  // Chọn nhiều khách để Gỡ UTM hàng loạt - CHỈ trong trang/bộ lọc đang xem (đổi trang/lọc -> xoá chọn) để người dùng
+  // luôn thấy đúng những khách mình đang thao tác.
+  const [selected, setSelected] = useState<number[]>([]);
+  const [bulkBusy, setBulkBusy] = useState(false);
 
   const params = useMemo(
     () => ({
@@ -67,6 +73,13 @@ export function UtmCustomersModal({ open, onClose, utmId, utmName }: Props) {
     [page, debounced, status, canTrash, trashedMode],
   );
   const { data, isLoading, isFetching, isError, error } = useUtmCustomers(open ? utmId : null, params);
+
+  // Đổi trang/tìm kiếm/lọc -> bỏ chọn; dữ liệu làm mới (khách biến khỏi trang) -> chỉ giữ ID còn hiển thị.
+  useEffect(() => setSelected([]), [page, debounced, status, trashedMode]);
+  useEffect(() => {
+    if (!data) return;
+    setSelected((prev) => pruneSelection(prev, data.data.filter((r) => !r.deletedAt).map((r) => r.id)));
+  }, [data]);
 
   // Sau khi đổi Thùng rác: làm mới danh sách này + số đếm/nút xoá UTM + danh sách khách + badge sidebar.
   const refreshAll = () => {
@@ -127,6 +140,45 @@ export function UtmCustomersModal({ open, onClose, utmId, utmName }: Props) {
     }
   };
 
+  // Gỡ UTM hàng loạt: 1 request PATCH /customers/bulk-remove-utm (BE trả 200 kèm `failed` từng khách nên không bị
+  // toast lỗi N lần). Khách thành công biến khỏi danh sách; khách lỗi được liệt kê kèm lý do.
+  const bulkRemoveUtm = async () => {
+    if (bulkBusy || utmId == null || selected.length === 0) return;
+    const rowsById = new Map((data?.data ?? []).map((r) => [r.id, r]));
+    const ids = selected.filter((id) => rowsById.has(id) && !rowsById.get(id)?.deletedAt);
+    if (ids.length === 0) return;
+    setBulkBusy(true);
+    try {
+      const result = await customersApi.bulkRemoveUtm(utmId, ids);
+      const summary = summarizeBulkResult(result, 'gỡ UTM', (id) => rowsById.get(id)?.name, 'khách hàng');
+      message[summary.level](summary.text);
+      if (summary.failures.length > 0) {
+        modal.warning({
+          title: 'Một số khách chưa gỡ được UTM',
+          width: 560,
+          content: (
+            <ul style={{ paddingLeft: 18, margin: 0, maxHeight: 320, overflowY: 'auto' }}>
+              {summary.failures.map((f) => (
+                <li key={f.id}>
+                  <Text strong>{f.name}</Text>: {f.reason}
+                </li>
+              ))}
+            </ul>
+          ),
+        });
+      }
+      const done = new Set(result.succeeded);
+      setSelected((prev) => prev.filter((id) => !done.has(id)));
+      // Gỡ hết khách của trang > 1 thì lùi 1 trang để không rơi vào trang trống.
+      if (page > 1 && (data?.data ?? []).every((r) => done.has(r.id) || r.deletedAt)) setPage(page - 1);
+      refreshAll();
+    } catch (e) {
+      toastApiError(message, e, 'Gỡ UTM hàng loạt thất bại');
+    } finally {
+      setBulkBusy(false);
+    }
+  };
+
   const columns: ColumnsType<UtmCustomerRow> = useMemo(
     () => [
       { title: 'STT', key: 'stt', width: 50, align: 'center', render: (_, __, i) => (page - 1) * UTM_CUSTOMERS_PAGE_SIZE + i + 1 },
@@ -181,7 +233,7 @@ export function UtmCustomersModal({ open, onClose, utmId, utmName }: Props) {
                   if (!canTrash) return <Text type="secondary">—</Text>;
                   return (
                     <Space size={4} wrap>
-                      <Button size="small" icon={<UndoOutlined />} loading={busy} disabled={busyId !== null && !busy} onClick={() => runTrashAction(r, 'restore')}>
+                      <Button size="small" icon={<UndoOutlined />} loading={busy} disabled={bulkBusy || (busyId !== null && !busy)} onClick={() => runTrashAction(r, 'restore')}>
                         Khôi phục
                       </Button>
                       {canHardDelete && (
@@ -193,7 +245,7 @@ export function UtmCustomersModal({ open, onClose, utmId, utmName }: Props) {
                           cancelText="Huỷ"
                           onConfirm={() => runTrashAction(r, 'hardDelete')}
                         >
-                          <Button size="small" danger icon={<DeleteOutlined />} loading={busy} disabled={busyId !== null && !busy}>
+                          <Button size="small" danger icon={<DeleteOutlined />} loading={busy} disabled={bulkBusy || (busyId !== null && !busy)}>
                             Xoá vĩnh viễn
                           </Button>
                         </Popconfirm>
@@ -205,7 +257,7 @@ export function UtmCustomersModal({ open, onClose, utmId, utmName }: Props) {
                 if (!canEditCustomer) return <Text type="secondary">—</Text>;
                 return (
                   <Space size={4} wrap>
-                    <Button size="small" icon={<EditOutlined />} loading={busy} disabled={busyId !== null && !busy} onClick={() => openEditCustomer(r)}>
+                    <Button size="small" icon={<EditOutlined />} loading={busy} disabled={bulkBusy || (busyId !== null && !busy)} onClick={() => openEditCustomer(r)}>
                       Sửa nhanh
                     </Button>
                     <Popconfirm
@@ -215,7 +267,7 @@ export function UtmCustomersModal({ open, onClose, utmId, utmName }: Props) {
                       cancelText="Huỷ"
                       onConfirm={() => removeUtmFromCustomer(r)}
                     >
-                      <Button size="small" icon={<DisconnectOutlined />} disabled={busyId !== null && !busy}>
+                      <Button size="small" icon={<DisconnectOutlined />} disabled={bulkBusy || (busyId !== null && !busy)}>
                         Gỡ UTM
                       </Button>
                     </Popconfirm>
@@ -227,7 +279,7 @@ export function UtmCustomersModal({ open, onClose, utmId, utmName }: Props) {
         : []),
     ],
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [page, canTrash, canHardDelete, canEditCustomer, busyId, data],
+    [page, canTrash, canHardDelete, canEditCustomer, busyId, bulkBusy, data],
   );
 
   return (
@@ -289,13 +341,37 @@ export function UtmCustomersModal({ open, onClose, utmId, utmName }: Props) {
         )}
       </Row>
       {isError && <Alert type="error" showIcon style={{ marginBottom: 8 }} message={getApiErrorMessage(error, 'Không tải được danh sách khách hàng')} />}
+      <BulkActionBar count={selected.length} onClear={() => setSelected([])} disabled={bulkBusy}>
+        <Popconfirm
+          title={`Gỡ UTM khỏi ${selected.length} khách?`}
+          description="Các khách đã chọn sẽ không còn thuộc UTM này (dữ liệu khác giữ nguyên)."
+          okText="Gỡ UTM"
+          cancelText="Huỷ"
+          onConfirm={bulkRemoveUtm}
+        >
+          <Button size="small" icon={<DisconnectOutlined />} loading={bulkBusy}>
+            Gỡ UTM ({selected.length})
+          </Button>
+        </Popconfirm>
+      </BulkActionBar>
       <Table<UtmCustomerRow>
         rowKey="id"
         size="small"
         loading={isLoading || isFetching}
         columns={columns}
         dataSource={data?.data ?? []}
-        scroll={{ x: sumColumnWidths(columns) }}
+        // Chỉ người có customers.edit (cùng quyền với Gỡ UTM từng khách) mới chọn được; khách trong Thùng rác không chọn.
+        rowSelection={
+          canEditCustomer
+            ? {
+                selectedRowKeys: selected,
+                onChange: (keys) => setSelected(keys as number[]),
+                fixed: true,
+                getCheckboxProps: (r) => ({ disabled: !!r.deletedAt || bulkBusy }),
+              }
+            : undefined
+        }
+        scroll={{ x: sumColumnWidths(columns) + (canEditCustomer ? 48 : 0) }}
         pagination={{
           current: page,
           pageSize: UTM_CUSTOMERS_PAGE_SIZE,

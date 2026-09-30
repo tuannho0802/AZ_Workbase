@@ -1,4 +1,4 @@
-import { Injectable, ForbiddenException, Logger } from '@nestjs/common';
+import { Injectable, ForbiddenException, HttpException, Logger } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, Brackets, IsNull, In, SelectQueryBuilder } from 'typeorm';
 import { Customer } from '../../database/entities/customer.entity';
@@ -2141,6 +2141,41 @@ export class CustomersService {
       );
     }
     return { message: 'Xóa khách hàng thành công' };
+  }
+
+  /**
+   * Gỡ UTM hàng loạt: đi qua `update(id, { utmId: null })` từng khách nên giữ nguyên scope `customers.edit`,
+   * snapshot `campaign` và audit như sửa tay. Khách không còn thuộc `utmId` (danh sách UI đã cũ) bị bỏ qua
+   * vào `failed` thay vì gỡ nhầm UTM khác. Lỗi HTTP từng khách chỉ ghi vào `failed`.
+   */
+  async bulkRemoveUtm(
+    utmId: number,
+    customerIds: number[],
+    user: { id: number; role: string; [k: string]: unknown },
+    scope?: string | null,
+  ): Promise<{ succeeded: number[]; failed: Array<{ id: number; reason: string }> }> {
+    const ids = Array.from(new Set(customerIds));
+    const current = await this.customersRepository.find({ where: { id: In(ids) }, select: ['id', 'utmId'] });
+    const currentUtm = new Map(current.map((c) => [c.id, c.utmId ?? null]));
+    const result: { succeeded: number[]; failed: Array<{ id: number; reason: string }> } = { succeeded: [], failed: [] };
+    for (const id of ids) {
+      if (!currentUtm.has(id)) {
+        result.failed.push({ id, reason: 'Không tìm thấy khách hàng (có thể đã vào Thùng rác)' });
+        continue;
+      }
+      if (currentUtm.get(id) !== utmId) {
+        result.failed.push({ id, reason: 'Khách không còn thuộc UTM này' });
+        continue;
+      }
+      try {
+        await this.update(id, { utmId: null } as UpdateCustomerDto, user.id, user.role, scope, user as never);
+        result.succeeded.push(id);
+      } catch (e) {
+        if (!(e instanceof HttpException)) throw e;
+        result.failed.push({ id, reason: e.message });
+      }
+    }
+    return result;
   }
 
   async bulkAssign(

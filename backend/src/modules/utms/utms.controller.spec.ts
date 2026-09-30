@@ -28,6 +28,8 @@ describe('UtmsController', () => {
     ['deactivate', 'utms.edit'],
     ['activate', 'utms.edit'],
     ['remove', 'utms.delete'],
+    ['bulkStatus', 'utms.edit'],
+    ['bulkDelete', 'utms.delete'],
     ['addManager', 'utms.assign'],
     ['removeManager', 'utms.assign'],
     ['transferPrimary', 'utms.assign'],
@@ -44,15 +46,21 @@ describe('UtmsController', () => {
     expect(Reflect.getMetadata(GUARDS_METADATA, proto.create) as unknown[]).toContain(ThrottlerGuard);
   });
 
-  it('không có endpoint lạ ngoài 18 endpoint đã khoá', () => {
+  it('không có endpoint lạ ngoài 20 endpoint đã khoá', () => {
     const names = Object.getOwnPropertyNames(UtmsController.prototype).filter((n) => n !== 'constructor');
     expect(names.sort()).toEqual(
       [
         'findUsable', 'managedByMe', 'listScoped', 'create', 'getOne', 'update', 'deactivate',
         'activate', 'remove', 'getManagers', 'addManager', 'removeManager', 'transferPrimary',
-        'recent', 'customerCounts', 'duplicates', 'listCustomers', 'merge',
+        'recent', 'customerCounts', 'duplicates', 'listCustomers', 'merge', 'bulkStatus', 'bulkDelete',
       ].sort(),
     );
+  });
+
+  it('route bulk khai TRƯỚC :id', () => {
+    const order = Object.getOwnPropertyNames(UtmsController.prototype);
+    expect(order.indexOf('bulkStatus')).toBeLessThan(order.indexOf('getOne'));
+    expect(order.indexOf('bulkDelete')).toBeLessThan(order.indexOf('getOne'));
   });
 
   it('route tĩnh (managed-by-me, scoped) khai TRƯỚC :id để không bị nuốt', () => {

@@ -249,6 +249,15 @@ export const customersApi = {
     return response.data;
   },
 
+  /** Gỡ UTM khỏi nhiều khách (BE trả 200 kèm `failed` từng khách - không toast lỗi N lần). */
+  bulkRemoveUtm: async (utmId: number, customerIds: number[]) => {
+    const response = await axiosInstance.patch<{
+      succeeded: number[];
+      failed: Array<{ id: number; reason: string }>;
+    }>('/customers/bulk-remove-utm', { utmId, customerIds });
+    return response.data;
+  },
+
   createNote: async (id: number, data: { note: string; noteType?: string; isImportant?: boolean }) => {
     const response = await axiosInstance.post(`/customers/${id}/notes`, data);
     return response.data;

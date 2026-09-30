@@ -133,6 +133,19 @@ export const useSetUtmActive = () => {
   });
 };
 
+export const useBulkSetUtmActive = () => {
+  const invalidate = useInvalidateUtms();
+  return useMutation({
+    mutationFn: ({ ids, active }: { ids: number[]; active: boolean }) => utmsApi.bulkSetActive(ids, active),
+    onSuccess: invalidate,
+  });
+};
+
+export const useBulkDeleteUtm = () => {
+  const invalidate = useInvalidateUtms();
+  return useMutation({ mutationFn: (ids: number[]) => utmsApi.bulkDelete(ids), onSuccess: invalidate });
+};
+
 export const useDeleteUtm = () => {
   const invalidate = useInvalidateUtms();
   return useMutation({ mutationFn: (id: number) => utmsApi.remove(id), onSuccess: invalidate });

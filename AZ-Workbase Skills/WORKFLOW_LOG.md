@@ -5248,3 +5248,19 @@ khi bị xoá tay. Đây là 1 anti-pattern thật (dù đo thử với payload 
 > Khách trong Thùng rác KHÔNG có Sửa nhanh/Gỡ UTM (chỉ Khôi phục/Xoá vĩnh viễn như cũ). Quyền sửa khớp `PATCH /customers/:id` (`customers.edit`), BE vẫn tự chặn theo phạm vi. Sau khi sửa/gỡ: làm mới `['utms']`, `['customers']`, badge Thùng rác (khách đổi/gỡ UTM sẽ biến khỏi danh sách này). Chỉ đổi FE, không migration.
 
 ---
+
+## [2026-09-30 19:30] | UTM: Bulk Khoá/Mở khoá/Xoá UTM (trang Quản lý UTM) + Bulk Gỡ UTM (modal Khách hàng của UTM) | [Status: Success — BE tsc + nest build + full jest 70 suite / 1268 test; FE tsc (chỉ còn lỗi cũ do thiếu next-env) + next build + full vitest 41 file / 281 test; CHƯA xem trình duyệt thật]
+
+**Actor:** Agent (trên `origin/main` HEAD `8ed8d5b`)
+
+**Files Changed:**
+- BE: `utms/dto/bulk-utm.dto.ts` (MỚI, tối đa 100 ID/lần, unique); `utms/utms.service.ts` (`bulkSetActive`/`bulkRemove` chạy TUẦN TỰ đúng `setActive`/`remove` từng UTM → scope + audit `ACTIVATE/DEACTIVATE/DELETE_UTM` riêng từng UTM; HttpException từng UTM chỉ vào `failed`); `utms/utms.controller.ts` (`POST /utms/bulk/status` @RequirePermission `utms.edit`, `POST /utms/bulk/delete` @RequirePermission `utms.delete`, khai TRƯỚC `:id`); `customers/dto/bulk-remove-utm.dto.ts` (MỚI); `customers/customers.service.ts` (`bulkRemoveUtm` → `update(id, {utmId:null})` từng khách, chỉ gỡ khách còn ĐÚNG `utmId` đang xem); `customers/customers.controller.ts` (`PATCH /customers/bulk-remove-utm` @RequirePermission `customers.edit`, trước `@Patch(':id')`); spec cập nhật (khoá 20 endpoint UTM, test bulk).
+- FE: `components/common/BulkActionBar.tsx` (MỚI); `lib/utils/bulk-result.util.ts` (MỚI) + test; `lib/api/utms.api.ts`, `lib/api/customers.api.ts`, `lib/hooks/useUtms.ts` (API/hook bulk); `quan-ly-utm/page.tsx` (checkbox từng tab, thanh Khoá/Mở khoá/Xoá, chỉ tính dòng ĐANG HIỆN sau lọc, đổi tab xoá chọn); `utms/UtmCustomersModal.tsx` + test (checkbox khi có `customers.edit`, khách Thùng rác bị khoá checkbox, nút "Gỡ UTM (n)").
+
+**Root Cause / Thiết kế:**
+> Bulk trả HTTP 200 kèm `{ succeeded, failed:[{id,reason}] }` thay vì ném lỗi: interceptor axios toast MỌI lỗi HTTP nên loop N request lỗi sẽ toast N lần. FE toast tóm tắt + hộp thoại liệt kê UTM/khách lỗi kèm lý do; mục thành công bị bỏ khỏi vùng chọn, mục lỗi giữ lại.
+
+**Notes:**
+> Không migration, không permission key mới (dùng lại `utms.edit`, `utms.delete`, `customers.edit`). Xoá UTM hàng loạt vẫn chỉ xoá được UTM 0 KH (kể cả Thùng rác) — UTM còn KH báo lỗi trong hộp thoại. Chưa làm bulk Khôi phục/Xoá vĩnh viễn khách Thùng rác trong modal.
+
+---

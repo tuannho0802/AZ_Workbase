@@ -28,10 +28,12 @@ vi.mock('@/lib/hooks/useUtms', () => ({
 
 const getCustomer = vi.fn();
 const updateCustomer = vi.fn();
+const bulkRemoveUtm = vi.fn();
 vi.mock('@/lib/api/customers.api', () => ({
   customersApi: {
     getCustomer: (...a: unknown[]) => getCustomer(...a),
     updateCustomer: (...a: unknown[]) => updateCustomer(...a),
+    bulkRemoveUtm: (...a: unknown[]) => bulkRemoveUtm(...a),
     restoreCustomer: vi.fn(),
     hardDeleteCustomer: vi.fn(),
   },
@@ -59,6 +61,7 @@ describe('UtmCustomersModal - sửa nhanh khách', () => {
     perms.clear();
     getCustomer.mockReset();
     updateCustomer.mockReset();
+    bulkRemoveUtm.mockReset();
   });
 
   it('có customers.edit: bấm tên khách -> tải hồ sơ đủ và mở modal sửa đúng khách', async () => {
@@ -100,5 +103,31 @@ describe('UtmCustomersModal - sửa nhanh khách', () => {
     perms.add('customers.edit');
     renderModal();
     expect(screen.getAllByText(/Sửa nhanh/)).toHaveLength(1);
+  });
+});
+
+describe('UtmCustomersModal - Gỡ UTM hàng loạt', () => {
+  beforeEach(() => {
+    perms.clear();
+    bulkRemoveUtm.mockReset();
+  });
+
+  it('KHÔNG có customers.edit: không có checkbox chọn', () => {
+    renderModal();
+    expect(screen.queryAllByRole('checkbox')).toHaveLength(0);
+  });
+
+  it('khách Thùng rác bị khoá checkbox; chọn khách thường -> hiện thanh "Gỡ UTM (1)" -> gọi bulkRemoveUtm(utmId, ids)', async () => {
+    perms.add('customers.edit');
+    bulkRemoveUtm.mockResolvedValue({ succeeded: [1], failed: [] });
+    renderModal();
+    const boxes = screen.getAllByRole('checkbox'); // [chọn tất cả, Khách A, Khách B (Thùng rác)]
+    expect((boxes[2] as HTMLInputElement).disabled).toBe(true);
+    fireEvent.click(boxes[1]);
+    const bulkBtn = await screen.findByRole('button', { name: /Gỡ UTM \(1\)/ });
+    fireEvent.click(bulkBtn);
+    const confirmBtns = await screen.findAllByRole('button', { name: /Gỡ UTM/ });
+    fireEvent.click(confirmBtns[confirmBtns.length - 1]);
+    await waitFor(() => expect(bulkRemoveUtm).toHaveBeenCalledWith(7, [1]));
   });
 });

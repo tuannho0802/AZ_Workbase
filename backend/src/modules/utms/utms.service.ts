@@ -5,6 +5,7 @@ import {
   ForbiddenException,
   BadRequestException,
   ConflictException,
+  HttpException,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { DataSource, Repository } from 'typeorm';
@@ -29,6 +30,12 @@ export interface UtmCaller {
   isRootAdmin?: boolean;
   departmentId?: number | null;
   positionId?: number | null;
+}
+
+/** Kết quả thao tác hàng loạt: thành công/thất bại từng ID (thất bại kèm lý do gốc từ BE). */
+export interface BulkUtmResult {
+  succeeded: number[];
+  failed: Array<{ id: number; reason: string }>;
 }
 
 /** Scope hiệu lực (own/department/all) của từng permission scoped; null = không có quyền. */
@@ -563,6 +570,33 @@ export class UtmsService {
     await this.utmRepo.delete(utm.id); // utm_secondary_managers tự CASCADE ở DB
     this.auditService.logActionAsync(user.id, 'DELETE_UTM', 'utm', utm.id, { utmId: utm.id, utmName: utm.name }, null);
     return { success: true };
+  }
+
+  /**
+   * Bulk khoá/mở khoá & xoá: chạy TUẦN TỰ đúng `setActive`/`remove` của từng UTM nên mỗi UTM vẫn tự kiểm quyền
+   * theo scope + audit riêng; UTM nào lỗi (403/400/404) chỉ ghi vào `failed`, KHÔNG làm hỏng cả lô và KHÔNG
+   * trả HTTP lỗi (tránh interceptor FE toast N lần).
+   */
+  async bulkSetActive(ids: number[], active: boolean, user: UtmCaller): Promise<BulkUtmResult> {
+    return this.runBulk(ids, (id) => this.setActive(id, active, user));
+  }
+
+  async bulkRemove(ids: number[], user: UtmCaller): Promise<BulkUtmResult> {
+    return this.runBulk(ids, (id) => this.remove(id, user));
+  }
+
+  private async runBulk(ids: number[], action: (id: number) => Promise<unknown>): Promise<BulkUtmResult> {
+    const result: BulkUtmResult = { succeeded: [], failed: [] };
+    for (const id of Array.from(new Set(ids))) {
+      try {
+        await action(id);
+        result.succeeded.push(id);
+      } catch (e) {
+        if (!(e instanceof HttpException)) throw e; // lỗi hệ thống thật -> để filter toàn cục xử lý
+        result.failed.push({ id, reason: e.message });
+      }
+    }
+    return result;
   }
 
   /** Thông báo không xoá được UTM: nói rõ bao nhiêu KH đang dùng và bao nhiêu nằm trong Thùng rác. */

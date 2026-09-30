@@ -23,6 +23,7 @@ import { UpdateUtmDto } from './dto/update-utm.dto';
 import { UtmUserIdDto } from './dto/utm-user-id.dto';
 import { UtmQueryDto } from './dto/utm-query.dto';
 import { MergeUtmDto } from './dto/merge-utm.dto';
+import { BulkUtmIdsDto, BulkUtmStatusDto } from './dto/bulk-utm.dto';
 import { UtmCustomersQueryDto } from './dto/utm-customers-query.dto';
 import { UtmCustomersService } from './utm-customers.service';
 import { GetPermissionScope } from '../../common/decorators/get-permission-scope.decorator';
@@ -92,6 +93,20 @@ export class UtmsController {
   @ApiOperation({ summary: 'Tạo UTM mới - người tạo là Quản lý chính' })
   create(@Body() dto: CreateUtmDto, @GetUser() user: any) {
     return this.utmsService.create(dto, user);
+  }
+
+  @Post('bulk/status')
+  @RequirePermission('utms.edit')
+  @ApiOperation({ summary: 'Khoá/mở khoá nhiều UTM - mỗi UTM tự kiểm quyền, trả { succeeded, failed }' })
+  bulkStatus(@Body() dto: BulkUtmStatusDto, @GetUser() user: any) {
+    return this.utmsService.bulkSetActive(dto.ids, dto.active, user);
+  }
+
+  @Post('bulk/delete')
+  @RequirePermission('utms.delete')
+  @ApiOperation({ summary: 'Xoá nhiều UTM (chỉ UTM không còn KH) - mỗi UTM tự kiểm quyền, trả { succeeded, failed }' })
+  bulkDelete(@Body() dto: BulkUtmIdsDto, @GetUser() user: any) {
+    return this.utmsService.bulkRemove(dto.ids, user);
   }
 
   @Get(':id')

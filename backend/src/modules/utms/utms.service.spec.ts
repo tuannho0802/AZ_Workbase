@@ -183,6 +183,40 @@ describe('UtmsService', () => {
     });
   });
 
+  describe('bulk (khoá/mở khoá/xoá hàng loạt)', () => {
+    it('bulkSetActive: UTM nào lỗi quyền chỉ vào failed, UTM khác vẫn thành công, ID trùng chỉ xử lý 1 lần', async () => {
+      scopes['utms.edit'] = 'own';
+      utmRepo.findOne.mockImplementation(async ({ where }: any) =>
+        where.id === 1 ? mk({ id: 1, primaryManagerId: 10 }) : mk({ id: where.id, primaryManagerId: 99, primaryManager: { id: 99, name: 'X', departmentId: 9 } }),
+      );
+      const r = await svc.bulkSetActive([1, 2, 1], false, emp);
+      expect(r.succeeded).toEqual([1]);
+      expect(r.failed).toEqual([{ id: 2, reason: expect.stringContaining('quyền') }]);
+      expect(utmRepo.update).toHaveBeenCalledTimes(1);
+    });
+    it('bulkSetActive: không tìm thấy -> failed (không ném 404 cả lô)', async () => {
+      scopes['utms.edit'] = 'all';
+      utmRepo.findOne.mockResolvedValue(null);
+      const r = await svc.bulkSetActive([5], true, emp);
+      expect(r.succeeded).toEqual([]);
+      expect(r.failed).toHaveLength(1);
+    });
+    it('bulkRemove: UTM còn KH -> failed kèm lý do, UTM trống -> xoá + audit', async () => {
+      utmRepo.findOne.mockImplementation(async ({ where }: any) => mk({ id: where.id }));
+      utmRepo.query.mockResolvedValueOnce([{ active: '2', trashed: '0' }]).mockResolvedValueOnce([{ active: '0', trashed: '0' }]);
+      const r = await svc.bulkRemove([1, 2], root);
+      expect(r.succeeded).toEqual([2]);
+      expect(r.failed[0]).toEqual({ id: 1, reason: expect.stringContaining('2 khách hàng đang dùng') });
+      expect(utmRepo.delete).toHaveBeenCalledTimes(1);
+      expect(utmRepo.delete).toHaveBeenCalledWith(2);
+    });
+    it('lỗi hệ thống (không phải HttpException) vẫn ném ra', async () => {
+      scopes['utms.edit'] = 'all';
+      utmRepo.findOne.mockRejectedValue(new Error('db down'));
+      await expect(svc.bulkSetActive([1], false, root)).rejects.toThrow('db down');
+    });
+  });
+
   describe('findUsable / listScoped / capabilities', () => {
     it('Employee KHÔNG có utms.view vẫn gọi được dropdown (không ném lỗi), query lọc restricted', async () => {
       const qb: any = {};

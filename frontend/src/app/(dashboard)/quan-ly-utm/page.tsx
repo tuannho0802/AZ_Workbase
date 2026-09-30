@@ -19,6 +19,8 @@ import {
 } from '@ant-design/icons';
 import { useMyPermissions } from '@/lib/hooks/useMyPermissions';
 import {
+  useBulkDeleteUtm,
+  useBulkSetUtmActive,
   useDeleteUtm,
   useManagedUtms,
   useScopedUtms,
@@ -45,6 +47,8 @@ import {
 } from '@/lib/utils/utm-list.util';
 import { toastApiError } from '@/lib/utils/error-message.util';
 import { sumColumnWidths } from '@/lib/utils/table-width.util';
+import { BulkActionBar } from '@/components/common/BulkActionBar';
+import { summarizeBulkResult, type BulkResultLike } from '@/lib/utils/bulk-result.util';
 
 const { Title, Text } = Typography;
 
@@ -72,7 +76,7 @@ const DEFAULT_SORT_BY_TAB: Record<UtmTabKey, UtmSortKey> = { mine: 'newest', all
 
 export default function QuanLyUtmPage() {
   const router = useRouter();
-  const { message } = App.useApp();
+  const { message, modal } = App.useApp();
   const { can, scope, isLoading: permissionsLoading } = useMyPermissions();
 
   // Khớp nav-config (`utms.my_managed` + `requireAll: ['customers.view']`) - không cho mở
@@ -104,6 +108,11 @@ export default function QuanLyUtmPage() {
 
   const setActive = useSetUtmActive();
   const deleteMutation = useDeleteUtm();
+  const bulkActive = useBulkSetUtmActive();
+  const bulkDelete = useBulkDeleteUtm();
+  const bulkBusy = bulkActive.isPending || bulkDelete.isPending;
+  // Chỉ chọn trong 1 tab tại 1 thời điểm (đổi tab -> xoá chọn) để không thao tác nhầm dòng đang ẩn.
+  const [selected, setSelected] = useState<number[]>([]);
 
   const [searchText, setSearchText] = useState('');
   const [roleFilter, setRoleFilter] = useState<UtmRoleFilter | undefined>();
@@ -142,6 +151,52 @@ export default function QuanLyUtmPage() {
       onSuccess: () => message.success(`Đã xoá UTM "${u.name}"`),
       onError: (e) => toastApiError(message, e, 'Xoá UTM thất bại'),
     });
+
+  // Báo kết quả hàng loạt: toast tóm tắt; nếu có mục lỗi thì mở hộp thoại liệt kê UTM nào lỗi vì sao.
+  // Mục thành công bị bỏ khỏi vùng chọn, mục lỗi giữ lại để người dùng thấy/thử lại.
+  const reportBulk = (result: BulkResultLike, verb: string, rows: UtmView[]) => {
+    const nameOf = (id: number) => rows.find((r) => r.id === id)?.name;
+    const summary = summarizeBulkResult(result, verb, nameOf);
+    message[summary.level](summary.text);
+    if (summary.failures.length > 0) {
+      modal.warning({
+        title: summary.text,
+        width: 560,
+        content: (
+          <ul style={{ paddingLeft: 18, margin: 0, maxHeight: 320, overflowY: 'auto' }}>
+            {summary.failures.map((f) => (
+              <li key={f.id}>
+                <Text strong>{f.name}</Text>: {f.reason}
+              </li>
+            ))}
+          </ul>
+        ),
+      });
+    }
+    const done = new Set(result.succeeded);
+    setSelected((prev) => prev.filter((id) => !done.has(id)));
+  };
+
+  const handleBulkActive = (rows: UtmView[], active: boolean) => {
+    const ids = rows.filter((r) => r.capabilities.canEditMeta && r.isActive !== active).map((r) => r.id);
+    if (ids.length === 0) return;
+    bulkActive.mutate(
+      { ids, active },
+      {
+        onSuccess: (res) => reportBulk(res, active ? 'mở khoá' : 'khoá', rows),
+        onError: (e) => toastApiError(message, e, 'Đổi trạng thái hàng loạt thất bại'),
+      },
+    );
+  };
+
+  const handleBulkDelete = (rows: UtmView[]) => {
+    const ids = rows.filter((r) => r.capabilities.canDelete).map((r) => r.id);
+    if (ids.length === 0) return;
+    bulkDelete.mutate(ids, {
+      onSuccess: (res) => reportBulk(res, 'xoá', rows),
+      onError: (e) => toastApiError(message, e, 'Xoá hàng loạt thất bại'),
+    });
+  };
 
   type Col = ColumnsType<UtmView>[number];
 
@@ -373,6 +428,10 @@ export default function QuanLyUtmPage() {
       createdRange?.[1]
     );
     const columns = tabColumns(tab);
+    // Chỉ tính các dòng ĐANG HIỆN (đã qua bộ lọc) - dòng bị lọc ẩn không bao giờ bị thao tác ngầm.
+    const selectedRows = filtered.filter((r) => selected.includes(r.id));
+    const lockableRows = selectedRows.filter((r) => r.capabilities.canEditMeta && r.isActive === (tab !== 'locked'));
+    const deletableRows = selectedRows.filter((r) => r.capabilities.canDelete);
     const primaryOptions: { value: UtmPrimaryFilter; label: React.ReactNode; searchText: string }[] = [
       { value: 'none', label: 'Chưa gán', searchText: 'Chưa gán' },
       ...Array.from(new Map(rows.filter((r) => r.primaryManager).map((r) => [r.primaryManager!.id, r.primaryManager!.name])).entries())
@@ -460,13 +519,54 @@ export default function QuanLyUtmPage() {
           }
           dropdowns={dropdowns}
         />
+        <BulkActionBar count={selectedRows.length} onClear={() => setSelected([])} disabled={bulkBusy}>
+          {lockableRows.length > 0 && (
+            <Popconfirm
+              title={tab === 'locked' ? `Mở khoá ${lockableRows.length} UTM?` : `Khoá ${lockableRows.length} UTM?`}
+              description={tab === 'locked' ? undefined : 'Không ai chọn được các UTM này cho khách mới; khách cũ giữ nguyên.'}
+              okText={tab === 'locked' ? 'Mở khoá' : 'Khoá'}
+              cancelText="Huỷ"
+              onConfirm={() => handleBulkActive(selectedRows, tab === 'locked')}
+            >
+              <Button size="small" icon={tab === 'locked' ? <UnlockOutlined /> : <LockOutlined />} loading={bulkActive.isPending} disabled={bulkBusy}>
+                {tab === 'locked' ? 'Mở khoá' : 'Khoá'} ({lockableRows.length})
+              </Button>
+            </Popconfirm>
+          )}
+          {deletableRows.length > 0 && (
+            <Popconfirm
+              title={`Xoá ${deletableRows.length} UTM?`}
+              description="Chỉ xoá được UTM không còn khách hàng nào dùng (kể cả Thùng rác); UTM còn khách sẽ được báo lỗi và giữ nguyên."
+              okText="Xoá"
+              okButtonProps={{ danger: true }}
+              cancelText="Huỷ"
+              onConfirm={() => handleBulkDelete(selectedRows)}
+            >
+              <Button size="small" danger icon={<DeleteOutlined />} loading={bulkDelete.isPending} disabled={bulkBusy}>
+                Xoá ({deletableRows.length})
+              </Button>
+            </Popconfirm>
+          )}
+          {lockableRows.length === 0 && deletableRows.length === 0 && (
+            <Text type="secondary">Bạn không có quyền khoá/xoá các UTM đã chọn</Text>
+          )}
+        </BulkActionBar>
         <Table<UtmView>
           rowKey="id"
           loading={loading}
           columns={columns}
           dataSource={filtered}
+          rowSelection={{
+            selectedRowKeys: selected,
+            onChange: (keys) => setSelected(keys as number[]),
+            preserveSelectedRowKeys: true,
+            fixed: true,
+            // Không có quyền sửa/xoá UTM này -> không có gì để làm hàng loạt.
+            getCheckboxProps: (r) => ({ disabled: !r.capabilities.canEditMeta && !r.capabilities.canDelete }),
+          }}
           // scroll.x = TỔNG width các cột (không gõ tay) để không bao giờ nhỏ hơn tổng cột -> không đè cột.
-          scroll={{ x: sumColumnWidths(columns) }}
+          // +48 cho cột checkbox của rowSelection (không nằm trong `columns`).
+          scroll={{ x: sumColumnWidths(columns) + 48 }}
           pagination={{ pageSize: 20, hideOnSinglePage: true }}
           locale={{ emptyText: <Empty description={filtering ? 'Không có UTM nào khớp bộ lọc' : emptyText} /> }}
         />
@@ -560,6 +660,7 @@ export default function QuanLyUtmPage() {
       <Tabs
         items={tabItems}
         onChange={() => {
+          setSelected([]);
           setSearchText('');
           setRoleFilter(undefined);
           setPrimaryFilter(undefined);
