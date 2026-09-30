@@ -49,6 +49,7 @@ export const METRIC_TITLE: Record<ReportCustomerListMetric, string> = {
   group_closed: 'Thành viên nhóm đã chốt',
   group_new_deposited: 'Khách join nhóm trong kỳ và đã từng nạp',
   group_new_closed: 'Khách join nhóm trong kỳ và đã chốt',
+  group_new_no_deposit: 'Khách join nhóm trong kỳ và chưa nạp lần nào',
   new_no_group: 'Data mới trong kỳ chưa join nhóm nào',
   utm_customers: 'Khách của UTM',
   utm_new: 'Khách mới trong kỳ của UTM',
@@ -57,6 +58,7 @@ export const METRIC_TITLE: Record<ReportCustomerListMetric, string> = {
   utm_closed: 'Khách của UTM đã chốt',
   utm_new_deposited: 'Khách mới trong kỳ của UTM đã từng nạp',
   utm_new_closed: 'Khách mới trong kỳ của UTM đã chốt',
+  utm_new_no_deposit: 'Khách mới trong kỳ của UTM chưa nạp lần nào',
   new_no_utm: 'Data mới trong kỳ chưa gắn UTM',
 };
 

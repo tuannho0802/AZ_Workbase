@@ -628,45 +628,42 @@ export default function UtmQualityReportTab({ query, onQueryChange }: Props) {
         <div className="space-y-4">
           {/* ── KPI ── */}
           <Row gutter={[12, 12]}>
+            {/* Mọi card bên dưới đo theo KỲ đang chọn: nhóm khách MỚI trong kỳ (created_at) hoặc tiền nạp trong kỳ (deposit_date) - cùng quy ước các tab Doanh số/Chất lượng data/Marketing. */}
             <Col xs={24} md={12} xl={6}>
-              <ReportKpiCard title={selectedUtm ? `Khách — ${selectedUtm.name}` : `Khách của ${scopeLabel}`} value={cur?.customers ?? 0} color={REPORT_COLORS.primary} loading={loading}
+              <ReportKpiCard title={<Tooltip title="Khách mới của UTM trong kỳ đang chọn (theo ngày tạo). Các tỷ lệ bên dưới đều tính trên nhóm khách này.">{selectedUtm ? `Khách mới — ${selectedUtm.name}` : `Khách mới của ${scopeLabel}`}</Tooltip>}
+                value={cur?.newCustomers ?? 0} previous={prev?.newCustomers} color={REPORT_COLORS.primary} loading={loading}
                 hint={data ? `${fmtCount(data.summary.utmCount)} UTM${data.summary.emptyUtms > 0 ? ` · ${data.summary.emptyUtms} UTM trống` : ''} · mỗi khách đếm 1 lần` : undefined}
-                onClick={() => openDrill({ metric: 'utm_customers' })} />
-            </Col>
-            <Col xs={24} md={12} xl={6}>
-              <ReportKpiCard title="Khách mới trong kỳ" value={cur?.newCustomers ?? 0} previous={prev?.newCustomers} color={REPORT_COLORS.ok} loading={loading}
                 onClick={() => openDrill({ metric: 'utm_new' })} />
             </Col>
             <Col xs={24} md={12} xl={6}>
-              <ReportKpiCard title={<Tooltip title="Khách đã từng nạp / khách của UTM - chỉ số chất lượng chính.">Tỷ lệ khách đã nạp</Tooltip>}
-                value={rates?.depositRate ?? 0} suffix="%" rateColored color={REPORT_COLORS.gold} loading={loading}
-                hint={cur ? `${fmtCount(cur.depositedCustomers)} / ${fmtCount(cur.customers)} khách` : undefined}
-                onClick={() => openDrill({ metric: 'utm_deposited' })} />
-            </Col>
-            <Col xs={24} md={12} xl={6}>
-              <ReportKpiCard title={<Tooltip title="Khách chưa nạp lần nào - danh sách nên ưu tiên chăm sóc.">Khách chưa nạp</Tooltip>}
-                value={rates?.notDeposited ?? 0} color={REPORT_COLORS.danger} loading={loading}
-                onClick={() => openDrill({ metric: 'utm_no_deposit' })} />
-            </Col>
-            <Col xs={24} md={12} xl={6}>
-              <ReportKpiCard title="Tỷ lệ khách đã chốt" value={rates?.closeRate ?? 0} suffix="%" rateColored color={REPORT_COLORS.ok} loading={loading}
-                hint={cur ? `${fmtCount(cur.closedCustomers)} / ${fmtCount(cur.customers)} khách` : undefined}
-                onClick={() => openDrill({ metric: 'utm_closed' })} />
-            </Col>
-            <Col xs={24} md={12} xl={6}>
-              <ReportKpiCard title={<Tooltip title="Trong số khách MỚI trong kỳ, tỷ lệ đã từng nạp - cùng cohort nên ≤ 100%.">Khách mới đã nạp</Tooltip>}
+              <ReportKpiCard title={<Tooltip title="Trong số khách MỚI trong kỳ, tỷ lệ đã từng nạp - cùng cohort nên ≤ 100%. Chỉ số chất lượng chính.">Tỷ lệ khách đã nạp</Tooltip>}
                 value={rates?.newDepositRate ?? 0} suffix="%" rateColored color={REPORT_COLORS.gold} loading={loading}
-                hint={cur ? `${fmtCount(cur.newDeposited)} / ${fmtCount(cur.newCustomers)} khách mới · ${fmtCount(cur.newClosed)} đã chốt` : undefined}
+                hint={cur ? `${fmtCount(cur.newDeposited)} / ${fmtCount(cur.newCustomers)} khách mới` : undefined}
                 onClick={() => openDrill({ metric: 'utm_new_deposited' })} />
+            </Col>
+            <Col xs={24} md={12} xl={6}>
+              <ReportKpiCard title={<Tooltip title="Khách mới trong kỳ chưa nạp lần nào - danh sách nên ưu tiên chăm sóc.">Khách chưa nạp</Tooltip>}
+                value={rates?.newNotDeposited ?? 0} color={REPORT_COLORS.danger} loading={loading}
+                onClick={() => openDrill({ metric: 'utm_new_no_deposit' })} />
+            </Col>
+            <Col xs={24} md={12} xl={6}>
+              <ReportKpiCard title={<Tooltip title="Trong số khách MỚI trong kỳ, tỷ lệ đang ở trạng thái Đã chốt - cùng cohort nên ≤ 100%.">Tỷ lệ khách đã chốt</Tooltip>}
+                value={rates?.newCloseRate ?? 0} suffix="%" rateColored color={REPORT_COLORS.ok} loading={loading}
+                hint={cur ? `${fmtCount(cur.newClosed)} / ${fmtCount(cur.newCustomers)} khách mới` : undefined}
+                onClick={() => openDrill({ metric: 'utm_new_closed' })} />
+            </Col>
+            <Col xs={24} md={12} xl={6}>
+              <ReportKpiCard title={<Tooltip title="Số khách có ≥ 1 khoản nạp trong kỳ (theo ngày nạp), bất kể khách được tạo lúc nào.">Khách nạp trong kỳ</Tooltip>}
+                value={cur?.periodDepositors ?? 0} previous={prev?.periodDepositors} color={REPORT_COLORS.gold} loading={loading} />
             </Col>
             <Col xs={24} md={12} xl={6}>
               <ReportKpiCard title="Doanh thu trong kỳ" value={cur?.periodRevenue ?? 0} previous={prev?.periodRevenue} money color={REPORT_COLORS.gold} loading={loading}
                 hint={cur ? `${fmtCount(cur.periodDepositors)} khách nạp trong kỳ` : undefined} />
             </Col>
             <Col xs={24} md={12} xl={6}>
-              <ReportKpiCard title={<Tooltip title="Tổng tiền nạp mọi thời điểm / số khách của UTM.">Giá trị TB / khách</Tooltip>}
-                value={rates?.revenuePerCustomer ?? 0} money color={REPORT_COLORS.primary} loading={loading}
-                hint={cur ? `Tổng ${formatUsd(cur.lifetimeRevenue)} · ${fmtCount(cur.depositCount)} khoản nạp · nạp đầu sau ${cur.avgDaysToFirstDeposit == null ? '—' : `${cur.avgDaysToFirstDeposit} ngày`}` : undefined} />
+              <ReportKpiCard title={<Tooltip title="Tổng tiền nạp (mọi thời điểm) của khách MỚI trong kỳ / số khách mới trong kỳ.">Giá trị TB / khách mới</Tooltip>}
+                value={rates?.newRevenuePerCustomer ?? 0} money color={REPORT_COLORS.primary} loading={loading}
+                hint={cur ? `Tổng ${formatUsd(cur.newLifetimeRevenue)} của ${fmtCount(cur.newCustomers)} khách mới trong kỳ` : undefined} />
             </Col>
           </Row>
 

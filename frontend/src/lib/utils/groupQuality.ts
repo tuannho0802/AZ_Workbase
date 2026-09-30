@@ -20,6 +20,10 @@ export interface GroupRates {
   revenuePerDepositor: number | null;
   /** Thành viên CHƯA nạp lần nào - khách cần chăm sóc để kéo nạp. */
   notDeposited: number;
+  /** Cohort join trong kỳ: CHƯA nạp lần nào. */
+  newJoinNotDeposited: number;
+  /** Cohort join trong kỳ: tiền mọi thời điểm của họ / số khách join trong kỳ (USD). null nếu kỳ không có ai join. */
+  revenuePerNewJoin: number | null;
 }
 
 export function groupRates(m: GroupQualityMetrics): GroupRates {
@@ -31,6 +35,8 @@ export function groupRates(m: GroupQualityMetrics): GroupRates {
     revenuePerMember: m.members > 0 ? m.lifetimeRevenue / m.members : null,
     revenuePerDepositor: m.depositedMembers > 0 ? m.lifetimeRevenue / m.depositedMembers : null,
     notDeposited: Math.max(0, m.members - m.depositedMembers),
+    newJoinNotDeposited: Math.max(0, m.newJoins - m.newJoinsDeposited),
+    revenuePerNewJoin: m.newJoins > 0 ? m.newJoinsLifetimeRevenue / m.newJoins : null,
   };
 }
 

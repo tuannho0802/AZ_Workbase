@@ -23,6 +23,7 @@ export const REPORT_CUSTOMER_LIST_METRICS = [
   'group_closed', // thành viên đã chốt
   'group_new_deposited', // cohort: join trong kỳ VÀ đã từng nạp
   'group_new_closed', // cohort: join trong kỳ VÀ đã chốt
+  'group_new_no_deposit', // cohort: join trong kỳ VÀ CHƯA nạp lần nào
   'new_no_group', // data mới trong kỳ chưa join nhóm nào
   // ── Tab "Chất lượng UTM": khách đứng sau các con số của UTM (lọc thêm bằng utmId/utmState/salesUserId/marketingUserId) ──
   'utm_customers', // khách đang gắn UTM (mọi thời điểm)
@@ -32,6 +33,7 @@ export const REPORT_CUSTOMER_LIST_METRICS = [
   'utm_closed', // khách của UTM đã chốt
   'utm_new_deposited', // cohort: khách mới trong kỳ VÀ đã từng nạp
   'utm_new_closed', // cohort: khách mới trong kỳ VÀ đã chốt
+  'utm_new_no_deposit', // cohort: khách mới trong kỳ VÀ CHƯA nạp lần nào
   'new_no_utm', // data mới trong kỳ chưa gắn UTM
 ] as const;
 export type ReportCustomerListMetric = (typeof REPORT_CUSTOMER_LIST_METRICS)[number];

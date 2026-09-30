@@ -5361,3 +5361,21 @@ khi bị xoá tay. Đây là 1 anti-pattern thật (dù đo thử với payload 
 
 **Notes:**
 > Không migration, không permission key mới. Màu % là theo độ lớn của tỷ lệ, KHÔNG đảo cho các trạng thái "xấu" (Deadlead/Ngừng chăm sóc): % cao vẫn ra xanh.
+
+---
+
+## [2026-09-30 23:59] | Report "Chất lượng UTM" & "Chất lượng nhóm": KPI card đồng bộ Kỳ đang chọn (cohort) | [Status: Success — BE tsc + jest reports 6 suite / 91 test; FE vitest utils + reports; FE tsc chỉ còn lỗi cũ logo.png/CountBadge; CHƯA xem trình duyệt thật]
+
+**Actor:** Agent (trên `origin/main` HEAD `7a6a5fe`)
+
+**Files Changed:**
+- BE: `reports/reports-utm-quality.service.ts` (+`newLifetimeRevenue`), `reports/reports-group-quality.service.ts` (+`newJoinsLifetimeRevenue`), `reports/dto/query-report-customer-list.dto.ts` + `reports-customer-list.service.ts` (+metric drill `utm_new_no_deposit`, `group_new_no_deposit`) + spec.
+- FE: `reports/UtmQualityReportTab.tsx`, `reports/GroupQualityReportTab.tsx` (8 card KPI), `ReportCustomersModal.tsx` (nhãn), `lib/types/reports.types.ts`, `lib/utils/utmQuality.ts`, `lib/utils/groupQuality.ts` + test.
+
+**Root Cause:**
+> Card của 2 tab này đếm "mọi thời điểm" (customers/members, đã nạp, đã chốt, lifetimeRevenue) nên đổi Kỳ không đổi số; các tab Doanh số/Chất lượng data/Marketing đều đếm cohort khách tạo trong kỳ.
+
+**Solution:**
+> Card chuyển sang cohort của kỳ: UTM = khách tạo trong kỳ (`created_at`), Nhóm = khách join trong kỳ (`joined_at`); tỷ lệ tính trên cohort (≤100%); doanh thu = theo `deposit_date` trong kỳ. Drill của mỗi card dùng đúng cohort nên số dòng khớp số trên card. Bảng chi tiết/biểu đồ vẫn "mọi thời điểm" (đã ghi rõ trên tooltip cột) - chưa đổi.
+
+---

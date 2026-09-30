@@ -224,6 +224,11 @@ export class ReportsCustomerListService {
         created();
         qb.andWhere("customer.status = 'closed'");
         break;
+      case 'utm_new_no_deposit':
+        utmScope();
+        created();
+        qb.andWhere(`NOT ${anyDeposit}`);
+        break;
       case 'new_no_utm':
         created();
         qb.andWhere('customer.utmId IS NULL');
@@ -258,6 +263,12 @@ export class ReportsCustomerListService {
         const j = inJoinPeriod();
         groupMember(j.sql, j.params);
         qb.andWhere("customer.status = 'closed'");
+        break;
+      }
+      case 'group_new_no_deposit': {
+        const j = inJoinPeriod();
+        groupMember(j.sql, j.params);
+        qb.andWhere('NOT EXISTS (SELECT 1 FROM deposits gd WHERE gd.customer_id = customer.id)');
         break;
       }
       case 'new_no_group':

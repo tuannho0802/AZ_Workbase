@@ -40,6 +40,8 @@ export interface UtmQualityMetrics {
   periodRevenue: number;
   /** Tổng tiền nạp MỌI THỜI ĐIỂM (USD) - giá trị UTM mang lại. */
   lifetimeRevenue: number;
+  /** COHORT: tổng tiền nạp mọi thời điểm CỦA khách MỚI trong kỳ (USD) - mẫu số là newCustomers (card "Giá trị TB / khách"). */
+  newLifetimeRevenue: number;
   /** Tổng số khoản nạp mọi thời điểm (lịch sử nạp). */
   depositCount: number;
   /** Khách nạp từ 2 lần trở lên (nạp lại) - khách "giữ chân" tốt. Luôn ≤ depositedCustomers. */
@@ -138,6 +140,7 @@ const zeroMetrics = (): UtmQualityMetrics => ({
   periodDepositors: 0,
   periodRevenue: 0,
   lifetimeRevenue: 0,
+  newLifetimeRevenue: 0,
   depositCount: 0,
   redepositors: 0,
   avgDaysToFirstDeposit: null,
@@ -158,6 +161,7 @@ export function sumUtmMetrics(list: UtmQualityMetrics[]): UtmQualityMetrics {
     out.periodDepositors += m.periodDepositors;
     out.periodRevenue += m.periodRevenue;
     out.lifetimeRevenue += m.lifetimeRevenue;
+    out.newLifetimeRevenue += m.newLifetimeRevenue;
     out.depositCount += m.depositCount;
     out.redepositors += m.redepositors;
     if (m.avgDaysToFirstDeposit != null && m.avgDaysSamples > 0) {
@@ -436,6 +440,7 @@ export class ReportsUtmQualityService {
       .addSelect(`COUNT(DISTINCT CASE WHEN ${IN_DEPOSIT} THEN customer.id END)`, 'periodDepositors')
       .addSelect(`SUM(CASE WHEN ${IN_DEPOSIT} THEN deposit.amount ELSE 0 END)`, 'periodRevenue')
       .addSelect('SUM(deposit.amount)', 'lifetimeRevenue')
+      .addSelect(`SUM(CASE WHEN ${IN_CREATED} THEN deposit.amount ELSE 0 END)`, 'newLifetimeRevenue')
       .addSelect('COUNT(deposit.id)', 'depositCount')
       .addSelect(`COUNT(DISTINCT CASE WHEN ${HAS_REDEPOSIT} THEN customer.id END)`, 'redepositors')
       .groupBy('utm.id')
@@ -470,6 +475,7 @@ export class ReportsUtmQualityService {
         periodDepositors: Number(r.periodDepositors) || 0,
         periodRevenue: Number(r.periodRevenue) || 0,
         lifetimeRevenue: Number(r.lifetimeRevenue) || 0,
+        newLifetimeRevenue: Number(r.newLifetimeRevenue) || 0,
         depositCount: Number(r.depositCount) || 0,
         redepositors: Number(r.redepositors) || 0,
         avgDaysToFirstDeposit: d?.avg == null ? null : Math.round(d.avg * 10) / 10,

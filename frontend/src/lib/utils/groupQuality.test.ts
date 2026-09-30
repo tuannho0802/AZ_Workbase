@@ -28,6 +28,7 @@ const mk = (o: Partial<GroupQualityRow>): GroupQualityRow => ({
   periodDepositors: 0,
   periodRevenue: 0,
   lifetimeRevenue: 0,
+  newJoinsLifetimeRevenue: 0,
   avgDaysToFirstDeposit: null,
   byStatus: {},
   ...o,
@@ -35,12 +36,12 @@ const mk = (o: Partial<GroupQualityRow>): GroupQualityRow => ({
 
 describe('groupRates', () => {
   it('tính tỷ lệ đúng và không chia cho 0', () => {
-    const r = groupRates(mk({ members: 20, depositedMembers: 10, closedMembers: 5, newJoins: 8, newJoinsDeposited: 4, newJoinsClosed: 2, lifetimeRevenue: 5000 }));
-    expect(r).toMatchObject({ depositRate: 50, closeRate: 25, newJoinDepositRate: 50, newJoinCloseRate: 25, notDeposited: 10 });
+    const r = groupRates(mk({ members: 20, depositedMembers: 10, closedMembers: 5, newJoins: 8, newJoinsDeposited: 4, newJoinsClosed: 2, lifetimeRevenue: 5000, newJoinsLifetimeRevenue: 1600 }));
+    expect(r).toMatchObject({ depositRate: 50, closeRate: 25, newJoinDepositRate: 50, newJoinCloseRate: 25, notDeposited: 10, newJoinNotDeposited: 4, revenuePerNewJoin: 200 });
     expect(r.revenuePerMember).toBe(250);
     expect(r.revenuePerDepositor).toBe(500);
     const empty = groupRates(mk({}));
-    expect(empty).toMatchObject({ depositRate: null, closeRate: null, newJoinDepositRate: null, revenuePerMember: null, revenuePerDepositor: null, notDeposited: 0 });
+    expect(empty).toMatchObject({ depositRate: null, closeRate: null, newJoinDepositRate: null, revenuePerMember: null, revenuePerDepositor: null, notDeposited: 0, newJoinNotDeposited: 0, revenuePerNewJoin: null });
   });
 });
 

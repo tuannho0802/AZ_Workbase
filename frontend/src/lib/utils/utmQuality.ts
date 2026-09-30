@@ -22,6 +22,10 @@ export interface UtmRates {
   revenuePerDepositor: number | null;
   /** Khách CHƯA nạp lần nào - cần chăm sóc để kéo nạp. */
   notDeposited: number;
+  /** Cohort khách mới trong kỳ: CHƯA nạp lần nào. */
+  newNotDeposited: number;
+  /** Cohort khách mới trong kỳ: tiền mọi thời điểm của họ / số khách mới (USD). null nếu kỳ không có khách mới. */
+  newRevenuePerCustomer: number | null;
 }
 
 export function utmRates(m: UtmQualityMetrics): UtmRates {
@@ -34,6 +38,8 @@ export function utmRates(m: UtmQualityMetrics): UtmRates {
     revenuePerCustomer: m.customers > 0 ? m.lifetimeRevenue / m.customers : null,
     revenuePerDepositor: m.depositedCustomers > 0 ? m.lifetimeRevenue / m.depositedCustomers : null,
     notDeposited: Math.max(0, m.customers - m.depositedCustomers),
+    newNotDeposited: Math.max(0, m.newCustomers - m.newDeposited),
+    newRevenuePerCustomer: m.newCustomers > 0 ? m.newLifetimeRevenue / m.newCustomers : null,
   };
 }
 

@@ -403,45 +403,42 @@ export default function GroupQualityReportTab({ query, onQueryChange }: Props) {
         <div className="space-y-4">
           {/* ── KPI ── */}
           <Row gutter={[12, 12]}>
+            {/* Mọi card bên dưới đo theo KỲ đang chọn: khách JOIN NHÓM trong kỳ (joined_at) hoặc tiền nạp trong kỳ (deposit_date) - cùng quy ước các tab Doanh số/Chất lượng data/Marketing. */}
             <Col xs={24} md={12} xl={6}>
-              <ReportKpiCard title={selectedGroup ? `Thành viên — ${selectedGroup.name}` : 'Thành viên các nhóm'} value={cur?.members ?? 0} color={REPORT_COLORS.primary} loading={loading}
+              <ReportKpiCard title={<Tooltip title="Khách join nhóm TRONG KỲ đang chọn. Các tỷ lệ bên dưới đều tính trên nhóm khách này.">{selectedGroup ? `Join mới — ${selectedGroup.name}` : 'Khách join nhóm trong kỳ'}</Tooltip>}
+                value={cur?.newJoins ?? 0} previous={prev?.newJoins} color={REPORT_COLORS.primary} loading={loading}
                 hint={data ? `${fmtCount(data.summary.groupCount)} nhóm${data.summary.emptyGroups > 0 ? ` · ${data.summary.emptyGroups} nhóm trống` : ''} · mỗi khách đếm 1 lần` : undefined}
-                onClick={() => openDrill({ metric: 'group_members' })} />
-            </Col>
-            <Col xs={24} md={12} xl={6}>
-              <ReportKpiCard title="Join nhóm trong kỳ" value={cur?.newJoins ?? 0} previous={prev?.newJoins} color={REPORT_COLORS.ok} loading={loading}
                 onClick={() => openDrill({ metric: 'group_new_joins' })} />
             </Col>
             <Col xs={24} md={12} xl={6}>
-              <ReportKpiCard title={<Tooltip title="Thành viên đã từng nạp / thành viên - chỉ số chất lượng chính của nhóm.">Tỷ lệ thành viên đã nạp</Tooltip>}
-                value={rates?.depositRate ?? 0} suffix="%" rateColored color={REPORT_COLORS.gold} loading={loading}
-                hint={cur ? `${fmtCount(cur.depositedMembers)} / ${fmtCount(cur.members)} thành viên` : undefined}
-                onClick={() => openDrill({ metric: 'group_deposited' })} />
-            </Col>
-            <Col xs={24} md={12} xl={6}>
-              <ReportKpiCard title={<Tooltip title="Thành viên chưa nạp lần nào - danh sách khách nên ưu tiên chăm sóc.">Thành viên chưa nạp</Tooltip>}
-                value={rates?.notDeposited ?? 0} color={REPORT_COLORS.danger} loading={loading}
-                onClick={() => openDrill({ metric: 'group_no_deposit' })} />
-            </Col>
-            <Col xs={24} md={12} xl={6}>
-              <ReportKpiCard title="Tỷ lệ thành viên đã chốt" value={rates?.closeRate ?? 0} suffix="%" rateColored color={REPORT_COLORS.ok} loading={loading}
-                hint={cur ? `${fmtCount(cur.closedMembers)} / ${fmtCount(cur.members)} thành viên` : undefined}
-                onClick={() => openDrill({ metric: 'group_closed' })} />
-            </Col>
-            <Col xs={24} md={12} xl={6}>
-              <ReportKpiCard title={<Tooltip title="Trong số khách join nhóm TRONG KỲ, tỷ lệ đã từng nạp - cùng cohort nên ≤ 100%.">Khách mới join đã nạp</Tooltip>}
+              <ReportKpiCard title={<Tooltip title="Trong số khách join nhóm TRONG KỲ, tỷ lệ đã từng nạp - cùng cohort nên ≤ 100%. Chỉ số chất lượng chính của nhóm.">Tỷ lệ khách join đã nạp</Tooltip>}
                 value={rates?.newJoinDepositRate ?? 0} suffix="%" rateColored color={REPORT_COLORS.gold} loading={loading}
                 hint={cur ? `${fmtCount(cur.newJoinsDeposited)} / ${fmtCount(cur.newJoins)} khách join trong kỳ` : undefined}
                 onClick={() => openDrill({ metric: 'group_new_deposited' })} />
+            </Col>
+            <Col xs={24} md={12} xl={6}>
+              <ReportKpiCard title={<Tooltip title="Khách join trong kỳ chưa nạp lần nào - danh sách khách nên ưu tiên chăm sóc.">Khách join chưa nạp</Tooltip>}
+                value={rates?.newJoinNotDeposited ?? 0} color={REPORT_COLORS.danger} loading={loading}
+                onClick={() => openDrill({ metric: 'group_new_no_deposit' })} />
+            </Col>
+            <Col xs={24} md={12} xl={6}>
+              <ReportKpiCard title={<Tooltip title="Trong số khách join nhóm TRONG KỲ, tỷ lệ đang ở trạng thái Đã chốt - cùng cohort nên ≤ 100%.">Tỷ lệ khách join đã chốt</Tooltip>}
+                value={rates?.newJoinCloseRate ?? 0} suffix="%" rateColored color={REPORT_COLORS.ok} loading={loading}
+                hint={cur ? `${fmtCount(cur.newJoinsClosed)} / ${fmtCount(cur.newJoins)} khách join trong kỳ` : undefined}
+                onClick={() => openDrill({ metric: 'group_new_closed' })} />
+            </Col>
+            <Col xs={24} md={12} xl={6}>
+              <ReportKpiCard title={<Tooltip title="Số thành viên có ≥ 1 khoản nạp trong kỳ (theo ngày nạp), bất kể join lúc nào.">Thành viên nạp trong kỳ</Tooltip>}
+                value={cur?.periodDepositors ?? 0} previous={prev?.periodDepositors} color={REPORT_COLORS.gold} loading={loading} />
             </Col>
             <Col xs={24} md={12} xl={6}>
               <ReportKpiCard title="Doanh thu trong kỳ" value={cur?.periodRevenue ?? 0} previous={prev?.periodRevenue} money color={REPORT_COLORS.gold} loading={loading}
                 hint={cur ? `${fmtCount(cur.periodDepositors)} thành viên nạp trong kỳ` : undefined} />
             </Col>
             <Col xs={24} md={12} xl={6}>
-              <ReportKpiCard title={<Tooltip title="Tổng tiền nạp mọi thời điểm của thành viên / số thành viên.">Giá trị TB / thành viên</Tooltip>}
-                value={rates?.revenuePerMember ?? 0} money color={REPORT_COLORS.primary} loading={loading}
-                hint={cur ? `Tổng ${formatUsd(cur.lifetimeRevenue)} · TB nạp lần đầu sau ${cur.avgDaysToFirstDeposit == null ? '—' : `${cur.avgDaysToFirstDeposit} ngày`} kể từ join` : undefined} />
+              <ReportKpiCard title={<Tooltip title="Tổng tiền nạp (mọi thời điểm) của khách join TRONG KỲ / số khách join trong kỳ.">Giá trị TB / khách join</Tooltip>}
+                value={rates?.revenuePerNewJoin ?? 0} money color={REPORT_COLORS.primary} loading={loading}
+                hint={cur ? `Tổng ${formatUsd(cur.newJoinsLifetimeRevenue)} của ${fmtCount(cur.newJoins)} khách join trong kỳ` : undefined} />
             </Col>
           </Row>
 

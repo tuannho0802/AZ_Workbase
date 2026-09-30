@@ -44,6 +44,8 @@ export interface GroupQualityMetrics {
   periodRevenue: number;
   /** Tổng tiền nạp MỌI THỜI ĐIỂM của thành viên (USD) - đo giá trị nhóm mang lại. */
   lifetimeRevenue: number;
+  /** COHORT: tổng tiền nạp mọi thời điểm CỦA khách join TRONG KỲ (USD) - mẫu số là newJoins (card "Giá trị TB / khách join"). */
+  newJoinsLifetimeRevenue: number;
   /** TB số ngày từ lúc join nhóm tới khoản nạp ĐẦU TIÊN (chỉ tính khách nạp SAU/CÙNG NGÀY join). null = chưa có mẫu. */
   avgDaysToFirstDeposit: number | null;
 }
@@ -111,6 +113,7 @@ const zeroMetrics = (): GroupQualityMetrics => ({
   periodDepositors: 0,
   periodRevenue: 0,
   lifetimeRevenue: 0,
+  newJoinsLifetimeRevenue: 0,
   avgDaysToFirstDeposit: null,
 });
 
@@ -351,6 +354,7 @@ export class ReportsGroupQualityService {
       .addSelect(`COUNT(DISTINCT CASE WHEN ${inDeposit} THEN customer.id END)`, 'periodDepositors')
       .addSelect(`SUM(CASE WHEN ${inDeposit} THEN deposit.amount ELSE 0 END)`, 'periodRevenue')
       .addSelect('SUM(deposit.amount)', 'lifetimeRevenue')
+      .addSelect(`SUM(CASE WHEN ${inPeriod} THEN deposit.amount ELSE 0 END)`, 'newJoinsLifetimeRevenue')
       .addSelect(
         `AVG(CASE WHEN fd.first_dep IS NOT NULL AND fd.first_dep >= ${JOIN_DAY} THEN DATEDIFF(fd.first_dep, ${JOIN_DAY}) END)`,
         'avgDays',
@@ -375,6 +379,7 @@ export class ReportsGroupQualityService {
         periodDepositors: Number(r.periodDepositors) || 0,
         periodRevenue: Number(r.periodRevenue) || 0,
         lifetimeRevenue: Number(r.lifetimeRevenue) || 0,
+        newJoinsLifetimeRevenue: Number(r.newJoinsLifetimeRevenue) || 0,
         avgDaysToFirstDeposit: r.avgDays == null ? null : Math.round(Number(r.avgDays) * 10) / 10,
       });
     }

@@ -276,6 +276,7 @@ export type ReportCustomerListMetric =
     | 'group_closed'
     | 'group_new_deposited'
     | 'group_new_closed'
+    | 'group_new_no_deposit'
     | 'new_no_group'
     // Tab "Chất lượng UTM" (lọc thêm bằng utmId/utmState/salesUserId/marketingUserId)
     | 'utm_customers'
@@ -285,6 +286,7 @@ export type ReportCustomerListMetric =
     | 'utm_closed'
     | 'utm_new_deposited'
     | 'utm_new_closed'
+    | 'utm_new_no_deposit'
     | 'new_no_utm';
 
 export type ReportCustomerListQuick = 'no_marketing' | 'no_sales' | 'no_phone';
@@ -458,6 +460,8 @@ export interface GroupQualityMetrics {
     periodRevenue: number;
     /** Tổng tiền nạp mọi thời điểm của thành viên (USD). */
     lifetimeRevenue: number;
+    /** Cohort: tổng tiền nạp mọi thời điểm CỦA khách join TRONG KỲ (USD). */
+    newJoinsLifetimeRevenue: number;
     /** TB số ngày từ join nhóm tới khoản nạp đầu tiên. null = chưa có mẫu. */
     avgDaysToFirstDeposit: number | null;
 }
@@ -587,6 +591,8 @@ export interface UtmQualityMetrics {
     periodRevenue: number;
     /** Tổng tiền nạp mọi thời điểm (USD). */
     lifetimeRevenue: number;
+    /** Cohort: tổng tiền nạp mọi thời điểm CỦA khách MỚI trong kỳ (USD). */
+    newLifetimeRevenue: number;
     /** Tổng số khoản nạp mọi thời điểm. */
     depositCount: number;
     /** Khách nạp từ 2 lần trở lên. Luôn <= depositedCustomers. */

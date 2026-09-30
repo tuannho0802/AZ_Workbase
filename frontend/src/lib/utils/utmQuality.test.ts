@@ -22,6 +22,7 @@ const mk = (o: Partial<UtmQualityRow>): UtmQualityRow => ({
   periodDepositors: 0,
   periodRevenue: 0,
   lifetimeRevenue: 0,
+  newLifetimeRevenue: 0,
   depositCount: 0,
   redepositors: 0,
   avgDaysToFirstDeposit: null,
@@ -34,14 +35,16 @@ const mk = (o: Partial<UtmQualityRow>): UtmQualityRow => ({
 
 describe('utmRates', () => {
   it('tính tỷ lệ đúng và không chia cho 0', () => {
-    const r = utmRates(mk({ customers: 20, depositedCustomers: 10, closedCustomers: 5, newCustomers: 8, newDeposited: 4, newClosed: 2, redepositors: 5, lifetimeRevenue: 5000 }));
-    expect(r).toMatchObject({ depositRate: 50, closeRate: 25, newDepositRate: 50, newCloseRate: 25, redepositRate: 50, notDeposited: 10 });
+    const r = utmRates(mk({ customers: 20, depositedCustomers: 10, closedCustomers: 5, newCustomers: 8, newDeposited: 4, newClosed: 2, redepositors: 5, lifetimeRevenue: 5000, newLifetimeRevenue: 1600 }));
+    expect(r).toMatchObject({ depositRate: 50, closeRate: 25, newDepositRate: 50, newCloseRate: 25, redepositRate: 50, notDeposited: 10, newNotDeposited: 4, newRevenuePerCustomer: 200 });
     expect(r.revenuePerCustomer).toBe(250);
     expect(r.revenuePerDepositor).toBe(500);
     const z = utmRates(mk({}));
     expect(z.depositRate).toBeNull();
     expect(z.revenuePerCustomer).toBeNull();
     expect(z.revenuePerDepositor).toBeNull();
+    expect(z.newRevenuePerCustomer).toBeNull();
+    expect(z.newNotDeposited).toBe(0);
   });
 });
 

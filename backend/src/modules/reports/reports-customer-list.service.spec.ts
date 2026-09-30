@@ -139,7 +139,7 @@ describe('ReportsCustomerListService', () => {
     });
 
     it('group_new_joins / cohort join trong kỳ dùng joined_at bằng mốc UTC, không phải giờ VN naive', async () => {
-      for (const m of ['group_new_joins', 'group_new_deposited', 'group_new_closed']) {
+      for (const m of ['group_new_joins', 'group_new_deposited', 'group_new_closed', 'group_new_no_deposit']) {
         const f = await run(m);
         expect(memberWhere(f.wheres)).toContain('gm.joined_at BETWEEN :gjFrom AND :gjTo');
         expect(String(f.params.gjFrom)).toBe('2026-09-20 17:00:00');
@@ -208,6 +208,14 @@ describe('ReportsCustomerListService', () => {
       expect(wheres.some((w) => w.includes('customer.createdAt BETWEEN :createdFrom AND :createdTo'))).toBe(true);
       expect(String(params.createdFrom)).toBe('2026-09-20 17:00:00');
       expect(wheres.some((w) => w.startsWith('EXISTS (SELECT 1 FROM deposits ud'))).toBe(true);
+    });
+
+    it("'utm_new_no_deposit' = khách mới trong kỳ (mốc UTC) + chưa có khoản nạp nào (cohort của card \"Khách chưa nạp\")", async () => {
+      const { svc, wheres, params } = buildUtm();
+      await svc.getList({ ...base, metric: 'utm_new_no_deposit', context: 'utms' }, 1, Role.ADMIN, PermissionScope.ALL);
+      expect(wheres.some((w) => w.includes('customer.createdAt BETWEEN :createdFrom AND :createdTo'))).toBe(true);
+      expect(String(params.createdFrom)).toBe('2026-09-20 17:00:00');
+      expect(wheres.some((w) => w.startsWith('NOT EXISTS (SELECT 1 FROM deposits ud'))).toBe(true);
     });
 
     it("'utm_no_deposit' = khách gắn UTM chưa có khoản nạp nào", async () => {
