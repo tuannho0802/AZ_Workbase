@@ -5191,3 +5191,15 @@ khi bị xoá tay. Đây là 1 anti-pattern thật (dù đo thử với payload 
 > Chấm vàng cùng phạm vi chấm đỏ (`assigneeId = mình`, mặc định tuần này theo comment ở hook). Status `in_progress` tạo thủ công ở local/prod (không có migration seed) — thiếu thì chấm vàng tự ẩn. Chỉ đổi FE. Vị trí badge của MỌI mục sidebar nay là inline (cách chữ 6px) thay vì nổi offset [16,2] — cần nhìn lại giao diện thật.
 
 ---
+
+## [2026-09-30 16:30] | Sidebar: thêm tooltip cho TẤT CẢ badge số đếm (không chỉ Công việc định kỳ) | [Status: Success — FE tsc sạch + vitest CountBadge 8 test; CHƯA chạy lại full vitest, CHƯA xem trình duyệt thật]
+
+**Actor:** Agent (trên `origin/main` HEAD `258aa06`)
+
+**Files Changed:**
+- FE: `lib/nav-badge.ts` (+`NAV_BADGE_TITLES` map key nav -> câu giải thích; `getNavBadgeProps()` trả `title` cho mọi mục); `common/CountBadge.test.tsx` (+3 test: mọi mục có tooltip, mục không badge không có tooltip, hover Thùng rác).
+
+**Notes:**
+> Tooltip: `invalid-data-report` (khách có SĐT trùng), `trash-can`, `users` (đăng ký chờ duyệt), `duyet-phep` (đơn chờ MÌNH duyệt), `nghi-phep` (đơn của mình đang chờ), `thong-bao` (chưa đọc), `cong-viec-dinh-ky` (To-Do). Thêm badge mới sau này: thêm 1 dòng vào `NAV_BADGE_TITLES`, test "mọi mục có tooltip" cần thêm key mới vào danh sách. Chỉ đổi FE.
+
+---

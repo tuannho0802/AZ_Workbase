@@ -77,7 +77,24 @@ describe('CountBadge', () => {
     await waitFor(() => expect(screen.getByText('Việc của tôi đang làm (in progress)')).toBeTruthy());
   });
 
-  it('mục nav khác không bị ảnh hưởng: chỉ { count }', () => {
-    expect(getNavBadgeProps('duyet-phep', { 'duyet-phep': 4 })).toEqual({ count: 4 });
+  it('mọi mục nav có badge đều có tooltip (không mục nào bị sót)', () => {
+    const keys = ['invalid-data-report', 'trash-can', 'users', 'duyet-phep', 'nghi-phep', 'thong-bao', 'cong-viec-dinh-ky'];
+    for (const k of keys) {
+      const props = getNavBadgeProps(k, { [k]: 1 });
+      expect(props.count).toBe(1);
+      expect(props.title && props.title.length).toBeGreaterThan(0);
+    }
+  });
+
+  it('mục nav không có badge -> không có tooltip', () => {
+    expect(getNavBadgeProps('khach-hang', {})).toEqual({ count: undefined, title: undefined });
+  });
+
+  it('rê chuột vào chấm Thùng rác -> hiện tooltip đúng nội dung', async () => {
+    const { container } = render(
+      <CountBadge {...getNavBadgeProps('trash-can', { 'trash-can': 16 })}>Thùng rác</CountBadge>,
+    );
+    fireEvent.mouseEnter(container.querySelector('.az-count-badge-item')!);
+    await waitFor(() => expect(screen.getByText('Số khách hàng đang nằm trong thùng rác')).toBeTruthy());
   });
 });
