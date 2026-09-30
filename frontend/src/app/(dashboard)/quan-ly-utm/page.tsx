@@ -44,6 +44,7 @@ import {
   type UtmVisibilityFilter,
 } from '@/lib/utils/utm-list.util';
 import { toastApiError } from '@/lib/utils/error-message.util';
+import { sumColumnWidths } from '@/lib/utils/table-width.util';
 
 const { Title, Text } = Typography;
 
@@ -147,16 +148,28 @@ export default function QuanLyUtmPage() {
   const colName: Col = {
     title: 'UTM',
     key: 'name',
+    // ⚠️ BẮT BUỘC có width cố định: thiếu width -> ở table-layout fixed (do cột Mô tả có ellipsis) cột này
+    // bị nén về ~0px và Tag tràn ĐÈ lên cột Mô tả (xem `sumColumnWidths` ở lib/utils/table-width.util.ts).
+    width: 240,
+    fixed: 'left',
     render: (_, u) => (
-      <Space size={4} wrap>
-        <UtmTag name={u.name} color={u.color} inactive={!u.isActive} />
+      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4, minWidth: 0 }}>
+        {/* Tên UTM dài -> cắt "…" trong đúng ô, không tràn sang cột bên cạnh; rê chuột xem đủ tên. */}
+        <span title={u.name} style={{ display: 'inline-flex', maxWidth: '100%', minWidth: 0 }}>
+          <UtmTag
+            name={u.name}
+            color={u.color}
+            inactive={!u.isActive}
+            style={{ maxWidth: '100%', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}
+          />
+        </span>
         {u.visibility === 'restricted' && (
           <Tooltip title="Chỉ Quản lý chính/phụ (và người có quyền xem rộng) chọn được UTM này">
-            <Tag icon={<LockOutlined />}>Riêng tư</Tag>
+            <Tag icon={<LockOutlined />} style={{ marginInlineEnd: 0 }}>Riêng tư</Tag>
           </Tooltip>
         )}
-        {!u.isActive && <Tag color="default">Đã khoá</Tag>}
-      </Space>
+        {!u.isActive && <Tag color="default" style={{ marginInlineEnd: 0 }}>Đã khoá</Tag>}
+      </div>
     ),
   };
   const colDesc: Col = {
@@ -359,6 +372,7 @@ export default function QuanLyUtmPage() {
       createdRange?.[0] ||
       createdRange?.[1]
     );
+    const columns = tabColumns(tab);
     const primaryOptions: { value: UtmPrimaryFilter; label: React.ReactNode; searchText: string }[] = [
       { value: 'none', label: 'Chưa gán', searchText: 'Chưa gán' },
       ...Array.from(new Map(rows.filter((r) => r.primaryManager).map((r) => [r.primaryManager!.id, r.primaryManager!.name])).entries())
@@ -449,9 +463,10 @@ export default function QuanLyUtmPage() {
         <Table<UtmView>
           rowKey="id"
           loading={loading}
-          columns={tabColumns(tab)}
+          columns={columns}
           dataSource={filtered}
-          scroll={{ x: tab === 'locked' ? 1200 : 1400 }}
+          // scroll.x = TỔNG width các cột (không gõ tay) để không bao giờ nhỏ hơn tổng cột -> không đè cột.
+          scroll={{ x: sumColumnWidths(columns) }}
           pagination={{ pageSize: 20, hideOnSinglePage: true }}
           locale={{ emptyText: <Empty description={filtering ? 'Không có UTM nào khớp bộ lọc' : emptyText} /> }}
         />

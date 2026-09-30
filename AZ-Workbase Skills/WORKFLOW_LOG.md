@@ -5233,3 +5233,18 @@ khi bị xoá tay. Đây là 1 anti-pattern thật (dù đo thử với payload 
 > Cặp chấm hẹp hơn ~13px. Chấm luôn hiện đủ (không co), nhãn chỉ rút gọn khi thật sự hết chỗ (VD số 2 chữ số ở cả 2 chấm). Muốn nhãn KHÔNG BAO GIỜ bị cắt thì phải tăng `width` của Sider (đang 220) — chưa làm vì ảnh hưởng toàn layout. Chỉ đổi FE.
 
 ---
+
+## [2026-09-30 18:30] | UTM: fix cột "UTM" đè lên cột "Mô tả" + mini table khách hàng mở modal sửa nhanh / gỡ UTM | [Status: Success — FE tsc sạch + full vitest 40 file / 274 test; CHƯA xem trình duyệt thật]
+
+**Actor:** Agent (trên `origin/main` HEAD `7692a89`)
+
+**Files Changed:**
+- FE: `quan-ly-utm/page.tsx` (cột UTM `width: 240` + `fixed: 'left'`, tên dài cắt "…" trong ô, `scroll.x = sumColumnWidths(columns)` thay vì gõ tay 1400/1200); `lib/utils/table-width.util.ts` (MỚI) + test; `utms/UtmCustomersModal.tsx` (mini table: bấm tên khách hoặc nút "Sửa nhanh" mở `CustomerForm` — cùng form trang Khách hàng, đổi được mọi trường kể cả UTM; nút "Gỡ UTM" có Popconfirm gửi `PATCH { utmId: null }`; cột Thao tác hiện khi có `customers.edit` hoặc `customers.trash_manage`; `scroll.x` tính theo tổng cột); `utms/UtmCustomersModal.test.tsx` (MỚI, 5 test).
+
+**Root Cause (cột đè):**
+> Tổng width các cột khác (mine 1490 / all 1460 / locked 1250) LỚN HƠN `scroll.x` gõ tay (1400/1400/1200) mà cột "UTM" không có width -> ở `table-layout: fixed` (AntD tự bật vì cột Mô tả có `ellipsis`) cột UTM bị nén về ~0px, Tag tràn đè lên cột Mô tả.
+
+**Notes:**
+> Khách trong Thùng rác KHÔNG có Sửa nhanh/Gỡ UTM (chỉ Khôi phục/Xoá vĩnh viễn như cũ). Quyền sửa khớp `PATCH /customers/:id` (`customers.edit`), BE vẫn tự chặn theo phạm vi. Sau khi sửa/gỡ: làm mới `['utms']`, `['customers']`, badge Thùng rác (khách đổi/gỡ UTM sẽ biến khỏi danh sách này). Chỉ đổi FE, không migration.
+
+---

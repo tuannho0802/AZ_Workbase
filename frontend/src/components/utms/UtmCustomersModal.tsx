@@ -5,12 +5,15 @@ import dayjs from 'dayjs';
 import { Alert, App, Button, Col, Input, Modal, Popconfirm, Row, Select, Space, Table, Tag, Tooltip, Typography } from 'antd';
 import { useQueryClient } from '@tanstack/react-query';
 import type { ColumnsType } from 'antd/es/table';
-import { DeleteOutlined, SearchOutlined, UndoOutlined } from '@ant-design/icons';
+import { DeleteOutlined, DisconnectOutlined, EditOutlined, SearchOutlined, UndoOutlined } from '@ant-design/icons';
 import { useUtmCustomers } from '@/lib/hooks/useUtms';
 import type { UtmCustomerRow } from '@/lib/api/utms.api';
 import { useDebounce } from '@/lib/hooks/useDebounce';
 import { useMyPermissions } from '@/lib/hooks/useMyPermissions';
 import { customersApi } from '@/lib/api/customers.api';
+import type { Customer } from '@/lib/types/customer.types';
+import { CustomerForm } from '@/components/customers/CustomerForm';
+import { sumColumnWidths } from '@/lib/utils/table-width.util';
 import { useCustomerStatuses } from '@/lib/hooks/useCustomerStatuses';
 import { SourceTag } from '@/components/customers/SourceTag';
 import { StatusTag } from '@/components/customers/StatusTag';
@@ -46,6 +49,9 @@ export function UtmCustomersModal({ open, onClose, utmId, utmName }: Props) {
   const { can } = useMyPermissions();
   const canTrash = can('customers.trash_manage');
   const canHardDelete = can('customers.hard_delete');
+  // Sửa nhanh khách ngay tại đây - CÙNG permission với PATCH /customers/:id (BE vẫn tự chặn theo phạm vi).
+  const canEditCustomer = can('customers.edit');
+  const [editingCustomer, setEditingCustomer] = useState<Customer | null>(null);
   const [trashedMode, setTrashedMode] = useState<TrashedMode>('include');
   const [busyId, setBusyId] = useState<number | null>(null);
 
@@ -90,6 +96,37 @@ export function UtmCustomersModal({ open, onClose, utmId, utmName }: Props) {
     }
   };
 
+  // Mở modal sửa khách (CustomerForm - CÙNG form với trang Khách hàng, đổi được mọi trường kể cả UTM).
+  // Danh sách mini chỉ có vài trường nên phải tải đủ hồ sơ khách trước khi mở.
+  const openEditCustomer = async (row: UtmCustomerRow) => {
+    if (busyId !== null) return;
+    setBusyId(row.id);
+    try {
+      setEditingCustomer(await customersApi.getCustomer(row.id));
+    } catch (e) {
+      toastApiError(message, e, 'Không tải được thông tin khách hàng');
+    } finally {
+      setBusyId(null);
+    }
+  };
+
+  // Gỡ UTM nhanh: PATCH { utmId: null } - đúng payload CustomerForm gửi khi bỏ chọn UTM. Khách khỏi danh
+  // sách UTM này sau khi làm mới; các dữ liệu khác của khách giữ nguyên.
+  const removeUtmFromCustomer = async (row: UtmCustomerRow) => {
+    if (busyId !== null) return;
+    setBusyId(row.id);
+    try {
+      await customersApi.updateCustomer(row.id, { utmId: null });
+      message.success(`Đã gỡ UTM khỏi khách hàng "${row.name}"`);
+      if ((data?.data.length ?? 0) <= 1 && page > 1) setPage(page - 1);
+      refreshAll();
+    } catch (e) {
+      toastApiError(message, e, 'Gỡ UTM thất bại');
+    } finally {
+      setBusyId(null);
+    }
+  };
+
   const columns: ColumnsType<UtmCustomerRow> = useMemo(
     () => [
       { title: 'STT', key: 'stt', width: 50, align: 'center', render: (_, __, i) => (page - 1) * UTM_CUSTOMERS_PAGE_SIZE + i + 1 },
@@ -106,6 +143,7 @@ export function UtmCustomersModal({ open, onClose, utmId, utmName }: Props) {
         title: 'Họ và tên',
         dataIndex: 'name',
         key: 'name',
+        width: 200,
         render: (n: string, r) =>
           r.deletedAt ? (
             <Space size={4} wrap>
@@ -114,6 +152,13 @@ export function UtmCustomersModal({ open, onClose, utmId, utmName }: Props) {
                 <Tag color="red" style={{ marginInlineEnd: 0 }}>Thùng rác</Tag>
               </Tooltip>
             </Space>
+          ) : canEditCustomer ? (
+            // Bấm tên -> mở modal sửa nhanh khách.
+            <Tooltip title="Bấm để mở & sửa nhanh khách hàng">
+              <Button type="link" size="small" style={{ padding: 0, height: 'auto', fontWeight: 600 }} onClick={() => openEditCustomer(r)}>
+                {n}
+              </Button>
+            </Tooltip>
           ) : (
             <Text strong>{n}</Text>
           ),
@@ -123,35 +168,57 @@ export function UtmCustomersModal({ open, onClose, utmId, utmName }: Props) {
       { title: 'Sales chính', key: 'sales', width: 140, ellipsis: true, render: (_, r) => r.salesUser?.name || '—' },
       { title: 'Marketing', key: 'marketing', width: 140, ellipsis: true, render: (_, r) => r.marketingUser?.name || '—' },
       { title: 'Trạng thái', dataIndex: 'status', key: 'status', width: 110, render: (s?: string) => <StatusTag code={s} fallback="—" /> },
-      ...(canTrash
+      ...(canTrash || canEditCustomer
         ? [
             {
               title: 'Thao tác',
               key: 'action',
-              width: 210,
+              width: canTrash ? 230 : 210,
               fixed: 'right' as const,
               render: (_: unknown, r: UtmCustomerRow) => {
-                if (!r.deletedAt) return <Text type="secondary">—</Text>;
                 const busy = busyId === r.id;
+                if (r.deletedAt) {
+                  if (!canTrash) return <Text type="secondary">—</Text>;
+                  return (
+                    <Space size={4} wrap>
+                      <Button size="small" icon={<UndoOutlined />} loading={busy} disabled={busyId !== null && !busy} onClick={() => runTrashAction(r, 'restore')}>
+                        Khôi phục
+                      </Button>
+                      {canHardDelete && (
+                        <Popconfirm
+                          title={`Xoá vĩnh viễn "${r.name}"?`}
+                          description="Không thể khôi phục sau khi xoá."
+                          okText="Xoá vĩnh viễn"
+                          okButtonProps={{ danger: true }}
+                          cancelText="Huỷ"
+                          onConfirm={() => runTrashAction(r, 'hardDelete')}
+                        >
+                          <Button size="small" danger icon={<DeleteOutlined />} loading={busy} disabled={busyId !== null && !busy}>
+                            Xoá vĩnh viễn
+                          </Button>
+                        </Popconfirm>
+                      )}
+                    </Space>
+                  );
+                }
+                // Khách đang dùng: sửa nhanh / gỡ UTM (cần customers.edit).
+                if (!canEditCustomer) return <Text type="secondary">—</Text>;
                 return (
                   <Space size={4} wrap>
-                    <Button size="small" icon={<UndoOutlined />} loading={busy} disabled={busyId !== null && !busy} onClick={() => runTrashAction(r, 'restore')}>
-                      Khôi phục
+                    <Button size="small" icon={<EditOutlined />} loading={busy} disabled={busyId !== null && !busy} onClick={() => openEditCustomer(r)}>
+                      Sửa nhanh
                     </Button>
-                    {canHardDelete && (
-                      <Popconfirm
-                        title={`Xoá vĩnh viễn "${r.name}"?`}
-                        description="Không thể khôi phục sau khi xoá."
-                        okText="Xoá vĩnh viễn"
-                        okButtonProps={{ danger: true }}
-                        cancelText="Huỷ"
-                        onConfirm={() => runTrashAction(r, 'hardDelete')}
-                      >
-                        <Button size="small" danger icon={<DeleteOutlined />} loading={busy} disabled={busyId !== null && !busy}>
-                          Xoá vĩnh viễn
-                        </Button>
-                      </Popconfirm>
-                    )}
+                    <Popconfirm
+                      title={`Gỡ UTM khỏi khách "${r.name}"?`}
+                      description="Khách sẽ không còn thuộc UTM này (dữ liệu khác giữ nguyên)."
+                      okText="Gỡ UTM"
+                      cancelText="Huỷ"
+                      onConfirm={() => removeUtmFromCustomer(r)}
+                    >
+                      <Button size="small" icon={<DisconnectOutlined />} disabled={busyId !== null && !busy}>
+                        Gỡ UTM
+                      </Button>
+                    </Popconfirm>
                   </Space>
                 );
               },
@@ -160,10 +227,11 @@ export function UtmCustomersModal({ open, onClose, utmId, utmName }: Props) {
         : []),
     ],
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [page, canTrash, canHardDelete, busyId, data],
+    [page, canTrash, canHardDelete, canEditCustomer, busyId, data],
   );
 
   return (
+    <>
     <Modal
       open={open}
       onCancel={onClose}
@@ -227,7 +295,7 @@ export function UtmCustomersModal({ open, onClose, utmId, utmName }: Props) {
         loading={isLoading || isFetching}
         columns={columns}
         dataSource={data?.data ?? []}
-        scroll={{ x: canTrash ? 1010 : 800 }}
+        scroll={{ x: sumColumnWidths(columns) }}
         pagination={{
           current: page,
           pageSize: UTM_CUSTOMERS_PAGE_SIZE,
@@ -238,5 +306,15 @@ export function UtmCustomersModal({ open, onClose, utmId, utmName }: Props) {
         }}
       />
     </Modal>
+
+    {/* Modal sửa khách nằm SAU Modal danh sách trong cây -> luôn nổi lên trên. Lưu xong thì làm mới danh sách
+        UTM (khách đổi/gỡ UTM sẽ biến khỏi danh sách này), số đếm và danh sách khách. */}
+    <CustomerForm
+      open={editingCustomer !== null}
+      customer={editingCustomer}
+      onClose={() => setEditingCustomer(null)}
+      onSuccess={refreshAll}
+    />
+    </>
   );
 }
