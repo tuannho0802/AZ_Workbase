@@ -7,7 +7,7 @@ import { Utm } from './utm.entity';
 
 @Entity('customers')
 @Index(['name'])
-@Index(['phone'])
+  @Index('IDX_customers_phone_deleted_created', ['phone', 'deletedAt', 'createdAt'])
 @Index(['status'])
 @Index(['source'])
 @Index(['inputDate'])
@@ -24,7 +24,7 @@ export class Customer {
   @Column({ length: 100 })
   name: string;
 
-  @Column({ type: 'varchar', length: 20, nullable: true, unique: true })
+  @Column({ type: 'varchar', length: 20, nullable: true })
   phone: string | null;
 
   @Column({ type: 'varchar', length: 255, nullable: true })
