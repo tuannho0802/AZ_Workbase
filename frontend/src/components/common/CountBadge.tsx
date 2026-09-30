@@ -71,8 +71,16 @@ export function CountBadge({
   }
 
   return (
-    <span className="az-count-badge">
-      {children}
+    <span className={items.length > 1 ? 'az-count-badge az-count-badge-stacked' : 'az-count-badge'}>
+      {/* Nhãn co được + cắt "…" khi hết chỗ (vd sidebar 220px có 2 chấm) để
+          các chấm số luôn hiện đủ, không bị Menu cắt mất. */}
+      <span
+        className="az-count-badge-label"
+        // Nhãn bị cắt "…" thì rê chuột vẫn đọc được đủ chữ.
+        title={typeof children === 'string' ? children : undefined}
+      >
+        {children}
+      </span>
       {items.map((it, idx) => {
         const dot = (
           <Badge
@@ -85,7 +93,11 @@ export function CountBadge({
         return (
           <Tooltip key={idx} title={it.title}>
             {/* span bọc ngoài để Tooltip có phần tử nhận hover/ref ổn định */}
-            <span className="az-count-badge-item" style={it.title ? { cursor: 'help' } : undefined}>
+            <span
+              className="az-count-badge-item"
+              // Chấm đứng trước (chính) nằm TRÊN chấm sau khi xếp chồng.
+              style={{ zIndex: items.length - idx, ...(it.title ? { cursor: 'help' } : null) }}
+            >
               {dot}
             </span>
           </Tooltip>
@@ -96,11 +108,44 @@ export function CountBadge({
         .az-count-badge {
           display: inline-flex;
           align-items: center;
-          gap: 6px;
+          gap: 4px;
+          max-width: 100%;
+          min-width: 0;
+          vertical-align: middle;
+        }
+        .az-count-badge .az-count-badge-label {
+          min-width: 0;
+          overflow: hidden;
+          text-overflow: ellipsis;
+          white-space: nowrap;
         }
         .az-count-badge .az-count-badge-item {
           display: inline-flex;
           align-items: center;
+          flex-shrink: 0;
+          position: relative;
+        }
+        /* Nhiều chấm: xếp CHỒNG NHẸ (chấm sau đè lên ~5px cuối chấm trước) thay
+           vì tách rời - hẹp hơn ~13px nên nhãn còn nhiều chỗ nhất có thể. Viền
+           ngăn cách lấy màu NỀN của ngữ cảnh (mặc định trắng; sidebar tối;
+           mục đang chọn = màu chính) để 2 chấm không dính vào nhau. */
+        .az-count-badge-stacked {
+          gap: 0;
+        }
+        .az-count-badge-stacked .az-count-badge-label {
+          margin-right: 4px;
+        }
+        .az-count-badge-stacked .az-count-badge-item + .az-count-badge-item {
+          margin-left: -5px;
+        }
+        .az-count-badge-stacked .ant-badge-count {
+          box-shadow: 0 0 0 1.5px var(--az-badge-ring, #fff);
+        }
+        .ant-menu-dark .az-count-badge {
+          --az-badge-ring: #001529;
+        }
+        .ant-menu-dark .ant-menu-item-selected .az-count-badge {
+          --az-badge-ring: var(--ant-color-primary, #1677ff);
         }
         .az-count-badge .ant-badge-count {
           min-width: 16px;

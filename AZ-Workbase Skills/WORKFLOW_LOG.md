@@ -5203,3 +5203,33 @@ khi bị xoá tay. Đây là 1 anti-pattern thật (dù đo thử với payload 
 > Tooltip: `invalid-data-report` (khách có SĐT trùng), `trash-can`, `users` (đăng ký chờ duyệt), `duyet-phep` (đơn chờ MÌNH duyệt), `nghi-phep` (đơn của mình đang chờ), `thong-bao` (chưa đọc), `cong-viec-dinh-ky` (To-Do). Thêm badge mới sau này: thêm 1 dòng vào `NAV_BADGE_TITLES`, test "mọi mục có tooltip" cần thêm key mới vào danh sách. Chỉ đổi FE.
 
 ---
+
+## [2026-09-30 17:00] | Sidebar: sửa chấm vàng "Đang làm" bị Menu cắt mất khi mục có 2 badge | [Status: Success — FE tsc sạch + full vitest 38 file / 263 test; CHƯA xem trình duyệt thật]
+
+**Actor:** Agent (trên `origin/main` HEAD `258aa06` + patch tooltip)
+
+**Files Changed:**
+- FE: `common/CountBadge.tsx` (nhãn bọc trong `.az-count-badge-label` co được + cắt "…" khi hết chỗ; các chấm `flex-shrink: 0` nên luôn hiện đủ; gap 6px → 4px); `common/CountBadge.test.tsx` (+1 test: nhãn nằm trong wrapper co được, chấm nằm ngoài).
+
+**Root Cause:**
+> Sider rộng 220px, nhãn "Công việc định kỳ" + 2 chấm dài hơn vùng Menu cho phép, `.ant-menu-title-content` overflow hidden cắt mất chấm cuối (chấm vàng).
+
+**Notes:**
+> jsdom không đo được layout nên test chỉ kiểm cấu trúc DOM, hiệu ứng thật cần nhìn trên trình duyệt. Với số 2 chữ số ở cả 2 chấm, nhãn có thể hiện "Công việc định k…" — chủ đích, ưu tiên chấm số luôn hiện. Chỉ đổi FE.
+
+---
+
+## [2026-09-30 17:30] | Sidebar: 2 badge của Công việc định kỳ xếp CHỒNG NHẸ để không bị cắt/rút gọn nhãn | [Status: Success — FE tsc sạch + full vitest 38 file / 265 test; CHƯA xem trình duyệt thật]
+
+**Actor:** Agent (trên `origin/main` HEAD `258aa06` + patch tooltip + patch layout-fix)
+
+**Files Changed:**
+- FE: `common/CountBadge.tsx` (nhiều chấm -> class `az-count-badge-stacked`: chấm sau đè ~5px lên chấm trước, chấm chính `z-index` cao hơn, viền ngăn cách lấy màu nền ngữ cảnh qua `--az-badge-ring` — trắng mặc định, `#001529` trong Menu tối, màu chính ở mục đang chọn; nhãn dạng chuỗi có `title` đọc đủ chữ khi bị cắt "…"); `common/CountBadge.test.tsx` (+2 test).
+
+**Root Cause:**
+> Bản layout-fix trước vẫn để nhãn bị rút gọn "Công việc định …" vì 2 chấm tách rời chiếm ~40px trong vùng Menu chỉ ~150px.
+
+**Notes:**
+> Cặp chấm hẹp hơn ~13px. Chấm luôn hiện đủ (không co), nhãn chỉ rút gọn khi thật sự hết chỗ (VD số 2 chữ số ở cả 2 chấm). Muốn nhãn KHÔNG BAO GIỜ bị cắt thì phải tăng `width` của Sider (đang 220) — chưa làm vì ảnh hưởng toàn layout. Chỉ đổi FE.
+
+---

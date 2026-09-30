@@ -77,6 +77,49 @@ describe('CountBadge', () => {
     await waitFor(() => expect(screen.getByText('Việc của tôi đang làm (in progress)')).toBeTruthy());
   });
 
+  it('nhãn nằm trong wrapper co được, các chấm nằm ngoài (không bị cắt khi hết chỗ)', () => {
+    const { container } = render(
+      <CountBadge
+        {...getNavBadgeProps('cong-viec-dinh-ky', {
+          'cong-viec-dinh-ky': 1,
+          [TASK_IN_PROGRESS_COUNT_KEY]: 2,
+        })}
+      >
+        Công việc định kỳ
+      </CountBadge>,
+    );
+    const label = container.querySelector('.az-count-badge-label');
+    expect(label?.textContent).toBe('Công việc định kỳ');
+    // chấm KHÔNG nằm trong label -> không bị ellipsis/overflow của label cắt
+    expect(label?.querySelector('.ant-badge-count')).toBeNull();
+    expect(container.querySelectorAll('.az-count-badge-item')).toHaveLength(2);
+  });
+
+  it('2 chấm -> xếp chồng (class stacked, chấm chính z-index cao hơn); 1 chấm -> không stacked', () => {
+    const two = render(
+      <CountBadge
+        {...getNavBadgeProps('cong-viec-dinh-ky', {
+          'cong-viec-dinh-ky': 1,
+          [TASK_IN_PROGRESS_COUNT_KEY]: 2,
+        })}
+      >
+        Việc
+      </CountBadge>,
+    );
+    expect(two.container.querySelector('.az-count-badge-stacked')).not.toBeNull();
+    const items = two.container.querySelectorAll<HTMLElement>('.az-count-badge-item');
+    expect(Number(items[0].style.zIndex)).toBeGreaterThan(Number(items[1].style.zIndex));
+    two.unmount();
+
+    const one = render(<CountBadge {...getNavBadgeProps('trash-can', { 'trash-can': 16 })}>Thùng rác</CountBadge>);
+    expect(one.container.querySelector('.az-count-badge-stacked')).toBeNull();
+  });
+
+  it('nhãn dạng chuỗi có title để đọc đủ chữ khi bị cắt "…"', () => {
+    const { container } = render(<CountBadge count={3}>Công việc định kỳ</CountBadge>);
+    expect(container.querySelector('.az-count-badge-label')?.getAttribute('title')).toBe('Công việc định kỳ');
+  });
+
   it('mọi mục nav có badge đều có tooltip (không mục nào bị sót)', () => {
     const keys = ['invalid-data-report', 'trash-can', 'users', 'duyet-phep', 'nghi-phep', 'thong-bao', 'cong-viec-dinh-ky'];
     for (const k of keys) {
