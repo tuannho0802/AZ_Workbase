@@ -4,7 +4,7 @@ import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { App, Tabs, Typography } from 'antd';
 import dayjs from 'dayjs';
-import { DollarOutlined, TeamOutlined, SafetyCertificateOutlined, FundProjectionScreenOutlined, UsergroupAddOutlined } from '@ant-design/icons';
+import { DollarOutlined, TeamOutlined, SafetyCertificateOutlined, FundProjectionScreenOutlined, UsergroupAddOutlined, TagsOutlined } from '@ant-design/icons';
 import { ReportQuery } from '@/lib/types/reports.types';
 import { useMyPermissions } from '@/lib/hooks/useMyPermissions';
 import RevenueReportTab from './RevenueReportTab';
@@ -12,6 +12,7 @@ import CustomerReportTab from './CustomerReportTab';
 import QualityReportTab from './QualityReportTab';
 import MarketingReportTab from './MarketingReportTab';
 import GroupQualityReportTab from './GroupQualityReportTab';
+import UtmQualityReportTab from './UtmQualityReportTab';
 
 const { Title, Text } = Typography;
 
@@ -117,6 +118,15 @@ export default function ReportsPage() {
               </span>
             ),
             children: <GroupQualityReportTab query={query} onQueryChange={setQuery} />,
+          },
+          {
+            key: 'utm-quality',
+            label: (
+              <span>
+                <TagsOutlined /> Chất lượng UTM
+              </span>
+            ),
+            children: <UtmQualityReportTab query={query} onQueryChange={setQuery} />,
           },
         ]}
       />

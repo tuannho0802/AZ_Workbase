@@ -50,6 +50,14 @@ export const METRIC_TITLE: Record<ReportCustomerListMetric, string> = {
   group_new_deposited: 'Khách join nhóm trong kỳ và đã từng nạp',
   group_new_closed: 'Khách join nhóm trong kỳ và đã chốt',
   new_no_group: 'Data mới trong kỳ chưa join nhóm nào',
+  utm_customers: 'Khách của UTM',
+  utm_new: 'Khách mới trong kỳ của UTM',
+  utm_deposited: 'Khách của UTM đã từng nạp',
+  utm_no_deposit: 'Khách của UTM chưa nạp lần nào',
+  utm_closed: 'Khách của UTM đã chốt',
+  utm_new_deposited: 'Khách mới trong kỳ của UTM đã từng nạp',
+  utm_new_closed: 'Khách mới trong kỳ của UTM đã chốt',
+  new_no_utm: 'Data mới trong kỳ chưa gắn UTM',
 };
 
 /** Yêu cầu mở modal - do tab cha tạo khi bấm thẻ/số. */
@@ -58,7 +66,7 @@ export interface CustomerDrill {
   /** Nhãn phụ hiển thị sau tiêu đề (vd tên nhân viên, tên trạng thái). */
   label?: string;
   /** Bộ lọc gắn cứng theo chỗ được bấm (người dùng KHÔNG đổi được trong modal). */
-  preset?: Pick<ReportCustomerListFilters, 'marketingUserId' | 'createdById' | 'salesUserId' | 'source' | 'groupId' | 'categoryId'>;
+  preset?: Pick<ReportCustomerListFilters, 'marketingUserId' | 'createdById' | 'salesUserId' | 'source' | 'groupId' | 'categoryId' | 'utmId' | 'utmState'>;
   /** Giá trị khởi tạo của ô lọc trạng thái (người dùng vẫn đổi được). */
   initialStatus?: string;
   /** Có -> hiện thanh chuyển chỉ số ngay trong modal (vd "Khách của 1 Sales": Data mới / Đã chốt / Đã nạp...). */
@@ -239,7 +247,7 @@ export default function ReportCustomersModal({ drill, onClose, query, context }:
     if (context === 'marketing') {
       cols.push({ title: 'Người tạo', key: 'creator', width: 160, render: (_, r) => userCell(r.createdBy) });
     }
-    if (metric === 'closed' || metric === 'cohort_closed') {
+    if (metric === 'closed' || metric === 'cohort_closed' || metric === 'utm_closed' || metric === 'utm_new_closed') {
       cols.push({ title: 'Ngày chốt', key: 'closedDate', width: 100, render: (_, r) => (r.closedDate ? dayjs(r.closedDate).format('DD/MM/YYYY') : '—') });
     }
     if (DEPOSIT_METRICS.includes(metric)) {
@@ -247,6 +255,15 @@ export default function ReportCustomersModal({ drill, onClose, query, context }:
         { title: 'Nạp trong kỳ', key: 'dep', width: 120, align: 'right', render: (_, r) => <Text strong style={{ color: '#389e0d' }}>{formatUsd(r.depositAmount ?? 0)}</Text> },
         { title: 'Số lần nạp', key: 'depCount', width: 90, align: 'center', render: (_, r) => r.depositCount ?? 0 },
         { title: 'Nạp gần nhất', key: 'depLast', width: 105, render: (_, r) => (r.lastDepositDate ? dayjs(r.lastDepositDate).format('DD/MM/YYYY') : '—') },
+      );
+    }
+    if (metric.startsWith('utm_') || metric === 'new_no_utm') {
+      // Báo cáo UTM đo giá trị khách mang lại -> hiện UTM + LỊCH SỬ NẠP mọi thời điểm (không chỉ trong kỳ).
+      cols.push(
+        { title: 'UTM', key: 'utm', width: 140, render: (_, r) => (r.utm ? <Tag color={r.utm.color} style={{ marginInlineEnd: 0 }}>{r.utm.name}</Tag> : <Text type="secondary">Chưa gắn</Text>) },
+        { title: 'Tổng nạp', key: 'utmDep', width: 110, align: 'right', render: (_, r) => (r.depositAmount ? <Text strong style={{ color: '#389e0d' }}>{formatUsd(r.depositAmount)}</Text> : <Text type="secondary">Chưa nạp</Text>) },
+        { title: 'Số lần nạp', key: 'utmDepCount', width: 90, align: 'center', render: (_, r) => r.depositCount ?? 0 },
+        { title: 'Nạp gần nhất', key: 'utmDepLast', width: 105, render: (_, r) => (r.lastDepositDate ? dayjs(r.lastDepositDate).format('DD/MM/YYYY') : '—') },
       );
     }
     if (metric === 'joined' || metric.startsWith('group_')) {
@@ -278,7 +295,7 @@ export default function ReportCustomersModal({ drill, onClose, query, context }:
   const period = data?.period;
 
   return (
-    <Modal open={open} onCancel={onClose} footer={null} width={context === 'marketing' || effectiveQuick === 'no_sales' ? 1240 : 1080} destroyOnHidden title={title}>
+    <Modal open={open} onCancel={onClose} footer={null} width={context === 'marketing' || context === 'utms' || effectiveQuick === 'no_sales' ? 1240 : 1080} destroyOnHidden title={title}>
       {drill?.summary && (
         <div style={{ display: 'flex', gap: 24, flexWrap: 'wrap', marginBottom: 12, padding: '8px 12px', background: '#fafafa', borderRadius: 6 }}>
           {drill.summary.map((it) => (

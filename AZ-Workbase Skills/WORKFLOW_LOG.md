@@ -5264,3 +5264,15 @@ khi bị xoá tay. Đây là 1 anti-pattern thật (dù đo thử với payload 
 > Không migration, không permission key mới (dùng lại `utms.edit`, `utms.delete`, `customers.edit`). Xoá UTM hàng loạt vẫn chỉ xoá được UTM 0 KH (kể cả Thùng rác) — UTM còn KH báo lỗi trong hộp thoại. Chưa làm bulk Khôi phục/Xoá vĩnh viễn khách Thùng rác trong modal.
 
 ---
+
+## [2026-09-30 12:30] | FE tab "Chất lượng UTM" (trang Báo cáo) — 3 góc nhìn Tất cả / Hoạt động / Đã khoá | [Status: Success — FE tsc sạch (trừ lỗi có sẵn logo.png/CountBadge), next build OK, vitest 290/290]
+
+**Actor:** Agent (trên `origin/main` HEAD `74afb5d`, BE `utm-quality` đã có sẵn)
+
+**Files Changed:**
+- FE: `reports/UtmQualityReportTab.tsx` (MỚI); `lib/utils/utmQuality.ts` + `utmQuality.test.ts` (MỚI); `lib/types/reports.types.ts` (types UTM, metric `utm_*`, `ReportContext='utms'`, `utmId/utmState`, `row.utm`); `lib/api/reports.api.ts` + `lib/hooks/useReports.ts` (`useUtmQualityReport`); `ReportCustomersModal.tsx` (tiêu đề + cột UTM/Tổng nạp/Số lần nạp/Nạp gần nhất cho metric utm_*); `reports/page.tsx` (tab mới).
+
+**Notes:**
+> Không đổi BE, không migration, không permission key mới (dùng `reports.view`). Dropdown Sales/Marketing gom người từng xuất hiện trong báo cáo để không "co lại" khi đang lọc 1 người. Đổi góc nhìn sẽ bỏ UTM đang chọn.
+
+---

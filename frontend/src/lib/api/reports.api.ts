@@ -12,6 +12,8 @@ import {
     ReportContext,
     GroupQualityReport,
     GroupQualityFilters,
+    UtmQualityReport,
+    UtmQualityFilters,
 } from '../types/reports.types';
 
 export const reportsApi = {
@@ -38,6 +40,12 @@ export const reportsApi = {
 
     getGroupQualityReport: async (query: ReportQuery & GroupQualityFilters): Promise<GroupQualityReport> => {
         const response = await axiosInstance.get<GroupQualityReport>('/reports/group-quality', { params: query });
+        return response.data;
+    },
+
+    getUtmQualityReport: async (query: ReportQuery & UtmQualityFilters): Promise<UtmQualityReport> => {
+        // salesUserId/marketingUserId = 0 vẫn được gửi (0 = "chưa gán"); axios bỏ qua key undefined.
+        const response = await axiosInstance.get<UtmQualityReport>('/reports/utm-quality', { params: query });
         return response.data;
     },
 

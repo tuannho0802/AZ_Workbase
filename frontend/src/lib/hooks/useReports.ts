@@ -1,6 +1,6 @@
 import { keepPreviousData, useQuery } from '@tanstack/react-query';
 import { reportsApi } from '../api/reports.api';
-import { GroupQualityFilters, MarketingReportFilters, ReportContext, ReportCustomerListQuery, ReportQuery } from '../types/reports.types';
+import { GroupQualityFilters, UtmQualityFilters, MarketingReportFilters, ReportContext, ReportCustomerListQuery, ReportQuery } from '../types/reports.types';
 
 /**
  * `enabled: isQueryReady(query)` - period=custom cần ĐỦ customFrom+customTo
@@ -55,6 +55,17 @@ export const useGroupQualityReport = (query: ReportQuery & GroupQualityFilters) 
     return useQuery({
         queryKey: ['reports', 'group-quality', query],
         queryFn: () => reportsApi.getGroupQualityReport(query),
+        enabled: isQueryReady(query),
+        staleTime: 60 * 1000,
+        placeholderData: keepPreviousData,
+    });
+};
+
+/** Báo cáo chất lượng UTM (tab "Chất lượng UTM"). */
+export const useUtmQualityReport = (query: ReportQuery & UtmQualityFilters) => {
+    return useQuery({
+        queryKey: ['reports', 'utm-quality', query],
+        queryFn: () => reportsApi.getUtmQualityReport(query),
         enabled: isQueryReady(query),
         staleTime: 60 * 1000,
         placeholderData: keepPreviousData,

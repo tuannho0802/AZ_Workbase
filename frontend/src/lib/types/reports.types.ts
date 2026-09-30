@@ -276,7 +276,16 @@ export type ReportCustomerListMetric =
     | 'group_closed'
     | 'group_new_deposited'
     | 'group_new_closed'
-    | 'new_no_group';
+    | 'new_no_group'
+    // Tab "Chất lượng UTM" (lọc thêm bằng utmId/utmState/salesUserId/marketingUserId)
+    | 'utm_customers'
+    | 'utm_new'
+    | 'utm_deposited'
+    | 'utm_no_deposit'
+    | 'utm_closed'
+    | 'utm_new_deposited'
+    | 'utm_new_closed'
+    | 'new_no_utm';
 
 export type ReportCustomerListQuick = 'no_marketing' | 'no_sales' | 'no_phone';
 
@@ -295,10 +304,13 @@ export interface ReportCustomerListFilters {
     /** Chỉ cho metric group_* : 1 nhóm liên kết / 1 Category. */
     groupId?: number;
     categoryId?: number;
+    /** Chỉ cho metric utm_* : 1 UTM / góc nhìn Tất cả-Hoạt động-Đã khoá. */
+    utmId?: number;
+    utmState?: UtmQualityState;
 }
 
 /** Tab đang xem - quyết định cách BE siết scope="own" cho khớp con số trên thẻ. */
-export type ReportContext = 'customers' | 'marketing' | 'groups';
+export type ReportContext = 'customers' | 'marketing' | 'groups' | 'utms';
 
 export interface ReportCustomerListQuery extends ReportQuery, ReportCustomerListFilters {
     metric: ReportCustomerListMetric;
@@ -338,6 +350,8 @@ export interface ReportCustomerListRow {
     lastDepositDate?: string | null;
     /** Chỉ có khi metric='joined' - nhóm đã join TRONG KỲ. */
     joinedGroups?: string[];
+    /** Chỉ có ở metric utm_* / new_no_utm: UTM của khách (null = chưa gắn). */
+    utm?: { id: number; name: string; color: string } | null;
 }
 
 export interface ReportCustomerList {
@@ -537,4 +551,163 @@ export interface GroupQualityReport {
     bySource: GroupSourceRow[];
     bySales: GroupSalesRow[];
     trend: GroupTrendPoint[];
+}
+
+// ── Chất lượng UTM (theo UTM) ───────────────────────────────────────────────
+// Khớp `ReportsUtmQualityService.getUtmQualityReport()` ở BE.
+
+export type UtmQualityState = 'all' | 'active' | 'locked';
+
+export interface UtmQualityFilters {
+    /** Góc nhìn: Tất cả / chỉ UTM hoạt động / chỉ UTM đã khoá. Mặc định 'all'. */
+    state?: UtmQualityState;
+    utmId?: number;
+    /** 0 = chưa có Sales. */
+    salesUserId?: number;
+    /** 0 = chưa gán Marketing. */
+    marketingUserId?: number;
+}
+
+export interface UtmQualityMetrics {
+    /** Khách đang gắn UTM (mọi thời điểm). */
+    customers: number;
+    /** Khách MỚI trong kỳ (theo ngày tạo). */
+    newCustomers: number;
+    /** Khách của UTM đã từng nạp. Luôn <= customers. */
+    depositedCustomers: number;
+    /** Khách của UTM đang ở trạng thái đã chốt. Luôn <= customers. */
+    closedCustomers: number;
+    /** Cohort: khách mới trong kỳ đã từng nạp. Luôn <= newCustomers. */
+    newDeposited: number;
+    /** Cohort: khách mới trong kỳ đã chốt. Luôn <= newCustomers. */
+    newClosed: number;
+    /** Khách có nạp trong kỳ (theo ngày nạp). */
+    periodDepositors: number;
+    /** Tiền nạp trong kỳ (USD). */
+    periodRevenue: number;
+    /** Tổng tiền nạp mọi thời điểm (USD). */
+    lifetimeRevenue: number;
+    /** Tổng số khoản nạp mọi thời điểm. */
+    depositCount: number;
+    /** Khách nạp từ 2 lần trở lên. Luôn <= depositedCustomers. */
+    redepositors: number;
+    /** TB số ngày từ lúc khách vào hệ thống tới khoản nạp đầu. null = chưa có mẫu. */
+    avgDaysToFirstDeposit: number | null;
+    avgDaysSamples: number;
+}
+
+export interface UtmUserBrief {
+    id: number;
+    name: string;
+    role: string | null;
+    departmentName: string | null;
+    departmentColor: string | null;
+    positionName: string | null;
+    positionColor: string | null;
+}
+
+export interface UtmParticipant {
+    /** 0 = khách chưa gán người phụ trách. */
+    userId: number;
+    user: UtmUserBrief | null;
+    customers: number;
+    depositedCustomers: number;
+    closedCustomers: number;
+    lifetimeRevenue: number;
+}
+
+export interface UtmParticipants {
+    /** Tổng số người khác nhau tham gia UTM (kể cả "chưa gán"). */
+    total: number;
+    /** Top theo doanh thu (tối đa 5). */
+    top: UtmParticipant[];
+}
+
+export interface UtmQualityRow extends UtmQualityMetrics {
+    utmId: number;
+    utmName: string;
+    color: string;
+    description: string | null;
+    visibility: 'shared' | 'restricted';
+    isActive: boolean;
+    lockedAt: string | null;
+    primaryManager: UtmUserBrief | null;
+    secondaryManagers: UtmUserBrief[];
+    /** Khách theo status hiện tại - đủ mặt mọi `statuses[].code` (kể cả 0). */
+    byStatus: Record<string, number>;
+    sales: UtmParticipants;
+    marketing: UtmParticipants;
+}
+
+export interface UtmSourceRow {
+    source: string;
+    customers: number;
+    depositedCustomers: number;
+    closedCustomers: number;
+    lifetimeRevenue: number;
+}
+
+export interface UtmPersonRow {
+    /** 0 = khách chưa gán. */
+    userId: number;
+    userName: string;
+    role: string | null;
+    departmentName: string | null;
+    departmentColor: string | null;
+    positionName: string | null;
+    positionColor: string | null;
+    customers: number;
+    newCustomers: number;
+    depositedCustomers: number;
+    closedCustomers: number;
+    periodRevenue: number;
+    lifetimeRevenue: number;
+    /** Số UTM khác nhau người này tham gia. */
+    utmCount: number;
+}
+
+export interface UtmTrendPoint {
+    date: string;
+    newCustomers: number;
+    revenue: number;
+    depositors: number;
+}
+
+export interface UtmOption {
+    id: number;
+    name: string;
+    color: string;
+    isActive: boolean;
+}
+
+export interface UtmStateSplit extends UtmQualityMetrics {
+    utmCount: number;
+}
+
+export interface UtmQualityReport {
+    period: ReportPeriodInfo & { granularity: 'day' | 'month'; spanDays: number };
+    previousPeriod: { from: string; to: string };
+    appliedFilters: UtmQualityFilters & { salesUser: UtmUserBrief | null; marketingUser: UtmUserBrief | null };
+    /** true = chỉ thấy phần khách của chính mình. */
+    ownOnly: boolean;
+    options: { utms: UtmOption[] };
+    statuses: QualityStatusMeta[];
+    summary: {
+        current: UtmQualityMetrics;
+        previous: { newCustomers: number; periodRevenue: number; periodDepositors: number };
+        utmCount: number;
+        emptyUtms: number;
+        stateCounts: { all: number; active: number; locked: number };
+        stateSplit: { active: UtmStateSplit; locked: UtmStateSplit };
+        periodNewCustomers: number;
+        /** Data mới trong kỳ (theo ngày tạo) & số khách trong đó chưa gắn UTM nào. */
+        newCustomers: number;
+        newCustomersNoUtm: number;
+        totalByStatus: Record<string, number>;
+    };
+    utms: UtmQualityRow[];
+    bySource: UtmSourceRow[];
+    bySales: UtmPersonRow[];
+    byMarketing: UtmPersonRow[];
+    trend: UtmTrendPoint[];
 }
