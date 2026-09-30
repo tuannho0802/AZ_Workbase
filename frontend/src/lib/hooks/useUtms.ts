@@ -8,6 +8,7 @@ import {
   CreateUtmPayload,
   UtmDuplicateGroup,
   UtmStatsParams,
+  UtmStatsCustomersParams,
 } from '../api/utms.api';
 
 const UTM_KEY = ['utms'] as const;
@@ -87,6 +88,15 @@ export const useUtmStats = (params: UtmStatsParams, enabled: boolean) =>
     enabled,
     staleTime: 30 * 1000,
     placeholderData: keepPreviousData,
+  });
+
+/** Mini Table khách của tab Thống kê. Key dưới `['utms']` nên sau khi sửa/gỡ UTM khách (invalidate ['utms']) tự làm mới. */
+export const useUtmStatsCustomers = (params: UtmStatsCustomersParams, enabled: boolean) =>
+  useQuery({
+    queryKey: [...UTM_KEY, 'stats-customers', params],
+    queryFn: () => utmsApi.getStatsCustomers(params),
+    enabled,
+    placeholderData: (prev) => prev,
   });
 
 export const useUtmCustomers = (utmId: number | null, params: UtmCustomersParams) =>

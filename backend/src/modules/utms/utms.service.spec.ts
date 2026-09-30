@@ -249,7 +249,7 @@ describe('UtmsService', () => {
       utmRepo.find.mockResolvedValue([mk({ id: 1 }), mk({ id: 2, primaryManagerId: 99 })]);
       const briefs = await svc.scopedUtmBriefs(emp);
       expect(briefs.map((b) => b.id)).toEqual([1]);
-      expect(Object.keys(briefs[0]).sort()).toEqual(['color', 'id', 'isActive', 'name']);
+      expect(Object.keys(briefs[0]).sort()).toEqual(['color', 'id', 'isActive', 'name', 'primaryManager', 'secondaryManagers']);
     });
     it('scopedUtmBriefs: không có utms.view -> [] và không đọc DB', async () => {
       utmRepo.find.mockClear();

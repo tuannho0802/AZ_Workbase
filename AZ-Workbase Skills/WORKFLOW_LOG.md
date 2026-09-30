@@ -5329,3 +5329,19 @@ khi bị xoá tay. Đây là 1 anti-pattern thật (dù đo thử với payload 
 > Không migration, không permission key mới. Tìm kiếm chỉ theo tên NV/phòng ban (không tìm theo lý do). Cột "Không xin nghỉ" và nhóm "không có phòng ban" không bấm được. Bug bắt được nhờ test: `fold()` phải hạ chữ thường TRƯỚC khi đổi `đ` (nếu không "Đặng" không khớp "dang").
 
 ---
+
+---
+
+## [2026-09-30 22:30] | UTM Tab "Thống kê": Quick Filter (Quản lý chính/phụ, UTM hoạt động/đã khoá) + bấm chart/card mở Mini Table khách | [Status: Success — BE tsc + nest build + jest utms/customers 15 suite / 327 test; FE tsc (chỉ còn lỗi cũ logo.png/CountBadge) + eslint sạch + vitest src/components/utms + src/lib 33 file / 255 test; CHƯA xem trình duyệt thật]
+
+**Actor:** Agent (trên `origin/main` HEAD `8ad6d4a`)
+
+**Files Changed:**
+- BE: `utms/dto/utm-stats-query.dto.ts` (`UtmStatsFilterDto`: `utmIds`, `primaryManagerId`, `secondaryManagerId`; `UtmStatsCustomersQueryDto`) + spec; `utms.service.ts` (`scopedUtmBriefs` trả kèm Quản lý chính/phụ); `utm-stats.service.ts` (`resolveUtms` dùng chung, `listCustomers`); `utm-customers.service.ts` (`listForUtms`, `mapRows` dùng chung); `utms.controller.ts` (+`GET /utms/stats/customers` `utms.view`, khai TRƯỚC `:id`) + các spec.
+- FE: `components/utms/UtmStatsQuickFilters.tsx` (MỚI), `UtmStatsCustomersDrawer.tsx` (MỚI, Mini Table), `UtmStatsTab.tsx`; `lib/utils/utm-stats.util.ts` (helper lọc/drill/gom gỡ UTM); `lib/api/utms.api.ts` (`serializeStatsParams` gộp `utmIds=1,2`), `lib/hooks/useUtms.ts` (`useUtmStatsCustomers`) + test.
+
+**Thiết kế:**
+> Bộ lọc chỉ THU HẸP tập UTM trong scope `utms.view` (giao chính ∩ phụ ∩ utmIds), không mở rộng quyền. Chart và Mini Table dùng CHUNG `resolveUtms` + điều kiện khách (Ngày nhập, không Thùng rác, scope `customers.view`) nên số dòng khớp số trên chart. Dropdown quản lý chỉ liệt kê user đang quản lý ≥1 UTM. Mini Table: sửa nhanh, gỡ UTM, gỡ hàng loạt (gom theo UTM, mỗi UTM 1 request) cần `customers.edit`. Cột tháng (kỳ >92 ngày) cắt theo kỳ đang xem.
+
+**Notes:**
+> Không migration, không permission key mới. Bộ lọc trong Drawer chỉ khởi tạo từ tab Thống kê, sửa trong bảng không đổi chart.

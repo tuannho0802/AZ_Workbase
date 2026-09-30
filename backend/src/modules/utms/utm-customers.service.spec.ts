@@ -100,4 +100,51 @@ describe('UtmCustomersService', () => {
       expect((res.data[0] as any).deletedAt).toBe(d);
     });
   });
+
+  describe('listForUtms (Mini Table tab Thống kê)', () => {
+    const filter = { from: '2026-09-01', to: '2026-09-30' };
+    beforeEach(() => {
+      qb.getManyAndCount = jest.fn().mockResolvedValue([[], 0]);
+    });
+
+    it('scope null (không có customers.view) -> trang rỗng, KHÔNG truy vấn', async () => {
+      const res = await svc.listForUtms([1], filter, caller, null);
+      expect(repo.createQueryBuilder).not.toHaveBeenCalled();
+      expect(res).toEqual({ data: [], total: 0, page: 1, limit: 10, totalPages: 0 });
+    });
+
+    it('tập UTM rỗng -> trang rỗng, KHÔNG truy vấn (không rơi về "tất cả khách")', async () => {
+      await svc.listForUtms([], filter, caller, 'all');
+      expect(repo.createQueryBuilder).not.toHaveBeenCalled();
+    });
+
+    it('lọc theo tập UTM + khoảng Ngày nhập + loại Thùng rác + scope xem; join UTM để hiện tag', async () => {
+      await svc.listForUtms([1, 2], { ...filter, status: 'closed', search: ' An ', page: 3, limit: 20 }, caller, 'own');
+      expect(qb.where).toHaveBeenCalledWith('customer.deletedAt IS NULL');
+      expect(qb.withDeleted).not.toHaveBeenCalled();
+      expect(qb.andWhere).toHaveBeenCalledWith('customer.utmId IN (:...utmIds)', { utmIds: [1, 2] });
+      expect(qb.andWhere).toHaveBeenCalledWith('customer.inputDate >= :from AND customer.inputDate <= :to', filter);
+      expect(qb.andWhere).toHaveBeenCalledWith('customer.status = :status', { status: 'closed' });
+      expect(qb.andWhere).toHaveBeenCalledWith('(customer.name LIKE :kw OR customer.phone LIKE :kw)', { kw: '%An%' });
+      expect(qb.leftJoinAndSelect).toHaveBeenCalledWith('customer.utm', 'utm');
+      expect(qb.skip).toHaveBeenCalledWith(40);
+      expect(calls()).toBeGreaterThan(5); // applyViewFilter (own) thêm điều kiện
+    });
+
+    it('Admin (all): không thêm điều kiện lọc phân quyền khách', async () => {
+      await svc.listForUtms([1], filter, { id: 1, role: 'admin' } as any, 'all');
+      expect(calls()).toBe(3); // deletedAt + utmId + ngày
+    });
+
+    it('map dòng kèm UTM (tag) và strip field ẩn', async () => {
+      qb.getManyAndCount = jest.fn().mockResolvedValue([
+        [{ id: 5, name: 'A', phone: '090', status: 'pending', utmId: 2, utm: { id: 2, name: 'TT', color: '#222', isActive: 0 }, createdAt: new Date() }],
+        1,
+      ]);
+      const res = await svc.listForUtms([2], filter, caller, 'own');
+      expect(res.data[0]).toMatchObject({ id: 5, utmId: 2, utm: { id: 2, name: 'TT', isActive: false } });
+      expect(ui.stripHiddenCustomerFields).toHaveBeenCalled();
+      expect(res.totalPages).toBe(1);
+    });
+  });
 });

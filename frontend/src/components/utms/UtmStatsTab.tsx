@@ -1,26 +1,34 @@
 'use client';
 
 import { useMemo, useState } from 'react';
-import { Alert, App, Card, Col, DatePicker, Empty, Row, Segmented, Select, Space, Statistic, Switch, Table, Tag, Tooltip, Typography } from 'antd';
+import { Alert, App, Card, Col, DatePicker, Empty, Row, Segmented, Space, Statistic, Switch, Table, Tag, Tooltip, Typography } from 'antd';
 import type { ColumnsType } from 'antd/es/table';
 import type { Dayjs } from 'dayjs';
 import dayjs from 'dayjs';
 import { Bar, BarChart, CartesianGrid, Legend, ResponsiveContainer, Tooltip as ChartTooltip, XAxis, YAxis } from 'recharts';
 import { useUtmStats } from '@/lib/hooks/useUtms';
-import type { UtmStatsPoint, UtmStatsStatus, UtmStatsUtmRow } from '@/lib/api/utms.api';
+import type { UtmStatsPoint, UtmStatsStatus, UtmStatsUtmBrief, UtmStatsUtmRow } from '@/lib/api/utms.api';
 import { UtmTag } from '@/components/utms/UtmTag';
+import { UtmStatsQuickFilters } from '@/components/utms/UtmStatsQuickFilters';
+import { UtmStatsCustomersDrawer } from '@/components/utms/UtmStatsCustomersDrawer';
 import { resolveEntityColor } from '@/lib/utils/entityColor';
 import { sumColumnWidths } from '@/lib/utils/table-width.util';
 import {
   bucketLabelFull,
+  buildDrill,
+  dropUnknownUtmIds,
+  EMPTY_STATS_FILTERS,
   fmtPct,
   ratePct,
   sortUtmStatsRows,
   statusesWithData,
   toChartRows,
+  toStatsFilterParams,
   UTM_STATS_MAX_SPAN_DAYS,
   utmScopeLabel,
   type UtmStatsChartMode,
+  type UtmStatsDrill,
+  type UtmStatsFilters,
 } from '@/lib/utils/utm-stats.util';
 import { getApiErrorMessage } from '@/lib/utils/error-message.util';
 
@@ -40,23 +48,45 @@ function CountRate({ n, total }: { n: number; total: number }) {
   );
 }
 
+/** Card bấm được (chuột + bàn phím) khi `enabled`; 0 khách thì không mở bảng rỗng. */
+function clickableCard(enabled: boolean, onOpen: () => void) {
+  if (!enabled) return {};
+  return {
+    hoverable: true,
+    onClick: onOpen,
+    role: 'button' as const,
+    tabIndex: 0,
+    style: { cursor: 'pointer' },
+    onKeyDown: (e: React.KeyboardEvent) => {
+      if (e.key === 'Enter' || e.key === ' ') {
+        e.preventDefault();
+        onOpen();
+      }
+    },
+  };
+}
+
 /**
  * Tab "Thống kê" của trang Quản lý UTM: khách thêm vào UTM theo từng ngày (Ngày nhập khách) và tỷ lệ các giai đoạn
  * (trạng thái hiện tại của khách). Phạm vi do BE quyết định: UTM theo scope `utms.view` (own/department/all),
  * khách luôn theo scope `customers.view` - FE chỉ hiển thị, không tự lọc quyền.
+ *
+ * Quick Filter (Quản lý chính/phụ, UTM hoạt động/đã khoá) thu hẹp tập UTM ở BE. Bấm cột chart / card -> Mini Table
+ * khách (Drawer) với bộ lọc tương tự để xem + thao tác nhanh ngay tại trang thống kê.
  *
  * Recharts: luôn `isAnimationActive={false}` (bật animation thì Bar có thể render rỗng khi mount trong ResponsiveContainer).
  */
 export function UtmStatsTab() {
   const { message } = App.useApp();
   const [range, setRange] = useState<[Dayjs, Dayjs]>(defaultRange);
-  const [utmId, setUtmId] = useState<number | undefined>();
+  const [filters, setFilters] = useState<UtmStatsFilters>(EMPTY_STATS_FILTERS);
+  const [drill, setDrill] = useState<UtmStatsDrill | null>(null);
   const [mode, setMode] = useState<UtmStatsChartMode>('count');
   const [hideEmptyDays, setHideEmptyDays] = useState(true);
 
   const params = useMemo(
-    () => ({ from: range[0].format('YYYY-MM-DD'), to: range[1].format('YYYY-MM-DD'), utmId }),
-    [range, utmId],
+    () => ({ from: range[0].format('YYYY-MM-DD'), to: range[1].format('YYYY-MM-DD'), ...toStatsFilterParams(filters) }),
+    [range, filters],
   );
   const { data, isLoading, isError, error } = useUtmStats(params, true);
 
@@ -66,6 +96,27 @@ export function UtmStatsTab() {
   const utmById = useMemo(() => new Map((data?.utms ?? []).map((u) => [u.id, u])), [data]);
   const granularity = data?.range.granularity ?? 'day';
   const total = data?.totals.total ?? 0;
+  const utmBriefs = useMemo(() => data?.utms ?? [], [data]);
+
+  // UTM bị xoá/đổi quyền giữa 2 lần tải -> bỏ khỏi lựa chọn. Dùng mẫu "chỉnh state ngay khi render" của React (không
+  // dùng effect); dropUnknownUtmIds trả về CHÍNH object cũ nếu không đổi nên không gây render lặp.
+  const [seenUtms, setSeenUtms] = useState<UtmStatsUtmBrief[] | undefined>(undefined);
+  if (data && data.utms !== seenUtms) {
+    setSeenUtms(data.utms);
+    const pruned = dropUnknownUtmIds(data.utms, filters);
+    if (pruned !== filters) setFilters(pruned);
+  }
+
+  const openDrill = (args: { bucket?: string; status?: string }) => {
+    if (!data) return;
+    const statusName = args.status ? statuses.find((s) => s.code === args.status)?.name : undefined;
+    setDrill(buildDrill({ range: data.range, bucket: args.bucket, status: args.status, statusName }));
+  };
+  // Bấm 1 đoạn của cột chồng = ngày/tháng đó + giai đoạn đó (bỏ trạng thái trong bảng để xem cả ngày).
+  const handleBarClick = (entry: unknown, statusCode: string) => {
+    const bucket = (entry as { payload?: { date?: string } } | null)?.payload?.date;
+    if (bucket) openDrill({ bucket, status: statusCode });
+  };
 
   const handleRange = (vals: null | [Dayjs | null, Dayjs | null]) => {
     if (!vals || !vals[0] || !vals[1]) {
@@ -157,21 +208,16 @@ export function UtmStatsTab() {
           disabledDate={(d) => d.isAfter(dayjs(), 'day')}
           placeholder={['Từ ngày', 'Đến ngày']}
         />
-        <Select
-          allowClear
-          showSearch
-          style={{ minWidth: 240 }}
-          placeholder="Tất cả UTM trong phạm vi"
-          value={utmId}
-          onChange={(v) => setUtmId(v ?? undefined)}
-          optionFilterProp="label"
-          options={(data?.utms ?? []).map((u) => ({ value: u.id, label: u.isActive ? u.name : `${u.name} (đã khoá)` }))}
-        />
+        <UtmStatsQuickFilters utms={utmBriefs} value={filters} onChange={setFilters} />
       </Space>
+
+      <Text type="secondary" style={{ fontSize: 12 }}>
+        Bấm vào cột biểu đồ hoặc thẻ số liệu để xem danh sách khách ngay tại đây.
+      </Text>
 
       <Row gutter={[12, 12]}>
         <Col xs={12} md={6} xl={4}>
-          <Card size="small" loading={isLoading}>
+          <Card size="small" loading={isLoading} {...clickableCard(total > 0, () => openDrill({}))}>
             <Statistic title="Khách trong kỳ" value={total} />
           </Card>
         </Col>
@@ -184,7 +230,7 @@ export function UtmStatsTab() {
           const n = data?.totals.byStatus[s.code] ?? 0;
           return (
             <Col xs={12} md={6} xl={4} key={s.code}>
-              <Card size="small" loading={isLoading}>
+              <Card size="small" loading={isLoading} {...clickableCard(n > 0, () => openDrill({ status: s.code }))}>
                 <Statistic title={<Tag color={resolveEntityColor(s.color)} style={{ marginInlineEnd: 0 }}>{s.name}</Tag>} value={n} suffix={<Text type="secondary" style={{ fontSize: 13 }}>{fmtPct(ratePct(n, total))}</Text>} />
               </Card>
             </Col>
@@ -235,7 +281,13 @@ export function UtmStatsTab() {
                 />
                 <Legend />
                 {shownStatuses.map((s) => (
-                  <Bar key={s.code} dataKey={s.code} name={s.name} stackId="stage" fill={resolveEntityColor(s.color)} maxBarSize={36} isAnimationActive={false} />
+                  <Bar key={s.code} dataKey={s.code} name={s.name} stackId="stage"
+                    fill={resolveEntityColor(s.color)}
+                    maxBarSize={36}
+                    isAnimationActive={false}
+                    cursor="pointer"
+                    onClick={(entry: unknown) => handleBarClick(entry, s.code)}
+                  />
                 ))}
               </BarChart>
             </ResponsiveContainer>
@@ -299,6 +351,8 @@ export function UtmStatsTab() {
           locale={{ emptyText: 'Chưa có UTM nào có khách trong kỳ' }}
         />
       </Card>
+
+      <UtmStatsCustomersDrawer drill={drill} onClose={() => setDrill(null)} utms={utmBriefs} statuses={statuses} initialFilters={filters} />
     </Space>
   );
 }

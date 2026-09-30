@@ -77,6 +77,9 @@ export interface UtmCustomerRow {
   deletedAt?: string | null;
   salesUser?: { id: number; name: string } | null;
   marketingUser?: { id: number; name: string } | null;
+  /** Chỉ có ở Mini Table của tab Thống kê (khách của nhiều UTM nên cần biết UTM nào). */
+  utmId?: number | null;
+  utm?: { id: number; name: string; color: string; isActive: boolean } | null;
 }
 
 export interface UtmCustomersParams {
@@ -123,6 +126,16 @@ export interface UtmStatsUtmRow {
   byStatus: Record<string, number>;
 }
 
+/** UTM trong phạm vi utms.view kèm Quản lý chính/phụ - nguồn dựng dropdown lọc nhanh của tab Thống kê. */
+export interface UtmStatsUtmBrief {
+  id: number;
+  name: string;
+  color: string;
+  isActive: boolean;
+  primaryManager: { id: number; name: string } | null;
+  secondaryManagers: Array<{ id: number; name: string }>;
+}
+
 export interface UtmStatsResult {
   range: { from: string; to: string; granularity: 'day' | 'month' };
   /** Scope `utms.view` của người xem: own / department / all. */
@@ -131,7 +144,7 @@ export interface UtmStatsResult {
   customerScope: string | null;
   utmCount: number;
   statuses: UtmStatsStatus[];
-  utms: Array<{ id: number; name: string; color: string; isActive: boolean }>;
+  utms: UtmStatsUtmBrief[];
   totals: { total: number; byStatus: Record<string, number> };
   series: UtmStatsPoint[];
   byUtm: UtmStatsUtmRow[];
@@ -141,12 +154,35 @@ export interface UtmStatsParams {
   from?: string;
   to?: string;
   utmId?: number;
+  /** Chỉ các UTM này (BE nhận `1,2,3`). Rỗng/undefined = không lọc theo ID. */
+  utmIds?: number[];
+  /** Chỉ UTM có Quản lý CHÍNH là user này. */
+  primaryManagerId?: number;
+  /** Chỉ UTM có user này là Quản lý PHỤ. */
+  secondaryManagerId?: number;
+}
+
+/** Mini Table khách của tab Thống kê = bộ lọc thống kê + trạng thái/tìm kiếm/phân trang. */
+export interface UtmStatsCustomersParams extends UtmStatsParams {
+  page?: number;
+  limit?: number;
+  search?: string;
+  status?: string;
 }
 
 /** Kết quả thao tác hàng loạt (BE luôn trả 200; từng ID lỗi nằm trong `failed`). */
 export interface BulkResult {
   succeeded: number[];
   failed: Array<{ id: number; reason: string }>;
+}
+
+/**
+ * Axios mặc định gửi mảng dạng `utmIds[]=1&utmIds[]=2` (BE không hiểu) -> gộp thành `utmIds=1,2`.
+ * Mảng rỗng bị bỏ hẳn (= không lọc).
+ */
+export function serializeStatsParams<T extends UtmStatsParams>(params: T): Omit<T, 'utmIds'> & { utmIds?: string } {
+  const { utmIds, ...rest } = params;
+  return { ...rest, ...(utmIds && utmIds.length > 0 ? { utmIds: utmIds.join(',') } : {}) };
 }
 
 export const utmsApi = {
@@ -163,7 +199,11 @@ export const utmsApi = {
 
   /** Tab "Thống kê" - cần `utms.view` (UTM lọc theo scope) + khách luôn lọc theo `customers.view`. */
   getStats: async (params: UtmStatsParams): Promise<UtmStatsResult> =>
-    (await axiosInstance.get<UtmStatsResult>('/utms/stats', { params })).data,
+    (await axiosInstance.get<UtmStatsResult>('/utms/stats', { params: serializeStatsParams(params) })).data,
+
+  /** Mini Table khách khi bấm chart/card của tab Thống kê - cần `utms.view`; khách luôn lọc theo `customers.view`. */
+  getStatsCustomers: async (params: UtmStatsCustomersParams): Promise<UtmCustomersResponse> =>
+    (await axiosInstance.get<UtmCustomersResponse>('/utms/stats/customers', { params: serializeStatsParams(params) })).data,
 
   getOne: async (id: number): Promise<UtmView> => (await axiosInstance.get<UtmView>(`/utms/${id}`)).data,
 

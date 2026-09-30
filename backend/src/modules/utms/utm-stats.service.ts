@@ -5,8 +5,9 @@ import { Customer } from '../../database/entities/customer.entity';
 import { CustomerStatus } from '../../database/entities/customer-status.entity';
 import { todayVnStr } from '../../common/utils/date-vn.util';
 import { CustomerAccessHelper } from '../customers/helpers/customer-access.helper';
-import { UtmsService, UtmCaller } from './utms.service';
-import { UtmStatsQueryDto } from './dto/utm-stats-query.dto';
+import { UtmsService, UtmCaller, UtmScopedBrief } from './utms.service';
+import { UtmCustomersService } from './utm-customers.service';
+import { UtmStatsCustomersQueryDto, UtmStatsFilterDto, UtmStatsQueryDto } from './dto/utm-stats-query.dto';
 import {
   addDays,
   aggregateUtmStats,
@@ -37,7 +38,8 @@ export interface UtmStatsResult extends UtmStatsAggregate {
   /** Số UTM được thống kê (= tất cả UTM trong phạm vi, hoặc 1 nếu có lọc `utmId`). */
   utmCount: number;
   statuses: UtmStatsStatusInfo[];
-  utms: Array<{ id: number; name: string; color: string; isActive: boolean }>;
+  /** Toàn bộ UTM trong phạm vi utms.view (kèm Quản lý chính/phụ) - FE dựng dropdown lọc từ đây. */
+  utms: UtmScopedBrief[];
 }
 
 /**
@@ -55,6 +57,7 @@ export class UtmStatsService {
     @InjectRepository(CustomerStatus)
     private readonly statusRepo: Repository<CustomerStatus>,
     private readonly utmsService: UtmsService,
+    private readonly customersService: UtmCustomersService,
   ) {}
 
   private resolveRange(query: UtmStatsQueryDto): { from: string; to: string } {
@@ -68,16 +71,16 @@ export class UtmStatsService {
     return { from, to };
   }
 
-  async getStats(caller: UtmCaller, query: UtmStatsQueryDto): Promise<UtmStatsResult> {
-    const { from, to } = this.resolveRange(query);
-    const granularity = pickGranularity(from, to);
-    const buckets = buildBuckets(from, to, granularity);
-
-    const [utmScope, customerScope, allBriefs, statusRows] = await Promise.all([
+  /**
+   * Tập UTM sau khi áp phạm vi `utms.view` rồi tới các bộ lọc nhanh (UTM cụ thể / Quản lý chính / Quản lý phụ).
+   * Dùng CHUNG cho chart và Mini Table khách để hai nơi luôn khớp nhau. Các bộ lọc chỉ THU HẸP tập trong phạm vi -
+   * không bao giờ mở rộng ra UTM ngoài quyền xem.
+   */
+  private async resolveUtms(caller: UtmCaller, query: UtmStatsFilterDto) {
+    const [utmScope, customerScope, allBriefs] = await Promise.all([
       this.utmsService.scopeOf(caller, 'utms.view'),
       this.utmsService.scopeOf(caller, 'customers.view'),
       this.utmsService.scopedUtmBriefs(caller),
-      this.statusRepo.find({ order: { sortOrder: 'ASC', id: 'ASC' } }),
     ]);
     // Guard cứng (fail-closed): endpoint đã có @RequirePermission('utms.view') nhưng vẫn không tin scope rỗng.
     if (!utmScope) throw new ForbiddenException('Bạn không có quyền xem thống kê UTM');
@@ -87,6 +90,29 @@ export class UtmStatsService {
       briefs = allBriefs.filter((u) => u.id === query.utmId);
       if (briefs.length === 0) throw new ForbiddenException('UTM không nằm trong phạm vi của bạn');
     }
+    // utmIds: ID ngoài phạm vi bị bỏ qua (không 403 - dropdown FE có thể còn ID cũ sau khi UTM bị xoá/đổi quyền).
+    if (query.utmIds && query.utmIds.length > 0) {
+      const wanted = new Set(query.utmIds);
+      briefs = briefs.filter((u) => wanted.has(u.id));
+    }
+    if (query.primaryManagerId != null) {
+      briefs = briefs.filter((u) => u.primaryManager?.id === query.primaryManagerId);
+    }
+    if (query.secondaryManagerId != null) {
+      briefs = briefs.filter((u) => u.secondaryManagers.some((m) => m.id === query.secondaryManagerId));
+    }
+    return { utmScope, customerScope, allBriefs, briefs };
+  }
+
+  async getStats(caller: UtmCaller, query: UtmStatsQueryDto): Promise<UtmStatsResult> {
+    const { from, to } = this.resolveRange(query);
+    const granularity = pickGranularity(from, to);
+    const buckets = buildBuckets(from, to, granularity);
+
+    const [{ utmScope, customerScope, allBriefs, briefs }, statusRows] = await Promise.all([
+      this.resolveUtms(caller, query),
+      this.statusRepo.find({ order: { sortOrder: 'ASC', id: 'ASC' } }),
+    ]);
 
     const statuses: UtmStatsStatusInfo[] = statusRows.map((s) => ({ code: s.code, name: s.name, color: s.color }));
     const statusCodes = statuses.map((s) => s.code);
@@ -136,5 +162,21 @@ export class UtmStatsService {
       series: agg.series,
       byUtm: agg.byUtm,
     };
+  }
+
+  /**
+   * Mini Table khách khi bấm vào chart/card: cùng bộ lọc với `getStats` + `status`/`search`/phân trang.
+   * Số dòng khớp số trên chart vì dùng chung `resolveUtms` và điều kiện khách (Ngày nhập, không Thùng rác, scope
+   * `customers.view`).
+   */
+  async listCustomers(caller: UtmCaller, query: UtmStatsCustomersQueryDto) {
+    const { from, to } = this.resolveRange(query);
+    const { customerScope, briefs } = await this.resolveUtms(caller, query);
+    return this.customersService.listForUtms(
+      briefs.map((u) => u.id),
+      { from, to, status: query.status, search: query.search, page: query.page, limit: query.limit },
+      caller,
+      customerScope,
+    );
   }
 }

@@ -1,4 +1,5 @@
-import type { UtmStatsPoint, UtmStatsStatus, UtmStatsUtmRow } from '../api/utms.api';
+import dayjs from 'dayjs';
+import type { UtmStatsPoint, UtmStatsStatus, UtmStatsUtmBrief, UtmStatsUtmRow } from '../api/utms.api';
 
 /** Tỷ lệ % làm tròn 1 chữ số thập phân; tổng = 0 -> 0 (không NaN). */
 export function ratePct(count: number, total: number): number {
@@ -29,7 +30,7 @@ export function bucketLabelFull(date: string): string {
 
 export type UtmStatsChartMode = 'count' | 'percent';
 
-/** Dòng dữ liệu phẳng cho Recharts: { label, full, total, [code]: giá trị hiển thị, [`${code}__n`]: số khách }. */
+/** Dòng dữ liệu phẳng cho Recharts: { date (khoá bucket thô, dùng khi bấm cột), label, full, total, [code]: giá trị hiển thị, [`${code}__n`]: số khách }. */
 export type UtmStatsChartRow = Record<string, string | number>;
 
 /**
@@ -40,7 +41,7 @@ export type UtmStatsChartRow = Record<string, string | number>;
  */
 export function toChartRows(series: UtmStatsPoint[], statuses: UtmStatsStatus[], mode: UtmStatsChartMode): UtmStatsChartRow[] {
   return series.map((pt) => {
-    const row: UtmStatsChartRow = { label: bucketLabel(pt.date), full: bucketLabelFull(pt.date), total: pt.total };
+    const row: UtmStatsChartRow = { date: pt.date, label: bucketLabel(pt.date), full: bucketLabelFull(pt.date), total: pt.total };
     for (const s of statuses) {
       const n = pt.byStatus[s.code] ?? 0;
       const p = ratePct(n, pt.total);
@@ -78,3 +79,147 @@ export function utmScopeLabel(scope: string): string {
 
 /** Khớp `UTM_STATS_MAX_SPAN_DAYS` của BE - chặn chọn khoảng ngày quá dài ngay ở FE. */
 export const UTM_STATS_MAX_SPAN_DAYS = 366;
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Quick Filter (Quản lý chính / Quản lý phụ / UTM hoạt động / UTM đã khoá)
+// ─────────────────────────────────────────────────────────────────────────────
+
+export interface UtmStatsFilters {
+  primaryManagerId?: number;
+  secondaryManagerId?: number;
+  /** UTM đang hoạt động được chọn (dropdown "UTM hoạt động"). */
+  activeUtmIds: number[];
+  /** UTM đã khoá được chọn (dropdown "UTM đã khoá"). */
+  lockedUtmIds: number[];
+}
+
+export const EMPTY_STATS_FILTERS: UtmStatsFilters = { activeUtmIds: [], lockedUtmIds: [] };
+
+export interface SelectOption {
+  value: number;
+  label: string;
+}
+
+const byName = (a: SelectOption, b: SelectOption) => a.label.localeCompare(b.label, 'vi');
+
+/**
+ * Người CÓ quản lý UTM (trong phạm vi người xem): chỉ user đang là Quản lý chính (kind='primary') hoặc Quản lý phụ
+ * (kind='secondary') của ít nhất 1 UTM. User không quản lý UTM nào KHÔNG xuất hiện.
+ */
+export function managerOptions(utms: UtmStatsUtmBrief[], kind: 'primary' | 'secondary'): SelectOption[] {
+  const seen = new Map<number, string>();
+  for (const u of utms) {
+    if (kind === 'primary') {
+      if (u.primaryManager) seen.set(u.primaryManager.id, u.primaryManager.name);
+    } else {
+      for (const m of u.secondaryManagers) seen.set(m.id, m.name);
+    }
+  }
+  return [...seen].map(([value, label]) => ({ value, label })).sort(byName);
+}
+
+/** UTM có khớp bộ lọc người quản lý (chính VÀ phụ - giao) không. */
+export function matchesManagers(u: UtmStatsUtmBrief, f: Pick<UtmStatsFilters, 'primaryManagerId' | 'secondaryManagerId'>): boolean {
+  if (f.primaryManagerId != null && u.primaryManager?.id !== f.primaryManagerId) return false;
+  if (f.secondaryManagerId != null && !u.secondaryManagers.some((m) => m.id === f.secondaryManagerId)) return false;
+  return true;
+}
+
+/** Option của dropdown "UTM hoạt động" (active=true) / "UTM đã khoá" (active=false), thu hẹp theo người quản lý đang chọn. */
+export function utmOptionsFor(utms: UtmStatsUtmBrief[], f: UtmStatsFilters, active: boolean): SelectOption[] {
+  return utms
+    .filter((u) => u.isActive === active && matchesManagers(u, f))
+    .map((u) => ({ value: u.id, label: u.name }))
+    .sort(byName);
+}
+
+/** Đổi người quản lý -> bỏ các UTM đang chọn mà không còn khớp (tránh chọn 1 đằng, kết quả 0 một nẻo). */
+export function pruneUtmSelection(utms: UtmStatsUtmBrief[], f: UtmStatsFilters): UtmStatsFilters {
+  const ok = new Set(utms.filter((u) => matchesManagers(u, f)).map((u) => u.id));
+  return { ...f, activeUtmIds: f.activeUtmIds.filter((id) => ok.has(id)), lockedUtmIds: f.lockedUtmIds.filter((id) => ok.has(id)) };
+}
+
+/** Gộp 2 dropdown UTM thành 1 danh sách ID gửi BE; không chọn gì -> undefined (= không lọc theo ID). */
+export function mergedUtmIds(f: UtmStatsFilters): number[] | undefined {
+  const ids = [...new Set([...f.activeUtmIds, ...f.lockedUtmIds])];
+  return ids.length > 0 ? ids : undefined;
+}
+
+/** Phần tham số BE của bộ lọc nhanh (dùng chung cho /utms/stats và /utms/stats/customers). */
+export function toStatsFilterParams(f: UtmStatsFilters): { utmIds?: number[]; primaryManagerId?: number; secondaryManagerId?: number } {
+  return { utmIds: mergedUtmIds(f), primaryManagerId: f.primaryManagerId, secondaryManagerId: f.secondaryManagerId };
+}
+
+export function hasActiveStatsFilters(f: UtmStatsFilters): boolean {
+  return f.primaryManagerId != null || f.secondaryManagerId != null || f.activeUtmIds.length > 0 || f.lockedUtmIds.length > 0;
+}
+
+/** Bỏ ID không còn trong danh sách UTM của phạm vi (UTM bị xoá/đổi quyền) khỏi lựa chọn hiện tại. */
+export function dropUnknownUtmIds(utms: UtmStatsUtmBrief[], f: UtmStatsFilters): UtmStatsFilters {
+  const activeSet = new Set(utms.filter((u) => u.isActive).map((u) => u.id));
+  const lockedSet = new Set(utms.filter((u) => !u.isActive).map((u) => u.id));
+  const active = f.activeUtmIds.filter((id) => activeSet.has(id));
+  const locked = f.lockedUtmIds.filter((id) => lockedSet.has(id));
+  if (active.length === f.activeUtmIds.length && locked.length === f.lockedUtmIds.length) return f;
+  return { ...f, activeUtmIds: active, lockedUtmIds: locked };
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Bấm vào chart/card -> Mini Table khách
+// ─────────────────────────────────────────────────────────────────────────────
+
+export interface UtmStatsDrill {
+  title: string;
+  from: string;
+  to: string;
+  status?: string;
+}
+
+const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
+const MONTH_RE = /^\d{4}-\d{2}$/;
+
+/**
+ * Khoảng ngày của 1 bucket trên chart. Bucket ngày -> đúng ngày đó; bucket THÁNG -> cả tháng nhưng CẮT theo kỳ đang xem
+ * (tháng đầu/cuối của kỳ chỉ có 1 phần) để số dòng khớp số trên cột.
+ */
+export function bucketRange(bucket: string, range: { from: string; to: string }): { from: string; to: string } {
+  if (DATE_RE.test(bucket)) return { from: bucket, to: bucket };
+  if (MONTH_RE.test(bucket)) {
+    const start = `${bucket}-01`;
+    const end = dayjs(start).endOf('month').format('YYYY-MM-DD');
+    return { from: start < range.from ? range.from : start, to: end > range.to ? range.to : end };
+  }
+  return range;
+}
+
+const fmtDayVn = (d: string) => dayjs(d).format('DD/MM/YYYY');
+
+/** Ngữ cảnh mở Mini Table: bấm cột (bucket + trạng thái), card trạng thái (chỉ trạng thái) hoặc card tổng (không gì). */
+export function buildDrill(args: { range: { from: string; to: string }; bucket?: string; status?: string; statusName?: string }): UtmStatsDrill {
+  const { range, bucket, status, statusName } = args;
+  const r = bucket ? bucketRange(bucket, range) : range;
+  let title: string;
+  if (bucket && MONTH_RE.test(bucket)) title = `Khách tháng ${bucket.slice(5)}/${bucket.slice(0, 4)}`;
+  else if (bucket) title = `Khách ngày ${fmtDayVn(r.from)}`;
+  else title = `Khách ${fmtDayVn(r.from)} – ${fmtDayVn(r.to)}`;
+  if (status) title += ` — ${statusName ?? status}`;
+  return { title, from: r.from, to: r.to, status };
+}
+
+/**
+ * Gom ID khách đã chọn theo UTM của từng khách (Mini Table có khách của NHIỀU UTM, mà API gỡ UTM hàng loạt nhận 1 UTM
+ * mỗi lần). Bỏ ID không còn trong danh sách, khách không có UTM, khách Thùng rác.
+ */
+export function groupCustomerIdsByUtm(
+  ids: number[],
+  rows: ReadonlyArray<{ id: number; utmId?: number | null; deletedAt?: string | null }>,
+): Map<number, number[]> {
+  const byId = new Map(rows.map((r) => [r.id, r]));
+  const groups = new Map<number, number[]>();
+  for (const id of ids) {
+    const r = byId.get(id);
+    if (!r || r.utmId == null || r.deletedAt) continue;
+    groups.set(r.utmId, [...(groups.get(r.utmId) ?? []), id]);
+  }
+  return groups;
+}

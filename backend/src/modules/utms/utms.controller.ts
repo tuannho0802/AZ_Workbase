@@ -27,7 +27,7 @@ import { BulkUtmIdsDto, BulkUtmStatusDto } from './dto/bulk-utm.dto';
 import { UtmCustomersQueryDto } from './dto/utm-customers-query.dto';
 import { UtmCustomersService } from './utm-customers.service';
 import { UtmStatsService } from './utm-stats.service';
-import { UtmStatsQueryDto } from './dto/utm-stats-query.dto';
+import { UtmStatsCustomersQueryDto, UtmStatsQueryDto } from './dto/utm-stats-query.dto';
 import { GetPermissionScope } from '../../common/decorators/get-permission-scope.decorator';
 
 /**
@@ -97,6 +97,16 @@ export class UtmsController {
   })
   stats(@Query() query: UtmStatsQueryDto, @GetUser() user: any) {
     return this.statsService.getStats(user, query);
+  }
+
+  @Get('stats/customers')
+  @RequirePermission('utms.view')
+  @ApiOperation({
+    summary:
+      'Mini Table khách của tab "Thống kê" (bấm chart/card) - cùng bộ lọc với /utms/stats; UTM theo scope utms.view, khách luôn lọc theo scope customers.view',
+  })
+  statsCustomers(@Query() query: UtmStatsCustomersQueryDto, @GetUser() user: any) {
+    return this.statsService.listCustomers(user, query);
   }
 
   @Post()

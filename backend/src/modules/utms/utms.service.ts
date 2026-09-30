@@ -74,6 +74,16 @@ export interface UtmView {
 
 const CASCADE_BATCH = 5000;
 
+/** Bản gọn của UTM trong phạm vi utms.view - dùng cho tab Thống kê (kèm Quản lý chính/phụ để lọc theo người). */
+export interface UtmScopedBrief {
+  id: number;
+  name: string;
+  color: string;
+  isActive: boolean;
+  primaryManager: { id: number; name: string } | null;
+  secondaryManagers: Array<{ id: number; name: string }>;
+}
+
 @Injectable()
 export class UtmsService {
   private readonly logger = new Logger(UtmsService.name);
@@ -309,17 +319,27 @@ export class UtmsService {
    * Danh sách UTM (gọn) nằm trong phạm vi `utms.view` của người gọi - CÙNG bộ lọc với `listScoped` (tab "Tất cả UTM")
    * qua `UtmAccessHelper.relation`. Dùng cho tab Thống kê để 2 tab luôn khớp phạm vi.
    */
-  async scopedUtmBriefs(user: UtmCaller): Promise<Array<{ id: number; name: string; color: string; isActive: boolean }>> {
+  async scopedUtmBriefs(user: UtmCaller): Promise<UtmScopedBrief[]> {
     const scope = await this.scopeOf(user, 'utms.view');
     if (!scope) return [];
     const managed = await this.managedDepartmentIds(user.id);
     const utms = await this.utmRepo.find({
-      relations: ['primaryManager', 'secondaryManagers'],
+      relations: ['primaryManager', 'secondaryManagers', 'secondaryManagers.user'],
       order: { sortOrder: 'ASC', id: 'ASC' },
     });
     return utms
       .filter((u) => UtmAccessHelper.relation(scope, this.buildContext(u, user.id, managed)) !== null)
-      .map((u) => ({ id: u.id, name: u.name, color: u.color, isActive: u.isActive }));
+      .map((u) => ({
+        id: u.id,
+        name: u.name,
+        color: u.color,
+        isActive: !!u.isActive,
+        // Tên Quản lý chính/phụ để tab Thống kê dựng dropdown "chỉ user đang quản lý UTM" + lọc theo người.
+        primaryManager: u.primaryManager ? { id: u.primaryManager.id, name: u.primaryManager.name } : null,
+        secondaryManagers: (u.secondaryManagers ?? [])
+          .filter((m) => m.user)
+          .map((m) => ({ id: m.user.id, name: m.user.name })),
+      }));
   }
 
   async getOne(id: number, user: UtmCaller): Promise<UtmView> {
