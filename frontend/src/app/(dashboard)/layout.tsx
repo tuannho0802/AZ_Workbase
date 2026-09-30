@@ -18,6 +18,7 @@ import { useSidebarBadgeCounts } from '@/lib/hooks/useSidebarBadgeCounts';
 import { useCachedImage, buildImageCacheKey } from '@/lib/hooks/useCachedImage';
 import { usersApi } from '@/lib/api/users.api';
 import { CountBadge } from '@/components/common/CountBadge';
+import { getNavBadgeProps } from '@/lib/nav-badge';
 import { NotificationBell } from '@/components/notifications/NotificationBell';
 import { NotificationDetailModal } from '@/components/notifications/NotificationDetailModal';
 import { useRoleColorMap } from '@/lib/hooks/useRoleColorMap';
@@ -343,7 +344,7 @@ export default function DashboardLayout({
               key: item.key,
               icon: item.icon,
               label: (
-                <CountBadge count={badgeCounts[item.key]}>
+                <CountBadge {...getNavBadgeProps(item.key, badgeCounts)}>
                   {item.label}
                 </CountBadge>
               ),

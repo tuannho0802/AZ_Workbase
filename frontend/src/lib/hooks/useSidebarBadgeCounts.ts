@@ -16,6 +16,13 @@ import { notificationKeys } from './useNotifications';
 const REFRESH_INTERVAL_MS = 60_000;
 
 /**
+ * Key phụ trong map counts cho badge VÀNG "Đang làm" (in_progress) của mục
+ * Công việc định kỳ. Badge ĐỎ To-Do vẫn dùng đúng `counts['cong-viec-dinh-ky']`
+ * như cũ (không đổi hợp đồng của các nơi tiêu thụ hiện có).
+ */
+export const TASK_IN_PROGRESS_COUNT_KEY = 'cong-viec-dinh-ky:in_progress';
+
+/**
  * Trả về map { [navItemKey]: count } - KHỚP TRỰC TIẾP với `key` trong
  * NAV_ITEMS (lib/nav-config.tsx), để nơi tiêu thụ chỉ cần
  * `counts[item.key]` mà không cần thêm 1 tầng mapping riêng.
@@ -116,6 +123,10 @@ export function useSidebarBadgeCounts(): Record<string, number> {
     staleTime: 5 * 60_000,
   });
   const notStartedStatusId = taskStatuses.data?.find((s) => s.code === 'not_started')?.id;
+  // Status "Đang làm" (`in_progress`) - tạo thủ công ở từng môi trường (không có
+  // migration seed) nên có thể chưa tồn tại: khi đó id = undefined -> query bên
+  // dưới tự disabled và badge vàng ẩn, không gây lỗi.
+  const inProgressStatusId = taskStatuses.data?.find((s) => s.code === 'in_progress')?.id;
 
   // 7b. (BE `GET /periodic-tasks` KHÔNG bao giờ tải toàn bộ: không truyền dateFrom/
   // dateTo => mặc định TUẦN NÀY, nên số này là To-Do của TUẦN NÀY - khớp đúng với
@@ -144,6 +155,25 @@ export function useSidebarBadgeCounts(): Record<string, number> {
     staleTime: REFRESH_INTERVAL_MS,
   });
 
+  // 7c. Số Công việc định kỳ đang ở trạng thái "Đang làm" (in_progress) MÀ MÌNH
+  // CÓ LIÊN QUAN - cùng ngữ nghĩa/phạm vi với 7b (assigneeId = mình, mặc định
+  // tuần này), chỉ khác statusId. Hiển thị badge VÀNG cạnh badge đỏ To-Do.
+  const taskInProgress = useQuery({
+    queryKey: ['badge-count', 'cong-viec-dinh-ky-in-progress', inProgressStatusId, currentUserId],
+    queryFn: async () =>
+      (
+        await periodicTasksApi.getAll({
+          statusId: inProgressStatusId,
+          assigneeId: currentUserId,
+          page: 1,
+          limit: 1,
+        })
+      ).total,
+    enabled: canSeeTaskTodo && inProgressStatusId !== undefined && currentUserId !== undefined,
+    refetchInterval: REFRESH_INTERVAL_MS,
+    staleTime: REFRESH_INTERVAL_MS,
+  });
+
   const counts: Record<string, number> = {};
   if (canSeeInvalidData && invalidData.data !== undefined) {
     counts['invalid-data-report'] = invalidData.data;
@@ -165,6 +195,9 @@ export function useSidebarBadgeCounts(): Record<string, number> {
   }
   if (canSeeTaskTodo && taskTodo.data !== undefined) {
     counts['cong-viec-dinh-ky'] = taskTodo.data;
+  }
+  if (canSeeTaskTodo && taskInProgress.data !== undefined) {
+    counts[TASK_IN_PROGRESS_COUNT_KEY] = taskInProgress.data;
   }
 
   return counts;

@@ -5161,3 +5161,33 @@ khi bị xoá tay. Đây là 1 anti-pattern thật (dù đo thử với payload 
 > Màu/tên Vai trò lấy từ `useRoleColorMap` + `useRoleColors` (GET /roles/colors, không cần `roles.view`). Chưa đổi UtmManagersModal.
 
 ---
+
+## [2026-09-30 15:30] | Fix query "Trùng SĐT" chậm ~1.2s: thiếu index trên `customers.phone` | [Status: Success — đã đo EXPLAIN ANALYZE trên DB local: 137ms → 0.163ms; BE jest customers 7 suite / 166 test]
+
+**Actor:** Agent (trên `origin/main` HEAD `e731ac7`), User chạy migration + đo
+
+**Files Changed:**
+- BE: migration `1785400000000-AddCustomersPhoneIndex.ts` (CREATE INDEX `IDX_customers_phone_deleted_created` trên `(phone, deleted_at, created_at)`, có check tồn tại, `down()` đối xứng); `customer.entity.ts` (`@Index` composite thay `@Index(['phone'])`, gỡ `unique: true`). Đã commit `ae4c7f1`.
+
+**Root Cause:**
+> DB local không còn index nào trên `phone` (`SHOW INDEX` = 0 rows) trong khi migration `1776053695502` khai UNIQUE — DB lệch migration (đang có 41 SĐT trùng nên không thể UNIQUE). Subquery tương quan `MAX(c2.created_at) ... WHERE c2.phone = c.phone` ở `idsQb` (customers.service.ts) quét cả bảng cho mỗi dòng khớp.
+
+**Solution:**
+> Thêm index composite covering cho đúng subquery + lọc `phone IN (...)`. KHÔNG sửa SQL của `idsQb` (JOIN + GROUP BY vẫn là phương án dự phòng nếu index bị mất). Test: `EXPLAIN ANALYZE` có index vs `IGNORE INDEX`.
+
+**Notes:**
+> Log cho thấy query chạy 2 lần liền nhau — chưa kiểm tra phía FE (có thể StrictMode/2 hook cùng gọi).
+
+---
+
+## [2026-09-30 16:00] | Sidebar: thêm badge VÀNG "Đang làm" (in_progress) cạnh badge đỏ To-Do cho Công việc định kỳ, có tooltip | [Status: Success — FE tsc sạch + vitest 38 file / 260 test; CHƯA xem trình duyệt thật]
+
+**Actor:** Agent (trên `origin/main` HEAD `ae4c7f1`)
+
+**Files Changed:**
+- FE: `common/CountBadge.tsx` (+`color`/`textColor`/`title`/`extra`; đổi từ badge nổi absolute sang xếp inline để hiện nhiều chấm cùng hàng, mỗi chấm bọc `Tooltip`); `lib/hooks/useSidebarBadgeCounts.ts` (+query đếm `in_progress`, key phụ `TASK_IN_PROGRESS_COUNT_KEY = 'cong-viec-dinh-ky:in_progress'`); `lib/nav-badge.ts` (MỚI, `getNavBadgeProps()` giữ màu/tooltip 1 chỗ); `(dashboard)/layout.tsx` + `(dashboard)/page.tsx` (dùng `getNavBadgeProps`); `common/CountBadge.test.tsx` (MỚI, 6 test).
+
+**Notes:**
+> Chấm vàng cùng phạm vi chấm đỏ (`assigneeId = mình`, mặc định tuần này theo comment ở hook). Status `in_progress` tạo thủ công ở local/prod (không có migration seed) — thiếu thì chấm vàng tự ẩn. Chỉ đổi FE. Vị trí badge của MỌI mục sidebar nay là inline (cách chữ 6px) thay vì nổi offset [16,2] — cần nhìn lại giao diện thật.
+
+---

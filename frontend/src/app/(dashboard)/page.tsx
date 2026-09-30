@@ -13,6 +13,7 @@ import { usePositions } from '@/lib/hooks/usePositions';
 import { useMe } from '@/lib/hooks/useMe';
 import { resolveEntityColor } from '@/lib/utils/entityColor';
 import { CountBadge } from '@/components/common/CountBadge';
+import { getNavBadgeProps } from '@/lib/nav-badge';
 
 const { Title, Text, Paragraph } = Typography;
 
@@ -215,7 +216,7 @@ export default function HomePage() {
                   {item.icon}
                 </div>
                 <div style={{ flex: 1, minWidth: 0 }}>
-                  <CountBadge count={badgeCounts[item.key]}>
+                  <CountBadge {...getNavBadgeProps(item.key, badgeCounts)}>
                     <Text strong style={{ fontSize: 15 }}>
                       {item.label}
                     </Text>

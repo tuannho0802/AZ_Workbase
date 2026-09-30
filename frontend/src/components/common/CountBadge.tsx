@@ -1,14 +1,28 @@
 'use client';
 
-import { Badge } from 'antd';
+import { Badge, Tooltip } from 'antd';
 import type { ReactNode } from 'react';
 
-interface CountBadgeProps {
-  /** Số đếm cần hiển thị. undefined/0 -> tự ẩn badge, chỉ render children trơn. */
+/** 1 chấm số đếm. count undefined/0 -> tự ẩn. */
+export interface CountBadgeItem {
   count?: number;
+  /** Màu nền chấm (mặc định đỏ của AntD). VD vàng: '#faad14'. */
+  color?: string;
+  /** Màu chữ số - cần khi nền sáng (vàng) để số vẫn đọc rõ. Mặc định trắng. */
+  textColor?: string;
+  /** Tooltip giải thích chấm này đang đếm cái gì (hiện khi rê chuột vào chấm). */
+  title?: string;
+}
+
+interface CountBadgeProps extends CountBadgeItem {
   children: ReactNode;
   /** Chặn số hiển thị tối đa trước khi rút gọn thành "99+" (mặc định 99). */
   overflowCount?: number;
+  /**
+   * Các chấm PHỤ hiển thị nối tiếp sau chấm chính (cùng 1 hàng), VD chấm vàng
+   * "Đang làm" cạnh chấm đỏ "To-Do". Chấm nào count <= 0 tự ẩn riêng.
+   */
+  extra?: CountBadgeItem[];
 }
 
 /**
@@ -39,23 +53,55 @@ interface CountBadgeProps {
  *    phải dùng CSS global bên dưới để đồng bộ CẢ 2 lớp cùng lúc, thay vì
  *    chỉ dùng prop `styles` của Badge (không với tới được lớp trong).
  */
-export function CountBadge({ count, children, overflowCount = 99 }: CountBadgeProps) {
-  if (!count || count <= 0) {
+export function CountBadge({
+  count,
+  color,
+  textColor,
+  title,
+  children,
+  overflowCount = 99,
+  extra,
+}: CountBadgeProps) {
+  const items: CountBadgeItem[] = [{ count, color, textColor, title }, ...(extra ?? [])].filter(
+    (it) => it.count !== undefined && it.count > 0,
+  );
+
+  if (items.length === 0) {
     return <>{children}</>;
   }
 
   return (
     <span className="az-count-badge">
-      <Badge
-        count={count}
-        overflowCount={overflowCount}
-        offset={[16, 2]}
-        styles={{ root: { color: 'inherit' } }}
-      >
-        {children}
-      </Badge>
+      {children}
+      {items.map((it, idx) => {
+        const dot = (
+          <Badge
+            count={it.count}
+            overflowCount={overflowCount}
+            color={it.color}
+            styles={it.textColor ? { indicator: { color: it.textColor } } : undefined}
+          />
+        );
+        return (
+          <Tooltip key={idx} title={it.title}>
+            {/* span bọc ngoài để Tooltip có phần tử nhận hover/ref ổn định */}
+            <span className="az-count-badge-item" style={it.title ? { cursor: 'help' } : undefined}>
+              {dot}
+            </span>
+          </Tooltip>
+        );
+      })}
       {/* eslint-disable-next-line react/no-unknown-property */}
       <style jsx global>{`
+        .az-count-badge {
+          display: inline-flex;
+          align-items: center;
+          gap: 6px;
+        }
+        .az-count-badge .az-count-badge-item {
+          display: inline-flex;
+          align-items: center;
+        }
         .az-count-badge .ant-badge-count {
           min-width: 16px;
           height: 16px;
