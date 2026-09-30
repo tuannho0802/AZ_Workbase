@@ -42,6 +42,11 @@ export class Utm {
     @Column({ name: 'is_active', default: true })
     isActive: boolean;
 
+    // Thời điểm khoá gần nhất. Chỉ có nghĩa khi is_active = 0 (nguồn sự thật "khoá hay không" vẫn là is_active);
+    // mở khoá -> NULL. UTM khoá từ trước migration được backfill = updated_at.
+    @Column({ name: 'locked_at', type: 'timestamp', nullable: true, default: null })
+    lockedAt: Date | null;
+
     // Quản lý chính. NULL với UTM backfill từ dữ liệu cũ (chưa có chủ).
     @Column({ name: 'primary_manager_id', type: 'int', nullable: true, default: null })
     primaryManagerId: number | null;

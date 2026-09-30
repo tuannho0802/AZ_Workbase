@@ -220,12 +220,12 @@ export default function QuanLyUtmPage() {
     width: 140,
     render: (d: string) => (d ? dayjs(d).format('DD/MM/YYYY HH:mm') : '—'),
   };
-  const colUpdated: Col = {
-    title: 'Cập nhật cuối',
-    key: 'updatedAt',
-    dataIndex: 'updatedAt',
+  const colLocked: Col = {
+    title: 'Ngày khoá',
+    key: 'lockedAt',
+    dataIndex: 'lockedAt',
     width: 140,
-    render: (d: string) => (d ? dayjs(d).format('DD/MM/YYYY HH:mm') : '—'),
+    render: (d: string | null) => (d ? dayjs(d).format('DD/MM/YYYY HH:mm') : '—'),
   };
   const colAction: Col = {
     title: 'Thao tác',
@@ -293,7 +293,7 @@ export default function QuanLyUtmPage() {
       case 'all': // góc nhìn quản trị: ai quản lý, công khai hay riêng tư
         return [colName, colDesc, colPrimary, colSecondary, colVisibility, ...customersCol, colCreated, colAction];
       case 'locked': // cần biết ai phụ trách + khoá từ bao giờ để quyết định mở khoá/gộp/xoá
-        return [colName, colPrimary, colSecondary, ...customersCol, colUpdated, colCreated, colAction];
+        return [colName, colPrimary, colSecondary, ...customersCol, colLocked, colCreated, colAction];
     }
   };
 

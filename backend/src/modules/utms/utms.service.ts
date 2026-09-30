@@ -53,6 +53,8 @@ export interface UtmView {
   color: string;
   visibility: 'shared' | 'restricted';
   isActive: boolean;
+  /** Chỉ có giá trị khi isActive = false. */
+  lockedAt: Date | null;
   sortOrder: number;
   primaryManager: { id: number; name: string } | null;
   secondaryManagers: Array<{ id: number; name: string }>;
@@ -166,6 +168,7 @@ export class UtmsService {
       color: utm.color,
       visibility: utm.visibility,
       isActive: !!utm.isActive,
+      lockedAt: utm.isActive ? null : (utm.lockedAt ?? null),
       sortOrder: utm.sortOrder,
       primaryManager: utm.primaryManager ? { id: utm.primaryManager.id, name: utm.primaryManager.name } : null,
       secondaryManagers: (utm.secondaryManagers ?? [])
@@ -517,7 +520,7 @@ export class UtmsService {
       throw new ForbiddenException('Bạn không có quyền khoá/mở khoá UTM này');
     }
     if (!!utm.isActive !== active) {
-      await this.utmRepo.update(utm.id, { isActive: active });
+      await this.utmRepo.update(utm.id, { isActive: active, lockedAt: active ? null : new Date() });
       this.auditService.logActionAsync(
         user.id,
         active ? 'ACTIVATE_UTM' : 'DEACTIVATE_UTM',

@@ -141,7 +141,7 @@ describe('UtmsService', () => {
       scopes['utms.edit'] = 'own';
       utmRepo.findOne.mockResolvedValue(mk({ primaryManagerId: 99, secondaryManagers: [{ userId: 10, user: { id: 10, name: 'P' } }] }));
       await svc.setActive(1, false, emp);
-      expect(utmRepo.update).toHaveBeenCalledWith(1, { isActive: false });
+      expect(utmRepo.update).toHaveBeenCalledWith(1, { isActive: false, lockedAt: expect.any(Date) });
       utmRepo.update.mockClear();
       audit.logActionAsync.mockClear();
       await svc.setActive(1, true, emp); // đang active sẵn

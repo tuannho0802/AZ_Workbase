@@ -17,6 +17,8 @@ export interface UtmView {
   color: string;
   visibility: UtmVisibility;
   isActive: boolean;
+  /** Thời điểm khoá gần nhất - chỉ có khi isActive = false. */
+  lockedAt: string | null;
   sortOrder: number;
   primaryManager: { id: number; name: string } | null;
   secondaryManagers: Array<{ id: number; name: string }>;

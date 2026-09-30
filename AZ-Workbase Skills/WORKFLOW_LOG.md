@@ -5135,3 +5135,16 @@ khi bị xoá tay. Đây là 1 anti-pattern thật (dù đo thử với payload 
 > Chỉ đổi FE, không đổi BE/migration. "Khoá" = `isActive=false`. Sort "Khoá gần đây nhất" dùng `updatedAt` (xấp xỉ, vì chưa có cột `locked_at`).
 
 ---
+
+## [2026-09-30 11:00] | UTM: thêm cột `locked_at` cho tab "UTM đã khoá" (is_active vẫn là nguồn sự thật) | [Status: Success — BE tsc sạch + jest utms 5 suite / 106 test; FE vitest utm-list 11 test; CHƯA chạy migration/DB thật]
+
+**Actor:** Agent (trên `origin/main` HEAD `6532f43`)
+
+**Files Changed:**
+- BE: migration `1785300000000-AddLockedAtToUtms.ts` (ADD `locked_at` timestamp NULL, backfill = `updated_at` cho UTM đang khoá); `utm.entity.ts` (+`lockedAt`); `utms.service.ts` (`setActive` ghi `lockedAt = now()` khi khoá, `null` khi mở; `UtmView.lockedAt`); spec cập nhật.
+- FE: `utms.api.ts` (+`lockedAt`); `utm-list.util.ts` (sort `updated_desc` theo `lockedAt`); `quan-ly-utm/page.tsx` (cột "Ngày khoá"); test cập nhật.
+
+**Notes:**
+> Khoá hay không CHỈ xét `is_active`; `lockedAt` chỉ để hiển thị/sắp xếp (BE trả `null` nếu đang active). Cần chạy `npm run migration:run` trước khi deploy BE.
+
+---

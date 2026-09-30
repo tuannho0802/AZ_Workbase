@@ -15,7 +15,7 @@ export type UtmSortKey =
   | 'customers_desc'
   /** Tab "Tất cả": theo tên Quản lý chính A→Z, UTM chưa gán xếp cuối. */
   | 'primary_asc'
-  /** Tab "Đã khoá": cập nhật gần nhất (xấp xỉ thời điểm khoá) lên đầu. */
+  /** Tab "Đã khoá": khoá gần đây nhất (`lockedAt`) lên đầu. */
   | 'updated_desc';
 
 /** Sắp xếp mặc định: mới nhất. */
@@ -61,8 +61,8 @@ const createdMs = (u: UtmView): number => {
   return Number.isNaN(t) ? 0 : t;
 };
 
-const updatedMs = (u: UtmView): number => {
-  const t = dayjs(u.updatedAt).valueOf();
+const lockedMs = (u: UtmView): number => {
+  const t = u.lockedAt ? dayjs(u.lockedAt).valueOf() : NaN;
   return Number.isNaN(t) ? 0 : t;
 };
 
@@ -93,7 +93,7 @@ export const sortUtmRows = (
         return pa.localeCompare(pb, 'vi', { sensitivity: 'base' }) || byName(a, b);
       });
     case 'updated_desc':
-      return copy.sort((a, b) => updatedMs(b) - updatedMs(a) || b.id - a.id);
+      return copy.sort((a, b) => lockedMs(b) - lockedMs(a) || b.id - a.id);
     case 'newest':
     default:
       return copy.sort((a, b) => createdMs(b) - createdMs(a) || b.id - a.id);
