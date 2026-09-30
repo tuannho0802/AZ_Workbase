@@ -7,7 +7,16 @@ export type UtmRoleFilter = 'primary' | 'secondary';
 export type UtmVisibilityFilter = 'shared' | 'restricted';
 /** 'none' = UTM chưa gán Quản lý chính. */
 export type UtmPrimaryFilter = number | 'none';
-export type UtmSortKey = 'newest' | 'oldest' | 'name_asc' | 'name_desc' | 'customers_desc';
+export type UtmSortKey =
+  | 'newest'
+  | 'oldest'
+  | 'name_asc'
+  | 'name_desc'
+  | 'customers_desc'
+  /** Tab "Tất cả": theo tên Quản lý chính A→Z, UTM chưa gán xếp cuối. */
+  | 'primary_asc'
+  /** Tab "Đã khoá": cập nhật gần nhất (xấp xỉ thời điểm khoá) lên đầu. */
+  | 'updated_desc';
 
 /** Sắp xếp mặc định: mới nhất. */
 export const DEFAULT_UTM_SORT: UtmSortKey = 'newest';
@@ -52,6 +61,11 @@ const createdMs = (u: UtmView): number => {
   return Number.isNaN(t) ? 0 : t;
 };
 
+const updatedMs = (u: UtmView): number => {
+  const t = dayjs(u.updatedAt).valueOf();
+  return Number.isNaN(t) ? 0 : t;
+};
+
 /** Trả về mảng MỚI (không mutate). Hoà thì lấy id giảm dần cho 'newest' (UTM backfill cùng createdAt). */
 export const sortUtmRows = (
   rows: UtmView[],
@@ -69,6 +83,17 @@ export const sortUtmRows = (
       return copy.sort((a, b) => byName(b, a));
     case 'customers_desc':
       return copy.sort((a, b) => (counts[b.id] ?? 0) - (counts[a.id] ?? 0) || byName(a, b));
+    case 'primary_asc':
+      return copy.sort((a, b) => {
+        const pa = a.primaryManager?.name;
+        const pb = b.primaryManager?.name;
+        if (!pa && !pb) return byName(a, b);
+        if (!pa) return 1;
+        if (!pb) return -1;
+        return pa.localeCompare(pb, 'vi', { sensitivity: 'base' }) || byName(a, b);
+      });
+    case 'updated_desc':
+      return copy.sort((a, b) => updatedMs(b) - updatedMs(a) || b.id - a.id);
     case 'newest':
     default:
       return copy.sort((a, b) => createdMs(b) - createdMs(a) || b.id - a.id);

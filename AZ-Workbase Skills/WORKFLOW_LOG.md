@@ -5122,3 +5122,16 @@ khi bị xoá tay. Đây là 1 anti-pattern thật (dù đo thử với payload 
 > Số ở nút "Khách hàng (n)" ngoài bảng vẫn không tính Thùng rác. Khách Thùng rác vẫn bị lọc theo scope `customers.view`, nên người thấy khách ít hơn số thật vẫn có thể bị chặn xoá UTM.
 
 ---
+
+## [2026-09-30 10:00] | UTM: thêm tab "UTM đã khoá"; tách cột/filter/sort riêng cho "UTM của tôi" và "Tất cả UTM" | [Status: Success — FE vitest utm-list 11 test pass, `next build` OK, tsc chỉ còn lỗi cũ logo.png/CountBadge; CHƯA xem trình duyệt thật]
+
+**Actor:** Agent (trên `origin/main` HEAD `b535e8b`)
+
+**Files Changed:**
+- `frontend/src/app/(dashboard)/quan-ly-utm/page.tsx` — 3 tab: mine/all chỉ hiện `isActive=true`, tab mới "UTM đã khoá" (nguồn `scoped` nếu có `utms.view`, không thì `managed-by-me`); bộ cột, dropdown filter và danh sách Sort riêng theo tab; bỏ filter "Trạng thái"; Sort lưu riêng từng tab.
+- `frontend/src/lib/utils/utm-list.util.ts` (+test) — thêm sort `primary_asc`, `updated_desc`.
+
+**Notes:**
+> Chỉ đổi FE, không đổi BE/migration. "Khoá" = `isActive=false`. Sort "Khoá gần đây nhất" dùng `updatedAt` (xấp xỉ, vì chưa có cột `locked_at`).
+
+---

@@ -63,3 +63,17 @@ describe('filterUtmRows (filter mới)', () => {
     expect(filterUtmRows(rows, 'mess', 'inactive', undefined).map((r) => r.id)).toEqual([2]);
   });
 });
+
+describe('sortUtmRows - khoá riêng cho từng tab', () => {
+  it('primary_asc: theo tên Quản lý chính, UTM chưa gán xếp cuối', () => {
+    expect(sortUtmRows(rows, 'primary_asc').map((r) => r.id)).toEqual([1, 3, 2]);
+  });
+  it('updated_desc: cập nhật gần nhất lên đầu, hoà thì id lớn hơn trước', () => {
+    const r = [
+      mk({ id: 1, updatedAt: '2026-09-25T00:00:00.000Z' }),
+      mk({ id: 2, updatedAt: '2026-09-29T00:00:00.000Z' }),
+      mk({ id: 3, updatedAt: '2026-09-29T00:00:00.000Z' }),
+    ];
+    expect(sortUtmRows(r, 'updated_desc').map((x) => x.id)).toEqual([3, 2, 1]);
+  });
+});

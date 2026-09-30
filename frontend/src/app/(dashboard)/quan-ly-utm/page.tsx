@@ -34,13 +34,11 @@ import { UtmManagersModal } from '@/components/utms/UtmManagersModal';
 import { UtmCustomersModal } from '@/components/utms/UtmCustomersModal';
 import { UtmMergeModal, type MergeCandidate } from '@/components/utms/UtmMergeModal';
 import {
-  DEFAULT_UTM_SORT,
   filterUtmRows,
   sortUtmRows,
   type UtmPrimaryFilter,
   type UtmRoleFilter,
   type UtmSortKey,
-  type UtmStatusFilter,
   type UtmVisibilityFilter,
 } from '@/lib/utils/utm-list.util';
 import { toastApiError } from '@/lib/utils/error-message.util';
@@ -49,13 +47,25 @@ const { Title, Text } = Typography;
 
 const { RangePicker } = DatePicker;
 
-const SORT_OPTIONS: { value: UtmSortKey; label: string }[] = [
-  { value: 'newest', label: 'Mới nhất (mặc định)' },
-  { value: 'oldest', label: 'Cũ nhất' },
-  { value: 'name_asc', label: 'Tên A → Z' },
-  { value: 'name_desc', label: 'Tên Z → A' },
-  { value: 'customers_desc', label: 'Nhiều khách hàng nhất' },
-];
+type UtmTabKey = 'mine' | 'all' | 'locked';
+
+const SORT_LABELS: Record<UtmSortKey, string> = {
+  newest: 'Mới nhất',
+  oldest: 'Cũ nhất',
+  name_asc: 'Tên A → Z',
+  name_desc: 'Tên Z → A',
+  customers_desc: 'Nhiều khách hàng nhất',
+  primary_asc: 'Quản lý chính A → Z (chưa gán cuối)',
+  updated_desc: 'Khoá gần đây nhất',
+};
+
+// Mỗi tab có bộ Sort + mặc định riêng.
+const SORT_KEYS_BY_TAB: Record<UtmTabKey, UtmSortKey[]> = {
+  mine: ['newest', 'oldest', 'name_asc', 'name_desc', 'customers_desc'],
+  all: ['newest', 'oldest', 'name_asc', 'name_desc', 'customers_desc', 'primary_asc'],
+  locked: ['updated_desc', 'newest', 'oldest', 'name_asc', 'name_desc', 'customers_desc'],
+};
+const DEFAULT_SORT_BY_TAB: Record<UtmTabKey, UtmSortKey> = { mine: 'newest', all: 'newest', locked: 'updated_desc' };
 
 export default function QuanLyUtmPage() {
   const router = useRouter();
@@ -88,17 +98,22 @@ export default function QuanLyUtmPage() {
   const deleteMutation = useDeleteUtm();
 
   const [searchText, setSearchText] = useState('');
-  const [statusFilter, setStatusFilter] = useState<UtmStatusFilter | undefined>();
   const [roleFilter, setRoleFilter] = useState<UtmRoleFilter | undefined>();
   const [primaryFilter, setPrimaryFilter] = useState<UtmPrimaryFilter | undefined>();
   const [visibilityFilter, setVisibilityFilter] = useState<UtmVisibilityFilter | undefined>();
   const [createdRange, setCreatedRange] = useState<[Dayjs | null, Dayjs | null] | null>(null);
-  const [sortKey, setSortKey] = useState<UtmSortKey>(DEFAULT_UTM_SORT);
+  const [sortByTab, setSortByTab] = useState<Record<UtmTabKey, UtmSortKey>>(DEFAULT_SORT_BY_TAB);
 
   const [formTarget, setFormTarget] = useState<{ utm: UtmView | null } | null>(null);
   const [managing, setManaging] = useState<{ id: number; name: string } | null>(null);
   const [viewing, setViewing] = useState<{ id: number; name: string } | null>(null);
   const [merging, setMerging] = useState<{ source: { id: number; name: string }; defaultTargetId?: number } | null>(null);
+
+  // Tab "Đã khoá" lấy từ danh sách rộng nếu có quyền xem, không thì từ UTM tôi quản lý.
+  const mineActive = useMemo(() => mine.filter((u) => u.isActive), [mine]);
+  const allActive = useMemo(() => allScoped.filter((u) => u.isActive), [allScoped]);
+  const lockedRows = useMemo(() => (canView ? allScoped : mine).filter((u) => !u.isActive), [canView, allScoped, mine]);
+  const loadingLocked = canView ? loadingAll : loadingMine;
 
   const mergeCandidates: MergeCandidate[] = useMemo(
     () => allScoped.map((u) => ({ id: u.id, name: u.name, color: u.color, isActive: u.isActive })),
@@ -120,142 +135,190 @@ export default function QuanLyUtmPage() {
       onError: (e) => toastApiError(message, e, 'Xoá UTM thất bại'),
     });
 
-  const columns: ColumnsType<UtmView> = [
-    {
-      title: 'UTM',
-      key: 'name',
-      render: (_, u) => (
-        <Space orientation="vertical" size={0}>
-          <Space size={4} wrap>
-            <UtmTag name={u.name} color={u.color} inactive={!u.isActive} />
-            {u.visibility === 'restricted' && (
-              <Tooltip title="Chỉ Quản lý chính/phụ (và người có quyền xem rộng) chọn được UTM này">
-                <Tag icon={<LockOutlined />}>Riêng tư</Tag>
-              </Tooltip>
-            )}
-            {!u.isActive && <Tag color="default">Đã khoá</Tag>}
-          </Space>
-        </Space>
-      ),
-    },
-    {
-      title: 'Mô tả',
-      key: 'description',
-      dataIndex: 'description',
-      width: 240,
-      ellipsis: { showTitle: false },
-      render: (d: string | null) =>
-        d ? (
-          <Tooltip title={d} placement="topLeft">
-            <Text>{d}</Text>
-          </Tooltip>
-        ) : (
-          <Text type="secondary">—</Text>
-        ),
-    },
-    {
-      title: 'Quản lý chính',
-      key: 'primary',
-      width: 160,
-      render: (_, u) => (u.primaryManager ? <Text>{u.primaryManager.name}</Text> : <Text type="secondary">Chưa gán</Text>),
-    },
-    {
-      title: 'Quản lý phụ',
-      key: 'secondary',
-      render: (_, u) =>
-        u.secondaryManagers.length > 0 ? (
-          <Space size={4} wrap>
-            {u.secondaryManagers.map((m) => (
-              <Tag key={m.id}>{m.name}</Tag>
-            ))}
-          </Space>
-        ) : (
-          <Text type="secondary">Chưa có</Text>
-        ),
-    },
-    {
-      title: 'Vai trò của tôi',
-      key: 'myRole',
-      width: 140,
-      render: (_, u) =>
-        u.myRole === 'primary' ? (
-          <Tag color="gold" icon={<CrownOutlined />}>Quản lý chính</Tag>
-        ) : u.myRole === 'secondary' ? (
-          <Tag color="blue">Quản lý phụ</Tag>
-        ) : (
-          <Text type="secondary">—</Text>
-        ),
-    },
-    {
-      title: 'Ngày tạo',
-      key: 'createdAt',
-      dataIndex: 'createdAt',
-      width: 140,
-      render: (d: string) => (d ? dayjs(d).format('DD/MM/YYYY HH:mm') : '—'),
-    },
-    {
-      title: 'Thao tác',
-      key: 'action',
-      width: 420,
-      render: (_, u) => (
-        <Space size={4} wrap>
-          {u.capabilities.canEditMeta && (
-            <Button size="small" icon={<EditOutlined />} onClick={() => setFormTarget({ utm: u })}>
-              Sửa
-            </Button>
-          )}
-          <Button size="small" icon={<TeamOutlined />} onClick={() => setManaging({ id: u.id, name: u.name })}>
-            Quản lý
-          </Button>
-          {canViewCustomers && (
-            <Button size="small" icon={<UserOutlined />} onClick={() => setViewing({ id: u.id, name: u.name })}>
-              Khách hàng ({counts[u.id] ?? 0})
-            </Button>
-          )}
-          {u.capabilities.canEditMeta && (
-            <Popconfirm
-              title={u.isActive ? `Khoá UTM "${u.name}"?` : `Mở khoá UTM "${u.name}"?`}
-              description={u.isActive ? 'Không ai chọn được UTM này cho khách mới; khách cũ giữ nguyên.' : undefined}
-              okText={u.isActive ? 'Khoá' : 'Mở khoá'}
-              cancelText="Huỷ"
-              onConfirm={() => handleToggleActive(u)}
-            >
-              <Button
-                size="small"
-                icon={u.isActive ? <LockOutlined /> : <UnlockOutlined />}
-                loading={setActive.isPending && setActive.variables?.id === u.id}
-              >
-                {u.isActive ? 'Khoá' : 'Mở khoá'}
-              </Button>
-            </Popconfirm>
-          )}
-          {canMerge && (
-            <Button size="small" icon={<MergeCellsOutlined />} onClick={() => setMerging({ source: { id: u.id, name: u.name } })}>
-              Gộp
-            </Button>
-          )}
-          {u.capabilities.canDelete && (
-            <Popconfirm
-              title={`Xoá UTM "${u.name}"?`}
-              description="Chỉ xoá được khi không còn khách hàng nào dùng (kể cả trong Thùng rác)."
-              okText="Xoá"
-              okButtonProps={{ danger: true }}
-              cancelText="Huỷ"
-              onConfirm={() => handleDelete(u)}
-            >
-              <Button size="small" danger icon={<DeleteOutlined />} loading={deleteMutation.isPending && deleteMutation.variables === u.id} />
-            </Popconfirm>
-          )}
-        </Space>
-      ),
-    },
-  ];
+  type Col = ColumnsType<UtmView>[number];
 
-  const renderTable = (rows: UtmView[], loading: boolean, emptyText: string) => {
+  const colName: Col = {
+    title: 'UTM',
+    key: 'name',
+    render: (_, u) => (
+      <Space size={4} wrap>
+        <UtmTag name={u.name} color={u.color} inactive={!u.isActive} />
+        {u.visibility === 'restricted' && (
+          <Tooltip title="Chỉ Quản lý chính/phụ (và người có quyền xem rộng) chọn được UTM này">
+            <Tag icon={<LockOutlined />}>Riêng tư</Tag>
+          </Tooltip>
+        )}
+        {!u.isActive && <Tag color="default">Đã khoá</Tag>}
+      </Space>
+    ),
+  };
+  const colDesc: Col = {
+    title: 'Mô tả',
+    key: 'description',
+    dataIndex: 'description',
+    width: 240,
+    ellipsis: { showTitle: false },
+    render: (d: string | null) =>
+      d ? (
+        <Tooltip title={d} placement="topLeft">
+          <Text>{d}</Text>
+        </Tooltip>
+      ) : (
+        <Text type="secondary">—</Text>
+      ),
+  };
+  const colPrimary: Col = {
+    title: 'Quản lý chính',
+    key: 'primary',
+    width: 160,
+    render: (_, u) => (u.primaryManager ? <Text>{u.primaryManager.name}</Text> : <Text type="secondary">Chưa gán</Text>),
+  };
+  const colSecondary: Col = {
+    title: 'Quản lý phụ',
+    key: 'secondary',
+    render: (_, u) =>
+      u.secondaryManagers.length > 0 ? (
+        <Space size={4} wrap>
+          {u.secondaryManagers.map((m) => (
+            <Tag key={m.id}>{m.name}</Tag>
+          ))}
+        </Space>
+      ) : (
+        <Text type="secondary">Chưa có</Text>
+      ),
+  };
+  const colMyRole: Col = {
+    title: 'Vai trò của tôi',
+    key: 'myRole',
+    width: 140,
+    render: (_, u) =>
+      u.myRole === 'primary' ? (
+        <Tag color="gold" icon={<CrownOutlined />}>Quản lý chính</Tag>
+      ) : u.myRole === 'secondary' ? (
+        <Tag color="blue">Quản lý phụ</Tag>
+      ) : (
+        <Text type="secondary">—</Text>
+      ),
+  };
+  const colVisibility: Col = {
+    title: 'Hiển thị',
+    key: 'visibility',
+    width: 110,
+    render: (_, u) => (u.visibility === 'restricted' ? <Tag icon={<LockOutlined />}>Riêng tư</Tag> : <Tag color="green">Công khai</Tag>),
+  };
+  const colCustomers: Col = {
+    title: 'Số KH',
+    key: 'customerCount',
+    width: 90,
+    align: 'right',
+    render: (_, u) => counts[u.id] ?? 0,
+  };
+  const colCreated: Col = {
+    title: 'Ngày tạo',
+    key: 'createdAt',
+    dataIndex: 'createdAt',
+    width: 140,
+    render: (d: string) => (d ? dayjs(d).format('DD/MM/YYYY HH:mm') : '—'),
+  };
+  const colUpdated: Col = {
+    title: 'Cập nhật cuối',
+    key: 'updatedAt',
+    dataIndex: 'updatedAt',
+    width: 140,
+    render: (d: string) => (d ? dayjs(d).format('DD/MM/YYYY HH:mm') : '—'),
+  };
+  const colAction: Col = {
+    title: 'Thao tác',
+    key: 'action',
+    width: 420,
+    render: (_, u) => (
+      <Space size={4} wrap>
+        {u.capabilities.canEditMeta && (
+          <Button size="small" icon={<EditOutlined />} onClick={() => setFormTarget({ utm: u })}>
+            Sửa
+          </Button>
+        )}
+        <Button size="small" icon={<TeamOutlined />} onClick={() => setManaging({ id: u.id, name: u.name })}>
+          Quản lý
+        </Button>
+        {canViewCustomers && (
+          <Button size="small" icon={<UserOutlined />} onClick={() => setViewing({ id: u.id, name: u.name })}>
+            Khách hàng ({counts[u.id] ?? 0})
+          </Button>
+        )}
+        {u.capabilities.canEditMeta && (
+          <Popconfirm
+            title={u.isActive ? `Khoá UTM "${u.name}"?` : `Mở khoá UTM "${u.name}"?`}
+            description={u.isActive ? 'Không ai chọn được UTM này cho khách mới; khách cũ giữ nguyên. UTM sẽ chuyển sang tab "UTM đã khoá".' : undefined}
+            okText={u.isActive ? 'Khoá' : 'Mở khoá'}
+            cancelText="Huỷ"
+            onConfirm={() => handleToggleActive(u)}
+          >
+            <Button
+              size="small"
+              icon={u.isActive ? <LockOutlined /> : <UnlockOutlined />}
+              loading={setActive.isPending && setActive.variables?.id === u.id}
+            >
+              {u.isActive ? 'Khoá' : 'Mở khoá'}
+            </Button>
+          </Popconfirm>
+        )}
+        {canMerge && (
+          <Button size="small" icon={<MergeCellsOutlined />} onClick={() => setMerging({ source: { id: u.id, name: u.name } })}>
+            Gộp
+          </Button>
+        )}
+        {u.capabilities.canDelete && (
+          <Popconfirm
+            title={`Xoá UTM "${u.name}"?`}
+            description="Chỉ xoá được khi không còn khách hàng nào dùng (kể cả trong Thùng rác)."
+            okText="Xoá"
+            okButtonProps={{ danger: true }}
+            cancelText="Huỷ"
+            onConfirm={() => handleDelete(u)}
+          >
+            <Button size="small" danger icon={<DeleteOutlined />} loading={deleteMutation.isPending && deleteMutation.variables === u.id} />
+          </Popconfirm>
+        )}
+      </Space>
+    ),
+  };
+
+  // Mỗi tab một bộ cột riêng.
+  const tabColumns = (tab: UtmTabKey): ColumnsType<UtmView> => {
+    const customersCol = canViewCustomers ? [colCustomers] : [];
+    switch (tab) {
+      case 'mine': // "Tôi có vai trò gì" quan trọng hơn mô tả/hiển thị
+        return [colName, colDesc, colMyRole, colPrimary, colSecondary, ...customersCol, colCreated, colAction];
+      case 'all': // góc nhìn quản trị: ai quản lý, công khai hay riêng tư
+        return [colName, colDesc, colPrimary, colSecondary, colVisibility, ...customersCol, colCreated, colAction];
+      case 'locked': // cần biết ai phụ trách + khoá từ bao giờ để quyết định mở khoá/gộp/xoá
+        return [colName, colPrimary, colSecondary, ...customersCol, colUpdated, colCreated, colAction];
+    }
+  };
+
+  const visibilityDropdown = {
+    key: 'visibility',
+    placeholder: 'Hiển thị',
+    value: visibilityFilter,
+    onChange: setVisibilityFilter,
+    mdSpan: 4,
+    options: [
+      { value: 'shared', label: 'Công khai' },
+      { value: 'restricted', label: 'Riêng tư' },
+    ],
+  };
+
+  const renderTable = (tab: UtmTabKey, rows: UtmView[], loading: boolean, emptyText: string) => {
+    const sortKey = sortByTab[tab];
+    // Chỉ áp các bộ lọc thuộc tab này (state được reset khi đổi tab).
+    const usesRole = tab === 'mine';
+    const usesPrimary = tab !== 'mine';
+    const usesVisibility = tab !== 'locked';
     const filtered = sortUtmRows(
-      filterUtmRows(rows, searchText, statusFilter, roleFilter, {
-        primary: primaryFilter,
-        visibility: visibilityFilter,
+      filterUtmRows(rows, searchText, undefined, usesRole ? roleFilter : undefined, {
+        primary: usesPrimary ? primaryFilter : undefined,
+        visibility: usesVisibility ? visibilityFilter : undefined,
         createdRange,
       }),
       sortKey,
@@ -263,22 +326,65 @@ export default function QuanLyUtmPage() {
     );
     const filtering = !!(
       searchText ||
-      statusFilter ||
-      roleFilter ||
-      primaryFilter !== undefined ||
-      visibilityFilter ||
+      (usesRole && roleFilter) ||
+      (usesPrimary && primaryFilter !== undefined) ||
+      (usesVisibility && visibilityFilter) ||
       createdRange?.[0] ||
       createdRange?.[1]
     );
-    // Options Quản lý chính lấy từ chính danh sách đang xem (không gọi thêm API).
     const primaryOptions: { value: UtmPrimaryFilter; label: string }[] = [
       { value: 'none', label: 'Chưa gán' },
       ...Array.from(new Map(rows.filter((r) => r.primaryManager).map((r) => [r.primaryManager!.id, r.primaryManager!.name])).entries())
         .sort((a, b) => a[1].localeCompare(b[1], 'vi'))
         .map(([id, name]) => ({ value: id as UtmPrimaryFilter, label: name })),
     ];
+    const roleDropdown = {
+      key: 'role',
+      placeholder: 'Vai trò của tôi',
+      value: roleFilter,
+      onChange: setRoleFilter,
+      mdSpan: 4,
+      options: [
+        { value: 'primary', label: 'Quản lý chính' },
+        { value: 'secondary', label: 'Quản lý phụ' },
+      ],
+    };
+    const primaryDropdown = {
+      key: 'primaryManager',
+      placeholder: 'Quản lý chính',
+      value: primaryFilter,
+      onChange: setPrimaryFilter,
+      mdSpan: 4,
+      options: primaryOptions,
+    };
+    const sortDropdown = {
+      key: 'sort',
+      placeholder: 'Sắp xếp',
+      value: sortKey,
+      // Xoá lựa chọn -> quay về mặc định của tab.
+      onChange: (v: UtmSortKey | undefined) => setSortByTab((prev) => ({ ...prev, [tab]: v ?? DEFAULT_SORT_BY_TAB[tab] })),
+      mdSpan: 4,
+      options: SORT_KEYS_BY_TAB[tab].map((k) => ({
+        value: k,
+        label: k === DEFAULT_SORT_BY_TAB[tab] ? `${SORT_LABELS[k]} (mặc định)` : SORT_LABELS[k],
+      })),
+    };
+    const dropdowns =
+      tab === 'mine'
+        ? [roleDropdown, visibilityDropdown, sortDropdown]
+        : tab === 'all'
+          ? [primaryDropdown, visibilityDropdown, sortDropdown]
+          : [primaryDropdown, sortDropdown];
     return (
       <>
+        {tab === 'locked' && (
+          <Alert
+            type="info"
+            showIcon
+            style={{ marginBottom: 12 }}
+            title="UTM đã khoá không chọn được cho khách mới; khách cũ giữ nguyên. Mở khoá để đưa UTM về lại tab đang hoạt động."
+          />
+        )}
         <ListFilterBar
           searchValue={searchText}
           onSearchChange={setSearchText}
@@ -293,65 +399,14 @@ export default function QuanLyUtmPage() {
               onChange={(v) => setCreatedRange(v ? [v[0], v[1]] : null)}
             />
           }
-          dropdowns={[
-            {
-              key: 'status',
-              placeholder: 'Trạng thái',
-              value: statusFilter,
-              onChange: setStatusFilter,
-              mdSpan: 4,
-              options: [
-                { value: 'active', label: 'Đang hoạt động' },
-                { value: 'inactive', label: 'Đã khoá' },
-              ],
-            },
-            {
-              key: 'role',
-              placeholder: 'Vai trò của tôi',
-              value: roleFilter,
-              onChange: setRoleFilter,
-              mdSpan: 4,
-              options: [
-                { value: 'primary', label: 'Quản lý chính' },
-                { value: 'secondary', label: 'Quản lý phụ' },
-              ],
-            },
-            {
-              key: 'primaryManager',
-              placeholder: 'Quản lý chính',
-              value: primaryFilter,
-              onChange: setPrimaryFilter,
-              mdSpan: 4,
-              options: primaryOptions,
-            },
-            {
-              key: 'visibility',
-              placeholder: 'Hiển thị',
-              value: visibilityFilter,
-              onChange: setVisibilityFilter,
-              mdSpan: 4,
-              options: [
-                { value: 'shared', label: 'Công khai' },
-                { value: 'restricted', label: 'Riêng tư' },
-              ],
-            },
-            {
-              key: 'sort',
-              placeholder: 'Sắp xếp',
-              value: sortKey,
-              // Xoá lựa chọn -> quay về mặc định (Mới nhất).
-              onChange: (v: UtmSortKey | undefined) => setSortKey(v ?? DEFAULT_UTM_SORT),
-              mdSpan: 4,
-              options: SORT_OPTIONS,
-            },
-          ]}
+          dropdowns={dropdowns}
         />
         <Table<UtmView>
           rowKey="id"
           loading={loading}
-          columns={columns}
+          columns={tabColumns(tab)}
           dataSource={filtered}
-          scroll={{ x: 1400 }}
+          scroll={{ x: tab === 'locked' ? 1200 : 1400 }}
           pagination={{ pageSize: 20, hideOnSinglePage: true }}
           locale={{ emptyText: <Empty description={filtering ? 'Không có UTM nào khớp bộ lọc' : emptyText} /> }}
         />
@@ -362,12 +417,17 @@ export default function QuanLyUtmPage() {
   const tabItems = [
     {
       key: 'mine',
-      label: `UTM của tôi (${mine.length})`,
-      children: renderTable(mine, loadingMine, 'Bạn chưa là Quản lý chính/phụ của UTM nào'),
+      label: `UTM của tôi (${mineActive.length})`,
+      children: renderTable('mine', mineActive, loadingMine, 'Bạn chưa là Quản lý chính/phụ của UTM nào đang hoạt động'),
     },
     ...(canView
-      ? [{ key: 'all', label: `Tất cả UTM (${allScoped.length})`, children: renderTable(allScoped, loadingAll, 'Chưa có UTM nào trong phạm vi của bạn') }]
+      ? [{ key: 'all', label: `Tất cả UTM (${allActive.length})`, children: renderTable('all', allActive, loadingAll, 'Chưa có UTM nào trong phạm vi của bạn') }]
       : []),
+    {
+      key: 'locked',
+      label: `UTM đã khoá (${lockedRows.length})`,
+      children: renderTable('locked', lockedRows, loadingLocked, 'Chưa có UTM nào bị khoá'),
+    },
     ...(canMerge
       ? [
           {
@@ -441,11 +501,11 @@ export default function QuanLyUtmPage() {
         items={tabItems}
         onChange={() => {
           setSearchText('');
-          setStatusFilter(undefined);
           setRoleFilter(undefined);
           setPrimaryFilter(undefined);
           setVisibilityFilter(undefined);
           setCreatedRange(null);
+          setSortByTab(DEFAULT_SORT_BY_TAB);
         }}
       />
 
