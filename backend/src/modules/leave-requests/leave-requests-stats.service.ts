@@ -12,9 +12,12 @@ import {
 } from '../reports/report-range.util';
 import { LeaveRequestsService } from './leave-requests.service';
 import { QueryLeaveStatsDto } from './dto/query-leave-stats.dto';
+import { QueryLeaveStatsRequestsDto } from './dto/query-leave-stats-requests.dto';
 import {
   buildLeaveStats,
+  filterLeaveRowsForDrill,
   granularityFor,
+  toYmd,
   summarize,
   HeadcountRow,
   LeaveStatRow,
@@ -81,6 +84,55 @@ export class LeaveRequestsStatsService {
       headcount: headcountRows.length,
       previousSummary: summarize(prevRows, headcountRows.length, memberIds),
     };
+  }
+
+  /**
+   * Mini Table đơn nghỉ đứng sau Card/Chart của tab Thống kê. Chọn đơn bằng ĐÚNG `loadRows()` của getStats()
+   * (cùng kỳ, scope, bộ lọc, loại Thùng rác) rồi lọc drill-down bằng `filterLeaveRowsForDrill()` (cùng định nghĩa
+   * bucket/thứ với biểu đồ) -> tổng số dòng luôn KHỚP con số được bấm. Sắp xếp: ngày bắt đầu nghỉ mới nhất trước.
+   */
+  async getRequests(q: QueryLeaveStatsRequestsDto, viewerId: number, viewerRole: string, scope?: string | null) {
+    const page = q.page ?? 1;
+    const limit = q.limit ?? 10;
+    const range = resolveReportRange(q);
+    const granularity = granularityFor(spanDaysOf(range));
+    const period = { type: q.period, from: range.from, to: range.to, granularity };
+    const empty = { data: [] as LeaveRequest[], total: 0, totalDays: 0, page, limit, totalPages: 0, period };
+    if (!this.leaveRequestsService.hasApproverScope(viewerRole, scope)) return empty;
+
+    const rows = await this.loadRows(range, q, viewerId, viewerRole, scope);
+    const matched = filterLeaveRowsForDrill(
+      rows,
+      {
+        status: q.status as any,
+        quick: q.quick,
+        requesterIds: q.requesterIds ? q.requesterIds.split(',').map(Number) : undefined,
+        weekday: q.weekday,
+        bucket: q.bucket,
+        fromDate: q.fromDate,
+        toDate: q.toDate,
+        search: q.search,
+      },
+      range,
+      granularity,
+    ).sort((a, b) => toYmd(b.startDate).localeCompare(toYmd(a.startDate)) || b.id - a.id);
+
+    const total = matched.length;
+    const totalDays = Math.round(matched.reduce((sum, r) => sum + r.totalDays, 0) * 10) / 10;
+    const pageIds = matched.slice((page - 1) * limit, page * limit).map((r) => r.id);
+    if (pageIds.length === 0) return { ...empty, total, totalDays, totalPages: Math.ceil(total / limit) };
+
+    const entities = await this.leaveRepo
+      .createQueryBuilder('leave')
+      .leftJoinAndSelect('leave.requester', 'requester')
+      .leftJoinAndSelect('requester.department', 'department')
+      .leftJoinAndSelect('leave.approver', 'approver')
+      .loadRelationCountAndMap('leave.attachmentCount', 'leave.attachments')
+      .whereInIds(pageIds)
+      .getMany();
+    const byId = new Map(entities.map((e) => [e.id, e]));
+    const data = pageIds.map((id) => byId.get(id)).filter((e): e is LeaveRequest => !!e);
+    return { data, total, totalDays, page, limit, totalPages: Math.ceil(total / limit), period };
   }
 
   private async loadRows(

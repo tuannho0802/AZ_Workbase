@@ -5313,3 +5313,19 @@ khi bị xoá tay. Đây là 1 anti-pattern thật (dù đo thử với payload 
 > Không migration, không permission key mới (dùng `utms.view` + `customers.view`). Bao gồm cả UTM đã khoá; khách Thùng rác không được đếm.
 
 ---
+
+## [2026-09-30 23:30] | Mini Table đơn nghỉ phép (drill-down) cho tab "Thống kê" trang Duyệt phép | [Status: Success — BE tsc + nest build + full jest 73 suite / 1320 test; FE tsc (chỉ còn lỗi cũ logo.png/CountBadge) + eslint file mới sạch + next build + full vitest 44 file / 303 test; CHƯA xem trình duyệt thật]
+
+**Actor:** Agent (trên `origin/main` HEAD `0999c68`)
+
+**Files Changed:**
+- BE: `leave-requests/dto/query-leave-stats-requests.dto.ts` (MỚI, kế thừa `QueryLeaveStatsDto` + page/limit/status/quick/requesterIds/weekday/bucket/fromDate/toDate/search); `leave-stats.util.ts` (thêm `trendBucketOf` dùng chung với biểu đồ, `filterLeaveRowsForDrill`); `leave-requests-stats.service.ts` (`getRequests`); `leave-requests.controller.ts` (`GET /leave-requests/stats/requests`, `@RequirePermission('leave_requests.view')`); spec util + service.
+- FE: `duyet-phep/LeaveRequestsMiniModal.tsx` (MỚI) + test; `duyet-phep/LeaveStatsTab.tsx` (Card + cột Chart + số đơn trong 2 bảng bấm được); `lib/types/leave-stats.types.ts`, `lib/api/leave-requests.api.ts` (`getStatsRequests`), `lib/hooks/useLeaveStats.ts` (`useLeaveStatsRequests`), `lib/utils/leaveStats.ts` (`frequencyUserIds`) + test.
+
+**Thiết kế:**
+> BE chọn đơn bằng ĐÚNG `loadRows()` của `getStats()` (cùng kỳ, scope, bộ lọc, loại Thùng rác) rồi lọc drill bằng hàm thuần dùng chung định nghĩa bucket/thứ với biểu đồ -> tổng dòng luôn khớp số được bấm. Modal kế thừa bộ lọc cấp tab (phòng ban/loại phép/nhân viên); preset (chỗ được bấm) thắng ô lọc riêng.
+
+**Notes:**
+> Không migration, không permission key mới. Tìm kiếm chỉ theo tên NV/phòng ban (không tìm theo lý do). Cột "Không xin nghỉ" và nhóm "không có phòng ban" không bấm được. Bug bắt được nhờ test: `fold()` phải hạ chữ thường TRƯỚC khi đổi `đ` (nếu không "Đặng" không khớp "dang").
+
+---

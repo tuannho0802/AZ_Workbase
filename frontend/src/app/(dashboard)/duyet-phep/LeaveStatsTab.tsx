@@ -23,7 +23,7 @@ import dayjs from 'dayjs';
 import { useLeaveStats } from '@/lib/hooks/useLeaveStats';
 import { useLeaveTypes } from '@/lib/hooks/useLeaveTypes';
 import { useDepartments } from '@/lib/hooks/useDepartments';
-import type { LeaveDepartmentStat, LeaveEmployeeStat, LeaveStatsFilters } from '@/lib/types/leave-stats.types';
+import type { LeaveDepartmentStat, LeaveDrill, LeaveDrillPreset, LeaveEmployeeStat, LeaveStatsFilters } from '@/lib/types/leave-stats.types';
 import type { ReportQuery } from '@/lib/types/reports.types';
 import { getApiErrorMessage } from '@/lib/utils/error-message.util';
 import { fmtCount, normalizeText } from '@/lib/utils/marketingReport';
@@ -37,12 +37,14 @@ import {
   departmentSeries,
   filterEmployees,
   fmtDays,
+  frequencyUserIds,
   topEmployees,
   typeSlices,
   type DepartmentMetric,
   type EmployeeRankMetric,
 } from '@/lib/utils/leaveStats';
 import { resolveEntityColor } from '@/lib/utils/entityColor';
+import LeaveRequestsMiniModal from './LeaveRequestsMiniModal';
 import PeriodSelector from '../reports/PeriodSelector';
 import ReportKpiCard, { REPORT_COLORS } from '../reports/ReportKpiCard';
 import ReportNameFilter from '../reports/ReportNameFilter';
@@ -59,6 +61,9 @@ const EMPLOYEE_RANK_OPTIONS = (Object.keys(EMPLOYEE_RANK_LABEL) as EmployeeRankM
 const DEPARTMENT_METRIC_OPTIONS = (Object.keys(DEPARTMENT_METRIC_LABEL) as DepartmentMetric[]).map((m) => ({ value: m, label: DEPARTMENT_METRIC_LABEL[m] }));
 
 const rateText = (v: number | null) => (v == null ? '—' : `${v}%`);
+
+/** Recharts trả về props của thanh/cung được bấm; dữ liệu gốc nằm ở `.payload` (Pie có thể spread thẳng). */
+const payloadOf = <T,>(d: unknown): T => ((d as { payload?: T } | null)?.payload ?? d) as T;
 
 interface Props {
   /** false -> không gọi API (người dùng không có `leave_requests.view`). */
@@ -80,6 +85,9 @@ export default function LeaveStatsTab({ allowed }: Props) {
   const [rankMetric, setRankMetric] = useState<EmployeeRankMetric>('approvedDays');
   const [deptMetric, setDeptMetric] = useState<DepartmentMetric>('participationRate');
   const [search, setSearch] = useState('');
+  // Mini Table đơn nghỉ mở khi bấm Card / cột Chart / số đơn trong bảng.
+  const [drill, setDrill] = useState<LeaveDrill | null>(null);
+  const openDrill = (title: string, preset?: LeaveDrillPreset, label?: string) => setDrill({ title, preset, label });
 
   const { leaveTypes } = useLeaveTypes();
   const { departments } = useDepartments();
@@ -132,9 +140,30 @@ export default function LeaveStatsTab({ allowed }: Props) {
     () => (data?.byType ?? []).map((t, i) => ({ ...t, name: typeName(t.code), color: typeColor(t.code, i) })),
     [data?.byType, typeName, typeColor],
   );
-  const weekdayData = useMemo(() => (data?.byWeekday ?? []).map((w) => ({ name: WEEKDAY_LABEL[w.weekday], requests: w.requests })), [data?.byWeekday]);
-  const frequencyData = useMemo(() => (data?.frequency ?? []).map((f) => ({ name: f.label, employees: f.employees })), [data?.frequency]);
+  const weekdayData = useMemo(() => (data?.byWeekday ?? []).map((w) => ({ weekday: w.weekday, name: WEEKDAY_LABEL[w.weekday], requests: w.requests })), [data?.byWeekday]);
+  const frequencyData = useMemo(() => (data?.frequency ?? []).map((f) => ({ key: f.key, name: f.label, employees: f.employees })), [data?.frequency]);
   const frequencyHasData = frequencyData.some((f) => f.employees > 0);
+
+  const drillSlice = (kind: string, slice: { key?: 'approved' | 'pending' | 'rejected'; code?: string; name: string }) => {
+    if (kind === 'status' && slice.key) openDrill(`Đơn nghỉ ${slice.name.toLowerCase()}`, { status: slice.key });
+    else if (slice.code) openDrill('Đơn nghỉ theo loại phép', { leaveType: slice.code }, slice.name);
+  };
+
+  const drillDept = (row: LeaveDepartmentStat) => {
+    if (row.departmentId == null) return; // nhóm "không có phòng ban" không lọc được theo id
+    openDrill('Đơn nghỉ theo phòng ban', { departmentId: row.departmentId }, row.departmentName);
+  };
+  const drillEmployee = (row: LeaveEmployeeStat, approvedOnly = false) =>
+    openDrill(approvedOnly ? 'Đơn nghỉ đã duyệt' : 'Đơn nghỉ', { requesterIds: [row.userId], ...(approvedOnly ? { status: 'approved' as const } : {}) }, row.userName);
+
+  const drillFrequency = (bucket: { key: string; name: string }) => {
+    const ids = frequencyUserIds(bucket.key, data?.byEmployee ?? []);
+    if (ids.length === 0) return; // cột "Không xin nghỉ" không có đơn để xem
+    openDrill('Đơn nghỉ theo tần suất xin nghỉ', { requesterIds: ids }, bucket.name);
+  };
+
+  const drillTrend = (status: 'approved' | 'pending' | 'rejected', pt: { bucket: string; label: string }) =>
+    openDrill(`Đơn nghỉ ${LEAVE_STATUS_LABEL[status].toLowerCase()}`, { bucket: pt.bucket, status }, `${granularity === 'month' ? 'Tháng' : 'Ngày'} ${pt.label}`);
 
   const rank = useMemo(() => topEmployees(data?.byEmployee ?? [], rankMetric, 10), [data?.byEmployee, rankMetric]);
   const deptChart = useMemo(() => departmentSeries(data?.byDepartment ?? [], deptMetric, 10), [data?.byDepartment, deptMetric]);
@@ -156,7 +185,7 @@ export default function LeaveStatsTab({ allowed }: Props) {
       },
     },
     { title: 'Nhân sự', dataIndex: 'headcount', key: 'headcount', align: 'right', width: 90, sorter: (a, b) => a.headcount - b.headcount, render: fmtCount },
-    { title: 'Số đơn', dataIndex: 'requests', key: 'requests', align: 'right', width: 90, sorter: (a, b) => a.requests - b.requests, render: fmtCount },
+    { title: 'Số đơn', dataIndex: 'requests', key: 'requests', align: 'right', width: 90, sorter: (a, b) => a.requests - b.requests, render: (v: number, r) => (v > 0 && r.departmentId != null ? <Button type="link" size="small" style={{ padding: 0 }} onClick={() => drillDept(r)}>{fmtCount(v)}</Button> : fmtCount(v)) },
     {
       title: <Tooltip title="Số nhân sự khác nhau có xin nghỉ trong kỳ.">Người xin nghỉ</Tooltip>,
       dataIndex: 'employees',
@@ -223,7 +252,7 @@ export default function LeaveStatsTab({ allowed }: Props) {
         );
       },
     },
-    { title: 'Số đơn', dataIndex: 'requests', key: 'requests', align: 'right', width: 90, sorter: (a, b) => a.requests - b.requests, render: fmtCount },
+    { title: 'Số đơn', dataIndex: 'requests', key: 'requests', align: 'right', width: 90, sorter: (a, b) => a.requests - b.requests, render: (v: number, r) => (v > 0 ? <Button type="link" size="small" style={{ padding: 0 }} onClick={() => drillEmployee(r)}>{fmtCount(v)}</Button> : fmtCount(v)) },
     { title: 'Ngày xin', dataIndex: 'requestedDays', key: 'requestedDays', align: 'right', width: 100, sorter: (a, b) => a.requestedDays - b.requestedDays, render: (v: number) => fmtDays(v) },
     {
       title: <Tooltip title="Tổng ngày của các đơn ĐÃ DUYỆT.">Ngày đã duyệt</Tooltip>,
@@ -332,39 +361,39 @@ export default function LeaveStatsTab({ allowed }: Props) {
           {/* ── KPI ── */}
           <Row gutter={[12, 12]}>
             <Col xs={24} md={12} xl={6}>
-              <ReportKpiCard title="Tổng đơn nghỉ" value={cur?.requests ?? 0} previous={prev?.requests} color={REPORT_COLORS.primary} loading={loading}
+              <ReportKpiCard onClick={() => openDrill('Đơn nghỉ trong kỳ')} title="Tổng đơn nghỉ" value={cur?.requests ?? 0} previous={prev?.requests} color={REPORT_COLORS.primary} loading={loading}
                 hint={cur ? `${fmtCount(cur.approved)} duyệt · ${fmtCount(cur.rejected)} từ chối · ${fmtCount(cur.pending)} chờ` : undefined} />
             </Col>
             <Col xs={24} md={12} xl={6}>
-              <ReportKpiCard title={<Tooltip title="Tổng ngày của các đơn ĐÃ DUYỆT trong kỳ (đơn vắt qua 2 kỳ được tính trọn ở cả 2 kỳ).">Ngày nghỉ đã duyệt</Tooltip>}
+              <ReportKpiCard onClick={() => openDrill('Đơn nghỉ đã duyệt trong kỳ', { status: 'approved' })} title={<Tooltip title="Tổng ngày của các đơn ĐÃ DUYỆT trong kỳ (đơn vắt qua 2 kỳ được tính trọn ở cả 2 kỳ).">Ngày nghỉ đã duyệt</Tooltip>}
                 value={cur?.approvedDays ?? 0} previous={prev?.approvedDays} color={REPORT_COLORS.ok} loading={loading}
                 hint={cur ? `Tổng ngày xin (mọi trạng thái): ${fmtDays(cur.requestedDays)}` : undefined} />
             </Col>
             <Col xs={24} md={12} xl={6}>
-              <ReportKpiCard title="Nhân sự xin nghỉ" value={cur?.employees ?? 0} previous={prev?.employees} color={REPORT_COLORS.gold} loading={loading}
+              <ReportKpiCard onClick={() => openDrill('Đơn nghỉ của nhân sự xin nghỉ')} title="Nhân sự xin nghỉ" value={cur?.employees ?? 0} previous={prev?.employees} color={REPORT_COLORS.gold} loading={loading}
                 hint={data ? `Trên ${fmtCount(data.headcount)} nhân sự đang hoạt động` : undefined} />
             </Col>
             <Col xs={24} md={12} xl={6}>
-              <ReportKpiCard title={<Tooltip title="Nhân sự có xin nghỉ / nhân sự đang hoạt động trong phạm vi bạn xem. Quân số là số hiện tại (không lưu lịch sử).">Tỷ lệ xin nghỉ</Tooltip>}
+              <ReportKpiCard onClick={() => openDrill('Đơn nghỉ của nhân sự xin nghỉ')} title={<Tooltip title="Nhân sự có xin nghỉ / nhân sự đang hoạt động trong phạm vi bạn xem. Quân số là số hiện tại (không lưu lịch sử).">Tỷ lệ xin nghỉ</Tooltip>}
                 value={cur?.participationRate ?? 0} suffix="%" color={REPORT_COLORS.primary} loading={loading}
                 hint={cur?.participationRate == null ? 'Chưa có quân số' : `${fmtCount(cur.employees)} / ${fmtCount(data?.headcount ?? 0)} người`} />
             </Col>
             <Col xs={24} md={12} xl={6}>
-              <ReportKpiCard title={<Tooltip title="Ngày nghỉ đã duyệt / nhân sự đang hoạt động.">Ngày nghỉ TB / người</Tooltip>}
+              <ReportKpiCard onClick={() => openDrill('Đơn nghỉ đã duyệt trong kỳ', { status: 'approved' })} title={<Tooltip title="Ngày nghỉ đã duyệt / nhân sự đang hoạt động.">Ngày nghỉ TB / người</Tooltip>}
                 value={cur?.avgApprovedDaysPerHead ?? 0} previous={prev?.avgApprovedDaysPerHead ?? undefined} color={REPORT_COLORS.primary} loading={loading}
                 hint={cur?.avgApprovedDaysPerHead == null ? 'Chưa có quân số' : undefined} />
             </Col>
             <Col xs={24} md={12} xl={6}>
-              <ReportKpiCard title={<Tooltip title="Đơn được duyệt / đơn đã có kết quả (bỏ đơn đang chờ). Màu: < 40% đỏ, 40–80% vàng, > 80% xanh.">Tỷ lệ duyệt</Tooltip>}
+              <ReportKpiCard onClick={() => openDrill('Đơn nghỉ đã duyệt trong kỳ', { status: 'approved' })} title={<Tooltip title="Đơn được duyệt / đơn đã có kết quả (bỏ đơn đang chờ). Màu: < 40% đỏ, 40–80% vàng, > 80% xanh.">Tỷ lệ duyệt</Tooltip>}
                 value={cur?.approvalRate ?? 0} suffix="%" rateColored={cur?.approvalRate != null} color={REPORT_COLORS.muted} loading={loading}
                 hint={cur?.approvalRate == null ? 'Chưa có đơn nào được xử lý' : `${fmtCount(cur.approved)} / ${fmtCount(cur.approved + cur.rejected)} đơn đã xử lý`} />
             </Col>
             <Col xs={24} md={12} xl={6}>
-              <ReportKpiCard title="Tỷ lệ từ chối" value={cur?.rejectionRate ?? 0} suffix="%" color={REPORT_COLORS.danger} loading={loading}
+              <ReportKpiCard onClick={() => openDrill('Đơn nghỉ bị từ chối trong kỳ', { status: 'rejected' })} title="Tỷ lệ từ chối" value={cur?.rejectionRate ?? 0} suffix="%" color={REPORT_COLORS.danger} loading={loading}
                 hint={cur?.rejectionRate == null ? 'Chưa có đơn nào được xử lý' : `${fmtCount(cur.rejected)} đơn bị từ chối`} />
             </Col>
             <Col xs={24} md={12} xl={6}>
-              <ReportKpiCard title={<Tooltip title="Đơn tạo bù: ngày nghỉ sớm hơn ngày tạo đơn (quên tạo trước).">Đơn bổ sung</Tooltip>}
+              <ReportKpiCard onClick={() => openDrill('Đơn bổ sung trong kỳ', { quick: 'supplementary' })} title={<Tooltip title="Đơn tạo bù: ngày nghỉ sớm hơn ngày tạo đơn (quên tạo trước).">Đơn bổ sung</Tooltip>}
                 value={cur?.supplementaryRate ?? 0} suffix="%" color={REPORT_COLORS.warning} loading={loading}
                 hint={cur ? `${fmtCount(cur.supplementary)} / ${fmtCount(cur.requests)} đơn` : undefined} />
             </Col>
@@ -388,9 +417,9 @@ export default function LeaveStatsTab({ allowed }: Props) {
                       <YAxis yAxisId="days" orientation="right" allowDecimals tick={{ fontSize: 12 }} />
                       <ChartTooltip formatter={(v, n) => (n === 'Ngày nghỉ đã duyệt' ? fmtDays(Number(v)) : fmtCount(Number(v)))} labelFormatter={(l) => `${granularity === 'month' ? 'Tháng' : 'Ngày'} ${l}`} />
                       <Legend />
-                      <Bar yAxisId="cnt" dataKey="approved" name={LEAVE_STATUS_LABEL.approved} stackId="st" fill={LEAVE_STATUS_COLORS.approved} maxBarSize={26} isAnimationActive={false} />
-                      <Bar yAxisId="cnt" dataKey="pending" name={LEAVE_STATUS_LABEL.pending} stackId="st" fill={LEAVE_STATUS_COLORS.pending} maxBarSize={26} isAnimationActive={false} />
-                      <Bar yAxisId="cnt" dataKey="rejected" name={LEAVE_STATUS_LABEL.rejected} stackId="st" fill={LEAVE_STATUS_COLORS.rejected} maxBarSize={26} radius={[3, 3, 0, 0]} isAnimationActive={false} />
+                      <Bar yAxisId="cnt" dataKey="approved" cursor="pointer" onClick={(d) => drillTrend('approved', payloadOf<{ bucket: string; label: string }>(d))} name={LEAVE_STATUS_LABEL.approved} stackId="st" fill={LEAVE_STATUS_COLORS.approved} maxBarSize={26} isAnimationActive={false} />
+                      <Bar yAxisId="cnt" dataKey="pending" cursor="pointer" onClick={(d) => drillTrend('pending', payloadOf<{ bucket: string; label: string }>(d))} name={LEAVE_STATUS_LABEL.pending} stackId="st" fill={LEAVE_STATUS_COLORS.pending} maxBarSize={26} isAnimationActive={false} />
+                      <Bar yAxisId="cnt" dataKey="rejected" cursor="pointer" onClick={(d) => drillTrend('rejected', payloadOf<{ bucket: string; label: string }>(d))} name={LEAVE_STATUS_LABEL.rejected} stackId="st" fill={LEAVE_STATUS_COLORS.rejected} maxBarSize={26} radius={[3, 3, 0, 0]} isAnimationActive={false} />
                       <Line yAxisId="days" type="monotone" dataKey="approvedDays" name="Ngày nghỉ đã duyệt" stroke={REPORT_COLORS.gold} strokeWidth={2} dot={trendData.length <= 31} isAnimationActive={false} />
                     </ComposedChart>
                   </ResponsiveContainer>
@@ -411,7 +440,7 @@ export default function LeaveStatsTab({ allowed }: Props) {
                       <Col span={12} key={chart.id}>
                         <ResponsiveContainer width="100%" height={260}>
                           <PieChart>
-                            <Pie data={chart.data} dataKey="value" nameKey="name" innerRadius="50%" outerRadius="80%" paddingAngle={2} isAnimationActive={false}>
+                            <Pie data={chart.data} dataKey="value" nameKey="name" cursor="pointer" onClick={(d) => drillSlice(chart.id, payloadOf<{ key?: 'approved' | 'pending' | 'rejected'; code?: string; name: string }>(d))} innerRadius="50%" outerRadius="80%" paddingAngle={2} isAnimationActive={false}>
                               {chart.data.map((s, i) => <Cell key={`${chart.id}-${i}`} fill={s.color} />)}
                             </Pie>
                             <ChartTooltip formatter={(v, n) => [`${fmtCount(Number(v))} đơn`, n]} />
@@ -443,7 +472,7 @@ export default function LeaveStatsTab({ allowed }: Props) {
                       <XAxis type="number" allowDecimals={!deptIsRate && deptMetric !== 'requests'} domain={deptIsRate ? PCT_DOMAIN : undefined} tickFormatter={deptFmt} tick={{ fontSize: 12 }} />
                       <YAxis type="category" dataKey="name" width={140} tick={{ fontSize: 12 }} />
                       <ChartTooltip formatter={(v) => [deptFmt(Number(v)), DEPARTMENT_METRIC_LABEL[deptMetric]]} />
-                      <Bar dataKey="value" name={DEPARTMENT_METRIC_LABEL[deptMetric]} fill={REPORT_COLORS.primary} radius={[0, 4, 4, 0]} label={{ position: 'right', fontSize: 12, formatter: (v: unknown) => deptFmt(Number(v)) }} isAnimationActive={false} />
+                      <Bar dataKey="value" name={DEPARTMENT_METRIC_LABEL[deptMetric]} cursor="pointer" onClick={(d) => drillDept(payloadOf<{ row: LeaveDepartmentStat }>(d).row)} fill={REPORT_COLORS.primary} radius={[0, 4, 4, 0]} label={{ position: 'right', fontSize: 12, formatter: (v: unknown) => deptFmt(Number(v)) }} isAnimationActive={false} />
                     </BarChart>
                   </ResponsiveContainer>
                 )}
@@ -462,7 +491,7 @@ export default function LeaveStatsTab({ allowed }: Props) {
                       <XAxis type="number" allowDecimals={rankMetric === 'approvedDays'} tickFormatter={(v) => fmtDays(Number(v))} tick={{ fontSize: 12 }} />
                       <YAxis type="category" dataKey="name" width={140} tick={{ fontSize: 12 }} />
                       <ChartTooltip formatter={(v) => [rankMetric === 'approvedDays' ? `${fmtDays(Number(v))} ngày` : `${fmtCount(Number(v))} đơn`, EMPLOYEE_RANK_LABEL[rankMetric]]} />
-                      <Bar dataKey="value" name={EMPLOYEE_RANK_LABEL[rankMetric]} fill={REPORT_COLORS.gold} radius={[0, 4, 4, 0]} label={{ position: 'right', fontSize: 12, formatter: (v: unknown) => fmtDays(Number(v)) }} isAnimationActive={false} />
+                      <Bar dataKey="value" name={EMPLOYEE_RANK_LABEL[rankMetric]} cursor="pointer" onClick={(d) => drillEmployee(payloadOf<{ row: LeaveEmployeeStat }>(d).row, rankMetric === 'approvedDays')} fill={REPORT_COLORS.gold} radius={[0, 4, 4, 0]} label={{ position: 'right', fontSize: 12, formatter: (v: unknown) => fmtDays(Number(v)) }} isAnimationActive={false} />
                     </BarChart>
                   </ResponsiveContainer>
                 )}
@@ -485,8 +514,8 @@ export default function LeaveStatsTab({ allowed }: Props) {
                       <YAxis type="category" dataKey="name" width={100} tick={{ fontSize: 12 }} />
                       <ChartTooltip formatter={(v, n) => (n === 'Ngày đã duyệt' ? `${fmtDays(Number(v))} ngày` : `${fmtCount(Number(v))} đơn`)} />
                       <Legend />
-                      <Bar dataKey="requests" name="Số đơn" fill={REPORT_COLORS.primary} maxBarSize={14} isAnimationActive={false} />
-                      <Bar dataKey="approvedDays" name="Ngày đã duyệt" fill={REPORT_COLORS.ok} maxBarSize={14} isAnimationActive={false} />
+                      <Bar dataKey="requests" name="Số đơn" fill={REPORT_COLORS.primary} maxBarSize={14} cursor="pointer" onClick={(d) => { const t = payloadOf<{ code: string; name: string }>(d); openDrill('Đơn nghỉ theo loại phép', { leaveType: t.code }, t.name); }} isAnimationActive={false} />
+                      <Bar dataKey="approvedDays" name="Ngày đã duyệt" fill={REPORT_COLORS.ok} maxBarSize={14} cursor="pointer" onClick={(d) => { const t = payloadOf<{ code: string; name: string }>(d); openDrill('Đơn nghỉ đã duyệt theo loại phép', { leaveType: t.code, status: 'approved' }, t.name); }} isAnimationActive={false} />
                     </BarChart>
                   </ResponsiveContainer>
                 )}
@@ -504,7 +533,7 @@ export default function LeaveStatsTab({ allowed }: Props) {
                       <XAxis dataKey="name" tick={{ fontSize: 12 }} />
                       <YAxis allowDecimals={false} tick={{ fontSize: 12 }} />
                       <ChartTooltip formatter={(v) => [`${fmtCount(Number(v))} đơn`, 'Số đơn']} />
-                      <Bar dataKey="requests" name="Số đơn" fill={REPORT_COLORS.primary} radius={[4, 4, 0, 0]} label={{ position: 'top', fontSize: 12 }} isAnimationActive={false} />
+                      <Bar dataKey="requests" name="Số đơn" fill={REPORT_COLORS.primary} radius={[4, 4, 0, 0]} cursor="pointer" onClick={(d) => { const w = payloadOf<{ weekday: number; name: string }>(d); openDrill('Đơn nghỉ theo ngày trong tuần', { weekday: w.weekday }, w.name); }} label={{ position: 'top', fontSize: 12 }} isAnimationActive={false} />
                     </BarChart>
                   </ResponsiveContainer>
                 )}
@@ -522,7 +551,7 @@ export default function LeaveStatsTab({ allowed }: Props) {
                       <XAxis dataKey="name" tick={{ fontSize: 11 }} interval={0} />
                       <YAxis allowDecimals={false} tick={{ fontSize: 12 }} />
                       <ChartTooltip formatter={(v) => [`${fmtCount(Number(v))} người`, 'Nhân sự']} />
-                      <Bar dataKey="employees" name="Nhân sự" fill={REPORT_COLORS.gold} radius={[4, 4, 0, 0]} label={{ position: 'top', fontSize: 12 }} isAnimationActive={false} />
+                      <Bar dataKey="employees" name="Nhân sự" fill={REPORT_COLORS.gold} radius={[4, 4, 0, 0]} cursor="pointer" onClick={(d) => drillFrequency(payloadOf<{ key: string; name: string }>(d))} label={{ position: 'top', fontSize: 12 }} isAnimationActive={false} />
                     </BarChart>
                   </ResponsiveContainer>
                 )}
@@ -569,6 +598,7 @@ export default function LeaveStatsTab({ allowed }: Props) {
           </Card>
         </div>
       </Spin>
+      <LeaveRequestsMiniModal drill={drill} onClose={() => setDrill(null)} query={query} baseFilters={filters} allowed={allowed} />
     </div>
   );
 }

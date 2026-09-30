@@ -10,6 +10,7 @@ import { DiscardAttachmentsDto } from './dto/discard-attachments.dto';
 import { QueryLeaveRequestsDto } from './dto/query-leave-requests.dto';
 import { BulkLeaveIdsDto } from './dto/bulk-leave-ids.dto';
 import { QueryLeaveStatsDto } from './dto/query-leave-stats.dto';
+import { QueryLeaveStatsRequestsDto } from './dto/query-leave-stats-requests.dto';
 import { LeaveRequestsStatsService } from './leave-requests-stats.service';
 
 @Controller('leave-requests')
@@ -126,6 +127,17 @@ export class LeaveRequestsController {
     @GetPermissionScope() scope?: string | null,
   ) {
     return this.leaveRequestsStatsService.getStats(query, req.user.id, req.user.role, scope);
+  }
+
+  // Mini Table đơn nghỉ đứng sau Card/Chart của tab Thống kê (drill-down) - cùng quyền + scope với 'stats'.
+  @Get('stats/requests')
+  @RequirePermission('leave_requests.view')
+  async getStatsRequests(
+    @Request() req,
+    @Query() query: QueryLeaveStatsRequestsDto,
+    @GetPermissionScope() scope?: string | null,
+  ) {
+    return this.leaveRequestsStatsService.getRequests(query, req.user.id, req.user.role, scope);
   }
 
   // ── THÙNG RÁC + XOÁ (xem LeaveRequestsService.trash/hardDelete) ─────────────

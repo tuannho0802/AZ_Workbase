@@ -73,3 +73,21 @@ export function typeSlices(types: LeaveTypeStat[], nameOf: (code: string) => str
         .filter((t) => t.requests > 0)
         .map((t, i) => ({ code: t.code, name: nameOf(t.code), value: t.requests, color: colorOf(t.code, i) }));
 }
+
+/** Khoá bucket tần suất (khớp `FREQUENCY_BUCKETS` ở BE) -> điều kiện theo số đơn của 1 người. */
+const FREQUENCY_TEST: Record<string, (n: number) => boolean> = {
+    '1': (n) => n === 1,
+    '2': (n) => n === 2,
+    '3-4': (n) => n >= 3 && n <= 4,
+    '5+': (n) => n >= 5,
+};
+
+/** Tối đa id gửi lên BE (khớp giới hạn `requesterIds` ở QueryLeaveStatsRequestsDto). */
+export const MAX_DRILL_USER_IDS = 100;
+
+/** Nhân viên thuộc 1 cột "Tần suất xin nghỉ" (bỏ cột '0' - không có đơn để xem). */
+export function frequencyUserIds(key: string, employees: LeaveEmployeeStat[]): number[] {
+    const test = FREQUENCY_TEST[key];
+    if (!test) return [];
+    return employees.filter((e) => test(e.requests)).map((e) => e.userId).slice(0, MAX_DRILL_USER_IDS);
+}

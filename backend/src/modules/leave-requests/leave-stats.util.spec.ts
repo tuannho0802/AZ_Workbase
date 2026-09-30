@@ -2,11 +2,13 @@ import { LeaveStatus } from '../../database/entities/leave-request.entity';
 import {
   buildBuckets,
   buildLeaveStats,
+  filterLeaveRowsForDrill,
   granularityFor,
   HeadcountRow,
   LeaveStatRow,
   summarize,
   toYmd,
+  trendBucketOf,
   weekdayOf,
 } from './leave-stats.util';
 
@@ -160,5 +162,51 @@ describe('leave-stats.util', () => {
       const f = buildLeaveStats([row({ id: 1, requesterId: 99 })], [hc(1)], range, 'day').frequency;
       expect(f.reduce((s, x) => s + x.employees, 0)).toBe(2);
     });
+  });
+});
+
+describe('drill-down (Mini Table đơn nghỉ)', () => {
+  const range = { from: '2026-09-01 00:00:00', to: '2026-09-30 23:59:59' };
+  const rows: LeaveStatRow[] = [
+    row({ id: 1, requesterId: 1, requesterName: 'Nguyễn An', startDate: '2026-08-28', endDate: '2026-09-02' }), // bắt đầu trước kỳ
+    row({ id: 2, requesterId: 2, requesterName: 'Đặng Bình', status: LeaveStatus.PENDING, startDate: '2026-09-07', endDate: '2026-09-07' }), // Thứ 2
+    row({ id: 3, requesterId: 2, status: LeaveStatus.REJECTED, startDate: '2026-09-10', endDate: '2026-09-11', isSupplementary: true }),
+    row({ id: 4, requesterId: 3, departmentName: 'Kế toán', startDate: '2026-09-29', endDate: '2026-10-02' }), // vắt sang kỳ sau
+  ];
+  const ids = (f: Parameters<typeof filterLeaveRowsForDrill>[1]) => filterLeaveRowsForDrill(rows, f, range, 'day').map((r) => r.id);
+
+  it('trendBucketOf kẹp đơn bắt đầu trước/sau kỳ về đầu/cuối kỳ (khớp biểu đồ)', () => {
+    expect(trendBucketOf('2026-08-28', '2026-09-01', '2026-09-30', 'day')).toBe('2026-09-01');
+    expect(trendBucketOf('2026-10-05', '2026-09-01', '2026-09-30', 'day')).toBe('2026-09-30');
+    expect(trendBucketOf('2026-09-15', '2026-09-01', '2026-09-30', 'month')).toBe('2026-09');
+  });
+
+  it('bucket ngày đầu kỳ gồm cả đơn bắt đầu trước kỳ (cùng số với cột biểu đồ)', () => {
+    expect(ids({ bucket: '2026-09-01' })).toEqual([1]);
+    const trend = buildLeaveStats(rows, [], range, 'day').trend.find((t) => t.bucket === '2026-09-01');
+    expect(trend?.requests).toBe(1);
+  });
+
+  it('lọc theo trạng thái / đơn bổ sung / nhiều nhân viên / thứ', () => {
+    expect(ids({ status: LeaveStatus.PENDING })).toEqual([2]);
+    expect(ids({ quick: 'supplementary' })).toEqual([3]);
+    expect(ids({ requesterIds: [2, 3] })).toEqual([2, 3, 4]);
+    expect(ids({ weekday: 1 })).toEqual([2]); // 2026-09-07 là Thứ Hai
+  });
+
+  it('số dòng theo thứ khớp biểu đồ "ngày trong tuần"', () => {
+    const wd = buildLeaveStats(rows, [], range, 'day').byWeekday;
+    for (const w of wd) expect(ids({ weekday: w.weekday })).toHaveLength(w.requests);
+  });
+
+  it('khoảng ngày giao nhau + tìm tên không phân biệt hoa thường/dấu', () => {
+    expect(ids({ fromDate: '2026-10-01', toDate: '2026-10-31' })).toEqual([4]);
+    expect(ids({ search: 'dang binh' })).toEqual([2]);
+    expect(ids({ search: 'ke toan' })).toEqual([4]);
+  });
+
+  it('không lọc gì -> trả đủ; requesterIds rỗng coi như không lọc', () => {
+    expect(ids({})).toEqual([1, 2, 3, 4]);
+    expect(ids({ requesterIds: [] })).toEqual([1, 2, 3, 4]);
   });
 });

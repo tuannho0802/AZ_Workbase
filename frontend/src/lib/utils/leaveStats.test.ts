@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { LeaveDepartmentStat, LeaveEmployeeStat } from '../types/leave-stats.types';
-import { bucketLabel, departmentSeries, filterEmployees, fmtDays, topEmployees, typeSlices } from './leaveStats';
+import { MAX_DRILL_USER_IDS, bucketLabel, departmentSeries, filterEmployees, fmtDays, frequencyUserIds, topEmployees, typeSlices } from './leaveStats';
 import { normalizeText } from './marketingReport';
 
 const emp = (o: Partial<LeaveEmployeeStat> & { userId: number }): LeaveEmployeeStat => ({
@@ -86,5 +86,24 @@ describe('leaveStats utils', () => {
             (_c, i) => `#00000${i}`,
         );
         expect(s).toEqual([{ code: 'annual', name: 'ANNUAL', value: 3, color: '#000000' }]);
+    });
+});
+
+describe('frequencyUserIds', () => {
+    const emp = (userId: number, requests: number) => ({ userId, requests }) as LeaveEmployeeStat;
+    const list = [emp(1, 1), emp(2, 2), emp(3, 3), emp(4, 4), emp(5, 5), emp(6, 9), emp(7, 0)];
+
+    it('gom đúng người theo từng cột tần suất', () => {
+        expect(frequencyUserIds('1', list)).toEqual([1]);
+        expect(frequencyUserIds('2', list)).toEqual([2]);
+        expect(frequencyUserIds('3-4', list)).toEqual([3, 4]);
+        expect(frequencyUserIds('5+', list)).toEqual([5, 6]);
+    });
+
+    it('cột 0 hoặc khoá lạ -> rỗng; cắt tối đa MAX_DRILL_USER_IDS', () => {
+        expect(frequencyUserIds('0', list)).toEqual([]);
+        expect(frequencyUserIds('x', list)).toEqual([]);
+        const many = Array.from({ length: 150 }, (_, i) => emp(i + 1, 1));
+        expect(frequencyUserIds('1', many)).toHaveLength(MAX_DRILL_USER_IDS);
     });
 });

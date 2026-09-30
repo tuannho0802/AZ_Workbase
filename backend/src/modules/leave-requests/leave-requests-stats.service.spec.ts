@@ -130,4 +130,49 @@ describe('LeaveRequestsStatsService', () => {
     expect(r.previousPeriod.to.startsWith('2026-08-31')).toBe(true);
     expect(r.byDepartment.map((d) => d.departmentName).sort()).toEqual(['Chưa có phòng ban', 'Sales']);
   });
+  describe('getRequests (Mini Table drill-down)', () => {
+    const entityQb = (result: any[]) => {
+      const qb: any = {
+        leftJoinAndSelect: jest.fn().mockReturnThis(),
+        loadRelationCountAndMap: jest.fn().mockReturnThis(),
+        whereInIds: jest.fn().mockReturnThis(),
+        getMany: jest.fn().mockResolvedValue(result),
+      };
+      return qb;
+    };
+
+    it('không có phạm vi xem -> rỗng và KHÔNG query DB', async () => {
+      leaveSvc.hasApproverScope.mockReturnValue(false);
+      const r = await service.getRequests({ ...query, page: 1, limit: 10 }, 5, 'employee', null);
+      expect(r).toMatchObject({ data: [], total: 0, totalPages: 0 });
+      expect(leaveRepo.createQueryBuilder).not.toHaveBeenCalled();
+    });
+
+    it('lọc drill trên đúng tập đơn của getStats, sắp xếp ngày nghỉ mới nhất, giữ thứ tự khi nạp entity', async () => {
+      const rows = [
+        leave({ id: 1, requesterId: 1, startDate: '2026-09-03', endDate: '2026-09-03' }),
+        leave({ id: 2, requesterId: 2, status: LeaveStatus.PENDING, startDate: '2026-09-20', endDate: '2026-09-20', requester: { id: 2, name: 'Bình', departmentId: 1, department: { id: 1, name: 'Sales' } } }),
+        leave({ id: 3, requesterId: 2, startDate: '2026-09-10', endDate: '2026-09-10', totalDays: '2.0', requester: { id: 2, name: 'Bình', departmentId: 1, department: { id: 1, name: 'Sales' } } }),
+      ];
+      const idsQb = qbMock(rows);
+      const entQb = entityQb([{ id: 3 }, { id: 2 }]);
+      leaveRepo.createQueryBuilder.mockReturnValueOnce(idsQb).mockReturnValueOnce(entQb);
+
+      const r = await service.getRequests({ ...query, requesterIds: '2', page: 1, limit: 10 }, 7, 'manager', 'department');
+
+      expect(leaveSvc.applyApproverScope).toHaveBeenCalledWith(idsQb, 7, 'manager', 'department');
+      expect(r.total).toBe(2);
+      expect(r.totalDays).toBe(3); // 1 (pending, mặc định 1.0) + 2.0 - tính mọi trạng thái
+      expect(entQb.whereInIds).toHaveBeenCalledWith([2, 3]); // 2026-09-20 trước 2026-09-10
+      expect(r.data.map((d) => d.id)).toEqual([2, 3]);
+    });
+
+    it('phân trang: chỉ nạp entity của trang được yêu cầu', async () => {
+      const rows = [1, 2, 3].map((id) => leave({ id, startDate: `2026-09-0${id}`, endDate: `2026-09-0${id}` }));
+      leaveRepo.createQueryBuilder.mockReturnValueOnce(qbMock(rows)).mockReturnValueOnce(entityQb([{ id: 1 }]));
+      const r = await service.getRequests({ ...query, page: 2, limit: 2 }, 1, 'admin', null);
+      expect(r).toMatchObject({ total: 3, totalPages: 2, page: 2 });
+      expect(r.data.map((d) => d.id)).toEqual([1]);
+    });
+  });
 });

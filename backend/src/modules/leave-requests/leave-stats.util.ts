@@ -147,6 +147,58 @@ export function weekdayOf(ymd: string): number {
   return d === 0 ? 7 : d;
 }
 
+/** Bucket xu hướng của 1 đơn (theo startDate, kẹp về đầu/cuối kỳ) - DÙNG CHUNG cho biểu đồ và drill-down để 2 bên luôn khớp số. */
+export function trendBucketOf(startYmd: string, rangeFrom: string, rangeTo: string, granularity: StatsGranularity): string {
+  const clamped = startYmd < rangeFrom ? rangeFrom : startYmd > rangeTo ? rangeTo : startYmd;
+  return granularity === 'month' ? clamped.slice(0, 7) : clamped;
+}
+
+export type LeaveDrillQuick = 'supplementary';
+
+export interface LeaveDrillFilter {
+  status?: LeaveStatus.PENDING | LeaveStatus.APPROVED | LeaveStatus.REJECTED;
+  quick?: LeaveDrillQuick;
+  /** Chỉ các nhân viên này (1 hoặc N người). */
+  requesterIds?: number[];
+  /** 1 = Thứ Hai ... 7 = Chủ Nhật (theo startDate, cùng biểu đồ "ngày trong tuần"). */
+  weekday?: number;
+  /** Bucket của biểu đồ xu hướng: 'YYYY-MM-DD' (day) hoặc 'YYYY-MM' (month). */
+  bucket?: string;
+  /** Khoảng nghỉ GIAO với [fromDate, toDate] (YYYY-MM-DD) - thu hẹp thêm trong kỳ. */
+  fromDate?: string;
+  toDate?: string;
+  /** Tên nhân viên / phòng ban (không phân biệt hoa thường + dấu). */
+  search?: string;
+}
+
+const fold = (v: string) => v.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().replace(/đ/g, 'd').trim();
+
+/** Lọc các đơn của kỳ theo điều kiện drill-down (THUẦN, không đụng DB) - cùng định nghĩa với buildLeaveStats(). */
+export function filterLeaveRowsForDrill(
+  rows: LeaveStatRow[],
+  f: LeaveDrillFilter,
+  range: { from: string; to: string },
+  granularity: StatsGranularity,
+): LeaveStatRow[] {
+  const rangeFrom = range.from.slice(0, 10);
+  const rangeTo = range.to.slice(0, 10);
+  const ids = f.requesterIds?.length ? new Set(f.requesterIds) : null;
+  const needle = f.search ? fold(f.search) : '';
+  return rows.filter((r) => {
+    if (f.status && r.status !== f.status) return false;
+    if (f.quick === 'supplementary' && !r.isSupplementary) return false;
+    if (ids && !ids.has(r.requesterId)) return false;
+    const start = toYmd(r.startDate);
+    const end = toYmd(r.endDate);
+    if (f.weekday && weekdayOf(start) !== f.weekday) return false;
+    if (f.bucket && trendBucketOf(start, rangeFrom, rangeTo, granularity) !== f.bucket) return false;
+    if (f.fromDate && end < f.fromDate) return false;
+    if (f.toDate && start > f.toDate) return false;
+    if (needle && !fold(`${r.requesterName} ${r.departmentName ?? ''}`).includes(needle)) return false;
+    return true;
+  });
+}
+
 export function granularityFor(spanDays: number): StatsGranularity {
   return spanDays > MONTH_GRANULARITY_THRESHOLD_DAYS ? 'month' : 'day';
 }
@@ -334,8 +386,7 @@ export function buildLeaveStats(
   const weekdayCounts = [0, 0, 0, 0, 0, 0, 0];
   for (const r of rows) {
     const start = toYmd(r.startDate);
-    const clamped = start < rangeFrom ? rangeFrom : start > rangeTo ? rangeTo : start;
-    const p = trendMap.get(granularity === 'month' ? clamped.slice(0, 7) : clamped);
+    const p = trendMap.get(trendBucketOf(start, rangeFrom, rangeTo, granularity));
     if (p) {
       p.requests++;
       if (r.status === LeaveStatus.APPROVED) {

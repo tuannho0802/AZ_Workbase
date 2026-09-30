@@ -1,6 +1,6 @@
 import axiosInstance from './axios-instance';
 import type { ReportQuery } from '../types/reports.types';
-import type { LeaveStatsFilters, LeaveStatsResponse } from '../types/leave-stats.types';
+import type { LeaveStatsFilters, LeaveStatsRequestsQuery, LeaveStatsRequestsResponse, LeaveStatsResponse } from '../types/leave-stats.types';
 
 export interface LeaveRequest {
   id: number;
@@ -111,6 +111,15 @@ export const leaveRequestsApi = {
       Object.entries(query).filter(([, v]) => v !== undefined && v !== null && v !== ''),
     );
     const res = await axiosInstance.get<LeaveStatsResponse>('/leave-requests/stats', { params });
+    return res.data;
+  },
+
+  // `leave_requests.view` - Mini Table đơn nghỉ đứng sau Card/Chart của tab Thống kê (cùng kỳ + scope với getStats).
+  async getStatsRequests(query: ReportQuery & LeaveStatsRequestsQuery): Promise<LeaveStatsRequestsResponse> {
+    const params = Object.fromEntries(
+      Object.entries(query).filter(([, v]) => v !== undefined && v !== null && v !== ''),
+    );
+    const res = await axiosInstance.get<LeaveStatsRequestsResponse>('/leave-requests/stats/requests', { params });
     return res.data;
   },
 
