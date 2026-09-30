@@ -305,6 +305,23 @@ export class UtmsService {
     return visible.map((u) => this.toView(u, user.id, scopes, managed));
   }
 
+  /**
+   * Danh sách UTM (gọn) nằm trong phạm vi `utms.view` của người gọi - CÙNG bộ lọc với `listScoped` (tab "Tất cả UTM")
+   * qua `UtmAccessHelper.relation`. Dùng cho tab Thống kê để 2 tab luôn khớp phạm vi.
+   */
+  async scopedUtmBriefs(user: UtmCaller): Promise<Array<{ id: number; name: string; color: string; isActive: boolean }>> {
+    const scope = await this.scopeOf(user, 'utms.view');
+    if (!scope) return [];
+    const managed = await this.managedDepartmentIds(user.id);
+    const utms = await this.utmRepo.find({
+      relations: ['primaryManager', 'secondaryManagers'],
+      order: { sortOrder: 'ASC', id: 'ASC' },
+    });
+    return utms
+      .filter((u) => UtmAccessHelper.relation(scope, this.buildContext(u, user.id, managed)) !== null)
+      .map((u) => ({ id: u.id, name: u.name, color: u.color, isActive: u.isActive }));
+  }
+
   async getOne(id: number, user: UtmCaller): Promise<UtmView> {
     return this.detail(id, user);
   }

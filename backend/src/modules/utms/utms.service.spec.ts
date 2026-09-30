@@ -244,6 +244,18 @@ describe('UtmsService', () => {
       const res = await svc.listScoped(emp);
       expect(res.map((r) => r.id)).toEqual([1]);
     });
+    it('scopedUtmBriefs: CÙNG phạm vi với listScoped (own chỉ UTM mình là chính/phụ) + trả bản gọn', async () => {
+      scopes['utms.view'] = 'own';
+      utmRepo.find.mockResolvedValue([mk({ id: 1 }), mk({ id: 2, primaryManagerId: 99 })]);
+      const briefs = await svc.scopedUtmBriefs(emp);
+      expect(briefs.map((b) => b.id)).toEqual([1]);
+      expect(Object.keys(briefs[0]).sort()).toEqual(['color', 'id', 'isActive', 'name']);
+    });
+    it('scopedUtmBriefs: không có utms.view -> [] và không đọc DB', async () => {
+      utmRepo.find.mockClear();
+      expect(await svc.scopedUtmBriefs(emp)).toEqual([]);
+      expect(utmRepo.find).not.toHaveBeenCalled();
+    });
     it('listScoped: không có utms.view -> []', async () => {
       expect(await svc.listScoped(emp)).toEqual([]);
     });

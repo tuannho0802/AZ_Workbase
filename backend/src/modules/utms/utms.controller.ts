@@ -26,6 +26,8 @@ import { MergeUtmDto } from './dto/merge-utm.dto';
 import { BulkUtmIdsDto, BulkUtmStatusDto } from './dto/bulk-utm.dto';
 import { UtmCustomersQueryDto } from './dto/utm-customers-query.dto';
 import { UtmCustomersService } from './utm-customers.service';
+import { UtmStatsService } from './utm-stats.service';
+import { UtmStatsQueryDto } from './dto/utm-stats-query.dto';
 import { GetPermissionScope } from '../../common/decorators/get-permission-scope.decorator';
 
 /**
@@ -45,6 +47,7 @@ export class UtmsController {
     private readonly utmsService: UtmsService,
     private readonly managersService: UtmManagersService,
     private readonly customersService: UtmCustomersService,
+    private readonly statsService: UtmStatsService,
   ) {}
 
   @Get()
@@ -84,6 +87,16 @@ export class UtmsController {
   @ApiOperation({ summary: 'Tab "Tất cả UTM" - lọc theo scope của utms.view' })
   listScoped(@GetUser() user: any) {
     return this.utmsService.listScoped(user);
+  }
+
+  @Get('stats')
+  @RequirePermission('utms.view')
+  @ApiOperation({
+    summary:
+      'Tab "Thống kê" - số khách + tỷ lệ theo trạng thái qua từng ngày nhập. UTM theo scope utms.view (own/department/all), khách luôn lọc theo scope customers.view',
+  })
+  stats(@Query() query: UtmStatsQueryDto, @GetUser() user: any) {
+    return this.statsService.getStats(user, query);
   }
 
   @Post()

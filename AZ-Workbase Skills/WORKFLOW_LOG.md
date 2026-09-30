@@ -5294,3 +5294,22 @@ khi bị xoá tay. Đây là 1 anti-pattern thật (dù đo thử với payload 
 > Không migration, không permission key mới. Quân số là số HIỆN TẠI (không có lịch sử) nên kỳ trước dùng cùng mẫu số. CỐ Ý không làm "thời gian duyệt trung bình": `created_at` (DB, UTC) và `approved_at` (app) lệch múi giờ, sẽ ra số sai. Lần chạy vitest đầu có 1 test timeout do máy chậm, chạy lại 296/296 pass.
 
 ---
+
+## [2026-09-30 21:00] | UTM: Tab "Thống kê" (trang Quản lý UTM) — khách theo ngày nhập + tỷ lệ các giai đoạn, theo scope utms.view | [Status: Success — BE tsc + nest build + full jest 73 suite / 1314 test; FE next build + full vitest 44 file / 306 test; CHƯA xem trình duyệt thật]
+
+**Actor:** Agent (trên `origin/main` HEAD `a02721a`)
+
+**Files Changed:**
+- BE: `utms/helpers/utm-stats.helper.ts` (MỚI, hàm thuần: dựng bucket ngày/tháng liên tục, gom số liệu) + spec; `utms/dto/utm-stats-query.dto.ts` (MỚI: `from`,`to`,`utmId`); `utms/utm-stats.service.ts` (MỚI) + spec; `utms/utms.service.ts` (+`scopedUtmBriefs()` — CÙNG bộ lọc `UtmAccessHelper.relation` với `listScoped`); `utms/utms.controller.ts` (+`GET /utms/stats` @RequirePermission `utms.view`, khai TRƯỚC `:id`); `utms/utms.module.ts` (+`CustomerStatus`, `UtmStatsService`); `utms.controller.spec.ts` (khoá 21 endpoint).
+- FE: `components/utms/UtmStatsTab.tsx` (MỚI) + test; `lib/utils/utm-stats.util.ts` (MỚI) + test; `lib/api/utms.api.ts` (`getStats` + types); `lib/hooks/useUtms.ts` (`useUtmStats`, key dưới `['utms']`); `quan-ly-utm/page.tsx` (tab "Thống kê", hiện khi `utms.view`).
+
+**Thiết kế:**
+> 2 lớp phạm vi, cả hai bắt buộc: (1) UTM nào được thống kê = scope `utms.view` (own = chính/phụ, department = Quản lý chính thuộc phòng ban mình quản lý, all = tất cả); (2) khách nào được đếm = scope `customers.view` qua `CustomerAccessHelper.applyViewFilter` (quản lý UTM KHÔNG mở rộng quyền xem khách, PLAN 6.2 — số khớp modal "Khách hàng của UTM"). Không có `customers.view` -> số liệu 0, KHÔNG truy vấn (applyViewFilter với scope rỗng rơi về 'own', không fail-closed).
+> "Ngày khách được thêm vào UTM" = `customers.input_date` (cột `date` naive giờ VN, không lệch múi giờ). `customers` chưa lưu thời điểm gắn UTM riêng — nếu cần chính xác tới lúc gắn UTM phải thêm cột `utm_assigned_at` (cần migration + backfill).
+> "Giai đoạn" = `customers.status` HIỆN TẠI (bảng `customer_statuses`), không phải lịch sử chuyển trạng thái. Status mồ côi vẫn được đếm (hiện bằng mã, màu xám).
+> Kỳ ≤ 92 ngày theo ngày, dài hơn gộp theo tháng (cùng ngưỡng báo cáo UTM); tối đa 366 ngày.
+
+**Notes:**
+> Không migration, không permission key mới (dùng `utms.view` + `customers.view`). Bao gồm cả UTM đã khoá; khách Thùng rác không được đếm.
+
+---

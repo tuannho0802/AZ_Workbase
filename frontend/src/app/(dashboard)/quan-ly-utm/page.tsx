@@ -37,6 +37,7 @@ import { UtmFormModal } from '@/components/utms/UtmFormModal';
 import { UtmManagersModal } from '@/components/utms/UtmManagersModal';
 import { UtmCustomersModal } from '@/components/utms/UtmCustomersModal';
 import { UtmMergeModal, type MergeCandidate } from '@/components/utms/UtmMergeModal';
+import { UtmStatsTab } from '@/components/utms/UtmStatsTab';
 import {
   filterUtmRows,
   sortUtmRows,
@@ -594,6 +595,8 @@ export default function QuanLyUtmPage() {
     ...(canView
       ? [{ key: 'all', label: `Tất cả UTM (${allActive.length})`, children: renderTable('all', allActive, loadingAll, 'Chưa có UTM nào trong phạm vi của bạn') }]
       : []),
+    // Tab Thống kê: cùng điều kiện với tab "Tất cả UTM" (utms.view); phạm vi own/department/all do BE quyết định.
+    ...(canView ? [{ key: 'stats', label: 'Thống kê', children: <UtmStatsTab /> }] : []),
     {
       key: 'locked',
       label: `UTM đã khoá (${lockedRows.length})`,

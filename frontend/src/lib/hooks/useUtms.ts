@@ -1,4 +1,4 @@
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   utmsApi,
   UtmView,
@@ -7,6 +7,7 @@ import {
   UtmCustomersParams,
   CreateUtmPayload,
   UtmDuplicateGroup,
+  UtmStatsParams,
 } from '../api/utms.api';
 
 const UTM_KEY = ['utms'] as const;
@@ -74,6 +75,19 @@ export const useUtmCustomerCounts = (enabled: boolean) => {
   });
   return { counts: data ?? EMPTY_COUNTS };
 };
+
+/**
+ * Thống kê UTM theo ngày nhập khách. Key nằm dưới `['utms']` nên mọi mutation UTM/khách (đã invalidate `['utms']`)
+ * tự làm mới. `keepPreviousData`: đổi khoảng ngày/UTM không nháy trắng biểu đồ.
+ */
+export const useUtmStats = (params: UtmStatsParams, enabled: boolean) =>
+  useQuery({
+    queryKey: [...UTM_KEY, 'stats', params],
+    queryFn: () => utmsApi.getStats(params),
+    enabled,
+    staleTime: 30 * 1000,
+    placeholderData: keepPreviousData,
+  });
 
 export const useUtmCustomers = (utmId: number | null, params: UtmCustomersParams) =>
   useQuery({

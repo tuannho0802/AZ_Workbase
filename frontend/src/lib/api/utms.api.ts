@@ -103,6 +103,46 @@ export interface CreateUtmPayload {
   visibility?: UtmVisibility;
 }
 
+/** Khớp `UtmStatsResult` bên BE (utm-stats.service.ts) - tab "Thống kê" của trang Quản lý UTM. */
+export interface UtmStatsStatus {
+  code: string;
+  name: string;
+  color: string;
+}
+
+export interface UtmStatsPoint {
+  /** 'YYYY-MM-DD' (granularity=day) hoặc 'YYYY-MM' (granularity=month). */
+  date: string;
+  total: number;
+  byStatus: Record<string, number>;
+}
+
+export interface UtmStatsUtmRow {
+  utmId: number;
+  total: number;
+  byStatus: Record<string, number>;
+}
+
+export interface UtmStatsResult {
+  range: { from: string; to: string; granularity: 'day' | 'month' };
+  /** Scope `utms.view` của người xem: own / department / all. */
+  utmScope: 'own' | 'department' | 'all' | string;
+  /** Scope `customers.view` áp lên khách; null = không xem được khách nào. */
+  customerScope: string | null;
+  utmCount: number;
+  statuses: UtmStatsStatus[];
+  utms: Array<{ id: number; name: string; color: string; isActive: boolean }>;
+  totals: { total: number; byStatus: Record<string, number> };
+  series: UtmStatsPoint[];
+  byUtm: UtmStatsUtmRow[];
+}
+
+export interface UtmStatsParams {
+  from?: string;
+  to?: string;
+  utmId?: number;
+}
+
 /** Kết quả thao tác hàng loạt (BE luôn trả 200; từng ID lỗi nằm trong `failed`). */
 export interface BulkResult {
   succeeded: number[];
@@ -120,6 +160,10 @@ export const utmsApi = {
 
   /** Tab "Tất cả UTM" - cần `utms.view` (scope lọc ở BE). */
   getScoped: async (): Promise<UtmView[]> => (await axiosInstance.get<UtmView[]>('/utms/scoped')).data,
+
+  /** Tab "Thống kê" - cần `utms.view` (UTM lọc theo scope) + khách luôn lọc theo `customers.view`. */
+  getStats: async (params: UtmStatsParams): Promise<UtmStatsResult> =>
+    (await axiosInstance.get<UtmStatsResult>('/utms/stats', { params })).data,
 
   getOne: async (id: number): Promise<UtmView> => (await axiosInstance.get<UtmView>(`/utms/${id}`)).data,
 

@@ -19,6 +19,7 @@ describe('UtmsController', () => {
 
   it.each([
     ['listScoped', 'utms.view'],
+    ['stats', 'utms.view'],
     ['customerCounts', 'customers.view'],
     ['listCustomers', 'customers.view'],
     ['duplicates', 'utms.edit'],
@@ -46,13 +47,13 @@ describe('UtmsController', () => {
     expect(Reflect.getMetadata(GUARDS_METADATA, proto.create) as unknown[]).toContain(ThrottlerGuard);
   });
 
-  it('không có endpoint lạ ngoài 20 endpoint đã khoá', () => {
+  it('không có endpoint lạ ngoài 21 endpoint đã khoá', () => {
     const names = Object.getOwnPropertyNames(UtmsController.prototype).filter((n) => n !== 'constructor');
     expect(names.sort()).toEqual(
       [
         'findUsable', 'managedByMe', 'listScoped', 'create', 'getOne', 'update', 'deactivate',
         'activate', 'remove', 'getManagers', 'addManager', 'removeManager', 'transferPrimary',
-        'recent', 'customerCounts', 'duplicates', 'listCustomers', 'merge', 'bulkStatus', 'bulkDelete',
+        'recent', 'customerCounts', 'duplicates', 'listCustomers', 'merge', 'bulkStatus', 'bulkDelete', 'stats',
       ].sort(),
     );
   });
@@ -69,9 +70,9 @@ describe('UtmsController', () => {
     expect(order.indexOf('listScoped')).toBeLessThan(order.indexOf('getOne'));
   });
 
-  it('route tĩnh (recent/customer-counts/duplicates) khai TRƯỚC :id', () => {
+  it('route tĩnh (recent/customer-counts/duplicates/stats) khai TRƯỚC :id', () => {
     const order = Object.getOwnPropertyNames(UtmsController.prototype);
-    ['recent', 'customerCounts', 'duplicates'].forEach((n) => {
+    ['recent', 'customerCounts', 'duplicates', 'stats'].forEach((n) => {
       expect(order.indexOf(n)).toBeLessThan(order.indexOf('getOne'));
     });
   });

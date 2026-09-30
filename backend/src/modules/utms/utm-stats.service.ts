@@ -1,0 +1,140 @@
+import { BadRequestException, ForbiddenException, Injectable } from '@nestjs/common';
+import { InjectRepository } from '@nestjs/typeorm';
+import { Repository } from 'typeorm';
+import { Customer } from '../../database/entities/customer.entity';
+import { CustomerStatus } from '../../database/entities/customer-status.entity';
+import { todayVnStr } from '../../common/utils/date-vn.util';
+import { CustomerAccessHelper } from '../customers/helpers/customer-access.helper';
+import { UtmsService, UtmCaller } from './utms.service';
+import { UtmStatsQueryDto } from './dto/utm-stats-query.dto';
+import {
+  addDays,
+  aggregateUtmStats,
+  buildBuckets,
+  isValidDateStr,
+  pickGranularity,
+  spanDays,
+  UtmStatsAggregate,
+  UtmStatsGranularity,
+  UtmStatsRawRow,
+  UTM_STATS_MAX_SPAN_DAYS,
+} from './helpers/utm-stats.helper';
+
+const DEFAULT_SPAN_DAYS = 30;
+
+export interface UtmStatsStatusInfo {
+  code: string;
+  name: string;
+  color: string;
+}
+
+export interface UtmStatsResult extends UtmStatsAggregate {
+  range: { from: string; to: string; granularity: UtmStatsGranularity };
+  /** Scope `utms.view` của người xem (own/department/all) - FE hiện nhãn "phạm vi". */
+  utmScope: string;
+  /** Scope `customers.view` được áp lên khách; null = không xem được khách nào (số liệu = 0). */
+  customerScope: string | null;
+  /** Số UTM được thống kê (= tất cả UTM trong phạm vi, hoặc 1 nếu có lọc `utmId`). */
+  utmCount: number;
+  statuses: UtmStatsStatusInfo[];
+  utms: Array<{ id: number; name: string; color: string; isActive: boolean }>;
+}
+
+/**
+ * Tab "Thống kê" trang Quản lý UTM. HAI lớp phạm vi, cả hai đều bắt buộc:
+ *  1) UTM nào được thống kê = scope `utms.view` (own = mình là chính/phụ, department = Quản lý chính thuộc phòng ban
+ *     mình quản lý, all = tất cả) - CÙNG helper với tab "Tất cả UTM" (`UtmsService.scopedUtmBriefs`).
+ *  2) Khách nào được đếm = scope `customers.view` (`CustomerAccessHelper.applyViewFilter`) - quản lý UTM KHÔNG
+ *     mở rộng quyền xem khách hàng (PLAN_UTM 6.2), nên số ở đây luôn khớp với danh sách khách trong modal UTM.
+ */
+@Injectable()
+export class UtmStatsService {
+  constructor(
+    @InjectRepository(Customer)
+    private readonly customerRepo: Repository<Customer>,
+    @InjectRepository(CustomerStatus)
+    private readonly statusRepo: Repository<CustomerStatus>,
+    private readonly utmsService: UtmsService,
+  ) {}
+
+  private resolveRange(query: UtmStatsQueryDto): { from: string; to: string } {
+    const to = query.to ?? todayVnStr();
+    const from = query.from ?? addDays(to, -(DEFAULT_SPAN_DAYS - 1));
+    if (!isValidDateStr(from) || !isValidDateStr(to)) throw new BadRequestException('Ngày không hợp lệ');
+    if (from > to) throw new BadRequestException('"Từ ngày" phải trước hoặc bằng "Đến ngày"');
+    if (spanDays(from, to) > UTM_STATS_MAX_SPAN_DAYS) {
+      throw new BadRequestException(`Khoảng thời gian tối đa ${UTM_STATS_MAX_SPAN_DAYS} ngày`);
+    }
+    return { from, to };
+  }
+
+  async getStats(caller: UtmCaller, query: UtmStatsQueryDto): Promise<UtmStatsResult> {
+    const { from, to } = this.resolveRange(query);
+    const granularity = pickGranularity(from, to);
+    const buckets = buildBuckets(from, to, granularity);
+
+    const [utmScope, customerScope, allBriefs, statusRows] = await Promise.all([
+      this.utmsService.scopeOf(caller, 'utms.view'),
+      this.utmsService.scopeOf(caller, 'customers.view'),
+      this.utmsService.scopedUtmBriefs(caller),
+      this.statusRepo.find({ order: { sortOrder: 'ASC', id: 'ASC' } }),
+    ]);
+    // Guard cứng (fail-closed): endpoint đã có @RequirePermission('utms.view') nhưng vẫn không tin scope rỗng.
+    if (!utmScope) throw new ForbiddenException('Bạn không có quyền xem thống kê UTM');
+
+    let briefs = allBriefs;
+    if (query.utmId != null) {
+      briefs = allBriefs.filter((u) => u.id === query.utmId);
+      if (briefs.length === 0) throw new ForbiddenException('UTM không nằm trong phạm vi của bạn');
+    }
+
+    const statuses: UtmStatsStatusInfo[] = statusRows.map((s) => ({ code: s.code, name: s.name, color: s.color }));
+    const statusCodes = statuses.map((s) => s.code);
+
+    let rows: UtmStatsRawRow[] = [];
+    // customerScope null (không có customers.view) hoặc không có UTM nào -> KHÔNG truy vấn: applyViewFilter với
+    // scope rỗng sẽ rơi về 'own' chứ không fail-closed.
+    if (customerScope && briefs.length > 0) {
+      const qb = this.customerRepo
+        .createQueryBuilder('customer')
+        .select("DATE_FORMAT(customer.inputDate, '%Y-%m-%d')", 'date')
+        .addSelect('customer.utmId', 'utmId')
+        .addSelect('customer.status', 'status')
+        .addSelect('COUNT(*)', 'cnt')
+        .where('customer.deletedAt IS NULL')
+        .andWhere('customer.utmId IN (:...utmIds)', { utmIds: briefs.map((u) => u.id) })
+        .andWhere('customer.inputDate >= :from AND customer.inputDate <= :to', { from, to })
+        .groupBy('customer.inputDate')
+        .addGroupBy('customer.utmId')
+        .addGroupBy('customer.status');
+      CustomerAccessHelper.applyViewFilter(qb, caller.id, caller.role, customerScope);
+
+      const raw = await qb.getRawMany();
+      rows = raw.map((r) => ({
+        date: String(r.date),
+        utmId: Number(r.utmId),
+        status: String(r.status),
+        cnt: Number(r.cnt),
+      }));
+    }
+
+    const agg = aggregateUtmStats(rows, statusCodes, buckets, granularity);
+    // Status lạ (mồ côi) hiện bằng chính mã, màu trung tính.
+    const extra = agg.statusCodes
+      .filter((c) => !statusCodes.includes(c))
+      .map((c) => ({ code: c, name: c, color: '#8c8c8c' }));
+
+    return {
+      range: { from, to, granularity },
+      utmScope,
+      customerScope: customerScope ?? null,
+      utmCount: briefs.length,
+      statuses: [...statuses, ...extra],
+      // Luôn trả ĐỦ UTM trong phạm vi (không phải chỉ UTM đang lọc) để dropdown lọc ở FE không "co lại" thành 1 mục.
+      utms: allBriefs,
+      totals: agg.totals,
+      series: agg.series,
+      byUtm: agg.byUtm,
+    };
+  }
+}
