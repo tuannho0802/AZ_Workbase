@@ -105,6 +105,7 @@ export default function UtmQualityReportTab({ query, onQueryChange }: Props) {
   const [rankMetric, setRankMetric] = useState<UtmRankMetric>('lifetimeRevenue');
   const [search, setSearch] = useState('');
   const [hideEmpty, setHideEmpty] = useState(false);
+  const [hideLocked, setHideLocked] = useState(false);
   const [drill, setDrill] = useState<CustomerDrill | null>(null);
   // Danh sách người đã từng xuất hiện trong báo cáo -> dropdown Sales/Marketing không "co lại" khi đang lọc 1 người.
   const [seenSales, setSeenSales] = useState<Map<number, UtmUserBrief>>(new Map());
@@ -169,7 +170,7 @@ export default function UtmQualityReportTab({ query, onQueryChange }: Props) {
 
   const utms = useMemo(() => data?.utms ?? [], [data?.utms]);
   const insights = useMemo(() => buildUtmInsights(utms), [utms]);
-  const tableRows = useMemo(() => filterUtmRows(utms, { search, hideEmpty }, normalizeText), [utms, search, hideEmpty]);
+  const tableRows = useMemo(() => filterUtmRows(utms, { search, hideEmpty, hideLocked }, normalizeText), [utms, search, hideEmpty, hideLocked]);
 
   const trendData = useMemo(
     () => (data?.trend ?? []).map((t) => ({ ...t, label: trendLabel(t.date, granularity) })),
@@ -183,9 +184,10 @@ export default function UtmQualityReportTab({ query, onQueryChange }: Props) {
   const rankFmt = (v: number) => (money ? formatUsd(v) : rateRank ? `${v}%` : fmtCount(v));
   const rankAxisFmt = (v: number) => (money ? formatUsdCompact(v) : rateRank ? `${v}%` : fmtCount(v));
 
-  const bySizeTop = useMemo(() => [...utms].filter((u) => u.customers > 0).sort((a, b) => b.customers - a.customers).slice(0, 10), [utms]);
+  // Các biểu đồ chất lượng dưới đây đo theo COHORT khách MỚI trong kỳ -> đổi Date filter là vẽ lại.
+  const bySizeTop = useMemo(() => [...utms].filter((u) => u.newCustomers > 0).sort((a, b) => b.newCustomers - a.newCustomers).slice(0, 10), [utms]);
   const rateData = useMemo(
-    () => bySizeTop.map((u) => ({ name: u.utmName, depositRate: pct(u.depositedCustomers, u.customers) ?? 0, closeRate: pct(u.closedCustomers, u.customers) ?? 0 })),
+    () => bySizeTop.map((u) => ({ name: u.utmName, depositRate: pct(u.newDeposited, u.newCustomers) ?? 0, closeRate: pct(u.newClosed, u.newCustomers) ?? 0 })),
     [bySizeTop],
   );
   const statusSeries = useMemo(
@@ -197,19 +199,19 @@ export default function UtmQualityReportTab({ query, onQueryChange }: Props) {
       })),
     [data?.statuses],
   );
-  const statusData = useMemo(() => bySizeTop.map((u) => ({ name: u.utmName, ...u.byStatus })), [bySizeTop]);
+  const statusData = useMemo(() => bySizeTop.map((u) => ({ name: u.utmName, ...u.newByStatus })), [bySizeTop]);
   const statusPie = useMemo(
-    () => statusSeries.map((s) => ({ name: s.label, value: data?.summary.totalByStatus[s.key] ?? 0, color: s.color })).filter((x) => x.value > 0),
-    [statusSeries, data?.summary.totalByStatus],
+    () => statusSeries.map((s) => ({ name: s.label, value: data?.summary.totalNewByStatus?.[s.key] ?? 0, color: s.color })).filter((x) => x.value > 0),
+    [statusSeries, data?.summary.totalNewByStatus],
   );
   const funnel = useMemo(
     () =>
       cur
         ? [
-            { name: 'Khách của UTM', value: cur.customers, color: REPORT_COLORS.primary },
-            { name: 'Đã từng nạp', value: cur.depositedCustomers, color: REPORT_COLORS.gold },
-            { name: 'Nạp lại (≥ 2 khoản)', value: cur.redepositors, color: REPORT_COLORS.warning },
-            { name: 'Đã chốt', value: cur.closedCustomers, color: REPORT_COLORS.ok },
+            { name: 'Khách mới trong kỳ', value: cur.newCustomers, color: REPORT_COLORS.primary },
+            { name: 'Đã từng nạp', value: cur.newDeposited, color: REPORT_COLORS.gold },
+            { name: 'Nạp lại (≥ 2 khoản)', value: cur.newRedepositors, color: REPORT_COLORS.warning },
+            { name: 'Đã chốt', value: cur.newClosed, color: REPORT_COLORS.ok },
           ]
         : [],
     [cur],
@@ -527,12 +529,12 @@ export default function UtmQualityReportTab({ query, onQueryChange }: Props) {
             <Button size="small" type="link" onClick={() => changeState(key)}>Chỉ xem nhóm này</Button>
           </div>
           <Row gutter={[8, 8]} style={{ marginTop: 8 }}>
-            <Col span={8}><Text type="secondary" style={{ fontSize: 12 }}>Khách</Text><div><Text strong>{fmtCount(s?.customers ?? 0)}</Text></div></Col>
-            <Col span={8}><Text type="secondary" style={{ fontSize: 12 }}>Đã nạp</Text><div><Text strong style={{ color: rateTextColor(r?.depositRate) }}>{r?.depositRate == null ? '—' : `${r.depositRate}%`}</Text></div></Col>
-            <Col span={8}><Text type="secondary" style={{ fontSize: 12 }}>Đã chốt</Text><div><Text strong style={{ color: rateTextColor(r?.closeRate) }}>{r?.closeRate == null ? '—' : `${r.closeRate}%`}</Text></div></Col>
+            <Col span={8}><Text type="secondary" style={{ fontSize: 12 }}>Khách</Text><div><Text strong>{fmtCount(s?.newCustomers ?? 0)}</Text></div></Col>
+            <Col span={8}><Text type="secondary" style={{ fontSize: 12 }}>Đã nạp</Text><div><Text strong style={{ color: rateTextColor(r?.newDepositRate) }}>{r?.newDepositRate == null ? '—' : `${r.newDepositRate}%`}</Text></div></Col>
+            <Col span={8}><Text type="secondary" style={{ fontSize: 12 }}>Đã chốt</Text><div><Text strong style={{ color: rateTextColor(r?.newCloseRate) }}>{r?.newCloseRate == null ? '—' : `${r.newCloseRate}%`}</Text></div></Col>
             <Col span={8}><Text type="secondary" style={{ fontSize: 12 }}>Doanh thu kỳ</Text><div><Text strong>{formatUsd(s?.periodRevenue ?? 0)}</Text></div></Col>
-            <Col span={8}><Text type="secondary" style={{ fontSize: 12 }}>Doanh thu tổng</Text><div><Text strong>{formatUsd(s?.lifetimeRevenue ?? 0)}</Text></div></Col>
-            <Col span={8}><Text type="secondary" style={{ fontSize: 12 }}>TB / khách</Text><div><Text strong>{r?.revenuePerCustomer == null ? '—' : formatUsd(r.revenuePerCustomer)}</Text></div></Col>
+            <Col span={8}><Text type="secondary" style={{ fontSize: 12 }}>Doanh thu tổng (khách mới)</Text><div><Text strong>{formatUsd(s?.newLifetimeRevenue ?? 0)}</Text></div></Col>
+            <Col span={8}><Text type="secondary" style={{ fontSize: 12 }}>TB / khách</Text><div><Text strong>{r?.newRevenuePerCustomer == null ? '—' : formatUsd(r.newRevenuePerCustomer)}</Text></div></Col>
           </Row>
         </div>
       </Col>
@@ -670,7 +672,7 @@ export default function UtmQualityReportTab({ query, onQueryChange }: Props) {
           {/* ── So sánh Hoạt động vs Đã khoá (chỉ khi xem Tất cả) ── */}
           {state === 'all' && !selectedUtm && (data?.summary.stateCounts.locked ?? 0) > 0 && (
             <Card size="small" title="Hoạt động vs Đã khoá" loading={loading}>
-              <Text type="secondary" style={{ fontSize: 12 }}>So sánh chất lượng khách của UTM đang chạy với UTM đã khoá (tính trên bộ lọc Sales/Marketing đang chọn).</Text>
+              <Text type="secondary" style={{ fontSize: 12 }}>So sánh chất lượng khách MỚI trong kỳ của UTM đang chạy với UTM đã khoá (theo Date filter và bộ lọc Sales/Marketing đang chọn).</Text>
               <Row gutter={[12, 12]} style={{ marginTop: 8 }}>
                 {splitRow('UTM Hoạt động', 'active')}
                 {splitRow('UTM Đã khoá', 'locked')}
@@ -682,16 +684,16 @@ export default function UtmQualityReportTab({ query, onQueryChange }: Props) {
           <Row gutter={[12, 12]}>
             <Col xs={24} xl={12}>
               <Card size="small" loading={loading} title="Phễu chất lượng khách">
-                <Text type="secondary" style={{ fontSize: 12 }}>Từ khách của UTM tới đã nạp, nạp lại và đã chốt (trạng thái hiện tại, không lọc ngày).</Text>
-                {!cur || cur.customers === 0 ? (
-                  <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="Chưa có khách với bộ lọc này" />
+                <Text type="secondary" style={{ fontSize: 12 }}>Từ khách MỚI trong kỳ đang chọn tới đã nạp, nạp lại và đã chốt (trạng thái hiện tại của nhóm khách này).</Text>
+                {!cur || cur.newCustomers === 0 ? (
+                  <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="Không có khách mới trong kỳ với bộ lọc này" />
                 ) : (
                   <ResponsiveContainer width="100%" height={220}>
                     <BarChart data={funnel} layout="vertical" margin={{ top: 8, right: 60, left: 8, bottom: 0 }} maxBarSize={28}>
                       <CartesianGrid strokeDasharray="3 3" horizontal={false} />
                       <XAxis type="number" allowDecimals={false} tick={{ fontSize: 12 }} />
                       <YAxis type="category" dataKey="name" width={130} tick={{ fontSize: 12 }} />
-                      <ChartTooltip formatter={(v) => [`${fmtCount(Number(v))} (${pct(Number(v), cur.customers) ?? 0}% khách)`, 'Số khách']} />
+                      <ChartTooltip formatter={(v) => [`${fmtCount(Number(v))} (${pct(Number(v), cur.newCustomers) ?? 0}% khách mới)`, 'Số khách']} />
                       <Bar dataKey="value" radius={[0, 4, 4, 0]} label={{ position: 'right', fontSize: 12, formatter: (v: unknown) => fmtCount(Number(v)) }} isAnimationActive={false}>
                         {funnel.map((f) => <Cell key={f.name} fill={f.color} />)}
                       </Bar>
@@ -702,9 +704,9 @@ export default function UtmQualityReportTab({ query, onQueryChange }: Props) {
             </Col>
             <Col xs={24} xl={12}>
               <Card size="small" loading={loading} title="Cơ cấu trạng thái khách">
-                <Text type="secondary" style={{ fontSize: 12 }}>Khách của {scopeLabel} chia theo trạng thái hiện tại.</Text>
+                <Text type="secondary" style={{ fontSize: 12 }}>Khách mới trong kỳ của {scopeLabel}, chia theo trạng thái hiện tại.</Text>
                 {statusPie.length === 0 ? (
-                  <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="Chưa có khách với bộ lọc này" />
+                  <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="Không có khách mới trong kỳ với bộ lọc này" />
                 ) : (
                   <ResponsiveContainer width="100%" height={220}>
                     <PieChart>
@@ -712,7 +714,7 @@ export default function UtmQualityReportTab({ query, onQueryChange }: Props) {
                         label={(p: { name?: string; value?: number }) => `${p.name}: ${fmtCount(Number(p.value))}`}>
                         {statusPie.map((s) => <Cell key={s.name} fill={s.color} />)}
                       </Pie>
-                      <ChartTooltip formatter={(v, n) => [`${fmtCount(Number(v))} (${pct(Number(v), cur?.customers ?? 0) ?? 0}%)`, n]} />
+                      <ChartTooltip formatter={(v, n) => [`${fmtCount(Number(v))} (${pct(Number(v), cur?.newCustomers ?? 0) ?? 0}%)`, n]} />
                       <Legend />
                     </PieChart>
                   </ResponsiveContainer>
@@ -816,9 +818,9 @@ export default function UtmQualityReportTab({ query, onQueryChange }: Props) {
           <Row gutter={[12, 12]}>
             <Col xs={24} xl={12}>
               <Card size="small" loading={loading} title="Tỷ lệ nạp & chốt của khách theo UTM">
-                <Text type="secondary" style={{ fontSize: 12 }}>10 UTM nhiều khách nhất. So các UTM với nhau để thấy UTM nào đem về khách tốt hơn.</Text>
+                <Text type="secondary" style={{ fontSize: 12 }}>10 UTM có nhiều khách mới nhất trong kỳ. Tỷ lệ tính trên khách mới của kỳ (≤ 100%).</Text>
                 {rateData.length === 0 ? (
-                  <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="Chưa có UTM nào có khách" />
+                  <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="Không có UTM nào có khách mới trong kỳ" />
                 ) : (
                   <ResponsiveContainer width="100%" height={rankHeight(rateData.length) + 40}>
                     <BarChart data={rateData} layout="vertical" margin={{ top: 8, right: 24, left: 8, bottom: 0 }} barGap={2}>
@@ -836,9 +838,9 @@ export default function UtmQualityReportTab({ query, onQueryChange }: Props) {
             </Col>
             <Col xs={24} xl={12}>
               <Card size="small" loading={loading} title="Cơ cấu trạng thái khách theo UTM">
-                <Text type="secondary" style={{ fontSize: 12 }}>Khách của 10 UTM đông nhất, chia theo trạng thái khách hiện tại.</Text>
+                <Text type="secondary" style={{ fontSize: 12 }}>Khách mới trong kỳ của 10 UTM đông nhất, chia theo trạng thái hiện tại.</Text>
                 {statusData.length === 0 ? (
-                  <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="Chưa có UTM nào có khách" />
+                  <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="Không có UTM nào có khách mới trong kỳ" />
                 ) : (
                   <ResponsiveContainer width="100%" height={rankHeight(statusData.length) + 40}>
                     <BarChart data={statusData} layout="vertical" margin={{ top: 8, right: 24, left: 8, bottom: 0 }} maxBarSize={22}>
@@ -859,7 +861,7 @@ export default function UtmQualityReportTab({ query, onQueryChange }: Props) {
 
           {/* ── Nguồn khách ── */}
           <Card size="small" loading={loading} title={selectedUtm ? `Nguồn khách của UTM ${selectedUtm.name}` : `Nguồn khách của ${scopeLabel}`}>
-            <Text type="secondary" style={{ fontSize: 12 }}>Nguồn nào đem về khách nạp/chốt tốt trong các UTM - dùng để dồn ngân sách và điều chỉnh chiến dịch.</Text>
+            <Text type="secondary" style={{ fontSize: 12 }}>Nguồn nào đem về khách MỚI trong kỳ nạp/chốt tốt - dùng để dồn ngân sách và điều chỉnh chiến dịch (biểu đồ theo Date filter, bảng bên cạnh là mọi thời điểm).</Text>
             {(data?.bySource.length ?? 0) === 0 ? (
               <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="Chưa có số liệu" />
             ) : (
@@ -872,9 +874,9 @@ export default function UtmQualityReportTab({ query, onQueryChange }: Props) {
                       <YAxis allowDecimals={false} tick={{ fontSize: 12 }} />
                       <ChartTooltip formatter={(v) => fmtCount(Number(v))} />
                       <Legend />
-                      <Bar dataKey="customers" name="Khách" fill={REPORT_COLORS.primary} radius={[4, 4, 0, 0]} isAnimationActive={false} />
-                      <Bar dataKey="depositedCustomers" name="Đã nạp" fill={REPORT_COLORS.gold} radius={[4, 4, 0, 0]} isAnimationActive={false} />
-                      <Bar dataKey="closedCustomers" name="Đã chốt" fill={REPORT_COLORS.ok} radius={[4, 4, 0, 0]} isAnimationActive={false} />
+                      <Bar dataKey="newCustomers" name="Khách mới" fill={REPORT_COLORS.primary} radius={[4, 4, 0, 0]} isAnimationActive={false} />
+                      <Bar dataKey="newDeposited" name="Đã nạp" fill={REPORT_COLORS.gold} radius={[4, 4, 0, 0]} isAnimationActive={false} />
+                      <Bar dataKey="newClosed" name="Đã chốt" fill={REPORT_COLORS.ok} radius={[4, 4, 0, 0]} isAnimationActive={false} />
                     </BarChart>
                   </ResponsiveContainer>
                 </Col>
@@ -916,6 +918,10 @@ export default function UtmQualityReportTab({ query, onQueryChange }: Props) {
               <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
                 <Switch size="small" checked={hideEmpty} onChange={setHideEmpty} />
                 <Text type="secondary" style={{ fontSize: 12 }}>Ẩn UTM trống</Text>
+              </span>
+              <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+                <Switch size="small" checked={hideLocked} onChange={setHideLocked} />
+                <Text type="secondary" style={{ fontSize: 12 }}>Ẩn UTM đã khoá</Text>
               </span>
             </div>
             <Table<UtmQualityRow>

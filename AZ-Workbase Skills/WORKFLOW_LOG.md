@@ -5379,3 +5379,22 @@ khi bị xoá tay. Đây là 1 anti-pattern thật (dù đo thử với payload 
 > Card chuyển sang cohort của kỳ: UTM = khách tạo trong kỳ (`created_at`), Nhóm = khách join trong kỳ (`joined_at`); tỷ lệ tính trên cohort (≤100%); doanh thu = theo `deposit_date` trong kỳ. Drill của mỗi card dùng đúng cohort nên số dòng khớp số trên card. Bảng chi tiết/biểu đồ vẫn "mọi thời điểm" (đã ghi rõ trên tooltip cột) - chưa đổi.
 
 ---
+
+## [2026-09-30 23:59] | Report "Chất lượng UTM" & "Chất lượng nhóm": chart đồng bộ Date filter (cohort) + toggle "Ẩn UTM đã khoá" | [Status: Success — BE tsc + nest build + jest reports 6 suite / 91 test; FE vitest utils/app 203 test + utmQuality/groupQuality; FE tsc chỉ còn lỗi cũ logo.png/CountBadge, eslint chỉ còn 2 lỗi cũ; CHƯA xem trình duyệt thật]
+
+**Actor:** Agent (trên `origin/main` HEAD `6c0ed2f`)
+
+**Files Changed:**
+- BE: `reports/reports-utm-quality.service.ts` (+`newRedepositors`, `newByStatus`, `totalNewByStatus`, cohort trong `bySource`), `reports/reports-group-quality.service.ts` (+`newJoinsByStatus`, cohort trong `bySource`) + 2 spec.
+- FE: `reports/UtmQualityReportTab.tsx`, `reports/GroupQualityReportTab.tsx`, `lib/types/reports.types.ts`, `lib/utils/utmQuality.ts` (`filterUtmRows` +`hideLocked`) + test.
+
+**Root Cause:**
+> Chart Phễu / Cơ cấu trạng thái / Hoạt động vs Đã khoá / Tỷ lệ nạp-chốt theo UTM-Nhóm / Nguồn khách dùng số "mọi thời điểm" (customers, byStatus...) nên đổi Date filter không đổi. Card KPI đã cohort từ lần trước nhưng chart chưa.
+
+**Solution:**
+> Chart chuyển sang cohort của kỳ (UTM = khách tạo trong kỳ, Nhóm = khách join trong kỳ), tỷ lệ ≤ 100%. Thêm toggle "Ẩn UTM đã khoá" cạnh "Ẩn UTM trống" ở bảng chi tiết UTM.
+
+**Notes:**
+> Không migration, không permission key mới. Bảng Sales/Marketing, bảng Nguồn và chart "Top" (tuỳ chọn chỉ số Doanh thu tổng/Số khách) vẫn là mọi thời điểm.
+
+---

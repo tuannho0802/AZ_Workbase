@@ -25,9 +25,11 @@ const mk = (o: Partial<UtmQualityRow>): UtmQualityRow => ({
   newLifetimeRevenue: 0,
   depositCount: 0,
   redepositors: 0,
+  newRedepositors: 0,
   avgDaysToFirstDeposit: null,
   avgDaysSamples: 0,
   byStatus: {},
+  newByStatus: {},
   sales: { total: 0, top: [] },
   marketing: { total: 0, top: [] },
   ...o,
@@ -105,5 +107,10 @@ describe('filterUtmRows', () => {
   });
   it('ẩn UTM trống', () => {
     expect(filterUtmRows(rows, { hideEmpty: true }, normalizeText).map((r) => r.utmId)).toEqual([1]);
+  });
+  it('ẩn UTM đã khoá', () => {
+    const list = [...rows, mk({ utmId: 3, utmName: 'Đã khoá', customers: 9, isActive: false })];
+    expect(filterUtmRows(list, { hideLocked: true }, normalizeText).map((r) => r.utmId)).toEqual([1, 2]);
+    expect(filterUtmRows(list, {}, normalizeText).map((r) => r.utmId)).toEqual([1, 2, 3]);
   });
 });

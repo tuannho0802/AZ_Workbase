@@ -34,6 +34,8 @@ export interface UtmQualityMetrics {
   newDeposited: number;
   /** COHORT: trong số khách MỚI trong kỳ, đã chốt. Luôn ≤ newCustomers. */
   newClosed: number;
+  /** COHORT: trong số khách MỚI trong kỳ, nạp từ 2 lần trở lên. Luôn ≤ newDeposited. */
+  newRedepositors: number;
   /** Số khách có ≥ 1 khoản nạp trong kỳ (`deposit_date`, cột date -> from/to naive). */
   periodDepositors: number;
   /** Tiền nạp trong kỳ (USD). */
@@ -91,6 +93,8 @@ export interface UtmQualityRow extends UtmQualityMetrics {
   secondaryManagers: UtmUserBrief[];
   /** Khách theo status hiện tại - đủ mặt mọi status (kể cả 0). */
   byStatus: Record<string, number>;
+  /** COHORT: khách MỚI trong kỳ theo status hiện tại (đồng bộ Date filter). */
+  newByStatus: Record<string, number>;
   sales: UtmParticipants;
   marketing: UtmParticipants;
 }
@@ -101,6 +105,10 @@ export interface UtmSourceRow {
   depositedCustomers: number;
   closedCustomers: number;
   lifetimeRevenue: number;
+  /** COHORT (đồng bộ Date filter): khách MỚI trong kỳ / đã nạp / đã chốt. */
+  newCustomers: number;
+  newDeposited: number;
+  newClosed: number;
 }
 
 export interface UtmPersonRow {
@@ -137,6 +145,7 @@ const zeroMetrics = (): UtmQualityMetrics => ({
   closedCustomers: 0,
   newDeposited: 0,
   newClosed: 0,
+  newRedepositors: 0,
   periodDepositors: 0,
   periodRevenue: 0,
   lifetimeRevenue: 0,
@@ -158,6 +167,7 @@ export function sumUtmMetrics(list: UtmQualityMetrics[]): UtmQualityMetrics {
     out.closedCustomers += m.closedCustomers;
     out.newDeposited += m.newDeposited;
     out.newClosed += m.newClosed;
+    out.newRedepositors += m.newRedepositors;
     out.periodDepositors += m.periodDepositors;
     out.periodRevenue += m.periodRevenue;
     out.lifetimeRevenue += m.lifetimeRevenue;
@@ -251,9 +261,10 @@ export class ReportsUtmQualityService {
     const statusCodes = statuses.map((s) => s.code);
 
     // Số liệu TỪNG UTM (không lọc state/utmId - lọc ở bước chọn dòng để đếm được cả 3 góc nhìn từ 1 lần query).
-    const [metrics, statusPivot, salesByUtm, marketingByUtm] = await Promise.all([
+    const [metrics, statusPivot, newStatusPivot, salesByUtm, marketingByUtm] = await Promise.all([
       this.collectMetrics(ctx),
       this.collectStatusPivot(ctx),
+      this.collectStatusPivot(ctx, true),
       this.collectParticipants(ctx, 'salesUserId'),
       this.collectParticipants(ctx, 'marketingUserId'),
     ]);
@@ -296,6 +307,7 @@ export class ReportsUtmQualityService {
 
     const utms: UtmQualityRow[] = selected.map((u) => {
       const raw = statusPivot.get(u.id) ?? {};
+      const rawNew = newStatusPivot.get(u.id) ?? {};
       return {
         utmId: u.id,
         utmName: u.name,
@@ -308,6 +320,7 @@ export class ReportsUtmQualityService {
         secondaryManagers: (u.secondaryManagers ?? []).map((m) => users.get(m.userId)).filter((x): x is UtmUserBrief => !!x),
         ...(metrics.get(u.id) ?? zeroMetrics()),
         byStatus: Object.fromEntries(statusCodes.map((c) => [c, raw[c] ?? 0])),
+        newByStatus: Object.fromEntries(statusCodes.map((c) => [c, rawNew[c] ?? 0])),
         sales: participants(salesByUtm.get(u.id)),
         marketing: participants(marketingByUtm.get(u.id)),
       };
@@ -316,6 +329,8 @@ export class ReportsUtmQualityService {
     const current = sumUtmMetrics(utms);
     const totalByStatus: Record<string, number> = Object.fromEntries(statusCodes.map((c) => [c, 0]));
     for (const r of utms) for (const [c, n] of Object.entries(r.byStatus)) if (c in totalByStatus) totalByStatus[c] += n;
+    const totalNewByStatus: Record<string, number> = Object.fromEntries(statusCodes.map((c) => [c, 0]));
+    for (const r of utms) for (const [c, n] of Object.entries(r.newByStatus)) if (c in totalNewByStatus) totalNewByStatus[c] += n;
 
     const splitOf = (active: boolean) => {
       const list = visible.filter((u) => !!u.isActive === active);
@@ -367,6 +382,7 @@ export class ReportsUtmQualityService {
         newCustomers: noUtm.newCustomers,
         newCustomersNoUtm: noUtm.newCustomersNoUtm,
         totalByStatus,
+        totalNewByStatus,
       },
       utms,
       bySource: overallSource,
@@ -437,6 +453,7 @@ export class ReportsUtmQualityService {
       .addSelect("COUNT(DISTINCT CASE WHEN customer.status = 'closed' THEN customer.id END)", 'closedCustomers')
       .addSelect(`COUNT(DISTINCT CASE WHEN ${IN_CREATED} AND ${HAS_DEPOSIT} THEN customer.id END)`, 'newDeposited')
       .addSelect(`COUNT(DISTINCT CASE WHEN ${IN_CREATED} AND customer.status = 'closed' THEN customer.id END)`, 'newClosed')
+      .addSelect(`COUNT(DISTINCT CASE WHEN ${IN_CREATED} AND ${HAS_REDEPOSIT} THEN customer.id END)`, 'newRedepositors')
       .addSelect(`COUNT(DISTINCT CASE WHEN ${IN_DEPOSIT} THEN customer.id END)`, 'periodDepositors')
       .addSelect(`SUM(CASE WHEN ${IN_DEPOSIT} THEN deposit.amount ELSE 0 END)`, 'periodRevenue')
       .addSelect('SUM(deposit.amount)', 'lifetimeRevenue')
@@ -472,6 +489,7 @@ export class ReportsUtmQualityService {
         closedCustomers: Number(r.closedCustomers) || 0,
         newDeposited: Number(r.newDeposited) || 0,
         newClosed: Number(r.newClosed) || 0,
+        newRedepositors: Number(r.newRedepositors) || 0,
         periodDepositors: Number(r.periodDepositors) || 0,
         periodRevenue: Number(r.periodRevenue) || 0,
         lifetimeRevenue: Number(r.lifetimeRevenue) || 0,
@@ -486,8 +504,11 @@ export class ReportsUtmQualityService {
   }
 
   /** Khách chia theo (UTM, status hiện tại). */
-  private async collectStatusPivot(ctx: Ctx): Promise<Map<number, Record<string, number>>> {
-    const rows = await this.baseQb(ctx, false)
+  private async collectStatusPivot(ctx: Ctx, cohortOnly = false): Promise<Map<number, Record<string, number>>> {
+    const qb = this.baseQb(ctx, false);
+    // cohortOnly: chỉ khách TẠO TRONG KỲ -> biểu đồ cơ cấu trạng thái đồng bộ Date filter.
+    if (cohortOnly) qb.andWhere(IN_CREATED, { cFrom: ctx.range.fromUtc, cTo: ctx.range.toUtc });
+    const rows = await qb
       .select('utm.id', 'k')
       .addSelect('customer.status', 'status')
       .addSelect('COUNT(DISTINCT customer.id)', 'cnt')
@@ -544,7 +565,11 @@ export class ReportsUtmQualityService {
       .addSelect(`COUNT(DISTINCT CASE WHEN ${HAS_DEPOSIT} THEN customer.id END)`, 'depositedCustomers')
       .addSelect("COUNT(DISTINCT CASE WHEN customer.status = 'closed' THEN customer.id END)", 'closedCustomers')
       .addSelect('SUM(deposit.amount)', 'lifetimeRevenue')
+      .addSelect(`COUNT(DISTINCT CASE WHEN ${IN_CREATED} THEN customer.id END)`, 'newCustomers')
+      .addSelect(`COUNT(DISTINCT CASE WHEN ${IN_CREATED} AND ${HAS_DEPOSIT} THEN customer.id END)`, 'newDeposited')
+      .addSelect(`COUNT(DISTINCT CASE WHEN ${IN_CREATED} AND customer.status = 'closed' THEN customer.id END)`, 'newClosed')
       .groupBy('customer.source')
+      .setParameters(this.rangeParams(ctx))
       .getRawMany();
 
     return rows
@@ -554,8 +579,11 @@ export class ReportsUtmQualityService {
         depositedCustomers: Number(r.depositedCustomers) || 0,
         closedCustomers: Number(r.closedCustomers) || 0,
         lifetimeRevenue: Number(r.lifetimeRevenue) || 0,
+        newCustomers: Number(r.newCustomers) || 0,
+        newDeposited: Number(r.newDeposited) || 0,
+        newClosed: Number(r.newClosed) || 0,
       }))
-      .sort((a, b) => b.customers - a.customers);
+      .sort((a, b) => b.newCustomers - a.newCustomers || b.customers - a.customers);
   }
 
   /** Tổng theo SALES hoặc MARKETING phụ trách khách (đã lọc góc nhìn/UTM) - xếp hạng người tham gia. */

@@ -70,6 +70,8 @@ export interface GroupQualityRow extends GroupQualityMetrics {
   primaryManager: GroupUserBrief | null;
   /** Thành viên theo status hiện tại - đủ mặt mọi status (kể cả 0). */
   byStatus: Record<string, number>;
+  /** COHORT: khách JOIN TRONG KỲ theo status hiện tại (đồng bộ Date filter). */
+  newJoinsByStatus: Record<string, number>;
 }
 
 export interface GroupSourceRow {
@@ -78,6 +80,10 @@ export interface GroupSourceRow {
   depositedMembers: number;
   closedMembers: number;
   lifetimeRevenue: number;
+  /** COHORT (đồng bộ Date filter): khách join trong kỳ / đã nạp / đã chốt. */
+  newJoins: number;
+  newJoinsDeposited: number;
+  newJoinsClosed: number;
 }
 
 export interface GroupSalesRow {
@@ -102,6 +108,8 @@ export interface GroupTrendPoint {
   revenue: number;
   depositors: number;
 }
+
+const IN_JOIN = 'membership.joined_at BETWEEN :joinFrom AND :joinTo';
 
 const zeroMetrics = (): GroupQualityMetrics => ({
   members: 0,
@@ -193,11 +201,12 @@ export class ReportsGroupQualityService {
     const inCategory = (g: LinkGroup) => !query.categoryId || g.categoryId === query.categoryId;
     const selectedGroups = allGroups.filter((g) => inCategory(g) && (!query.groupId || g.id === query.groupId));
 
-    const [perGroup, overall, prevOverall, statusPivot, bySource, bySalesRaw, trend, noGroup] = await Promise.all([
+    const [perGroup, overall, prevOverall, statusPivot, newStatusPivot, bySource, bySalesRaw, trend, noGroup] = await Promise.all([
       this.collectMetrics(ctx, true),
       this.collectMetrics(ctx, false),
       this.collectMetrics(prevCtx, false),
       this.collectStatusPivot(ctx),
+      this.collectStatusPivot(ctx, true),
       this.collectBySource(ctx),
       this.collectBySales(ctx),
       this.collectTrend(ctx, granularity),
@@ -210,6 +219,7 @@ export class ReportsGroupQualityService {
 
     const groups: GroupQualityRow[] = selectedGroups.map((g) => {
       const raw = statusPivot.get(String(g.id)) ?? {};
+      const rawNew = newStatusPivot.get(String(g.id)) ?? {};
       return {
         groupId: g.id,
         groupName: g.name,
@@ -220,6 +230,7 @@ export class ReportsGroupQualityService {
         primaryManager: g.primaryManagerId ? (users.get(g.primaryManagerId) ?? null) : null,
         ...(perGroup.get(String(g.id)) ?? zeroMetrics()),
         byStatus: Object.fromEntries(statusCodes.map((c) => [c, raw[c] ?? 0])),
+        newJoinsByStatus: Object.fromEntries(statusCodes.map((c) => [c, rawNew[c] ?? 0])),
       };
     });
 
@@ -388,8 +399,11 @@ export class ReportsGroupQualityService {
   }
 
   /** Thành viên chia theo (nhóm, status hiện tại). */
-  private async collectStatusPivot(ctx: Ctx): Promise<Map<string, Record<string, number>>> {
-    const rows = await this.memberQb(ctx, true)
+  private async collectStatusPivot(ctx: Ctx, cohortOnly = false): Promise<Map<string, Record<string, number>>> {
+    const qb = this.memberQb(ctx, true);
+    // cohortOnly: chỉ khách JOIN TRONG KỲ -> biểu đồ cơ cấu trạng thái đồng bộ Date filter.
+    if (cohortOnly) qb.andWhere('membership.joined_at BETWEEN :joinFrom AND :joinTo', { joinFrom: ctx.range.fromUtc, joinTo: ctx.range.toUtc });
+    const rows = await qb
       .select('membership.group_id', 'k')
       .addSelect('customer.status', 'status')
       .addSelect('COUNT(DISTINCT customer.id)', 'cnt')
@@ -416,7 +430,11 @@ export class ReportsGroupQualityService {
       .addSelect(`COUNT(DISTINCT CASE WHEN ${HAS_DEPOSIT} THEN customer.id END)`, 'depositedMembers')
       .addSelect("COUNT(DISTINCT CASE WHEN customer.status = 'closed' THEN customer.id END)", 'closedMembers')
       .addSelect('SUM(deposit.amount)', 'lifetimeRevenue')
+      .addSelect(`COUNT(DISTINCT CASE WHEN ${IN_JOIN} THEN customer.id END)`, 'newJoins')
+      .addSelect(`COUNT(DISTINCT CASE WHEN ${IN_JOIN} AND ${HAS_DEPOSIT} THEN customer.id END)`, 'newJoinsDeposited')
+      .addSelect(`COUNT(DISTINCT CASE WHEN ${IN_JOIN} AND customer.status = 'closed' THEN customer.id END)`, 'newJoinsClosed')
       .groupBy('customer.source')
+      .setParameters({ joinFrom: ctx.range.fromUtc, joinTo: ctx.range.toUtc })
       .getRawMany();
 
     return rows
@@ -426,8 +444,11 @@ export class ReportsGroupQualityService {
         depositedMembers: Number(r.depositedMembers) || 0,
         closedMembers: Number(r.closedMembers) || 0,
         lifetimeRevenue: Number(r.lifetimeRevenue) || 0,
+        newJoins: Number(r.newJoins) || 0,
+        newJoinsDeposited: Number(r.newJoinsDeposited) || 0,
+        newJoinsClosed: Number(r.newJoinsClosed) || 0,
       }))
-      .sort((a, b) => b.members - a.members);
+      .sort((a, b) => b.newJoins - a.newJoins || b.members - a.members);
   }
 
   /** Thành viên theo SALES phụ trách - Sales nào chăm khách trong nhóm hiệu quả. */

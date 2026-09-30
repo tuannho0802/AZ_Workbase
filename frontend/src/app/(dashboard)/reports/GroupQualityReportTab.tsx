@@ -117,15 +117,15 @@ export default function GroupQualityReportTab({ query, onQueryChange }: Props) {
   const rankAxisFmt = (v: number) => (money ? formatUsdCompact(v) : rateRank ? `${v}%` : fmtCount(v));
 
   const bySizeTop = useMemo(
-    () => [...groups].filter((g) => g.members > 0).sort((a, b) => b.members - a.members).slice(0, 10),
+    () => [...groups].filter((g) => g.newJoins > 0).sort((a, b) => b.newJoins - a.newJoins).slice(0, 10),
     [groups],
   );
   const rateData = useMemo(
     () =>
       bySizeTop.map((g) => ({
         name: g.groupName,
-        depositRate: pct(g.depositedMembers, g.members) ?? 0,
-        closeRate: pct(g.closedMembers, g.members) ?? 0,
+        depositRate: pct(g.newJoinsDeposited, g.newJoins) ?? 0,
+        closeRate: pct(g.newJoinsClosed, g.newJoins) ?? 0,
       })),
     [bySizeTop],
   );
@@ -138,7 +138,7 @@ export default function GroupQualityReportTab({ query, onQueryChange }: Props) {
       })),
     [data?.statuses],
   );
-  const statusData = useMemo(() => bySizeTop.map((g) => ({ name: g.groupName, ...g.byStatus })), [bySizeTop]);
+  const statusData = useMemo(() => bySizeTop.map((g) => ({ name: g.groupName, ...g.newJoinsByStatus })), [bySizeTop]);
 
   const noGroupPct = data ? pct(data.summary.newCustomersNoGroup, data.summary.newCustomers) : null;
   const selectedGroup = data?.options.groups.find((g) => g.id === filters.groupId);
@@ -536,9 +536,9 @@ export default function GroupQualityReportTab({ query, onQueryChange }: Props) {
           <Row gutter={[12, 12]}>
             <Col xs={24} xl={12}>
               <Card size="small" loading={loading} title="Tỷ lệ nạp & chốt của thành viên theo nhóm">
-                <Text type="secondary" style={{ fontSize: 12 }}>10 nhóm nhiều thành viên nhất. So các nhóm với nhau để thấy nhóm nào nuôi khách tốt hơn.</Text>
+                <Text type="secondary" style={{ fontSize: 12 }}>10 nhóm có nhiều khách join nhất trong kỳ. Tỷ lệ tính trên khách join trong kỳ (≤ 100%).</Text>
                 {rateData.length === 0 ? (
-                  <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="Chưa có nhóm nào có thành viên" />
+                  <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="Không có nhóm nào có khách join trong kỳ" />
                 ) : (
                   <ResponsiveContainer width="100%" height={rankHeight(rateData.length) + 40}>
                     <BarChart data={rateData} layout="vertical" margin={{ top: 8, right: 24, left: 8, bottom: 0 }} barGap={2}>
@@ -556,9 +556,9 @@ export default function GroupQualityReportTab({ query, onQueryChange }: Props) {
             </Col>
             <Col xs={24} xl={12}>
               <Card size="small" loading={loading} title="Cơ cấu trạng thái thành viên theo nhóm">
-                <Text type="secondary" style={{ fontSize: 12 }}>Thành viên của 10 nhóm đông nhất, chia theo trạng thái khách hiện tại.</Text>
+                <Text type="secondary" style={{ fontSize: 12 }}>Khách join trong kỳ của 10 nhóm đông nhất, chia theo trạng thái hiện tại.</Text>
                 {statusData.length === 0 ? (
-                  <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="Chưa có nhóm nào có thành viên" />
+                  <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="Không có nhóm nào có khách join trong kỳ" />
                 ) : (
                   <ResponsiveContainer width="100%" height={rankHeight(statusData.length) + 40}>
                     <BarChart data={statusData} layout="vertical" margin={{ top: 8, right: 24, left: 8, bottom: 0 }} maxBarSize={22}>
@@ -581,7 +581,7 @@ export default function GroupQualityReportTab({ query, onQueryChange }: Props) {
           <Row gutter={[12, 12]}>
             <Col xs={24} xl={12}>
               <Card size="small" loading={loading} title={selectedGroup ? `Nguồn khách của nhóm ${selectedGroup.name}` : 'Nguồn khách của các nhóm'}>
-                <Text type="secondary" style={{ fontSize: 12 }}>Nguồn nào đem về thành viên nạp/chốt tốt - dùng để dồn ngân sách và điều chỉnh cách mời vào nhóm.</Text>
+                <Text type="secondary" style={{ fontSize: 12 }}>Nguồn nào đem về khách join trong kỳ nạp/chốt tốt - dùng để dồn ngân sách và điều chỉnh cách mời vào nhóm (biểu đồ theo Date filter, bảng bên dưới là mọi thời điểm).</Text>
                 {(data?.bySource.length ?? 0) === 0 ? (
                   <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="Chưa có số liệu" />
                 ) : (
@@ -593,8 +593,8 @@ export default function GroupQualityReportTab({ query, onQueryChange }: Props) {
                         <YAxis allowDecimals={false} tick={{ fontSize: 12 }} />
                         <ChartTooltip formatter={(v) => fmtCount(Number(v))} />
                         <Legend />
-                        <Bar dataKey="members" name="Thành viên" fill={REPORT_COLORS.primary} radius={[4, 4, 0, 0]} isAnimationActive={false} />
-                        <Bar dataKey="depositedMembers" name="Đã nạp" fill={REPORT_COLORS.gold} radius={[4, 4, 0, 0]} isAnimationActive={false} />
+                        <Bar dataKey="newJoins" name="Khách join" fill={REPORT_COLORS.primary} radius={[4, 4, 0, 0]} isAnimationActive={false} />
+                        <Bar dataKey="newJoinsDeposited" name="Đã nạp" fill={REPORT_COLORS.gold} radius={[4, 4, 0, 0]} isAnimationActive={false} />
                       </BarChart>
                     </ResponsiveContainer>
                     <Table<GroupSourceRow> size="small" rowKey="source" pagination={false} dataSource={data?.bySource ?? []} columns={sourceColumns} scroll={{ y: 180 }} />

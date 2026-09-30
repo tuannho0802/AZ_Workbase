@@ -146,6 +146,12 @@ describe('ReportsUtmQualityService', () => {
     expect(r.utms[0]).toMatchObject({ customers: 20, newCustomers: 8, depositedCustomers: 10, closedCustomers: 5, periodRevenue: 1200.5, lifetimeRevenue: 5000, depositCount: 17, redepositors: 4 });
     expect(r.utms[0].avgDaysToFirstDeposit).toBe(3.5); // làm tròn 1 chữ số
     expect(r.utms[0].byStatus).toEqual({ pending: 15, closed: 5 });
+    expect(r.utms[0].newByStatus).toEqual({ pending: 15, closed: 5 }); // cohort khách mới trong kỳ (đồng bộ Date filter)
+    expect(r.summary.totalNewByStatus).toEqual(r.summary.totalByStatus); // mock trả cùng số cho cả 2 pivot
+    // Có đúng 1 query pivot status bị ràng buộc theo ngày tạo (cohort), 1 query còn lại không lọc ngày.
+    const pivots = states.filter((st) => st.aliases.includes('status') && st.aliases.includes('cnt'));
+    expect(pivots).toHaveLength(2);
+    expect(pivots.filter((st) => st.wheres.includes('customer.createdAt BETWEEN :cFrom AND :cTo'))).toHaveLength(1);
     expect(r.utms[3]).toMatchObject({ customers: 0, avgDaysToFirstDeposit: null, byStatus: { pending: 0, closed: 0 } });
     expect(r.summary.utmCount).toBe(4);
     expect(r.summary.emptyUtms).toBe(1);

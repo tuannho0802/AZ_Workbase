@@ -486,6 +486,8 @@ export interface GroupQualityRow extends GroupQualityMetrics {
     primaryManager: GroupUserBrief | null;
     /** Thành viên theo status hiện tại - đủ mặt mọi `statuses[].code` (kể cả 0). */
     byStatus: Record<string, number>;
+    /** Cohort (đồng bộ Date filter): khách JOIN trong kỳ theo status hiện tại. */
+    newJoinsByStatus: Record<string, number>;
 }
 
 export interface GroupSourceRow {
@@ -494,6 +496,10 @@ export interface GroupSourceRow {
     depositedMembers: number;
     closedMembers: number;
     lifetimeRevenue: number;
+    /** Cohort (đồng bộ Date filter): khách join trong kỳ / đã nạp / đã chốt. */
+    newJoins: number;
+    newJoinsDeposited: number;
+    newJoinsClosed: number;
 }
 
 export interface GroupSalesRow {
@@ -585,6 +591,8 @@ export interface UtmQualityMetrics {
     newDeposited: number;
     /** Cohort: khách mới trong kỳ đã chốt. Luôn <= newCustomers. */
     newClosed: number;
+    /** Cohort: khách mới trong kỳ nạp từ 2 lần trở lên. Luôn <= newDeposited. */
+    newRedepositors: number;
     /** Khách có nạp trong kỳ (theo ngày nạp). */
     periodDepositors: number;
     /** Tiền nạp trong kỳ (USD). */
@@ -641,6 +649,8 @@ export interface UtmQualityRow extends UtmQualityMetrics {
     secondaryManagers: UtmUserBrief[];
     /** Khách theo status hiện tại - đủ mặt mọi `statuses[].code` (kể cả 0). */
     byStatus: Record<string, number>;
+    /** Cohort (đồng bộ Date filter): khách MỚI trong kỳ theo status hiện tại. */
+    newByStatus: Record<string, number>;
     sales: UtmParticipants;
     marketing: UtmParticipants;
 }
@@ -651,6 +661,10 @@ export interface UtmSourceRow {
     depositedCustomers: number;
     closedCustomers: number;
     lifetimeRevenue: number;
+    /** Cohort (đồng bộ Date filter): khách mới trong kỳ / đã nạp / đã chốt. */
+    newCustomers: number;
+    newDeposited: number;
+    newClosed: number;
 }
 
 export interface UtmPersonRow {
@@ -710,6 +724,8 @@ export interface UtmQualityReport {
         newCustomers: number;
         newCustomersNoUtm: number;
         totalByStatus: Record<string, number>;
+        /** Cohort (đồng bộ Date filter): khách MỚI trong kỳ theo status hiện tại. */
+        totalNewByStatus: Record<string, number>;
     };
     utms: UtmQualityRow[];
     bySource: UtmSourceRow[];

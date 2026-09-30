@@ -31,6 +31,7 @@ const mk = (o: Partial<GroupQualityRow>): GroupQualityRow => ({
   newJoinsLifetimeRevenue: 0,
   avgDaysToFirstDeposit: null,
   byStatus: {},
+  newJoinsByStatus: {},
   ...o,
 });
 

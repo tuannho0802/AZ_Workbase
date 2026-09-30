@@ -99,6 +99,8 @@ describe('ReportsGroupQualityService', () => {
   const defaultResolver = (s: QbState): any[] => {
     const a = s.aliases;
     const g = s.groupBys[0] ?? '';
+    // Query theo nguồn cũng có alias newJoins/members (cohort) -> phải xét TRƯỚC nhánh metrics.
+    if (g === 'customer.source') return [{ k: 'Facebook', members: '12', depositedMembers: '6', closedMembers: '3', lifetimeRevenue: '3000' }, { k: null, members: '9', depositedMembers: '4', closedMembers: '2', lifetimeRevenue: '2000' }];
     if (a.includes('newJoins') && a.includes('members')) {
       const isPrev = s.params.joinFrom === prevRange.fromUtc;
       if (g.includes('membership.group_id')) {
@@ -112,7 +114,6 @@ describe('ReportsGroupQualityService', () => {
         : [metricRow({ members: '21', newJoins: '8', depositedMembers: '10', closedMembers: '5', periodDepositors: '4', periodRevenue: '1200.5', lifetimeRevenue: '5000' })];
     }
     if (a.includes('status') && a.includes('cnt')) return [{ k: '1', status: 'pending', cnt: '15' }, { k: '1', status: 'closed', cnt: '5' }];
-    if (g === 'customer.source') return [{ k: 'Facebook', members: '12', depositedMembers: '6', closedMembers: '3', lifetimeRevenue: '3000' }, { k: null, members: '9', depositedMembers: '4', closedMembers: '2', lifetimeRevenue: '2000' }];
     if (g.includes('salesUserId')) return [{ k: '9', members: '15', depositedMembers: '8', closedMembers: '4', lifetimeRevenue: '4000' }, { k: '0', members: '6', depositedMembers: '2', closedMembers: '1', lifetimeRevenue: '1000' }];
     if (a.includes('b') && (s.exprByAlias.b ?? '').includes('joined_at')) return [{ b: '2026-09-03', n: '3' }];
     if (a.includes('b')) return [{ b: '2026-09-04', revenue: '700', depositors: '2' }];
@@ -136,6 +137,7 @@ describe('ReportsGroupQualityService', () => {
     expect(g1).toMatchObject({ members: 20, newJoins: 8, depositedMembers: 10, closedMembers: 5, periodRevenue: 1200.5, lifetimeRevenue: 5000 });
     expect(g1.avgDaysToFirstDeposit).toBe(3.5); // làm tròn 1 chữ số
     expect(g1.byStatus).toEqual({ pending: 15, closed: 5 });
+    expect(g1.newJoinsByStatus).toEqual({ pending: 15, closed: 5 }); // cohort join trong kỳ (đồng bộ Date filter)
     // nhóm 2 không có dòng nào -> toàn 0, byStatus điền 0
     expect(r.groups[1]).toMatchObject({ members: 0, newJoins: 0, avgDaysToFirstDeposit: null, byStatus: { pending: 0, closed: 0 } });
     expect(r.summary.groupCount).toBe(3);

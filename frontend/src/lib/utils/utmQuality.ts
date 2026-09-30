@@ -130,15 +130,16 @@ export function buildUtmInsights(rows: UtmQualityRow[], limit = 3): UtmInsights 
   };
 }
 
-/** Lọc bảng UTM theo tên UTM / Quản lý chính-phụ (không phân biệt hoa thường, bỏ dấu) và ẩn UTM trống. */
+/** Lọc bảng UTM theo tên UTM / Quản lý chính-phụ (không phân biệt hoa thường, bỏ dấu), ẩn UTM trống và ẩn UTM đã khoá. */
 export function filterUtmRows(
   rows: UtmQualityRow[],
-  opts: { search?: string; hideEmpty?: boolean },
+  opts: { search?: string; hideEmpty?: boolean; hideLocked?: boolean },
   normalize: (s: string) => string,
 ): UtmQualityRow[] {
   const q = normalize((opts.search ?? '').trim());
   return rows.filter((r) => {
     if (opts.hideEmpty && r.customers === 0) return false;
+    if (opts.hideLocked && !r.isActive) return false;
     if (!q) return true;
     return [r.utmName, r.primaryManager?.name ?? '', ...r.secondaryManagers.map((m) => m.name)].some((t) => normalize(t).includes(q));
   });
