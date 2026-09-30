@@ -254,7 +254,8 @@ export default function QuanLyUtmPage() {
           role={u.primaryManager.role}
           getRoleColor={getRoleColor}
           getRoleName={getRoleName}
-          nameFontSize={12}
+          hideRoleTag
+          size="small"
         />
       ) : (
         <Text type="secondary">Chưa gán</Text>
@@ -275,7 +276,7 @@ export default function QuanLyUtmPage() {
               getRoleColor={getRoleColor}
               getRoleName={getRoleName}
               hideRoleTag
-              nameFontSize={12}
+              size="small"
             />
           ))}
         </Space>
@@ -448,7 +449,8 @@ export default function QuanLyUtmPage() {
                 role={mgr?.role}
                 getRoleColor={getRoleColor}
                 getRoleName={getRoleName}
-                nameFontSize={12}
+                hideRoleTag
+                size="small"
                 borderRadius={6}
                 avatarShape="square"
               />

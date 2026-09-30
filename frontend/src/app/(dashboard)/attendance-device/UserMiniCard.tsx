@@ -25,6 +25,11 @@ export interface UserMiniCardProps {
     borderRadius?: number;
     /** Hình Avatar, mặc định `circle` - `square` cho đồng bộ với card vuông. */
     avatarShape?: 'circle' | 'square';
+    /**
+     * `small`: Avatar 16px, đệm/khoảng cách hẹp hơn, cỡ chữ tên mặc định 12 - cho bảng dày dòng (vd cột Quản lý
+     * ở /quan-ly-utm). Mặc định `default` = giữ nguyên giao diện cũ ở MỌI nơi khác.
+     */
+    size?: 'default' | 'small';
 }
 
 /**
@@ -48,10 +53,13 @@ export function UserMiniCard({
     getRoleName,
     subtitle,
     hideRoleTag = false,
-    nameFontSize = 13,
+    nameFontSize,
     borderRadius = 20,
     avatarShape = 'circle',
+    size = 'default',
 }: UserMiniCardProps) {
+    const small = size === 'small';
+    const fontSize = nameFontSize ?? (small ? 12 : 13);
     const tagStyle: React.CSSProperties = { fontSize: 10, lineHeight: '16px', padding: '0 4px', margin: 0 };
     // ⚠️ FIX BUG UI THẬT (tên dài làm card cao lên/xấu, thấy rõ ở cột Sales/
     // Marketing/Người tạo của /customers/reports/invalid-data): trước đây cả
@@ -70,12 +78,12 @@ export function UserMiniCard({
                 display: 'inline-flex',
                 alignItems: 'center',
                 flexWrap: 'wrap',
-                gap: 6,
+                gap: small ? 4 : 6,
                 maxWidth: '100%',
                 minWidth: 0,
                 boxSizing: 'border-box',
                 verticalAlign: 'middle',
-                padding: '3px 10px 3px 3px',
+                padding: small ? '1px 8px 1px 2px' : '3px 10px 3px 3px',
                 borderRadius,
                 background: '#fafafa',
                 border: '1px solid #f0f0f0',
@@ -85,19 +93,19 @@ export function UserMiniCard({
                 style={{
                     display: 'inline-flex',
                     alignItems: 'center',
-                    gap: 6,
+                    gap: small ? 4 : 6,
                     minWidth: 0,
                     maxWidth: '100%',
                 }}
             >
-                <Avatar size={20} shape={avatarShape} style={{ backgroundColor: getRoleColor(role), fontSize: 11, flexShrink: 0 }}>
+                <Avatar size={small ? 16 : 20} shape={avatarShape} style={{ backgroundColor: getRoleColor(role), fontSize: small ? 9 : 11, flexShrink: 0 }}>
                     {name?.[0]?.toUpperCase()}
                 </Avatar>
                 <Text
                     strong
                     title={name}
                     style={{
-                        fontSize: nameFontSize,
+                        fontSize,
                         minWidth: 0,
                         whiteSpace: 'nowrap',
                         overflow: 'hidden',

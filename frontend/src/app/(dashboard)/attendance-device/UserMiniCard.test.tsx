@@ -40,3 +40,14 @@ describe('UserMiniCard - tên dài không được làm card cao lên', () => {
     expect(screen.getByText('Trưởng nhóm')).toBeTruthy();
   });
 });
+
+describe('UserMiniCard - size small', () => {
+  it('Avatar 16px + chữ tên 12 khi size="small"; mặc định vẫn 20px + 13 (không đổi chỗ khác)', () => {
+    const { container, rerender } = render(<UserMiniCard name="An" size="small" hideRoleTag {...base} />);
+    expect((container.querySelector('.ant-avatar') as HTMLElement).style.width).toBe('16px');
+    expect((screen.getByText('An').closest('.ant-typography') as HTMLElement).style.fontSize).toBe('12px');
+    rerender(<UserMiniCard name="An" hideRoleTag {...base} />);
+    expect((container.querySelector('.ant-avatar') as HTMLElement).style.width).toBe('20px');
+    expect((screen.getByText('An').closest('.ant-typography') as HTMLElement).style.fontSize).toBe('13px');
+  });
+});
