@@ -190,13 +190,14 @@ export function TaskChecklistModal({ open, onClose, task }: Props) {
         );
     };
 
-    const { guardTick, guardAdd } = useChecklistTickGuard();
+    const { guardTick, guardAdd, markTaskStatusAfterTick } = useChecklistTickGuard();
     const handleToggleDone = (item: PeriodicTaskChecklistItem) => {
         if (!task) return;
         const doTick = (nextStatusCode?: 'in_progress' | 'in_review') =>
             updateMutation.mutate(
                 { taskId: task.id, itemId: item.id, data: { isDone: !item.isDone, ...(nextStatusCode ? { nextStatusCode } : {}) } },
                 {
+                    onSuccess: () => markTaskStatusAfterTick(task, nextStatusCode),
                     onError: (err) => message.error(getApiErrorMessage(err, 'Cập nhật trạng thái thất bại')),
                 },
             );

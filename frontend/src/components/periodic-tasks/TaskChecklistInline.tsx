@@ -72,7 +72,7 @@ export function TaskChecklistInline({ taskId, task, canEdit, onOpenFull, default
     // Task con liên kết cũng tính vào "mục cuối" (mirror `TaskChecklistModal`) - chỉ tải khi đang mở checklist.
     const { data: childrenData } = useLinkedChildrenChecklistPage(taskId, 1, !collapsed);
     const remainingUndone = total - done + ((childrenData?.total ?? 0) - (childrenData?.done ?? 0));
-    const { guardTick, guardAdd } = useChecklistTickGuard();
+    const { guardTick, guardAdd, markTaskStatusAfterTick } = useChecklistTickGuard();
     const percent = total > 0 ? Math.round((done / total) * 100) : 0;
     const hasMore = total > CHECKLIST_PAGE_SIZE;
 
@@ -126,7 +126,10 @@ export function TaskChecklistInline({ taskId, task, canEdit, onOpenFull, default
             updateMutation.mutate(
                 { taskId, itemId: item.id, data: { isDone: !item.isDone, ...(nextStatusCode ? { nextStatusCode } : {}) } },
                 {
-                    onSuccess: () => invalidatePerformance(),
+                    onSuccess: () => {
+                        if (task) markTaskStatusAfterTick(task, nextStatusCode);
+                        invalidatePerformance();
+                    },
                     onError: (err) => message.error(getApiErrorMessage(err, 'Cập nhật trạng thái thất bại')),
                 },
             );

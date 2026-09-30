@@ -8,6 +8,39 @@ export interface TickGuardTask {
 }
 
 /**
+ * ⚠️ FIX BUG UI (modal "Bạn đang làm Task này?" hiện lại sau khi đã Xác nhận): `task` mà nơi gọi truyền vào thường là
+ * BẢN CHỤP (state `checklistTask`/`checklistingTask` giữ nguyên object lúc bấm mở Modal, hoặc row list chưa refetch xong)
+ * nên `task.status.code` vẫn là `not_started` dù BE đã ép `in_progress` -> tick mục tiếp theo lại hỏi, phải F5.
+ * Ghi nhớ CẤP MODULE (dùng chung Drawer hiệu suất, Modal checklist, trang Công việc): sau khi tick THÀNH CÔNG kèm
+ * `nextStatusCode`, coi Task đã sang status mới cho tới khi props phản ánh status khác `from` (server đã bắt kịp)
+ * hoặc quá TTL - lúc đó dùng lại status từ props.
+ */
+const STATUS_OVERRIDE_TTL_MS = 10 * 60 * 1000;
+const statusOverrides = new Map<number, { from: string | null; to: string; at: number }>();
+
+export function markTaskStatusAfterTick(task: TickGuardTask, nextStatusCode: NextStatusCode | undefined) {
+    if (!nextStatusCode) return;
+    statusOverrides.set(task.id, { from: task.status?.code ?? null, to: nextStatusCode, at: Date.now() });
+}
+
+/** Status hiệu lực của Task (ưu tiên kết quả tick đã xác nhận nếu props còn cũ). */
+export function getEffectiveStatusCode(task: TickGuardTask): string | undefined {
+    const o = statusOverrides.get(task.id);
+    const code = task.status?.code;
+    if (!o) return code;
+    if (Date.now() - o.at > STATUS_OVERRIDE_TTL_MS || (code ?? null) !== o.from) {
+        statusOverrides.delete(task.id); // props đã mới (hoặc hết hạn) -> tin props
+        return code;
+    }
+    return o.to;
+}
+
+/** Test-only: dọn map giữa các test. */
+export function __resetStatusOverrides() {
+    statusOverrides.clear();
+}
+
+/**
  * useChecklistTickGuard - hỏi xác nhận khi tick/thêm checklist để User không quên đổi trạng thái Task.
  * BE là nơi ÉP đổi status (trong CHÍNH request tick/thêm) - FE chỉ hỏi và truyền ý định, KHÔNG gọi PATCH thứ 2:
  *  - Tick trên Task To-do: "Bạn đang làm Task này?" Có => tick (BE ép in_progress); Không => KHÔNG tick.
@@ -24,7 +57,7 @@ export function useChecklistTickGuard() {
         params: { isTicking: boolean; remainingUndone: number },
         doTick: (nextStatusCode?: NextStatusCode) => void,
     ) => {
-        const prompt = getTickPrompt({ statusCode: task.status?.code, ...params });
+        const prompt = getTickPrompt({ statusCode: getEffectiveStatusCode(task), ...params });
         if (!prompt) {
             doTick();
             return;
@@ -43,7 +76,8 @@ export function useChecklistTickGuard() {
 
     /** Thêm checklist mới: Task đã hoàn thành thì hỏi lại; Task khác -> thêm luôn. `doAdd(reopen)` do nơi gọi cung cấp. */
     const guardAdd = (task: TickGuardTask, doAdd: (reopen?: boolean) => void) => {
-        if (!isCompletedStatus(task.status)) {
+        const effective = getEffectiveStatusCode(task);
+        if (!isCompletedStatus(effective === task.status?.code ? task.status : { code: effective })) {
             doAdd();
             return;
         }
@@ -58,5 +92,5 @@ export function useChecklistTickGuard() {
         return ref;
     };
 
-    return { guardTick, guardAdd };
+    return { guardTick, guardAdd, markTaskStatusAfterTick };
 }
