@@ -5148,3 +5148,16 @@ khi bị xoá tay. Đây là 1 anti-pattern thật (dù đo thử với payload 
 > Khoá hay không CHỈ xét `is_active`; `lockedAt` chỉ để hiển thị/sắp xếp (BE trả `null` nếu đang active). Cần chạy `npm run migration:run` trước khi deploy BE.
 
 ---
+
+## [2026-09-30 14:00] | UTM: dùng UserMiniCard (màu theo Vai trò) cho Quản lý chính/phụ ở bảng và dropdown lọc | [Status: Success — BE tsc + jest utms 106 test; FE vitest 36 file / 250 test, tsc chỉ còn lỗi cũ logo.png/CountBadge; CHƯA xem trình duyệt thật]
+
+**Actor:** Agent (trên `origin/main` HEAD `144ce25`)
+
+**Files Changed:**
+- BE: `utms.service.ts` — `UtmView.primaryManager/secondaryManagers` trả thêm `role` (mã role, đã có sẵn trên entity User đã load).
+- FE: `utms.api.ts` (+`role?`); `quan-ly-utm/page.tsx` (cột QL chính = UserMiniCard có Tag Vai trò, QL phụ = UserMiniCard ẩn Tag; dropdown lọc QL chính dùng UserMiniCard, gõ tìm được); `common/ListFilterBar.tsx` (+`searchable`, `searchText` cho option có label ReactNode).
+
+**Notes:**
+> Màu/tên Vai trò lấy từ `useRoleColorMap` + `useRoleColors` (GET /roles/colors, không cần `roles.view`). Chưa đổi UtmManagersModal.
+
+---

@@ -20,8 +20,8 @@ export interface UtmView {
   /** Thời điểm khoá gần nhất - chỉ có khi isActive = false. */
   lockedAt: string | null;
   sortOrder: number;
-  primaryManager: { id: number; name: string } | null;
-  secondaryManagers: Array<{ id: number; name: string }>;
+  primaryManager: { id: number; name: string; role?: string } | null;
+  secondaryManagers: Array<{ id: number; name: string; role?: string }>;
   myRole: 'primary' | 'secondary' | null;
   capabilities: UtmCapabilities;
   createdAt: string;

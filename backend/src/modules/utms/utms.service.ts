@@ -56,8 +56,9 @@ export interface UtmView {
   /** Chỉ có giá trị khi isActive = false. */
   lockedAt: Date | null;
   sortOrder: number;
-  primaryManager: { id: number; name: string } | null;
-  secondaryManagers: Array<{ id: number; name: string }>;
+  /** `role` = mã role (roles.code) để FE tô màu UserMiniCard. */
+  primaryManager: { id: number; name: string; role: string } | null;
+  secondaryManagers: Array<{ id: number; name: string; role: string }>;
   myRole: 'primary' | 'secondary' | null;
   capabilities: UtmCapabilities;
   createdAt: Date;
@@ -170,10 +171,12 @@ export class UtmsService {
       isActive: !!utm.isActive,
       lockedAt: utm.isActive ? null : (utm.lockedAt ?? null),
       sortOrder: utm.sortOrder,
-      primaryManager: utm.primaryManager ? { id: utm.primaryManager.id, name: utm.primaryManager.name } : null,
+      primaryManager: utm.primaryManager
+        ? { id: utm.primaryManager.id, name: utm.primaryManager.name, role: utm.primaryManager.role }
+        : null,
       secondaryManagers: (utm.secondaryManagers ?? [])
         .filter((m) => m.user)
-        .map((m) => ({ id: m.user.id, name: m.user.name })),
+        .map((m) => ({ id: m.user.id, name: m.user.name, role: m.user.role })),
       myRole: isPrimary ? 'primary' : isSecondary ? 'secondary' : null,
       capabilities: this.capabilities(utm, userId, scopes, managedIds),
       createdAt: utm.createdAt,

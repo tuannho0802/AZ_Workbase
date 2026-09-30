@@ -28,6 +28,8 @@ import {
 } from '@/lib/hooks/useUtms';
 import type { UtmView } from '@/lib/api/utms.api';
 import { ListFilterBar } from '@/components/common/ListFilterBar';
+import { UserMiniCard } from '@/app/(dashboard)/attendance-device/UserMiniCard';
+import { useRoleColorMap, useRoleColors } from '@/lib/hooks/useRoleColorMap';
 import { UtmTag } from '@/components/utms/UtmTag';
 import { UtmFormModal } from '@/components/utms/UtmFormModal';
 import { UtmManagersModal } from '@/components/utms/UtmManagersModal';
@@ -93,6 +95,11 @@ export default function QuanLyUtmPage() {
   const { utms: allScoped, isLoading: loadingAll } = useScopedUtms(canView);
   const { counts } = useUtmCustomerCounts(canViewCustomers);
   const { groups: dupGroups, isLoading: loadingDup } = useUtmDuplicates(canMerge);
+
+  // Màu Avatar/Tag Vai trò theo cấu hình /phan-quyen (GET /roles/colors - không cần roles.view).
+  const { getRoleColor } = useRoleColorMap();
+  const { roleColors } = useRoleColors();
+  const getRoleName = (code?: string) => (code ? roleColors.find((r) => r.code === code)?.name || code : '');
 
   const setActive = useSetUtmActive();
   const deleteMutation = useDeleteUtm();
@@ -170,17 +177,37 @@ export default function QuanLyUtmPage() {
   const colPrimary: Col = {
     title: 'Quản lý chính',
     key: 'primary',
-    width: 160,
-    render: (_, u) => (u.primaryManager ? <Text>{u.primaryManager.name}</Text> : <Text type="secondary">Chưa gán</Text>),
+    width: 220,
+    render: (_, u) =>
+      u.primaryManager ? (
+        <UserMiniCard
+          name={u.primaryManager.name}
+          role={u.primaryManager.role}
+          getRoleColor={getRoleColor}
+          getRoleName={getRoleName}
+          nameFontSize={12}
+        />
+      ) : (
+        <Text type="secondary">Chưa gán</Text>
+      ),
   };
   const colSecondary: Col = {
     title: 'Quản lý phụ',
     key: 'secondary',
+    width: 240,
     render: (_, u) =>
       u.secondaryManagers.length > 0 ? (
         <Space size={4} wrap>
           {u.secondaryManagers.map((m) => (
-            <Tag key={m.id}>{m.name}</Tag>
+            <UserMiniCard
+              key={m.id}
+              name={m.name}
+              role={m.role}
+              getRoleColor={getRoleColor}
+              getRoleName={getRoleName}
+              hideRoleTag
+              nameFontSize={12}
+            />
           ))}
         </Space>
       ) : (
@@ -332,11 +359,28 @@ export default function QuanLyUtmPage() {
       createdRange?.[0] ||
       createdRange?.[1]
     );
-    const primaryOptions: { value: UtmPrimaryFilter; label: string }[] = [
-      { value: 'none', label: 'Chưa gán' },
+    const primaryOptions: { value: UtmPrimaryFilter; label: React.ReactNode; searchText: string }[] = [
+      { value: 'none', label: 'Chưa gán', searchText: 'Chưa gán' },
       ...Array.from(new Map(rows.filter((r) => r.primaryManager).map((r) => [r.primaryManager!.id, r.primaryManager!.name])).entries())
         .sort((a, b) => a[1].localeCompare(b[1], 'vi'))
-        .map(([id, name]) => ({ value: id as UtmPrimaryFilter, label: name })),
+        .map(([id, name]) => {
+          const mgr = rows.find((r) => r.primaryManager?.id === id)?.primaryManager;
+          return {
+            value: id as UtmPrimaryFilter,
+            searchText: name,
+            label: (
+              <UserMiniCard
+                name={name}
+                role={mgr?.role}
+                getRoleColor={getRoleColor}
+                getRoleName={getRoleName}
+                nameFontSize={12}
+                borderRadius={6}
+                avatarShape="square"
+              />
+            ),
+          };
+        }),
     ];
     const roleDropdown = {
       key: 'role',
@@ -354,6 +398,7 @@ export default function QuanLyUtmPage() {
       placeholder: 'Quản lý chính',
       value: primaryFilter,
       onChange: setPrimaryFilter,
+      searchable: true,
       mdSpan: 4,
       options: primaryOptions,
     };

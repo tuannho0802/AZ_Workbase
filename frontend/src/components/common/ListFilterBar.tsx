@@ -27,7 +27,10 @@ export interface ListFilterDropdown<T = string> {
   placeholder: string;
   value: T | undefined;
   onChange: (value: T | undefined) => void;
-  options: { value: T; label: ReactNode }[];
+  /** `searchText` = chuỗi để tìm khi `label` là ReactNode (vd UserMiniCard). */
+  options: { value: T; label: ReactNode; searchText?: string }[];
+  /** Bật ô gõ tìm trong dropdown (lọc theo `searchText`, không có thì theo `label` dạng chuỗi). */
+  searchable?: boolean;
   /** Độ rộng cột ở breakpoint md (thang 24) - mặc định 5 */
   mdSpan?: number;
   /** Độ rộng cột ở breakpoint sm (thang 24) - mặc định 8 */
@@ -83,6 +86,8 @@ export function ListFilterBar({
             value={d.value}
             onChange={(v) => d.onChange(v ?? undefined)}
             options={d.options}
+            showSearch={d.searchable}
+            optionFilterProp={d.searchable ? 'searchText' : undefined}
           />
         </Col>
       ))}
