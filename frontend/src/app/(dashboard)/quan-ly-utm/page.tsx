@@ -113,6 +113,7 @@ export default function QuanLyUtmPage() {
   const bulkBusy = bulkActive.isPending || bulkDelete.isPending;
   // Chỉ chọn trong 1 tab tại 1 thời điểm (đổi tab -> xoá chọn) để không thao tác nhầm dòng đang ẩn.
   const [selected, setSelected] = useState<number[]>([]);
+  const [pageSize, setPageSize] = useState(20);
 
   const [searchText, setSearchText] = useState('');
   const [roleFilter, setRoleFilter] = useState<UtmRoleFilter | undefined>();
@@ -567,7 +568,15 @@ export default function QuanLyUtmPage() {
           // scroll.x = TỔNG width các cột (không gõ tay) để không bao giờ nhỏ hơn tổng cột -> không đè cột.
           // +48 cho cột checkbox của rowSelection (không nằm trong `columns`).
           scroll={{ x: sumColumnWidths(columns) + 48 }}
-          pagination={{ pageSize: 20, hideOnSinglePage: true }}
+          // pageSize PHẢI là state + cập nhật trong onChange: antd coi `pageSize` truyền vào là controlled, nếu để
+          // hằng số 20 thì dropdown "/ trang" hiện ra nhưng chọn gì cũng bị bật về 20.
+          pagination={{
+            pageSize,
+            showSizeChanger: true,
+            pageSizeOptions: [10, 20, 50, 100],
+            showTotal: (t) => `${t} UTM`,
+            onChange: (_page, size) => setPageSize(size),
+          }}
           locale={{ emptyText: <Empty description={filtering ? 'Không có UTM nào khớp bộ lọc' : emptyText} /> }}
         />
       </>
