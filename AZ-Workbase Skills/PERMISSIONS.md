@@ -495,6 +495,11 @@ khác phòng ban bị chặn dù đúng role).
 - Bulk (`POST bulk-trash`, `POST trash/bulk-delete`, tối đa 100 id/lần): từng đơn độc lập, trả `{succeeded, failed[{id,reason}]}`.
 - Migration `1784700000000-MakeLeaveRequestsDeleteScoped`: `supports_scope=TRUE`, dòng `role_permissions` cũ scope NULL → `all`.
 
+**[2026-09-30] Tab "Thống kê" trang Duyệt phép (`GET /leave-requests/stats`):** gate `leave_requests.view`, cùng phạm vi với Lịch sử/Thùng rác.
+Scope dùng ĐÚNG `LeaveRequestsService.applyApproverScope()` cho đơn và bản đối xứng `applyApproverScopeToUsers()` cho QUÂN SỐ
+(mẫu số tỷ lệ xin nghỉ) — 2 hàm này PHẢI giữ cùng rule (phòng ban đang quản lý HOẶC `leaveApproverId = viewer`; admin/`all` không lọc).
+Không có permission key mới, không migration. Không có scope hợp lệ → trả bộ số 0, không query DB.
+
 ### 2.7. Audit Logs (`modules/audit`) — ✅ ĐÃ KHỚP
 
 

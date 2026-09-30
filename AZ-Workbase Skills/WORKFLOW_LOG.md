@@ -5276,3 +5276,21 @@ khi bị xoá tay. Đây là 1 anti-pattern thật (dù đo thử với payload 
 > Không đổi BE, không migration, không permission key mới (dùng `reports.view`). Dropdown Sales/Marketing gom người từng xuất hiện trong báo cáo để không "co lại" khi đang lọc 1 người. Đổi góc nhìn sẽ bỏ UTM đang chọn.
 
 ---
+
+---
+
+## [2026-09-30 21:00] | Tab "Thống kê" (chart + tỷ lệ xin nghỉ của nhân viên) ở trang Duyệt phép | [Status: Success — BE tsc + nest build + full jest 73 suite / 1311 test; FE tsc (chỉ còn lỗi cũ logo.png/CountBadge) + eslint file mới sạch + next build + full vitest 43 file / 296 test; CHƯA xem trình duyệt thật]
+
+**Actor:** Agent (trên `origin/main` HEAD `a02721a`)
+
+**Files Changed:**
+- BE: `leave-requests/leave-stats.util.ts` (MỚI, tổng hợp THUẦN: summary/loại phép/phòng ban/nhân viên/xu hướng/thứ trong tuần/tần suất) + spec; `leave-requests/leave-requests-stats.service.ts` (MỚI) + spec; `leave-requests/dto/query-leave-stats.dto.ts` (MỚI, kế thừa `QueryReportDto` + `departmentId`/`leaveType`/`requesterId`); `leave-requests.service.ts` (`hasApproverScope`/`applyApproverScope` chuyển từ private → public, thêm `applyApproverScopeToUsers` cho quân số); `leave-requests.controller.ts` (`GET /leave-requests/stats`, `@RequirePermission('leave_requests.view')`); `leave-requests.module.ts` (provider mới).
+- FE: `duyet-phep/LeaveStatsTab.tsx` (MỚI) + `duyet-phep/page.tsx` (tab "Thống kê", gate `can('leave_requests.view')`); `lib/types/leave-stats.types.ts`, `lib/hooks/useLeaveStats.ts`, `lib/utils/leaveStats.ts` + test (MỚI); `lib/api/leave-requests.api.ts` (`getStats`).
+
+**Thiết kế:**
+> Kỳ tuần/tháng/quý/năm/tuỳ chọn TRỌN VẸN dùng lại `resolveReportRange` + so sánh kỳ trước như trang Báo cáo. Tỷ lệ xin nghỉ = nhân sự có xin nghỉ / nhân sự đang hoạt động (đã duyệt tài khoản) trong phạm vi; tử số chỉ đếm người còn trong quân số để không vượt 100%. Tỷ lệ duyệt = approved/(approved+rejected), đơn chờ không vào mẫu số. Loại đơn Thùng rác (`cancelled`). Đơn thuộc kỳ khi khoảng nghỉ GIAO kỳ, `totalDays` tính trọn (đơn vắt 2 kỳ nằm ở cả 2). Xu hướng/thứ trong tuần gom theo `startDate`.
+
+**Notes:**
+> Không migration, không permission key mới. Quân số là số HIỆN TẠI (không có lịch sử) nên kỳ trước dùng cùng mẫu số. CỐ Ý không làm "thời gian duyệt trung bình": `created_at` (DB, UTC) và `approved_at` (app) lệch múi giờ, sẽ ra số sai. Lần chạy vitest đầu có 1 test timeout do máy chậm, chạy lại 296/296 pass.
+
+---

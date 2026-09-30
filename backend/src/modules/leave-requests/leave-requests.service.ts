@@ -647,7 +647,7 @@ export class LeaveRequestsService {
    * Người xem có phạm vi duyệt/xem hợp lệ không (Admin luôn có; còn lại cần
    * scope 'all' hoặc 'department' từ role_permissions). false -> list rỗng.
    */
-  private hasApproverScope(viewerRole: string, scope?: string | null): boolean {
+  hasApproverScope(viewerRole: string, scope?: string | null): boolean {
     return (
       viewerRole === Role.ADMIN ||
       scope === PermissionScope.ALL ||
@@ -663,7 +663,7 @@ export class LeaveRequestsService {
    * isEligibleApprover(): Manager không quản lý phòng ban nào nhưng có ngoại
    * lệ gán riêng vẫn phải thấy). Cần alias `requester` đã join sẵn.
    */
-  private async applyApproverScope(
+  async applyApproverScope(
     query: SelectQueryBuilder<LeaveRequest>,
     viewerId: number,
     viewerRole: string,
@@ -682,6 +682,35 @@ export class LeaveRequestsService {
           qb.where('requester.departmentId IN (:...deptIds)', {
             deptIds: managedIds,
           }).orWhere('requester.leaveApproverId = :viewerId', { viewerId });
+        }),
+      );
+    }
+  }
+
+  /**
+   * BẢN ĐỐI XỨNG của applyApproverScope() cho query trên bảng `users` (alias
+   * `user`) - dùng để đếm QUÂN SỐ trong phạm vi người xem ở tab Thống kê. PHẢI
+   * giữ đúng cùng rule với applyApproverScope(): thay đổi 1 nơi thì sửa cả 2.
+   */
+  async applyApproverScopeToUsers(
+    query: SelectQueryBuilder<User>,
+    viewerId: number,
+    viewerRole: string,
+    scope?: string | null,
+  ): Promise<void> {
+    const isAll = scope === PermissionScope.ALL;
+    const isDept = scope === PermissionScope.DEPARTMENT;
+    if (viewerRole === Role.ADMIN || isAll || !isDept) return;
+
+    const managedIds = await this.getManagedDepartmentIds(viewerId);
+    if (managedIds.length === 0) {
+      query.andWhere('user.leaveApproverId = :scopeViewerId', { scopeViewerId: viewerId });
+    } else {
+      query.andWhere(
+        new Brackets((qb) => {
+          qb.where('user.departmentId IN (:...scopeDeptIds)', {
+            scopeDeptIds: managedIds,
+          }).orWhere('user.leaveApproverId = :scopeViewerId', { scopeViewerId: viewerId });
         }),
       );
     }

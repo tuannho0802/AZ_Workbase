@@ -1,4 +1,6 @@
 import axiosInstance from './axios-instance';
+import type { ReportQuery } from '../types/reports.types';
+import type { LeaveStatsFilters, LeaveStatsResponse } from '../types/leave-stats.types';
 
 export interface LeaveRequest {
   id: number;
@@ -103,6 +105,15 @@ function cleanParams(f: LeaveListFilters): LeaveListFilters {
 }
 
 export const leaveRequestsApi = {
+  // `leave_requests.view` - thống kê nghỉ phép theo kỳ (tab "Thống kê" ở /duyet-phep). Phạm vi xem do BE tự khoanh theo scope.
+  async getStats(query: ReportQuery & LeaveStatsFilters): Promise<LeaveStatsResponse> {
+    const params = Object.fromEntries(
+      Object.entries(query).filter(([, v]) => v !== undefined && v !== null && v !== ''),
+    );
+    const res = await axiosInstance.get<LeaveStatsResponse>('/leave-requests/stats', { params });
+    return res.data;
+  },
+
   async create(data: {
     leaveType: string;
     startDate: string; // YYYY-MM-DD

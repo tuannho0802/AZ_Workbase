@@ -9,6 +9,8 @@ import { PresignAttachmentDto } from '../uploads/dto/presign-attachment.dto';
 import { DiscardAttachmentsDto } from './dto/discard-attachments.dto';
 import { QueryLeaveRequestsDto } from './dto/query-leave-requests.dto';
 import { BulkLeaveIdsDto } from './dto/bulk-leave-ids.dto';
+import { QueryLeaveStatsDto } from './dto/query-leave-stats.dto';
+import { LeaveRequestsStatsService } from './leave-requests-stats.service';
 
 @Controller('leave-requests')
 @UseGuards(JwtAuthGuard, PermissionGuard)
@@ -16,6 +18,7 @@ export class LeaveRequestsController {
   constructor(
     private leaveRequestsService: LeaveRequestsService,
     private uploadsService: UploadsService,
+    private leaveRequestsStatsService: LeaveRequestsStatsService,
   ) { }
 
   // Presign đặt ở đây (không phải UploadsController chung) vì gắn đúng
@@ -111,6 +114,18 @@ export class LeaveRequestsController {
     @GetPermissionScope() scope?: string | null,
   ) {
     return this.leaveRequestsService.findHistoryPaged(req.user.id, req.user.role, scope, query);
+  }
+
+  // Thống kê nghỉ phép (tab "Thống kê" trang Duyệt phép) - cùng quyền + scope với tab
+  // Lịch sử (`leave_requests.view`). Route tĩnh 'stats' không đụng ':id/...' (khác số segment).
+  @Get('stats')
+  @RequirePermission('leave_requests.view')
+  async getStats(
+    @Request() req,
+    @Query() query: QueryLeaveStatsDto,
+    @GetPermissionScope() scope?: string | null,
+  ) {
+    return this.leaveRequestsStatsService.getStats(query, req.user.id, req.user.role, scope);
   }
 
   // ── THÙNG RÁC + XOÁ (xem LeaveRequestsService.trash/hardDelete) ─────────────

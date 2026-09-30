@@ -10,12 +10,13 @@ import {
 import {
   CheckOutlined, CloseOutlined, HistoryOutlined, HourglassOutlined,
   UserOutlined, CalendarOutlined, ClockCircleOutlined, SearchOutlined, EditOutlined,
-  DeleteOutlined, ExclamationCircleOutlined
+  DeleteOutlined, ExclamationCircleOutlined, BarChartOutlined
 } from '@ant-design/icons';
 import { leaveRequestsApi, LeaveRequest, BulkLeaveResult } from '@/lib/api/leave-requests.api';
 import { useIdSelection } from '@/lib/hooks/useIdSelection';
 import { useMyPermissions } from '@/lib/hooks/useMyPermissions';
 import { useLeaveTypes } from '@/lib/hooks/useLeaveTypes';
+import LeaveStatsTab from './LeaveStatsTab';
 import { AttachmentsViewerButton } from '@/components/leave-requests/AttachmentsViewerButton';
 import { WeeklyLazySection } from '@/components/common/WeeklyLazySection';
 import { useLeaveWeekList, useInvalidateLeaveLists } from '@/lib/hooks/useLeaveWeekList';
@@ -1396,6 +1397,16 @@ export default function ApprovalPage() {
           />
         </>
       )
+    } : null,
+    // Thống kê nghỉ phép - cùng quyền `leave_requests.view` với Lịch sử/Thùng rác (BE tự khoanh phạm vi theo scope).
+    canView ? {
+      key: 'stats',
+      label: (
+        <span>
+          <BarChartOutlined /> Thống kê
+        </span>
+      ),
+      children: <LeaveStatsTab allowed={canView} />
     } : null,
   ].filter(Boolean) as any[];
 
