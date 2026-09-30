@@ -46,6 +46,11 @@ vi.mock('@/components/utms/UtmStatsCustomersDrawer', () => ({
   },
 }));
 
+vi.mock('@/lib/hooks/useRoleColorMap', () => ({
+  useRoleColorMap: () => ({ getRoleColor: (c?: string | null) => (c === 'marketing' ? '#eb2f96' : '#1677ff') }),
+  useRoleColors: () => ({ roleColors: [{ code: 'marketing', name: 'Marketing' }, { code: 'employee', name: 'Nhân viên' }] }),
+}));
+
 let stats: UtmStatsResult;
 let lastParams: unknown;
 vi.mock('@/lib/hooks/useUtms', () => ({
@@ -66,7 +71,7 @@ const base = (): UtmStatsResult => ({
     { code: 'lost', name: 'Mất', color: '#f5222d' },
   ],
   utms: [
-    { id: 1, name: 'FB_Q4', color: '#1677ff', isActive: true, primaryManager: { id: 10, name: 'Chính A' }, secondaryManagers: [{ id: 20, name: 'Phụ B' }] },
+    { id: 1, name: 'FB_Q4', color: '#1677ff', isActive: true, primaryManager: { id: 10, name: 'Chính A', role: 'marketing' }, secondaryManagers: [{ id: 20, name: 'Phụ B', role: 'employee' }] },
     { id: 2, name: 'TT_Q4', color: '#722ed1', isActive: false, primaryManager: { id: 11, name: 'Chính C' }, secondaryManagers: [] },
   ],
   totals: { total: 4, byStatus: { pending: 3, closed: 1, lost: 0 } },
@@ -79,8 +84,14 @@ const base = (): UtmStatsResult => ({
 });
 
 const openSelect = (name: string) => fireEvent.mouseDown(screen.getByRole('combobox', { name }));
+// Option quản lý có Avatar (chữ cái đầu) đứng trước tên -> bỏ Avatar khi đọc tên.
+const optionName = (e: Element) => {
+  const c = e.cloneNode(true) as HTMLElement;
+  c.querySelectorAll('.ant-avatar').forEach((a) => a.remove());
+  return c.textContent;
+};
 const clickOption = (text: string) => {
-  const el = Array.from(document.querySelectorAll('.ant-select-item-option-content')).find((e) => e.textContent === text);
+  const el = Array.from(document.querySelectorAll('.ant-select-item-option-content')).find((e) => optionName(e) === text);
   if (!el) throw new Error(`Không thấy option "${text}"`);
   fireEvent.click(el);
 };
@@ -163,7 +174,7 @@ describe('UtmStatsTab', () => {
   });
 
   describe('Quick Filter', () => {
-    const optionTexts = () => Array.from(document.querySelectorAll('.ant-select-item-option-content')).map((e) => e.textContent);
+    const optionTexts = () => Array.from(document.querySelectorAll('.ant-select-item-option-content')).map((e) => optionName(e));
 
     it('hiện đủ 4 dropdown: Quản lý chính, Quản lý phụ, UTM hoạt động, UTM đã khoá', () => {
       renderTab();
@@ -264,6 +275,70 @@ describe('UtmStatsTab', () => {
       clickOption('Chính A');
       fireEvent.click(screen.getByText('Khách trong kỳ'));
       expect(drawerProps?.initialFilters).toMatchObject({ primaryManagerId: 10 });
+    });
+  });
+
+  describe('Màu tỷ lệ % & tag màu trong dropdown', () => {
+    const rgb = (hex: string) => {
+      const n = parseInt(hex.slice(1), 16);
+      return `rgb(${(n >> 16) & 255}, ${(n >> 8) & 255}, ${n & 255})`;
+    };
+    const rateOf = (el: HTMLElement) => el.style.color;
+
+    it('card: 75% xanh, 25% đỏ (ngưỡng <30 đỏ, 30–70 vàng, >70 xanh)', () => {
+      stats.totals = { total: 4, byStatus: { pending: 3, closed: 1, lost: 0 } };
+      renderTab();
+      const rates = screen.getAllByTestId('rate');
+      const by = (t: string) => rates.find((r) => r.textContent === t) as HTMLElement;
+      expect(rateOf(by('75%'))).toBe(rgb('#389e0d'));
+      expect(rateOf(by('25%'))).toBe(rgb('#cf1322'));
+    });
+
+    it('bảng theo ngày: (75%) xanh, (25%) đỏ', () => {
+      renderTab();
+      const dayTable = screen.getAllByRole('table')[0];
+      expect(rateOf(within(dayTable).getAllByText('(75%)')[0])).toBe(rgb('#389e0d'));
+      expect(rateOf(within(dayTable).getAllByText('(25%)')[0])).toBe(rgb('#cf1322'));
+    });
+
+    it('đúng 30% và 70% là vàng', () => {
+      stats.totals = { total: 10, byStatus: { pending: 3, closed: 7, lost: 0 } };
+      renderTab();
+      const rates = screen.getAllByTestId('rate');
+      expect(rateOf(rates.find((r) => r.textContent === '30%') as HTMLElement)).toBe(rgb('#d48806'));
+      expect(rateOf(rates.find((r) => r.textContent === '70%') as HTMLElement)).toBe(rgb('#d48806'));
+    });
+
+    it('dropdown UTM: mỗi option là Tag màu của UTM; UTM khoá gạch ngang', () => {
+      renderTab();
+      openSelect('Lọc theo UTM hoạt động');
+      const tag = document.querySelector('.ant-select-item-option-content .ant-tag') as HTMLElement;
+      expect(tag.textContent).toBe('FB_Q4');
+      openSelect('Lọc theo UTM đã khoá');
+      const locked = Array.from(document.querySelectorAll('.ant-select-item-option-content .ant-tag')).find((e) => e.textContent === 'TT_Q4') as HTMLElement;
+      expect(locked.style.textDecoration).toContain('line-through');
+    });
+
+    it('dropdown UTM: chip "+ N ..." (maxTagCount responsive) giữ nguyên nhãn, không thành "#undefined"', () => {
+      renderTab();
+      openSelect('Lọc theo UTM hoạt động');
+      clickOption('FB_Q4');
+      const sel = screen.getByRole('combobox', { name: 'Lọc theo UTM hoạt động' }).closest('.ant-select') as HTMLElement;
+      const texts = Array.from(sel.querySelectorAll('.ant-tag')).map((t) => t.textContent);
+      expect(texts.length).toBeGreaterThan(0);
+      expect(texts.some((t) => t?.includes('undefined'))).toBe(false);
+      // jsdom không có layout nên toàn bộ chip rơi vào "+ N ..."; ngoài trình duyệt chip hiện đúng Tag UTM.
+      expect(texts.every((t) => t === 'FB_Q4' || /^\+ \d+/.test(t ?? ''))).toBe(true);
+    });
+
+    it('dropdown Quản lý: hiện UserMiniCard (avatar + tên) theo màu role và vẫn tìm được theo tên', () => {
+      renderTab();
+      openSelect('Lọc theo Quản lý chính');
+      const opts = Array.from(document.querySelectorAll('.ant-select-item-option-content'));
+      expect(opts.map((o) => optionName(o))).toEqual(['Chính A', 'Chính C']);
+      expect(opts[0].querySelector('.ant-avatar')).toBeTruthy();
+      fireEvent.change(screen.getByRole('combobox', { name: 'Lọc theo Quản lý chính' }), { target: { value: 'chính c' } });
+      expect(Array.from(document.querySelectorAll('.ant-select-item-option-content')).map((o) => optionName(o))).toEqual(['Chính C']);
     });
   });
 });

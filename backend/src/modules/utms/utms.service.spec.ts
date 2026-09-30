@@ -251,6 +251,19 @@ describe('UtmsService', () => {
       expect(briefs.map((b) => b.id)).toEqual([1]);
       expect(Object.keys(briefs[0]).sort()).toEqual(['color', 'id', 'isActive', 'name', 'primaryManager', 'secondaryManagers']);
     });
+    it('scopedUtmBriefs: kèm role của Quản lý chính/phụ (FE tô màu tag người quản lý)', async () => {
+      scopes['utms.view'] = 'own';
+      utmRepo.find.mockResolvedValue([
+        mk({
+          id: 1,
+          primaryManager: { id: 10, name: 'Chính', departmentId: 5, role: 'marketing' },
+          secondaryManagers: [{ userId: 20, user: { id: 20, name: 'Phụ', role: 'employee' } }],
+        }),
+      ]);
+      const [b] = await svc.scopedUtmBriefs(emp);
+      expect(b.primaryManager).toEqual({ id: 10, name: 'Chính', role: 'marketing' });
+      expect(b.secondaryManagers).toEqual([{ id: 20, name: 'Phụ', role: 'employee' }]);
+    });
     it('scopedUtmBriefs: không có utms.view -> [] và không đọc DB', async () => {
       utmRepo.find.mockClear();
       expect(await svc.scopedUtmBriefs(emp)).toEqual([]);

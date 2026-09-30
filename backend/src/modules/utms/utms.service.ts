@@ -80,8 +80,9 @@ export interface UtmScopedBrief {
   name: string;
   color: string;
   isActive: boolean;
-  primaryManager: { id: number; name: string } | null;
-  secondaryManagers: Array<{ id: number; name: string }>;
+  /** `role` = mã role (roles.code) để FE tô màu tag người quản lý ở dropdown lọc. */
+  primaryManager: { id: number; name: string; role: string | null } | null;
+  secondaryManagers: Array<{ id: number; name: string; role: string | null }>;
 }
 
 @Injectable()
@@ -335,10 +336,10 @@ export class UtmsService {
         color: u.color,
         isActive: !!u.isActive,
         // Tên Quản lý chính/phụ để tab Thống kê dựng dropdown "chỉ user đang quản lý UTM" + lọc theo người.
-        primaryManager: u.primaryManager ? { id: u.primaryManager.id, name: u.primaryManager.name } : null,
+        primaryManager: u.primaryManager ? { id: u.primaryManager.id, name: u.primaryManager.name, role: u.primaryManager.role ?? null } : null,
         secondaryManagers: (u.secondaryManagers ?? [])
           .filter((m) => m.user)
-          .map((m) => ({ id: m.user.id, name: m.user.name })),
+          .map((m) => ({ id: m.user.id, name: m.user.name, role: m.user.role ?? null })),
       }));
   }
 

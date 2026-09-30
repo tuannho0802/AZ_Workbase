@@ -14,6 +14,9 @@ import {
   mergedUtmIds,
   pruneUtmSelection,
   ratePct,
+  rateColor,
+  rateLevel,
+  RATE_COLORS,
   sortUtmStatsRows,
   statusesWithData,
   toChartRows,
@@ -98,6 +101,7 @@ const utms = [
 describe('Quick Filter helpers', () => {
   it('managerOptions: chỉ user ĐANG quản lý UTM, không trùng, sắp theo tên (vi)', () => {
     expect(managerOptions(utms, 'primary')).toEqual([{ value: 11, label: 'An' }, { value: 10, label: 'Bình' }]);
+    expect(managerOptions([{ ...utms[0], primaryManager: { id: 1, name: 'X', role: 'marketing' } }], 'primary')[0].role).toBe('marketing');
     expect(managerOptions(utms, 'secondary')).toEqual([{ value: 21, label: 'An' }, { value: 20, label: 'Cường' }]);
     expect(managerOptions([], 'primary')).toEqual([]);
   });
@@ -105,6 +109,7 @@ describe('Quick Filter helpers', () => {
   it('utmOptionsFor: tách UTM hoạt động / đã khoá, sắp theo tên', () => {
     expect(utmOptionsFor(utms, EMPTY_STATS_FILTERS, true).map((o) => o.label)).toEqual(['Beta', 'NoOwner', 'Zeta']);
     expect(utmOptionsFor(utms, EMPTY_STATS_FILTERS, false).map((o) => o.label)).toEqual(['Alpha']);
+    expect(utmOptionsFor(utms, EMPTY_STATS_FILTERS, false)[0].color).toBe('#222');
   });
 
   it('utmOptionsFor: thu hẹp theo Quản lý chính/phụ đang chọn (giao)', () => {
@@ -183,5 +188,26 @@ describe('Drill (bấm chart/card)', () => {
     ];
     const g = groupCustomerIdsByUtm([1, 2, 3, 4, 5, 99], rows);
     expect([...g]).toEqual([[5, [1, 2]], [6, [3]]]);
+  });
+});
+
+describe('rateLevel / rateColor (< 30 đỏ, 30–70 vàng, > 70 xanh)', () => {
+  it('ranh giới', () => {
+    expect(rateLevel(0)).toBe('low');
+    expect(rateLevel(29.9)).toBe('low');
+    expect(rateLevel(30)).toBe('mid');
+    expect(rateLevel(70)).toBe('mid');
+    expect(rateLevel(70.1)).toBe('high');
+    expect(rateLevel(100)).toBe('high');
+  });
+
+  it('màu tương ứng', () => {
+    expect(rateColor(10)).toBe(RATE_COLORS.low);
+    expect(rateColor(50)).toBe(RATE_COLORS.mid);
+    expect(rateColor(90)).toBe(RATE_COLORS.high);
+  });
+
+  it('dùng số đã làm tròn 1 chữ số như hiển thị (29,96 -> 30% -> vàng)', () => {
+    expect(rateLevel(ratePct(2996, 10000))).toBe('mid');
   });
 });

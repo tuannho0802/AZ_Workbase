@@ -28,6 +28,11 @@ vi.mock('@/components/customers/StatusTag', () => ({ StatusTag: ({ code }: { cod
 vi.mock('@/components/customers/SourceTag', () => ({ SourceTag: ({ source }: { source?: string }) => <span>{source}</span> }));
 vi.mock('@/components/customers/CustomerForm', () => ({ CustomerForm: () => null }));
 
+vi.mock('@/lib/hooks/useRoleColorMap', () => ({
+  useRoleColorMap: () => ({ getRoleColor: (c?: string | null) => (c === 'marketing' ? '#eb2f96' : '#1677ff') }),
+  useRoleColors: () => ({ roleColors: [{ code: 'marketing', name: 'Marketing' }, { code: 'employee', name: 'Nhân viên' }] }),
+}));
+
 const bulkRemoveUtm = vi.fn();
 const updateCustomer = vi.fn();
 vi.mock('@/lib/api/customers.api', () => ({

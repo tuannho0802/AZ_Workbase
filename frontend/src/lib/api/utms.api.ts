@@ -132,8 +132,8 @@ export interface UtmStatsUtmBrief {
   name: string;
   color: string;
   isActive: boolean;
-  primaryManager: { id: number; name: string } | null;
-  secondaryManagers: Array<{ id: number; name: string }>;
+  primaryManager: { id: number; name: string; role?: string | null } | null;
+  secondaryManagers: Array<{ id: number; name: string; role?: string | null }>;
 }
 
 export interface UtmStatsResult {

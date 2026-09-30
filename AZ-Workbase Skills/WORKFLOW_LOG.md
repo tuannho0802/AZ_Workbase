@@ -5345,3 +5345,19 @@ khi bị xoá tay. Đây là 1 anti-pattern thật (dù đo thử với payload 
 
 **Notes:**
 > Không migration, không permission key mới. Bộ lọc trong Drawer chỉ khởi tạo từ tab Thống kê, sửa trong bảng không đổi chart.
+
+---
+
+## [2026-09-30 23:30] | UTM Tab "Thống kê": màu tỷ lệ % theo ngưỡng + Tag màu trong dropdown lọc (UTM & người quản lý) | [Status: Success — BE tsc + nest build + jest utms; FE tsc (chỉ lỗi cũ logo.png/CountBadge) + eslint sạch + vitest src/components/utms + src/lib 33 file / 266 test; CHƯA xem trình duyệt thật]
+
+**Actor:** Agent (trên `origin/main` HEAD `a69e5e6`)
+
+**Files Changed:**
+- BE: `utms/utms.service.ts` (`scopedUtmBriefs` trả thêm `role` của Quản lý chính/phụ) + spec.
+- FE: `lib/utils/utm-stats.util.ts` (`rateLevel`/`rateColor`/`RATE_COLORS`; `SelectOption` thêm `role`/`color`), `components/utms/UtmStatsQuickFilters.tsx` (option = `UtmTag` / `UserMiniCard`, chip UTM = Tag màu, tìm theo `searchText`), `components/utms/UtmStatsTab.tsx` (màu % ở card + 2 bảng + chú thích ngưỡng), `lib/api/utms.api.ts` (type role) + test.
+
+**Thiết kế:**
+> Ngưỡng: < 30% đỏ, 30–70% (gồm cả 30 và 70) vàng, > 70% xanh; dùng số đã làm tròn 1 chữ số đúng như hiển thị. `maxTagCount="responsive"` cũng gọi `tagRender` cho chip "+ N ..." (value undefined) nên `UtmChip` phải fallback về `props.label`.
+
+**Notes:**
+> Không migration, không permission key mới. Màu % là theo độ lớn của tỷ lệ, KHÔNG đảo cho các trạng thái "xấu" (Deadlead/Ngừng chăm sóc): % cao vẫn ra xanh.

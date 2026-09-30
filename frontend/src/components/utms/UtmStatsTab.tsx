@@ -19,6 +19,7 @@ import {
   dropUnknownUtmIds,
   EMPTY_STATS_FILTERS,
   fmtPct,
+  rateColor,
   ratePct,
   sortUtmStatsRows,
   statusesWithData,
@@ -43,7 +44,8 @@ function CountRate({ n, total }: { n: number; total: number }) {
   if (!n) return <span style={{ color: '#bfbfbf' }}>—</span>;
   return (
     <span>
-      <strong>{n}</strong> <Text type="secondary" style={{ fontSize: 12 }}>({fmtPct(ratePct(n, total))})</Text>
+      <strong>{n}</strong>{' '}
+      <span data-testid="rate" style={{ fontSize: 12, fontWeight: 500, color: rateColor(ratePct(n, total)) }}>({fmtPct(ratePct(n, total))})</span>
     </span>
   );
 }
@@ -212,7 +214,10 @@ export function UtmStatsTab() {
       </Space>
 
       <Text type="secondary" style={{ fontSize: 12 }}>
-        Bấm vào cột biểu đồ hoặc thẻ số liệu để xem danh sách khách ngay tại đây.
+        Bấm vào cột biểu đồ hoặc thẻ số liệu để xem danh sách khách ngay tại đây. Màu tỷ lệ %:{' '}
+        <span style={{ color: rateColor(0), fontWeight: 500 }}>dưới 30% đỏ</span>,{' '}
+        <span style={{ color: rateColor(50), fontWeight: 500 }}>30–70% vàng</span>,{' '}
+        <span style={{ color: rateColor(100), fontWeight: 500 }}>trên 70% xanh</span>.
       </Text>
 
       <Row gutter={[12, 12]}>
@@ -231,7 +236,7 @@ export function UtmStatsTab() {
           return (
             <Col xs={12} md={6} xl={4} key={s.code}>
               <Card size="small" loading={isLoading} {...clickableCard(n > 0, () => openDrill({ status: s.code }))}>
-                <Statistic title={<Tag color={resolveEntityColor(s.color)} style={{ marginInlineEnd: 0 }}>{s.name}</Tag>} value={n} suffix={<Text type="secondary" style={{ fontSize: 13 }}>{fmtPct(ratePct(n, total))}</Text>} />
+                <Statistic title={<Tag color={resolveEntityColor(s.color)} style={{ marginInlineEnd: 0 }}>{s.name}</Tag>} value={n} suffix={<span data-testid="rate" style={{ fontSize: 13, fontWeight: 500, color: rateColor(ratePct(n, total)) }}>{fmtPct(ratePct(n, total))}</span>} />
               </Card>
             </Col>
           );

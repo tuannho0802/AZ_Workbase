@@ -98,6 +98,10 @@ export const EMPTY_STATS_FILTERS: UtmStatsFilters = { activeUtmIds: [], lockedUt
 export interface SelectOption {
   value: number;
   label: string;
+  /** Mã role của người quản lý (dropdown Quản lý chính/phụ) - để tô màu tag. */
+  role?: string | null;
+  /** Màu UTM (dropdown UTM hoạt động/đã khoá) - để tô màu tag. */
+  color?: string;
 }
 
 const byName = (a: SelectOption, b: SelectOption) => a.label.localeCompare(b.label, 'vi');
@@ -107,15 +111,15 @@ const byName = (a: SelectOption, b: SelectOption) => a.label.localeCompare(b.lab
  * (kind='secondary') của ít nhất 1 UTM. User không quản lý UTM nào KHÔNG xuất hiện.
  */
 export function managerOptions(utms: UtmStatsUtmBrief[], kind: 'primary' | 'secondary'): SelectOption[] {
-  const seen = new Map<number, string>();
+  const seen = new Map<number, { label: string; role?: string | null }>();
   for (const u of utms) {
     if (kind === 'primary') {
-      if (u.primaryManager) seen.set(u.primaryManager.id, u.primaryManager.name);
+      if (u.primaryManager) seen.set(u.primaryManager.id, { label: u.primaryManager.name, role: u.primaryManager.role });
     } else {
-      for (const m of u.secondaryManagers) seen.set(m.id, m.name);
+      for (const m of u.secondaryManagers) seen.set(m.id, { label: m.name, role: m.role });
     }
   }
-  return [...seen].map(([value, label]) => ({ value, label })).sort(byName);
+  return [...seen].map(([value, v]) => ({ value, label: v.label, role: v.role })).sort(byName);
 }
 
 /** UTM có khớp bộ lọc người quản lý (chính VÀ phụ - giao) không. */
@@ -129,7 +133,7 @@ export function matchesManagers(u: UtmStatsUtmBrief, f: Pick<UtmStatsFilters, 'p
 export function utmOptionsFor(utms: UtmStatsUtmBrief[], f: UtmStatsFilters, active: boolean): SelectOption[] {
   return utms
     .filter((u) => u.isActive === active && matchesManagers(u, f))
-    .map((u) => ({ value: u.id, label: u.name }))
+    .map((u) => ({ value: u.id, label: u.name, color: u.color }))
     .sort(byName);
 }
 
@@ -223,3 +227,28 @@ export function groupCustomerIdsByUtm(
   }
   return groups;
 }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Màu theo ngưỡng cho chỉ số % (yêu cầu: < 30% đỏ, 30–70% vàng, > 70% xanh)
+// ─────────────────────────────────────────────────────────────────────────────
+
+export type RateLevel = 'low' | 'mid' | 'high';
+
+export const RATE_LOW_BELOW = 30;
+export const RATE_HIGH_ABOVE = 70;
+
+/** Mức của 1 tỷ lệ %: < 30 thấp (đỏ), 30–70 (gồm cả 30 và 70) trung bình (vàng), > 70 cao (xanh). */
+export function rateLevel(pct: number): RateLevel {
+  if (pct < RATE_LOW_BELOW) return 'low';
+  if (pct > RATE_HIGH_ABOVE) return 'high';
+  return 'mid';
+}
+
+/** Màu chữ theo mức (đủ tương phản trên nền trắng, không dùng vàng nhạt khó đọc). */
+export const RATE_COLORS: Record<RateLevel, string> = {
+  low: '#cf1322',
+  mid: '#d48806',
+  high: '#389e0d',
+};
+
+export const rateColor = (pct: number): string => RATE_COLORS[rateLevel(pct)];
