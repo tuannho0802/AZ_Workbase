@@ -5,6 +5,8 @@ import { ReportsMarketingService } from './reports-marketing.service';
 import { QueryMarketingReportDto } from './dto/query-marketing-report.dto';
 import { ReportsGroupQualityService } from './reports-group-quality.service';
 import { QueryGroupQualityReportDto } from './dto/query-group-quality-report.dto';
+import { ReportsUtmQualityService } from './reports-utm-quality.service';
+import { QueryUtmQualityReportDto } from './dto/query-utm-quality-report.dto';
 import { ReportsCustomerListService } from './reports-customer-list.service';
 import { ReportsCustomerDetailService } from './reports-customer-detail.service';
 import { QueryReportCustomerListDto } from './dto/query-report-customer-list.dto';
@@ -33,6 +35,7 @@ export class ReportsController {
     private readonly reportsCustomerListService: ReportsCustomerListService,
     private readonly reportsCustomerDetailService: ReportsCustomerDetailService,
     private readonly reportsGroupQualityService: ReportsGroupQualityService,
+    private readonly reportsUtmQualityService: ReportsUtmQualityService,
   ) {}
 
   @Get('revenue')
@@ -105,6 +108,20 @@ export class ReportsController {
     return this.reportsGroupQualityService.getGroupQualityReport(query, req.user.id, req.user.role, scope);
   }
 
+  @Get('utm-quality')
+  @RequirePermission('reports.view')
+  @ApiOperation({
+    summary:
+      'Báo cáo CHẤT LƯỢNG UTM: mỗi UTM đem về bao nhiêu khách, đã nạp/đã chốt, doanh thu + lịch sử nạp, cơ cấu status, Sales & Marketing tham gia - chia 3 góc nhìn Tất cả/Hoạt động/Đã khoá (state), phạm vi theo scope (xem reports-utm-quality.service.ts)',
+  })
+  async getUtmQualityReport(
+    @Query() query: QueryUtmQualityReportDto,
+    @Request() req: any,
+    @GetPermissionScope() scope: string | null,
+  ) {
+    return this.reportsUtmQualityService.getUtmQualityReport(query, req.user.id, req.user.role, scope);
+  }
+
   @Get('customer-list')
   @RequirePermission('reports.view')
   @ApiOperation({
@@ -131,7 +148,8 @@ export class ReportsController {
     @Request() req: any,
     @GetPermissionScope() scope: string | null,
   ) {
-    const ctx = context === 'marketing' ? 'marketing' : context === 'groups' ? 'groups' : 'customers';
+    const ctx =
+      context === 'marketing' ? 'marketing' : context === 'groups' ? 'groups' : context === 'utms' ? 'utms' : 'customers';
     return this.reportsCustomerDetailService.getDetail(id, ctx, req.user.id, req.user.role, scope);
   }
 }

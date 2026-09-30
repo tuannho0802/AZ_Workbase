@@ -169,4 +169,72 @@ describe('ReportsCustomerListService', () => {
       expect(f.params.ownSalesId).toBe(7);
     });
   });
+
+  describe('metric utm_* (tab Chất lượng UTM)', () => {
+    /** Mock riêng: query lịch sử nạp KHÔNG có bước lọc ngày nên chuỗi gọi khác `build()` mặc định. */
+    const buildUtm = (rows: any[] = []) => {
+      const f = fakeQb(rows, rows.length);
+      const depositWheres: string[] = [];
+      const chain: any = new Proxy({}, {
+        get: (_t, prop: string) => {
+          if (prop === 'getRawMany') return async () => [{ customerId: '5', amount: '750', cnt: '3', lastDate: '2026-09-10' }];
+          if (prop === 'where' || prop === 'andWhere') return (sql: string) => { depositWheres.push(sql); return chain; };
+          return () => chain;
+        },
+      });
+      const notesQb: any = {};
+      for (const m of ['leftJoinAndSelect', 'where', 'orderBy', 'addOrderBy']) notesQb[m] = () => notesQb;
+      notesQb.getMany = async () => [];
+      const svc = new ReportsCustomerListService({
+        createQueryBuilder: () => f.qb,
+        manager: { createQueryBuilder: (entity?: unknown) => (entity ? notesQb : chain) },
+      } as any);
+      return { svc, depositWheres, ...f };
+    };
+
+    it("'utm_customers' + utmState=locked: chỉ khách gắn UTM đã khoá, lọc đúng utmId, KHÔNG lọc ngày", async () => {
+      const { svc, wheres, params } = buildUtm();
+      await svc.getList({ ...base, metric: 'utm_customers', context: 'utms', utmId: 7, utmState: 'locked' }, 1, Role.ADMIN, PermissionScope.ALL);
+      expect(wheres).toContain('customer.utmId IS NOT NULL');
+      expect(wheres.some((w) => w.includes('ut.is_active = 0'))).toBe(true);
+      expect(params.uUtm).toBe(7);
+      expect(wheres.some((w) => w.includes('customer.createdAt BETWEEN'))).toBe(false);
+    });
+
+    it("'utm_new_deposited' = khách mới trong kỳ (mốc UTC) + đã từng nạp; utmState=active dùng is_active = 1", async () => {
+      const { svc, wheres, params } = buildUtm();
+      await svc.getList({ ...base, metric: 'utm_new_deposited', context: 'utms', utmState: 'active' }, 1, Role.ADMIN, PermissionScope.ALL);
+      expect(wheres.some((w) => w.includes('ut.is_active = 1'))).toBe(true);
+      expect(wheres.some((w) => w.includes('customer.createdAt BETWEEN :createdFrom AND :createdTo'))).toBe(true);
+      expect(String(params.createdFrom)).toBe('2026-09-20 17:00:00');
+      expect(wheres.some((w) => w.startsWith('EXISTS (SELECT 1 FROM deposits ud'))).toBe(true);
+    });
+
+    it("'utm_no_deposit' = khách gắn UTM chưa có khoản nạp nào", async () => {
+      const { svc, wheres } = buildUtm();
+      await svc.getList({ ...base, metric: 'utm_no_deposit', context: 'utms' }, 1, Role.ADMIN, PermissionScope.ALL);
+      expect(wheres.some((w) => w.startsWith('NOT EXISTS (SELECT 1 FROM deposits ud'))).toBe(true);
+    });
+
+    it("'new_no_utm' = data mới trong kỳ chưa gắn UTM", async () => {
+      const { svc, wheres } = buildUtm();
+      await svc.getList({ ...base, metric: 'new_no_utm', context: 'utms' }, 1, Role.ADMIN, PermissionScope.ALL);
+      expect(wheres).toContain('customer.utmId IS NULL');
+      expect(wheres.some((w) => w.includes('customer.createdAt BETWEEN'))).toBe(true);
+    });
+
+    it('metric utm_* trả kèm UTM của khách + LỊCH SỬ NẠP mọi thời điểm (không lọc deposit_date)', async () => {
+      const { svc, depositWheres } = buildUtm([{ id: 5, name: 'A', utm: { id: 7, name: 'FB_Q3', color: '#1677ff' }, salesUser: null, marketingUser: null, createdBy: null }]);
+      const r = await svc.getList({ ...base, metric: 'utm_deposited', context: 'utms' }, 1, Role.ADMIN, PermissionScope.ALL);
+      expect(r.data[0]).toMatchObject({ utm: { id: 7, name: 'FB_Q3' }, depositAmount: 750, depositCount: 3, lastDepositDate: '2026-09-10' });
+      expect(depositWheres.some((w) => w.includes('depositDate BETWEEN'))).toBe(false);
+    });
+
+    it("context 'utms' + scope=own KHÔNG siết thêm Sales chính (khớp số của báo cáo)", async () => {
+      const { svc, params } = buildUtm();
+      await svc.getList({ ...base, metric: 'utm_customers', context: 'utms' }, 9, Role.EMPLOYEE, PermissionScope.OWN);
+      // Rule scope=own do applyViewFilter lo; context 'utms' không thêm điều kiện Sales chính như context 'customers'.
+      expect(params.ownSalesId).toBeUndefined();
+    });
+  });
 });

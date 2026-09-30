@@ -6,17 +6,19 @@ import { CustomerStatus } from '../../database/entities/customer-status.entity';
 import { User } from '../../database/entities/user.entity';
 import { LinkGroup } from '../../database/entities/link-group.entity';
 import { LinkCategory } from '../../database/entities/link-category.entity';
+import { Utm } from '../../database/entities/utm.entity';
 import { ReportsService } from './reports.service';
 import { ReportsMarketingService } from './reports-marketing.service';
 import { ReportsCustomerListService } from './reports-customer-list.service';
 import { ReportsCustomerDetailService } from './reports-customer-detail.service';
 import { ReportsGroupQualityService } from './reports-group-quality.service';
+import { ReportsUtmQualityService } from './reports-utm-quality.service';
 import { ReportsController } from './reports.controller';
 
 @Module({
-  imports: [TypeOrmModule.forFeature([Customer, CustomerGroupMembership, CustomerStatus, User, LinkGroup, LinkCategory])],
+  imports: [TypeOrmModule.forFeature([Customer, CustomerGroupMembership, CustomerStatus, User, LinkGroup, LinkCategory, Utm])],
   controllers: [ReportsController],
-  providers: [ReportsService, ReportsMarketingService, ReportsCustomerListService, ReportsCustomerDetailService, ReportsGroupQualityService],
+  providers: [ReportsService, ReportsMarketingService, ReportsCustomerListService, ReportsCustomerDetailService, ReportsGroupQualityService, ReportsUtmQualityService],
   exports: [ReportsService],
 })
 export class ReportsModule { }

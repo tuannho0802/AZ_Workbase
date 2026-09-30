@@ -61,12 +61,13 @@ export class ReportsCustomerListService {
       .leftJoinAndSelect('customer.marketingUser', 'marketingUser')
       .leftJoinAndSelect('marketingUser.department', 'marketingDept')
       .leftJoinAndSelect('customer.createdBy', 'createdBy')
-      .leftJoinAndSelect('createdBy.department', 'createdByDept');
+      .leftJoinAndSelect('createdBy.department', 'createdByDept')
+      .leftJoinAndSelect('customer.utm', 'rowUtm');
 
     CustomerAccessHelper.applyViewFilter(qb, viewerId, viewerRole, scope);
     if (isOwnOnly) {
       if (context === 'marketing') applyMarketingOwnOnly(qb, viewerId);
-      // context='groups': báo cáo Chất lượng nhóm CHỈ siết bằng applyViewFilter (không thêm rule Sales chính) -> danh sách khớp số.
+      // context='groups'/'utms': báo cáo Chất lượng nhóm/UTM CHỈ siết bằng applyViewFilter (không thêm rule Sales chính) -> danh sách khớp số.
       else if (context === 'customers') qb.andWhere('customer.salesUserId = :ownSalesId', { ownSalesId: viewerId });
     }
 
@@ -85,6 +86,11 @@ export class ReportsCustomerListService {
     const isDepositMetric = ['deposited', 'ftd', 'redeposit'].includes(query.metric);
     const depositByCustomer = isDepositMetric
       ? await this.loadDeposits(ids, range)
+      : new Map<number, { amount: number; count: number; lastDate: string | null }>();
+    // Metric utm_*: hiện LỊCH SỬ NẠP mọi thời điểm của khách (báo cáo UTM đo giá trị khách mang lại, không chỉ trong kỳ).
+    const isUtmMetric = query.metric.startsWith('utm_') || query.metric === 'new_no_utm';
+    const utmDepositByCustomer = isUtmMetric
+      ? await this.loadDeposits(ids)
       : new Map<number, { amount: number; count: number; lastDate: string | null }>();
     const isGroupMetric = query.metric.startsWith('group_');
     const groupsByCustomer =
@@ -112,6 +118,14 @@ export class ReportsCustomerListService {
       recentNotes: notesByCustomer.get(c.id) ?? [],
       /** TỔNG số ghi chú chăm sóc (customer_notes) - khác `recentNotes` chỉ giữ tối đa 3. */
       noteCount: noteCounts.get(c.id) ?? 0,
+      ...(isUtmMetric
+        ? {
+            utm: c.utm ? { id: c.utm.id, name: c.utm.name, color: c.utm.color } : null,
+            depositAmount: utmDepositByCustomer.get(c.id)?.amount ?? 0,
+            depositCount: utmDepositByCustomer.get(c.id)?.count ?? 0,
+            lastDepositDate: utmDepositByCustomer.get(c.id)?.lastDate ?? null,
+          }
+        : {}),
       ...(isDepositMetric
         ? {
             depositAmount: depositByCustomer.get(c.id)?.amount ?? 0,
@@ -138,7 +152,7 @@ export class ReportsCustomerListService {
     qb: SelectQueryBuilder<Customer>,
     metric: ReportCustomerListMetric,
     range: ResolvedReportRange,
-    query?: Pick<QueryReportCustomerListDto, 'groupId' | 'categoryId'>,
+    query?: Pick<QueryReportCustomerListDto, 'groupId' | 'categoryId' | 'utmId' | 'utmState'>,
   ) {
     const created = () =>
       qb.andWhere('customer.createdAt BETWEEN :createdFrom AND :createdTo', {
@@ -168,7 +182,52 @@ export class ReportsCustomerListService {
       params: { gjFrom: range.fromUtc, gjTo: range.toUtc },
     });
 
+    // Khách gắn UTM đang xem: lọc utmId + góc nhìn Hoạt động/Đã khoá (đúng điều kiện `is_active` của báo cáo).
+    const utmScope = () => {
+      qb.andWhere('customer.utmId IS NOT NULL');
+      if (query?.utmId) qb.andWhere('customer.utmId = :uUtm', { uUtm: query.utmId });
+      if (query?.utmState === 'active') {
+        qb.andWhere('EXISTS (SELECT 1 FROM utms ut WHERE ut.id = customer.utm_id AND ut.is_active = 1)');
+      } else if (query?.utmState === 'locked') {
+        qb.andWhere('EXISTS (SELECT 1 FROM utms ut WHERE ut.id = customer.utm_id AND ut.is_active = 0)');
+      }
+    };
+    const anyDeposit = 'EXISTS (SELECT 1 FROM deposits ud WHERE ud.customer_id = customer.id)';
+
     switch (metric) {
+      case 'utm_customers':
+        utmScope();
+        break;
+      case 'utm_new':
+        utmScope();
+        created();
+        break;
+      case 'utm_deposited':
+        utmScope();
+        qb.andWhere(anyDeposit);
+        break;
+      case 'utm_no_deposit':
+        utmScope();
+        qb.andWhere(`NOT ${anyDeposit}`);
+        break;
+      case 'utm_closed':
+        utmScope();
+        qb.andWhere("customer.status = 'closed'");
+        break;
+      case 'utm_new_deposited':
+        utmScope();
+        created();
+        qb.andWhere(anyDeposit);
+        break;
+      case 'utm_new_closed':
+        utmScope();
+        created();
+        qb.andWhere("customer.status = 'closed'");
+        break;
+      case 'new_no_utm':
+        created();
+        qb.andWhere('customer.utmId IS NULL');
+        break;
       case 'group_members':
         groupMember();
         break;
@@ -296,24 +355,24 @@ export class ReportsCustomerListService {
     else if (q.quick === 'no_phone') qb.andWhere("(customer.phone IS NULL OR customer.phone = '')");
   }
 
-  /** Tổng tiền / số lần / ngày nạp gần nhất TRONG KỲ của các khách trong trang hiện tại (1 query cho cả trang). */
+  /** Tổng tiền / số lần / ngày nạp gần nhất (TRONG KỲ nếu có `range`, ngược lại mọi thời điểm) của các khách trong trang hiện tại (1 query cho cả trang). */
   private async loadDeposits(
     ids: number[],
-    range: ResolvedReportRange,
+    range?: ResolvedReportRange,
   ): Promise<Map<number, { amount: number; count: number; lastDate: string | null }>> {
     const map = new Map<number, { amount: number; count: number; lastDate: string | null }>();
     if (ids.length === 0) return map;
-    const rows = await this.customerRepo.manager
+    const dq = this.customerRepo.manager
       .createQueryBuilder()
       .select('d.customerId', 'customerId')
       .addSelect('SUM(d.amount)', 'amount')
       .addSelect('COUNT(*)', 'cnt')
       .addSelect('MAX(d.depositDate)', 'lastDate')
       .from(Deposit, 'd')
-      .where('d.customerId IN (:...ids)', { ids })
-      .andWhere('d.depositDate BETWEEN :depFrom AND :depTo', { depFrom: range.from, depTo: range.to })
-      .groupBy('d.customerId')
-      .getRawMany();
+      .where('d.customerId IN (:...ids)', { ids });
+    // Không có `range` -> LỊCH SỬ nạp mọi thời điểm (metric utm_*).
+    if (range) dq.andWhere('d.depositDate BETWEEN :depFrom AND :depTo', { depFrom: range.from, depTo: range.to });
+    const rows = await dq.groupBy('d.customerId').getRawMany();
     for (const r of rows) {
       map.set(Number(r.customerId), {
         amount: Number(r.amount) || 0,
