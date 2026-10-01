@@ -5398,3 +5398,24 @@ khi bị xoá tay. Đây là 1 anti-pattern thật (dù đo thử với payload 
 > Không migration, không permission key mới. Bảng Sales/Marketing, bảng Nguồn và chart "Top" (tuỳ chọn chỉ số Doanh thu tổng/Số khách) vẫn là mọi thời điểm.
 
 ---
+
+## [2026-10-01 12:00] | PLAN_HARDENING P1: nâng gói BE có lỗ hổng + siết TLS tới Aiven | [Status: Success — BE tsc sạch, nest build OK, jest 77 suite / 1373 test pass (baseline 76/1368 + 5 test mới); CHƯA chạy thử với DB Aiven thật]
+
+**Actor:** Agent (trên `origin/main` HEAD `42cb17c`)
+
+**Files Changed:**
+- `backend/package.json` — nâng floor: `@nestjs/{common,core,platform-express}` 11.2.7, `@nestjs/config` 4.0.4, `@nestjs/swagger` 11.4.7, `@nestjs/typeorm` 11.0.3, `@nestjs/testing` 11.2.7, `typeorm` 0.3.31, `mysql2` 3.24.5, `multer` 2.4.0
+- `backend/package-lock.json` — regenerate (npm update từng gói + `npm audit fix`, KHÔNG `--force`)
+- `backend/src/config/database.config.ts` — production có `DB_CA_CERT` -> `rejectUnauthorized: true` tường minh; thiếu `DB_CA_CERT` -> ném lỗi (trước đây âm thầm `rejectUnauthorized:false`), chỉ cho phép khi đặt `DB_SSL_ALLOW_INSECURE=true` (có `Logger.warn`)
+- `backend/src/config/database.config.spec.ts` — 5 test mới cho nhánh TLS
+
+**Root Cause:**
+> `npm audit --omit=dev` báo 16 lỗ hổng (11 high) ở các gói Nest/multer/mysql2/typeorm; fallback production không có CA tắt xác thực TLS tới DB.
+
+**Solution:**
+> Nâng từng gói trong khoảng semver, mỗi bước chạy tsc + jest. Sau cùng audit prod còn 5 (1 high): `xlsx` (không có bản vá -> P2), `exceljs`/`uuid` (bản sửa gợi ý là hạ major -> không áp dụng), `@nestjs/swagger`/`js-yaml` moderate (swagger 11 pin exact js-yaml 5.3.0; chỉ sửa được ở swagger 12 cần Nest 12).
+
+**Notes:**
+> TRƯỚC KHI DEPLOY: xác nhận `DB_CA_CERT` đã đặt trên Vercel (Production) — nếu thiếu, app sẽ không khởi động. Kiểm tra tay còn lại: login/refresh, import khách, Swagger `/api/docs` + `swagger-auth.js`, 1 luồng ghi có transaction. Không migration.
+
+---

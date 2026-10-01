@@ -1,5 +1,8 @@
 import { TypeOrmModuleOptions } from '@nestjs/typeorm';
 import { ConfigService } from '@nestjs/config';
+import { Logger } from '@nestjs/common';
+
+const logger = new Logger('DatabaseConfig');
 
 export const getTypeOrmConfig = (configService: ConfigService): TypeOrmModuleOptions => {
   const isProduction =
@@ -43,27 +46,40 @@ export const getTypeOrmConfig = (configService: ConfigService): TypeOrmModuleOpt
   if (isProduction) {
     const sslCert = configService.get('DB_CA_CERT');
 
-    // Production với SSL cert (Aiven yêu cầu)
+    // Production với SSL cert (Aiven yêu cầu) — luôn xác thực chứng chỉ server
     if (sslCert) {
+      const ssl = { ca: sslCert, rejectUnauthorized: true };
       return {
         ...baseConfig,
-        ssl: { ca: sslCert },
+        ssl,
         extra: {
-          ssl: { ca: sslCert },
+          ssl,
           ...poolConfig,
         },
       };
     }
 
-    // Production không có cert (fallback, không nên xảy ra)
-    return {
-      ...baseConfig,
-      ssl: { rejectUnauthorized: false },
-      extra: {
+    // [AGENT] OLD CODE (giữ lại để rollback): production không có cert -> ssl: { rejectUnauthorized: false }
+    // [AGENT] NEW CODE: không còn âm thầm tắt xác thực TLS (nguy cơ MITM tới DB).
+    // Thiếu DB_CA_CERT => dừng app với thông báo rõ ràng. Chỉ khi chủ động đặt
+    // DB_SSL_ALLOW_INSECURE=true mới cho phép kết nối không xác thực (khẩn cấp, tạm thời).
+    if (configService.get('DB_SSL_ALLOW_INSECURE') === 'true') {
+      logger.warn(
+        '[SECURITY] DB_CA_CERT chưa đặt, đang kết nối DB với rejectUnauthorized=false (DB_SSL_ALLOW_INSECURE=true). Hãy đặt DB_CA_CERT càng sớm càng tốt.',
+      );
+      return {
+        ...baseConfig,
         ssl: { rejectUnauthorized: false },
-        ...poolConfig,
-      },
-    };
+        extra: {
+          ssl: { rejectUnauthorized: false },
+          ...poolConfig,
+        },
+      };
+    }
+
+    throw new Error(
+      'DB_CA_CERT is required in production (TLS verification to the database). Set DB_CA_CERT to the Aiven CA certificate.',
+    );
   }
 
   // Development: không cần SSL
