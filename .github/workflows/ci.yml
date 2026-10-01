@@ -1,0 +1,104 @@
+# PLAN_HARDENING P6 - CI kiểm tra tự động khi PR / push main.
+# Không liên quan luồng deploy Vercel (`[deploy]`) - workflow này chỉ kiểm tra, không deploy gì.
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+# Push mới vào cùng nhánh/PR thì huỷ lượt CI cũ đang chạy (tiết kiệm phút Actions).
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+env:
+  NODE_VERSION: '22'
+
+jobs:
+  backend:
+    name: Backend (tsc, build, jest)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: backend
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+          cache-dependency-path: backend/package-lock.json
+
+      - name: Cài dependency (đúng theo lockfile)
+        run: npm ci --no-audit --no-fund
+
+      - name: Type check
+        run: npx tsc --noEmit
+
+      - name: Build
+        run: npx nest build
+
+      - name: Unit test
+        run: npx jest --ci
+
+  frontend:
+    name: Frontend (tsc, vitest, build)
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Cài dependency (đúng theo lockfile)
+        run: npm ci --no-audit --no-fund
+
+      # `next-env.d.ts` bị .gitignore nên checkout mới KHÔNG có -> `tsc` báo lỗi
+      # "Cannot find module './logo.png'". `next typegen` sinh lại file đó.
+      - name: Sinh type của Next (next-env.d.ts)
+        run: npx next typegen
+
+      - name: Type check
+        run: npx tsc --noEmit
+
+      - name: Unit test
+        run: npx vitest run
+
+      - name: Build
+        run: npx next build
+
+  # Tuỳ chọn: chỉ CẢNH BÁO, không làm CI đỏ (continue-on-error).
+  audit:
+    name: Audit (chỉ cảnh báo)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    continue-on-error: true
+    strategy:
+      fail-fast: false
+      matrix:
+        dir: [backend, frontend]
+    defaults:
+      run:
+        working-directory: ${{ matrix.dir }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+
+      - name: npm audit (prod, mức high trở lên)
+        run: npm audit --omit=dev --audit-level=high
