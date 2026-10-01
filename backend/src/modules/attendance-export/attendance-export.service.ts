@@ -281,6 +281,7 @@ export class AttendanceExportService {
       '1/2K': 'FFD4380D',
       P: 'FF08979C',
       KL: 'FFCF1322',
+      '-': 'FF8C8C8C',
     };
 
     // ── Dữ liệu ──

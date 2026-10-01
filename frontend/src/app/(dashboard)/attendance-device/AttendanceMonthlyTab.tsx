@@ -23,13 +23,14 @@ const { Text } = Typography;
 const WEEKDAY_VN = ['CN', 'T2', 'T3', 'T4', 'T5', 'T6', 'T7'];
 
 // Các ký hiệu đánh dấu trong ô lịch, cùng màu hiển thị tương ứng
-type DayMark = 'X' | 'X/2' | '1/2K' | 'P' | 'KL';
+type DayMark = 'X' | 'X/2' | '1/2K' | 'P' | 'KL' | '-';
 const MARK_LABEL: Record<DayMark, string> = {
   X: 'Đi làm',
   'X/2': 'Nghỉ nửa ngày (hưởng lương)',
   '1/2K': 'Nghỉ nửa ngày (không lương)',
   P: 'Nghỉ phép (hưởng lương)',
   KL: 'Nghỉ không lương (cả ngày)',
+  '-': 'Chỉ chấm công 1 lần (thiếu chấm vào/ra)',
 };
 const MARK_COLOR: Record<DayMark, string> = {
   X: '#1677ff',
@@ -37,6 +38,7 @@ const MARK_COLOR: Record<DayMark, string> = {
   '1/2K': '#d4380d',
   P: '#08979c',
   KL: '#cf1322',
+  '-': '#8c8c8c',
 };
 
 const LEAVE_DURATION_LABEL: Record<string, string> = {
@@ -252,9 +254,11 @@ export default function AttendanceMonthlyTab() {
         const checkOutStr = r.checkOut ? dayjs(r.checkOut).format('HH:mm') : null;
 
         if (r.status === 'missing_checkout') {
-          row.days[day] = '1/2K';
+          // [AGENT] OLD CODE: row.days[day] = '1/2K';
+          // Chỉ có 1 lần quẹt trong ngày (thiếu vào hoặc ra) -> ký hiệu '-'
+          row.days[day] = '-';
           row.dayReasons[day] =
-            `Thiếu chấm công ra - chỉ có giờ vào lúc ${checkInStr}, chưa quẹt ra lần nào trong ngày.`;
+            `Chỉ chấm công 1 lần lúc ${checkInStr} - thiếu chấm công vào/ra.`;
         } else if (r.workHours != null && r.workHours < 4.5) {
           row.days[day] = '1/2K';
           row.dayReasons[day] =
@@ -374,6 +378,7 @@ export default function AttendanceMonthlyTab() {
       P: 1,
       '1/2K': 0,
       KL: 0,
+      '-': 0,
     };
     for (const row of allRows) {
       row.actualWorkDays = Object.values(row.days).reduce(

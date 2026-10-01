@@ -17,7 +17,7 @@ import {
 // thực duy nhất" cho việc suy luận ký hiệu từng ô (xem giải thích kiến trúc
 // ở đầu attendance-export.service.ts: BE KHÔNG tự tính lại, chỉ nhận nguyên
 // những gì FE đang hiển thị).
-const VALID_MARKS = ['X', 'X/2', '1/2K', 'P', 'KL'] as const;
+const VALID_MARKS = ['X', 'X/2', '1/2K', 'P', 'KL', '-'] as const;
 
 export class MonthlyDayEntryDto {
   @IsInt()

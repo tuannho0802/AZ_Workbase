@@ -39,7 +39,7 @@ function buildExportFilename(tabLabel: string, from?: string, to?: string): stri
 
 export interface ExportMonthlyDayEntry {
   day: number;
-  mark: 'X' | 'X/2' | '1/2K' | 'P' | 'KL';
+  mark: 'X' | 'X/2' | '1/2K' | 'P' | 'KL' | '-';
   reason?: string;
 }
 
