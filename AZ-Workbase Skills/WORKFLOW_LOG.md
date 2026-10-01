@@ -5419,3 +5419,22 @@ khi bị xoá tay. Đây là 1 anti-pattern thật (dù đo thử với payload 
 > TRƯỚC KHI DEPLOY: xác nhận `DB_CA_CERT` đã đặt trên Vercel (Production) — nếu thiếu, app sẽ không khởi động. Kiểm tra tay còn lại: login/refresh, import khách, Swagger `/api/docs` + `swagger-auth.js`, 1 luồng ghi có transaction. Không migration.
 
 ---
+
+## [2026-10-01 14:00] | PLAN_HARDENING P2: thay `xlsx` (SheetJS) bằng exceljs/papaparse, file mẫu FE tĩnh | [Status: Success — BE tsc sạch, nest build OK, jest 78 suite / 1393 test pass; FE tsc = baseline (chỉ lỗi cũ logo.png/CountBadge/error.tsx...), vitest 48 file / 368 test pass, next build OK; CHƯA import thử file thật trên UI, CHƯA xem trình duyệt]
+
+**Actor:** Agent (đặt trên P1)
+
+**Files Changed:**
+- BE: `customers/customers-import-reader.util.ts` (MỚI: đọc .xlsx bằng exceljs, .csv bằng papaparse, từ chối .xls, chặn zip bomb/số dòng/số cột), `customers/customers.import.service.ts` (dùng reader; số dòng báo lỗi = số dòng thật), `customers/customers.controller.ts` (multer `limits.fileSize` 5MB), 2 spec (`customers.import.service.spec.ts` chuyển sang exceljs + 11 test định dạng; `customers-import-reader.util.spec.ts` mới 9 test), `scripts/generate-import-templates.ts` + script `npm run templates:generate`, `package.json` (gỡ `xlsx`)
+- FE: `components/customers/ImportExcelModal.tsx` (nút tải trỏ file tĩnh; check đuôi không phân biệt hoa/thường), `lib/utils/excel-template.ts` (XOÁ), `public/templates/AZWorkbase_Template_KhachHang.xlsx` (MỚI), `package.json` (gỡ `xlsx`)
+
+**Root Cause:**
+> `xlsx` 0.18.5 (prototype pollution + ReDoS) không có bản vá và đang đọc file do người dùng upload.
+
+**Solution:**
+> Reader mới giữ hợp đồng đầu ra (ô trống = '', kiểu ô như cũ). Khác biệt có chủ đích: (1) CSV hỗ trợ `,` `;` TAB `|` + BOM, không ép kiểu nên SĐT giữ số 0; (2) ô ngày thật của Excel -> `dd/mm/yyyy` (trước đây bị bỏ qua); (3) dòng toàn ô rỗng bị bỏ như dòng trống; (4) `.xls` bị từ chối kèm hướng dẫn; (5) CSV bắt buộc UTF-8.
+
+**Notes:**
+> Không migration. File mẫu tĩnh: sau khi đổi cột import phải chạy lại `npm run templates:generate` (trong backend/) và commit file .xlsx. Chạy `npm install` trên máy Windows để cập nhật 2 lockfile.
+
+---

@@ -4,8 +4,8 @@ import { Customer } from '../../database/entities/customer.entity';
 import { User } from '../../database/entities/user.entity';
 import { MediaSource } from '../../database/entities/media-source.entity';
 import { CustomerStatus } from '../../database/entities/customer-status.entity';
-import * as XLSX from 'xlsx';
 import 'multer';
+import { readImportFile, IMPORT_MAX_FILE_BYTES, IMPORT_MAX_ROWS } from './customers-import-reader.util';
 import { todayVnStr } from '../../common/utils/date-vn.util';
 import { AuditService } from '../audit/audit.service';
 import { UtmsService } from '../utms/utms.service';
@@ -25,31 +25,21 @@ export class CustomersImportService {
       throw new BadRequestException('Vui lòng chọn file');
     }
 
-    const validMimetypes = ['application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', 'text/csv', 'application/vnd.ms-excel'];
-    if (!validMimetypes.includes(file.mimetype) && !file.originalname.match(/\.(xlsx|csv|xls)$/i)) {
-      throw new BadRequestException('Chỉ chấp nhận file .xlsx hoặc .csv');
-    }
-
-    if (file.size > 5 * 1024 * 1024) {
+    // [AGENT] OLD CODE (giữ lại để rollback): đọc bằng SheetJS `xlsx` (không còn bản vá)
+    // const workbook = XLSX.read(file.buffer, { type: 'buffer' });
+    // const rawData = XLSX.utils.sheet_to_json(workbook.Sheets[workbook.SheetNames[0]], { defval: '' }) as any[];
+    // [AGENT] NEW CODE: exceljs (.xlsx) + papaparse (.csv); từ chối .xls — xem customers-import-reader.util.ts
+    if (file.size > IMPORT_MAX_FILE_BYTES) {
       throw new BadRequestException('File không được vượt quá 5MB');
     }
 
-    let workbook;
-    try {
-      workbook = XLSX.read(file.buffer, { type: 'buffer' });
-    } catch (e) {
-      throw new BadRequestException('File không đúng định dạng Excel/CSV');
-    }
-
-    const sheetName = workbook.SheetNames[0];
-    const sheet = workbook.Sheets[sheetName];
-    const rawData = XLSX.utils.sheet_to_json(sheet, { defval: '' }) as any[];
+    const { rows: rawData, rowNumbers } = await readImportFile(file);
 
     if (!rawData || rawData.length === 0) {
       throw new BadRequestException('File không có dữ liệu hợp lệ');
     }
 
-    if (rawData.length > 1000) {
+    if (rawData.length > IMPORT_MAX_ROWS) {
       throw new BadRequestException('Tối đa 1000 dòng mỗi lần nhập');
     }
 
@@ -130,7 +120,7 @@ export class CustomersImportService {
 
     for (let i = 0; i < normalizedData.length; i++) {
       const row = normalizedData[i];
-      const rowNum = i + 2; 
+      const rowNum = rowNumbers[i]; // số dòng thật trong file (đúng cả khi có dòng trống xen giữa)
 
       const rawPhone = row['số điện thoại'] ? String(row['số điện thoại']).replace(/[^0-9]/g, '') : '';
       const name = row['họ và tên'];

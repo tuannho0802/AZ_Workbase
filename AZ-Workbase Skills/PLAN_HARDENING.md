@@ -181,7 +181,7 @@ Lý do: trình duyệt tự hiện hộp thoại đăng nhập khi mở trang (k
 | Phase | Nội dung | Trạng thái | Ngày xong | Ghi chú |
 |---|---|---|---|---|
 | P1 | Nâng gói BE có lỗ hổng + TLS Aiven | [x] | 2026-10-01 | Audit prod: 16 -> 5 (còn xlsx high -> P2; exceljs/uuid -> không áp dụng; @nestjs/swagger/js-yaml moderate -> chờ swagger 12). TLS: bỏ fallback `rejectUnauthorized:false` |
-| P2 | Thay `xlsx` (BE -> FE), hỗ trợ CSV | [ ] | | |
+| P2 | Thay `xlsx` (BE -> FE), hỗ trợ CSV | [x] | 2026-10-01 | BE: exceljs (.xlsx) + papaparse (.csv); FE: file mẫu tĩnh `public/templates/` sinh bằng `backend/scripts/generate-import-templates.ts`. Đã gỡ `xlsx` khỏi cả 2 package.json; audit prod BE: 0 high |
 | P3 | Header bảo mật (BE + FE) | [ ] | | |
 | P4 | Bảo vệ Swagger (Basic auth, admin) | [ ] | | |
 | P5 | Sentry + `(dashboard)/error.tsx` | [ ] | | |

@@ -152,7 +152,8 @@ export class CustomersController {
 
   @Post('import')
   @RequirePermission('customers.import')
-  @UseInterceptors(FileInterceptor('file'))
+  // [AGENT] Giới hạn 5MB ngay tại multer (trước đây không giới hạn -> cả file bị nạp vào RAM rồi mới kiểm tra)
+  @UseInterceptors(FileInterceptor('file', { limits: { fileSize: 5 * 1024 * 1024, files: 1 } }))
   @ApiOperation({ summary: 'Import dữ liệu khách hàng từ file Excel' })
   @ApiConsumes('multipart/form-data')
   @ApiBody({ type: ImportCustomerDto })

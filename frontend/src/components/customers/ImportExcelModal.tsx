@@ -2,7 +2,6 @@ import React, { useState } from 'react';
 import { Modal, Upload, message, Table, Button, notification } from 'antd';
 import { InboxOutlined, DownloadOutlined } from '@ant-design/icons';
 import type { UploadProps, UploadFile } from 'antd';
-import { generateTemplateFile } from '@/lib/utils/excel-template';
 import axiosInstance from '@/lib/api/axios-instance';
 
 const { Dragger } = Upload;
@@ -61,7 +60,7 @@ export const ImportExcelModal: React.FC<ImportExcelModalProps> = ({ open, onClos
       setFileList(prev => prev.filter(f => f.uid !== file.uid));
     },
     beforeUpload: (file) => {
-      const isExcelOrCsv = file.type === 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' || file.type === 'text/csv' || file.name.endsWith('.xlsx') || file.name.endsWith('.csv');
+      const isExcelOrCsv = file.type === 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' || file.type === 'text/csv' || /\.(xlsx|csv)$/i.test(file.name);
       if (!isExcelOrCsv) {
         message.error('Chỉ chấp nhận file .xlsx hoặc .csv');
         return Upload.LIST_IGNORE;
@@ -92,7 +91,7 @@ export const ImportExcelModal: React.FC<ImportExcelModalProps> = ({ open, onClos
       {!errorData ? (
         <>
           <div className="mb-4 text-right">
-            <Button type="link" icon={<DownloadOutlined />} onClick={generateTemplateFile}>
+            <Button type="link" icon={<DownloadOutlined />} href="/templates/AZWorkbase_Template_KhachHang.xlsx" download="AZWorkbase_Template_KhachHang.xlsx">
               Tải file mẫu (.xlsx)
             </Button>
           </div>
@@ -101,7 +100,7 @@ export const ImportExcelModal: React.FC<ImportExcelModalProps> = ({ open, onClos
               <InboxOutlined />
             </p>
             <p className="ant-upload-text">Kéo thả file vào đây hoặc nhấn để chọn</p>
-            <p className="ant-upload-hint">Hỗ trợ định dạng .xlsx, .csv. Tối đa 5MB, 1000 dòng.</p>
+            <p className="ant-upload-hint">Hỗ trợ định dạng .xlsx, .csv (UTF-8). Không hỗ trợ .xls. Tối đa 5MB, 1000 dòng.</p>
           </Dragger>
         </>
       ) : (
