@@ -15,11 +15,13 @@ vi.mock('@/lib/stores/auth.store', () => ({
 
 import CommandPalette from './CommandPalette';
 import { CommandPaletteHost } from './CommandPaletteHost';
+import { useCommandPaletteStore } from '@/lib/stores/command-palette.store';
 
 const labels = () => screen.getAllByRole('option').map((el) => el.textContent ?? '');
 
 beforeEach(() => {
   push.mockClear();
+  useCommandPaletteStore.setState({ open: false, everOpened: false });
   granted = ['customers.view', 'customers.assign'];
 });
 
@@ -109,6 +111,15 @@ describe('CommandPaletteHost', () => {
       },
       { timeout: 5000 },
     );
+  });
+
+  it('mở palette khi store được mở từ ô tìm trên Header (không cần phím tắt)', async () => {
+    render(<CommandPaletteHost />);
+    expect(screen.queryByRole('combobox')).toBeNull();
+    await act(async () => {
+      useCommandPaletteStore.getState().openPalette();
+    });
+    expect(await screen.findByRole('combobox')).toBeInTheDocument();
   });
 
   it('không mở khi sự kiện đến từ vùng contenteditable', async () => {

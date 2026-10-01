@@ -5525,3 +5525,19 @@ Now [deploy]
 > Không migration, không permission key mới, không thêm thư viện. Giai đoạn 2 (tìm tiêu đề hướng dẫn) chưa làm vì P7 chưa có. Chưa có nút mở palette trên header (chỉ phím tắt) nên máy không có bàn phím chưa dùng được. `eslint` còn 3 lỗi `set-state-in-effect` + 2 warning `window.location.href` SẴN CÓ trong `(dashboard)/layout.tsx` (dòng ~107/114/279/285/291), không do thay đổi này. `tsc` cần `next-env.d.ts` (gitignore, sinh khi chạy `next build`/`next dev`) mới hết lỗi thiếu type `logo.png`. Rollback: gỡ `<CommandPaletteHost />` + import khỏi `layout.tsx`.
 
 ---
+
+## [2026-10-01 23:30] | PLAN_HARDENING P8 (bổ sung): ô tìm kiếm trên Header gợi ý Ctrl + K | [Status: Success — FE tsc sạch, vitest 53 file / 409 test pass, `next build` OK, eslint sạch file mới; CHƯA thử bằng trình duyệt thật]
+
+**Actor:** Agent (patch 2, đặt trên patch P8 `p8-ctrl-k.patch`)
+
+**Files Changed:**
+- `frontend/src/lib/stores/command-palette.store.ts` (mới) — zustand `open/everOpened/openPalette/closePalette/togglePalette`, dùng chung Header + Host.
+- `frontend/src/components/common/HeaderSearchTrigger.tsx` (mới) — ô tìm trên Header (là `<button>` dạng ô input), placeholder `Tìm trang... (Ctrl + K)` / `(⌘ K)` trên Mac; < md chỉ còn icon.
+- `frontend/src/components/common/CommandPaletteHost.tsx` — chuyển từ state cục bộ sang store.
+- `frontend/src/app/(dashboard)/layout.tsx` — render `<HeaderSearchTrigger />` ở nhóm bên phải Header (+3 dòng).
+- Test: `HeaderSearchTrigger.test.tsx` (mới), `CommandPalette.test.tsx` (reset store, +1 test mở từ Header).
+
+**Notes:**
+> Dùng `<button>` thay `<input>` để khi Modal đóng, antd trả focus về ô này thì không tự mở lại palette. Nhãn Mac đọc qua `useSyncExternalStore` (server render luôn "Ctrl", không lệch hydration). Không migration, không permission key mới. Rollback: gỡ `<HeaderSearchTrigger />` + import khỏi `layout.tsx`.
+
+---

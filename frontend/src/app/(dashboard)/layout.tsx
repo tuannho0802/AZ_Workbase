@@ -22,6 +22,7 @@ import { getNavBadgeProps } from '@/lib/nav-badge';
 import { NotificationBell } from '@/components/notifications/NotificationBell';
 import { NotificationDetailModal } from '@/components/notifications/NotificationDetailModal';
 import { CommandPaletteHost } from '@/components/common/CommandPaletteHost';
+import { HeaderSearchTrigger } from '@/components/common/HeaderSearchTrigger';
 import { useRoleColorMap } from '@/lib/hooks/useRoleColorMap';
 import dayjs from 'dayjs';
 import 'dayjs/locale/vi';
@@ -402,6 +403,8 @@ export default function DashboardLayout({
           </div>
 
           <div style={{ display: 'flex', alignItems: 'center', gap: 20 }}>
+            {/* Ô tìm nhanh - mở command palette, placeholder gợi ý Ctrl + K (PLAN_HARDENING P8) */}
+            <HeaderSearchTrigger />
             {todayLabel && (
               <span style={{ fontSize: 13, color: '#94a3b8', display: 'flex', alignItems: 'center', gap: 6 }}>
                 <CalendarOutlined />
