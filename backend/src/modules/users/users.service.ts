@@ -163,7 +163,16 @@ export class UsersService {
   // /users/:id vẫn đúng vì `findOne()` có JOIN sẵn) - lỗi phát hiện khi rà
   // soát để thêm hiển thị Vị trí ở FE.
   async findById(id: number, relations: string[] = []): Promise<User | null> {
-    return this.usersRepository.findOne({ where: { id }, relations });
+    // [PERF] findOne() + relations tự gắn `take: 1` -> TypeORM sinh query 2 bước
+    // `SELECT DISTINCT ... FROM (SELECT <toàn bộ cột + JOIN>) distinctAlias
+    // ORDER BY id LIMIT 1` (derived table), chậm trên DB remote. Với JOIN
+    // ManyToOne + lọc theo PK thì không cần DISTINCT -> dùng QueryBuilder.getOne().
+    if (relations.length === 0) {
+      return this.usersRepository.findOne({ where: { id } });
+    }
+    const qb = this.usersRepository.createQueryBuilder('user').where('user.id = :id', { id });
+    relations.forEach((rel) => qb.leftJoinAndSelect(`user.${rel}`, rel));
+    return qb.getOne();
   }
 
   async findOne(id: number, currentUserId: number, currentUserRole: string, scope?: string | null): Promise<User | null> {
@@ -172,7 +181,13 @@ export class UsersService {
     // khác, dùng GET /users/:id) không có cách nào hiển thị Vị trí dù
     // `positionId` đã lưu đúng trong DB - quan hệ chỉ được khai ở entity,
     // KHÔNG được join ở đây nên `user.position` luôn undefined trên response.
-    const user = await this.usersRepository.findOne({ where: { id }, relations: ['department', 'position'] });
+    // [PERF] QueryBuilder.getOne() thay findOne()+relations để tránh query DISTINCT 2 bước (xem findById).
+    const user = await this.usersRepository
+      .createQueryBuilder('user')
+      .leftJoinAndSelect('user.department', 'department')
+      .leftJoinAndSelect('user.position', 'position')
+      .where('user.id = :id', { id })
+      .getOne();
     if (!user) {
       throw new NotFoundException('Không tìm thấy nhân viên');
     }
