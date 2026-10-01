@@ -153,11 +153,13 @@ Lý do: trình duyệt tự hiện hộp thoại đăng nhập khi mở trang (k
 
 **Mục tiêu:** command palette mở bằng `Ctrl+K` / `Cmd+K`, chỉ liệt kê trang người dùng được phép vào.
 **Việc:**
-- [ ] Dùng **một nguồn cấu hình menu chung** cho sidebar và Ctrl+K (route, nhãn, permission key). Nếu sidebar hiện đang khai báo riêng thì tách ra dùng chung, tránh hai nơi lệch quyền.
-- [ ] Lọc bằng `can('permission.key')` giống sidebar, kể cả các mục ẩn theo `ui-visibility`. Không hiện mục người dùng không có quyền.
-- [ ] Tìm không dấu tiếng Việt (bỏ dấu khi so khớp), điều hướng bằng phím mũi tên + Enter, `Esc` để đóng.
+- [x] Dùng **một nguồn cấu hình menu chung** cho sidebar và Ctrl+K (route, nhãn, permission key). Nếu sidebar hiện đang khai báo riêng thì tách ra dùng chung, tránh hai nơi lệch quyền.
+- [x] Lọc bằng `can('permission.key')` giống sidebar, kể cả các mục ẩn theo `ui-visibility`. Không hiện mục người dùng không có quyền.
+- [x] Tìm không dấu tiếng Việt (bỏ dấu khi so khớp), điều hướng bằng phím mũi tên + Enter, `Esc` để đóng.
 - [ ] Giai đoạn 2 (tuỳ chọn, sau P7): tìm cả tiêu đề hướng dẫn mà user được xem.
-- [ ] Dùng component antd (Modal + Input + List) hoặc thư viện nhỏ; không thêm thư viện nặng. Có `dynamic import`.
+- [x] Dùng component antd (Modal + Input + List) hoặc thư viện nhỏ; không thêm thư viện nặng. Có `dynamic import`.
+
+> Ghi chú thực hiện: `nav-config.tsx` vốn đã là nguồn chung của sidebar/trang chủ nên chỉ tái dùng `getVisibleNavItems()`. `ui-visibility` hiện chỉ có resource `customers` (cột/tab/trường), không có mục menu nào ẩn theo cơ chế đó. Giai đoạn 2 để trống vì P7 chưa làm.
 
 **Xong khi:** Ctrl+K mở được trên mọi trang dashboard, mỗi role chỉ thấy đúng các trang trong sidebar của mình, không xung đột phím tắt với ô nhập liệu.
 

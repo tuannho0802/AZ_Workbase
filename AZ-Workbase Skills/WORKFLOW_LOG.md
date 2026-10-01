@@ -5505,3 +5505,23 @@ khi bị xoá tay. Đây là 1 anti-pattern thật (dù đo thử với payload 
 
 ---
 Now [deploy]
+
+## [2026-10-01 23:00] | PLAN_HARDENING P8: Tìm kiếm nhanh Ctrl+K (command palette) | [Status: Success — FE tsc sạch, vitest 52 file / 403 test pass (baseline 50/376 + 2 file/27 test mới), `next build` OK; eslint sạch cho file mới; CHƯA thử bằng trình duyệt thật]
+
+**Actor:** Agent (đặt trên HEAD `4be8c72`, FE-only)
+
+**Files Changed:**
+- `frontend/src/lib/command-palette.ts` (mới) — logic thuần: `buildPaletteItems()` (Trang chủ + `getVisibleNavItems(role, can)`), `filterPaletteItems()` (bỏ dấu, AND theo từ, xếp hạng), `isPaletteHotkey()`, `normalizeVietnamese()`.
+- `frontend/src/components/common/CommandPalette.tsx` (mới) — antd Modal + Input, listbox/option ARIA, ↑↓ (vòng lặp) / Enter / Esc, bỏ qua Enter khi đang gõ IME.
+- `frontend/src/components/common/CommandPaletteHost.tsx` (mới) — listener Ctrl/Cmd+K + `next/dynamic` (`ssr: false`), palette chỉ nạp ở lần mở đầu.
+- `frontend/src/app/(dashboard)/layout.tsx` — import + render `<CommandPaletteHost />` (+3 dòng).
+- Test mới: `src/lib/command-palette.test.ts`, `src/components/common/CommandPalette.test.tsx`.
+- Docs: `PLAN_HARDENING.md` (tick P8).
+
+**Solution:**
+> Không tạo nguồn menu thứ hai: `nav-config.tsx` vốn đã là nguồn chung của sidebar + trang chủ, palette chỉ gọi lại `getVisibleNavItems(role, can)` nên luôn khớp sidebar (kể cả `permission` dạng mảng OR và `requireAll`; chưa có `can` -> ẩn mục đòi quyền). `ui-visibility` BE chỉ có resource `customers` (cột/tab/trường), không có mục menu nào ẩn theo cơ chế đó nên không lọc thêm. Phím tắt nhường cho `contenteditable` / phần tử gắn `data-no-command-palette` (trình soạn thảo tự dùng Ctrl+K, vd chèn link ở P7), bỏ qua khi `isComposing`/`defaultPrevented`; ô input thường không bị chặn vì Ctrl+K không gõ ký tự.
+
+**Notes:**
+> Không migration, không permission key mới, không thêm thư viện. Giai đoạn 2 (tìm tiêu đề hướng dẫn) chưa làm vì P7 chưa có. Chưa có nút mở palette trên header (chỉ phím tắt) nên máy không có bàn phím chưa dùng được. `eslint` còn 3 lỗi `set-state-in-effect` + 2 warning `window.location.href` SẴN CÓ trong `(dashboard)/layout.tsx` (dòng ~107/114/279/285/291), không do thay đổi này. `tsc` cần `next-env.d.ts` (gitignore, sinh khi chạy `next build`/`next dev`) mới hết lỗi thiếu type `logo.png`. Rollback: gỡ `<CommandPaletteHost />` + import khỏi `layout.tsx`.
+
+---

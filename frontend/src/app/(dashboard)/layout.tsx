@@ -21,6 +21,7 @@ import { CountBadge } from '@/components/common/CountBadge';
 import { getNavBadgeProps } from '@/lib/nav-badge';
 import { NotificationBell } from '@/components/notifications/NotificationBell';
 import { NotificationDetailModal } from '@/components/notifications/NotificationDetailModal';
+import { CommandPaletteHost } from '@/components/common/CommandPaletteHost';
 import { useRoleColorMap } from '@/lib/hooks/useRoleColorMap';
 import dayjs from 'dayjs';
 import 'dayjs/locale/vi';
@@ -457,6 +458,9 @@ export default function DashboardLayout({
 
         {/* Modal chi tiết thông báo thủ công - mở qua useNotificationUiStore */}
         <NotificationDetailModal />
+
+        {/* Tìm nhanh Ctrl+K / Cmd+K - nạp lười, chỉ liệt kê trang user được vào (PLAN_HARDENING P8) */}
+        <CommandPaletteHost />
 
         <Footer
           style={{
