@@ -105,11 +105,11 @@ Lý do: trình duyệt tự hiện hộp thoại đăng nhập khi mở trang (k
 **Mục tiêu:** biết lỗi thật trước khi người dùng báo; lỗi một trang không đẩy cả app ra màn hình lỗi.
 **Cách chọn: Sentry** (SDK chính thức cho cả Next.js và NestJS, có source map, gắn release theo commit, gói miễn phí đủ cho quy mô hiện tại, có sẵn cơ chế lọc dữ liệu). Không chọn công cụ tự host vì thêm việc vận hành.
 **Việc:**
-- [ ] Tạo `src/app/(dashboard)/error.tsx`: lỗi chỉ thay vùng nội dung, giữ sidebar/header.
-- [ ] Cài Sentry cho FE (`@sentry/nextjs`) và BE (`@sentry/nestjs`). BE gắn vào `AllExceptionsFilter`: chỉ gửi lỗi 5xx, **không** gửi 4xx (401/403/validation) để khỏi nhiễu.
-- [ ] **Bắt buộc scrub PII** (`sendDefaultPii: false` + `beforeSend`): token, header `Authorization`/`Cookie`, body request, số điện thoại/email/tên khách, nội dung ghi chú. Hệ thống chứa PII khách hàng nên không được đẩy nguyên payload lên dịch vụ ngoài. Tắt Session Replay (hoặc mask toàn bộ).
-- [ ] Đặt `release` theo commit SHA; tắt trên môi trường dev.
-- [ ] Thêm domain Sentry vào `connect-src` của CSP (P3).
+- [x] Tạo `src/app/(dashboard)/error.tsx`: lỗi chỉ thay vùng nội dung, giữ sidebar/header.
+- [x] Cài Sentry cho FE (`@sentry/nextjs`) và BE (`@sentry/nestjs`). BE gắn vào `AllExceptionsFilter`: chỉ gửi lỗi 5xx, **không** gửi 4xx (401/403/validation) để khỏi nhiễu.
+- [x] **Bắt buộc scrub PII** (`sendDefaultPii: false` + `beforeSend`): token, header `Authorization`/`Cookie`, body request, số điện thoại/email/tên khách, nội dung ghi chú. Hệ thống chứa PII khách hàng nên không được đẩy nguyên payload lên dịch vụ ngoài. Tắt Session Replay (hoặc mask toàn bộ).
+- [x] Đặt `release` theo commit SHA; tắt trên môi trường dev.
+- [x] Thêm domain Sentry vào `connect-src` của CSP (P3).
 
 **Xong khi:** ném thử 1 lỗi ở FE và 1 lỗi ở BE thấy trên dashboard Sentry, payload không chứa PII.
 
@@ -184,7 +184,7 @@ Lý do: trình duyệt tự hiện hộp thoại đăng nhập khi mở trang (k
 | P2 | Thay `xlsx` (BE -> FE), hỗ trợ CSV | [x] | 2026-10-01 | BE: exceljs (.xlsx) + papaparse (.csv); FE: file mẫu tĩnh `public/templates/` sinh bằng `backend/scripts/generate-import-templates.ts`. Đã gỡ `xlsx` khỏi cả 2 package.json; audit prod BE: 0 high |
 | P3 | Header bảo mật (BE + FE) | [x] | 2026-10-01 | BE: `helmet` (CSP chặt cho API, nới riêng cho Swagger + landing, CORP cross-origin). FE: `headers()` + CSP **Report-Only** (bật enforce bằng env `CSP_ENFORCE=true`). Chưa xem console trình duyệt thật |
 | P4 | Bảo vệ Swagger (Basic auth, admin) | [x] | 2026-10-01 | Middleware Basic auth + `AuthService.verifySwaggerAdmin()` (chỉ role admin), rate limit 5 lần sai/15 phút/IP (RAM từng instance), `SWAGGER_ENABLED=false` để tắt hẳn. Chưa thử trên Vercel thật |
-| P5 | Sentry + `(dashboard)/error.tsx` | [ ] | | |
+| P5 | Sentry + `(dashboard)/error.tsx` | [x] | 2026-10-01 | Code xong + test pass. **Chưa xác nhận trên Sentry thật** (cần tạo 2 project + đặt env trên Vercel, ném thử 1 lỗi FE + 1 lỗi BE, xem payload không có PII). BE: `@sentry/nestjs` v11, filter chỉ gửi 5xx; FE: `@sentry/nextjs` v11, không Replay |
 | P6 | CI tự động | [ ] | | |
 | P7 | Hướng dẫn sử dụng động (có migration) | [ ] | | |
 | P8 | Ctrl+K theo quyền | [ ] | | |

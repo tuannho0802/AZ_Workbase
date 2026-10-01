@@ -1,5 +1,6 @@
 /** @type {import('next').NextConfig} */
 const { withBotId } = require('botid/next/config');
+const { withSentryConfig } = require('@sentry/nextjs/config');
 
 // ===== PLAN_HARDENING P3 - Header bảo mật =====
 // Origin của API (từ NEXT_PUBLIC_API_URL) để cho phép trong `connect-src`.
@@ -86,6 +87,9 @@ const nextConfig = {
   reactStrictMode: true,
   env: {
     NEXT_PUBLIC_API_URL: process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001/api',
+    // PLAN_HARDENING P5: release Sentry = commit SHA (Vercel tự cấp lúc build).
+    NEXT_PUBLIC_SENTRY_RELEASE: process.env.VERCEL_GIT_COMMIT_SHA || '',
+    NEXT_PUBLIC_SENTRY_ENV: process.env.VERCEL_ENV || '',
   },
   allowedDevOrigins: ['localhost', '127.0.0.1', '[::1]'],
 };
@@ -97,4 +101,16 @@ const nextConfig = {
 // động khi deploy trên Vercel (dev local vẫn chạy được bình thường, BotID
 // tự nhận biết môi trường dev - xem `checkBotId()` ở
 // `frontend/src/app/api/auth/register/route.ts`).
-module.exports = withBotId(nextConfig);
+// PLAN_HARDENING P5: Sentry bọc NGOÀI CÙNG. Upload source map chỉ chạy khi có
+// SENTRY_AUTH_TOKEN (Vercel) - thiếu token (local/CI) thì build vẫn qua, chỉ bỏ
+// bước upload. Source map sinh ra được XOÁ sau khi upload (mặc định) nên không
+// bị lộ công khai. Không dùng `tunnelRoute`: CSP (P3) đã cho phép domain ingest.
+module.exports = withSentryConfig(withBotId(nextConfig), {
+  org: process.env.SENTRY_ORG,
+  project: process.env.SENTRY_PROJECT,
+  authToken: process.env.SENTRY_AUTH_TOKEN,
+  silent: !process.env.CI,
+  telemetry: false,
+  widenClientFileUpload: true,
+  release: { name: process.env.VERCEL_GIT_COMMIT_SHA || undefined },
+});

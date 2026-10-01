@@ -2,6 +2,7 @@
 
 import { useEffect } from 'react';
 import Image from 'next/image';
+import * as Sentry from '@sentry/nextjs';
 import logo from './logo.png';
 import './globals.css';
 
@@ -21,6 +22,8 @@ export default function GlobalError({
   reset: () => void;
 }) {
   useEffect(() => {
+    // PLAN_HARDENING P5: gửi lên Sentry (lọc PII ở `beforeSend`, chỉ bật ở production).
+    Sentry.captureException(error);
     // Cùng lý do console.error() được chấp nhận ở error.tsx - đây là trạm
     // log lỗi cuối cùng khi cả root layout đã crash.
     console.error('[global-error.tsx] Lỗi runtime NGHIÊM TRỌNG ở root layout:', error);

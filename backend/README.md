@@ -42,6 +42,13 @@ Swagger (`/api/docs`, `/api/docs-json`, `/api/docs-yaml`) được bảo vệ b�
 - Không cần biến môi trường mới. Tuỳ chọn: `SWAGGER_ENABLED=false` để tắt hẳn Swagger.
 - Code: `src/common/security/swagger-basic-auth.middleware.ts`, `AuthService.verifySwaggerAdmin()`.
 
+### Gom lỗi bằng Sentry (PLAN_HARDENING P5)
+
+- `src/instrument.ts` khởi tạo Sentry, được `import` **đầu tiên** trong `main.ts`. `AllExceptionsFilter` chỉ gửi lỗi **5xx** (không gửi 4xx).
+- Biến môi trường (Vercel, project Sentry của **BE**): `SENTRY_DSN`. Thiếu DSN hoặc không phải production -> Sentry tự tắt, không gửi gì. `release` lấy từ `VERCEL_GIT_COMMIT_SHA`.
+- **Lọc PII bắt buộc** ở `common/observability/sentry-scrub.ts` (`beforeSend`): xoá request/user/extra, che SĐT/email/token trong message. Sửa file này phải chạy lại `sentry-scrub.spec.ts`.
+- Trên Vercel, filter đợi `Sentry.flush(2000)` trước khi trả response 5xx (serverless có thể đóng băng hàm ngay sau response).
+
 ### Database Migrations (BẮT BUỘC — không sửa schema DB thủ công)
 
 ```bash

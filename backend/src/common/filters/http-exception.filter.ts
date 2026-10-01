@@ -6,10 +6,11 @@ import {
   HttpStatus,
 } from '@nestjs/common';
 import { Request, Response } from 'express';
+import * as Sentry from '@sentry/nestjs';
 
 @Catch()
 export class AllExceptionsFilter implements ExceptionFilter {
-  catch(exception: unknown, host: ArgumentsHost) {
+  catch(exception: unknown, host: ArgumentsHost): void | Promise<void> {
     const ctx = host.switchToHttp();
     const response = ctx.getResponse<Response>();
     const request = ctx.getRequest<Request>();
@@ -46,6 +47,24 @@ export class AllExceptionsFilter implements ExceptionFilter {
       message,
       stack: exception instanceof Error ? exception.stack : null,
     });
+
+    // PLAN_HARDENING P5: chỉ gửi lỗi 5xx lên Sentry - KHÔNG gửi 4xx
+    // (401/403/validation là lỗi người dùng, gửi lên chỉ gây nhiễu).
+    // Dữ liệu được lọc PII ở `beforeSend` (xem instrument.ts).
+    if (status >= HttpStatus.INTERNAL_SERVER_ERROR) {
+      Sentry.captureException(exception);
+
+      // Vercel serverless có thể đóng băng hàm ngay sau khi response kết thúc
+      // -> event chưa kịp gửi đi. Trên Vercel: đợi flush (tối đa 2s) rồi mới
+      // trả response; môi trường khác thì gửi nền như bình thường.
+      if (process.env.VERCEL === '1') {
+        return Sentry.flush(2000)
+          .catch(() => false)
+          .then(() => {
+            response.status(status).json(errorResponse);
+          });
+      }
+    }
 
     response.status(status).json(errorResponse);
   }

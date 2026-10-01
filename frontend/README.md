@@ -63,6 +63,14 @@ frontend/src/
 
 ---
 
+### Gom lỗi bằng Sentry (PLAN_HARDENING P5)
+
+- File: `src/instrumentation-client.ts` (trình duyệt), `src/instrumentation.ts` + `src/sentry.server.config.ts` (server), option dùng chung ở `lib/observability/sentry-options.ts`, lọc PII ở `lib/observability/sentry-scrub.ts`.
+- Biến môi trường (Vercel, project Sentry của **FE**): `NEXT_PUBLIC_SENTRY_DSN` (công khai theo thiết kế), và để upload source map: `SENTRY_ORG`, `SENTRY_PROJECT`, `SENTRY_AUTH_TOKEN` (bí mật, KHÔNG đặt `NEXT_PUBLIC_`). Thiếu `SENTRY_AUTH_TOKEN` thì build vẫn qua, chỉ bỏ bước upload.
+- Không bật Session Replay (màn hình chứa PII khách hàng). Lỗi 4xx của axios bị bỏ qua (`SENTRY_IGNORE_ERRORS`).
+- Error boundary theo vùng: `app/(dashboard)/error.tsx` chỉ thay vùng nội dung, giữ Sidebar/Header. Lỗi ở chính `(dashboard)/layout.tsx` rơi về `app/error.tsx`.
+- `withSentryConfig` ở v11 import từ `@sentry/nextjs/config` (không phải `@sentry/nextjs`).
+
 ## 3. Test & build trước khi bàn giao
 
 ```bash

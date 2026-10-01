@@ -5471,3 +5471,20 @@ khi bị xoá tay. Đây là 1 anti-pattern thật (dù đo thử với payload 
 > Không migration, không permission key mới, không biến môi trường bắt buộc. Rate limit nằm trong RAM từng instance (Vercel serverless) nên chỉ là lớp giảm thiểu. Rollback: gỡ khối `app.use(createSwaggerBasicAuth(...))` trong `main.ts`.
 
 ---
+
+## [2026-10-01 19:00] | PLAN_HARDENING P5: Sentry (BE + FE) + error boundary `(dashboard)` | [Status: Success — BE tsc sạch, nest build OK, jest 83 suite / 1436 test pass (baseline 81/1422 + 14 test mới); FE tsc sạch, vitest 50 file / 376 test pass, `next build` OK (không có SENTRY_AUTH_TOKEN); CHƯA thử trên Sentry/Vercel thật]
+
+**Actor:** Agent (đặt trên P4, HEAD `5cb20a8`)
+
+**Files Changed:**
+- BE: `package.json` (+`@sentry/nestjs` ^11.1.0 — cần `npm i` trên Windows để cập nhật lockfile), `src/instrument.ts` (mới), `src/common/observability/sentry-scrub.ts` + `.spec.ts` (mới), `src/common/filters/http-exception.filter.ts` (+capture 5xx, flush trên Vercel) + `.spec.ts` (mới), `src/main.ts` (`import './instrument'` đầu file), `README.md`.
+- FE: `package.json` (+`@sentry/nextjs` ^11.1.0 — cần `npm i` trên Windows), `next.config.js` (`withSentryConfig` bọc ngoài `withBotId`, +env release), `src/instrumentation-client.ts`, `src/instrumentation.ts`, `src/sentry.server.config.ts`, `src/lib/observability/{sentry-options,sentry-scrub}.ts` + test (mới), `src/app/(dashboard)/error.tsx` + test (mới), `src/app/error.tsx` + `src/app/global-error.tsx` (+`Sentry.captureException`), `README.md`.
+- Docs: `PLAN_HARDENING.md` (tick P5).
+
+**Solution:**
+> BE: chỉ lỗi >=500 được gửi; trên Vercel filter đợi `Sentry.flush(2000)` rồi mới trả response (serverless có thể đóng băng hàm). `beforeSend` xoá request/user/extra, che SĐT VN/email/JWT/Bearer trong text; tắt tích hợp `ContextLines` (SDK gửi kèm dòng source). FE: không tracing, không Replay, bỏ qua axios 4xx; breadcrumb chỉ giữ URL đã bỏ query (query có dạng `?search=<SĐT>`). `(dashboard)/error.tsx` chỉ thay vùng nội dung, giữ sidebar/header.
+
+**Notes:**
+> Không migration, không permission key mới. Việc cần làm tay: tạo 2 project Sentry (BE, FE); Vercel BE: `SENTRY_DSN`; Vercel FE: `NEXT_PUBLIC_SENTRY_DSN`, `SENTRY_ORG`, `SENTRY_PROJECT`, `SENTRY_AUTH_TOKEN`; chạy `npm i` trên Windows rồi commit lockfile. Ném thử 1 lỗi FE + 1 lỗi BE để xác nhận "Xong khi". Giới hạn đã biết: **tên khách** trong message lỗi tự do không nhận diện được bằng regex (đã xoá body/extra/user nên đường chính không lọt). SDK v11 không còn option `sendDefaultPii`; `withSentryConfig` import từ `@sentry/nextjs/config`. Rollback: gỡ `import './instrument'` + khối Sentry trong filter (BE); gỡ `withSentryConfig` + 3 file instrumentation (FE).
+
+---

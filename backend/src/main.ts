@@ -1,3 +1,5 @@
+// PLAN_HARDENING P5: Sentry phải được khởi tạo TRƯỚC mọi import khác.
+import './instrument';
 import { NestFactory } from '@nestjs/core';
 import { ValidationPipe, RequestMethod } from '@nestjs/common';
 import { SwaggerModule, DocumentBuilder } from '@nestjs/swagger';

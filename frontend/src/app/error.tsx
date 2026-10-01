@@ -5,6 +5,7 @@ import Link from 'next/link';
 import Image from 'next/image';
 import { Button } from 'antd';
 import { HomeOutlined, ReloadOutlined } from '@ant-design/icons';
+import * as Sentry from '@sentry/nextjs';
 import logo from './logo.png';
 
 // ⚠️ App Router error boundary - Next.js tự render component này khi CÓ LỖI
@@ -24,11 +25,12 @@ export default function Error({
   reset: () => void;
 }) {
   useEffect(() => {
+    // PLAN_HARDENING P5: gửi lên Sentry (lọc PII ở `beforeSend`, chỉ bật ở production).
+    Sentry.captureException(error);
     // Log lỗi thật ra console để dev còn thấy stack trace khi debug - nơi
     // duy nhất trong khối error boundary này chấp nhận console.error() vì
     // đây chính là "trạm log lỗi" theo đúng vai trò của error.tsx trong Next
-    // App Router. Khi tích hợp Sentry (đã liệt kê ở mục "Post-Launch
-    // Checklist" của README) thì thay dòng này bằng `Sentry.captureException`.
+    // App Router. Sentry đã được gắn ở dòng ngay phía trên (P5).
     console.error('[error.tsx] Lỗi runtime chưa xử lý:', error);
   }, [error]);
 
