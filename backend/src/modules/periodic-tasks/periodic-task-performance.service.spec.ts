@@ -471,7 +471,9 @@ describe('PeriodicTaskPerformanceService - grace period 7 ngày', () => {
         addOrderBy: jest.fn().mockReturnThis(),
         setParameter: jest.fn().mockReturnThis(),
         skip: jest.fn().mockReturnThis(),
+        offset: jest.fn().mockReturnThis(),
         take: jest.fn().mockReturnThis(),
+        limit: jest.fn().mockReturnThis(),
         getManyAndCount: jest.fn().mockResolvedValue([tasks, total]),
       };
     }

@@ -23,7 +23,9 @@ function makeFakeQueryBuilder(overrides: { getOne?: any; getManyAndCount?: any }
     orderBy: jest.fn().mockReturnThis(),
     addOrderBy: jest.fn().mockReturnThis(),
     skip: jest.fn().mockReturnThis(),
+    offset: jest.fn().mockReturnThis(),
     take: jest.fn().mockReturnThis(),
+    limit: jest.fn().mockReturnThis(),
     getOne: jest.fn().mockResolvedValue(overrides.getOne ?? null),
     getManyAndCount: jest.fn().mockResolvedValue(overrides.getManyAndCount ?? [[], 0]),
   };

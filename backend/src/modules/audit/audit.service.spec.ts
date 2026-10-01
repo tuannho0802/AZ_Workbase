@@ -28,7 +28,9 @@ describe('AuditService.getLogs', () => {
         return qb;
       }),
       skip: jest.fn().mockReturnThis(),
+      offset: jest.fn().mockReturnThis(),
       take: jest.fn().mockReturnThis(),
+      limit: jest.fn().mockReturnThis(),
       getManyAndCount: jest.fn().mockResolvedValue([[], 0]),
     };
     return { qb, andWhereCalls };

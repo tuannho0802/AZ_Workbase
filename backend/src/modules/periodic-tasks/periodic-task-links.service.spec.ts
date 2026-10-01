@@ -21,7 +21,9 @@ function makeFakeQueryBuilder(overrides: { getMany?: any; getRawMany?: any } = {
     orderBy: jest.fn().mockReturnThis(),
     addOrderBy: jest.fn().mockReturnThis(),
     skip: jest.fn().mockReturnThis(),
+    offset: jest.fn().mockReturnThis(),
     take: jest.fn().mockReturnThis(),
+    limit: jest.fn().mockReturnThis(),
     getMany: jest.fn().mockResolvedValue(overrides.getMany ?? []),
     getRawMany: jest.fn().mockResolvedValue(overrides.getRawMany ?? []),
   };
@@ -284,8 +286,8 @@ describe('PeriodicTaskLinksService', () => {
 
       expect(mockTasksService.assertCanView).toHaveBeenCalledWith(1, userId, userRole, scope);
       expect(mockTasksService.findOne).not.toHaveBeenCalled();
-      expect(pageQb.skip).toHaveBeenCalledWith(20);
-      expect(pageQb.take).toHaveBeenCalledWith(10);
+      expect(pageQb.offset).toHaveBeenCalledWith(20);
+      expect(pageQb.limit).toHaveBeenCalledWith(10);
       expect(result).toMatchObject({ total: 25, done: 4, page: 3, limit: 10, totalPages: 3 });
       expect(result.data).toEqual([expect.objectContaining({ childTaskId: 21, isDone: true })]);
     });

@@ -293,8 +293,8 @@ export class UsersService {
     }
 
     const [data, total] = await queryBuilder
-      .skip((page - 1) * limit)
-      .take(limit)
+      .offset((page - 1) * limit)
+      .limit(limit)
       .orderBy('user.id', 'DESC')
       .getManyAndCount();
 

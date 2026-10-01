@@ -105,7 +105,7 @@ export class LinkGroupCustomersService {
     if (query.dateFrom) qb.andWhere('customer.inputDate >= :dateFrom', { dateFrom: query.dateFrom });
     if (query.dateTo) qb.andWhere('customer.inputDate <= :dateTo', { dateTo: query.dateTo });
 
-    qb.orderBy('customer.createdAt', 'DESC').addOrderBy('customer.id', 'DESC').skip((page - 1) * limit).take(limit);
+    qb.orderBy('customer.createdAt', 'DESC').addOrderBy('customer.id', 'DESC').offset((page - 1) * limit).limit(limit);
 
     const [entities, total] = await qb.getManyAndCount();
 

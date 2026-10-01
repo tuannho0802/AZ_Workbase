@@ -53,8 +53,8 @@ export class PeriodicTaskTrashService {
 
     qb.orderBy('task.deletedAt', 'DESC')
       .addOrderBy('task.id', 'DESC')
-      .skip((page - 1) * limit)
-      .take(limit);
+      .offset((page - 1) * limit)
+      .limit(limit);
 
     const [tasks, total] = await qb.getManyAndCount();
 

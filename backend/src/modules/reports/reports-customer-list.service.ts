@@ -78,8 +78,8 @@ export class ReportsCustomerListService {
     else qb.orderBy('customer.createdAt', 'DESC').addOrderBy('customer.id', 'DESC');
 
     const [rows, total] = await qb
-      .skip((page - 1) * limit)
-      .take(limit)
+      .offset((page - 1) * limit)
+      .limit(limit)
       .getManyAndCount();
 
     const ids = rows.map((r) => r.id);

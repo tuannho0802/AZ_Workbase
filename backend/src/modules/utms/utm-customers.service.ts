@@ -100,8 +100,8 @@ export class UtmCustomersService {
 
     qb.orderBy('customer.createdAt', 'DESC')
       .addOrderBy('customer.id', 'DESC')
-      .skip((page - 1) * limit)
-      .take(limit);
+      .offset((page - 1) * limit)
+      .limit(limit);
     const [entities, total] = await qb.getManyAndCount();
 
     const data = await this.mapRows(entities, caller);
@@ -170,8 +170,8 @@ export class UtmCustomersService {
 
     qb.orderBy('customer.inputDate', 'DESC')
       .addOrderBy('customer.id', 'DESC')
-      .skip((page - 1) * limit)
-      .take(limit);
+      .offset((page - 1) * limit)
+      .limit(limit);
     const [entities, total] = await qb.getManyAndCount();
 
     return { data: await this.mapRows(entities, caller), total, page, limit, totalPages: Math.ceil(total / limit) };

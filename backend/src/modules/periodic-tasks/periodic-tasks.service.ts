@@ -420,7 +420,7 @@ export class PeriodicTasksService {
     }
 
     qb.orderBy('task.periodStartDate', 'DESC').addOrderBy('task.id', 'DESC');
-    qb.skip((page - 1) * limit).take(limit);
+    qb.offset((page - 1) * limit).limit(limit);
 
     const [data, total] = await qb.getManyAndCount();
 

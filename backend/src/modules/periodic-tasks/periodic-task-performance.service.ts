@@ -919,15 +919,15 @@ export class PeriodicTaskPerformanceService {
 
     const primaryQb = applyCommon(this.taskRepo.createQueryBuilder('task'))
       .andWhere('task.primaryAssigneeId = :perfTargetUserId', { perfTargetUserId: targetUserId })
-      .skip((primaryPage - 1) * USER_TASKS_PAGE_SIZE)
-      .take(USER_TASKS_PAGE_SIZE);
+      .offset((primaryPage - 1) * USER_TASKS_PAGE_SIZE)
+      .limit(USER_TASKS_PAGE_SIZE);
 
     const secondaryQb = applyCommon(this.taskRepo.createQueryBuilder('task'))
       .andWhere('task.id IN (SELECT psa.task_id FROM periodic_task_secondary_assignees psa WHERE psa.user_id = :perfSecTargetUserId)', {
         perfSecTargetUserId: targetUserId,
       })
-      .skip((secondaryPage - 1) * USER_TASKS_PAGE_SIZE)
-      .take(USER_TASKS_PAGE_SIZE);
+      .offset((secondaryPage - 1) * USER_TASKS_PAGE_SIZE)
+      .limit(USER_TASKS_PAGE_SIZE);
 
     const [[primaryTasksRaw, primaryTotal], [secondaryTasksRaw, secondaryTotal]] = await Promise.all([
       primaryQb.getManyAndCount(),

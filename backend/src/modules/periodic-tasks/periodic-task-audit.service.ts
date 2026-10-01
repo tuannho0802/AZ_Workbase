@@ -135,8 +135,8 @@ export class PeriodicTaskAuditService {
       .leftJoinAndSelect('log.user', 'user')
       .where('log.taskId = :taskId', { taskId })
       .orderBy('log.createdAt', 'DESC')
-      .skip((page - 1) * limit)
-      .take(limit)
+      .offset((page - 1) * limit)
+      .limit(limit)
       .getManyAndCount();
 
     return { data, total, page, limit, totalPages: Math.ceil(total / limit) };
@@ -224,8 +224,8 @@ export class PeriodicTaskAuditService {
     }
 
     const [data, total] = await qb
-      .skip((page - 1) * limit)
-      .take(limit)
+      .offset((page - 1) * limit)
+      .limit(limit)
       .getManyAndCount();
 
     return { data, total, page, limit, totalPages: Math.ceil(total / limit) };

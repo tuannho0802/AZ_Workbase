@@ -510,7 +510,9 @@ describe('CustomersService', () => {
         }),
         orderBy: jest.fn().mockReturnThis(),
         skip: jest.fn().mockReturnThis(),
+        offset: jest.fn().mockReturnThis(),
         take: jest.fn().mockReturnThis(),
+        limit: jest.fn().mockReturnThis(),
         getManyAndCount: jest.fn().mockResolvedValue([[], 0]),
       };
       return { qb, andWhereCalls };
@@ -591,7 +593,9 @@ describe('CustomersService', () => {
         }),
         orderBy: jest.fn().mockReturnThis(),
         skip: jest.fn().mockReturnThis(),
+        offset: jest.fn().mockReturnThis(),
         take: jest.fn().mockReturnThis(),
+        limit: jest.fn().mockReturnThis(),
         getManyAndCount: jest.fn().mockResolvedValue([[], 0]),
       };
       return { qb, andWhereCalls };
@@ -940,7 +944,9 @@ describe('CustomersService', () => {
         andWhere: jest.fn().mockReturnThis(),
         orderBy: jest.fn().mockReturnThis(),
         skip: jest.fn().mockReturnThis(),
+        offset: jest.fn().mockReturnThis(),
         take: jest.fn().mockReturnThis(),
+        limit: jest.fn().mockReturnThis(),
         getManyAndCount: jest.fn().mockResolvedValue([rows, rows.length]),
       };
       return qb;
@@ -1429,7 +1435,9 @@ describe('CustomersService', () => {
         orderBy: jest.fn().mockReturnThis(),
         addOrderBy: jest.fn().mockReturnThis(),
         skip: jest.fn().mockReturnThis(),
+        offset: jest.fn().mockReturnThis(),
         take: jest.fn().mockReturnThis(),
+        limit: jest.fn().mockReturnThis(),
         getRawMany: jest.fn().mockResolvedValue(idRows),
       };
       return qb;

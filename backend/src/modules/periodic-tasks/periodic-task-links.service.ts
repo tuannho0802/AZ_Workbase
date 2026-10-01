@@ -346,8 +346,8 @@ export class PeriodicTaskLinksService {
       qb
         .orderBy('task.periodStartDate', 'DESC')
         .addOrderBy('task.id', 'DESC')
-        .skip((page - 1) * limit)
-        .take(limit)
+        .offset((page - 1) * limit)
+        .limit(limit)
         .getMany(),
     ]);
 

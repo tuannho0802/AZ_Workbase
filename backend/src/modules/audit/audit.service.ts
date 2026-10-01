@@ -247,8 +247,8 @@ export class AuditService {
     }
 
     const [data, total] = await qb
-      .skip((page - 1) * limit)
-      .take(limit)
+      .offset((page - 1) * limit)
+      .limit(limit)
       .getManyAndCount();
 
     return {

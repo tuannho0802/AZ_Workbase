@@ -4,7 +4,7 @@ import { LinkGroupCustomersService } from './link-group-customers.service';
 /** QueryBuilder giả: chuỗi hoá mọi hàm, ghi lại lời gọi để assert. */
 function fakeQb(result: { many?: any[]; count?: number; raw?: any[] }) {
   const qb: any = { calls: [] as Array<[string, any[]]> };
-  const chain = ['innerJoin', 'leftJoinAndSelect', 'where', 'andWhere', 'orderBy', 'addOrderBy', 'skip', 'take',
+  const chain = ['innerJoin', 'leftJoinAndSelect', 'where', 'andWhere', 'orderBy', 'addOrderBy', 'skip', 'take', 'offset', 'limit',
     'select', 'addSelect', 'groupBy'];
   chain.forEach((fn) => {
     qb[fn] = jest.fn((...args: any[]) => {
@@ -87,8 +87,8 @@ describe('LinkGroupCustomersService', () => {
       expect(res).toMatchObject({ total: 23, page: 2, limit: 10, totalPages: 3 });
       expect(res.data[0]).toMatchObject({ id: 10, joinedAt, salesUser: { id: 3, name: 'S' } });
       expect((res.data[0].salesUser as any).extra).toBeUndefined(); // chỉ lộ id/name
-      expect(customerQb.skip).toHaveBeenCalledWith(10);
-      expect(customerQb.take).toHaveBeenCalledWith(10);
+      expect(customerQb.offset).toHaveBeenCalledWith(10);
+      expect(customerQb.limit).toHaveBeenCalledWith(10);
       const where = customerQb.calls.filter(([fn]: any) => fn === 'andWhere').map(([, a]: any) => a[0]).join('|');
       expect(where).toContain('customer.status = :status');
       expect(where).toContain('customer.salesUserId = :salesUserId');

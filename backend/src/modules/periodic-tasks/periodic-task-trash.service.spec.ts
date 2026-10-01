@@ -18,7 +18,7 @@ describe('PeriodicTaskTrashService', () => {
   deleteQb.execute = jest.fn();
 
   const listQb: any = {};
-  for (const m of ['withDeleted', 'leftJoinAndSelect', 'where', 'andWhere', 'orderBy', 'addOrderBy', 'skip', 'take']) {
+  for (const m of ['withDeleted', 'leftJoinAndSelect', 'where', 'andWhere', 'orderBy', 'addOrderBy', 'skip', 'take', 'offset', 'limit']) {
     listQb[m] = jest.fn().mockReturnValue(listQb);
   }
   listQb.getManyAndCount = jest.fn();

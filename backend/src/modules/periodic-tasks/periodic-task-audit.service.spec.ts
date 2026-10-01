@@ -29,7 +29,9 @@ describe('PeriodicTaskAuditService', () => {
       andWhere: jest.fn().mockReturnThis(),
       orderBy: jest.fn().mockReturnThis(),
       skip: jest.fn().mockReturnThis(),
+      offset: jest.fn().mockReturnThis(),
       take: jest.fn().mockReturnThis(),
+      limit: jest.fn().mockReturnThis(),
       getManyAndCount: jest.fn().mockResolvedValue(overrides.getManyAndCount ?? [[], 0]),
     };
     return qb;
@@ -188,8 +190,8 @@ describe('PeriodicTaskAuditService', () => {
 
       const result = await service.getLogsForTask(10, { page: 3, limit: 20 });
 
-      expect(qb.skip).toHaveBeenCalledWith(40);
-      expect(qb.take).toHaveBeenCalledWith(20);
+      expect(qb.offset).toHaveBeenCalledWith(40);
+      expect(qb.limit).toHaveBeenCalledWith(20);
       expect(result.totalPages).toBe(3);
     });
 
@@ -199,8 +201,8 @@ describe('PeriodicTaskAuditService', () => {
 
       const result = await service.getLogsForTask(10, {});
 
-      expect(qb.skip).toHaveBeenCalledWith(0);
-      expect(qb.take).toHaveBeenCalledWith(20);
+      expect(qb.offset).toHaveBeenCalledWith(0);
+      expect(qb.limit).toHaveBeenCalledWith(20);
       expect(result.page).toBe(1);
       expect(result.limit).toBe(20);
     });
@@ -273,8 +275,8 @@ describe('PeriodicTaskAuditService', () => {
 
       const result = await service.getGlobalLogs({ page: 3, limit: 20 }, 1, Role.ADMIN);
 
-      expect(qb.skip).toHaveBeenCalledWith(40);
-      expect(qb.take).toHaveBeenCalledWith(20);
+      expect(qb.offset).toHaveBeenCalledWith(40);
+      expect(qb.limit).toHaveBeenCalledWith(20);
       expect(result.totalPages).toBe(3);
     });
   });

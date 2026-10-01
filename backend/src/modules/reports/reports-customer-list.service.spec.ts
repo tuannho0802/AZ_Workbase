@@ -16,7 +16,9 @@ function fakeQb(rows: any[] = [], total = 0) {
     orderBy: () => qb,
     addOrderBy: () => qb,
     skip: () => qb,
+    offset: () => qb,
     take: () => qb,
+    limit: () => qb,
     getManyAndCount: async () => [rows, total],
   };
   return { qb, wheres, params };

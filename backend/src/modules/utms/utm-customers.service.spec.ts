@@ -5,7 +5,7 @@ import { UtmCustomersService } from './utm-customers.service';
 describe('UtmCustomersService', () => {
   const caller: any = { id: 10, role: 'employee' };
   const qb: any = {};
-  ['select', 'addSelect', 'where', 'andWhere', 'groupBy', 'leftJoinAndSelect', 'withDeleted', 'orderBy', 'addOrderBy', 'skip', 'take'].forEach(
+  ['select', 'addSelect', 'where', 'andWhere', 'groupBy', 'leftJoinAndSelect', 'withDeleted', 'orderBy', 'addOrderBy', 'skip', 'take', 'offset', 'limit'].forEach(
     (m) => (qb[m] = jest.fn(() => qb)),
   );
   const repo: any = { createQueryBuilder: jest.fn(() => qb) };
@@ -52,7 +52,7 @@ describe('UtmCustomersService', () => {
     expect(calls()).toBeGreaterThan(2);
     expect(ui.stripHiddenCustomerFields).toHaveBeenCalled();
     expect(res).toEqual(expect.objectContaining({ total: 21, page: 2, totalPages: 3 }));
-    expect(qb.skip).toHaveBeenCalledWith(10);
+    expect(qb.offset).toHaveBeenCalledWith(10);
   });
 
   describe('Thùng rác (trashed)', () => {
@@ -127,7 +127,7 @@ describe('UtmCustomersService', () => {
       expect(qb.andWhere).toHaveBeenCalledWith('customer.status = :status', { status: 'closed' });
       expect(qb.andWhere).toHaveBeenCalledWith('(customer.name LIKE :kw OR customer.phone LIKE :kw)', { kw: '%An%' });
       expect(qb.leftJoinAndSelect).toHaveBeenCalledWith('customer.utm', 'utm');
-      expect(qb.skip).toHaveBeenCalledWith(40);
+      expect(qb.offset).toHaveBeenCalledWith(40);
       expect(calls()).toBeGreaterThan(5); // applyViewFilter (own) thêm điều kiện
     });
 

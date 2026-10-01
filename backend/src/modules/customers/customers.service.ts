@@ -1068,7 +1068,7 @@ export class CustomersService {
     this.applyCustomerListSort(queryBuilder, sortField, sortOrder);
 
     // Pagination
-    queryBuilder.skip((page - 1) * limit).take(limit);
+    queryBuilder.offset((page - 1) * limit).limit(limit);
 
     // ===== Query đếm: KHÔNG joins, KHÔNG subquery deposit =====
     // Trước đây COUNT chạy trên cùng queryBuilder có 4 leftJoinAndSelect + subquery
@@ -1106,8 +1106,11 @@ export class CustomersService {
     ]);
 
     // Map the raw sum back to each entity
+    // [PERF] Dựng Map 1 lần thay vì raw.find() trong forEach (O(n²)).
+    const rawById = new Map<number, any>();
+    raw.forEach((r) => rawById.set(Number(r.customer_id || r.id), r));
     entities.forEach((customer) => {
-      const rawRow = raw.find((r) => (r.customer_id || r.id) === customer.id);
+      const rawRow = rawById.get(Number(customer.id));
       if (rawRow) {
         (customer as any).totalDeposit30Days = parseFloat(
           rawRow.totalDepositSum || '0',
@@ -1783,7 +1786,7 @@ export class CustomersService {
       .leftJoinAndSelect('deposit.createdBy', 'createdBy')
       .orderBy('deposit.depositDate', 'DESC')
       .addOrderBy('deposit.createdAt', 'DESC')
-      .take(5)
+      .limit(5)
       .getMany();
   }
 
@@ -2591,8 +2594,8 @@ export class CustomersService {
     }
 
     qb.orderBy('customer.createdAt', 'DESC')
-      .skip((page - 1) * limit)
-      .take(limit);
+      .offset((page - 1) * limit)
+      .limit(limit);
 
     const [customers, total] = await qb.getManyAndCount();
 
@@ -2746,8 +2749,8 @@ export class CustomersService {
 
     const [customers, total] = await query
       .orderBy('customer.updatedAt', 'DESC')
-      .skip(skip)
-      .take(limit)
+      .offset(skip)
+      .limit(limit)
       .getManyAndCount();
 
     // ⚠️ FIX BUG THẬT (báo qua ảnh chụp 14/09: cột "Sales Phụ trách chính" ở
@@ -3227,8 +3230,8 @@ export class CustomersService {
     // quá nhiều khách hàng mới (ví dụ sau khi import hàng loạt). Trước đây
     // todayList không có take() nào, sẽ phình to dần theo lượng data nhập vào.
     const [todayList, historyList] = await Promise.all([
-      todayQuery.orderBy('customer.createdAt', 'DESC').take(500).getMany(),
-      historyQuery.orderBy('customer.createdAt', 'DESC').take(50).getMany(),
+      todayQuery.orderBy('customer.createdAt', 'DESC').limit(500).getMany(),
+      historyQuery.orderBy('customer.createdAt', 'DESC').limit(50).getMany(),
     ]);
 
     return { todayList, historyList };
@@ -3277,11 +3280,11 @@ export class CustomersService {
     const [closed, notClosed] = await Promise.all([
       closedQuery
         .orderBy('customer.createdAt', 'DESC')
-        .take(STATS_ROW_CAP)
+        .limit(STATS_ROW_CAP)
         .getMany(),
       notClosedQuery
         .orderBy('customer.createdAt', 'DESC')
-        .take(STATS_ROW_CAP)
+        .limit(STATS_ROW_CAP)
         .getMany(),
     ]);
 
@@ -3332,7 +3335,7 @@ export class CustomersService {
     // lần gọi. Cap lại để tránh phình to vô hạn; nếu cần xem hết, nên lọc
     // theo startDate/endDate thay vì bỏ trống.
     const DEPOSITS_ROW_CAP = 1000;
-    return await queryBuilder.take(DEPOSITS_ROW_CAP).getMany();
+    return await queryBuilder.limit(DEPOSITS_ROW_CAP).getMany();
   }
 
   async getTrash(filters: CustomerFiltersDto) {
@@ -3384,8 +3387,8 @@ export class CustomersService {
 
     const [data, total] = await qb
       .orderBy('customer.deletedAt', 'DESC')
-      .skip((page - 1) * limit)
-      .take(limit)
+      .offset((page - 1) * limit)
+      .limit(limit)
       .getManyAndCount();
 
     // ⚠️ YÊU CẦU NGƯỜI DÙNG: fallback tự động cho "Người xóa" - các bản ghi
@@ -3693,8 +3696,8 @@ export class CustomersService {
     // bản ghi thực sự được tạo trong hệ thống).
     const [data, total] = await qb
       .orderBy('customer.createdAt', 'DESC')
-      .skip((page - 1) * limit)
-      .take(limit)
+      .offset((page - 1) * limit)
+      .limit(limit)
       .getManyAndCount();
 
     // "Đã tham gia nhóm" cho cột hiển thị - 1 query JOIN duy nhất cho cả

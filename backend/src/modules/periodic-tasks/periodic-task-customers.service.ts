@@ -120,18 +120,21 @@ export class PeriodicTaskCustomersService {
     // Mỗi customerId PHẢI pass CustomerAccessHelper (PLAN mục 2.4 bước 2) -
     // không cho gắn "chui" Customer ngoài phạm vi customers.view của người gọi.
     const uniqueIds = Array.from(new Set(dto.customerIds));
-    for (const customerId of uniqueIds) {
-      const qb = this.customerRepo
+    // [PERF] Gộp N query getOne() (1 query/customer - N+1) thành 1 query IN (...)
+    // - cùng điều kiện quyền (applyViewFilter), chỉ đổi cách kiểm tra.
+    if (uniqueIds.length > 0) {
+      const accessQb = this.customerRepo
         .createQueryBuilder('customer')
         .select('customer.id')
-        .where('customer.id = :id', { id: customerId })
+        .where('customer.id IN (:...uniqueIds)', { uniqueIds })
         .andWhere('customer.deletedAt IS NULL');
-      CustomerAccessHelper.applyViewFilter(qb, user.id, user.role, customerScope);
+      CustomerAccessHelper.applyViewFilter(accessQb, user.id, user.role, customerScope);
 
-      const found = await qb.getOne();
-      if (!found) {
+      const accessible = new Set((await accessQb.getMany()).map((c) => c.id));
+      const deniedId = uniqueIds.find((id) => !accessible.has(id));
+      if (deniedId !== undefined) {
         throw new BadRequestException(
-          `Khách hàng ID ${customerId} không tồn tại hoặc ngoài phạm vi quyền xem của bạn`,
+          `Khách hàng ID ${deniedId} không tồn tại hoặc ngoài phạm vi quyền xem của bạn`,
         );
       }
     }
