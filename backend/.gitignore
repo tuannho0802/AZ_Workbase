@@ -26,6 +26,7 @@ build/
 .env.test
 .env.test.local
 .env.aiven
+.env.sentry-local
 *.env
 
 # ==============================

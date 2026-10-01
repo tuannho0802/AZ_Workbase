@@ -70,6 +70,7 @@ frontend/src/
 - Không bật Session Replay (màn hình chứa PII khách hàng). Lỗi 4xx của axios bị bỏ qua (`SENTRY_IGNORE_ERRORS`).
 - Error boundary theo vùng: `app/(dashboard)/error.tsx` chỉ thay vùng nội dung, giữ Sidebar/Header. Lỗi ở chính `(dashboard)/layout.tsx` rơi về `app/error.tsx`.
 - `withSentryConfig` ở v11 import từ `@sentry/nextjs/config` (không phải `@sentry/nextjs`).
+- **Test local** (Sentry chỉ bật ở bản build production, `npm run dev` luôn tắt): copy `.env.sentry-local.example` -> `.env.production.local`, điền `NEXT_PUBLIC_SENTRY_DSN` của project FE **test**, `npm run build && npm run start`, mở `/login` bằng cửa sổ ẩn danh (tắt extension chặn quảng cáo), dán vào Console `setTimeout(() => { throw new Error('FE local test') })`. Event có `environment:local`. **Xoá `.env.production.local` sau khi test** (nó ghi đè env của mọi lần build production local).
 
 ## 3. Test & build trước khi bàn giao
 

@@ -5488,3 +5488,19 @@ khi bị xoá tay. Đây là 1 anti-pattern thật (dù đo thử với payload 
 > Không migration, không permission key mới. Việc cần làm tay: tạo 2 project Sentry (BE, FE); Vercel BE: `SENTRY_DSN`; Vercel FE: `NEXT_PUBLIC_SENTRY_DSN`, `SENTRY_ORG`, `SENTRY_PROJECT`, `SENTRY_AUTH_TOKEN`; chạy `npm i` trên Windows rồi commit lockfile. Ném thử 1 lỗi FE + 1 lỗi BE để xác nhận "Xong khi". Giới hạn đã biết: **tên khách** trong message lỗi tự do không nhận diện được bằng regex (đã xoá body/extra/user nên đường chính không lọt). SDK v11 không còn option `sendDefaultPii`; `withSentryConfig` import từ `@sentry/nextjs/config`. Rollback: gỡ `import './instrument'` + khối Sentry trong filter (BE); gỡ `withSentryConfig` + 3 file instrumentation (FE).
 
 ---
+
+## [2026-10-01 21:00] | PLAN_HARDENING P5 (bổ sung): bộ test Sentry local + sửa `NEXT_PUBLIC_SENTRY_ENV` | [Status: Success — BE tsc/jest sentry pass, script smoke thử đủ 2 đường (mock 200 -> OK; sandbox chặn mạng -> THẤT BẠI HTTP 403); CHƯA thử trên Sentry thật]
+
+**Actor:** Agent (đặt trên HEAD `6870ed9`; patch P5 gốc đã nằm trong `af4d80e`, đây chỉ là phần bổ sung)
+
+**Files Changed:**
+- BE: `scripts/sentry-smoke.ts` (mới), `.env.sentry-local.example` (mới), `package.json` (+script `sentry:smoke`), `.gitignore` (+`.env.sentry-local` — trước đó KHÔNG được ignore vì chỉ có `*.env` và `.env.*.local`), `README.md`.
+- FE: `next.config.js` (`NEXT_PUBLIC_SENTRY_ENV` giờ fallback sang giá trị trong `.env.production.local`), `.env.sentry-local.example` (mới), `.gitignore` (+`!.env.sentry-local.example`, vì `.env*` đang ignore mọi thứ), `README.md`.
+
+**Root Cause:**
+> Khối `env` của `next.config.js` GHI ĐÈ biến cùng tên: `NEXT_PUBLIC_SENTRY_ENV: process.env.VERCEL_ENV || ''` luôn ra `''` ở local, nên FE local rơi về `NODE_ENV` = `production`, event test lẫn vào `environment:production`. `Sentry.flush()` trả `true` cả khi bị chặn mạng -> smoke script lấy mã HTTP thật qua `makeNodeTransport` bọc ngoài.
+
+**Notes:**
+> Không migration, không permission key mới. Dùng project Sentry TEST cho local; xoá `.env.production.local` sau khi test FE.
+
+---

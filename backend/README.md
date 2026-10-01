@@ -48,6 +48,7 @@ Swagger (`/api/docs`, `/api/docs-json`, `/api/docs-yaml`) được bảo vệ b�
 - Biến môi trường (Vercel, project Sentry của **BE**): `SENTRY_DSN`. Thiếu DSN hoặc không phải production -> Sentry tự tắt, không gửi gì. `release` lấy từ `VERCEL_GIT_COMMIT_SHA`.
 - **Lọc PII bắt buộc** ở `common/observability/sentry-scrub.ts` (`beforeSend`): xoá request/user/extra, che SĐT/email/token trong message. Sửa file này phải chạy lại `sentry-scrub.spec.ts`.
 - Trên Vercel, filter đợi `Sentry.flush(2000)` trước khi trả response 5xx (serverless có thể đóng băng hàm ngay sau response).
+- **Test local:** `cp .env.sentry-local.example .env.sentry-local`, điền `SENTRY_DSN` của project BE **test**, chạy `npm run sentry:smoke` (`scripts/sentry-smoke.ts`). Script gửi 1 event giả chứa PII qua đúng `scrubEvent`, in event đã lọc, và báo mã HTTP thật từ Sentry (`Sentry.flush()` trả `true` cả khi mạng bị chặn nên không dùng để kết luận). Event có `environment:local`.
 
 ### Database Migrations (BẮT BUỘC — không sửa schema DB thủ công)
 

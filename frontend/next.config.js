@@ -89,7 +89,9 @@ const nextConfig = {
     NEXT_PUBLIC_API_URL: process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001/api',
     // PLAN_HARDENING P5: release Sentry = commit SHA (Vercel tự cấp lúc build).
     NEXT_PUBLIC_SENTRY_RELEASE: process.env.VERCEL_GIT_COMMIT_SHA || '',
-    NEXT_PUBLIC_SENTRY_ENV: process.env.VERCEL_ENV || '',
+    // Vercel: VERCEL_ENV (production/preview). Local: đặt NEXT_PUBLIC_SENTRY_ENV=local trong
+    // .env.production.local để lọc event test (xem .env.sentry-local.example).
+    NEXT_PUBLIC_SENTRY_ENV: process.env.VERCEL_ENV || process.env.NEXT_PUBLIC_SENTRY_ENV || '',
   },
   allowedDevOrigins: ['localhost', '127.0.0.1', '[::1]'],
 };
