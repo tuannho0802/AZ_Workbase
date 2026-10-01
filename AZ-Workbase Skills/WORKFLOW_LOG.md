@@ -5438,3 +5438,20 @@ khi bị xoá tay. Đây là 1 anti-pattern thật (dù đo thử với payload 
 > Không migration. File mẫu tĩnh: sau khi đổi cột import phải chạy lại `npm run templates:generate` (trong backend/) và commit file .xlsx. Chạy `npm install` trên máy Windows để cập nhật 2 lockfile.
 
 ---
+
+## [2026-10-01 16:00] | PLAN_HARDENING P3: header bảo mật (helmet BE + headers()/CSP Report-Only FE) | [Status: Success — BE tsc sạch, nest build OK, jest 79 suite / 1396 test pass (+3 test mới); FE tsc = baseline (chỉ lỗi cũ logo.png/CountBadge), next build OK; CHƯA xem console trình duyệt thật, CHƯA thử Swagger trên deploy]
+
+**Actor:** Agent (đặt trên P1/P2, HEAD `e7f8c9b`)
+
+**Files Changed:**
+- BE: `package.json` (+`helmet` ^8.3.0 — cần `npm i` trên Windows để cập nhật lockfile), `src/common/security/security-headers.ts` (mới) + `.spec.ts` (mới), `src/main.ts` (`app.use(securityHeaders)` sau compression).
+- FE: `next.config.js` (+`headers()`: nosniff, X-Frame-Options, Referrer-Policy, Permissions-Policy, HSTS, CSP).
+- Docs: `PLAN_HARDENING.md` (tick P3).
+
+**Solution:**
+> BE chia 2 nhóm path: API JSON (`/api/*`, `/iclock/*`) dùng CSP `default-src 'none'`; Swagger `/api/docs*` và landing `/` dùng CSP nới đúng cdnjs/cdn.tailwindcss.com + inline. `crossOriginResourcePolicy: cross-origin` để FE khác origin vẫn đọc được API. FE: CSP ở chế độ Report-Only (`Content-Security-Policy-Report-Only`), cho phép `*.backblazeb2.com` (ảnh + PUT presigned), origin của `NEXT_PUBLIC_API_URL`, và domain Sentry (chuẩn bị P5).
+
+**Notes:**
+> Không migration, không permission key mới. Sau 1-2 tuần không còn vi phạm CSP trong console -> đặt `CSP_ENFORCE=true` trên Vercel. Rollback: xoá `headers()` ở FE, gỡ `app.use(securityHeaders)` ở BE.
+
+---

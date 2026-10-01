@@ -13,6 +13,7 @@ import { AllExceptionsFilter } from './common/filters/http-exception.filter';
 import express = require('express');
 import * as fs from 'fs';
 import compression from 'compression';
+import { securityHeaders } from './common/security/security-headers';
 
 // ⚠️ Quan trọng cho serverless (Vercel):
 // Trước đây main.ts gọi NestFactory.create() + app.listen() mỗi lần module được
@@ -44,6 +45,10 @@ async function createApp(): Promise<NestExpressApplication> {
 
   // Compression cho response
   app.use(compression());
+
+  // PLAN_HARDENING P3: header bảo mật (helmet) - đặt TRƯỚC static/route để mọi
+  // response (kể cả file tĩnh, Swagger) đều có header. Xem common/security.
+  app.use(securityHeaders);
 
   // Debug: log process.cwd() để biết path thực tế trên Vercel
   const cwd = process.cwd();
