@@ -32,6 +32,16 @@ npm run start:dev       # http://localhost:3001, hot reload
 # Swagger (API docs tự sinh từ decorator): http://localhost:3001/api/docs
 ```
 
+### Swagger `/api/docs` — yêu cầu đăng nhập (PLAN_HARDENING P4)
+
+Swagger (`/api/docs`, `/api/docs-json`, `/api/docs-yaml`) được bảo vệ bằng **Basic auth**: trình duyệt tự hiện hộp thoại, nhập **email + mật khẩu của tài khoản hệ thống**.
+- Chỉ cho `role = admin` (role cố định), tài khoản phải `is_active`, không bị xoá/từ chối/chờ duyệt. Tài khoản khác hoặc sai mật khẩu -> `401`.
+- Sai quá 5 lần / 15 phút / IP -> `429` (+ `Retry-After`). Bộ đếm nằm trong RAM từng instance nên trên Vercel chỉ là lớp giảm thiểu, không phải giới hạn tuyệt đối.
+- Việc xác thực không tạo phiên đăng nhập: không lưu refresh token, không ghi `USER_LOGIN`. Thất bại được log bằng `Logger` (không log mật khẩu).
+- `/swagger-auth.js` vẫn công khai (chỉ đọc token từ localStorage để pre-authorize nút "Authorize").
+- Không cần biến môi trường mới. Tuỳ chọn: `SWAGGER_ENABLED=false` để tắt hẳn Swagger.
+- Code: `src/common/security/swagger-basic-auth.middleware.ts`, `AuthService.verifySwaggerAdmin()`.
+
 ### Database Migrations (BẮT BUỘC — không sửa schema DB thủ công)
 
 ```bash

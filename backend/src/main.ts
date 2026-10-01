@@ -14,6 +14,8 @@ import express = require('express');
 import * as fs from 'fs';
 import compression from 'compression';
 import { securityHeaders } from './common/security/security-headers';
+import { createSwaggerBasicAuth } from './common/security/swagger-basic-auth.middleware';
+import { AuthService } from './modules/auth/auth.service';
 
 // ⚠️ Quan trọng cho serverless (Vercel):
 // Trước đây main.ts gọi NestFactory.create() + app.listen() mỗi lần module được
@@ -148,29 +150,41 @@ async function createApp(): Promise<NestExpressApplication> {
     maxAge: 3600,
   });
 
-  // backend/src/main.ts (phần Swagger)
-  const config = new DocumentBuilder()
-    .setTitle('AZWorkbase API')
-    .setDescription(
-      'Tài liệu API cho Hệ thống quản lý dữ liệu Marketing AZWorkbase',
-    )
-    .setVersion('1.0')
-    .addBearerAuth()
-    .build();
+  // PLAN_HARDENING P4: Swagger chỉ vào được sau khi đăng nhập Basic (tài khoản thật, role admin).
+  // Đặt SwaggerModule.setup SAU middleware này để mọi route /api/docs* đi qua nó trước.
+  // Tuỳ chọn: SWAGGER_ENABLED=false để tắt hẳn Swagger (mặc định bật).
+  if (process.env.SWAGGER_ENABLED !== 'false') {
+    const authService = app.get(AuthService);
+    app.use(
+      createSwaggerBasicAuth({
+        verify: (email, password) => authService.verifySwaggerAdmin(email, password),
+      }),
+    );
 
-  const document = SwaggerModule.createDocument(app, config);
+    // backend/src/main.ts (phần Swagger)
+    const config = new DocumentBuilder()
+      .setTitle('AZWorkbase API')
+      .setDescription(
+        'Tài liệu API cho Hệ thống quản lý dữ liệu Marketing AZWorkbase',
+      )
+      .setVersion('1.0')
+      .addBearerAuth()
+      .build();
 
-  // 🔥 Cấu hình Swagger UI tải từ CDN để tránh lỗi 404 trên Vercel
-  SwaggerModule.setup('api/docs', app, document, {
-    customCssUrl: [
-      'https://cdnjs.cloudflare.com/ajax/libs/swagger-ui/5.11.0/swagger-ui.min.css',
-    ],
-    customJs: [
-      'https://cdnjs.cloudflare.com/ajax/libs/swagger-ui/5.11.0/swagger-ui-bundle.js',
-      'https://cdnjs.cloudflare.com/ajax/libs/swagger-ui/5.11.0/swagger-ui-standalone-preset.js',
-      '/swagger-auth.js', // ✅ THÊM DÒNG NÀY – file tĩnh từ thư mục public
-    ],
-  });
+    const document = SwaggerModule.createDocument(app, config);
+
+    // 🔥 Cấu hình Swagger UI tải từ CDN để tránh lỗi 404 trên Vercel
+    SwaggerModule.setup('api/docs', app, document, {
+      customCssUrl: [
+        'https://cdnjs.cloudflare.com/ajax/libs/swagger-ui/5.11.0/swagger-ui.min.css',
+      ],
+      customJs: [
+        'https://cdnjs.cloudflare.com/ajax/libs/swagger-ui/5.11.0/swagger-ui-bundle.js',
+        'https://cdnjs.cloudflare.com/ajax/libs/swagger-ui/5.11.0/swagger-ui-standalone-preset.js',
+        '/swagger-auth.js', // ✅ THÊM DÒNG NÀY – file tĩnh từ thư mục public
+      ],
+    });
+  }
 
   await app.init();
   return app;

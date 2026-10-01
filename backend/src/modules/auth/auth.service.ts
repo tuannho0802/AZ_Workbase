@@ -8,6 +8,7 @@ import { LoginDto } from './dto/login.dto';
 import { RegisterDto } from './dto/register.dto';
 import { AuditService } from '../audit/audit.service';
 import { ApprovalStatus } from '../../common/enums/approval-status.enum';
+import { Role } from '../../common/enums/role.enum';
 
 @Injectable()
 export class AuthService {
@@ -37,6 +38,38 @@ export class AuthService {
 
    return { access_token, refresh_token };
  }
+
+  // Hash giả để so khớp khi email không tồn tại - giữ thời gian phản hồi gần như nhau (chống dò email
+  // qua độ trễ). Tạo lười (lần đầu cần) để không tốn thời gian ở cold start.
+  private dummyHashPromise: Promise<string> | null = null;
+
+  /**
+   * PLAN_HARDENING P4 - kiểm tra Basic auth cho Swagger `/api/docs*`.
+   * Chỉ trả `true` khi: tài khoản tồn tại, chưa xoá/từ chối/chờ duyệt, `isActive`, mật khẩu đúng và
+   * `role === 'admin'` (role cố định, KHÔNG phải role tuỳ chỉnh có tên hiển thị "Admin").
+   * Không ném lỗi, không đổi trạng thái DB (không lưu refresh token, không updateLastLogin, không audit
+   * USER_LOGIN) - đây không phải đăng nhập vào app. Không log mật khẩu.
+   */
+  async verifySwaggerAdmin(email: string, password: string): Promise<boolean> {
+    const user = await this.usersService.findByEmailIncludingDeleted(email);
+
+    if (!user || !user.password) {
+      // So khớp với hash giả để không lộ "email có tồn tại hay không" qua thời gian phản hồi.
+      this.dummyHashPromise ??= bcrypt.hash('swagger-dummy-password', 10);
+      await bcrypt.compare(password, await this.dummyHashPromise);
+      return false;
+    }
+
+    const matched = await bcrypt.compare(password, user.password);
+    if (!matched) return false;
+
+    return (
+      user.role === Role.ADMIN &&
+      user.deletedAt == null &&
+      Number(user.isActive) === 1 &&
+      user.approvalStatus === ApprovalStatus.APPROVED
+    );
+  }
 
   async login(loginDto: LoginDto) {
     // Kèm tài khoản đã xoá mềm: tài khoản bị từ chối/xoá phải nhận đúng thông báo, không phải "không tồn tại".

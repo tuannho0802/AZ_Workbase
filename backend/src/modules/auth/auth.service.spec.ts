@@ -45,6 +45,54 @@ describe('AuthService - Đăng ký công khai + chặn đăng nhập chưa duy�
     expect(service).toBeDefined();
   });
 
+  describe('verifySwaggerAdmin - Basic auth cho Swagger (PLAN_HARDENING P4)', () => {
+    let hash: string;
+    beforeAll(async () => {
+      hash = await bcrypt.hash('Correct@123', 4);
+    });
+
+    const adminUser = (over: Record<string, unknown> = {}) => ({
+      id: 1,
+      email: 'admin@example.com',
+      password: hash,
+      role: 'admin',
+      isActive: 1,
+      deletedAt: null,
+      approvalStatus: ApprovalStatus.APPROVED,
+      ...over,
+    });
+
+    it('admin hợp lệ + mật khẩu đúng -> true, KHÔNG lưu refresh token / audit', async () => {
+      mockUsersService.findByEmailIncludingDeleted.mockResolvedValue(adminUser());
+      await expect(service.verifySwaggerAdmin('admin@example.com', 'Correct@123')).resolves.toBe(true);
+      expect(mockUsersService.saveRefreshToken).not.toHaveBeenCalled();
+      expect(mockUsersService.updateLastLogin).not.toHaveBeenCalled();
+      expect(mockAuditService.logActionAsync).not.toHaveBeenCalled();
+    });
+
+    it('sai mật khẩu -> false', async () => {
+      mockUsersService.findByEmailIncludingDeleted.mockResolvedValue(adminUser());
+      await expect(service.verifySwaggerAdmin('admin@example.com', 'wrong')).resolves.toBe(false);
+    });
+
+    it('email không tồn tại -> false', async () => {
+      mockUsersService.findByEmailIncludingDeleted.mockResolvedValue(null);
+      await expect(service.verifySwaggerAdmin('x@example.com', 'whatever')).resolves.toBe(false);
+    });
+
+    it.each([
+      ['không phải admin (manager)', { role: 'manager' }],
+      ['không phải admin (employee)', { role: 'employee' }],
+      ['bị khoá (isActive = 0)', { isActive: 0 }],
+      ['đã xoá mềm', { deletedAt: new Date() }],
+      ['chờ duyệt', { approvalStatus: ApprovalStatus.PENDING }],
+      ['bị từ chối', { approvalStatus: ApprovalStatus.REJECTED }],
+    ])('mật khẩu đúng nhưng %s -> false', async (_label, over) => {
+      mockUsersService.findByEmailIncludingDeleted.mockResolvedValue(adminUser(over));
+      await expect(service.verifySwaggerAdmin('admin@example.com', 'Correct@123')).resolves.toBe(false);
+    });
+  });
+
   describe('register - Đăng ký công khai', () => {
     it('ném ConflictException nếu email đã tồn tại', async () => {
       mockUsersService.findByEmailIncludingDeleted.mockResolvedValue({ id: 1, email: 'a@example.com' });

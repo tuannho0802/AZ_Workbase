@@ -183,7 +183,7 @@ Lý do: trình duyệt tự hiện hộp thoại đăng nhập khi mở trang (k
 | P1 | Nâng gói BE có lỗ hổng + TLS Aiven | [x] | 2026-10-01 | Audit prod: 16 -> 5 (còn xlsx high -> P2; exceljs/uuid -> không áp dụng; @nestjs/swagger/js-yaml moderate -> chờ swagger 12). TLS: bỏ fallback `rejectUnauthorized:false` |
 | P2 | Thay `xlsx` (BE -> FE), hỗ trợ CSV | [x] | 2026-10-01 | BE: exceljs (.xlsx) + papaparse (.csv); FE: file mẫu tĩnh `public/templates/` sinh bằng `backend/scripts/generate-import-templates.ts`. Đã gỡ `xlsx` khỏi cả 2 package.json; audit prod BE: 0 high |
 | P3 | Header bảo mật (BE + FE) | [x] | 2026-10-01 | BE: `helmet` (CSP chặt cho API, nới riêng cho Swagger + landing, CORP cross-origin). FE: `headers()` + CSP **Report-Only** (bật enforce bằng env `CSP_ENFORCE=true`). Chưa xem console trình duyệt thật |
-| P4 | Bảo vệ Swagger (Basic auth, admin) | [ ] | | |
+| P4 | Bảo vệ Swagger (Basic auth, admin) | [x] | 2026-10-01 | Middleware Basic auth + `AuthService.verifySwaggerAdmin()` (chỉ role admin), rate limit 5 lần sai/15 phút/IP (RAM từng instance), `SWAGGER_ENABLED=false` để tắt hẳn. Chưa thử trên Vercel thật |
 | P5 | Sentry + `(dashboard)/error.tsx` | [ ] | | |
 | P6 | CI tự động | [ ] | | |
 | P7 | Hướng dẫn sử dụng động (có migration) | [ ] | | |

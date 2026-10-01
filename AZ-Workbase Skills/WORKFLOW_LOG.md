@@ -5455,3 +5455,19 @@ khi bị xoá tay. Đây là 1 anti-pattern thật (dù đo thử với payload 
 > Không migration, không permission key mới. Sau 1-2 tuần không còn vi phạm CSP trong console -> đặt `CSP_ENFORCE=true` trên Vercel. Rollback: xoá `headers()` ở FE, gỡ `app.use(securityHeaders)` ở BE.
 
 ---
+
+## [2026-10-01 18:00] | PLAN_HARDENING P4: bảo vệ Swagger bằng Basic auth (chỉ admin) | [Status: Success — BE tsc sạch, nest build OK, jest 81 suite / 1422 test pass (baseline 79/1396 + 26 test mới); CHƯA thử trên Vercel thật, CHƯA thử bằng trình duyệt]
+
+**Actor:** Agent (đặt trên P3, HEAD `b00bec4`)
+
+**Files Changed:**
+- BE: `common/security/swagger-basic-auth.middleware.ts` (mới) + `.spec.ts` + `.integration.spec.ts` (mới), `modules/auth/auth.service.ts` (+`verifySwaggerAdmin`) + `auth.service.spec.ts`, `main.ts` (gắn middleware trước `SwaggerModule.setup`, `SWAGGER_ENABLED`), `backend/README.md`.
+- Docs: `PLAN_HARDENING.md` (tick P4).
+
+**Solution:**
+> Middleware chỉ áp cho `/api/docs`, `/api/docs/*`, `/api/docs-json`, `/api/docs-yaml`; đọc Basic header, gọi `AuthService.verifySwaggerAdmin()` (bcrypt, hash giả khi email không tồn tại, yêu cầu `role === 'admin'`, `isActive`, chưa xoá, `approved`). Không có header -> 401 + `WWW-Authenticate` (không tính là lần sai). Sai quá 5 lần/15 phút/IP -> 429. `/swagger-auth.js` giữ công khai. Test tích hợp dùng `SwaggerModule` thật để chắc thứ tự middleware.
+
+**Notes:**
+> Không migration, không permission key mới, không biến môi trường bắt buộc. Rate limit nằm trong RAM từng instance (Vercel serverless) nên chỉ là lớp giảm thiểu. Rollback: gỡ khối `app.use(createSwaggerBasicAuth(...))` trong `main.ts`.
+
+---
