@@ -456,7 +456,24 @@ export default function AttendanceMonthlyTab() {
                 </div>
               }
             >
-              <span style={{ color: MARK_COLOR[mark], fontWeight: 600, cursor: 'default' }}>
+              <span
+                style={
+                  mark === '-'
+                    ? {
+                        // Dấu '-' nhỏ khó hover -> phóng to chữ + mở rộng vùng hover
+                        color: MARK_COLOR[mark],
+                        fontWeight: 700,
+                        fontSize: 20,
+                        lineHeight: '24px',
+                        display: 'inline-block',
+                        minWidth: 32,
+                        padding: '4px 0',
+                        textAlign: 'center',
+                        cursor: 'help',
+                      }
+                    : { color: MARK_COLOR[mark], fontWeight: 600, cursor: 'default' }
+                }
+              >
                 {mark}
               </span>
             </Tooltip>
