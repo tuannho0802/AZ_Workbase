@@ -5504,3 +5504,4 @@ khi bị xoá tay. Đây là 1 anti-pattern thật (dù đo thử với payload 
 > Không migration, không permission key mới. Dùng project Sentry TEST cho local; xoá `.env.production.local` sau khi test FE.
 
 ---
+Now [deploy]
