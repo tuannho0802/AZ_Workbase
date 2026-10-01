@@ -2577,7 +2577,6 @@ hẳn cấp cha (staircase thật) chứ không chỉ bẻ góc tại chỗ cùn
 >   verify được bằng `tsc`/`vitest`), nhất là trường hợp chuỗi dài (5-6 cấp) có làm cột "Công việc" quá hẹp so
 >   với 260px không.
 
-Now [deploy]
 ---
 
 ## [2026-09-16 12:28] | Fix hiển thị audit log cho action 1 chiều (REMOVED/UNLINKED/ADDED/LINKED) - AuditDiffViewer | Status: Success
