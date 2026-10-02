@@ -56,8 +56,8 @@ describe('GuideAccessHelper.canView', () => {
   });
 });
 
-describe('GuideAccessHelper.canView - requiredPermission (D2)', () => {
-  const g = { isPublished: true, assignedRoleIds: [] as number[], requiredPermission: 'customers.assign' };
+describe('GuideAccessHelper.canView - requiredPermissions (D2/P0a)', () => {
+  const g = { isPublished: true, assignedRoleIds: [] as number[], requiredPermissions: ['customers.assign'] };
   it('có quyền yêu cầu -> xem được; thiếu -> không', () => {
     expect(GuideAccessHelper.canView(g, viewer(4, null, null, ['customers.assign']), false)).toBe(true);
     expect(GuideAccessHelper.canView(g, viewer(4, null, null, ['roles.view']), false)).toBe(false);
@@ -66,10 +66,15 @@ describe('GuideAccessHelper.canView - requiredPermission (D2)', () => {
   it('viewer không có grantedPermissionKeys (undefined) -> coi như không có quyền nào', () => {
     expect(GuideAccessHelper.canView(g, { roleId: 4, positionId: null, departmentId: null }, false)).toBe(false);
   });
-  it('requiredPermission null/undefined/chuỗi rỗng -> không yêu cầu', () => {
-    expect(GuideAccessHelper.canView({ ...g, requiredPermission: null }, viewer(4), false)).toBe(true);
+  it('requiredPermissions rỗng/undefined -> không yêu cầu', () => {
+    expect(GuideAccessHelper.canView({ ...g, requiredPermissions: [] }, viewer(4), false)).toBe(true);
     expect(GuideAccessHelper.canView({ isPublished: true, assignedRoleIds: [] }, viewer(4), false)).toBe(true);
-    expect(GuideAccessHelper.canView({ ...g, requiredPermission: '' }, viewer(4), false)).toBe(true);
+  });
+  it('nhiều quyền = AND: phải có TẤT CẢ', () => {
+    const many = { ...g, requiredPermissions: ['customers.assign', 'customers.edit'] };
+    expect(GuideAccessHelper.canView(many, viewer(4, null, null, ['customers.assign']), false)).toBe(false);
+    expect(GuideAccessHelper.canView(many, viewer(4, null, null, ['customers.edit']), false)).toBe(false);
+    expect(GuideAccessHelper.canView(many, viewer(4, null, null, ['customers.assign', 'customers.edit', 'roles.view']), false)).toBe(true);
   });
   it('AND với các chiều khác', () => {
     const both = { ...g, assignedRoleIds: [4] };

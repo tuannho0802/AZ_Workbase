@@ -5677,3 +5677,18 @@ Now [deploy]
 > Không migration, không đổi BE. Phát hiện: mẫu `row-actions` cũ vẽ Xem/Sửa/Chia sẻ/Xoá nhưng bảng thật chỉ có cột Thao tác = nút Xoá (cần `customers.delete`); chia data làm qua chọn dòng + "Gán cho Sales". Bài guide đã viết tay có thể còn nhắc nút Xem/Sửa/Chia sẻ — cần rà. Vitest FE 471 test (lần chạy full: 469 pass + 2 test mới của mình sai selector, đã sửa, chạy lại riêng thư mục guides 55/55); tsc chỉ còn lỗi logo.png cũ; chưa chạy `next build`. Chưa làm: `guides-content/` + `guides:sync`, test contract/coverage, nút "Xem hướng dẫn trang này".
 
 ---
+## [2026-10-02 17:00] | P0a: "Cần quyền để xem" chọn nhiều quyền, gom nhóm như drawer Phân quyền | [Status: Success]
+
+**Actor:** Agent
+
+**Files Changed:**
+- `backend/src/database/migrations/1785800000000-CreateGuidePermissions.ts` (mới) — bảng `guide_permissions`, sao chép `guides.required_permission` cũ (INSERT IGNORE), `down()` chép 1 key về cột cũ rồi xoá bảng. KHÔNG drop cột cũ. **User tự chạy.**
+- `backend/src/database/entities/guide-permission.entity.ts` (mới), `guide.entity.ts` (`guidePermissions`; `requiredPermission` đánh dấu deprecated), `guides.module.ts`.
+- `backend/src/modules/guides/` — DTO `requiredPermissions: string[]` (≤30, regex mỗi key); `GuideAccessHelper.canView` đòi TẤT CẢ key (AND); service: `validatePermissionKeys` (1 query `In`), `permissionKeysOf`, insert/replace `guide_permissions`, audit/snapshot; specs viết lại.
+- `frontend/` — `lib/permissions/resource-labels.ts` (RESOURCE_LABEL tách khỏi `phan-quyen/page.tsx`, thêm nhãn `guides`), `lib/guides/guide-permission-groups.ts` (+test), `components/guides/GuidePermissionSelect.tsx` (Select multiple, nhóm theo resource, tìm theo key/mô tả/tên nhóm, key ma hiện tag đỏ), `GuideEditorModal`, `GuideAudienceTags` (tối đa 3 tag + "+N quyền"), `guides.api.ts`, trang `/huong-dan`, tests.
+- `PERMISSIONS.md` §2.14, `PLAN_GUIDES_CONTENT.md`.
+
+**Notes:**
+> Quy ước đã chọn: nhiều quyền = AND (phải có đủ), nhất quán với các chiều khác; đổi sang "một trong" chỉ cần sửa `every` -> `some` ở `GuideAccessHelper.canView`. BE jest 1526/1526, `nest build` sạch; FE vitest 477/477, tsc chỉ còn lỗi logo.png cũ; ESLint không thêm lỗi mới so với baseline (stash). Migration CHƯA chạy thử trên MySQL thật. Chưa chạy `next build`.
+
+---

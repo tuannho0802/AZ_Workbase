@@ -15,6 +15,7 @@ import {
   useUpdateGuide,
 } from '@/lib/hooks/useGuides';
 import { AudienceTag, AUDIENCE_META, type AudienceItem, type AudienceKind } from './GuideAudienceTags';
+import { GuidePermissionSelect } from './GuidePermissionSelect';
 import { toastApiError } from '@/lib/utils/error-message.util';
 
 interface Props {
@@ -35,7 +36,7 @@ interface FormValues {
   roleIds: number[];
   positionIds: number[];
   departmentIds: number[];
-  requiredPermission: string | null;
+  requiredPermissions: string[];
 }
 
 const SLUG_PATTERN = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
@@ -60,7 +61,7 @@ export function GuideEditorModal({ open, onClose, guideId, onSaved }: Props) {
     if (!open) return;
     if (!editing) {
       form.resetFields();
-      form.setFieldsValue({ sortOrder: 0, isPublished: false, roleIds: [], positionIds: [], departmentIds: [], requiredPermission: null, content: '' });
+      form.setFieldsValue({ sortOrder: 0, isPublished: false, roleIds: [], positionIds: [], departmentIds: [], requiredPermissions: [], content: '' });
     }
   }, [open, editing, form]);
 
@@ -76,7 +77,7 @@ export function GuideEditorModal({ open, onClose, guideId, onSaved }: Props) {
       roleIds: g.roleIds,
       positionIds: g.positionIds,
       departmentIds: g.departmentIds,
-      requiredPermission: g.requiredPermission,
+      requiredPermissions: g.requiredPermissions,
     });
   }, [open, editing, detail.data, form]);
 
@@ -102,8 +103,8 @@ export function GuideEditorModal({ open, onClose, guideId, onSaved }: Props) {
       roleIds: values.roleIds ?? [],
       positionIds: values.positionIds ?? [],
       departmentIds: values.departmentIds ?? [],
-      // null = bỏ yêu cầu quyền (BE: không gửi = giữ nguyên, nên luôn gửi tường minh).
-      requiredPermission: values.requiredPermission ?? null,
+      // [] = bỏ yêu cầu quyền (BE: không gửi = giữ nguyên, nên luôn gửi tường minh).
+      requiredPermissions: values.requiredPermissions ?? [],
     };
     try {
       const saved = editing
@@ -165,30 +166,15 @@ export function GuideEditorModal({ open, onClose, guideId, onSaved }: Props) {
             <AudienceField kind="department" name="departmentIds" items={departments} loading={departmentsLoading} />
           </div>
           <Form.Item
-            name="requiredPermission"
+            name="requiredPermissions"
             label="Cần quyền để xem"
-            extra="Chỉ người đang có quyền này (theo ma trận Phân quyền, đã tính override phòng ban/vị trí) mới thấy bài. Đổi ma trận quyền thì bài tự ẩn/hiện theo."
+            extra="Chọn nhiều quyền (gom theo nhóm như trang Phân quyền). Người xem phải có TẤT CẢ quyền đã chọn (theo ma trận Phân quyền, đã tính override phòng ban/vị trí). Đổi ma trận quyền thì bài tự ẩn/hiện theo."
           >
-            <Select
-              allowClear
-              showSearch
-              loading={permissionsLoading}
-              placeholder="Không yêu cầu quyền"
-              filterOption={(input, option) =>
-                `${option?.value ?? ''} ${option?.description ?? ''}`.toLowerCase().includes(input.toLowerCase())
-              }
-              options={permissions.map((p) => ({ value: p.key, label: p.key, description: p.description ?? '' }))}
-              optionRender={(option) => (
-                <div>
-                  <div style={{ fontFamily: 'monospace' }}>{option.label}</div>
-                  {option.data.description && <div style={{ color: '#8c8c8c', fontSize: 12 }}>{option.data.description}</div>}
-                </div>
-              )}
-            />
+            <GuidePermissionSelect permissions={permissions} loading={permissionsLoading} />
           </Form.Item>
           <div style={{ color: '#8c8c8c', fontSize: 12, margin: '-8px 0 16px' }}>
             Để trống một ô = không giới hạn theo mục đó; để trống cả 3 ô và "Cần quyền" = mọi người đăng nhập đều xem được.
-            Chọn nhiều mục thì người xem phải thoả TẤT CẢ mục đã chọn (vd Role = Nhân viên, Vị trí = Sales và có quyền đã chọn).
+            Giữa các ô là AND: người xem phải thoả TẤT CẢ mục đã chọn (vd Role = Nhân viên, Vị trí = Sales và có đủ các quyền đã chọn). Trong cùng 1 ô role/vị trí/phòng ban chỉ cần thuộc 1 trong các mục.
             Người có quyền "guides.manage" luôn xem được mọi bài đã xuất bản.
           </div>
 

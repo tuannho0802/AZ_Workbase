@@ -5,9 +5,10 @@ import { Guide } from '../../database/entities/guide.entity';
 import { GuideRole } from '../../database/entities/guide-role.entity';
 import { GuidePosition } from '../../database/entities/guide-position.entity';
 import { GuideDepartment } from '../../database/entities/guide-department.entity';
+import { GuidePermission } from '../../database/entities/guide-permission.entity';
 
 const mkGuide = (
-  over: Record<string, unknown> = {},
+  { requiredPermissions = [], ...over }: Record<string, unknown> & { requiredPermissions?: string[] } = {},
   roleIds: number[] = [],
   positionIds: number[] = [],
   departmentIds: number[] = [],
@@ -18,12 +19,12 @@ const mkGuide = (
   content: '# Nội dung',
   sortOrder: 0,
   isPublished: true,
-  requiredPermission: null,
   createdBy: 1,
   updatedBy: null,
   guideRoles: roleIds.map((roleId) => ({ guideId: 1, roleId })),
   guidePositions: positionIds.map((positionId) => ({ guideId: 1, positionId })),
   guideDepartments: departmentIds.map((departmentId) => ({ guideId: 1, departmentId })),
+  guidePermissions: requiredPermissions.map((permissionKey) => ({ guideId: 1, permissionKey })),
   createdAt: new Date(),
   updatedAt: new Date(),
   deletedAt: null,
@@ -85,7 +86,10 @@ describe('GuidesService', () => {
       return DEPARTMENTS.filter((d) => ids.includes(d.id));
     });
     guideRepo.findOne.mockResolvedValue(null);
-    permissionRepo.findOne.mockImplementation(async ({ where }: any) => (where.key === 'ghost.key' ? null : { id: 1 }));
+    // validatePermissionKeys: find({ where: { key: In([...]) } }) -> chỉ trả key tồn tại (trừ 'ghost.key').
+    permissionRepo.find.mockImplementation(async ({ where }: any) =>
+      ((where?.key?._value ?? []) as string[]).filter((k) => k !== 'ghost.key').map((key) => ({ key })),
+    );
     dataSource.transaction.mockImplementation(async (cb: any) => cb(txManager));
     txManager.create.mockImplementation((_e: unknown, x: unknown) => x);
     svc = new GuidesService(guideRepo, roleRepo, positionRepo, departmentRepo, userRepo, permissionRepo, dataSource, perms, audit);
@@ -237,7 +241,7 @@ describe('GuidesService', () => {
     });
   });
 
-  describe('D2 - guide yêu cầu permission (requiredPermission)', () => {
+  describe('D2/P0a - guide yêu cầu permission (requiredPermissions, AND)', () => {
     /** Chỉ `customers.assign` được cấp; guides.manage KHÔNG được cấp (không bypass). */
     const grantOnly = (...keys: string[]) =>
       perms.hasPermission.mockImplementation(async (_role: string, key: string) => ({ allowed: keys.includes(key), scope: null }));
@@ -245,8 +249,8 @@ describe('GuidesService', () => {
     it('listVisible: ẩn guide cần quyền mà người xem không có; hiện khi có quyền', async () => {
       guideRepo.find.mockResolvedValue([
         mkGuide({ id: 1, slug: 'free' }),
-        mkGuide({ id: 2, slug: 'assign', requiredPermission: 'customers.assign' }),
-        mkGuide({ id: 3, slug: 'roles', requiredPermission: 'roles.view' }),
+        mkGuide({ id: 2, slug: 'assign', requiredPermissions: ['customers.assign'] }),
+        mkGuide({ id: 3, slug: 'roles', requiredPermissions: ['roles.view'] }),
       ]);
       grantOnly('customers.assign');
       expect((await svc.listVisible(emp)).map((g) => g.slug)).toEqual(['free', 'assign']);
@@ -256,8 +260,8 @@ describe('GuidesService', () => {
 
     it('hỏi quyền theo role + phòng ban + vị trí của người xem, mỗi key khác nhau chỉ hỏi 1 lần', async () => {
       guideRepo.find.mockResolvedValue([
-        mkGuide({ id: 1, slug: 'a', requiredPermission: 'customers.assign' }),
-        mkGuide({ id: 2, slug: 'b', requiredPermission: 'customers.assign' }),
+        mkGuide({ id: 1, slug: 'a', requiredPermissions: ['customers.assign'] }),
+        mkGuide({ id: 2, slug: 'b', requiredPermissions: ['customers.assign'] }),
         mkGuide({ id: 3, slug: 'c' }),
       ]);
       grantOnly('customers.assign');
@@ -268,91 +272,132 @@ describe('GuidesService', () => {
     });
 
     it('AND với chiều role: có quyền nhưng sai role vẫn ẩn', async () => {
-      guideRepo.find.mockResolvedValue([mkGuide({ id: 1, slug: 'a', requiredPermission: 'customers.assign' }, [2])]);
+      guideRepo.find.mockResolvedValue([mkGuide({ id: 1, slug: 'a', requiredPermissions: ['customers.assign'] }, [2])]);
       grantOnly('customers.assign');
       expect(await svc.listVisible(emp)).toEqual([]);
     });
 
     it('người có guides.manage thấy hết dù thiếu quyền yêu cầu (xem trước)', async () => {
-      guideRepo.find.mockResolvedValue([mkGuide({ id: 1, slug: 'a', requiredPermission: 'roles.view' })]);
+      guideRepo.find.mockResolvedValue([mkGuide({ id: 1, slug: 'a', requiredPermissions: ['roles.view'] })]);
       grantOnly('guides.manage');
       expect((await svc.listVisible(emp)).map((g) => g.slug)).toEqual(['a']);
     });
 
     it('Root Admin thấy mọi guide cần quyền và không phải hỏi từng key', async () => {
-      guideRepo.find.mockResolvedValue([mkGuide({ id: 1, slug: 'a', requiredPermission: 'roles.view' })]);
+      guideRepo.find.mockResolvedValue([mkGuide({ id: 1, slug: 'a', requiredPermissions: ['roles.view'] })]);
       grantOnly();
       expect((await svc.listVisible(root)).map((g) => g.slug)).toEqual(['a']);
       expect(perms.hasPermission).not.toHaveBeenCalled();
     });
 
     it('key không còn tồn tại/không ai có -> ẩn với người không có guides.manage (an toàn mặc định)', async () => {
-      guideRepo.find.mockResolvedValue([mkGuide({ id: 1, slug: 'a', requiredPermission: 'ghost.key' })]);
+      guideRepo.find.mockResolvedValue([mkGuide({ id: 1, slug: 'a', requiredPermissions: ['ghost.key'] })]);
       grantOnly();
       expect(await svc.listVisible(emp)).toEqual([]);
     });
 
-    it('getBySlug: thiếu quyền -> 404; đủ quyền -> trả bài kèm requiredPermission', async () => {
-      guideRepo.findOne.mockResolvedValue(mkGuide({ requiredPermission: 'customers.assign' }));
+    it('getBySlug: thiếu quyền -> 404; đủ quyền -> trả bài kèm requiredPermissions', async () => {
+      guideRepo.findOne.mockResolvedValue(mkGuide({ requiredPermissions: ['customers.assign'] }));
       grantOnly();
       await expect(svc.getBySlug('them-khach-hang', emp)).rejects.toBeInstanceOf(NotFoundException);
       grantOnly('customers.assign');
       const res = await svc.getBySlug('them-khach-hang', emp);
-      expect(res.requiredPermission).toBe('customers.assign');
+      expect(res.requiredPermissions).toEqual(['customers.assign']);
     });
 
-    it('guide cũ (requiredPermission null) không bị ảnh hưởng', async () => {
+    it('guide cũ (không yêu cầu quyền) không bị ảnh hưởng', async () => {
       guideRepo.find.mockResolvedValue([mkGuide({ id: 1, slug: 'a' })]);
       grantOnly();
       expect((await svc.listVisible(emp)).map((g) => g.slug)).toEqual(['a']);
     });
 
-    it('create: lưu requiredPermission; key không tồn tại -> 400 và không ghi gì', async () => {
+    it('NHIỀU quyền = AND: thiếu 1 trong các quyền là ẩn; đủ tất cả mới hiện; mỗi key chỉ hỏi 1 lần', async () => {
+      guideRepo.find.mockResolvedValue([
+        mkGuide({ id: 1, slug: 'both', requiredPermissions: ['customers.assign', 'customers.edit'] }),
+        mkGuide({ id: 2, slug: 'edit', requiredPermissions: ['customers.edit'] }),
+      ]);
+      grantOnly('customers.assign');
+      expect(await svc.listVisible(emp)).toEqual([]);
+      grantOnly('customers.assign', 'customers.edit');
+      perms.hasPermission.mockClear();
+      expect((await svc.listVisible(emp)).map((g) => g.slug)).toEqual(['both', 'edit']);
+      expect(perms.hasPermission.mock.calls.filter((c: any[]) => c[1] === 'customers.edit')).toHaveLength(1);
+    });
+
+    it('một key ma trong danh sách làm cả guide ẩn với người không có guides.manage', async () => {
+      guideRepo.find.mockResolvedValue([mkGuide({ id: 1, slug: 'a', requiredPermissions: ['customers.assign', 'ghost.key'] })]);
+      grantOnly('customers.assign');
+      expect(await svc.listVisible(emp)).toEqual([]);
+    });
+
+    it('create: lưu nhiều quyền vào guide_permissions; có key không tồn tại -> 400 và không ghi gì', async () => {
       txManager.save.mockResolvedValue({ id: 7 });
       guideRepo.findOne.mockImplementation(async ({ where }: any) =>
-        where.id === 7 ? mkGuide({ id: 7, requiredPermission: 'customers.assign' }) : null,
+        where.id === 7 ? mkGuide({ id: 7, requiredPermissions: ['customers.edit', 'customers.assign'] }) : null,
       );
-      await svc.create({ title: 'A', content: 'x', requiredPermission: 'customers.assign' }, root);
-      expect(txManager.create.mock.calls[0][1]).toMatchObject({ requiredPermission: 'customers.assign' });
+      const res = await svc.create(
+        { title: 'A', content: 'x', requiredPermissions: ['customers.edit', 'customers.assign', 'customers.edit'] },
+        root,
+      );
+      const inserted = txManager.insert.mock.calls.find((c: any[]) => c[0] === GuidePermission);
+      expect(inserted?.[1]).toEqual([
+        { guideId: 7, permissionKey: 'customers.edit' },
+        { guideId: 7, permissionKey: 'customers.assign' },
+      ]);
+      expect(res.requiredPermissions).toEqual(['customers.assign', 'customers.edit']);
       txManager.create.mockClear();
-      await expect(svc.create({ title: 'B', content: 'x', requiredPermission: 'ghost.key' }, root)).rejects.toBeInstanceOf(
-        BadRequestException,
-      );
+      await expect(
+        svc.create({ title: 'B', content: 'x', requiredPermissions: ['customers.assign', 'ghost.key'] }, root),
+      ).rejects.toBeInstanceOf(BadRequestException);
       expect(txManager.create).not.toHaveBeenCalled();
     });
 
-    it('create: không gửi -> null', async () => {
+    it('create: không gửi -> không ghi dòng guide_permissions nào', async () => {
       txManager.save.mockResolvedValue({ id: 7 });
       guideRepo.findOne.mockImplementation(async ({ where }: any) => (where.id === 7 ? mkGuide({ id: 7 }) : null));
       await svc.create({ title: 'A', content: 'x' }, root);
-      expect(txManager.create.mock.calls[0][1]).toMatchObject({ requiredPermission: null });
+      expect(txManager.insert.mock.calls.some((c: any[]) => c[0] === GuidePermission)).toBe(false);
     });
 
-    it('update: không gửi = giữ nguyên; null = bỏ yêu cầu; key mới = thay; key ma -> 400', async () => {
+    it('update: không gửi = giữ nguyên; [] = bỏ yêu cầu; danh sách mới = thay thế; key ma -> 400', async () => {
       guideRepo.findOne.mockImplementation(async ({ where }: any) =>
-        where.id === 1 ? mkGuide({ id: 1, requiredPermission: 'customers.assign' }) : null,
+        where.id === 1 ? mkGuide({ id: 1, requiredPermissions: ['customers.assign'] }) : null,
       );
+      const deletedPerms = () => txManager.delete.mock.calls.some((c: any[]) => c[0] === GuidePermission);
+      const insertedPerms = () => txManager.insert.mock.calls.find((c: any[]) => c[0] === GuidePermission)?.[1];
+
       await svc.update(1, { title: 'Mới' }, root);
-      expect(txManager.update.mock.calls[0][2]).not.toHaveProperty('requiredPermission');
+      expect(deletedPerms()).toBe(false);
+      expect(insertedPerms()).toBeUndefined();
+
+      txManager.delete.mockClear();
+      txManager.insert.mockClear();
+      await svc.update(1, { requiredPermissions: [] }, root);
+      expect(deletedPerms()).toBe(true);
+      expect(insertedPerms()).toBeUndefined();
+
+      txManager.delete.mockClear();
+      txManager.insert.mockClear();
+      await svc.update(1, { requiredPermissions: ['roles.view', 'customers.edit'] }, root);
+      expect(deletedPerms()).toBe(true);
+      expect(insertedPerms()).toEqual([
+        { guideId: 1, permissionKey: 'roles.view' },
+        { guideId: 1, permissionKey: 'customers.edit' },
+      ]);
+
       txManager.update.mockClear();
-      await svc.update(1, { requiredPermission: null }, root);
-      expect(txManager.update.mock.calls[0][2]).toMatchObject({ requiredPermission: null });
-      txManager.update.mockClear();
-      await svc.update(1, { requiredPermission: 'roles.view' }, root);
-      expect(txManager.update.mock.calls[0][2]).toMatchObject({ requiredPermission: 'roles.view' });
-      txManager.update.mockClear();
-      await expect(svc.update(1, { requiredPermission: 'ghost.key' }, root)).rejects.toBeInstanceOf(BadRequestException);
+      await expect(svc.update(1, { requiredPermissions: ['ghost.key'] }, root)).rejects.toBeInstanceOf(BadRequestException);
       expect(txManager.update).not.toHaveBeenCalled();
     });
 
-    it('audit ghi requiredPermission trước/sau', async () => {
+    it('audit ghi requiredPermissions trước/sau', async () => {
       guideRepo.findOne.mockImplementation(async ({ where }: any) =>
-        where.id === 1 ? mkGuide({ id: 1, requiredPermission: 'customers.assign' }) : null,
+        where.id === 1 ? mkGuide({ id: 1, requiredPermissions: ['customers.assign'] }) : null,
       );
       await svc.update(1, { title: 'Mới' }, root);
       const [, , , , oldD, newD] = audit.logActionAsync.mock.calls[0];
-      expect(oldD.requiredPermission).toBe('customers.assign');
-      expect(newD).toHaveProperty('requiredPermission');
+      expect(oldD.requiredPermissions).toEqual(['customers.assign']);
+      expect(newD).toHaveProperty('requiredPermissions');
     });
 
     it('listPermissionOptions trả key/resource/action/description theo thứ tự đọc từ bảng permissions', async () => {

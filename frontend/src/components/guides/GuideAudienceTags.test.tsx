@@ -36,13 +36,26 @@ describe('GuideAudienceTags', () => {
   });
 
   it('chỉ có yêu cầu quyền -> không hiện "Mọi người", hiện tag quyền', () => {
-    render(<GuideAudienceTags roles={[]} positions={[]} departments={[]} requiredPermission="customers.assign" />);
+    render(<GuideAudienceTags roles={[]} positions={[]} departments={[]} requiredPermissions={['customers.assign']} />);
     expect(screen.queryByText('Mọi người')).toBeNull();
     expect(screen.getByTestId('audience-permission')).toHaveTextContent('customers.assign');
   });
 
-  it('không yêu cầu quyền (null) -> không có tag quyền', () => {
-    render(<GuideAudienceTags roles={[]} positions={[{ id: 7, name: 'Media', color: '#00ff00' }]} departments={[]} requiredPermission={null} />);
+  it('không yêu cầu quyền (mảng rỗng) -> không có tag quyền', () => {
+    render(<GuideAudienceTags roles={[]} positions={[{ id: 7, name: 'Media', color: '#00ff00' }]} departments={[]} requiredPermissions={[]} />);
     expect(screen.queryByTestId('audience-permission')).toBeNull();
+  });
+
+  it('nhiều quyền: hiện tối đa 3 tag, phần còn lại gộp "+N quyền"', () => {
+    render(
+      <GuideAudienceTags
+        roles={[]}
+        positions={[]}
+        departments={[]}
+        requiredPermissions={['a.x', 'b.x', 'c.x', 'd.x', 'e.x']}
+      />,
+    );
+    expect(screen.getAllByTestId('audience-permission')).toHaveLength(3);
+    expect(screen.getByTestId('audience-permission-more')).toHaveTextContent('+2 quyền');
   });
 });

@@ -4,6 +4,7 @@ import { Guide } from '../../database/entities/guide.entity';
 import { GuideRole } from '../../database/entities/guide-role.entity';
 import { GuidePosition } from '../../database/entities/guide-position.entity';
 import { GuideDepartment } from '../../database/entities/guide-department.entity';
+import { GuidePermission } from '../../database/entities/guide-permission.entity';
 import { RoleEntity } from '../../database/entities/role.entity';
 import { Position } from '../../database/entities/position.entity';
 import { Department } from '../../database/entities/department.entity';
@@ -14,7 +15,7 @@ import { GuidesController } from './guides.controller';
 
 // PermissionsModule (@Global) và AuditModule (@Global) cung cấp PermissionsService/AuditService như ở UtmsModule.
 @Module({
-  imports: [TypeOrmModule.forFeature([Guide, GuideRole, GuidePosition, GuideDepartment, RoleEntity, Position, Department, User, Permission])],
+  imports: [TypeOrmModule.forFeature([Guide, GuideRole, GuidePosition, GuideDepartment, GuidePermission, RoleEntity, Position, Department, User, Permission])],
   controllers: [GuidesController],
   providers: [GuidesService],
   exports: [GuidesService],

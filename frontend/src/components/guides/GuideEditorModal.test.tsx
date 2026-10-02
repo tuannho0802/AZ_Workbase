@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { render, screen, waitFor } from '@testing-library/react';
+import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { App } from 'antd';
 import { GuideEditorModal } from './GuideEditorModal';
@@ -19,7 +19,11 @@ vi.mock('@/lib/hooks/useGuides', () => ({
     isLoading: false,
   }),
   useGuidePermissionOptions: () => ({
-    permissions: [{ key: 'customers.assign', resource: 'customers', action: 'assign', description: 'Chia data' }],
+    permissions: [
+      { key: 'customers.assign', resource: 'customers', action: 'assign', description: 'Chia data' },
+      { key: 'customers.edit', resource: 'customers', action: 'edit', description: 'Sửa khách hàng' },
+      { key: 'roles.view', resource: 'roles', action: 'view', description: 'Xem phân quyền' },
+    ],
     isLoading: false,
   }),
   useCreateGuide: () => ({ mutateAsync: createMutateAsync, isPending: false }),
@@ -62,8 +66,40 @@ describe('GuideEditorModal (role / vị trí / phòng ban)', () => {
       roleIds: [],
       positionIds: [],
       departmentIds: [],
-      requiredPermission: null,
+      requiredPermissions: [],
     });
     await waitFor(() => expect(onSaved).toHaveBeenCalledWith('bai-moi'));
+  });
+});
+
+describe('GuideEditorModal - chọn nhiều quyền theo nhóm', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    createMutateAsync.mockResolvedValue({ slug: 'bai-moi' });
+  });
+
+  it('chọn 2 quyền từ nhóm "Khách hàng" -> gửi mảng requiredPermissions', async () => {
+    render(
+      <App>
+        <GuideEditorModal open onClose={vi.fn()} guideId={null} onSaved={vi.fn()} />
+      </App>,
+    );
+    await userEvent.type(await screen.findByPlaceholderText('Cách thêm khách hàng mới'), 'Bài quyền');
+    await userEvent.type(screen.getByPlaceholderText(/Nội dung Markdown/), 'Nội dung');
+
+    // Placeholder có pointer-events: none -> mở dropdown qua ô combobox của đúng Select quyền.
+    const permissionSelect = screen.getByText('Không yêu cầu quyền').closest('.ant-select') as HTMLElement;
+    await userEvent.click(within(permissionSelect).getByRole('combobox'));
+    // Tiêu đề nhóm hiện trong dropdown, giống drawer Phân quyền.
+    expect(await screen.findByText('Khách hàng')).toBeInTheDocument();
+    // antd render thêm bản ẩn (a11y) của mỗi option -> chỉ bấm bản nằm trong danh sách hiển thị.
+    const visibleOption = (key: string) =>
+      screen.getAllByText(key).find((el) => el.closest('.ant-select-item-option-content')) as HTMLElement;
+    await userEvent.click(visibleOption('customers.assign'));
+    await userEvent.click(visibleOption('customers.edit'));
+
+    await userEvent.click(screen.getByRole('button', { name: /Lưu/ }));
+    await waitFor(() => expect(createMutateAsync).toHaveBeenCalledTimes(1));
+    expect(createMutateAsync.mock.calls[0][0].requiredPermissions).toEqual(['customers.assign', 'customers.edit']);
   });
 });

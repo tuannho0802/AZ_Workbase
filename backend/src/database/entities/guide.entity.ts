@@ -10,6 +10,7 @@ import {
 import { GuideRole } from './guide-role.entity';
 import { GuidePosition } from './guide-position.entity';
 import { GuideDepartment } from './guide-department.entity';
+import { GuidePermission } from './guide-permission.entity';
 import { BooleanTransformer } from '../transformers/boolean.transformer';
 
 /**
@@ -36,7 +37,10 @@ export class Guide {
   @Column({ name: 'is_published', type: 'tinyint', default: 0, transformer: new BooleanTransformer() })
   isPublished: boolean;
 
-  /** Key permission người xem phải có (vd `customers.assign`). null = không yêu cầu. Xem migration 1785700000000. */
+  /**
+   * @deprecated Cột cũ (1 quyền, migration 1785700000000). Từ migration 1785800000000 nguồn thật là bảng `guide_permissions`
+   * (nhiều quyền); code KHÔNG còn đọc/ghi cột này. Giữ nguyên để không mất dữ liệu, chỉ drop khi có lệnh tường minh.
+   */
   @Column({ name: 'required_permission', type: 'varchar', length: 100, nullable: true })
   requiredPermission: string | null;
 
@@ -54,6 +58,9 @@ export class Guide {
 
   @OneToMany(() => GuideDepartment, (gd) => gd.guide)
   guideDepartments: GuideDepartment[];
+
+  @OneToMany(() => GuidePermission, (gp) => gp.guide)
+  guidePermissions: GuidePermission[];
 
   @CreateDateColumn({ name: 'created_at' })
   createdAt: Date;

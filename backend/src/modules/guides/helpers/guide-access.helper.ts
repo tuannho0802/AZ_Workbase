@@ -6,7 +6,7 @@
  *    bản nháp thì lấy qua nhóm `manage/*`.
  *  - Người khác: guide phải đã xuất bản VÀ, với mỗi chiều (role / vị trí / phòng ban) đã gán, người gọi thuộc chiều đó
  *    (chiều để trống = không giới hạn; AND giữa các chiều).
- *  - Thêm 1 chiều nữa: nếu guide có `requiredPermission` thì người xem phải đang có permission đó (AND).
+ *  - Thêm 1 chiều nữa: nếu guide có `requiredPermissions` thì người xem phải đang có TẤT CẢ permission đó (AND).
  *  - Guide không được xem -> service trả 404 (không lộ sự tồn tại).
  */
 export interface GuideVisibilityInput {
@@ -17,8 +17,8 @@ export interface GuideVisibilityInput {
   assignedPositionIds?: number[];
   /** Danh sách phòng ban được gán (rỗng/bỏ trống = mọi phòng ban). */
   assignedDepartmentIds?: number[];
-  /** Permission key yêu cầu (null/bỏ trống = không yêu cầu). */
-  requiredPermission?: string | null;
+  /** Các permission key yêu cầu - phải có TẤT CẢ (rỗng/bỏ trống = không yêu cầu). */
+  requiredPermissions?: string[];
 }
 
 /** Người xem: role/vị trí/phòng ban hiện tại (null = không có). */
@@ -49,7 +49,7 @@ export class GuideAccessHelper {
       matchesDimension(guide.assignedRoleIds, viewer.roleId) &&
       matchesDimension(guide.assignedPositionIds, viewer.positionId) &&
       matchesDimension(guide.assignedDepartmentIds, viewer.departmentId) &&
-      (!guide.requiredPermission || (viewer.grantedPermissionKeys?.has(guide.requiredPermission) ?? false))
+      (guide.requiredPermissions ?? []).every((key) => viewer.grantedPermissionKeys?.has(key) ?? false)
     );
   }
 

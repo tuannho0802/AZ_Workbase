@@ -47,20 +47,23 @@ export function AudienceTag({
   );
 }
 
+/** Quá số này thì gộp phần còn lại thành "+N quyền" (tooltip liệt kê đủ). */
+const PERMISSION_TAGS_SHOWN = 3;
+
 interface Props {
   roles: AudienceItem[];
   positions: AudienceItem[];
   departments: AudienceItem[];
-  /** Permission key yêu cầu (null/bỏ trống = không yêu cầu). */
-  requiredPermission?: string | null;
+  /** Các permission key yêu cầu - phải có TẤT CẢ (rỗng/bỏ trống = không yêu cầu). */
+  requiredPermissions?: string[];
 }
 
 /**
  * Hiển thị "ai được xem" của 1 hướng dẫn. Chiều nào để trống = không giới hạn chiều đó;
  * cả 3 chiều trống và không yêu cầu quyền = mọi người đăng nhập đều xem được.
  */
-export function GuideAudienceTags({ roles, positions, departments, requiredPermission }: Props) {
-  if (roles.length + positions.length + departments.length === 0 && !requiredPermission) {
+export function GuideAudienceTags({ roles, positions, departments, requiredPermissions = [] }: Props) {
+  if (roles.length + positions.length + departments.length === 0 && requiredPermissions.length === 0) {
     return <Tag color="geekblue">Mọi người</Tag>;
   }
   return (
@@ -74,10 +77,17 @@ export function GuideAudienceTags({ roles, positions, departments, requiredPermi
       {departments.map((d) => (
         <AudienceTag key={`d${d.id}`} kind="department" item={d} />
       ))}
-      {requiredPermission && (
-        <Tooltip title={`Chỉ người đang có quyền "${requiredPermission}" mới thấy`}>
+      {requiredPermissions.slice(0, PERMISSION_TAGS_SHOWN).map((key) => (
+        <Tooltip key={key} title={`Chỉ người đang có quyền "${key}" mới thấy`}>
           <Tag data-testid="audience-permission" icon={<KeyOutlined />} color="gold" style={{ marginInlineEnd: 4 }}>
-            {requiredPermission}
+            {key}
+          </Tag>
+        </Tooltip>
+      ))}
+      {requiredPermissions.length > PERMISSION_TAGS_SHOWN && (
+        <Tooltip title={`Cần có TẤT CẢ: ${requiredPermissions.join(', ')}`}>
+          <Tag data-testid="audience-permission-more" color="gold" style={{ marginInlineEnd: 4 }}>
+            +{requiredPermissions.length - PERMISSION_TAGS_SHOWN} quyền
           </Tag>
         </Tooltip>
       )}
