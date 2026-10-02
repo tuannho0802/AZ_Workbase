@@ -36,6 +36,10 @@ export class Guide {
   @Column({ name: 'is_published', type: 'tinyint', default: 0, transformer: new BooleanTransformer() })
   isPublished: boolean;
 
+  /** Key permission người xem phải có (vd `customers.assign`). null = không yêu cầu. Xem migration 1785700000000. */
+  @Column({ name: 'required_permission', type: 'varchar', length: 100, nullable: true })
+  requiredPermission: string | null;
+
   @Column({ name: 'created_by', type: 'int', nullable: true })
   createdBy: number | null;
 

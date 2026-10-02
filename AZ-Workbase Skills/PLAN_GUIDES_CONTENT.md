@@ -157,7 +157,7 @@ Tiêu chí "xong" cho mỗi bài: mọi tên cột/nút **khớp đúng chữ tr
 - [ ] Viết lại `customer-table` thành 12 cột thật + mẫu `customer-table-by-viewer` (F1) — dùng component thật (F2).
 - [ ] `guides-content/` + `_template.md` + `guides:sync` (dry-run mặc định, hash, báo xung đột).
 - [ ] Test lưới an toàn 2.4 (`contract`, `nav-guide-coverage`) + nút "Xem hướng dẫn trang này" ở layout dashboard.
-- [ ] (Nếu chốt D2) migration `required_permission` + BE lọc + trình soạn chọn permission. **Bạn tự chạy migration.**
+- [x] (D2 - ĐÃ LÀM 2026-10-02) migration `1785700000000-AddGuideRequiredPermission` + BE lọc + trình soạn chọn permission. **Bạn tự chạy migration.**
 - **Xong khi:** bài `bat-dau` + `khach-hang` đầy đủ lên được qua `guides:sync --apply`; đổi persona trong mẫu bảng thấy dòng/cột/nút đổi đúng; test xanh.
 
 ### P1 — Dữ liệu khách hàng (ưu tiên cao nhất, cỡ L)

@@ -2,7 +2,7 @@
 
 import type { ReactNode } from 'react';
 import { Tag, Tooltip } from 'antd';
-import { ApartmentOutlined, IdcardOutlined, SafetyCertificateOutlined } from '@ant-design/icons';
+import { ApartmentOutlined, IdcardOutlined, KeyOutlined, SafetyCertificateOutlined } from '@ant-design/icons';
 
 export interface AudienceItem {
   id: number;
@@ -51,14 +51,16 @@ interface Props {
   roles: AudienceItem[];
   positions: AudienceItem[];
   departments: AudienceItem[];
+  /** Permission key yêu cầu (null/bỏ trống = không yêu cầu). */
+  requiredPermission?: string | null;
 }
 
 /**
  * Hiển thị "ai được xem" của 1 hướng dẫn. Chiều nào để trống = không giới hạn chiều đó;
- * cả 3 chiều trống = mọi người đăng nhập đều xem được.
+ * cả 3 chiều trống và không yêu cầu quyền = mọi người đăng nhập đều xem được.
  */
-export function GuideAudienceTags({ roles, positions, departments }: Props) {
-  if (roles.length + positions.length + departments.length === 0) {
+export function GuideAudienceTags({ roles, positions, departments, requiredPermission }: Props) {
+  if (roles.length + positions.length + departments.length === 0 && !requiredPermission) {
     return <Tag color="geekblue">Mọi người</Tag>;
   }
   return (
@@ -72,6 +74,13 @@ export function GuideAudienceTags({ roles, positions, departments }: Props) {
       {departments.map((d) => (
         <AudienceTag key={`d${d.id}`} kind="department" item={d} />
       ))}
+      {requiredPermission && (
+        <Tooltip title={`Chỉ người đang có quyền "${requiredPermission}" mới thấy`}>
+          <Tag data-testid="audience-permission" icon={<KeyOutlined />} color="gold" style={{ marginInlineEnd: 4 }}>
+            {requiredPermission}
+          </Tag>
+        </Tooltip>
+      )}
     </>
   );
 }

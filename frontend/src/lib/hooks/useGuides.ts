@@ -5,6 +5,7 @@ import {
     GuideListItem,
     GuideDepartmentBrief,
     GuideManageItem,
+    GuidePermissionBrief,
     GuidePositionBrief,
     GuideRoleBrief,
     UpdateGuidePayload,
@@ -15,6 +16,7 @@ const MANAGE_KEY = ['guides', 'manage'] as const;
 const ROLE_OPTIONS_KEY = ['guides', 'role-options'] as const;
 const POSITION_OPTIONS_KEY = ['guides', 'position-options'] as const;
 const DEPARTMENT_OPTIONS_KEY = ['guides', 'department-options'] as const;
+const PERMISSION_OPTIONS_KEY = ['guides', 'permission-options'] as const;
 const detailKey = (slug: string) => ['guides', 'detail', slug] as const;
 const manageDetailKey = (id: number) => ['guides', 'manage-detail', id] as const;
 
@@ -24,6 +26,7 @@ const EMPTY_MANAGE: GuideManageItem[] = [];
 const EMPTY_ROLES: GuideRoleBrief[] = [];
 const EMPTY_POSITIONS: GuidePositionBrief[] = [];
 const EMPTY_DEPARTMENTS: GuideDepartmentBrief[] = [];
+const EMPTY_PERMISSIONS: GuidePermissionBrief[] = [];
 
 /** Mục lục guide người gọi được xem (đã xuất bản + đúng role). Mọi role đăng nhập đều gọi được. */
 export function useGuideList() {
@@ -80,6 +83,16 @@ export function useGuideDepartmentOptions(enabled: boolean) {
         staleTime: 60_000,
     });
     return { departments: q.data ?? EMPTY_DEPARTMENTS, isLoading: q.isLoading };
+}
+
+export function useGuidePermissionOptions(enabled: boolean) {
+    const q = useQuery({
+        queryKey: PERMISSION_OPTIONS_KEY,
+        queryFn: () => guidesApi.listPermissionOptions(),
+        enabled,
+        staleTime: 60_000,
+    });
+    return { permissions: q.data ?? EMPTY_PERMISSIONS, isLoading: q.isLoading };
 }
 
 export function useGuideManageDetail(id: number | null) {

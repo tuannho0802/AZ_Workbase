@@ -16,7 +16,7 @@ describe('GuidesController', () => {
     expect(guards).toContain(PermissionGuard);
   });
 
-  it.each(['listManage', 'listRoleOptions', 'listPositionOptions', 'listDepartmentOptions', 'getManageDetail', 'create', 'update', 'remove'])(
+  it.each(['listManage', 'listRoleOptions', 'listPositionOptions', 'listDepartmentOptions', 'listPermissionOptions', 'getManageDetail', 'create', 'update', 'remove'])(
     '%s khai @RequirePermission("guides.manage")',
     (name) => {
       expect(Reflect.getMetadata(PERMISSION_KEY, proto[name])).toBe('guides.manage');
@@ -27,10 +27,10 @@ describe('GuidesController', () => {
     expect(Reflect.getMetadata(PERMISSION_KEY, proto[name])).toBeUndefined();
   });
 
-  it('không có endpoint lạ ngoài 10 endpoint đã khoá', () => {
+  it('không có endpoint lạ ngoài 11 endpoint đã khoá', () => {
     const names = Object.getOwnPropertyNames(GuidesController.prototype).filter((n) => n !== 'constructor');
     expect(names.sort()).toEqual(
-      ['list', 'listManage', 'listRoleOptions', 'listPositionOptions', 'listDepartmentOptions', 'getManageDetail', 'create', 'update', 'remove', 'getBySlug'].sort(),
+      ['list', 'listManage', 'listRoleOptions', 'listPositionOptions', 'listDepartmentOptions', 'listPermissionOptions', 'getManageDetail', 'create', 'update', 'remove', 'getBySlug'].sort(),
     );
   });
 
@@ -45,5 +45,6 @@ describe('GuidesController', () => {
     expect(order.indexOf('listRoleOptions')).toBeLessThan(order.indexOf('getManageDetail'));
     expect(order.indexOf('listPositionOptions')).toBeLessThan(order.indexOf('getManageDetail'));
     expect(order.indexOf('listDepartmentOptions')).toBeLessThan(order.indexOf('getManageDetail'));
+    expect(order.indexOf('listPermissionOptions')).toBeLessThan(order.indexOf('getManageDetail'));
   });
 });

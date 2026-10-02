@@ -1,9 +1,15 @@
 import { GuideAccessHelper } from './guide-access.helper';
 
-const viewer = (roleId: number | null, positionId: number | null = null, departmentId: number | null = null) => ({
+const viewer = (
+  roleId: number | null,
+  positionId: number | null = null,
+  departmentId: number | null = null,
+  granted: string[] = [],
+) => ({
   roleId,
   positionId,
   departmentId,
+  grantedPermissionKeys: new Set(granted),
 });
 
 describe('GuideAccessHelper.canView', () => {
@@ -47,6 +53,32 @@ describe('GuideAccessHelper.canView', () => {
   it('người có guides.manage xem được mọi guide đã xuất bản dù sai role/vị trí/phòng ban', () => {
     const g = { isPublished: true, assignedRoleIds: [2], assignedPositionIds: [7], assignedDepartmentIds: [5] };
     expect(GuideAccessHelper.canView(g, viewer(4, 9, 6), true)).toBe(true);
+  });
+});
+
+describe('GuideAccessHelper.canView - requiredPermission (D2)', () => {
+  const g = { isPublished: true, assignedRoleIds: [] as number[], requiredPermission: 'customers.assign' };
+  it('có quyền yêu cầu -> xem được; thiếu -> không', () => {
+    expect(GuideAccessHelper.canView(g, viewer(4, null, null, ['customers.assign']), false)).toBe(true);
+    expect(GuideAccessHelper.canView(g, viewer(4, null, null, ['roles.view']), false)).toBe(false);
+    expect(GuideAccessHelper.canView(g, viewer(4), false)).toBe(false);
+  });
+  it('viewer không có grantedPermissionKeys (undefined) -> coi như không có quyền nào', () => {
+    expect(GuideAccessHelper.canView(g, { roleId: 4, positionId: null, departmentId: null }, false)).toBe(false);
+  });
+  it('requiredPermission null/undefined/chuỗi rỗng -> không yêu cầu', () => {
+    expect(GuideAccessHelper.canView({ ...g, requiredPermission: null }, viewer(4), false)).toBe(true);
+    expect(GuideAccessHelper.canView({ isPublished: true, assignedRoleIds: [] }, viewer(4), false)).toBe(true);
+    expect(GuideAccessHelper.canView({ ...g, requiredPermission: '' }, viewer(4), false)).toBe(true);
+  });
+  it('AND với các chiều khác', () => {
+    const both = { ...g, assignedRoleIds: [4] };
+    expect(GuideAccessHelper.canView(both, viewer(2, null, null, ['customers.assign']), false)).toBe(false);
+    expect(GuideAccessHelper.canView(both, viewer(4, null, null, ['customers.assign']), false)).toBe(true);
+  });
+  it('guides.manage bypass; bản nháp vẫn không ai xem qua đường xem', () => {
+    expect(GuideAccessHelper.canView(g, viewer(4), true)).toBe(true);
+    expect(GuideAccessHelper.canView({ ...g, isPublished: false }, viewer(4, null, null, ['customers.assign']), true)).toBe(false);
   });
 });
 

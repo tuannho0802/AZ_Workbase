@@ -127,7 +127,12 @@ export default function GuidesPage() {
                 {canManage && (
                   <div style={{ marginTop: 6 }}>
                     {!guide.isPublished && <Tag>Nháp</Tag>}
-                    <GuideAudienceTags roles={guide.roles} positions={guide.positions} departments={guide.departments} />
+                    <GuideAudienceTags
+                      roles={guide.roles}
+                      positions={guide.positions}
+                      departments={guide.departments}
+                      requiredPermission={guide.requiredPermission}
+                    />
                   </div>
                 )}
               </div>

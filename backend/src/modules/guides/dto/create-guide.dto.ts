@@ -18,6 +18,8 @@ export const GUIDE_SLUG_REGEX = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
 export const GUIDE_SLUG_MAX = 100;
 export const GUIDE_CONTENT_MAX = 200_000;
 
+export const GUIDE_PERMISSION_KEY_REGEX = /^[a-z0-9_]+\.[a-z0-9_]+$/;
+
 export class CreateGuideDto {
   @ApiProperty({ example: 'Cách thêm khách hàng mới' })
   @IsNotEmpty({ message: 'Tiêu đề không được để trống' })
@@ -52,6 +54,19 @@ export class CreateGuideDto {
   @IsOptional()
   @IsBoolean({ message: 'isPublished phải là true/false' })
   isPublished?: boolean;
+
+  @ApiPropertyOptional({
+    example: 'customers.assign',
+    nullable: true,
+    description:
+      'Permission key người xem phải có (AND với role/vị trí/phòng ban). null/bỏ trống = không yêu cầu. ' +
+      'PATCH: không gửi = giữ nguyên, null = bỏ yêu cầu. Phải là key có trong bảng permissions',
+  })
+  @IsOptional()
+  @IsString()
+  @MaxLength(100)
+  @Matches(GUIDE_PERMISSION_KEY_REGEX, { message: 'Permission key không hợp lệ (dạng resource.action, vd customers.assign)' })
+  requiredPermission?: string | null;
 
   @ApiPropertyOptional({
     type: [Number],

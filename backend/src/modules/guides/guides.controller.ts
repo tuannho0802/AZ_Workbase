@@ -67,6 +67,13 @@ export class GuidesController {
     return this.guidesService.listDepartmentOptions();
   }
 
+  @Get('manage/permissions')
+  @RequirePermission(GUIDES_MANAGE_PERMISSION)
+  @ApiOperation({ summary: 'Danh sách permission để chọn "cần quyền để xem" - guides.manage' })
+  listPermissionOptions() {
+    return this.guidesService.listPermissionOptions();
+  }
+
   @Get('manage/:id')
   @RequirePermission(GUIDES_MANAGE_PERMISSION)
   @ApiOperation({ summary: 'Chi tiết 1 guide theo id (kể cả nháp) cho trình soạn - guides.manage' })

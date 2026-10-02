@@ -5623,3 +5623,31 @@ Now [deploy]
 > Không đổi schema/migration (cột `updated_by` đã có). Bài chưa sửa lần nào (`updated_by` null) chỉ hiện thời gian. BE jest guides 68/68 pass, tsc sạch.
 
 ---
+
+## [2026-10-02 13:00] | Plan lấp đầy Hướng dẫn sử dụng + mẫu minh hoạ theo role/quyền | [Status: Success]
+
+**Actor:** Agent
+
+**Files Changed:**
+- `AZ-Workbase Skills/PLAN_GUIDES_CONTENT.md` (mới) — audit hiện trạng (F1–F11), kiến trúc demo-kit/persona, pipeline `guides-content/*.md` + `guides:sync`, lộ trình P0–P5, plan chi tiết 30 trang.
+
+**Notes:**
+> Chỉ là tài liệu, chưa đổi code. Audit mức đọc cấu trúc + grep, chưa chạy app. F8/F9 (hardcode role, trang thiếu can()) cần xác nhận trước khi coi là bug. Chờ chốt D1–D5 (mục 3 của plan), đặc biệt D2 cần migration.
+
+---
+
+## [2026-10-02 14:00] | D2: Hướng dẫn yêu cầu permission để xem | [Status: Success]
+
+**Actor:** Agent
+
+**Files Changed:**
+- `backend/src/database/migrations/1785700000000-AddGuideRequiredPermission.ts` (mới) — cột `guides.required_permission` varchar(100) NULL, idempotent, `down()` đối xứng. **User tự chạy.**
+- `backend/src/database/entities/guide.entity.ts` — `requiredPermission` (`type: 'varchar'` tường minh).
+- `backend/src/modules/guides/` — DTO `requiredPermission` (regex `resource.action`); `GuideAccessHelper.canView` thêm chiều quyền (viewer.grantedPermissionKeys); service: `viewerOf()` tính quyền qua `PermissionsService.hasPermission` (Root Admin bypass, mỗi key hỏi 1 lần), validate key tồn tại khi ghi, `listPermissionOptions()`, audit; controller `GET manage/permissions`; module + specs (87 test guides).
+- `frontend/` — `guides.api.ts`, `useGuides.ts` (`useGuidePermissionOptions`), `GuideEditorModal` (ô "Cần quyền để xem"), `GuideAudienceTags` (tag quyền), trang `/huong-dan`, tests.
+- `PERMISSIONS.md` §2.14, `PLAN_GUIDES_CONTENT.md` (tick D2).
+
+**Notes:**
+> Không FK sang `permissions.key` (validate ở BE khi ghi; key ma -> ẩn với người không có guides.manage). BE jest 1523/1523, tsc + nest build sạch; FE vitest 446/446, tsc chỉ còn lỗi logo.png không liên quan. Migration CHƯA chạy thử trên MySQL thật (sandbox không có MySQL).
+
+---

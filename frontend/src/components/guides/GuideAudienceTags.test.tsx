@@ -34,4 +34,15 @@ describe('GuideAudienceTags', () => {
     expect(screen.queryByText('Mọi người')).toBeNull();
     expect(screen.getByTestId('audience-position')).toBeInTheDocument();
   });
+
+  it('chỉ có yêu cầu quyền -> không hiện "Mọi người", hiện tag quyền', () => {
+    render(<GuideAudienceTags roles={[]} positions={[]} departments={[]} requiredPermission="customers.assign" />);
+    expect(screen.queryByText('Mọi người')).toBeNull();
+    expect(screen.getByTestId('audience-permission')).toHaveTextContent('customers.assign');
+  });
+
+  it('không yêu cầu quyền (null) -> không có tag quyền', () => {
+    render(<GuideAudienceTags roles={[]} positions={[{ id: 7, name: 'Media', color: '#00ff00' }]} departments={[]} requiredPermission={null} />);
+    expect(screen.queryByTestId('audience-permission')).toBeNull();
+  });
 });

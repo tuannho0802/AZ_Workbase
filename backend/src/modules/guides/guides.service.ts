@@ -15,6 +15,7 @@ import { RoleEntity } from '../../database/entities/role.entity';
 import { Position } from '../../database/entities/position.entity';
 import { Department } from '../../database/entities/department.entity';
 import { User } from '../../database/entities/user.entity';
+import { Permission } from '../../database/entities/permission.entity';
 import { Role } from '../../common/enums/role.enum';
 import { PermissionsService } from '../permissions/permissions.service';
 import { AuditService } from '../audit/audit.service';
@@ -50,6 +51,13 @@ export interface GuidePositionBrief {
   code: string;
   name: string;
   color: string;
+}
+
+export interface GuidePermissionBrief {
+  key: string;
+  resource: string;
+  action: string;
+  description: string | null;
 }
 
 export interface GuideDepartmentBrief {
@@ -88,6 +96,8 @@ export interface GuideManageItem extends GuideListItem {
   positions: GuidePositionBrief[];
   departmentIds: number[];
   departments: GuideDepartmentBrief[];
+  /** Permission key người xem phải có (null = không yêu cầu). */
+  requiredPermission: string | null;
   createdAt: Date;
 }
 
@@ -112,6 +122,8 @@ export class GuidesService {
     private readonly departmentRepo: Repository<Department>,
     @InjectRepository(User)
     private readonly userRepo: Repository<User>,
+    @InjectRepository(Permission)
+    private readonly permissionRepo: Repository<Permission>,
     private readonly dataSource: DataSource,
     private readonly permissionsService: PermissionsService,
     private readonly auditService: AuditService,
@@ -136,10 +148,29 @@ export class GuidesService {
     return allowed;
   }
 
-  /** Role + vị trí + phòng ban hiện tại của người gọi (vị trí/phòng ban lấy live từ DB qua JwtStrategy). */
-  private async viewerOf(user: GuideCaller): Promise<GuideViewer> {
+  /**
+   * Role + vị trí + phòng ban hiện tại của người gọi (vị trí/phòng ban lấy live từ DB qua JwtStrategy), kèm
+   * tập permission key (trong `requiredKeys`) mà họ ĐANG CÓ qua ma trận quyền động (đã tính override phòng ban + vị trí).
+   * Root Admin có hết (cùng lối thoát hiểm cứng của `canManage`). Key không tồn tại/không có quyền -> không nằm trong tập.
+   */
+  private async viewerOf(user: GuideCaller, requiredKeys: Array<string | null | undefined> = []): Promise<GuideViewer> {
     const role = await this.roleRepo.findOne({ where: { code: user.role }, select: { id: true } });
-    return { roleId: role?.id ?? null, positionId: user.positionId ?? null, departmentId: user.departmentId ?? null };
+    const keys = [...new Set(requiredKeys.filter((k): k is string => !!k))];
+    const isRoot = user.role === Role.ADMIN && !!user.isRootAdmin;
+    const granted = new Set<string>();
+    await Promise.all(
+      keys.map(async (key) => {
+        if (isRoot) return granted.add(key);
+        const { allowed } = await this.permissionsService.hasPermission(user.role, key, user.departmentId, user.positionId);
+        if (allowed) granted.add(key);
+      }),
+    );
+    return {
+      roleId: role?.id ?? null,
+      positionId: user.positionId ?? null,
+      departmentId: user.departmentId ?? null,
+      grantedPermissionKeys: granted,
+    };
   }
 
   private visibilityOf(g: Guide) {
@@ -148,6 +179,7 @@ export class GuidesService {
       assignedRoleIds: (g.guideRoles ?? []).map((r) => r.roleId),
       assignedPositionIds: (g.guidePositions ?? []).map((r) => r.positionId),
       assignedDepartmentIds: (g.guideDepartments ?? []).map((r) => r.departmentId),
+      requiredPermission: g.requiredPermission ?? null,
     };
   }
 
@@ -157,13 +189,24 @@ export class GuidesService {
 
   /** Mục lục: guide đã xuất bản + đúng role của người gọi (người có guides.manage thấy tất cả bản đã xuất bản). */
   async listVisible(user: GuideCaller): Promise<GuideListItem[]> {
-    const [canManage, viewer] = await Promise.all([this.canManage(user), this.viewerOf(user)]);
     const guides = await this.guideRepo.find({
       where: { isPublished: true },
-      select: { id: true, title: true, slug: true, sortOrder: true, isPublished: true, updatedAt: true },
+      select: {
+        id: true,
+        title: true,
+        slug: true,
+        sortOrder: true,
+        isPublished: true,
+        requiredPermission: true,
+        updatedAt: true,
+      },
       relations: AUDIENCE_RELATIONS,
       order: { sortOrder: 'ASC', id: 'ASC' },
     });
+    const [canManage, viewer] = await Promise.all([
+      this.canManage(user),
+      this.viewerOf(user, guides.map((g) => g.requiredPermission)),
+    ]);
     return guides
       .filter((g) => GuideAccessHelper.canView(this.visibilityOf(g), viewer, canManage))
       .map((g) => ({ id: g.id, title: g.title, slug: g.slug, sortOrder: g.sortOrder, updatedAt: g.updatedAt }));
@@ -174,7 +217,7 @@ export class GuidesService {
     const guide = await this.guideRepo.findOne({ where: { slug }, relations: AUDIENCE_RELATIONS });
     if (!guide) throw new NotFoundException('Không tìm thấy hướng dẫn');
 
-    const [canManage, viewer] = await Promise.all([this.canManage(user), this.viewerOf(user)]);
+    const [canManage, viewer] = await Promise.all([this.canManage(user), this.viewerOf(user, [guide.requiredPermission])]);
     if (!GuideAccessHelper.canView(this.visibilityOf(guide), viewer, canManage)) {
       throw new NotFoundException('Không tìm thấy hướng dẫn');
     }
@@ -203,6 +246,23 @@ export class GuidesService {
     return departments.map((d) => ({ id: d.id, name: d.name, color: d.color }));
   }
 
+  /**
+   * Mọi permission (key + mô tả) để chọn "cần quyền" ở trình soạn. Đọc thẳng bảng `permissions` (nguồn quyền thật sự
+   * được code enforce) - không cần `roles.view`, chỉ cần `guides.manage` (gác ở controller).
+   */
+  async listPermissionOptions(): Promise<GuidePermissionBrief[]> {
+    const rows = await this.permissionRepo.find({ order: { resource: 'ASC', action: 'ASC' } });
+    return rows.map((p) => ({ key: p.key, resource: p.resource, action: p.action, description: p.description }));
+  }
+
+  /** Key phải tồn tại trong bảng `permissions` (key ma = khoá guide vĩnh viễn với mọi người trừ guides.manage). */
+  private async validatePermissionKey(key: string | null | undefined): Promise<string | null> {
+    if (key == null) return null;
+    const found = await this.permissionRepo.findOne({ where: { key }, select: { id: true } });
+    if (!found) throw new BadRequestException(`Permission \"${key}\" không tồn tại`);
+    return key;
+  }
+
   /** Danh sách quản trị: gồm cả bản nháp, kèm role + trạng thái, KHÔNG kèm nội dung. */
   async listManage(): Promise<GuideManageItem[]> {
     const guides = await this.guideRepo.find({
@@ -212,6 +272,7 @@ export class GuidesService {
         slug: true,
         sortOrder: true,
         isPublished: true,
+        requiredPermission: true,
         createdAt: true,
         updatedAt: true,
       },
@@ -237,6 +298,7 @@ export class GuidesService {
     const roleIds = await this.validateIds(this.roleRepo, dto.roleIds, 'role');
     const positionIds = await this.validateIds(this.positionRepo, dto.positionIds, 'vị trí');
     const departmentIds = await this.validateIds(this.departmentRepo, dto.departmentIds, 'phòng ban');
+    const requiredPermission = await this.validatePermissionKey(dto.requiredPermission);
     const slug = await this.resolveNewSlug(dto.slug, title);
 
     let savedId: number;
@@ -250,6 +312,7 @@ export class GuidesService {
             content: dto.content,
             sortOrder: dto.sortOrder ?? 0,
             isPublished: dto.isPublished ?? false,
+            requiredPermission,
             createdBy: user.id,
             updatedBy: null,
           }),
@@ -284,6 +347,8 @@ export class GuidesService {
     }
     if (dto.sortOrder !== undefined) patch.sortOrder = dto.sortOrder;
     if (dto.isPublished !== undefined) patch.isPublished = dto.isPublished;
+    // Không gửi = giữ nguyên; null = bỏ yêu cầu quyền.
+    if (dto.requiredPermission !== undefined) patch.requiredPermission = await this.validatePermissionKey(dto.requiredPermission);
     if (dto.slug !== undefined && dto.slug !== guide.slug) {
       await this.assertSlugAvailable(dto.slug, guide.id);
       patch.slug = dto.slug;
@@ -479,6 +544,7 @@ export class GuidesService {
       positions: audience.positions.filter((p) => positionIds.includes(p.id)),
       departmentIds,
       departments: audience.departments.filter((d) => departmentIds.includes(d.id)),
+      requiredPermission: g.requiredPermission ?? null,
       createdAt: g.createdAt,
       updatedAt: g.updatedAt,
     };
@@ -509,6 +575,7 @@ export class GuidesService {
       roleIds: d.roleIds,
       positionIds: d.positionIds,
       departmentIds: d.departmentIds,
+      requiredPermission: d.requiredPermission,
       contentLength: d.content?.length ?? 0,
     };
   }

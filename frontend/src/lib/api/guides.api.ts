@@ -14,6 +14,14 @@ export interface GuidePositionBrief {
     color: string;
 }
 
+/** Permission để chọn "cần quyền để xem" (đọc từ bảng permissions qua /guides/manage/permissions). */
+export interface GuidePermissionBrief {
+    key: string;
+    resource: string;
+    action: string;
+    description: string | null;
+}
+
 export interface GuideDepartmentBrief {
     id: number;
     name: string;
@@ -38,6 +46,8 @@ export interface GuideManageItem extends GuideListItem {
     positions: GuidePositionBrief[];
     departmentIds: number[];
     departments: GuideDepartmentBrief[];
+    /** Permission key người xem phải có (null = không yêu cầu). */
+    requiredPermission: string | null;
     createdAt: string;
 }
 
@@ -60,9 +70,11 @@ export interface CreateGuidePayload {
     positionIds?: number[];
     /** Rỗng/bỏ trống = không giới hạn theo phòng ban. */
     departmentIds?: number[];
+    /** Cần có permission này mới xem được (AND với các chiều trên). null/bỏ trống = không yêu cầu. */
+    requiredPermission?: string | null;
 }
 
-/** Không gửi roleIds/positionIds/departmentIds = giữ nguyên chiều đó; gửi `[]` = bỏ giới hạn chiều đó. */
+/** Không gửi roleIds/positionIds/departmentIds/requiredPermission = giữ nguyên; gửi `[]` (hoặc `null` cho requiredPermission) = bỏ giới hạn. */
 export type UpdateGuidePayload = Partial<CreateGuidePayload>;
 
 export const guidesApi = {
@@ -95,6 +107,11 @@ export const guidesApi = {
 
     listDepartmentOptions: async (): Promise<GuideDepartmentBrief[]> => {
         const res = await axiosInstance.get<GuideDepartmentBrief[]>('/guides/manage/departments');
+        return res.data;
+    },
+
+    listPermissionOptions: async (): Promise<GuidePermissionBrief[]> => {
+        const res = await axiosInstance.get<GuidePermissionBrief[]>('/guides/manage/permissions');
         return res.data;
     },
 

@@ -18,6 +18,10 @@ vi.mock('@/lib/hooks/useGuides', () => ({
     departments: [{ id: 5, name: 'Kinh doanh', color: '#00f' }],
     isLoading: false,
   }),
+  useGuidePermissionOptions: () => ({
+    permissions: [{ key: 'customers.assign', resource: 'customers', action: 'assign', description: 'Chia data' }],
+    isLoading: false,
+  }),
   useCreateGuide: () => ({ mutateAsync: createMutateAsync, isPending: false }),
   useUpdateGuide: () => ({ mutateAsync: updateMutateAsync, isPending: false }),
 }));
@@ -37,7 +41,8 @@ describe('GuideEditorModal (role / vị trí / phòng ban)', () => {
     expect(await screen.findByText('Role được xem')).toBeInTheDocument();
     expect(screen.getByText('Vị trí được xem')).toBeInTheDocument();
     expect(screen.getByText('Phòng ban được xem')).toBeInTheDocument();
-    expect(screen.getByText(/TẤT CẢ ô đã chọn/)).toBeInTheDocument();
+    expect(screen.getByText(/TẤT CẢ mục đã chọn/)).toBeInTheDocument();
+    expect(screen.getByText('Cần quyền để xem')).toBeInTheDocument();
   });
 
   it('tạo mới không chọn gì -> gửi roleIds/positionIds/departmentIds đều rỗng (không giới hạn)', async () => {
@@ -57,6 +62,7 @@ describe('GuideEditorModal (role / vị trí / phòng ban)', () => {
       roleIds: [],
       positionIds: [],
       departmentIds: [],
+      requiredPermission: null,
     });
     await waitFor(() => expect(onSaved).toHaveBeenCalledWith('bai-moi'));
   });

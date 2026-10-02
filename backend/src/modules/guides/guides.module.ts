@@ -8,12 +8,13 @@ import { RoleEntity } from '../../database/entities/role.entity';
 import { Position } from '../../database/entities/position.entity';
 import { Department } from '../../database/entities/department.entity';
 import { User } from '../../database/entities/user.entity';
+import { Permission } from '../../database/entities/permission.entity';
 import { GuidesService } from './guides.service';
 import { GuidesController } from './guides.controller';
 
 // PermissionsModule (@Global) và AuditModule (@Global) cung cấp PermissionsService/AuditService như ở UtmsModule.
 @Module({
-  imports: [TypeOrmModule.forFeature([Guide, GuideRole, GuidePosition, GuideDepartment, RoleEntity, Position, Department, User])],
+  imports: [TypeOrmModule.forFeature([Guide, GuideRole, GuidePosition, GuideDepartment, RoleEntity, Position, Department, User, Permission])],
   controllers: [GuidesController],
   providers: [GuidesService],
   exports: [GuidesService],
