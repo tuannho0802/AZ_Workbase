@@ -167,6 +167,10 @@ export const ACTION_META: Record<string, ActionMeta> = {
   REMOVE_UTM_MANAGER: m('Gỡ Quản lý phụ của UTM', 'orange', 'link_group'),
   TRANSFER_UTM_OWNER: m('Chuyển Quản lý chính của UTM', 'purple', 'link_group'),
   MERGE_UTM: m('Gộp UTM', 'volcano', 'link_group'),
+  // ── Hướng dẫn sử dụng (P7) ────────────────────────────────────────────
+  CREATE_GUIDE: m('Tạo hướng dẫn', 'green', 'catalog'),
+  UPDATE_GUIDE: m('Sửa hướng dẫn', 'blue', 'catalog'),
+  DELETE_GUIDE: m('Xóa hướng dẫn', 'red', 'catalog'),
 
   // ── Nghỉ phép ──────────────────────────────────────────────────────────
   CREATE_LEAVE_REQUEST: m('Tạo đơn nghỉ phép', 'green', 'leave'),
@@ -261,6 +265,7 @@ export const ENTITY_TYPE_LABELS: Record<string, string> = {
   link_category: 'Category nhóm liên kết',
   link_group: 'Nhóm liên kết',
   utm: 'UTM',
+  guide: 'Hướng dẫn sử dụng',
   storage_media: 'File lưu trữ',
   attendance_log: 'Log chấm công',
   periodic_task: 'Công việc định kỳ',

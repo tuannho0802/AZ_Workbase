@@ -27,6 +27,7 @@ import {
   SendOutlined,
   LineChartOutlined,
   LinkOutlined,
+  ReadOutlined,
 } from '@ant-design/icons';
 
 export interface NavItem {
@@ -202,6 +203,16 @@ export const NAV_ITEMS: NavItem[] = [
     path: '/thong-bao/da-gui',
     roles: null,
     permission: 'notification_broadcasts.view',
+  },
+  {
+    key: 'huong-dan',
+    label: 'Hướng dẫn sử dụng',
+    description: 'Tài liệu hướng dẫn dùng hệ thống, hiển thị theo vai trò của bạn',
+    icon: <ReadOutlined />,
+    path: '/huong-dan',
+    // Mọi role đăng nhập đều xem được (BE GET /guides chỉ dùng JwtAuthGuard, tự lọc theo role).
+    // Quyền QUẢN TRỊ (`guides.manage`) chỉ gate nút Tạo/Sửa/Xoá trong trang, không gate cả mục menu.
+    roles: null,
   },
   {
     key: 'profile',

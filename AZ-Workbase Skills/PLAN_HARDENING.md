@@ -188,7 +188,7 @@ Lý do: trình duyệt tự hiện hộp thoại đăng nhập khi mở trang (k
 | P4 | Bảo vệ Swagger (Basic auth, admin) | [x] | 2026-10-01 | Middleware Basic auth + `AuthService.verifySwaggerAdmin()` (chỉ role admin), rate limit 5 lần sai/15 phút/IP (RAM từng instance), `SWAGGER_ENABLED=false` để tắt hẳn. Chưa thử trên Vercel thật |
 | P5 | Sentry + `(dashboard)/error.tsx` | [x] | 2026-10-01 | Code xong + test pass. **Chưa xác nhận trên Sentry thật** (cần tạo 2 project + đặt env trên Vercel, ném thử 1 lỗi FE + 1 lỗi BE, xem payload không có PII). BE: `@sentry/nestjs` v11, filter chỉ gửi 5xx; FE: `@sentry/nextjs` v11, không Replay |
 | P6 | CI tự động | [ ] | | |
-| P7 | Hướng dẫn sử dụng động (có migration) | [~] | | BE xong (migration/entity/helper/service/controller/test); FE `/huong-dan` chưa làm |
+| P7 | Hướng dẫn sử dụng động (có migration) | [~] | | BE + FE `/huong-dan` xong (đã build/test); còn: chạy migration trên DB thật, kiểm tra UI thủ công |
 | P8 | Ctrl+K theo quyền | [ ] | | |
 
 **Thứ tự đề xuất:** P1 -> P2 (BE) -> P6 -> P3 -> P4 -> P5 -> P2 (FE) -> P7 -> P8.

@@ -15,7 +15,6 @@ const SAFE_LINK_PROTOCOLS = new Set(['http:', 'https:', 'mailto:', 'tel:']);
 
 /** Bỏ ký tự điều khiển / khoảng trắng mà trình duyệt bỏ qua khi phân tích giao thức (`java\tscript:`). */
 function stripUrlNoise(url: string): string {
-    // eslint-disable-next-line no-control-regex
     return url.replace(/[\u0000-\u0020\u007f-\u009f\u200b-\u200f\u2028\u2029\ufeff]/g, '');
 }
 
@@ -39,11 +38,11 @@ export function sanitizeLinkUrl(raw: string | null | undefined): string {
     return SAFE_LINK_PROTOCOLS.has(match[1].toLowerCase()) ? url : '';
 }
 
-/** Trả URL ảnh an toàn (chỉ https://), hoặc '' nếu không. */
+/** Trả URL ảnh an toàn (chỉ https://, không khoảng trắng/ký tự điều khiển), hoặc '' nếu không. */
 export function sanitizeImageUrl(raw: string | null | undefined): string {
     if (!raw) return '';
     const url = raw.trim();
-    return /^https:\/\//i.test(stripUrlNoise(url)) && stripUrlNoise(url) === url.replace(/\s/g, '') ? url : '';
+    return /^https:\/\/[^\s\u0000-\u001f\u007f-\u009f]+$/i.test(url) ? url : '';
 }
 
 export function isExternalUrl(url: string): boolean {

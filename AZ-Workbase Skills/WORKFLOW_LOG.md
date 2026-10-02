@@ -5559,3 +5559,20 @@ Now [deploy]
 > `content` dùng MEDIUMTEXT thay vì TEXT như plan (TEXT ~65KB byte, tiếng Việt dễ vượt). Chưa làm: FE `/huong-dan` (react-markdown không HTML thô, trình soạn, `can('guides.manage')`), mục menu, giai đoạn 2 của Ctrl+K. Timestamp migration lấy theo `ls` HEAD `ef25be6` (lớn nhất trước đó `1785400000000`) — nếu tài khoản khác vừa thêm migration mới thì kiểm tra lại trước khi chạy. Rollback: `npm run migration:revert` rồi gỡ `GuidesModule` khỏi `app.module.ts`.
 
 ---
+
+## [2026-10-02 03:30] | P7 Hướng dẫn sử dụng — FE `/huong-dan` | [Status: Success]
+
+**Actor:** Agent
+
+**Files Changed:**
+- `frontend/src/app/(dashboard)/huong-dan/[[...slug]]/page.tsx` (mới) — mục lục + nội dung; nút Tạo/Sửa/Xoá chỉ hiện khi `can('guides.manage')`; người quản trị thấy cả bản nháp (dùng `manage/all` + `manage/:id`).
+- `frontend/src/components/guides/GuideEditorModal.tsx` (mới) — Markdown + xem trước, chọn role, thứ tự, xuất bản, chèn mẫu minh hoạ.
+- `frontend/src/lib/guides/*` — sửa lỗi cú pháp JSX ở `guide-demos.tsx`; siết `sanitizeImageUrl` (trước đây URL có dấu cách vẫn lọt); thêm test `guide-markdown.test.ts`, `GuideMarkdown.test.tsx` (XSS: không HTML thô, chặn `javascript:`/`data:`).
+- `frontend/src/lib/nav-config.tsx` (+ mục `huong-dan`, `roles: null`), `app/(dashboard)/layout.tsx` (+ nhánh selectedKey).
+- `frontend/src/lib/api/audit-meta.ts` — thêm nhãn `CREATE/UPDATE/DELETE_GUIDE` + entity `guide` (BE P7 ghi audit nhưng FE chưa có nhãn -> `audit-meta.test.ts` fail).
+- `frontend/package.json` — thêm `react-markdown`, `remark-gfm`.
+
+**Notes:**
+> Chưa làm: Ctrl+K tìm tiêu đề hướng dẫn (P8 giai đoạn 2). Chưa chạy migration P7 trên MySQL thật; chưa test thủ công UI trên trình duyệt.
+
+---

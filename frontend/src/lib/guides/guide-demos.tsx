@@ -254,7 +254,7 @@ export function GuideDemoBlock({ id }: { id: string }) {
                 showIcon
                 style={{ margin: '16px 0' }}
                 title={`Không có mẫu minh hoạ "${id}"`}
-                description="Mẫu này không tồn tại hoặc đã bị gỡ. Người soạn hãy chọn lại ở ô \" Chèn mẫu minh hoạ\"."
+                description={'Mẫu này không tồn tại hoặc đã bị gỡ. Người soạn hãy chọn lại ở ô "Chèn mẫu minh hoạ".'}
                     />
     );
     }
