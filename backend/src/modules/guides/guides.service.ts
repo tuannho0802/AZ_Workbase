@@ -140,6 +140,12 @@ export class GuidesService {
   // Quản trị (@RequirePermission guides.manage ở controller)
   // ---------------------------------------------------------------------------
 
+  /** Mọi role (hệ thống + tuỳ chỉnh) để chọn "role được xem" ở trình soạn. */
+  async listRoleOptions(): Promise<GuideRoleBrief[]> {
+    const roles = await this.roleRepo.find({ order: { id: 'ASC' } });
+    return roles.map((r) => ({ id: r.id, code: r.code, name: r.name, color: r.color }));
+  }
+
   /** Danh sách quản trị: gồm cả bản nháp, kèm role + trạng thái, KHÔNG kèm nội dung. */
   async listManage(): Promise<GuideManageItem[]> {
     const guides = await this.guideRepo.find({

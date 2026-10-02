@@ -45,6 +45,14 @@ export class GuidesController {
     return this.guidesService.listManage();
   }
 
+  // ⚠️ PHẢI khai TRƯỚC `manage/:id`: nếu không "roles" bị coi là :id -> ParseIntPipe trả 400.
+  @Get('manage/roles')
+  @RequirePermission(GUIDES_MANAGE_PERMISSION)
+  @ApiOperation({ summary: 'Danh sách role để chọn "role được xem" trong trình soạn - guides.manage' })
+  listRoleOptions() {
+    return this.guidesService.listRoleOptions();
+  }
+
   @Get('manage/:id')
   @RequirePermission(GUIDES_MANAGE_PERMISSION)
   @ApiOperation({ summary: 'Chi tiết 1 guide theo id (kể cả nháp) cho trình soạn - guides.manage' })

@@ -5576,3 +5576,20 @@ Now [deploy]
 > Chưa làm: Ctrl+K tìm tiêu đề hướng dẫn (P8 giai đoạn 2). Chưa chạy migration P7 trên MySQL thật; chưa test thủ công UI trên trình duyệt.
 
 ---
+
+## [2026-10-02 04:10] | Fix 400 `GET /guides/manage/roles` (P7) | [Status: Success]
+
+**Actor:** Agent
+
+**Files Changed:**
+- `backend/src/modules/guides/guides.controller.ts` — thêm `GET manage/roles` (`@RequirePermission('guides.manage')`), khai TRƯỚC `manage/:id`.
+- `backend/src/modules/guides/guides.service.ts` — thêm `listRoleOptions()`.
+- `guides.controller.spec.ts`, `guides.service.spec.ts` — cập nhật/thêm test (thứ tự route, quyền, kết quả).
+
+**Root Cause:**
+> FE (`guidesApi.listRoleOptions`) gọi `/guides/manage/roles` nhưng BE P7 chưa có endpoint này. Request rơi vào `manage/:id` có `ParseIntPipe` -> "roles" không phải số -> 400.
+
+**Solution:**
+> Thêm endpoint + service, giữ nguyên gác `guides.manage`. Không cần migration.
+
+---

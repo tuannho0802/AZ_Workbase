@@ -267,6 +267,12 @@ describe('GuidesService', () => {
       expect(res[0].roles.map((r) => r.id)).toEqual([2]);
       expect(res[0]).not.toHaveProperty('content');
     });
+    it('listRoleOptions trả id/code/name/color, sắp theo id', async () => {
+      roleRepo.find.mockResolvedValueOnce([{ id: 1, code: 'admin', name: 'Admin', color: '#f00', isSystem: true }]);
+      const res = await svc.listRoleOptions();
+      expect(roleRepo.find).toHaveBeenLastCalledWith({ order: { id: 'ASC' } });
+      expect(res).toEqual([{ id: 1, code: 'admin', name: 'Admin', color: '#f00' }]);
+    });
     it('chi tiết theo id không tồn tại -> 404', async () => {
       await expect(svc.getManageDetail(5)).rejects.toBeInstanceOf(NotFoundException);
     });
