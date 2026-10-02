@@ -35,6 +35,7 @@ describe('GuidesService', () => {
   const roleRepo: any = { find: jest.fn(), findOne: jest.fn() };
   const positionRepo: any = { find: jest.fn() };
   const departmentRepo: any = { find: jest.fn() };
+  const userRepo: any = { findOne: jest.fn() };
   const txManager: any = {
     save: jest.fn(),
     create: jest.fn((_e: unknown, x: unknown) => x),
@@ -84,7 +85,7 @@ describe('GuidesService', () => {
     guideRepo.findOne.mockResolvedValue(null);
     dataSource.transaction.mockImplementation(async (cb: any) => cb(txManager));
     txManager.create.mockImplementation((_e: unknown, x: unknown) => x);
-    svc = new GuidesService(guideRepo, roleRepo, positionRepo, departmentRepo, dataSource, perms, audit);
+    svc = new GuidesService(guideRepo, roleRepo, positionRepo, departmentRepo, userRepo, dataSource, perms, audit);
   });
 
   describe('canManage', () => {

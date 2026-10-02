@@ -122,6 +122,7 @@ export default function GuidesPage() {
                 </Title>
                 <Text type="secondary" style={{ fontSize: 12 }}>
                   Cập nhật: {dayjs(guide.updatedAt).format('HH:mm DD/MM/YYYY')}
+                  {guide.updatedByName ? ` bởi ${guide.updatedByName}` : ''}
                 </Text>
                 {canManage && (
                   <div style={{ marginTop: 6 }}>

@@ -5609,3 +5609,17 @@ Now [deploy]
 > Quy tắc AND giữa các chiều (chiều rỗng = không giới hạn). Người không có vị trí/phòng ban không thấy guide giới hạn theo chiều đó. Cần chạy migration 1785600000000 (kiểm tra lại timestamp nếu tài khoản khác vừa thêm migration).
 
 ---
+
+## [2026-10-02 12:00] | Hướng dẫn sử dụng: hiển thị "Cập nhật bởi" | [Status: Success]
+
+**Actor:** Agent
+
+**Files Changed:**
+- `backend/src/modules/guides/guides.service.ts` — `GuideDetail.updatedByName` (tra tên từ `guides.updated_by`, `withDeleted`); inject `User` repo.
+- `backend/src/modules/guides/guides.module.ts` — thêm `User` vào `forFeature`; `guides.service.spec.ts` cập nhật constructor mock.
+- `frontend/src/lib/api/guides.api.ts`, `frontend/src/app/(dashboard)/huong-dan/[[...slug]]/page.tsx` — hiển thị "Cập nhật: HH:mm DD/MM/YYYY bởi <tên>".
+
+**Notes:**
+> Không đổi schema/migration (cột `updated_by` đã có). Bài chưa sửa lần nào (`updated_by` null) chỉ hiện thời gian. BE jest guides 68/68 pass, tsc sạch.
+
+---

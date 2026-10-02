@@ -43,6 +43,8 @@ export interface GuideManageItem extends GuideListItem {
 
 export interface GuideDetail extends GuideManageItem {
     content: string;
+    /** Tên người sửa cuối (null = chưa sửa lần nào). */
+    updatedByName: string | null;
 }
 
 export interface CreateGuidePayload {

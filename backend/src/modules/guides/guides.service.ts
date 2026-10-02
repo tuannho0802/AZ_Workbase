@@ -14,6 +14,7 @@ import { GuideDepartment } from '../../database/entities/guide-department.entity
 import { RoleEntity } from '../../database/entities/role.entity';
 import { Position } from '../../database/entities/position.entity';
 import { Department } from '../../database/entities/department.entity';
+import { User } from '../../database/entities/user.entity';
 import { Role } from '../../common/enums/role.enum';
 import { PermissionsService } from '../permissions/permissions.service';
 import { AuditService } from '../audit/audit.service';
@@ -92,6 +93,8 @@ export interface GuideManageItem extends GuideListItem {
 
 export interface GuideDetail extends GuideManageItem {
   content: string;
+  /** Tên người sửa cuối (null = chưa sửa lần nào hoặc user đã bị xoá hẳn). */
+  updatedByName: string | null;
 }
 
 @Injectable()
@@ -107,6 +110,8 @@ export class GuidesService {
     private readonly positionRepo: Repository<Position>,
     @InjectRepository(Department)
     private readonly departmentRepo: Repository<Department>,
+    @InjectRepository(User)
+    private readonly userRepo: Repository<User>,
     private readonly dataSource: DataSource,
     private readonly permissionsService: PermissionsService,
     private readonly auditService: AuditService,
@@ -173,7 +178,7 @@ export class GuidesService {
     if (!GuideAccessHelper.canView(this.visibilityOf(guide), viewer, canManage)) {
       throw new NotFoundException('Không tìm thấy hướng dẫn');
     }
-    return this.toDetail(guide, await this.loadAudience([guide]));
+    return this.toDetail(guide, await this.loadAudience([guide]), await this.updaterNameOf(guide));
   }
 
   // ---------------------------------------------------------------------------
@@ -221,7 +226,7 @@ export class GuidesService {
   async getManageDetail(id: number): Promise<GuideDetail> {
     const guide = await this.guideRepo.findOne({ where: { id }, relations: AUDIENCE_RELATIONS });
     if (!guide) throw new NotFoundException('Không tìm thấy hướng dẫn');
-    return this.toDetail(guide, await this.loadAudience([guide]));
+    return this.toDetail(guide, await this.loadAudience([guide]), await this.updaterNameOf(guide));
   }
 
   async create(dto: CreateGuideDto, user: GuideCaller): Promise<GuideDetail> {
@@ -265,7 +270,7 @@ export class GuidesService {
     const guide = await this.guideRepo.findOne({ where: { id }, relations: AUDIENCE_RELATIONS });
     if (!guide) throw new NotFoundException('Không tìm thấy hướng dẫn');
 
-    const before = this.toDetail(guide, EMPTY_AUDIENCE);
+    const before = this.toDetail(guide, EMPTY_AUDIENCE, null);
 
     const patch: Partial<Guide> = {};
     if (dto.title !== undefined) {
@@ -479,8 +484,19 @@ export class GuidesService {
     };
   }
 
-  private toDetail(g: Guide, audience: GuideAudience): GuideDetail {
-    return { ...this.toManageItem(g, audience), content: g.content };
+  private toDetail(g: Guide, audience: GuideAudience, updatedByName: string | null): GuideDetail {
+    return { ...this.toManageItem(g, audience), content: g.content, updatedByName };
+  }
+
+  /** Tên người sửa cuối (`updated_by`). withDeleted: user đã vào thùng rác vẫn hiện tên. */
+  private async updaterNameOf(g: Guide): Promise<string | null> {
+    if (!g.updatedBy) return null;
+    const u = await this.userRepo.findOne({
+      where: { id: g.updatedBy },
+      select: { id: true, name: true },
+      withDeleted: true,
+    });
+    return u?.name ?? null;
   }
 
   /** Bản ghi audit gọn: không nhét nguyên nội dung (chỉ độ dài) cho create/update; delete lưu nguyên văn riêng. */
