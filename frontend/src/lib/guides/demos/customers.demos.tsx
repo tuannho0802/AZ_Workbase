@@ -73,7 +73,7 @@ const ALL_COLUMNS: Record<string, ColumnsType<DemoCustomer>[number]> = {
 };
 
 /**
- * Mẫu bảng Khách hàng theo người xem. `switchable` = có bộ chọn "Xem với tư cách" (ngoài vùng inert).
+ * Mẫu bảng Khách hàng theo người xem. `switchable` = có bộ chọn "Xem với tư cách" (ngoài vùng mẫu).
  * Dòng/cột/nút do `computeCustomerTableView` quyết định (xem file đó để biết nguồn đối chiếu code thật).
  */
 export function CustomerTableByViewer({ initialPersona, switchable }: { initialPersona: string; switchable: boolean }) {

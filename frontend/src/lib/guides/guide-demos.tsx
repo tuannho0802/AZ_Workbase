@@ -17,8 +17,8 @@ export type { GuideDemo } from './guide-demo.types';
  *   ```
  *
  * Mỗi mẫu là bản SAO tĩnh của UI thật (cùng component/kiểu dáng antd), dữ liệu mẫu cứng, KHÔNG gọi API,
- * KHÔNG phụ thuộc quyền -> an toàn cho mọi role và không lộ dữ liệu thật. Khung `DemoFrame` đặt `inert`
- * (không bấm/không focus được) để người đọc không tưởng nhầm là thao tác thật.
+ * KHÔNG phụ thuộc quyền -> an toàn cho mọi role và không lộ dữ liệu thật. Khung `DemoFrame` cho cuộn/rê chuột
+ * xem thoải mái nhưng mọi thao tác đều vô hiệu (không handler thật, chặn điều hướng link/submit form).
  *
  * File này CHỈ còn gộp mảng + dựng khối hiển thị. Thêm mẫu mới: thêm 1 phần tử vào mảng của module tương ứng ở
  * `demos/<module>.demos.tsx` (id chỉ gồm chữ thường/số/gạch ngang; module mới -> tạo file mới rồi đăng ký ở `GUIDE_DEMOS` dưới đây).

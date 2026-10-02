@@ -71,7 +71,7 @@ Hộp soạn dùng Markdown, hỗ trợ **bảng** và **danh sách việc cần
 
 ### Chèn mẫu minh hoạ
 
-Mẫu minh hoạ là bản **giao diện mô phỏng** (dữ liệu giả, không bấm được) nhúng thẳng vào bài, giúp người đọc hình dung màn hình thật.
+Mẫu minh hoạ là bản **giao diện mô phỏng** (dữ liệu giả: cuộn, rê chuột xem được, bấm thử không lưu gì) nhúng thẳng vào bài, giúp người đọc hình dung màn hình thật.
 
 1. Ở tab **Soạn Markdown**, mở ô **Chèn mẫu minh hoạ** phía trên hộp soạn và chọn mẫu. Hệ thống tự thêm một khối vào cuối nội dung.
 2. Khối có dạng như sau (đây là cú pháp, bạn không cần gõ tay):

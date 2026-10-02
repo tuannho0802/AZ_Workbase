@@ -5745,3 +5745,23 @@ Now [deploy]
 > Đối chiếu code: chia data theo phạm vi `Phòng ban` chỉ cho khách có `departmentId` thuộc phòng ban mình quản lý (`CustomersService.bulkAssign`), không cộng khách riêng. Nhập Excel bắt buộc SĐT và từ chối SĐT trùng cả khách trong Thùng rác; form thêm tay thì SĐT tuỳ chọn. Đã chạy thật: FE vitest 538/538, ESLint sạch trên file đụng tới, tsc chỉ còn 4 lỗi `logo.png` có sẵn ở bản gốc; BE jest 1573/1573, `tsc` sạch, `parseGuideFile` đọc được cả 3 file. CHƯA làm: migration `1785800000000`/`1785900000000` + `guides:sync --apply` trên MySQL thật (sandbox không có MySQL; user tự chạy), chưa chạy `next build`.
 
 ---
+
+## [2026-10-02 22:00] | Guide demo: bỏ `inert`, cho cuộn ngang/rê chuột trong mẫu minh hoạ | [Status: Success]
+
+**Actor:** Agent
+
+**Files Changed:**
+- `frontend/src/lib/guides/demo-kit/DemoFrame.tsx` — bỏ `inert` ở vùng mẫu; thêm lưới an toàn `onClickCapture` (chặn điều hướng `a[href]`) + `onSubmitCapture` (chặn submit); thêm `data-testid="guide-demo-body"`; đổi chú thích khung thành "dữ liệu giả: cuộn, rê chuột để xem; không lưu gì".
+- `frontend/src/lib/guides/guide-demos.test.tsx` — thay test "vùng bảng inert" bằng 3 test: không còn `[inert]` + bảng có `.ant-table-content`; link/form bị preventDefault; tick ô chọn dòng hoạt động.
+- Comment ở `guide-demos.tsx`, `guide-demo.types.ts`, `demos/customers.demos.tsx`; câu mô tả mẫu trong `guides-content/huong-dan-su-dung.md`.
+
+**Root Cause:**
+> `inert` đặt lên cả vùng mẫu chặn mọi sự kiện chuột -> không kéo được thanh cuộn ngang của bảng 12-13 cột, không ra tooltip (ⓘ, nhóm +N, ghi chú).
+
+**Solution:**
+> Bỏ `inert`. An toàn vì mẫu chỉ dùng dữ liệu giả, không có handler gọi API; link/submit bị chặn ở capture phase. `controls` (Xem với tư cách) vẫn nằm ngoài vùng mẫu.
+
+**Notes:**
+> jsdom không đo layout nên chưa kiểm được cuộn ngang bằng mắt: cần bạn mở trang thật xác nhận. Chưa chạy `next build`.
+
+---

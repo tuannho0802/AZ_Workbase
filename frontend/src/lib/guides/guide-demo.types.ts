@@ -14,7 +14,7 @@ export interface GuideDemo {
      * tham số nào (tham số lạ -> khung cảnh báo, không throw).
      */
     params?: Record<string, readonly string[]>;
-    /** true = mẫu tự dựng `DemoFrame` (cần `controls` ngoài vùng inert). */
+    /** true = mẫu tự dựng `DemoFrame` (cần `controls` ngoài vùng mẫu). */
     selfFramed?: boolean;
     render: (params: Record<string, string>) => ReactNode;
 }
