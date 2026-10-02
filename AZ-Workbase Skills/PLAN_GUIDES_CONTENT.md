@@ -6,7 +6,8 @@
 > `PLAN_POSITION_FIELD_VISIBILITY_ASSIGNMENT_GROUPS.md`.
 > **Giới hạn của audit này:** đọc cấu trúc + grep, CHƯA chạy app, CHƯA đọc logic từng service. Mọi mục ghi
 > "cần xác nhận" phải đọc code thật ở bước 0 của phase tương ứng trước khi viết hướng dẫn.
-> **Không cần migration** cho P0–P6 (trừ quyết định D2 ở mục 3).
+> **Không cần migration** cho P0–P5 (D2 đã làm). **P6 (Loại trừ / Exclude) cần 1 migration.**
+> **Cập nhật 2026-10-02 (bổ sung, làm sau):** thêm (1) *Loại trừ Role/Vị trí/Phòng ban* (F12, §2.6, D6, P6) và (2) *bộ mẫu minh hoạ trực quan cho module Task* (F13, §2.7, D7, P2a). Hai mục này CHƯA code.
 
 ---
 
@@ -33,6 +34,8 @@
 | F9 | `hieu-suat-cong-viec`, `thong-bao`, `thong-bao/page` không có `can()` và nav không gate permission | Cần xác nhận | Kiểm tra BE có gate không trước khi viết "ai dùng được" |
 | F10 | `guide-demos.tsx` dùng lẫn `Alert message=` (cũ) và `Alert title=` (mới) | Thấp | Thống nhất khi tách file |
 | F11 | `README_AZWORKBASE_PROJECT.md` đã lỗi thời (đã tự cảnh báo) | Thấp | Không dùng làm nguồn viết guide |
+| F12 | Lọc người xem guide hiện **chỉ có chiều "được xem" (include)**: `GuideAccessHelper.canView` = AND giữa role/vị trí/phòng ban/permission, chiều trống = mọi người. **Không có cách nói "mọi người TRỪ Vị trí Media"** — muốn vậy phải liệt kê tay tất cả vị trí còn lại, và vị trí mới tạo sau sẽ không tự thấy bài | Cao | Xem §2.6, D6, P6 |
+| F13 | Mẫu minh hoạ hiện chỉ có mảng **Khách hàng** (`demos/customers.demos.tsx`) + UTM + chung. **Module Task (Công việc định kỳ) chưa có mẫu trực quan nào**, `personas.ts`/`compute-view.ts` cũng chỉ mô phỏng khách hàng (không có khái niệm phạm vi Task, nút theo quyền Task) | Cao | Xem §2.7, D7, P2a |
 
 > Việc F8/F9 **không nằm trong phạm vi plan này** — chỉ ghi lại; xử lý riêng sau khi xác nhận.
 
@@ -118,6 +121,55 @@ Kèm 3 mẫu phụ để giải thích "vì sao":
 `khach-hang`, `chia-data`, `cong-viec-dinh-ky`, `lich-su-cong-viec`, `hieu-suat-cong-viec`, `nghi-phep`, `thong-bao`, `gui-thong-bao`, `thong-bao-da-gui`, `huong-dan-su-dung`, `profile`, `nhom-toi-quan-ly`, `bao-cao-doanh-so`, `duyet-phep`, `nhat-ky-he-thong`, `nhan-vien`, `phong-ban`, `vi-tri`, `quan-ly-phu-trach`, `loai-phep`, `status-khach`, `trang-thai-cong-viec`, `thung-rac`, `nguon-media`, `nhom-lien-ket`, `quan-ly-utm`, `may-cham-cong`, `bao-cao-data-loi`, `phan-quyen`, `luu-tru-anh`.
 Thêm bài tổng: `bat-dau` (cách dùng menu, Ctrl+K, vai trò & phạm vi xem — dùng mẫu `header-search`, `permission-note`).
 
+### 2.6. Loại trừ (Exclude) Role / Vị trí / Phòng ban — *làm sau (P6)*
+**Nhu cầu:** làm 1 bài cho toàn bộ người dùng, trừ 1 số nhóm. Ví dụ bài hướng dẫn \"Khách hàng\" cho mọi người **trừ Vị trí Media** → mọi User thấy, riêng Media không thấy.
+
+**Quy tắc (đề xuất):**
+1. Mỗi chiều (role / vị trí / phòng ban) có thêm danh sách **Loại trừ** song song với danh sách **Được xem**.
+2. `canView` = (điều kiện hiện tại: đã xuất bản AND các chiều include AND permission) **AND NOT** (người xem thuộc BẤT KỲ danh sách loại trừ nào). **Loại trừ thắng Include** khi xung đột.
+3. Người xem không có giá trị ở chiều đó (vd chưa có vị trí) → **không** bị loại trừ theo chiều đó.
+4. Validate khi lưu: cùng 1 giá trị không được nằm đồng thời ở Include và Exclude của cùng 1 chiều (400, thông báo tiếng Việt).
+5. Người có `guides.manage` (Root Admin luôn có) vẫn xem được để xem trước/soạn — giữ đúng quy ước hiện tại; trong trình soạn hiện Tag \"Loại trừ: Media\" để không nhầm là bài Media cũng thấy.
+6. Bài bị loại trừ → BE trả **404** (không lộ sự tồn tại), áp dụng cho cả danh sách, chi tiết theo slug/id, nút \"Xem hướng dẫn trang này\" (`PageGuideButton`) và Ctrl+K (nếu P5 làm).
+7. Ví dụ chuẩn dùng làm test: bài `khach-hang` với `excludePositions: [media]` → Employee/Sales thấy, Employee/Media **không** thấy, Admin/`guides.manage` thấy.
+
+**Thiết kế dữ liệu (default D6):** thêm cột `is_excluded TINYINT(1) NOT NULL DEFAULT 0` vào 3 bảng `guide_roles`, `guide_positions`, `guide_departments` (khoá chính vẫn `guide_id + <x>_id`, nên 1 giá trị chỉ ở 1 trạng thái). Giữ nguyên ngữ nghĩa cũ \"không có dòng include = không giới hạn\".
+- Entity: khai `type: 'tinyint'` + `BooleanTransformer` (đúng `SKILL_DATABASE_MANAGEMENT §11`); **cảnh báo QueryBuilder không chạy transformer** → dùng `find({ where })` hoặc truyền `1/0` thủ công (`SKILL_NESTJS_BACKEND §10`).
+- Migration MỚI (fix-forward, `up()/down()` đối xứng, idempotent `IF NOT EXISTS`), timestamp > số lớn nhất sau `git pull` (hiện `1785900000000`). **Bạn tự chạy.**
+- Phương án thay thế: 3 bảng mới `guide_excluded_*` — tách bạch hơn nhưng nhiều entity/boilerplate hơn; chọn nếu muốn tránh đụng ngữ nghĩa bảng cũ.
+
+**BE:** `GuideVisibilityInput` thêm `excludedRoleIds/excludedPositionIds/excludedDepartmentIds` (mặc định rỗng); `GuideAccessHelper.canView` thêm điều kiện (hàm thuần, thêm spec cho đủ 4 tổ hợp: include-only, exclude-only, cả hai, người xem không có giá trị chiều đó); DTO create/update thêm `excludedRoleIds/excludedPositionIds/excludedDepartmentIds` (`@IsOptional @IsArray @IsInt({each})`); `GuidesService.insertLinks/idsOf/toManageItem/toDetail/loadAudience` tách include/exclude; audit log ghi cả danh sách loại trừ (diff trước/sau).
+**FE:** `GuideEditorModal` thêm 3 ô Select nhiều lựa chọn \"Loại trừ …\" (chặn chọn trùng với ô \"Được xem\"); `GuideAudienceTags` hiện Tag đỏ/xám \"Loại trừ: <tên>\"; kiểu `Guide*` trong `lib/types` cập nhật **cả hai nơi** (type parity, `SKILL_NEXTJS_FRONTEND §14`).
+**`guides:sync`:** frontmatter thêm `excludeRoles`, `excludePositions`, `excludeDepartments` (cùng kiểu với `roles/positions/departments`); **hash nội dung phải tính cả các khoá này** (nếu không, đổi loại trừ sẽ không được coi là thay đổi); cập nhật bảng frontmatter trong `guides-content/README.md` + `_template.md`; `guide-demos.contract.test.ts` kiểm code vị trí/role/phòng ban trong `exclude*` tồn tại (giống cách kiểm `positions`).
+**Cần xác nhận ở bước 0:** \"Media\" là **Vị trí** (bảng `positions`, code thật?) hay Role/Phòng ban — đọc seed `positions` rồi chốt; plan viết theo hướng Vị trí.
+
+### 2.7. Mẫu minh hoạ trực quan cho module Task (Công việc định kỳ) — *làm sau (P2a)*
+**Hiện trạng (F13):** chỉ Khách hàng có mẫu trực quan. Task cần bộ riêng, cùng cơ chế persona + `DemoFrame controls` + `compute-view` thuần như khách hàng.
+
+**Thêm vào `demo-kit/`:**
+- `sample-tasks.ts`: công việc mẫu đủ tình huống — 4 loại kỳ (Ngày/Tuần/Tháng/Năm), nhiều trạng thái (gồm 1 trạng thái **khoá**), có/không checklist, có/không khách liên kết, nhiều người được giao, thuộc 2 phòng ban khác nhau.
+- `task-personas.ts` (hoặc mở rộng `personas.ts`): Admin, Assistant, Manager (phòng ban mình), Employee (được giao), Employee (không được giao), + 1 persona thiếu quyền. Mỗi persona khai **permission + scope** `periodic_tasks.*`.
+- `compute-task-view.ts` — hàm THUẦN `(persona, tasks) → {task thấy, nút hiện}`; phạm vi `own/department/all` và nút theo `create / edit / edit_locked / delete / approve / link_customer / trash_manage`. Đối chiếu bằng test với seed migration `1782100000000` (admin+assistant=all, manager=department, employee=own) và logic BE thật (đọc ở bước 0).
+
+**Mẫu cần có (id đề xuất, đăng ký vào `demos/periodic-tasks.demos.tsx`):**
+
+| Id | Nội dung | Ghi chú |
+|---|---|---|
+| `task-kanban` | Bảng Kanban theo trạng thái (bản rút gọn, tĩnh) | D4 |
+| `task-calendar` | Lịch tháng có chấm công việc | D4, tĩnh |
+| `task-agenda` | Danh sách theo ngày | tĩnh |
+| `task-by-viewer` | **Mẫu trọng tâm**: chọn persona → danh sách Task + nút đổi theo phạm vi/quyền | tương đương `customer-table-by-viewer` |
+| `task-actions-by-viewer` | Ma trận nút Sửa/Xoá/Duyệt/Liên kết khách/Thùng rác theo persona, kể cả việc đã **khoá** | dùng `edit_locked` |
+| `period-type-tags` | Tag Ngày/Tuần/Tháng/Năm | tái dùng `PeriodTypeTag` thật |
+| `task-status-tags` | Tag trạng thái (màu lấy từ danh mục) | tĩnh như `StatusTag` |
+| `task-assignees` | Nhiều người được giao (Tag + `+N`) | tách phần trình bày của `TaskAssignees` |
+| `task-checklist` | Checklist trong 1 việc | tách phần trình bày |
+| `task-audit-row` | 1 dòng lịch sử + diff trước/sau | dùng cho `lich-su-cong-viec` |
+
+**Nguyên tắc (giống §2.2):** dùng component thật; chỗ nào gọi API/hook thì tách phần trình bày thuần dùng chung cho cả trang thật và mẫu (chống drift F2); dữ liệu cứng, `inert`, không gọi API; fence có tham số whitelist (vd `task-by-viewer persona=employee`).
+**Chống lệch:** mở rộng `guide-demos.contract.test.ts` — (a) permission key trong task persona ∈ key đã seed; (b) mọi id `task-*` dùng trong `guides-content/*.md` có trong `GUIDE_DEMOS`; (c) tham số fence hợp lệ; thêm `compute-task-view.test.ts`.
+**Cần xác nhận ở bước 0:** các component Task nào đã tách được phần trình bày (`TaskAssignees`, `TaskChecklistModal`, `PeriodTypeTag`…), nhãn cột/nút thật của trang `/cong-viec-dinh-ky`, và hành vi thật của trạng thái \"khoá\".
+
 ---
 
 ## 3. Quyết định cần chốt (mặc định đề xuất — nếu bạn không phản hồi sẽ làm theo mặc định)
@@ -129,6 +181,8 @@ Thêm bài tổng: `bat-dau` (cách dùng menu, Ctrl+K, vai trò & phạm vi xem
 | D3 | Phạm vi persona | 7 persona ở 2.3; mở rộng sau nếu cần |
 | D4 | Trang quá phức tạp để dựng lại (Lịch/Kanban, biểu đồ Hiệu suất, Ma trận quyền) | Dựng **bản rút gọn** bằng dữ liệu mẫu; không dùng ảnh chụp (guide chỉ nhận ảnh https qua B2 presign, và ảnh sẽ lỗi thời nhanh) |
 | D5 | Ngôn ngữ | Tiếng Việt, xưng "bạn", mỗi bài ≤ 1 màn hình cuộn cho mục "Bắt đầu nhanh" |
+| D6 | Loại trừ Role/Vị trí/Phòng ban (§2.6, F12) | **Làm ở P6**: thêm cột `is_excluded` vào 3 bảng `guide_*` (1 migration, bạn tự chạy); loại trừ thắng include; `guides.manage` vẫn xem được; mở rộng `guides:sync` frontmatter. Phương án khác: 3 bảng `guide_excluded_*` |
+| D7 | Mẫu Task (§2.7, F13) | **Làm ở P2a** (trước các bài P2): `sample-tasks` + persona Task + `compute-task-view` + 10 mẫu; Kanban/Lịch dựng bản rút gọn tĩnh (D4); **không cần migration** |
 
 ---
 
@@ -166,6 +220,14 @@ Tiêu chí "xong" cho mỗi bài: mọi tên cột/nút **khớp đúng chữ tr
 ### P1 — Dữ liệu khách hàng (ưu tiên cao nhất, cỡ L)
 Thứ tự: `khach-hang` → `chia-data` → `quan-ly-phu-trach` → `status-khach` → `nguon-media` → `quan-ly-utm` → `nhom-lien-ket` → `nhom-toi-quan-ly` → `thung-rac` → `bao-cao-data-loi`.
 
+### P2a — Bộ mẫu trực quan cho Task (cỡ M–L, làm TRƯỚC các bài P2) — *bổ sung, làm sau*
+- [ ] Bước 0: `git pull`, đọc `/cong-viec-dinh-ky/page.tsx` + các component Task + controller/service `periodic-tasks` (scope, khoá, duyệt) — chốt nhãn cột/nút thật.
+- [ ] Tách phần trình bày thuần của `TaskAssignees`, checklist, tag trạng thái để dùng chung trang thật ↔ mẫu.
+- [ ] `demo-kit/sample-tasks.ts`, `task-personas.ts`, `compute-task-view.ts` + `compute-task-view.test.ts` (đối chiếu seed `1782100000000` + BE).
+- [ ] `demos/periodic-tasks.demos.tsx` với 10 mẫu ở §2.7; đăng ký vào `GUIDE_DEMOS`; `task-by-viewer` có `DemoFrame controls` chọn persona.
+- [ ] Mở rộng contract test (permission key, id mẫu, tham số fence).
+- **Xong khi:** đổi persona trong `task-by-viewer` thấy danh sách + nút đổi đúng phạm vi/quyền; test xanh; `tsc` + `next build` + eslint không lỗi mới. Không cần migration.
+
 ### P2 — Công việc & Nghỉ phép (cỡ L)
 `cong-viec-dinh-ky` → `trang-thai-cong-viec` → `lich-su-cong-viec` → `hieu-suat-cong-viec` → `nghi-phep` → `duyet-phep` → `loai-phep`.
 
@@ -179,6 +241,16 @@ Thứ tự: `khach-hang` → `chia-data` → `quan-ly-phu-trach` → `status-kha
 - [ ] Rà lại toàn bộ guide với app thật theo từng role (đăng nhập thử 4 role + 1 role tuỳ chỉnh).
 - [ ] (Tuỳ chọn, mở P8 GĐ2) Ctrl+K tìm cả tiêu đề hướng dẫn user được xem.
 - [ ] Cập nhật `PERMISSIONS.md` mục 2.14 (nếu D2) + dòng quy trình "sửa trang → sửa guide" vào `SKILL_NEXTJS_FRONTEND.md`.
+
+### P6 — Loại trừ Role/Vị trí/Phòng ban (cỡ M–L, *bổ sung, làm sau*)
+- [ ] Bước 0: `git pull`, đọc `guide-access.helper.ts`, `guides.service.ts`, 3 entity `guide-*`, `GuideEditorModal`, `GuideAudienceTags`, `guides-sync` (parser + hash); xác nhận \"Media\" là Vị trí nào trong bảng `positions`.
+- [ ] Migration `<timestamp > lớn nhất>-AddGuideExclusions` (cột `is_excluded`, idempotent, `up()/down()`); **bạn tự chạy**.
+- [ ] BE: entity + `BooleanTransformer`; `GuideAccessHelper.canView` thêm điều kiện loại trừ + spec (include-only / exclude-only / cả hai / người xem thiếu giá trị chiều); DTO + validate không trùng include/exclude; service `insertLinks/idsOf/toManageItem/toDetail`; audit ghi loại trừ.
+- [ ] FE: 3 ô Select \"Loại trừ …\" trong `GuideEditorModal`; Tag \"Loại trừ: …\" ở `GuideAudienceTags`; cập nhật type ở cả `lib/types` lẫn type inline.
+- [ ] `guides:sync`: frontmatter `excludeRoles/excludePositions/excludeDepartments`, đưa vào hash; cập nhật `guides-content/README.md` + `_template.md`; contract test kiểm code tồn tại.
+- [ ] Test ví dụ chuẩn: `khach-hang` + `excludePositions: [media]` → Media 404, người khác thấy, `guides.manage` thấy.
+- [ ] Cập nhật `PERMISSIONS.md` mục 2.14 (quy tắc lọc guide có thêm loại trừ) + ghi `WORKFLOW_LOG.md`.
+- **Xong khi:** tạo bài \"cho mọi người trừ Vị trí Media\" trên UI và qua `guides:sync --apply`; đăng nhập thử 1 user Media (không thấy, không có nút \"Xem hướng dẫn trang này\") và 1 user khác (thấy); test xanh; build sạch.
 
 ---
 
@@ -253,7 +325,7 @@ Thứ tự: `khach-hang` → `chia-data` → `quan-ly-phu-trach` → `status-kha
 **11. Công việc định kỳ** — `/cong-viec-dinh-ky` · slug `cong-viec-dinh-ky`
 - Quyền: `periodic_tasks.view` (scope own/department/all). Hành động: `create`, `edit`, `edit_locked`, `delete`, `approve`, `link_customer`, `trash_manage`; xem `periodic_task_statuses.view`, `customers.view`.
 - Thành phần: 3 chế độ xem (Kanban, Calendar, Agenda), `TaskActionsBar`, `TaskAssignees`, `TaskChecklistModal`, `TaskCustomersModal`, `TaskLinksModal`, `TaskAuditLogsModal`, `TaskTrashTab`, `PeriodTypeTag`.
-- Mẫu: 🆕`task-kanban` · 🆕`task-calendar` · 🆕`task-agenda` · 🆕`task-actions-by-viewer` · 🆕`period-type-tags` (Ngày/Tuần/Tháng/Năm) · 🆕`task-checklist`.
+- Mẫu: 🆕`task-kanban` · 🆕`task-calendar` · 🆕`task-agenda` · 🆕`task-by-viewer` · 🆕`task-actions-by-viewer` · 🆕`period-type-tags` (Ngày/Tuần/Tháng/Năm) · 🆕`task-status-tags` · 🆕`task-assignees` · 🆕`task-checklist` · 🆕`task-audit-row`. **Chi tiết + phase: §2.7 và P2a** (hiện CHƯA có mẫu Task nào).
 - Nội dung: tạo thủ công từng kỳ; phạm vi theo role (admin+assistant=all, manager=department, employee=own — theo seed migration `1782100000000`); khoá/duyệt; liên kết khách; thùng rác.
 
 **12. Quản lý Trạng thái công việc** — `/quan-ly-trang-thai-cong-viec` · slug `trang-thai-cong-viec`
@@ -342,9 +414,14 @@ Thứ tự: `khach-hang` → `chia-data` → `quan-ly-phu-trach` → `status-kha
 | `guides:sync` ghi đè bài người khác sửa trên UI | Mặc định dry-run + so hash + không ghi đè nếu khác (cờ `--force`) |
 | Lộ nội dung quản trị cho người không có quyền | Audience hẹp cho `phan-quyen`, `nhat-ky-he-thong`, `huong-dan-su-dung`; D2 nếu chốt |
 | Nhiều tài khoản cùng sửa `guide-demos` → xung đột | Tách file theo module (2.2) — mỗi phase đụng file riêng |
-| Migration D2 trùng timestamp | `ls` migrations sau khi `pull`, lấy số > lớn nhất (hiện `1785600000000`) |
+| Migration (D2/P6) trùng timestamp | `ls` migrations sau khi `pull`, lấy số > lớn nhất (hiện `1785900000000`) |
+| Loại trừ làm lộ/ẩn sai bài (vd Media vẫn thấy) | Hàm thuần `canView` + spec đủ tổ hợp; loại trừ thắng include; trả 404; test ví dụ chuẩn Media (P6) |
+| `is_excluded` đọc sai do transformer + QueryBuilder | Dùng `find({ where })` hoặc truyền `1/0` thủ công; có test service |
+| Đổi loại trừ trong file `.md` mà `guides:sync` coi là "không đổi" | Đưa `exclude*` vào hash nội dung |
+| Mẫu Task lệch logic scope/khoá thật | `compute-task-view` đối chiếu seed + BE, có test; dùng component thật (P2a) |
 
 ## 8. Thứ tự làm đề xuất (để thấy kết quả sớm nhất)
 1. **P0** (nền tảng) — sau đó trang Khách hàng đã có bảng đúng 12 cột + chuyển vai trò.
 2. **P1** theo thứ tự `khach-hang` → `chia-data` → `quan-ly-phu-trach` (3 bài này giải quyết đúng "trống trải" + "hiển thị theo quản lý phụ trách & phân quyền").
-3. P2 → P3 → P4 → P5.
+3. **P2a** (mẫu trực quan Task) → P2 → P3 → P4 → P5.
+4. **P6** (Loại trừ Role/Vị trí/Phòng ban) — độc lập với P1–P5, có thể chen vào bất kỳ lúc nào sau P0 (cần 1 migration).
