@@ -114,7 +114,7 @@ export function GuideEditorModal({ open, onClose, guideId, onSaved }: Props) {
       okButtonProps={{ disabled: loadingDetail || saving }}
       width={860}
       destroyOnHidden
-      maskClosable={false}
+      mask={{ closable: false }}
       // Trình soạn tự dùng Ctrl+K (chèn link) - nhường phím tắt cho command palette.
       data-no-command-palette
     >
