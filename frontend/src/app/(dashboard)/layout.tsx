@@ -23,6 +23,7 @@ import { NotificationBell } from '@/components/notifications/NotificationBell';
 import { NotificationDetailModal } from '@/components/notifications/NotificationDetailModal';
 import { CommandPaletteHost } from '@/components/common/CommandPaletteHost';
 import { HeaderSearchTrigger } from '@/components/common/HeaderSearchTrigger';
+import { PageGuideButton } from '@/components/guides/PageGuideButton';
 import { useRoleColorMap } from '@/lib/hooks/useRoleColorMap';
 import dayjs from 'dayjs';
 import 'dayjs/locale/vi';
@@ -407,6 +408,8 @@ export default function DashboardLayout({
           <div style={{ display: 'flex', alignItems: 'center', gap: 20 }}>
             {/* Ô tìm nhanh - mở command palette, placeholder gợi ý Ctrl + K (PLAN_HARDENING P8) */}
             <HeaderSearchTrigger />
+            {/* Nút "Xem hướng dẫn trang này" - tự ẩn nếu bài chưa có/không thuộc đối tượng của người xem (PLAN_GUIDES_CONTENT §2.4) */}
+            <PageGuideButton navKey={selectedKey} />
             {todayLabel && (
               <span style={{ fontSize: 13, color: '#94a3b8', display: 'flex', alignItems: 'center', gap: 6 }}>
                 <CalendarOutlined />

@@ -5692,3 +5692,20 @@ Now [deploy]
 > Quy ước đã chọn: nhiều quyền = AND (phải có đủ), nhất quán với các chiều khác; đổi sang "một trong" chỉ cần sửa `every` -> `some` ở `GuideAccessHelper.canView`. BE jest 1526/1526, `nest build` sạch; FE vitest 477/477, tsc chỉ còn lỗi logo.png cũ; ESLint không thêm lỗi mới so với baseline (stash). Migration CHƯA chạy thử trên MySQL thật. Chưa chạy `next build`.
 
 ---
+## [2026-10-02 18:00] | P0: guides:sync + lưới an toàn (contract / nav-guide-coverage) + nút "Xem hướng dẫn trang này" | [Status: Success]
+
+**Actor:** Agent
+
+**Files Changed:**
+- `backend/src/database/migrations/1785900000000-AddGuideSourceHash.ts` (mới) — cột `guides.source_hash` varchar(64) NULL, idempotent, `down()` đối xứng. **User tự chạy.** `guide.entity.ts` thêm `sourceHash` (`type: 'varchar'` tường minh).
+- `backend/src/modules/guides/sync/` (mới) — `guide-file.parser.ts` (frontmatter không thêm dependency), `guide-sync.planner.ts` (hash + quyết định create/update/unchanged/conflict, hàm thuần), `guide-sync.executor.ts` (điều phối, dry-run mặc định), `typeorm-sync.store.ts` (ghi qua `GuidesService` => validate + transaction + audit) + 4 file spec.
+- `backend/scripts/guides-sync.ts` + script `npm run guides:sync`.
+- `guides-content/` (mới, gốc repo) — `_template.md`, `README.md`. CHƯA có bài thật (bat-dau/khach-hang là việc tiếp theo).
+- `frontend/src/lib/guides/` — `guide-slugs.ts` (+test), `guide-demos.contract.test.ts`, `nav-guide-coverage.test.ts`, `testing/repo-files.ts`, `guide-markdown.ts` (`extractDemoSpecs` + test).
+- `frontend/src/components/guides/PageGuideButton.tsx` (+test), `app/(dashboard)/layout.tsx` (gắn nút ở Header).
+- `PLAN_GUIDES_CONTENT.md` (tick 2 mục P0).
+
+**Notes:**
+> Xung đột = DB khác file VÀ hash DB hiện tại khác `source_hash` lần sync trước (hoặc bài tạo tay chưa từng sync) -> không ghi đè nếu thiếu `--force`; bài chỉ có trong DB thì chỉ liệt kê, không xoá. Kiểm tra ngược đã làm: thêm file lỗi cố ý (permission ma, persona lạ, mẫu không tồn tại, hiddenKey lạ) -> test đỏ đúng chỗ. BE jest full xanh, `tsc` + `nest build` sạch; FE vitest 514/514, tsc chỉ còn lỗi logo.png cũ. Migration + `guides:sync` CHƯA chạy thử trên MySQL thật (sandbox không có MySQL) — dry-run trước, rồi `--apply`. Chưa chạy `next build`.
+
+---

@@ -79,6 +79,19 @@ export function parseDemoSpec(body: string): DemoSpec {
     return { id, params, invalid };
 }
 
+/**
+ * Mọi khối ```az-demo trong 1 bài Markdown, đã tách `id` + tham số (dùng cho test contract: id/tham số phải có trong `GUIDE_DEMOS`).
+ * Chỉ nhận fence mở ở đầu dòng, cùng quy ước với trình hiển thị.
+ */
+export function extractDemoSpecs(markdown: string): DemoSpec[] {
+    const specs: DemoSpec[] = [];
+    // Cố ý literal (không dựng từ DEMO_FENCE_LANG) cho dễ đọc; test `guide-markdown.test.ts` giữ 2 chỗ đồng bộ.
+    const re = /^```az-demo[ \t]*\r?\n([^\n]*)/gm;
+    let m: RegExpExecArray | null;
+    while ((m = re.exec(markdown))) specs.push(parseDemoSpec(m[1]));
+    return specs;
+}
+
 /** Đoạn chèn 1 mẫu vào Markdown (khối riêng, có dòng trống 2 đầu). */
 export function buildDemoFence(id: string): string {
     return `\n\n\`\`\`${DEMO_FENCE_LANG}\n${id}\n\`\`\`\n\n`;

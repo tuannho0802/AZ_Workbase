@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   buildDemoFence,
+  extractDemoSpecs,
   isExternalUrl,
   parseDemoId,
   parseDemoSpec,
@@ -89,4 +90,22 @@ describe('parseDemoSpec', () => {
   it('rỗng', () => {
     expect(parseDemoSpec('')).toEqual({ id: '', params: {}, invalid: [] });
   });
+});
+
+describe('extractDemoSpecs', () => {
+    it('lấy id + tham số của mọi khối az-demo, bỏ qua khối code khác', () => {
+        const md = ['Mở đầu', '```az-demo', 'status-tags', '```', '', '```ts', 'const a = 1', '```', '', '```az-demo', 'customer-table-by-viewer persona=manager', '```'].join('\n');
+        expect(extractDemoSpecs(md)).toEqual([
+            { id: 'status-tags', params: {}, invalid: [] },
+            { id: 'customer-table-by-viewer', params: { persona: 'manager' }, invalid: [] },
+        ]);
+    });
+    it('chịu CRLF và báo token sai cú pháp', () => {
+        const specs = extractDemoSpecs('```az-demo\r\ncustomer-table persona=Manager\r\n```');
+        expect(specs[0].id).toBe('customer-table');
+        expect(specs[0].invalid).toEqual(['persona=Manager']);
+    });
+    it('không có khối nào -> mảng rỗng', () => {
+        expect(extractDemoSpecs('chỉ có chữ')).toEqual([]);
+    });
 });

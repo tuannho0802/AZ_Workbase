@@ -44,6 +44,13 @@ export class Guide {
   @Column({ name: 'required_permission', type: 'varchar', length: 100, nullable: true })
   requiredPermission: string | null;
 
+  /**
+   * SHA-256 của bài ở lần `npm run guides:sync -- --apply` gần nhất (migration 1785900000000). NULL = chưa từng đồng bộ từ file.
+   * So với hash DB hiện tại để phát hiện bài bị sửa tay trên UI. Không hiển thị ra API.
+   */
+  @Column({ name: 'source_hash', type: 'varchar', length: 64, nullable: true })
+  sourceHash: string | null;
+
   @Column({ name: 'created_by', type: 'int', nullable: true })
   createdBy: number | null;
 
