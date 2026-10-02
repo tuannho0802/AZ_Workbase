@@ -55,7 +55,36 @@ export const REQUIRED_GUIDE_SLUGS: readonly string[] = [...Object.values(GUIDE_S
  *  - trang MỚI thêm vào NAV_ITEMS mà không có bài và không được liệt kê ở đây -> test đỏ.
  * Mục tiêu cuối (P5): mảng rỗng.
  */
-export const PENDING_GUIDE_SLUGS: readonly string[] = [...REQUIRED_GUIDE_SLUGS];
+export const PENDING_GUIDE_SLUGS: readonly string[] = [
+  'chia-data',
+  'cong-viec-dinh-ky',
+  'lich-su-cong-viec',
+  'hieu-suat-cong-viec',
+  'nghi-phep',
+  'thong-bao',
+  'gui-thong-bao',
+  'thong-bao-da-gui',
+  'profile',
+  'nhom-toi-quan-ly',
+  'bao-cao-doanh-so',
+  'duyet-phep',
+  'nhat-ky-he-thong',
+  'nhan-vien',
+  'phong-ban',
+  'vi-tri',
+  'quan-ly-phu-trach',
+  'loai-phep',
+  'status-khach',
+  'trang-thai-cong-viec',
+  'thung-rac',
+  'nguon-media',
+  'nhom-lien-ket',
+  'quan-ly-utm',
+  'may-cham-cong',
+  'bao-cao-data-loi',
+  'phan-quyen',
+  'luu-tru-anh',
+];
 
 export function guideSlugForNavKey(navKey: string): string | null {
   if (navKey === HOME_NAV_KEY) return GETTING_STARTED_GUIDE_SLUG;

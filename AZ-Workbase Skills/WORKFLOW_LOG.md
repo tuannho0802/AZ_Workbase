@@ -5723,3 +5723,25 @@ Now [deploy]
 > Không đổi hành vi, không migration, không đổi BE. Thứ tự mẫu trong ô "Chèn mẫu minh hoạ" đổi nhẹ (utm-tags nay đứng sau nhóm Khách hàng). `Alert message=` -> `title=` (hết cảnh báo deprecated trong test), `Space direction` -> `orientation` (antd 6.3.5 đã deprecate direction). FE vitest full xanh, tsc chỉ còn lỗi logo.png cũ, ESLint sạch trên file đụng tới. Chưa chạy `next build`.
 
 ---
+
+## [2026-10-02 21:00] | P0: viết 3 bài đầu (bat-dau, khach-hang, huong-dan-su-dung) + test render | [Status: Success - chưa sync DB]
+
+**Actor:** Agent
+
+**Files Changed:**
+- `guides-content/bat-dau.md`, `khach-hang.md`, `huong-dan-su-dung.md` (mới, `published: true`). `khach-hang` yêu cầu quyền `customers.view`.
+- `frontend/src/lib/guides/guide-slugs.ts` — `PENDING_GUIDE_SLUGS` còn 28 slug (đã xoá 3 slug vừa viết).
+- `frontend/src/lib/guides/demos/customers.demos.tsx` — mẫu `customer-form`: SĐT là tuỳ chọn (form thật), thêm Email, Ngày nhập data; mô tả ghi rõ là bản rút gọn.
+- `frontend/src/lib/guides/guides-content.render.test.tsx` (mới) — render thật từng bài qua `GuideMarkdown`: không có khung cảnh báo mẫu minh hoạ + liên kết nội bộ `/huong-dan/<slug>` phải thuộc `REQUIRED_GUIDE_SLUGS`.
+- `PLAN_GUIDES_CONTENT.md` — tick dòng "Tách guide-demos" (sót) + ghi mục 3 bài đầu.
+
+**Root Cause (test đỏ trước đó):**
+> Test cũ bắt mọi `.ant-alert-warning`, mà mẫu hợp lệ `permission-note` cũng là Alert màu vàng -> bắt nhầm.
+
+**Solution:**
+> Lọc theo chữ của 2 khung cảnh báo thật do `GuideDemoBlock` sinh ra ("Không có mẫu minh hoạ", "Tham số không hợp lệ"). Kiểm tra ngược: thêm file tạm dùng id mẫu không tồn tại -> test đỏ đúng; đã xoá file tạm.
+
+**Notes:**
+> Đối chiếu code: chia data theo phạm vi `Phòng ban` chỉ cho khách có `departmentId` thuộc phòng ban mình quản lý (`CustomersService.bulkAssign`), không cộng khách riêng. Nhập Excel bắt buộc SĐT và từ chối SĐT trùng cả khách trong Thùng rác; form thêm tay thì SĐT tuỳ chọn. Đã chạy thật: FE vitest 538/538, ESLint sạch trên file đụng tới, tsc chỉ còn 4 lỗi `logo.png` có sẵn ở bản gốc; BE jest 1573/1573, `tsc` sạch, `parseGuideFile` đọc được cả 3 file. CHƯA làm: migration `1785800000000`/`1785900000000` + `guides:sync --apply` trên MySQL thật (sandbox không có MySQL; user tự chạy), chưa chạy `next build`.
+
+---

@@ -192,20 +192,26 @@ export const CUSTOMER_DEMOS: GuideDemo[] = [
     {
         id: 'customer-form',
         title: 'Form thêm khách hàng',
-        description: 'Các trường nhập chính khi bấm "Thêm khách hàng"',
+        description: 'Các trường chính khi bấm "Thêm khách hàng" (rút gọn - form thật còn UTM, nhóm, Sales/Marketing phụ trách, ngày, trạng thái, ghi chú)',
         render: () => (
             <Form layout="vertical" disabled style={{ maxWidth: 420 }}>
-                <Form.Item label="Họ và Tên" required>
+                <Form.Item label="Họ tên" required>
                     <Input placeholder="Nguyễn Văn A" />
                 </Form.Item>
-                <Form.Item label="Số điện thoại" required>
-                    <Input placeholder="0901234567" />
+                <Form.Item label="Số điện thoại (Tuỳ chọn)">
+                    <Input placeholder="Số điện thoại (Không bắt buộc)" />
                 </Form.Item>
-                <Form.Item label="Nguồn">
+                <Form.Item label="Email">
+                    <Input placeholder="example@gmail.com" />
+                </Form.Item>
+                <Form.Item label="Nguồn" required>
                     <Select placeholder="Chọn nguồn" options={SAMPLE_SOURCES.map((s) => ({ value: s.name, label: s.name }))} />
                 </Form.Item>
+                <Form.Item label="Ngày nhập data" required>
+                    <Input placeholder="DD/MM/YYYY" />
+                </Form.Item>
                 <Button type="primary" icon={<PlusOutlined />}>
-                    Lưu khách hàng
+                    Thêm khách hàng
                 </Button>
             </Form>
         ),
