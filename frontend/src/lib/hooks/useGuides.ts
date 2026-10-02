@@ -3,7 +3,9 @@ import {
     guidesApi,
     CreateGuidePayload,
     GuideListItem,
+    GuideDepartmentBrief,
     GuideManageItem,
+    GuidePositionBrief,
     GuideRoleBrief,
     UpdateGuidePayload,
 } from '../api/guides.api';
@@ -11,6 +13,8 @@ import {
 const LIST_KEY = ['guides', 'list'] as const;
 const MANAGE_KEY = ['guides', 'manage'] as const;
 const ROLE_OPTIONS_KEY = ['guides', 'role-options'] as const;
+const POSITION_OPTIONS_KEY = ['guides', 'position-options'] as const;
+const DEPARTMENT_OPTIONS_KEY = ['guides', 'department-options'] as const;
 const detailKey = (slug: string) => ['guides', 'detail', slug] as const;
 const manageDetailKey = (id: number) => ['guides', 'manage-detail', id] as const;
 
@@ -18,6 +22,8 @@ const manageDetailKey = (id: number) => ['guides', 'manage-detail', id] as const
 const EMPTY_LIST: GuideListItem[] = [];
 const EMPTY_MANAGE: GuideManageItem[] = [];
 const EMPTY_ROLES: GuideRoleBrief[] = [];
+const EMPTY_POSITIONS: GuidePositionBrief[] = [];
+const EMPTY_DEPARTMENTS: GuideDepartmentBrief[] = [];
 
 /** Mục lục guide người gọi được xem (đã xuất bản + đúng role). Mọi role đăng nhập đều gọi được. */
 export function useGuideList() {
@@ -54,6 +60,26 @@ export function useGuideRoleOptions(enabled: boolean) {
         staleTime: 60_000,
     });
     return { roles: q.data ?? EMPTY_ROLES, isLoading: q.isLoading };
+}
+
+export function useGuidePositionOptions(enabled: boolean) {
+    const q = useQuery({
+        queryKey: POSITION_OPTIONS_KEY,
+        queryFn: () => guidesApi.listPositionOptions(),
+        enabled,
+        staleTime: 60_000,
+    });
+    return { positions: q.data ?? EMPTY_POSITIONS, isLoading: q.isLoading };
+}
+
+export function useGuideDepartmentOptions(enabled: boolean) {
+    const q = useQuery({
+        queryKey: DEPARTMENT_OPTIONS_KEY,
+        queryFn: () => guidesApi.listDepartmentOptions(),
+        enabled,
+        staleTime: 60_000,
+    });
+    return { departments: q.data ?? EMPTY_DEPARTMENTS, isLoading: q.isLoading };
 }
 
 export function useGuideManageDetail(id: number | null) {

@@ -738,13 +738,14 @@ người chưa đọc") — xem `PLAN_NOTIFICATION_SYSTEM.md` mục 10.
 - Đổi tên UTM cascade `customers.campaign` theo lô 5.000 trong cùng transaction, giữ `updated_at` của khách. Quản lý UTM KHÔNG mở rộng quyền xem khách hàng.
 - Chưa làm: `customer-counts`, `:id/customers` (áp scope `customers.view`), Gộp UTM, tích hợp `CustomersService`/Import, FE.
 
-### 2.14. Hướng dẫn sử dụng (`modules/guides`) — ✅ BE xong (PLAN_HARDENING P7); FE ở phần sau
+### 2.14. Hướng dẫn sử dụng (`modules/guides`) — ✅ BE + FE xong (PLAN_HARDENING P7)
 
 - Bảng `guides` (xoá mềm `deleted_at`, `content` MEDIUMTEXT Markdown) + `guide_roles` (guide ↔ `roles.id`, **không có dòng = mọi role đăng nhập đều thấy**) + seed `guides.manage` (migration `1785500000000-CreateGuidesSystem`).
 - Xem: `GET /guides` (mục lục, không kèm nội dung) và `GET /guides/:slug` — chỉ guide **đã xuất bản** + đúng role người gọi; sai/nháp/không tồn tại đều **404** (không lộ sự tồn tại). Người có `guides.manage` xem được mọi guide đã xuất bản (để xem trước); bản nháp chỉ lấy qua `manage/*`. Logic thuần ở `GuideAccessHelper.canView()`.
 - Quản trị (`@RequirePermission('guides.manage')`): `GET /guides/manage/all`, `GET /guides/manage/:id` (kể cả nháp, cho trình soạn), `POST`, `PATCH /:id`, `DELETE /:id`. Route tĩnh `manage/*` khai TRƯỚC `:slug`; slug `manage` bị chặn.
 - `PATCH`: không gửi `roleIds` = giữ nguyên; `roleIds: []` = bỏ giới hạn role. Slug tự sinh từ tiêu đề (bỏ dấu), trùng thì thêm `-2`, `-3`; slug nhập tay trùng → 409 (UNIQUE tính cả bản đã xoá mềm).
 - Xoá = xoá mềm + đổi slug thành `deleted-<id>-<slug>` để dùng lại slug. Audit `CREATE/UPDATE/DELETE_GUIDE`: create/update chỉ lưu độ dài nội dung; **delete lưu nguyên văn** (gồm nội dung + role) trước khi xoá.
+- **Phạm vi xem theo 3 chiều (mở rộng P7, migration `1785600000000-AddGuidePositionsDepartments`):** ngoài `guide_roles` còn có `guide_positions` (guide ↔ `positions.id`) và `guide_departments` (guide ↔ `departments.id`). Với MỖI chiều đã gán, người xem phải thuộc chiều đó (**AND** giữa role / vị trí / phòng ban); chiều để trống = không giới hạn; cả 3 trống = mọi người đăng nhập đều xem được. Vị trí/phòng ban của người xem lấy LIVE từ `request.user` (JwtStrategy), người không có vị trí/phòng ban sẽ KHÔNG thấy guide đã giới hạn theo chiều đó. Người có `guides.manage` vẫn xem mọi guide đã xuất bản. Sai phạm vi vẫn trả **404**. Quản trị thêm `GET /guides/manage/roles|positions|departments` (khai TRƯỚC `manage/:id`, trả `id`, tên, **màu**) để trình soạn chọn và hiện tag màu. `PATCH`: không gửi `positionIds`/`departmentIds` = giữ nguyên; `[]` = bỏ giới hạn chiều đó.
 - Root Admin bypass: `GuidesService.canManage()` (cùng `PermissionGuard`).
 
 ## 3. Lịch sử quyết định & rà soát

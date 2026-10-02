@@ -14,6 +14,7 @@ import {
   useGuideManageList,
 } from '@/lib/hooks/useGuides';
 import { GuideMarkdown } from '@/lib/guides/GuideMarkdown';
+import { GuideAudienceTags } from '@/components/guides/GuideAudienceTags';
 import { GuideEditorModal } from '@/components/guides/GuideEditorModal';
 import { toastApiError } from '@/lib/utils/error-message.util';
 
@@ -125,15 +126,7 @@ export default function GuidesPage() {
                 {canManage && (
                   <div style={{ marginTop: 6 }}>
                     {!guide.isPublished && <Tag>Nháp</Tag>}
-                    {guide.roles.length === 0 ? (
-                      <Tag color="geekblue">Mọi role</Tag>
-                    ) : (
-                      guide.roles.map((r) => (
-                        <Tag key={r.id} color={r.color}>
-                          {r.name}
-                        </Tag>
-                      ))
-                    )}
+                    <GuideAudienceTags roles={guide.roles} positions={guide.positions} departments={guide.departments} />
                   </div>
                 )}
               </div>

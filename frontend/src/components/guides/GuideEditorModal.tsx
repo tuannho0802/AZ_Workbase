@@ -1,16 +1,19 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { App, Form, Input, InputNumber, Modal, Select, Skeleton, Switch, Tabs, Tag } from 'antd';
+import { App, Form, Input, InputNumber, Modal, Select, Skeleton, Switch, Tabs } from 'antd';
 import { GuideMarkdown } from '@/lib/guides/GuideMarkdown';
 import { GUIDE_DEMOS } from '@/lib/guides/guide-demos';
 import { buildDemoFence } from '@/lib/guides/guide-markdown';
 import {
   useCreateGuide,
   useGuideManageDetail,
+  useGuideDepartmentOptions,
+  useGuidePositionOptions,
   useGuideRoleOptions,
   useUpdateGuide,
 } from '@/lib/hooks/useGuides';
+import { AudienceTag, AUDIENCE_META, type AudienceItem, type AudienceKind } from './GuideAudienceTags';
 import { toastApiError } from '@/lib/utils/error-message.util';
 
 interface Props {
@@ -29,6 +32,8 @@ interface FormValues {
   sortOrder: number;
   isPublished: boolean;
   roleIds: number[];
+  positionIds: number[];
+  departmentIds: number[];
 }
 
 const SLUG_PATTERN = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
@@ -41,6 +46,8 @@ export function GuideEditorModal({ open, onClose, guideId, onSaved }: Props) {
   const editing = guideId != null;
   const detail = useGuideManageDetail(open ? guideId : null);
   const { roles, isLoading: rolesLoading } = useGuideRoleOptions(open);
+  const { positions, isLoading: positionsLoading } = useGuidePositionOptions(open);
+  const { departments, isLoading: departmentsLoading } = useGuideDepartmentOptions(open);
   const createMutation = useCreateGuide();
   const updateMutation = useUpdateGuide();
   const saving = createMutation.isPending || updateMutation.isPending;
@@ -50,7 +57,7 @@ export function GuideEditorModal({ open, onClose, guideId, onSaved }: Props) {
     if (!open) return;
     if (!editing) {
       form.resetFields();
-      form.setFieldsValue({ sortOrder: 0, isPublished: false, roleIds: [], content: '' });
+      form.setFieldsValue({ sortOrder: 0, isPublished: false, roleIds: [], positionIds: [], departmentIds: [], content: '' });
     }
   }, [open, editing, form]);
 
@@ -64,6 +71,8 @@ export function GuideEditorModal({ open, onClose, guideId, onSaved }: Props) {
       sortOrder: g.sortOrder,
       isPublished: g.isPublished,
       roleIds: g.roleIds,
+      positionIds: g.positionIds,
+      departmentIds: g.departmentIds,
     });
   }, [open, editing, detail.data, form]);
 
@@ -87,6 +96,8 @@ export function GuideEditorModal({ open, onClose, guideId, onSaved }: Props) {
       sortOrder: values.sortOrder ?? 0,
       isPublished: !!values.isPublished,
       roleIds: values.roleIds ?? [],
+      positionIds: values.positionIds ?? [],
+      departmentIds: values.departmentIds ?? [],
     };
     try {
       const saved = editing
@@ -142,28 +153,15 @@ export function GuideEditorModal({ open, onClose, guideId, onSaved }: Props) {
               <Switch />
             </Form.Item>
           </div>
-          <Form.Item
-            name="roleIds"
-            label="Role được xem"
-            extra="Để trống = mọi role đăng nhập đều xem được."
-          >
-            <Select
-              mode="multiple"
-              allowClear
-              loading={rolesLoading}
-              placeholder="Mọi role"
-              optionFilterProp="label"
-              options={roles.map((r) => ({ value: r.id, label: r.name }))}
-              tagRender={({ value, label, closable, onClose: close }) => {
-                const role = roles.find((r) => r.id === value);
-                return (
-                  <Tag color={role?.color} closable={closable} onClose={close} style={{ marginInlineEnd: 4 }}>
-                    {label}
-                  </Tag>
-                );
-              }}
-            />
-          </Form.Item>
+          <div style={{ display: 'flex', gap: 16, flexWrap: 'wrap' }}>
+            <AudienceField kind="role" name="roleIds" items={roles} loading={rolesLoading} />
+            <AudienceField kind="position" name="positionIds" items={positions} loading={positionsLoading} />
+            <AudienceField kind="department" name="departmentIds" items={departments} loading={departmentsLoading} />
+          </div>
+          <div style={{ color: '#8c8c8c', fontSize: 12, margin: '-8px 0 16px' }}>
+            Để trống một ô = không giới hạn theo mục đó; để trống cả 3 = mọi người đăng nhập đều xem được. Chọn nhiều ô thì
+            người xem phải thoả TẤT CẢ ô đã chọn (vd Role = Nhân viên và Vị trí = Sales).
+          </div>
 
           <Tabs
             activeKey={tab}
@@ -201,5 +199,53 @@ export function GuideEditorModal({ open, onClose, guideId, onSaved }: Props) {
         </Form>
       )}
     </Modal>
+  );
+}
+
+/** Ô chọn nhiều role / vị trí / phòng ban: mỗi lựa chọn (cả trong danh sách thả xuống lẫn tag đã chọn) hiện đúng màu cấu hình. */
+function AudienceField({
+  kind,
+  name,
+  items,
+  loading,
+}: {
+  kind: AudienceKind;
+  name: 'roleIds' | 'positionIds' | 'departmentIds';
+  items: AudienceItem[];
+  loading: boolean;
+}) {
+  const meta = AUDIENCE_META[kind];
+  return (
+    <Form.Item name={name} label={`${meta.label} được xem`} style={{ flex: '1 1 240px', minWidth: 0 }}>
+      <Select
+        mode="multiple"
+        allowClear
+        loading={loading}
+        placeholder={`Mọi ${meta.label.toLowerCase()}`}
+        optionFilterProp="label"
+        options={items.map((i) => ({ value: i.id, label: i.name, color: i.color }))}
+        optionRender={(option) => (
+          <span style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}>
+            <span
+              aria-hidden
+              style={{ width: 10, height: 10, borderRadius: '50%', background: option.data.color, display: 'inline-block' }}
+            />
+            {option.label}
+          </span>
+        )}
+        tagRender={({ value, closable, onClose: close }) => {
+          const item = items.find((i) => i.id === value);
+          // Mục đã bị xoá khỏi hệ thống: vẫn hiện (xám) để người soạn thấy và gỡ được.
+          return (
+            <AudienceTag
+              kind={kind}
+              item={item ?? { id: Number(value), name: `#${value}`, color: 'default' }}
+              closable={closable}
+              onClose={close}
+            />
+          );
+        }}
+      />
+    </Form.Item>
   );
 }

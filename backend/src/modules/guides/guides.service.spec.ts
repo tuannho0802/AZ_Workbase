@@ -3,8 +3,15 @@ import { GuidesService, GuideCaller } from './guides.service';
 import { Role } from '../../common/enums/role.enum';
 import { Guide } from '../../database/entities/guide.entity';
 import { GuideRole } from '../../database/entities/guide-role.entity';
+import { GuidePosition } from '../../database/entities/guide-position.entity';
+import { GuideDepartment } from '../../database/entities/guide-department.entity';
 
-const mkGuide = (over: Record<string, unknown> = {}, roleIds: number[] = []) => ({
+const mkGuide = (
+  over: Record<string, unknown> = {},
+  roleIds: number[] = [],
+  positionIds: number[] = [],
+  departmentIds: number[] = [],
+) => ({
   id: 1,
   title: 'Thêm khách hàng',
   slug: 'them-khach-hang',
@@ -14,6 +21,8 @@ const mkGuide = (over: Record<string, unknown> = {}, roleIds: number[] = []) => 
   createdBy: 1,
   updatedBy: null,
   guideRoles: roleIds.map((roleId) => ({ guideId: 1, roleId })),
+  guidePositions: positionIds.map((positionId) => ({ guideId: 1, positionId })),
+  guideDepartments: departmentIds.map((departmentId) => ({ guideId: 1, departmentId })),
   createdAt: new Date(),
   updatedAt: new Date(),
   deletedAt: null,
@@ -24,6 +33,8 @@ describe('GuidesService', () => {
   let svc: GuidesService;
   const guideRepo: any = { find: jest.fn(), findOne: jest.fn() };
   const roleRepo: any = { find: jest.fn(), findOne: jest.fn() };
+  const positionRepo: any = { find: jest.fn() };
+  const departmentRepo: any = { find: jest.fn() };
   const txManager: any = {
     save: jest.fn(),
     create: jest.fn((_e: unknown, x: unknown) => x),
@@ -37,11 +48,20 @@ describe('GuidesService', () => {
   const audit: any = { logActionAsync: jest.fn() };
   let canManage: boolean;
 
-  const emp: GuideCaller = { id: 10, role: 'employee', departmentId: 5 };
+  const emp: GuideCaller = { id: 10, role: 'employee', departmentId: 5, positionId: 7 };
   const root: GuideCaller = { id: 1, role: Role.ADMIN, isRootAdmin: true };
   const ROLES = [
     { id: 2, code: 'manager', name: 'Quản lý', color: '#111' },
     { id: 4, code: 'employee', name: 'Nhân viên', color: '#222' },
+  ];
+
+  const POSITIONS = [
+    { id: 7, code: 'sales', name: 'Sales', color: '#0a0' },
+    { id: 8, code: 'media', name: 'Media', color: '#0b0' },
+  ];
+  const DEPARTMENTS = [
+    { id: 5, name: 'Kinh doanh', color: '#a00' },
+    { id: 6, name: 'Marketing', color: '#b00' },
   ];
 
   beforeEach(() => {
@@ -53,10 +73,18 @@ describe('GuidesService', () => {
       const ids: number[] = where.id._value ?? [];
       return ROLES.filter((r) => ids.includes(r.id));
     });
+    positionRepo.find.mockImplementation(async ({ where }: any) => {
+      const ids: number[] = where?.id?._value ?? POSITIONS.map((p) => p.id);
+      return POSITIONS.filter((p) => ids.includes(p.id));
+    });
+    departmentRepo.find.mockImplementation(async ({ where }: any) => {
+      const ids: number[] = where?.id?._value ?? DEPARTMENTS.map((d) => d.id);
+      return DEPARTMENTS.filter((d) => ids.includes(d.id));
+    });
     guideRepo.findOne.mockResolvedValue(null);
     dataSource.transaction.mockImplementation(async (cb: any) => cb(txManager));
     txManager.create.mockImplementation((_e: unknown, x: unknown) => x);
-    svc = new GuidesService(guideRepo, roleRepo, dataSource, perms, audit);
+    svc = new GuidesService(guideRepo, roleRepo, positionRepo, departmentRepo, dataSource, perms, audit);
   });
 
   describe('canManage', () => {
@@ -122,6 +150,86 @@ describe('GuidesService', () => {
     it('không gán role -> mọi role xem được', async () => {
       guideRepo.findOne.mockResolvedValue(mkGuide({}, []));
       await expect(svc.getBySlug('them-khach-hang', emp)).resolves.toBeDefined();
+    });
+  });
+
+  describe('phạm vi theo vị trí / phòng ban', () => {
+    it('listVisible: lọc theo vị trí + phòng ban của người gọi (AND), chiều rỗng không chặn', async () => {
+      guideRepo.find.mockResolvedValue([
+        mkGuide({ id: 1, slug: 'tat-ca' }, [], [], []),
+        mkGuide({ id: 2, slug: 'sales' }, [], [7], []),
+        mkGuide({ id: 3, slug: 'media' }, [], [8], []),
+        mkGuide({ id: 4, slug: 'kd' }, [], [], [5]),
+        mkGuide({ id: 5, slug: 'mkt' }, [], [], [6]),
+        mkGuide({ id: 6, slug: 'sales-mkt' }, [], [7], [6]),
+      ]);
+      const res = await svc.listVisible(emp); // employee, vị trí 7 (Sales), phòng ban 5
+      expect(res.map((g) => g.slug)).toEqual(['tat-ca', 'sales', 'kd']);
+    });
+    it('người không có vị trí/phòng ban không thấy guide đã giới hạn theo chiều đó', async () => {
+      guideRepo.find.mockResolvedValue([
+        mkGuide({ id: 1, slug: 'tat-ca' }),
+        mkGuide({ id: 2, slug: 'sales' }, [], [7]),
+        mkGuide({ id: 3, slug: 'kd' }, [], [], [5]),
+      ]);
+      const res = await svc.listVisible({ id: 11, role: 'employee', departmentId: null, positionId: null });
+      expect(res.map((g) => g.slug)).toEqual(['tat-ca']);
+    });
+    it('getBySlug: sai vị trí -> 404; đúng -> kèm positions/departments có màu', async () => {
+      guideRepo.findOne.mockResolvedValue(mkGuide({}, [], [8]));
+      await expect(svc.getBySlug('them-khach-hang', emp)).rejects.toBeInstanceOf(NotFoundException);
+      guideRepo.findOne.mockResolvedValue(mkGuide({}, [], [7], [5]));
+      const res = await svc.getBySlug('them-khach-hang', emp);
+      expect(res.positions).toEqual([{ id: 7, code: 'sales', name: 'Sales', color: '#0a0' }]);
+      expect(res.departments).toEqual([{ id: 5, name: 'Kinh doanh', color: '#a00' }]);
+      expect(res.positionIds).toEqual([7]);
+      expect(res.departmentIds).toEqual([5]);
+    });
+    it('guides.manage thấy mọi guide đã xuất bản dù sai vị trí/phòng ban', async () => {
+      canManage = true;
+      guideRepo.find.mockResolvedValue([mkGuide({ id: 1, slug: 'a' }, [], [8], [6])]);
+      expect((await svc.listVisible(emp)).map((g) => g.slug)).toEqual(['a']);
+    });
+    it('listManage: kèm nhãn + màu role/vị trí/phòng ban', async () => {
+      guideRepo.find.mockResolvedValue([mkGuide({}, [2], [8], [6])]);
+      const [item] = await svc.listManage();
+      expect(item.roles[0].color).toBe('#111');
+      expect(item.positions[0].color).toBe('#0b0');
+      expect(item.departments[0].color).toBe('#b00');
+    });
+    it('listPositionOptions / listDepartmentOptions trả id, tên, màu', async () => {
+      positionRepo.find.mockResolvedValueOnce([POSITIONS[0]]);
+      departmentRepo.find.mockResolvedValueOnce([DEPARTMENTS[0]]);
+      expect(await svc.listPositionOptions()).toEqual([{ id: 7, code: 'sales', name: 'Sales', color: '#0a0' }]);
+      expect(await svc.listDepartmentOptions()).toEqual([{ id: 5, name: 'Kinh doanh', color: '#a00' }]);
+    });
+    it('create: ghi guide_positions + guide_departments; vị trí/phòng ban không tồn tại -> 400', async () => {
+      txManager.save.mockResolvedValue({ id: 7 });
+      guideRepo.findOne.mockImplementation(async ({ where }: any) => (where.id === 7 ? mkGuide({ id: 7 }, [], [7], [5]) : null));
+      await svc.create({ title: 'A', content: 'x', positionIds: [7], departmentIds: [5] }, root);
+      expect(txManager.insert).toHaveBeenCalledWith(GuidePosition, [{ guideId: 7, positionId: 7 }]);
+      expect(txManager.insert).toHaveBeenCalledWith(GuideDepartment, [{ guideId: 7, departmentId: 5 }]);
+      await expect(svc.create({ title: 'B', content: 'x', positionIds: [999] }, root)).rejects.toBeInstanceOf(BadRequestException);
+      await expect(svc.create({ title: 'C', content: 'x', departmentIds: [999] }, root)).rejects.toBeInstanceOf(BadRequestException);
+    });
+    it('update: không gửi positionIds/departmentIds = giữ nguyên; gửi [] = xoá; gửi mảng = thay thế', async () => {
+      guideRepo.findOne.mockImplementation(async ({ where }: any) => (where.id === 1 ? mkGuide({ id: 1 }, [], [7], [5]) : null));
+      await svc.update(1, { isPublished: false }, root);
+      expect(txManager.delete).not.toHaveBeenCalled();
+      txManager.delete.mockClear();
+      await svc.update(1, { positionIds: [], departmentIds: [6] }, root);
+      expect(txManager.delete).toHaveBeenCalledWith(GuidePosition, { guideId: 1 });
+      expect(txManager.delete).toHaveBeenCalledWith(GuideDepartment, { guideId: 1 });
+      expect(txManager.delete).not.toHaveBeenCalledWith(GuideRole, expect.anything());
+      expect(txManager.insert).toHaveBeenCalledWith(GuideDepartment, [{ guideId: 1, departmentId: 6 }]);
+      expect(txManager.insert).not.toHaveBeenCalledWith(GuidePosition, expect.anything());
+    });
+    it('audit gồm positionIds/departmentIds', async () => {
+      guideRepo.findOne.mockImplementation(async ({ where }: any) => (where.id === 1 ? mkGuide({ id: 1 }, [], [7], [5]) : null));
+      await svc.update(1, { title: 'Mới' }, root);
+      const [, , , , oldD, newD] = audit.logActionAsync.mock.calls[0];
+      expect(oldD.positionIds).toEqual([7]);
+      expect(newD.departmentIds).toEqual([5]);
     });
   });
 

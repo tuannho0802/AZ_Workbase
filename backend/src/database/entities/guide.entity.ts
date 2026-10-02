@@ -8,6 +8,8 @@ import {
   OneToMany,
 } from 'typeorm';
 import { GuideRole } from './guide-role.entity';
+import { GuidePosition } from './guide-position.entity';
+import { GuideDepartment } from './guide-department.entity';
 import { BooleanTransformer } from '../transformers/boolean.transformer';
 
 /**
@@ -42,6 +44,12 @@ export class Guide {
 
   @OneToMany(() => GuideRole, (gr) => gr.guide)
   guideRoles: GuideRole[];
+
+  @OneToMany(() => GuidePosition, (gp) => gp.guide)
+  guidePositions: GuidePosition[];
+
+  @OneToMany(() => GuideDepartment, (gd) => gd.guide)
+  guideDepartments: GuideDepartment[];
 
   @CreateDateColumn({ name: 'created_at' })
   createdAt: Date;

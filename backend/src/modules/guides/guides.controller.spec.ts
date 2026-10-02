@@ -16,7 +16,7 @@ describe('GuidesController', () => {
     expect(guards).toContain(PermissionGuard);
   });
 
-  it.each(['listManage', 'listRoleOptions', 'getManageDetail', 'create', 'update', 'remove'])(
+  it.each(['listManage', 'listRoleOptions', 'listPositionOptions', 'listDepartmentOptions', 'getManageDetail', 'create', 'update', 'remove'])(
     '%s khai @RequirePermission("guides.manage")',
     (name) => {
       expect(Reflect.getMetadata(PERMISSION_KEY, proto[name])).toBe('guides.manage');
@@ -27,10 +27,10 @@ describe('GuidesController', () => {
     expect(Reflect.getMetadata(PERMISSION_KEY, proto[name])).toBeUndefined();
   });
 
-  it('không có endpoint lạ ngoài 8 endpoint đã khoá', () => {
+  it('không có endpoint lạ ngoài 10 endpoint đã khoá', () => {
     const names = Object.getOwnPropertyNames(GuidesController.prototype).filter((n) => n !== 'constructor');
     expect(names.sort()).toEqual(
-      ['list', 'listManage', 'listRoleOptions', 'getManageDetail', 'create', 'update', 'remove', 'getBySlug'].sort(),
+      ['list', 'listManage', 'listRoleOptions', 'listPositionOptions', 'listDepartmentOptions', 'getManageDetail', 'create', 'update', 'remove', 'getBySlug'].sort(),
     );
   });
 
@@ -43,5 +43,7 @@ describe('GuidesController', () => {
   it('manage/roles khai TRƯỚC manage/:id (tránh "roles" bị ParseIntPipe -> 400)', () => {
     const order = Object.getOwnPropertyNames(GuidesController.prototype);
     expect(order.indexOf('listRoleOptions')).toBeLessThan(order.indexOf('getManageDetail'));
+    expect(order.indexOf('listPositionOptions')).toBeLessThan(order.indexOf('getManageDetail'));
+    expect(order.indexOf('listDepartmentOptions')).toBeLessThan(order.indexOf('getManageDetail'));
   });
 });

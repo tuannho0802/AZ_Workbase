@@ -4,21 +4,44 @@
  * Quy tắc (PLAN_HARDENING P7):
  *  - Người có `guides.manage` (Root Admin luôn có) xem được MỌI guide đã xuất bản để xem trước,
  *    bản nháp thì lấy qua nhóm `manage/*`.
- *  - Người khác: guide phải đã xuất bản VÀ (không gán role nào HOẶC role của người gọi nằm trong danh sách).
+ *  - Người khác: guide phải đã xuất bản VÀ, với mỗi chiều (role / vị trí / phòng ban) đã gán, người gọi thuộc chiều đó
+ *    (chiều để trống = không giới hạn; AND giữa các chiều).
  *  - Guide không được xem -> service trả 404 (không lộ sự tồn tại).
  */
 export interface GuideVisibilityInput {
   isPublished: boolean;
   /** Danh sách role được gán (rỗng = mọi role). */
   assignedRoleIds: number[];
+  /** Danh sách vị trí được gán (rỗng/bỏ trống = mọi vị trí). */
+  assignedPositionIds?: number[];
+  /** Danh sách phòng ban được gán (rỗng/bỏ trống = mọi phòng ban). */
+  assignedDepartmentIds?: number[];
 }
 
+/** Người xem: role/vị trí/phòng ban hiện tại (null = không có). */
+export interface GuideViewer {
+  roleId: number | null;
+  positionId: number | null;
+  departmentId: number | null;
+}
+
+/** Chiều không giới hạn (rỗng) -> true; ngược lại giá trị của người xem phải nằm trong danh sách. */
+const matchesDimension = (assigned: number[] | undefined, value: number | null): boolean =>
+  !assigned || assigned.length === 0 || (value != null && assigned.includes(value));
+
 export class GuideAccessHelper {
-  static canView(guide: GuideVisibilityInput, callerRoleId: number | null, canManage: boolean): boolean {
+  /**
+   * AND giữa 3 chiều (role / vị trí / phòng ban): mỗi chiều ĐÃ được gán thì người xem phải thuộc chiều đó.
+   * Ví dụ guide gán Role=Employee + Vị trí=Sales: chỉ Employee có vị trí Sales mới thấy.
+   */
+  static canView(guide: GuideVisibilityInput, viewer: GuideViewer, canManage: boolean): boolean {
     if (!guide.isPublished) return false;
     if (canManage) return true;
-    if (guide.assignedRoleIds.length === 0) return true;
-    return callerRoleId != null && guide.assignedRoleIds.includes(callerRoleId);
+    return (
+      matchesDimension(guide.assignedRoleIds, viewer.roleId) &&
+      matchesDimension(guide.assignedPositionIds, viewer.positionId) &&
+      matchesDimension(guide.assignedDepartmentIds, viewer.departmentId)
+    );
   }
 
   /** Chỉ người có `guides.manage` mới thấy/sửa bản nháp và danh sách quản trị. */

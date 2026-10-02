@@ -9,11 +9,15 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { DataSource, In, Repository } from 'typeorm';
 import { Guide } from '../../database/entities/guide.entity';
 import { GuideRole } from '../../database/entities/guide-role.entity';
+import { GuidePosition } from '../../database/entities/guide-position.entity';
+import { GuideDepartment } from '../../database/entities/guide-department.entity';
 import { RoleEntity } from '../../database/entities/role.entity';
+import { Position } from '../../database/entities/position.entity';
+import { Department } from '../../database/entities/department.entity';
 import { Role } from '../../common/enums/role.enum';
 import { PermissionsService } from '../permissions/permissions.service';
 import { AuditService } from '../audit/audit.service';
-import { GuideAccessHelper } from './helpers/guide-access.helper';
+import { GuideAccessHelper, GuideViewer } from './helpers/guide-access.helper';
 import { CreateGuideDto, GUIDE_SLUG_MAX } from './dto/create-guide.dto';
 import { UpdateGuideDto } from './dto/update-guide.dto';
 
@@ -40,6 +44,31 @@ export interface GuideRoleBrief {
   color: string;
 }
 
+export interface GuidePositionBrief {
+  id: number;
+  code: string;
+  name: string;
+  color: string;
+}
+
+export interface GuideDepartmentBrief {
+  id: number;
+  name: string;
+  color: string;
+}
+
+/** Các chiều "ai được xem" đã nạp sẵn nhãn + màu. */
+interface GuideAudience {
+  roles: GuideRoleBrief[];
+  positions: GuidePositionBrief[];
+  departments: GuideDepartmentBrief[];
+}
+
+const EMPTY_AUDIENCE: GuideAudience = { roles: [], positions: [], departments: [] };
+
+/** Quan hệ cần nạp để biết guide dành cho ai. */
+const AUDIENCE_RELATIONS = { guideRoles: true, guidePositions: true, guideDepartments: true } as const;
+
 /** Mục trong mục lục (người dùng thường) - KHÔNG kèm nội dung. */
 export interface GuideListItem {
   id: number;
@@ -54,6 +83,10 @@ export interface GuideManageItem extends GuideListItem {
   isPublished: boolean;
   roleIds: number[];
   roles: GuideRoleBrief[];
+  positionIds: number[];
+  positions: GuidePositionBrief[];
+  departmentIds: number[];
+  departments: GuideDepartmentBrief[];
   createdAt: Date;
 }
 
@@ -70,6 +103,10 @@ export class GuidesService {
     private readonly guideRepo: Repository<Guide>,
     @InjectRepository(RoleEntity)
     private readonly roleRepo: Repository<RoleEntity>,
+    @InjectRepository(Position)
+    private readonly positionRepo: Repository<Position>,
+    @InjectRepository(Department)
+    private readonly departmentRepo: Repository<Department>,
     private readonly dataSource: DataSource,
     private readonly permissionsService: PermissionsService,
     private readonly auditService: AuditService,
@@ -94,9 +131,19 @@ export class GuidesService {
     return allowed;
   }
 
-  private async callerRoleId(user: GuideCaller): Promise<number | null> {
+  /** Role + vị trí + phòng ban hiện tại của người gọi (vị trí/phòng ban lấy live từ DB qua JwtStrategy). */
+  private async viewerOf(user: GuideCaller): Promise<GuideViewer> {
     const role = await this.roleRepo.findOne({ where: { code: user.role }, select: { id: true } });
-    return role?.id ?? null;
+    return { roleId: role?.id ?? null, positionId: user.positionId ?? null, departmentId: user.departmentId ?? null };
+  }
+
+  private visibilityOf(g: Guide) {
+    return {
+      isPublished: g.isPublished,
+      assignedRoleIds: (g.guideRoles ?? []).map((r) => r.roleId),
+      assignedPositionIds: (g.guidePositions ?? []).map((r) => r.positionId),
+      assignedDepartmentIds: (g.guideDepartments ?? []).map((r) => r.departmentId),
+    };
   }
 
   // ---------------------------------------------------------------------------
@@ -105,35 +152,28 @@ export class GuidesService {
 
   /** Mục lục: guide đã xuất bản + đúng role của người gọi (người có guides.manage thấy tất cả bản đã xuất bản). */
   async listVisible(user: GuideCaller): Promise<GuideListItem[]> {
-    const [canManage, roleId] = await Promise.all([this.canManage(user), this.callerRoleId(user)]);
+    const [canManage, viewer] = await Promise.all([this.canManage(user), this.viewerOf(user)]);
     const guides = await this.guideRepo.find({
       where: { isPublished: true },
       select: { id: true, title: true, slug: true, sortOrder: true, isPublished: true, updatedAt: true },
-      relations: { guideRoles: true },
+      relations: AUDIENCE_RELATIONS,
       order: { sortOrder: 'ASC', id: 'ASC' },
     });
     return guides
-      .filter((g) =>
-        GuideAccessHelper.canView(
-          { isPublished: g.isPublished, assignedRoleIds: (g.guideRoles ?? []).map((r) => r.roleId) },
-          roleId,
-          canManage,
-        ),
-      )
+      .filter((g) => GuideAccessHelper.canView(this.visibilityOf(g), viewer, canManage))
       .map((g) => ({ id: g.id, title: g.title, slug: g.slug, sortOrder: g.sortOrder, updatedAt: g.updatedAt }));
   }
 
   /** Nội dung 1 guide theo slug. Không được xem (nháp / sai role / không tồn tại) -> 404 (không lộ sự tồn tại). */
   async getBySlug(slug: string, user: GuideCaller): Promise<GuideDetail> {
-    const guide = await this.guideRepo.findOne({ where: { slug }, relations: { guideRoles: true } });
+    const guide = await this.guideRepo.findOne({ where: { slug }, relations: AUDIENCE_RELATIONS });
     if (!guide) throw new NotFoundException('Không tìm thấy hướng dẫn');
 
-    const [canManage, roleId] = await Promise.all([this.canManage(user), this.callerRoleId(user)]);
-    const roleIds = (guide.guideRoles ?? []).map((r) => r.roleId);
-    if (!GuideAccessHelper.canView({ isPublished: guide.isPublished, assignedRoleIds: roleIds }, roleId, canManage)) {
+    const [canManage, viewer] = await Promise.all([this.canManage(user), this.viewerOf(user)]);
+    if (!GuideAccessHelper.canView(this.visibilityOf(guide), viewer, canManage)) {
       throw new NotFoundException('Không tìm thấy hướng dẫn');
     }
-    return this.toDetail(guide, await this.loadRoles(roleIds));
+    return this.toDetail(guide, await this.loadAudience([guide]));
   }
 
   // ---------------------------------------------------------------------------
@@ -144,6 +184,18 @@ export class GuidesService {
   async listRoleOptions(): Promise<GuideRoleBrief[]> {
     const roles = await this.roleRepo.find({ order: { id: 'ASC' } });
     return roles.map((r) => ({ id: r.id, code: r.code, name: r.name, color: r.color }));
+  }
+
+  /** Mọi vị trí (kèm màu) để chọn "vị trí được xem" ở trình soạn. */
+  async listPositionOptions(): Promise<GuidePositionBrief[]> {
+    const positions = await this.positionRepo.find({ order: { name: 'ASC' } });
+    return positions.map((p) => ({ id: p.id, code: p.code, name: p.name, color: p.color }));
+  }
+
+  /** Mọi phòng ban (kèm màu) để chọn "phòng ban được xem" ở trình soạn. */
+  async listDepartmentOptions(): Promise<GuideDepartmentBrief[]> {
+    const departments = await this.departmentRepo.find({ order: { name: 'ASC' } });
+    return departments.map((d) => ({ id: d.id, name: d.name, color: d.color }));
   }
 
   /** Danh sách quản trị: gồm cả bản nháp, kèm role + trạng thái, KHÔNG kèm nội dung. */
@@ -158,23 +210,18 @@ export class GuidesService {
         createdAt: true,
         updatedAt: true,
       },
-      relations: { guideRoles: true },
+      relations: AUDIENCE_RELATIONS,
       order: { sortOrder: 'ASC', id: 'ASC' },
     });
-    const allRoleIds = [...new Set(guides.flatMap((g) => (g.guideRoles ?? []).map((r) => r.roleId)))];
-    const roles = await this.loadRoles(allRoleIds);
-    return guides.map((g) => {
-      const roleIds = (g.guideRoles ?? []).map((r) => r.roleId);
-      return this.toManageItem(g, roleIds, roles.filter((r) => roleIds.includes(r.id)));
-    });
+    const audience = await this.loadAudience(guides);
+    return guides.map((g) => this.toManageItem(g, audience));
   }
 
   /** 1 guide theo id (kể cả bản nháp) - dùng cho trình soạn. */
   async getManageDetail(id: number): Promise<GuideDetail> {
-    const guide = await this.guideRepo.findOne({ where: { id }, relations: { guideRoles: true } });
+    const guide = await this.guideRepo.findOne({ where: { id }, relations: AUDIENCE_RELATIONS });
     if (!guide) throw new NotFoundException('Không tìm thấy hướng dẫn');
-    const roleIds = (guide.guideRoles ?? []).map((r) => r.roleId);
-    return this.toDetail(guide, await this.loadRoles(roleIds));
+    return this.toDetail(guide, await this.loadAudience([guide]));
   }
 
   async create(dto: CreateGuideDto, user: GuideCaller): Promise<GuideDetail> {
@@ -182,7 +229,9 @@ export class GuidesService {
     if (!title) throw new BadRequestException('Tiêu đề không được để trống');
     if (!dto.content.trim()) throw new BadRequestException('Nội dung không được để trống');
 
-    const roleIds = await this.validateRoleIds(dto.roleIds);
+    const roleIds = await this.validateIds(this.roleRepo, dto.roleIds, 'role');
+    const positionIds = await this.validateIds(this.positionRepo, dto.positionIds, 'vị trí');
+    const departmentIds = await this.validateIds(this.departmentRepo, dto.departmentIds, 'phòng ban');
     const slug = await this.resolveNewSlug(dto.slug, title);
 
     let savedId: number;
@@ -200,12 +249,7 @@ export class GuidesService {
             updatedBy: null,
           }),
         );
-        if (roleIds.length) {
-          await manager.insert(
-            GuideRole,
-            roleIds.map((roleId) => ({ guideId: saved.id, roleId })),
-          );
-        }
+        await this.insertLinks(manager, saved.id, { roleIds, positionIds, departmentIds });
         return saved.id;
       });
     } catch (err) {
@@ -218,11 +262,10 @@ export class GuidesService {
   }
 
   async update(id: number, dto: UpdateGuideDto, user: GuideCaller): Promise<GuideDetail> {
-    const guide = await this.guideRepo.findOne({ where: { id }, relations: { guideRoles: true } });
+    const guide = await this.guideRepo.findOne({ where: { id }, relations: AUDIENCE_RELATIONS });
     if (!guide) throw new NotFoundException('Không tìm thấy hướng dẫn');
 
-    const before = this.toDetail(guide, []);
-    before.roleIds = (guide.guideRoles ?? []).map((r) => r.roleId);
+    const before = this.toDetail(guide, EMPTY_AUDIENCE);
 
     const patch: Partial<Guide> = {};
     if (dto.title !== undefined) {
@@ -241,20 +284,24 @@ export class GuidesService {
       patch.slug = dto.slug;
     }
 
-    const newRoleIds = dto.roleIds !== undefined ? await this.validateRoleIds(dto.roleIds) : null;
+    // Không gửi = giữ nguyên chiều đó; gửi [] = bỏ giới hạn chiều đó.
+    const newRoleIds = dto.roleIds !== undefined ? await this.validateIds(this.roleRepo, dto.roleIds, 'role') : null;
+    const newPositionIds =
+      dto.positionIds !== undefined ? await this.validateIds(this.positionRepo, dto.positionIds, 'vị trí') : null;
+    const newDepartmentIds =
+      dto.departmentIds !== undefined ? await this.validateIds(this.departmentRepo, dto.departmentIds, 'phòng ban') : null;
 
     try {
       await this.dataSource.transaction(async (manager) => {
         await manager.update(Guide, { id }, { ...patch, updatedBy: user.id });
-        if (newRoleIds !== null) {
-          await manager.delete(GuideRole, { guideId: id });
-          if (newRoleIds.length) {
-            await manager.insert(
-              GuideRole,
-              newRoleIds.map((roleId) => ({ guideId: id, roleId })),
-            );
-          }
-        }
+        if (newRoleIds !== null) await manager.delete(GuideRole, { guideId: id });
+        if (newPositionIds !== null) await manager.delete(GuidePosition, { guideId: id });
+        if (newDepartmentIds !== null) await manager.delete(GuideDepartment, { guideId: id });
+        await this.insertLinks(manager, id, {
+          roleIds: newRoleIds ?? [],
+          positionIds: newPositionIds ?? [],
+          departmentIds: newDepartmentIds ?? [],
+        });
       });
     } catch (err) {
       this.rethrowSlugConflict(err);
@@ -277,10 +324,10 @@ export class GuidesService {
    * Đổi slug sang `deleted-<id>-<slug>` để slug cũ dùng lại được (UNIQUE index tính cả bản ghi đã xoá mềm).
    */
   async remove(id: number, user: GuideCaller): Promise<{ success: true }> {
-    const guide = await this.guideRepo.findOne({ where: { id }, relations: { guideRoles: true } });
+    const guide = await this.guideRepo.findOne({ where: { id }, relations: AUDIENCE_RELATIONS });
     if (!guide) throw new NotFoundException('Không tìm thấy hướng dẫn');
 
-    const roleIds = (guide.guideRoles ?? []).map((r) => r.roleId);
+    const { roleIds, positionIds, departmentIds } = this.idsOf(guide);
     const snapshot = {
       id: guide.id,
       title: guide.title,
@@ -289,6 +336,8 @@ export class GuidesService {
       sortOrder: guide.sortOrder,
       isPublished: guide.isPublished,
       roleIds,
+      positionIds,
+      departmentIds,
     };
 
     const freedSlug = `deleted-${guide.id}-${guide.slug}`.slice(0, SLUG_COLUMN_MAX);
@@ -305,21 +354,71 @@ export class GuidesService {
   // Nội bộ
   // ---------------------------------------------------------------------------
 
-  /** Role phải tồn tại; loại trùng. Mảng rỗng/undefined = không giới hạn role. */
-  private async validateRoleIds(roleIds?: number[]): Promise<number[]> {
-    const ids = [...new Set(roleIds ?? [])];
-    if (ids.length === 0) return [];
-    const found = await this.roleRepo.find({ where: { id: In(ids) }, select: { id: true } });
-    if (found.length !== ids.length) {
-      throw new BadRequestException('Có role không tồn tại');
+  /** ID phải tồn tại trong bảng tương ứng; loại trùng. Mảng rỗng/undefined = không giới hạn chiều đó. */
+  private async validateIds(
+    repo: Repository<{ id: number }>,
+    ids: number[] | undefined,
+    label: string,
+  ): Promise<number[]> {
+    const unique = [...new Set(ids ?? [])];
+    if (unique.length === 0) return [];
+    const found = await repo.find({ where: { id: In(unique) }, select: { id: true } });
+    if (found.length !== unique.length) {
+      throw new BadRequestException(`Có ${label} không tồn tại`);
     }
-    return ids;
+    return unique;
+  }
+
+  private idsOf(g: Guide) {
+    return {
+      roleIds: (g.guideRoles ?? []).map((r) => r.roleId),
+      positionIds: (g.guidePositions ?? []).map((r) => r.positionId),
+      departmentIds: (g.guideDepartments ?? []).map((r) => r.departmentId),
+    };
+  }
+
+  private async insertLinks(
+    manager: { insert: (target: any, rows: any[]) => Promise<unknown> },
+    guideId: number,
+    ids: { roleIds: number[]; positionIds: number[]; departmentIds: number[] },
+  ): Promise<void> {
+    if (ids.roleIds.length) await manager.insert(GuideRole, ids.roleIds.map((roleId) => ({ guideId, roleId })));
+    if (ids.positionIds.length) {
+      await manager.insert(GuidePosition, ids.positionIds.map((positionId) => ({ guideId, positionId })));
+    }
+    if (ids.departmentIds.length) {
+      await manager.insert(GuideDepartment, ids.departmentIds.map((departmentId) => ({ guideId, departmentId })));
+    }
+  }
+
+  /** Nạp nhãn + màu của mọi role/vị trí/phòng ban được tham chiếu bởi các guide (3 truy vấn, không N+1). */
+  private async loadAudience(guides: Guide[]): Promise<GuideAudience> {
+    const all = guides.map((g) => this.idsOf(g));
+    const uniq = (pick: (x: (typeof all)[number]) => number[]) => [...new Set(all.flatMap(pick))];
+    const [roles, positions, departments] = await Promise.all([
+      this.loadRoles(uniq((x) => x.roleIds)),
+      this.loadPositions(uniq((x) => x.positionIds)),
+      this.loadDepartments(uniq((x) => x.departmentIds)),
+    ]);
+    return { roles, positions, departments };
   }
 
   private async loadRoles(roleIds: number[]): Promise<GuideRoleBrief[]> {
     if (roleIds.length === 0) return [];
     const roles = await this.roleRepo.find({ where: { id: In(roleIds) } });
     return roles.map((r) => ({ id: r.id, code: r.code, name: r.name, color: r.color }));
+  }
+
+  private async loadPositions(ids: number[]): Promise<GuidePositionBrief[]> {
+    if (ids.length === 0) return [];
+    const rows = await this.positionRepo.find({ where: { id: In(ids) } });
+    return rows.map((p) => ({ id: p.id, code: p.code, name: p.name, color: p.color }));
+  }
+
+  private async loadDepartments(ids: number[]): Promise<GuideDepartmentBrief[]> {
+    if (ids.length === 0) return [];
+    const rows = await this.departmentRepo.find({ where: { id: In(ids) } });
+    return rows.map((d) => ({ id: d.id, name: d.name, color: d.color }));
   }
 
   private async isSlugTaken(slug: string, exceptId?: number): Promise<boolean> {
@@ -360,7 +459,9 @@ export class GuidesService {
     throw err;
   }
 
-  private toManageItem(g: Guide, roleIds: number[], roles: GuideRoleBrief[]): GuideManageItem {
+  /** `audience` là kho nhãn chung; ở đây chỉ lấy phần guide này tham chiếu. */
+  private toManageItem(g: Guide, audience: GuideAudience): GuideManageItem {
+    const { roleIds, positionIds, departmentIds } = this.idsOf(g);
     return {
       id: g.id,
       title: g.title,
@@ -368,15 +469,18 @@ export class GuidesService {
       sortOrder: g.sortOrder,
       isPublished: g.isPublished,
       roleIds,
-      roles,
+      roles: audience.roles.filter((r) => roleIds.includes(r.id)),
+      positionIds,
+      positions: audience.positions.filter((p) => positionIds.includes(p.id)),
+      departmentIds,
+      departments: audience.departments.filter((d) => departmentIds.includes(d.id)),
       createdAt: g.createdAt,
       updatedAt: g.updatedAt,
     };
   }
 
-  private toDetail(g: Guide, roles: GuideRoleBrief[]): GuideDetail {
-    const roleIds = (g.guideRoles ?? []).map((r) => r.roleId);
-    return { ...this.toManageItem(g, roleIds, roles), content: g.content };
+  private toDetail(g: Guide, audience: GuideAudience): GuideDetail {
+    return { ...this.toManageItem(g, audience), content: g.content };
   }
 
   /** Bản ghi audit gọn: không nhét nguyên nội dung (chỉ độ dài) cho create/update; delete lưu nguyên văn riêng. */
@@ -387,6 +491,8 @@ export class GuidesService {
       sortOrder: d.sortOrder,
       isPublished: d.isPublished,
       roleIds: d.roleIds,
+      positionIds: d.positionIds,
+      departmentIds: d.departmentIds,
       contentLength: d.content?.length ?? 0,
     };
   }

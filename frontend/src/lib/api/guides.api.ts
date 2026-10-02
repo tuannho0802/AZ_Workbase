@@ -7,6 +7,19 @@ export interface GuideRoleBrief {
     color: string;
 }
 
+export interface GuidePositionBrief {
+    id: number;
+    code: string;
+    name: string;
+    color: string;
+}
+
+export interface GuideDepartmentBrief {
+    id: number;
+    name: string;
+    color: string;
+}
+
 /** Mục lục (người dùng thường) - không kèm nội dung. */
 export interface GuideListItem {
     id: number;
@@ -21,6 +34,10 @@ export interface GuideManageItem extends GuideListItem {
     isPublished: boolean;
     roleIds: number[];
     roles: GuideRoleBrief[];
+    positionIds: number[];
+    positions: GuidePositionBrief[];
+    departmentIds: number[];
+    departments: GuideDepartmentBrief[];
     createdAt: string;
 }
 
@@ -37,9 +54,13 @@ export interface CreateGuidePayload {
     isPublished?: boolean;
     /** Rỗng/bỏ trống = mọi role đăng nhập đều xem được. */
     roleIds?: number[];
+    /** Rỗng/bỏ trống = không giới hạn theo vị trí. */
+    positionIds?: number[];
+    /** Rỗng/bỏ trống = không giới hạn theo phòng ban. */
+    departmentIds?: number[];
 }
 
-/** Không gửi `roleIds` = giữ nguyên; `roleIds: []` = bỏ giới hạn role. */
+/** Không gửi roleIds/positionIds/departmentIds = giữ nguyên chiều đó; gửi `[]` = bỏ giới hạn chiều đó. */
 export type UpdateGuidePayload = Partial<CreateGuidePayload>;
 
 export const guidesApi = {
@@ -62,6 +83,16 @@ export const guidesApi = {
 
     listRoleOptions: async (): Promise<GuideRoleBrief[]> => {
         const res = await axiosInstance.get<GuideRoleBrief[]>('/guides/manage/roles');
+        return res.data;
+    },
+
+    listPositionOptions: async (): Promise<GuidePositionBrief[]> => {
+        const res = await axiosInstance.get<GuidePositionBrief[]>('/guides/manage/positions');
+        return res.data;
+    },
+
+    listDepartmentOptions: async (): Promise<GuideDepartmentBrief[]> => {
+        const res = await axiosInstance.get<GuideDepartmentBrief[]>('/guides/manage/departments');
         return res.data;
     },
 

@@ -53,6 +53,20 @@ export class GuidesController {
     return this.guidesService.listRoleOptions();
   }
 
+  @Get('manage/positions')
+  @RequirePermission(GUIDES_MANAGE_PERMISSION)
+  @ApiOperation({ summary: 'Danh sách vị trí (kèm màu) để chọn "vị trí được xem" - guides.manage' })
+  listPositionOptions() {
+    return this.guidesService.listPositionOptions();
+  }
+
+  @Get('manage/departments')
+  @RequirePermission(GUIDES_MANAGE_PERMISSION)
+  @ApiOperation({ summary: 'Danh sách phòng ban (kèm màu) để chọn "phòng ban được xem" - guides.manage' })
+  listDepartmentOptions() {
+    return this.guidesService.listDepartmentOptions();
+  }
+
   @Get('manage/:id')
   @RequirePermission(GUIDES_MANAGE_PERMISSION)
   @ApiOperation({ summary: 'Chi tiết 1 guide theo id (kể cả nháp) cho trình soạn - guides.manage' })

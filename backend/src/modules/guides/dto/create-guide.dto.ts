@@ -63,4 +63,26 @@ export class CreateGuideDto {
   @ArrayUnique()
   @IsInt({ each: true })
   roleIds?: number[];
+
+  @ApiPropertyOptional({
+    type: [Number],
+    description: 'ID các vị trí (positions) được xem. Rỗng/bỏ trống = không giới hạn theo vị trí (AND với role/phòng ban)',
+  })
+  @IsOptional()
+  @IsArray()
+  @ArrayMaxSize(100)
+  @ArrayUnique()
+  @IsInt({ each: true })
+  positionIds?: number[];
+
+  @ApiPropertyOptional({
+    type: [Number],
+    description: 'ID các phòng ban được xem. Rỗng/bỏ trống = không giới hạn theo phòng ban (AND với role/vị trí)',
+  })
+  @IsOptional()
+  @IsArray()
+  @ArrayMaxSize(100)
+  @ArrayUnique()
+  @IsInt({ each: true })
+  departmentIds?: number[];
 }

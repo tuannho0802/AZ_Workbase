@@ -5593,3 +5593,19 @@ Now [deploy]
 > Thêm endpoint + service, giữ nguyên gác `guides.manage`. Không cần migration.
 
 ---
+
+## [2026-10-02 04:40] | P7 mở rộng: phạm vi xem theo Position + Phòng ban + tag màu | [Status: Success]
+
+**Actor:** Agent
+
+**Files Changed:**
+- `backend/src/database/migrations/1785600000000-AddGuidePositionsDepartments.ts` (mới) — bảng `guide_positions`, `guide_departments` (idempotent, `down()` đối xứng).
+- `backend/src/database/entities/guide-position.entity.ts`, `guide-department.entity.ts` (mới); `guide.entity.ts` (+ quan hệ).
+- `backend/src/modules/guides/` — `GuideAccessHelper.canView(guide, viewer, canManage)` AND 3 chiều; service nạp/validate/ghi 3 chiều + nhãn/màu, audit gồm `positionIds`/`departmentIds`; thêm `GET manage/positions`, `manage/departments`; DTO `positionIds`, `departmentIds`; spec cập nhật (68 test).
+- `frontend/src/components/guides/GuideAudienceTags.tsx` (mới, tag màu có icon), `GuideEditorModal.tsx` (3 ô chọn, màu trong dropdown + tag), trang `/huong-dan`, `guides.api.ts`, `useGuides.ts` + test.
+- `PERMISSIONS.md` mục 2.14.
+
+**Notes:**
+> Quy tắc AND giữa các chiều (chiều rỗng = không giới hạn). Người không có vị trí/phòng ban không thấy guide giới hạn theo chiều đó. Cần chạy migration 1785600000000 (kiểm tra lại timestamp nếu tài khoản khác vừa thêm migration).
+
+---
