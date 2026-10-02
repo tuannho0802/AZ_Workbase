@@ -11,7 +11,9 @@ permissions: []
 
 ## Trang này để làm gì
 
-Đây là bài đầu tiên nên đọc: cách di chuyển giữa các trang, cách tìm trang nhanh, và vì sao **bạn và đồng nghiệp có thể thấy menu, dữ liệu khác nhau**.
+Đây là bài đầu tiên cho mọi người: cách nhìn màn hình, cách tìm trang nhanh, và vì sao **menu của bạn có thể khác đồng nghiệp**.
+
+> **Bạn là ai trong công ty?** Trong **Mục lục** (hoặc ở menu **Hướng dẫn sử dụng**) có bài *"Bắt đầu với AZWorkbase"* viết riêng cho từng nhóm: **Admin, Assistant, Sale, Content, Media**. Hãy mở bài đúng với bạn để biết menu của bạn có những trang nào và dùng để làm gì.
 
 ## Khung màn hình
 
@@ -29,15 +31,15 @@ header-search
 
 ## Xem hướng dẫn của trang đang mở
 
-Nút **Xem hướng dẫn trang này** trên Header đưa bạn thẳng tới bài hướng dẫn của trang hiện tại. Nút tự ẩn nếu trang đó chưa có bài hướng dẫn, hoặc bài không dành cho bạn. Toàn bộ bài nằm ở mục **Hướng dẫn sử dụng** trong menu.
+Nút **Xem hướng dẫn trang này** trên Header đưa bạn thẳng tới bài hướng dẫn của trang hiện tại. Nút tự ẩn nếu trang đó chưa có bài hướng dẫn, hoặc bài không dành cho bạn. Cách đọc hướng dẫn: xem bài [Hướng dẫn đọc bài](/huong-dan/huong-dan-su-dung).
 
 ## Vì sao tôi thấy khác đồng nghiệp?
 
-Hệ thống phân quyền theo **vai trò** (Admin, Manager, Assistant, Employee hoặc vai trò tuỳ chỉnh) và **Quản trị viên có thể chỉnh quyền từng vai trò** ở trang Phân quyền. Vì vậy:
+Hệ thống phân quyền theo **vai trò** (Admin, Manager, Assistant, Employee hoặc vai trò tuỳ chỉnh) và **Quản trị viên chỉnh quyền từng vai trò**. Vì vậy:
 
 - Menu chỉ hiện những trang bạn có quyền. Thiếu quyền thì trang đó không xuất hiện.
 - Trong cùng một trang, **dữ liệu bạn thấy phụ thuộc phạm vi quyền**: chỉ dữ liệu của mình, của phòng ban mình quản lý, hoặc tất cả.
-- Quản trị viên có thể **ẩn một số cột/tab** theo vị trí hoặc phòng ban (ví dụ ẩn cột Sales với vị trí Content).
+- Quản trị viên có thể **ẩn một số cột/tab** theo vị trí hoặc phòng ban.
 - Nút thao tác (Thêm, Nhập Excel, Xoá...) chỉ hiện khi bạn có quyền tương ứng.
 
 Ví dụ bảng Khách hàng nhìn khác nhau tuỳ người xem. Bấm các nút ở **Xem với tư cách** để so sánh:
@@ -61,5 +63,5 @@ permission-note
 
 ## Xem thêm
 
+- [Hướng dẫn đọc bài](/huong-dan/huong-dan-su-dung)
 - [Khách hàng](/huong-dan/khach-hang)
-- [Cách tạo và sửa bài hướng dẫn](/huong-dan/huong-dan-su-dung)
