@@ -54,6 +54,31 @@ export function parseDemoId(body: string): string {
     return body.trim().split(/\s+/)[0] ?? '';
 }
 
+export interface DemoSpec {
+    id: string;
+    /** Tham số `key=value` hợp lệ về mặt cú pháp (whitelist theo từng mẫu kiểm ở `GuideDemoBlock`). */
+    params: Record<string, string>;
+    /** Các token sai cú pháp (không phải `key=value` chữ thường/số/gạch ngang) - mẫu sẽ báo cảnh báo. */
+    invalid: string[];
+}
+
+/**
+ * Phân tích thân khối ```az-demo: dòng đầu = `<id> [key=value ...]`, ví dụ `customer-table-by-viewer persona=manager`.
+ * Chỉ nhận id/key/value gồm chữ thường, số, gạch ngang -> không có đường để nhét HTML/URL.
+ */
+export function parseDemoSpec(body: string): DemoSpec {
+    const tokens = (body.trim().split(/\r?\n/)[0] ?? '').trim().split(/\s+/).filter(Boolean);
+    const id = tokens.shift() ?? '';
+    const params: Record<string, string> = {};
+    const invalid: string[] = [];
+    for (const t of tokens) {
+        const m = /^([a-z][a-z0-9-]*)=([a-z0-9-]+)$/.exec(t);
+        if (m) params[m[1]] = m[2];
+        else invalid.push(t);
+    }
+    return { id, params, invalid };
+}
+
 /** Đoạn chèn 1 mẫu vào Markdown (khối riêng, có dòng trống 2 đầu). */
 export function buildDemoFence(id: string): string {
     return `\n\n\`\`\`${DEMO_FENCE_LANG}\n${id}\n\`\`\`\n\n`;

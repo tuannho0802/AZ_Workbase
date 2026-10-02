@@ -9,7 +9,7 @@ import { GuideDemoBlock } from '@/lib/guides/guide-demos';
 import {
     DEMO_FENCE_LANG,
     isExternalUrl,
-    parseDemoId,
+    parseDemoSpec,
     sanitizeImageUrl,
     sanitizeLinkUrl,
 } from '@/lib/guides/guide-markdown';
@@ -53,7 +53,10 @@ const components: Components = {
     pre: ({ children }) => {
         const child = Array.isArray(children) ? children[0] : children;
         if (isValidElement<ComponentProps<'code'>>(child) && child.props.className?.split(' ').includes(`language-${DEMO_FENCE_LANG}`)) {
-            return <GuideDemoBlock id={parseDemoId(textOf(child.props.children))} />;
+            {
+            const spec = parseDemoSpec(textOf(child.props.children));
+            return <GuideDemoBlock id={spec.id} params={spec.params} invalid={spec.invalid} />;
+        }
         }
         return (
             <pre style={{ background: '#f5f5f5', padding: 12, borderRadius: 6, overflowX: 'auto', fontSize: 13 }}>{children}</pre>

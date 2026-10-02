@@ -5663,3 +5663,17 @@ Now [deploy]
 > User đã tự chạy `1785700000000-AddGuideRequiredPermission` thành công (D2 hoàn tất cả code lẫn DB). Lưu ý: 2 migration trùng timestamp `1777300000000` (AddMarketingUserToCustomers, AddPhoneToUsers) — đã chạy, KHÔNG sửa; chỉ cần tránh trùng ở migration mới. Chưa chạy `tsc` đầy đủ (sandbox không cài node_modules).
 
 ---
+## [2026-10-02 16:00] | P0a: nền mẫu minh hoạ theo người xem (persona + bảng khách hàng thật) | [Status: Success]
+
+**Actor:** Agent
+
+**Files Changed:**
+- `frontend/src/components/customers/CustomerCells.tsx` (mới) — `renderSalesTag/renderMarketingTag/renderJoinedGroupsTag` tách từ `customers/page.tsx` (trang thật import lại, không đổi hành vi).
+- `frontend/src/lib/guides/demo-kit/` (mới) — `DemoFrame.tsx` (thêm `controls` ngoài vùng inert), `personas.ts` (7 người xem), `sample-customers.ts`, `compute-view.ts` (+ test).
+- `frontend/src/lib/guides/demos/customers.demos.tsx` (mới) — `CustomerTableByViewer`.
+- `frontend/src/lib/guides/guide-markdown.ts` — `parseDemoSpec` (`<id> key=value`); `GuideMarkdown.tsx` dùng nó; `guide-demos.tsx` — `GuideDemo.params`/`selfFramed`, cảnh báo khi tham số lạ; mẫu mới `customer-table-by-viewer`, `sales-assignment-cell`; `customer-table` thành 12 cột thật; `row-actions` sửa đúng thực tế (chỉ nút Xoá).
+
+**Notes:**
+> Không migration, không đổi BE. Phát hiện: mẫu `row-actions` cũ vẽ Xem/Sửa/Chia sẻ/Xoá nhưng bảng thật chỉ có cột Thao tác = nút Xoá (cần `customers.delete`); chia data làm qua chọn dòng + "Gán cho Sales". Bài guide đã viết tay có thể còn nhắc nút Xem/Sửa/Chia sẻ — cần rà. Vitest FE 471 test (lần chạy full: 469 pass + 2 test mới của mình sai selector, đã sửa, chạy lại riêng thư mục guides 55/55); tsc chỉ còn lỗi logo.png cũ; chưa chạy `next build`. Chưa làm: `guides-content/` + `guides:sync`, test contract/coverage, nút "Xem hướng dẫn trang này".
+
+---

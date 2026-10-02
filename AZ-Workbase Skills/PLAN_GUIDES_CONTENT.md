@@ -152,9 +152,10 @@ Tiêu chí "xong" cho mỗi bài: mọi tên cột/nút **khớp đúng chữ tr
 
 ### P0 — Nền tảng (làm TRƯỚC, cỡ L)
 - [ ] Tách `guide-demos.tsx` → `demo-kit/` + `demos/*` + registry (giữ nguyên 9 id cũ để bài cũ không vỡ). Thống nhất `Alert title=` (F10).
-- [ ] `DemoFrame` thêm `controls`; fence hỗ trợ `key=value` (whitelist); cập nhật `parseDemoId` → `parseDemoSpec` + test (F4, F5).
-- [ ] `personas.ts` + `compute-view.ts` + test đối chiếu `PERMISSIONS.md`/`ui-visibility` (F3).
-- [ ] Viết lại `customer-table` thành 12 cột thật + mẫu `customer-table-by-viewer` (F1) — dùng component thật (F2).
+- [x] (P0a - 2026-10-02) `DemoFrame` thêm `controls`; fence hỗ trợ `key=value` (whitelist theo từng mẫu); `parseDemoSpec` + test (F4, F5).
+- [x] (P0a) `demo-kit/personas.ts` + `sample-customers.ts` + `compute-view.ts` + test (đối chiếu `CustomerAccessHelper.applyViewFilter`, `CUSTOMER_ELEMENT_KEYS`). Còn thiếu: test contract đọc danh sách permission đã seed (2.4b).
+- [x] (P0a) `customer-table` = bảng 12 cột thật (13 với Thao tác) + mẫu `customer-table-by-viewer` + `sales-assignment-cell`; ô Sales/Marketing/Joined tách ra `components/customers/CustomerCells.tsx` dùng chung với trang thật. `StatusTag`/`SourceTag` vẫn là Tag tĩnh vì bản thật gọi API.
+- [ ] (P0b) Tách nốt `guide-demos.tsx` → `demos/*` theo module (hiện mới tách `demos/customers.demos.tsx` + `demo-kit/`).
 - [ ] `guides-content/` + `_template.md` + `guides:sync` (dry-run mặc định, hash, báo xung đột).
 - [ ] Test lưới an toàn 2.4 (`contract`, `nav-guide-coverage`) + nút "Xem hướng dẫn trang này" ở layout dashboard.
 - [x] (D2 - ĐÃ LÀM 2026-10-02) migration `1785700000000-AddGuideRequiredPermission` + BE lọc + trình soạn chọn permission. **Bạn tự chạy migration.**

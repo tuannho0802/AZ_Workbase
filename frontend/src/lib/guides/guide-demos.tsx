@@ -12,6 +12,15 @@ import {
 } from '@ant-design/icons';
 import { UtmTag } from '@/components/utms/UtmTag';
 import { HeaderSearchTrigger } from '@/components/common/HeaderSearchTrigger';
+import { DemoFrame } from './demo-kit/DemoFrame';
+import { CustomerTableByViewer } from './demos/customers.demos';
+import { renderSalesTag } from '@/components/customers/CustomerCells';
+import { DEMO_CUSTOMERS } from './demo-kit/sample-customers';
+import { DEMO_PERSONAS } from './demo-kit/personas';
+
+const DEMO_PERSONAS_IDS = DEMO_PERSONAS.map((p) => p.id);
+
+export { DemoFrame };
 
 /**
  * Kho "mẫu minh hoạ" nhúng vào bài Hướng dẫn bằng khối Markdown:
@@ -31,30 +40,14 @@ export interface GuideDemo {
     id: string;
     title: string;
     description: string;
-    render: () => ReactNode;
-}
-
-export function DemoFrame({ title, children }: { title: string; children: ReactNode }) {
-    return (
-        <figure
-            data-testid="guide-demo"
-            style={{
-                margin: '16px 0',
-                border: '1px dashed #91caff',
-                borderRadius: 8,
-                background: '#f0f7ff',
-                overflow: 'hidden',
-            }}
-        >
-            <figcaption style={{ padding: '6px 12px', fontSize: 12, color: '#1677ff', borderBottom: '1px dashed #91caff' }}>
-                Minh hoạ: {title} (chỉ xem, không thao tác được)
-            </figcaption>
-            {/* `inert`: không focus/click được; wrapper cuộn ngang cho bảng rộng. */}
-            <div inert style={{ padding: 12, overflowX: 'auto', background: '#fff' }}>
-                {children}
-            </div>
-        </figure>
-    );
+    /**
+     * Tham số `key=value` cho phép trong fence: `{ persona: ['admin', ...] }`. Mẫu không khai báo = không nhận
+     * tham số nào (tham số lạ -> khung cảnh báo, không throw).
+     */
+    params?: Record<string, readonly string[]>;
+    /** true = mẫu tự dựng `DemoFrame` (cần `controls` ngoài vùng inert). */
+    selfFramed?: boolean;
+    render: (params: Record<string, string>) => ReactNode;
 }
 
 const SAMPLE_STATUSES = [
@@ -163,37 +156,40 @@ export const GUIDE_DEMOS: GuideDemo[] = [
     },
     {
         id: 'row-actions',
-        title: 'Nút thao tác trên từng dòng',
-        description: 'Xem / Sửa / Chia sẻ / Xoá - nút chỉ hiện khi bạn có quyền tương ứng',
+        title: 'Cột Thao tác (nút Xoá)',
+        description: 'Cột Thao tác chỉ có khi bạn có quyền \"Xoá khách hàng\" (customers.delete); bấm vào dòng để mở chi tiết/sửa',
         render: () => (
             <Space>
-                <Button type="link" icon={<EyeOutlined />}>
-                    Xem
-                </Button>
-                <Button type="link" icon={<EditOutlined />}>
-                    Sửa
-                </Button>
-                <Button type="link" icon={<ShareAltOutlined />}>
-                    Chia sẻ
-                </Button>
-                <Button type="link" danger icon={<DeleteOutlined />}>
-                    Xoá
-                </Button>
+                <Button type="text" danger size="small" icon={<DeleteOutlined />} title="Xóa khách hàng" />
+                <span style={{ color: '#8c8c8c', fontSize: 12 }}>Nút Xoá sẽ hỏi xác nhận trước khi đưa khách vào Thùng rác</span>
             </Space>
         ),
     },
     {
         id: 'customer-table',
         title: 'Bảng danh sách khách hàng',
-        description: 'Các cột chính của trang Khách hàng (dữ liệu mẫu)',
+        description: 'Các cột thật của trang Khách hàng (dữ liệu mẫu, xem như Assistant)',
+        selfFramed: true,
+        render: () => <CustomerTableByViewer initialPersona="assistant" switchable={false} />,
+    },
+    {
+        id: 'customer-table-by-viewer',
+        title: 'Bảng khách hàng theo người xem',
+        description: 'Có bộ chọn \"Xem với tư cách\": đổi dòng thấy, cột ẩn và nút theo vai trò/quyền (tham số persona=...)',
+        params: { persona: DEMO_PERSONAS_IDS },
+        selfFramed: true,
+        render: (p) => <CustomerTableByViewer initialPersona={p.persona ?? 'admin'} switchable />,
+    },
+    {
+        id: 'sales-assignment-cell',
+        title: 'Ô Sales (Chính + Phụ)',
+        description: 'Sales chính = Tag xanh; Sales được chia = badge +N (rê chuột xem danh sách); chưa gán = chữ mờ',
         render: () => (
-            <Table<SampleCustomer>
-                size="small"
-                columns={customerColumns}
-                dataSource={SAMPLE_CUSTOMERS}
-                pagination={false}
-                scroll={{ x: 'max-content' }}
-            />
+            <Space direction="vertical">
+                {[DEMO_CUSTOMERS[0], DEMO_CUSTOMERS[2], DEMO_CUSTOMERS[1]].map((c) => (
+                    <div key={c.id}>{renderSalesTag(c)}</div>
+                ))}
+            </Space>
         ),
     },
     {
@@ -244,19 +240,36 @@ export function findGuideDemo(id: string): GuideDemo | undefined {
     return DEMO_MAP.get(id);
 }
 
-/** Render 1 mẫu theo id; id lạ -> khung cảnh báo (không throw, không lộ gì ngoài id người soạn tự gõ). */
-export function GuideDemoBlock({ id }: { id: string }) {
+/** Khung cảnh báo chung (không throw, không lộ gì ngoài id/tham số người soạn tự gõ). */
+function DemoWarning({ title, description }: { title: string; description: string }) {
+    return <Alert type="warning" showIcon style={{ margin: '16px 0' }} title={title} description={description} />;
+}
+
+/** Render 1 mẫu theo id + tham số; id/tham số lạ -> khung cảnh báo. */
+export function GuideDemoBlock({ id, params = {}, invalid = [] }: { id: string; params?: Record<string, string>; invalid?: string[] }) {
     const demo = findGuideDemo(id);
     if (!demo) {
         return (
-            <Alert
-                type="warning"
-                showIcon
-                style={{ margin: '16px 0' }}
-                title={`Không có mẫu minh hoạ "${id}"`}
-                description={'Mẫu này không tồn tại hoặc đã bị gỡ. Người soạn hãy chọn lại ở ô "Chèn mẫu minh hoạ".'}
-                    />
-    );
+            <DemoWarning
+                title={`Không có mẫu minh hoạ \"${id}\"`}
+                description={'Mẫu này không tồn tại hoặc đã bị gỡ. Người soạn hãy chọn lại ở ô \"Chèn mẫu minh hoạ\".'}
+            />
+        );
     }
-    return <DemoFrame title={demo.title}>{demo.render()}</DemoFrame>;
+    const allowed = demo.params ?? {};
+    const badKey = Object.keys(params).find((k) => !(k in allowed) || !allowed[k].includes(params[k]));
+    if (badKey || invalid.length > 0) {
+        return (
+            <DemoWarning
+                title={`Tham số không hợp lệ cho mẫu \"${id}\"`}
+                description={
+                    Object.keys(allowed).length === 0
+                        ? 'Mẫu này không nhận tham số.'
+                        : `Tham số cho phép: ${Object.entries(allowed).map(([k, v]) => `${k}=${v.join('|')}`).join('; ')}`
+                }
+            />
+        );
+    }
+    const body = demo.render(params);
+    return demo.selfFramed ? <>{body}</> : <DemoFrame title={demo.title}>{body}</DemoFrame>;
 }

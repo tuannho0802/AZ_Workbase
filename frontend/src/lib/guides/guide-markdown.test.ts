@@ -3,6 +3,7 @@ import {
   buildDemoFence,
   isExternalUrl,
   parseDemoId,
+  parseDemoSpec,
   sanitizeImageUrl,
   sanitizeLinkUrl,
 } from './guide-markdown';
@@ -63,5 +64,29 @@ describe('helpers', () => {
   it('buildDemoFence khớp parseDemoId', () => {
     const fence = buildDemoFence('utm-tags');
     expect(fence).toContain('```az-demo\nutm-tags\n```');
+  });
+});
+
+describe('parseDemoSpec', () => {
+  it('chỉ id', () => {
+    expect(parseDemoSpec('status-tags\n')).toEqual({ id: 'status-tags', params: {}, invalid: [] });
+  });
+  it('id + tham số key=value', () => {
+    expect(parseDemoSpec('customer-table-by-viewer persona=sales-primary')).toEqual({
+      id: 'customer-table-by-viewer',
+      params: { persona: 'sales-primary' },
+      invalid: [],
+    });
+  });
+  it('chỉ đọc dòng đầu', () => {
+    expect(parseDemoSpec('a persona=x\nb persona=y').params).toEqual({ persona: 'x' });
+  });
+  it('token sai cú pháp -> invalid (không nhận HTML/URL)', () => {
+    const r = parseDemoSpec('a persona=<script> url=https://x.com Persona=x k=');
+    expect(r.params).toEqual({});
+    expect(r.invalid).toHaveLength(4);
+  });
+  it('rỗng', () => {
+    expect(parseDemoSpec('')).toEqual({ id: '', params: {}, invalid: [] });
   });
 });
