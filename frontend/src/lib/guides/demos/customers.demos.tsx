@@ -1,7 +1,7 @@
 'use client';
 
 import { useState } from 'react';
-import { Alert, Button, Popconfirm, Segmented, Space, Table, Tag, Tooltip, Typography } from 'antd';
+import { Alert, Button, Form, Input, Popconfirm, Segmented, Select, Space, Table, Tag, Tooltip, Typography } from 'antd';
 import type { ColumnsType } from 'antd/es/table';
 import { DeleteOutlined, DownloadOutlined, PlusOutlined, ReloadOutlined, UploadOutlined, UsergroupAddOutlined } from '@ant-design/icons';
 import { UtmTag } from '@/components/utms/UtmTag';
@@ -11,10 +11,12 @@ import { DemoFrame } from '../demo-kit/DemoFrame';
 import { DEMO_PERSONAS, findPersona } from '../demo-kit/personas';
 import { DEMO_CUSTOMERS, type DemoCustomer } from '../demo-kit/sample-customers';
 import { COL, computeCustomerTableView } from '../demo-kit/compute-view';
+import { SAMPLE_SOURCES, SAMPLE_STATUSES } from '../demo-kit/sample-tags';
+import type { GuideDemo } from '../guide-demo.types';
 
 const { Text } = Typography;
 
-const SOURCE_COLORS: Record<string, string> = { Facebook: 'blue', TikTok: 'magenta', Google: 'green', Instagram: 'purple' };
+const SOURCE_COLORS: Record<string, string> = Object.fromEntries(SAMPLE_SOURCES.map((x) => [x.name, x.color]));
 
 const TOOLBAR_ICON: Record<string, React.ReactNode> = {
     'Làm mới': <ReloadOutlined />,
@@ -112,7 +114,100 @@ export function CustomerTableByViewer({ initialPersona, switchable }: { initialP
                 rowSelection={canAssign ? { columnWidth: 38 } : undefined}
                 locale={{ emptyText: 'Không có khách hàng nào trong phạm vi của bạn' }}
             />
-            <Alert type="info" showIcon style={{ marginTop: 8 }} message={persona.note} />
+            <Alert type="info" showIcon style={{ marginTop: 8 }} title={persona.note} />
         </DemoFrame>
     );
 }
+
+const PERSONA_IDS = DEMO_PERSONAS.map((p) => p.id);
+
+/** Mẫu của module Khách hàng (trang `/customers`). Thứ tự = thứ tự trong ô "Chèn mẫu minh hoạ" của trình soạn. */
+export const CUSTOMER_DEMOS: GuideDemo[] = [
+    {
+        id: 'status-tags',
+        title: 'Tag trạng thái khách hàng',
+        description: 'Màu + tên trạng thái (màu thật do Admin cấu hình ở "Quản lý Status khách")',
+        render: () => (
+            <Space wrap>
+                {SAMPLE_STATUSES.map((s) => (
+                    <Tag key={s.name} color={s.color}>
+                        {s.name}
+                    </Tag>
+                ))}
+            </Space>
+        ),
+    },
+    {
+        id: 'source-tags',
+        title: 'Tag nguồn khách hàng',
+        description: 'Màu theo nguồn (cấu hình ở "Quản lý nguồn")',
+        render: () => (
+            <Space wrap>
+                {SAMPLE_SOURCES.map((s) => (
+                    <Tag key={s.name} color={s.color}>
+                        {s.name}
+                    </Tag>
+                ))}
+            </Space>
+        ),
+    },
+    {
+        id: 'row-actions',
+        title: 'Cột Thao tác (nút Xoá)',
+        description: 'Cột Thao tác chỉ có khi bạn có quyền "Xoá khách hàng" (customers.delete); bấm vào dòng để mở chi tiết/sửa',
+        render: () => (
+            <Space>
+                <Button type="text" danger size="small" icon={<DeleteOutlined />} title="Xóa khách hàng" />
+                <span style={{ color: '#8c8c8c', fontSize: 12 }}>Nút Xoá sẽ hỏi xác nhận trước khi đưa khách vào Thùng rác</span>
+            </Space>
+        ),
+    },
+    {
+        id: 'customer-table',
+        title: 'Bảng danh sách khách hàng',
+        description: 'Các cột thật của trang Khách hàng (dữ liệu mẫu, xem như Assistant)',
+        selfFramed: true,
+        render: () => <CustomerTableByViewer initialPersona="assistant" switchable={false} />,
+    },
+    {
+        id: 'customer-table-by-viewer',
+        title: 'Bảng khách hàng theo người xem',
+        description: 'Có bộ chọn "Xem với tư cách": đổi dòng thấy, cột ẩn và nút theo vai trò/quyền (tham số persona=...)',
+        params: { persona: PERSONA_IDS },
+        selfFramed: true,
+        render: (p) => <CustomerTableByViewer initialPersona={p.persona ?? 'admin'} switchable />,
+    },
+    {
+        id: 'sales-assignment-cell',
+        title: 'Ô Sales (Chính + Phụ)',
+        description: 'Sales chính = Tag xanh; Sales được chia = badge +N (rê chuột xem danh sách); chưa gán = chữ mờ',
+        render: () => (
+            <Space orientation="vertical">
+                {[DEMO_CUSTOMERS[0], DEMO_CUSTOMERS[2], DEMO_CUSTOMERS[1]].map((c) => (
+                    <div key={c.id}>{renderSalesTag(c)}</div>
+                ))}
+            </Space>
+        ),
+    },
+    {
+        id: 'customer-form',
+        title: 'Form thêm khách hàng',
+        description: 'Các trường nhập chính khi bấm "Thêm khách hàng"',
+        render: () => (
+            <Form layout="vertical" disabled style={{ maxWidth: 420 }}>
+                <Form.Item label="Họ và Tên" required>
+                    <Input placeholder="Nguyễn Văn A" />
+                </Form.Item>
+                <Form.Item label="Số điện thoại" required>
+                    <Input placeholder="0901234567" />
+                </Form.Item>
+                <Form.Item label="Nguồn">
+                    <Select placeholder="Chọn nguồn" options={SAMPLE_SOURCES.map((s) => ({ value: s.name, label: s.name }))} />
+                </Form.Item>
+                <Button type="primary" icon={<PlusOutlined />}>
+                    Lưu khách hàng
+                </Button>
+            </Form>
+        ),
+    },
+];

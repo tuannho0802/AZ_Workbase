@@ -56,4 +56,28 @@ describe('GuideDemoBlock - tham số & persona', () => {
     expect(new Set(ids).size).toBe(ids.length);
     for (const id of ids) expect(id).toMatch(/^[a-z0-9-]+$/);
   });
+
+  it('registry gộp đủ 10 mẫu từ các module demos/* (đã tách ở P0b) - thiếu 1 mẫu = bài đã viết bị vỡ', () => {
+    expect(GUIDE_DEMOS.map((d) => d.id).sort()).toEqual(
+      [
+        'customer-form',
+        'customer-table',
+        'customer-table-by-viewer',
+        'header-search',
+        'permission-note',
+        'row-actions',
+        'sales-assignment-cell',
+        'source-tags',
+        'status-tags',
+        'utm-tags',
+      ].sort(),
+    );
+  });
+
+  it.each(GUIDE_DEMOS.map((d) => [d.id] as const))('mẫu %s render được (không cảnh báo, không throw)', (id) => {
+    const { container } = render(<GuideDemoBlock id={id} />);
+    // permission-note LÀ 1 Alert cảnh báo theo thiết kế -> chỉ chặn 2 khung lỗi của GuideDemoBlock, không chặn mọi Alert.
+    expect(container.textContent).not.toMatch(/Không có mẫu minh hoạ|Tham số không hợp lệ/);
+    expect(container.textContent?.length).toBeGreaterThan(0);
+  });
 });

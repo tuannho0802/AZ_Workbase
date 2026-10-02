@@ -5709,3 +5709,17 @@ Now [deploy]
 > Xung đột = DB khác file VÀ hash DB hiện tại khác `source_hash` lần sync trước (hoặc bài tạo tay chưa từng sync) -> không ghi đè nếu thiếu `--force`; bài chỉ có trong DB thì chỉ liệt kê, không xoá. Kiểm tra ngược đã làm: thêm file lỗi cố ý (permission ma, persona lạ, mẫu không tồn tại, hiddenKey lạ) -> test đỏ đúng chỗ. BE jest full xanh, `tsc` + `nest build` sạch; FE vitest 514/514, tsc chỉ còn lỗi logo.png cũ. Migration + `guides:sync` CHƯA chạy thử trên MySQL thật (sandbox không có MySQL) — dry-run trước, rồi `--apply`. Chưa chạy `next build`.
 
 ---
+## [2026-10-02 19:00] | P0b: tách guide-demos.tsx theo module | [Status: Success]
+
+**Actor:** Agent
+
+**Files Changed:**
+- `frontend/src/lib/guides/guide-demos.tsx` — chỉ còn registry + `GuideDemoBlock` (275 -> ~70 dòng), bỏ import/biến dư (SAMPLE_CUSTOMERS, customerColumns, Table, EditOutlined...) và `export { DemoFrame }` (không ai dùng).
+- `guide-demo.types.ts` (mới, kiểu `GuideDemo` — tránh vòng import), `demo-kit/sample-tags.ts` (mới, SAMPLE_STATUSES/SOURCES dùng chung).
+- `demos/customers.demos.tsx` (+`CUSTOMER_DEMOS`, `SOURCE_COLORS` suy ra từ SAMPLE_SOURCES), `demos/utms.demos.tsx` (mới), `demos/common.demos.tsx` (mới).
+- `guide-demos.test.tsx` — kiểm registry đủ 10 id + render thử từng mẫu.
+
+**Notes:**
+> Không đổi hành vi, không migration, không đổi BE. Thứ tự mẫu trong ô "Chèn mẫu minh hoạ" đổi nhẹ (utm-tags nay đứng sau nhóm Khách hàng). `Alert message=` -> `title=` (hết cảnh báo deprecated trong test), `Space direction` -> `orientation` (antd 6.3.5 đã deprecate direction). FE vitest full xanh, tsc chỉ còn lỗi logo.png cũ, ESLint sạch trên file đụng tới. Chưa chạy `next build`.
+
+---
