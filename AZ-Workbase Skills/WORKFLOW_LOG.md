@@ -5540,3 +5540,22 @@ Now [deploy]
 > Dùng `<button>` thay `<input>` để khi Modal đóng, antd trả focus về ô này thì không tự mở lại palette. Nhãn Mac đọc qua `useSyncExternalStore` (server render luôn "Ctrl", không lệch hydration). Không migration, không permission key mới. Rollback: gỡ `<HeaderSearchTrigger />` + import khỏi `layout.tsx`.
 
 ---
+
+## [2026-10-02 12:00] | PLAN_HARDENING P7 (phần BE): Hướng dẫn sử dụng động | [Status: Success — BE `tsc --noEmit` sạch, `nest build` OK, jest 86 suite / 1486 test pass (có 3 suite / 50 test mới); CHƯA chạy migration trên MySQL thật; FE chưa làm]
+
+**Actor:** Agent (đặt trên HEAD `ef25be6`)
+
+**Files Changed:**
+- `backend/src/database/migrations/1785500000000-CreateGuidesSystem.ts` (mới) — bảng `guides`, `guide_roles`, seed permission `guides.manage` (Toàn cục, chỉ role `admin`); idempotent, `down()` đối xứng.
+- `backend/src/database/entities/guide.entity.ts`, `guide-role.entity.ts` (mới).
+- `backend/src/modules/guides/` (mới) — `guides.module/controller/service.ts`, `dto/create-guide.dto.ts`, `dto/update-guide.dto.ts`, `helpers/guide-access.helper.ts` + 3 file spec.
+- `backend/src/app.module.ts` — đăng ký `GuidesModule`.
+- Docs: `PERMISSIONS.md` (key `guides.manage` + mục 2.14), `PLAN_HARDENING.md` (P7 -> `[~]`).
+
+**Solution:**
+> `GET /guides`, `GET /guides/:slug` không gác permission, tự lọc theo `guide_roles` + `is_published` (sai role/nháp -> 404). Nhóm `manage/*`, POST/PATCH/DELETE gác `guides.manage`. Xoá mềm đổi slug `deleted-<id>-<slug>` để dùng lại slug; audit delete lưu nguyên văn trước khi xoá. Root Admin bypass ở `PermissionGuard` + `GuidesService.canManage()`.
+
+**Notes:**
+> `content` dùng MEDIUMTEXT thay vì TEXT như plan (TEXT ~65KB byte, tiếng Việt dễ vượt). Chưa làm: FE `/huong-dan` (react-markdown không HTML thô, trình soạn, `can('guides.manage')`), mục menu, giai đoạn 2 của Ctrl+K. Timestamp migration lấy theo `ls` HEAD `ef25be6` (lớn nhất trước đó `1785400000000`) — nếu tài khoản khác vừa thêm migration mới thì kiểm tra lại trước khi chạy. Rollback: `npm run migration:revert` rồi gỡ `GuidesModule` khỏi `app.module.ts`.
+
+---

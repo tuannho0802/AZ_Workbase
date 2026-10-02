@@ -146,6 +146,7 @@ dùng `@Roles()` enum tĩnh. Danh mục permission đầy đủ trong DB (sau 2 
 | `utms.assign` | utms | Thêm/gỡ Quản lý phụ (assignee) + chuyển chính. Có scope, chỉ chính hoặc scope rộng. Seed như `utms.view`. **Bổ sung (2026-09-29):** người có `utms.edit` với scope RỘNG (`all`/`department` phủ tới UTM) cũng sửa lại được Quản lý chính/phụ dù không có `utms.assign` (đặt nhầm thì đặt lại được); `utms.edit` scope `own` KHÔNG đủ. Logic ở `UtmManagersService.canManageManagers()` |
 | `utms.delete` | utms | Xoá UTM khi 0 KH tham chiếu (tính cả Thùng rác). Có scope. Seed: CHỈ Admin=`all` (Employee Marketing KHÔNG có) |
 | `utms.my_managed` | utms | Vào trang "Quản lý UTM" (tab "UTM tôi quản lý"). **FE còn đòi thêm `customers.view`** (guard AND: `requireAll` ở `nav-config.tsx` + route guard ở `quan-ly-utm/page.tsx`) — role không xem được khách hàng thì không thấy/không vào được trang UTM; BE `GET /utms/managed-by-me` vẫn cố ý không gate. Nhị phân. Seed: Admin/Assistant/Manager; Employee chỉ override Marketing |
+| `guides.manage` | guides | **MỚI (PLAN_HARDENING P7).** Quản lý Hướng dẫn sử dụng: tạo/sửa/xoá/xuất bản + chọn role được xem + thứ tự. Nhị phân, KHÔNG scope. Seed Toàn cục: CHỈ role `admin` (Root Admin luôn bypass ở `PermissionGuard`). Cấp cho người khác qua ma trận quyền (Toàn cục hoặc override phòng ban). **Xem guide KHÔNG cần permission**: `GET /guides`, `GET /guides/:slug` cố ý không gác, tự lọc ở service |
 | `media_sources.view` | media_sources | Xem nguồn media |
 | `media_sources.manage` | media_sources | Tạo/sửa nguồn media |
 | `media_sources.delete` | media_sources | Xoá nguồn — chỉ Admin |
@@ -736,6 +737,15 @@ người chưa đọc") — xem `PLAN_NOTIFICATION_SYSTEM.md` mục 10.
 - **Tích hợp Customers (BE)**: `POST /customers`/`PATCH /customers/:id` nhận `utmId` (chuẩn) hoặc `campaign` (tương thích, deprecated) → `UtmsService.resolveForCustomer()`; `campaign` luôn = tên UTM (snapshot). Chỉ validate khi UTM **thay đổi** (UTM đã khoá / restricted vẫn giữ được trên KH cũ); UTM khoá → 400, restricted không được dùng → 403, UTM chưa có + không có `utms.create` → 400. Quyền chọn UTM ở form KH **không** đòi `utms.view` (UTM `shared` ai cũng chọn). Lọc danh sách: `GET /customers?utmId=`. Import Excel: cột "Chiến dịch" resolve theo tên (cache theo tên), thiếu quyền tạo → lỗi dòng, kết quả trả `createdUtms`.
 - Đổi tên UTM cascade `customers.campaign` theo lô 5.000 trong cùng transaction, giữ `updated_at` của khách. Quản lý UTM KHÔNG mở rộng quyền xem khách hàng.
 - Chưa làm: `customer-counts`, `:id/customers` (áp scope `customers.view`), Gộp UTM, tích hợp `CustomersService`/Import, FE.
+
+### 2.14. Hướng dẫn sử dụng (`modules/guides`) — ✅ BE xong (PLAN_HARDENING P7); FE ở phần sau
+
+- Bảng `guides` (xoá mềm `deleted_at`, `content` MEDIUMTEXT Markdown) + `guide_roles` (guide ↔ `roles.id`, **không có dòng = mọi role đăng nhập đều thấy**) + seed `guides.manage` (migration `1785500000000-CreateGuidesSystem`).
+- Xem: `GET /guides` (mục lục, không kèm nội dung) và `GET /guides/:slug` — chỉ guide **đã xuất bản** + đúng role người gọi; sai/nháp/không tồn tại đều **404** (không lộ sự tồn tại). Người có `guides.manage` xem được mọi guide đã xuất bản (để xem trước); bản nháp chỉ lấy qua `manage/*`. Logic thuần ở `GuideAccessHelper.canView()`.
+- Quản trị (`@RequirePermission('guides.manage')`): `GET /guides/manage/all`, `GET /guides/manage/:id` (kể cả nháp, cho trình soạn), `POST`, `PATCH /:id`, `DELETE /:id`. Route tĩnh `manage/*` khai TRƯỚC `:slug`; slug `manage` bị chặn.
+- `PATCH`: không gửi `roleIds` = giữ nguyên; `roleIds: []` = bỏ giới hạn role. Slug tự sinh từ tiêu đề (bỏ dấu), trùng thì thêm `-2`, `-3`; slug nhập tay trùng → 409 (UNIQUE tính cả bản đã xoá mềm).
+- Xoá = xoá mềm + đổi slug thành `deleted-<id>-<slug>` để dùng lại slug. Audit `CREATE/UPDATE/DELETE_GUIDE`: create/update chỉ lưu độ dài nội dung; **delete lưu nguyên văn** (gồm nội dung + role) trước khi xoá.
+- Root Admin bypass: `GuidesService.canManage()` (cùng `PermissionGuard`).
 
 ## 3. Lịch sử quyết định & rà soát
 

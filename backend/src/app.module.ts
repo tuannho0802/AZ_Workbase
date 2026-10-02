@@ -20,6 +20,7 @@ import { AttendanceExportModule } from './modules/attendance-export/attendance-e
 import { MediaSourcesModule } from './modules/media-sources/media-sources.module';
 import { LinkGroupsModule } from './modules/link-groups/link-groups.module';
 import { UtmsModule } from './modules/utms/utms.module';
+import { GuidesModule } from './modules/guides/guides.module';
 import { ReportsModule } from './modules/reports/reports.module';
 import { PermissionsModule } from './modules/permissions/permissions.module';
 import { RolesModule } from './modules/roles/roles.module';
@@ -79,6 +80,7 @@ import { KeepAliveController } from './keep-alive/keep-alive.controller';
     MediaSourcesModule,
     LinkGroupsModule,
     UtmsModule,
+    GuidesModule,
     ReportsModule,
     // PermissionsModule (@Global) PHẢI import trước RolesModule để
     // PermissionsService sẵn sàng cho PermissionGuard dùng ở mọi route.
