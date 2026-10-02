@@ -11,17 +11,9 @@ permissions: []
 
 ## Bài này dành cho ai
 
-Dành cho **Assistant** (trợ lý). Assistant thấy gần như **đủ menu như Admin** và làm được hầu hết thao tác.
+Dành cho **Assistant** (trợ lý). Menu của Assistant gần như **đầy đủ như Admin**: bạn quản lý khách hàng, công việc, nghỉ phép, thông báo, nhân sự và các danh mục của hệ thống.
 
-**Khác biệt chính so với Admin:**
-
-- **Không có quyền Xoá khách hàng**: bảng Khách hàng không có cột **Thao tác** (nút Xoá).
-- Theo mô tả của vai trò, Assistant **không quản lý phân quyền**: không tạo vai trò hay sửa quyền của người khác.
-- Quyền **soạn hướng dẫn** mặc định chỉ có Admin. Muốn soạn bài, hãy nhờ Admin cấp quyền *Quản lý Hướng dẫn sử dụng* ở trang Phân quyền.
-
-> Menu thật của bạn có thể khác bảng dưới nếu Admin đã chỉnh quyền. Gặp trang/nút không thấy, hãy hỏi Admin.
-
-Với bảng Khách hàng, bấm **Assistant** ở ô **Xem với tư cách** để thấy đúng những gì bạn thấy:
+Với bảng Khách hàng, bấm **Assistant** ở ô **Xem với tư cách** để xem đúng bảng của bạn:
 
 ```az-demo
 customer-table-by-viewer persona=assistant
@@ -34,7 +26,7 @@ customer-table-by-viewer persona=assistant
 | Trang | Dùng để làm gì |
 |---|---|
 | **Trang chủ** | Lối tắt tới các trang bạn được dùng. |
-| **Khách hàng** | Xem, tìm, thêm, sửa khách; nhập/xuất Excel. **Không xoá** được. Xem bài [Khách hàng](/huong-dan/khach-hang). |
+| **Khách hàng** | Xem, tìm, thêm, sửa khách; nhập/xuất Excel. Xem bài [Khách hàng](/huong-dan/khach-hang). |
 | **Chia Data** | Gán khách hàng cho Sales phụ trách. |
 | **Công việc định kỳ** | Tạo và theo dõi việc lặp lại theo Ngày/Tuần/Tháng/Năm. |
 | **Lịch sử Công việc** | Nhật ký thay đổi của các công việc định kỳ. |
@@ -43,7 +35,7 @@ customer-table-by-viewer persona=assistant
 | **Duyệt phép** | Duyệt hoặc từ chối đơn nghỉ phép của nhân viên. |
 | **Báo cáo doanh số** | Doanh thu và số khách theo Cá nhân, Phòng ban hoặc Tổng tất cả. |
 | **Báo cáo data lỗi** | Danh sách khách bị nhập sai hoặc thiếu thông tin để sửa. |
-| **Thùng rác** | Khôi phục khách đã xoá (nếu menu của bạn có mục này). |
+| **Thùng rác** | Khôi phục khách đã xoá. |
 
 ### Thông báo và cá nhân
 
@@ -64,7 +56,7 @@ customer-table-by-viewer persona=assistant
 | **Nhân viên** | Quản lý tài khoản, duyệt đăng ký mới. |
 | **Phòng ban** | Danh sách phòng ban và Manager quản lý từng phòng ban. |
 | **Vị trí** | Các vị trí (Content, Editor, HR...) và cấu hình ẩn/hiện dữ liệu theo vị trí. |
-| **Phân quyền** | Xem ma trận quyền của các vai trò (sửa quyền thuộc về Admin). |
+| **Phân quyền** | Xem ma trận quyền của các vai trò. |
 | **Máy chấm công** | Ghép nhân viên với máy chấm công, xem bảng chấm công và nhật ký. |
 
 ### Cấu hình danh mục (các lựa chọn xuất hiện trong ô chọn)
@@ -90,7 +82,7 @@ customer-table-by-viewer persona=assistant
 1. Xem **Profile** của bạn đã đúng họ tên, phòng ban, vị trí chưa.
 2. Mở **Khách hàng** và thử bộ lọc, bấm vào một dòng để xem chi tiết.
 3. Mở **Công việc định kỳ** và **Thông báo** để biết việc đang chờ bạn.
-4. Cần thêm quyền nào đó (ví dụ soạn hướng dẫn)? Nhờ Admin cấp.
+4. Nhấn **Ctrl + K** để mở nhanh bất kỳ trang nào trong menu.
 
 ## Xem thêm
 

@@ -13,50 +13,46 @@ permissions: [customers.view]
 
 Trang **Khách hàng** là nơi bạn **xem, tìm, thêm, sửa và theo dõi khách hàng (data)**: ai phụ trách, đang ở trạng thái nào, đã nạp bao nhiêu, ghi chú gần nhất ra sao. Vào từ mục **Khách hàng** ở menu bên trái.
 
-Bạn cần quyền **Xem khách hàng** để thấy trang này.
+Các nút trên trang (Thêm, Nhập Excel, Xuất Excel, Gán cho Sales, Xoá...) hiện theo quyền của bạn.
 
-## Bạn thấy những khách nào?
+## Màn hình gồm những gì
 
-Mỗi người thấy **một phạm vi khác nhau**, do Admin cài cho từng vai trò. Đây là điều khiến bảng của bạn khác bảng của đồng nghiệp.
+Từ trên xuống dưới có 4 vùng:
 
-| Bạn là | Bạn thấy |
+1. **Thẻ thống kê**: Tổng khách hàng, Khách mới hôm nay, Chốt thành công, Tổng nạp. Số liệu **đổi theo bộ lọc** bạn đang chọn.
+2. **Bộ lọc & Tìm kiếm**: thu hẹp danh sách theo tên, số điện thoại, UTM, nguồn, trạng thái, khoảng ngày...
+3. **Thanh nút**: **Làm mới**, **Thêm khách hàng**, **Nhập Excel**, **Xuất Excel**, **Gán cho Sales**.
+4. **Bảng khách hàng**: bấm vào **một dòng** để mở **chi tiết** ở khung bên phải. Mặc định khách có **Ngày nhập mới nhất** xếp trên cùng.
+
+## Bạn làm việc với những khách nào
+
+Phạm vi khách hiển thị phụ thuộc vai trò của bạn:
+
+| Bạn là | Danh sách gồm |
 |---|---|
 | **Admin, Assistant** | **Tất cả** khách hàng. |
-| **Manager** | Khách thuộc **phòng ban bạn quản lý**, cộng thêm khách của chính bạn. |
-| **Sale, Content, Media** và nhân viên khác (Employee) | **Chỉ khách của mình**: khách bạn tạo, bạn là Sales chính, bạn là Marketing phụ trách, hoặc đang được chia cho bạn. |
+| **Manager** | Khách thuộc **phòng ban bạn quản lý**, cộng khách của chính bạn. |
+| **Sale, Content, Media** và nhân viên khác (Employee) | **Khách của mình**: khách bạn tạo, khách bạn là Sales chính, khách bạn là Marketing phụ trách, hoặc khách được chia cho bạn. |
 
-Bấm các nút ở **Xem với tư cách** để so sánh dòng, cột và nút thay đổi thế nào theo từng người:
+Bấm các nút ở **Xem với tư cách** để so sánh bảng theo từng nhóm:
 
 ```az-demo
 customer-table-by-viewer persona=manager
 ```
 
-> Bảng trên là ví dụ theo **cấu hình mặc định**. Admin có thể đổi phạm vi xem, nên màn hình thật của bạn có thể khác.
-
-## Làm quen màn hình
-
-Từ trên xuống dưới, trang có 4 vùng:
-
-1. **Thẻ thống kê** ở đầu trang: Tổng khách hàng, Khách mới hôm nay, Chốt thành công, Tổng nạp. Số liệu **đổi theo bộ lọc** bạn đang chọn.
-2. **Bộ lọc** để thu hẹp danh sách (nguồn, trạng thái, Sales, ngày nhập...).
-3. **Thanh nút**: **Làm mới**, **Thêm khách hàng**, **Nhập Excel**, **Xuất Excel**, **Gán cho Sales**. Nút nào bạn không có quyền thì **không hiện**.
-4. **Bảng khách hàng**. Bấm vào **một dòng** để mở **chi tiết** ở khung bên phải.
-
-Mặc định danh sách xếp **Ngày nhập mới nhất** lên đầu.
-
 ## Những việc thường làm
 
-### Tìm một khách
+### 1. Tìm một khách
 
 1. Gõ tên, số điện thoại hoặc UTM vào ô **Tìm kiếm**.
 2. Muốn lọc kỹ hơn, chọn thêm **Nguồn**, **Trạng thái**, **UTM**, **Người nhập Data**, nhóm đã tham gia, hoặc khoảng ngày.
-3. Muốn xoá bộ lọc, bỏ chọn từng ô. Để trống một ô nghĩa là **không lọc** theo tiêu chí đó.
+3. Muốn bỏ lọc, bỏ chọn từng ô. Ô để trống nghĩa là **không lọc** theo tiêu chí đó.
 
-Lưu ý khi lọc theo ngày: phải chọn **cả Từ ngày và Đến ngày** thì bộ lọc mới áp dụng. Chỉ chọn một ô sẽ có cảnh báo vàng "Chọn để áp dụng bộ lọc".
+Khi lọc theo ngày, hãy chọn **cả Từ ngày và Đến ngày** thì bộ lọc mới áp dụng.
 
-### Thêm khách mới
+### 2. Thêm khách mới
 
-1. Bấm **Thêm khách hàng** (cần quyền tạo).
+1. Bấm **Thêm khách hàng**.
 2. Điền **Họ tên**, **Nguồn**, **Ngày nhập data** (bắt buộc). Các ô còn lại điền nếu có.
 3. Bấm **Thêm khách hàng** ở cuối form để lưu.
 
@@ -69,29 +65,27 @@ Quy tắc khi điền:
 - **Ngày nhập data** không được lớn hơn hôm nay.
 - **Số điện thoại** không bắt buộc, nhưng nếu nhập phải là số Việt Nam (đầu 09, 08, 07, 03 hoặc 05, đủ 10 số). **Email** nếu nhập phải đúng định dạng.
 - **Sales phụ trách / Marketing phụ trách:** nếu bạn thuộc nhóm phụ trách tương ứng, hệ thống **tự điền chính bạn**.
-- Nếu SĐT hoặc Email **đã có** trong hệ thống, hộp thoại **"Phát hiện dữ liệu có thể bị trùng"** cho biết ai đã thêm. Bạn **vẫn có thể bấm Vẫn tạo**, hệ thống không chặn.
+- Nếu SĐT hoặc Email **đã có** trong hệ thống, hộp thoại **"Phát hiện dữ liệu có thể bị trùng"** cho biết ai đã thêm. Bạn **vẫn có thể bấm Vẫn tạo**.
 
-### Xem và sửa chi tiết một khách
+### 3. Xem và sửa chi tiết một khách
 
 Bấm vào dòng khách. Khung chi tiết có các tab:
 
 | Tab | Dùng để |
 |---|---|
-| **Chi tiết** | Xem toàn bộ thông tin. Bấm **Chỉnh sửa** (cần quyền sửa) rồi **Lưu thay đổi**. |
+| **Chi tiết** | Xem toàn bộ thông tin. Bấm **Chỉnh sửa** rồi **Lưu thay đổi**. |
 | **Ghi chú** | Thêm ghi chú mới (chọn loại, bật 🔥 nếu quan trọng), sửa hoặc xoá ghi chú. |
 | **Nạp tiền** | Xem lịch sử nạp tiền của khách. |
 | **Chia data** | Xem ai đang được chia khách này; gán thêm, sửa hoặc **Thu hồi** lượt gán. |
 | **Nhóm** | Bật/tắt khách đã tham gia nhóm nào. |
 
-Tab **Nạp tiền**, **Chia data**, **Nhóm** có thể bị Admin ẩn theo vị trí hoặc phòng ban của bạn.
+### 4. Đổi trạng thái nhanh
 
-### Đổi trạng thái nhanh
+Cột **Trạng thái** là ô chọn: **bấm đổi ngay trên bảng**, không cần mở form.
 
-Nếu bạn có quyền sửa, cột **Trạng thái** là ô chọn: **bấm đổi ngay trên bảng**, không cần mở form. Không có quyền sửa thì chỉ hiện chữ.
+### 5. Chia data cho Sales
 
-### Chia data cho Sales
-
-1. Tick chọn các dòng khách trong bảng (cần quyền chia data; chức năng này không có trên điện thoại).
+1. Tick chọn các dòng khách trong bảng (chức năng này dùng trên máy tính).
 2. Bấm **Gán cho Sales (số dòng)**.
 3. Chọn một hoặc nhiều Sales ở ô **Chọn Sales nhận data**, có thể ghi **Lý do**, rồi bấm **Xác nhận gán**.
 
@@ -99,19 +93,19 @@ Cần nhớ:
 
 - Chọn nhiều Sales thì **mỗi khách được gán cho tất cả** những người đó (chia sẻ, không chia đều).
 - Khách **chưa có Sales chính**: **người đầu tiên trong danh sách chọn** thành Sales chính. Khách đã có Sales chính: người mới thành **Sales phụ**.
-- Bạn chỉ gán được khách trong phạm vi quyền **chia data** của bạn, và phạm vi này **chặt hơn phạm vi xem**:
+- Bạn gán được khách trong phạm vi quyền **chia data** của bạn:
   - *Tất cả*: mọi khách.
-  - *Phòng ban*: **chỉ** khách thuộc phòng ban bạn quản lý (khách riêng của bạn nằm ngoài các phòng ban đó **không** gán được).
+  - *Phòng ban*: khách thuộc phòng ban bạn quản lý.
   - *Của tôi*: khách bạn là Sales chính, hoặc khách bạn tạo mà chưa ai nhận.
 - Khách nằm ngoài phạm vi sẽ báo lỗi riêng cho từng khách; các khách hợp lệ vẫn được gán.
 
-Có trang riêng cho việc chia data: **Chia Data** ở menu (nếu bạn được cấp quyền).
+Ngoài ra có trang riêng cho việc chia data: **Chia Data** ở menu.
 
-### Nhập khách từ Excel
+### 6. Nhập khách từ Excel
 
-1. Bấm **Nhập Excel** (cần quyền nhập).
+1. Bấm **Nhập Excel**.
 2. Bấm **Tải file mẫu (.xlsx)** và điền theo mẫu. Hai cột **Họ và Tên** và **Số điện thoại** là bắt buộc.
-3. Kéo thả file vào ô (hoặc bấm để chọn). Chỉ nhận **.xlsx** hoặc **.csv (UTF-8)**, tối đa **5MB và 1000 dòng**.
+3. Kéo thả file vào ô (hoặc bấm để chọn). Nhận file **.xlsx** hoặc **.csv (UTF-8)**, tối đa **5MB và 1000 dòng**.
 4. Bấm **Nhập dữ liệu**.
 
 Quy tắc khi nhập:
@@ -123,13 +117,13 @@ Quy tắc khi nhập:
 
 > Khác với form thêm tay: **nhập Excel bắt buộc có SĐT**.
 
-### Xuất Excel
+### 7. Xuất Excel
 
-Bấm **Xuất Excel** (cần quyền xuất). Chọn bộ lọc cho file xuất ra (để trống = xuất toàn bộ khách bạn được phép xem) rồi bấm **Xuất Excel** trong hộp thoại.
+Bấm **Xuất Excel**, chọn bộ lọc cho file xuất ra (để trống = xuất toàn bộ khách bạn xem được) rồi bấm **Xuất Excel** trong hộp thoại.
 
-### Xoá khách
+### 8. Xoá khách
 
-Chỉ người có quyền **Xoá khách hàng** (mặc định là Admin) mới thấy cột **Thao tác** với nút Xoá. Bấm Xoá và xác nhận. Khách bị xoá được đưa vào **Thùng rác** (xoá mềm), chưa mất hẳn.
+Người có quyền **Xoá khách hàng** (mặc định là Admin) có cột **Thao tác** với nút Xoá. Bấm Xoá và xác nhận. Khách bị xoá được đưa vào **Thùng rác** (xoá mềm), chưa mất hẳn.
 
 ```az-demo
 row-actions
@@ -153,15 +147,15 @@ customer-table
 | **UTM** | Tag UTM của khách. |
 | **Sales (Chính + Phụ)** | Sales chính và Sales được chia (xem mục dưới). |
 | **Marketing** | Người Marketing phụ trách. Chưa có thì hiện "Chưa gán". |
-| **Trạng thái** | Trạng thái của khách (đổi nhanh được nếu có quyền sửa). |
+| **Trạng thái** | Trạng thái của khách (bấm đổi nhanh được). |
 | **Đã joined nhóm** | Các nhóm khách đã tham gia; nhóm thứ hai trở đi gộp thành `+N` (rê chuột xem tên). Chưa tham gia: "Chưa join". |
 | **Nạp tiền** | Tổng tiền nạp (USD) trong khoảng ngày ghi dưới tiêu đề cột. |
 | **Ghi chú gần nhất** | Rê chuột để xem các ghi chú mới nhất. Ô **Ghi chú gần nhất** trên thanh công cụ chọn hiện 3 hoặc 5 ghi chú. |
-| **Thao tác** | Nút **Xoá**; chỉ hiện nếu bạn có quyền Xoá. |
+| **Thao tác** | Nút **Xoá** (dành cho người có quyền Xoá khách hàng). |
 
 Có thể bấm tiêu đề để sắp xếp theo: **Ngày nhập**, **Họ và tên**, **SĐT**, **Trạng thái**, **Nạp tiền**.
 
-> Bảng **không có** nút Xem/Sửa/Chia sẻ trên từng dòng. Muốn xem hoặc sửa, bấm vào dòng; muốn chia data, tick dòng rồi **Gán cho Sales**.
+> Bảng không có nút Xem/Sửa/Chia sẻ trên từng dòng. Muốn xem hoặc sửa, bấm vào dòng; muốn chia data, tick dòng rồi **Gán cho Sales**.
 
 ### Sales chính, Sales phụ, Marketing
 
@@ -188,25 +182,15 @@ status-tags
 source-tags
 ```
 
-### Thẻ thống kê
+## Thẻ thống kê
 
 - **Tổng khách hàng**, **Khách mới hôm nay**, **Chốt thành công**: bấm vào thẻ để xem danh sách tương ứng.
-- **Tổng nạp (30 ngày, USD)**: bấm để xem chi tiết. Khi bạn lọc theo ngày, tên thẻ đổi thành **Tổng nạp (theo ngày lọc, USD)**. Thẻ này **bị ẩn** nếu vị trí hoặc phòng ban của bạn bị ẩn thông tin Nạp tiền.
+- **Tổng nạp (30 ngày, USD)**: bấm để xem chi tiết. Khi bạn lọc theo ngày, tên thẻ đổi thành **Tổng nạp (theo ngày lọc, USD)**.
+- Số liệu luôn tính theo phạm vi khách của bạn và bộ lọc đang chọn, nên mỗi người có thể thấy con số khác nhau.
 
 ## Trên điện thoại
 
-Bộ lọc thu trong mục **Bộ lọc & Tìm kiếm** và danh sách hiện dạng **thẻ** thay vì bảng. Chia data bằng **Gán cho Sales** không dùng được trên điện thoại.
-
-## Vì sao tôi không thấy...?
-
-- **Không thấy một khách:** khách nằm ngoài phạm vi xem của bạn (không phải bạn tạo, không phải Sales/Marketing của khách, chưa được chia, không thuộc phòng ban bạn quản lý).
-- **Không thấy cột Sales, Marketing, hoặc tab Nạp tiền/Chia data/Nhóm:** Admin đã ẩn theo vị trí hoặc phòng ban của bạn.
-- **Không có nút Thêm khách hàng, Nhập Excel, Xuất Excel hoặc Gán cho Sales:** bạn chưa có quyền tương ứng.
-- **Trạng thái chỉ là chữ, không bấm đổi được:** bạn chưa có quyền sửa khách hàng.
-- **Không có cột Thao tác:** bạn chưa có quyền Xoá khách hàng.
-- **Số trên thẻ thống kê khác đồng nghiệp:** số liệu luôn theo phạm vi quyền và bộ lọc của chính bạn.
-
-Cần thêm quyền, hãy nhờ Admin chỉnh ở trang **Phân quyền**.
+Bộ lọc thu trong mục **Bộ lọc & Tìm kiếm** và danh sách hiện dạng **thẻ** thay vì bảng. Chia data bằng **Gán cho Sales** dùng trên máy tính.
 
 ## Xem thêm
 

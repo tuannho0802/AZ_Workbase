@@ -11,9 +11,7 @@ permissions: []
 
 ## Bài này dành cho ai
 
-Dành cho **Admin**. Admin thấy gần như **toàn bộ menu** và có đủ quyền, kể cả những việc người khác không làm được: **Xoá khách hàng**, **Phân quyền**, **soạn và xuất bản hướng dẫn**.
-
-> Menu thật của bạn có thể khác bảng dưới nếu có người đã chỉnh quyền ở trang **Phân quyền**. Bảng dưới là cấu hình đầy đủ.
+Dành cho **Admin**. Admin có **toàn bộ menu** và đủ quyền: **Xoá khách hàng**, **Phân quyền**, **soạn và xuất bản hướng dẫn**.
 
 ## Menu của Admin và công dụng từng trang
 

@@ -5765,3 +5765,26 @@ Now [deploy]
 > jsdom không đo layout nên chưa kiểm được cuộn ngang bằng mắt: cần bạn mở trang thật xác nhận. Chưa chạy `next build`.
 
 ---
+
+## [2026-10-02 16:55] | Guides: khoá bài Sale/Content/Media theo Position, viết lại bài Bắt đầu/Đọc/Soạn/Khách hàng | [Status: Success]
+
+**Actor:** Agent
+
+**Files Changed:**
+- `guides-content/bat-dau-sale.md`, `bat-dau-content.md`, `bat-dau-media.md` — đặt `positions: [sale]` / `[content]` / `[media]` (trước đó `positions: []` = hiện cho mọi người); bỏ các câu "không thấy/không có quyền/hãy hỏi Admin", chỉ liệt kê các trang xem được.
+- `guides-content/bat-dau-admin.md`, `bat-dau-assistant.md` — bỏ câu "menu có thể khác", "không xoá được"; Assistant chỉ mô tả phần dùng được.
+- `guides-content/bat-dau.md` — viết lại thành bài giới thiệu sơ bộ, không còn nhắc Khách hàng.
+- `guides-content/huong-dan-su-dung.md` (Hướng dẫn đọc bài, public) và `huong-dan-soan-bai.md` (Admin + Assistant, thêm lưu ý "bài riêng cho nhóm nào thì phải chọn đúng nhóm, để trống = hiện cho tất cả").
+- `guides-content/khach-hang.md` — sắp xếp lại theo thứ tự: màn hình → phạm vi khách → 8 việc thường làm → cột → thẻ thống kê.
+- `frontend/src/lib/guides/guide-slugs.ts`, `guides-content.render.test.tsx` — thêm `STANDALONE_GUIDE_SLUGS` (`huong-dan-soan-bai`) cho test link nội bộ.
+
+**Root Cause:**
+> Bài Sale/Content/Media để trống roles + positions nên `GuideAccessHelper.canView` coi là "mọi người". Ngoài ra 2 test link nội bộ ở FE đã đỏ sẵn từ commit trước vì `huong-dan-soan-bai` chưa nằm trong danh sách slug hợp lệ.
+
+**Solution:**
+> Khai báo Position trong frontmatter (người có `guides.manage` vẫn xem được mọi bài đã xuất bản); thêm slug độc lập cho bài không gắn menu.
+
+**Notes:**
+> Seed chỉ có sẵn position `content`, `media`; code `sale` là giả định — nếu DB dùng code khác, `guides:sync` sẽ báo "vị trí (code) ... không tồn tại" và cần sửa 1 dòng frontmatter. Chưa chạy `guides:sync` (cần DB của bạn). BE jest guides 137/137, FE vitest guides 155/155.
+
+---

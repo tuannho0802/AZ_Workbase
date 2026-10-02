@@ -4,20 +4,20 @@ slug: bat-dau-media
 sortOrder: 5
 published: true
 roles: []
-positions: []
+positions: [media]
 departments: []
 permissions: []
 ---
 
 ## Bài này dành cho ai
 
-Dành cho **Media**. Menu của bạn giống nhóm Sale và Content nhưng **không có** các mục **Khách hàng**, **Nhóm tôi quản lý** và **Quản lý UTM**. Quyền cụ thể do Admin cấu hình; thiếu trang nào cần dùng, hãy hỏi Admin.
+Dành cho **Media**. Bài này giới thiệu các trang có trong menu của bạn và công dụng của từng trang.
 
 ## Menu của bạn và công dụng từng trang
 
 | Trang | Dùng để làm gì |
 |---|---|
-| **Trang chủ** | Lối tắt tới các trang bạn được dùng. |
+| **Trang chủ** | Lối tắt tới các trang bạn dùng. |
 | **Công việc định kỳ** | Việc lặp lại theo Ngày/Tuần/Tháng/Năm được giao cho bạn. Xem dạng Bảng, Kanban hoặc Lịch tháng, cập nhật trạng thái. |
 | **Hiệu suất công việc** | Số liệu công việc của chính bạn: % hoàn thành, xong muộn, quá hạn chưa xong. |
 | **Nghỉ phép** | Bấm **Tạo đơn** để xin nghỉ, theo dõi đơn đã gửi (trạng thái, người duyệt) và huỷ đơn khi cần. |
@@ -33,10 +33,10 @@ Dành cho **Media**. Menu của bạn giống nhóm Sale và Content nhưng **kh
 4. Cần xin nghỉ: **Nghỉ phép** → **Tạo đơn**.
 5. Xem **Thông báo** mỗi ngày để không sót việc.
 
-## Hay gặp
+## Mẹo nhỏ
 
-- **Không thấy menu Khách hàng:** đúng thiết kế, vị trí của bạn không dùng trang này.
-- **Vừa được đổi quyền mà menu chưa đổi:** tải lại trang (F5) hoặc đăng nhập lại.
+- Vừa được đổi quyền mà menu chưa cập nhật: tải lại trang (**F5**) hoặc đăng nhập lại.
+- Nhấn **Ctrl + K** để mở nhanh bất kỳ trang nào trong menu.
 
 ## Xem thêm
 

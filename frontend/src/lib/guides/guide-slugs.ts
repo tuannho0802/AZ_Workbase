@@ -49,6 +49,12 @@ export const GUIDE_SLUG_BY_NAV_KEY: Readonly<Record<string, string>> = {
 export const REQUIRED_GUIDE_SLUGS: readonly string[] = [...Object.values(GUIDE_SLUG_BY_NAV_KEY), GETTING_STARTED_GUIDE_SLUG];
 
 /**
+ * Bài KHÔNG gắn với trang nào trong menu nhưng có thật và được bài khác liên kết tới (vd bài hướng dẫn soạn bài).
+ * Tách khỏi `REQUIRED_GUIDE_SLUGS` vì test `nav-guide-coverage` đòi đúng "số trang + 1" - chỉ dùng cho kiểm tra liên kết nội bộ.
+ */
+export const STANDALONE_GUIDE_SLUGS: readonly string[] = ['huong-dan-soan-bai'];
+
+/**
  * DANH SÁCH "CHƯA VIẾT" - cơ chế bánh cóc (ratchet) cho test `nav-guide-coverage`:
  *  - slug bắt buộc mà CHƯA có file `guides-content/<slug>.md` thì phải nằm ở đây (để test không đỏ oan trong lúc đang viết dần P1-P4);
  *  - khi viết xong 1 bài, PHẢI xoá slug đó khỏi đây (test đỏ nếu bài đã có file mà vẫn còn trong danh sách) -> danh sách chỉ co lại;

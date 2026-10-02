@@ -4,20 +4,20 @@ slug: bat-dau-sale
 sortOrder: 3
 published: true
 roles: []
-positions: []
+positions: [sale]
 departments: []
 permissions: []
 ---
 
 ## Bài này dành cho ai
 
-Dành cho **Sale**. Menu của bạn gọn hơn Admin: chỉ có những trang phục vụ công việc hằng ngày. Quyền cụ thể do Admin cấu hình; thiếu trang hay nút nào cần dùng, hãy hỏi Admin.
+Dành cho **Sale**. Bài này giới thiệu các trang có trong menu của bạn và công dụng của từng trang.
 
 ## Menu của bạn và công dụng từng trang
 
 | Trang | Dùng để làm gì |
 |---|---|
-| **Trang chủ** | Lối tắt tới các trang bạn được dùng. |
+| **Trang chủ** | Lối tắt tới các trang bạn dùng. |
 | **Khách hàng** | Nơi làm việc chính của Sale: xem khách của bạn, thêm khách mới, ghi chú, đổi trạng thái, xem nạp tiền. Xem bài [Khách hàng](/huong-dan/khach-hang). |
 | **Công việc định kỳ** | Việc lặp lại theo Ngày/Tuần/Tháng/Năm được giao cho bạn. Xem dạng Bảng, Kanban hoặc Lịch tháng, cập nhật trạng thái. |
 | **Hiệu suất công việc** | Số liệu công việc của chính bạn: % hoàn thành, xong muộn, quá hạn chưa xong. |
@@ -28,9 +28,9 @@ Dành cho **Sale**. Menu của bạn gọn hơn Admin: chỉ có những trang p
 | **Quản lý UTM** | Các UTM bạn quản lý chính/phụ và số khách theo từng UTM; có tab **Thống kê**. |
 | **Hướng dẫn sử dụng** | Đọc các bài hướng dẫn. Xem [Hướng dẫn đọc bài](/huong-dan/huong-dan-su-dung). |
 
-## Bảng Khách hàng của Sale trông thế nào
+## Bảng Khách hàng của Sale
 
-Bạn chỉ thấy **khách của mình**: khách bạn tạo, khách bạn là **Sales chính**, khách đang được **chia** cho bạn, hoặc khách bạn là Marketing phụ trách. Bấm các nút ở **Xem với tư cách** để so sánh với người khác:
+Bạn làm việc với **khách của mình**: khách bạn tạo, khách bạn là **Sales chính**, khách được **chia** cho bạn, hoặc khách bạn là Marketing phụ trách. Bấm các nút ở **Xem với tư cách** để xem bảng dưới góc nhìn của từng nhóm:
 
 ```az-demo
 customer-table-by-viewer persona=sales-primary
@@ -44,11 +44,10 @@ customer-table-by-viewer persona=sales-primary
 4. Vào **Công việc định kỳ** xem hôm nay bạn có việc gì.
 5. Cần xin nghỉ: **Nghỉ phép** → **Tạo đơn**.
 
-## Hay gặp
+## Mẹo nhỏ
 
-- **Không thấy khách đồng nghiệp:** đúng thiết kế, bạn chỉ thấy khách trong phạm vi của mình.
-- **Không thấy nút Nhập Excel / Xuất Excel / Gán cho Sales:** bạn chưa được cấp quyền đó.
-- **Vừa được đổi quyền mà menu chưa đổi:** tải lại trang (F5) hoặc đăng nhập lại.
+- Vừa được đổi quyền mà menu chưa cập nhật: tải lại trang (**F5**) hoặc đăng nhập lại.
+- Nhấn **Ctrl + K** để mở nhanh bất kỳ trang nào trong menu.
 
 ## Xem thêm
 

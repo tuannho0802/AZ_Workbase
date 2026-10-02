@@ -13,7 +13,7 @@ permissions: []
 
 Dành cho **Admin** và **Assistant**: cách **tạo, sửa, xoá và xuất bản** bài hướng dẫn. Người chỉ cần đọc bài hãy xem [Hướng dẫn đọc bài](/huong-dan/huong-dan-su-dung).
 
-Để soạn bài bạn cần quyền **Quản lý Hướng dẫn sử dụng**. Mặc định **chỉ Admin có quyền này**. Assistant muốn soạn bài cần nhờ Admin cấp ở trang **Phân quyền**. Có quyền rồi, bạn sẽ thấy thêm:
+Việc soạn bài dùng quyền **Quản lý Hướng dẫn sử dụng** (cấp ở trang **Phân quyền**). Người có quyền này sẽ có thêm:
 
 - Nút **Tạo** ở đầu Mục lục.
 - Nút **Sửa** và **Xoá** ở đầu mỗi bài.
@@ -39,7 +39,8 @@ Dành cho **Admin** và **Assistant**: cách **tạo, sửa, xoá và xuất b�
 
 ### Chọn "ai được xem" cho đúng
 
-- Để trống một ô = không giới hạn theo mục đó. Để trống cả bốn ô = **mọi người** đăng nhập đều xem được. Dùng cho bài chung như *Hướng dẫn đọc bài*.
+- Để trống một ô = không giới hạn theo mục đó. Để trống cả bốn ô = **mọi người** đăng nhập đều xem được. Chỉ dùng cho bài chung như *Hướng dẫn đọc bài*.
+- **Bài dành riêng cho một nhóm thì phải chọn đúng nhóm đó.** Ví dụ bài dành cho Sale: chọn **Vị trí được xem = Sale**; bài dành cho Admin: chọn **Role được xem = Admin**. Nếu để trống, bài sẽ hiện cho **tất cả mọi người**.
 - **Giữa các ô là "VÀ":** người xem phải thoả tất cả ô đã chọn. Ví dụ Role = Employee **và** Vị trí = Content.
 - **Trong cùng một ô** chỉ cần thuộc **một** mục đã chọn. Ví dụ Role = Admin, Assistant: người nào thuộc một trong hai đều xem được.
 - Bài về một trang cụ thể nên chọn **Cần quyền để xem** bằng đúng quyền để vào trang đó (ví dụ bài Khách hàng cần *Xem khách hàng*), để người không có quyền không thấy bài thừa.
@@ -90,7 +91,7 @@ status-tags
 3. **Bắt đầu nhanh** (3 đến 5 bước đánh số).
 4. **Giải thích từng cột / nút / bộ lọc**, chỉ những thứ thật sự có trên trang.
 5. **Quy tắc & lưu ý nghiệp vụ.**
-6. **Vì sao tôi không thấy...?**
+6. **Mẹo & lưu ý** (nếu có).
 7. **Xem thêm** (liên kết sang bài liên quan).
 
 ## Kiểm tra trước khi bật Xuất bản
@@ -101,9 +102,9 @@ status-tags
 - Đã chọn đúng đối tượng xem và quyền cần có.
 - Đăng nhập thử bằng một tài khoản thuộc đối tượng đó để chắc chắn bài hiện ra.
 
-## Vì sao tôi không thấy...?
+## Khi cần xử lý
 
-- **Không thấy nút Tạo/Sửa/Xoá:** bạn chưa có quyền *Quản lý Hướng dẫn sử dụng*. Nhờ Admin cấp.
+- **Cần các nút Tạo/Sửa/Xoá:** nhờ Admin cấp quyền *Quản lý Hướng dẫn sử dụng* ở trang **Phân quyền**.
 - **Người khác báo không thấy bài:** kiểm tra bài đã **Xuất bản** chưa và các ô role/vị trí/phòng ban/quyền có đang giới hạn quá hẹp không.
 - **Mẫu minh hoạ hiện khung cảnh báo:** tên mẫu hoặc tham số sai; chọn lại ở ô **Chèn mẫu minh hoạ**.
 

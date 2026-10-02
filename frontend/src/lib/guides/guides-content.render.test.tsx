@@ -5,7 +5,7 @@
 import { describe, expect, it } from 'vitest';
 import { render } from '@testing-library/react';
 import { GuideMarkdown } from './GuideMarkdown';
-import { GUIDES_BASE_PATH, REQUIRED_GUIDE_SLUGS } from './guide-slugs';
+import { GUIDES_BASE_PATH, REQUIRED_GUIDE_SLUGS, STANDALONE_GUIDE_SLUGS } from './guide-slugs';
 import { readGuideContentFiles } from './testing/repo-files';
 
 const files = readGuideContentFiles();
@@ -41,7 +41,7 @@ describe('guides-content: render thật từng bài', () => {
       const href = a.getAttribute('href') ?? '';
       if (!href.startsWith(`${GUIDES_BASE_PATH}/`)) continue;
       const slug = href.slice(GUIDES_BASE_PATH.length + 1);
-      if (!REQUIRED_GUIDE_SLUGS.includes(slug)) bad.push(href);
+      if (!REQUIRED_GUIDE_SLUGS.includes(slug) && !STANDALONE_GUIDE_SLUGS.includes(slug)) bad.push(href);
     }
     expect(bad).toEqual([]);
   });
