@@ -1,6 +1,7 @@
 import { DataSource } from 'typeorm';
 import * as dotenv from 'dotenv';
-dotenv.config({ path: '.env.development' });
+// quiet: true -> tắt dòng "injected env ... tip" của dotenv v17 (không ảnh hưởng việc nạp biến).
+dotenv.config({ path: '.env.development', quiet: true });
 
 // ⚠️ dotenv.config() KHÔNG ghi đè biến môi trường đã có sẵn trong process.
 // Nghĩa là nếu bạn set DB_HOST/DB_PORT/.../DB_CA_CERT thủ công trước khi
@@ -24,6 +25,11 @@ export const AppDataSource = new DataSource({
   entities: [__dirname + '/../**/*.entity{.ts,.js}'],
   migrations: [__dirname + '/migrations/*{.ts,.js}'],
   synchronize: false,
-  logging: true,
+  // Mặc định chỉ log lỗi/cảnh báo/migration -> output CLI gọn dù số migration tăng.
+  // Cần xem từng câu SQL khi debug: đặt DB_LOG_QUERIES=true trước khi chạy lệnh.
+  logging:
+    process.env.DB_LOG_QUERIES === 'true'
+      ? true
+      : ['error', 'warn', 'migration'],
   ...(sslConfig ? { ssl: sslConfig, extra: { ssl: sslConfig } } : {}),
 });

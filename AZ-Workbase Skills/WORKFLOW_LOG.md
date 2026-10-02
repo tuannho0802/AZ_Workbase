@@ -5651,3 +5651,15 @@ Now [deploy]
 > Không FK sang `permissions.key` (validate ở BE khi ghi; key ma -> ẩn với người không có guides.manage). BE jest 1523/1523, tsc + nest build sạch; FE vitest 446/446, tsc chỉ còn lỗi logo.png không liên quan. Migration CHƯA chạy thử trên MySQL thật (sandbox không có MySQL).
 
 ---
+
+## [2026-10-02 15:00] | Gọn output CLI migration (dotenv quiet + logging) | [Status: Success]
+
+**Actor:** Agent
+
+**Files Changed:**
+- `backend/src/database/data-source.ts` — `dotenv.config({ quiet: true })` (tắt dòng "injected env ... tip" của dotenv v17); `logging` mặc định `['error','warn','migration']`, bật full SQL bằng `DB_LOG_QUERIES=true`.
+
+**Notes:**
+> User đã tự chạy `1785700000000-AddGuideRequiredPermission` thành công (D2 hoàn tất cả code lẫn DB). Lưu ý: 2 migration trùng timestamp `1777300000000` (AddMarketingUserToCustomers, AddPhoneToUsers) — đã chạy, KHÔNG sửa; chỉ cần tránh trùng ở migration mới. Chưa chạy `tsc` đầy đủ (sandbox không cài node_modules).
+
+---
