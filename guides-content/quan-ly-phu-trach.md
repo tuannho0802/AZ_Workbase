@@ -2,7 +2,7 @@
 title: Quản lý phụ trách
 slug: quan-ly-phu-trach
 sortOrder: 30
-published: false
+published: true
 roles: []
 positions: []
 departments: []

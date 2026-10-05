@@ -2,7 +2,7 @@
 title: Chia Data
 slug: chia-data
 sortOrder: 20
-published: false
+published: true
 roles: []
 positions: []
 departments: []

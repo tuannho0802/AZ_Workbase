@@ -5882,3 +5882,20 @@ Now [deploy]
 > Bài mô tả hành vi THẬT của BE (scope chia khác scope xem; Sales chính = người đầu tiên chọn; thu hồi Sales chính -> người gán sớm nhất lên thay). Verify: `vitest src/lib/guides` 12 file / 301 test pass; `tsc --noEmit` chỉ còn 4 lỗi `logo.png` có sẵn trong sandbox. Cần `guides:sync --apply` để đẩy bài lên DB (sau khi duyệt đổi `published: true`).
 
 ---
+
+## [2026-10-05 17:00] | Guides P1: bài `status-khach` + bộ mẫu `status.demos` | [Status: Success]
+
+**Actor:** Agent
+
+**Files Changed:**
+- `guides-content/status-khach.md` — bài mới (`published: false`, chờ duyệt nội dung); gỡ slug khỏi `PENDING_GUIDE_SLUGS`.
+- `frontend/src/lib/guides/demos/status.demos.tsx` — 3 mẫu `status-manage-table`, `status-form`, `status-delete-fallback`; đăng ký ở `guide-demos.tsx`, cập nhật `guide-demos.test.tsx` (29 mẫu).
+- `AZ-Workbase Skills/PLAN_GUIDES_CONTENT.md` — tick P1 `status-khach`.
+
+**Root Cause (phát hiện khi đối chiếu code thật, KHÔNG sửa trong phase này):**
+> 1) `CustomerStatusesService.findAll()` (cột "Đang dùng") và `remove()` đếm bằng `customerRepo.count`/QueryBuilder nên TypeORM tự loại khách đã soft-delete (Thùng rác); còn `manager.update(Customer, ...)` thì không lọc. Hệ quả: trạng thái chỉ còn khách trong Thùng rác dùng -> hiện "-", xoá không bắt chọn fallback, khách trong Thùng rác giữ mã mồ côi (khôi phục ra Tag "(không xác định)"). 2) `quan-ly-status-khach/page.tsx`: `useEffect` redirect khi thiếu `customer_statuses.view` có deps `[user, router]`, thiếu `permissionsLoading`/`can` -> nếu quyền tải xong sau lần chạy đầu thì không redirect. 3) Comment `customer-status.entity.ts` ghi "5 trạng thái seed" nhưng migration seed 9 (UI ghi đúng 9). 4) Plan §6 ghi trạng thái hiện ở "Thùng rác" nhưng `trash-can/page.tsx` không hiển thị trạng thái.
+
+**Notes:**
+> Bài mô tả hành vi THẬT: `GET /customer-statuses` mở cho mọi user đăng nhập (quyền `.view` chỉ gate trang quản lý); import Excel khớp theo MÃ (không theo tên), giá trị lạ/trống -> `pending` không báo lỗi; xoá trạng thái có khách dùng bắt buộc fallback, chuyển + xoá trong 1 transaction. Verify: `vitest src/lib/guides` 12 file / 308 test pass; `tsc --noEmit` chỉ còn 4 lỗi `logo.png` có sẵn trong sandbox; eslint file mới sạch. Chưa test tay trên trình duyệt. Cần `guides:sync --apply` sau khi duyệt đổi `published: true`.
+
+---

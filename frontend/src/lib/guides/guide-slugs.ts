@@ -77,7 +77,6 @@ export const PENDING_GUIDE_SLUGS: readonly string[] = [
   'phong-ban',
   'vi-tri',
   'loai-phep',
-  'status-khach',
   'trang-thai-cong-viec',
   'thung-rac',
   'nguon-media',
