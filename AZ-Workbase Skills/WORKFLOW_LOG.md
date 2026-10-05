@@ -5865,3 +5865,20 @@ Now [deploy]
 > "Media" = Vị trí (`positions.code = 'media'`, seed `1780800000000`). Verify: `tsc --noEmit` BE sạch, `jest` BE 90 suite / 1620+ test pass; FE `vitest` guides pass, `tsc` chỉ còn lỗi `logo.png` có sẵn trong sandbox. Cần chạy `migration:run` rồi (nếu muốn) thêm `excludePositions: [media]` vào `guides-content/khach-hang.md` + `guides:sync --apply`.
 
 ---
+
+## [2026-10-05 16:00] | Guides P1: bài `chia-data` + `quan-ly-phu-trach` + bộ mẫu `assignment.demos` | [Status: Success]
+
+**Actor:** Agent
+
+**Files Changed:**
+- `guides-content/chia-data.md`, `guides-content/quan-ly-phu-trach.md` — 2 bài mới (`published: false`, chờ duyệt nội dung); gỡ 2 slug khỏi `PENDING_GUIDE_SLUGS`.
+- `frontend/src/lib/guides/demo-kit/compute-assign.ts` (+ `.test.ts`) — hàm thuần: ai chia được khách nào theo scope `customers.assign` (all/department/own), tab "Có thể chia", kết quả Sales chính/phụ, thu hồi.
+- `frontend/src/lib/guides/demos/assignment.demos.tsx` — 4 mẫu `assign-rules-by-scope` (tham số `scope=all|department|own`), `assign-flow`, `assignment-group-picker`, `assignment-group-form`; đăng ký ở `guide-demos.tsx`, cập nhật `guide-demos.test.tsx` (26 mẫu).
+
+**Root Cause (phát hiện khi đối chiếu code thật, KHÔNG sửa trong phase này):**
+> 1) `CustomerAssignmentsTab.tsx` `canModify` hardcode `role === admin/assistant/manager` trong khi BE `canModifyAssignment` theo SCOPE (all / department-đúng phòng ban quản lý / own-người gán) -> Manager scope department thấy nút Sửa/Thu hồi cả lượt ngoài phòng ban (bấm ra 403); role tuỳ chỉnh có scope all lại bị ẩn nút. 2) `chia-data/page.tsx`: state + options `candidateDept/Position/Role` (3 dropdown "rules") được khai báo nhưng KHÔNG render trong Modal -> code chết. 3) `chia-data` luôn gửi `reason` cứng 'Redesigned Chia Data Page Assignment' (không có ô nhập lý do). 4) Plan §6 ghi picker "cố ý không lọc phòng ban" đã lỗi thời: nay lọc theo Assignment Group key=`sales`.
+
+**Notes:**
+> Bài mô tả hành vi THẬT của BE (scope chia khác scope xem; Sales chính = người đầu tiên chọn; thu hồi Sales chính -> người gán sớm nhất lên thay). Verify: `vitest src/lib/guides` 12 file / 301 test pass; `tsc --noEmit` chỉ còn 4 lỗi `logo.png` có sẵn trong sandbox. Cần `guides:sync --apply` để đẩy bài lên DB (sau khi duyệt đổi `published: true`).
+
+---
