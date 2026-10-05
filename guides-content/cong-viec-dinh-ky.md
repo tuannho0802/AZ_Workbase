@@ -2,7 +2,7 @@
 title: Công việc định kỳ
 slug: cong-viec-dinh-ky
 sortOrder: 11
-published: false
+published: true
 roles: []
 positions: []
 departments: []
@@ -86,10 +86,18 @@ task-by-viewer persona=manager
 
 1. Bấm **Tạo Công việc mới**.
 2. Nhập **Tiêu đề**, chọn **Loại kỳ** và **Khoảng thời gian của kỳ**, chọn **Người phụ trách chính** (bắt buộc).
-3. Điền thêm nếu cần: **Mô tả**, **Phòng ban** (để trống thì tự theo người phụ trách), **Trạng thái**, **Màu Task**, **Ghi chú**, **Phụ trách phụ**, **Khách hàng liên quan** (cần quyền gắn Khách hàng).
-4. Bấm lưu.
+3. Điền thêm nếu cần: **Mô tả**, **Phòng ban** (để trống thì tự theo người phụ trách), **Trạng thái**, **Màu Task**, **Ghi chú**, **Khách hàng liên quan** (cần quyền gắn Khách hàng), **Phụ trách phụ**: chọn người rồi bấm **Gán**.
+4. Bấm **OK** để lưu.
 
-Muốn làm tiếp kỳ sau, bạn tạo một công việc mới cho kỳ đó.
+Mẫu dưới đây là bản tĩnh của modal tạo việc, dữ liệu giả, bấm thử không lưu gì:
+
+```az-demo
+task-create-modal
+```
+
+Ô có dấu sao đỏ là bắt buộc. Muốn làm tiếp kỳ sau, bạn tạo một công việc mới cho kỳ đó.
+
+**Checklist và liên kết việc cha - con không nằm trong modal tạo.** Hai phần này làm **sau khi việc đã được tạo**, bằng nút **Checklist** và **Liên kết** trên dòng việc (xem mục 3 và 4 bên dưới).
 
 ### 2. Phụ trách chính và Phụ trách phụ
 
@@ -109,7 +117,17 @@ task-checklist
 
 ### 4. Liên kết việc cha - con
 
-Nút **Liên kết** cho phép nối một việc với **việc cha** (kỳ hạn lớn hơn, ví dụ việc Tuần thuộc việc Tháng) và **việc con**, đồng thời xem **% hoàn thành** gộp từ các việc con. Hệ thống kiểm tra lại thứ bậc kỳ hạn và chặn liên kết vòng tròn. Gắn/gỡ liên kết cần quyền Sửa.
+Nút **Liên kết** (trên dòng việc) mở modal **Liên kết & Tiến độ**. Ở đó bạn nối việc với **việc cha** (kỳ hạn lớn hơn, ví dụ việc Tuần thuộc việc Tháng) và **việc con**, đồng thời xem **% hoàn thành** gộp từ các việc con trực tiếp.
+
+1. Bấm **Liên kết** trên dòng việc.
+2. Ở phần **Công việc cha** hoặc **Công việc con**, chọn việc trong ô tìm, rồi bấm **Gán**. Dùng nút lọc kỳ cạnh ô chọn để thu hẹp danh sách theo khoảng ngày.
+3. Muốn gỡ, bấm biểu tượng thùng rác cạnh việc rồi xác nhận **Gỡ liên kết**.
+
+```az-demo
+task-links
+```
+
+Hệ thống kiểm tra lại thứ bậc kỳ hạn và chặn liên kết vòng tròn. Gắn/gỡ liên kết cần quyền Sửa.
 
 ### 5. Gắn Khách hàng vào việc
 

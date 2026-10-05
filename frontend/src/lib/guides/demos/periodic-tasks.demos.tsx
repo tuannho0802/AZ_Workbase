@@ -1,9 +1,9 @@
 'use client';
 
-import { useState } from 'react';
-import { Alert, Avatar, Badge, Calendar, Checkbox, Collapse, Progress, Segmented, Space, Table, Tag, Tooltip, Typography, Button } from 'antd';
+import { useState, type ReactNode } from 'react';
+import { Alert, Avatar, Badge, Calendar, Checkbox, Col, Collapse, ColorPicker, DatePicker, Divider, Form, Input, Progress, Row, Segmented, Select, Space, Table, Tag, Tooltip, Typography, Button } from 'antd';
 import type { ColumnsType } from 'antd/es/table';
-import { CheckCircleFilled, CloseCircleFilled, LockOutlined, MinusCircleFilled, PlusOutlined, UserOutlined } from '@ant-design/icons';
+import { CheckCircleFilled, CloseCircleFilled, DeleteOutlined, LockOutlined, MinusCircleFilled, PlusOutlined, UserOutlined } from '@ant-design/icons';
 import dayjs from 'dayjs';
 import { PeriodTypeTag } from '@/components/periodic-tasks/PeriodTypeTag';
 import { TaskActionsBar, OverdueMarkButtonView } from '@/components/periodic-tasks/TaskActionsBar';
@@ -17,7 +17,7 @@ import { getChecklistTone } from '@/lib/utils/checklistProgress';
 import { canMarkOverdue, canUnmarkOverdue } from '@/lib/utils/periodicTaskOverdue';
 import { resolveEntityColor } from '@/lib/utils/entityColor';
 import { DemoFrame } from '../demo-kit/DemoFrame';
-import { DEMO_TASKS, DEMO_TASK_STATUSES, DEMO_TODAY, demoUserName } from '../demo-kit/sample-tasks';
+import { DEMO_TASKS, DEMO_TASK_DEPARTMENTS, DEMO_TASK_STATUSES, DEMO_TODAY, demoUserName } from '../demo-kit/sample-tasks';
 import { TASK_PERSONAS, findTaskPersona } from '../demo-kit/task-personas';
 import { TASK_ACTION, canDeleteTask, computeTaskPageView, computeTaskRowActions } from '../demo-kit/compute-task-view';
 import type { GuideDemo } from '../guide-demo.types';
@@ -347,6 +347,153 @@ function AuditRowDemo() {
     );
 }
 
+/** Một dòng trong danh sách "Khách hàng liên quan" / "Phụ trách phụ" của modal (bản tĩnh: nút xoá chỉ để xem). */
+function DemoListRow({ title, description }: { title: ReactNode; description?: ReactNode }) {
+    return (
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '6px 0', borderBottom: '1px solid #f0f0f0' }}>
+            <div>
+                <div>{title}</div>
+                {description}
+            </div>
+            <Button size="small" danger type="text" icon={<DeleteOutlined />} />
+        </div>
+    );
+}
+
+/**
+ * Bản SAO tĩnh của modal "Tạo Công việc định kỳ mới" (form thật nằm trong `cong-viec-dinh-ky/page.tsx`, gắn chặt
+ * với API/quyền nên không import trực tiếp). Chỉ dùng antd + component hiển thị thật (`PeriodTypeTag`); dữ liệu cứng, không lưu gì.
+ * Modal thật KHÔNG có ô Checklist hay Công việc cha/con: 2 phần đó làm sau khi tạo, qua nút "Checklist" / "Liên kết" trên dòng việc.
+ */
+function TaskCreateModalDemo() {
+    const statuses = DEMO_TASK_STATUSES;
+    return (
+        <div style={{ maxWidth: 640, margin: '0 auto', border: '1px solid #d9d9d9', borderRadius: 8, boxShadow: '0 6px 16px rgba(0,0,0,0.08)' }}>
+            <div style={{ padding: '12px 20px', borderBottom: '1px solid #f0f0f0', fontWeight: 600, fontSize: 16 }}>Tạo Công việc định kỳ mới</div>
+            <div style={{ padding: 20 }}>
+                <Form layout="vertical" requiredMark initialValues={{
+                    title: 'Gọi lại 5 khách tiềm năng',
+                    periodType: 'weekly',
+                    periodRange: [dayjs('2026-10-05'), dayjs('2026-10-11')],
+                    primary: 4,
+                    color: '#1890ff',
+                }}>
+                    <Form.Item name="title" label="Tiêu đề" required>
+                        <Input placeholder="Ví dụ: Gọi lại 5 khách tiềm năng" />
+                    </Form.Item>
+                    <Form.Item name="description" label="Mô tả">
+                        <Input.TextArea rows={2} placeholder="Không bắt buộc" />
+                    </Form.Item>
+                    <Row gutter={12}>
+                        <Col span={10}>
+                            <Form.Item name="periodType" label="Loại kỳ" required>
+                                <Select options={(['daily', 'weekly', 'monthly', 'yearly'] as const).map((t) => ({ value: t, label: <PeriodTypeTag type={t} style={{ marginInlineEnd: 0 }} /> }))} />
+                            </Form.Item>
+                        </Col>
+                        <Col span={14}>
+                            <Form.Item name="periodRange" label="Khoảng thời gian của kỳ" required tooltip="Biên tuần/tháng/năm KHÔNG tự suy ra - bạn tự chọn đúng khoảng của kỳ này">
+                                <DatePicker.RangePicker style={{ width: '100%' }} format="DD/MM/YYYY" />
+                            </Form.Item>
+                        </Col>
+                    </Row>
+                    <Row gutter={12}>
+                        <Col span={12}>
+                            <Form.Item name="primary" label="Người phụ trách chính" required>
+                                <Select options={[1, 2, 3, 4, 5, 6, 8].map((id) => ({ value: id, label: demoUserName(id) }))} />
+                            </Form.Item>
+                        </Col>
+                        <Col span={12}>
+                            <Form.Item name="departmentId" label="Phòng ban" tooltip="Bỏ trống sẽ tự lấy theo phòng ban của người phụ trách chính lúc tạo - sửa tự do sau đó">
+                                <Select allowClear placeholder="Tự động theo người phụ trách" options={Object.values(DEMO_TASK_DEPARTMENTS).map((d) => ({ value: d.id, label: <Tag color={d.color} style={{ marginInlineEnd: 0 }}>{d.name}</Tag> }))} />
+                            </Form.Item>
+                        </Col>
+                    </Row>
+                    <Row gutter={12}>
+                        <Col span={12}>
+                            <Form.Item name="statusId" label="Trạng thái" tooltip="Bỏ trống dùng mặc định 'Chưa hoàn thành'">
+                                <Select allowClear placeholder="Chưa hoàn thành (mặc định)" options={statuses.map((s) => ({ value: s.id, label: <Tag color={s.color} style={{ marginInlineEnd: 0 }}>{s.name}</Tag> }))} />
+                            </Form.Item>
+                        </Col>
+                        <Col span={12}>
+                            <Form.Item name="color" label="Màu Task" tooltip="Chỉ dùng hiển thị UI (Card/Kanban/Calendar...) - không ảnh hưởng nghiệp vụ">
+                                <ColorPicker showText format="hex" disabledAlpha />
+                            </Form.Item>
+                        </Col>
+                    </Row>
+                    <Form.Item name="note" label="Ghi chú">
+                        <Input.TextArea rows={2} placeholder="Không bắt buộc" />
+                    </Form.Item>
+                    <Form.Item label="Khách hàng liên quan" tooltip='Không bắt buộc - có thể gắn/gỡ sau qua nút "Liên kết"'>
+                        <DemoListRow title="Nguyễn Văn A" description={<Space size={4}><Text type="secondary" style={{ fontSize: 12 }}>090 123 ****</Text><Tag color="blue">Sales An</Tag></Space>} />
+                        <div style={{ marginTop: 12, display: 'flex', gap: 8 }}>
+                            <Select mode="multiple" style={{ flex: 1 }} placeholder="Tìm Khách hàng theo tên/SĐT để gắn (chọn nhiều được)" open={false} />
+                            <Button type="primary" icon={<PlusOutlined />} disabled>Gán</Button>
+                        </div>
+                    </Form.Item>
+                    <Form.Item label="Phụ trách phụ" tooltip="Người hỗ trợ thêm ngoài Phụ trách chính - không bắt buộc">
+                        <DemoListRow title={demoUserName(5)} />
+                        <div style={{ marginTop: 12, display: 'flex', gap: 8 }}>
+                            <Select mode="multiple" style={{ flex: 1 }} placeholder="Chọn người để thêm làm Phụ trách phụ (chọn nhiều được)" open={false} />
+                            <Button type="primary" icon={<PlusOutlined />} disabled>Gán</Button>
+                        </div>
+                    </Form.Item>
+                </Form>
+            </div>
+            <div style={{ padding: '10px 20px', borderTop: '1px solid #f0f0f0', textAlign: 'right' }}>
+                <Space>
+                    <Button>Hủy</Button>
+                    <Button type="primary">OK</Button>
+                </Space>
+            </div>
+        </div>
+    );
+}
+
+/** Bản SAO tĩnh của modal "Liên kết & Tiến độ" (`TaskLinksModal`): % gộp từ việc con, việc cha, việc con. */
+function TaskLinksDemo() {
+    const month = DEMO_TASKS[2];
+    const week = DEMO_TASKS[1];
+    const children = [
+        { t: week, tag: 'Tuần', status: DEMO_TASK_STATUSES[1] },
+        { t: { ...DEMO_TASKS[5], title: 'Báo cáo doanh số tuần trước', color: '#faad14' }, tag: 'Tuần', status: DEMO_TASK_STATUSES[3] },
+    ];
+    return (
+        <div style={{ maxWidth: 560, margin: '0 auto', border: '1px solid #d9d9d9', borderRadius: 8, boxShadow: '0 6px 16px rgba(0,0,0,0.08)' }}>
+            <div style={{ padding: '12px 20px', borderBottom: '1px solid #f0f0f0', fontWeight: 600, fontSize: 16 }}>Liên kết &amp; Tiến độ - "{month.title}"</div>
+            <div style={{ padding: 20 }}>
+                <Text strong>Tiến độ (tính theo Công việc con TRỰC TIẾP):</Text>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                    <Progress percent={50} style={{ flex: 1 }} />
+                    <Text type="secondary" style={{ whiteSpace: 'nowrap' }}>1/2 việc con xong</Text>
+                </div>
+                <Divider style={{ margin: '16px 0 12px' }} />
+                <Text strong>Công việc cha (1):</Text>
+                <DemoListRow title={<TaskTitlePill title={DEMO_TASKS[3].title} color={DEMO_TASKS[3].color} maxLength={28} />} description={<Text type="secondary" style={{ fontSize: 11 }}>Năm</Text>} />
+                <div style={{ marginTop: 8, display: 'flex', gap: 8 }}>
+                    <Select style={{ flex: 1 }} placeholder="Chọn Công việc cha để gán" open={false} />
+                    <Button type="primary" icon={<PlusOutlined />} disabled>Gán</Button>
+                </div>
+                <Divider style={{ margin: '20px 0 12px' }} />
+                <Text strong>Công việc con ({children.length}):</Text>
+                {children.map(({ t, tag, status }) => (
+                    <DemoListRow
+                        key={t.id}
+                        title={<TaskTitlePill title={t.title} color={t.color} maxLength={28} />}
+                        description={<Space size={4}><Text type="secondary" style={{ fontSize: 11 }}>{tag}</Text><Tag color={status.color}>{status.name}</Tag></Space>}
+                    />
+                ))}
+                <div style={{ marginTop: 8, display: 'flex', gap: 8 }}>
+                    <Select style={{ flex: 1 }} placeholder="Chọn Công việc con để gán" open={false} />
+                    <Button type="primary" icon={<PlusOutlined />} disabled>Gán</Button>
+                </div>
+                <Text type="secondary" style={{ display: 'block', marginTop: 16, fontSize: 12 }}>
+                    Việc cha phải có kỳ hạn lớn hơn việc con (ví dụ Tuần thuộc Tháng); liên kết vòng tròn bị chặn. (Bản rút gọn: modal thật còn phần Khách hàng liên quan và Phụ trách phụ.)
+                </Text>
+            </div>
+        </div>
+    );
+}
+
 const PERSONA_IDS = TASK_PERSONAS.map((p) => p.id);
 
 /** Mẫu của module Công việc định kỳ (trang `/cong-viec-dinh-ky`). Thứ tự = thứ tự trong ô "Chèn mẫu minh hoạ". */
@@ -431,6 +578,18 @@ export const PERIODIC_TASK_DEMOS: GuideDemo[] = [
         title: 'Checklist trong 1 Công việc',
         description: 'Danh sách mục con có thanh tiến độ đổi màu theo mức hoàn thành (bản rút gọn)',
         render: () => <ChecklistDemo />,
+    },
+    {
+        id: 'task-create-modal',
+        title: 'Modal Tạo Công việc',
+        description: 'Form tạo Công việc định kỳ: Tiêu đề, Loại kỳ + khoảng thời gian, Phụ trách chính/phụ, Trạng thái, Màu, Khách hàng (bản tĩnh, không lưu)',
+        render: () => <TaskCreateModalDemo />,
+    },
+    {
+        id: 'task-links',
+        title: 'Modal Liên kết & Tiến độ',
+        description: 'Nối Công việc cha - con và xem % hoàn thành gộp từ việc con (bản rút gọn, không lưu)',
+        render: () => <TaskLinksDemo />,
     },
     {
         id: 'task-audit-row',

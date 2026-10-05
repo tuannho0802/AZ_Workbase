@@ -5833,3 +5833,17 @@ Now [deploy]
 > Modal Xoá ở `cong-viec-dinh-ky/page.tsx` vẫn ghi "chỉ Admin mới thực hiện được" dù xoá nay theo scope và là xoá mềm (chưa sửa, chờ quyết định). Mẫu `task-checklist`/Kanban/Lịch/Ngày là bản rút gọn tĩnh. Chưa chạy `guides:sync` (cần DB của bạn).
 
 ---
+
+## [2026-10-05 12:00] | Guide Công việc định kỳ: published + demo Modal Tạo Task & Liên kết | [Status: Success]
+
+**Actor:** Agent
+
+**Files Changed:**
+- `guides-content/cong-viec-dinh-ky.md` — `published: true`; mục 1 thêm mẫu `task-create-modal` + ghi chú Checklist/Liên kết làm SAU khi tạo; mục 4 viết lại + mẫu `task-links`.
+- `frontend/src/lib/guides/demos/periodic-tasks.demos.tsx` — thêm `TaskCreateModalDemo`, `TaskLinksDemo`, đăng ký 2 mẫu `task-create-modal`, `task-links`.
+- `frontend/src/lib/guides/demos/periodic-tasks.demos.test.tsx`, `guide-demos.test.tsx` — cập nhật danh sách id mẫu (12).
+
+**Notes:**
+> Modal Tạo Task thật KHÔNG có ô Checklist/Công việc cha-con (làm qua nút "Checklist"/"Liên kết" sau khi tạo) nên mẫu và bài viết phản ánh đúng như vậy. tsc sạch, vitest `src/lib/guides` 11 file/275 test pass. Cần chạy `npm run guides:sync -- --apply` để đẩy bài lên DB.
+
+---

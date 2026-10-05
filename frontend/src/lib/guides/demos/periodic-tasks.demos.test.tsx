@@ -17,11 +17,13 @@ const TASK_DEMO_IDS = [
   'task-status-tags',
   'task-assignees',
   'task-checklist',
+  'task-create-modal',
+  'task-links',
   'task-audit-row',
 ];
 
 describe('mẫu Công việc định kỳ: đăng ký + render', () => {
-  it('đủ 10 mẫu trong GUIDE_DEMOS', () => {
+  it('đủ 12 mẫu trong GUIDE_DEMOS', () => {
     const ids = new Set(GUIDE_DEMOS.map((d) => d.id));
     for (const id of TASK_DEMO_IDS) expect(ids.has(id)).toBe(true);
   });
