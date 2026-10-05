@@ -5847,3 +5847,21 @@ Now [deploy]
 > Modal Tạo Task thật KHÔNG có ô Checklist/Công việc cha-con (làm qua nút "Checklist"/"Liên kết" sau khi tạo) nên mẫu và bài viết phản ánh đúng như vậy. tsc sạch, vitest `src/lib/guides` 11 file/275 test pass. Cần chạy `npm run guides:sync -- --apply` để đẩy bài lên DB.
 
 ---
+
+## [2026-10-05 15:00] | Guides: Loại trừ (Exclude) Role / Vị trí / Phòng ban (P6) | [Status: Success]
+
+**Actor:** Agent
+
+**Files Changed:**
+- `backend/src/database/migrations/1786000000000-AddGuideExclusions.ts` — cột `is_excluded` cho 3 bảng `guide_*` (idempotent; `down()` xoá dòng loại trừ trước khi drop cột). **User tự chạy `migration:run`.**
+- `backend/src/database/entities/guide-{role,position,department}.entity.ts` — `isExcluded` + `BooleanTransformer`.
+- `backend/src/modules/guides/helpers/guide-access.helper.ts` — `canView` thêm loại trừ (thắng include).
+- `backend/src/modules/guides/{dto/create-guide.dto.ts,guides.service.ts}` — `excluded*Ids`, validate trùng (400), update giữ phía không gửi, audit + response.
+- `backend/src/modules/guides/sync/{guide-file.parser,guide-sync.planner,typeorm-sync.store}.ts` — frontmatter `excludeRoles/Positions/Departments`; hash chỉ thêm khi có loại trừ (tương thích hash cũ).
+- `frontend/src/lib/api/guides.api.ts`, `components/guides/{GuideAudienceTags,GuideEditorModal}.tsx`, `app/(dashboard)/huong-dan/[[...slug]]/page.tsx` — 3 ô "loại trừ" (chặn chọn trùng), tag đỏ "Loại trừ: …".
+- `guides-content/{README,_template}.md`, `PERMISSIONS.md` §2.14, `PLAN_GUIDES_CONTENT.md` P6 — cập nhật.
+
+**Notes:**
+> "Media" = Vị trí (`positions.code = 'media'`, seed `1780800000000`). Verify: `tsc --noEmit` BE sạch, `jest` BE 90 suite / 1620+ test pass; FE `vitest` guides pass, `tsc` chỉ còn lỗi `logo.png` có sẵn trong sandbox. Cần chạy `migration:run` rồi (nếu muốn) thêm `excludePositions: [media]` vào `guides-content/khach-hang.md` + `guides:sync --apply`.
+
+---

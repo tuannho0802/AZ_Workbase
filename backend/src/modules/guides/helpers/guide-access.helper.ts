@@ -7,6 +7,8 @@
  *  - Người khác: guide phải đã xuất bản VÀ, với mỗi chiều (role / vị trí / phòng ban) đã gán, người gọi thuộc chiều đó
  *    (chiều để trống = không giới hạn; AND giữa các chiều).
  *  - Thêm 1 chiều nữa: nếu guide có `requiredPermissions` thì người xem phải đang có TẤT CẢ permission đó (AND).
+ *  - LOẠI TRỪ (P6): với mỗi chiều, nếu người xem thuộc danh sách loại trừ thì KHÔNG xem được - loại trừ THẮNG "được xem".
+ *    Người xem không có giá trị ở chiều đó (vd chưa có vị trí) thì không bị loại trừ theo chiều đó. `guides.manage` vẫn xem được.
  *  - Guide không được xem -> service trả 404 (không lộ sự tồn tại).
  */
 export interface GuideVisibilityInput {
@@ -17,6 +19,10 @@ export interface GuideVisibilityInput {
   assignedPositionIds?: number[];
   /** Danh sách phòng ban được gán (rỗng/bỏ trống = mọi phòng ban). */
   assignedDepartmentIds?: number[];
+  /** LOẠI TRỪ: người xem thuộc BẤT KỲ danh sách nào dưới đây thì không xem được (rỗng/bỏ trống = không loại trừ ai). */
+  excludedRoleIds?: number[];
+  excludedPositionIds?: number[];
+  excludedDepartmentIds?: number[];
   /** Các permission key yêu cầu - phải có TẤT CẢ (rỗng/bỏ trống = không yêu cầu). */
   requiredPermissions?: string[];
 }
@@ -37,6 +43,10 @@ export interface GuideViewer {
 const matchesDimension = (assigned: number[] | undefined, value: number | null): boolean =>
   !assigned || assigned.length === 0 || (value != null && assigned.includes(value));
 
+/** Người xem có giá trị ở chiều này VÀ giá trị đó nằm trong danh sách loại trừ. Thiếu giá trị (null) -> không bị loại trừ. */
+const isExcludedBy = (excluded: number[] | undefined, value: number | null): boolean =>
+  !!excluded && value != null && excluded.includes(value);
+
 export class GuideAccessHelper {
   /**
    * AND giữa 3 chiều (role / vị trí / phòng ban): mỗi chiều ĐÃ được gán thì người xem phải thuộc chiều đó.
@@ -45,6 +55,13 @@ export class GuideAccessHelper {
   static canView(guide: GuideVisibilityInput, viewer: GuideViewer, canManage: boolean): boolean {
     if (!guide.isPublished) return false;
     if (canManage) return true;
+    if (
+      isExcludedBy(guide.excludedRoleIds, viewer.roleId) ||
+      isExcludedBy(guide.excludedPositionIds, viewer.positionId) ||
+      isExcludedBy(guide.excludedDepartmentIds, viewer.departmentId)
+    ) {
+      return false;
+    }
     return (
       matchesDimension(guide.assignedRoleIds, viewer.roleId) &&
       matchesDimension(guide.assignedPositionIds, viewer.positionId) &&

@@ -31,8 +31,13 @@ npm run guides:sync -- --only=khach-hang # chỉ 1 vài bài
 | `positions` | | **code** vị trí được xem; `[]` = mọi vị trí |
 | `departments` | | **tên** phòng ban được xem; `[]` = mọi phòng ban |
 | `permissions` | | key quyền người xem phải có **tất cả** (AND) |
+| `excludeRoles` | | **code** role bị LOẠI TRỪ (không xem được); `[]` = không loại trừ role nào |
+| `excludePositions` | | **code** vị trí bị loại trừ. Ví dụ bài cho mọi người trừ Media: `excludePositions: [media]` |
+| `excludeDepartments` | | **tên** phòng ban bị loại trừ |
 
 Các chiều role/vị trí/phòng ban/quyền kết hợp bằng AND (như trình soạn trên UI).
+
+**Loại trừ thắng "được xem":** người thuộc BẤT KỲ mục `exclude*` nào thì không xem được (người không có giá trị ở chiều đó, vd chưa có vị trí, không bị loại trừ theo chiều đó). Cùng 1 giá trị không được nằm ở cả `positions` và `excludePositions` (tương tự role/phòng ban) - `guides:sync` báo lỗi. Người có `guides.manage` vẫn xem được để xem trước. Đổi `exclude*` được tính là thay đổi nội dung (đi vào hash) nên `guides:sync` sẽ cập nhật lên DB.
 
 ## Cách `guides:sync` quyết định
 

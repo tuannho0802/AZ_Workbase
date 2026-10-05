@@ -46,6 +46,13 @@ export interface GuideManageItem extends GuideListItem {
     positions: GuidePositionBrief[];
     departmentIds: number[];
     departments: GuideDepartmentBrief[];
+    /** LOẠI TRỪ (thắng "được xem"): người thuộc các mục này không xem được. Rỗng = không loại trừ ai. */
+    excludedRoleIds: number[];
+    excludedRoles: GuideRoleBrief[];
+    excludedPositionIds: number[];
+    excludedPositions: GuidePositionBrief[];
+    excludedDepartmentIds: number[];
+    excludedDepartments: GuideDepartmentBrief[];
     /** Các permission key người xem phải có TẤT CẢ (rỗng = không yêu cầu). */
     requiredPermissions: string[];
     createdAt: string;
@@ -70,11 +77,15 @@ export interface CreateGuidePayload {
     positionIds?: number[];
     /** Rỗng/bỏ trống = không giới hạn theo phòng ban. */
     departmentIds?: number[];
+    /** LOẠI TRỪ (thắng "được xem"; không được trùng mục đã chọn ở "được xem" cùng chiều, BE trả 400). Rỗng/bỏ trống = không loại trừ ai. */
+    excludedRoleIds?: number[];
+    excludedPositionIds?: number[];
+    excludedDepartmentIds?: number[];
     /** Phải có TẤT CẢ các permission này mới xem được (AND với các chiều trên). Rỗng/bỏ trống = không yêu cầu. */
     requiredPermissions?: string[];
 }
 
-/** Không gửi roleIds/positionIds/departmentIds/requiredPermissions = giữ nguyên; gửi `[]` = bỏ giới hạn. */
+/** Không gửi roleIds/positionIds/departmentIds/excluded*Ids/requiredPermissions = giữ nguyên; gửi `[]` = bỏ giới hạn. */
 export type UpdateGuidePayload = Partial<CreateGuidePayload>;
 
 export const guidesApi = {

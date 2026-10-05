@@ -58,4 +58,29 @@ describe('GuideAudienceTags', () => {
     expect(screen.getAllByTestId('audience-permission')).toHaveLength(3);
     expect(screen.getByTestId('audience-permission-more')).toHaveTextContent('+2 quyền');
   });
+
+  it('chỉ có loại trừ -> vẫn hiện "Mọi người" kèm tag đỏ "Loại trừ: <tên>"', () => {
+    render(
+      <GuideAudienceTags roles={[]} positions={[]} departments={[]} excludedPositions={[{ id: 7, name: 'Media', color: '#00ff00' }]} />,
+    );
+    expect(screen.getByText('Mọi người')).toBeInTheDocument();
+    expect(screen.getByTestId('audience-excluded-position')).toHaveTextContent('Loại trừ: Media');
+    expect(screen.queryByTestId('audience-position')).toBeNull(); // không lẫn với tag "được xem"
+  });
+
+  it('vừa có "được xem" vừa loại trừ -> không hiện "Mọi người", hiện cả 2 loại tag', () => {
+    render(
+      <GuideAudienceTags
+        roles={[{ id: 1, name: 'Admin', color: '#f00' }]}
+        positions={[]}
+        departments={[]}
+        excludedDepartments={[{ id: 5, name: 'Kinh doanh', color: '#00f' }]}
+        excludedRoles={[{ id: 2, name: 'Quản lý', color: '#111' }]}
+      />,
+    );
+    expect(screen.queryByText('Mọi người')).toBeNull();
+    expect(screen.getByTestId('audience-role')).toHaveTextContent('Admin');
+    expect(screen.getByTestId('audience-excluded-department')).toHaveTextContent('Loại trừ: Kinh doanh');
+    expect(screen.getByTestId('audience-excluded-role')).toHaveTextContent('Loại trừ: Quản lý');
+  });
 });

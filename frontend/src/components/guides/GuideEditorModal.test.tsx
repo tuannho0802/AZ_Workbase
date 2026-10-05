@@ -47,6 +47,9 @@ describe('GuideEditorModal (role / vị trí / phòng ban)', () => {
     expect(screen.getByText('Phòng ban được xem')).toBeInTheDocument();
     expect(screen.getByText(/TẤT CẢ mục đã chọn/)).toBeInTheDocument();
     expect(screen.getByText('Cần quyền để xem')).toBeInTheDocument();
+    expect(screen.getByText('Role loại trừ')).toBeInTheDocument();
+    expect(screen.getByText('Vị trí loại trừ')).toBeInTheDocument();
+    expect(screen.getByText('Phòng ban loại trừ')).toBeInTheDocument();
   });
 
   it('tạo mới không chọn gì -> gửi roleIds/positionIds/departmentIds đều rỗng (không giới hạn)', async () => {
@@ -66,6 +69,9 @@ describe('GuideEditorModal (role / vị trí / phòng ban)', () => {
       roleIds: [],
       positionIds: [],
       departmentIds: [],
+      excludedRoleIds: [],
+      excludedPositionIds: [],
+      excludedDepartmentIds: [],
       requiredPermissions: [],
     });
     await waitFor(() => expect(onSaved).toHaveBeenCalledWith('bai-moi'));
@@ -101,5 +107,51 @@ describe('GuideEditorModal - chọn nhiều quyền theo nhóm', () => {
     await userEvent.click(screen.getByRole('button', { name: /Lưu/ }));
     await waitFor(() => expect(createMutateAsync).toHaveBeenCalledTimes(1));
     expect(createMutateAsync.mock.calls[0][0].requiredPermissions).toEqual(['customers.assign', 'customers.edit']);
+  });
+});
+
+describe('GuideEditorModal - loại trừ', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    createMutateAsync.mockResolvedValue({ slug: 'bai-moi' });
+  });
+
+  const openSelect = async (placeholder: string) => {
+    const select = screen.getByText(placeholder).closest('.ant-select') as HTMLElement;
+    await userEvent.click(within(select).getByRole('combobox'));
+  };
+  const visibleOption = (name: string) =>
+    screen.getAllByText(name).find((el) => el.closest('.ant-select-item-option-content')) as HTMLElement;
+
+  it('loại trừ vị trí Media -> gửi excludedPositionIds=[7], positionIds rỗng (mọi người trừ Media)', async () => {
+    render(
+      <App>
+        <GuideEditorModal open onClose={vi.fn()} guideId={null} onSaved={vi.fn()} />
+      </App>,
+    );
+    await userEvent.type(await screen.findByPlaceholderText('Cách thêm khách hàng mới'), 'Khách hàng');
+    await userEvent.type(screen.getByPlaceholderText(/Nội dung Markdown/), 'Nội dung');
+    await openSelect('Không loại trừ vị trí nào');
+    await userEvent.click(visibleOption('Media'));
+    await userEvent.click(screen.getByRole('button', { name: /Lưu/ }));
+    await waitFor(() => expect(createMutateAsync).toHaveBeenCalledTimes(1));
+    expect(createMutateAsync.mock.calls[0][0]).toMatchObject({ positionIds: [], excludedPositionIds: [7] });
+  });
+
+  it('mục đã chọn ở "Vị trí được xem" bị khoá (disabled) trong ô "Vị trí loại trừ"', async () => {
+    render(
+      <App>
+        <GuideEditorModal open onClose={vi.fn()} guideId={null} onSaved={vi.fn()} />
+      </App>,
+    );
+    await screen.findByText('Vị trí loại trừ');
+    await openSelect('Mọi vị trí');
+    await userEvent.click(visibleOption('Media'));
+    await userEvent.keyboard('{Escape}');
+    await openSelect('Không loại trừ vị trí nào');
+    // Chỉ ô loại trừ có mục bị khoá (ô "được xem" không có partner nào được chọn) -> đúng 1 option disabled là Media.
+    const disabled = document.querySelectorAll('.ant-select-item-option-disabled');
+    expect(disabled).toHaveLength(1);
+    expect(disabled[0]).toHaveTextContent('Media');
   });
 });

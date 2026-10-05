@@ -243,13 +243,13 @@ Thứ tự: `khach-hang` → `chia-data` → `quan-ly-phu-trach` → `status-kha
 - [ ] Cập nhật `PERMISSIONS.md` mục 2.14 (nếu D2) + dòng quy trình "sửa trang → sửa guide" vào `SKILL_NEXTJS_FRONTEND.md`.
 
 ### P6 — Loại trừ Role/Vị trí/Phòng ban (cỡ M–L, *bổ sung, làm sau*)
-- [ ] Bước 0: `git pull`, đọc `guide-access.helper.ts`, `guides.service.ts`, 3 entity `guide-*`, `GuideEditorModal`, `GuideAudienceTags`, `guides-sync` (parser + hash); xác nhận \"Media\" là Vị trí nào trong bảng `positions`.
-- [ ] Migration `<timestamp > lớn nhất>-AddGuideExclusions` (cột `is_excluded`, idempotent, `up()/down()`); **bạn tự chạy**.
-- [ ] BE: entity + `BooleanTransformer`; `GuideAccessHelper.canView` thêm điều kiện loại trừ + spec (include-only / exclude-only / cả hai / người xem thiếu giá trị chiều); DTO + validate không trùng include/exclude; service `insertLinks/idsOf/toManageItem/toDetail`; audit ghi loại trừ.
-- [ ] FE: 3 ô Select \"Loại trừ …\" trong `GuideEditorModal`; Tag \"Loại trừ: …\" ở `GuideAudienceTags`; cập nhật type ở cả `lib/types` lẫn type inline.
-- [ ] `guides:sync`: frontmatter `excludeRoles/excludePositions/excludeDepartments`, đưa vào hash; cập nhật `guides-content/README.md` + `_template.md`; contract test kiểm code tồn tại.
-- [ ] Test ví dụ chuẩn: `khach-hang` + `excludePositions: [media]` → Media 404, người khác thấy, `guides.manage` thấy.
-- [ ] Cập nhật `PERMISSIONS.md` mục 2.14 (quy tắc lọc guide có thêm loại trừ) + ghi `WORKFLOW_LOG.md`.
+- [x] Bước 0: `git pull`, đọc `guide-access.helper.ts`, `guides.service.ts`, 3 entity `guide-*`, `GuideEditorModal`, `GuideAudienceTags`, `guides-sync` (parser + hash); xác nhận \"Media\" là Vị trí nào trong bảng `positions`.
+- [x] Migration `<timestamp > lớn nhất>-AddGuideExclusions` (cột `is_excluded`, idempotent, `up()/down()`); **bạn tự chạy**.
+- [x] BE: entity + `BooleanTransformer`; `GuideAccessHelper.canView` thêm điều kiện loại trừ + spec (include-only / exclude-only / cả hai / người xem thiếu giá trị chiều); DTO + validate không trùng include/exclude; service `insertLinks/idsOf/toManageItem/toDetail`; audit ghi loại trừ.
+- [x] FE: 3 ô Select \"Loại trừ …\" trong `GuideEditorModal`; Tag \"Loại trừ: …\" ở `GuideAudienceTags`; cập nhật type ở cả `lib/types` lẫn type inline.
+- [x] `guides:sync`: frontmatter `excludeRoles/excludePositions/excludeDepartments`, đưa vào hash; cập nhật `guides-content/README.md` + `_template.md`; contract test kiểm code tồn tại.
+- [x] Test ví dụ chuẩn: `khach-hang` + `excludePositions: [media]` → Media 404, người khác thấy, `guides.manage` thấy.
+- [x] Cập nhật `PERMISSIONS.md` mục 2.14 (quy tắc lọc guide có thêm loại trừ) + ghi `WORKFLOW_LOG.md`.
 - **Xong khi:** tạo bài \"cho mọi người trừ Vị trí Media\" trên UI và qua `guides:sync --apply`; đăng nhập thử 1 user Media (không thấy, không có nút \"Xem hướng dẫn trang này\") và 1 user khác (thấy); test xanh; build sạch.
 
 ---

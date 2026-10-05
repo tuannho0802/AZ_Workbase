@@ -36,6 +36,9 @@ interface FormValues {
   roleIds: number[];
   positionIds: number[];
   departmentIds: number[];
+  excludedRoleIds: number[];
+  excludedPositionIds: number[];
+  excludedDepartmentIds: number[];
   requiredPermissions: string[];
 }
 
@@ -61,7 +64,7 @@ export function GuideEditorModal({ open, onClose, guideId, onSaved }: Props) {
     if (!open) return;
     if (!editing) {
       form.resetFields();
-      form.setFieldsValue({ sortOrder: 0, isPublished: false, roleIds: [], positionIds: [], departmentIds: [], requiredPermissions: [], content: '' });
+      form.setFieldsValue({ sortOrder: 0, isPublished: false, roleIds: [], positionIds: [], departmentIds: [], excludedRoleIds: [], excludedPositionIds: [], excludedDepartmentIds: [], requiredPermissions: [], content: '' });
     }
   }, [open, editing, form]);
 
@@ -77,6 +80,9 @@ export function GuideEditorModal({ open, onClose, guideId, onSaved }: Props) {
       roleIds: g.roleIds,
       positionIds: g.positionIds,
       departmentIds: g.departmentIds,
+      excludedRoleIds: g.excludedRoleIds ?? [],
+      excludedPositionIds: g.excludedPositionIds ?? [],
+      excludedDepartmentIds: g.excludedDepartmentIds ?? [],
       requiredPermissions: g.requiredPermissions,
     });
   }, [open, editing, detail.data, form]);
@@ -103,6 +109,10 @@ export function GuideEditorModal({ open, onClose, guideId, onSaved }: Props) {
       roleIds: values.roleIds ?? [],
       positionIds: values.positionIds ?? [],
       departmentIds: values.departmentIds ?? [],
+      // [] = bỏ loại trừ (BE: không gửi = giữ nguyên, nên luôn gửi tường minh).
+      excludedRoleIds: values.excludedRoleIds ?? [],
+      excludedPositionIds: values.excludedPositionIds ?? [],
+      excludedDepartmentIds: values.excludedDepartmentIds ?? [],
       // [] = bỏ yêu cầu quyền (BE: không gửi = giữ nguyên, nên luôn gửi tường minh).
       requiredPermissions: values.requiredPermissions ?? [],
     };
@@ -165,6 +175,14 @@ export function GuideEditorModal({ open, onClose, guideId, onSaved }: Props) {
             <AudienceField kind="position" name="positionIds" items={positions} loading={positionsLoading} />
             <AudienceField kind="department" name="departmentIds" items={departments} loading={departmentsLoading} />
           </div>
+          <div style={{ display: 'flex', gap: 16, flexWrap: 'wrap' }}>
+            <AudienceField kind="role" name="excludedRoleIds" excludes="roleIds" items={roles} loading={rolesLoading} />
+            <AudienceField kind="position" name="excludedPositionIds" excludes="positionIds" items={positions} loading={positionsLoading} />
+            <AudienceField kind="department" name="excludedDepartmentIds" excludes="departmentIds" items={departments} loading={departmentsLoading} />
+          </div>
+          <div style={{ color: '#8c8c8c', fontSize: 12, margin: '-8px 0 16px' }}>
+            Ô "Loại trừ" ngược với ô "được xem": người thuộc mục đã chọn KHÔNG xem được bài (loại trừ thắng). Ví dụ: để trống "Vị trí được xem" và loại trừ Media = mọi người xem được, trừ Media. Người có quyền quản lý hướng dẫn vẫn xem được để xem trước.
+          </div>
           <Form.Item
             name="requiredPermissions"
             label="Cần quyền để xem"
@@ -221,24 +239,39 @@ export function GuideEditorModal({ open, onClose, guideId, onSaved }: Props) {
 function AudienceField({
   kind,
   name,
+  excludes,
   items,
   loading,
 }: {
   kind: AudienceKind;
-  name: 'roleIds' | 'positionIds' | 'departmentIds';
+  name: 'roleIds' | 'positionIds' | 'departmentIds' | 'excludedRoleIds' | 'excludedPositionIds' | 'excludedDepartmentIds';
+  /** Có = đây là ô LOẠI TRỪ; giá trị là tên ô "được xem" cùng chiều (để chặn chọn trùng). */
+  excludes?: 'roleIds' | 'positionIds' | 'departmentIds';
   items: AudienceItem[];
   loading: boolean;
 }) {
   const meta = AUDIENCE_META[kind];
+  const isExclude = !!excludes;
+  const form = Form.useFormInstance<FormValues>();
+  // Ô "được xem" chặn các mục đã ở ô loại trừ và ngược lại (loại trừ thắng nên trùng là vô nghĩa; BE cũng trả 400).
+  const partnerName = (excludes ??
+    ({ roleIds: 'excludedRoleIds', positionIds: 'excludedPositionIds', departmentIds: 'excludedDepartmentIds' } as const)[
+      name as 'roleIds' | 'positionIds' | 'departmentIds'
+    ]) as keyof FormValues;
+  const partner = (Form.useWatch(partnerName, form) as number[] | undefined) ?? [];
   return (
-    <Form.Item name={name} label={`${meta.label} được xem`} style={{ flex: '1 1 240px', minWidth: 0 }}>
+    <Form.Item
+      name={name}
+      label={isExclude ? `${meta.label} loại trừ` : `${meta.label} được xem`}
+      style={{ flex: '1 1 240px', minWidth: 0 }}
+    >
       <Select
         mode="multiple"
         allowClear
         loading={loading}
-        placeholder={`Mọi ${meta.label.toLowerCase()}`}
+        placeholder={isExclude ? `Không loại trừ ${meta.label.toLowerCase()} nào` : `Mọi ${meta.label.toLowerCase()}`}
         optionFilterProp="label"
-        options={items.map((i) => ({ value: i.id, label: i.name, color: i.color }))}
+        options={items.map((i) => ({ value: i.id, label: i.name, color: i.color, disabled: partner.includes(i.id) }))}
         optionRender={(option) => (
           <span style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}>
             <span
@@ -255,6 +288,7 @@ function AudienceField({
             <AudienceTag
               kind={kind}
               item={item ?? { id: Number(value), name: `#${value}`, color: 'default' }}
+              excluded={isExclude}
               closable={closable}
               onClose={close}
             />

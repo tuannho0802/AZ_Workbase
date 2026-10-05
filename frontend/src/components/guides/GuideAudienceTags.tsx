@@ -2,7 +2,7 @@
 
 import type { ReactNode } from 'react';
 import { Tag, Tooltip } from 'antd';
-import { ApartmentOutlined, IdcardOutlined, KeyOutlined, SafetyCertificateOutlined } from '@ant-design/icons';
+import { ApartmentOutlined, IdcardOutlined, KeyOutlined, SafetyCertificateOutlined, StopOutlined } from '@ant-design/icons';
 
 export interface AudienceItem {
   id: number;
@@ -24,13 +24,32 @@ export function AudienceTag({
   item,
   closable,
   onClose,
+  excluded,
 }: {
   kind: AudienceKind;
   item: AudienceItem;
   closable?: boolean;
   onClose?: () => void;
+  /** true = tag LOẠI TRỪ (đỏ, chữ "Loại trừ: <tên>") để không nhầm với tag "được xem". */
+  excluded?: boolean;
 }) {
   const meta = AUDIENCE_META[kind];
+  if (excluded) {
+    return (
+      <Tooltip title={`${meta.label} bị loại trừ: ${item.name} (không xem được bài này)`}>
+        <Tag
+          data-testid={`audience-excluded-${kind}`}
+          color="error"
+          icon={<StopOutlined />}
+          closable={closable}
+          onClose={onClose}
+          style={{ marginInlineEnd: 4 }}
+        >
+          Loại trừ: {item.name}
+        </Tag>
+      </Tooltip>
+    );
+  }
   return (
     <Tooltip title={`${meta.label}: ${item.name}`}>
       <Tag
@@ -54,6 +73,10 @@ interface Props {
   roles: AudienceItem[];
   positions: AudienceItem[];
   departments: AudienceItem[];
+  /** LOẠI TRỪ (thắng "được xem"): hiện tag đỏ "Loại trừ: <tên>". Rỗng/bỏ trống = không loại trừ ai. */
+  excludedRoles?: AudienceItem[];
+  excludedPositions?: AudienceItem[];
+  excludedDepartments?: AudienceItem[];
   /** Các permission key yêu cầu - phải có TẤT CẢ (rỗng/bỏ trống = không yêu cầu). */
   requiredPermissions?: string[];
 }
@@ -62,12 +85,23 @@ interface Props {
  * Hiển thị "ai được xem" của 1 hướng dẫn. Chiều nào để trống = không giới hạn chiều đó;
  * cả 3 chiều trống và không yêu cầu quyền = mọi người đăng nhập đều xem được.
  */
-export function GuideAudienceTags({ roles, positions, departments, requiredPermissions = [] }: Props) {
-  if (roles.length + positions.length + departments.length === 0 && requiredPermissions.length === 0) {
+export function GuideAudienceTags({
+  roles,
+  positions,
+  departments,
+  excludedRoles = [],
+  excludedPositions = [],
+  excludedDepartments = [],
+  requiredPermissions = [],
+}: Props) {
+  const hasExclusions = excludedRoles.length + excludedPositions.length + excludedDepartments.length > 0;
+  const everyone = roles.length + positions.length + departments.length === 0 && requiredPermissions.length === 0;
+  if (everyone && !hasExclusions) {
     return <Tag color="geekblue">Mọi người</Tag>;
   }
   return (
     <>
+      {everyone && <Tag color="geekblue">Mọi người</Tag>}
       {roles.map((r) => (
         <AudienceTag key={`r${r.id}`} kind="role" item={r} />
       ))}
@@ -91,6 +125,15 @@ export function GuideAudienceTags({ roles, positions, departments, requiredPermi
           </Tag>
         </Tooltip>
       )}
+      {excludedRoles.map((r) => (
+        <AudienceTag key={`xr${r.id}`} kind="role" item={r} excluded />
+      ))}
+      {excludedPositions.map((p) => (
+        <AudienceTag key={`xp${p.id}`} kind="position" item={p} excluded />
+      ))}
+      {excludedDepartments.map((d) => (
+        <AudienceTag key={`xd${d.id}`} kind="department" item={d} excluded />
+      ))}
     </>
   );
 }

@@ -18,6 +18,10 @@ export interface GuideSpec {
   roles: string[];
   positions: string[];
   departments: string[];
+  /** LOẠI TRỪ (thắng "được xem"): cùng kiểu mã với roles/positions/departments. */
+  excludeRoles: string[];
+  excludePositions: string[];
+  excludeDepartments: string[];
   permissions: string[];
   content: string;
 }
@@ -32,7 +36,7 @@ export class GuideFileError extends Error {
   }
 }
 
-const ALLOWED_KEYS = new Set(['title', 'slug', 'sortOrder', 'published', 'roles', 'positions', 'departments', 'permissions']);
+const ALLOWED_KEYS = new Set(['title', 'slug', 'sortOrder', 'published', 'roles', 'positions', 'departments', 'permissions', 'excludeRoles', 'excludePositions', 'excludeDepartments']);
 const LIST_MAX = 100;
 const TITLE_MAX = 200;
 
@@ -175,6 +179,23 @@ export function parseGuideFile(fileName: string, raw: string): GuideSpec {
     }
   }
 
+  const roles = asList(fileName, 'roles', fm.get('roles'));
+  const positions = asList(fileName, 'positions', fm.get('positions'));
+  const departments = asList(fileName, 'departments', fm.get('departments'));
+  const excludeRoles = asList(fileName, 'excludeRoles', fm.get('excludeRoles'));
+  const excludePositions = asList(fileName, 'excludePositions', fm.get('excludePositions'));
+  const excludeDepartments = asList(fileName, 'excludeDepartments', fm.get('excludeDepartments'));
+  for (const [inc, exc, key] of [
+    [roles, excludeRoles, 'roles/excludeRoles'],
+    [positions, excludePositions, 'positions/excludePositions'],
+    [departments, excludeDepartments, 'departments/excludeDepartments'],
+  ] as const) {
+    const both = inc.filter((v) => exc.includes(v));
+    if (both.length) {
+      throw new GuideFileError(fileName, `"${both.join('", "')}" vừa được xem vừa bị loại trừ (${key}) - mỗi giá trị chỉ nằm ở 1 danh sách`);
+    }
+  }
+
   const content = normalizeContent(body.replace(/^\n+/, ''));
   if (!content) throw new GuideFileError(fileName, 'nội dung (sau frontmatter) không được để trống');
   if (content.length > GUIDE_CONTENT_MAX) throw new GuideFileError(fileName, `nội dung tối đa ${GUIDE_CONTENT_MAX} ký tự`);
@@ -184,9 +205,12 @@ export function parseGuideFile(fileName: string, raw: string): GuideSpec {
     slug,
     sortOrder,
     published,
-    roles: asList(fileName, 'roles', fm.get('roles')),
-    positions: asList(fileName, 'positions', fm.get('positions')),
-    departments: asList(fileName, 'departments', fm.get('departments')),
+    roles,
+    positions,
+    departments,
+    excludeRoles,
+    excludePositions,
+    excludeDepartments,
     permissions,
     content,
   };

@@ -12,6 +12,9 @@ export function canonicalize(spec: GuideSpec): GuideSpec {
     roles: sorted(spec.roles),
     positions: sorted(spec.positions),
     departments: sorted(spec.departments),
+    excludeRoles: sorted(spec.excludeRoles ?? []),
+    excludePositions: sorted(spec.excludePositions ?? []),
+    excludeDepartments: sorted(spec.excludeDepartments ?? []),
     permissions: sorted(spec.permissions),
     content: normalizeContent(spec.content),
   };
@@ -20,7 +23,13 @@ export function canonicalize(spec: GuideSpec): GuideSpec {
 export function hashSpec(spec: GuideSpec): string {
   const c = canonicalize(spec);
   // Thứ tự khoá cố định (không dựa vào thứ tự của object đầu vào).
-  const payload = JSON.stringify([c.title, c.slug, c.sortOrder, c.published, c.roles, c.positions, c.departments, c.permissions, c.content]);
+  const fields: unknown[] = [c.title, c.slug, c.sortOrder, c.published, c.roles, c.positions, c.departments, c.permissions, c.content];
+  // Loại trừ chỉ đưa vào hash KHI CÓ: bài không dùng loại trừ giữ nguyên hash cũ (không làm mọi `source_hash` đã lưu bị coi là "đã sửa tay"),
+  // còn đổi loại trừ thì hash đổi -> sync nhận ra thay đổi.
+  if (c.excludeRoles.length || c.excludePositions.length || c.excludeDepartments.length) {
+    fields.push([c.excludeRoles, c.excludePositions, c.excludeDepartments]);
+  }
+  const payload = JSON.stringify(fields);
   return createHash('sha256').update(payload, 'utf8').digest('hex');
 }
 
@@ -57,7 +66,7 @@ export interface SyncPlan {
 export function diffFields(a: GuideSpec, b: GuideSpec): string[] {
   const x = canonicalize(a);
   const y = canonicalize(b);
-  const keys: Array<keyof GuideSpec> = ['title', 'sortOrder', 'published', 'roles', 'positions', 'departments', 'permissions', 'content'];
+  const keys: Array<keyof GuideSpec> = ['title', 'sortOrder', 'published', 'roles', 'positions', 'departments', 'excludeRoles', 'excludePositions', 'excludeDepartments', 'permissions', 'content'];
   return keys.filter((k) => JSON.stringify(x[k]) !== JSON.stringify(y[k]));
 }
 

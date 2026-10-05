@@ -7,6 +7,9 @@ roles: []                # code role được xem; [] = mọi role. Ví dụ: [a
 positions: []            # code vị trí được xem; [] = mọi vị trí
 departments: []          # TÊN phòng ban được xem; [] = mọi phòng ban. Ví dụ: ["Kinh doanh 1"]
 permissions: []          # người xem phải có TẤT CẢ quyền này (AND). Ví dụ: [customers.view]
+excludeRoles: []         # (tuỳ chọn) code role BỊ LOẠI TRỪ, thắng "được xem". Ví dụ: [employee]
+excludePositions: []     # (tuỳ chọn) code vị trí bị loại trừ. Ví dụ: [media] = mọi người xem được, trừ Media
+excludeDepartments: []   # (tuỳ chọn) TÊN phòng ban bị loại trừ. Không được trùng với danh sách "được xem" cùng chiều
 ---
 
 ## Trang này để làm gì

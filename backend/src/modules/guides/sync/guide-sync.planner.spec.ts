@@ -1,3 +1,4 @@
+import { createHash } from 'crypto';
 import { GuideSpec } from './guide-file.parser';
 import { DbGuideState, diffFields, hashSpec, planSync } from './guide-sync.planner';
 
@@ -9,11 +10,37 @@ const spec = (over: Partial<GuideSpec> = {}): GuideSpec => ({
   roles: [],
   positions: [],
   departments: [],
+  excludeRoles: [],
+  excludePositions: [],
+  excludeDepartments: [],
   permissions: [],
   content: 'Nội dung',
   ...over,
 });
 const db = (s: GuideSpec, sourceHash: string | null, id = 1): DbGuideState => ({ id, spec: s, sourceHash });
+
+describe('hashSpec - loại trừ', () => {
+  it('bài KHÔNG dùng loại trừ giữ nguyên hash định dạng cũ (không làm sourceHash đã lưu thành "sửa tay")', () => {
+    const legacy = createHash('sha256')
+      .update(JSON.stringify(['Khách hàng', 'khach-hang', 10, true, [], [], [], [], 'Nội dung']), 'utf8')
+      .digest('hex');
+    expect(hashSpec(spec())).toBe(legacy);
+  });
+  it('đổi loại trừ -> hash đổi; thứ tự danh sách loại trừ không ảnh hưởng', () => {
+    expect(hashSpec(spec({ excludePositions: ['media'] }))).not.toBe(hashSpec(spec()));
+    expect(hashSpec(spec({ excludeRoles: ['b', 'a'] }))).toBe(hashSpec(spec({ excludeRoles: ['a', 'b'] })));
+  });
+  it('loại trừ khác với "được xem" cùng giá trị (không nhầm 2 phía)', () => {
+    expect(hashSpec(spec({ positions: ['media'] }))).not.toBe(hashSpec(spec({ excludePositions: ['media'] })));
+  });
+  it('chỉ khác loại trừ -> planSync = update (DB còn đúng như lần sync trước) và diffFields báo đúng trường', () => {
+    const dbSpec = spec();
+    const file = spec({ excludePositions: ['media'] });
+    expect(diffFields(dbSpec, file)).toEqual(['excludePositions']);
+    const plan = planSync([file], [db(dbSpec, hashSpec(dbSpec))]);
+    expect(plan.actions[0]).toMatchObject({ kind: 'update', changed: ['excludePositions'] });
+  });
+});
 
 describe('hashSpec', () => {
   it('không phụ thuộc thứ tự danh sách, CRLF hay khoảng trắng cuối', () => {

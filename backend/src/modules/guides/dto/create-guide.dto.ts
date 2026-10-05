@@ -104,4 +104,43 @@ export class CreateGuideDto {
   @ArrayUnique()
   @IsInt({ each: true })
   departmentIds?: number[];
+
+  @ApiPropertyOptional({
+    type: [Number],
+    description:
+      'ID các role bị LOẠI TRỪ (không được xem, thắng "được xem"). Rỗng/bỏ trống = không loại trừ ai. ' +
+      'PATCH: không gửi = giữ nguyên, [] = bỏ loại trừ. Không được trùng với danh sách "được xem" cùng chiều',
+  })
+  @IsOptional()
+  @IsArray()
+  @ArrayMaxSize(100)
+  @ArrayUnique()
+  @IsInt({ each: true })
+  excludedRoleIds?: number[];
+
+  @ApiPropertyOptional({
+    type: [Number],
+    description:
+      'ID các vị trí bị LOẠI TRỪ (không được xem, thắng "được xem"). Rỗng/bỏ trống = không loại trừ ai. ' +
+      'PATCH: không gửi = giữ nguyên, [] = bỏ loại trừ. Không được trùng với danh sách "được xem" cùng chiều',
+  })
+  @IsOptional()
+  @IsArray()
+  @ArrayMaxSize(100)
+  @ArrayUnique()
+  @IsInt({ each: true })
+  excludedPositionIds?: number[];
+
+  @ApiPropertyOptional({
+    type: [Number],
+    description:
+      'ID các phòng ban bị LOẠI TRỪ (không được xem, thắng "được xem"). Rỗng/bỏ trống = không loại trừ ai. ' +
+      'PATCH: không gửi = giữ nguyên, [] = bỏ loại trừ. Không được trùng với danh sách "được xem" cùng chiều',
+  })
+  @IsOptional()
+  @IsArray()
+  @ArrayMaxSize(100)
+  @ArrayUnique()
+  @IsInt({ each: true })
+  excludedDepartmentIds?: number[];
 }

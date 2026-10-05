@@ -87,6 +87,45 @@ describe('GuideAccessHelper.canView - requiredPermissions (D2/P0a)', () => {
   });
 });
 
+describe('GuideAccessHelper.canView - LOẠI TRỪ (P6)', () => {
+  // Bài "Khách hàng" cho mọi người TRỪ vị trí Media (id 8).
+  const g = { isPublished: true, assignedRoleIds: [], excludedPositionIds: [8] };
+  it('exclude-only: người thuộc mục bị loại trừ không thấy; người khác thấy', () => {
+    expect(GuideAccessHelper.canView(g, viewer(4, 7), false)).toBe(true); // Sales
+    expect(GuideAccessHelper.canView(g, viewer(4, 8), false)).toBe(false); // Media
+  });
+  it('người xem KHÔNG có giá trị ở chiều đó (chưa có vị trí) -> không bị loại trừ', () => {
+    expect(GuideAccessHelper.canView(g, viewer(4, null), false)).toBe(true);
+  });
+  it('include + exclude: loại trừ THẮNG, kể cả khi người xem khớp include ở chiều khác', () => {
+    const both = { isPublished: true, assignedRoleIds: [4], excludedPositionIds: [8] };
+    expect(GuideAccessHelper.canView(both, viewer(4, 7), false)).toBe(true);
+    expect(GuideAccessHelper.canView(both, viewer(4, 8), false)).toBe(false);
+    expect(GuideAccessHelper.canView(both, viewer(2, 7), false)).toBe(false); // sai include
+  });
+  it('loại trừ theo role và theo phòng ban', () => {
+    expect(GuideAccessHelper.canView({ isPublished: true, assignedRoleIds: [], excludedRoleIds: [4] }, viewer(4), false)).toBe(false);
+    expect(GuideAccessHelper.canView({ isPublished: true, assignedRoleIds: [], excludedDepartmentIds: [5] }, viewer(4, 7, 5), false)).toBe(false);
+    expect(GuideAccessHelper.canView({ isPublished: true, assignedRoleIds: [], excludedDepartmentIds: [5] }, viewer(4, 7, 6), false)).toBe(true);
+  });
+  it('BẤT KỲ chiều loại trừ nào khớp là đủ để ẩn', () => {
+    const multi = { isPublished: true, assignedRoleIds: [], excludedPositionIds: [8], excludedDepartmentIds: [5] };
+    expect(GuideAccessHelper.canView(multi, viewer(4, 7, 5), false)).toBe(false);
+    expect(GuideAccessHelper.canView(multi, viewer(4, 8, 6), false)).toBe(false);
+    expect(GuideAccessHelper.canView(multi, viewer(4, 7, 6), false)).toBe(true);
+  });
+  it('guides.manage vẫn xem được bài đang loại trừ mình (xem trước); bản nháp vẫn không', () => {
+    expect(GuideAccessHelper.canView(g, viewer(4, 8), true)).toBe(true);
+    expect(GuideAccessHelper.canView({ ...g, isPublished: false }, viewer(4, 7), true)).toBe(false);
+  });
+  it('AND với requiredPermissions', () => {
+    const p = { ...g, requiredPermissions: ['customers.view'] };
+    expect(GuideAccessHelper.canView(p, viewer(4, 7, null, ['customers.view']), false)).toBe(true);
+    expect(GuideAccessHelper.canView(p, viewer(4, 8, null, ['customers.view']), false)).toBe(false);
+    expect(GuideAccessHelper.canView(p, viewer(4, 7), false)).toBe(false);
+  });
+});
+
 describe('GuideAccessHelper.slugify', () => {
   it('bỏ dấu tiếng Việt, đ -> d, gạch ngang', () => {
     expect(GuideAccessHelper.slugify('Cách thêm Khách hàng mới!')).toBe('cach-them-khach-hang-moi');

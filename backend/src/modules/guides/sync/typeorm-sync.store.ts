@@ -70,9 +70,20 @@ export class TypeOrmSyncStore implements SyncStore {
         sortOrder: g.sortOrder,
         published: g.isPublished,
         // Id không còn tra được (role bị xoá...) -> giữ dạng "#id" để khác file -> hiện ra như 1 khác biệt thật, không im lặng bỏ qua.
-        roles: (g.guideRoles ?? []).map((r) => l.roleCodeById.get(r.roleId) ?? `#${r.roleId}`),
-        positions: (g.guidePositions ?? []).map((p) => l.positionCodeById.get(p.positionId) ?? `#${p.positionId}`),
-        departments: (g.guideDepartments ?? []).map((d) => l.departmentNameById.get(d.departmentId) ?? `#${d.departmentId}`),
+        roles: (g.guideRoles ?? []).filter((r) => !r.isExcluded).map((r) => l.roleCodeById.get(r.roleId) ?? `#${r.roleId}`),
+        positions: (g.guidePositions ?? [])
+          .filter((p) => !p.isExcluded)
+          .map((p) => l.positionCodeById.get(p.positionId) ?? `#${p.positionId}`),
+        departments: (g.guideDepartments ?? [])
+          .filter((d) => !d.isExcluded)
+          .map((d) => l.departmentNameById.get(d.departmentId) ?? `#${d.departmentId}`),
+        excludeRoles: (g.guideRoles ?? []).filter((r) => !!r.isExcluded).map((r) => l.roleCodeById.get(r.roleId) ?? `#${r.roleId}`),
+        excludePositions: (g.guidePositions ?? [])
+          .filter((p) => !!p.isExcluded)
+          .map((p) => l.positionCodeById.get(p.positionId) ?? `#${p.positionId}`),
+        excludeDepartments: (g.guideDepartments ?? [])
+          .filter((d) => !!d.isExcluded)
+          .map((d) => l.departmentNameById.get(d.departmentId) ?? `#${d.departmentId}`),
         permissions: (g.guidePermissions ?? []).map((p) => p.permissionKey),
         content: g.content,
       },
@@ -86,6 +97,9 @@ export class TypeOrmSyncStore implements SyncStore {
       roleIds: spec.roles.map((c) => l.roleIdByCode.get(c) as number),
       positionIds: spec.positions.map((c) => l.positionIdByCode.get(c) as number),
       departmentIds: spec.departments.map((n) => l.departmentIdByName.get(n) as number),
+      excludedRoleIds: spec.excludeRoles.map((c) => l.roleIdByCode.get(c) as number),
+      excludedPositionIds: spec.excludePositions.map((c) => l.positionIdByCode.get(c) as number),
+      excludedDepartmentIds: spec.excludeDepartments.map((n) => l.departmentIdByName.get(n) as number),
     };
   }
 
@@ -95,6 +109,9 @@ export class TypeOrmSyncStore implements SyncStore {
     for (const c of spec.roles) if (!l.roleIdByCode.has(c)) missing.push(`role "${c}"`);
     for (const c of spec.positions) if (!l.positionIdByCode.has(c)) missing.push(`vị trí (code) "${c}"`);
     for (const n of spec.departments) if (!l.departmentIdByName.has(n)) missing.push(`phòng ban (tên) "${n}"`);
+    for (const c of spec.excludeRoles) if (!l.roleIdByCode.has(c)) missing.push(`role loại trừ "${c}"`);
+    for (const c of spec.excludePositions) if (!l.positionIdByCode.has(c)) missing.push(`vị trí loại trừ (code) "${c}"`);
+    for (const n of spec.excludeDepartments) if (!l.departmentIdByName.has(n)) missing.push(`phòng ban loại trừ (tên) "${n}"`);
     if (spec.permissions.length) {
       const found = await this.ds.getRepository(Permission).find({ where: { key: In(spec.permissions) }, select: { key: true } });
       const known = new Set(found.map((p) => p.key));

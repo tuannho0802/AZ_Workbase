@@ -241,6 +241,119 @@ describe('GuidesService', () => {
     });
   });
 
+  describe('P6 - loại trừ Role / Vị trí / Phòng ban', () => {
+    /** Thêm các dòng loại trừ (is_excluded=1) vào guide dựng bởi mkGuide. */
+    const withExcl = (g: any, e: { roles?: number[]; positions?: number[]; departments?: number[] }) => ({
+      ...g,
+      guideRoles: [...g.guideRoles, ...(e.roles ?? []).map((roleId) => ({ guideId: g.id, roleId, isExcluded: true }))],
+      guidePositions: [...g.guidePositions, ...(e.positions ?? []).map((positionId) => ({ guideId: g.id, positionId, isExcluded: true }))],
+      guideDepartments: [
+        ...g.guideDepartments,
+        ...(e.departments ?? []).map((departmentId) => ({ guideId: g.id, departmentId, isExcluded: true })),
+      ],
+    });
+    const media: GuideCaller = { id: 11, role: 'employee', departmentId: 5, positionId: 8 };
+
+    it('ví dụ chuẩn: khach-hang loại trừ Media -> Sales thấy, Media 404, người chưa có vị trí thấy, guides.manage thấy', async () => {
+      const g = withExcl(mkGuide({ id: 1, slug: 'khach-hang' }), { positions: [8] });
+      guideRepo.find.mockResolvedValue([g]);
+      guideRepo.findOne.mockResolvedValue(g);
+      expect((await svc.listVisible(emp)).map((x) => x.slug)).toEqual(['khach-hang']); // Sales (7)
+      expect(await svc.listVisible(media)).toEqual([]);
+      await expect(svc.getBySlug('khach-hang', media)).rejects.toBeInstanceOf(NotFoundException);
+      await expect(svc.getBySlug('khach-hang', { ...emp, positionId: null })).resolves.toMatchObject({ slug: 'khach-hang' });
+      canManage = true;
+      expect((await svc.listVisible(media)).map((x) => x.slug)).toEqual(['khach-hang']);
+      await expect(svc.getBySlug('khach-hang', media)).resolves.toMatchObject({ slug: 'khach-hang' });
+    });
+    it('dòng loại trừ KHÔNG bị tính là "được xem" (không biến bài thành "chỉ Media")', async () => {
+      const g = withExcl(mkGuide({ id: 1 }), { positions: [8] });
+      guideRepo.findOne.mockResolvedValue(g);
+      const d = await svc.getManageDetail(1);
+      expect(d.positionIds).toEqual([]);
+      expect(d.excludedPositionIds).toEqual([8]);
+      expect(d.excludedPositions).toEqual([POSITIONS[1]]);
+      expect(d.positions).toEqual([]);
+    });
+    it('loại trừ role / phòng ban cũng ẩn bài', async () => {
+      guideRepo.find.mockResolvedValue([
+        withExcl(mkGuide({ id: 1, slug: 'tru-role' }), { roles: [4] }),
+        withExcl(mkGuide({ id: 2, slug: 'tru-pb' }), { departments: [5] }),
+        withExcl(mkGuide({ id: 3, slug: 'tru-pb-khac' }), { departments: [6] }),
+      ]);
+      expect((await svc.listVisible(emp)).map((x) => x.slug)).toEqual(['tru-pb-khac']);
+    });
+    it('create: ghi dòng loại trừ với isExcluded=true, dòng được xem không kèm cờ; id không tồn tại -> 400', async () => {
+      txManager.save.mockResolvedValue({ id: 7 });
+      guideRepo.findOne.mockImplementation(async ({ where }: any) => (where.id === 7 ? mkGuide({ id: 7 }) : null));
+      await svc.create({ title: 'A', content: 'x', positionIds: [7], excludedPositionIds: [8], excludedDepartmentIds: [6] }, root);
+      expect(txManager.insert).toHaveBeenCalledWith(GuidePosition, [
+        { guideId: 7, positionId: 7 },
+        { guideId: 7, positionId: 8, isExcluded: true },
+      ]);
+      expect(txManager.insert).toHaveBeenCalledWith(GuideDepartment, [{ guideId: 7, departmentId: 6, isExcluded: true }]);
+      expect(txManager.insert).not.toHaveBeenCalledWith(GuideRole, expect.anything());
+      await expect(svc.create({ title: 'B', content: 'x', excludedPositionIds: [999] }, root)).rejects.toBeInstanceOf(BadRequestException);
+    });
+    it('create: trùng được xem/loại trừ cùng chiều -> 400 (tiếng Việt), không ghi gì', async () => {
+      await expect(svc.create({ title: 'A', content: 'x', positionIds: [8], excludedPositionIds: [8] }, root)).rejects.toThrow(/vị trí vừa được xem vừa bị loại trừ/);
+      await expect(svc.create({ title: 'A', content: 'x', roleIds: [4], excludedRoleIds: [4] }, root)).rejects.toThrow(/role vừa được xem/);
+      await expect(svc.create({ title: 'A', content: 'x', departmentIds: [5], excludedDepartmentIds: [5] }, root)).rejects.toThrow(/phòng ban vừa được xem/);
+      expect(dataSource.transaction).not.toHaveBeenCalled();
+    });
+    it('cùng id ở 2 chiều khác nhau là hợp lệ', async () => {
+      txManager.save.mockResolvedValue({ id: 7 });
+      guideRepo.findOne.mockImplementation(async ({ where }: any) => (where.id === 7 ? mkGuide({ id: 7 }) : null));
+      await expect(svc.create({ title: 'A', content: 'x', roleIds: [4], excludedPositionIds: [7] }, root)).resolves.toBeDefined();
+    });
+    it('update: không gửi gì về loại trừ = giữ nguyên (không đụng bảng)', async () => {
+      guideRepo.findOne.mockResolvedValue(withExcl(mkGuide({ id: 1 }), { positions: [8] }));
+      await svc.update(1, { title: 'Mới' }, root);
+      expect(txManager.delete).not.toHaveBeenCalled();
+      expect(txManager.insert).not.toHaveBeenCalled();
+    });
+    it('update: chỉ đổi "được xem" của chiều -> GIỮ dòng loại trừ cùng chiều (ghi lại cả 2 phía)', async () => {
+      guideRepo.findOne.mockResolvedValue(withExcl(mkGuide({ id: 1 }, [], [7]), { positions: [8] }));
+      await svc.update(1, { positionIds: [] }, root);
+      expect(txManager.delete).toHaveBeenCalledWith(GuidePosition, { guideId: 1 });
+      expect(txManager.insert).toHaveBeenCalledWith(GuidePosition, [{ guideId: 1, positionId: 8, isExcluded: true }]);
+    });
+    it('update: chỉ đổi loại trừ -> GIỮ dòng "được xem" cùng chiều; [] = bỏ loại trừ', async () => {
+      guideRepo.findOne.mockResolvedValue(withExcl(mkGuide({ id: 1 }, [], [7]), { positions: [8] }));
+      await svc.update(1, { excludedPositionIds: [] }, root);
+      expect(txManager.insert).toHaveBeenCalledWith(GuidePosition, [{ guideId: 1, positionId: 7 }]);
+      txManager.insert.mockClear();
+      await svc.update(1, { excludedPositionIds: [], positionIds: [] }, root);
+      expect(txManager.insert).not.toHaveBeenCalled();
+    });
+    it('update: gửi 1 phía trùng với phía kia ĐANG LƯU trong DB -> 400 (không vi phạm khoá chính)', async () => {
+      guideRepo.findOne.mockResolvedValue(withExcl(mkGuide({ id: 1 }), { positions: [8] }));
+      await expect(svc.update(1, { positionIds: [8] }, root)).rejects.toThrow(/vị trí vừa được xem vừa bị loại trừ/);
+      expect(dataSource.transaction).not.toHaveBeenCalled();
+      // đổi cả 2 phía cùng lúc để hoán đổi thì hợp lệ
+      await svc.update(1, { positionIds: [8], excludedPositionIds: [] }, root);
+      expect(txManager.insert).toHaveBeenCalledWith(GuidePosition, [{ guideId: 1, positionId: 8 }]);
+    });
+    it('update: chiều khác không bị đụng', async () => {
+      guideRepo.findOne.mockResolvedValue(withExcl(mkGuide({ id: 1 }), { positions: [8] }));
+      await svc.update(1, { excludedDepartmentIds: [6] }, root);
+      expect(txManager.delete).toHaveBeenCalledWith(GuideDepartment, { guideId: 1 });
+      expect(txManager.delete).not.toHaveBeenCalledWith(GuidePosition, expect.anything());
+    });
+    it('audit ghi loại trừ trước/sau; xoá guide lưu cả loại trừ', async () => {
+      guideRepo.findOne.mockResolvedValue(withExcl(mkGuide({ id: 1 }), { positions: [8] }));
+      await svc.update(1, { excludedPositionIds: [] }, root);
+      const [, , , , oldD, newD] = audit.logActionAsync.mock.calls[0];
+      expect(oldD.excludedPositionIds).toEqual([8]);
+      expect(newD.excludedPositionIds).toEqual([8]); // mock findOne trả cùng 1 bản ghi nên 'after' vẫn đọc ra [8]
+    });
+    it('remove: snapshot audit có excluded*', async () => {
+      guideRepo.findOne.mockResolvedValue(withExcl(mkGuide({ id: 1 }), { positions: [8] }));
+      await svc.remove(1, root);
+      expect(audit.logActionAsync.mock.calls[0][4]).toMatchObject({ excludedPositionIds: [8], positionIds: [] });
+    });
+  });
+
   describe('D2/P0a - guide yêu cầu permission (requiredPermissions, AND)', () => {
     /** Chỉ `customers.assign` được cấp; guides.manage KHÔNG được cấp (không bypass). */
     const grantOnly = (...keys: string[]) =>

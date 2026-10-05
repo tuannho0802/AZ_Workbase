@@ -28,6 +28,9 @@ describe('parseGuideFile', () => {
       roles: [],
       positions: ['content', 'editor'],
       departments: ['Kinh doanh 1', 'Marketing'],
+      excludeRoles: [],
+      excludePositions: [],
+      excludeDepartments: [],
       permissions: ['customers.view'],
       content: '# Tiêu đề\nDòng 2',
     });
@@ -81,6 +84,31 @@ describe('parseGuideFile', () => {
       expect(e).toBeInstanceOf(GuideFileError);
       expect((e as Error).message.startsWith('x.md: ')).toBe(true);
     }
+  });
+});
+
+describe('parseGuideFile - loại trừ (excludeRoles/Positions/Departments)', () => {
+  const base = ['title: Khách hàng', 'slug: khach-hang'];
+  it('mặc định: 3 danh sách loại trừ rỗng', () => {
+    const spec = parseGuideFile('khach-hang.md', doc(base.join('\n')));
+    expect(spec).toMatchObject({ excludeRoles: [], excludePositions: [], excludeDepartments: [] });
+  });
+  it('đọc dạng [a, b] và dạng block "- item"', () => {
+    const spec = parseGuideFile(
+      'khach-hang.md',
+      doc([...base, 'excludePositions: [media]', 'excludeDepartments:', '  - "Kinh doanh 1"', 'excludeRoles: [employee, manager]'].join('\n')),
+    );
+    expect(spec.excludePositions).toEqual(['media']);
+    expect(spec.excludeDepartments).toEqual(['Kinh doanh 1']);
+    expect(spec.excludeRoles).toEqual(['employee', 'manager']);
+  });
+  it('cùng 1 giá trị vừa ở include vừa ở exclude (cùng chiều) -> lỗi mang tên file', () => {
+    expect(() => parseGuideFile('khach-hang.md', doc([...base, 'positions: [media, sales]', 'excludePositions: [media]'].join('\n')))).toThrow(
+      /khach-hang\.md.*media.*vừa được xem vừa bị loại trừ/,
+    );
+  });
+  it('cùng giá trị ở 2 chiều KHÁC nhau thì hợp lệ', () => {
+    expect(() => parseGuideFile('khach-hang.md', doc([...base, 'roles: [media]', 'excludePositions: [media]'].join('\n')))).not.toThrow();
   });
 });
 

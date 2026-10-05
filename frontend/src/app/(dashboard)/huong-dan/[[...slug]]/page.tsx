@@ -131,6 +131,9 @@ export default function GuidesPage() {
                       roles={guide.roles}
                       positions={guide.positions}
                       departments={guide.departments}
+                      excludedRoles={guide.excludedRoles}
+                      excludedPositions={guide.excludedPositions}
+                      excludedDepartments={guide.excludedDepartments}
                       requiredPermissions={guide.requiredPermissions}
                     />
                   </div>

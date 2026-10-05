@@ -97,6 +97,13 @@ export interface GuideManageItem extends GuideListItem {
   positions: GuidePositionBrief[];
   departmentIds: number[];
   departments: GuideDepartmentBrief[];
+  /** LOẠI TRỪ (thắng "được xem"): người thuộc các mục này không xem được. Rỗng = không loại trừ ai. */
+  excludedRoleIds: number[];
+  excludedRoles: GuideRoleBrief[];
+  excludedPositionIds: number[];
+  excludedPositions: GuidePositionBrief[];
+  excludedDepartmentIds: number[];
+  excludedDepartments: GuideDepartmentBrief[];
   /** Các permission key người xem phải có TẤT CẢ (rỗng = không yêu cầu). Đã sắp theo chữ cái. */
   requiredPermissions: string[];
   createdAt: Date;
@@ -175,11 +182,15 @@ export class GuidesService {
   }
 
   private visibilityOf(g: Guide) {
+    const ids = this.idsOf(g);
     return {
       isPublished: g.isPublished,
-      assignedRoleIds: (g.guideRoles ?? []).map((r) => r.roleId),
-      assignedPositionIds: (g.guidePositions ?? []).map((r) => r.positionId),
-      assignedDepartmentIds: (g.guideDepartments ?? []).map((r) => r.departmentId),
+      assignedRoleIds: ids.roleIds,
+      assignedPositionIds: ids.positionIds,
+      assignedDepartmentIds: ids.departmentIds,
+      excludedRoleIds: ids.excludedRoleIds,
+      excludedPositionIds: ids.excludedPositionIds,
+      excludedDepartmentIds: ids.excludedDepartmentIds,
       requiredPermissions: this.permissionKeysOf(g),
     };
   }
@@ -308,6 +319,10 @@ export class GuidesService {
     const roleIds = await this.validateIds(this.roleRepo, dto.roleIds, 'role');
     const positionIds = await this.validateIds(this.positionRepo, dto.positionIds, 'vị trí');
     const departmentIds = await this.validateIds(this.departmentRepo, dto.departmentIds, 'phòng ban');
+    const excludedRoleIds = await this.validateIds(this.roleRepo, dto.excludedRoleIds, 'role loại trừ');
+    const excludedPositionIds = await this.validateIds(this.positionRepo, dto.excludedPositionIds, 'vị trí loại trừ');
+    const excludedDepartmentIds = await this.validateIds(this.departmentRepo, dto.excludedDepartmentIds, 'phòng ban loại trừ');
+    this.assertNoOverlap({ roleIds, excludedRoleIds, positionIds, excludedPositionIds, departmentIds, excludedDepartmentIds });
     const permissionKeys = await this.validatePermissionKeys(dto.requiredPermissions);
     const slug = await this.resolveNewSlug(dto.slug, title);
 
@@ -326,7 +341,15 @@ export class GuidesService {
             updatedBy: null,
           }),
         );
-        await this.insertLinks(manager, saved.id, { roleIds, positionIds, departmentIds, permissionKeys });
+        await this.insertLinks(manager, saved.id, {
+          roleIds,
+          positionIds,
+          departmentIds,
+          excludedRoleIds,
+          excludedPositionIds,
+          excludedDepartmentIds,
+          permissionKeys,
+        });
         return saved.id;
       });
     } catch (err) {
@@ -361,26 +384,43 @@ export class GuidesService {
       patch.slug = dto.slug;
     }
 
-    // Không gửi = giữ nguyên chiều đó; gửi [] = bỏ giới hạn chiều đó.
-    const newRoleIds = dto.roleIds !== undefined ? await this.validateIds(this.roleRepo, dto.roleIds, 'role') : null;
-    const newPositionIds =
-      dto.positionIds !== undefined ? await this.validateIds(this.positionRepo, dto.positionIds, 'vị trí') : null;
-    const newDepartmentIds =
-      dto.departmentIds !== undefined ? await this.validateIds(this.departmentRepo, dto.departmentIds, 'phòng ban') : null;
+    // Không gửi = giữ nguyên; gửi [] = bỏ. "Được xem" và "loại trừ" của cùng 1 chiều chia chung 1 bảng (khoá chính guide+mục),
+    // nên mỗi chiều: tính danh sách CUỐI CÙNG của cả 2 phía (phía không gửi lấy từ DB), kiểm tra không trùng, rồi ghi lại cả chiều.
+    const cur = this.idsOf(guide);
+    const pick = async (repo: Repository<{ id: number }>, sent: number[] | undefined, current: number[], label: string) =>
+      sent !== undefined ? this.validateIds(repo, sent, label) : current;
+    const roleIds = await pick(this.roleRepo, dto.roleIds, cur.roleIds, 'role');
+    const excludedRoleIds = await pick(this.roleRepo, dto.excludedRoleIds, cur.excludedRoleIds, 'role loại trừ');
+    const positionIds = await pick(this.positionRepo, dto.positionIds, cur.positionIds, 'vị trí');
+    const excludedPositionIds = await pick(this.positionRepo, dto.excludedPositionIds, cur.excludedPositionIds, 'vị trí loại trừ');
+    const departmentIds = await pick(this.departmentRepo, dto.departmentIds, cur.departmentIds, 'phòng ban');
+    const excludedDepartmentIds = await pick(
+      this.departmentRepo,
+      dto.excludedDepartmentIds,
+      cur.excludedDepartmentIds,
+      'phòng ban loại trừ',
+    );
+    this.assertNoOverlap({ roleIds, excludedRoleIds, positionIds, excludedPositionIds, departmentIds, excludedDepartmentIds });
+    const rewriteRoles = dto.roleIds !== undefined || dto.excludedRoleIds !== undefined;
+    const rewritePositions = dto.positionIds !== undefined || dto.excludedPositionIds !== undefined;
+    const rewriteDepartments = dto.departmentIds !== undefined || dto.excludedDepartmentIds !== undefined;
     // Không gửi = giữ nguyên; [] = bỏ yêu cầu quyền.
     const newPermissionKeys = dto.requiredPermissions !== undefined ? await this.validatePermissionKeys(dto.requiredPermissions) : null;
 
     try {
       await this.dataSource.transaction(async (manager) => {
         await manager.update(Guide, { id }, { ...patch, updatedBy: user.id });
-        if (newRoleIds !== null) await manager.delete(GuideRole, { guideId: id });
-        if (newPositionIds !== null) await manager.delete(GuidePosition, { guideId: id });
-        if (newDepartmentIds !== null) await manager.delete(GuideDepartment, { guideId: id });
+        if (rewriteRoles) await manager.delete(GuideRole, { guideId: id });
+        if (rewritePositions) await manager.delete(GuidePosition, { guideId: id });
+        if (rewriteDepartments) await manager.delete(GuideDepartment, { guideId: id });
         if (newPermissionKeys !== null) await manager.delete(GuidePermission, { guideId: id });
         await this.insertLinks(manager, id, {
-          roleIds: newRoleIds ?? [],
-          positionIds: newPositionIds ?? [],
-          departmentIds: newDepartmentIds ?? [],
+          roleIds: rewriteRoles ? roleIds : [],
+          excludedRoleIds: rewriteRoles ? excludedRoleIds : [],
+          positionIds: rewritePositions ? positionIds : [],
+          excludedPositionIds: rewritePositions ? excludedPositionIds : [],
+          departmentIds: rewriteDepartments ? departmentIds : [],
+          excludedDepartmentIds: rewriteDepartments ? excludedDepartmentIds : [],
           permissionKeys: newPermissionKeys ?? [],
         });
       });
@@ -408,7 +448,7 @@ export class GuidesService {
     const guide = await this.guideRepo.findOne({ where: { id }, relations: AUDIENCE_RELATIONS });
     if (!guide) throw new NotFoundException('Không tìm thấy hướng dẫn');
 
-    const { roleIds, positionIds, departmentIds } = this.idsOf(guide);
+    const ids = this.idsOf(guide);
     const snapshot = {
       id: guide.id,
       title: guide.title,
@@ -416,9 +456,7 @@ export class GuidesService {
       content: guide.content,
       sortOrder: guide.sortOrder,
       isPublished: guide.isPublished,
-      roleIds,
-      positionIds,
-      departmentIds,
+      ...ids,
       requiredPermissions: this.permissionKeysOf(guide),
     };
 
@@ -451,26 +489,65 @@ export class GuidesService {
     return unique;
   }
 
+  /** Tách mỗi bảng liên kết thành 2 phía: "được xem" (isExcluded falsy, gồm cả dữ liệu cũ chưa có cột) và "loại trừ". */
   private idsOf(g: Guide) {
+    const inc = <T extends { isExcluded?: boolean }>(rows: T[] | undefined) => (rows ?? []).filter((r) => !r.isExcluded);
+    const exc = <T extends { isExcluded?: boolean }>(rows: T[] | undefined) => (rows ?? []).filter((r) => !!r.isExcluded);
     return {
-      roleIds: (g.guideRoles ?? []).map((r) => r.roleId),
-      positionIds: (g.guidePositions ?? []).map((r) => r.positionId),
-      departmentIds: (g.guideDepartments ?? []).map((r) => r.departmentId),
+      roleIds: inc(g.guideRoles).map((r) => r.roleId),
+      positionIds: inc(g.guidePositions).map((r) => r.positionId),
+      departmentIds: inc(g.guideDepartments).map((r) => r.departmentId),
+      excludedRoleIds: exc(g.guideRoles).map((r) => r.roleId),
+      excludedPositionIds: exc(g.guidePositions).map((r) => r.positionId),
+      excludedDepartmentIds: exc(g.guideDepartments).map((r) => r.departmentId),
     };
+  }
+
+  /** Cùng 1 mục không được vừa "được xem" vừa "loại trừ" trong cùng 1 chiều (vô nghĩa vì loại trừ thắng, và trùng khoá chính). */
+  private assertNoOverlap(x: {
+    roleIds: number[];
+    excludedRoleIds: number[];
+    positionIds: number[];
+    excludedPositionIds: number[];
+    departmentIds: number[];
+    excludedDepartmentIds: number[];
+  }): void {
+    const overlap = (a: number[], b: number[]) => a.some((id) => b.includes(id));
+    if (overlap(x.roleIds, x.excludedRoleIds)) {
+      throw new BadRequestException('Có role vừa được xem vừa bị loại trừ - mỗi role chỉ nằm ở 1 danh sách');
+    }
+    if (overlap(x.positionIds, x.excludedPositionIds)) {
+      throw new BadRequestException('Có vị trí vừa được xem vừa bị loại trừ - mỗi vị trí chỉ nằm ở 1 danh sách');
+    }
+    if (overlap(x.departmentIds, x.excludedDepartmentIds)) {
+      throw new BadRequestException('Có phòng ban vừa được xem vừa bị loại trừ - mỗi phòng ban chỉ nằm ở 1 danh sách');
+    }
   }
 
   private async insertLinks(
     manager: { insert: (target: any, rows: any[]) => Promise<unknown> },
     guideId: number,
-    ids: { roleIds: number[]; positionIds: number[]; departmentIds: number[]; permissionKeys: string[] },
+    ids: {
+      roleIds: number[];
+      positionIds: number[];
+      departmentIds: number[];
+      excludedRoleIds: number[];
+      excludedPositionIds: number[];
+      excludedDepartmentIds: number[];
+      permissionKeys: string[];
+    },
   ): Promise<void> {
-    if (ids.roleIds.length) await manager.insert(GuideRole, ids.roleIds.map((roleId) => ({ guideId, roleId })));
-    if (ids.positionIds.length) {
-      await manager.insert(GuidePosition, ids.positionIds.map((positionId) => ({ guideId, positionId })));
-    }
-    if (ids.departmentIds.length) {
-      await manager.insert(GuideDepartment, ids.departmentIds.map((departmentId) => ({ guideId, departmentId })));
-    }
+    // Dòng "được xem" để cột is_excluded theo default 0; dòng "loại trừ" ghi isExcluded: true tường minh.
+    const rows = <K extends string>(key: K, include: number[], exclude: number[]) => [
+      ...include.map((id) => ({ guideId, [key]: id })),
+      ...exclude.map((id) => ({ guideId, [key]: id, isExcluded: true })),
+    ];
+    const roleRows = rows('roleId', ids.roleIds, ids.excludedRoleIds);
+    const positionRows = rows('positionId', ids.positionIds, ids.excludedPositionIds);
+    const departmentRows = rows('departmentId', ids.departmentIds, ids.excludedDepartmentIds);
+    if (roleRows.length) await manager.insert(GuideRole, roleRows);
+    if (positionRows.length) await manager.insert(GuidePosition, positionRows);
+    if (departmentRows.length) await manager.insert(GuideDepartment, departmentRows);
     if (ids.permissionKeys.length) {
       await manager.insert(GuidePermission, ids.permissionKeys.map((permissionKey) => ({ guideId, permissionKey })));
     }
@@ -481,9 +558,9 @@ export class GuidesService {
     const all = guides.map((g) => this.idsOf(g));
     const uniq = (pick: (x: (typeof all)[number]) => number[]) => [...new Set(all.flatMap(pick))];
     const [roles, positions, departments] = await Promise.all([
-      this.loadRoles(uniq((x) => x.roleIds)),
-      this.loadPositions(uniq((x) => x.positionIds)),
-      this.loadDepartments(uniq((x) => x.departmentIds)),
+      this.loadRoles(uniq((x) => [...x.roleIds, ...x.excludedRoleIds])),
+      this.loadPositions(uniq((x) => [...x.positionIds, ...x.excludedPositionIds])),
+      this.loadDepartments(uniq((x) => [...x.departmentIds, ...x.excludedDepartmentIds])),
     ]);
     return { roles, positions, departments };
   }
@@ -546,7 +623,7 @@ export class GuidesService {
 
   /** `audience` là kho nhãn chung; ở đây chỉ lấy phần guide này tham chiếu. */
   private toManageItem(g: Guide, audience: GuideAudience): GuideManageItem {
-    const { roleIds, positionIds, departmentIds } = this.idsOf(g);
+    const { roleIds, positionIds, departmentIds, excludedRoleIds, excludedPositionIds, excludedDepartmentIds } = this.idsOf(g);
     return {
       id: g.id,
       title: g.title,
@@ -559,6 +636,12 @@ export class GuidesService {
       positions: audience.positions.filter((p) => positionIds.includes(p.id)),
       departmentIds,
       departments: audience.departments.filter((d) => departmentIds.includes(d.id)),
+      excludedRoleIds,
+      excludedRoles: audience.roles.filter((r) => excludedRoleIds.includes(r.id)),
+      excludedPositionIds,
+      excludedPositions: audience.positions.filter((p) => excludedPositionIds.includes(p.id)),
+      excludedDepartmentIds,
+      excludedDepartments: audience.departments.filter((d) => excludedDepartmentIds.includes(d.id)),
       requiredPermissions: this.permissionKeysOf(g),
       createdAt: g.createdAt,
       updatedAt: g.updatedAt,
@@ -590,6 +673,9 @@ export class GuidesService {
       roleIds: d.roleIds,
       positionIds: d.positionIds,
       departmentIds: d.departmentIds,
+      excludedRoleIds: d.excludedRoleIds,
+      excludedPositionIds: d.excludedPositionIds,
+      excludedDepartmentIds: d.excludedDepartmentIds,
       requiredPermissions: d.requiredPermissions,
       contentLength: d.content?.length ?? 0,
     };
