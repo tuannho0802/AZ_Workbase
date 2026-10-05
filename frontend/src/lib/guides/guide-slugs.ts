@@ -80,7 +80,6 @@ export const PENDING_GUIDE_SLUGS: readonly string[] = [
   'trang-thai-cong-viec',
   'thung-rac',
   'nhom-lien-ket',
-  'quan-ly-utm',
   'may-cham-cong',
   'bao-cao-data-loi',
   'phan-quyen',

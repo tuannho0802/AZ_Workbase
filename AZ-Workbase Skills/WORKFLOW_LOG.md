@@ -5916,3 +5916,20 @@ Now [deploy]
 > Bài mô tả hành vi THẬT: nguồn không có cờ "Hệ thống" (6 nguồn seed đều xoá được khi chưa dùng, kể cả `Other`); Manager không có `media_sources.manage` mặc định; import Excel khớp tên chính xác, không khớp/trống -> `Other`; danh sách cache FE 5 phút. Verify: `vitest src/lib/guides` 12 file / 315 test pass; `tsc --noEmit` chỉ còn 4 lỗi `logo.png` có sẵn; eslint file mới sạch. Chưa test tay trên trình duyệt. Cần `guides:sync --apply` sau khi duyệt đổi `published: true`.
 
 ---
+
+## [2026-10-05 19:00] | Guides P1: bài `quan-ly-utm` + 3 mẫu `utms.demos` | [Status: Success]
+
+**Actor:** Agent
+
+**Files Changed:**
+- `guides-content/quan-ly-utm.md` — bài mới (`published: false`, chờ duyệt nội dung); gỡ slug khỏi `PENDING_GUIDE_SLUGS`.
+- `frontend/src/lib/guides/demos/utms.demos.tsx` — 3 mẫu `utm-table`, `utm-merge-steps`, `utm-managers`; cập nhật `guide-demos.test.tsx` (35 mẫu).
+- `AZ-Workbase Skills/PLAN_GUIDES_CONTENT.md` — tick P1 `quan-ly-utm`.
+
+**Root Cause (phát hiện khi đối chiếu code thật, KHÔNG sửa trong phase này):**
+> 1) `UtmManagersService.canManageManagers()` + comment ở `UtmAccessHelper.isBroad()` nói người có `utms.edit` phạm vi rộng sửa được Quản lý chính/phụ "dù không có `utms.assign`", nhưng `UtmsController` gắn `@RequirePermission('utms.assign')` cho 3 route managers nên người đó bị 403 ở guard trước khi tới service (suy ra từ code, chưa chạy thử). 2) `GET /utms/duplicates` đếm `customerCount` chỉ khách chưa xoá mềm, nên nút "Gộp vào <UTM nhiều khách nhất>" có thể chọn lệch khi UTM còn nhiều khách trong Thùng rác. 3) Khác `CustomerStatusesService.remove()`/`MediaSourcesService.remove()`: `UtmsService.remove()` và `merge()` đã đếm/chuyển cả khách soft-delete bằng raw SQL — đây là mẫu đúng để sửa 2 bug cùng họ ở Status/Nguồn.
+
+**Notes:**
+> Bài mô tả hành vi THẬT: quyền vào trang = `utms.my_managed` VÀ `customers.view`; Quản lý phụ chỉ sửa mô tả/màu/khoá, đổi tên + hiển thị + quản lý chính/phụ là của Quản lý chính hoặc phạm vi rộng; đổi tên UTM cascade `customers.campaign` (khác Nguồn); khoá UTM được BE chặn thật (cả import Excel, qua `resolveForCustomer`); xoá/gộp tính cả Thùng rác; chuyển Quản lý chính KHÔNG giữ người cũ làm phụ; Gộp + Gợi ý trùng chỉ `utms.edit` = all. Verify: `vitest src/lib/guides` 12 file / 322 test pass; `tsc --noEmit` chỉ còn 4 lỗi `logo.png` có sẵn; eslint file sửa sạch. Chưa test tay trên trình duyệt. Cần `guides:sync --apply` sau khi duyệt đổi `published: true`.
+
+---
