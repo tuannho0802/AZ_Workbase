@@ -5933,3 +5933,20 @@ Now [deploy]
 > Bài mô tả hành vi THẬT: quyền vào trang = `utms.my_managed` VÀ `customers.view`; Quản lý phụ chỉ sửa mô tả/màu/khoá, đổi tên + hiển thị + quản lý chính/phụ là của Quản lý chính hoặc phạm vi rộng; đổi tên UTM cascade `customers.campaign` (khác Nguồn); khoá UTM được BE chặn thật (cả import Excel, qua `resolveForCustomer`); xoá/gộp tính cả Thùng rác; chuyển Quản lý chính KHÔNG giữ người cũ làm phụ; Gộp + Gợi ý trùng chỉ `utms.edit` = all. Verify: `vitest src/lib/guides` 12 file / 322 test pass; `tsc --noEmit` chỉ còn 4 lỗi `logo.png` có sẵn; eslint file sửa sạch. Chưa test tay trên trình duyệt. Cần `guides:sync --apply` sau khi duyệt đổi `published: true`.
 
 ---
+
+## [2026-10-05 20:00] | Guides P1: bài `nhom-lien-ket` + 2 mẫu `link-groups.demos` | [Status: Success]
+
+**Actor:** Agent
+
+**Files Changed:**
+- `guides-content/nhom-lien-ket.md` — bài mới (`published: false`, chờ duyệt nội dung); gỡ slug khỏi `PENDING_GUIDE_SLUGS`.
+- `frontend/src/lib/guides/demos/link-groups.demos.tsx` — 2 mẫu `link-group-table`, `group-managers`; đăng ký ở `guide-demos.tsx`, cập nhật `guide-demos.test.tsx` (37 mẫu).
+- `AZ-Workbase Skills/PLAN_GUIDES_CONTENT.md` — tick P1 `nhom-lien-ket`.
+
+**Root Cause (phát hiện khi đối chiếu code thật, KHÔNG sửa trong phase này):**
+> 1) FE `nhom-lien-ket/page.tsx` + `GroupManagersModal.tsx` hardcode `user.role === 'admin'` (`isAdmin`, `canEdit`) trong khi BE (`LinkGroupManagersService.hasBroadAccess`) cho cả người có `link_groups.manage` (Assistant mặc định): Assistant không thấy nút "Quản lý phụ / Content" nếu chưa được gán vào nhóm, dù BE cho phép. 2) `useEffect` redirect thiếu `permissionsLoading`/`can` trong deps (cùng họ lỗi `nguon-media`, `quan-ly-status-khach`). 3) "Khoá Category" chỉ đổi Tag: `useLinkCategories(false)` là nơi duy nhất dùng, `LinkGroupsService.create` không kiểm tra `isLocked`, checklist chỉ lọc `g.isActive`; comment entity nói "ẩn khỏi dropdown chọn category khi tạo Group" nhưng UI không có dropdown đó. 4) Dòng chú thích đầu trang gợi ý đặt tên Category trùng tên Nguồn để checklist lọc theo nguồn — đã lỗi thời (checklist không lọc theo nguồn). 5) Tooltip "Quản lý chính chỉ admin gán/đổi" và `@ApiProperty` nói admin-only, nhưng `PATCH/POST /link-groups` chỉ gắn `link_groups.manage` (Assistant gán được, FE cũng hiện ô này). 6) `LinkGroupsService.remove()` đếm `membershipRepo.count({groupId})` gồm cả bản ghi `joined=false` và khách trong Thùng rác nên nhóm từng dùng gần như không xoá được.
+
+**Notes:**
+> Bài mô tả hành vi THẬT: `link_groups.view` mặc định cả 4 role; `manage` Admin+Assistant; `delete` chỉ Admin; ứng viên Quản lý chính/phụ/Content lọc qua Assignment Group Config (mặc định Phòng Marketing; Content thêm vị trí content), chỉ là lọc UI, BE chỉ kiểm tra user đang hoạt động. Verify: `vitest src/lib/guides` 12 file / 328 test pass; `tsc --noEmit` chỉ còn 4 lỗi `logo.png` có sẵn; eslint file mới sạch. Chưa test tay trên trình duyệt. Cần `guides:sync --apply` sau khi duyệt đổi `published: true`.
+
+---

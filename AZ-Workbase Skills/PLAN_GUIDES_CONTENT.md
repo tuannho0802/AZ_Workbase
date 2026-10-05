@@ -222,6 +222,7 @@ Tiêu chí "xong" cho mỗi bài: mọi tên cột/nút **khớp đúng chữ tr
 - [x] (2026-10-05) `status-khach` đã viết (`published: false` chờ duyệt) + mẫu `demos/status.demos.tsx` (`status-manage-table`, `status-form`, `status-delete-fallback`). Còn lại P1: `nguon-media` → `quan-ly-utm` → `nhom-lien-ket` → `nhom-toi-quan-ly` → `thung-rac` → `bao-cao-data-loi`.
 - [x] (2026-10-05) `nguon-media` đã viết (`published: false` chờ duyệt) + mẫu `demos/sources.demos.tsx` (`source-manage-table`, `source-form`, `source-lock-effect`). Còn lại P1: `quan-ly-utm` → `nhom-lien-ket` → `nhom-toi-quan-ly` → `thung-rac` → `bao-cao-data-loi`.
 - [x] (2026-10-05) `quan-ly-utm` đã viết (`published: false` chờ duyệt) + 3 mẫu mới trong `demos/utms.demos.tsx` (`utm-table`, `utm-merge-steps`, `utm-managers`; dùng thêm `utm-tags` có sẵn). Còn lại P1: `nhom-lien-ket` → `nhom-toi-quan-ly` → `thung-rac` → `bao-cao-data-loi`.
+- [x] (2026-10-05) `nhom-lien-ket` đã viết (`published: false` chờ duyệt) + 2 mẫu mới trong `demos/link-groups.demos.tsx` (`link-group-table`, `group-managers`). Còn lại P1: `nhom-toi-quan-ly` → `thung-rac` → `bao-cao-data-loi`.
 Thứ tự: `khach-hang` → `chia-data` → `quan-ly-phu-trach` → `status-khach` → `nguon-media` → `quan-ly-utm` → `nhom-lien-ket` → `nhom-toi-quan-ly` → `thung-rac` → `bao-cao-data-loi`.
 
 ### P2a — Bộ mẫu trực quan cho Task (cỡ M–L, làm TRƯỚC các bài P2) — *bổ sung, làm sau*
