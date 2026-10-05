@@ -61,7 +61,32 @@ export interface TaskMiniCardProps {
     flagOverdue?: boolean;
 }
 
-export function TaskMiniCard({
+/** Prop riêng của bản trình bày thuần (`TaskMiniCardView`): dữ liệu mà bản thật tự tra bằng hook. */
+export interface TaskMiniCardViewProps extends TaskMiniCardProps {
+    /** Tên người khoá cho Tooltip "Đã khoá" (bản thật tra qua `useUsersList()`). */
+    lockedByName?: string;
+    /** Thay phần Phụ trách (bản thật = `TaskAssignees`; mẫu minh hoạ truyền `TaskAssigneesView`). */
+    assigneesSlot?: React.ReactNode;
+}
+
+/**
+ * Bản thật: tự tra tên người khoá bằng hook rồi giao cho `TaskMiniCardView`. Hành vi y hệt trước khi tách.
+ */
+export function TaskMiniCard(props: TaskMiniCardProps) {
+    const { users } = useUsersList();
+    // `lockedById` KHÔNG kèm object quan hệ từ BE (xem JSDoc `PeriodicTask.lockedById` ở periodic-tasks.api.ts) - tự tra tên
+    // qua `useUsersList()`, mirror ĐÚNG `userNameById` ở page gốc.
+    const lockedByName = props.task.lockedById
+        ? (users as Array<{ id: number; name: string }>).find((u) => u.id === props.task.lockedById)?.name
+        : undefined;
+    return <TaskMiniCardView {...props} lockedByName={lockedByName} />;
+}
+
+/**
+ * Bản TRÌNH BÀY THUẦN (không gọi hook/API) - dùng chung cho `TaskMiniCard` (trang thật) và mẫu minh hoạ trong Hướng dẫn
+ * (`lib/guides/demos/periodic-tasks.demos.tsx`) để mẫu không lệch (drift) so với giao diện thật.
+ */
+export function TaskMiniCardView({
     task,
     extra,
     footer,
@@ -74,7 +99,9 @@ export function TaskMiniCard({
     density = 'full',
     showProgress = false,
     flagOverdue = false,
-}: TaskMiniCardProps) {
+    lockedByName,
+    assigneesSlot,
+}: TaskMiniCardViewProps) {
     const autoOverdue = flagOverdue && isTaskOverdue(task);
     const overdueDays = autoOverdue ? getOverdueDays(task) : 0;
     const isMini = density === 'mini';
@@ -82,14 +109,6 @@ export function TaskMiniCard({
     const checklist = getChecklistProgress(task);
     const checklistPercent = checklist ? Math.round((checklist.done / checklist.total) * 100) : 0;
     const checklistColor = checklist ? TONE_COLOR[getChecklistTone(checklist)] : undefined;
-    // `lockedById` KHÔNG kèm object quan hệ từ BE (xem JSDoc
-    // `PeriodicTask.lockedById` ở periodic-tasks.api.ts) - tự tra tên qua
-    // `useUsersList()`, mirror ĐÚNG `userNameById` ở page gốc.
-    const { users } = useUsersList();
-    const lockedByName = task.lockedById
-        ? (users as Array<{ id: number; name: string }>).find((u) => u.id === task.lockedById)?.name
-        : undefined;
-
     // BUG THẬT (2026-09-16, chữ tràn ra ngoài Card ở Kanban - xem ảnh chủ dự
     // án gửi): `Space` cũ bọc khối tiêu đề/ghi chú KHÔNG co được (flex item
     // mặc định `min-width: auto`), khiến div con cứ nới rộng theo chữ dài
@@ -312,7 +331,7 @@ export function TaskMiniCard({
                 </Tooltip>
             )}
             <div style={{ marginTop: 6 }}>
-                <TaskAssignees task={task} />
+                {assigneesSlot ?? <TaskAssignees task={task} />}
             </div>
 
             {/* MỚI (2026-09-25, research Trello - xem comment `cardStyle` ở

@@ -221,11 +221,11 @@ Tiêu chí "xong" cho mỗi bài: mọi tên cột/nút **khớp đúng chữ tr
 Thứ tự: `khach-hang` → `chia-data` → `quan-ly-phu-trach` → `status-khach` → `nguon-media` → `quan-ly-utm` → `nhom-lien-ket` → `nhom-toi-quan-ly` → `thung-rac` → `bao-cao-data-loi`.
 
 ### P2a — Bộ mẫu trực quan cho Task (cỡ M–L, làm TRƯỚC các bài P2) — *bổ sung, làm sau*
-- [ ] Bước 0: `git pull`, đọc `/cong-viec-dinh-ky/page.tsx` + các component Task + controller/service `periodic-tasks` (scope, khoá, duyệt) — chốt nhãn cột/nút thật.
-- [ ] Tách phần trình bày thuần của `TaskAssignees`, checklist, tag trạng thái để dùng chung trang thật ↔ mẫu.
-- [ ] `demo-kit/sample-tasks.ts`, `task-personas.ts`, `compute-task-view.ts` + `compute-task-view.test.ts` (đối chiếu seed `1782100000000` + BE).
-- [ ] `demos/periodic-tasks.demos.tsx` với 10 mẫu ở §2.7; đăng ký vào `GUIDE_DEMOS`; `task-by-viewer` có `DemoFrame controls` chọn persona.
-- [ ] Mở rộng contract test (permission key, id mẫu, tham số fence).
+- [x] (2026-10-05) Bước 0: `git pull`, đọc `/cong-viec-dinh-ky/page.tsx` + các component Task + controller/service `periodic-tasks` (scope, khoá, duyệt) — chốt nhãn cột/nút thật.
+- [x] (2026-10-05) Tách phần trình bày thuần của `TaskAssignees`, checklist, tag trạng thái để dùng chung trang thật ↔ mẫu.
+- [x] (2026-10-05) `demo-kit/sample-tasks.ts`, `task-personas.ts`, `compute-task-view.ts` + `compute-task-view.test.ts` (đối chiếu seed `1782100000000` + BE).
+- [x] (2026-10-05) `demos/periodic-tasks.demos.tsx` với 10 mẫu ở §2.7; đăng ký vào `GUIDE_DEMOS`; `task-by-viewer` có `DemoFrame controls` chọn persona.
+- [x] (2026-10-05) Mở rộng contract test (permission key, id mẫu, tham số fence).
 - **Xong khi:** đổi persona trong `task-by-viewer` thấy danh sách + nút đổi đúng phạm vi/quyền; test xanh; `tsc` + `next build` + eslint không lỗi mới. Không cần migration.
 
 ### P2 — Công việc & Nghỉ phép (cỡ L)

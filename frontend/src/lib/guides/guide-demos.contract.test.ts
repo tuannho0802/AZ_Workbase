@@ -7,6 +7,7 @@ import path from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { GUIDE_DEMOS } from './guide-demos';
 import { DEMO_PERSONAS } from './demo-kit/personas';
+import { TASK_PERSONAS } from './demo-kit/task-personas';
 import { extractDemoSpecs } from './guide-markdown';
 import {
   readBackendCustomerElementKeys,
@@ -40,6 +41,11 @@ describe('contract (a): key ẩn trường/tab của persona ∈ CUSTOMER_ELEMEN
 describe('contract (b): permission key được nhắc tới đều có thật (đã seed)', () => {
   it.each(DEMO_PERSONAS.map((p) => [p.id, p.permissions] as const))('persona %s', (_id, permissions) => {
     expect(permissions.filter((k) => !seeded.has(k))).toEqual([]);
+  });
+
+  it.each(TASK_PERSONAS.map((p) => [p.id, p.permissions, Object.keys(p.scopes)] as const))('task persona %s: permission đã seed, scopes ⊆ permissions', (_id, permissions, scopeKeys) => {
+    expect(permissions.filter((k) => !seeded.has(k))).toEqual([]);
+    expect(scopeKeys.filter((k) => !permissions.includes(k))).toEqual([]);
   });
 
   it('chuỗi dạng `resource.action` trong mã nguồn mẫu minh hoạ phải là key đã seed', () => {

@@ -4,15 +4,21 @@ import { Tag, Tooltip } from 'antd';
 import type { PeriodicTask } from '@/lib/api/periodic-tasks.api';
 import { UserMiniCard } from '@/app/(dashboard)/attendance-device/UserMiniCard';
 import { useRoleColorMap } from '@/lib/hooks/useRoleColorMap';
+import { resolveEntityColor } from '@/lib/utils/entityColor';
 
-interface Props {
+interface ViewProps {
     task: Pick<PeriodicTask, 'primaryAssignee' | 'secondaryAssignees'>;
     /**
      * `card` (mặc định): `UserMiniCard` chữ nhỏ, không Tag Vai trò - dùng ở Bảng/Ngày/Kanban.
      * `text`: chữ thuần "Chính · +Phụ A, Phụ B" - dùng ở chỗ hẹp/nền tối (Tooltip của Lịch).
      */
     variant?: 'card' | 'text';
+    /** Hàm tra màu Vai trò cho `UserMiniCard`; mặc định = màu mặc định (xem JSDoc `TaskAssigneesView`). */
+    getRoleColor?: (code?: string | null) => string;
 }
+type Props = Pick<ViewProps, 'task' | 'variant'>;
+
+const defaultGetRoleColor = (): string => resolveEntityColor(undefined);
 
 const MAX_SECONDARY_SHOWN = 2;
 const getRoleNameNoop = () => '';
@@ -29,6 +35,14 @@ const getRoleNameNoop = () => '';
  */
 export function TaskAssignees({ task, variant = 'card' }: Props) {
     const { getRoleColor } = useRoleColorMap();
+    return <TaskAssigneesView task={task} variant={variant} getRoleColor={getRoleColor} />;
+}
+
+/**
+ * Bản TRÌNH BÀY THUẦN (không gọi hook/API) - dùng chung cho `TaskAssignees` (trang thật) và mẫu minh hoạ trong
+ * Hướng dẫn (`lib/guides/demos/periodic-tasks.demos.tsx`) để mẫu không lệch (drift) so với giao diện thật.
+ */
+export function TaskAssigneesView({ task, variant = 'card', getRoleColor = defaultGetRoleColor }: ViewProps) {
     const primaryName = task.primaryAssignee?.name ?? '—';
     const secondary = task.secondaryAssignees ?? [];
     const hasSecondary = secondary.length > 0;
