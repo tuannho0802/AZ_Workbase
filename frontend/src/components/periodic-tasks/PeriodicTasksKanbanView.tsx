@@ -21,7 +21,7 @@ import { SortableContext, sortableKeyboardCoordinates, useSortable, verticalList
 import { CSS } from '@dnd-kit/utilities';
 import { PeriodicTask } from '@/lib/api/periodic-tasks.api';
 import { PeriodicTaskStatus } from '@/lib/api/periodic-task-statuses.api';
-import { useUpdatePeriodicTask } from '@/lib/hooks/usePeriodicTasks';
+import { useGuardedUpdatePeriodicTask } from '@/lib/hooks/useGuardedUpdatePeriodicTask';
 import { getApiErrorMessage } from '@/lib/utils/error-message.util';
 import { TaskCardDensity, TaskMiniCard } from './TaskMiniCard';
 import { getChecklistProgress } from '@/lib/utils/checklistProgress';
@@ -98,7 +98,7 @@ const COLUMN_PREFIX = 'col-';
  */
 export function PeriodicTasksKanbanView({ tasks, statuses, loading, chains, resolveChainTask, iconActions = true, ...actions }: PeriodicTasksKanbanViewProps) {
     const { message } = App.useApp();
-    const updateMutation = useUpdatePeriodicTask();
+    const updateMutation = useGuardedUpdatePeriodicTask();
 
     // Ghi đè TẠM statusId ngay khi thả (optimistic) - dọn khi mutation xong
     // (thành công lẫn thất bại), tránh Task "nhảy" ngược cột cũ trong lúc
@@ -209,26 +209,27 @@ export function PeriodicTasksKanbanView({ tasks, statuses, loading, chains, reso
             return;
         }
 
+        const clearOverride = () =>
+            setPendingOverride((prev) => {
+                const next = { ...prev };
+                delete next[task.id];
+                return next;
+            });
+
         setPendingOverride((prev) => ({ ...prev, [task.id]: targetStatusId! }));
+        // Guard checklist: BE có thể trả 409 -> hook hỏi xác nhận. Chọn "Không" (onCancel) hoặc lỗi -> trả thẻ về cột cũ.
         updateMutation.mutate(
-            { id: task.id, data: { statusId: targetStatusId } },
+            { id: task.id, data: { statusId: targetStatusId }, title: task.title },
             {
                 onSuccess: () => {
                     message.success(`Đã chuyển "${task.title}" sang trạng thái mới`);
-                    setPendingOverride((prev) => {
-                        const next = { ...prev };
-                        delete next[task.id];
-                        return next;
-                    });
+                    clearOverride();
                 },
                 onError: (err) => {
                     message.error(getApiErrorMessage(err, 'Đổi trạng thái thất bại'));
-                    setPendingOverride((prev) => {
-                        const next = { ...prev };
-                        delete next[task.id];
-                        return next;
-                    });
+                    clearOverride();
                 },
+                onCancel: clearOverride,
             },
         );
     };

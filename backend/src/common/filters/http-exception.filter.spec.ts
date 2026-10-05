@@ -1,5 +1,6 @@
 import {
   BadRequestException,
+  ConflictException,
   ForbiddenException,
   HttpStatus,
   InternalServerErrorException,
@@ -72,5 +73,22 @@ describe('AllExceptionsFilter - Sentry (PLAN_HARDENING P5)', () => {
     json.mockClear();
     await new AllExceptionsFilter().catch(new Error('boom2'), host);
     expect(json).toHaveBeenCalledTimes(1);
+  });
+
+  it('lỗi nghiệp vụ có `code` (vd Guard checklist 409) -> chuyển tiếp code + số liệu cho FE', () => {
+    new AllExceptionsFilter().catch(
+      new ConflictException({ code: 'CHECKLIST_GUARD', guard: 'complete', total: 5, done: 3, message: 'Còn 2/5' }),
+      host,
+    );
+    expect(status).toHaveBeenCalledWith(HttpStatus.CONFLICT);
+    expect(json).toHaveBeenCalledWith(
+      expect.objectContaining({ message: 'Còn 2/5', code: 'CHECKLIST_GUARD', guard: 'complete', total: 5, done: 3 }),
+    );
+  });
+
+  it('lỗi thường KHÔNG có `code` -> response giữ nguyên hình dạng cũ (không rò field lạ)', () => {
+    new AllExceptionsFilter().catch(new BadRequestException('sai'), host);
+    const body = json.mock.calls[0][0];
+    expect(Object.keys(body).sort()).toEqual(['message', 'method', 'path', 'statusCode', 'timestamp']);
   });
 });

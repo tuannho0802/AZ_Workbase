@@ -120,7 +120,9 @@ axiosInstance.interceptors.response.use(
     // Handle other errors
     const errorMessage = (error.response?.data as any)?.message || 'Đã có lỗi xảy ra';
     // Mute network errors from popping up endlessly on page load
-    if (error.code !== 'ERR_NETWORK' && error.response?.status !== 401) {
+    // 409 `CHECKLIST_GUARD` KHÔNG phải lỗi: là câu hỏi xác nhận, hộp thoại ở `useGuardedUpdatePeriodicTask` sẽ hỏi.
+    const isConfirmPrompt = (error.response?.data as { code?: string } | undefined)?.code === 'CHECKLIST_GUARD';
+    if (error.code !== 'ERR_NETWORK' && error.response?.status !== 401 && !isConfirmPrompt) {
       showMessage.error(errorMessage);
     }
 

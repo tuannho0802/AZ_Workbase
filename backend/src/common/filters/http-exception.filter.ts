@@ -32,12 +32,24 @@ export class AllExceptionsFilter implements ExceptionFilter {
       message = 'Internal server error';
     }
 
+    // Lỗi nghiệp vụ "hỏi lại để xác nhận" (vd Guard checklist 409) cần FE đọc được `code` + số liệu kèm theo.
+    // Chỉ chuyển tiếp khi exception có khai báo `code` -> mọi lỗi cũ giữ nguyên hình dạng response.
+    let businessCode: Record<string, unknown> = {};
+    if (exception instanceof HttpException) {
+      const raw = exception.getResponse();
+      if (typeof raw === 'object' && raw !== null && typeof (raw as { code?: unknown }).code === 'string') {
+        const { statusCode: _s, error: _e, message: _m, ...extra } = raw as Record<string, unknown>;
+        businessCode = extra;
+      }
+    }
+
     const errorResponse = {
       statusCode: status,
       timestamp: new Date().toISOString(),
       path: request.url,
       method: request.method,
       message: message,
+      ...businessCode,
     };
 
     // Log error for debugging (Tiếng Việt)

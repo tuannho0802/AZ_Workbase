@@ -3,7 +3,7 @@
 import { useState } from 'react';
 import { App, Divider, Empty, Pagination, Select, Spin, Tag, Tooltip, Typography } from 'antd';
 import { useQueryClient } from '@tanstack/react-query';
-import { useUpdatePeriodicTask } from '@/lib/hooks/usePeriodicTasks';
+import { useGuardedUpdatePeriodicTask } from '@/lib/hooks/useGuardedUpdatePeriodicTask';
 import { usePeriodicTaskStatuses } from '@/lib/hooks/usePeriodicTaskStatuses';
 import { useMyPermissions } from '@/lib/hooks/useMyPermissions';
 import { useUserTasks } from '@/lib/hooks/usePeriodicTaskPerformance';
@@ -60,7 +60,7 @@ export function UserTasksPanel({ userId, params }: Props) {
   const canApprove = can('periodic_tasks.approve');
 
   const { statuses } = usePeriodicTaskStatuses();
-  const updateStatusMutation = useUpdatePeriodicTask();
+  const updateStatusMutation = useGuardedUpdatePeriodicTask();
   const [checklistTask, setChecklistTask] = useState<PeriodicTask | null>(null);
 
   // Phân trang RIÊNG cho từng nhóm - lật trang nhóm này không ảnh hưởng nhóm kia.
@@ -72,8 +72,9 @@ export function UserTasksPanel({ userId, params }: Props) {
   const invalidatePerformance = () => queryClient.invalidateQueries({ queryKey: ['periodic-task-performance'] });
 
   const handleStatusChange = (task: PeriodicTask, statusId: number) => {
+    // Guard checklist: BE có thể trả 409 -> hook tự hỏi "Bạn đã hoàn thành Task?"/"Đưa Task về To-do?" rồi mới đổi.
     updateStatusMutation.mutate(
-      { id: task.id, data: { statusId } },
+      { id: task.id, data: { statusId }, title: task.title },
       {
         onSuccess: () => {
           message.success('Đã đổi trạng thái');

@@ -41,6 +41,7 @@ export const PeriodicTaskAuditAction = {
   CHECKLIST_ITEM_UPDATED: 'checklist_item_updated',
   CHECKLIST_ITEM_REMOVED: 'checklist_item_removed',
   CHECKLIST_ITEMS_REORDERED: 'checklist_items_reordered',
+  CHECKLIST_ITEMS_SYNCED: 'checklist_items_synced',
 } as const;
 
 export type PeriodicTaskAuditActionType =

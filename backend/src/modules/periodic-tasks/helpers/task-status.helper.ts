@@ -34,3 +34,38 @@ export function isCompletedTask(status: { code?: string | null; isDoneState?: bo
 export function extendedPeriodEndForReopen(periodEndDate: string, today: string): string | null {
   return isPastPeriodEnd(periodEndDate, today) ? today : null;
 }
+
+/** Giá trị `checklistSync` FE được phép gửi kèm PATCH đổi status (sau khi người dùng xác nhận Guard). */
+export const CHECKLIST_SYNC_ACTIONS = ['tick_all', 'untick_all'] as const;
+export type ChecklistSyncAction = (typeof CHECKLIST_SYNC_ACTIONS)[number];
+
+/**
+ * Guard "đổi status <-> checklist" (mirror Guard tick/thêm checklist ở trên, nhưng theo chiều NGƯỢC: đổi status trước):
+ *  - `complete`: đẩy Task sang status ĐÃ HOÀN THÀNH (in_review/done/is_done_state) khi còn checklist chưa tick
+ *    -> hỏi "Bạn đã hoàn thành Task?"; Có => tick hết (`tick_all`), Không => giữ nguyên status.
+ *  - `reset`: đẩy Task về To-do (`not_started`) khi đã có checklist tick -> hỏi; Có => bỏ tick hết (`untick_all`),
+ *    Không => giữ nguyên status (giữ bất biến "To-do không được có checklist đã tick").
+ * Sang `in_progress` thì không có Guard. Chỉ xét khi status THẬT SỰ đổi; chuyển giữa 2 status cùng nhóm hoàn thành
+ * (vd in_review -> done) cũng không hỏi lại.
+ */
+export type StatusChecklistGuard =
+  | { kind: 'complete'; sync: 'tick_all'; undone: number }
+  | { kind: 'reset'; sync: 'untick_all'; ticked: number };
+
+export function resolveStatusChecklistGuard(params: {
+  current: { code?: string | null; isDoneState?: boolean } | null | undefined;
+  target: { code?: string | null; isDoneState?: boolean } | null | undefined;
+  total: number;
+  done: number;
+}): StatusChecklistGuard | null {
+  const { current, target, total, done } = params;
+  if (!target || total <= 0) return null;
+
+  if (isCompletedTask(target) && !isCompletedTask(current) && done < total) {
+    return { kind: 'complete', sync: 'tick_all', undone: total - done };
+  }
+  if (target.code === 'not_started' && current?.code !== 'not_started' && done > 0) {
+    return { kind: 'reset', sync: 'untick_all', ticked: done };
+  }
+  return null;
+}

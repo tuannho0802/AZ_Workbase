@@ -114,4 +114,5 @@ export const PERIODIC_TASK_AUDIT_ACTION_META: Record<string, { label: string; co
   checklist_item_updated: { label: 'Sửa Checklist item', color: 'blue' },
   checklist_item_removed: { label: 'Xoá Checklist item', color: 'orange' },
   checklist_items_reordered: { label: 'Sắp xếp lại Checklist', color: 'default' },
+  checklist_items_synced: { label: 'Tick/Bỏ tick hàng loạt Checklist (theo đổi trạng thái)', color: 'geekblue' },
 };

@@ -1,11 +1,12 @@
 import { AUTO_LOCK_NOTE } from './helpers/overdue.helper';
 import { Test, TestingModule } from '@nestjs/testing';
 import { getRepositoryToken } from '@nestjs/typeorm';
-import { NotFoundException, BadRequestException, ForbiddenException } from '@nestjs/common';
+import { NotFoundException, BadRequestException, ForbiddenException, ConflictException } from '@nestjs/common';
 import { PeriodicTasksService } from './periodic-tasks.service';
 import { PeriodicTask } from '../../database/entities/periodic-task.entity';
 import { PeriodicTaskStatus } from '../../database/entities/periodic-task-status.entity';
 import { PeriodicTaskSecondaryAssignee } from '../../database/entities/periodic-task-secondary-assignee.entity';
+import { PeriodicTaskChecklistItem } from '../../database/entities/periodic-task-checklist-item.entity';
 import { User } from '../../database/entities/user.entity';
 import { Department } from '../../database/entities/department.entity';
 import { DepartmentManager } from '../../database/entities/department-manager.entity';
@@ -59,6 +60,17 @@ describe('PeriodicTasksService', () => {
   const mockSecondaryAssigneeRepo = {
     find: jest.fn(),
   };
+  // Guard đổi status <-> checklist: `createQueryBuilder().getRawOne()` trả { total, done }; `update()` tick hàng loạt.
+  const mockChecklistQb: any = {
+    select: jest.fn().mockReturnThis(),
+    addSelect: jest.fn().mockReturnThis(),
+    where: jest.fn().mockReturnThis(),
+    getRawOne: jest.fn(),
+  };
+  const mockChecklistRepo = {
+    createQueryBuilder: jest.fn(),
+    update: jest.fn(),
+  };
   const mockPermissionsService = {
     hasPermission: jest.fn(),
   };
@@ -78,6 +90,9 @@ describe('PeriodicTasksService', () => {
     jest.clearAllMocks();
     mockNotificationsService.isEnabled.mockReturnValue(false);
     mockSecondaryAssigneeRepo.find.mockResolvedValue([]);
+    mockChecklistRepo.createQueryBuilder.mockReturnValue(mockChecklistQb);
+    mockChecklistQb.getRawOne.mockResolvedValue({ total: 0, done: 0 }); // mặc định: Task không có checklist
+    mockChecklistRepo.update.mockResolvedValue({ affected: 0 });
 
     const module: TestingModule = await Test.createTestingModule({
       providers: [
@@ -85,6 +100,7 @@ describe('PeriodicTasksService', () => {
         { provide: getRepositoryToken(PeriodicTask), useValue: mockTaskRepo },
         { provide: getRepositoryToken(PeriodicTaskStatus), useValue: mockStatusRepo },
         { provide: getRepositoryToken(PeriodicTaskSecondaryAssignee), useValue: mockSecondaryAssigneeRepo },
+        { provide: getRepositoryToken(PeriodicTaskChecklistItem), useValue: mockChecklistRepo },
         { provide: getRepositoryToken(User), useValue: mockUserRepo },
         { provide: getRepositoryToken(Department), useValue: mockDepartmentRepo },
         { provide: getRepositoryToken(DepartmentManager), useValue: mockDepartmentManagerRepo },
@@ -400,6 +416,110 @@ describe('PeriodicTasksService', () => {
         { status: null },
         { status: expect.objectContaining({ id: 2 }) },
       );
+    });
+
+    describe('Guard đổi status <-> checklist', () => {
+      const admin = { id: 9, role: Role.ADMIN };
+      const makeTask = (code: string) => ({
+        id: 1,
+        statusId: 1,
+        status: { id: 1, code },
+        periodStartDate: '2026-09-14',
+        periodEndDate: '2026-09-14',
+      });
+      const setup = (code: string, target: any, checklist: { total: number; done: number }) => {
+        const task: any = makeTask(code);
+        mockTaskRepo.createQueryBuilder.mockReturnValue(makeFakeQueryBuilder({ getOne: task }));
+        mockTaskRepo.save.mockImplementation((t) => Promise.resolve(t));
+        mockStatusRepo.findOne.mockResolvedValue(target);
+        mockChecklistQb.getRawOne.mockResolvedValue(checklist);
+        return task;
+      };
+
+      it('sang Hoàn thành khi còn checklist chưa tick, CHƯA xác nhận -> 409 CHECKLIST_GUARD, KHÔNG đổi status/KHÔNG tick', async () => {
+        const task = setup('in_progress', { id: 4, code: 'done', name: 'Hoàn thành' }, { total: 5, done: 3 });
+
+        const err: any = await service.update(1, { statusId: 4 }, admin, 'all').catch((e) => e);
+
+        expect(err).toBeInstanceOf(ConflictException);
+        expect(err.getResponse()).toEqual(
+          expect.objectContaining({ code: 'CHECKLIST_GUARD', guard: 'complete', sync: 'tick_all', total: 5, done: 3 }),
+        );
+        expect(task.statusId).toBe(1);
+        expect(mockTaskRepo.save).not.toHaveBeenCalled();
+        expect(mockChecklistRepo.update).not.toHaveBeenCalled();
+      });
+
+      it('đã xác nhận (checklistSync=tick_all) -> tick hết item chưa xong + đổi status + ghi audit checklist_items_synced', async () => {
+        setup('in_progress', { id: 4, code: 'done', name: 'Hoàn thành' }, { total: 5, done: 3 });
+
+        const result = await service.update(1, { statusId: 4, checklistSync: 'tick_all' }, admin, 'all');
+
+        expect(mockChecklistRepo.update).toHaveBeenCalledWith({ taskId: 1, isDone: false }, { isDone: true });
+        expect(result.statusId).toBe(4);
+        expect(mockAuditService.logActionAsync).toHaveBeenCalledWith(
+          1,
+          9,
+          PeriodicTaskAuditAction.CHECKLIST_ITEMS_SYNCED,
+          { total: 5, done: 3 },
+          expect.objectContaining({ done: 5, sync: 'tick_all' }),
+        );
+      });
+
+      it('checklistSync SAI chiều (untick_all khi cần tick_all) -> vẫn 409, không tick', async () => {
+        setup('in_progress', { id: 4, code: 'done', name: 'Hoàn thành' }, { total: 2, done: 0 });
+
+        await expect(service.update(1, { statusId: 4, checklistSync: 'untick_all' }, admin, 'all')).rejects.toThrow(
+          ConflictException,
+        );
+        expect(mockChecklistRepo.update).not.toHaveBeenCalled();
+      });
+
+      it('tick đủ rồi -> sang Hoàn thành không hỏi', async () => {
+        setup('in_progress', { id: 4, code: 'done', name: 'Hoàn thành' }, { total: 3, done: 3 });
+
+        const result = await service.update(1, { statusId: 4 }, admin, 'all');
+
+        expect(result.statusId).toBe(4);
+        expect(mockChecklistRepo.update).not.toHaveBeenCalled();
+      });
+
+      it('về To-do khi đã tick -> 409 reset; xác nhận (untick_all) -> bỏ tick hết', async () => {
+        setup('in_progress', { id: 2, code: 'not_started', name: 'To-do' }, { total: 4, done: 2 });
+        const err: any = await service.update(1, { statusId: 2 }, admin, 'all').catch((e) => e);
+        expect(err).toBeInstanceOf(ConflictException);
+        expect(err.getResponse()).toEqual(expect.objectContaining({ guard: 'reset', sync: 'untick_all', done: 2 }));
+
+        setup('in_progress', { id: 2, code: 'not_started', name: 'To-do' }, { total: 4, done: 2 });
+        await service.update(1, { statusId: 2, checklistSync: 'untick_all' }, admin, 'all');
+        expect(mockChecklistRepo.update).toHaveBeenCalledWith({ taskId: 1, isDone: true }, { isDone: false });
+      });
+
+      it('sang Đang làm -> không Guard, không đếm checklist', async () => {
+        setup('done', { id: 3, code: 'in_progress', name: 'Đang làm' }, { total: 4, done: 4 });
+
+        await service.update(1, { statusId: 3 }, admin, 'all');
+
+        expect(mockChecklistRepo.createQueryBuilder).toHaveBeenCalled(); // có đếm nhưng guard=null
+        expect(mockChecklistRepo.update).not.toHaveBeenCalled();
+      });
+
+      it('PATCH không đổi status (form sửa gửi lại statusId cũ) -> không Guard', async () => {
+        setup('in_progress', { id: 1, code: 'in_progress', name: 'Đang làm' }, { total: 5, done: 1 });
+
+        await service.update(1, { statusId: 1, title: 'Đổi tên' }, admin, 'all');
+
+        expect(mockChecklistRepo.createQueryBuilder).not.toHaveBeenCalled();
+      });
+
+      it('changeStatusByCode (luồng tick/thêm checklist) BỎ QUA Guard dù còn item chưa tick', async () => {
+        const task = setup('in_progress', { id: 5, code: 'in_review', name: 'Xem xét' }, { total: 5, done: 4 });
+
+        await service.changeStatusByCode(task, 'in_review', admin, 'all');
+
+        expect(mockChecklistRepo.createQueryBuilder).not.toHaveBeenCalled();
+        expect(mockChecklistRepo.update).not.toHaveBeenCalled();
+      });
     });
 
     it('BUG THẬT (2026-09-15, Kanban kéo-thả không đổi cột): đổi statusId phải set LUÔN relation `status` khớp cột FK, không chỉ đổi `statusId` - nếu không TypeORM ưu tiên relation cũ đã load từ findOne() khi save(), khiến DB không đổi thật dù response trả 200 (xem SKILL_NESTJS_BACKEND.md mục 13)', async () => {

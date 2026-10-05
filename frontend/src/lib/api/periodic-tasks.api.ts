@@ -237,7 +237,10 @@ export interface CreatePeriodicTaskPayload {
   color?: string;
 }
 
-export type UpdatePeriodicTaskPayload = Partial<CreatePeriodicTaskPayload>;
+export type UpdatePeriodicTaskPayload = Partial<CreatePeriodicTaskPayload> & {
+  /** Chỉ gửi SAU KHI người dùng xác nhận Guard checklist (BE trả 409 `CHECKLIST_GUARD`) - xem `useGuardedUpdatePeriodicTask`. */
+  checklistSync?: 'tick_all' | 'untick_all';
+};
 
 export interface PeriodicTaskFilterParams {
   page?: number;

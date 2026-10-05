@@ -1,10 +1,18 @@
-import { Injectable, NotFoundException, BadRequestException, ForbiddenException, Logger } from '@nestjs/common';
+import {
+  Injectable,
+  NotFoundException,
+  BadRequestException,
+  ForbiddenException,
+  ConflictException,
+  Logger,
+} from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { waitUntil } from '@vercel/functions';
 import { PeriodicTask } from '../../database/entities/periodic-task.entity';
 import { PeriodicTaskStatus } from '../../database/entities/periodic-task-status.entity';
 import { PeriodicTaskSecondaryAssignee } from '../../database/entities/periodic-task-secondary-assignee.entity';
+import { PeriodicTaskChecklistItem } from '../../database/entities/periodic-task-checklist-item.entity';
 import { User } from '../../database/entities/user.entity';
 import { Department } from '../../database/entities/department.entity';
 import { DepartmentManager } from '../../database/entities/department-manager.entity';
@@ -19,7 +27,7 @@ import { PeriodicTaskAccessHelper } from './helpers/periodic-task-access.helper'
 import { resolveListWindow } from './helpers/list-window.helper';
 import { AUTO_LOCK_NOTE, COMPLETED_STATUS_CODES, isPastPeriodEnd } from './helpers/overdue.helper';
 import { todayVnStr } from '../../common/utils/date-vn.util';
-import { extendedPeriodEndForReopen } from './helpers/task-status.helper';
+import { extendedPeriodEndForReopen, resolveStatusChecklistGuard } from './helpers/task-status.helper';
 import { PeriodicTaskAuditService, PeriodicTaskAuditAction } from './periodic-task-audit.service';
 // ⚠️ Notification Phase 2: NotificationsModule là @Global() (mirror
 // AuditModule/Customer Phase 3) nên không cần import module - tránh phụ
@@ -68,6 +76,11 @@ export class PeriodicTasksService {
     // này (ghi/xoá vẫn thuộc `PeriodicTaskSecondaryAssigneesService`).
     @InjectRepository(PeriodicTaskSecondaryAssignee)
     private readonly secondaryAssigneeRepo: Repository<PeriodicTaskSecondaryAssignee>,
+    // Guard đổi status <-> checklist (xem `applyStatusChecklistGuard()`): CHỈ đếm + tick/bỏ tick hàng loạt item của
+    // CHÍNH Task đang đổi status. CRUD item vẫn thuộc `PeriodicTaskChecklistItemsService` (không inject ngược để
+    // tránh phụ thuộc vòng: service đó đã phụ thuộc service này).
+    @InjectRepository(PeriodicTaskChecklistItem)
+    private readonly checklistRepo: Repository<PeriodicTaskChecklistItem>,
     private readonly permissionsService: PermissionsService,
     private readonly auditService: PeriodicTaskAuditService,
     private readonly notificationsService: NotificationsService,
@@ -500,7 +513,63 @@ export class PeriodicTasksService {
       const extended = extendedPeriodEndForReopen(task.periodEndDate, todayVnStr());
       if (extended) dto.periodEndDate = extended;
     }
-    return this.update(task.id, dto, user, scope);
+    // Bỏ qua Guard checklist: luồng này do CHÍNH Guard tick/thêm checklist gọi (người dùng đã xác nhận ở đó, và
+    // đổi status chạy TRƯỚC khi lưu tick nên checklist chưa phản ánh trạng thái cuối).
+    return this.update(task.id, dto, user, scope, { skipChecklistGuard: true });
+  }
+
+  /**
+   * Guard đổi status <-> checklist (xem `resolveStatusChecklistGuard`). Gọi trong `update()` SAU khi mọi kiểm tra
+   * đã qua và TRƯỚC khi lưu Task:
+   *  - Không cần Guard -> không làm gì.
+   *  - Cần Guard mà FE chưa xác nhận (thiếu/sai `checklistSync`) -> 409 `CHECKLIST_GUARD` kèm số liệu, Task KHÔNG đổi.
+   *  - Đã xác nhận -> tick/bỏ tick hàng loạt item rồi để `update()` lưu status. Tick TRƯỚC khi lưu Task: nếu lưu Task
+   *    lỗi thì thử lại sẽ không còn gì để hỏi (tự lành), không bao giờ kẹt Task xong mà checklist vẫn trống.
+   * Chỉ tác động checklist item thật của Task; Task con liên kết (Phase 9) có status riêng nên KHÔNG bị ép đổi.
+   */
+  private async applyStatusChecklistGuard(
+    task: PeriodicTask,
+    beforeStatus: PeriodicTaskStatus | null,
+    target: PeriodicTaskStatus,
+    sync: string | undefined,
+    user: RequestingUser,
+  ): Promise<void> {
+    const row = await this.checklistRepo
+      .createQueryBuilder('item')
+      .select('COUNT(item.id)', 'total')
+      .addSelect('SUM(CASE WHEN item.is_done = 1 THEN 1 ELSE 0 END)', 'done')
+      .where('item.task_id = :taskId', { taskId: task.id })
+      .getRawOne<{ total: number | string | null; done: number | string | null }>();
+    const total = Number(row?.total ?? 0);
+    const done = Number(row?.done ?? 0);
+
+    const guard = resolveStatusChecklistGuard({ current: beforeStatus, target, total, done });
+    if (!guard) return;
+
+    if (sync !== guard.sync) {
+      throw new ConflictException({
+        code: 'CHECKLIST_GUARD',
+        guard: guard.kind,
+        sync: guard.sync,
+        total,
+        done,
+        targetStatusName: target.name,
+        message:
+          guard.kind === 'complete'
+            ? `Còn ${guard.undone}/${total} checklist chưa tick - cần xác nhận hoàn thành Task`
+            : `Đã có ${guard.ticked}/${total} checklist được tick - cần xác nhận trước khi đưa Task về To-do`,
+      });
+    }
+
+    const isDone = guard.kind === 'complete';
+    await this.checklistRepo.update({ taskId: task.id, isDone: !isDone }, { isDone });
+    this.auditService.logActionAsync(
+      task.id,
+      user.id,
+      PeriodicTaskAuditAction.CHECKLIST_ITEMS_SYNCED,
+      { total, done },
+      { total, done: isDone ? total : 0, sync: guard.sync, toStatus: target.name },
+    );
   }
 
   /**
@@ -519,6 +588,7 @@ export class PeriodicTasksService {
     dto: UpdatePeriodicTaskDto,
     user: RequestingUser,
     scope?: string | null,
+    options: { skipChecklistGuard?: boolean } = {},
   ): Promise<PeriodicTask> {
     const task = await this.findOne(id, user.id, user.role, scope);
     await this.assertEditableWhenLocked(task, user);
@@ -529,6 +599,7 @@ export class PeriodicTasksService {
     // giá trị SỐ thô cho phép so sánh `!==` đơn giản) tách khỏi `before` (bản
     // ĐỌC ĐƯỢC dùng để ghi log - xem `buildAuditSnapshot()`).
     const beforeStatusId = task.statusId;
+    const beforeStatus = task.status ?? null; // chụp TRƯỚC khi `task.status` bị ghi đè bằng `{ id }` bên dưới
     const beforePrimaryAssigneeId = task.primaryAssigneeId;
     const before = this.buildAuditSnapshot(task);
 
@@ -565,6 +636,10 @@ export class PeriodicTasksService {
 
     if (dto.statusId !== undefined) {
       newStatus = await this.assertStatusExists(dto.statusId);
+      // Guard checklist: ném 409 TRƯỚC khi gán gì lên `task` (Task giữ nguyên nếu người dùng chưa xác nhận).
+      if (!options.skipChecklistGuard && dto.statusId !== beforeStatusId) {
+        await this.applyStatusChecklistGuard(task, beforeStatus, newStatus, dto.checklistSync, user);
+      }
       task.statusId = dto.statusId;
       // Cùng bug như `primaryAssignee` ở trên - đây chính là nguyên nhân
       // Kanban kéo-thả đổi cột: PATCH trả 200 (object JS trong bộ nhớ đã

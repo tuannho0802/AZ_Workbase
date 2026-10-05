@@ -5788,3 +5788,26 @@ Now [deploy]
 > Seed chỉ có sẵn position `content`, `media`; code `sale` là giả định — nếu DB dùng code khác, `guides:sync` sẽ báo "vị trí (code) ... không tồn tại" và cần sửa 1 dòng frontmatter. Chưa chạy `guides:sync` (cần DB của bạn). BE jest guides 137/137, FE vitest guides 155/155.
 
 ---
+
+## [2026-10-05 02:20] | Guard đổi Status ↔ Checklist (Công việc định kỳ): Hoàn thành chưa tick đủ / về To-do còn tick | [Status: Success]
+
+**Actor:** Agent
+
+**Files Changed:**
+- `backend/src/modules/periodic-tasks/helpers/task-status.helper.ts` — thêm `resolveStatusChecklistGuard()` + `CHECKLIST_SYNC_ACTIONS` (quy tắc Guard thuần, có spec).
+- `backend/src/modules/periodic-tasks/periodic-tasks.service.ts` — `update()` gọi `applyStatusChecklistGuard()` khi status THẬT SỰ đổi: thiếu xác nhận -> 409 `CHECKLIST_GUARD`; có `checklistSync` -> tick/bỏ tick hàng loạt rồi mới lưu. `changeStatusByCode()` (luồng tick/thêm checklist cũ) bỏ qua Guard. Inject thêm `PeriodicTaskChecklistItem` repo.
+- `backend/src/modules/periodic-tasks/dto/update-periodic-task.dto.ts` — field `checklistSync?: 'tick_all' | 'untick_all'`.
+- `backend/src/modules/periodic-tasks/periodic-task-audit.service.ts` — action mới `checklist_items_synced` (cột `action` là VARCHAR(50), không cần migration).
+- `backend/src/common/filters/http-exception.filter.ts` — chuyển tiếp `code` + số liệu khi exception có `code` (trước đây filter chỉ trả `message` nên FE không đọc được payload 409). Lỗi cũ giữ nguyên hình dạng.
+- FE: `lib/utils/statusChecklistGuard.ts` (+test), `lib/hooks/useGuardedUpdatePeriodicTask.ts` (+test), áp vào `PeriodicTasksKanbanView.tsx`, `UserTasksPanel.tsx`, form Sửa ở `cong-viec-dinh-ky/page.tsx`; `axios-instance.ts` không toast lỗi cho 409 `CHECKLIST_GUARD`; `periodic-tasks.api.ts` (payload), `periodic-task-audit.types.ts` (nhãn).
+
+**Root Cause (khoảng trống Guard):**
+> Đã có Guard theo chiều "tick/thêm checklist -> đổi status", nhưng đổi status trực tiếp (Kanban kéo-thả, dropdown, form Sửa) sang Hoàn thành khi checklist chưa tick đủ, hoặc về To-do khi đã có tick, thì không bị chặn -> lệch giữa checklist và status.
+
+**Solution:**
+> BE là nơi ÉP (đúng nguyên tắc Guard cũ), FE chỉ hỏi. Ma trận: sang trạng thái hoàn thành (in_review/done/is_done_state) mà còn item chưa tick -> hỏi "Bạn đã hoàn thành Task?" (Có = tick hết; Không = giữ status). Về `not_started` mà đã có item tick -> hỏi "Đưa Task về To-do?" (Có = bỏ tick hết; Không = giữ status). Sang `in_progress` không Guard. Chuyển giữa 2 status cùng nhóm hoàn thành không hỏi lại.
+
+**Notes:**
+> Task con liên kết (Phase 9) có status riêng nên KHÔNG bị ép đổi — Guard chỉ tick/bỏ tick checklist item thật của Task. BE jest 90 suite/1592 test, FE vitest 67 file/575 test đều pass; `tsc --noEmit` BE sạch, FE chỉ còn 4 lỗi `logo.png` do thiếu `next-env.d.ts` trong sandbox (có sẵn từ trước). Chưa test tay trên trình duyệt thật.
+
+---

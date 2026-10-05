@@ -42,6 +42,7 @@ import { useDebounce } from '@/lib/hooks/useDebounce';
 import { useDepartments } from '@/lib/hooks/useDepartments';
 import { useUsersList } from '@/lib/hooks/useUsers';
 import { usePeriodicTaskStatuses } from '@/lib/hooks/usePeriodicTaskStatuses';
+import { useGuardedUpdatePeriodicTask } from '@/lib/hooks/useGuardedUpdatePeriodicTask';
 import { useCustomers } from '@/lib/hooks/useCustomers';
 import { useCustomerStatuses } from '@/lib/hooks/useCustomerStatuses';
 import { useAddTaskCustomers, useRemoveTaskCustomer } from '@/lib/hooks/usePeriodicTaskCustomers';
@@ -50,7 +51,6 @@ import {
     usePeriodicTasks,
     usePeriodicTask,
     useCreatePeriodicTask,
-    useUpdatePeriodicTask,
     useDeletePeriodicTask,
     useLockPeriodicTask,
     useUnlockPeriodicTask,
@@ -484,7 +484,8 @@ function PeriodicTasksPageContent() {
     };
 
     const createMutation = useCreatePeriodicTask();
-    const updateMutation = useUpdatePeriodicTask();
+    // Guard checklist: đổi status trong form Sửa cũng được BE hỏi xác nhận (409) -> hook hiện hộp thoại rồi mới lưu.
+    const updateMutation = useGuardedUpdatePeriodicTask();
     const deleteMutation = useDeletePeriodicTask();
 
     // Reset về trang 1 khi đổi filter (trừ chính page) để tránh trang trống.
@@ -727,7 +728,7 @@ function PeriodicTasksPageContent() {
             if (editingTask) {
                 const editingTaskId = editingTask.id;
                 updateMutation.mutate(
-                    { id: editingTaskId, data: payload },
+                    { id: editingTaskId, data: payload, title: payload.title },
                     {
                         onSuccess: () => {
                             message.success('Đã cập nhật Công việc định kỳ');
