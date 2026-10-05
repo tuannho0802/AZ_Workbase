@@ -5899,3 +5899,20 @@ Now [deploy]
 > Bài mô tả hành vi THẬT: `GET /customer-statuses` mở cho mọi user đăng nhập (quyền `.view` chỉ gate trang quản lý); import Excel khớp theo MÃ (không theo tên), giá trị lạ/trống -> `pending` không báo lỗi; xoá trạng thái có khách dùng bắt buộc fallback, chuyển + xoá trong 1 transaction. Verify: `vitest src/lib/guides` 12 file / 308 test pass; `tsc --noEmit` chỉ còn 4 lỗi `logo.png` có sẵn trong sandbox; eslint file mới sạch. Chưa test tay trên trình duyệt. Cần `guides:sync --apply` sau khi duyệt đổi `published: true`.
 
 ---
+
+## [2026-10-05 18:00] | Guides P1: bài `nguon-media` + bộ mẫu `sources.demos` | [Status: Success]
+
+**Actor:** Agent
+
+**Files Changed:**
+- `guides-content/nguon-media.md` — bài mới (`published: false`, chờ duyệt nội dung); gỡ slug khỏi `PENDING_GUIDE_SLUGS`.
+- `frontend/src/lib/guides/demos/sources.demos.tsx` — 3 mẫu `source-manage-table`, `source-form`, `source-lock-effect`; đăng ký ở `guide-demos.tsx`, cập nhật `guide-demos.test.tsx` (32 mẫu).
+- `AZ-Workbase Skills/PLAN_GUIDES_CONTENT.md` — tick P1 `nguon-media`.
+
+**Root Cause (phát hiện khi đối chiếu code thật, KHÔNG sửa trong phase này):**
+> 1) "Khoá nguồn" CHỈ có hiệu lực ở UI: `CustomersService.create/update` KHÔNG đối chiếu `source` với `media_sources` (chỉ `customers.import.service.ts` đối chiếu, và dùng `find()` lấy cả nguồn đã khoá) trong khi comment ở `create-customer.dto.ts` và `@ApiProperty` ghi "phải khớp 1 nguồn đang mở"/"CustomersService kiểm tra khi tạo" -> gọi API trực tiếp vẫn tạo/sửa được khách với nguồn khoá hoặc chuỗi bất kỳ. 2) `MediaSourcesService.remove()` đếm khách dùng bằng `customerRepo.count` nên TypeORM tự loại khách soft-delete (Thùng rác): xoá được nguồn chỉ còn khách trong Thùng rác dùng (cùng họ lỗi với `CustomerStatusesService.remove()`). 3) Đổi tên nguồn không đồng bộ `customers.source` (có chủ đích, đã ghi comment): khách cũ mất màu, tên cũ không còn trong bộ lọc, `CustomerForm` gắn nhầm Tag "Đã khoá" cho nguồn đã đổi tên/xoá. 4) `nguon-media/page.tsx`: `useEffect` redirect thiếu `permissionsLoading`/`can` trong deps (cùng lỗi với `quan-ly-status-khach`).
+
+**Notes:**
+> Bài mô tả hành vi THẬT: nguồn không có cờ "Hệ thống" (6 nguồn seed đều xoá được khi chưa dùng, kể cả `Other`); Manager không có `media_sources.manage` mặc định; import Excel khớp tên chính xác, không khớp/trống -> `Other`; danh sách cache FE 5 phút. Verify: `vitest src/lib/guides` 12 file / 315 test pass; `tsc --noEmit` chỉ còn 4 lỗi `logo.png` có sẵn; eslint file mới sạch. Chưa test tay trên trình duyệt. Cần `guides:sync --apply` sau khi duyệt đổi `published: true`.
+
+---
