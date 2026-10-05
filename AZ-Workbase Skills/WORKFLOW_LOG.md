@@ -5811,3 +5811,25 @@ Now [deploy]
 > Task con liên kết (Phase 9) có status riêng nên KHÔNG bị ép đổi — Guard chỉ tick/bỏ tick checklist item thật của Task. BE jest 90 suite/1592 test, FE vitest 67 file/575 test đều pass; `tsc --noEmit` BE sạch, FE chỉ còn 4 lỗi `logo.png` do thiếu `next-env.d.ts` trong sandbox (có sẵn từ trước). Chưa test tay trên trình duyệt thật.
 
 ---
+## [2026-10-05 12:00] | Guides P2a: bộ mẫu trực quan cho Task + bài `cong-viec-dinh-ky` | [Status: Success]
+
+**Actor:** Agent
+
+**Files Changed:**
+- `frontend/src/components/periodic-tasks/TaskAssignees.tsx` — thêm `TaskAssigneesView` (thuần, nhận `getRoleColor`); `TaskAssignees` là wrapper giữ hành vi cũ.
+- `frontend/src/components/periodic-tasks/TaskMiniCard.tsx` — thêm `TaskMiniCardView` (nhận `lockedByName`, `assigneesSlot`); `TaskMiniCard` là wrapper tự tra tên người khoá bằng hook như cũ.
+- `frontend/src/components/periodic-tasks/TaskActionsBar.tsx` — thêm `OverdueMarkButtonView` (nhận `today`) + prop `renderOverdue`; `OverdueMarkButton` là wrapper gọi mutation như cũ.
+- `frontend/src/lib/guides/demo-kit/` — `task-personas.ts` (7 persona), `compute-task-view.ts` (hàm thuần), `compute-task-view.test.ts` (đối chiếu seed migration + BE).
+- `frontend/src/lib/guides/demos/periodic-tasks.demos.tsx` (+ `.test.tsx`) — 10 mẫu `task-*`, `period-type-tags`; đăng ký vào `GUIDE_DEMOS`; `guide-demos.contract.test.ts` + `guide-demos.test.tsx` cập nhật.
+- `guides-content/cong-viec-dinh-ky.md` (published: false, chờ duyệt nội dung); gỡ slug khỏi `PENDING_GUIDE_SLUGS`.
+
+**Root Cause (phát hiện khi đối chiếu code thật):**
+> Plan ghi "trạng thái khoá" nhưng khoá (`is_locked`) là thuộc tính của Task (thủ công có `lockedById`, tự động khi quá hạn kỳ > 7 ngày). Nút "Khách hàng" cần `customers.view` + việc có khách, KHÔNG cần `link_customer`. Manager (department) chỉ thấy việc của phòng ban mình quản lý, không cộng việc riêng như Khách hàng.
+
+**Solution:**
+> Mẫu dùng component thật qua các bản `*View` thuần; `DemoActionsBar` (TaskActionsBar thật) được test so khớp `computeTaskRowActions` cho mọi persona x việc để chống lệch.
+
+**Notes:**
+> Modal Xoá ở `cong-viec-dinh-ky/page.tsx` vẫn ghi "chỉ Admin mới thực hiện được" dù xoá nay theo scope và là xoá mềm (chưa sửa, chờ quyết định). Mẫu `task-checklist`/Kanban/Lịch/Ngày là bản rút gọn tĩnh. Chưa chạy `guides:sync` (cần DB của bạn).
+
+---
