@@ -196,7 +196,13 @@ export function TaskLinksModal({ open, onClose, task }: Props) {
         const { range } = clampRange(parentPeriodFilter[0], parentPeriodFilter[1]);
         return { page: 1, limit: 100, dateFrom: range[0].format('YYYY-MM-DD'), dateTo: range[1].format('YYYY-MM-DD') };
     }, [parentPeriodFilter]);
-    const { data: candidatesData, isLoading: candidatesLoading } = usePeriodicTasks(candidateParams, open && !!task);
+    // [AGENT] OLD CODE (giữ để rollback): usePeriodicTasks(candidateParams, open && !!task)
+    // NEW (PLAN_CPU_OPTIMIZATION_ROUND2 - Mục 3C): dropdown "Công việc cha" chỉ render khi `canEditLinks` -> user chỉ
+    // có quyền xem không cần tải 100 task ứng viên (mirror cách gate `childCandidates` bên dưới).
+    const { data: candidatesData, isLoading: candidatesLoading } = usePeriodicTasks(
+        candidateParams,
+        open && !!task && canEditLinks,
+    );
     const allTasks = useMemo(() => candidatesData?.data ?? [], [candidatesData]);
 
     // Ứng viên "Công việc con" - khoảng ngày do `TaskPeriodFilterButton` quyết

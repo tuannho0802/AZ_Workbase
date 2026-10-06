@@ -226,6 +226,17 @@ thật (không phải tấn công).
       `invalidateQueries` toàn bộ `['periodic-tasks']` (cẩn thận đồng bộ với `useGuardedUpdatePeriodicTask`).
 - [ ] Không đụng hành vi `keepPreviousData`.
 
+**Trạng thái triển khai (2026-10-06):**
+- [x] 3A — Đo: bật env `CPU_TIMING=true` → log `[PT-List] total/findAll/checklist/secondary/customerCount` (controller) và
+      `[PT-List] select/count/rows` (service). **Chưa có số đo thật** — cần bật trên preview 30 phút rồi chọn tiếp 3B.1/3B.2.
+- [x] 3B.3 — Index: **bỏ**, đã có `idx_periodic_tasks_period_range (period_start_date, period_end_date)` (migration 1784400000000).
+- [x] 3B.4 — Bỏ COUNT thừa: `findAll` dùng `getMany()`; chỉ chạy `getCount()` khi trang đầy (rows == limit) hoặc trang rỗng ở page > 1.
+      `total` trả về GIỐNG HỆT trước (không đổi shape, không cần đổi FE). Mọi view dưới `limit` dòng tiết kiệm 1 truy vấn (COUNT + 5 join).
+- [x] 3C — FE: query ứng viên "Công việc cha" trong `TaskLinksModal` chỉ bật khi `canEditLinks` (Select chỉ render khi có quyền sửa).
+- [ ] 3B.1 (thu hẹp cột join), 3B.2 (`Promise.all` attach*), 3B.5 (giảm limit 100) — **chờ số đo 3A**.
+- [ ] 3C còn lại (`setQueryData` khi tick checklist, `staleTime` riêng, ứng viên search server-side) — chưa làm: đổi hành vi cache
+      cần đo trước; tick checklist đang `invalidate` toàn bộ `['periodic-tasks']`.
+
 **Test:** BE — spec `periodic-tasks.service` + controller (response shape không đổi, có/không `withTotal`);
 FE — vitest cho hook/modal (số lần gọi API khi mở modal, khi tick checklist).
 **Đo lại:** TB và số lần `GET /periodic-tasks` trong kịch bản chuẩn (Mục 0).

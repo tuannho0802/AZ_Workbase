@@ -6342,3 +6342,24 @@ Now [deploy]
 > BE: 1690 test pass + nest build OK. FE: tsc sạch (trừ logo.png), test hooks+auth pass.
 
 ---
+---
+## [2026-10-06 20:00] | Mục 3 plan CPU: GET /periodic-tasks — đo + bỏ COUNT thừa + gate query FE | Status: Success (chờ số đo thật)
+
+**Actor:** Agent
+**Files Changed:**
+- `backend/src/modules/periodic-tasks/periodic-tasks.service.ts` — `findAll`: `getMany()` + `getCount()` có điều kiện (bỏ COUNT khi rows < limit); log `[PT-List]` khi `CPU_TIMING=true`
+- `backend/src/modules/periodic-tasks/periodic-tasks.controller.ts` — đo thời gian từng bước `attach*` khi `CPU_TIMING=true`
+- `backend/src/modules/periodic-tasks/periodic-tasks.service.spec.ts` — fake qb thêm `getMany/getCount`, +4 test nhánh COUNT
+- `frontend/src/components/periodic-tasks/TaskLinksModal.tsx` — query ứng viên cha chỉ bật khi `canEditLinks` (code cũ giữ bằng comment)
+
+**Root Cause:**
+> `getManyAndCount` luôn chạy thêm COUNT với 5 leftJoin; FE agenda/kanban/lịch chỉ cần `total` cho cảnh báo "X/Y". Modal Liên kết tải 100 task ứng viên cha kể cả khi user không có quyền sửa (dropdown không render).
+
+**Solution:**
+> Suy `total` từ số dòng khi trang chưa đầy (kết quả y hệt). Gate query FE theo quyền. Index period_range đã có nên không migration.
+
+**Notes:**
+> Chưa đo được mức giảm CPU — bật `CPU_TIMING=true` trên preview 30 phút rồi quyết 3B.1/3B.2. Tắt biến sau khi đo.
+> BE: 252 test periodic-tasks pass, nest build OK. FE: tsc sạch (trừ logo.png), 61 test periodic-tasks/hooks pass.
+
+---

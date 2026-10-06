@@ -17,7 +17,7 @@ import { NotificationsService } from '../notifications/notifications.service';
 import { Role } from '../../common/enums/role.enum';
 import { PeriodType } from '../../common/enums/period-type.enum';
 
-function makeFakeQueryBuilder(overrides: { getOne?: any; getManyAndCount?: any } = {}) {
+function makeFakeQueryBuilder(overrides: { getOne?: any; getManyAndCount?: any; getMany?: any; getCount?: any } = {}) {
   const qb: any = {
     leftJoinAndSelect: jest.fn().mockReturnThis(),
     where: jest.fn().mockReturnThis(),
@@ -30,6 +30,9 @@ function makeFakeQueryBuilder(overrides: { getOne?: any; getManyAndCount?: any }
     limit: jest.fn().mockReturnThis(),
     getOne: jest.fn().mockResolvedValue(overrides.getOne ?? null),
     getManyAndCount: jest.fn().mockResolvedValue(overrides.getManyAndCount ?? [[], 0]),
+    // findAll() dùng getMany + (có điều kiện) getCount; mặc định suy từ getManyAndCount để spec cũ giữ nguyên.
+    getMany: jest.fn().mockResolvedValue(overrides.getMany ?? (overrides.getManyAndCount ?? [[], 0])[0]),
+    getCount: jest.fn().mockResolvedValue(overrides.getCount ?? (overrides.getManyAndCount ?? [[], 0])[1]),
   };
   return qb;
 }
@@ -240,6 +243,48 @@ describe('PeriodicTasksService', () => {
       });
     });
 
+    it('[PERF 3B.4] trang chưa đầy (rows < limit) -> total suy ra, KHÔNG chạy COUNT', async () => {
+      const qb = makeFakeQueryBuilder({ getMany: [{ id: 1 }, { id: 2 }, { id: 3 }] });
+      mockTaskRepo.createQueryBuilder.mockReturnValue(qb);
+
+      const r = await service.findAll({ page: 2, limit: 5 } as any, 1, Role.ADMIN, 'all');
+
+      expect(r.total).toBe(5 + 3);
+      expect(r.totalPages).toBe(2);
+      expect(qb.getCount).not.toHaveBeenCalled();
+    });
+
+    it('[PERF 3B.4] trang rỗng ở page 1 -> total = 0, KHÔNG chạy COUNT', async () => {
+      const qb = makeFakeQueryBuilder({ getMany: [] });
+      mockTaskRepo.createQueryBuilder.mockReturnValue(qb);
+
+      const r = await service.findAll({ page: 1, limit: 20 } as any, 1, Role.ADMIN, 'all');
+
+      expect(r.total).toBe(0);
+      expect(qb.getCount).not.toHaveBeenCalled();
+    });
+
+    it('[PERF 3B.4] trang đầy (rows == limit) -> PHẢI chạy COUNT để biết tổng', async () => {
+      const qb = makeFakeQueryBuilder({ getMany: [{ id: 1 }, { id: 2 }], getCount: 37 });
+      mockTaskRepo.createQueryBuilder.mockReturnValue(qb);
+
+      const r = await service.findAll({ page: 1, limit: 2 } as any, 1, Role.ADMIN, 'all');
+
+      expect(r.total).toBe(37);
+      expect(r.totalPages).toBe(19);
+      expect(qb.getCount).toHaveBeenCalledTimes(1);
+    });
+
+    it('[PERF 3B.4] trang rỗng ở page > 1 (vượt trang cuối) -> chạy COUNT', async () => {
+      const qb = makeFakeQueryBuilder({ getMany: [], getCount: 10 });
+      mockTaskRepo.createQueryBuilder.mockReturnValue(qb);
+
+      const r = await service.findAll({ page: 9, limit: 5 } as any, 1, Role.ADMIN, 'all');
+
+      expect(r.total).toBe(10);
+      expect(qb.getCount).toHaveBeenCalledTimes(1);
+    });
+
     it('KHÔNG truyền ngày -> BẮT BUỘC lọc Tuần này (không bao giờ tải toàn bộ)', async () => {
       const qb = makeFakeQueryBuilder();
       mockTaskRepo.createQueryBuilder.mockReturnValue(qb);
@@ -267,7 +312,7 @@ describe('PeriodicTasksService', () => {
       await expect(
         service.findAll({ dateFrom: '2026-01-01', dateTo: '2026-12-31' } as any, 1, Role.ADMIN, 'all'),
       ).rejects.toThrow(BadRequestException);
-      expect(qb.getManyAndCount).not.toHaveBeenCalled();
+      expect(qb.getMany).not.toHaveBeenCalled();
     });
 
     it('assigneeId -> lọc Phụ trách CHÍNH hoặc PHỤ', async () => {

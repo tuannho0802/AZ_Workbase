@@ -495,7 +495,31 @@ export class PeriodicTasksService {
     qb.orderBy('task.periodStartDate', 'DESC').addOrderBy('task.id', 'DESC');
     qb.offset((page - 1) * limit).limit(limit);
 
-    const [data, total] = await qb.getManyAndCount();
+    // [AGENT] OLD CODE (giữ để rollback): const [data, total] = await qb.getManyAndCount();
+    // NEW (PLAN_CPU_OPTIMIZATION_ROUND2 - Mục 3B.4): getManyAndCount luôn chạy thêm 1 truy vấn COUNT (cùng 5 join).
+    // Khi trang trả về ÍT HƠN `limit` dòng thì tổng đã biết chính xác (không cần COUNT) -> bỏ truy vấn thừa.
+    // Kết quả `total` GIỐNG HỆT trước đây; chỉ chạy COUNT khi trang đầy (có thể còn trang sau) hoặc trang rỗng ở page > 1.
+    const timing = process.env.CPU_TIMING === 'true';
+    const t0 = timing ? Date.now() : 0;
+    const data = await qb.getMany();
+    const t1 = timing ? Date.now() : 0;
+    const offset = (page - 1) * limit;
+    let total: number;
+    let countSkipped = false;
+    if (data.length > 0 && data.length < limit) {
+      total = offset + data.length;
+      countSkipped = true;
+    } else if (data.length === 0 && page === 1) {
+      total = 0;
+      countSkipped = true;
+    } else {
+      total = await qb.getCount();
+    }
+    if (timing) {
+      this.logger.log(
+        `[PT-List] select=${t1 - t0}ms count=${countSkipped ? 'skipped' : `${Date.now() - t1}ms`} rows=${data.length} limit=${limit} page=${page}`,
+      );
+    }
 
     // `dateFrom`/`dateTo` trả về = khoảng ĐÃ ÁP THẬT (kể cả khi tự mặc định Tuần này).
     return {

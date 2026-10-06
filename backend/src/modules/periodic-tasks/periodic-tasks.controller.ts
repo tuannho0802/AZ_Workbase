@@ -1,4 +1,4 @@
-import { Controller, Get, Post, Body, Patch, Param, Delete, Query, UseGuards, ParseIntPipe, NotFoundException, ForbiddenException } from '@nestjs/common';
+import { Logger, Controller, Get, Post, Body, Patch, Param, Delete, Query, UseGuards, ParseIntPipe, NotFoundException, ForbiddenException } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiResponse, ApiBearerAuth } from '@nestjs/swagger';
 import { PeriodicTasksService } from './periodic-tasks.service';
 import { PeriodicTaskLinksService } from './periodic-task-links.service';
@@ -41,6 +41,8 @@ import { GetPermissionScope } from '../../common/decorators/get-permission-scope
 @UseGuards(JwtAuthGuard, PermissionGuard)
 @Controller('periodic-tasks')
 export class PeriodicTasksController {
+  private readonly logger = new Logger(PeriodicTasksController.name);
+
   constructor(
     private readonly periodicTasksService: PeriodicTasksService,
     private readonly periodicTaskLinksService: PeriodicTaskLinksService,
@@ -67,7 +69,11 @@ export class PeriodicTasksController {
     @Query() filters: PeriodicTaskFiltersDto,
     @GetPermissionScope() scope: string | null | undefined,
   ) {
+    // [PERF] Đo từng bước khi bật env CPU_TIMING=true (không đổi hành vi khi tắt) - PLAN_CPU_OPTIMIZATION_ROUND2 Mục 3A.
+    const timing = process.env.CPU_TIMING === 'true';
+    const t0 = timing ? Date.now() : 0;
     const result = await this.periodicTasksService.findAll(filters, user.id, user.role, scope);
+    const t1 = timing ? Date.now() : 0;
     // Đính `checklistProgress` ({done,total}) cho từng Task để FE hiện "X/Z"
     // trên nút Checklist - xem JSDoc `attachChecklistProgressToList()`.
     const data = await this.periodicTaskChecklistItemsService.attachChecklistProgressToList(
@@ -76,13 +82,21 @@ export class PeriodicTasksController {
       user.role,
       scope,
     );
+    const t2 = timing ? Date.now() : 0;
     // Đính `secondaryAssignees` ({id,name}[]) - 1 query gom nhóm cho cả trang.
     const withSecondary = await this.periodicTaskSecondaryAssigneesService.attachSecondaryAssigneesToList(data);
+    const t3 = timing ? Date.now() : 0;
     // Đính `customerCount` (số Khách hàng liên quan, đã lọc theo phạm vi
     // `customers.view` của người xem) - 1 query gom nhóm cho cả trang, dùng
     // để FE quyết định hiện nút "Khách hàng liên quan (N)" mà không cần gọi
     // `GET /:id` cho từng Task (tránh N+1) - xem JSDoc `attachCustomerCountToList()`.
     const withCustomerCount = await this.periodicTaskCustomersService.attachCustomerCountToList(withSecondary, user);
+    if (timing) {
+      const t4 = Date.now();
+      this.logger.log(
+        `[PT-List] total=${t4 - t0}ms findAll=${t1 - t0}ms checklist=${t2 - t1}ms secondary=${t3 - t2}ms customerCount=${t4 - t3}ms rows=${result.data.length} limit=${filters.limit ?? 20}`,
+      );
+    }
     return { ...result, data: withCustomerCount };
   }
 
