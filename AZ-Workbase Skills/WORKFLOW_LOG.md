@@ -6104,3 +6104,19 @@ Now [deploy]
 > Bài `cong-viec-dinh-ky` đang `published: true` nên cần `guides:sync --apply` lại; link sang `trang-thai-cong-viec` chỉ mở được sau khi bài đó được duyệt `published: true`. Verify: `vitest src/lib/guides` 12 file / 353 test pass; `tsc --noEmit` không lỗi mới (không tính `logo.png`); `eslint src/lib/guides` sạch. Chưa chạy `next build`, chưa test tay. Vẫn mở: migration seed `in_progress`/`in_review`, và cờ Quá hạn chỉ xét mã `in_review`/`done` (không xét `completed`).
 
 ---
+
+---
+## [2026-10-06 23:45] | Guides P2: viết bài `lich-su-cong-viec` + 2 mẫu minh hoạ | [Status: Success]
+
+**Actor:** Agent
+
+**Files Changed:**
+- `guides-content/lich-su-cong-viec.md` (MỚI, `published: false`, `permissions: [periodic_tasks.audit_view]`, sortOrder 13) — đọc từ `lich-su-cong-viec/page.tsx`, `periodic-task-audit.service.ts`, controller, `PeriodicTaskAccessHelper`, `AuditDiffViewer`, `WeeklyLazySection`.
+- `frontend/src/lib/guides/demos/task-audit.demos.tsx` (MỚI) — `task-audit-page` (thanh lọc + tuần gập/mở), `task-audit-cleanup` (2 hộp thoại bắt gõ XÁC NHẬN). Dùng lại `task-audit-row` có sẵn.
+- `frontend/src/lib/guides/demos/task-audit.demos.test.tsx` (MỚI), `guide-demos.test.tsx` (46 -> 48 mẫu), `guide-demos.tsx` (đăng ký), `guide-slugs.ts` (gỡ slug khỏi `PENDING_GUIDE_SLUGS`).
+- `AZ-Workbase Skills/PLAN_GUIDES_CONTENT.md` — đánh dấu P2 đã xong `lich-su-cong-viec`.
+
+**Notes:**
+> Verify: `vitest src/lib/guides` 13 file / 364 test pass; `tsc --noEmit` không lỗi mới (không tính `logo.png`); `eslint src/lib/guides` sạch. Chưa chạy `next build`, chưa test tay. Cần duyệt đổi `published: true` rồi `guides:sync --apply`. Bài cố ý KHÔNG nói về 2 điểm dưới (nghi là bug, chưa sửa): (1) `getGlobalLogs`/`getGlobalLogDetail` dùng `innerJoin('log.task')` không `withDeleted` -> TypeORM tự thêm `task.deleted_at IS NULL`, nên log của việc đã xoá mềm (kể cả dòng "Xoá") nhiều khả năng KHÔNG hiện, thẻ "Đã xoá" ở FE không bao giờ xuất hiện; (2) bộ lọc "đến ngày": FE gửi `endOf('day')` rồi BE cộng thêm 1 ngày -> lọc dư 1 ngày (cùng mẫu ở `audit.service.ts` chung); `cleanupByDateRange` cũng cộng +1 ngày lên `to` nên có thể xoá lố, tuỳ giờ mà RangePicker trả về (chưa xác nhận). Chưa chạy trên MySQL thật.
+
+---
