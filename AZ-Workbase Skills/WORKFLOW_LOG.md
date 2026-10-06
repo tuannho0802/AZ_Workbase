@@ -6032,3 +6032,21 @@ Now [deploy]
 > Chưa đo tác động thật - theo dõi Usage vài ngày. Chưa làm: gộp 8 query badge thành 1 endpoint, cache ngắn user/permission ở JwtStrategy. Gợi ý thêm: đặt `SWAGGER_ENABLED=false` trên Vercel nếu không dùng /api/docs ở prod. Hạn mức: 4h/30 ngày ~ 8 phút/ngày.
 
 ---
+
+---
+## [2026-10-06 15:00] | Guides P1: bài `bao-cao-data-loi` + 2 mẫu `invalid-data.demos` (P1 hoàn tất) | [Status: Success]
+
+**Actor:** Agent
+
+**Files Changed:**
+- `guides-content/bao-cao-data-loi.md` — bài mới (`published: false`, chờ duyệt nội dung); gỡ slug khỏi `PENDING_GUIDE_SLUGS`.
+- `frontend/src/lib/guides/demos/invalid-data.demos.tsx` — 2 mẫu `invalid-data-table` (tham số `type=duplicate|missing`), `invalid-stats`; đăng ký ở `guide-demos.tsx`, cập nhật `guide-demos.test.tsx` (43 mẫu).
+- `AZ-Workbase Skills/PLAN_GUIDES_CONTENT.md` — tick P1 `bao-cao-data-loi`, ghi P1 xong 10/10.
+
+**Root Cause (phát hiện khi đối chiếu code thật, KHÔNG sửa trong phase này):**
+> 1) `customers.controller.ts`: `@ApiOperation` của `GET reports/invalid-data` vẫn ghi "CHỈ ADMIN", nhưng route đã gate bằng `@RequirePermission('customers.invalid_report')` (permission `supports_scope=FALSE`). Với role không phải admin được cấp quyền, `scope` = null nên `CustomerAccessHelper.applyViewFilter` rơi về nhánh "own" (người tạo / Sales / Marketing phụ trách / lượt chia active) -> người đó thấy báo cáo hẹp hơn Admin, và cụm trùng chỉ tính trong phạm vi họ xem. Bài mô tả đúng như code; cần xác nhận đây là chủ ý. 2) Mâu thuẫn về trùng SĐT: Alert ở `invalid-data/page.tsx` nói hệ thống KHÔNG chặn nhập trùng SĐT/Email, nhưng migration `1776053695502` giữ UNIQUE INDEX `IDX_88acd889...` trên `customers.phone` và `create()/update()` bắt `ER_DUP_ENTRY` -> `DuplicatePhoneException` ("Số điện thoại đã tồn tại"). Với Email thì đúng là không chặn. Cần kiểm tra DB đích còn index UNIQUE không (nếu còn, trùng SĐT chỉ đến từ dữ liệu cũ/đường khác; bài hiện không khẳng định chặn hay không với SĐT). Lưu ý index UNIQUE tính cả khách đã xóa mềm. 3) SĐT so nguyên văn (không chuẩn hóa khoảng trắng/ký tự) nên `0901 234 567` không trùng `0901234567`; Email thì LOWER/TRIM. 4) Huy hiệu menu `invalid-data-report` = `total` (số dòng khách) của loại Trùng SĐT mặc định, không phải số nhóm. 5) Tên người dùng thấy trên trang: "Báo cáo dữ liệu không hợp lệ" (tiêu đề) khác "Báo cáo data lỗi" (menu).
+
+**Notes:**
+> Bài mô tả hành vi THẬT: 5 loại lỗi (trùng SĐT/Email, thiếu SĐT/Email, ngày nhập > hôm nay giờ VN), không tính trùng Tên, khách Thùng rác không tính; lọc ở loại trùng theo "khớp cụm" (≥1 khách thỏa thì hiện đủ cụm); tab Thống kê đếm "bản dư" (bản nhập sau bản gốc) phát sinh trong kỳ theo Ngày nhập thực tế, kỳ tối đa 366 ngày, ≤92 ngày vẽ theo ngày, Top 10. Mặc định quyền chỉ Admin (migration 1778500000000). Verify: `vitest src/lib/guides` 12 file / 346 test pass; `tsc --noEmit` chỉ còn 4 lỗi `logo.png` có sẵn; eslint file sửa sạch. Chưa test tay trên trình duyệt. Cần `guides:sync --apply` sau khi duyệt đổi `published: true`. Không có migration mới.
+
+---

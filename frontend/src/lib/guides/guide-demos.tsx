@@ -12,6 +12,7 @@ import { ASSIGNMENT_DEMOS } from './demos/assignment.demos';
 import { STATUS_DEMOS } from './demos/status.demos';
 import { SOURCE_DEMOS } from './demos/sources.demos';
 import { TRASH_DEMOS } from './demos/trash.demos';
+import { INVALID_DATA_DEMOS } from './demos/invalid-data.demos';
 
 export type { GuideDemo } from './guide-demo.types';
 
@@ -31,7 +32,7 @@ export type { GuideDemo } from './guide-demo.types';
  * Trình soạn tự liệt kê mẫu mới trong ô "Chèn mẫu minh hoạ"; không cần đổi BE/DB. Mỗi phase của plan đụng file `demos/*` riêng
  * nên nhiều tài khoản làm song song không xung đột. Test `guide-demos.contract.test.ts` bắt id trùng.
  */
-export const GUIDE_DEMOS: GuideDemo[] = [...CUSTOMER_DEMOS, ...ASSIGNMENT_DEMOS, ...STATUS_DEMOS, ...SOURCE_DEMOS, ...PERIODIC_TASK_DEMOS, ...UTM_DEMOS, ...LINK_GROUP_DEMOS, ...TRASH_DEMOS, ...COMMON_DEMOS];
+export const GUIDE_DEMOS: GuideDemo[] = [...CUSTOMER_DEMOS, ...ASSIGNMENT_DEMOS, ...STATUS_DEMOS, ...SOURCE_DEMOS, ...PERIODIC_TASK_DEMOS, ...UTM_DEMOS, ...LINK_GROUP_DEMOS, ...TRASH_DEMOS, ...INVALID_DATA_DEMOS, ...COMMON_DEMOS];
 
 const DEMO_MAP = new Map(GUIDE_DEMOS.map((d) => [d.id, d]));
 
