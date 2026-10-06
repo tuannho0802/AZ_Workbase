@@ -25,13 +25,13 @@ period-type-tags
 
 Khi tạo việc, bạn **tự chọn khoảng thời gian của kỳ** (từ ngày nào đến ngày nào). Hệ thống không tự suy ra đầu/cuối tuần, tháng, năm. **Ngày cuối kỳ chính là hạn chót**: đúng ngày cuối kỳ thì chưa tính quá hạn.
 
-**Trạng thái** do Admin cấu hình ở **Quản lý Trạng thái** (tên và màu có thể khác ví dụ dưới đây). Bỏ trống khi tạo thì dùng mặc định "Chưa hoàn thành".
+**Trạng thái** do Admin cấu hình ở **Quản lý Trạng thái** (tên và màu có thể khác ví dụ dưới đây). Bỏ trống khi tạo thì dùng mặc định "To-Do".
 
 ```az-demo
 task-status-tags
 ```
 
-Hai trạng thái có mã hệ thống **in_review** và **done** được tính là *đã xong phần việc*: việc ở trạng thái này không bị coi là quá hạn.
+Trạng thái có mã hệ thống **in_review** ("Xem xét") được tính là *đã xong phần việc*: việc ở trạng thái này không bị coi là quá hạn. Mã **done** cũng được tính như vậy nếu Admin có thêm. Xem [Quản lý Trạng thái công việc](/huong-dan/trang-thai-cong-viec) để biết 5 trạng thái có sẵn và ý nghĩa từng công tắc.
 
 ## Màn hình gồm những gì
 
@@ -180,5 +180,5 @@ Admin có thể đổi các quyền này ở trang **Phân quyền**, nên bản
 ## Lưu ý
 
 - Không thấy trang này nghĩa là vai trò của bạn **không có quyền Xem Công việc**; liên hệ Admin nếu cần.
-- Việc đã **xong** (in_review, done) không bị coi là quá hạn và không bị khoá tự động.
+- Việc đã **xong phần việc** (mã in_review, hoặc done nếu có) không bị coi là quá hạn và không bị khoá tự động.
 - Mọi thay đổi quan trọng (đổi trạng thái, đổi người phụ trách, khoá, liên kết, checklist...) đều được ghi vào **Lịch sử** của việc.

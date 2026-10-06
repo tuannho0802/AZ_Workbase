@@ -6089,3 +6089,18 @@ Now [deploy]
 
 **Notes:**
 > Endpoint cũ giữ nguyên (không xoá). Verify: BE `tsc` sạch, `nest build` OK, jest 1631/1631 (thêm 7 test); FE vitest 777/777, `tsc --noEmit` chỉ còn 4 lỗi `logo.png` có sẵn. SQL 3 câu đếm mới đã in ra từ TypeORM metadata (không có DB) - chưa chạy trên MySQL thật. Chưa chạy `next build`. Chưa gộp query `/notifications/poll` (2 query -> 1). `DISABLE_APP_COMPRESSION` CHƯA bật ở prod - phải kiểm `Content-Encoding` ở preview trước. Theo dõi Usage vài ngày làm việc để đo tác động thật.
+
+---
+## [2026-10-06 23:00] | Guides: đồng bộ mẫu Task với 5 trạng thái hệ thống thật | [Status: Success]
+
+**Actor:** Agent
+
+**Files Changed:**
+- `frontend/src/lib/guides/demo-kit/sample-tasks.ts` — `DEMO_TASK_STATUSES` đổi sang 5 trạng thái thật (`not_started` To-Do, `in_progress` Đang làm, `in_review` Xem xét, `completed` Hoàn thành, `not_completed` Không hoàn thành); việc mẫu dùng mã `done` đổi thành `completed`.
+- `frontend/src/lib/guides/demos/periodic-tasks.demos.tsx` — chữ \"Chưa hoàn thành\" -> \"To-Do\" (mặc định ở modal tạo, dòng lịch sử mẫu).
+- `guides-content/cong-viec-dinh-ky.md` — mặc định \"To-Do\"; câu về mã xong phần việc (`in_review`, `done` nếu có) + link sang bài `trang-thai-cong-viec`.
+
+**Notes:**
+> Bài `cong-viec-dinh-ky` đang `published: true` nên cần `guides:sync --apply` lại; link sang `trang-thai-cong-viec` chỉ mở được sau khi bài đó được duyệt `published: true`. Verify: `vitest src/lib/guides` 12 file / 353 test pass; `tsc --noEmit` không lỗi mới (không tính `logo.png`); `eslint src/lib/guides` sạch. Chưa chạy `next build`, chưa test tay. Vẫn mở: migration seed `in_progress`/`in_review`, và cờ Quá hạn chỉ xét mã `in_review`/`done` (không xét `completed`).
+
+---

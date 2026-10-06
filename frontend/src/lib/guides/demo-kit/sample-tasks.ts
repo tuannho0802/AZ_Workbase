@@ -4,15 +4,16 @@ import type { PeriodicTask, PeriodType } from '@/lib/api/periodic-tasks.api';
  * Dữ liệu MẪU cho các mẫu minh hoạ module Công việc định kỳ trong Hướng dẫn. Dữ liệu cứng, KHÔNG gọi API.
  * "Hôm nay" của mẫu là NGÀY CỐ ĐỊNH (`DEMO_TODAY`, Thứ Hai) - để các luật phụ thuộc ngày (quá hạn, ân hạn 7 ngày) cho
  * kết quả không đổi theo ngày người đọc mở bài; truyền vào đúng các hàm thật ở `lib/utils/periodicTaskOverdue.ts`.
- * Tên/màu Trạng thái ở đây chỉ là MẪU (thật do Admin cấu hình ở "Quản lý Trạng thái"); `code` là mã hệ thống thật.
+ * 5 Trạng thái ở đây khớp 5 trạng thái hệ thống thật (mã + tên + màu ban đầu); tên/màu thật do Admin cấu hình ở "Quản lý Trạng thái" nên có thể khác.
  */
 export const DEMO_TODAY = '2026-10-05';
 
 export const DEMO_TASK_STATUSES = [
-    { id: 1, code: 'not_started', name: 'Chưa hoàn thành', color: '#faad14', isDoneState: false },
+    { id: 1, code: 'not_started', name: 'To-Do', color: '#faad14', isDoneState: false },
     { id: 2, code: 'in_progress', name: 'Đang làm', color: '#1890ff', isDoneState: false },
-    { id: 3, code: 'in_review', name: 'Đang xem xét', color: '#722ed1', isDoneState: false },
-    { id: 4, code: 'done', name: 'Hoàn thành', color: '#52c41a', isDoneState: true },
+    { id: 3, code: 'in_review', name: 'Xem xét', color: '#722ed1', isDoneState: false },
+    { id: 4, code: 'completed', name: 'Hoàn thành', color: '#52c41a', isDoneState: true },
+    { id: 5, code: 'not_completed', name: 'Không hoàn thành', color: '#f5222d', isDoneState: false },
 ] as const;
 
 export const DEMO_TASK_DEPARTMENTS: Record<number, { id: number; name: string; color: string }> = {
@@ -93,7 +94,7 @@ const SEEDS: TaskSeed[] = [
     },
     {
         id: 9, title: 'Hoàn tất hồ sơ khách tháng 9', periodType: 'monthly', start: '2026-09-01', end: '2026-09-30',
-        statusCode: 'done', primary: 5, departmentId: 1, createdBy: 3, color: '#52c41a',
+        statusCode: 'completed', primary: 5, departmentId: 1, createdBy: 3, color: '#52c41a',
         lock: { byId: 1, note: 'Đã chốt số liệu tháng 9' }, checklist: { done: 4, total: 4 },
     },
     {

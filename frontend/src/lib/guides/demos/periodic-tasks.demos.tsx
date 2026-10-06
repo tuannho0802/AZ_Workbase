@@ -305,7 +305,7 @@ function ChecklistDemo() {
 }
 
 const AUDIT_SAMPLE = [
-    { id: 1, action: 'status_changed', user: 'Sales An', at: '2026-10-05T09:12:40', changes: [{ field: 'status', from: 'Chưa hoàn thành', to: 'Đang làm' }] },
+    { id: 1, action: 'status_changed', user: 'Sales An', at: '2026-10-05T09:12:40', changes: [{ field: 'status', from: 'To-Do', to: 'Đang làm' }] },
     { id: 2, action: 'locked', user: 'Admin', at: '2026-10-05T07:00:05', changes: [{ field: 'isLocked', from: 'Không', to: 'Có' }, { field: 'lockNote', from: '—', to: 'Đã chốt số liệu tháng 9' }] },
 ];
 
@@ -410,8 +410,8 @@ function TaskCreateModalDemo() {
                     </Row>
                     <Row gutter={12}>
                         <Col span={12}>
-                            <Form.Item name="statusId" label="Trạng thái" tooltip="Bỏ trống dùng mặc định 'Chưa hoàn thành'">
-                                <Select allowClear placeholder="Chưa hoàn thành (mặc định)" options={statuses.map((s) => ({ value: s.id, label: <Tag color={s.color} style={{ marginInlineEnd: 0 }}>{s.name}</Tag> }))} />
+                            <Form.Item name="statusId" label="Trạng thái" tooltip="Bỏ trống dùng mặc định 'To-Do'">
+                                <Select allowClear placeholder="To-Do (mặc định)" options={statuses.map((s) => ({ value: s.id, label: <Tag color={s.color} style={{ marginInlineEnd: 0 }}>{s.name}</Tag> }))} />
                             </Form.Item>
                         </Col>
                         <Col span={12}>
