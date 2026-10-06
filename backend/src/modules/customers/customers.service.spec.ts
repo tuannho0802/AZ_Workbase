@@ -1007,10 +1007,39 @@ describe('CustomersService', () => {
         andWhere: jest.fn().mockReturnThis(),
         clone: jest.fn(),
         getCount: jest.fn().mockResolvedValue(0),
+        select: jest.fn().mockReturnThis(),
+        addSelect: jest.fn().mockReturnThis(),
+        setParameters: jest.fn().mockReturnThis(),
+        getRawOne: jest.fn().mockResolvedValue({ total: '0', newToday: '0', closedTotal: '0', pendingTotal: '0', potentialTotal: '0' }),
       };
       qb.clone.mockReturnValue(qb);
       return qb;
     }
+
+    it('5 số đếm gộp thành 1 query; "hôm nay" là khoảng ngày giờ VN (không bọc hàm trên created_at)', async () => {
+      const countQb = makeCountQb();
+      countQb.getRawOne.mockResolvedValue({ total: '12', newToday: '3', closedTotal: '4', pendingTotal: '5', potentialTotal: '2' });
+      mockCustomerRepo.createQueryBuilder.mockReturnValue(countQb);
+      const depositQb: any = {
+        leftJoin: jest.fn().mockReturnThis(),
+        where: jest.fn().mockReturnThis(),
+        andWhere: jest.fn().mockReturnThis(),
+        select: jest.fn().mockReturnThis(),
+        getRawOne: jest.fn().mockResolvedValue({ total: null }),
+      };
+      mockDepositRepo.createQueryBuilder = jest.fn().mockReturnValue(depositQb);
+
+      const result = await service.getStats(1, Role.ADMIN);
+
+      expect(countQb.getCount).not.toHaveBeenCalled();
+      expect(countQb.getRawOne).toHaveBeenCalledTimes(1);
+      expect(result).toMatchObject({ totalCustomers: 12, newToday: 3, closedTotal: 4, pendingTotal: 5, potentialTotal: 2, totalDepositAmount: 0 });
+      const params = countQb.setParameters.mock.calls[0][0];
+      expect(params.statsTodayFrom).toMatch(/^\d{4}-\d{2}-\d{2} 17:00:00$/); // 00:00 VN = 17:00 UTC hôm trước
+      expect(new Date(params.statsTodayTo.replace(' ', 'T') + 'Z').getTime() - new Date(params.statsTodayFrom.replace(' ', 'T') + 'Z').getTime()).toBe(24 * 3600 * 1000);
+      const allSql = countQb.addSelect.mock.calls.map((c: any[]) => c[0]).join(' ');
+      expect(allSql).not.toContain('CONVERT_TZ');
+    });
 
     it('"Tổng nạp" CHỈ cộng deposit trong 30 ngày gần đây - khớp đúng khung thời gian với cột "Nạp tiền (30 ngày gần đây)" trên bảng (fix bug thật: trước đây cộng dồn TOÀN BỘ deposit từ trước tới giờ, gây lệch số với bảng - xem StatsCards.tsx)', async () => {
       const countQb = makeCountQb();

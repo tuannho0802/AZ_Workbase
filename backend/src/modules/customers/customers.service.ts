@@ -35,9 +35,10 @@ import {
   NotFoundException,
   BadRequestException,
 } from '@nestjs/common';
+import { todayVnStr } from '../../common/utils/date-vn.util';
+import { vnDayStartUtc, shiftDateStr } from './customers-invalid-stats.service';
 import { CustomerAccessHelper } from './helpers/customer-access.helper';
 import { AuditService } from '../audit/audit.service';
-import { todayVnStr } from '../../common/utils/date-vn.util';
 import { normalizeSearchableText } from '../../common/utils/text-normalize.util';
 import { UiVisibilityService } from '../ui-visibility/ui-visibility.service';
 import { NotificationsService } from '../notifications/notifications.service';
@@ -1265,31 +1266,32 @@ export class CustomersService {
       scope,
     );
 
-    const [total, newToday, closedTotal] = await Promise.all([
-      queryBuilder.clone().getCount(),
-      queryBuilder
-        .clone()
-        .andWhere(
-          "DATE(CONVERT_TZ(customer.createdAt, '+00:00', '+07:00')) = CURDATE()",
-        )
-        .getCount(),
-      queryBuilder
-        .clone()
-        .andWhere('customer.status = :status', { status: 'closed' })
-        .getCount(),
-    ]);
-
-    // Pending and Potential for completeness (matching promt)
-    const [pendingTotal, potentialTotal] = await Promise.all([
-      queryBuilder
-        .clone()
-        .andWhere('customer.status = :status', { status: 'pending' })
-        .getCount(),
-      queryBuilder
-        .clone()
-        .andWhere('customer.status = :status', { status: 'potential' })
-        .getCount(),
-    ]);
+    // [AGENT] OLD CODE (giữ lại để rollback): 5 query getCount() riêng (total/newToday/closed/pending/potential);
+    // newToday dùng DATE(CONVERT_TZ(customer.createdAt,'+00:00','+07:00')) = CURDATE() -> bọc hàm trên cột nên
+    // KHÔNG dùng được index created_at, và CURDATE() phụ thuộc timezone session MySQL.
+    // [AGENT] NEW CODE: 1 query duy nhất (COUNT có điều kiện) + "hôm nay" theo giờ VN tính ở JS thành
+    // khoảng [00:00 hôm nay, 00:00 ngày mai) quy về UTC (cùng quy ước created_at lưu UTC như vnDayStartUtc).
+    const todayVn = todayVnStr();
+    const statsRaw = await queryBuilder
+      .clone()
+      .select('COUNT(DISTINCT customer.id)', 'total')
+      .addSelect(
+        'COUNT(DISTINCT CASE WHEN customer.createdAt >= :statsTodayFrom AND customer.createdAt < :statsTodayTo THEN customer.id END)',
+        'newToday',
+      )
+      .addSelect("COUNT(DISTINCT CASE WHEN customer.status = 'closed' THEN customer.id END)", 'closedTotal')
+      .addSelect("COUNT(DISTINCT CASE WHEN customer.status = 'pending' THEN customer.id END)", 'pendingTotal')
+      .addSelect("COUNT(DISTINCT CASE WHEN customer.status = 'potential' THEN customer.id END)", 'potentialTotal')
+      .setParameters({
+        statsTodayFrom: vnDayStartUtc(todayVn),
+        statsTodayTo: vnDayStartUtc(shiftDateStr(todayVn, 1)),
+      })
+      .getRawOne<Record<string, string | number | null>>();
+    const total = Number(statsRaw?.total ?? 0);
+    const newToday = Number(statsRaw?.newToday ?? 0);
+    const closedTotal = Number(statsRaw?.closedTotal ?? 0);
+    const pendingTotal = Number(statsRaw?.pendingTotal ?? 0);
+    const potentialTotal = Number(statsRaw?.potentialTotal ?? 0);
 
     const depositsQuery = this.depositsRepository
       .createQueryBuilder('deposit')

@@ -6201,3 +6201,26 @@ Now [deploy]
 > Bộ lọc `overdueOnly` kết hợp AND với khoảng ngày đang chọn (mặc định Tuần này) - muốn thấy Task cũ phải mở rộng khoảng ngày. Verify: BE `tsc` sạch, `nest build` OK, jest toàn bộ pass; FE `tsc` sạch (trừ logo.png), vitest 73 file / 831 test pass, eslint không phát sinh lỗi mới (19 vấn đề `any` có sẵn). Chưa test tay trên trình duyệt, chưa chạy `next build`. Bài hướng dẫn `cong-viec-dinh-ky.md` chưa cập nhật (mốc 3 ngày, nút quá hạn, bộ lọc).
 
 ---
+
+## [2026-10-06 00:00] | Giảm Fluid Active CPU đợt 2: gộp query stats/poll, cache user JWT 10s, bỏ acquireTimeout | [Status: Success]
+
+**Actor:** Agent
+**Files Changed:**
+- `backend/src/modules/customers/customers.service.ts` — `getStats()`: 5 getCount -> 1 query COUNT có điều kiện; "hôm nay" tính theo khoảng giờ VN (dùng được index created_at) thay vì DATE(CONVERT_TZ())=CURDATE()
+- `backend/src/modules/notifications/notifications.service.ts` — `poll()`: 2 query -> 1 query (COUNT CASE + MAX)
+- `backend/src/common/utils/auth-user-cache.util.ts` (mới) + `modules/auth/strategies/jwt.strategy.ts` — cache user 10s/instance, không cache null
+- `backend/src/modules/users/users.service.ts` — `invalidateAuthUser()` sau update / softDelete / approve / reject
+- `backend/src/config/database.config.ts` — bỏ `acquireTimeout` (mysql2 không hỗ trợ, in cảnh báo mỗi connection)
+- spec: notifications.service, customers.service, jwt.strategy (mới), auth-user-cache.util (mới)
+
+**Root Cause:**
+> Poll/badge/stats chạy liên tục: mỗi request 1 query user + nhiều query nhỏ; getStats 5 COUNT, newToday không dùng được index.
+
+**Solution:**
+> Giảm số lượt DB mỗi request; giữ nguyên idleTimeout (có chủ đích vì Aiven cắt kết nối rảnh).
+
+**Notes:**
+> Đổi role/phòng ban/isActive có hiệu lực ngay trên instance xử lý thay đổi, tối đa 10s trên instance khác.
+> DISABLE_APP_COMPRESSION=true đã được chủ dự án đặt trên Vercel (cần kiểm Content-Encoding).
+
+---

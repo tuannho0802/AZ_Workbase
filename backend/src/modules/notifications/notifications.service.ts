@@ -346,20 +346,22 @@ export class NotificationsService {
     };
   }
 
-  /** Endpoint gọi nhiều nhất: 2 query có index. */
+  /** Endpoint gọi nhiều nhất: 1 query có index. */
   async poll(userId: number): Promise<{ unread: number; version: number }> {
     if (!this.isEnabled()) return { unread: 0, version: 0 };
 
-    const unread = await this.notificationRepository.count({
-      where: { recipientId: userId, readAt: IsNull(), dismissedAt: IsNull() },
-    });
+    // [AGENT] OLD CODE (giữ lại để rollback): 2 query riêng - count({recipientId, readAt: IsNull(), dismissedAt: IsNull()})
+    // + MAX(sortAt). Endpoint poll gọi nhiều nhất nên gộp 1 query để bớt 1 lượt DB mỗi lần.
+    // [AGENT] NEW CODE: 1 query - unread = đếm dòng chưa đọc (read_at IS NULL), version = MAX(sort_at) trên mọi dòng chưa ẩn.
     const raw = await this.notificationRepository
       .createQueryBuilder('n')
-      .select('MAX(n.sortAt)', 'version')
+      .select('COUNT(CASE WHEN n.readAt IS NULL THEN 1 END)', 'unread')
+      .addSelect('MAX(n.sortAt)', 'version')
       .where('n.recipientId = :userId', { userId })
       .andWhere('n.dismissedAt IS NULL')
-      .getRawOne<{ version: Date | string | null }>();
+      .getRawOne<{ unread: string | number | null; version: Date | string | null }>();
 
+    const unread = Number(raw?.unread ?? 0);
     const version = raw?.version ? new Date(raw.version).getTime() : 0;
     return { unread, version: Number.isNaN(version) ? 0 : version };
   }

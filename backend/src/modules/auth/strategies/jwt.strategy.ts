@@ -4,6 +4,8 @@ import { ExtractJwt, Strategy } from 'passport-jwt';
 import { ConfigService } from '@nestjs/config';
 import { UsersService } from '../../users/users.service';
 import { isTransientDbError, withDbRetry } from '../../../common/utils/db-transient-error.util';
+import { getCachedAuthUser, setCachedAuthUser } from '../../../common/utils/auth-user-cache.util';
+import { User } from '../../../database/entities/user.entity';
 
 @Injectable()
 export class JwtStrategy extends PassportStrategy(Strategy) {
@@ -24,9 +26,13 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
     // [AGENT] OLD CODE: const user = await this.usersService.findById(payload.sub);
     // [AGENT] NEW CODE: query này chạy MỖI request nên dễ trúng connection chết trong pool
     // (ECONNRESET). Retry 1 lần; nếu DB vẫn lỗi -> 503 (KHÔNG phải 401, để FE không tự logout).
-    let user;
+    // [AGENT] NEW CODE (PERF/Fluid CPU): cache user 10s/instance - xem auth-user-cache.util.ts.
+    let user: User | null | undefined = getCachedAuthUser<User>(payload.sub);
     try {
-      user = await withDbRetry(() => this.usersService.findById(payload.sub));
+      if (!user) {
+        user = await withDbRetry(() => this.usersService.findById(payload.sub));
+        if (user) setCachedAuthUser(payload.sub, user);
+      }
     } catch (err) {
       if (isTransientDbError(err)) {
         throw new ServiceUnavailableException('Hệ thống đang bận, vui lòng thử lại sau giây lát');

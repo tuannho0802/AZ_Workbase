@@ -403,31 +403,32 @@ describe('NotificationsService', () => {
       expect(await service.poll(9)).toEqual({ unread: 0, version: 0 });
     });
 
-    it('đếm chưa đọc theo read_at IS NULL + chưa ẩn; version = MAX(sort_at) epoch ms', async () => {
-      notifRepo.count.mockResolvedValue(4);
+    it('1 query: unread = COUNT(read_at IS NULL) + version = MAX(sort_at) epoch ms, chỉ dòng chưa ẩn', async () => {
       const qb: any = {
         select: jest.fn().mockReturnThis(),
+        addSelect: jest.fn().mockReturnThis(),
         where: jest.fn().mockReturnThis(),
         andWhere: jest.fn().mockReturnThis(),
-        getRawOne: jest.fn().mockResolvedValue({ version: new Date(5000) }),
+        getRawOne: jest.fn().mockResolvedValue({ unread: '4', version: new Date(5000) }),
       };
       notifRepo.createQueryBuilder.mockReturnValue(qb);
       expect(await service.poll(9)).toEqual({ unread: 4, version: 5000 });
-      const where = notifRepo.count.mock.calls[0][0].where;
-      expect(where.recipientId).toBe(9);
-      expect(where.readAt).toBeDefined();
-      expect(where.dismissedAt).toBeDefined();
+      expect(notifRepo.createQueryBuilder).toHaveBeenCalledTimes(1);
+      expect(qb.where).toHaveBeenCalledWith('n.recipientId = :userId', { userId: 9 });
+      expect(qb.andWhere).toHaveBeenCalledWith('n.dismissedAt IS NULL');
+      expect(qb.select.mock.calls[0][0]).toContain('n.readAt IS NULL');
     });
 
-    it('chưa có thông báo nào → version 0', async () => {
+    it('chưa có thông báo nào → 0/0', async () => {
       const qb: any = {
         select: jest.fn().mockReturnThis(),
+        addSelect: jest.fn().mockReturnThis(),
         where: jest.fn().mockReturnThis(),
         andWhere: jest.fn().mockReturnThis(),
-        getRawOne: jest.fn().mockResolvedValue({ version: null }),
+        getRawOne: jest.fn().mockResolvedValue({ unread: '0', version: null }),
       };
       notifRepo.createQueryBuilder.mockReturnValue(qb);
-      expect((await service.poll(9)).version).toBe(0);
+      expect(await service.poll(9)).toEqual({ unread: 0, version: 0 });
     });
   });
 

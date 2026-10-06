@@ -1,3 +1,4 @@
+import { invalidateAuthUser } from '../../common/utils/auth-user-cache.util';
 import { Injectable, Logger } from '@nestjs/common';
 
 import { InjectRepository, InjectDataSource } from '@nestjs/typeorm';
@@ -786,6 +787,7 @@ export class UsersService {
 
     // 4. CRITICAL: PHẢI CÓ SAVE()
     const savedUser = await this.usersRepository.save(user);
+    invalidateAuthUser(savedUser.id); // JwtStrategy cache 10s - role/phòng ban/isActive đổi có hiệu lực ngay
 
     // 5. Không bao giờ echo password hash ra ngoài, kể cả trong audit log
     const safeUser = omitPassword(savedUser as any);
@@ -1036,6 +1038,7 @@ export class UsersService {
       deletedAt: new Date(),
       deletedById: callerId,
     } as any);
+    invalidateAuthUser(targetId);
     await this.saveRefreshToken(targetId, null);
 
     this.auditService.logActionAsync(
@@ -1460,6 +1463,7 @@ export class UsersService {
     if (overrides?.positionId !== undefined) user.positionId = overrides.positionId;
 
     const saved = await this.usersRepository.save(user);
+    invalidateAuthUser(saved.id);
 
     // ⚠️ FIX BUG THẬT (xem JSDoc `buildUserAuditSnapshot()` - đúng bug người
     // dùng báo cáo: "positionId: Trống -> 3"): trước đây log thẳng
@@ -1530,6 +1534,7 @@ export class UsersService {
     user.deletedById = approverId;
 
     const saved = await this.usersRepository.save(user);
+    invalidateAuthUser(saved.id);
     // Chặn phiên/refresh token đang có (tài khoản chưa duyệt thường chưa có, thu hồi cho chắc - mirror softDeleteUser).
     await this.saveRefreshToken(id, null);
 

@@ -34,7 +34,9 @@ export const getTypeOrmConfig = (configService: ConfigService): TypeOrmModuleOpt
   const poolConfig = {
     connectionLimit: 3,         // Giảm từ 5 xuống 3 cho Aiven free tier
     connectTimeout: 25000,      // 25s - đủ thời gian để Aiven wake up từ idle
-    acquireTimeout: 25000,
+    // [AGENT] OLD CODE (giữ lại để rollback): acquireTimeout: 25000,
+    // mysql2 KHÔNG hỗ trợ option này (chỉ có ở mysql cũ) -> mỗi lần tạo connection đều in cảnh báo
+    // "Ignoring invalid configuration option" ra log. Bỏ đi; thời gian chờ kết nối vẫn do connectTimeout.
     waitForConnections: true,
     queueLimit: 0,
 
