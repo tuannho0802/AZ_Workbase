@@ -6002,3 +6002,18 @@ Now [deploy]
 > Bài mô tả hành vi THẬT: quyền mặc định `customers.delete`/`trash_manage`/`hard_delete` chỉ Admin (migration 1778400000000, 1778500000000, 1783000000000); nút Xóa vĩnh viễn ẩn khi thiếu `customers.hard_delete` (cả bảng lẫn thẻ mobile); redirect về `/customers` khi thiếu quyền. Verify: `vitest src/lib/guides` 12 file / 340 test pass; `tsc --noEmit` chỉ còn 4 lỗi `logo.png` có sẵn; eslint file mới sạch. Chưa test tay trên trình duyệt. Cần `guides:sync --apply` sau khi duyệt đổi `published: true`.
 
 ---
+## [2026-10-06 17:30] | Fix CI `npm audit --audit-level=high` (BE + FE) | [Status: Success]
+
+**Actor:** Agent
+
+**Files Changed:**
+- `backend/package-lock.json` — `npm audit fix` (không `--force`): nâng `compression` -> 1.8.2 (high), `proxy-addr` (critical) lên bản vá; chỉ đổi lockfile, `package.json` giữ nguyên.
+- `frontend/package-lock.json` — `npm audit fix`: nâng `source-map-js` (high) lên bản vá.
+
+**Root Cause:**
+> Dependency transitive (qua express/compression/postcss) dính advisory; CI chặn ở mức `high`.
+
+**Notes:**
+> Còn 4 lỗi **moderate** ở BE (không chặn CI): `js-yaml` qua `@nestjs/swagger` (fix = nâng swagger 12, breaking) và `uuid` qua `exceljs` (npm gợi ý hạ exceljs 3.4.0 - KHÔNG nên). Xử lý riêng sau (override `uuid`, hoặc đợi bản vá). Verify: BE `tsc` sạch, `nest build` OK, jest 1624/1624; FE vitest 765/765, `audit --audit-level=high` exit 0 cả 2 bên. Chưa chạy `next build`.
+
+---
