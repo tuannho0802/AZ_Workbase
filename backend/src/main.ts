@@ -47,8 +47,15 @@ async function createApp(): Promise<NestExpressApplication> {
   // serverless), lấy IP thật từ `X-Forwarded-For` do Vercel tự gắn.
   expressServer.set('trust proxy', 1);
 
-  // Compression cho response
-  app.use(compression());
+  // Compression cho response.
+  // [PERF/Fluid CPU] Vercel CDN đã tự nén gzip/brotli theo `Accept-Encoding` (xem
+  // docs Vercel "CDN Compression"). Nén thêm ở Node tốn Active CPU mỗi response.
+  // Đặt DISABLE_APP_COMPRESSION=true để TẮT (mặc định vẫn bật - hành vi cũ). BẮT BUỘC
+  // kiểm `Content-Encoding` ở response thật (preview) trước khi bật ở production:
+  //   curl -s -D- -o /dev/null -H "Accept-Encoding: br,gzip" <url>/api/<endpoint-JSON-lớn>
+  if (process.env.DISABLE_APP_COMPRESSION !== 'true') {
+    app.use(compression());
+  }
 
   // PLAN_HARDENING P3: header bảo mật (helmet) - đặt TRƯỚC static/route để mọi
   // response (kể cả file tĩnh, Swagger) đều có header. Xem common/security.

@@ -3338,6 +3338,52 @@ export class CustomersService {
     return await queryBuilder.limit(DEPOSITS_ROW_CAP).getMany();
   }
 
+  /**
+   * [PERF - badge sidebar] Số khách đang ở Thùng rác - CHỈ `COUNT`, không join
+   * 3 bảng + hydrate + (với bản ghi xoá cũ) tra thêm audit_logs/users như
+   * `getTrash()` rồi lấy `total`. Cùng điều kiện với `getTrash()` khi không lọc
+   * (không áp scope - khớp hành vi hiện tại của getTrash).
+   */
+  async countTrash(): Promise<number> {
+    return this.customersRepository
+      .createQueryBuilder('customer')
+      .withDeleted()
+      .where('customer.deletedAt IS NOT NULL')
+      .getCount();
+  }
+
+  /**
+   * [PERF - badge sidebar] Tổng số khách bị trùng SĐT - ĐÚNG bằng `total` của
+   * `getInvalidDataReport(invalidType='duplicate_phone')` khi không có bộ lọc
+   * nào (= tổng kích thước mọi nhóm SĐT có >= 2 khách, trong phạm vi xem).
+   *
+   * Thay cho pipeline cũ (kéo TOÀN BỘ SĐT trùng về Node bằng getRawMany rồi gửi
+   * lại `IN (:...dupKeys)` ở 3 query kế tiếp kèm subquery MAX(created_at)): chỉ
+   * 1 query tổng hợp, không có mảng tham số phình theo số SĐT trùng.
+   */
+  async countDuplicatePhoneRecords(
+    userId: number,
+    userRole: string,
+    scope?: string | null,
+  ): Promise<number> {
+    const inner = this.customersRepository
+      .createQueryBuilder('customer')
+      .select('COUNT(*)', 'cnt')
+      .where('customer.deletedAt IS NULL')
+      .andWhere("customer.phone IS NOT NULL AND customer.phone != ''");
+    CustomerAccessHelper.applyViewFilter(inner, userId, userRole, scope);
+    inner.groupBy('customer.phone').having('COUNT(*) > 1');
+
+    const row = await this.customersRepository.manager
+      .createQueryBuilder()
+      .select('COALESCE(SUM(t.cnt), 0)', 'total')
+      .from(`(${inner.getQuery()})`, 't')
+      .setParameters(inner.getParameters())
+      .getRawOne<{ total: string | number | null }>();
+
+    return Number(row?.total ?? 0);
+  }
+
   async getTrash(filters: CustomerFiltersDto) {
     const { page = 1, limit = 20, search, source, salesUserId, dateFrom, dateTo, deletedById } = filters;
 

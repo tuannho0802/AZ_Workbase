@@ -1344,6 +1344,26 @@ export class UsersService {
    * không khớp, không phải báo lỗi (đây là danh sách, không phải hành động
    * trên 1 bản ghi cụ thể).
    */
+  /**
+   * [PERF - badge sidebar] Đếm số tài khoản chờ duyệt - CÙNG phạm vi với
+   * `findPendingApprovals()` nhưng chỉ `COUNT`, không tải entity User + join
+   * department/position rồi `.length` ở client như trước (chạy mỗi lần poll).
+   */
+  async countPendingApprovals(viewerId: number, viewerRole: string, scope?: string | null): Promise<number> {
+    const where: any = { approvalStatus: ApprovalStatus.PENDING };
+
+    if (viewerRole !== Role.ADMIN && scope === 'department') {
+      const managedIds = await UsersAccessHelper.getManagedDepartmentIds(
+        this.departmentsRepository,
+        viewerId,
+      );
+      if (managedIds.length === 0) return 0;
+      where.departmentId = In(managedIds);
+    }
+
+    return this.usersRepository.count({ where });
+  }
+
   async findPendingApprovals(viewerId: number, viewerRole: string, scope?: string | null): Promise<User[]> {
     const where: any = { approvalStatus: ApprovalStatus.PENDING };
 

@@ -86,6 +86,7 @@ export function UtmCustomersModal({ open, onClose, utmId, utmName }: Props) {
     queryClient.invalidateQueries({ queryKey: ['utms'] });
     queryClient.invalidateQueries({ queryKey: ['customers'] });
     queryClient.invalidateQueries({ queryKey: ['badge-count', 'trash-can'] });
+    queryClient.invalidateQueries({ queryKey: ['badge-count', 'sidebar'] });
   };
 
   const runTrashAction = async (row: UtmCustomerRow, action: 'restore' | 'hardDelete') => {

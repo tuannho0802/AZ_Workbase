@@ -357,6 +357,54 @@ export class PeriodicTasksService {
     return saved;
   }
 
+  /**
+   * [PERF - badge sidebar] Đếm Task MÀ `assigneeId` PHỤ TRÁCH (chính HOẶC phụ)
+   * theo `status.code`, trong TUẦN NÀY (cùng khoảng mặc định + cùng scope với
+   * `findAll()` khi FE không truyền dateFrom/dateTo) - 1 query `GROUP BY`, thay
+   * cho việc gọi `findAll(limit=1)` (5 join + hydrate + 2 query) cho TỪNG status
+   * chỉ để lấy `total`. Code không có Task nào -> 0.
+   */
+  async countAssignedByStatusCodes(
+    assigneeId: number,
+    codes: string[],
+    userId: number,
+    userRole: string,
+    scope?: string | null,
+  ): Promise<Record<string, number>> {
+    const result: Record<string, number> = {};
+    for (const code of codes) result[code] = 0;
+    if (codes.length === 0) return result;
+
+    const dateWindow = resolveListWindow({});
+
+    const qb = this.taskRepo
+      .createQueryBuilder('task')
+      .innerJoin('task.status', 'status')
+      .select('status.code', 'code')
+      .addSelect('COUNT(*)', 'cnt')
+      .where('task.deletedAt IS NULL')
+      .andWhere('status.code IN (:...statusCodes)', { statusCodes: codes });
+
+    PeriodicTaskAccessHelper.applyViewFilter(qb, userId, userRole, scope);
+
+    if (dateWindow.dateFrom) {
+      qb.andWhere('task.periodEndDate >= :dateFrom', { dateFrom: dateWindow.dateFrom });
+    }
+    if (dateWindow.dateTo) {
+      qb.andWhere('task.periodStartDate <= :dateTo', { dateTo: dateWindow.dateTo });
+    }
+    // Cùng nhánh `assigneeId` của findAll(): Phụ trách CHÍNH hoặc PHỤ.
+    qb.andWhere(
+      '(task.primaryAssigneeId = :filterAssigneeId OR ' +
+      'task.id IN (SELECT psa2.task_id FROM periodic_task_secondary_assignees psa2 WHERE psa2.user_id = :filterAssigneeId))',
+      { filterAssigneeId: assigneeId },
+    );
+
+    const rows = await qb.groupBy('status.code').getRawMany<{ code: string; cnt: string | number }>();
+    for (const r of rows) result[r.code] = Number(r.cnt);
+    return result;
+  }
+
   async findAll(filters: PeriodicTaskFiltersDto, userId: number, userRole: string, scope?: string | null) {
     const {
       page = 1,

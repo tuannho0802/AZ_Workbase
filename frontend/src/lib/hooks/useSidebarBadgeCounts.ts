@@ -1,20 +1,18 @@
 import { useQuery } from '@tanstack/react-query';
-import { customersApi } from '../api/customers.api';
-import { usersApi } from '../api/users.api';
-import { leaveRequestsApi } from '../api/leave-requests.api';
+import { sidebarApi } from '../api/sidebar.api';
 import { notificationsApi } from '../api/notifications.api';
-import { periodicTasksApi } from '../api/periodic-tasks.api';
-import { periodicTaskStatusesApi } from '../api/periodic-task-statuses.api';
-
-import { useMyPermissions } from './useMyPermissions';
 import { useAuthStore } from '../stores/auth.store';
 import { notificationKeys } from './useNotifications';
 
-// [AGENT] OLD CODE (giữ lại để rollback): const REFRESH_INTERVAL_MS = 60_000;
-// 3 phút: số liệu Vercel Usage (2026-10) cho thấy az-workbase-backend ngốn ~96% Fluid Active
-// CPU Hobby, tăng theo ngày làm việc -> polling 8 query/phút/tab là nguồn chính. Badge không
-// cần realtime; focus lại tab vẫn tự refetch (xem staleTime) nên người dùng ít thấy khác biệt.
+// [AGENT] OLD CODE (giữ lại để rollback): 7 useQuery riêng (invalid-data, trash, users,
+// duyet-phep, nghi-phep, 2 badge Công việc định kỳ + query tra id status) gọi 7 endpoint
+// khác nhau mỗi chu kỳ - mỗi request chạy riêng JwtStrategy + PermissionGuard và nhiều
+// endpoint là danh sách đầy đủ (join + hydrate) chỉ để lấy `total`.
+// NEW: 1 request `GET /sidebar/badges` - BE tự kiểm permission từng badge + chỉ COUNT.
 const REFRESH_INTERVAL_MS = 180_000;
+
+/** queryKey DUY NHẤT của badge sidebar - invalidate key này sau mutation để làm mới ngay. */
+export const SIDEBAR_BADGES_QUERY_KEY = ['badge-count', 'sidebar'] as const;
 
 /**
  * Key phụ trong map counts cho badge VÀNG "Đang làm" (in_progress) của mục
@@ -25,82 +23,23 @@ export const TASK_IN_PROGRESS_COUNT_KEY = 'cong-viec-dinh-ky:in_progress';
 
 /**
  * Trả về map { [navItemKey]: count } - KHỚP TRỰC TIẾP với `key` trong
- * NAV_ITEMS (lib/nav-config.tsx), để nơi tiêu thụ chỉ cần
- * `counts[item.key]` mà không cần thêm 1 tầng mapping riêng.
+ * NAV_ITEMS (lib/nav-config.tsx). Việc quyết định badge nào hiện (theo
+ * permission) nay do BE làm: field không có trong response = không hiện.
  *
- * Muốn thêm 1 nguồn badge MỚI sau này: thêm đúng 1 khối useQuery bên dưới
- * (key = đúng key trong nav-config), không cần sửa gì ở nơi tiêu thụ
- * (layout.tsx / trang chủ) - chúng chỉ đọc từ map này.
+ * Badge `thong-bao` vẫn lấy từ `/notifications/poll` (dùng CHUNG queryKey với
+ * `useNotificationPoll()` ở NotificationBell nên không tạo thêm request).
  */
 export function useSidebarBadgeCounts(): Record<string, number> {
-  const { can, isLoading } = useMyPermissions();
   const isAuthenticated = useAuthStore((s) => s.isAuthenticated);
-  const currentUserId = useAuthStore((s) => s.user?.id);
 
-  // Disable fetches until permissions are loaded
-  const canSeeInvalidData = !isLoading && can('customers.invalid_report'); 
-  const canSeeTrash = !isLoading && can('customers.trash_manage');
-  const canSeePendingUsers = !isLoading && can('users.manage');
-  const canApproveLeave = !isLoading && can('leave_requests.approve');
-  const canRequestLeave = !isLoading && can('leave_requests.request');
-  // Hộp thư "Thông báo" (mục `thong-bao` trong nav-config) KHÔNG có
-  // permission riêng - mọi user đã đăng nhập đều thấy (`roles: null`, xem
-  // giải thích ở nav-config.tsx) nên chỉ cần gate theo đăng nhập.
-  const canSeeTaskTodo = !isLoading && can('periodic_tasks.view');
-
-  // 1. Báo cáo data lỗi (chỉ admin)
-  const invalidData = useQuery({
-    queryKey: ['badge-count', 'invalid-data-report'],
-    queryFn: async () => (await customersApi.getInvalidDataReport({ page: 1, limit: 1 })).total,
-    enabled: canSeeInvalidData,
+  const badges = useQuery({
+    queryKey: SIDEBAR_BADGES_QUERY_KEY,
+    queryFn: () => sidebarApi.getBadges(),
+    enabled: isAuthenticated,
     refetchInterval: REFRESH_INTERVAL_MS,
     staleTime: REFRESH_INTERVAL_MS,
   });
 
-  // 2. Thùng rác (chỉ admin)
-  const trash = useQuery({
-    queryKey: ['badge-count', 'trash-can'],
-    queryFn: async () => (await customersApi.getTrash({ page: 1, limit: 1 })).total,
-    enabled: canSeeTrash,
-    refetchInterval: REFRESH_INTERVAL_MS,
-    staleTime: REFRESH_INTERVAL_MS,
-  });
-
-  // 3. Nhân viên đăng ký mới đang chờ duyệt
-  const pendingUsers = useQuery({
-    queryKey: ['badge-count', 'users'],
-    queryFn: async () => (await usersApi.getPendingApprovals()).length,
-    enabled: canSeePendingUsers,
-    refetchInterval: REFRESH_INTERVAL_MS,
-    staleTime: REFRESH_INTERVAL_MS,
-  });
-
-  // 4. Đơn nghỉ phép đang chờ MÌNH duyệt (BE đã tự lọc đúng phạm vi role -
-  // Manager chỉ thấy đơn phòng ban mình quản lý, xem findPending() ở BE)
-  const pendingLeaveApprovals = useQuery({
-    queryKey: ['badge-count', 'duyet-phep'],
-    queryFn: () => leaveRequestsApi.getPendingCount(),
-    enabled: canApproveLeave,
-    refetchInterval: REFRESH_INTERVAL_MS,
-    staleTime: REFRESH_INTERVAL_MS,
-  });
-
-  // 5. Đơn nghỉ phép CỦA CHÍNH MÌNH đang pending - endpoint COUNT riêng
-  // (BE lọc requesterId = mình + status pending), không tải cả danh sách
-  // rồi đếm ở client như trước (lag khi số đơn lớn dần).
-  const myPendingLeave = useQuery({
-    queryKey: ['badge-count', 'nghi-phep'],
-    queryFn: () => leaveRequestsApi.getMyPendingCount(),
-    enabled: canRequestLeave,
-    refetchInterval: REFRESH_INTERVAL_MS,
-    staleTime: REFRESH_INTERVAL_MS,
-  });
-
-  // 6. Thông báo CHƯA ĐỌC của chính mình - dùng CHUNG queryKey
-  // (`notificationKeys.poll`) với `useNotificationPoll()` (gọi trong
-  // `NotificationBell` ở Header) để React Query GỘP CHUNG 1 request polling
-  // `/notifications/poll`, không tạo thêm 1 luồng polling riêng chỉ để phục
-  // vụ badge sidebar (2 nơi cùng đọc chung 1 cache, không double-fetch).
   const notificationsPoll = useQuery({
     queryKey: notificationKeys.poll,
     queryFn: () => notificationsApi.poll(),
@@ -109,96 +48,19 @@ export function useSidebarBadgeCounts(): Record<string, number> {
     staleTime: REFRESH_INTERVAL_MS,
   });
 
-  // 7a. Tra ID của status hệ thống "not_started" ("Chưa bắt đầu" = To-Do) -
-  // code này luôn tồn tại (seed cứng + isSystem ở migration
-  // CreatePeriodicTaskStatuses, dùng làm default status khi tạo Task mới -
-  // xem PeriodicTasksService.create()) nhưng ID THẬT phụ thuộc DB
-  // (auto-increment), không được đoán cứng. queryKey khớp Y HỆT
-  // `usePeriodicTaskStatuses.ts` (`['periodic-task-statuses']`) để gộp cache
-  // nếu trang "Quản lý Trạng thái công việc" đang mở cùng lúc. Danh sách
-  // BOUNDED, ít đổi -> cache lâu hơn (5') thay vì theo REFRESH_INTERVAL_MS.
-  const taskStatuses = useQuery({
-    queryKey: ['periodic-task-statuses'],
-    queryFn: () => periodicTaskStatusesApi.getAll(),
-    enabled: canSeeTaskTodo,
-    staleTime: 5 * 60_000,
-  });
-  const notStartedStatusId = taskStatuses.data?.find((s) => s.code === 'not_started')?.id;
-  // Status "Đang làm" (`in_progress`) - tạo thủ công ở từng môi trường (không có
-  // migration seed) nên có thể chưa tồn tại: khi đó id = undefined -> query bên
-  // dưới tự disabled và badge vàng ẩn, không gây lỗi.
-  const inProgressStatusId = taskStatuses.data?.find((s) => s.code === 'in_progress')?.id;
-
-  // 7b. (BE `GET /periodic-tasks` KHÔNG bao giờ tải toàn bộ: không truyền dateFrom/
-  // dateTo => mặc định TUẦN NÀY, nên số này là To-Do của TUẦN NÀY - khớp đúng với
-  // danh sách mặc định khi bấm vào trang.)
-  // Số Công việc định kỳ đang ở trạng thái To-Do (not_started) MÀ MÌNH CÓ LIÊN
-  // QUAN - truyền `assigneeId = currentUserId` (BE lọc "Phụ trách chính HOẶC
-  // phụ", xem `PeriodicTasksService.findAll()` nhánh `assigneeId`) - KHÔNG phải
-  // đếm mọi Task To-Do trong phạm vi quyền xem (own/phòng ban/tất cả) như trước
-  // đây (bug thật: Admin/Manager xem "tất cả" sẽ ra số To-Do của CẢ PHÒNG/CẢ
-  // CÔNG TY, không phải của riêng mình - yêu cầu chủ dự án đã chỉnh lại đúng
-  // ngữ nghĩa "việc CỦA TÔI cần làm"). Badge chỉ tính khi đã có `currentUserId`
-  // (tránh gọi API sai `assigneeId=undefined` lúc chưa hydrate xong auth store).
-  const taskTodo = useQuery({
-    queryKey: ['badge-count', 'cong-viec-dinh-ky', notStartedStatusId, currentUserId],
-    queryFn: async () =>
-      (
-        await periodicTasksApi.getAll({
-          statusId: notStartedStatusId,
-          assigneeId: currentUserId,
-          page: 1,
-          limit: 1,
-        })
-      ).total,
-    enabled: canSeeTaskTodo && notStartedStatusId !== undefined && currentUserId !== undefined,
-    refetchInterval: REFRESH_INTERVAL_MS,
-    staleTime: REFRESH_INTERVAL_MS,
-  });
-
-  // 7c. Số Công việc định kỳ đang ở trạng thái "Đang làm" (in_progress) MÀ MÌNH
-  // CÓ LIÊN QUAN - cùng ngữ nghĩa/phạm vi với 7b (assigneeId = mình, mặc định
-  // tuần này), chỉ khác statusId. Hiển thị badge VÀNG cạnh badge đỏ To-Do.
-  const taskInProgress = useQuery({
-    queryKey: ['badge-count', 'cong-viec-dinh-ky-in-progress', inProgressStatusId, currentUserId],
-    queryFn: async () =>
-      (
-        await periodicTasksApi.getAll({
-          statusId: inProgressStatusId,
-          assigneeId: currentUserId,
-          page: 1,
-          limit: 1,
-        })
-      ).total,
-    enabled: canSeeTaskTodo && inProgressStatusId !== undefined && currentUserId !== undefined,
-    refetchInterval: REFRESH_INTERVAL_MS,
-    staleTime: REFRESH_INTERVAL_MS,
-  });
-
   const counts: Record<string, number> = {};
-  if (canSeeInvalidData && invalidData.data !== undefined) {
-    counts['invalid-data-report'] = invalidData.data;
-  }
-  if (canSeeTrash && trash.data !== undefined) {
-    counts['trash-can'] = trash.data;
-  }
-  if (canSeePendingUsers && pendingUsers.data !== undefined) {
-    counts['users'] = pendingUsers.data;
-  }
-  if (canApproveLeave && pendingLeaveApprovals.data !== undefined) {
-    counts['duyet-phep'] = pendingLeaveApprovals.data;
-  }
-  if (canRequestLeave && myPendingLeave.data !== undefined) {
-    counts['nghi-phep'] = myPendingLeave.data;
+  const d = badges.data;
+  if (d) {
+    if (d.invalidData !== undefined) counts['invalid-data-report'] = d.invalidData;
+    if (d.trash !== undefined) counts['trash-can'] = d.trash;
+    if (d.pendingUsers !== undefined) counts['users'] = d.pendingUsers;
+    if (d.leaveApprovals !== undefined) counts['duyet-phep'] = d.leaveApprovals;
+    if (d.myPendingLeave !== undefined) counts['nghi-phep'] = d.myPendingLeave;
+    if (d.taskTodo !== undefined) counts['cong-viec-dinh-ky'] = d.taskTodo;
+    if (d.taskInProgress !== undefined) counts[TASK_IN_PROGRESS_COUNT_KEY] = d.taskInProgress;
   }
   if (isAuthenticated && notificationsPoll.data !== undefined) {
     counts['thong-bao'] = notificationsPoll.data.unread;
-  }
-  if (canSeeTaskTodo && taskTodo.data !== undefined) {
-    counts['cong-viec-dinh-ky'] = taskTodo.data;
-  }
-  if (canSeeTaskTodo && taskInProgress.data !== undefined) {
-    counts[TASK_IN_PROGRESS_COUNT_KEY] = taskInProgress.data;
   }
 
   return counts;

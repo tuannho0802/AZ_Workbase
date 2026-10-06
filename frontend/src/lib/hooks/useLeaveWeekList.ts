@@ -82,5 +82,6 @@ export function useInvalidateLeaveLists() {
     queryClient.invalidateQueries({ queryKey: [LEAVE_WEEK_LIST_KEY] });
     queryClient.invalidateQueries({ queryKey: ['badge-count', 'duyet-phep'] });
     queryClient.invalidateQueries({ queryKey: ['badge-count', 'nghi-phep'] });
+    queryClient.invalidateQueries({ queryKey: ['badge-count', 'sidebar'] });
   }, [queryClient]);
 }
