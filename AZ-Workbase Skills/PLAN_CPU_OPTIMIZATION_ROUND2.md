@@ -309,6 +309,16 @@ activity-resume > 8 phút → refetch 1 lần.
 4. **KHÔNG** cache toàn bộ response badges theo user vài chục giây: số badge sẽ lệch ngay sau thao tác (duyệt nghỉ phép, nhận task).
    Nếu vẫn muốn, phải kèm invalidate theo sự kiện (phức tạp) — để sau.
 
+**⚠️ GHI CHÚ — 5B CẦN CHECK SAU (5A đã xong code, CHƯA có số đo; 5B chưa làm):**
+1. Bật `CPU_TIMING=true` trên preview ~30 phút → lọc log `[Badges]` → dán 30–50 dòng. Tắt biến sau khi đo.
+2. Xác định badge nặng nhất (`invalidData` / `tasks` / `leaveApprovals`…) và tỉ lệ `invalidData.cache=MISS`.
+3. Nếu `invalidData` nặng + MISS cao: chạy `EXPLAIN` cho `countDuplicatePhoneRecords` (`GROUP BY customer.phone` toàn bảng khách trong phạm vi xem)
+   → kiểm tra `customers.phone` có index và truy vấn có dùng không (5B.1) TRƯỚC khi tăng TTL (5B.2). Cache khoá theo `user:role:scope` → N user = N lần quét riêng;
+   cân nhắc cache theo `role:scope` (chỉ khi scope không phụ thuộc user, cẩn thận nhánh `own` theo `userId`).
+4. Nếu `tasks` nặng: kiểm `countAssignedByStatusCodes` (join theo phạm vi).
+5. Nếu không badge nào nặng → ghi kết luận "không đáng tối ưu thêm" vào WORKFLOW_LOG (tiêu chí hoàn thành mục 5).
+6. 5B.3 (gộp poll vào `/sidebar/badges`) chỉ giảm số invocation, rủi ro trung bình — quyết sau khi có số đo.
+
 **Test:** `sidebar-badges.service.spec` (không đổi hành vi theo permission; lỗi 1 badge không hỏng badge khác); FE poll tests.
 **Tiêu chí hoàn thành:** TB `sidebar/badges` < 60 ms (kỳ vọng — cần đo) hoặc kết luận có chủ đích "không đáng tối ưu thêm" ghi vào log.
 
@@ -340,6 +350,18 @@ Hiện `staleTime`: departments 5 phút, media-sources 5 phút, customer-statuse
 ### 6C. Không làm (đã cân nhắc)
 - `Cache-Control: max-age` dài ở BE: chính trình duyệt của admin vừa sửa vẫn nhận bản cũ từ HTTP cache (không có cơ chế version đáng tin) —
   loại như đã thống nhất ở phiên trước.
+
+**Trạng thái triển khai 6A (2026-10-06):**
+- [x] Liệt kê endpoint → hook → mutation (bảng kiểm trong WORKFLOW_LOG, mục 6).
+- [x] Nâng `staleTime` lên 5 phút (hằng số `REFERENCE_DATA_STALE_MS`, `lib/query-stale.ts`) cho: `roles/colors` (30 s), `customer-statuses` (60 s),
+      `periodic-task-statuses` (60 s), `guides` (60 s / 30 s). `departments`, `positions`, `media-sources` ĐÃ 5 phút từ trước + đã invalidate đủ → không đổi.
+- [x] Mọi mutation đã invalidate đúng key (kiểm bằng test). `roles/colors` được phủ bởi invalidate `['roles']` (khớp tiền tố) của `useCreateRole/UpdateRole/DeleteRole/UpdateRolePermissions`.
+- [x] `guides` (mục lục `useGuideList` 60 s → 5 phút; chi tiết `useGuideDetail` 30 s → 5 phút) — chủ dự án xác nhận chưa cần cập nhật dần. Query quản trị/tuỳ chọn
+      của màn sửa guide (`manage` 15 s, `*-options` 60 s, `manage-detail` 0) GIỮ NGUYÊN. Mutation guide đã invalidate `['guides']` (tiền tố).
+- [x] `assignment-groups/:key/users` giữ 60 s: danh sách đổi theo việc sửa Phòng ban/Vị trí của nhân viên
+      (mutation ở trang Nhân viên KHÔNG invalidate key này) → nâng TTL cần thêm invalidate ở mutation user; để sau.
+- [ ] 6B (giữ cache qua F5) — chưa làm, chỉ làm nếu đo thấy 6A chưa đủ.
+- Đánh đổi: Admin sửa màu Role / trạng thái ở máy khác → máy này thấy thay đổi chậm tối đa 5 phút (máy của chính Admin đổi thì thấy ngay).
 
 **Test:** vitest cho từng hook đổi `staleTime` + mutation invalidate; thủ công: sửa 1 mục tham chiếu → thấy đổi ngay.
 **Tiêu chí hoàn thành:** số request nhóm tham chiếu trong kịch bản chuẩn giảm ≥ 40%; không có báo cáo "sửa xong không đổi".

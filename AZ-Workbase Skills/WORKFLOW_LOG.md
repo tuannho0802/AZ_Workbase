@@ -6405,3 +6405,40 @@ Now [deploy]
 > Đo lại số `GET /users/me` sau deploy (mục tiêu ≤ 1 request/8 phút/phiên hoạt động).
 
 ---
+
+---
+## [2026-10-06 22:00] | Mục 6A plan CPU: nâng staleTime dữ liệu tham chiếu + bảng kiểm invalidate | Status: Success (chờ đo sau deploy)
+
+**Actor:** Agent
+**Files Changed:**
+- `frontend/src/lib/query-stale.ts` — mới: `REFERENCE_DATA_STALE_MS` = 5 phút
+- `frontend/src/lib/hooks/useRoleColorMap.ts` — `roles/colors` 30 s → 5 phút (code cũ giữ bằng comment)
+- `frontend/src/lib/hooks/useCustomerStatuses.ts` — 60 s → 5 phút
+- `frontend/src/lib/hooks/usePeriodicTaskStatuses.ts` — 60 s → 5 phút
+- `frontend/src/lib/hooks/useGuides.ts` — mục lục 60 s → 5 phút, chi tiết 30 s → 5 phút (query quản trị/tuỳ chọn giữ nguyên)
+- `frontend/src/lib/hooks/referenceDataStale.test.tsx` — mới (9 test: mount lại trong hạn không gọi API; sau mutation tải lại; `useUpdateRole` invalidate `['roles']`)
+
+**Bảng kiểm (endpoint | hook | staleTime | mutation | invalidate OK?):**
+| endpoint | hook | staleTime | mutation | invalidate |
+|---|---|---|---|---|
+| `GET /roles/colors` | `useRoleColors` | 30 s → **5 phút** | `useCreateRole/UpdateRole/DeleteRole/UpdateRolePermissions` | OK — invalidate `['roles']`, khớp tiền tố `['roles','colors']` |
+| `GET /customer-statuses` | `useCustomerStatuses` | 60 s → **5 phút** | create/update/delete | OK — `['customer-statuses']` |
+| `GET /periodic-task-statuses` | `usePeriodicTaskStatuses` | 60 s → **5 phút** | create/update/delete | OK — `['periodic-task-statuses']` (+ `['periodic-tasks']` khi xoá) |
+| `GET /departments` | `useDepartments` | 5 phút (sẵn) | create/update/delete | OK — `['departments']` |
+| `GET /positions` | `usePositions` | 5 phút (sẵn) | create/update/delete | OK — `['positions']` |
+| `GET /media-sources` | `useMediaSources` | 5 phút (sẵn) | create/update/lock/unlock/delete | OK — `['media-sources']` (khớp tiền tố activeOnly) |
+| `GET /assignment-groups/:key/users` | `useAssignmentGroupUsers` | 60 s (GIỮ) | sửa Phòng ban/Vị trí nhân viên | KHÔNG invalidate key này → chưa nâng TTL |
+| `GET /guides` (+ `/guides/:slug`) | `useGuideList`, `useGuideDetail` | 60 s / 30 s → **5 phút** | create/update/delete guide | OK — `['guides']` (tiền tố; chủ dự án xác nhận chưa cần cập nhật dần) |
+
+**Root Cause:**
+> Dữ liệu tham chiếu hiếm đổi nhưng `staleTime` 30–60 s → gọi lại nhiều lần mỗi phiên khi chuyển trang.
+
+**Solution:**
+> Nâng 3 hook lên 5 phút; các hook còn lại đã đạt. Chỉ giảm gọi trong 1 phiên SPA; F5 vẫn tải lại (6B chưa làm).
+
+**Notes:**
+> Đánh đổi: Admin đổi ở máy khác → thấy chậm tối đa 5 phút. Đo lại số request nhóm tham chiếu trong kịch bản chuẩn (mục tiêu giảm ≥ 40%).
+> **5B CẦN CHECK SAU:** bật `CPU_TIMING=true` trên preview 30 phút, lọc log `[Badges]`, `EXPLAIN` `countDuplicatePhoneRecords` — chi tiết trong PLAN mục 5.
+> FE: tsc sạch (trừ logo.png), 68 test src/lib/hooks + components/guides pass.
+
+---

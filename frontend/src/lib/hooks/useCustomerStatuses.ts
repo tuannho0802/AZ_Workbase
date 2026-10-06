@@ -5,6 +5,7 @@ import {
   CreateCustomerStatusPayload,
   UpdateCustomerStatusPayload,
 } from '../api/customer-statuses.api';
+import { REFERENCE_DATA_STALE_MS } from '../query-stale';
 
 const QUERY_KEY = ['customer-statuses'];
 
@@ -12,7 +13,9 @@ export const useCustomerStatuses = () => {
   const { data, isLoading, isError, error } = useQuery({
     queryKey: QUERY_KEY,
     queryFn: () => customerStatusesApi.getAll(),
-    staleTime: 60 * 1000,
+    // [AGENT] OLD CODE (giữ để rollback): staleTime: 60 * 1000
+    // NEW (Plan CPU Mục 6A): create/update/delete bên dưới đều invalidate QUERY_KEY.
+    staleTime: REFERENCE_DATA_STALE_MS,
   });
 
   return {

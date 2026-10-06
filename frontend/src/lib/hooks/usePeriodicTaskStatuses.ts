@@ -5,6 +5,7 @@ import {
   CreatePeriodicTaskStatusPayload,
   UpdatePeriodicTaskStatusPayload,
 } from '../api/periodic-task-statuses.api';
+import { REFERENCE_DATA_STALE_MS } from '../query-stale';
 
 const QUERY_KEY = ['periodic-task-statuses'];
 
@@ -17,7 +18,9 @@ export const usePeriodicTaskStatuses = () => {
   const { data, isLoading, isError, error } = useQuery({
     queryKey: QUERY_KEY,
     queryFn: () => periodicTaskStatusesApi.getAll(),
-    staleTime: 60 * 1000,
+    // [AGENT] OLD CODE (giữ để rollback): staleTime: 60 * 1000
+    // NEW (Plan CPU Mục 6A): create/update/delete bên dưới đều invalidate QUERY_KEY (+ ['periodic-tasks'] khi xoá).
+    staleTime: REFERENCE_DATA_STALE_MS,
   });
 
   return {
