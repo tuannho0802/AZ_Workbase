@@ -5969,3 +5969,19 @@ Now [deploy]
 > Chưa test tay trên Vercel/Aiven thật; theo dõi Sentry vài ngày để xác nhận ECONNRESET giảm.
 
 ---
+## [2026-10-06 10:00] | Guides P1: bài `nhom-toi-quan-ly` + 2 mẫu trong `link-groups.demos` | [Status: Success]
+
+**Actor:** Agent
+
+**Files Changed:**
+- `guides-content/nhom-toi-quan-ly.md` — bài mới (`published: false`, chờ duyệt nội dung); gỡ slug khỏi `PENDING_GUIDE_SLUGS`.
+- `frontend/src/lib/guides/demos/link-groups.demos.tsx` — 2 mẫu `my-groups-table` (tham số `viewer=member|admin`), `group-customers-modal`; cập nhật `guide-demos.test.tsx` (39 mẫu).
+- `AZ-Workbase Skills/PLAN_GUIDES_CONTENT.md` — tick P1 `nhom-toi-quan-ly`.
+
+**Root Cause (phát hiện khi đối chiếu code thật, KHÔNG sửa trong phase này):**
+> 1) `nhom-toi-quan-ly/page.tsx`: cột "Vai trò của tôi", dòng chú thích đầu trang và bộ lọc Vai trò hardcode `currentUser.role === 'admin'`; còn lại chỉ chia chính/phụ -> Nhân viên Content và Assistant (xem mọi nhóm nhờ `link_groups.manage`) bị gắn nhãn "Quản lý phụ" sai. BE (`hasBroadAccess`) coi Root Admin hoặc người có `link_groups.manage` là quyền rộng. 2) `GroupManagersModal.tsx` `canEdit = role==='admin' || isPrimary` trong khi BE `canEditSecondaryManagers` cho cả quyền rộng -> Assistant bị ẩn nút Thêm/Gỡ dù BE cho phép (cùng họ lỗi với `nhom-lien-ket`). 3) `LinkGroupCustomersService` cố ý KHÔNG áp scope `customers.view` (own/department/all): người được xem nhóm thấy mọi khách đã join, chỉ strip field theo UI Visibility; cần xác nhận đây là chủ ý nghiệp vụ.
+
+**Notes:**
+> Bài mô tả hành vi THẬT: `link_groups.my_managed` mặc định cả 4 role (migration 1781600000000); nhóm đang ẩn vẫn hiện; N đếm khách `joined=1` chưa soft-delete; `customer-counts` cache FE 30s. Verify: `vitest src/lib/guides` 12 file / 334 test pass; `tsc --noEmit` chỉ còn 4 lỗi `logo.png` có sẵn; eslint file sửa sạch. Chưa test tay trên trình duyệt. Cần `guides:sync --apply` sau khi duyệt đổi `published: true`.
+
+---
