@@ -6318,3 +6318,27 @@ Now [deploy]
 > User 17, 19, 97 refresh 2 lần cách nhau 2–3 giây → race nhiều tab, xử lý ở Mục 2A. Cần chủ dự án tự xác nhận env `JWT_EXPIRES_IN` trên Vercel.
 
 ---
+
+---
+## [2026-10-06 18:40] | Mục 2 plan CPU: refresh token nhiều phiên + SHA-256 + khoá liên-tab | Status: Success (chờ deploy theo thứ tự FE → BE)
+
+**Actor:** Agent
+**Files Changed:**
+- `frontend/src/lib/auth/shared-refresh.ts` (+ test) — mới: Web Locks + đọc lại localStorage, chỉ 1 tab gọi `/auth/refresh`
+- `frontend/src/lib/api/axios-instance.ts` — dùng `refreshAccessTokenShared` (code cũ giữ bằng comment OLD CODE)
+- `backend/src/common/utils/refresh-session-store.util.ts` (+ spec) — mới: nhiều phiên/user trong cột `hashed_refresh_token`, SHA-256, tương thích hash bcrypt cũ 7 ngày, tối đa 10 thiết bị
+- `backend/src/modules/users/users.service.ts` — `saveRefreshToken` (thêm phiên / thu hồi), `rotateRefreshToken` (compare-and-set, thử lại 3 lần)
+- `backend/src/modules/auth/auth.service.ts` — `refresh()` dùng `rotateRefreshToken`; refresh token có `jti`
+- spec: users.service (+5), auth.service (+5)
+
+**Root Cause:**
+> bcrypt chỉ đọc 72 byte đầu JWT → mọi token cùng user "khớp": phát hiện tái sử dụng vô hiệu, đa thiết bị chạy nhờ lỗi, mỗi refresh tốn ~155ms CPU. Token nằm localStorage nhưng mỗi tab giữ bản sao RAM → 2 tab refresh song song (log: user 17/19/97 refresh 2 lần cách 2–3 giây).
+
+**Solution:**
+> Mỗi thiết bị 1 slot SHA-256 trong cột có sẵn (không migration); ghi bằng compare-and-set; FE khoá liên-tab. Không ai bị đăng xuất khi deploy.
+
+**Notes:**
+> THỨ TỰ DEPLOY BẮT BUỘC: FE trước, theo dõi ≥ 1 ngày, rồi BE. Theo dõi `Token reuse detected` 48h sau khi deploy BE.
+> BE: 1690 test pass + nest build OK. FE: tsc sạch (trừ logo.png), test hooks+auth pass.
+
+---

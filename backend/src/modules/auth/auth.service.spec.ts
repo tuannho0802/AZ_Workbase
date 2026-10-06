@@ -15,13 +15,15 @@ describe('AuthService - Đăng ký công khai + chặn đăng nhập chưa duy�
     findByEmailIncludingDeleted: jest.fn(),
     createPendingRegistration: jest.fn(),
     saveRefreshToken: jest.fn(),
+    rotateRefreshToken: jest.fn(),
+    findByIdWithRefreshToken: jest.fn(),
     updateLastLogin: jest.fn(),
     // login() giờ ký avatarUrl trước khi trả về (xem auth.service.ts) - mặc
     // định trả nguyên user vào (không avatarUrl -> signAvatarUrl trả về y
     // nguyên, khớp hành vi thật khi user.avatarUrl null).
     signAvatarUrl: jest.fn((u) => Promise.resolve(u)),
   };
-  const mockJwtService = { sign: jest.fn().mockReturnValue('fake-jwt-token') };
+  const mockJwtService = { sign: jest.fn().mockReturnValue('fake-jwt-token'), verify: jest.fn() };
   const mockConfigService = { get: jest.fn().mockReturnValue('fake-secret') };
   const mockAuditService = { logActionAsync: jest.fn() };
 
@@ -286,6 +288,50 @@ describe('AuthService - Đăng ký công khai + chặn đăng nhập chưa duy�
       await expect(
         service.login({ email: 'a@example.com', password: 'sai-mat-khau' }),
       ).rejects.toThrow(UnauthorizedException);
+    });
+  });
+
+  describe('refresh - xoay token theo từng phiên (không bcrypt)', () => {
+    const activeUser = { id: 7, email: 'a@x.com', role: 'employee', isActive: 1, hashedRefreshToken: '{"v":2,"s":[],"l":null}' };
+
+    beforeEach(() => {
+      mockJwtService.verify.mockReturnValue({ sub: 7 });
+      mockUsersService.findByIdWithRefreshToken.mockResolvedValue(activeUser);
+    });
+
+    it('JWT refresh sai/hết hạn -> 401, không đụng DB', async () => {
+      mockJwtService.verify.mockImplementation(() => {
+        throw new Error('jwt expired');
+      });
+      await expect(service.refresh('x')).rejects.toThrow(UnauthorizedException);
+      expect(mockUsersService.findByIdWithRefreshToken).not.toHaveBeenCalled();
+    });
+
+    it('chưa có phiên nào (đã đăng xuất) -> 401', async () => {
+      mockUsersService.findByIdWithRefreshToken.mockResolvedValue({ ...activeUser, hashedRefreshToken: null });
+      await expect(service.refresh('x')).rejects.toThrow(UnauthorizedException);
+      expect(mockUsersService.rotateRefreshToken).not.toHaveBeenCalled();
+    });
+
+    it('token thuộc 1 phiên -> trả cặp token mới, KHÔNG thu hồi', async () => {
+      mockUsersService.rotateRefreshToken.mockResolvedValue(true);
+      const res = await service.refresh('old-token');
+      expect(res).toEqual({ access_token: 'fake-jwt-token', refresh_token: 'fake-jwt-token' });
+      expect(mockUsersService.rotateRefreshToken).toHaveBeenCalledWith(7, 'old-token', 'fake-jwt-token', activeUser.hashedRefreshToken);
+      expect(mockUsersService.saveRefreshToken).not.toHaveBeenCalled();
+    });
+
+    it('token KHÔNG thuộc phiên nào (tái sử dụng) -> thu hồi toàn bộ phiên + 401', async () => {
+      mockUsersService.rotateRefreshToken.mockResolvedValue(false);
+      await expect(service.refresh('stolen')).rejects.toThrow(UnauthorizedException);
+      expect(mockUsersService.saveRefreshToken).toHaveBeenCalledWith(7, null);
+    });
+
+    it('refresh token mới có jti ngẫu nhiên (2 lần trong cùng giây không trùng nhau)', async () => {
+      mockUsersService.rotateRefreshToken.mockResolvedValue(true);
+      await service.refresh('old-token');
+      const refreshSignCall = mockJwtService.sign.mock.calls.find((c) => c[1]?.secret);
+      expect(refreshSignCall?.[0]).toEqual(expect.objectContaining({ jti: expect.any(String) }));
     });
   });
 });

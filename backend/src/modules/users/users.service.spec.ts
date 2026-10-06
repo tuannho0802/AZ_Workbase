@@ -1262,4 +1262,60 @@ describe('UsersService - Approval workflow (đăng ký công khai chờ duyệt)
       );
     });
   });
+
+  describe('refresh token - nhiều phiên (compare-and-set), không dùng bcrypt', () => {
+    const setStored = (value: string | null) => mockQueryBuilder.getOne.mockResolvedValue({ id: 1, hashedRefreshToken: value });
+    const lastSet = () => mockQueryBuilder.set.mock.calls[mockQueryBuilder.set.mock.calls.length - 1][0].hashedRefreshToken as string | null;
+
+    beforeEach(() => {
+      mockQueryBuilder.set.mockClear();
+      mockQueryBuilder.andWhere.mockClear();
+      mockQueryBuilder.execute.mockReset();
+    });
+
+    it('saveRefreshToken(null) -> đặt NULL (thu hồi), không CAS', async () => {
+      mockQueryBuilder.execute.mockResolvedValue({ affected: 1 });
+      await service.saveRefreshToken(1, null);
+      expect(lastSet()).toBeNull();
+      expect(mockQueryBuilder.andWhere).not.toHaveBeenCalled();
+    });
+
+    it('saveRefreshToken(token) -> thêm phiên, lưu SHA-256 (không có token thô), CAS theo giá trị cũ', async () => {
+      setStored(null);
+      mockQueryBuilder.execute.mockResolvedValue({ affected: 1 });
+      await service.saveRefreshToken(1, 'token-A');
+      const saved = lastSet() as string;
+      expect(saved).not.toContain('token-A');
+      expect(JSON.parse(saved).s).toHaveLength(1);
+      expect(mockQueryBuilder.andWhere).toHaveBeenCalledWith(expect.stringContaining('<=>'), { expected: null });
+    });
+
+    it('saveRefreshToken thua đua ghi -> đọc lại và thử lại (không mất phiên của thiết bị khác)', async () => {
+      setStored(null);
+      mockQueryBuilder.execute.mockResolvedValueOnce({ affected: 0 }).mockResolvedValueOnce({ affected: 1 });
+      await service.saveRefreshToken(1, 'token-A');
+      expect(mockQueryBuilder.getOne).toHaveBeenCalledTimes(2);
+      expect(mockQueryBuilder.execute).toHaveBeenCalledTimes(2);
+    });
+
+    it('rotateRefreshToken: token thuộc 1 phiên -> true và ghi token mới', async () => {
+      setStored(null);
+      mockQueryBuilder.execute.mockResolvedValue({ affected: 1 });
+      await service.saveRefreshToken(1, 'token-A');
+      const stored = lastSet();
+      mockQueryBuilder.execute.mockClear();
+      expect(await service.rotateRefreshToken(1, 'token-A', 'token-B', stored)).toBe(true);
+      expect(lastSet()).not.toBe(stored);
+    });
+
+    it('rotateRefreshToken: token không thuộc phiên nào (tái sử dụng) -> false, KHÔNG ghi gì', async () => {
+      setStored(null);
+      mockQueryBuilder.execute.mockResolvedValue({ affected: 1 });
+      await service.saveRefreshToken(1, 'token-A');
+      const stored = lastSet();
+      mockQueryBuilder.execute.mockClear();
+      expect(await service.rotateRefreshToken(1, 'token-LA', 'token-B', stored)).toBe(false);
+      expect(mockQueryBuilder.execute).not.toHaveBeenCalled();
+    });
+  });
 });

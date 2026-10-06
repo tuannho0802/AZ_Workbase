@@ -3,6 +3,7 @@ import { Injectable, UnauthorizedException, ForbiddenException, ConflictExceptio
 import { JwtService } from '@nestjs/jwt';
 import { ConfigService } from '@nestjs/config';
 import * as bcrypt from 'bcrypt';
+import { randomUUID } from 'crypto';
 import { UsersService } from '../users/users.service';
 import { LoginDto } from './dto/login.dto';
 import { RegisterDto } from './dto/register.dto';
@@ -31,7 +32,9 @@ export class AuthService {
    const refreshSecret = this.configService.get<string>('JWT_REFRESH_SECRET') || 'default-refresh-secret';
    const refreshExpiresIn = this.configService.get<string>('JWT_REFRESH_EXPIRES_IN') || '7d';
 
-   const refresh_token = this.jwtService.sign(payload, {
+   // `jti` ngẫu nhiên: 2 lần làm mới trong cùng 1 giây (2 thiết bị) KHÔNG được ra token giống hệt nhau
+   // (nếu giống, 2 thiết bị dùng chung 1 phiên và không phân biệt được).
+   const refresh_token = this.jwtService.sign({ ...payload, jti: randomUUID() }, {
     secret: refreshSecret,
     expiresIn: refreshExpiresIn as any,
   });
@@ -263,8 +266,16 @@ export class AuthService {
       throw new UnauthorizedException('Phiên đăng nhập đã hết hạn, vui lòng đăng nhập lại');
     }
 
-    // 3. ⭐ TRÁI TIM CỦA ROTATION: So sánh token gửi lên với hash trong DB
-    const isTokenValid = await bcrypt.compare(refreshTokenFromClient, user.hashedRefreshToken);
+    // 3. ⭐ TRÁI TIM CỦA ROTATION: token gửi lên phải thuộc 1 phiên của user; thay bằng token mới (compare-and-set).
+    // [AGENT] OLD CODE: const isTokenValid = await bcrypt.compare(refreshTokenFromClient, user.hashedRefreshToken);
+    // (bcrypt chỉ đọc 72 byte đầu của JWT -> mọi token cùng user đều "khớp" + tốn ~150ms CPU/lần).
+    const { access_token, refresh_token: new_refresh_token } = await this.generateTokens(user.id, user.email, user.role);
+    const isTokenValid = await this.usersService.rotateRefreshToken(
+      user.id,
+      refreshTokenFromClient,
+      new_refresh_token,
+      user.hashedRefreshToken,
+    );
 
     if (!isTokenValid) {
       // 🚨 TOKEN RE-USE DETECTED: Thu hồi toàn bộ session ngay lập tức
@@ -274,9 +285,7 @@ export class AuthService {
       throw new UnauthorizedException('Phát hiện nghi ngờ bảo mật. Toàn bộ phiên đăng nhập đã bị thu hồi. Vui lòng đăng nhập lại');
     }
 
-    // 4. Token hợp lệ → Phát cặp token mới + Cập nhật hash mới vào DB
-    const { access_token, refresh_token: new_refresh_token } = await this.generateTokens(user.id, user.email, user.role);
-    await this.usersService.saveRefreshToken(user.id, new_refresh_token);
+    // 4. Token hợp lệ → cặp token mới đã được ghi vào đúng phiên ở bước 3.
 
     this.logger.log(`[AUTH] Token rotated successfully for user ID: ${user.id}`);
 

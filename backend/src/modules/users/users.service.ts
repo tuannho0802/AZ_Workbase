@@ -1,4 +1,5 @@
 import { invalidateAuthUser } from '../../common/utils/auth-user-cache.util';
+import { addRefreshSession, rotateRefreshSession } from '../../common/utils/refresh-session-store.util';
 import { Injectable, Logger } from '@nestjs/common';
 
 import { InjectRepository, InjectDataSource } from '@nestjs/typeorm';
@@ -28,6 +29,9 @@ function omitPassword<T extends { password?: unknown }>(obj: T): Omit<T, 'passwo
   delete clone.password;
   return clone;
 }
+
+const REFRESH_STORE_MAX_ATTEMPTS = 3;
+const nowEpochSeconds = () => Math.floor(Date.now() / 1000);
 
 @Injectable()
 export class UsersService {
@@ -218,15 +222,78 @@ export class UsersService {
     await this.usersRepository.update(id, { lastLoginAt: new Date() });
   }
 
+  /**
+   * `token = null` -> THU HỒI toàn bộ phiên (đăng xuất / đổi mật khẩu / khoá tài khoản).
+   * `token` có giá trị -> THÊM 1 phiên (đăng nhập) vào danh sách phiên của user, các thiết bị khác KHÔNG bị ảnh hưởng.
+   * Xem `common/utils/refresh-session-store.util.ts` (đã bỏ bcrypt: bcrypt chỉ đọc 72 byte đầu của JWT).
+   */
   async saveRefreshToken(userId: number, token: string | null): Promise<void> {
-    const hashedRefreshToken = token ? await bcrypt.hash(token, 10) : null;
-    // Use query builder to update the field that has select: false
+    // [AGENT] OLD CODE: const hashedRefreshToken = token ? await bcrypt.hash(token, 10) : null; rồi UPDATE ... SET hashed_refresh_token
+    if (token === null) {
+      await this.setRefreshStore(userId, null);
+      return;
+    }
+    for (let attempt = 0; attempt < REFRESH_STORE_MAX_ATTEMPTS; attempt++) {
+      const current = await this.findByIdWithRefreshToken(userId);
+      const next = addRefreshSession(current?.hashedRefreshToken, token, nowEpochSeconds());
+      const isLast = attempt === REFRESH_STORE_MAX_ATTEMPTS - 1;
+      if (isLast || (await this.compareAndSetRefreshStore(userId, current?.hashedRefreshToken ?? null, next))) {
+        if (isLast) await this.setRefreshStore(userId, next);
+        return;
+      }
+    }
+  }
+
+  /**
+   * Làm mới 1 phiên: `presentedToken` phải thuộc 1 phiên của user -> thay bằng `newToken`.
+   * Trả `false` nếu không thuộc phiên nào (tái sử dụng/giả mạo) - NGƯỜI GỌI quyết định thu hồi.
+   * Ghi bằng so-sánh-và-đặt (compare-and-set) để 2 thiết bị làm mới CÙNG LÚC không ghi đè phiên của nhau.
+   */
+  async rotateRefreshToken(
+    userId: number,
+    presentedToken: string,
+    newToken: string,
+    initialStored?: string | null,
+  ): Promise<boolean> {
+    let stored = initialStored;
+    for (let attempt = 0; attempt < REFRESH_STORE_MAX_ATTEMPTS; attempt++) {
+      if (stored === undefined) stored = (await this.findByIdWithRefreshToken(userId))?.hashedRefreshToken ?? null;
+      const result = await rotateRefreshSession(stored, presentedToken, newToken, nowEpochSeconds());
+      if (!result.ok) return false;
+      const isLast = attempt === REFRESH_STORE_MAX_ATTEMPTS - 1;
+      if (isLast) {
+        await this.setRefreshStore(userId, result.next);
+        return true;
+      }
+      if (await this.compareAndSetRefreshStore(userId, stored ?? null, result.next)) return true;
+      stored = undefined; // thua cuộc đua ghi -> đọc lại bản mới nhất rồi thử lại
+    }
+    return false;
+  }
+
+  private async setRefreshStore(userId: number, value: string | null): Promise<void> {
+    // Query builder vì cột `select: false`.
     await this.usersRepository
       .createQueryBuilder()
       .update(User)
-      .set({ hashedRefreshToken })
+      .set({ hashedRefreshToken: value })
       .where('id = :id', { id: userId })
       .execute();
+  }
+
+  private async compareAndSetRefreshStore(
+    userId: number,
+    expected: string | null,
+    next: string | null,
+  ): Promise<boolean> {
+    const result = await this.usersRepository
+      .createQueryBuilder()
+      .update(User)
+      .set({ hashedRefreshToken: next })
+      .where('id = :id', { id: userId })
+      .andWhere('hashed_refresh_token <=> :expected', { expected })
+      .execute();
+    return (result.affected ?? 0) > 0;
   }
 
   async findByIdWithRefreshToken(id: number): Promise<User | null> {

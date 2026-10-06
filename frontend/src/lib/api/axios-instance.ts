@@ -1,6 +1,7 @@
 import axios, { AxiosError, InternalAxiosRequestConfig } from 'axios';
 import { showMessage } from '@/components/common/AntdAppProvider';
 import { useAuthStore } from '../stores/auth.store';
+import { bearerToken, refreshAccessTokenShared } from '../auth/shared-refresh';
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001/api';
 
@@ -88,18 +89,13 @@ axiosInstance.interceptors.response.use(
       try {
         const refreshUrl = `${API_BASE_URL}/auth/refresh`;
         
-        const response = await axios.post(
+        // [AGENT] OLD CODE (giữ để rollback): gọi thẳng axios.post(refreshUrl, { refreshToken }) + setTokens(...)
+        // NEW: chỉ 1 tab gọi API, tab khác dùng lại token mới (xem lib/auth/shared-refresh.ts).
+        const token = await refreshAccessTokenShared(
           refreshUrl,
-          { refreshToken },
-          { withCredentials: true }
+          bearerToken(originalRequest.headers?.Authorization),
         );
 
-        const token = response.data.access_token || response.data.accessToken;
-        const newRefToken = response.data.refresh_token || response.data.refreshToken;
-        
-        // ⭐ CRITICAL: Save BOTH tokens to store → Cookie gets updated automatically
-        useAuthStore.getState().setTokens(token, newRefToken);
-        
         processQueue(null, token);
         isRefreshing = false;
 
