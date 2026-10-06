@@ -459,7 +459,7 @@ function TaskLinksDemo() {
     ];
     return (
         <div style={{ maxWidth: 560, margin: '0 auto', border: '1px solid #d9d9d9', borderRadius: 8, boxShadow: '0 6px 16px rgba(0,0,0,0.08)' }}>
-            <div style={{ padding: '12px 20px', borderBottom: '1px solid #f0f0f0', fontWeight: 600, fontSize: 16 }}>Liên kết &amp; Tiến độ - "{month.title}"</div>
+            <div style={{ padding: '12px 20px', borderBottom: '1px solid #f0f0f0', fontWeight: 600, fontSize: 16 }}>Liên kết &amp; Tiến độ - &quot;{month.title}&quot;</div>
             <div style={{ padding: 20 }}>
                 <Text strong>Tiến độ (tính theo Công việc con TRỰC TIẾP):</Text>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>

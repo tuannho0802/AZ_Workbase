@@ -165,7 +165,7 @@ export function AssignmentGroupPickerDemo() {
                     <Text strong>Vị trí (tuỳ chọn): </Text>
                     <Select mode="multiple" size="small" allowClear placeholder="Không lọc theo vị trí" style={{ minWidth: 300 }} value={positions} onChange={setPositions} options={['Sale', 'Trưởng nhóm', 'Media'].map((d) => ({ value: d, label: d }))} />
                 </div>
-                <Text strong>Dropdown "Chọn Sales nhận data" sẽ hiện:</Text>
+                <Text strong>Dropdown &quot;Chọn Sales nhận data&quot; sẽ hiện:</Text>
                 {depts.length === 0 ? (
                     <Tag color="red">Chưa cấu hình - dropdown sẽ rỗng</Tag>
                 ) : shown.length === 0 ? (
