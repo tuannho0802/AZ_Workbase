@@ -23,16 +23,22 @@ export const isPastPeriodEnd = (task: Pick<PeriodicTask, 'periodEndDate'>, today
   today > endYmd(task);
 
 /**
- * Hiện nút "Đánh dấu quá hạn": đã qua deadline, chưa xong, chưa đánh dấu, và còn TRONG ân hạn
- * (hết ân hạn hiệu suất đã tự tính quá hạn nên đánh dấu tay không còn tác dụng).
+ * Hiện nút "Đánh dấu quá hạn": đã qua deadline, chưa xong, chưa đánh dấu.
+ * [AGENT] OLD: thêm điều kiện `today <= end + LATE_GRACE_DAYS` -> Task quá hạn hơn 7 ngày MẤT nút (bug báo 2026-10-06:
+ * Task kỳ 01-06/09 xem ngày 06/10 không có nút). BE `markOverdue()` không chặn mốc này nên bỏ để khớp.
  */
 export const canMarkOverdue = (
   task: Pick<PeriodicTask, 'periodEndDate' | 'status' | 'overdueMarkedAt'>,
   today = todayVnYmd(),
 ): boolean => {
-  if (task.overdueMarkedAt || isCompleted(task) || !isPastPeriodEnd(task, today)) return false;
-  return today <= dayjs(endYmd(task)).add(LATE_GRACE_DAYS, 'day').format('YYYY-MM-DD');
+  return !task.overdueMarkedAt && !isCompleted(task) && isPastPeriodEnd(task, today);
 };
+
+/** Task có hiện cờ "Quá hạn" không: đủ OVERDUE_AFTER_DAYS ngày (tự động) hoặc có dấu quá hạn còn hiệu lực. */
+export const isOverdueFlagged = (
+  task: Pick<PeriodicTask, 'periodEndDate' | 'status' | 'overdueMarkedAt'>,
+  today = todayVnYmd(),
+): boolean => isTaskOverdue(task, today) || isManualOverdueActive(task, today);
 
 /** Dấu thủ công đang có hiệu lực (hiện Tag "Quá hạn"): đã đánh dấu + còn quá hạn kỳ + chưa xong. */
 export const isManualOverdueActive = (

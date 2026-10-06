@@ -24,8 +24,8 @@ import { UpdatePeriodicTaskDto } from './dto/update-periodic-task.dto';
 import { PeriodicTaskFiltersDto } from './dto/periodic-task-filters.dto';
 import { LockPeriodicTaskDto } from './dto/lock-periodic-task.dto';
 import { PeriodicTaskAccessHelper } from './helpers/periodic-task-access.helper';
-import { resolveListWindow } from './helpers/list-window.helper';
-import { AUTO_LOCK_NOTE, COMPLETED_STATUS_CODES, isPastPeriodEnd } from './helpers/overdue.helper';
+import { addDaysToDateString, resolveListWindow } from './helpers/list-window.helper';
+import { AUTO_LOCK_NOTE, COMPLETED_STATUS_CODES, OVERDUE_AFTER_DAYS, isPastPeriodEnd } from './helpers/overdue.helper';
 import { todayVnStr } from '../../common/utils/date-vn.util';
 import { extendedPeriodEndForReopen, isCompletedTask, resolveStatusChecklistGuard } from './helpers/task-status.helper';
 import { PeriodicTaskAuditService, PeriodicTaskAuditAction } from './periodic-task-audit.service';
@@ -419,6 +419,7 @@ export class PeriodicTasksService {
       secondaryAssigneeId,
       departmentId,
       search,
+      overdueOnly,
     } = filters;
 
     // KHÔNG BAO GIỜ tải toàn bộ: luôn có khoảng ngày (mặc định Tuần này, tối đa
@@ -478,6 +479,17 @@ export class PeriodicTasksService {
     }
     if (search) {
       qb.andWhere('task.title LIKE :search', { search: `%${search}%` });
+    }
+    // "Chỉ Task quá hạn" - khớp cờ Quá hạn ở FE (`isTaskOverdue` || `isManualOverdueActive`): CHƯA xong và
+    // (đủ OVERDUE_AFTER_DAYS ngày sau hạn kỳ HOẶC có dấu quá hạn + đã qua hạn kỳ). Lọc ở BE để total/phân trang đúng.
+    if (overdueOnly) {
+      const today = todayVnStr();
+      qb.andWhere(
+        '(task.periodEndDate <= :overdueCutoff OR (task.overdueMarkedAt IS NOT NULL AND task.periodEndDate < :overdueToday))',
+        { overdueCutoff: addDaysToDateString(today, -OVERDUE_AFTER_DAYS), overdueToday: today },
+      );
+      qb.andWhere('(status.code IS NULL OR status.code NOT IN (:...overdueDoneCodes))', { overdueDoneCodes: [...COMPLETED_STATUS_CODES] });
+      qb.andWhere('(status.isDoneState IS NULL OR status.isDoneState = :overdueNotDone)', { overdueNotDone: 0 });
     }
 
     qb.orderBy('task.periodStartDate', 'DESC').addOrderBy('task.id', 'DESC');

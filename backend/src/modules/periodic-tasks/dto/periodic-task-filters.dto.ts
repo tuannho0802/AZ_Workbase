@@ -1,6 +1,6 @@
 import { ApiPropertyOptional } from '@nestjs/swagger';
-import { IsOptional, IsInt, IsString, Min, Max, IsEnum, IsDateString } from 'class-validator';
-import { Type } from 'class-transformer';
+import { IsOptional, IsInt, IsString, Min, Max, IsEnum, IsDateString, IsBoolean } from 'class-validator';
+import { Transform, Type } from 'class-transformer';
 import { PeriodType } from '../../../common/enums/period-type.enum';
 
 /**
@@ -86,4 +86,16 @@ export class PeriodicTaskFiltersDto {
   @IsOptional()
   @IsString()
   search?: string;
+
+  @ApiPropertyOptional({
+    example: true,
+    description:
+      'true = chỉ trả Task QUÁ HẠN: chưa xong (không phải in_review/done/completed/is_done_state) và đã đủ ' +
+      '`OVERDUE_AFTER_DAYS` (3) ngày sau `period_end_date`, hoặc đang có dấu quá hạn (cron/thủ công) và đã qua hạn kỳ. ' +
+      'Khớp cờ \"Quá hạn\" trên UI. Kết hợp AND với các bộ lọc khác (kể cả khoảng ngày).',
+  })
+  @IsOptional()
+  @Transform(({ value }) => (value === 'true' || value === true ? true : value === 'false' || value === false ? false : value))
+  @IsBoolean()
+  overdueOnly?: boolean;
 }

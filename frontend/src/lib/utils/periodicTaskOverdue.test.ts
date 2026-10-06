@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { canMarkOverdue, isManualOverdueActive, canUnmarkOverdue, isTaskOverdue, getOverdueDays } from './periodicTaskOverdue';
+import { canMarkOverdue, isManualOverdueActive, canUnmarkOverdue, isTaskOverdue, getOverdueDays, isOverdueFlagged } from './periodicTaskOverdue';
 
 const t = (over: Record<string, unknown> = {}) =>
   ({ periodEndDate: '2026-09-10', status: { code: 'in_progress' }, overdueMarkedAt: null, ...over }) as never;
@@ -12,8 +12,9 @@ describe('periodicTaskOverdue', () => {
     expect(canMarkOverdue(t(), '2026-09-11')).toBe(true);
     expect(canMarkOverdue(t(), '2026-09-17')).toBe(true);
   });
-  it('canMarkOverdue: hết ân hạn (đã tự động quá hạn) -> false', () => {
-    expect(canMarkOverdue(t(), '2026-09-18')).toBe(false);
+  it('canMarkOverdue: quá hạn lâu (hết ân hạn 7 ngày) VẪN hiện nút nếu chưa có dấu (bug 2026-10-06: kỳ 01-06/09 xem 06/10 mất nút)', () => {
+    expect(canMarkOverdue(t(), '2026-09-18')).toBe(true);
+    expect(canMarkOverdue(t({ periodEndDate: '2026-09-06' }), '2026-10-06')).toBe(true);
   });
   it('canMarkOverdue: đã xong (in_review/done) hoặc đã đánh dấu -> false', () => {
     expect(canMarkOverdue(t({ status: { code: 'done' } }), '2026-09-12')).toBe(false);
@@ -54,5 +55,20 @@ describe('isTaskOverdue / getOverdueDays', () => {
     expect(isTaskOverdue(t({ status: { code: 'done' } }), '2026-09-28')).toBe(false);
     expect(isTaskOverdue(t({ status: { code: 'completed' } }), '2026-09-28')).toBe(false);
     expect(isTaskOverdue(t({ status: { code: 'custom_done', isDoneState: true } }), '2026-09-28')).toBe(false);
+  });
+});
+
+describe('isOverdueFlagged (cờ Quá hạn ở mọi view)', () => {
+  it('chưa đủ 3 ngày và chưa có dấu -> không cờ', () => {
+    expect(isOverdueFlagged(t(), '2026-09-12')).toBe(false);
+  });
+  it('đủ 3 ngày chưa xong -> cờ', () => {
+    expect(isOverdueFlagged(t(), '2026-09-13')).toBe(true);
+  });
+  it('có dấu quá hạn + đã qua hạn kỳ (dù < 3 ngày) -> cờ', () => {
+    expect(isOverdueFlagged(t({ overdueMarkedAt: '2026-09-11T00:00:00Z' }), '2026-09-11')).toBe(true);
+  });
+  it('đã xong (completed) -> không cờ dù có dấu cũ', () => {
+    expect(isOverdueFlagged(t({ status: { code: 'completed' }, overdueMarkedAt: '2026-09-11T00:00:00Z' }), '2026-09-30')).toBe(false);
   });
 });

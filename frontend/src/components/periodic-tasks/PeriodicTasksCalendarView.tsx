@@ -3,11 +3,12 @@
 import { TaskAssignees } from './TaskAssignees';
 import { useMemo } from 'react';
 import { Calendar, Tag, Tooltip, Badge, Typography } from 'antd';
-import { LinkOutlined } from '@ant-design/icons';
+import { FlagFilled, LinkOutlined } from '@ant-design/icons';
 import type { Dayjs } from 'dayjs';
 import dayjs from 'dayjs';
 import { PeriodicTask, PERIOD_TYPE_LABELS } from '@/lib/api/periodic-tasks.api';
 import { resolveEntityColor } from '@/lib/utils/entityColor';
+import { getOverdueDays, isOverdueFlagged } from '@/lib/utils/periodicTaskOverdue';
 import { TaskChainInfo } from '@/lib/utils/taskLinkChains';
 import { LinkifiedText } from '@/components/common/LinkifiedText';
 
@@ -74,12 +75,18 @@ export function PeriodicTasksCalendarView({ tasks, onSelectTask, chains, resolve
             <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
                 {dayTasks.slice(0, 3).map((task) => {
                     const chain = chains?.get(task.id);
+                    const overdue = isOverdueFlagged(task);
                     return (
                         <Tooltip
                             key={task.id}
                             title={
                                 <>
                                     <div>{task.title}</div>
+                                    {overdue && (
+                                        <div style={{ fontSize: 12, color: '#ff7875', fontWeight: 600 }}>
+                                            <FlagFilled /> Quá hạn {getOverdueDays(task)} ngày (hạn kỳ {dayjs(task.periodEndDate).format('DD/MM/YYYY')}), chưa hoàn thành
+                                        </div>
+                                    )}
                                     <div style={{ fontSize: 12, opacity: 0.8 }}>
                                         {PERIOD_TYPE_LABELS[task.periodType]} · {task.status?.name ?? '—'} ·{' '}
                                         <TaskAssignees task={task} variant="text" />
@@ -131,13 +138,14 @@ export function PeriodicTasksCalendarView({ tasks, onSelectTask, chains, resolve
                                     // Phase 8: viền màu chuỗi liên kết (khác hẳn màu nền của Tag,
                                     // dùng `boxShadow` inset thay vì `border` để không đổi kích
                                     // thước Tag) - CHỈ hiện khi Task thuộc 1 chuỗi >= 2 thành viên.
-                                    boxShadow: chain ? `inset 0 0 0 2px ${chain.color}` : undefined,
+                                    boxShadow: chain ? `inset 0 0 0 2px ${chain.color}` : overdue ? 'inset 0 0 0 1.5px #ff4d4f' : undefined,
                                 }}
                                 onClick={(e) => {
                                     e.stopPropagation();
                                     onSelectTask?.(task);
                                 }}
                             >
+                                {overdue && <FlagFilled style={{ marginRight: 3, fontSize: 10, color: '#ff4d4f' }} />}
                                 {chain && <LinkOutlined style={{ marginRight: 3, fontSize: 10 }} />}
                                 {task.title}
                             </Tag>

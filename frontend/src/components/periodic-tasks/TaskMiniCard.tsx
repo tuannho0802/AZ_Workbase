@@ -103,7 +103,7 @@ export function TaskMiniCardView({
     assigneesSlot,
 }: TaskMiniCardViewProps) {
     const autoOverdue = flagOverdue && isTaskOverdue(task);
-    const overdueDays = autoOverdue ? getOverdueDays(task) : 0;
+    const overdueDays = autoOverdue || isManualOverdueActive(task) ? getOverdueDays(task) : 0;
     const isMini = density === 'mini';
     const isCompact = density === 'compact';
     const checklist = getChecklistProgress(task);
@@ -196,7 +196,14 @@ export function TaskMiniCardView({
                     </div>
                     {extra && <div style={{ flexShrink: 0 }}>{extra}</div>}
                 </div>
-                <div style={{ marginTop: 2, display: 'flex', alignItems: 'center', gap: 8 }}>
+                <div style={{ marginTop: 2, display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+                    {(autoOverdue || isManualOverdueActive(task)) && (
+                        <Tooltip title={`Hạn kỳ: ${dayjs(task.periodEndDate).format('DD/MM/YYYY')}${overdueDays > 0 ? ` - đã quá hạn ${overdueDays} ngày, chưa hoàn thành` : ''}`}>
+                            <Tag color="error" icon={<FlagFilled />} style={{ marginInlineEnd: 0 }}>
+                                {overdueDays > 0 ? `Quá hạn ${overdueDays} ngày` : 'Quá hạn'}
+                            </Tag>
+                        </Tooltip>
+                    )}
                     {checklist && <Tag color="success" style={{ marginInlineEnd: 0 }}>✓ {checklist.done}/{checklist.total}</Tag>}
                     <Text type="secondary" style={{ fontSize: 12 }}>
                         {dayjs(task.periodStartDate).format('DD/MM/YYYY')}
@@ -294,7 +301,7 @@ export function TaskMiniCardView({
                             </>
                         }
                     >
-                        <Tag color="error" icon={autoOverdue ? <FlagFilled /> : <ExclamationCircleOutlined />}>
+                        <Tag color="error" icon={autoOverdue || overdueDays > 0 ? <FlagFilled /> : <ExclamationCircleOutlined />}>
                             {overdueDays > 0 ? `Quá hạn ${overdueDays} ngày` : 'Quá hạn'}
                         </Tag>
                     </Tooltip>

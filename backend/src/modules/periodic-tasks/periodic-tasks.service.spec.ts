@@ -1,3 +1,4 @@
+import * as dateVnUtil from '../../common/utils/date-vn.util';
 import { AUTO_LOCK_NOTE } from './helpers/overdue.helper';
 import { Test, TestingModule } from '@nestjs/testing';
 import { getRepositoryToken } from '@nestjs/typeorm';
@@ -279,6 +280,31 @@ describe('PeriodicTasksService', () => {
       expect(call).toBeDefined();
       expect(call[0]).toContain('task.primaryAssigneeId = :filterAssigneeId');
       expect(call[1]).toEqual({ filterAssigneeId: 7 });
+    });
+
+    it('overdueOnly=true -> lọc đủ 3 ngày sau hạn kỳ (hoặc có dấu + đã qua hạn) + loại task đã xong', async () => {
+      jest.spyOn(dateVnUtil, 'todayVnStr').mockReturnValue('2026-10-06');
+      const qb = makeFakeQueryBuilder();
+      mockTaskRepo.createQueryBuilder.mockReturnValue(qb);
+
+      await service.findAll({ overdueOnly: true } as any, 1, Role.ADMIN, 'all');
+
+      const calls = qb.andWhere.mock.calls as any[][];
+      const dateCall = calls.find(([sql]) => String(sql).includes(':overdueCutoff'));
+      expect(dateCall?.[0]).toContain('task.overdueMarkedAt IS NOT NULL');
+      expect(dateCall?.[1]).toEqual({ overdueCutoff: '2026-10-03', overdueToday: '2026-10-06' });
+      const codeCall = calls.find(([sql]) => String(sql).includes('status.code NOT IN'));
+      expect(codeCall?.[1]).toEqual({ overdueDoneCodes: ['in_review', 'done', 'completed'] });
+      const doneStateCall = calls.find(([sql]) => String(sql).includes('status.isDoneState'));
+      expect(doneStateCall?.[1]).toEqual({ overdueNotDone: 0 });
+      jest.restoreAllMocks();
+    });
+
+    it('không truyền overdueOnly -> KHÔNG thêm điều kiện quá hạn', async () => {
+      const qb = makeFakeQueryBuilder();
+      mockTaskRepo.createQueryBuilder.mockReturnValue(qb);
+      await service.findAll({} as any, 1, Role.ADMIN, 'all');
+      expect((qb.andWhere.mock.calls as any[][]).some(([sql]) => String(sql).includes(':overdueCutoff'))).toBe(false);
     });
 
     it('secondaryAssigneeId -> chỉ lọc Phụ trách PHỤ (không dính Phụ trách chính)', async () => {

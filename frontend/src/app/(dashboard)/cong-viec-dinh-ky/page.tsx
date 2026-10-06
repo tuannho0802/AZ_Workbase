@@ -29,7 +29,7 @@ import {
     SearchOutlined,
     SettingOutlined,
     LockOutlined,
-    ExclamationCircleOutlined,
+    FlagFilled,
     TableOutlined,
     UnorderedListOutlined,
     AppstoreOutlined,
@@ -83,7 +83,7 @@ import {
 import { PeriodicTasksAgendaView } from '@/components/periodic-tasks/PeriodicTasksAgendaView';
 import { PeriodicTasksKanbanView } from '@/components/periodic-tasks/PeriodicTasksKanbanView';
 import { PeriodicTasksCalendarView } from '@/components/periodic-tasks/PeriodicTasksCalendarView';
-import { isManualOverdueActive } from '@/lib/utils/periodicTaskOverdue';
+import { getOverdueDays, isManualOverdueActive, isOverdueFlagged } from '@/lib/utils/periodicTaskOverdue';
 import { TaskTitlePill, TaskChainBadge } from '@/components/periodic-tasks/TaskTitlePill';
 import { buildTaskLinkChains, sortTasksByChain, getChainRunFlags } from '@/lib/utils/taskLinkChains';
 import { useTaskLinksAmong } from '@/lib/hooks/usePeriodicTaskLinks';
@@ -276,6 +276,8 @@ function PeriodicTasksPageContent() {
     const [primaryAssigneeId, setPrimaryAssigneeId] = useState<number | undefined>(undefined);
     const [secondaryAssigneeId, setSecondaryAssigneeId] = useState<number | undefined>(undefined);
     const [departmentId, setDepartmentId] = useState<number | undefined>(undefined);
+    // Chỉ hiện Task QUÁ HẠN (đủ 3 ngày sau hạn kỳ, chưa xong) - lọc ở BE (`overdueOnly`), dùng chung mọi view.
+    const [overdueOnly, setOverdueOnly] = useState(false);
     const [dateRange, setDateRangeRaw] = useState<DateRangeTuple>(() => getThisWeekRange());
     // Mọi thay đổi khoảng ngày đi qua đây: không cho rỗng (=> Tuần này) và không cho
     // vượt giới hạn BE (cắt + báo).
@@ -334,6 +336,7 @@ function PeriodicTasksPageContent() {
         setPrimaryAssigneeId(undefined);
         setSecondaryAssigneeId(undefined);
         setDepartmentId(undefined);
+        setOverdueOnly(false);
         setPage(1);
         // Task Năm dài hơn giới hạn 93 ngày -> cắt còn cửa sổ đầu Kỳ hạn (vẫn chứa Task).
         setDateRange([dayjs(detail.periodStartDate), dayjs(detail.periodEndDate)]);
@@ -351,10 +354,11 @@ function PeriodicTasksPageContent() {
             primaryAssigneeId,
             secondaryAssigneeId,
             departmentId,
+            overdueOnly: overdueOnly || undefined,
             dateFrom: dateRange[0].format('YYYY-MM-DD'),
             dateTo: dateRange[1].format('YYYY-MM-DD'),
         }),
-        [page, limit, search, periodType, statusId, assigneeId, primaryAssigneeId, secondaryAssigneeId, departmentId, dateRange],
+        [page, limit, search, periodType, statusId, assigneeId, primaryAssigneeId, secondaryAssigneeId, departmentId, overdueOnly, dateRange],
     );
 
     // ---- Phase 8 (PLAN mục Phase 8) - View switcher ----
@@ -393,10 +397,11 @@ function PeriodicTasksPageContent() {
             primaryAssigneeId,
             secondaryAssigneeId,
             departmentId,
+            overdueOnly: overdueOnly || undefined,
             dateFrom: dateRange[0].format('YYYY-MM-DD'),
             dateTo: dateRange[1].format('YYYY-MM-DD'),
         }),
-        [search, periodType, statusId, assigneeId, primaryAssigneeId, secondaryAssigneeId, departmentId, dateRange],
+        [search, periodType, statusId, assigneeId, primaryAssigneeId, secondaryAssigneeId, departmentId, overdueOnly, dateRange],
     );
     const { data: viewData, isLoading: viewLoading, isFetching: viewFetching } = usePeriodicTasks(
         nonTableFilters,
@@ -491,7 +496,7 @@ function PeriodicTasksPageContent() {
     // Reset về trang 1 khi đổi filter (trừ chính page) để tránh trang trống.
     useEffect(() => {
         setPage(1);
-    }, [search, periodType, statusId, assigneeId, primaryAssigneeId, secondaryAssigneeId, departmentId, dateRange]);
+    }, [search, periodType, statusId, assigneeId, primaryAssigneeId, secondaryAssigneeId, departmentId, overdueOnly, dateRange]);
 
     // ---- Modal Thêm/Sửa ----
     const [modalOpen, setModalOpen] = useState(false);
@@ -1132,19 +1137,23 @@ function PeriodicTasksPageContent() {
             render: (_: any, record: PeriodicTask) => (
                 <Space orientation="vertical" size={4}>
                     <Tag color={record.status?.color ?? DEFAULT_ENTITY_COLOR}>{record.status?.name ?? '—'}</Tag>
-                    {isManualOverdueActive(record) && (
+                    {isOverdueFlagged(record) && (
                         <Tooltip
                             title={
                                 <>
-                                    <div>Đánh dấu quá hạn thủ công</div>
-                                    {record.overdueMarkedAt && (
-                                        <div>Lúc: {dayjs(record.overdueMarkedAt).format('HH:mm DD/MM/YYYY')}</div>
+                                    <div>Hạn kỳ: {dayjs(record.periodEndDate).format('DD/MM/YYYY')}</div>
+                                    <div>Đã quá hạn {getOverdueDays(record)} ngày, chưa hoàn thành</div>
+                                    {isManualOverdueActive(record) && (
+                                        <div>
+                                            Đã có dấu quá hạn
+                                            {record.overdueMarkedAt && ` lúc ${dayjs(record.overdueMarkedAt).format('HH:mm DD/MM/YYYY')}`}
+                                        </div>
                                     )}
                                 </>
                             }
                         >
-                            <Tag color="error" icon={<ExclamationCircleOutlined />}>
-                                Quá hạn
+                            <Tag color="error" icon={<FlagFilled />}>
+                                Quá hạn {getOverdueDays(record)} ngày
                             </Tag>
                         </Tooltip>
                     )}
@@ -1356,6 +1365,20 @@ function PeriodicTasksPageContent() {
                             label: <Tag color={resolveEntityColor(d.color)} style={{ marginInlineEnd: 0 }}>{d.name}</Tag>,
                         }))}
                     />
+                </Col>
+                <Col xs={12} sm={6} md={4}>
+                    <Tooltip title="Chỉ hiện Công việc chưa hoàn thành đã quá hạn kỳ từ 3 ngày trở lên (hoặc đã có dấu quá hạn). Áp dụng cho mọi chế độ xem.">
+                        <Button
+                            block
+                            danger
+                            type={overdueOnly ? 'primary' : 'default'}
+                            icon={<FlagFilled />}
+                            aria-pressed={overdueOnly}
+                            onClick={() => setOverdueOnly((v) => !v)}
+                        >
+                            Chỉ Task quá hạn
+                        </Button>
+                    </Tooltip>
                 </Col>
                 <Col xs={24} sm={12} md={6}>
                     <RangePicker

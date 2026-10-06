@@ -6178,3 +6178,26 @@ Now [deploy]
 > Verify: BE `tsc` sạch, `nest build` OK, jest 1634/1634 (+3); FE vitest 794/794 (+4), `tsc --noEmit` chỉ còn 4 lỗi `logo.png` có sẵn. Chưa chạy `next build`, chưa test tay trên UI (nên thử tick checklist ở cả modal lẫn Inline, kiểm nhãn X/Z ở danh sách và tiến độ Task con ở Task cha vẫn cập nhật). Chưa làm: preflight OPTIONS (~1/4 invocation, cần đổi sang cùng origin), refresh token chủ động trước khi hết hạn, debounce `/customers/stats`.
 
 ---
+
+---
+## [2026-10-06 14:00] | Công việc định kỳ: hiện lại nút "Đánh dấu quá hạn", cờ Quá hạn ở mọi view, bộ lọc "Chỉ Task quá hạn" | [Status: Success]
+
+**Actor:** Agent
+
+**Files Changed:**
+- `frontend/src/lib/utils/periodicTaskOverdue.ts` — `canMarkOverdue` bỏ điều kiện `today <= end + 7` (nút biến mất với Task quá hạn > 7 ngày); thêm `isOverdueFlagged()` (đủ 3 ngày HOẶC có dấu quá hạn còn hiệu lực).
+- `frontend/src/components/periodic-tasks/TaskMiniCard.tsx` — thẻ `mini` (Kanban thu gọn) cũng hiện cờ "Quá hạn N ngày"; nhãn ngày dùng chung cho dấu thủ công.
+- `frontend/src/components/periodic-tasks/PeriodicTasksAgendaView.tsx`, `PeriodicTasksKanbanView.tsx` (+ DragOverlay) — bật `flagOverdue`.
+- `frontend/src/components/periodic-tasks/PeriodicTasksCalendarView.tsx` — icon cờ + viền đỏ + dòng trong Tooltip cho Task quá hạn.
+- `frontend/src/app/(dashboard)/cong-viec-dinh-ky/page.tsx` — cột Trạng thái (Bảng) dùng `isOverdueFlagged`; state `overdueOnly` + nút "Chỉ Task quá hạn" (dùng chung mọi view, gửi `overdueOnly` cho cả query Bảng và 3 view còn lại).
+- `frontend/src/lib/api/periodic-tasks.api.ts`, `components/periodic-tasks/TaskActionsBar.tsx` — thêm tham số `overdueOnly`; sửa mô tả Popconfirm.
+- `backend/src/modules/periodic-tasks/dto/periodic-task-filters.dto.ts`, `periodic-tasks.service.ts` (`findAll`) — hỗ trợ `overdueOnly` (đủ 3 ngày sau hạn kỳ HOẶC có dấu quá hạn + đã qua hạn; loại in_review/done/completed/is_done_state).
+- Test: `periodicTaskOverdue.test.ts`, `TaskMiniCard.overdue.test.tsx` (MỚI), `periodic-tasks.service.spec.ts`.
+
+**Root Cause:**
+> Task kỳ 01-06/09 xem ngày 06/10 không có nút "Đánh dấu quá hạn": `canMarkOverdue` chỉ cho phép khi còn TRONG ân hạn 7 ngày (hạn + 7 = 13/09), trong khi BE `markOverdue()` không có chặn trên này. Ngoài ra trang chính không bật `flagOverdue` cho các view (chỉ Drawer Hiệu suất bật) và thẻ `mini` không có chỗ hiện cờ.
+
+**Notes:**
+> Bộ lọc `overdueOnly` kết hợp AND với khoảng ngày đang chọn (mặc định Tuần này) - muốn thấy Task cũ phải mở rộng khoảng ngày. Verify: BE `tsc` sạch, `nest build` OK, jest toàn bộ pass; FE `tsc` sạch (trừ logo.png), vitest 73 file / 831 test pass, eslint không phát sinh lỗi mới (19 vấn đề `any` có sẵn). Chưa test tay trên trình duyệt, chưa chạy `next build`. Bài hướng dẫn `cong-viec-dinh-ky.md` chưa cập nhật (mốc 3 ngày, nút quá hạn, bộ lọc).
+
+---

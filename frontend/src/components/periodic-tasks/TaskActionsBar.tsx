@@ -58,7 +58,7 @@ export function OverdueMarkButtonView({ task, size, iconOnly, onMark, onUnmark, 
     return (
         <Popconfirm
             title="Đánh dấu Task này là quá hạn?"
-            description="Task đã qua deadline nhưng chưa hết ân hạn 7 ngày. Bạn có thể gỡ dấu sau."
+            description="Task đã qua deadline kỳ và chưa hoàn thành. Bạn có thể gỡ dấu sau."
             okText="Đánh dấu"
             cancelText="Huỷ"
             onConfirm={onMark}

@@ -142,6 +142,7 @@ export function PeriodicTasksAgendaView({ tasks, loading, chains, edges, resolve
                                 <TaskMiniCard
                                     key={task.id}
                                     task={task}
+                                    flagOverdue
                                     chainInfo={chains?.get(task.id)}
                                     resolveChainTask={resolveChainTask}
                                     footer={

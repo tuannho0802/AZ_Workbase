@@ -259,6 +259,8 @@ export interface PeriodicTaskFilterParams {
   secondaryAssigneeId?: number;
   departmentId?: number;
   search?: string;
+  /** true = chỉ Task QUÁ HẠN (đủ 3 ngày sau hạn kỳ, chưa xong, hoặc có dấu quá hạn). Bỏ trống/false = không lọc. */
+  overdueOnly?: boolean;
 }
 
 export const periodicTasksApi = {

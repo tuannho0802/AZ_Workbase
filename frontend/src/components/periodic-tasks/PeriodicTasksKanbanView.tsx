@@ -299,6 +299,7 @@ export function PeriodicTasksKanbanView({ tasks, statuses, loading, chains, reso
                     <TaskMiniCard
                         task={activeTask}
                         density={densityOf(activeTask)}
+                        flagOverdue
                         style={{ width: 280, boxShadow: '0 4px 12px rgba(0,0,0,0.15)' }}
                     />
                 )}
@@ -382,6 +383,7 @@ function KanbanCard({
             <TaskMiniCard
                 task={task}
                 density={density}
+                flagOverdue
                 showProgress
                 chainInfo={chainInfo}
                 resolveChainTask={resolveChainTask}
