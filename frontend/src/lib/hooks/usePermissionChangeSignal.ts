@@ -1,6 +1,7 @@
 import { useEffect, useRef } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import { SIDEBAR_BADGES_QUERY_KEY } from './useSidebarBadgeCounts';
+import { ME_KEY } from './useMe';
 
 /**
  * Nhận tín hiệu "quyền của tôi vừa đổi" từ `/notifications/poll` (field `permSig`, xem
@@ -34,5 +35,7 @@ export function usePermissionChangeSignal(permSig: string | undefined, userId: n
     queryClient.invalidateQueries({ queryKey: ['ui-visibility-my-hidden'] });
     // Số đếm sidebar phụ thuộc quyền (badge nào hiện/ẩn).
     queryClient.invalidateQueries({ queryKey: SIDEBAR_BADGES_QUERY_KEY });
+    // Role/Phòng ban/Vị trí nằm trong `/users/me` (Plan CPU Mục 4: cache dài hơn nên phải làm mới theo tín hiệu).
+    queryClient.invalidateQueries({ queryKey: ME_KEY });
   }, [permSig, userId, queryClient]);
 }

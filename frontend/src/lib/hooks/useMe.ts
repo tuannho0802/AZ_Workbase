@@ -1,7 +1,21 @@
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, QueryClient } from '@tanstack/react-query';
 import { usersApi, UserDetail } from '../api/users.api';
 
-const ME_KEY = ['users', 'me'];
+export const ME_KEY = ['users', 'me'];
+
+/**
+ * [PLAN_CPU_OPTIMIZATION_ROUND2 - Mục 4] MỘT nguồn duy nhất cho `GET /users/me` (trước đây 3 nơi gọi độc lập:
+ * layout, useMe, profile). `fetchQuery` dùng lại cache nếu dữ liệu còn mới hơn `maxAgeMs`, nếu không mới gọi API
+ * (và ghi lại vào cache để mọi nơi khác cùng dùng).
+ */
+export function fetchMeCached(queryClient: QueryClient, maxAgeMs: number): Promise<UserDetail> {
+  return queryClient.fetchQuery<UserDetail>({ queryKey: ME_KEY, queryFn: usersApi.getMe, staleTime: maxAgeMs });
+}
+
+/** Luôn gọi API (bỏ qua cache) - dùng ngay SAU khi chính user vừa sửa hồ sơ; kết quả mới ghi vào cache chung. */
+export function refreshMe(queryClient: QueryClient): Promise<UserDetail> {
+  return fetchMeCached(queryClient, 0);
+}
 
 /**
  * Hồ sơ ĐẦY ĐỦ của chính user đang đăng nhập (GET /users/me) - bao gồm
@@ -19,7 +33,10 @@ export function useMe() {
   const { data, isLoading } = useQuery<UserDetail>({
     queryKey: ME_KEY,
     queryFn: usersApi.getMe,
-    staleTime: 60 * 1000, // 1 phút - đủ mới cho hiển thị, không gọi API quá dày
+    // [AGENT] OLD CODE (giữ để rollback): staleTime: 60 * 1000
+    // NEW: 5 phút. Sau khi chính user sửa hồ sơ/avatar -> `refreshMe`/invalidate(['users']); Admin đổi quyền/vị trí
+    // -> `usePermissionChangeSignal` invalidate ME_KEY.
+    staleTime: 5 * 60 * 1000,
   });
 
   return { me: data, isLoading };

@@ -267,6 +267,15 @@ FE — vitest cho hook/modal (số lần gọi API khi mở modal, khi tick chec
 - [ ] Tín hiệu `permSig` (đã có) vẫn `invalidate` `['my-permissions']`… — cân nhắc thêm `ME_KEY` vì role/phòng ban/vị trí
       nằm trong `/users/me` (xác nhận FE nào đọc `me.department/position` để quyết định).
 
+**Trạng thái triển khai (2026-10-06):**
+- [x] Hợp nhất về `ME_KEY` (`lib/hooks/useMe.ts`: export `ME_KEY`, `fetchMeCached`, `refreshMe`).
+- [x] `layout.tsx`: vòng tự-lành avatar dùng `fetchMeCached(queryClient, 7 phút)` (7 < nhịp 8 phút để không lỡ nhịp; << 60 phút TTL URL avatar).
+- [x] `profile/page.tsx`: xem chính mình dùng cache chung; tải đầu `force=false` (cache ≤ 60s), sau khi sửa hồ sơ/email/avatar `force=true` (gọi API + ghi lại cache).
+- [x] `useMe`: `staleTime` 60s → 5 phút. Avatar mutation đã `invalidate(['users'])` (khớp tiền tố → phủ cả `['users','me']`).
+- [x] `usePermissionChangeSignal`: thêm `invalidate(ME_KEY)` (role/phòng ban/vị trí nằm trong `/users/me`).
+- Test mới: `lib/hooks/useMe.test.tsx` (1 request cho layout+trang khác; dedupe đồng thời; quá hạn → gọi lại 1 lần; refreshMe ghi cache; invalidate → gọi lại).
+- Chưa làm: kéo dài nhịp quá 8 phút (giữ tự lành avatar); chưa đo — cần đo lại số `GET /users/me` sau deploy.
+
 **Test:** vitest — mount layout + `useMe` + profile → đúng **1** request `/users/me` trong 8 phút; sau mutation profile → refetch;
 activity-resume > 8 phút → refetch 1 lần.
 **Đo lại:** số lần `GET /users/me` giảm ≥ 50% trong cùng kịch bản; TB không tăng.
@@ -285,7 +294,7 @@ activity-resume > 8 phút → refetch 1 lần.
 - Hai hook poll chạy **2 request riêng** mỗi chu kỳ (120 s và 180 s), mỗi request chạy đủ JwtStrategy/guard.
 
 ### 5A. Đo từng badge (không đổi hành vi)
-- [x] `sidebar-badges.service.ts#getBadges`: khi `CPU_TIMING=true`, log thời gian từng job (`invalidData`, `trash`, `pendingUsers`,
+- [ ] `sidebar-badges.service.ts#getBadges`: khi `CPU_TIMING=true`, log thời gian từng job (`invalidData`, `trash`, `pendingUsers`,
       `leaveApprovals`, `myPendingLeave`, `tasks`) bằng `Logger` → tìm badge nặng nhất.
 - [ ] Nghi ngờ chính: `countDuplicatePhoneRecords` (quét trùng SĐT toàn bảng khách; **đã có cache 180 s** nhưng chỉ khi cùng `user:role:scope`)
       và `periodicTasksService.countAssignedByStatusCodes` (join theo phạm vi). **Cần số đo mới kết luận.**

@@ -19,7 +19,9 @@ import Link from 'next/link';
 import dayjs from 'dayjs';
 
 import { useAuthStore } from '@/lib/stores/auth.store';
+import { useQueryClient } from '@tanstack/react-query';
 import { usersApi, UserDetail } from '@/lib/api/users.api';
+import { fetchMeCached } from '@/lib/hooks/useMe';
 import { useManagedByMe, useAllLinkGroups } from '@/lib/hooks/useLinkGroups';
 import { useMyPermissions } from '@/lib/hooks/useMyPermissions';
 import { SimpleList } from '@/components/common/SimpleList';
@@ -87,6 +89,7 @@ function ManagedGroupsSection({ groups }: { groups: ManagedGroupRow[] }) {
 function ProfilePortal({ userId, onDeleted }: { userId: number; onDeleted?: () => void }) {
   const { message, modal } = App.useApp();
   const { user: currentUser } = useAuthStore();
+  const queryClient = useQueryClient();
   const { can } = useMyPermissions();
   const { getRoleColor } = useRoleColorMap();
   const [loadingDetail, setLoadingDetail] = useState(true);
@@ -114,10 +117,15 @@ function ProfilePortal({ userId, onDeleted }: { userId: number; onDeleted?: () =
 
   const isSelf = currentUser?.id === userId;
 
-  const fetchDetail = async () => {
+  // [AGENT] OLD CODE (giữ để rollback): const fetchDetail = async () => { ... isSelf ? await usersApi.getMe() : ... }
+  // NEW (Plan CPU Mục 4): xem chính mình -> dùng cache chung `['users','me']`. `force=true` (mặc định, dùng SAU khi vừa
+  // sửa hồ sơ/email/avatar) luôn gọi API và ghi lại cache; chỉ lần tải đầu khi mở trang (force=false) mới dùng cache ≤ 60s.
+  const fetchDetail = async (force = true) => {
     setLoadingDetail(true);
     try {
-      const res = isSelf ? await usersApi.getMe() : await usersApi.getUserDetail(userId);
+      const res = isSelf
+        ? await fetchMeCached(queryClient, force ? 0 : 60 * 1000)
+        : await usersApi.getUserDetail(userId);
       setDetail(res);
     } catch (err) {
       console.error(err);
@@ -128,7 +136,7 @@ function ProfilePortal({ userId, onDeleted }: { userId: number; onDeleted?: () =
   };
 
   useEffect(() => {
-    fetchDetail();
+    fetchDetail(false);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [userId]);
 

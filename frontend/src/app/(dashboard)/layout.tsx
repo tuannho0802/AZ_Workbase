@@ -17,7 +17,8 @@ import { useMyPermissions } from '@/lib/hooks/useMyPermissions';
 import { useSidebarBadgeCounts } from '@/lib/hooks/useSidebarBadgeCounts';
 import { getUserActive, subscribeUserActivity } from '@/lib/hooks/useUserActivity';
 import { useCachedImage, buildImageCacheKey } from '@/lib/hooks/useCachedImage';
-import { usersApi } from '@/lib/api/users.api';
+import { useQueryClient } from '@tanstack/react-query';
+import { fetchMeCached } from '@/lib/hooks/useMe';
 import { CountBadge } from '@/components/common/CountBadge';
 import { getNavBadgeProps } from '@/lib/nav-badge';
 import { NotificationBell } from '@/components/notifications/NotificationBell';
@@ -77,6 +78,9 @@ function BrandMark({ size = 36 }: { size?: number }) {
   );
 }
 
+/** Tuổi tối đa của cache `/users/me` mà vòng tự-lành avatar chấp nhận dùng lại (< nhịp 8 phút). */
+const ME_CACHE_MAX_AGE_MS = 7 * 60 * 1000;
+
 export default function DashboardLayout({
   children,
 }: {
@@ -84,6 +88,7 @@ export default function DashboardLayout({
 }) {
   const router = useRouter();
   const pathname = usePathname();
+  const queryClient = useQueryClient();
   const { user, isAuthenticated, isHydrated, logout } = useAuthStore();
   // Cache theo avatarKey (ổn định) - tránh tải lại avatar mỗi lần layout
   // render lại dù avatarUrl (đã ký) đổi liên tục giữa các lần fetch. Dùng
@@ -139,7 +144,10 @@ export default function DashboardLayout({
 
     const refreshAvatar = async () => {
       try {
-        const fresh = await usersApi.getMe();
+        // [AGENT] OLD CODE (giữ để rollback): const fresh = await usersApi.getMe();
+        // NEW (Plan CPU Mục 4): dùng cache chung ['users','me'] - trang chủ/profile vừa tải trong vòng ~7 phút thì KHÔNG gọi lại.
+        // 7 phút < nhịp 8 phút của vòng này (chừa dư để không bỏ lỡ nhịp) << 60 phút TTL URL avatar.
+        const fresh = await fetchMeCached(queryClient, ME_CACHE_MAX_AGE_MS);
         if (cancelled) return;
         const current = useAuthStore.getState().user;
         if (!current) return;
@@ -205,7 +213,7 @@ export default function DashboardLayout({
       clearInterval(intervalId);
       unsubscribeActivity();
     };
-  }, [isAuthenticated, isHydrated]);
+  }, [isAuthenticated, isHydrated, queryClient]);
 
   const handleToggleSidebar = () => {
     const newState = !collapsed;

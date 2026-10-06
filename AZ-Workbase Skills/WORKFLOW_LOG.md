@@ -6382,3 +6382,26 @@ Now [deploy]
 > BE: sidebar-badges 11 test pass; toàn BE 98 suite / 1698 test pass; tsc + nest build sạch. Chưa động FE (5B.3 gộp poll chưa làm).
 
 ---
+
+---
+## [2026-10-06 21:00] | Mục 4 plan CPU: hợp nhất GET /users/me về 1 query key | Status: Success (chờ đo sau deploy)
+
+**Actor:** Agent
+**Files Changed:**
+- `frontend/src/lib/hooks/useMe.ts` — export `ME_KEY`, `fetchMeCached`, `refreshMe`; `staleTime` 5 phút
+- `frontend/src/app/(dashboard)/layout.tsx` — vòng tự-lành avatar dùng `fetchMeCached` (code cũ giữ bằng comment)
+- `frontend/src/app/(dashboard)/profile/page.tsx` — `fetchDetail(force)` dùng cache chung khi xem chính mình
+- `frontend/src/lib/hooks/usePermissionChangeSignal.ts` — thêm `invalidate(ME_KEY)`
+- `frontend/src/lib/hooks/useMe.test.tsx` — mới (5 test)
+
+**Root Cause:**
+> 3 nơi gọi `/users/me` độc lập (layout, useMe, profile) không chung cache → ~1,1 lần/phút/phiên.
+
+**Solution:**
+> Một query key `['users','me']`; layout/profile dùng `fetchQuery` với `staleTime` theo ngữ cảnh; mutation hồ sơ ghi lại cache.
+
+**Notes:**
+> Chỉ FE, không đổi BE. Hiển thị Vị trí/Phòng ban có thể cũ tối đa 5 phút nếu Admin vừa đổi (giảm nhẹ nhờ `permSig`).
+> Đo lại số `GET /users/me` sau deploy (mục tiêu ≤ 1 request/8 phút/phiên hoạt động).
+
+---
