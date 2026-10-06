@@ -5985,3 +5985,20 @@ Now [deploy]
 > Bài mô tả hành vi THẬT: `link_groups.my_managed` mặc định cả 4 role (migration 1781600000000); nhóm đang ẩn vẫn hiện; N đếm khách `joined=1` chưa soft-delete; `customer-counts` cache FE 30s. Verify: `vitest src/lib/guides` 12 file / 334 test pass; `tsc --noEmit` chỉ còn 4 lỗi `logo.png` có sẵn; eslint file sửa sạch. Chưa test tay trên trình duyệt. Cần `guides:sync --apply` sau khi duyệt đổi `published: true`.
 
 ---
+
+## [2026-10-06 12:00] | Guides P1: bài `thung-rac` + 2 mẫu `trash.demos` | [Status: Success]
+
+**Actor:** Agent
+
+**Files Changed:**
+- `guides-content/thung-rac.md` — bài mới (`published: false`, chờ duyệt nội dung); gỡ slug khỏi `PENDING_GUIDE_SLUGS`.
+- `frontend/src/lib/guides/demos/trash.demos.tsx` — 2 mẫu `trash-table` (tham số `viewer=full|restore-only`), `trash-lifecycle`; đăng ký ở `guide-demos.tsx`, cập nhật `guide-demos.test.tsx` (41 mẫu).
+- `AZ-Workbase Skills/PLAN_GUIDES_CONTENT.md` — tick P1 `thung-rac`.
+
+**Root Cause (phát hiện khi đối chiếu code thật, KHÔNG sửa trong phase này):**
+> 1) `CustomersService.getTrash()` KHÔNG áp scope: ai có `customers.trash_manage` thấy TOÀN BỘ thùng rác (permission này `supports_scope=FALSE`), khác trang Khách hàng; `restore()` cũng không kiểm tra phạm vi. Cần xác nhận là chủ ý. 2) `hardDelete()` dùng `customersRepository.delete()` nên cascade xoá cả ghi chú, nạp tiền, lượt chia Sales, membership nhóm, liên kết task-khách (FK `onDelete: CASCADE`) — bài đã ghi rõ. 3) Không có cron tự dọn thùng rác (cron duy nhất ở `audit.service.ts`). 4) Placeholder ô tìm kiếm ghi "Tìm tên, SĐT..." nhưng BE còn khớp email + tên chiến dịch (FULLTEXT) và SĐT chủ yếu theo phần đầu. 5) Bộ lọc "Người xóa" không khớp bản ghi cũ (cột `deleted_by_id` NULL) cho tới khi fallback audit log chạy ở một lần đọc không lọc ô đó (đã ghi chú trong code, không phải bug).
+
+**Notes:**
+> Bài mô tả hành vi THẬT: quyền mặc định `customers.delete`/`trash_manage`/`hard_delete` chỉ Admin (migration 1778400000000, 1778500000000, 1783000000000); nút Xóa vĩnh viễn ẩn khi thiếu `customers.hard_delete` (cả bảng lẫn thẻ mobile); redirect về `/customers` khi thiếu quyền. Verify: `vitest src/lib/guides` 12 file / 340 test pass; `tsc --noEmit` chỉ còn 4 lỗi `logo.png` có sẵn; eslint file mới sạch. Chưa test tay trên trình duyệt. Cần `guides:sync --apply` sau khi duyệt đổi `published: true`.
+
+---

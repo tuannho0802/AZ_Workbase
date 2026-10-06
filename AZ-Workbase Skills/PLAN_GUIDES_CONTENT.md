@@ -224,6 +224,7 @@ Tiêu chí "xong" cho mỗi bài: mọi tên cột/nút **khớp đúng chữ tr
 - [x] (2026-10-05) `quan-ly-utm` đã viết (`published: false` chờ duyệt) + 3 mẫu mới trong `demos/utms.demos.tsx` (`utm-table`, `utm-merge-steps`, `utm-managers`; dùng thêm `utm-tags` có sẵn). Còn lại P1: `nhom-lien-ket` → `nhom-toi-quan-ly` → `thung-rac` → `bao-cao-data-loi`.
 - [x] (2026-10-05) `nhom-lien-ket` đã viết (`published: false` chờ duyệt) + 2 mẫu mới trong `demos/link-groups.demos.tsx` (`link-group-table`, `group-managers`). Còn lại P1: `nhom-toi-quan-ly` → `thung-rac` → `bao-cao-data-loi`.
 - [x] (2026-10-06) `nhom-toi-quan-ly` đã viết (`published: false` chờ duyệt) + 2 mẫu mới trong `demos/link-groups.demos.tsx` (`my-groups-table` có tham số `viewer=member|admin`, `group-customers-modal`). Còn lại P1: `thung-rac` → `bao-cao-data-loi`.
+- [x] (2026-10-06) `thung-rac` đã viết (`published: false` chờ duyệt) + 2 mẫu mới trong `demos/trash.demos.tsx` (`trash-table` có tham số `viewer=full|restore-only`, `trash-lifecycle`). Còn lại P1: `bao-cao-data-loi`.
 Thứ tự: `khach-hang` → `chia-data` → `quan-ly-phu-trach` → `status-khach` → `nguon-media` → `quan-ly-utm` → `nhom-lien-ket` → `nhom-toi-quan-ly` → `thung-rac` → `bao-cao-data-loi`.
 
 ### P2a — Bộ mẫu trực quan cho Task (cỡ M–L, làm TRƯỚC các bài P2) — *bổ sung, làm sau*
