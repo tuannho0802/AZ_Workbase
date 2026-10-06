@@ -18,6 +18,7 @@ import compression from 'compression';
 import { securityHeaders } from './common/security/security-headers';
 import { createSwaggerBasicAuth } from './common/security/swagger-basic-auth.middleware';
 import { AuthService } from './modules/auth/auth.service';
+import { cpuTimingMiddleware } from './common/middleware/cpu-timing.middleware';
 
 // ⚠️ Quan trọng cho serverless (Vercel):
 // Trước đây main.ts gọi NestFactory.create() + app.listen() mỗi lần module được
@@ -55,6 +56,12 @@ async function createApp(): Promise<NestExpressApplication> {
   //   curl -s -D- -o /dev/null -H "Accept-Encoding: br,gzip" <url>/api/<endpoint-JSON-lớn>
   if (process.env.DISABLE_APP_COMPRESSION !== 'true') {
     app.use(compression());
+  }
+
+  // [AGENT] NEW CODE: đo CPU từng endpoint (mặc định TẮT) - xem common/middleware/cpu-timing.middleware.ts.
+  // Bật tạm bằng env CPU_TIMING=true trên Vercel, xuất log rồi tắt lại.
+  if (process.env.CPU_TIMING === 'true') {
+    app.use(cpuTimingMiddleware);
   }
 
   // PLAN_HARDENING P3: header bảo mật (helmet) - đặt TRƯỚC static/route để mọi
