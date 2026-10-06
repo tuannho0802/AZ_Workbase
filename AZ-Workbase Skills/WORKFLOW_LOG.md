@@ -6224,3 +6224,22 @@ Now [deploy]
 > DISABLE_APP_COMPRESSION=true đã được chủ dự án đặt trên Vercel (cần kiểm Content-Encoding).
 
 ---
+## [2026-10-06 12:55] | Poll theo hoạt động người dùng (idle 5 phút) | Status: Success
+
+**Actor:** Agent
+**Files Changed:**
+- `frontend/src/lib/hooks/useUserActivity.ts` — mới: store dùng chung phát hiện chuột/phím/cuộn/chạm/focus, `useActivityPolling()` trả `refetchInterval` hoặc `false`, refetch ngay (chỉ query stale) khi quay lại
+- `frontend/src/lib/hooks/useNotificationPoll.ts`, `useSidebarBadgeCounts.ts` — dùng `useActivityPolling` thay interval cố định
+- `frontend/src/app/(dashboard)/layout.tsx` — vòng refresh avatar (`/users/me` mỗi 8 phút) bỏ qua nhịp khi tab ẩn/bỏ treo, refresh ngay khi quay lại nếu quá 8 phút
+- `frontend/src/lib/hooks/useUserActivity.test.tsx` — mới, 7 test
+
+**Root Cause:**
+> React Query chỉ dừng poll khi tab ẩn; tab còn hiển thị nhưng không ai dùng vẫn poll đều. 304 vẫn chạy đủ JwtStrategy + guard + query nên vẫn tốn CPU Vercel. Vòng setInterval avatar không dừng cả khi tab ẩn.
+
+**Solution:**
+> Không hoạt động 5 phút → dừng poll; tương tác/hiện tab/focus lại → hoạt động và làm mới ngay nếu dữ liệu đã cũ. Không đổi BE, không migration. Bỏ hướng max-age 1h + version (dễ lệch đồng bộ).
+
+**Notes:**
+> 842 test FE pass; tsc chỉ còn 4 lỗi logo.png có sẵn từ trước (thiếu next-env.d.ts khi clone mới).
+
+---

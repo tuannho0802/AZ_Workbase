@@ -5,6 +5,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { notificationsApi } from '../api/notifications.api';
 import { useAuthStore } from '../stores/auth.store';
 import { notificationKeys } from './useNotifications';
+import { useActivityPolling } from './useUserActivity';
 import { useNotificationActions } from './useNotificationActions';
 import { planToasts, readLastSeenVersion, writeLastSeenVersion } from '../notifications/toast-plan';
 import type { NotificationCategory } from '../types/notification.types';
@@ -38,11 +39,15 @@ export function useNotificationPoll() {
   const { notification } = App.useApp();
   const { open } = useNotificationActions();
 
+  // [AGENT] NEW CODE: dừng poll khi người dùng bỏ treo tab >5 phút, làm mới ngay khi quay lại.
+  const refetchInterval = useActivityPolling(notificationKeys.poll, POLL_INTERVAL_MS, isAuthenticated);
+
   const query = useQuery({
     queryKey: notificationKeys.poll,
     queryFn: () => notificationsApi.poll(),
     enabled: isAuthenticated,
-    refetchInterval: POLL_INTERVAL_MS,
+    // [AGENT] OLD CODE (giữ lại để rollback): refetchInterval: POLL_INTERVAL_MS,
+    refetchInterval,
     refetchOnWindowFocus: true,
     staleTime: POLL_INTERVAL_MS / 2,
     retry: 1,

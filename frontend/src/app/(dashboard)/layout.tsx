@@ -15,6 +15,7 @@ import { useAuthStore } from '@/lib/stores/auth.store';
 import { getVisibleNavItems, NAV_ITEMS } from '@/lib/nav-config';
 import { useMyPermissions } from '@/lib/hooks/useMyPermissions';
 import { useSidebarBadgeCounts } from '@/lib/hooks/useSidebarBadgeCounts';
+import { getUserActive, subscribeUserActivity } from '@/lib/hooks/useUserActivity';
 import { useCachedImage, buildImageCacheKey } from '@/lib/hooks/useCachedImage';
 import { usersApi } from '@/lib/api/users.api';
 import { CountBadge } from '@/components/common/CountBadge';
@@ -173,15 +174,36 @@ export default function DashboardLayout({
       }
     };
 
-    refreshAvatar();
+    // [AGENT] OLD CODE (giữ lại để rollback):
+    //   refreshAvatar();
+    //   const intervalId = setInterval(refreshAvatar, 8 * 60 * 1000);
+    // setInterval chạy cả khi tab ẩn/bỏ treo -> /users/me (endpoint tốn CPU nhất trong log
+    // CPU_TIMING) vẫn bị gọi 24/7. NEW: bỏ qua nhịp khi tab ẩn hoặc người dùng đã bỏ treo
+    // (xem useUserActivity.ts); khi quay lại mà đã quá 8 phút kể từ lần refresh trước thì
+    // làm mới ngay (URL presigned TTL 60 phút nên vẫn còn dư an toàn).
+    const AVATAR_REFRESH_MS = 8 * 60 * 1000;
+    let lastRefreshAt = Date.now();
+    const runRefresh = () => {
+      lastRefreshAt = Date.now();
+      void refreshAvatar();
+    };
+
     // 8 phút << 60 phút TTL của presigned URL (AVATAR_GET_TTL_SECONDS) - đảm
     // bảo avatarUrl trong store luôn còn hạn cho session mở lâu, và tự lành
     // nhanh (không cần chờ tới 1h) nếu backend vừa được fix/redeploy.
-    const intervalId = setInterval(refreshAvatar, 8 * 60 * 1000);
+    runRefresh();
+    const intervalId = setInterval(() => {
+      if (document.hidden || !getUserActive()) return;
+      runRefresh();
+    }, AVATAR_REFRESH_MS);
+    const unsubscribeActivity = subscribeUserActivity(() => {
+      if (getUserActive() && Date.now() - lastRefreshAt >= AVATAR_REFRESH_MS) runRefresh();
+    });
 
     return () => {
       cancelled = true;
       clearInterval(intervalId);
+      unsubscribeActivity();
     };
   }, [isAuthenticated, isHydrated]);
 

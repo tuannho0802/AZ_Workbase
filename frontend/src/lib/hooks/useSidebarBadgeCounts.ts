@@ -3,6 +3,7 @@ import { sidebarApi } from '../api/sidebar.api';
 import { notificationsApi } from '../api/notifications.api';
 import { useAuthStore } from '../stores/auth.store';
 import { notificationKeys } from './useNotifications';
+import { useActivityPolling } from './useUserActivity';
 
 // [AGENT] OLD CODE (giữ lại để rollback): 7 useQuery riêng (invalid-data, trash, users,
 // duyet-phep, nghi-phep, 2 badge Công việc định kỳ + query tra id status) gọi 7 endpoint
@@ -32,11 +33,16 @@ export const TASK_IN_PROGRESS_COUNT_KEY = 'cong-viec-dinh-ky:in_progress';
 export function useSidebarBadgeCounts(): Record<string, number> {
   const isAuthenticated = useAuthStore((s) => s.isAuthenticated);
 
+  // [AGENT] NEW CODE: dừng poll khi người dùng bỏ treo tab >5 phút, làm mới ngay khi quay lại
+  // (xem useUserActivity.ts). OLD CODE: refetchInterval: REFRESH_INTERVAL_MS (poll mãi cả khi không ai dùng).
+  const badgesInterval = useActivityPolling(SIDEBAR_BADGES_QUERY_KEY, REFRESH_INTERVAL_MS, isAuthenticated);
+  const pollInterval = useActivityPolling(notificationKeys.poll, REFRESH_INTERVAL_MS, isAuthenticated);
+
   const badges = useQuery({
     queryKey: SIDEBAR_BADGES_QUERY_KEY,
     queryFn: () => sidebarApi.getBadges(),
     enabled: isAuthenticated,
-    refetchInterval: REFRESH_INTERVAL_MS,
+    refetchInterval: badgesInterval,
     staleTime: REFRESH_INTERVAL_MS,
   });
 
@@ -44,7 +50,7 @@ export function useSidebarBadgeCounts(): Record<string, number> {
     queryKey: notificationKeys.poll,
     queryFn: () => notificationsApi.poll(),
     enabled: isAuthenticated,
-    refetchInterval: REFRESH_INTERVAL_MS,
+    refetchInterval: pollInterval,
     staleTime: REFRESH_INTERVAL_MS,
   });
 
