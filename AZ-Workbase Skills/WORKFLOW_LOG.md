@@ -6143,3 +6143,20 @@ Now [deploy]
 > Quá hạn tự động: hôm nay >= `period_end_date` + 3 ngày (trước là +1); khoá tự động vẫn sau ân hạn 7 ngày; đánh dấu thủ công (Manager+) vẫn được từ sau deadline. Verify: BE `tsc` sạch, `nest build` OK, jest 1638/1638; FE `tsc` sạch (trừ logo.png), vitest 37 file / 547 test. Test TZ mới fail 3/5 ca với code cũ. Migration CHƯA chạy (chưa có MySQL thật). Bài hướng dẫn `guides-content/cong-viec-dinh-ky.md` chưa cập nhật mốc 3 ngày/`completed`.
 
 ---
+
+## [2026-10-06 12:30] | Guides P2: viết bài `hieu-suat-cong-viec` + 3 mẫu minh hoạ | [Status: Success]
+
+**Actor:** Agent
+
+**Files Changed:**
+- `guides-content/hieu-suat-cong-viec.md` (MỚI, `published: false`, `permissions: []`, sortOrder 14) — đọc từ `hieu-suat-cong-viec/page.tsx`, `PerformanceStackedChart`, `MetricTasksModal`, `PerformanceUserTasksDrawer`, `OwnPerformanceDetail`, `UserTasksPanel`, `PerformanceRangeFilter`, `periodic-task-performance.service.ts` + controller + DTO, `overdue.helper.ts`, migration seed `1784500000000`, `periodic-task-auto-overdue.service.ts`, `backend/vercel.json`.
+- `frontend/src/lib/guides/demos/task-performance.demos.tsx` (MỚI) — `performance-page` (tham số `scope=own|department|all` + bộ chọn phạm vi), `performance-chart` (biểu đồ thật), `own-performance` (Card việc thật).
+- `frontend/src/lib/guides/demos/task-performance.demos.test.tsx` (MỚI), `guide-demos.test.tsx` (48 -> 51 mẫu), `guide-demos.tsx` (đăng ký), `guide-slugs.ts` (gỡ slug khỏi `PENDING_GUIDE_SLUGS`).
+- `AZ-Workbase Skills/PLAN_GUIDES_CONTENT.md` — đánh dấu P2 đã xong `hieu-suat-cong-viec`.
+
+**Notes:**
+> Dựng trên HEAD `df95281` (đã gồm fix cron auto-overdue: `completed` tính là xong, quá hạn tự động sau 3 ngày). Verify: `vitest src/lib/guides` 14 file / 384 test pass; `tsc --noEmit` chỉ còn 4 lỗi `logo.png` có sẵn (chạy trên HEAD trước commit đó); `eslint src/lib/guides` sạch. Chưa chạy `next build`, chưa test tay, chưa chạy trên MySQL thật. Cần duyệt đổi `published: true` rồi `guides:sync --apply`.
+> Bài nêu theo code thật: (1) seed chỉ cấp `periodic_tasks.performance_view` phạm vi `all` cho Admin, vai trò khác mặc định chỉ xem của mình; (2) cron gắn dấu Quá hạn khi hôm nay >= kỳ hạn + 3 ngày, và `isOverdueNotCompleted` tính việc chưa xong mang dấu đó là "Quá hạn chưa xong" ngay, không chờ đủ 7 ngày ân hạn; (3) mốc "đã xong" lấy từ audit log `status_changed` lần đầu đạt `in_review`/`is_done_state`.
+> Nghi không khớp, bài cố ý KHÔNG khẳng định, chưa sửa: (a) tooltip cột "Đang trong hạn" và chú thích cuối bảng ở `page.tsx` nói "vẫn còn trong 7 ngày ân hạn - không bị tính là trễ", nhưng việc chưa xong đã bị cron gắn dấu (từ ngày thứ 3 sau kỳ hạn) thì đã sang "Quá hạn chưa xong" — chữ trên giao diện lệch hành vi; (b) code chết (đã grep toàn `frontend/src`): hook `useUserFlaggedTasks`, `classifyFlaggedTask`, `hasStartedWorking` chỉ có định nghĩa, không nơi nào gọi, kéo theo `periodicTaskPerformanceApi.getUserFlaggedTasks` và endpoint BE `GET users/:userId/flagged-tasks` không còn ai dùng từ FE (chưa kiểm tra client ngoài FE). Điểm nghi `completed` không nằm trong `COMPLETED_STATUS_CODES` đã được commit `df95281` sửa nên bỏ khỏi danh sách.
+
+---
