@@ -6068,3 +6068,24 @@ Now [deploy]
 > Bài + mẫu `task-status-manage-table` khớp 5 trạng thái hệ thống thật (theo ảnh chụp trang). Bài mô tả hành vi THẬT, nêu rõ 2 công tắc `Tính là Hoàn thành`/`Loại khỏi % rollup` tác động tới chỗ nào, và cảnh báo cờ Quá hạn theo mã chứ không theo công tắc. Kết luận "xác nhận" ở Plan: trạng thái KHÔNG có khái niệm khoá; khoá là thuộc tính của việc (`is_locked`); ổ khoá "Hệ thống" chỉ chặn nút Xoá. Verify: `vitest src/lib/guides` 12 file / 353 test pass; `tsc --noEmit` không lỗi mới (không tính `logo.png`); `eslint src/lib/guides` sạch; `next build` OK. Chưa test tay trên trình duyệt. Cần `guides:sync --apply` sau khi duyệt đổi `published: true`. Không có migration mới.
 
 ---
+
+---
+## [2026-10-06 19:00] | Giảm Fluid Active CPU: gộp 7 request badge sidebar thành `GET /sidebar/badges` + công tắc nén | [Status: Success]
+
+**Actor:** Agent
+
+**Files Changed:**
+- `backend/src/modules/sidebar-badges/*` (MỚI) — module/controller/service + spec. `GET /api/sidebar/badges` chỉ cần `JwtAuthGuard`; service tự kiểm permission TỪNG badge (bypass Root Admin đặt trước DB, mirror `PermissionGuard`), thiếu quyền -> field vắng mặt; lỗi 1 badge không làm hỏng badge khác. Cache 180s trong bộ nhớ instance CHỈ cho số trùng SĐT.
+- `backend/src/modules/customers/customers.service.ts` — thêm `countTrash()`, `countDuplicatePhoneRecords()` (1 query tổng hợp, thay pipeline getRawMany + `IN(:...dupKeys)`).
+- `backend/src/modules/users/users.service.ts` — thêm `countPendingApprovals()` (COUNT, cùng phạm vi `findPendingApprovals`).
+- `backend/src/modules/periodic-tasks/periodic-tasks.service.ts` — thêm `countAssignedByStatusCodes()` (1 query GROUP BY status.code, cùng scope + khoảng Tuần này + nhánh assignee chính/phụ như `findAll`).
+- `backend/src/app.module.ts` — đăng ký `SidebarBadgesModule`.
+- `backend/src/main.ts` — `compression()` chỉ bật khi `DISABLE_APP_COMPRESSION !== 'true'` (mặc định giữ hành vi cũ).
+- `frontend/src/lib/api/sidebar.api.ts` (MỚI), `frontend/src/lib/hooks/useSidebarBadgeCounts.ts` — 7 `useQuery` -> 1 (`SIDEBAR_BADGES_QUERY_KEY`); badge `thong-bao` vẫn dùng chung `/notifications/poll`.
+- `frontend/src/lib/hooks/useLeaveWeekList.ts`, `frontend/src/components/utms/UtmCustomersModal.tsx` — invalidate thêm `['badge-count','sidebar']`.
+
+**Root Cause:**
+> Mỗi chu kỳ poll, 1 tab chạy 7 request, mỗi request đi qua JwtStrategy + PermissionGuard, và nhiều request là danh sách đầy đủ (join + hydrate) chỉ để lấy `total`: badge trùng SĐT kéo toàn bộ SĐT trùng về Node rồi gửi lại `IN(...)` ở 3 query; 2 badge Công việc định kỳ gọi `findAll` (5 join + 2 query); thùng rác join 3 bảng (+ tra audit_logs với bản ghi cũ); chờ duyệt tải entity User + 2 join. Fluid Active CPU chỉ tính CPU Node (không tính chờ I/O DB) nên hydrate/serialize/dựng tham số mới là phần tốn.
+
+**Notes:**
+> Endpoint cũ giữ nguyên (không xoá). Verify: BE `tsc` sạch, `nest build` OK, jest 1631/1631 (thêm 7 test); FE vitest 777/777, `tsc --noEmit` chỉ còn 4 lỗi `logo.png` có sẵn. SQL 3 câu đếm mới đã in ra từ TypeORM metadata (không có DB) - chưa chạy trên MySQL thật. Chưa chạy `next build`. Chưa gộp query `/notifications/poll` (2 query -> 1). `DISABLE_APP_COMPRESSION` CHƯA bật ở prod - phải kiểm `Content-Encoding` ở preview trước. Theo dõi Usage vài ngày làm việc để đo tác động thật.
