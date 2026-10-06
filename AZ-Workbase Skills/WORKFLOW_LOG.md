@@ -6461,5 +6461,5 @@ Now [deploy]
 **Notes:**
 > BE: `tsc --noEmit` sạch, `nest build` OK, jest keep-alive + customers.service 97/97 pass.
 > **7A CẦN CHECK SAU:** bật `CPU_TIMING=true` trên preview ~30 phút, lọc `[Cust-List]`, dán 30–50 dòng → chọn phương án tối ưu. Tắt biến sau khi đo.
-
+[deploy]
 ---
