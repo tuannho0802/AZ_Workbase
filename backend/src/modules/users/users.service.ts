@@ -109,6 +109,9 @@ export class UsersService {
       this.uploadsService.deleteAvatar(oldKey);
     }
 
+    // Key avatar có thể TRÙNG (ghi đè cùng tên) -> bỏ URL đã cache để ký URL mới, tránh trình duyệt giữ ảnh cũ.
+    this.uploadsService.invalidateAvatarUrl(newKey);
+
     const updated = await this.usersRepository.findOne({ where: { id: userId } });
     return (await this.signAvatarUrl(updated)) as User;
   }

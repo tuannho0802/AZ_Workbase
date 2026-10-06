@@ -6243,3 +6243,25 @@ Now [deploy]
 > 842 test FE pass; tsc chỉ còn 4 lỗi logo.png có sẵn từ trước (thiếu next-env.d.ts khi clone mới).
 
 ---
+
+---
+## [2026-10-06 13:40] | Giảm Active CPU: preflight sớm (204) + cache URL avatar | Status: Success
+
+**Actor:** Agent
+**Files Changed:**
+- `backend/src/common/security/cors-preflight.ts` (+ `.spec.ts`) — mới: trả OPTIONS preflight 204 ngay ở handler, `buildAllowedOrigins()` dùng chung
+- `backend/src/main.ts` — handler trả preflight TRƯỚC `getApp()`; CORS `maxAge` 3600 → 7200 (Chrome cap 2h); allowedOrigins dùng helper
+- `backend/src/modules/uploads/uploads.service.ts` — `signAvatarGetUrl` cache URL đã ký 30 phút/instance + `invalidateAvatarUrl()` (gọi ở `deleteAvatar`)
+- `backend/src/modules/users/users.service.ts` — `updateOwnAvatar` gọi `invalidateAvatarUrl(newKey)` (key có thể trùng khi ghi đè)
+- spec: uploads.service (4 test mới), users.service (mock)
+
+**Root Cause:**
+> (1) Mọi log 204 là preflight CORS (FE và BE khác domain, request có header Authorization nên bắt buộc preflight); instance nguội còn bootstrap cả Nest chỉ để trả 204 rỗng. (2) `/users/me` và danh sách user ký lại SigV4 avatar mỗi request.
+
+**Solution:**
+> Preflight không qua Nest; cache URL avatar có invalidate khi đổi/xoá ảnh.
+
+**Notes:**
+> Patch `permSig`/PermissionsVersionService và `scripts/cpu-timing-report.mjs` do phiên trước báo KHÔNG có trong repo (chưa push) — chưa làm lại. Chưa đụng `sidebar/badges` (mẫu log mới 4 request, quá ít).
+
+---

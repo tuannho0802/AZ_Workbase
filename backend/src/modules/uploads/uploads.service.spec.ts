@@ -168,6 +168,42 @@ describe('UploadsService', () => {
     });
   });
 
+  describe('signAvatarGetUrl - cache URL đã ký (giảm CPU ký SigV4)', () => {
+    beforeEach(() => mockGetSignedUrl.mockReset());
+
+    it('cùng key gọi nhiều lần -> chỉ ký 1 lần, trả cùng URL', async () => {
+      mockGetSignedUrl.mockResolvedValue('https://signed.example/a.webp?sig=1');
+      const a = await service.signAvatarGetUrl('avatars/1.webp');
+      const b = await service.signAvatarGetUrl('avatars/1.webp');
+      expect(a).toBe(b);
+      expect(mockGetSignedUrl).toHaveBeenCalledTimes(1);
+    });
+
+    it('key khác nhau -> ký riêng từng key', async () => {
+      mockGetSignedUrl.mockResolvedValue('https://signed.example/x');
+      await service.signAvatarGetUrl('avatars/1.webp');
+      await service.signAvatarGetUrl('avatars/2.webp');
+      expect(mockGetSignedUrl).toHaveBeenCalledTimes(2);
+    });
+
+    it('invalidateAvatarUrl -> lần sau ký URL mới', async () => {
+      mockGetSignedUrl.mockResolvedValueOnce('https://signed.example/old').mockResolvedValueOnce('https://signed.example/new');
+      expect(await service.signAvatarGetUrl('avatars/1.webp')).toContain('old');
+      service.invalidateAvatarUrl('avatars/1.webp');
+      expect(await service.signAvatarGetUrl('avatars/1.webp')).toContain('new');
+    });
+
+    it('quá 30 phút -> ký lại', async () => {
+      const spy = jest.spyOn(Date, 'now');
+      spy.mockReturnValue(1_000_000);
+      mockGetSignedUrl.mockResolvedValueOnce('https://signed.example/1').mockResolvedValueOnce('https://signed.example/2');
+      await service.signAvatarGetUrl('avatars/1.webp');
+      spy.mockReturnValue(1_000_000 + 31 * 60 * 1000);
+      expect(await service.signAvatarGetUrl('avatars/1.webp')).toContain('/2');
+      spy.mockRestore();
+    });
+  });
+
   describe('assertUploadedSizeWithinLimit', () => {
     it('không throw nếu dung lượng object trong giới hạn', async () => {
       mockSend.mockResolvedValueOnce({ ContentLength: 500 * 1024 });

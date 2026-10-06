@@ -19,6 +19,14 @@ import { securityHeaders } from './common/security/security-headers';
 import { createSwaggerBasicAuth } from './common/security/swagger-basic-auth.middleware';
 import { AuthService } from './modules/auth/auth.service';
 import { cpuTimingMiddleware } from './common/middleware/cpu-timing.middleware';
+import {
+  buildAllowedOrigins,
+  CORS_ALLOWED_HEADERS,
+  CORS_MAX_AGE_SECONDS,
+  CORS_METHODS,
+  isCorsPreflight,
+  respondToPreflight,
+} from './common/security/cors-preflight';
 
 // ⚠️ Quan trọng cho serverless (Vercel):
 // Trước đây main.ts gọi NestFactory.create() + app.listen() mỗi lần module được
@@ -131,30 +139,14 @@ async function createApp(): Promise<NestExpressApplication> {
   app.useGlobalFilters(new AllExceptionsFilter());
 
   // 🔥 CORS: Cho phép origin từ biến môi trường + localhost
-  const allowedOrigins = [
-    'http://localhost:3000',
-    'http://localhost:3001',
-    'http://127.0.0.1:3000',
-    'https://az-workbase.vercel.app', // Domain Vercel cũ (giữ lại phòng khi cần)
-    'https://www.azworkbase.com', // Domain chính thức mới
-    'https://azworkbase.com', // Domain không có www (phòng trường hợp DNS không tự redirect)
-  ];
-
-  const vercelUrl = process.env.VERCEL_URL;
-  if (vercelUrl) {
-    allowedOrigins.push(`https://${vercelUrl}`);
-  }
-
-  const frontendUrl = process.env.FRONTEND_URL;
-  if (frontendUrl) {
-    allowedOrigins.push(frontendUrl);
-  }
+  // [AGENT] OLD CODE: allowedOrigins khai báo inline ở đây (đã chuyển sang buildAllowedOrigins để preflight sớm dùng chung)
+  const allowedOrigins = buildAllowedOrigins();
 
   app.enableCors({
     origin: allowedOrigins,
     credentials: true,
-    methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
-    allowedHeaders: ['Content-Type', 'Authorization'],
+    methods: CORS_METHODS,
+    allowedHeaders: CORS_ALLOWED_HEADERS,
     // ⚠️ MỚI (2026-09-23): thêm 'Content-Disposition' - dù FE hiện KHÔNG
     // còn phụ thuộc header này để đặt tên file export nữa (đã đổi sang tự
     // dựng tên ở FE, xem customers-export.api.ts), việc thiếu header này
@@ -163,7 +155,8 @@ async function createApp(): Promise<NestExpressApplication> {
     // domain) trả file đính kèm - thêm vào đây để không lặp lại lỗi tương
     // tự nếu sau này có chỗ khác thử đọc lại header này.
     exposedHeaders: ['Authorization', 'Content-Disposition'],
-    maxAge: 3600,
+    // [AGENT] OLD CODE: maxAge: 3600
+    maxAge: CORS_MAX_AGE_SECONDS,
   });
 
   // PLAN_HARDENING P4: Swagger chỉ vào được sau khi đăng nhập Basic (tài khoản thật, role admin).
@@ -235,6 +228,18 @@ if (process.env.VERCEL !== '1') {
 // @vercel/node nhận diện file có default export dạng (req, res) => và dùng nó
 // làm request handler thay vì phải bind cổng TCP như app.listen().
 export default async function handler(req: any, res: any) {
+  // [PERF/Fluid CPU] Trả lời preflight (OPTIONS -> 204) TRƯỚC khi khởi tạo Nest: không cần DB/JWT/guard,
+  // tránh bootstrap cả app chỉ để trả 204 rỗng khi instance nguội. Request khác đi đường cũ.
+  if (isCorsPreflight(req)) {
+    respondToPreflight(req, res, {
+      allowedOrigins: buildAllowedOrigins(),
+      methods: CORS_METHODS,
+      allowedHeaders: CORS_ALLOWED_HEADERS,
+      maxAgeSeconds: CORS_MAX_AGE_SECONDS,
+      credentials: true,
+    });
+    return;
+  }
   await getApp(); // đảm bảo app đã init (cache theo container)
   expressServer(req, res);
 }

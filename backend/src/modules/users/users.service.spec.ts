@@ -136,6 +136,7 @@ describe('UsersService - Approval workflow (đăng ký công khai chờ duyệt)
   // không phải jest.fn().
   const mockUploadsService = {
     signAvatarGetUrl: jest.fn().mockResolvedValue('https://signed-get-url.example/avatar.webp'),
+    invalidateAvatarUrl: jest.fn(),
     getLimits: jest.fn().mockResolvedValue({
       avatarMaxSizeKb: 1024,
       leaveAttachmentMaxSizeKb: 1536,

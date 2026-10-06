@@ -21,6 +21,8 @@ import { buildReadableFileName, buildAttachmentFileName, formatShortDateVN } fro
 // không set dài "cho chắc", đặc biệt attachment (dữ liệu nhạy cảm).
 const PUT_TTL_SECONDS = 300; // 5 phút để browser PUT xong
 const AVATAR_GET_TTL_SECONDS = 3600; // 1 giờ - avatar không nhạy cảm
+const AVATAR_URL_REUSE_MS = 30 * 60 * 1000; // dùng lại URL đã ký tối đa 30 phút (TTL thật 60 phút)
+const AVATAR_URL_CACHE_MAX_ENTRIES = 500;
 const ATTACHMENT_GET_TTL_SECONDS = 600; // 10 phút - giấy khám bệnh, nhạy cảm
 
 const SETTING_KEYS = {
@@ -275,10 +277,28 @@ export class UploadsService {
 
   // --- Presign GET (xem/hiển thị) ---
 
+  // [PERF/Fluid CPU] Ký SigV4 mỗi lần gọi tốn CPU (GET /users/me, danh sách user ký hàng chục avatar).
+  // Dùng lại URL đã ký trong ~30 phút (URL sống 60 phút, luôn còn >= 30 phút hiệu lực khi trả ra).
+  // Cache theo từng instance serverless - mất khi cold start, không sao.
+  private readonly avatarUrlCache = new Map<string, { url: string; reuseUntil: number }>();
+
   async signAvatarGetUrl(key: string): Promise<string> {
-    return getSignedUrl(this.s3, new GetObjectCommand({ Bucket: this.bucketAvatars, Key: key }), {
+    const now = Date.now();
+    const hit = this.avatarUrlCache.get(key);
+    if (hit && hit.reuseUntil > now) return hit.url;
+
+    // [AGENT] OLD CODE: return getSignedUrl(...) mỗi lần, không cache
+    const url = await getSignedUrl(this.s3, new GetObjectCommand({ Bucket: this.bucketAvatars, Key: key }), {
       expiresIn: AVATAR_GET_TTL_SECONDS,
     });
+    if (this.avatarUrlCache.size >= AVATAR_URL_CACHE_MAX_ENTRIES) this.avatarUrlCache.clear(); // chặn phình bộ nhớ
+    this.avatarUrlCache.set(key, { url, reuseUntil: now + AVATAR_URL_REUSE_MS });
+    return url;
+  }
+
+  /** Bỏ URL đã cache của 1 avatar (đổi/xoá ảnh) để lần sau ký URL mới - tránh trình duyệt giữ ảnh cũ theo URL. */
+  invalidateAvatarUrl(key: string | null | undefined) {
+    if (key) this.avatarUrlCache.delete(key);
   }
 
   async signAttachmentGetUrl(key: string): Promise<string> {
@@ -294,6 +314,7 @@ export class UploadsService {
   }
 
   async deleteAvatar(key: string) {
+    this.invalidateAvatarUrl(key);
     return this.deleteObject(this.bucketAvatars, key).catch((err) =>
       this.logger.warn(`Không xoá được avatar cũ: ${key}`, err),
     );
