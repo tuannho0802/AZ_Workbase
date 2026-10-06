@@ -6290,3 +6290,16 @@ Now [deploy]
 > Chưa làm lại `cpu-timing-report.mjs` (không có trong repo) — chờ log 1–2 giờ với CPU_TIMING=true.
 
 ---
+
+---
+## [2026-10-06 16:30] | Dựng lại script xếp hạng CPU + rà soát CPU còn lại | Status: Success
+
+**Actor:** Agent
+**Files Changed:**
+- `backend/scripts/cpu-timing-report.mjs` — mới: đọc log `[CpuTiming]` (text/JSON), xếp hạng theo route (tổng, %, TB, p95, max), `--exclude`, `--csv`. Đã thử trên log mẫu.
+
+**Notes:**
+> Phát hiện (CHƯA sửa, cần chủ dự án quyết): refresh token được băm bằng bcrypt, mà bcrypt chỉ đọc 72 byte đầu - với JWT đó chỉ là header + vài ký tự đầu payload (chưa tới iat/exp). Hệ quả: token cũ và mới của cùng user so khớp như nhau → phát hiện tái sử dụng token gần như không hoạt động; đồng thời mỗi lần /auth/refresh tốn ~187ms CPU cho 2 lần bcrypt.
+> Sửa đúng (SHA-256 + timingSafeEqual) sẽ bật reuse-detection thật → 2 tab refresh cùng lúc có thể bị đá ra đăng nhập lại; cần cơ chế grace trước khi đổi.
+
+---
