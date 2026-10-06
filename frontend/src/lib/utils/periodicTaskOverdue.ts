@@ -6,12 +6,15 @@ import { getNowVn } from '@/lib/utils/date-vn';
 export const LATE_GRACE_DAYS = 7;
 
 /** Mã status coi là đã xong phần việc - khớp `COMPLETED_STATUS_CODES` ở BE. */
-const COMPLETED_STATUS_CODES = ['in_review', 'done'];
+const COMPLETED_STATUS_CODES = ['in_review', 'done', 'completed'];
+
+/** Quá hạn (cờ UI + lọc) khi hôm nay >= `periodEndDate` + N ngày - khớp `OVERDUE_AFTER_DAYS` ở BE (trước đây N = 1). */
+export const OVERDUE_AFTER_DAYS = 3;
 
 export const todayVnYmd = (): string => dayjs(getNowVn()).format('YYYY-MM-DD');
 
 const isCompleted = (task: Pick<PeriodicTask, 'status'>): boolean =>
-  COMPLETED_STATUS_CODES.includes(task.status?.code ?? '');
+  task.status?.isDoneState === true || COMPLETED_STATUS_CODES.includes(task.status?.code ?? '');
 
 const endYmd = (task: Pick<PeriodicTask, 'periodEndDate'>): string => String(task.periodEndDate).slice(0, 10);
 
@@ -40,13 +43,13 @@ export const isManualOverdueActive = (
 /** Cho phép "Gỡ quá hạn" khi Task đang mang dấu (kể cả khi dấu đã hết hiệu lực vì kéo dài kỳ - để dọn dữ liệu). */
 export const canUnmarkOverdue = (task: Pick<PeriodicTask, 'overdueMarkedAt'>): boolean => !!task.overdueMarkedAt;
 
-/** Task QUÁ HẠN để hiện cờ / lọc "Chỉ Task quá hạn": đã qua deadline kỳ và chưa in_review/done.
+/** Task QUÁ HẠN để hiện cờ / lọc "Chỉ Task quá hạn": đã quá deadline kỳ `OVERDUE_AFTER_DAYS` ngày và chưa xong.
  * Khớp điều kiện `overdueOnly` ở BE (`getUserTasks`). Độc lập với ân hạn 7 ngày của hiệu suất. */
 export const isTaskOverdue = (
   task: Pick<PeriodicTask, 'periodEndDate' | 'status'>,
   today = todayVnYmd(),
-): boolean => !isCompleted(task) && isPastPeriodEnd(task, today);
+): boolean => !isCompleted(task) && today >= dayjs(endYmd(task)).add(OVERDUE_AFTER_DAYS, 'day').format('YYYY-MM-DD');
 
-/** Số ngày đã quá hạn (>= 1 khi `isTaskOverdue`), 0 nếu chưa quá hạn. */
+/** Số ngày tính từ deadline kỳ (>= OVERDUE_AFTER_DAYS khi `isTaskOverdue`), 0 nếu chưa qua deadline. */
 export const getOverdueDays = (task: Pick<PeriodicTask, 'periodEndDate'>, today = todayVnYmd()): number =>
   Math.max(0, dayjs(today).diff(dayjs(endYmd(task)), 'day'));

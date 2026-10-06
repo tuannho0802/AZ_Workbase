@@ -37,16 +37,22 @@ describe('isTaskOverdue / getOverdueDays', () => {
     expect(isTaskOverdue(t(), '2026-09-10')).toBe(false);
     expect(getOverdueDays(t(), '2026-09-10')).toBe(0);
   });
-  it('qua hạn 1 ngày, chưa xong -> quá hạn 1 ngày (không cần ân hạn, không cần đánh dấu tay)', () => {
-    expect(isTaskOverdue(t(), '2026-09-11')).toBe(true);
-    expect(getOverdueDays(t(), '2026-09-11')).toBe(1);
+  it('quá deadline 1-2 ngày -> CHƯA quá hạn (quá hạn sau 3 ngày)', () => {
+    expect(isTaskOverdue(t(), '2026-09-11')).toBe(false);
+    expect(isTaskOverdue(t(), '2026-09-12')).toBe(false);
+  });
+  it('đủ 3 ngày sau deadline, chưa xong -> quá hạn (không cần đánh dấu tay)', () => {
+    expect(isTaskOverdue(t(), '2026-09-13')).toBe(true);
+    expect(getOverdueDays(t(), '2026-09-13')).toBe(3);
   });
   it('qua ngày ân hạn 7 ngày vẫn là quá hạn', () => {
     expect(isTaskOverdue(t(), '2026-09-28')).toBe(true);
     expect(getOverdueDays(t(), '2026-09-28')).toBe(18);
   });
-  it('đã in_review / done -> không quá hạn dù trễ deadline', () => {
+  it('đã in_review / done / completed / is_done_state -> không quá hạn dù trễ deadline', () => {
     expect(isTaskOverdue(t({ status: { code: 'in_review' } }), '2026-09-28')).toBe(false);
     expect(isTaskOverdue(t({ status: { code: 'done' } }), '2026-09-28')).toBe(false);
+    expect(isTaskOverdue(t({ status: { code: 'completed' } }), '2026-09-28')).toBe(false);
+    expect(isTaskOverdue(t({ status: { code: 'custom_done', isDoneState: true } }), '2026-09-28')).toBe(false);
   });
 });

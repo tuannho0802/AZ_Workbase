@@ -27,7 +27,7 @@ import { PeriodicTaskAccessHelper } from './helpers/periodic-task-access.helper'
 import { resolveListWindow } from './helpers/list-window.helper';
 import { AUTO_LOCK_NOTE, COMPLETED_STATUS_CODES, isPastPeriodEnd } from './helpers/overdue.helper';
 import { todayVnStr } from '../../common/utils/date-vn.util';
-import { extendedPeriodEndForReopen, resolveStatusChecklistGuard } from './helpers/task-status.helper';
+import { extendedPeriodEndForReopen, isCompletedTask, resolveStatusChecklistGuard } from './helpers/task-status.helper';
 import { PeriodicTaskAuditService, PeriodicTaskAuditAction } from './periodic-task-audit.service';
 // ⚠️ Notification Phase 2: NotificationsModule là @Global() (mirror
 // AuditModule/Customer Phase 3) nên không cần import module - tránh phụ
@@ -903,7 +903,7 @@ export class PeriodicTasksService {
     if (!isPastPeriodEnd(task.periodEndDate, todayVnStr())) {
       throw new BadRequestException('Chỉ đánh dấu quá hạn được khi Task đã qua ngày kết thúc kỳ (deadline).');
     }
-    if (task.status && (COMPLETED_STATUS_CODES as readonly string[]).includes(task.status.code)) {
+    if (isCompletedTask(task.status)) {
       throw new BadRequestException('Task đã hoàn thành/đang xem xét, không thể đánh dấu quá hạn.');
     }
 

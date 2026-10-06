@@ -1,4 +1,4 @@
-import { getReportPeriodRange } from './date-vn.util';
+import { getReportPeriodRange, todayVnStr } from './date-vn.util';
 
 /**
  * Test riêng cho `getReportPeriodRange()` - hàm tính khoảng ngày TRỌN VẸN
@@ -134,5 +134,33 @@ describe('getReportPeriodRange', () => {
     it('thiếu customTo -> throw', () => {
       expect(() => getReportPeriodRange('custom', new Date(), '2026-08-05', undefined)).toThrow();
     });
+  });
+});
+
+/**
+ * Bug thật (2026-10): `todayVnStr()` từng quy đổi múi giờ 2 lần -> trên Vercel (TZ=UTC) "hôm nay" nhảy sang
+ * ngày mai từ 17:00 giờ VN. Test ép TZ=UTC để tái hiện đúng môi trường production.
+ */
+describe('todayVnStr (server TZ=UTC như Vercel)', () => {
+  const originalTz = process.env.TZ;
+  beforeAll(() => {
+    process.env.TZ = 'UTC';
+    jest.useFakeTimers();
+  });
+  afterAll(() => {
+    jest.useRealTimers();
+    if (originalTz === undefined) delete process.env.TZ;
+    else process.env.TZ = originalTz;
+  });
+
+  it.each([
+    ['2026-10-05T09:59:00Z', '2026-10-05'], // 16:59 VN 05/10
+    ['2026-10-05T10:01:00Z', '2026-10-05'], // 17:01 VN 05/10 (bug cũ trả 2026-10-06)
+    ['2026-10-05T16:59:00Z', '2026-10-05'], // 23:59 VN 05/10
+    ['2026-10-05T17:01:00Z', '2026-10-06'], // 00:01 VN 06/10
+    ['2026-10-06T10:01:00Z', '2026-10-06'], // 17:01 VN 06/10 (bug cũ trả 2026-10-07)
+  ])('%s -> %s', (utc, expected) => {
+    jest.setSystemTime(new Date(utc));
+    expect(todayVnStr()).toBe(expected);
   });
 });

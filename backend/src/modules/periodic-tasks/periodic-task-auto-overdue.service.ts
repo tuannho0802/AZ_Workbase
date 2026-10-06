@@ -4,13 +4,15 @@ import { Repository } from 'typeorm';
 import { PeriodicTask } from '../../database/entities/periodic-task.entity';
 import { todayVnStr } from '../../common/utils/date-vn.util';
 import { addDaysToDateString } from './helpers/list-window.helper';
-import { AUTO_LOCK_NOTE, COMPLETED_STATUS_CODES } from './helpers/overdue.helper';
+import { AUTO_LOCK_NOTE, COMPLETED_STATUS_CODES, OVERDUE_AFTER_DAYS } from './helpers/overdue.helper';
 import { LATE_GRACE_DAYS } from './periodic-task-performance.service';
 
 export interface AutoOverdueSweepResult {
   todayVn: string;
   /** Task có `period_end_date` < mốc này là đã QUÁ ÂN HẠN. */
   cutoffPeriodEnd: string;
+  /** Task có `period_end_date` <= mốc này (hôm nay - OVERDUE_AFTER_DAYS) bị đánh dấu quá hạn. */
+  overdueCutoffPeriodEnd: string;
   dryRun: boolean;
   candidates: number;
   markedOverdue: number;
@@ -49,6 +51,8 @@ export class PeriodicTaskAutoOverdueService {
     const todayVn = todayVnStr();
     // hôm nay > end + grace  <=>  end < hôm nay - grace
     const cutoffPeriodEnd = addDaysToDateString(todayVn, -LATE_GRACE_DAYS);
+    // hôm nay >= end + OVERDUE_AFTER_DAYS  <=>  end <= hôm nay - OVERDUE_AFTER_DAYS
+    const overdueCutoffPeriodEnd = addDaysToDateString(todayVn, -OVERDUE_AFTER_DAYS);
 
     // Đánh dấu quá hạn ngay khi QUA deadline kỳ (khớp cờ "Quá hạn" trên UI: period_end_date < hôm nay);
     // chỉ KHOÁ khi đã quá thêm ân hạn (period_end_date < cutoffPeriodEnd).
@@ -57,8 +61,11 @@ export class PeriodicTaskAutoOverdueService {
       .leftJoin('task.status', 'status')
       .select(['task.id', 'task.periodEndDate', 'task.overdueMarkedAt', 'task.isLocked'])
       .where('task.deletedAt IS NULL')
-      .andWhere('task.periodEndDate < :today', { today: todayVn })
+      // [AGENT] OLD: .andWhere('task.periodEndDate < :today', { today: todayVn }) (quá hạn sau 1 ngày)
+      .andWhere('task.periodEndDate <= :overdueCutoff', { overdueCutoff: overdueCutoffPeriodEnd })
+      // [AGENT] OLD: chỉ loại theo code in_review/done -> Task status `completed` (is_done_state=1) bị đánh dấu quá hạn nhầm.
       .andWhere('(status.code IS NULL OR status.code NOT IN (:...doneCodes))', { doneCodes: [...COMPLETED_STATUS_CODES] })
+      .andWhere('(status.isDoneState IS NULL OR status.isDoneState = :notDone)', { notDone: 0 })
       .andWhere('(task.overdueMarkedAt IS NULL OR (task.isLocked = :notLocked AND task.periodEndDate < :cutoff))', {
         notLocked: 0,
         cutoff: cutoffPeriodEnd,
@@ -96,6 +103,7 @@ export class PeriodicTaskAutoOverdueService {
     return {
       todayVn,
       cutoffPeriodEnd,
+      overdueCutoffPeriodEnd,
       dryRun,
       candidates: candidates.length,
       markedOverdue: toMark.length,

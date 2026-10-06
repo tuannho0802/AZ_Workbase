@@ -1,8 +1,20 @@
-import { isOverdueNotCompleted, isPastPeriodEnd } from './overdue.helper';
+import { COMPLETED_STATUS_CODES, OVERDUE_AFTER_DAYS, isOverdueByDeadline, isOverdueNotCompleted, isPastPeriodEnd } from './overdue.helper';
 
 describe('overdue.helper', () => {
   // period_end = 2026-09-10, ân hạn 7 ngày -> tự động quá hạn từ 2026-09-18
   const end = '2026-09-10';
+
+  it('isOverdueByDeadline: quá hạn sau 3 ngày (end 10/09 -> chưa quá hạn 11-12/09, quá hạn từ 13/09)', () => {
+    expect(OVERDUE_AFTER_DAYS).toBe(3);
+    expect(isOverdueByDeadline(end, '2026-09-10')).toBe(false);
+    expect(isOverdueByDeadline(end, '2026-09-11')).toBe(false);
+    expect(isOverdueByDeadline(end, '2026-09-12')).toBe(false);
+    expect(isOverdueByDeadline(end, '2026-09-13')).toBe(true);
+  });
+
+  it('COMPLETED_STATUS_CODES có `completed` (status Hoàn thành không bị coi là quá hạn)', () => {
+    expect(COMPLETED_STATUS_CODES).toEqual(expect.arrayContaining(['in_review', 'done', 'completed']));
+  });
 
   it('isPastPeriodEnd: chỉ true khi hôm nay SAU period_end (đúng ngày cuối chưa quá hạn)', () => {
     expect(isPastPeriodEnd(end, '2026-09-10')).toBe(false);

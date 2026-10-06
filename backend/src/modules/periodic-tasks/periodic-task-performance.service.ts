@@ -14,7 +14,7 @@ import { Role } from '../../common/enums/role.enum';
 import { todayVnStr, toVnDateStr } from '../../common/utils/date-vn.util';
 import { resolveListWindow, addDaysToDateString } from './helpers/list-window.helper';
 import { rawDateToYmd } from './helpers/raw-date.helper';
-import { COMPLETED_STATUS_CODES, isOverdueNotCompleted } from './helpers/overdue.helper';
+import { COMPLETED_STATUS_CODES, OVERDUE_AFTER_DAYS, isOverdueNotCompleted } from './helpers/overdue.helper';
 import { PeriodicTaskAuditAction } from './periodic-task-audit.service';
 import { PeriodicTaskPerformanceFiltersDto } from './dto/periodic-task-performance-filters.dto';
 import { PerformanceMetric, PeriodicTaskPerformanceMetricDto } from './dto/periodic-task-performance-metric.dto';
@@ -876,10 +876,12 @@ export class PeriodicTaskPerformanceService {
       // `isPastPeriodEnd`) và chưa đạt in_review/done (khớp `COMPLETED_STATUS_CODES`). Lọc ở BE để
       // `total` + phân trang của từng nhóm đúng (lọc ở FE chỉ đúng trong 1 trang 2 Task).
       if (filters.overdueOnly) {
-        qb.andWhere('task.periodEndDate < :perfOverdueToday', { perfOverdueToday: today });
+        // [AGENT] OLD: task.periodEndDate < today (quá hạn sau 1 ngày) -> khớp `isOverdueByDeadline` (>= end + OVERDUE_AFTER_DAYS).
+        qb.andWhere('task.periodEndDate <= :perfOverdueCutoff', { perfOverdueCutoff: addDaysToDateString(today, -OVERDUE_AFTER_DAYS) });
         qb.andWhere('(status.code IS NULL OR status.code NOT IN (:...perfCompletedCodes))', {
           perfCompletedCodes: [...COMPLETED_STATUS_CODES],
         });
+        qb.andWhere('(status.isDoneState IS NULL OR status.isDoneState = :perfNotDone)', { perfNotDone: 0 });
       }
       this.applyDepartmentOnlyScopeFilter(qb, user, scope);
       return (

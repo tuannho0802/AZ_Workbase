@@ -3,7 +3,9 @@ export function getNowVn(): Date {
 }
 
 export function todayVnStr(): string {
-  return toVnDateStr(getNowVn());
+  // [AGENT] OLD: toVnDateStr(getNowVn()) -> quy đổi múi giờ 2 LẦN (getNowVn đã dịch +7h, toVnDateStr dịch tiếp +7h)
+  // => trên Vercel (TZ=UTC) ngày bị nhảy sang hôm sau từ 17:00 giờ VN. toVnDateStr đã tự quy đổi từ 1 instant.
+  return toVnDateStr(new Date());
 }
 
 /**

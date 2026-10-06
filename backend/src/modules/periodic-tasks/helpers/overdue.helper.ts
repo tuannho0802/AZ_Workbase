@@ -1,7 +1,18 @@
 import { addDaysToDateString } from './list-window.helper';
 
 /** Mã status được coi là "đã xong phần việc" (đã đạt in_review/done) - khớp quy tắc hiệu suất. */
-export const COMPLETED_STATUS_CODES = ['in_review', 'done'] as const;
+// [AGENT] OLD: ['in_review', 'done'] - thiếu `completed` (mã seed của status "Hoàn thành", is_done_state=1)
+// nên Task Hoàn thành bị cron đánh dấu quá hạn/khoá nhầm.
+export const COMPLETED_STATUS_CODES = ['in_review', 'done', 'completed'] as const;
+
+/** Task chưa xong chỉ bị coi là "Quá hạn" (cron tự đánh dấu + cờ UI + bộ lọc) khi hôm nay >= period_end_date + N ngày.
+ * (Trước đây N = 1: hôm sau là quá hạn.) KHÔNG ảnh hưởng ân hạn khoá/hiệu suất `LATE_GRACE_DAYS` (7). */
+export const OVERDUE_AFTER_DAYS = 3;
+
+/** Đã đủ `OVERDUE_AFTER_DAYS` ngày kể từ `period_end_date` (YYYY-MM-DD, giờ VN) -> được coi là quá hạn. */
+export function isOverdueByDeadline(periodEndDate: string, today: string): boolean {
+  return today >= addDaysToDateString(periodEndDate, OVERDUE_AFTER_DAYS);
+}
 
 /** Task đã QUA hạn kỳ (deadline = `period_end_date`) tính đến `today` (YYYY-MM-DD, giờ VN). */
 export function isPastPeriodEnd(periodEndDate: string, today: string): boolean {

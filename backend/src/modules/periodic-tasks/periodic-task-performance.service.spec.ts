@@ -541,10 +541,12 @@ describe('PeriodicTaskPerformanceService - grace period 7 ngày', () => {
 
       for (const qb of [primaryQb, secondaryQb]) {
         const calls = qb.andWhere.mock.calls as any[][];
-        const endCall = calls.find((c) => String(c[0]).includes('task.periodEndDate < :perfOverdueToday'));
-        expect(endCall?.[1]).toEqual({ perfOverdueToday: '2026-09-28' });
+        const endCall = calls.find((c) => String(c[0]).includes('task.periodEndDate <= :perfOverdueCutoff'));
+        expect(endCall?.[1]).toEqual({ perfOverdueCutoff: '2026-09-25' }); // hôm nay - 3 ngày
         const statusCall = calls.find((c) => String(c[0]).includes('status.code NOT IN'));
-        expect(statusCall?.[1]).toEqual({ perfCompletedCodes: ['in_review', 'done'] });
+        expect(statusCall?.[1]).toEqual({ perfCompletedCodes: ['in_review', 'done', 'completed'] });
+        const doneStateCall = calls.find((c) => String(c[0]).includes('status.isDoneState'));
+        expect(doneStateCall?.[1]).toEqual({ perfNotDone: 0 });
       }
     });
 

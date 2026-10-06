@@ -6120,3 +6120,26 @@ Now [deploy]
 > Verify: `vitest src/lib/guides` 13 file / 364 test pass; `tsc --noEmit` không lỗi mới (không tính `logo.png`); `eslint src/lib/guides` sạch. Chưa chạy `next build`, chưa test tay. Cần duyệt đổi `published: true` rồi `guides:sync --apply`. Bài cố ý KHÔNG nói về 2 điểm dưới (nghi là bug, chưa sửa): (1) `getGlobalLogs`/`getGlobalLogDetail` dùng `innerJoin('log.task')` không `withDeleted` -> TypeORM tự thêm `task.deleted_at IS NULL`, nên log của việc đã xoá mềm (kể cả dòng "Xoá") nhiều khả năng KHÔNG hiện, thẻ "Đã xoá" ở FE không bao giờ xuất hiện; (2) bộ lọc "đến ngày": FE gửi `endOf('day')` rồi BE cộng thêm 1 ngày -> lọc dư 1 ngày (cùng mẫu ở `audit.service.ts` chung); `cleanupByDateRange` cũng cộng +1 ngày lên `to` nên có thể xoá lố, tuỳ giờ mà RangePicker trả về (chưa xác nhận). Chưa chạy trên MySQL thật.
 
 ---
+
+---
+## [2026-10-06 12:00] | Fix cron auto-overdue: Task Hoàn thành bị đánh dấu/khoá nhầm + lệch múi giờ todayVnStr + quá hạn sau 3 ngày | [Status: Success]
+
+**Actor:** Agent
+
+**Files Changed:**
+- `backend/src/common/utils/date-vn.util.ts` — `todayVnStr()` = `toVnDateStr(new Date())` (bỏ quy đổi múi giờ 2 lần).
+- `backend/src/modules/periodic-tasks/helpers/overdue.helper.ts` — thêm `completed` vào `COMPLETED_STATUS_CODES`; thêm `OVERDUE_AFTER_DAYS = 3` + `isOverdueByDeadline()`.
+- `backend/src/modules/periodic-tasks/periodic-task-auto-overdue.service.ts` — đánh dấu khi `period_end_date <= hôm nay - 3`; loại thêm `status.isDoneState = 1`; trả thêm `overdueCutoffPeriodEnd`.
+- `backend/src/modules/periodic-tasks/periodic-task-performance.service.ts` — bộ lọc `overdueOnly` khớp quy tắc mới (3 ngày + loại `completed`/`isDoneState`).
+- `backend/src/modules/periodic-tasks/periodic-tasks.service.ts` — `markOverdue()` dùng `isCompletedTask()`.
+- `frontend/src/lib/utils/periodicTaskOverdue.ts` — `completed`/`isDoneState` tính là đã xong; `isTaskOverdue` quá hạn sau 3 ngày.
+- `backend/src/database/migrations/1786100000000-FixAutoOverdueOnCompletedTasks.ts` (MỚI) — dọn dấu quá hạn/khoá TỰ ĐỘNG trên Task is_done_state=1, có bảng backup + `down()`.
+- Spec: `date-vn.util`, `overdue.helper`, `auto-overdue.service`, `performance.service`, `periodicTaskOverdue.test.ts`.
+
+**Root Cause:**
+> (1) Cron chỉ loại code `in_review`/`done`; status "Hoàn thành" có code `completed` -> bị đánh dấu quá hạn + khoá tự động sau 7 ngày (75 Task bị dấu, 38 Task bị khoá nhầm). (2) `todayVnStr()` = `toVnDateStr(getNowVn())` dịch +7h hai lần -> trên Vercel (TZ=UTC) "hôm nay" nhảy sang ngày mai từ 17:00 giờ VN (ảnh hưởng cả nhắc hạn 18:00). Giờ `overdue_marked_at` trong DB là UTC (Vercel), UI +7h khi hiển thị; Vercel cron Hobby chạy lệch tới ~1 giờ so với lịch `5 17 * * *`.
+
+**Notes:**
+> Quá hạn tự động: hôm nay >= `period_end_date` + 3 ngày (trước là +1); khoá tự động vẫn sau ân hạn 7 ngày; đánh dấu thủ công (Manager+) vẫn được từ sau deadline. Verify: BE `tsc` sạch, `nest build` OK, jest 1638/1638; FE `tsc` sạch (trừ logo.png), vitest 37 file / 547 test. Test TZ mới fail 3/5 ca với code cũ. Migration CHƯA chạy (chưa có MySQL thật). Bài hướng dẫn `guides-content/cong-viec-dinh-ky.md` chưa cập nhật mốc 3 ngày/`completed`.
+
+---

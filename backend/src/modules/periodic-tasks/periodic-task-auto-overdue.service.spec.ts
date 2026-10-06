@@ -39,16 +39,19 @@ describe('PeriodicTaskAutoOverdueService', () => {
   });
   afterEach(() => jest.restoreAllMocks());
 
-  it('đánh dấu khi period_end_date < hôm nay; mốc khoá quá ân hạn = hôm nay - 7 ngày (< 2026-09-21)', async () => {
+  it('đánh dấu khi period_end_date <= hôm nay - 3 ngày (2026-09-25); mốc khoá quá ân hạn = hôm nay - 7 ngày (< 2026-09-21)', async () => {
     const { service, selectQb } = setup([]);
     const res = await service.runSweep();
     expect(res.cutoffPeriodEnd).toBe('2026-09-21');
-    const todayCall = (selectQb.andWhere.mock.calls as any[][]).find((c) => String(c[0]).includes('task.periodEndDate < :today'));
-    expect(todayCall?.[1]).toEqual({ today: '2026-09-28' });
+    expect(res.overdueCutoffPeriodEnd).toBe('2026-09-25');
+    const todayCall = (selectQb.andWhere.mock.calls as any[][]).find((c) => String(c[0]).includes('task.periodEndDate <= :overdueCutoff'));
+    expect(todayCall?.[1]).toEqual({ overdueCutoff: '2026-09-25' });
     const cutoffCall = (selectQb.andWhere.mock.calls as any[][]).find((c) => String(c[0]).includes(':cutoff'));
     expect(cutoffCall?.[1]).toEqual({ notLocked: 0, cutoff: '2026-09-21' });
     const statusCall = (selectQb.andWhere.mock.calls as any[][]).find((c) => String(c[0]).includes('status.code'));
-    expect(statusCall?.[1]).toEqual({ doneCodes: ['in_review', 'done'] });
+    expect(statusCall?.[1]).toEqual({ doneCodes: ['in_review', 'done', 'completed'] });
+    const doneStateCall = (selectQb.andWhere.mock.calls as any[][]).find((c) => String(c[0]).includes('status.isDoneState'));
+    expect(doneStateCall?.[1]).toEqual({ notDone: 0 });
   });
 
   it('chưa đánh dấu -> đánh dấu; chỉ khoá khi quá ân hạn; Task còn trong ân hạn chỉ được đánh dấu', async () => {
