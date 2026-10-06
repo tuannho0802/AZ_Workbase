@@ -1,5 +1,6 @@
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { periodicTaskChecklistItemsApi, type ChecklistListOptions } from '../api/periodic-task-checklist-items.api';
+import { shouldRefetchAfterChecklistChange } from '../utils/periodicTaskInvalidation';
 
 /** CÙNG namespace `'periodic-tasks'` (mirror `usePeriodicTaskSecondaryAssignees.ts`) -
  * các query trang checklist nằm dưới namespace này nên mọi mutation chỉ cần invalidate
@@ -9,8 +10,17 @@ const LIST_KEY = 'periodic-tasks';
 function useInvalidatePeriodicTaskChecklistItems() {
   const queryClient = useQueryClient();
   // BE có thể đổi status/kỳ Task ngay trong request tick/thêm checklist (Guard) -> làm tươi cả hiệu suất.
-  return () => {
-    queryClient.invalidateQueries({ queryKey: [LIST_KEY] });
+  // [AGENT] OLD CODE (giữ lại để rollback): invalidate CẢ namespace (mỗi lần tick refetch 4+ query đang mở)
+  //   return () => {
+  //     queryClient.invalidateQueries({ queryKey: [LIST_KEY] });
+  //     queryClient.invalidateQueries({ queryKey: ['periodic-task-performance'] });
+  //   };
+  // NEW: bỏ qua query cấu trúc liên kết + Task con của chính task này (xem periodicTaskInvalidation.ts).
+  return (taskId: number) => {
+    queryClient.invalidateQueries({
+      queryKey: [LIST_KEY],
+      predicate: (query) => shouldRefetchAfterChecklistChange(query.queryKey, taskId),
+    });
     queryClient.invalidateQueries({ queryKey: ['periodic-task-performance'] });
   };
 }
@@ -20,7 +30,7 @@ export const useAddTaskChecklistItem = () => {
   return useMutation({
     mutationFn: ({ taskId, content, reopen }: { taskId: number; content: string; reopen?: boolean }) =>
       periodicTaskChecklistItemsApi.create(taskId, content, reopen),
-    onSuccess: invalidate,
+    onSuccess: (_data, variables) => invalidate(variables.taskId),
   });
 };
 
@@ -36,7 +46,7 @@ export const useUpdateTaskChecklistItem = () => {
       itemId: number;
       data: { content?: string; isDone?: boolean; nextStatusCode?: 'in_progress' | 'in_review' };
     }) => periodicTaskChecklistItemsApi.update(taskId, itemId, data),
-    onSuccess: invalidate,
+    onSuccess: (_data, variables) => invalidate(variables.taskId),
   });
 };
 
@@ -45,7 +55,7 @@ export const useRemoveTaskChecklistItem = () => {
   return useMutation({
     mutationFn: ({ taskId, itemId }: { taskId: number; itemId: number }) =>
       periodicTaskChecklistItemsApi.remove(taskId, itemId),
-    onSuccess: invalidate,
+    onSuccess: (_data, variables) => invalidate(variables.taskId),
   });
 };
 
@@ -54,7 +64,7 @@ export const useMoveTaskChecklistItem = () => {
   return useMutation({
     mutationFn: ({ taskId, itemId, direction }: { taskId: number; itemId: number; direction: 'up' | 'down' }) =>
       periodicTaskChecklistItemsApi.move(taskId, itemId, direction),
-    onSuccess: invalidate,
+    onSuccess: (_data, variables) => invalidate(variables.taskId),
   });
 };
 

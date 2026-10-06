@@ -4,6 +4,8 @@ import {
   ForbiddenException,
   HttpStatus,
   InternalServerErrorException,
+  Logger,
+  UnauthorizedException,
 } from '@nestjs/common';
 import type { ArgumentsHost } from '@nestjs/common';
 import * as Sentry from '@sentry/nestjs';
@@ -90,5 +92,34 @@ describe('AllExceptionsFilter - Sentry (PLAN_HARDENING P5)', () => {
     new AllExceptionsFilter().catch(new BadRequestException('sai'), host);
     const body = json.mock.calls[0][0];
     expect(Object.keys(body).sort()).toEqual(['message', 'method', 'path', 'statusCode', 'timestamp']);
+  });
+
+  describe('log gọn cho lỗi 4xx (Fluid CPU)', () => {
+    it('401 -> KHÔNG log gì (không console.error, không warn)', () => {
+      const warn = jest.spyOn(Logger.prototype, 'warn').mockImplementation(() => undefined);
+      new AllExceptionsFilter().catch(new UnauthorizedException('hết hạn'), host);
+      expect(console.error).not.toHaveBeenCalled();
+      expect(warn).not.toHaveBeenCalled();
+      expect(status).toHaveBeenCalledWith(HttpStatus.UNAUTHORIZED);
+    });
+
+    it('403/400 -> 1 dòng warn, KHÔNG console.error, KHÔNG stack', () => {
+      const warn = jest.spyOn(Logger.prototype, 'warn').mockImplementation(() => undefined);
+      new AllExceptionsFilter().catch(new ForbiddenException('cấm'), host);
+      new AllExceptionsFilter().catch(new BadRequestException(['a sai', 'b sai']), host);
+      expect(console.error).not.toHaveBeenCalled();
+      expect(warn).toHaveBeenCalledTimes(2);
+      expect(warn.mock.calls[0][0]).toContain('403 GET /api/x');
+      expect(warn.mock.calls[1][0]).toContain('a sai; b sai');
+      expect(String(warn.mock.calls[0][0])).not.toContain('at ');
+    });
+
+    it('5xx -> vẫn console.error kèm stack', () => {
+      new AllExceptionsFilter().catch(new Error('boom'), host);
+      expect(console.error).toHaveBeenCalledWith(
+        '[EXCEPTION FILTER] Error:',
+        expect.objectContaining({ status: 500, stack: expect.stringContaining('boom') }),
+      );
+    });
   });
 });

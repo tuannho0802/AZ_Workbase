@@ -6160,3 +6160,21 @@ Now [deploy]
 > Nghi không khớp, bài cố ý KHÔNG khẳng định, chưa sửa: (a) tooltip cột "Đang trong hạn" và chú thích cuối bảng ở `page.tsx` nói "vẫn còn trong 7 ngày ân hạn - không bị tính là trễ", nhưng việc chưa xong đã bị cron gắn dấu (từ ngày thứ 3 sau kỳ hạn) thì đã sang "Quá hạn chưa xong" — chữ trên giao diện lệch hành vi; (b) code chết (đã grep toàn `frontend/src`): hook `useUserFlaggedTasks`, `classifyFlaggedTask`, `hasStartedWorking` chỉ có định nghĩa, không nơi nào gọi, kéo theo `periodicTaskPerformanceApi.getUserFlaggedTasks` và endpoint BE `GET users/:userId/flagged-tasks` không còn ai dùng từ FE (chưa kiểm tra client ngoài FE). Điểm nghi `completed` không nằm trong `COMPLETED_STATUS_CODES` đã được commit `df95281` sửa nên bỏ khỏi danh sách.
 
 ---
+
+---
+## [2026-10-06 11:30] | Giảm Active CPU: bớt refetch dây chuyền Công việc định kỳ + log 4xx gọn | [Status: Success]
+
+**Actor:** Agent
+
+**Files Changed:**
+- `frontend/src/lib/utils/periodicTaskInvalidation.ts` (MỚI) + `.test.ts` — `shouldRefetchAfterChecklistChange(queryKey, taskId)`: bỏ qua `links-among`/`children`/`parents` và `linked-children-page` của chính task vừa đổi.
+- `frontend/src/lib/hooks/usePeriodicTaskChecklistItems.ts` — 4 mutation checklist (thêm/sửa-tick/xoá/di chuyển) invalidate có `predicate` thay vì cả namespace `periodic-tasks`.
+- `backend/src/common/filters/http-exception.filter.ts` (+ spec) — 401 không log; 4xx khác 1 dòng `Logger.warn` không stack; 5xx giữ nguyên `console.error` kèm stack.
+
+**Root Cause:**
+> Observability (Hobby, 12h): 4,3K invocation / 3 phút Active CPU (TB 58ms) -> vấn đề là SỐ request, không phải request nặng. Log thật cho thấy 1 PATCH checklist kéo theo 4 GET refetch (danh sách, links, linked-children, checklist-items) vì invalidate cả namespace; các GET đó trả 304 nhưng BE vẫn chạy trọn query + serialize + ETag. Ngoài ra mỗi lần access token hết hạn ~8 request song song cùng 401, mỗi cái in stack ~15 dòng qua `console.error`.
+
+**Notes:**
+> Verify: BE `tsc` sạch, `nest build` OK, jest 1634/1634 (+3); FE vitest 794/794 (+4), `tsc --noEmit` chỉ còn 4 lỗi `logo.png` có sẵn. Chưa chạy `next build`, chưa test tay trên UI (nên thử tick checklist ở cả modal lẫn Inline, kiểm nhãn X/Z ở danh sách và tiến độ Task con ở Task cha vẫn cập nhật). Chưa làm: preflight OPTIONS (~1/4 invocation, cần đổi sang cùng origin), refresh token chủ động trước khi hết hạn, debounce `/customers/stats`.
+
+---

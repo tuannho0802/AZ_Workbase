@@ -4,6 +4,7 @@ import {
   ArgumentsHost,
   HttpException,
   HttpStatus,
+  Logger,
 } from '@nestjs/common';
 import { Request, Response } from 'express';
 import * as Sentry from '@sentry/nestjs';
@@ -11,6 +12,8 @@ import { isTransientDbError } from '../utils/db-transient-error.util';
 
 @Catch()
 export class AllExceptionsFilter implements ExceptionFilter {
+  private readonly logger = new Logger(AllExceptionsFilter.name);
+
   catch(exception: unknown, host: ArgumentsHost): void | Promise<void> {
     const ctx = host.switchToHttp();
     const response = ctx.getResponse<Response>();
@@ -60,13 +63,24 @@ export class AllExceptionsFilter implements ExceptionFilter {
       ...businessCode,
     };
 
-    // Log error for debugging (Tiếng Việt)
-    console.error('[EXCEPTION FILTER] Error:', {
-      status,
-      path: request.url,
-      message,
-      stack: exception instanceof Error ? exception.stack : null,
-    });
+    // [PERF/Fluid CPU] [AGENT] OLD CODE (giữ lại để rollback): MỌI lỗi (kể cả 401/403/400) đều
+    // console.error kèm toàn bộ stack (~15 dòng). Khi access token hết hạn, FE bắn ~8 request song
+    // song -> 8 lần dựng + ghi stack chỉ cho lỗi người dùng bình thường.
+    //   console.error('[EXCEPTION FILTER] Error:', { status, path: request.url, message,
+    //     stack: exception instanceof Error ? exception.stack : null });
+    // NEW: 5xx giữ nguyên (cần stack để debug). 401 không log (Vercel đã ghi status + path của từng
+    // request, và đây là luồng refresh token bình thường). Các 4xx khác chỉ 1 dòng, không stack.
+    if (status >= HttpStatus.INTERNAL_SERVER_ERROR) {
+      console.error('[EXCEPTION FILTER] Error:', {
+        status,
+        path: request.url,
+        message,
+        stack: exception instanceof Error ? exception.stack : null,
+      });
+    } else if (status !== HttpStatus.UNAUTHORIZED) {
+      const text = Array.isArray(message) ? message.join('; ') : message;
+      this.logger.warn(`${status} ${request.method} ${request.url} - ${text}`);
+    }
 
     // PLAN_HARDENING P5: chỉ gửi lỗi 5xx lên Sentry - KHÔNG gửi 4xx
     // (401/403/validation là lỗi người dùng, gửi lên chỉ gây nhiễu).
