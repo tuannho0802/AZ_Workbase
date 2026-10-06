@@ -6017,3 +6017,18 @@ Now [deploy]
 > Còn 4 lỗi **moderate** ở BE (không chặn CI): `js-yaml` qua `@nestjs/swagger` (fix = nâng swagger 12, breaking) và `uuid` qua `exceljs` (npm gợi ý hạ exceljs 3.4.0 - KHÔNG nên). Xử lý riêng sau (override `uuid`, hoặc đợi bản vá). Verify: BE `tsc` sạch, `nest build` OK, jest 1624/1624; FE vitest 765/765, `audit --audit-level=high` exit 0 cả 2 bên. Chưa chạy `next build`.
 
 ---
+## [2026-10-06 18:10] | Giảm Fluid Active CPU Vercel (polling FE) | [Status: Success]
+
+**Actor:** Agent
+
+**Files Changed:**
+- `frontend/src/lib/hooks/useSidebarBadgeCounts.ts` — `REFRESH_INTERVAL_MS` 60s -> 180s.
+- `frontend/src/lib/hooks/useNotificationPoll.ts` — `POLL_INTERVAL_MS` 60s -> 120s.
+
+**Root Cause:**
+> Vercel Usage (30 ngày tới 05/10): `az-workbase-backend` 4h39m / 4h (95,9% CPU team Hobby). CPU tăng theo ngày làm việc (12-19 phút/ngày), cuối tuần chỉ ~2 phút -> nguồn chính là traffic người dùng, trong đó polling ~8 query/phút/tab qua JwtStrategy + PermissionGuard.
+
+**Notes:**
+> Chưa đo tác động thật - theo dõi Usage vài ngày. Chưa làm: gộp 8 query badge thành 1 endpoint, cache ngắn user/permission ở JwtStrategy. Gợi ý thêm: đặt `SWAGGER_ENABLED=false` trên Vercel nếu không dùng /api/docs ở prod. Hạn mức: 4h/30 ngày ~ 8 phút/ngày.
+
+---

@@ -10,10 +10,11 @@ import { useMyPermissions } from './useMyPermissions';
 import { useAuthStore } from '../stores/auth.store';
 import { notificationKeys } from './useNotifications';
 
-// 60s: đủ để badge không bị lỗi thời quá lâu (vd Admin duyệt xong 1 đơn ở
-// tab khác, quay lại sidebar sẽ tự cập nhật trong tối đa 1 phút), nhưng
-// không dí server liên tục như polling vài giây 1 lần.
-const REFRESH_INTERVAL_MS = 60_000;
+// [AGENT] OLD CODE (giữ lại để rollback): const REFRESH_INTERVAL_MS = 60_000;
+// 3 phút: số liệu Vercel Usage (2026-10) cho thấy az-workbase-backend ngốn ~96% Fluid Active
+// CPU Hobby, tăng theo ngày làm việc -> polling 8 query/phút/tab là nguồn chính. Badge không
+// cần realtime; focus lại tab vẫn tự refetch (xem staleTime) nên người dùng ít thấy khác biệt.
+const REFRESH_INTERVAL_MS = 180_000;
 
 /**
  * Key phụ trong map counts cho badge VÀNG "Đang làm" (in_progress) của mục

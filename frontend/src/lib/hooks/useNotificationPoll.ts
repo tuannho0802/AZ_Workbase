@@ -9,8 +9,10 @@ import { useNotificationActions } from './useNotificationActions';
 import { planToasts, readLastSeenVersion, writeLastSeenVersion } from '../notifications/toast-plan';
 import type { NotificationCategory } from '../types/notification.types';
 
-// 60s (PLAN 2.3): Vercel serverless không có WebSocket/SSE fan-out → polling nhẹ.
-const POLL_INTERVAL_MS = 60_000;
+// [AGENT] OLD CODE (giữ lại để rollback): const POLL_INTERVAL_MS = 60_000;
+// 2 phút (PLAN 2.3): Vercel serverless không có WebSocket/SSE fan-out → polling nhẹ. Nâng từ 60s
+// để giảm Fluid Active CPU (Hobby). Thông báo vẫn cập nhật ngay khi focus lại tab.
+const POLL_INTERVAL_MS = 120_000;
 
 const CATEGORY_TITLE: Record<NotificationCategory, string> = {
   customer: 'Khách hàng',
