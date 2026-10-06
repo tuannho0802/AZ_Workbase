@@ -6303,3 +6303,18 @@ Now [deploy]
 > Sửa đúng (SHA-256 + timingSafeEqual) sẽ bật reuse-detection thật → 2 tab refresh cùng lúc có thể bị đá ra đăng nhập lại; cần cơ chế grace trước khi đổi.
 
 ---
+
+---
+## [2026-10-06 17:20] | Mục 1 plan CPU: kiểm tra JWT_EXPIRES_IN / cụm 401 | Status: Success
+
+**Actor:** Agent
+**Files Changed:**
+- `backend/src/modules/auth/auth.module.ts` — fallback `'1h'` cho `JWT_EXPIRES_IN` (thiếu biến thì token không có `exp`)
+
+**Root Cause:**
+> Cụm 401 KHÔNG do token hết hạn quá ngắn: log có 9 user khác nhau, mỗi user refresh 1 lần/28 phút (token ~1h). 401 chỉ ≈ 3,2% CPU.
+
+**Notes:**
+> User 17, 19, 97 refresh 2 lần cách nhau 2–3 giây → race nhiều tab, xử lý ở Mục 2A. Cần chủ dự án tự xác nhận env `JWT_EXPIRES_IN` trên Vercel.
+
+---

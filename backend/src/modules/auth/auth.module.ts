@@ -18,7 +18,10 @@ import { JwtStrategy } from './strategies/jwt.strategy';
       useFactory: async (configService: ConfigService) => ({
         secret: configService.get<string>('JWT_SECRET'),
         signOptions: {
-          expiresIn: configService.get<string>('JWT_EXPIRES_IN') as any,
+          // [AGENT] OLD CODE: expiresIn: configService.get<string>('JWT_EXPIRES_IN') as any,
+          // Thiếu biến môi trường -> `expiresIn` undefined -> jsonwebtoken KHÔNG gắn `exp` -> access token
+          // sống vĩnh viễn. Fallback '1h' (khớp README/.env.example, giống refresh token đã có fallback '7d').
+          expiresIn: (configService.get<string>('JWT_EXPIRES_IN') || '1h') as any,
         },
       }),
     }),
