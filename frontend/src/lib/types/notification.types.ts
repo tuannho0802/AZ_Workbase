@@ -41,6 +41,11 @@ export interface NotificationPollResponse {
   unread: number;
   /** MAX(sort_at) epoch ms - tăng lên khi có thông báo mới / được gộp lại */
   version: number;
+  /**
+   * Chữ ký quyền của tôi (phiên bản quyền + role/phòng ban/vị trí). Đổi = quyền vừa đổi -> refetch quyền ngay.
+   * Vắng mặt khi BE cũ / không đọc được phiên bản - FE bỏ qua.
+   */
+  permSig?: string;
 }
 
 export interface ListNotificationsParams {

@@ -2,6 +2,7 @@
 import { getRepositoryToken } from '@nestjs/typeorm';
 import { PermissionsService } from './permissions.service';
 import { RolePermission, PermissionScope } from '../../database/entities/role-permission.entity';
+import { PermissionsVersionService } from './permissions-version.service';
 
 describe('PermissionsService', () => {
   let service: PermissionsService;
@@ -9,6 +10,8 @@ describe('PermissionsService', () => {
   const mockRolePermissionRepo = {
     find: jest.fn(),
   };
+
+  const mockVersionService = { bump: jest.fn() };
 
   beforeEach(async () => {
     jest.clearAllMocks();
@@ -18,6 +21,7 @@ describe('PermissionsService', () => {
       providers: [
         PermissionsService,
         { provide: getRepositoryToken(RolePermission), useValue: mockRolePermissionRepo },
+        { provide: PermissionsVersionService, useValue: mockVersionService },
       ],
     }).compile();
 
@@ -253,6 +257,15 @@ describe('PermissionsService', () => {
       await service.hasPermission('employee', 'customers.view', 5); // query lai
 
       expect(mockRolePermissionRepo.find).toHaveBeenCalledTimes(4);
+    });
+  });
+
+  describe('invalidate -> bump phiên bản quyền (tín hiệu cho FE)', () => {
+    it('mọi lần invalidate (có/không tham số) đều bump', () => {
+      service.invalidate();
+      service.invalidate('employee', 3);
+      service.invalidate('employee', undefined, 5);
+      expect(mockVersionService.bump).toHaveBeenCalledTimes(3);
     });
   });
 });

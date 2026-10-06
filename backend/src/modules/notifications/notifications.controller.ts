@@ -14,6 +14,10 @@ import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { GetUser } from '../../common/decorators/get-user.decorator';
 import { NotificationsService } from './notifications.service';
 import {
+  PermissionsVersionService,
+  PermissionSigUser,
+} from '../permissions/permissions-version.service';
+import {
   ListNotificationsDto,
   ReadAllNotificationsDto,
 } from './dto/list-notifications.dto';
@@ -33,7 +37,10 @@ import {
 @UseGuards(JwtAuthGuard)
 @Controller('notifications')
 export class NotificationsController {
-  constructor(private readonly notificationsService: NotificationsService) {}
+  constructor(
+    private readonly notificationsService: NotificationsService,
+    private readonly permissionsVersionService: PermissionsVersionService,
+  ) {}
 
   @Get()
   @ApiOperation({ summary: 'Danh sách thông báo của tôi (cursor pagination)' })
@@ -45,8 +52,13 @@ export class NotificationsController {
   @ApiOperation({
     summary: 'Số chưa đọc + version - endpoint polling nhẹ (60s)',
   })
-  poll(@GetUser('id') userId: number) {
-    return this.notificationsService.poll(userId);
+  async poll(@GetUser() user: PermissionSigUser & { id: number }) {
+    // [AGENT] NEW CODE: kèm `permSig` (tín hiệu "quyền của tôi vừa đổi") - xem PermissionsVersionService.
+    const [base, permSig] = await Promise.all([
+      this.notificationsService.poll(user.id),
+      this.permissionsVersionService.buildSig(user),
+    ]);
+    return permSig === undefined ? base : { ...base, permSig };
   }
 
   @Patch('read-all')

@@ -41,9 +41,11 @@ describe('NotificationsController', () => {
       remove: jest.fn(),
       purge: jest.fn(),
     };
-    const c = new NotificationsController(service);
+    const versionService: any = { buildSig: jest.fn().mockResolvedValue('3:employee:1:0:0') };
+    const c = new NotificationsController(service, versionService);
     c.list(7, { limit: 5 });
-    c.poll(7);
+    service.poll.mockResolvedValue({ unread: 2, version: 9 });
+    c.poll({ id: 7, role: 'employee', departmentId: 1, positionId: null });
     c.readAll(7, { category: 'task' });
     c.markRead(7, 11);
     c.restore(7, 11);
@@ -51,10 +53,24 @@ describe('NotificationsController', () => {
     c.purge(7, 11);
     expect(service.list).toHaveBeenCalledWith(7, { limit: 5 });
     expect(service.poll).toHaveBeenCalledWith(7);
+    expect(versionService.buildSig).toHaveBeenCalled();
     expect(service.markAllRead).toHaveBeenCalledWith(7, 'task');
     expect(service.markRead).toHaveBeenCalledWith(7, 11);
     expect(service.restore).toHaveBeenCalledWith(7, 11);
     expect(service.remove).toHaveBeenCalledWith(7, 11);
     expect(service.purge).toHaveBeenCalledWith(7, 11);
+  });
+
+  it('poll trả kèm permSig; BE không đọc được version -> bỏ field (FE bỏ qua)', async () => {
+    const service: any = { poll: jest.fn().mockResolvedValue({ unread: 2, version: 9 }) };
+    const versionService: any = { buildSig: jest.fn() };
+    const c = new NotificationsController(service, versionService);
+    const user = { id: 7, role: 'employee' };
+
+    versionService.buildSig.mockResolvedValueOnce('3:employee:0:0:0');
+    await expect(c.poll(user)).resolves.toEqual({ unread: 2, version: 9, permSig: '3:employee:0:0:0' });
+
+    versionService.buildSig.mockResolvedValueOnce(undefined);
+    await expect(c.poll(user)).resolves.toEqual({ unread: 2, version: 9 });
   });
 });

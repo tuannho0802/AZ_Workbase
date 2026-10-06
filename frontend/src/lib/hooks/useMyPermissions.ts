@@ -41,6 +41,8 @@ export function useMyPermissions(): UseMyPermissionsResult {
     queryFn: () => rolesApi.getMyPermissions(),
     enabled: isAuthenticated,
     staleTime: STALE_TIME_MS,
+    // [AGENT] NEW CODE: quay lại tab -> refetch nếu dữ liệu đã quá staleTime (QueryClient mặc định của app tắt tuỳ chọn này).
+    refetchOnWindowFocus: true,
   });
 
   const permissions = query.data;

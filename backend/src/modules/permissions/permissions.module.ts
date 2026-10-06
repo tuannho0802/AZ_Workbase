@@ -1,7 +1,9 @@
 import { Module, Global } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { RolePermission } from '../../database/entities/role-permission.entity';
+import { Setting } from '../../database/entities/setting.entity';
 import { PermissionsService } from './permissions.service';
+import { PermissionsVersionService } from './permissions-version.service';
 
 // @Global(): PermissionGuard cần PermissionsService ở MỌI module có route
 // dùng @RequirePermission() - import lại module này ở từng module một sẽ
@@ -9,8 +11,8 @@ import { PermissionsService } from './permissions.service';
 // mà không cần import module ở từng nơi.
 @Global()
 @Module({
-  imports: [TypeOrmModule.forFeature([RolePermission])],
-  providers: [PermissionsService],
-  exports: [PermissionsService],
+  imports: [TypeOrmModule.forFeature([RolePermission, Setting])],
+  providers: [PermissionsService, PermissionsVersionService],
+  exports: [PermissionsService, PermissionsVersionService],
 })
 export class PermissionsModule {}

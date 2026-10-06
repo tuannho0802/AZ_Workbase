@@ -6265,3 +6265,28 @@ Now [deploy]
 > Patch `permSig`/PermissionsVersionService và `scripts/cpu-timing-report.mjs` do phiên trước báo KHÔNG có trong repo (chưa push) — chưa làm lại. Chưa đụng `sidebar/badges` (mẫu log mới 4 request, quá ít).
 
 ---
+
+---
+## [2026-10-06 15:10] | Tín hiệu "quyền đổi" qua /notifications/poll (permSig) | Status: Success
+
+**Actor:** Agent
+**Files Changed:**
+- `backend/src/modules/permissions/permissions-version.service.ts` (+ spec) — mới: phiên bản quyền toàn cục lưu ở bảng `settings` có sẵn (key `permissions_version`, upsert tăng 1, cache đọc 10s/instance), `buildSig(user)`
+- `backend/src/modules/permissions/permissions.module.ts` — thêm provider/export + `Setting`
+- `backend/src/modules/permissions/permissions.service.ts`, `ui-visibility/ui-visibility.service.ts` — `invalidate()` gọi `versionService.bump()` (mọi thao tác sửa ma trận/override/ẩn-hiện/role đã gọi sẵn invalidate nên không sót)
+- `backend/src/modules/notifications/notifications.controller.ts` — `poll` trả thêm `permSig` = `version:role:dept:position:rootAdmin` (lỗi đọc version thì bỏ field)
+- `frontend/src/lib/hooks/usePermissionChangeSignal.ts` (+ test) — permSig đổi → invalidate `my-permissions`, `ui-visibility-my-hidden`, badge sidebar; lần đầu/đổi user chỉ ghi mốc
+- `frontend/src/lib/hooks/useNotificationPoll.ts`, `types/notification.types.ts` — nối hook, thêm `permSig?`
+- `frontend/src/lib/hooks/useMyPermissions.ts`, `useUiVisibility.ts` — `refetchOnWindowFocus: true` (vẫn tôn trọng staleTime)
+
+**Root Cause:**
+> Đổi quyền chỉ có hiệu lực ở FE sau tối đa staleTime 60s hoặc khi chuyển trang; max-age/version trong URL bị loại vì dễ lệch đồng bộ.
+
+**Solution:**
+> Dùng poll sẵn có làm kênh tín hiệu; không bảng mới, không migration. Đổi role/phòng ban/vị trí của CHÍNH user đổi permSig nhờ dữ liệu JwtStrategy (cache 10s).
+
+**Notes:**
+> Độ trễ tối đa ≈ cache version 10s + chu kỳ poll (120s; poll chạy lại ngay khi quay lại tab). Admin/người sửa thấy ngay vì mutation đã invalidate tại chỗ.
+> Chưa làm lại `cpu-timing-report.mjs` (không có trong repo) — chờ log 1–2 giờ với CPU_TIMING=true.
+
+---

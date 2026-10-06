@@ -9,6 +9,7 @@ import { Role } from '../../common/enums/role.enum';
 import { UpdateUiVisibilityRulesDto } from './dto/update-ui-visibility-rules.dto';
 import { UiVisibilityScopeQueryDto } from './dto/ui-visibility-scope-query.dto';
 import { getElementKeysForResource, isValidResource } from './ui-visibility.constants';
+import { PermissionsVersionService } from '../permissions/permissions-version.service';
 import { AuditService } from '../audit/audit.service';
 
 /**
@@ -49,6 +50,7 @@ export class UiVisibilityService {
     private readonly positionRepo: Repository<Position>,
     private readonly dataSource: DataSource,
     private readonly auditService: AuditService,
+    private readonly versionService: PermissionsVersionService,
   ) {}
 
   /**
@@ -56,6 +58,8 @@ export class UiVisibilityService {
    * đó để biết lý do quét toàn bộ key thay vì dựng lại đúng 1 cacheKey).
    */
   invalidate(roleCode?: string, departmentId?: number | null, positionId?: number | null): void {
+    // [AGENT] NEW CODE: báo cho FE biết ẩn/hiện UI vừa đổi (qua permSig trong /notifications/poll).
+    this.versionService.bump();
     if (!roleCode) {
       this.cache.clear();
       return;

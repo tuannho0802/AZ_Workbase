@@ -2,6 +2,7 @@ import { Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, IsNull } from 'typeorm';
 import { RolePermission, PermissionScope } from '../../database/entities/role-permission.entity';
+import { PermissionsVersionService } from './permissions-version.service';
 
 /**
  * ⚠️ Đọc PLAN_POSITION_FIELD_VISIBILITY_ASSIGNMENT_GROUPS.md mục 2.2/3.3
@@ -34,6 +35,7 @@ export class PermissionsService {
   constructor(
     @InjectRepository(RolePermission)
     private readonly rolePermissionRepo: Repository<RolePermission>,
+    private readonly versionService: PermissionsVersionService,
   ) { }
 
   /**
@@ -52,6 +54,8 @@ export class PermissionsService {
    * dimension được truyền, bỏ qua dimension còn lại.
    */
   invalidate(roleCode?: string, departmentId?: number | null, positionId?: number | null): void {
+    // [AGENT] NEW CODE: báo cho FE biết quyền vừa đổi (qua permSig trong /notifications/poll).
+    this.versionService.bump();
     if (!roleCode) {
       this.cache.clear();
       return;

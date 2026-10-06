@@ -17,6 +17,7 @@ export const useMyHiddenElements = (resource: string) => {
     queryKey: MY_HIDDEN_KEY(resource),
     queryFn: () => uiVisibilityApi.getMyHidden(resource),
     staleTime: 30 * 1000, // khớp CACHE_TTL_MS ở BE
+    refetchOnWindowFocus: true, // [AGENT] NEW CODE: quay lại tab -> refetch nếu đã quá staleTime
   });
 
   return { hiddenKeys: (data as string[]) ?? EMPTY_HIDDEN, isLoading };

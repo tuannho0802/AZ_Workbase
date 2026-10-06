@@ -9,6 +9,7 @@ import { Department } from '../../database/entities/department.entity';
 import { Position } from '../../database/entities/position.entity';
 import { Role } from '../../common/enums/role.enum';
 import { AuditService } from '../audit/audit.service';
+import { PermissionsVersionService } from '../permissions/permissions-version.service';
 
 describe('UiVisibilityService', () => {
   let service: UiVisibilityService;
@@ -42,6 +43,7 @@ describe('UiVisibilityService', () => {
   const mockDataSource = {
     createQueryRunner: jest.fn().mockReturnValue(mockQueryRunner),
   };
+  const mockVersionService = { bump: jest.fn() };
   const mockAuditService = {
     logAction: jest.fn(),
     logActionAsync: jest.fn(),
@@ -59,6 +61,7 @@ describe('UiVisibilityService', () => {
         { provide: getRepositoryToken(Position), useValue: mockPositionRepo },
         { provide: DataSource, useValue: mockDataSource },
         { provide: AuditService, useValue: mockAuditService },
+        { provide: PermissionsVersionService, useValue: mockVersionService },
       ],
     }).compile();
 
@@ -424,6 +427,14 @@ describe('UiVisibilityService', () => {
           rules: [{ elementKey: 'field:closed_date', visible: true }],
         },
       ]);
+    });
+  });
+
+  describe('invalidate -> bump phiên bản quyền', () => {
+    it('invalidate bump 1 lần mỗi lần gọi', () => {
+      mockVersionService.bump.mockClear();
+      service.invalidate('employee', 3);
+      expect(mockVersionService.bump).toHaveBeenCalledTimes(1);
     });
   });
 });
