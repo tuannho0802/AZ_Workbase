@@ -380,6 +380,15 @@ Hiện `staleTime`: departments 5 phút, media-sources 5 phút, customer-statuse
       nếu `idleTimeout` cho phép; **không** bỏ keep-alive.
 - [ ] Cho `HEAD` bỏ `logger.log` mỗi lần (giảm ghi log), giữ log khi lỗi.
 
+**Trạng thái triển khai Mục 7 (2026-10-06):**
+- [x] 7A — Đo: `CustomersService.findAll` khi `CPU_TIMING=true` log 1 dòng `[Cust-List] total=… build=… main=… count=… mapDeposit=… assignees=… joinedGroups=… notes=… visibility=… rows=… limit=… search=0|1`
+      (`main`/`count` là thời gian chờ từng nhánh `Promise.all`, tính từ lúc bắt đầu chạy song song). Tắt env → hành vi và response y như cũ. **Chưa có số đo thật** —
+      bật trên preview ~30 phút (thao tác lọc/tìm/đổi trang), lọc log `[Cust-List]`, dán 30–50 dòng rồi mới chọn phương án (bỏ join thừa / thu hẹp cột / index / FULLTEXT). Tắt biến sau khi đo.
+- [x] 7B — `GET|HEAD /keep-alive`: HEAD (Uptime monitor) không còn `logger.log` mỗi lần; GET thủ công vẫn log; lỗi luôn log. `SELECT 1` và reconnect giữ nguyên.
+      **Không nới chu kỳ ping:** `idleTimeout` pool = 30 s (<< 5 phút) nên ping 5 phút không giữ được connection; giá trị còn lại là đánh thức function/Aiven, và chu kỳ do Uptime
+      cấu hình ngoài code — chỉ nới (vd 10 phút) nếu chủ dự án xác nhận Aiven không ngủ trong khoảng đó. Chưa có bằng chứng → giữ 5 phút.
+- [ ] 7C — theo dõi, chưa làm gì (mẫu ít).
+
 ### 7C. `PATCH /leave-requests/:id/approve` (2 lần, 196 ms), `roles/my-permissions` (10 lần, 37 ms), `users/all` (9 lần, 42 ms)
 - Mẫu quá ít/hành động thủ công → **chưa làm gì**, đưa vào danh sách theo dõi ở lần đo sau.
 

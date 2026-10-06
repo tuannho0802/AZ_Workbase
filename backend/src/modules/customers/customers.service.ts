@@ -995,6 +995,18 @@ export class CustomersService {
       utmId,
     } = filters;
 
+    // NEW (PLAN_CPU_OPTIMIZATION_ROUND2 - Mục 7A): đo từng bước, CHỈ khi CPU_TIMING=true (mặc định TẮT -> hành vi y như cũ).
+    const timing = process.env.CPU_TIMING === 'true';
+    const tStart = timing ? Date.now() : 0;
+    const steps: Record<string, number> = {};
+    let tMark = tStart;
+    const mark = (name: string) => {
+      if (!timing) return;
+      const now = Date.now();
+      steps[name] = now - tMark;
+      tMark = now;
+    };
+
     // ===== Query chính: lấy dữ liệu (có joins + subquery deposit) =====
     const queryBuilder =
       this.customersRepository.createQueryBuilder('customer');
@@ -1100,11 +1112,26 @@ export class CustomersService {
       utmId,
     });
 
+    mark('build');
     // Chạy song song 2 query độc lập thay vì tuần tự -> giảm tổng thời gian chờ
+    // (đo từng nhánh riêng khi bật CPU_TIMING; Promise.all giữ nguyên)
+    let mainMs = 0;
+    let countMs = 0;
     const [{ entities, raw }, count] = await Promise.all([
-      queryBuilder.getRawAndEntities(),
-      countQueryBuilder.getCount(),
+      queryBuilder.getRawAndEntities().then((r) => {
+        if (timing) mainMs = Date.now() - tMark;
+        return r;
+      }),
+      countQueryBuilder.getCount().then((r) => {
+        if (timing) countMs = Date.now() - tMark;
+        return r;
+      }),
     ]);
+    if (timing) {
+      steps['main'] = mainMs;
+      steps['count'] = countMs;
+      tMark = Date.now();
+    }
 
     // Map the raw sum back to each entity
     // [PERF] Dựng Map 1 lần thay vì raw.find() trong forEach (O(n²)).
@@ -1121,6 +1148,7 @@ export class CustomersService {
       }
     });
 
+    mark('mapDeposit');
     // Populate activeAssignees for 1:N feature
     // (Đã xoá 1 query thừa ở đây: trước đây có 1 lần gọi assignmentRepository.find()
     // với where customerId = undefined -> load TOÀN BỘ bảng customer_assignments
@@ -1138,6 +1166,7 @@ export class CustomersService {
         })
         .getMany();
 
+      mark('assignees');
       entities.forEach((customer) => {
         const assignmentsForCustomer = activeAssignments.filter(
           (a) => a.customerId === customer.id,
@@ -1166,6 +1195,7 @@ export class CustomersService {
         .orderBy('grp.name', 'ASC')
         .getRawMany();
 
+      mark('joinedGroups');
       const joinedGroupsByCustomerId = new Map<number, Array<{ id: number; name: string }>>();
       for (const row of joinedGroupsRaw) {
         const customerId = Number(row.customerId);
@@ -1200,6 +1230,7 @@ export class CustomersService {
         .addOrderBy('note.created_at', 'DESC')
         .getMany();
 
+      mark('notes');
       const recentNotesByCustomerId = new Map<
         number,
         Array<{ id: number; note: string; createdAt: Date; createdByName: string | null }>
@@ -1236,6 +1267,15 @@ export class CustomersService {
     if (hiddenKeys.size > 0) {
       entities.forEach((customer) =>
         this.uiVisibilityService.stripHiddenCustomerFields(customer as any, hiddenKeys),
+      );
+    }
+
+    if (timing) {
+      mark('visibility');
+      this.logger.log(
+        `[Cust-List] total=${Date.now() - tStart}ms ` +
+          Object.entries(steps).map(([k, v]) => `${k}=${v}ms`).join(' ') +
+          ` rows=${entities.length} limit=${limit} search=${search ? 1 : 0}`,
       );
     }
 

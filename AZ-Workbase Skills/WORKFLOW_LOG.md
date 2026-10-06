@@ -6442,3 +6442,24 @@ Now [deploy]
 > FE: tsc sạch (trừ logo.png), 68 test src/lib/hooks + components/guides pass.
 
 ---
+
+---
+## [2026-10-06 23:00] | Mục 7 plan CPU: đo `GET /customers` (7A) + bỏ log HEAD keep-alive (7B) | Status: Success (chờ đo sau deploy)
+
+**Actor:** Agent
+**Files Changed:**
+- `backend/src/modules/customers/customers.service.ts` — `findAll`: đo từng bước bằng `Logger`, chỉ khi `CPU_TIMING=true` (không đổi query/response)
+- `backend/src/keep-alive/keep-alive.controller.ts` — HEAD không `logger.log` (code cũ giữ bằng comment)
+- `backend/src/keep-alive/keep-alive.controller.spec.ts` — mới (2 test: HEAD không log, GET vẫn log)
+
+**Root Cause:**
+> 7A: `GET /customers` TB 159 ms nhưng mới 5 mẫu, chưa biết bước nào nặng. 7B: Uptime ping HEAD ~5 phút/lần, mỗi lần ghi 1 dòng log.
+
+**Solution:**
+> 7A chỉ thêm đo (chưa tối ưu). 7B bỏ log cho HEAD. Không nới chu kỳ ping (idleTimeout 30 s không ràng buộc, nhưng chưa có bằng chứng Aiven cho phép nới).
+
+**Notes:**
+> BE: `tsc --noEmit` sạch, `nest build` OK, jest keep-alive + customers.service 97/97 pass.
+> **7A CẦN CHECK SAU:** bật `CPU_TIMING=true` trên preview ~30 phút, lọc `[Cust-List]`, dán 30–50 dòng → chọn phương án tối ưu. Tắt biến sau khi đo.
+
+---
