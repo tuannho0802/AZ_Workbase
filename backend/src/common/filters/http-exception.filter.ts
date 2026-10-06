@@ -7,6 +7,7 @@ import {
 } from '@nestjs/common';
 import { Request, Response } from 'express';
 import * as Sentry from '@sentry/nestjs';
+import { isTransientDbError } from '../utils/db-transient-error.util';
 
 @Catch()
 export class AllExceptionsFilter implements ExceptionFilter {
@@ -15,10 +16,15 @@ export class AllExceptionsFilter implements ExceptionFilter {
     const response = ctx.getResponse<Response>();
     const request = ctx.getRequest<Request>();
 
+    // Mất kết nối DB tạm thời -> 503 (FE biết là tạm thời, có thể thử lại) thay vì 500 mơ hồ.
+    const isDbTransient = !(exception instanceof HttpException) && isTransientDbError(exception);
+
     const status =
       exception instanceof HttpException
         ? exception.getStatus()
-        : HttpStatus.INTERNAL_SERVER_ERROR;
+        : isDbTransient
+          ? HttpStatus.SERVICE_UNAVAILABLE
+          : HttpStatus.INTERNAL_SERVER_ERROR;
 
     let message: string | string[];
 
@@ -28,6 +34,8 @@ export class AllExceptionsFilter implements ExceptionFilter {
         typeof exceptionResponse === 'object' && 'message' in exceptionResponse
           ? (exceptionResponse as any).message
           : exception.message;
+    } else if (isDbTransient) {
+      message = 'Hệ thống đang bận, vui lòng thử lại sau giây lát';
     } else {
       message = 'Internal server error';
     }

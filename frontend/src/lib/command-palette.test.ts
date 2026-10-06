@@ -142,3 +142,12 @@ describe('isPaletteHotkey', () => {
     expect(isPaletteHotkey({ ...base, target: input })).toBe(true);
   });
 });
+
+
+describe('isPaletteHotkey - key không hợp lệ', () => {
+  it('không throw và trả false khi e.key là undefined (autofill/extension)', () => {
+    const evt = { key: undefined, ctrlKey: true, metaKey: false, altKey: false, shiftKey: false } as unknown as Parameters<typeof isPaletteHotkey>[0];
+    expect(() => isPaletteHotkey(evt)).not.toThrow();
+    expect(isPaletteHotkey(evt)).toBe(false);
+  });
+});

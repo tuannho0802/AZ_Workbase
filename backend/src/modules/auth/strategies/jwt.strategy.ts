@@ -1,8 +1,9 @@
-import { Injectable, UnauthorizedException } from '@nestjs/common';
+import { Injectable, ServiceUnavailableException, UnauthorizedException } from '@nestjs/common';
 import { PassportStrategy } from '@nestjs/passport';
 import { ExtractJwt, Strategy } from 'passport-jwt';
 import { ConfigService } from '@nestjs/config';
 import { UsersService } from '../../users/users.service';
+import { isTransientDbError, withDbRetry } from '../../../common/utils/db-transient-error.util';
 
 @Injectable()
 export class JwtStrategy extends PassportStrategy(Strategy) {
@@ -20,8 +21,19 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
   }
 
   async validate(payload: any) {
-    const user = await this.usersService.findById(payload.sub);
-    
+    // [AGENT] OLD CODE: const user = await this.usersService.findById(payload.sub);
+    // [AGENT] NEW CODE: query này chạy MỖI request nên dễ trúng connection chết trong pool
+    // (ECONNRESET). Retry 1 lần; nếu DB vẫn lỗi -> 503 (KHÔNG phải 401, để FE không tự logout).
+    let user;
+    try {
+      user = await withDbRetry(() => this.usersService.findById(payload.sub));
+    } catch (err) {
+      if (isTransientDbError(err)) {
+        throw new ServiceUnavailableException('Hệ thống đang bận, vui lòng thử lại sau giây lát');
+      }
+      throw err;
+    }
+
     if (!user || !user.isActive) {
       console.error('[JWT STRATEGY] User not found or inactive:', payload.sub);
       throw new UnauthorizedException('Phiên đăng nhập không hợp lệ');

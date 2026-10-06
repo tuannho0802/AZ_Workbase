@@ -40,7 +40,12 @@ export const getTypeOrmConfig = (configService: ConfigService): TypeOrmModuleOpt
 
     // ✅ Giữ connection sống - tự ping DB
     enableKeepAlive: true,
-    keepAliveInitialDelay: 30000, // Bắt đầu keepAlive sau 30s
+    // [AGENT] OLD CODE: keepAliveInitialDelay: 30000
+    // Aiven/proxy cắt connection rảnh -> ECONNRESET ở request kế tiếp. Ping sớm hơn và
+    // chủ động đóng connection rảnh TRƯỚC khi server cắt (pool tự mở connection mới).
+    keepAliveInitialDelay: 10000,
+    maxIdle: 1,        // giữ tối đa 1 connection rảnh
+    idleTimeout: 30000, // đóng connection rảnh sau 30s
   };
 
   if (isProduction) {

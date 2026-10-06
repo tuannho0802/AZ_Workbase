@@ -113,7 +113,9 @@ export const PALETTE_OPT_OUT_SELECTOR = '[data-no-command-palette], [contentedit
  * không xung đột với việc nhập liệu.
  */
 export function isPaletteHotkey(e: HotkeyEventLike): boolean {
-  if (e.key.toLowerCase() !== 'k') return false;
+  // [AGENT] OLD CODE: if (e.key.toLowerCase() !== 'k') return false;
+  // Một số sự kiện keydown (autofill trình duyệt, extension, IME) có `key` undefined -> crash.
+  if (typeof e.key !== 'string' || e.key.toLowerCase() !== 'k') return false;
   if (!(e.ctrlKey || e.metaKey) || e.altKey || e.shiftKey) return false;
   if (e.isComposing || e.defaultPrevented) return false;
   const target = e.target as { closest?: (selector: string) => unknown } | null | undefined;

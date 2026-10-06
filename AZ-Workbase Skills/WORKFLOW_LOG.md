@@ -5950,3 +5950,22 @@ Now [deploy]
 > Bài mô tả hành vi THẬT: `link_groups.view` mặc định cả 4 role; `manage` Admin+Assistant; `delete` chỉ Admin; ứng viên Quản lý chính/phụ/Content lọc qua Assignment Group Config (mặc định Phòng Marketing; Content thêm vị trí content), chỉ là lọc UI, BE chỉ kiểm tra user đang hoạt động. Verify: `vitest src/lib/guides` 12 file / 328 test pass; `tsc --noEmit` chỉ còn 4 lỗi `logo.png` có sẵn; eslint file mới sạch. Chưa test tay trên trình duyệt. Cần `guides:sync --apply` sau khi duyệt đổi `published: true`.
 
 ---
+
+## [2026-10-06 16:50] | Fix Sentry: ECONNRESET ở JwtStrategy + crash Ctrl+K palette | [Status: Success]
+
+**Actor:** Agent
+
+**Files Changed:**
+- `backend/src/common/utils/db-transient-error.util.ts` (+spec) — `isTransientDbError` / `withDbRetry` (chỉ cho query đọc).
+- `backend/src/modules/auth/strategies/jwt.strategy.ts` — bọc `findById` bằng retry 1 lần; DB vẫn lỗi -> 503 (không phải 401 để FE không tự logout).
+- `backend/src/common/filters/http-exception.filter.ts` — lỗi kết nối DB tạm thời trả 503 thay vì 500.
+- `backend/src/config/database.config.ts` — `keepAliveInitialDelay` 10s, `maxIdle: 1`, `idleTimeout: 30s`.
+- `frontend/src/lib/command-palette.ts` (+test) — `isPaletteHotkey` bỏ qua event có `e.key` không phải string.
+
+**Root Cause:**
+> 1) Connection rảnh trong pool bị Aiven/proxy cắt -> request kế tiếp trúng socket chết, `read ECONNRESET` (query `users` ở JwtStrategy chạy mỗi request nên lộ nhiều nhất). 2) Một số keydown (autofill/extension) có `key` undefined -> `e.key.toLowerCase()` ném TypeError.
+
+**Notes:**
+> Chưa test tay trên Vercel/Aiven thật; theo dõi Sentry vài ngày để xác nhận ECONNRESET giảm.
+
+---
