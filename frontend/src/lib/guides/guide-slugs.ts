@@ -69,7 +69,6 @@ export const PENDING_GUIDE_SLUGS: readonly string[] = [
   'gui-thong-bao',
   'thong-bao-da-gui',
   'profile',
-  'nhom-toi-quan-ly',
   'bao-cao-doanh-so',
   'duyet-phep',
   'nhat-ky-he-thong',
