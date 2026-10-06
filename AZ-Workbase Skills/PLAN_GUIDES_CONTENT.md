@@ -238,6 +238,7 @@ Thứ tự: `khach-hang` → `chia-data` → `quan-ly-phu-trach` → `status-kha
 
 ### P2 — Công việc & Nghỉ phép (cỡ L)
 `cong-viec-dinh-ky` → `trang-thai-cong-viec` → `lich-su-cong-viec` → `hieu-suat-cong-viec` → `nghi-phep` → `duyet-phep` → `loai-phep`.
+- [x] (2026-10-06) `trang-thai-cong-viec` đã viết (`published: false` chờ duyệt) + 3 mẫu mới trong `demos/task-statuses.demos.tsx` (`task-status-manage-table`, `task-status-form`, `task-status-delete-fallback`; dùng lại `task-status-tags`). Còn lại P2: `lich-su-cong-viec` → `hieu-suat-cong-viec` → `nghi-phep` → `duyet-phep` → `loai-phep`. (`cong-viec-dinh-ky` đã `published: true` từ trước.)
 
 ### P3 — Thông báo & cá nhân (cỡ M)
 `thong-bao` → `gui-thong-bao` → `thong-bao-da-gui` → `profile` → `huong-dan-su-dung` → `bao-cao-doanh-so`.

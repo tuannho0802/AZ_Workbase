@@ -6050,3 +6050,21 @@ Now [deploy]
 > Bài mô tả hành vi THẬT: 5 loại lỗi (trùng SĐT/Email, thiếu SĐT/Email, ngày nhập > hôm nay giờ VN), không tính trùng Tên, khách Thùng rác không tính; lọc ở loại trùng theo "khớp cụm" (≥1 khách thỏa thì hiện đủ cụm); tab Thống kê đếm "bản dư" (bản nhập sau bản gốc) phát sinh trong kỳ theo Ngày nhập thực tế, kỳ tối đa 366 ngày, ≤92 ngày vẽ theo ngày, Top 10. Mặc định quyền chỉ Admin (migration 1778500000000). Verify: `vitest src/lib/guides` 12 file / 346 test pass; `tsc --noEmit` chỉ còn 4 lỗi `logo.png` có sẵn; eslint file sửa sạch. Chưa test tay trên trình duyệt. Cần `guides:sync --apply` sau khi duyệt đổi `published: true`. Không có migration mới.
 
 ---
+
+---
+## [2026-10-06 22:00] | Guides P2: bài `trang-thai-cong-viec` + 3 mẫu `task-statuses.demos` | [Status: Success]
+
+**Actor:** Agent
+
+**Files Changed:**
+- `guides-content/trang-thai-cong-viec.md` — bài mới (`published: false`, chờ duyệt nội dung); gỡ slug khỏi `PENDING_GUIDE_SLUGS`.
+- `frontend/src/lib/guides/demos/task-statuses.demos.tsx` — 3 mẫu `task-status-manage-table`, `task-status-form`, `task-status-delete-fallback`; đăng ký ở `guide-demos.tsx`, cập nhật `guide-demos.test.tsx` (46 mẫu).
+- `AZ-Workbase Skills/PLAN_GUIDES_CONTENT.md` — tick P2 `trang-thai-cong-viec`.
+
+**Root Cause (phát hiện khi đối chiếu code thật, KHÔNG sửa trong phase này):**
+> 1) Migration `1781900000000` chỉ seed 3 trạng thái (`not_started`, `completed`, `not_completed`), nhưng DB thật (deploy + local) có 5 trạng thái hệ thống, thêm `in_progress` ('Đang làm') và `in_review` ('Xem xét'), tên `not_started` là 'To-Do' - tạo ngoài migration. Repo mới/DB mới chạy migration sẽ THIẾU 2 mã này (tick checklist đầu tiên/mở lại việc ném 400). Nên có migration seed idempotent cho `in_progress`/`in_review`. Mã `done` KHÔNG tồn tại (trạng thái xong là `completed`), nhưng `DEMO_TASK_STATUSES` (P2a) và `COMPLETED_STATUS_CODES` vẫn dùng `done`. 2) Cờ Quá hạn (FE `periodicTaskOverdue.ts`) và tự khoá quá ân hạn 7 ngày (`periodic-task-auto-overdue.service.ts`) chỉ xét MÃ `in_review`/`done`, KHÔNG xét `is_done_state`; trong khi rollup, nhắc deadline, Guard checklist, Hiệu suất có xét `is_done_state`. Vì mã `done` không tồn tại, việc ở `completed` (`is_done_state=true`) qua hạn kỳ có thể vẫn bị gắn cờ Quá hạn và bị tự khoá - CẦN xác nhận đây có phải chủ ý (có thể cần thêm `completed` vào `COMPLETED_STATUS_CODES` hoặc dùng `is_done_state`). 3) `inUseCount` và `remove()` đếm Task qua `taskRepo` (tự lọc `deleted_at IS NULL`) nên Task trong Thùng rác không được tính, nhưng `periodic_tasks.status_id` là FK `ON DELETE RESTRICT` -> xoá trạng thái chỉ còn Task trong Thùng rác dùng sẽ không bị bắt chọn fallback rồi có thể vướng FK (chưa chạy thử trên DB thật). 4) Mô tả trang (`quan-ly-trang-thai-cong-viec/page.tsx`) còn ghi "Phase 2" ở tooltip 2 công tắc rollup; mẫu `task-status-form` bỏ cụm "(Phase 2)" cho dễ đọc.
+
+**Notes:**
+> Bài + mẫu `task-status-manage-table` khớp 5 trạng thái hệ thống thật (theo ảnh chụp trang). Bài mô tả hành vi THẬT, nêu rõ 2 công tắc `Tính là Hoàn thành`/`Loại khỏi % rollup` tác động tới chỗ nào, và cảnh báo cờ Quá hạn theo mã chứ không theo công tắc. Kết luận "xác nhận" ở Plan: trạng thái KHÔNG có khái niệm khoá; khoá là thuộc tính của việc (`is_locked`); ổ khoá "Hệ thống" chỉ chặn nút Xoá. Verify: `vitest src/lib/guides` 12 file / 353 test pass; `tsc --noEmit` không lỗi mới (không tính `logo.png`); `eslint src/lib/guides` sạch; `next build` OK. Chưa test tay trên trình duyệt. Cần `guides:sync --apply` sau khi duyệt đổi `published: true`. Không có migration mới.
+
+---
