@@ -96,4 +96,67 @@ describe('SidebarBadgesService', () => {
     await service.getBadges({ ...employee, id: 10 });
     expect(customers.countDuplicatePhoneRecords).toHaveBeenCalledTimes(2);
   });
+  describe('CPU_TIMING (Mục 5A - chỉ đo, không đổi hành vi)', () => {
+    const OLD = process.env.CPU_TIMING;
+    afterEach(() => {
+      if (OLD === undefined) delete process.env.CPU_TIMING;
+      else process.env.CPU_TIMING = OLD;
+      jest.restoreAllMocks();
+    });
+    const all = {
+      'customers.invalid_report': PermissionScope.ALL,
+      'customers.trash_manage': PermissionScope.ALL,
+      'users.manage': PermissionScope.ALL,
+      'leave_requests.approve': PermissionScope.ALL,
+      'leave_requests.request': PermissionScope.OWN,
+      'periodic_tasks.view': PermissionScope.ALL,
+    };
+
+    it('tắt: kết quả đúng và KHÔNG ghi log [Badges]', async () => {
+      delete process.env.CPU_TIMING;
+      const log = jest.spyOn((service as any).logger, 'log').mockImplementation();
+      grant(all);
+      const out = await service.getBadges(employee);
+      expect(out).toEqual({ invalidData: 7, trash: 3, pendingUsers: 2, leaveApprovals: 5, myPendingLeave: 1, taskTodo: 4, taskInProgress: 2 });
+      expect(log).not.toHaveBeenCalled();
+    });
+
+    it('bật: kết quả GIỐNG HỆT khi tắt + log 1 dòng có đủ 6 job và cache MISS rồi HIT', async () => {
+      process.env.CPU_TIMING = 'true';
+      const log = jest.spyOn((service as any).logger, 'log').mockImplementation();
+      grant(all);
+      const out = await service.getBadges(employee);
+      expect(out).toEqual({ invalidData: 7, trash: 3, pendingUsers: 2, leaveApprovals: 5, myPendingLeave: 1, taskTodo: 4, taskInProgress: 2 });
+      expect(log).toHaveBeenCalledTimes(1);
+      const line = String(log.mock.calls[0][0]);
+      for (const k of ['invalidData=', 'trash=', 'pendingUsers=', 'leaveApprovals=', 'myPendingLeave=', 'tasks=', 'perm=', 'total=']) {
+        expect(line).toContain(k);
+      }
+      expect(line).toContain('invalidData.cache=MISS');
+      await service.getBadges(employee);
+      expect(String(log.mock.calls[1][0])).toContain('invalidData.cache=HIT');
+    });
+
+    it('bật: 1 badge lỗi vẫn không hỏng badge khác và vẫn được đo', async () => {
+      process.env.CPU_TIMING = 'true';
+      const log = jest.spyOn((service as any).logger, 'log').mockImplementation();
+      jest.spyOn((service as any).logger, 'warn').mockImplementation();
+      grant({ 'customers.trash_manage': PermissionScope.ALL, 'users.manage': PermissionScope.ALL });
+      customers.countTrash.mockRejectedValue(new Error('db down'));
+      expect(await service.getBadges(employee)).toEqual({ pendingUsers: 2 });
+      expect(String(log.mock.calls[0][0])).toContain('trash=');
+    });
+
+    it('bật: 2 request song song không lẫn số đo của nhau', async () => {
+      process.env.CPU_TIMING = 'true';
+      const log = jest.spyOn((service as any).logger, 'log').mockImplementation();
+      grant({ 'customers.trash_manage': PermissionScope.ALL });
+      await Promise.all([service.getBadges(employee), service.getBadges({ ...employee, id: 10 })]);
+      const lines = log.mock.calls.map((c) => String(c[0]));
+      expect(lines).toHaveLength(2);
+      expect(lines.find((l) => l.includes('user=9'))).toBeDefined();
+      expect(lines.find((l) => l.includes('user=10'))).toBeDefined();
+      for (const l of lines) expect(l.match(/trash=/g)).toHaveLength(1);
+    });
+  });
 });

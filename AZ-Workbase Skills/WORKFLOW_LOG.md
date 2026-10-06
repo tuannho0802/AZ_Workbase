@@ -6363,3 +6363,22 @@ Now [deploy]
 > BE: 252 test periodic-tasks pass, nest build OK. FE: tsc sạch (trừ logo.png), 61 test periodic-tasks/hooks pass.
 
 ---
+## [2026-10-06 21:30] | Mục 5A plan CPU: đo từng badge của `/sidebar/badges` | Status: Success (chờ số đo thật)
+
+**Actor:** Agent
+**Files Changed:**
+- `backend/src/modules/sidebar-badges/sidebar-badges.service.ts` — `getBadges`/`safe`/`cachedInvalidData`: khi `CPU_TIMING=true` ghi 1 dòng `[Badges] total=… perm=… invalidData=… trash=… pendingUsers=… leaveApprovals=… myPendingLeave=… tasks=… invalidData.cache=HIT|MISS user=… role=…`. Số đo lưu trong map RIÊNG từng lần gọi (service là singleton, request chạy song song). Tắt biến = hành vi y như cũ, không log.
+- `backend/src/modules/sidebar-badges/sidebar-badges.service.spec.ts` — +4 test (tắt không log; bật kết quả y hệt; badge lỗi vẫn đo; 2 request song song không lẫn số đo)
+- `AZ-Workbase Skills/PLAN_CPU_OPTIMIZATION_ROUND2.md` — tick mục 5A (dòng đo); dòng "nghi ngờ chính" CHƯA tick vì cần số đo
+
+**Root Cause:**
+> Chưa kết luận. Nghi `countDuplicatePhoneRecords` (cache 180 s theo `user:role:scope`) và `countAssignedByStatusCodes`; cần số đo để chọn 5B.
+
+**Solution:**
+> Chỉ thêm đo, KHÔNG đổi truy vấn/cache/response. Chưa làm 5B (tối ưu query / tăng TTL / gộp poll) vì 5B phụ thuộc số đo.
+
+**Notes:**
+> Cách đo: bật `CPU_TIMING=true` trên preview ~30 phút, lọc log `[Badges]`; xem badge nào lớn nhất và tỉ lệ `invalidData.cache=MISS`; đo xong TẮT biến. Nếu MISS cao + invalidData nặng → 5B.2 hoặc 5B.1; nếu không badge nào nặng → ghi kết luận "không đáng tối ưu thêm".
+> BE: sidebar-badges 11 test pass; toàn BE 98 suite / 1698 test pass; tsc + nest build sạch. Chưa động FE (5B.3 gộp poll chưa làm).
+
+---

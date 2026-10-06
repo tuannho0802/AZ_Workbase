@@ -63,20 +63,30 @@ export class SidebarBadgesService {
     return this.permissionsService.hasPermission(user.role, key, user.departmentId, user.positionId);
   }
 
-  private async safe<T>(label: string, fn: () => Promise<T>): Promise<T | undefined> {
+  // [AGENT] OLD CODE (giữ để rollback): safe(label, fn) không có tham số `ms`.
+  // [PERF] PLAN_CPU_OPTIMIZATION_ROUND2 Mục 5A: `ms` (nếu có) là map RIÊNG của từng lần getBadges (không dùng state chung
+  // vì service là singleton, nhiều request chạy song song). Chỉ truyền khi CPU_TIMING=true -> tắt = hành vi y như cũ.
+  private async safe<T>(label: string, fn: () => Promise<T>, ms?: Record<string, number>): Promise<T | undefined> {
+    const t0 = ms ? Date.now() : 0;
     try {
       return await fn();
     } catch (err) {
       this.logger.warn(`Badge "${label}" lỗi: ${err instanceof Error ? err.message : String(err)}`);
       return undefined;
+    } finally {
+      if (ms) ms[label] = Date.now() - t0;
     }
   }
 
-  private async cachedInvalidData(user: SidebarBadgeUser, scope: string | null): Promise<number> {
+  private async cachedInvalidData(user: SidebarBadgeUser, scope: string | null, ms?: Record<string, number>): Promise<number> {
     const key = `${user.id}:${user.role}:${scope ?? 'null'}`;
     const now = Date.now();
     const hit = this.invalidDataCache.get(key);
-    if (hit && hit.expiresAt > now) return hit.value;
+    if (hit && hit.expiresAt > now) {
+      if (ms) ms['invalidData.cache'] = -1; // -1 = cache HIT
+      return hit.value;
+    }
+    if (ms) ms['invalidData.cache'] = 0; // 0 = MISS (chạy query thật)
 
     const value = await this.customersService.countDuplicatePhoneRecords(user.id, user.role, scope);
 
@@ -88,6 +98,8 @@ export class SidebarBadgesService {
   }
 
   async getBadges(user: SidebarBadgeUser): Promise<SidebarBadges> {
+    const ms: Record<string, number> | undefined = process.env.CPU_TIMING === 'true' ? {} : undefined;
+    const tStart = ms ? Date.now() : 0;
     const [invalid, trash, usersManage, leaveApprove, leaveRequest, taskView] = await Promise.all([
       this.resolve(user, 'customers.invalid_report'),
       this.resolve(user, 'customers.trash_manage'),
@@ -97,17 +109,18 @@ export class SidebarBadgesService {
       this.resolve(user, 'periodic_tasks.view'),
     ]);
 
+    const tPerm = ms ? Date.now() - tStart : 0;
     const out: SidebarBadges = {};
     const jobs: Promise<void>[] = [];
     const run = <T,>(label: string, fn: () => Promise<T>, assign: (v: T) => void) =>
       jobs.push(
-        this.safe(label, fn).then((v) => {
+        this.safe(label, fn, ms).then((v) => {
           if (v !== undefined) assign(v);
         }),
       );
 
     if (invalid.allowed) {
-      run('invalidData', () => this.cachedInvalidData(user, invalid.scope), (v) => (out.invalidData = v));
+      run('invalidData', () => this.cachedInvalidData(user, invalid.scope, ms), (v) => (out.invalidData = v));
     }
     if (trash.allowed) {
       run('trash', () => this.customersService.countTrash(), (v) => (out.trash = v));
@@ -148,6 +161,14 @@ export class SidebarBadgesService {
     }
 
     await Promise.all(jobs);
+    if (ms) {
+      const parts = Object.entries(ms).map(([k, v]) =>
+        k.endsWith('.cache') ? `${k}=${v === -1 ? 'HIT' : 'MISS'}` : `${k}=${v}ms`,
+      );
+      this.logger.log(
+        `[Badges] total=${Date.now() - tStart}ms perm=${tPerm}ms ${parts.join(' ') || '(no-jobs)'} user=${user.id} role=${user.role}`,
+      );
+    }
     return out;
   }
 }
