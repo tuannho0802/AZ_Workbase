@@ -6734,3 +6734,17 @@ Now [deploy]
 - 2026-10-07 | Claude | Gộp `useUsersList()` (không role) vào key `users-for-select` + staleTime 5 phút, bỏ refetchOnMount ép buộc (trước đây 2 key cùng gọi GET /users/all). Bổ sung nhãn audit `SYSTEM_RESET` / entity `system` ở audit-meta.ts (test audit-meta đang đỏ do patch 11). vitest toàn bộ pass.
 
 - 2026-10-07 | Claude | Poll /sidebar/poll + /notifications/poll nâng 120s/180s -> 300s (cùng key). useDeviceUsers staleTime 5 phút, useDeviceStatus 2 phút (mutation đã invalidate). Kiểm tra: JwtStrategy đã cache user 10s/instance (auth-user-cache.util), link-groups/chia-data invalidate là cần thiết (chỉ query đang active refetch), useCustomerStats không có invalidate nên giữ nguyên 30s. Tín hiệu quyền/refdata/epoch giờ trễ tối đa ~5 phút (hoặc ngay khi focus tab/bấm Reset).
+
+---
+## [2026-10-07] | Thu hẹp cột User ở GET /periodic-tasks và GET /customers | [Status: Success - chưa commit]
+
+**Actor:** Agent
+**Files Changed:**
+- `backend/src/modules/periodic-tasks/periodic-tasks.service.ts` (+spec) — `findAll`: `primaryAssignee`/`createdBy`/`updatedBy` đổi `leftJoinAndSelect` -> `leftJoin` + `addSelect(id,name)` (FE chỉ đọc `.name`)
+- `backend/src/modules/customers/customers.service.ts` (+spec) — `findAll`: `salesUser`/`marketingUser`/`createdBy`/`updatedBy`/`assignedTo` chỉ chọn id,name,email,role (position vẫn join đủ); người tạo note chỉ id,name; gom `activeAssignees` bằng Map thay `filter()` từng dòng
+
+**Notes:**
+> Trước đây mỗi quan hệ User tải ~25 cột (email, phone, số dư phép, lastLoginAt...) x mỗi dòng và trả hết ra JSON. `findOne` của cả hai module GIỮ NGUYÊN đầy đủ.
+> Chưa đo trên DB/Vercel thật: giảm dữ liệu truyền + hydrate TypeORM + serialize JSON là suy ra từ code, cần đối chiếu Fluid Active CPU sau deploy.
+> Không làm (có chủ đích): `Promise.all` cho các bước attach* (chỉ giảm thời gian chờ, không giảm CPU); bỏ COUNT ở `/customers` (trang thường đầy nên vẫn chạy COUNT, mà tuần tự hoá sẽ tăng độ trễ).
+> Đã chạy: BE `tsc --noEmit` sạch; jest toàn bộ 104 suite / 1779 test pass. Chưa chạy `nest build`, chưa test tay trên trình duyệt.

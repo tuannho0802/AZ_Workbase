@@ -55,6 +55,20 @@ import {
   toRecipientCustomer,
 } from './helpers/customer-notification.helper';
 
+/**
+ * Cột User dùng cho DANH SÁCH khách hàng (Sales/Marketing/Người tạo/Người sửa/Sales được chia).
+ * FE danh sách chỉ đọc id, name, email, role (+ position{name,color} join riêng) - không tải cả entity User
+ * (~25 cột: phone, số dư phép, lastLoginAt...) x 5 quan hệ x mỗi dòng và trả hết ra JSON.
+ * Chi tiết 1 khách (`findOne`) giữ nguyên đầy đủ.
+ */
+const LIST_USER_COLUMNS = (alias: string): string[] => [
+  `${alias}.id`,
+  `${alias}.name`,
+  `${alias}.email`,
+  `${alias}.role`,
+];
+
+
 @Injectable()
 export class CustomersService {
   constructor(
@@ -1011,20 +1025,27 @@ export class CustomersService {
     const queryBuilder =
       this.customersRepository.createQueryBuilder('customer');
 
-    queryBuilder.leftJoinAndSelect('customer.salesUser', 'salesUser');
+    // [AGENT] OLD CODE (giữ để rollback): 4 quan hệ User dùng leftJoinAndSelect (tải ~25 cột User/quan hệ/dòng và trả hết ra JSON):
+    //   queryBuilder.leftJoinAndSelect('customer.salesUser', 'salesUser');
+    //   queryBuilder.leftJoinAndSelect('customer.marketingUser', 'marketingUser');
+    //   queryBuilder.leftJoinAndSelect('customer.createdBy', 'createdBy');
+    //   queryBuilder.leftJoinAndSelect('customer.updatedBy', 'updatedBy');
+    // NEW: chỉ chọn cột FE danh sách thật sự đọc (id, name, email, role) - đã grep FE: UserMiniCard/CustomerCells/
+    // CustomerInfoTab/chia-data chỉ dùng name, role, email, position{name,color}.
+    queryBuilder.leftJoin('customer.salesUser', 'salesUser').addSelect(LIST_USER_COLUMNS('salesUser'));
     // ⚠️ MỚI - rà soát Vị trí 2026-09-10: FE (CustomerInfoTab.tsx) hiện Tag
     // Role cho "Sales phụ trách chính" nhưng chưa từng có Vị trí vì quan hệ
     // `salesUser.position`/`marketingUser.position` chưa bao giờ được JOIN
     // ở đây - object `salesUser`/`marketingUser` trả ra luôn thiếu field
     // `position` dù DB có dữ liệu đúng.
     queryBuilder.leftJoinAndSelect('salesUser.position', 'salesUserPosition');
-    queryBuilder.leftJoinAndSelect('customer.marketingUser', 'marketingUser');
+    queryBuilder.leftJoin('customer.marketingUser', 'marketingUser').addSelect(LIST_USER_COLUMNS('marketingUser'));
     queryBuilder.leftJoinAndSelect('marketingUser.position', 'marketingUserPosition');
     queryBuilder.leftJoinAndSelect('customer.department', 'department');
     // UTM: chỉ chọn id/name/color (không kéo cả entity + quản lý)
     queryBuilder.leftJoin('customer.utm', 'utm').addSelect(['utm.id', 'utm.name', 'utm.color']);
-    queryBuilder.leftJoinAndSelect('customer.createdBy', 'createdBy');
-    queryBuilder.leftJoinAndSelect('customer.updatedBy', 'updatedBy');
+    queryBuilder.leftJoin('customer.createdBy', 'createdBy').addSelect(LIST_USER_COLUMNS('createdBy'));
+    queryBuilder.leftJoin('customer.updatedBy', 'updatedBy').addSelect(LIST_USER_COLUMNS('updatedBy'));
 
     queryBuilder.where('customer.deletedAt IS NULL');
 
@@ -1154,9 +1175,11 @@ export class CustomersService {
     // với where customerId = undefined -> load TOÀN BỘ bảng customer_assignments
     // vào RAM mỗi lần gọi API nhưng không hề dùng kết quả đó ở đâu cả.)
     if (entities.length > 0) {
+      // [AGENT] OLD CODE: .leftJoinAndSelect('assignment.assignedTo', 'assignedTo') (cả entity User) + filter() theo từng customer (O(n*m)).
       const activeAssignments = await this.assignmentRepository
         .createQueryBuilder('assignment')
-        .leftJoinAndSelect('assignment.assignedTo', 'assignedTo')
+        .leftJoin('assignment.assignedTo', 'assignedTo')
+        .addSelect(LIST_USER_COLUMNS('assignedTo'))
         // ⚠️ MỚI - đối xứng salesUser/marketingUser ở trên: "Sales được
         // chia" (CustomerInfoTab.tsx) cũng hiện Tag Role, cần thêm Vị trí.
         .leftJoinAndSelect('assignedTo.position', 'assignedToPosition')
@@ -1167,13 +1190,17 @@ export class CustomersService {
         .getMany();
 
       mark('assignees');
+      // [PERF] Gom 1 lần theo customerId (Map) thay vì filter() toàn bộ assignment cho từng dòng.
+      const assigneesByCustomerId = new Map<number, User[]>();
+      for (const a of activeAssignments) {
+        const list = assigneesByCustomerId.get(a.customerId) ?? [];
+        list.push(a.assignedTo);
+        assigneesByCustomerId.set(a.customerId, list);
+      }
       entities.forEach((customer) => {
-        const assignmentsForCustomer = activeAssignments.filter(
-          (a) => a.customerId === customer.id,
-        );
         (customer as any).activeAssignees = this.mergePrimarySalesIntoAssignees(
           customer,
-          assignmentsForCustomer.map((a) => a.assignedTo),
+          assigneesByCustomerId.get(customer.id) ?? [],
         );
       });
 
@@ -1220,9 +1247,11 @@ export class CustomersService {
       // tránh phải phụ thuộc window function (ROW_NUMBER) của riêng MySQL
       // 8+ để lấy "top N mỗi nhóm" ngay trong SQL.
       const MAX_RECENT_NOTES = 5;
+      // [AGENT] OLD CODE: .leftJoinAndSelect('note.createdByUser', 'noteCreator') - kéo cả entity User chỉ để lấy `name`.
       const noteRows = await this.notesRepository
         .createQueryBuilder('note')
-        .leftJoinAndSelect('note.createdByUser', 'noteCreator')
+        .leftJoin('note.createdByUser', 'noteCreator')
+        .addSelect(['noteCreator.id', 'noteCreator.name'])
         .where('note.customer_id IN (:...ids)', {
           ids: entities.map((e) => e.id),
         })

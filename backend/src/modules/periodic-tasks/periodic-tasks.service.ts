@@ -426,13 +426,26 @@ export class PeriodicTasksService {
     // 93 ngày) - xem `list-window.helper.ts`.
     const dateWindow = resolveListWindow({ periodStartDate, dateFrom, dateTo });
 
+    // [AGENT] OLD CODE (giữ để rollback): 3 quan hệ User dùng leftJoinAndSelect -> tải ~25 cột User x 3 join x tối đa
+    // 100 dòng và trả hết ra JSON (email, phone, số dư phép...). FE danh sách chỉ đọc `id` + `name`.
+    //   .leftJoinAndSelect('task.primaryAssignee', 'primaryAssignee')
+    //   .leftJoinAndSelect('task.createdBy', 'createdBy')
+    //   .leftJoinAndSelect('task.updatedBy', 'updatedBy')
     const qb = this.taskRepo
       .createQueryBuilder('task')
       .leftJoinAndSelect('task.status', 'status')
-      .leftJoinAndSelect('task.primaryAssignee', 'primaryAssignee')
+      .leftJoin('task.primaryAssignee', 'primaryAssignee')
       .leftJoinAndSelect('task.department', 'department')
-      .leftJoinAndSelect('task.createdBy', 'createdBy')
-      .leftJoinAndSelect('task.updatedBy', 'updatedBy')
+      .leftJoin('task.createdBy', 'createdBy')
+      .leftJoin('task.updatedBy', 'updatedBy')
+      .addSelect([
+        'primaryAssignee.id',
+        'primaryAssignee.name',
+        'createdBy.id',
+        'createdBy.name',
+        'updatedBy.id',
+        'updatedBy.name',
+      ])
       .where('task.deletedAt IS NULL');
 
     PeriodicTaskAccessHelper.applyViewFilter(qb, userId, userRole, scope);

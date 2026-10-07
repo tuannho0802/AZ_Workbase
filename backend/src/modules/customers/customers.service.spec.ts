@@ -927,6 +927,58 @@ describe('CustomersService', () => {
     });
   });
 
+  describe('findAll - chỉ select cột User cần cho danh sách (giảm dữ liệu/CPU)', () => {
+    function makeListQb(entities: any[]) {
+      const qb: any = {
+        leftJoin: jest.fn().mockReturnThis(),
+        leftJoinAndSelect: jest.fn().mockReturnThis(),
+        addSelect: jest.fn().mockReturnThis(),
+        select: jest.fn().mockReturnThis(),
+        where: jest.fn().mockReturnThis(),
+        andWhere: jest.fn().mockReturnThis(),
+        orWhere: jest.fn().mockReturnThis(),
+        orderBy: jest.fn().mockReturnThis(),
+        addOrderBy: jest.fn().mockReturnThis(),
+        offset: jest.fn().mockReturnThis(),
+        limit: jest.fn().mockReturnThis(),
+        setParameters: jest.fn().mockReturnThis(),
+        getQuery: jest.fn().mockReturnValue('SELECT 1'),
+        getParameters: jest.fn().mockReturnValue({}),
+        getCount: jest.fn().mockResolvedValue(entities.length),
+        getRawAndEntities: jest.fn().mockResolvedValue({ entities, raw: [] }),
+        getMany: jest.fn().mockResolvedValue([]),
+      };
+      return qb;
+    }
+
+    it('4 quan hệ User ở query chính + assignedTo + người tạo note dùng leftJoin+addSelect (không leftJoinAndSelect cả entity)', async () => {
+      const mainQb = makeListQb([{ id: 1, salesUserId: null }]);
+      const assignQb = makeListQb([]);
+      const noteQb = makeListQb([]);
+      mockCustomerRepo.createQueryBuilder.mockReset();
+      mockCustomerRepo.createQueryBuilder.mockReturnValueOnce(mainQb).mockReturnValueOnce(makeListQb([{ id: 1 }]));
+      mockDepositRepo.createQueryBuilder = jest.fn().mockReturnValue(makeListQb([]));
+      (mockAssignmentRepo as any).createQueryBuilder = jest.fn().mockReturnValue(assignQb);
+      (mockNoteRepo as any).createQueryBuilder = jest.fn().mockReturnValue(noteQb);
+
+      await service.findAll({ page: 1, limit: 20 } as any, 1, 'admin', 'all');
+
+      const fullEntityJoins = mainQb.leftJoinAndSelect.mock.calls.map((c: any[]) => c[1]);
+      for (const alias of ['salesUser', 'marketingUser', 'createdBy', 'updatedBy']) {
+        expect(fullEntityJoins).not.toContain(alias);
+        expect(mainQb.leftJoin.mock.calls.map((c: any[]) => c[1])).toContain(alias);
+        expect(mainQb.addSelect).toHaveBeenCalledWith([`${alias}.id`, `${alias}.name`, `${alias}.email`, `${alias}.role`]);
+      }
+      // Vị trí vẫn được join đầy đủ (FE hiện Tag Vị trí + màu)
+      expect(fullEntityJoins).toEqual(expect.arrayContaining(['salesUserPosition', 'marketingUserPosition']));
+
+      expect(assignQb.leftJoinAndSelect.mock.calls.map((c: any[]) => c[1])).not.toContain('assignedTo');
+      expect(assignQb.addSelect).toHaveBeenCalledWith(['assignedTo.id', 'assignedTo.name', 'assignedTo.email', 'assignedTo.role']);
+      expect(noteQb.leftJoinAndSelect).not.toHaveBeenCalled();
+      expect(noteQb.addSelect).toHaveBeenCalledWith(['noteCreator.id', 'noteCreator.name']);
+    });
+  });
+
   /**
    * ⚠️ MỚI (yêu cầu người dùng): cột "Người xóa" ở trang Thùng rác. Dữ liệu
    * xóa mềm TRƯỚC migration `AddDeletedByToCustomers` có `deletedById =

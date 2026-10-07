@@ -20,6 +20,8 @@ import { PeriodType } from '../../common/enums/period-type.enum';
 function makeFakeQueryBuilder(overrides: { getOne?: any; getManyAndCount?: any; getMany?: any; getCount?: any } = {}) {
   const qb: any = {
     leftJoinAndSelect: jest.fn().mockReturnThis(),
+    leftJoin: jest.fn().mockReturnThis(),
+    addSelect: jest.fn().mockReturnThis(),
     where: jest.fn().mockReturnThis(),
     andWhere: jest.fn().mockReturnThis(),
     orderBy: jest.fn().mockReturnThis(),
@@ -241,6 +243,22 @@ describe('PeriodicTasksService', () => {
         data: tasks, total: 2, page: 1, limit: 20, totalPages: 1,
         dateFrom: '2026-09-21', dateTo: '2026-09-27',
       });
+    });
+
+    it('[PERF] danh sách chỉ select id+name của 3 quan hệ User (không kéo cả entity User)', async () => {
+      const qb = makeFakeQueryBuilder({ getMany: [{ id: 1 }] });
+      mockTaskRepo.createQueryBuilder.mockReturnValue(qb);
+
+      await service.findAll({ page: 1, limit: 20 } as any, 1, Role.ADMIN, 'all');
+
+      const joinedAndSelected = qb.leftJoinAndSelect.mock.calls.map((c: any[]) => c[1]);
+      expect(joinedAndSelected).toEqual(['status', 'department']);
+      expect(qb.leftJoin.mock.calls.map((c: any[]) => c[1])).toEqual(['primaryAssignee', 'createdBy', 'updatedBy']);
+      expect(qb.addSelect).toHaveBeenCalledWith([
+        'primaryAssignee.id', 'primaryAssignee.name',
+        'createdBy.id', 'createdBy.name',
+        'updatedBy.id', 'updatedBy.name',
+      ]);
     });
 
     it('[PERF 3B.4] trang chưa đầy (rows < limit) -> total suy ra, KHÔNG chạy COUNT', async () => {
