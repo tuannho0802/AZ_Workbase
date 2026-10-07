@@ -6566,3 +6566,19 @@ Now [deploy]
 > Bài cố ý KHÔNG nói "Admin đổi giới hạn ảnh ở trang Quản lý lưu trữ ảnh": `useUpdateUploadLimits` không được trang nào dùng (BE có `PATCH /uploads/limits`, quyền `uploads.manage_limits`) — nghi thiếu UI, chưa sửa.
 > Phát hiện: BE `update()` cho sửa đơn PENDING/APPROVED (`leave_requests.edit`) và create/update KHÔNG chặn trùng ngày (bypass 22/9) — bài đã ghi rõ phần trùng ngày. Cần duyệt đổi `published: true` rồi `guides:sync --apply`.
 ---
+---
+## [2026-10-07 15:00] | Mục 9D: chốt hướng "chỉ tải lại khi dữ liệu đổi" (CHỈ cập nhật Plan, chưa làm code) | [Status: Success]
+
+**Actor:** Agent / User
+**Files Changed:**
+- `AZ-Workbase Skills/PLAN_CPU_OPTIMIZATION_ROUND2.md` — viết lại 9D (thay phương án (a)/(b) bằng cơ chế version-signal qua `/notifications/poll`, lưới an toàn `staleTime` 2 giờ), cập nhật bảng rủi ro Phụ lục B và thứ tự commit 9F.
+
+**Root Cause:**
+> `CacheControlInterceptor(300, true)` trả `private, no-cache` nên `300` vô tác dụng; các hook danh mục vẫn hỏi lại mỗi 30 s–5 phút. `max-age` HTTP không dùng được vì refetch sau `invalidate` có thể nhận bản HTTP-cache cũ.
+
+**Solution:**
+> BE: bộ đếm `refdata_version:<domain>` trong `settings`, bump ở mọi create/update/remove, trả `refSig` trong `/notifications/poll` (đọc gộp 1 query với `permissions_version`). FE: invalidate đúng domain khi `refSig` đổi; `staleTime` 2 giờ làm lưới an toàn; HTTP giữ `private, no-cache`.
+
+**Notes:**
+> Chưa sửa code BE/FE. Bước tiếp theo: 9D-1…9D-4. Chủ dự án chốt lưới an toàn 2 giờ (đề xuất ban đầu 6 giờ).
+---

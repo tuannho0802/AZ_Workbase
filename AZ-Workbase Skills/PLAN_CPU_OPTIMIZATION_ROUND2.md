@@ -506,12 +506,30 @@ Phương án (chọn 1, đo trước/sau; mỗi cái 1 commit):
 - [x] (`usersForSelectCache.test.tsx`, 4 test) Test: mở 2 modal dùng danh sách người dùng liên tiếp → chỉ 1 `GET /users/all`; sửa nhân viên → danh sách tươi.
 **Tiêu chí hoàn thành:** `GET /users/all` trùng < 5 s về 0; số lần/phiên giảm ≥ 40% (cùng kịch bản).
 
-### 9D. `departments` — `CacheControlInterceptor(300, true)` không có tác dụng
-**Đã xác minh trong code:** `departments.controller.ts:40` dùng `new CacheControlInterceptor(300, true)`. Khi `revalidate=true` interceptor trả
-`private, no-cache` (xem `cache-control.interceptor.ts`) → tham số `300` **bị bỏ qua**, mỗi lần gọi đều chạm server (log: 21 request, TB 410 ms, cộng 16 lần 401).
-- [ ] **Quyết định cần chủ dự án chốt (đánh đổi):** (a) giữ nguyên (luôn tươi, tốn invocation); (b) đổi thành `new CacheControlInterceptor(300)` — `public, max-age=300` (phòng ban ít đổi, Admin đổi ở máy khác thấy chậm tối đa 5 phút). Lưu ý lịch sử bug "vừa sửa xong bảng chưa hiện" ở comment interceptor; **không** làm (b) nếu FE chưa invalidate/`cache: 'no-cache'` sau khi sửa phòng ban.
-- [ ] Nếu chọn (b): cùng Mục 6A, `useDepartments` đã có `staleTime` 5 phút và invalidate `['departments']` nên rủi ro chủ yếu ở trình duyệt khác.
-- [ ] Đo: số `GET /departments` trên mỗi phiên.
+### 9D. Danh mục ít đổi (departments, positions, roles, statuses, leave-types, media-sources) — "chỉ gọi lại khi dữ liệu thật sự đổi" — 📝 ĐÃ CHỐT HƯỚNG (2026-10-07), CHƯA LÀM CODE
+**Bằng chứng/đã xác minh trong code:** `departments.controller.ts:40` dùng `CacheControlInterceptor(300, true)` → header `private, no-cache`, tham số `300` bị bỏ qua, mỗi lần gọi đều chạm server (log: 21 request, TB 410 ms, cộng 16 lần 401). Các hook danh mục khác chỉ dùng `staleTime` 30 s–5 phút nên vẫn hỏi lại định kỳ.
+**Quyết định của chủ dự án (thay cho 2 phương án (a)/(b) cũ):** KHÔNG chọn `max-age` HTTP. Thay vào đó: **không kiểm tra định kỳ; chỉ tải lại khi có thay đổi dữ liệu**, theo cơ chế version "đi nhờ" `/notifications/poll` (đã có sẵn `permissions_version` → `permSig` → `usePermissionChangeSignal`). **Lưới an toàn `staleTime` = 2 giờ** (không dùng `Infinity`; chủ dự án đã giảm đề xuất 6 giờ xuống 2 giờ).
+
+**Thiết kế**
+- **BE:** tổng quát hoá `PermissionsVersionService` thành bộ đếm theo từng bảng trong bảng `settings` có sẵn (không migration schema): key `refdata_version:<domain>` với domain ∈ `departments`, `positions`, `roles` (kèm `roles/colors`), `customer_statuses`, `periodic_task_statuses`, `leave_types`, `media_sources`. `bump(domain)` dùng lại đúng câu `INSERT ... ON DUPLICATE KEY UPDATE value = value + 1` (nguyên tử, fire-and-forget qua `waitUntil`, không bao giờ throw). Gắn `bump` vào MỌI `create/update/remove` (và lock/unlock của media-sources, gán/bỏ manager của departments) của service tương ứng. `/notifications/poll` trả thêm `refSig: { departments: n, ... }`; **đọc gộp chung 1 query** với `permissions_version` (`WHERE key = 'permissions_version' OR key LIKE 'refdata_version:%'`), cache RAM 10 s/instance như hiện tại → **không thêm request, không thêm lượt DB**. Giữ nguyên `permSig`.
+- **FE:** thêm `useRefDataChangeSignal(refSig)` (cùng kiểu `usePermissionChangeSignal`, gọi đúng 1 lần trong `useNotificationPoll`): lần đầu chỉ ghi mốc; khác mốc của DOMAIN nào thì chỉ invalidate đúng key của domain đó (đổi phòng ban không kéo refetch vị trí/status). Đổi user đăng nhập → đặt lại mốc. BE cũ chưa trả `refSig` → bỏ qua, chạy bằng lưới 2 giờ. Các hook danh mục: `staleTime: REFERENCE_DATA_STALE_MS` mới = **2 giờ** (`lib/query-stale.ts`), `refetchOnMount: false`; invalidate sau mutation cục bộ giữ nguyên.
+- **HTTP cache GIỮ `private, no-cache`** (tức 9D(a) ở tầng HTTP). **TUYỆT ĐỐI không** đổi sang `max-age`: khi `invalidate` kích hoạt refetch, trình duyệt có thể trả bản HTTP-cache cũ → dữ liệu cũ dù đã có tín hiệu. Lần refetch hiếm hoi luôn hỏi server (thường 304 nhờ ETag).
+- **Gom chỗ lệch cache trước khi bật** (nếu không cơ chế mới bỏ sót): `chia-data/page.tsx:167` (`axiosInstance.get('/departments')` gọi thẳng) và `useBroadcastCompose.ts:69` (key riêng `['departments-for-select']`, không bao giờ bị invalidate) → dùng chung key `['departments']`.
+- `permissions` (danh sách quyền) và ma trận quyền: giữ nguyên cơ chế `permSig` hiện có, không thêm bộ đếm.
+
+**Đánh đổi đã chấp nhận**
+- Máy/trình duyệt khác thấy thay đổi sau tối đa ~1 chu kỳ poll (2 phút; hoặc ngay khi quay lại tab vì poll có `refetchOnWindowFocus`), không phải tức thì (SSE/WebSocket không phù hợp Vercel serverless). Tab treo > 5 phút ngừng poll, làm mới khi quay lại.
+- F5 / mở trang mới vẫn tải 1 lần (QueryClient chưa có persister; persister bị hoãn vì rủi ro lộ chéo tài khoản ở Mục 6B).
+- **Rủi ro lớn nhất = sót `bump`** → dữ liệu cũ trên máy khác tới tối đa 2 giờ (nhờ lưới an toàn). Thay đổi ngoài API (migration, seed, sửa SQL tay) không tự bump → khi sửa danh mục bằng migration/SQL phải bump thủ công (hoặc chấp nhận tối đa 2 giờ).
+
+**Việc cần làm (mỗi bước 1 commit, patch là delta trên HEAD đã pull)**
+- [ ] 9D-1 BE: `RefDataVersionService` (tổng quát hoá, giữ `permSig`), gắn `bump` vào 7 nhóm service, `refSig` trong `/notifications/poll`; jest (bump đúng domain, đọc gộp 1 query, lỗi DB không làm hỏng poll).
+- [ ] 9D-2 BE: test quét "mọi POST/PATCH/DELETE của controller danh mục đều dẫn tới `bump`" để chống sót.
+- [ ] 9D-3 FE: `useRefDataChangeSignal` + `REFERENCE_DATA_STALE_MS` = 2 giờ + `refetchOnMount: false` cho hook danh mục; gom 2 chỗ lệch cache ở trên; vitest đếm request qua `axiosInstance` thật (mở nhiều trang/modal → 1 GET; refSig đổi → đúng 1 GET đúng domain; refSig không đổi → 0 GET; BE cũ không có `refSig` → vẫn đúng).
+- [ ] 9D-4 Cập nhật bảng "Trước → Sau" (Mục 9F) và `WORKFLOW_LOG.md`.
+**Thứ tự deploy:** BE trước hoặc cùng lúc FE. FE mới + BE cũ vẫn đúng nhờ lưới 2 giờ (chỉ chưa có lợi ích tức thời).
+**Tiêu chí hoàn thành:** `GET /departments`, `/positions`, `/roles`, statuses, leave-types sau lần tải đầu của phiên → ≈ 0 (chỉ phát sinh khi dữ liệu đổi hoặc qua 2 giờ); sửa phòng ban ở máy A → máy B thấy trong ≤ ~2 phút mà không cần F5.
+**Đo:** số `GET` từng route danh mục trên mỗi phiên (cùng kịch bản, ≥ 200 request).
 
 ### 9E. Không cần làm (đã cân nhắc từ log prod)
 - **Preflight `OPTIONS` (31% số request):** đã trả lời **trước** khi khởi tạo Nest (`respondToPreflight`), TB 65 ms / trung vị 7 ms, `maxAge` đã `7200` (mức tối đa Chrome chấp nhận). Mỗi URL (kể cả khác query của `periodic-tasks`) cần 1 preflight riêng nên không giảm thêm được. **Giữ nguyên.**
@@ -522,7 +540,7 @@ Phương án (chọn 1, đo trước/sau; mỗi cái 1 commit):
 ### 9F. Đo lại sau Mục 9
 - [ ] Vì prod đang `CPU_TIMING=false`: so sánh bằng **số request theo route + `durationMs`** (cùng kịch bản, cùng khoảng 30 phút, ≥ 200 request), không so tổng.
 - [ ] Bảng "Trước → Sau" cần có: số 401, số `POST /auth/refresh`, `GET /periodic-tasks` sau mỗi POST checklist, `GET /users/all`, `GET /departments`.
-- [ ] Thứ tự commit (mỗi mục 1 commit): **9A ✅ → 9C (2 chỗ) → 9B-0 → 9B-1 → 9D (nếu chốt b)**. Ghi entry `WORKFLOW_LOG.md` sau mỗi mục.
+- [ ] Thứ tự commit (mỗi mục 1 commit): **9A ✅ → 9C ✅ → 9B-0 ✅ → 9B-1 ✅ → 9B-2 ✅ → 9D (hướng version-signal, 9D-1…9D-4)**. Ghi entry `WORKFLOW_LOG.md` sau mỗi mục.
 - [ ] Không bật `CPU_TIMING=true` trên prod để đo mục này (tự tốn CPU); nếu cần chi tiết 9B-3 thì bật trên **preview** ~30 phút rồi tắt.
 
 ---
@@ -554,4 +572,4 @@ Phương án (chọn 1, đo trước/sau; mỗi cái 1 commit):
 | 9A | Refresh chủ động sai (đồng hồ lệch/token lạ) → vòng refresh | Giữ lưới 401 cũ; revert commit |
 | 9B-1 | Nhãn "X/Z" lệch so với DB | Luôn lấy số từ response BE; revert → invalidate như cũ |
 | 9C | Danh sách người dùng cũ sau khi sửa nhân viên | Thêm invalidate còn thiếu / giảm `staleTime` (chỉ còn 2 chỗ đổi) |
-| 9D(b) | Phòng ban đổi chưa hiện tới 5 phút | Quay lại `(300, true)` |
+| 9D | Sót `bump` → danh mục cũ trên máy khác tới 2 giờ; `max-age` HTTP làm refetch trả bản cũ | Thêm `bump` còn thiếu / giảm `staleTime` lưới an toàn; revert → `staleTime` 5 phút như cũ (`private, no-cache` giữ nguyên) |
