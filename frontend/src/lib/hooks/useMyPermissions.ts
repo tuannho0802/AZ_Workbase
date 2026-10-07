@@ -41,8 +41,9 @@ export function useMyPermissions(): UseMyPermissionsResult {
     queryFn: () => rolesApi.getMyPermissions(),
     enabled: isAuthenticated,
     staleTime: STALE_TIME_MS,
-    // [AGENT] NEW CODE: quay lại tab -> refetch nếu dữ liệu đã quá staleTime (QueryClient mặc định của app tắt tuỳ chọn này).
-    refetchOnWindowFocus: true,
+    // [AGENT] OLD CODE (giữ lại để rollback): refetchOnWindowFocus: true  (quay lại tab -> refetch nếu quá staleTime)
+    // NEW: bỏ - từ khi có `permSig` trong poll (poll tự refetch khi quay lại tab), quyền đổi sẽ được báo và invalidate
+    // đúng lúc; giữ thêm refetch-on-focus chỉ tốn thêm 1 request mỗi lần quay lại tab.
   });
 
   const permissions = query.data;

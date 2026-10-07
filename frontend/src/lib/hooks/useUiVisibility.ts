@@ -17,7 +17,8 @@ export const useMyHiddenElements = (resource: string) => {
     queryKey: MY_HIDDEN_KEY(resource),
     queryFn: () => uiVisibilityApi.getMyHidden(resource),
     staleTime: 30 * 1000, // khớp CACHE_TTL_MS ở BE
-    refetchOnWindowFocus: true, // [AGENT] NEW CODE: quay lại tab -> refetch nếu đã quá staleTime
+    // [AGENT] OLD CODE (giữ lại để rollback): refetchOnWindowFocus: true
+    // NEW: bỏ - `permSig` trong poll đã báo khi ẩn/hiện UI đổi (usePermissionChangeSignal invalidate khoá này).
   });
 
   return { hiddenKeys: (data as string[]) ?? EMPTY_HIDDEN, isLoading };

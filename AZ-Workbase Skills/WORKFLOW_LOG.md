@@ -6717,3 +6717,16 @@ Now [deploy]
 > Mẫu chỉ phủ tab Danh sách + form; tab Chờ duyệt / Đã xoá mô tả bằng chữ.
 
 ---
+## [2026-10-07] | Giảm request thừa sau thao tác thông báo + khi quay lại tab | [Status: Success - chưa commit]
+
+**Actor:** Agent
+**Files Changed:**
+- `frontend/src/lib/api/notifications.api.ts` — thêm `pollLite()` (`GET /notifications/poll`, không kèm badges)
+- `frontend/src/lib/hooks/useNotifications.ts` (+test mới) — sau markRead/markAllRead/remove/restore/purge: bỏ `invalidateQueries(poll)` (poll gộp ~8 query), thay bằng `mergeLitePoll` gộp `unread/version` vào cache poll, giữ nguyên `badges`
+- `frontend/src/lib/hooks/useMyPermissions.ts`, `useUiVisibility.ts` — bỏ `refetchOnWindowFocus` (đã có `permSig` trong poll báo khi quyền/ẩn-hiện UI đổi)
+
+**Notes:**
+> Quay lại tab: từ ~3 request (poll + my-permissions + ui-visibility) còn 1 (poll). Đánh dấu đã đọc: từ ~8 query BE còn ~2. Nhịp poll 120s giữ nguyên.
+> Đã chạy: FE tsc chỉ còn lỗi `logo.png` có sẵn; vitest `src/lib/hooks` 16 file / 114 test pass + test liên quan. Chưa chạy trọn vitest, chưa test tay.
+
+---

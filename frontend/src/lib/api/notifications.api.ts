@@ -22,6 +22,15 @@ export const notificationsApi = {
     return response.data;
   },
 
+  /**
+   * Poll NHẸ (không kèm `badges`, ~2 query thay vì ~8) - chỉ dùng để làm mới số chưa đọc ngay sau thao tác với thông báo.
+   * Vẫn trả `version`/`permSig`/`refSig`/`epoch` nên gộp thẳng vào cache poll chung mà không lệch mốc.
+   */
+  pollLite: async (): Promise<NotificationPollResponse> => {
+    const response = await axiosInstance.get<NotificationPollResponse>('/notifications/poll');
+    return response.data;
+  },
+
   /** Idempotent - đã đọc rồi thì BE giữ nguyên `readAt` cũ. */
   markRead: async (id: number): Promise<{ id: number; isRead: true }> => {
     const response = await axiosInstance.patch<{ id: number; isRead: true }>(`/notifications/${id}/read`);

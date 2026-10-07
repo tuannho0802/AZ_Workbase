@@ -1,6 +1,6 @@
-import { useInfiniteQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { useInfiniteQuery, useMutation, useQueryClient, type QueryClient } from '@tanstack/react-query';
 import { notificationsApi } from '../api/notifications.api';
-import type { ListNotificationsParams, NotificationCategory } from '../types/notification.types';
+import type { ListNotificationsParams, NotificationCategory, NotificationPollResponse } from '../types/notification.types';
 
 /** Query key dùng chung - invalidate `list`/`poll` sau mỗi thao tác ghi. */
 export const notificationKeys = {
@@ -21,11 +21,30 @@ export function useNotificationList(params: Omit<ListNotificationsParams, 'curso
   });
 }
 
+/**
+ * Làm mới số chưa đọc sau thao tác ghi mà KHÔNG chạy lại cả poll gộp. Cache poll chưa có (chưa poll lần nào) hoặc request
+ * lỗi -> bỏ qua, nhịp poll kế tiếp tự lành. Gộp `{...cũ, ...nhẹ}` nên `badges` cũ còn nguyên.
+ */
+export async function mergeLitePoll(queryClient: QueryClient): Promise<void> {
+  try {
+    const lite = await notificationsApi.pollLite();
+    queryClient.setQueryData<NotificationPollResponse>(notificationKeys.poll, (old) => (old ? { ...old, ...lite } : old));
+  } catch {
+    // Lỗi mạng tạm thời: để nhịp poll kế tiếp cập nhật.
+  }
+}
+
 export function useNotificationMutations() {
   const queryClient = useQueryClient();
+  // [AGENT] OLD CODE (giữ lại để rollback):
+  //   queryClient.invalidateQueries({ queryKey: notificationKeys.list });
+  //   queryClient.invalidateQueries({ queryKey: notificationKeys.poll });
+  // `poll` giờ gộp cả 7 badge sidebar (~8 query BE) nên mỗi lần đánh dấu đã đọc/xoá kéo theo cả đống đếm không liên quan.
+  // NEW: chỉ tải poll NHẸ (/notifications/poll) rồi gộp `unread`/`version` vào cache poll chung, GIỮ NGUYÊN `badges`
+  // (badge khác không đổi vì thao tác thông báo; vẫn tự làm mới ở nhịp poll kế tiếp).
   const refresh = () => {
     queryClient.invalidateQueries({ queryKey: notificationKeys.list });
-    queryClient.invalidateQueries({ queryKey: notificationKeys.poll });
+    void mergeLitePoll(queryClient);
   };
 
   const markRead = useMutation({
