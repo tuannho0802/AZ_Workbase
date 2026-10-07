@@ -45,10 +45,25 @@ export function patchTaskChecklistProgress<T>(
   taskId: number,
   progress: { done: number; total: number },
 ): T {
+  const patchRows = (rows: unknown[]) =>
+    rows.map((r) => ((r as { id?: number }).id === taskId ? { ...(r as object), checklistProgress: progress } : r));
+  const hasRow = (rows: unknown) => Array.isArray(rows) && rows.some((r) => (r as { id?: number })?.id === taskId);
+
+  // Dạng `useInfiniteQuery` (Agenda/Kanban/Calendar tải dần): { pages: [{ data: [...] }, ...], pageParams }.
+  const pages = (old as { pages?: unknown } | undefined)?.pages;
+  if (Array.isArray(pages)) {
+    if (!pages.some((p) => hasRow((p as { data?: unknown } | undefined)?.data))) return old;
+    return {
+      ...(old as object),
+      pages: pages.map((p) => {
+        const rows = (p as { data?: unknown } | undefined)?.data;
+        return hasRow(rows) ? { ...(p as object), data: patchRows(rows as unknown[]) } : p;
+      }),
+    } as T;
+  }
+
+  // Dạng `useQuery` thường (Bảng phân trang): { data: [...] }.
   const rows = (old as { data?: unknown } | undefined)?.data;
-  if (!Array.isArray(rows) || !rows.some((r) => (r as { id?: number })?.id === taskId)) return old;
-  return {
-    ...(old as object),
-    data: rows.map((r) => ((r as { id?: number }).id === taskId ? { ...(r as object), checklistProgress: progress } : r)),
-  } as T;
+  if (!hasRow(rows)) return old;
+  return { ...(old as object), data: patchRows(rows as unknown[]) } as T;
 }

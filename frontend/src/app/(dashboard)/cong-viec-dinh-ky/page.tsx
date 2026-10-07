@@ -1,6 +1,6 @@
 'use client';
 
-import { Suspense, useEffect, useMemo, useRef, useState } from 'react';
+import { Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useRouter, usePathname, useSearchParams } from 'next/navigation';
 import {
     Table,
@@ -49,6 +49,10 @@ import { useAddTaskCustomers, useRemoveTaskCustomer } from '@/lib/hooks/usePerio
 import { useAddTaskSecondaryAssignee, useRemoveTaskSecondaryAssignee } from '@/lib/hooks/usePeriodicTaskSecondaryAssignees';
 import {
     usePeriodicTasks,
+    usePeriodicTasksInfinite,
+    flattenTaskPages,
+    VIEW_PAGE_SIZE,
+    CALENDAR_PAGE_SIZE,
     usePeriodicTask,
     useCreatePeriodicTask,
     useDeletePeriodicTask,
@@ -83,6 +87,7 @@ import {
 import { PeriodicTasksAgendaView } from '@/components/periodic-tasks/PeriodicTasksAgendaView';
 import { PeriodicTasksKanbanView } from '@/components/periodic-tasks/PeriodicTasksKanbanView';
 import { PeriodicTasksCalendarView } from '@/components/periodic-tasks/PeriodicTasksCalendarView';
+import { LoadMoreBar } from '@/components/periodic-tasks/LoadMoreBar';
 import { getOverdueDays, isManualOverdueActive, isOverdueFlagged } from '@/lib/utils/periodicTaskOverdue';
 import { TaskTitlePill, TaskChainBadge } from '@/components/periodic-tasks/TaskTitlePill';
 import { buildTaskLinkChains, sortTasksByChain, getChainRunFlags } from '@/lib/utils/taskLinkChains';
@@ -370,6 +375,7 @@ function PeriodicTasksPageContent() {
     // đúng 1 trong 2 query tại 1 thời điểm (`enabled`) - tránh gọi cả 2 API
     // song song khi người dùng chỉ đang xem 1 view.
     const [view, setView] = useState<'table' | 'agenda' | 'kanban' | 'calendar' | 'trash'>('agenda');
+    const rangeBeforeCalendarRef = useRef<DateRangeTuple | null>(null);
     // Nút thao tác chỉ-icon: 1 toggle DUY NHẤT cho mọi view (Bảng/Ngày/Kanban), mặc định BẬT.
     // Tách biệt hoàn toàn với chế độ mật độ card Kanban (Tự động/Mở rộng/Thu gọn).
     const [iconActions, setIconActions] = useState(true);
@@ -377,19 +383,15 @@ function PeriodicTasksPageContent() {
     const { data, isLoading, isFetching } = usePeriodicTasks(filters, view === 'table');
     const tasks = data?.data ?? [];
 
+    // 3 view không phân trang giờ TẢI DẦN (infinite): chỉ lấy `VIEW_PAGE_SIZE` Task đầu của ĐÚNG khoảng ngày đang
+    // chọn, trang sau chỉ tải khi cuộn tới / bấm "Tải thêm" (xem `LoadMoreBar`). Trước đây mỗi lần vào view tải
+    // thẳng 100 Task (tối đa BE cho phép: `PeriodicTaskFiltersDto.limit` @Max(100) - giữ nguyên, không đổi BE).
+    // [AGENT] OLD CODE (giữ để rollback): limit: 100 + usePeriodicTasks(nonTableFilters, ...) 1 trang duy nhất.
+    // Lịch tháng cần thấy nhiều ô cùng lúc nên mỗi lần tải nhiều hơn (CALENDAR_PAGE_SIZE).
+    const viewPageSize = view === 'calendar' ? CALENDAR_PAGE_SIZE : VIEW_PAGE_SIZE;
     const nonTableFilters = useMemo(
         () => ({
-            page: 1,
-            // 100 - BUG THẬT đã gặp (2026-09-15, xem WORKFLOW_LOG): giá trị
-            // gốc là 500 nhưng `PeriodicTaskFiltersDto.limit` ở Backend giới
-            // hạn cứng `@Max(100)` (đúng convention chung toàn dự án, xem
-            // `CustomerFiltersDto` cùng mức 100) - luôn bị 400 "limit must
-            // not be greater than 100" cho MỌI role (kể cả Admin), khiến 3/4
-            // view (Agenda/Kanban/Calendar) không tải được data, chỉ view
-            // Bảng (dùng `limit` nhỏ từ Table) còn chạy được. 100 vẫn đủ lớn
-            // cho quy mô Task hiện tại (vài chục Task) - không đổi giới hạn
-            // Backend để giữ đúng convention chung, chỉ sửa FE cho khớp.
-            limit: 100,
+            limit: viewPageSize,
             search: search || undefined,
             periodType,
             statusId,
@@ -401,13 +403,24 @@ function PeriodicTasksPageContent() {
             dateFrom: dateRange[0].format('YYYY-MM-DD'),
             dateTo: dateRange[1].format('YYYY-MM-DD'),
         }),
-        [search, periodType, statusId, assigneeId, primaryAssigneeId, secondaryAssigneeId, departmentId, overdueOnly, dateRange],
+        [viewPageSize, search, periodType, statusId, assigneeId, primaryAssigneeId, secondaryAssigneeId, departmentId, overdueOnly, dateRange],
     );
-    const { data: viewData, isLoading: viewLoading, isFetching: viewFetching } = usePeriodicTasks(
-        nonTableFilters,
-        view !== 'table' && view !== 'trash',
-    );
-    const viewTasks = viewData?.data ?? [];
+    const {
+        data: viewData,
+        isLoading: viewLoading,
+        isFetching: viewFetching,
+        isFetchingNextPage: viewFetchingMore,
+        hasNextPage: viewHasMore,
+        fetchNextPage: viewFetchMore,
+    } = usePeriodicTasksInfinite(nonTableFilters, view !== 'table' && view !== 'trash');
+    const viewTasks = useMemo(() => flattenTaskPages(viewData?.pages), [viewData]);
+    // `total` lấy từ trang mới nhất (BE tính lại mỗi trang) - luôn đúng nhất sau khi có Task mới chen vào.
+    const viewTotal = viewData?.pages[viewData.pages.length - 1]?.total ?? 0;
+    const loadMoreView = useCallback(() => {
+        if (viewHasMore && !viewFetchingMore) void viewFetchMore();
+    }, [viewHasMore, viewFetchingMore, viewFetchMore]);
+    // Đang tải TRANG TIẾP thì giữ nguyên danh sách (không nháy skeleton toàn view).
+    const viewBusy = viewLoading || (viewFetching && !viewFetchingMore);
 
     // Phase 8 (yêu cầu chủ dự án 2026-09-15): UI "nối/xếp hàng" các Task đã
     // liên kết (Phase 2 - `periodic_task_links`). Chỉ tra cạnh liên kết
@@ -1417,7 +1430,15 @@ function PeriodicTasksPageContent() {
                     const next = v as typeof view;
                     setView(next);
                     // Lịch tháng hiển thị cả tháng -> tải đúng tháng hiện tại (bounded, <= 31 ngày).
-                    if (next === 'calendar') setDateRange(getMonthRange(dayjs()));
+                    // Nhớ khoảng ngày đang xem để KHI RỜI Lịch thì quay về đúng khoảng đó (trước đây ở lại cả
+                    // tháng -> Ngày/Kanban/Bảng bị kéo theo dữ liệu cả tháng dù người dùng chỉ xem 1 tuần).
+                    if (next === 'calendar' && view !== 'calendar') {
+                        rangeBeforeCalendarRef.current = dateRange;
+                        setDateRange(getMonthRange(dayjs()));
+                    } else if (view === 'calendar' && next !== 'calendar' && rangeBeforeCalendarRef.current) {
+                        setDateRangeRaw(rangeBeforeCalendarRef.current);
+                        rangeBeforeCalendarRef.current = null;
+                    }
                 }}
                 options={[
                     { label: 'Bảng', value: 'table', icon: <TableOutlined /> },
@@ -1434,17 +1455,6 @@ function PeriodicTasksPageContent() {
                 </span>
             )}
             </div>
-
-            {/* 3 view không phân trang chỉ tải tối đa 100 Task - nếu khoảng lọc có nhiều
-                hơn thì báo rõ (thay vì im lặng cắt bớt). */}
-            {view !== 'table' && view !== 'trash' && viewData && viewData.total > viewTasks.length && (
-                <Alert
-                    type="warning"
-                    showIcon
-                    style={{ marginBottom: 12 }}
-                    message={`Đang hiển thị ${viewTasks.length}/${viewData.total} Công việc - hãy thu hẹp bộ lọc (ngày/phụ trách/trạng thái) để xem đầy đủ, hoặc dùng view Bảng (có phân trang).`}
-                />
-            )}
 
             {view === 'table' && (
                 <Table
@@ -1482,7 +1492,7 @@ function PeriodicTasksPageContent() {
                 <PeriodicTasksAgendaView
                     iconActions={iconActions}
                     tasks={viewTasks}
-                    loading={viewLoading || viewFetching}
+                    loading={viewBusy}
                     chains={chains}
                     edges={linksData?.edges ?? []}
                     resolveChainTask={resolveChainTask}
@@ -1507,7 +1517,7 @@ function PeriodicTasksPageContent() {
                     iconActions={iconActions}
                     tasks={viewTasks}
                     statuses={statuses}
-                    loading={viewLoading || viewFetching}
+                    loading={viewBusy}
                     chains={chains}
                     resolveChainTask={resolveChainTask}
                     canEdit={canEdit}
@@ -1535,6 +1545,18 @@ function PeriodicTasksPageContent() {
                     onSelectTask={canEdit ? openEditModal : undefined}
                     chains={chains}
                     resolveChainTask={resolveChainTask}
+                />
+            )}
+
+            {/* 3 view tải dần - đặt DƯỚI view: Ngày/Kanban tự tải trang kế khi thanh này cuộn vào màn hình; Lịch tháng chỉ tải khi bấm. */}
+            {view !== 'table' && view !== 'trash' && (
+                <LoadMoreBar
+                    loaded={viewTasks.length}
+                    total={viewTotal}
+                    hasMore={!!viewHasMore}
+                    loadingMore={viewFetchingMore}
+                    onLoadMore={loadMoreView}
+                    auto={view !== 'calendar'}
                 />
             )}
 

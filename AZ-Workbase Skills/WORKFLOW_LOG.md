@@ -6789,3 +6789,18 @@ Now [deploy]
 **Notes:**
 > Đã soi, CHƯA đổi (có chủ đích): (a) `limit: 100` ở agenda — BE `@Max(100)`, agenda đã chỉ tải đúng cửa sổ ngày (mặc định Tuần này), giảm limit sẽ cắt dữ liệu; (b) `sidebar/poll` đã là 1 truy vấn thông báo + bản chụp version cache 10s + `invalidData` cache 3 phút, còn lại là 4-5 truy vấn đếm song song — cần số `[Badges]` từ CPU_TIMING trước khi cache thêm; (c) customers: search đã dùng FULLTEXT + LIKE tiền tố, COUNT đã không join và chạy song song với truy vấn chính. `periodic_task_secondary_assignees.user_id` ĐÃ có index.
 > Chưa chạy trên MySQL thật, chưa EXPLAIN, chưa đo Vercel.
+---
+## [2026-10-07] | Agenda/Kanban/Lịch tháng: bỏ tải 100 Task/lần, chuyển sang tải dần (infinite) theo đúng khoảng ngày | [Status: Success - chưa commit]
+
+**Actor:** Agent
+**Files Changed:**
+- `frontend/src/lib/hooks/usePeriodicTasks.ts` — thêm `usePeriodicTasksInfinite` (key `['periodic-tasks', params, 'infinite']`, `getNextPageParam` theo `totalPages`), `flattenTaskPages` (gộp + khử trùng id), hằng `VIEW_PAGE_SIZE=20`, `CALENDAR_PAGE_SIZE=50`
+- `frontend/src/lib/utils/periodicTaskInvalidation.ts` — `patchTaskChecklistProgress` hiểu thêm dạng `{ pages: [...] }` để tick/xoá checklist vẫn ghi nhãn "X/Z" thẳng vào cache mới (không refetch)
+- `frontend/src/components/periodic-tasks/LoadMoreBar.tsx` (mới) — "Đang hiển thị X/Y" + nút "Tải thêm"; tự tải bằng IntersectionObserver (Ngày/Kanban), Lịch tháng chỉ tải khi bấm
+- `frontend/src/app/(dashboard)/cong-viec-dinh-ky/page.tsx` — 3 view dùng query infinite `limit` 20 (Lịch 50) thay `limit: 100`; bỏ Alert "thu hẹp bộ lọc"; rời Lịch tháng thì khôi phục khoảng ngày trước đó (không kéo cả tháng sang Ngày/Kanban/Bảng)
+- `frontend/src/lib/hooks/usePeriodicTasksInfinite.test.tsx` (mới) — 6 test
+
+**Notes:**
+> BE KHÔNG đổi (`@Max(100)` giữ nguyên; thứ tự `periodStartDate DESC, id DESC` ổn định nên phân trang nối tiếp không chồng/thiếu; COUNT chỉ chạy khi trang đầy).
+> Đánh đổi đã biết: mutation invalidate cả namespace sẽ refetch TẤT CẢ trang đã tải của view đang mở (tick/xoá checklist thì không - đã ghi cache trực tiếp). `links-among` đổi key mỗi khi thêm trang (danh sách id đổi). `TaskLinksModal` còn 2 chỗ `limit: 100` (gợi ý cha/con) - chưa đổi.
+> Đã chạy: FE `tsc --noEmit` sạch; vitest các thư mục `lib/hooks/usePeriodicTasksInfinite`, `lib/hooks/periodicTaskChecklist*`, `lib/utils`, `components/periodic-tasks`, `useGuardedUpdatePeriodicTask` pass. Chưa chạy toàn bộ vitest, chưa `next build`, chưa test tay trên trình duyệt.

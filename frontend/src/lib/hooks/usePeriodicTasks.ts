@@ -1,4 +1,4 @@
-import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { keepPreviousData, useInfiniteQuery, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   periodicTasksApi,
   PeriodicTaskFilterParams,
@@ -25,6 +25,44 @@ export const usePeriodicTasks = (params: PeriodicTaskFilterParams, enabled = tru
     enabled,
   });
 };
+
+/** Số Task mỗi lần tải ở 3 view không phân trang (Ngày/Kanban/Lịch). Trước đây 1 lần tải 100 (tối đa BE cho phép). */
+export const VIEW_PAGE_SIZE = 20;
+/** Lịch tháng cần thấy nhiều ô cùng lúc nên mỗi lần tải nhiều hơn một chút. */
+export const CALENDAR_PAGE_SIZE = 50;
+
+/** Danh sách "tải dần" cho Agenda/Kanban/Calendar: chỉ lấy trang đầu (`limit` nhỏ) của ĐÚNG khoảng ngày đang chọn,
+ * các trang sau chỉ tải khi người dùng cuộn tới / bấm "Tải thêm" (`fetchNextPage`).
+ *
+ * Key `[LIST_KEY, params, 'infinite']`: segment thứ 2 vẫn là object nên `isPeriodicTaskListKey()` nhận ra đây là query
+ * danh sách (ghi nhãn checklist "X/Z" thẳng vào cache, `patchTaskChecklistProgress` đã hiểu dạng `pages`). `params`
+ * KHÔNG chứa `page` - số trang là `pageParam`. Thứ tự BE cố định (`periodStartDate DESC, id DESC`) nên các trang nối
+ * tiếp không chồng/thiếu; vẫn khử trùng theo `id` ở nơi gộp phòng khi có Task mới chen vào giữa 2 lần tải. */
+export const usePeriodicTasksInfinite = (params: Omit<PeriodicTaskFilterParams, 'page'>, enabled = true) => {
+  return useInfiniteQuery({
+    queryKey: [LIST_KEY, params, 'infinite'],
+    queryFn: ({ pageParam }) => periodicTasksApi.getAll({ ...params, page: pageParam }),
+    initialPageParam: 1,
+    getNextPageParam: (lastPage) => (lastPage.page < lastPage.totalPages ? lastPage.page + 1 : undefined),
+    placeholderData: keepPreviousData,
+    enabled,
+  });
+};
+
+/** Gộp các trang đã tải thành 1 mảng, bỏ trùng `id` (giữ bản đầu tiên). */
+export function flattenTaskPages<T extends { id: number }>(pages: Array<{ data: T[] }> | undefined): T[] {
+  if (!pages) return [];
+  const seen = new Set<number>();
+  const out: T[] = [];
+  for (const page of pages) {
+    for (const row of page.data) {
+      if (seen.has(row.id)) continue;
+      seen.add(row.id);
+      out.push(row);
+    }
+  }
+  return out;
+}
 
 export const usePeriodicTask = (id: number | null) => {
   return useQuery({
