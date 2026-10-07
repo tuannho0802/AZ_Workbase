@@ -6804,3 +6804,13 @@ Now [deploy]
 > BE KHÔNG đổi (`@Max(100)` giữ nguyên; thứ tự `periodStartDate DESC, id DESC` ổn định nên phân trang nối tiếp không chồng/thiếu; COUNT chỉ chạy khi trang đầy).
 > Đánh đổi đã biết: mutation invalidate cả namespace sẽ refetch TẤT CẢ trang đã tải của view đang mở (tick/xoá checklist thì không - đã ghi cache trực tiếp). `links-among` đổi key mỗi khi thêm trang (danh sách id đổi). `TaskLinksModal` còn 2 chỗ `limit: 100` (gợi ý cha/con) - chưa đổi.
 > Đã chạy: FE `tsc --noEmit` sạch; vitest các thư mục `lib/hooks/usePeriodicTasksInfinite`, `lib/hooks/periodicTaskChecklist*`, `lib/utils`, `components/periodic-tasks`, `useGuardedUpdatePeriodicTask` pass. Chưa chạy toàn bộ vitest, chưa `next build`, chưa test tay trên trình duyệt.
+
+---
+## [2026-10-07] | Ghi Mục 11 vào PLAN_CPU_OPTIMIZATION_ROUND2.md (3 việc rà soát: audit insert, recharts dynamic, JwtStrategy Logger) | [Status: Success - chưa commit]
+
+**Actor:** Agent
+**Files Changed:**
+- `AZ-Workbase Skills/PLAN_CPU_OPTIMIZATION_ROUND2.md` — thêm dòng 11 vào bảng tổng quan, thêm Mục 11 (11A `AuditService.logAction` `save()`→`insert()`, 11B `recharts` import tĩnh ở 9 file → `next/dynamic` ở nơi page import tab, 11C `console.error`→`Logger` ở `jwt.strategy.ts`), thêm 3 dòng rủi ro/rollback ở Phụ lục B
+
+**Notes:**
+> Chỉ ghi plan, CHƯA đổi code. Chưa có số đo prod cho 3 việc; 11A còn một giả thuyết chưa kiểm chứng (số câu SQL của `save()`), plan yêu cầu Bước 0 đo bằng `logging: ['query']` trên dev/preview trước khi sửa. Số file recharts là 9 (bản tóm tắt trước ghi nhầm 8).

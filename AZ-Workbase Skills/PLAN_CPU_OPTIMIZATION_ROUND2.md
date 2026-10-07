@@ -34,9 +34,10 @@
 | 6 | Dữ liệu tham chiếu tải lại mỗi lần mở trang | ≈ 15% (cộng nhiều route) | Thấp (A) / TB (B) | Không | — |
 | 7 | `GET /customers`, `keep-alive`, các route nhỏ | 5,3% / 2,3% | Thấp | Không | 0 |
 | 9 | **(MỚI 2026-10-07)** Phát hiện từ log prod: 401 khi mở app, refetch dây chuyền sau thêm checklist, `users/all` trùng, `departments` no-cache | 10% request (401) + ≈ 16% thời gian xử lý (chuỗi checklist) | Thấp–TB | Không | 1, 3 |
+| 11 | **(MỚI 2026-10-07)** Rà soát code lần 3: `AuditService.logAction` dùng `save()`, recharts import tĩnh, `console.error` ở JwtStrategy | Chưa đo (ước lượng: giảm round-trip DB mỗi thao tác ghi; giảm JS lần đầu của trang báo cáo) | Rất thấp | Không | — |
 | 8 | Đo lại sau cùng & chốt | — | — | — | 1–7, 9 |
 
-Làm tuần tự **1 → 2 → 3 → 4 → 6A → 5 → 7 → 9** (9A có thể làm sớm vì độc lập, rủi ro thấp). Mục 2 và 3 đáng làm nhất (≈ 31% CPU của mẫu).
+Làm tuần tự **1 → 2 → 3 → 4 → 6A → 5 → 7 → 9 → 11** (9A có thể làm sớm vì độc lập, rủi ro thấp). Mục 2 và 3 đáng làm nhất (≈ 31% CPU của mẫu).
 
 ---
 
@@ -583,6 +584,43 @@ Phương án (chọn 1, đo trước/sau; mỗi cái 1 commit):
 
 ---
 
+## Mục 11 — Rà soát code 2026-10-07 (HEAD `708cb1c`): 3 việc nhỏ, rủi ro thấp (bổ sung) — ⏳ CHƯA LÀM
+
+**Bối cảnh:** rà code tìm chỗ còn thừa sau Mục 9–10. **Chưa có số đo prod** cho mục này — mức tiết kiệm ghi dưới đây là ước lượng từ code, phải đo trước/sau như từng mục khác. Cả 3 việc độc lập nhau, mỗi việc 1 commit, ghi `WORKFLOW_LOG.md` sau mỗi việc.
+
+### 11A. `AuditService.logAction()` dùng `save()` → đổi sang `insert()` (BE) — ⏳
+- **Bằng chứng trong code:** `backend/src/modules/audit/audit.service.ts:26` gọi `this.auditLogRepository.save(auditLog)`. Có 16 chỗ gọi `logAction(` (không tính spec), **không chỗ nào dùng giá trị trả về**. Log chạy trên mọi thao tác ghi quan trọng nên cộng dồn.
+- **Giả thuyết cần xác nhận (CHƯA kiểm chứng):** với MySQL, `save()` của TypeORM thường bọc BEGIN/COMMIT và đọc lại cột có giá trị mặc định (`created_at`) → nhiều round-trip hơn 1 câu `INSERT` duy nhất của `insert()`.
+- **Bước 0 — đo trước khi sửa:** bật tạm `logging: ['query']` ở môi trường dev/preview (KHÔNG bật ở prod; hiện prod chỉ `['error','warn']`), gọi 1 thao tác có audit, đếm số câu SQL cho 1 lần `logAction`. Nếu `save()` thật sự chỉ 1 INSERT thì HUỶ mục này.
+- **Việc làm:** thay bằng `await this.auditLogRepository.insert({ userId, action, entityType, entityId, oldData, newData, ipAddress, userAgent })`. `created_at` do DB điền (`@CreateDateColumn`). Giữ nguyên chữ ký hàm (trả `Promise<void>` hoặc `InsertResult`; xác nhận lại bằng grep rằng 16 chỗ gọi vẫn không dùng kết quả).
+- **Cần kiểm trước khi merge:** (1) `ref-data-change.subscriber.ts` là subscriber duy nhất hiện có — xác nhận nó không lắng nghe `AuditLog`; (2) cột JSON `oldData/newData` nhận object như cũ; (3) hành vi lỗi KHÔNG đổi (vẫn `throw`, các chỗ gọi tự quyết định try/catch).
+- **Test:** cập nhật `audit.service.spec.ts` — `logAction` gọi `insert` đúng các trường, KHÔNG gọi `save`.
+- **Đo sau:** số câu SQL/lần `logAction` (kỳ vọng → 1) và thời gian các route có audit (`PATCH/POST /customers...`, `POST /auth/login`).
+- **Rollback:** khôi phục `create()` + `save()` (giữ `OLD CODE` trong comment theo quy ước).
+
+### 11B. `recharts` import tĩnh ở 9 file → tải khi mở tab (FE) — ⏳
+- **Bằng chứng trong code:** `recharts` được import tĩnh ở 9 file: `app/(dashboard)/reports/{MarketingReportTab,RevenueReportTab,UtmQualityReportTab,GroupQualityReportTab,ReportChart}.tsx`, `components/utms/UtmStatsTab.tsx`, `components/periodic-tasks/PerformanceStackedChart.tsx`, `components/customers/InvalidDataStatsTab.tsx`, `app/(dashboard)/duyet-phep/LeaveStatsTab.tsx`. Toàn dự án chỉ có 1 chỗ dùng `next/dynamic` (`CommandPaletteHost.tsx`). Biểu đồ nằm trong tab nên người dùng chưa mở tab vẫn tải cả thư viện.
+- **Phạm vi lợi ích:** giảm JS lần đầu và thời gian tải của trang Báo cáo, Duyệt phép, Quản lý UTM, Hiệu suất công việc, Báo cáo dữ liệu lỗi. **Không giảm Fluid CPU của BE.**
+- **Việc làm:** bọc bằng `dynamic(() => import(...), { ssr: false, loading: () => <Skeleton/> })` ở **nơi page import tab** (không bọc từng biểu đồ con, để thư viện chỉ tải 1 chunk khi tab mở): `reports/page.tsx` (4 tab) và `reports/ReportSection.tsx` (→ `ReportChart`), `quan-ly-utm/page.tsx`, `hieu-suat-cong-viec/page.tsx`, `customers/reports/invalid-data/page.tsx`, `duyet-phep/page.tsx`.
+- **Cần lưu ý:** `lib/guides/demos/task-performance.demos.tsx` cũng import `PerformanceStackedChart` (trang Hướng dẫn) — không để vỡ demo; dùng cùng wrapper dynamic hoặc giữ import tĩnh có chủ đích. Tab mặc định đang mở khi vào trang sẽ hiện skeleton một nhịp ngắn — dùng skeleton cùng chiều cao để tránh nhảy layout.
+- **Đo:** `next build` — so kích thước First Load JS của các route trên trước/sau (dán số thật vào `WORKFLOW_LOG.md`); mở tab biểu đồ vẫn hiển thị đúng.
+- **Test:** `tsc --noEmit`, `next build`, vitest các test render tab (nếu có) vẫn pass; kiểm tay 5 trang trên trình duyệt (chưa thể tự động hoá).
+- **Rollback:** đổi lại `import` tĩnh.
+
+### 11C. `console.error` trong `JwtStrategy` → `Logger` (BE) — ⏳
+- **Bằng chứng trong code:** `backend/src/modules/auth/strategies/jwt.strategy.ts` dùng `console.error('[JWT STRATEGY] User not found or inactive:', payload.sub)`, trái quy ước `SKILL_FILE_MANAGEMENT.md` §6.1 (cấm `console.*` ở BE, dùng `Logger`).
+- **Việc làm:** khai báo `private readonly logger = new Logger(JwtStrategy.name)` và thay bằng `this.logger.warn(...)`. Chỉ log `payload.sub` (id người dùng) — **KHÔNG log token hay nội dung JWT**. Không đổi luồng ném `UnauthorizedException`.
+- **Test:** spec hiện có của auth không đổi hành vi; thêm 1 test nhỏ: user không tồn tại/không active → vẫn `UnauthorizedException` và không gọi `console.error`.
+- **Đo:** không cần (sửa quy ước/log).
+- **Rollback:** khôi phục `console.error`.
+
+### 11D. Thứ tự & tiêu chí hoàn thành
+- [ ] 11C (nhỏ nhất) → 11A (sau Bước 0 đo SQL) → 11B (sau khi chốt cách xử lý demo Hướng dẫn).
+- [ ] Mỗi việc: `tsc --noEmit` + test liên quan + build thật; ghi `WORKFLOW_LOG.md`.
+- [ ] 11A/11B cập nhật bảng "Trước → Sau" ở Mục 8 khi có số đo.
+
+---
+
 ## Mục 8 — Đo lại & chốt
 
 - [ ] Sau mỗi mục (2, 3, 4, 6A, 5, 9): thu log 30 phút, chạy script, **so với baseline Mục 0** theo cùng kịch bản.
@@ -614,3 +652,6 @@ Phương án (chọn 1, đo trước/sau; mỗi cái 1 commit):
 | 10B | Lỗi mạng chập chờn hiện lỗi sớm hơn (retry 1 thay vì 2) | `retry: 2` như cũ |
 | 10C | `/sidebar/poll` nặng hơn tổng 2 request cũ; FE mới + BE cũ → 404 | Đổi URL về `/notifications/poll` + khôi phục query badges; deploy BE trước FE |
 | 9D | Sót `bump` → danh mục cũ trên máy khác tới 2 giờ; `max-age` HTTP làm refetch trả bản cũ | Thêm `bump` còn thiếu / giảm `staleTime` lưới an toàn; revert → `staleTime` 5 phút như cũ (`private, no-cache` giữ nguyên) |
+| 11A | Mất bản ghi audit nếu `insert()` lệch cột; subscriber/listener không chạy | Khôi phục `save()`; kiểm `audit_logs` có dòng mới sau thao tác |
+| 11B | Biểu đồ nháy skeleton / vỡ demo trang Hướng dẫn | Đổi lại `import` tĩnh |
+| 11C | Mất log cảnh báo user không hợp lệ (nếu Logger bị tắt) | Khôi phục `console.error` |
