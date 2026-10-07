@@ -6762,3 +6762,15 @@ Now [deploy]
 > `Date.now()` của CPU_TIMING là thời gian TƯỜNG (gồm chờ DB), không phải CPU. Fluid Active CPU chỉ tính lúc code chạy; chờ I/O không tính. Phần giảm CPU thật: ít truy vấn (mỗi truy vấn có chi phí build/hydrate TypeORM), không hydrate User thừa. Song song hoá chủ yếu giảm thời gian chờ.
 > Đã chạy: `tsc --noEmit` sạch, `nest build` OK, jest 105 suite / 1787 test pass; SQL của 2 truy vấn mới sinh bằng TypeORM (không kết nối DB) để kiểm tra cú pháp. Chưa chạy trên MySQL thật, chưa đo Vercel.
 > Chưa đổi (có chủ đích): `findOne` của `GET /:id` và `update()` vẫn trả đủ quan hệ; `links/customers/secondary-assignees` vẫn gác bằng `findOne` (ít gọi hơn checklist).
+
+---
+## [2026-10-07] | Trang 404 thân thiện cho /api/docs khi SWAGGER_ENABLED=false | [Status: Success - chưa commit]
+
+**Actor:** Agent
+**Files Changed:**
+- `backend/src/common/security/swagger-disabled.middleware.ts` (mới) — chặn `/api/docs*`: trình duyệt (Accept text/html) nhận trang HTML 404 "Tài liệu API hiện không khả dụng"; `/api/docs-json|yaml` và client khác nhận 404 JSON. Không chạm DB/AuthService; không lộ tên biến môi trường
+- `backend/src/common/security/swagger-disabled.middleware.spec.ts` (mới) — 5 test
+- `backend/src/main.ts` — nhánh `else` của `if (SWAGGER_ENABLED !== 'false')` đăng ký `swaggerDisabledHandler`
+
+**Notes:**
+> Đã chạy: `tsc --noEmit` sạch, `nest build` OK, jest `src/common/security` 5 suite / 29 test pass. Chưa test tay trên trình duyệt/Vercel (SWAGGER_ENABLED=false đã đặt sẵn trên Vercel).

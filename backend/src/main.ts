@@ -17,6 +17,7 @@ import * as fs from 'fs';
 import compression from 'compression';
 import { securityHeaders } from './common/security/security-headers';
 import { createSwaggerBasicAuth } from './common/security/swagger-basic-auth.middleware';
+import { swaggerDisabledHandler } from './common/security/swagger-disabled.middleware';
 import { AuthService } from './modules/auth/auth.service';
 import { cpuTimingMiddleware } from './common/middleware/cpu-timing.middleware';
 import {
@@ -193,6 +194,9 @@ async function createApp(): Promise<NestExpressApplication> {
         '/swagger-auth.js', // ✅ THÊM DÒNG NÀY – file tĩnh từ thư mục public
       ],
     });
+  } else {
+    // SWAGGER_ENABLED=false: trả trang 404 thân thiện cho /api/docs* (HTML cho trình duyệt, JSON cho client khác).
+    app.use(swaggerDisabledHandler);
   }
 
   await app.init();
