@@ -1,5 +1,7 @@
 'use client';
 
+import dynamic from 'next/dynamic';
+import { ChartSkeleton } from '@/components/common/ChartSkeleton';
 import { useMemo, useState } from 'react';
 import { App, Alert, Avatar, Button, Card, Col, Empty, Progress, Row, Segmented, Select, Space, Statistic, Table, Tag, Tooltip, Typography, DatePicker } from 'antd';
 import { BarChartOutlined, InfoCircleOutlined, ReloadOutlined, SearchOutlined, UnorderedListOutlined } from '@ant-design/icons';
@@ -15,7 +17,9 @@ import { PERIOD_TYPE_LABELS, type PeriodType } from '@/lib/api/periodic-tasks.ap
 import { aggregateRows, completionColor, lateRateColor, percentOf } from '@/lib/utils/periodicTaskPerformance';
 import { clampRange, getMonthRange, getPerformanceQuickRange, MAX_TASK_RANGE_DAYS, PERFORMANCE_QUICK_RANGES } from '@/lib/utils/periodicTaskRange';
 import { resolveEntityColor } from '@/lib/utils/entityColor';
-import { PerformanceStackedChart, CHART_MAX_USERS } from '@/components/periodic-tasks/PerformanceStackedChart';
+// [AGENT] OLD CODE (giữ để rollback): import { PerformanceStackedChart, CHART_MAX_USERS } from '@/components/periodic-tasks/PerformanceStackedChart';
+import { CHART_MAX_USERS } from '@/components/periodic-tasks/performanceChartConfig';
+const PerformanceStackedChart = dynamic(() => import('@/components/periodic-tasks/PerformanceStackedChart').then((m) => m.PerformanceStackedChart), { ssr: false, loading: () => <ChartSkeleton height={360} /> });
 import { PerformanceUserTasksDrawer } from '@/components/periodic-tasks/PerformanceUserTasksDrawer';
 import { OwnPerformanceDetail } from '@/components/periodic-tasks/OwnPerformanceDetail';
 import { MetricTasksModal } from '@/components/periodic-tasks/MetricTasksModal';

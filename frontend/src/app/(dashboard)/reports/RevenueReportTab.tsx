@@ -11,7 +11,7 @@ import { getApiErrorMessage } from '@/lib/utils/error-message.util';
 import { fmtCount, formatUsd, formatUsdCompact, trendLabel } from '@/lib/utils/marketingReport';
 import { countsOfUser, customerRates, fmtRate, sumCustomerRows } from '@/lib/utils/customerReportRates';
 import { ReportSection } from './ReportSection';
-import { CHART_COLORS } from './ReportChart';
+import { CHART_COLORS } from './chartColors';
 import PeriodSelector from './PeriodSelector';
 import ReportNameFilter from './ReportNameFilter';
 import ReportUserName from './ReportUserName';

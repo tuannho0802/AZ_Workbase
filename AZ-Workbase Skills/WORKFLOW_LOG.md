@@ -6814,3 +6814,26 @@ Now [deploy]
 
 **Notes:**
 > Chỉ ghi plan, CHƯA đổi code. Chưa có số đo prod cho 3 việc; 11A còn một giả thuyết chưa kiểm chứng (số câu SQL của `save()`), plan yêu cầu Bước 0 đo bằng `logging: ['query']` trên dev/preview trước khi sửa. Số file recharts là 9 (bản tóm tắt trước ghi nhầm 8).
+
+---
+## [2026-10-07] | Mục 11 (CPU Round 2): 11C JwtStrategy Logger, 11A audit 1 câu INSERT, 11B recharts dynamic | [Status: Success - chưa deploy, chưa đo prod]
+
+**Actor:** Agent
+**Files Changed:**
+- `backend/src/modules/auth/strategies/jwt.strategy.ts` (+spec) — 11C: `console.error` → `Logger.warn` (chỉ log `payload.sub`, không log token); +1 test (user không active → vẫn `UnauthorizedException`, không gọi `console.error`).
+- `backend/src/modules/audit/audit.service.ts` (+spec) — 11A: `logAction()` từ `create()+save()` → QueryBuilder `insert().into(AuditLog).values().updateEntity(false)`; trả `Promise<void>`; +2 test (đúng trường, không gọi save/create; lỗi DB vẫn throw).
+- `frontend/src/app/(dashboard)/{reports/page,reports/ReportSection,quan-ly-utm/page,hieu-suat-cong-viec/page,customers/reports/invalid-data/page,duyet-phep/page}.tsx`, `frontend/src/lib/guides/demos/task-performance.demos.tsx` — 11B: `next/dynamic({ ssr: false, loading: <ChartSkeleton/> })`.
+- `frontend/src/app/(dashboard)/reports/chartColors.ts`, `frontend/src/components/periodic-tasks/performanceChartConfig.ts`, `frontend/src/components/common/ChartSkeleton.tsx` (mới) — tách hằng số khỏi file import recharts; `ReportChart.tsx`/`PerformanceStackedChart.tsx` re-export; 5 tab báo cáo + `LeaveStatsTab` import màu từ `chartColors`.
+- `AZ-Workbase Skills/PLAN_CPU_OPTIMIZATION_ROUND2.md` — Mục 11 ⏳ → ✅ kèm số đo, tick 11D.
+
+**Root Cause / Số đo:**
+> 11A Bước 0 (MariaDB 10.11, `logging: ['query']`): `save()` = 4 câu (START TRANSACTION/INSERT/SELECT/COMMIT); `insert()` = 2 câu (INSERT + SELECT); QB `updateEntity(false)` = 1 câu. Đã chọn QB vì `insert()` không xuống được 1 câu trên MySQL.
+> 11B First Load JS (chưa nén, `route-bundle-stats.json`): /reports −18.7%, /duyet-phep −16.6%, /quan-ly-utm −14.7%, /hieu-suat-cong-viec −14.1%, invalid-data −16.3%, /huong-dan −12.8%; /customers, /login không đổi. KHÔNG giảm CPU backend.
+
+**Đã chạy:** BE `tsc --noEmit` sạch, `nest build` OK, jest `auth|audit|notifications|periodic-task-audit|periodic-task-trash` 12 suite / 166 test pass. FE `tsc --noEmit` sạch, `next build` OK, vitest `reports|utms|lib/guides` 27 file / 548 test pass. **CHƯA chạy:** toàn bộ jest/vitest, kiểm tay 5 trang trên trình duyệt, đo trên prod. Không có migration.
+
+**Notes:**
+> Phát hiện ngoài phạm vi (CHƯA sửa): entity `audit_logs` không khai `@Index` trong khi DB có idx_user/idx_entity/idx_action/idx_created_at (migration InitialSchema) → `migration:generate` có thể sinh DROP INDEX; chưa kiểm chứng.
+> Plan nói `audit.service.ts` có 16 chỗ gọi `logAction`; grep thật (không spec) thấy ~7 chỗ gọi `auditService.logAction` + `logActionAsync` nội bộ; không chỗ nào dùng giá trị trả về.
+
+---

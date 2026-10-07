@@ -48,7 +48,7 @@ import LeaveRequestsMiniModal from './LeaveRequestsMiniModal';
 import PeriodSelector from '../reports/PeriodSelector';
 import ReportKpiCard, { REPORT_COLORS } from '../reports/ReportKpiCard';
 import ReportNameFilter from '../reports/ReportNameFilter';
-import { CHART_COLORS } from '../reports/ReportChart';
+import { CHART_COLORS } from '../reports/chartColors';
 
 const { Text } = Typography;
 

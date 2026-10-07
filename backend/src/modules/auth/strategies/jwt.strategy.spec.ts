@@ -33,4 +33,14 @@ describe('JwtStrategy (cache user)', () => {
     await expect(strategy.validate({ sub: 9 })).rejects.toBeInstanceOf(UnauthorizedException);
     expect(usersService.findById).toHaveBeenCalledTimes(2);
   });
+
+  it('user không active → 401, ghi Logger.warn (chỉ id) và KHÔNG gọi console.error', async () => {
+    const consoleSpy = jest.spyOn(console, 'error').mockImplementation(() => undefined);
+    consoleSpy.mockClear();
+    const warnSpy = jest.spyOn((strategy as any).logger, 'warn').mockImplementation(() => undefined);
+    usersService.findById.mockResolvedValue({ ...user, id: 7, isActive: false });
+    await expect(strategy.validate({ sub: 7 })).rejects.toBeInstanceOf(UnauthorizedException);
+    expect(warnSpy).toHaveBeenCalledWith(expect.stringContaining('7'));
+    expect(consoleSpy).not.toHaveBeenCalled();
+  });
 });

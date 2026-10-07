@@ -1,5 +1,7 @@
 'use client';
 
+import dynamic from 'next/dynamic';
+import { ChartSkeleton } from '@/components/common/ChartSkeleton';
 import { useEffect, useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { Alert, App, Button, DatePicker, Empty, Popconfirm, Space, Table, Tabs, Tag, Tooltip, Typography } from 'antd';
@@ -37,7 +39,8 @@ import { UtmFormModal } from '@/components/utms/UtmFormModal';
 import { UtmManagersModal } from '@/components/utms/UtmManagersModal';
 import { UtmCustomersModal } from '@/components/utms/UtmCustomersModal';
 import { UtmMergeModal, type MergeCandidate } from '@/components/utms/UtmMergeModal';
-import { UtmStatsTab } from '@/components/utms/UtmStatsTab';
+// [AGENT] OLD CODE (giữ để rollback): import { UtmStatsTab } from '@/components/utms/UtmStatsTab';
+const UtmStatsTab = dynamic(() => import('@/components/utms/UtmStatsTab').then((m) => m.UtmStatsTab), { ssr: false, loading: () => <ChartSkeleton height={400} /> });
 import {
   filterUtmRows,
   sortUtmRows,

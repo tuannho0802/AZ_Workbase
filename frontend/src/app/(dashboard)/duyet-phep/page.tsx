@@ -1,5 +1,7 @@
 'use client';
 
+import dynamic from 'next/dynamic';
+import { ChartSkeleton } from '@/components/common/ChartSkeleton';
 import { useState, useEffect, useMemo } from 'react';
 import { useRouter } from 'next/navigation';
 import { useQuery } from '@tanstack/react-query';
@@ -16,7 +18,8 @@ import { leaveRequestsApi, LeaveRequest, BulkLeaveResult } from '@/lib/api/leave
 import { useIdSelection } from '@/lib/hooks/useIdSelection';
 import { useMyPermissions } from '@/lib/hooks/useMyPermissions';
 import { useLeaveTypes } from '@/lib/hooks/useLeaveTypes';
-import LeaveStatsTab from './LeaveStatsTab';
+// [AGENT] OLD CODE (giữ để rollback): import LeaveStatsTab from './LeaveStatsTab';
+const LeaveStatsTab = dynamic(() => import('./LeaveStatsTab'), { ssr: false, loading: () => <ChartSkeleton height={400} /> });
 import { AttachmentsViewerButton } from '@/components/leave-requests/AttachmentsViewerButton';
 import { WeeklyLazySection } from '@/components/common/WeeklyLazySection';
 import { useLeaveWeekList, useInvalidateLeaveLists } from '@/lib/hooks/useLeaveWeekList';

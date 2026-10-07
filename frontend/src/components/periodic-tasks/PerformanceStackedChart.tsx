@@ -3,8 +3,8 @@
 import { ResponsiveContainer, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend } from 'recharts';
 import type { PerformanceUserRow } from '@/lib/api/periodic-task-performance.api';
 
-/** Tối đa số User vẽ trên biểu đồ - nhiều hơn thì cột chữ quá chật, bảng bên dưới vẫn đủ toàn bộ. */
-export const CHART_MAX_USERS = 20;
+import { CHART_MAX_USERS } from './performanceChartConfig';
+export { CHART_MAX_USERS };
 
 const SERIES = [
   { key: 'completedOnTime', label: 'Hoàn thành đúng hạn', color: '#52c41a' },

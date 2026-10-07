@@ -1,5 +1,7 @@
 'use client';
 
+import dynamic from 'next/dynamic';
+import { ChartSkeleton } from '@/components/common/ChartSkeleton';
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { App, Tabs, Typography } from 'antd';
@@ -7,12 +9,16 @@ import dayjs from 'dayjs';
 import { DollarOutlined, TeamOutlined, SafetyCertificateOutlined, FundProjectionScreenOutlined, UsergroupAddOutlined, TagsOutlined } from '@ant-design/icons';
 import { ReportQuery } from '@/lib/types/reports.types';
 import { useMyPermissions } from '@/lib/hooks/useMyPermissions';
-import RevenueReportTab from './RevenueReportTab';
+// [AGENT] OLD CODE (giữ để rollback): import RevenueReportTab from './RevenueReportTab';
+const RevenueReportTab = dynamic(() => import('./RevenueReportTab'), { ssr: false, loading: () => <ChartSkeleton height={400} /> });
 import CustomerReportTab from './CustomerReportTab';
 import QualityReportTab from './QualityReportTab';
-import MarketingReportTab from './MarketingReportTab';
-import GroupQualityReportTab from './GroupQualityReportTab';
-import UtmQualityReportTab from './UtmQualityReportTab';
+// [AGENT] OLD CODE (giữ để rollback): import MarketingReportTab from './MarketingReportTab';
+const MarketingReportTab = dynamic(() => import('./MarketingReportTab'), { ssr: false, loading: () => <ChartSkeleton height={400} /> });
+// [AGENT] OLD CODE (giữ để rollback): import GroupQualityReportTab from './GroupQualityReportTab';
+const GroupQualityReportTab = dynamic(() => import('./GroupQualityReportTab'), { ssr: false, loading: () => <ChartSkeleton height={400} /> });
+// [AGENT] OLD CODE (giữ để rollback): import UtmQualityReportTab from './UtmQualityReportTab';
+const UtmQualityReportTab = dynamic(() => import('./UtmQualityReportTab'), { ssr: false, loading: () => <ChartSkeleton height={400} /> });
 
 const { Title, Text } = Typography;
 

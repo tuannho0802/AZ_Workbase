@@ -5,7 +5,14 @@ import { Alert, Button, Card, Col, DatePicker, Progress, Row, Segmented, Select,
 import type { ColumnsType } from 'antd/es/table';
 import { BarChartOutlined, FlagFilled, UnorderedListOutlined } from '@ant-design/icons';
 import dayjs from 'dayjs';
-import { PerformanceStackedChart } from '@/components/periodic-tasks/PerformanceStackedChart';
+// [AGENT] OLD CODE (giữ để rollback): import { PerformanceStackedChart } from '@/components/periodic-tasks/PerformanceStackedChart';
+// Mục 11B: tải recharts khi demo hiển thị, không kéo vào bundle đầu trang Hướng dẫn (cùng wrapper với trang Hiệu suất).
+import dynamic from 'next/dynamic';
+import { ChartSkeleton } from '@/components/common/ChartSkeleton';
+const PerformanceStackedChart = dynamic(
+    () => import('@/components/periodic-tasks/PerformanceStackedChart').then((m) => m.PerformanceStackedChart),
+    { ssr: false, loading: () => <ChartSkeleton height={360} /> },
+);
 import { TaskAssigneesView } from '@/components/periodic-tasks/TaskAssignees';
 import { TaskMiniCardView } from '@/components/periodic-tasks/TaskMiniCard';
 import { LATE_GRACE_DAYS, type PerformanceUserRow } from '@/lib/api/periodic-task-performance.api';

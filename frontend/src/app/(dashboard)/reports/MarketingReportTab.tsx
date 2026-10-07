@@ -40,7 +40,7 @@ import { ReportUserSelect } from './ReportUserSelect';
 import ReportKpiCard, { REPORT_COLORS } from './ReportKpiCard';
 import { rateColor, rateTextColor } from '@/lib/utils/rateColor';
 import ReportCustomersModal, { type CustomerDrill } from './ReportCustomersModal';
-import { CHART_COLORS } from './ReportChart';
+import { CHART_COLORS } from './chartColors';
 import MarketingBreakdownTable from './MarketingBreakdownTable';
 
 const { Text } = Typography;

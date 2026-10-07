@@ -10,7 +10,7 @@ import { getApiErrorMessage } from '@/lib/utils/error-message.util';
 import { fmtCount } from '@/lib/utils/marketingReport';
 import { customerRates, fmtRate, sumCustomerRows } from '@/lib/utils/customerReportRates';
 import { ReportSection } from './ReportSection';
-import { CHART_COLORS } from './ReportChart';
+import { CHART_COLORS } from './chartColors';
 import PeriodSelector from './PeriodSelector';
 import ReportNameFilter from './ReportNameFilter';
 import ReportKpiCard, { REPORT_COLORS } from './ReportKpiCard';

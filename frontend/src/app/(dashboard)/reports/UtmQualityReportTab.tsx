@@ -54,7 +54,7 @@ import ReportKpiCard, { REPORT_COLORS } from './ReportKpiCard';
 import ReportNameFilter from './ReportNameFilter';
 import { ReportUserOption, ReportUserSelect } from './ReportUserSelect';
 import ReportCustomersModal, { type CustomerDrill } from './ReportCustomersModal';
-import { CHART_COLORS } from './ReportChart';
+import { CHART_COLORS } from './chartColors';
 
 const { Text } = Typography;
 

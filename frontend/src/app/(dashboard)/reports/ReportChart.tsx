@@ -25,19 +25,9 @@ export interface ChartSeries {
   color: string;
 }
 
-// Bảng màu phân loại - lấy từ chính các màu Ant Design đã dùng rải rác
-// trong app (Statistic card ở CustomerReportTab.tsx: xanh dương/lục/vàng...)
-// để biểu đồ và phần còn lại của UI cùng 1 hệ màu, không lệch tông.
-export const CHART_COLORS = [
-  '#1677ff', // blue (Ant Design primary)
-  '#52c41a', // green
-  '#faad14', // gold
-  '#f5222d', // red
-  '#722ed1', // purple
-  '#13c2c2', // cyan
-  '#eb2f96', // magenta
-  '#fa8c16', // orange
-];
+// [AGENT] OLD CODE (giữ để rollback): CHART_COLORS khai báo tại đây - nay chuyển sang ./chartColors (không import recharts).
+import { CHART_COLORS } from './chartColors';
+export { CHART_COLORS };
 
 interface ReportChartProps<T extends object> {
   data: T[];

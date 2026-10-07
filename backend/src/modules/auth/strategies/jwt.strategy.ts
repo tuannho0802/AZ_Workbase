@@ -1,4 +1,4 @@
-import { Injectable, ServiceUnavailableException, UnauthorizedException } from '@nestjs/common';
+import { Injectable, Logger, ServiceUnavailableException, UnauthorizedException } from '@nestjs/common';
 import { PassportStrategy } from '@nestjs/passport';
 import { ExtractJwt, Strategy } from 'passport-jwt';
 import { ConfigService } from '@nestjs/config';
@@ -9,6 +9,8 @@ import { User } from '../../../database/entities/user.entity';
 
 @Injectable()
 export class JwtStrategy extends PassportStrategy(Strategy) {
+  private readonly logger = new Logger(JwtStrategy.name);
+
   constructor(
     private configService: ConfigService,
     private usersService: UsersService,
@@ -41,7 +43,10 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
     }
 
     if (!user || !user.isActive) {
-      console.error('[JWT STRATEGY] User not found or inactive:', payload.sub);
+      // [AGENT] OLD CODE (giữ để rollback):
+      // console.error('[JWT STRATEGY] User not found or inactive:', payload.sub);
+      // [AGENT] NEW CODE: dùng Logger (SKILL_FILE_MANAGEMENT §6.1); chỉ log id, KHÔNG log token.
+      this.logger.warn(`User not found or inactive: ${payload.sub}`);
       throw new UnauthorizedException('Phiên đăng nhập không hợp lệ');
     }
 

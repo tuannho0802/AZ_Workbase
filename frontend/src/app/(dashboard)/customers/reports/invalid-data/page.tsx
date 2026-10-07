@@ -1,5 +1,7 @@
 'use client';
 
+import dynamic from 'next/dynamic';
+import { ChartSkeleton } from '@/components/common/ChartSkeleton';
 import React, { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { App, Table, Card, Typography, Select, Space, Button, Alert, Tag, Input, Tooltip, Avatar, DatePicker, Tabs } from 'antd';
@@ -20,7 +22,9 @@ import { resolveEntityColor } from '@/lib/utils/entityColor';
 // gọi `/users` riêng (route đó đòi quyền khác, dễ 403 với role hẹp).
 import { useAssignmentGroupUsers } from '@/lib/hooks/useAssignmentGroups';
 import { linkGroupsApi, LinkGroup } from '@/lib/api/link-groups.api';
-import { InvalidDataStatsTab, type OpenListOptions } from '@/components/customers/InvalidDataStatsTab';
+// [AGENT] OLD CODE (giữ để rollback): import { InvalidDataStatsTab, type OpenListOptions } from '@/components/customers/InvalidDataStatsTab';
+import type { OpenListOptions } from '@/components/customers/InvalidDataStatsTab';
+const InvalidDataStatsTab = dynamic(() => import('@/components/customers/InvalidDataStatsTab').then((m) => m.InvalidDataStatsTab), { ssr: false, loading: () => <ChartSkeleton height={400} /> });
 
 const { Title, Text } = Typography;
 

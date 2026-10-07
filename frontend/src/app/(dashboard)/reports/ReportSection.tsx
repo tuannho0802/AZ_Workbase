@@ -1,10 +1,18 @@
 'use client';
 
+import dynamic from 'next/dynamic';
+import { ChartSkeleton } from '@/components/common/ChartSkeleton';
 import { useState, type ReactNode } from 'react';
 import { Table, Segmented, Select, Empty, Card, Switch, Typography } from 'antd';
 import type { ColumnsType } from 'antd/es/table';
 import { BarChartOutlined, PieChartOutlined, TableOutlined } from '@ant-design/icons';
-import { ReportChart, ChartType, ChartSeries } from './ReportChart';
+// [AGENT] OLD CODE (giữ để rollback): import { ReportChart, ChartType, ChartSeries } from './ReportChart';
+import type { ChartType, ChartSeries } from './ReportChart';
+// `as typeof import(...)` chỉ là kiểu (bị xoá khi build, KHÔNG kéo recharts): dynamic() làm mất tham số generic <T> của ReportChart.
+const ReportChart = dynamic(() => import('./ReportChart').then((m) => m.ReportChart), {
+  ssr: false,
+  loading: () => <ChartSkeleton height={320} />,
+}) as unknown as typeof import('./ReportChart').ReportChart;
 
 const { Text } = Typography;
 

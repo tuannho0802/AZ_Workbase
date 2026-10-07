@@ -32,18 +32,26 @@ export class AuditService {
     newData?: any,
     ipAddress?: string,
     userAgent?: string,
-  ) {
-    const auditLog = this.auditLogRepository.create({
-      userId,
-      action,
-      entityType,
-      entityId,
-      oldData,
-      newData,
-      ipAddress,
-      userAgent,
-    });
-    return await this.auditLogRepository.save(auditLog);
+  ): Promise<void> {
+    // [AGENT] OLD CODE (giữ để rollback) - đo trên MariaDB 10.11: save() = 4 câu SQL
+    // (START TRANSACTION, INSERT, SELECT đọc lại id/created_at, COMMIT):
+    // const auditLog = this.auditLogRepository.create({
+    //   userId, action, entityType, entityId, oldData, newData, ipAddress, userAgent,
+    // });
+    // return await this.auditLogRepository.save(auditLog);
+    //
+    // [AGENT] NEW CODE (PERF/Fluid CPU - PLAN_CPU_OPTIMIZATION_ROUND2 Mục 11A): 1 câu INSERT.
+    // `repository.insert()` thường vẫn chạy thêm 1 SELECT (MySQL không có RETURNING nên TypeORM đọc lại
+    // id/created_at); `.updateEntity(false)` bỏ luôn SELECT đó. Không caller nào dùng giá trị trả về
+    // (đã grep) nên không cần id. `created_at` do DB điền (@CreateDateColumn). Lỗi vẫn throw như cũ.
+    // Lưu ý: luôn truyền object literal MỚI - insert()/QB có thể ghi ngược id/createdAt vào object truyền vào.
+    await this.auditLogRepository
+      .createQueryBuilder()
+      .insert()
+      .into(AuditLog)
+      .values({ userId, action, entityType, entityId, oldData, newData, ipAddress, userAgent })
+      .updateEntity(false)
+      .execute();
   }
 
   /**

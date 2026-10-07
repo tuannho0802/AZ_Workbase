@@ -584,11 +584,12 @@ Phương án (chọn 1, đo trước/sau; mỗi cái 1 commit):
 
 ---
 
-## Mục 11 — Rà soát code 2026-10-07 (HEAD `708cb1c`): 3 việc nhỏ, rủi ro thấp (bổ sung) — ⏳ CHƯA LÀM
+## Mục 11 — Rà soát code 2026-10-07 (HEAD `708cb1c`): 3 việc nhỏ, rủi ro thấp (bổ sung) — ✅ ĐÃ LÀM (chờ deploy + đo prod)
 
 **Bối cảnh:** rà code tìm chỗ còn thừa sau Mục 9–10. **Chưa có số đo prod** cho mục này — mức tiết kiệm ghi dưới đây là ước lượng từ code, phải đo trước/sau như từng mục khác. Cả 3 việc độc lập nhau, mỗi việc 1 commit, ghi `WORKFLOW_LOG.md` sau mỗi việc.
 
-### 11A. `AuditService.logAction()` dùng `save()` → đổi sang `insert()` (BE) — ⏳
+### 11A. `AuditService.logAction()` dùng `save()` → đổi sang 1 câu INSERT (BE) — ✅ (chờ deploy + đo)
+- **KẾT QUẢ Bước 0 (đo thật trên MariaDB 10.11, `logging: ['query']`, bảng `audit_logs` dựng theo entity):** `save()` = **4 câu** (START TRANSACTION, INSERT, SELECT đọc lại `id`/`created_at`, COMMIT); `repository.insert()` = **2 câu** (INSERT + SELECT); QueryBuilder `insert().into(AuditLog).values(...).updateEntity(false)` = **1 câu**. Giả thuyết đúng, nhưng `insert()` thường chưa xuống được 1 câu (MySQL không có RETURNING) → đã dùng QueryBuilder + `updateEntity(false)` (không caller nào dùng giá trị trả về; hàm giờ trả `Promise<void>`). JSON `oldData/newData` lưu đúng (object → JSON, `undefined` → NULL). Lưu ý: `insert()` ghi ngược `id/createdAt` vào object truyền vào → luôn truyền object literal mới. `ref-data-change.subscriber` chỉ bắt các bảng trong `REF_DATA_TABLE_DOMAINS`, không có `audit_logs`. Chưa đo trên MySQL/Aiven prod và chưa đo thời gian route.
 - **Bằng chứng trong code:** `backend/src/modules/audit/audit.service.ts:26` gọi `this.auditLogRepository.save(auditLog)`. Có 16 chỗ gọi `logAction(` (không tính spec), **không chỗ nào dùng giá trị trả về**. Log chạy trên mọi thao tác ghi quan trọng nên cộng dồn.
 - **Giả thuyết cần xác nhận (CHƯA kiểm chứng):** với MySQL, `save()` của TypeORM thường bọc BEGIN/COMMIT và đọc lại cột có giá trị mặc định (`created_at`) → nhiều round-trip hơn 1 câu `INSERT` duy nhất của `insert()`.
 - **Bước 0 — đo trước khi sửa:** bật tạm `logging: ['query']` ở môi trường dev/preview (KHÔNG bật ở prod; hiện prod chỉ `['error','warn']`), gọi 1 thao tác có audit, đếm số câu SQL cho 1 lần `logAction`. Nếu `save()` thật sự chỉ 1 INSERT thì HUỶ mục này.
@@ -598,7 +599,9 @@ Phương án (chọn 1, đo trước/sau; mỗi cái 1 commit):
 - **Đo sau:** số câu SQL/lần `logAction` (kỳ vọng → 1) và thời gian các route có audit (`PATCH/POST /customers...`, `POST /auth/login`).
 - **Rollback:** khôi phục `create()` + `save()` (giữ `OLD CODE` trong comment theo quy ước).
 
-### 11B. `recharts` import tĩnh ở 9 file → tải khi mở tab (FE) — ⏳
+### 11B. `recharts` import tĩnh ở 9 file → tải khi mở tab (FE) — ✅ (chờ deploy + đo)
+- **KẾT QUẢ (Next 16.3.8 Turbopack — không in cột First Load JS, dùng `.next/diagnostics/route-bundle-stats.json`, `firstLoadUncompressedJsBytes`, chưa nén):** `/reports` 3,136,439 → 2,550,386 (−18.7%); `/duyet-phep` 3,041,633 → 2,536,131 (−16.6%); `/quan-ly-utm` 3,017,684 → 2,573,022 (−14.7%); `/hieu-suat-cong-viec` 3,010,145 → 2,586,071 (−14.1%); `/customers/reports/invalid-data` 3,005,599 → 2,516,429 (−16.3%); `/huong-dan/[[...slug]]` 3,317,442 → 2,893,670 (−12.8%); `/customers`, `/login` không đổi. **Không giảm CPU backend.**
+- **Bẫy đã xử lý:** `CHART_COLORS` (từ `ReportChart`) và `CHART_MAX_USERS` (từ `PerformanceStackedChart`) là giá trị import tĩnh ở nơi khác → tách ra `reports/chartColors.ts` và `periodic-tasks/performanceChartConfig.ts` (file cũ re-export), nếu không recharts quay lại bundle đầu. `dynamic()` làm mất generic `<T>` của `ReportChart` → cast kiểu `as unknown as typeof import('./ReportChart').ReportChart` (chỉ là kiểu). Demo Hướng dẫn dùng cùng wrapper dynamic. Chưa kiểm tay trên trình duyệt (skeleton → biểu đồ).
 - **Bằng chứng trong code:** `recharts` được import tĩnh ở 9 file: `app/(dashboard)/reports/{MarketingReportTab,RevenueReportTab,UtmQualityReportTab,GroupQualityReportTab,ReportChart}.tsx`, `components/utms/UtmStatsTab.tsx`, `components/periodic-tasks/PerformanceStackedChart.tsx`, `components/customers/InvalidDataStatsTab.tsx`, `app/(dashboard)/duyet-phep/LeaveStatsTab.tsx`. Toàn dự án chỉ có 1 chỗ dùng `next/dynamic` (`CommandPaletteHost.tsx`). Biểu đồ nằm trong tab nên người dùng chưa mở tab vẫn tải cả thư viện.
 - **Phạm vi lợi ích:** giảm JS lần đầu và thời gian tải của trang Báo cáo, Duyệt phép, Quản lý UTM, Hiệu suất công việc, Báo cáo dữ liệu lỗi. **Không giảm Fluid CPU của BE.**
 - **Việc làm:** bọc bằng `dynamic(() => import(...), { ssr: false, loading: () => <Skeleton/> })` ở **nơi page import tab** (không bọc từng biểu đồ con, để thư viện chỉ tải 1 chunk khi tab mở): `reports/page.tsx` (4 tab) và `reports/ReportSection.tsx` (→ `ReportChart`), `quan-ly-utm/page.tsx`, `hieu-suat-cong-viec/page.tsx`, `customers/reports/invalid-data/page.tsx`, `duyet-phep/page.tsx`.
@@ -607,7 +610,7 @@ Phương án (chọn 1, đo trước/sau; mỗi cái 1 commit):
 - **Test:** `tsc --noEmit`, `next build`, vitest các test render tab (nếu có) vẫn pass; kiểm tay 5 trang trên trình duyệt (chưa thể tự động hoá).
 - **Rollback:** đổi lại `import` tĩnh.
 
-### 11C. `console.error` trong `JwtStrategy` → `Logger` (BE) — ⏳
+### 11C. `console.error` trong `JwtStrategy` → `Logger` (BE) — ✅ (chờ deploy)
 - **Bằng chứng trong code:** `backend/src/modules/auth/strategies/jwt.strategy.ts` dùng `console.error('[JWT STRATEGY] User not found or inactive:', payload.sub)`, trái quy ước `SKILL_FILE_MANAGEMENT.md` §6.1 (cấm `console.*` ở BE, dùng `Logger`).
 - **Việc làm:** khai báo `private readonly logger = new Logger(JwtStrategy.name)` và thay bằng `this.logger.warn(...)`. Chỉ log `payload.sub` (id người dùng) — **KHÔNG log token hay nội dung JWT**. Không đổi luồng ném `UnauthorizedException`.
 - **Test:** spec hiện có của auth không đổi hành vi; thêm 1 test nhỏ: user không tồn tại/không active → vẫn `UnauthorizedException` và không gọi `console.error`.
@@ -615,8 +618,8 @@ Phương án (chọn 1, đo trước/sau; mỗi cái 1 commit):
 - **Rollback:** khôi phục `console.error`.
 
 ### 11D. Thứ tự & tiêu chí hoàn thành
-- [ ] 11C (nhỏ nhất) → 11A (sau Bước 0 đo SQL) → 11B (sau khi chốt cách xử lý demo Hướng dẫn).
-- [ ] Mỗi việc: `tsc --noEmit` + test liên quan + build thật; ghi `WORKFLOW_LOG.md`.
+- [x] 11C (nhỏ nhất) → 11A (sau Bước 0 đo SQL) → 11B (sau khi chốt cách xử lý demo Hướng dẫn).
+- [x] Mỗi việc: `tsc --noEmit` + test liên quan + build thật; ghi `WORKFLOW_LOG.md`.
 - [ ] 11A/11B cập nhật bảng "Trước → Sau" ở Mục 8 khi có số đo.
 
 ---

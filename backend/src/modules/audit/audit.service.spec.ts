@@ -116,3 +116,55 @@ describe('AuditService.getLogs', () => {
     expect(andWhereCalls.some((c) => c.sql === 'log.createdAt < :toDate')).toBe(true);
   });
 });
+/**
+ * PLAN_CPU_OPTIMIZATION_ROUND2 Mục 11A: `logAction` ghi 1 câu INSERT (QueryBuilder `insert().updateEntity(false)`)
+ * thay vì `create()+save()` (4 câu: START TRANSACTION/INSERT/SELECT/COMMIT, đo trên MariaDB 10.11).
+ */
+describe('AuditService.logAction', () => {
+  let service: AuditService;
+  const chain: any = {};
+  const repo: any = { createQueryBuilder: jest.fn(), save: jest.fn(), create: jest.fn(), insert: jest.fn() };
+
+  beforeEach(async () => {
+    jest.clearAllMocks();
+    chain.insert = jest.fn().mockReturnValue(chain);
+    chain.into = jest.fn().mockReturnValue(chain);
+    chain.values = jest.fn().mockReturnValue(chain);
+    chain.updateEntity = jest.fn().mockReturnValue(chain);
+    chain.execute = jest.fn().mockResolvedValue({});
+    repo.createQueryBuilder.mockReturnValue(chain);
+    const module: TestingModule = await Test.createTestingModule({
+      providers: [
+        AuditService,
+        { provide: getRepositoryToken(AuditLog), useValue: repo },
+        { provide: getRepositoryToken(Setting), useValue: {} },
+      ],
+    }).compile();
+    service = module.get<AuditService>(AuditService);
+  });
+
+  it('INSERT đúng các trường, bỏ SELECT đọc lại (updateEntity(false)), KHÔNG gọi save/create', async () => {
+    await service.logAction(3, 'UPDATE_CUSTOMER', 'customer', 9, { a: 1 }, { a: 2 }, '1.2.3.4', 'UA');
+
+    expect(chain.into).toHaveBeenCalledWith(AuditLog);
+    expect(chain.values).toHaveBeenCalledWith({
+      userId: 3,
+      action: 'UPDATE_CUSTOMER',
+      entityType: 'customer',
+      entityId: 9,
+      oldData: { a: 1 },
+      newData: { a: 2 },
+      ipAddress: '1.2.3.4',
+      userAgent: 'UA',
+    });
+    expect(chain.updateEntity).toHaveBeenCalledWith(false);
+    expect(chain.execute).toHaveBeenCalledTimes(1);
+    expect(repo.save).not.toHaveBeenCalled();
+    expect(repo.create).not.toHaveBeenCalled();
+  });
+
+  it('hành vi lỗi KHÔNG đổi: lỗi DB vẫn được throw', async () => {
+    chain.execute.mockRejectedValue(new Error('db down'));
+    await expect(service.logAction(1, 'X', 'customer', 1)).rejects.toThrow('db down');
+  });
+});
