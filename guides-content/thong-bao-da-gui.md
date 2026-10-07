@@ -38,7 +38,7 @@ broadcast-sent-table viewer=manager
 ## Bắt đầu nhanh
 
 1. Vào **Thông báo đã gửi**. Danh sách xếp theo lần gửi mới nhất trước, mỗi lần hiện 20 dòng, bấm **Tải thêm** để xem tiếp.
-2. Dùng hàng bộ lọc để tìm: **Tìm theo tiêu đề**, **Đối tượng**, **Người gửi** (chỉ phạm vi Toàn bộ), và khoảng ngày gửi **Từ ngày → Đến ngày**.
+2. Dùng hàng bộ lọc để tìm: **Tìm theo tiêu đề** (gõ rồi nhấn Enter hoặc bấm biểu tượng tìm), **Đối tượng** (Chọn người nhận / Theo phòng ban / Toàn bộ nhân viên), **Người gửi** (chỉ phạm vi Toàn bộ), và khoảng ngày gửi **Từ ngày → Đến ngày**.
 3. Bấm vào một dòng để mở **ngăn chi tiết** bên phải.
 4. Cần gửi mới thì bấm **Soạn thông báo mới** (cần quyền gửi), cửa sổ soạn mở ngay tại trang.
 
@@ -64,12 +64,12 @@ broadcast-sent-drawer
 ## Sửa và xoá
 
 - **Sửa** (cần `notification_broadcasts.edit`): đổi **Tiêu đề** (tối đa 200 ký tự) và **Nội dung** (tối đa 2000 ký tự). Tiêu đề mới cập nhật ngay trong hộp thư của mọi người nhận; nội dung luôn lấy bản mới nhất khi họ mở thông báo. **Không thể đổi người nhận** sau khi gửi.
-- **Xoá** (cần `notification_broadcasts.delete`, mặc định chỉ Admin): thông báo biến mất khỏi **mọi hộp thư người nhận**, **không hoàn tác**. Khác với việc người nhận tự bấm Ẩn ở [Thông báo](/huong-dan/thong-bao), đây là xoá hẳn với tất cả. Hệ thống vẫn giữ bản ghi lần gửi trong nhật ký hệ thống để đối chiếu ai đã gửi gì.
+- **Xoá** (cần `notification_broadcasts.delete`, mặc định chỉ Admin; có hộp xác nhận “Xoá thông báo này?”): thông báo biến mất khỏi **mọi hộp thư người nhận**, **không hoàn tác**. Khác với việc người nhận tự bấm Ẩn ở [Thông báo](/huong-dan/thong-bao), đây là xoá hẳn với tất cả. Hệ thống vẫn giữ bản ghi nội bộ của lần gửi và dòng nhật ký để đối chiếu ai đã gửi gì.
 - Cả Sửa và Xoá đều được ghi vào **Nhật ký hệ thống**.
 
 ## Quy tắc & lưu ý
 
-- Số **đã đọc / chưa đọc** tính trên tất cả bản gửi đi, kể cả người nhận đã khoá tài khoản hoặc đã ẩn thông báo.
+- Số **đã đọc / chưa đọc** tính trên tất cả bản gửi đi, kể cả người nhận đã khoá tài khoản (họ vẫn nằm trong “chưa đọc”) hoặc đã tự ẩn thông báo.
 - Người nhận được chốt lúc gửi (xem [Gửi thông báo](/huong-dan/gui-thong-bao)); nhân viên vào sau không xuất hiện trong danh sách.
 - Người nhận đã bị xoá khỏi hệ thống hiện tên là “(Đã xoá)”.
 
@@ -84,38 +84,3 @@ broadcast-sent-drawer
 
 - [Gửi thông báo](/huong-dan/gui-thong-bao)
 - [Thông báo](/huong-dan/thong-bao)
-EOF
-cd frontend && cat > src/lib/guides/demos/broadcast-sent.demos.test.tsx <<'EOF'
-import { describe, it, expect } from 'vitest';
-import { render, screen } from '@testing-library/react';
-import { GUIDE_DEMOS } from '../guide-demos';
-import { BROADCAST_SENT_DEMOS } from './broadcast-sent.demos';
-
-const demo = (id: string) => BROADCAST_SENT_DEMOS.find((d) => d.id === id)!;
-
-describe('mẫu Thông báo đã gửi: đăng ký + render', () => {
-    it('3 mẫu có trong GUIDE_DEMOS', () => {
-        expect(BROADCAST_SENT_DEMOS.map((d) => d.id)).toEqual(['broadcast-sent-table', 'broadcast-sent-drawer', 'broadcast-sent-actions']);
-        for (const d of BROADCAST_SENT_DEMOS) expect(GUIDE_DEMOS.some((x) => x.id === d.id)).toBe(true);
-    });
-
-    it('viewer=admin: 3 dòng, có lọc Người gửi và 3 nút Xoá', () => {
-        const { container } = render(<>{demo('broadcast-sent-table').render({ viewer: 'admin' })}</>);
-        expect(container.querySelectorAll('tbody tr')).toHaveLength(3);
-        expect(screen.getByText('Người gửi', { selector: '.ant-select-selection-placeholder' })).toBeTruthy();
-        expect(container.querySelectorAll('.anticon-delete')).toHaveLength(3);
-    });
-
-    it('viewer=manager: chỉ 2 dòng của mình, không lọc Người gửi, không nút Xoá, vẫn có Sửa', () => {
-        const { container } = render(<>{demo('broadcast-sent-table').render({ viewer: 'manager' })}</>);
-        expect(container.querySelectorAll('tbody tr')).toHaveLength(2);
-        expect(screen.queryByText('Người gửi', { selector: '.ant-select-selection-placeholder' })).toBeNull();
-        expect(container.querySelectorAll('.anticon-delete')).toHaveLength(0);
-        expect(container.querySelectorAll('.anticon-edit')).toHaveLength(2);
-    });
-
-    it('broadcast-sent-drawer: đủ 3 trạng thái người nhận + 3 tab', () => {
-        render(<>{demo('broadcast-sent-drawer').render({})}</>);
-        for (const t of ['Đã khoá', 'Chưa đọc', 'Đã đọc', 'Tất cả']) expect(screen.getAllByText(t).length).toBeGreaterThan(0);
-    });
-});

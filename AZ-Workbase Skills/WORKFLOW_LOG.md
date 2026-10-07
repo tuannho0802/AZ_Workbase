@@ -6628,3 +6628,22 @@ Now [deploy]
 > Mẫu `broadcast-compose` dựng tĩnh (bản thật gọi API) nên cần đối chiếu lại khi form thật đổi chữ.
 > Lưu ý nghiệp vụ đã ghi trong bài: người nhận chốt lúc gửi; người gửi không tự nhận; tối đa 2000 người/lần (env `NOTIFICATION_BROADCAST_MAX_RECIPIENTS`); throttle 10 lần/giờ; cần `NOTIFICATIONS_ENABLED=true` ở BE.
 ---
+## [2026-10-07 19:30] | Guides content P3: thong-bao-da-gui + profile (published: false) | [Status: Success]
+
+**Actor:** Agent / User
+**Files Changed:**
+- `guides-content/thong-bao-da-gui.md` — SỬA: file đã commit (1f9f3fb) bị lẫn nguyên phần lệnh heredoc + code test ở cuối (từ dòng `EOF`), đã cắt bỏ; bổ sung các lựa chọn bộ lọc "Đối tượng", cách tìm theo tiêu đề, hộp xác nhận Xoá
+- `guides-content/profile.md` — bài mới (`permissions: []`, sortOrder 75)
+- `frontend/src/lib/guides/demos/broadcast-sent.demos.tsx` — đã commit trước đó, thêm xuống dòng cuối file; `broadcast-sent.demos.test.tsx` (mới, so sánh tương đối admin/manager)
+- `frontend/src/lib/guides/demos/profile.demos.tsx` + `profile.demos.test.tsx` — 4 mẫu: `profile-card`, `profile-edit`, `profile-groups`, `profile-actions`
+- `guide-demos.tsx` (đăng ký), `guide-demos.test.tsx` (64 → 71 mẫu), `guide-slugs.ts` (gỡ `thong-bao-da-gui`, `profile` khỏi PENDING)
+- `AZ-Workbase Skills/PLAN_GUIDES_CONTENT.md` — tick P3
+
+**Notes:**
+> Verify: `vitest src/lib/guides` 19 file / 459 test pass; `tsc --noEmit` chỉ còn lỗi có sẵn của 9D (`refDataCallCount.test.tsx`, `query-stale` chưa export `REF_DATA_SAFETY_STALE_MS`/`refDataQueryOptions`). Chưa chạy `next build`, chưa test tay, chưa chạy `guides:sync`.
+> Phát hiện (CHƯA sửa, ngoài phạm vi): `NotificationBroadcastsService.update()` trả `toListItem(broadcast, 0, 0)` nên sau khi Sửa trong ngăn chi tiết, trang `/thong-bao/da-gui` làm `setSelected(updated)` và hiện Đã đọc 0 / Chưa đọc 0 cho tới khi đóng/mở lại. Gợi ý: gọi `readCountsFor([id])` trong `update()` như `getOne()`.
+> Phát hiện: comment FE (`da-gui/page.tsx`) nói người nhận đã khoá "không tính vào tỉ lệ" nhưng `readCountsFor()` (BE) đếm cả họ vào "chưa đọc"; bài ghi theo hành vi BE thật.
+> Kế hoạch ghi Profile "Admin xem/sửa hồ sơ người khác" nhưng code thật: xem người khác chỉ đọc (không Chỉnh sửa/Đổi mật khẩu), chỉ có Xoá tài khoản nếu có `users.delete`. Bài mô tả theo code.
+> Mẫu Profile dựng tĩnh, cần đối chiếu lại khi giao diện đổi chữ.
+
+---
