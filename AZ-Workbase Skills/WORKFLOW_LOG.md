@@ -6582,3 +6582,18 @@ Now [deploy]
 **Notes:**
 > Chưa sửa code BE/FE. Bước tiếp theo: 9D-1…9D-4. Chủ dự án chốt lưới an toàn 2 giờ (đề xuất ban đầu 6 giờ).
 ---
+
+## [2026-10-07 16:00] | Guides content P2: duyet-phep + loai-phep (published: false) | [Status: Success]
+
+**Actor:** Agent / User
+**Files Changed:**
+- `guides-content/duyet-phep.md` — bài mới (`permissions: []` vì trang vào theo OR `leave_requests.view`/`approve`)
+- `guides-content/loai-phep.md` — bài mới (`permissions: [leave_types.view]`)
+- `frontend/src/lib/guides/demos/leave.demos.tsx` — thêm 5 mẫu: `leave-approve-table`, `leave-actions-by-viewer` (viewer=admin|manager|assistant), `leave-type-table`, `leave-type-form`, `leave-type-delete-fallback`
+- `frontend/src/lib/guides/demos/leave.demos.test.tsx`, `guide-demos.test.tsx` (54 → 59 mẫu), `guide-slugs.ts` (gỡ `duyet-phep`, `loai-phep` khỏi PENDING)
+- `AZ-Workbase Skills/PLAN_GUIDES_CONTENT.md` — tick P2
+
+**Notes:**
+> CHƯA chạy vitest/tsc/next build/guides:sync. Cần duyệt nội dung rồi đổi `published: true` và `guides:sync --apply`.
+> Phát hiện (chưa sửa): `approve()` không kiểm tra lại phép năm; seed Assistant approve=all nhưng view=department; đổi cờ "Trừ phép năm"/xoá loại + fallback không tính lại phép, hoàn phép khi huỷ dùng cờ hiện tại; không chặn tự duyệt đơn của mình.
+---
