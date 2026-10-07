@@ -25,3 +25,30 @@ export function shouldRefetchAfterChecklistChange(queryKey: readonly unknown[], 
   if (segment === 'rollup' && queryKey[2] === taskId) return false;
   return true;
 }
+
+/**
+ * [9B-1] Query DANH SÁCH Task: key `['periodic-tasks', params]` với `params` là object (khác mọi query con có
+ * segment thứ 2 là chuỗi: 'detail' | 'checklist-page' | 'rollup' | ...). Dùng để chọn các query được ghi thẳng
+ * nhãn "X/Z" từ response BE thay vì refetch cả danh sách (limit 100 - phần nặng nhất của chuỗi refetch).
+ */
+export function isPeriodicTaskListKey(queryKey: readonly unknown[]): boolean {
+  const segment = queryKey[1];
+  return queryKey[0] === 'periodic-tasks' && typeof segment === 'object' && segment !== null && !Array.isArray(segment);
+}
+
+/**
+ * Ghi `checklistProgress` mới (số liệu LẤY TỪ BE, không tự cộng trừ) vào đúng dòng Task trong 1 trang danh sách đã
+ * cache. Trả về CHÍNH `old` (cùng tham chiếu) nếu không có dòng nào khớp -> không kích hoạt render thừa.
+ */
+export function patchTaskChecklistProgress<T>(
+  old: T,
+  taskId: number,
+  progress: { done: number; total: number },
+): T {
+  const rows = (old as { data?: unknown } | undefined)?.data;
+  if (!Array.isArray(rows) || !rows.some((r) => (r as { id?: number })?.id === taskId)) return old;
+  return {
+    ...(old as object),
+    data: rows.map((r) => ((r as { id?: number }).id === taskId ? { ...(r as object), checklistProgress: progress } : r)),
+  } as T;
+}

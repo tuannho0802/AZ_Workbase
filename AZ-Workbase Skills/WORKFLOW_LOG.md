@@ -6507,3 +6507,28 @@ Now [deploy]
 > `tsc --noEmit` chỉ còn 4 lỗi `logo.png` có sẵn; vitest: hooks+utils 33 file/249 test, app+components 25/180, lib còn lại 26/466 — tất cả pass. Chưa thêm `[deploy]`.
 > Chưa làm 9B-1/9B-2/9D. **CHECK SAU DEPLOY:** `GET /users/all` trùng < 5 s về 0; `GET .../rollup` sau POST checklist về 0.
 ---
+
+---
+## [2026-10-07 11:30] | Mục 9B-1 (nhánh THÊM checklist): ghi nhãn "X/Z" từ response POST, bỏ refetch GET /periodic-tasks | Status: Success (chờ deploy + đo)
+
+**Actor:** Agent
+**Files Changed:**
+- `backend/src/modules/periodic-tasks/periodic-task-checklist-items.service.ts` — `create()` trả thêm `checklistProgress` (dùng `attachChecklistProgressToList`, giữ nguyên `total/done` cũ cho modal)
+- `backend/src/modules/periodic-tasks/periodic-task-checklist-items.service.spec.ts` — mock progress cho test `create`; thêm test 9B-1
+- `frontend/src/lib/api/periodic-task-checklist-items.api.ts` — type `checklistProgress?`
+- `frontend/src/lib/utils/periodicTaskInvalidation.ts` — `isPeriodicTaskListKey`, `patchTaskChecklistProgress`
+- `frontend/src/lib/hooks/usePeriodicTaskChecklistItems.ts` — `useAddTaskChecklistItem.onSuccess`: `setQueriesData` + `invalidate(refetchType:'none')` cho list; fallback refetch đầy đủ khi `reopen` hoặc thiếu `checklistProgress` (code cũ giữ bằng comment)
+- Test FE: `periodicTaskChecklistCallCount.test.tsx` (S1/S2/S6/S7/S8 cập nhật số, thêm S9–S12), `periodicTaskInvalidation.test.ts`
+- `AZ-Workbase Skills/PLAN_CPU_OPTIMIZATION_ROUND2.md` — đánh dấu 9B-1, cập nhật bảng
+
+**Root Cause:**
+> Mỗi POST checklist-items kéo theo `GET /periodic-tasks` limit 100 (TB 301 ms, ~16% thời gian xử lý mẫu log) chỉ để cập nhật 1 nhãn "X/Z". `total/done` trong response POST chỉ đếm item, trong khi nhãn list = item + Task con, nên không dùng trực tiếp được.
+
+**Solution:**
+> BE trả đúng số nhãn; FE ghi nguyên số BE vào cache (không tự cộng trừ), list đánh dấu stale để lần mở/focus sau tự làm tươi.
+
+**Notes:**
+> BE: `tsc --noEmit` sạch, `nest build` OK, jest periodic-tasks 16 suite/253 test pass. FE: `tsc --noEmit` chỉ còn 4 lỗi `logo.png` có sẵn; vitest `src/lib` 59 file/722, `src/app+components` 25/180 pass. Đã kiểm tra mutation: ép hook về hành vi cũ thì 7 test fail.
+> **Rủi ro biết trước:** 2 POST về lệch thứ tự → nhãn tạm sai tới lần list mount/refetch kế (list đã đánh dấu stale). Tick/sửa/xoá/di chuyển CHƯA đổi (9B-1b cần đổi response BE `update()`).
+> **DEPLOY BE TRƯỚC FE** (hoặc cùng lúc): FE mới với BE cũ vẫn đúng nhờ fallback refetch. **CHECK SAU DEPLOY:** `GET /periodic-tasks` ngay sau POST checklist-items giảm 1 → ≤ 0,3 (≥ 20 lần thêm); nhãn không lệch sau F5.
+---

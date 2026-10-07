@@ -71,7 +71,14 @@ export const periodicTaskChecklistItemsApi = {
     content: string,
     /** true = Task đã hoàn thành được mở lại (BE đổi in_progress + kéo period_end tới hôm nay nếu kỳ đã qua). */
     reopen?: boolean,
-  ): Promise<{ item: PeriodicTaskChecklistItem; total: number; done: number }> => {
+  ): Promise<{
+    item: PeriodicTaskChecklistItem;
+    /** CHỈ đếm item (modal dùng để nhảy trang). */
+    total: number;
+    done: number;
+    /** [9B-1] Nhãn "X/Z" của list (item + Task con) - BE tính bằng ĐÚNG hàm của list. Optional: BE cũ không có -> FE refetch như cũ. */
+    checklistProgress?: { done: number; total: number };
+  }> => {
     const response = await axiosInstance.post(`/periodic-tasks/${taskId}/checklist-items`, {
       content,
       ...(reopen ? { reopen: true } : {}),

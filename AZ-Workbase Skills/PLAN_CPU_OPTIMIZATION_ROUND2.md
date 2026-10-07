@@ -457,7 +457,7 @@ Chuỗi lặp lại mỗi đợt: 8 `OPTIONS` → 8 `GET 401` → `OPTIONS` + `P
 **Rủi ro/rollback:** đụng luồng đăng nhập/refresh (cùng khu vực Mục 2) → revert 1 commit; lưới 401 cũ vẫn còn nên rủi ro thấp–TB.
 **Tiêu chí hoàn thành:** 401 < 2% số request; mỗi lần mở app sau hết hạn chỉ có 1 `/auth/refresh` và không có đợt 8 request 401.
 
-### 9B. Thêm/tick checklist item → refetch dây chuyền (nặng nhất mẫu này)
+### 9B. Thêm/tick checklist item → refetch dây chuyền (nặng nhất mẫu này) — 9B-0 ✅, 9B-1 (nhánh THÊM) ✅ ĐÃ LÀM 2026-10-07, chờ deploy + đo
 **Bằng chứng (log):** 24 `POST .../checklist-items` (TB **752 ms**, tổng 18,1 s; 9 lần cho task 128, 6 cho task 123; trung vị 14 s giữa 2 lần, 6 lần cách nhau < 10 s).
 Ngay sau **mỗi** POST (≤ 3 s, cùng trình duyệt): **24 × `GET /periodic-tasks`** (limit 100, TB 301 ms) + **25 × `GET .../checklist-items`** (TB 270 ms).
 ⇒ chuỗi này ≈ **30 s / 185 s (~16%)** thời gian xử lý của 26 phút.
@@ -467,20 +467,21 @@ Ngay sau **mỗi** POST (≤ 3 s, cùng trình duyệt): **24 × `GET /periodic-
 **Đã xác minh bằng test (2026-10-07):** `frontend/src/lib/hooks/periodicTaskChecklistCallCount.test.tsx` (8 kịch bản, hook + API + `axiosInstance` thật, adapter giả) — số lần gọi **chính xác** cho mỗi lần thêm 1 mục:
 | Kịch bản | Kết quả đo |
 |---|---|
-| S1 Agenda + modal checklist mở | 1 POST + **1 GET `/periodic-tasks`** + **1 GET `/:id/checklist-items`** (khớp log prod 24 POST → 24 list + 25 checklist) |
+| S1 Agenda + modal checklist mở | 1 POST + **0 GET `/periodic-tasks`** (9B-1; trước: 1, khớp log prod 24 POST → 24 list) + **1 GET `/:id/checklist-items`** |
 | S2 + Task con của CHÍNH task, `links-among`, `children`, `parents` | **0** (đã tối ưu đúng) |
-| S2 + `rollup` của chính task | ✅ 9B-0: **0** (trước: 1) |
+| S2 + `rollup` của chính task | ✅ 9B-0: **0** (trước: 1); list cũng 0 (9B-1) |
+| S9–S12 (mới, 9B-1) | cache list nhận đúng số BE, dòng khác không đổi, list stale; `reopen`/BE cũ → fallback 1 list; mở lại list → 1 refetch lấy số thật |
 | S3 Task CHA mở `linked-children-page` | 1 (đúng thiết kế: hiển thị tiến độ) |
 | S4 mở chi tiết `GET /:id` | 1 |
 | S5 trang Hiệu suất đang mở | +1 (`performance` luôn bị invalidate) |
-| S6 modal đóng | chỉ 1 list, **không** gọi checklist-items |
-| S7 thêm 5 mục liên tiếp | 5 POST + 5 list + 5 checklist-items (chưa gộp) |
-| S8 thêm 5 mục dồn dập (adapter tức thì) | 5 POST + 5 list + 5 checklist-items — **không dedupe**; ở prod POST ~750 ms nên refetch bị huỷ-và-gọi-lại, request đã tới BE vẫn tốn |
+| S6 modal đóng | 9B-1: chỉ 1 POST, **không** GET nào (trước: 1 list) |
+| S7 thêm 5 mục liên tiếp | 5 POST + **0 list** (trước: 5) + 5 checklist-items |
+| S8 thêm 5 mục dồn dập (adapter tức thì) | 5 POST + **0 list** (trước: 5) + 5 checklist-items; ở prod POST ~750 ms nên refetch bị huỷ-và-gọi-lại, request đã tới BE vẫn tốn |
 
 Khi làm 9B-1/9B-2, **cập nhật đúng các con số này** — đó là bằng chứng giảm.
 
 Phương án (chọn 1, đo trước/sau; mỗi cái 1 commit):
-- [ ] **9B-1 (khuyến nghị):** `onSuccess` của `useAddTaskChecklistItem`/`useUpdateTaskChecklistItem`: cập nhật nhãn tiến độ của đúng task trong cache list bằng `setQueryData` (dựa response POST/PATCH nếu BE đã trả `checklistProgress`; nếu chưa thì **thêm vào response**, không refetch list) và đặt `invalidateQueries({ queryKey: [LIST_KEY], refetchType: 'none' })` cho list để lần focus/mở sau mới refetch. Chỉ refetch trang checklist đang mở.
+- [x] **9B-1 — ✅ ĐÃ LÀM cho nhánh THÊM item (2026-10-07).** BE `create()` trả thêm `checklistProgress` (tính bằng `attachChecklistProgressToList` — item + Task con; lưu ý `total/done` cũ CHỈ đếm item nên không dùng được cho nhãn). FE `useAddTaskChecklistItem`: `setQueriesData` ghi đúng số của BE vào dòng task trong cache list, list `invalidate(refetchType:'none')`, các query khác vẫn refetch. **Fallback refetch đầy đủ** khi `reopen=true` (BE đổi status/kỳ) hoặc BE chưa trả `checklistProgress`. **CHƯA làm nhánh tick/sửa/xoá/di chuyển:** `update()` chỉ trả `item` (không có tiến độ) và tick có thể đổi status → cần đổi response BE (9B-1b), chưa có bằng chứng log (prod chỉ thấy 24 POST). Giữ nguyên mô tả gốc bên dưới: **9B-1 (khuyến nghị):** `onSuccess` của `useAddTaskChecklistItem`/`useUpdateTaskChecklistItem`: cập nhật nhãn tiến độ của đúng task trong cache list bằng `setQueryData` (dựa response POST/PATCH nếu BE đã trả `checklistProgress`; nếu chưa thì **thêm vào response**, không refetch list) và đặt `invalidateQueries({ queryKey: [LIST_KEY], refetchType: 'none' })` cho list để lần focus/mở sau mới refetch. Chỉ refetch trang checklist đang mở.
 - [x] ✅ ĐÃ LÀM (2026-10-07) — đã đọc BE `getRollup` (chỉ đếm trạng thái Task CON, không đọc checklist) → bỏ qua `rollup` của CHÍNH `taskId`; rollup của task KHÁC (Task cha) vẫn refetch. S2 đo: rollup 1 → 0. **9B-0 (nhỏ, an toàn, nên làm trước):** thêm `rollup` vào danh sách bỏ qua của `shouldRefetchAfterChecklistChange` **chỉ nếu** xác minh `GET /:id/rollup` không phụ thuộc số mục checklist (đọc BE `getRollup` trước — nếu rollup tính tiến độ từ checklist thì phải GIỮ refetch).
 - [ ] **9B-2:** debounce gộp invalidate ~1–2 s khi người dùng thêm liên tiếp (6 lần cách nhau < 10 s) → N lần thêm chỉ còn 1 refetch list.
 - [ ] **9B-3 (BE, nếu vẫn chậm):** đo `POST` 752 ms — Guard đổi status/kỳ Task trong cùng request (xem comment ở hook) có thể là nguồn; bật `CPU_TIMING` trên **preview** (không phải prod), log từng bước trong `addChecklistItem`, `EXPLAIN` truy vấn tính tiến độ. **Chưa kết luận** vì log prod không có thời gian từng bước.

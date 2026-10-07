@@ -31,16 +31,30 @@ let calls: string[] = [];
 const count = (key: string) => calls.filter((c) => c === key).length;
 const snapshot = () => Object.fromEntries([...new Set(calls)].sort().map((k) => [k, count(k)]));
 
+/** Tiến độ mà BE (mock) trả về trong response POST (item + Task con) - FE phải ghi NGUYÊN số này vào cache list. */
+const BE_PROGRESS = { done: 1, total: 5 };
+let postProgress: { done: number; total: number } | undefined = BE_PROGRESS;
+
 function installFakeBackend() {
   calls = [];
+  postProgress = BE_PROGRESS;
   axiosInstance.defaults.adapter = async (config: InternalAxiosRequestConfig): Promise<AxiosResponse> => {
     const path = String(config.url).split('?')[0];
     calls.push(`${String(config.method).toUpperCase()} ${path}`);
     let data: unknown = {};
     if (config.method === 'get') {
-      data = { data: [], items: [], edges: [], total: 0, page: 1, limit: 100, totalPages: 1 };
+      // Danh sách có 2 dòng: TASK (nhãn cũ 0/4) và OTHER (nhãn 3/3 - KHÔNG được bị đụng tới).
+      data = {
+        data: [
+          { id: TASK, checklistProgress: { done: 0, total: 4 } },
+          { id: OTHER, checklistProgress: { done: 3, total: 3 } },
+        ],
+        items: [], edges: [], total: 2, page: 1, limit: 100, totalPages: 1,
+      };
     }
-    if (config.method === 'post') data = { item: { id: 1, content: 'x' }, total: 1, done: 0 };
+    if (config.method === 'post') {
+      data = { item: { id: 1, content: 'x' }, total: 1, done: 0, ...(postProgress ? { checklistProgress: postProgress } : {}) };
+    }
     return { data, status: 200, statusText: 'OK', headers: {}, config, request: {} } as AxiosResponse;
   };
 }
@@ -61,8 +75,10 @@ function setup(mount: () => unknown) {
     },
     { wrapper },
   );
+  lastClient = queryClient;
   return view;
 }
+let lastClient: QueryClient;
 
 /** Trang Công việc định kỳ (view agenda, limit 100) + modal checklist của TASK đang mở. */
 function baseObservers() {
@@ -77,9 +93,9 @@ async function settle() {
   });
 }
 
-async function addItem(view: ReturnType<typeof setup>, content = 'việc mới') {
+async function addItem(view: ReturnType<typeof setup>, content = 'việc mới', reopen?: boolean) {
   await act(async () => {
-    await view.result.current.mutateAsync({ taskId: TASK, content });
+    await view.result.current.mutateAsync({ taskId: TASK, content, ...(reopen ? { reopen } : {}) });
   });
   await settle();
 }
@@ -89,7 +105,7 @@ describe('Thêm checklist item - số lần gọi endpoint (hiện trạng)', ()
     installFakeBackend();
   });
 
-  it('S1 - Agenda + modal checklist: 1 lần thêm = 1 POST + 1 GET list(limit 100) + 1 GET checklist-items', async () => {
+  it('S1 - Agenda + modal checklist: 1 lần thêm = 1 POST + 0 GET list (9B-1; trước: 1) + 1 GET checklist-items', async () => {
     const view = setup(baseObservers);
     await waitFor(() => expect(count('GET /periodic-tasks')).toBe(1));
     await waitFor(() => expect(count(`GET /periodic-tasks/${TASK}/checklist-items`)).toBe(1));
@@ -98,9 +114,9 @@ describe('Thêm checklist item - số lần gọi endpoint (hiện trạng)', ()
 
     await addItem(view);
 
+    // [9B-1] TRƯỚC: 'GET /periodic-tasks': 1. SAU: 0 (nhãn ghi từ response POST).
     expect(snapshot()).toEqual({
       [`POST /periodic-tasks/${TASK}/checklist-items`]: 1,
-      'GET /periodic-tasks': 1,
       [`GET /periodic-tasks/${TASK}/checklist-items`]: 1,
     });
   });
@@ -123,7 +139,7 @@ describe('Thêm checklist item - số lần gọi endpoint (hiện trạng)', ()
 
     expect(s[`GET /periodic-tasks/${TASK}/linked-children-checklist`]).toBeUndefined(); // bỏ qua: đúng
     expect(Object.keys(s).filter((k) => /links-among|children$|parents$/.test(k))).toEqual([]); // bỏ qua: đúng
-    expect(s['GET /periodic-tasks']).toBe(1);
+    expect(s['GET /periodic-tasks']).toBeUndefined(); // [9B-1] trước: 1
     // [9B-0] TRƯỚC: toBe(1) (refetch thừa). SAU: 0 - BE getRollup chỉ đếm trạng thái Task con.
     expect(s[`GET /periodic-tasks/${TASK}/rollup`]).toBeUndefined();
   });
@@ -170,7 +186,7 @@ describe('Thêm checklist item - số lần gọi endpoint (hiện trạng)', ()
     expect(perf.reduce((n, [, v]) => n + (v as number), 0)).toBe(1);
   });
 
-  it('S6 - Modal checklist ĐÓNG (enabled=false): không có GET checklist-items, chỉ list', async () => {
+  it('S6 - Modal checklist ĐÓNG (enabled=false): chỉ 1 POST, không GET nào (9B-1)', async () => {
     const view = setup(() => {
       usePeriodicTasks({ page: 1, limit: 100 });
       useTaskChecklistPage(TASK, 1, false, {});
@@ -181,13 +197,11 @@ describe('Thêm checklist item - số lần gọi endpoint (hiện trạng)', ()
 
     await addItem(view);
 
-    expect(snapshot()).toEqual({
-      [`POST /periodic-tasks/${TASK}/checklist-items`]: 1,
-      'GET /periodic-tasks': 1,
-    });
+    // [9B-1] TRƯỚC: thêm 'GET /periodic-tasks': 1. SAU: chỉ còn POST.
+    expect(snapshot()).toEqual({ [`POST /periodic-tasks/${TASK}/checklist-items`]: 1 });
   });
 
-  it('S7 - Thêm 5 mục LIÊN TIẾP (người dùng gõ nhanh) = 5 POST + 5 GET list + 5 GET checklist-items (CHƯA gộp)', async () => {
+  it('S7 - Thêm 5 mục LIÊN TIẾP = 5 POST + 0 GET list (9B-1; trước: 5) + 5 GET checklist-items', async () => {
     const view = setup(baseObservers);
     await waitFor(() => expect(count('GET /periodic-tasks')).toBe(1));
     await settle();
@@ -197,8 +211,7 @@ describe('Thêm checklist item - số lần gọi endpoint (hiện trạng)', ()
 
     expect(snapshot()).toEqual({
       [`POST /periodic-tasks/${TASK}/checklist-items`]: 5,
-      'GET /periodic-tasks': 5,
-      [`GET /periodic-tasks/${TASK}/checklist-items`]: 5,
+      [`GET /periodic-tasks/${TASK}/checklist-items`]: 5, // [9B-1] 'GET /periodic-tasks' trước: 5, sau: 0
     });
   });
 
@@ -216,9 +229,70 @@ describe('Thêm checklist item - số lần gọi endpoint (hiện trạng)', ()
     await settle();
 
     expect(count(`POST /periodic-tasks/${TASK}/checklist-items`)).toBe(5);
-    // Ghi nhận số thật để làm mốc cho 9B-2 (debounce): không được > 5.
-    expect(count('GET /periodic-tasks')).toBeLessThanOrEqual(5);
+    // [9B-1] list không còn refetch sau POST (trước: ≤ 5).
+    expect(count('GET /periodic-tasks')).toBe(0);
     // eslint-disable-next-line no-console
     console.info('[S8] 5 POST dồn dập ->', snapshot());
+  });
+
+  describe('9B-1 - nhãn "X/Z" ghi từ response POST', () => {
+    const listRow = (id: number) =>
+      (lastClient.getQueryData<{ data: Array<{ id: number; checklistProgress: unknown }> }>([
+        'periodic-tasks',
+        { page: 1, limit: 100, dateFrom: '2026-10-05', dateTo: '2026-10-11' },
+      ])?.data ?? []).find((r) => r.id === id);
+
+    it('S9 - cache list nhận ĐÚNG số của BE cho task vừa thêm; dòng task khác KHÔNG đổi; list bị đánh dấu stale (tự làm tươi lần sau)', async () => {
+      const view = setup(baseObservers);
+      await waitFor(() => expect(count('GET /periodic-tasks')).toBe(1));
+      await settle();
+      calls = [];
+
+      await addItem(view);
+
+      expect(listRow(TASK)?.checklistProgress).toEqual(BE_PROGRESS);
+      expect(listRow(OTHER)?.checklistProgress).toEqual({ done: 3, total: 3 });
+      expect(count('GET /periodic-tasks')).toBe(0);
+      const state = lastClient.getQueryState(['periodic-tasks', { page: 1, limit: 100, dateFrom: '2026-10-05', dateTo: '2026-10-11' }]);
+      expect(state?.isInvalidated).toBe(true);
+    });
+
+    it('S10 - reopen=true (BE có thể đổi status/kỳ) -> FALLBACK refetch list đầy đủ như cũ (1 lần)', async () => {
+      const view = setup(baseObservers);
+      await waitFor(() => expect(count('GET /periodic-tasks')).toBe(1));
+      await settle();
+      calls = [];
+
+      await addItem(view, 'mở lại', true);
+
+      expect(count('GET /periodic-tasks')).toBe(1);
+    });
+
+    it('S11 - BE cũ chưa trả checklistProgress -> FALLBACK refetch list đầy đủ (không tự cộng trừ ở FE)', async () => {
+      postProgress = undefined;
+      const view = setup(baseObservers);
+      await waitFor(() => expect(count('GET /periodic-tasks')).toBe(1));
+      await settle();
+      calls = [];
+
+      await addItem(view);
+
+      expect(count('GET /periodic-tasks')).toBe(1);
+      expect(listRow(TASK)?.checklistProgress).toEqual({ done: 0, total: 4 }); // dữ liệu mock refetch, FE không tự đổi
+    });
+
+    it('S12 - Mở lại list SAU khi thêm (observer mới mount) -> refetch 1 lần để lấy số thật từ BE', async () => {
+      const view = setup(baseObservers);
+      await waitFor(() => expect(count('GET /periodic-tasks')).toBe(1));
+      await settle();
+      await addItem(view);
+      calls = [];
+
+      const remount = renderHook(() => usePeriodicTasks({ page: 1, limit: 100, dateFrom: '2026-10-05', dateTo: '2026-10-11' }), {
+        wrapper: ({ children }: { children: React.ReactNode }) => <QueryClientProvider client={lastClient}>{children}</QueryClientProvider>,
+      });
+      await waitFor(() => expect(count('GET /periodic-tasks')).toBe(1));
+      remount.unmount();
+    });
   });
 });

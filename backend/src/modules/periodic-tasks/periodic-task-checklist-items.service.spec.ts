@@ -140,8 +140,16 @@ describe('PeriodicTaskChecklistItemsService', () => {
     });
   });
 
+  // [9B-1] create() gọi attachChecklistProgressToList() (nhãn X/Z = item + Task con). Chỉ mock ở các test `create`
+  // (không mock toàn file - có test riêng cho chính hàm này). Test 9B-1 kiểm tra tham số + giá trị trả về.
+  const mockProgressForCreate = () =>
+    jest
+      .spyOn(service, 'attachChecklistProgressToList')
+      .mockResolvedValue([{ id: taskId, checklistProgress: { done: 1, total: 5 } }] as any);
+
   describe('create - Guard mở lại Task đã hoàn thành', () => {
     beforeEach(() => {
+      mockProgressForCreate();
       mockQb.getRawOne.mockResolvedValueOnce({ max: 0 }).mockResolvedValueOnce({ total: '2', done: '1' });
       mockChecklistRepo.save.mockResolvedValue(undefined);
     });
@@ -185,6 +193,8 @@ describe('PeriodicTaskChecklistItemsService', () => {
   });
 
   describe('create', () => {
+    beforeEach(() => mockProgressForCreate());
+
     it('thêm item mới với position = MAX(position) hiện có + 1', async () => {
       mockQb.getRawOne
         .mockResolvedValueOnce({ max: 2 }) // MAX(position)
@@ -204,6 +214,7 @@ describe('PeriodicTaskChecklistItemsService', () => {
         item: { taskId, content: 'Gọi khách', position: 3, createdById: employeeUser.id },
         total: 4,
         done: 1,
+        checklistProgress: { done: 1, total: 5 },
       });
       expect(mockChecklistRepo.find).not.toHaveBeenCalled();
       expect(mockAuditService.logActionAsync).toHaveBeenCalledWith(
@@ -213,6 +224,21 @@ describe('PeriodicTaskChecklistItemsService', () => {
         null,
         { content: 'Gọi khách' },
       );
+    });
+
+    it('9B-1: trả `checklistProgress` tính bằng ĐÚNG hàm của list (item + Task con), kèm user/scope để lọc quyền', async () => {
+      mockQb.getRawOne.mockResolvedValueOnce({ max: 0 }).mockResolvedValueOnce({ total: '2', done: '1' });
+      mockChecklistRepo.save.mockResolvedValue(undefined);
+      // Task có 3 Task con (1 xong): total item = 2 nhưng nhãn list = 5, done = 2.
+      (service.attachChecklistProgressToList as jest.Mock).mockResolvedValue([
+        { id: taskId, checklistProgress: { done: 2, total: 5 } },
+      ]);
+
+      const result = await service.create(taskId, { content: 'X' }, employeeUser, 'own');
+
+      expect(service.attachChecklistProgressToList).toHaveBeenCalledWith([{ id: taskId }], employeeUser.id, employeeUser.role, 'own');
+      expect(result.total).toBe(2); // modal vẫn dùng total/done chỉ-item để nhảy trang
+      expect(result.checklistProgress).toEqual({ done: 2, total: 5 });
     });
 
     it('position = 0 khi Task chưa có item nào (MAX trả về null)', async () => {

@@ -157,7 +157,13 @@ export class PeriodicTaskChecklistItemsService {
     dto: CreatePeriodicTaskChecklistItemDto,
     user: RequestingUser,
     scope?: string | null,
-  ): Promise<{ item: PeriodicTaskChecklistItem; total: number; done: number }> {
+  ): Promise<{
+    item: PeriodicTaskChecklistItem;
+    total: number;
+    done: number;
+    /** Tiến độ nhãn "X/Z" của list (item + Task con) - FE ghi thẳng vào cache list thay vì refetch (9B-1). */
+    checklistProgress: { done: number; total: number };
+  }> {
     const task = await this.tasksService.findOne(taskId, user.id, user.role, scope);
     await this.tasksService.assertEditableWhenLocked(task, user);
 
@@ -192,7 +198,9 @@ export class PeriodicTaskChecklistItemsService {
     // Trả item vừa tạo + tổng mới (FE nhảy tới trang cuối để thấy item vừa thêm) -
     // KHÔNG trả lại cả danh sách.
     const summary = await this.getSummary(taskId);
-    return { item: created, total: summary.total, done: summary.done };
+    // [9B-1] `total/done` ở trên CHỈ đếm item; nhãn ở list đếm item + Task con -> dùng ĐÚNG hàm của list.
+    const [withProgress] = await this.attachChecklistProgressToList([{ id: taskId }], user.id, user.role, scope);
+    return { item: created, total: summary.total, done: summary.done, checklistProgress: withProgress.checklistProgress };
   }
 
   /** Sửa nội dung và/hoặc `isDone` của 1 checklist item. */

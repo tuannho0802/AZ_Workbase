@@ -1,6 +1,10 @@
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { periodicTaskChecklistItemsApi, type ChecklistListOptions } from '../api/periodic-task-checklist-items.api';
-import { shouldRefetchAfterChecklistChange } from '../utils/periodicTaskInvalidation';
+import {
+  shouldRefetchAfterChecklistChange,
+  isPeriodicTaskListKey,
+  patchTaskChecklistProgress,
+} from '../utils/periodicTaskInvalidation';
 
 /** CÙNG namespace `'periodic-tasks'` (mirror `usePeriodicTaskSecondaryAssignees.ts`) -
  * các query trang checklist nằm dưới namespace này nên mọi mutation chỉ cần invalidate
@@ -25,12 +29,47 @@ function useInvalidatePeriodicTaskChecklistItems() {
   };
 }
 
+/**
+ * [9B-1] Sau khi THÊM item: ghi nhãn "X/Z" từ response BE vào cache danh sách (KHÔNG refetch `GET /periodic-tasks`
+ * limit 100), đánh dấu list stale (`refetchType: 'none'`) để lần mở/focus sau tự làm tươi. Các query khác (trang
+ * checklist, detail, rollup của task khác, performance...) vẫn refetch đúng như trước.
+ */
+function useApplyChecklistProgress() {
+  const queryClient = useQueryClient();
+  return (taskId: number, progress: { done: number; total: number }) => {
+    queryClient.setQueriesData(
+      { queryKey: [LIST_KEY], predicate: (query) => isPeriodicTaskListKey(query.queryKey) },
+      (old: unknown) => patchTaskChecklistProgress(old, taskId, progress),
+    );
+    queryClient.invalidateQueries({
+      queryKey: [LIST_KEY],
+      predicate: (query) => isPeriodicTaskListKey(query.queryKey),
+      refetchType: 'none',
+    });
+    queryClient.invalidateQueries({
+      queryKey: [LIST_KEY],
+      predicate: (query) => !isPeriodicTaskListKey(query.queryKey) && shouldRefetchAfterChecklistChange(query.queryKey, taskId),
+    });
+    queryClient.invalidateQueries({ queryKey: ['periodic-task-performance'] });
+  };
+}
+
 export const useAddTaskChecklistItem = () => {
   const invalidate = useInvalidatePeriodicTaskChecklistItems();
+  const applyProgress = useApplyChecklistProgress();
   return useMutation({
     mutationFn: ({ taskId, content, reopen }: { taskId: number; content: string; reopen?: boolean }) =>
       periodicTaskChecklistItemsApi.create(taskId, content, reopen),
-    onSuccess: (_data, variables) => invalidate(variables.taskId),
+    // [AGENT] OLD CODE (9B-1, giữ lại để rollback): onSuccess: (_data, variables) => invalidate(variables.taskId),
+    onSuccess: (data, variables) => {
+      // reopen=true: BE có thể đổi status/kỳ của Task -> dòng list đổi nhiều hơn nhãn => refetch đầy đủ như cũ.
+      // BE cũ chưa trả `checklistProgress` => cũng refetch đầy đủ (không tự cộng trừ ở FE).
+      if (variables.reopen || !data?.checklistProgress) {
+        invalidate(variables.taskId);
+        return;
+      }
+      applyProgress(variables.taskId, data.checklistProgress);
+    },
   });
 };
 
