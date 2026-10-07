@@ -85,7 +85,7 @@ describe('GuideDemoBlock - tham số & persona', () => {
     for (const id of ids) expect(id).toMatch(/^[a-z0-9-]+$/);
   });
 
-  it('registry gộp đủ 71 mẫu từ các module demos/* (10 Khách hàng/chung + 4 Chia data/Quản lý phụ trách + 3 Status khách + 3 Quản lý nguồn + 3 Quản lý UTM + 4 Nhóm liên kết / Nhóm tôi quản lý + 2 Thùng rác + 2 Báo cáo data lỗi + 12 Công việc định kỳ + 3 Trạng thái công việc + 2 Lịch sử công việc + 3 Hiệu suất công việc + 8 Nghỉ phép / Duyệt phép / Loại phép + 3 Thông báo + 2 Gửi thông báo + 3 Thông báo đã gửi + 4 Profile) (đã tách ở P0b) - thiếu 1 mẫu = bài đã viết bị vỡ', () => {
+  it('registry gộp đủ 74 mẫu từ các module demos/* (10 Khách hàng/chung + 4 Chia data/Quản lý phụ trách + 3 Status khách + 3 Quản lý nguồn + 3 Quản lý UTM + 4 Nhóm liên kết / Nhóm tôi quản lý + 2 Thùng rác + 2 Báo cáo data lỗi + 12 Công việc định kỳ + 3 Trạng thái công việc + 2 Lịch sử công việc + 3 Hiệu suất công việc + 8 Nghỉ phép / Duyệt phép / Loại phép + 3 Thông báo + 2 Gửi thông báo + 3 Thông báo đã gửi + 4 Profile + 3 Báo cáo doanh số) (đã tách ở P0b) - thiếu 1 mẫu = bài đã viết bị vỡ', () => {
     expect(GUIDE_DEMOS.map((d) => d.id).sort()).toEqual(
       [
         'assign-flow',
@@ -127,6 +127,9 @@ describe('GuideDemoBlock - tham số & persona', () => {
         'profile-card',
         'profile-edit',
         'profile-groups',
+        'report-metric-dates',
+        'report-period-explainer',
+        'report-revenue-by-viewer',
         'row-actions',
         'sales-assignment-cell',
         'source-form',

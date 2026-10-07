@@ -62,7 +62,7 @@ function RevenueByViewerDemo({ viewer }: { viewer: ReportViewer }) {
                     { title: 'Doanh thu', dataIndex: 'amount', key: 'amount', align: 'right', render: (v: number) => usd(v) },
                     { title: 'Khách nạp', dataIndex: 'depositors', key: 'depositors', align: 'right' },
                     { title: 'Số khoản nạp', dataIndex: 'deposits', key: 'deposits', align: 'right' },
-                    { title: 'Nạp lần đầu', key: 'ftd', align: 'right', render: (_v, r) => <span>{r.ftd} <Text type="secondary" style={{ fontSize: 12 }}>{usd(r.ftdAmount)}</Text></span> },
+                    { title: 'Nạp lần đầu', key: 'ftd', align: 'right', render: (_v, r) => <span>{r.ftd} <Text type="secondary" style={{ fontSize: 12 }}>· {usd(r.ftdAmount)}</Text></span> },
                     { title: 'Nạp lại', key: 're', align: 'right', render: (_v, r) => <span>{r.redeposit} <Text type="secondary" style={{ fontSize: 12 }}>khoản · {usd(r.redepositAmount)}</Text></span> },
                     { title: 'TB / khách nạp', key: 'avg', align: 'right', render: (_v, r) => usd(Math.round(r.amount / r.depositors)) },
                 ]}
