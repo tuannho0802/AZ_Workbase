@@ -16,7 +16,8 @@ import type { NotificationCategory } from '../types/notification.types';
 // [AGENT] OLD CODE (giữ lại để rollback): const POLL_INTERVAL_MS = 60_000;
 // 2 phút (PLAN 2.3): Vercel serverless không có WebSocket/SSE fan-out → polling nhẹ. Nâng từ 60s
 // để giảm Fluid Active CPU (Hobby). Thông báo vẫn cập nhật ngay khi focus lại tab.
-const POLL_INTERVAL_MS = 120_000;
+// [AGENT] OLD CODE (rollback): 120_000. Nâng 300s theo yêu cầu để giảm Fluid Active CPU.
+const POLL_INTERVAL_MS = 300_000;
 
 const CATEGORY_TITLE: Record<NotificationCategory, string> = {
   customer: 'Khách hàng',

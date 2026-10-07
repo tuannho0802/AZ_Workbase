@@ -8,7 +8,7 @@ export const useDeviceStatus = () => {
     queryKey: ['zk-device-status'],
     queryFn: zkDeviceApi.getStatus,
     retry: false, // máy có thể offline - không cần Antd/react-query retry liên tục
-    staleTime: 30 * 1000,
+    staleTime: 2 * 60 * 1000, // [AGENT] OLD: 30s - request tới máy chấm công nặng
   });
 };
 
@@ -17,6 +17,8 @@ export const useDeviceUsers = () => {
     queryKey: ['zk-device-users'],
     queryFn: zkDeviceApi.getDeviceUsers,
     retry: false,
+    // [AGENT] OLD: mặc định 30s. Mutation sync/map/clear đã invalidate sẵn nên cache 5 phút an toàn.
+    staleTime: 5 * 60 * 1000,
   });
 };
 

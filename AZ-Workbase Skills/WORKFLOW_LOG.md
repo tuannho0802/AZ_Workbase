@@ -6732,3 +6732,5 @@ Now [deploy]
 ---
 
 - 2026-10-07 | Claude | Gộp `useUsersList()` (không role) vào key `users-for-select` + staleTime 5 phút, bỏ refetchOnMount ép buộc (trước đây 2 key cùng gọi GET /users/all). Bổ sung nhãn audit `SYSTEM_RESET` / entity `system` ở audit-meta.ts (test audit-meta đang đỏ do patch 11). vitest toàn bộ pass.
+
+- 2026-10-07 | Claude | Poll /sidebar/poll + /notifications/poll nâng 120s/180s -> 300s (cùng key). useDeviceUsers staleTime 5 phút, useDeviceStatus 2 phút (mutation đã invalidate). Kiểm tra: JwtStrategy đã cache user 10s/instance (auth-user-cache.util), link-groups/chia-data invalidate là cần thiết (chỉ query đang active refetch), useCustomerStats không có invalidate nên giữ nguyên 30s. Tín hiệu quyền/refdata/epoch giờ trễ tối đa ~5 phút (hoặc ngay khi focus tab/bấm Reset).

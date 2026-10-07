@@ -9,7 +9,8 @@ import { useActivityPolling } from './useUserActivity';
 // khác nhau mỗi chu kỳ - mỗi request chạy riêng JwtStrategy + PermissionGuard và nhiều
 // endpoint là danh sách đầy đủ (join + hydrate) chỉ để lấy `total`.
 // NEW: 1 request `GET /sidebar/badges` - BE tự kiểm permission từng badge + chỉ COUNT.
-const REFRESH_INTERVAL_MS = 180_000;
+// [AGENT] OLD CODE (rollback): 180_000. Cùng key poll với useNotificationPoll -> đồng bộ 300s.
+const REFRESH_INTERVAL_MS = 300_000;
 
 /** queryKey DUY NHẤT của badge sidebar - invalidate key này sau mutation để làm mới ngay. */
 // [AGENT] OLD CODE (giữ để rollback): ['badge-count', 'sidebar'] + query riêng /sidebar/badges.
