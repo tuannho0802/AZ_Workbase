@@ -33,9 +33,10 @@
 | 5 | `sidebar/badges` + `notifications/poll` | 6,7% + 6,7% | Thấp | Không | 0 |
 | 6 | Dữ liệu tham chiếu tải lại mỗi lần mở trang | ≈ 15% (cộng nhiều route) | Thấp (A) / TB (B) | Không | — |
 | 7 | `GET /customers`, `keep-alive`, các route nhỏ | 5,3% / 2,3% | Thấp | Không | 0 |
-| 8 | Đo lại sau cùng & chốt | — | — | — | 1–7 |
+| 9 | **(MỚI 2026-10-07)** Phát hiện từ log prod: 401 khi mở app, refetch dây chuyền sau thêm checklist, `users/all` trùng, `departments` no-cache | 10% request (401) + ≈ 16% thời gian xử lý (chuỗi checklist) | Thấp–TB | Không | 1, 3 |
+| 8 | Đo lại sau cùng & chốt | — | — | — | 1–7, 9 |
 
-Làm tuần tự **1 → 2 → 3 → 4 → 6A → 5 → 7**. Mục 2 và 3 đáng làm nhất (≈ 31% CPU của mẫu).
+Làm tuần tự **1 → 2 → 3 → 4 → 6A → 5 → 7 → 9** (9A có thể làm sớm vì độc lập, rủi ro thấp). Mục 2 và 3 đáng làm nhất (≈ 31% CPU của mẫu).
 
 ---
 
@@ -394,9 +395,108 @@ Hiện `staleTime`: departments 5 phút, media-sources 5 phút, customer-statuse
 
 ---
 
+## Mục 9 — Phát hiện từ log PROD 2026-10-07 (bổ sung)
+
+> **Nguồn:** `az-workbase-backend-log-export-2026-10-07T02-16-39.json` (Vercel Logs **production**, `CPU_TIMING=false`),
+> 01:50–02:16 UTC (26 phút), **719 request thật** (4512 dòng log, gộp theo `requestId`), ~10 người dùng, 15 instance.
+> **Giới hạn:** log chỉ có `durationMs` (thời gian chạm tường, gồm cả chờ DB), **không phải CPU hoạt động Fluid** → các tỷ lệ dưới đây
+> là tương đối. Log không có user id nên không tách theo người dùng được. Mọi mục đều phải **đo lại** như các mục trước.
+> **Trạng thái code khi lập mục này:** `main` @ `4e595e7`. Tại thời điểm đó `axios-instance.ts` có `isRefreshing` (cờ trong 1 tab)
+> nhưng **chưa** có `navigator.locks` và **chưa** đọc `exp` của token (đã grep).
+
+### 9.0. Số liệu tổng quan (prod)
+| Chỉ số | Giá trị |
+|---|---|
+| Phân bố status | 200: 221 · 304: 168 (23%) · 204 (OPTIONS): 225 (31%) · 401: 73 (10%) · 201: 32 |
+| Thời gian xử lý TB | 200: 359 ms · **304: 351 ms** · 204: 65 ms (trung vị 7 ms) · 401: 131 ms · 201: 714 ms |
+| Tổng thời gian xử lý | ≈ 185 s (304: 58,9 s · OPTIONS: 14,5 s · 401: 9,6 s) |
+| Route tốn nhất (tổng) | `POST /periodic-tasks/:id/checklist-items` 24 lần · 18,1 s · TB 752 ms; `GET /periodic-tasks` 44 lần · 13,3 s; `sidebar/badges` 12,6 s; `notifications/poll` 11,7 s |
+| Lỗi (`level=error`) | Chỉ 1 loại: `DEP0169 url.parse()` của Node — không phải lỗi nghiệp vụ |
+
+**Kết luận chung:** không có vòng lặp gọi API dư thừa nghiêm trọng. `refresh` chỉ chạy 1 lần mỗi đợt 401 (14 dòng = 7 OPTIONS + 7 POST),
+không còn thấy cặp refresh song song như log 06/10. Chỉ có 10 GET trùng thật trong 5 giây (sau khi loại các retry sau 401).
+
+### 9.1. Về 304 — đã xác minh, KHÔNG phải lỗi
+- 304 tốn **351 ms TB, gần bằng 200 (359 ms)**: Express sinh weak ETag **sau khi** handler chạy xong → server vẫn chạy đủ query DB,
+  chỉ không gửi lại body. **304 tiết kiệm băng thông, KHÔNG tiết kiệm CPU/invocation.** Muốn giảm CPU phải giảm **số lần gọi**.
+- Phân bố 304: `notifications/poll` 27 (đúng thiết kế: số chưa đọc không đổi) · `roles/my-permissions` 20 · `users/all` 15 ·
+  `periodic-tasks/links` 15 · `departments` 11 · `roles/colors` 10 · `guides` 8 · `positions`/`customer-statuses`/`media-sources`/
+  `assignment-groups/sales/users` 7 mỗi route.
+- Phần lớn nhóm tham chiếu (`my-permissions`, `colors`, `departments`, `guides`, `positions`…) rơi vào **lúc mở app/F5 và lúc retry sau 401**
+  (xem 9A) chứ không phải polling → xử lý ở 9A + Mục 6, không cần làm gì riêng cho "304".
+- [ ] Không đổi gì ở cơ chế ETag. Ghi nhận vào WORKFLOW_LOG để lần sau không ai "tối ưu 304" vô ích.
+
+### 9A. Đợt 401 khi mở app với access token đã hết hạn (ưu tiên cao, độc lập)
+**Bằng chứng (log):** 73 request 401 (10%), chia **7 đợt** (02:05, 02:07, 02:11, 02:12, 02:13…), mỗi đợt 8–9 request **cùng giây**:
+`departments, positions, sidebar/badges, roles/colors, notifications/poll, users/me, guides, roles/my-permissions` (đúng bộ query lúc mở app).
+Chuỗi lặp lại mỗi đợt: 8 `OPTIONS` → 8 `GET 401` → `OPTIONS` + `POST /auth/refresh` → **gửi lại 8 request** (đa số 304/200).
+⇒ mỗi đợt tốn ≈ 8 invocation 401 + 8 retry, rồi các route tham chiếu chạy lại. Nguyên nhân: user mở lại app sau > `JWT_EXPIRES_IN` (1h, đã đặt đúng) nên token đã hết hạn **trước** khi gửi request đầu tiên.
+
+**Việc cần làm** (chính là mục "refresh chủ động, ưu tiên thấp" của Mục 1 — nay có bằng chứng prod nên nâng lên làm):
+- [ ] `frontend/src/lib/api/axios-instance.ts`, request interceptor: giải mã `exp` từ access token (base64url của đoạn payload, **không cần thư viện**, bọc try/catch — token lỗi thì bỏ qua và gửi như cũ).
+      Nếu `exp - now < 60 s` (kể cả đã hết hạn) → gọi refresh **trước** rồi mới gửi request; dùng chung cờ/hàng đợi `isRefreshing` + `failedQueue` hiện có để 8 request song song chỉ đợi 1 lần refresh.
+- [ ] Không refresh chủ động cho chính `/auth/refresh` và `/auth/login` (tránh đệ quy); đồng hồ máy lệch → vẫn còn nhánh 401 cũ làm lưới an toàn (**giữ nguyên**, không bỏ).
+- [ ] Giữ code cũ bằng comment `// [AGENT] OLD CODE`; không đổi BE.
+- [ ] (Tuỳ chọn, gộp 2A nếu chưa làm) bọc lần refresh trong `navigator.locks` như Mục 2A để nhiều tab không refresh song song.
+
+**Test (vitest):** token còn hạn → không gọi refresh; token hết hạn + 8 request đồng thời → đúng **1** `axios.post('/auth/refresh')` và 8 request đều gửi với token mới, **không request nào nhận 401**; token không giải mã được → gửi như cũ; refresh lỗi → logout như hiện tại.
+**Đo:** 30 phút cùng kịch bản (mở app sau > 1h không dùng): số 401 giảm từ 73 → gần 0; số `GET` trùng sau 401 biến mất.
+**Rủi ro/rollback:** đụng luồng đăng nhập/refresh (cùng khu vực Mục 2) → revert 1 commit; lưới 401 cũ vẫn còn nên rủi ro thấp–TB.
+**Tiêu chí hoàn thành:** 401 < 2% số request; mỗi lần mở app sau hết hạn chỉ có 1 `/auth/refresh` và không có đợt 8 request 401.
+
+### 9B. Thêm/tick checklist item → refetch dây chuyền (nặng nhất mẫu này)
+**Bằng chứng (log):** 24 `POST .../checklist-items` (TB **752 ms**, tổng 18,1 s; 9 lần cho task 128, 6 cho task 123; trung vị 14 s giữa 2 lần, 6 lần cách nhau < 10 s).
+Ngay sau **mỗi** POST (≤ 3 s, cùng trình duyệt): **24 × `GET /periodic-tasks`** (limit 100, TB 301 ms) + **25 × `GET .../checklist-items`** (TB 270 ms).
+⇒ chuỗi này ≈ **30 s / 185 s (~16%)** thời gian xử lý của 26 phút.
+
+**Đã xác minh trong code:** `usePeriodicTaskChecklistItems.ts` đã thu hẹp invalidate (predicate `shouldRefetchAfterChecklistChange`) — vẫn **cố ý** refetch list để cập nhật nhãn "X/Z" và `['periodic-task-performance']`. Đây là hành vi thiết kế, không phải bug; mục này chỉ là **tối ưu thêm**, làm sau khi 3B/3C đã đo xong.
+
+Phương án (chọn 1, đo trước/sau; mỗi cái 1 commit):
+- [ ] **9B-1 (khuyến nghị):** `onSuccess` của `useAddTaskChecklistItem`/`useUpdateTaskChecklistItem`: cập nhật nhãn tiến độ của đúng task trong cache list bằng `setQueryData` (dựa response POST/PATCH nếu BE đã trả `checklistProgress`; nếu chưa thì **thêm vào response**, không refetch list) và đặt `invalidateQueries({ queryKey: [LIST_KEY], refetchType: 'none' })` cho list để lần focus/mở sau mới refetch. Chỉ refetch trang checklist đang mở.
+- [ ] **9B-2:** debounce gộp invalidate ~1–2 s khi người dùng thêm liên tiếp (6 lần cách nhau < 10 s) → N lần thêm chỉ còn 1 refetch list.
+- [ ] **9B-3 (BE, nếu vẫn chậm):** đo `POST` 752 ms — Guard đổi status/kỳ Task trong cùng request (xem comment ở hook) có thể là nguồn; bật `CPU_TIMING` trên **preview** (không phải prod), log từng bước trong `addChecklistItem`, `EXPLAIN` truy vấn tính tiến độ. **Chưa kết luận** vì log prod không có thời gian từng bước.
+
+**Test:** tick/thêm item → nhãn "X/Z" ở list vẫn đúng ngay (không đợi refetch) và đúng sau F5; 5 lần thêm liên tiếp → ≤ 1–2 `GET /periodic-tasks`.
+**Rủi ro:** nhãn lệch nếu BE đổi status/tiến độ ngoài dự đoán của FE → luôn lấy số từ response BE, không tự cộng trừ ở FE; rollback = revert commit (quay lại invalidate như cũ).
+**Tiêu chí hoàn thành:** số `GET /periodic-tasks` sau mỗi lần thêm checklist giảm từ 1 → ≤ 0,3 (đo ≥ 20 lần thêm); nhãn không lệch.
+
+### 9C. `GET /users/all` — nhiều nơi tự gọi, không dùng chung cache
+**Bằng chứng (log):** 37 lần/26 phút (15 lần 304); 6/10 GET trùng thật là `users/all`, có cặp cách nhau **0,1–0,2 s** (02:03:42, 02:07:00 ×2, 02:07:26).
+**Đã xác minh trong code (grep):** `usersApi.getAllForSelect()` được gọi ở ≥ 8 nơi, mỗi nơi tự `useQuery`/gọi trực tiếp:
+`UtmManagersModal`, `CustomerAssignmentsTab`, `BulkAssignModal`, `SalesUserSelect`, `useBroadcastCompose`, và **gọi thẳng không qua cache** ở `trash-can/page.tsx:152` (`.then(setSalesOptions)`) và `customers/page.tsx:506`.
+(`getUsersList` ở `useUsers.ts` cũng gọi cùng route `/users/all`, khác query string.)
+**Chưa biết:** các `useQuery` trên có cùng `queryKey` hay không (cần đọc từng file; nếu khác key → không dedupe được).
+
+- [ ] Tạo 1 hook dùng chung `useAllUsersForSelect()` (key cố định, `staleTime` 5 phút như nhóm tham chiếu ở Mục 6A) và thay 5 chỗ `useQuery`.
+- [ ] Hai chỗ gọi trực tiếp (`trash-can`, `customers/page.tsx:506`) → chuyển sang `queryClient.fetchQuery` với cùng key/hook để dùng cache.
+- [ ] Invalidate key này khi tạo/sửa/khoá/xoá nhân viên và khi đổi Phòng ban/Vị trí (theo quy tắc Mục 6A: **liệt kê mutation → invalidate**, không nâng TTL nếu chưa có invalidate).
+- [ ] Test: mở 2 modal dùng danh sách người dùng liên tiếp → chỉ 1 `GET /users/all`; sửa nhân viên → danh sách tươi.
+**Tiêu chí hoàn thành:** `GET /users/all` trùng < 5 s về 0; số lần/phiên giảm ≥ 40% (cùng kịch bản).
+
+### 9D. `departments` — `CacheControlInterceptor(300, true)` không có tác dụng
+**Đã xác minh trong code:** `departments.controller.ts:40` dùng `new CacheControlInterceptor(300, true)`. Khi `revalidate=true` interceptor trả
+`private, no-cache` (xem `cache-control.interceptor.ts`) → tham số `300` **bị bỏ qua**, mỗi lần gọi đều chạm server (log: 21 request, TB 410 ms, cộng 16 lần 401).
+- [ ] **Quyết định cần chủ dự án chốt (đánh đổi):** (a) giữ nguyên (luôn tươi, tốn invocation); (b) đổi thành `new CacheControlInterceptor(300)` — `public, max-age=300` (phòng ban ít đổi, Admin đổi ở máy khác thấy chậm tối đa 5 phút). Lưu ý lịch sử bug "vừa sửa xong bảng chưa hiện" ở comment interceptor; **không** làm (b) nếu FE chưa invalidate/`cache: 'no-cache'` sau khi sửa phòng ban.
+- [ ] Nếu chọn (b): cùng Mục 6A, `useDepartments` đã có `staleTime` 5 phút và invalidate `['departments']` nên rủi ro chủ yếu ở trình duyệt khác.
+- [ ] Đo: số `GET /departments` trên mỗi phiên.
+
+### 9E. Không cần làm (đã cân nhắc từ log prod)
+- **Preflight `OPTIONS` (31% số request):** đã trả lời **trước** khi khởi tạo Nest (`respondToPreflight`), TB 65 ms / trung vị 7 ms, `maxAge` đã `7200` (mức tối đa Chrome chấp nhận). Mỗi URL (kể cả khác query của `periodic-tasks`) cần 1 preflight riêng nên không giảm thêm được. **Giữ nguyên.**
+- **`HEAD /keep-alive` (12 lần, UptimeRobot ~5 phút):** đã bỏ log (mục 7B). Không nới chu kỳ (xem Phụ lục A).
+- **`notifications/poll` 304:** thiết kế đúng; chu kỳ trung vị 12,7 s là cộng dồn của ~10 người dùng (idle-aware polling đã có). Đo lại ở Mục 5.
+- **Cảnh báo `DEP0169 url.parse()`:** của thư viện bên thứ ba/Node, không ảnh hưởng CPU; xử lý ở PLAN_HARDENING (cập nhật phụ thuộc), không thuộc plan này.
+
+### 9F. Đo lại sau Mục 9
+- [ ] Vì prod đang `CPU_TIMING=false`: so sánh bằng **số request theo route + `durationMs`** (cùng kịch bản, cùng khoảng 30 phút, ≥ 200 request), không so tổng.
+- [ ] Bảng "Trước → Sau" cần có: số 401, số `POST /auth/refresh`, `GET /periodic-tasks` sau mỗi POST checklist, `GET /users/all`, `GET /departments`.
+- [ ] Thứ tự commit (mỗi mục 1 commit): **9A → 9C → 9B-1 → 9D (nếu chốt b)**. Ghi entry `WORKFLOW_LOG.md` sau mỗi mục.
+- [ ] Không bật `CPU_TIMING=true` trên prod để đo mục này (tự tốn CPU); nếu cần chi tiết 9B-3 thì bật trên **preview** ~30 phút rồi tắt.
+
+---
+
 ## Mục 8 — Đo lại & chốt
 
-- [ ] Sau mỗi mục (2, 3, 4, 6A, 5): thu log 30 phút, chạy script, **so với baseline Mục 0** theo cùng kịch bản.
+- [ ] Sau mỗi mục (2, 3, 4, 6A, 5, 9): thu log 30 phút, chạy script, **so với baseline Mục 0** theo cùng kịch bản.
 - [ ] Sau cùng thu log 1–2 giờ (≥ 200 request), lập bảng "Trước → Sau" cho 6 route đầu và ghi vào `WORKFLOW_LOG.md`.
 - [ ] **Tắt `CPU_TIMING=true`** trên Vercel sau khi đo (ghi log cũng tốn CPU).
 - [ ] Mục nào không đạt tiêu chí: ghi rõ lý do + quyết định (giữ/revert/làm tiếp).
@@ -418,3 +518,7 @@ Hiện `staleTime`: departments 5 phút, media-sources 5 phút, customer-statuse
 | 4 | Hồ sơ/avatar hiển thị cũ | Revert; hoặc giảm `staleTime` |
 | 6A | "Sửa xong không đổi" | Thêm invalidate còn thiếu / giảm `staleTime` |
 | 6B | Lộ dữ liệu chéo tài khoản | Tắt persister; xoá `sessionStorage` key |
+| 9A | Refresh chủ động sai (đồng hồ lệch/token lạ) → vòng refresh | Giữ lưới 401 cũ; revert commit |
+| 9B-1 | Nhãn "X/Z" lệch so với DB | Luôn lấy số từ response BE; revert → invalidate như cũ |
+| 9C | Danh sách người dùng cũ sau khi sửa nhân viên | Thêm invalidate còn thiếu / giảm `staleTime` |
+| 9D(b) | Phòng ban đổi chưa hiện tới 5 phút | Quay lại `(300, true)` |
