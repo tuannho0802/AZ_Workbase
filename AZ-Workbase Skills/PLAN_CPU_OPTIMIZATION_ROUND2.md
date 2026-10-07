@@ -469,7 +469,7 @@ Ngay sau **mỗi** POST (≤ 3 s, cùng trình duyệt): **24 × `GET /periodic-
 |---|---|
 | S1 Agenda + modal checklist mở | 1 POST + **1 GET `/periodic-tasks`** + **1 GET `/:id/checklist-items`** (khớp log prod 24 POST → 24 list + 25 checklist) |
 | S2 + Task con của CHÍNH task, `links-among`, `children`, `parents` | **0** (đã tối ưu đúng) |
-| S2 + `rollup` | ⚠ vẫn refetch 1 (không nằm trong danh sách bỏ qua → **ứng viên bỏ thêm**) |
+| S2 + `rollup` của chính task | ✅ 9B-0: **0** (trước: 1) |
 | S3 Task CHA mở `linked-children-page` | 1 (đúng thiết kế: hiển thị tiến độ) |
 | S4 mở chi tiết `GET /:id` | 1 |
 | S5 trang Hiệu suất đang mở | +1 (`performance` luôn bị invalidate) |
@@ -481,7 +481,7 @@ Khi làm 9B-1/9B-2, **cập nhật đúng các con số này** — đó là bằ
 
 Phương án (chọn 1, đo trước/sau; mỗi cái 1 commit):
 - [ ] **9B-1 (khuyến nghị):** `onSuccess` của `useAddTaskChecklistItem`/`useUpdateTaskChecklistItem`: cập nhật nhãn tiến độ của đúng task trong cache list bằng `setQueryData` (dựa response POST/PATCH nếu BE đã trả `checklistProgress`; nếu chưa thì **thêm vào response**, không refetch list) và đặt `invalidateQueries({ queryKey: [LIST_KEY], refetchType: 'none' })` cho list để lần focus/mở sau mới refetch. Chỉ refetch trang checklist đang mở.
-- [ ] **9B-0 (nhỏ, an toàn, nên làm trước):** thêm `rollup` vào danh sách bỏ qua của `shouldRefetchAfterChecklistChange` **chỉ nếu** xác minh `GET /:id/rollup` không phụ thuộc số mục checklist (đọc BE `getRollup` trước — nếu rollup tính tiến độ từ checklist thì phải GIỮ refetch).
+- [x] ✅ ĐÃ LÀM (2026-10-07) — đã đọc BE `getRollup` (chỉ đếm trạng thái Task CON, không đọc checklist) → bỏ qua `rollup` của CHÍNH `taskId`; rollup của task KHÁC (Task cha) vẫn refetch. S2 đo: rollup 1 → 0. **9B-0 (nhỏ, an toàn, nên làm trước):** thêm `rollup` vào danh sách bỏ qua của `shouldRefetchAfterChecklistChange` **chỉ nếu** xác minh `GET /:id/rollup` không phụ thuộc số mục checklist (đọc BE `getRollup` trước — nếu rollup tính tiến độ từ checklist thì phải GIỮ refetch).
 - [ ] **9B-2:** debounce gộp invalidate ~1–2 s khi người dùng thêm liên tiếp (6 lần cách nhau < 10 s) → N lần thêm chỉ còn 1 refetch list.
 - [ ] **9B-3 (BE, nếu vẫn chậm):** đo `POST` 752 ms — Guard đổi status/kỳ Task trong cùng request (xem comment ở hook) có thể là nguồn; bật `CPU_TIMING` trên **preview** (không phải prod), log từng bước trong `addChecklistItem`, `EXPLAIN` truy vấn tính tiến độ. **Chưa kết luận** vì log prod không có thời gian từng bước.
 
@@ -489,7 +489,7 @@ Phương án (chọn 1, đo trước/sau; mỗi cái 1 commit):
 **Rủi ro:** nhãn lệch nếu BE đổi status/tiến độ ngoài dự đoán của FE → luôn lấy số từ response BE, không tự cộng trừ ở FE; rollback = revert commit (quay lại invalidate như cũ).
 **Tiêu chí hoàn thành:** số `GET /periodic-tasks` sau mỗi lần thêm checklist giảm từ 1 → ≤ 0,3 (đo ≥ 20 lần thêm); nhãn không lệch.
 
-### 9C. `GET /users/all` — nhiều nơi tự gọi, không dùng chung cache
+### 9C. `GET /users/all` — nhiều nơi tự gọi, không dùng chung cache — ✅ ĐÃ LÀM (2026-10-07, chờ deploy + đo)
 **Bằng chứng (log):** 37 lần/26 phút (15 lần 304); 6/10 GET trùng thật là `users/all`, có cặp cách nhau **0,1–0,2 s** (02:03:42, 02:07:00 ×2, 02:07:26).
 **Đã xác minh trong code (grep):** `usersApi.getAllForSelect()` được gọi ở ≥ 8 nơi, mỗi nơi tự `useQuery`/gọi trực tiếp:
 `UtmManagersModal`, `CustomerAssignmentsTab`, `BulkAssignModal`, `SalesUserSelect`, `useBroadcastCompose`, và **gọi thẳng không qua cache** ở `trash-can/page.tsx:152` (`.then(setSalesOptions)`) và `customers/page.tsx:506`.
@@ -498,9 +498,9 @@ Phương án (chọn 1, đo trước/sau; mỗi cái 1 commit):
 (1) `trash-can/page.tsx:152` (`useEffect` gọi thẳng, không cache); (2) `customers/page.tsx:506` (`fetchSalesUsers` gọi thẳng, không cache); (3) `useUsers.ts` dùng key riêng `['users-list', role]` nhưng cùng route `/users/all`.
 
 - [ ] ~~Tạo hook dùng chung + thay 5 chỗ `useQuery`~~ — **không cần** (đã dùng chung key).
-- [ ] Chỉ sửa 2 chỗ gọi trực tiếp (`trash-can/page.tsx:152`, `customers/page.tsx:506`) → `queryClient.fetchQuery({ queryKey: ['users-for-select'], queryFn: usersApi.getAllForSelect, staleTime: 5 * 60 * 1000 })` để dùng chung cache; cân nhắc gộp `useUsers` (`users-list`) khi `role` không truyền.
-- [ ] Invalidate key này khi tạo/sửa/khoá/xoá nhân viên và khi đổi Phòng ban/Vị trí (theo quy tắc Mục 6A: **liệt kê mutation → invalidate**, không nâng TTL nếu chưa có invalidate).
-- [ ] Test: mở 2 modal dùng danh sách người dùng liên tiếp → chỉ 1 `GET /users/all`; sửa nhân viên → danh sách tươi.
+- [x] Chỉ sửa 2 chỗ gọi trực tiếp (`trash-can/page.tsx:152`, `customers/page.tsx:506`) → `queryClient.fetchQuery({ queryKey: ['users-for-select'], queryFn: usersApi.getAllForSelect, staleTime: 5 * 60 * 1000 })` để dùng chung cache; cân nhắc gộp `useUsers` (`users-list`) khi `role` không truyền.
+- [x] (users/page.tsx tạo/sửa/xoá mềm, TrashTab khôi phục, profile xoá mềm → `invalidateUserLists`; helper ở `useUsers.ts`) Invalidate key này khi tạo/sửa/khoá/xoá nhân viên và khi đổi Phòng ban/Vị trí (theo quy tắc Mục 6A: **liệt kê mutation → invalidate**, không nâng TTL nếu chưa có invalidate).
+- [x] (`usersForSelectCache.test.tsx`, 4 test) Test: mở 2 modal dùng danh sách người dùng liên tiếp → chỉ 1 `GET /users/all`; sửa nhân viên → danh sách tươi.
 **Tiêu chí hoàn thành:** `GET /users/all` trùng < 5 s về 0; số lần/phiên giảm ≥ 40% (cùng kịch bản).
 
 ### 9D. `departments` — `CacheControlInterceptor(300, true)` không có tác dụng

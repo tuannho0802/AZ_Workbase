@@ -17,7 +17,8 @@ import { usersApi } from '@/lib/api/users.api';
 import { useMyPermissions } from '@/lib/hooks/useMyPermissions';
 import { useDepartments } from '@/lib/hooks/useDepartments';
 import { usePositions } from '@/lib/hooks/usePositions';
-import { useUsersList } from '@/lib/hooks/useUsers';
+import { useUsersList, invalidateUserLists } from '@/lib/hooks/useUsers';
+import { useQueryClient } from '@tanstack/react-query';
 import { PendingApprovalsTab } from './PendingApprovalsTab';
 import { TrashTab } from './TrashTab';
 import { getApiErrorMessage } from '@/lib/utils/error-message.util';
@@ -142,6 +143,7 @@ function UserMobileCard({
 
 // ── main page ────────────────────────────────────────────────────────────────
 export default function UsersPage() {
+  const queryClient = useQueryClient();
   const [users, setUsers] = useState<any[]>([]);
   const [loading, setLoading] = useState(false);
   const [total, setTotal] = useState(0);
@@ -388,6 +390,7 @@ export default function UsersPage() {
       setIsModalOpen(false);
       form.resetFields();
       fetchUsers();
+      invalidateUserLists(queryClient); // 9C: danh sách nhân viên dùng chung cache 5 phút
     } catch (error: any) {
       const errorData = error.response?.data;
       if (errorData?.message) {
@@ -432,6 +435,7 @@ export default function UsersPage() {
           await usersApi.softDeleteUser(record.id);
           message.success(`Đã chuyển "${record.name}" vào thùng rác`);
           fetchUsers();
+          invalidateUserLists(queryClient);
         } catch (err) {
           message.error(getApiErrorMessage(err, 'Xoá thất bại'));
         }

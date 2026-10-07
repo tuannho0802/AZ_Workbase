@@ -11,7 +11,8 @@ import { useAuthStore } from '@/lib/stores/auth.store';
 import { useMyPermissions } from '@/lib/hooks/useMyPermissions';
 import { useRouter } from 'next/navigation';
 import { customersApi } from '@/lib/api/customers.api';
-import { usersApi } from '@/lib/api/users.api';
+import { fetchUsersForSelect } from '@/lib/hooks/useUsers';
+import { useQueryClient } from '@tanstack/react-query';
 import { Customer } from '@/lib/types/customer.types';
 import { useDebounce } from '@/lib/hooks/useDebounce';
 import { SourceTag } from '@/components/customers/SourceTag';
@@ -148,9 +149,13 @@ export default function TrashCanPage() {
   // CHUNG danh sách này cho cả filter "Sales phụ trách" LẪN "Người xóa" -
   // ai cũng có thể là người bấm xóa, không riêng gì Sales.
   const [salesOptions, setSalesOptions] = useState<{ id: number; name: string; role?: string }[]>([]);
+  const queryClient = useQueryClient();
   useEffect(() => {
-    usersApi.getAllForSelect().then(setSalesOptions).catch(() => { });
-  }, []);
+    // [AGENT] OLD CODE (giữ lại để rollback):
+    // usersApi.getAllForSelect().then(setSalesOptions).catch(() => { });
+    // [AGENT] NEW CODE (9C): dùng chung cache ['users-for-select'] (5 phút).
+    fetchUsersForSelect(queryClient).then(setSalesOptions).catch(() => { });
+  }, [queryClient]);
   // ⚠️ MỚI (yêu cầu người dùng - "dropdown chưa dùng Color tag đúng"): tô
   // màu Tag vai trò trong dropdown "Sales phụ trách"/"Người xóa" đúng theo
   // màu Admin đã cấu hình ở /phan-quyen, cùng pattern với SalesUserSelect.tsx/

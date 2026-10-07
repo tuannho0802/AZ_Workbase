@@ -105,14 +105,14 @@ describe('Thêm checklist item - số lần gọi endpoint (hiện trạng)', ()
     });
   });
 
-  it('S2 - thêm cả Task con liên kết của CHÍNH task (linked-children-page) + cấu trúc liên kết: KHÔNG refetch (đã tối ưu)', async () => {
+  it('S2 - Task con của CHÍNH task + cấu trúc liên kết + rollup của chính task: KHÔNG refetch (đã tối ưu)', async () => {
     const view = setup(() => {
       baseObservers();
       useLinkedChildrenChecklistPage(TASK, 1, true); // Task con của chính TASK
       useTaskLinksAmong([TASK, OTHER]);
       useTaskChildren(TASK);
       useTaskParents(TASK);
-      useTaskRollup(TASK); // rollup KHÔNG nằm trong danh sách bỏ qua -> sẽ refetch
+      useTaskRollup(TASK); // [9B-0] rollup của CHÍNH task nằm trong danh sách bỏ qua -> KHÔNG refetch
     });
     await waitFor(() => expect(count('GET /periodic-tasks')).toBe(1));
     await settle();
@@ -124,7 +124,8 @@ describe('Thêm checklist item - số lần gọi endpoint (hiện trạng)', ()
     expect(s[`GET /periodic-tasks/${TASK}/linked-children-checklist`]).toBeUndefined(); // bỏ qua: đúng
     expect(Object.keys(s).filter((k) => /links-among|children$|parents$/.test(k))).toEqual([]); // bỏ qua: đúng
     expect(s['GET /periodic-tasks']).toBe(1);
-    expect(s[`GET /periodic-tasks/${TASK}/rollup`]).toBe(1); // ⚠ vẫn refetch (không thuộc danh sách bỏ qua)
+    // [9B-0] TRƯỚC: toBe(1) (refetch thừa). SAU: 0 - BE getRollup chỉ đếm trạng thái Task con.
+    expect(s[`GET /periodic-tasks/${TASK}/rollup`]).toBeUndefined();
   });
 
   it('S3 - Task CHA đang mở trang Task con (linked-children-page của task KHÁC) -> vẫn refetch 1 lần (đúng thiết kế: hiển thị tiến độ)', async () => {

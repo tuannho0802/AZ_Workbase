@@ -19,7 +19,8 @@ import { StatModals } from '@/components/customers/StatModals';
 import { useCustomersToday, useCustomersByStatus, useAllDepositsStats } from '@/lib/hooks/useCustomerStats';
 import { useCustomers } from '@/lib/hooks/useCustomers';
 import { useDebounce } from '@/lib/hooks/useDebounce';
-import { usersApi } from '@/lib/api/users.api';
+import { fetchUsersForSelect } from '@/lib/hooks/useUsers';
+import { useQueryClient } from '@tanstack/react-query';
 import { useMyPermissions } from '@/lib/hooks/useMyPermissions';
 import { useMyHiddenElements } from '@/lib/hooks/useUiVisibility';
 import { useAssignmentGroupUsers } from '@/lib/hooks/useAssignmentGroups';
@@ -501,9 +502,13 @@ function CustomersPageContent() {
     { id: number; name: string; department?: { id: number; name: string } | null }[]
   >([]);
 
+  const queryClient = useQueryClient();
   const fetchSalesUsers = async () => {
     try {
-      const users = await usersApi.getAllForSelect();
+      // [AGENT] OLD CODE (giữ lại để rollback):
+      // const users = await usersApi.getAllForSelect();
+      // [AGENT] NEW CODE (9C): dùng chung cache ['users-for-select'] (5 phút).
+      const users = await fetchUsersForSelect(queryClient);
       setSalesUsers(users);
     } catch (error) {
       console.error('Fetch sales users error:', error);

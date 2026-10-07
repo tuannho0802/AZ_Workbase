@@ -6,6 +6,7 @@ import { Table, Button, Space, App, Modal, Typography, Spin, Tag } from 'antd';
 import { UndoOutlined, DeleteOutlined, ExclamationCircleOutlined } from '@ant-design/icons';
 import dayjs from 'dayjs';
 import { usersApi, TrashedUser } from '@/lib/api/users.api';
+import { invalidateUserLists } from '@/lib/hooks/useUsers';
 import { getApiErrorMessage } from '@/lib/utils/error-message.util';
 import { useRoleColorMap, useRoleColors } from '@/lib/hooks/useRoleColorMap';
 import { usePositions } from '@/lib/hooks/usePositions';
@@ -75,6 +76,7 @@ export const TrashTab = ({ onCountChange, onRestored }: Props) => {
       message.success(`Đã khôi phục tài khoản "${restoring.name}"`);
       setRestoring(null);
       refetch();
+      invalidateUserLists(queryClient); // 9C
       // "Danh sách nhân viên" ở tab bên cạnh dùng useState/useEffect thô,
       // không phải react-query - khôi phục nghĩa là user XUẤT HIỆN LẠI ở
       // đó nên phải nhờ page cha tự fetchUsers() lại qua callback.

@@ -20,6 +20,7 @@ import dayjs from 'dayjs';
 
 import { useAuthStore } from '@/lib/stores/auth.store';
 import { useQueryClient } from '@tanstack/react-query';
+import { invalidateUserLists } from '@/lib/hooks/useUsers';
 import { usersApi, UserDetail } from '@/lib/api/users.api';
 import { fetchMeCached } from '@/lib/hooks/useMe';
 import { useManagedByMe, useAllLinkGroups } from '@/lib/hooks/useLinkGroups';
@@ -261,6 +262,7 @@ function ProfilePortal({ userId, onDeleted }: { userId: number; onDeleted?: () =
         try {
           await usersApi.softDeleteUser(userId);
           message.success('Đã chuyển tài khoản vào thùng rác');
+          invalidateUserLists(queryClient); // 9C
           onDeleted?.();
         } catch (err: any) {
           message.error(err?.response?.data?.message || 'Xoá thất bại');

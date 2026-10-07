@@ -6486,3 +6486,24 @@ Now [deploy]
 > FE: `tsc --noEmit` chỉ còn 4 lỗi `logo.png` có sẵn; vitest `src/lib` 58 file/710 test, `src/components` 19/144, `src/app` 6/36 — tất cả pass (chạy từng thư mục vì chạy gộp bị quá giờ trong sandbox).
 > **CẦN CHECK SAU DEPLOY:** 30 phút log prod: 401 < 2%, mỗi lần mở app sau hết hạn chỉ 1 `/auth/refresh`; nếu ≥ 2 refresh/30 s cùng người dùng → nghi lệch đồng hồ (xem cooldown).
 ---
+
+---
+## [2026-10-07 10:30] | Mục 9C (users/all dùng chung cache) + 9B-0 (bỏ refetch rollup của chính task) | Status: Success (chờ deploy + đo)
+
+**Actor:** Agent
+**Files Changed:**
+- `frontend/src/lib/hooks/useUsers.ts` — thêm `USERS_FOR_SELECT_KEY`, `fetchUsersForSelect()`, `invalidateUserLists()`
+- `frontend/src/app/(dashboard)/trash-can/page.tsx`, `customers/page.tsx` — 2 chỗ gọi thẳng `getAllForSelect()` → `fetchUsersForSelect(queryClient)` (code cũ giữ bằng comment)
+- `frontend/src/app/(dashboard)/users/page.tsx`, `users/TrashTab.tsx`, `profile/page.tsx` — gọi `invalidateUserLists` sau tạo/sửa/xoá mềm/khôi phục nhân viên
+- `frontend/src/lib/utils/periodicTaskInvalidation.ts` — 9B-0: bỏ qua `rollup` của chính `taskId`
+- Test: `usersForSelectCache.test.tsx` (mới, 4), `periodicTaskInvalidation.test.ts`, `periodicTaskChecklistCallCount.test.tsx` (S2: rollup 1 → 0)
+- `AZ-Workbase Skills/PLAN_CPU_OPTIMIZATION_ROUND2.md` — đánh dấu 9C, 9B-0
+
+**Root Cause:**
+> 9C: 2 chỗ gọi `/users/all` thẳng, không qua cache → request trùng (cặp cách 0,1–0,2 s). Trước đó cũng chưa có invalidate cho `users-for-select` khi đổi nhân viên.
+> 9B-0: mỗi lần thêm checklist refetch thừa `rollup` của chính task, trong khi BE `getRollup` không phụ thuộc checklist.
+
+**Notes:**
+> `tsc --noEmit` chỉ còn 4 lỗi `logo.png` có sẵn; vitest: hooks+utils 33 file/249 test, app+components 25/180, lib còn lại 26/466 — tất cả pass. Chưa thêm `[deploy]`.
+> Chưa làm 9B-1/9B-2/9D. **CHECK SAU DEPLOY:** `GET /users/all` trùng < 5 s về 0; `GET .../rollup` sau POST checklist về 0.
+---

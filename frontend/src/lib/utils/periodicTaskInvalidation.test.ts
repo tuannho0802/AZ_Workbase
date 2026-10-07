@@ -8,10 +8,9 @@ describe('shouldRefetchAfterChecklistChange', () => {
     expect(shouldRefetchAfterChecklistChange(['periodic-tasks', { page: 1, limit: 20 }], T)).toBe(true);
   });
 
-  it('vẫn refetch trang checklist, detail và rollup', () => {
+  it('vẫn refetch trang checklist và detail', () => {
     expect(shouldRefetchAfterChecklistChange(['periodic-tasks', 'checklist-page', T, 1, 'position', false], T)).toBe(true);
     expect(shouldRefetchAfterChecklistChange(['periodic-tasks', 'detail', T], T)).toBe(true);
-    expect(shouldRefetchAfterChecklistChange(['periodic-tasks', 'rollup', T], T)).toBe(true);
   });
 
   it('KHÔNG refetch cấu trúc liên kết (links-among / children / parents)', () => {
@@ -23,5 +22,10 @@ describe('shouldRefetchAfterChecklistChange', () => {
   it('KHÔNG refetch Task con của CHÍNH task vừa tick, nhưng vẫn refetch Task con của task KHÁC (cha hiển thị tiến độ của nó)', () => {
     expect(shouldRefetchAfterChecklistChange(['periodic-tasks', 'linked-children-page', T, 1], T)).toBe(false);
     expect(shouldRefetchAfterChecklistChange(['periodic-tasks', 'linked-children-page', 99, 1], T)).toBe(true);
+  });
+
+  it('9B-0: KHÔNG refetch rollup của CHÍNH task (BE chỉ đếm trạng thái Task con), nhưng vẫn refetch rollup của task KHÁC (Task cha)', () => {
+    expect(shouldRefetchAfterChecklistChange(['periodic-tasks', 'rollup', T], T)).toBe(false);
+    expect(shouldRefetchAfterChecklistChange(['periodic-tasks', 'rollup', 99], T)).toBe(true);
   });
 });
