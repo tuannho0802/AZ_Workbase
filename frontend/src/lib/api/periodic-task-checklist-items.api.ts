@@ -33,6 +33,17 @@ export interface ChecklistListOptions {
   hideDone?: boolean;
 }
 
+/** [PERF] `update` trả item + (tuỳ chọn) số liệu để FE ghi cache list thay vì refetch `GET /periodic-tasks`.
+ * `checklistProgress`: chỉ có khi tick/bỏ tick đổi `isDone`. `statusChanged`: Guard đã đổi status Task -> FE refetch đầy đủ.
+ * BE cũ không có 2 field này -> FE tự fallback refetch như trước. */
+export type ChecklistUpdateResult = PeriodicTaskChecklistItem & {
+  checklistProgress?: { done: number; total: number };
+  statusChanged?: boolean;
+};
+
+/** `remove`: `checklistProgress` optional (BE cũ không trả -> FE refetch như trước). */
+export type ChecklistRemoveResult = { deleted: true; checklistProgress?: { done: number; total: number } };
+
 export const periodicTaskChecklistItemsApi = {
   getPage: async (
     taskId: number,
@@ -90,16 +101,16 @@ export const periodicTaskChecklistItemsApi = {
     taskId: number,
     itemId: number,
     data: { content?: string; isDone?: boolean; nextStatusCode?: 'in_progress' | 'in_review' },
-  ): Promise<PeriodicTaskChecklistItem> => {
-    const response = await axiosInstance.patch<PeriodicTaskChecklistItem>(
+  ): Promise<ChecklistUpdateResult> => {
+    const response = await axiosInstance.patch<ChecklistUpdateResult>(
       `/periodic-tasks/${taskId}/checklist-items/${itemId}`,
       data,
     );
     return response.data;
   },
 
-  remove: async (taskId: number, itemId: number): Promise<{ deleted: true }> => {
-    const response = await axiosInstance.delete<{ deleted: true }>(`/periodic-tasks/${taskId}/checklist-items/${itemId}`);
+  remove: async (taskId: number, itemId: number): Promise<ChecklistRemoveResult> => {
+    const response = await axiosInstance.delete<ChecklistRemoveResult>(`/periodic-tasks/${taskId}/checklist-items/${itemId}`);
     return response.data;
   },
 

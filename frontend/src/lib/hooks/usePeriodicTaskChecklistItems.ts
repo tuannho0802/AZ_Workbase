@@ -49,7 +49,7 @@ const isOwnChecklistPage = (queryKey: readonly unknown[], taskId: number) =>
   queryKey[1] === 'checklist-page' && queryKey[2] === taskId;
 
 /**
- * [9B-1] Sau khi THÊM item: ghi nhãn "X/Z" từ response BE vào cache danh sách (KHÔNG refetch `GET /periodic-tasks`
+ * [9B-1] Sau khi THÊM/TICK/XOÁ item: ghi nhãn "X/Z" từ response BE vào cache danh sách (KHÔNG refetch `GET /periodic-tasks`
  * limit 100), đánh dấu list stale (`refetchType: 'none'`) để lần mở/focus sau tự làm tươi.
  *
  * [9B-2] Trang checklist của CHÍNH task refetch NGAY (người dùng đang nhìn, phải thấy item mới). Các query PHỤ
@@ -58,16 +58,19 @@ const isOwnChecklistPage = (queryKey: readonly unknown[], taskId: number) =>
  */
 function useApplyChecklistProgress() {
   const queryClient = useQueryClient();
-  return (taskId: number, progress: { done: number; total: number }) => {
-    queryClient.setQueriesData(
-      { queryKey: [LIST_KEY], predicate: (query) => isPeriodicTaskListKey(query.queryKey) },
-      (old: unknown) => patchTaskChecklistProgress(old, taskId, progress),
-    );
-    queryClient.invalidateQueries({
-      queryKey: [LIST_KEY],
-      predicate: (query) => isPeriodicTaskListKey(query.queryKey),
-      refetchType: 'none',
-    });
+  // `progress` vắng = thay đổi KHÔNG làm đổi nhãn "X/Z" (sửa nội dung, đổi chỗ) -> không đụng cache list.
+  return (taskId: number, progress?: { done: number; total: number }) => {
+    if (progress) {
+      queryClient.setQueriesData(
+        { queryKey: [LIST_KEY], predicate: (query) => isPeriodicTaskListKey(query.queryKey) },
+        (old: unknown) => patchTaskChecklistProgress(old, taskId, progress),
+      );
+      queryClient.invalidateQueries({
+        queryKey: [LIST_KEY],
+        predicate: (query) => isPeriodicTaskListKey(query.queryKey),
+        refetchType: 'none',
+      });
+    }
     // NGAY: trang checklist của chính task.
     queryClient.invalidateQueries({
       queryKey: [LIST_KEY],
@@ -111,6 +114,7 @@ export const useAddTaskChecklistItem = () => {
 
 export const useUpdateTaskChecklistItem = () => {
   const invalidate = useInvalidatePeriodicTaskChecklistItems();
+  const applyProgress = useApplyChecklistProgress();
   return useMutation({
     mutationFn: ({
       taskId,
@@ -121,25 +125,45 @@ export const useUpdateTaskChecklistItem = () => {
       itemId: number;
       data: { content?: string; isDone?: boolean; nextStatusCode?: 'in_progress' | 'in_review' };
     }) => periodicTaskChecklistItemsApi.update(taskId, itemId, data),
-    onSuccess: (_data, variables) => invalidate(variables.taskId),
+    // [AGENT] OLD CODE (giữ lại để rollback): onSuccess: (_data, variables) => invalidate(variables.taskId),
+    onSuccess: (data, variables) => {
+      const toggled = variables.data.isDone !== undefined;
+      // Guard đổi status Task (BE báo `statusChanged`), hoặc BE cũ không trả tiến độ khi tick -> refetch đầy đủ như cũ.
+      if (data?.statusChanged || (toggled && !data?.checklistProgress)) {
+        invalidate(variables.taskId);
+        return;
+      }
+      // Tick/bỏ tick: ghi nhãn từ BE. Chỉ sửa nội dung: nhãn không đổi (progress undefined).
+      applyProgress(variables.taskId, toggled ? data.checklistProgress : undefined);
+    },
   });
 };
 
 export const useRemoveTaskChecklistItem = () => {
   const invalidate = useInvalidatePeriodicTaskChecklistItems();
+  const applyProgress = useApplyChecklistProgress();
   return useMutation({
     mutationFn: ({ taskId, itemId }: { taskId: number; itemId: number }) =>
       periodicTaskChecklistItemsApi.remove(taskId, itemId),
-    onSuccess: (_data, variables) => invalidate(variables.taskId),
+    // [AGENT] OLD CODE (giữ lại để rollback): onSuccess: (_data, variables) => invalidate(variables.taskId),
+    onSuccess: (data, variables) => {
+      if (!data?.checklistProgress) {
+        invalidate(variables.taskId); // BE cũ chưa trả tiến độ -> refetch đầy đủ
+        return;
+      }
+      applyProgress(variables.taskId, data.checklistProgress);
+    },
   });
 };
 
 export const useMoveTaskChecklistItem = () => {
-  const invalidate = useInvalidatePeriodicTaskChecklistItems();
+  const applyProgress = useApplyChecklistProgress();
   return useMutation({
     mutationFn: ({ taskId, itemId, direction }: { taskId: number; itemId: number; direction: 'up' | 'down' }) =>
       periodicTaskChecklistItemsApi.move(taskId, itemId, direction),
-    onSuccess: (_data, variables) => invalidate(variables.taskId),
+    // Đổi chỗ KHÔNG đổi tiến độ/status -> không đụng cache list; chỉ làm tươi trang checklist của task (+ query phụ gộp).
+    // [AGENT] OLD CODE (giữ lại để rollback): onSuccess: (_data, variables) => invalidate(variables.taskId),
+    onSuccess: (_data, variables) => applyProgress(variables.taskId),
   });
 };
 

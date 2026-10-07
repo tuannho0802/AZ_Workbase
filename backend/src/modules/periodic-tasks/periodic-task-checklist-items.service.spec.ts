@@ -355,6 +355,47 @@ describe('PeriodicTaskChecklistItemsService', () => {
     });
   });
 
+  describe('update - trả tiến độ để FE không refetch list', () => {
+    const mkItem = (isDone = false) => ({ id: 5, taskId, content: 'A', isDone, position: 0 });
+
+    it('tick/bỏ tick (isDone đổi) -> trả checklistProgress = item + Task con', async () => {
+      mockTasksService.findForChecklist.mockResolvedValue({ id: taskId, isLocked: false, status: { code: 'in_progress' } });
+      mockChecklistRepo.findOne.mockResolvedValue(mkItem(false));
+      mockQb.getRawOne.mockResolvedValueOnce({ total: '4', done: '2' });
+      mockLinksService.getChildrenChecklistProgressBatch.mockResolvedValue(new Map([[taskId, { done: 1, total: 3 }]]));
+
+      const res = await service.update(taskId, 5, { isDone: true }, employeeUser, 'own');
+
+      expect(res.checklistProgress).toEqual({ done: 3, total: 7 });
+      expect(res.statusChanged).toBeUndefined();
+      expect(mockLinksService.getChildrenChecklistProgressBatch).toHaveBeenCalledWith([taskId], employeeUser.id, employeeUser.role, 'own');
+    });
+
+    it('Guard đã đổi status Task -> statusChanged=true và KHÔNG tính tiến độ (FE refetch đầy đủ)', async () => {
+      mockTasksService.findForChecklist.mockResolvedValue({ id: taskId, isLocked: false, status: { code: 'not_started' } });
+      mockTasksService.changeStatusByCode.mockResolvedValue(undefined);
+      mockChecklistRepo.findOne.mockResolvedValue(mkItem(false));
+
+      const res = await service.update(taskId, 5, { isDone: true }, employeeUser, 'own');
+
+      expect(res.statusChanged).toBe(true);
+      expect(res.checklistProgress).toBeUndefined();
+      expect(mockQb.getRawOne).not.toHaveBeenCalled();
+      expect(mockLinksService.getChildrenChecklistProgressBatch).not.toHaveBeenCalled();
+    });
+
+    it('chỉ sửa nội dung (hoặc isDone không đổi) -> không truy vấn thêm, không có checklistProgress', async () => {
+      mockTasksService.findForChecklist.mockResolvedValue({ id: taskId, isLocked: false, status: { code: 'in_progress' } });
+      mockChecklistRepo.findOne.mockResolvedValue(mkItem(true));
+
+      const res = await service.update(taskId, 5, { content: 'Mới', isDone: true }, employeeUser, 'own');
+
+      expect(res.checklistProgress).toBeUndefined();
+      expect(mockQb.getRawOne).not.toHaveBeenCalled();
+      expect(mockLinksService.getChildrenChecklistProgressBatch).not.toHaveBeenCalled();
+    });
+  });
+
   describe('remove', () => {
     it('ném NotFoundException nếu item không tồn tại trong Task', async () => {
       mockChecklistRepo.findOne.mockResolvedValue(null);
@@ -367,11 +408,14 @@ describe('PeriodicTaskChecklistItemsService', () => {
       const existing = { id: 5, taskId, content: 'Gọi khách' };
       mockChecklistRepo.findOne.mockResolvedValue(existing);
       mockChecklistRepo.remove.mockResolvedValue(undefined);
+      mockQb.getRawOne.mockResolvedValueOnce({ total: '3', done: '1' }); // getSummary sau khi xoá
+      mockLinksService.getChildrenChecklistProgressBatch.mockResolvedValue(new Map([[taskId, { done: 1, total: 2 }]]));
 
       const result = await service.remove(taskId, 5, employeeUser, 'own');
 
       expect(mockChecklistRepo.remove).toHaveBeenCalledWith(existing);
-      expect(result).toEqual({ deleted: true });
+      // [PERF] trả tiến độ mới (item + Task con) để FE ghi cache list, không refetch
+      expect(result).toEqual({ deleted: true, checklistProgress: { done: 2, total: 5 } });
       expect(mockChecklistRepo.find).not.toHaveBeenCalled();
       expect(mockAuditService.logActionAsync).toHaveBeenCalledWith(
         taskId,

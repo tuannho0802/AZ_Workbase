@@ -53,6 +53,7 @@ describe('PeriodicTaskLinksService', () => {
   };
   const mockTasksService = {
     findOne: jest.fn(),
+    findForChecklist: jest.fn(),
     assertCanView: jest.fn(),
     assertEditableWhenLocked: jest.fn(),
   };
@@ -87,13 +88,13 @@ describe('PeriodicTaskLinksService', () => {
       await expect(
         service.addLink(5, { parentTaskId: 5 }, user, scope),
       ).rejects.toThrow(BadRequestException);
-      expect(mockTasksService.findOne).not.toHaveBeenCalled();
+      expect(mockTasksService.findForChecklist).not.toHaveBeenCalled();
     });
 
     it('cho phép skip-level hợp lệ (Daily -> Monthly, bỏ qua Weekly)', async () => {
       const child = makeTask(1, PeriodType.DAILY);
       const parent = makeTask(2, PeriodType.MONTHLY);
-      mockTasksService.findOne.mockResolvedValueOnce(child).mockResolvedValueOnce(parent);
+      mockTasksService.findForChecklist.mockResolvedValueOnce(child).mockResolvedValueOnce(parent);
       mockLinkRepo.findOne.mockResolvedValue(null);
       mockLinkRepo.find.mockResolvedValue([]); // không có cạnh nào khác -> không cycle
       mockLinkRepo.create.mockImplementation((data) => data);
@@ -117,7 +118,7 @@ describe('PeriodicTaskLinksService', () => {
     it('chặn rank sai chiều (Weekly không được làm cha của Monthly)', async () => {
       const child = makeTask(1, PeriodType.MONTHLY);
       const parent = makeTask(2, PeriodType.WEEKLY);
-      mockTasksService.findOne.mockResolvedValueOnce(child).mockResolvedValueOnce(parent);
+      mockTasksService.findForChecklist.mockResolvedValueOnce(child).mockResolvedValueOnce(parent);
 
       await expect(
         service.addLink(1, { parentTaskId: 2 }, user, scope),
@@ -131,7 +132,7 @@ describe('PeriodicTaskLinksService', () => {
     ])('cho phép liên kết ngang hàng %s (%s)', async (periodType) => {
       const child = makeTask(1, periodType);
       const parent = makeTask(2, periodType);
-      mockTasksService.findOne.mockResolvedValueOnce(child).mockResolvedValueOnce(parent);
+      mockTasksService.findForChecklist.mockResolvedValueOnce(child).mockResolvedValueOnce(parent);
       mockTasksService.assertEditableWhenLocked.mockResolvedValue(undefined);
       mockLinkRepo.findOne.mockResolvedValue(null);
       mockLinkRepo.find.mockResolvedValue([]);
@@ -148,7 +149,7 @@ describe('PeriodicTaskLinksService', () => {
       async (periodType) => {
         const child = makeTask(1, periodType);
         const parent = makeTask(2, periodType);
-        mockTasksService.findOne.mockResolvedValueOnce(child).mockResolvedValueOnce(parent);
+        mockTasksService.findForChecklist.mockResolvedValueOnce(child).mockResolvedValueOnce(parent);
 
         await expect(
           service.addLink(1, { parentTaskId: 2 }, user, scope),
@@ -163,7 +164,7 @@ describe('PeriodicTaskLinksService', () => {
       // nên chính cycle detection phải là lớp chặn.
       const child = makeTask(1, PeriodType.DAILY);
       const parent = makeTask(2, PeriodType.DAILY);
-      mockTasksService.findOne.mockResolvedValueOnce(child).mockResolvedValueOnce(parent);
+      mockTasksService.findForChecklist.mockResolvedValueOnce(child).mockResolvedValueOnce(parent);
       mockTasksService.assertEditableWhenLocked.mockResolvedValue(undefined);
       mockLinkRepo.findOne.mockResolvedValue(null);
       mockLinkRepo.find.mockResolvedValueOnce([{ childTaskId: 2, parentTaskId: 1 }]);
@@ -177,7 +178,7 @@ describe('PeriodicTaskLinksService', () => {
     it('chặn trùng cạnh đã tồn tại', async () => {
       const child = makeTask(1, PeriodType.DAILY);
       const parent = makeTask(2, PeriodType.WEEKLY);
-      mockTasksService.findOne.mockResolvedValueOnce(child).mockResolvedValueOnce(parent);
+      mockTasksService.findForChecklist.mockResolvedValueOnce(child).mockResolvedValueOnce(parent);
       mockLinkRepo.findOne.mockResolvedValue({ id: 5, childTaskId: 1, parentTaskId: 2 });
 
       await expect(
@@ -194,7 +195,7 @@ describe('PeriodicTaskLinksService', () => {
       // chính cycle detection là nguyên nhân chặn, không phải rank.
       const child = makeTask(1, PeriodType.DAILY);
       const parent = makeTask(4, PeriodType.YEARLY);
-      mockTasksService.findOne.mockResolvedValueOnce(child).mockResolvedValueOnce(parent);
+      mockTasksService.findForChecklist.mockResolvedValueOnce(child).mockResolvedValueOnce(parent);
       mockLinkRepo.findOne.mockResolvedValue(null);
       // BFS wouldCreateCycle(childId=1, parentId=4): frontier=[4] ->
       // tìm link có childTaskId=4 -> trả về (child=4, parent=2) -> chưa gặp
@@ -214,14 +215,14 @@ describe('PeriodicTaskLinksService', () => {
 
   describe('removeLink', () => {
     it('ném NotFoundException nếu liên kết không tồn tại', async () => {
-      mockTasksService.findOne.mockResolvedValue(makeTask(1, PeriodType.DAILY));
+      mockTasksService.findForChecklist.mockResolvedValue(makeTask(1, PeriodType.DAILY));
       mockLinkRepo.findOne.mockResolvedValue(null);
 
       await expect(service.removeLink(1, 2, user, scope)).rejects.toThrow(NotFoundException);
     });
 
     it('gỡ liên kết thành công khi tồn tại', async () => {
-      mockTasksService.findOne.mockResolvedValue(makeTask(1, PeriodType.DAILY));
+      mockTasksService.findForChecklist.mockResolvedValue(makeTask(1, PeriodType.DAILY));
       const existing = { id: 9, childTaskId: 1, parentTaskId: 2 };
       mockLinkRepo.findOne.mockResolvedValue(existing);
       mockLinkRepo.remove.mockResolvedValue(existing);
@@ -242,21 +243,21 @@ describe('PeriodicTaskLinksService', () => {
   });
 
   describe('getChildren / getParents', () => {
-    it('getChildren gọi findOne() trước (1 cổng gác) rồi query đúng chiều (parent_task_id = :taskId)', async () => {
-      mockTasksService.findOne.mockResolvedValue(makeTask(1, PeriodType.MONTHLY));
+    it('getChildren gọi assertCanView() trước (1 cổng gác) rồi query đúng chiều (parent_task_id = :taskId)', async () => {
+      mockTasksService.assertCanView.mockResolvedValue(undefined);
       const qb = makeFakeQueryBuilder({ getMany: [makeTask(2, PeriodType.DAILY)] });
       mockTaskRepo.createQueryBuilder.mockReturnValue(qb);
 
       const result = await service.getChildren(1, userId, userRole, scope);
 
-      expect(mockTasksService.findOne).toHaveBeenCalledWith(1, userId, userRole, scope);
+      expect(mockTasksService.assertCanView).toHaveBeenCalledWith(1, userId, userRole, scope);
       expect(qb.innerJoin).toHaveBeenCalledWith('periodic_task_links', 'link', 'link.child_task_id = task.id');
       expect(qb.where).toHaveBeenCalledWith('link.parent_task_id = :taskId', { taskId: 1 });
       expect(result).toHaveLength(1);
     });
 
     it('getParents query đúng chiều ngược lại (child_task_id = :taskId)', async () => {
-      mockTasksService.findOne.mockResolvedValue(makeTask(1, PeriodType.DAILY));
+      mockTasksService.assertCanView.mockResolvedValue(undefined);
       const qb = makeFakeQueryBuilder({ getMany: [makeTask(2, PeriodType.MONTHLY)] });
       mockTaskRepo.createQueryBuilder.mockReturnValue(qb);
 
@@ -321,14 +322,14 @@ describe('PeriodicTaskLinksService', () => {
       } as unknown as PeriodicTask;
     }
 
-    it('gọi findOne() trước (1 cổng gác), query đúng chiều (parent_task_id = :taskId) và áp thêm applyViewFilter lên chính Task con', async () => {
-      mockTasksService.findOne.mockResolvedValue(makeTask(1, PeriodType.MONTHLY));
+    it('gọi assertCanView() trước (1 cổng gác), query đúng chiều (parent_task_id = :taskId) và áp thêm applyViewFilter lên chính Task con', async () => {
+      mockTasksService.assertCanView.mockResolvedValue(undefined);
       const qb = makeFakeQueryBuilder({ getMany: [makeChildWithStatus(2, false)] });
       mockTaskRepo.createQueryBuilder.mockReturnValue(qb);
 
       const result = await service.getChildrenChecklist(1, userId, userRole, scope);
 
-      expect(mockTasksService.findOne).toHaveBeenCalledWith(1, userId, userRole, scope);
+      expect(mockTasksService.assertCanView).toHaveBeenCalledWith(1, userId, userRole, scope);
       expect(qb.innerJoin).toHaveBeenCalledWith('periodic_task_links', 'link', 'link.child_task_id = task.id');
       expect(qb.where).toHaveBeenCalledWith('link.parent_task_id = :taskId', { taskId: 1 });
       expect(qb.andWhere).toHaveBeenCalledWith('task.deletedAt IS NULL');
@@ -342,7 +343,7 @@ describe('PeriodicTaskLinksService', () => {
     });
 
     it('map đúng shape LinkedChildChecklistEntry - isDone = status.isDoneState CỦA TASK CON, không phải cờ lưu cứng', async () => {
-      mockTasksService.findOne.mockResolvedValue(makeTask(1, PeriodType.MONTHLY));
+      mockTasksService.assertCanView.mockResolvedValue(undefined);
       const doneChild = makeChildWithStatus(2, true);
       const qb = makeFakeQueryBuilder({ getMany: [doneChild] });
       mockTaskRepo.createQueryBuilder.mockReturnValue(qb);
@@ -361,7 +362,7 @@ describe('PeriodicTaskLinksService', () => {
     });
 
     it('trả mảng rỗng khi Task cha chưa liên kết Task con nào (hoặc Task con ngoài phạm vi scope đã bị applyViewFilter lọc hết)', async () => {
-      mockTasksService.findOne.mockResolvedValue(makeTask(1, PeriodType.MONTHLY));
+      mockTasksService.assertCanView.mockResolvedValue(undefined);
       const qb = makeFakeQueryBuilder({ getMany: [] });
       mockTaskRepo.createQueryBuilder.mockReturnValue(qb);
 
@@ -371,7 +372,7 @@ describe('PeriodicTaskLinksService', () => {
     });
 
     it('Admin không bị applyViewFilter lọc thêm theo scope (thấy mọi Task con đã liên kết)', async () => {
-      mockTasksService.findOne.mockResolvedValue(makeTask(1, PeriodType.MONTHLY));
+      mockTasksService.assertCanView.mockResolvedValue(undefined);
       const qb = makeFakeQueryBuilder({ getMany: [makeChildWithStatus(2, false)] });
       mockTaskRepo.createQueryBuilder.mockReturnValue(qb);
 
@@ -459,7 +460,7 @@ describe('PeriodicTaskLinksService', () => {
 
   describe('getRollup', () => {
     it('tính đúng % khi có con (đúng công thức PLAN mục 2.3)', async () => {
-      mockTasksService.findOne.mockResolvedValue(makeTask(1, PeriodType.MONTHLY));
+      mockTasksService.assertCanView.mockResolvedValue(undefined);
       mockLinkRepo.manager.query.mockResolvedValue([{ total_children: '10', done_children: '1' }]);
 
       const result = await service.getRollup(1, userId, userRole, scope);
@@ -468,7 +469,7 @@ describe('PeriodicTaskLinksService', () => {
     });
 
     it('trả percent = null khi totalChildren = 0 (chưa có việc con)', async () => {
-      mockTasksService.findOne.mockResolvedValue(makeTask(1, PeriodType.MONTHLY));
+      mockTasksService.assertCanView.mockResolvedValue(undefined);
       mockLinkRepo.manager.query.mockResolvedValue([{ total_children: '0', done_children: '0' }]);
 
       const result = await service.getRollup(1, userId, userRole, scope);
@@ -477,7 +478,7 @@ describe('PeriodicTaskLinksService', () => {
     });
 
     it('query loại trừ status is_excluded_from_rollup=1 (kiểm tra SQL truyền đúng điều kiện)', async () => {
-      mockTasksService.findOne.mockResolvedValue(makeTask(1, PeriodType.MONTHLY));
+      mockTasksService.assertCanView.mockResolvedValue(undefined);
       mockLinkRepo.manager.query.mockResolvedValue([{ total_children: '3', done_children: '3' }]);
 
       const result = await service.getRollup(1, userId, userRole, scope);

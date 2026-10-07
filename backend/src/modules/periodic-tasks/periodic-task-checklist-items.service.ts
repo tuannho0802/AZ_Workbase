@@ -83,6 +83,27 @@ export class PeriodicTaskChecklistItemsService {
   }
 
   /**
+   * [PERF] Số liệu cho FE ghi thẳng vào cache thay vì refetch `GET /periodic-tasks` (limit 100):
+   * `summary` = CHỈ item (modal dùng nhảy trang), `checklistProgress` = item + Task con (nhãn "X/Z" của list).
+   * 2 truy vấn song song, cùng công thức với `attachChecklistProgressToList()`.
+   */
+  private async computeProgress(
+    taskId: number,
+    user: RequestingUser,
+    scope?: string | null,
+  ): Promise<{ summary: { total: number; done: number }; checklistProgress: { done: number; total: number } }> {
+    const [summary, children] = await Promise.all([
+      this.getSummary(taskId),
+      this.linksService.getChildrenChecklistProgressBatch([taskId], user.id, user.role, scope),
+    ]);
+    const child = children.get(taskId);
+    return {
+      summary,
+      checklistProgress: { done: summary.done + (child?.done ?? 0), total: summary.total + (child?.total ?? 0) },
+    };
+  }
+
+  /**
    * Checklist item của 1 Task, PHÂN TRANG SERVER-SIDE (tối đa `CHECKLIST_PAGE_SIZE`
    * dòng/trang). Chỉ 2 truy vấn nhẹ chạy song song, KHÔNG kéo cả checklist về:
    *  1. `getChecklistSummaryForView()` - cổng gác xem + COUNT/SUM toàn Task (để FE tính % và số trang),
@@ -195,20 +216,9 @@ export class PeriodicTaskChecklistItemsService {
 
     // Trả item vừa tạo + tổng mới (FE nhảy tới trang cuối để thấy item vừa thêm) -
     // KHÔNG trả lại cả danh sách.
-    // [PERF] `attachChecklistProgressToList` tự đếm lại item (trùng `getSummary`) rồi mới đếm Task con, nối tiếp: 3 truy vấn.
-    // Giờ: đếm item + đếm Task con song song (2 truy vấn), cộng 2 số theo ĐÚNG công thức nhãn của list.
-    const [summary, children] = await Promise.all([
-      this.getSummary(taskId),
-      this.linksService.getChildrenChecklistProgressBatch([taskId], user.id, user.role, scope),
-    ]);
-    const child = children.get(taskId);
-    // [9B-1] `total/done` ở trên CHỈ đếm item; nhãn ở list đếm item + Task con.
-    return {
-      item: created,
-      total: summary.total,
-      done: summary.done,
-      checklistProgress: { done: summary.done + (child?.done ?? 0), total: summary.total + (child?.total ?? 0) },
-    };
+    // [PERF] đếm item + Task con song song (xem `computeProgress`); `total/done` CHỈ đếm item, nhãn list = item + Task con.
+    const { summary, checklistProgress } = await this.computeProgress(taskId, user, scope);
+    return { item: created, total: summary.total, done: summary.done, checklistProgress };
   }
 
   /** Sửa nội dung và/hoặc `isDone` của 1 checklist item. */
@@ -218,7 +228,7 @@ export class PeriodicTaskChecklistItemsService {
     dto: UpdatePeriodicTaskChecklistItemDto,
     user: RequestingUser,
     scope?: string | null,
-  ): Promise<PeriodicTaskChecklistItem> {
+  ): Promise<PeriodicTaskChecklistItem & { checklistProgress?: { done: number; total: number }; statusChanged?: boolean }> {
     const task = await this.tasksService.findForChecklist(taskId, user.id, user.role, scope);
     await this.tasksService.assertEditableWhenLocked(task, user);
 
@@ -228,10 +238,15 @@ export class PeriodicTaskChecklistItemsService {
 
     // Guard ÉP TRONG BE: tick (chưa xong -> xong) trên Task To-do luôn kéo Task sang in_progress (hoặc status FE xin
     // nếu tiến lên). Đổi status TRƯỚC khi lưu tick: lỗi thì tick chưa lưu -> không bao giờ có tick trong Task To-do.
+    let statusChanged = false;
     if (itemChanges.isDone === true && !item.isDone) {
       const target = resolveTickTargetStatus(task.status?.code, nextStatusCode);
-      if (target) await this.tasksService.changeStatusByCode(task, target, user, scope);
+      if (target) {
+        await this.tasksService.changeStatusByCode(task, target, user, scope);
+        statusChanged = true;
+      }
     }
+    const isDoneToggled = itemChanges.isDone !== undefined && itemChanges.isDone !== item.isDone;
 
     Object.assign(item, itemChanges);
     // [PERF] `repo.save()` trên entity đã nạp vẫn chạy thêm 1 SELECT theo id trước khi UPDATE. Item đã được nạp ở
@@ -255,7 +270,13 @@ export class PeriodicTaskChecklistItemsService {
 
     this.emitChecklistChanged(taskId, task, user.id);
 
-    return item;
+    // [PERF] Trả kèm tiến độ để FE ghi vào cache list thay vì refetch cả `GET /periodic-tasks`.
+    // - `statusChanged`: Guard đã đổi status Task -> dòng list đổi nhiều hơn nhãn, FE refetch đầy đủ.
+    // - Chỉ đổi nội dung (isDone không đổi) -> nhãn không đổi, không cần truy vấn thêm.
+    if (statusChanged) return { ...item, statusChanged: true };
+    if (!isDoneToggled) return item;
+    const { checklistProgress } = await this.computeProgress(taskId, user, scope);
+    return { ...item, checklistProgress };
   }
 
   /** Xoá 1 checklist item (hard delete, mirror `removeSecondaryAssignee()`). */
@@ -264,7 +285,7 @@ export class PeriodicTaskChecklistItemsService {
     itemId: number,
     user: RequestingUser,
     scope?: string | null,
-  ): Promise<{ deleted: true }> {
+  ): Promise<{ deleted: true; checklistProgress: { done: number; total: number } }> {
     const task = await this.tasksService.findForChecklist(taskId, user.id, user.role, scope);
     await this.tasksService.assertEditableWhenLocked(task, user);
 
@@ -278,7 +299,9 @@ export class PeriodicTaskChecklistItemsService {
 
     this.emitChecklistChanged(taskId, task, user.id);
 
-    return { deleted: true };
+    // [PERF] như `update()`: trả tiến độ mới để FE ghi cache, không refetch list.
+    const { checklistProgress } = await this.computeProgress(taskId, user, scope);
+    return { deleted: true, checklistProgress };
   }
 
   /**

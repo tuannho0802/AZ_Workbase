@@ -105,7 +105,9 @@ export class PeriodicTaskCustomersService {
     taskScope?: string | null,
   ): Promise<Customer[]> {
     // 1 cổng gác - Task ngoài phạm vi periodic_tasks.edit của người gọi tự 404.
-    const task = await this.tasksService.findOne(taskId, user.id, user.role, taskScope);
+    // [AGENT] OLD CODE (giữ lại để rollback): const task = await this.tasksService.findOne(taskId, user.id, user.role, taskScope);
+    // [PERF] chỉ cần id/title/isLocked/primaryAssigneeId -> bản nhẹ, không hydrate 3 entity User.
+    const task = await this.tasksService.findForChecklist(taskId, user.id, user.role, taskScope);
     // Phase 5 (PLAN mục 2.9): Task đang khoá mà thiếu `periodic_tasks.edit_locked` -> 403.
     await this.tasksService.assertEditableWhenLocked(task, user);
 
@@ -202,7 +204,9 @@ export class PeriodicTaskCustomersService {
     user: RequestingUser,
     taskScope?: string | null,
   ): Promise<{ deleted: true }> {
-    const task = await this.tasksService.findOne(taskId, user.id, user.role, taskScope);
+    // [AGENT] OLD CODE (giữ lại để rollback): const task = await this.tasksService.findOne(taskId, user.id, user.role, taskScope);
+    // [PERF] chỉ cần id/title/isLocked/primaryAssigneeId -> bản nhẹ, không hydrate 3 entity User.
+    const task = await this.tasksService.findForChecklist(taskId, user.id, user.role, taskScope);
     await this.tasksService.assertEditableWhenLocked(task, user);
     await this.assertCanLinkCustomer(user);
 

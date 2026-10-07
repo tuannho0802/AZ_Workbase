@@ -113,8 +113,10 @@ export class PeriodicTaskLinksService {
 
     // "1 cổng gác" - cả 2 đầu cạnh đều phải nằm trong phạm vi scope người gọi
     // được xem, nếu không sẽ tự 404 ở đây trước khi chạm bước rank/cycle.
-    const child = await this.tasksService.findOne(childId, user.id, user.role, scope);
-    const parent = await this.tasksService.findOne(parentId, user.id, user.role, scope);
+    // [AGENT] OLD CODE (giữ lại để rollback): findOne() cho cả child và parent (đủ quan hệ User) - chỉ đọc isLocked/periodType.
+    // [PERF] bản nhẹ, vẫn TUẦN TỰ (child trước) để thứ tự lỗi 404 giữ nguyên như cũ.
+    const child = await this.tasksService.findForChecklist(childId, user.id, user.role, scope);
+    const parent = await this.tasksService.findForChecklist(parentId, user.id, user.role, scope);
     await this.tasksService.assertEditableWhenLocked(child, user);
 
     if (!canLinkAsParent(parent.periodType, child.periodType)) {
@@ -167,7 +169,8 @@ export class PeriodicTaskLinksService {
     user: RequestingUser,
     scope?: string | null,
   ): Promise<{ deleted: true }> {
-    const child = await this.tasksService.findOne(childId, user.id, user.role, scope);
+    // [AGENT] OLD CODE (giữ lại để rollback): const child = await this.tasksService.findOne(childId, user.id, user.role, scope);
+    const child = await this.tasksService.findForChecklist(childId, user.id, user.role, scope);
     await this.tasksService.assertEditableWhenLocked(child, user);
 
     const existing = await this.linkRepo.findOne({
@@ -195,7 +198,8 @@ export class PeriodicTaskLinksService {
     userRole: string,
     scope?: string | null,
   ): Promise<PeriodicTask[]> {
-    await this.tasksService.findOne(taskId, userId, userRole, scope);
+    // [AGENT] OLD CODE (giữ lại để rollback): await this.tasksService.findOne(taskId, userId, userRole, scope);
+    await this.tasksService.assertCanView(taskId, userId, userRole, scope);
 
     return this.taskRepo
       .createQueryBuilder('task')
@@ -240,7 +244,8 @@ export class PeriodicTaskLinksService {
     userRole: string,
     scope?: string | null,
   ): Promise<LinkedChildChecklistEntry[]> {
-    await this.tasksService.findOne(taskId, userId, userRole, scope);
+    // [AGENT] OLD CODE (giữ lại để rollback): await this.tasksService.findOne(taskId, userId, userRole, scope);
+    await this.tasksService.assertCanView(taskId, userId, userRole, scope);
 
     const qb = this.taskRepo
       .createQueryBuilder('task')
@@ -383,7 +388,8 @@ export class PeriodicTaskLinksService {
     userRole: string,
     scope?: string | null,
   ): Promise<PeriodicTask[]> {
-    await this.tasksService.findOne(taskId, userId, userRole, scope);
+    // [AGENT] OLD CODE (giữ lại để rollback): await this.tasksService.findOne(taskId, userId, userRole, scope);
+    await this.tasksService.assertCanView(taskId, userId, userRole, scope);
 
     return this.taskRepo
       .createQueryBuilder('task')
@@ -452,7 +458,8 @@ export class PeriodicTaskLinksService {
     userRole: string,
     scope?: string | null,
   ): Promise<{ totalChildren: number; doneChildren: number; percent: number | null }> {
-    await this.tasksService.findOne(taskId, userId, userRole, scope);
+    // [AGENT] OLD CODE (giữ lại để rollback): await this.tasksService.findOne(taskId, userId, userRole, scope);
+    await this.tasksService.assertCanView(taskId, userId, userRole, scope);
 
     const rows: Array<{ total_children: string; done_children: string }> = await this.linkRepo.manager.query(
       `SELECT

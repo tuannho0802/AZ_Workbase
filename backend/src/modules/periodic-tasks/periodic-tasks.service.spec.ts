@@ -332,6 +332,32 @@ describe('PeriodicTasksService', () => {
       expect(qb.getCount).not.toHaveBeenCalled();
     });
 
+    it('[PERF] COUNT dùng truy vấn NHẸ (không join), cùng điều kiện lọc với truy vấn dữ liệu', async () => {
+      const dataQb = makeFakeQueryBuilder({ getMany: [{ id: 1 }, { id: 2 }] });
+      const countQb = makeFakeQueryBuilder({ getCount: 37 });
+      mockTaskRepo.createQueryBuilder.mockReturnValueOnce(dataQb).mockReturnValueOnce(countQb);
+
+      const r = await service.findAll({ page: 1, limit: 2, statusId: 4, search: 'abc' } as any, 1, Role.ADMIN, 'all');
+
+      expect(r.total).toBe(37);
+      expect(countQb.getCount).toHaveBeenCalledTimes(1);
+      expect(countQb.leftJoin).not.toHaveBeenCalled();
+      expect(countQb.leftJoinAndSelect).not.toHaveBeenCalled();
+      // CÙNG bộ lọc ở cả 2 truy vấn (chống lệch total so với data)
+      const conds = (qb: any) => qb.andWhere.mock.calls.map((c: any[]) => c[0]).sort();
+      expect(conds(countQb)).toEqual(conds(dataQb));
+    });
+
+    it('[PERF] COUNT chỉ join `status` khi lọc overdueOnly (điều kiện cần alias status)', async () => {
+      const dataQb = makeFakeQueryBuilder({ getMany: [{ id: 1 }, { id: 2 }] });
+      const countQb = makeFakeQueryBuilder({ getCount: 9 });
+      mockTaskRepo.createQueryBuilder.mockReturnValueOnce(dataQb).mockReturnValueOnce(countQb);
+
+      await service.findAll({ page: 1, limit: 2, overdueOnly: true } as any, 1, Role.ADMIN, 'all');
+
+      expect(countQb.leftJoin.mock.calls.map((c: any[]) => c[1])).toEqual(['status']);
+    });
+
     it('[PERF 3B.4] trang đầy (rows == limit) -> PHẢI chạy COUNT để biết tổng', async () => {
       const qb = makeFakeQueryBuilder({ getMany: [{ id: 1 }, { id: 2 }], getCount: 37 });
       mockTaskRepo.createQueryBuilder.mockReturnValue(qb);

@@ -23,7 +23,7 @@ describe('PeriodicTaskSecondaryAssigneesService', () => {
     findOne: jest.fn(),
   };
   const mockTasksService = {
-    findOne: jest.fn(),
+    findForChecklist: jest.fn(),
     assertEditableWhenLocked: jest.fn(),
     // Notification Phase 2: mock rỗng (no-op mặc định, giống hành vi thật khi
     // NOTIFICATIONS_ENABLED tắt) - test nghiệp vụ chính không quan tâm thông báo.
@@ -40,7 +40,7 @@ describe('PeriodicTaskSecondaryAssigneesService', () => {
 
   beforeEach(async () => {
     jest.clearAllMocks();
-    mockTasksService.findOne.mockResolvedValue({ id: taskId, primaryAssigneeId });
+    mockTasksService.findForChecklist.mockResolvedValue({ id: taskId, primaryAssigneeId });
     mockTasksService.assertEditableWhenLocked.mockResolvedValue(undefined);
 
     const module: TestingModule = await Test.createTestingModule({
@@ -62,8 +62,8 @@ describe('PeriodicTaskSecondaryAssigneesService', () => {
         service.addSecondaryAssignee(taskId, { userId: primaryAssigneeId }, employeeUser, 'own'),
       ).rejects.toThrow(BadRequestException);
 
-      // Đã gọi "1 cổng gác" tasksService.findOne() TRƯỚC khi kiểm tra.
-      expect(mockTasksService.findOne).toHaveBeenCalledWith(taskId, employeeUser.id, employeeUser.role, 'own');
+      // Đã gọi "1 cổng gác" tasksService.findForChecklist() TRƯỚC khi kiểm tra.
+      expect(mockTasksService.findForChecklist).toHaveBeenCalledWith(taskId, employeeUser.id, employeeUser.role, 'own');
       expect(mockUserRepo.findOne).not.toHaveBeenCalled();
     });
 
@@ -129,7 +129,7 @@ describe('PeriodicTaskSecondaryAssigneesService', () => {
 
       const result = await service.removeSecondaryAssignee(taskId, 5, employeeUser, 'own');
 
-      expect(mockTasksService.findOne).toHaveBeenCalledWith(taskId, employeeUser.id, employeeUser.role, 'own');
+      expect(mockTasksService.findForChecklist).toHaveBeenCalledWith(taskId, employeeUser.id, employeeUser.role, 'own');
       expect(result).toEqual({ deleted: true });
       expect(mockAuditService.logActionAsync).toHaveBeenCalledWith(
         taskId,

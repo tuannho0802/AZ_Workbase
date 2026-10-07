@@ -6774,3 +6774,18 @@ Now [deploy]
 
 **Notes:**
 > Đã chạy: `tsc --noEmit` sạch, `nest build` OK, jest `src/common/security` 5 suite / 29 test pass. Chưa test tay trên trình duyệt/Vercel (SWAGGER_ENABLED=false đã đặt sẵn trên Vercel).
+
+---
+## [2026-10-07] | Bỏ refetch list sau tick/xoá/di chuyển checklist; COUNT nhẹ ở GET /periodic-tasks; cổng gác nhẹ cho links/customers/secondary | [Status: Success - chưa commit]
+
+**Actor:** Agent
+**Files Changed:**
+- `backend/src/modules/periodic-tasks/periodic-task-checklist-items.service.ts` (+spec) — thêm `computeProgress()` dùng chung; `update()` trả `checklistProgress` khi `isDone` đổi, trả `statusChanged:true` khi Guard đổi status Task (khi đó KHÔNG tính tiến độ); `remove()` trả `checklistProgress`.
+- `backend/src/modules/periodic-tasks/periodic-tasks.service.ts` (+spec) — tách `applyListFilters()` dùng chung cho truy vấn dữ liệu và COUNT; COUNT không còn 5 join (chỉ join `status` khi `overdueOnly`); `findForChecklist` chọn thêm `periodType`.
+- `backend/src/modules/periodic-tasks/periodic-task-links.service.ts`, `periodic-task-customers.service.ts`, `periodic-task-secondary-assignees.service.ts` (+spec) — cổng gác dùng `findForChecklist` (khi cần dùng `task`) hoặc `assertCanView` (khi bỏ kết quả) thay cho `findOne` hydrate 3 entity User.
+- `frontend/src/lib/api/periodic-task-checklist-items.api.ts`, `frontend/src/lib/hooks/usePeriodicTaskChecklistItems.ts` — tick/xoá ghi nhãn "X/Z" từ response vào cache list (`setQueriesData`); sửa nội dung/di chuyển không đụng list; FALLBACK refetch đầy đủ khi `statusChanged` hoặc BE cũ không trả tiến độ.
+- `frontend/src/lib/hooks/periodicTaskChecklistMutationCallCount.test.tsx` (mới) — 7 kịch bản M1-M7.
+
+**Notes:**
+> Đã soi, CHƯA đổi (có chủ đích): (a) `limit: 100` ở agenda — BE `@Max(100)`, agenda đã chỉ tải đúng cửa sổ ngày (mặc định Tuần này), giảm limit sẽ cắt dữ liệu; (b) `sidebar/poll` đã là 1 truy vấn thông báo + bản chụp version cache 10s + `invalidData` cache 3 phút, còn lại là 4-5 truy vấn đếm song song — cần số `[Badges]` từ CPU_TIMING trước khi cache thêm; (c) customers: search đã dùng FULLTEXT + LIKE tiền tố, COUNT đã không join và chạy song song với truy vấn chính. `periodic_task_secondary_assignees.user_id` ĐÃ có index.
+> Chưa chạy trên MySQL thật, chưa EXPLAIN, chưa đo Vercel.

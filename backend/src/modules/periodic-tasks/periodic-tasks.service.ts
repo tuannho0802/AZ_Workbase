@@ -7,7 +7,7 @@ import {
   Logger,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { Repository, SelectQueryBuilder } from 'typeorm';
 import { waitUntil } from '@vercel/functions';
 import { PeriodicTask } from '../../database/entities/periodic-task.entity';
 import { PeriodicTaskStatus } from '../../database/entities/periodic-task-status.entity';
@@ -405,48 +405,19 @@ export class PeriodicTasksService {
     return result;
   }
 
-  async findAll(filters: PeriodicTaskFiltersDto, userId: number, userRole: string, scope?: string | null) {
-    const {
-      page = 1,
-      limit = 20,
-      periodType,
-      periodStartDate,
-      dateFrom,
-      dateTo,
-      statusId,
-      primaryAssigneeId,
-      assigneeId,
-      secondaryAssigneeId,
-      departmentId,
-      search,
-      overdueOnly,
-    } = filters;
-
-    // KHÔNG BAO GIỜ tải toàn bộ: luôn có khoảng ngày (mặc định Tuần này, tối đa
-    // 93 ngày) - xem `list-window.helper.ts`.
-    const dateWindow = resolveListWindow({ periodStartDate, dateFrom, dateTo });
-
-    // [AGENT] OLD CODE (giữ để rollback): 3 quan hệ User dùng leftJoinAndSelect -> tải ~25 cột User x 3 join x tối đa
-    // 100 dòng và trả hết ra JSON (email, phone, số dư phép...). FE danh sách chỉ đọc `id` + `name`.
-    //   .leftJoinAndSelect('task.primaryAssignee', 'primaryAssignee')
-    //   .leftJoinAndSelect('task.createdBy', 'createdBy')
-    //   .leftJoinAndSelect('task.updatedBy', 'updatedBy')
-    const qb = this.taskRepo
-      .createQueryBuilder('task')
-      .leftJoinAndSelect('task.status', 'status')
-      .leftJoin('task.primaryAssignee', 'primaryAssignee')
-      .leftJoinAndSelect('task.department', 'department')
-      .leftJoin('task.createdBy', 'createdBy')
-      .leftJoin('task.updatedBy', 'updatedBy')
-      .addSelect([
-        'primaryAssignee.id',
-        'primaryAssignee.name',
-        'createdBy.id',
-        'createdBy.name',
-        'updatedBy.id',
-        'updatedBy.name',
-      ])
-      .where('task.deletedAt IS NULL');
+  /**
+   * [PERF] Toàn bộ điều kiện lọc của danh sách, dùng CHUNG cho truy vấn dữ liệu (đủ join) và truy vấn COUNT (nhẹ).
+   * Yêu cầu `qb` có alias `task`; khi `overdueOnly` thì cần thêm alias `status` (đã join).
+   */
+  private applyListFilters(
+    qb: SelectQueryBuilder<PeriodicTask>,
+    filters: PeriodicTaskFiltersDto,
+    dateWindow: { dateFrom?: string | null; dateTo?: string | null },
+    userId: number,
+    userRole: string,
+    scope?: string | null,
+  ): void {
+    const { periodType, periodStartDate, statusId, primaryAssigneeId, assigneeId, secondaryAssigneeId, departmentId, search, overdueOnly } = filters;
 
     PeriodicTaskAccessHelper.applyViewFilter(qb, userId, userRole, scope);
 
@@ -504,6 +475,52 @@ export class PeriodicTasksService {
       qb.andWhere('(status.code IS NULL OR status.code NOT IN (:...overdueDoneCodes))', { overdueDoneCodes: [...COMPLETED_STATUS_CODES] });
       qb.andWhere('(status.isDoneState IS NULL OR status.isDoneState = :overdueNotDone)', { overdueNotDone: 0 });
     }
+  }
+
+  async findAll(filters: PeriodicTaskFiltersDto, userId: number, userRole: string, scope?: string | null) {
+    const {
+      page = 1,
+      limit = 20,
+      periodType,
+      periodStartDate,
+      dateFrom,
+      dateTo,
+      statusId,
+      primaryAssigneeId,
+      assigneeId,
+      secondaryAssigneeId,
+      departmentId,
+      search,
+      overdueOnly,
+    } = filters;
+
+    // KHÔNG BAO GIỜ tải toàn bộ: luôn có khoảng ngày (mặc định Tuần này, tối đa
+    // 93 ngày) - xem `list-window.helper.ts`.
+    const dateWindow = resolveListWindow({ periodStartDate, dateFrom, dateTo });
+
+    // [AGENT] OLD CODE (giữ để rollback): 3 quan hệ User dùng leftJoinAndSelect -> tải ~25 cột User x 3 join x tối đa
+    // 100 dòng và trả hết ra JSON (email, phone, số dư phép...). FE danh sách chỉ đọc `id` + `name`.
+    //   .leftJoinAndSelect('task.primaryAssignee', 'primaryAssignee')
+    //   .leftJoinAndSelect('task.createdBy', 'createdBy')
+    //   .leftJoinAndSelect('task.updatedBy', 'updatedBy')
+    const qb = this.taskRepo
+      .createQueryBuilder('task')
+      .leftJoinAndSelect('task.status', 'status')
+      .leftJoin('task.primaryAssignee', 'primaryAssignee')
+      .leftJoinAndSelect('task.department', 'department')
+      .leftJoin('task.createdBy', 'createdBy')
+      .leftJoin('task.updatedBy', 'updatedBy')
+      .addSelect([
+        'primaryAssignee.id',
+        'primaryAssignee.name',
+        'createdBy.id',
+        'createdBy.name',
+        'updatedBy.id',
+        'updatedBy.name',
+      ])
+      .where('task.deletedAt IS NULL');
+
+    this.applyListFilters(qb, filters, dateWindow, userId, userRole, scope);
 
     qb.orderBy('task.periodStartDate', 'DESC').addOrderBy('task.id', 'DESC');
     qb.offset((page - 1) * limit).limit(limit);
@@ -526,7 +543,12 @@ export class PeriodicTasksService {
       total = 0;
       countSkipped = true;
     } else {
-      total = await qb.getCount();
+      // [PERF] COUNT không cần 5 join (toàn LEFT JOIN many-to-one, không đổi số dòng) - chỉ join `status` khi lọc quá hạn.
+      // [AGENT] OLD CODE (giữ để rollback): total = await qb.getCount();
+      const countQb = this.taskRepo.createQueryBuilder('task').where('task.deletedAt IS NULL');
+      if (filters.overdueOnly) countQb.leftJoin('task.status', 'status');
+      this.applyListFilters(countQb, filters, dateWindow, userId, userRole, scope);
+      total = await countQb.getCount();
     }
     if (timing) {
       this.logger.log(
@@ -598,7 +620,7 @@ export class PeriodicTasksService {
     const qb = this.taskRepo
       .createQueryBuilder('task')
       .leftJoin('task.status', 'status')
-      .select(['task.id', 'task.title', 'task.isLocked', 'task.statusId', 'task.primaryAssigneeId', 'task.periodEndDate'])
+      .select(['task.id', 'task.title', 'task.isLocked', 'task.statusId', 'task.primaryAssigneeId', 'task.periodEndDate', 'task.periodType'])
       .addSelect(['status.id', 'status.code', 'status.name', 'status.isDoneState'])
       .where('task.id = :id', { id })
       .andWhere('task.deletedAt IS NULL');
