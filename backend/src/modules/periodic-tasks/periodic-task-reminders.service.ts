@@ -103,7 +103,21 @@ export class PeriodicTaskRemindersService {
       return { nowVnHour, todayVn, pastCutoff: true, candidatesChecked: candidates.length, remindersSent: 0, remindedTaskIds: [] };
     }
 
-    const dueTaskIds = dueTasks.map((t) => t.id);
+    // Bỏ Task ĐÃ nhắc hôm nay (Uptime gọi lặp sau 18:00): 1 query thay vì ~3 query/Task trong emitNow.
+    // Chỉ là tối ưu - emitNow vẫn dedupe bằng uk_recipient_dedupe nên lỡ sót cũng không gửi trùng.
+    // Đánh đổi: Task đã nhắc mà SAU ĐÓ mới thêm người phụ trách phụ sẽ không nhận nhắc trong ngày đó.
+    const alreadyReminded = await this.notificationsService.findEmittedEntityIds(
+      'task.deadline_reminder',
+      'periodic_task',
+      dueTasks.map((t) => t.id),
+      todayVn,
+    );
+    const pendingTasks = dueTasks.filter((t) => !alreadyReminded.has(t.id));
+    if (pendingTasks.length === 0) {
+      return { nowVnHour, todayVn, pastCutoff: true, candidatesChecked: candidates.length, remindersSent: 0, remindedTaskIds: [] };
+    }
+
+    const dueTaskIds = pendingTasks.map((t) => t.id);
     const secondaryRows = await this.secondaryAssigneeRepo.find({
       where: { taskId: In(dueTaskIds) },
       select: { taskId: true, userId: true },
@@ -115,7 +129,7 @@ export class PeriodicTaskRemindersService {
       secondaryByTask.set(s.taskId, list);
     }
 
-    for (const t of dueTasks) {
+    for (const t of pendingTasks) {
       try {
         await this.notificationsService.emitNow({
           type: 'task.deadline_reminder',
@@ -141,7 +155,7 @@ export class PeriodicTaskRemindersService {
       todayVn,
       pastCutoff: true,
       candidatesChecked: candidates.length,
-      remindersSent: dueTasks.length,
+      remindersSent: pendingTasks.length,
       remindedTaskIds: dueTaskIds,
     };
   }

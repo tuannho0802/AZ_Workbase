@@ -21,12 +21,15 @@ describe('PeriodicTaskRemindersService', () => {
   let service: PeriodicTaskRemindersService;
   let mockTaskRepo: { createQueryBuilder: jest.Mock };
   let mockSecondaryAssigneeRepo: { find: jest.Mock };
-  let mockNotificationsService: { emitNow: jest.Mock };
+  let mockNotificationsService: { emitNow: jest.Mock; findEmittedEntityIds: jest.Mock };
 
   beforeEach(async () => {
     mockTaskRepo = { createQueryBuilder: jest.fn() };
     mockSecondaryAssigneeRepo = { find: jest.fn().mockResolvedValue([]) };
-    mockNotificationsService = { emitNow: jest.fn().mockResolvedValue(undefined) };
+    mockNotificationsService = {
+      emitNow: jest.fn().mockResolvedValue(undefined),
+      findEmittedEntityIds: jest.fn().mockResolvedValue(new Set<number>()),
+    };
 
     const module: TestingModule = await Test.createTestingModule({
       providers: [
@@ -119,6 +122,61 @@ describe('PeriodicTaskRemindersService', () => {
     const result = await service.runDueReminders();
 
     expect(result.remindersSent).toBe(0);
+    expect(mockNotificationsService.emitNow).not.toHaveBeenCalled();
+  });
+
+  it('Task ĐÃ nhắc hôm nay (có dedupe_key) -> bỏ qua, không gọi emitNow/secondary query', async () => {
+    jest.spyOn(dateVnUtil, 'getNowVn').mockReturnValue(new Date('2026-09-24T21:00:00'));
+    jest.spyOn(dateVnUtil, 'todayVnStr').mockReturnValue('2026-09-24');
+
+    const mk = (id: number) => ({
+      id,
+      title: `Daily ${id}`,
+      period_type: PeriodType.DAILY,
+      period_start_date: '2026-09-24',
+      period_end_date: '2026-09-24',
+      primary_assignee_id: 7,
+    });
+    mockTaskRepo.createQueryBuilder.mockReturnValue(makeFakeQueryBuilder([mk(1), mk(2)]));
+    mockNotificationsService.findEmittedEntityIds.mockResolvedValue(new Set([1]));
+
+    const result = await service.runDueReminders();
+
+    expect(mockNotificationsService.findEmittedEntityIds).toHaveBeenCalledWith(
+      'task.deadline_reminder',
+      'periodic_task',
+      [1, 2],
+      '2026-09-24',
+    );
+    expect(result.remindersSent).toBe(1);
+    expect(result.remindedTaskIds).toEqual([2]);
+    expect(mockNotificationsService.emitNow).toHaveBeenCalledTimes(1);
+    expect(mockSecondaryAssigneeRepo.find).toHaveBeenCalledTimes(1);
+  });
+
+  it('TẤT CẢ Task đã nhắc -> thoát sớm, không query secondary, không emitNow', async () => {
+    jest.spyOn(dateVnUtil, 'getNowVn').mockReturnValue(new Date('2026-09-24T22:00:00'));
+    jest.spyOn(dateVnUtil, 'todayVnStr').mockReturnValue('2026-09-24');
+
+    mockTaskRepo.createQueryBuilder.mockReturnValue(
+      makeFakeQueryBuilder([
+        {
+          id: 1,
+          title: 'Daily 1',
+          period_type: PeriodType.DAILY,
+          period_start_date: '2026-09-24',
+          period_end_date: '2026-09-24',
+          primary_assignee_id: 7,
+        },
+      ]),
+    );
+    mockNotificationsService.findEmittedEntityIds.mockResolvedValue(new Set([1]));
+
+    const result = await service.runDueReminders();
+
+    expect(result.remindersSent).toBe(0);
+    expect(result.remindedTaskIds).toEqual([]);
+    expect(mockSecondaryAssigneeRepo.find).not.toHaveBeenCalled();
     expect(mockNotificationsService.emitNow).not.toHaveBeenCalled();
   });
 });

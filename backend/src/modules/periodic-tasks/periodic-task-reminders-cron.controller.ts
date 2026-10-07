@@ -15,8 +15,8 @@ import { PeriodicTaskAutoOverdueService } from './periodic-task-auto-overdue.ser
  *   GET https://<domain>/api/periodic-tasks-cron/deadline-reminders?secret=<CRON_SECRET>
  * (hoặc header `x-cron-secret: <CRON_SECRET>`)
  *
- * Mỗi lần gọi endpoint trên còn TỰ CHẠY THÊM `auto-overdue` (đánh dấu quá hạn khi qua deadline + khoá Task quá ân hạn 7
- * ngày) nên KHÔNG cần cấu hình thêm job Uptime mới. Có thể gọi riêng:
+ * `auto-overdue` (đánh dấu quá hạn + khoá Task quá ân hạn) KHÔNG còn chạy kèm endpoint trên (tránh 1 query join + UPDATE
+ * mỗi lần Uptime ping). Nó chạy bằng Vercel Cron riêng (`vercel.json`, 17:05 UTC = 00:05 giờ VN), idempotent. Có thể gọi tay:
  *   GET https://<domain>/api/periodic-tasks-cron/auto-overdue?secret=<CRON_SECRET>[&dryRun=true]
  */
 @ApiTags('Periodic Tasks Reminders Cron (nội bộ - dùng cho Uptime)')
@@ -82,22 +82,12 @@ export class PeriodicTaskRemindersCronController {
   ) {
     this.assertSecret(secretQuery, secretHeader, authorization);
 
-    // Việc dọn Task quá ân hạn chạy TRƯỚC mốc 18:00 của nhắc hạn (thoát sớm) và không được làm hỏng nhắc hạn nếu lỗi.
-    let autoOverdue: Awaited<ReturnType<PeriodicTaskAutoOverdueService['runSweep']>> | { error: string } | undefined;
-    try {
-      autoOverdue = await this.autoOverdueService.runSweep();
-    } catch (err) {
-      const message = err instanceof Error ? err.message : String(err);
-      this.logger.error(`[Cron] Auto overdue (kèm nhắc hạn) thất bại: ${message}`);
-      autoOverdue = { error: message };
-    }
-
     try {
       const result = await this.remindersService.runDueReminders();
       this.logger.log(
         `[Cron] Nhắc hạn (${result.todayVn} ${result.nowVnHour}h): checked=${result.candidatesChecked}, sent=${result.remindersSent}`,
       );
-      return { ...result, autoOverdue };
+      return result;
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
       this.logger.error(`[Cron] Nhắc hạn thất bại: ${message}`);

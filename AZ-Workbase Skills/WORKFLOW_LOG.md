@@ -6837,3 +6837,22 @@ Now [deploy]
 > Plan nói `audit.service.ts` có 16 chỗ gọi `logAction`; grep thật (không spec) thấy ~7 chỗ gọi `auditService.logAction` + `logActionAsync` nội bộ; không chỗ nào dùng giá trị trả về.
 
 ---
+
+## [2026-10-07 18:10] | Giảm tải cron: bỏ sweep auto-overdue khỏi `deadline-reminders` + bỏ qua Task đã nhắc trước khi `emitNow` | [Status: Success]
+
+**Actor:** Agent
+**Files Changed:**
+- `backend/src/modules/periodic-tasks/periodic-task-reminders-cron.controller.ts` — `deadline-reminders` KHÔNG còn gọi `autoOverdueService.runSweep()` (đã có Vercel Cron `auto-overdue` 17:05 UTC; endpoint `auto-overdue` vẫn gọi tay được). Response bỏ field `autoOverdue`.
+- `backend/src/modules/notifications/notifications.service.ts` — MỚI `findEmittedEntityIds()` (1 query theo `idx_entity` + `dedupe_key`; lỗi/tắt feature → tập rỗng).
+- `backend/src/modules/periodic-tasks/periodic-task-reminders.service.ts` — lọc Task đã có thông báo hôm nay TRƯỚC vòng `emitNow`; tất cả đã nhắc → thoát sớm, không query secondary.
+- `backend/src/modules/periodic-tasks/periodic-task-reminders.service.spec.ts` — +2 test (bỏ Task đã nhắc; tất cả đã nhắc).
+
+**Root Cause:**
+> Mỗi lần Uptime gọi `deadline-reminders`: (1) chạy lại sweep join+UPDATE idempotent dù đã có cron riêng; (2) sau 18:00 gọi `emitNow` tuần tự cho MỌI Task đến hạn (~3 query/Task) dù đã nhắc, chỉ nhờ `uk_recipient_dedupe` chặn trùng. Mức tốn tỉ lệ với tần suất Uptime (code ghi 15-30 phút; PLAN Mục 10 ghi 12-24 giờ) — CHƯA kiểm chứng cấu hình Uptime thật.
+
+**Đã chạy:** BE `tsc --noEmit` sạch; jest `periodic-tasks|notifications` 24 suite / 372 test pass.
+
+**Notes:**
+> Đánh đổi: Task đã nhắc mà sau đó mới thêm Sales phụ sẽ không nhận nhắc trong ngày đó. Chưa commit/push. Nếu Vercel Cron `auto-overdue` bị tắt, KHÔNG còn fallback qua Uptime — gọi tay `auto-overdue?secret=`.
+
+---

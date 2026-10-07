@@ -152,6 +152,39 @@ export class NotificationsService {
     }
   }
 
+  /**
+   * Trả về tập `entity.id` ĐÃ có dòng thông báo với đúng `(eventType, dedupe_key)`
+   * `${eventType}:${id}:${dedupeSuffix}` - để cron lặp (Uptime) bỏ qua Task đã nhắc
+   * TRƯỚC khi gọi `emitNow` (tránh 2 query user/preference + INSERT vô ích mỗi Task).
+   * Lọc theo `idx_entity (entity_type, entity_id)` nên không quét cả bảng.
+   * Chỉ là tối ưu: lỗi/tắt feature → trả tập rỗng, `emitNow` vẫn tự dedupe bằng
+   * `uk_recipient_dedupe` nên KHÔNG bao giờ gửi trùng.
+   */
+  async findEmittedEntityIds(
+    eventType: NotificationEventType,
+    entityType: string,
+    entityIds: number[],
+    dedupeSuffix: string | number,
+  ): Promise<Set<number>> {
+    if (!this.isEnabled() || entityIds.length === 0) return new Set();
+    try {
+      const rows = await this.notificationRepository
+        .createQueryBuilder('n')
+        .select('DISTINCT n.entityId', 'entityId')
+        .where('n.entityType = :entityType', { entityType })
+        .andWhere('n.entityId IN (:...entityIds)', { entityIds })
+        .andWhere('n.eventType = :eventType', { eventType })
+        .andWhere('n.dedupeKey IN (:...keys)', {
+          keys: entityIds.map((id) => `${eventType}:${id}:${dedupeSuffix}`),
+        })
+        .getRawMany<{ entityId: number | string }>();
+      return new Set(rows.map((r) => Number(r.entityId)));
+    } catch (error) {
+      this.logger.warn(`Tra thông báo đã gửi thất bại, bỏ qua tối ưu: ${(error as Error)?.message}`);
+      return new Set();
+    }
+  }
+
   /** Bản `await` được của `emit()` - dùng cho test; cũng KHÔNG bao giờ throw. */
   async emitNow(input: EmitInput): Promise<void> {
     try {
