@@ -4,6 +4,7 @@ import { CustomersService } from '../customers/customers.service';
 import { UsersService } from '../users/users.service';
 import { LeaveRequestsService } from '../leave-requests/leave-requests.service';
 import { PeriodicTasksService } from '../periodic-tasks/periodic-tasks.service';
+import { PermissionsVersionService } from '../permissions/permissions-version.service';
 import { PermissionScope } from '../../database/entities/role-permission.entity';
 import { Role } from '../../common/enums/role.enum';
 
@@ -50,6 +51,8 @@ export class SidebarBadgesService {
     private readonly usersService: UsersService,
     private readonly leaveRequestsService: LeaveRequestsService,
     private readonly periodicTasksService: PeriodicTasksService,
+    // [Reset hệ thống] Optional để spec cũ (không truyền) vẫn chạy; Nest luôn inject vì PermissionsModule là @Global().
+    private readonly versionService?: PermissionsVersionService,
   ) {}
 
   /**
@@ -79,7 +82,9 @@ export class SidebarBadgesService {
   }
 
   private async cachedInvalidData(user: SidebarBadgeUser, scope: string | null, ms?: Record<string, number>): Promise<number> {
-    const key = `${user.id}:${user.role}:${scope ?? 'null'}`;
+    // [Reset hệ thống] Epoch nằm trong khoá -> Reset làm số đếm trùng SĐT được tính lại ngay thay vì chờ hết 3 phút.
+    const epoch = (await this.versionService?.getEpoch()) ?? 0;
+    const key = `${user.id}:${user.role}:${scope ?? 'null'}:${epoch}`;
     const now = Date.now();
     const hit = this.invalidDataCache.get(key);
     if (hit && hit.expiresAt > now) {

@@ -57,15 +57,18 @@ export class NotificationsController {
     // const [base, permSig] = await Promise.all([this.notificationsService.poll(user.id), this.permissionsVersionService.buildSig(user)]);
     // return permSig === undefined ? base : { ...base, permSig };
     // [AGENT] NEW CODE (9D): thêm `refSig` (phiên bản từng danh mục ít đổi). `permSig` và `refSig` dùng CHUNG 1 lần đọc settings (cache 10 s).
-    const [base, permSig, refSig] = await Promise.all([
+    const [base, permSig, refSig, epoch] = await Promise.all([
       this.notificationsService.poll(user.id),
       this.permissionsVersionService.buildSig(user),
       this.permissionsVersionService.getRefSig(),
+      this.permissionsVersionService.getEpoch(),
     ]);
     return {
       ...base,
       ...(permSig === undefined ? {} : { permSig }),
       ...(refSig === undefined ? {} : { refSig }),
+      // [Reset hệ thống] xem /sidebar/poll.
+      ...(epoch === undefined ? {} : { epoch }),
     };
   }
 

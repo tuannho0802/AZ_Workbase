@@ -6680,3 +6680,21 @@ Now [deploy]
 > Đã chạy: BE tsc sạch; jest sidebar-badges + zk-device 30 pass. FE tsc sạch (trừ lỗi `*.png` có sẵn); vitest 5 file liên quan 48 pass + `useSidebarBadgeCounts.test.tsx` 3 pass. Chưa chạy trọn toàn bộ vitest/jest.
 
 ---
+## [2026-10-07] | Nút "Reset hệ thống" (epoch) - chỉ Root Admin | [Status: Success - chưa commit]
+
+**Actor:** Agent
+**Files Changed:**
+- BE `permissions-version.service.ts` (+spec) — thêm `system_epoch` (bảng `settings`, không migration): `getEpoch`, `getEpochState`, `bumpEpoch` (chờ ghi, THROW khi lỗi); chung 1 query/cache 10s với permSig/refSig
+- BE `common/guards/root-admin.guard.ts` (+spec) — role `admin` VÀ `isRootAdmin === true` (hardcode, không qua `role_permissions`)
+- BE `modules/system/*` (+spec) — `POST /system/reset`: RootAdminGuard, cooldown 30s theo `settings.updated_at` (429), audit `SYSTEM_RESET`; đăng ký ở `app.module.ts`
+- BE `notifications.controller.ts`, `sidebar-badges.controller.ts` (+spec) — poll trả thêm `epoch`
+- BE `permissions.service.ts`, `ui-visibility.service.ts`, `sidebar-badges.service.ts` (+spec) — cache theo instance gắn `epoch`; epoch đổi = bỏ cache (đọc epoch lỗi = coi như khớp)
+- FE `lib/hooks/useSystemEpochSignal.ts`, `useSystemReset.ts`, `lib/system-refresh.ts`, `lib/api/system.api.ts` (+test), `components/common/SystemResetButton.tsx` (+test), nối vào `useNotificationPoll.ts`, `notification.types.ts`, `app/(dashboard)/page.tsx`
+
+**Notes:**
+> Reset KHÔNG xoá/đổi dữ liệu: chỉ tăng `system_epoch`. FE thấy epoch đổi -> `invalidateQueries()` toàn bộ + nạp lại `/users/me` ghi đè role/phòng ban/isRootAdmin/avatar trong auth store; máy khác trễ ngẫu nhiên 0-8s (jitter) để không dồn tải. Máy bấm Reset tự làm mới ngay và `acknowledge` epoch nên không làm mới lần 2.
+> Tương thích lệch phiên bản FE/BE: FE cũ bỏ qua `epoch`; FE mới + BE cũ thì poll không có `epoch` (bỏ qua) và nút gọi 404. Deploy BE trước hoặc cùng lúc.
+> Đã chạy: BE tsc sạch; jest 10 suite / 142 test (system, guards, permissions, ui-visibility, sidebar-badges, notifications.controller) pass. FE tsc chỉ còn 4 lỗi `logo.png` có sẵn; vitest `src/lib/hooks` 15 file / 111 test pass + system-refresh + SystemResetButton pass. Chưa chạy trọn toàn bộ jest/vitest, chưa test tay trên trình duyệt, chưa commit.
+> Giới hạn: sửa dữ liệu bằng SQL tay rồi bấm Reset -> máy khác thấy mới trong <= ~2 phút (nhịp poll) + jitter. Tab đang bị treo >5 phút làm mới khi quay lại.
+
+---

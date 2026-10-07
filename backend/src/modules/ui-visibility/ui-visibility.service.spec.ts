@@ -43,7 +43,7 @@ describe('UiVisibilityService', () => {
   const mockDataSource = {
     createQueryRunner: jest.fn().mockReturnValue(mockQueryRunner),
   };
-  const mockVersionService = { bump: jest.fn() };
+  const mockVersionService = { bump: jest.fn(), getEpoch: jest.fn().mockResolvedValue(0) };
   const mockAuditService = {
     logAction: jest.fn(),
     logActionAsync: jest.fn(),

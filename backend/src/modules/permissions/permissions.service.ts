@@ -25,6 +25,8 @@ const CACHE_TTL_MS = 30_000;
 interface CacheEntry {
   expiresAt: number;
   map: Map<string, PermissionScope | null>;
+  /** Epoch hệ thống lúc nạp cache (Reset hệ thống). `undefined` = lúc đó không đọc được epoch. */
+  epoch?: number;
 }
 
 @Injectable()
@@ -91,8 +93,11 @@ export class PermissionsService {
     positionId?: number | null,
   ): Promise<Map<string, PermissionScope | null>> {
     const cacheKey = `${roleCode}:${departmentId ?? 'global'}:${positionId ?? 'nopos'}`;
+    // [Reset hệ thống] Epoch đổi = cache nạp trước đó là cũ (kể cả ở instance KHÁC với instance xử lý lệnh Reset).
+    // `getEpoch()` dùng chung bản chụp cache 10 s của PermissionsVersionService, không throw (lỗi -> undefined -> coi như khớp).
+    const epoch = await this.versionService.getEpoch();
     const cached = this.cache.get(cacheKey);
-    if (cached && cached.expiresAt > Date.now()) {
+    if (cached && cached.expiresAt > Date.now() && (epoch === undefined || cached.epoch === undefined || cached.epoch === epoch)) {
       return cached.map;
     }
 
@@ -157,7 +162,7 @@ export class PermissionsService {
       }
     }
 
-    this.cache.set(cacheKey, { map, expiresAt: Date.now() + CACHE_TTL_MS });
+    this.cache.set(cacheKey, { map, expiresAt: Date.now() + CACHE_TTL_MS, epoch });
     return map;
   }
 

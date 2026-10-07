@@ -14,6 +14,7 @@ import { useMe } from '@/lib/hooks/useMe';
 import { resolveEntityColor } from '@/lib/utils/entityColor';
 import { CountBadge } from '@/components/common/CountBadge';
 import { getNavBadgeProps } from '@/lib/nav-badge';
+import { SystemResetButton } from '@/components/common/SystemResetButton';
 
 const { Title, Text, Paragraph } = Typography;
 
@@ -193,6 +194,11 @@ export default function HomePage() {
                 </div>
             )}
           </div>
+        </div>
+
+        {/* Chỉ Root Admin (admin + isRootAdmin) - component tự ẩn với người khác. */}
+        <div style={{ marginLeft: 'auto', flexShrink: 0 }}>
+          <SystemResetButton />
         </div>
       </div>
 

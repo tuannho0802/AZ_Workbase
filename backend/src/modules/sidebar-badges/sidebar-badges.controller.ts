@@ -30,16 +30,19 @@ export class SidebarBadgesController {
   @Get('poll')
   @ApiOperation({ summary: 'Gộp poll thông báo + badge sidebar (1 request).' })
   async poll(@GetUser() user: any) {
-    const [base, permSig, refSig, badges] = await Promise.all([
+    const [base, permSig, refSig, epoch, badges] = await Promise.all([
       this.notificationsService.poll(user.id),
       this.permissionsVersionService.buildSig(user),
       this.permissionsVersionService.getRefSig(),
+      this.permissionsVersionService.getEpoch(),
       this.sidebarBadgesService.getBadges(user).catch(() => undefined),
     ]);
     return {
       ...base,
       ...(permSig === undefined ? {} : { permSig }),
       ...(refSig === undefined ? {} : { refSig }),
+      // [Reset hệ thống] epoch đổi = Root Admin vừa bấm Reset -> FE làm mới toàn bộ cache.
+      ...(epoch === undefined ? {} : { epoch }),
       ...(badges === undefined ? {} : { badges }),
     };
   }

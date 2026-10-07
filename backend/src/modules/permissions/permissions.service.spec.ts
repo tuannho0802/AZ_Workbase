@@ -11,7 +11,7 @@ describe('PermissionsService', () => {
     find: jest.fn(),
   };
 
-  const mockVersionService = { bump: jest.fn() };
+  const mockVersionService = { bump: jest.fn(), getEpoch: jest.fn().mockResolvedValue(0) };
 
   beforeEach(async () => {
     jest.clearAllMocks();
@@ -88,6 +88,30 @@ describe('PermissionsService', () => {
       await service.hasPermission('manager', 'customers.view', 5);
       await service.hasPermission('manager', 'customers.view', 5);
 
+      expect(mockRolePermissionRepo.find).toHaveBeenCalledTimes(1);
+    });
+
+    it('cache + epoch (Reset hệ thống): epoch đổi giữa 2 lần gọi -> bỏ cache, query DB lại', async () => {
+      mockRolePermissionRepo.find.mockResolvedValue([
+        { permission: { key: 'customers.view' }, scope: PermissionScope.DEPARTMENT, departmentId: null },
+      ]);
+      mockVersionService.getEpoch.mockResolvedValueOnce(3).mockResolvedValueOnce(3).mockResolvedValueOnce(4);
+
+      await service.hasPermission('manager', 'customers.view', 5); // nạp cache @epoch 3
+      await service.hasPermission('manager', 'customers.view', 5); // cùng epoch -> hit
+      expect(mockRolePermissionRepo.find).toHaveBeenCalledTimes(1);
+      await service.hasPermission('manager', 'customers.view', 5); // epoch 4 -> nạp lại
+      expect(mockRolePermissionRepo.find).toHaveBeenCalledTimes(2);
+    });
+
+    it('cache + epoch: không đọc được epoch (undefined) -> KHÔNG làm mất cache (giữ hành vi cũ)', async () => {
+      mockRolePermissionRepo.find.mockResolvedValue([
+        { permission: { key: 'customers.view' }, scope: PermissionScope.DEPARTMENT, departmentId: null },
+      ]);
+      mockVersionService.getEpoch.mockResolvedValueOnce(3).mockResolvedValueOnce(undefined);
+
+      await service.hasPermission('manager', 'customers.view', 5);
+      await service.hasPermission('manager', 'customers.view', 5);
       expect(mockRolePermissionRepo.find).toHaveBeenCalledTimes(1);
     });
 

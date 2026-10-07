@@ -750,6 +750,13 @@ người chưa đọc") — xem `PLAN_NOTIFICATION_SYSTEM.md` mục 10.
 - **LOẠI TRỪ Role / Vị trí / Phòng ban (PLAN_GUIDES_CONTENT P6, migration `1786000000000-AddGuideExclusions`):** thêm cột `is_excluded TINYINT(1) NOT NULL DEFAULT 0` vào `guide_roles` / `guide_positions` / `guide_departments` (khoá chính `guide_id + <x>_id` giữ nguyên nên 1 mục chỉ ở 1 trạng thái). `0` = "được xem" (dữ liệu cũ giữ nguyên nghĩa), `1` = loại trừ. `GuideAccessHelper.canView`: sau `isPublished` + bypass `guides.manage`, nếu người xem thuộc BẤT KỲ danh sách loại trừ nào (role/vị trí/phòng ban) → **không xem được, loại trừ THẮNG "được xem"**; người xem không có giá trị ở chiều đó (vd chưa có vị trí) không bị loại trừ theo chiều đó. Vẫn trả **404**. Người có `guides.manage` vẫn xem được (xem trước) — trình soạn/trang chi tiết hiện tag đỏ "Loại trừ: <tên>". Ghi (`POST`/`PATCH`) nhận `excludedRoleIds/excludedPositionIds/excludedDepartmentIds`; cùng 1 mục vừa được xem vừa loại trừ (cùng chiều) → **400**; `PATCH` kiểm tra trùng trên danh sách CUỐI CÙNG (phía không gửi lấy từ DB), không gửi = giữ nguyên, `[]` = bỏ loại trừ, đổi 1 phía KHÔNG xoá phía kia. Response quản trị thêm `excluded*Ids` + `excluded*` (kèm màu). Audit create/update/delete ghi cả loại trừ. `guides:sync`: frontmatter `excludeRoles/excludePositions/excludeDepartments` (đưa vào hash CHỈ khi có dữ liệu → bài cũ giữ nguyên hash, không bị coi là sửa tay). Entity đọc qua `find()` (có `BooleanTransformer`); không đọc cột này bằng QueryBuilder.
 - Root Admin bypass: `GuidesService.canManage()` (cùng `PermissionGuard`).
 
+### 2.15. Reset hệ thống (`modules/system`) — ✅ HARDCODE Root Admin (không qua `role_permissions`)
+
+- `POST /system/reset` gắn `JwtAuthGuard` + `RootAdminGuard` (role `admin` VÀ `isRootAdmin === true`), KHÔNG dùng `@RequirePermission` →
+  không có key trong bảng `permissions`, không cấp được qua trang Phân quyền. Admin thường (`isRootAdmin=false`) bị 403.
+- FE: `SystemResetButton` ở Trang chủ tự ẩn nếu không phải Root Admin (`canSeeSystemReset`) — chỉ là lớp ẩn nút, chặn thật ở BE.
+- Cooldown 30 giây giữa 2 lần Reset (đọc từ `settings.updated_at`); mỗi lần Reset ghi audit `SYSTEM_RESET`.
+
 ## 3. Lịch sử quyết định & rà soát
 
 | Ngày | Nội dung | Chi tiết |

@@ -8,6 +8,7 @@ import { notificationKeys } from './useNotifications';
 import { useActivityPolling } from './useUserActivity';
 import { usePermissionChangeSignal } from './usePermissionChangeSignal';
 import { useRefDataChangeSignal } from './useRefDataChangeSignal';
+import { useSystemEpochSignal } from './useSystemEpochSignal';
 import { useNotificationActions } from './useNotificationActions';
 import { planToasts, readLastSeenVersion, writeLastSeenVersion } from '../notifications/toast-plan';
 import type { NotificationCategory } from '../types/notification.types';
@@ -59,6 +60,8 @@ export function useNotificationPoll() {
   usePermissionChangeSignal(query.data?.permSig, userId);
   // [AGENT] NEW CODE (9D): poll báo "danh mục ít đổi vừa đổi" -> chỉ làm mới đúng danh mục đó.
   useRefDataChangeSignal(query.data?.refSig, userId);
+  // Reset hệ thống: Root Admin bấm Reset -> `epoch` đổi -> làm mới TOÀN BỘ cache.
+  useSystemEpochSignal(query.data?.epoch, userId);
 
   const version = query.data?.version;
   const lastProcessed = useRef<number | null>(null);

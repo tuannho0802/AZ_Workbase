@@ -44,6 +44,7 @@ describe('NotificationsController', () => {
     const versionService: any = {
       buildSig: jest.fn().mockResolvedValue('3:employee:1:0:0'),
       getRefSig: jest.fn().mockResolvedValue({ departments: 1 }),
+      getEpoch: jest.fn().mockResolvedValue(0),
     };
     const c = new NotificationsController(service, versionService);
     c.list(7, { limit: 5 });
@@ -66,7 +67,7 @@ describe('NotificationsController', () => {
 
   it('poll trả kèm permSig + refSig; BE không đọc được version -> bỏ field tương ứng (FE bỏ qua)', async () => {
     const service: any = { poll: jest.fn().mockResolvedValue({ unread: 2, version: 9 }) };
-    const versionService: any = { buildSig: jest.fn(), getRefSig: jest.fn() };
+    const versionService: any = { buildSig: jest.fn(), getRefSig: jest.fn(), getEpoch: jest.fn() };
     const c = new NotificationsController(service, versionService);
     const user = { id: 7, role: 'employee' };
     const refSig = { departments: 7, positions: 2 };
@@ -83,5 +84,17 @@ describe('NotificationsController', () => {
     versionService.buildSig.mockResolvedValueOnce(undefined);
     versionService.getRefSig.mockResolvedValueOnce(refSig);
     await expect(c.poll(user)).resolves.toEqual({ unread: 2, version: 9, refSig });
+  });
+
+  it('poll trả kèm epoch (Reset hệ thống) - kể cả epoch = 0; không đọc được -> bỏ field', async () => {
+    const service: any = { poll: jest.fn().mockResolvedValue({ unread: 2, version: 9 }) };
+    const versionService: any = { buildSig: jest.fn(), getRefSig: jest.fn(), getEpoch: jest.fn() };
+    const c = new NotificationsController(service, versionService);
+    versionService.getEpoch.mockResolvedValueOnce(0);
+    await expect(c.poll({ id: 7, role: 'employee' })).resolves.toEqual({ unread: 2, version: 9, epoch: 0 });
+    versionService.getEpoch.mockResolvedValueOnce(5);
+    await expect(c.poll({ id: 7, role: 'employee' })).resolves.toEqual({ unread: 2, version: 9, epoch: 5 });
+    versionService.getEpoch.mockResolvedValueOnce(undefined);
+    await expect(c.poll({ id: 7, role: 'employee' })).resolves.toEqual({ unread: 2, version: 9 });
   });
 });

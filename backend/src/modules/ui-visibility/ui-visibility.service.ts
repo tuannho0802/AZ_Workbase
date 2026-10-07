@@ -32,6 +32,8 @@ const CACHE_TTL_MS = 30_000;
 interface CacheEntry {
   expiresAt: number;
   hidden: Set<string>;
+  /** Epoch hệ thống lúc nạp cache (Reset hệ thống). `undefined` = lúc đó không đọc được epoch. */
+  epoch?: number;
 }
 
 @Injectable()
@@ -90,8 +92,10 @@ export class UiVisibilityService {
     positionId?: number | null,
   ): Promise<Set<string>> {
     const cacheKey = `${roleCode}:${resource}:${departmentId ?? 'global'}:${positionId ?? 'nopos'}`;
+    // [Reset hệ thống] Giống PermissionsService: epoch đổi = cache cũ (mọi instance), lỗi đọc epoch = coi như khớp.
+    const epoch = await this.versionService.getEpoch();
     const cached = this.cache.get(cacheKey);
-    if (cached && cached.expiresAt > Date.now()) {
+    if (cached && cached.expiresAt > Date.now() && (epoch === undefined || cached.epoch === undefined || cached.epoch === epoch)) {
       return cached.hidden;
     }
 
@@ -134,7 +138,7 @@ export class UiVisibilityService {
       }
     }
 
-    this.cache.set(cacheKey, { hidden, expiresAt: Date.now() + CACHE_TTL_MS });
+    this.cache.set(cacheKey, { hidden, expiresAt: Date.now() + CACHE_TTL_MS, epoch });
     return hidden;
   }
 

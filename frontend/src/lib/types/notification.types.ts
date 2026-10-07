@@ -48,6 +48,8 @@ export interface NotificationPollResponse {
   permSig?: string;
   /** 9D: phiên bản từng danh mục ít đổi (7 domain). Số của domain nào đổi = domain đó vừa được sửa -> làm mới. Vắng mặt khi BE cũ. */
   refSig?: Record<string, number>;
+  /** Reset hệ thống: bộ đếm tăng khi Root Admin bấm Reset. Số đổi = làm mới TOÀN BỘ cache. Vắng mặt khi BE cũ / không đọc được. */
+  epoch?: number;
   /** 10C: số đếm badge sidebar (gộp vào poll). Field vắng mặt = không có quyền / lần đếm lỗi. Vắng cả `badges` khi BE cũ. */
   badges?: import('../api/sidebar.api').SidebarBadgesResponse;
 }

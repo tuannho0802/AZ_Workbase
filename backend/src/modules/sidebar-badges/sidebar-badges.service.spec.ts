@@ -8,6 +8,7 @@ describe('SidebarBadgesService', () => {
   let leave: { countPending: jest.Mock; countMyPending: jest.Mock };
   let tasks: { countAssignedByStatusCodes: jest.Mock };
   let service: SidebarBadgesService;
+  let version: { getEpoch: jest.Mock };
 
   const grant = (map: Record<string, PermissionScope | null>) =>
     perms.hasPermission.mockImplementation(async (_role: string, key: string) =>
@@ -26,7 +27,8 @@ describe('SidebarBadgesService', () => {
       countMyPending: jest.fn().mockResolvedValue({ count: 1 }),
     };
     tasks = { countAssignedByStatusCodes: jest.fn().mockResolvedValue({ not_started: 4, in_progress: 2 }) };
-    service = new SidebarBadgesService(perms as any, customers as any, users as any, leave as any, tasks as any);
+    version = { getEpoch: jest.fn().mockResolvedValue(0) };
+    service = new SidebarBadgesService(perms as any, customers as any, users as any, leave as any, tasks as any, version as any);
   });
 
   const employee = { id: 9, role: 'employee', isRootAdmin: false, departmentId: 1, positionId: null };
@@ -88,6 +90,17 @@ describe('SidebarBadgesService', () => {
     await service.getBadges(employee);
     expect(customers.countDuplicatePhoneRecords).toHaveBeenCalledTimes(2);
     now.mockRestore();
+  });
+
+  it('cache số trùng SĐT + epoch (Reset hệ thống): epoch đổi -> tính lại ngay, không chờ hết TTL', async () => {
+    grant({ 'customers.invalid_report': PermissionScope.ALL });
+    version.getEpoch.mockResolvedValue(1);
+    await service.getBadges(employee);
+    await service.getBadges(employee);
+    expect(customers.countDuplicatePhoneRecords).toHaveBeenCalledTimes(1);
+    version.getEpoch.mockResolvedValue(2);
+    await service.getBadges(employee);
+    expect(customers.countDuplicatePhoneRecords).toHaveBeenCalledTimes(2);
   });
 
   it('cache tách theo user/scope (không rò số giữa người khác phạm vi)', async () => {

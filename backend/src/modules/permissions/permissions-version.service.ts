@@ -5,6 +5,11 @@ import { waitUntil } from '@vercel/functions';
 import { Setting } from '../../database/entities/setting.entity';
 
 export const PERMISSIONS_VERSION_KEY = 'permissions_version';
+/**
+ * [Reset hệ thống] "Epoch" toàn hệ thống: Root Admin bấm "Reset hệ thống" -> +1. FE thấy `epoch` trong poll đổi thì
+ * làm mới TOÀN BỘ cache React Query; BE coi cache quyền/ẩn-hiện UI/badge (theo từng instance) mang epoch cũ là hết hạn.
+ */
+export const SYSTEM_EPOCH_KEY = 'system_epoch';
 // Cache đọc ngắn/instance: nhiều user cùng instance chỉ tốn 1 query/10s. Bump xoá cache ngay trên instance xử lý.
 export const PERMISSIONS_VERSION_CACHE_TTL_MS = 10_000;
 
@@ -29,6 +34,7 @@ export const refDataVersionKey = (domain: RefDataDomain): string => `${REF_DATA_
 /** Bản chụp phiên bản: permissions_version + MỌI domain (chưa có dòng = 0 để FE luôn có mốc ổn định). */
 interface VersionSnapshot {
   permissions: number;
+  epoch: number;
   ref: Record<RefDataDomain, number>;
 }
 
@@ -64,12 +70,16 @@ export class PermissionsVersionService {
     if (this.cached && this.cached.expiresAt > now) return this.cached.snapshot;
     try {
       const rows = await this.settingRepo.find({
-        where: { key: In([PERMISSIONS_VERSION_KEY, ...REF_DATA_DOMAINS.map(refDataVersionKey)]) },
+        where: { key: In([PERMISSIONS_VERSION_KEY, SYSTEM_EPOCH_KEY, ...REF_DATA_DOMAINS.map(refDataVersionKey)]) },
       });
       const byKey = new Map(rows.map((r) => [r.key, Number(r.value) || 0]));
       const ref = {} as Record<RefDataDomain, number>;
       for (const d of REF_DATA_DOMAINS) ref[d] = byKey.get(refDataVersionKey(d)) ?? 0; // chưa có dòng = 0
-      const snapshot: VersionSnapshot = { permissions: byKey.get(PERMISSIONS_VERSION_KEY) ?? 0, ref };
+      const snapshot: VersionSnapshot = {
+        permissions: byKey.get(PERMISSIONS_VERSION_KEY) ?? 0,
+        epoch: byKey.get(SYSTEM_EPOCH_KEY) ?? 0,
+        ref,
+      };
       this.cached = { snapshot, expiresAt: now + PERMISSIONS_VERSION_CACHE_TTL_MS };
       return snapshot;
     } catch (err) {
@@ -81,6 +91,34 @@ export class PermissionsVersionService {
   /** Đọc phiên bản hiện tại. KHÔNG BAO GIỜ throw - lỗi trả `undefined` (poll vẫn chạy, FE bỏ qua tín hiệu). */
   async get(): Promise<number | undefined> {
     return (await this.load())?.permissions;
+  }
+
+  /** [Reset hệ thống] Epoch hiện tại (chưa có dòng = 0). KHÔNG BAO GIỜ throw - lỗi đọc trả `undefined` (poll vẫn chạy, FE/BE bỏ qua). */
+  async getEpoch(): Promise<number | undefined> {
+    return (await this.load())?.epoch;
+  }
+
+  /** Epoch + thời điểm đổi gần nhất, đọc THẲNG từ DB (không cache) - dùng cho cooldown của Reset hệ thống. */
+  async getEpochState(): Promise<{ value: number; updatedAt: Date | null }> {
+    const row = await this.settingRepo.findOne({ where: { key: SYSTEM_EPOCH_KEY } });
+    return { value: row ? Number(row.value) || 0 : 0, updatedAt: row?.updatedAt ?? null };
+  }
+
+  /**
+   * [Reset hệ thống] Tăng epoch và TRẢ giá trị mới (nguyên tử ở bước tăng, sau đó đọc lại). Khác `bump()`: CHỜ ghi xong và
+   * THROW khi lỗi - để người bấm Reset biết chắc đã thành công. Xoá cache đọc của instance này.
+   */
+  async bumpEpoch(): Promise<number> {
+    try {
+      await this.settingRepo.query(
+        'INSERT INTO settings (`key`, `value`, `description`) VALUES (?, ?, ?) ' +
+          'ON DUPLICATE KEY UPDATE `value` = CAST(`value` AS UNSIGNED) + 1',
+        [SYSTEM_EPOCH_KEY, '1', 'Tăng mỗi khi Root Admin bấm "Reset hệ thống" - FE làm mới toàn bộ cache, BE bỏ cache cũ'],
+      );
+      return (await this.getEpochState()).value;
+    } finally {
+      this.cached = null; // lần đọc kế tiếp lấy giá trị mới từ DB
+    }
   }
 
   /**

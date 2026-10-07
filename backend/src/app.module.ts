@@ -34,6 +34,7 @@ import { UploadsModule } from './modules/uploads/uploads.module';
 import { StorageModule } from './modules/storage/storage.module';
 import { NotificationsModule } from './modules/notifications/notifications.module';
 import { SidebarBadgesModule } from './modules/sidebar-badges/sidebar-badges.module';
+import { SystemModule } from './modules/system/system.module';
 import { KeepAliveController } from './keep-alive/keep-alive.controller';
 @Module({ 
   imports: [
@@ -96,6 +97,7 @@ import { KeepAliveController } from './keep-alive/keep-alive.controller';
     // @Global - xem PLAN_NOTIFICATION_SYSTEM.md. Bật bằng env NOTIFICATIONS_ENABLED=true
     NotificationsModule,
     SidebarBadgesModule,
+    SystemModule,
     ServeStaticModule.forRoot({
       rootPath: join(process.cwd(), 'public'),
       serveRoot: '/',
