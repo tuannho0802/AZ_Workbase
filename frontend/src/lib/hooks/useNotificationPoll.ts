@@ -7,6 +7,7 @@ import { useAuthStore } from '../stores/auth.store';
 import { notificationKeys } from './useNotifications';
 import { useActivityPolling } from './useUserActivity';
 import { usePermissionChangeSignal } from './usePermissionChangeSignal';
+import { useRefDataChangeSignal } from './useRefDataChangeSignal';
 import { useNotificationActions } from './useNotificationActions';
 import { planToasts, readLastSeenVersion, writeLastSeenVersion } from '../notifications/toast-plan';
 import type { NotificationCategory } from '../types/notification.types';
@@ -56,6 +57,8 @@ export function useNotificationPoll() {
 
   // [AGENT] NEW CODE: poll báo "quyền của tôi vừa đổi" -> làm mới quyền/ẩn-hiện UI ngay (không chờ staleTime 60s).
   usePermissionChangeSignal(query.data?.permSig, userId);
+  // [AGENT] NEW CODE (9D): poll báo "danh mục ít đổi vừa đổi" -> chỉ làm mới đúng danh mục đó.
+  useRefDataChangeSignal(query.data?.refSig, userId);
 
   const version = query.data?.version;
   const lastProcessed = useRef<number | null>(null);

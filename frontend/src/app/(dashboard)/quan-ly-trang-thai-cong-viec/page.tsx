@@ -68,7 +68,7 @@ export default function PeriodicTaskStatusesPage() {
     const canManage = can('periodic_task_statuses.manage');
     const canDelete = can('periodic_task_statuses.delete');
 
-    const { statuses, isLoading } = usePeriodicTaskStatuses();
+    const { statuses, isLoading } = usePeriodicTaskStatuses({ alwaysFresh: true });
     const createMutation = useCreatePeriodicTaskStatus();
     const updateMutation = useUpdatePeriodicTaskStatus();
     const deleteMutation = useDeletePeriodicTaskStatus();

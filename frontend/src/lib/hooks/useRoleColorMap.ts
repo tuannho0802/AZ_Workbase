@@ -2,7 +2,7 @@ import { useMemo } from 'react';
 import { resolveEntityColor } from '../utils/entityColor';
 import { useQuery } from '@tanstack/react-query';
 import { rolesApi } from '../api/roles.api';
-import { REFERENCE_DATA_STALE_MS } from '../query-stale';
+import { refDataQueryOptions } from '../query-stale';
 
 const ROLE_COLORS_KEY = ['roles', 'colors'];
 
@@ -16,7 +16,8 @@ export function useRoleColors() {
     queryFn: () => rolesApi.getAllRoleColors(),
     // [AGENT] OLD CODE (giữ để rollback): staleTime: 30 * 1000
     // NEW (Plan CPU Mục 6A): sửa Role (useRoles mutation) đã invalidate ['roles'] - khớp tiền tố nên phủ cả ['roles','colors'].
-    staleTime: REFERENCE_DATA_STALE_MS,
+    // [AGENT] OLD CODE (giữ để rollback): staleTime: REFERENCE_DATA_STALE_MS
+    ...refDataQueryOptions(), // 9D
   });
 
   return { roleColors: data ?? [], isLoading };

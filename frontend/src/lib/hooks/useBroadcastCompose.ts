@@ -3,6 +3,7 @@ import { Form, App } from 'antd';
 import { useQuery } from '@tanstack/react-query';
 import { usersApi } from '../api/users.api';
 import { departmentsApi } from '../api/departments.api';
+import { refDataQueryOptions } from '../query-stale';
 import type { Department } from '../api/departments.api';
 import { useMyPermissions } from './useMyPermissions';
 import { usePreviewBroadcast, useSendBroadcast } from './useNotificationBroadcasts';
@@ -66,9 +67,10 @@ export function useBroadcastCompose({ enabled, onSent }: UseBroadcastComposeOpti
     enabled,
   });
   const { data: departments = [], isLoading: deptsLoading } = useQuery<Department[]>({
-    queryKey: ['departments-for-select'],
+    // [AGENT] OLD CODE (giữ để rollback): queryKey: ['departments-for-select'], staleTime: 5 * 60 * 1000
+    queryKey: ['departments'], // 9D: dùng chung cache với useDepartments (cùng GET /departments)
     queryFn: () => departmentsApi.getAll(),
-    staleTime: 5 * 60 * 1000,
+    ...refDataQueryOptions(),
     enabled,
   });
 

@@ -14,7 +14,6 @@ import { Department } from '../../database/entities/department.entity';
 import { RoleEntity } from '../../database/entities/role.entity';
 import { AuditService } from '../audit/audit.service';
 import { PermissionsVersionService } from '../permissions/permissions-version.service';
-import { PermissionsVersionService } from '../permissions/permissions-version.service';
 import { DepartmentsService } from '../departments/departments.service';
 import { PositionsService } from '../positions/positions.service';
 import { UploadsService } from '../uploads/uploads.service';
@@ -126,6 +125,8 @@ describe('UsersService - Approval workflow (đăng ký công khai chờ duyệt)
   const mockRoleRepo = {
     exists: jest.fn().mockResolvedValue(true),
   };
+  const mockPermissionsVersionService = { bumpRef: jest.fn() };
+
   // FIX: UsersService giờ inject thêm UploadsService (dùng bởi
   // signAvatarUrl()/signAvatarUrls()/updateOwnAvatar() - tính năng avatar
   // qua Backblaze B2, xem PLAN_AVATAR_LEAVE_ATTACHMENT_BACKBLAZE_B2.md) -
@@ -136,10 +137,6 @@ describe('UsersService - Approval workflow (đăng ký công khai chờ duyệt)
   // index [5]". `avatarsBucket` là getter thật trong UploadsService (đọc
   // biến môi trường B2_BUCKET_AVATARS) nên mock bằng 1 string cố định,
   // không phải jest.fn().
-  const mockPermissionsVersionService = { bumpRef: jest.fn() };
-
-  const mockPermissionsVersionService = { bumpRef: jest.fn() };
-
   const mockUploadsService = {
     signAvatarGetUrl: jest.fn().mockResolvedValue('https://signed-get-url.example/avatar.webp'),
     invalidateAvatarUrl: jest.fn(),

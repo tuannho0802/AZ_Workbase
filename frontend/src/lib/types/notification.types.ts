@@ -46,6 +46,8 @@ export interface NotificationPollResponse {
    * Vắng mặt khi BE cũ / không đọc được phiên bản - FE bỏ qua.
    */
   permSig?: string;
+  /** 9D: phiên bản từng danh mục ít đổi (7 domain). Số của domain nào đổi = domain đó vừa được sửa -> làm mới. Vắng mặt khi BE cũ. */
+  refSig?: Record<string, number>;
 }
 
 export interface ListNotificationsParams {

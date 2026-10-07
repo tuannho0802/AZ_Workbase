@@ -68,7 +68,7 @@ export default function LeaveTypesPage() {
     const canManage = can('leave_types.manage');
     const canDelete = can('leave_types.delete');
 
-    const { leaveTypes, isLoading } = useLeaveTypes();
+    const { leaveTypes, isLoading } = useLeaveTypes({ alwaysFresh: true });
     const createMutation = useCreateLeaveType();
     const updateMutation = useUpdateLeaveType();
     const deleteMutation = useDeleteLeaveType();

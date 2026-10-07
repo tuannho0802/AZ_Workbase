@@ -1,6 +1,8 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { mediaSourcesApi, MediaSource } from '../api/media-sources.api';
 
+import { refDataQueryOptions } from '../query-stale';
+
 const QUERY_KEY = ['media-sources'];
 
 /** activeOnly=true -> chỉ nguồn chưa khoá (dùng cho dropdown thêm khách hàng) */
@@ -8,7 +10,8 @@ export const useMediaSources = (activeOnly = false) => {
   const { data, isLoading, isError, error } = useQuery({
     queryKey: [...QUERY_KEY, activeOnly],
     queryFn: () => mediaSourcesApi.getAll(activeOnly),
-    staleTime: 5 * 60 * 1000,
+    // [AGENT] OLD CODE (giữ để rollback): staleTime: 5 * 60 * 1000
+    ...refDataQueryOptions(), // 9D
   });
 
   return {

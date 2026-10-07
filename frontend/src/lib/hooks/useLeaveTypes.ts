@@ -6,13 +6,16 @@ import {
   UpdateLeaveTypePayload,
 } from '../api/leave-types.api';
 
+import { refDataQueryOptions } from '../query-stale';
+
 const QUERY_KEY = ['leave-types'];
 
-export const useLeaveTypes = () => {
+export const useLeaveTypes = (opts?: { alwaysFresh?: boolean }) => {
   const { data, isLoading, isError, error } = useQuery({
     queryKey: QUERY_KEY,
     queryFn: () => leaveTypesApi.getAll(),
-    staleTime: 60 * 1000,
+    // [AGENT] OLD CODE (giữ để rollback): staleTime: 60 * 1000
+    ...refDataQueryOptions(opts), // 9D
   });
 
   return {

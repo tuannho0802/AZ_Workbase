@@ -459,12 +459,8 @@ export default function ChiaDataPage() {
     enabled: isHydrated && isAuthenticated,
   });
 
-  const { data: departmentsData } = useQuery({
-    queryKey: ['departments-all'],
-    queryFn: () => api.getDepartments().then(r => r.data),
-    staleTime: 5 * 60_000,
-    enabled: isHydrated && isAuthenticated,
-  });
+  // [AGENT] OLD CODE (giữ để rollback): useQuery({ queryKey: ['departments-all'], queryFn: () => api.getDepartments().then(r => r.data), staleTime: 5 * 60_000, ... })
+  // NEW (9D): dùng chung cache ['departments'] (cùng GET /departments, đã gồm `managers`) qua useDepartments() bên dưới.
 
   // ── "RULES" LỌC CANDIDATE Ở MODAL CHIA DATA (2026-09-10) ─────────────
   // Dùng ĐÚNG nguồn dữ liệu chuẩn (đã cache React Query, cùng nguồn với
@@ -818,7 +814,7 @@ export default function ChiaDataPage() {
   // applyViewFilter). KHÔNG liên quan tới "Chọn Sales nhận data" ở modal Chia
   // data - chỗ đó giờ lọc theo "rules" Assignment Group key='sales' (xem
   // candidateUsers bên dưới), độc lập với RBAC xem dữ liệu khách hàng ở đây.
-  const managedDepartmentIds = ((departmentsData || []) as Department[])
+  const managedDepartmentIds = (allDepartments as Department[])
     .filter((d) => (d.managers ?? []).some((m) => m.id === user?.id))
     .map((d) => d.id);
 

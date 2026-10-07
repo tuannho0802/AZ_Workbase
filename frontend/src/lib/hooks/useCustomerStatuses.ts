@@ -5,17 +5,19 @@ import {
   CreateCustomerStatusPayload,
   UpdateCustomerStatusPayload,
 } from '../api/customer-statuses.api';
-import { REFERENCE_DATA_STALE_MS } from '../query-stale';
+import { refDataQueryOptions } from '../query-stale';
 
 const QUERY_KEY = ['customer-statuses'];
 
-export const useCustomerStatuses = () => {
+/** alwaysFresh: chỉ trang quản trị (inUseCount đếm từ bảng customers - không bump domain nào) */
+export const useCustomerStatuses = (opts?: { alwaysFresh?: boolean }) => {
   const { data, isLoading, isError, error } = useQuery({
     queryKey: QUERY_KEY,
     queryFn: () => customerStatusesApi.getAll(),
     // [AGENT] OLD CODE (giữ để rollback): staleTime: 60 * 1000
     // NEW (Plan CPU Mục 6A): create/update/delete bên dưới đều invalidate QUERY_KEY.
-    staleTime: REFERENCE_DATA_STALE_MS,
+    // [AGENT] OLD CODE (giữ để rollback): staleTime: REFERENCE_DATA_STALE_MS
+    ...refDataQueryOptions(opts), // 9D
   });
 
   return {

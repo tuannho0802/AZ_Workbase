@@ -6647,3 +6647,20 @@ Now [deploy]
 > Mẫu Profile dựng tĩnh, cần đối chiếu lại khi giao diện đổi chữ.
 
 ---
+
+## [2026-10-07] | 9D (phần còn lại): FE cache danh mục ít đổi + refSig | [Status: Success - chưa commit]
+
+**Actor:** Agent
+**Files Changed:** (xem 9d-remaining.patch)
+- `frontend/src/lib/query-stale.ts` — thêm `REF_DATA_SAFETY_STALE_MS` (2h), `refDataQueryOptions({ alwaysFresh })`
+- 7 hook danh mục — dùng `refDataQueryOptions`; 3 hook (customer statuses, periodic task statuses, leave types) nhận `{ alwaysFresh }`
+- 3 trang quản trị `quan-ly-*` — bật `alwaysFresh` (inUseCount đếm từ bảng không bump domain nào)
+- `useNotificationPoll.ts` + `notification.types.ts` — nối `useRefDataChangeSignal(refSig)`
+- `chia-data/page.tsx`, `useBroadcastCompose.ts` — gom về key `['departments']`
+- `backend/.../users.service.spec.ts` — dọn import/mock `PermissionsVersionService` bị khai báo trùng
+
+**Notes:**
+> Không đặt `refetchOnMount: false` (react-query v5 làm query đã invalidate không bao giờ refetch). Sửa danh mục bằng migration/seed/SQL tay vẫn không bump -> máy khác thấy cũ tối đa 2 giờ.
+> Đã chạy: BE tsc sạch, jest users 95 pass; FE vitest `lib/hooks` 100 pass. Chưa chạy trọn vitest ngoài `lib/hooks` (quá giờ sandbox). FE tsc chỉ còn lỗi `*.png` không liên quan.
+
+---

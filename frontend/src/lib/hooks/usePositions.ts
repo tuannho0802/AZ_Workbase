@@ -6,6 +6,8 @@ import {
   UpdatePositionPayload,
 } from '../api/positions.api';
 
+import { refDataQueryOptions } from '../query-stale';
+
 const POSITIONS_KEY = ['positions'];
 const EMPTY_POSITIONS: Position[] = [];
 
@@ -13,7 +15,8 @@ export const usePositions = () => {
   const { data, isLoading } = useQuery({
     queryKey: POSITIONS_KEY,
     queryFn: positionsApi.getAll,
-    staleTime: 5 * 60 * 1000, // 5 phút - danh mục Vị trí ít đổi, giống Department
+    // [AGENT] OLD CODE (giữ để rollback): staleTime: 5 * 60 * 1000
+    ...refDataQueryOptions(), // 9D
   });
 
   return {

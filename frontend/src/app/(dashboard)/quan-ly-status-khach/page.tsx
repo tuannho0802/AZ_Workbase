@@ -58,7 +58,7 @@ export default function CustomerStatusesPage() {
     const canManage = can('customer_statuses.manage');
     const canDelete = can('customer_statuses.delete');
 
-    const { statuses, isLoading } = useCustomerStatuses();
+    const { statuses, isLoading } = useCustomerStatuses({ alwaysFresh: true });
     const createMutation = useCreateCustomerStatus();
     const updateMutation = useUpdateCustomerStatus();
     const deleteMutation = useDeleteCustomerStatus();
