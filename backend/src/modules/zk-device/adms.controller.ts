@@ -42,7 +42,9 @@ export class AdmsController {
       'OPERLOGStamp=9999',
       'ATTPHOTOStamp=None',
       'ErrorDelay=30',
-      'Delay=10', // giây giữa các lần thử gửi log tiếp theo
+      // [AGENT] OLD CODE (giữ để rollback): 'Delay=10' -> máy hỏi /iclock/getrequest mỗi 10 giây (~8.600 invocation/ngày/máy).
+      // NEW (PLAN CPU Mục 10A): 24 giờ. Hệ thống KHÔNG gửi lệnh xuống máy và `Realtime=1` đẩy log ngay khi quẹt, nên Delay không ảnh hưởng độ trễ chấm công.
+      'Delay=86400', // giây giữa các lần máy hỏi lệnh (getrequest) - 24 giờ
       'TransTimes=00:00;14:05',
       'TransInterval=1',
       'TransFlag=TransData AttLog OpLog', // chỉ cần AttLog, không cần đồng bộ user/ảnh qua ADMS

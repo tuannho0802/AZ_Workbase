@@ -506,7 +506,7 @@ Phương án (chọn 1, đo trước/sau; mỗi cái 1 commit):
 - [x] (`usersForSelectCache.test.tsx`, 4 test) Test: mở 2 modal dùng danh sách người dùng liên tiếp → chỉ 1 `GET /users/all`; sửa nhân viên → danh sách tươi.
 **Tiêu chí hoàn thành:** `GET /users/all` trùng < 5 s về 0; số lần/phiên giảm ≥ 40% (cùng kịch bản).
 
-### 9D. Danh mục ít đổi (departments, positions, roles, statuses, leave-types, media-sources) — "chỉ gọi lại khi dữ liệu thật sự đổi" — 📝 ĐÃ CHỐT HƯỚNG (2026-10-07), CHƯA LÀM CODE
+### 9D. Danh mục ít đổi (departments, positions, roles, statuses, leave-types, media-sources) — "chỉ gọi lại khi dữ liệu thật sự đổi" — ✅ ĐÃ LÀM (2026-10-07), chờ deploy + đo
 **Bằng chứng/đã xác minh trong code:** `departments.controller.ts:40` dùng `CacheControlInterceptor(300, true)` → header `private, no-cache`, tham số `300` bị bỏ qua, mỗi lần gọi đều chạm server (log: 21 request, TB 410 ms, cộng 16 lần 401). Các hook danh mục khác chỉ dùng `staleTime` 30 s–5 phút nên vẫn hỏi lại định kỳ.
 **Quyết định của chủ dự án (thay cho 2 phương án (a)/(b) cũ):** KHÔNG chọn `max-age` HTTP. Thay vào đó: **không kiểm tra định kỳ; chỉ tải lại khi có thay đổi dữ liệu**, theo cơ chế version "đi nhờ" `/notifications/poll` (đã có sẵn `permissions_version` → `permSig` → `usePermissionChangeSignal`). **Lưới an toàn `staleTime` = 2 giờ** (không dùng `Infinity`; chủ dự án đã giảm đề xuất 6 giờ xuống 2 giờ).
 
@@ -523,10 +523,10 @@ Phương án (chọn 1, đo trước/sau; mỗi cái 1 commit):
 - **Rủi ro lớn nhất = sót `bump`** → dữ liệu cũ trên máy khác tới tối đa 2 giờ (nhờ lưới an toàn). Thay đổi ngoài API (migration, seed, sửa SQL tay) không tự bump → khi sửa danh mục bằng migration/SQL phải bump thủ công (hoặc chấp nhận tối đa 2 giờ).
 
 **Việc cần làm (mỗi bước 1 commit, patch là delta trên HEAD đã pull)**
-- [ ] 9D-1 BE: `RefDataVersionService` (tổng quát hoá, giữ `permSig`), gắn `bump` vào 7 nhóm service, `refSig` trong `/notifications/poll`; jest (bump đúng domain, đọc gộp 1 query, lỗi DB không làm hỏng poll).
-- [ ] 9D-2 BE: test quét "mọi POST/PATCH/DELETE của controller danh mục đều dẫn tới `bump`" để chống sót.
-- [ ] 9D-3 FE: `useRefDataChangeSignal` + `REFERENCE_DATA_STALE_MS` = 2 giờ + `refetchOnMount: false` cho hook danh mục; gom 2 chỗ lệch cache ở trên; vitest đếm request qua `axiosInstance` thật (mở nhiều trang/modal → 1 GET; refSig đổi → đúng 1 GET đúng domain; refSig không đổi → 0 GET; BE cũ không có `refSig` → vẫn đúng).
-- [ ] 9D-4 Cập nhật bảng "Trước → Sau" (Mục 9F) và `WORKFLOW_LOG.md`.
+- [x] 9D-1 BE: `RefDataVersionService` (tổng quát hoá, giữ `permSig`), gắn `bump` vào 7 nhóm service, `refSig` trong `/notifications/poll`; jest (bump đúng domain, đọc gộp 1 query, lỗi DB không làm hỏng poll).
+- [x] 9D-2 BE: test quét "mọi POST/PATCH/DELETE của controller danh mục đều dẫn tới `bump`" để chống sót.
+- [x] 9D-3 FE (⚠️ LỆCH PLAN: KHÔNG đặt `refetchOnMount: false` — react-query v5 làm query đã invalidate không bao giờ refetch khi mở lại trang; mặc định `refetchOnMount: true` + `staleTime` 2 giờ đã đủ; thêm `alwaysFresh` cho 3 trang quản trị status/loại phép/trạng thái công việc vì `inUseCount` đếm từ bảng không bump domain nào; tên hằng thực tế `REF_DATA_SAFETY_STALE_MS` + `refDataQueryOptions()` ở `lib/query-stale.ts`, `REFERENCE_DATA_STALE_MS` 5 phút giữ cho `useGuides`): `useRefDataChangeSignal` + 2 giờ cho hook danh mục; gom 2 chỗ lệch cache ở trên; vitest đếm request qua `axiosInstance` thật (mở nhiều trang/modal → 1 GET; refSig đổi → đúng 1 GET đúng domain; refSig không đổi → 0 GET; BE cũ không có `refSig` → vẫn đúng).
+- [~] 9D-4 (WORKFLOW_LOG đã có entry; bảng 9F chờ số đo) Cập nhật bảng "Trước → Sau" (Mục 9F) và `WORKFLOW_LOG.md`.
 **Thứ tự deploy:** BE trước hoặc cùng lúc FE. FE mới + BE cũ vẫn đúng nhờ lưới 2 giờ (chỉ chưa có lợi ích tức thời).
 **Tiêu chí hoàn thành:** `GET /departments`, `/positions`, `/roles`, statuses, leave-types sau lần tải đầu của phiên → ≈ 0 (chỉ phát sinh khi dữ liệu đổi hoặc qua 2 giờ); sửa phòng ban ở máy A → máy B thấy trong ≤ ~2 phút mà không cần F5.
 **Đo:** số `GET` từng route danh mục trên mỗi phiên (cùng kịch bản, ≥ 200 request).
@@ -542,6 +542,44 @@ Phương án (chọn 1, đo trước/sau; mỗi cái 1 commit):
 - [ ] Bảng "Trước → Sau" cần có: số 401, số `POST /auth/refresh`, `GET /periodic-tasks` sau mỗi POST checklist, `GET /users/all`, `GET /departments`.
 - [ ] Thứ tự commit (mỗi mục 1 commit): **9A ✅ → 9C ✅ → 9B-0 ✅ → 9B-1 ✅ → 9B-2 ✅ → 9D (hướng version-signal, 9D-1…9D-4)**. Ghi entry `WORKFLOW_LOG.md` sau mỗi mục.
 - [ ] Không bật `CPU_TIMING=true` trên prod để đo mục này (tự tốn CPU); nếu cần chi tiết 9B-3 thì bật trên **preview** ~30 phút rồi tắt.
+
+---
+
+## Mục 10 — Rà soát 2026-10-07 (sau 9D): request nhân bản / thử lại ngầm (bổ sung)
+
+**Bối cảnh:** prod đã tắt debug + `CPU_TIMING`; Uptime chỉ gọi cron 12–24 giờ/lần. Rà code (HEAD `1fdf064`) tìm chỗ còn sinh request thừa. Chưa có số đo log cho Mục 10 — tiêu chí dưới đây đo sau deploy.
+
+### 10A. Máy chấm công hỏi `/iclock/getrequest` mỗi 10 giây — ✅ ĐÃ LÀM (chờ deploy + đo)
+- **Bằng chứng trong code:** `adms.controller.ts` trả `Delay=10`; theo giao thức ZKTeco máy hỏi `getrequest` mỗi `Delay` giây (≈ 8.600 lần/ngày/máy). `vercel.json` route `/(.*)` → function Nest nên mỗi lần hỏi là 1 invocation, trong khi `getrequest` luôn trả `OK` (hệ thống không gửi lệnh xuống máy). ⚠️ Số lần thực tế phụ thuộc firmware — cần đối chiếu Vercel logs.
+- **Đã làm:** `Delay=86400` (24 giờ). `Realtime=1` giữ nguyên nên log quẹt thẻ vẫn đẩy ngay. `ErrorDelay=30` GIỮ NGUYÊN (retry khi đẩy log lỗi — tăng sẽ làm chậm/mất log).
+- **Lưu ý áp dụng:** máy chỉ nhận cấu hình mới ở lần handshake kế tiếp (`GET /iclock/cdata`) → khởi động lại máy hoặc đợi máy handshake lại. Một số firmware giới hạn trần `Delay`; nếu máy bỏ qua giá trị, thử 3600 hoặc 600.
+- **Đo:** số request `/iclock/getrequest` mỗi ngày (Vercel logs) trước → sau; kỳ vọng ≈ 1–2/ngày/máy.
+- **Rollback:** đổi lại `Delay=10` trong `adms.controller.ts`.
+
+### 10B. `retry: 2` mặc định của QueryClient — ✅ ĐÃ LÀM (chờ deploy + đo)
+- **Vấn đề:** `AntdAppProvider.tsx` đặt `retry: 2` → mọi query lỗi 403/404/500 bị gọi 3 lần (chờ 1 s, 2 s). Nặng nhất khi BE trả 403 vì thiếu key permission (mỗi query ×3, lặp mỗi lần mở trang); 401 sau khi refresh thất bại cũng bị gọi lại.
+- **Đã làm:** `lib/query-retry.ts#shouldRetryQuery`: lỗi 4xx KHÔNG thử lại; lỗi mạng/5xx thử lại đúng 1 lần. Mutation mặc định không retry (không đổi). `useZkDevice`/`useGuides` (`retry: false`) và `useNotificationPoll` (`retry: 1`) giữ riêng.
+- **Test:** `query-retry.test.ts` (4xx → không retry; 5xx/mạng → đúng 1 lần).
+- **Đo:** số request lặp cùng URL trong ≤ 3 giây sau 1 phản hồi 4xx → kỳ vọng 0.
+- **Rollback:** `retry: 2` như cũ.
+
+### 10C. Gộp `/sidebar/badges` vào poll — ✅ ĐÃ LÀM (chờ deploy + đo)
+- **Trước:** mỗi người đang dùng web ≈ 0,5 request/phút `/notifications/poll` (120 s) + 0,33 request/phút `/sidebar/badges` (180 s) ≈ **0,83**. Hai request chạy `JwtStrategy` riêng.
+- **Đã làm:** BE thêm `GET /sidebar/poll` (trả đúng hình dạng `/notifications/poll` + `badges`; đếm badge lỗi → bỏ field `badges`, KHÔNG làm hỏng poll). `/notifications/poll` và `/sidebar/badges` GIỮ NGUYÊN cho FE cũ. FE: `notificationsApi.poll` gọi `/sidebar/poll`; `useSidebarBadgeCounts` đọc `data.badges` từ query poll chung, bỏ query badges riêng; `SIDEBAR_BADGES_QUERY_KEY` = key poll (đổi quyền → invalidate poll là làm mới luôn badge). **Sau:** ≈ **0,5 request/phút/người**.
+- **Đánh đổi:** badge sidebar làm mới 120 s thay vì 180 s → phần đếm badge chạy nhiều hơn ~50% mỗi request nhưng bớt 1 invocation (JwtStrategy + guard). Số đếm đắt nhất (`invalidData`) vẫn cache RAM 180 s/instance. Nếu đo thấy `/sidebar/poll` nặng hơn tổng cũ → nâng chu kỳ poll lên 180 s hoặc cache `badges` theo user ~150 s ở BE.
+- **Thứ tự deploy:** BE trước hoặc cùng lúc FE (FE mới gọi `/sidebar/poll`; BE cũ chưa có route sẽ 404 → badge và chuông thông báo trống tới khi BE lên).
+- **Test:** `sidebar-badges.controller.spec.ts` (gộp đủ field; badge lỗi vẫn trả thông báo; permSig/refSig undefined bị bỏ), `useSidebarBadgeCounts.test.tsx` (1 request cho cả hai loại badge, không gọi `/sidebar/badges`; BE cũ không có `badges` vẫn đúng).
+- **Rollback:** `notificationsApi.poll` đổi lại `/notifications/poll`, khôi phục query badges riêng trong `useSidebarBadgeCounts` (xem `OLD CODE` trong file).
+
+### 10D. Đã rà, KHÔNG cần làm
+- Refresh token 401 dùng 1 lần cho nhiều request (`isRefreshing`/`failedQueue`, `refreshAccessTokenShared`) — không lặp.
+- Poll avatar `/users/me` chỉ chạy khi tab hiện và người dùng hoạt động (8 phút).
+- BE không có `@Cron`/`@Interval` đang bật; `vercel.json` chỉ có 2 cron/ngày; retry sync máy chấm công có giới hạn (delay 2 s theo chunk).
+- `refetchOnWindowFocus` mặc định tắt; chỉ `my-permissions`, `ui-visibility`, poll bật riêng và đều có `staleTime`.
+
+### 10E. Việc còn lại
+- [ ] Deploy rồi đối chiếu 10A–10C bằng số request theo route (cùng kịch bản, ≥ 200 request), cập nhật bảng "Trước → Sau" ở 9F.
+- [ ] Ứng viên sau (chưa làm): nâng chu kỳ poll lên 180 s nếu 10C cho thấy nặng hơn; cache `badges` theo user ở BE.
 
 ---
 
@@ -572,4 +610,7 @@ Phương án (chọn 1, đo trước/sau; mỗi cái 1 commit):
 | 9A | Refresh chủ động sai (đồng hồ lệch/token lạ) → vòng refresh | Giữ lưới 401 cũ; revert commit |
 | 9B-1 | Nhãn "X/Z" lệch so với DB | Luôn lấy số từ response BE; revert → invalidate như cũ |
 | 9C | Danh sách người dùng cũ sau khi sửa nhân viên | Thêm invalidate còn thiếu / giảm `staleTime` (chỉ còn 2 chỗ đổi) |
+| 10A | Máy bỏ qua `Delay` lớn / không nhận lệnh sau này | Đổi lại `Delay=10` (hoặc 600); hệ thống hiện không gửi lệnh nên chưa ảnh hưởng |
+| 10B | Lỗi mạng chập chờn hiện lỗi sớm hơn (retry 1 thay vì 2) | `retry: 2` như cũ |
+| 10C | `/sidebar/poll` nặng hơn tổng 2 request cũ; FE mới + BE cũ → 404 | Đổi URL về `/notifications/poll` + khôi phục query badges; deploy BE trước FE |
 | 9D | Sót `bump` → danh mục cũ trên máy khác tới 2 giờ; `max-age` HTTP làm refetch trả bản cũ | Thêm `bump` còn thiếu / giảm `staleTime` lưới an toàn; revert → `staleTime` 5 phút như cũ (`private, no-cache` giữ nguyên) |

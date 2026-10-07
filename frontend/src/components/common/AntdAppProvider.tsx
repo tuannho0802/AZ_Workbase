@@ -15,6 +15,8 @@ import 'dayjs/locale/vi';
 // tiếng Việt (Thứ Sáu, Thứ Năm...).
 dayjs.locale('vi');
 
+import { shouldRetryQuery } from '@/lib/query-retry';
+
 let globalMessage: MessageInstance | undefined;
 
 export const showMessage = {
@@ -37,7 +39,9 @@ export function AntdAppProvider({ children }: { children: React.ReactNode }) {
       queries: {
         staleTime: 30000,        // Data được coi là fresh trong 30s
         gcTime: 5 * 60 * 1000,   // Cache 5 phút
-        retry: 2,
+        // [AGENT] OLD CODE (giữ để rollback): retry: 2 (403/404/500 bị gọi 3 lần)
+        // NEW (PLAN CPU Mục 10B): chỉ thử lại lỗi mạng/5xx đúng 1 lần; 4xx (403 thiếu quyền, 404, 401...) KHÔNG thử lại.
+        retry: shouldRetryQuery,
         refetchOnWindowFocus: false,
       },
     },

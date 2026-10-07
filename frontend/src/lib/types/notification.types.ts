@@ -48,6 +48,8 @@ export interface NotificationPollResponse {
   permSig?: string;
   /** 9D: phiên bản từng danh mục ít đổi (7 domain). Số của domain nào đổi = domain đó vừa được sửa -> làm mới. Vắng mặt khi BE cũ. */
   refSig?: Record<string, number>;
+  /** 10C: số đếm badge sidebar (gộp vào poll). Field vắng mặt = không có quyền / lần đếm lỗi. Vắng cả `badges` khi BE cũ. */
+  badges?: import('../api/sidebar.api').SidebarBadgesResponse;
 }
 
 export interface ListNotificationsParams {

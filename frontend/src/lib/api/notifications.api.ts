@@ -18,7 +18,7 @@ export const notificationsApi = {
 
   /** Endpoint polling nhẹ (60s): số chưa đọc + version. */
   poll: async (): Promise<NotificationPollResponse> => {
-    const response = await axiosInstance.get<NotificationPollResponse>('/notifications/poll');
+    const response = await axiosInstance.get<NotificationPollResponse>('/sidebar/poll') // [AGENT] OLD CODE: '/notifications/poll' - 10C: gộp thêm `badges`;
     return response.data;
   },
 

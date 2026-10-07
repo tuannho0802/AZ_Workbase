@@ -6664,3 +6664,19 @@ Now [deploy]
 > Đã chạy: BE tsc sạch, jest users 95 pass; FE vitest `lib/hooks` 100 pass. Chưa chạy trọn vitest ngoài `lib/hooks` (quá giờ sandbox). FE tsc chỉ còn lỗi `*.png` không liên quan.
 
 ---
+
+## [2026-10-07] | Mục 10 (PLAN_CPU_OPTIMIZATION_ROUND2): ADMS Delay 24h + retry 4xx + gộp poll/badges | [Status: Success - chưa commit]
+
+**Actor:** Agent
+**Files Changed:** (xem 10-cpu-audit.patch)
+- `backend/src/modules/zk-device/adms.controller.ts` — `Delay=10` → `Delay=86400` (`ErrorDelay=30`, `Realtime=1` giữ nguyên)
+- `frontend/src/lib/query-retry.ts` (+test) + `AntdAppProvider.tsx` — `retry: 2` → `shouldRetryQuery` (4xx không retry, mạng/5xx 1 lần)
+- `backend/.../sidebar-badges.controller.ts` (+spec) — thêm `GET /sidebar/poll` gộp poll thông báo + `badges`
+- `frontend/src/lib/api/notifications.api.ts`, `notification.types.ts`, `useSidebarBadgeCounts.ts` (+test) — badges đọc từ poll chung, bỏ query `/sidebar/badges` riêng
+- `AZ-Workbase Skills/PLAN_CPU_OPTIMIZATION_ROUND2.md` — thêm Mục 10, tick 9D, thêm rủi ro 10A–10C
+
+**Notes:**
+> Deploy BE trước hoặc cùng lúc FE (FE mới gọi `/sidebar/poll`). Máy chấm công chỉ nhận `Delay` mới ở lần handshake kế tiếp.
+> Đã chạy: BE tsc sạch; jest sidebar-badges + zk-device 30 pass. FE tsc sạch (trừ lỗi `*.png` có sẵn); vitest 5 file liên quan 48 pass + `useSidebarBadgeCounts.test.tsx` 3 pass. Chưa chạy trọn toàn bộ vitest/jest.
+
+---

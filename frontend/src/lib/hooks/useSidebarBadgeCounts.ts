@@ -1,5 +1,4 @@
 import { useQuery } from '@tanstack/react-query';
-import { sidebarApi } from '../api/sidebar.api';
 import { notificationsApi } from '../api/notifications.api';
 import { useAuthStore } from '../stores/auth.store';
 import { notificationKeys } from './useNotifications';
@@ -13,7 +12,9 @@ import { useActivityPolling } from './useUserActivity';
 const REFRESH_INTERVAL_MS = 180_000;
 
 /** queryKey DUY NHẤT của badge sidebar - invalidate key này sau mutation để làm mới ngay. */
-export const SIDEBAR_BADGES_QUERY_KEY = ['badge-count', 'sidebar'] as const;
+// [AGENT] OLD CODE (giữ để rollback): ['badge-count', 'sidebar'] + query riêng /sidebar/badges.
+// NEW (10C): badges nằm trong poll chung -> cùng key `notificationKeys.poll` (permission đổi -> invalidate poll là làm mới luôn badge).
+export const SIDEBAR_BADGES_QUERY_KEY = notificationKeys.poll;
 
 /**
  * Key phụ trong map counts cho badge VÀNG "Đang làm" (in_progress) của mục
@@ -33,18 +34,8 @@ export const TASK_IN_PROGRESS_COUNT_KEY = 'cong-viec-dinh-ky:in_progress';
 export function useSidebarBadgeCounts(): Record<string, number> {
   const isAuthenticated = useAuthStore((s) => s.isAuthenticated);
 
-  // [AGENT] NEW CODE: dừng poll khi người dùng bỏ treo tab >5 phút, làm mới ngay khi quay lại
-  // (xem useUserActivity.ts). OLD CODE: refetchInterval: REFRESH_INTERVAL_MS (poll mãi cả khi không ai dùng).
-  const badgesInterval = useActivityPolling(SIDEBAR_BADGES_QUERY_KEY, REFRESH_INTERVAL_MS, isAuthenticated);
+  // [AGENT] NEW CODE (10C): 1 query poll chung (unread + badges); dừng poll khi người dùng bỏ treo tab >5 phút.
   const pollInterval = useActivityPolling(notificationKeys.poll, REFRESH_INTERVAL_MS, isAuthenticated);
-
-  const badges = useQuery({
-    queryKey: SIDEBAR_BADGES_QUERY_KEY,
-    queryFn: () => sidebarApi.getBadges(),
-    enabled: isAuthenticated,
-    refetchInterval: badgesInterval,
-    staleTime: REFRESH_INTERVAL_MS,
-  });
 
   const notificationsPoll = useQuery({
     queryKey: notificationKeys.poll,
@@ -55,7 +46,7 @@ export function useSidebarBadgeCounts(): Record<string, number> {
   });
 
   const counts: Record<string, number> = {};
-  const d = badges.data;
+  const d = notificationsPoll.data?.badges;
   if (d) {
     if (d.invalidData !== undefined) counts['invalid-data-report'] = d.invalidData;
     if (d.trash !== undefined) counts['trash-can'] = d.trash;
