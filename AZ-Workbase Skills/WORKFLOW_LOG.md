@@ -6551,3 +6551,18 @@ Now [deploy]
 > Không đổi BE. **Đánh đổi:** detail/performance/Task-con-của-cha cập nhật trễ tối đa ~1,5 s (liên tục thì tối đa 5 s) sau khi thêm. Lợi ích thực tế nhỏ vì log prod chưa thấy các view phụ này mở cùng lúc.
 > **CHECK SAU DEPLOY:** không cần đo riêng; chỉ xác nhận nhãn/ detail không lệch sau khi thêm vài mục liên tiếp rồi chờ ~2 s.
 ---
+
+---
+## [2026-10-07 14:00] | Guides P2: viết bài `nghi-phep` + 3 mẫu minh hoạ | [Status: Success]
+
+**Actor:** Agent
+**Files Changed:**
+- `guides-content/nghi-phep.md` (MỚI, `published: false`, `permissions: [leave_requests.request]`, sortOrder 15) — đọc từ `nghi-phep/page.tsx`, `AttachmentUploader`, `leave-requests.controller/service` (create/cancel/approve/calculateDays/validatePeriodHours/isEligibleApprover), seed `1781500000000` (loại phép), `1778400000000` (quyền).
+- `frontend/src/lib/guides/demos/leave.demos.tsx` (MỚI) — `leave-status-tags`, `leave-form`, `leave-my-requests`; `leave.demos.test.tsx` (MỚI); đăng ký ở `guide-demos.tsx`; `guide-demos.test.tsx` (51 -> 54 mẫu); `guide-slugs.ts` (gỡ `nghi-phep` khỏi `PENDING_GUIDE_SLUGS`).
+- `AZ-Workbase Skills/PLAN_GUIDES_CONTENT.md` — đánh dấu P2 đã xong `nghi-phep`.
+
+**Notes:**
+> Verify: `vitest src/lib/guides` 15 file / ~394 test pass; `tsc --noEmit` chỉ còn 4 lỗi `logo.png` có sẵn. Chưa chạy `next build`, chưa test tay, chưa chạy `guides:sync`.
+> Bài cố ý KHÔNG nói "Admin đổi giới hạn ảnh ở trang Quản lý lưu trữ ảnh": `useUpdateUploadLimits` không được trang nào dùng (BE có `PATCH /uploads/limits`, quyền `uploads.manage_limits`) — nghi thiếu UI, chưa sửa.
+> Phát hiện: BE `update()` cho sửa đơn PENDING/APPROVED (`leave_requests.edit`) và create/update KHÔNG chặn trùng ngày (bypass 22/9) — bài đã ghi rõ phần trùng ngày. Cần duyệt đổi `published: true` rồi `guides:sync --apply`.
+---
