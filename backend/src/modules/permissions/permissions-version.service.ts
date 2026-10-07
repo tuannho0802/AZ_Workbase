@@ -1,12 +1,36 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { In, Repository } from 'typeorm';
 import { waitUntil } from '@vercel/functions';
 import { Setting } from '../../database/entities/setting.entity';
 
 export const PERMISSIONS_VERSION_KEY = 'permissions_version';
 // Cache đọc ngắn/instance: nhiều user cùng instance chỉ tốn 1 query/10s. Bump xoá cache ngay trên instance xử lý.
 export const PERMISSIONS_VERSION_CACHE_TTL_MS = 10_000;
+
+/**
+ * [PLAN_CPU_OPTIMIZATION_ROUND2 - 9D] Danh mục ÍT ĐỔI mà FE cache lâu (staleTime 2 giờ) và chỉ tải lại khi `refSig` của
+ * đúng domain đó đổi. Mỗi domain có 1 bộ đếm riêng trong bảng `settings` (key `refdata_version:<domain>`), không cần migration.
+ * ⚠️ Khớp với `REF_DATA_QUERY_KEYS` ở FE (`useRefDataChangeSignal.ts`) - thêm domain thì sửa cả 2 phía.
+ */
+export const REF_DATA_DOMAINS = [
+  'departments',
+  'positions',
+  'roles',
+  'customer_statuses',
+  'periodic_task_statuses',
+  'leave_types',
+  'media_sources',
+] as const;
+export type RefDataDomain = (typeof REF_DATA_DOMAINS)[number];
+export const REF_DATA_VERSION_KEY_PREFIX = 'refdata_version:';
+export const refDataVersionKey = (domain: RefDataDomain): string => `${REF_DATA_VERSION_KEY_PREFIX}${domain}`;
+
+/** Bản chụp phiên bản: permissions_version + MỌI domain (chưa có dòng = 0 để FE luôn có mốc ổn định). */
+interface VersionSnapshot {
+  permissions: number;
+  ref: Record<RefDataDomain, number>;
+}
 
 export interface PermissionSigUser {
   role: string;
@@ -28,29 +52,60 @@ export interface PermissionSigUser {
 @Injectable()
 export class PermissionsVersionService {
   private readonly logger = new Logger(PermissionsVersionService.name);
-  private cached: { value: number; expiresAt: number } | null = null;
+  // [AGENT] OLD CODE (giữ lại để rollback): private cached: { value: number; expiresAt: number } | null = null;
+  // [AGENT] NEW CODE (9D): 1 bản chụp chung cho permissions_version + refdata_version:* -> `permSig` và `refSig` dùng CHUNG 1 query.
+  private cached: { snapshot: VersionSnapshot; expiresAt: number } | null = null;
 
   constructor(@InjectRepository(Setting) private readonly settingRepo: Repository<Setting>) {}
 
-  /** Đọc phiên bản hiện tại. KHÔNG BAO GIỜ throw - lỗi trả `undefined` (poll vẫn chạy, FE bỏ qua tín hiệu). */
-  async get(): Promise<number | undefined> {
+  /** Đọc 1 lần TẤT CẢ bộ đếm (1 query, `key IN (...)`), cache 10 s/instance. KHÔNG throw - lỗi trả `undefined` và không cache. */
+  private async load(): Promise<VersionSnapshot | undefined> {
     const now = Date.now();
-    if (this.cached && this.cached.expiresAt > now) return this.cached.value;
+    if (this.cached && this.cached.expiresAt > now) return this.cached.snapshot;
     try {
-      const row = await this.settingRepo.findOne({ where: { key: PERMISSIONS_VERSION_KEY } });
-      const value = row ? Number(row.value) || 0 : 0; // chưa có dòng = 0 (chưa ai đổi quyền)
-      this.cached = { value, expiresAt: now + PERMISSIONS_VERSION_CACHE_TTL_MS };
-      return value;
+      const rows = await this.settingRepo.find({
+        where: { key: In([PERMISSIONS_VERSION_KEY, ...REF_DATA_DOMAINS.map(refDataVersionKey)]) },
+      });
+      const byKey = new Map(rows.map((r) => [r.key, Number(r.value) || 0]));
+      const ref = {} as Record<RefDataDomain, number>;
+      for (const d of REF_DATA_DOMAINS) ref[d] = byKey.get(refDataVersionKey(d)) ?? 0; // chưa có dòng = 0
+      const snapshot: VersionSnapshot = { permissions: byKey.get(PERMISSIONS_VERSION_KEY) ?? 0, ref };
+      this.cached = { snapshot, expiresAt: now + PERMISSIONS_VERSION_CACHE_TTL_MS };
+      return snapshot;
     } catch (err) {
-      this.logger.warn(`Không đọc được permissions_version: ${err instanceof Error ? err.message : String(err)}`);
+      this.logger.warn(`Không đọc được phiên bản (permissions/refdata): ${err instanceof Error ? err.message : String(err)}`);
       return undefined; // không cache lỗi
     }
+  }
+
+  /** Đọc phiên bản hiện tại. KHÔNG BAO GIỜ throw - lỗi trả `undefined` (poll vẫn chạy, FE bỏ qua tín hiệu). */
+  async get(): Promise<number | undefined> {
+    return (await this.load())?.permissions;
+  }
+
+  /**
+   * [9D] Phiên bản từng danh mục ít đổi: `{ departments: 7, positions: 2, ... }` (LUÔN đủ mọi domain).
+   * KHÔNG throw - lỗi đọc trả `undefined` (poll vẫn chạy, FE giữ mốc cũ).
+   */
+  async getRefSig(): Promise<Record<RefDataDomain, number> | undefined> {
+    const snapshot = await this.load();
+    return snapshot ? { ...snapshot.ref } : undefined;
   }
 
   /** Tăng phiên bản (fire-and-forget qua waitUntil, không chặn request, không throw). */
   bump(): void {
     this.cached = null;
-    const task = this.bumpNow();
+    this.runInBackground(this.bumpNow());
+  }
+
+  /** [9D] Tăng phiên bản của các danh mục vừa đổi (fire-and-forget). Gọi bởi `RefDataChangeSubscriber` SAU KHI dữ liệu đã ghi/commit. */
+  bumpRef(domains: readonly RefDataDomain[]): void {
+    if (domains.length === 0) return;
+    this.cached = null;
+    this.runInBackground(this.bumpRefNow(domains));
+  }
+
+  private runInBackground(task: Promise<void>): void {
     try {
       waitUntil(task);
     } catch {
@@ -69,6 +124,25 @@ export class PermissionsVersionService {
       this.logger.error(`Không bump được permissions_version: ${err instanceof Error ? err.stack : String(err)}`);
     } finally {
       this.cached = null; // lần đọc kế tiếp lấy giá trị mới từ DB
+    }
+  }
+
+  /** [9D] 1 câu upsert nhiều dòng (nguyên tử từng dòng, `value = value + 1`). Lỗi chỉ log, không throw. */
+  async bumpRefNow(domains: readonly RefDataDomain[]): Promise<void> {
+    const unique = [...new Set(domains)];
+    if (unique.length === 0) return;
+    try {
+      const placeholders = unique.map(() => '(?, ?, ?)').join(', ');
+      const params = unique.flatMap((d) => [refDataVersionKey(d), '1', `Tăng mỗi khi danh mục "${d}" thay đổi - FE tải lại đúng danh mục đó`]);
+      await this.settingRepo.query(
+        `INSERT INTO settings (\`key\`, \`value\`, \`description\`) VALUES ${placeholders} ` +
+          'ON DUPLICATE KEY UPDATE `value` = CAST(`value` AS UNSIGNED) + 1',
+        params,
+      );
+    } catch (err) {
+      this.logger.error(`Không bump được refdata_version (${unique.join(',')}): ${err instanceof Error ? err.stack : String(err)}`);
+    } finally {
+      this.cached = null;
     }
   }
 

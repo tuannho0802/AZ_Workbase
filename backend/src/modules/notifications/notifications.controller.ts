@@ -53,12 +53,20 @@ export class NotificationsController {
     summary: 'Số chưa đọc + version - endpoint polling nhẹ (60s)',
   })
   async poll(@GetUser() user: PermissionSigUser & { id: number }) {
-    // [AGENT] NEW CODE: kèm `permSig` (tín hiệu "quyền của tôi vừa đổi") - xem PermissionsVersionService.
-    const [base, permSig] = await Promise.all([
+    // [AGENT] OLD CODE (giữ lại để rollback): chỉ `permSig`:
+    // const [base, permSig] = await Promise.all([this.notificationsService.poll(user.id), this.permissionsVersionService.buildSig(user)]);
+    // return permSig === undefined ? base : { ...base, permSig };
+    // [AGENT] NEW CODE (9D): thêm `refSig` (phiên bản từng danh mục ít đổi). `permSig` và `refSig` dùng CHUNG 1 lần đọc settings (cache 10 s).
+    const [base, permSig, refSig] = await Promise.all([
       this.notificationsService.poll(user.id),
       this.permissionsVersionService.buildSig(user),
+      this.permissionsVersionService.getRefSig(),
     ]);
-    return permSig === undefined ? base : { ...base, permSig };
+    return {
+      ...base,
+      ...(permSig === undefined ? {} : { permSig }),
+      ...(refSig === undefined ? {} : { refSig }),
+    };
   }
 
   @Patch('read-all')

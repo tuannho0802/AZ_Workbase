@@ -17,6 +17,7 @@ import { ChangePasswordDto } from './dto/change-password.dto';
 import { ConflictException, NotFoundException, ForbiddenException, BadRequestException, UnauthorizedException } from '@nestjs/common';
 import * as bcrypt from 'bcrypt';
 import { AuditService } from '../audit/audit.service';
+import { PermissionsVersionService } from '../permissions/permissions-version.service';
 import { ApprovalStatus } from '../../common/enums/approval-status.enum';
 import { DepartmentsService } from '../departments/departments.service';
 import { PositionsService } from '../positions/positions.service';
@@ -51,6 +52,8 @@ export class UsersService {
     private readonly uploadsService: UploadsService,
     @InjectDataSource()
     private readonly dataSource: DataSource,
+    // [9D] PermissionsModule là @Global() nên không cần import module. Chỉ dùng cho `hardDeleteUser` (SQL thô, subscriber không thấy).
+    private readonly permissionsVersionService: PermissionsVersionService,
   ) {}
 
   // --- Avatar (Backblaze B2, bucket Private) ------------------------------
@@ -1313,6 +1316,10 @@ export class UsersService {
       // sẵn ở tầng DB (xem JSDoc phía trên), tự động xử lý khi DELETE chạy.
       await manager.query('DELETE FROM users WHERE id = ?', [targetId]);
     });
+
+    // [9D] Các lệnh `manager.query()` ở trên ghi `department_managers` bằng SQL THÔ nên `RefDataChangeSubscriber` KHÔNG thấy
+    // -> bump tay SAU KHI commit (nếu không, `managers` của phòng ban cũ trên máy khác tới 2 giờ). Không bao giờ throw.
+    this.permissionsVersionService.bumpRef(['departments']);
 
     this.auditService.logActionAsync(callerId, 'HARD_DELETE_USER', 'user', targetId, safeUserSnapshot, null);
     this.logger.log(`[Users] User ID ${targetId} đã bị xoá CỨNG (vĩnh viễn) bởi ${callerId}`);

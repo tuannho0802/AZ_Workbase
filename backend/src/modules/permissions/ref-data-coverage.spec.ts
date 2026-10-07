@@ -3,7 +3,7 @@ import { getMetadataArgsStorage } from 'typeorm';
 import { Department } from '../../database/entities/department.entity';
 import { DepartmentManager } from '../../database/entities/department-manager.entity';
 import { Position } from '../../database/entities/position.entity';
-import { Role } from '../../database/entities/role.entity';
+import { RoleEntity } from '../../database/entities/role.entity';
 import { RolePermission } from '../../database/entities/role-permission.entity';
 import { CustomerStatus } from '../../database/entities/customer-status.entity';
 import { PeriodicTaskStatus } from '../../database/entities/periodic-task-status.entity';
@@ -24,7 +24,7 @@ describe('Phủ bump danh mục ít đổi (9D)', () => {
         ['Department', Department],
         ['DepartmentManager', DepartmentManager],
         ['Position', Position],
-        ['Role', Role],
+        ['RoleEntity', RoleEntity],
         ['RolePermission', RolePermission],
         ['CustomerStatus', CustomerStatus],
         ['PeriodicTaskStatus', PeriodicTaskStatus],

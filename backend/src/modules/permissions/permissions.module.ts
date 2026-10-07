@@ -4,6 +4,7 @@ import { RolePermission } from '../../database/entities/role-permission.entity';
 import { Setting } from '../../database/entities/setting.entity';
 import { PermissionsService } from './permissions.service';
 import { PermissionsVersionService } from './permissions-version.service';
+import { RefDataChangeSubscriber } from './ref-data-change.subscriber';
 
 // @Global(): PermissionGuard cần PermissionsService ở MỌI module có route
 // dùng @RequirePermission() - import lại module này ở từng module một sẽ
@@ -12,7 +13,7 @@ import { PermissionsVersionService } from './permissions-version.service';
 @Global()
 @Module({
   imports: [TypeOrmModule.forFeature([RolePermission, Setting])],
-  providers: [PermissionsService, PermissionsVersionService],
+  providers: [PermissionsService, PermissionsVersionService, RefDataChangeSubscriber],
   exports: [PermissionsService, PermissionsVersionService],
 })
 export class PermissionsModule {}

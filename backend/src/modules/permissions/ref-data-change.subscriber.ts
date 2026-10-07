@@ -5,7 +5,9 @@ import type {
     EntitySubscriberInterface,
     InsertEvent,
     QueryRunner,
+    RecoverEvent,
     RemoveEvent,
+    SoftRemoveEvent,
     TransactionCommitEvent,
     TransactionRollbackEvent,
     UpdateEvent,
@@ -38,6 +40,8 @@ export const USER_COLUMNS_AFFECTING_DEPARTMENTS: ReadonlySet<string> = new Set([
     'departmentId',
     'department',
     'isActive',
+    // Xoá mềm user = `update(id, { deletedAt })` (users.service#softDeleteUser) -> user rời danh sách `employees`/`managers`.
+    'deletedAt',
 ]);
 
 /**
@@ -78,6 +82,15 @@ export class RefDataChangeSubscriber implements EntitySubscriberInterface {
     }
 
     afterRemove(event: RemoveEvent<any>): void {
+        this.record(event.metadata.tableName, event.queryRunner);
+    }
+
+    // `repository.softDelete()/restore()` (QueryBuilder) và `softRemove()/recover()` phát 2 sự kiện này thay vì afterUpdate/afterRemove.
+    afterSoftRemove(event: SoftRemoveEvent<any>): void {
+        this.record(event.metadata.tableName, event.queryRunner);
+    }
+
+    afterRecover(event: RecoverEvent<any>): void {
         this.record(event.metadata.tableName, event.queryRunner);
     }
 

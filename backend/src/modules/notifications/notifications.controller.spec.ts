@@ -41,7 +41,10 @@ describe('NotificationsController', () => {
       remove: jest.fn(),
       purge: jest.fn(),
     };
-    const versionService: any = { buildSig: jest.fn().mockResolvedValue('3:employee:1:0:0') };
+    const versionService: any = {
+      buildSig: jest.fn().mockResolvedValue('3:employee:1:0:0'),
+      getRefSig: jest.fn().mockResolvedValue({ departments: 1 }),
+    };
     const c = new NotificationsController(service, versionService);
     c.list(7, { limit: 5 });
     service.poll.mockResolvedValue({ unread: 2, version: 9 });
@@ -61,16 +64,24 @@ describe('NotificationsController', () => {
     expect(service.purge).toHaveBeenCalledWith(7, 11);
   });
 
-  it('poll trả kèm permSig; BE không đọc được version -> bỏ field (FE bỏ qua)', async () => {
+  it('poll trả kèm permSig + refSig; BE không đọc được version -> bỏ field tương ứng (FE bỏ qua)', async () => {
     const service: any = { poll: jest.fn().mockResolvedValue({ unread: 2, version: 9 }) };
-    const versionService: any = { buildSig: jest.fn() };
+    const versionService: any = { buildSig: jest.fn(), getRefSig: jest.fn() };
     const c = new NotificationsController(service, versionService);
     const user = { id: 7, role: 'employee' };
+    const refSig = { departments: 7, positions: 2 };
 
     versionService.buildSig.mockResolvedValueOnce('3:employee:0:0:0');
-    await expect(c.poll(user)).resolves.toEqual({ unread: 2, version: 9, permSig: '3:employee:0:0:0' });
+    versionService.getRefSig.mockResolvedValueOnce(refSig);
+    await expect(c.poll(user)).resolves.toEqual({ unread: 2, version: 9, permSig: '3:employee:0:0:0', refSig });
 
     versionService.buildSig.mockResolvedValueOnce(undefined);
+    versionService.getRefSig.mockResolvedValueOnce(undefined);
     await expect(c.poll(user)).resolves.toEqual({ unread: 2, version: 9 });
+
+    // Chỉ refSig đọc được (hoặc chỉ permSig) -> trả đúng field có.
+    versionService.buildSig.mockResolvedValueOnce(undefined);
+    versionService.getRefSig.mockResolvedValueOnce(refSig);
+    await expect(c.poll(user)).resolves.toEqual({ unread: 2, version: 9, refSig });
   });
 });

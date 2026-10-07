@@ -13,6 +13,8 @@ import { User } from '../../database/entities/user.entity';
 import { Department } from '../../database/entities/department.entity';
 import { RoleEntity } from '../../database/entities/role.entity';
 import { AuditService } from '../audit/audit.service';
+import { PermissionsVersionService } from '../permissions/permissions-version.service';
+import { PermissionsVersionService } from '../permissions/permissions-version.service';
 import { DepartmentsService } from '../departments/departments.service';
 import { PositionsService } from '../positions/positions.service';
 import { UploadsService } from '../uploads/uploads.service';
@@ -134,6 +136,10 @@ describe('UsersService - Approval workflow (đăng ký công khai chờ duyệt)
   // index [5]". `avatarsBucket` là getter thật trong UploadsService (đọc
   // biến môi trường B2_BUCKET_AVATARS) nên mock bằng 1 string cố định,
   // không phải jest.fn().
+  const mockPermissionsVersionService = { bumpRef: jest.fn() };
+
+  const mockPermissionsVersionService = { bumpRef: jest.fn() };
+
   const mockUploadsService = {
     signAvatarGetUrl: jest.fn().mockResolvedValue('https://signed-get-url.example/avatar.webp'),
     invalidateAvatarUrl: jest.fn(),
@@ -189,6 +195,7 @@ describe('UsersService - Approval workflow (đăng ký công khai chờ duyệt)
         { provide: PositionsService, useValue: mockPositionsService },
         { provide: UploadsService, useValue: mockUploadsService },
         { provide: getDataSourceToken(), useValue: mockDataSource },
+        { provide: PermissionsVersionService, useValue: mockPermissionsVersionService },
       ],
     }).compile();
 
@@ -1090,6 +1097,23 @@ describe('UsersService - Approval workflow (đăng ký công khai chờ duyệt)
         expect.any(Object),
         null,
       );
+    });
+
+    it('9D: xoá cứng ghi department_managers bằng SQL thô -> bump tay `departments` SAU transaction; thất bại thì KHÔNG bump', async () => {
+      mockUsersRepo.findOne.mockResolvedValue({ id: 2, name: 'B', deletedAt: new Date() });
+      mockPermissionsVersionService.bumpRef.mockClear();
+      mockDataSource.transaction.mockImplementationOnce(async (cb: any) => {
+        await cb(mockTransactionManager);
+        expect(mockPermissionsVersionService.bumpRef).not.toHaveBeenCalled(); // chưa commit thì chưa bump
+      });
+      await service.hardDeleteUser(2, 1);
+      expect(mockPermissionsVersionService.bumpRef).toHaveBeenCalledTimes(1);
+      expect(mockPermissionsVersionService.bumpRef).toHaveBeenCalledWith(['departments']);
+
+      mockPermissionsVersionService.bumpRef.mockClear();
+      mockDataSource.transaction.mockRejectedValueOnce(new Error('FK'));
+      await expect(service.hardDeleteUser(2, 1)).rejects.toThrow('FK');
+      expect(mockPermissionsVersionService.bumpRef).not.toHaveBeenCalled();
     });
 
     it('MỚI (isRootAdmin): ném ForbiddenException nếu target là Root Admin - phòng thủ 2 lớp dù về lý thuyết không lọt được vào thùng rác', async () => {
