@@ -6597,3 +6597,18 @@ Now [deploy]
 > CHƯA chạy vitest/tsc/next build/guides:sync. Cần duyệt nội dung rồi đổi `published: true` và `guides:sync --apply`.
 > Phát hiện (chưa sửa): `approve()` không kiểm tra lại phép năm; seed Assistant approve=all nhưng view=department; đổi cờ "Trừ phép năm"/xoá loại + fallback không tính lại phép, hoàn phép khi huỷ dùng cờ hiện tại; không chặn tự duyệt đơn của mình.
 ---
+
+## [2026-10-07 17:00] | Guides content P3: thong-bao (published: false) | [Status: Success]
+
+**Actor:** Agent / User
+**Files Changed:**
+- `guides-content/thong-bao.md` — bài mới (`permissions: []`: hộp thư chỉ cần đăng nhập, BE `NotificationsController` không gắn `@RequirePermission`)
+- `frontend/src/lib/guides/demos/notifications.demos.tsx` — 3 mẫu: `notification-list` (view=all|hidden, dùng `NotificationRow` thật), `notification-kinds`, `notification-hide-flow`; test riêng `notifications.demos.test.tsx`
+- `guide-demos.tsx` (đăng ký), `guide-demos.test.tsx` (59 → 62 mẫu), `guide-slugs.ts` (gỡ `thong-bao` khỏi PENDING)
+- `AZ-Workbase Skills/PLAN_GUIDES_CONTENT.md` — tick P3 `thong-bao`
+
+**Notes:**
+> Verify: `vitest src/lib/guides src/components/notifications` 16 file / 438 test pass (gồm test P2 chưa từng chạy: leave-*); 3 file liên quan thông báo + registry + nav-coverage chạy lại sau khi thêm test: 84 pass. `tsc --noEmit` chỉ còn 4 lỗi `logo.png` có sẵn (+ lỗi ở `useRefDataChangeSignal.test.tsx`, xem dưới). Chưa chạy `next build`, chưa test tay, chưa chạy `guides:sync`.
+> Phát hiện (chưa sửa): `frontend/src/lib/hooks/useRefDataChangeSignal.test.tsx` (commit a2f9fde) bị hỏng: dòng cuối là chữ `EOF` thừa và import trùng lặp (QueryClientProvider, renderHook, useRefDataChangeSignal khai 2 lần) + import `REF_DATA_SAFETY_STALE_MS`, `refDataQueryOptions` chưa tồn tại trong `query-stale` (9D chưa làm code). File này làm `tsc` đỏ và nhiều khả năng làm `vitest` đỏ khi chạy toàn bộ.
+> Chưa xác minh được: có UI tắt nhận thông báo theo từng loại hay không (BE có preference cho event không `mandatory`), nên bài không nói gì về việc tắt thông báo.
+---
