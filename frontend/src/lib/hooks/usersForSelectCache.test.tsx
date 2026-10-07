@@ -15,7 +15,7 @@ vi.mock('@/components/common/AntdAppProvider', () => ({ showMessage: { error: vi
 
 import axiosInstance from '../api/axios-instance';
 import { usersApi } from '../api/users.api';
-import { fetchUsersForSelect, invalidateUserLists, USERS_FOR_SELECT_KEY, USERS_FOR_SELECT_STALE_MS } from './useUsers';
+import { fetchUsersForSelect, invalidateUserLists, useUsersList, USERS_FOR_SELECT_KEY, USERS_FOR_SELECT_STALE_MS } from './useUsers';
 
 let usersAllCalls = 0;
 beforeEach(() => {
@@ -63,5 +63,29 @@ describe('9C - /users/all dùng chung cache', () => {
     qc.setQueryData(['users-list', undefined], [{ id: 1 }]);
     await invalidateUserLists(qc);
     expect(qc.getQueryState(['users-list', undefined])?.isInvalidated).toBe(true);
+  });
+
+  it('useUsersList() + useQuery users-for-select cùng mount -> chỉ 1 GET /users/all', async () => {
+    const qc = makeClient();
+    const { result } = renderHook(
+      () => {
+        const a = useUsersList();
+        const b = useQuery({ queryKey: USERS_FOR_SELECT_KEY, queryFn: () => usersApi.getAllForSelect(), staleTime: USERS_FOR_SELECT_STALE_MS });
+        return { a, b };
+      },
+      { wrapper: wrap(qc) },
+    );
+    await waitFor(() => expect(result.current.a.users.length).toBe(1));
+    expect(usersAllCalls).toBe(1);
+  });
+
+  it('useUsersList() mount lại khi còn fresh (<5 phút) -> không gọi thêm', async () => {
+    const qc = makeClient();
+    const first = renderHook(() => useUsersList(), { wrapper: wrap(qc) });
+    await waitFor(() => expect(first.result.current.users.length).toBe(1));
+    first.unmount();
+    const second = renderHook(() => useUsersList(), { wrapper: wrap(qc) });
+    await waitFor(() => expect(second.result.current.users.length).toBe(1));
+    expect(usersAllCalls).toBe(1);
   });
 });

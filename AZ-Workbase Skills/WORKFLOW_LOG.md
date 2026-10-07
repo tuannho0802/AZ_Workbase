@@ -6730,3 +6730,5 @@ Now [deploy]
 > Đã chạy: FE tsc chỉ còn lỗi `logo.png` có sẵn; vitest `src/lib/hooks` 16 file / 114 test pass + test liên quan. Chưa chạy trọn vitest, chưa test tay.
 
 ---
+
+- 2026-10-07 | Claude | Gộp `useUsersList()` (không role) vào key `users-for-select` + staleTime 5 phút, bỏ refetchOnMount ép buộc (trước đây 2 key cùng gọi GET /users/all). Bổ sung nhãn audit `SYSTEM_RESET` / entity `system` ở audit-meta.ts (test audit-meta đang đỏ do patch 11). vitest toàn bộ pass.

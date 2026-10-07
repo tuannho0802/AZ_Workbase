@@ -14,14 +14,14 @@ export const useUsers = (role?: string) => {
 };
 
 export const useUsersList = (role?: string) => {
+  // Không lọc role → dùng chung key với `users-for-select` (cùng GET /users/all)
+  // để 2 hook không gọi API trùng nhau. Có role → key riêng nhưng cùng staleTime.
   const { data, isLoading, refetch } = useQuery({
-    queryKey: ['users-list', role],
+    queryKey: role ? ['users-list', role] : USERS_FOR_SELECT_KEY,
     queryFn: () => usersApi.getUsersList({ role }),
-    refetchOnMount: true,
+    staleTime: USERS_FOR_SELECT_STALE_MS,
   });
 
-
-  
   // Xử lý cả trường hợp phân trang và không phân trang
   let users = [];
   if (Array.isArray(data)) {

@@ -84,6 +84,7 @@ export const ACTION_META: Record<string, ActionMeta> = {
   CREATE_USER: m('Tạo nhân viên', 'green', 'user'),
   UPDATE_USER: m('Sửa nhân viên', 'blue', 'user'),
   USER_LOGIN: m('Đăng nhập', 'default', 'user'),
+  SYSTEM_RESET: m('Reset hệ thống', 'red', 'user'),
   USER_SELF_REGISTER: m('Tự đăng ký tài khoản', 'lime', 'user'),
   APPROVE_USER: m('Duyệt tài khoản', 'green', 'user'),
   REJECT_USER: m('Từ chối tài khoản', 'red', 'user'),
@@ -249,6 +250,7 @@ export function getActionMeta(action: string): { label: string; color: string; k
 // ─── Đối tượng (entityType) ─────────────────────────────────────────────────
 export const ENTITY_TYPE_LABELS: Record<string, string> = {
   customer: 'Khách hàng',
+  system: 'Hệ thống',
   customer_note: 'Ghi chú khách hàng',
   customer_assignment: 'Lượt gán data',
   deposit: 'Phiếu nạp tiền',
