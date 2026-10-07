@@ -242,7 +242,7 @@ Thứ tự: `khach-hang` → `chia-data` → `quan-ly-phu-trach` → `status-kha
 
 ### P3 — Thông báo & cá nhân (cỡ M)
 `thong-bao` → `gui-thong-bao` → `thong-bao-da-gui` → `profile` → `huong-dan-su-dung` → `bao-cao-doanh-so`.
-- [x] (2026-10-07) `thong-bao` đã viết (`published: false` chờ duyệt, `permissions: []` vì hộp thư chỉ cần đăng nhập) + 3 mẫu mới trong `demos/notifications.demos.tsx` (`notification-list` có tham số `view=all|hidden` dùng `NotificationRow` thật, `notification-kinds`, `notification-hide-flow`). Còn lại P3: `gui-thong-bao` → `thong-bao-da-gui` → `profile` → `bao-cao-doanh-so`.
+- [x] (2026-10-07) `thong-bao` đã viết (`published: false` chờ duyệt, `permissions: []` vì hộp thư chỉ cần đăng nhập) + 3 mẫu mới trong `demos/notifications.demos.tsx` (`notification-list` có tham số `view=all|hidden` dùng `NotificationRow` thật, `notification-kinds`, `notification-hide-flow`). (2026-10-07) `gui-thong-bao` đã viết (`published: false` chờ duyệt, `permissions: [notification_broadcasts.create]`) + 2 mẫu mới trong `demos/broadcast.demos.tsx` (`broadcast-compose` có tham số `viewer=admin|manager`, `state=draft|previewed`; `broadcast-audience-rules`). Còn lại P3: `thong-bao-da-gui` → `profile` → `bao-cao-doanh-so`.
 
 ### P4 — Quản trị tổ chức & hệ thống (cỡ L)
 `nhan-vien` → `phong-ban` → `vi-tri` → `phan-quyen` → `nhat-ky-he-thong` → `may-cham-cong` → `luu-tru-anh`.

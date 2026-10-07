@@ -6612,3 +6612,19 @@ Now [deploy]
 > Phát hiện (chưa sửa): `frontend/src/lib/hooks/useRefDataChangeSignal.test.tsx` (commit a2f9fde) bị hỏng: dòng cuối là chữ `EOF` thừa và import trùng lặp (QueryClientProvider, renderHook, useRefDataChangeSignal khai 2 lần) + import `REF_DATA_SAFETY_STALE_MS`, `refDataQueryOptions` chưa tồn tại trong `query-stale` (9D chưa làm code). File này làm `tsc` đỏ và nhiều khả năng làm `vitest` đỏ khi chạy toàn bộ.
 > Chưa xác minh được: có UI tắt nhận thông báo theo từng loại hay không (BE có preference cho event không `mandatory`), nên bài không nói gì về việc tắt thông báo.
 ---
+
+## [2026-10-07 18:00] | Guides content P3: gui-thong-bao (published: false) | [Status: Success]
+
+**Actor:** Agent / User
+**Files Changed:**
+- `guides-content/gui-thong-bao.md` — bài mới (`permissions: [notification_broadcasts.create]`)
+- `frontend/src/lib/guides/demos/broadcast.demos.tsx` — 2 mẫu: `broadcast-compose` (viewer=admin|manager, state=draft|previewed), `broadcast-audience-rules`; test riêng `broadcast.demos.test.tsx`
+- `guide-demos.tsx` (đăng ký), `guide-demos.test.tsx` (62 → 64 mẫu), `guide-slugs.ts` (gỡ `gui-thong-bao` khỏi PENDING)
+- `AZ-Workbase Skills/PLAN_GUIDES_CONTENT.md` — tick P3 `gui-thong-bao`
+
+**Notes:**
+> Đọc từ `thong-bao/gui/page.tsx`, `BroadcastComposeFields`, `useBroadcastCompose`, `BroadcastAudienceResolver`, `NotificationBroadcastsController`, migration `1783500000000` (create: admin=all, manager=department).
+> Verify: `vitest src/lib/guides` 17 file / 437 test pass; `tsc --noEmit` không có lỗi mới từ file guides (còn `logo.png` và lỗi ở test 9D `refDataCallCount.test.tsx`/`useRefDataChangeSignal.test.tsx` do `query-stale` chưa export `REF_DATA_SAFETY_STALE_MS`/`refDataQueryOptions`). Chưa chạy `next build`, chưa test tay, chưa chạy `guides:sync`.
+> Mẫu `broadcast-compose` dựng tĩnh (bản thật gọi API) nên cần đối chiếu lại khi form thật đổi chữ.
+> Lưu ý nghiệp vụ đã ghi trong bài: người nhận chốt lúc gửi; người gửi không tự nhận; tối đa 2000 người/lần (env `NOTIFICATION_BROADCAST_MAX_RECIPIENTS`); throttle 10 lần/giờ; cần `NOTIFICATIONS_ENABLED=true` ở BE.
+---

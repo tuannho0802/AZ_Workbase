@@ -62,7 +62,6 @@ export const STANDALONE_GUIDE_SLUGS: readonly string[] = ['huong-dan-soan-bai'];
  * Mục tiêu cuối (P5): mảng rỗng.
  */
 export const PENDING_GUIDE_SLUGS: readonly string[] = [
-  'gui-thong-bao',
   'thong-bao-da-gui',
   'profile',
   'bao-cao-doanh-so',
