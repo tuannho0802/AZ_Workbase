@@ -2,12 +2,13 @@
 
 import { Button, Input, Select, Space, Switch, Table, Tag, Typography } from 'antd';
 import type { ColumnsType } from 'antd/es/table';
-import { CrownOutlined, DeleteOutlined, EditOutlined, KeyOutlined, UserAddOutlined } from '@ant-design/icons';
+import { CrownOutlined, DeleteOutlined, EditOutlined, KeyOutlined, ReloadOutlined, UserAddOutlined } from '@ant-design/icons';
 import type { GuideDemo } from '../guide-demo.types';
 
 const { Text } = Typography;
 
 type UsersViewer = 'admin' | 'manager';
+type FormViewer = UsersViewer | 'root';
 
 interface DemoUser {
     id: number;
@@ -86,7 +87,10 @@ function UsersTableDemo({ viewer }: { viewer: UsersViewer }) {
         <div>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
                 <Text style={{ fontSize: 16, fontWeight: 500 }}>Quản lý nhân viên</Text>
-                <Button type="primary" icon={<UserAddOutlined />}>Thêm nhân viên</Button>
+                <Space>
+                    <Button icon={<ReloadOutlined />}>Làm mới</Button>
+                    <Button type="primary" icon={<UserAddOutlined />}>Thêm nhân viên</Button>
+                </Space>
             </div>
             <Space size={16} style={{ marginBottom: 8 }}>
                 <Text strong>Danh sách nhân viên</Text>
@@ -115,6 +119,8 @@ function UserActionsDemo() {
         { key: 'edit', what: 'Sửa / Reset Pass', admin: 'Mọi người', assistant: 'Mọi người', manager: 'Người trong phòng ban mình quản lý (và chính mình)' },
         { key: 'approve', what: 'Duyệt / Từ chối đăng ký', admin: 'Mọi đăng ký', assistant: 'Mọi đăng ký', manager: 'Chỉ đăng ký vào phòng ban mình quản lý' },
         { key: 'admin', what: 'Gán vai trò Admin', admin: 'Có', assistant: 'Không', manager: 'Không' },
+        { key: 'root', what: 'Bật / tắt Root Admin', admin: 'Chỉ Root Admin', assistant: 'Không', manager: 'Không' },
+        { key: 'self', what: 'Tự đổi vai trò / tự khoá chính mình', admin: 'Không (nhờ người khác)', assistant: 'Không (nhờ người khác)', manager: 'Không (nhờ người khác)' },
         { key: 'delete', what: 'Xoá / Khôi phục / Xoá vĩnh viễn', admin: 'Có', assistant: 'Không', manager: 'Không' },
     ];
     return (
@@ -141,7 +147,7 @@ type FormMode = 'create' | 'edit';
  * `mode=create`: có Email + Mật khẩu; `mode=edit`: Email bị khoá, không có Mật khẩu, có Trạng thái.
  * `viewer=admin`: chọn được vai trò Admin; `viewer=manager`: danh sách Vai trò không có Admin.
  */
-function UserFormDemo({ mode, viewer }: { mode: FormMode; viewer: UsersViewer }) {
+function UserFormDemo({ mode, viewer }: { mode: FormMode; viewer: FormViewer }) {
     const isEdit = mode === 'edit';
     const field = (label: string, node: React.ReactNode, hint?: string) => (
         <div style={{ marginBottom: 12 }}>
@@ -160,13 +166,18 @@ function UserFormDemo({ mode, viewer }: { mode: FormMode; viewer: UsersViewer })
             {!isEdit && field('Mật khẩu', <Input.Password placeholder="Password@123" readOnly />, 'Tối thiểu 8 ký tự, có chữ hoa, chữ thường, số và ký tự đặc biệt')}
             {field(
                 'Vai trò',
-                <Select style={{ width: '100%' }} placeholder="Chọn vai trò" open={false} options={[]} />,
-                viewer === 'admin' ? 'Danh sách có cả Admin' : 'Danh sách KHÔNG có Admin (chỉ Admin mới gán được)',
+                <Select style={{ width: '100%' }} placeholder="Chọn vai trò" open={false} options={[]} value={viewer === 'root' ? 'Admin' : undefined} />,
+                viewer !== 'manager' ? 'Danh sách có cả Admin' : 'Danh sách KHÔNG có Admin (chỉ Admin mới gán được)',
             )}
             {field('Phòng ban', <Select style={{ width: '100%' }} placeholder="Chọn phòng ban" open={false} options={[]} />, viewer === 'manager' ? 'Bắt buộc chọn phòng ban mình quản lý' : undefined)}
             {field('Vị trí', <Select style={{ width: '100%' }} placeholder="Chọn vị trí (không bắt buộc)" open={false} options={[]} />)}
             {field('Người duyệt nghỉ phép (ngoại lệ)', <Select style={{ width: '100%' }} placeholder="Không có ngoại lệ (mặc định theo phòng ban)" open={false} options={[]} />)}
-            {isEdit && field('Trạng thái', <Switch checked checkedChildren="Hoạt động" unCheckedChildren="Khóa" />)}
+            {field('Trạng thái', <Switch checked checkedChildren="Hoạt động" unCheckedChildren="Khóa" />)}
+            {viewer === 'root' && field(
+                'Root Admin',
+                <Switch checkedChildren="Root Admin" unCheckedChildren="Admin thường" />,
+                'Chỉ hiện với Root Admin, và chỉ khi Vai trò đang chọn là Admin. Đổi trạng thái sẽ hỏi lại mật khẩu của bạn',
+            )}
             <Space style={{ marginTop: 8 }}>
                 <Button>Cancel</Button>
                 <Button type="primary">OK</Button>
@@ -192,8 +203,8 @@ export const USERS_DEMOS: GuideDemo[] = [
     {
         id: 'user-form',
         title: 'Cửa sổ Thêm / Sửa nhân viên',
-        description: 'mode=create|edit; viewer=admin|manager (Manager không chọn được vai trò Admin, bắt buộc chọn phòng ban mình quản lý)',
-        params: { mode: ['create', 'edit'], viewer: ['admin', 'manager'] },
-        render: (p) => <UserFormDemo mode={p.mode === 'edit' ? 'edit' : 'create'} viewer={p.viewer === 'manager' ? 'manager' : 'admin'} />,
+        description: 'mode=create|edit; viewer=admin|manager|root (Manager không chọn được vai trò Admin, bắt buộc chọn phòng ban mình quản lý; root = Root Admin, có thêm công tắc Root Admin)',
+        params: { mode: ['create', 'edit'], viewer: ['admin', 'manager', 'root'] },
+        render: (p) => <UserFormDemo mode={p.mode === 'edit' ? 'edit' : 'create'} viewer={p.viewer === 'manager' ? 'manager' : p.viewer === 'root' ? 'root' : 'admin'} />,
     },
 ];

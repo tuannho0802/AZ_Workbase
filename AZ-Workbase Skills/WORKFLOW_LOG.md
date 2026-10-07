@@ -6698,3 +6698,22 @@ Now [deploy]
 > Giới hạn: sửa dữ liệu bằng SQL tay rồi bấm Reset -> máy khác thấy mới trong <= ~2 phút (nhịp poll) + jitter. Tab đang bị treo >5 phút làm mới khi quay lại.
 
 ---
+
+## [2026-10-07] | PLAN_GUIDES_CONTENT P4: bài `nhan-vien` + 3 mẫu Nhân viên | [Status: Success - chưa commit]
+
+**Actor:** Agent
+**Files Changed:** (xem nhan-vien-guide.patch)
+- `guides-content/nhan-vien.md` — bài mới (`published: false`, `permissions: [users.view]`)
+- `frontend/src/lib/guides/demos/users.demos.tsx` — sửa mẫu cho đúng UI thật: thêm nút **Làm mới**, ô **Trạng thái** hiện cả khi Thêm mới, thêm viewer `root` (công tắc Root Admin), thêm 2 dòng ma trận (Root Admin, tự thao tác chính mình)
+- `frontend/src/lib/guides/guide-demos.tsx` — đăng ký `USERS_DEMOS` (mẫu trước đó chưa được đăng ký)
+- `frontend/src/lib/guides/demos/users.demos.test.tsx` — test mới (4 case)
+- `frontend/src/lib/guides/guide-demos.test.tsx` — 74 → 77 mẫu, thêm 3 id
+- `frontend/src/lib/guides/guide-slugs.ts` — gỡ `nhan-vien` khỏi `PENDING_GUIDE_SLUGS`
+- `AZ-Workbase Skills/PLAN_GUIDES_CONTENT.md` — tick P4 `nhan-vien`
+
+**Notes:**
+> Verify: `vitest src/lib/guides` 21 file / 481 test pass (sau khi cập nhật danh sách id ở `guide-demos.test.tsx`); `tsc --noEmit` chỉ còn lỗi `*.png` có sẵn. Chưa chạy `next build`, chưa test tay, chưa chạy `guides:sync`.
+> Phát hiện (CHƯA sửa, ngoài phạm vi): (1) `CreateUserDto` không có `leaveApproverId` nhưng form Thêm nhân viên vẫn hiện ô "Người duyệt nghỉ phép (ngoại lệ)" và gửi giá trị nếu chọn -> `forbidNonWhitelisted` trả 400. Sửa: thêm field vào DTO + `create()`, hoặc ẩn ô ở chế độ Thêm. (2) Ô tìm kiếm ghi "Tìm theo tên, email, mã NV..." nhưng `UsersService.findAll()` chỉ lọc `name`/`email`, không lọc `employeeCode`. (3) Mẫu cũ thiếu nhiều thứ so với UI thật (xem trên), đã sửa.
+> Mẫu chỉ phủ tab Danh sách + form; tab Chờ duyệt / Đã xoá mô tả bằng chữ.
+
+---
