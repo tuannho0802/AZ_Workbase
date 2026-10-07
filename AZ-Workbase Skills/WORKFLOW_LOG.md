@@ -6532,3 +6532,22 @@ Now [deploy]
 > **Rủi ro biết trước:** 2 POST về lệch thứ tự → nhãn tạm sai tới lần list mount/refetch kế (list đã đánh dấu stale). Tick/sửa/xoá/di chuyển CHƯA đổi (9B-1b cần đổi response BE `update()`).
 > **DEPLOY BE TRƯỚC FE** (hoặc cùng lúc): FE mới với BE cũ vẫn đúng nhờ fallback refetch. **CHECK SAU DEPLOY:** `GET /periodic-tasks` ngay sau POST checklist-items giảm 1 → ≤ 0,3 (≥ 20 lần thêm); nhãn không lệch sau F5.
 ---
+
+---
+## [2026-10-07 12:30] | Mục 9B-2 (phạm vi thu hẹp): gộp refetch PHỤ khi thêm checklist liên tiếp | Status: Success (chờ deploy + đo)
+
+**Actor:** Agent
+**Files Changed:**
+- `frontend/src/lib/utils/invalidationDebouncer.ts` (mới) + `invalidationDebouncer.test.ts` (mới, 4 test) — trailing debounce theo khoá, có trần `maxWait`
+- `frontend/src/lib/hooks/usePeriodicTaskChecklistItems.ts` — `useApplyChecklistProgress`: trang checklist của chính task refetch NGAY; query phụ + performance gộp qua debouncer (1,5 s / trần 5 s); export `SECONDARY_INVALIDATE_*`; code cũ giữ bằng comment
+- `frontend/src/lib/hooks/periodicTaskChecklistCallCount.test.tsx` — S3/S4/S5 chờ cửa sổ gộp; thêm S13 (gộp 5 lần), S14 (fallback `reopen` không gộp)
+- `AZ-Workbase Skills/PLAN_CPU_OPTIMIZATION_ROUND2.md` — đánh dấu 9B-2 + ghi rõ phạm vi/lợi ích
+
+**Root Cause:**
+> Sau 9B-1 list không còn refetch; thêm liên tiếp N lần vẫn refetch N lần các view phụ đang mở (detail, Task con của cha, performance).
+
+**Notes:**
+> FE: `tsc --noEmit` chỉ còn 4 lỗi `logo.png` có sẵn; vitest hooks+utils 34 file/262, lib còn lại 26/466, app+components 25/180 pass. Mutation check: đặt cửa sổ gộp = 0 thì S13 fail.
+> Không đổi BE. **Đánh đổi:** detail/performance/Task-con-của-cha cập nhật trễ tối đa ~1,5 s (liên tục thì tối đa 5 s) sau khi thêm. Lợi ích thực tế nhỏ vì log prod chưa thấy các view phụ này mở cùng lúc.
+> **CHECK SAU DEPLOY:** không cần đo riêng; chỉ xác nhận nhãn/ detail không lệch sau khi thêm vài mục liên tiếp rồi chờ ~2 s.
+---

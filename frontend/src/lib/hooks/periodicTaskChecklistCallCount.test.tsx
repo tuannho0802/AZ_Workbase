@@ -20,7 +20,12 @@ vi.mock('@/components/common/AntdAppProvider', () => ({ showMessage: { error: vi
 
 import axiosInstance from '../api/axios-instance';
 import { usePeriodicTasks, usePeriodicTask } from './usePeriodicTasks';
-import { useTaskChecklistPage, useLinkedChildrenChecklistPage, useAddTaskChecklistItem } from './usePeriodicTaskChecklistItems';
+import {
+  useTaskChecklistPage,
+  useLinkedChildrenChecklistPage,
+  useAddTaskChecklistItem,
+  SECONDARY_INVALIDATE_DELAY_MS,
+} from './usePeriodicTaskChecklistItems';
 import { useTaskLinksAmong, useTaskChildren, useTaskParents, useTaskRollup } from './usePeriodicTaskLinks';
 import { usePeriodicTaskPerformanceSummary } from './usePeriodicTaskPerformance';
 
@@ -93,6 +98,13 @@ async function settle() {
   });
 }
 
+/** [9B-2] Chờ qua cửa sổ gộp của các refetch PHỤ (detail, Task con của cha, performance...). */
+async function waitSecondary() {
+  await act(async () => {
+    await new Promise((r) => setTimeout(r, SECONDARY_INVALIDATE_DELAY_MS + 300));
+  });
+}
+
 async function addItem(view: ReturnType<typeof setup>, content = 'việc mới', reopen?: boolean) {
   await act(async () => {
     await view.result.current.mutateAsync({ taskId: TASK, content, ...(reopen ? { reopen } : {}) });
@@ -154,6 +166,8 @@ describe('Thêm checklist item - số lần gọi endpoint (hiện trạng)', ()
     calls = [];
 
     await addItem(view);
+    expect(count(`GET /periodic-tasks/${OTHER}/linked-children-checklist`)).toBe(0); // [9B-2] bị gộp, chưa chạy ngay
+    await waitSecondary();
 
     expect(count(`GET /periodic-tasks/${OTHER}/linked-children-checklist`)).toBe(1);
   });
@@ -168,6 +182,8 @@ describe('Thêm checklist item - số lần gọi endpoint (hiện trạng)', ()
     calls = [];
 
     await addItem(view);
+    expect(count(`GET /periodic-tasks/${TASK}`)).toBe(0); // [9B-2] bị gộp
+    await waitSecondary();
 
     expect(count(`GET /periodic-tasks/${TASK}`)).toBe(1);
   });
@@ -181,6 +197,7 @@ describe('Thêm checklist item - số lần gọi endpoint (hiện trạng)', ()
     calls = [];
 
     await addItem(view);
+    await waitSecondary(); // [9B-2]
     const perf = Object.entries(snapshot()).filter(([k]) => k.includes('performance'));
 
     expect(perf.reduce((n, [, v]) => n + (v as number), 0)).toBe(1);
@@ -233,6 +250,52 @@ describe('Thêm checklist item - số lần gọi endpoint (hiện trạng)', ()
     expect(count('GET /periodic-tasks')).toBe(0);
     // eslint-disable-next-line no-console
     console.info('[S8] 5 POST dồn dập ->', snapshot());
+  });
+
+  describe('9B-2 - gộp refetch PHỤ khi thêm liên tiếp', () => {
+    it('S13 - 5 lần thêm liên tiếp với detail + Task con của cha + performance đang mở: trang checklist refetch NGAY mỗi lần (5), các query phụ chỉ 1 lần sau lần cuối', async () => {
+      const view = setup(() => {
+        baseObservers();
+        usePeriodicTask(TASK);
+        useLinkedChildrenChecklistPage(OTHER, 1, true);
+        usePeriodicTaskPerformanceSummary({} as never);
+      });
+      await waitFor(() => expect(count(`GET /periodic-tasks/${TASK}`)).toBe(1));
+      await settle();
+      calls = [];
+
+      for (let i = 0; i < 5; i++) await addItem(view, `việc ${i}`);
+
+      // Trước khi hết cửa sổ gộp: item mới đã hiện (5 lần refetch trang checklist), query phụ CHƯA chạy.
+      expect(count(`GET /periodic-tasks/${TASK}/checklist-items`)).toBe(5);
+      expect(count(`GET /periodic-tasks/${TASK}`)).toBe(0);
+      expect(count(`GET /periodic-tasks/${OTHER}/linked-children-checklist`)).toBe(0);
+
+      await waitSecondary();
+
+      // TRƯỚC 9B-2: mỗi query phụ 5 lần. SAU: 1 lần.
+      expect(count(`GET /periodic-tasks/${TASK}`)).toBe(1);
+      expect(count(`GET /periodic-tasks/${OTHER}/linked-children-checklist`)).toBe(1);
+      const perf = Object.entries(snapshot()).filter(([k]) => k.includes('performance'));
+      expect(perf.reduce((n, [, v]) => n + (v as number), 0)).toBe(1);
+      expect(count('GET /periodic-tasks')).toBe(0); // 9B-1 vẫn giữ
+      expect(count(`GET /periodic-tasks/${TASK}/checklist-items`)).toBe(5); // trang checklist KHÔNG bị gộp
+    });
+
+    it('S14 - Nhánh FALLBACK (reopen=true) KHÔNG bị gộp: refetch đầy đủ ngay như cũ', async () => {
+      const view = setup(() => {
+        baseObservers();
+        usePeriodicTask(TASK);
+      });
+      await waitFor(() => expect(count(`GET /periodic-tasks/${TASK}`)).toBe(1));
+      await settle();
+      calls = [];
+
+      await addItem(view, 'mở lại', true);
+
+      expect(count('GET /periodic-tasks')).toBe(1);
+      expect(count(`GET /periodic-tasks/${TASK}`)).toBe(1); // ngay, không đợi cửa sổ gộp
+    });
   });
 
   describe('9B-1 - nhãn "X/Z" ghi từ response POST', () => {

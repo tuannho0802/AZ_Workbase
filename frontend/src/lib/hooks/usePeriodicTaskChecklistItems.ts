@@ -1,5 +1,6 @@
-import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { keepPreviousData, useMutation, useQuery, useQueryClient, type QueryClient } from '@tanstack/react-query';
 import { periodicTaskChecklistItemsApi, type ChecklistListOptions } from '../api/periodic-task-checklist-items.api';
+import { createInvalidationDebouncer, type InvalidationDebouncer } from '../utils/invalidationDebouncer';
 import {
   shouldRefetchAfterChecklistChange,
   isPeriodicTaskListKey,
@@ -29,10 +30,31 @@ function useInvalidatePeriodicTaskChecklistItems() {
   };
 }
 
+/** [9B-2] Cửa sổ gộp + trần chờ cho các invalidate PHỤ sau khi thêm item (xem `invalidationDebouncer.ts`). */
+export const SECONDARY_INVALIDATE_DELAY_MS = 1500;
+export const SECONDARY_INVALIDATE_MAX_WAIT_MS = 5000;
+
+/** Mỗi QueryClient 1 debouncer (modal + inline cùng thêm vào 1 task phải gộp chung). */
+const debouncers = new WeakMap<QueryClient, InvalidationDebouncer>();
+function getDebouncer(queryClient: QueryClient): InvalidationDebouncer {
+  let d = debouncers.get(queryClient);
+  if (!d) {
+    d = createInvalidationDebouncer(SECONDARY_INVALIDATE_DELAY_MS, SECONDARY_INVALIDATE_MAX_WAIT_MS);
+    debouncers.set(queryClient, d);
+  }
+  return d;
+}
+
+const isOwnChecklistPage = (queryKey: readonly unknown[], taskId: number) =>
+  queryKey[1] === 'checklist-page' && queryKey[2] === taskId;
+
 /**
  * [9B-1] Sau khi THÊM item: ghi nhãn "X/Z" từ response BE vào cache danh sách (KHÔNG refetch `GET /periodic-tasks`
- * limit 100), đánh dấu list stale (`refetchType: 'none'`) để lần mở/focus sau tự làm tươi. Các query khác (trang
- * checklist, detail, rollup của task khác, performance...) vẫn refetch đúng như trước.
+ * limit 100), đánh dấu list stale (`refetchType: 'none'`) để lần mở/focus sau tự làm tươi.
+ *
+ * [9B-2] Trang checklist của CHÍNH task refetch NGAY (người dùng đang nhìn, phải thấy item mới). Các query PHỤ
+ * (detail, Task con của task cha, rollup task khác, performance...) được GỘP: thêm liên tiếp N lần chỉ refetch 1 lần
+ * sau lần cuối (trễ tối đa `SECONDARY_INVALIDATE_MAX_WAIT_MS`). Chỉ có tác dụng khi các view phụ đó đang mở.
  */
 function useApplyChecklistProgress() {
   const queryClient = useQueryClient();
@@ -46,11 +68,25 @@ function useApplyChecklistProgress() {
       predicate: (query) => isPeriodicTaskListKey(query.queryKey),
       refetchType: 'none',
     });
+    // NGAY: trang checklist của chính task.
     queryClient.invalidateQueries({
       queryKey: [LIST_KEY],
-      predicate: (query) => !isPeriodicTaskListKey(query.queryKey) && shouldRefetchAfterChecklistChange(query.queryKey, taskId),
+      predicate: (query) => isOwnChecklistPage(query.queryKey, taskId),
     });
-    queryClient.invalidateQueries({ queryKey: ['periodic-task-performance'] });
+    // GỘP: mọi query phụ còn lại.
+    // [AGENT] OLD CODE (9B-1, giữ lại để rollback): invalidate phụ chạy ngay trong từng lần onSuccess:
+    //   queryClient.invalidateQueries({ queryKey: [LIST_KEY], predicate: (q) => !isPeriodicTaskListKey(q.queryKey) && shouldRefetchAfterChecklistChange(q.queryKey, taskId) });
+    //   queryClient.invalidateQueries({ queryKey: ['periodic-task-performance'] });
+    getDebouncer(queryClient).schedule(taskId, () => {
+      queryClient.invalidateQueries({
+        queryKey: [LIST_KEY],
+        predicate: (query) =>
+          !isPeriodicTaskListKey(query.queryKey) &&
+          !isOwnChecklistPage(query.queryKey, taskId) &&
+          shouldRefetchAfterChecklistChange(query.queryKey, taskId),
+      });
+      queryClient.invalidateQueries({ queryKey: ['periodic-task-performance'] });
+    });
   };
 }
 
