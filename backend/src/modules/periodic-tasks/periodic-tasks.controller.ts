@@ -74,30 +74,32 @@ export class PeriodicTasksController {
     const t0 = timing ? Date.now() : 0;
     const result = await this.periodicTasksService.findAll(filters, user.id, user.role, scope);
     const t1 = timing ? Date.now() : 0;
-    // Đính `checklistProgress` ({done,total}) cho từng Task để FE hiện "X/Z"
-    // trên nút Checklist - xem JSDoc `attachChecklistProgressToList()`.
-    const data = await this.periodicTaskChecklistItemsService.attachChecklistProgressToList(
-      result.data,
-      user.id,
-      user.role,
-      scope,
-    );
-    const t2 = timing ? Date.now() : 0;
-    // Đính `secondaryAssignees` ({id,name}[]) - 1 query gom nhóm cho cả trang.
-    const withSecondary = await this.periodicTaskSecondaryAssigneesService.attachSecondaryAssigneesToList(data);
-    const t3 = timing ? Date.now() : 0;
-    // Đính `customerCount` (số Khách hàng liên quan, đã lọc theo phạm vi
-    // `customers.view` của người xem) - 1 query gom nhóm cho cả trang, dùng
-    // để FE quyết định hiện nút "Khách hàng liên quan (N)" mà không cần gọi
-    // `GET /:id` cho từng Task (tránh N+1) - xem JSDoc `attachCustomerCountToList()`.
-    const withCustomerCount = await this.periodicTaskCustomersService.attachCustomerCountToList(withSecondary, user);
+    // [PERF] 3 bước đính (checklistProgress / secondaryAssignees / customerCount) chỉ phụ thuộc danh sách id Task + user,
+    // KHÔNG phụ thuộc kết quả của nhau -> chạy SONG SONG (trước: nối tiếp ~4 lượt chờ DB). Số truy vấn không đổi.
+    //  - `checklistProgress` ({done,total}): FE hiện "X/Z" trên nút Checklist - xem `attachChecklistProgressToList()`.
+    //  - `secondaryAssignees` ({id,name}[]) - 1 query gom nhóm cho cả trang.
+    //  - `customerCount`: số Khách hàng liên quan (đã lọc theo `customers.view` của người xem; KHÔNG có key nếu không
+    //    có quyền) - 1 query gom nhóm, tránh N+1 - xem `attachCustomerCountToList()`.
+    // [AGENT] OLD CODE (giữ lại để rollback): 3 lệnh `await attachX(...)` nối tiếp, mỗi bước spread lại cả mảng.
+    const rows = result.data;
+    const [withProgress, withSecondary, withCustomerCount] = await Promise.all([
+      this.periodicTaskChecklistItemsService.attachChecklistProgressToList(rows, user.id, user.role, scope),
+      this.periodicTaskSecondaryAssigneesService.attachSecondaryAssigneesToList(rows),
+      this.periodicTaskCustomersService.attachCustomerCountToList(rows, user),
+    ]);
+    // Gộp 1 lần: `withCustomerCount[i]` đã là Task (+ customerCount nếu có quyền); thêm 2 field còn lại.
+    const data = withCustomerCount.map((task, i) => ({
+      ...task,
+      checklistProgress: withProgress[i].checklistProgress,
+      secondaryAssignees: withSecondary[i].secondaryAssignees,
+    }));
     if (timing) {
-      const t4 = Date.now();
+      const t2 = Date.now();
       this.logger.log(
-        `[PT-List] total=${t4 - t0}ms findAll=${t1 - t0}ms checklist=${t2 - t1}ms secondary=${t3 - t2}ms customerCount=${t4 - t3}ms rows=${result.data.length} limit=${filters.limit ?? 20}`,
+        `[PT-List] total=${t2 - t0}ms findAll=${t1 - t0}ms attach(parallel)=${t2 - t1}ms rows=${result.data.length} limit=${filters.limit ?? 20}`,
       );
     }
-    return { ...result, data: withCustomerCount };
+    return { ...result, data };
   }
 
   // ⚠️ Route tĩnh `links` PHẢI khai TRƯỚC route `:id` ngay bên dưới - mirror

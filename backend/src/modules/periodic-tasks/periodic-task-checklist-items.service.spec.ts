@@ -35,6 +35,8 @@ describe('PeriodicTaskChecklistItemsService', () => {
 
   const mockTasksService = {
     findOne: jest.fn(),
+    findForChecklist: jest.fn(),
+    getChecklistSummaryForView: jest.fn(),
     assertCanView: jest.fn(),
     assertEditableWhenLocked: jest.fn(),
     // Notification Phase 2: mock rỗng (no-op mặc định) - test nghiệp vụ
@@ -60,9 +62,10 @@ describe('PeriodicTaskChecklistItemsService', () => {
 
   beforeEach(async () => {
     jest.clearAllMocks();
-    mockTasksService.findOne.mockResolvedValue({ id: taskId, isLocked: false });
+    mockTasksService.findForChecklist.mockResolvedValue({ id: taskId, isLocked: false });
     mockTasksService.assertEditableWhenLocked.mockResolvedValue(undefined);
-    mockTasksService.assertCanView.mockResolvedValue(undefined);
+    mockTasksService.getChecklistSummaryForView.mockResolvedValue({ total: 0, done: 0 });
+    mockLinksService.getChildrenChecklistProgressBatch.mockResolvedValue(new Map());
 
     const module: TestingModule = await Test.createTestingModule({
       providers: [
@@ -78,14 +81,16 @@ describe('PeriodicTaskChecklistItemsService', () => {
   });
 
   describe('findPage (phân trang checklist, tối đa 10/trang)', () => {
-    it('dùng cổng gác NHẸ assertCanView (không findOne nặng), trả trang + tổng/xong của TOÀN Task', async () => {
-      mockQb.getRawOne.mockResolvedValue({ total: '23', done: '7' });
+    it('gác xem + đếm gộp 1 truy vấn (không findOne nặng), trả trang + tổng/xong của TOÀN Task', async () => {
+      mockTasksService.getChecklistSummaryForView.mockResolvedValue({ total: 23, done: 7 });
       mockChecklistRepo.find.mockResolvedValue([{ id: 11, taskId, position: 10 }]);
 
       const result = await service.findPage(taskId, { page: 2, limit: 10 }, employeeUser.id, employeeUser.role, 'own');
 
-      expect(mockTasksService.assertCanView).toHaveBeenCalledWith(taskId, employeeUser.id, employeeUser.role, 'own');
+      expect(mockTasksService.getChecklistSummaryForView).toHaveBeenCalledWith(taskId, employeeUser.id, employeeUser.role, 'own');
+      expect(mockTasksService.assertCanView).not.toHaveBeenCalled();
       expect(mockTasksService.findOne).not.toHaveBeenCalled();
+      expect(mockTasksService.findForChecklist).not.toHaveBeenCalled();
       expect(mockChecklistRepo.find).toHaveBeenCalledWith({
         where: { taskId },
         order: { position: 'ASC', id: 'ASC' },
@@ -96,7 +101,7 @@ describe('PeriodicTaskChecklistItemsService', () => {
     });
 
     it('mặc định trang 1, 10 dòng; Task chưa có item -> total 0, totalPages 0', async () => {
-      mockQb.getRawOne.mockResolvedValue({ total: '0', done: null });
+      mockTasksService.getChecklistSummaryForView.mockResolvedValue({ total: 0, done: 0 });
       mockChecklistRepo.find.mockResolvedValue([]);
 
       const result = await service.findPage(taskId, {}, employeeUser.id, employeeUser.role, 'own');
@@ -106,7 +111,7 @@ describe('PeriodicTaskChecklistItemsService', () => {
     });
 
     it('sort=newest -> ORDER BY createdAt DESC, id DESC; sort=oldest -> ASC', async () => {
-      mockQb.getRawOne.mockResolvedValue({ total: '5', done: '2' });
+      mockTasksService.getChecklistSummaryForView.mockResolvedValue({ total: 5, done: 2 });
       mockChecklistRepo.find.mockResolvedValue([]);
 
       await service.findPage(taskId, { sort: 'newest' }, employeeUser.id, employeeUser.role, 'own');
@@ -121,7 +126,7 @@ describe('PeriodicTaskChecklistItemsService', () => {
     });
 
     it('hideDone=true -> lọc isDone=false, phân trang theo filteredTotal nhưng total/done vẫn của toàn Task', async () => {
-      mockQb.getRawOne.mockResolvedValue({ total: '25', done: '15' });
+      mockTasksService.getChecklistSummaryForView.mockResolvedValue({ total: 25, done: 15 });
       mockChecklistRepo.find.mockResolvedValue([]);
 
       const result = await service.findPage(taskId, { hideDone: true }, employeeUser.id, employeeUser.role, 'own');
@@ -132,20 +137,19 @@ describe('PeriodicTaskChecklistItemsService', () => {
       expect(result).toMatchObject({ total: 25, done: 15, filteredTotal: 10, totalPages: 1 });
     });
 
-    it('ném NotFoundException nếu Task ngoài phạm vi scope và KHÔNG chạm dữ liệu checklist', async () => {
-      mockTasksService.assertCanView.mockRejectedValue(new NotFoundException());
+    it('ném NotFoundException nếu Task ngoài phạm vi scope (trang dữ liệu chạy song song nhưng bị bỏ, không trả ra)', async () => {
+      mockTasksService.getChecklistSummaryForView.mockRejectedValue(new NotFoundException());
+      mockChecklistRepo.find.mockResolvedValue([{ id: 1, taskId: 999 }]);
 
       await expect(service.findPage(999, {}, employeeUser.id, employeeUser.role, 'own')).rejects.toThrow(NotFoundException);
-      expect(mockChecklistRepo.find).not.toHaveBeenCalled();
     });
   });
 
   // [9B-1] create() gọi attachChecklistProgressToList() (nhãn X/Z = item + Task con). Chỉ mock ở các test `create`
   // (không mock toàn file - có test riêng cho chính hàm này). Test 9B-1 kiểm tra tham số + giá trị trả về.
+  // Tiến độ Task con mặc định: 1 Task con chưa xong -> nhãn = item + 1.
   const mockProgressForCreate = () =>
-    jest
-      .spyOn(service, 'attachChecklistProgressToList')
-      .mockResolvedValue([{ id: taskId, checklistProgress: { done: 1, total: 5 } }] as any);
+    mockLinksService.getChildrenChecklistProgressBatch.mockResolvedValue(new Map([[taskId, { done: 0, total: 1 }]]));
 
   describe('create - Guard mở lại Task đã hoàn thành', () => {
     beforeEach(() => {
@@ -159,7 +163,7 @@ describe('PeriodicTaskChecklistItemsService', () => {
 
     it('Task done + reopen=true -> đổi in_progress + kéo period_end tới hôm nay, TRƯỚC khi ghi item', async () => {
       const order: string[] = [];
-      mockTasksService.findOne.mockResolvedValue({ id: taskId, isLocked: false, status: { code: 'done' } });
+      mockTasksService.findForChecklist.mockResolvedValue({ id: taskId, isLocked: false, status: { code: 'done' } });
       mockTasksService.changeStatusByCode.mockImplementation(async () => { order.push('status'); });
       mockChecklistRepo.save.mockImplementation(async () => { order.push('save'); });
 
@@ -172,20 +176,20 @@ describe('PeriodicTaskChecklistItemsService', () => {
     });
 
     it('Task done + không reopen ("Đã hoàn thành") -> chỉ thêm item, KHÔNG đổi status', async () => {
-      mockTasksService.findOne.mockResolvedValue({ id: taskId, isLocked: false, status: { code: 'done' } });
+      mockTasksService.findForChecklist.mockResolvedValue({ id: taskId, isLocked: false, status: { code: 'done' } });
       await service.create(taskId, { content: 'Thêm' }, employeeUser, 'own');
       expect(mockTasksService.changeStatusByCode).not.toHaveBeenCalled();
       expect(mockChecklistRepo.save).toHaveBeenCalled();
     });
 
     it('Task đang in_progress + reopen=true -> bỏ qua (không phải Task đã xong)', async () => {
-      mockTasksService.findOne.mockResolvedValue({ id: taskId, isLocked: false, status: { code: 'in_progress' } });
+      mockTasksService.findForChecklist.mockResolvedValue({ id: taskId, isLocked: false, status: { code: 'in_progress' } });
       await service.create(taskId, { content: 'Thêm', reopen: true }, employeeUser, 'own');
       expect(mockTasksService.changeStatusByCode).not.toHaveBeenCalled();
     });
 
     it('đổi status lỗi -> KHÔNG tạo item', async () => {
-      mockTasksService.findOne.mockResolvedValue({ id: taskId, isLocked: false, status: { code: 'done' } });
+      mockTasksService.findForChecklist.mockResolvedValue({ id: taskId, isLocked: false, status: { code: 'done' } });
       mockTasksService.changeStatusByCode.mockRejectedValue(new Error('boom'));
       await expect(service.create(taskId, { content: 'Thêm', reopen: true }, employeeUser, 'own')).rejects.toThrow('boom');
       expect(mockChecklistRepo.save).not.toHaveBeenCalled();
@@ -226,17 +230,15 @@ describe('PeriodicTaskChecklistItemsService', () => {
       );
     });
 
-    it('9B-1: trả `checklistProgress` tính bằng ĐÚNG hàm của list (item + Task con), kèm user/scope để lọc quyền', async () => {
+    it('9B-1: trả `checklistProgress` = item + Task con (cùng công thức nhãn của list), kèm user/scope để lọc quyền', async () => {
       mockQb.getRawOne.mockResolvedValueOnce({ max: 0 }).mockResolvedValueOnce({ total: '2', done: '1' });
       mockChecklistRepo.save.mockResolvedValue(undefined);
       // Task có 3 Task con (1 xong): total item = 2 nhưng nhãn list = 5, done = 2.
-      (service.attachChecklistProgressToList as jest.Mock).mockResolvedValue([
-        { id: taskId, checklistProgress: { done: 2, total: 5 } },
-      ]);
+      mockLinksService.getChildrenChecklistProgressBatch.mockResolvedValue(new Map([[taskId, { done: 1, total: 3 }]]));
 
       const result = await service.create(taskId, { content: 'X' }, employeeUser, 'own');
 
-      expect(service.attachChecklistProgressToList).toHaveBeenCalledWith([{ id: taskId }], employeeUser.id, employeeUser.role, 'own');
+      expect(mockLinksService.getChildrenChecklistProgressBatch).toHaveBeenCalledWith([taskId], employeeUser.id, employeeUser.role, 'own');
       expect(result.total).toBe(2); // modal vẫn dùng total/done chỉ-item để nhảy trang
       expect(result.checklistProgress).toEqual({ done: 2, total: 5 });
     });
@@ -269,10 +271,10 @@ describe('PeriodicTaskChecklistItemsService', () => {
 
     it('Task To-do tick thường (FE không gửi gì) -> ÉP in_progress TRƯỚC khi lưu tick', async () => {
       const order: string[] = [];
-      mockTasksService.findOne.mockResolvedValue({ id: taskId, isLocked: false, status: { code: 'not_started' } });
+      mockTasksService.findForChecklist.mockResolvedValue({ id: taskId, isLocked: false, status: { code: 'not_started' } });
       mockTasksService.changeStatusByCode.mockImplementation(async () => { order.push('status'); });
       mockChecklistRepo.findOne.mockResolvedValue(mkItem());
-      mockChecklistRepo.save.mockImplementation(async () => { order.push('save'); });
+      mockChecklistRepo.update.mockImplementation(async () => { order.push('save'); });
 
       await service.update(taskId, 5, { isDone: true }, employeeUser, 'own');
 
@@ -283,7 +285,7 @@ describe('PeriodicTaskChecklistItemsService', () => {
     });
 
     it('FE xin in_review -> ép in_review và KHÔNG lưu nextStatusCode vào item', async () => {
-      mockTasksService.findOne.mockResolvedValue({ id: taskId, isLocked: false, status: { code: 'in_progress' } });
+      mockTasksService.findForChecklist.mockResolvedValue({ id: taskId, isLocked: false, status: { code: 'in_progress' } });
       const item = mkItem();
       mockChecklistRepo.findOne.mockResolvedValue(item);
 
@@ -296,24 +298,24 @@ describe('PeriodicTaskChecklistItemsService', () => {
     });
 
     it('đổi status lỗi -> tick KHÔNG được lưu', async () => {
-      mockTasksService.findOne.mockResolvedValue({ id: taskId, isLocked: false, status: { code: 'not_started' } });
+      mockTasksService.findForChecklist.mockResolvedValue({ id: taskId, isLocked: false, status: { code: 'not_started' } });
       mockTasksService.changeStatusByCode.mockRejectedValue(new Error('boom'));
       mockChecklistRepo.findOne.mockResolvedValue(mkItem());
       await expect(service.update(taskId, 5, { isDone: true }, employeeUser, 'own')).rejects.toThrow('boom');
-      expect(mockChecklistRepo.save).not.toHaveBeenCalled();
+      expect(mockChecklistRepo.update).not.toHaveBeenCalled();
     });
 
     it('bỏ tick / task in_progress tick thường / task in_review -> không đổi status', async () => {
       mockChecklistRepo.findOne.mockResolvedValue({ ...mkItem(), isDone: true });
-      mockTasksService.findOne.mockResolvedValue({ id: taskId, isLocked: false, status: { code: 'not_started' } });
+      mockTasksService.findForChecklist.mockResolvedValue({ id: taskId, isLocked: false, status: { code: 'not_started' } });
       await service.update(taskId, 5, { isDone: false }, employeeUser, 'own');
 
       mockChecklistRepo.findOne.mockResolvedValue(mkItem());
-      mockTasksService.findOne.mockResolvedValue({ id: taskId, isLocked: false, status: { code: 'in_progress' } });
+      mockTasksService.findForChecklist.mockResolvedValue({ id: taskId, isLocked: false, status: { code: 'in_progress' } });
       await service.update(taskId, 5, { isDone: true }, employeeUser, 'own');
 
       mockChecklistRepo.findOne.mockResolvedValue(mkItem());
-      mockTasksService.findOne.mockResolvedValue({ id: taskId, isLocked: false, status: { code: 'in_review' } });
+      mockTasksService.findForChecklist.mockResolvedValue({ id: taskId, isLocked: false, status: { code: 'in_review' } });
       await service.update(taskId, 5, { isDone: true, nextStatusCode: 'in_progress' }, employeeUser, 'own');
 
       expect(mockTasksService.changeStatusByCode).not.toHaveBeenCalled();
@@ -328,22 +330,21 @@ describe('PeriodicTaskChecklistItemsService', () => {
         service.update(taskId, 999, { isDone: true }, employeeUser, 'own'),
       ).rejects.toThrow(NotFoundException);
       expect(mockChecklistRepo.findOne).toHaveBeenCalledWith({ where: { id: 999, taskId } });
-      expect(mockChecklistRepo.save).not.toHaveBeenCalled();
+      expect(mockChecklistRepo.update).not.toHaveBeenCalled();
     });
 
     it('sửa content/isDone thành công', async () => {
       const existing = { id: 5, taskId, content: 'Cũ', isDone: false, position: 0 };
       mockChecklistRepo.findOne.mockResolvedValue(existing);
-      mockChecklistRepo.save.mockResolvedValue(undefined);
 
       const updated = await service.update(taskId, 5, { content: 'Mới', isDone: true }, employeeUser, 'own');
 
       expect(updated).toMatchObject({ id: 5, content: 'Mới', isDone: true });
       expect(mockChecklistRepo.find).not.toHaveBeenCalled();
 
-      expect(mockChecklistRepo.save).toHaveBeenCalledWith(
-        expect.objectContaining({ id: 5, content: 'Mới', isDone: true }),
-      );
+      // [PERF] chỉ UPDATE cột đổi, không save() (tránh SELECT thừa)
+      expect(mockChecklistRepo.update).toHaveBeenCalledWith({ id: 5, taskId }, { content: 'Mới', isDone: true });
+      expect(mockChecklistRepo.save).not.toHaveBeenCalled();
       expect(mockAuditService.logActionAsync).toHaveBeenCalledWith(
         taskId,
         employeeUser.id,

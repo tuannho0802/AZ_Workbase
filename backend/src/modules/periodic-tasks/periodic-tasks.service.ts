@@ -588,6 +588,60 @@ export class PeriodicTasksService {
   }
 
   /**
+   * [PERF] Bản NHẸ của `findOne()` cho các thao tác GHI checklist (thêm/sửa/xoá/di chuyển/sắp xếp).
+   * Các luồng đó chỉ cần: `id`, `title`, `isLocked`, `statusId`, `primaryAssigneeId`, `periodEndDate` + `status`
+   * (code/isDoneState) cho Guard tick/reopen và nội dung thông báo. `findOne()` cũ join thêm
+   * primaryAssignee/department/createdBy/updatedBy và hydrate 3 entity User (~25 cột) mà không ai dùng.
+   * Cùng cổng gác scope (`applyViewFilter`) và cùng 404 như `findOne()`. KHÔNG dùng khi cần trả Task về FE.
+   */
+  async findForChecklist(id: number, userId: number, userRole: string, scope?: string | null): Promise<PeriodicTask> {
+    const qb = this.taskRepo
+      .createQueryBuilder('task')
+      .leftJoin('task.status', 'status')
+      .select(['task.id', 'task.title', 'task.isLocked', 'task.statusId', 'task.primaryAssigneeId', 'task.periodEndDate'])
+      .addSelect(['status.id', 'status.code', 'status.name', 'status.isDoneState'])
+      .where('task.id = :id', { id })
+      .andWhere('task.deletedAt IS NULL');
+
+    PeriodicTaskAccessHelper.applyViewFilter(qb, userId, userRole, scope);
+
+    const task = await qb.getOne();
+    if (!task) {
+      throw new NotFoundException(`Không tìm thấy Công việc định kỳ với ID ${id}`);
+    }
+    return task;
+  }
+
+  /**
+   * [PERF] Cổng gác XEM + đếm checklist (total/done của item thật) trong ĐÚNG 1 truy vấn (thay cho
+   * `assertCanView()` + `getSummary()` = 2 truy vấn). Aggregate không GROUP BY nên luôn trả 1 dòng;
+   * `found` = 0 nghĩa là Task không tồn tại/đã xoá/ngoài scope -> 404 (giống `assertCanView()`).
+   */
+  async getChecklistSummaryForView(
+    id: number,
+    userId: number,
+    userRole: string,
+    scope?: string | null,
+  ): Promise<{ total: number; done: number }> {
+    const qb = this.taskRepo
+      .createQueryBuilder('task')
+      .leftJoin('periodic_task_checklist_items', 'item', 'item.task_id = task.id')
+      .select('COUNT(DISTINCT task.id)', 'found')
+      .addSelect('COUNT(item.id)', 'total')
+      .addSelect('SUM(CASE WHEN item.is_done = 1 THEN 1 ELSE 0 END)', 'done')
+      .where('task.id = :id', { id })
+      .andWhere('task.deletedAt IS NULL');
+
+    PeriodicTaskAccessHelper.applyViewFilter(qb, userId, userRole, scope);
+
+    const row = await qb.getRawOne<{ found: number | string | null; total: number | string | null; done: number | string | null }>();
+    if (!Number(row?.found ?? 0)) {
+      throw new NotFoundException(`Không tìm thấy Công việc định kỳ với ID ${id}`);
+    }
+    return { total: Number(row?.total ?? 0), done: Number(row?.done ?? 0) };
+  }
+
+  /**
    * Đổi status Task theo `code` cho Guard checklist: BE ép ngay trong request tick/thêm checklist
    * (không để FE gọi PATCH thứ 2 dễ hỏng làm Task kẹt To-do dù checklist đã tick). Đi qua ĐÚNG `update()`
    * nên vẫn đủ: kiểm tra khoá, audit `status_changed`, notification, tự gỡ dấu/khoá quá hạn.

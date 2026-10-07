@@ -6748,3 +6748,17 @@ Now [deploy]
 > Chưa đo trên DB/Vercel thật: giảm dữ liệu truyền + hydrate TypeORM + serialize JSON là suy ra từ code, cần đối chiếu Fluid Active CPU sau deploy.
 > Không làm (có chủ đích): `Promise.all` cho các bước attach* (chỉ giảm thời gian chờ, không giảm CPU); bỏ COUNT ở `/customers` (trang thường đầy nên vẫn chạy COUNT, mà tuần tự hoá sẽ tăng độ trễ).
 > Đã chạy: BE `tsc --noEmit` sạch; jest toàn bộ 104 suite / 1779 test pass. Chưa chạy `nest build`, chưa test tay trên trình duyệt.
+
+---
+## [2026-10-07] | Giảm truy vấn/hydrate ở checklist (GET/POST/PATCH) và GET /periodic-tasks | [Status: Success - chưa commit]
+
+**Actor:** Agent
+**Files Changed:**
+- `backend/src/modules/periodic-tasks/periodic-tasks.service.ts` (+spec) — thêm `findForChecklist()` (chỉ join `status`, chọn đúng cột cần; không hydrate 3 entity User) và `getChecklistSummaryForView()` (gác xem + COUNT/SUM checklist trong 1 truy vấn, 404 khi `found=0`)
+- `backend/src/modules/periodic-tasks/periodic-task-checklist-items.service.ts` (+spec) — `create/update/remove/move/reorder` dùng `findForChecklist` thay `findOne`; `findPage` từ 3 truy vấn (assertCanView + COUNT + trang) còn 2 chạy song song; `create` đếm item + Task con song song (trước 3 truy vấn nối tiếp, trùng đếm item); `update` dùng `repo.update()` thay `save()` (bỏ SELECT thừa)
+- `backend/src/modules/periodic-tasks/periodic-tasks.controller.ts` (+spec mới) — `findAll`: 3 bước đính (progress/secondary/customerCount) chạy `Promise.all` rồi gộp 1 lần; `customerCount` vẫn vắng khi thiếu `customers.view`
+
+**Notes:**
+> `Date.now()` của CPU_TIMING là thời gian TƯỜNG (gồm chờ DB), không phải CPU. Fluid Active CPU chỉ tính lúc code chạy; chờ I/O không tính. Phần giảm CPU thật: ít truy vấn (mỗi truy vấn có chi phí build/hydrate TypeORM), không hydrate User thừa. Song song hoá chủ yếu giảm thời gian chờ.
+> Đã chạy: `tsc --noEmit` sạch, `nest build` OK, jest 105 suite / 1787 test pass; SQL của 2 truy vấn mới sinh bằng TypeORM (không kết nối DB) để kiểm tra cú pháp. Chưa chạy trên MySQL thật, chưa đo Vercel.
+> Chưa đổi (có chủ đích): `findOne` của `GET /:id` và `update()` vẫn trả đủ quan hệ; `links/customers/secondary-assignees` vẫn gác bằng `findOne` (ít gọi hơn checklist).

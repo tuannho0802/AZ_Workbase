@@ -17,10 +17,11 @@ import { NotificationsService } from '../notifications/notifications.service';
 import { Role } from '../../common/enums/role.enum';
 import { PeriodType } from '../../common/enums/period-type.enum';
 
-function makeFakeQueryBuilder(overrides: { getOne?: any; getManyAndCount?: any; getMany?: any; getCount?: any } = {}) {
+function makeFakeQueryBuilder(overrides: { getOne?: any; getManyAndCount?: any; getMany?: any; getCount?: any; getRawOne?: any } = {}) {
   const qb: any = {
     leftJoinAndSelect: jest.fn().mockReturnThis(),
     leftJoin: jest.fn().mockReturnThis(),
+    select: jest.fn().mockReturnThis(),
     addSelect: jest.fn().mockReturnThis(),
     where: jest.fn().mockReturnThis(),
     andWhere: jest.fn().mockReturnThis(),
@@ -31,6 +32,7 @@ function makeFakeQueryBuilder(overrides: { getOne?: any; getManyAndCount?: any; 
     take: jest.fn().mockReturnThis(),
     limit: jest.fn().mockReturnThis(),
     getOne: jest.fn().mockResolvedValue(overrides.getOne ?? null),
+    getRawOne: jest.fn().mockResolvedValue(overrides.getRawOne ?? null),
     getManyAndCount: jest.fn().mockResolvedValue(overrides.getManyAndCount ?? [[], 0]),
     // findAll() dùng getMany + (có điều kiện) getCount; mặc định suy từ getManyAndCount để spec cũ giữ nguyên.
     getMany: jest.fn().mockResolvedValue(overrides.getMany ?? (overrides.getManyAndCount ?? [[], 0])[0]),
@@ -220,6 +222,54 @@ describe('PeriodicTasksService', () => {
       const result = await service.findOne(1, 1, Role.ADMIN, 'all');
 
       expect(result).toEqual(task);
+    });
+  });
+
+  describe('findForChecklist (bản nhẹ cho thao tác ghi checklist)', () => {
+    it('chỉ join status, KHÔNG join/hydrate primaryAssignee/department/createdBy/updatedBy', async () => {
+      const task = { id: 1, title: 'A', isLocked: false, status: { code: 'in_progress' } };
+      const qb = makeFakeQueryBuilder({ getOne: task });
+      mockTaskRepo.createQueryBuilder.mockReturnValue(qb);
+
+      const result = await service.findForChecklist(1, 1, Role.EMPLOYEE, 'own');
+
+      expect(result).toEqual(task);
+      expect(qb.leftJoin).toHaveBeenCalledTimes(1);
+      expect(qb.leftJoin).toHaveBeenCalledWith('task.status', 'status');
+      expect(qb.leftJoinAndSelect).not.toHaveBeenCalled();
+      expect(qb.select).toHaveBeenCalledWith(expect.arrayContaining(['task.id', 'task.isLocked', 'task.periodEndDate']));
+    });
+
+    it('áp scope như findOne: ngoài phạm vi -> NotFoundException', async () => {
+      const qb = makeFakeQueryBuilder({ getOne: null });
+      mockTaskRepo.createQueryBuilder.mockReturnValue(qb);
+
+      await expect(service.findForChecklist(999, 1, Role.EMPLOYEE, 'own')).rejects.toThrow(NotFoundException);
+      // nhánh own của applyViewFilter phải được thêm vào WHERE
+      expect(qb.andWhere).toHaveBeenCalledWith(expect.stringContaining('primaryAssigneeId'), expect.any(Object));
+    });
+  });
+
+  describe('getChecklistSummaryForView (gác xem + đếm checklist 1 truy vấn)', () => {
+    it('trả total/done (ép số) khi Task nằm trong phạm vi', async () => {
+      const qb = makeFakeQueryBuilder({ getRawOne: { found: '1', total: '23', done: '7' } });
+      mockTaskRepo.createQueryBuilder.mockReturnValue(qb);
+
+      await expect(service.getChecklistSummaryForView(1, 1, Role.ADMIN, 'all')).resolves.toEqual({ total: 23, done: 7 });
+    });
+
+    it('Task có mặt nhưng chưa có item -> total 0, done 0 (SUM trả null)', async () => {
+      const qb = makeFakeQueryBuilder({ getRawOne: { found: 1, total: 0, done: null } });
+      mockTaskRepo.createQueryBuilder.mockReturnValue(qb);
+
+      await expect(service.getChecklistSummaryForView(1, 1, Role.ADMIN, 'all')).resolves.toEqual({ total: 0, done: 0 });
+    });
+
+    it('found = 0 (không tồn tại / đã xoá / ngoài scope) -> NotFoundException', async () => {
+      const qb = makeFakeQueryBuilder({ getRawOne: { found: '0', total: '0', done: null } });
+      mockTaskRepo.createQueryBuilder.mockReturnValue(qb);
+
+      await expect(service.getChecklistSummaryForView(999, 1, Role.EMPLOYEE, 'own')).rejects.toThrow(NotFoundException);
     });
   });
 

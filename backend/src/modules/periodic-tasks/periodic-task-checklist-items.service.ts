@@ -84,12 +84,10 @@ export class PeriodicTaskChecklistItemsService {
 
   /**
    * Checklist item của 1 Task, PHÂN TRANG SERVER-SIDE (tối đa `CHECKLIST_PAGE_SIZE`
-   * dòng/trang). Chỉ 3 truy vấn nhẹ, KHÔNG kéo cả checklist về:
-   *  1. cổng gác xem `assertCanView()` (không join),
-   *  2. `getSummary()` - COUNT/SUM toàn Task (để FE tính % và số trang),
-   *  3. trang dữ liệu `ORDER BY position, id LIMIT/OFFSET` (dùng index
-   *     `idx_periodic_task_checklist_items_task_position`).
-   * (2) và (3) chạy song song. `total`/`done` là của TOÀN BỘ Task, không chỉ trang này.
+   * dòng/trang). Chỉ 2 truy vấn nhẹ chạy song song, KHÔNG kéo cả checklist về:
+   *  1. `getChecklistSummaryForView()` - cổng gác xem + COUNT/SUM toàn Task (để FE tính % và số trang),
+   *  2. trang dữ liệu `ORDER BY position, id LIMIT/OFFSET` (dùng index
+   *     `idx_periodic_task_checklist_items_task_position`). `total`/`done` là của TOÀN BỘ Task, không chỉ trang này.
    */
   async findPage(
     taskId: number,
@@ -98,8 +96,6 @@ export class PeriodicTaskChecklistItemsService {
     userRole: string,
     scope?: string | null,
   ) {
-    await this.tasksService.assertCanView(taskId, userId, userRole, scope);
-
     const page = dto.page ?? 1;
     const limit = dto.limit ?? CHECKLIST_PAGE_SIZE;
     const hideDone = dto.hideDone === true;
@@ -113,8 +109,10 @@ export class PeriodicTaskChecklistItemsService {
           ? { createdAt: 'ASC' as const, id: 'ASC' as const }
           : { position: 'ASC' as const, id: 'ASC' as const };
 
+    // [PERF] Cổng gác xem + COUNT/SUM gộp 1 truy vấn (trước: assertCanView rồi mới tới getSummary). Trang dữ liệu chạy
+    // song song; nếu cổng gác 404 thì kết quả trang bị bỏ, không lộ dữ liệu.
     const [summary, data] = await Promise.all([
-      this.getSummary(taskId),
+      this.tasksService.getChecklistSummaryForView(taskId, userId, userRole, scope),
       this.checklistRepo.find({
         where: hideDone ? { taskId, isDone: false } : { taskId },
         order,
@@ -164,7 +162,7 @@ export class PeriodicTaskChecklistItemsService {
     /** Tiến độ nhãn "X/Z" của list (item + Task con) - FE ghi thẳng vào cache list thay vì refetch (9B-1). */
     checklistProgress: { done: number; total: number };
   }> {
-    const task = await this.tasksService.findOne(taskId, user.id, user.role, scope);
+    const task = await this.tasksService.findForChecklist(taskId, user.id, user.role, scope);
     await this.tasksService.assertEditableWhenLocked(task, user);
 
     // Guard "thêm checklist vào Task ĐÃ HOÀN THÀNH": FE hỏi lại, chọn "Chưa hoàn thành, cần làm tiếp" -> reopen=true.
@@ -197,10 +195,20 @@ export class PeriodicTaskChecklistItemsService {
 
     // Trả item vừa tạo + tổng mới (FE nhảy tới trang cuối để thấy item vừa thêm) -
     // KHÔNG trả lại cả danh sách.
-    const summary = await this.getSummary(taskId);
-    // [9B-1] `total/done` ở trên CHỈ đếm item; nhãn ở list đếm item + Task con -> dùng ĐÚNG hàm của list.
-    const [withProgress] = await this.attachChecklistProgressToList([{ id: taskId }], user.id, user.role, scope);
-    return { item: created, total: summary.total, done: summary.done, checklistProgress: withProgress.checklistProgress };
+    // [PERF] `attachChecklistProgressToList` tự đếm lại item (trùng `getSummary`) rồi mới đếm Task con, nối tiếp: 3 truy vấn.
+    // Giờ: đếm item + đếm Task con song song (2 truy vấn), cộng 2 số theo ĐÚNG công thức nhãn của list.
+    const [summary, children] = await Promise.all([
+      this.getSummary(taskId),
+      this.linksService.getChildrenChecklistProgressBatch([taskId], user.id, user.role, scope),
+    ]);
+    const child = children.get(taskId);
+    // [9B-1] `total/done` ở trên CHỈ đếm item; nhãn ở list đếm item + Task con.
+    return {
+      item: created,
+      total: summary.total,
+      done: summary.done,
+      checklistProgress: { done: summary.done + (child?.done ?? 0), total: summary.total + (child?.total ?? 0) },
+    };
   }
 
   /** Sửa nội dung và/hoặc `isDone` của 1 checklist item. */
@@ -211,7 +219,7 @@ export class PeriodicTaskChecklistItemsService {
     user: RequestingUser,
     scope?: string | null,
   ): Promise<PeriodicTaskChecklistItem> {
-    const task = await this.tasksService.findOne(taskId, user.id, user.role, scope);
+    const task = await this.tasksService.findForChecklist(taskId, user.id, user.role, scope);
     await this.tasksService.assertEditableWhenLocked(task, user);
 
     const item = await this.findItemOrFail(taskId, itemId);
@@ -226,7 +234,16 @@ export class PeriodicTaskChecklistItemsService {
     }
 
     Object.assign(item, itemChanges);
-    await this.checklistRepo.save(item);
+    // [PERF] `repo.save()` trên entity đã nạp vẫn chạy thêm 1 SELECT theo id trước khi UPDATE. Item đã được nạp ở
+    // `findItemOrFail` nên chỉ UPDATE đúng các cột thật sự đổi (bỏ qua giá trị undefined).
+    // [AGENT] OLD CODE (giữ lại để rollback): await this.checklistRepo.save(item);
+    const changes: Partial<Pick<PeriodicTaskChecklistItem, 'content' | 'isDone'>> = {};
+    if (itemChanges.content !== undefined) changes.content = itemChanges.content;
+    if (itemChanges.isDone !== undefined) changes.isDone = itemChanges.isDone;
+    if (Object.keys(changes).length > 0) {
+      await this.checklistRepo.update({ id: item.id, taskId }, changes);
+      item.updatedAt = new Date();
+    }
 
     this.auditService.logActionAsync(
       taskId,
@@ -248,7 +265,7 @@ export class PeriodicTaskChecklistItemsService {
     user: RequestingUser,
     scope?: string | null,
   ): Promise<{ deleted: true }> {
-    const task = await this.tasksService.findOne(taskId, user.id, user.role, scope);
+    const task = await this.tasksService.findForChecklist(taskId, user.id, user.role, scope);
     await this.tasksService.assertEditableWhenLocked(task, user);
 
     const item = await this.findItemOrFail(taskId, itemId);
@@ -278,7 +295,7 @@ export class PeriodicTaskChecklistItemsService {
     user: RequestingUser,
     scope?: string | null,
   ): Promise<{ moved: boolean }> {
-    const task = await this.tasksService.findOne(taskId, user.id, user.role, scope);
+    const task = await this.tasksService.findForChecklist(taskId, user.id, user.role, scope);
     await this.tasksService.assertEditableWhenLocked(task, user);
 
     const item = await this.findItemOrFail(taskId, itemId);
@@ -336,7 +353,7 @@ export class PeriodicTaskChecklistItemsService {
     user: RequestingUser,
     scope?: string | null,
   ): Promise<PeriodicTaskChecklistItem[]> {
-    const task = await this.tasksService.findOne(taskId, user.id, user.role, scope);
+    const task = await this.tasksService.findForChecklist(taskId, user.id, user.role, scope);
     await this.tasksService.assertEditableWhenLocked(task, user);
 
     const currentItems = await this.queryItems(taskId);
