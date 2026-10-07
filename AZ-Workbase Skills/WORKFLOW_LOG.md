@@ -6463,3 +6463,26 @@ Now [deploy]
 > **7A CẦN CHECK SAU:** bật `CPU_TIMING=true` trên preview ~30 phút, lọc `[Cust-List]`, dán 30–50 dòng → chọn phương án tối ưu. Tắt biến sau khi đo.
 [deploy]
 ---
+---
+## [2026-10-07 09:40] | Mục 9A plan CPU: refresh token CHỦ ĐỘNG + spec đo số lần gọi khi thêm checklist | Status: Success (chờ deploy + đo)
+
+**Actor:** Agent
+**Files Changed:**
+- `frontend/src/lib/auth/token-expiry.ts` — mới: đọc `exp` JWT (lỗi → null)
+- `frontend/src/lib/auth/proactive-refresh.ts` — mới: refresh chủ động, dùng chung 1 promise, cooldown 30 s, `auth-failed`/`skipped`
+- `frontend/src/lib/api/axios-instance.ts` — request interceptor `async` gọi `ensureFreshAccessToken` (bỏ qua `/auth/*`); response: nhánh `_proactiveAuthFailed` (code cũ giữ bằng comment)
+- `frontend/src/lib/auth/token-expiry.test.ts`, `proactive-refresh.test.ts`, `proactive-refresh.integration.test.ts`, `__test-helpers__/makeJwt.ts` — mới
+- `frontend/src/lib/hooks/periodicTaskChecklistCallCount.test.tsx` — mới: spec đếm endpoint khi thêm checklist (8 kịch bản)
+- `AZ-Workbase Skills/PLAN_CPU_OPTIMIZATION_ROUND2.md` — thêm Mục 9 (+ đính chính 2A đã có, 9C đã dedupe)
+
+**Root Cause:**
+> Log prod 07/10: 73/719 request (10%) là 401, thành 7 đợt 8–9 request cùng giây khi mở app với access token đã hết hạn → 8×401 + refresh + 8 gửi lại.
+
+**Solution:**
+> Đọc `exp`, refresh 1 lần trước khi gửi; lưới 401 giữ nguyên. Test tích hợp đo: TRƯỚC 16 request BE + 8×401 + 1 refresh → SAU 8 request + 0×401 + 1 refresh.
+> Spec checklist: 1 lần thêm = 1 POST + 1 GET /periodic-tasks + 1 GET checklist-items (khớp log prod); `rollup` vẫn refetch (ứng viên 9B-0).
+
+**Notes:**
+> FE: `tsc --noEmit` chỉ còn 4 lỗi `logo.png` có sẵn; vitest `src/lib` 58 file/710 test, `src/components` 19/144, `src/app` 6/36 — tất cả pass (chạy từng thư mục vì chạy gộp bị quá giờ trong sandbox).
+> **CẦN CHECK SAU DEPLOY:** 30 phút log prod: 401 < 2%, mỗi lần mở app sau hết hạn chỉ 1 `/auth/refresh`; nếu ≥ 2 refresh/30 s cùng người dùng → nghi lệch đồng hồ (xem cooldown).
+---

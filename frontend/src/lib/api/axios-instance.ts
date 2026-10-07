@@ -2,6 +2,7 @@ import axios, { AxiosError, InternalAxiosRequestConfig } from 'axios';
 import { showMessage } from '@/components/common/AntdAppProvider';
 import { useAuthStore } from '../stores/auth.store';
 import { bearerToken, refreshAccessTokenShared } from '../auth/shared-refresh';
+import { ensureFreshAccessToken } from '../auth/proactive-refresh';
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001/api';
 
@@ -16,10 +17,25 @@ const axiosInstance = axios.create({
 
 // Request interceptor - Add JWT token
 axiosInstance.interceptors.request.use(
-  (config: InternalAxiosRequestConfig) => {
+  // [AGENT] OLD CODE (giữ để rollback): interceptor đồng bộ, luôn gắn token hiện có (kể cả đã hết hạn -> 401 -> refresh -> gửi lại)
+  //   (config: InternalAxiosRequestConfig) => {
+  //     if (config.url?.includes('/auth/login') || config.url?.includes('/auth/register')) return config;
+  //     const token = useAuthStore.getState().accessToken;
+  //     if (token) config.headers.Authorization = `Bearer ${token}`;
+  //     return config;
+  //   },
+  // NEW (PLAN_CPU_OPTIMIZATION_ROUND2 Mục 9A): token hết/sắp hết hạn -> refresh CHỦ ĐỘNG 1 lần (request song song chờ chung)
+  // rồi mới gửi, thay vì gửi 8 request bị 401 rồi gửi lại. Lưới 401 ở interceptor response vẫn giữ nguyên.
+  async (config: InternalAxiosRequestConfig & { _proactiveAuthFailed?: boolean }) => {
     // Skip token check for auth routes
     if (config.url?.includes('/auth/login') || config.url?.includes('/auth/register')) {
       return config;
+    }
+
+    // Không refresh chủ động cho chính các route /auth/* (tránh đệ quy / refresh vô ích khi logout).
+    if (!config.url?.includes('/auth/')) {
+      const result = await ensureFreshAccessToken(`${API_BASE_URL}/auth/refresh`);
+      if (result === 'auth-failed') config._proactiveAuthFailed = true;
     }
 
     const token = useAuthStore.getState().accessToken;
@@ -53,6 +69,7 @@ axiosInstance.interceptors.response.use(
   async (error: AxiosError) => {
     const originalRequest = error.config as InternalAxiosRequestConfig & {
       _retry?: boolean;
+      _proactiveAuthFailed?: boolean;
     };
 
     // Handle 401 - Token expired
@@ -64,7 +81,9 @@ axiosInstance.interceptors.response.use(
 
       const refreshToken = useAuthStore.getState().refreshToken;
       
-      if (!refreshToken) {
+      // [AGENT] OLD CODE: if (!refreshToken) {
+      // NEW (Mục 9A): refresh chủ động vừa bị BE từ chối -> KHÔNG refresh lần 2, đăng xuất ngay (tiết kiệm 1 invocation lỗi).
+      if (!refreshToken || originalRequest._proactiveAuthFailed) {
         useAuthStore.getState().logoutLocal();
         if (typeof window !== 'undefined' && !window.location.pathname.includes('/login')) {
           window.location.href = '/login';

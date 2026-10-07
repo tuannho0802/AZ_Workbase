@@ -401,8 +401,9 @@ Hiện `staleTime`: departments 5 phút, media-sources 5 phút, customer-statuse
 > 01:50–02:16 UTC (26 phút), **719 request thật** (4512 dòng log, gộp theo `requestId`), ~10 người dùng, 15 instance.
 > **Giới hạn:** log chỉ có `durationMs` (thời gian chạm tường, gồm cả chờ DB), **không phải CPU hoạt động Fluid** → các tỷ lệ dưới đây
 > là tương đối. Log không có user id nên không tách theo người dùng được. Mọi mục đều phải **đo lại** như các mục trước.
-> **Trạng thái code khi lập mục này:** `main` @ `4e595e7`. Tại thời điểm đó `axios-instance.ts` có `isRefreshing` (cờ trong 1 tab)
-> nhưng **chưa** có `navigator.locks` và **chưa** đọc `exp` của token (đã grep).
+> **Trạng thái code khi lập mục này:** `main` @ `4e595e7`. **Đính chính (2026-10-07, sau khi đọc code thật):** Mục 2A (khoá liên-tab) **ĐÃ CÓ**
+> trong `frontend/src/lib/auth/shared-refresh.ts` (Web Locks + đọc lại localStorage, có test). Bản đầu của mục này chỉ grep `axios-instance.ts`
+> nên ghi nhầm là chưa có. Phần **chưa có** là đọc `exp` của token để refresh chủ động (đã làm ở 9A bên dưới).
 
 ### 9.0. Số liệu tổng quan (prod)
 | Chỉ số | Giá trị |
@@ -426,21 +427,33 @@ không còn thấy cặp refresh song song như log 06/10. Chỉ có 10 GET trù
   (xem 9A) chứ không phải polling → xử lý ở 9A + Mục 6, không cần làm gì riêng cho "304".
 - [ ] Không đổi gì ở cơ chế ETag. Ghi nhận vào WORKFLOW_LOG để lần sau không ai "tối ưu 304" vô ích.
 
-### 9A. Đợt 401 khi mở app với access token đã hết hạn (ưu tiên cao, độc lập)
+### 9A. Đợt 401 khi mở app với access token đã hết hạn (ưu tiên cao, độc lập) — ✅ ĐÃ LÀM (2026-10-07, chờ deploy + đo)
 **Bằng chứng (log):** 73 request 401 (10%), chia **7 đợt** (02:05, 02:07, 02:11, 02:12, 02:13…), mỗi đợt 8–9 request **cùng giây**:
 `departments, positions, sidebar/badges, roles/colors, notifications/poll, users/me, guides, roles/my-permissions` (đúng bộ query lúc mở app).
 Chuỗi lặp lại mỗi đợt: 8 `OPTIONS` → 8 `GET 401` → `OPTIONS` + `POST /auth/refresh` → **gửi lại 8 request** (đa số 304/200).
 ⇒ mỗi đợt tốn ≈ 8 invocation 401 + 8 retry, rồi các route tham chiếu chạy lại. Nguyên nhân: user mở lại app sau > `JWT_EXPIRES_IN` (1h, đã đặt đúng) nên token đã hết hạn **trước** khi gửi request đầu tiên.
 
-**Việc cần làm** (chính là mục "refresh chủ động, ưu tiên thấp" của Mục 1 — nay có bằng chứng prod nên nâng lên làm):
+**Việc cần làm — ĐÃ LÀM** (chính là mục "refresh chủ động, ưu tiên thấp" của Mục 1 — nay có bằng chứng prod nên nâng lên làm):
 - [ ] `frontend/src/lib/api/axios-instance.ts`, request interceptor: giải mã `exp` từ access token (base64url của đoạn payload, **không cần thư viện**, bọc try/catch — token lỗi thì bỏ qua và gửi như cũ).
       Nếu `exp - now < 60 s` (kể cả đã hết hạn) → gọi refresh **trước** rồi mới gửi request; dùng chung cờ/hàng đợi `isRefreshing` + `failedQueue` hiện có để 8 request song song chỉ đợi 1 lần refresh.
 - [ ] Không refresh chủ động cho chính `/auth/refresh` và `/auth/login` (tránh đệ quy); đồng hồ máy lệch → vẫn còn nhánh 401 cũ làm lưới an toàn (**giữ nguyên**, không bỏ).
 - [ ] Giữ code cũ bằng comment `// [AGENT] OLD CODE`; không đổi BE.
-- [ ] (Tuỳ chọn, gộp 2A nếu chưa làm) bọc lần refresh trong `navigator.locks` như Mục 2A để nhiều tab không refresh song song.
+- [x] ~~(Tuỳ chọn) bọc refresh trong `navigator.locks`~~ — **không cần**: 9A dùng lại `refreshAccessTokenShared` (đã có khoá liên-tab).
+
+**Đã triển khai (file thật):**
+- `lib/auth/token-expiry.ts` — `getJwtExpMs`, `isAccessTokenExpiring` (đọc `exp`, lỗi → `null` → gửi như cũ).
+- `lib/auth/proactive-refresh.ts` — `ensureFreshAccessToken`: dùng chung 1 promise cho request song song, **cooldown 30 s** (chặn vòng refresh khi đồng hồ client lệch), trả `auth-failed` khi BE từ chối refresh (→ đăng xuất ngay, không refresh lần 2) / `skipped` khi lỗi mạng.
+- `lib/api/axios-instance.ts` — request interceptor chuyển `async`, gọi `ensureFreshAccessToken` (bỏ qua mọi route `/auth/*`); response interceptor thêm nhánh `_proactiveAuthFailed`. Code cũ giữ bằng comment `[AGENT] OLD CODE`. **Lưới 401 giữ nguyên.**
+- Test: `token-expiry.test.ts` (4), `proactive-refresh.test.ts` (5), `proactive-refresh.integration.test.ts` (4, dùng `axiosInstance` thật + adapter giả).
+
+**Số đo thật từ test tích hợp (mở app với token hết hạn, 8 request song song):**
+| | Request tới BE | 401 | `/auth/refresh` |
+|---|---|---|---|
+| TRƯỚC 9A (mô phỏng bằng test "lưới 401") | 16 | 8 | 1 |
+| SAU 9A | **8** | **0** | **1** |
 
 **Test (vitest):** token còn hạn → không gọi refresh; token hết hạn + 8 request đồng thời → đúng **1** `axios.post('/auth/refresh')` và 8 request đều gửi với token mới, **không request nào nhận 401**; token không giải mã được → gửi như cũ; refresh lỗi → logout như hiện tại.
-**Đo:** 30 phút cùng kịch bản (mở app sau > 1h không dùng): số 401 giảm từ 73 → gần 0; số `GET` trùng sau 401 biến mất.
+**Đo (sau deploy):** 30 phút cùng kịch bản (mở app sau > 1h không dùng): số 401 giảm từ 73 → gần 0; số `GET` trùng sau 401 biến mất. Nếu thấy `/auth/refresh` ≥ 2 lần trong 30 giây ở cùng người dùng → nghi lệch đồng hồ, xem cooldown.
 **Rủi ro/rollback:** đụng luồng đăng nhập/refresh (cùng khu vực Mục 2) → revert 1 commit; lưới 401 cũ vẫn còn nên rủi ro thấp–TB.
 **Tiêu chí hoàn thành:** 401 < 2% số request; mỗi lần mở app sau hết hạn chỉ có 1 `/auth/refresh` và không có đợt 8 request 401.
 
@@ -451,8 +464,24 @@ Ngay sau **mỗi** POST (≤ 3 s, cùng trình duyệt): **24 × `GET /periodic-
 
 **Đã xác minh trong code:** `usePeriodicTaskChecklistItems.ts` đã thu hẹp invalidate (predicate `shouldRefetchAfterChecklistChange`) — vẫn **cố ý** refetch list để cập nhật nhãn "X/Z" và `['periodic-task-performance']`. Đây là hành vi thiết kế, không phải bug; mục này chỉ là **tối ưu thêm**, làm sau khi 3B/3C đã đo xong.
 
+**Đã xác minh bằng test (2026-10-07):** `frontend/src/lib/hooks/periodicTaskChecklistCallCount.test.tsx` (8 kịch bản, hook + API + `axiosInstance` thật, adapter giả) — số lần gọi **chính xác** cho mỗi lần thêm 1 mục:
+| Kịch bản | Kết quả đo |
+|---|---|
+| S1 Agenda + modal checklist mở | 1 POST + **1 GET `/periodic-tasks`** + **1 GET `/:id/checklist-items`** (khớp log prod 24 POST → 24 list + 25 checklist) |
+| S2 + Task con của CHÍNH task, `links-among`, `children`, `parents` | **0** (đã tối ưu đúng) |
+| S2 + `rollup` | ⚠ vẫn refetch 1 (không nằm trong danh sách bỏ qua → **ứng viên bỏ thêm**) |
+| S3 Task CHA mở `linked-children-page` | 1 (đúng thiết kế: hiển thị tiến độ) |
+| S4 mở chi tiết `GET /:id` | 1 |
+| S5 trang Hiệu suất đang mở | +1 (`performance` luôn bị invalidate) |
+| S6 modal đóng | chỉ 1 list, **không** gọi checklist-items |
+| S7 thêm 5 mục liên tiếp | 5 POST + 5 list + 5 checklist-items (chưa gộp) |
+| S8 thêm 5 mục dồn dập (adapter tức thì) | 5 POST + 5 list + 5 checklist-items — **không dedupe**; ở prod POST ~750 ms nên refetch bị huỷ-và-gọi-lại, request đã tới BE vẫn tốn |
+
+Khi làm 9B-1/9B-2, **cập nhật đúng các con số này** — đó là bằng chứng giảm.
+
 Phương án (chọn 1, đo trước/sau; mỗi cái 1 commit):
 - [ ] **9B-1 (khuyến nghị):** `onSuccess` của `useAddTaskChecklistItem`/`useUpdateTaskChecklistItem`: cập nhật nhãn tiến độ của đúng task trong cache list bằng `setQueryData` (dựa response POST/PATCH nếu BE đã trả `checklistProgress`; nếu chưa thì **thêm vào response**, không refetch list) và đặt `invalidateQueries({ queryKey: [LIST_KEY], refetchType: 'none' })` cho list để lần focus/mở sau mới refetch. Chỉ refetch trang checklist đang mở.
+- [ ] **9B-0 (nhỏ, an toàn, nên làm trước):** thêm `rollup` vào danh sách bỏ qua của `shouldRefetchAfterChecklistChange` **chỉ nếu** xác minh `GET /:id/rollup` không phụ thuộc số mục checklist (đọc BE `getRollup` trước — nếu rollup tính tiến độ từ checklist thì phải GIỮ refetch).
 - [ ] **9B-2:** debounce gộp invalidate ~1–2 s khi người dùng thêm liên tiếp (6 lần cách nhau < 10 s) → N lần thêm chỉ còn 1 refetch list.
 - [ ] **9B-3 (BE, nếu vẫn chậm):** đo `POST` 752 ms — Guard đổi status/kỳ Task trong cùng request (xem comment ở hook) có thể là nguồn; bật `CPU_TIMING` trên **preview** (không phải prod), log từng bước trong `addChecklistItem`, `EXPLAIN` truy vấn tính tiến độ. **Chưa kết luận** vì log prod không có thời gian từng bước.
 
@@ -465,10 +494,11 @@ Phương án (chọn 1, đo trước/sau; mỗi cái 1 commit):
 **Đã xác minh trong code (grep):** `usersApi.getAllForSelect()` được gọi ở ≥ 8 nơi, mỗi nơi tự `useQuery`/gọi trực tiếp:
 `UtmManagersModal`, `CustomerAssignmentsTab`, `BulkAssignModal`, `SalesUserSelect`, `useBroadcastCompose`, và **gọi thẳng không qua cache** ở `trash-can/page.tsx:152` (`.then(setSalesOptions)`) và `customers/page.tsx:506`.
 (`getUsersList` ở `useUsers.ts` cũng gọi cùng route `/users/all`, khác query string.)
-**Chưa biết:** các `useQuery` trên có cùng `queryKey` hay không (cần đọc từng file; nếu khác key → không dedupe được).
+**Đã xác minh (2026-10-07, đọc code):** 5 `useQuery` (`UtmManagersModal`, `CustomerAssignmentsTab`, `BulkAssignModal`, `SalesUserSelect`, `useBroadcastCompose`) **cùng `queryKey: ['users-for-select']`, `staleTime` 5 phút** → **đã dedupe tốt**, không cần hook chung. Phần gây trùng THẬT chỉ là:
+(1) `trash-can/page.tsx:152` (`useEffect` gọi thẳng, không cache); (2) `customers/page.tsx:506` (`fetchSalesUsers` gọi thẳng, không cache); (3) `useUsers.ts` dùng key riêng `['users-list', role]` nhưng cùng route `/users/all`.
 
-- [ ] Tạo 1 hook dùng chung `useAllUsersForSelect()` (key cố định, `staleTime` 5 phút như nhóm tham chiếu ở Mục 6A) và thay 5 chỗ `useQuery`.
-- [ ] Hai chỗ gọi trực tiếp (`trash-can`, `customers/page.tsx:506`) → chuyển sang `queryClient.fetchQuery` với cùng key/hook để dùng cache.
+- [ ] ~~Tạo hook dùng chung + thay 5 chỗ `useQuery`~~ — **không cần** (đã dùng chung key).
+- [ ] Chỉ sửa 2 chỗ gọi trực tiếp (`trash-can/page.tsx:152`, `customers/page.tsx:506`) → `queryClient.fetchQuery({ queryKey: ['users-for-select'], queryFn: usersApi.getAllForSelect, staleTime: 5 * 60 * 1000 })` để dùng chung cache; cân nhắc gộp `useUsers` (`users-list`) khi `role` không truyền.
 - [ ] Invalidate key này khi tạo/sửa/khoá/xoá nhân viên và khi đổi Phòng ban/Vị trí (theo quy tắc Mục 6A: **liệt kê mutation → invalidate**, không nâng TTL nếu chưa có invalidate).
 - [ ] Test: mở 2 modal dùng danh sách người dùng liên tiếp → chỉ 1 `GET /users/all`; sửa nhân viên → danh sách tươi.
 **Tiêu chí hoàn thành:** `GET /users/all` trùng < 5 s về 0; số lần/phiên giảm ≥ 40% (cùng kịch bản).
@@ -489,7 +519,7 @@ Phương án (chọn 1, đo trước/sau; mỗi cái 1 commit):
 ### 9F. Đo lại sau Mục 9
 - [ ] Vì prod đang `CPU_TIMING=false`: so sánh bằng **số request theo route + `durationMs`** (cùng kịch bản, cùng khoảng 30 phút, ≥ 200 request), không so tổng.
 - [ ] Bảng "Trước → Sau" cần có: số 401, số `POST /auth/refresh`, `GET /periodic-tasks` sau mỗi POST checklist, `GET /users/all`, `GET /departments`.
-- [ ] Thứ tự commit (mỗi mục 1 commit): **9A → 9C → 9B-1 → 9D (nếu chốt b)**. Ghi entry `WORKFLOW_LOG.md` sau mỗi mục.
+- [ ] Thứ tự commit (mỗi mục 1 commit): **9A ✅ → 9C (2 chỗ) → 9B-0 → 9B-1 → 9D (nếu chốt b)**. Ghi entry `WORKFLOW_LOG.md` sau mỗi mục.
 - [ ] Không bật `CPU_TIMING=true` trên prod để đo mục này (tự tốn CPU); nếu cần chi tiết 9B-3 thì bật trên **preview** ~30 phút rồi tắt.
 
 ---
@@ -520,5 +550,5 @@ Phương án (chọn 1, đo trước/sau; mỗi cái 1 commit):
 | 6B | Lộ dữ liệu chéo tài khoản | Tắt persister; xoá `sessionStorage` key |
 | 9A | Refresh chủ động sai (đồng hồ lệch/token lạ) → vòng refresh | Giữ lưới 401 cũ; revert commit |
 | 9B-1 | Nhãn "X/Z" lệch so với DB | Luôn lấy số từ response BE; revert → invalidate như cũ |
-| 9C | Danh sách người dùng cũ sau khi sửa nhân viên | Thêm invalidate còn thiếu / giảm `staleTime` |
+| 9C | Danh sách người dùng cũ sau khi sửa nhân viên | Thêm invalidate còn thiếu / giảm `staleTime` (chỉ còn 2 chỗ đổi) |
 | 9D(b) | Phòng ban đổi chưa hiện tới 5 phút | Quay lại `(300, true)` |
