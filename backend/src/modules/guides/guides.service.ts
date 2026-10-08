@@ -206,6 +206,9 @@ export class GuidesService {
 
   /** Mục lục: guide đã xuất bản + đúng role của người gọi (người có guides.manage thấy tất cả bản đã xuất bản). */
   async listVisible(user: GuideCaller): Promise<GuideListItem[]> {
+    // [AGENT] OLD CODE (giữ để rollback): find({ ..., relations: AUDIENCE_RELATIONS, ... }) -> LEFT JOIN 4 bảng liên kết cùng lúc,
+    // số dòng thô = TÍCH (roles x positions x departments x permissions) mỗi guide rồi TypeORM hydrate lại (PLAN_CPU_OPTIMIZATION_ROUND2 - Mục 12I).
+    // NEW: tải guide trước, rồi 4 truy vấn phẳng theo guide_id (số dòng = TỔNG, không phải tích) và ghép bằng Map.
     const guides = await this.guideRepo.find({
       where: { isPublished: true },
       select: {
@@ -216,9 +219,9 @@ export class GuidesService {
         isPublished: true,
         updatedAt: true,
       },
-      relations: AUDIENCE_RELATIONS,
       order: { sortOrder: 'ASC', id: 'ASC' },
     });
+    await this.attachAudienceLinks(guides);
     const [canManage, viewer] = await Promise.all([
       this.canManage(user),
       this.viewerOf(user, guides.flatMap((g) => this.permissionKeysOf(g))),
@@ -226,6 +229,38 @@ export class GuidesService {
     return guides
       .filter((g) => GuideAccessHelper.canView(this.visibilityOf(g), viewer, canManage))
       .map((g) => ({ id: g.id, title: g.title, slug: g.slug, sortOrder: g.sortOrder, updatedAt: g.updatedAt }));
+  }
+
+  /**
+   * Gắn 4 mảng liên kết audience (`guideRoles/guidePositions/guideDepartments/guidePermissions`) vào từng guide bằng 4 truy vấn
+   * phẳng + ghép theo `guideId`. Thay cho `relations: AUDIENCE_RELATIONS` (JOIN -> tích Descartes). Cùng dữ liệu, cùng thứ tự
+   * trường hợp bình thường; `find({ where })` vẫn chạy `BooleanTransformer` của `isExcluded`.
+   */
+  private async attachAudienceLinks(guides: Guide[]): Promise<void> {
+    if (guides.length === 0) return;
+    const ids = guides.map((g) => g.id);
+    const [roles, positions, departments, permissions] = await Promise.all([
+      this.dataSource.getRepository(GuideRole).find({ where: { guideId: In(ids) } }),
+      this.dataSource.getRepository(GuidePosition).find({ where: { guideId: In(ids) } }),
+      this.dataSource.getRepository(GuideDepartment).find({ where: { guideId: In(ids) } }),
+      this.dataSource.getRepository(GuidePermission).find({ where: { guideId: In(ids) } }),
+    ]);
+    const group = <T extends { guideId: number }>(rows: T[]): Map<number, T[]> => {
+      const m = new Map<number, T[]>();
+      for (const r of rows) {
+        const list = m.get(r.guideId);
+        if (list) list.push(r);
+        else m.set(r.guideId, [r]);
+      }
+      return m;
+    };
+    const [byRole, byPosition, byDepartment, byPermission] = [group(roles), group(positions), group(departments), group(permissions)];
+    for (const g of guides) {
+      g.guideRoles = byRole.get(g.id) ?? [];
+      g.guidePositions = byPosition.get(g.id) ?? [];
+      g.guideDepartments = byDepartment.get(g.id) ?? [];
+      g.guidePermissions = byPermission.get(g.id) ?? [];
+    }
   }
 
   /** Nội dung 1 guide theo slug. Không được xem (nháp / sai role / không tồn tại) -> 404 (không lộ sự tồn tại). */

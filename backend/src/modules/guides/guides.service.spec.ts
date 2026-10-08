@@ -47,7 +47,28 @@ describe('GuidesService', () => {
     delete: jest.fn(),
     softDelete: jest.fn(),
   };
-  const dataSource: any = { transaction: jest.fn(async (cb: any) => cb(txManager)) };
+  // listVisible tải 4 bảng liên kết bằng 4 find phẳng qua dataSource.getRepository(...) (Mục 12I). Mock suy ra dòng liên kết
+  // từ chính các guide mà `guideRepo.find` vừa trả (mkGuide đã nhúng sẵn các mảng này) -> không phải sửa từng test.
+  const LINK_KEY = new Map<unknown, string>([
+    [GuideRole, 'guideRoles'],
+    [GuidePosition, 'guidePositions'],
+    [GuideDepartment, 'guideDepartments'],
+    [GuidePermission, 'guidePermissions'],
+  ]);
+  const dataSource: any = {
+    transaction: jest.fn(async (cb: any) => cb(txManager)),
+    getRepository: jest.fn((entity: unknown) => ({
+      find: jest.fn(async ({ where }: any) => {
+        const ids: number[] = where?.guideId?._value ?? [];
+        const last = guideRepo.find.mock.results.at(-1)?.value;
+        const guides: any[] = (await last) ?? [];
+        // Dòng liên kết thật luôn mang guideId của guide chứa nó; mkGuide gắn cứng guideId=1 -> ghi đè bằng id thật.
+        return guides
+          .filter((g) => ids.includes(g.id))
+          .flatMap((g) => ((g[LINK_KEY.get(entity) as string] ?? []) as any[]).map((row) => ({ ...row, guideId: g.id })));
+      }),
+    })),
+  };
   const perms: any = { hasPermission: jest.fn() };
   const audit: any = { logActionAsync: jest.fn() };
   let canManage: boolean;
@@ -129,6 +150,16 @@ describe('GuidesService', () => {
     it('người có guides.manage thấy mọi guide đã xuất bản', async () => {
       canManage = true;
       expect((await svc.listVisible(emp)).map((g) => g.slug)).toEqual(['a', 'b', 'c']);
+    });
+    it('[12I] không JOIN relations; tải 4 bảng liên kết bằng 4 truy vấn phẳng theo guide_id', async () => {
+      await svc.listVisible(emp);
+      expect(guideRepo.find.mock.calls[0][0]).not.toHaveProperty('relations');
+      expect(dataSource.getRepository.mock.calls.map((c: any[]) => c[0])).toEqual([GuideRole, GuidePosition, GuideDepartment, GuidePermission]);
+    });
+    it('[12I] không có guide nào đã xuất bản -> không truy vấn bảng liên kết', async () => {
+      guideRepo.find.mockResolvedValue([]);
+      expect(await svc.listVisible(emp)).toEqual([]);
+      expect(dataSource.getRepository).not.toHaveBeenCalled();
     });
     it('chỉ truy vấn guide đã xuất bản', async () => {
       await svc.listVisible(emp);

@@ -35,7 +35,7 @@
 | 7 | `GET /customers`, `keep-alive`, các route nhỏ | 5,3% / 2,3% | Thấp | Không | 0 |
 | 9 | **(MỚI 2026-10-07)** Phát hiện từ log prod: 401 khi mở app, refetch dây chuyền sau thêm checklist, `users/all` trùng, `departments` no-cache | 10% request (401) + ≈ 16% thời gian xử lý (chuỗi checklist) | Thấp–TB | Không | 1, 3 |
 | 11 | **(MỚI 2026-10-07)** Rà soát code lần 3: `AuditService.logAction` dùng `save()`, recharts import tĩnh, `console.error` ở JwtStrategy | Chưa đo (ước lượng: giảm round-trip DB mỗi thao tác ghi; giảm JS lần đầu của trang báo cáo) | Rất thấp | Không | — |
-| 12 | **(MỚI 2026-10-08)** Cold start & log khởi động: 68% dòng log là log boot Nest; 15/779 request > 2 s do cold start (3,4–4,6 s) | Chưa đo CPU (log chỉ có `durationMs`); đo ở 12B | Rất thấp (12A/12B) – Thấp (12C) – TB (12F, tuỳ chọn) | Không | — |
+| 12 | **(MỚI 2026-10-08)** Cold start & log khởi động: 68% dòng log là log boot Nest; 15/779 request > 2 s do cold start (3,4–4,6 s) | Chưa đo CPU (log chỉ có `durationMs`); đo ở 12B; 12I: `guides` 136 ms | Rất thấp (12A/12B/12I) – Thấp (12C) – TB (12F, tuỳ chọn) | Không | — |
 | 8 | Đo lại sau cùng & chốt | — | — | — | 1–7, 9 |
 
 Làm tuần tự **1 → 2 → 3 → 4 → 6A → 5 → 7 → 9 → 11 → 12** (12: **12A → 12B → đo → 12C/12F nếu cần**) (9A có thể làm sớm vì độc lập, rủi ro thấp). Mục 2 và 3 đáng làm nhất (≈ 31% CPU của mẫu).
@@ -725,6 +725,38 @@ export class QuietBootLogger extends ConsoleLogger {
 - UA Chrome bị đóng băng (`…/154.0.0.0`) → không đếm số client theo UA.
 - Export bị cắt ~5.050 dòng và chỉ "Last hour" → thiếu đầu giờ; muốn xem ngày khác phải export vào đúng khung giờ đó.
 - `durationMs` ≠ CPU hoạt động.
+
+### 12I. (MỚI 2026-10-08) `GET /api/guides` cpu=136,7 ms — điều tra, sửa `listVisible`, thêm `inflight`/`up` vào CpuTiming
+**Quan sát (log prod, vừa bật `CPU_TIMING=true`):** `[CpuTiming] cpu=136.7ms wall=191ms GET /api/guides 200` (PID 6, 03:26:29 UTC — ngay sau lần deploy bật cờ, tức rất có thể là instance MỚI).
+
+**Đã kiểm chứng (đo CÔ LẬP trên MariaDB 10.11 cài trong sandbox, DB local nên KHÔNG có độ trễ mạng; không phải số prod):**
+| Kịch bản | `find` + JOIN 4 bảng (cũ) | 5 truy vấn phẳng + ghép Map (mới) |
+|---|---|---|
+| Dữ liệu giống `guides-content/` (32 guide, ≤ 1 mục/chiều), lần gọi ĐẦU | cpu ≈ 22,7 ms (service) / 2,2 ms (chỉ `find`) | ≈ 8,2 ms |
+| Như trên, đã warm (TB 30 lần) | `listVisible` ≈ 5,7 ms | ≈ 3,6 ms (chỉ phần find+liên kết) |
+| Trường hợp xấu: mỗi guide gán 5 role × 4 vị trí × 3 phòng × 2 quyền (3.840 dòng thô), warm | ≈ 21 ms | ≈ 4,4 ms |
+| Trường hợp xấu, lần gọi đầu | ≈ 27 ms | ≈ 5,8 ms |
+→ `relationLoadStrategy: 'query'` của TypeORM đã thử và **không giúp** (≈ 26 ms trường hợp xấu) nên KHÔNG dùng.
+
+**Kết luận (đúng với những gì đã đo, không suy diễn thêm):**
+1. Truy vấn guides **không giải thích nổi 136 ms**: trên dữ liệu thật nó chỉ ~6 ms warm / ~16–23 ms lần đầu (số sandbox). Phần còn lại **chưa biết**; ứng viên có căn cứ:
+   (a) `process.cpuUsage()` tính cho CẢ process → CPU của các request chạy chồng (cả loạt request nền lúc mở trang) bị cộng vào request này (đã ghi ở cảnh báo trong `cpu-timing.middleware.ts`);
+   (b) instance mới: JIT lạnh, cache quyền/`users/me` rỗng, nạp lười lần đầu. Baseline cũ cùng kiểu: `guides` 97 ms (5 lần), `positions` 140 ms (2 lần), `roles/colors` 61 ms — toàn route tĩnh nhỏ, nên nhiều khả năng cùng nguyên nhân (a)/(b) chứ không phải riêng guides.
+   `wall` ≈ `cpu` (191 vs 136) chỉ cho biết process đang bận, không phân biệt được (a) và (b).
+2. **Rủi ro tiềm ẩn có thật** (đã sửa): `find({ relations: AUDIENCE_RELATIONS })` JOIN 4 bảng OneToMany cùng lúc → số dòng thô = TÍCH mỗi guide (xem bảng) và tăng khi quản trị viên gán nhiều role/vị trí/phòng. Dữ liệu seed hiện chỉ có ≤ 1 mục/chiều nên mức hiện tại thấp.
+
+**Đã làm (BE, diff nhỏ, giữ code cũ bằng comment `[AGENT] OLD CODE`):**
+- [x] `guides.service.ts#listVisible`: bỏ `relations`, thêm `attachAudienceLinks()` = 4 `find({ where: { guideId: In(ids) } })` song song qua `dataSource.getRepository(...)` + ghép theo `guideId` bằng Map. Không đổi logic phân quyền (`viewerOf`/`canManage`/`GuideAccessHelper`), không đổi response, không đổi constructor. Kiểm chứng trên MariaDB thật: 40 guide / 196 dòng liên kết (gồm `isExcluded=true`) cho dữ liệu GIỐNG HỆT cách JOIN.
+  `getBySlug`/`listManage`/`getManageDetail`/`update`/`remove` GIỮ `relations` (1 guide hoặc trang quản trị ít gọi) — chưa đo nên không đụng.
+- [x] `cpu-timing.middleware.ts`: thêm `inflight=N up=Ns` vào CUỐI dòng log (vẫn khớp regex cũ của `scripts/cpu-timing-report.mjs`). `inflight` = số request chạy chồng cao nhất trong đời request; `up` = giây từ khi process khởi động.
+- [x] `scripts/cpu-timing-report.mjs`: cờ `--solo` chỉ tính dòng `inflight=1`; log cũ không có trường mới vẫn đọc được.
+- [x] Test: `guides.service.spec` (+2: không JOIN & đúng 4 truy vấn liên kết; không guide → không truy vấn), `cpu-timing.middleware.spec` (+2: đếm chồng nhau, request bị huỷ không kẹt bộ đếm). Full: `tsc --noEmit` sạch, `npx jest` 109 suite / 1820 test pass, `npx nest build` OK.
+
+**Việc còn lại (cần log prod, chưa làm được):**
+- [ ] Deploy rồi thu log 30–60 phút với `CPU_TIMING=true`; chạy `node scripts/cpu-timing-report.mjs <log> --solo` và so TB `GET /api/guides` với `--solo` vs không `--solo`, và các dòng `up` nhỏ (< 60 s) vs lớn.
+      **Cách đọc:** `--solo` + `up` lớn mà vẫn > 50 ms ⇒ lỗi thật ở handler (khi đó mới đo tiếp từng bước); chỉ cao khi `inflight` > 1 hoặc `up` nhỏ ⇒ là nhiễu đo/cold start, KHÔNG tối ưu handler.
+- [ ] Nếu cold start là nguyên nhân chính: quay lại 12B (`[BootTiming]`) — tác động lớn hơn việc tối ưu từng route.
+- [ ] Tắt `CPU_TIMING` sau khi đo (ghi log tốn CPU).
 
 ---
 

@@ -2,7 +2,8 @@
 /**
  * Xếp hạng CPU theo route từ log `[CpuTiming]` (bật bằng env CPU_TIMING=true trên Vercel).
  *
- * Dùng:  node scripts/cpu-timing-report.mjs <file-log | -> [--top 20] [--exclude HEAD,OPTIONS] [--csv out.csv]
+ * Dùng:  node scripts/cpu-timing-report.mjs <file-log | -> [--top 20] [--exclude HEAD,OPTIONS] [--csv out.csv] [--solo]
+ *   --solo: chỉ tính dòng có `inflight=1` (request chạy một mình, cpu đáng tin; cần log sinh bởi bản có Mục 12I).
  * Chỉ tìm chuỗi `cpu=12.3ms wall=140ms GET /api/customers/:id 200` nên không phụ thuộc định dạng
  * file log (text/JSON/CSV đều được). Không cần thư viện ngoài.
  *
@@ -37,14 +38,16 @@ try {
   }
   throw err;
 }
-const RE = /cpu=([\d.]+)ms\s+wall=([\d.]+)ms\s+([A-Z]+)\s+(\S+)\s+(\d{3})/g;
+// [Mục 12I] `inflight=N up=Ns` là tuỳ chọn (log cũ không có) -> vẫn khớp.
+const RE = /cpu=([\d.]+)ms\s+wall=([\d.]+)ms\s+([A-Z]+)\s+(\S+)\s+(\d{3})(?:\s+inflight=(\d+)\s+up=(\d+)s)?/g;
+const solo = args.includes('--solo'); // chỉ tính request chạy một mình (inflight=1) -> cpu không bị lẫn request khác
 
 const routes = new Map();
 let total = 0;
 let skipped = 0;
 for (const m of text.matchAll(RE)) {
-  const [, cpu, wall, method, path, status] = m;
-  if (exclude.has(method)) {
+  const [, cpu, wall, method, path, status, inflight] = m;
+  if (exclude.has(method) || (solo && inflight !== '1')) {
     skipped++;
     continue;
   }
@@ -84,7 +87,7 @@ if (!rows.length) {
 }
 
 const n = rows.reduce((a, r) => a + r.n, 0);
-console.log(`Tổng: ${n} request${skipped ? ` (bỏ qua ${skipped} request ${[...exclude].join('/')})` : ''}, CPU cộng dồn ${(total / 1000).toFixed(2)}s\n`);
+console.log(`Tổng: ${n} request${skipped ? ` (bỏ qua ${skipped} request ${[...exclude, ...(solo ? ["không chạy một mình"] : [])].join("/")})` : ''}, CPU cộng dồn ${(total / 1000).toFixed(2)}s\n`);
 console.log('#  Route'.padEnd(54) + 'Số lần  CPU tổng(ms)      %   TB(ms)  p95(ms)  Max(ms)  Status');
 rows.slice(0, top).forEach((r, i) => {
   console.log(
