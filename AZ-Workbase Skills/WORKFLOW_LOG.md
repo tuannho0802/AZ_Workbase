@@ -6900,3 +6900,20 @@ Now [deploy]
 > Commit trước (8f28953) chỉ có file mới, phần nối vào main.ts và 3 service CHƯA từng được push -> đã làm lại ở lượt này. Chưa commit/push. Còn lại: bật `CPU_TIMING=true` trên Vercel để lấy số thật rồi mới quyết 12F (/bootstrap); 12D/12E không đổi code. Nhớ tắt `CPU_TIMING` sau khi đo.
 
 ---
+
+## [2026-10-08] | PLAN_GUIDES_CONTENT P4: bài `vi-tri` + 4 mẫu Vị trí | [Status: Success - chưa commit]
+
+**Actor:** Agent
+**Files Changed:**
+- `guides-content/vi-tri.md` — bài mới (`published: false`, `permissions: [positions.view]`, sortOrder 130)
+- `frontend/src/lib/guides/demos/positions.demos.tsx` (mới) — `position-table` (viewer=admin|assistant|employee), `position-form` (mode=create|edit), `position-delete` (variant=has-users|free), `position-visibility` (state=inherit|override)
+- `frontend/src/lib/guides/demos/positions.demos.test.tsx` (mới) — 5 test
+- `frontend/src/lib/guides/guide-demos.tsx`, `guide-demos.test.tsx` — đăng ký `POSITION_DEMOS`, 81 → 85 mẫu
+- `frontend/src/lib/guides/guide-slugs.ts` — gỡ `vi-tri` khỏi `PENDING_GUIDE_SLUGS`
+- `AZ-Workbase Skills/PLAN_GUIDES_CONTENT.md` — tick P4 `vi-tri`
+
+**Notes:**
+> Verify: `vitest src/lib/guides` 23 file / 507 test pass; `tsc --noEmit` sạch (ngoài lỗi `*.png` có sẵn). Chưa chạy `next build`, chưa test tay, chưa chạy `guides:sync`.
+> Phát hiện (CHƯA sửa, bài không khẳng định): (1) Form Sửa Vị trí: xoá lựa chọn "Phòng ban (gợi ý)" rồi lưu có thể KHÔNG gỡ được — antd trả `undefined`, axios bỏ field, BE chỉ đổi khi `departmentId !== undefined` (đọc code, chưa test trình duyệt). (2) "Lưu" ở drawer Hiển thị dữ liệu ghi cả 7 element_key thành override riêng của Vị trí → đổi cấu hình Toàn cục sau đó không chảy xuống Vị trí đó tới khi Gỡ override (bài đã nêu). (3) Không seed nào đặt `is_system=true` và UI tạo luôn `isSystem=false` → nhãn "Hệ thống"/ẩn nút Xoá thực tế chỉ xảy ra nếu sửa DB tay.
+
+---

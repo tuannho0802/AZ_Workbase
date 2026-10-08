@@ -63,7 +63,6 @@ export const STANDALONE_GUIDE_SLUGS: readonly string[] = ['huong-dan-soan-bai'];
  */
 export const PENDING_GUIDE_SLUGS: readonly string[] = [
   'nhat-ky-he-thong',
-  'vi-tri',
   'may-cham-cong',
   'phan-quyen',
   'luu-tru-anh',
