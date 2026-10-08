@@ -22,10 +22,10 @@ import { PermissionsVersionService, RefDataDomain } from './permissions-version.
  *  - `GET /roles` trả kèm ma trận `role_permissions` toàn cục.
  */
 export const REF_DATA_TABLE_DOMAINS: Readonly<Record<string, readonly RefDataDomain[]>> = {
-    departments: ['departments', 'positions', 'users'], // users/all JOIN department
-    department_managers: ['departments'],
-    positions: ['positions', 'users'], // users/all JOIN position
-    roles: ['roles'],
+    departments: ['departments', 'positions', 'users', 'guides'], // users/all JOIN department; guide hiển thị tên phòng ban
+    department_managers: ['departments', 'utms', 'attendance'], // scope 'department' của UTM/chấm công dựa vào bảng này
+    positions: ['positions', 'users', 'guides'], // users/all JOIN position; guide hiển thị tên vị trí
+    roles: ['roles', 'guides'], // guide hiển thị tên role
     role_permissions: ['roles'],
     customer_statuses: ['customer_statuses'],
     periodic_task_statuses: ['periodic_task_statuses'],
@@ -36,7 +36,25 @@ export const REF_DATA_TABLE_DOMAINS: Readonly<Record<string, readonly RefDataDom
     link_groups: ['link_groups'],
     link_group_secondary_managers: ['link_groups'],
     link_group_content_staff: ['link_groups'],
+    // [AGENT] NEW: guides (mục lục + nội dung + đối tượng xem)
+    guides: ['guides'],
+    guide_roles: ['guides'],
+    guide_positions: ['guides'],
+    guide_departments: ['guides'],
+    guide_permissions: ['guides'],
+    // [AGENT] NEW: UTM (view nhúng tên quản lý chính/phụ từ users -> xem USER_DEPENDENT_DOMAINS)
+    utms: ['utms'],
+    utm_secondary_managers: ['utms'],
+    // [AGENT] NEW: chấm công (log + tên user trên máy; tên nhân viên từ users -> xem USER_DEPENDENT_DOMAINS)
+    attendance_logs: ['attendance'],
+    zk_device_user_cache: ['attendance'],
+    // [AGENT] NEW: dung lượng lưu trữ - cache nằm trong bảng settings (cron/nút "Tính lại"/đổi hạn mức đều ghi qua repository -> phát sự kiện).
+    // Bộ đếm phiên bản (refdata_version:*, permissions_version...) ghi bằng SQL thô nên KHÔNG kích hoạt vòng lặp.
+    settings: ['storage'],
 };
+
+/** Domain có payload nhúng thông tin user (tên/role/phòng ban) -> user đổi (trừ cột kỹ thuật) thì bump cùng lúc. */
+export const USER_DEPENDENT_DOMAINS = ['users', 'link_groups', 'utms', 'attendance'] as const;
 
 /** Với `users`: chỉ các cột nằm trong payload `GET /departments` mới đáng bump (đăng nhập/refresh token KHÔNG bump). */
 export const USER_COLUMNS_AFFECTING_DEPARTMENTS: ReadonlySet<string> = new Set([
@@ -97,7 +115,7 @@ export class RefDataChangeSubscriber implements EntitySubscriberInterface {
             if (!affectsDepartments && !affectsUsers) return;
             this.record('users', event.queryRunner, [
                 ...(affectsDepartments ? (['departments'] as const) : []),
-                ...(affectsUsers ? (['users', 'link_groups'] as const) : []), // link_groups: payload nhúng thông tin user
+                ...(affectsUsers ? USER_DEPENDENT_DOMAINS : []), // payload các domain này nhúng thông tin user
             ]);
             return;
         }
@@ -129,7 +147,7 @@ export class RefDataChangeSubscriber implements EntitySubscriberInterface {
     }
 
     private record(tableName: string, queryRunner: QueryRunner | undefined, override?: readonly RefDataDomain[]): void {
-        const domains = override ?? (tableName === 'users' ? (['departments', 'users', 'link_groups'] as const) : REF_DATA_TABLE_DOMAINS[tableName]);
+        const domains = override ?? (tableName === 'users' ? (['departments', ...USER_DEPENDENT_DOMAINS] as const) : REF_DATA_TABLE_DOMAINS[tableName]);
         if (!domains) return;
 
         if (queryRunner?.isTransactionActive) {

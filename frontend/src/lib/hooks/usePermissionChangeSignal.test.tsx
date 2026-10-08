@@ -4,6 +4,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import type { ReactNode } from 'react';
 import { usePermissionChangeSignal } from './usePermissionChangeSignal';
 import { SIDEBAR_BADGES_QUERY_KEY } from './useSidebarBadgeCounts';
+import { readRefCacheState, resetRefCacheState, writeRefCacheState } from '../api/ref-cache-version';
 
 let queryClient: QueryClient;
 let invalidate: ReturnType<typeof vi.fn>;
@@ -14,6 +15,7 @@ const keysInvalidated = () => invalidate.mock.calls.map((c) => (c[0] as { queryK
 
 describe('usePermissionChangeSignal', () => {
   beforeEach(() => {
+    resetRefCacheState();
     queryClient = new QueryClient();
     invalidate = vi.fn().mockResolvedValue(undefined);
     queryClient.invalidateQueries = invalidate as unknown as QueryClient['invalidateQueries'];
@@ -43,6 +45,21 @@ describe('usePermissionChangeSignal', () => {
     expect(keys).toContainEqual(['my-permissions']);
     expect(keys).toContainEqual(['ui-visibility-my-hidden']);
     expect(keys).toContainEqual([...SIDEBAR_BADGES_QUERY_KEY]);
+  });
+
+  it('ghi permSig vào mốc cục bộ; F5 thấy permSig khác lần trước -> invalidate dữ liệu theo quyền (guides/utms/chấm công)', () => {
+    writeRefCacheState({ userId: 7, permSig: '1:employee:1:0:0' });
+    renderHook(() => usePermissionChangeSignal('2:employee:1:0:0', 7), { wrapper });
+    expect(readRefCacheState().permSig).toBe('2:employee:1:0:0');
+    const keys = keysInvalidated();
+    expect(keys).toEqual(expect.arrayContaining([['guides'], ['utms'], ['zk-attendance-logs'], ['zk-attendance-summary']]));
+    expect(keys).not.toContainEqual(['my-permissions']); // F5 đã tải quyền mới lúc mount
+  });
+
+  it('F5 mà permSig không đổi: không invalidate', () => {
+    writeRefCacheState({ userId: 7, permSig: '1:employee:1:0:0' });
+    renderHook(() => usePermissionChangeSignal('1:employee:1:0:0', 7), { wrapper });
+    expect(invalidate).not.toHaveBeenCalled();
   });
 
   it('đổi user đăng nhập: đặt lại mốc, KHÔNG coi là quyền đổi', () => {

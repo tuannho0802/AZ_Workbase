@@ -723,7 +723,8 @@ export class UtmsService {
         moved += affected;
         if (affected < CASCADE_BATCH) break;
       }
-      await manager.query('DELETE FROM utms WHERE id = ?', [source.id]);
+      // [AGENT] OLD CODE: await manager.query('DELETE FROM utms WHERE id = ?', [source.id]); (SQL thô không phát sự kiện -> không bump cache `utms`)
+      await manager.delete(Utm, { id: source.id }); // QueryBuilder delete phát sự kiện -> RefDataChangeSubscriber bump domain `utms` sau commit
     });
 
     this.auditService.logActionAsync(

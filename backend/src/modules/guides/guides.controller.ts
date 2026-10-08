@@ -8,6 +8,7 @@ import {
   Patch,
   Post,
   UseGuards,
+  UseInterceptors,
 } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
@@ -17,6 +18,7 @@ import { GetUser } from '../../common/decorators/get-user.decorator';
 import { GuidesService, GUIDES_MANAGE_PERMISSION } from './guides.service';
 import { CreateGuideDto } from './dto/create-guide.dto';
 import { UpdateGuideDto } from './dto/update-guide.dto';
+import { refDataCache } from '../../common/interceptors/cache-control.interceptor';
 
 /**
  * Hướng dẫn sử dụng động (PLAN_HARDENING P7).
@@ -32,6 +34,7 @@ import { UpdateGuideDto } from './dto/update-guide.dto';
 export class GuidesController {
   constructor(private readonly guidesService: GuidesService) {}
 
+  @UseInterceptors(refDataCache())
   @Get()
   @ApiOperation({ summary: 'Mục lục guide đã xuất bản + đúng role của mình - mọi role đã đăng nhập' })
   list(@GetUser() user: any) {
@@ -102,6 +105,7 @@ export class GuidesController {
     return this.guidesService.remove(id, user);
   }
 
+  @UseInterceptors(refDataCache())
   @Get(':slug')
   @ApiOperation({ summary: 'Nội dung 1 guide theo slug - chỉ khi đã xuất bản + đúng role, ngược lại 404' })
   getBySlug(@Param('slug') slug: string, @GetUser() user: any) {

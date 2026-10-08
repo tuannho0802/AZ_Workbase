@@ -12,6 +12,10 @@ export interface RefCacheState {
   sig: Record<string, number>;
   epoch: number | undefined;
   nonce: number;
+  /** Nonce RIÊNG từng domain (mutation vào guides/utms/storage/zk-device) - không làm đổi khoá của các danh mục khác. */
+  dn: Record<string, number>;
+  /** `permSig` của /notifications/poll (gắn vào `v` của domain phụ thuộc quyền người xem: guides, utms, attendance). */
+  permSig: string | undefined;
 }
 
 declare module 'axios' {
@@ -22,7 +26,7 @@ declare module 'axios' {
 }
 
 const STORAGE_KEY = 'az-ref-cache-state';
-let memory: RefCacheState = { userId: undefined, sig: {}, epoch: undefined, nonce: 0 };
+let memory: RefCacheState = { userId: undefined, sig: {}, epoch: undefined, nonce: 0, dn: {}, permSig: undefined };
 
 export function readRefCacheState(): RefCacheState {
   try {
@@ -35,6 +39,8 @@ export function readRefCacheState(): RefCacheState {
           sig: p.sig && typeof p.sig === 'object' ? p.sig : {},
           epoch: typeof p.epoch === 'number' ? p.epoch : undefined,
           nonce: typeof p.nonce === 'number' ? p.nonce : 0,
+          dn: p.dn && typeof p.dn === 'object' ? p.dn : {},
+          permSig: typeof p.permSig === 'string' ? p.permSig : undefined,
         };
       }
     }
@@ -56,7 +62,7 @@ export function writeRefCacheState(patch: Partial<RefCacheState>): RefCacheState
 
 /** Chỉ dùng trong test. */
 export function resetRefCacheState(): void {
-  memory = { userId: undefined, sig: {}, epoch: undefined, nonce: 0 };
+  memory = { userId: undefined, sig: {}, epoch: undefined, nonce: 0, dn: {}, permSig: undefined };
   try {
     if (typeof window !== 'undefined') window.localStorage.removeItem(STORAGE_KEY);
   } catch {
@@ -77,7 +83,24 @@ export const CACHED_REF_GET_DOMAIN: Readonly<Record<string, string>> = {
   '/media-sources': 'media_sources',
   '/link-categories': 'link_categories',
   '/link-groups': 'link_groups',
+  // [AGENT] NEW: dữ liệu theo quyền người xem (v kèm permSig) hoặc có nguồn đổi riêng.
+  '/guides': 'guides',
+  '/utms': 'utms',
+  '/utms/scoped': 'utms',
+  '/utms/managed-by-me': 'utms',
+  '/storage/usage': 'storage',
+  '/storage/media': 'storage',
+  '/zk-device/attendance-logs': 'attendance',
+  '/zk-device/attendance-summary': 'attendance',
 };
+
+/** Tiền tố mutation -> domain có nonce RIÊNG (chỉ đổi khoá của đúng domain đó, không kéo theo danh mục khác). */
+const DOMAIN_MUTATION_PREFIXES: ReadonlyArray<readonly [string, string]> = [
+  ['/guides', 'guides'],
+  ['/utms', 'utms'],
+  ['/storage', 'storage'],
+  ['/zk-device', 'attendance'],
+];
 
 /** Mutation vào các tiền tố này đổi dữ liệu của danh mục cache ở trên (khớp REF_DATA_TABLE_DOMAINS ở BE) -> tăng nonce. */
 const MUTATION_PREFIXES = [
@@ -94,16 +117,53 @@ const MUTATION_PREFIXES = [
   '/link-groups',
 ];
 
+/**
+ * Domain mà KẾT QUẢ còn phụ thuộc quyền/role/phòng ban/vị trí của người xem (BE lọc theo user) -> `v` kèm `permSig`,
+ * quyền đổi là khoá đổi. Các domain còn lại dùng chung cho mọi người nên chỉ cần userId để không lẫn giữa các tài khoản.
+ */
+export const PERM_DEPENDENT_DOMAINS: ReadonlySet<string> = new Set(['guides', 'utms', 'attendance']);
+
+/** Đường dẫn GET (không query) -> domain refSig. `/guides/:slug` (nội dung 1 guide) cùng domain `guides`; `/guides/manage/*` KHÔNG cache. */
+export function domainForPath(path: string): string | undefined {
+  const exact = CACHED_REF_GET_DOMAIN[path];
+  if (exact) return exact;
+  const m = /^\/guides\/([^/]+)$/.exec(path);
+  if (m && m[1] !== 'manage') return 'guides';
+  return undefined;
+}
+
 export function refVersionFor(path: string, userId: number | undefined): string | undefined {
-  const domain = CACHED_REF_GET_DOMAIN[path];
+  const domain = domainForPath(path);
   if (!domain || userId === undefined) return undefined;
   const s = readRefCacheState();
-  return [userId, s.epoch ?? 0, s.nonce, s.sig[domain] ?? 0].join('.');
+  const parts: (string | number)[] = [userId, s.epoch ?? 0, s.nonce, s.sig[domain] ?? 0];
+  if (s.dn[domain]) parts.push(`n${s.dn[domain]}`);
+  if (PERM_DEPENDENT_DOMAINS.has(domain)) {
+    // permSig của user KHÁC (máy dùng chung) không được dùng - coi như chưa biết.
+    // Chưa biết permSig của ĐÚNG user (lần đầu, trước poll đầu tiên) -> KHÔNG gắn `v` (BE trả no-cache như cũ) thay vì cache
+    // dưới khoá thiếu quyền.
+    const perm = s.userId === userId ? s.permSig : undefined;
+    if (!perm) return undefined;
+    parts.push(`p${perm.replace(/[^A-Za-z0-9]/g, '-')}`);
+  }
+  return parts.join('.');
+}
+
+/** Đổi khoá cache của 1 domain NGAY (vd nút "Làm mới" thủ công phải bỏ qua bản trong HTTP cache). */
+export function bumpDomainNonce(domain: string): void {
+  const dn = { ...readRefCacheState().dn };
+  dn[domain] = (dn[domain] ?? 0) + 1;
+  writeRefCacheState({ dn });
 }
 
 /** Gọi sau mỗi mutation THÀNH CÔNG; trả true nếu đã tăng nonce. */
 export function noteMutationForRefCache(method: string | undefined, path: string): boolean {
   if (!method || method.toLowerCase() === 'get') return false;
+  const own = DOMAIN_MUTATION_PREFIXES.find(([p]) => path === p || path.startsWith(`${p}/`) || path.startsWith(`${p}?`));
+  if (own) {
+    bumpDomainNonce(own[1]);
+    return true;
+  }
   if (!MUTATION_PREFIXES.some((p) => path === p || path.startsWith(`${p}/`) || path.startsWith(`${p}?`))) return false;
   writeRefCacheState({ nonce: readRefCacheState().nonce + 1 });
   return true;

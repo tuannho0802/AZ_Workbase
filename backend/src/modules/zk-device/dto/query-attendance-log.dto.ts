@@ -1,12 +1,5 @@
 import { Type } from 'class-transformer';
-import {
-    IsInt,
-    IsOptional,
-    IsIn,
-    IsDateString,
-    Min,
-    Max,
-} from 'class-validator';
+import { IsInt, IsOptional, IsIn, IsDateString, Min, Max, IsString } from 'class-validator';
 
 export class QueryAttendanceLogDto {
     @IsOptional()
@@ -78,4 +71,9 @@ export class QueryAttendanceLogDto {
     @IsOptional()
     @IsDateString()
     to?: string; // ISO date, lọc recordTime <= to (23:59:59)
+
+  /** Khoá phiên bản cache do FE gắn (xem frontend/src/lib/api/ref-cache-version.ts) - BE không dùng giá trị, chỉ để qua ValidationPipe whitelist. */
+  @IsOptional()
+  @IsString()
+  v?: string;
 }

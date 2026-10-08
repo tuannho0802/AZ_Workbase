@@ -17,6 +17,14 @@ export const REF_DATA_QUERY_KEYS: Readonly<Record<string, readonly (readonly str
     users: [['users']], // [AGENT] NEW: GET /users/all (cache HTTP 30 phút)
     link_categories: [['link-categories']],
     link_groups: [['link-groups']],
+    guides: [['guides']],
+    // Không dùng tiền tố ['utms'] trần: sẽ kéo theo thống kê/đếm khách đang mở. Chỉ danh sách UTM (dropdown, của tôi, tất cả).
+    utms: [['utms', 'usable'], ['utms', 'managed-by-me'], ['utms', 'scoped']],
+    // Không invalidate ['storage-media']: refetch cả loạt trang đã tải (infinite) mà danh sách media không đổi theo bảng nào.
+    storage: [['storage-usage']],
+    // CỐ Ý rỗng: chấm công đổi theo mỗi lượt quẹt thẻ, không refetch bảng nặng theo từng lượt. Dữ liệu mới lấy khi hết staleTime (1 giờ),
+    // F5, hoặc bấm "Làm mới" (khoá `?v=` đã đổi theo refSig nên không dính bản cũ trong HTTP cache).
+    attendance: [],
 };
 
 /**

@@ -21,4 +21,9 @@ export class ListMediaDto {
   @Min(1)
   @Max(200)
   limit?: number = 50;
+
+  /** Khoá phiên bản cache do FE gắn (xem frontend/src/lib/api/ref-cache-version.ts) - BE không dùng giá trị, chỉ để qua ValidationPipe whitelist. */
+  @IsOptional()
+  @IsString()
+  v?: string;
 }

@@ -10,7 +10,7 @@ import {
     GuideRoleBrief,
     UpdateGuidePayload,
 } from '../api/guides.api';
-import { REFERENCE_DATA_STALE_MS } from '../query-stale';
+import { refDataQueryOptions } from '../query-stale';
 
 const LIST_KEY = ['guides', 'list'] as const;
 const MANAGE_KEY = ['guides', 'manage'] as const;
@@ -33,7 +33,8 @@ const EMPTY_PERMISSIONS: GuidePermissionBrief[] = [];
 export function useGuideList() {
     // [AGENT] OLD CODE (giữ để rollback): staleTime: 60_000
     // NEW (Plan CPU Mục 6A): 5 phút - mutation guide đều invalidate ['guides'] (khớp tiền tố mọi key bên dưới).
-    const q = useQuery({ queryKey: LIST_KEY, queryFn: () => guidesApi.list(), staleTime: REFERENCE_DATA_STALE_MS });
+    // [AGENT] OLD: staleTime: REFERENCE_DATA_STALE_MS (5 phút). NEW: HTTP cache `?v=` (guides + permSig) + refSig `guides` -> staleTime dài.
+    const q = useQuery({ queryKey: LIST_KEY, queryFn: () => guidesApi.list(), ...refDataQueryOptions() });
     return { guides: q.data ?? EMPTY_LIST, isLoading: q.isLoading, isError: q.isError };
 }
 
@@ -42,8 +43,8 @@ export function useGuideDetail(slug: string | null) {
         queryKey: detailKey(slug ?? ''),
         queryFn: () => guidesApi.getBySlug(slug as string),
         enabled: !!slug,
-        // [AGENT] OLD CODE (giữ để rollback): staleTime: 30_000
-        staleTime: REFERENCE_DATA_STALE_MS,
+        // [AGENT] OLD CODE (giữ để rollback): staleTime: 30_000 / REFERENCE_DATA_STALE_MS
+        ...refDataQueryOptions(),
         retry: false, // 404 (nháp / sai role / đã xoá) không nên thử lại
     });
 }

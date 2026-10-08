@@ -7124,3 +7124,20 @@ Now [deploy]
 **Notes:**
 > `inUseCount` đếm từ bảng khác (customers, leave_requests) không làm refSig tăng -> chỉ dropdown dùng `?v=`; 3 trang quản lý status/loại phép/trạng thái công việc gọi `skipRefVersion` (vẫn 304 mỗi lần mở trang, đúng ý). Chưa làm: guides, utms, storage, attendance (payload theo user/quyền hoặc cần cơ chế bump riêng).
 > BE tsc sạch, jest 112 suite/1851 test pass. FE tsc chỉ còn 4 lỗi logo.png có sẵn; vitest đã chạy các file liên quan, đều pass.
+
+---
+## [2026-10-08] | CACHE `?v=` cho guides / utms / storage / chấm công + staleTime dài (profile, nhóm tôi quản lý) | [Status: Success - chưa commit/deploy]
+
+**Actor:** Agent
+**Files Changed:**
+- BE: thêm domain `guides`, `utms`, `attendance`, `storage` (`permissions-version.service.ts`); `ref-data-change.subscriber.ts` map bảng guides/guide_*, utms/utm_secondary_managers, attendance_logs/zk_device_user_cache, settings(storage), department_managers; `users` đổi -> bump thêm `utms`/`attendance`/`link_groups` (`USER_DEPENDENT_DOMAINS`); departments/positions/roles -> bump `guides` (tên hiển thị trong guide)
+- BE controllers gắn `refDataCache()`: `GET /guides`, `/guides/:slug`, `/utms`, `/utms/scoped`, `/utms/managed-by-me`, `/storage/usage`, `/storage/media` (`refDataCacheFor(600)`), `/zk-device/attendance-logs`, `/attendance-summary`
+- BE DTO query thêm `v?: string` (UtmQueryDto, ListMediaDto, QueryAttendanceLog/SummaryDto) vì ValidationPipe `forbidNonWhitelisted` sẽ trả 400 nếu thiếu
+- BE `utms.service.ts` merge: `DELETE FROM utms` SQL thô -> `manager.delete(Utm, ...)` để subscriber bắt được
+- FE `ref-cache-version.ts`: `v` của guides/utms/attendance kèm `permSig` (chưa biết permSig của đúng user -> không gắn v); nonce riêng từng domain (`dn`) cho mutation guides/utms/storage/zk-device; `bumpDomainNonce()` cho nút "Làm mới"
+- FE `usePermissionChangeSignal.ts`: lưu permSig vào localStorage, F5 thấy khác lần trước -> invalidate guides/utms/chấm công
+- FE hooks: guides/utms/storage-usage -> `refDataQueryOptions()` (2h); chấm công 1h (`ATTENDANCE_STALE_MS`, "Làm mới" bỏ qua HTTP cache); media 10 phút; `useManagedByMe` + profile `fetchMeCached` -> dài; `attendance` CỐ Ý không invalidate theo poll
+
+**Notes:**
+> BE tsc sạch, nest build OK, jest 112 suite/1872 test pass. FE tsc chỉ 4 lỗi logo.png có sẵn; vitest 106 file/1139 test pass.
+> Giới hạn: SQL tay/migration/seed không bump -> tối đa 30 phút (media: 10 phút; file B2 đổi từ máy khác cũng vậy). `/utms/recent`, `/utms/customer-counts`, stats, `/link-groups/managed-by-me`, `zk-device/status`, `device-users` KHÔNG cache HTTP.

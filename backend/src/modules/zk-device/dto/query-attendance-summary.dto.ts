@@ -1,5 +1,5 @@
 import { Type } from 'class-transformer';
-import { IsInt, IsOptional, IsDateString, Min, Max } from 'class-validator';
+import { IsInt, IsOptional, IsDateString, Min, Max, IsString } from 'class-validator';
 
 export class QueryAttendanceSummaryDto {
   @IsOptional()
@@ -39,4 +39,9 @@ export class QueryAttendanceSummaryDto {
   @IsOptional()
   @IsDateString()
   to?: string;
+
+  /** Khoá phiên bản cache do FE gắn (xem frontend/src/lib/api/ref-cache-version.ts) - BE không dùng giá trị, chỉ để qua ValidationPipe whitelist. */
+  @IsOptional()
+  @IsString()
+  v?: string;
 }

@@ -187,8 +187,9 @@ export function serializeStatsParams<T extends UtmStatsParams>(params: T): Omit<
 
 export const utmsApi = {
   /** Dropdown: UTM ĐƯỢC PHÉP DÙNG - mọi role đăng nhập (BE không gắn permission). */
+  // Có từ khoá tìm kiếm -> KHÔNG gắn `?v=` (mỗi từ khoá 1 URL, không đáng cache cứng 30 phút; BE trả no-cache).
   getUsable: async (params?: { q?: string; activeOnly?: boolean; limit?: number }): Promise<UtmOption[]> =>
-    (await axiosInstance.get<UtmOption[]>('/utms', { params })).data,
+    (await axiosInstance.get<UtmOption[]>('/utms', { params, skipRefVersion: !!params?.q?.trim() })).data,
 
   getRecent: async (): Promise<UtmBrief[]> => (await axiosInstance.get<UtmBrief[]>('/utms/recent')).data,
 

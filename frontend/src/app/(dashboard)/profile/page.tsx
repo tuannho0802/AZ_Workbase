@@ -125,7 +125,7 @@ function ProfilePortal({ userId, onDeleted }: { userId: number; onDeleted?: () =
     setLoadingDetail(true);
     try {
       const res = isSelf
-        ? await fetchMeCached(queryClient, force ? 0 : 60 * 1000)
+        ? await fetchMeCached(queryClient, force ? 0 : 60 * 60 * 1000) // [AGENT] OLD: 60 * 1000; role/phòng ban đổi đã có permSig invalidate ME_KEY
         : await usersApi.getUserDetail(userId);
       setDetail(res);
     } catch (err) {

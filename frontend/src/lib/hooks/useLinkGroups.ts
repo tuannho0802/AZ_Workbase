@@ -183,7 +183,8 @@ export const useManagedByMe = () => {
   const { data, isLoading, isError, error, refetch } = useQuery({
     queryKey: MANAGED_BY_ME_KEY,
     queryFn: () => linkGroupManagersApi.listManagedByMe(),
-    staleTime: 30 * 1000,
+    // [AGENT] OLD: staleTime: 30 * 1000. NEW: dài (mutation quản lý đều invalidate MANAGED_BY_ME_KEY; refSig `link_groups` phủ tiền tố ['link-groups']).
+    ...refDataQueryOptions(),
   });
 
   return {

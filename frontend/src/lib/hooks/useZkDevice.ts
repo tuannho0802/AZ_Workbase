@@ -2,6 +2,16 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { zkDeviceApi } from '../api/zk-device.api';
 import { attendanceExportApi } from '../api/attendance-export.api';
 import { AttendanceLogQuery, AttendanceSummaryQuery } from '../types/zk-device.types';
+import { bumpDomainNonce } from '../api/ref-cache-version';
+
+// [AGENT] NEW: chấm công không cần realtime (đồng bộ máy + tổng hợp nặng) -> 1 giờ. Mutation sync/map/clear vẫn invalidate sẵn;
+// F5 dùng HTTP cache `?v=` (domain `attendance`: log mới/đổi tên NV/đổi quyền xem là khoá đổi, không thì trúng cache).
+export const ATTENDANCE_STALE_MS = 60 * 60 * 1000;
+
+/** Bọc `refetch` để nút "Làm mới" thủ công đổi khoá cache trước (không dính bản trong HTTP cache). */
+function withFreshRefetch<T extends { refetch: (...a: any[]) => any }>(q: T): T {
+  return { ...q, refetch: (...args: Parameters<T['refetch']>) => { bumpDomainNonce('attendance'); return q.refetch(...args); } };
+}
 
 export const useDeviceStatus = () => {
   return useQuery({
@@ -17,8 +27,8 @@ export const useDeviceUsers = () => {
     queryKey: ['zk-device-users'],
     queryFn: zkDeviceApi.getDeviceUsers,
     retry: false,
-    // [AGENT] OLD: mặc định 30s. Mutation sync/map/clear đã invalidate sẵn nên cache 5 phút an toàn.
-    staleTime: 5 * 60 * 1000,
+    // [AGENT] OLD: mặc định 30s -> 5 phút. Mutation sync/map/clear đã invalidate sẵn nên cache 1 giờ an toàn.
+    staleTime: ATTENDANCE_STALE_MS,
   });
 };
 
@@ -72,10 +82,13 @@ export const useRematchDeviceLogs = () => {
 };
 
 export const useAttendanceLogs = (query: AttendanceLogQuery) => {
-  return useQuery({
-    queryKey: ['zk-attendance-logs', query],
-    queryFn: () => zkDeviceApi.getAttendanceLogs(query),
-  });
+  return withFreshRefetch(
+    useQuery({
+      queryKey: ['zk-attendance-logs', query],
+      queryFn: () => zkDeviceApi.getAttendanceLogs(query),
+      staleTime: ATTENDANCE_STALE_MS,
+    }),
+  );
 };
 
 // [AGENT] OLD CODE (giữ để rollback): useAttendanceSummary(query) - luôn staleTime mặc định 30s.
@@ -84,11 +97,13 @@ export const useAttendanceSummary = (
   query: AttendanceSummaryQuery,
   options?: { staleTime?: number },
 ) => {
-  return useQuery({
-    queryKey: ['zk-attendance-summary', query],
-    queryFn: () => zkDeviceApi.getAttendanceSummary(query),
-    ...(options?.staleTime !== undefined ? { staleTime: options.staleTime } : {}),
-  });
+  return withFreshRefetch(
+    useQuery({
+      queryKey: ['zk-attendance-summary', query],
+      queryFn: () => zkDeviceApi.getAttendanceSummary(query),
+      staleTime: options?.staleTime ?? ATTENDANCE_STALE_MS,
+    }),
+  );
 };
 
 export const useCleanupAttendanceLogs = () => {

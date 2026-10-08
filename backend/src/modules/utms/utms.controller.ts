@@ -9,6 +9,7 @@ import {
   ParseIntPipe,
   Query,
   UseGuards,
+  UseInterceptors,
 } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiBearerAuth } from '@nestjs/swagger';
 import { Throttle, ThrottlerGuard } from '@nestjs/throttler';
@@ -29,6 +30,7 @@ import { UtmCustomersService } from './utm-customers.service';
 import { UtmStatsService } from './utm-stats.service';
 import { UtmStatsCustomersQueryDto, UtmStatsQueryDto } from './dto/utm-stats-query.dto';
 import { GetPermissionScope } from '../../common/decorators/get-permission-scope.decorator';
+import { refDataCache } from '../../common/interceptors/cache-control.interceptor';
 
 /**
  * UTM (danh mục chiến dịch, thay cho `customers.campaign` nhập tay). Mirror link-groups.
@@ -50,12 +52,14 @@ export class UtmsController {
     private readonly statsService: UtmStatsService,
   ) {}
 
+  @UseInterceptors(refDataCache())
   @Get()
   @ApiOperation({ summary: 'UTM được phép dùng (dropdown) - mọi role đã đăng nhập' })
   findUsable(@Query() query: UtmQueryDto, @GetUser() user: any) {
     return this.utmsService.findUsable(user, query);
   }
 
+  @UseInterceptors(refDataCache())
   @Get('managed-by-me')
   @ApiOperation({ summary: 'UTM mà mình là Quản lý chính/phụ' })
   managedByMe(@GetUser() user: any) {
@@ -82,6 +86,7 @@ export class UtmsController {
     return this.utmsService.findDuplicates(user);
   }
 
+  @UseInterceptors(refDataCache())
   @Get('scoped')
   @RequirePermission('utms.view')
   @ApiOperation({ summary: 'Tab "Tất cả UTM" - lọc theo scope của utms.view' })

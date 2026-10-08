@@ -1,6 +1,8 @@
 import { useInfiniteQuery, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { storageApi, StorageBucketKey } from '../api/storage.api';
 import { putFileToPresignedUrl } from '../api/uploads.api';
+import { bumpDomainNonce } from '../api/ref-cache-version';
+import { refDataQueryOptions } from '../query-stale';
 
 const USAGE_QUERY_KEY = ['storage-usage'];
 const mediaQueryKey = (bucket: StorageBucketKey) => ['storage-media', bucket];
@@ -8,16 +10,23 @@ const mediaQueryKey = (bucket: StorageBucketKey) => ['storage-media', bucket];
 // Cache dung lượng chỉ refresh qua cron (15-30 phút/lần - xem
 // storage-cron.controller.ts), nên staleTime dài hơn hẳn các query khác
 // trong app: F5 liên tục cũng không ra số mới hơn, gọi lại chỉ tốn API.
-const USAGE_STALE_TIME_MS = 5 * 60 * 1000;
+// [AGENT] NEW: HTTP cache `?v=` (domain `storage`, đổi khi bảng settings đổi) + refSig -> staleTime dài (2 giờ, như danh mục).
+// "Làm mới" thủ công đổi khoá trước nên KHÔNG dính bản trong HTTP cache.
+const MEDIA_STALE_TIME_MS = 10 * 60 * 1000; // danh sách file trên B2 không có bảng nào phát tín hiệu đổi -> BE cache 10 phút
 
 export function useStorageUsage() {
   const { data, isLoading, isError, refetch } = useQuery({
     queryKey: USAGE_QUERY_KEY,
     queryFn: storageApi.getUsage,
-    staleTime: USAGE_STALE_TIME_MS,
+    ...refDataQueryOptions(),
   });
 
-  return { usage: data, isLoading, isError, refetch };
+  const refetchFresh = (...args: Parameters<typeof refetch>) => {
+    bumpDomainNonce('storage');
+    return refetch(...args);
+  };
+
+  return { usage: data, isLoading, isError, refetch: refetchFresh };
 }
 
 export function useUpdateStorageLimit() {
@@ -44,7 +53,7 @@ export function useStorageMedia(bucket: StorageBucketKey) {
     queryFn: ({ pageParam }) => storageApi.listMedia(bucket, pageParam as string | undefined, 50),
     initialPageParam: undefined as string | undefined,
     getNextPageParam: (lastPage) => lastPage.nextCursor ?? undefined,
-    staleTime: 30 * 1000,
+    staleTime: MEDIA_STALE_TIME_MS,
   });
 
   const items = query.data?.pages.flatMap((p) => p.items) ?? [];

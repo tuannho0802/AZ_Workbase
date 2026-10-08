@@ -1,6 +1,7 @@
 import { ForbiddenException, BadRequestException, ConflictException, NotFoundException } from '@nestjs/common';
 import { UtmsService, UtmCaller } from './utms.service';
 import { Role } from '../../common/enums/role.enum';
+import { Utm } from '../../database/entities/utm.entity';
 
 const mk = (over: Record<string, unknown> = {}) => ({
   id: 1, name: 'FB_Q4', description: null, color: '#1677ff', visibility: 'shared', isActive: true,
@@ -12,7 +13,7 @@ describe('UtmsService', () => {
   let svc: UtmsService;
   const utmRepo: any = { findOne: jest.fn(), find: jest.fn(), save: jest.fn(), create: jest.fn((x) => x), update: jest.fn(), delete: jest.fn(), query: jest.fn(), manager: { getRepository: jest.fn() } };
   const secondaryRepo: any = { find: jest.fn().mockResolvedValue([]) };
-  const txManager: any = { update: jest.fn(), query: jest.fn() };
+  const txManager: any = { update: jest.fn(), query: jest.fn(), delete: jest.fn() };
   const dataSource: any = { transaction: jest.fn(async (cb) => cb(txManager)) };
   const perms: any = { hasPermission: jest.fn() };
   const audit: any = { logActionAsync: jest.fn() };
@@ -373,17 +374,17 @@ describe('UtmsService', () => {
         .mockResolvedValueOnce(mk({ id: 1, name: 'FB-Q4' }))
         .mockResolvedValueOnce(mk({ id: 2, name: 'FB_Q4' }))
         .mockResolvedValue(mk({ id: 2, name: 'FB_Q4' }));
-      txManager.query.mockResolvedValueOnce({ affectedRows: 7 }).mockResolvedValueOnce({});
+      txManager.query.mockResolvedValueOnce({ affectedRows: 7 });
       const res = await svc.merge(1, { targetId: 2 }, root);
       expect(res.movedCustomers).toBe(7);
       expect(txManager.query.mock.calls[0][0]).toMatch(/updated_at = updated_at/);
       expect(txManager.query.mock.calls[0][1]).toEqual([2, 'FB_Q4', 1]);
-      expect(txManager.query.mock.calls[1][0]).toMatch(/DELETE FROM utms/);
+      expect(txManager.delete).toHaveBeenCalledWith(Utm, { id: 1 });
       expect(audit.logActionAsync).toHaveBeenCalledWith(1, 'MERGE_UTM', 'utm', 2, expect.any(Object), expect.objectContaining({ movedCustomers: 7 }));
     });
     it('merge: lặp theo lô đến khi hết dòng', async () => {
       utmRepo.findOne.mockResolvedValue(mk({ id: 2 })).mockResolvedValueOnce(mk({ id: 1 })).mockResolvedValueOnce(mk({ id: 2 }));
-      txManager.query.mockResolvedValueOnce({ affectedRows: 5000 }).mockResolvedValueOnce({ affectedRows: 30 }).mockResolvedValueOnce({});
+      txManager.query.mockResolvedValueOnce({ affectedRows: 5000 }).mockResolvedValueOnce({ affectedRows: 30 });
       const res = await svc.merge(1, { targetId: 2 }, root);
       expect(res.movedCustomers).toBe(5030);
     });

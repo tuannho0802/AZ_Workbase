@@ -65,3 +65,5 @@ export class CacheControlInterceptor implements NestInterceptor {
 /** 30 phút - danh mục ít đổi; FE gắn `?v=` (refSig/epoch/nonce) nên đổi dữ liệu là tự bỏ bản cũ. */
 export const REF_DATA_HTTP_MAX_AGE_S = 1800;
 export const refDataCache = () => new CacheControlInterceptor(REF_DATA_HTTP_MAX_AGE_S, false, true);
+/** Như `refDataCache()` nhưng tự chọn thời gian cache (giây) - cho dữ liệu có nguồn thay đổi không bắt được bằng sự kiện (vd danh sách file trên B2). */
+export const refDataCacheFor = (maxAgeSeconds: number) => new CacheControlInterceptor(maxAgeSeconds, false, true);

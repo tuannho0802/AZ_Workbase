@@ -1,5 +1,6 @@
 import { describe, it, expect, beforeEach } from 'vitest';
 import {
+  bumpDomainNonce,
   noteMutationForRefCache,
   pathOf,
   readRefCacheState,
@@ -76,5 +77,42 @@ describe('ref-cache-version', () => {
   it('pathOf bỏ query', () => {
     expect(pathOf('/users/all?role=x')).toBe('/users/all');
     expect(pathOf(undefined)).toBe('');
+  });
+
+  it('guides: /guides và /guides/:slug có version, /guides/manage/* thì KHÔNG', () => {
+    writeRefCacheState({ userId: 7, permSig: '3:employee:1:2:0', sig: {}, epoch: 0 });
+    expect(refVersionFor('/guides', 7)).toBe('7.0.0.0.p3-employee-1-2-0');
+    expect(refVersionFor('/guides/huong-dan-a', 7)).toBe('7.0.0.0.p3-employee-1-2-0');
+    for (const p of ['/guides/manage/all', '/guides/manage/12', '/guides/a/b']) expect(refVersionFor(p, 7)).toBeUndefined();
+  });
+
+  it('domain theo quyền: permSig đổi -> khoá đổi; permSig của user khác không được dùng', () => {
+    writeRefCacheState({ userId: 7, permSig: 'a', sig: {}, epoch: 0 });
+    const v1 = refVersionFor('/utms/scoped', 7);
+    writeRefCacheState({ permSig: 'b' });
+    expect(refVersionFor('/utms/scoped', 7)).not.toBe(v1);
+    expect(refVersionFor('/zk-device/attendance-summary', 8)).toBeUndefined(); // permSig của user 7, không dùng cho user 8
+    // domain không phụ thuộc quyền thì permSig không ảnh hưởng
+    expect(refVersionFor('/storage/usage', 7)).toBe('7.0.0.0');
+  });
+
+  it('mutation guides/utms/storage/zk-device chỉ đổi khoá của đúng domain, không đụng nonce chung', () => {
+    writeRefCacheState({ userId: 7, permSig: 'a', sig: {}, epoch: 0 });
+    const dept = refVersionFor('/departments', 7);
+    const att = refVersionFor('/zk-device/attendance-logs', 7);
+    expect(noteMutationForRefCache('POST', '/zk-device/sync')).toBe(true);
+    expect(refVersionFor('/departments', 7)).toBe(dept);
+    expect(refVersionFor('/zk-device/attendance-logs', 7)).not.toBe(att);
+    const util = refVersionFor('/utms', 7);
+    expect(noteMutationForRefCache('PATCH', '/utms/3')).toBe(true);
+    expect(refVersionFor('/utms', 7)).not.toBe(util);
+    expect(refVersionFor('/departments', 7)).toBe(dept);
+  });
+
+  it('bumpDomainNonce (nút Làm mới) đổi khoá domain đó', () => {
+    writeRefCacheState({ userId: 7, permSig: 'a', sig: {}, epoch: 0 });
+    const before = refVersionFor('/storage/usage', 7);
+    bumpDomainNonce('storage');
+    expect(refVersionFor('/storage/usage', 7)).not.toBe(before);
   });
 });

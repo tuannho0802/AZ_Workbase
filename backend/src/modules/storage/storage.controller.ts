@@ -1,4 +1,4 @@
-import { Body, Controller, Delete, Get, Patch, Post, Query, UseGuards } from '@nestjs/common';
+import { Body, Controller, Delete, Get, Patch, Post, Query, UseGuards, UseInterceptors } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { PermissionGuard } from '../../common/guards/permission.guard';
@@ -10,6 +10,7 @@ import { DeleteMediaDto } from './dto/delete-media.dto';
 import { BulkDeleteMediaDto } from './dto/bulk-delete-media.dto';
 import { PresignMediaLibraryDto } from './dto/presign-media-library.dto';
 import { UpdateStorageLimitDto } from './dto/update-storage-limit.dto';
+import { refDataCache, refDataCacheFor } from '../../common/interceptors/cache-control.interceptor';
 
 @ApiTags('storage')
 @ApiBearerAuth()
@@ -18,6 +19,7 @@ import { UpdateStorageLimitDto } from './dto/update-storage-limit.dto';
 export class StorageController {
   constructor(private readonly storageService: StorageService) {}
 
+  @UseInterceptors(refDataCache())
   @Get('usage')
   @RequirePermission('storage.view')
   @ApiOperation({
@@ -52,6 +54,7 @@ export class StorageController {
     return { softLimitGb };
   }
 
+  @UseInterceptors(refDataCacheFor(600))
   @Get('media')
   @RequirePermission('storage.view')
   @ApiOperation({ summary: 'Danh sách media phân trang (bucket: avatars | leave-attachments | media-library)' })

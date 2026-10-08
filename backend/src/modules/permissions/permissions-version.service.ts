@@ -28,6 +28,10 @@ export const REF_DATA_DOMAINS = [
   'media_sources',
   'users', // [AGENT] NEW: GET /users/all (dropdown nhân viên) - cache HTTP 30 phút, đổi khoá bằng refSig.users
   'link_categories', // [AGENT] NEW: GET /link-categories - cache HTTP 30 phút
+  'guides', // [AGENT] NEW: GET /guides + /guides/:slug (mục lục + nội dung; hiển thị còn phụ thuộc quyền người xem -> FE gắn kèm permSig vào `v`)
+  'utms', // [AGENT] NEW: GET /utms, /utms/scoped, /utms/managed-by-me
+  'attendance', // [AGENT] NEW: GET /zk-device/attendance-logs, /attendance-summary
+  'storage', // [AGENT] NEW: GET /storage/usage, /storage/media
   'link_groups', // [AGENT] NEW: GET /link-groups (kèm category + quản lý chính/phụ + nhân viên content) - cache HTTP 30 phút
 ] as const;
 export type RefDataDomain = (typeof REF_DATA_DOMAINS)[number];

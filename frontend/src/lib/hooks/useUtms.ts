@@ -10,6 +10,7 @@ import {
   UtmStatsParams,
   UtmStatsCustomersParams,
 } from '../api/utms.api';
+import { refDataQueryOptions } from '../query-stale';
 
 const UTM_KEY = ['utms'] as const;
 
@@ -30,7 +31,8 @@ export const useUsableUtms = (q: string | undefined, enabled = true, activeOnly 
     queryKey: [...UTM_KEY, 'usable', q ?? '', activeOnly],
     queryFn: () => utmsApi.getUsable({ q: q || undefined, activeOnly: activeOnly || undefined, limit: 50 }),
     enabled,
-    staleTime: 30 * 1000,
+    // [AGENT] OLD: staleTime: 30 * 1000. NEW: HTTP cache ?v= (utms + permSig) + refSig `utms` + mutation invalidate ['utms'].
+    ...refDataQueryOptions(),
   });
   return { utms: data ?? EMPTY_OPTIONS, isLoading, isFetching };
 };
@@ -50,7 +52,8 @@ export const useManagedUtms = (enabled = true) => {
     queryKey: [...UTM_KEY, 'managed-by-me'],
     queryFn: utmsApi.getManagedByMe,
     enabled,
-    staleTime: 30 * 1000,
+    // [AGENT] OLD: staleTime: 30 * 1000. NEW: HTTP cache ?v= (utms + permSig) + refSig `utms` + mutation invalidate ['utms'].
+    ...refDataQueryOptions(),
   });
   return { utms: data ?? EMPTY_VIEWS, isLoading };
 };
@@ -61,7 +64,8 @@ export const useScopedUtms = (enabled: boolean) => {
     queryKey: [...UTM_KEY, 'scoped'],
     queryFn: utmsApi.getScoped,
     enabled,
-    staleTime: 30 * 1000,
+    // [AGENT] OLD: staleTime: 30 * 1000. NEW: HTTP cache ?v= (utms + permSig) + refSig `utms` + mutation invalidate ['utms'].
+    ...refDataQueryOptions(),
   });
   return { utms: data ?? EMPTY_VIEWS, isLoading };
 };

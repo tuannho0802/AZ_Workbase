@@ -11,6 +11,7 @@ import {
   Request,
   HttpException,
   HttpStatus,
+  UseInterceptors,
 } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiBearerAuth } from '@nestjs/swagger';
 import { ZkDeviceService } from './zk-device.service';
@@ -27,6 +28,7 @@ import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { PermissionGuard } from '../../common/guards/permission.guard';
 import { RequirePermission } from '../../common/decorators/require-permission.decorator';
 import { GetPermissionScope } from '../../common/decorators/get-permission-scope.decorator';
+import { refDataCache } from '../../common/interceptors/cache-control.interceptor';
 
 @ApiTags('ZK Device (Máy chấm công)')
 @ApiBearerAuth()
@@ -100,6 +102,7 @@ export class ZkDeviceController {
     return this.zkDeviceService.unmapUser(userId, req.user.id, req.user.role, scope);
   }
 
+  @UseInterceptors(refDataCache())
   @Get('attendance-logs')
   @RequirePermission('attendance.view')
   @ApiOperation({
@@ -123,6 +126,7 @@ export class ZkDeviceController {
     return this.zkDeviceService.cleanupOldLogs(query.olderThan, req.user.id);
   }
 
+  @UseInterceptors(refDataCache())
   @Get('attendance-summary')
   @RequirePermission('attendance.view')
   @ApiOperation({
