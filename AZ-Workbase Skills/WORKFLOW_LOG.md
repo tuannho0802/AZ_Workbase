@@ -6856,3 +6856,27 @@ Now [deploy]
 > Đánh đổi: Task đã nhắc mà sau đó mới thêm Sales phụ sẽ không nhận nhắc trong ngày đó. Chưa commit/push. Nếu Vercel Cron `auto-overdue` bị tắt, KHÔNG còn fallback qua Uptime — gọi tay `auto-overdue?secret=`.
 
 ---
+
+---
+## [2026-10-08] | PLAN_GUIDES_CONTENT P4: bài `phong-ban` + 4 mẫu Phòng ban | [Status: Success - chưa commit]
+
+**Actor:** Agent
+**Files Changed:**
+- `guides-content/phong-ban.md` — bài mới (`published: false`, `permissions: [departments.view]`, sortOrder 120)
+- `frontend/src/lib/guides/demos/departments.demos.tsx` (mới) — 4 mẫu: `department-table` (viewer=admin|assistant|employee, dùng `UserMiniCard` thật cho cột Quản lý), `department-form` (mode=create|edit), `department-delete` (variant=with-users|empty), `department-drawer`
+- `frontend/src/lib/guides/demos/departments.demos.test.tsx` (mới) — 5 test
+- `frontend/src/lib/guides/guide-demos.tsx` — đăng ký `DEPARTMENT_DEMOS`
+- `frontend/src/lib/guides/guide-demos.test.tsx` — 77 → 81 mẫu, thêm 4 id
+- `frontend/src/lib/guides/guide-slugs.ts` — gỡ `phong-ban` khỏi `PENDING_GUIDE_SLUGS`
+- `AZ-Workbase Skills/PLAN_GUIDES_CONTENT.md` — tick P4 `phong-ban`
+
+**Notes:**
+> Verify: `vitest src/lib/guides` 22 file / 494 test pass; `tsc --noEmit` sạch (chỉ còn lỗi `*.png` có sẵn). Chưa chạy `next build`, chưa test tay, chưa chạy `guides:sync`. Cần duyệt nội dung rồi đổi `published: true` + `guides:sync --apply`.
+> Phát hiện (CHƯA sửa, ngoài phạm vi; bài đã mô tả đúng hành vi thật):
+> (1) `DepartmentsService.findAll()` chỉ trả phòng `isActive: true` -> gạt "Ngừng hoạt động" ở form Sửa làm phòng BIẾN khỏi trang, bộ lọc "Trạng thái" không bao giờ ra phòng ngừng hoạt động, và UI không có cách bật lại.
+> (2) Form Sửa luôn gửi lại TOÀN BỘ `managerUserIds`; ô chọn chỉ liệt kê user active vai trò Admin/Assistant/Manager (từ `GET /users/all`), còn BE từ chối người bị khoá / xoá mềm / đổi vai trò. Khoá hoặc đổi vai trò Manager KHÔNG tự gỡ khỏi `department_managers` (chỉ hard-delete user mới xử lý) -> sửa một phòng còn Manager như vậy sẽ lỗi 400/404 cho tới khi gỡ họ khỏi ô; người đó có thể hiện dạng số ID trong ô (chưa xem trên trình duyệt thật).
+> (3) Xoá phòng: FE đếm nhân viên theo `employees` (chỉ user active) còn BE `remove()` đếm cả user bị khoá/chờ duyệt -> phòng chỉ còn tài khoản khoá hiện hộp thoại "không còn nhân viên" (không có ô chọn phòng đích) rồi BE trả 400 bắt `moveUsersToDepartmentId`: kẹt cho tới khi chuyển họ sang phòng khác ở trang Nhân viên. Ngoài ra `departmentRepository.count()` đếm cả phòng ngừng hoạt động còn FE ẩn nút Xoá theo số phòng ĐANG hoạt động.
+> Chưa kiểm chứng: user bị xoá mềm vẫn trỏ `department_id` tới phòng (FK ON DELETE NO ACTION) có làm xoá phòng lỗi FK hay không (`remove()` chỉ di dời user chưa xoá mềm).
+> Bài nhắc "đổi Quản lý -> nhờ tải lại trang" chứ KHÔNG khẳng định thời gian hiệu lực (chưa đọc cơ chế cache phạm vi).
+
+---

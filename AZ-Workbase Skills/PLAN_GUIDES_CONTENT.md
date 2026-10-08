@@ -246,6 +246,7 @@ Thứ tự: `khach-hang` → `chia-data` → `quan-ly-phu-trach` → `status-kha
 
 ### P4 — Quản trị tổ chức & hệ thống (cỡ L)
 `nhan-vien` → `phong-ban` → `vi-tri` → `phan-quyen` → `nhat-ky-he-thong` → `may-cham-cong` → `luu-tru-anh`.
+- [x] (2026-10-08) `nhan-vien` (xem WORKFLOW_LOG). (2026-10-08) `phong-ban` đã viết (`published: false` chờ duyệt, `permissions: [departments.view]`) + 4 mẫu mới trong `demos/departments.demos.tsx` (`department-table` viewer=admin|assistant|employee, `department-form` mode=create|edit, `department-delete` variant=with-users|empty, `department-drawer`). Còn lại P4: `vi-tri` → `phan-quyen` → `nhat-ky-he-thong` → `may-cham-cong` → `luu-tru-anh`.
 
 ### P5 — Hoàn thiện (cỡ S)
 - [ ] Rà lại toàn bộ guide với app thật theo từng role (đăng nhập thử 4 role + 1 role tuỳ chỉnh).
