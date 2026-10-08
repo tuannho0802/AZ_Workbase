@@ -33,6 +33,11 @@ interface CacheEntry {
 export class PermissionsService {
   // key = `${roleCode}:${departmentId ?? 'global'}`
   private cache = new Map<string, CacheEntry>();
+  // [PERF] Single-flight: SidebarBadges kiểm 6 quyền song song cùng cacheKey; cache chỉ ghi SAU khi query xong nên TRƯỚC ĐÂY
+  // mỗi lần cache hết hạn (TTL 30s < chu kỳ poll) bắn 6 query JOIN y hệt cùng lúc. Giờ dùng chung 1 query đang chạy.
+  // `gen` tăng ở invalidate() để query cũ đang bay không ghi đè cache vừa xoá.
+  private inflight = new Map<string, Promise<Map<string, PermissionScope | null>>>();
+  private gen = 0;
 
   constructor(
     @InjectRepository(RolePermission)
@@ -58,6 +63,8 @@ export class PermissionsService {
   invalidate(roleCode?: string, departmentId?: number | null, positionId?: number | null): void {
     // [AGENT] NEW CODE: báo cho FE biết quyền vừa đổi (qua permSig trong /notifications/poll).
     this.versionService.bump();
+    this.gen++;
+    this.inflight.clear();
     if (!roleCode) {
       this.cache.clear();
       return;
@@ -101,6 +108,24 @@ export class PermissionsService {
       return cached.map;
     }
 
+    const pending = this.inflight.get(cacheKey);
+    if (pending) return pending;
+    const gen = this.gen;
+    const task = this.queryRolePermissionMap(roleCode, departmentId, positionId, cacheKey, epoch, gen).finally(() => {
+      if (this.inflight.get(cacheKey) === task) this.inflight.delete(cacheKey);
+    });
+    this.inflight.set(cacheKey, task);
+    return task;
+  }
+
+  private async queryRolePermissionMap(
+    roleCode: string,
+    departmentId: number | null | undefined,
+    positionId: number | null | undefined,
+    cacheKey: string,
+    epoch: number | undefined,
+    gen: number,
+  ): Promise<Map<string, PermissionScope | null>> {
     // 3 tập ĐIỀU KIỆN RỜI NHAU, đúng thiết kế tuyến tính 3 tầng (xem comment
     // đầu file) - KHÔNG gộp thành 1 điều kiện OR duy nhất để tránh lẫn dòng
     // override phòng ban với dòng override vị trí.
@@ -162,7 +187,7 @@ export class PermissionsService {
       }
     }
 
-    this.cache.set(cacheKey, { map, expiresAt: Date.now() + CACHE_TTL_MS, epoch });
+    if (gen === this.gen) this.cache.set(cacheKey, { map, expiresAt: Date.now() + CACHE_TTL_MS, epoch });
     return map;
   }
 

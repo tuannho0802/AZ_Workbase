@@ -6958,3 +6958,19 @@ Now [deploy]
 > Lợi ích chính là hết cảnh báo/log; CPU tiết kiệm không đáng kể (mỗi lần chỉ vài chục micro-giây). Sau khi deploy: xác nhận hết `[DEP0169]` rồi tắt `TRACE_URL_PARSE` (có thể giữ code tracer). Chưa kiểm chứng trên Vercel thật: nếu `req.query` ở đó là thuộc tính không cấu hình được thì `installNativeQuery` bỏ qua và cảnh báo vẫn còn (lúc đó gửi lại stack). Chưa commit/push.
 
 ---
+
+## [2026-10-08] | PERF: single-flight cho PermissionsService + PermissionsVersionService (sidebar/poll chậm) | [Status: Success - chưa commit/deploy]
+
+**Actor:** Agent
+**Files Changed:**
+- `backend/src/modules/permissions/permissions.service.ts` — `loadRolePermissionMap` dùng chung 1 query đang bay theo `cacheKey` (`inflight`), thêm `gen` để `invalidate()` không bị query cũ ghi đè cache
+- `backend/src/modules/permissions/permissions-version.service.ts` — `load()` single-flight (`loading` + `gen`, `dropCache()` thay cho `this.cached = null`)
+- `backend/src/modules/permissions/permissions.service.spec.ts` (+3 test), `permissions-version.service.spec.ts` (+2 test)
+
+**Root Cause:**
+> Log prod: `[Badges] total=421ms perm=377ms ... tasks=43ms`, `inflight=1`, cpu 95–202ms. `getBadges` gọi 6 `resolve()` song song cùng cacheKey; cache chỉ ghi SAU khi query xong nên mỗi lần hết TTL (30s < chu kỳ poll) bắn 6 query JOIN y hệt cùng lúc, cộng thêm ~10 lời gọi `load()` của version service (TTL 10s) cũng không single-flight -> ~16 query trùng trên pool `connectionLimit: 3`.
+
+**Notes:**
+> Verify: jest backend 110 suite / 1827 test pass, `tsc --noEmit` + `nest build` sạch; 8 test fail khi gỡ bản sửa. Chưa đo trên prod: sau deploy so lại `perm=` trong dòng `[Badges]`. Phần CPU do TypeORM dựng lại JOIN 6 lần là suy luận từ code, chưa đo riêng. `UiVisibilityService.loadHiddenKeysMap` có cùng kiểu nhưng thường chỉ gọi 1 lần/request nên chưa sửa.
+
+---

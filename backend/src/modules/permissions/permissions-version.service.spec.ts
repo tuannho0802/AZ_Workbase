@@ -39,6 +39,32 @@ describe('PermissionsVersionService', () => {
     expect(repo.find).toHaveBeenCalledTimes(2);
   });
 
+  it('single-flight: get/getRefSig/getEpoch gọi ĐỒNG THỜI -> chỉ 1 query settings', async () => {
+    let release!: () => void;
+    repo.find.mockImplementation(() => new Promise((resolve) => { release = () => resolve(perm('7')); }));
+    const calls = Promise.all([service.get(), service.getRefSig(), service.getEpoch(), service.get(), service.getEpoch()]);
+    await new Promise((r) => setImmediate(r));
+    release();
+    const [v, ref, epoch] = await calls;
+    expect(repo.find).toHaveBeenCalledTimes(1);
+    expect(v).toBe(7);
+    expect(ref).toBeDefined();
+    expect(epoch).toBe(0);
+  });
+
+  it('single-flight + bump: query đang bay lúc bump KHÔNG ghi đè cache (lần sau đọc lại DB)', async () => {
+    let release!: () => void;
+    repo.find.mockImplementationOnce(() => new Promise((resolve) => { release = () => resolve(perm('1')); }));
+    const first = service.get();
+    await new Promise((r) => setImmediate(r));
+    service.bump();
+    release();
+    await first;
+    repo.find.mockResolvedValueOnce(perm('2'));
+    expect(await service.get()).toBe(2);
+    expect(repo.find).toHaveBeenCalledTimes(2);
+  });
+
   it('lỗi DB -> trả undefined, KHÔNG throw, KHÔNG cache lỗi', async () => {
     repo.find.mockRejectedValueOnce(new Error('db down')).mockResolvedValueOnce(perm('2'));
     expect(await service.get()).toBeUndefined();

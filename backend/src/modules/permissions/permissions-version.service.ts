@@ -62,12 +62,34 @@ export class PermissionsVersionService {
   // [AGENT] NEW CODE (9D): 1 bản chụp chung cho permissions_version + refdata_version:* -> `permSig` và `refSig` dùng CHUNG 1 query.
   private cached: { snapshot: VersionSnapshot; expiresAt: number } | null = null;
 
+  // [PERF] Single-flight: `poll` gọi get/getRefSig/getEpoch + mỗi lần kiểm quyền đều gọi `getEpoch()` song song -> khi cache hết hạn
+  // TRƯỚC ĐÂY mỗi lời gọi tự query `settings` (cache chỉ ghi SAU khi query xong) = nhiều query y hệt cùng lúc trên pool 3 kết nối.
+  // Giờ các lời gọi đồng thời dùng chung 1 query đang chạy. `gen` tăng khi xoá cache để query cũ đang bay không ghi đè bản mới.
+  private loading: Promise<VersionSnapshot | undefined> | null = null;
+  private gen = 0;
+
   constructor(@InjectRepository(Setting) private readonly settingRepo: Repository<Setting>) {}
+
+  private dropCache(): void {
+    this.cached = null;
+    this.loading = null;
+    this.gen++;
+  }
 
   /** Đọc 1 lần TẤT CẢ bộ đếm (1 query, `key IN (...)`), cache 10 s/instance. KHÔNG throw - lỗi trả `undefined` và không cache. */
   private async load(): Promise<VersionSnapshot | undefined> {
     const now = Date.now();
     if (this.cached && this.cached.expiresAt > now) return this.cached.snapshot;
+    if (this.loading) return this.loading;
+    const gen = this.gen;
+    const task = this.fetchSnapshot(now, gen).finally(() => {
+      if (this.loading === task) this.loading = null;
+    });
+    this.loading = task;
+    return task;
+  }
+
+  private async fetchSnapshot(now: number, gen: number): Promise<VersionSnapshot | undefined> {
     try {
       const rows = await this.settingRepo.find({
         where: { key: In([PERMISSIONS_VERSION_KEY, SYSTEM_EPOCH_KEY, ...REF_DATA_DOMAINS.map(refDataVersionKey)]) },
@@ -80,7 +102,7 @@ export class PermissionsVersionService {
         epoch: byKey.get(SYSTEM_EPOCH_KEY) ?? 0,
         ref,
       };
-      this.cached = { snapshot, expiresAt: now + PERMISSIONS_VERSION_CACHE_TTL_MS };
+      if (gen === this.gen) this.cached = { snapshot, expiresAt: now + PERMISSIONS_VERSION_CACHE_TTL_MS };
       return snapshot;
     } catch (err) {
       this.logger.warn(`Không đọc được phiên bản (permissions/refdata): ${err instanceof Error ? err.message : String(err)}`);
@@ -117,7 +139,7 @@ export class PermissionsVersionService {
       );
       return (await this.getEpochState()).value;
     } finally {
-      this.cached = null; // lần đọc kế tiếp lấy giá trị mới từ DB
+      this.dropCache(); // lần đọc kế tiếp lấy giá trị mới từ DB
     }
   }
 
@@ -132,14 +154,14 @@ export class PermissionsVersionService {
 
   /** Tăng phiên bản (fire-and-forget qua waitUntil, không chặn request, không throw). */
   bump(): void {
-    this.cached = null;
+    this.dropCache();
     this.runInBackground(this.bumpNow());
   }
 
   /** [9D] Tăng phiên bản của các danh mục vừa đổi (fire-and-forget). Gọi bởi `RefDataChangeSubscriber` SAU KHI dữ liệu đã ghi/commit. */
   bumpRef(domains: readonly RefDataDomain[]): void {
     if (domains.length === 0) return;
-    this.cached = null;
+    this.dropCache();
     this.runInBackground(this.bumpRefNow(domains));
   }
 
@@ -161,7 +183,7 @@ export class PermissionsVersionService {
     } catch (err) {
       this.logger.error(`Không bump được permissions_version: ${err instanceof Error ? err.stack : String(err)}`);
     } finally {
-      this.cached = null; // lần đọc kế tiếp lấy giá trị mới từ DB
+      this.dropCache(); // lần đọc kế tiếp lấy giá trị mới từ DB
     }
   }
 
@@ -180,7 +202,7 @@ export class PermissionsVersionService {
     } catch (err) {
       this.logger.error(`Không bump được refdata_version (${unique.join(',')}): ${err instanceof Error ? err.stack : String(err)}`);
     } finally {
-      this.cached = null;
+      this.dropCache();
     }
   }
 

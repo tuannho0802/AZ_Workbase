@@ -91,6 +91,44 @@ describe('PermissionsService', () => {
       expect(mockRolePermissionRepo.find).toHaveBeenCalledTimes(1);
     });
 
+    it('single-flight: 6 lời gọi ĐỒNG THỜI cùng key (như SidebarBadges) -> chỉ query DB 1 lần', async () => {
+      let release!: () => void;
+      mockRolePermissionRepo.find.mockImplementation(
+        () => new Promise((resolve) => { release = () => resolve([{ permission: { key: 'customers.view' }, scope: PermissionScope.ALL, departmentId: null }]); }),
+      );
+
+      const calls = Promise.all(Array.from({ length: 6 }, () => service.hasPermission('employee', 'customers.view', 3, 2)));
+      await new Promise((r) => setImmediate(r));
+      release();
+      const results = await calls;
+
+      expect(mockRolePermissionRepo.find).toHaveBeenCalledTimes(1);
+      expect(results.every((r) => r.allowed && r.scope === PermissionScope.ALL)).toBe(true);
+    });
+
+    it('single-flight: lỗi query không bị kẹt - lần gọi sau query lại bình thường', async () => {
+      mockRolePermissionRepo.find.mockRejectedValueOnce(new Error('boom'));
+      await expect(service.hasPermission('employee', 'customers.view')).rejects.toThrow('boom');
+      mockRolePermissionRepo.find.mockResolvedValueOnce([{ permission: { key: 'customers.view' }, scope: PermissionScope.ALL, departmentId: null }]);
+      await expect(service.hasPermission('employee', 'customers.view')).resolves.toEqual({ allowed: true, scope: PermissionScope.ALL });
+    });
+
+    it('single-flight + invalidate: query đang bay lúc invalidate KHÔNG ghi đè cache (lần sau đọc lại DB)', async () => {
+      let release!: () => void;
+      mockRolePermissionRepo.find.mockImplementationOnce(
+        () => new Promise((resolve) => { release = () => resolve([{ permission: { key: 'old.perm' }, scope: null, departmentId: null }]); }),
+      );
+      const first = service.hasPermission('manager', 'old.perm');
+      await new Promise((r) => setImmediate(r));
+      service.invalidate('manager');
+      release();
+      await first;
+
+      mockRolePermissionRepo.find.mockResolvedValueOnce([{ permission: { key: 'new.perm' }, scope: null, departmentId: null }]);
+      await expect(service.hasPermission('manager', 'new.perm')).resolves.toEqual({ allowed: true, scope: null });
+      expect(mockRolePermissionRepo.find).toHaveBeenCalledTimes(2);
+    });
+
     it('cache + epoch (Reset hệ thống): epoch đổi giữa 2 lần gọi -> bỏ cache, query DB lại', async () => {
       mockRolePermissionRepo.find.mockResolvedValue([
         { permission: { key: 'customers.view' }, scope: PermissionScope.DEPARTMENT, departmentId: null },
