@@ -7073,3 +7073,27 @@ Now [deploy]
 > KHÔNG cache HTTP: customer-statuses, periodic-task-statuses, leave-types, media-sources (payload có `inUseCount` đếm từ bảng khác, không bump domain). `users/me`, `my-permissions`, ui-visibility, poll cũng không. KHÔNG đưa version/epoch về 0 (chỉ tăng).
 > Giới hạn: SQL thô/migration/seed không bump refSig => tối đa 30 phút cũ (hoặc admin bấm Reset). Chưa kiểm thử trình duyệt thật (F5 vs Ctrl+Shift+R với XHR).
 > Kiểm chứng: BE `tsc` sạch, `nest build` OK, jest 112 suite/1845 test pass; FE vitest 105 file pass, `tsc` chỉ còn 4 lỗi `logo.png` có sẵn.
+
+---
+## [2026-10-08] | PERF: rà FE request thừa gây CPU BE — cache tab chấm công tháng + audit/lich-su meta qua React Query | [Status: Success - chưa commit/deploy]
+
+**Actor:** Agent
+**Files Changed:**
+- `backend/src/modules/zk-device/dto/query-attendance-summary.dto.ts` — `@Max(5000)` cho `limit` (chỉ chặn đòi số dòng vô hạn, không giảm CPU)
+- `frontend/src/lib/hooks/useZkDevice.ts` — `useAttendanceSummary(query, options?)` nhận `staleTime` tuỳ chọn
+- `frontend/src/app/(dashboard)/attendance-device/AttendanceMonthlyTab.tsx` — tháng ĐÃ QUA cache 5 phút (`REFERENCE_DATA_STALE_MS`) cho attendance summary + `leave-approved-range`; tháng hiện tại giữ 30s
+- `frontend/src/app/(dashboard)/audit-logs/page.tsx` — `getActions`/`getSettings` chuyển từ `useEffect + .then` sang `useQuery` (cache 5 phút, invalidate sau khi lưu cấu hình); bổ sung deps `permissionsLoading`/`hasAuditView` cho effect kiểm tra quyền
+- `frontend/src/app/(dashboard)/lich-su-cong-viec/page.tsx` — `getActions` chuyển sang `useQuery` (cache 5 phút)
+
+**Root Cause:**
+> BE `getAttendanceSummary` luôn `getMany()` toàn bộ log của khoảng ngày rồi gom trong RAM (`limit` chỉ cắt mảng) -> mỗi lần tải lại tab tháng (staleTime mặc định 30s) là quét lại cả tháng. Các `getActions`/`getSettings` gọi trong `useEffect` không qua cache -> mỗi lần mở trang thêm 1 request.
+
+**Solution:**
+> Giảm SỐ LẦN gọi (cache tháng đã qua, cache danh mục tĩnh), không đổi logic BE. Các mutation sync/rematch/cleanup vẫn invalidate `zk-attendance-summary`.
+
+**Notes:**
+> `tsc --noEmit` BE sạch; jest `zk-device` 16/16 pass. FE `tsc` chỉ còn 4 lỗi `logo.png` có sẵn; vitest: 174 file chạy không lỗi (bộ đầy đủ vượt giới hạn thời gian sandbox nên không có tổng kết cuối), 3 file liên quan 30/30 pass. Chưa test trình duyệt, chưa đo prod.
+> Rủi ro: key `leave-approved-range` không có mutation nào invalidate -> đơn nghỉ duyệt bổ sung cho tháng cũ có thể chậm hiện tối đa 5 phút (hoặc F5).
+> Chưa làm: `profile/page.tsx` (giữ nguyên, lợi ích nhỏ); endpoint/cache tổng hợp theo tháng ở BE (cách giảm CPU thật cho tab tháng).
+
+---
