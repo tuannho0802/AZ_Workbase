@@ -7,6 +7,33 @@ import { scrubEvent } from './common/observability/sentry-scrub';
 const dsn = process.env.SENTRY_DSN;
 const isProd = process.env.NODE_ENV === 'production' || process.env.VERCEL === '1';
 
+// Vercel nạp function qua launcher của họ bằng cờ `--require` (không đổi được
+// từ repo). SDK v11 thấy `Sentry.init` nằm trong stack của file preload nên in
+// cảnh báo "[Sentry] Initializing the SDK via the Node `--require` flag is no
+// longer supported..." ở MỖI cold start. Cảnh báo đó nhắm vào kiểu preload
+// `node -r ./instrument.js`; ở đây init chạy từ `import './instrument'` đầu
+// `main.ts`, không có loader thread nào của Sentry. Chỉ trên Vercel: tạm bỏ các
+// cờ `-r/--require` khỏi `process.execArgv` đúng trong lúc gọi `Sentry.init` (SDK
+// chỉ đọc execArgv để đoán entry point) rồi khôi phục ngay. Local/PM2/khác: giữ
+// nguyên để cảnh báo thật vẫn hiện nếu ai đó cố tình preload bằng `-r`.
+function stripRequireFlags(argv: string[]): string[] {
+  const out: string[] = [];
+  for (let i = 0; i < argv.length; i++) {
+    const arg = argv[i];
+    if (arg === '-r' || arg === '--require') {
+      i++; // bỏ luôn giá trị đi kèm
+    } else if (!/^(--require|-r)=/.test(arg)) {
+      out.push(arg);
+    }
+  }
+  return out;
+}
+
+const originalExecArgv = process.execArgv;
+if (process.env.VERCEL === '1') {
+  process.execArgv = stripRequireFlags(originalExecArgv);
+}
+
 Sentry.init({
   dsn,
   enabled: Boolean(dsn) && isProd,
@@ -24,3 +51,5 @@ Sentry.init({
   integrations: (defaults) => defaults.filter((i) => i.name !== 'ContextLines'),
   beforeSend: (event) => scrubEvent(event),
 });
+
+process.execArgv = originalExecArgv;

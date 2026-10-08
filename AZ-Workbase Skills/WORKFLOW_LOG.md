@@ -6988,3 +6988,20 @@ Now [deploy]
 > `tsc --noEmit` sạch, jest keep-alive 5/5 pass. Chưa chạy full jest/build. Chưa commit/push.
 
 ---
+
+## [2026-10-08 11:15] | Sentry: hết cảnh báo `--require` trong log Vercel BE | [Status: Success - chờ deploy xác nhận]
+
+**Actor:** Agent
+**Files Changed:**
+- `backend/src/instrument.ts` — trên Vercel, tạm bỏ cờ `-r/--require` khỏi `process.execArgv` trong lúc gọi `Sentry.init`, xong khôi phục.
+
+**Root Cause:**
+> `@sentry/node` v11 in `[Sentry] Initializing the SDK via the Node --require flag is no longer supported...` khi file nằm trong stack của `Sentry.init` được nạp bằng `-r/--require`. Launcher của Vercel preload function bằng `--require` (không đổi được từ repo) nên mỗi cold start đều có cảnh báo. Chạy `node dist/src/main` thường và `next start` (FE) đều không có cảnh báo.
+
+**Solution:**
+> Chỉ áp dụng khi `VERCEL === '1'`; local/nơi khác giữ nguyên để cảnh báo thật vẫn hiện nếu ai preload `instrument` bằng `-r`.
+
+**Notes:**
+> `tsc --noEmit` sạch; `nest build` ok; jest `common/observability` + `common/filters` 24/24 pass. Mô phỏng `node -r instrument`: không `VERCEL` = 1 cảnh báo, `VERCEL=1` = 0, execArgv được khôi phục. Chưa kiểm chứng trên Vercel thật: sau deploy kiểm tra log cold start không còn dòng `[Sentry] Initializing...`. Chưa commit/push.
+
+---
