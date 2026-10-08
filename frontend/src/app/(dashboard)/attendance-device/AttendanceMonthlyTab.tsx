@@ -10,6 +10,7 @@ import { useAttendanceSummary, useExportMonthlyAttendance } from '@/lib/hooks/us
 import { useUsersList } from '@/lib/hooks/useUsers';
 import { leaveRequestsApi } from '@/lib/api/leave-requests.api';
 import { useLeaveTypes } from '@/lib/hooks/useLeaveTypes';
+import { REFERENCE_DATA_STALE_MS } from '@/lib/query-stale';
 // ⚠️ MỚI - dropdown "Lọc theo nhân viên" trước đây chỉ hiện text trơn
 // `u.name` (mirror gap y hệt ở AttendanceLogsTab.tsx) - đồng bộ Tag màu
 // Vai trò/Phòng ban/Vị trí theo đúng pattern renderUserOption ở CustomerFilters.tsx.
@@ -144,17 +145,28 @@ export default function AttendanceMonthlyTab() {
   // Lấy toàn bộ log chấm công đã tổng hợp theo ngày trong tháng đang xem,
   // limit đặt cao (đủ cho ~30 ngày x toàn bộ nhân viên) vì cần dựng ma
   // trận cho nhiều người cùng lúc, không phân trang như tab "Bảng chấm công".
-  const { data: attendanceData, isLoading: attendanceLoading } = useAttendanceSummary({
-    page: 1,
-    limit: 3000,
-    userId,
-    from: fromStr,
-    to: toStr,
-  });
+  // [AGENT] NEW: tháng ĐÃ QUA gần như không đổi -> cache 5 phút (đổi tháng qua lại không bắn lại
+  // request nặng: BE gom toàn bộ log của tháng trong RAM). Tháng hiện tại giữ staleTime mặc định 30s.
+  // Sync/rematch/cleanup vẫn invalidate ['zk-attendance-summary'] nên dữ liệu mới vẫn hiện ngay.
+  const isPastMonth = month.isBefore(dayjs(), 'month');
+  const pastMonthStale = isPastMonth ? REFERENCE_DATA_STALE_MS : undefined;
+
+  const { data: attendanceData, isLoading: attendanceLoading } = useAttendanceSummary(
+    {
+      page: 1,
+      limit: 3000,
+      userId,
+      from: fromStr,
+      to: toStr,
+    },
+    { staleTime: pastMonthStale },
+  );
 
   const { data: leaveData, isLoading: leaveLoading } = useQuery({
     queryKey: ['leave-approved-range', fromStr, toStr],
     queryFn: () => leaveRequestsApi.getApprovedInRange(fromStr, toStr),
+    // [AGENT] NEW: cùng lý do với trên (key này không được mutation nào invalidate -> chỉ cache tháng đã qua).
+    ...(pastMonthStale !== undefined ? { staleTime: pastMonthStale } : {}),
   });
 
   const rows: EmployeeMonthRow[] = useMemo(() => {

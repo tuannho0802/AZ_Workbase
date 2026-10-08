@@ -1,6 +1,8 @@
 'use client';
 
 import { useState, useEffect, useCallback, useRef } from 'react';
+import { useQuery } from '@tanstack/react-query';
+import { REFERENCE_DATA_STALE_MS } from '@/lib/query-stale';
 import {
   Card, Tag, Button, Space, Row, Col, Typography,
   Input, Select, DatePicker, App, Badge, Avatar,
@@ -99,6 +101,9 @@ const TaskHistoryMobileCard = ({ record }: { record: PeriodicTaskAuditLogGlobal 
  * PERMISSIONS.md) để bulk xoá/dọn dẹp - mirror `audit.manage` của trang
  * `/audit-logs`.
  */
+// [AGENT] NEW: tham chiếu ổn định khi chưa có dữ liệu.
+const EMPTY_ACTIONS: string[] = [];
+
 export default function TaskHistoryPage() {
   const { can, scope, isLoading: permissionsLoading } = useMyPermissions();
 
@@ -143,17 +148,20 @@ export default function TaskHistoryPage() {
   const [weeks, setWeeks] = useState<WeekBucketDto[]>([]);
   const [weekFilters, setWeekFilters] = useState<PeriodicTaskAuditLogFilters>({});
   const [fetchToken, setFetchToken] = useState(0);
-  const [availableActions, setAvailableActions] = useState<string[]>([]);
+  // [AGENT] OLD CODE (giữ để rollback): useState + useEffect(() => periodicTaskAuditLogsApi.getActions().then(setAvailableActions), [])
+  // -> mỗi lần mở trang gọi lại 1 request. NEW: React Query, cache 5 phút trong 1 phiên SPA.
+  const { data: availableActionsData } = useQuery({
+    queryKey: ['periodic-audit-meta', 'actions'],
+    queryFn: () => periodicTaskAuditLogsApi.getActions(),
+    staleTime: REFERENCE_DATA_STALE_MS,
+  });
+  const availableActions = availableActionsData ?? EMPTY_ACTIONS;
   const [selectedRowKeys, setSelectedRowKeys] = useState<React.Key[]>([]);
 
   // Filters
   const [search, setSearch] = useState('');
   const [filterAction, setFilterAction] = useState<string | undefined>();
   const [dateRange, setDateRange] = useState<[dayjs.Dayjs | null, dayjs.Dayjs | null] | null>(null);
-
-  useEffect(() => {
-    periodicTaskAuditLogsApi.getActions().then(setAvailableActions).catch(() => {});
-  }, []);
 
   const fetchLogs = useCallback(async (pg = page, wpp = weeksPerPage) => {
     setLoading(true);

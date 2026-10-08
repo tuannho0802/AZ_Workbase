@@ -78,10 +78,16 @@ export const useAttendanceLogs = (query: AttendanceLogQuery) => {
   });
 };
 
-export const useAttendanceSummary = (query: AttendanceSummaryQuery) => {
+// [AGENT] OLD CODE (giữ để rollback): useAttendanceSummary(query) - luôn staleTime mặc định 30s.
+// NEW: nhận `options.staleTime` để tab "Bảng chấm công tháng" cache lâu hơn với tháng đã qua.
+export const useAttendanceSummary = (
+  query: AttendanceSummaryQuery,
+  options?: { staleTime?: number },
+) => {
   return useQuery({
     queryKey: ['zk-attendance-summary', query],
     queryFn: () => zkDeviceApi.getAttendanceSummary(query),
+    ...(options?.staleTime !== undefined ? { staleTime: options.staleTime } : {}),
   });
 };
 

@@ -12,6 +12,9 @@ export class QueryAttendanceSummaryDto {
   @Type(() => Number)
   @IsInt()
   @Min(1)
+  // [AGENT] NEW: chặn trần để 1 request không thể đòi trả về số dòng vô hạn
+  // (AttendanceMonthlyTab dùng 3000 = ~30 ngày x 100 nhân viên, còn dư trần).
+  @Max(5000)
   limit?: number = 31;
 
   // Bật PHÂN TRANG THEO TUẦN: khi truyền, `page` = trang tuần (mỗi trang gồm

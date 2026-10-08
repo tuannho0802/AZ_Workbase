@@ -15,6 +15,8 @@ import {
 import type { ColumnsType } from 'antd/es/table';
 import { useAuthStore } from '@/lib/stores/auth.store';
 import { useRouter } from 'next/navigation';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { REFERENCE_DATA_STALE_MS } from '@/lib/query-stale';
 import { auditApi } from '@/lib/api/audit.api';
 import { AuditLog, AuditFilters, AuditSettings } from '@/lib/types/audit.types';
 import dayjs from 'dayjs';
@@ -51,6 +53,8 @@ const BASE_ACTION_CASCADER_OPTIONS = ACTION_GROUP_ORDER.filter((g) => g !== 'aud
     .map(([k, v]) => ({ value: k, label: v.label })),
 }));
 const UNKNOWN_ACTION_GROUP_VALUE = '__unknown__';
+// [AGENT] NEW: tham chiếu ổn định khi chưa có dữ liệu (tránh tạo mảng mới mỗi render làm useMemo chạy lại).
+const EMPTY_ACTIONS: string[] = [];
 
 const ROLE_LABELS: Record<string, string> = {
   admin: 'Admin',
@@ -160,6 +164,8 @@ export default function AuditLogsPage() {
   // sang permission ĐỘNG, tách đúng 2 quyền theo BE (`audit.view` khác
   // `audit.manage` - xem audit.controller.ts).
   const canManageAudit = can('audit.manage');
+  const hasAuditView = can('audit.view');
+  const queryClient = useQueryClient();
 
   // ── State ──────────────────────────────────────────────────────────────
   const [logs, setLogs] = useState<AuditLog[]>([]);
@@ -181,7 +187,15 @@ export default function AuditLogsPage() {
   const [fetchToken, setFetchToken] = useState(0);
   const [selectedLog, setSelectedLog] = useState<AuditLog | null>(null);
   const [drawerOpen, setDrawerOpen] = useState(false);
-  const [availableActions, setAvailableActions] = useState<string[]>([]);
+  // [AGENT] OLD CODE (giữ để rollback): const [availableActions, setAvailableActions] = useState<string[]>([]);
+  //   + useEffect(() => { auditApi.getActions().then(setAvailableActions) }, ...) -> mỗi lần mở trang gọi lại 1 request.
+  // NEW: React Query - danh sách action ít đổi, cache 5 phút trong 1 phiên SPA.
+  const { data: availableActionsData } = useQuery({
+    queryKey: ['audit-meta', 'actions'],
+    queryFn: () => auditApi.getActions(),
+    staleTime: REFERENCE_DATA_STALE_MS,
+  });
+  const availableActions = availableActionsData ?? EMPTY_ACTIONS;
   
   // Selection
   const [selectedRowKeys, setSelectedRowKeys] = useState<React.Key[]>([]);
@@ -251,18 +265,24 @@ export default function AuditLogsPage() {
     // Khớp PERMISSIONS.md §2.7: CHỈ admin/assistant - Manager 403 tuyệt đối
     // (không có ngoại lệ theo phòng ban cho module này, khác Customer/Users/
     // ZK Device). Trước đây gate này cho Manager vào - SAI, đã sửa.
-    if (!permissionsLoading && user && !can('audit.view')) {
+    // [AGENT] NEW: thêm permissionsLoading/hasAuditView vào deps (trước đây thiếu -> effect không chạy lại khi quyền tải xong).
+    if (!permissionsLoading && user && !hasAuditView) {
       message.warning('Bạn không có quyền truy cập trang này');
       router.replace('/customers');
     }
-  }, [user, router, message]);
+  }, [user, router, message, permissionsLoading, hasAuditView]);
 
+  // [AGENT] OLD CODE (giữ để rollback): auditApi.getSettings().then(setSettings) trong useEffect (gọi lại mỗi lần mở trang).
+  // NEW: React Query (chỉ khi có audit.manage), đồng bộ vào state `settings` để form vẫn sửa cục bộ được.
+  const { data: settingsData } = useQuery({
+    queryKey: ['audit-meta', 'settings'],
+    queryFn: () => auditApi.getSettings(),
+    enabled: canManageAudit,
+    staleTime: REFERENCE_DATA_STALE_MS,
+  });
   useEffect(() => {
-    auditApi.getActions().then(setAvailableActions).catch(() => {});
-    if (canManageAudit) {
-      auditApi.getSettings().then(setSettings).catch(() => {});
-    }
-  }, [canManageAudit]);
+    if (settingsData) setSettings(settingsData);
+  }, [settingsData]);
 
   const fetchLogs = useCallback(async (pg = page, wpp = weeksPerPage) => {
     setLoading(true);
@@ -407,6 +427,8 @@ export default function AuditLogsPage() {
         setSettingsLoading(true);
         try {
           await auditApi.updateSettings(settings);
+          // [AGENT] NEW: làm mới cache cấu hình sau khi lưu (staleTime 5 phút nên phải invalidate thủ công).
+          void queryClient.invalidateQueries({ queryKey: ['audit-meta', 'settings'] });
           message.success('Đã cập nhật cấu hình thành công');
         } catch {
           message.error('Lỗi khi cập nhật cấu hình');
