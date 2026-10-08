@@ -6938,3 +6938,23 @@ Now [deploy]
 > Sentry nạp ~290 ms CPU khi cold start (đo sandbox) — CHƯA đụng vì cần `SENTRY_DSN` prod để quyết (nếu không dùng thì không nạp). Chưa commit/push.
 
 ---
+
+## [2026-10-08 12:00] | Mục 12H (PLAN_CPU_OPTIMIZATION_ROUND2): gỡ cảnh báo DEP0169 do `req.query` của runtime Vercel | [Status: Success - chưa commit]
+
+**Actor:** Agent
+**Files Changed:**
+- `backend/src/common/utils/native-query.ts` (+spec, MỚI) — `installNativeQuery(req)`: thay getter `req.query` bằng `querystring.parse()` (lười, nhớ kết quả, có setter; lỗi thì giữ getter gốc).
+- `backend/src/main.ts` — trong `handler`, trước `expressServer(req, res)`: `if (process.env.VERCEL === '1') installNativeQuery(req);`
+
+**Root Cause:**
+> `TRACE_URL_PARSE=true` trên prod cho stack: `/opt/rust/nodejs.js` (helper runtime Vercel) định nghĩa `IncomingMessage.get [as query]` gọi `url.parse()`; Nest đọc `req.query` qua `@Query()` (`RouteParamsFactory.exchangeKeyForValue`) -> mỗi lần đọc kích hoạt DEP0169. Không phải code của dự án, không phải thư viện trong `node_modules`.
+
+**Solution:**
+> Ghi đè getter bằng `querystring.parse()` — chính hàm `url.parse(url, true)` dùng bên trong -> cùng kết quả (object không prototype, khoá lặp thành mảng, giới hạn 1000 khoá). Test so sánh với `url.parse(url, true).query` trên 7 chuỗi query (tiếng Việt, `+`, khoá lặp, rỗng) đều khớp.
+
+**Đã chạy:** `tsc --noEmit` sạch; `nest build` exit 0; `npx jest` 111 suite / 1828 test pass. Probe express mô phỏng getter Vercel: trước = có gọi `url.parse`, sau = 0 lần gọi, output giống hệt.
+
+**Notes:**
+> Lợi ích chính là hết cảnh báo/log; CPU tiết kiệm không đáng kể (mỗi lần chỉ vài chục micro-giây). Sau khi deploy: xác nhận hết `[DEP0169]` rồi tắt `TRACE_URL_PARSE` (có thể giữ code tracer). Chưa kiểm chứng trên Vercel thật: nếu `req.query` ở đó là thuộc tính không cấu hình được thì `installNativeQuery` bỏ qua và cảnh báo vẫn còn (lúc đó gửi lại stack). Chưa commit/push.
+
+---

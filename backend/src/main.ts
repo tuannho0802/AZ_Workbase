@@ -22,6 +22,8 @@ import { createSwaggerBasicAuth } from './common/security/swagger-basic-auth.mid
 import { swaggerDisabledHandler } from './common/security/swagger-disabled.middleware';
 import { AuthService } from './modules/auth/auth.service';
 import { cpuTimingMiddleware } from './common/middleware/cpu-timing.middleware';
+// [Mục 12H] thay getter req.query của runtime Vercel (gọi url.parse -> DEP0169) bằng querystring.parse.
+import { installNativeQuery } from './common/utils/native-query';
 // [PLAN_CPU_OPTIMIZATION_ROUND2 - Mục 12A/12B] logger bỏ log khởi động Nest + đo thời gian boot (CPU_TIMING=true).
 import { QuietBootLogger } from './common/logger/quiet-boot.logger';
 import { bootMark, bootStep, isBootTimingEnabled, logBootTiming } from './common/observability/boot-timing';
@@ -273,6 +275,9 @@ export default async function handler(req: any, res: any) {
     return;
   }
   await getApp(); // đảm bảo app đã init (cache theo container)
+  // [AGENT] OLD CODE (giữ để rollback): chỉ gọi expressServer(req, res) - req.query dùng getter url.parse của Vercel.
+  // NEW (Mục 12H): chỉ trên Vercel (VERCEL='1'); chạy local Express tự lo req.query như cũ.
+  if (process.env.VERCEL === '1') installNativeQuery(req);
   expressServer(req, res);
 }
 // Last updated: 2026-03-31 10:55
