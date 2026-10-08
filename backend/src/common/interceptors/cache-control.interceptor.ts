@@ -47,7 +47,11 @@ export class CacheControlInterceptor implements NestInterceptor {
           response.setHeader(
             'Cache-Control',
             this.privateVersioned
-              ? `private, max-age=${this.maxAge}`
+              ? // [AGENT] NEW: chỉ cache cứng khi URL có `?v=` (khoá phiên bản do FE gắn). Thiếu `v` (FE cũ, gọi tay, user chưa nạp xong)
+                // -> private, no-cache: luôn hỏi lại (304), KHÔNG BAO GIỜ giữ bản cũ dưới URL trần.
+                request.query?.v !== undefined && request.query?.v !== ''
+                ? `private, max-age=${this.maxAge}`
+                : 'private, no-cache'
               : this.revalidate
               ? 'private, no-cache'
               : `public, max-age=${this.maxAge}, stale-while-revalidate=120`,

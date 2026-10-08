@@ -2,10 +2,10 @@ import { CallHandler, ExecutionContext } from '@nestjs/common';
 import { of } from 'rxjs';
 import { CacheControlInterceptor, REF_DATA_HTTP_MAX_AGE_S, refDataCache } from './cache-control.interceptor';
 
-function run(interceptor: CacheControlInterceptor, method = 'GET') {
+function run(interceptor: CacheControlInterceptor, method = 'GET', query: Record<string, unknown> = { v: '7.0.0.0' }) {
   const setHeader = jest.fn();
   const ctx = {
-    switchToHttp: () => ({ getResponse: () => ({ setHeader }), getRequest: () => ({ method }) }),
+    switchToHttp: () => ({ getResponse: () => ({ setHeader }), getRequest: () => ({ method, query }) }),
   } as unknown as ExecutionContext;
   const next: CallHandler = { handle: () => of('ok') };
   interceptor.intercept(ctx, next).subscribe();
@@ -17,6 +17,12 @@ describe('CacheControlInterceptor', () => {
     const h = run(refDataCache());
     expect(h).toHaveBeenCalledWith('Cache-Control', `private, max-age=${REF_DATA_HTTP_MAX_AGE_S}`);
     expect(REF_DATA_HTTP_MAX_AGE_S).toBe(1800);
+  });
+
+  it('refDataCache() thiếu ?v= -> private, no-cache (không cache cứng dưới URL trần)', () => {
+    expect(run(refDataCache(), 'GET', {})).toHaveBeenCalledWith('Cache-Control', 'private, no-cache');
+    expect(run(refDataCache(), 'GET', { v: '' })).toHaveBeenCalledWith('Cache-Control', 'private, no-cache');
+    expect(run(refDataCache(), 'GET', { role: 'admin' })).toHaveBeenCalledWith('Cache-Control', 'private, no-cache');
   });
 
   it('chế độ cũ revalidate=true vẫn là private, no-cache', () => {

@@ -7097,3 +7097,15 @@ Now [deploy]
 > Chưa làm: `profile/page.tsx` (giữ nguyên, lợi ích nhỏ); endpoint/cache tổng hợp theo tháng ở BE (cách giảm CPU thật cho tab tháng).
 
 ---
+---
+## [2026-10-08] | HARDEN: `refDataCache()` chỉ cache cứng khi URL có `?v=` | [Status: Success - chưa commit/deploy]
+
+**Actor:** Agent
+**Files Changed:**
+- `backend/src/common/interceptors/cache-control.interceptor.ts` (+spec) — thiếu `?v=` -> `private, no-cache`; có `v` -> `private, max-age=1800`
+
+**Root Cause:**
+> Nếu 1 request tới `/departments`, `/users/all`, `/roles/colors`, `/positions` đi mà không có `?v=` (FE cũ, gọi tay, userId chưa có) thì vẫn bị cache 30 phút dưới URL trần, không có khoá nào để bỏ bản cũ.
+
+**Notes:**
+> BE `tsc` sạch, jest 28 suite/350 test pass (common, permissions, users, departments). Đã đối chiếu commit `fa96f44`/`e7c24a6` của người dùng: không trùng file với patch cache.
