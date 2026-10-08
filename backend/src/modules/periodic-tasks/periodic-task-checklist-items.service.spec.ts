@@ -367,6 +367,8 @@ describe('PeriodicTaskChecklistItemsService', () => {
       const res = await service.update(taskId, 5, { isDone: true }, employeeUser, 'own');
 
       expect(res.checklistProgress).toEqual({ done: 3, total: 7 });
+      // [PERF] CHỈ item (không cộng Task con) để FE ghi thẳng vào trang checklist đang mở.
+      expect(res.checklistSummary).toEqual({ total: 4, done: 2 });
       expect(res.statusChanged).toBeUndefined();
       expect(mockLinksService.getChildrenChecklistProgressBatch).toHaveBeenCalledWith([taskId], employeeUser.id, employeeUser.role, 'own');
     });

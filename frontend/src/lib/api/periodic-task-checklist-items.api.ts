@@ -38,6 +38,8 @@ export interface ChecklistListOptions {
  * BE cũ không có 2 field này -> FE tự fallback refetch như trước. */
 export type ChecklistUpdateResult = PeriodicTaskChecklistItem & {
   checklistProgress?: { done: number; total: number };
+  /** [PERF] CHỈ item (toàn Task): FE ghi thẳng vào trang checklist đang mở thay vì GET lại. BE cũ không có -> FE refetch như cũ. */
+  checklistSummary?: { total: number; done: number };
   statusChanged?: boolean;
 };
 

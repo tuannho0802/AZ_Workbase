@@ -228,7 +228,13 @@ export class PeriodicTaskChecklistItemsService {
     dto: UpdatePeriodicTaskChecklistItemDto,
     user: RequestingUser,
     scope?: string | null,
-  ): Promise<PeriodicTaskChecklistItem & { checklistProgress?: { done: number; total: number }; statusChanged?: boolean }> {
+  ): Promise<
+    PeriodicTaskChecklistItem & {
+      checklistProgress?: { done: number; total: number };
+      checklistSummary?: { total: number; done: number };
+      statusChanged?: boolean;
+    }
+  > {
     const task = await this.tasksService.findForChecklist(taskId, user.id, user.role, scope);
     await this.tasksService.assertEditableWhenLocked(task, user);
 
@@ -275,8 +281,10 @@ export class PeriodicTaskChecklistItemsService {
     // - Chỉ đổi nội dung (isDone không đổi) -> nhãn không đổi, không cần truy vấn thêm.
     if (statusChanged) return { ...item, statusChanged: true };
     if (!isDoneToggled) return item;
-    const { checklistProgress } = await this.computeProgress(taskId, user, scope);
-    return { ...item, checklistProgress };
+    // [PERF] `checklistSummary` (CHỈ item, toàn Task) để FE ghi thẳng vào trang checklist đang mở, khỏi GET lại.
+    // [AGENT] OLD CODE (giữ lại để rollback): const { checklistProgress } = await this.computeProgress(...); return { ...item, checklistProgress };
+    const { checklistProgress, summary } = await this.computeProgress(taskId, user, scope);
+    return { ...item, checklistProgress, checklistSummary: summary };
   }
 
   /** Xoá 1 checklist item (hard delete, mirror `removeSecondaryAssignee()`). */

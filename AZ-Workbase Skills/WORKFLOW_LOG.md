@@ -7005,3 +7005,21 @@ Now [deploy]
 > `tsc --noEmit` sạch; `nest build` ok; jest `common/observability` + `common/filters` 24/24 pass. Mô phỏng `node -r instrument`: không `VERCEL` = 1 cảnh báo, `VERCEL=1` = 0, execArgv được khôi phục. Chưa kiểm chứng trên Vercel thật: sau deploy kiểm tra log cold start không còn dòng `[Sentry] Initializing...`. Chưa commit/push.
 
 ---
+
+---
+## [2026-10-08] | PERF: tick/sửa checklist item không GET lại trang checklist | [Status: Success - chưa commit/deploy]
+
+**Actor:** Agent
+**Files Changed:**
+- `backend/src/modules/periodic-tasks/periodic-task-checklist-items.service.ts` — `update()` trả thêm `checklistSummary` (item-only total/done, đã tính sẵn trong `computeProgress`, 0 query thêm)
+- `frontend/src/lib/api/periodic-task-checklist-items.api.ts` — type `checklistSummary?`
+- `frontend/src/lib/hooks/usePeriodicTaskChecklistItems.ts` — `patchOwnChecklistPages()`: ghi item + total/done vào cache trang checklist, bỏ refetch ngay trang của chính task (vẫn refetch khi đang "Ẩn hoàn thành" + tick, hoặc BE cũ không trả summary)
+- `periodicTaskChecklistMutationCallCount.test.tsx` (M1/M4 đổi kỳ vọng, +M1b), `periodic-task-checklist-items.service.spec.ts` (+1 assert)
+
+**Root Cause:**
+> Mỗi lần tick/sửa = OPTIONS (preflight, 204) + PATCH + 1 GET `checklist-items` chỉ để lấy lại dữ liệu mà response PATCH đã có.
+
+**Notes:**
+> Thêm item vẫn refetch (cần vị trí/trang mới). Chưa đo trên prod.
+
+---

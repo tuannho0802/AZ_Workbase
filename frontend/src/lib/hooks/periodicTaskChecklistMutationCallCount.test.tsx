@@ -109,7 +109,7 @@ describe('Tick / sửa / xoá / di chuyển checklist - số lần gọi endpoin
   beforeEach(() => installFakeBackend());
 
   it('M1 - Tick (isDone đổi, BE trả checklistProgress): 0 GET list; nhãn ghi đúng số BE; dòng khác không đổi', async () => {
-    extra = { checklistProgress: { done: 2, total: 5 } };
+    extra = { checklistProgress: { done: 2, total: 5 }, checklistSummary: { total: 4, done: 2 } };
     const view = await ready();
 
     await act(async () => {
@@ -120,7 +120,22 @@ describe('Tick / sửa / xoá / di chuyển checklist - số lần gọi endpoin
     expect(count('GET /periodic-tasks')).toBe(0);
     expect(listRow(TASK)?.checklistProgress).toEqual({ done: 2, total: 5 });
     expect(listRow(OTHER)?.checklistProgress).toEqual({ done: 3, total: 3 });
-    expect(count(`GET /periodic-tasks/${TASK}/checklist-items`)).toBe(1); // trang checklist vẫn tươi ngay
+    // [PERF] BE trả `checklistSummary` -> ghi thẳng vào trang đang mở, KHÔNG GET lại.
+    expect(count(`GET /periodic-tasks/${TASK}/checklist-items`)).toBe(0);
+    const page = lastClient.getQueryData<{ total: number; done: number }>(['periodic-tasks', 'checklist-page', TASK, 1, 'position', false]);
+    expect(page).toMatchObject({ total: 4, done: 2 });
+  });
+
+  it('M1b - Tick nhưng BE CŨ không trả checklistSummary -> FALLBACK GET lại trang checklist (1 lần)', async () => {
+    extra = { checklistProgress: { done: 2, total: 5 } };
+    const view = await ready();
+
+    await act(async () => {
+      await view.result.current.update.mutateAsync({ taskId: TASK, itemId: ITEM, data: { isDone: true } });
+    });
+    await settle();
+
+    expect(count(`GET /periodic-tasks/${TASK}/checklist-items`)).toBe(1);
   });
 
   it('M2 - Tick mà Guard đổi status (statusChanged) -> FALLBACK refetch list đầy đủ như cũ (1 lần)', async () => {
@@ -146,7 +161,7 @@ describe('Tick / sửa / xoá / di chuyển checklist - số lần gọi endpoin
     expect(count('GET /periodic-tasks')).toBe(1);
   });
 
-  it('M4 - Chỉ sửa nội dung: 0 GET list, nhãn không đổi, trang checklist vẫn refetch', async () => {
+  it('M4 - Chỉ sửa nội dung: 0 GET list, nhãn không đổi, trang checklist ghi từ response (0 GET)', async () => {
     const view = await ready();
 
     await act(async () => {
@@ -156,7 +171,7 @@ describe('Tick / sửa / xoá / di chuyển checklist - số lần gọi endpoin
 
     expect(count('GET /periodic-tasks')).toBe(0);
     expect(listRow(TASK)?.checklistProgress).toEqual({ done: 0, total: 4 });
-    expect(count(`GET /periodic-tasks/${TASK}/checklist-items`)).toBe(1);
+    expect(count(`GET /periodic-tasks/${TASK}/checklist-items`)).toBe(0);
   });
 
   it('M5 - Xoá (BE trả checklistProgress): 0 GET list; nhãn ghi đúng số BE', async () => {

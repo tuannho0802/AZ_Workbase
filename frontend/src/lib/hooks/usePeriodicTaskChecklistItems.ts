@@ -1,5 +1,6 @@
 import { keepPreviousData, useMutation, useQuery, useQueryClient, type QueryClient } from '@tanstack/react-query';
 import { periodicTaskChecklistItemsApi, type ChecklistListOptions } from '../api/periodic-task-checklist-items.api';
+import type { PeriodicTaskChecklistItem, PeriodicTaskChecklistPage } from '../api/periodic-tasks.api';
 import { createInvalidationDebouncer, type InvalidationDebouncer } from '../utils/invalidationDebouncer';
 import {
   shouldRefetchAfterChecklistChange,
@@ -45,6 +46,22 @@ function getDebouncer(queryClient: QueryClient): InvalidationDebouncer {
   return d;
 }
 
+/** Dữ liệu BE trả sau PATCH để ghi thẳng vào trang checklist: item mới + (khi tick) tổng item/đã xong của Task. */
+type ChecklistPatch = { item: PeriodicTaskChecklistItem; summary?: { total: number; done: number } };
+
+/** Ghi item (+ total/done) vào MỌI trang checklist đã cache của task. Trả true nếu BE đủ dữ liệu để khỏi refetch. */
+function patchOwnChecklistPages(queryClient: QueryClient, taskId: number, patch: ChecklistPatch): boolean {
+  queryClient.setQueriesData<PeriodicTaskChecklistPage<PeriodicTaskChecklistItem>>(
+    { queryKey: [LIST_KEY, 'checklist-page', taskId] },
+    (old) => {
+      if (!old || !Array.isArray(old.data)) return old;
+      const data = old.data.map((row) => (row.id === patch.item.id ? { ...row, ...patch.item } : row));
+      return patch.summary ? { ...old, data, total: patch.summary.total, done: patch.summary.done } : { ...old, data };
+    },
+  );
+  return true;
+}
+
 const isOwnChecklistPage = (queryKey: readonly unknown[], taskId: number) =>
   queryKey[1] === 'checklist-page' && queryKey[2] === taskId;
 
@@ -59,7 +76,9 @@ const isOwnChecklistPage = (queryKey: readonly unknown[], taskId: number) =>
 function useApplyChecklistProgress() {
   const queryClient = useQueryClient();
   // `progress` vắng = thay đổi KHÔNG làm đổi nhãn "X/Z" (sửa nội dung, đổi chỗ) -> không đụng cache list.
-  return (taskId: number, progress?: { done: number; total: number }) => {
+  // `patch` (CHỈ tick/sửa nội dung): BE đã trả item mới (+ `summary` khi tick) -> ghi thẳng vào trang checklist
+  // đang mở, KHÔNG GET lại (tiết kiệm 1 request mỗi lần tick). Thiếu `summary` khi tick (BE cũ) => refetch như cũ.
+  return (taskId: number, progress?: { done: number; total: number }, patch?: ChecklistPatch) => {
     if (progress) {
       queryClient.setQueriesData(
         { queryKey: [LIST_KEY], predicate: (query) => isPeriodicTaskListKey(query.queryKey) },
@@ -71,10 +90,15 @@ function useApplyChecklistProgress() {
         refetchType: 'none',
       });
     }
-    // NGAY: trang checklist của chính task.
+    const patched = patch ? patchOwnChecklistPages(queryClient, taskId, patch) : false;
+    // NGAY: trang checklist của chính task (bỏ qua nếu đã ghi cache; trang đang "Ẩn hoàn thành" mà vừa tick thì
+    // item đổi tập hiển thị -> vẫn refetch).
+    // [AGENT] OLD CODE (giữ lại để rollback): luôn invalidate trang checklist của chính task sau mỗi mutation.
     queryClient.invalidateQueries({
       queryKey: [LIST_KEY],
-      predicate: (query) => isOwnChecklistPage(query.queryKey, taskId),
+      predicate: (query) =>
+        isOwnChecklistPage(query.queryKey, taskId) &&
+        (!patched || (patch?.summary !== undefined && query.queryKey[5] === true)),
     });
     // GỘP: mọi query phụ còn lại.
     // [AGENT] OLD CODE (9B-1, giữ lại để rollback): invalidate phụ chạy ngay trong từng lần onSuccess:
@@ -134,7 +158,15 @@ export const useUpdateTaskChecklistItem = () => {
         return;
       }
       // Tick/bỏ tick: ghi nhãn từ BE. Chỉ sửa nội dung: nhãn không đổi (progress undefined).
-      applyProgress(variables.taskId, toggled ? data.checklistProgress : undefined);
+      // BE cũ không trả `checklistSummary` khi tick -> không ghi trang (patch=undefined) => refetch như cũ.
+      const canPatchPage = !toggled || data?.checklistSummary !== undefined;
+      // Bỏ các field phụ của response (tiến độ/cờ) - chỉ ghi phần item thật vào cache trang.
+      const { checklistProgress: _p, checklistSummary: _s, statusChanged: _c, ...itemOnly } = data ?? ({} as typeof data);
+      applyProgress(
+        variables.taskId,
+        toggled ? data.checklistProgress : undefined,
+        canPatchPage && data ? { item: itemOnly, summary: toggled ? data.checklistSummary : undefined } : undefined,
+      );
     },
   });
 };
