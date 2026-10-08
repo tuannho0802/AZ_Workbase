@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import {
   Card, Tag, Button, Space, Row, Col, Typography,
   Input, Select, DatePicker, App, Badge, Avatar,
@@ -192,18 +192,34 @@ export default function TaskHistoryPage() {
     [weekFilters],
   );
 
+  // [AGENT] OLD CODE (giữ lại để rollback):
+  // useEffect(() => {
+  //   if (user && can('periodic_tasks.audit_view')) {
+  //     fetchLogs(page, weeksPerPage);
+  //   }
+  // }, [page, weeksPerPage, fetchLogs, user]);
+  // NEW (giảm request thừa/304): `fetchLogs` đổi identity mỗi khi gõ `search`/đổi `filterAction`/`dateRange`/`message`
+  // -> effect cũ bắn lại GET /periodic-tasks/audit-logs ở MỖI lần đổi (log: 4 request trong 0,6 s), rồi bấm "Lọc" lại bắn thêm.
+  // Giờ chỉ tải khi đổi trang/số tuần-mỗi-trang/user; bộ lọc chỉ áp dụng khi bấm "Lọc"/Enter/Reset (đã có sẵn).
+  const fetchLogsRef = useRef(fetchLogs);
+  fetchLogsRef.current = fetchLogs; // luôn là bản mới nhất (bộ lọc hiện tại) khi effect/timeout chạy
   useEffect(() => {
     if (user && can('periodic_tasks.audit_view')) {
-      fetchLogs(page, weeksPerPage);
+      fetchLogsRef.current(page, weeksPerPage);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [page, weeksPerPage, fetchLogs, user]);
+  }, [page, weeksPerPage, user]);
 
   // ── Handlers ───────────────────────────────────────────────────────────
-  const handleSearch = () => { setPage(1); fetchLogs(1, weeksPerPage); };
+  // [AGENT] OLD CODE: const handleSearch = () => { setPage(1); fetchLogs(1, weeksPerPage); };
+  // NEW: đang ở trang >1 thì chỉ setPage(1) (effect trên sẽ tải đúng 1 lần) - trước đây vừa gọi tay vừa chạy effect = 2 request.
+  const handleSearch = () => { if (page !== 1) setPage(1); else fetchLogs(1, weeksPerPage); };
   const handleReset = () => {
-    setSearch(''); setFilterAction(undefined); setDateRange(null); setPage(1);
-    setTimeout(() => fetchLogs(1, weeksPerPage), 0);
+    setSearch(''); setFilterAction(undefined); setDateRange(null);
+    // [AGENT] OLD CODE: setPage(1); setTimeout(() => fetchLogs(1, weeksPerPage), 0); (closure cũ -> dựa vào effect cũ tải lại)
+    // NEW: ref giữ fetchLogs ĐÃ cập nhật bộ lọc rỗng; ở trang 1 setPage(1) không kích effect nên phải tải tay.
+    if (page !== 1) setPage(1);
+    else setTimeout(() => fetchLogsRef.current(1, weeksPerPage), 0);
   };
 
   const handleBulkDelete = () => {

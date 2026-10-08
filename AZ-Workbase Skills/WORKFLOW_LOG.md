@@ -7023,3 +7023,18 @@ Now [deploy]
 > Thêm item vẫn refetch (cần vị trí/trang mới). Chưa đo trên prod.
 
 ---
+## [2026-10-08] | PERF: trang Lịch sử công việc bắn request audit-logs trùng + chẩn đoán 304 | [Status: Success - chưa commit/deploy]
+
+**Actor:** Agent
+**Files Changed:**
+- `frontend/src/app/(dashboard)/lich-su-cong-viec/page.tsx` — effect tải log chỉ phụ thuộc `page`/`weeksPerPage`/`user` (dùng `fetchLogsRef` giữ bản mới nhất); `handleSearch`/`handleReset` không còn gọi tay + effect chạy đôi.
+
+**Root Cause (đọc code + log prod, chưa test trình duyệt):**
+> Effect cũ có `fetchLogs` trong deps; `fetchLogs` đổi identity mỗi khi gõ `search`/đổi `filterAction`/`dateRange` -> mỗi lần đổi bắn lại `GET /periodic-tasks/audit-logs` (log 10:47:17: 4 request trong 0,6 s). Bấm "Lọc" ở trang >1 còn bắn 2 lần (gọi tay + effect đổi trang).
+> Về 304: mọi dòng 304 trên Vercel đều có 1 dòng `[CpuTiming]` kèm cpu 20-200 ms => handler + JwtStrategy + query VẪN chạy đủ; 304 chỉ tiết kiệm băng thông, KHÔNG tiết kiệm CPU. Cách giảm CPU duy nhất là giảm số request (đếm tay trong log 10:47-11:13: ~31/120 request là 304, gom thành các cụm tải trang + chu kỳ poll 5 phút).
+> Test Express cục bộ: có If-None-Match thì Express tự trả 304 và handler vẫn chạy; log prod ghi 200 ở CpuTiming nhưng 304 ở Vercel => 304 do lớp Vercel quyết định sau khi hàm đã chạy.
+
+**Notes:**
+> `tsc --noEmit` chỉ còn 4 lỗi `logo.png` có sẵn (thiếu next-env.d.ts khi chưa build), `eslint` file này: 0 error, 3 warning có sẵn từ trước. Trang này chưa có test, chưa kiểm thử tay trên trình duyệt (cần thử: gõ ô tìm kiếm không bắn request, Enter/Lọc bắn đúng 1, Reset ở trang 1 và trang >1). Chưa đụng `layout.tsx`/stamp users/me của phiên trước (chưa có file nào trong repo).
+
+---
