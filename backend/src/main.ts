@@ -1,3 +1,5 @@
+// [Mục 12H] PHẢI đứng đầu tiên: nếu TRACE_URL_PARSE=true thì vá url.parse để truy nguồn cảnh báo DEP0169 (mặc định TẮT, không làm gì).
+import './common/observability/url-parse-trace';
 // PLAN_HARDENING P5: Sentry phải được khởi tạo TRƯỚC mọi import khác.
 import './instrument';
 import { NestFactory } from '@nestjs/core';

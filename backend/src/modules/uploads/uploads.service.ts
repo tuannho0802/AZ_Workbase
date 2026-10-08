@@ -2,14 +2,11 @@ import { Injectable, BadRequestException, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
-import {
-  S3Client,
-  PutObjectCommand,
-  GetObjectCommand,
-  DeleteObjectCommand,
-  HeadObjectCommand,
-} from '@aws-sdk/client-s3';
-import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
+// [AGENT] OLD CODE (giữ để rollback): import { S3Client, PutObjectCommand, GetObjectCommand, DeleteObjectCommand, HeadObjectCommand } from '@aws-sdk/client-s3';
+//   import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
+// NEW (Mục 12G): nạp lười AWS SDK - xem common/utils/aws-s3-loader.ts
+import type { S3Client } from '@aws-sdk/client-s3';
+import { loadS3Sdk, loadS3Presigner } from '../../common/utils/aws-s3-loader';
 import { Setting } from '../../database/entities/setting.entity';
 import { User } from '../../database/entities/user.entity';
 import { ALLOWED_IMAGE_TYPES } from './dto/presign-avatar.dto';
@@ -58,7 +55,9 @@ const LEAVE_TYPE_LABELS: Record<string, string> = {
 @Injectable()
 export class UploadsService {
   private readonly logger = new Logger(UploadsService.name);
-  private readonly s3: S3Client;
+  // [AGENT] OLD CODE (giữ để rollback): private readonly s3: S3Client; (khởi tạo ngay trong constructor)
+  // NEW (Mục 12G): khởi tạo lười qua getter `s3` bên dưới - không nạp AWS SDK ở cold start.
+  private _s3?: S3Client;
   private readonly bucketAvatars: string;
   private readonly bucketLeaveAttachments: string;
 
@@ -70,33 +69,40 @@ export class UploadsService {
     private readonly userRepository: Repository<User>,
     private readonly auditService: AuditService,
   ) {
-    this.s3 = new S3Client({
-      region: this.configService.get<string>('B2_REGION'),
-      endpoint: this.configService.get<string>('B2_ENDPOINT'),
-      // ⚠️ FIX BUG THẬT (root cause của việc `fetch()` presigned GET URL từ
-      // FE luôn bị Chrome chặn với `net::ERR_BLOCKED_BY_ORB`, dù `<img src>`
-      // load bình thường - xem useCachedImage.ts):
-      // `@aws-sdk/client-s3` từ ~v3.729 trở đi MẶC ĐỊNH tự bật
-      // "flexible checksums" (`responseChecksumValidation: 'WHEN_SUPPORTED'`),
-      // khiến MỌI `GetObjectCommand` được ký tự động thêm
-      // `ChecksumMode: 'ENABLED'` -> lộ ra thành query param
-      // `x-amz-checksum-mode=ENABLED` trên presigned URL. B2 (S3-compatible,
-      // KHÔNG phải AWS thật) không trả đúng CORS header tương ứng cho request
-      // có param này khi gọi qua `fetch()`/XHR (chỉ `<img>` tag - không bị
-      // trình duyệt enforce CORS - mới load được), nên Cache Storage
-      // (`useCachedImage.ts`) không bao giờ `fetch()` thành công, luôn rơi
-      // xuống fallback tải thẳng qua `<img>` - tốn băng thông y hệt lúc
-      // chưa cache. Tắt hẳn 2 flag này để presigned URL KHÔNG còn param lạ,
-      // giữ đúng hành vi S3 GetObject "trần" như trước khi SDK đổi default.
-      requestChecksumCalculation: 'WHEN_REQUIRED',
-      responseChecksumValidation: 'WHEN_REQUIRED',
-      credentials: {
-        accessKeyId: this.configService.get<string>('B2_ACCESS_KEY_ID')!,
-        secretAccessKey: this.configService.get<string>('B2_SECRET_ACCESS_KEY')!,
-      },
-    });
     this.bucketAvatars = this.configService.get<string>('B2_BUCKET_AVATARS')!;
     this.bucketLeaveAttachments = this.configService.get<string>('B2_BUCKET_LEAVE_ATTACHMENTS')!;
+  }
+
+  private get s3(): S3Client {
+    if (!this._s3) {
+      const { S3Client } = loadS3Sdk();
+      this._s3 = new S3Client({
+        region: this.configService.get<string>('B2_REGION'),
+        endpoint: this.configService.get<string>('B2_ENDPOINT'),
+        // ⚠️ FIX BUG THẬT (root cause của việc `fetch()` presigned GET URL từ
+        // FE luôn bị Chrome chặn với `net::ERR_BLOCKED_BY_ORB`, dù `<img src>`
+        // load bình thường - xem useCachedImage.ts):
+        // `@aws-sdk/client-s3` từ ~v3.729 trở đi MẶC ĐỊNH tự bật
+        // "flexible checksums" (`responseChecksumValidation: 'WHEN_SUPPORTED'`),
+        // khiến MỌI `GetObjectCommand` được ký tự động thêm
+        // `ChecksumMode: 'ENABLED'` -> lộ ra thành query param
+        // `x-amz-checksum-mode=ENABLED` trên presigned URL. B2 (S3-compatible,
+        // KHÔNG phải AWS thật) không trả đúng CORS header tương ứng cho request
+        // có param này khi gọi qua `fetch()`/XHR (chỉ `<img>` tag - không bị
+        // trình duyệt enforce CORS - mới load được), nên Cache Storage
+        // (`useCachedImage.ts`) không bao giờ `fetch()` thành công, luôn rơi
+        // xuống fallback tải thẳng qua `<img>` - tốn băng thông y hệt lúc
+        // chưa cache. Tắt hẳn 2 flag này để presigned URL KHÔNG còn param lạ,
+        // giữ đúng hành vi S3 GetObject "trần" như trước khi SDK đổi default.
+        requestChecksumCalculation: 'WHEN_REQUIRED',
+        responseChecksumValidation: 'WHEN_REQUIRED',
+        credentials: {
+          accessKeyId: this.configService.get<string>('B2_ACCESS_KEY_ID')!,
+          secretAccessKey: this.configService.get<string>('B2_SECRET_ACCESS_KEY')!,
+        },
+      });
+    }
+    return this._s3;
   }
 
   private validateContentType(contentType: string) {
@@ -193,9 +199,9 @@ export class UploadsService {
     const fileName = buildReadableFileName([user?.name, user?.department?.name, user?.role], ext);
     const key = `avatars/${userId}/${fileName}`;
 
-    const uploadUrl = await getSignedUrl(
+    const uploadUrl = await loadS3Presigner().getSignedUrl(
       this.s3,
-      new PutObjectCommand({ Bucket: this.bucketAvatars, Key: key, ContentType: contentType }),
+      new (loadS3Sdk().PutObjectCommand)({ Bucket: this.bucketAvatars, Key: key, ContentType: contentType }),
       { expiresIn: PUT_TTL_SECONDS },
     );
     return { uploadUrl, key };
@@ -242,9 +248,9 @@ export class UploadsService {
     );
     const key = `leave-attachments/${userId}/${fileName}`;
 
-    const uploadUrl = await getSignedUrl(
+    const uploadUrl = await loadS3Presigner().getSignedUrl(
       this.s3,
-      new PutObjectCommand({ Bucket: this.bucketLeaveAttachments, Key: key, ContentType: contentType }),
+      new (loadS3Sdk().PutObjectCommand)({ Bucket: this.bucketLeaveAttachments, Key: key, ContentType: contentType }),
       { expiresIn: PUT_TTL_SECONDS },
     );
     return { uploadUrl, key };
@@ -262,7 +268,7 @@ export class UploadsService {
   async assertUploadedSizeWithinLimit(bucket: string, key: string, maxSizeKb: number) {
     let contentLength: number | undefined;
     try {
-      const head = await this.s3.send(new HeadObjectCommand({ Bucket: bucket, Key: key }));
+      const head = await this.s3.send(new (loadS3Sdk().HeadObjectCommand)({ Bucket: bucket, Key: key }));
       contentLength = head.ContentLength;
     } catch (error) {
       this.logger.warn(`Không đọc được metadata object vừa upload: ${key}`, error as Error);
@@ -287,8 +293,8 @@ export class UploadsService {
     const hit = this.avatarUrlCache.get(key);
     if (hit && hit.reuseUntil > now) return hit.url;
 
-    // [AGENT] OLD CODE: return getSignedUrl(...) mỗi lần, không cache
-    const url = await getSignedUrl(this.s3, new GetObjectCommand({ Bucket: this.bucketAvatars, Key: key }), {
+    // [AGENT] OLD CODE: return loadS3Presigner().getSignedUrl(...) mỗi lần, không cache
+    const url = await loadS3Presigner().getSignedUrl(this.s3, new (loadS3Sdk().GetObjectCommand)({ Bucket: this.bucketAvatars, Key: key }), {
       expiresIn: AVATAR_GET_TTL_SECONDS,
     });
     if (this.avatarUrlCache.size >= AVATAR_URL_CACHE_MAX_ENTRIES) this.avatarUrlCache.clear(); // chặn phình bộ nhớ
@@ -302,7 +308,7 @@ export class UploadsService {
   }
 
   async signAttachmentGetUrl(key: string): Promise<string> {
-    return getSignedUrl(this.s3, new GetObjectCommand({ Bucket: this.bucketLeaveAttachments, Key: key }), {
+    return loadS3Presigner().getSignedUrl(this.s3, new (loadS3Sdk().GetObjectCommand)({ Bucket: this.bucketLeaveAttachments, Key: key }), {
       expiresIn: ATTACHMENT_GET_TTL_SECONDS,
     });
   }
@@ -310,7 +316,7 @@ export class UploadsService {
   // --- Xoá object (best-effort, không chặn luồng chính khi lỗi) ---
 
   async deleteObject(bucket: string, key: string) {
-    await this.s3.send(new DeleteObjectCommand({ Bucket: bucket, Key: key }));
+    await this.s3.send(new (loadS3Sdk().DeleteObjectCommand)({ Bucket: bucket, Key: key }));
   }
 
   async deleteAvatar(key: string) {

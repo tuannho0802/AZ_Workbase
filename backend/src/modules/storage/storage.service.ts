@@ -3,14 +3,11 @@ import { ConfigService } from '@nestjs/config';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { randomUUID } from 'crypto';
-import {
-  S3Client,
-  ListObjectsV2Command,
-  DeleteObjectCommand,
-  PutObjectCommand,
-  GetObjectCommand,
-} from '@aws-sdk/client-s3';
-import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
+// [AGENT] OLD CODE (giữ để rollback): import { S3Client, ListObjectsV2Command, DeleteObjectCommand, PutObjectCommand, GetObjectCommand } from '@aws-sdk/client-s3';
+//   import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
+// NEW (Mục 12G): nạp lười AWS SDK - xem common/utils/aws-s3-loader.ts
+import type { S3Client } from '@aws-sdk/client-s3';
+import { loadS3Sdk, loadS3Presigner } from '../../common/utils/aws-s3-loader';
 import { Setting } from '../../database/entities/setting.entity';
 import { User } from '../../database/entities/user.entity';
 import { LeaveRequestAttachment } from '../../database/entities/leave-request-attachment.entity';
@@ -37,7 +34,9 @@ const LIST_PAGE_SIZE = 1000;
 @Injectable()
 export class StorageService {
   private readonly logger = new Logger(StorageService.name);
-  private readonly s3: S3Client;
+  // [AGENT] OLD CODE (giữ để rollback): private readonly s3: S3Client; (khởi tạo ngay trong constructor)
+  // NEW (Mục 12G): khởi tạo lười qua getter `s3` bên dưới - không nạp AWS SDK ở cold start.
+  private _s3?: S3Client;
   private readonly bucketNames: Record<StorageBucketKey, string>;
 
   constructor(
@@ -50,28 +49,35 @@ export class StorageService {
     private readonly attachmentRepository: Repository<LeaveRequestAttachment>,
     private readonly auditService: AuditService,
   ) {
-    this.s3 = new S3Client({
-      region: this.configService.get<string>('B2_REGION'),
-      endpoint: this.configService.get<string>('B2_ENDPOINT'),
-      // Xem comment đầy đủ ở UploadsService constructor (uploads.service.ts) -
-      // 2 service này KHÔNG dùng chung 1 S3Client, nên phải tắt riêng ở CẢ
-      // 2 nơi. Thiếu chỗ này là lý do `viewUrl` của trang storage-img (nguồn
-      // duy nhất qua StorageService, KHÔNG qua UploadsService) vẫn còn dính
-      // `x-amz-checksum-mode=ENABLED` dù đã fix UploadsService - `fetch()`
-      // từ useCachedImage.ts vẫn bị ERR_BLOCKED_BY_ORB, cache vẫn không ghi
-      // được, băng thông vẫn tốn y như chưa cache.
-      requestChecksumCalculation: 'WHEN_REQUIRED',
-      responseChecksumValidation: 'WHEN_REQUIRED',
-      credentials: {
-        accessKeyId: this.configService.get<string>('B2_ACCESS_KEY_ID')!,
-        secretAccessKey: this.configService.get<string>('B2_SECRET_ACCESS_KEY')!,
-      },
-    });
     this.bucketNames = {
       avatars: this.configService.get<string>('B2_BUCKET_AVATARS')!,
       'leave-attachments': this.configService.get<string>('B2_BUCKET_LEAVE_ATTACHMENTS')!,
       'media-library': this.configService.get<string>('B2_BUCKET_MEDIA_LIBRARY')!,
     };
+  }
+
+  private get s3(): S3Client {
+    if (!this._s3) {
+      const { S3Client } = loadS3Sdk();
+      this._s3 = new S3Client({
+        region: this.configService.get<string>('B2_REGION'),
+        endpoint: this.configService.get<string>('B2_ENDPOINT'),
+        // Xem comment đầy đủ ở UploadsService constructor (uploads.service.ts) -
+        // 2 service này KHÔNG dùng chung 1 S3Client, nên phải tắt riêng ở CẢ
+        // 2 nơi. Thiếu chỗ này là lý do `viewUrl` của trang storage-img (nguồn
+        // duy nhất qua StorageService, KHÔNG qua UploadsService) vẫn còn dính
+        // `x-amz-checksum-mode=ENABLED` dù đã fix UploadsService - `fetch()`
+        // từ useCachedImage.ts vẫn bị ERR_BLOCKED_BY_ORB, cache vẫn không ghi
+        // được, băng thông vẫn tốn y như chưa cache.
+        requestChecksumCalculation: 'WHEN_REQUIRED',
+        responseChecksumValidation: 'WHEN_REQUIRED',
+        credentials: {
+          accessKeyId: this.configService.get<string>('B2_ACCESS_KEY_ID')!,
+          secretAccessKey: this.configService.get<string>('B2_SECRET_ACCESS_KEY')!,
+        },
+      });
+    }
+    return this._s3;
   }
 
   private resolveBucketName(bucket: StorageBucketKey): string {
@@ -91,7 +97,7 @@ export class StorageService {
     const bucketName = this.resolveBucketName(bucket);
 
     const result = await this.s3.send(
-      new ListObjectsV2Command({
+      new (loadS3Sdk().ListObjectsV2Command)({
         Bucket: bucketName,
         MaxKeys: limit,
         ContinuationToken: cursor,
@@ -105,7 +111,7 @@ export class StorageService {
         lastModified: obj.LastModified?.toISOString() ?? null,
         // Ký GET ngay ở đây để FE render thumbnail trực tiếp, không cần gọi
         // thêm request nào khác cho từng item.
-        viewUrl: await getSignedUrl(this.s3, new GetObjectCommand({ Bucket: bucketName, Key: obj.Key! }), {
+        viewUrl: await loadS3Presigner().getSignedUrl(this.s3, new (loadS3Sdk().GetObjectCommand)({ Bucket: bucketName, Key: obj.Key! }), {
           expiresIn: GET_TTL_SECONDS,
         }),
       })),
@@ -128,9 +134,9 @@ export class StorageService {
     const bucketName = this.resolveBucketName('media-library');
     const ext = contentType.split('/')[1];
     const key = `media-library/${randomUUID()}.${ext}`;
-    const uploadUrl = await getSignedUrl(
+    const uploadUrl = await loadS3Presigner().getSignedUrl(
       this.s3,
-      new PutObjectCommand({ Bucket: bucketName, Key: key, ContentType: contentType }),
+      new (loadS3Sdk().PutObjectCommand)({ Bucket: bucketName, Key: key, ContentType: contentType }),
       { expiresIn: PUT_TTL_SECONDS },
     );
     return { uploadUrl, key };
@@ -195,7 +201,7 @@ export class StorageService {
 
     const bucketName = this.resolveBucketName(bucket);
     try {
-      await this.s3.send(new DeleteObjectCommand({ Bucket: bucketName, Key: key }));
+      await this.s3.send(new (loadS3Sdk().DeleteObjectCommand)({ Bucket: bucketName, Key: key }));
     } catch (error) {
       this.logger.error(`Xoá media thất bại: ${bucket}/${key}`, error as Error);
       if (callerId && clearedReferences.length > 0) {
@@ -341,7 +347,7 @@ export class StorageService {
 
     do {
       const page = await this.s3.send(
-        new ListObjectsV2Command({
+        new (loadS3Sdk().ListObjectsV2Command)({
           Bucket: bucketName,
           MaxKeys: LIST_PAGE_SIZE,
           ContinuationToken: continuationToken,

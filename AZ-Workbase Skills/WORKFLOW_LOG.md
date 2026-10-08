@@ -6917,3 +6917,24 @@ Now [deploy]
 > Phát hiện (CHƯA sửa, bài không khẳng định): (1) Form Sửa Vị trí: xoá lựa chọn "Phòng ban (gợi ý)" rồi lưu có thể KHÔNG gỡ được — antd trả `undefined`, axios bỏ field, BE chỉ đổi khi `departmentId !== undefined` (đọc code, chưa test trình duyệt). (2) "Lưu" ở drawer Hiển thị dữ liệu ghi cả 7 element_key thành override riêng của Vị trí → đổi cấu hình Toàn cục sau đó không chảy xuống Vị trí đó tới khi Gỡ override (bài đã nêu). (3) Không seed nào đặt `is_system=true` và UI tạo luôn `isSystem=false` → nhãn "Hệ thống"/ẩn nút Xoá thực tế chỉ xảy ra nếu sửa DB tay.
 
 ---
+
+## [2026-10-08 11:00] | Mục 12G/12H (PLAN_CPU_OPTIMIZATION_ROUND2): lazy AWS SDK + công cụ truy nguồn DEP0169 | [Status: Success - chưa commit]
+
+**Actor:** Agent
+**Files Changed:**
+- `backend/src/common/utils/aws-s3-loader.ts` (MỚI) — `loadS3Sdk()` / `loadS3Presigner()` nạp lười bằng `require` trong hàm (cùng mẫu `loadExcelJS`).
+- `backend/src/modules/uploads/uploads.service.ts`, `backend/src/modules/storage/storage.service.ts` — `S3Client` khởi tạo lười qua getter `s3`; `import type`; Command/`getSignedUrl` lấy qua loader. Hành vi/cấu hình S3Client giữ nguyên.
+- `backend/src/common/observability/url-parse-trace.ts` (+spec, MỚI) — nếu `TRACE_URL_PARSE=true` thì vá `url.parse` và log 1 lần/call-site (stack 6 frame, KHÔNG log nội dung URL). Mặc định TẮT. `main.ts` import nó ĐẦU TIÊN.
+
+**Root Cause / số đo (sandbox, Node 22, KHÔNG phải số prod):**
+> Đo CPU nạp module bằng hook `Module._load`: `@smithy/core` ~158 ms + client-s3/aws-sdk ~30 ms bị nạp mỗi cold start dù chỉ dùng khi presign/xoá/liệt kê B2. A/B 7 lần, median: 1575 ms -> 1432 ms (~-143 ms, ~9%).
+> Các dòng `[CpuTiming]`, `[BootTiming]`, `[PT-List]` trong log Vercel đều nằm sau cờ `CPU_TIMING=true` -> env này đang còn BẬT trên Vercel (kế hoạch ghi "đo xong thì tắt").
+> `cpu≈101-104ms` giống hệt nhau cho 3 route nhẹ (`periodic-task-statuses`, `departments`, `periodic-tasks`) cùng giây ngay sau cold start = `process.cpuUsage()` đo CẢ process nên dính chi phí boot (init cpu=98ms) -> KHÔNG phải chi phí thật của từng route.
+
+**Đã chạy:** `tsc --noEmit` sạch; `nest build` exit 0; `npx jest` 110 suite / 1818 test pass (trước: 109 / 1816).
+
+**Notes:**
+> CHƯA xác định được call-site `url.parse()` (DEP0169): không tái hiện được khi nạp module / dựng DI / request thường với Express 5 (`parseurl` chỉ rơi về `url.parse` với đường dẫn lạ). Việc cần làm: đặt `TRACE_URL_PARSE=true` trên Vercel, redeploy, đọc 1 dòng `[UrlParseTrace]` để biết thư viện nào gọi rồi mới sửa; xong thì tắt. `NODE_OPTIONS=--disable-warning=DEP0169` chỉ ẩn cảnh báo, không sửa nguyên nhân.
+> Sentry nạp ~290 ms CPU khi cold start (đo sandbox) — CHƯA đụng vì cần `SENTRY_DSN` prod để quyết (nếu không dùng thì không nạp). Chưa commit/push.
+
+---
