@@ -35,9 +35,10 @@
 | 7 | `GET /customers`, `keep-alive`, các route nhỏ | 5,3% / 2,3% | Thấp | Không | 0 |
 | 9 | **(MỚI 2026-10-07)** Phát hiện từ log prod: 401 khi mở app, refetch dây chuyền sau thêm checklist, `users/all` trùng, `departments` no-cache | 10% request (401) + ≈ 16% thời gian xử lý (chuỗi checklist) | Thấp–TB | Không | 1, 3 |
 | 11 | **(MỚI 2026-10-07)** Rà soát code lần 3: `AuditService.logAction` dùng `save()`, recharts import tĩnh, `console.error` ở JwtStrategy | Chưa đo (ước lượng: giảm round-trip DB mỗi thao tác ghi; giảm JS lần đầu của trang báo cáo) | Rất thấp | Không | — |
+| 12 | **(MỚI 2026-10-08)** Cold start & log khởi động: 68% dòng log là log boot Nest; 15/779 request > 2 s do cold start (3,4–4,6 s) | Chưa đo CPU (log chỉ có `durationMs`); đo ở 12B | Rất thấp (12A/12B) – Thấp (12C) – TB (12F, tuỳ chọn) | Không | — |
 | 8 | Đo lại sau cùng & chốt | — | — | — | 1–7, 9 |
 
-Làm tuần tự **1 → 2 → 3 → 4 → 6A → 5 → 7 → 9 → 11** (9A có thể làm sớm vì độc lập, rủi ro thấp). Mục 2 và 3 đáng làm nhất (≈ 31% CPU của mẫu).
+Làm tuần tự **1 → 2 → 3 → 4 → 6A → 5 → 7 → 9 → 11 → 12** (12: **12A → 12B → đo → 12C/12F nếu cần**) (9A có thể làm sớm vì độc lập, rủi ro thấp). Mục 2 và 3 đáng làm nhất (≈ 31% CPU của mẫu).
 
 ---
 
@@ -624,10 +625,114 @@ Phương án (chọn 1, đo trước/sau; mỗi cái 1 commit):
 
 ---
 
+## Mục 12 — Cold start & log khởi động (log prod 2026-10-08) (bổ sung)
+
+> **Nguồn:** `az-workbase-backend-log-export-2026-10-08T02-31-39.json` (Vercel Logs **production**, `CPU_TIMING=false`),
+> 02:03–02:31 UTC (09:03–09:31 giờ VN), **5.050 dòng log = 779 request thật** (486 không tính OPTIONS, gộp theo `requestId`), 17 instance.
+> **Trạng thái code khi lập mục này:** `main` @ `5fae122`. `SWAGGER_ENABLED=false` **đã đặt** trên prod.
+> **Giới hạn:** (1) Vercel chỉ cho export "Last hour" và file bị cắt ở ~5.050 dòng → mất đoạn trước 09:03 VN và **không có log cuối tuần**;
+> (2) `durationMs` là thời gian chạm tường, **không phải CPU hoạt động** → chưa tách được CPU với chờ DB trong cold start.
+>
+> **Đính chính 3 nhận định sai trong lúc phân tích (ghi lại để người sau không lặp):**
+> 1. 5.050 dòng ≠ 5.050 request. **3.453 dòng (68%)** là log khởi động của Nest (`RouterExplorer Mapped {…}`, `InstanceLoader`). Mỗi cold start in ~245 dòng,
+>    và Vercel gán toàn bộ dòng đó cho **từng request đang chờ** instance → nhân bản (vd: 4 `requestId` × ~245 dòng = 999 dòng trong 1 giây lúc 09:03:52).
+> 2. User-Agent `Chrome/154.0.0.0` giống hệt nhau với **mọi** người dùng Chrome Windows (UA reduction) → không dùng UA để suy ra "1 client".
+>    Kết luận ban đầu "script test tải / vòng lặp FE" là **sai**; trong các đợt này không có traffic bất thường.
+> 3. Đếm theo dòng làm phình số liệu (`users/me` 522 dòng nhưng chỉ 21 request thật). Luôn gộp theo `requestId` (như Mục 9).
+
+### 12.0. Số liệu đã xác minh
+| Chỉ số | Giá trị |
+|---|---|
+| Request thật / dòng log | 779 / 5.050 (486 không tính OPTIONS) |
+| Dòng log khởi động Nest | 3.453 (68%) |
+| Số đợt khởi động (cold start) trong 28 phút | 6: giây 09:03:49, 09:03:52, 09:03:58, 09:05:50, 09:09:30, 09:27:41 |
+| Instance | 17; ~7 instance mới xuất hiện **cùng lúc** ở 09:03:48 và 6 instance mới cùng lúc ở 09:27:37 (lúc các instance cũ ngừng xuất hiện) |
+| Request chậm | **15/779 request > 2 s (3,4–4,6 s)**, trùng thời điểm các đợt cold start; số còn lại < 1 s |
+| Request thật theo route (28 phút) | `periodic-tasks/:id/checklist-items` 55 GET + 40 POST · `periodic-tasks` 26 · `my-permissions` 25 · `sidebar/poll` 25 · `users/me` 21 · `users/all` 18 · `customers` 18 · `guides` 14 · `departments` 12 · `customer-statuses` 11 |
+| Nền khác | `HEAD /keep-alive` (UptimeRobot) 12 lần (~50 ms); Googlebot gọi `/robots.txt` và `/` trên domain backend |
+
+**Chưa biết (KHÔNG suy diễn):**
+- Trong 3,4–4,6 s của cold start, bao nhiêu là CPU và bao nhiêu là chờ DB → đo ở 12B.
+- Nguồn "mức nền" ngày cuối tuần (03–04/10 vẫn ~1,5–2,5 phút CPU/ngày). Ứng viên có căn cứ từ code/log: UptimeRobot 5 phút; tab bỏ mở (poll 300 s);
+  2 Vercel Cron chạy **hằng ngày kể cả cuối tuần** (`zk-device-cron/sync-today` 16:00 UTC, `periodic-tasks-cron/auto-overdue` 17:05 UTC); máy chấm công `/iclock/*` (đã giảm ở 10A); bot.
+- Vì sao Vercel mở nhiều instance cùng lúc (docs: Fluid chỉ mở instance mới khi instance đang chạy không còn chỗ trống).
+
+**Mục tiêu:** giảm số dòng log, số lần và chi phí mỗi lần cold start. **Không hứa "hết cold start"** trên Hobby; keep-alive 5 phút chỉ giữ ấm 1 instance, không ngăn được scale-out đồng thời.
+
+### 12A. Lọc log khởi động của Nest (BE, rủi ro rất thấp)
+- [ ] File mới `backend/src/common/logger/quiet-boot.logger.ts`: kế thừa `ConsoleLogger`, bỏ qua dòng `log` có context `InstanceLoader`, `RouterExplorer`, `RoutesResolver`, `NestFactory`, `NestApplication`; env `NEST_BOOT_LOG=true` để bật lại khi cần debug.
+```ts
+const BOOT_CONTEXTS = new Set(['InstanceLoader', 'RouterExplorer', 'RoutesResolver', 'NestFactory', 'NestApplication']);
+export class QuietBootLogger extends ConsoleLogger {
+  log(message: any, ...optionalParams: any[]) {
+    const ctx = optionalParams[optionalParams.length - 1];
+    if (process.env.NEST_BOOT_LOG !== 'true' && typeof ctx === 'string' && BOOT_CONTEXTS.has(ctx)) return;
+    super.log(message, ...optionalParams);
+  }
+}
+```
+- [ ] `main.ts`: `NestFactory.create(AppModule, new ExpressAdapter(expressServer), { logger: new QuietBootLogger() })`; giữ dòng cũ bằng comment `// [AGENT] OLD CODE`.
+- [ ] Các `console.log('[Bootstrap]…')` / `[Static]…` trong `createApp()` chỉ in khi `process.env.BOOT_DEBUG === 'true'` (giữ `console.warn` khi không tìm thấy `public/`).
+- [ ] **Không** dùng `logger: ['error','warn']`: sẽ mất toàn bộ `this.logger.log(...)` nghiệp vụ (đăng nhập, audit...).
+- [ ] Spec nhỏ: context khởi động bị bỏ qua; context khác vẫn in.
+- **Tiêu chí:** 1 cold start in < 10 dòng (trước: ~245); log nghiệp vụ còn nguyên. **Lưu ý:** chỉ giảm dòng log (+ chút CPU ghi log), **không** giảm số lần cold start.
+
+### 12B. Đo thời gian khởi động (BE, không đổi hành vi) — làm TRƯỚC 12C/12F
+`CPU_TIMING` hiện chỉ đo **từng request** (middleware gắn sau khi app đã tạo xong) → **phần boot chưa được đo**.
+- [ ] Trong `createApp()` (`main.ts`), chỉ khi `CPU_TIMING=true`, in **1 dòng mỗi cold start**:
+  `[BootTiming] load cpu=…ms | create cpu=…ms wall=…ms | init cpu=…ms wall=…ms | total wall=…ms`
+  - `load` = `process.cpuUsage()` đọc ngay đầu `createApp()` (= chi phí nạp module/`require` từ lúc tiến trình bắt đầu).
+  - `create` = quanh `NestFactory.create` (DI + kết nối TypeORM + map route); `init` = quanh `app.init()`.
+  - Mỗi bước ghi cả `cpu` (user+system) và `wall` (`hrtime`): **wall ≫ cpu ⇒ chờ I/O (DB)**; cpu ≈ wall ⇒ tính toán thật.
+- [ ] Bật `CPU_TIMING=true` trên Vercel 1 buổi, thu log, rồi **tắt lại** (như Mục 8).
+- **Cách quyết định sau khi có số:** `load` cpu lớn → làm 12C; `create` wall ≫ cpu → là chờ DB, giữ nguyên (12D); `init` lớn → xem validator/route; cả ba nhỏ → bỏ 12C, 12F.
+
+### 12C. Nạp lười thư viện nặng (BE) — chỉ làm nếu 12B cho thấy `load` đáng kể
+- [ ] `exceljs` (3 file import tĩnh: `customers-export.service.ts`, `customers-import-reader.util.ts`, `attendance-export.service.ts`): đổi `import * as ExcelJS from 'exceljs'` thành `const ExcelJS = await import('exceljs')` **trong hàm** cần dùng; giữ `import type` nếu cần kiểu. Kiểm: hàm đã `async` chưa; spec nào `jest.mock('exceljs')`; `bundle: true` vẫn đóng gói.
+  Đánh đổi: lần export/import **đầu tiên** trên mỗi instance chậm hơn.
+- [ ] Ứng viên chỉ làm nếu 12B/đo từng import cho thấy đáng kể: `node-zklib`, `papaparse`, `csv-parser`. `@aws-sdk/client-s3` dùng cho avatar (gần như lần nào cũng cần) → không lười.
+- **KHÔNG làm:** `LazyModuleLoader` của Nest (module lazy **không đăng ký controller** → hỏng `/iclock/cdata` và mọi route); trì hoãn kết nối DB.
+- **Tiêu chí:** `load` cpu giảm rõ trên log `[BootTiming]`; export/import Excel vẫn đúng.
+
+### 12D. Kết nối DB lúc boot — chỉ ghi nhận, KHÔNG sửa
+- Thời gian chờ bắt tay TLS/xác thực với Aiven là **chờ I/O**, theo mô hình Active CPU của Fluid không tính CPU → không có gì để "queue"; nó chủ yếu làm cold start **chậm hơn**, chưa chắc tốn CPU. Xác minh bằng cột wall vs cpu ở 12B.
+- Request đầu tiên (`users/me`) vẫn cần DB; giữ keep-alive `SELECT 1` (Aiven cắt kết nối rảnh — Phụ lục A).
+
+### 12E. Giảm số lần cold start & theo dõi
+- [ ] Giữ UptimeRobot `HEAD /keep-alive` 5 phút. **Không** ping dày hơn: mỗi ping chạy `SELECT 1` và không ngăn được cold start do scale-out đồng thời (09:03 / 09:27).
+- [ ] Chấp nhận 2 Vercel Cron/ngày (23:00 và 00:05 giờ VN) có thể gây cold start hằng ngày, kể cả cuối tuần.
+- [ ] Tách "mức nền" cuối tuần: vào 1 giờ bất kỳ của Thứ Bảy/Chủ Nhật, export log (Last hour), gộp theo `requestId`, phân loại theo UA/path (UptimeRobot, Googlebot, cron, `/iclock`, poll tab bỏ mở). Chưa làm được ở lần này vì file chỉ có sáng Thứ Năm.
+- [ ] Nâng Pro: **chưa kiểm chứng** Hobby có được pre-warm hay không → không nâng chỉ vì lý do này.
+
+### 12F. (Tuỳ chọn, quyết định SAU 12B) `GET /api/bootstrap` gộp dữ liệu nền
+**Đính chính:** bản đầu của ý tưởng này nói "mỗi lần mở trang bắn 8–12 request" — số đó lấy từ dòng log bị nhân bản. Số thật (28 phút, gộp `requestId`):
+`my-permissions` 25, `sidebar/poll` 25, `users/me` 21, `guides` 14, `departments` 12, `customer-statuses` 11 → khoảng 5–7 request nền mỗi lần tải (cần đo lại theo từng phiên trước khi tin). Lợi ích nhỏ hơn dự kiến → **chỉ làm nếu 12B cho thấy cold start nặng và nhiều instance mở vì tải đồng thời lúc mở trang.**
+- [ ] BE: `GET /api/bootstrap` (`JwtAuthGuard`) trả `{ me, permissions, uiHidden, departments, positions, customerStatuses, periodicTaskStatuses, … }` — **chỉ** dữ liệu nền toàn cục mà layout/mọi trang cần; **không** gộp dữ liệu theo trang (`customers`, `users/all`, `link-groups`).
+  Mỗi phần dùng lại đúng service + kiểm quyền của endpoint gốc (RBAC động; giữ bypass `role === 'admin'` ở cả 3 lớp theo custom instructions). Phần nào lỗi/không có quyền → `null` cho phần đó, không làm hỏng cả response. **Giữ nguyên endpoint cũ.**
+- [ ] FE: gọi 1 lần ở layout sau đăng nhập, `queryClient.setQueryData` vào đúng key sẵn có (`['customer-statuses']`, `['departments']`, …) với `staleTime` như `refDataQueryOptions` → hook cũ không đổi. Giữ nguyên `refSig`/`permSig`/`epoch` (9D). Lỗi/404 → tự quay về gọi từng endpoint như cũ.
+- [ ] ETag: Express sinh ETag **sau** khi chạy handler (xem 9.1) → 304 không tiết kiệm CPU; bản gộp phải tính tổng chi phí.
+- [ ] Rollout: deploy BE trước FE (đã có fallback ở trên).
+- **Tiêu chí:** số request nền mỗi lần tải giảm ≥ 70% và CPU tổng không tăng; không đạt → revert.
+
+### 12G. Thứ tự & tiêu chí hoàn thành
+- [ ] **12A** (độc lập, rủi ro thấp) → **12B** (đo) → đọc số → **12C** nếu cần → **12F** nếu cần. 12D chỉ ghi nhận; 12E làm song song (không đụng code).
+- [ ] Mỗi việc: `tsc --noEmit` + `npx nest build` + `npx jest`; ghi `WORKFLOW_LOG.md`.
+- [ ] Cập nhật bảng "Trước → Sau" ở Mục 8: số dòng log/cold start (~245 → mục tiêu < 10), số cold start/giờ (6 trong 28 phút), wall của cold start (3,4–4,6 s), tỷ lệ request > 2 s (15/779).
+
+### 12H. Cách đọc log export Vercel (tránh nhầm lần sau)
+- Gộp theo `requestId`; 1 `requestId` có thể có hàng trăm dòng log.
+- Dòng có `[Nest] … Mapped {…}` / `InstanceLoader` là **cold start**, không phải traffic.
+- UA Chrome bị đóng băng (`…/154.0.0.0`) → không đếm số client theo UA.
+- Export bị cắt ~5.050 dòng và chỉ "Last hour" → thiếu đầu giờ; muốn xem ngày khác phải export vào đúng khung giờ đó.
+- `durationMs` ≠ CPU hoạt động.
+
+---
+
 ## Mục 8 — Đo lại & chốt
 
 - [ ] Sau mỗi mục (2, 3, 4, 6A, 5, 9): thu log 30 phút, chạy script, **so với baseline Mục 0** theo cùng kịch bản.
 - [ ] Sau cùng thu log 1–2 giờ (≥ 200 request), lập bảng "Trước → Sau" cho 6 route đầu và ghi vào `WORKFLOW_LOG.md`.
+- [ ] Sau Mục 12: thu log `[BootTiming]` + đếm số cold start/giờ; so với baseline ở 12.0 (6 đợt/28 phút, 3,4–4,6 s, 15/779 request > 2 s).
 - [ ] **Tắt `CPU_TIMING=true`** trên Vercel sau khi đo (ghi log cũng tốn CPU).
 - [ ] Mục nào không đạt tiêu chí: ghi rõ lý do + quyết định (giữ/revert/làm tiếp).
 
@@ -638,6 +743,7 @@ Phương án (chọn 1, đo trước/sau; mỗi cái 1 commit):
 - `max-age` HTTP dài / version trong URL (rủi ro dữ liệu cũ; lộ chéo theo user).
 - Bỏ keep-alive DB (Aiven cắt kết nối rảnh).
 - Đổi `synchronize`, sửa migration cũ, đổi `.env` (vi phạm quy tắc an toàn).
+- `LazyModuleLoader` cho module có controller (zk-device…), trì hoãn kết nối DB lúc boot, ping keep-alive dày hơn 5 phút (xem Mục 12C/12D/12E).
 
 ## Phụ lục B — Rủi ro tổng hợp & thứ tự rollback
 | Mục | Hậu quả nếu sai | Rollback |
@@ -658,3 +764,7 @@ Phương án (chọn 1, đo trước/sau; mỗi cái 1 commit):
 | 11A | Mất bản ghi audit nếu `insert()` lệch cột; subscriber/listener không chạy | Khôi phục `save()`; kiểm `audit_logs` có dòng mới sau thao tác |
 | 11B | Biểu đồ nháy skeleton / vỡ demo trang Hướng dẫn | Đổi lại `import` tĩnh |
 | 11C | Mất log cảnh báo user không hợp lệ (nếu Logger bị tắt) | Khôi phục `console.error` |
+| 12A | Mất log hữu ích khi debug khởi động (route không map, lỗi DI) | Đặt `NEST_BOOT_LOG=true`; hoặc revert về `NestFactory.create` không có `logger` |
+| 12B | Ghi log boot tốn thêm chút CPU nếu quên tắt | Tắt `CPU_TIMING` |
+| 12C | Lần export/import Excel đầu tiên mỗi instance chậm hơn; lỗi `import()` nếu `jest.mock` không khớp | Đổi lại `import` tĩnh |
+| 12F | Dữ liệu nền cũ/thiếu quyền do gộp sai; FE mới + BE cũ → 404 | FE tự quay về endpoint riêng; revert FE; deploy BE trước FE |
