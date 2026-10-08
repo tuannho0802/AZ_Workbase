@@ -9,6 +9,7 @@ import {
   GroupManagersResult,
   GroupCustomersParams,
 } from '../api/link-groups.api';
+import { refDataQueryOptions } from '../query-stale';
 
 const CATEGORY_KEY = ['link-categories'];
 const GROUP_KEY = ['link-groups'];
@@ -34,7 +35,8 @@ export const useLinkCategories = (activeOnly = false) => {
   const { data, isLoading, isError, error } = useQuery({
     queryKey: [...CATEGORY_KEY, activeOnly],
     queryFn: () => linkCategoriesApi.getAll(activeOnly),
-    staleTime: 5 * 60 * 1000,
+    // [AGENT] OLD CODE: staleTime: 5 * 60 * 1000,
+    ...refDataQueryOptions(), // danh mục ít đổi: HTTP cache ?v= + refSig (link_categories/link_groups)
   });
 
   return { categories: (data as LinkCategory[]) ?? EMPTY_LINK_CATEGORIES, isLoading, isError, error };
@@ -49,7 +51,8 @@ export const useLinkGroups = (categoryId: number | undefined, activeOnly = true)
     queryKey: [...GROUP_KEY, categoryId, activeOnly],
     queryFn: () => linkGroupsApi.getAll(categoryId, activeOnly),
     enabled: categoryId != null,
-    staleTime: 60 * 1000,
+    // [AGENT] OLD CODE: staleTime: 60 * 1000,
+    ...refDataQueryOptions(), // danh mục ít đổi: HTTP cache ?v= + refSig (link_categories/link_groups)
   });
 
   return { groups: (data as LinkGroup[]) ?? EMPTY_LINK_GROUPS, isLoading, isError, error };
@@ -60,7 +63,8 @@ export const useAllLinkGroups = () => {
   const { data, isLoading } = useQuery({
     queryKey: [...GROUP_KEY, 'all'],
     queryFn: () => linkGroupsApi.getAll(undefined, false),
-    staleTime: 60 * 1000,
+    // [AGENT] OLD CODE: staleTime: 60 * 1000,
+    ...refDataQueryOptions(), // danh mục ít đổi: HTTP cache ?v= + refSig (link_categories/link_groups)
   });
   return { groups: (data as LinkGroup[]) ?? EMPTY_LINK_GROUPS, isLoading };
 };
@@ -77,7 +81,8 @@ export const useAllActiveLinkGroups = () => {
   const { data, isLoading, isError, error } = useQuery({
     queryKey: [...GROUP_KEY, 'all-active'],
     queryFn: () => linkGroupsApi.getAll(undefined, true),
-    staleTime: 60 * 1000,
+    // [AGENT] OLD CODE: staleTime: 60 * 1000,
+    ...refDataQueryOptions(), // danh mục ít đổi: HTTP cache ?v= + refSig (link_categories/link_groups)
   });
   return { groups: (data as LinkGroup[]) ?? EMPTY_LINK_GROUPS, isLoading, isError, error };
 };

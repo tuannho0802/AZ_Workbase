@@ -14,6 +14,13 @@ export interface RefCacheState {
   nonce: number;
 }
 
+declare module 'axios' {
+  interface AxiosRequestConfig {
+    /** true = KHÔNG gắn `?v=` -> BE trả `private, no-cache` (luôn hỏi lại). Dùng cho trang quản trị cần `inUseCount` mới nhất. */
+    skipRefVersion?: boolean;
+  }
+}
+
 const STORAGE_KEY = 'az-ref-cache-state';
 let memory: RefCacheState = { userId: undefined, sig: {}, epoch: undefined, nonce: 0 };
 
@@ -57,16 +64,35 @@ export function resetRefCacheState(): void {
   }
 }
 
-/** GET (đường dẫn không query) -> domain refSig quyết định khoá. Khớp BE `refDataCache()`: departments, users/all, roles/colors, positions. */
+/** GET (đường dẫn không query) -> domain refSig quyết định khoá. Khớp BE `refDataCache()` (xem các controller có `@UseInterceptors(refDataCache())`). */
 export const CACHED_REF_GET_DOMAIN: Readonly<Record<string, string>> = {
   '/departments': 'departments',
   '/users/all': 'users',
   '/roles/colors': 'roles',
   '/positions': 'positions',
+  // [AGENT] NEW: danh mục dropdown. Trang quản trị cần `inUseCount` (đếm từ bảng khác) gọi với `skipRefVersion` để luôn lấy số mới.
+  '/customer-statuses': 'customer_statuses',
+  '/periodic-task-statuses': 'periodic_task_statuses',
+  '/leave-types': 'leave_types',
+  '/media-sources': 'media_sources',
+  '/link-categories': 'link_categories',
+  '/link-groups': 'link_groups',
 };
 
 /** Mutation vào các tiền tố này đổi dữ liệu của danh mục cache ở trên (khớp REF_DATA_TABLE_DOMAINS ở BE) -> tăng nonce. */
-const MUTATION_PREFIXES = ['/departments', '/positions', '/roles', '/permissions', '/users'];
+const MUTATION_PREFIXES = [
+  '/departments',
+  '/positions',
+  '/roles',
+  '/permissions',
+  '/users',
+  '/customer-statuses',
+  '/periodic-task-statuses',
+  '/leave-types',
+  '/media-sources',
+  '/link-categories',
+  '/link-groups',
+];
 
 export function refVersionFor(path: string, userId: number | undefined): string | undefined {
   const domain = CACHED_REF_GET_DOMAIN[path];

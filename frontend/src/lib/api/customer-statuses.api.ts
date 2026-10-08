@@ -30,8 +30,9 @@ export type UpdateCustomerStatusPayload = Partial<
 >;
 
 export const customerStatusesApi = {
-  getAll: async (): Promise<CustomerStatus[]> => {
-    const response = await axiosInstance.get<CustomerStatus[]>('/customer-statuses');
+  /** fresh=true: trang quản trị cần `inUseCount` mới nhất -> không gắn `?v=` (BE trả no-cache, luôn hỏi lại). */
+  getAll: async (opts?: { fresh?: boolean }): Promise<CustomerStatus[]> => {
+    const response = await axiosInstance.get<CustomerStatus[]>('/customer-statuses', { skipRefVersion: opts?.fresh });
     return response.data;
   },
 

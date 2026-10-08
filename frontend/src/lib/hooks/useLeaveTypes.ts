@@ -13,7 +13,7 @@ const QUERY_KEY = ['leave-types'];
 export const useLeaveTypes = (opts?: { alwaysFresh?: boolean }) => {
   const { data, isLoading, isError, error } = useQuery({
     queryKey: QUERY_KEY,
-    queryFn: () => leaveTypesApi.getAll(),
+    queryFn: () => leaveTypesApi.getAll({ fresh: opts?.alwaysFresh }),
     // [AGENT] OLD CODE (giữ để rollback): staleTime: 60 * 1000
     ...refDataQueryOptions(opts), // 9D
   });

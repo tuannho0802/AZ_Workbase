@@ -31,8 +31,9 @@ export interface CreateLeaveTypePayload {
 export type UpdateLeaveTypePayload = Partial<Omit<CreateLeaveTypePayload, 'code'>>;
 
 export const leaveTypesApi = {
-  getAll: async (): Promise<LeaveType[]> => {
-    const response = await axiosInstance.get<LeaveType[]>('/leave-types');
+  /** fresh=true: trang quản trị cần `inUseCount` mới nhất -> không gắn `?v=` (BE trả no-cache, luôn hỏi lại). */
+  getAll: async (opts?: { fresh?: boolean }): Promise<LeaveType[]> => {
+    const response = await axiosInstance.get<LeaveType[]>('/leave-types', { skipRefVersion: opts?.fresh });
     return response.data;
   },
 

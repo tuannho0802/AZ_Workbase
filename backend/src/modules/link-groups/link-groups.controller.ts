@@ -9,6 +9,7 @@ import {
   ParseIntPipe,
   Query,
   UseGuards,
+  UseInterceptors,
 } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiBearerAuth, ApiQuery } from '@nestjs/swagger';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
@@ -18,6 +19,7 @@ import { GetUser } from '../../common/decorators/get-user.decorator';
 import { LinkGroupsService } from './link-groups.service';
 import { CreateLinkGroupDto } from './dto/create-link-group.dto';
 import { UpdateLinkGroupDto } from './dto/update-link-group.dto';
+import { refDataCache } from '../../common/interceptors/cache-control.interceptor';
 
 @ApiTags('Link Groups (Zalo/FB/Threads groups)')
 @ApiBearerAuth()
@@ -36,6 +38,7 @@ export class LinkGroupsController {
   // được CustomerForm.tsx gọi (useAllActiveLinkGroups()) để load dropdown
   // khi MỌI nhân viên thêm khách hàng - mirror đúng cách fix ở
   // leave-types.controller.ts / media-sources.controller.ts.
+  @UseInterceptors(refDataCache())
   @Get()
   @ApiOperation({ summary: 'Lấy danh sách nhóm, lọc theo categoryId/activeOnly (mọi role đã đăng nhập)' })
   @ApiQuery({ name: 'categoryId', required: false, type: Number })

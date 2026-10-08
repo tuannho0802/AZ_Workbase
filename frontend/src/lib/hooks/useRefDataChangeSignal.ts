@@ -15,6 +15,8 @@ export const REF_DATA_QUERY_KEYS: Readonly<Record<string, readonly (readonly str
     leave_types: [['leave-types']],
     media_sources: [['media-sources']],
     users: [['users']], // [AGENT] NEW: GET /users/all (cache HTTP 30 phút)
+    link_categories: [['link-categories']],
+    link_groups: [['link-groups']],
 };
 
 /**

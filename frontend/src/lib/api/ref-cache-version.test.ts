@@ -11,13 +11,29 @@ import {
 describe('ref-cache-version', () => {
   beforeEach(() => resetRefCacheState());
 
-  it('chỉ 4 đường dẫn được cache có version; đường khác (me, customers...) KHÔNG có', () => {
-    expect(refVersionFor('/departments', 7)).toBe('7.0.0.0');
-    expect(refVersionFor('/users/all', 7)).toBe('7.0.0.0');
-    expect(refVersionFor('/roles/colors', 7)).toBe('7.0.0.0');
-    expect(refVersionFor('/positions', 7)).toBe('7.0.0.0');
-    for (const p of ['/users/me', '/roles/my-permissions', '/customers', '/customer-statuses', '/departments/public', '/users']) {
+  it('chỉ các đường dẫn danh mục được cache có version; đường khác (me, customers...) KHÔNG có', () => {
+    for (const p of [
+      '/departments', '/users/all', '/roles/colors', '/positions',
+      '/customer-statuses', '/periodic-task-statuses', '/leave-types', '/media-sources', '/link-categories', '/link-groups',
+    ]) {
+      expect(refVersionFor(p, 7)).toBe('7.0.0.0');
+    }
+    for (const p of ['/users/me', '/roles/my-permissions', '/customers', '/link-groups/managed-by-me', '/link-groups/customer-counts', '/departments/public', '/users']) {
       expect(refVersionFor(p, 7)).toBeUndefined();
+    }
+  });
+
+  it('danh mục mới dùng đúng domain refSig của nó (statuses đổi KHÔNG làm đổi khoá media-sources)', () => {
+    writeRefCacheState({ sig: { customer_statuses: 1, media_sources: 1 }, epoch: 0 });
+    const media = refVersionFor('/media-sources', 7);
+    writeRefCacheState({ sig: { customer_statuses: 2, media_sources: 1 } });
+    expect(refVersionFor('/media-sources', 7)).toBe(media);
+    expect(refVersionFor('/customer-statuses', 7)).toBe('7.0.0.2');
+  });
+
+  it('mutation vào danh mục mới tăng nonce', () => {
+    for (const p of ['/leave-types/3', '/media-sources', '/link-groups/5/managers', '/customer-statuses/1']) {
+      expect(noteMutationForRefCache('PATCH', p)).toBe(true);
     }
   });
 

@@ -9,6 +9,7 @@ import {
   ParseIntPipe,
   Query,
   UseGuards,
+  UseInterceptors,
 } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiBearerAuth, ApiQuery } from '@nestjs/swagger';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
@@ -18,6 +19,7 @@ import { GetUser } from '../../common/decorators/get-user.decorator';
 import { LinkCategoriesService } from './link-categories.service';
 import { CreateLinkCategoryDto } from './dto/create-link-category.dto';
 import { UpdateLinkCategoryDto } from './dto/update-link-category.dto';
+import { refDataCache } from '../../common/interceptors/cache-control.interceptor';
 
 @ApiTags('Link Categories (Zalo/FB/Threads groups)')
 @ApiBearerAuth()
@@ -33,6 +35,7 @@ export class LinkCategoriesController {
   // sidebar/trang "Quản lý nhóm liên kết" (nav-config.tsx), không được chặn
   // dropdown khi mọi nhân viên tạo Group / xem checklist join-nhóm của
   // khách hàng. Mirror đúng cách fix ở link-groups.controller.ts.
+  @UseInterceptors(refDataCache())
   @Get()
   @ApiOperation({ summary: 'Lấy danh sách category. activeOnly=true để chỉ lấy category đang mở.' })
   @ApiQuery({ name: 'activeOnly', required: false, type: Boolean })

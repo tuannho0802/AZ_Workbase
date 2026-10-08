@@ -12,7 +12,7 @@ function wrapper({ children }: { children: ReactNode }) {
 }
 const keys = () => invalidate.mock.calls.map((c) => (c[0] as { queryKey: unknown[] }).queryKey);
 const sig = (over: Record<string, number> = {}) => ({
-    departments: 1, positions: 1, roles: 1, customer_statuses: 1, periodic_task_statuses: 1, leave_types: 1, media_sources: 1, users: 1, ...over,
+    departments: 1, positions: 1, roles: 1, customer_statuses: 1, periodic_task_statuses: 1, leave_types: 1, media_sources: 1, users: 1, link_categories: 1, link_groups: 1, ...over,
 });
 
 describe('useRefDataChangeSignal (9D)', () => {

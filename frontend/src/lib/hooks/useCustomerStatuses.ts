@@ -13,7 +13,7 @@ const QUERY_KEY = ['customer-statuses'];
 export const useCustomerStatuses = (opts?: { alwaysFresh?: boolean }) => {
   const { data, isLoading, isError, error } = useQuery({
     queryKey: QUERY_KEY,
-    queryFn: () => customerStatusesApi.getAll(),
+    queryFn: () => customerStatusesApi.getAll({ fresh: opts?.alwaysFresh }),
     // [AGENT] OLD CODE (giữ để rollback): staleTime: 60 * 1000
     // NEW (Plan CPU Mục 6A): create/update/delete bên dưới đều invalidate QUERY_KEY.
     // [AGENT] OLD CODE (giữ để rollback): staleTime: REFERENCE_DATA_STALE_MS

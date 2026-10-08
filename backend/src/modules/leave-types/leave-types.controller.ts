@@ -1,4 +1,4 @@
-import { Controller, Get, Post, Patch, Delete, Param, Body, Query, UseGuards, ParseIntPipe, Request } from '@nestjs/common';
+import { Controller, Get, Post, Patch, Delete, Param, Body, Query, UseGuards, ParseIntPipe, Request, UseInterceptors } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiBearerAuth, ApiQuery } from '@nestjs/swagger';
 import { LeaveTypesService } from './leave-types.service';
 import { CreateLeaveTypeDto } from './dto/create-leave-type.dto';
@@ -6,6 +6,7 @@ import { UpdateLeaveTypeDto } from './dto/update-leave-type.dto';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { PermissionGuard } from '../../common/guards/permission.guard';
 import { RequirePermission } from '../../common/decorators/require-permission.decorator';
+import { refDataCache } from '../../common/interceptors/cache-control.interceptor';
 
 @ApiTags('Leave Types (Loại đơn nghỉ phép)')
 @ApiBearerAuth()
@@ -27,6 +28,7 @@ export class LeaveTypesController {
   // đích -> Admin tắt 'leave_types.view' để ẩn trang quản lý vô tình chặn
   // luôn nhân viên tạo đơn nghỉ phép (403 'Bạn không có quyền thực hiện
   // hành động này') - đã fix bằng cách tách 2 mục đích này ra.
+  @UseInterceptors(refDataCache())
   @Get()
   @ApiOperation({ summary: 'Danh sách tất cả loại đơn nghỉ phép (mọi user đã đăng nhập, không cần permission riêng)' })
   findAll() {

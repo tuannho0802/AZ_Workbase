@@ -17,7 +17,7 @@ const QUERY_KEY = ['periodic-task-statuses'];
 export const usePeriodicTaskStatuses = (opts?: { alwaysFresh?: boolean }) => {
   const { data, isLoading, isError, error } = useQuery({
     queryKey: QUERY_KEY,
-    queryFn: () => periodicTaskStatusesApi.getAll(),
+    queryFn: () => periodicTaskStatusesApi.getAll({ fresh: opts?.alwaysFresh }),
     // [AGENT] OLD CODE (giữ để rollback): staleTime: 60 * 1000
     // NEW (Plan CPU Mục 6A): create/update/delete bên dưới đều invalidate QUERY_KEY (+ ['periodic-tasks'] khi xoá).
     // [AGENT] OLD CODE (giữ để rollback): staleTime: REFERENCE_DATA_STALE_MS

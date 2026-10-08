@@ -31,6 +31,11 @@ export const REF_DATA_TABLE_DOMAINS: Readonly<Record<string, readonly RefDataDom
     periodic_task_statuses: ['periodic_task_statuses'],
     leave_types: ['leave_types'],
     media_sources: ['media_sources'],
+    // [AGENT] NEW: GET /link-categories và GET /link-groups (payload group JOIN category + manager chính/phụ + nhân viên content).
+    link_categories: ['link_categories', 'link_groups'],
+    link_groups: ['link_groups'],
+    link_group_secondary_managers: ['link_groups'],
+    link_group_content_staff: ['link_groups'],
 };
 
 /** Với `users`: chỉ các cột nằm trong payload `GET /departments` mới đáng bump (đăng nhập/refresh token KHÔNG bump). */
@@ -92,7 +97,7 @@ export class RefDataChangeSubscriber implements EntitySubscriberInterface {
             if (!affectsDepartments && !affectsUsers) return;
             this.record('users', event.queryRunner, [
                 ...(affectsDepartments ? (['departments'] as const) : []),
-                ...(affectsUsers ? (['users'] as const) : []),
+                ...(affectsUsers ? (['users', 'link_groups'] as const) : []), // link_groups: payload nhúng thông tin user
             ]);
             return;
         }
@@ -124,7 +129,7 @@ export class RefDataChangeSubscriber implements EntitySubscriberInterface {
     }
 
     private record(tableName: string, queryRunner: QueryRunner | undefined, override?: readonly RefDataDomain[]): void {
-        const domains = override ?? (tableName === 'users' ? (['departments', 'users'] as const) : REF_DATA_TABLE_DOMAINS[tableName]);
+        const domains = override ?? (tableName === 'users' ? (['departments', 'users', 'link_groups'] as const) : REF_DATA_TABLE_DOMAINS[tableName]);
         if (!domains) return;
 
         if (queryRunner?.isTransactionActive) {

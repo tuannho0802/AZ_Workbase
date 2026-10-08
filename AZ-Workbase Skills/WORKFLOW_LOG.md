@@ -7109,3 +7109,18 @@ Now [deploy]
 
 **Notes:**
 > BE `tsc` sạch, jest 28 suite/350 test pass (common, permissions, users, departments). Đã đối chiếu commit `fa96f44`/`e7c24a6` của người dùng: không trùng file với patch cache.
+
+---
+## [2026-10-08] | CACHE `?v=` cho statuses / leave-types / media-sources / link-categories / link-groups | [Status: Success - chưa commit/deploy]
+
+**Actor:** Agent
+**Files Changed:**
+- BE controllers: `customer-statuses`, `periodic-task-statuses`, `leave-types`, `media-sources`, `link-groups`, `link-categories` — GET danh sách gắn `@UseInterceptors(refDataCache())` (có `?v=` -> `private, max-age=1800`; thiếu -> `private, no-cache`)
+- `permissions-version.service.ts`, `ref-data-change.subscriber.ts` (+spec) — thêm domain `link_categories`, `link_groups` (bảng link_categories/link_groups/link_group_secondary_managers/link_group_content_staff; sửa `users` cũng bump `link_groups` vì payload nhúng user)
+- FE: `ref-cache-version.ts` (+test) — thêm 6 đường dẫn + tiền tố mutation; `skipRefVersion` trong `AxiosRequestConfig`; `axios-instance.ts` bỏ qua `?v=` khi `skipRefVersion`
+- FE: `*statuses.api.ts`, `leave-types.api.ts` — `getAll({ fresh })`; 3 hook truyền `fresh: opts.alwaysFresh` (trang quản trị `inUseCount` luôn lấy số mới, không cache cứng)
+- FE: `useLinkGroups.ts` -> `refDataQueryOptions()`; `useRefDataChangeSignal.ts` thêm 2 domain
+
+**Notes:**
+> `inUseCount` đếm từ bảng khác (customers, leave_requests) không làm refSig tăng -> chỉ dropdown dùng `?v=`; 3 trang quản lý status/loại phép/trạng thái công việc gọi `skipRefVersion` (vẫn 304 mỗi lần mở trang, đúng ý). Chưa làm: guides, utms, storage, attendance (payload theo user/quyền hoặc cần cơ chế bump riêng).
+> BE tsc sạch, jest 112 suite/1851 test pass. FE tsc chỉ còn 4 lỗi logo.png có sẵn; vitest đã chạy các file liên quan, đều pass.

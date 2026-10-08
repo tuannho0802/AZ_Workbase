@@ -9,6 +9,7 @@ import {
     ParseIntPipe,
     Query,
     UseGuards,
+    UseInterceptors,
 } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiBearerAuth, ApiQuery } from '@nestjs/swagger';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
@@ -18,6 +19,7 @@ import { GetUser } from '../../common/decorators/get-user.decorator';
 import { MediaSourcesService } from './media-sources.service';
 import { CreateMediaSourceDto } from './dto/create-media-source.dto';
 import { UpdateMediaSourceDto } from './dto/update-media-source.dto';
+import { refDataCache } from '../../common/interceptors/cache-control.interceptor';
 
 @ApiTags('Media Sources (Nguồn khách hàng)')
 @ApiBearerAuth()
@@ -39,6 +41,7 @@ export class MediaSourcesController {
     // MỌI nhân viên thêm khách hàng - dùng chung 1 permission cho cả 2 mục
     // đích khiến Admin tắt quyền xem trang quản lý vô tình chặn luôn tạo
     // khách hàng. Mirror đúng cách fix ở leave-types.controller.ts.
+    @UseInterceptors(refDataCache())
     @Get()
     @ApiOperation({
         summary: 'Lấy danh sách nguồn. activeOnly=true để chỉ lấy nguồn đang mở (dùng cho dropdown thêm khách hàng).',

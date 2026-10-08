@@ -74,19 +74,19 @@ describe('RefDataChangeSubscriber (9D)', () => {
     it('thêm user mới -> bump departments', async () => {
       sub.afterInsert({ metadata: meta('users'), queryRunner: qr() } as any);
       await flush();
-      expect(bumped()).toEqual([['departments', 'users']]);
+      expect(bumped()).toEqual([['departments', 'link_groups', 'users']]);
     });
 
     it.each(['name', 'role', 'departmentId', 'isActive', 'deletedAt'])('save(): cột %s đổi -> bump departments + users', async (prop) => {
       sub.afterUpdate(updateEvent('users', { updatedColumns: [{ propertyName: prop }] }));
       await flush();
-      expect(bumped()).toEqual([['departments', 'users']]);
+      expect(bumped()).toEqual([['departments', 'link_groups', 'users']]);
     });
 
     it('save(): quan hệ `department` đổi -> bump', async () => {
       sub.afterUpdate(updateEvent('users', { updatedRelations: [{ propertyName: 'department' }] }));
       await flush();
-      expect(bumped()).toEqual([['departments', 'users']]);
+      expect(bumped()).toEqual([['departments', 'link_groups', 'users']]);
     });
 
     it('đăng nhập / refresh token (save) -> KHÔNG bump', async () => {
@@ -104,13 +104,13 @@ describe('RefDataChangeSubscriber (9D)', () => {
         updateEvent('users', { updatedColumns: [{ propertyName: 'annualLeaveBalance' }, { propertyName: 'avatarUrl' }] }),
       );
       await flush();
-      expect(bumped()).toEqual([['users']]);
+      expect(bumped()).toEqual([['link_groups', 'users']]);
     });
 
     it('QueryBuilder/update(): lấy cột từ giá trị được set - xoá mềm `update(id, { deletedAt })` -> bump', async () => {
       sub.afterUpdate(updateEvent('users', { entity: { deletedAt: new Date(), deletedById: 1 } }));
       await flush();
-      expect(bumped()).toEqual([['departments', 'users']]);
+      expect(bumped()).toEqual([['departments', 'link_groups', 'users']]);
     });
 
     it('QueryBuilder/update(): chỉ đổi lastLoginAt/hashedRefreshToken -> KHÔNG bump', async () => {
@@ -125,7 +125,7 @@ describe('RefDataChangeSubscriber (9D)', () => {
       await flush();
       sub.afterRecover({ metadata: meta('users'), queryRunner: qr() } as any);
       await flush();
-      expect(bumped()).toEqual([['departments', 'users'], ['departments', 'users']]);
+      expect(bumped()).toEqual([['departments', 'link_groups', 'users'], ['departments', 'link_groups', 'users']]);
     });
 
     it('softDelete()/restore() bảng danh mục -> bump domain của bảng đó', async () => {
@@ -183,5 +183,14 @@ describe('RefDataChangeSubscriber (9D)', () => {
       await flush();
       expect(bumped()).toEqual([['customer_statuses']]);
     });
+  });
+});
+
+describe('RefDataChangeSubscriber - link groups (cache HTTP /link-categories, /link-groups)', () => {
+  it('bảng link_categories -> bump link_categories + link_groups; link_groups/secondary/content_staff -> link_groups', () => {
+    expect(REF_DATA_TABLE_DOMAINS['link_categories']).toEqual(['link_categories', 'link_groups']);
+    for (const t of ['link_groups', 'link_group_secondary_managers', 'link_group_content_staff']) {
+      expect(REF_DATA_TABLE_DOMAINS[t]).toEqual(['link_groups']);
+    }
   });
 });

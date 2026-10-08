@@ -1,4 +1,4 @@
-import { Controller, Get, Post, Patch, Delete, Param, Body, Query, UseGuards, ParseIntPipe, Request } from '@nestjs/common';
+import { Controller, Get, Post, Patch, Delete, Param, Body, Query, UseGuards, ParseIntPipe, Request, UseInterceptors } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiBearerAuth, ApiQuery } from '@nestjs/swagger';
 import { PeriodicTaskStatusesService } from './periodic-task-statuses.service';
 import { CreatePeriodicTaskStatusDto } from './dto/create-periodic-task-status.dto';
@@ -6,6 +6,7 @@ import { UpdatePeriodicTaskStatusDto } from './dto/update-periodic-task-status.d
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { PermissionGuard } from '../../common/guards/permission.guard';
 import { RequirePermission } from '../../common/decorators/require-permission.decorator';
+import { refDataCache } from '../../common/interceptors/cache-control.interceptor';
 
 @ApiTags('Periodic Task Statuses (Trạng thái công việc định kỳ)')
 @ApiBearerAuth()
@@ -22,6 +23,7 @@ export class PeriodicTaskStatusesController {
   // nhân viên đã đăng nhập vẫn PHẢI gọi được để load dropdown "Trạng thái"
   // khi tạo/sửa Công việc định kỳ (mirror đúng cách fix ở
   // customer-statuses.controller.ts/leave-types.controller.ts).
+  @UseInterceptors(refDataCache())
   @Get()
   @ApiOperation({ summary: 'Danh sách tất cả trạng thái công việc định kỳ (mọi user đã đăng nhập, không cần permission riêng)' })
   findAll() {

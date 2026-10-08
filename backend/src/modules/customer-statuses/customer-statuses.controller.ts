@@ -1,4 +1,4 @@
-import { Controller, Get, Post, Patch, Delete, Param, Body, Query, UseGuards, ParseIntPipe, Request } from '@nestjs/common';
+import { Controller, Get, Post, Patch, Delete, Param, Body, Query, UseGuards, ParseIntPipe, Request, UseInterceptors } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiBearerAuth, ApiQuery } from '@nestjs/swagger';
 import { CustomerStatusesService } from './customer-statuses.service';
 import { CreateCustomerStatusDto } from './dto/create-customer-status.dto';
@@ -6,6 +6,7 @@ import { UpdateCustomerStatusDto } from './dto/update-customer-status.dto';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { PermissionGuard } from '../../common/guards/permission.guard';
 import { RequirePermission } from '../../common/decorators/require-permission.decorator';
+import { refDataCache } from '../../common/interceptors/cache-control.interceptor';
 
 @ApiTags('Customer Statuses (Trạng thái khách hàng)')
 @ApiBearerAuth()
@@ -26,6 +27,7 @@ export class CustomerStatusesController {
   // đích -> Admin tắt 'customer_statuses.view' để ẩn trang quản lý vô tình
   // chặn luôn nhân viên xem/tạo khách hàng - đã fix bằng cách tách 2 mục
   // đích này ra (mirror đúng cách fix ở leave-types.controller.ts).
+  @UseInterceptors(refDataCache())
   @Get()
   @ApiOperation({ summary: 'Danh sách tất cả trạng thái khách hàng (mọi user đã đăng nhập, không cần permission riêng)' })
   findAll() {

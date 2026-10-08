@@ -46,7 +46,7 @@ axiosInstance.interceptors.request.use(
     }
 
     // Danh mục cache HTTP 30 phút: gắn ?v= (đổi khi dữ liệu đổi) - xem ref-cache-version.ts. Không đụng request khác.
-    if (!config.method || config.method.toLowerCase() === 'get') {
+    if ((!config.method || config.method.toLowerCase() === 'get') && !config.skipRefVersion) {
       const v = refVersionFor(pathOf(config.url), useAuthStore.getState().user?.id);
       if (v) config.params = { ...(config.params ?? {}), v };
     }

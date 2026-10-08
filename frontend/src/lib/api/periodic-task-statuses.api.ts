@@ -42,8 +42,9 @@ export type UpdatePeriodicTaskStatusPayload = Partial<
 >;
 
 export const periodicTaskStatusesApi = {
-  getAll: async (): Promise<PeriodicTaskStatus[]> => {
-    const response = await axiosInstance.get<PeriodicTaskStatus[]>('/periodic-task-statuses');
+  /** fresh=true: trang quản trị cần `inUseCount` mới nhất -> không gắn `?v=` (BE trả no-cache, luôn hỏi lại). */
+  getAll: async (opts?: { fresh?: boolean }): Promise<PeriodicTaskStatus[]> => {
+    const response = await axiosInstance.get<PeriodicTaskStatus[]>('/periodic-task-statuses', { skipRefVersion: opts?.fresh });
     return response.data;
   },
 

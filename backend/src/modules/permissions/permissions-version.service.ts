@@ -27,6 +27,8 @@ export const REF_DATA_DOMAINS = [
   'leave_types',
   'media_sources',
   'users', // [AGENT] NEW: GET /users/all (dropdown nhân viên) - cache HTTP 30 phút, đổi khoá bằng refSig.users
+  'link_categories', // [AGENT] NEW: GET /link-categories - cache HTTP 30 phút
+  'link_groups', // [AGENT] NEW: GET /link-groups (kèm category + quản lý chính/phụ + nhân viên content) - cache HTTP 30 phút
 ] as const;
 export type RefDataDomain = (typeof REF_DATA_DOMAINS)[number];
 export const REF_DATA_VERSION_KEY_PREFIX = 'refdata_version:';
