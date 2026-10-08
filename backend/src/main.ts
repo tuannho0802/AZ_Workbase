@@ -20,6 +20,9 @@ import { createSwaggerBasicAuth } from './common/security/swagger-basic-auth.mid
 import { swaggerDisabledHandler } from './common/security/swagger-disabled.middleware';
 import { AuthService } from './modules/auth/auth.service';
 import { cpuTimingMiddleware } from './common/middleware/cpu-timing.middleware';
+// [PLAN_CPU_OPTIMIZATION_ROUND2 - Mục 12A/12B] logger bỏ log khởi động Nest + đo thời gian boot (CPU_TIMING=true).
+import { QuietBootLogger } from './common/logger/quiet-boot.logger';
+import { bootMark, bootStep, isBootTimingEnabled, logBootTiming } from './common/observability/boot-timing';
 import {
   buildAllowedOrigins,
   CORS_ALLOWED_HEADERS,
@@ -41,10 +44,24 @@ const expressServer = express();
 let cachedAppPromise: Promise<NestExpressApplication> | null = null;
 
 async function createApp(): Promise<NestExpressApplication> {
+  // [Mục 12B] load = CPU của cả tiến trình tới đây (nạp module); chỉ tính khi CPU_TIMING=true.
+  const bootTiming = isBootTimingEnabled();
+  const loadUsage = bootTiming ? process.cpuUsage() : undefined;
+  const loadCpuMs = loadUsage ? (loadUsage.user + loadUsage.system) / 1000 : 0;
+  const bootStart = bootTiming ? bootMark() : undefined;
+
+  // [AGENT] OLD CODE (giữ để rollback):
+  // const app = await NestFactory.create<NestExpressApplication>(
+  //   AppModule,
+  //   new ExpressAdapter(expressServer),
+  // );
+  // NEW (Mục 12A): QuietBootLogger bỏ ~245 dòng log khởi động mỗi cold start (NEST_BOOT_LOG=true để bật lại).
   const app = await NestFactory.create<NestExpressApplication>(
     AppModule,
     new ExpressAdapter(expressServer),
+    { logger: new QuietBootLogger() },
   );
+  const createStep = bootStart ? bootStep(bootStart) : undefined;
 
   // ⚠️ BẮT BUỘC cho rate-limit theo IP (ThrottlerGuard, xem
   // modules/auth/auth.controller.ts): app chạy sau reverse proxy (Vercel edge)
@@ -79,7 +96,10 @@ async function createApp(): Promise<NestExpressApplication> {
 
   // Debug: log process.cwd() để biết path thực tế trên Vercel
   const cwd = process.cwd();
-  console.log(`[Bootstrap] process.cwd() = ${cwd}`);
+  // [AGENT] OLD CODE (giữ để rollback): console.log(`[Bootstrap] process.cwd() = ${cwd}`);
+  // NEW (Mục 12A): chỉ in khi BOOT_DEBUG=true (console.warn khi thiếu public/ vẫn giữ).
+  const bootDebug = process.env.BOOT_DEBUG === 'true';
+  if (bootDebug) console.log(`[Bootstrap] process.cwd() = ${cwd}`);
 
   // Dùng __dirname để tìm public/ tương đối với file compiled
   // Trên Vercel: __dirname = /var/task/backend/src
@@ -87,17 +107,19 @@ async function createApp(): Promise<NestExpressApplication> {
   const publicFromDirname = join(__dirname, '..', 'public');
   const publicFromCwd = join(cwd, 'public');
 
-  console.log(`[Static] Trying __dirname path: ${publicFromDirname}`);
-  console.log(`[Static] Trying cwd path: ${publicFromCwd}`);
+  if (bootDebug) {
+    console.log(`[Static] Trying __dirname path: ${publicFromDirname}`);
+    console.log(`[Static] Trying cwd path: ${publicFromCwd}`);
+  }
 
   // Thử cả 2 path, dùng cái nào tồn tại
   let publicPath: string | null = null;
   if (fs.existsSync(publicFromDirname)) {
     publicPath = publicFromDirname;
-    console.log(`[Static] ✅ Found at __dirname path`);
+    if (bootDebug) console.log(`[Static] ✅ Found at __dirname path`);
   } else if (fs.existsSync(publicFromCwd)) {
     publicPath = publicFromCwd;
-    console.log(`[Static] ✅ Found at cwd path`);
+    if (bootDebug) console.log(`[Static] ✅ Found at cwd path`);
   } else {
     console.warn(`[Static] ❌ public/ not found at either path!`);
   }
@@ -105,7 +127,7 @@ async function createApp(): Promise<NestExpressApplication> {
   if (publicPath) {
     // useStaticAssets = NestExpressApplication method, đúng hơn express.static
     app.useStaticAssets(publicPath);
-    console.log(`[Static] Serving from: ${publicPath}`);
+    if (bootDebug) console.log(`[Static] Serving from: ${publicPath}`);
   }
 
   // ✅ Luôn thêm prefix 'api' - TRỪ nhóm route /iclock/* (ADMS Push).
@@ -199,7 +221,11 @@ async function createApp(): Promise<NestExpressApplication> {
     app.use(swaggerDisabledHandler);
   }
 
+  const initStart = bootTiming ? bootMark() : undefined;
   await app.init();
+  if (bootStart && createStep && initStart) {
+    logBootTiming(loadCpuMs, createStep, bootStep(initStart), bootStep(bootStart).wallMs);
+  }
   return app;
 }
 

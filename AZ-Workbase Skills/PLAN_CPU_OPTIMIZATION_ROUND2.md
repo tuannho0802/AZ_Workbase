@@ -660,7 +660,7 @@ Phương án (chọn 1, đo trước/sau; mỗi cái 1 commit):
 **Mục tiêu:** giảm số dòng log, số lần và chi phí mỗi lần cold start. **Không hứa "hết cold start"** trên Hobby; keep-alive 5 phút chỉ giữ ấm 1 instance, không ngăn được scale-out đồng thời.
 
 ### 12A. Lọc log khởi động của Nest (BE, rủi ro rất thấp)
-- [ ] File mới `backend/src/common/logger/quiet-boot.logger.ts`: kế thừa `ConsoleLogger`, bỏ qua dòng `log` có context `InstanceLoader`, `RouterExplorer`, `RoutesResolver`, `NestFactory`, `NestApplication`; env `NEST_BOOT_LOG=true` để bật lại khi cần debug.
+- [x] File mới `backend/src/common/logger/quiet-boot.logger.ts`: kế thừa `ConsoleLogger`, bỏ qua dòng `log` có context `InstanceLoader`, `RouterExplorer`, `RoutesResolver`, `NestFactory`, `NestApplication`; env `NEST_BOOT_LOG=true` để bật lại khi cần debug.
 ```ts
 const BOOT_CONTEXTS = new Set(['InstanceLoader', 'RouterExplorer', 'RoutesResolver', 'NestFactory', 'NestApplication']);
 export class QuietBootLogger extends ConsoleLogger {
@@ -671,15 +671,15 @@ export class QuietBootLogger extends ConsoleLogger {
   }
 }
 ```
-- [ ] `main.ts`: `NestFactory.create(AppModule, new ExpressAdapter(expressServer), { logger: new QuietBootLogger() })`; giữ dòng cũ bằng comment `// [AGENT] OLD CODE`.
-- [ ] Các `console.log('[Bootstrap]…')` / `[Static]…` trong `createApp()` chỉ in khi `process.env.BOOT_DEBUG === 'true'` (giữ `console.warn` khi không tìm thấy `public/`).
-- [ ] **Không** dùng `logger: ['error','warn']`: sẽ mất toàn bộ `this.logger.log(...)` nghiệp vụ (đăng nhập, audit...).
-- [ ] Spec nhỏ: context khởi động bị bỏ qua; context khác vẫn in.
+- [x] `main.ts`: `NestFactory.create(AppModule, new ExpressAdapter(expressServer), { logger: new QuietBootLogger() })`; giữ dòng cũ bằng comment `// [AGENT] OLD CODE`.
+- [x] Các `console.log('[Bootstrap]…')` / `[Static]…` trong `createApp()` chỉ in khi `process.env.BOOT_DEBUG === 'true'` (giữ `console.warn` khi không tìm thấy `public/`).
+- [x] **Không** dùng `logger: ['error','warn']`: sẽ mất toàn bộ `this.logger.log(...)` nghiệp vụ (đăng nhập, audit...).
+- [x] Spec nhỏ: context khởi động bị bỏ qua; context khác vẫn in.
 - **Tiêu chí:** 1 cold start in < 10 dòng (trước: ~245); log nghiệp vụ còn nguyên. **Lưu ý:** chỉ giảm dòng log (+ chút CPU ghi log), **không** giảm số lần cold start.
 
 ### 12B. Đo thời gian khởi động (BE, không đổi hành vi) — làm TRƯỚC 12C/12F
 `CPU_TIMING` hiện chỉ đo **từng request** (middleware gắn sau khi app đã tạo xong) → **phần boot chưa được đo**.
-- [ ] Trong `createApp()` (`main.ts`), chỉ khi `CPU_TIMING=true`, in **1 dòng mỗi cold start**:
+- [x] Trong `createApp()` (`main.ts`), chỉ khi `CPU_TIMING=true`, in **1 dòng mỗi cold start**:
   `[BootTiming] load cpu=…ms | create cpu=…ms wall=…ms | init cpu=…ms wall=…ms | total wall=…ms`
   - `load` = `process.cpuUsage()` đọc ngay đầu `createApp()` (= chi phí nạp module/`require` từ lúc tiến trình bắt đầu).
   - `create` = quanh `NestFactory.create` (DI + kết nối TypeORM + map route); `init` = quanh `app.init()`.
@@ -687,8 +687,8 @@ export class QuietBootLogger extends ConsoleLogger {
 - [ ] Bật `CPU_TIMING=true` trên Vercel 1 buổi, thu log, rồi **tắt lại** (như Mục 8).
 - **Cách quyết định sau khi có số:** `load` cpu lớn → làm 12C; `create` wall ≫ cpu → là chờ DB, giữ nguyên (12D); `init` lớn → xem validator/route; cả ba nhỏ → bỏ 12C, 12F.
 
-### 12C. Nạp lười thư viện nặng (BE) — chỉ làm nếu 12B cho thấy `load` đáng kể
-- [ ] `exceljs` (3 file import tĩnh: `customers-export.service.ts`, `customers-import-reader.util.ts`, `attendance-export.service.ts`): đổi `import * as ExcelJS from 'exceljs'` thành `const ExcelJS = await import('exceljs')` **trong hàm** cần dùng; giữ `import type` nếu cần kiểu. Kiểm: hàm đã `async` chưa; spec nào `jest.mock('exceljs')`; `bundle: true` vẫn đóng gói.
+### 12C. Nạp lười thư viện nặng (BE) — ✅ exceljs đã làm (dùng `require` trong hàm qua `loadExcelJS()`, không dùng `await import()` vì không chạy trong Jest) — chỉ làm nếu 12B cho thấy `load` đáng kể
+- [x] `exceljs` (3 file import tĩnh: `customers-export.service.ts`, `customers-import-reader.util.ts`, `attendance-export.service.ts`): đổi `import * as ExcelJS from 'exceljs'` thành `const ExcelJS = await import('exceljs')` **trong hàm** cần dùng; giữ `import type` nếu cần kiểu. Kiểm: hàm đã `async` chưa; spec nào `jest.mock('exceljs')`; `bundle: true` vẫn đóng gói.
   Đánh đổi: lần export/import **đầu tiên** trên mỗi instance chậm hơn.
 - [ ] Ứng viên chỉ làm nếu 12B/đo từng import cho thấy đáng kể: `node-zklib`, `papaparse`, `csv-parser`. `@aws-sdk/client-s3` dùng cho avatar (gần như lần nào cũng cần) → không lười.
 - **KHÔNG làm:** `LazyModuleLoader` của Nest (module lazy **không đăng ký controller** → hỏng `/iclock/cdata` và mọi route); trì hoãn kết nối DB.

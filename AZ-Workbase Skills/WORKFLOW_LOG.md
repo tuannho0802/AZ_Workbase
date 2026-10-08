@@ -6880,3 +6880,23 @@ Now [deploy]
 > Bài nhắc "đổi Quản lý -> nhờ tải lại trang" chứ KHÔNG khẳng định thời gian hiệu lực (chưa đọc cơ chế cache phạm vi).
 
 ---
+
+## [2026-10-08 10:30] | Mục 12A/12B/12C (PLAN_CPU_OPTIMIZATION_ROUND2): lọc log boot, đo BootTiming, lazy exceljs | [Status: Success]
+
+**Actor:** Agent
+**Files Changed:**
+- `backend/src/main.ts` — `NestFactory.create(..., { logger: new QuietBootLogger() })`; `console.log([Bootstrap]/[Static])` chỉ in khi `BOOT_DEBUG=true`; khi `CPU_TIMING=true` in 1 dòng `[BootTiming] load/create/init` mỗi cold start.
+- `backend/src/common/logger/quiet-boot.logger.ts` (+spec) — bỏ dòng `log` của context InstanceLoader/RouterExplorer/RoutesResolver/NestFactory/NestApplication; `NEST_BOOT_LOG=true` bật lại.
+- `backend/src/common/observability/boot-timing.ts` (+spec) — helper đo cpu/wall.
+- `backend/src/common/utils/exceljs-loader.ts` (+spec) — `loadExcelJS()` nạp lười bằng `require` trong hàm.
+- `customers-export.service.ts`, `customers-import-reader.util.ts`, `attendance-export.service.ts` — `import type` + `loadExcelJS()`.
+
+**Root Cause:**
+> ~68% dòng log là log khởi động Nest, bị Vercel nhân bản cho mọi request đang chờ cold start; `exceljs` tốn ~165 ms CPU `require` (đo sandbox, không phải số prod) dù chỉ dùng khi export/import.
+
+**Đã chạy:** `tsc --noEmit` sạch; `npx jest` 109 suite / 1816 test pass; `npx nest build` exit 0; dist chỉ còn `exceljs-loader.js` chứa `require('exceljs')`.
+
+**Notes:**
+> Commit trước (8f28953) chỉ có file mới, phần nối vào main.ts và 3 service CHƯA từng được push -> đã làm lại ở lượt này. Chưa commit/push. Còn lại: bật `CPU_TIMING=true` trên Vercel để lấy số thật rồi mới quyết 12F (/bootstrap); 12D/12E không đổi code. Nhớ tắt `CPU_TIMING` sau khi đo.
+
+---

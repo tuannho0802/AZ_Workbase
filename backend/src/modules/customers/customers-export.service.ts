@@ -1,7 +1,10 @@
 import { Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
-import * as ExcelJS from 'exceljs';
+// [AGENT] OLD CODE (giữ để rollback): import * as ExcelJS from 'exceljs';
+// NEW (PLAN_CPU_OPTIMIZATION_ROUND2 - Mục 12C): chỉ import KIỂU; runtime nạp lười qua loadExcelJS().
+import type * as ExcelJS from 'exceljs';
+import { loadExcelJS } from '../../common/utils/exceljs-loader';
 import { CustomersService } from './customers.service';
 import { CustomerFiltersDto } from './dto/customer-filters.dto';
 import { CustomerNote } from '../../database/entities/customer-note.entity';
@@ -157,7 +160,9 @@ export class CustomersExportService {
     const statuses = await this.customerStatusRepository.find();
     const statusLabelByCode = new Map(statuses.map((s) => [s.code, s.name]));
 
-    const workbook = new ExcelJS.Workbook();
+    // [AGENT] OLD CODE: const workbook = new ExcelJS.Workbook();
+    const { Workbook } = loadExcelJS();
+    const workbook = new Workbook();
 
     // ───────────────────────── Sheet 1: Khách hàng ─────────────────────
     const sheet = workbook.addWorksheet('Khách hàng');

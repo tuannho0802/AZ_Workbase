@@ -1,5 +1,8 @@
 import { Injectable } from '@nestjs/common';
-import * as ExcelJS from 'exceljs';
+// [AGENT] OLD CODE (giữ để rollback): import * as ExcelJS from 'exceljs';
+// NEW (PLAN_CPU_OPTIMIZATION_ROUND2 - Mục 12C): chỉ import KIỂU; runtime nạp lười qua loadExcelJS().
+import type * as ExcelJS from 'exceljs';
+import { loadExcelJS } from '../../common/utils/exceljs-loader';
 import { ZkDeviceService } from '../zk-device/zk-device.service';
 import { QueryAttendanceLogDto } from '../zk-device/dto/query-attendance-log.dto';
 import { QueryAttendanceSummaryDto } from '../zk-device/dto/query-attendance-summary.dto';
@@ -125,7 +128,9 @@ export class AttendanceExportService {
       viewerRole,
     );
 
-    const workbook = new ExcelJS.Workbook();
+    // [AGENT] OLD CODE: const workbook = new ExcelJS.Workbook();
+    const { Workbook } = loadExcelJS();
+    const workbook = new Workbook();
     const sheet = workbook.addWorksheet('Logs chấm công');
 
     sheet.columns = [
@@ -165,7 +170,9 @@ export class AttendanceExportService {
       viewerRole,
     );
 
-    const workbook = new ExcelJS.Workbook();
+    // [AGENT] OLD CODE: const workbook = new ExcelJS.Workbook();
+    const { Workbook } = loadExcelJS();
+    const workbook = new Workbook();
     const sheet = workbook.addWorksheet('Bảng chấm công');
 
     sheet.columns = [
@@ -225,7 +232,9 @@ export class AttendanceExportService {
     const monthStartIso = `${dto.month}-01`;
     const monthEndIso = `${dto.month}-${String(daysInMonth).padStart(2, '0')}`;
 
-    const workbook = new ExcelJS.Workbook();
+    // [AGENT] OLD CODE: const workbook = new ExcelJS.Workbook();
+    const { Workbook } = loadExcelJS();
+    const workbook = new Workbook();
     const sheet = workbook.addWorksheet('Tổng hợp chấm công');
 
     // ── Header 2 dòng: dòng 1 = nhóm cột, dòng 2 = từng ngày + thứ ──

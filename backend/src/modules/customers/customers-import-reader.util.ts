@@ -1,5 +1,8 @@
 import { BadRequestException } from '@nestjs/common';
-import * as ExcelJS from 'exceljs';
+// [AGENT] OLD CODE (giữ để rollback): import * as ExcelJS from 'exceljs';
+// NEW (PLAN_CPU_OPTIMIZATION_ROUND2 - Mục 12C): chỉ import KIỂU; runtime nạp lười qua loadExcelJS().
+import type * as ExcelJS from 'exceljs';
+import { loadExcelJS } from '../../common/utils/exceljs-loader';
 import * as Papa from 'papaparse';
 
 /**
@@ -156,7 +159,9 @@ async function readXlsx(buffer: Buffer): Promise<ImportSheetData> {
     throw new BadRequestException('File quá lớn sau khi giải nén');
   }
 
-  const workbook = new ExcelJS.Workbook();
+  // [AGENT] OLD CODE: const workbook = new ExcelJS.Workbook();
+  const { Workbook } = loadExcelJS();
+  const workbook = new Workbook();
   try {
     await workbook.xlsx.load(buffer as any);
   } catch {
