@@ -1,6 +1,7 @@
 import { useEffect, useRef } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import { refreshAllClientCaches } from '../system-refresh';
+import { readRefCacheState, writeRefCacheState } from '../api/ref-cache-version';
 
 /**
  * Máy KHÁC của Root Admin / mọi user: làm mới sau 0..JITTER giây ngẫu nhiên để hàng chục tab không cùng tải lại
@@ -12,6 +13,7 @@ export const SYSTEM_EPOCH_JITTER_MAX_MS = 8_000;
 let acknowledgedEpoch: number | undefined;
 export function acknowledgeSystemEpoch(epoch: number): void {
   acknowledgedEpoch = epoch;
+  writeRefCacheState({ epoch }); // khoá cache HTTP đổi ngay -> refresh sau đó không trúng bản cũ
 }
 /** Chỉ dùng trong test. */
 export function resetSystemEpochAcknowledgement(): void {
@@ -37,8 +39,14 @@ export function useSystemEpochSignal(epoch: number | undefined, userId: number |
   useEffect(() => {
     if (epoch === undefined) return;
 
-    const prev = baseline.current;
+    // [AGENT] NEW: mốc ban đầu từ localStorage (cùng user) để F5 vẫn nhận ra Reset xảy ra lúc đóng tab.
+    const stored = readRefCacheState();
+    const prev =
+      baseline.current.epoch === undefined && stored.userId === userId && stored.epoch !== undefined
+        ? { userId, epoch: stored.epoch }
+        : baseline.current;
     baseline.current = { userId, epoch };
+    writeRefCacheState({ userId, epoch }); // GHI TRƯỚC khi làm mới: request sau dùng ?v= mới
 
     if (prev.epoch === undefined || prev.userId !== userId || prev.epoch === epoch) return;
     if (acknowledgedEpoch === epoch) return;

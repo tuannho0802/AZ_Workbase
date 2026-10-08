@@ -3,6 +3,7 @@ import { showMessage } from '@/components/common/AntdAppProvider';
 import { useAuthStore } from '../stores/auth.store';
 import { bearerToken, refreshAccessTokenShared } from '../auth/shared-refresh';
 import { ensureFreshAccessToken } from '../auth/proactive-refresh';
+import { noteMutationForRefCache, pathOf, refVersionFor } from './ref-cache-version';
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001/api';
 
@@ -44,6 +45,12 @@ axiosInstance.interceptors.request.use(
       config.headers.Authorization = `Bearer ${token}`;
     }
 
+    // Danh mục cache HTTP 30 phút: gắn ?v= (đổi khi dữ liệu đổi) - xem ref-cache-version.ts. Không đụng request khác.
+    if (!config.method || config.method.toLowerCase() === 'get') {
+      const v = refVersionFor(pathOf(config.url), useAuthStore.getState().user?.id);
+      if (v) config.params = { ...(config.params ?? {}), v };
+    }
+
     return config;
   },
   (error) => Promise.reject(error),
@@ -65,7 +72,11 @@ const processQueue = (error: any, token: string | null = null) => {
 };
 
 axiosInstance.interceptors.response.use(
-  (response) => response,
+  (response) => {
+    // Sửa danh mục thành công -> đổi khoá cache ngay, để refetch sau invalidate không trúng bản cũ trong HTTP cache.
+    noteMutationForRefCache(response.config?.method, pathOf(response.config?.url));
+    return response;
+  },
   async (error: AxiosError) => {
     const originalRequest = error.config as InternalAxiosRequestConfig & {
       _retry?: boolean;

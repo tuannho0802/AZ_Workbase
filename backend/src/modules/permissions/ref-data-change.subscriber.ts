@@ -22,9 +22,9 @@ import { PermissionsVersionService, RefDataDomain } from './permissions-version.
  *  - `GET /roles` trả kèm ma trận `role_permissions` toàn cục.
  */
 export const REF_DATA_TABLE_DOMAINS: Readonly<Record<string, readonly RefDataDomain[]>> = {
-    departments: ['departments', 'positions'],
+    departments: ['departments', 'positions', 'users'], // users/all JOIN department
     department_managers: ['departments'],
-    positions: ['positions'],
+    positions: ['positions', 'users'], // users/all JOIN position
     roles: ['roles'],
     role_permissions: ['roles'],
     customer_statuses: ['customer_statuses'],
@@ -42,6 +42,17 @@ export const USER_COLUMNS_AFFECTING_DEPARTMENTS: ReadonlySet<string> = new Set([
     'isActive',
     // Xoá mềm user = `update(id, { deletedAt })` (users.service#softDeleteUser) -> user rời danh sách `employees`/`managers`.
     'deletedAt',
+]);
+
+/**
+ * [AGENT] NEW: với `users`: bump domain `users` (payload GET /users/all = cả entity + department + position + avatar).
+ * Chỉ BỎ QUA khi cột đổi toàn là cột kỹ thuật (đăng nhập/refresh token/cập nhật mốc) - tránh bump mỗi lần login.
+ */
+export const USER_COLUMNS_IGNORED_FOR_USERS_DOMAIN: ReadonlySet<string> = new Set([
+    'hashedRefreshToken',
+    'lastLoginAt',
+    'updatedAt',
+    'password',
 ]);
 
 /**
@@ -76,7 +87,14 @@ export class RefDataChangeSubscriber implements EntitySubscriberInterface {
                 event.updatedColumns.length > 0 || event.updatedRelations.length > 0
                     ? [...event.updatedColumns.map((c) => c.propertyName), ...event.updatedRelations.map((r) => r.propertyName)]
                     : Object.keys((event.entity as object | undefined) ?? {});
-            if (!changed.some((c) => USER_COLUMNS_AFFECTING_DEPARTMENTS.has(c))) return;
+            const affectsDepartments = changed.some((c) => USER_COLUMNS_AFFECTING_DEPARTMENTS.has(c));
+            const affectsUsers = changed.some((c) => !USER_COLUMNS_IGNORED_FOR_USERS_DOMAIN.has(c));
+            if (!affectsDepartments && !affectsUsers) return;
+            this.record('users', event.queryRunner, [
+                ...(affectsDepartments ? (['departments'] as const) : []),
+                ...(affectsUsers ? (['users'] as const) : []),
+            ]);
+            return;
         }
         this.record(event.metadata.tableName, event.queryRunner);
     }
@@ -105,8 +123,8 @@ export class RefDataChangeSubscriber implements EntitySubscriberInterface {
         this.pendingByRunner.delete(event.queryRunner);
     }
 
-    private record(tableName: string, queryRunner: QueryRunner | undefined): void {
-        const domains = tableName === 'users' ? (['departments'] as const) : REF_DATA_TABLE_DOMAINS[tableName];
+    private record(tableName: string, queryRunner: QueryRunner | undefined, override?: readonly RefDataDomain[]): void {
+        const domains = override ?? (tableName === 'users' ? (['departments', 'users'] as const) : REF_DATA_TABLE_DOMAINS[tableName]);
         if (!domains) return;
 
         if (queryRunner?.isTransactionActive) {

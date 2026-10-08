@@ -3,6 +3,7 @@ import { renderHook } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import type { ReactNode } from 'react';
 import { useRefDataChangeSignal, REF_DATA_QUERY_KEYS } from './useRefDataChangeSignal';
+import { resetRefCacheState, writeRefCacheState } from '../api/ref-cache-version';
 
 let queryClient: QueryClient;
 let invalidate: ReturnType<typeof vi.fn>;
@@ -11,11 +12,12 @@ function wrapper({ children }: { children: ReactNode }) {
 }
 const keys = () => invalidate.mock.calls.map((c) => (c[0] as { queryKey: unknown[] }).queryKey);
 const sig = (over: Record<string, number> = {}) => ({
-    departments: 1, positions: 1, roles: 1, customer_statuses: 1, periodic_task_statuses: 1, leave_types: 1, media_sources: 1, ...over,
+    departments: 1, positions: 1, roles: 1, customer_statuses: 1, periodic_task_statuses: 1, leave_types: 1, media_sources: 1, users: 1, ...over,
 });
 
 describe('useRefDataChangeSignal (9D)', () => {
     beforeEach(() => {
+        resetRefCacheState();
         queryClient = new QueryClient();
         invalidate = vi.fn().mockResolvedValue(undefined);
         queryClient.invalidateQueries = invalidate as unknown as QueryClient['invalidateQueries'];
@@ -94,5 +96,28 @@ describe('useRefDataChangeSignal (9D)', () => {
         expect(invalidate).not.toHaveBeenCalled();
         rerender({ s: { departments: 1, positions: 5, khong_biet: 4 } });
         expect(keys()).toEqual([['positions']]); // domain lạ không có khoá -> bỏ qua
+    });
+
+    it('F5: mốc lưu ở localStorage (cùng user) -> lần poll đầu thấy domain đã đổi lúc đóng tab thì invalidate', () => {
+        writeRefCacheState({ userId: 7, sig: sig() });
+        renderHook(() => useRefDataChangeSignal(sig({ users: 4 }), 7), { wrapper });
+        expect(keys()).toEqual([['users']]);
+    });
+
+    it('F5: mốc localStorage của USER KHÁC bị bỏ qua (không invalidate)', () => {
+        writeRefCacheState({ userId: 99, sig: sig() });
+        renderHook(() => useRefDataChangeSignal(sig({ users: 4 }), 7), { wrapper });
+        expect(invalidate).not.toHaveBeenCalled();
+    });
+
+    it('mốc mới được ghi vào localStorage TRƯỚC khi invalidate (refetch dùng ?v= mới)', () => {
+        let seenAtInvalidate: number | undefined;
+        invalidate.mockImplementation(() => {
+            seenAtInvalidate = JSON.parse(window.localStorage.getItem('az-ref-cache-state')!).sig.departments;
+            return Promise.resolve();
+        });
+        const { rerender } = renderHook(({ s }) => useRefDataChangeSignal(s, 7), { wrapper, initialProps: { s: sig() } });
+        rerender({ s: sig({ departments: 6 }) });
+        expect(seenAtInvalidate).toBe(6);
     });
 });

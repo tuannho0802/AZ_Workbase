@@ -31,6 +31,9 @@ export class CacheControlInterceptor implements NestInterceptor {
   constructor(
     private readonly maxAge: number = 60,
     private readonly revalidate: boolean = false,
+    // [AGENT] NEW: true = "private, max-age=N" (cache mù N giây, CHỈ trình duyệt, không CDN, không stale-while-revalidate).
+    // BẮT BUỘC đi kèm FE gắn `?v=` đổi khi dữ liệu đổi (xem frontend/src/lib/api/ref-cache-version.ts) - thiếu thì trả bản cũ tới N giây.
+    private readonly privateVersioned: boolean = false,
   ) { }
 
   intercept(context: ExecutionContext, next: CallHandler): Observable<any> {
@@ -43,7 +46,9 @@ export class CacheControlInterceptor implements NestInterceptor {
         if (request.method === 'GET') {
           response.setHeader(
             'Cache-Control',
-            this.revalidate
+            this.privateVersioned
+              ? `private, max-age=${this.maxAge}`
+              : this.revalidate
               ? 'private, no-cache'
               : `public, max-age=${this.maxAge}, stale-while-revalidate=120`,
           );
@@ -52,3 +57,7 @@ export class CacheControlInterceptor implements NestInterceptor {
     );
   }
 }
+
+/** 30 phút - danh mục ít đổi; FE gắn `?v=` (refSig/epoch/nonce) nên đổi dữ liệu là tự bỏ bản cũ. */
+export const REF_DATA_HTTP_MAX_AGE_S = 1800;
+export const refDataCache = () => new CacheControlInterceptor(REF_DATA_HTTP_MAX_AGE_S, false, true);

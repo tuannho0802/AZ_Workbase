@@ -26,6 +26,7 @@ export const REF_DATA_DOMAINS = [
   'periodic_task_statuses',
   'leave_types',
   'media_sources',
+  'users', // [AGENT] NEW: GET /users/all (dropdown nhân viên) - cache HTTP 30 phút, đổi khoá bằng refSig.users
 ] as const;
 export type RefDataDomain = (typeof REF_DATA_DOMAINS)[number];
 export const REF_DATA_VERSION_KEY_PREFIX = 'refdata_version:';

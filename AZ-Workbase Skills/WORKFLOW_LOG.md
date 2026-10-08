@@ -7052,3 +7052,24 @@ Now [deploy]
 > `tsc --noEmit` sạch (trừ 4 lỗi logo.png sẵn có). Chưa đo prod. Phần 304 còn lại khi F5 là cache React Query nằm trong RAM nên F5 mất hết; 304 vẫn chạy trọn handler ở BE (xem phân tích trong chat).
 
 ---
+---
+## [2026-10-08] | PERF: cache HTTP 30 phút cho danh mục ít đổi (khoá `?v=`) + domain refSig `users` + poll không tự lặp ở focus | [Status: Success - chưa commit/deploy]
+
+**Actor:** Agent
+**Files Changed:**
+- `backend/src/common/interceptors/cache-control.interceptor.ts` — tham số `privateVersioned` + `refDataCache()` = `private, max-age=1800` (+ spec mới)
+- `backend/src/modules/{departments,users,roles,positions}/*.controller.ts` — GET `/departments`, `/users/all`, `/roles/colors`, `/positions` dùng `refDataCache()`
+- `backend/src/modules/permissions/permissions-version.service.ts` — thêm domain `users` vào `REF_DATA_DOMAINS`
+- `backend/src/modules/permissions/ref-data-change.subscriber.ts` (+spec) — `users` bump `departments`+`users` (bỏ qua cột token/lastLoginAt); `departments`/`positions` bump thêm `users` (payload `/users/all` JOIN 2 bảng này)
+- `frontend/src/lib/api/ref-cache-version.ts` (mới, +test) — khoá `v = userId.epoch.nonce.refSig[domain]`, mốc lưu localStorage
+- `frontend/src/lib/api/axios-instance.ts` — GET 4 đường dẫn trên tự gắn `?v=`; mutation thành công vào departments/positions/roles/permissions/users tăng nonce
+- `frontend/src/lib/hooks/useRefDataChangeSignal.ts`, `useSystemEpochSignal.ts` — mốc ban đầu lấy từ localStorage (F5 vẫn nhận ra thay đổi lúc đóng tab), GHI mốc TRƯỚC khi invalidate; `users` thêm vào `REF_DATA_QUERY_KEYS`
+- `frontend/src/lib/hooks/useNotificationPoll.ts` — `staleTime` = chu kỳ poll (300 s) thay vì 150 s
+
+**Root Cause:**
+> F5 xoá cache React Query (RAM) và departments/users dùng `private, no-cache` => mỗi F5 hỏi lại BE (304 vẫn chạy trọn handler). Poll: `staleTime` 150 s + `refetchOnWindowFocus` làm focus lại tab sau >2,5 phút poll thêm ngoài chu kỳ 5 phút.
+
+**Notes:**
+> KHÔNG cache HTTP: customer-statuses, periodic-task-statuses, leave-types, media-sources (payload có `inUseCount` đếm từ bảng khác, không bump domain). `users/me`, `my-permissions`, ui-visibility, poll cũng không. KHÔNG đưa version/epoch về 0 (chỉ tăng).
+> Giới hạn: SQL thô/migration/seed không bump refSig => tối đa 30 phút cũ (hoặc admin bấm Reset). Chưa kiểm thử trình duyệt thật (F5 vs Ctrl+Shift+R với XHR).
+> Kiểm chứng: BE `tsc` sạch, `nest build` OK, jest 112 suite/1845 test pass; FE vitest 105 file pass, `tsc` chỉ còn 4 lỗi `logo.png` có sẵn.

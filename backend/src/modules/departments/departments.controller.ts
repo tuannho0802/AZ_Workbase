@@ -8,7 +8,7 @@ import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { PermissionGuard } from '../../common/guards/permission.guard';
 import { RequirePermission } from '../../common/decorators/require-permission.decorator';
 import { GetUser } from '../../common/decorators/get-user.decorator';
-import { CacheControlInterceptor } from '../../common/interceptors/cache-control.interceptor';
+import { refDataCache } from '../../common/interceptors/cache-control.interceptor';
 
 @ApiTags('Departments')
   @Controller('departments')
@@ -37,7 +37,7 @@ export class DepartmentsController {
   @Get()
   @UseGuards(JwtAuthGuard)
   @ApiBearerAuth()
-  @UseInterceptors(new CacheControlInterceptor(300, true))
+  @UseInterceptors(refDataCache())
   @ApiOperation({ summary: 'Danh sách tất cả phòng ban (mọi user đã đăng nhập, không cần permission riêng)' })
   findAll() {
     return this.departmentsService.findAll();

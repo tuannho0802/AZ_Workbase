@@ -14,7 +14,7 @@ import { UpdateOwnProfileDto } from './dto/update-own-profile.dto';
 import { UpdateOwnEmailDto } from './dto/update-own-email.dto';
 import { ChangePasswordDto } from './dto/change-password.dto';
 import { UpdateOwnAvatarDto } from './dto/update-own-avatar.dto';
-import { CacheControlInterceptor } from '../../common/interceptors/cache-control.interceptor';
+import { CacheControlInterceptor, refDataCache } from '../../common/interceptors/cache-control.interceptor';
 
 @ApiTags('Users')
 @ApiBearerAuth()
@@ -28,7 +28,7 @@ export class UsersController {
     // đăng nhập (dùng để đổ dropdown chọn nhân viên ở khắp nơi trong app,
     // không phải màn quản trị nhân sự) - khớp hành vi cũ (@Roles liệt kê đủ cả
     // 4 role = tương đương không giới hạn gì).
-  @UseInterceptors(new CacheControlInterceptor(60, true))
+  @UseInterceptors(refDataCache())
   @ApiOperation({ summary: 'Lấy toàn bộ danh sách nhân viên (Không phân trang)' })
   async findAllList(
     @Request() req: any,

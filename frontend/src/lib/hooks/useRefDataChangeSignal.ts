@@ -1,5 +1,6 @@
 import { useEffect, useRef } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
+import { readRefCacheState, writeRefCacheState } from '../api/ref-cache-version';
 
 /**
  * Domain (khớp `REF_DATA_DOMAINS` ở BE - permissions-version.service.ts) -> khoá React Query cần làm mới khi domain đó đổi.
@@ -13,6 +14,7 @@ export const REF_DATA_QUERY_KEYS: Readonly<Record<string, readonly (readonly str
     periodic_task_statuses: [['periodic-task-statuses']],
     leave_types: [['leave-types']],
     media_sources: [['media-sources']],
+    users: [['users']], // [AGENT] NEW: GET /users/all (cache HTTP 30 phút)
 };
 
 /**
@@ -38,13 +40,22 @@ export function useRefDataChangeSignal(refSig: Record<string, number> | undefine
     useEffect(() => {
         if (refSig === undefined) return;
 
-        const prev = baseline.current;
-        baseline.current = { userId, sig: { ...(prev.userId === userId ? prev.sig : undefined), ...refSig } };
+        // [AGENT] NEW: mốc ban đầu lấy từ localStorage (cùng user) - F5 vẫn so được với lần trước, danh mục đổi lúc đóng tab vẫn được làm mới.
+        const stored = readRefCacheState();
+        const prevSig =
+            baseline.current.userId === userId && baseline.current.sig
+                ? baseline.current.sig
+                : stored.userId === userId && Object.keys(stored.sig).length > 0
+                  ? stored.sig
+                  : undefined;
+        const merged = { ...(prevSig ?? {}), ...refSig };
+        baseline.current = { userId, sig: merged };
+        writeRefCacheState({ userId, sig: merged }); // GHI TRƯỚC khi invalidate: refetch dùng ?v= mới
 
-        if (prev.sig === undefined || prev.userId !== userId) return;
+        if (prevSig === undefined) return;
 
         for (const [domain, version] of Object.entries(refSig)) {
-            const before = prev.sig[domain];
+            const before = prevSig[domain];
             if (before === undefined || before === version) continue;
             for (const queryKey of REF_DATA_QUERY_KEYS[domain] ?? []) {
                 queryClient.invalidateQueries({ queryKey: [...queryKey] });

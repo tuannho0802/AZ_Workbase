@@ -9,6 +9,7 @@ import {
   Param,
   ParseIntPipe,
   UseGuards,
+  UseInterceptors,
 } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiBearerAuth } from '@nestjs/swagger';
 import { RolesService } from './roles.service';
@@ -19,6 +20,7 @@ import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { PermissionGuard } from '../../common/guards/permission.guard';
 import { RequirePermission } from '../../common/decorators/require-permission.decorator';
 import { GetUser } from '../../common/decorators/get-user.decorator';
+import { refDataCache } from '../../common/interceptors/cache-control.interceptor';
 
 @ApiTags('Roles & Permissions (Phân quyền tuỳ chỉnh)')
 @ApiBearerAuth()
@@ -41,6 +43,7 @@ export class RolesController {
   }
 
   @Get('roles/colors')
+  @UseInterceptors(refDataCache())
   @ApiOperation({
     summary:
       'Màu của tất cả Role (id/code/name/color) - KHÔNG cần roles.view, mọi user đã đăng nhập đều gọi được. Dùng để FE tô đúng màu Tag Role (SalesUserSelect, bảng/tab Khách hàng...) mà không lộ ma trận permission như GET /roles đầy đủ.',

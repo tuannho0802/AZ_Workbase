@@ -1,4 +1,4 @@
-import { Controller, Get, Post, Patch, Delete, Param, Body, UseGuards, ParseIntPipe, Request } from '@nestjs/common';
+import { Controller, Get, Post, Patch, Delete, Param, Body, UseGuards, ParseIntPipe, Request, UseInterceptors } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiBearerAuth } from '@nestjs/swagger';
 import { PositionsService } from './positions.service';
 import { CreatePositionDto } from './dto/create-position.dto';
@@ -6,6 +6,7 @@ import { UpdatePositionDto } from './dto/update-position.dto';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { PermissionGuard } from '../../common/guards/permission.guard';
 import { RequirePermission } from '../../common/decorators/require-permission.decorator';
+import { refDataCache } from '../../common/interceptors/cache-control.interceptor';
 
 @ApiTags('Positions (Vị trí)')
   @Controller('positions')
@@ -33,6 +34,7 @@ export class PositionsController {
   // trang quản lý vô tình phá luôn Chia Data. Mirror đúng cách fix ở
   // leave-types.controller.ts / departments.controller.ts.
   @Get()
+  @UseInterceptors(refDataCache())
   @UseGuards(JwtAuthGuard)
   @ApiBearerAuth()
   @ApiOperation({ summary: 'Danh sách tất cả Vị trí (mọi user đã đăng nhập, không cần permission riêng)' })

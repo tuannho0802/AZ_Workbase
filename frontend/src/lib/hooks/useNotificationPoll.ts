@@ -53,7 +53,9 @@ export function useNotificationPoll() {
     // [AGENT] OLD CODE (giữ lại để rollback): refetchInterval: POLL_INTERVAL_MS,
     refetchInterval,
     refetchOnWindowFocus: true,
-    staleTime: POLL_INTERVAL_MS / 2,
+    // [AGENT] OLD CODE: staleTime: POLL_INTERVAL_MS / 2 (150s -> focus lại tab sau >2,5 phút là poll thêm 1 lần, ngoài chu kỳ 5 phút)
+    // NEW: = POLL_INTERVAL_MS (cùng useSidebarBadgeCounts, nếu 2 observer lệch staleTime thì cái NGẮN hơn thắng).
+    staleTime: POLL_INTERVAL_MS,
     retry: 1,
   });
 

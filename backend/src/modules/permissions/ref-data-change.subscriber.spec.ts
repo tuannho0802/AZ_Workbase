@@ -53,7 +53,7 @@ describe('RefDataChangeSubscriber (9D)', () => {
     sub.afterUpdate(updateEvent('departments'));
     await flush();
     expect(versionService.bumpRef).toHaveBeenCalledTimes(1);
-    expect(bumped()).toEqual([['departments', 'positions']]);
+    expect(bumped()).toEqual([['departments', 'positions', 'users']]);
   });
 
   it('sự kiện ở tick sau -> lần bump mới (không "nuốt" mất thay đổi)', async () => {
@@ -67,42 +67,50 @@ describe('RefDataChangeSubscriber (9D)', () => {
   it('thiếu queryRunner vẫn chạy (coi như ngoài transaction)', async () => {
     sub.afterInsert({ metadata: meta('positions'), queryRunner: undefined } as any);
     await flush();
-    expect(bumped()).toEqual([['positions']]);
+    expect(bumped()).toEqual([['positions', 'users']]);
   });
 
   describe('users (payload /departments có employees + managers)', () => {
     it('thêm user mới -> bump departments', async () => {
       sub.afterInsert({ metadata: meta('users'), queryRunner: qr() } as any);
       await flush();
-      expect(bumped()).toEqual([['departments']]);
+      expect(bumped()).toEqual([['departments', 'users']]);
     });
 
-    it.each(['name', 'role', 'departmentId', 'isActive', 'deletedAt'])('save(): cột %s đổi -> bump', async (prop) => {
+    it.each(['name', 'role', 'departmentId', 'isActive', 'deletedAt'])('save(): cột %s đổi -> bump departments + users', async (prop) => {
       sub.afterUpdate(updateEvent('users', { updatedColumns: [{ propertyName: prop }] }));
       await flush();
-      expect(bumped()).toEqual([['departments']]);
+      expect(bumped()).toEqual([['departments', 'users']]);
     });
 
     it('save(): quan hệ `department` đổi -> bump', async () => {
       sub.afterUpdate(updateEvent('users', { updatedRelations: [{ propertyName: 'department' }] }));
       await flush();
-      expect(bumped()).toEqual([['departments']]);
+      expect(bumped()).toEqual([['departments', 'users']]);
     });
 
-    it('đăng nhập / refresh token / số dư phép / avatar (save) -> KHÔNG bump', async () => {
+    it('đăng nhập / refresh token (save) -> KHÔNG bump', async () => {
       sub.afterUpdate(
         updateEvent('users', {
-          updatedColumns: [{ propertyName: 'lastLoginAt' }, { propertyName: 'hashedRefreshToken' }, { propertyName: 'annualLeaveBalance' }, { propertyName: 'avatarUrl' }],
+          updatedColumns: [{ propertyName: 'lastLoginAt' }, { propertyName: 'hashedRefreshToken' }],
         }),
       );
       await flush();
       expect(versionService.bumpRef).not.toHaveBeenCalled();
     });
 
+    it('số dư phép / avatar (save): KHÔNG bump departments nhưng bump users (payload /users/all có các cột này)', async () => {
+      sub.afterUpdate(
+        updateEvent('users', { updatedColumns: [{ propertyName: 'annualLeaveBalance' }, { propertyName: 'avatarUrl' }] }),
+      );
+      await flush();
+      expect(bumped()).toEqual([['users']]);
+    });
+
     it('QueryBuilder/update(): lấy cột từ giá trị được set - xoá mềm `update(id, { deletedAt })` -> bump', async () => {
       sub.afterUpdate(updateEvent('users', { entity: { deletedAt: new Date(), deletedById: 1 } }));
       await flush();
-      expect(bumped()).toEqual([['departments']]);
+      expect(bumped()).toEqual([['departments', 'users']]);
     });
 
     it('QueryBuilder/update(): chỉ đổi lastLoginAt/hashedRefreshToken -> KHÔNG bump', async () => {
@@ -117,13 +125,13 @@ describe('RefDataChangeSubscriber (9D)', () => {
       await flush();
       sub.afterRecover({ metadata: meta('users'), queryRunner: qr() } as any);
       await flush();
-      expect(bumped()).toEqual([['departments'], ['departments']]);
+      expect(bumped()).toEqual([['departments', 'users'], ['departments', 'users']]);
     });
 
     it('softDelete()/restore() bảng danh mục -> bump domain của bảng đó', async () => {
       sub.afterSoftRemove({ metadata: meta('positions'), queryRunner: qr() } as any);
       await flush();
-      expect(bumped()).toEqual([['positions']]);
+      expect(bumped()).toEqual([['positions', 'users']]);
     });
   });
 
@@ -138,7 +146,7 @@ describe('RefDataChangeSubscriber (9D)', () => {
 
       sub.afterTransactionCommit({ queryRunner: runner } as any);
       expect(versionService.bumpRef).toHaveBeenCalledTimes(1);
-      expect(bumped()).toEqual([['departments', 'positions', 'roles']]);
+      expect(bumped()).toEqual([['departments', 'positions', 'roles', 'users']]);
 
       sub.afterTransactionCommit({ queryRunner: runner } as any); // commit lần 2 -> không bump lại
       expect(versionService.bumpRef).toHaveBeenCalledTimes(1);
