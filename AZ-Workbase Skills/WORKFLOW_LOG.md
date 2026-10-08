@@ -7038,3 +7038,17 @@ Now [deploy]
 > `tsc --noEmit` chỉ còn 4 lỗi `logo.png` có sẵn (thiếu next-env.d.ts khi chưa build), `eslint` file này: 0 error, 3 warning có sẵn từ trước. Trang này chưa có test, chưa kiểm thử tay trên trình duyệt (cần thử: gõ ô tìm kiếm không bắn request, Enter/Lọc bắn đúng 1, Reset ở trang 1 và trang >1). Chưa đụng `layout.tsx`/stamp users/me của phiên trước (chưa có file nào trong repo).
 
 ---
+
+## [2026-10-08] | PERF: trang Công việc định kỳ không GET /customers lúc mount | [Status: Success - chưa commit/deploy]
+
+**Actor:** Agent
+**Files Changed:**
+- `frontend/src/app/(dashboard)/cong-viec-dinh-ky/page.tsx` — `useCustomers(..., canLinkCustomer && modalOpen)` (trước: chỉ `canLinkCustomer`)
+
+**Root Cause:**
+> Ô chọn Khách hàng nằm trong modal Thêm/Sửa nhưng query `GET /customers?page=1&limit=20` chạy ngay khi mount trang (user có quyền link_customer) -> mỗi F5 thêm 1 request cpu ~100-180ms, nặng nhất chuỗi request vào trang.
+
+**Notes:**
+> `tsc --noEmit` sạch (trừ 4 lỗi logo.png sẵn có). Chưa đo prod. Phần 304 còn lại khi F5 là cache React Query nằm trong RAM nên F5 mất hết; 304 vẫn chạy trọn handler ở BE (xem phân tích trong chat).
+
+---

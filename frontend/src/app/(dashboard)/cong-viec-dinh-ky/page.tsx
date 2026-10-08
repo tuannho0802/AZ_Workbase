@@ -560,7 +560,10 @@ function PeriodicTasksPageContent() {
             dateFrom: customerQuickFilters.dateFrom,
             dateTo: customerQuickFilters.dateTo,
         },
-        canLinkCustomer,
+        // [PERF] CHỈ tải khi modal Thêm/Sửa đang mở (ô chọn Khách hàng nằm trong modal). Trước: tải ngay lúc mount
+        // trang => mỗi lần F5 thêm 1 `GET /customers` (cpu ~100-180ms, nặng nhất trong chuỗi request khi vào trang).
+        // [AGENT] OLD CODE (giữ lại để rollback): canLinkCustomer,
+        canLinkCustomer && modalOpen,
     );
     // Chi tiết Task đang Sửa (CHỈ fetch khi đang Sửa - `usePeriodicTask` tự
     // tắt query khi id là `null`) - nguồn duy nhất có `linkedCustomers`.
