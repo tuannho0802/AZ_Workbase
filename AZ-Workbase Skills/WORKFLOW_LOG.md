@@ -6974,3 +6974,17 @@ Now [deploy]
 > Verify: jest backend 110 suite / 1827 test pass, `tsc --noEmit` + `nest build` sạch; 8 test fail khi gỡ bản sửa. Chưa đo trên prod: sau deploy so lại `perm=` trong dòng `[Badges]`. Phần CPU do TypeORM dựng lại JOIN 6 lần là suy luận từ code, chưa đo riêng. `UiVisibilityService.loadHiddenKeysMap` có cùng kiểu nhưng thường chỉ gọi 1 lần/request nên chưa sửa.
 
 ---
+## [2026-10-08] | PERF: keep-alive HEAD dedupe (single-flight + cache 15s) + chẩn đoán request trùng | [Status: Success - chưa commit/deploy]
+
+**Actor:** Agent
+**Files Changed:**
+- `backend/src/keep-alive/keep-alive.controller.ts` (+spec +3 test) — HEAD trùng nhau trên cùng instance chỉ chạy 1 `SELECT 1`; GET thủ công luôn kiểm tra thật; lỗi không cache.
+
+**Root Cause (đọc code, chưa đo prod):**
+> Repo KHÔNG có nơi nào gọi `/keep-alive` (không FE/CI/vercel cron) -> 2 HEAD cách nhau ~4s đến từ cấu hình Uptime ngoài (2 monitor / multi-location / retry). `idleTimeout` pool 30s << chu kỳ ping nên mỗi ping mở connection TLS mới tới Aiven; `cpu` là `process.cpuUsage()` toàn process (up=16s = instance mới).
+> Chi phí lớn nhất là cold start: BootTiming load ~2.8-2.9s CPU, gấp ~15-25 lần 1 request. 2 BootTiming cách nhau 3s (3:59:32/3:59:35) = 2 instance mới do sidebar/poll + users/me bắn song song khi chưa có instance ấm (suy luận, chưa chứng minh).
+
+**Notes:**
+> `tsc --noEmit` sạch, jest keep-alive 5/5 pass. Chưa chạy full jest/build. Chưa commit/push.
+
+---

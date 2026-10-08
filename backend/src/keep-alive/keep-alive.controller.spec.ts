@@ -26,4 +26,28 @@ describe('KeepAliveController (Plan CPU mục 7B)', () => {
     expect(res).toMatchObject({ status: 'ok', db: { alive: 1 } });
     expect(logSpy).toHaveBeenCalledTimes(1);
   });
+
+  it('HEAD trùng nhau (song song hoặc < 15s): chỉ 1 SELECT 1', async () => {
+    const { ctl, ds } = makeCtl();
+    await Promise.all([ctl.ping({ method: 'HEAD' } as any), ctl.ping({ method: 'HEAD' } as any)]);
+    await ctl.ping({ method: 'HEAD' } as any);
+    expect(ds.query).toHaveBeenCalledTimes(1);
+  });
+
+  it('GET luôn SELECT 1 thật, không dùng cache của HEAD', async () => {
+    const { ctl, ds } = makeCtl();
+    await ctl.ping({ method: 'HEAD' } as any);
+    await ctl.ping({ method: 'GET' } as any);
+    expect(ds.query).toHaveBeenCalledTimes(2);
+  });
+
+  it('HEAD lỗi DB không bị cache: lần sau thử lại', async () => {
+    const { ctl, ds } = makeCtl();
+    ds.query.mockRejectedValueOnce(new Error('ECONNRESET'));
+    jest.spyOn(Logger.prototype, 'error').mockImplementation(() => undefined);
+    await ctl.ping({ method: 'HEAD' } as any);
+    ds.isInitialized = true;
+    const res: any = await ctl.ping({ method: 'HEAD' } as any);
+    expect(res.status).toBe('ok');
+  });
 });

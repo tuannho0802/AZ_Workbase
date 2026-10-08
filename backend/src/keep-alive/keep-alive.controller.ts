@@ -3,11 +3,33 @@ import type { Request } from 'express';
 import { InjectDataSource } from '@nestjs/typeorm';
 import { DataSource } from 'typeorm';
 const errMsg = (e: unknown): string => (e instanceof Error ? e.message : String(e));
+/** Hai ping HEAD cách nhau dưới ngần này (ms) trên cùng instance chỉ chạy 1 SELECT 1. */
+const KEEPALIVE_DEDUPE_MS = 15_000;
 @Controller('keep-alive')
 export class KeepAliveController {
     private readonly logger = new Logger(KeepAliveController.name);
 
     constructor(@InjectDataSource() private readonly dataSource: DataSource) { }
+
+    private lastOk: { at: number; result: unknown } | null = null;
+    private inflight: Promise<unknown> | null = null;
+
+    /** Single-flight + cache thành công ngắn hạn; lỗi KHÔNG được cache (lần sau thử lại thật). */
+    private pingDedupe(): Promise<unknown> {
+        if (this.lastOk && Date.now() - this.lastOk.at < KEEPALIVE_DEDUPE_MS) return Promise.resolve(this.lastOk.result);
+        if (!this.inflight) {
+            this.inflight = this.dataSource
+                .query('SELECT 1 as alive')
+                .then((r: unknown) => {
+                    this.lastOk = { at: Date.now(), result: r };
+                    return r;
+                })
+                .finally(() => {
+                    this.inflight = null;
+                });
+        }
+        return this.inflight;
+    }
 
     @Get()
     async ping(@Req() req: Request) {
@@ -18,7 +40,10 @@ export class KeepAliveController {
             await this.dataSource.initialize();
         }
 
-        const result = await this.dataSource.query('SELECT 1 as alive');
+        // [AGENT] OLD CODE (giữ lại để rollback): const result = await this.dataSource.query('SELECT 1 as alive');
+        // NEW: HEAD (Uptime monitor) trùng nhau trong KEEPALIVE_DEDUPE_MS trên CÙNG instance thì dùng lại kết quả
+        // SELECT 1 vừa thành công / đang bay (không mở thêm connection TLS tới Aiven). GET thủ công luôn kiểm tra thật.
+        const result = req.method === 'HEAD' ? await this.pingDedupe() : await this.dataSource.query('SELECT 1 as alive');
         const timestamp = new Date().toISOString();
 
             // [AGENT] OLD CODE (giữ lại để rollback): this.logger.log(`✅ Keep-alive ping OK at ${timestamp}`);
