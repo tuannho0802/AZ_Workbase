@@ -7156,3 +7156,14 @@ Now [deploy]
 > Nguồn "mức nền" cuối tuần CHƯA được chứng minh bằng số đo (Hobby chỉ giữ log 1h / Observability 12h). Cách kiểm chứng: so số Fluid Active CPU/ngày trên trang Usage giữa cuối tuần cũ và mới.
 > Cron Hobby chỉ chính xác theo GIỜ (chạy trong khung 16:xx/17:xx UTC) - không ảnh hưởng ranh giới ngày VN. auto-overdue vẫn tính ân hạn gồm T7/CN, độ trễ ≤ 2 ngày đã được chấp nhận.
 > BE tsc sạch, nest build OK, jest spec mới 5/5 pass.
+
+---
+## [2026-10-12] | Mở rộng workflow Pause/Resume UptimeRobot sang 3 monitor | [Status: Success - chưa commit/deploy]
+
+**Actor:** Agent
+**Files Changed:**
+- `.github/workflows/uptime-keepalive-weekend.yml` — Pause/Resume cả KeepAlive (802882548), AutoSync for Attendance (803835309), Cronjob Check out-dated Task (804107733); ID ghi thẳng ở env `MONITOR_IDS`, chỉ còn cần secret `UPTIMEROBOT_API_KEY`; job fail nếu bất kỳ monitor nào lỗi
+
+**Notes:**
+> Đã chạy tay `resume` trên GitHub thành công với KeepAlive ở bản trước. Bản này chưa chạy; cần chạy tay `pause` rồi `resume` để kiểm tra cả 3 monitor.
+> Resume lúc 06:00 Thứ 2 giờ VN: monitor auto-overdue/sync-today chạy bù ngay sau khi bật lại (nếu UptimeRobot check lúc resume - chưa xác minh).

@@ -1,8 +1,10 @@
-name: UptimeRobot KeepAlive - tạm dừng cuối tuần
+name: UptimeRobot - tạm dừng cuối tuần (KeepAlive + 2 cron)
 
-# UptimeRobot free KHÔNG có Maintenance -> dùng API tự Pause/Resume monitor KeepAlive để không gọi vào T7/CN (giờ VN).
-# Cần 2 GitHub Secrets: UPTIMEROBOT_API_KEY (Main API key hoặc key theo monitor) và UPTIMEROBOT_KEEPALIVE_MONITOR_ID.
-# GitHub cron có thể trễ vài phút -> đặt dư an toàn. Lớp dự phòng: backend tự trả 200 nhanh vào T7/CN (weekend-skip.util.ts).
+# UptimeRobot free KHÔNG có Maintenance -> dùng API tự Pause/Resume 3 monitor để không gọi vào T7/CN (giờ VN):
+#   802882548 KeepAlive AZ-Workbase | 803835309 AutoSync for Attendance | 804107733 Cronjob for Check out-dated Task
+# Cần 1 GitHub Secret: UPTIMEROBOT_API_KEY (Main API key). ID monitor không phải bí mật nên ghi thẳng ở env MONITOR_IDS.
+# (Secret UPTIMEROBOT_KEEPALIVE_MONITOR_ID tạo ở bản trước không còn được dùng - có thể xoá.)
+# GitHub cron có thể trễ vài phút. Lớp dự phòng: backend tự trả 200 nhanh vào T7/CN (weekend-skip.util.ts).
 
 on:
   schedule:
@@ -21,10 +23,10 @@ jobs:
   toggle:
     runs-on: ubuntu-latest
     steps:
-      - name: Pause/Resume monitor KeepAlive
+      - name: Pause/Resume các monitor
         env:
           API_KEY: ${{ secrets.UPTIMEROBOT_API_KEY }}
-          MONITOR_ID: ${{ secrets.UPTIMEROBOT_KEEPALIVE_MONITOR_ID }}
+          MONITOR_IDS: '802882548 803835309 804107733'
           MANUAL_ACTION: ${{ github.event.inputs.action }}
           CRON_EXPR: ${{ github.event.schedule }}
         run: |
@@ -33,8 +35,13 @@ jobs:
           else ACTION="resume"; fi
           if [ "$ACTION" = "pause" ]; then STATUS=0; else STATUS=1; fi   # UptimeRobot API v2: 0 = paused, 1 = started
           echo "Action: $ACTION (status=$STATUS)"
-          RESP=$(curl -sS -X POST "https://api.uptimerobot.com/v2/editMonitor" \
-            -d "api_key=$API_KEY" -d "id=$MONITOR_ID" -d "status=$STATUS" -d "format=json")
-          # Không in RESP đầy đủ ra log (tránh lộ thông tin); chỉ kiểm tra stat
-          echo "$RESP" | grep -q '"stat":"ok"' || { echo "UptimeRobot trả lỗi - kiểm tra API key/monitor id"; exit 1; }
-          echo "OK"
+          FAILED=0
+          for ID in $MONITOR_IDS; do
+            RESP=$(curl -sS -X POST "https://api.uptimerobot.com/v2/editMonitor" \
+              -d "api_key=$API_KEY" -d "id=$ID" -d "status=$STATUS" -d "format=json")
+            # Không in RESP đầy đủ ra log (tránh lộ thông tin); chỉ kiểm tra stat
+            if echo "$RESP" | grep -q '"stat":"ok"'; then echo "monitor $ID: OK"
+            else echo "monitor $ID: LỖI - kiểm tra API key/monitor id"; FAILED=1; fi
+            sleep 7   # gói free giới hạn 10 request/phút
+          done
+          exit $FAILED
