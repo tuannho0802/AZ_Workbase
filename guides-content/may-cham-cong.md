@@ -84,7 +84,7 @@ attendance-table tab=logs
 ## Quy tắc & lưu ý nghiệp vụ
 
 - **Giờ lưu theo giờ máy.** Hệ thống coi giờ trên máy chấm công là giờ Việt Nam và lưu **nguyên văn** (cột kiểu DATETIME), không cộng trừ múi giờ. Vì vậy nếu **đồng hồ trên máy bị sai**, giờ chấm công cũng sai theo; hãy chỉnh lại giờ trên máy.
-- Log có thể đến theo 2 đường: máy tự đẩy khi quẹt, và đồng bộ thủ công. Hệ thống cũng tự đồng bộ dữ liệu ngày hôm nay vào mỗi buổi tối các ngày làm việc (Thứ Hai đến Thứ Sáu), nên thường không cần bấm tay mỗi ngày.
+- Log có thể đến theo 2 đường: máy tự đẩy khi quẹt, và đồng bộ thủ công. Ngoài ra, quản trị có thể cấu hình một dịch vụ giám sát bên ngoài gọi định kỳ để tự đồng bộ log của ngày hôm nay (lịch gọi do bên cấu hình quyết định, không nằm trong ứng dụng); nếu thiếu dữ liệu, hãy bấm **Đồng bộ ngay**.
 - Nhân viên chỉ có chấm công khi mã máy của họ đã được **map**. Log đến trước khi map vẫn được lưu và sẽ được khớp lại ở lần đồng bộ sau.
 - **Gỡ** mapping không xoá log cũ.
 - Bảng chấm công chỉ **gộp để hiển thị**; log thô ở tab **Logs chấm công** vẫn giữ nguyên để tra soát.

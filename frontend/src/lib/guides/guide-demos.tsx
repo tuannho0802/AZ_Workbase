@@ -9,6 +9,8 @@ import { LINK_GROUP_DEMOS } from './demos/link-groups.demos';
 import { COMMON_DEMOS } from './demos/common.demos';
 import { PERMISSION_DEMOS } from './demos/permissions.demos';
 import { AUDIT_DEMOS } from './demos/audit.demos';
+import { ATTENDANCE_DEMOS } from './demos/attendance.demos';
+import { STORAGE_DEMOS } from './demos/storage.demos';
 import { PERIODIC_TASK_DEMOS } from './demos/periodic-tasks.demos';
 import { ASSIGNMENT_DEMOS } from './demos/assignment.demos';
 import { STATUS_DEMOS } from './demos/status.demos';
@@ -46,7 +48,7 @@ export type { GuideDemo } from './guide-demo.types';
  * Trình soạn tự liệt kê mẫu mới trong ô "Chèn mẫu minh hoạ"; không cần đổi BE/DB. Mỗi phase của plan đụng file `demos/*` riêng
  * nên nhiều tài khoản làm song song không xung đột. Test `guide-demos.contract.test.ts` bắt id trùng.
  */
-export const GUIDE_DEMOS: GuideDemo[] = [...CUSTOMER_DEMOS, ...ASSIGNMENT_DEMOS, ...STATUS_DEMOS, ...SOURCE_DEMOS, ...PERIODIC_TASK_DEMOS, ...TASK_STATUS_DEMOS, ...TASK_AUDIT_DEMOS, ...TASK_PERFORMANCE_DEMOS, ...UTM_DEMOS, ...LINK_GROUP_DEMOS, ...TRASH_DEMOS, ...INVALID_DATA_DEMOS, ...LEAVE_DEMOS, ...NOTIFICATION_DEMOS, ...BROADCAST_DEMOS, ...BROADCAST_SENT_DEMOS, ...PROFILE_DEMOS, ...REPORT_DEMOS, ...USERS_DEMOS, ...DEPARTMENT_DEMOS, ...POSITION_DEMOS, ...PERMISSION_DEMOS, ...AUDIT_DEMOS, ...COMMON_DEMOS];
+export const GUIDE_DEMOS: GuideDemo[] = [...CUSTOMER_DEMOS, ...ASSIGNMENT_DEMOS, ...STATUS_DEMOS, ...SOURCE_DEMOS, ...PERIODIC_TASK_DEMOS, ...TASK_STATUS_DEMOS, ...TASK_AUDIT_DEMOS, ...TASK_PERFORMANCE_DEMOS, ...UTM_DEMOS, ...LINK_GROUP_DEMOS, ...TRASH_DEMOS, ...INVALID_DATA_DEMOS, ...LEAVE_DEMOS, ...NOTIFICATION_DEMOS, ...BROADCAST_DEMOS, ...BROADCAST_SENT_DEMOS, ...PROFILE_DEMOS, ...REPORT_DEMOS, ...USERS_DEMOS, ...DEPARTMENT_DEMOS, ...POSITION_DEMOS, ...PERMISSION_DEMOS, ...AUDIT_DEMOS, ...ATTENDANCE_DEMOS, ...STORAGE_DEMOS, ...COMMON_DEMOS];
 
 const DEMO_MAP = new Map(GUIDE_DEMOS.map((d) => [d.id, d]));
 

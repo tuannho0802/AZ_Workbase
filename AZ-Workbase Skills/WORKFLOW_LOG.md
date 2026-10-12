@@ -7198,3 +7198,32 @@ Now [deploy]
 **Notes:**
 > `AuditService.handleCleanupCron` có `@Cron` bị comment và không nơi nào gọi -> "Tự động dọn dẹp lúc 3:00" ở UI hiện KHÔNG chạy; bài đã mô tả đúng thực trạng. Cần quyết định: bật lại cron hay sửa chữ UI (nếu đổi, sửa lại bài).
 > vitest src/lib/guides: pass; tsc: chỉ 4 lỗi logo.png có sẵn.
+## [2026-10-12] | Guides A3: hoàn thiện bài `may-cham-cong` + 2 mẫu | [Status: Success - chưa commit/deploy]
+
+**Actor:** Agent
+
+**Files Changed:**
+- `guides-content/may-cham-cong.md` — `published: false`, `permissions: [attendance.view]`, `sortOrder: 160`; sửa câu "tự đồng bộ mỗi tối" (lịch do dịch vụ giám sát bên ngoài, không có trong repo)
+- `frontend/src/lib/guides/demos/attendance.demos.tsx` (+ `.test.tsx`) — `attendance-table` (tab=summary|logs), `zk-mapping` (viewer=manage|view)
+- `guide-demos.tsx` / `guide-demos.test.tsx` (registry 90 -> 92), `guide-slugs.ts` (gỡ `may-cham-cong`)
+
+**Notes:**
+> Quyền đối chiếu migration: view/manage mặc định Admin+Assistant+Manager, `attendance.delete` chỉ Admin. Gộp lượt quẹt: 2 tiếng (`DUPLICATE_TAP_GAP_MS`); đi muộn > 09:00, về sớm < 18:00.
+
+---
+## [2026-10-12] | Guides A4: bài `luu-tru-anh` + 3 mẫu | [Status: Success - chưa commit/deploy]
+
+**Actor:** Agent
+
+**Files Changed:**
+- `guides-content/luu-tru-anh.md` — MỚI, `published: false`, `permissions: [storage.view]`, `sortOrder: 170`
+- `frontend/src/lib/guides/demos/storage.demos.tsx` (+ `.test.tsx`) — `storage-usage` (viewer), `storage-tabs` (viewer), `storage-cleanup`
+- `guide-demos.tsx` / `guide-demos.test.tsx` (registry 92 -> 95), `guide-slugs.ts` (gỡ `luu-tru-anh` -> `PENDING_GUIDE_SLUGS` rỗng)
+
+**Notes:**
+> Đã viết đủ bài cho mọi trang trong menu (nháp). Còn lại: đối chiếu trên UI rồi bật Xuất bản.
+> Phát hiện chưa sửa: UI báo "server-cron gọi `/api/storage-cron/refresh-usage`" nhưng `storage-cron.controller.ts` KHÔNG tồn tại trong repo (chỉ còn trong comment `storage.service.ts`). Dung lượng chỉ cập nhật khi bấm "Tính lại ngay".
+> Comment migration `AddStorageManagementPermissions` ghi 2 bucket cũ "LUÔN view-only" đã lỗi thời: nay xoá được ở tab Dọn dẹp Media (dọn tham chiếu DB trước).
+> vitest src/lib/guides: 27 file / 547 pass; tsc: chỉ 4 lỗi logo.png có sẵn.
+
+---
