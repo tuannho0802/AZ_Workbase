@@ -7141,3 +7141,18 @@ Now [deploy]
 **Notes:**
 > BE tsc sạch, nest build OK, jest 112 suite/1872 test pass. FE tsc chỉ 4 lỗi logo.png có sẵn; vitest 106 file/1139 test pass.
 > Giới hạn: SQL tay/migration/seed không bump -> tối đa 30 phút (media: 10 phút; file B2 đổi từ máy khác cũng vậy). `/utms/recent`, `/utms/customer-counts`, stats, `/link-groups/managed-by-me`, `zk-device/status`, `device-users` KHÔNG cache HTTP.
+
+---
+## [2026-10-12] | Né Thứ 7/CN cho cron + keep-alive (giảm Fluid Active CPU nền cuối tuần) | [Status: Success - chưa commit/deploy]
+
+**Actor:** Agent
+**Files Changed:**
+- `backend/vercel.json` — cron `sync-today` `0 16 * * *` -> `0 16 * * 1-5` (23:00 VN T2-T6); `auto-overdue` `5 17 * * *` -> `5 17 * * 0-4` (00:05 VN T2-T6, lần đầu vào sáng Thứ 2)
+- `backend/src/common/utils/weekend-skip.util.ts` (+spec) — MỚI: T7/CN giờ VN, các path `keep-alive`, `zk-device-cron/sync-today`, `periodic-tasks-cron/deadline-reminders|auto-overdue` trả 200 ngay; env `WEEKEND_SKIP=false` tắt
+- `backend/src/main.ts` — `handler` gọi `shouldSkipOnWeekend` TRƯỚC `getApp()` (không bootstrap Nest/DB)
+- `.github/workflows/uptime-keepalive-weekend.yml` — MỚI: Pause monitor KeepAlive 00:00 T7 VN, Resume 06:00 T2 VN qua UptimeRobot API (cần secrets `UPTIMEROBOT_API_KEY`, `UPTIMEROBOT_KEEPALIVE_MONITOR_ID`)
+
+**Notes:**
+> Nguồn "mức nền" cuối tuần CHƯA được chứng minh bằng số đo (Hobby chỉ giữ log 1h / Observability 12h). Cách kiểm chứng: so số Fluid Active CPU/ngày trên trang Usage giữa cuối tuần cũ và mới.
+> Cron Hobby chỉ chính xác theo GIỜ (chạy trong khung 16:xx/17:xx UTC) - không ảnh hưởng ranh giới ngày VN. auto-overdue vẫn tính ân hạn gồm T7/CN, độ trễ ≤ 2 ngày đã được chấp nhận.
+> BE tsc sạch, nest build OK, jest spec mới 5/5 pass.

@@ -27,11 +27,11 @@
   "crons": [
     {
       "path": "/api/zk-device-cron/sync-today",
-      "schedule": "0 16 * * *"
+      "schedule": "0 16 * * 1-5"
     },
     {
       "path": "/api/periodic-tasks-cron/auto-overdue",
-      "schedule": "5 17 * * *"
+      "schedule": "5 17 * * 0-4"
     }
   ]
 }
