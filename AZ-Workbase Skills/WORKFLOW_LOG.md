@@ -7184,3 +7184,17 @@ Now [deploy]
 > Bypass "mọi quyền" là của **Root Admin** (`role=admin` VÀ `isRootAdmin=true`), KHÔNG phải mọi user role `admin` (xem `permission.guard.ts`, migration AddIsRootAdminToUsers). Tên tham số fence `az-demo` phải chữ thường (`upTo` bị contract test từ chối).
 > Lỗi cũ "lưu Toàn cục xoá override" đã sửa (`roles.service.ts`: delete kèm `departmentId/positionId IsNull`).
 > vitest src/lib/guides: 24 file / 518 test pass. tsc: chỉ 4 lỗi logo.png có sẵn.
+
+---
+## [2026-10-12] | Guides A2: bài `nhat-ky-he-thong` + 2 mẫu | [Status: Success - chưa commit/deploy]
+
+**Actor:** Agent
+
+**Files Changed:**
+- `guides-content/nhat-ky-he-thong.md` — MỚI, `published: false`, `permissions: [audit.view]`, `sortOrder: 150`
+- `frontend/src/lib/guides/demos/audit.demos.tsx` (+ `.test.tsx`) — MỚI: `audit-row` (kind=customer|role|cleanup, nhãn từ `audit-meta.ts`), `audit-filters` (tab=main|login)
+- `guide-demos.tsx` / `guide-demos.test.tsx` (registry 88 -> 90), `guide-slugs.ts` (gỡ `nhat-ky-he-thong`)
+
+**Notes:**
+> `AuditService.handleCleanupCron` có `@Cron` bị comment và không nơi nào gọi -> "Tự động dọn dẹp lúc 3:00" ở UI hiện KHÔNG chạy; bài đã mô tả đúng thực trạng. Cần quyết định: bật lại cron hay sửa chữ UI (nếu đổi, sửa lại bài).
+> vitest src/lib/guides: pass; tsc: chỉ 4 lỗi logo.png có sẵn.
