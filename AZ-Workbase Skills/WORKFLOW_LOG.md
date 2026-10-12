@@ -7167,3 +7167,20 @@ Now [deploy]
 **Notes:**
 > Đã chạy tay `resume` trên GitHub thành công với KeepAlive ở bản trước. Bản này chưa chạy; cần chạy tay `pause` rồi `resume` để kiểm tra cả 3 monitor.
 > Resume lúc 06:00 Thứ 2 giờ VN: monitor auto-overdue/sync-today chạy bù ngay sau khi bật lại (nếu UptimeRobot check lúc resume - chưa xác minh).
+
+---
+## [2026-10-12] | Guides A1: bài `phan-quyen` + 3 mẫu minh hoạ | [Status: Success - chưa commit/deploy]
+
+**Actor:** Agent
+
+**Files Changed:**
+- `guides-content/phan-quyen.md` — MỚI, `published: false`, `permissions: [roles.view]`, `sortOrder: 140`
+- `frontend/src/lib/guides/demos/permissions.demos.tsx` (+ `.test.tsx`) — MỚI: `permission-matrix` (viewer=manage|view), `override-layers` (layer=global|department|position), `ui-visibility-matrix`
+- `frontend/src/lib/guides/guide-demos.tsx` — đăng ký `PERMISSION_DEMOS`
+- `frontend/src/lib/guides/guide-demos.test.tsx` — registry 85 -> 88 mẫu
+- `frontend/src/lib/guides/guide-slugs.ts` — gỡ `phan-quyen` khỏi `PENDING_GUIDE_SLUGS`
+
+**Notes:**
+> Bypass "mọi quyền" là của **Root Admin** (`role=admin` VÀ `isRootAdmin=true`), KHÔNG phải mọi user role `admin` (xem `permission.guard.ts`, migration AddIsRootAdminToUsers). Tên tham số fence `az-demo` phải chữ thường (`upTo` bị contract test từ chối).
+> Lỗi cũ "lưu Toàn cục xoá override" đã sửa (`roles.service.ts`: delete kèm `departmentId/positionId IsNull`).
+> vitest src/lib/guides: 24 file / 518 test pass. tsc: chỉ 4 lỗi logo.png có sẵn.
