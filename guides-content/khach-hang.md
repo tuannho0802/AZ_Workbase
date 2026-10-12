@@ -104,7 +104,7 @@ Ngoài ra có trang riêng cho việc chia data: **Chia Data** ở menu.
 ### 6. Nhập khách từ Excel
 
 1. Bấm **Nhập Excel**.
-2. Bấm **Tải file mẫu (.xlsx)** và điền theo mẫu. Hai cột **Họ và Tên** và **Số điện thoại** là bắt buộc.
+2. Bấm **Tải file mẫu (.xlsx)** và điền theo mẫu. Hai cột **Họ và tên** (Bắt buộc) và **Số điện thoại** là Tuỳ chọn.
 3. Kéo thả file vào ô (hoặc bấm để chọn). Nhận file **.xlsx** hoặc **.csv (UTF-8)**, tối đa **5MB và 1000 dòng**.
 4. Bấm **Nhập dữ liệu**.
 

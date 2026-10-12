@@ -7227,3 +7227,17 @@ Now [deploy]
 > vitest src/lib/guides: 27 file / 547 pass; tsc: chỉ 4 lỗi logo.png có sẵn.
 
 ---
+## [2026-10-12] | Guides P5: rà soát 38 bài trước khi Xuất bản | [Status: Success - chưa commit/deploy]
+
+**Actor:** Agent
+
+**Files Changed:**
+- `guides-content/khach-hang.md` — sửa nhãn "Họ và Tên" -> "Họ và tên" (đúng UI + file Excel mẫu)
+- `guides-content/huong-dan-su-dung.md` — sortOrder 5 -> 7; `guides-content/nguon-media.md` — sortOrder 50 -> 55 (trước đó trùng với `bat-dau-media` / `thong-bao`)
+
+**Notes:**
+> Đã kiểm tự động: front-matter/slug, quyền trong bài đều tồn tại trong migration, `az-demo` đúng id/tham số, liên kết nội bộ, quyền front-matter so với `nav-config` (khớp 28/30; `quan-ly-utm` khớp nhờ `requireAll`, `duyet-phep` rỗng vì nav là OR; `phan-quyen` dùng `roles.manage` trong khi menu là `roles.view` - quyết định của chủ dự án).
+> CHƯA kiểm: số liệu/nhãn trong ví dụ mô tả vai trò mặc định của từng bài và ảnh chụp UI thật - cần người xem trên UI trước khi Xuất bản.
+> Xuất bản: nên đặt `published: true` trong file rồi `npm run guides:sync -- --apply`; bật công tắc trên UI làm DB bị coi là "sửa tay" và lần sync sau sẽ XUNG ĐỘT.
+
+---

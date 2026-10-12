@@ -1,7 +1,7 @@
 ---
 title: Hướng dẫn đọc bài
 slug: huong-dan-su-dung
-sortOrder: 5
+sortOrder: 7
 published: true
 roles: []
 positions: []
