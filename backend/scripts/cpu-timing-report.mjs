@@ -95,6 +95,21 @@ rows.slice(0, top).forEach((r, i) => {
   );
 });
 
+// [Cache badge] Khi cache toàn bộ getBadges HIT thì KHÔNG có dòng `[Badges] total=...` (computeBadges không chạy) ->
+// tỉ lệ HIT = 1 - (số dòng [Badges]) / (số lần GET /api/sidebar/poll trả 200 có qua Nest). Cần bật CPU_TIMING=true cho cả 2 loại log.
+{
+  const polls = routes.get('GET /api/sidebar/poll')?.status.get('200') ?? 0;
+  const misses = [...text.matchAll(/\[Badges\]\s+total=(\d+)ms/g)];
+  if (polls > 0 && misses.length > 0) {
+    const missMs = misses.map((m) => Number(m[1]));
+    const hit = Math.max(0, 1 - misses.length / polls);
+    console.log(`\nCache badge (/sidebar/poll): ${polls} poll 200, ${misses.length} lần đếm thật (MISS) -> HIT ~${(hit * 100).toFixed(0)}%; đếm thật TB ${(missMs.reduce((a, b) => a + b, 0) / missMs.length).toFixed(0)}ms, p95 ${pct(missMs, 95)}ms`);
+    if (misses.length > polls) console.log('  ⚠ MISS > số poll: log thiếu dòng [CpuTiming] (bộ lọc/ngắt log) hoặc bị chặn nhiều request /sidebar/poll khác route - số HIT chỉ mang tính tham khảo.');
+  } else if (polls > 0) {
+    console.log('\nCache badge: có poll nhưng không thấy dòng [Badges] total=... -> kiểm tra bộ lọc log (cần cả "Badges" lẫn "CpuTiming") hoặc cache đang HIT gần 100%.');
+  }
+}
+
 const most = [...rows].sort((a, b) => b.n - a.n)[0];
 const heavy = rows.filter((r) => r.n >= 3).sort((a, b) => b.avg - a.avg)[0];
 console.log('\nGợi ý đọc:');

@@ -7349,3 +7349,20 @@ Now [deploy]
 > Số đếm đổi theo dữ liệu nên KHÔNG khoá theo permSig/refSig. Cache theo từng instance serverless: ghi ở instance A, poll ở instance B có thể lệch tối đa TTL (60s); cron/SQL tay cũng vậy. Đã chạy thật: BE `tsc` 0, `nest build` 0, `jest` 117 suite / 1915 test pass; thử wiring middleware với `setGlobalPrefix('api')` (GET không xoá, POST 201 xoá). FE không đổi. Mục 1 (ADMS handshake) bỏ qua theo yêu cầu.
 
 ---
+
+## [2026-10-13] | Rà soát endpoint poll cũ + cron, cổng sớm deadline-reminders, đo cache badge | [Status: Success]
+
+**Actor:** Agent
+**Files Changed:**
+- `backend/src/common/utils/reminder-gate.util.ts` (+spec) — MỚI: `GET /api/periodic-tasks-cron/deadline-reminders` trước 18:00 giờ VN + secret ĐÚNG -> trả ngay kết quả rỗng của service (+ `skipped:'before-18h-vn'`) ở `handler`, không bootstrap Nest/DB. Sai/thiếu secret hoặc từ 18:00 -> đi đường cũ. Tắt: env `REMINDER_EARLY_SKIP=false`
+- `backend/src/main.ts` — gắn cổng trên (sau keep-alive, trước cổng poll)
+- `backend/src/modules/sidebar-badges/sidebar-badges.controller.ts` (+spec) — `GET /sidebar/badges` log `[Deprecated]` tối đa 1 lần/10 phút/instance để biết còn client cũ nào gọi
+- `backend/scripts/cpu-timing-report.mjs` — thêm dòng "Cache badge": HIT% = 1 - (số dòng `[Badges]`) / (số `GET /api/sidebar/poll` 200)
+
+**Root Cause / Kết luận rà soát:**
+> `/notifications/poll` KHÔNG xoá được: FE hiện tại vẫn gọi qua `pollLite()` -> `mergeLitePoll()` sau markRead/markAllRead/remove. `/sidebar/badges` không còn caller trong FE hiện tại nhưng FE chỉ mới chuyển sang `/sidebar/poll` từ 2026-10-07; xoá sớm khiến tab mở trước deploy nhận 404 và không tiết kiệm CPU (endpoint chỉ tốn khi bị gọi). `vercel.json` chỉ có 2 cron, đều đã T2–T6 (`0 10 * * 1-5`, `0 2 * * 1-5`) -> không còn gì để cắt.
+
+**Notes:**
+> Sau patch cache toàn bộ getBadges, khi HIT KHÔNG có dòng `[Badges]` -> đọc HIT% bằng script report, không đếm dòng log. Đã chạy thật: BE `tsc` 0, `nest build` 0, `jest` 118 suite / 1924 test pass. FE không đổi. Chưa thử trên prod: sau deploy kiểm tra UptimeRobot của deadline-reminders vẫn xanh trước 18:00 và sau 18:00 vẫn gửi nhắc bình thường. Việc bật CPU_TIMING trên Vercel phải do chủ dự án làm (sandbox không có quyền).
+
+---

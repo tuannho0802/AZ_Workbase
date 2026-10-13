@@ -37,3 +37,16 @@ describe('SidebarBadgesController.poll (PLAN CPU 10C - gộp poll + badges)', ()
     expect(await ctrl.poll(user)).toEqual({ unread: 3, version: 100, badges: { taskTodo: 5 } });
   });
 });
+
+describe('SidebarBadgesController.getBadges (endpoint cũ, đang theo dõi để xoá)', () => {
+  it('vẫn trả số đếm như cũ; chỉ cảnh báo [Deprecated] 1 lần trong 10 phút', () => {
+    const badges = jest.fn().mockReturnValue({ taskTodo: 1 });
+    const ctrl = new SidebarBadgesController({ getBadges: badges } as never, {} as never, {} as never);
+    const warn = jest.spyOn((ctrl as any).logger, 'warn').mockImplementation();
+    expect(ctrl.getBadges({ id: 7 })).toEqual({ taskTodo: 1 });
+    ctrl.getBadges({ id: 7 });
+    expect(warn).toHaveBeenCalledTimes(1);
+    expect(String(warn.mock.calls[0][0])).toContain('[Deprecated]');
+    expect(badges).toHaveBeenCalledTimes(2);
+  });
+});

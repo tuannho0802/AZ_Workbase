@@ -1,4 +1,4 @@
-import { Controller, Get, UseGuards } from '@nestjs/common';
+import { Controller, Get, Logger, UseGuards } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { GetUser } from '../../common/decorators/get-user.decorator';
@@ -16,6 +16,10 @@ import { PermissionsVersionService } from '../permissions/permissions-version.se
 @Controller('sidebar')
 @UseGuards(JwtAuthGuard)
 export class SidebarBadgesController {
+  private readonly logger = new Logger(SidebarBadgesController.name);
+  /** Chỉ log cảnh báo tối đa 1 lần / 10 phút / instance để không tự tạo thêm tải. */
+  private lastDeprecatedWarnAt = 0;
+
   constructor(
     private readonly sidebarBadgesService: SidebarBadgesService,
     private readonly notificationsService: NotificationsService,
@@ -53,6 +57,12 @@ export class SidebarBadgesController {
       'Số đếm cho badge sidebar (gộp). Field chỉ có khi người gọi có permission tương ứng.',
   })
   getBadges(@GetUser() user: any) {
+    // [AGENT] NEW: FE hiện tại dùng /sidebar/poll (từ 2026-10-07). Ghi vết để biết còn client cũ nào gọi trước khi quyết định xoá endpoint này.
+    const now = Date.now();
+    if (now - this.lastDeprecatedWarnAt > 10 * 60_000) {
+      this.lastDeprecatedWarnAt = now;
+      this.logger.warn(`[Deprecated] GET /sidebar/badges vẫn được gọi (user=${user?.id}) - FE hiện tại dùng /sidebar/poll.`);
+    }
     return this.sidebarBadgesService.getBadges(user);
   }
 }

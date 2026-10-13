@@ -38,6 +38,7 @@ import {
 // [Giảm Fluid Active CPU] keep-alive + endpoint cron: T7/CN (giờ VN) trả 200 ngay, không khởi tạo Nest/DB.
 import { respondWeekendSkipped, shouldSkipOnWeekend } from './common/utils/weekend-skip.util';
 import { keepAliveSkipReason, respondKeepAliveSkipped } from './common/utils/keepalive-gate.util';
+import { reminderEarlySkip, respondReminderSkipped } from './common/utils/reminder-gate.util';
 // [Giảm Fluid Active CPU] poll thông báo/badge ngoài giờ làm việc (T2–T6 sau 18:45, T7/CN) trả 200 ngay, không bootstrap Nest/DB. Mặc định BẬT; tắt bằng POLL_HOURS_SKIP=false.
 import { pollGateSkipReason, respondPollSkipped } from './common/utils/poll-gate.util';
 
@@ -290,6 +291,13 @@ export default async function handler(req: any, res: any) {
   const keepAliveSkip = keepAliveSkipReason(req);
   if (keepAliveSkip) {
     respondKeepAliveSkipped(req, res, keepAliveSkip);
+    return;
+  }
+  // [Giảm Fluid Active CPU] deadline-reminders trước 18:00 giờ VN (chỉ khi secret ĐÚNG): trả đúng kết quả rỗng của service, không bootstrap/DB.
+  // Tắt bằng env REMINDER_EARLY_SKIP=false. Sai/thiếu secret -> đi đường cũ (Nest trả 401/503 như trước).
+  const reminderSkip = reminderEarlySkip(req);
+  if (reminderSkip) {
+    respondReminderSkipped(req, res, reminderSkip);
     return;
   }
   // [Giảm Fluid Active CPU] poll thông báo/badge (GET /api/sidebar/poll, /api/notifications/poll, /api/sidebar/badges) ngoài giờ -> 200 {skipped:true} ngay.
