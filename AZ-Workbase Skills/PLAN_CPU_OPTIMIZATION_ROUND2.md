@@ -788,11 +788,11 @@ export class QuietBootLogger extends ConsoleLogger {
   - `AttendanceMonthlyTab.tsx` luôn truyền `from` (+ `limit: 3000`). `attendance-export.service.ts#exportAttendanceSummary` gọi lại `getAttendanceSummary({ ...query, page: 1, limit: EXPORT_MAX_ROWS })` nên **thừa hưởng nguyên `from/to` của query FE**.
 - → Chỉ làm các bước **không đổi dữ liệu trả về**; bước cắt khoảng ngày (13A-2) làm theo cách "tính cửa sổ rồi mới tải", không đặt mặc định cứng.
 
-**13A-1. Thu hẹp cột đã tải (rủi ro thấp, không đổi shape response) — làm trước**
-- [ ] Đọc nốt phần lặp/`results` (sau dòng ~800) để **liệt kê chính xác** field của `log` và `matchedUser` đang đọc. Nếu đúng như trên: đổi `leftJoinAndSelect('log.matchedUser','matchedUser')` → `leftJoin(...)` + `.select(['log.id','log.deviceUserId','log.recordTime','log.matchedUserId','matchedUser.id','matchedUser.name'])`.
-- [ ] `matchedUser.departmentId` vẫn dùng được trong `andWhere` khi chỉ `leftJoin` (không cần `select`) — kiểm bằng spec phạm vi `department`.
-- [ ] **Không bỏ field nào mà code phía sau hoặc response đang đọc.** Nếu phát hiện thêm field dùng (vd `log.deviceSerialNumber`), thêm vào `select`.
-- [ ] Giữ code cũ bằng comment `[AGENT] OLD CODE`.
+**13A-1. Thu hẹp cột đã tải (rủi ro thấp, không đổi shape response) — làm trước — ✅ ĐÃ LÀM (2026-10-13, chờ deploy)**
+- [x] Đọc nốt phần lặp/`results` (sau dòng ~800) để **liệt kê chính xác** field của `log` và `matchedUser` đang đọc. Nếu đúng như trên: đổi `leftJoinAndSelect('log.matchedUser','matchedUser')` → `leftJoin(...)` + `.select(['log.id','log.deviceUserId','log.recordTime','log.matchedUserId','matchedUser.id','matchedUser.name'])`.
+- [x] `matchedUser.departmentId` vẫn dùng được trong `andWhere` khi chỉ `leftJoin` (không cần `select`) — kiểm bằng spec phạm vi `department`.
+- [x] **Không bỏ field nào mà code phía sau hoặc response đang đọc.** Nếu phát hiện thêm field dùng (vd `log.deviceSerialNumber`), thêm vào `select`.
+- [x] Giữ code cũ bằng comment `[AGENT] OLD CODE`.
 
 **13A-2. (Chỉ làm nếu 13A-1 chưa đủ sau khi đo) Chế độ `weeksPerPage` không tải toàn bảng — 2 pha**
 - Ý tưởng: pha 1 chỉ lấy **các ngày có dữ liệu** (1 cột, cùng bộ lọc `userId/from/to/phạm vi`) → dùng `bucketDatesByWeek` + `computeWeekPageWindow` có sẵn để biết trang tuần này gồm tuần nào → pha 2 tải log **chỉ trong cửa sổ đó** rồi chạy lại vòng gom như cũ.

@@ -672,9 +672,27 @@ export class ZkDeviceService {
     const { WORK_START_MINUTES, WORK_END_MINUTES, DUPLICATE_TAP_GAP_MS } =
       ZkDeviceService;
 
+    // [AGENT] OLD CODE (giữ lại để rollback) - hydrate TOÀN BỘ cột log + TOÀN BỘ cột User cho mỗi dòng:
+    // const qb = this.attendanceLogRepo
+    //   .createQueryBuilder('log')
+    //   .leftJoinAndSelect('log.matchedUser', 'matchedUser')
+    //   .orderBy('log.recordTime', 'ASC');
+    // [AGENT] NEW CODE (Plan CPU 13A-1): chỉ tải đúng các field vòng gom bên dưới đọc:
+    //   log: id (PK bắt buộc), deviceUserId, recordTime, matchedUserId
+    //   matchedUser: id (PK bắt buộc), name (hiển thị userName)
+    // `matchedUser.departmentId` chỉ dùng trong WHERE phạm vi phòng ban - leftJoin vẫn dùng được,
+    // không cần select. Shape response KHÔNG đổi.
     const qb = this.attendanceLogRepo
       .createQueryBuilder('log')
-      .leftJoinAndSelect('log.matchedUser', 'matchedUser')
+      .leftJoin('log.matchedUser', 'matchedUser')
+      .select([
+        'log.id',
+        'log.deviceUserId',
+        'log.recordTime',
+        'log.matchedUserId',
+        'matchedUser.id',
+        'matchedUser.name',
+      ])
       .orderBy('log.recordTime', 'ASC');
 
     // ⚠️ Trước đây có `.where('log.matchedUserId IS NOT NULL')` ở đây - chỉ

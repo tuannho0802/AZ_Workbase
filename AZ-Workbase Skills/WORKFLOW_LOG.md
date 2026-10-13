@@ -7400,3 +7400,23 @@ Now [deploy]
 > Đã chạy thật: BE `tsc --noEmit` 0, `nest build` 0, `jest` 120 suite / 1934 test pass. Chưa deploy. Việc kế tiếp theo plan: 13A-1 (thu hẹp cột `getAttendanceSummary`).
 
 ---
+---
+
+## [2026-10-13] | PLAN CPU Mục 13A-1 — `getAttendanceSummary` chỉ tải đúng cột cần | [Status: Success]
+
+**Actor:** Agent
+**Files Changed:**
+- `backend/src/modules/zk-device/zk-device.service.ts` — `leftJoinAndSelect('log.matchedUser', …)` → `leftJoin` + `.select(['log.id','log.deviceUserId','log.recordTime','log.matchedUserId','matchedUser.id','matchedUser.name'])` (giữ code cũ bằng comment `[AGENT] OLD CODE`)
+- `backend/src/modules/zk-device/zk-device.attendance-summary.spec.ts` — MỚI: 10 test (kết quả cũ/mới giống hệt ở phân trang dòng + weeksPerPage; gom map/chưa map/quẹt trùng; page/limit; weeksPerPage; hình dạng query; scope phòng ban)
+- `AZ-Workbase Skills/PLAN_CPU_OPTIMIZATION_ROUND2.md` — đánh dấu 13A-1 ✅
+
+**Root Cause (nếu là bug fix):**
+> Không phải bug. `getAttendanceSummary` hydrate 2 entity (log + TOÀN BỘ cột `User`) cho mỗi dòng log rồi mới gom trong JS; vòng gom chỉ đọc `log.deviceUserId/recordTime/matchedUserId` và `matchedUser.name`.
+
+**Solution:**
+> Chỉ `select` đúng các field trên. `matchedUser.departmentId` chỉ nằm trong WHERE nên không cần select. Shape response, `total`, phân trang, weeksPerPage KHÔNG đổi.
+
+**Notes:**
+> Đã chạy thật: `tsc --noEmit` 0 lỗi, `nest build` OK, `jest` 121 suite / 1944 test pass. Spec so sánh cũ/mới bằng cách chạy cùng bộ log với hydrate đầy đủ vs chỉ hydrate cột trong `select`; thử bỏ `matchedUser.name` khỏi select → 4 test fail (spec bắt được lỗi). Chưa đo CPU (cần preview + `CPU_TIMING=true`). Việc kế tiếp theo plan: 13G.
+
+---
