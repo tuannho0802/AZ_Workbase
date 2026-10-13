@@ -9,14 +9,21 @@ export class AddLoginLockoutToUsers1786200000000 implements MigrationInterface {
   name = 'AddLoginLockoutToUsers1786200000000';
 
   public async up(queryRunner: QueryRunner): Promise<void> {
-    await queryRunner.query(
-      `ALTER TABLE users ADD COLUMN IF NOT EXISTS failed_login_attempts INT NOT NULL DEFAULT 0`,
-    );
-    await queryRunner.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS locked_until DATETIME NULL`);
+    // Idempotent bằng hasColumn (MySQL không hỗ trợ `ADD COLUMN IF NOT EXISTS` - chỉ MariaDB có).
+    if (!(await queryRunner.hasColumn('users', 'failed_login_attempts'))) {
+      await queryRunner.query(`ALTER TABLE \`users\` ADD COLUMN \`failed_login_attempts\` INT NOT NULL DEFAULT 0`);
+    }
+    if (!(await queryRunner.hasColumn('users', 'locked_until'))) {
+      await queryRunner.query(`ALTER TABLE \`users\` ADD COLUMN \`locked_until\` DATETIME NULL`);
+    }
   }
 
   public async down(queryRunner: QueryRunner): Promise<void> {
-    await queryRunner.query(`ALTER TABLE users DROP COLUMN IF EXISTS locked_until`);
-    await queryRunner.query(`ALTER TABLE users DROP COLUMN IF EXISTS failed_login_attempts`);
+    if (await queryRunner.hasColumn('users', 'locked_until')) {
+      await queryRunner.query(`ALTER TABLE \`users\` DROP COLUMN \`locked_until\``);
+    }
+    if (await queryRunner.hasColumn('users', 'failed_login_attempts')) {
+      await queryRunner.query(`ALTER TABLE \`users\` DROP COLUMN \`failed_login_attempts\``);
+    }
   }
 }
