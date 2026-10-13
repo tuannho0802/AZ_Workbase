@@ -1,4 +1,9 @@
-import { SidebarBadgesService, INVALID_DATA_CACHE_TTL_MS } from './sidebar-badges.service';
+import {
+  SidebarBadgesService,
+  INVALID_DATA_CACHE_TTL_MS,
+  SIDEBAR_BADGES_CACHE_DEFAULT_TTL_MS,
+  sidebarBadgesCacheTtlMs,
+} from './sidebar-badges.service';
 import { PermissionScope } from '../../database/entities/role-permission.entity';
 
 describe('SidebarBadgesService', () => {
@@ -8,7 +13,7 @@ describe('SidebarBadgesService', () => {
   let leave: { countPending: jest.Mock; countMyPending: jest.Mock };
   let tasks: { countAssignedByStatusCodes: jest.Mock };
   let service: SidebarBadgesService;
-  let version: { getEpoch: jest.Mock };
+  let version: { getEpoch: jest.Mock; get: jest.Mock };
 
   const grant = (map: Record<string, PermissionScope | null>) =>
     perms.hasPermission.mockImplementation(async (_role: string, key: string) =>
@@ -27,8 +32,15 @@ describe('SidebarBadgesService', () => {
       countMyPending: jest.fn().mockResolvedValue({ count: 1 }),
     };
     tasks = { countAssignedByStatusCodes: jest.fn().mockResolvedValue({ not_started: 4, in_progress: 2 }) };
-    version = { getEpoch: jest.fn().mockResolvedValue(0) };
+    version = { getEpoch: jest.fn().mockResolvedValue(0), get: jest.fn().mockResolvedValue(0) };
+    // Các test cũ kiểm cache RIÊNG của số trùng SĐT -> tắt cache toàn bộ getBadges; test cache toàn bộ nằm ở describe riêng bên dưới.
+    process.env.SIDEBAR_BADGES_CACHE_TTL_MS = '0';
     service = new SidebarBadgesService(perms as any, customers as any, users as any, leave as any, tasks as any, version as any);
+  });
+
+  afterEach(() => {
+    delete process.env.SIDEBAR_BADGES_CACHE_TTL_MS;
+    jest.restoreAllMocks();
   });
 
   const employee = { id: 9, role: 'employee', isRootAdmin: false, departmentId: 1, positionId: null };
@@ -109,6 +121,100 @@ describe('SidebarBadgesService', () => {
     await service.getBadges({ ...employee, id: 10 });
     expect(customers.countDuplicatePhoneRecords).toHaveBeenCalledTimes(2);
   });
+  describe('Cache toàn bộ getBadges (giảm tải poll)', () => {
+    beforeEach(() => {
+      delete process.env.SIDEBAR_BADGES_CACHE_TTL_MS; // mặc định 60 s
+      grant({ 'customers.trash_manage': PermissionScope.ALL, 'users.manage': PermissionScope.ALL });
+    });
+
+    it('env: vắng/rỗng/sai -> 60 s; số >= 0 -> dùng; 0 -> tắt', () => {
+      expect(sidebarBadgesCacheTtlMs({} as any)).toBe(SIDEBAR_BADGES_CACHE_DEFAULT_TTL_MS);
+      expect(sidebarBadgesCacheTtlMs({ SIDEBAR_BADGES_CACHE_TTL_MS: '' } as any)).toBe(SIDEBAR_BADGES_CACHE_DEFAULT_TTL_MS);
+      expect(sidebarBadgesCacheTtlMs({ SIDEBAR_BADGES_CACHE_TTL_MS: 'abc' } as any)).toBe(SIDEBAR_BADGES_CACHE_DEFAULT_TTL_MS);
+      expect(sidebarBadgesCacheTtlMs({ SIDEBAR_BADGES_CACHE_TTL_MS: '-5' } as any)).toBe(SIDEBAR_BADGES_CACHE_DEFAULT_TTL_MS);
+      expect(sidebarBadgesCacheTtlMs({ SIDEBAR_BADGES_CACHE_TTL_MS: '5000' } as any)).toBe(5000);
+      expect(sidebarBadgesCacheTtlMs({ SIDEBAR_BADGES_CACHE_TTL_MS: '0' } as any)).toBe(0);
+    });
+
+    it('lần 2 trong TTL: không đếm lại; hết TTL: đếm lại', async () => {
+      const now = jest.spyOn(Date, 'now').mockReturnValue(1_000_000);
+      expect(await service.getBadges(employee)).toEqual({ trash: 3, pendingUsers: 2 });
+      await service.getBadges(employee);
+      expect(customers.countTrash).toHaveBeenCalledTimes(1);
+      expect(users.countPendingApprovals).toHaveBeenCalledTimes(1);
+      now.mockReturnValue(1_000_000 + SIDEBAR_BADGES_CACHE_DEFAULT_TTL_MS + 1);
+      await service.getBadges(employee);
+      expect(customers.countTrash).toHaveBeenCalledTimes(2);
+    });
+
+    it('TTL=0 (env) -> tắt cache, mỗi lần đều đếm', async () => {
+      process.env.SIDEBAR_BADGES_CACHE_TTL_MS = '0';
+      await service.getBadges(employee);
+      await service.getBadges(employee);
+      expect(customers.countTrash).toHaveBeenCalledTimes(2);
+    });
+
+    it('trả bản sao: caller sửa kết quả không làm bẩn cache', async () => {
+      const a = await service.getBadges(employee);
+      a.trash = 999;
+      expect((await service.getBadges(employee)).trash).toBe(3);
+    });
+
+    it('tách theo user (không rò số giữa người)', async () => {
+      await service.getBadges(employee);
+      await service.getBadges({ ...employee, id: 10 });
+      expect(customers.countTrash).toHaveBeenCalledTimes(2);
+    });
+
+    it('permissions_version đổi -> tính lại ngay; epoch đổi -> tính lại ngay', async () => {
+      await service.getBadges(employee);
+      version.get.mockResolvedValue(1);
+      await service.getBadges(employee);
+      expect(customers.countTrash).toHaveBeenCalledTimes(2);
+      version.getEpoch.mockResolvedValue(1);
+      await service.getBadges(employee);
+      expect(customers.countTrash).toHaveBeenCalledTimes(3);
+    });
+
+    it('không đọc được phiên bản quyền (undefined) -> KHÔNG cache', async () => {
+      version.get.mockResolvedValue(undefined);
+      await service.getBadges(employee);
+      await service.getBadges(employee);
+      expect(customers.countTrash).toHaveBeenCalledTimes(2);
+    });
+
+    it('có badge đếm lỗi -> KHÔNG cache kết quả thiếu; lần sau đếm lại và có đủ', async () => {
+      jest.spyOn((service as any).logger, 'warn').mockImplementation();
+      customers.countTrash.mockRejectedValueOnce(new Error('db down'));
+      expect(await service.getBadges(employee)).toEqual({ pendingUsers: 2 });
+      expect(await service.getBadges(employee)).toEqual({ trash: 3, pendingUsers: 2 });
+    });
+
+    it('clearBadgesCache(): lần sau đếm lại', async () => {
+      await service.getBadges(employee);
+      service.clearBadgesCache();
+      await service.getBadges(employee);
+      expect(customers.countTrash).toHaveBeenCalledTimes(2);
+    });
+
+    it('single-flight: 5 poll song song cùng user chỉ đếm 1 lần', async () => {
+      await Promise.all([1, 2, 3, 4, 5].map(() => service.getBadges(employee)));
+      expect(customers.countTrash).toHaveBeenCalledTimes(1);
+    });
+
+    it('ghi xảy ra KHI đang đếm dở: kết quả lượt đó không được cache (tránh số cũ sống tới hết TTL)', async () => {
+      let release!: (v: number) => void;
+      customers.countTrash.mockImplementationOnce(() => new Promise<number>((r) => (release = r)));
+      const first = service.getBadges(employee);
+      await new Promise((r) => setImmediate(r));
+      service.clearBadgesCache(); // có request ghi hoàn tất
+      release(3);
+      await first;
+      customers.countTrash.mockResolvedValue(4);
+      expect((await service.getBadges(employee)).trash).toBe(4);
+    });
+  });
+
   describe('CPU_TIMING (Mục 5A - chỉ đo, không đổi hành vi)', () => {
     const OLD = process.env.CPU_TIMING;
     afterEach(() => {

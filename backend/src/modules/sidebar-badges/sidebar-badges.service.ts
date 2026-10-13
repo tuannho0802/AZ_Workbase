@@ -39,11 +39,35 @@ export interface SidebarBadgeUser {
 export const INVALID_DATA_CACHE_TTL_MS = 180_000;
 const INVALID_DATA_CACHE_MAX_ENTRIES = 200;
 
+/**
+ * [Giảm tải poll] Cache TOÀN BỘ kết quả `getBadges` theo từng user, TTL ngắn (mặc định 60 s), theo từng INSTANCE serverless.
+ * Số đếm đổi theo DỮ LIỆU (task/nghỉ phép/thùng rác/tài khoản chờ duyệt), KHÔNG đổi theo permSig/refSig nên không thể chỉ
+ * khoá theo các chữ ký đó. Giữ độ mới bằng 3 lớp:
+ *  (1) khoá có `permissions_version` + `epoch` + role/phòng ban/vị trí -> đổi quyền/Reset hệ thống = tính lại ngay;
+ *  (2) request GHI thành công đi qua instance này xoá cache (BadgeCacheInvalidationMiddleware);
+ *  (3) TTL ngắn chặn trường hợp ghi xảy ra ở instance khác / cron / SQL tay (tối đa lệch ~TTL).
+ * Env `SIDEBAR_BADGES_CACHE_TTL_MS`: số ms; `0` = TẮT cache (hành vi cũ, mỗi poll đếm lại).
+ */
+export const SIDEBAR_BADGES_CACHE_DEFAULT_TTL_MS = 60_000;
+const SIDEBAR_BADGES_CACHE_MAX_ENTRIES = 300;
+
+export function sidebarBadgesCacheTtlMs(env: NodeJS.ProcessEnv = process.env): number {
+  const raw = env.SIDEBAR_BADGES_CACHE_TTL_MS;
+  if (raw === undefined || raw === '') return SIDEBAR_BADGES_CACHE_DEFAULT_TTL_MS;
+  const n = Number(raw);
+  return Number.isFinite(n) && n >= 0 ? n : SIDEBAR_BADGES_CACHE_DEFAULT_TTL_MS;
+}
+
 @Injectable()
 export class SidebarBadgesService {
   private readonly logger = new Logger(SidebarBadgesService.name);
   // Cache theo TỪNG INSTANCE serverless (giống PermissionsService) - mất khi cold start, không sao.
   private readonly invalidDataCache = new Map<string, { value: number; expiresAt: number }>();
+  // [Giảm tải poll] cache kết quả getBadges theo user + single-flight (xem SIDEBAR_BADGES_CACHE_DEFAULT_TTL_MS).
+  private readonly badgesCache = new Map<string, { value: SidebarBadges; expiresAt: number }>();
+  private readonly badgesInflight = new Map<string, Promise<{ out: SidebarBadges; failed: boolean }>>();
+  /** Tăng mỗi lần xoá cache: kết quả của lượt tính BẮT ĐẦU TRƯỚC khi có ghi sẽ không được ghi vào cache. */
+  private badgesCacheGen = 0;
 
   constructor(
     private readonly permissionsService: PermissionsService,
@@ -102,7 +126,49 @@ export class SidebarBadgesService {
     return value;
   }
 
+  /** Xoá cache số đếm của instance này (gọi khi có request ghi, xem BadgeCacheInvalidationMiddleware). */
+  clearBadgesCache(): void {
+    this.badgesCacheGen++;
+    this.badgesCache.clear();
+    this.badgesInflight.clear();
+  }
+
+  // [AGENT] OLD CODE (giữ để rollback): getBadges(user) tự đếm trực tiếp mỗi lần gọi (nay là computeBadges).
+  // NEW: getBadges = cache ngắn theo user + single-flight; không cache khi có badge đếm lỗi hoặc không đọc được phiên bản quyền.
   async getBadges(user: SidebarBadgeUser): Promise<SidebarBadges> {
+    const ttl = sidebarBadgesCacheTtlMs();
+    if (ttl <= 0) return (await this.computeBadges(user)).out;
+
+    const [permVersion, epoch] = await Promise.all([this.versionService?.get(), this.versionService?.getEpoch()]);
+    // Không đọc được phiên bản quyền/epoch: KHÔNG dùng cache để không giữ số cũ qua lần đổi quyền.
+    if (permVersion === undefined || epoch === undefined) return (await this.computeBadges(user)).out;
+
+    const key = `${user.id}:${user.role}:${user.isRootAdmin ? 1 : 0}:${user.departmentId ?? 'n'}:${user.positionId ?? 'n'}:${permVersion}:${epoch}`;
+    const hit = this.badgesCache.get(key);
+    if (hit && hit.expiresAt > Date.now()) return { ...hit.value };
+
+    let flight = this.badgesInflight.get(key);
+    if (!flight) {
+      const gen = this.badgesCacheGen;
+      const task: Promise<{ out: SidebarBadges; failed: boolean }> = this.computeBadges(user)
+        .then((r) => {
+          if (!r.failed && gen === this.badgesCacheGen) {
+            if (this.badgesCache.size >= SIDEBAR_BADGES_CACHE_MAX_ENTRIES) this.badgesCache.clear(); // chặn phình bộ nhớ
+            this.badgesCache.set(key, { value: r.out, expiresAt: Date.now() + ttl });
+          }
+          return r;
+        })
+        .finally(() => {
+          if (this.badgesInflight.get(key) === task) this.badgesInflight.delete(key);
+        });
+      this.badgesInflight.set(key, task);
+      flight = task;
+    }
+    return { ...(await flight).out };
+  }
+
+  private async computeBadges(user: SidebarBadgeUser): Promise<{ out: SidebarBadges; failed: boolean }> {
+    let failed = false;
     const ms: Record<string, number> | undefined = process.env.CPU_TIMING === 'true' ? {} : undefined;
     const tStart = ms ? Date.now() : 0;
     const [invalid, trash, usersManage, leaveApprove, leaveRequest, taskView] = await Promise.all([
@@ -121,6 +187,7 @@ export class SidebarBadgesService {
       jobs.push(
         this.safe(label, fn, ms).then((v) => {
           if (v !== undefined) assign(v);
+          else failed = true; // đếm lỗi -> kết quả không đầy đủ, KHÔNG được cache
         }),
       );
 
@@ -174,6 +241,6 @@ export class SidebarBadgesService {
         `[Badges] total=${Date.now() - tStart}ms perm=${tPerm}ms ${parts.join(' ') || '(no-jobs)'} user=${user.id} role=${user.role}`,
       );
     }
-    return out;
+    return { out, failed };
   }
 }

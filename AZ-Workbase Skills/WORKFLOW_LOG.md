@@ -7329,3 +7329,23 @@ Now [deploy]
 > Đã chạy thật: BE `tsc` 0, `nest build` 0, `jest` 116 suite / 1898 test pass; FE `vitest` 3 shard = 113 file / 1207 test pass; FE `tsc` chỉ còn 4 lỗi `logo.png` có sẵn. Cổng chỉ chạy qua `handler` trên Vercel (chạy local `npm run start:dev` không qua cổng). Cần deploy BE để có hiệu lực; muốn có ca muộn/T7 thì đặt `POLL_HOURS_SKIP=false` rồi redeploy BE (FE vẫn tự dừng theo `poll-schedule.ts`, cần sửa thêm nếu muốn mở lại). Chưa thử trên prod/trình duyệt thật: sau 18:45 mở tab cũ -> badge còn nguyên, Network chỉ thấy 200 `skipped` rồi không lặp; kiểm tra tab cross-origin không báo lỗi CORS.
 
 ---
+
+## [2026-10-13] | Cache số đếm badge sidebar (getBadges) — Mục 4 giảm tải BE | [Status: Success]
+
+**Actor:** Agent
+**Files Changed:**
+- `backend/src/modules/sidebar-badges/sidebar-badges.service.ts` — `getBadges` = cache theo user (TTL 60s, env `SIDEBAR_BADGES_CACHE_TTL_MS`, `0` = tắt) + single-flight; logic đếm cũ chuyển vào `computeBadges` (trả `{out, failed}`); thêm `clearBadgesCache()`
+- `backend/src/modules/sidebar-badges/badge-cache-invalidation.middleware.ts` — MỚI: request GHI (POST/PUT/PATCH/DELETE) thành công (<400) xoá cache; bỏ qua `/iclock`, `/api/auth`, `/api/notifications`
+- `backend/src/modules/sidebar-badges/sidebar-badges.module.ts` — đăng ký middleware `forRoutes('*path')`
+- `backend/src/modules/sidebar-badges/*.spec.ts` — spec mới cho cache + middleware; spec cũ đặt `SIDEBAR_BADGES_CACHE_TTL_MS=0` để giữ nguyên ý nghĩa
+
+**Root Cause:**
+> Mỗi lần poll vẫn chạy ~6 COUNT (trash, pendingUsers, leave x2, tasks, invalidData) dù chưa có gì đổi.
+
+**Solution:**
+> Cache cả kết quả getBadges. Khoá = user + role + isRootAdmin + phòng ban + vị trí + `permissions_version` + `epoch` (đổi quyền/Reset hệ thống = tính lại ngay). Không cache khi có badge đếm lỗi hoặc không đọc được phiên bản. Lượt đếm bắt đầu trước khi có ghi không được ghi vào cache (`badgesCacheGen`).
+
+**Notes:**
+> Số đếm đổi theo dữ liệu nên KHÔNG khoá theo permSig/refSig. Cache theo từng instance serverless: ghi ở instance A, poll ở instance B có thể lệch tối đa TTL (60s); cron/SQL tay cũng vậy. Đã chạy thật: BE `tsc` 0, `nest build` 0, `jest` 117 suite / 1915 test pass; thử wiring middleware với `setGlobalPrefix('api')` (GET không xoá, POST 201 xoá). FE không đổi. Mục 1 (ADMS handshake) bỏ qua theo yêu cầu.
+
+---
