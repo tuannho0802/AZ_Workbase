@@ -7440,3 +7440,23 @@ Now [deploy]
 > Đã chạy thật: `tsc --noEmit` 0 lỗi, `nest build` OK, `jest` 122 suite / 1951 test pass; spec 13G fail 7/7 với code cũ, pass với code mới. **CHƯA chạy câu SQL trên MySQL thật** (sandbox không có MySQL/MariaDB). Cần kiểm tra trên preview/staging trước khi deploy: (1) `SELECT COUNT(*) FROM attendance_logs al INNER JOIN (SELECT zk_device_user_id, MIN(id) AS id FROM users WHERE zk_device_user_id IS NOT NULL AND deleted_at IS NULL GROUP BY zk_device_user_id) u ON al.device_user_id = u.zk_device_user_id COLLATE utf8mb4_unicode_ci WHERE al.matched_user_id IS NULL;` (không lỗi collation, số dòng hợp lý); (2) bấm "Rematch" rồi so số `updated` với kỳ vọng. Rollback: khôi phục vòng lặp từ comment `[AGENT] OLD CODE`. Việc kế tiếp theo plan: 13B.
 
 ---
+
+## [2026-10-13] | PLAN CPU Mục 13B — đếm số kết nối DB MỚI của pool mysql2 (chỉ đo) + xác nhận SQL 13G trên production | [Status: Success]
+
+**Actor:** Agent (13B) / User (kiểm SQL 13G trên production)
+**Files Changed:**
+- `backend/src/common/observability/db-connection-timing.ts` — MỚI: `attachDbConnectionTiming(pool)`; khi `CPU_TIMING=true` đăng ký 1 listener `connection` trên pool, mỗi kết nối mới in 1 dòng `[DbConnTiming] new connection #N up=…s sinceLast=…s` bằng `Logger` (không host/user/password). Cờ tắt = KHÔNG đăng ký listener nào; idempotent (WeakSet); không bao giờ throw
+- `backend/src/common/observability/db-connection-timing.spec.ts` — MỚI: 7 test (cờ tắt → 0 listener; cờ bật → mỗi sự kiện đếm đúng 1; gắn 2 lần chỉ 1 listener; thiếu pool; lỗi log không lan; định dạng dòng)
+- `backend/src/main.ts` — sau `app.init()`: `attachDbConnectionTiming((app.get(DataSource,{strict:false}).driver as any)?.pool)` bọc try/catch
+- `AZ-Workbase Skills/PLAN_CPU_OPTIMIZATION_ROUND2.md` — đánh dấu 13B (code) ✅, 13G đã kiểm production
+
+**Root Cause (nếu là bug fix):**
+> Không phải bug. Giả thuyết cần có số đo: `idleTimeout: 30000` + `maxIdle: 1` + poll mỗi 120–180s có thể khiến nhiều request phải mở kết nối mới + bắt tay TLS tới Aiven.
+
+**Solution:**
+> Chỉ đo, KHÔNG đổi pool. TypeORM 0.3.31 `MysqlDriver.pool` là pool mysql2 (EventEmitter), mysql2 phát `connection` khi tạo kết nối mới. ⚠️ Hook gắn sau `app.init()` nên kết nối tạo lúc boot (≥1) không được đếm.
+
+**Notes:**
+> Đã chạy thật: `tsc --noEmit` 0 lỗi, `nest build` OK, `jest` 123 suite / 1958 test pass. 13G: chủ dự án đã chạy trên MySQL 8.4.8 production — JOIN `COLLATE utf8mb4_unicode_ci` không lỗi, 4256 dòng khớp, không có `zk_device_user_id` trùng giữa user đang hoạt động. CÒN LẠI: deploy preview, bật `CPU_TIMING=true` 30–60 phút, đếm số dòng `[DbConnTiming]`/giờ + so TB/p95 `GET /zk-device/attendance-summary` trước/sau (13A-1). Nếu số kết nối mới/giờ cao ⇒ mới bàn nới `idleTimeout`/`maxIdle` (đối chiếu Aiven, theo dõi ECONNRESET); nếu thấp ⇒ ghi kết luận "không đáng". Rollback: revert commit hoặc tắt `CPU_TIMING`.
+
+---

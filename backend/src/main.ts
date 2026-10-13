@@ -27,6 +27,9 @@ import { installNativeQuery } from './common/utils/native-query';
 // [PLAN_CPU_OPTIMIZATION_ROUND2 - Mục 12A/12B] logger bỏ log khởi động Nest + đo thời gian boot (CPU_TIMING=true).
 import { QuietBootLogger } from './common/logger/quiet-boot.logger';
 import { bootMark, bootStep, isBootTimingEnabled, logBootTiming } from './common/observability/boot-timing';
+// [PLAN_CPU_OPTIMIZATION_ROUND2 - Mục 13B] đếm số kết nối DB MỚI của pool (chỉ khi CPU_TIMING=true).
+import { attachDbConnectionTiming } from './common/observability/db-connection-timing';
+import { DataSource } from 'typeorm';
 import {
   buildAllowedOrigins,
   CORS_ALLOWED_HEADERS,
@@ -233,6 +236,14 @@ async function createApp(): Promise<NestExpressApplication> {
 
   const initStart = bootTiming ? bootMark() : undefined;
   await app.init();
+  // [Mục 13B] CHỈ ĐO tần suất tạo kết nối DB mới; no-op hoàn toàn khi CPU_TIMING != 'true'. Bọc try/catch
+  // để đo đạc không bao giờ làm hỏng boot. Kết nối đã tạo trước thời điểm này không được tính.
+  try {
+    const driver: any = app.get(DataSource, { strict: false }).driver;
+    attachDbConnectionTiming(driver?.pool);
+  } catch {
+    // bỏ qua
+  }
   if (bootStart && createStep && initStart) {
     logBootTiming(loadCpuMs, createStep, bootStep(initStart), bootStep(bootStart).wallMs);
   }

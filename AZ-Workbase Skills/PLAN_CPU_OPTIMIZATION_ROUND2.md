@@ -806,7 +806,7 @@ export class QuietBootLogger extends ConsoleLogger {
 **Đo:** preview, `CPU_TIMING=true` ~30 phút, thao tác: tab "Bảng chấm công" (lật vài tuần), tab "Tổng hợp tháng", xuất Excel chấm công; so TB/p95 `GET /zk-device/attendance-summary` **trước/sau, dùng `--solo`**.
 **Tiêu chí hoàn thành:** response so sánh y hệt trên bộ spec; TB route giảm (kỳ vọng — **cần đo**).
 
-### 13G. `rematchUnmatchedLogsCore` — N câu UPDATE tuần tự → 1 câu (BE) — ✅ ĐÃ LÀM (2026-10-13, chờ deploy; CHƯA chạy thử SQL trên MySQL thật)
+### 13G. `rematchUnmatchedLogsCore` — N câu UPDATE tuần tự → 1 câu (BE) — ✅ ĐÃ LÀM + ĐÃ KIỂM SQL TRÊN MySQL 8.4.8 PRODUCTION (2026-10-13, chờ deploy)
 **Bằng chứng:** `zk-device.service.ts#rematchUnmatchedLogsCore` đọc user đã map rồi `for … await` UPDATE `attendance_logs` từng user (`WHERE device_user_id = ? AND matched_user_id IS NULL`). Chạy mỗi lần `mapUser()` và đầu `syncNow()`.
 **Kỳ vọng trung thực:** số nhân viên ít, phần lớn là round-trip DB (không phải CPU hàm) ⇒ **lợi ích nhỏ, khó thấy trong số đo**. Làm vì yêu cầu của chủ dự án, không vì CPU lớn. Comment trong code từng chủ ý chọn vòng lặp cho dễ đọc — giữ comment `[AGENT] OLD CODE` để rollback.
 **Điểm phải xử lý trước khi viết (đã xác minh trong code):**
@@ -817,18 +817,18 @@ export class QuietBootLogger extends ConsoleLogger {
 - [x] Giá trị trả về `affected` phải vẫn là tổng số dòng được gán (hàm gọi `mapUser`/`syncNow` dùng số này); log `[Rematch]` giữ nguyên.
 - [x] Không có user nào được map → trả 0. (ĐỔI so với plan: bỏ nhánh sớm + SELECT đọc user; bảng dẫn xuất rỗng ⇒ UPDATE ảnh hưởng 0 dòng, tiết kiệm thêm 1 round-trip.)
 - [x] Test: cập nhật `zk-device.service.spec.ts` — đúng **1** lần thực thi UPDATE; `affected` đúng; 0 user → không UPDATE; **2 user cùng mã máy → user id nhỏ hơn thắng** (spec ở mức mock câu SQL/tham số, không cần DB thật).
-- [ ] Nếu sandbox có MariaDB/MySQL: chạy thử câu SQL trên dữ liệu giả (có trùng mã máy + user xoá mềm) và dán kết quả thật. → ⚠️ Sandbox KHÔNG có MySQL/MariaDB (apt không có gói) nên CHƯA chạy được; cần chủ dự án chạy SELECT kiểm tra trên preview/staging (xem WORKFLOW_LOG).
+- [x] (chủ dự án đã chạy SELECT kiểm tra trên production: JOIN không lỗi collation, 4256 dòng khớp, không có mã máy trùng) Nếu sandbox có MariaDB/MySQL: chạy thử câu SQL trên dữ liệu giả (có trùng mã máy + user xoá mềm) và dán kết quả thật. → ⚠️ Sandbox KHÔNG có MySQL/MariaDB (apt không có gói) nên CHƯA chạy được; cần chủ dự án chạy SELECT kiểm tra trên preview/staging (xem WORKFLOW_LOG).
 - 🔎 Phát hiện khi làm: `users` tạo với `COLLATE=utf8mb4_unicode_ci` còn `attendance_logs` dùng collation mặc định server ⇒ JOIN thẳng 2 cột có thể lỗi `Illegal mix of collations`; đã ép `COLLATE utf8mb4_unicode_ci` ở vế `users`.
 **Rủi ro:** thấp–TB (ngữ nghĩa khi trùng mã máy / xoá mềm) — xử lý bằng 2 điểm trên. **Rollback:** khôi phục vòng lặp (comment `[AGENT] OLD CODE`).
 **Tiêu chí hoàn thành:** spec xanh; `affected` giữ nguyên ý nghĩa; không đổi kết quả map so với trước trên bộ test trùng mã.
 
-### 13B. Đo tần suất tạo kết nối DB mới (chỉ ĐO, chưa đổi pool) — BE
+### 13B. Đo tần suất tạo kết nối DB mới (chỉ ĐO, chưa đổi pool) — BE — ✅ CODE ĐÃ LÀM (2026-10-13, chờ deploy + đo)
 **Giả thuyết cần kiểm chứng (CHƯA phải kết luận):** `database.config.ts` đặt `idleTimeout: 30000`, `maxIdle: 1`, `connectionLimit: 3`, `ssl.rejectUnauthorized: true`; trong khi poll chạy mỗi 120–180 s. ⇒ nhiều request có thể phải **mở kết nối mới + bắt tay TLS** (tốn CPU) thay vì dùng lại. **Chưa có số đo.**
 **Vì sao không sửa pool ngay:** comment trong code ghi Aiven/proxy cắt kết nối rảnh → ECONNRESET; nới `idleTimeout` mù có thể gây lỗi. Giữ nguyên `withDbRetry` làm lưới an toàn.
-- [ ] Khi `CPU_TIMING=true` (mặc định TẮT): đếm số lần pool mysql2 phát sự kiện tạo kết nối mới (`connection`) và ghi **1 dòng log gộp** bằng `Logger` (vd mỗi N phút hoặc khi tạo kết nối), kèm `up=` (giây từ khi process chạy) và số kết nối đã tạo từ đầu. Không `console.log`, không log thông tin nhạy cảm (host/user/password).
-- [ ] **Cần xác minh trước khi code:** cách truy cập pool qua TypeORM (`dataSource.driver.master` / `getPool()`), có ổn định giữa các phiên bản không; chỗ gắn hook an toàn (sau khi DataSource initialize; `keep-alive.controller.ts` đã dùng `@InjectDataSource()` — tham khảo, KHÔNG nhét vào luồng keep-alive nếu làm đổi hành vi). Tránh gắn hook nhiều lần khi DataSource tái kết nối.
-- [ ] Hook phải **no-op hoàn toàn khi cờ tắt** (không thêm listener).
-- [ ] Test: spec nhỏ — cờ tắt → không đăng ký listener; cờ bật → mỗi sự kiện `connection` tăng bộ đếm đúng 1 lần.
+- [x] Khi `CPU_TIMING=true` (mặc định TẮT): đếm số lần pool mysql2 phát sự kiện tạo kết nối mới (`connection`) và ghi **1 dòng log gộp** bằng `Logger` (vd mỗi N phút hoặc khi tạo kết nối), kèm `up=` (giây từ khi process chạy) và số kết nối đã tạo từ đầu. Không `console.log`, không log thông tin nhạy cảm (host/user/password).
+- [x] **Cần xác minh trước khi code:** cách truy cập pool qua TypeORM (`dataSource.driver.master` / `getPool()`), có ổn định giữa các phiên bản không; chỗ gắn hook an toàn (sau khi DataSource initialize; `keep-alive.controller.ts` đã dùng `@InjectDataSource()` — tham khảo, KHÔNG nhét vào luồng keep-alive nếu làm đổi hành vi). Tránh gắn hook nhiều lần khi DataSource tái kết nối.
+- [x] Hook phải **no-op hoàn toàn khi cờ tắt** (không thêm listener).
+- [x] Test: spec nhỏ — cờ tắt → không đăng ký listener; cờ bật → mỗi sự kiện `connection` tăng bộ đếm đúng 1 lần.
 - [ ] **Sau khi có số liệu 30–60 phút** (cùng đợt đo của 12B/13A): nếu số kết nối mới/giờ cao ⇒ mới bàn nới `idleTimeout`/`maxIdle` (đối chiếu hành vi Aiven, thử trên preview, theo dõi ECONNRESET). Nếu thấp ⇒ ghi kết luận "không đáng" vào `WORKFLOW_LOG.md`.
 **Rủi ro:** rất thấp (chỉ đo, mặc định tắt). **Rollback:** revert commit / tắt `CPU_TIMING`.
 **Tiêu chí hoàn thành:** có số "kết nối mới/giờ" từ log prod/preview và quyết định có/không đổi pool, ghi vào log.
