@@ -75,28 +75,34 @@ describe('CustomerPeriodStats', () => {
     expect(screen.getByText('Khách nhập mới')).toBeInTheDocument();
   });
 
-  it('Ẩn chi tiết -> chỉ còn dòng tóm tắt, Hiện chi tiết -> đầy đủ; nhớ lựa chọn', () => {
-    const { unmount } = render(<CustomerPeriodStats />);
-    // Mặc định mở: phần đầy đủ hiện, phần tóm tắt đang đóng (vẫn mount để trượt mượt).
-    expect(screen.getByTestId('period-stats-detail')).toHaveAttribute('aria-hidden', 'false');
-    expect(screen.getByTestId('period-stats-summary-wrap')).toHaveAttribute('aria-hidden', 'true');
-    fireEvent.click(screen.getByRole('button', { name: /Ẩn chi tiết thống kê/ }));
+  it('MẶC ĐỊNH thu gọn: chỉ hiện tóm tắt; bấm Hiện -> đầy đủ; bấm Ẩn -> thu lại', () => {
+    render(<CustomerPeriodStats />);
     expect(screen.getByTestId('period-stats-detail')).toHaveAttribute('aria-hidden', 'true');
     expect(screen.getByTestId('period-stats-summary-wrap')).toHaveAttribute('aria-hidden', 'false');
     const summary = screen.getByTestId('period-stats-summary');
     expect(summary).toHaveTextContent('Nhập mới: 12');
     expect(summary).toHaveTextContent('Đã chốt: 4');
     expect(summary).toHaveTextContent('$2,500.00');
-    unmount();
-    // mở lại trang: vẫn thu gọn
-    render(<CustomerPeriodStats />);
-    expect(screen.getByTestId('period-stats-detail')).toHaveAttribute('aria-hidden', 'true');
+
     fireEvent.click(screen.getByRole('button', { name: /Hiện chi tiết thống kê/ }));
     expect(screen.getByTestId('period-stats-detail')).toHaveAttribute('aria-hidden', 'false');
+    expect(screen.getByTestId('period-stats-summary-wrap')).toHaveAttribute('aria-hidden', 'true');
+
+    fireEvent.click(screen.getByRole('button', { name: /Ẩn chi tiết thống kê/ }));
+    expect(screen.getByTestId('period-stats-detail')).toHaveAttribute('aria-hidden', 'true');
+  });
+
+  it('KHÔNG nhớ lựa chọn: mở rồi vào lại trang vẫn thu gọn, và không ghi gì vào localStorage', () => {
+    const { unmount } = render(<CustomerPeriodStats />);
+    fireEvent.click(screen.getByRole('button', { name: /Hiện chi tiết thống kê/ }));
+    expect(screen.getByTestId('period-stats-detail')).toHaveAttribute('aria-hidden', 'false');
+    unmount();
+    expect(window.localStorage.length).toBe(0);
+    render(<CustomerPeriodStats />);
+    expect(screen.getByTestId('period-stats-detail')).toHaveAttribute('aria-hidden', 'true');
   });
 
   it('thu gọn + hideDeposit: tóm tắt không lộ tiền nạp', () => {
-    window.localStorage.setItem('customers:period-stats-open', '0');
     render(<CustomerPeriodStats hideDeposit />);
     const summary = screen.getByTestId('period-stats-summary');
     expect(summary).not.toHaveTextContent('Tiền nạp');
@@ -106,6 +112,9 @@ describe('CustomerPeriodStats', () => {
   it('"Lọc trạng thái này" gửi status + khoảng ngày của kỳ; đang lọc -> "Bỏ lọc"', () => {
     const onFilter = vi.fn();
     const { rerender } = render(<CustomerPeriodStats onFilterStatus={onFilter} />);
+    // Mặc định thu gọn -> nút lọc nằm trong vùng ẩn (không truy cập được); phải mở chi tiết như người dùng thật.
+    expect(screen.queryByRole('button', { name: /Lọc trạng thái này/ })).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: /Hiện chi tiết thống kê/ }));
     const buttons = screen.getAllByRole('button', { name: /Lọc trạng thái này/ });
     expect(buttons).toHaveLength(2);
     fireEvent.click(buttons[0]);
@@ -128,11 +137,11 @@ describe('CustomerPeriodStats', () => {
   it('hiệu ứng: dùng grid-template-rows 0fr<->1fr + opacity (không unmount); giảm chuyển động -> 0ms', () => {
     render(<CustomerPeriodStats />);
     const detail = screen.getByTestId('period-stats-detail');
-    expect(detail).toHaveStyle({ gridTemplateRows: '1fr', opacity: '1' });
+    expect(detail).toHaveStyle({ gridTemplateRows: '0fr', opacity: '0', visibility: 'hidden' }); // mặc định thu gọn
     expect(detail.style.transition).toContain('grid-template-rows 300ms');
-    fireEvent.click(screen.getByRole('button', { name: /Ẩn chi tiết thống kê/ }));
-    expect(detail).toHaveStyle({ gridTemplateRows: '0fr', opacity: '0', visibility: 'hidden' });
-    expect(screen.getByText('Giai đoạn NHẬP')).toBeInTheDocument(); // vẫn mount, chỉ bị thu về 0 chiều cao
+    expect(screen.getByText('Giai đoạn NHẬP')).toBeInTheDocument(); // vẫn mount, chỉ thu về 0 chiều cao
+    fireEvent.click(screen.getByRole('button', { name: /Hiện chi tiết thống kê/ }));
+    expect(detail).toHaveStyle({ gridTemplateRows: '1fr', opacity: '1', visibility: 'visible' });
   });
 
   it('prefers-reduced-motion: reduce -> transition 0ms nhưng vẫn đóng/mở đúng', () => {
@@ -151,8 +160,8 @@ describe('CustomerPeriodStats', () => {
       render(<CustomerPeriodStats />);
       const detail = screen.getByTestId('period-stats-detail');
       expect(detail.style.transition).toContain('grid-template-rows 0ms');
-      fireEvent.click(screen.getByRole('button', { name: /Ẩn chi tiết thống kê/ }));
-      expect(detail).toHaveAttribute('aria-hidden', 'true');
+      fireEvent.click(screen.getByRole('button', { name: /Hiện chi tiết thống kê/ }));
+      expect(detail).toHaveAttribute('aria-hidden', 'false');
     } finally {
       window.matchMedia = orig;
     }

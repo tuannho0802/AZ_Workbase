@@ -41,9 +41,6 @@ function Delta({ now, prev, money }: { now: number; prev: number; money?: boolea
   );
 }
 
-/** Ghi nhớ ẩn/hiện khối thống kê (chỉ là tuỳ chọn giao diện, không nhạy cảm). Luôn bọc try/catch: storage có thể bị chặn. */
-const OPEN_STORAGE_KEY = 'customers:period-stats-open';
-
 const COLLAPSE_MS = 300;
 const COLLAPSE_EASE = 'cubic-bezier(0.4, 0, 0.2, 1)'; // cùng easing với hiệu ứng hover của StatsCards
 
@@ -103,24 +100,11 @@ interface CustomerPeriodStatsProps {
 export const CustomerPeriodStats = ({ hideDeposit, activeStatus, onFilterStatus }: CustomerPeriodStatsProps) => {
   const [period, setPeriod] = useState<CustomerStatsPeriod>('day');
   const [anchor, setAnchor] = useState<Dayjs>(dayjs());
-  // Mặc định mở đầy đủ; đọc tuỳ chọn đã lưu SAU khi mount để không lệch HTML server/client (SSR).
-  const [open, setOpen] = useState(true);
-  useEffect(() => {
-    try {
-      if (window.localStorage.getItem(OPEN_STORAGE_KEY) === '0') setOpen(false);
-    } catch {
-      /* storage bị chặn -> giữ mặc định */
-    }
-  }, []);
-  const toggleOpen = () => {
-    const next = !open;
-    setOpen(next);
-    try {
-      window.localStorage.setItem(OPEN_STORAGE_KEY, next ? '1' : '0');
-    } catch {
-      /* bỏ qua */
-    }
-  };
+  // MẶC ĐỊNH LUÔN THU GỌN mỗi lần khối xuất hiện (vào trang/tải lại) - chỉ hiện dòng tóm tắt, bấm "Hiện chi tiết" mới mở.
+  // Chủ đích KHÔNG nhớ lựa chọn của lần trước, để lần nào vào trang cũng gọn như nhau.
+  const [open, setOpen] = useState(false);
+  const toggleOpen = () => setOpen((o) => !o);
+
   const { data, isLoading, isFetching } = useCustomerPeriodStats(period, anchor.format('YYYY-MM-DD'));
 
   const picker = period === 'month' ? 'month' : period === 'year' ? 'year' : 'date';
