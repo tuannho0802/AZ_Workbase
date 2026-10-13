@@ -14,6 +14,7 @@ import { ExportCustomersModal } from '@/components/customers/ExportCustomersModa
 import { BulkAssignModal } from '@/components/customers/BulkAssignModal';
 import { CustomerForm } from '@/components/customers/CustomerForm';
 import { StatsCards } from '@/components/customers/StatsCards';
+import { CustomerPeriodStats } from '@/components/customers/CustomerPeriodStats';
 import { CustomerDetailDrawer } from '@/components/customers/CustomerDetailDrawer';
 import { StatModals } from '@/components/customers/StatModals';
 import { useCustomersToday, useCustomersByStatus, useAllDepositsStats } from '@/lib/hooks/useCustomerStats';
@@ -613,9 +614,13 @@ function CustomersPageContent() {
     fetchStats();
   }, [debouncedSearch, source, status, salesUserId, marketingUserId, creatorId, dateFrom, dateTo, joinedGroups, groupId, utmId]);
 
+  // Khối "Thống kê theo giai đoạn" độc lập với bộ lọc bảng -> chỉ làm mới khi dữ liệu thật sự đổi (thêm/sửa/xoá/nạp), không chạy theo mỗi lần đổi filter.
+  const refreshPeriodStats = () => queryClient.invalidateQueries({ queryKey: ['customer-stats', 'period'] });
+
   const handleDrawerUpdate = async () => {
     await refetchCustomers();
     await fetchStats();
+    refreshPeriodStats();
   };
 
   const handleDeleteCustomer = async (id: number) => {
@@ -624,6 +629,7 @@ function CustomersPageContent() {
       message.success('Đã xóa khách hàng');
       refetchCustomers();
       fetchStats();
+      refreshPeriodStats();
     } catch (error: any) {
       message.error(error?.response?.data?.message || 'Lỗi khi xóa khách hàng');
     }
@@ -937,7 +943,7 @@ function CustomersPageContent() {
       )}
       <Button 
         icon={<ReloadOutlined />} 
-        onClick={() => { refetchCustomers(); fetchStats(); }} 
+        onClick={() => { refetchCustomers(); fetchStats(); refreshPeriodStats(); }} 
         title="Làm mới"
         size={isLaptop ? 'small' : 'middle'}
       >
@@ -996,6 +1002,8 @@ function CustomersPageContent() {
         hideDeposit={hideDepositsTab}
         depositLabel={dateFrom || dateTo ? 'Tổng nạp (theo ngày lọc, USD)' : undefined}
     />
+
+    <CustomerPeriodStats hideDeposit={hideDepositsTab} />
     
     <Card title="Danh sách khách hàng" extra={renderToolbar()}>
       {isMobile ? (
@@ -1218,6 +1226,7 @@ function CustomersPageContent() {
       onSuccess={() => {
         refetchCustomers();
         fetchStats();
+        refreshPeriodStats();
       }}
     />
 

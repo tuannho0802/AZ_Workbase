@@ -4,6 +4,7 @@ import { CustomersService } from './customers.service';
 import { CustomersImportService } from './customers.import.service';
 import { CustomersExportService } from './customers-export.service';
 import { CustomersInvalidStatsService } from './customers-invalid-stats.service';
+import { CustomersPeriodStatsService } from './customers-period-stats.service';
 import { CustomersController } from './customers.controller';
 import { Customer } from '../../database/entities/customer.entity';
 import { CustomerStatus } from '../../database/entities/customer-status.entity';
@@ -24,7 +25,7 @@ import { UtmsModule } from '../utms/utms.module';
     UtmsModule,
   ],
   controllers: [CustomersController],
-  providers: [CustomersService, CustomersImportService, CustomersExportService, CustomersInvalidStatsService],
+  providers: [CustomersService, CustomersImportService, CustomersExportService, CustomersInvalidStatsService, CustomersPeriodStatsService],
   exports: [CustomersService],
 })
 export class CustomersModule { }

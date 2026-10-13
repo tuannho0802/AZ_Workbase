@@ -1,4 +1,5 @@
-import { useQuery } from '@tanstack/react-query';
+import { keepPreviousData, useQuery } from '@tanstack/react-query';
+import type { CustomerStatsPeriod } from '../types/customer.types';
 import { customersApi } from '../api/customers.api';
 
 export const useCustomerStatsBase = () => {
@@ -34,5 +35,16 @@ export const useAllDepositsStats = (enabled: boolean = false, params?: {
     queryKey: ['all-deposits-stats', params?.startDate, params?.endDate, params?.sortBy, params?.sortOrder],
     queryFn: () => customersApi.getAllDepositsStats(params),
     enabled,
+  });
+};
+
+/** Thống kê khách theo giai đoạn Ngày/Tuần/Tháng/Năm (khối "Thống kê khách hàng" ở /customers). */
+export const useCustomerPeriodStats = (period: CustomerStatsPeriod, anchor: string) => {
+  return useQuery({
+    queryKey: ['customer-stats', 'period', period, anchor],
+    queryFn: () => customersApi.getPeriodStats({ period, anchor }),
+    staleTime: 60 * 1000,
+    // Đổi kỳ: giữ số cũ (mờ đi) thay vì nháy skeleton.
+    placeholderData: keepPreviousData,
   });
 };

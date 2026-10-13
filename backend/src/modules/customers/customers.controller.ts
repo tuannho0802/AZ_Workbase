@@ -7,6 +7,8 @@ import { CustomersService } from './customers.service';
 import { CustomersImportService } from './customers.import.service';
 import { CustomersExportService } from './customers-export.service';
 import { CustomersInvalidStatsService } from './customers-invalid-stats.service';
+import { CustomersPeriodStatsService } from './customers-period-stats.service';
+import { QueryCustomerPeriodStatsDto } from './dto/query-customer-period-stats.dto';
 import { CreateCustomerDto } from './dto/create-customer.dto';
 import { UpdateCustomerDto } from './dto/update-customer.dto';
 import { CustomerFiltersDto } from './dto/customer-filters.dto';
@@ -35,6 +37,7 @@ export class CustomersController {
     private readonly customersImportService: CustomersImportService,
     private readonly customersExportService: CustomersExportService,
     private readonly customersInvalidStatsService: CustomersInvalidStatsService,
+    private readonly customersPeriodStatsService: CustomersPeriodStatsService,
   ) {}
 
   @Get('stats')
@@ -46,6 +49,20 @@ export class CustomersController {
     @Query() filters: CustomerFiltersDto,
   ) {
     return this.customersService.getStats(user.id, user.role, scope, filters);
+  }
+
+  @Get('stats/period')
+  @RequirePermission('customers.view')
+  @ApiOperation({
+    summary:
+      'Thống kê khách theo giai đoạn Ngày/Tuần/Tháng/Năm: giai đoạn NHẬP (inputDate), XỬ LÝ (đã chốt - closedDate), NẠP (depositDate) + số nạp tương ứng - phạm vi = phạm vi danh sách khách',
+  })
+  async getPeriodStats(
+    @GetUser() user: any,
+    @GetPermissionScope() scope: string | null | undefined,
+    @Query() query: QueryCustomerPeriodStatsDto,
+  ) {
+    return this.customersPeriodStatsService.getPeriodStats(query, user.id, user.role, scope);
   }
 
   @Get('stats/today')

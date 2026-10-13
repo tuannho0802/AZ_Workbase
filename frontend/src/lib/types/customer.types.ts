@@ -79,6 +79,36 @@ export interface CustomerStats {
   totalDepositAmount: number;
 }
 
+// ── Thống kê khách theo giai đoạn (GET /customers/stats/period) ──
+export type CustomerStatsPeriod = 'day' | 'week' | 'month' | 'year';
+
+export interface CustomerPeriodWindowStats {
+  /** Giai đoạn NHẬP: khách có inputDate trong kỳ; nạp = TOÀN BỘ nạp của các khách đó. */
+  input: { entered: number; enteredDeposited: number; depositAmount: number; depositCount: number };
+  /** Giai đoạn XỬ LÝ: khách status='closed' có closedDate trong kỳ; nạp = TOÀN BỘ nạp của các khách đó. */
+  handled: { closed: number; closedDeposited: number; depositAmount: number; depositCount: number };
+  /** Giai đoạn NẠP: các khoản nạp có depositDate trong kỳ (tiền thực nạp trong kỳ). */
+  cash: {
+    amount: number;
+    depositCount: number;
+    depositorCount: number;
+    ftdCount: number;
+    ftdAmount: number;
+    redepositCount: number;
+    redepositAmount: number;
+    averagePerDepositor: number;
+  };
+}
+
+export interface CustomerPeriodStats {
+  period: { type: CustomerStatsPeriod; from: string; to: string; previousFrom: string; previousTo: string };
+  granularity: 'day' | 'month';
+  current: CustomerPeriodWindowStats;
+  previous: CustomerPeriodWindowStats;
+  byStatus: { code: string; name: string; color: string | null; count: number }[];
+  trend: { bucket: string; entered: number; closed: number; depositAmount: number }[];
+}
+
 export interface Customer {
   id: number;
   name: string;

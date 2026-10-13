@@ -1,5 +1,5 @@
 import axiosInstance from './axios-instance';
-import { Customer, PaginatedResponse, CustomerStats, Deposit } from '../types/customer.types';
+import { Customer, PaginatedResponse, CustomerStats, Deposit, CustomerStatsPeriod, CustomerPeriodStats } from '../types/customer.types';
 
 /** Chi tiết thống kê 1 loại trùng lặp TRONG KỲ - khớp `DuplicateStatsDetail` ở BE `customers-invalid-stats.service.ts`. */
 export interface DuplicateStatsDetail {
@@ -127,6 +127,11 @@ export const customersApi = {
 
   getStats: async (params?: Record<string, unknown>): Promise<CustomerStats> => {
     const response = await axiosInstance.get('/customers/stats', { params });
+    return response.data;
+  },
+
+  getPeriodStats: async (params: { period: CustomerStatsPeriod; anchor?: string }): Promise<CustomerPeriodStats> => {
+    const response = await axiosInstance.get('/customers/stats/period', { params });
     return response.data;
   },
 
