@@ -875,12 +875,12 @@ export class QuietBootLogger extends ConsoleLogger {
   - Caller: `GET /customers/:id` (controller ~dòng 412; FE `CustomerDetailDrawer`, `UtmCustomersModal`, `UtmStatsCustomersDrawer`) **và `update()` (~dòng 1955) và `remove()` (~dòng 2193)** ⇒ mỗi lần SỬA / đổi trạng thái / xoá khách đều kéo toàn bộ nạp tiền + ghi chú + User từng ghi chú, trong khi `update()` chỉ cần sales/marketing/phòng ban để so sánh và ghi audit.
   - FE `CustomerDetailDrawer` chỉ dùng `customer.deposits.length` cho nhãn tab "Nạp tiền (n)"; lịch sử nạp lấy qua `getCustomerDeposits` riêng (`getDeposits`, `limit(5)`). Drawer còn gọi lại cả `getCustomer` sau MỖI lần thêm ghi chú và nạp tiền (`handleNoteAdded`, `handleDepositSuccess`).
 - **Việc làm (tách thành 2 hàm, chọn tên theo code hiện có):**
-  - [ ] **(a) Bản nhẹ cho thao tác ghi** (vd `findForMutation`): chỉ `customer` + `salesUser`/`marketingUser`/`department` (và `position` nếu `buildCustomerAuditSnapshot`/notification đọc) với cột tối thiểu; **KHÔNG** deposits/notes. Dùng cho `update()` và `remove()`.
+  - [x] **(a) Bản nhẹ cho thao tác ghi** (vd `findForMutation`): chỉ `customer` + `salesUser`/`marketingUser`/`department` (và `position` nếu `buildCustomerAuditSnapshot`/notification đọc) với cột tối thiểu; **KHÔNG** deposits/notes. Dùng cho `update()` và `remove()`.
         ⚠️ Phải đọc nốt `update()` (từ dòng ~1947 tới hết) và `buildCustomerAuditSnapshot()` để liệt kê CHÍNH XÁC field đọc; `update()` còn gán thẳng `customer.salesUser = …` rồi `save()` — kiểm `save()` trên entity KHÔNG nạp `deposits/notes` vẫn đúng (không xoá nhầm quan hệ chưa nạp).
-  - [ ] **(b) Bản detail** (`GET /customers/:id`): User chỉ `id`,`name`,`role` (+ `position.id/name`); **deposits → chỉ trả số đếm** (field mới, vd `depositCount`; **grep FE xác nhận** `CustomerDetailDrawer.tsx:189`, `customer.types.ts:149`, `CustomerInfoTab`, `CustomerForm`, 3 chỗ gọi `getCustomer`);
+  - [x] **(b) Bản detail** (`GET /customers/:id`): User chỉ `id`,`name`,`role` (+ `position.id/name`); **deposits → chỉ trả số đếm** (field mới, vd `depositCount`; **grep FE xác nhận** `CustomerDetailDrawer.tsx:189`, `customer.types.ts:149`, `CustomerInfoTab`, `CustomerForm`, 3 chỗ gọi `getCustomer`);
         **notes → truy vấn riêng** (không join cùng query với deposits) hoặc 2 query song song; `note.createdByUser/updatedByUser` chỉ `id`,`name`.
-  - [ ] **Quyết định cần chủ dự án:** nhãn tab "Nạp tiền (n)" cần số đếm đúng ⇒ thêm `depositCount` (1 `COUNT`) hay giữ `deposits` đầy đủ chỉ ở detail? (Khuyến nghị: `depositCount`.)
-  - [ ] Giữ nguyên `UiVisibility` (`stripHiddenCustomerFields` chạy SAU khi gán `activeAssignees` — xem comment hiện có) và `activeAssignees` (query riêng ~dòng 1526, đang join `assignedTo.position` đầy đủ → cũng thu hẹp `id,name,position`).
+  - [x] **Quyết định cần chủ dự án:** nhãn tab "Nạp tiền (n)" cần số đếm đúng ⇒ thêm `depositCount` (1 `COUNT`) hay giữ `deposits` đầy đủ chỉ ở detail? (Khuyến nghị: `depositCount`.)
+  - [x] Giữ nguyên `UiVisibility` (`stripHiddenCustomerFields` chạy SAU khi gán `activeAssignees` — xem comment hiện có) và `activeAssignees` (query riêng ~dòng 1526, đang join `assignedTo.position` đầy đủ → cũng thu hẹp `id,name,position`).
 - **Test (jest):** spec mới so sánh cũ/mới cho detail (field FE đọc giống hệt); `update()`/`remove()` vẫn ghi audit + notify đúng `oldData`; `customers.service.spec.ts` hiện có phải vẫn xanh; thử bỏ 1 field khỏi `select` → test fail.
 - **Đo:** `GET /customers/:id` và `PATCH /customers/:id` TB/p95 trước/sau (`--solo`), kịch bản: mở Drawer khách có nhiều note/deposit, thêm 3 ghi chú, đổi trạng thái, sửa khách.
 - **Rủi ro:** thấp–TB (đụng ghi + audit). **Rollback:** khôi phục `leftJoinAndSelect` từ comment `OLD CODE`; revert commit.
@@ -922,7 +922,7 @@ export class QuietBootLogger extends ConsoleLogger {
 **14B-1. `GET /periodic-tasks/:id/audit-logs` — cổng gác quá nặng (`periodic-tasks.controller.ts` ~dòng 561) — LÀM ĐẦU TIÊN (rủi ro ≈ 0)**
 - **Bằng chứng:** `getAuditLogs` gọi `await this.periodicTasksService.findOne(...)` (5 `leftJoinAndSelect`: status, primaryAssignee, department, createdBy, updatedBy — **User đầy đủ ×3**) **chỉ để** trả 404 khi ngoài phạm vi; kết quả bị bỏ. `assertCanView()` (siêu nhẹ, chỉ `task.id` + `applyViewFilter`) **đã có sẵn** và đã được dùng ở checklist/links/customers/secondary-assignees (các `OLD CODE` ở đó).
 - **Việc làm:**
-  - [ ] Đổi thành `await this.periodicTasksService.assertCanView(id, user.id, user.role, scope)`; giữ dòng cũ bằng comment `[AGENT] OLD CODE`; cập nhật comment "1 cổng gác" cho khớp.
+  - [x] Đổi thành `await this.periodicTasksService.assertCanView(id, user.id, user.role, scope)`; giữ dòng cũ bằng comment `[AGENT] OLD CODE`; cập nhật comment "1 cổng gác" cho khớp.
   - [ ] Test: `periodic-tasks.controller.spec.ts` — Task ngoài scope vẫn 404 và **không** gọi `getLogsForTask`; trong scope gọi đúng 1 lần `assertCanView`, **không** gọi `findOne`.
 - **Rủi ro:** rất thấp. **Rollback:** khôi phục dòng `findOne`.
 

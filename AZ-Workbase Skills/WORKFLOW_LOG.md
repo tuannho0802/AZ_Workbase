@@ -7477,3 +7477,23 @@ Now [deploy]
 > CHƯA chạy `tsc`/`jest`/đo CPU cho mục này (chỉ đọc code + grep FE); mọi mức giảm là ước đoán. Quét N+1 toàn BE: chỉ còn cron nhắc việc và upload đính kèm nghỉ phép (không đáng sửa). Cần chủ dự án chốt: thêm `depositCount` cho nhãn tab "Nạp tiền (n)" (14A-1) và hướng 14C (i) quy ước vs (ii) `select:false`. Đã xác nhận trên HEAD: `tsc --noEmit` 0 lỗi, `jest` 123 suite / 1958 test pass (trước khi sửa plan).
 
 ---
+
+## [2026-10-13] | PLAN CPU 14B-1 + 14A-1 — audit-logs cổng gác nhẹ; customers.findOne bỏ join deposits×notes | [Status: Success]
+
+**Actor:** Agent
+**Files Changed:**
+- `backend/src/modules/periodic-tasks/periodic-tasks.controller.ts` — `getAuditLogs` dùng `assertCanView()` thay `findOne()` (giữ OLD CODE)
+- `backend/src/modules/customers/customers.service.ts` — thêm `findForMutation()` (cho `update()`/`remove()`); `findOne()` bỏ join `deposits`/`notes`, User chỉ `id/name/role` (+`position`), notes/`depositCount`/`activeAssignees` chạy `Promise.all`
+- `frontend/src/lib/types/customer.types.ts`, `components/customers/CustomerDetailDrawer.tsx` — nhãn "Nạp tiền (n)" đọc `depositCount`
+- Spec: `periodic-tasks.controller.spec.ts` (append), `customers.find-one.spec.ts` (mới), `customers.service.spec.ts` (spy `findOne` → `findForMutation` ở test update/remove)
+
+**Root Cause (nếu là bug fix):**
+> Không phải bug. `findOne` join deposits×notes (D×N dòng) + 6 User đầy đủ và bị `update()`/`remove()` dùng lại; audit-logs gọi `findOne` 5 join chỉ làm cổng gác.
+
+**Solution:**
+> Tách bản nhẹ cho thao tác ghi; detail trả `depositCount` (đã chốt hướng khuyến nghị) thay mảng `deposits`.
+
+**Notes:**
+> Đã chạy: BE `tsc --noEmit` 0 lỗi, `nest build` OK, `jest` 124 suite / 1966 test pass. FE `tsc` chỉ còn lỗi `logo.png` có sẵn (thiếu `next-env.d.ts` ở sandbox). CHƯA chạy trên MySQL thật / CHƯA đo CPU. Thay đổi hành vi nhỏ: `update()` không còn nhận customer đã bị UI Visibility strip. Số dòng `findOne` Task/`update` đọc lại file thật trước khi làm 14A-2. Rollback: revert từng commit.
+
+---

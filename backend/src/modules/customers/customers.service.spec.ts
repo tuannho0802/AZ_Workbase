@@ -867,7 +867,7 @@ describe('CustomersService', () => {
    * này đảm bảo hành vi ĐÚNG: ai qua được `findOne()` (tức nằm trong phạm vi
    * xem của họ - đã được PermissionGuard xác nhận có `customers.delete`)
    * đều xoá mềm được, KHÔNG còn rào cản admin-only nào ở tầng service nữa.
-   * Dùng `jest.spyOn(service, 'findOne')` thay vì dựng lại toàn bộ chuỗi
+   * Dùng `jest.spyOn(service as any, 'findForMutation')` thay vì dựng lại toàn bộ chuỗi
    * `createQueryBuilder(...).leftJoinAndSelect(...)...getOne()` của
    * `findOne()` (đã có test riêng gián tiếp qua các describe khác) - ở đây
    * chỉ cần khẳng định `remove()` KHÔNG tự áp thêm điều kiện role nào sau
@@ -880,7 +880,7 @@ describe('CustomersService', () => {
 
     it('Role KHÔNG PHẢI admin (vd Employee) vẫn xoá mềm được nếu findOne() (đã qua PermissionGuard + applyViewFilter) trả về customer - không còn bị chặn cứng "chỉ Admin"', async () => {
       const fakeCustomer: any = { id: 55, createdById: 7, name: 'Nguyễn Văn A', phone: '0901234567' };
-      jest.spyOn(service, 'findOne').mockResolvedValue(fakeCustomer);
+      jest.spyOn(service as any, 'findForMutation').mockResolvedValue(fakeCustomer);
       mockCustomerRepo.softDelete.mockResolvedValue({ affected: 1 });
       mockCustomerRepo.update.mockResolvedValue({ affected: 1 });
 
@@ -905,7 +905,7 @@ describe('CustomersService', () => {
     });
 
     it('Customer ngoài phạm vi xem (findOne() ném CustomerNotFoundException) -> KHÔNG xoá, lỗi được ném ra nguyên vẹn', async () => {
-      jest.spyOn(service, 'findOne').mockRejectedValue(new CustomerNotFoundException());
+      jest.spyOn(service as any, 'findForMutation').mockRejectedValue(new CustomerNotFoundException());
 
       await expect(
         service.remove(999, 7, Role.EMPLOYEE, PermissionScope.OWN),
@@ -916,7 +916,7 @@ describe('CustomersService', () => {
 
     it('Admin vẫn xoá mềm được như trước (không bị ảnh hưởng bởi việc bỏ rào cản admin-only)', async () => {
       const fakeCustomer: any = { id: 1, createdById: 2 };
-      jest.spyOn(service, 'findOne').mockResolvedValue(fakeCustomer);
+      jest.spyOn(service as any, 'findForMutation').mockResolvedValue(fakeCustomer);
       mockCustomerRepo.softDelete.mockResolvedValue({ affected: 1 });
       mockCustomerRepo.update.mockResolvedValue({ affected: 1 });
 
@@ -1173,7 +1173,7 @@ describe('CustomersService', () => {
 
       it('remove() không thêm query snapshot nào (findOne của repo không được gọi)', async () => {
         (mockCustomerRepo as any).findOne = jest.fn();
-        jest.spyOn(service, 'findOne').mockResolvedValue({ id: 5, name: 'X' } as any);
+        jest.spyOn(service as any, 'findForMutation').mockResolvedValue({ id: 5, name: 'X' } as any);
         mockCustomerRepo.softDelete.mockResolvedValue({});
         mockCustomerRepo.update.mockResolvedValue({});
 
@@ -1249,7 +1249,7 @@ describe('CustomersService', () => {
         const runUpdate = async (dto: any) => {
           // Object mà findOne() của update() trả về CÓ THỂ đã bị UI Visibility xoá field
           // → cố tình bỏ salesUserId để chứng minh diff dùng snapshot riêng, không dùng object này.
-          jest.spyOn(service, 'findOne').mockResolvedValue({ id: 50, name: 'Khách 50', status: 'pending' } as any);
+          jest.spyOn(service as any, 'findForMutation').mockResolvedValue({ id: 50, name: 'Khách 50', status: 'pending' } as any);
           await service.update(50, dto, 1, Role.ADMIN, PermissionScope.ALL);
           await flush();
         };
@@ -1303,7 +1303,7 @@ describe('CustomersService', () => {
           status: 'pending', closedDate: null, departmentId: 1,
         });
         mockAssignmentRepo.find.mockResolvedValue([{ assignedToId: 9 }]);
-        jest.spyOn(service, 'findOne').mockResolvedValue({ id: 55, name: 'Khách 55' } as any);
+        jest.spyOn(service as any, 'findForMutation').mockResolvedValue({ id: 55, name: 'Khách 55' } as any);
         const order: string[] = [];
         (mockCustomerRepo as any).findOne.mockImplementation(() => {
           order.push('snapshot');

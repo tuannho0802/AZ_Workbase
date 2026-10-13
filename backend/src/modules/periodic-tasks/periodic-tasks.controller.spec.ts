@@ -1,3 +1,4 @@
+import { NotFoundException } from '@nestjs/common';
 import { PeriodicTasksController } from './periodic-tasks.controller';
 
 /**
@@ -75,5 +76,39 @@ describe('PeriodicTasksController.findAll (gộp 3 bước đính song song)', (
 
     const res = await controller.findAll(user, {} as any, 'own');
     expect(res.data).toEqual([]);
+  });
+});
+
+/**
+ * [PERF 14B-1] `GET /:id/audit-logs` chỉ dùng cổng gác NHẸ `assertCanView()` (không `findOne()` 5 join + 3 User đầy đủ).
+ * Task ngoài phạm vi vẫn 404 và KHÔNG chạm bảng audit.
+ */
+describe('PeriodicTasksController.getAuditLogs (cổng gác nhẹ)', () => {
+  const user = { id: 1, role: 'employee' };
+
+  const build = (assertImpl: () => Promise<void>) => {
+    const tasksService = { assertCanView: jest.fn(assertImpl), findOne: jest.fn() };
+    const audit = { getLogsForTask: jest.fn().mockResolvedValue({ data: [], total: 0 }) };
+    const controller = new PeriodicTasksController(
+      tasksService as any, {} as any, {} as any, {} as any, {} as any, audit as any, {} as any,
+    );
+    return { controller, tasksService, audit };
+  };
+
+  it('trong phạm vi: gọi 1 lần assertCanView, KHÔNG gọi findOne, rồi trả log', async () => {
+    const { controller, tasksService, audit } = build(async () => undefined);
+    const filters = { page: 1, limit: 20 } as any;
+    const res = await controller.getAuditLogs(7, filters, user, 'own');
+    expect(tasksService.assertCanView).toHaveBeenCalledTimes(1);
+    expect(tasksService.assertCanView).toHaveBeenCalledWith(7, user.id, user.role, 'own');
+    expect(tasksService.findOne).not.toHaveBeenCalled();
+    expect(audit.getLogsForTask).toHaveBeenCalledWith(7, filters);
+    expect(res).toEqual({ data: [], total: 0 });
+  });
+
+  it('ngoài phạm vi: 404 lan ra và KHÔNG truy vấn bảng audit', async () => {
+    const { controller, audit } = build(async () => { throw new NotFoundException('x'); });
+    await expect(controller.getAuditLogs(7, {} as any, user, 'own')).rejects.toBeInstanceOf(NotFoundException);
+    expect(audit.getLogsForTask).not.toHaveBeenCalled();
   });
 });

@@ -147,6 +147,8 @@ export interface Customer {
   // sách, KHÁC với `notes` (đầy đủ, chỉ có ở findOne() khi mở chi tiết).
   recentNotes?: RecentNote[];
   deposits?: Deposit[];
+  // [PERF 14A-1] `GET /customers/:id` chỉ trả số đếm (không còn mảng `deposits`); lịch sử nạp lấy qua getCustomerDeposits.
+  depositCount?: number;
   createdById?: number;
   updatedById?: number;
   createdBy?: {

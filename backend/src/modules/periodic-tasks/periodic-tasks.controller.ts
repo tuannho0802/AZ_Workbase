@@ -558,7 +558,11 @@ export class PeriodicTasksController {
     // "1 cổng gác" - Task ngoài phạm vi periodic_tasks.view của người gọi
     // tự 404 trước khi kịp truy vấn bảng audit (đúng JSDoc
     // `PeriodicTaskAuditService.getLogsForTask()`).
-    await this.periodicTasksService.findOne(id, user.id, user.role, scope);
+    // [PERF 14B-1] Dùng cổng gác NHẸ `assertCanView()` (chỉ `task.id` + applyViewFilter)
+    // thay vì `findOne()` 5 join + 3 User đầy đủ mà kết quả bị bỏ.
+    // [AGENT] OLD CODE (giữ lại để rollback):
+    // await this.periodicTasksService.findOne(id, user.id, user.role, scope);
+    await this.periodicTasksService.assertCanView(id, user.id, user.role, scope);
     return this.periodicTaskAuditService.getLogsForTask(id, filters);
   }
 }

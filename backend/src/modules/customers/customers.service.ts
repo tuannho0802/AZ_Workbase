@@ -1464,6 +1464,29 @@ export class CustomersService {
     }
   }
 
+  /**
+   * [PERF 14A-1] Bản NHẸ cho thao tác ghi (`update()`/`remove()`): chỉ customer + salesUser/marketingUser/
+   * department/utm (đúng field `buildCustomerAuditSnapshot()` + notify đọc). KHÔNG deposits/notes/assignees.
+   * Cùng phạm vi xem (`applyViewFilter`) và cùng lỗi `CustomerNotFoundException` như `findOne()`.
+   */
+  private async findForMutation(id: number, userId: number, userRole: string, scope?: string | null): Promise<Customer> {
+    const qb = this.customersRepository
+      .createQueryBuilder('customer')
+      .leftJoin('customer.salesUser', 'salesUser')
+      .addSelect(['salesUser.id', 'salesUser.name'])
+      .leftJoinAndSelect('customer.department', 'department')
+      .leftJoin('customer.marketingUser', 'marketingUser')
+      .addSelect(['marketingUser.id', 'marketingUser.name'])
+      .leftJoin('customer.utm', 'utm')
+      .addSelect(['utm.id', 'utm.name', 'utm.color'])
+      .where('customer.id = :id', { id })
+      .andWhere('customer.deletedAt IS NULL');
+    CustomerAccessHelper.applyViewFilter(qb, userId, userRole, scope);
+    const customer = await qb.getOne();
+    if (!customer) throw new CustomerNotFoundException();
+    return customer;
+  }
+
   async findOne(
     id: number,
     userId: number,
@@ -1475,22 +1498,42 @@ export class CustomersService {
     // ⚠️ MỚI (isRootAdmin) - xem chú thích trong findAll().
     callerIsRootAdmin?: boolean,
   ) {
+    // [PERF 14A-1] Bản detail: KHÔNG join deposits/notes (D×N dòng) + User chỉ cột FE đọc.
+    // deposits -> chỉ trả `depositCount`; notes -> truy vấn riêng bên dưới.
+    // [AGENT] OLD CODE (giữ lại để rollback):
+    // const queryBuilder = this.customersRepository
+    //   .createQueryBuilder('customer')
+    //   .leftJoinAndSelect('customer.salesUser', 'salesUser')
+    //   // ⚠️ MỚI - đối xứng findAll() (xem chú thích tương ứng ở đó).
+    //   .leftJoinAndSelect('salesUser.position', 'salesUserPosition')
+    //   .leftJoinAndSelect('customer.marketingUser', 'marketingUser')
+    //   .leftJoinAndSelect('marketingUser.position', 'marketingUserPosition')
+    //   .leftJoinAndSelect('customer.department', 'department')
+    //   .leftJoin('customer.utm', 'utm')
+    //   .addSelect(['utm.id', 'utm.name', 'utm.color'])
+    //   .leftJoinAndSelect('customer.deposits', 'deposits')
+    //   .leftJoinAndSelect('customer.notes', 'notes')
+    //   .leftJoinAndSelect('notes.createdByUser', 'noteCreator')
+    //   .leftJoinAndSelect('notes.updatedByUser', 'noteUpdater')
+    //   .leftJoinAndSelect('customer.createdBy', 'createdBy')
+    //   .leftJoinAndSelect('customer.updatedBy', 'updatedBy');
     const queryBuilder = this.customersRepository
       .createQueryBuilder('customer')
-      .leftJoinAndSelect('customer.salesUser', 'salesUser')
-      // ⚠️ MỚI - đối xứng findAll() (xem chú thích tương ứng ở đó).
-      .leftJoinAndSelect('salesUser.position', 'salesUserPosition')
-      .leftJoinAndSelect('customer.marketingUser', 'marketingUser')
-      .leftJoinAndSelect('marketingUser.position', 'marketingUserPosition')
+      .leftJoin('customer.salesUser', 'salesUser')
+      .addSelect(['salesUser.id', 'salesUser.name', 'salesUser.role'])
+      .leftJoin('salesUser.position', 'salesUserPosition')
+      .addSelect(['salesUserPosition.id', 'salesUserPosition.name', 'salesUserPosition.color'])
+      .leftJoin('customer.marketingUser', 'marketingUser')
+      .addSelect(['marketingUser.id', 'marketingUser.name', 'marketingUser.role'])
+      .leftJoin('marketingUser.position', 'marketingUserPosition')
+      .addSelect(['marketingUserPosition.id', 'marketingUserPosition.name', 'marketingUserPosition.color'])
       .leftJoinAndSelect('customer.department', 'department')
       .leftJoin('customer.utm', 'utm')
       .addSelect(['utm.id', 'utm.name', 'utm.color'])
-      .leftJoinAndSelect('customer.deposits', 'deposits')
-      .leftJoinAndSelect('customer.notes', 'notes')
-      .leftJoinAndSelect('notes.createdByUser', 'noteCreator')
-      .leftJoinAndSelect('notes.updatedByUser', 'noteUpdater')
-      .leftJoinAndSelect('customer.createdBy', 'createdBy')
-      .leftJoinAndSelect('customer.updatedBy', 'updatedBy');
+      .leftJoin('customer.createdBy', 'createdBy')
+      .addSelect(['createdBy.id', 'createdBy.name', 'createdBy.role'])
+      .leftJoin('customer.updatedBy', 'updatedBy')
+      .addSelect(['updatedBy.id', 'updatedBy.name']);
 
     queryBuilder.where('customer.id = :id', { id });
     queryBuilder.andWhere('customer.deletedAt IS NULL');
@@ -1508,26 +1551,31 @@ export class CustomersService {
       throw new CustomerNotFoundException();
     }
 
-    // Sort relations in memory as TB queryBuilder complex sorting for sub-entities is tricky
-    if (customer.deposits) {
-      customer.deposits.sort(
-        (a, b) =>
-          new Date(b.depositDate).getTime() - new Date(a.depositDate).getTime(),
-      );
-    }
-    if (customer.notes) {
-      customer.notes.sort(
-        (a, b) => b.createdAt.getTime() - a.createdAt.getTime(),
-      );
-    }
-
-    const activeAssignments = await this.assignmentRepository
-      .createQueryBuilder('assignment')
-      .leftJoinAndSelect('assignment.assignedTo', 'assignedTo')
-      .leftJoinAndSelect('assignedTo.position', 'assignedToPosition')
-      .where('assignment.status = :status', { status: 'active' })
-      .andWhere('assignment.customer_id = :id', { id })
-      .getMany();
+    // [PERF 14A-1] 3 truy vấn độc lập chạy song song (pool nhỏ nhưng đều rất nhẹ).
+    // [AGENT] OLD CODE: deposits/notes join chung query chính + sort trong JS + assignedTo User đầy đủ.
+    const [notes, depositCount, activeAssignments] = await Promise.all([
+      this.notesRepository
+        .createQueryBuilder('note')
+        .leftJoin('note.createdByUser', 'noteCreator')
+        .addSelect(['noteCreator.id', 'noteCreator.name'])
+        .leftJoin('note.updatedByUser', 'noteUpdater')
+        .addSelect(['noteUpdater.id', 'noteUpdater.name'])
+        .where('note.customerId = :id', { id })
+        .orderBy('note.createdAt', 'DESC')
+        .getMany(),
+      this.depositsRepository.count({ where: { customerId: id } }),
+      this.assignmentRepository
+        .createQueryBuilder('assignment')
+        .leftJoin('assignment.assignedTo', 'assignedTo')
+        .addSelect(['assignedTo.id', 'assignedTo.name', 'assignedTo.role'])
+        .leftJoin('assignedTo.position', 'assignedToPosition')
+        .addSelect(['assignedToPosition.id', 'assignedToPosition.name', 'assignedToPosition.color'])
+        .where('assignment.status = :status', { status: 'active' })
+        .andWhere('assignment.customer_id = :id', { id })
+        .getMany(),
+    ]);
+    customer.notes = notes;
+    (customer as any).depositCount = depositCount;
 
     (customer as any).activeAssignees = this.mergePrimarySalesIntoAssignees(
       customer,
@@ -1952,7 +2000,8 @@ export class CustomersService {
     scope?: string | null,
     caller?: UtmCaller,
   ) {
-    const customer = await this.findOne(id, userId, userRole, scope);
+    // [PERF 14A-1] OLD CODE: const customer = await this.findOne(id, userId, userRole, scope);
+    const customer = await this.findForMutation(id, userId, userRole, scope);
 
     // Không cần check quyền sửa riêng ở đây: findOne() ở trên đã áp dụng
     // CustomerAccessHelper.applyViewFilter() - nếu user không có quyền
@@ -2190,7 +2239,8 @@ export class CustomersService {
    * `SplitCustomersHardDeletePermission`.
    */
   async remove(id: number, userId: number, userRole: string, scope?: string | null) {
-    const customer = await this.findOne(id, userId, userRole, scope);
+    // [PERF 14A-1] OLD CODE: const customer = await this.findOne(id, userId, userRole, scope);
+    const customer = await this.findForMutation(id, userId, userRole, scope);
     if (!customer) {
       throw new CustomerNotFoundException();
     }

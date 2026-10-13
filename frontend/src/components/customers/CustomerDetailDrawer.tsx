@@ -186,7 +186,7 @@ export const CustomerDetailDrawer = ({ open, customerId, onClose, onUpdate }: Cu
             },
             !isTabHidden('tab:deposits') && {
               key: 'deposits',
-              label: (<span><DollarOutlined />Nạp tiền ({customer?.deposits?.length || 0})</span>),
+              label: (<span><DollarOutlined />Nạp tiền ({customer?.depositCount ?? customer?.deposits?.length ?? 0})</span>),
               children: customerId ? (
                 <>
                   <DepositForm 
