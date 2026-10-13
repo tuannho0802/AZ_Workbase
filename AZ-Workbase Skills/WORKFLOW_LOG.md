@@ -7497,3 +7497,22 @@ Now [deploy]
 > Đã chạy: BE `tsc --noEmit` 0 lỗi, `nest build` OK, `jest` 124 suite / 1966 test pass. FE `tsc` chỉ còn lỗi `logo.png` có sẵn (thiếu `next-env.d.ts` ở sandbox). CHƯA chạy trên MySQL thật / CHƯA đo CPU. Thay đổi hành vi nhỏ: `update()` không còn nhận customer đã bị UI Visibility strip. Số dòng `findOne` Task/`update` đọc lại file thật trước khi làm 14A-2. Rollback: revert từng commit.
 
 ---
+
+## [2026-10-13] | PLAN CPU 14A-2 — recentNotes: 1 helper dùng chung, top-5/khách cắt trong SQL | [Status: Success]
+
+**Actor:** Agent
+**Files Changed:**
+- `backend/src/modules/customers/customers.service.ts` — thêm `loadRecentNotesMap()` (`ROW_NUMBER() OVER PARTITION BY customer_id`, chỉ `users.name`); `findAll` (inline) và `attachRecentNotes` (getUnassigned/getAssigned) gọi chung; code cũ giữ trong comment OLD CODE
+- `backend/src/modules/customers/customers.service.spec.ts` — test cũ khoá query note kiểu cũ đổi sang kiểm SQL mới
+- `backend/src/modules/customers/customers.recent-notes.spec.ts` — mới (5 test)
+
+**Root Cause (nếu là bug fix):**
+> Không phải bug. Tải TOÀN BỘ note (cột TEXT) của cả trang rồi cắt 5/khách bằng JS; bản `attachRecentNotes` còn join User đầy đủ, lệch với bản inline ở `findAll`.
+
+**Solution:**
+> 1 helper, top-5 trong SQL, tie-break `id DESC` (thứ tự ổn định khi cùng giây), shape `{id,note,createdAt,createdByName}` giữ nguyên.
+
+**Notes:**
+> Đã chạy: `tsc` 0 lỗi, `nest build` OK, `jest` toàn bộ pass; SQL đã chạy thật trên MySQL 8.0.46 (7 note → 5, NULL creator, cùng giây OK). Yêu cầu MySQL ≥ 8.0 / MariaDB ≥ 10.2 (production 8.4.8). CHƯA đo CPU. Chưa làm mục tuỳ chọn "cắt độ dài note". Rollback: revert commit.
+
+---

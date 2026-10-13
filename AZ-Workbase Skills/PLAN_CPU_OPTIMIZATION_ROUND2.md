@@ -890,8 +890,8 @@ export class QuietBootLogger extends ConsoleLogger {
   - Bản **private** (`attachRecentNotes`, trang Chia data) vẫn `leftJoinAndSelect('note.createdByUser')` **User đầy đủ**; bản **inline ở `findAll`** đã thu hẹp (`leftJoin` + `addSelect(['noteCreator.id','noteCreator.name'])`) ⇒ **hai bản trùng nhau và đã lệch**.
   - Comment cũ giải thích "tránh window function (ROW_NUMBER) của riêng MySQL 8+" — **production là MySQL 8.4.8** (xác nhận 2026-10-13) nên lý do đó không còn với prod.
 - **Việc làm:**
-  - [ ] Gộp thành **1 helper dùng chung** (findAll + getUnassigned + getAssigned) — thu hẹp User về `id,name`, bỏ bản trùng (giữ bản cũ bằng comment `OLD CODE`).
-  - [ ] Giới hạn **top-5/khách ngay trong SQL** (`ROW_NUMBER() OVER (PARTITION BY customer_id ORDER BY created_at DESC)` hoặc truy vấn con tương đương) — ⚠️ **kiểm tương thích** dev/staging/CI có thể dùng MariaDB/MySQL cũ: nếu có môi trường không hỗ trợ ⇒ giữ fallback JS, hoặc chỉ thu hẹp cột (an toàn) và để top-N-trong-SQL làm bước riêng.
+  - [x] Gộp thành **1 helper dùng chung** (findAll + getUnassigned + getAssigned) — thu hẹp User về `id,name`, bỏ bản trùng (giữ bản cũ bằng comment `OLD CODE`).
+  - [x] Giới hạn **top-5/khách ngay trong SQL** (`ROW_NUMBER() OVER (PARTITION BY customer_id ORDER BY created_at DESC)` hoặc truy vấn con tương đương) — ⚠️ **kiểm tương thích** dev/staging/CI có thể dùng MariaDB/MySQL cũ: nếu có môi trường không hỗ trợ ⇒ giữ fallback JS, hoặc chỉ thu hẹp cột (an toàn) và để top-N-trong-SQL làm bước riêng.
   - [ ] (Tuỳ chọn) cắt độ dài `note` trả ra danh sách nếu FE chỉ hiển thị tóm tắt — **grep FE cột "Ghi chú gần nhất"** trước; không cắt nếu FE hiển thị đủ.
 - **Test:** spec cũ/mới: cùng bộ note (nhiều hơn 5/khách, nhiều khách, khách 0 note, note cùng giây) → `recentNotes` giống hệt (thứ tự + 5 dòng); tên người tạo đúng.
 - **Rủi ro:** thấp (thu hẹp cột) / TB (top-N trong SQL, phụ thuộc phiên bản DB). **Rollback:** khôi phục bản cũ từ comment.

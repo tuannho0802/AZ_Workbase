@@ -960,6 +960,7 @@ describe('CustomersService', () => {
       mockDepositRepo.createQueryBuilder = jest.fn().mockReturnValue(makeListQb([]));
       (mockAssignmentRepo as any).createQueryBuilder = jest.fn().mockReturnValue(assignQb);
       (mockNoteRepo as any).createQueryBuilder = jest.fn().mockReturnValue(noteQb);
+      (mockNoteRepo as any).query = jest.fn().mockResolvedValue([]); // [14A-2] note gần nhất đi qua SQL top-5
 
       await service.findAll({ page: 1, limit: 20 } as any, 1, 'admin', 'all');
 
@@ -974,8 +975,12 @@ describe('CustomersService', () => {
 
       expect(assignQb.leftJoinAndSelect.mock.calls.map((c: any[]) => c[1])).not.toContain('assignedTo');
       expect(assignQb.addSelect).toHaveBeenCalledWith(['assignedTo.id', 'assignedTo.name', 'assignedTo.email', 'assignedTo.role']);
+      // [14A-2] người tạo note: chỉ `users.name` trong SQL top-5, không còn QueryBuilder/User đầy đủ
       expect(noteQb.leftJoinAndSelect).not.toHaveBeenCalled();
-      expect(noteQb.addSelect).toHaveBeenCalledWith(['noteCreator.id', 'noteCreator.name']);
+      const sql = (mockNoteRepo as any).query.mock.calls[0][0] as string;
+      expect(sql).toContain('ROW_NUMBER() OVER (PARTITION BY customer_id');
+      expect(sql).toContain('u.name AS createdByName');
+      expect(sql).not.toMatch(/u\.(email|phone|employee_code)/);
     });
   });
 

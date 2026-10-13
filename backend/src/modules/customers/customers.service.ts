@@ -1260,44 +1260,42 @@ export class CustomersService {
         (customer as any).joinedGroupsCount = groups.length;
       });
 
-      // "Ghi chú gần nhất" cho cột mới trên bảng danh sách - 1 query duy
-      // nhất cho CẢ TRANG (cùng nguyên tắc activeAssignees/joinedGroups ở
-      // trên, KHÔNG gọi riêng lẻ theo từng dòng). Lấy TẤT CẢ note của các
-      // customer trong trang, sắp theo customer + ngày tạo giảm dần, rồi
-      // chỉ giữ lại tối đa 5 note đầu/customer khi gom nhóm ở JS bên dưới -
-      // đủ dùng ở quy mô CRM nội bộ (1 customer thường chỉ vài chục note),
-      // tránh phải phụ thuộc window function (ROW_NUMBER) của riêng MySQL
-      // 8+ để lấy "top N mỗi nhóm" ngay trong SQL.
-      const MAX_RECENT_NOTES = 5;
-      // [AGENT] OLD CODE: .leftJoinAndSelect('note.createdByUser', 'noteCreator') - kéo cả entity User chỉ để lấy `name`.
-      const noteRows = await this.notesRepository
-        .createQueryBuilder('note')
-        .leftJoin('note.createdByUser', 'noteCreator')
-        .addSelect(['noteCreator.id', 'noteCreator.name'])
-        .where('note.customer_id IN (:...ids)', {
-          ids: entities.map((e) => e.id),
-        })
-        .orderBy('note.customer_id', 'ASC')
-        .addOrderBy('note.created_at', 'DESC')
-        .getMany();
-
+      // "Ghi chú gần nhất" cho cột mới trên bảng danh sách - 1 query duy nhất cho CẢ TRANG.
+      // [PERF 14A-2] Dùng helper chung `loadRecentNotesMap()` (top-5/khách ngay trong SQL, User chỉ `name`).
+      // [AGENT] OLD CODE (giữ lại để rollback): tải TOÀN BỘ note của trang rồi cắt 5/khách bằng JS:
+      // const MAX_RECENT_NOTES = 5;
+      // // [AGENT] OLD CODE: .leftJoinAndSelect('note.createdByUser', 'noteCreator') - kéo cả entity User chỉ để lấy `name`.
+      // const noteRows = await this.notesRepository
+      //   .createQueryBuilder('note')
+      //   .leftJoin('note.createdByUser', 'noteCreator')
+      //   .addSelect(['noteCreator.id', 'noteCreator.name'])
+      //   .where('note.customer_id IN (:...ids)', {
+      //     ids: entities.map((e) => e.id),
+      //   })
+      //   .orderBy('note.customer_id', 'ASC')
+      //   .addOrderBy('note.created_at', 'DESC')
+      //   .getMany();
+      //
+      // mark('notes');
+      // const recentNotesByCustomerId = new Map<
+      //   number,
+      //   Array<{ id: number; note: string; createdAt: Date; createdByName: string | null }>
+      // >();
+      // for (const noteRow of noteRows) {
+      //   const list = recentNotesByCustomerId.get(noteRow.customerId) ?? [];
+      //   if (list.length < MAX_RECENT_NOTES) {
+      //     list.push({
+      //       id: noteRow.id,
+      //       note: noteRow.note,
+      //       createdAt: noteRow.createdAt,
+      //       createdByName: noteRow.createdByUser?.name ?? null,
+      //     });
+      //   }
+      //   recentNotesByCustomerId.set(noteRow.customerId, list);
+      // }
+      //
+      const recentNotesByCustomerId = await this.loadRecentNotesMap(entities.map((e) => e.id));
       mark('notes');
-      const recentNotesByCustomerId = new Map<
-        number,
-        Array<{ id: number; note: string; createdAt: Date; createdByName: string | null }>
-      >();
-      for (const noteRow of noteRows) {
-        const list = recentNotesByCustomerId.get(noteRow.customerId) ?? [];
-        if (list.length < MAX_RECENT_NOTES) {
-          list.push({
-            id: noteRow.id,
-            note: noteRow.note,
-            createdAt: noteRow.createdAt,
-            createdByName: noteRow.createdByUser?.name ?? null,
-          });
-        }
-        recentNotesByCustomerId.set(noteRow.customerId, list);
-      }
 
       entities.forEach((customer) => {
         (customer as any).recentNotes = recentNotesByCustomerId.get(customer.id) ?? [];
@@ -2604,37 +2602,52 @@ export class CustomersService {
   private async attachRecentNotes(customers: Customer[]): Promise<void> {
     if (customers.length === 0) return;
 
-    const MAX_RECENT_NOTES = 5;
-    const noteRows = await this.notesRepository
-      .createQueryBuilder('note')
-      .leftJoinAndSelect('note.createdByUser', 'noteCreator')
-      .where('note.customer_id IN (:...ids)', {
-        ids: customers.map((c) => c.id),
-      })
-      .orderBy('note.customer_id', 'ASC')
-      .addOrderBy('note.created_at', 'DESC')
-      .getMany();
-
-    const recentNotesByCustomerId = new Map<
-      number,
-      Array<{ id: number; note: string; createdAt: Date; createdByName: string | null }>
-    >();
-    for (const noteRow of noteRows) {
-      const list = recentNotesByCustomerId.get(noteRow.customerId) ?? [];
-      if (list.length < MAX_RECENT_NOTES) {
-        list.push({
-          id: noteRow.id,
-          note: noteRow.note,
-          createdAt: noteRow.createdAt,
-          createdByName: noteRow.createdByUser?.name ?? null,
-        });
-      }
-      recentNotesByCustomerId.set(noteRow.customerId, list);
-    }
-
+    // [PERF 14A-2] Dùng helper chung (trước đây bản trùng với findAll và đã lệch: join User đầy đủ).
+    // [AGENT] OLD CODE: leftJoinAndSelect('note.createdByUser') + tải toàn bộ note rồi cắt 5/khách bằng JS.
+    const recentNotesByCustomerId = await this.loadRecentNotesMap(customers.map((c) => c.id));
     customers.forEach((customer) => {
       (customer as any).recentNotes = recentNotesByCustomerId.get(customer.id) ?? [];
     });
+  }
+
+  /**
+   * [PERF 14A-2] Top `MAX_RECENT_NOTES` ghi chú mới nhất / khách, cắt ngay trong SQL (`ROW_NUMBER() OVER
+   * PARTITION BY customer_id`) - không tải toàn bộ note (cột TEXT) của cả trang. Yêu cầu MySQL ≥ 8.0 /
+   * MariaDB ≥ 10.2 (README: MySQL 8.0+; production 8.4.8). Tie-break `id DESC` để thứ tự ổn định khi
+   * cùng giây. Vẫn chốt cứng 5 dòng ở JS phòng khi driver trả dư. Chỉ lấy `users.name` (không User đầy đủ).
+   */
+  private async loadRecentNotesMap(
+    customerIds: number[],
+  ): Promise<Map<number, Array<{ id: number; note: string; createdAt: Date; createdByName: string | null }>>> {
+    const MAX_RECENT_NOTES = 5;
+    const result = new Map<number, Array<{ id: number; note: string; createdAt: Date; createdByName: string | null }>>();
+    if (customerIds.length === 0) return result;
+
+    const placeholders = customerIds.map(() => '?').join(',');
+    const rows: Array<{ id: number; note: string; createdAt: Date; customerId: number; createdByName: string | null }> =
+      await this.notesRepository.query(
+        `SELECT n.id AS id, n.note AS note, n.created_at AS createdAt, n.customer_id AS customerId, u.name AS createdByName
+         FROM (
+           SELECT id, note, created_at, customer_id, created_by,
+                  ROW_NUMBER() OVER (PARTITION BY customer_id ORDER BY created_at DESC, id DESC) AS rn
+           FROM customer_notes
+           WHERE customer_id IN (${placeholders})
+         ) n
+         LEFT JOIN users u ON u.id = n.created_by
+         WHERE n.rn <= ${MAX_RECENT_NOTES}
+         ORDER BY n.customer_id ASC, n.rn ASC`,
+        customerIds,
+      );
+
+    for (const r of rows) {
+      const cid = Number(r.customerId);
+      const list = result.get(cid) ?? [];
+      if (list.length < MAX_RECENT_NOTES) {
+        list.push({ id: Number(r.id), note: r.note, createdAt: r.createdAt, createdByName: r.createdByName ?? null });
+      }
+      result.set(cid, list);
+    }
+    return result;
   }
 
   /** Lấy danh sách khách chưa assign (salesUserId IS NULL) */
