@@ -7678,3 +7678,24 @@ Now [deploy]
 > Cần chạy `npm run migration:run`. Chưa có nút admin mở khoá sớm (chờ chủ dự án quyết). Rủi ro chấp nhận: ai biết email có thể cố ý khoá tài khoản người khác 5 phút.
 
 ---
+
+## [2026-10-13] | Thống kê khách hàng theo giai đoạn (Ngày/Tuần/Tháng/Năm) tại /customers | [Status: Success]
+
+**Actor:** Agent
+**Files Changed:**
+- `backend/src/modules/customers/customers-period-stats.service.ts` — MỚI: service thống kê theo kỳ (nhập / xử lý-chốt / nạp, kèm kỳ trước, status, xu hướng)
+- `backend/src/modules/customers/dto/query-customer-period-stats.dto.ts` — MỚI: `period` (day|week|month|year) + `anchor`
+- `backend/src/modules/customers/customers.controller.ts` — thêm `GET /customers/stats/period` (`@RequirePermission('customers.view')`, key đã seed sẵn)
+- `backend/src/modules/customers/customers.module.ts` — đăng ký provider
+- `backend/src/modules/customers/customers-period-stats.service.spec.ts` — MỚI: test khoảng ngày + bucket
+- `frontend/src/components/customers/CustomerPeriodStats.tsx` (+ `.test.tsx`) — MỚI: khối UI
+- `frontend/src/lib/{types/customer.types.ts, api/customers.api.ts, hooks/useCustomerStats.ts}` — type/api/hook
+- `frontend/src/app/(dashboard)/customers/page.tsx` — render khối dưới `StatsCards`, invalidate sau thêm/sửa/xoá/làm mới
+
+**Notes:**
+> - KHÁC /reports: giai đoạn NHẬP dùng `inputDate` (cột "Ngày nhập" của bảng), KHÔNG dùng `createdAt`; phạm vi xem = `applyViewFilter` (khớp bảng), không tách Cá nhân/Phòng ban.
+> - Giai đoạn XỬ LÝ chỉ có mốc thời gian thật cho "Đã chốt" (`closedDate`). Hệ thống CHƯA có lịch sử đổi status cho trạng thái khác — muốn thống kê "xử lý" theo từng status phải thêm bảng lịch sử (migration mới), chưa làm.
+> - Không migration, không đổi schema. `hideDeposit` (`tab:deposits`) ẩn toàn bộ số tiền nạp ở FE, cùng cờ với thẻ "Tổng nạp".
+> - Chưa chạy trên DB thật: SQL aggregation (MySQL) mới được kiểm bằng tsc + test hàm thuần, cần thử trên preview.
+
+---
