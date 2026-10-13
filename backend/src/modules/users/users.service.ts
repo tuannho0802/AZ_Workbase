@@ -225,6 +225,51 @@ export class UsersService {
    * Khoá đăng nhập tạm thời. Mọi lệnh dùng đồng hồ DB (NOW()) + `updated_at = updated_at` để KHÔNG làm đổi
    * "Sửa cuối" của user (cột có ON UPDATE CURRENT_TIMESTAMP).
    */
+  /** Số giây còn khoá của nhiều user trong 1 query. Chỉ trả các user ĐANG bị khoá (Map rỗng nếu không ai). */
+  async getLoginLockSecondsMap(userIds: number[]): Promise<Map<number, number>> {
+    const map = new Map<number, number>();
+    if (userIds.length === 0) return map;
+    const rows: Array<{ id: number; s: number | string }> = await this.usersRepository.query(
+      `SELECT id, TIMESTAMPDIFF(SECOND, NOW(), locked_until) AS s FROM users
+       WHERE id IN (${userIds.map(() => '?').join(',')}) AND locked_until IS NOT NULL AND locked_until > NOW()`,
+      userIds,
+    );
+    for (const r of rows) map.set(Number(r.id), Math.max(Number(r.s), 0));
+    return map;
+  }
+
+  /**
+   * Mở khoá đăng nhập sớm cho 1 nhân viên (xoá bộ đếm sai + `locked_until`). Cùng phạm vi quyền với
+   * `resetPassword` (`users.manage` + `canManageUser`).
+   */
+  async unlockLogin(id: number, callerId: number, callerRole: string, scope?: string | null) {
+    const user = await this.findById(id);
+    if (!user) {
+      throw new NotFoundException('Không tìm thấy nhân viên');
+    }
+
+    const allowed = await UsersAccessHelper.canManageUser(
+      this.departmentsRepository,
+      user.id,
+      user.departmentId,
+      callerId,
+      callerRole,
+      scope,
+    );
+    if (!allowed) {
+      throw new ForbiddenException('Bạn không có quyền mở khoá đăng nhập của nhân viên này');
+    }
+
+    await this.clearLoginFailures(id);
+
+    this.auditService.logActionAsync(callerId, 'UNLOCK_LOGIN', 'user', id, null, {
+      targetUser: { id, name: user.name },
+    });
+    this.logger.log(`[Users] User ID ${id} được mở khoá đăng nhập bởi ${callerId}`);
+
+    return { success: true, message: 'Đã mở khoá đăng nhập' };
+  }
+
   /** Số giây còn bị khoá (0 = không bị khoá). */
   async getLoginLockRemainingSeconds(userId: number): Promise<number> {
     const rows: Array<{ s: number | string | null }> = await this.usersRepository.query(
@@ -423,8 +468,12 @@ export class UsersService {
       .orderBy('user.id', 'DESC')
       .getManyAndCount();
 
+    // Số giây còn bị khoá đăng nhập (0 = không khoá) cho từng dòng - FE hiện đồng hồ đếm ngược + nút "Mở khoá".
+    const lockMap = await this.getLoginLockSecondsMap(data.map((u) => u.id));
+    const dataWithLock = data.map((u) => Object.assign(u, { loginLockSeconds: lockMap.get(u.id) ?? 0 }));
+
     return {
-      data,
+      data: dataWithLock,
       total,
       page,
       limit

@@ -54,6 +54,7 @@ describe('UsersService - Approval workflow (đăng ký công khai chờ duyệt)
     find: jest.fn(),
     findOne: jest.fn(),
     update: jest.fn(),
+    query: jest.fn(),
     // MỚI (isRootAdmin) - update()/create() dùng count() để chặn gỡ Root
     // Admin cuối cùng của hệ thống, xem JSDoc UsersService.update().
     count: jest.fn(),
@@ -1281,6 +1282,64 @@ describe('UsersService - Approval workflow (đăng ký công khai chờ duyệt)
         'avatars/9/x.webp',
         2048, // PHẢI dùng giá trị động vừa mock, không phải 1024 mặc định
       );
+    });
+  });
+
+  describe('unlockLogin - Mở khoá đăng nhập sớm', () => {
+    const target = { id: 20, name: 'NV A', departmentId: 3 };
+
+    beforeEach(() => {
+      mockUsersRepo.query.mockReset();
+      mockUsersRepo.query.mockResolvedValue([]);
+    });
+
+    it('404 nếu không có nhân viên', async () => {
+      mockUsersRepo.findOne.mockResolvedValue(null);
+      await expect(service.unlockLogin(999, 1, Role.ADMIN, 'all')).rejects.toThrow(NotFoundException);
+    });
+
+    it('403 nếu ngoài phạm vi quản lý (scope=own)', async () => {
+      mockUsersRepo.findOne.mockResolvedValue(target);
+      await expect(service.unlockLogin(20, 5, Role.EMPLOYEE, 'own')).rejects.toThrow(ForbiddenException);
+      expect(mockUsersRepo.query).not.toHaveBeenCalled();
+    });
+
+    it('Admin: xoá bộ đếm + khoá, giữ updated_at, ghi audit UNLOCK_LOGIN', async () => {
+      mockUsersRepo.findOne.mockResolvedValue(target);
+
+      await expect(service.unlockLogin(20, 1, Role.ADMIN, 'all')).resolves.toMatchObject({ success: true });
+
+      const [sql, params] = mockUsersRepo.query.mock.calls[0];
+      expect(sql).toContain('failed_login_attempts = 0');
+      expect(sql).toContain('locked_until = NULL');
+      expect(sql).toContain('updated_at = updated_at');
+      expect(params).toEqual([20]);
+      expect(mockAuditService.logActionAsync).toHaveBeenCalledWith(
+        1,
+        'UNLOCK_LOGIN',
+        'user',
+        20,
+        null,
+        expect.objectContaining({ targetUser: { id: 20, name: 'NV A' } }),
+      );
+    });
+  });
+
+  describe('getLoginLockSecondsMap - Số giây còn khoá cho danh sách', () => {
+    beforeEach(() => mockUsersRepo.query.mockReset());
+
+    it('danh sách rỗng -> không query DB', async () => {
+      const map = await service.getLoginLockSecondsMap([]);
+      expect(map.size).toBe(0);
+      expect(mockUsersRepo.query).not.toHaveBeenCalled();
+    });
+
+    it('chỉ trả user đang khoá, ép số về number, không âm', async () => {
+      mockUsersRepo.query.mockResolvedValue([{ id: '7', s: '125' }]);
+      const map = await service.getLoginLockSecondsMap([7, 8]);
+      expect(map.get(7)).toBe(125);
+      expect(map.has(8)).toBe(false);
+      expect(mockUsersRepo.query.mock.calls[0][1]).toEqual([7, 8]);
     });
   });
 

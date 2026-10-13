@@ -2,16 +2,20 @@
 
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { Form, Input, Button, Card, App } from 'antd';
+import { Form, Input, Button, Card, App, Alert } from 'antd';
 import { isAxiosError } from 'axios';
 import { UserOutlined, LockOutlined } from '@ant-design/icons';
 import Link from 'next/link';
 import { authApi } from '@/lib/api/auth.api';
 import { useAuthStore } from '@/lib/stores/auth.store';
 import { getApiErrorMessage } from '@/lib/utils/error-message.util';
+import { formatCountdown, useCountdown } from '@/lib/hooks/useCountdown';
 
 export default function LoginPage() {
   const [loading, setLoading] = useState(false);
+  // Giây còn bị khoá đăng nhập (từ 429 `retryAfterSeconds`) - đồng hồ đếm ngược + khoá nút Đăng nhập tới khi hết.
+  const [lockSeconds, setLockSeconds] = useState(0);
+  const lockRemaining = useCountdown(lockSeconds, () => setLockSeconds(0));
   const router = useRouter();
   const { setUser, setTokens } = useAuthStore();
   const { message } = App.useApp();
@@ -59,7 +63,11 @@ export default function LoginPage() {
         router.push(`/account-status?message=${encodeURIComponent(backendMessage)}`);
       } else if (status === 429) {
         // Khoá đăng nhập 5 phút (sai mật khẩu quá 5 lần): interceptor axios ĐÃ toast message thật từ backend -
-        // không toast lại ở đây để tránh 2 toast giống hệt nhau.
+        // không toast lại ở đây để tránh 2 toast giống hệt nhau. Chỉ bật đồng hồ đếm ngược.
+        const data = isAxiosError(error) ? (error.response?.data as { retryAfterSeconds?: number } | undefined) : undefined;
+        if (typeof data?.retryAfterSeconds === 'number' && data.retryAfterSeconds > 0) {
+          setLockSeconds(data.retryAfterSeconds);
+        }
       } else if (status === 401) {
         // Chỉ hiển thị message thật khi backend báo sai mật khẩu kèm số lần còn lại; các case 401 khác giữ thông
         // báo chung (không lộ "tài khoản có tồn tại hay không").
@@ -82,6 +90,15 @@ export default function LoginPage() {
           <h1 className="text-2xl font-bold">AZWorkbase</h1>
           <p className="text-gray-500">Đăng nhập vào hệ thống</p>
         </div>
+
+        {lockRemaining > 0 && (
+          <Alert
+            type="error"
+            showIcon
+            className="mb-4"
+            title={`Đăng nhập bị khoá tạm thời. Thử lại sau ${formatCountdown(lockRemaining)}`}
+          />
+        )}
 
         <Form
           name="login"
@@ -121,6 +138,7 @@ export default function LoginPage() {
               type="primary"
               htmlType="submit"
               loading={loading}
+              disabled={lockRemaining > 0}
               size="large"
               block
             >

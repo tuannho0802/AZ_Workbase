@@ -51,6 +51,12 @@ export const usersApi = {
     return response.data;
   },
 
+  // Mở khoá đăng nhập sớm (sau khi bị khoá 5 phút do sai mật khẩu quá 5 lần) - cần `users.manage`
+  unlockLogin: async (id: number) => {
+    const response = await axiosInstance.patch(`/users/${id}/unlock-login`);
+    return response.data;
+  },
+
   // ── Duyệt đăng ký tài khoản mới (Admin/Assistant) ──────────────────────
   getPendingApprovals: async (): Promise<PendingUser[]> => {
     const response = await axiosInstance.get('/users/pending-approvals');

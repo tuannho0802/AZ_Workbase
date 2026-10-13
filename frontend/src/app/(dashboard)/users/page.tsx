@@ -8,7 +8,7 @@ import {
 import {
   UserAddOutlined, EditOutlined, KeyOutlined,
   ReloadOutlined, MailOutlined, TeamOutlined, DeleteOutlined, CrownOutlined,
-  IdcardOutlined,
+  IdcardOutlined, UnlockOutlined,
 } from '@ant-design/icons';
 
 import { useAuthStore } from '@/lib/stores/auth.store';
@@ -26,6 +26,7 @@ import { useRoleColorMap, useRoleColors } from '@/lib/hooks/useRoleColorMap';
 import { resolveEntityColor } from '@/lib/utils/entityColor';
 import { useDebounce } from '@/lib/hooks/useDebounce';
 import { ListFilterBar } from '@/components/common/ListFilterBar';
+import { LoginLockTag } from '@/components/users/LoginLockTag';
 
 
 /**
@@ -42,6 +43,9 @@ function renderUserStatusTag(record: { isActive?: boolean; approvalStatus?: stri
   );
 }
 
+/** Dòng nhân viên tối thiểu cần cho nút Mở khoá. */
+type UnlockableUser = { id: number; name: string };
+
 const { Text } = Typography;
 
 // ── mobile card ──────────────────────────────────────────────────────────────
@@ -52,6 +56,9 @@ function UserMobileCard({
   onResetPass,
   onDelete,
   canDelete,
+  canUnlock,
+  onUnlock,
+  onLockExpire,
 }: {
   record: any;
   roleMap: Map<string, string>;
@@ -59,6 +66,9 @@ function UserMobileCard({
   onResetPass: (r: any) => void;
     onDelete: (r: any) => void;
     canDelete: boolean;
+  canUnlock: boolean;
+  onUnlock: (r: UnlockableUser) => void;
+  onLockExpire: () => void;
 }) {
   const { getRoleColor } = useRoleColorMap();
   return (
@@ -87,6 +97,7 @@ function UserMobileCard({
             <Tag color="gold" icon={<CrownOutlined />}>Root Admin</Tag>
           )}
           {renderUserStatusTag(record, true)}
+          <LoginLockTag seconds={record.loginLockSeconds} onExpire={onLockExpire} />
         </div>
       </div>
 
@@ -110,6 +121,19 @@ function UserMobileCard({
         )}
         <Text style={{ fontSize: 11, color: '#bfbfbf' }}>ID: {record.id}</Text>
       </div>
+
+      {canUnlock && record.loginLockSeconds > 0 && (
+        <Button
+          size="small"
+          type="primary"
+          icon={<UnlockOutlined />}
+          block
+          style={{ marginBottom: 8 }}
+          onClick={() => onUnlock(record)}
+        >
+          Mở khoá đăng nhập
+        </Button>
+      )}
 
       <div style={{ display: 'flex', gap: 8 }}>
         <Button
@@ -418,6 +442,18 @@ export default function UsersPage() {
     }
   };
 
+  // Mở khoá đăng nhập sớm cho nhân viên đang bị khoá (sai mật khẩu quá 5 lần). BE (`users.manage` +
+  // canManageUser) là nơi chặn thật sự; FE chỉ hiện nút khi `loginLockSeconds > 0`.
+  const handleUnlockLogin = async (record: UnlockableUser) => {
+    try {
+      await usersApi.unlockLogin(record.id);
+      message.success(`Đã mở khoá đăng nhập cho "${record.name}"`);
+      fetchUsers();
+    } catch (err) {
+      message.error(getApiErrorMessage(err, 'Mở khoá thất bại'));
+    }
+  };
+
   // ── Xoá mềm (chuyển vào thùng rác) - nút "Xoá" ở bảng chính, đúng như
   // Profile page đã có (usersApi.softDeleteUser -> PATCH /users/:id/soft-
   // delete). BE tự chặn tự xoá chính mình (ForbiddenException) nên chỉ cần
@@ -481,7 +517,12 @@ export default function UsersPage() {
     {
       title: 'Trạng thái',
       key: 'status',
-      render: (_: unknown, record: any) => renderUserStatusTag(record),
+      render: (_: unknown, record: any) => (
+        <Space size={4} wrap>
+          {renderUserStatusTag(record)}
+          <LoginLockTag seconds={record.loginLockSeconds} onExpire={fetchUsers} />
+        </Space>
+      ),
     },
     {
       title: 'Thao tác',
@@ -489,6 +530,9 @@ export default function UsersPage() {
       render: (_: any, record: any) => (
         <Space>
           {canManage && <Button icon={<EditOutlined />} onClick={() => openEdit(record)}>Sửa</Button>}
+          {canManage && record.loginLockSeconds > 0 && (
+            <Button type="primary" icon={<UnlockOutlined />} onClick={() => handleUnlockLogin(record)}>Mở khoá</Button>
+          )}
           {canManage && <Button icon={<KeyOutlined />} onClick={() => openResetPass(record)}>Reset Pass</Button>}
           {/* ⚠️ MỚI (isRootAdmin) - ẩn nút xoá với record là Root Admin, xem
               chú thích ở UserMobileCard bên trên. */}
@@ -570,6 +614,9 @@ export default function UsersPage() {
               onEdit={openEdit}
               onResetPass={openResetPass}
               onDelete={handleSoftDelete}
+              canUnlock={canManage}
+              onUnlock={handleUnlockLogin}
+              onLockExpire={fetchUsers}
               // ⚠️ MỚI (isRootAdmin) - ẩn nút xoá với record là Root Admin ở
               // FE cho gọn UX; BE (softDeleteUser/hardDeleteUser) mới là nơi
               // chặn thật sự (ForbiddenException) - xem users.service.ts.

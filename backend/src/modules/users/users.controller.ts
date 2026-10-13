@@ -162,6 +162,13 @@ export class UsersController {
     return this.usersService.resetPassword(+id, dto, req.user.id, req.user.role, scope);
   }
 
+  @Patch(':id/unlock-login')
+  @RequirePermission('users.manage')
+  @ApiOperation({ summary: 'Mở khoá đăng nhập sớm (sau khi bị khoá do sai mật khẩu quá 5 lần) - cùng phạm vi quyền với reset-password' })
+  async unlockLogin(@Param('id') id: string, @Request() req: any, @GetPermissionScope() scope?: string | null) {
+    return this.usersService.unlockLogin(+id, req.user.id, req.user.role, scope);
+  }
+
   // ==========================================================================
   // PROFILE TỰ PHỤC VỤ - CHÍNH MÌNH SỬA HỒ SƠ CỦA MÌNH (id luôn lấy từ JWT,
   // KHÔNG nhận :id tuỳ ý trên URL - tránh 1 user gọi API sửa hồ sơ NGƯỜI

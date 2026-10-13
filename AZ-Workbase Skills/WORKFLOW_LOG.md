@@ -7731,3 +7731,24 @@ Now [deploy]
 > - Chỉ sửa frontend, không đổi BE/DB. Chưa kiểm bằng mắt trên trình duyệt thật (jsdom không chạy được animation) — cần xem thử trên preview.
 
 ---
+## [2026-10-13] | Nút "Mở khoá" đăng nhập + đồng hồ đếm ngược thời gian khoá | [Status: Success]
+
+**Actor:** Agent
+**Files Changed:**
+- `backend/src/modules/users/users.service.ts` — `unlockLogin()` (404/403 theo `canManageUser`, xoá bộ đếm + khoá, audit `UNLOCK_LOGIN`), `getLoginLockSecondsMap()` (1 query cho cả trang), `findAll()` gắn `loginLockSeconds` vào từng dòng
+- `backend/src/modules/users/users.controller.ts` — `PATCH /users/:id/unlock-login` (`@RequirePermission('users.manage')`, KHÔNG thêm permission key mới nên không cần migration seed)
+- `backend/src/modules/users/users.service.spec.ts` — 5 test mới (+ mock `query`)
+- `frontend/src/lib/hooks/useCountdown.ts` (+ `.test.tsx`) — đếm ngược theo mốc thời gian (deadline), `formatCountdown` mm:ss
+- `frontend/src/components/users/LoginLockTag.tsx` — thẻ "Bị khoá đăng nhập mm:ss", hết giờ tự tải lại danh sách
+- `frontend/src/app/(dashboard)/users/page.tsx` — thẻ đếm ngược ở cột Trạng thái + nút "Mở khoá" (bảng + card mobile), chỉ hiện khi `can('users.manage')` và đang khoá
+- `frontend/src/lib/api/users.api.ts` — `unlockLogin()`
+- `frontend/src/app/(auth)/login/page.tsx` — banner đếm ngược + khoá nút Đăng nhập khi nhận 429 (`retryAfterSeconds`)
+- `AZ-Workbase Skills/PERMISSIONS.md` — thêm dòng endpoint vào §2.2
+
+**Solution:**
+> Thời gian còn lại tính bằng đồng hồ DB (TIMESTAMPDIFF) rồi gửi dạng SỐ GIÂY - FE không so giờ máy với giờ server nên không lệch múi giờ/đồng hồ máy.
+
+**Notes:**
+> Số giây trong danh sách chỉ đúng tại lúc tải; FE tự đếm tiếp rồi gọi lại API khi về 0. Nút Mở khoá dùng `users.manage` (Manager chỉ mở được nhân viên phòng ban mình quản lý).
+
+---

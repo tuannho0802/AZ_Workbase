@@ -359,6 +359,7 @@ pattern giống hệt `CustomerAccessHelper`):
 | `PATCH /users/:id` (sửa) | `ADMIN, ASSISTANT, MANAGER` + `UsersAccessHelper.canManageUser()` |
 | `PATCH /users/:id/approve`, `.../reject` | `ADMIN, ASSISTANT, MANAGER` — Manager chỉ duyệt/từ chối đúng phòng ban mình quản lý (khớp rule §2.8) |
 | `PATCH /users/:id/reset-password` | `ADMIN, ASSISTANT, MANAGER` + `canManageUser()` |
+| `PATCH /users/:id/unlock-login` | `users.manage` + `canManageUser()` (cùng phạm vi với reset-password) — mở khoá sớm tài khoản bị khoá đăng nhập do sai mật khẩu quá 5 lần; `GET /users` trả thêm `loginLockSeconds` |
 | `GET/PUT /users/:id/profile` | `ADMIN, ASSISTANT, MANAGER` + `canManageUser()`; role khác chỉ tự xem/sửa của chính mình |
 
 Không có endpoint Xoá user (đúng thiết kế — chỉ có `isActive=false` qua `update()`). Spec test:
