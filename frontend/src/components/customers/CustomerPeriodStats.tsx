@@ -1,9 +1,9 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useState, type CSSProperties, type ReactNode } from 'react';
 import dynamic from 'next/dynamic';
 import { Button, Card, Col, DatePicker, Row, Segmented, Space, Statistic, Tag, Typography } from 'antd';
-import { ArrowDownOutlined, ArrowUpOutlined, CloseCircleOutlined, DownOutlined, FilterOutlined, UpOutlined } from '@ant-design/icons';
+import { ArrowDownOutlined, ArrowUpOutlined, CloseCircleOutlined, DownOutlined, FilterOutlined } from '@ant-design/icons';
 import dayjs, { Dayjs } from 'dayjs';
 import { useCustomerPeriodStats } from '@/lib/hooks/useCustomerStats';
 import type { CustomerStatsPeriod } from '@/lib/types/customer.types';
@@ -43,6 +43,45 @@ function Delta({ now, prev, money }: { now: number; prev: number; money?: boolea
 
 /** Ghi nhớ ẩn/hiện khối thống kê (chỉ là tuỳ chọn giao diện, không nhạy cảm). Luôn bọc try/catch: storage có thể bị chặn. */
 const OPEN_STORAGE_KEY = 'customers:period-stats-open';
+
+const COLLAPSE_MS = 300;
+const COLLAPSE_EASE = 'cubic-bezier(0.4, 0, 0.2, 1)'; // cùng easing với hiệu ứng hover của StatsCards
+
+/** Người dùng bật "giảm chuyển động" ở hệ điều hành -> bỏ hiệu ứng (vẫn đóng/mở đúng, chỉ không trượt). */
+function usePrefersReducedMotion(): boolean {
+  const [reduce, setReduce] = useState(false);
+  useEffect(() => {
+    if (typeof window === 'undefined' || !window.matchMedia) return;
+    const mq = window.matchMedia('(prefers-reduced-motion: reduce)');
+    setReduce(mq.matches);
+    const onChange = (e: MediaQueryListEvent) => setReduce(e.matches);
+    mq.addEventListener?.('change', onChange);
+    return () => mq.removeEventListener?.('change', onChange);
+  }, []);
+  return reduce;
+}
+
+/**
+ * Đóng/mở TRƠN: trượt chiều cao bằng `grid-template-rows` 0fr <-> 1fr (không cần biết trước chiều cao thật, khác
+ * `height`/`max-height`) + mờ dần. Nội dung LUÔN được mount (không unmount) nên không bị dựng lại/nháy biểu đồ khi mở;
+ * `visibility: hidden` (trễ bằng thời gian trượt khi đóng) + `aria-hidden` giúp phần đang đóng không bị Tab vào/đọc nhầm.
+ */
+function Collapsible({ open, testId, children }: { open: boolean; testId: string; children: ReactNode }) {
+  const reduce = usePrefersReducedMotion();
+  const dur = reduce ? '0ms' : `${COLLAPSE_MS}ms`;
+  const style: CSSProperties = {
+    display: 'grid',
+    gridTemplateRows: open ? '1fr' : '0fr',
+    opacity: open ? 1 : 0,
+    visibility: open ? 'visible' : 'hidden',
+    transition: `grid-template-rows ${dur} ${COLLAPSE_EASE}, opacity ${dur} ${COLLAPSE_EASE}, visibility 0ms linear ${open ? '0ms' : dur}`,
+  };
+  return (
+    <div data-testid={testId} aria-hidden={!open} style={style}>
+      <div style={{ overflow: 'hidden', minHeight: 0 }}>{children}</div>
+    </div>
+  );
+}
 
 /** Bộ lọc mà nút "Lọc trạng thái này" áp lên bảng khách: đúng status + đúng khoảng Ngày nhập của kỳ đang xem. */
 export interface PeriodStatusFilter {
@@ -152,7 +191,7 @@ export const CustomerPeriodStats = ({ hideDeposit, activeStatus, onFilterStatus 
             onChange={(d) => d && setAnchor(d)}
           />
           <Button
-            icon={open ? <UpOutlined /> : <DownOutlined />}
+            icon={<DownOutlined style={{ transition: `transform ${COLLAPSE_MS}ms ${COLLAPSE_EASE}`, transform: open ? 'rotate(180deg)' : 'none' }} />}
             onClick={toggleOpen}
             aria-expanded={open}
             aria-label={open ? 'Ẩn chi tiết thống kê' : 'Hiện chi tiết thống kê'}
@@ -167,8 +206,8 @@ export const CustomerPeriodStats = ({ hideDeposit, activeStatus, onFilterStatus 
         {period === 'week' && ' (Thứ Hai → Chủ Nhật)'}
       </Text>
 
-      {!open ? (
-        // Chế độ THU GỌN: chỉ 1 dòng tóm tắt các chỉ số chính của kỳ đang chọn.
+      {/* THU GỌN: 1 dòng tóm tắt các chỉ số chính của kỳ đang chọn (trượt vào khi đóng, trượt ra khi mở). */}
+      <Collapsible open={!open} testId="period-stats-summary-wrap">
         <Space wrap size={[16, 8]} data-testid="period-stats-summary">
           <Text>Nhập mới: <Text strong style={{ color: '#1677ff' }}>{cur?.input.entered ?? 0}</Text></Text>
           <Text>Đã chốt: <Text strong style={{ color: '#52c41a' }}>{cur?.handled.closed ?? 0}</Text></Text>
@@ -176,8 +215,10 @@ export const CustomerPeriodStats = ({ hideDeposit, activeStatus, onFilterStatus 
             <Text>Tiền nạp: <Text strong style={{ color: '#faad14' }}>{fmtUsd(cur?.cash.amount ?? 0)}</Text></Text>
           )}
         </Space>
-      ) : (
-        <>
+      </Collapsible>
+
+      {/* ĐẦY ĐỦ: các giai đoạn + trạng thái + biểu đồ. */}
+      <Collapsible open={open} testId="period-stats-detail">
       <Row gutter={[16, 16]}>
         <Col xs={24} lg={hideDeposit ? 12 : 8}>
           {group(
@@ -282,8 +323,7 @@ export const CustomerPeriodStats = ({ hideDeposit, activeStatus, onFilterStatus 
           )}
         </Row>
       )}
-        </>
-      )}
+      </Collapsible>
     </Card>
   );
 };

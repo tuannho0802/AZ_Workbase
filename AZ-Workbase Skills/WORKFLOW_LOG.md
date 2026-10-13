@@ -7714,3 +7714,20 @@ Now [deploy]
 > - Thu gọn + `hideDeposit` (`tab:deposits`): dòng tóm tắt không hiện tiền nạp.
 
 ---
+
+## [2026-10-13] | Thống kê khách hàng: hiệu ứng collapse mượt khi ẩn/hiện | [Status: Success]
+
+**Actor:** Agent
+**Files Changed:**
+- `frontend/src/components/customers/CustomerPeriodStats.tsx` — thêm `Collapsible` (trượt `grid-template-rows` 0fr↔1fr + opacity, 300ms, easing cubic-bezier(0.4,0,0.2,1)); phần tóm tắt và phần đầy đủ luôn được mount; chevron xoay theo trạng thái; tôn trọng `prefers-reduced-motion`
+- `frontend/src/components/customers/CustomerPeriodStats.test.tsx` — cập nhật test theo `aria-hidden` (không còn kiểm "có/không tồn tại trong DOM"), thêm 2 test hiệu ứng
+
+**Root Cause (nếu là bug fix):**
+> Bản trước đóng/mở bằng render điều kiện (`{open ? ... : ...}`) nên nội dung biến mất/hiện ra tức thì, cảm giác "cứng".
+
+**Notes:**
+> - Dùng `grid-template-rows` thay vì `height`/`max-height` vì không cần biết trước chiều cao thật của nội dung (biểu đồ, số status thay đổi theo dữ liệu).
+> - Nội dung phần đóng vẫn mount nên truy vấn DOM kiểu `queryByText(...)` sẽ vẫn thấy; test mới dùng `aria-hidden`/`data-testid` (`period-stats-detail`, `period-stats-summary-wrap`). Phần đóng có `visibility: hidden` (trễ bằng thời gian trượt) nên không bị Tab vào.
+> - Chỉ sửa frontend, không đổi BE/DB. Chưa kiểm bằng mắt trên trình duyệt thật (jsdom không chạy được animation) — cần xem thử trên preview.
+
+---
