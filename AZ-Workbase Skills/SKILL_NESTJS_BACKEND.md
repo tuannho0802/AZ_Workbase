@@ -1057,3 +1057,33 @@ SwaggerModule.setup('api/docs', app, document, {
   customJs: ['/swagger-auth.js'], // Served from public/ via useStaticAssets
 });
 ```
+---
+
+### 15. Quy ước join User ở endpoint trả JSON (MANDATORY — Plan CPU 14C)
+
+Entity `User` ~25 cột (email, phone, số dư phép, `lastLoginAt`, `employeeCode`, `zkDeviceUserId`...). `leftJoinAndSelect` User tải hết cột đó x mỗi quan hệ x mỗi dòng, **tăng CPU/RAM DB** và **lộ cột nhân sự ra response** dù FE chỉ đọc `name`.
+
+**Quy tắc:**
+- Endpoint trả JSON cho client: **CẤM** `leftJoinAndSelect(...User)` và `relations: [..User..]` / `find({ relations })` có User.
+- Dùng `leftJoin` + `addSelect` chỉ các cột FE thật sự đọc (mặc định `id`, `name`; thêm `role` nếu FE hiện Tag role; `email` chỉ khi FE đọc):
+
+```typescript
+// ✅ Đúng
+qb.leftJoin('task.primaryAssignee', 'primaryAssignee')
+  .addSelect(['primaryAssignee.id', 'primaryAssignee.name']);
+
+// ❌ Sai (tải cả entity User)
+qb.leftJoinAndSelect('task.primaryAssignee', 'primaryAssignee');
+```
+
+- Tên alias join PHẢI khớp tên property entity (xem mục 13 "Consistent API Aliasing").
+- Danh sách khách hàng dùng sẵn `LIST_USER_COLUMNS(alias)` (id, name, email, role) trong `customers.service.ts`.
+- `find({ relations, select })` chỉ dùng khi khai **đủ** cột root cần (select chỉ có key quan hệ sẽ làm mất cột root). Ví dụ an toàn: `select: { id: true, taskId: true, createdAt: true, user: { id: true, name: true } }`.
+- **Trước khi thu hẹp**: grep FE đọc field nào của User (`name`, `fullName`, `role`, `email`...) và đọc code BE phía sau (audit snapshot, notify) có dùng object User không. Thiếu field FE cần → thêm vào `select`, không bỏ join.
+- Query có `skip/take` + join: **giữ nguyên cấu trúc phân trang**, chỉ đổi cột (xem comment BUG `ABS(DATEDIFF` trong `periodic-task-performance.service.ts`).
+- Mỗi lần thu hẹp: giữ code cũ trong comment `[AGENT] OLD CODE`, thêm test khoá danh sách cột (mock QB cần có `leftJoin` + `addSelect`).
+- Thao tác ghi chỉ cần `save()` vài cột: dùng bản nhẹ không join User (mẫu: `findForMutation()` ở `periodic-tasks.service.ts`).
+
+**Không dùng `select: false` cho cột nhạy cảm của `User`** (email, phone, annual*, compensatory*...): quá nhiều nơi đang đọc (`users/me`, nghỉ phép, đăng nhập, profile FE) — chỉ làm khi đã lập bảng "ai đọc cột nào".
+
+**Backlog chưa rà (còn `leftJoinAndSelect` User, ngoài Plan CPU 14):** `audit.service.ts`, `customers-export.service.ts`, `leave-requests*.service.ts`, `link-group-customers.service.ts`, `reports-customer-*.service.ts`, `utm-customers.service.ts`, `utms.service.ts`, `users.service.ts`, `periodic-task-customers.service.ts`. Khi động vào các file này hãy áp quy ước trên; một số chỗ có thể hợp lệ (dùng nội bộ, không trả JSON) — kiểm trước khi đổi.

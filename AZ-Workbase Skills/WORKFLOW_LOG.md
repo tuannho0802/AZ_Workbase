@@ -7611,3 +7611,22 @@ Now [deploy]
 > Thay đổi hành vi: `user.email` không còn trong response audit task (FE không đọc; type FE `PeriodicTaskAuditLogUser.email` vẫn khai báo, có thể bỏ sau). `tsc` 0 lỗi, `nest build` OK, `jest` pass. CHƯA đo CPU, CHƯA chạy DB thật. Rollback: revert commit.
 
 ---
+
+## [2026-10-13] | PLAN CPU 14C + khôi phục spec 14B-2 | [Status: Success]
+
+**Actor:** Agent
+**Files Changed:**
+- `backend/src/modules/periodic-tasks/periodic-tasks.find-for-mutation.spec.ts` — thêm lại (11 test); commit e5e68cb (14B-2) bị thiếu file này
+- `AZ-Workbase Skills/SKILL_NESTJS_BACKEND.md` — thêm mục 15 "Quy ước join User ở endpoint trả JSON" (hướng (i) của 14C) + backlog module chưa rà
+- `AZ-Workbase Skills/PLAN_CPU_OPTIMIZATION_ROUND2.md` — tick 14C bullet 1
+
+**Root Cause (nếu là bug fix):**
+> Spec 14B-2 không được commit (không có trong `git show --stat e5e68cb`), nên `findForMutation` không có test khoá join.
+
+**Solution:**
+> Viết lại spec: khoá join mặc định (chỉ status), `remove` (primaryAssignee id,name + department), 5 hàm không gọi `findOne`, audit snapshot đúng, 404 ngoài scope. 14C chọn hướng (i): quy ước tay, KHÔNG dùng `select: false`.
+
+**Notes:**
+> Bullet tuỳ chọn của 14C (test grep CI chống `leftJoinAndSelect` User) chưa làm — chờ chủ dự án quyết. Còn lại: `Promise.all` cho `checkDuplicateContact` (chờ đo), đo CPU trên preview.
+
+---
