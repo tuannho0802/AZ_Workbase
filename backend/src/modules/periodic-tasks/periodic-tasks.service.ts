@@ -594,6 +594,40 @@ export class PeriodicTasksService {
   }
 
   /**
+   * [PERF 14B-2] Bản NHẸ của `findOne()` cho thao tác GHI cần `save(task)` rồi trả về
+   * (`lock`/`unlock`/`markOverdue`/`unmarkOverdue`/`remove`). Các luồng đó chỉ đọc cột Task
+   * (`title`, `periodEndDate`, `overdue*`, `createdById`, `primaryAssigneeId`...) + `status`
+   * (`isCompletedTask`: code/isDoneState) - KHÔNG đọc `createdBy`/`updatedBy`/`primaryAssignee`
+   * dạng object, nên không join User. `forAuditSnapshot=true` (chỉ `remove`) thêm
+   * `primaryAssignee` (id,name) + `department` vì `buildAuditSnapshot()` ghi 2 object đó.
+   * Cùng cổng gác scope (`applyViewFilter`) và cùng 404 như `findOne()`.
+   * FE các mutation này chỉ invalidate query, không dùng body trả về.
+   */
+  private async findForMutation(
+    id: number,
+    userId: number,
+    userRole: string,
+    scope?: string | null,
+    opts?: { forAuditSnapshot?: boolean },
+  ): Promise<PeriodicTask> {
+    const qb = this.taskRepo.createQueryBuilder('task').leftJoinAndSelect('task.status', 'status');
+    if (opts?.forAuditSnapshot) {
+      qb.leftJoin('task.primaryAssignee', 'primaryAssignee')
+        .addSelect(['primaryAssignee.id', 'primaryAssignee.name'])
+        .leftJoinAndSelect('task.department', 'department');
+    }
+    qb.where('task.id = :id', { id }).andWhere('task.deletedAt IS NULL');
+
+    PeriodicTaskAccessHelper.applyViewFilter(qb, userId, userRole, scope);
+
+    const task = await qb.getOne();
+    if (!task) {
+      throw new NotFoundException(`Không tìm thấy Công việc định kỳ với ID ${id}`);
+    }
+    return task;
+  }
+
+  /**
    * Cổng gác XEM siêu nhẹ - CHỈ kiểm tra Task tồn tại + nằm trong phạm vi scope
    * (404 nếu không), KHÔNG join/hydrate status/assignee/department/createdBy/
    * updatedBy như `findOne()`. Dùng cho các endpoint đọc dữ liệu con hay gọi
@@ -981,7 +1015,8 @@ export class PeriodicTasksService {
     user: RequestingUser,
     scope?: string | null,
   ): Promise<PeriodicTask> {
-    const task = await this.findOne(id, user.id, user.role, scope);
+    // [AGENT] OLD CODE (Plan CPU 14B-2): const task = await this.findOne(id, user.id, user.role, scope);
+    const task = await this.findForMutation(id, user.id, user.role, scope);
 
     task.isLocked = true;
     task.lockedById = user.id;
@@ -1028,7 +1063,8 @@ export class PeriodicTasksService {
    * Idempotent - Task đã có dấu thì trả về nguyên trạng (không ghi đè, không audit lặp).
    */
   async markOverdue(id: number, user: RequestingUser, scope?: string | null): Promise<PeriodicTask> {
-    const task = await this.findOne(id, user.id, user.role, scope);
+    // [AGENT] OLD CODE (Plan CPU 14B-2): const task = await this.findOne(id, user.id, user.role, scope);
+    const task = await this.findForMutation(id, user.id, user.role, scope);
 
     if (!isPastPeriodEnd(task.periodEndDate, todayVnStr())) {
       throw new BadRequestException('Chỉ đánh dấu quá hạn được khi Task đã qua ngày kết thúc kỳ (deadline).');
@@ -1052,7 +1088,8 @@ export class PeriodicTasksService {
 
   /** Gỡ dấu "Quá hạn" thủ công - vd Task được kéo dài kỳ. Idempotent (chưa đánh dấu -> không lỗi). */
   async unmarkOverdue(id: number, user: RequestingUser, scope?: string | null): Promise<PeriodicTask> {
-    const task = await this.findOne(id, user.id, user.role, scope);
+    // [AGENT] OLD CODE (Plan CPU 14B-2): const task = await this.findOne(id, user.id, user.role, scope);
+    const task = await this.findForMutation(id, user.id, user.role, scope);
     if (task.overdueMarkedAt == null) return task;
 
     task.overdueMarkedAt = null;
@@ -1066,7 +1103,8 @@ export class PeriodicTasksService {
   /** Tắt `is_locked` - tự do gọi lại bất kỳ lúc nào, không giới hạn số lần
    * lock↔unlock (PLAN mục 2.9), cùng permission `periodic_tasks.approve`. */
   async unlock(id: number, user: RequestingUser, scope?: string | null): Promise<PeriodicTask> {
-    const task = await this.findOne(id, user.id, user.role, scope);
+    // [AGENT] OLD CODE (Plan CPU 14B-2): const task = await this.findOne(id, user.id, user.role, scope);
+    const task = await this.findForMutation(id, user.id, user.role, scope);
 
     task.isLocked = false;
     task.lockedById = null;
@@ -1104,7 +1142,9 @@ export class PeriodicTasksService {
     userRole: string,
     scope?: string | null,
   ): Promise<{ deleted: true }> {
-    const task = await this.findOne(id, userId, userRole, scope);
+    // [AGENT] OLD CODE (Plan CPU 14B-2): const task = await this.findOne(id, userId, userRole, scope);
+    // Giữ primaryAssignee(id,name)+department cho buildAuditSnapshot(); bỏ createdBy/updatedBy (snapshot không dùng).
+    const task = await this.findForMutation(id, userId, userRole, scope, { forAuditSnapshot: true });
 
     if (!PeriodicTaskAccessHelper.canDelete(task, userId, userRole, scope)) {
       throw new ForbiddenException('Bạn chỉ được xoá Công việc do mình tạo hoặc mình phụ trách chính');

@@ -7572,3 +7572,22 @@ Now [deploy]
 > Đã chạy: `tsc` 0 lỗi, `nest build` OK, `jest` toàn bộ pass. CHƯA đo CPU, CHƯA chạy trên MySQL thật. `getInvalidDataReport` (query chính, loại không phải trùng) chưa có test khoá cột riêng - chỉ được phủ bởi tsc + test báo cáo trùng cùng kiểu join. CHƯA làm: `Promise.all` cho 2 truy vấn SĐT/Email của `checkDuplicateContact` (chờ đo), 14C. Quan sát (không sửa): `getAssigned` không join `updatedBy`, trong khi `chia-data` đọc `record.updatedBy` cho tooltip audit - tab "Đã assign" có thể luôn hiện "Chưa có chỉnh sửa". Rollback: revert commit tương ứng.
 
 ---
+
+## [2026-10-13] | PLAN CPU 14B-2 (bullet 2) — Task: mutation nhẹ cho lock/unlock/markOverdue/unmarkOverdue/remove | [Status: Success]
+
+**Actor:** Agent
+**Files Changed:**
+- `backend/src/modules/periodic-tasks/periodic-tasks.service.ts` — thêm `findForMutation()` (chỉ Task + `status`, không join User/department); `lock`/`unlock`/`markOverdue`/`unmarkOverdue` gọi bản này; `remove` gọi với `forAuditSnapshot` (thêm `primaryAssignee` id,name + `department` cho `buildAuditSnapshot`, bỏ `createdBy`/`updatedBy`). Dòng cũ giữ trong comment OLD CODE
+- `backend/src/modules/periodic-tasks/periodic-tasks.find-for-mutation.spec.ts` — mới (8 test)
+- `AZ-Workbase Skills/PLAN_CPU_OPTIMIZATION_ROUND2.md` — tick bullet 2 của 14B-2
+
+**Root Cause (nếu là bug fix):**
+> Không phải bug. 5 thao tác ghi dùng `findOne()` (join status + department + 3 User) chỉ để `save()` vài cột khoá/quá hạn rồi trả về.
+
+**Solution:**
+> Đã đọc từng hàm trước khi bỏ join: lock/unlock/mark/unmark chỉ đọc cột Task + `status.code/isDoneState` (`isCompletedTask`) và notify chỉ dùng `saved.title`/`primaryAssigneeId`; `canDelete` chỉ đọc `createdById`/`primaryAssigneeId`; `remove` cần `primaryAssignee`/`department` cho audit snapshot nên giữ 2 join đó. FE (`usePeriodicTasks`, `cong-viec-dinh-ky/page.tsx`, `TaskActionsBar`) chỉ `invalidate`, không dùng body trả về.
+
+**Notes:**
+> Thay đổi hành vi cần biết: body trả về của `PATCH /:id/lock|unlock|mark-overdue|unmark-overdue` không còn `primaryAssignee`/`createdBy`/`updatedBy`/`department` (vẫn có `status` và mọi cột Task); `DELETE` trả `{deleted:true}` như cũ. Đã chạy: `tsc` 0 lỗi, `nest build` OK, `jest` toàn bộ pass. CHƯA đo CPU, CHƯA chạy DB thật. Rollback: revert commit.
+
+---

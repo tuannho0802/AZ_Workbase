@@ -931,7 +931,7 @@ export class QuietBootLogger extends ConsoleLogger {
   Caller: `GET /:id` (controller ~dòng 243) **và** `update` (~766), `lock` (~979), `markOverdue` (~1026), `unmarkOverdue` (~1050), `unlock` (~1064), `remove` (~1102).
 - **Việc làm:**
   - [x] Thu hẹp 3 User về `id,name` ở `findOne` (đúng mẫu `findAll`). ⚠️ **Trước khi làm, đọc** `buildAuditSnapshot()`, `assertEditableWhenLocked()`, `emitTaskNotification`/`notifyTaskSafely` và các nơi dùng `task.primaryAssignee`/`task.createdBy` (vd `getSecondaryAssigneeIds`, comment ~dòng 798) để chắc **không đọc `email`/field khác của User**; nếu có → thêm field đó vào `select` thay vì bỏ.
-  - [ ] Các mutation `lock/unlock/markOverdue/unmarkOverdue/remove` đang `save(task)` trên entity đã join: cân nhắc bản **chỉ cột Task + `status`** (không join User) nếu phía sau không đọc User (đọc từng hàm; `unlock` có notify — kiểm `emitTaskNotification` đọc gì). Tách commit riêng, làm sau khi thu hẹp ở trên đã xanh.
+  - [x] Các mutation `lock/unlock/markOverdue/unmarkOverdue/remove` đang `save(task)` trên entity đã join: cân nhắc bản **chỉ cột Task + `status`** (không join User) nếu phía sau không đọc User (đọc từng hàm; `unlock` có notify — kiểm `emitTaskNotification` đọc gì). Tách commit riêng, làm sau khi thu hẹp ở trên đã xanh.
 - **Test:** `GET /:id` còn đủ `id/name`; `update` ghi audit đúng tên người phụ trách cũ/mới; payload notification không đổi.
 - **Rủi ro:** thấp–TB (đụng audit + notify). **Rollback:** khôi phục `leftJoinAndSelect`.
 
