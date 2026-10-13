@@ -7241,3 +7241,35 @@ Now [deploy]
 > Xuất bản: nên đặt `published: true` trong file rồi `npm run guides:sync -- --apply`; bật công tắc trên UI làm DB bị coi là "sửa tay" và lần sync sau sẽ XUNG ĐỘT.
 
 ---
+
+## [2026-10-13] | Keep-alive: chặn trùng 30s + khung giờ 08:45–18:45 T2–T6 + giảm gọi FE | [Status: Success]
+
+**Actor:** Agent
+**Files Changed:**
+- `backend/src/common/utils/keepalive-gate.util.ts` (+ `.spec.ts`) — cổng chặn keep-alive TRƯỚC khi bootstrap Nest: ngoài khung giờ → 200; HEAD thứ 2 trong 30s trên cùng instance → 200 (GET thủ công không bị chặn)
+- `backend/src/main.ts` — gọi cổng trong `handler`, sau weekend-skip
+- `.github/workflows/uptime-keepalive-weekend.yml` — Resume 08:45 VN / Pause 18:45 VN (T2–T6); bỏ lịch cũ Pause T6 00:00 và Resume CN 06:00 (sẽ bật monitor ngoài khung giờ)
+- `frontend/src/lib/hooks/useMyPermissions.ts` (60s → 30 phút), `useMe.ts` (5 → 30 phút), `(dashboard)/layout.tsx` ME_CACHE_MAX_AGE_MS (7 → 30 phút; xấu nhất 38 phút < TTL avatar 60 phút)
+
+**Root Cause:**
+> Log 13/10 thấy 2 HEAD /api/keep-alive mỗi 5 phút (cách nhau 0–6s) dù chỉ có 1 monitor; mỗi lượt đi qua Nest.
+
+**Solution:**
+> Chặn sớm ở handler; giới hạn khung giờ; FE dựa vào permSig/refSig thay vì staleTime ngắn.
+
+**Notes:**
+> Cổng khung giờ chỉ áp cho keep-alive, không chặn endpoint cron. (Cập nhật cùng ngày: 2 Vercel cron đã dời vào khung giờ — xem entry kế tiếp.) Env tắt: KEEPALIVE_HOURS_SKIP=false, KEEPALIVE_DEDUPE=false. Chưa verify được trên prod: nguồn ping thứ 2, hai ping có rơi vào 2 instance khác nhau không.
+
+---
+
+## [2026-10-13] | Dời 2 Vercel cron vào khung giờ làm việc | [Status: Success]
+
+**Actor:** Agent
+**Files Changed:**
+- `backend/vercel.json` — sync-today `0 16 * * 1-5` → `0 10 * * 1-5` (17:00 VN); auto-overdue `5 17 * * 0-4` → `0 2 * * 1-5` (09:00 VN)
+- `periodic-task-reminders-cron.controller.ts`, `keepalive-gate.util.ts`, `PLAN_CPU_OPTIMIZATION_ROUND2.md` — cập nhật chú thích/checklist
+
+**Notes:**
+> Chủ dự án chấp nhận: lượt chấm công sau ~17:xx hôm đó có thể thiếu, đồng bộ bù sau. Hobby cron chỉ chính xác theo giờ (có thể trễ tới 59 phút) nên chọn mốc xa 18:45. auto-overdue chỉ phụ thuộc ngày VN (`todayVnStr`), không phụ thuộc giờ chạy. Cần deploy để Vercel nhận lịch mới.
+
+---

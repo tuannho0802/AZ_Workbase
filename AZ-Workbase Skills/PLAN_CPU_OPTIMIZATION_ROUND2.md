@@ -700,7 +700,7 @@ export class QuietBootLogger extends ConsoleLogger {
 
 ### 12E. Giảm số lần cold start & theo dõi
 - [ ] Giữ UptimeRobot `HEAD /keep-alive` 5 phút. **Không** ping dày hơn: mỗi ping chạy `SELECT 1` và không ngăn được cold start do scale-out đồng thời (09:03 / 09:27).
-- [ ] Chấp nhận 2 Vercel Cron/ngày (23:00 và 00:05 giờ VN) có thể gây cold start hằng ngày, kể cả cuối tuần.
+- [x] ~~Chấp nhận 2 Vercel Cron/ngày (23:00 và 00:05 giờ VN)~~ → 13/10/2026 dời vào khung giờ làm việc T2–T6: sync-today `0 10 * * 1-5` (17:00 VN), auto-overdue `0 2 * * 1-5` (09:00 VN); không còn cron nào chạy cuối tuần/đêm.
 - [ ] Tách "mức nền" cuối tuần: vào 1 giờ bất kỳ của Thứ Bảy/Chủ Nhật, export log (Last hour), gộp theo `requestId`, phân loại theo UA/path (UptimeRobot, Googlebot, cron, `/iclock`, poll tab bỏ mở). Chưa làm được ở lần này vì file chỉ có sáng Thứ Năm.
 - [ ] Nâng Pro: **chưa kiểm chứng** Hobby có được pre-warm hay không → không nâng chỉ vì lý do này.
 

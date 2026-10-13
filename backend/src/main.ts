@@ -37,6 +37,7 @@ import {
 } from './common/security/cors-preflight';
 // [Giảm Fluid Active CPU] keep-alive + endpoint cron: T7/CN (giờ VN) trả 200 ngay, không khởi tạo Nest/DB.
 import { respondWeekendSkipped, shouldSkipOnWeekend } from './common/utils/weekend-skip.util';
+import { keepAliveSkipReason, respondKeepAliveSkipped } from './common/utils/keepalive-gate.util';
 
 // ⚠️ Quan trọng cho serverless (Vercel):
 // Trước đây main.ts gọi NestFactory.create() + app.listen() mỗi lần module được
@@ -280,6 +281,13 @@ export default async function handler(req: any, res: any) {
   // Tắt bằng env WEEKEND_SKIP=false. Request khác (người dùng thật, /iclock...) đi đường cũ.
   if (shouldSkipOnWeekend(req)) {
     respondWeekendSkipped(req, res);
+    return;
+  }
+  // [Giảm Fluid Active CPU] keep-alive: ngoài giờ làm việc (T2–T6 08:45–18:45 VN) hoặc HEAD trùng trong 30s -> 200 ngay, không bootstrap/DB.
+  // Tắt bằng env KEEPALIVE_HOURS_SKIP=false / KEEPALIVE_DEDUPE=false.
+  const keepAliveSkip = keepAliveSkipReason(req);
+  if (keepAliveSkip) {
+    respondKeepAliveSkipped(req, res, keepAliveSkip);
     return;
   }
   await getApp(); // đảm bảo app đã init (cache theo container)

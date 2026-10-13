@@ -1,23 +1,30 @@
-name: UptimeRobot - tạm dừng cuối tuần (KeepAlive + 2 cron)
+name: UptimeRobot - chỉ chạy giờ làm việc T2–T6 08:45–18:45 VN (KeepAlive + 2 cron)
 
 # UptimeRobot free KHÔNG có Maintenance -> dùng API tự Pause/Resume 3 monitor để không gọi vào T7/CN (giờ VN):
 #   802882548 KeepAlive AZ-Workbase | 803835309 AutoSync for Attendance | 804107733 Cronjob for Check out-dated Task
 # Cần 1 GitHub Secret: UPTIMEROBOT_API_KEY (Main API key). ID monitor không phải bí mật nên ghi thẳng ở env MONITOR_IDS.
 # (Secret UPTIMEROBOT_KEEPALIVE_MONITOR_ID tạo ở bản trước không còn được dùng - có thể xoá.)
-# GitHub cron có thể trễ vài phút. Lớp dự phòng: backend tự trả 200 nhanh vào T7/CN (weekend-skip.util.ts).
+# GitHub cron có thể trễ vài phút (đôi khi >10 phút). Lớp dự phòng: weekend-skip.util.ts (T7/CN) + keepalive-gate.util.ts (ngoài giờ).
 
+# LỊCH (giờ VN = UTC+7), chỉ T2–T6:
+#   Resume 08:45 VN = 01:45 UTC  |  Pause 18:45 VN = 11:45 UTC
+# Thứ 6 18:45 pause xong thì monitor giữ nguyên trạng thái PAUSE suốt T7/CN đến T2 08:45 -> T7/CN dừng hoàn toàn.
+# (Đã BỎ 2 lịch cũ: Pause 17:00 UTC T6 và Resume 23:00 UTC CN — nếu giữ, Resume CN 06:00 VN sẽ bật monitor ngoài khung giờ.)
+# Lớp dự phòng khi GitHub cron trễ: backend tự trả 200 nhanh cho keep-alive ngoài khung giờ (keepalive-gate.util.ts).
 on:
   schedule:
-    # Pause: 17:00 UTC Thứ 6 = 00:00 Thứ 7 giờ VN
-    - cron: '0 17 * * 5'
-    # Resume: 23:00 UTC Chủ nhật = 06:00 Thứ 2 giờ VN (trước giờ làm để làm ấm instance + DB)
-    - cron: '0 23 * * 0'
+    - cron: '45 1 * * 1-5'   # Resume 08:45 VN
+    - cron: '45 11 * * 1-5'  # Pause 18:45 VN
   workflow_dispatch:
     inputs:
       action:
         description: 'pause hoặc resume (chạy tay để test)'
         required: true
         default: 'resume'
+
+concurrency:
+  group: uptimerobot-toggle
+  cancel-in-progress: false
 
 jobs:
   toggle:
@@ -31,7 +38,7 @@ jobs:
           CRON_EXPR: ${{ github.event.schedule }}
         run: |
           if [ -n "$MANUAL_ACTION" ]; then ACTION="$MANUAL_ACTION"
-          elif [ "$CRON_EXPR" = "0 17 * * 5" ]; then ACTION="pause"
+          elif [ "$CRON_EXPR" = "45 11 * * 1-5" ]; then ACTION="pause"
           else ACTION="resume"; fi
           if [ "$ACTION" = "pause" ]; then STATUS=0; else STATUS=1; fi   # UptimeRobot API v2: 0 = paused, 1 = started
           echo "Action: $ACTION (status=$STATUS)"

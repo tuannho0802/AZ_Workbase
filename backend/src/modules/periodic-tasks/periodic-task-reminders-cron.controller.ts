@@ -16,7 +16,7 @@ import { PeriodicTaskAutoOverdueService } from './periodic-task-auto-overdue.ser
  * (hoặc header `x-cron-secret: <CRON_SECRET>`)
  *
  * `auto-overdue` (đánh dấu quá hạn + khoá Task quá ân hạn) KHÔNG còn chạy kèm endpoint trên (tránh 1 query join + UPDATE
- * mỗi lần Uptime ping). Nó chạy bằng Vercel Cron riêng (`vercel.json`, 17:05 UTC = 00:05 giờ VN), idempotent. Có thể gọi tay:
+ * mỗi lần Uptime ping). Nó chạy bằng Vercel Cron riêng (`vercel.json`, 02:00 UTC = 09:00 giờ VN T2–T6; Hobby có thể trễ tới ~1 giờ), idempotent. Có thể gọi tay:
  *   GET https://<domain>/api/periodic-tasks-cron/auto-overdue?secret=<CRON_SECRET>[&dryRun=true]
  */
 @ApiTags('Periodic Tasks Reminders Cron (nội bộ - dùng cho Uptime)')

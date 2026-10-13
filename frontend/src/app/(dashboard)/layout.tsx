@@ -78,8 +78,9 @@ function BrandMark({ size = 36 }: { size?: number }) {
   );
 }
 
-/** Tuổi tối đa của cache `/users/me` mà vòng tự-lành avatar chấp nhận dùng lại (< nhịp 8 phút). */
-const ME_CACHE_MAX_AGE_MS = 7 * 60 * 1000;
+/** Tuổi tối đa của cache `/users/me` mà vòng tự-lành avatar chấp nhận dùng lại. Xấu nhất ≈ 30 + 8 (nhịp vòng) = 38 phút < 60 phút TTL URL avatar. */
+// [AGENT] OLD CODE (giữ để rollback): const ME_CACHE_MAX_AGE_MS = 7 * 60 * 1000;
+const ME_CACHE_MAX_AGE_MS = 30 * 60 * 1000; // role/vị trí đổi đã có permSig invalidate ME_KEY; tự sửa hồ sơ -> refreshMe
 
 export default function DashboardLayout({
   children,

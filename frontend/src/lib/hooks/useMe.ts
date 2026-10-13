@@ -34,9 +34,10 @@ export function useMe() {
     queryKey: ME_KEY,
     queryFn: usersApi.getMe,
     // [AGENT] OLD CODE (giữ để rollback): staleTime: 60 * 1000
-    // NEW: 5 phút. Sau khi chính user sửa hồ sơ/avatar -> `refreshMe`/invalidate(['users']); Admin đổi quyền/vị trí
+    // [AGENT] OLD CODE (giữ để rollback): staleTime: 5 * 60 * 1000
+    // NEW: 30 phút (đã có tín hiệu invalidate bên dưới). Sau khi chính user sửa hồ sơ/avatar -> `refreshMe`/invalidate(['users']); Admin đổi quyền/vị trí
     // -> `usePermissionChangeSignal` invalidate ME_KEY.
-    staleTime: 5 * 60 * 1000,
+    staleTime: 30 * 60 * 1000,
   });
 
   return { me: data, isLoading };

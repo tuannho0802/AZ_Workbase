@@ -3,10 +3,11 @@ import { rolesApi } from '../api/roles.api';
 import { useAuthStore } from '../stores/auth.store';
 import { MyPermissionsMap, PermissionScope } from '../types/roles.types';
 
-// 60s: đủ để UI cập nhật trong thời gian ngắn sau khi Admin đổi ma trận
-// quyền ở trang "Phân quyền" (không cần user tự F5), nhưng không gọi API
-// liên tục. Cùng triết lý với useSidebarBadgeCounts.ts.
-const STALE_TIME_MS = 60_000;
+// [AGENT] OLD CODE (giữ để rollback): const STALE_TIME_MS = 60_000;
+// NEW: 30 phút. Admin đổi ma trận quyền -> `permSig` trong /notifications/poll (nhịp 300s) đổi ->
+// usePermissionChangeSignal invalidate ['my-permissions'] nên UI vẫn cập nhật đúng lúc; staleTime chỉ còn là lưới đỡ.
+// BE vẫn enforce quyền thật ở PermissionGuard nên độ trễ tối đa ~5 phút chỉ ảnh hưởng ẩn/hiện UI.
+const STALE_TIME_MS = 30 * 60_000;
 
 export interface UseMyPermissionsResult {
   /** true nếu role hiện tại CÓ permission này (bất kể scope là gì). */
