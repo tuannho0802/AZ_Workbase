@@ -37,9 +37,10 @@
 | 11 | **(MỚI 2026-10-07)** Rà soát code lần 3: `AuditService.logAction` dùng `save()`, recharts import tĩnh, `console.error` ở JwtStrategy | Chưa đo (ước lượng: giảm round-trip DB mỗi thao tác ghi; giảm JS lần đầu của trang báo cáo) | Rất thấp | Không | — |
 | 12 | **(MỚI 2026-10-08)** Cold start & log khởi động: 68% dòng log là log boot Nest; 15/779 request > 2 s do cold start (3,4–4,6 s) | Chưa đo CPU (log chỉ có `durationMs`); đo ở 12B; 12I: `guides` 136 ms | Rất thấp (12A/12B/12I) – Thấp (12C) – TB (12F, tuỳ chọn) | Không | — |
 | 13 | **(MỚI 2026-10-13)** Rà soát BE (HEAD `6a4e0dc`): `getAttendanceSummary` tải toàn bộ log + hydrate cả `User`, `console.log` email ở login, N câu UPDATE rematch, đo số kết nối DB mới | Chưa đo (ước đoán: giảm hydrate JS ở route chấm công; 13B chỉ đo) | Rất thấp (13F/13B) – Thấp (13A-1) – Thấp–TB (13G) | Không | — |
+| 14 | **(MỚI 2026-10-13)** Rà soát BE (HEAD `32d823f`): endpoint chi tiết/ghi của Customer & Task tải thừa cột/quan hệ (User đầy đủ, deposits×notes, ghi chú toàn bộ) | Chưa đo (ước đoán: giảm hydrate JS + dung lượng response ở `GET /customers/:id`, `PATCH/DELETE /customers/:id`, `GET /periodic-tasks/:id`) | Rất thấp (14B-1) – Thấp–TB (14A, 14B-2…) | Không | — |
 | 8 | Đo lại sau cùng & chốt | — | — | — | 1–7, 9 |
 
-Làm tuần tự **1 → 2 → 3 → 4 → 6A → 5 → 7 → 9 → 11 → 12 → 13** (12: **12A → 12B → đo → 12C/12F nếu cần**; 13: **13F → 13A-1 → 13G → 13B → đo → 13A-2 nếu cần**) (9A có thể làm sớm vì độc lập, rủi ro thấp). Mục 2 và 3 đáng làm nhất (≈ 31% CPU của mẫu).
+Làm tuần tự **1 → 2 → 3 → 4 → 6A → 5 → 7 → 9 → 11 → 12 → 13 → 14** (12: **12A → 12B → đo → 12C/12F nếu cần**; 13: **13F → 13A-1 → 13G → 13B → đo → 13A-2 nếu cần**; 14: **14B-1 → 14A-1 → 14A-2 → 14B-2/3/4 → 14A-3/5 → 14A-4 → đo**) (9A có thể làm sớm vì độc lập, rủi ro thấp). Mục 2 và 3 đáng làm nhất (≈ 31% CPU của mẫu).
 
 ---
 
@@ -847,12 +848,132 @@ export class QuietBootLogger extends ConsoleLogger {
 
 ---
 
+## Mục 14 — Rà soát BE 2026-10-13 (HEAD `32d823f`): Customer & Task gọi THỪA field/quan hệ ở endpoint chi tiết + endpoint ghi (bổ sung)
+
+> **Cách rà:** chỉ đọc code thật (BE + grep FE để biết FE đọc field nào) và quét N+1 toàn BE. **Chưa chạy `tsc`/`jest`/đo CPU cho mục này;**
+> mọi mức "giảm bao nhiêu" là **ước đoán cho tới khi đo**. Số dòng code ghi theo HEAD `32d823f` — **đọc lại file thật trước khi sửa** (code đổi liên tục).
+> **Kết luận chung:** hai đường nóng (`customers.findAll`, `periodic-tasks.findAll`) và checklist items (`findPage`, `getSummary`, `attachChecklistProgressToList`)
+> **ĐÃ gọn** từ các đợt trước. Phần thừa nằm ở **endpoint chi tiết và endpoint ghi**, nơi vẫn dùng `leftJoinAndSelect`/`relations` User đầy đủ.
+> **Điểm chung (đã xác minh):** BE KHÔNG có `ClassSerializerInterceptor`/`@Exclude`/`instanceToPlain` (grep `src/`). `password` và `hashedRefreshToken` là `select:false`,
+> nhưng mọi cột User còn lại (email, phone, `employeeCode`, `zkDeviceUserId`, `annualLeaveBalance`/`annualLeaveTotal`/`compensatoryLeaveBalance`, `lastLoginAt`, `role`, `isRootAdmin`…)
+> bị trả ra JSON mỗi khi join User đầy đủ. FE (grep `frontend/src`) chỉ đọc: Task → `primaryAssignee?.name`, `createdBy?.name`; Customer → `salesUser/marketingUser` `.id/.name/.role/.position.name`,
+> `createdBy.name`, note `createdByUser/updatedByUser` `.name/.fullName`. ⇒ vừa **tốn CPU hydrate**, vừa **lộ dữ liệu nhân sự** trong response (privacy) — thu hẹp cột giải quyết cả hai.
+> **Quy tắc chung của mục này (mỗi việc 1 commit riêng, theo quy tắc đầu file):**
+> 1. Thu hẹp bằng `leftJoin` + `addSelect([...])` (đúng mẫu đã dùng ở `periodic-tasks.findAll` ~dòng 508 và `customers.findAll` ~dòng 1050), giữ code cũ bằng comment `// [AGENT] OLD CODE`.
+> 2. **Trước khi bỏ field:** `grep` FE (kể cả `lib/types/*.types.ts`) + đọc code BE phía sau (audit snapshot, notification, `stripHiddenCustomerFields`) — **không bỏ field mà code sau hoặc FE đang đọc**; thiếu thì thêm vào `select`.
+> 3. Mỗi việc kèm spec **so sánh kết quả cũ/mới trên cùng bộ dữ liệu giả** (mẫu `zk-device.attendance-summary.spec.ts` của 13A-1: chạy 2 lần — hydrate đầy đủ vs chỉ cột trong `select` — rồi so; thử bỏ 1 field khỏi `select` phải làm test fail).
+> 4. Không migration; không đổi tên field/shape response mà FE đang dùng (chỉ **bớt** field FE không đọc, hoặc giữ `{id, name}` như list).
+> 5. Đo lại bằng `--solo` (xem 12I) trước/sau ở preview (`CPU_TIMING=true`), rồi **tắt cờ**.
+
+### 14A. Customer
+
+**14A-1. `CustomersService.findOne` (`customers.service.ts` ~1476–1493) — ưu tiên CAO NHẤT**
+- **Bằng chứng (đọc code):**
+  - 1 query `leftJoinAndSelect` ĐỒNG THỜI `customer.deposits` **và** `customer.notes` (2 quan hệ OneToMany cùng lúc) ⇒ số dòng thô = **D × N** (nạp tiền × ghi chú); TypeORM phải hydrate rồi khử trùng trong JS.
+  - Cùng query join **6 User đầy đủ**: `salesUser`, `marketingUser`, `createdBy`, `updatedBy`, `notes.createdByUser` (`noteCreator`), `notes.updatedByUser` (`noteUpdater`) — 2 cái sau nhân theo số ghi chú — cộng `position` của sales/marketing.
+  - **Tải TOÀN BỘ** deposits + notes (không `limit`), rồi sort trong JS.
+  - Caller: `GET /customers/:id` (controller ~dòng 412; FE `CustomerDetailDrawer`, `UtmCustomersModal`, `UtmStatsCustomersDrawer`) **và `update()` (~dòng 1955) và `remove()` (~dòng 2193)** ⇒ mỗi lần SỬA / đổi trạng thái / xoá khách đều kéo toàn bộ nạp tiền + ghi chú + User từng ghi chú, trong khi `update()` chỉ cần sales/marketing/phòng ban để so sánh và ghi audit.
+  - FE `CustomerDetailDrawer` chỉ dùng `customer.deposits.length` cho nhãn tab "Nạp tiền (n)"; lịch sử nạp lấy qua `getCustomerDeposits` riêng (`getDeposits`, `limit(5)`). Drawer còn gọi lại cả `getCustomer` sau MỖI lần thêm ghi chú và nạp tiền (`handleNoteAdded`, `handleDepositSuccess`).
+- **Việc làm (tách thành 2 hàm, chọn tên theo code hiện có):**
+  - [ ] **(a) Bản nhẹ cho thao tác ghi** (vd `findForMutation`): chỉ `customer` + `salesUser`/`marketingUser`/`department` (và `position` nếu `buildCustomerAuditSnapshot`/notification đọc) với cột tối thiểu; **KHÔNG** deposits/notes. Dùng cho `update()` và `remove()`.
+        ⚠️ Phải đọc nốt `update()` (từ dòng ~1947 tới hết) và `buildCustomerAuditSnapshot()` để liệt kê CHÍNH XÁC field đọc; `update()` còn gán thẳng `customer.salesUser = …` rồi `save()` — kiểm `save()` trên entity KHÔNG nạp `deposits/notes` vẫn đúng (không xoá nhầm quan hệ chưa nạp).
+  - [ ] **(b) Bản detail** (`GET /customers/:id`): User chỉ `id`,`name`,`role` (+ `position.id/name`); **deposits → chỉ trả số đếm** (field mới, vd `depositCount`; **grep FE xác nhận** `CustomerDetailDrawer.tsx:189`, `customer.types.ts:149`, `CustomerInfoTab`, `CustomerForm`, 3 chỗ gọi `getCustomer`);
+        **notes → truy vấn riêng** (không join cùng query với deposits) hoặc 2 query song song; `note.createdByUser/updatedByUser` chỉ `id`,`name`.
+  - [ ] **Quyết định cần chủ dự án:** nhãn tab "Nạp tiền (n)" cần số đếm đúng ⇒ thêm `depositCount` (1 `COUNT`) hay giữ `deposits` đầy đủ chỉ ở detail? (Khuyến nghị: `depositCount`.)
+  - [ ] Giữ nguyên `UiVisibility` (`stripHiddenCustomerFields` chạy SAU khi gán `activeAssignees` — xem comment hiện có) và `activeAssignees` (query riêng ~dòng 1526, đang join `assignedTo.position` đầy đủ → cũng thu hẹp `id,name,position`).
+- **Test (jest):** spec mới so sánh cũ/mới cho detail (field FE đọc giống hệt); `update()`/`remove()` vẫn ghi audit + notify đúng `oldData`; `customers.service.spec.ts` hiện có phải vẫn xanh; thử bỏ 1 field khỏi `select` → test fail.
+- **Đo:** `GET /customers/:id` và `PATCH /customers/:id` TB/p95 trước/sau (`--solo`), kịch bản: mở Drawer khách có nhiều note/deposit, thêm 3 ghi chú, đổi trạng thái, sửa khách.
+- **Rủi ro:** thấp–TB (đụng ghi + audit). **Rollback:** khôi phục `leftJoinAndSelect` từ comment `OLD CODE`; revert commit.
+
+**14A-2. `attachRecentNotes` (`customers.service.ts` ~2554; gọi từ `getUnassigned` ~2696, `getAssigned` ~2880) và bản inline ở `findAll` (~1262–1300)**
+- **Bằng chứng:** tải **TOÀN BỘ** ghi chú (kể cả cột `note` kiểu TEXT) của MỌI khách trong trang rồi mới giữ 5 dòng/khách bằng JS (`MAX_RECENT_NOTES = 5`). Chỉ dùng `id`,`note`,`createdAt`,`createdBy.name`.
+  - Bản **private** (`attachRecentNotes`, trang Chia data) vẫn `leftJoinAndSelect('note.createdByUser')` **User đầy đủ**; bản **inline ở `findAll`** đã thu hẹp (`leftJoin` + `addSelect(['noteCreator.id','noteCreator.name'])`) ⇒ **hai bản trùng nhau và đã lệch**.
+  - Comment cũ giải thích "tránh window function (ROW_NUMBER) của riêng MySQL 8+" — **production là MySQL 8.4.8** (xác nhận 2026-10-13) nên lý do đó không còn với prod.
+- **Việc làm:**
+  - [ ] Gộp thành **1 helper dùng chung** (findAll + getUnassigned + getAssigned) — thu hẹp User về `id,name`, bỏ bản trùng (giữ bản cũ bằng comment `OLD CODE`).
+  - [ ] Giới hạn **top-5/khách ngay trong SQL** (`ROW_NUMBER() OVER (PARTITION BY customer_id ORDER BY created_at DESC)` hoặc truy vấn con tương đương) — ⚠️ **kiểm tương thích** dev/staging/CI có thể dùng MariaDB/MySQL cũ: nếu có môi trường không hỗ trợ ⇒ giữ fallback JS, hoặc chỉ thu hẹp cột (an toàn) và để top-N-trong-SQL làm bước riêng.
+  - [ ] (Tuỳ chọn) cắt độ dài `note` trả ra danh sách nếu FE chỉ hiển thị tóm tắt — **grep FE cột "Ghi chú gần nhất"** trước; không cắt nếu FE hiển thị đủ.
+- **Test:** spec cũ/mới: cùng bộ note (nhiều hơn 5/khách, nhiều khách, khách 0 note, note cùng giây) → `recentNotes` giống hệt (thứ tự + 5 dòng); tên người tạo đúng.
+- **Rủi ro:** thấp (thu hẹp cột) / TB (top-N trong SQL, phụ thuộc phiên bản DB). **Rollback:** khôi phục bản cũ từ comment.
+
+**14A-3. `checkDuplicateContact` (`customers.service.ts` ~442–463) + `buildDuplicateMatchInfo` (~487)**
+- **Bằng chứng:** 2 truy vấn **tuần tự** (SĐT, rồi Email), mỗi truy vấn `getOne()` với `leftJoinAndSelect('customer.createdBy')` + `leftJoinAndSelect('customer.salesUser')` (**Customer đầy đủ + 2 User đầy đủ**), trong khi kết quả chỉ gồm `creatorName`, `salesUserName`, `groupNames` (đã cố ý "bỏ id/SĐT/Email/note").
+- **Việc làm:**
+  - [ ] `leftJoin` + `select` chỉ `customer.id`, `createdBy.id/name`, `salesUser.id/name` (và cột mà `buildDuplicateMatchInfo` thật sự đọc — đọc hàm trước).
+  - [ ] Khi có CẢ SĐT và Email: chạy 2 truy vấn **song song** (`Promise.all`) — chỉ làm nếu đo thấy wall time đáng kể (pool `connectionLimit: 3`); mặc định chỉ thu hẹp cột.
+- **Test:** trả cùng `phoneMatch/emailMatch` trên bộ dữ liệu giả (kể cả `excludeCustomerId`, email khác hoa/thường).
+- **Rủi ro:** rất thấp.
+
+**14A-4. Danh sách phụ: `getUnassigned` (~2601), `getAssigned` (~2745), `getTrash` (~3510), `getInvalidDataReport` (~3794), `getDuplicateContactReport` (~4155)**
+- **Bằng chứng:** đều `leftJoinAndSelect` 2–3 User đầy đủ (`salesUser`, `marketingUser`/`updatedBy`, `createdBy`, `deletedBy` ở trash); có phân trang nên mức **vừa**. `getAssigned` ~2860 còn join `assignedTo.position` đầy đủ.
+- **Việc làm:**
+  - [ ] Với từng hàm: `grep` FE trang tương ứng (`chia-data`, `trash-can`, báo cáo dữ liệu lỗi/trùng) → liệt kê field User thật sự đọc (lưu ý audit tooltip `fullName`/`name` — `SKILL_NEXTJS_FRONTEND.md` mục 14; entity User chỉ có `name`, FE có fallback `fullName`) → thu hẹp.
+  - [ ] 1 commit/hàm để rollback độc lập. Làm sau 14A-1/14A-2 (lợi ích nhỏ hơn).
+- **Rủi ro:** thấp, nhưng mỗi trang FE đọc field khác nhau → **bắt buộc grep từng trang**, không áp 1 danh sách chung.
+
+**14A-5. Mức nhỏ (gom 1 commit nếu muốn)**
+- [ ] `createDeposit` (~1822): `customersRepository.findOne({ where: { id, deletedAt: IsNull() } })` chỉ để kiểm tra tồn tại — có vẻ **thừa** vì `assertCustomerAccessible()` ngay trước đã kiểm (đọc nó trước, xác nhận có lọc `deletedAt`) ⇒ bỏ 1 round-trip.
+- [ ] `createNote` (~1642) trả lại `notesRepository.findOne({ relations: ['createdByUser'] })` (User đầy đủ) — chỉ cần `id,name` (FE `handleNoteAdded` dùng `createdByUser` hoặc fallback currentUser → kiểm FE trước).
+- [ ] `getDeposits` (~1879) `leftJoinAndSelect('deposit.createdBy')` User đầy đủ, `limit(5)` — thu hẹp `id,name`.
+- [ ] `updateNote` (~1783), `updateDepositNote` (~1923): `relations: [...]` User đầy đủ — thu hẹp nếu response FE chỉ cần tên.
+
+### 14B. Task (Công việc định kỳ)
+
+**14B-1. `GET /periodic-tasks/:id/audit-logs` — cổng gác quá nặng (`periodic-tasks.controller.ts` ~dòng 561) — LÀM ĐẦU TIÊN (rủi ro ≈ 0)**
+- **Bằng chứng:** `getAuditLogs` gọi `await this.periodicTasksService.findOne(...)` (5 `leftJoinAndSelect`: status, primaryAssignee, department, createdBy, updatedBy — **User đầy đủ ×3**) **chỉ để** trả 404 khi ngoài phạm vi; kết quả bị bỏ. `assertCanView()` (siêu nhẹ, chỉ `task.id` + `applyViewFilter`) **đã có sẵn** và đã được dùng ở checklist/links/customers/secondary-assignees (các `OLD CODE` ở đó).
+- **Việc làm:**
+  - [ ] Đổi thành `await this.periodicTasksService.assertCanView(id, user.id, user.role, scope)`; giữ dòng cũ bằng comment `[AGENT] OLD CODE`; cập nhật comment "1 cổng gác" cho khớp.
+  - [ ] Test: `periodic-tasks.controller.spec.ts` — Task ngoài scope vẫn 404 và **không** gọi `getLogsForTask`; trong scope gọi đúng 1 lần `assertCanView`, **không** gọi `findOne`.
+- **Rủi ro:** rất thấp. **Rollback:** khôi phục dòng `findOne`.
+
+**14B-2. `PeriodicTasksService.findOne` (`periodic-tasks.service.ts` ~574–578)**
+- **Bằng chứng:** join `primaryAssignee`, `createdBy`, `updatedBy` **User đầy đủ**; FE chỉ đọc `primaryAssignee?.name`, `createdBy?.name`. Bản list (`findAll` ~508) **đã** thu hẹp `id,name` ⇒ chi tiết và list **không nhất quán**.
+  Caller: `GET /:id` (controller ~dòng 243) **và** `update` (~766), `lock` (~979), `markOverdue` (~1026), `unmarkOverdue` (~1050), `unlock` (~1064), `remove` (~1102).
+- **Việc làm:**
+  - [ ] Thu hẹp 3 User về `id,name` ở `findOne` (đúng mẫu `findAll`). ⚠️ **Trước khi làm, đọc** `buildAuditSnapshot()`, `assertEditableWhenLocked()`, `emitTaskNotification`/`notifyTaskSafely` và các nơi dùng `task.primaryAssignee`/`task.createdBy` (vd `getSecondaryAssigneeIds`, comment ~dòng 798) để chắc **không đọc `email`/field khác của User**; nếu có → thêm field đó vào `select` thay vì bỏ.
+  - [ ] Các mutation `lock/unlock/markOverdue/unmarkOverdue/remove` đang `save(task)` trên entity đã join: cân nhắc bản **chỉ cột Task + `status`** (không join User) nếu phía sau không đọc User (đọc từng hàm; `unlock` có notify — kiểm `emitTaskNotification` đọc gì). Tách commit riêng, làm sau khi thu hẹp ở trên đã xanh.
+- **Test:** `GET /:id` còn đủ `id/name`; `update` ghi audit đúng tên người phụ trách cũ/mới; payload notification không đổi.
+- **Rủi ro:** thấp–TB (đụng audit + notify). **Rollback:** khôi phục `leftJoinAndSelect`.
+
+**14B-3. `queryAssigneeUsers` (`periodic-task-secondary-assignees.service.ts` ~36–42) — shape không nhất quán**
+- **Bằng chứng:** `secondaryRepo.find({ relations: ['user'] })` ⇒ trả **User đầy đủ**; dùng cho `GET /:id` (`attachSecondaryAssignees`, controller ~dòng 249) và response `addSecondaryAssignee`. Trong khi `attachSecondaryAssigneesToList` (list) chỉ trả `{id, name}`. FE chỉ cần `id,name`.
+- **Việc làm:**
+  - [ ] `queryAssigneeUsers` → `createQueryBuilder` + `leftJoin` + `select(['sa.id','sa.createdAt','user.id','user.name'])`, trả `{id,name}[]` (cùng shape list). **Grep mọi nơi dùng `queryAssigneeUsers`** — nếu có chỗ cần `User` thật (vd tạo thông báo) thì chỉ thu hẹp ở nhánh trả response.
+  - [ ] Test: shape `secondaryAssignees` ở detail = shape ở list.
+- **Rủi ro:** thấp.
+
+**14B-4. Mức vừa/nhỏ**
+- [ ] `getChildren` (`periodic-task-links.service.ts` ~206) và `getParents` (~396): `leftJoinAndSelect('task.primaryAssignee')` User đầy đủ (+ `status`, `department`) — chỉ cần `id,name`. **TaskLinksModal gọi thường xuyên** (xem Mục 3) ⇒ đáng làm cùng 14B-2. Grep `TaskLinksModal`/`LinkedTasks*` để biết field FE đọc.
+- [ ] Thùng rác (`periodic-task-trash.service.ts` ~44–47): 4 join (`status`, `primaryAssignee`, `department`, `createdBy`) đầy đủ — thu hẹp `id,name` (trang ít dùng ⇒ ưu tiên thấp).
+- [ ] `periodic-task-performance.service.ts` ~679, ~780 (`relations: ['status','primaryAssignee','department']`) và ~889 (3 `leftJoinAndSelect`): thu hẹp User về `id,name` **sau khi** đọc nốt phần dùng kết quả. ⚠️ ~889 có `skip/take` + join (comment đã ghi lý do) — **giữ nguyên cấu trúc phân trang**, chỉ đổi cột.
+- [ ] `periodic-task-audit.service.ts` ~136/178/251 (`leftJoinAndSelect('log.user')`): thu hẹp `user.id,user.name` — FE audit tooltip có thể đọc `fullName`/`name` (SKILL_NEXTJS_FRONTEND mục 14) ⇒ grep trước.
+
+### 14C. Vấn đề CHUNG (quyết định riêng, không làm lẻ từng endpoint)
+- [ ] **Lớp bảo vệ mặc định ở tầng response:** vì mọi `leftJoinAndSelect` User đều lộ cột nhân sự, cân nhắc 1 trong 2 hướng — **(i)** giữ cách hiện tại (thu hẹp tay từng join, đã thành quy ước ở `findAll`) và **ghi vào `SKILL_NESTJS_BACKEND.md`** quy ước *"join User phải `leftJoin` + `addSelect(['x.id','x.name'])`; cấm `leftJoinAndSelect` User / `relations: [..User..]` ở endpoint trả JSON cho client"*; hoặc **(ii)** đánh dấu cột nhạy cảm của `User` (`email`, `phone`, `annual*`, `compensatory*`, `lastLoginAt`, `employeeCode`, `zkDeviceUserId`) `select: false` như `password` — ⚠️ (ii) **ảnh hưởng RẤT NHIỀU chỗ** đang đọc các cột này (`users/me`, nghỉ phép, đăng nhập, FE profile…) nên **KHÔNG làm** nếu chưa lập bảng "ai đọc cột nào"; khuyến nghị **(i)**.
+- [ ] (Tuỳ chọn) 1 test grep-đơn-giản trong CI cảnh báo `leftJoinAndSelect` User mới ở controller trả JSON (danh sách ngoại lệ rõ ràng) — chỉ làm nếu chủ dự án muốn chống tái phát.
+
+### 14D. Đã rà, KHÔNG cần làm (ghi nhận để người sau không kiểm lại)
+- **Checklist items** (`periodic-task-checklist-items.service.ts`): `findPage` phân trang + `getChecklistSummaryForView` COUNT/SUM gộp 1 truy vấn, `attachChecklistProgressToList` dùng `getRawMany` — **đã gọn**.
+- **`customers.findAll` / `periodic-tasks.findAll`:** đã thu hẹp User (xem comment `OLD CODE` ~1050 / ~501), `COUNT` tách riêng; riêng phần ghi chú gần nhất xem 14A-2.
+- **N+1 toàn BE** (quét tự động `await` DB trong vòng lặp, loại spec/migration/seed): chỉ còn `periodic-task-reminders.service.ts:132` (cron nhắc việc — ngoài đường nóng) và `leave-requests.service.ts:260` (kiểm dung lượng ≤ vài file đính kèm). **Không đáng sửa.**
+- `customers.getDeposits` đã `limit(5)`.
+
+### 14E. Thứ tự & tiêu chí hoàn thành
+1. **14B-1** (≈ 5 phút, rủi ro ≈ 0) → 2. **14A-1** (lợi ích lớn nhất; cần chốt `depositCount`) → 3. **14A-2** → 4. **14B-2 + 14B-3 + 14B-4 (getChildren/getParents)** → 5. **14A-3**, **14A-5** → 6. **14A-4**, phần còn lại 14B-4 → 7. **14C** (quy ước vào SKILL, không code) → deploy preview → đo (`--solo`).
+- [ ] Mỗi mục: `tsc --noEmit` + `nest build` + `jest` xanh (dán số thật), **1 commit riêng**, entry `WORKFLOW_LOG.md` (append).
+- [ ] **Đo (preview, `CPU_TIMING=true` ~30 phút):** TB/p95 `GET /customers/:id`, `PATCH /customers/:id`, `GET /customers` (14A-2), `GET /customers/check-duplicate`, `GET /periodic-tasks/:id`, `GET /periodic-tasks/:id/audit-logs`, `GET /periodic-tasks/:id/children|parents`; **kèm kích thước body response** (`curl -w '%{size_download}'`) trước/sau vì lợi ích lớn ở đây là JSON nhỏ hơn + ít field User.
+- [ ] Tiêu chí: response FE-đọc-được giống hệt (spec so sánh); `GET /customers/:id` không còn tích D×N dòng; các route đã sửa không còn trả `email/phone/annual*` của User khác; ghi kết quả "đạt/không đạt + lý do" vào `WORKFLOW_LOG.md`.
+- [ ] Tắt `CPU_TIMING` sau khi đo. **Không** chạy gì lên DB production; **không** có migration.
+
+---
+
 ## Mục 8 — Đo lại & chốt
 
 - [ ] Sau mỗi mục (2, 3, 4, 6A, 5, 9): thu log 30 phút, chạy script, **so với baseline Mục 0** theo cùng kịch bản.
 - [ ] Sau cùng thu log 1–2 giờ (≥ 200 request), lập bảng "Trước → Sau" cho 6 route đầu và ghi vào `WORKFLOW_LOG.md`.
 - [ ] Sau Mục 12: thu log `[BootTiming]` + đếm số cold start/giờ; so với baseline ở 12.0 (6 đợt/28 phút, 3,4–4,6 s, 15/779 request > 2 s).
 - [ ] Sau Mục 13: đo TB/p95 `GET /zk-device/attendance-summary` trước/sau (dùng `--solo`) và số "kết nối DB mới/giờ" (13B); ghi kết luận có/không đổi pool vào `WORKFLOW_LOG.md`.
+- [ ] Sau Mục 14: đo TB/p95 + kích thước body của `GET/PATCH /customers/:id`, `GET /customers`, `GET /periodic-tasks/:id` (+ `/audit-logs`, `/children`, `/parents`) trước/sau (`--solo`); ghi kết quả vào `WORKFLOW_LOG.md`.
 - [ ] **Tắt `CPU_TIMING=true`** trên Vercel sau khi đo (ghi log cũng tốn CPU).
 - [ ] Mục nào không đạt tiêu chí: ghi rõ lý do + quyết định (giữ/revert/làm tiếp).
 
@@ -893,4 +1014,9 @@ export class QuietBootLogger extends ConsoleLogger {
 | 13A-2 | Kết quả lệch ở ranh giới cửa sổ tuần (lọc quẹt trùng xuyên ngày) → sai giờ vào/ra | Revert về tải toàn bộ; chỉ làm khi spec biên đã xanh |
 | 13G | Map nhầm nhân viên khi 2 user cùng mã máy / user đã xoá mềm bị gán | Khôi phục vòng lặp (comment `[AGENT] OLD CODE`); chạy lại `rematch` |
 | 13B | Quên tắt `CPU_TIMING` → tốn thêm CPU ghi log | Tắt `CPU_TIMING`; revert commit |
+| 14A-1 | `update()`/`remove()` mất dữ liệu quan hệ hoặc audit thiếu field (bản nhẹ không nạp đủ); FE mất số đếm "Nạp tiền (n)" | Khôi phục `leftJoinAndSelect` từ `OLD CODE`; revert commit |
+| 14A-2 | `recentNotes` lệch (thứ tự/số dòng) hoặc lỗi window function ở DB cũ | Khôi phục vòng lọc JS (giữ comment `OLD CODE`) |
+| 14A-3/4/5 | Trang FE thiếu tên người tạo/sales do bỏ field đang đọc | Thêm field vào `select`; revert commit |
+| 14B-1 | Task ngoài scope không còn 404 ở `audit-logs` | Khôi phục `findOne` |
+| 14B-2/3/4 | Audit/notification Task thiếu tên người phụ trách; `secondaryAssignees` đổi shape | Thêm field vào `select`; revert commit |
 | 12F | Dữ liệu nền cũ/thiếu quyền do gộp sai; FE mới + BE cũ → 404 | FE tự quay về endpoint riêng; revert FE; deploy BE trước FE |

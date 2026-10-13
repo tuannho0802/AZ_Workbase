@@ -7460,3 +7460,20 @@ Now [deploy]
 > Đã chạy thật: `tsc --noEmit` 0 lỗi, `nest build` OK, `jest` 123 suite / 1958 test pass. 13G: chủ dự án đã chạy trên MySQL 8.4.8 production — JOIN `COLLATE utf8mb4_unicode_ci` không lỗi, 4256 dòng khớp, không có `zk_device_user_id` trùng giữa user đang hoạt động. CÒN LẠI: deploy preview, bật `CPU_TIMING=true` 30–60 phút, đếm số dòng `[DbConnTiming]`/giờ + so TB/p95 `GET /zk-device/attendance-summary` trước/sau (13A-1). Nếu số kết nối mới/giờ cao ⇒ mới bàn nới `idleTimeout`/`maxIdle` (đối chiếu Aiven, theo dõi ECONNRESET); nếu thấp ⇒ ghi kết luận "không đáng". Rollback: revert commit hoặc tắt `CPU_TIMING`.
 
 ---
+
+## [2026-10-13] | PLAN CPU Mục 14 — Rà soát BE: Customer & Task gọi thừa field/quan hệ (CHỈ GHI PLAN, chưa sửa code) | [Status: Success]
+
+**Actor:** Agent
+**Files Changed:**
+- `AZ-Workbase Skills/PLAN_CPU_OPTIMIZATION_ROUND2.md` — thêm Mục 14 (14A Customer, 14B Task, 14C chung, 14D đã rà không cần làm, 14E thứ tự/tiêu chí); cập nhật bảng tổng quan, dòng thứ tự, Mục 8 (đo lại), Phụ lục B (rủi ro/rollback)
+
+**Root Cause (nếu là bug fix):**
+> Không phải bug. Đọc code HEAD `32d823f`: `customers.findOne` join đồng thời `deposits` + `notes` (D×N dòng) + 6 User đầy đủ và được `update()`/`remove()` dùng lại; `attachRecentNotes` tải toàn bộ ghi chú rồi cắt 5/khách bằng JS; `checkDuplicateContact` tải Customer + 2 User đầy đủ chỉ để lấy tên; `GET /periodic-tasks/:id/audit-logs` gọi `findOne` 5 join chỉ làm cổng gác (đã có `assertCanView`); `findOne` Task + `queryAssigneeUsers` trả User đầy đủ trong khi FE chỉ đọc `id/name`. BE không có serializer nên cột nhân sự (email/phone/số dư phép…) lộ ra response.
+
+**Solution:**
+> Chỉ ghi kế hoạch có thứ tự: 14B-1 → 14A-1 → 14A-2 → 14B-2/3/4 → 14A-3/5 → 14A-4 → 14C → đo. Mỗi việc 1 commit, spec so sánh cũ/mới, giữ `OLD CODE`.
+
+**Notes:**
+> CHƯA chạy `tsc`/`jest`/đo CPU cho mục này (chỉ đọc code + grep FE); mọi mức giảm là ước đoán. Quét N+1 toàn BE: chỉ còn cron nhắc việc và upload đính kèm nghỉ phép (không đáng sửa). Cần chủ dự án chốt: thêm `depositCount` cho nhãn tab "Nạp tiền (n)" (14A-1) và hướng 14C (i) quy ước vs (ii) `select:false`. Đã xác nhận trên HEAD: `tsc --noEmit` 0 lỗi, `jest` 123 suite / 1958 test pass (trước khi sửa plan).
+
+---
