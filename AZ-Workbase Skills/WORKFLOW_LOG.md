@@ -7699,3 +7699,18 @@ Now [deploy]
 > - Chưa chạy trên DB thật: SQL aggregation (MySQL) mới được kiểm bằng tsc + test hàm thuần, cần thử trên preview.
 
 ---
+
+## [2026-10-13] | Thống kê khách hàng: ẩn/hiện (thu gọn) + nút "Lọc trạng thái này" | [Status: Success]
+
+**Actor:** Agent
+**Files Changed:**
+- `frontend/src/components/customers/CustomerPeriodStats.tsx` — nút "Ẩn/Hiện chi tiết" (thu gọn = 1 dòng tóm tắt Nhập mới/Đã chốt/Tiền nạp; nhớ lựa chọn qua `localStorage` key `customers:period-stats-open`, bọc try/catch); mỗi status có nút "Lọc trạng thái này" / "Bỏ lọc"
+- `frontend/src/components/customers/CustomerPeriodStats.test.tsx` — thêm 4 test (thu gọn/hiện, nhớ lựa chọn, hideDeposit, nút lọc)
+- `frontend/src/app/(dashboard)/customers/page.tsx` — `handleFilterFromPeriodStats`, truyền `activeStatus`/`onFilterStatus`, thêm `id="customer-list-card"` để cuộn tới bảng
+
+**Notes:**
+> - Nút lọc áp CẢ `status` + `dateFrom/dateTo` = khoảng "Ngày nhập" của kỳ đang xem, để số dòng ở bảng KHỚP số trên thống kê (thống kê đếm theo `inputDate`). Hệ quả: thẻ "Tổng nạp" và cột "Nạp tiền" cũng đổi theo khoảng ngày đó (đúng hành vi bộ lọc ngày sẵn có). "Bỏ lọc" xoá cả status lẫn khoảng ngày.
+> - Chỉ lọc 1 status mỗi lần (khớp bộ lọc `status` đơn của bảng). Chỉ sửa frontend, không đổi BE/DB.
+> - Thu gọn + `hideDeposit` (`tab:deposits`): dòng tóm tắt không hiện tiền nạp.
+
+---

@@ -902,6 +902,16 @@ function CustomersPageContent() {
     if (newFilters.page) setPage(newFilters.page);
   };
 
+  // Nút "Lọc trạng thái này" ở khối Thống kê: áp status + đúng khoảng "Ngày nhập" của kỳ đang xem để số dòng ở bảng
+  // KHỚP số trên thống kê (thống kê đếm theo inputDate). Bỏ lọc thì xoá cả status lẫn khoảng ngày đó.
+  const handleFilterFromPeriodStats = (f: { status?: string; statusName?: string; dateFrom?: string; dateTo?: string }) => {
+    handleFiltersChange({ status: f.status, dateFrom: f.dateFrom, dateTo: f.dateTo, page: 1 });
+    if (f.status) {
+      message.info(`Đã lọc trạng thái "${f.statusName ?? f.status}" theo ngày nhập của kỳ đang xem`);
+      requestAnimationFrame(() => document.getElementById('customer-list-card')?.scrollIntoView({ behavior: 'smooth', block: 'start' }));
+    }
+  };
+
   const handleTableChange = (
     pagination: TablePaginationConfig,
     _filters: Record<string, FilterValue | null>,
@@ -1003,9 +1013,13 @@ function CustomersPageContent() {
         depositLabel={dateFrom || dateTo ? 'Tổng nạp (theo ngày lọc, USD)' : undefined}
     />
 
-    <CustomerPeriodStats hideDeposit={hideDepositsTab} />
+    <CustomerPeriodStats
+      hideDeposit={hideDepositsTab}
+      activeStatus={status}
+      onFilterStatus={handleFilterFromPeriodStats}
+    />
     
-    <Card title="Danh sách khách hàng" extra={renderToolbar()}>
+    <Card id="customer-list-card" title="Danh sách khách hàng" extra={renderToolbar()}>
       {isMobile ? (
         <Collapse 
           ghost 

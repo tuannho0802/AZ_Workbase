@@ -1,9 +1,9 @@
 'use client';
 
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import dynamic from 'next/dynamic';
-import { Card, Col, DatePicker, Row, Segmented, Space, Statistic, Tag, Typography } from 'antd';
-import { ArrowDownOutlined, ArrowUpOutlined } from '@ant-design/icons';
+import { Button, Card, Col, DatePicker, Row, Segmented, Space, Statistic, Tag, Typography } from 'antd';
+import { ArrowDownOutlined, ArrowUpOutlined, CloseCircleOutlined, DownOutlined, FilterOutlined, UpOutlined } from '@ant-design/icons';
 import dayjs, { Dayjs } from 'dayjs';
 import { useCustomerPeriodStats } from '@/lib/hooks/useCustomerStats';
 import type { CustomerStatsPeriod } from '@/lib/types/customer.types';
@@ -41,14 +41,47 @@ function Delta({ now, prev, money }: { now: number; prev: number; money?: boolea
   );
 }
 
+/** Ghi nhớ ẩn/hiện khối thống kê (chỉ là tuỳ chọn giao diện, không nhạy cảm). Luôn bọc try/catch: storage có thể bị chặn. */
+const OPEN_STORAGE_KEY = 'customers:period-stats-open';
+
+/** Bộ lọc mà nút "Lọc trạng thái này" áp lên bảng khách: đúng status + đúng khoảng Ngày nhập của kỳ đang xem. */
+export interface PeriodStatusFilter {
+  status?: string;
+  statusName?: string;
+  dateFrom?: string;
+  dateTo?: string;
+}
+
 interface CustomerPeriodStatsProps {
   /** Ẩn mọi số tiền nạp khi Admin đã ẩn `tab:deposits` (cùng cờ với thẻ "Tổng nạp"/cột "Nạp tiền"). */
   hideDeposit?: boolean;
+  /** Status đang được lọc ở bảng (để đánh dấu + đổi nút thành "Bỏ lọc"). */
+  activeStatus?: string;
+  /** Có truyền thì mỗi status hiện nút "Lọc trạng thái này". */
+  onFilterStatus?: (filter: PeriodStatusFilter) => void;
 }
 
-export const CustomerPeriodStats = ({ hideDeposit }: CustomerPeriodStatsProps) => {
+export const CustomerPeriodStats = ({ hideDeposit, activeStatus, onFilterStatus }: CustomerPeriodStatsProps) => {
   const [period, setPeriod] = useState<CustomerStatsPeriod>('day');
   const [anchor, setAnchor] = useState<Dayjs>(dayjs());
+  // Mặc định mở đầy đủ; đọc tuỳ chọn đã lưu SAU khi mount để không lệch HTML server/client (SSR).
+  const [open, setOpen] = useState(true);
+  useEffect(() => {
+    try {
+      if (window.localStorage.getItem(OPEN_STORAGE_KEY) === '0') setOpen(false);
+    } catch {
+      /* storage bị chặn -> giữ mặc định */
+    }
+  }, []);
+  const toggleOpen = () => {
+    const next = !open;
+    setOpen(next);
+    try {
+      window.localStorage.setItem(OPEN_STORAGE_KEY, next ? '1' : '0');
+    } catch {
+      /* bỏ qua */
+    }
+  };
   const { data, isLoading, isFetching } = useCustomerPeriodStats(period, anchor.format('YYYY-MM-DD'));
 
   const picker = period === 'month' ? 'month' : period === 'year' ? 'year' : 'date';
@@ -118,6 +151,14 @@ export const CustomerPeriodStats = ({ hideDeposit }: CustomerPeriodStatsProps) =
             disabledDate={(d) => d.isAfter(dayjs(), 'day')}
             onChange={(d) => d && setAnchor(d)}
           />
+          <Button
+            icon={open ? <UpOutlined /> : <DownOutlined />}
+            onClick={toggleOpen}
+            aria-expanded={open}
+            aria-label={open ? 'Ẩn chi tiết thống kê' : 'Hiện chi tiết thống kê'}
+          >
+            {open ? 'Ẩn chi tiết' : 'Hiện chi tiết'}
+          </Button>
         </Space>
       }
     >
@@ -126,6 +167,17 @@ export const CustomerPeriodStats = ({ hideDeposit }: CustomerPeriodStatsProps) =
         {period === 'week' && ' (Thứ Hai → Chủ Nhật)'}
       </Text>
 
+      {!open ? (
+        // Chế độ THU GỌN: chỉ 1 dòng tóm tắt các chỉ số chính của kỳ đang chọn.
+        <Space wrap size={[16, 8]} data-testid="period-stats-summary">
+          <Text>Nhập mới: <Text strong style={{ color: '#1677ff' }}>{cur?.input.entered ?? 0}</Text></Text>
+          <Text>Đã chốt: <Text strong style={{ color: '#52c41a' }}>{cur?.handled.closed ?? 0}</Text></Text>
+          {!hideDeposit && (
+            <Text>Tiền nạp: <Text strong style={{ color: '#faad14' }}>{fmtUsd(cur?.cash.amount ?? 0)}</Text></Text>
+          )}
+        </Space>
+      ) : (
+        <>
       <Row gutter={[16, 16]}>
         <Col xs={24} lg={hideDeposit ? 12 : 8}>
           {group(
@@ -169,13 +221,36 @@ export const CustomerPeriodStats = ({ hideDeposit }: CustomerPeriodStatsProps) =
 
       <div style={{ marginTop: 16 }}>
         <Text strong>Trạng thái hiện tại của khách nhập trong kỳ</Text>
-        <div style={{ marginTop: 8 }}>
-          {(data?.byStatus ?? []).map((s) => (
-            <Tag key={s.code} color={s.color ?? undefined} style={{ marginBottom: 6, opacity: s.count === 0 ? 0.45 : 1 }}>
-              {s.name}: <b>{s.count}</b>
-            </Tag>
-          ))}
-        </div>
+        <Row gutter={[12, 8]} style={{ marginTop: 8 }}>
+          {(data?.byStatus ?? []).map((st) => {
+            const isActive = !!activeStatus && activeStatus === st.code;
+            return (
+              <Col key={st.code} xs={24} md={12} lg={8}>
+                <Space style={{ width: '100%', justifyContent: 'space-between' }}>
+                  <Tag color={st.color ?? undefined} style={{ marginInlineEnd: 0, opacity: st.count === 0 ? 0.45 : 1 }}>
+                    {st.name}: <b>{st.count}</b>
+                  </Tag>
+                  {onFilterStatus &&
+                    (isActive ? (
+                      <Button size="small" type="link" icon={<CloseCircleOutlined />} onClick={() => onFilterStatus({ status: undefined, dateFrom: undefined, dateTo: undefined })}>
+                        Bỏ lọc
+                      </Button>
+                    ) : (
+                      <Button
+                        size="small"
+                        type="link"
+                        icon={<FilterOutlined />}
+                        disabled={st.count === 0}
+                        onClick={() => onFilterStatus({ status: st.code, statusName: st.name, dateFrom: data?.period.from, dateTo: data?.period.to })}
+                      >
+                        Lọc trạng thái này
+                      </Button>
+                    ))}
+                </Space>
+              </Col>
+            );
+          })}
+        </Row>
       </div>
 
       {period !== 'day' && (
@@ -206,6 +281,8 @@ export const CustomerPeriodStats = ({ hideDeposit }: CustomerPeriodStatsProps) =
             </Col>
           )}
         </Row>
+      )}
+        </>
       )}
     </Card>
   );

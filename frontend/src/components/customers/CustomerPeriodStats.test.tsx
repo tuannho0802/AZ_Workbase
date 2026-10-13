@@ -43,7 +43,10 @@ vi.mock('next/dynamic', () => ({ default: () => () => <div data-testid="chart" /
 import { CustomerPeriodStats } from './CustomerPeriodStats';
 
 describe('CustomerPeriodStats', () => {
-  beforeEach(() => hookSpy.mockClear());
+  beforeEach(() => {
+    hookSpy.mockClear();
+    window.localStorage.clear();
+  });
 
   it('mặc định kỳ Ngày + hiện đủ 3 giai đoạn Nhập/Xử lý/Nạp', () => {
     render(<CustomerPeriodStats />);
@@ -70,5 +73,52 @@ describe('CustomerPeriodStats', () => {
     expect(screen.queryByText('$2,500.00')).toBeNull();
     expect(screen.queryByText('Tổng nạp của nhóm này')).toBeNull();
     expect(screen.getByText('Khách nhập mới')).toBeInTheDocument();
+  });
+
+  it('Ẩn chi tiết -> chỉ còn dòng tóm tắt, Hiện chi tiết -> đầy đủ; nhớ lựa chọn', () => {
+    const { unmount } = render(<CustomerPeriodStats />);
+    expect(screen.queryByTestId('period-stats-summary')).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: /Ẩn chi tiết thống kê/ }));
+    const summary = screen.getByTestId('period-stats-summary');
+    expect(summary).toHaveTextContent('Nhập mới: 12');
+    expect(summary).toHaveTextContent('Đã chốt: 4');
+    expect(summary).toHaveTextContent('$2,500.00');
+    expect(screen.queryByText('Giai đoạn NHẬP')).toBeNull();
+    unmount();
+    // mở lại trang: vẫn thu gọn
+    render(<CustomerPeriodStats />);
+    expect(screen.getByTestId('period-stats-summary')).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: /Hiện chi tiết thống kê/ }));
+    expect(screen.getByText('Giai đoạn NHẬP')).toBeInTheDocument();
+  });
+
+  it('thu gọn + hideDeposit: tóm tắt không lộ tiền nạp', () => {
+    window.localStorage.setItem('customers:period-stats-open', '0');
+    render(<CustomerPeriodStats hideDeposit />);
+    const summary = screen.getByTestId('period-stats-summary');
+    expect(summary).not.toHaveTextContent('Tiền nạp');
+    expect(summary).not.toHaveTextContent('$');
+  });
+
+  it('"Lọc trạng thái này" gửi status + khoảng ngày của kỳ; đang lọc -> "Bỏ lọc"', () => {
+    const onFilter = vi.fn();
+    const { rerender } = render(<CustomerPeriodStats onFilterStatus={onFilter} />);
+    const buttons = screen.getAllByRole('button', { name: /Lọc trạng thái này/ });
+    expect(buttons).toHaveLength(2);
+    fireEvent.click(buttons[0]);
+    expect(onFilter).toHaveBeenCalledWith({
+      status: 'pending',
+      statusName: 'Chờ xử lý',
+      dateFrom: '2026-10-13',
+      dateTo: '2026-10-13',
+    });
+    rerender(<CustomerPeriodStats onFilterStatus={onFilter} activeStatus="pending" />);
+    fireEvent.click(screen.getByRole('button', { name: /Bỏ lọc/ }));
+    expect(onFilter).toHaveBeenLastCalledWith({ status: undefined, dateFrom: undefined, dateTo: undefined });
+  });
+
+  it('không truyền onFilterStatus -> không có nút lọc', () => {
+    render(<CustomerPeriodStats />);
+    expect(screen.queryByRole('button', { name: /Lọc trạng thái này/ })).toBeNull();
   });
 });
