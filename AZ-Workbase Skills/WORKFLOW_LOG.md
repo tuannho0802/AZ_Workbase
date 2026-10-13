@@ -7273,3 +7273,16 @@ Now [deploy]
 > Chủ dự án chấp nhận: lượt chấm công sau ~17:xx hôm đó có thể thiếu, đồng bộ bù sau. Hobby cron chỉ chính xác theo giờ (có thể trễ tới 59 phút) nên chọn mốc xa 18:45. auto-overdue chỉ phụ thuộc ngày VN (`todayVnStr`), không phụ thuộc giờ chạy. Cần deploy để Vercel nhận lịch mới.
 
 ---
+
+## [2026-10-13] | Lưu cache danh mục ít đổi xuống localStorage (F5 không gọi lại BE) | [Status: Success]
+
+**Actor:** Agent
+**Files Changed:**
+- `frontend/src/lib/query-persist.ts` (+ `.test.ts`, 8 test) — whitelist: departments, positions, roles/colors, customer-statuses, periodic-task-statuses, leave-types, media-sources, guides/list, my-permissions, users/me
+- `frontend/src/components/common/AntdAppProvider.tsx` — nạp cache lúc khởi tạo QueryClient + bật ghi (gộp 2s, ghi nốt khi ẩn/đóng tab)
+- `frontend/src/lib/stores/auth.store.ts` — xoá cache khi `logout`/`logoutLocal`
+
+**Notes:**
+> CỐ Ý KHÔNG lưu customers/periodic-tasks (đổi liên tục, nhiều người sửa, có SĐT/email khách -> không để PII ở localStorage). An toàn độ mới: dấu (refSig/permSig/epoch/nonce) đổi -> bỏ hết; không lưu query đã invalidate/đang tải; giữ updatedAt gốc; tối đa 2 giờ; khoá theo userId; tối đa 400KB. Cần xem thử trên trình duyệt: F5 xong tab Network không còn call danh mục; đổi vị trí/phòng ban ở máy khác -> sau poll tiếp theo UI cập nhật.
+
+---

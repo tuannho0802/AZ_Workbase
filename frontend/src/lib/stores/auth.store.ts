@@ -3,6 +3,7 @@ import { persist, createJSONStorage } from 'zustand/middleware';
 import Cookies from 'js-cookie';
 import { User } from '../types/auth.types';
 import axiosInstance from '../api/axios-instance';
+import { clearPersistedQueryCache } from '../query-persist';
 
 interface AuthState {
   user: User | null;
@@ -125,6 +126,7 @@ export const useAuthStore = create<AuthState>()(
             isAuthenticated: false,
           });
           setSessionCookie(false);
+          clearPersistedQueryCache(); // không để cache danh mục của user cũ lại trên máy
         }
       },
 
@@ -136,6 +138,7 @@ export const useAuthStore = create<AuthState>()(
           isAuthenticated: false,
         });
         setSessionCookie(false);
+        clearPersistedQueryCache();
       },
 
       setHydrated: (state) => {

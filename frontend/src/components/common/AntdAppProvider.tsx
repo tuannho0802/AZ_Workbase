@@ -3,7 +3,7 @@
 import { App } from 'antd';
 import type { MessageInstance } from 'antd/es/message/interface';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import dayjs from 'dayjs';
 import 'dayjs/locale/vi';
 
@@ -16,6 +16,8 @@ import 'dayjs/locale/vi';
 dayjs.locale('vi');
 
 import { shouldRetryQuery } from '@/lib/query-retry';
+import { hydratePersistedQueries, startQueryPersistence } from '@/lib/query-persist';
+import { useAuthStore } from '@/lib/stores/auth.store';
 
 let globalMessage: MessageInstance | undefined;
 
@@ -34,7 +36,9 @@ function AppInjector({ children }: { children: React.ReactNode }) {
 }
 
 export function AntdAppProvider({ children }: { children: React.ReactNode }) {
-  const [queryClient] = useState(() => new QueryClient({
+  // [AGENT] OLD CODE (giữ để rollback): const [queryClient] = useState(() => new QueryClient({ ... }));
+  // NEW: nạp sẵn danh mục ít đổi đã lưu ở localStorage (xem lib/query-persist.ts) để F5 không phải gọi lại BE.
+  const [queryClient] = useState(() => { const qc = new QueryClient({
     defaultOptions: {
       queries: {
         staleTime: 30000,        // Data được coi là fresh trong 30s
@@ -45,7 +49,15 @@ export function AntdAppProvider({ children }: { children: React.ReactNode }) {
         refetchOnWindowFocus: false,
       },
     },
-  }));
+  });
+    hydratePersistedQueries(qc, useAuthStore.getState().user?.id);
+    return qc;
+  });
+
+  useEffect(
+    () => startQueryPersistence(queryClient, () => useAuthStore.getState().user?.id),
+    [queryClient],
+  );
 
   return (
     <QueryClientProvider client={queryClient}>
