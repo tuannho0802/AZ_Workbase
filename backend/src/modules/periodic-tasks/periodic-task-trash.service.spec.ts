@@ -18,7 +18,7 @@ describe('PeriodicTaskTrashService', () => {
   deleteQb.execute = jest.fn();
 
   const listQb: any = {};
-  for (const m of ['withDeleted', 'leftJoinAndSelect', 'where', 'andWhere', 'orderBy', 'addOrderBy', 'skip', 'take', 'offset', 'limit']) {
+  for (const m of ['withDeleted', 'leftJoinAndSelect', 'leftJoin', 'addSelect', 'where', 'andWhere', 'orderBy', 'addOrderBy', 'skip', 'take', 'offset', 'limit']) {
     listQb[m] = jest.fn().mockReturnValue(listQb);
   }
   listQb.getManyAndCount = jest.fn();
@@ -54,6 +54,16 @@ describe('PeriodicTaskTrashService', () => {
       const res = await service.getTrash({ page: 1, limit: 20, search: ' A ' });
 
       expect(listQb.where).toHaveBeenCalledWith('task.deletedAt IS NOT NULL');
+      // [Plan CPU 14B-4] User chỉ id,name; status/department (bảng nhỏ) vẫn leftJoinAndSelect.
+      expect(listQb.leftJoin).toHaveBeenCalledWith('task.primaryAssignee', 'primaryAssignee');
+      expect(listQb.leftJoin).toHaveBeenCalledWith('task.createdBy', 'createdBy');
+      expect(listQb.addSelect).toHaveBeenCalledWith(['primaryAssignee.id', 'primaryAssignee.name', 'createdBy.id', 'createdBy.name']);
+      expect(listQb.leftJoinAndSelect).not.toHaveBeenCalledWith('task.primaryAssignee', 'primaryAssignee');
+      expect(listQb.leftJoinAndSelect).not.toHaveBeenCalledWith('task.createdBy', 'createdBy');
+      // Log người xoá: chỉ id/taskId/createdAt + user{id,name}, không lấy oldData/newData.
+      expect(mockAuditLogRepo.find).toHaveBeenCalledWith(
+        expect.objectContaining({ select: { id: true, taskId: true, createdAt: true, user: { id: true, name: true } } }),
+      );
       expect(listQb.andWhere).toHaveBeenCalledWith('task.title LIKE :search', { search: '%A%' });
       expect(res.total).toBe(1);
       expect(res.data[0].deletedBy).toEqual({ id: 9, name: 'Admin' });

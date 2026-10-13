@@ -462,6 +462,7 @@ describe('PeriodicTaskPerformanceService - grace period 7 ngày', () => {
         where: jest.fn().mockReturnThis(),
         andWhere: jest.fn().mockReturnThis(),
         leftJoinAndSelect: jest.fn().mockReturnThis(),
+        leftJoin: jest.fn().mockReturnThis(),
         // MỚI (fix lỗi 500 thật "ABS(DATEDIFF(task" alias was not found -
         // xem comment "BUG THẬT" trong `periodic-task-performance.service.ts`):
         // service đổi từ `orderBy(raw string chứa dấu '.')` sang
@@ -480,6 +481,23 @@ describe('PeriodicTaskPerformanceService - grace period 7 ngày', () => {
 
     const EMPLOYEE_USER = { id: 7, role: Role.EMPLOYEE, isRootAdmin: false, departmentId: 1 };
     const MANAGER_USER = { id: 3, role: Role.MANAGER, isRootAdmin: false, departmentId: 1 };
+
+    it('[Plan CPU 14B-4] primaryAssignee chỉ id,name; VẪN giữ offset/limit (không đổi sang skip/take)', async () => {
+      mockPermissionsService.hasPermission.mockResolvedValue({ allowed: true, scope: PermissionScope.ALL });
+      const primaryQb = makeEntityQb([]);
+      const secondaryQb = makeEntityQb([]);
+      mockTaskRepo.createQueryBuilder.mockReturnValueOnce(primaryQb).mockReturnValueOnce(secondaryQb);
+
+      await service.getUserTasks(42, {}, MANAGER_USER as any);
+
+      expect(primaryQb.leftJoin).toHaveBeenCalledWith('task.primaryAssignee', 'primaryAssignee');
+      expect(primaryQb.addSelect).toHaveBeenCalledWith(['primaryAssignee.id', 'primaryAssignee.name']);
+      expect(primaryQb.leftJoinAndSelect).not.toHaveBeenCalledWith('task.primaryAssignee', 'primaryAssignee');
+      expect(primaryQb.offset).toHaveBeenCalled();
+      expect(primaryQb.limit).toHaveBeenCalled();
+      expect(primaryQb.skip).not.toHaveBeenCalled();
+      expect(primaryQb.take).not.toHaveBeenCalled();
+    });
 
     it('scope=own, targetUserId KHÁC user.id -> ForbiddenException', async () => {
       mockPermissionsService.hasPermission.mockResolvedValue({ allowed: false, scope: null });
@@ -582,11 +600,16 @@ describe('PeriodicTaskPerformanceService - grace period 7 ngày', () => {
       addOrderBy: jest.fn().mockReturnThis(),
       getRawMany: jest.fn().mockResolvedValue(ids.map((id) => ({ id }))),
     });
+    const lightTasksQb = (ids: number[]) => {
+      const qb: any = {};
+      for (const m of ['leftJoinAndSelect', 'leftJoin', 'addSelect', 'where', 'orderBy']) qb[m] = jest.fn().mockReturnValue(qb);
+      qb.getMany = jest.fn().mockResolvedValue(ids.map((id) => ({ id, title: 'T' + id })));
+      return qb;
+    };
     const setupPrimary = (rows: any[], orderedIds: number[]) => {
       mockTaskRepo.createQueryBuilder.mockReturnValueOnce(makeQb(rows)).mockReturnValueOnce(orderQb(orderedIds));
-      (mockTaskRepo as any).find = jest.fn().mockImplementation(({ where }: any) =>
-        Promise.resolve(where.id.value.map((id: number) => ({ id, title: 'T' + id }))),
-      );
+      // [Plan CPU 14B-4] getMetricTasks nạp Task qua loadTasksLightUsers() (QB) thay vì taskRepo.find().
+      mockTaskRepo.createQueryBuilder.mockReturnValueOnce(lightTasksQb(orderedIds));
       (mockChecklistRepo as any).find = jest.fn().mockResolvedValue([
         { id: 1, taskId: 1, content: 'a', isDone: true, position: 0 },
         { id: 2, taskId: 1, content: 'b', isDone: false, position: 1 },
@@ -617,6 +640,37 @@ describe('PeriodicTaskPerformanceService - grace period 7 ngày', () => {
       expect(res.items[0].task.id).toBe(1);
     });
 
+    it('[Plan CPU 14B-4] nạp Task trang hiện tại: primaryAssignee chỉ id,name (leftJoin+addSelect), status/department vẫn leftJoinAndSelect', async () => {
+      jest.spyOn(dateVnUtil, 'todayVnStr').mockReturnValue('2026-09-24');
+      setupPrimary([row(1, 10, 'in_progress')], [1]);
+      const lightQb = lightTasksQb([1]);
+      // setupPrimary đã mockReturnValueOnce(lightTasksQb) -> ghi đè bằng qb ta giữ tham chiếu.
+      mockTaskRepo.createQueryBuilder.mockReset();
+      mockTaskRepo.createQueryBuilder
+        .mockReturnValueOnce(makeQb([row(1, 10, 'in_progress')]))
+        .mockReturnValueOnce(orderQb([1]))
+        .mockReturnValueOnce(lightQb);
+
+      await service.getMetricTasks({ metric: 'in_progress' } as any, ADMIN_USER as any);
+
+      expect(lightQb.leftJoin).toHaveBeenCalledWith('task.primaryAssignee', 'primaryAssignee');
+      expect(lightQb.addSelect).toHaveBeenCalledWith(['primaryAssignee.id', 'primaryAssignee.name']);
+      expect(lightQb.leftJoinAndSelect).not.toHaveBeenCalledWith('task.primaryAssignee', 'primaryAssignee');
+      expect(lightQb.leftJoinAndSelect).toHaveBeenCalledWith('task.status', 'status');
+      expect(lightQb.leftJoinAndSelect).toHaveBeenCalledWith('task.department', 'department');
+    });
+
+    it('[Plan CPU 14B-4] trang rỗng (pageIds=[]) -> KHÔNG query Task (tránh `IN ()` lỗi SQL)', async () => {
+      jest.spyOn(dateVnUtil, 'todayVnStr').mockReturnValue('2026-09-24');
+      mockTaskRepo.createQueryBuilder.mockReturnValueOnce(makeQb([row(1, 10, 'in_progress')])).mockReturnValueOnce(orderQb([1]));
+      (mockChecklistRepo as any).find = jest.fn().mockResolvedValue([]);
+
+      const res = await service.getMetricTasks({ metric: 'in_progress', page: 5 } as any, ADMIN_USER as any);
+
+      expect(res.items).toEqual([]);
+      expect(mockTaskRepo.createQueryBuilder).toHaveBeenCalledTimes(2); // buildFilteredTaskQuery + orderQb, không có QB thứ 3
+    });
+
     it('scope OWN + userIds chứa người khác -> ForbiddenException', async () => {
       mockPermissionsService.hasPermission.mockResolvedValue({ allowed: false, scope: null });
       await expect(
@@ -640,7 +694,7 @@ describe('PeriodicTaskPerformanceService - grace period 7 ngày', () => {
       const pairsQb = makeQb([{ user_id: 7, task_id: 3 }]);
       mockSecondaryRepo.createQueryBuilder.mockReturnValue(pairsQb);
       mockTaskRepo.createQueryBuilder.mockReturnValueOnce(orderQb([3]));
-      (mockTaskRepo as any).find = jest.fn().mockResolvedValue([{ id: 3, title: 'T3' }]);
+      mockTaskRepo.createQueryBuilder.mockReturnValueOnce(lightTasksQb([3]));
       (mockChecklistRepo as any).find = jest.fn().mockResolvedValue([]);
 
       const res = await service.getMetricTasks({ metric: 'secondary_total', userIds: [7] } as any, ADMIN_USER as any);

@@ -674,11 +674,26 @@ export class PeriodicTaskPerformanceService {
 
     if (flaggedTaskIds.length === 0) return [];
 
-    return this.taskRepo.find({
-      where: { id: In(flaggedTaskIds) },
-      relations: ['status', 'primaryAssignee', 'department'],
-      order: { periodEndDate: 'DESC' },
-    });
+    // [AGENT] OLD CODE (Plan CPU 14B-4): this.taskRepo.find({ where: { id: In(flaggedTaskIds) }, relations: ['status', 'primaryAssignee', 'department'], order: { periodEndDate: 'DESC' } })
+    return this.loadTasksLightUsers(flaggedTaskIds, true);
+  }
+
+  /**
+   * [PERF 14B-4] Nạp Task theo danh sách id kèm `status`/`department` + `primaryAssignee` CHỈ `id,name`
+   * (thay `find({ relations: ['status','primaryAssignee','department'] })` tải User đầy đủ ~25 cột).
+   * FE (TaskAssignees) chỉ đọc `primaryAssignee.name`. `getMany()` tự lọc xoá mềm như `find()`.
+   */
+  private async loadTasksLightUsers(ids: number[], orderByPeriodEndDesc = false): Promise<PeriodicTask[]> {
+    if (ids.length === 0) return [];
+    const qb = this.taskRepo
+      .createQueryBuilder('task')
+      .leftJoinAndSelect('task.status', 'status')
+      .leftJoin('task.primaryAssignee', 'primaryAssignee')
+      .addSelect(['primaryAssignee.id', 'primaryAssignee.name'])
+      .leftJoinAndSelect('task.department', 'department')
+      .where('task.id IN (:...lightTaskIds)', { lightTaskIds: ids });
+    if (orderByPeriodEndDesc) qb.orderBy('task.periodEndDate', 'DESC');
+    return qb.getMany();
   }
 
   /**
@@ -775,10 +790,8 @@ export class PeriodicTaskPerformanceService {
     const orderedIds = ordered.map((o) => Number(o.id));
     const pageIds = orderedIds.slice((page - 1) * METRIC_TASKS_PAGE_SIZE, page * METRIC_TASKS_PAGE_SIZE);
 
-    const tasksRaw = await this.taskRepo.find({
-      where: { id: In(pageIds) },
-      relations: ['status', 'primaryAssignee', 'department'],
-    });
+    // [AGENT] OLD CODE (Plan CPU 14B-4): this.taskRepo.find({ where: { id: In(pageIds) }, relations: ['status', 'primaryAssignee', 'department'] })
+    const tasksRaw = await this.loadTasksLightUsers(pageIds);
     const tasks = (await this.secondaryAssigneesService.attachSecondaryAssigneesToList(tasksRaw)) as PeriodicTask[];
     const taskById = new Map(tasks.map((t) => [t.id, t]));
 
@@ -887,7 +900,10 @@ export class PeriodicTaskPerformanceService {
       return (
         qb
           .leftJoinAndSelect('task.status', 'status')
-          .leftJoinAndSelect('task.primaryAssignee', 'primaryAssignee')
+          // [AGENT] OLD CODE (Plan CPU 14B-4): .leftJoinAndSelect('task.primaryAssignee', 'primaryAssignee') (User đầy đủ).
+          // GIỮ NGUYÊN cấu trúc phân trang (offset/limit + join) - chỉ đổi cột; FE chỉ đọc primaryAssignee.name.
+          .leftJoin('task.primaryAssignee', 'primaryAssignee')
+          .addSelect(['primaryAssignee.id', 'primaryAssignee.name'])
           .leftJoinAndSelect('task.department', 'department')
           // BUG THẬT đã gặp (2026-09-25, lỗi 500 thật trên môi trường dev):
           // `.orderBy('ABS(DATEDIFF(task.period_end_date, :perfToday))', 'ASC')`

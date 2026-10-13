@@ -42,9 +42,11 @@ export class PeriodicTaskTrashService {
       .createQueryBuilder('task')
       .withDeleted() // gồm cả bản ghi xoá mềm
       .leftJoinAndSelect('task.status', 'status')
-      .leftJoinAndSelect('task.primaryAssignee', 'primaryAssignee')
+      // [AGENT] OLD CODE (Plan CPU 14B-4): .leftJoinAndSelect('task.primaryAssignee', 'primaryAssignee') + .leftJoinAndSelect('task.createdBy', 'createdBy') (User đầy đủ)
+      .leftJoin('task.primaryAssignee', 'primaryAssignee')
       .leftJoinAndSelect('task.department', 'department')
-      .leftJoinAndSelect('task.createdBy', 'createdBy')
+      .leftJoin('task.createdBy', 'createdBy')
+      .addSelect(['primaryAssignee.id', 'primaryAssignee.name', 'createdBy.id', 'createdBy.name'])
       .where('task.deletedAt IS NOT NULL');
 
     if (dto.search?.trim()) {
@@ -64,7 +66,9 @@ export class PeriodicTaskTrashService {
     if (tasks.length > 0) {
       const logs = await this.auditLogRepo.find({
         where: { taskId: In(tasks.map((t) => t.id)), action: PeriodicTaskAuditAction.DELETED },
+        // [AGENT] OLD CODE (Plan CPU 14B-4): relations: ['user'] không có select (User đầy đủ + mọi cột log gồm oldData/newData)
         relations: ['user'],
+        select: { id: true, taskId: true, createdAt: true, user: { id: true, name: true } },
         order: { createdAt: 'DESC' },
       });
       for (const log of logs) {

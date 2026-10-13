@@ -7591,3 +7591,23 @@ Now [deploy]
 > Thay đổi hành vi cần biết: body trả về của `PATCH /:id/lock|unlock|mark-overdue|unmark-overdue` không còn `primaryAssignee`/`createdBy`/`updatedBy`/`department` (vẫn có `status` và mọi cột Task); `DELETE` trả `{deleted:true}` như cũ. Đã chạy: `tsc` 0 lỗi, `nest build` OK, `jest` toàn bộ pass. CHƯA đo CPU, CHƯA chạy DB thật. Rollback: revert commit.
 
 ---
+
+## [2026-10-13] | PLAN CPU 14B-4 (phần còn lại) — Task: thùng rác, performance, audit thu hẹp User | [Status: Success]
+
+**Actor:** Agent
+**Files Changed:**
+- `backend/src/modules/periodic-tasks/periodic-task-trash.service.ts` — `getTrash`: `primaryAssignee`/`createdBy` → `leftJoin` + `addSelect(id,name)`; query log người xoá thêm `select` (id, taskId, createdAt, user{id,name}), không lấy `oldData/newData`
+- `backend/src/modules/periodic-tasks/periodic-task-audit.service.ts` — `getLogsForTask`, `getGlobalLogs`, `getGlobalLogDetail`: `leftJoinAndSelect('log.user')` → `leftJoin` + `addSelect(user.id,name,role)`
+- `backend/src/modules/periodic-tasks/periodic-task-performance.service.ts` — thêm `loadTasksLightUsers()` (QB; `primaryAssignee` id,name) thay 2 `taskRepo.find({relations})` (getUserFlaggedTasks, getMetricTasks); `getUserTasks`: `primaryAssignee` id,name, GIỮ `offset/limit`
+- 3 file spec tương ứng — cập nhật mock QB + 5 test khoá cột/cấu trúc phân trang
+
+**Root Cause (nếu là bug fix):**
+> Không phải bug. Các endpoint trả entity User đầy đủ (~25 cột) trong khi FE chỉ đọc `name` (audit task: `name`+`role`).
+
+**Solution:**
+> Đã grep FE: `TaskTrashTab` (primaryAssignee/createdBy/deletedBy.name), `TaskAssignees` (primaryAssignee.name), `TaskAuditLogsModal` + `lich-su-cong-viec` (user.name, user.role; không đọc email). Đã kiểm SQL sinh ra của `find({select, relations})` bằng TypeORM metadata (MySQL, không kết nối): chỉ chọn đúng cột cần.
+
+**Notes:**
+> Thay đổi hành vi: `user.email` không còn trong response audit task (FE không đọc; type FE `PeriodicTaskAuditLogUser.email` vẫn khai báo, có thể bỏ sau). `tsc` 0 lỗi, `nest build` OK, `jest` pass. CHƯA đo CPU, CHƯA chạy DB thật. Rollback: revert commit.
+
+---

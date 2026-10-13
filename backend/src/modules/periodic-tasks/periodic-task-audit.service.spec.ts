@@ -23,6 +23,7 @@ describe('PeriodicTaskAuditService', () => {
     const qb: any = {
       select: jest.fn().mockReturnThis(),
       leftJoinAndSelect: jest.fn().mockReturnThis(),
+      leftJoin: jest.fn().mockReturnThis(),
       innerJoin: jest.fn().mockReturnThis(),
       addSelect: jest.fn().mockReturnThis(),
       where: jest.fn().mockReturnThis(),
@@ -174,7 +175,10 @@ describe('PeriodicTaskAuditService', () => {
 
       expect(qb.where).toHaveBeenCalledWith('log.taskId = :taskId', { taskId: 10 });
       expect(qb.orderBy).toHaveBeenCalledWith('log.createdAt', 'DESC');
-      expect(qb.leftJoinAndSelect).toHaveBeenCalledWith('log.user', 'user');
+      // [Plan CPU 14B-4] User chỉ id,name,role (FE đọc name + role Tag), không còn leftJoinAndSelect cả entity User.
+      expect(qb.leftJoin).toHaveBeenCalledWith('log.user', 'user');
+      expect(qb.leftJoinAndSelect).not.toHaveBeenCalledWith('log.user', 'user');
+      expect(qb.addSelect).toHaveBeenCalledWith(['user.id', 'user.name', 'user.role']);
       expect(result).toEqual({
         data: logs,
         total: 2,
@@ -218,7 +222,10 @@ describe('PeriodicTaskAuditService', () => {
 
       expect(mockAuditLogRepo.createQueryBuilder).toHaveBeenCalledWith('log');
       expect(qb.innerJoin).toHaveBeenCalledWith('log.task', 'task');
-      expect(qb.leftJoinAndSelect).toHaveBeenCalledWith('log.user', 'user');
+      // [Plan CPU 14B-4] User chỉ id,name,role (FE đọc name + role Tag), không còn leftJoinAndSelect cả entity User.
+      expect(qb.leftJoin).toHaveBeenCalledWith('log.user', 'user');
+      expect(qb.leftJoinAndSelect).not.toHaveBeenCalledWith('log.user', 'user');
+      expect(qb.addSelect).toHaveBeenCalledWith(['user.id', 'user.name', 'user.role']);
       // scope=department -> applyViewFilter thêm đúng 1 điều kiện department_managers
       expect(qb.andWhere).toHaveBeenCalledWith(
         expect.stringContaining('department_managers'),

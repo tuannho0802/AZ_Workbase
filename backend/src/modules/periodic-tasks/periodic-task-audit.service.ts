@@ -133,7 +133,9 @@ export class PeriodicTaskAuditService {
 
     const [data, total] = await this.auditLogRepository
       .createQueryBuilder('log')
-      .leftJoinAndSelect('log.user', 'user')
+      // [AGENT] OLD CODE (Plan CPU 14B-4): .leftJoinAndSelect('log.user', 'user') (User đầy đủ)
+      .leftJoin('log.user', 'user')
+      .addSelect(['user.id', 'user.name', 'user.role'])
       .where('log.taskId = :taskId', { taskId })
       .orderBy('log.createdAt', 'DESC')
       .offset((page - 1) * limit)
@@ -175,7 +177,9 @@ export class PeriodicTaskAuditService {
       .select(['log.id', 'log.taskId', 'log.userId', 'log.action', 'log.ipAddress', 'log.userAgent', 'log.createdAt'])
       .innerJoin('log.task', 'task')
       .addSelect(['task.id', 'task.title', 'task.deletedAt'])
-      .leftJoinAndSelect('log.user', 'user')
+      // [AGENT] OLD CODE (Plan CPU 14B-4): .leftJoinAndSelect('log.user', 'user') (User đầy đủ)
+      .leftJoin('log.user', 'user')
+      .addSelect(['user.id', 'user.name', 'user.role'])
       .orderBy('log.createdAt', 'DESC');
 
     PeriodicTaskAccessHelper.applyViewFilter(qb, viewerId, viewerRole, scope);
@@ -248,7 +252,9 @@ export class PeriodicTaskAuditService {
       .createQueryBuilder('log')
       .innerJoin('log.task', 'task')
       .addSelect(['task.id', 'task.title', 'task.deletedAt'])
-      .leftJoinAndSelect('log.user', 'user')
+      // [AGENT] OLD CODE (Plan CPU 14B-4): .leftJoinAndSelect('log.user', 'user') (User đầy đủ)
+      .leftJoin('log.user', 'user')
+      .addSelect(['user.id', 'user.name', 'user.role'])
       .where('log.id = :id', { id });
 
     PeriodicTaskAccessHelper.applyViewFilter(qb, viewerId, viewerRole, scope);
