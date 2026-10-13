@@ -1,5 +1,5 @@
 import { Test, TestingModule } from '@nestjs/testing';
-import { ConflictException, ForbiddenException, UnauthorizedException } from '@nestjs/common';
+import { ConflictException, ForbiddenException, HttpException, UnauthorizedException } from '@nestjs/common';
 import * as bcrypt from 'bcrypt';
 import { AuthService } from './auth.service';
 import { UsersService } from '../users/users.service';
@@ -18,6 +18,9 @@ describe('AuthService - Đăng ký công khai + chặn đăng nhập chưa duy�
     rotateRefreshToken: jest.fn(),
     findByIdWithRefreshToken: jest.fn(),
     updateLastLogin: jest.fn(),
+    getLoginLockRemainingSeconds: jest.fn(),
+    recordFailedLogin: jest.fn(),
+    clearLoginFailures: jest.fn(),
     // login() giờ ký avatarUrl trước khi trả về (xem auth.service.ts) - mặc
     // định trả nguyên user vào (không avatarUrl -> signAvatarUrl trả về y
     // nguyên, khớp hành vi thật khi user.avatarUrl null).
@@ -29,6 +32,9 @@ describe('AuthService - Đăng ký công khai + chặn đăng nhập chưa duy�
 
   beforeEach(async () => {
     jest.clearAllMocks();
+    mockUsersService.getLoginLockRemainingSeconds.mockResolvedValue(0);
+    mockUsersService.recordFailedLogin.mockResolvedValue({ attempts: 1, lockedSeconds: 0 });
+    mockUsersService.clearLoginFailures.mockResolvedValue(undefined);
 
     const module: TestingModule = await Test.createTestingModule({
       providers: [
@@ -288,6 +294,73 @@ describe('AuthService - Đăng ký công khai + chặn đăng nhập chưa duy�
       await expect(
         service.login({ email: 'a@example.com', password: 'sai-mat-khau' }),
       ).rejects.toThrow(UnauthorizedException);
+    });
+  });
+
+  describe('login - Khoá tạm thời sau khi sai mật khẩu quá 5 lần', () => {
+    let hash: string;
+    beforeAll(async () => {
+      hash = await bcrypt.hash('Correct@123', 4);
+    });
+    const user = () => ({
+      id: 9,
+      email: 'a@example.com',
+      name: 'A',
+      role: 'employee',
+      password: hash,
+      isActive: 1,
+      deletedAt: null,
+      approvalStatus: ApprovalStatus.APPROVED,
+    });
+
+    it('đang bị khoá -> 429 LOGIN_LOCKED, KHÔNG so mật khẩu (kể cả đúng), KHÔNG cấp token', async () => {
+      mockUsersService.findByEmailIncludingDeleted.mockResolvedValue(user());
+      mockUsersService.getLoginLockRemainingSeconds.mockResolvedValue(240);
+
+      const err = await service.login({ email: 'a@example.com', password: 'Correct@123' }).catch((e) => e);
+
+      expect(err).toBeInstanceOf(HttpException);
+      expect(err.getStatus()).toBe(429);
+      expect(err.getResponse()).toMatchObject({ code: 'LOGIN_LOCKED', retryAfterSeconds: 240 });
+      expect(mockUsersService.recordFailedLogin).not.toHaveBeenCalled();
+      expect(mockUsersService.saveRefreshToken).not.toHaveBeenCalled();
+    });
+
+    it('sai lần 1-4 -> 401 WRONG_PASSWORD kèm số lần còn lại', async () => {
+      mockUsersService.findByEmailIncludingDeleted.mockResolvedValue(user());
+      mockUsersService.recordFailedLogin.mockResolvedValue({ attempts: 3, lockedSeconds: 0 });
+
+      const err = await service.login({ email: 'a@example.com', password: 'sai' }).catch((e) => e);
+
+      expect(err).toBeInstanceOf(UnauthorizedException);
+      expect(err.getResponse()).toMatchObject({ code: 'WRONG_PASSWORD', remainingAttempts: 2 });
+      expect(mockUsersService.recordFailedLogin).toHaveBeenCalledWith(9, 5, 5);
+    });
+
+    it('sai lần thứ 5 -> 429 ngay (khoá 5 phút)', async () => {
+      mockUsersService.findByEmailIncludingDeleted.mockResolvedValue(user());
+      mockUsersService.recordFailedLogin.mockResolvedValue({ attempts: 5, lockedSeconds: 300 });
+
+      const err = await service.login({ email: 'a@example.com', password: 'sai' }).catch((e) => e);
+
+      expect(err.getStatus()).toBe(429);
+      expect(err.getResponse()).toMatchObject({ code: 'LOGIN_LOCKED', retryAfterSeconds: 300 });
+    });
+
+    it('đăng nhập đúng -> xoá bộ đếm sai', async () => {
+      mockUsersService.findByEmailIncludingDeleted.mockResolvedValue(user());
+      mockUsersService.saveRefreshToken.mockResolvedValue(undefined);
+      mockUsersService.updateLastLogin.mockResolvedValue(undefined);
+
+      await service.login({ email: 'a@example.com', password: 'Correct@123' });
+
+      expect(mockUsersService.clearLoginFailures).toHaveBeenCalledWith(9);
+    });
+
+    it('tài khoản bị khoá/chờ duyệt (403) không bị tính vào bộ đếm sai mật khẩu', async () => {
+      mockUsersService.findByEmailIncludingDeleted.mockResolvedValue({ ...user(), isActive: 0 });
+      await expect(service.login({ email: 'a@example.com', password: 'sai' })).rejects.toThrow(ForbiddenException);
+      expect(mockUsersService.recordFailedLogin).not.toHaveBeenCalled();
     });
   });
 

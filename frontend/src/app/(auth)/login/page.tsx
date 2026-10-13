@@ -57,8 +57,16 @@ export default function LoginPage() {
       if (status === 403) {
         const backendMessage = getApiErrorMessage(error, 'Tài khoản của bạn hiện chưa thể đăng nhập.');
         router.push(`/account-status?message=${encodeURIComponent(backendMessage)}`);
+      } else if (status === 429) {
+        // Khoá đăng nhập 5 phút (sai mật khẩu quá 5 lần): interceptor axios ĐÃ toast message thật từ backend -
+        // không toast lại ở đây để tránh 2 toast giống hệt nhau.
       } else if (status === 401) {
-        message.error('Email hoặc mật khẩu không đúng');
+        // Chỉ hiển thị message thật khi backend báo sai mật khẩu kèm số lần còn lại; các case 401 khác giữ thông
+        // báo chung (không lộ "tài khoản có tồn tại hay không").
+        const data = isAxiosError(error) ? (error.response?.data as { code?: string; message?: string } | undefined) : undefined;
+        message.error(
+          data?.code === 'WRONG_PASSWORD' && data.message ? data.message : 'Email hoặc mật khẩu không đúng',
+        );
       } else {
         message.error(getApiErrorMessage(error, 'Đăng nhập thất bại'));
       }

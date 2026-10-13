@@ -179,6 +179,15 @@ export class User {
   @Column({ name: 'last_login_at', type: 'timestamp', nullable: true })
   lastLoginAt: Date;
 
+  // Khoá đăng nhập tạm thời (migration AddLoginLockoutToUsers1786200000000). `select: false` để không lọt ra
+  // response API; chỉ đọc/ghi qua UsersService.getLoginLockRemainingSeconds()/recordFailedLogin()/clearLoginFailures()
+  // (SQL thô, dùng đồng hồ DB).
+  @Column({ name: 'failed_login_attempts', type: 'int', default: 0, select: false })
+  failedLoginAttempts: number;
+
+  @Column({ name: 'locked_until', type: 'datetime', nullable: true, select: false })
+  lockedUntil: Date | null;
+
   @Column({
     name: 'hashed_refresh_token',
     type: 'text',

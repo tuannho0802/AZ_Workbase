@@ -1,4 +1,12 @@
-import { Injectable, UnauthorizedException, ForbiddenException, ConflictException, Logger } from '@nestjs/common';
+import {
+  Injectable,
+  UnauthorizedException,
+  ForbiddenException,
+  ConflictException,
+  HttpException,
+  HttpStatus,
+  Logger,
+} from '@nestjs/common';
 
 import { JwtService } from '@nestjs/jwt';
 import { ConfigService } from '@nestjs/config';
@@ -10,6 +18,10 @@ import { RegisterDto } from './dto/register.dto';
 import { AuditService } from '../audit/audit.service';
 import { ApprovalStatus } from '../../common/enums/approval-status.enum';
 import { Role } from '../../common/enums/role.enum';
+
+/** Sai mật khẩu liên tiếp tối đa bao nhiêu lần thì bị khoá, và khoá bao lâu (phút). */
+export const LOGIN_MAX_FAILED_ATTEMPTS = 5;
+export const LOGIN_LOCK_MINUTES = 5;
 
 @Injectable()
 export class AuthService {
@@ -74,6 +86,20 @@ export class AuthService {
     );
   }
 
+  private buildLockedException(seconds: number): HttpException {
+    const minutes = Math.max(Math.ceil(seconds / 60), 1);
+    return new HttpException(
+      {
+        statusCode: HttpStatus.TOO_MANY_REQUESTS,
+        // `code` + `retryAfterSeconds` được AllExceptionsFilter chuyển tiếp cho FE.
+        code: 'LOGIN_LOCKED',
+        retryAfterSeconds: seconds,
+        message: `Bạn đã nhập sai mật khẩu quá ${LOGIN_MAX_FAILED_ATTEMPTS} lần. Vui lòng thử lại sau ${minutes} phút.`,
+      },
+      HttpStatus.TOO_MANY_REQUESTS,
+    );
+  }
+
   async login(loginDto: LoginDto) {
     // Kèm tài khoản đã xoá mềm: tài khoản bị từ chối/xoá phải nhận đúng thông báo, không phải "không tồn tại".
     const user = await this.usersService.findByEmailIncludingDeleted(loginDto.email);
@@ -109,10 +135,34 @@ export class AuthService {
       throw new UnauthorizedException('Tài khoản không hợp lệ');
     }
 
+    // Đang bị khoá do sai mật khẩu quá nhiều lần: chặn TRƯỚC khi so mật khẩu (đúng cũng không cho vào,
+    // và không tốn bcrypt cho kẻ đang dò).
+    const lockedSeconds = await this.usersService.getLoginLockRemainingSeconds(user.id);
+    if (lockedSeconds > 0) {
+      throw this.buildLockedException(lockedSeconds);
+    }
+
     const isPasswordMatching = await bcrypt.compare(loginDto.password, user.password);
     if (!isPasswordMatching) {
-      throw new UnauthorizedException('Mật khẩu sai');
+      const { attempts, lockedSeconds: nowLocked } = await this.usersService.recordFailedLogin(
+        user.id,
+        LOGIN_MAX_FAILED_ATTEMPTS,
+        LOGIN_LOCK_MINUTES,
+      );
+      if (nowLocked > 0) {
+        this.logger.warn(`[SECURITY] User ID ${user.id} bị khoá đăng nhập ${LOGIN_LOCK_MINUTES} phút do sai mật khẩu ${attempts} lần`);
+        throw this.buildLockedException(nowLocked);
+      }
+      const remaining = Math.max(LOGIN_MAX_FAILED_ATTEMPTS - attempts, 0);
+      throw new UnauthorizedException({
+        statusCode: HttpStatus.UNAUTHORIZED,
+        code: 'WRONG_PASSWORD',
+        remainingAttempts: remaining,
+        message: `Mật khẩu sai. Bạn còn ${remaining} lần thử trước khi bị khoá ${LOGIN_LOCK_MINUTES} phút.`,
+      });
     }
+
+    await this.usersService.clearLoginFailures(user.id);
 
     const { access_token, refresh_token } = await this.generateTokens(user.id, user.email, user.role);
 

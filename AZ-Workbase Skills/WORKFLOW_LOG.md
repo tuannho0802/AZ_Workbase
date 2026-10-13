@@ -7658,3 +7658,23 @@ Now [deploy]
 > - CHƯA chạy test/build đầy đủ theo yêu cầu người dùng; trước đó đã chạy: `tsc` backend 0 lỗi, jest `src/modules/auth` 36 pass, vitest `useMe.test.tsx` 6 pass, `tsc` frontend chỉ còn 4 lỗi `logo.png` có sẵn (clone mới thiếu `next-env.d.ts`, giống hệt trước khi sửa).
 
 ---
+
+## [2026-10-13] | Khoá đăng nhập 5 phút sau khi sai mật khẩu 5 lần | [Status: Success]
+
+**Actor:** Agent
+**Files Changed:**
+- `backend/src/database/migrations/1786200000000-AddLoginLockoutToUsers.ts` — thêm `users.failed_login_attempts` (INT, mặc định 0) + `users.locked_until` (DATETIME NULL)
+- `backend/src/database/entities/user.entity.ts` — 2 cột trên, `select: false` (không lọt ra API)
+- `backend/src/modules/users/users.service.ts` — `getLoginLockRemainingSeconds`, `recordFailedLogin` (atomic, đồng hồ DB), `clearLoginFailures`
+- `backend/src/modules/auth/auth.service.ts` — hằng `LOGIN_MAX_FAILED_ATTEMPTS=5`, `LOGIN_LOCK_MINUTES=5`; chặn TRƯỚC khi so mật khẩu; 401 `WRONG_PASSWORD` kèm `remainingAttempts`; 429 `LOGIN_LOCKED` kèm `retryAfterSeconds`
+- `backend/src/modules/auth/auth.controller.ts` — Swagger 429
+- `backend/src/modules/auth/auth.service.spec.ts` — 5 test mới
+- `frontend/src/app/(auth)/login/page.tsx` — 429 dùng toast của interceptor (không toast đôi); 401 WRONG_PASSWORD hiện số lần còn lại
+
+**Solution:**
+> Đếm theo tài khoản (không theo IP) trong DB vì BE chạy serverless (Vercel), bộ nhớ không dùng chung. Mọi UPDATE thô giữ `updated_at = updated_at` để không làm đổi "Sửa cuối". Chỉ đếm khi sai mật khẩu của tài khoản hợp lệ (403 khoá/chờ duyệt/xoá không bị tính). Khoá hết hạn -> lần sai kế tiếp đếm lại từ 1. Đăng nhập đúng -> reset.
+
+**Notes:**
+> Cần chạy `npm run migration:run`. Chưa có nút admin mở khoá sớm (chờ chủ dự án quyết). Rủi ro chấp nhận: ai biết email có thể cố ý khoá tài khoản người khác 5 phút.
+
+---

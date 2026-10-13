@@ -221,6 +221,57 @@ export class UsersService {
     return user;
   }
 
+  /**
+   * Khoá đăng nhập tạm thời. Mọi lệnh dùng đồng hồ DB (NOW()) + `updated_at = updated_at` để KHÔNG làm đổi
+   * "Sửa cuối" của user (cột có ON UPDATE CURRENT_TIMESTAMP).
+   */
+  /** Số giây còn bị khoá (0 = không bị khoá). */
+  async getLoginLockRemainingSeconds(userId: number): Promise<number> {
+    const rows: Array<{ s: number | string | null }> = await this.usersRepository.query(
+      `SELECT GREATEST(TIMESTAMPDIFF(SECOND, NOW(), locked_until), 0) AS s FROM users WHERE id = ?`,
+      [userId],
+    );
+    return Number(rows[0]?.s ?? 0);
+  }
+
+  /**
+   * Ghi nhận 1 lần sai mật khẩu (atomic, an toàn khi nhiều request song song). Khoá hết hạn -> đếm lại từ 1.
+   * Đạt `maxAttempts` -> đặt `locked_until = NOW() + lockMinutes`. Trả số lần sai hiện tại + số giây còn khoá.
+   */
+  async recordFailedLogin(
+    userId: number,
+    maxAttempts: number,
+    lockMinutes: number,
+  ): Promise<{ attempts: number; lockedSeconds: number }> {
+    await this.usersRepository.query(
+      `UPDATE users SET
+         failed_login_attempts = CASE WHEN locked_until IS NOT NULL AND locked_until <= NOW() THEN 1 ELSE failed_login_attempts + 1 END,
+         locked_until = CASE WHEN locked_until IS NOT NULL AND locked_until <= NOW() THEN NULL ELSE locked_until END,
+         updated_at = updated_at
+       WHERE id = ?`,
+      [userId],
+    );
+    await this.usersRepository.query(
+      `UPDATE users SET locked_until = DATE_ADD(NOW(), INTERVAL ? MINUTE), updated_at = updated_at
+       WHERE id = ? AND failed_login_attempts >= ? AND locked_until IS NULL`,
+      [lockMinutes, userId, maxAttempts],
+    );
+    const rows: Array<{ a: number | string; s: number | string | null }> = await this.usersRepository.query(
+      `SELECT failed_login_attempts AS a, GREATEST(TIMESTAMPDIFF(SECOND, NOW(), locked_until), 0) AS s FROM users WHERE id = ?`,
+      [userId],
+    );
+    return { attempts: Number(rows[0]?.a ?? 0), lockedSeconds: Number(rows[0]?.s ?? 0) };
+  }
+
+  /** Đăng nhập đúng -> xoá bộ đếm + khoá. Chỉ ghi DB khi thật sự có gì để xoá (tiết kiệm CPU). */
+  async clearLoginFailures(userId: number): Promise<void> {
+    await this.usersRepository.query(
+      `UPDATE users SET failed_login_attempts = 0, locked_until = NULL, updated_at = updated_at
+       WHERE id = ? AND (failed_login_attempts > 0 OR locked_until IS NOT NULL)`,
+      [userId],
+    );
+  }
+
   async updateLastLogin(id: number): Promise<void> {
     await this.usersRepository.update(id, { lastLoginAt: new Date() });
   }

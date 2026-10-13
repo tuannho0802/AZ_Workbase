@@ -51,6 +51,7 @@ export class AuthController {
   @ApiResponse({ status: 200, description: 'Đăng nhập thành công, trả về access_token, refresh_token và thông tin user.' })
   @ApiResponse({ status: 401, description: 'Tài khoản không tồn tại hoặc mật khẩu sai.' })
   @ApiResponse({ status: 403, description: 'Tài khoản bị khóa.' })
+  @ApiResponse({ status: 429, description: 'Sai mật khẩu quá 5 lần - tạm khoá đăng nhập 5 phút.' })
   async login(@Body() loginDto: LoginDto) {
     // [AGENT] OLD CODE (giữ để rollback): console.log('[Auth] Login attempt for:', loginDto.email);
     // [AGENT] NEW CODE (PLAN CPU Mục 13F): bỏ log này - vi phạm SKILL_FILE_MANAGEMENT §6.1 (cấm console.*)
