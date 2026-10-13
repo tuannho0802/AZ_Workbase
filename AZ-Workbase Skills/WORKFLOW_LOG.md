@@ -7381,3 +7381,22 @@ Now [deploy]
 > Đã chạy thật: BE `tsc` 0, `nest build` 0, `jest` toàn bộ pass; FE vitest riêng `ref-cache-version`, `axios-ref-version`, `useSystemEpochSignal` = 23 test pass. Nếu sau này đo CPU thấy `/users/me` vẫn nổi bật mới cân nhắc cache BE theo (userId, permVersion, epoch) + xoá khi có request ghi như badge.
 
 ---
+
+## [2026-10-13] | PLAN CPU Mục 13F — bỏ `console.log` email ở `POST /auth/login` | [Status: Success]
+
+**Actor:** Agent
+**Files Changed:**
+- `backend/src/modules/auth/auth.controller.ts` — xoá `console.log('[Auth] Login attempt for:', loginDto.email)` (giữ lại làm comment `[AGENT] OLD CODE`)
+- `backend/src/modules/auth/auth.controller.spec.ts` — MỚI: 3 test (chuyển DTO + kết quả nguyên vẹn; không `console.log/warn/error`; lỗi AuthService ném nguyên)
+- `AZ-Workbase Skills/PLAN_CPU_OPTIMIZATION_ROUND2.md` — đánh dấu 13F ✅ (Mục 13 đã nằm trong repo từ commit `4a4388f`)
+
+**Root Cause (nếu là bug fix):**
+> `console.log` ở đường đăng nhập vi phạm `SKILL_FILE_MANAGEMENT` §6.1 (cấm `console.*`) và ghi email (PII) ra log mỗi lần đăng nhập. Chi phí CPU nhỏ; lý do chính là quy ước logging + riêng tư.
+
+**Solution:**
+> Xoá dòng log, không thay bằng log có email. Lỗi đăng nhập vẫn do `AuthService` xử lý/log như cũ. Không đổi hành vi response.
+
+**Notes:**
+> Đã chạy thật: BE `tsc --noEmit` 0, `nest build` 0, `jest` 120 suite / 1934 test pass. Chưa deploy. Việc kế tiếp theo plan: 13A-1 (thu hẹp cột `getAttendanceSummary`).
+
+---

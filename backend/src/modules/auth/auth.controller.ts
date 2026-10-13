@@ -52,7 +52,9 @@ export class AuthController {
   @ApiResponse({ status: 401, description: 'Tài khoản không tồn tại hoặc mật khẩu sai.' })
   @ApiResponse({ status: 403, description: 'Tài khoản bị khóa.' })
   async login(@Body() loginDto: LoginDto) {
-    console.log('[Auth] Login attempt for:', loginDto.email);
+    // [AGENT] OLD CODE (giữ để rollback): console.log('[Auth] Login attempt for:', loginDto.email);
+    // [AGENT] NEW CODE (PLAN CPU Mục 13F): bỏ log này - vi phạm SKILL_FILE_MANAGEMENT §6.1 (cấm console.*)
+    // và ghi email (PII) ra log mỗi lần đăng nhập. Lỗi đăng nhập vẫn do AuthService xử lý/log như cũ.
     return this.authService.login(loginDto);
   }
 

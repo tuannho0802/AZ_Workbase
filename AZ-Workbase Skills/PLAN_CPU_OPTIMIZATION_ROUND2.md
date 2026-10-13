@@ -769,13 +769,13 @@ export class QuietBootLogger extends ConsoleLogger {
 > **Trạng thái env đã xác nhận (2026-10-13):** `DISABLE_APP_COMPRESSION=true` đã đặt ở production → **không còn mục "tắt nén"**; chỉ cần nhớ kiểm `Content-Encoding` thật nếu nghi ngờ.
 > **Đợt này KHÔNG có migration.** Thứ tự: **13F → 13A → 13G → 13B**. Mỗi mục = 1 commit riêng (13A tách 13A-1 / 13A-2).
 
-### 13F. `console.log` còn sót ở đường đăng nhập (BE, rủi ro rất thấp) — làm TRƯỚC
+### 13F. `console.log` còn sót ở đường đăng nhập (BE, rủi ro rất thấp) — làm TRƯỚC — ✅ ĐÃ LÀM (2026-10-13, chờ deploy)
 **Bằng chứng:** `backend/src/modules/auth/auth.controller.ts:55` — `console.log('[Auth] Login attempt for:', loginDto.email)`. Vi phạm `SKILL_FILE_MANAGEMENT.md` §6.1 (cấm `console.*`, bắt buộc `Logger`) và ghi **email (PII)** ra log mỗi lần đăng nhập.
-- [ ] Xoá dòng đó. **Không** thay bằng log có email. Nếu muốn giữ dấu vết: `Logger` mức `debug`, không kèm email/token; lỗi đăng nhập vẫn do `auth.service` xử lý/log như cũ.
-- [ ] Test: spec `auth.controller` (nếu có) vẫn xanh; `grep -rn "console\." backend/src/modules/auth` không còn dòng nào (trừ comment `[AGENT] OLD CODE`).
-- [ ] Giữ code cũ bằng comment `// [AGENT] OLD CODE: console.log(...)` theo quy ước.
+- [x] Xoá dòng đó. **Không** thay bằng log có email. Nếu muốn giữ dấu vết: `Logger` mức `debug`, không kèm email/token; lỗi đăng nhập vẫn do `auth.service` xử lý/log như cũ.
+- [x] Test: chưa có spec `auth.controller` nên thêm MỚI `auth.controller.spec.ts` (3 test: chuyển nguyên DTO + kết quả; không gọi `console.log/warn/error`; lỗi của `AuthService` ném nguyên vẹn). `grep` còn đúng 1 dòng `console.error` nằm trong COMMENT cũ của `jwt.strategy.ts` (không phải code chạy).
+- [x] Giữ code cũ bằng comment `// [AGENT] OLD CODE: console.log(...)` theo quy ước.
 
-**Tiêu chí hoàn thành:** không còn `console.log` ở `auth.controller.ts`; login hoạt động y như cũ.
+**Tiêu chí hoàn thành:** không còn `console.log` ở `auth.controller.ts`; login hoạt động y như cũ. ✅ Đã chạy thật: BE `tsc --noEmit` 0, `nest build` 0, `jest` 120 suite / 1934 test pass.
 
 ### 13A. `getAttendanceSummary` kéo TOÀN BỘ log vào RAM rồi mới gom + phân trang (BE)
 **Bằng chứng (đọc code, `zk-device.service.ts` ~dòng 670–880):**
