@@ -55,3 +55,10 @@ describe('fetchMeCached (Plan CPU Mục 4 - 1 nguồn /users/me)', () => {
     expect(getMe).toHaveBeenCalledTimes(2);
   });
 });
+
+describe('ME_MAX_AGE_MS (ngân sách TTL URL avatar)', () => {
+  it('30 phút BE tái dùng URL + tuổi cache FE + 8 phút nhịp tự-lành < 60 phút TTL', async () => {
+    const { ME_MAX_AGE_MS } = await import('./useMe');
+    expect(30 + ME_MAX_AGE_MS / 60_000 + 8).toBeLessThan(60);
+  });
+});

@@ -22,7 +22,7 @@ import { useAuthStore } from '@/lib/stores/auth.store';
 import { useQueryClient } from '@tanstack/react-query';
 import { invalidateUserLists } from '@/lib/hooks/useUsers';
 import { usersApi, UserDetail } from '@/lib/api/users.api';
-import { fetchMeCached } from '@/lib/hooks/useMe';
+import { fetchMeCached, ME_MAX_AGE_MS } from '@/lib/hooks/useMe';
 import { useManagedByMe, useAllLinkGroups } from '@/lib/hooks/useLinkGroups';
 import { useMyPermissions } from '@/lib/hooks/useMyPermissions';
 import { SimpleList } from '@/components/common/SimpleList';
@@ -125,7 +125,7 @@ function ProfilePortal({ userId, onDeleted }: { userId: number; onDeleted?: () =
     setLoadingDetail(true);
     try {
       const res = isSelf
-        ? await fetchMeCached(queryClient, force ? 0 : 60 * 60 * 1000) // [AGENT] OLD: 60 * 1000; role/phòng ban đổi đã có permSig invalidate ME_KEY
+        ? await fetchMeCached(queryClient, force ? 0 : ME_MAX_AGE_MS) // [AGENT] OLD: 60 * 60 * 1000 (có thể giữ URL avatar đã hết hạn); role/phòng ban đổi đã có permSig invalidate ME_KEY
         : await usersApi.getUserDetail(userId);
       setDetail(res);
     } catch (err) {

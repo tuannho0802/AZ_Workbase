@@ -7630,3 +7630,31 @@ Now [deploy]
 > Bullet tuỳ chọn của 14C (test grep CI chống `leftJoinAndSelect` User) chưa làm — chờ chủ dự án quyết. Còn lại: `Promise.all` cho `checkDuplicateContact` (chờ đo), đo CPU trên preview.
 
 ---
+
+## [2026-10-13] | Rà soát checkbox PLAN_CPU_OPTIMIZATION_ROUND2 + sửa TTL cache avatar + bỏ email khỏi log reuse token | [Status: Success]
+
+**Actor:** Agent
+**Files Changed:**
+- `frontend/src/lib/hooks/useMe.ts` — thêm `ME_MAX_AGE_MS` (15 phút), `useMe` staleTime 30 → 15 phút
+- `frontend/src/app/(dashboard)/layout.tsx`, `frontend/src/app/(dashboard)/profile/page.tsx` — dùng `ME_MAX_AGE_MS` (layout 30 → 15 phút, profile 60 → 15 phút)
+- `frontend/src/lib/hooks/useMe.test.tsx` — thêm 1 test khoá ngân sách TTL
+- `backend/src/modules/auth/auth.service.ts` — log "Token reuse detected" không còn `user.email`
+- `AZ-Workbase Skills/PLAN_CPU_OPTIMIZATION_ROUND2.md` — tick các mục đã có code thật, ghi chú lệch spec
+
+**Root Cause (nếu là bug fix):**
+> BE tái dùng URL avatar đã ký tối đa 30 phút (`AVATAR_URL_REUSE_MS`), TTL thật 60 phút. FE giữ cache `/users/me` 30 phút (layout/useMe) và 60 phút (profile) + nhịp tự-lành 8 phút => trường hợp xấu 30+30+8 hoặc 30+60 vượt 60 phút, avatar có thể là URL đã hết hạn.
+
+**Solution:**
+> Một hằng số chung `ME_MAX_AGE_MS = 15 phút` (30 + 15 + 8 = 53 < 60). Đừng nâng quá ~20 phút nếu không đổi `AVATAR_URL_REUSE_MS`.
+
+**Đã đối chiếu code thật (tick trong plan):** Mục 0 (CSV đã ignore, script báo lỗi ENOENT), 2A (`shared-refresh.ts`), 2B (`refresh-session-store.util.ts`), 3A (log `[PT-List]`), 4 (`ME_KEY`), 5A, 6A, 9A, 14B-1 test. 12A/12B đã tick từ trước.
+
+**Notes (lưu ý cho người sau):**
+> - 2B thực tế KHÁC spec nhưng tốt hơn: lưu nhiều phiên (slot SHA-256, tối đa 10 thiết bị), không dùng tiền tố `sha256:`; hash bcrypt cũ còn hiệu lực 7 ngày.
+> - 3B.2 (`Promise.all` attach*) ĐÃ có trong controller; 6B (persist cache) ĐÃ có (`query-persist.ts`) — nhận định "chưa làm" trong transcript trước là sai.
+> - 6B lệch spec: whitelist persist có `my-permissions` và `users/me` (plan dặn không persist). Cần chủ dự án xác nhận.
+> - 10A: `Delay=86400` chỉ có hiệu lực sau lần máy chấm công bắt tay (handshake) kế tiếp; nếu sau này hệ thống gửi lệnh xuống máy, lệnh có thể trễ tới 24h.
+> - Còn mở (cần người/đo): Mục 1 (`JWT_EXPIRES_IN` trên Vercel), chạy baseline CSV, EXPLAIN 3A, bật `CPU_TIMING` đo 12B/13B, 14C bullet tuỳ chọn.
+> - CHƯA chạy test/build đầy đủ theo yêu cầu người dùng; trước đó đã chạy: `tsc` backend 0 lỗi, jest `src/modules/auth` 36 pass, vitest `useMe.test.tsx` 6 pass, `tsc` frontend chỉ còn 4 lỗi `logo.png` có sẵn (clone mới thiếu `next-env.d.ts`, giống hệt trước khi sửa).
+
+---

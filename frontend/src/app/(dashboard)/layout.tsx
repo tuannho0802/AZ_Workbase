@@ -18,7 +18,7 @@ import { useSidebarBadgeCounts } from '@/lib/hooks/useSidebarBadgeCounts';
 import { getUserActive, subscribeUserActivity } from '@/lib/hooks/useUserActivity';
 import { useCachedImage, buildImageCacheKey } from '@/lib/hooks/useCachedImage';
 import { useQueryClient } from '@tanstack/react-query';
-import { fetchMeCached } from '@/lib/hooks/useMe';
+import { fetchMeCached, ME_MAX_AGE_MS } from '@/lib/hooks/useMe';
 import { CountBadge } from '@/components/common/CountBadge';
 import { getNavBadgeProps } from '@/lib/nav-badge';
 import { NotificationBell } from '@/components/notifications/NotificationBell';
@@ -78,9 +78,10 @@ function BrandMark({ size = 36 }: { size?: number }) {
   );
 }
 
-/** Tuổi tối đa của cache `/users/me` mà vòng tự-lành avatar chấp nhận dùng lại. Xấu nhất ≈ 30 + 8 (nhịp vòng) = 38 phút < 60 phút TTL URL avatar. */
+/** Tuổi tối đa của cache `/users/me` mà vòng tự-lành avatar chấp nhận dùng lại. Xấu nhất ≈ 30 (BE tái dùng URL) + 15 + 8 (nhịp vòng) = 53 phút < 60 phút TTL URL avatar. */
 // [AGENT] OLD CODE (giữ để rollback): const ME_CACHE_MAX_AGE_MS = 7 * 60 * 1000;
-const ME_CACHE_MAX_AGE_MS = 30 * 60 * 1000; // role/vị trí đổi đã có permSig invalidate ME_KEY; tự sửa hồ sơ -> refreshMe
+// [AGENT] OLD CODE (giữ để rollback): const ME_CACHE_MAX_AGE_MS = 30 * 60 * 1000;
+const ME_CACHE_MAX_AGE_MS = ME_MAX_AGE_MS; // role/vị trí đổi đã có permSig invalidate ME_KEY; tự sửa hồ sơ -> refreshMe
 
 export default function DashboardLayout({
   children,

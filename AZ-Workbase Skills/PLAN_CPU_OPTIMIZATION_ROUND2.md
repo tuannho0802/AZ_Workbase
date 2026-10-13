@@ -49,9 +49,9 @@ Làm tuần tự **1 → 2 → 3 → 4 → 6A → 5 → 7 → 9 → 11 → 12 �
 **Mục tiêu:** có số "trước" để so sánh, và không commit nhầm log.
 
 **Việc cần làm**
-- [ ] Chuyển file CSV ra khỏi repo (đang nằm ở `backend/scripts/`) hoặc thêm vào `.gitignore`:
+- [x] Chuyển file CSV ra khỏi repo (đang nằm ở `backend/scripts/`) hoặc thêm vào `.gitignore`: ✅ _(rà 2026-10-13: không còn CSV nào được track; `backend/.gitignore` có `*.csv` — phủ cả `backend/scripts/*.csv`, `out.csv`)_
       `backend/scripts/*.csv`, `backend/*.csv`, `out.csv`. File chứa request id + user agent.
-- [ ] Áp patch `cpu-report-friendly-error.patch` nếu chưa áp (báo lỗi thiếu file dễ hiểu).
+- [x] Áp patch `cpu-report-friendly-error.patch` nếu chưa áp (báo lỗi thiếu file dễ hiểu). ✅ _(rà 2026-10-13: `cpu-timing-report.mjs` đã bắt `ENOENT` và báo lỗi dễ hiểu)_
 - [ ] Chạy baseline và lưu bảng vào `WORKFLOW_LOG.md`:
       `node scripts/cpu-timing-report.mjs <file.csv> --top 25 --csv baseline.csv`
 - [ ] Ghi baseline (từ log hiện tại) để so sau này:
@@ -120,16 +120,16 @@ không thể hết hạn dày như vậy.
 
 ### 2A. FE: chỉ 1 lần refresh cho mọi tab (không cần BE)
 **File:** `frontend/src/lib/api/axios-instance.ts` (+ `lib/stores/auth.store.ts` nếu cần).
-- [ ] Trước khi gọi `/auth/refresh`, bọc trong **Web Locks API**:
+- [x] Trước khi gọi `/auth/refresh`, bọc trong **Web Locks API**: ✅ _(`lib/auth/shared-refresh.ts`, có test)_
       `navigator.locks.request('az-auth-refresh', async () => { ... })` (fallback: không có `navigator.locks`
       thì giữ hành vi cũ).
-- [ ] **Trong lock**, đọc lại token mới nhất từ store/storage (tab khác có thể vừa refresh xong): nếu access token
+- [x] **Trong lock**, đọc lại token mới nhất từ store/storage (tab khác có thể vừa refresh xong): nếu access token ✅
       hiện tại **khác** token đã gây 401 → bỏ qua gọi API, dùng luôn token mới để thử lại request.
-- [ ] Chỉ khi token vẫn như cũ mới gọi `/auth/refresh`, rồi `setTokens(...)`.
-- [ ] Đảm bảo store đồng bộ giữa tab: nếu `zustand persist` chưa tự cập nhật khi tab khác ghi, thêm lắng nghe
+- [x] Chỉ khi token vẫn như cũ mới gọi `/auth/refresh`, rồi `setTokens(...)`. ✅
+- [x] Đảm bảo store đồng bộ giữa tab: nếu `zustand persist` chưa tự cập nhật khi tab khác ghi, thêm lắng nghe ✅ _(dùng `useAuthStore.persist.rehydrate()` trong khoá; store là localStorage `auth-storage`, không còn cookie)_
       sự kiện `storage` (hoặc rehydrate trong lock). **Cần xác minh cơ chế lưu thật (localStorage vs cookie
       `auth-storage`, xem `middleware.ts`) trước khi code** — không giả định.
-- [ ] Giữ nguyên hàng đợi `failedQueue` trong cùng tab.
+- [x] Giữ nguyên hàng đợi `failedQueue` trong cùng tab. ✅
 
 **Test (vitest):** mock `navigator.locks`; 2 request 401 đồng thời → chỉ 1 lần gọi `axios.post('/auth/refresh')`;
 tab giả lập có token đã đổi → không gọi refresh; không có `navigator.locks` → fallback hoạt động.
@@ -138,18 +138,18 @@ tab giả lập có token đã đổi → không gọi refresh; không có `navi
 ### 2B. BE: băm refresh token bằng SHA-256 (tiết kiệm CPU + bật reuse-detection thật)
 **File:** `backend/src/modules/users/users.service.ts` (`saveRefreshToken`, dòng ~222),
 `backend/src/modules/auth/auth.service.ts` (`refresh`, dòng ~267), thêm util `common/utils/refresh-token-hash.util.ts`.
-- [ ] Util mới:
+- [x] Util mới: ✅ _(THỰC TẾ KHÁC SPEC, tốt hơn: `common/utils/refresh-session-store.util.ts` lưu NHIỀU phiên (slot SHA-256, tối đa 10 thiết bị) trong cột `hashed_refresh_token`, không dùng tiền tố `sha256:`)_
   - `hashRefreshToken(token) → 'sha256:' + createHash('sha256').update(token).digest('hex')`
   - `verifyRefreshToken(token, stored) → Promise<boolean>`: nếu `stored` bắt đầu bằng `sha256:` →
     `timingSafeEqual` (so độ dài trước); ngược lại (hash bcrypt cũ, bắt đầu `$2`) → `bcrypt.compare` (**tương thích
     ngược**, 1 lần cuối).
-- [ ] `saveRefreshToken`: dùng `hashRefreshToken` thay `bcrypt.hash` (cột `hashed_refresh_token` là `TEXT` — đủ chỗ,
+- [x] `saveRefreshToken`: dùng `hashRefreshToken` thay `bcrypt.hash` (cột `hashed_refresh_token` là `TEXT` — đủ chỗ, ✅
       không cần migration).
-- [ ] `auth.service.refresh`: dùng `verifyRefreshToken`. Giữ nguyên nhánh "reuse detected" (thu hồi toàn bộ phiên).
-- [ ] Khi xác thực bằng hash bcrypt cũ thành công → vẫn xoay token như hiện tại (hash mới sẽ là `sha256:`), nên
+- [x] `auth.service.refresh`: dùng `verifyRefreshToken`. Giữ nguyên nhánh "reuse detected" (thu hồi toàn bộ phiên). ✅
+- [x] Khi xác thực bằng hash bcrypt cũ thành công → vẫn xoay token như hiện tại (hash mới sẽ là `sha256:`), nên ✅ _(hash bcrypt cũ còn hiệu lực 7 ngày — `LEGACY_GRACE_S`)_
       **không ai bị đăng xuất** khi deploy.
-- [ ] Login (`auth.service.ts:117`) cũng đi qua `saveRefreshToken` → tự dùng SHA-256.
-- [ ] **Không** log token; log reuse dùng `userId` như hiện tại (tuân thủ quy tắc logging).
+- [x] Login (`auth.service.ts:117`) cũng đi qua `saveRefreshToken` → tự dùng SHA-256. ✅
+- [x] **Không** log token; log reuse dùng `userId` như hiện tại (tuân thủ quy tắc logging). ⚠️ _(token không bị log; nhưng `auth.service.ts` ~282 log cả `user.email` khi phát hiện reuse — spec nói chỉ `userId`; xem Lưu ý trong WORKFLOW_LOG)_
 
 **Test (jest):** hash/verify đúng & sai; so sánh hằng thời gian; hash cũ bcrypt vẫn qua; **2 token khác nhau của cùng
 user → verify sai** (bằng chứng lỗi 72 byte đã hết); refresh thành công ghi hash dạng `sha256:`; reuse → xoá hash.
@@ -196,7 +196,7 @@ thật (không phải tấn công).
 > thiếu index?). → **bắt buộc đo trước khi sửa** (bước 3A).
 
 ### 3A. Đo (không đổi hành vi)
-- [ ] Thêm đo thời gian từng bước trong controller `findAll`, **bật bằng env** `CPU_TIMING=true`, dùng `Logger`
+- [x] Thêm đo thời gian từng bước trong controller `findAll`, **bật bằng env** `CPU_TIMING=true`, dùng `Logger` ✅ _(log `[PT-List]` ở controller + service; định dạng khác mẫu trong plan nhưng đủ bước)_
       (không `console.log`): log 1 dòng `[PT-List] total=… count+select=… checklist=… secondary=… customerCount=… rows=… limit=…`.
 - [ ] Bật TypeORM `maxQueryExecutionTime` đã có (1000 ms); tạm hạ xuống 100 ms trên preview để thấy truy vấn chậm.
 - [ ] Trên DB (preview/staging, **không phải production**): `EXPLAIN` truy vấn SELECT chính với `periodEndDate >= ? AND periodStartDate <= ?`
@@ -238,7 +238,7 @@ thật (không phải tấn công).
 - [x] 3B.4 — Bỏ COUNT thừa: `findAll` dùng `getMany()`; chỉ chạy `getCount()` khi trang đầy (rows == limit) hoặc trang rỗng ở page > 1.
       `total` trả về GIỐNG HỆT trước (không đổi shape, không cần đổi FE). Mọi view dưới `limit` dòng tiết kiệm 1 truy vấn (COUNT + 5 join).
 - [x] 3C — FE: query ứng viên "Công việc cha" trong `TaskLinksModal` chỉ bật khi `canEditLinks` (Select chỉ render khi có quyền sửa).
-- [ ] 3B.1 (thu hẹp cột join), 3B.2 (`Promise.all` attach*), 3B.5 (giảm limit 100) — **chờ số đo 3A**.
+- [ ] 3B.1 (thu hẹp cột join), 3B.5 (giảm limit 100) — **chờ số đo 3A**. _(3B.2 đã có sẵn: `periodic-tasks.controller.ts` ~85 chạy 3 `attach*` bằng `Promise.all`; rà 2026-10-13)_
 - [ ] 3C còn lại (`setQueryData` khi tick checklist, `staleTime` riêng, ứng viên search server-side) — chưa làm: đổi hành vi cache
       cần đo trước; tick checklist đang `invalidate` toàn bộ `['periodic-tasks']`.
 
@@ -262,14 +262,14 @@ FE — vitest cho hook/modal (số lần gọi API khi mở modal, khi tick chec
 - BE: mỗi lần `findById(id, ['department','position'])` + ký URL avatar (đã cache từ `b305b50`). TB 33 ms, nhưng p95 127 ms.
 
 ### 4.1. Các bước
-- [ ] **Hợp nhất** 3 nơi gọi về **một query key** `ME_KEY`:
+- [x] **Hợp nhất** 3 nơi gọi về **một query key** `ME_KEY`: ✅ _(`useMe.ts` `ME_KEY`; profile dùng `fetchMeCached`, tương đương `useMe()`)_
   - `layout.tsx`: thay `usersApi.getMe()` bằng `queryClient.fetchQuery({ queryKey: ME_KEY, queryFn: usersApi.getMe, staleTime: AVATAR_REFRESH_MS })`
     rồi merge avatar vào auth store như hiện tại → nếu `useMe`/trang khác vừa tải trong vòng 8 phút thì **không gọi lại**.
   - `profile/page.tsx`: dùng `useMe()` khi `isSelf` (giữ `getUserDetail` cho người khác).
   - `useMe`: nâng `staleTime` lên 5 phút. **Không** để dữ liệu hồ sơ cũ sau khi chính user sửa: các mutation
     `me/profile`, `me/avatar`, `me/email` phải `invalidateQueries(ME_KEY)` (kiểm tra đã có chưa, thiếu thì thêm).
-- [ ] Giữ cơ chế "tự lành" avatar (URL ký 60 phút; cache BE 30 phút) — **không** kéo dài quá 8 phút mà không kiểm tra `reuseUntil`.
-- [ ] Tín hiệu `permSig` (đã có) vẫn `invalidate` `['my-permissions']`… — cân nhắc thêm `ME_KEY` vì role/phòng ban/vị trí
+- [x] Giữ cơ chế "tự lành" avatar (URL ký 60 phút; cache BE 30 phút) — **không** kéo dài quá 8 phút mà không kiểm tra `reuseUntil`. ✅ _(2026-10-13 sửa: cache `/users/me` hạ về 15 phút = `ME_MAX_AGE_MS`; trước đó 30 phút (layout/useMe) và 60 phút (profile) có thể giữ URL avatar đã hết hạn — BE tái dùng URL tối đa 30 phút, TTL thật 60 phút)_
+- [x] Tín hiệu `permSig` (đã có) vẫn `invalidate` `['my-permissions']`… — cân nhắc thêm `ME_KEY` vì role/phòng ban/vị trí ✅
       nằm trong `/users/me` (xác nhận FE nào đọc `me.department/position` để quyết định).
 
 **Trạng thái triển khai (2026-10-06):**
@@ -299,7 +299,7 @@ activity-resume > 8 phút → refetch 1 lần.
 - Hai hook poll chạy **2 request riêng** mỗi chu kỳ (120 s và 180 s), mỗi request chạy đủ JwtStrategy/guard.
 
 ### 5A. Đo từng badge (không đổi hành vi)
-- [ ] `sidebar-badges.service.ts#getBadges`: khi `CPU_TIMING=true`, log thời gian từng job (`invalidData`, `trash`, `pendingUsers`,
+- [x] `sidebar-badges.service.ts#getBadges`: khi `CPU_TIMING=true`, log thời gian từng job (`invalidData`, `trash`, `pendingUsers`, ✅ _(từng job ghi vào `ms[...]`, kể cả cache HIT/MISS của `invalidData`)_
       `leaveApprovals`, `myPendingLeave`, `tasks`) bằng `Logger` → tìm badge nặng nhất.
 - [ ] Nghi ngờ chính: `countDuplicatePhoneRecords` (quét trùng SĐT toàn bảng khách; **đã có cache 180 s** nhưng chỉ khi cùng `user:role:scope`)
       và `periodicTasksService.countAssignedByStatusCodes` (join theo phạm vi). **Cần số đo mới kết luận.**
@@ -338,11 +338,11 @@ Chúng bị gọi **cả loạt trong cùng 1 giây** khi tải lại trang (vd 
 Hiện `staleTime`: departments 5 phút, media-sources 5 phút, customer-statuses 60 s, guides 60 s, mặc định 30 s (vd `roles/colors` — cần xác minh hook).
 
 ### 6A. Nâng `staleTime` + invalidate theo mutation (an toàn, làm trước)
-- [ ] Liệt kê từng endpoint tham chiếu → hook FE tương ứng → có mutation nào sửa dữ liệu đó không (trang Admin).
-- [ ] Đặt `staleTime` 5–10 phút cho: `roles/colors`, `positions`, `customer-statuses`, `periodic-task-statuses`, `departments`, `media-sources`.
-- [ ] **Mỗi mutation của dữ liệu đó phải `invalidateQueries` đúng key** (nếu thiếu → bug "sửa xong không thấy đổi").
+- [x] Liệt kê từng endpoint tham chiếu → hook FE tương ứng → có mutation nào sửa dữ liệu đó không (trang Admin). ✅
+- [x] Đặt `staleTime` 5–10 phút cho: `roles/colors`, `positions`, `customer-statuses`, `periodic-task-statuses`, `departments`, `media-sources`. ✅
+- [x] **Mỗi mutation của dữ liệu đó phải `invalidateQueries` đúng key** (nếu thiếu → bug "sửa xong không thấy đổi"). ✅ _(bảng kiểm đã có trong WORKFLOW_LOG)_
       Lập bảng kiểm trong WORKFLOW_LOG: `endpoint | hook | staleTime | mutation | invalidate OK?`.
-- [ ] Không đổi `guides` quá 60 s nếu nội dung được sync thường xuyên (`guides-sync.ts`); xem lại sau.
+- [x] Không đổi `guides` quá 60 s nếu nội dung được sync thường xuyên (`guides-sync.ts`); xem lại sau. ✅
 - *Giới hạn:* 6A chỉ giảm số lần gọi **trong 1 phiên SPA**, không giúp khi F5.
 
 ### 6B. (Tuỳ chọn, sau 6A) Giữ cache qua F5
@@ -365,7 +365,7 @@ Hiện `staleTime`: departments 5 phút, media-sources 5 phút, customer-statuse
       của màn sửa guide (`manage` 15 s, `*-options` 60 s, `manage-detail` 0) GIỮ NGUYÊN. Mutation guide đã invalidate `['guides']` (tiền tố).
 - [x] `assignment-groups/:key/users` giữ 60 s: danh sách đổi theo việc sửa Phòng ban/Vị trí của nhân viên
       (mutation ở trang Nhân viên KHÔNG invalidate key này) → nâng TTL cần thêm invalidate ở mutation user; để sau.
-- [ ] 6B (giữ cache qua F5) — chưa làm, chỉ làm nếu đo thấy 6A chưa đủ.
+- [x] 6B (giữ cache qua F5) — ✅ ĐÃ CÓ (`frontend/src/lib/query-persist.ts` + test, nạp ở `AntdAppProvider`; rà 2026-10-13). ⚠️ LỆCH SPEC: plan dặn KHÔNG persist `my-permissions`/`users/me`, nhưng whitelist hiện CÓ cả hai (khoá theo userId + `stamp` refSig/permSig/epoch, xoá khi đăng xuất, tối đa 2 giờ). Tokens vốn đã nằm trong localStorage nên rủi ro lộ không tăng, nhưng URL avatar trong `users/me` có thể cũ tới 2 giờ khi vừa F5 — layout tự-lành refetch vì `updatedAt` gốc được giữ (staleTime 15 phút). Chủ dự án cần xác nhận chấp nhận độ lệch này.
 - Đánh đổi: Admin sửa màu Role / trạng thái ở máy khác → máy này thấy thay đổi chậm tối đa 5 phút (máy của chính Admin đổi thì thấy ngay).
 
 **Test:** vitest cho từng hook đổi `staleTime` + mutation invalidate; thủ công: sửa 1 mục tham chiếu → thấy đổi ngay.
@@ -438,10 +438,10 @@ Chuỗi lặp lại mỗi đợt: 8 `OPTIONS` → 8 `GET 401` → `OPTIONS` + `P
 ⇒ mỗi đợt tốn ≈ 8 invocation 401 + 8 retry, rồi các route tham chiếu chạy lại. Nguyên nhân: user mở lại app sau > `JWT_EXPIRES_IN` (1h, đã đặt đúng) nên token đã hết hạn **trước** khi gửi request đầu tiên.
 
 **Việc cần làm — ĐÃ LÀM** (chính là mục "refresh chủ động, ưu tiên thấp" của Mục 1 — nay có bằng chứng prod nên nâng lên làm):
-- [ ] `frontend/src/lib/api/axios-instance.ts`, request interceptor: giải mã `exp` từ access token (base64url của đoạn payload, **không cần thư viện**, bọc try/catch — token lỗi thì bỏ qua và gửi như cũ).
+- [x] `frontend/src/lib/api/axios-instance.ts`, request interceptor: giải mã `exp` từ access token (base64url của đoạn payload, **không cần thư viện**, bọc try/catch — token lỗi thì bỏ qua và gửi như cũ). ✅
       Nếu `exp - now < 60 s` (kể cả đã hết hạn) → gọi refresh **trước** rồi mới gửi request; dùng chung cờ/hàng đợi `isRefreshing` + `failedQueue` hiện có để 8 request song song chỉ đợi 1 lần refresh.
-- [ ] Không refresh chủ động cho chính `/auth/refresh` và `/auth/login` (tránh đệ quy); đồng hồ máy lệch → vẫn còn nhánh 401 cũ làm lưới an toàn (**giữ nguyên**, không bỏ).
-- [ ] Giữ code cũ bằng comment `// [AGENT] OLD CODE`; không đổi BE.
+- [x] Không refresh chủ động cho chính `/auth/refresh` và `/auth/login` (tránh đệ quy); đồng hồ máy lệch → vẫn còn nhánh 401 cũ làm lưới an toàn (**giữ nguyên**, không bỏ). ✅
+- [x] Giữ code cũ bằng comment `// [AGENT] OLD CODE`; không đổi BE. ✅
 - [x] ~~(Tuỳ chọn) bọc refresh trong `navigator.locks`~~ — **không cần**: 9A dùng lại `refreshAccessTokenShared` (đã có khoá liên-tab).
 
 **Đã triển khai (file thật):**
@@ -923,7 +923,7 @@ export class QuietBootLogger extends ConsoleLogger {
 - **Bằng chứng:** `getAuditLogs` gọi `await this.periodicTasksService.findOne(...)` (5 `leftJoinAndSelect`: status, primaryAssignee, department, createdBy, updatedBy — **User đầy đủ ×3**) **chỉ để** trả 404 khi ngoài phạm vi; kết quả bị bỏ. `assertCanView()` (siêu nhẹ, chỉ `task.id` + `applyViewFilter`) **đã có sẵn** và đã được dùng ở checklist/links/customers/secondary-assignees (các `OLD CODE` ở đó).
 - **Việc làm:**
   - [x] Đổi thành `await this.periodicTasksService.assertCanView(id, user.id, user.role, scope)`; giữ dòng cũ bằng comment `[AGENT] OLD CODE`; cập nhật comment "1 cổng gác" cho khớp.
-  - [ ] Test: `periodic-tasks.controller.spec.ts` — Task ngoài scope vẫn 404 và **không** gọi `getLogsForTask`; trong scope gọi đúng 1 lần `assertCanView`, **không** gọi `findOne`.
+  - [x] Test: `periodic-tasks.controller.spec.ts` — Task ngoài scope vẫn 404 và **không** gọi `getLogsForTask`; trong scope gọi đúng 1 lần `assertCanView`, **không** gọi `findOne`. ✅ _(`periodic-tasks.controller.spec.ts` có test này)_
 - **Rủi ro:** rất thấp. **Rollback:** khôi phục dòng `findOne`.
 
 **14B-2. `PeriodicTasksService.findOne` (`periodic-tasks.service.ts` ~574–578)**

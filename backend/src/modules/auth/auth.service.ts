@@ -279,7 +279,9 @@ export class AuthService {
 
     if (!isTokenValid) {
       // 🚨 TOKEN RE-USE DETECTED: Thu hồi toàn bộ session ngay lập tức
-      this.logger.warn(`[SECURITY] Token reuse detected for user ID: ${user.id} (${user.email}). Revoking all sessions.`);
+      // [AGENT] OLD CODE: this.logger.warn(`[SECURITY] Token reuse detected for user ID: ${user.id} (${user.email}). Revoking all sessions.`);
+      // (plan CPU Mục 2B: log reuse chỉ dùng userId, không log email)
+      this.logger.warn(`[SECURITY] Token reuse detected for user ID: ${user.id}. Revoking all sessions.`);
 
       await this.usersService.saveRefreshToken(user.id, null);
       throw new UnauthorizedException('Phát hiện nghi ngờ bảo mật. Toàn bộ phiên đăng nhập đã bị thu hồi. Vui lòng đăng nhập lại');
