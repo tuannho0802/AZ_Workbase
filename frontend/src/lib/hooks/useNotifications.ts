@@ -1,6 +1,7 @@
 import { useInfiniteQuery, useMutation, useQueryClient, type QueryClient } from '@tanstack/react-query';
 import { notificationsApi } from '../api/notifications.api';
 import type { ListNotificationsParams, NotificationCategory, NotificationPollResponse } from '../types/notification.types';
+import { isPollSkipped, PollSkippedError } from '../notifications/poll-skip';
 
 /** Query key dùng chung - invalidate `list`/`poll` sau mỗi thao tác ghi. */
 export const notificationKeys = {
@@ -8,6 +9,21 @@ export const notificationKeys = {
   list: ['notifications', 'list'] as const,
   poll: ['notifications', 'poll'] as const,
 };
+
+/**
+ * queryFn CHUNG cho query poll (useNotificationPoll + useSidebarBadgeCounts).
+ * BE ngoài giờ trả `{ skipped: true }`: có dữ liệu cũ -> giữ nguyên (badge/số chưa đọc không biến mất);
+ * chưa có -> ném PollSkippedError (không retry, xem lib/query-retry.ts) thay vì ghi dữ liệu giả vào cache.
+ */
+export async function fetchPollKeepPrevious(queryClient: QueryClient): Promise<NotificationPollResponse> {
+  const data = await notificationsApi.poll();
+  if (isPollSkipped(data)) {
+    const prev = queryClient.getQueryData<NotificationPollResponse>(notificationKeys.poll);
+    if (prev) return prev;
+    throw new PollSkippedError();
+  }
+  return data;
+}
 
 /** Danh sách cursor-based (`nextCursor` opaque từ BE) - "Tải thêm" = fetchNextPage. */
 export function useNotificationList(params: Omit<ListNotificationsParams, 'cursor'> = {}, enabled = true) {

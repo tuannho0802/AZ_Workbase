@@ -47,4 +47,18 @@ describe('useSidebarBadgeCounts (10C - badges nằm trong poll chung)', () => {
     it('SIDEBAR_BADGES_QUERY_KEY = key poll chung (permission đổi -> invalidate là làm mới badge)', () => {
         expect([...SIDEBAR_BADGES_QUERY_KEY]).toEqual([...notificationKeys.poll]);
     });
+
+    it('BE ngoài giờ trả { skipped: true }: GIỮ badge cũ, không bị xoá', async () => {
+        poll.mockResolvedValueOnce({ unread: 2, version: 1, badges: { taskTodo: 4 } });
+        const { result } = renderHook(() => useSidebarBadgeCounts(), { wrapper });
+        await waitFor(() => expect(result.current['cong-viec-dinh-ky']).toBe(4));
+
+        poll.mockResolvedValueOnce({ skipped: true, reason: 'off-hours' });
+        const { act } = await import('@testing-library/react');
+        await act(async () => {
+            await qc.invalidateQueries({ queryKey: notificationKeys.poll });
+        });
+        expect(result.current['cong-viec-dinh-ky']).toBe(4);
+        expect(result.current['thong-bao']).toBe(2);
+    });
 });

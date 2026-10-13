@@ -5,6 +5,7 @@ import type {
   NotificationListResponse,
   NotificationPollResponse,
 } from '../types/notification.types';
+import { isPollSkipped, type PollSkippedResponse } from '../notifications/poll-skip';
 
 /**
  * Hộp thư CÁ NHÂN - chỉ cần đăng nhập (BE lấy `recipientId` từ JWT, không nhận
@@ -17,8 +18,9 @@ export const notificationsApi = {
   },
 
   /** Endpoint polling nhẹ (60s): số chưa đọc + version. */
-  poll: async (): Promise<NotificationPollResponse> => {
-    const response = await axiosInstance.get<NotificationPollResponse>('/sidebar/poll') // [AGENT] OLD CODE: '/notifications/poll' - 10C: gộp thêm `badges`;
+  // [AGENT] NEW: ngoài giờ làm việc BE trả `{ skipped: true }` (xem notifications/poll-skip.ts) -> caller PHẢI xử lý (dùng fetchPollKeepPrevious).
+  poll: async (): Promise<NotificationPollResponse | PollSkippedResponse> => {
+    const response = await axiosInstance.get<NotificationPollResponse | PollSkippedResponse>('/sidebar/poll') // [AGENT] OLD CODE: '/notifications/poll' - 10C: gộp thêm `badges`;
     return response.data;
   },
 
@@ -26,9 +28,10 @@ export const notificationsApi = {
    * Poll NHẸ (không kèm `badges`, ~2 query thay vì ~8) - chỉ dùng để làm mới số chưa đọc ngay sau thao tác với thông báo.
    * Vẫn trả `version`/`permSig`/`refSig`/`epoch` nên gộp thẳng vào cache poll chung mà không lệch mốc.
    */
-  pollLite: async (): Promise<NotificationPollResponse> => {
-    const response = await axiosInstance.get<NotificationPollResponse>('/notifications/poll');
-    return response.data;
+  // [AGENT] NEW: BE bỏ qua ngoài giờ -> trả `{}` để `mergeLitePoll` gộp vào cache mà KHÔNG đổi gì.
+  pollLite: async (): Promise<Partial<NotificationPollResponse>> => {
+    const response = await axiosInstance.get<NotificationPollResponse | PollSkippedResponse>('/notifications/poll');
+    return isPollSkipped(response.data) ? {} : response.data;
   },
 
   /** Idempotent - đã đọc rồi thì BE giữ nguyên `readAt` cũ. */

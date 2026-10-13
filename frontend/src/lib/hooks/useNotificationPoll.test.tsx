@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { renderHook, waitFor, act } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import type { ReactNode } from 'react';
@@ -129,5 +129,37 @@ describe('useNotificationPoll', () => {
     renderHook(() => useNotificationPoll(), { wrapper });
     await new Promise((r) => setTimeout(r, 20));
     expect(poll).not.toHaveBeenCalled();
+  });
+
+  describe('refetchOnWindowFocus theo khung giờ poll', () => {
+    const focusOption = () =>
+      queryClient.getQueryCache().find({ queryKey: notificationKeys.poll })?.observers[0]?.options.refetchOnWindowFocus;
+
+    afterEach(() => {
+      vi.useRealTimers();
+    });
+
+    it('trong giờ làm việc (T3 10:00 VN): focus lại tab vẫn được tự làm mới', async () => {
+      vi.useFakeTimers({ toFake: ['Date'] });
+      vi.setSystemTime(new Date('2026-10-13T10:00:00+07:00'));
+      poll.mockResolvedValue({ unread: 1, version: 1000 });
+      renderHook(() => useNotificationPoll(), { wrapper });
+      await waitFor(() => expect(poll).toHaveBeenCalled());
+      expect(focusOption()).toBe(true);
+    });
+
+    it('ngoài giờ (T3 19:00 VN và T7): focus lại tab KHÔNG tự kéo poll', async () => {
+      for (const when of ['2026-10-13T19:00:00+07:00', '2026-10-17T10:00:00+07:00']) {
+        queryClient.clear();
+        vi.useFakeTimers({ toFake: ['Date'] });
+        vi.setSystemTime(new Date(when));
+        poll.mockResolvedValue({ unread: 1, version: 1000 });
+        const { unmount } = renderHook(() => useNotificationPoll(), { wrapper });
+        await waitFor(() => expect(poll).toHaveBeenCalled());
+        expect(focusOption()).toBe(false);
+        unmount();
+        vi.useRealTimers();
+      }
+    });
   });
 });

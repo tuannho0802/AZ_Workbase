@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { shouldRetryQuery } from './query-retry';
+import { PollSkippedError } from './notifications/poll-skip';
 
 const http = (status: number) => ({ response: { status } });
 
@@ -15,5 +16,8 @@ describe('shouldRetryQuery (PLAN CPU 10B)', () => {
         expect(shouldRetryQuery(0, new Error('Network Error'))).toBe(true);
         expect(shouldRetryQuery(1, new Error('Network Error'))).toBe(false);
         expect(shouldRetryQuery(0, null)).toBe(true);
+    });
+    it('PollSkippedError (BE bỏ qua poll ngoài giờ): KHÔNG thử lại', () => {
+        expect(shouldRetryQuery(0, new PollSkippedError())).toBe(false);
     });
 });

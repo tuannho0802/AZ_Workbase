@@ -5,7 +5,8 @@ const pollLite = vi.fn();
 const poll = vi.fn();
 vi.mock('../api/notifications.api', () => ({ notificationsApi: { pollLite: (...a: unknown[]) => pollLite(...a), poll: (...a: unknown[]) => poll(...a) } }));
 
-import { mergeLitePoll, notificationKeys } from './useNotifications';
+import { mergeLitePoll, notificationKeys, fetchPollKeepPrevious } from './useNotifications';
+import { PollSkippedError } from '../notifications/poll-skip';
 
 describe('mergeLitePoll - làm mới số chưa đọc KHÔNG chạy lại poll gộp', () => {
   let qc: QueryClient;
@@ -35,5 +36,32 @@ describe('mergeLitePoll - làm mới số chưa đọc KHÔNG chạy lại poll 
     pollLite.mockRejectedValue(new Error('network'));
     await expect(mergeLitePoll(qc)).resolves.toBeUndefined();
     expect(qc.getQueryData(notificationKeys.poll)).toEqual({ unread: 5, version: 10 });
+  });
+});
+
+
+describe('fetchPollKeepPrevious - BE ngoài giờ trả { skipped: true }', () => {
+  let qc: QueryClient;
+  beforeEach(() => {
+    qc = new QueryClient();
+    poll.mockReset();
+  });
+
+  it('dữ liệu poll thật: trả nguyên', async () => {
+    poll.mockResolvedValue({ unread: 3, version: 9 });
+    await expect(fetchPollKeepPrevious(qc)).resolves.toEqual({ unread: 3, version: 9 });
+  });
+
+  it('skipped + đã có cache: GIỮ NGUYÊN cache (badge/số chưa đọc không biến mất)', async () => {
+    const prev = { unread: 5, version: 10, badges: { trash: 3 } };
+    qc.setQueryData(notificationKeys.poll, prev);
+    poll.mockResolvedValue({ skipped: true, reason: 'off-hours' });
+    await expect(fetchPollKeepPrevious(qc)).resolves.toBe(prev);
+  });
+
+  it('skipped + chưa có cache: ném PollSkippedError, KHÔNG ghi dữ liệu giả', async () => {
+    poll.mockResolvedValue({ skipped: true });
+    await expect(fetchPollKeepPrevious(qc)).rejects.toBeInstanceOf(PollSkippedError);
+    expect(qc.getQueryData(notificationKeys.poll)).toBeUndefined();
   });
 });

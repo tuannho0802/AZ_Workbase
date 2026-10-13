@@ -123,7 +123,7 @@ const MAX_TIMEOUT_MS = 2_147_483_647;
  * Tự đổi trạng thái đúng lúc qua mốc (hẹn giờ tới mốc kế tiếp) và kiểm tra lại khi tab hiện lại
  * (timer của tab nền có thể bị trình duyệt trì hoãn). Chỉ là timer phía trình duyệt, không gọi BE.
  */
-function usePollWindowOpen(): boolean {
+export function usePollWindowOpen(): boolean {
   const [open, setOpen] = useState(() => isPollWindowOpen());
 
   useEffect(() => {

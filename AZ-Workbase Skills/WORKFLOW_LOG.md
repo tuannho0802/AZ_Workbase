@@ -7286,3 +7286,46 @@ Now [deploy]
 > CỐ Ý KHÔNG lưu customers/periodic-tasks (đổi liên tục, nhiều người sửa, có SĐT/email khách -> không để PII ở localStorage). An toàn độ mới: dấu (refSig/permSig/epoch/nonce) đổi -> bỏ hết; không lưu query đã invalidate/đang tải; giữ updatedAt gốc; tối đa 2 giờ; khoá theo userId; tối đa 400KB. Cần xem thử trên trình duyệt: F5 xong tab Network không còn call danh mục; đổi vị trí/phòng ban ở máy khác -> sau poll tiếp theo UI cập nhật.
 
 ---
+
+## [2026-10-13] | Stats modal Customer chỉ chọn cột cần + nhịp poll 450s & khung giờ poll FE | [Status: Success]
+
+**Actor:** Agent
+**Files Changed:**
+- `backend/src/modules/customers/customers.service.ts` — `getStatsToday`, `getStatsByStatus`, `getAllDepositsStats` bỏ `leftJoinAndSelect` nguyên entity Customer + 3 User, chỉ `select` đúng cột `StatModals.tsx` đọc (giữ comment OLD CODE)
+- `backend/src/modules/customers/customers-stats-select.spec.ts` — 3 test (mock query builder): không còn `leftJoinAndSelect`, đúng danh sách cột, `by-status` vẫn không join `updatedBy`, còn điều kiện xoá mềm, limit 500/50/1000
+- `frontend/src/lib/poll-schedule.ts` (+ `.test.ts`, 6 test) — hằng số `POLL_INTERVAL_MS = 450_000` dùng chung + khung giờ poll theo giờ VN (T2–T6 trước 18:45; T7/CN không poll)
+- `frontend/src/lib/hooks/useUserActivity.ts` (+ test), `useNotificationPoll.ts`, `useSidebarBadgeCounts.ts` — dùng hằng số chung; `useActivityPolling` trả false ngoài khung giờ
+
+**Root Cause:**
+> 3 hàm stats trả nguyên entity + User lồng (tối đa 1000 dòng) trong khi modal chỉ dùng vài cột; poll nền vẫn chạy ngoài giờ làm việc và 2 hook cùng queryKey lệch staleTime (cái ngắn hơn thắng).
+
+**Solution:**
+> Chỉ select cột cần; 1 hằng số nhịp poll + cổng khung giờ ở FE.
+
+**Notes:**
+> Đã chạy thật trên HEAD a2641a7: BE `tsc --noEmit` exit 0, `nest build` exit 0, `jest` 115 suite / 1887 test pass; FE `vitest run` chia 3 shard = 112 file / 1197 test pass; FE `tsc --noEmit` chỉ còn 4 lỗi `logo.png` có sẵn. Spec BE dùng mock nên KHÔNG chạy SQL thật — cần mở 3 modal thống kê (Khách mới hôm nay / Theo trạng thái / Nạp tiền) trên trình duyệt kiểm tra tên Sales, "Tạo bởi", "Sửa cuối". Hạn chế poll FE: không có mốc bắt đầu (mở tab trước 08:45 vẫn poll); query poll còn `refetchOnWindowFocus: true` nên quay lại tab sau 18:45 vẫn có 1 lần poll nếu dữ liệu quá 450s.
+
+---
+
+## [2026-10-13] | Cổng BE chặn poll thông báo/badge ngoài giờ (mặc định BẬT) + FE giữ cache & không tự kéo khi focus ngoài giờ | [Status: Success]
+
+**Actor:** Agent
+**Files Changed:**
+- `backend/src/common/utils/poll-gate.util.ts` (+ `.spec.ts`, 11 test) — MỚI: GET `/api/sidebar/poll`, `/api/notifications/poll`, `/api/sidebar/badges` ngoài khung giờ (T2–T6 từ 18:45 VN, T7/CN) trả `200 {skipped:true,reason:'off-hours'}`; tự gắn header CORS; env `POLL_HOURS_SKIP=false` mới tắt
+- `backend/src/main.ts` — gọi cổng trong `handler` (sau keepalive-gate, TRƯỚC `getApp()` nên không bootstrap Nest/DB/JWT)
+- `frontend/src/lib/notifications/poll-skip.ts` (+ test) — nhận diện `skipped`, `PollSkippedError`
+- `frontend/src/lib/hooks/useNotifications.ts` — `fetchPollKeepPrevious()`: skipped + có cache -> giữ cache; chưa có -> ném `PollSkippedError`
+- `frontend/src/lib/hooks/useNotificationPoll.ts`, `useSidebarBadgeCounts.ts` — dùng queryFn chung; `refetchOnWindowFocus` = `usePollWindowOpen()` (ngoài giờ không tự kéo khi focus lại tab); `retry` bỏ qua `PollSkippedError`
+- `frontend/src/lib/api/notifications.api.ts` — `poll()` có thể trả skipped; `pollLite()` trả `{}` khi skipped
+- `frontend/src/lib/hooks/useUserActivity.ts` — export `usePollWindowOpen`; `frontend/src/lib/query-retry.ts` — không retry `PollSkippedError`
+
+**Root Cause:**
+> FE tự dừng poll ngoài giờ nhưng tab mở sẵn từ trước khi deploy, client cũ (poll 60s/120s) và gọi tay vẫn đánh vào BE (bootstrap Nest + JWT + đếm badge). Công ty không có ai làm ngoài giờ.
+
+**Solution:**
+> Chặn sớm ở BE theo cùng khung giờ với FE `poll-schedule.ts` (cố ý KHÔNG có mốc bắt đầu để mở app sớm vẫn có thông báo). Không chặn danh sách thông báo/đánh dấu đã đọc. Response `skipped` không được ghi đè cache FE.
+
+**Notes:**
+> Đã chạy thật: BE `tsc` 0, `nest build` 0, `jest` 116 suite / 1898 test pass; FE `vitest` 3 shard = 113 file / 1207 test pass; FE `tsc` chỉ còn 4 lỗi `logo.png` có sẵn. Cổng chỉ chạy qua `handler` trên Vercel (chạy local `npm run start:dev` không qua cổng). Cần deploy BE để có hiệu lực; muốn có ca muộn/T7 thì đặt `POLL_HOURS_SKIP=false` rồi redeploy BE (FE vẫn tự dừng theo `poll-schedule.ts`, cần sửa thêm nếu muốn mở lại). Chưa thử trên prod/trình duyệt thật: sau 18:45 mở tab cũ -> badge còn nguyên, Network chỉ thấy 200 `skipped` rồi không lặp; kiểm tra tab cross-origin không báo lỗi CORS.
+
+---

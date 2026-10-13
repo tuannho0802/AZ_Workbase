@@ -4,8 +4,9 @@ import { useRouter } from 'next/navigation';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { notificationsApi } from '../api/notifications.api';
 import { useAuthStore } from '../stores/auth.store';
-import { notificationKeys } from './useNotifications';
-import { useActivityPolling } from './useUserActivity';
+import { notificationKeys, fetchPollKeepPrevious } from './useNotifications';
+import { useActivityPolling, usePollWindowOpen } from './useUserActivity';
+import { PollSkippedError } from '../notifications/poll-skip';
 import { POLL_INTERVAL_MS as SHARED_POLL_INTERVAL_MS } from '../poll-schedule';
 import { usePermissionChangeSignal } from './usePermissionChangeSignal';
 import { useRefDataChangeSignal } from './useRefDataChangeSignal';
@@ -47,17 +48,24 @@ export function useNotificationPoll() {
   // [AGENT] NEW CODE: dừng poll khi người dùng bỏ treo tab >5 phút, làm mới ngay khi quay lại.
   const refetchInterval = useActivityPolling(notificationKeys.poll, POLL_INTERVAL_MS, isAuthenticated);
 
+  // [AGENT] NEW CODE: ngoài khung giờ (T7/CN, sau 18:45 T2-T6) không tự kéo poll cả khi focus lại tab.
+  const windowOpen = usePollWindowOpen();
+
   const query = useQuery({
     queryKey: notificationKeys.poll,
-    queryFn: () => notificationsApi.poll(),
+    // [AGENT] OLD CODE (giữ lại để rollback): queryFn: () => notificationsApi.poll(),
+    // NEW: BE ngoài giờ trả `{ skipped: true }` -> giữ dữ liệu cũ thay vì ghi đè cache.
+    queryFn: () => fetchPollKeepPrevious(queryClient),
     enabled: isAuthenticated,
     // [AGENT] OLD CODE (giữ lại để rollback): refetchInterval: POLL_INTERVAL_MS,
     refetchInterval,
-    refetchOnWindowFocus: true,
+    // [AGENT] OLD CODE (giữ lại để rollback): refetchOnWindowFocus: true,
+    refetchOnWindowFocus: windowOpen,
     // [AGENT] OLD CODE: staleTime: POLL_INTERVAL_MS / 2 (150s -> focus lại tab sau >2,5 phút là poll thêm 1 lần, ngoài chu kỳ 5 phút)
     // NEW: = POLL_INTERVAL_MS (cùng useSidebarBadgeCounts, nếu 2 observer lệch staleTime thì cái NGẮN hơn thắng).
     staleTime: POLL_INTERVAL_MS,
-    retry: 1,
+    // [AGENT] OLD CODE (giữ lại để rollback): retry: 1,
+    retry: (failureCount, error) => !(error instanceof PollSkippedError) && failureCount < 1,
   });
 
   // [AGENT] NEW CODE: poll báo "quyền của tôi vừa đổi" -> làm mới quyền/ẩn-hiện UI ngay (không chờ staleTime 60s).

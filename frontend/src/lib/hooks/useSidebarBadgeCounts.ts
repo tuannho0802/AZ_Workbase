@@ -1,7 +1,6 @@
-import { useQuery } from '@tanstack/react-query';
-import { notificationsApi } from '../api/notifications.api';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useAuthStore } from '../stores/auth.store';
-import { notificationKeys } from './useNotifications';
+import { notificationKeys, fetchPollKeepPrevious } from './useNotifications';
 import { useActivityPolling } from './useUserActivity';
 import { POLL_INTERVAL_MS } from '../poll-schedule';
 
@@ -39,9 +38,11 @@ export function useSidebarBadgeCounts(): Record<string, number> {
   // [AGENT] NEW CODE (10C): 1 query poll chung (unread + badges); dừng poll khi người dùng bỏ treo tab >5 phút.
   const pollInterval = useActivityPolling(notificationKeys.poll, REFRESH_INTERVAL_MS, isAuthenticated);
 
+  const queryClient = useQueryClient();
   const notificationsPoll = useQuery({
     queryKey: notificationKeys.poll,
-    queryFn: () => notificationsApi.poll(),
+    // [AGENT] OLD CODE (giữ lại để rollback): queryFn: () => notificationsApi.poll(),
+    queryFn: () => fetchPollKeepPrevious(queryClient),
     enabled: isAuthenticated,
     refetchInterval: pollInterval,
     staleTime: REFRESH_INTERVAL_MS,

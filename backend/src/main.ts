@@ -38,6 +38,8 @@ import {
 // [Giảm Fluid Active CPU] keep-alive + endpoint cron: T7/CN (giờ VN) trả 200 ngay, không khởi tạo Nest/DB.
 import { respondWeekendSkipped, shouldSkipOnWeekend } from './common/utils/weekend-skip.util';
 import { keepAliveSkipReason, respondKeepAliveSkipped } from './common/utils/keepalive-gate.util';
+// [Giảm Fluid Active CPU] poll thông báo/badge ngoài giờ làm việc (T2–T6 sau 18:45, T7/CN) trả 200 ngay, không bootstrap Nest/DB. Mặc định BẬT; tắt bằng POLL_HOURS_SKIP=false.
+import { pollGateSkipReason, respondPollSkipped } from './common/utils/poll-gate.util';
 
 // ⚠️ Quan trọng cho serverless (Vercel):
 // Trước đây main.ts gọi NestFactory.create() + app.listen() mỗi lần module được
@@ -288,6 +290,13 @@ export default async function handler(req: any, res: any) {
   const keepAliveSkip = keepAliveSkipReason(req);
   if (keepAliveSkip) {
     respondKeepAliveSkipped(req, res, keepAliveSkip);
+    return;
+  }
+  // [Giảm Fluid Active CPU] poll thông báo/badge (GET /api/sidebar/poll, /api/notifications/poll, /api/sidebar/badges) ngoài giờ -> 200 {skipped:true} ngay.
+  // Công ty không có ai làm ngoài giờ nên mặc định BẬT. Tắt bằng env POLL_HOURS_SKIP=false. FE giữ nguyên dữ liệu cũ khi nhận `skipped`.
+  const pollSkip = pollGateSkipReason(req);
+  if (pollSkip) {
+    respondPollSkipped(req, res, pollSkip, buildAllowedOrigins());
     return;
   }
   await getApp(); // đảm bảo app đã init (cache theo container)
