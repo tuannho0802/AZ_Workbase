@@ -23,6 +23,8 @@ const advance = (ms: number) =>
 describe('useUserActivity', () => {
   beforeEach(() => {
     vi.useFakeTimers();
+    // Ghim T4 14/10/2026 10:00 giờ VN (trong khung giờ poll) để test không phụ thuộc giờ/ngày chạy thật (T7/CN, sau 18:45...).
+    vi.setSystemTime(new Date('2026-10-14T10:00:00+07:00'));
     queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   });
   afterEach(() => {
@@ -90,6 +92,61 @@ describe('useUserActivity', () => {
 
     await advance(IDLE_AFTER_MS + 1_000);
     expect(result.current).toBe(false);
+  });
+
+  describe('khung giờ poll (T2-T6 trước 18:45 giờ VN; T7/CN không poll)', () => {
+    const touch = () =>
+      act(() => {
+        window.dispatchEvent(new Event('mousemove'));
+      });
+
+    it('đang hoạt động nhưng đang qua 18:45 khi mở tab → không poll, không refetch lúc mount', async () => {
+      vi.setSystemTime(new Date('2026-10-14T19:00:00+07:00'));
+      const refetchSpy = vi.spyOn(queryClient, 'refetchQueries');
+      const { result } = renderHook(() => useActivityPolling(['poll'], 450_000), { wrapper });
+      expect(result.current).toBe(false);
+      expect(refetchSpy).not.toHaveBeenCalled();
+    });
+
+    it('T7 và CN: không poll dù người dùng đang thao tác', async () => {
+      vi.setSystemTime(new Date('2026-10-17T10:00:00+07:00')); // T7
+      const sat = renderHook(() => useActivityPolling(['poll'], 450_000), { wrapper });
+      expect(sat.result.current).toBe(false);
+      sat.unmount();
+
+      vi.setSystemTime(new Date('2026-10-18T10:00:00+07:00')); // CN
+      const sun = renderHook(() => useActivityPolling(['poll'], 450_000), { wrapper });
+      expect(sun.result.current).toBe(false);
+    });
+
+    it('đang mở tab lúc 18:40: vẫn poll, tới 18:45 tự DỪNG (không cần render lại)', async () => {
+      vi.setSystemTime(new Date('2026-10-14T18:40:00+07:00'));
+      const { result } = renderHook(() => useActivityPolling(['poll'], 450_000), { wrapper });
+      expect(result.current).toBe(450_000);
+
+      await advance(4 * 60_000);
+      touch(); // giữ trạng thái "đang hoạt động" để chỉ còn lý do khung giờ
+      expect(result.current).toBe(450_000); // 18:44
+      await advance(2 * 60_000); // 18:46 (còn <5 phút từ lần chạm chuột)
+      expect(getUserActive()).toBe(true);
+      expect(result.current).toBe(false);
+    });
+
+    it('T6 qua 18:45 rồi sang T2 00:00 thì mở lại', async () => {
+      vi.setSystemTime(new Date('2026-10-16T18:44:00+07:00')); // T6
+      const { result } = renderHook(() => useActivityPolling(['poll'], 450_000), { wrapper });
+      expect(result.current).toBe(450_000);
+
+      await advance(2 * 60_000);
+      touch();
+      expect(result.current).toBe(false); // 18:46 T6
+
+      // Nhảy tới T2 19/10 00:00:30 VN (bỏ qua T7/CN) rồi để timer mốc chạy.
+      const target = new Date('2026-10-19T00:00:30+07:00').getTime();
+      await advance(target - Date.now());
+      touch();
+      expect(result.current).toBe(450_000);
+    });
   });
 
   it('quay lại sau khi bỏ treo: gọi refetchQueries chỉ cho query stale (gộp request trùng); đang bỏ treo thì không gọi', async () => {

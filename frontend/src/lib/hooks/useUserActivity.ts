@@ -1,5 +1,6 @@
-import { useEffect, useSyncExternalStore } from 'react';
+import { useEffect, useState, useSyncExternalStore } from 'react';
 import { useQueryClient, type QueryKey } from '@tanstack/react-query';
+import { isPollWindowOpen, msUntilPollWindowChange } from '../poll-schedule';
 
 /**
  * Phát hiện NGƯỜI DÙNG ĐANG HOẠT ĐỘNG hay đã bỏ treo tab.
@@ -114,9 +115,42 @@ export function useIsUserActive(): boolean {
   return useSyncExternalStore(subscribeUserActivity, getUserActive, () => true);
 }
 
+/** setTimeout tối đa ~24,8 ngày; khoảng chờ lớn nhất ở đây (T6 19:00 -> T2 00:00) chỉ ~2,2 ngày nên an toàn. */
+const MAX_TIMEOUT_MS = 2_147_483_647;
+
+/**
+ * true = đang trong khung giờ poll (T2-T6 trước 18:45 giờ VN, xem `poll-schedule.ts`).
+ * Tự đổi trạng thái đúng lúc qua mốc (hẹn giờ tới mốc kế tiếp) và kiểm tra lại khi tab hiện lại
+ * (timer của tab nền có thể bị trình duyệt trì hoãn). Chỉ là timer phía trình duyệt, không gọi BE.
+ */
+function usePollWindowOpen(): boolean {
+  const [open, setOpen] = useState(() => isPollWindowOpen());
+
+  useEffect(() => {
+    let timer: ReturnType<typeof setTimeout> | null = null;
+    const sync = () => {
+      setOpen(isPollWindowOpen());
+      if (timer !== null) clearTimeout(timer);
+      // +1s để chắc chắn đã QUA mốc (isPollWindowOpen so sánh theo phút).
+      timer = setTimeout(sync, Math.min(msUntilPollWindowChange() + 1000, MAX_TIMEOUT_MS));
+    };
+    const onVisible = () => {
+      if (document.visibilityState === 'visible') sync();
+    };
+    timer = setTimeout(sync, Math.min(msUntilPollWindowChange() + 1000, MAX_TIMEOUT_MS));
+    document.addEventListener('visibilitychange', onVisible);
+    return () => {
+      if (timer !== null) clearTimeout(timer);
+      document.removeEventListener('visibilitychange', onVisible);
+    };
+  }, []);
+
+  return open;
+}
+
 /**
  * Trả về giá trị cho `refetchInterval` của useQuery: `intervalMs` khi đang hoạt
- * động, `false` khi đã bỏ treo. Khi người dùng quay lại (idle → active) và query
+ * động, `false` khi đã bỏ treo HOẶC ngoài khung giờ poll (T7/CN, sau 18:45 T2-T6). Khi người dùng quay lại (idle → active) và query
  * đã CŨ (`stale`, tức quá staleTime) thì làm mới ngay; query còn mới thì không
  * gọi thêm (tránh spam khi người dùng lúc rảnh lúc bận).
  *
@@ -129,11 +163,13 @@ export function useActivityPolling(
   enabled = true,
 ): number | false {
   const active = useIsUserActive();
+  // [AGENT] NEW CODE: ngoài khung giờ (T7/CN, sau 18:45 T2-T6) tắt hẳn poll theo chu kỳ.
+  const windowOpen = usePollWindowOpen();
   const queryClient = useQueryClient();
   const keyHash = JSON.stringify(queryKey);
 
   useEffect(() => {
-    if (!enabled || !active) return;
+    if (!enabled || !active || !windowOpen) return;
     // `cancelRefetch: false` → nếu 2 hook cùng key (poll thông báo) cùng gọi thì gộp 1 request.
     void queryClient.refetchQueries(
       { queryKey, stale: true, type: 'active' },
@@ -141,7 +177,8 @@ export function useActivityPolling(
     );
     // Chỉ chạy khi chuyển idle → active (và lúc mount: query vừa fetch nên chưa stale → no-op).
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [active, enabled, keyHash, queryClient]);
+  }, [active, enabled, windowOpen, keyHash, queryClient]);
 
-  return enabled && active ? intervalMs : false;
+  // [AGENT] OLD CODE (giữ để rollback): return enabled && active ? intervalMs : false;
+  return enabled && active && windowOpen ? intervalMs : false;
 }

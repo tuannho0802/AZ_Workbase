@@ -6,6 +6,7 @@ import { notificationsApi } from '../api/notifications.api';
 import { useAuthStore } from '../stores/auth.store';
 import { notificationKeys } from './useNotifications';
 import { useActivityPolling } from './useUserActivity';
+import { POLL_INTERVAL_MS as SHARED_POLL_INTERVAL_MS } from '../poll-schedule';
 import { usePermissionChangeSignal } from './usePermissionChangeSignal';
 import { useRefDataChangeSignal } from './useRefDataChangeSignal';
 import { useSystemEpochSignal } from './useSystemEpochSignal';
@@ -16,8 +17,8 @@ import type { NotificationCategory } from '../types/notification.types';
 // [AGENT] OLD CODE (giữ lại để rollback): const POLL_INTERVAL_MS = 60_000;
 // 2 phút (PLAN 2.3): Vercel serverless không có WebSocket/SSE fan-out → polling nhẹ. Nâng từ 60s
 // để giảm Fluid Active CPU (Hobby). Thông báo vẫn cập nhật ngay khi focus lại tab.
-// [AGENT] OLD CODE (rollback): 120_000. Nâng 300s theo yêu cầu để giảm Fluid Active CPU.
-const POLL_INTERVAL_MS = 300_000;
+// [AGENT] OLD CODE (rollback): 120_000, rồi 300_000. Nâng 450s (7,5 phút) + khung giờ poll: xem lib/poll-schedule.ts.
+const POLL_INTERVAL_MS = SHARED_POLL_INTERVAL_MS;
 
 const CATEGORY_TITLE: Record<NotificationCategory, string> = {
   customer: 'Khách hàng',

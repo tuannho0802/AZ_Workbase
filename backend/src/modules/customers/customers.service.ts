@@ -68,6 +68,28 @@ const LIST_USER_COLUMNS = (alias: string): string[] => [
   `${alias}.role`,
 ];
 
+/**
+ * [PERF - 3 modal thống kê: Khách mới hôm nay / Theo trạng thái chốt / Nạp tiền] Chỉ chọn cột FE thật sự đọc
+ * (đã grep `StatModals.tsx`): trước đây `leftJoinAndSelect` cả entity Customer + 3 entity User (~25 cột/User) x tối đa
+ * 1000 dòng rồi trả hết ra JSON. Thêm cột FE mới đọc -> thêm vào đây.
+ */
+const STATS_CUSTOMER_COLUMNS = (alias: string): string[] => [
+  `${alias}.id`,
+  `${alias}.name`,
+  `${alias}.phone`,
+  `${alias}.status`,
+  `${alias}.createdAt`,
+  `${alias}.updatedAt`,
+];
+const STATS_DEPOSIT_COLUMNS = (alias: string): string[] => [
+  `${alias}.id`,
+  `${alias}.amount`,
+  `${alias}.depositDate`,
+  `${alias}.broker`,
+  `${alias}.note`,
+  `${alias}.createdAt`,
+];
+
 
 @Injectable()
 export class CustomersService {
@@ -3268,12 +3290,22 @@ export class CustomersService {
   }
 
   async getStatsToday(userId: number, userRole: string, scope?: string | null) {
+    // [AGENT] OLD CODE (giữ để rollback): kéo cả entity Customer + 3 entity User đầy đủ
+    //   .createQueryBuilder('customer')
+    //   .leftJoinAndSelect('customer.salesUser', 'salesUser')
+    //   .leftJoinAndSelect('customer.createdBy', 'createdBy')
+    //   .leftJoinAndSelect('customer.updatedBy', 'updatedBy')
+    // NEW: chỉ cột FE đọc (STATS_CUSTOMER_COLUMNS / LIST_USER_COLUMNS) - cùng kết quả hiển thị, ít dữ liệu hơn nhiều.
     const baseQuery = () =>
       this.customersRepository
         .createQueryBuilder('customer')
-        .leftJoinAndSelect('customer.salesUser', 'salesUser')
-        .leftJoinAndSelect('customer.createdBy', 'createdBy')
-        .leftJoinAndSelect('customer.updatedBy', 'updatedBy')
+        .select(STATS_CUSTOMER_COLUMNS('customer'))
+        .leftJoin('customer.salesUser', 'salesUser')
+        .addSelect(LIST_USER_COLUMNS('salesUser'))
+        .leftJoin('customer.createdBy', 'createdBy')
+        .addSelect(LIST_USER_COLUMNS('createdBy'))
+        .leftJoin('customer.updatedBy', 'updatedBy')
+        .addSelect(LIST_USER_COLUMNS('updatedBy'))
         .where('customer.deletedAt IS NULL');
 
     let todayQuery = baseQuery().andWhere(
@@ -3316,11 +3348,16 @@ export class CustomersService {
     // Sửa: lọc status ngay trong SQL (tận dụng idx_status đã có sẵn) + giới
     // hạn số dòng trả về (take) để tránh phình to vô hạn theo thời gian,
     // đồng thời chạy song song 2 query thay vì 1 query lớn rồi tách đôi.
+    // [AGENT] OLD CODE (giữ để rollback): .leftJoinAndSelect('customer.salesUser', 'salesUser') + .leftJoinAndSelect('customer.createdBy', 'createdBy')
+    // NEW: chỉ cột FE đọc; vẫn KHÔNG join updatedBy (giữ đúng hành vi cũ của endpoint này).
     const baseQuery = () =>
       this.customersRepository
         .createQueryBuilder('customer')
-        .leftJoinAndSelect('customer.salesUser', 'salesUser')
-        .leftJoinAndSelect('customer.createdBy', 'createdBy')
+        .select(STATS_CUSTOMER_COLUMNS('customer'))
+        .leftJoin('customer.salesUser', 'salesUser')
+        .addSelect(LIST_USER_COLUMNS('salesUser'))
+        .leftJoin('customer.createdBy', 'createdBy')
+        .addSelect(LIST_USER_COLUMNS('createdBy'))
         .where('customer.deletedAt IS NULL');
 
     const closedQuery = baseQuery().andWhere('customer.status = :status', {
@@ -3371,11 +3408,20 @@ export class CustomersService {
     sortOrder: 'ASC' | 'DESC' = 'DESC',
     scope?: string | null,
   ) {
+    // [AGENT] OLD CODE (giữ để rollback): leftJoinAndSelect cả entity customer / createdBy / customer.salesUser (x tối đa 1000 dòng)
+    //   .leftJoinAndSelect('deposit.customer', 'customer')
+    //   .leftJoinAndSelect('deposit.createdBy', 'createdBy')
+    //   .leftJoinAndSelect('customer.salesUser', 'salesUser')
+    // NEW: chỉ cột FE đọc (StatModals: customer.name, customer.salesUser.name/email, createdBy.name/email).
     const queryBuilder = this.depositsRepository
       .createQueryBuilder('deposit')
-      .leftJoinAndSelect('deposit.customer', 'customer')
-      .leftJoinAndSelect('deposit.createdBy', 'createdBy')
-      .leftJoinAndSelect('customer.salesUser', 'salesUser')
+      .select(STATS_DEPOSIT_COLUMNS('deposit'))
+      .leftJoin('deposit.customer', 'customer')
+      .addSelect(['customer.id', 'customer.name'])
+      .leftJoin('deposit.createdBy', 'createdBy')
+      .addSelect(LIST_USER_COLUMNS('createdBy'))
+      .leftJoin('customer.salesUser', 'salesUser')
+      .addSelect(LIST_USER_COLUMNS('salesUser'))
       .where('customer.deletedAt IS NULL');
 
     // FIX BUG THẬT (rà soát dynamic RBAC): thiếu tham số `scope`, xem giải

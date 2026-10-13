@@ -3,14 +3,15 @@ import { notificationsApi } from '../api/notifications.api';
 import { useAuthStore } from '../stores/auth.store';
 import { notificationKeys } from './useNotifications';
 import { useActivityPolling } from './useUserActivity';
+import { POLL_INTERVAL_MS } from '../poll-schedule';
 
 // [AGENT] OLD CODE (giữ lại để rollback): 7 useQuery riêng (invalid-data, trash, users,
 // duyet-phep, nghi-phep, 2 badge Công việc định kỳ + query tra id status) gọi 7 endpoint
 // khác nhau mỗi chu kỳ - mỗi request chạy riêng JwtStrategy + PermissionGuard và nhiều
 // endpoint là danh sách đầy đủ (join + hydrate) chỉ để lấy `total`.
 // NEW: 1 request `GET /sidebar/badges` - BE tự kiểm permission từng badge + chỉ COUNT.
-// [AGENT] OLD CODE (rollback): 180_000. Cùng key poll với useNotificationPoll -> đồng bộ 300s.
-const REFRESH_INTERVAL_MS = 300_000;
+// [AGENT] OLD CODE (rollback): 180_000, rồi 300_000. Cùng key poll với useNotificationPoll -> dùng chung hằng số (450s) ở lib/poll-schedule.ts.
+const REFRESH_INTERVAL_MS = POLL_INTERVAL_MS;
 
 /** queryKey DUY NHẤT của badge sidebar - invalidate key này sau mutation để làm mới ngay. */
 // [AGENT] OLD CODE (giữ để rollback): ['badge-count', 'sidebar'] + query riêng /sidebar/badges.
