@@ -36,9 +36,10 @@
 | 9 | **(MỚI 2026-10-07)** Phát hiện từ log prod: 401 khi mở app, refetch dây chuyền sau thêm checklist, `users/all` trùng, `departments` no-cache | 10% request (401) + ≈ 16% thời gian xử lý (chuỗi checklist) | Thấp–TB | Không | 1, 3 |
 | 11 | **(MỚI 2026-10-07)** Rà soát code lần 3: `AuditService.logAction` dùng `save()`, recharts import tĩnh, `console.error` ở JwtStrategy | Chưa đo (ước lượng: giảm round-trip DB mỗi thao tác ghi; giảm JS lần đầu của trang báo cáo) | Rất thấp | Không | — |
 | 12 | **(MỚI 2026-10-08)** Cold start & log khởi động: 68% dòng log là log boot Nest; 15/779 request > 2 s do cold start (3,4–4,6 s) | Chưa đo CPU (log chỉ có `durationMs`); đo ở 12B; 12I: `guides` 136 ms | Rất thấp (12A/12B/12I) – Thấp (12C) – TB (12F, tuỳ chọn) | Không | — |
+| 13 | **(MỚI 2026-10-13)** Rà soát BE (HEAD `6a4e0dc`): `getAttendanceSummary` tải toàn bộ log + hydrate cả `User`, `console.log` email ở login, N câu UPDATE rematch, đo số kết nối DB mới | Chưa đo (ước đoán: giảm hydrate JS ở route chấm công; 13B chỉ đo) | Rất thấp (13F/13B) – Thấp (13A-1) – Thấp–TB (13G) | Không | — |
 | 8 | Đo lại sau cùng & chốt | — | — | — | 1–7, 9 |
 
-Làm tuần tự **1 → 2 → 3 → 4 → 6A → 5 → 7 → 9 → 11 → 12** (12: **12A → 12B → đo → 12C/12F nếu cần**) (9A có thể làm sớm vì độc lập, rủi ro thấp). Mục 2 và 3 đáng làm nhất (≈ 31% CPU của mẫu).
+Làm tuần tự **1 → 2 → 3 → 4 → 6A → 5 → 7 → 9 → 11 → 12 → 13** (12: **12A → 12B → đo → 12C/12F nếu cần**; 13: **13F → 13A-1 → 13G → 13B → đo → 13A-2 nếu cần**) (9A có thể làm sớm vì độc lập, rủi ro thấp). Mục 2 và 3 đáng làm nhất (≈ 31% CPU của mẫu).
 
 ---
 
@@ -760,11 +761,97 @@ export class QuietBootLogger extends ConsoleLogger {
 
 ---
 
+## Mục 13 — Rà soát BE 2026-10-13 (HEAD `6a4e0dc`): chấm công + log login + đo kết nối DB (bổ sung)
+
+> **Cách rà:** chỉ đọc code thật (chưa chạy `tsc`/`jest`/đo CPU). Mọi mức "giảm bao nhiêu" dưới đây là **ước đoán cho tới khi đo**.
+> **Nguyên tắc nền:** Fluid **Active CPU chỉ tính thời gian CPU, không tính thời gian chờ DB** → truy vấn chậm phía DB gần như không đáng; thứ đáng tối ưu là phần **JS**
+> (dựng entity, nối/sắp xếp trong bộ nhớ, bcrypt, nén, bắt tay TLS). Nhớ `process.cpuUsage()` tính cho CẢ process (xem 12I) → khi đo dùng `--solo`.
+> **Trạng thái env đã xác nhận (2026-10-13):** `DISABLE_APP_COMPRESSION=true` đã đặt ở production → **không còn mục "tắt nén"**; chỉ cần nhớ kiểm `Content-Encoding` thật nếu nghi ngờ.
+> **Đợt này KHÔNG có migration.** Thứ tự: **13F → 13A → 13G → 13B**. Mỗi mục = 1 commit riêng (13A tách 13A-1 / 13A-2).
+
+### 13F. `console.log` còn sót ở đường đăng nhập (BE, rủi ro rất thấp) — làm TRƯỚC
+**Bằng chứng:** `backend/src/modules/auth/auth.controller.ts:55` — `console.log('[Auth] Login attempt for:', loginDto.email)`. Vi phạm `SKILL_FILE_MANAGEMENT.md` §6.1 (cấm `console.*`, bắt buộc `Logger`) và ghi **email (PII)** ra log mỗi lần đăng nhập.
+- [ ] Xoá dòng đó. **Không** thay bằng log có email. Nếu muốn giữ dấu vết: `Logger` mức `debug`, không kèm email/token; lỗi đăng nhập vẫn do `auth.service` xử lý/log như cũ.
+- [ ] Test: spec `auth.controller` (nếu có) vẫn xanh; `grep -rn "console\." backend/src/modules/auth` không còn dòng nào (trừ comment `[AGENT] OLD CODE`).
+- [ ] Giữ code cũ bằng comment `// [AGENT] OLD CODE: console.log(...)` theo quy ước.
+
+**Tiêu chí hoàn thành:** không còn `console.log` ở `auth.controller.ts`; login hoạt động y như cũ.
+
+### 13A. `getAttendanceSummary` kéo TOÀN BỘ log vào RAM rồi mới gom + phân trang (BE)
+**Bằng chứng (đọc code, `zk-device.service.ts` ~dòng 670–880):**
+- Truy vấn: `attendanceLogRepo.createQueryBuilder('log').leftJoinAndSelect('log.matchedUser', …).orderBy('log.recordTime','ASC')` rồi `qb.getMany()` — **dựng 2 entity cho mỗi dòng log** (log + TOÀN BỘ cột `User`), không `limit`.
+- Sau đó lặp trong JS: lọc quẹt trùng (`DUPLICATE_TAP_GAP_MS`), gom theo `groupKey + ngày`, `sort`, rồi mới cắt trang (`slice` hoặc cửa sổ tuần `computeWeekPageWindow`).
+- Bảng `attendance_logs` **tăng mãi** (mỗi người nhiều lần quẹt mỗi ngày) ⇒ chi phí JS tăng dần theo thời gian, kể cả khi người dùng chỉ xem 1 trang.
+- Phần `matchedUser` thực tế chỉ dùng: `.name` (tên hiển thị) và `.departmentId` (chỉ trong WHERE của phạm vi `department`). `password`/`hashedRefreshToken` đã `select:false` nên không bị lộ, nhưng các cột còn lại vẫn bị hydrate vô ích.
+- **Đã xác minh phía FE (quan trọng, làm thay đổi đề xuất ban đầu):**
+  - `AttendanceSummaryTab.tsx` gọi `useAttendanceSummary({ page, weeksPerPage, userId, from: range?.[0]…, to: range?.[1]… })` — khi người dùng **chưa chọn khoảng ngày** thì `from/to` = `undefined`, và `page` dùng để **lật ngược về các tuần cũ** (`weeksPerPage`, mới nhất trước). ⇒ **KHÔNG được đặt "mặc định 31 ngày khi thiếu from/to"**: sẽ làm mất khả năng xem các tuần cũ ở tab này.
+  - `AttendanceMonthlyTab.tsx` luôn truyền `from` (+ `limit: 3000`). `attendance-export.service.ts#exportAttendanceSummary` gọi lại `getAttendanceSummary({ ...query, page: 1, limit: EXPORT_MAX_ROWS })` nên **thừa hưởng nguyên `from/to` của query FE**.
+- → Chỉ làm các bước **không đổi dữ liệu trả về**; bước cắt khoảng ngày (13A-2) làm theo cách "tính cửa sổ rồi mới tải", không đặt mặc định cứng.
+
+**13A-1. Thu hẹp cột đã tải (rủi ro thấp, không đổi shape response) — làm trước**
+- [ ] Đọc nốt phần lặp/`results` (sau dòng ~800) để **liệt kê chính xác** field của `log` và `matchedUser` đang đọc. Nếu đúng như trên: đổi `leftJoinAndSelect('log.matchedUser','matchedUser')` → `leftJoin(...)` + `.select(['log.id','log.deviceUserId','log.recordTime','log.matchedUserId','matchedUser.id','matchedUser.name'])`.
+- [ ] `matchedUser.departmentId` vẫn dùng được trong `andWhere` khi chỉ `leftJoin` (không cần `select`) — kiểm bằng spec phạm vi `department`.
+- [ ] **Không bỏ field nào mà code phía sau hoặc response đang đọc.** Nếu phát hiện thêm field dùng (vd `log.deviceSerialNumber`), thêm vào `select`.
+- [ ] Giữ code cũ bằng comment `[AGENT] OLD CODE`.
+
+**13A-2. (Chỉ làm nếu 13A-1 chưa đủ sau khi đo) Chế độ `weeksPerPage` không tải toàn bảng — 2 pha**
+- Ý tưởng: pha 1 chỉ lấy **các ngày có dữ liệu** (1 cột, cùng bộ lọc `userId/from/to/phạm vi`) → dùng `bucketDatesByWeek` + `computeWeekPageWindow` có sẵn để biết trang tuần này gồm tuần nào → pha 2 tải log **chỉ trong cửa sổ đó** rồi chạy lại vòng gom như cũ.
+- ⚠️ Điểm phải kiểm chứng trước khi làm (chưa biết): lọc quẹt trùng dùng `lastKeptTapByGroup` **xuyên ngày** (không reset theo ngày) → log ở ranh giới cửa sổ có thể khác kết quả hiện tại nếu 2 lần quẹt cách nhau < `DUPLICATE_TAP_GAP_MS` mà nằm 2 bên ranh giới. Nếu khoảng đó ngắn hơn rất nhiều so với khoảng cách giữa 2 tuần (cửa sổ bắt đầu 00:00 Thứ 2) thì thực tế không xảy ra — **xác minh `DUPLICATE_TAP_GAP_MS` và viết spec biên** trước khi làm.
+- ⚠️ Cần chốt với chủ dự án: có cần giữ **chính xác tuyệt đối** `total`/`totalPages` ở chế độ tuần không (pha 1 vẫn cho đủ để tính).
+- Rủi ro **trung bình** (đụng logic tính công). **Không làm trong đợt này** nếu 13A-1 + đo cho thấy đã đạt tiêu chí.
+
+**13A-3. (Để sau, KHÔNG làm đợt này)** đưa việc gom ngày xuống SQL (`GROUP BY DATE(record_time), key`, `MIN/MAX`). Bước lọc quẹt trùng phụ thuộc thứ tự nên khó đưa xuống SQL; rủi ro cao so với lợi ích.
+
+**Test (jest)** — spec mới trong `zk-device.service.spec.ts`: cùng bộ log giả cho kết quả **y hệt trước/sau** với: nhóm đã map + chưa map; quẹt trùng trong `DUPLICATE_TAP_GAP_MS`; phân trang `page/limit`; chế độ `weeksPerPage`; phạm vi `department` vẫn lọc đúng; `userId` lọc đúng. Chạy lại spec `attendance-export.service.spec.ts` (phải xanh).
+**Đo:** preview, `CPU_TIMING=true` ~30 phút, thao tác: tab "Bảng chấm công" (lật vài tuần), tab "Tổng hợp tháng", xuất Excel chấm công; so TB/p95 `GET /zk-device/attendance-summary` **trước/sau, dùng `--solo`**.
+**Tiêu chí hoàn thành:** response so sánh y hệt trên bộ spec; TB route giảm (kỳ vọng — **cần đo**).
+
+### 13G. `rematchUnmatchedLogsCore` — N câu UPDATE tuần tự → 1 câu (BE)
+**Bằng chứng:** `zk-device.service.ts#rematchUnmatchedLogsCore` đọc user đã map rồi `for … await` UPDATE `attendance_logs` từng user (`WHERE device_user_id = ? AND matched_user_id IS NULL`). Chạy mỗi lần `mapUser()` và đầu `syncNow()`.
+**Kỳ vọng trung thực:** số nhân viên ít, phần lớn là round-trip DB (không phải CPU hàm) ⇒ **lợi ích nhỏ, khó thấy trong số đo**. Làm vì yêu cầu của chủ dự án, không vì CPU lớn. Comment trong code từng chủ ý chọn vòng lặp cho dễ đọc — giữ comment `[AGENT] OLD CODE` để rollback.
+**Điểm phải xử lý trước khi viết (đã xác minh trong code):**
+- `users.zk_device_user_id` **KHÔNG có ràng buộc unique** (migration `1777400000000` chỉ thêm cột `varchar(50) NULL`; entity không `unique`) ⇒ có thể 2 user cùng mã máy. Câu `UPDATE … JOIN users` thẳng sẽ chọn dòng **không xác định** khi trùng. Vòng lặp cũ: user đứng trước (theo thứ tự `find`, thực tế theo id) gán xong thì dòng không còn `NULL` nên user sau không ghi đè.
+- ⇒ Dùng bảng dẫn xuất **chọn đúng 1 user/mã máy theo `MIN(id)`**: `JOIN (SELECT zk_device_user_id, MIN(id) AS id FROM users WHERE zk_device_user_id IS NOT NULL AND deleted_at IS NULL GROUP BY zk_device_user_id) u ON u.zk_device_user_id = al.device_user_id` → ngữ nghĩa trùng vòng lặp cũ.
+- `User` có `@DeleteDateColumn` (`find` tự bỏ user đã xoá mềm) còn SQL thô thì **không** ⇒ phải tự thêm `deleted_at IS NULL` (xác nhận tên cột thật trong `user.entity.ts` trước khi viết).
+- [ ] Tên cột/bảng lấy từ `*.entity.ts` (không đoán). Dùng QueryBuilder/`query` **có tham số**, không nối chuỗi.
+- [ ] Giá trị trả về `affected` phải vẫn là tổng số dòng được gán (hàm gọi `mapUser`/`syncNow` dùng số này); log `[Rematch]` giữ nguyên.
+- [ ] Không có user nào được map → trả 0, **không** chạy UPDATE (giữ nhánh sớm hiện có).
+- [ ] Test: cập nhật `zk-device.service.spec.ts` — đúng **1** lần thực thi UPDATE; `affected` đúng; 0 user → không UPDATE; **2 user cùng mã máy → user id nhỏ hơn thắng** (spec ở mức mock câu SQL/tham số, không cần DB thật).
+- [ ] Nếu sandbox có MariaDB/MySQL: chạy thử câu SQL trên dữ liệu giả (có trùng mã máy + user xoá mềm) và dán kết quả thật.
+**Rủi ro:** thấp–TB (ngữ nghĩa khi trùng mã máy / xoá mềm) — xử lý bằng 2 điểm trên. **Rollback:** khôi phục vòng lặp (comment `[AGENT] OLD CODE`).
+**Tiêu chí hoàn thành:** spec xanh; `affected` giữ nguyên ý nghĩa; không đổi kết quả map so với trước trên bộ test trùng mã.
+
+### 13B. Đo tần suất tạo kết nối DB mới (chỉ ĐO, chưa đổi pool) — BE
+**Giả thuyết cần kiểm chứng (CHƯA phải kết luận):** `database.config.ts` đặt `idleTimeout: 30000`, `maxIdle: 1`, `connectionLimit: 3`, `ssl.rejectUnauthorized: true`; trong khi poll chạy mỗi 120–180 s. ⇒ nhiều request có thể phải **mở kết nối mới + bắt tay TLS** (tốn CPU) thay vì dùng lại. **Chưa có số đo.**
+**Vì sao không sửa pool ngay:** comment trong code ghi Aiven/proxy cắt kết nối rảnh → ECONNRESET; nới `idleTimeout` mù có thể gây lỗi. Giữ nguyên `withDbRetry` làm lưới an toàn.
+- [ ] Khi `CPU_TIMING=true` (mặc định TẮT): đếm số lần pool mysql2 phát sự kiện tạo kết nối mới (`connection`) và ghi **1 dòng log gộp** bằng `Logger` (vd mỗi N phút hoặc khi tạo kết nối), kèm `up=` (giây từ khi process chạy) và số kết nối đã tạo từ đầu. Không `console.log`, không log thông tin nhạy cảm (host/user/password).
+- [ ] **Cần xác minh trước khi code:** cách truy cập pool qua TypeORM (`dataSource.driver.master` / `getPool()`), có ổn định giữa các phiên bản không; chỗ gắn hook an toàn (sau khi DataSource initialize; `keep-alive.controller.ts` đã dùng `@InjectDataSource()` — tham khảo, KHÔNG nhét vào luồng keep-alive nếu làm đổi hành vi). Tránh gắn hook nhiều lần khi DataSource tái kết nối.
+- [ ] Hook phải **no-op hoàn toàn khi cờ tắt** (không thêm listener).
+- [ ] Test: spec nhỏ — cờ tắt → không đăng ký listener; cờ bật → mỗi sự kiện `connection` tăng bộ đếm đúng 1 lần.
+- [ ] **Sau khi có số liệu 30–60 phút** (cùng đợt đo của 12B/13A): nếu số kết nối mới/giờ cao ⇒ mới bàn nới `idleTimeout`/`maxIdle` (đối chiếu hành vi Aiven, thử trên preview, theo dõi ECONNRESET). Nếu thấp ⇒ ghi kết luận "không đáng" vào `WORKFLOW_LOG.md`.
+**Rủi ro:** rất thấp (chỉ đo, mặc định tắt). **Rollback:** revert commit / tắt `CPU_TIMING`.
+**Tiêu chí hoàn thành:** có số "kết nối mới/giờ" từ log prod/preview và quyết định có/không đổi pool, ghi vào log.
+
+### 13H. Đã rà, GHI NHẬN — chưa làm (có chủ đích)
+- **Nén gzip trong Node:** đã tắt bằng `DISABLE_APP_COMPRESSION=true` ở production. Chỉ cần xác nhận lại bằng `curl -H "Accept-Encoding: br,gzip" -D- -o /dev/null <url>/api/<endpoint-JSON-lớn>` rằng response vẫn được nén ở tầng CDN (nếu không, băng thông tăng).
+- **ETag Express:** không thấy `expressServer.set('etag', false)`; Express băm body mọi response JSON để tạo ETag. Lợi ích nhỏ; tắt chỉ khi grep FE/`CacheControlInterceptor` xác nhận không dựa vào 304. Làm **sau** 13A/13B, chỉ khi đo thấy đáng.
+- **Hai lớp file tĩnh:** `main.ts` có `app.useStaticAssets(...)` và `app.module.ts` còn `ServeStaticModule.forRoot(...)` → cùng `stat` đĩa mỗi GET/HEAD. Có thể thừa một lớp; chỉ xoá sau khi kiểm `/swagger-auth.js` và trang gốc vẫn phục vụ đúng. Lợi ích nhỏ.
+- **13A-3** (gom ngày xuống SQL) và nới `idleTimeout` (sau 13B): chưa làm, xem trên.
+
+### 13I. Thứ tự & tiêu chí hoàn thành chung của Mục 13
+1. **13F** (5 phút) → 2. **13A-1** → 3. **13G** → 4. **13B** (đo) → deploy preview → đo 30–60 phút (`--solo`) → quyết 13A-2 / chỉnh pool / mục 13H.
+- [ ] Mỗi mục: `tsc --noEmit` + `nest build` + `jest` xanh (dán số thật), 1 commit riêng, entry `WORKFLOW_LOG.md` (append).
+- [ ] Không chạy gì lên DB production; không có migration.
+- [ ] Tắt `CPU_TIMING` sau khi đo.
+
+---
+
 ## Mục 8 — Đo lại & chốt
 
 - [ ] Sau mỗi mục (2, 3, 4, 6A, 5, 9): thu log 30 phút, chạy script, **so với baseline Mục 0** theo cùng kịch bản.
 - [ ] Sau cùng thu log 1–2 giờ (≥ 200 request), lập bảng "Trước → Sau" cho 6 route đầu và ghi vào `WORKFLOW_LOG.md`.
 - [ ] Sau Mục 12: thu log `[BootTiming]` + đếm số cold start/giờ; so với baseline ở 12.0 (6 đợt/28 phút, 3,4–4,6 s, 15/779 request > 2 s).
+- [ ] Sau Mục 13: đo TB/p95 `GET /zk-device/attendance-summary` trước/sau (dùng `--solo`) và số "kết nối DB mới/giờ" (13B); ghi kết luận có/không đổi pool vào `WORKFLOW_LOG.md`.
 - [ ] **Tắt `CPU_TIMING=true`** trên Vercel sau khi đo (ghi log cũng tốn CPU).
 - [ ] Mục nào không đạt tiêu chí: ghi rõ lý do + quyết định (giữ/revert/làm tiếp).
 
@@ -775,6 +862,7 @@ export class QuietBootLogger extends ConsoleLogger {
 - `max-age` HTTP dài / version trong URL (rủi ro dữ liệu cũ; lộ chéo theo user).
 - Bỏ keep-alive DB (Aiven cắt kết nối rảnh).
 - Đổi `synchronize`, sửa migration cũ, đổi `.env` (vi phạm quy tắc an toàn).
+- (Mục 13) Đặt mặc định 31 ngày cho `attendance-summary` khi thiếu `from/to` — **loại**: làm mất việc lật về các tuần cũ ở tab "Bảng chấm công"; nới `idleTimeout` pool khi chưa có số đo 13B; gom ngày xuống SQL (13A-3).
 - `LazyModuleLoader` cho module có controller (zk-device…), trì hoãn kết nối DB lúc boot, ping keep-alive dày hơn 5 phút (xem Mục 12C/12D/12E).
 
 ## Phụ lục B — Rủi ro tổng hợp & thứ tự rollback
@@ -799,4 +887,9 @@ export class QuietBootLogger extends ConsoleLogger {
 | 12A | Mất log hữu ích khi debug khởi động (route không map, lỗi DI) | Đặt `NEST_BOOT_LOG=true`; hoặc revert về `NestFactory.create` không có `logger` |
 | 12B | Ghi log boot tốn thêm chút CPU nếu quên tắt | Tắt `CPU_TIMING` |
 | 12C | Lần export/import Excel đầu tiên mỗi instance chậm hơn; lỗi `import()` nếu `jest.mock` không khớp | Đổi lại `import` tĩnh |
+| 13F | Mất dấu vết đăng nhập trong log | Khôi phục dòng log (không kèm email) bằng `Logger` |
+| 13A-1 | Thiếu field `log`/`matchedUser` đã `select` → tên/ngày/phạm vi phòng ban sai trong bảng chấm công | Khôi phục `leftJoinAndSelect`; revert commit |
+| 13A-2 | Kết quả lệch ở ranh giới cửa sổ tuần (lọc quẹt trùng xuyên ngày) → sai giờ vào/ra | Revert về tải toàn bộ; chỉ làm khi spec biên đã xanh |
+| 13G | Map nhầm nhân viên khi 2 user cùng mã máy / user đã xoá mềm bị gán | Khôi phục vòng lặp (comment `[AGENT] OLD CODE`); chạy lại `rematch` |
+| 13B | Quên tắt `CPU_TIMING` → tốn thêm CPU ghi log | Tắt `CPU_TIMING`; revert commit |
 | 12F | Dữ liệu nền cũ/thiếu quyền do gộp sai; FE mới + BE cũ → 404 | FE tự quay về endpoint riêng; revert FE; deploy BE trước FE |
