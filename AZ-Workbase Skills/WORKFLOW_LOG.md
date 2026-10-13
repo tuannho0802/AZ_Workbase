@@ -7366,3 +7366,18 @@ Now [deploy]
 > Sau patch cache toàn bộ getBadges, khi HIT KHÔNG có dòng `[Badges]` -> đọc HIT% bằng script report, không đếm dòng log. Đã chạy thật: BE `tsc` 0, `nest build` 0, `jest` 118 suite / 1924 test pass. FE không đổi. Chưa thử trên prod: sau deploy kiểm tra UptimeRobot của deadline-reminders vẫn xanh trước 18:00 và sau 18:00 vẫn gửi nhắc bình thường. Việc bật CPU_TIMING trên Vercel phải do chủ dự án làm (sandbox không có quyền).
 
 ---
+
+## [2026-10-13] | Rà soát Cache-Control danh mục ít đổi + cache /users/me — kết luận ĐÃ HANDLE, thêm test bảo vệ | [Status: Success]
+
+**Actor:** Agent
+**Files Changed:**
+- `backend/src/common/interceptors/ref-data-cache.routes.spec.ts` — MỚI: test HTTP cho `/departments`, `/positions`, `/roles/colors` (có `?v=` -> `private, max-age=1800`; thiếu `?v=` -> `private, no-cache`) và `/users/me` (không có cache cứng). Đã thử đột biến (gỡ `refDataCache()` khỏi `/departments` -> test đỏ)
+- Không đổi code chạy thật.
+
+**Root Cause / Kết luận rà soát:**
+> (1) 3 danh mục ĐÃ có `refDataCache()` (BE) + FE gắn `?v=` = userId.epoch.nonce.refSig[domain] (`ref-cache-version.ts`). Reset hệ thống: Root Admin bấm -> `acknowledgeSystemEpoch` ghi epoch mới trước khi làm mới; máy khác nhận `epoch` qua poll -> `v` đổi -> bỏ bản cũ. Tối đa lệch 30 phút nếu máy khác không poll được (ngoài giờ poll bị chặn, hoặc BE ghi bằng SQL thô không qua subscriber). (2) `/users/me`: FE đã gom 3 nơi gọi về 1 cache chung (`fetchMeCached`, staleTime 30–60 phút, invalidate theo permSig/tự sửa hồ sơ, vòng avatar 8 phút bỏ qua khi tab ẩn/idle); BE `JwtStrategy` đã cache user 10s. KHÔNG thêm cache BE cho `/users/me`: handler ký lại avatar URL mỗi lần (ETag không bao giờ khớp), tần suất gọi giờ chỉ ~1 lần/lần tải trang, mà cache BE từng là nguồn bug hồ sơ cũ — chưa có số đo CPU nên chưa đáng rủi ro.
+
+**Notes:**
+> Đã chạy thật: BE `tsc` 0, `nest build` 0, `jest` toàn bộ pass; FE vitest riêng `ref-cache-version`, `axios-ref-version`, `useSystemEpochSignal` = 23 test pass. Nếu sau này đo CPU thấy `/users/me` vẫn nổi bật mới cân nhắc cache BE theo (userId, permVersion, epoch) + xoá khi có request ghi như badge.
+
+---
