@@ -899,7 +899,7 @@ export class QuietBootLogger extends ConsoleLogger {
 **14A-3. `checkDuplicateContact` (`customers.service.ts` ~442–463) + `buildDuplicateMatchInfo` (~487)**
 - **Bằng chứng:** 2 truy vấn **tuần tự** (SĐT, rồi Email), mỗi truy vấn `getOne()` với `leftJoinAndSelect('customer.createdBy')` + `leftJoinAndSelect('customer.salesUser')` (**Customer đầy đủ + 2 User đầy đủ**), trong khi kết quả chỉ gồm `creatorName`, `salesUserName`, `groupNames` (đã cố ý "bỏ id/SĐT/Email/note").
 - **Việc làm:**
-  - [ ] `leftJoin` + `select` chỉ `customer.id`, `createdBy.id/name`, `salesUser.id/name` (và cột mà `buildDuplicateMatchInfo` thật sự đọc — đọc hàm trước).
+  - [x] `leftJoin` + `select` chỉ `customer.id`, `createdBy.id/name`, `salesUser.id/name` (và cột mà `buildDuplicateMatchInfo` thật sự đọc — đọc hàm trước).
   - [ ] Khi có CẢ SĐT và Email: chạy 2 truy vấn **song song** (`Promise.all`) — chỉ làm nếu đo thấy wall time đáng kể (pool `connectionLimit: 3`); mặc định chỉ thu hẹp cột.
 - **Test:** trả cùng `phoneMatch/emailMatch` trên bộ dữ liệu giả (kể cả `excludeCustomerId`, email khác hoa/thường).
 - **Rủi ro:** rất thấp.
@@ -907,15 +907,15 @@ export class QuietBootLogger extends ConsoleLogger {
 **14A-4. Danh sách phụ: `getUnassigned` (~2601), `getAssigned` (~2745), `getTrash` (~3510), `getInvalidDataReport` (~3794), `getDuplicateContactReport` (~4155)**
 - **Bằng chứng:** đều `leftJoinAndSelect` 2–3 User đầy đủ (`salesUser`, `marketingUser`/`updatedBy`, `createdBy`, `deletedBy` ở trash); có phân trang nên mức **vừa**. `getAssigned` ~2860 còn join `assignedTo.position` đầy đủ.
 - **Việc làm:**
-  - [ ] Với từng hàm: `grep` FE trang tương ứng (`chia-data`, `trash-can`, báo cáo dữ liệu lỗi/trùng) → liệt kê field User thật sự đọc (lưu ý audit tooltip `fullName`/`name` — `SKILL_NEXTJS_FRONTEND.md` mục 14; entity User chỉ có `name`, FE có fallback `fullName`) → thu hẹp.
-  - [ ] 1 commit/hàm để rollback độc lập. Làm sau 14A-1/14A-2 (lợi ích nhỏ hơn).
+  - [x] Với từng hàm: `grep` FE trang tương ứng (`chia-data`, `trash-can`, báo cáo dữ liệu lỗi/trùng) → liệt kê field User thật sự đọc (lưu ý audit tooltip `fullName`/`name` — `SKILL_NEXTJS_FRONTEND.md` mục 14; entity User chỉ có `name`, FE có fallback `fullName`) → thu hẹp.
+  - [x] 1 commit/hàm để rollback độc lập. Làm sau 14A-1/14A-2 (lợi ích nhỏ hơn).
 - **Rủi ro:** thấp, nhưng mỗi trang FE đọc field khác nhau → **bắt buộc grep từng trang**, không áp 1 danh sách chung.
 
 **14A-5. Mức nhỏ (gom 1 commit nếu muốn)**
-- [ ] `createDeposit` (~1822): `customersRepository.findOne({ where: { id, deletedAt: IsNull() } })` chỉ để kiểm tra tồn tại — có vẻ **thừa** vì `assertCustomerAccessible()` ngay trước đã kiểm (đọc nó trước, xác nhận có lọc `deletedAt`) ⇒ bỏ 1 round-trip.
-- [ ] `createNote` (~1642) trả lại `notesRepository.findOne({ relations: ['createdByUser'] })` (User đầy đủ) — chỉ cần `id,name` (FE `handleNoteAdded` dùng `createdByUser` hoặc fallback currentUser → kiểm FE trước).
-- [ ] `getDeposits` (~1879) `leftJoinAndSelect('deposit.createdBy')` User đầy đủ, `limit(5)` — thu hẹp `id,name`.
-- [ ] `updateNote` (~1783), `updateDepositNote` (~1923): `relations: [...]` User đầy đủ — thu hẹp nếu response FE chỉ cần tên.
+- [x] `createDeposit` (~1822): `customersRepository.findOne({ where: { id, deletedAt: IsNull() } })` chỉ để kiểm tra tồn tại — có vẻ **thừa** vì `assertCustomerAccessible()` ngay trước đã kiểm (đọc nó trước, xác nhận có lọc `deletedAt`) ⇒ bỏ 1 round-trip.
+- [x] `createNote` (~1642) trả lại `notesRepository.findOne({ relations: ['createdByUser'] })` (User đầy đủ) — chỉ cần `id,name` (FE `handleNoteAdded` dùng `createdByUser` hoặc fallback currentUser → kiểm FE trước).
+- [x] `getDeposits` (~1879) `leftJoinAndSelect('deposit.createdBy')` User đầy đủ, `limit(5)` — thu hẹp `id,name`.
+- [x] `updateNote` (~1783), `updateDepositNote` (~1923): `relations: [...]` User đầy đủ — thu hẹp nếu response FE chỉ cần tên.
 
 ### 14B. Task (Công việc định kỳ)
 

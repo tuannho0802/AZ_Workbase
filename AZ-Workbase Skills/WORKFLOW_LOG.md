@@ -7554,3 +7554,21 @@ Now [deploy]
 > CHƯA làm (còn mở 14A-5): `createNote`/`updateNote`/`updateDepositNote` (trả User đầy đủ qua `relations`; cần đọc FE `handleNoteAdded` vì fallback dùng `email`). CHƯA đo CPU, chưa chạy MySQL thật. Chưa chạy `Promise.all` cho 2 truy vấn SĐT/Email (plan: chỉ làm nếu đo thấy cần). Rollback: revert commit.
 
 ---
+
+## [2026-10-13] | PLAN CPU 14A-5 (còn lại) + 14A-4 — Customer: thu hẹp User ở note/deposit-note và các danh sách phụ | [Status: Success]
+
+**Actor:** Agent
+**Files Changed:**
+- `backend/src/modules/customers/customers.service.ts` — 14A-5: `createNote`/`updateNote` nạp lại qua `loadNoteWithUsers()`, `updateDepositNote` qua `loadDepositWithCreator()` (User chỉ `id,name`). 14A-4: `getUnassigned`, `getAssigned` (+ join `assignedTo`/`position` của activeAssignees), `getTrash` (+ backfill `deletedBy` dùng `find({select})` thay `findBy`), `getInvalidDataReport`, `getDuplicateContactReport` (bước D) dùng `LIST_USER_COLUMNS` (id,name,email,role) thay `leftJoinAndSelect` cả entity User; code cũ giữ trong comment OLD CODE
+- `backend/src/modules/customers/customers.service.spec.ts` — cập nhật mock QB (leftJoin/addSelect) cho 13 test cũ, thêm 6 test khoá cột
+
+**Root Cause (nếu là bug fix):**
+> Không phải bug. Các endpoint danh sách/ghi trả entity User đầy đủ (~25 cột) trong khi FE chỉ đọc `name`/`role`; lộ cột nhân sự ra response.
+
+**Solution:**
+> Dùng lại `LIST_USER_COLUMNS` (cùng shape `findAll`). Đã grep FE từng trang: `chia-data` (salesUser/marketingUser/createdBy/updatedBy: name, role), `trash-can` (salesUser, createdBy, deletedBy: name, role), `invalid-data` (salesUser/marketingUser/createdBy: name, role), `CustomerNotesTab` (createdByUser.name, updatedByUser.fullName||name), `CustomerDepositTable` (createdBy.name). Một commit/hàm-nhóm để revert độc lập.
+
+**Notes:**
+> Đã chạy: `tsc` 0 lỗi, `nest build` OK, `jest` toàn bộ pass. CHƯA đo CPU, CHƯA chạy trên MySQL thật. `getInvalidDataReport` (query chính, loại không phải trùng) chưa có test khoá cột riêng - chỉ được phủ bởi tsc + test báo cáo trùng cùng kiểu join. CHƯA làm: `Promise.all` cho 2 truy vấn SĐT/Email của `checkDuplicateContact` (chờ đo), 14C. Quan sát (không sửa): `getAssigned` không join `updatedBy`, trong khi `chia-data` đọc `record.updatedBy` cho tooltip audit - tab "Đã assign" có thể luôn hiện "Chưa có chỉnh sửa". Rollback: revert commit tương ứng.
+
+---

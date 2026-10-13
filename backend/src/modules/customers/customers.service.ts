@@ -1647,6 +1647,31 @@ export class CustomersService {
     };
   }
 
+  /**
+   * [PERF 14A-5] Nạp lại 1 ghi chú sau khi tạo/sửa để trả về FE - User chỉ `id,name`
+   * (FE chỉ đọc `createdByUser.name` và `updatedByUser.fullName || name`; entity User không có fullName).
+   */
+  private loadNoteWithUsers(id: number, withUpdater: boolean) {
+    const qb = this.notesRepository
+      .createQueryBuilder('note')
+      .leftJoin('note.createdByUser', 'createdByUser')
+      .addSelect(['createdByUser.id', 'createdByUser.name']);
+    if (withUpdater) {
+      qb.leftJoin('note.updatedByUser', 'updatedByUser').addSelect(['updatedByUser.id', 'updatedByUser.name']);
+    }
+    return qb.where('note.id = :id', { id }).getOne();
+  }
+
+  /** [PERF 14A-5] Như trên cho deposit: `createdBy` chỉ `id,name` (FE chỉ đọc `createdBy?.name`). */
+  private loadDepositWithCreator(id: number) {
+    return this.depositsRepository
+      .createQueryBuilder('deposit')
+      .leftJoin('deposit.createdBy', 'createdBy')
+      .addSelect(['createdBy.id', 'createdBy.name'])
+      .where('deposit.id = :id', { id })
+      .getOne();
+  }
+
   async createNote(
     customerId: number,
     dto: CreateCustomerNoteDto,
@@ -1691,10 +1716,8 @@ export class CustomersService {
       });
     });
 
-    return this.notesRepository.findOne({
-      where: { id: (savedNote as any).id },
-      relations: ['createdByUser'],
-    });
+    // [AGENT] OLD CODE (Plan CPU 14A-5): return this.notesRepository.findOne({ where: { id }, relations: ['createdByUser'] });
+    return this.loadNoteWithUsers((savedNote as any).id, false);
   }
 
   /**
@@ -1830,10 +1853,8 @@ export class CustomersService {
       this.buildNoteAuditSnapshot(savedNote),
     );
 
-    return this.notesRepository.findOne({
-      where: { id: savedNote.id },
-      relations: ['createdByUser', 'updatedByUser'],
-    });
+    // [AGENT] OLD CODE (Plan CPU 14A-5): return this.notesRepository.findOne({ where: { id }, relations: ['createdByUser', 'updatedByUser'] });
+    return this.loadNoteWithUsers(savedNote.id, true);
   }
 
   async deleteNote(
@@ -1966,10 +1987,8 @@ export class CustomersService {
       this.buildDepositAuditSnapshot(deposit),
     );
 
-    return this.depositsRepository.findOne({
-      where: { id: depositId },
-      relations: ['createdBy'],
-    });
+    // [AGENT] OLD CODE (Plan CPU 14A-5): return this.depositsRepository.findOne({ where: { id: depositId }, relations: ['createdBy'] });
+    return this.loadDepositWithCreator(depositId);
   }
 
   async deleteDeposit(id: number, userId?: number) {
@@ -2663,9 +2682,13 @@ export class CustomersService {
 
     const qb = this.customersRepository
       .createQueryBuilder('customer')
-      .leftJoinAndSelect('customer.salesUser', 'salesUser')
-      .leftJoinAndSelect('customer.createdBy', 'createdBy')
-      .leftJoinAndSelect('customer.updatedBy', 'updatedBy')
+      // [AGENT] OLD CODE (Plan CPU 14A-4): leftJoinAndSelect cả entity User cho salesUser/createdBy/updatedBy
+      .leftJoin('customer.salesUser', 'salesUser')
+      .addSelect(LIST_USER_COLUMNS('salesUser'))
+      .leftJoin('customer.createdBy', 'createdBy')
+      .addSelect(LIST_USER_COLUMNS('createdBy'))
+      .leftJoin('customer.updatedBy', 'updatedBy')
+      .addSelect(LIST_USER_COLUMNS('updatedBy'))
       .where('customer.deletedAt IS NULL');
 
     // Khách hàng chưa có Primary HOẶC người dùng đang là Primary Sales
@@ -2807,9 +2830,13 @@ export class CustomersService {
 
     const query = this.customersRepository
       .createQueryBuilder('customer')
-      .leftJoinAndSelect('customer.salesUser', 'salesUser')
-      .leftJoinAndSelect('customer.marketingUser', 'marketingUser')
-      .leftJoinAndSelect('customer.createdBy', 'createdBy')
+      // [AGENT] OLD CODE (Plan CPU 14A-4): leftJoinAndSelect cả entity User cho salesUser/marketingUser/createdBy
+      .leftJoin('customer.salesUser', 'salesUser')
+      .addSelect(LIST_USER_COLUMNS('salesUser'))
+      .leftJoin('customer.marketingUser', 'marketingUser')
+      .addSelect(LIST_USER_COLUMNS('marketingUser'))
+      .leftJoin('customer.createdBy', 'createdBy')
+      .addSelect(LIST_USER_COLUMNS('createdBy'))
       .where('customer.deletedAt IS NULL')
       .andWhere('customer.salesUserId IS NOT NULL'); // Đã assign
 
@@ -2922,8 +2949,11 @@ export class CustomersService {
     if (customers.length > 0) {
       const activeAssignments = await this.assignmentRepository
         .createQueryBuilder('assignment')
-        .leftJoinAndSelect('assignment.assignedTo', 'assignedTo')
-        .leftJoinAndSelect('assignedTo.position', 'assignedToPosition')
+        // [AGENT] OLD CODE (Plan CPU 14A-4): leftJoinAndSelect('assignment.assignedTo') + leftJoinAndSelect('assignedTo.position') đầy đủ
+        .leftJoin('assignment.assignedTo', 'assignedTo')
+        .addSelect(LIST_USER_COLUMNS('assignedTo'))
+        .leftJoin('assignedTo.position', 'assignedToPosition')
+        .addSelect(['assignedToPosition.id', 'assignedToPosition.name', 'assignedToPosition.color'])
         .where('assignment.status = :status', { status: 'active' })
         .andWhere('assignment.customer_id IN (:...ids)', {
           ids: customers.map((c) => c.id),
@@ -3572,9 +3602,13 @@ export class CustomersService {
     const qb = this.customersRepository
       .createQueryBuilder('customer')
       .withDeleted() // ← include soft-deleted rows
-      .leftJoinAndSelect('customer.salesUser', 'salesUser')
-      .leftJoinAndSelect('customer.createdBy', 'createdBy')
-      .leftJoinAndSelect('customer.deletedBy', 'deletedBy')
+      // [AGENT] OLD CODE (Plan CPU 14A-4): leftJoinAndSelect cả entity User cho salesUser/createdBy/deletedBy
+      .leftJoin('customer.salesUser', 'salesUser')
+      .addSelect(LIST_USER_COLUMNS('salesUser'))
+      .leftJoin('customer.createdBy', 'createdBy')
+      .addSelect(LIST_USER_COLUMNS('createdBy'))
+      .leftJoin('customer.deletedBy', 'deletedBy')
+      .addSelect(LIST_USER_COLUMNS('deletedBy'))
       .where('customer.deletedAt IS NOT NULL'); // ← chỉ lấy đã xóa
 
     if (search?.trim()) {
@@ -3639,7 +3673,8 @@ export class CustomersService {
         const actorIds = Array.from(new Set(actorByEntityId.values()));
         const actorUsers = await this.customersRepository.manager
           .getRepository(User)
-          .findBy({ id: In(actorIds) });
+          // [AGENT] OLD CODE (Plan CPU 14A-4): .findBy({ id: In(actorIds) }) - cả entity User; giờ cùng shape cột với deletedBy join ở trên
+          .find({ where: { id: In(actorIds) }, select: ['id', 'name', 'email', 'role'] });
         const userById = new Map(actorUsers.map((u) => [u.id, u]));
 
         for (const customer of data) {
@@ -3856,9 +3891,13 @@ export class CustomersService {
 
     const qb = this.customersRepository
       .createQueryBuilder('customer')
-      .leftJoinAndSelect('customer.salesUser', 'salesUser')
-      .leftJoinAndSelect('customer.marketingUser', 'marketingUser')
-      .leftJoinAndSelect('customer.createdBy', 'createdBy')
+      // [AGENT] OLD CODE (Plan CPU 14A-4): leftJoinAndSelect cả entity User cho salesUser/marketingUser/createdBy
+      .leftJoin('customer.salesUser', 'salesUser')
+      .addSelect(LIST_USER_COLUMNS('salesUser'))
+      .leftJoin('customer.marketingUser', 'marketingUser')
+      .addSelect(LIST_USER_COLUMNS('marketingUser'))
+      .leftJoin('customer.createdBy', 'createdBy')
+      .addSelect(LIST_USER_COLUMNS('createdBy'))
       .where('customer.deletedAt IS NULL');
 
     if (invalidType === 'future_date') {
@@ -4217,9 +4256,13 @@ export class CustomersService {
     // Bước D
     const rawData = await this.customersRepository
       .createQueryBuilder('customer')
-      .leftJoinAndSelect('customer.salesUser', 'salesUser')
-      .leftJoinAndSelect('customer.marketingUser', 'marketingUser')
-      .leftJoinAndSelect('customer.createdBy', 'createdBy')
+      // [AGENT] OLD CODE (Plan CPU 14A-4): leftJoinAndSelect cả entity User cho salesUser/marketingUser/createdBy
+      .leftJoin('customer.salesUser', 'salesUser')
+      .addSelect(LIST_USER_COLUMNS('salesUser'))
+      .leftJoin('customer.marketingUser', 'marketingUser')
+      .addSelect(LIST_USER_COLUMNS('marketingUser'))
+      .leftJoin('customer.createdBy', 'createdBy')
+      .addSelect(LIST_USER_COLUMNS('createdBy'))
       .where('customer.id IN (:...orderedIds)', { orderedIds })
       .getMany();
 

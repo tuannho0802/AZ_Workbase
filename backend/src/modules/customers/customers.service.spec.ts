@@ -57,6 +57,7 @@ describe('CustomersService', () => {
   };
   const mockNoteRepo: {
     findOne?: jest.Mock;
+    createQueryBuilder?: jest.Mock;
     merge?: jest.Mock;
     save?: jest.Mock;
   } = {};
@@ -503,6 +504,8 @@ describe('CustomersService', () => {
       const andWhereCalls: any[] = [];
       const qb: any = {
         leftJoinAndSelect: jest.fn().mockReturnThis(),
+        leftJoin: jest.fn().mockReturnThis(),
+        addSelect: jest.fn().mockReturnThis(),
         where: jest.fn().mockReturnThis(),
         andWhere: jest.fn((sql: any, params?: any) => {
           andWhereCalls.push({ sql, params });
@@ -517,6 +520,18 @@ describe('CustomersService', () => {
       };
       return { qb, andWhereCalls };
     }
+
+    it('14A-4: User (salesUser/marketingUser/createdBy) chỉ select id,name,email,role - KHÔNG leftJoinAndSelect cả entity', async () => {
+      const { qb } = makeFakeQb();
+      mockCustomerRepo.createQueryBuilder.mockReturnValue(qb);
+
+      await service.getAssigned({ page: 1, limit: 20, userId: 1, userRole: Role.ADMIN });
+
+      expect(qb.leftJoinAndSelect).not.toHaveBeenCalled();
+      expect(qb.addSelect).toHaveBeenCalledWith(['salesUser.id', 'salesUser.name', 'salesUser.email', 'salesUser.role']);
+      expect(qb.addSelect).toHaveBeenCalledWith(['marketingUser.id', 'marketingUser.name', 'marketingUser.email', 'marketingUser.role']);
+      expect(qb.addSelect).toHaveBeenCalledWith(['createdBy.id', 'createdBy.name', 'createdBy.email', 'createdBy.role']);
+    });
 
     it('ADMIN: KHÔNG bị áp thêm điều kiện lọc quyền nào (chỉ có andWhere gốc "salesUserId IS NOT NULL")', async () => {
       const { qb, andWhereCalls } = makeFakeQb();
@@ -586,6 +601,8 @@ describe('CustomersService', () => {
       const andWhereCalls: any[] = [];
       const qb: any = {
         leftJoinAndSelect: jest.fn().mockReturnThis(),
+        leftJoin: jest.fn().mockReturnThis(),
+        addSelect: jest.fn().mockReturnThis(),
         where: jest.fn().mockReturnThis(),
         andWhere: jest.fn((sql: any, params?: any) => {
           andWhereCalls.push({ sql, params });
@@ -600,6 +617,18 @@ describe('CustomersService', () => {
       };
       return { qb, andWhereCalls };
     }
+
+    it('14A-4: User (salesUser/createdBy/updatedBy) chỉ select id,name,email,role - KHÔNG leftJoinAndSelect cả entity', async () => {
+      const { qb } = makeFakeQb();
+      mockCustomerRepo.createQueryBuilder.mockReturnValue(qb);
+
+      await service.getUnassigned({} as any, 1, Role.ADMIN, PermissionScope.ALL);
+
+      expect(qb.leftJoinAndSelect).not.toHaveBeenCalled();
+      expect(qb.addSelect).toHaveBeenCalledWith(['salesUser.id', 'salesUser.name', 'salesUser.email', 'salesUser.role']);
+      expect(qb.addSelect).toHaveBeenCalledWith(['createdBy.id', 'createdBy.name', 'createdBy.email', 'createdBy.role']);
+      expect(qb.addSelect).toHaveBeenCalledWith(['updatedBy.id', 'updatedBy.name', 'updatedBy.email', 'updatedBy.role']);
+    });
 
     it('ADMIN/ASSISTANT: chỉ có đúng 1 điều kiện base (chưa Primary HOẶC đang là Primary) - không giới hạn thêm', async () => {
       const { qb, andWhereCalls } = makeFakeQb();
@@ -744,6 +773,17 @@ describe('CustomersService', () => {
     });
   });
 
+  // [14A-5] QB nạp lại note/deposit sau khi ghi: leftJoin + addSelect(id,name) thay cho findOne({relations}).
+  function makeReloadQb(result: any) {
+    const qb: any = {
+      leftJoin: jest.fn().mockReturnThis(),
+      addSelect: jest.fn().mockReturnThis(),
+      where: jest.fn().mockReturnThis(),
+      getOne: jest.fn().mockResolvedValue(result),
+    };
+    return qb;
+  }
+
   describe('updateNote - Sửa ghi chú khách hàng (regression bug 404 "Không tìm thấy khách hàng này")', () => {
     // ⚠️ BÁO CÁO GỐC (2026-09-08): Admin cấp `customer_notes.edit` (scope
     // 'own') cho Employee nhưng KHÔNG cấp `customer_notes.delete`. Employee
@@ -772,6 +812,7 @@ describe('CustomersService', () => {
       mockNoteRepo.findOne = jest.fn().mockResolvedValue({ ...baseNote });
       mockNoteRepo.merge = jest.fn((note: any, dto: any) => Object.assign(note, dto));
       mockNoteRepo.save = jest.fn((note: any) => Promise.resolve(note));
+      mockNoteRepo.createQueryBuilder = jest.fn().mockReturnValue(makeReloadQb({ ...baseNote }));
     });
 
     it('ĐÂY LÀ FIX CHO BUG GỐC: Employee (scope=own) sửa ĐÚNG note mình tạo, trên KH chỉ truy cập được nhờ customers.view scope=department -> KHÔNG còn bị 404', async () => {
@@ -997,6 +1038,8 @@ describe('CustomersService', () => {
       const qb: any = {
         withDeleted: jest.fn().mockReturnThis(),
         leftJoinAndSelect: jest.fn().mockReturnThis(),
+        leftJoin: jest.fn().mockReturnThis(),
+        addSelect: jest.fn().mockReturnThis(),
         where: jest.fn().mockReturnThis(),
         andWhere: jest.fn().mockReturnThis(),
         orderBy: jest.fn().mockReturnThis(),
@@ -1029,7 +1072,7 @@ describe('CustomersService', () => {
       mockAuditService.findLastActorsForEntities.mockResolvedValueOnce(
         new Map([[2, 7]]),
       );
-      const mockUserRepo = { findBy: jest.fn().mockResolvedValue([{ id: 7, name: 'Nguyễn Văn B' }]) };
+      const mockUserRepo = { find: jest.fn().mockResolvedValue([{ id: 7, name: 'Nguyễn Văn B' }]) };
       mockCustomerRepo.manager.getRepository.mockReturnValue(mockUserRepo);
       mockCustomerRepo.update.mockResolvedValue({ affected: 1 });
 
@@ -1044,6 +1087,22 @@ describe('CustomersService', () => {
       expect(result.data[0].deletedBy).toEqual({ id: 7, name: 'Nguyễn Văn B' });
       // Backfill chạy fire-and-forget nhưng phải được kích hoạt đúng tham số
       expect(mockCustomerRepo.update).toHaveBeenCalledWith(2, { deletedById: 7 });
+      // [14A-4] backfill chỉ tải cột cần dùng, không findBy cả entity User
+      expect(mockUserRepo.find).toHaveBeenCalledWith(
+        expect.objectContaining({ select: ['id', 'name', 'email', 'role'] }),
+      );
+    });
+
+    it('14A-4: salesUser/createdBy/deletedBy chỉ select id,name,email,role - KHÔNG leftJoinAndSelect cả entity', async () => {
+      const qb = makeTrashQb([]);
+      mockCustomerRepo.createQueryBuilder.mockReturnValue(qb);
+
+      await service.getTrash({ page: 1, limit: 20 } as any);
+
+      expect(qb.leftJoinAndSelect).not.toHaveBeenCalled();
+      for (const a of ['salesUser', 'createdBy', 'deletedBy']) {
+        expect(qb.addSelect).toHaveBeenCalledWith([`${a}.id`, `${a}.name`, `${a}.email`, `${a}.role`]);
+      }
     });
 
     it('Bản ghi CŨ thiếu deletedById nhưng audit log CŨNG không có gì -> vẫn trả về bình thường, deletedBy null', async () => {
@@ -1344,6 +1403,7 @@ describe('CustomersService', () => {
         (mockNoteRepo as any).create = jest.fn((x: any) => x);
         (mockNoteRepo as any).save = jest.fn((x: any) => Promise.resolve({ id: 900, ...x }));
         (mockNoteRepo as any).findOne = jest.fn().mockResolvedValue({ id: 900 });
+        (mockNoteRepo as any).createQueryBuilder = jest.fn().mockReturnValue(makeReloadQb({ id: 900 }));
         (mockCustomerRepo as any).findOne.mockResolvedValue({
           id: 60, name: 'Khách 60', salesUserId: 5, marketingUserId: null, createdById: 2,
           status: 'pending', closedDate: null, departmentId: 1,
@@ -1543,6 +1603,8 @@ describe('CustomersService', () => {
     function makeFinalQb(rows: any[]) {
       const qb: any = {
         leftJoinAndSelect: jest.fn().mockReturnThis(),
+        leftJoin: jest.fn().mockReturnThis(),
+        addSelect: jest.fn().mockReturnThis(),
         where: jest.fn().mockReturnThis(),
         andWhere: jest.fn().mockReturnThis(),
         getMany: jest.fn().mockResolvedValue(rows),
@@ -1593,7 +1655,14 @@ describe('CustomersService', () => {
       expect(idsQb.take).toHaveBeenCalledWith(20);
 
       // finalQb (có JOIN) không hề gọi skip/take/orderBy theo dup_key.
-      expect(finalQb.leftJoinAndSelect).toHaveBeenCalled();
+      // [14A-4] JOIN User giờ là leftJoin + addSelect(id,name,email,role) - KHÔNG kéo cả entity User,
+      // và vẫn KHÔNG addSelect dup_key trên query có JOIN.
+      expect(finalQb.leftJoinAndSelect).not.toHaveBeenCalled();
+      expect(finalQb.leftJoin).toHaveBeenCalled();
+      expect(finalQb.addSelect).toHaveBeenCalledWith(['salesUser.id', 'salesUser.name', 'salesUser.email', 'salesUser.role']);
+      for (const call of finalQb.addSelect.mock.calls) {
+        expect(JSON.stringify(call)).not.toContain('dup_key');
+      }
 
       expect(result.invalidType).toBe('duplicate_email');
       expect(result.duplicateGroupCount).toBe(1);
@@ -1843,6 +1912,19 @@ describe('CustomersService', () => {
       expect(findOneSpy).not.toHaveBeenCalled();
     });
 
+    it('loadNoteWithUsers: createdByUser/updatedByUser chỉ select id,name; create thì không join updater', async () => {
+      const qb1 = makeReloadQb({ id: 1 });
+      mockNoteRepo.createQueryBuilder = jest.fn().mockReturnValue(qb1);
+      await (service as any).loadNoteWithUsers(1, false);
+      expect(qb1.addSelect).toHaveBeenCalledTimes(1);
+      expect(qb1.addSelect).toHaveBeenCalledWith(['createdByUser.id', 'createdByUser.name']);
+
+      const qb2 = makeReloadQb({ id: 1 });
+      mockNoteRepo.createQueryBuilder = jest.fn().mockReturnValue(qb2);
+      await (service as any).loadNoteWithUsers(1, true);
+      expect(qb2.addSelect).toHaveBeenCalledWith(['updatedByUser.id', 'updatedByUser.name']);
+    });
+
     it('getDeposits: createdBy chỉ select id,name', async () => {
       mockCustomerRepo.createQueryBuilder.mockReturnValue(accessQb({ id: 1 }));
       const depQb: any = {
@@ -1993,9 +2075,9 @@ describe('CustomersService', () => {
 
     it('sửa note: trim, KHÔNG đụng amount/depositDate/broker, ghi audit note cũ->mới', async () => {
       const deposit: any = { id: 9, customerId: 3, amount: 500, depositDate: '2026-09-01', broker: 'XM', note: 'cũ' };
-      mockDepositRepo.findOne!
-        .mockResolvedValueOnce(deposit)
-        .mockResolvedValueOnce({ ...deposit, note: 'mới', createdBy: { id: 1 } });
+      mockDepositRepo.findOne!.mockResolvedValueOnce(deposit);
+      const reloadQb = makeReloadQb({ ...deposit, note: 'mới', createdBy: { id: 1 } });
+      mockDepositRepo.createQueryBuilder = jest.fn().mockReturnValue(reloadQb);
       const accessSpy = jest.spyOn(service as any, 'assertCustomerAccessible').mockResolvedValue(undefined);
 
       const result: any = await service.updateDepositNote(9, { note: '  mới  ' }, 7, Role.EMPLOYEE, PermissionScope.OWN);
@@ -2014,11 +2096,14 @@ describe('CustomersService', () => {
         expect.objectContaining({ note: 'mới', amount: 500 }),
       );
       expect(result.note).toBe('mới');
+      // [14A-5] nạp lại chỉ lấy createdBy id,name (không User đầy đủ)
+      expect(reloadQb.addSelect).toHaveBeenCalledWith(['createdBy.id', 'createdBy.name']);
     });
 
     it('note rỗng/toàn khoảng trắng -> xoá ghi chú (lưu NULL)', async () => {
       const deposit: any = { id: 9, customerId: 3, amount: 500, note: 'cũ' };
-      mockDepositRepo.findOne!.mockResolvedValueOnce(deposit).mockResolvedValueOnce(deposit);
+      mockDepositRepo.findOne!.mockResolvedValueOnce(deposit);
+      mockDepositRepo.createQueryBuilder = jest.fn().mockReturnValue(makeReloadQb(deposit));
       jest.spyOn(service as any, 'assertCustomerAccessible').mockResolvedValue(undefined);
 
       await service.updateDepositNote(9, { note: '   ' }, 1, Role.ADMIN, PermissionScope.ALL);
