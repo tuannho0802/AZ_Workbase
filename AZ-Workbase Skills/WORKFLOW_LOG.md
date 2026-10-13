@@ -7420,3 +7420,23 @@ Now [deploy]
 > Đã chạy thật: `tsc --noEmit` 0 lỗi, `nest build` OK, `jest` 121 suite / 1944 test pass. Spec so sánh cũ/mới bằng cách chạy cùng bộ log với hydrate đầy đủ vs chỉ hydrate cột trong `select`; thử bỏ `matchedUser.name` khỏi select → 4 test fail (spec bắt được lỗi). Chưa đo CPU (cần preview + `CPU_TIMING=true`). Việc kế tiếp theo plan: 13G.
 
 ---
+
+## [2026-10-13] | PLAN CPU Mục 13G — `rematchUnmatchedLogsCore` gộp thành 1 câu UPDATE JOIN | [Status: Success]
+
+**Actor:** Agent
+**Files Changed:**
+- `backend/src/modules/zk-device/zk-device.service.ts` — `rematchUnmatchedLogsCore`: bỏ `userRepo.find` + vòng `for … await UPDATE`, thay bằng 1 `attendanceLogRepo.query(UPDATE … INNER JOIN (SELECT zk_device_user_id, MIN(id) … WHERE deleted_at IS NULL GROUP BY …) …)` (giữ code cũ bằng comment `[AGENT] OLD CODE`)
+- `backend/src/modules/zk-device/zk-device.rematch.spec.ts` — MỚI: 7 test
+- `AZ-Workbase Skills/PLAN_CPU_OPTIMIZATION_ROUND2.md` — đánh dấu 13G ✅ (kèm các ghi chú lệch plan)
+
+**Root Cause (nếu là bug fix):**
+> Không phải bug. Mỗi lần `mapUser()`/`syncNow()` chạy 1 SELECT + N UPDATE tuần tự (N = số nhân viên đã map). Lợi ích CPU nhỏ (chủ yếu giảm round-trip DB).
+
+**Solution:**
+> 1 câu UPDATE JOIN. Giữ ngữ nghĩa cũ: `MIN(id)` theo mã máy (vì `zk_device_user_id` không unique; vòng cũ user đứng trước thắng), `deleted_at IS NULL` (find cũ tự bỏ xoá mềm, SQL thô thì không), chỉ gán dòng `matched_user_id IS NULL`. Giá trị trả về = `affectedRows` (cùng nguồn với `affected` của QueryBuilder cũ). Lệch plan: bỏ nhánh sớm "0 user → không chạy UPDATE" (không còn SELECT; bảng dẫn xuất rỗng ⇒ 0 dòng).
+> ⚠️ `users` là `utf8mb4_unicode_ci`, `attendance_logs` dùng collation mặc định server ⇒ ép `COLLATE utf8mb4_unicode_ci` ở vế `users` để tránh `Illegal mix of collations`.
+
+**Notes:**
+> Đã chạy thật: `tsc --noEmit` 0 lỗi, `nest build` OK, `jest` 122 suite / 1951 test pass; spec 13G fail 7/7 với code cũ, pass với code mới. **CHƯA chạy câu SQL trên MySQL thật** (sandbox không có MySQL/MariaDB). Cần kiểm tra trên preview/staging trước khi deploy: (1) `SELECT COUNT(*) FROM attendance_logs al INNER JOIN (SELECT zk_device_user_id, MIN(id) AS id FROM users WHERE zk_device_user_id IS NOT NULL AND deleted_at IS NULL GROUP BY zk_device_user_id) u ON al.device_user_id = u.zk_device_user_id COLLATE utf8mb4_unicode_ci WHERE al.matched_user_id IS NULL;` (không lỗi collation, số dòng hợp lý); (2) bấm "Rematch" rồi so số `updated` với kỳ vọng. Rollback: khôi phục vòng lặp từ comment `[AGENT] OLD CODE`. Việc kế tiếp theo plan: 13B.
+
+---

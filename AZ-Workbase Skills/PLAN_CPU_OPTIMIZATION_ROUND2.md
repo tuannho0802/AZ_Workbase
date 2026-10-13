@@ -806,18 +806,19 @@ export class QuietBootLogger extends ConsoleLogger {
 **Đo:** preview, `CPU_TIMING=true` ~30 phút, thao tác: tab "Bảng chấm công" (lật vài tuần), tab "Tổng hợp tháng", xuất Excel chấm công; so TB/p95 `GET /zk-device/attendance-summary` **trước/sau, dùng `--solo`**.
 **Tiêu chí hoàn thành:** response so sánh y hệt trên bộ spec; TB route giảm (kỳ vọng — **cần đo**).
 
-### 13G. `rematchUnmatchedLogsCore` — N câu UPDATE tuần tự → 1 câu (BE)
+### 13G. `rematchUnmatchedLogsCore` — N câu UPDATE tuần tự → 1 câu (BE) — ✅ ĐÃ LÀM (2026-10-13, chờ deploy; CHƯA chạy thử SQL trên MySQL thật)
 **Bằng chứng:** `zk-device.service.ts#rematchUnmatchedLogsCore` đọc user đã map rồi `for … await` UPDATE `attendance_logs` từng user (`WHERE device_user_id = ? AND matched_user_id IS NULL`). Chạy mỗi lần `mapUser()` và đầu `syncNow()`.
 **Kỳ vọng trung thực:** số nhân viên ít, phần lớn là round-trip DB (không phải CPU hàm) ⇒ **lợi ích nhỏ, khó thấy trong số đo**. Làm vì yêu cầu của chủ dự án, không vì CPU lớn. Comment trong code từng chủ ý chọn vòng lặp cho dễ đọc — giữ comment `[AGENT] OLD CODE` để rollback.
 **Điểm phải xử lý trước khi viết (đã xác minh trong code):**
 - `users.zk_device_user_id` **KHÔNG có ràng buộc unique** (migration `1777400000000` chỉ thêm cột `varchar(50) NULL`; entity không `unique`) ⇒ có thể 2 user cùng mã máy. Câu `UPDATE … JOIN users` thẳng sẽ chọn dòng **không xác định** khi trùng. Vòng lặp cũ: user đứng trước (theo thứ tự `find`, thực tế theo id) gán xong thì dòng không còn `NULL` nên user sau không ghi đè.
 - ⇒ Dùng bảng dẫn xuất **chọn đúng 1 user/mã máy theo `MIN(id)`**: `JOIN (SELECT zk_device_user_id, MIN(id) AS id FROM users WHERE zk_device_user_id IS NOT NULL AND deleted_at IS NULL GROUP BY zk_device_user_id) u ON u.zk_device_user_id = al.device_user_id` → ngữ nghĩa trùng vòng lặp cũ.
 - `User` có `@DeleteDateColumn` (`find` tự bỏ user đã xoá mềm) còn SQL thô thì **không** ⇒ phải tự thêm `deleted_at IS NULL` (xác nhận tên cột thật trong `user.entity.ts` trước khi viết).
-- [ ] Tên cột/bảng lấy từ `*.entity.ts` (không đoán). Dùng QueryBuilder/`query` **có tham số**, không nối chuỗi.
-- [ ] Giá trị trả về `affected` phải vẫn là tổng số dòng được gán (hàm gọi `mapUser`/`syncNow` dùng số này); log `[Rematch]` giữ nguyên.
-- [ ] Không có user nào được map → trả 0, **không** chạy UPDATE (giữ nhánh sớm hiện có).
-- [ ] Test: cập nhật `zk-device.service.spec.ts` — đúng **1** lần thực thi UPDATE; `affected` đúng; 0 user → không UPDATE; **2 user cùng mã máy → user id nhỏ hơn thắng** (spec ở mức mock câu SQL/tham số, không cần DB thật).
-- [ ] Nếu sandbox có MariaDB/MySQL: chạy thử câu SQL trên dữ liệu giả (có trùng mã máy + user xoá mềm) và dán kết quả thật.
+- [x] Tên cột/bảng lấy từ `*.entity.ts` (không đoán). Dùng QueryBuilder/`query` **có tham số**, không nối chuỗi.
+- [x] Giá trị trả về `affected` phải vẫn là tổng số dòng được gán (hàm gọi `mapUser`/`syncNow` dùng số này); log `[Rematch]` giữ nguyên.
+- [x] Không có user nào được map → trả 0. (ĐỔI so với plan: bỏ nhánh sớm + SELECT đọc user; bảng dẫn xuất rỗng ⇒ UPDATE ảnh hưởng 0 dòng, tiết kiệm thêm 1 round-trip.)
+- [x] Test: cập nhật `zk-device.service.spec.ts` — đúng **1** lần thực thi UPDATE; `affected` đúng; 0 user → không UPDATE; **2 user cùng mã máy → user id nhỏ hơn thắng** (spec ở mức mock câu SQL/tham số, không cần DB thật).
+- [ ] Nếu sandbox có MariaDB/MySQL: chạy thử câu SQL trên dữ liệu giả (có trùng mã máy + user xoá mềm) và dán kết quả thật. → ⚠️ Sandbox KHÔNG có MySQL/MariaDB (apt không có gói) nên CHƯA chạy được; cần chủ dự án chạy SELECT kiểm tra trên preview/staging (xem WORKFLOW_LOG).
+- 🔎 Phát hiện khi làm: `users` tạo với `COLLATE=utf8mb4_unicode_ci` còn `attendance_logs` dùng collation mặc định server ⇒ JOIN thẳng 2 cột có thể lỗi `Illegal mix of collations`; đã ép `COLLATE utf8mb4_unicode_ci` ở vế `users`.
 **Rủi ro:** thấp–TB (ngữ nghĩa khi trùng mã máy / xoá mềm) — xử lý bằng 2 điểm trên. **Rollback:** khôi phục vòng lặp (comment `[AGENT] OLD CODE`).
 **Tiêu chí hoàn thành:** spec xanh; `affected` giữ nguyên ý nghĩa; không đổi kết quả map so với trước trên bộ test trùng mã.
 

@@ -291,29 +291,40 @@ export class ZkDeviceService {
   }
 
   private async rematchUnmatchedLogsCore(): Promise<number> {
-    const mappedUsers = await this.userRepo.find({
-      where: { zkDeviceUserId: Not(IsNull()) },
-      select: ['id', 'zkDeviceUserId'],
-    });
-
-    if (mappedUsers.length === 0) return 0;
-
-    let totalUpdated = 0;
-    // Chạy từng mapping riêng (không gộp 1 câu UPDATE ... CASE WHEN) để đơn
-    // giản, dễ đọc log, và số lượng mapping (vài chục nhân viên) quá nhỏ để
-    // lo ngại hiệu năng N câu UPDATE riêng lẻ.
-    for (const user of mappedUsers) {
-      const result = await this.attendanceLogRepo
-        .createQueryBuilder()
-        .update(AttendanceLog)
-        .set({ matchedUserId: user.id })
-        .where('device_user_id = :deviceUserId', {
-          deviceUserId: user.zkDeviceUserId,
-        })
-        .andWhere('matched_user_id IS NULL')
-        .execute();
-      totalUpdated += result.affected ?? 0;
-    }
+    // [AGENT] OLD CODE (giữ lại để rollback) - 1 truy vấn đọc user + N câu UPDATE tuần tự:
+    //   const mappedUsers = await this.userRepo.find({ where: { zkDeviceUserId: Not(IsNull()) }, select: ['id', 'zkDeviceUserId'] });
+    //   if (mappedUsers.length === 0) return 0;
+    //   let totalUpdated = 0;
+    //   for (const user of mappedUsers) {
+    //     const result = await this.attendanceLogRepo.createQueryBuilder().update(AttendanceLog)
+    //       .set({ matchedUserId: user.id })
+    //       .where('device_user_id = :deviceUserId', { deviceUserId: user.zkDeviceUserId })
+    //       .andWhere('matched_user_id IS NULL').execute();
+    //     totalUpdated += result.affected ?? 0;
+    //   }
+    // [AGENT] NEW CODE (Plan CPU 13G): đúng 1 câu UPDATE ... JOIN.
+    // Giữ NGUYÊN ngữ nghĩa vòng lặp cũ:
+    //  - `users.zk_device_user_id` KHÔNG unique -> chọn đúng 1 user/mã máy theo MIN(id) (vòng cũ:
+    //    user đứng trước gán xong thì dòng hết NULL nên user sau không ghi đè).
+    //  - `find()` cũ tự bỏ user xoá mềm; SQL thô thì không -> phải tự thêm `deleted_at IS NULL`.
+    //  - Chỉ gán dòng còn `matched_user_id IS NULL`.
+    // ⚠️ COLLATE: `users` tạo với utf8mb4_unicode_ci, còn `attendance_logs` dùng collation mặc
+    // của server (vd utf8mb4_0900_ai_ci) -> JOIN 2 cột khác collation sẽ lỗi "Illegal mix of
+    // collations". Ép collation tường minh ở vế `users` (coercibility 0) để so sánh luôn hợp lệ.
+    // Không có user nào được map -> bảng dẫn xuất rỗng -> affectedRows = 0 (không cần SELECT
+    // đọc user trước như bản cũ, tiết kiệm thêm 1 round-trip).
+    const raw = await this.attendanceLogRepo.query(
+      `UPDATE attendance_logs al
+       INNER JOIN (
+         SELECT zk_device_user_id, MIN(id) AS id
+         FROM users
+         WHERE zk_device_user_id IS NOT NULL AND deleted_at IS NULL
+         GROUP BY zk_device_user_id
+       ) u ON al.device_user_id = u.zk_device_user_id COLLATE utf8mb4_unicode_ci
+       SET al.matched_user_id = u.id
+       WHERE al.matched_user_id IS NULL`,
+    );
+    const totalUpdated: number = raw?.affectedRows ?? 0;
 
     if (totalUpdated > 0) {
       this.logger.log(
