@@ -7536,3 +7536,21 @@ Now [deploy]
 > Đã chạy: `tsc` 0 lỗi, `nest build` OK, `jest` 126 suite / 1973 test pass. Lưu ý: lỗi cú pháp trong spec làm suite "fail to run" — số test tụt âm thầm, nên luôn xem dòng `Test Suites`. CHƯA đo, CHƯA chạy trên DB thật. CHƯA làm: mutation nhẹ cho lock/unlock/markOverdue/unmarkOverdue/remove (14B-2 bullet 2), thùng rác, performance.service, audit.service (14B-4 còn lại). Rollback: revert commit.
 
 ---
+
+## [2026-10-13] | PLAN CPU 14A-3 / 14A-5 (một phần) — Customer: checkDuplicateContact thu hẹp, createDeposit bỏ truy vấn thừa, getDeposits thu hẹp User | [Status: Success]
+
+**Actor:** Agent
+**Files Changed:**
+- `backend/src/modules/customers/customers.service.ts` — `checkDuplicateContact` + `buildDuplicateMatchInfo`: leftJoin + select chỉ `id,name` (OLD CODE giữ trong comment); `createDeposit` bỏ `findOne` thừa (đã có `assertCustomerAccessible` lọc `deletedAt`); `getDeposits` createdBy chỉ `id,name`
+- `backend/src/modules/customers/customers.service.spec.ts` — cập nhật mock QB, thêm 3 test
+
+**Root Cause (nếu là bug fix):**
+> Không phải bug. Kéo Customer + 2 User đầy đủ chỉ để lấy tên; 1 round-trip thừa ở createDeposit.
+
+**Solution:**
+> Thu hẹp cột; bỏ truy vấn trùng lặp. FE `CustomerDepositTable` chỉ đọc `createdBy?.name`.
+
+**Notes:**
+> CHƯA làm (còn mở 14A-5): `createNote`/`updateNote`/`updateDepositNote` (trả User đầy đủ qua `relations`; cần đọc FE `handleNoteAdded` vì fallback dùng `email`). CHƯA đo CPU, chưa chạy MySQL thật. Chưa chạy `Promise.all` cho 2 truy vấn SĐT/Email (plan: chỉ làm nếu đo thấy cần). Rollback: revert commit.
+
+---

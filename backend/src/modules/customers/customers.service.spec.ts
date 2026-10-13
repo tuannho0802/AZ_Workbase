@@ -1716,7 +1716,8 @@ describe('CustomersService', () => {
 
     function makeCustomerLookupQb(found: any) {
       const qb: any = {
-        leftJoinAndSelect: jest.fn().mockReturnThis(),
+        leftJoin: jest.fn().mockReturnThis(),
+        select: jest.fn().mockReturnThis(),
         where: jest.fn().mockReturnThis(),
         andWhere: jest.fn().mockReturnThis(),
         getOne: jest.fn().mockResolvedValue(found),
@@ -1726,7 +1727,8 @@ describe('CustomersService', () => {
 
     function makeMembershipRepo(groupNames: string[]) {
       const qb: any = {
-        leftJoinAndSelect: jest.fn().mockReturnThis(),
+        leftJoin: jest.fn().mockReturnThis(),
+        select: jest.fn().mockReturnThis(),
         where: jest.fn().mockReturnThis(),
         andWhere: jest.fn().mockReturnThis(),
         getMany: jest.fn().mockResolvedValue(groupNames.map((name) => ({ group: { name } }))),
@@ -1800,6 +1802,17 @@ describe('CustomersService', () => {
       );
     });
 
+    it('14A-3: chỉ select id/name của User (không kéo Customer/User đầy đủ)', async () => {
+      const phoneQb = makeCustomerLookupQb(null);
+      mockCustomerRepo.createQueryBuilder.mockReturnValueOnce(phoneQb);
+
+      await service.checkDuplicateContact('0901234567', null);
+
+      expect(phoneQb.select).toHaveBeenCalledWith([
+        'customer.id', 'createdBy.id', 'createdBy.name', 'salesUser.id', 'salesUser.name',
+      ]);
+    });
+
     it('excludeCustomerId -> loại trừ chính bản ghi đang sửa khỏi kết quả trùng', async () => {
       const phoneQb = makeCustomerLookupQb(null);
       mockCustomerRepo.createQueryBuilder.mockReturnValueOnce(phoneQb);
@@ -1807,6 +1820,43 @@ describe('CustomersService', () => {
       await service.checkDuplicateContact('0901234567', null, 42);
 
       expect(phoneQb.andWhere).toHaveBeenCalledWith('customer.id != :excludeId', { excludeId: 42 });
+    });
+  });
+  describe('14A-5 - createDeposit/getDeposits nhẹ', () => {
+    beforeEach(() => {
+      mockCustomerRepo.createQueryBuilder.mockReset();
+    });
+    const accessQb = (found: any) => ({
+      select: jest.fn().mockReturnThis(),
+      where: jest.fn().mockReturnThis(),
+      andWhere: jest.fn().mockReturnThis(),
+      getOne: jest.fn().mockResolvedValue(found),
+    });
+
+    it('createDeposit: ngoài phạm vi/đã xoá -> 404 và KHÔNG gọi customersRepository.findOne', async () => {
+      mockCustomerRepo.createQueryBuilder.mockReturnValue(accessQb(null));
+      const findOneSpy = jest.fn();
+      (mockCustomerRepo as any).findOne = findOneSpy;
+      await expect(
+        service.createDeposit(1, { amount: 10 } as any, 1, 'admin'),
+      ).rejects.toThrow();
+      expect(findOneSpy).not.toHaveBeenCalled();
+    });
+
+    it('getDeposits: createdBy chỉ select id,name', async () => {
+      mockCustomerRepo.createQueryBuilder.mockReturnValue(accessQb({ id: 1 }));
+      const depQb: any = {
+        where: jest.fn().mockReturnThis(),
+        leftJoin: jest.fn().mockReturnThis(),
+        addSelect: jest.fn().mockReturnThis(),
+        orderBy: jest.fn().mockReturnThis(),
+        addOrderBy: jest.fn().mockReturnThis(),
+        limit: jest.fn().mockReturnThis(),
+        getMany: jest.fn().mockResolvedValue([]),
+      };
+      mockDepositRepo.createQueryBuilder = jest.fn().mockReturnValue(depQb);
+      await service.getDeposits(1, 1, 'admin');
+      expect(depQb.addSelect).toHaveBeenCalledWith(['createdBy.id', 'createdBy.name']);
     });
   });
   describe('locateInList - Định vị trang chứa khách (deep-link /customers?id=X)', () => {

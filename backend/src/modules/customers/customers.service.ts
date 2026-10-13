@@ -439,8 +439,10 @@ export class CustomersService {
     if (trimmedPhone) {
       const qb = this.customersRepository
         .createQueryBuilder('customer')
-        .leftJoinAndSelect('customer.createdBy', 'createdBy')
-        .leftJoinAndSelect('customer.salesUser', 'salesUser')
+        // [AGENT] OLD CODE (Plan CPU 14A-3): .leftJoinAndSelect('customer.createdBy', 'createdBy') + .leftJoinAndSelect('customer.salesUser', 'salesUser')
+        .leftJoin('customer.createdBy', 'createdBy')
+        .leftJoin('customer.salesUser', 'salesUser')
+        .select(['customer.id', 'createdBy.id', 'createdBy.name', 'salesUser.id', 'salesUser.name'])
         .where('customer.deletedAt IS NULL')
         .andWhere('customer.phone = :phone', { phone: trimmedPhone });
       if (excludeCustomerId) {
@@ -459,8 +461,10 @@ export class CustomersService {
     if (normalizedEmail) {
       const qb = this.customersRepository
         .createQueryBuilder('customer')
-        .leftJoinAndSelect('customer.createdBy', 'createdBy')
-        .leftJoinAndSelect('customer.salesUser', 'salesUser')
+        // [AGENT] OLD CODE (Plan CPU 14A-3): .leftJoinAndSelect('customer.createdBy', 'createdBy') + .leftJoinAndSelect('customer.salesUser', 'salesUser')
+        .leftJoin('customer.createdBy', 'createdBy')
+        .leftJoin('customer.salesUser', 'salesUser')
+        .select(['customer.id', 'createdBy.id', 'createdBy.name', 'salesUser.id', 'salesUser.name'])
         .where('customer.deletedAt IS NULL')
         .andWhere('LOWER(TRIM(customer.email)) = :email', { email: normalizedEmail });
       if (excludeCustomerId) {
@@ -484,7 +488,9 @@ export class CustomersService {
     const memberships = await this.customersRepository.manager
       .getRepository(CustomerGroupMembership)
       .createQueryBuilder('membership')
-      .leftJoinAndSelect('membership.group', 'group')
+      // [AGENT] OLD CODE (Plan CPU 14A-3): .leftJoinAndSelect('membership.group', 'group')
+      .leftJoin('membership.group', 'group')
+      .select(['membership.id', 'group.id', 'group.name'])
       .where('membership.customerId = :customerId', { customerId: existing.id })
       .andWhere('membership.joined = true')
       .getMany();
@@ -1880,14 +1886,8 @@ export class CustomersService {
     // tế vẫn bị giới hạn đúng bởi assertCustomerAccessible ngay dưới đây.
     await this.assertCustomerAccessible(customerId, userId, userRole, scope);
 
-    const customer = await this.customersRepository.findOne({
-      where: { id: customerId, deletedAt: IsNull() },
-    });
-
-    if (!customer) {
-      throw new NotFoundException('Không tìm thấy khách hàng');
-    }
-
+    // [AGENT] OLD CODE (Plan CPU 14A-5): findOne({ id, deletedAt: IsNull() }) + throw NotFoundException -
+    // THỪA: assertCustomerAccessible() ngay trên đã lọc deletedAt IS NULL và ném CustomerNotFoundException.
     if (dto.amount <= 0) {
       throw new BadRequestException('Số tiền phải lớn hơn 0');
     }
@@ -1922,7 +1922,9 @@ export class CustomersService {
     return this.depositsRepository
       .createQueryBuilder('deposit')
       .where('deposit.customerId = :customerId', { customerId })
-      .leftJoinAndSelect('deposit.createdBy', 'createdBy')
+      // [AGENT] OLD CODE (Plan CPU 14A-5): .leftJoinAndSelect('deposit.createdBy', 'createdBy')
+      .leftJoin('deposit.createdBy', 'createdBy')
+      .addSelect(['createdBy.id', 'createdBy.name'])
       .orderBy('deposit.depositDate', 'DESC')
       .addOrderBy('deposit.createdAt', 'DESC')
       .limit(5)
