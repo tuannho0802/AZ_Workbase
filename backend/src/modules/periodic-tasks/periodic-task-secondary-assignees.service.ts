@@ -18,6 +18,8 @@ import { PeriodicTaskAuditService, PeriodicTaskAuditAction } from './periodic-ta
  * phụ trách phụ KHÔNG cần ẩn field theo quyền `customers.view` (đây là
  * thông tin phân công nội bộ, không phải dữ liệu Customer nhạy cảm).
  */
+export type SecondaryAssigneeRef = { id: number; name: string };
+
 @Injectable()
 export class PeriodicTaskSecondaryAssigneesService {
   constructor(
@@ -33,22 +35,21 @@ export class PeriodicTaskSecondaryAssigneesService {
    * Danh sách User đang là phụ trách phụ của 1 Task - dùng lại cho cả
    * response của `addSecondaryAssignee()` và `attachSecondaryAssignees()`.
    */
-  private async queryAssigneeUsers(taskId: number): Promise<User[]> {
-    const rows = await this.secondaryRepo.find({
-      where: { taskId },
-      relations: ['user'],
-      order: { createdAt: 'ASC' },
-    });
-    return rows.filter((r) => r.user).map((r) => r.user);
+  private async queryAssigneeUsers(taskId: number): Promise<SecondaryAssigneeRef[]> {
+    // [PERF 14B-3] Chỉ {id, name} (cùng shape `attachSecondaryAssigneesToList`), không trả User đầy đủ.
+    // [AGENT] OLD CODE (giữ lại để rollback):
+    // const rows = await this.secondaryRepo.find({ where: { taskId }, relations: ['user'], order: { createdAt: 'ASC' } });
+    // return rows.filter((r) => r.user).map((r) => r.user);
+    const rows = await this.secondaryRepo
+      .createQueryBuilder('sa')
+      .leftJoin('sa.user', 'user')
+      .select(['sa.id', 'sa.taskId', 'sa.createdAt', 'user.id', 'user.name'])
+      .where('sa.taskId = :taskId', { taskId })
+      .orderBy('sa.createdAt', 'ASC')
+      .getMany();
+    return rows.filter((r) => r.user).map((r) => ({ id: r.user.id, name: r.user.name }));
   }
 
-  /**
-   * attachSecondaryAssigneesToList - đính `secondaryAssignees: {id, name}[]` vào
-   * TỪNG Task của danh sách (`GET /periodic-tasks`) để mọi view (Bảng/Ngày/Kanban/
-   * Lịch) hiện được ai là phụ trách phụ mà KHÔNG phải gọi `GET /:id` từng Task.
-   * ĐÚNG 1 query cho cả trang (không N+1), chỉ lấy `id`/`name` (không kéo cả User).
-   * Task không có phụ trách phụ -> `[]`.
-   */
   async attachSecondaryAssigneesToList<T extends { id: number }>(
     tasks: T[],
   ): Promise<Array<T & { secondaryAssignees: { id: number; name: string }[] }>> {
@@ -85,7 +86,7 @@ export class PeriodicTaskSecondaryAssigneesService {
     dto: AddPeriodicTaskSecondaryAssigneeDto,
     user: RequestingUser,
     taskScope?: string | null,
-  ): Promise<User[]> {
+  ): Promise<SecondaryAssigneeRef[]> {
     // 1 cổng gác - Task ngoài phạm vi periodic_tasks.edit của người gọi tự 404.
     // [AGENT] OLD CODE (giữ lại để rollback): const task = await this.tasksService.findOne(taskId, user.id, user.role, taskScope);
     // [PERF] chỉ cần id/title/isLocked/primaryAssigneeId -> bản nhẹ, không hydrate 3 entity User.
@@ -196,7 +197,7 @@ export class PeriodicTaskSecondaryAssigneesService {
    */
   async attachSecondaryAssignees<T extends object>(
     task: T,
-  ): Promise<T & { secondaryAssignees: User[] }> {
+  ): Promise<T & { secondaryAssignees: SecondaryAssigneeRef[] }> {
     const taskId = (task as unknown as { id: number }).id;
     const secondaryAssignees = await this.queryAssigneeUsers(taskId);
     return { ...task, secondaryAssignees };

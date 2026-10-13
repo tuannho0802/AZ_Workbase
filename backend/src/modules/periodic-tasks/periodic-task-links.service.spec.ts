@@ -15,6 +15,7 @@ function makeFakeQueryBuilder(overrides: { getMany?: any; getRawMany?: any } = {
     addSelect: jest.fn().mockReturnThis(),
     groupBy: jest.fn().mockReturnThis(),
     leftJoinAndSelect: jest.fn().mockReturnThis(),
+    leftJoin: jest.fn().mockReturnThis(),
     innerJoin: jest.fn().mockReturnThis(),
     where: jest.fn().mockReturnThis(),
     andWhere: jest.fn().mockReturnThis(),
@@ -254,6 +255,9 @@ describe('PeriodicTaskLinksService', () => {
       expect(qb.innerJoin).toHaveBeenCalledWith('periodic_task_links', 'link', 'link.child_task_id = task.id');
       expect(qb.where).toHaveBeenCalledWith('link.parent_task_id = :taskId', { taskId: 1 });
       expect(result).toHaveLength(1);
+      // [14B-4] primaryAssignee chỉ id/name, không leftJoinAndSelect User đầy đủ
+      expect(qb.leftJoinAndSelect.mock.calls.map((c: any[]) => c[1])).not.toContain('primaryAssignee');
+      expect(qb.addSelect).toHaveBeenCalledWith(['primaryAssignee.id', 'primaryAssignee.name']);
     });
 
     it('getParents query đúng chiều ngược lại (child_task_id = :taskId)', async () => {
@@ -265,6 +269,8 @@ describe('PeriodicTaskLinksService', () => {
 
       expect(qb.innerJoin).toHaveBeenCalledWith('periodic_task_links', 'link', 'link.parent_task_id = task.id');
       expect(qb.where).toHaveBeenCalledWith('link.child_task_id = :taskId', { taskId: 1 });
+      expect(qb.leftJoinAndSelect.mock.calls.map((c: any[]) => c[1])).not.toContain('primaryAssignee');
+      expect(qb.addSelect).toHaveBeenCalledWith(['primaryAssignee.id', 'primaryAssignee.name']);
     });
   });
 

@@ -7516,3 +7516,23 @@ Now [deploy]
 > Đã chạy: `tsc` 0 lỗi, `nest build` OK, `jest` toàn bộ pass; SQL đã chạy thật trên MySQL 8.0.46 (7 note → 5, NULL creator, cùng giây OK). Yêu cầu MySQL ≥ 8.0 / MariaDB ≥ 10.2 (production 8.4.8). CHƯA đo CPU. Chưa làm mục tuỳ chọn "cắt độ dài note". Rollback: revert commit.
 
 ---
+
+## [2026-10-13] | PLAN CPU 14B-2 / 14B-3 / 14B-4 (một phần) — Task: thu hẹp User ở findOne, secondary assignees, getChildren/getParents | [Status: Success]
+
+**Actor:** Agent
+**Files Changed:**
+- `periodic-tasks.service.ts` — `findOne`: primaryAssignee/createdBy/updatedBy chỉ `id,name` (leftJoin + addSelect, giữ OLD CODE)
+- `periodic-task-secondary-assignees.service.ts` — `queryAssigneeUsers` dùng QueryBuilder, trả `{id,name}[]` (type `SecondaryAssigneeRef`), cùng shape list
+- `periodic-task-links.service.ts` — `getChildren`/`getParents`: primaryAssignee chỉ `id,name`
+- Spec: `periodic-tasks.find-one.spec.ts` (mới), cập nhật `periodic-task-secondary-assignees.service.spec.ts`, `periodic-task-links.service.spec.ts`
+
+**Root Cause (nếu là bug fix):**
+> Không phải bug. Các endpoint chi tiết trả User đầy đủ trong khi FE chỉ đọc `name` (xác minh bằng grep FE); đồng thời lộ cột nhân sự ra response.
+
+**Solution:**
+> Thu hẹp về `id,name` theo mẫu `findAll`. Đã đọc `buildAuditSnapshot` (chỉ `id,name`) và notify (chỉ `primaryAssigneeId`) trước khi thu hẹp.
+
+**Notes:**
+> Đã chạy: `tsc` 0 lỗi, `nest build` OK, `jest` 126 suite / 1973 test pass. Lưu ý: lỗi cú pháp trong spec làm suite "fail to run" — số test tụt âm thầm, nên luôn xem dòng `Test Suites`. CHƯA đo, CHƯA chạy trên DB thật. CHƯA làm: mutation nhẹ cho lock/unlock/markOverdue/unmarkOverdue/remove (14B-2 bullet 2), thùng rác, performance.service, audit.service (14B-4 còn lại). Rollback: revert commit.
+
+---

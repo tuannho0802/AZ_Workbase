@@ -204,7 +204,9 @@ export class PeriodicTaskLinksService {
     return this.taskRepo
       .createQueryBuilder('task')
       .leftJoinAndSelect('task.status', 'status')
-      .leftJoinAndSelect('task.primaryAssignee', 'primaryAssignee')
+      // [PERF 14B-4] primaryAssignee chỉ id/name (FE chỉ đọc name). OLD CODE: .leftJoinAndSelect('task.primaryAssignee', 'primaryAssignee')
+      .leftJoin('task.primaryAssignee', 'primaryAssignee')
+      .addSelect(['primaryAssignee.id', 'primaryAssignee.name'])
       .leftJoinAndSelect('task.department', 'department')
       .innerJoin('periodic_task_links', 'link', 'link.child_task_id = task.id')
       .where('link.parent_task_id = :taskId', { taskId })
@@ -394,7 +396,9 @@ export class PeriodicTaskLinksService {
     return this.taskRepo
       .createQueryBuilder('task')
       .leftJoinAndSelect('task.status', 'status')
-      .leftJoinAndSelect('task.primaryAssignee', 'primaryAssignee')
+      // [PERF 14B-4] primaryAssignee chỉ id/name (FE chỉ đọc name). OLD CODE: .leftJoinAndSelect('task.primaryAssignee', 'primaryAssignee')
+      .leftJoin('task.primaryAssignee', 'primaryAssignee')
+      .addSelect(['primaryAssignee.id', 'primaryAssignee.name'])
       .leftJoinAndSelect('task.department', 'department')
       .innerJoin('periodic_task_links', 'link', 'link.parent_task_id = task.id')
       .where('link.child_task_id = :taskId', { taskId })

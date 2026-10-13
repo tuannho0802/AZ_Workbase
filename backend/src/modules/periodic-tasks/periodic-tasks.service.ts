@@ -572,10 +572,15 @@ export class PeriodicTasksService {
     const qb = this.taskRepo
       .createQueryBuilder('task')
       .leftJoinAndSelect('task.status', 'status')
-      .leftJoinAndSelect('task.primaryAssignee', 'primaryAssignee')
+      // [PERF 14B-2] User chỉ id/name (FE chỉ đọc name; đồng bộ với findAll). OLD CODE (rollback):
+      // .leftJoinAndSelect('task.primaryAssignee', 'primaryAssignee')
+      // .leftJoinAndSelect('task.createdBy', 'createdBy')
+      // .leftJoinAndSelect('task.updatedBy', 'updatedBy')
+      .leftJoin('task.primaryAssignee', 'primaryAssignee')
       .leftJoinAndSelect('task.department', 'department')
-      .leftJoinAndSelect('task.createdBy', 'createdBy')
-      .leftJoinAndSelect('task.updatedBy', 'updatedBy')
+      .leftJoin('task.createdBy', 'createdBy')
+      .leftJoin('task.updatedBy', 'updatedBy')
+      .addSelect(['primaryAssignee.id', 'primaryAssignee.name', 'createdBy.id', 'createdBy.name', 'updatedBy.id', 'updatedBy.name'])
       .where('task.id = :id', { id })
       .andWhere('task.deletedAt IS NULL');
 

@@ -930,7 +930,7 @@ export class QuietBootLogger extends ConsoleLogger {
 - **Bằng chứng:** join `primaryAssignee`, `createdBy`, `updatedBy` **User đầy đủ**; FE chỉ đọc `primaryAssignee?.name`, `createdBy?.name`. Bản list (`findAll` ~508) **đã** thu hẹp `id,name` ⇒ chi tiết và list **không nhất quán**.
   Caller: `GET /:id` (controller ~dòng 243) **và** `update` (~766), `lock` (~979), `markOverdue` (~1026), `unmarkOverdue` (~1050), `unlock` (~1064), `remove` (~1102).
 - **Việc làm:**
-  - [ ] Thu hẹp 3 User về `id,name` ở `findOne` (đúng mẫu `findAll`). ⚠️ **Trước khi làm, đọc** `buildAuditSnapshot()`, `assertEditableWhenLocked()`, `emitTaskNotification`/`notifyTaskSafely` và các nơi dùng `task.primaryAssignee`/`task.createdBy` (vd `getSecondaryAssigneeIds`, comment ~dòng 798) để chắc **không đọc `email`/field khác của User**; nếu có → thêm field đó vào `select` thay vì bỏ.
+  - [x] Thu hẹp 3 User về `id,name` ở `findOne` (đúng mẫu `findAll`). ⚠️ **Trước khi làm, đọc** `buildAuditSnapshot()`, `assertEditableWhenLocked()`, `emitTaskNotification`/`notifyTaskSafely` và các nơi dùng `task.primaryAssignee`/`task.createdBy` (vd `getSecondaryAssigneeIds`, comment ~dòng 798) để chắc **không đọc `email`/field khác của User**; nếu có → thêm field đó vào `select` thay vì bỏ.
   - [ ] Các mutation `lock/unlock/markOverdue/unmarkOverdue/remove` đang `save(task)` trên entity đã join: cân nhắc bản **chỉ cột Task + `status`** (không join User) nếu phía sau không đọc User (đọc từng hàm; `unlock` có notify — kiểm `emitTaskNotification` đọc gì). Tách commit riêng, làm sau khi thu hẹp ở trên đã xanh.
 - **Test:** `GET /:id` còn đủ `id/name`; `update` ghi audit đúng tên người phụ trách cũ/mới; payload notification không đổi.
 - **Rủi ro:** thấp–TB (đụng audit + notify). **Rollback:** khôi phục `leftJoinAndSelect`.
@@ -938,12 +938,12 @@ export class QuietBootLogger extends ConsoleLogger {
 **14B-3. `queryAssigneeUsers` (`periodic-task-secondary-assignees.service.ts` ~36–42) — shape không nhất quán**
 - **Bằng chứng:** `secondaryRepo.find({ relations: ['user'] })` ⇒ trả **User đầy đủ**; dùng cho `GET /:id` (`attachSecondaryAssignees`, controller ~dòng 249) và response `addSecondaryAssignee`. Trong khi `attachSecondaryAssigneesToList` (list) chỉ trả `{id, name}`. FE chỉ cần `id,name`.
 - **Việc làm:**
-  - [ ] `queryAssigneeUsers` → `createQueryBuilder` + `leftJoin` + `select(['sa.id','sa.createdAt','user.id','user.name'])`, trả `{id,name}[]` (cùng shape list). **Grep mọi nơi dùng `queryAssigneeUsers`** — nếu có chỗ cần `User` thật (vd tạo thông báo) thì chỉ thu hẹp ở nhánh trả response.
-  - [ ] Test: shape `secondaryAssignees` ở detail = shape ở list.
+  - [x] `queryAssigneeUsers` → `createQueryBuilder` + `leftJoin` + `select(['sa.id','sa.createdAt','user.id','user.name'])`, trả `{id,name}[]` (cùng shape list). **Grep mọi nơi dùng `queryAssigneeUsers`** — nếu có chỗ cần `User` thật (vd tạo thông báo) thì chỉ thu hẹp ở nhánh trả response.
+  - [x] Test: shape `secondaryAssignees` ở detail = shape ở list.
 - **Rủi ro:** thấp.
 
 **14B-4. Mức vừa/nhỏ**
-- [ ] `getChildren` (`periodic-task-links.service.ts` ~206) và `getParents` (~396): `leftJoinAndSelect('task.primaryAssignee')` User đầy đủ (+ `status`, `department`) — chỉ cần `id,name`. **TaskLinksModal gọi thường xuyên** (xem Mục 3) ⇒ đáng làm cùng 14B-2. Grep `TaskLinksModal`/`LinkedTasks*` để biết field FE đọc.
+- [x] `getChildren` (`periodic-task-links.service.ts` ~206) và `getParents` (~396): `leftJoinAndSelect('task.primaryAssignee')` User đầy đủ (+ `status`, `department`) — chỉ cần `id,name`. **TaskLinksModal gọi thường xuyên** (xem Mục 3) ⇒ đáng làm cùng 14B-2. Grep `TaskLinksModal`/`LinkedTasks*` để biết field FE đọc.
 - [ ] Thùng rác (`periodic-task-trash.service.ts` ~44–47): 4 join (`status`, `primaryAssignee`, `department`, `createdBy`) đầy đủ — thu hẹp `id,name` (trang ít dùng ⇒ ưu tiên thấp).
 - [ ] `periodic-task-performance.service.ts` ~679, ~780 (`relations: ['status','primaryAssignee','department']`) và ~889 (3 `leftJoinAndSelect`): thu hẹp User về `id,name` **sau khi** đọc nốt phần dùng kết quả. ⚠️ ~889 có `skip/take` + join (comment đã ghi lý do) — **giữ nguyên cấu trúc phân trang**, chỉ đổi cột.
 - [ ] `periodic-task-audit.service.ts` ~136/178/251 (`leftJoinAndSelect('log.user')`): thu hẹp `user.id,user.name` — FE audit tooltip có thể đọc `fullName`/`name` (SKILL_NEXTJS_FRONTEND mục 14) ⇒ grep trước.

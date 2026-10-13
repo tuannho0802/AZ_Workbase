@@ -19,6 +19,19 @@ describe('PeriodicTaskSecondaryAssigneesService', () => {
     remove: jest.fn(),
     createQueryBuilder: jest.fn(),
   };
+
+  /** [14B-3] queryAssigneeUsers dùng QueryBuilder: leftJoin + select chỉ cột của sa và user.id/user.name. */
+  const mockAssigneeRows = (rows: any[]) => {
+    const qb: any = {
+      leftJoin: jest.fn().mockReturnThis(),
+      select: jest.fn().mockReturnThis(),
+      where: jest.fn().mockReturnThis(),
+      orderBy: jest.fn().mockReturnThis(),
+      getMany: jest.fn().mockResolvedValue(rows),
+    };
+    mockSecondaryRepo.createQueryBuilder.mockReturnValue(qb);
+    return qb;
+  };
   const mockUserRepo = {
     findOne: jest.fn(),
   };
@@ -90,7 +103,7 @@ describe('PeriodicTaskSecondaryAssigneesService', () => {
       mockUserRepo.findOne.mockResolvedValue({ id: 5, isActive: true, name: 'User 5' });
       mockSecondaryRepo.findOne.mockResolvedValue(null);
       mockSecondaryRepo.save.mockResolvedValue(undefined);
-      mockSecondaryRepo.find.mockResolvedValue([{ user: { id: 5, name: 'User 5' } }]);
+      mockAssigneeRows([{ user: { id: 5, name: 'User 5' } }]);
 
       const result = await service.addSecondaryAssignee(taskId, { userId: 5 }, employeeUser, 'own');
 
@@ -174,13 +187,16 @@ describe('PeriodicTaskSecondaryAssigneesService', () => {
 
   describe('attachSecondaryAssignees', () => {
     it('luôn trả về mảng secondaryAssignees (không ẩn theo quyền, khác attachLinkedCustomers Phase 3)', async () => {
-      mockSecondaryRepo.find.mockResolvedValue([{ user: { id: 5, name: 'User 5' } }, { user: null }]);
+      const qb = mockAssigneeRows([{ user: { id: 5, name: 'User 5', email: 'x@y.z', role: 'admin' } }, { user: null }]);
 
       const task = { id: taskId, title: 'Task A' };
       const result = await service.attachSecondaryAssignees(task);
 
       // Lọc bỏ dòng có user null (phòng thủ, không nên xảy ra vì onDelete CASCADE).
       expect(result).toEqual({ id: taskId, title: 'Task A', secondaryAssignees: [{ id: 5, name: 'User 5' }] });
+      // [14B-3] shape = shape của list ({id,name}, không lộ email/role) và chỉ select cột cần thiết
+      expect(qb.select).toHaveBeenCalledWith(['sa.id', 'sa.taskId', 'sa.createdAt', 'user.id', 'user.name']);
+      expect(qb.where).toHaveBeenCalledWith('sa.taskId = :taskId', { taskId });
     });
   });
 });
