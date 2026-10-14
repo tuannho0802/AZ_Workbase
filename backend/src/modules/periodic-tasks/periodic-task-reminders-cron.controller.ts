@@ -2,6 +2,7 @@ import { Controller, Get, Headers, Query, HttpException, HttpStatus, Logger } fr
 import { ApiTags, ApiOperation, ApiQuery } from '@nestjs/swagger';
 import { PeriodicTaskRemindersService } from './periodic-task-reminders.service';
 import { PeriodicTaskAutoOverdueService } from './periodic-task-auto-overdue.service';
+import { RetentionService } from '../retention/retention.service';
 
 /**
  * ⚠️ CONTROLLER RIÊNG - CỐ Ý KHÔNG dùng chung `PeriodicTasksController` (có
@@ -27,6 +28,7 @@ export class PeriodicTaskRemindersCronController {
   constructor(
     private readonly remindersService: PeriodicTaskRemindersService,
     private readonly autoOverdueService: PeriodicTaskAutoOverdueService,
+    private readonly retentionService: RetentionService,
   ) {}
 
   private assertSecret(secretQuery?: string, secretHeader?: string, authorization?: string): void {
@@ -61,7 +63,22 @@ export class PeriodicTaskRemindersCronController {
   ) {
     this.assertSecret(secretQuery, secretHeader, authorization);
     try {
-      return await this.autoOverdueService.runSweep({ dryRun: dryRun === 'true' });
+      const sweep = await this.autoOverdueService.runSweep({ dryRun: dryRun === 'true' });
+      // PLAN_RETENTION Phase 1.1 (phương án dự phòng): Vercel Hobby chỉ cho 2 cron nên chưa thêm cron thứ 3 vào
+      // vercel.json; gọi `runIfDue()` ngay sau sweep (T2–T6). Tự thoát NOT_DUE nếu chưa đến chu kỳ 14/30 ngày.
+      // Lỗi retention KHÔNG được làm hỏng kết quả auto-overdue. Khi đã thêm cron riêng `/api/system-cron/retention`
+      // vào vercel.json thì xoá khối này.
+      let retention: unknown = null;
+      if (dryRun !== 'true') {
+        try {
+          retention = await this.retentionService.runIfDue();
+        } catch (retentionErr) {
+          const m = retentionErr instanceof Error ? retentionErr.message : String(retentionErr);
+          this.logger.error(`[Cron] Retention (kèm auto-overdue) thất bại: ${m}`);
+          retention = { error: m };
+        }
+      }
+      return { ...sweep, retention };
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
       this.logger.error(`[Cron] Auto overdue thất bại: ${message}`);

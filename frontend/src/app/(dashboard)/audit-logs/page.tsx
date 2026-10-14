@@ -19,6 +19,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { REFERENCE_DATA_STALE_MS } from '@/lib/query-stale';
 import { auditApi } from '@/lib/api/audit.api';
 import { AuditLog, AuditFilters, AuditSettings } from '@/lib/types/audit.types';
+import { RetentionSettingsPanel } from '@/components/system/RetentionSettingsPanel';
 import dayjs from 'dayjs';
 import { LazyAuditDiff } from '@/components/audit/LazyAuditDiff';
 import { useMyPermissions } from '@/lib/hooks/useMyPermissions';
@@ -881,38 +882,9 @@ export default function AuditLogsPage() {
           key: '3',
           label: <span><SettingOutlined /> Cài đặt dọn dẹp</span>,
           children: (
-            <Card title="Cài đặt dọn dẹp tự động" style={{ maxWidth: 600, borderRadius: 8 }}>
-              <Space orientation={"vertical" as any} size={24} style={{ width: '100%' }}>
-                <Alert
-                  title="Lưu ý về dọn dẹp hệ thống"
-                  description="Khi bật tự động dọn dẹp, hệ thống sẽ chạy một tiến trình xóa các bản ghi cũ hàng ngày vào lúc 3:00 AM."
-                  type="info"
-                  showIcon
-                />
-                
-                <Row align="middle">
-                  <Col span={12}><Text strong>Tự động dọn dẹp:</Text></Col>
-                  <Col span={12}>
-                    <Switch checked={settings.enabled} onChange={v => setSettings({ ...settings, enabled: v })} />
-                    <Text style={{ marginLeft: 8 }}>{settings.enabled ? 'Đang bật' : 'Đang tắt'}</Text>
-                  </Col>
-                </Row>
-
-                <Row align="middle">
-                  <Col span={12}><Text strong>Thời gian lưu giữ (ngày):</Text></Col>
-                  <Col span={12}>
-                    <InputNumber min={0} value={settings.retentionDays} onChange={v => setSettings({ ...settings, retentionDays: v || 0 })} />
-                    <Text type="secondary" style={{ marginLeft: 8 }}>Mặc định: 90 ngày</Text>
-                  </Col>
-                </Row>
-
-                <Divider />
-                
-                <Button type="primary" icon={<SettingOutlined />} loading={settingsLoading} onClick={handleUpdateSettings}>
-                  Lưu cấu hình
-                </Button>
-              </Space>
-            </Card>
+            // [AGENT] OLD CODE (giữ lại để rollback): Card "Cài đặt dọn dẹp tự động" chỉ có 1 Switch + số ngày cho audit_logs
+            // và KHÔNG có gì chạy thật (cron đã bị comment). Thay bằng panel Retention (PLAN_RETENTION Phase 1).
+            <RetentionSettingsPanel />
           )
         }] : [])
       ]} />

@@ -1,4 +1,5 @@
 import { Module } from '@nestjs/common';
+import { RetentionModule } from '../retention/retention.module';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { PeriodicTask } from '../../database/entities/periodic-task.entity';
 import { PeriodicTaskStatus } from '../../database/entities/periodic-task-status.entity';
@@ -30,6 +31,7 @@ import { PeriodicTaskRemindersCronController } from './periodic-task-reminders-c
 // PeriodicTaskCustomersService được luôn.
 @Module({
   imports: [
+    RetentionModule,
     TypeOrmModule.forFeature([
       PeriodicTask,
       PeriodicTaskStatus,

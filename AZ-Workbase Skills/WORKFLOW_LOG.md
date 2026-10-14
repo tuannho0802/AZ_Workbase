@@ -7752,3 +7752,28 @@ Now [deploy]
 > Số giây trong danh sách chỉ đúng tại lúc tải; FE tự đếm tiếp rồi gọi lại API khi về 0. Nút Mở khoá dùng `users.manage` (Manager chỉ mở được nhân viên phòng ban mình quản lý).
 
 ---
+
+## [2026-10-14] | PLAN_RETENTION_SECURITY_ROADMAP — Phase 1: Retention tự động | [Status: Success]
+
+**Actor:** Agent
+**Files Changed:**
+- `backend/src/database/migrations/1786300000000-CreateCronRuns.ts` + `entities/cron-run.entity.ts` — bảng `cron_runs` (idempotent, up/down đối xứng)
+- `backend/src/modules/retention/*` — `RetentionService` (`runIfDue/run/getSettings/updateSettings`), `RetentionController` (`/system/retention-settings`, `/system/retention/run-now`), `RetentionCronController` (`/system-cron/retention`, CRON_SECRET + timingSafeEqual), DTO, constants, 2 file spec
+- `backend/src/modules/periodic-tasks/periodic-task-reminders-cron.controller.ts` + `periodic-tasks.module.ts` — `auto-overdue` gọi thêm `retentionService.runIfDue()` (phương án dự phòng 1.1, lỗi retention không làm hỏng sweep)
+- `backend/src/app.module.ts`, `modules/audit/audit.service.ts` (sửa comment sai lệch đầu file)
+- `frontend/src/lib/api/retention.api.ts`, `components/system/RetentionSettingsPanel.tsx` (+ test), gắn vào `audit-logs/page.tsx` (thay Card cũ, giữ comment OLD CODE) và `lich-su-cong-viec/page.tsx`
+- `AZ-Workbase Skills/PERMISSIONS.md` (§2.7), `PLAN_RETENTION_SECURITY_ROADMAP.md` (tick P1)
+
+**Root Cause (nếu là bug fix):**
+> Công tắc `audit_cleanup_enabled` lưu vào `settings` nhưng không có gì đọc để chạy (cron bị comment) → không bao giờ dọn.
+
+**Solution:**
+> Cron kích hoạt hằng ngày + endpoint tự kiểm "đến hạn" theo chu kỳ lưu DB (14/30/tuỳ chỉnh 7–90 ngày). Xoá theo lô `DELETE ... LIMIT 5000`, ngân sách ~8s; chưa hết → `partial`, lần kích hoạt sau làm tiếp. Cutoff + thời gian còn lại tính bằng đồng hồ DB, gửi FE dạng số giây. Mặc định mọi đối tượng TẮT; attendance sàn 365 ngày và chỉ Admin.
+
+**Notes:**
+> - Chưa thêm cron thứ 3 vào `vercel.json` (Hobby giới hạn 2). Nếu gói cho phép: thêm `{"path":"/api/system-cron/retention","schedule":"0 20 * * *"}` rồi xoá khối gọi `runIfDue()` trong `runAutoOverdue`.
+> - Chưa ghi dòng audit `SYSTEM_RETENTION_RUN` vì `audit_logs.user_id` còn NOT NULL (Phase 4 mới cho NULL); tạm ghi vào `cron_runs` + Logger.
+> - `audit_logs` đang loại trừ action `UNLOCK_LOGIN` khỏi dọn chung; Phase 4 thay bằng `SECURITY_AUDIT_ACTIONS`.
+> - Chưa chạy migration lên DB nào; cần đặt `CRON_SECRET` trên Vercel (đã có sẵn cho 2 cron cũ).
+
+---

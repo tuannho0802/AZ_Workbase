@@ -382,7 +382,7 @@ Thứ tự: **P1 → P2 → P3 → P4 → P5 → P6 → P7 → P8 → P9 → P10
 
 ## 9. Checklist tiến độ
 
-- [ ] P1 Retention tự động (audit, task log, notifications, attendance) + chu kỳ 14/30 ngày + `cron_runs` + FE
+- [x] P1 Retention tự động (audit, task log, notifications, attendance) + chu kỳ 14/30 ngày + `cron_runs` + FE — *đã làm 2026-10-14; còn: chạy migration `1786300000000` trên DB + đặt `CRON_SECRET`; cron đang chạy qua phương án dự phòng (gọi từ `auto-overdue`), chưa thêm vào `vercel.json` (xem mục 8 câu 1)*
 - [ ] P2 Xoá theo nhiều khoảng (audit, task log)
 - [ ] P3.4 Bắt buộc `JWT_REFRESH_SECRET` (deploy riêng)
 - [ ] P3.1 Bảng `security_config` + thay hằng số khoá tài khoản

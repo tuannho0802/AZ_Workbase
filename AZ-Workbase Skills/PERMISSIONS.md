@@ -513,6 +513,18 @@ liệu nhạy cảm mức hệ thống, không phải dữ liệu nghiệp vụ 
 thẳng tới mục này của tài liệu, giải thích rõ đây là ngoại lệ có chủ đích cho việc `DELETE` (cleanup vận
 hành hệ thống, khác với rule Xoá=chỉ-Admin áp cho dữ liệu nghiệp vụ ở mục 1).
 
+**Retention tự động (`modules/retention`, PLAN_RETENTION_SECURITY_ROADMAP Phase 1) — KHÔNG tạo permission key mới,
+tái dùng `audit.view`/`audit.manage`:**
+
+| Endpoint | Guard | Ghi chú |
+|---|---|---|
+| `GET /system/retention-settings` | `audit.view` | Cấu hình + lần chạy gần nhất/tiếp theo (số giây theo đồng hồ DB) |
+| `PUT /system/retention-settings` | `audit.manage` | Đổi cấu hình **chấm công** chỉ `role === 'admin'` (service ném 403) |
+| `POST /system/retention/run-now` | `audit.manage` | `dryRun=true` cho mọi người có quyền; chạy THẬT toàn bộ hoặc `target=attendance_logs` chỉ `admin` |
+| `GET /system-cron/retention` | **không JWT** — `CRON_SECRET` qua header (`Authorization: Bearer` hoặc `x-cron-secret`), `timingSafeEqual`, KHÔNG nhận `?secret=` | Vercel Cron; tự thoát `NOT_DUE` nếu chưa đủ chu kỳ |
+
+Spec khoá hợp đồng: `retention-cron.controller.spec.ts` (guard class + đúng key từng route + secret).
+
 ### 2.8. Xác thực & Đăng ký tài khoản (`modules/auth`) — ✅ ĐÃ KHỚP
 
 Employee/nhân viên mới có thể tự đăng ký (`POST /auth/register`, không cần token — luôn tạo

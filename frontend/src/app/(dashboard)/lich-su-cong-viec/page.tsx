@@ -25,6 +25,7 @@ import { LazyAuditDiff } from '@/components/audit/LazyAuditDiff';
 import { WeeklyLazySection, type WeekBucketDto } from '@/components/common/WeeklyLazySection';
 import dayjs from 'dayjs';
 import { useMyPermissions } from '@/lib/hooks/useMyPermissions';
+import { RetentionSettingsPanel } from '@/components/system/RetentionSettingsPanel';
 import { useRoleColorMap } from '@/lib/hooks/useRoleColorMap';
 import { getApiErrorMessage } from '@/lib/utils/error-message.util';
 
@@ -504,6 +505,12 @@ export default function TaskHistoryPage() {
             }}
           />
         </Card>
+      )}
+
+      {can('audit.manage') && (
+        <div style={{ marginTop: 24 }}>
+          <RetentionSettingsPanel />
+        </div>
       )}
     </div>
   );

@@ -8,9 +8,9 @@ import { Customer } from '../../database/entities/customer.entity';
 import { GetAuditLogsDto } from './dto/get-audit-logs.dto';
 import { paginateByWeek, weekStartColumnRef } from '../../common/utils/week-window.util';
 // ⚠️ KHÔNG dùng @nestjs/schedule - app chạy trên Vercel serverless, không có
-// process nào sống đủ lâu để cron tự kích hoạt. handleCleanupCron() bên dưới
-// vẫn giữ lại nhưng chỉ gọi được thủ công (qua 1 endpoint admin sau này),
-// không tự chạy.
+// process nào sống đủ lâu để cron tự kích hoạt. Dọn dẹp tự động do `RetentionService`
+// (modules/retention) đảm nhiệm: endpoint cron `system-cron/retention` kích hoạt hằng ngày và tự kiểm
+// "đến hạn chưa" theo chu kỳ đã cài. `handleCleanupCron()` bên dưới là code cũ, không còn được gọi.
 
 @Injectable()
 export class AuditService {

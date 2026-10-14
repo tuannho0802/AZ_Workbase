@@ -92,6 +92,7 @@ export const ACTION_META: Record<string, ActionMeta> = {
   RESTORE_USER: m('Khôi phục tài khoản', 'cyan', 'user'),
   HARD_DELETE_USER: m('Xóa vĩnh viễn tài khoản', 'volcano', 'user'),
   RESET_PASSWORD: m('Đặt lại mật khẩu', 'orange', 'user'),
+  UNLOCK_LOGIN: m('Mở khóa đăng nhập', 'lime', 'user'),
   CHANGE_OWN_PASSWORD: m('Tự đổi mật khẩu', 'orange', 'user'),
   UPDATE_OWN_PROFILE: m('Tự cập nhật hồ sơ', 'blue', 'user'),
   UPDATE_OWN_EMAIL: m('Tự đổi email', 'blue', 'user'),
@@ -209,6 +210,7 @@ export const ACTION_META: Record<string, ActionMeta> = {
 
   // ── Nhật ký hệ thống ───────────────────────────────────────────────────
   UPDATE_AUDIT_SETTINGS: m('Cập nhật cấu hình dọn dẹp nhật ký', 'default', 'audit'),
+  UPDATE_RETENTION_SETTINGS: m('Cập nhật cấu hình dọn dẹp tự động (Retention)', 'default', 'audit'),
   ADMIN_CLEANUP_AUDIT_LOGS: m('Admin dọn dẹp nhật ký', 'volcano', 'audit'),
   ADMIN_BULK_DELETE_AUDIT_LOGS: m('Admin xóa nhật ký hàng loạt', 'volcano', 'audit'),
   ADMIN_CLEANUP_TASK_AUDIT_LOGS: m('Admin dọn dẹp nhật ký công việc định kỳ', 'volcano', 'audit'),
@@ -322,6 +324,7 @@ const FIXED_SUBJECT_BY_ACTION: Record<string, string> = {
   UPDATE_STORAGE_LIMIT: 'Hạn mức dung lượng lưu trữ',
   UPDATE_UPLOAD_LIMITS: 'Giới hạn dung lượng/số lượng ảnh tải lên',
   UPDATE_AUDIT_SETTINGS: 'Cấu hình dọn dẹp nhật ký',
+  UPDATE_RETENTION_SETTINGS: 'Cấu hình dọn dẹp tự động',
   ADMIN_CLEANUP_AUDIT_LOGS: 'Nhật ký hệ thống',
   ADMIN_BULK_DELETE_AUDIT_LOGS: 'Nhật ký hệ thống',
   ADMIN_CLEANUP_TASK_AUDIT_LOGS: 'Nhật ký công việc định kỳ',
