@@ -7832,3 +7832,5 @@ Now [deploy]
 > - Đổi giá trị secret sẽ làm mọi refresh token cũ mất hiệu lực (buộc đăng nhập lại) — chỉ đổi nếu secret hiện tại đang thiếu/ngắn/trùng.
 
 ---
+
+Test prod [deploy] for patching phase 1 2 3 new plans
