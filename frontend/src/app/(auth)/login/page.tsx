@@ -62,7 +62,7 @@ export default function LoginPage() {
         const backendMessage = getApiErrorMessage(error, 'Tài khoản của bạn hiện chưa thể đăng nhập.');
         router.push(`/account-status?message=${encodeURIComponent(backendMessage)}`);
       } else if (status === 429) {
-        // Khoá đăng nhập 5 phút (sai mật khẩu quá 5 lần): interceptor axios ĐÃ toast message thật từ backend -
+        // Khoá đăng nhập tạm thời (LOGIN_LOCKED theo tài khoản hoặc IP_LOCKED theo IP; ngưỡng lấy từ security_config): interceptor axios ĐÃ toast message thật từ backend -
         // không toast lại ở đây để tránh 2 toast giống hệt nhau. Chỉ bật đồng hồ đếm ngược.
         const data = isAxiosError(error) ? (error.response?.data as { retryAfterSeconds?: number } | undefined) : undefined;
         if (typeof data?.retryAfterSeconds === 'number' && data.retryAfterSeconds > 0) {

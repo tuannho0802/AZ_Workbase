@@ -7,7 +7,8 @@ export interface AuditUser {
 
 export interface AuditLog {
   id: number;
-  userId: number;
+  /** null = sự kiện bảo mật không gắn user (vd đăng nhập sai với email chưa tồn tại) - PLAN P4.1. */
+  userId: number | null;
   action: string;
   entityType: string;
   entityId: number;
@@ -16,7 +17,7 @@ export interface AuditLog {
   ipAddress: string | null;
   userAgent: string | null;
   createdAt: string;
-  user: AuditUser;
+  user: AuditUser | null;
   targetCustomer?: {
     id: number;
     name: string;

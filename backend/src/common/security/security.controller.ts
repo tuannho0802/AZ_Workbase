@@ -1,4 +1,4 @@
-import { BadRequestException, Controller, Delete, ForbiddenException, Get, NotFoundException, Param, Req, UseGuards } from '@nestjs/common';
+import { BadRequestException, Body, Controller, Delete, ForbiddenException, Get, NotFoundException, Param, Put, Query, Req, UseGuards } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { PermissionGuard } from '../../common/guards/permission.guard';
@@ -6,10 +6,13 @@ import { RequirePermission } from '../../common/decorators/require-permission.de
 import { GetPermissionScope } from '../../common/decorators/get-permission-scope.decorator';
 import { Role } from '../../common/enums/role.enum';
 import { PermissionScope } from '../../database/entities/role-permission.entity';
-import { AuditService } from '../audit/audit.service';
+import { AuditService } from '../../modules/audit/audit.service';
 import { normalizeIp } from '../../common/security/client-ip';
 import { LoginIpBlockService } from './login-ip-block.service';
-import { SecurityConfigService } from './security-config.service';
+import { SECURITY_CONFIG_LIMITS, SecurityConfigService } from './security-config.service';
+import { SecurityActivityService } from './security-activity.service';
+import { GetSecurityEventsDto, UpdateSecurityConfigDto } from './dto/security-activity.dto';
+import { SECURITY_AUDIT_ACTIONS } from './security-audit';
 
 /**
  * PLAN_RETENTION_SECURITY_ROADMAP P3.3 — Admin xem/mở khoá IP bị khoá đăng nhập.
@@ -26,6 +29,7 @@ export class SecurityController {
         private readonly ipBlocks: LoginIpBlockService,
         private readonly config: SecurityConfigService,
         private readonly auditService: AuditService,
+        private readonly activity: SecurityActivityService,
     ) { }
 
     private assertGlobalScope(role: string, scope?: string | null) {
@@ -62,11 +66,65 @@ export class SecurityController {
         const removed = await this.ipBlocks.unblock(ip);
         if (!removed) throw new NotFoundException('Không có bản ghi cho IP này (có thể đã tự hết khoá).');
 
-        this.auditService.logActionAsync(req.user.id, 'UNBLOCK_LOGIN_IP', 'security', removed.id, null, {
-            ip: removed.ip,
-            failedCount: removed.failedCount,
-            wasLocked: removed.wasLocked,
-        });
-        return { success: true, message: 'Đã mở khoá IP' };
+        // P4.1: ghi qua `logSecurityEventAsync` để dòng này hiện ở trang Hoạt động bảo mật (entity_type 'security').
+    this.auditService.logSecurityEventAsync({
+      userId: req.user.id,
+      action: 'UNBLOCK_LOGIN_IP',
+      entityId: removed.id,
+      detail: { ip: removed.ip, failedCount: removed.failedCount, wasLocked: removed.wasLocked },
+    });
+    return { success: true, message: 'Đã mở khoá IP' };
     }
+
+  // ───────── PLAN Phase 4.3: trang "Hoạt động bảo mật" — tái dùng `audit.manage` (không tạo key mới) ─────────
+
+  @Get('events')
+  @RequirePermission('audit.manage')
+  @ApiOperation({ summary: 'Sự kiện bảo mật (đăng nhập sai, khoá, mở khoá...) — lọc theo loại/IP/email/ngày, phân trang' })
+  events(@Query() filters: GetSecurityEventsDto) {
+    return this.activity.listEvents(filters);
+  }
+
+  @Get('summary')
+  @RequirePermission('audit.manage')
+  @ApiOperation({ summary: 'Thẻ tổng hợp: số lần khoá hôm nay, IP đang khoá, email lạ bị thử nhiều nhất (7 ngày)' })
+  summary() {
+    return this.activity.summary();
+  }
+
+  @Get('actions')
+  @RequirePermission('audit.manage')
+  @ApiOperation({ summary: 'Danh sách loại sự kiện bảo mật (cho ô lọc)' })
+  actions() {
+    return [...SECURITY_AUDIT_ACTIONS];
+  }
+
+  @Get('config')
+  @RequirePermission('audit.manage')
+  @ApiOperation({ summary: 'Cấu hình bảo mật đăng nhập hiện hành + khoảng hợp lệ của từng giá trị' })
+  async getConfig() {
+    return { config: await this.config.get(), limits: SECURITY_CONFIG_LIMITS };
+  }
+
+  @Put('config')
+  @RequirePermission('audit.manage')
+  @ApiOperation({ summary: 'Sửa cấu hình bảo mật đăng nhập. Ghi audit UPDATE_SECURITY_CONFIG (giá trị cũ/mới). Hiệu lực ≤ 30 giây' })
+  async updateConfig(@Body() dto: UpdateSecurityConfigDto, @Req() req: { user: { id: number }; ip?: string; headers?: Record<string, unknown> }) {
+    const { before, after, changed } = await this.config.update(dto, req.user.id);
+    if (changed.length > 0) {
+      const ua = typeof req.headers?.['user-agent'] === 'string' ? (req.headers['user-agent'] as string) : null;
+      this.auditService.logSecurityEventAsync({
+        userId: req.user.id,
+        action: 'UPDATE_SECURITY_CONFIG',
+        ip: normalizeIp(req.ip),
+        userAgent: ua,
+        detail: {
+          changed,
+          before: Object.fromEntries(changed.map((k) => [k, before[k]])),
+          after: Object.fromEntries(changed.map((k) => [k, after[k]])),
+        },
+      });
+    }
+    return { config: after, changed };
+  }
 }

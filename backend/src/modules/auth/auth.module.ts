@@ -6,12 +6,14 @@ import { ThrottlerModule } from '@nestjs/throttler';
 import { AuthService } from './auth.service';
 import { AuthController } from './auth.controller';
 import { UsersModule } from '../users/users.module';
+import { SecurityModule } from '../../common/security/security.module';
 import { JwtStrategy } from './strategies/jwt.strategy';
 import { assertJwtSecrets, getJwtSecret } from '../../common/security/jwt-secrets';
 
 @Module({
   imports: [
     UsersModule,
+    SecurityModule,
     PassportModule,
     JwtModule.registerAsync({
       imports: [ConfigModule],

@@ -6,12 +6,13 @@ export class AuditLog {
   @PrimaryGeneratedColumn()
   id: number;
 
-  @Column({ name: 'user_id' })
-  userId: number;
+  // P4.1: NULL = sự kiện bảo mật không gắn user (vd đăng nhập sai với email chưa có trong hệ thống).
+  @Column({ name: 'user_id', type: 'int', nullable: true })
+  userId: number | null;
 
-  @ManyToOne(() => User)
+  @ManyToOne(() => User, { nullable: true })
   @JoinColumn({ name: 'user_id' })
-  user: User;
+  user: User | null;
 
   @Column({ length: 50 })
   action: string;

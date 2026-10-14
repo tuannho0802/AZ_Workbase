@@ -93,6 +93,17 @@ export const ACTION_META: Record<string, ActionMeta> = {
   HARD_DELETE_USER: m('Xóa vĩnh viễn tài khoản', 'volcano', 'user'),
   RESET_PASSWORD: m('Đặt lại mật khẩu', 'orange', 'user'),
   UNLOCK_LOGIN: m('Mở khóa đăng nhập', 'lime', 'user'),
+  // Sự kiện bảo mật (PLAN Phase 4) - danh sách đầy đủ ở BE `SECURITY_AUDIT_ACTIONS`; xem chi tiết ở /security-activity.
+  LOGIN_FAILED: m('Đăng nhập sai mật khẩu', 'orange', 'user'),
+  LOGIN_UNKNOWN_EMAIL: m('Đăng nhập sai (email không tồn tại)', 'gold', 'user'),
+  ACCOUNT_LOCKED: m('Tài khoản bị khóa do đăng nhập sai', 'red', 'user'),
+  LOGIN_IP_BLOCKED: m('IP bị khóa do đăng nhập sai', 'volcano', 'user'),
+  UNBLOCK_LOGIN_IP: m('Mở khóa IP đăng nhập', 'lime', 'user'),
+  PASSWORD_CHANGE_FAILED: m('Đổi mật khẩu thất bại', 'orange', 'user'),
+  PASSWORD_CHANGED: m('Đã đổi mật khẩu', 'blue', 'user'),
+  FORCE_LOGOUT: m('Đăng xuất cưỡng bức', 'magenta', 'user'),
+  SESSION_REVOKED: m('Thu hồi phiên đăng nhập', 'magenta', 'user'),
+  UPDATE_SECURITY_CONFIG: m('Cập nhật cấu hình bảo mật', 'purple', 'user'),
   CHANGE_OWN_PASSWORD: m('Tự đổi mật khẩu', 'orange', 'user'),
   UPDATE_OWN_PROFILE: m('Tự cập nhật hồ sơ', 'blue', 'user'),
   UPDATE_OWN_EMAIL: m('Tự đổi email', 'blue', 'user'),
@@ -253,6 +264,7 @@ export function getActionMeta(action: string): { label: string; color: string; k
 
 // ─── Đối tượng (entityType) ─────────────────────────────────────────────────
 export const ENTITY_TYPE_LABELS: Record<string, string> = {
+  security: 'Bảo mật đăng nhập',
   customer: 'Khách hàng',
   system: 'Hệ thống',
   customer_note: 'Ghi chú khách hàng',

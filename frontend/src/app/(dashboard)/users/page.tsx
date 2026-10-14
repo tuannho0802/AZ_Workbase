@@ -21,6 +21,7 @@ import { useUsersList, invalidateUserLists } from '@/lib/hooks/useUsers';
 import { useQueryClient } from '@tanstack/react-query';
 import { PendingApprovalsTab } from './PendingApprovalsTab';
 import { TrashTab } from './TrashTab';
+import { LoginIpBlocksTab } from './LoginIpBlocksTab';
 import { getApiErrorMessage } from '@/lib/utils/error-message.util';
 import { useRoleColorMap, useRoleColors } from '@/lib/hooks/useRoleColorMap';
 import { resolveEntityColor } from '@/lib/utils/entityColor';
@@ -97,7 +98,7 @@ function UserMobileCard({
             <Tag color="gold" icon={<CrownOutlined />}>Root Admin</Tag>
           )}
           {renderUserStatusTag(record, true)}
-          <LoginLockTag seconds={record.loginLockSeconds} onExpire={onLockExpire} />
+          <LoginLockTag seconds={record.loginLockSeconds} onExpire={onLockExpire} lastLoginIp={record.lastLoginIp} />
         </div>
       </div>
 
@@ -256,7 +257,7 @@ export default function UsersPage() {
   // còn là Admin-only như comment cũ ở đây từng ghi (đã lỗi thời, gây bug:
   // Manager/Assistant bị chặn nhầm khỏi tab "Danh sách nhân viên" dù BE đã
   // cho phép từ trước). Đặt tên lại cho đúng ý nghĩa thay vì giữ "isAdmin"
-  const { can, isLoading: permissionsLoading } = useMyPermissions();
+  const { can, scope, isLoading: permissionsLoading } = useMyPermissions();
   // ⚠️ FIX BUG THẬT (403 "GET /api/roles" + dropdown "Vai trò" trống khi Manager
   // vào trang Nhân viên): trước đây dùng `useRoles()` (GET /roles) - route đòi
   // `roles.view`, Manager không có quyền này theo thiết kế (roles.view chỉ dành
@@ -281,6 +282,9 @@ export default function UsersPage() {
   // `AddUserSoftDeleteAndProfilePermissions`. Nút "Xoá" + tab "Đã xoá" chỉ
   // hiện khi thực sự có quyền này, không hardcode role === 'admin'.
   const canDelete = can('users.delete');
+  // P3.3: tab "IP bị khoá" cần `users.manage` phạm vi TOÀN HỆ THỐNG (khớp SecurityController: Manager scope
+  // department bị BE chặn 403 nên FE ẩn hẳn tab, không lộ UI rồi báo lỗi).
+  const canManageIpBlocks = canManage && (user?.role === 'admin' || scope('users.manage') === 'all');
   const canSeeFullList = canAccessPage;
   // ⚠️ MỚI (isRootAdmin) - toggle "Root Admin" trong Modal Thêm/Sửa CHỈ hiện
   // với người đang đăng nhập THẬT SỰ là Root Admin (khác `role === 'admin'`
@@ -446,8 +450,12 @@ export default function UsersPage() {
   // canManageUser) là nơi chặn thật sự; FE chỉ hiện nút khi `loginLockSeconds > 0`.
   const handleUnlockLogin = async (record: UnlockableUser) => {
     try {
-      await usersApi.unlockLogin(record.id);
-      message.success(`Đã mở khoá đăng nhập cho "${record.name}"`);
+      const res = await usersApi.unlockLogin(record.id);
+      message.success(
+        res?.lastLoginIp
+          ? `Đã mở khoá đăng nhập cho "${record.name}" (IP đăng nhập gần nhất: ${res.lastLoginIp})`
+          : `Đã mở khoá đăng nhập cho "${record.name}"`,
+      );
       fetchUsers();
     } catch (err) {
       message.error(getApiErrorMessage(err, 'Mở khoá thất bại'));
@@ -520,7 +528,7 @@ export default function UsersPage() {
       render: (_: unknown, record: any) => (
         <Space size={4} wrap>
           {renderUserStatusTag(record)}
-          <LoginLockTag seconds={record.loginLockSeconds} onExpire={fetchUsers} />
+          <LoginLockTag seconds={record.loginLockSeconds} onExpire={fetchUsers} lastLoginIp={record.lastLoginIp} />
         </Space>
       ),
     },
@@ -692,6 +700,10 @@ export default function UsersPage() {
           children: <TrashTab onCountChange={setTrashCount} onRestored={fetchUsers} />,
         },
       ]
+      : []),
+    // Tab "IP bị khoá" (P3.3).
+    ...(canManageIpBlocks
+      ? [{ key: 'ip-blocks', label: 'IP bị khoá', children: <LoginIpBlocksTab /> }]
       : []),
   ];
 

@@ -1,5 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { ThrottlerGuard } from '@nestjs/throttler';
+import { getClientIp } from '../security/client-ip';
 
 /**
  * ⚠️ BỔ SUNG BẮT BUỘC cho fix ở `frontend/src/app/api/auth/register/route.ts`
@@ -34,10 +35,8 @@ import { ThrottlerGuard } from '@nestjs/throttler';
 @Injectable()
 export class ThrottlerBehindProxyGuard extends ThrottlerGuard {
     protected async getTracker(req: Record<string, any>): Promise<string> {
-        const forwarded = req.headers['x-az-client-ip'];
-        if (typeof forwarded === 'string' && forwarded.trim()) {
-            return forwarded.trim();
-        }
-        return req.ip;
+        // [AGENT] OLD CODE (giữ để rollback): đọc thẳng header `x-az-client-ip`, fallback `req.ip`.
+        // NEW (P3.2): dùng chung helper `getClientIp` (cùng thứ tự ưu tiên).
+        return getClientIp(req) ?? req.ip;
     }
 }

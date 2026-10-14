@@ -75,4 +75,47 @@ describe('SecurityConfigService (P3.1)', () => {
         expect(clampSecurityValue('securityEventRetentionDays', 30).clamped).toBe(false);
         expect(clampSecurityValue('securityEventRetentionDays', 29).clamped).toBe(true);
     });
+
+  describe('update (P4.3)', () => {
+    let q: jest.Mock;
+    beforeEach(() => {
+      q = jest.fn().mockResolvedValue(undefined);
+      (repo as any).query = q;
+    });
+
+    it('chỉ UPDATE các field thật sự đổi (cột whitelist), kèm updated_by/updated_at, xoá cache, trả before/after', async () => {
+      repo.findOne.mockResolvedValueOnce(row()).mockResolvedValueOnce(row({ ipMaxFailedAttempts: 20 }));
+      const res = await service.update({ ipMaxFailedAttempts: 20, ipLockMinutes: 5 }, 7); // ipLockMinutes không đổi -> bỏ
+      expect(res.changed).toEqual(['ipMaxFailedAttempts']);
+      expect(res.before.ipMaxFailedAttempts).toBe(10);
+      expect(res.after.ipMaxFailedAttempts).toBe(20);
+      const upd = q.mock.calls.find((c) => String(c[0]).startsWith('UPDATE security_config'))!;
+      expect(upd[0]).toContain('`ip_max_failed_attempts` = ?');
+      expect(upd[0]).not.toContain('ip_lock_minutes');
+      expect(upd[0]).toContain('updated_at = NOW()');
+      expect(upd[1]).toEqual([20, 7]);
+    });
+
+    it('giá trị ngoài khoảng bị BỎ QUA (không ghi giá trị xấu vào DB)', async () => {
+      repo.findOne.mockResolvedValue(row());
+      const res = await service.update({ ipMaxFailedAttempts: 0, accountLockMinutes: 99999 }, 7);
+      expect(res.changed).toEqual([]);
+      expect(q.mock.calls.some((c) => String(c[0]).startsWith('UPDATE'))).toBe(false);
+    });
+
+    it('không có gì đổi -> không chạm DB', async () => {
+      repo.findOne.mockResolvedValue(row());
+      const res = await service.update({}, 7);
+      expect(res.changed).toEqual([]);
+      expect(q).not.toHaveBeenCalled();
+    });
+
+    it('sau update, get() đọc lại DB (cache đã bị xoá)', async () => {
+      repo.findOne.mockResolvedValue(row());
+      await service.get();
+      repo.findOne.mockResolvedValue(row({ securityEventRetentionDays: 365 }));
+      await service.update({ securityEventRetentionDays: 365 }, 1);
+      expect((await service.get()).securityEventRetentionDays).toBe(365);
+    });
+  });
 });

@@ -9,6 +9,7 @@ function makeService(opts: {
   latestRun?: Row | null;
   deleteResults?: number[];
   countResult?: number;
+  securityDays?: number;
 }) {
   const queries: Array<{ sql: string; params: unknown[] }> = [];
   const deletes = [...(opts.deleteResults ?? [0])];
@@ -28,8 +29,14 @@ function makeService(opts: {
     save: jest.fn(async (rows: unknown) => rows),
   };
   const auditService = { logAction: jest.fn(async () => undefined) };
-  const service = new RetentionService(dataSource as never, settingRepo as never, auditService as never);
-  return { service, dataSource, settingRepo, auditService, queries };
+  const securityConfig = { get: jest.fn(async () => ({ securityEventRetentionDays: opts.securityDays ?? 180 })) };
+  const service = new RetentionService(
+    dataSource as never,
+    settingRepo as never,
+    auditService as never,
+    securityConfig as never,
+  );
+  return { service, dataSource, settingRepo, auditService, queries, securityConfig };
 }
 
 const ENABLE_AUDIT: Row[] = [
@@ -182,6 +189,47 @@ describe('RetentionService', () => {
         ]),
       );
       expect(auditService.logAction).toHaveBeenCalledWith(1, 'UPDATE_RETENTION_SETTINGS', 'setting', 0, null, expect.anything());
+    });
+  });
+
+  describe('security_events (PLAN P4.2)', () => {
+    it('mặc định TẮT; số ngày giữ lấy từ security_config (không từ settings)', async () => {
+      const { service } = makeService({ securityDays: 365 });
+      const s = await service.getSettings();
+      expect(s.securityEvents).toEqual({ enabled: false, retentionDays: 365 });
+    });
+
+    it('bật qua setting riêng `security_event_cleanup_enabled`', async () => {
+      const { service } = makeService({ settings: [{ key: 'security_event_cleanup_enabled', value: 'true' }] });
+      expect((await service.getSettings()).securityEvents.enabled).toBe(true);
+    });
+
+    it('chạy thật: chỉ xoá action bảo mật cũ hơn hạn riêng', async () => {
+      const { service, queries } = makeService({
+        settings: [{ key: 'security_event_cleanup_enabled', value: 'true' }],
+        securityDays: 200,
+        deleteResults: [3],
+      });
+      await service.run({ target: 'security_events' });
+      const del = queries.find((q) => q.sql.startsWith('DELETE FROM'))!;
+      expect(del.sql).toContain('audit_logs');
+      expect(del.sql).toContain('action IN (');
+      expect(del.params[0]).toBe(200);
+      expect(del.params).toContain('LOGIN_FAILED');
+    });
+
+    it('job audit_logs chung KHÔNG xoá action bảo mật (NOT IN toàn bộ SECURITY_AUDIT_ACTIONS)', async () => {
+      const { service, queries } = makeService({ settings: ENABLE_AUDIT, deleteResults: [0] });
+      await service.run({ target: 'audit_logs' });
+      const del = queries.find((q) => q.sql.startsWith('DELETE FROM'))!;
+      expect(del.sql).toContain('action NOT IN (');
+      expect(del.params).toEqual(expect.arrayContaining(['LOGIN_FAILED', 'LOGIN_UNKNOWN_EMAIL', 'ACCOUNT_LOCKED', 'UNLOCK_LOGIN']));
+    });
+
+    it('updateSettings chỉ lưu cờ bật/tắt, không ghi số ngày vào settings', async () => {
+      const { service, settingRepo } = makeService({});
+      await service.updateSettings({ securityEvents: { enabled: true } }, { id: 1, role: 'admin' });
+      expect(settingRepo.save).toHaveBeenCalledWith([{ key: 'security_event_cleanup_enabled', value: 'true' }]);
     });
   });
 });

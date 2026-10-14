@@ -164,7 +164,7 @@ export class UsersController {
 
   @Patch(':id/unlock-login')
   @RequirePermission('users.manage')
-  @ApiOperation({ summary: 'Mở khoá đăng nhập sớm (sau khi bị khoá do sai mật khẩu quá 5 lần) - cùng phạm vi quyền với reset-password' })
+  @ApiOperation({ summary: 'Mở khoá đăng nhập sớm (sau khi bị khoá do sai mật khẩu quá ngưỡng trong `security_config`) - cùng phạm vi quyền với reset-password; trả thêm `lastLoginIp`' })
   async unlockLogin(@Param('id') id: string, @Request() req: any, @GetPermissionScope() scope?: string | null) {
     return this.usersService.unlockLogin(+id, req.user.id, req.user.role, scope);
   }

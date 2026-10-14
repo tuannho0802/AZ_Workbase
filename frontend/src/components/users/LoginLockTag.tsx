@@ -1,6 +1,6 @@
 'use client';
 
-import { Tag } from 'antd';
+import { Tag, Tooltip } from 'antd';
 import { LockOutlined } from '@ant-design/icons';
 import { formatCountdown, useCountdown } from '@/lib/hooks/useCountdown';
 
@@ -9,12 +9,22 @@ import { formatCountdown, useCountdown } from '@/lib/hooks/useCountdown';
  * `seconds` = `loginLockSeconds` do GET /users trả về. Về 0 -> gọi `onExpire` (để trang tải lại danh sách).
  * Không render gì khi không bị khoá.
  */
-export function LoginLockTag({ seconds, onExpire }: { seconds?: number; onExpire?: () => void }) {
+export function LoginLockTag({
+  seconds,
+  onExpire,
+  lastLoginIp,
+}: {
+  seconds?: number;
+  onExpire?: () => void;
+  /** IP đăng nhập thành công gần nhất (P3.3) - hiện trong tooltip để Admin đối chiếu với tab "IP bị khoá". */
+  lastLoginIp?: string | null;
+}) {
   const remaining = useCountdown(seconds, onExpire);
   if (!seconds || remaining <= 0) return null;
-  return (
+  const tag = (
     <Tag color="volcano" icon={<LockOutlined />} style={{ marginInlineEnd: 0 }}>
       Bị khoá đăng nhập {formatCountdown(remaining)}
     </Tag>
   );
+  return lastLoginIp ? <Tooltip title={`IP đăng nhập gần nhất: ${lastLoginIp}`}>{tag}</Tooltip> : tag;
 }

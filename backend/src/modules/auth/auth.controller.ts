@@ -6,6 +6,7 @@ import { LoginDto } from './dto/login.dto';
 import { RegisterDto } from './dto/register.dto';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { ThrottlerBehindProxyGuard } from '../../common/guards/throttler-behind-proxy.guard';
+import { getDirectClientIp } from '../../common/security/client-ip';
 
 @ApiTags('Auth')
 @Controller('auth')
@@ -51,12 +52,18 @@ export class AuthController {
   @ApiResponse({ status: 200, description: 'Đăng nhập thành công, trả về access_token, refresh_token và thông tin user.' })
   @ApiResponse({ status: 401, description: 'Tài khoản không tồn tại hoặc mật khẩu sai.' })
   @ApiResponse({ status: 403, description: 'Tài khoản bị khóa.' })
-  @ApiResponse({ status: 429, description: 'Sai mật khẩu quá 5 lần - tạm khoá đăng nhập 5 phút.' })
-  async login(@Body() loginDto: LoginDto) {
+  @ApiResponse({
+    status: 429,
+    description:
+      'Tạm khoá đăng nhập: `code=LOGIN_LOCKED` (sai mật khẩu quá ngưỡng của tài khoản) hoặc `code=IP_LOCKED` (quá nhiều lần sai từ 1 IP). Ngưỡng/thời gian khoá lấy từ bảng `security_config`; kèm `retryAfterSeconds`.',
+  })
+  async login(@Body() loginDto: LoginDto, @Req() req: any) {
     // [AGENT] OLD CODE (giữ để rollback): console.log('[Auth] Login attempt for:', loginDto.email);
     // [AGENT] NEW CODE (PLAN CPU Mục 13F): bỏ log này - vi phạm SKILL_FILE_MANAGEMENT §6.1 (cấm console.*)
     // và ghi email (PII) ra log mỗi lần đăng nhập. Lỗi đăng nhập vẫn do AuthService xử lý/log như cũ.
-    return this.authService.login(loginDto);
+    // P3.2: IP chỉ lấy từ `req.ip` (login gọi thẳng BE từ trình duyệt; header `x-az-client-ip` do client tự gắn nên KHÔNG tin ở đây).
+    const ua = typeof req?.headers?.['user-agent'] === 'string' ? req.headers['user-agent'] : null;
+    return this.authService.login(loginDto, getDirectClientIp(req), ua);
   }
 
   @Post('refresh')

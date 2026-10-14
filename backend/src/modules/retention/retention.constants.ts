@@ -2,13 +2,21 @@
  * PLAN_RETENTION_SECURITY_ROADMAP — Phase 1 (Retention tự động).
  * Cấu hình từng đối tượng nằm ở bảng `settings` (key/value) — KHÔNG cần migration cho phần này.
  */
-export type RetentionTarget = 'audit_logs' | 'task_audit_logs' | 'notifications' | 'attendance_logs';
+import { SECURITY_AUDIT_ACTIONS } from '../../common/security/security-audit';
+
+export type RetentionTarget =
+  | 'audit_logs'
+  | 'task_audit_logs'
+  | 'notifications'
+  | 'attendance_logs'
+  | 'security_events';
 
 export const RETENTION_TARGETS: RetentionTarget[] = [
   'audit_logs',
   'task_audit_logs',
   'notifications',
   'attendance_logs',
+  'security_events',
 ];
 
 export const RETENTION_JOB = 'retention';
@@ -65,6 +73,15 @@ export const RETENTION_TARGET_CONFIG: Record<RetentionTarget, RetentionTargetCon
     defaultDays: 365,
     minDays: 365,
   },
+  // Sự kiện bảo mật (P4.2): bật/tắt riêng ở đây; SỐ NGÀY GIỮ lấy từ `security_config.security_event_retention_days`
+  // (daysKey chỉ để đủ kiểu, KHÔNG được đọc). Mặc định TẮT như các đối tượng khác.
+  security_events: {
+    enabledKey: 'security_event_cleanup_enabled',
+    daysKey: 'security_event_retention_days_unused',
+    defaultEnabled: false,
+    defaultDays: 180,
+    minDays: 30,
+  },
 };
 
 /** Thông báo CHƯA ĐỌC được giữ lâu hơn thông báo đã đọc. */
@@ -73,7 +90,7 @@ export const NOTIFICATION_UNREAD_DAYS_DEFAULT = 180;
 export const NOTIFICATION_UNREAD_DAYS_MIN = 30;
 
 /**
- * Action bảo mật KHÔNG bị job dọn `audit_logs` chung xoá ở mốc 90 ngày (chúng có hạn riêng ở Phase 4).
- * Hiện mới có `UNLOCK_LOGIN`; Phase 4 sẽ thay bằng `SECURITY_AUDIT_ACTIONS` đầy đủ.
+ * Action bảo mật KHÔNG bị job dọn `audit_logs` chung xoá ở mốc 90 ngày: chúng có hạn riêng
+ * (`security_config.security_event_retention_days`, đối tượng `security_events`) — PLAN Phase 4.2.
  */
-export const RETENTION_PROTECTED_AUDIT_ACTIONS: string[] = ['UNLOCK_LOGIN'];
+export const RETENTION_PROTECTED_AUDIT_ACTIONS: string[] = [...SECURITY_AUDIT_ACTIONS];

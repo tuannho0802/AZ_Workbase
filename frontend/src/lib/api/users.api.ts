@@ -52,7 +52,7 @@ export const usersApi = {
   },
 
   // Mở khoá đăng nhập sớm (sau khi bị khoá 5 phút do sai mật khẩu quá 5 lần) - cần `users.manage`
-  unlockLogin: async (id: number) => {
+  unlockLogin: async (id: number): Promise<{ success: boolean; message: string; lastLoginIp?: string | null }> => {
     const response = await axiosInstance.patch(`/users/${id}/unlock-login`);
     return response.data;
   },

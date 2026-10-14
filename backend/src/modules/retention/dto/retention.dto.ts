@@ -42,6 +42,13 @@ export class RetentionAttendanceSettingDto {
   retentionDays?: number;
 }
 
+export class RetentionSecurityEventsSettingDto {
+  @ApiPropertyOptional({ description: 'Bật/tắt dọn sự kiện bảo mật. Số ngày giữ nằm ở `security_config`.' })
+  @IsOptional()
+  @IsBoolean()
+  enabled?: boolean;
+}
+
 export class UpdateRetentionSettingsDto {
   @ApiPropertyOptional({ description: `Chu kỳ chạy (ngày), ${RETENTION_INTERVAL_MIN}–${RETENTION_INTERVAL_MAX}.` })
   @IsOptional()
@@ -73,6 +80,12 @@ export class UpdateRetentionSettingsDto {
   @ValidateNested()
   @Type(() => RetentionAttendanceSettingDto)
   attendanceLogs?: RetentionAttendanceSettingDto;
+
+  @ApiPropertyOptional({ type: RetentionSecurityEventsSettingDto })
+  @IsOptional()
+  @ValidateNested()
+  @Type(() => RetentionSecurityEventsSettingDto)
+  securityEvents?: RetentionSecurityEventsSettingDto;
 }
 
 export class RetentionRunNowDto {

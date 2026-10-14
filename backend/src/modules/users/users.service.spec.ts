@@ -1325,6 +1325,55 @@ describe('UsersService - Approval workflow (đăng ký công khai chờ duyệt)
     });
   });
 
+  describe('last_login_ip (PLAN P3.2/P3.3)', () => {
+    beforeEach(() => {
+      mockUsersRepo.query.mockReset();
+      mockUsersRepo.query.mockResolvedValue([]);
+      mockUsersRepo.update = jest.fn().mockResolvedValue(undefined);
+    });
+
+    it('updateLastLogin(id, ip): ghi last_login_ip, giữ updated_at', async () => {
+      await service.updateLastLogin(5, '1.2.3.4');
+      const [sql, params] = mockUsersRepo.query.mock.calls[0];
+      expect(sql).toContain('last_login_ip = ?');
+      expect(sql).toContain('updated_at = updated_at');
+      expect(params).toEqual(['1.2.3.4', 5]);
+    });
+
+    it('updateLastLogin(id) không có IP: không chạy câu UPDATE last_login_ip', async () => {
+      await service.updateLastLogin(5);
+      expect(mockUsersRepo.query).not.toHaveBeenCalled();
+    });
+
+    it('updateLastLogin: lỗi ghi IP (chưa migrate) KHÔNG làm hỏng đăng nhập', async () => {
+      mockUsersRepo.query.mockRejectedValue(new Error("Unknown column 'last_login_ip'"));
+      await expect(service.updateLastLogin(5, '1.2.3.4')).resolves.toBeUndefined();
+    });
+
+    it('getLastLoginIpMap: chỉ trả user có IP; danh sách rỗng không query; lỗi -> Map rỗng', async () => {
+      expect((await service.getLastLoginIpMap([])).size).toBe(0);
+      expect(mockUsersRepo.query).not.toHaveBeenCalled();
+
+      mockUsersRepo.query.mockResolvedValueOnce([{ id: 3, ip: '9.9.9.9' }]);
+      const map = await service.getLastLoginIpMap([3, 4]);
+      expect(map.get(3)).toBe('9.9.9.9');
+      expect(map.has(4)).toBe(false);
+
+      mockUsersRepo.query.mockRejectedValueOnce(new Error('x'));
+      expect((await service.getLastLoginIpMap([3])).size).toBe(0);
+    });
+
+    it('unlockLogin trả thêm lastLoginIp (null nếu chưa có)', async () => {
+      mockUsersRepo.findOne.mockResolvedValue({ id: 20, name: 'NV A', departmentId: 3 });
+      mockUsersRepo.query.mockResolvedValueOnce(undefined).mockResolvedValueOnce([{ id: 20, ip: '7.7.7.7' }]);
+      await expect(service.unlockLogin(20, 1, Role.ADMIN, 'all')).resolves.toMatchObject({ success: true, lastLoginIp: '7.7.7.7' });
+
+      mockUsersRepo.query.mockReset();
+      mockUsersRepo.query.mockResolvedValue([]);
+      await expect(service.unlockLogin(20, 1, Role.ADMIN, 'all')).resolves.toMatchObject({ lastLoginIp: null });
+    });
+  });
+
   describe('getLoginLockSecondsMap - Số giây còn khoá cho danh sách', () => {
     beforeEach(() => mockUsersRepo.query.mockReset());
 

@@ -4,6 +4,8 @@ import { DataSource, In, Repository } from 'typeorm';
 import { Setting } from '../../database/entities/setting.entity';
 import { AuditService } from '../audit/audit.service';
 import { Role } from '../../common/enums/role.enum';
+import { SecurityConfigService } from '../../common/security/security-config.service';
+import { SECURITY_AUDIT_ACTIONS } from '../../common/security/security-audit';
 import { UpdateRetentionSettingsDto } from './dto/retention.dto';
 import {
   NOTIFICATION_UNREAD_DAYS_DEFAULT,
@@ -35,6 +37,8 @@ export interface RetentionSettings {
   taskAuditLogs: RetentionTargetSettings;
   notifications: RetentionTargetSettings & { unreadRetentionDays: number };
   attendanceLogs: RetentionTargetSettings;
+  /** P4.2: số ngày giữ lấy từ `security_config.security_event_retention_days` (sửa ở trang Hoạt động bảo mật). */
+  securityEvents: RetentionTargetSettings;
 }
 
 export interface RetentionSchedule {
@@ -97,6 +101,7 @@ export class RetentionService {
     @InjectRepository(Setting)
     private readonly settingRepository: Repository<Setting>,
     private readonly auditService: AuditService,
+    private readonly securityConfig: SecurityConfigService,
   ) {}
 
   // ───────────────────────── Cấu hình ─────────────────────────
@@ -130,6 +135,7 @@ export class RetentionService {
         retentionDays: this.parseDays(map.get(c.daysKey), c.defaultDays, c.minDays),
       };
     };
+    const secCfg = await this.securityConfig.get();
     return {
       intervalDays: this.parseDays(
         map.get(RETENTION_INTERVAL_KEY),
@@ -148,6 +154,10 @@ export class RetentionService {
         ),
       },
       attendanceLogs: target('attendance_logs'),
+      securityEvents: {
+        enabled: target('security_events').enabled,
+        retentionDays: secCfg.securityEventRetentionDays,
+      },
     };
   }
 
@@ -180,6 +190,8 @@ export class RetentionService {
     pushTarget('notifications', dto.notifications);
     push(NOTIFICATION_UNREAD_DAYS_KEY, dto.notifications?.unreadRetentionDays);
     pushTarget('attendance_logs', dto.attendanceLogs);
+    // Chỉ lưu cờ bật/tắt; số ngày giữ KHÔNG ghi vào `settings` (nằm ở `security_config`).
+    push(RETENTION_TARGET_CONFIG.security_events.enabledKey, dto.securityEvents?.enabled);
 
     if (rows.length > 0) await this.settingRepository.save(rows);
 
@@ -310,6 +322,8 @@ export class RetentionService {
         return s.notifications;
       case 'attendance_logs':
         return s.attendanceLogs;
+      case 'security_events':
+        return s.securityEvents;
     }
   }
 
@@ -353,6 +367,17 @@ export class RetentionService {
           timeExpr: 'record_time',
           vnOffsetHours: 0,
         };
+      case 'security_events': {
+        // Chỉ xoá đúng các action bảo mật CŨ HƠN hạn riêng (job `audit_logs` chung đã loại chúng ra, xem 4.2).
+        const actions = [...SECURITY_AUDIT_ACTIONS];
+        return {
+          table: 'audit_logs',
+          where: `created_at < NOW() - INTERVAL ? DAY AND action IN (${actions.map(() => '?').join(',')})`,
+          params: [s.securityEvents.retentionDays, ...actions],
+          timeExpr: 'created_at',
+          vnOffsetHours: 7,
+        };
+      }
     }
   }
 

@@ -7833,4 +7833,23 @@ Now [deploy]
 
 ---
 
-Test prod [deploy] for patching phase 1 2 3 new plans
+---
+
+## [2026-10-14] | PLAN_RETENTION_SECURITY_ROADMAP — Nối P3.1–P3.3 + Phase 4 (Audit sự kiện bảo mật + trang Hoạt động bảo mật) | [Status: Success]
+
+**Actor:** Agent
+**Files Changed:**
+- `backend/src/modules/auth/auth.service.ts|controller.ts|module.ts` — bỏ hằng số 5/5, lấy ngưỡng từ `security_config`; khoá IP (`IP_LOCKED`); ghi sự kiện `LOGIN_FAILED`/`LOGIN_UNKNOWN_EMAIL`/`ACCOUNT_LOCKED`/`LOGIN_IP_BLOCKED`; controller truyền IP (`req.ip`) + user-agent
+- `backend/src/app.module.ts`, `users.service.ts` (`last_login_ip`, `lastLoginIp` ở danh sách/unlock), `user.entity.ts`, `throttler-behind-proxy.guard.ts` (dùng `getClientIp`)
+- `backend/src/common/security/` — `security-audit.ts` (SECURITY_AUDIT_ACTIONS + làm sạch email/detail), `security-activity.service.ts`, `dto/security-activity.dto.ts`, `security.controller.ts` (+`events`, `summary`, `actions`, `config` GET/PUT), `security-config.service.ts` (+`update`)
+- `backend/src/modules/audit/audit.service.ts` — `logSecurityEvent`/`logSecurityEventAsync`; `audit-log.entity.ts` (`userId` nullable)
+- `backend/src/database/migrations/1786330000000-AllowNullAuditUserId.ts` — `audit_logs.user_id` NULL + index `(action, created_at)`
+- `backend/src/modules/retention/*` — đối tượng `security_events` (hạn lấy từ `security_config`, tắt mặc định); job audit chung bảo vệ mọi action bảo mật
+- `frontend`: trang `/security-activity`, `security.api.ts`, tab "IP bị khoá" ở `/users`, `LoginLockTag` (tooltip IP), `RetentionSettingsPanel` (+Sự kiện bảo mật), nhãn action ở `audit-meta.ts`, `audit.types.ts` (user null), `nav-config.tsx`
+
+**Notes:**
+> - Cần chạy migration `1786310000000`, `1786320000000`, `1786330000000` (theo thứ tự) trên DB trước khi deploy.
+> - Login gọi thẳng BE từ trình duyệt -> IP lấy từ `req.ip`; header `x-az-client-ip` KHÔNG được tin ở login.
+> - Trang Hoạt động bảo mật dùng phân trang thường (không `paginateByWeek`) — khác plan 4.3.
+> - Quyền: `audit.manage` cho trang/cấu hình; tab IP bị khoá cần `users.manage` scope `all`.
+> - Chưa chạy migration/test với MySQL thật trong lượt này (chỉ mock); câu SQL khoá IP đã test thật ở lượt trước.

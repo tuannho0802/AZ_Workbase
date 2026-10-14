@@ -10,6 +10,11 @@ import { AuditLog } from '../../database/entities/audit-log.entity';
 import { Setting } from '../../database/entities/setting.entity';
 import { Customer } from '../../database/entities/customer.entity';
 import { GetAuditLogsDto } from './dto/get-audit-logs.dto';
+import {
+  SECURITY_AUDIT_ENTITY,
+  SecurityAuditAction,
+  sanitizeSecurityDetail,
+} from '../../common/security/security-audit';
 import { paginateByWeek, weekStartColumnRef } from '../../common/utils/week-window.util';
 // ⚠️ KHÔNG dùng @nestjs/schedule - app chạy trên Vercel serverless, không có
 // process nào sống đủ lâu để cron tự kích hoạt. Dọn dẹp tự động do `RetentionService`
@@ -56,6 +61,45 @@ export class AuditService {
       .values({ userId, action, entityType, entityId, oldData, newData, ipAddress, userAgent })
       .updateEntity(false)
       .execute();
+  }
+
+  /**
+   * PLAN Phase 4.1 — ghi 1 sự kiện bảo mật vào `audit_logs` (KHÔNG đụng chữ ký `logAction`).
+   * `userId` có thể NULL (email chưa tồn tại). Dùng cột có sẵn `ip_address`/`user_agent`; email + chi tiết nằm trong
+   * `newData`, đã làm sạch (email sai định dạng -> "[không phải email]", bỏ khoá giống mật khẩu/token).
+   */
+  async logSecurityEvent(params: {
+    userId?: number | null;
+    action: SecurityAuditAction;
+    ip?: string | null;
+    userAgent?: string | null;
+    entityId?: number;
+    detail?: Record<string, unknown> | null;
+  }): Promise<void> {
+    await this.auditLogRepository
+      .createQueryBuilder()
+      .insert()
+      .into(AuditLog)
+      .values({
+        userId: params.userId ?? null,
+        action: params.action,
+        entityType: SECURITY_AUDIT_ENTITY,
+        entityId: params.entityId ?? params.userId ?? 0,
+        oldData: undefined,
+        newData: (sanitizeSecurityDetail(params.detail) ?? undefined) as any,
+        ipAddress: params.ip ? params.ip.slice(0, 45) : undefined,
+        userAgent: params.userAgent ? params.userAgent.slice(0, 500) : undefined,
+      })
+      .updateEntity(false)
+      .execute();
+  }
+
+  /** Bản không chờ của `logSecurityEvent` (lỗi chỉ log, không làm hỏng luồng đăng nhập). */
+  logSecurityEventAsync(params: Parameters<AuditService['logSecurityEvent']>[0]): void {
+    const task = this.logSecurityEvent(params).catch((error: any) => {
+      this.logger.error(`Ghi sự kiện bảo mật thất bại (action=${params.action}): ${error?.message}`, error?.stack);
+    });
+    waitUntil(task);
   }
 
   /**

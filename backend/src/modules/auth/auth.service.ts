@@ -19,10 +19,13 @@ import { AuditService } from '../audit/audit.service';
 import { ApprovalStatus } from '../../common/enums/approval-status.enum';
 import { Role } from '../../common/enums/role.enum';
 import { getJwtRefreshSecret } from '../../common/security/jwt-secrets';
+import { SecurityConfigService } from '../../common/security/security-config.service';
+import { LoginIpBlockService } from '../../common/security/login-ip-block.service';
 
-/** Sai mật khẩu liên tiếp tối đa bao nhiêu lần thì bị khoá, và khoá bao lâu (phút). */
-export const LOGIN_MAX_FAILED_ATTEMPTS = 5;
-export const LOGIN_LOCK_MINUTES = 5;
+// [AGENT] OLD CODE (giữ để rollback, P3.1): hằng số cứng
+//   export const LOGIN_MAX_FAILED_ATTEMPTS = 5;
+//   export const LOGIN_LOCK_MINUTES = 5;
+// NEW: ngưỡng/thời gian khoá lấy từ bảng `security_config` qua SecurityConfigService (cache ~30s, kẹp giá trị hợp lệ).
 
 @Injectable()
 export class AuthService {
@@ -33,6 +36,8 @@ export class AuthService {
     private jwtService: JwtService,
     private configService: ConfigService,
     private auditService: AuditService,
+    private securityConfig: SecurityConfigService,
+    private loginIpBlocks: LoginIpBlockService,
   ) {}
 
   private async generateTokens(userId: number, email: string, role: string) {
@@ -89,7 +94,7 @@ export class AuthService {
     );
   }
 
-  private buildLockedException(seconds: number): HttpException {
+  private buildLockedException(seconds: number, maxAttempts: number): HttpException {
     const minutes = Math.max(Math.ceil(seconds / 60), 1);
     return new HttpException(
       {
@@ -97,17 +102,79 @@ export class AuthService {
         // `code` + `retryAfterSeconds` được AllExceptionsFilter chuyển tiếp cho FE.
         code: 'LOGIN_LOCKED',
         retryAfterSeconds: seconds,
-        message: `Bạn đã nhập sai mật khẩu quá ${LOGIN_MAX_FAILED_ATTEMPTS} lần. Vui lòng thử lại sau ${minutes} phút.`,
+        message: `Bạn đã nhập sai mật khẩu quá ${maxAttempts} lần. Vui lòng thử lại sau ${minutes} phút.`,
       },
       HttpStatus.TOO_MANY_REQUESTS,
     );
   }
 
-  async login(loginDto: LoginDto) {
+  /** 429 `IP_LOCKED` (P3.2): FE login đọc `retryAfterSeconds` như `LOGIN_LOCKED` nên tái dùng banner đếm ngược. */
+  private buildIpLockedException(seconds: number): HttpException {
+    const minutes = Math.max(Math.ceil(seconds / 60), 1);
+    return new HttpException(
+      {
+        statusCode: HttpStatus.TOO_MANY_REQUESTS,
+        code: 'IP_LOCKED',
+        retryAfterSeconds: seconds,
+        message: `Có quá nhiều lần đăng nhập sai từ địa chỉ mạng của bạn. Vui lòng thử lại sau ${minutes} phút.`,
+      },
+      HttpStatus.TOO_MANY_REQUESTS,
+    );
+  }
+
+  /**
+   * @param ip IP client thật (controller truyền `getDirectClientIp(req)`); `null` -> bỏ qua khoá IP (khoá theo tài
+   *           khoản vẫn hoạt động).
+   * @param userAgent chỉ dùng để ghi sự kiện bảo mật (P4).
+   */
+  async login(loginDto: LoginDto, ip: string | null = null, userAgent: string | null = null) {
+    const cfg = await this.securityConfig.get();
+
+    // P3.2: kiểm tra khoá IP TRƯỚC mọi thứ khác (1 query rẻ). KHÔNG ghi sự kiện cho request bị từ chối vì IP khoá:
+    // chỉ có 1 dòng LOGIN_IP_BLOCKED lúc bắt đầu khoá (P4.1) nên bảng audit không phình theo kẻ tấn công.
+    const ipLockedSeconds = await this.loginIpBlocks.getRemainingSeconds(ip);
+    if (ipLockedSeconds > 0) {
+      throw this.buildIpLockedException(ipLockedSeconds);
+    }
+    const ipCfg = {
+      maxAttempts: cfg.ipMaxFailedAttempts,
+      windowMinutes: cfg.ipWindowMinutes,
+      lockMinutes: cfg.ipLockMinutes,
+    };
+    // Ghi nhận 1 lần sai vào bộ đếm IP; nếu lần này làm IP chạm ngưỡng -> ghi 1 dòng LOGIN_IP_BLOCKED.
+    const recordIpFailure = async () => {
+      const res = await this.loginIpBlocks.recordFailure(ip, loginDto.email, ipCfg);
+      if (res.lockedSeconds > 0) {
+        this.auditService.logSecurityEventAsync({
+          action: 'LOGIN_IP_BLOCKED',
+          ip,
+          userAgent,
+          detail: {
+            email: loginDto.email,
+            failedCount: res.attempts,
+            lockMinutes: cfg.ipLockMinutes,
+            windowMinutes: cfg.ipWindowMinutes,
+          },
+        });
+      }
+      return res;
+    };
+
     // Kèm tài khoản đã xoá mềm: tài khoản bị từ chối/xoá phải nhận đúng thông báo, không phải "không tồn tại".
     const user = await this.usersService.findByEmailIncludingDeleted(loginDto.email);
 
     if (!user) {
+      // P4.1: ghi cả email CHƯA tồn tại (userId = null). Email sai định dạng bị thay bằng "[không phải email]".
+      this.auditService.logSecurityEventAsync({
+        userId: null,
+        action: 'LOGIN_UNKNOWN_EMAIL',
+        ip,
+        userAgent,
+        detail: { email: loginDto.email },
+      });
+      // Email lạ cũng tính vào IP (1 IP thử hàng loạt email vẫn chạm ngưỡng).
+      const ipRes = await recordIpFailure();
+      if (ipRes.lockedSeconds > 0) throw this.buildIpLockedException(ipRes.lockedSeconds);
       throw new UnauthorizedException('Tài khoản không tồn tại');
     }
 
@@ -142,26 +209,49 @@ export class AuthService {
     // và không tốn bcrypt cho kẻ đang dò).
     const lockedSeconds = await this.usersService.getLoginLockRemainingSeconds(user.id);
     if (lockedSeconds > 0) {
-      throw this.buildLockedException(lockedSeconds);
+      throw this.buildLockedException(lockedSeconds, cfg.accountMaxFailedAttempts);
     }
 
     const isPasswordMatching = await bcrypt.compare(loginDto.password, user.password);
     if (!isPasswordMatching) {
-      const { attempts, lockedSeconds: nowLocked } = await this.usersService.recordFailedLogin(
-        user.id,
-        LOGIN_MAX_FAILED_ATTEMPTS,
-        LOGIN_LOCK_MINUTES,
-      );
+      // Ghi nhận sai cho CẢ tài khoản và IP (song song, độc lập nhau).
+      const [{ attempts, lockedSeconds: nowLocked }, ipRes] = await Promise.all([
+        this.usersService.recordFailedLogin(user.id, cfg.accountMaxFailedAttempts, cfg.accountLockMinutes),
+        recordIpFailure(),
+      ]);
+
+      // P4.1: mọi lần sai đều ghi (có userId); chạm ngưỡng tài khoản thì thêm 1 dòng ACCOUNT_LOCKED.
+      this.auditService.logSecurityEventAsync({
+        userId: user.id,
+        action: 'LOGIN_FAILED',
+        ip,
+        userAgent,
+        detail: { email: user.email, attempts },
+      });
       if (nowLocked > 0) {
-        this.logger.warn(`[SECURITY] User ID ${user.id} bị khoá đăng nhập ${LOGIN_LOCK_MINUTES} phút do sai mật khẩu ${attempts} lần`);
-        throw this.buildLockedException(nowLocked);
+        this.logger.warn(`[SECURITY] User ID ${user.id} bị khoá đăng nhập ${cfg.accountLockMinutes} phút do sai mật khẩu ${attempts} lần`);
+        this.auditService.logSecurityEventAsync({
+          userId: user.id,
+          action: 'ACCOUNT_LOCKED',
+          ip,
+          userAgent,
+          detail: { email: user.email, attempts, lockMinutes: cfg.accountLockMinutes },
+        });
       }
-      const remaining = Math.max(LOGIN_MAX_FAILED_ATTEMPTS - attempts, 0);
+
+      // Cả 2 cùng khoá -> báo cái khoá lâu hơn (người dùng không phải thử lại sớm rồi bị chặn tiếp).
+      if (ipRes.lockedSeconds > 0 && ipRes.lockedSeconds >= nowLocked) {
+        throw this.buildIpLockedException(ipRes.lockedSeconds);
+      }
+      if (nowLocked > 0) {
+        throw this.buildLockedException(nowLocked, cfg.accountMaxFailedAttempts);
+      }
+      const remaining = Math.max(cfg.accountMaxFailedAttempts - attempts, 0);
       throw new UnauthorizedException({
         statusCode: HttpStatus.UNAUTHORIZED,
         code: 'WRONG_PASSWORD',
         remainingAttempts: remaining,
-        message: `Mật khẩu sai. Bạn còn ${remaining} lần thử trước khi bị khoá ${LOGIN_LOCK_MINUTES} phút.`,
+        message: `Mật khẩu sai. Bạn còn ${remaining} lần thử trước khi bị khoá ${cfg.accountLockMinutes} phút.`,
       });
     }
 
@@ -171,7 +261,8 @@ export class AuthService {
 
     // ⭐ ROTATION: Lưu hash của refresh_token vào DB
     await this.usersService.saveRefreshToken(user.id, refresh_token);
-    await this.usersService.updateLastLogin(user.id);
+    // Đăng nhập thành công KHÔNG xoá bộ đếm/khoá IP (kẻ tấn công không được dùng 1 tài khoản hợp lệ để reset).
+    await this.usersService.updateLastLogin(user.id, ip);
 
     // Log đăng nhập thành công
     this.auditService.logActionAsync(

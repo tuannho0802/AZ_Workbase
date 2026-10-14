@@ -28,6 +28,8 @@ interface RowDef {
   hint: string;
   minDays: number;
   adminOnly?: boolean;
+  /** Số ngày giữ nằm ở `security_config` (sửa ở trang Hoạt động bảo mật) -> ô nhập chỉ đọc ở đây. */
+  daysReadOnly?: boolean;
 }
 
 const ROWS: RowDef[] = [
@@ -41,9 +43,16 @@ const ROWS: RowDef[] = [
     minDays: 365,
     adminOnly: true,
   },
+  {
+    key: 'security_events',
+    label: 'Sự kiện bảo mật',
+    hint: 'Đăng nhập sai, khoá tài khoản/IP... Số ngày giữ chỉnh ở trang "Hoạt động bảo mật". Tắt mặc định.',
+    minDays: 30,
+    daysReadOnly: true,
+  },
 ];
 
-type Draft = Pick<RetentionSettings, 'intervalDays' | 'auditLogs' | 'taskAuditLogs' | 'notifications' | 'attendanceLogs'>;
+type Draft = Pick<RetentionSettings, 'intervalDays' | 'auditLogs' | 'taskAuditLogs' | 'notifications' | 'attendanceLogs' | 'securityEvents'>;
 
 function toDraft(s: RetentionSettings): Draft {
   return {
@@ -52,10 +61,12 @@ function toDraft(s: RetentionSettings): Draft {
     taskAuditLogs: { ...s.taskAuditLogs },
     notifications: { ...s.notifications },
     attendanceLogs: { ...s.attendanceLogs },
+    securityEvents: { ...s.securityEvents },
   };
 }
 
-function draftKey(t: RetentionTargetKey): 'auditLogs' | 'taskAuditLogs' | 'notifications' | 'attendanceLogs' {
+function draftKey(t: RetentionTargetKey): 'auditLogs' | 'taskAuditLogs' | 'notifications' | 'attendanceLogs' | 'securityEvents' {
+  if (t === 'security_events') return 'securityEvents';
   return t === 'audit_logs' ? 'auditLogs' : t === 'task_audit_logs' ? 'taskAuditLogs' : t === 'notifications' ? 'notifications' : 'attendanceLogs';
 }
 
@@ -131,6 +142,8 @@ export function RetentionSettingsPanel() {
       auditLogs: draft.auditLogs,
       taskAuditLogs: draft.taskAuditLogs,
       notifications: draft.notifications,
+      // Chỉ cờ bật/tắt: số ngày giữ của sự kiện bảo mật KHÔNG gửi (BE chặn, nằm ở security_config).
+      securityEvents: { enabled: draft.securityEvents.enabled },
       ...(isAdmin ? { attendanceLogs: draft.attendanceLogs } : {}),
     };
     saveMutation.mutate(payload);
@@ -212,7 +225,7 @@ export function RetentionSettingsPanel() {
                 <Text strong style={{ minWidth: 200, display: 'inline-block' }}>{row.label}</Text>
                 <InputNumber
                   min={row.minDays}
-                  disabled={locked}
+                  disabled={locked || row.daysReadOnly}
                   value={value.retentionDays}
                   onChange={(v) => setDraft({ ...draft, [k]: { ...value, retentionDays: Number(v) || row.minDays } })}
                   suffix="ngày"

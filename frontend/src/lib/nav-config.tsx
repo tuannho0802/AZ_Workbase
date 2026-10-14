@@ -7,6 +7,7 @@ import {
   UsergroupAddOutlined,
   CheckCircleOutlined,
   FileTextOutlined,
+  SafetyOutlined,
   UserOutlined,
   DeleteOutlined,
   TagsOutlined,
@@ -276,6 +277,16 @@ export const NAV_ITEMS: NavItem[] = [
     // migrate hoàn toàn sang permission động từ lâu, nav-config quên theo).
     roles: null,
     permission: 'audit.view',
+  },
+  {
+    key: 'security-activity',
+    label: 'Hoạt động bảo mật',
+    description: 'Đăng nhập sai, khoá tài khoản/IP, cấu hình bảo mật',
+    icon: <SafetyOutlined />,
+    path: '/security-activity',
+    // Khớp @RequirePermission('audit.manage') ở security.controller.ts (events/summary/config).
+    roles: null,
+    permission: 'audit.manage',
   },
   {
     key: 'users',

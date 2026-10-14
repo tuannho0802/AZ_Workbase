@@ -7,6 +7,8 @@ import { AuditService } from '../audit/audit.service';
 import { JwtService } from '@nestjs/jwt';
 import { ConfigService } from '@nestjs/config';
 import { ApprovalStatus } from '../../common/enums/approval-status.enum';
+import { SecurityConfigService, SECURITY_CONFIG_DEFAULTS } from '../../common/security/security-config.service';
+import { LoginIpBlockService } from '../../common/security/login-ip-block.service';
 
 describe('AuthService - Đăng ký công khai + chặn đăng nhập chưa duyệt', () => {
   let service: AuthService;
@@ -28,13 +30,18 @@ describe('AuthService - Đăng ký công khai + chặn đăng nhập chưa duy�
   };
   const mockJwtService = { sign: jest.fn().mockReturnValue('fake-jwt-token'), verify: jest.fn() };
   const mockConfigService = { get: jest.fn().mockReturnValue('fake-secret') };
-  const mockAuditService = { logActionAsync: jest.fn() };
+  const mockAuditService = { logActionAsync: jest.fn(), logSecurityEventAsync: jest.fn() };
+  const mockSecurityConfig = { get: jest.fn() };
+  const mockIpBlocks = { getRemainingSeconds: jest.fn(), recordFailure: jest.fn() };
 
   beforeEach(async () => {
     jest.clearAllMocks();
     mockUsersService.getLoginLockRemainingSeconds.mockResolvedValue(0);
     mockUsersService.recordFailedLogin.mockResolvedValue({ attempts: 1, lockedSeconds: 0 });
     mockUsersService.clearLoginFailures.mockResolvedValue(undefined);
+    mockSecurityConfig.get.mockResolvedValue({ ...SECURITY_CONFIG_DEFAULTS });
+    mockIpBlocks.getRemainingSeconds.mockResolvedValue(0);
+    mockIpBlocks.recordFailure.mockResolvedValue({ attempts: 1, lockedSeconds: 0 });
 
     const module: TestingModule = await Test.createTestingModule({
       providers: [
@@ -43,6 +50,8 @@ describe('AuthService - Đăng ký công khai + chặn đăng nhập chưa duy�
         { provide: JwtService, useValue: mockJwtService },
         { provide: ConfigService, useValue: mockConfigService },
         { provide: AuditService, useValue: mockAuditService },
+        { provide: SecurityConfigService, useValue: mockSecurityConfig },
+        { provide: LoginIpBlockService, useValue: mockIpBlocks },
       ],
     }).compile();
 
@@ -419,6 +428,108 @@ describe('AuthService - Đăng ký công khai + chặn đăng nhập chưa duy�
       await service.refresh('old-token');
       const refreshSignCall = mockJwtService.sign.mock.calls.find((c) => c[1]?.secret);
       expect(refreshSignCall?.[0]).toEqual(expect.objectContaining({ jti: expect.any(String) }));
+    });
+  });
+
+  describe('login - khoá IP + cấu hình động + sự kiện bảo mật (PLAN P3.1/P3.2/P4.1)', () => {
+    let hash: string;
+    beforeAll(async () => {
+      hash = await bcrypt.hash('Correct@123', 4);
+    });
+    const user = () => ({
+      id: 9, email: 'a@example.com', name: 'A', role: 'employee', password: hash, isActive: 1,
+      deletedAt: null, approvalStatus: ApprovalStatus.APPROVED,
+    });
+    const login = (pw: string, email = 'a@example.com') =>
+      service.login({ email, password: pw }, '1.2.3.4', 'UA/1').catch((e) => e);
+
+    it('IP đang khoá -> 429 IP_LOCKED NGAY, không tra user, không ghi sự kiện (tránh phình audit)', async () => {
+      mockIpBlocks.getRemainingSeconds.mockResolvedValue(200);
+      const err = await login('x');
+      expect(err.getResponse()).toMatchObject({ code: 'IP_LOCKED', retryAfterSeconds: 200 });
+      expect(mockUsersService.findByEmailIncludingDeleted).not.toHaveBeenCalled();
+      expect(mockIpBlocks.recordFailure).not.toHaveBeenCalled();
+      expect(mockAuditService.logSecurityEventAsync).not.toHaveBeenCalled();
+    });
+
+    it('email KHÔNG tồn tại -> 401, tính vào IP, ghi LOGIN_UNKNOWN_EMAIL với userId=null', async () => {
+      mockUsersService.findByEmailIncludingDeleted.mockResolvedValue(null);
+      const err = await login('x', 'ghost@example.com');
+      expect(err).toBeInstanceOf(UnauthorizedException);
+      expect(mockIpBlocks.recordFailure).toHaveBeenCalledWith('1.2.3.4', 'ghost@example.com', { maxAttempts: 10, windowMinutes: 10, lockMinutes: 5 });
+      expect(mockAuditService.logSecurityEventAsync).toHaveBeenCalledWith(
+        expect.objectContaining({ userId: null, action: 'LOGIN_UNKNOWN_EMAIL', ip: '1.2.3.4', userAgent: 'UA/1', detail: { email: 'ghost@example.com' } }),
+      );
+    });
+
+    it('email lạ làm IP chạm ngưỡng -> 429 IP_LOCKED + đúng 1 dòng LOGIN_IP_BLOCKED', async () => {
+      mockUsersService.findByEmailIncludingDeleted.mockResolvedValue(null);
+      mockIpBlocks.recordFailure.mockResolvedValue({ attempts: 10, lockedSeconds: 300 });
+      const err = await login('x', 'ghost@example.com');
+      expect(err.getResponse()).toMatchObject({ code: 'IP_LOCKED', retryAfterSeconds: 300 });
+      const actions = mockAuditService.logSecurityEventAsync.mock.calls.map((c) => c[0].action);
+      expect(actions.filter((a) => a === 'LOGIN_IP_BLOCKED')).toHaveLength(1);
+    });
+
+    it('sai mật khẩu -> ghi LOGIN_FAILED (có userId) và tính vào CẢ tài khoản lẫn IP', async () => {
+      mockUsersService.findByEmailIncludingDeleted.mockResolvedValue(user());
+      mockUsersService.recordFailedLogin.mockResolvedValue({ attempts: 2, lockedSeconds: 0 });
+      const err = await login('sai');
+      expect(err.getResponse()).toMatchObject({ code: 'WRONG_PASSWORD', remainingAttempts: 3 });
+      expect(mockIpBlocks.recordFailure).toHaveBeenCalledTimes(1);
+      expect(mockAuditService.logSecurityEventAsync).toHaveBeenCalledWith(
+        expect.objectContaining({ userId: 9, action: 'LOGIN_FAILED', detail: { email: 'a@example.com', attempts: 2 } }),
+      );
+    });
+
+    it('KHÔNG đưa mật khẩu vào sự kiện bảo mật', async () => {
+      mockUsersService.findByEmailIncludingDeleted.mockResolvedValue(user());
+      mockUsersService.recordFailedLogin.mockResolvedValue({ attempts: 1, lockedSeconds: 0 });
+      await login('MatKhauBiMat123');
+      expect(JSON.stringify(mockAuditService.logSecurityEventAsync.mock.calls)).not.toContain('MatKhauBiMat123');
+    });
+
+    it('chạm ngưỡng tài khoản -> thêm dòng ACCOUNT_LOCKED + 429 LOGIN_LOCKED', async () => {
+      mockUsersService.findByEmailIncludingDeleted.mockResolvedValue(user());
+      mockUsersService.recordFailedLogin.mockResolvedValue({ attempts: 5, lockedSeconds: 300 });
+      const err = await login('sai');
+      expect(err.getResponse()).toMatchObject({ code: 'LOGIN_LOCKED' });
+      const actions = mockAuditService.logSecurityEventAsync.mock.calls.map((c) => c[0].action);
+      expect(actions).toEqual(expect.arrayContaining(['LOGIN_FAILED', 'ACCOUNT_LOCKED']));
+    });
+
+    it('cả IP và tài khoản cùng khoá -> báo cái khoá lâu hơn', async () => {
+      mockUsersService.findByEmailIncludingDeleted.mockResolvedValue(user());
+      mockUsersService.recordFailedLogin.mockResolvedValue({ attempts: 5, lockedSeconds: 300 });
+      mockIpBlocks.recordFailure.mockResolvedValue({ attempts: 10, lockedSeconds: 600 });
+      expect((await login('sai')).getResponse()).toMatchObject({ code: 'IP_LOCKED', retryAfterSeconds: 600 });
+    });
+
+    it('ngưỡng/thời gian khoá tài khoản lấy từ security_config (không còn hằng số 5/5)', async () => {
+      mockSecurityConfig.get.mockResolvedValue({ ...SECURITY_CONFIG_DEFAULTS, accountMaxFailedAttempts: 8, accountLockMinutes: 15 });
+      mockUsersService.findByEmailIncludingDeleted.mockResolvedValue(user());
+      mockUsersService.recordFailedLogin.mockResolvedValue({ attempts: 3, lockedSeconds: 0 });
+      const err = await login('sai');
+      expect(mockUsersService.recordFailedLogin).toHaveBeenCalledWith(9, 8, 15);
+      expect(err.getResponse()).toMatchObject({ remainingAttempts: 5 });
+      expect(err.getResponse().message).toContain('15 phút');
+    });
+
+    it('đăng nhập đúng: ghi last_login_ip, KHÔNG reset bộ đếm IP, KHÔNG ghi LOGIN_FAILED', async () => {
+      mockUsersService.findByEmailIncludingDeleted.mockResolvedValue(user());
+      mockUsersService.saveRefreshToken.mockResolvedValue(undefined);
+      mockUsersService.updateLastLogin.mockResolvedValue(undefined);
+      await service.login({ email: 'a@example.com', password: 'Correct@123' }, '1.2.3.4', 'UA/1');
+      expect(mockUsersService.updateLastLogin).toHaveBeenCalledWith(9, '1.2.3.4');
+      expect(mockIpBlocks.recordFailure).not.toHaveBeenCalled();
+      expect(mockAuditService.logSecurityEventAsync).not.toHaveBeenCalled();
+    });
+
+    it('không có IP (null) -> vẫn đăng nhập/khoá tài khoản bình thường', async () => {
+      mockUsersService.findByEmailIncludingDeleted.mockResolvedValue(user());
+      mockUsersService.recordFailedLogin.mockResolvedValue({ attempts: 1, lockedSeconds: 0 });
+      const err = await service.login({ email: 'a@example.com', password: 'sai' }).catch((e) => e);
+      expect(err.getResponse()).toMatchObject({ code: 'WRONG_PASSWORD' });
     });
   });
 });

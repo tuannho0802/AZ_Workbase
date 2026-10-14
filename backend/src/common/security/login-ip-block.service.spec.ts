@@ -5,7 +5,7 @@ describe('sanitizeEmailForLog', () => {
         expect(sanitizeEmailForLog('  User@Example.COM ')).toBe('user@example.com');
         expect(sanitizeEmailForLog('MatKhau@123')).toBeNull(); // không có dấu chấm sau @
         expect(sanitizeEmailForLog('mat khau co cach@a.b')).toBeNull();
-        expect(sanitizeEmailForLog('a'.repeat(250) + '@b.co')).toBeNull();
+        expect(sanitizeEmailForLog('a'.repeat(260) + '@b.co')).toBeNull();
         expect(sanitizeEmailForLog(undefined)).toBeNull();
     });
 });

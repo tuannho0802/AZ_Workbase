@@ -188,6 +188,11 @@ export class User {
   @Column({ name: 'locked_until', type: 'datetime', nullable: true, select: false })
   lockedUntil: Date | null;
 
+  // IP của lần đăng nhập thành công gần nhất (migration AddLoginIpSecurity1786320000000). `select: false` như cột
+  // khoá ở trên; ghi/đọc qua SQL thô trong UsersService (updateLastLogin / getLastLoginIpMap).
+  @Column({ name: 'last_login_ip', type: 'varchar', length: 45, nullable: true, select: false })
+  lastLoginIp: string | null;
+
   @Column({
     name: 'hashed_refresh_token',
     type: 'text',

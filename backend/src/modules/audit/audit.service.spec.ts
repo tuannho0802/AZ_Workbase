@@ -168,3 +168,41 @@ describe('AuditService.logAction', () => {
     await expect(service.logAction(1, 'X', 'customer', 1)).rejects.toThrow('db down');
   });
 });
+
+describe('AuditService.logSecurityEvent (PLAN P4.1)', () => {
+  const makeSvc = () => {
+    const values = jest.fn().mockReturnThis();
+    const qb: any = { insert: jest.fn().mockReturnThis(), into: jest.fn().mockReturnThis(), values, updateEntity: jest.fn().mockReturnThis(), execute: jest.fn().mockResolvedValue(undefined) };
+    const repo: any = { createQueryBuilder: jest.fn().mockReturnValue(qb) };
+    const { AuditService } = require('./audit.service');
+    return { svc: new AuditService(repo, {} as any), values };
+  };
+
+  it('userId null (email chưa tồn tại) -> ghi user_id NULL, entityType security, entityId 0', async () => {
+    const { svc, values } = makeSvc();
+    await svc.logSecurityEvent({ userId: null, action: 'LOGIN_UNKNOWN_EMAIL', ip: '1.2.3.4', userAgent: 'UA', detail: { email: 'Ghost@X.co' } });
+    expect(values).toHaveBeenCalledWith(
+      expect.objectContaining({
+        userId: null, action: 'LOGIN_UNKNOWN_EMAIL', entityType: 'security', entityId: 0,
+        ipAddress: '1.2.3.4', userAgent: 'UA', newData: { email: 'ghost@x.co' },
+      }),
+    );
+  });
+
+  it('email không phải email (nghi mật khẩu) và khoá password/token KHÔNG được lưu', async () => {
+    const { svc, values } = makeSvc();
+    await svc.logSecurityEvent({ userId: 5, action: 'LOGIN_FAILED', detail: { email: 'MatKhauBiMat123', password: 'abc', token: 'x' } });
+    const saved = values.mock.calls[0][0];
+    expect(saved.entityId).toBe(5);
+    expect(saved.newData).toEqual({ email: '[không phải email]' });
+    expect(JSON.stringify(saved)).not.toContain('MatKhauBiMat123');
+  });
+
+  it('IP/UA quá dài bị cắt đúng độ dài cột', async () => {
+    const { svc, values } = makeSvc();
+    await svc.logSecurityEvent({ userId: 1, action: 'FORCE_LOGOUT', ip: 'a'.repeat(80), userAgent: 'u'.repeat(900) });
+    const saved = values.mock.calls[0][0];
+    expect(saved.ipAddress).toHaveLength(45);
+    expect(saved.userAgent).toHaveLength(500);
+  });
+});

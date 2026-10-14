@@ -238,6 +238,22 @@ export class UsersService {
     return map;
   }
 
+  /** `last_login_ip` của nhiều user (chỉ trả user có giá trị). Lỗi (chưa chạy migration) -> Map rỗng, không ném. */
+  async getLastLoginIpMap(userIds: number[]): Promise<Map<number, string>> {
+    const map = new Map<number, string>();
+    if (userIds.length === 0) return map;
+    try {
+      const rows: Array<{ id: number; ip: string | null }> = await this.usersRepository.query(
+        `SELECT id, last_login_ip AS ip FROM users WHERE id IN (${userIds.map(() => '?').join(',')}) AND last_login_ip IS NOT NULL`,
+        userIds,
+      );
+      for (const r of rows) if (r.ip) map.set(Number(r.id), r.ip);
+    } catch (err) {
+      this.logger.warn('Không đọc được last_login_ip (đã chạy migration AddLoginIpSecurity chưa?)');
+    }
+    return map;
+  }
+
   /**
    * Mở khoá đăng nhập sớm cho 1 nhân viên (xoá bộ đếm sai + `locked_until`). Cùng phạm vi quyền với
    * `resetPassword` (`users.manage` + `canManageUser`).
@@ -262,12 +278,16 @@ export class UsersService {
 
     await this.clearLoginFailures(id);
 
+    // P3.3: trả thêm IP đăng nhập gần nhất để Admin biết có cần mở khoá IP ở tab "IP bị khoá" không.
+    const lastLoginIp = (await this.getLastLoginIpMap([id])).get(id) ?? null;
+
     this.auditService.logActionAsync(callerId, 'UNLOCK_LOGIN', 'user', id, null, {
       targetUser: { id, name: user.name },
+      lastLoginIp,
     });
     this.logger.log(`[Users] User ID ${id} được mở khoá đăng nhập bởi ${callerId}`);
 
-    return { success: true, message: 'Đã mở khoá đăng nhập' };
+    return { success: true, message: 'Đã mở khoá đăng nhập', lastLoginIp };
   }
 
   /** Số giây còn bị khoá (0 = không bị khoá). */
@@ -317,8 +337,16 @@ export class UsersService {
     );
   }
 
-  async updateLastLogin(id: number): Promise<void> {
+  async updateLastLogin(id: number, ip?: string | null): Promise<void> {
     await this.usersRepository.update(id, { lastLoginAt: new Date() });
+    if (ip) {
+      // P3.2: best-effort — chưa chạy migration AddLoginIpSecurity thì KHÔNG được làm hỏng đăng nhập.
+      try {
+        await this.usersRepository.query(`UPDATE users SET last_login_ip = ?, updated_at = updated_at WHERE id = ?`, [ip, id]);
+      } catch (err) {
+        this.logger.warn(`Không ghi được last_login_ip cho user ${id} (đã chạy migration AddLoginIpSecurity chưa?)`);
+      }
+    }
   }
 
   /**
@@ -470,7 +498,11 @@ export class UsersService {
 
     // Số giây còn bị khoá đăng nhập (0 = không khoá) cho từng dòng - FE hiện đồng hồ đếm ngược + nút "Mở khoá".
     const lockMap = await this.getLoginLockSecondsMap(data.map((u) => u.id));
-    const dataWithLock = data.map((u) => Object.assign(u, { loginLockSeconds: lockMap.get(u.id) ?? 0 }));
+    // P3.3: kèm IP đăng nhập thành công gần nhất cho các user ĐANG bị khoá (để Admin đối chiếu với danh sách IP bị khoá).
+    const lockedIps = await this.getLastLoginIpMap([...lockMap.keys()]);
+    const dataWithLock = data.map((u) =>
+      Object.assign(u, { loginLockSeconds: lockMap.get(u.id) ?? 0, lastLoginIp: lockedIps.get(u.id) ?? null }),
+    );
 
     return {
       data: dataWithLock,

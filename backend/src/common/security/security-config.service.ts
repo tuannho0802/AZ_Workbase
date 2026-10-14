@@ -33,6 +33,16 @@ export const SECURITY_CONFIG_LIMITS: Readonly<Record<keyof SecurityConfigValues,
         securityEventRetentionDays: [30, 3650],
     });
 
+/** Whitelist tên cột (KHÔNG ghép chuỗi từ input) khi UPDATE. */
+const SECURITY_CONFIG_COLUMNS: Readonly<Record<keyof SecurityConfigValues, string>> = Object.freeze({
+  accountMaxFailedAttempts: 'account_max_failed_attempts',
+  accountLockMinutes: 'account_lock_minutes',
+  ipMaxFailedAttempts: 'ip_max_failed_attempts',
+  ipWindowMinutes: 'ip_window_minutes',
+  ipLockMinutes: 'ip_lock_minutes',
+  securityEventRetentionDays: 'security_event_retention_days',
+});
+
 export const SECURITY_CONFIG_CACHE_TTL_MS = 30_000;
 
 /** Kẹp 1 giá trị: số nguyên trong [min, max], ngược lại trả mặc định. Hàm thuần để dễ test. */
@@ -77,7 +87,43 @@ export class SecurityConfigService {
         return this.inflight;
     }
 
-    /** Xoá cache (dùng khi có API sửa cấu hình ở P4, hoặc trong test). */
+    /**
+   * Sửa cấu hình (P4.3). Chỉ ghi các field có trong `patch` và nằm trong whitelist cột; đã kiểm khoảng ở DTO nhưng
+   * vẫn kẹp lại ở đây (phòng gọi từ nơi khác). Trả `{ before, after }` để caller ghi audit. Xoá cache NGAY (instance này;
+   * instance khác cập nhật sau ≤ 30 giây).
+   */
+  async update(
+    patch: Partial<SecurityConfigValues>,
+    actorId: number,
+  ): Promise<{ before: SecurityConfigValues; after: SecurityConfigValues; changed: Array<keyof SecurityConfigValues> }> {
+    this.invalidate();
+    const before = await this.get();
+    const sets: string[] = [];
+    const params: number[] = [];
+    const changed: Array<keyof SecurityConfigValues> = [];
+    for (const key of Object.keys(SECURITY_CONFIG_DEFAULTS) as Array<keyof SecurityConfigValues>) {
+      const raw = patch[key];
+      if (raw === undefined || raw === null) continue;
+      const { value, clamped } = clampSecurityValue(key, raw);
+      if (clamped) continue; // ngoài khoảng: bỏ qua, KHÔNG ghi giá trị xấu
+      if (value === before[key]) continue;
+      sets.push(`\`${SECURITY_CONFIG_COLUMNS[key]}\` = ?`);
+      params.push(value);
+      changed.push(key);
+    }
+    if (sets.length > 0) {
+      await this.repo.query(`INSERT IGNORE INTO security_config (id) VALUES (1)`);
+      await this.repo.query(
+        `UPDATE security_config SET ${sets.join(', ')}, updated_by = ?, updated_at = NOW() WHERE id = 1`,
+        [...params, actorId],
+      );
+      this.invalidate();
+    }
+    const after = sets.length > 0 ? await this.get() : before;
+    return { before, after, changed };
+  }
+
+  /** Xoá cache (dùng khi có API sửa cấu hình ở P4, hoặc trong test). */
     invalidate(): void {
         this.cache = null;
     }
