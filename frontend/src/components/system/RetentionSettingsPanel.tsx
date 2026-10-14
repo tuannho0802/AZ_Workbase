@@ -119,6 +119,9 @@ export function RetentionSettingsPanel() {
   if (!can('audit.view')) return null;
   if (isLoading || !draft || !data) return <Card loading style={{ borderRadius: 8 }} />;
 
+  // "Chạy thử"/"Chạy ngay" chạy theo cấu hình ĐÃ LƯU ở server, không phải giá trị đang gõ trên form -> chưa lưu thì chặn để khỏi hiểu nhầm.
+  const isDirty = JSON.stringify(draft) !== JSON.stringify(toDraft(data));
+
   const schedule = data.schedule;
   const nextDue = schedule.dueNow ? 'ở lần kích hoạt kế tiếp (đã đến hạn)' : `${dayjs().add(schedule.nextDueInSeconds, 'second').format('DD/MM/YYYY')} (còn ${formatDuration(schedule.nextDueInSeconds)})`;
 
@@ -233,16 +236,24 @@ export function RetentionSettingsPanel() {
           );
         })}
 
+        {canManage && isDirty && (
+          <Alert
+            type="warning"
+            showIcon
+            message={'Bạn có thay đổi chưa lưu. Hãy bấm "Lưu cấu hình" trước: Chạy thử / Chạy ngay luôn dùng cấu hình đã lưu, không dùng số ngày đang gõ.'}
+          />
+        )}
+
         {canManage && (
           <Space wrap>
             <Button type="primary" icon={<SaveOutlined />} loading={saveMutation.isPending} onClick={handleSave}>
               Lưu cấu hình
             </Button>
-            <Button loading={dryRunMutation.isPending} onClick={() => dryRunMutation.mutate()}>
+            <Button loading={dryRunMutation.isPending} disabled={isDirty} onClick={() => dryRunMutation.mutate()}>
               Chạy thử (chỉ đếm)
             </Button>
             {isAdmin && (
-              <Button danger icon={<PlayCircleOutlined />} loading={runMutation.isPending} onClick={handleRunNow}>
+              <Button danger icon={<PlayCircleOutlined />} loading={runMutation.isPending} disabled={isDirty} onClick={handleRunNow}>
                 Chạy ngay
               </Button>
             )}
