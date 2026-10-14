@@ -1,5 +1,16 @@
 import { invalidateAuthUser } from '../../common/utils/auth-user-cache.util';
-import { addRefreshSession, rotateRefreshSession } from '../../common/utils/refresh-session-store.util';
+import {
+  addRefreshSession,
+  countRefreshSessions,
+  listRefreshSessions,
+  RefreshSessionMeta,
+  RefreshSessionSlot,
+  revokeRefreshSessions as revokeRefreshSessionsInStore,
+  rotateRefreshSession,
+  toSessionView,
+  SessionView,
+} from '../../common/utils/refresh-session-store.util';
+import { getCachedSessionIds, invalidateSessionIds, setCachedSessionIds } from '../../common/utils/session-alive-cache.util';
 import { Injectable, Logger } from '@nestjs/common';
 
 import { InjectRepository, InjectDataSource } from '@nestjs/typeorm';
@@ -354,7 +365,7 @@ export class UsersService {
    * `token` có giá trị -> THÊM 1 phiên (đăng nhập) vào danh sách phiên của user, các thiết bị khác KHÔNG bị ảnh hưởng.
    * Xem `common/utils/refresh-session-store.util.ts` (đã bỏ bcrypt: bcrypt chỉ đọc 72 byte đầu của JWT).
    */
-  async saveRefreshToken(userId: number, token: string | null): Promise<void> {
+  async saveRefreshToken(userId: number, token: string | null, meta?: RefreshSessionMeta): Promise<void> {
     // [AGENT] OLD CODE: const hashedRefreshToken = token ? await bcrypt.hash(token, 10) : null; rồi UPDATE ... SET hashed_refresh_token
     if (token === null) {
       await this.setRefreshStore(userId, null);
@@ -362,7 +373,7 @@ export class UsersService {
     }
     for (let attempt = 0; attempt < REFRESH_STORE_MAX_ATTEMPTS; attempt++) {
       const current = await this.findByIdWithRefreshToken(userId);
-      const next = addRefreshSession(current?.hashedRefreshToken, token, nowEpochSeconds());
+      const next = addRefreshSession(current?.hashedRefreshToken, token, nowEpochSeconds(), meta);
       const isLast = attempt === REFRESH_STORE_MAX_ATTEMPTS - 1;
       if (isLast || (await this.compareAndSetRefreshStore(userId, current?.hashedRefreshToken ?? null, next))) {
         if (isLast) await this.setRefreshStore(userId, next);
@@ -381,11 +392,12 @@ export class UsersService {
     presentedToken: string,
     newToken: string,
     initialStored?: string | null,
+    meta?: RefreshSessionMeta,
   ): Promise<boolean> {
     let stored = initialStored;
     for (let attempt = 0; attempt < REFRESH_STORE_MAX_ATTEMPTS; attempt++) {
       if (stored === undefined) stored = (await this.findByIdWithRefreshToken(userId))?.hashedRefreshToken ?? null;
-      const result = await rotateRefreshSession(stored, presentedToken, newToken, nowEpochSeconds());
+      const result = await rotateRefreshSession(stored, presentedToken, newToken, nowEpochSeconds(), meta);
       if (!result.ok) return false;
       const isLast = attempt === REFRESH_STORE_MAX_ATTEMPTS - 1;
       if (isLast) {
@@ -406,6 +418,7 @@ export class UsersService {
       .set({ hashedRefreshToken: value })
       .where('id = :id', { id: userId })
       .execute();
+    invalidateSessionIds(userId); // P5: cache `sid` còn hiệu lực - thu hồi ở instance này có hiệu lực ngay
   }
 
   private async compareAndSetRefreshStore(
@@ -420,7 +433,137 @@ export class UsersService {
       .where('id = :id', { id: userId })
       .andWhere('hashed_refresh_token <=> :expected', { expected })
       .execute();
-    return (result.affected ?? 0) > 0;
+    const ok = (result.affected ?? 0) > 0;
+    if (ok) invalidateSessionIds(userId);
+    return ok;
+  }
+
+  // ==========================================================================
+  // PLAN P5 - Quản lý phiên & thiết bị (JSON v3 trong `users.hashed_refresh_token`, KHÔNG migration)
+  // ==========================================================================
+
+  /** Đọc thô cột `hashed_refresh_token` (select:false). `undefined` = không có user. */
+  private async readRefreshStoreRaw(userId: number): Promise<string | null | undefined> {
+    const rows: Array<{ raw: string | null }> = await this.usersRepository.query(
+      `SELECT hashed_refresh_token AS raw FROM users WHERE id = ?`,
+      [userId],
+    );
+    if (!rows || rows.length === 0) return undefined;
+    return rows[0].raw ?? null;
+  }
+
+  /**
+   * `JwtStrategy` hỏi: phiên `sid` còn hiệu lực không? Cache 15s/instance CHỈ dùng để CHO PHÉP; không có trong cache
+   * thì đọc lại DB (nguồn sự thật) để không 401 oan khi vừa đăng nhập ở instance khác.
+   */
+  async isSessionAlive(userId: number, sid: string): Promise<boolean> {
+    if (getCachedSessionIds(userId)?.has(sid)) return true;
+    const raw = await this.readRefreshStoreRaw(userId);
+    if (raw === undefined) return false;
+    const ids = listRefreshSessions(raw, nowEpochSeconds()).map((x) => x.id);
+    setCachedSessionIds(userId, ids);
+    return ids.includes(sid);
+  }
+
+  /** Các phiên còn hạn của 1 user (hoạt động gần nhất trước). */
+  async getRefreshSessions(userId: number): Promise<RefreshSessionSlot[]> {
+    const raw = await this.readRefreshStoreRaw(userId);
+    return listRefreshSessions(raw ?? null, nowEpochSeconds());
+  }
+
+  /**
+   * Thu hồi phiên: `sid` = 1 phiên, `exceptSid` = mọi phiên trừ phiên đó, không truyền = tất cả. Trả số phiên đã gỡ.
+   * Đọc-sửa-ghi bằng compare-and-set (cùng cơ chế `rotateRefreshToken`); lần cuối ghi thẳng để không kẹt.
+   */
+  async revokeRefreshSessions(userId: number, opts: { sid?: string; exceptSid?: string } = {}): Promise<number> {
+    for (let attempt = 0; attempt < REFRESH_STORE_MAX_ATTEMPTS; attempt++) {
+      const raw = (await this.readRefreshStoreRaw(userId)) ?? null;
+      const { next, removed } = revokeRefreshSessionsInStore(raw, opts, nowEpochSeconds());
+      if (removed === 0 && (opts.sid || opts.exceptSid)) return 0; // không có gì để gỡ -> không ghi DB
+      const isLast = attempt === REFRESH_STORE_MAX_ATTEMPTS - 1;
+      if (isLast) {
+        await this.setRefreshStore(userId, next);
+        return removed;
+      }
+      if (await this.compareAndSetRefreshStore(userId, raw, next)) return removed;
+    }
+    return 0;
+  }
+
+  /** Số phiên của nhiều user - đếm Ở ỨNG DỤNG (dòng bcrypt cũ/NULL/JSON hỏng không làm lỗi, chỉ không có trong Map). */
+  async getSessionCountMap(userIds: number[]): Promise<Map<number, number>> {
+    const map = new Map<number, number>();
+    if (userIds.length === 0) return map;
+    try {
+      const rows: Array<{ id: number; raw: string | null }> =
+        (await this.usersRepository.query(
+          `SELECT id, hashed_refresh_token AS raw FROM users WHERE id IN (${userIds.map(() => '?').join(',')}) AND hashed_refresh_token IS NOT NULL`,
+          userIds,
+        )) ?? [];
+      const now = nowEpochSeconds();
+      for (const r of rows) {
+        const n = countRefreshSessions(r.raw, now);
+        if (n > 0) map.set(Number(r.id), n);
+      }
+    } catch (err) {
+      this.logger.warn('Không đếm được số phiên đăng nhập');
+    }
+    return map;
+  }
+
+  /** Nạp user đích + kiểm tra quyền quản lý. Manager/role khác KHÔNG xem/đăng xuất được tài khoản `admin`. */
+  private async loadSessionTarget(targetId: number, callerId: number, callerRole: string, scope?: string | null) {
+    const target = await this.usersRepository.findOne({
+      where: { id: targetId },
+      select: ['id', 'name', 'departmentId', 'role'] as any,
+    });
+    if (!target) throw new NotFoundException('Không tìm thấy nhân viên');
+    const allowed = await UsersAccessHelper.canManageUser(
+      this.departmentsRepository,
+      target.id,
+      target.departmentId,
+      callerId,
+      callerRole,
+      scope,
+    );
+    if (!allowed || (target.role === Role.ADMIN && callerRole !== Role.ADMIN)) {
+      throw new ForbiddenException('Bạn không có quyền quản lý thiết bị đăng nhập của nhân viên này');
+    }
+    return target;
+  }
+
+  async listSessionsOfUser(
+    targetId: number,
+    callerId: number,
+    callerRole: string,
+    scope?: string | null,
+  ): Promise<{ user: { id: number; name: string }; sessions: SessionView[] }> {
+    const target = await this.loadSessionTarget(targetId, callerId, callerRole, scope);
+    const slots = await this.getRefreshSessions(targetId);
+    const now = nowEpochSeconds();
+    return { user: { id: target.id, name: target.name }, sessions: slots.map((x) => toSessionView(x, now, null)) };
+  }
+
+  /** `sid` = đăng xuất 1 thiết bị (404 nếu không có); bỏ trống = đăng xuất MỌI thiết bị. Có audit. */
+  async revokeSessionsOfUser(
+    targetId: number,
+    callerId: number,
+    callerRole: string,
+    scope?: string | null,
+    sid?: string,
+  ): Promise<{ success: boolean; removed: number }> {
+    const target = await this.loadSessionTarget(targetId, callerId, callerRole, scope);
+    const removed = await this.revokeRefreshSessions(targetId, sid ? { sid } : {});
+    if (sid && removed === 0) throw new NotFoundException('Thiết bị này không còn đăng nhập');
+
+    this.auditService.logSecurityEventAsync({
+      userId: callerId,
+      action: sid ? 'SESSION_REVOKED' : 'FORCE_LOGOUT',
+      entityId: targetId,
+      detail: { targetUser: { id: target.id, name: target.name }, ...(sid ? { sid } : { removed }) },
+    });
+    this.logger.log(`[Users] User ID ${callerId} đăng xuất ${sid ? 'thiết bị' : 'mọi thiết bị'} của user ID ${targetId}`);
+    return { success: true, removed };
   }
 
   async findByIdWithRefreshToken(id: number): Promise<User | null> {
@@ -500,8 +643,14 @@ export class UsersService {
     const lockMap = await this.getLoginLockSecondsMap(data.map((u) => u.id));
     // P3.3: kèm IP đăng nhập thành công gần nhất cho các user ĐANG bị khoá (để Admin đối chiếu với danh sách IP bị khoá).
     const lockedIps = await this.getLastLoginIpMap([...lockMap.keys()]);
+    // P5: số thiết bị đang đăng nhập (đếm ở ứng dụng, chỉ đọc đúng các user của trang hiện tại).
+    const sessionMap = await this.getSessionCountMap(data.map((u) => u.id));
     const dataWithLock = data.map((u) =>
-      Object.assign(u, { loginLockSeconds: lockMap.get(u.id) ?? 0, lastLoginIp: lockedIps.get(u.id) ?? null }),
+      Object.assign(u, {
+        loginLockSeconds: lockMap.get(u.id) ?? 0,
+        lastLoginIp: lockedIps.get(u.id) ?? null,
+        sessionCount: sessionMap.get(u.id) ?? 0,
+      }),
     );
 
     return {
@@ -1052,6 +1201,8 @@ export class UsersService {
 
     const hashedPassword = await bcrypt.hash(dto.newPassword, 10);
     await this.usersRepository.update(id, { password: hashedPassword });
+    // P5: đặt lại mật khẩu -> thu hồi MỌI phiên của người bị đặt lại (trước đây chỉ changeOwnPassword làm vậy).
+    await this.saveRefreshToken(id, null);
 
     if (callerId) {
       this.auditService.logActionAsync(

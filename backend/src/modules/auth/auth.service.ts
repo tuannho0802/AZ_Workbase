@@ -3,6 +3,8 @@ import {
   UnauthorizedException,
   ForbiddenException,
   ConflictException,
+  BadRequestException,
+  NotFoundException,
   HttpException,
   HttpStatus,
   Logger,
@@ -22,6 +24,14 @@ import { getJwtRefreshSecret } from '../../common/security/jwt-secrets';
 import { SecurityConfigService } from '../../common/security/security-config.service';
 import { LoginIpBlockService } from '../../common/security/login-ip-block.service';
 import { LoginIpWhitelistService } from '../../common/security/login-ip-whitelist.service';
+import {
+  hasRefreshSession,
+  hashRefreshToken,
+  newSessionId,
+  SessionView,
+  toSessionView,
+} from '../../common/utils/refresh-session-store.util';
+import { SessionRevokedException } from './session-revoked.exception';
 
 // [AGENT] OLD CODE (giữ để rollback, P3.1): hằng số cứng
 //   export const LOGIN_MAX_FAILED_ATTEMPTS = 5;
@@ -42,8 +52,10 @@ export class AuthService {
     private loginIpWhitelist: LoginIpWhitelistService,
   ) {}
 
-  private async generateTokens(userId: number, email: string, role: string) {
-    const payload = { sub: userId, email, role };
+  // [AGENT] OLD CODE (giữ để rollback): private async generateTokens(userId, email, role) { const payload = { sub: userId, email, role };
+  // NEW (P5): `sid` (mã phiên/thiết bị) nằm trong payload cả access lẫn refresh token, GIỮ NGUYÊN qua các lần refresh.
+  private async generateTokens(userId: number, email: string, role: string, sid: string) {
+    const payload = { sub: userId, email, role, sid };
 
    // Access token: uses default secret and expiresIn from JwtModule config
    const access_token = this.jwtService.sign(payload);
@@ -262,10 +274,13 @@ export class AuthService {
 
     await this.usersService.clearLoginFailures(user.id);
 
-    const { access_token, refresh_token } = await this.generateTokens(user.id, user.email, user.role);
+    // P5: mỗi lần đăng nhập = 1 phiên (thiết bị) mới với `sid` riêng; ghi kèm ip/ua để hiện ở "Thiết bị đang đăng nhập".
+    const sid = newSessionId();
+    const { access_token, refresh_token } = await this.generateTokens(user.id, user.email, user.role, sid);
 
     // ⭐ ROTATION: Lưu hash của refresh_token vào DB
-    await this.usersService.saveRefreshToken(user.id, refresh_token);
+    // [AGENT] OLD CODE: await this.usersService.saveRefreshToken(user.id, refresh_token);
+    await this.usersService.saveRefreshToken(user.id, refresh_token, { sid, ip, ua: userAgent });
     // Đăng nhập thành công KHÔNG xoá bộ đếm/khoá IP (kẻ tấn công không được dùng 1 tài khoản hợp lệ để reset).
     await this.usersService.updateLastLogin(user.id, ip);
 
@@ -392,7 +407,11 @@ export class AuthService {
     };
   }
 
-  async refresh(refreshTokenFromClient: string) {
+  /**
+   * @param ip IP trực tiếp (controller truyền `getDirectClientIp(req)` - KHÔNG dùng `getClientIp`: header
+   *           `x-az-client-ip` do client tự gắn nên không được tin để ghi vào danh sách thiết bị, giống login()).
+   */
+  async refresh(refreshTokenFromClient: string, ip: string | null = null, userAgent: string | null = null) {
     // 1. Verify JWT signature & expiry
     let payload: any;
     try {
@@ -416,15 +435,24 @@ export class AuthService {
       throw new UnauthorizedException('Phiên đăng nhập đã hết hạn, vui lòng đăng nhập lại');
     }
 
+    // P5: token CÓ `sid` mà phiên đó không còn trong store = bị đăng xuất/thu hồi (hoặc bị loại do vượt 10 thiết bị).
+    // KHÔNG coi là "tái sử dụng token" -> không kéo theo thu hồi các thiết bị khác.
+    if (payload.sid && !hasRefreshSession(user.hashedRefreshToken, payload.sid, Math.floor(Date.now() / 1000))) {
+      throw new SessionRevokedException();
+    }
+    // Token cũ (trước P5) chưa có `sid`: slot v2 được định danh bằng `hash.slice(0,12)` -> dùng đúng id đó để thống nhất.
+    const sid: string = payload.sid ?? hashRefreshToken(refreshTokenFromClient).slice(0, 12);
+
     // 3. ⭐ TRÁI TIM CỦA ROTATION: token gửi lên phải thuộc 1 phiên của user; thay bằng token mới (compare-and-set).
     // [AGENT] OLD CODE: const isTokenValid = await bcrypt.compare(refreshTokenFromClient, user.hashedRefreshToken);
     // (bcrypt chỉ đọc 72 byte đầu của JWT -> mọi token cùng user đều "khớp" + tốn ~150ms CPU/lần).
-    const { access_token, refresh_token: new_refresh_token } = await this.generateTokens(user.id, user.email, user.role);
+    const { access_token, refresh_token: new_refresh_token } = await this.generateTokens(user.id, user.email, user.role, sid);
     const isTokenValid = await this.usersService.rotateRefreshToken(
       user.id,
       refreshTokenFromClient,
       new_refresh_token,
       user.hashedRefreshToken,
+      { sid, ip, ua: userAgent },
     );
 
     if (!isTokenValid) {
@@ -446,6 +474,29 @@ export class AuthService {
       access_token,
       refresh_token: new_refresh_token,
     };
+  }
+
+  // ── P5: thiết bị đăng nhập của CHÍNH MÌNH ──
+
+  async listSessions(userId: number, currentSid?: string | null): Promise<{ sessions: SessionView[]; currentSid: string | null }> {
+    const slots = await this.usersService.getRefreshSessions(userId);
+    const now = Math.floor(Date.now() / 1000);
+    return { sessions: slots.map((x) => toSessionView(x, now, currentSid)), currentSid: currentSid ?? null };
+  }
+
+  async revokeSession(userId: number, sid: string, currentSid?: string | null) {
+    const removed = await this.usersService.revokeRefreshSessions(userId, { sid });
+    if (removed === 0) throw new NotFoundException('Thiết bị này không còn đăng nhập');
+    return { success: true, removed, loggedOutCurrent: !!currentSid && sid === currentSid };
+  }
+
+  /** Đăng xuất mọi thiết bị KHÁC. Access token cũ (trước P5) không có `sid` -> không biết đâu là thiết bị hiện tại -> từ chối. */
+  async revokeOtherSessions(userId: number, currentSid?: string | null) {
+    if (!currentSid) {
+      throw new BadRequestException('Phiên hiện tại chưa có mã thiết bị. Vui lòng đăng nhập lại rồi thử lại');
+    }
+    const removed = await this.usersService.revokeRefreshSessions(userId, { exceptSid: currentSid });
+    return { success: true, removed };
   }
 
   async logout(userId: number): Promise<void> {

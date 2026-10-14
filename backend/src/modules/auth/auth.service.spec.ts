@@ -417,7 +417,7 @@ describe('AuthService - Đăng ký công khai + chặn đăng nhập chưa duy�
       mockUsersService.rotateRefreshToken.mockResolvedValue(true);
       const res = await service.refresh('old-token');
       expect(res).toEqual({ access_token: 'fake-jwt-token', refresh_token: 'fake-jwt-token' });
-      expect(mockUsersService.rotateRefreshToken).toHaveBeenCalledWith(7, 'old-token', 'fake-jwt-token', activeUser.hashedRefreshToken);
+      expect(mockUsersService.rotateRefreshToken).toHaveBeenCalledWith(7, 'old-token', 'fake-jwt-token', activeUser.hashedRefreshToken, expect.objectContaining({ sid: expect.any(String) }));
       expect(mockUsersService.saveRefreshToken).not.toHaveBeenCalled();
     });
 

@@ -29,6 +29,7 @@ import { SimpleList } from '@/components/common/SimpleList';
 import { AvatarUpload } from '@/components/common/AvatarUpload';
 import { useRoleColorMap, useRoleColors } from '@/lib/hooks/useRoleColorMap';
 import { resolveEntityColor } from '@/lib/utils/entityColor';
+import { MySessionsSection } from '@/components/sessions/MySessionsSection';
 
 const { Text, Title } = Typography;
 
@@ -445,6 +446,16 @@ function ProfilePortal({ userId, onDeleted }: { userId: number; onDeleted?: () =
         </Form>
       </Modal>
 
+
+      {/* PLAN P5: chỉ ở hồ sơ CỦA MÌNH - admin xem hồ sơ người khác dùng nút "Thiết bị" ở trang Nhân viên. */}
+      {isSelf && (
+        <>
+          <Divider titlePlacement="left" style={{ marginTop: 32 }}>
+            Thiết bị đang đăng nhập
+          </Divider>
+          <MySessionsSection />
+        </>
+      )}
 
       <Divider titlePlacement="left" style={{ marginTop: 32 }}>
         <Space>

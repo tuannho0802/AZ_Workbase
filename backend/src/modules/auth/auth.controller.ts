@@ -1,4 +1,4 @@
-import { Controller, Post, Body, HttpCode, HttpStatus, UseGuards, Request, Req } from '@nestjs/common';
+import { Controller, Post, Get, Delete, Param, Body, HttpCode, HttpStatus, UseGuards, Request, Req } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiResponse, ApiBearerAuth } from '@nestjs/swagger';
 import { Throttle } from '@nestjs/throttler';
 import { AuthService } from './auth.service';
@@ -71,8 +71,36 @@ export class AuthController {
   @ApiOperation({ summary: 'Làm mới Access Token (Rotation)' })
   @ApiResponse({ status: 200, description: 'Token mới được phát thành công.' })
   @ApiResponse({ status: 401, description: 'Token không hợp lệ hoặc đã bị thu hồi.' })
-  async refresh(@Body('refreshToken') refreshToken: string) {
-    return this.authService.refresh(refreshToken);
+  async refresh(@Body('refreshToken') refreshToken: string, @Req() req: any) {
+    // P5: IP lấy từ `req.ip` (KHÔNG tin header x-az-client-ip do client tự gắn) - cùng cách với login.
+    const ua = typeof req?.headers?.['user-agent'] === 'string' ? req.headers['user-agent'] : null;
+    return this.authService.refresh(refreshToken, getDirectClientIp(req), ua);
+  }
+
+  // ── P5: thiết bị đăng nhập của CHÍNH MÌNH (không cần permission - ai cũng quản được phiên của mình) ──
+
+  @Get('sessions')
+  @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'Danh sách thiết bị đang đăng nhập của tôi (đánh dấu thiết bị hiện tại)' })
+  async listSessions(@Request() req: any) {
+    return this.authService.listSessions(req.user.id, req.user.sid);
+  }
+
+  @Delete('sessions/:sid')
+  @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'Đăng xuất 1 thiết bị của tôi' })
+  async revokeSession(@Param('sid') sid: string, @Request() req: any) {
+    return this.authService.revokeSession(req.user.id, sid, req.user.sid);
+  }
+
+  @Delete('sessions')
+  @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'Đăng xuất mọi thiết bị KHÁC của tôi (giữ thiết bị hiện tại)' })
+  async revokeOtherSessions(@Request() req: any) {
+    return this.authService.revokeOtherSessions(req.user.id, req.user.sid);
   }
 
   @Post('logout')

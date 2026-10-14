@@ -19,6 +19,8 @@ import { PositionsService } from '../positions/positions.service';
 import { UploadsService } from '../uploads/uploads.service';
 import { Role } from '../../common/enums/role.enum';
 import { ApprovalStatus } from '../../common/enums/approval-status.enum';
+import { addRefreshSession, parseRefreshStore } from '../../common/utils/refresh-session-store.util';
+import { clearSessionIdCache, getCachedSessionIds } from '../../common/utils/session-alive-cache.util';
 
 describe('UsersService - Approval workflow (đăng ký công khai chờ duyệt)', () => {
   let service: UsersService;
@@ -63,6 +65,7 @@ describe('UsersService - Approval workflow (đăng ký công khai chờ duyệt)
   const mockAuditService = {
     logAction: jest.fn(),
     logActionAsync: jest.fn(),
+    logSecurityEventAsync: jest.fn(),
   };
   const mockDepartmentsService = {
     findOne: jest.fn(),
@@ -1445,6 +1448,165 @@ describe('UsersService - Approval workflow (đăng ký công khai chờ duyệt)
       mockQueryBuilder.execute.mockClear();
       expect(await service.rotateRefreshToken(1, 'token-LA', 'token-B', stored)).toBe(false);
       expect(mockQueryBuilder.execute).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('Quản lý phiên & thiết bị (PLAN P5)', () => {
+    const NOW = () => Math.floor(Date.now() / 1000);
+    const lastSet = () => mockQueryBuilder.set.mock.calls[mockQueryBuilder.set.mock.calls.length - 1][0].hashedRefreshToken as string | null;
+    let store: string | null;
+
+    beforeEach(() => {
+      clearSessionIdCache();
+      mockUsersRepo.query.mockReset();
+      mockUsersRepo.findOne.mockReset();
+      mockQueryBuilder.set.mockClear();
+      mockQueryBuilder.execute.mockReset();
+      mockQueryBuilder.execute.mockResolvedValue({ affected: 1 });
+      mockAuditService.logSecurityEventAsync.mockClear();
+      store = addRefreshSession(null, 'tA', NOW(), { sid: 'aaaaaaaaaaaa', ip: '1.1.1.1', ua: 'Chrome/1 Windows' });
+      store = addRefreshSession(store, 'tB', NOW() + 1, { sid: 'bbbbbbbbbbbb' });
+      mockUsersRepo.query.mockResolvedValue([{ raw: store }]);
+    });
+
+    describe('isSessionAlive (cache 15s chỉ dùng để CHO PHÉP)', () => {
+      it('không có trong cache -> đọc DB, nạp cache; lần sau không đọc DB', async () => {
+        expect(await service.isSessionAlive(5, 'aaaaaaaaaaaa')).toBe(true);
+        expect(getCachedSessionIds(5)?.has('bbbbbbbbbbbb')).toBe(true);
+        mockUsersRepo.query.mockClear();
+        expect(await service.isSessionAlive(5, 'bbbbbbbbbbbb')).toBe(true);
+        expect(mockUsersRepo.query).not.toHaveBeenCalled();
+      });
+
+      it('sid không có trong cache nhưng DB vẫn có (đăng nhập ở instance khác) -> true, KHÔNG 401 oan', async () => {
+        await service.isSessionAlive(5, 'aaaaaaaaaaaa'); // nạp cache cũ
+        const fresh = addRefreshSession(store, 'tC', NOW() + 2, { sid: 'cccccccccccc' });
+        mockUsersRepo.query.mockResolvedValue([{ raw: fresh }]);
+        expect(await service.isSessionAlive(5, 'cccccccccccc')).toBe(true);
+      });
+
+      it('sid không còn trong DB -> false; user không tồn tại -> false', async () => {
+        expect(await service.isSessionAlive(5, 'zzzzzzzzzzzz')).toBe(false);
+        mockUsersRepo.query.mockResolvedValue([]);
+        clearSessionIdCache();
+        expect(await service.isSessionAlive(5, 'aaaaaaaaaaaa')).toBe(false);
+      });
+
+      it('ghi store (thu hồi) xoá cache ngay trên instance này', async () => {
+        await service.isSessionAlive(5, 'aaaaaaaaaaaa');
+        expect(getCachedSessionIds(5)).toBeDefined();
+        await service.saveRefreshToken(5, null);
+        expect(getCachedSessionIds(5)).toBeUndefined();
+      });
+    });
+
+    describe('revokeRefreshSessions', () => {
+      it('thu hồi 1 phiên: ghi CAS, chỉ còn phiên kia', async () => {
+        expect(await service.revokeRefreshSessions(5, { sid: 'aaaaaaaaaaaa' })).toBe(1);
+        expect(parseRefreshStore(lastSet(), NOW()).s.map((x) => x.id)).toEqual(['bbbbbbbbbbbb']);
+        expect(mockQueryBuilder.andWhere).toHaveBeenCalledWith(expect.stringContaining('<=>'), { expected: store });
+      });
+
+      it('phiên không tồn tại -> 0, KHÔNG ghi DB', async () => {
+        expect(await service.revokeRefreshSessions(5, { sid: 'zzzzzzzzzzzz' })).toBe(0);
+        expect(mockQueryBuilder.execute).not.toHaveBeenCalled();
+      });
+
+      it('mọi phiên trừ phiên hiện tại', async () => {
+        expect(await service.revokeRefreshSessions(5, { exceptSid: 'bbbbbbbbbbbb' })).toBe(1);
+        expect(parseRefreshStore(lastSet(), NOW()).s.map((x) => x.id)).toEqual(['bbbbbbbbbbbb']);
+      });
+
+      it('thua đua ghi (CAS affected=0) -> đọc lại rồi thử lại', async () => {
+        mockQueryBuilder.execute.mockResolvedValueOnce({ affected: 0 }).mockResolvedValueOnce({ affected: 1 });
+        expect(await service.revokeRefreshSessions(5, { sid: 'aaaaaaaaaaaa' })).toBe(1);
+        expect(mockUsersRepo.query).toHaveBeenCalledTimes(2);
+      });
+    });
+
+    describe('getSessionCountMap (đếm ở ứng dụng, chịu được dòng bcrypt cũ)', () => {
+      it('đếm phiên còn hạn; bcrypt cũ/NULL/JSON hỏng -> không có trong map', async () => {
+        mockUsersRepo.query.mockResolvedValue([
+          { id: 1, raw: store },
+          { id: 2, raw: '$2b$10$abcdefghijklmnopqrstuuabcdefghijklmnopqrstuvwxyz0123' },
+          { id: 3, raw: '{hong' },
+        ]);
+        const map = await service.getSessionCountMap([1, 2, 3, 4]);
+        expect(map.get(1)).toBe(2);
+        expect(map.has(2)).toBe(false);
+        expect(map.has(3)).toBe(false);
+        expect(map.has(4)).toBe(false);
+        expect(mockUsersRepo.query.mock.calls[0][0]).not.toContain('JSON_LENGTH');
+      });
+
+      it('rỗng -> không query; lỗi DB -> Map rỗng, không ném', async () => {
+        expect((await service.getSessionCountMap([])).size).toBe(0);
+        expect(mockUsersRepo.query).not.toHaveBeenCalled();
+        mockUsersRepo.query.mockRejectedValue(new Error('boom'));
+        expect((await service.getSessionCountMap([1])).size).toBe(0);
+      });
+    });
+
+    describe('Admin xem/thu hồi phiên của người khác', () => {
+      const employee = { id: 20, name: 'NV A', departmentId: 3, role: Role.EMPLOYEE };
+      const adminTarget = { id: 1, name: 'Admin', departmentId: null, role: Role.ADMIN };
+
+      it('404 nếu không có nhân viên', async () => {
+        mockUsersRepo.findOne.mockResolvedValue(null);
+        await expect(service.listSessionsOfUser(99, 1, Role.ADMIN, 'all')).rejects.toThrow(NotFoundException);
+      });
+
+      it('403 nếu ngoài phạm vi (scope=own) - không đọc phiên', async () => {
+        mockUsersRepo.findOne.mockResolvedValue(employee);
+        await expect(service.listSessionsOfUser(20, 5, Role.EMPLOYEE, 'own')).rejects.toThrow(ForbiddenException);
+        expect(mockUsersRepo.query).not.toHaveBeenCalled();
+      });
+
+      it('Admin xem được; trả số giây + nhãn thiết bị, KHÔNG lộ hash', async () => {
+        mockUsersRepo.findOne.mockResolvedValue(employee);
+        const res = await service.listSessionsOfUser(20, 1, Role.ADMIN, 'all');
+        expect(res.user).toEqual({ id: 20, name: 'NV A' });
+        expect(res.sessions).toHaveLength(2);
+        expect(res.sessions.find((x) => x.id === 'aaaaaaaaaaaa')).toMatchObject({ device: 'Chrome · Windows', ip: '1.1.1.1', isCurrent: false });
+        expect(JSON.stringify(res)).not.toMatch(/"h"|hash/i);
+      });
+
+      it('Manager (scope all) KHÔNG đăng xuất được tài khoản Admin; xem cũng bị chặn', async () => {
+        mockUsersRepo.findOne.mockResolvedValue(adminTarget);
+        await expect(service.revokeSessionsOfUser(1, 7, Role.MANAGER, 'all')).rejects.toThrow(ForbiddenException);
+        await expect(service.listSessionsOfUser(1, 7, Role.MANAGER, 'all')).rejects.toThrow(ForbiddenException);
+        expect(mockQueryBuilder.execute).not.toHaveBeenCalled();
+        expect(mockAuditService.logSecurityEventAsync).not.toHaveBeenCalled();
+      });
+
+      it('Admin thu hồi 1 phiên -> audit SESSION_REVOKED; phiên không có -> 404 không audit', async () => {
+        mockUsersRepo.findOne.mockResolvedValue(employee);
+        expect(await service.revokeSessionsOfUser(20, 1, Role.ADMIN, 'all', 'aaaaaaaaaaaa')).toEqual({ success: true, removed: 1 });
+        expect(mockAuditService.logSecurityEventAsync).toHaveBeenCalledWith(
+          expect.objectContaining({ userId: 1, action: 'SESSION_REVOKED', entityId: 20 }),
+        );
+        mockAuditService.logSecurityEventAsync.mockClear();
+        await expect(service.revokeSessionsOfUser(20, 1, Role.ADMIN, 'all', 'zzzzzzzzzzzz')).rejects.toThrow(NotFoundException);
+        expect(mockAuditService.logSecurityEventAsync).not.toHaveBeenCalled();
+      });
+
+      it('Admin thu hồi tất cả -> ghi NULL (xoá cả bcrypt cũ) + audit FORCE_LOGOUT', async () => {
+        mockUsersRepo.findOne.mockResolvedValue(employee);
+        expect(await service.revokeSessionsOfUser(20, 1, Role.ADMIN, 'all')).toEqual({ success: true, removed: 2 });
+        expect(lastSet()).toBeNull();
+        expect(mockAuditService.logSecurityEventAsync).toHaveBeenCalledWith(
+          expect.objectContaining({ action: 'FORCE_LOGOUT', detail: expect.objectContaining({ removed: 2 }) }),
+        );
+      });
+    });
+
+    describe('resetPassword thu hồi mọi phiên của người bị đặt lại', () => {
+      it('Admin reset -> hashed_refresh_token = NULL', async () => {
+        mockUsersRepo.findOne.mockResolvedValue({ id: 20, name: 'NV A', departmentId: 3, role: Role.EMPLOYEE });
+        mockUsersRepo.update.mockResolvedValue(undefined);
+        await service.resetPassword(20, { newPassword: 'NewPass@123' } as any, 1, Role.ADMIN, 'all');
+        expect(lastSet()).toBeNull();
+      });
     });
   });
 });

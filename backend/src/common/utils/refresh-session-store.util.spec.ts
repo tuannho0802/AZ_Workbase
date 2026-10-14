@@ -5,6 +5,10 @@ import {
   MAX_REFRESH_SESSIONS,
   parseRefreshStore,
   rotateRefreshSession,
+  describeDevice,
+  hashRefreshToken as hashTok,
+  listRefreshSessions,
+  revokeRefreshSessions,
 } from './refresh-session-store.util';
 
 const NOW = 1_800_000_000;
@@ -101,5 +105,45 @@ describe('refresh-session-store.util', () => {
     const raw = addRefreshSession(null, 'super-secret-token', NOW) as string;
     expect(raw).not.toContain('super-secret-token');
     expect(raw).toContain(hashRefreshToken('super-secret-token'));
+  });
+
+  describe('JSON v3 (PLAN P5)', () => {
+    it('đọc v2 (chưa có id): id = hash.slice(0,12), rồi ghi lại thành v3', () => {
+      const h = hashTok('tokOld');
+      const v2 = JSON.stringify({ v: 2, s: [{ h, t: NOW }], l: null });
+      const s = parseRefreshStore(v2, NOW).s;
+      expect(s[0]).toMatchObject({ id: h.slice(0, 12), c: NOW, l: NOW });
+      expect(JSON.parse(addRefreshSession(v2, 'tokNew', NOW + 1)!).v).toBe(3);
+    });
+
+    it('rotate GIỮ id + thời điểm tạo, chỉ đổi hash/hoạt động; giữ ip/ua cũ nếu refresh không có', async () => {
+      const raw = addRefreshSession(null, 'tA', NOW, { sid: 'aaaaaaaaaaaa', ip: '1.1.1.1', ua: 'Chrome Windows' });
+      const res = await rotateRefreshSession(raw, 'tA', 'tA2', NOW + 100);
+      expect(res.ok).toBe(true);
+      const slot = listRefreshSessions((res as { next: string | null }).next, NOW + 100)[0];
+      expect(slot).toMatchObject({ id: 'aaaaaaaaaaaa', c: NOW, l: NOW + 100, ip: '1.1.1.1', ua: 'Chrome Windows' });
+      expect(slot.h).toBe(hashTok('tA2'));
+    });
+
+    it('thu hồi 1 slot / mọi slot trừ 1 / tất cả', () => {
+      let raw = addRefreshSession(null, 'a', NOW, { sid: 'aaaaaaaaaaaa' });
+      raw = addRefreshSession(raw, 'b', NOW + 1, { sid: 'bbbbbbbbbbbb' });
+      expect(revokeRefreshSessions(raw, { sid: 'aaaaaaaaaaaa' }, NOW + 2).removed).toBe(1);
+      expect(revokeRefreshSessions(raw, { exceptSid: 'aaaaaaaaaaaa' }, NOW + 2).removed).toBe(1);
+      expect(revokeRefreshSessions(raw, {}, NOW + 2)).toEqual({ next: null, removed: 2 });
+    });
+
+    it('vượt MAX_REFRESH_SESSIONS -> loại phiên cũ nhất', () => {
+      let raw: string | null = null;
+      for (let i = 0; i <= MAX_REFRESH_SESSIONS; i++) raw = addRefreshSession(raw, `t${i}`, NOW + i);
+      expect(listRefreshSessions(raw, NOW + 100)).toHaveLength(MAX_REFRESH_SESSIONS);
+    });
+
+    it('describeDevice: nhãn từ UA, iPhone không bị nhầm macOS, Android không bị nhầm Linux', () => {
+      expect(describeDevice('Mozilla/5.0 (Windows NT 10.0) Chrome/120 Safari/537')).toBe('Chrome · Windows');
+      expect(describeDevice('Mozilla/5.0 (iPhone; CPU iPhone OS 17 like Mac OS X) Safari/604')).toBe('Safari · iOS');
+      expect(describeDevice('Mozilla/5.0 (Linux; Android 14) Chrome/120 Mobile')).toBe('Chrome · Android');
+      expect(describeDevice(null)).toBe('Thiết bị không rõ');
+    });
   });
 });

@@ -8,7 +8,7 @@ import {
 import {
   UserAddOutlined, EditOutlined, KeyOutlined,
   ReloadOutlined, MailOutlined, TeamOutlined, DeleteOutlined, CrownOutlined,
-  IdcardOutlined, UnlockOutlined,
+  IdcardOutlined, UnlockOutlined, DesktopOutlined,
 } from '@ant-design/icons';
 
 import { useAuthStore } from '@/lib/stores/auth.store';
@@ -28,6 +28,7 @@ import { resolveEntityColor } from '@/lib/utils/entityColor';
 import { useDebounce } from '@/lib/hooks/useDebounce';
 import { ListFilterBar } from '@/components/common/ListFilterBar';
 import { LoginLockTag } from '@/components/users/LoginLockTag';
+import { UserSessionsModal } from '@/components/sessions/UserSessionsModal';
 
 
 /**
@@ -60,6 +61,8 @@ function UserMobileCard({
   canUnlock,
   onUnlock,
   onLockExpire,
+  canSessions,
+  onSessions,
 }: {
   record: any;
   roleMap: Map<string, string>;
@@ -70,6 +73,9 @@ function UserMobileCard({
   canUnlock: boolean;
   onUnlock: (r: UnlockableUser) => void;
   onLockExpire: () => void;
+  /** P5: hiện nút "Thiết bị" (đã loại trừ trường hợp BE sẽ 403: Manager + tài khoản Admin). */
+  canSessions: boolean;
+  onSessions: (r: any) => void;
 }) {
   const { getRoleColor } = useRoleColorMap();
   return (
@@ -121,7 +127,20 @@ function UserMobileCard({
           </div>
         )}
         <Text style={{ fontSize: 11, color: '#bfbfbf' }}>ID: {record.id}</Text>
+        <Text style={{ fontSize: 12, color: '#595959' }}>Thiết bị đăng nhập: {record.sessionCount ?? 0}</Text>
       </div>
+
+      {canSessions && (
+        <Button
+          size="small"
+          icon={<DesktopOutlined />}
+          block
+          style={{ marginBottom: 8 }}
+          onClick={() => onSessions(record)}
+        >
+          Thiết bị đăng nhập
+        </Button>
+      )}
 
       {canUnlock && record.loginLockSeconds > 0 && (
         <Button
@@ -181,6 +200,8 @@ export default function UsersPage() {
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [isResetOpen, setIsResetOpen] = useState(false);
   const [editingUser, setEditingUser] = useState<any>(null);
+  // P5: nhân viên đang mở modal "Thiết bị đăng nhập".
+  const [sessionsUser, setSessionsUser] = useState<{ id: number; name: string } | null>(null);
   const [form] = Form.useForm();
   const [resetForm] = Form.useForm();
   const { departments } = useDepartments();
@@ -285,6 +306,8 @@ export default function UsersPage() {
   // P3.3: tab "IP bị khoá" cần `users.manage` phạm vi TOÀN HỆ THỐNG (khớp SecurityController: Manager scope
   // department bị BE chặn 403 nên FE ẩn hẳn tab, không lộ UI rồi báo lỗi).
   const canManageIpBlocks = canManage && (user?.role === 'admin' || scope('users.manage') === 'all');
+  // P5: BE chặn Manager/role khác đăng xuất thiết bị của tài khoản role `admin` -> FE ẩn nút luôn, không để bấm rồi báo 403.
+  const canViewSessionsOf = (record: { role?: string }) => canManage && (record.role !== 'admin' || user?.role === 'admin');
   const canSeeFullList = canAccessPage;
   // ⚠️ MỚI (isRootAdmin) - toggle "Root Admin" trong Modal Thêm/Sửa CHỈ hiện
   // với người đang đăng nhập THẬT SỰ là Root Admin (khác `role === 'admin'`
@@ -533,11 +556,22 @@ export default function UsersPage() {
       ),
     },
     {
+      title: 'Số thiết bị',
+      key: 'sessionCount',
+      width: 100,
+      align: 'center' as const,
+      render: (_: unknown, record: any) =>
+        record.sessionCount > 0 ? <Tag color="blue" style={{ marginInlineEnd: 0 }}>{record.sessionCount}</Tag> : <Text type="secondary">0</Text>,
+    },
+    {
       title: 'Thao tác',
       key: 'action',
       render: (_: any, record: any) => (
         <Space>
           {canManage && <Button icon={<EditOutlined />} onClick={() => openEdit(record)}>Sửa</Button>}
+          {canViewSessionsOf(record) && (
+            <Button icon={<DesktopOutlined />} onClick={() => setSessionsUser(record)}>Thiết bị</Button>
+          )}
           {canManage && record.loginLockSeconds > 0 && (
             <Button type="primary" icon={<UnlockOutlined />} onClick={() => handleUnlockLogin(record)}>Mở khoá</Button>
           )}
@@ -625,6 +659,8 @@ export default function UsersPage() {
               canUnlock={canManage}
               onUnlock={handleUnlockLogin}
               onLockExpire={fetchUsers}
+              canSessions={canViewSessionsOf(u)}
+              onSessions={setSessionsUser}
               // ⚠️ MỚI (isRootAdmin) - ẩn nút xoá với record là Root Admin ở
               // FE cho gọn UX; BE (softDeleteUser/hardDeleteUser) mới là nơi
               // chặn thật sự (ForbiddenException) - xem users.service.ts.
@@ -1027,6 +1063,8 @@ export default function UsersPage() {
       </Modal>
 
       {/* Modal Reset Pass */}
+      <UserSessionsModal user={sessionsUser} onClose={() => setSessionsUser(null)} onChanged={fetchUsers} />
+
       <Modal
         title={`Đặt lại mật khẩu cho: ${editingUser?.name}`}
         open={isResetOpen}

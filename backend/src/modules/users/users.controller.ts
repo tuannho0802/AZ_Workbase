@@ -162,6 +162,33 @@ export class UsersController {
     return this.usersService.resetPassword(+id, dto, req.user.id, req.user.role, scope);
   }
 
+  // ── P5: thiết bị đăng nhập của nhân viên (Admin/Manager) ── cùng phạm vi `users.manage` + canManageUser như "Mở khoá".
+  @Get(':id/sessions')
+  @RequirePermission('users.manage')
+  @ApiOperation({ summary: 'Danh sách thiết bị đang đăng nhập của 1 nhân viên (không lộ hash token)' })
+  async listSessions(@Param('id') id: string, @Request() req: any, @GetPermissionScope() scope?: string | null) {
+    return this.usersService.listSessionsOfUser(+id, req.user.id, req.user.role, scope);
+  }
+
+  @Delete(':id/sessions')
+  @RequirePermission('users.manage')
+  @ApiOperation({ summary: 'Đăng xuất MỌI thiết bị của 1 nhân viên (audit FORCE_LOGOUT). Manager không áp dụng được cho Admin.' })
+  async revokeAllSessions(@Param('id') id: string, @Request() req: any, @GetPermissionScope() scope?: string | null) {
+    return this.usersService.revokeSessionsOfUser(+id, req.user.id, req.user.role, scope);
+  }
+
+  @Delete(':id/sessions/:sid')
+  @RequirePermission('users.manage')
+  @ApiOperation({ summary: 'Đăng xuất 1 thiết bị của nhân viên (audit SESSION_REVOKED)' })
+  async revokeSession(
+    @Param('id') id: string,
+    @Param('sid') sid: string,
+    @Request() req: any,
+    @GetPermissionScope() scope?: string | null,
+  ) {
+    return this.usersService.revokeSessionsOfUser(+id, req.user.id, req.user.role, scope, sid);
+  }
+
   @Patch(':id/unlock-login')
   @RequirePermission('users.manage')
   @ApiOperation({ summary: 'Mở khoá đăng nhập sớm (sau khi bị khoá do sai mật khẩu quá ngưỡng trong `security_config`) - cùng phạm vi quyền với reset-password; trả thêm `lastLoginIp`' })

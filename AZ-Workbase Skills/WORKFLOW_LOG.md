@@ -7871,3 +7871,23 @@ Now [deploy]
 > - Cần chạy migration `1786331000000` trước khi dùng (chưa chạy thì whitelist coi như rỗng, đăng nhập vẫn bình thường). Chưa chạy với MySQL thật.
 > - Không tạo permission key mới (tái dùng `users.manage` scope `all`/admin).
 
+
+---
+
+## [2026-10-14] | PLAN_RETENTION_SECURITY_ROADMAP — Phase 5: Quản lý phiên & thiết bị (JSON v3, không migration) | [Status: In-Progress]
+
+**Actor:** Agent
+**Files Changed:**
+- `backend/src/common/utils/refresh-session-store.util.ts` (+spec) — JSON v3 (`id`,`c`,`l`,`ip`,`ua`), đọc được v2/bcrypt cũ; list/count/has/revoke, `describeDevice`, `toSessionView`
+- `backend/src/common/utils/session-alive-cache.util.spec.ts` (mới), `users.service.spec.ts` — test P5
+- `backend/src/modules/users/users.service.ts`, `users.controller.ts` — `isSessionAlive` (cache 15s), `revokeRefreshSessions` (CAS), `getSessionCountMap` (đếm ở ứng dụng), `GET/DELETE /users/:id/sessions[/:sid]` + audit `SESSION_REVOKED`/`FORCE_LOGOUT`; `GET /users` thêm `sessionCount`; `resetPassword` thu hồi mọi phiên
+- `backend/src/modules/auth/auth.service.ts`, `auth.controller.ts`, `strategies/jwt.strategy.ts` — `sid` trong access/refresh token; `GET/DELETE /auth/sessions[/:sid]`; refresh ghi ip/ua (IP từ `getDirectClientIp`); phiên bị thu hồi -> 401 `SESSION_REVOKED`, không coi là tái sử dụng token
+- `frontend`: `lib/api/sessions.api.ts` (+test), `components/sessions/{SessionList,MySessionsSection,UserSessionsModal}.tsx`, `/profile` (mục "Thiết bị đang đăng nhập"), `/users` (cột "Số thiết bị" + nút "Thiết bị", ẩn với Manager xem Admin)
+
+**Notes:**
+> - Chỉ chạy `tsc --noEmit` (BE sạch; FE chỉ còn lỗi `logo.png` có sẵn). CHƯA chạy jest/vitest/build — chạy sau.
+> - Không cần migration. Token cũ (trước P5) không có `sid` -> bỏ qua kiểm tra, tự hết hạn.
+> - Độ trễ đăng xuất cưỡng bức ≤ ~15 giây (cache theo instance).
+> - `rotateRefreshToken` có thêm tham số thứ 5 (`meta`); spec cũ assert đúng 4 tham số (nếu có) cần cập nhật.
+
+---

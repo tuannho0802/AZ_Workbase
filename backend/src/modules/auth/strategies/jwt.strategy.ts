@@ -7,6 +7,7 @@ import { isTransientDbError, withDbRetry } from '../../../common/utils/db-transi
 import { getCachedAuthUser, setCachedAuthUser } from '../../../common/utils/auth-user-cache.util';
 import { User } from '../../../database/entities/user.entity';
 import { getJwtSecret } from '../../../common/security/jwt-secrets';
+import { SessionRevokedException } from '../session-revoked.exception';
 
 @Injectable()
 export class JwtStrategy extends PassportStrategy(Strategy) {
@@ -52,8 +53,25 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
       throw new UnauthorizedException('Phiên đăng nhập không hợp lệ');
     }
 
+    // P5: access token có `sid` -> phiên đó phải còn trong store. Cache 15s/instance nên KHÔNG thêm query mỗi request;
+    // đăng xuất cưỡng bức ở instance khác có hiệu lực trong tối đa ~15s. Token cũ (trước P5) không có `sid` -> bỏ qua.
+    if (typeof payload.sid === 'string' && payload.sid) {
+      let alive: boolean;
+      try {
+        alive = await withDbRetry(() => this.usersService.isSessionAlive(user!.id, payload.sid));
+      } catch (err) {
+        if (isTransientDbError(err)) {
+          throw new ServiceUnavailableException('Hệ thống đang bận, vui lòng thử lại sau giây lát');
+        }
+        throw err;
+      }
+      if (!alive) throw new SessionRevokedException();
+    }
+
     return { 
       id: user.id, 
+      // P5: mã phiên hiện tại (null với token cũ) - dùng đánh dấu "Thiết bị này" và chặn tự đăng xuất nhầm.
+      sid: typeof payload.sid === 'string' ? payload.sid : null,
       email: user.email, 
       role: user.role,
       // ⚠️ FIX BUG THẬT (2026-09-23): trước đây object này KHÔNG có field
