@@ -103,7 +103,8 @@ import { KeepAliveController } from './keep-alive/keep-alive.controller';
     ServeStaticModule.forRoot({
       rootPath: join(process.cwd(), 'public'),
       serveRoot: '/',
-      exclude: ['/api/(.*)'],
+      // [AGENT] OLD CODE: exclude: ['/api/(.*)'], (cú pháp không hợp lệ với path-to-regexp 8.x)
+      exclude: ['/api{/*path}'],
       serveStaticOptions: {
         index: ['index.html'],
       },
