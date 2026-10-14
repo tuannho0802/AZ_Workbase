@@ -1,6 +1,25 @@
 import axiosInstance from './axios-instance';
 import { AuditFilters, AuditLog, PaginatedAuditResponse, AuditSettings } from '../types/audit.types';
 
+/** PLAN_RETENTION Phase 2 (A2): xoá nhiều khoảng ngày. Ngày là chuỗi `YYYY-MM-DD` (giờ VN), KHÔNG dùng toISOString(). */
+export interface CleanupRangesPayload {
+  ranges: Array<{ from: string; to: string }>;
+  includeSecurityEvents?: boolean;
+}
+
+export interface CleanupRangesResult {
+  dryRun: boolean;
+  perRange: Array<{ from: string; to: string; count: number }>;
+  total: number;
+  /** true = hết ngân sách thời gian, còn dữ liệu -> chạy lại (idempotent). */
+  partial: boolean;
+  /** Khoảng bị loại vì nằm trọn từ hôm nay trở đi. */
+  dropped: Array<{ from: string; to: string }>;
+  /** Chỉ có ở audit_logs. */
+  includeSecurityEvents?: boolean;
+  securityEvents?: number;
+}
+
 export const auditApi = {
   getLogs: async (filters: AuditFilters): Promise<PaginatedAuditResponse> => {
     const params: any = { ...filters };
@@ -36,6 +55,13 @@ export const auditApi = {
   cleanupByRange: async (from: string, to: string): Promise<{ success: boolean; count: number }> => {
     const response = await axiosInstance.delete('/audit-logs/cleanup', {
       params: { from, to }
+    });
+    return response.data;
+  },
+
+  cleanupRanges: async (payload: CleanupRangesPayload, dryRun: boolean): Promise<CleanupRangesResult> => {
+    const response = await axiosInstance.post<CleanupRangesResult>('/audit-logs/cleanup-ranges', payload, {
+      params: dryRun ? { dryRun: 'true' } : undefined,
     });
     return response.data;
   },

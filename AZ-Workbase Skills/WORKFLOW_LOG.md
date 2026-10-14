@@ -7777,3 +7777,35 @@ Now [deploy]
 > - Chưa chạy migration lên DB nào; cần đặt `CRON_SECRET` trên Vercel (đã có sẵn cho 2 cron cũ).
 
 ---
+
+## [2026-10-14] | PLAN_RETENTION_SECURITY_ROADMAP — Phase 2: Xoá theo nhiều khoảng ngày (A2) | [Status: Success]
+
+**Actor:** Agent
+**Files Changed:**
+- `backend/src/common/utils/date-ranges.util.ts` (+spec) — `normalizeDateRanges` (validate, cắt `to` về hôm qua VN, loại khoảng rỗng, gộp chồng lấn/liền kề, tối đa 20 khoảng / 366 ngày), `vnRangeToUtcBounds`
+- `backend/src/common/utils/range-cleanup.util.ts` (+spec) — đếm/xoá theo lô `DELETE ... LIMIT 5000` + ngân sách 8s, trả `partial`
+- `backend/src/modules/audit/dto/audit-cleanup.dto.ts` — `DateRangeDto`, `CleanupRangesDto`
+- `backend/src/modules/audit/audit.service.ts`, `modules/periodic-tasks/periodic-task-audit.service.ts` — `cleanupByRanges(dto, adminId, dryRun)`; audit ghi đúng 1 dòng SAU khi xoá
+- `backend/src/modules/audit/audit.controller.ts` — `POST /audit-logs/cleanup-ranges` (`audit.manage`)
+- `backend/src/modules/periodic-tasks/periodic-tasks.controller.ts` — `POST /periodic-tasks/audit-logs/cleanup-ranges` (`periodic_tasks.delete` + `assertCanManageAuditLogs`)
+- `backend/src/modules/audit/audit-cleanup-ranges.spec.ts` — spec service + khoá guard/permission/thứ tự route
+- `frontend/src/components/audit/CleanupRangesModal.tsx` (+test) — modal dùng chung (xem trước → gõ `XÁC NHẬN` → xoá)
+- `frontend/src/lib/api/audit.api.ts`, `periodic-task-audit-logs.api.ts`, `audit-meta.ts` (2 action mới)
+- `frontend/src/app/(dashboard)/audit-logs/page.tsx`, `lich-su-cong-viec/page.tsx` — nút "Dọn dẹp theo thời gian" mở modal mới (handler cũ giữ trong comment OLD CODE)
+- `AZ-Workbase Skills/PERMISSIONS.md` (§2.7), `PLAN_RETENTION_SECURITY_ROADMAP.md` (tick P2)
+
+**Root Cause (nếu là bug fix):**
+> Bản xoá 1 khoảng cũ dùng `Between(new Date(from), new Date(to)+1 ngày)`: phụ thuộc timezone Node, `Between` gồm cả đúng 00:00 ngày kế tiếp, và FE gửi `toISOString()`.
+
+**Solution:**
+> So sánh ở SQL bằng cận UTC nửa mở `[from, to+1d)` đã lùi 7h (VN→UTC, cùng quy ước `report-range.util.ts`), vì `created_at` do DB tự sinh theo session UTC. KHÔNG dùng công thức thô `created_at >= ? AND created_at < ? + INTERVAL 1 DAY` trong plan (sẽ lệch 7 tiếng so với ngày VN). FE gửi `YYYY-MM-DD`.
+
+**Notes:**
+> - Không migration, không permission key mới; mỗi route mới dùng đúng key của route cũ (spec khoá lại).
+> - Plan ghi nhầm path `/audit/cleanup-ranges`; route thật là `/audit-logs/cleanup-ranges`.
+> - Chữ xác nhận chọn `XÁC NHẬN` (khớp các modal xoá sẵn có), không phải `XOA`.
+> - Xoá theo lô, không bọc 1 transaction dài; hết ngân sách → `partial=true`, FE giữ modal và bắt xem trước lại (idempotent).
+> - Endpoint 1 khoảng cũ (`DELETE .../cleanup`) giữ nguyên, FE không còn gọi.
+> - Chưa test với DB thật (chỉ mock `query`); cần thử tay `dryRun` trên môi trường có dữ liệu để đối chiếu cận giờ VN.
+
+---

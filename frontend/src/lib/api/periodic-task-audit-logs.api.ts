@@ -1,4 +1,5 @@
 import axiosInstance from './axios-instance';
+import type { CleanupRangesPayload, CleanupRangesResult } from './audit.api';
 import {
   PaginatedPeriodicTaskAuditLogs,
   PaginatedPeriodicTaskAuditLogsGlobal,
@@ -60,6 +61,13 @@ export const periodicTaskAuditLogsApi = {
   bulkDelete: async (ids: number[]): Promise<{ success: boolean }> => {
     const response = await axiosInstance.delete<{ success: boolean }>('/periodic-tasks/audit-logs/bulk', {
       data: { ids },
+    });
+    return response.data;
+  },
+
+  cleanupRanges: async (payload: CleanupRangesPayload, dryRun: boolean): Promise<CleanupRangesResult> => {
+    const response = await axiosInstance.post<CleanupRangesResult>('/periodic-tasks/audit-logs/cleanup-ranges', payload, {
+      params: dryRun ? { dryRun: 'true' } : undefined,
     });
     return response.data;
   },

@@ -525,6 +525,19 @@ tái dùng `audit.view`/`audit.manage`:**
 
 Spec khoá hợp đồng: `retention-cron.controller.spec.ts` (guard class + đúng key từng route + secret).
 
+**Xoá nhiều khoảng ngày (PLAN_RETENTION Phase 2 / A2) — KHÔNG permission key mới, KHÔNG migration; mỗi route
+dùng ĐÚNG key + rule của route 1-khoảng cũ (có spec khoá `audit-cleanup-ranges.spec.ts`):**
+
+| Endpoint | Guard | Ghi chú |
+|---|---|---|
+| `POST /audit-logs/cleanup-ranges` | `audit.manage` (= `DELETE /audit-logs/cleanup` cũ) | Body `{ranges:[{from,to}] (1–20), includeSecurityEvents?}`; `?dryRun=true` chỉ đếm, không xoá/không ghi log. Mặc định KHÔNG xoá action trong `RETENTION_PROTECTED_AUDIT_ACTIONS` (`UNLOCK_LOGIN`) |
+| `POST /periodic-tasks/audit-logs/cleanup-ranges` | `periodic_tasks.delete` + `assertCanManageAuditLogs` (admin hoặc scope `all`) (= `DELETE /periodic-tasks/audit-logs/cleanup` cũ) | Cùng body/`dryRun`, không có `includeSecurityEvents` |
+
+Ngày là `YYYY-MM-DD` theo giờ VN; BE đổi sang cận UTC (lùi 7h, cùng quy ước `report-range.util.ts`) vì `created_at` do DB
+tự sinh theo session UTC. `to` bị cắt về hôm qua (VN) để không xoá dấu vết của chính lần xoá. Mỗi lần xoá thật ghi
+đúng 1 dòng `ADMIN_CLEANUP_AUDIT_LOGS_RANGES` / `ADMIN_CLEANUP_TASK_AUDIT_LOGS_RANGES` vào `audit_logs`. Cả 2 route khai
+TRƯỚC route `:id` của controller.
+
 ### 2.8. Xác thực & Đăng ký tài khoản (`modules/auth`) — ✅ ĐÃ KHỚP
 
 Employee/nhân viên mới có thể tự đăng ký (`POST /auth/register`, không cần token — luôn tạo

@@ -1,3 +1,6 @@
+import { CleanupRangesDto } from '../audit/dto/audit-cleanup.dto';
+import { normalizeDateRanges } from '../../common/utils/date-ranges.util';
+import { runRangeCleanup } from '../../common/utils/range-cleanup.util';
 import { Injectable, Logger } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Between, In, Repository } from 'typeorm';
@@ -317,5 +320,30 @@ export class PeriodicTaskAuditService {
       null,
     );
     return { success: true, count };
+  }
+
+  /**
+   * PLAN_RETENTION Phase 2 (A2): xoá nhiều khoảng ngày (giờ VN). Mirror `AuditService.cleanupByRanges()`
+   * nhưng không có khái niệm "sự kiện bảo mật" ở bảng này. Dòng audit tự ghi vào `audit_logs` chung.
+   */
+  async cleanupByRanges(dto: CleanupRangesDto, adminId: number, dryRun: boolean) {
+    const { ranges, dropped } = normalizeDateRanges(dto.ranges);
+    const result = await runRangeCleanup({
+      query: (sql, params) => this.auditLogRepository.query(sql, params),
+      table: 'periodic_task_audit_logs',
+      ranges,
+      dryRun,
+    });
+    if (dryRun) return { dryRun: true, ...result, dropped };
+
+    if (ranges.length > 0) {
+      await this.auditService.logAction(adminId, 'ADMIN_CLEANUP_TASK_AUDIT_LOGS_RANGES', 'periodic_task_audit_log', 0, {
+        ranges,
+        perRange: result.perRange,
+        total: result.total,
+        partial: result.partial,
+      }, null);
+    }
+    return { dryRun: false, ...result, dropped };
   }
 }

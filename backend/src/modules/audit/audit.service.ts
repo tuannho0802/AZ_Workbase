@@ -1,3 +1,7 @@
+import { CleanupRangesDto } from './dto/audit-cleanup.dto';
+import { normalizeDateRanges } from '../../common/utils/date-ranges.util';
+import { runRangeCleanup, countActionsInRanges } from '../../common/utils/range-cleanup.util';
+import { RETENTION_PROTECTED_AUDIT_ACTIONS } from '../retention/retention.constants';
 import { Injectable, Logger } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, LessThan, In, Between } from 'typeorm';
@@ -347,6 +351,42 @@ export class AuditService {
 
     await this.logAction(adminId, 'ADMIN_CLEANUP_AUDIT_LOGS', 'audit_log', 0, { from, to, count }, null);
     return { success: true, count };
+  }
+
+  /**
+   * PLAN_RETENTION Phase 2 (A2): xoá nhiều khoảng ngày (giờ VN) trong 1 lần. `dryRun` chỉ đếm, không ghi gì.
+   * Mặc định KHÔNG xoá action bảo mật (`RETENTION_PROTECTED_AUDIT_ACTIONS`) trừ khi `includeSecurityEvents`.
+   * Chạy thật ghi ĐÚNG 1 dòng audit SAU khi xoá (`ADMIN_CLEANUP_AUDIT_LOGS_RANGES`).
+   */
+  async cleanupByRanges(dto: CleanupRangesDto, adminId: number, dryRun: boolean) {
+    const { ranges, dropped } = normalizeDateRanges(dto.ranges);
+    const includeSecurityEvents = dto.includeSecurityEvents === true;
+    const query = (sql: string, params?: unknown[]) => this.auditLogRepository.query(sql, params);
+
+    const result = await runRangeCleanup({
+      query,
+      table: 'audit_logs',
+      ranges,
+      excludeActions: includeSecurityEvents ? [] : RETENTION_PROTECTED_AUDIT_ACTIONS,
+      dryRun,
+    });
+
+    if (dryRun) {
+      // Xem trước: hiện riêng số sự kiện bảo mật nằm trong các khoảng (đã/ chưa nằm trong `total` tuỳ checkbox).
+      const securityEvents = await countActionsInRanges(query, ranges, RETENTION_PROTECTED_AUDIT_ACTIONS);
+      return { dryRun: true, ...result, dropped, includeSecurityEvents, securityEvents };
+    }
+
+    if (ranges.length > 0) {
+      await this.logAction(adminId, 'ADMIN_CLEANUP_AUDIT_LOGS_RANGES', 'audit_log', 0, {
+        ranges,
+        perRange: result.perRange,
+        total: result.total,
+        includeSecurityEvents,
+        partial: result.partial,
+      }, null);
+    }
+    return { dryRun: false, ...result, dropped, includeSecurityEvents };
   }
 
   async bulkDelete(ids: number[], adminId: number) {

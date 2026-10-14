@@ -213,8 +213,10 @@ export const ACTION_META: Record<string, ActionMeta> = {
   UPDATE_RETENTION_SETTINGS: m('Cập nhật cấu hình dọn dẹp tự động (Retention)', 'default', 'audit'),
   ADMIN_CLEANUP_AUDIT_LOGS: m('Admin dọn dẹp nhật ký', 'volcano', 'audit'),
   ADMIN_BULK_DELETE_AUDIT_LOGS: m('Admin xóa nhật ký hàng loạt', 'volcano', 'audit'),
+  ADMIN_CLEANUP_AUDIT_LOGS_RANGES: m('Admin dọn dẹp nhật ký theo nhiều khoảng ngày', 'volcano', 'audit'),
   ADMIN_CLEANUP_TASK_AUDIT_LOGS: m('Admin dọn dẹp nhật ký công việc định kỳ', 'volcano', 'audit'),
   ADMIN_BULK_DELETE_TASK_AUDIT_LOGS: m('Admin xóa nhật ký công việc định kỳ hàng loạt', 'volcano', 'audit'),
+  ADMIN_CLEANUP_TASK_AUDIT_LOGS_RANGES: m('Admin dọn dẹp nhật ký công việc định kỳ theo nhiều khoảng ngày', 'volcano', 'audit'),
 };
 
 // ─── Fallback cho action CHƯA có nhãn (BE thêm mới, FE chưa kịp cập nhật) ───
@@ -327,8 +329,10 @@ const FIXED_SUBJECT_BY_ACTION: Record<string, string> = {
   UPDATE_RETENTION_SETTINGS: 'Cấu hình dọn dẹp tự động',
   ADMIN_CLEANUP_AUDIT_LOGS: 'Nhật ký hệ thống',
   ADMIN_BULK_DELETE_AUDIT_LOGS: 'Nhật ký hệ thống',
+  ADMIN_CLEANUP_AUDIT_LOGS_RANGES: 'Nhật ký hệ thống',
   ADMIN_CLEANUP_TASK_AUDIT_LOGS: 'Nhật ký công việc định kỳ',
   ADMIN_BULK_DELETE_TASK_AUDIT_LOGS: 'Nhật ký công việc định kỳ',
+  ADMIN_CLEANUP_TASK_AUDIT_LOGS_RANGES: 'Nhật ký công việc định kỳ',
   HARD_DELETE_PERIODIC_TASKS: 'Thùng rác công việc định kỳ',
   EMPTY_PERIODIC_TASK_TRASH: 'Thùng rác công việc định kỳ',
   REMATCH_ATTENDANCE_LOGS: 'Log chấm công chưa khớp nhân viên',

@@ -22,6 +22,7 @@ import { AuditLog, AuditFilters, AuditSettings } from '@/lib/types/audit.types';
 import { RetentionSettingsPanel } from '@/components/system/RetentionSettingsPanel';
 import dayjs from 'dayjs';
 import { LazyAuditDiff } from '@/components/audit/LazyAuditDiff';
+import { CleanupRangesModal } from '@/components/audit/CleanupRangesModal';
 import { useMyPermissions } from '@/lib/hooks/useMyPermissions';
 import { useRoleColorMap } from '@/lib/hooks/useRoleColorMap';
 import { SalesUserSelect } from '@/components/customers/SalesUserSelect';
@@ -165,6 +166,7 @@ export default function AuditLogsPage() {
   // sang permission ĐỘNG, tách đúng 2 quyền theo BE (`audit.view` khác
   // `audit.manage` - xem audit.controller.ts).
   const canManageAudit = can('audit.manage');
+  const [cleanupOpen, setCleanupOpen] = useState(false);
   const hasAuditView = can('audit.view');
   const queryClient = useQueryClient();
 
@@ -482,6 +484,7 @@ export default function AuditLogsPage() {
     });
   };
 
+  /* [AGENT] OLD CODE (xoá 1 khoảng bằng modal.confirm, gửi toISOString() dễ lệch múi giờ; giữ lại để rollback — thay bằng CleanupRangesModal, endpoint DELETE .../cleanup cũ vẫn còn ở BE):
   const handleCleanupRange = () => {
     let range: [dayjs.Dayjs | null, dayjs.Dayjs | null] | null = null;
     modal.confirm({
@@ -521,6 +524,7 @@ export default function AuditLogsPage() {
       }
     });
   };
+  */
 
   // ── Table definitions ──────────────────────────────────────────────────
   const columns: ColumnsType<AuditLog> = [
@@ -651,7 +655,7 @@ export default function AuditLogsPage() {
                 <Button 
                   danger 
                   icon={<ClearOutlined />} 
-                  onClick={handleCleanupRange}
+                  onClick={() => setCleanupOpen(true)}
                 >
                   Dọn dẹp theo thời gian
                 </Button>
@@ -927,6 +931,17 @@ export default function AuditLogsPage() {
           </div>
         )}
       </Drawer>
+
+      {/* PLAN_RETENTION Phase 2 (A2): xoá nhiều khoảng ngày (xem trước -> xác nhận -> xoá). Gate: audit.manage. */}
+      {canManageAudit && (
+        <CleanupRangesModal
+          open={cleanupOpen}
+          onClose={() => setCleanupOpen(false)}
+          scope="audit"
+          run={(payload, dryRun) => auditApi.cleanupRanges(payload, dryRun)}
+          onDone={() => fetchLogs()}
+        />
+      )}
     </div>
   );
 }

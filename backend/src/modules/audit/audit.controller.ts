@@ -1,8 +1,8 @@
-import { Controller, Get, Post, Delete, Query, Body, Param, ParseIntPipe, NotFoundException, UseGuards, Req } from '@nestjs/common';
+import { Controller, Get, Post, Delete, HttpCode, Query, Body, Param, ParseIntPipe, NotFoundException, UseGuards, Req } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { AuditService } from './audit.service';
 import { GetAuditLogsDto } from './dto/get-audit-logs.dto';
-import { UpdateAuditSettingsDto, CleanupAuditLogsDto, BulkDeleteAuditLogsDto } from './dto/audit-cleanup.dto';
+import { UpdateAuditSettingsDto, CleanupAuditLogsDto, BulkDeleteAuditLogsDto, CleanupRangesDto } from './dto/audit-cleanup.dto';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { PermissionGuard } from '../../common/guards/permission.guard';
 import { RequirePermission } from '../../common/decorators/require-permission.decorator';
@@ -40,6 +40,15 @@ export class AuditController {
   @ApiOperation({ summary: 'Lấy cấu hình dọn dẹp nhật ký' })
   async getSettings() {
     return this.auditService.getCleanupSettings();
+  }
+
+  // PLAN_RETENTION Phase 2 (A2). Khai TRƯỚC `@Get(':id')`. Cùng permission `audit.manage` với `DELETE cleanup` cũ.
+  @Post('cleanup-ranges')
+  @HttpCode(200)
+  @RequirePermission('audit.manage')
+  @ApiOperation({ summary: 'Xóa nhật ký theo NHIỀU khoảng ngày (tối đa 20). `?dryRun=true` chỉ xem trước, không xoá/không ghi log.' })
+  async cleanupRanges(@Body() dto: CleanupRangesDto, @Query('dryRun') dryRun: string | undefined, @Req() req: any) {
+    return this.auditService.cleanupByRanges(dto, req.user.id, dryRun === 'true');
   }
 
   // ⚠️ Route TĨNH ('actions'/'settings' ở trên) PHẢI khai TRƯỚC route

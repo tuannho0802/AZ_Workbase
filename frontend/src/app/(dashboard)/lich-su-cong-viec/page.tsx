@@ -28,6 +28,7 @@ import { useMyPermissions } from '@/lib/hooks/useMyPermissions';
 import { RetentionSettingsPanel } from '@/components/system/RetentionSettingsPanel';
 import { useRoleColorMap } from '@/lib/hooks/useRoleColorMap';
 import { getApiErrorMessage } from '@/lib/utils/error-message.util';
+import { CleanupRangesModal } from '@/components/audit/CleanupRangesModal';
 
 const { Text, Title } = Typography;
 const { RangePicker } = DatePicker;
@@ -122,6 +123,7 @@ export default function TaskHistoryPage() {
   const { getRoleColor } = useRoleColorMap();
   // Bulk-xoá/dọn dẹp log CHỈ cho scope 'all' (BE cũng chặn) - scope 'own' chỉ để xoá Task của mình.
   const canManage = can('periodic_tasks.delete') && scope('periodic_tasks.delete') === 'all';
+  const [cleanupOpen, setCleanupOpen] = useState(false);
 
   useEffect(() => {
     if (!permissionsLoading && user && !can('periodic_tasks.audit_view')) {
@@ -268,6 +270,7 @@ export default function TaskHistoryPage() {
     });
   };
 
+  /* [AGENT] OLD CODE (xoá 1 khoảng bằng modal.confirm, gửi toISOString() dễ lệch múi giờ; giữ lại để rollback — thay bằng CleanupRangesModal, endpoint DELETE .../cleanup cũ vẫn còn ở BE):
   const handleCleanupRange = () => {
     let range: [dayjs.Dayjs | null, dayjs.Dayjs | null] | null = null;
     modal.confirm({
@@ -309,6 +312,7 @@ export default function TaskHistoryPage() {
       },
     });
   };
+  */
 
   // ── Table definitions ──────────────────────────────────────────────────
   const columns: ColumnsType<PeriodicTaskAuditLogGlobal> = [
@@ -390,7 +394,7 @@ export default function TaskHistoryPage() {
           <Space>
             {canManage && (
               <>
-                <Button danger icon={<ClearOutlined />} onClick={handleCleanupRange}>
+                <Button danger icon={<ClearOutlined />} onClick={() => setCleanupOpen(true)}>
                   Dọn dẹp theo thời gian
                 </Button>
                 {selectedRowKeys.length > 0 && !isMobile && (
@@ -511,6 +515,17 @@ export default function TaskHistoryPage() {
         <div style={{ marginTop: 24 }}>
           <RetentionSettingsPanel />
         </div>
+      )}
+
+      {/* PLAN_RETENTION Phase 2 (A2): đúng điều kiện canManage hiện có của trang này. */}
+      {canManage && (
+        <CleanupRangesModal
+          open={cleanupOpen}
+          onClose={() => setCleanupOpen(false)}
+          scope="task-audit"
+          run={(payload, dryRun) => periodicTaskAuditLogsApi.cleanupRanges(payload, dryRun)}
+          onDone={() => fetchLogs()}
+        />
       )}
     </div>
   );

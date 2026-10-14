@@ -1,4 +1,4 @@
-import { Logger, Controller, Get, Post, Body, Patch, Param, Delete, Query, UseGuards, ParseIntPipe, NotFoundException, ForbiddenException } from '@nestjs/common';
+import { Logger, Controller, HttpCode, Get, Post, Body, Patch, Param, Delete, Query, UseGuards, ParseIntPipe, NotFoundException, ForbiddenException } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiResponse, ApiBearerAuth } from '@nestjs/swagger';
 import { PeriodicTasksService } from './periodic-tasks.service';
 import { PeriodicTaskLinksService } from './periodic-task-links.service';
@@ -24,6 +24,7 @@ import {
   BulkDeletePeriodicTaskAuditLogsDto,
   CleanupPeriodicTaskAuditLogsDto,
 } from './dto/get-periodic-task-audit-logs.dto';
+import { CleanupRangesDto } from '../audit/dto/audit-cleanup.dto';
 import { GetPeriodicTaskLinksBatchDto } from './dto/get-periodic-task-links-batch.dto';
 import { PeriodicTaskAuditService } from './periodic-task-audit.service';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
@@ -229,6 +230,21 @@ export class PeriodicTasksController {
   ) {
     this.assertCanManageAuditLogs(user, scope);
     return this.periodicTaskAuditService.cleanupByDateRange(dto.from, dto.to, user.id);
+  }
+
+  // PLAN_RETENTION Phase 2 (A2): cùng permission + cùng rule phạm vi "Toàn bộ" với `DELETE audit-logs/cleanup` cũ.
+  @Post('audit-logs/cleanup-ranges')
+  @HttpCode(200)
+  @RequirePermission('periodic_tasks.delete')
+  @ApiOperation({ summary: 'Dọn dẹp log lịch sử theo NHIỀU khoảng ngày (tối đa 20). `?dryRun=true` chỉ xem trước.' })
+  cleanupAuditLogsRanges(
+    @Body() dto: CleanupRangesDto,
+    @Query('dryRun') dryRun: string | undefined,
+    @GetUser() user: any,
+    @GetPermissionScope() scope: string | null | undefined,
+  ) {
+    this.assertCanManageAuditLogs(user, scope);
+    return this.periodicTaskAuditService.cleanupByRanges(dto, user.id, dryRun === 'true');
   }
 
   @Get(':id')
