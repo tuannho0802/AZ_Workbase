@@ -17,6 +17,16 @@ export interface IpBlocksResponse {
     config: { ipMaxFailedAttempts: number; ipWindowMinutes: number; ipLockMinutes: number };
 }
 
+/** 1 dòng whitelist IP (GET /security/ip-whitelist). */
+export interface IpWhitelistItem {
+    id: number;
+    ip: string;
+    note: string | null;
+    createdByName: string | null;
+    createdAgoSeconds: number;
+}
+export interface IpWhitelistResponse { items: IpWhitelistItem[]; myIp: string | null }
+
 export interface SecurityEvent {
   id: number;
   userId: number | null;
@@ -61,4 +71,11 @@ export const securityApi = {
         const response = await axiosInstance.delete(`/security/ip-blocks/${encodeURIComponent(ip)}`);
         return response.data;
     },
+
+    // P3.5 — whitelist IP: miễn khoá theo IP (khoá email/tài khoản vẫn như thường).
+    getIpWhitelist: async (): Promise<IpWhitelistResponse> => (await axiosInstance.get<IpWhitelistResponse>('/security/ip-whitelist')).data,
+    addIpWhitelist: async (ip: string, note?: string): Promise<{ success: boolean; ip: string; clearedBlock: boolean }> =>
+        (await axiosInstance.post('/security/ip-whitelist', { ip, note: note || undefined })).data,
+    removeIpWhitelist: async (ip: string): Promise<{ success: boolean }> =>
+        (await axiosInstance.delete(`/security/ip-whitelist/${encodeURIComponent(ip)}`)).data,
 };

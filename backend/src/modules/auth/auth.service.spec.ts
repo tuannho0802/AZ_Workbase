@@ -9,6 +9,7 @@ import { ConfigService } from '@nestjs/config';
 import { ApprovalStatus } from '../../common/enums/approval-status.enum';
 import { SecurityConfigService, SECURITY_CONFIG_DEFAULTS } from '../../common/security/security-config.service';
 import { LoginIpBlockService } from '../../common/security/login-ip-block.service';
+import { LoginIpWhitelistService } from '../../common/security/login-ip-whitelist.service';
 
 describe('AuthService - Đăng ký công khai + chặn đăng nhập chưa duyệt', () => {
   let service: AuthService;
@@ -33,6 +34,7 @@ describe('AuthService - Đăng ký công khai + chặn đăng nhập chưa duy�
   const mockAuditService = { logActionAsync: jest.fn(), logSecurityEventAsync: jest.fn() };
   const mockSecurityConfig = { get: jest.fn() };
   const mockIpBlocks = { getRemainingSeconds: jest.fn(), recordFailure: jest.fn() };
+  const mockIpWhitelist = { isWhitelisted: jest.fn() };
 
   beforeEach(async () => {
     jest.clearAllMocks();
@@ -42,6 +44,7 @@ describe('AuthService - Đăng ký công khai + chặn đăng nhập chưa duy�
     mockSecurityConfig.get.mockResolvedValue({ ...SECURITY_CONFIG_DEFAULTS });
     mockIpBlocks.getRemainingSeconds.mockResolvedValue(0);
     mockIpBlocks.recordFailure.mockResolvedValue({ attempts: 1, lockedSeconds: 0 });
+    mockIpWhitelist.isWhitelisted.mockResolvedValue(false);
 
     const module: TestingModule = await Test.createTestingModule({
       providers: [
@@ -52,6 +55,7 @@ describe('AuthService - Đăng ký công khai + chặn đăng nhập chưa duy�
         { provide: AuditService, useValue: mockAuditService },
         { provide: SecurityConfigService, useValue: mockSecurityConfig },
         { provide: LoginIpBlockService, useValue: mockIpBlocks },
+        { provide: LoginIpWhitelistService, useValue: mockIpWhitelist },
       ],
     }).compile();
 
@@ -523,6 +527,49 @@ describe('AuthService - Đăng ký công khai + chặn đăng nhập chưa duy�
       expect(mockUsersService.updateLastLogin).toHaveBeenCalledWith(9, '1.2.3.4');
       expect(mockIpBlocks.recordFailure).not.toHaveBeenCalled();
       expect(mockAuditService.logSecurityEventAsync).not.toHaveBeenCalled();
+    });
+
+    describe('IP whitelist (P3.5)', () => {
+      beforeEach(() => mockIpWhitelist.isWhitelisted.mockResolvedValue(true));
+
+      it('IP whitelist dù bảng đang ghi khoá -> KHÔNG bị IP_LOCKED, không query khoá IP', async () => {
+        mockIpBlocks.getRemainingSeconds.mockResolvedValue(500);
+        mockUsersService.findByEmailIncludingDeleted.mockResolvedValue(user());
+        mockUsersService.saveRefreshToken.mockResolvedValue(undefined);
+        mockUsersService.updateLastLogin.mockResolvedValue(undefined);
+        const res = await service.login({ email: 'a@example.com', password: 'Correct@123' }, '1.2.3.4', 'UA/1');
+        expect(res).toBeDefined();
+        expect(mockIpBlocks.getRemainingSeconds).not.toHaveBeenCalled();
+        expect(mockIpWhitelist.isWhitelisted).toHaveBeenCalledWith('1.2.3.4');
+      });
+
+      it('email lạ từ IP whitelist -> 401, KHÔNG đếm IP, KHÔNG LOGIN_IP_BLOCKED, vẫn ghi LOGIN_UNKNOWN_EMAIL', async () => {
+        mockUsersService.findByEmailIncludingDeleted.mockResolvedValue(null);
+        const err = await login('x', 'ghost@example.com');
+        expect(err).toBeInstanceOf(UnauthorizedException);
+        expect(mockIpBlocks.recordFailure).not.toHaveBeenCalled();
+        const actions = mockAuditService.logSecurityEventAsync.mock.calls.map((c) => c[0].action);
+        expect(actions).toEqual(['LOGIN_UNKNOWN_EMAIL']);
+      });
+
+      it('sai mật khẩu từ IP whitelist -> VẪN đếm/khoá TÀI KHOẢN, không đếm IP', async () => {
+        mockUsersService.findByEmailIncludingDeleted.mockResolvedValue(user());
+        mockUsersService.recordFailedLogin.mockResolvedValue({ attempts: 5, lockedSeconds: 300 });
+        const err = await login('sai');
+        expect(err.getResponse()).toMatchObject({ code: 'LOGIN_LOCKED' });
+        expect(mockUsersService.recordFailedLogin).toHaveBeenCalled();
+        expect(mockIpBlocks.recordFailure).not.toHaveBeenCalled();
+        const actions = mockAuditService.logSecurityEventAsync.mock.calls.map((c) => c[0].action);
+        expect(actions).toEqual(expect.arrayContaining(['LOGIN_FAILED', 'ACCOUNT_LOCKED']));
+        expect(actions).not.toContain('LOGIN_IP_BLOCKED');
+      });
+
+      it('tài khoản đang bị khoá vẫn bị chặn dù IP whitelist', async () => {
+        mockUsersService.findByEmailIncludingDeleted.mockResolvedValue(user());
+        mockUsersService.getLoginLockRemainingSeconds.mockResolvedValue(120);
+        const err = await login('Correct@123');
+        expect(err.getResponse()).toMatchObject({ code: 'LOGIN_LOCKED' });
+      });
     });
 
     it('không có IP (null) -> vẫn đăng nhập/khoá tài khoản bình thường', async () => {

@@ -15,6 +15,8 @@ export const SECURITY_AUDIT_ACTIONS = [
   'FORCE_LOGOUT',
   'SESSION_REVOKED',
   'UPDATE_SECURITY_CONFIG',
+  'IP_WHITELIST_ADDED',
+  'IP_WHITELIST_REMOVED',
 ] as const;
 
 export type SecurityAuditAction = (typeof SECURITY_AUDIT_ACTIONS)[number];

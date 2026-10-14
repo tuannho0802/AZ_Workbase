@@ -33,8 +33,9 @@ describe('security-audit (P4.1)', () => {
     expect(sanitizeSecurityDetail(undefined)).toBeNull();
   });
 
-  it('có đủ 11 action theo plan, độ dài ≤ 50 (cột audit_logs.action), và job dọn chung bảo vệ tất cả', () => {
-    expect(SECURITY_AUDIT_ACTIONS).toHaveLength(11);
+  it('có đủ 13 action theo plan (11 gốc + 2 whitelist P3.5), độ dài ≤ 50 (cột audit_logs.action), và job dọn chung bảo vệ tất cả', () => {
+    expect(SECURITY_AUDIT_ACTIONS).toHaveLength(13);
+    expect(SECURITY_AUDIT_ACTIONS).toEqual(expect.arrayContaining(['IP_WHITELIST_ADDED', 'IP_WHITELIST_REMOVED']));
     for (const a of SECURITY_AUDIT_ACTIONS) expect(a.length).toBeLessThanOrEqual(50);
     expect(RETENTION_PROTECTED_AUDIT_ACTIONS).toEqual([...SECURITY_AUDIT_ACTIONS]);
   });

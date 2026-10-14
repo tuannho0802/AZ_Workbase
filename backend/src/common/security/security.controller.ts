@@ -1,4 +1,4 @@
-import { BadRequestException, Body, Controller, Delete, ForbiddenException, Get, NotFoundException, Param, Put, Query, Req, UseGuards } from '@nestjs/common';
+import { BadRequestException, Body, Controller, Delete, ForbiddenException, Get, NotFoundException, Param, Post, Put, Query, Req, UseGuards } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { PermissionGuard } from '../../common/guards/permission.guard';
@@ -9,9 +9,10 @@ import { PermissionScope } from '../../database/entities/role-permission.entity'
 import { AuditService } from '../../modules/audit/audit.service';
 import { normalizeIp } from '../../common/security/client-ip';
 import { LoginIpBlockService } from './login-ip-block.service';
+import { LoginIpWhitelistService } from './login-ip-whitelist.service';
 import { SECURITY_CONFIG_LIMITS, SecurityConfigService } from './security-config.service';
 import { SecurityActivityService } from './security-activity.service';
-import { GetSecurityEventsDto, UpdateSecurityConfigDto } from './dto/security-activity.dto';
+import { AddIpWhitelistDto, GetSecurityEventsDto, UpdateSecurityConfigDto } from './dto/security-activity.dto';
 import { SECURITY_AUDIT_ACTIONS } from './security-audit';
 
 /**
@@ -27,6 +28,7 @@ import { SECURITY_AUDIT_ACTIONS } from './security-audit';
 export class SecurityController {
     constructor(
         private readonly ipBlocks: LoginIpBlockService,
+        private readonly whitelist: LoginIpWhitelistService,
         private readonly config: SecurityConfigService,
         private readonly auditService: AuditService,
         private readonly activity: SecurityActivityService,
@@ -75,6 +77,63 @@ export class SecurityController {
     });
     return { success: true, message: 'Đã mở khoá IP' };
     }
+
+  // ───────── P3.5: whitelist IP (miễn khoá theo IP; khoá email/tài khoản vẫn như thường). Cùng quyền với `ip-blocks`. ─────────
+
+  @Get('ip-whitelist')
+  @RequirePermission('users.manage')
+  @ApiOperation({ summary: 'Danh sách IP được miễn khoá theo IP, kèm IP hiện tại của người gọi (myIp)' })
+  async listWhitelist(@Req() req: { user: { role: string }; ip?: string }, @GetPermissionScope() scope?: string | null) {
+    this.assertGlobalScope(req.user.role, scope);
+    return { items: await this.whitelist.list(), myIp: normalizeIp(req.ip) };
+  }
+
+  @Post('ip-whitelist')
+  @RequirePermission('users.manage')
+  @ApiOperation({ summary: 'Thêm IP vào whitelist (đồng thời gỡ khoá/bộ đếm hiện có của IP đó). Ghi audit IP_WHITELIST_ADDED' })
+  async addWhitelist(
+    @Body() dto: AddIpWhitelistDto,
+    @Req() req: { user: { id: number; role: string }; ip?: string; headers?: Record<string, unknown> },
+    @GetPermissionScope() scope?: string | null,
+  ) {
+    this.assertGlobalScope(req.user.role, scope);
+    if (!normalizeIp(dto.ip)) throw new BadRequestException('Địa chỉ IP không hợp lệ');
+    const added = await this.whitelist.add(dto.ip, dto.note ?? null, req.user.id);
+    const ua = typeof req.headers?.['user-agent'] === 'string' ? (req.headers['user-agent'] as string) : null;
+    this.auditService.logSecurityEventAsync({
+      userId: req.user.id,
+      action: 'IP_WHITELIST_ADDED',
+      entityId: added.id || undefined,
+      ip: normalizeIp(req.ip),
+      userAgent: ua,
+      detail: { whitelistedIp: added.ip, note: dto.note ?? null, clearedBlock: added.clearedBlock },
+    });
+    return { success: true, message: 'Đã thêm IP vào whitelist', ip: added.ip, clearedBlock: added.clearedBlock };
+  }
+
+  @Delete('ip-whitelist/:ip')
+  @RequirePermission('users.manage')
+  @ApiOperation({ summary: 'Gỡ IP khỏi whitelist. Ghi audit IP_WHITELIST_REMOVED' })
+  async removeWhitelist(
+    @Param('ip') ip: string,
+    @Req() req: { user: { id: number; role: string }; ip?: string; headers?: Record<string, unknown> },
+    @GetPermissionScope() scope?: string | null,
+  ) {
+    this.assertGlobalScope(req.user.role, scope);
+    if (!normalizeIp(ip)) throw new BadRequestException('Địa chỉ IP không hợp lệ');
+    const removed = await this.whitelist.remove(ip);
+    if (!removed) throw new NotFoundException('IP này không có trong whitelist.');
+    const ua = typeof req.headers?.['user-agent'] === 'string' ? (req.headers['user-agent'] as string) : null;
+    this.auditService.logSecurityEventAsync({
+      userId: req.user.id,
+      action: 'IP_WHITELIST_REMOVED',
+      entityId: removed.id,
+      ip: normalizeIp(req.ip),
+      userAgent: ua,
+      detail: { whitelistedIp: removed.ip },
+    });
+    return { success: true, message: 'Đã gỡ IP khỏi whitelist' };
+  }
 
   // ───────── PLAN Phase 4.3: trang "Hoạt động bảo mật" — tái dùng `audit.manage` (không tạo key mới) ─────────
 

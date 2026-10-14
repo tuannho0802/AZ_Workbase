@@ -21,6 +21,7 @@ import { Role } from '../../common/enums/role.enum';
 import { getJwtRefreshSecret } from '../../common/security/jwt-secrets';
 import { SecurityConfigService } from '../../common/security/security-config.service';
 import { LoginIpBlockService } from '../../common/security/login-ip-block.service';
+import { LoginIpWhitelistService } from '../../common/security/login-ip-whitelist.service';
 
 // [AGENT] OLD CODE (giữ để rollback, P3.1): hằng số cứng
 //   export const LOGIN_MAX_FAILED_ATTEMPTS = 5;
@@ -38,6 +39,7 @@ export class AuthService {
     private auditService: AuditService,
     private securityConfig: SecurityConfigService,
     private loginIpBlocks: LoginIpBlockService,
+    private loginIpWhitelist: LoginIpWhitelistService,
   ) {}
 
   private async generateTokens(userId: number, email: string, role: string) {
@@ -132,7 +134,9 @@ export class AuthService {
 
     // P3.2: kiểm tra khoá IP TRƯỚC mọi thứ khác (1 query rẻ). KHÔNG ghi sự kiện cho request bị từ chối vì IP khoá:
     // chỉ có 1 dòng LOGIN_IP_BLOCKED lúc bắt đầu khoá (P4.1) nên bảng audit không phình theo kẻ tấn công.
-    const ipLockedSeconds = await this.loginIpBlocks.getRemainingSeconds(ip);
+    // P3.5: IP trong whitelist -> bỏ qua CẢ kiểm tra khoá IP lẫn bộ đếm sai theo IP. Khoá theo TÀI KHOẢN giữ nguyên.
+    const ipWhitelisted = await this.loginIpWhitelist.isWhitelisted(ip);
+    const ipLockedSeconds = ipWhitelisted ? 0 : await this.loginIpBlocks.getRemainingSeconds(ip);
     if (ipLockedSeconds > 0) {
       throw this.buildIpLockedException(ipLockedSeconds);
     }
@@ -143,6 +147,7 @@ export class AuthService {
     };
     // Ghi nhận 1 lần sai vào bộ đếm IP; nếu lần này làm IP chạm ngưỡng -> ghi 1 dòng LOGIN_IP_BLOCKED.
     const recordIpFailure = async () => {
+      if (ipWhitelisted) return { attempts: 0, lockedSeconds: 0 };
       const res = await this.loginIpBlocks.recordFailure(ip, loginDto.email, ipCfg);
       if (res.lockedSeconds > 0) {
         this.auditService.logSecurityEventAsync({

@@ -2,24 +2,20 @@
 
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Alert, App, Button, Space, Table, Tag, Typography } from 'antd';
-import { LockOutlined, ReloadOutlined, UnlockOutlined } from '@ant-design/icons';
+import { LockOutlined, ReloadOutlined, SafetyOutlined, UnlockOutlined } from '@ant-design/icons';
 import type { ColumnsType } from 'antd/es/table';
 import { securityApi, type IpBlockItem } from '@/lib/api/security.api';
 import { formatCountdown, useCountdown } from '@/lib/hooks/useCountdown';
 import { getApiErrorMessage } from '@/lib/utils/error-message.util';
+import { formatAgo } from '@/lib/utils/format-ago';
+import { LoginIpWhitelistSection, WHITELIST_QUERY_KEY } from './LoginIpWhitelistSection';
 
 const { Text } = Typography;
 
 const QUERY_KEY = ['security-ip-blocks'];
 
-/** 90 -> "1 phút trước", 7300 -> "2 giờ trước". */
-export function formatAgo(seconds: number): string {
-    const s = Math.max(Math.floor(seconds), 0);
-    if (s < 60) return 'vừa xong';
-    if (s < 3600) return `${Math.floor(s / 60)} phút trước`;
-    if (s < 86400) return `${Math.floor(s / 3600)} giờ trước`;
-    return `${Math.floor(s / 86400)} ngày trước`;
-}
+// Giữ export cũ (nơi khác có thể import từ đây); logic nằm ở lib/utils/format-ago.ts.
+export { formatAgo };
 
 function IpLockStatus({ seconds, onExpire }: { seconds: number; onExpire: () => void }) {
     const remaining = useCountdown(seconds, onExpire);
@@ -67,6 +63,30 @@ export const LoginIpBlocksTab = () => {
         });
     };
 
+    // P3.5: đưa IP vào whitelist ngay từ dòng này (BE đồng thời gỡ khoá/bộ đếm của IP đó).
+    const handleWhitelist = (record: IpBlockItem) => {
+        modal.confirm({
+            title: `Miễn khoá IP ${record.ip}?`,
+            content:
+                'IP này sẽ không bị khoá theo IP nữa (tài khoản/email vẫn bị khoá nếu sai mật khẩu quá ngưỡng). Chỉ làm với IP bạn tin tưởng, vd văn phòng.',
+            okText: 'Thêm vào whitelist',
+            cancelText: 'Huỷ',
+            onOk: async () => {
+                try {
+                    await securityApi.addIpWhitelist(
+                        record.ip,
+                        record.lastEmail ? `Từ tab IP bị khoá (email thử: ${record.lastEmail})` : 'Từ tab IP bị khoá',
+                    );
+                    message.success(`Đã thêm ${record.ip} vào whitelist`);
+                    await queryClient.invalidateQueries({ queryKey: QUERY_KEY });
+                    await queryClient.invalidateQueries({ queryKey: WHITELIST_QUERY_KEY });
+                } catch (err) {
+                    message.error(getApiErrorMessage(err, 'Thêm vào whitelist thất bại'));
+                }
+            },
+        });
+    };
+
     const cfg = data?.config;
 
     const columns: ColumnsType<IpBlockItem> = [
@@ -99,6 +119,7 @@ export const LoginIpBlocksTab = () => {
             title: 'Thao tác',
             key: 'action',
             render: (_: unknown, r) => (
+                <Space wrap>
                 <Button
                     type={r.lockedSeconds > 0 ? 'primary' : 'default'}
                     icon={<UnlockOutlined />}
@@ -106,6 +127,10 @@ export const LoginIpBlocksTab = () => {
                 >
                     {r.lockedSeconds > 0 ? 'Mở khoá' : 'Xoá bộ đếm'}
                 </Button>
+                <Button icon={<SafetyOutlined />} onClick={() => handleWhitelist(r)}>
+                    Miễn khoá
+                </Button>
+                </Space>
             ),
         },
     ];
@@ -135,6 +160,7 @@ export const LoginIpBlocksTab = () => {
                 locale={{ emptyText: 'Không có IP nào bị khoá hoặc sai gần đây' }}
                 scroll={{ x: 'max-content' }}
             />
+            <LoginIpWhitelistSection />
         </Space>
     );
 };

@@ -7853,3 +7853,21 @@ Now [deploy]
 > - Trang Hoạt động bảo mật dùng phân trang thường (không `paginateByWeek`) — khác plan 4.3.
 > - Quyền: `audit.manage` cho trang/cấu hình; tab IP bị khoá cần `users.manage` scope `all`.
 > - Chưa chạy migration/test với MySQL thật trong lượt này (chỉ mock); câu SQL khoá IP đã test thật ở lượt trước.
+
+---
+
+## [2026-10-14] | PLAN_RETENTION_SECURITY_ROADMAP — Phase 3.5: Whitelist IP đăng nhập (hoàn tất phần còn dở của commit 4efe2cd) | [Status: Success]
+
+**Actor:** Agent
+**Files Changed:**
+- `backend/src/modules/auth/auth.service.ts` (+spec) — IP whitelist bỏ qua khoá/bộ đếm IP; khoá tài khoản giữ nguyên
+- `backend/src/common/security/security.module.ts`, `security.controller.ts` (+spec) — 3 endpoint `ip-whitelist` (GET/POST/DELETE) + audit; `security-audit.ts` (+2 action, spec 11→13); `dto/security-activity.dto.ts` (`AddIpWhitelistDto`); `login-ip-whitelist.service.spec.ts` (mới)
+- `frontend`: `LoginIpWhitelistSection.tsx` (mới), nút "Miễn khoá" ở `LoginIpBlocksTab.tsx`, `security.api.ts`, `audit-meta.ts`
+- `AZ-Workbase Skills/PLAN_RETENTION_SECURITY_ROADMAP.md` — thêm mục 3.5 + bảng migration + checklist
+
+**Notes:**
+> - Service/entity/migration/format-ago đã có sẵn từ commit `4efe2cd`; lượt này nối phần còn thiếu.
+> - Verify thật: backend `jest` 141 suite / 2169 test pass, `nest build` exit 0; FE `vitest run src/lib/utils src/lib/api` 218 pass; `tsc --noEmit` FE chỉ còn lỗi `logo.png` có sẵn (sandbox thiếu next-env).
+> - Cần chạy migration `1786331000000` trước khi dùng (chưa chạy thì whitelist coi như rỗng, đăng nhập vẫn bình thường). Chưa chạy với MySQL thật.
+> - Không tạo permission key mới (tái dùng `users.manage` scope `all`/admin).
+

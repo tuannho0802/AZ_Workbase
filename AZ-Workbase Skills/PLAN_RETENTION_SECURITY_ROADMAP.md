@@ -54,6 +54,7 @@
 | P1 | `1786300000000-CreateCronRuns` | bảng `cron_runs` |
 | P3 | `1786310000000-CreateSecurityConfig` | bảng `security_config` (1 dòng, seed mặc định) |
 | P3 | `1786320000000-AddLoginIpSecurity` | bảng `login_ip_blocks` + cột `users.last_login_ip` |
+| P3.5 | `1786331000000-CreateLoginIpWhitelist` | bảng `login_ip_whitelist` (IP miễn khoá theo IP) |
 | P4 | `1786330000000-AllowNullAuditUserId` | `audit_logs.user_id` → `NULL` được |
 | P5 | *(không có)* | mở rộng JSON, không đổi schema |
 | P6 | `1786340000000-AddPasswordPolicyToUsers` | `must_change_password`, `password_changed_at`, `password_expires_at` |
@@ -183,6 +184,21 @@ Migration `1786320000000-AddLoginIpSecurity`: bảng `login_ip_blocks(id, ip VAR
 - [ ] ⚠️ Xác nhận biến có trên **cả Preview lẫn Production** của Vercel trước khi deploy. Đây là mục dễ gây downtime nhất → **deploy riêng, đầu tiên của Phase 3**.
 - [ ] Spec: thiếu biến → ném lỗi; đủ biến → ký/verify khớp.
 
+### 3.5 Whitelist IP (bổ sung theo yêu cầu 2026-10-14)
+
+Mục tiêu: khi có trục trặc (vd văn phòng dùng chung 1 IP gõ nhầm hàng loạt), IP tin cậy **không bị khoá theo IP**; **chỉ khoá email/tài khoản như thường lệ**.
+
+- **Dữ liệu:** migration `1786331000000-CreateLoginIpWhitelist` → bảng `login_ip_whitelist(id, ip VARCHAR(45) UNIQUE, note VARCHAR(255) NULL, created_by INT NULL, created_at DATETIME)`. Chỉ khớp **đúng 1 địa chỉ** (đã chuẩn hoá bằng `normalizeIp`), **không CIDR**; tối đa 200 dòng.
+- **Hành vi đăng nhập (`AuthService.login`):** IP trong whitelist → bỏ qua **cả** kiểm tra `IP_LOCKED` **lẫn** bộ đếm sai theo IP (không ghi `login_ip_blocks`, không sinh `LOGIN_IP_BLOCKED`). Khoá theo tài khoản (`LOGIN_LOCKED`, `ACCOUNT_LOCKED`) **không đổi**. `LOGIN_FAILED`, `LOGIN_UNKNOWN_EMAIL` và `last_login_ip` vẫn ghi bằng IP thật.
+- **Cache** ~30 giây/instance (`LoginIpWhitelistService`); thêm/xoá xoá cache instance hiện tại, instance khác cập nhật sau ≤ 30 giây. Lỗi DB (vd chưa migrate) → coi như **không** có IP nào được miễn (không vô tình bỏ chặn) + `logger.error`, thử lại sau 5 giây.
+- **API** (`users.manage` scope `all` hoặc `role === admin`, như `ip-blocks`; **không tạo permission key mới**): `GET /security/ip-whitelist` (kèm `myIp`), `POST /security/ip-whitelist {ip, note?}`, `DELETE /security/ip-whitelist/:ip`. Thêm IP **đồng thời gỡ** dòng khoá/đếm hiện có của IP đó.
+- **Audit:** `IP_WHITELIST_ADDED`, `IP_WHITELIST_REMOVED` (thêm vào `SECURITY_AUDIT_ACTIONS` → được bảo vệ khỏi job dọn audit thường, hiện ở `/security-activity`).
+- **FE:** khối "IP được miễn khoá" dưới tab "IP bị khoá" ở `/users` (thêm IP + ghi chú, nút "Dùng IP hiện tại của tôi", gỡ có xác nhận) và nút "Miễn khoá" trên từng dòng IP bị khoá.
+- **Rủi ro:** whitelist làm yếu chặn brute-force theo IP cho địa chỉ đó — kẻ tấn công từ IP whitelist vẫn bị chặn ở mức tài khoản nhưng có thể dò **nhiều email** không giới hạn. Chỉ thêm IP tin cậy. Hỗ trợ CIDR/dải IP → làm sau.
+- [x] Migration + entity + `LoginIpWhitelistService` + nối vào `AuthService` — *đã làm 2026-10-14; còn: chạy migration `1786331000000`*
+- [x] API + audit + FE (khối whitelist, nút "Miễn khoá") — *đã làm 2026-10-14*
+- [x] Spec: whitelist không đếm/khoá IP nhưng vẫn khoá tài khoản; cache + lỗi DB fail-closed; add/remove/trùng/trần; quyền (scope department bị 403)
+
 ---
 
 ## PHASE 4 — Audit sự kiện bảo mật (C2) + trang "Hoạt động bảo mật" (B3)
@@ -191,7 +207,7 @@ Migration `1786320000000-AddLoginIpSecurity`: bảng `login_ip_blocks(id, ip VAR
 
 - [ ] Migration `1786330000000-AllowNullAuditUserId`: `ALTER TABLE audit_logs MODIFY user_id INT NULL` (FK giữ `ON DELETE RESTRICT`, vẫn hợp lệ với NULL). Entity: `userId: number | null`, quan hệ `nullable: true`; `down()` phải chặn/dọn dòng NULL trước khi đặt lại NOT NULL.
 - [ ] Thêm `AuditService.logSecurityEvent({ userId?: number | null, action, ip, userAgent, detail })` (không đụng chữ ký `logAction` hiện có để khỏi vỡ ~mọi nơi đang gọi). Dùng cột có sẵn `ip_address`/`user_agent`, đưa email vào `newData`.
-- [ ] Các action (hằng số `SECURITY_AUDIT_ACTIONS` dùng chung cho trang này và job dọn): `LOGIN_FAILED`, `LOGIN_UNKNOWN_EMAIL`, `ACCOUNT_LOCKED`, `LOGIN_IP_BLOCKED`, `UNLOCK_LOGIN` (đã có), `UNBLOCK_LOGIN_IP`, `PASSWORD_CHANGE_FAILED`, `PASSWORD_CHANGED`, `FORCE_LOGOUT`, `SESSION_REVOKED`, `UPDATE_SECURITY_CONFIG`.
+- [ ] Các action (hằng số `SECURITY_AUDIT_ACTIONS` dùng chung cho trang này và job dọn): `LOGIN_FAILED`, `LOGIN_UNKNOWN_EMAIL`, `ACCOUNT_LOCKED`, `LOGIN_IP_BLOCKED`, `UNLOCK_LOGIN` (đã có), `UNBLOCK_LOGIN_IP`, `PASSWORD_CHANGE_FAILED`, `PASSWORD_CHANGED`, `FORCE_LOGOUT`, `SESSION_REVOKED`, `UPDATE_SECURITY_CONFIG`, và (bổ sung P3.5) `IP_WHITELIST_ADDED`, `IP_WHITELIST_REMOVED`.
 - **Ghi mọi lần sai** (theo yêu cầu). Phần phình dữ liệu bị chặn bởi chính ngưỡng IP: sau khi IP chạm 10 lần thì các request bị từ chối vì IP khoá **không** ghi từng dòng — chỉ ghi **1 dòng `LOGIN_IP_BLOCKED`** lúc bắt đầu khoá.
 - **Làm sạch email trước khi lưu:** cắt ≤ 255 ký tự; nếu giá trị **không đúng định dạng email** (người dùng hay dán nhầm mật khẩu vào ô email) thì lưu `"[không phải email]"` thay vì chuỗi gốc. **Không bao giờ** ghi mật khẩu/token.
 - Phản hồi cho người dùng **không đổi** (xem C7 về thông báo lộ email).
@@ -388,6 +404,7 @@ Thứ tự: **P1 → P2 → P3 → P4 → P5 → P6 → P7 → P8 → P9 → P10
 - [x] P3.1 Bảng `security_config` + thay hằng số khoá tài khoản — *đã nối 2026-10-14; còn: chạy migration `1786310000000`*
 - [x] P3.2 Khoá IP (10 lần) + `login_ip_blocks` + `last_login_ip` — *đã nối 2026-10-14; còn: chạy migration `1786320000000`*
 - [x] P3.3 Admin xem/reset khoá IP — *đã nối 2026-10-14 (tab "IP bị khoá" ở /users)*
+- [x] P3.5 Whitelist IP (miễn khoá theo IP, vẫn khoá email) — *đã làm 2026-10-14; còn: chạy migration `1786331000000`*
 - [x] P4 Audit sự kiện bảo mật (cho phép `user_id` NULL) + dọn theo `security_event_retention_days` + trang "Hoạt động bảo mật" — *đã làm 2026-10-14; còn: chạy migration `1786330000000`; trang dùng phân trang thường thay vì `paginateByWeek`*
 - [ ] P5 Thiết bị đăng nhập + đăng xuất cưỡng bức (JSON v3)
 - [ ] P6 Buộc đổi mật khẩu + hạn mật khẩu + C1 (≥ 8 ký tự mọi nơi)

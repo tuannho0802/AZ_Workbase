@@ -5,6 +5,7 @@ import { PermissionScope } from '../../database/entities/role-permission.entity'
 
 describe('SecurityController (P3.3)', () => {
     let ipBlocks: { list: jest.Mock; unblock: jest.Mock };
+    let whitelist: { list: jest.Mock; add: jest.Mock; remove: jest.Mock };
     let config: { get: jest.Mock };
     let audit: { logActionAsync: jest.Mock; logSecurityEventAsync: jest.Mock };
     let activity: { listEvents: jest.Mock; summary: jest.Mock };
@@ -17,7 +18,8 @@ describe('SecurityController (P3.3)', () => {
         config = { get: jest.fn().mockResolvedValue({ ipMaxFailedAttempts: 10, ipWindowMinutes: 10, ipLockMinutes: 5, accountLockMinutes: 5 }) };
         audit = { logActionAsync: jest.fn(), logSecurityEventAsync: jest.fn() };
         activity = { listEvents: jest.fn().mockResolvedValue({ data: [] }), summary: jest.fn().mockResolvedValue({ lockedToday: 1 }) };
-        ctl = new SecurityController(ipBlocks as any, config as any, audit as any, activity as any);
+        whitelist = { list: jest.fn().mockResolvedValue([{ ip: '9.9.9.9' }]), add: jest.fn(), remove: jest.fn() };
+        ctl = new SecurityController(ipBlocks as any, whitelist as any, config as any, audit as any, activity as any);
     });
 
     it('list: admin xem được, kèm ngưỡng cấu hình', async () => {
@@ -100,6 +102,51 @@ describe('SecurityController (P3.3)', () => {
             (config as any).update = jest.fn().mockResolvedValue({ before: {}, after: {}, changed: [] });
             await ctl.updateConfig({} as any, { user: { id: 1 } });
             expect(audit.logSecurityEventAsync).not.toHaveBeenCalled();
+        });
+    });
+
+    describe('P3.5 - whitelist IP', () => {
+        const adminReq = { user: { id: 1, role: Role.ADMIN }, ip: '10.0.0.5', headers: { 'user-agent': 'UA/1' } };
+
+        it('list: trả items + myIp (đã chuẩn hoá); Manager scope department -> 403', async () => {
+            const res = await ctl.listWhitelist(adminReq, PermissionScope.ALL);
+            expect(res).toEqual({ items: [{ ip: '9.9.9.9' }], myIp: '10.0.0.5' });
+            await expect(ctl.listWhitelist(dept, PermissionScope.DEPARTMENT)).rejects.toThrow(ForbiddenException);
+        });
+
+        it('add: gọi service + audit IP_WHITELIST_ADDED (kèm clearedBlock)', async () => {
+            whitelist.add.mockResolvedValue({ id: 4, ip: '1.2.3.4', clearedBlock: true });
+            const res = await ctl.addWhitelist({ ip: '1.2.3.4', note: 'VP' }, adminReq, PermissionScope.ALL);
+            expect(whitelist.add).toHaveBeenCalledWith('1.2.3.4', 'VP', 1);
+            expect(res).toMatchObject({ success: true, ip: '1.2.3.4', clearedBlock: true });
+            expect(audit.logSecurityEventAsync).toHaveBeenCalledWith(
+                expect.objectContaining({
+                    userId: 1, action: 'IP_WHITELIST_ADDED', entityId: 4,
+                    detail: { whitelistedIp: '1.2.3.4', note: 'VP', clearedBlock: true },
+                }),
+            );
+        });
+
+        it('add: IP sai định dạng -> 400, không đụng service; scope department -> 403', async () => {
+            await expect(ctl.addWhitelist({ ip: 'abc def' }, adminReq, PermissionScope.ALL)).rejects.toThrow(BadRequestException);
+            await expect(ctl.addWhitelist({ ip: '1.2.3.4' }, dept, PermissionScope.DEPARTMENT)).rejects.toThrow(ForbiddenException);
+            expect(whitelist.add).not.toHaveBeenCalled();
+        });
+
+        it('remove: xoá + audit IP_WHITELIST_REMOVED; không có -> 404 không audit', async () => {
+            whitelist.remove.mockResolvedValueOnce({ id: 4, ip: '1.2.3.4' });
+            await ctl.removeWhitelist('1.2.3.4', adminReq, PermissionScope.ALL);
+            expect(audit.logSecurityEventAsync).toHaveBeenCalledWith(
+                expect.objectContaining({ action: 'IP_WHITELIST_REMOVED', entityId: 4, detail: { whitelistedIp: '1.2.3.4' } }),
+            );
+            audit.logSecurityEventAsync.mockClear();
+            whitelist.remove.mockResolvedValueOnce(null);
+            await expect(ctl.removeWhitelist('1.2.3.4', adminReq, PermissionScope.ALL)).rejects.toThrow(NotFoundException);
+            expect(audit.logSecurityEventAsync).not.toHaveBeenCalled();
+        });
+
+        it('actions: có 2 action whitelist mới', () => {
+            expect(ctl.actions()).toEqual(expect.arrayContaining(['IP_WHITELIST_ADDED', 'IP_WHITELIST_REMOVED']));
         });
     });
 });

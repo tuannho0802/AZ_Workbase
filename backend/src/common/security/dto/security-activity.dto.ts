@@ -1,4 +1,4 @@
-import { ApiPropertyOptional } from '@nestjs/swagger';
+import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { Type } from 'class-transformer';
 import { IsIn, IsInt, IsOptional, IsString, Matches, Max, MaxLength, Min } from 'class-validator';
 import { SECURITY_AUDIT_ACTIONS } from '../security-audit';
@@ -78,4 +78,16 @@ export class UpdateSecurityConfigDto {
   @ApiPropertyOptional({ description: `Hạn giữ sự kiện bảo mật (ngày) (${range('securityEventRetentionDays')})` })
   @IsOptional() @IsInt() @Min(L.securityEventRetentionDays[0]) @Max(L.securityEventRetentionDays[1])
   securityEventRetentionDays?: number;
+}
+
+
+/** P3.5: thêm IP vào whitelist. Định dạng IP thật sự do `normalizeIp` kiểm ở service (400 nếu sai). */
+export class AddIpWhitelistDto {
+  @ApiProperty({ example: '203.0.113.10', description: 'IPv4/IPv6 (đúng 1 địa chỉ, không CIDR)' })
+  @IsString() @MaxLength(45)
+  ip: string;
+
+  @ApiPropertyOptional({ example: 'Văn phòng HCM' })
+  @IsOptional() @IsString() @MaxLength(255)
+  note?: string;
 }

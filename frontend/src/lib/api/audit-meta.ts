@@ -104,6 +104,8 @@ export const ACTION_META: Record<string, ActionMeta> = {
   FORCE_LOGOUT: m('Đăng xuất cưỡng bức', 'magenta', 'user'),
   SESSION_REVOKED: m('Thu hồi phiên đăng nhập', 'magenta', 'user'),
   UPDATE_SECURITY_CONFIG: m('Cập nhật cấu hình bảo mật', 'purple', 'user'),
+  IP_WHITELIST_ADDED: m('Thêm IP vào whitelist đăng nhập', 'cyan', 'user'),
+  IP_WHITELIST_REMOVED: m('Gỡ IP khỏi whitelist đăng nhập', 'geekblue', 'user'),
   CHANGE_OWN_PASSWORD: m('Tự đổi mật khẩu', 'orange', 'user'),
   UPDATE_OWN_PROFILE: m('Tự cập nhật hồ sơ', 'blue', 'user'),
   UPDATE_OWN_EMAIL: m('Tự đổi email', 'blue', 'user'),
