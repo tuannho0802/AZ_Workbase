@@ -53,6 +53,20 @@ describe('AuthService - Đăng ký công khai + chặn đăng nhập chưa duy�
     expect(service).toBeDefined();
   });
 
+  describe('JWT_REFRESH_SECRET bắt buộc (P3.4)', () => {
+    it('ký refresh token: thiếu secret -> ném lỗi, KHÔNG rơi về secret mặc định', async () => {
+      mockConfigService.get.mockReturnValueOnce(undefined);
+      await expect((service as any).generateTokens(1, 'a@b.c', 'employee')).rejects.toThrow(/JWT_REFRESH_SECRET/);
+      expect(mockJwtService.sign).toHaveBeenCalledTimes(1); // chỉ access token; refresh không được ký
+    });
+
+    it('verify refresh token: thiếu secret -> 401 (không verify bằng undefined)', async () => {
+      mockConfigService.get.mockReturnValueOnce(undefined);
+      await expect(service.refresh('x.y.z')).rejects.toThrow();
+      expect(mockJwtService.verify).not.toHaveBeenCalled();
+    });
+  });
+
   describe('verifySwaggerAdmin - Basic auth cho Swagger (PLAN_HARDENING P4)', () => {
     let hash: string;
     beforeAll(async () => {

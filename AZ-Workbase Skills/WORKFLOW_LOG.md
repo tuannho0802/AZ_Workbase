@@ -7809,3 +7809,26 @@ Now [deploy]
 > - Chưa test với DB thật (chỉ mock `query`); cần thử tay `dryRun` trên môi trường có dữ liệu để đối chiếu cận giờ VN.
 
 ---
+
+## [2026-10-14] | PLAN_RETENTION_SECURITY_ROADMAP — Phase 3.4: Bắt buộc JWT_SECRET / JWT_REFRESH_SECRET (A4) | [Status: Success]
+
+**Actor:** Agent
+**Files Changed:**
+- `backend/src/common/security/jwt-secrets.ts` (+spec) — `getJwtSecret`, `getJwtRefreshSecret` (không fallback), `assertJwtSecrets` (thiếu / trùng nhau / < 32 ký tự -> throw)
+- `backend/src/modules/auth/auth.module.ts` — `JwtModule` factory gọi `assertJwtSecrets` lúc khởi động (app không lên nếu cấu hình sai)
+- `backend/src/modules/auth/auth.service.ts` — bỏ fallback `'default-refresh-secret'`; ký (`generateTokens`) và verify (`refresh`) dùng chung 1 getter
+- `backend/src/modules/auth/strategies/jwt.strategy.ts` — dùng `getJwtSecret`
+- `backend/src/modules/auth/auth.service.spec.ts` — 2 test thiếu secret
+- `backend/.env.development.example` — secret mẫu >= 32 ký tự và khác nhau
+
+**Root Cause (nếu là bug fix):**
+> Ký refresh token có fallback `'default-refresh-secret'` (đoán được) còn verify không có fallback: thiếu biến thì vừa không an toàn vừa lỗi lệch giữa ký và verify.
+
+**Solution:**
+> 1 getter duy nhất cho ký/verify + kiểm tra lúc khởi động. Kiểm độ dài >= 32 mặc định chỉ bật khi `NODE_ENV=production` (Vercel Preview/Production đều là production) để `.env.development` cũ của dev (vd `super-secret-jwt-key`, 20 ký tự) không vỡ khi pull; thiếu/trùng thì chặn ở mọi môi trường.
+
+**Notes:**
+> - Không migration. DEPLOY RIÊNG, không gộp với P3.1+. Trước khi deploy: kiểm `JWT_SECRET` và `JWT_REFRESH_SECRET` có trên CẢ Preview và Production, >= 32 ký tự, khác nhau. Sai -> app không khởi động.
+> - Đổi giá trị secret sẽ làm mọi refresh token cũ mất hiệu lực (buộc đăng nhập lại) — chỉ đổi nếu secret hiện tại đang thiếu/ngắn/trùng.
+
+---

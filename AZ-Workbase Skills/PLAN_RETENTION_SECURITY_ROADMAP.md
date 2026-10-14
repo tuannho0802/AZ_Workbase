@@ -384,7 +384,7 @@ Thứ tự: **P1 → P2 → P3 → P4 → P5 → P6 → P7 → P8 → P9 → P10
 
 - [x] P1 Retention tự động (audit, task log, notifications, attendance) + chu kỳ 14/30 ngày + `cron_runs` + FE — *đã làm 2026-10-14; còn: chạy migration `1786300000000` trên DB + đặt `CRON_SECRET`; cron đang chạy qua phương án dự phòng (gọi từ `auto-overdue`), chưa thêm vào `vercel.json` (xem mục 8 câu 1)*
 - [x] P2 Xoá theo nhiều khoảng (audit, task log) — *đã làm 2026-10-14; không migration. Route thực tế là `POST /audit-logs/cleanup-ranges` (plan ghi nhầm `/audit/...`); chữ xác nhận dùng `XÁC NHẬN` (khớp các modal xoá sẵn có) thay vì `XOA`*
-- [ ] P3.4 Bắt buộc `JWT_REFRESH_SECRET` (deploy riêng)
+- [x] P3.4 Bắt buộc `JWT_REFRESH_SECRET` (deploy riêng) — *đã làm 2026-10-14; còn: xác nhận biến trên cả Preview + Production của Vercel rồi deploy riêng. Độ dài ≥ 32 chỉ bắt buộc khi `NODE_ENV=production` (xem WORKFLOW_LOG)*
 - [ ] P3.1 Bảng `security_config` + thay hằng số khoá tài khoản
 - [ ] P3.2 Khoá IP (10 lần) + `login_ip_blocks` + `last_login_ip`
 - [ ] P3.3 Admin xem/reset khoá IP

@@ -18,6 +18,7 @@ import { RegisterDto } from './dto/register.dto';
 import { AuditService } from '../audit/audit.service';
 import { ApprovalStatus } from '../../common/enums/approval-status.enum';
 import { Role } from '../../common/enums/role.enum';
+import { getJwtRefreshSecret } from '../../common/security/jwt-secrets';
 
 /** Sai mật khẩu liên tiếp tối đa bao nhiêu lần thì bị khoá, và khoá bao lâu (phút). */
 export const LOGIN_MAX_FAILED_ATTEMPTS = 5;
@@ -41,7 +42,9 @@ export class AuthService {
    const access_token = this.jwtService.sign(payload);
 
    // Refresh token: explicitly provide secret and expiresIn, with fallback values
-   const refreshSecret = this.configService.get<string>('JWT_REFRESH_SECRET') || 'default-refresh-secret';
+   // [AGENT] OLD CODE (giữ để rollback): const refreshSecret = this.configService.get<string>('JWT_REFRESH_SECRET') || 'default-refresh-secret';
+   // NEW (P3.4): bỏ fallback; cùng getter với verify ở refresh().
+   const refreshSecret = getJwtRefreshSecret(this.configService);
    const refreshExpiresIn = this.configService.get<string>('JWT_REFRESH_EXPIRES_IN') || '7d';
 
    // `jti` ngẫu nhiên: 2 lần làm mới trong cùng 1 giây (2 thiết bị) KHÔNG được ra token giống hệt nhau
@@ -298,7 +301,8 @@ export class AuthService {
     let payload: any;
     try {
       payload = this.jwtService.verify(refreshTokenFromClient, {
-        secret: this.configService.get<string>('JWT_REFRESH_SECRET'),
+        // [AGENT] OLD CODE: secret: this.configService.get<string>('JWT_REFRESH_SECRET'),
+        secret: getJwtRefreshSecret(this.configService),
       });
     } catch {
       throw new UnauthorizedException('Phiên đăng nhập không hợp lệ hoặc đã hết hạn');

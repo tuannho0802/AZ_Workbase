@@ -6,6 +6,7 @@ import { UsersService } from '../../users/users.service';
 import { isTransientDbError, withDbRetry } from '../../../common/utils/db-transient-error.util';
 import { getCachedAuthUser, setCachedAuthUser } from '../../../common/utils/auth-user-cache.util';
 import { User } from '../../../database/entities/user.entity';
+import { getJwtSecret } from '../../../common/security/jwt-secrets';
 
 @Injectable()
 export class JwtStrategy extends PassportStrategy(Strategy) {
@@ -15,7 +16,8 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
     private configService: ConfigService,
     private usersService: UsersService,
   ) {
-    const secret = configService.get('JWT_SECRET');
+    // [AGENT] OLD CODE: const secret = configService.get('JWT_SECRET');
+    const secret = getJwtSecret(configService);
 
     super({
       jwtFromRequest: ExtractJwt.fromAuthHeaderAsBearerToken(),

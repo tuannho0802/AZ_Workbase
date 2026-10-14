@@ -7,6 +7,7 @@ import { AuthService } from './auth.service';
 import { AuthController } from './auth.controller';
 import { UsersModule } from '../users/users.module';
 import { JwtStrategy } from './strategies/jwt.strategy';
+import { assertJwtSecrets, getJwtSecret } from '../../common/security/jwt-secrets';
 
 @Module({
   imports: [
@@ -15,15 +16,20 @@ import { JwtStrategy } from './strategies/jwt.strategy';
     JwtModule.registerAsync({
       imports: [ConfigModule],
       inject: [ConfigService],
-      useFactory: async (configService: ConfigService) => ({
-        secret: configService.get<string>('JWT_SECRET'),
+      useFactory: async (configService: ConfigService) => {
+        // P3.4: thiếu/trùng/quá ngắn secret -> ném lỗi lúc khởi động, app không lên.
+        assertJwtSecrets(configService);
+        return {
+        // [AGENT] OLD CODE: secret: configService.get<string>('JWT_SECRET'),
+        secret: getJwtSecret(configService),
         signOptions: {
           // [AGENT] OLD CODE: expiresIn: configService.get<string>('JWT_EXPIRES_IN') as any,
           // Thiếu biến môi trường -> `expiresIn` undefined -> jsonwebtoken KHÔNG gắn `exp` -> access token
           // sống vĩnh viễn. Fallback '1h' (khớp README/.env.example, giống refresh token đã có fallback '7d').
           expiresIn: (configService.get<string>('JWT_EXPIRES_IN') || '1h') as any,
         },
-      }),
+        };
+      },
     }),
     // ⚠️ ThrottlerModule.forRoot() ở AppModule KHÔNG tự "cascade" xuống các
     // feature module con qua DI (chỉ export được NGƯỢC lên module cha, mà
