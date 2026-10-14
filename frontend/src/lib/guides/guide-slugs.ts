@@ -28,6 +28,7 @@ export const GUIDE_SLUG_BY_NAV_KEY: Readonly<Record<string, string>> = {
   reports: 'bao-cao-doanh-so',
   'duyet-phep': 'duyet-phep',
   'audit-logs': 'nhat-ky-he-thong',
+  'security-activity': 'hoat-dong-bao-mat',
   users: 'nhan-vien',
   'phong-ban': 'phong-ban',
   'vi-tri': 'vi-tri',
@@ -45,7 +46,7 @@ export const GUIDE_SLUG_BY_NAV_KEY: Readonly<Record<string, string>> = {
   'storage-img': 'luu-tru-anh',
 };
 
-/** Mọi slug bài bắt buộc phải có (30 trang + bài tổng). */
+/** Mọi slug bài bắt buộc phải có (31 trang + bài tổng). */
 export const REQUIRED_GUIDE_SLUGS: readonly string[] = [...Object.values(GUIDE_SLUG_BY_NAV_KEY), GETTING_STARTED_GUIDE_SLUG];
 
 /**

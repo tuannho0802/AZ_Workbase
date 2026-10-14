@@ -34,7 +34,7 @@ describe('nav-guide-coverage: bản đồ trang -> slug', () => {
     for (const s of [...slugs, GETTING_STARTED_GUIDE_SLUG]) expect(s).toMatch(/^[a-z0-9]+(?:-[a-z0-9]+)*$/);
   });
 
-  it('tập slug bắt buộc = 30 trang + bài tổng', () => {
+  it('tập slug bắt buộc = số trang trong menu + bài tổng', () => {
     expect(REQUIRED_GUIDE_SLUGS).toHaveLength(NAV_ITEMS.length + 1);
   });
 });
