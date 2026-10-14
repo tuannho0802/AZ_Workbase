@@ -140,7 +140,7 @@ export const LoginIpBlocksTab = () => {
             <Alert
                 type="info"
                 showIcon
-                message={
+                title={
                     cfg
                         ? `IP bị khoá ${cfg.ipLockMinutes} phút sau ${cfg.ipMaxFailedAttempts} lần đăng nhập sai trong ${cfg.ipWindowMinutes} phút (mọi email). Hiển thị IP đang khoá và IP sai trong 24 giờ gần đây.`
                         : 'Hiển thị IP đang bị khoá đăng nhập và IP sai trong 24 giờ gần đây.'
