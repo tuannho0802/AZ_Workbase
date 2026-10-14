@@ -35,7 +35,7 @@ export interface RetentionRunResult {
   dryRun?: boolean;
   status?: 'success' | 'partial' | 'failed';
   affected?: number;
-  results?: Array<{ target: RetentionTargetKey; count: number; partial: boolean; skipped?: 'DISABLED'; error?: string }>;
+  results?: Array<{ target: RetentionTargetKey; count: number; partial: boolean; from?: string | null; to?: string | null; skipped?: 'DISABLED'; error?: string }>;
 }
 
 export const retentionApi = {

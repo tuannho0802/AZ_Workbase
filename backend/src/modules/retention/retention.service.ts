@@ -50,6 +50,9 @@ export interface RetentionTargetResult {
   /** dryRun: số dòng SẼ xoá; chạy thật: số dòng ĐÃ xoá. */
   count: number;
   partial: boolean;
+  /** Chỉ có khi dryRun: mốc thời gian CŨ NHẤT / MỚI NHẤT của các dòng sẽ xoá (chuỗi 'YYYY-MM-DD HH:mm:ss' theo GIỜ VN, null nếu không có dòng). */
+  from?: string | null;
+  to?: string | null;
   skipped?: 'DISABLED';
   error?: string;
 }
@@ -68,6 +71,10 @@ interface TargetSql {
   table: string;
   where: string;
   params: Array<number | string>;
+  /** Biểu thức thời gian dùng để tính khoảng bị xoá (cùng mốc với điều kiện `where`). */
+  timeExpr: string;
+  /** Số giờ cộng thêm để ra giờ VN: cột DB tự sinh (UTC) = 7; `attendance_logs.record_time` đã là giờ VN nguyên văn = 0. */
+  vnOffsetHours: number;
 }
 
 /**
@@ -315,6 +322,8 @@ export class RetentionService {
           table: 'audit_logs',
           where: `created_at < NOW() - INTERVAL ? DAY AND action NOT IN (${placeholders})`,
           params: [s.auditLogs.retentionDays, ...protectedActions],
+          timeExpr: 'created_at',
+          vnOffsetHours: 7,
         };
       }
       case 'task_audit_logs':
@@ -322,6 +331,8 @@ export class RetentionService {
           table: 'periodic_task_audit_logs',
           where: 'created_at < NOW() - INTERVAL ? DAY',
           params: [s.taskAuditLogs.retentionDays],
+          timeExpr: 'created_at',
+          vnOffsetHours: 7,
         };
       case 'notifications':
         // Đã đọc: tính từ lúc đọc; chưa đọc: giữ lâu hơn, tính từ lúc tạo.
@@ -330,22 +341,32 @@ export class RetentionService {
           where:
             '((read_at IS NOT NULL AND read_at < NOW() - INTERVAL ? DAY) OR (read_at IS NULL AND created_at < NOW() - INTERVAL ? DAY))',
           params: [s.notifications.retentionDays, s.notifications.unreadRetentionDays],
+          // Đã đọc tính từ lúc đọc, chưa đọc tính từ lúc tạo (khớp điều kiện `where`).
+          timeExpr: 'COALESCE(read_at, created_at)',
+          vnOffsetHours: 7,
         };
       case 'attendance_logs':
         return {
           table: 'attendance_logs',
           where: 'record_time < NOW() - INTERVAL ? DAY',
           params: [s.attendanceLogs.retentionDays],
+          timeExpr: 'record_time',
+          vnOffsetHours: 0,
         };
     }
   }
 
   private async countTarget(target: RetentionTarget, sql: TargetSql): Promise<RetentionTargetResult> {
-    const rows: Array<{ c: string | number }> = await this.dataSource.query(
-      `SELECT COUNT(*) AS c FROM \`${sql.table}\` WHERE ${sql.where}`,
+    // [AGENT] OLD CODE: `SELECT COUNT(*) AS c FROM ... WHERE ...` (chỉ đếm, không có khoảng thời gian).
+    // DATE_FORMAT -> trả chuỗi giờ DB nguyên bản, tránh lệch múi giờ khi mysql2 đổi sang Date rồi serialize JSON.
+    const rows: Array<{ c: string | number; f: string | null; t: string | null }> = await this.dataSource.query(
+      `SELECT COUNT(*) AS c, ` +
+        `DATE_FORMAT(MIN(${sql.timeExpr}) + INTERVAL ${Number(sql.vnOffsetHours)} HOUR, '%Y-%m-%d %H:%i:%s') AS f, ` +
+        `DATE_FORMAT(MAX(${sql.timeExpr}) + INTERVAL ${Number(sql.vnOffsetHours)} HOUR, '%Y-%m-%d %H:%i:%s') AS t ` +
+        `FROM \`${sql.table}\` WHERE ${sql.where}`,
       sql.params,
     );
-    return { target, count: Number(rows?.[0]?.c ?? 0), partial: false };
+    return { target, count: Number(rows?.[0]?.c ?? 0), partial: false, from: rows?.[0]?.f ?? null, to: rows?.[0]?.t ?? null };
   }
 
   private async deleteTarget(target: RetentionTarget, sql: TargetSql, startedAt: number): Promise<RetentionTargetResult> {

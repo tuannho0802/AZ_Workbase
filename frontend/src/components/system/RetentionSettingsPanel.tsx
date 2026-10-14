@@ -258,6 +258,16 @@ export function RetentionSettingsPanel() {
             columns={[
               { title: 'Đối tượng', dataIndex: 'label' },
               {
+                title: 'Khoảng thời gian bị xoá',
+                key: 'range',
+                render: (_: unknown, r) => {
+                  if (r.skipped || r.error || !r.count || !r.from || !r.to) return '—';
+                  const from = dayjs(r.from).format('DD/MM/YYYY');
+                  const to = dayjs(r.to).format('DD/MM/YYYY');
+                  return from === to ? from : `${from} → ${to}`;
+                },
+              },
+              {
                 title: 'Sẽ xoá',
                 dataIndex: 'count',
                 align: 'right',
