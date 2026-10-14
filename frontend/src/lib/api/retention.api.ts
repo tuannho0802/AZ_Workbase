@@ -45,7 +45,9 @@ export const retentionApi = {
     (await axiosInstance.put('/system/retention-settings', payload)).data,
 
   runNow: async (params: { target?: RetentionTargetKey; dryRun?: boolean }): Promise<RetentionRunResult> =>
-    (await axiosInstance.post('/system/retention/run-now', null, {
+    // [AGENT] OLD CODE: post('/system/retention/run-now', null, ...) - axios + Content-Type JSON biến `null` thành body chuỗi "null"
+    // -> body-parser strict ném SyntaxError -> ServeStatic đổi thành 404 "Cannot POST". Dùng `{}` (JSON hợp lệ).
+    (await axiosInstance.post('/system/retention/run-now', {}, {
       params: { target: params.target, dryRun: params.dryRun ? 'true' : 'false' },
     })).data,
 };
