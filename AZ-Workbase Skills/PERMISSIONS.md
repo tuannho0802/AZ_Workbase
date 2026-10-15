@@ -133,6 +133,7 @@ dùng `@Roles()` enum tĩnh. Danh mục permission đầy đủ trong DB (sau 2 
 | `users.view` | users | Xem danh sách nhân viên |
 | `users.manage` | users | Tạo/sửa/duyệt nhân viên |
 | `users.delete` | users | Khoá/xoá nhân viên — chỉ Admin |
+| `users.sessions` | users | Xem thiết bị đang đăng nhập của người khác + đăng xuất cưỡng bức — mặc định chỉ Admin (scope `all`; hỗ trợ `all`/`department` + override phòng ban); `canManageUser` vẫn chặn Manager đụng Admin. `sessionCount` trong `GET /users` chỉ trả khi có quyền này (migration `1786335000000`). Tab **Theo dõi IP** và `PUT/DELETE /security/ip-geo/:ip` dùng `users.manage` scope `all`. |
 | `departments.view` | departments | Xem phòng ban |
 | `departments.manage` | departments | Tạo/sửa phòng ban |
 | `departments.delete` | departments | Xoá phòng ban — chỉ Admin |

@@ -38,7 +38,7 @@ Vào trang cần quyền **Quản lý nhật ký** (`audit.manage`), mặc đị
 - **IP (tiền tố)**: gõ phần đầu của địa chỉ IP (ví dụ `113.` hoặc `113.161`) rồi bấm tìm.
 - **Email / tên tài khoản**: tìm theo email hoặc tên người dùng.
 - **Khoảng ngày** và nút **Làm mới**.
-- Các cột: **Thời gian**, **Sự kiện** (nhãn màu), **Tài khoản / Email**, **IP**, **Thiết bị**. Với email chưa có trong hệ thống, cột tài khoản ghi "Không xác định (email chưa có trong hệ thống)" và hiện email đã gõ ở dưới.
+- Các cột: **Thời gian**, **Sự kiện** (nhãn màu), **Tài khoản / Email**, **IP** (kèm cờ quốc gia), **Thiết bị**. Quốc gia lấy từ Vercel; **Nội bộ** và **N/A** là bình thường, Admin gán tay được (xem [Nhật ký hệ thống](/huong-dan/nhat-ky-he-thong)). Với email chưa có trong hệ thống, cột tài khoản ghi "Không xác định (email chưa có trong hệ thống)" và hiện email đã gõ ở dưới.
 
 ### Cấu hình bảo mật đăng nhập
 
@@ -50,6 +50,8 @@ Vào trang cần quyền **Quản lý nhật ký** (`audit.manage`), mặc đị
 | **Cửa sổ đếm sai theo IP** | Đếm lần sai của IP trong bao nhiêu phút gần nhất |
 | **Thời gian khoá IP** | Khoá IP bao nhiêu phút |
 | **Giữ sự kiện bảo mật** | Số ngày giữ các sự kiện ở bảng này trước khi bị dọn |
+| **Giữ log theo dõi IP** | Số ngày giữ chi tiết lượt truy cập của tab **Theo dõi IP** (mặc định 90) |
+| **Dòng chi tiết tối đa / IP / giờ** | Giới hạn số dòng chi tiết ghi cho mỗi IP mỗi giờ (mặc định 20); bộ đếm tổng không bị giới hạn |
 
 Giá trị mặc định lúc cài là 5 lần / 5 phút cho tài khoản, 10 lần / cửa sổ 10 phút / khoá 5 phút cho IP, và giữ sự kiện 180 ngày. Dưới mỗi ô có ghi **khoảng hợp lệ**; giá trị ngoài khoảng sẽ bị từ chối.
 

@@ -7908,3 +7908,20 @@ Now [deploy]
 > Quốc gia lấy từ header `x-vercel-ip-country` (không tra cứu ngoài); IP chưa qua Vercel = N/A, Admin gán tay (`source=manual` không bị ghi đè). Cần chạy migration 1786332…1786335 trước khi deploy.
 
 ---
+
+## [2026-10-15 11:30] | geo_ip: hoàn tất guide + PERMISSIONS cho users.sessions / Theo dõi IP | [Status: Success]
+
+**Actor:** Agent
+**Files Changed:**
+- `guides-content/nhat-ky-he-thong.md` — thêm cột IP kèm cờ, mục "Cờ quốc gia của IP", tab "Theo dõi IP", dòng quyền + mục "Vì sao tôi không thấy"
+- `guides-content/hoat-dong-bao-mat.md` — cột IP kèm cờ, 2 ô cấu hình mới (giữ log theo dõi IP, cap dòng chi tiết/IP/giờ)
+- `guides-content/nhan-vien.md` — cột/nút "Thiết bị" nay cần `users.sessions` (mặc định chỉ Admin)
+- `AZ-Workbase Skills/PERMISSIONS.md` — thêm dòng `users.sessions`
+- `frontend/package-lock.json` — đồng bộ `flag-icons` (lock trước đó thiếu, `npm ci` lỗi)
+
+**Notes:**
+> - `resource-labels.ts` KHÔNG cần sửa: nhãn action lấy từ `description` trong bảng `permissions` (đã seed tiếng Việt ở migration 1786335), scope chọn theo `supports_scope`.
+> - Sau khi sửa guides-content cần chạy `npm run guides:sync` (dry-run rồi `--apply`) để đẩy lên DB.
+> - Cần chạy migration 1786332…1786335 trước khi deploy.
+
+---

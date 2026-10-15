@@ -19,6 +19,7 @@ Vào trang cần quyền **Xem nhân viên** (`users.view`). Mỗi việc trên 
 
 - **Thêm, Sửa, Reset Pass, Duyệt, Từ chối** cần `users.manage`.
 - **Xoá**, tab **Đã xoá**, **Khôi phục** và **Xoá vĩnh viễn** cần `users.delete`.
+- Cột và nút **Thiết bị** (xem thiết bị đang đăng nhập của người khác, đăng xuất cưỡng bức) cần quyền riêng `users.sessions`. **Mặc định chỉ Admin có**; Admin cấp thêm cho vai trò khác ở trang **Phân quyền** (phạm vi toàn hệ thống hoặc theo phòng ban). Có `users.manage` mà không có `users.sessions` thì không thấy cột này.
 
 Theo cấu hình mặc định: Admin, Assistant và Manager có `users.view` và `users.manage`; **chỉ Admin có `users.delete`**. Employee không có quyền nào ở trên (mục menu ẩn; nếu gõ thẳng đường dẫn sẽ bị đưa về trang Khách hàng kèm thông báo “Bạn không có quyền truy cập trang này”). Admin có thể đổi các quyền này ở trang **Phân quyền**, nên bảng dưới là *mặc định*.
 
@@ -140,6 +141,7 @@ Chỉ người có `users.delete` thấy tab này. Mỗi dòng cho biết **Đã
 
 - **Không thấy mục Nhân viên trong menu**: tài khoản của bạn chưa có quyền `users.view`. Nhờ Admin cấp ở trang **Phân quyền**.
 - **Thấy danh sách nhưng không có nút Sửa / Reset Pass / Thêm nhân viên**: bạn có xem nhưng chưa có `users.manage`.
+- **Không thấy cột/nút Thiết bị**: chưa có `users.sessions` (mặc định chỉ Admin). Manager cũng không đăng xuất được thiết bị của Admin.
 - **Không thấy nút Xoá hay tab Đã xoá**: chưa có `users.delete` (mặc định chỉ Admin).
 - **Không thấy nút Xoá ở một dòng**: dòng đó là chính bạn hoặc là Root Admin.
 - **Manager không thấy một nhân viên**: người đó không thuộc phòng ban bạn **quản lý** (kể cả khi bạn cùng thuộc phòng ban đó nhưng không được gán làm Quản lý). Nhờ Admin kiểm tra ở trang **Phòng ban**.

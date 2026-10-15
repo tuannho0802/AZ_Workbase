@@ -20,6 +20,7 @@ Vào trang cần quyền **Xem nhật ký** (`audit.view`). Các việc dọn d�
 | Việc | Cần quyền |
 |---|---|
 | Vào trang, xem tab **Danh sách nhật ký** và **Đăng nhập**, mở **Chi tiết** | `audit.view` |
+| Tab **Theo dõi IP** và sửa quốc gia của IP | `users.manage` phạm vi **toàn hệ thống** (hoặc Admin) |
 | Nút **Dọn dẹp theo thời gian**, ô chọn dòng + nút **Xóa đã chọn**, tab **Cài đặt dọn dẹp** | `audit.manage` |
 
 Mặc định cả hai quyền được cấp cho Admin và Assistant; Admin có thể đổi ở trang **Phân quyền**. Nếu thiếu `audit.view`, mục menu bị ẩn và gõ thẳng đường dẫn sẽ đưa bạn về trang Khách hàng.
@@ -62,11 +63,21 @@ audit-filters tab=main
 
 ### Tab Đăng nhập
 
-Log đăng nhập được tách riêng để không làm rối danh sách chính (tab **Danh sách nhật ký** không hiện lượt đăng nhập). Tab **Đăng nhập** chỉ có lọc theo người đăng nhập và khoảng ngày, và chỉ tải khi bạn mở tab lần đầu.
+Log đăng nhập được tách riêng để không làm rối danh sách chính (tab **Danh sách nhật ký** không hiện lượt đăng nhập). Tab **Đăng nhập** chỉ có lọc theo người đăng nhập và khoảng ngày, và chỉ tải khi bạn mở tab lần đầu. Cột **IP** hiện kèm **lá cờ quốc gia** của IP đó.
 
 ```az-demo
 audit-filters tab=login
 ```
+
+### Cờ quốc gia của IP
+
+- Quốc gia được lấy từ thông tin Vercel gửi kèm mỗi yêu cầu, không tra cứu dịch vụ bên ngoài.
+- **Nội bộ** (mạng LAN/localhost) hoặc **N/A** (chưa xác định được, ví dụ yêu cầu không đi qua Vercel) là bình thường, không phải lỗi.
+- Người có quyền sửa (Admin hoặc `users.manage` phạm vi toàn hệ thống) bấm biểu tượng **bút chì** cạnh IP để gán tay quốc gia. Giá trị gán tay **không bị Vercel ghi đè**; xoá giá trị gán tay để quay về tự động.
+
+### Tab Theo dõi IP (cần `users.manage` phạm vi toàn hệ thống)
+
+Tab này thống kê **mỗi IP đã đăng nhập hoặc làm mới phiên bao nhiêu lần**: tổng lượt, thành công, thất bại, bị chặn, kết quả gần nhất, trạng thái (**Bình thường**, **Whitelist**, **Đang khoá**), lần đầu và gần nhất thấy IP. Lọc nhanh theo **Tất cả IP / Đang bị khoá / Trong whitelist**. Bấm **Chi tiết** để xem các lượt gần đây của IP đó (lọc theo kết quả). Dòng chi tiết có giới hạn số dòng mỗi IP mỗi giờ nên IP bị dò mật khẩu dồn dập không làm đầy bảng; bộ đếm tổng vẫn đúng.
 
 ### Dọn dẹp (cần `audit.manage`)
 
@@ -85,6 +96,7 @@ audit-filters tab=login
 
 - Không thấy mục **Nhật ký hệ thống** ở menu: bạn thiếu `audit.view`.
 - Không thấy nút **Dọn dẹp theo thời gian**, ô tích dòng hoặc tab **Cài đặt dọn dẹp**: bạn thiếu `audit.manage`.
+- Không thấy tab **Theo dõi IP** hoặc nút bút chì cạnh IP: bạn thiếu `users.manage` phạm vi toàn hệ thống.
 - Không thấy lượt đăng nhập trong danh sách chính: chúng nằm ở tab **Đăng nhập**.
 - Không thấy một thao tác vừa làm: bấm nút làm mới ở thanh bộ lọc, kiểm tra khoảng ngày đang lọc, hoặc nhật ký đã bị dọn.
 
