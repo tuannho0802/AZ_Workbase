@@ -113,8 +113,8 @@ export class AuthController {
   @AllowWhenPasswordChangeRequired()
   @ApiBearerAuth()
   @ApiOperation({ summary: 'Đổi mật khẩu bắt buộc (mật khẩu được cấp + mật khẩu mới + nhập lại); thu hồi các phiên khác' })
-  @ApiResponse({ status: 400, description: 'Không khớp / không đạt chính sách / không bị yêu cầu đổi / trùng mật khẩu cũ.' })
-  @ApiResponse({ status: 401, description: 'Mật khẩu được cấp không đúng.' })
+  @ApiResponse({ status: 400, description: 'Không khớp / không đạt chính sách / không bị yêu cầu đổi / trùng mật khẩu cũ / mật khẩu được cấp không đúng.' })
+  @ApiResponse({ status: 401, description: 'Phiên đăng nhập không hợp lệ.' })
   async changePasswordRequired(@Body() dto: ChangePasswordRequiredDto, @Request() req: any) {
     return this.authService.changePasswordRequired(req.user.id, dto, req.user.sid);
   }

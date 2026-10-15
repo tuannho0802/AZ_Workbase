@@ -1390,7 +1390,10 @@ export class UsersService {
     if (!user) throw new NotFoundException('Không tìm thấy tài khoản');
 
     const ok = await bcrypt.compare(dto.currentPassword, user.password as string);
-    if (!ok) throw new UnauthorizedException('Mật khẩu được cấp không đúng');
+    // [AGENT] OLD CODE (giữ để rollback): if (!ok) throw new UnauthorizedException('Mật khẩu được cấp không đúng');
+    // [AGENT] NEW CODE: 401 nghĩa là "phiên/token không hợp lệ" -> interceptor FE sẽ refresh token + gửi lại rồi nuốt toast (người dùng thấy form đứng im).
+    // Sai mật khẩu được cấp là lỗi nhập liệu -> 400 để FE toast đúng message.
+    if (!ok) throw new BadRequestException('Mật khẩu được cấp không đúng');
     if (dto.newPassword === dto.currentPassword) {
       throw new BadRequestException('Mật khẩu mới phải khác mật khẩu được cấp');
     }

@@ -92,8 +92,16 @@ axiosInstance.interceptors.response.use(
       _proactiveAuthFailed?: boolean;
     };
 
+    // Các endpoint xác minh MẬT KHẨU: 401 ở đây là "nhập sai mật khẩu" (lỗi nghiệp vụ), KHÔNG phải token hết hạn.
+    // -> không refresh/đăng xuất, và phải toast message thật của BE (trước đây bị nuốt im lặng do loại trừ 401 bên dưới).
+    const reqUrl = originalRequest?.url ?? '';
+    const isPasswordCheck401 =
+      error.response?.status === 401 &&
+      (reqUrl.includes('/auth/change-password-required') || reqUrl.includes('/users/me/password'));
+
     // Handle 401 - Token expired
-    if (error.response?.status === 401 && !originalRequest._retry) {
+    // [AGENT] OLD CODE (giữ để rollback): if (error.response?.status === 401 && !originalRequest._retry) {
+    if (error.response?.status === 401 && !originalRequest._retry && !isPasswordCheck401) {
       // Prevent loop for login endpoint
       if (originalRequest.url?.includes('/auth/login')) {
         return Promise.reject(error);
@@ -166,7 +174,8 @@ axiosInstance.interceptors.response.use(
     // Mute network errors from popping up endlessly on page load
     // 409 `CHECKLIST_GUARD` KHÔNG phải lỗi: là câu hỏi xác nhận, hộp thoại ở `useGuardedUpdatePeriodicTask` sẽ hỏi.
     const isConfirmPrompt = (error.response?.data as { code?: string } | undefined)?.code === 'CHECKLIST_GUARD';
-    if (error.code !== 'ERR_NETWORK' && error.response?.status !== 401 && !isConfirmPrompt) {
+    // [AGENT] OLD CODE (giữ để rollback): if (error.code !== 'ERR_NETWORK' && error.response?.status !== 401 && !isConfirmPrompt) {
+    if (error.code !== 'ERR_NETWORK' && (error.response?.status !== 401 || isPasswordCheck401) && !isConfirmPrompt) {
       showMessage.error(errorMessage);
     }
 

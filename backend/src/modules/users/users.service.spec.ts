@@ -1709,10 +1709,10 @@ describe('UsersService - Approval workflow (đăng ký công khai chờ duyệt)
         expect(mockUsersRepo.update).not.toHaveBeenCalled();
       });
 
-      it('mật khẩu được cấp sai -> 401', async () => {
+      it('mật khẩu được cấp sai -> 400', async () => {
         requireChange();
         mockQueryBuilder.getOne.mockResolvedValue({ id: 1, name: 'A', password: await bcrypt.hash('MatKhauCap@1', 10) });
-        await expect(service.changePasswordRequired(1, body({ currentPassword: 'SAI' }), 'sid1')).rejects.toThrow(UnauthorizedException);
+        await expect(service.changePasswordRequired(1, body({ currentPassword: 'SAI' }), 'sid1')).rejects.toThrow(BadRequestException);
         expect(mockUsersRepo.update).not.toHaveBeenCalled();
       });
 
