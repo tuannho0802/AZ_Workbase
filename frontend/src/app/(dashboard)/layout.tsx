@@ -237,6 +237,10 @@ export default function DashboardLayout({
       newKey = 'profile';
     } else if (pathname.includes('/audit-logs')) {
       newKey = 'audit-logs';
+    } else if (pathname.includes('/security-activity')) {
+      // Thiếu nhánh này thì /security-activity rơi về default 'customers' -> Header hiện
+      // "Khách hàng" và sidebar sáng nhầm mục Khách hàng (key khớp nav-config.tsx).
+      newKey = 'security-activity';
     } else if (pathname.includes('/chia-data')) {
       newKey = 'chia-data';
     } else if (pathname.includes('/customers/reports/invalid-data')) {
