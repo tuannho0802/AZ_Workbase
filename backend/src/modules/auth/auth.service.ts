@@ -494,21 +494,26 @@ export class AuthService {
    */
   async refresh(refreshTokenFromClient: string, ip: string | null = null, userAgent: string | null = null, countryCode: string | null = null) {
     let outcome: IpAccessOutcome = 'refresh_ok';
-    let userId: number | null = null;
+    // Danh tính để ghi log theo dõi IP: `refreshCore` điền dần, CHỈ sau khi chữ ký JWT đã được xác thực
+    // (trước đây lấy từ `result.user.id` nhưng refreshCore không trả `user` -> userId/email luôn rỗng).
+    const who: { userId: number | null; email: string | null } = { userId: null, email: null };
     try {
-      const result: any = await this.refreshCore(refreshTokenFromClient, ip, userAgent);
-      userId = result?.user?.id ?? null;
-      return result;
+      return await this.refreshCore(refreshTokenFromClient, ip, userAgent, who);
     } catch (err) {
       // P3.7: lượt bị blacklist chặn ghi như lượt bị khoá IP (ip_status = 'blocked'), tái dùng ENUM sẵn có.
       outcome = this.isIpBannedError(err) ? 'ip_locked' : 'refresh_failed';
       throw err;
     } finally {
-      await this.trackIpAccess({ ip, countryCode, endpoint: 'auth/refresh', outcome, userId, userAgent });
+      await this.trackIpAccess({ ip, countryCode, endpoint: 'auth/refresh', outcome, userId: who.userId, email: who.email, userAgent });
     }
   }
 
-  private async refreshCore(refreshTokenFromClient: string, ip: string | null = null, userAgent: string | null = null) {
+  private async refreshCore(
+    refreshTokenFromClient: string,
+    ip: string | null = null,
+    userAgent: string | null = null,
+    who: { userId: number | null; email: string | null } = { userId: null, email: null },
+  ) {
     // P3.7: phiên đang mở từ IP bị chặn bị đẩy ra ở lần làm mới token kế tiếp (FE interceptor tự logout khi refresh lỗi).
     if (await this.loginIpBlacklist.isBanned(ip)) {
       throw this.buildIpBannedException();
@@ -524,8 +529,16 @@ export class AuthService {
       throw new UnauthorizedException('Phiên đăng nhập không hợp lệ hoặc đã hết hạn');
     }
 
+    // Chữ ký đã hợp lệ -> `sub` đáng tin: ghi nhận danh tính cho log theo dõi IP (kể cả khi các bước sau thất bại).
+    const subId = Number(payload?.sub);
+    if (Number.isInteger(subId) && subId > 0) who.userId = subId;
+
     // 2. Tìm user kèm hashed_refresh_token từ DB (select: false nên dùng hàm riêng)
     const user = await this.usersService.findByIdWithRefreshToken(payload.sub);
+    if (user) {
+      who.userId = user.id;
+      who.email = user.email ?? null;
+    }
     
     if (!user || Number(user.isActive) === 0) {
       throw new UnauthorizedException('Tài khoản không hợp lệ hoặc đã bị khóa');

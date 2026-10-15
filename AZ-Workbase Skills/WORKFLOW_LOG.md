@@ -7961,3 +7961,18 @@ Now [deploy]
 > `hit_count`/`api_hits` là số XẤP XỈ. Chỉ request đã qua guard mới được ghi. Cần chạy migration 1786337000000 trước khi deploy BE.
 
 ---
+
+## [2026-10-15 15:10] | Fix: log "Làm mới phiên" không có tài khoản/email | [Status: Success]
+
+**Actor:** Agent
+**Files Changed:**
+- `backend/src/modules/auth/auth.service.ts` — `refresh()` truyền ngữ cảnh `who` vào `refreshCore`, điền `userId` (từ `sub` SAU khi JWT verify) và `email` (từ user DB) rồi ghi vào log theo dõi IP
+- `backend/src/modules/auth/auth.service.spec.ts` — 7 test mới (thành công, token tái sử dụng, tài khoản khoá, user biến mất, JWT giả, sub rác, lỗi ghi log)
+
+**Root Cause:**
+> `refreshCore` chỉ trả `{ access_token, refresh_token }` nên `result.user.id` luôn rỗng -> `user_id`/`email` của dòng `auth/refresh` luôn NULL.
+
+**Notes:**
+> Dòng cũ đã ghi trước bản sửa vẫn trống (không có dữ liệu để backfill). Lượt refresh bị chặn do IP blacklist không có danh tính vì bị chặn trước khi xác thực JWT.
+
+---

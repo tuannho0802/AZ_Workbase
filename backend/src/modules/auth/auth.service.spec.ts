@@ -438,6 +438,56 @@ describe('AuthService - Đăng ký công khai + chặn đăng nhập chưa duy�
       expect(mockUsersService.saveRefreshToken).toHaveBeenCalledWith(7, null);
     });
 
+    describe('log theo dõi IP có danh tính (userId + email)', () => {
+      const lastLog = () => mockIpAccessLog.record.mock.calls.at(-1)![0];
+
+      it('làm mới thành công -> ghi userId + email của chủ token', async () => {
+        mockUsersService.rotateRefreshToken.mockResolvedValue(true);
+        await service.refresh('old-token', '8.8.8.8', 'UA/1', 'VN');
+        expect(lastLog()).toMatchObject({ endpoint: 'auth/refresh', outcome: 'refresh_ok', userId: 7, email: 'a@x.com', ip: '8.8.8.8' });
+      });
+
+      it('tái sử dụng token (bị thu hồi) -> refresh_failed nhưng VẪN biết là ai', async () => {
+        mockUsersService.rotateRefreshToken.mockResolvedValue(false);
+        await service.refresh('stolen', '8.8.8.8', 'UA/1').catch(() => undefined);
+        expect(lastLog()).toMatchObject({ outcome: 'refresh_failed', userId: 7, email: 'a@x.com' });
+      });
+
+      it('phiên đã đăng xuất / tài khoản bị khoá -> refresh_failed, vẫn ghi người dùng', async () => {
+        mockUsersService.findByIdWithRefreshToken.mockResolvedValue({ ...activeUser, isActive: 0 });
+        await service.refresh('x', '8.8.8.8', 'UA/1').catch(() => undefined);
+        expect(lastLog()).toMatchObject({ outcome: 'refresh_failed', userId: 7, email: 'a@x.com' });
+      });
+
+      it('user không còn tồn tại nhưng chữ ký hợp lệ -> chỉ có userId (từ sub), không có email', async () => {
+        mockUsersService.findByIdWithRefreshToken.mockResolvedValue(null);
+        await service.refresh('x', '8.8.8.8', 'UA/1').catch(() => undefined);
+        expect(lastLog()).toMatchObject({ outcome: 'refresh_failed', userId: 7, email: null });
+      });
+
+      it('JWT sai chữ ký/hết hạn -> KHÔNG ghi danh tính (không tin nội dung token chưa xác thực)', async () => {
+        mockJwtService.verify.mockImplementation(() => {
+          throw new Error('jwt malformed');
+        });
+        await service.refresh('forged', '8.8.8.8', 'UA/1').catch(() => undefined);
+        expect(lastLog()).toMatchObject({ outcome: 'refresh_failed', userId: null, email: null });
+        expect(mockUsersService.findByIdWithRefreshToken).not.toHaveBeenCalled();
+      });
+
+      it('sub không phải số nguyên dương -> bỏ qua (không ghi userId rác)', async () => {
+        mockJwtService.verify.mockReturnValue({ sub: 'abc' });
+        mockUsersService.findByIdWithRefreshToken.mockResolvedValue(null);
+        await service.refresh('x', '8.8.8.8', 'UA/1').catch(() => undefined);
+        expect(lastLog().userId).toBeNull();
+      });
+
+      it('lỗi ghi log không làm hỏng việc làm mới token', async () => {
+        mockIpAccessLog.record.mockRejectedValueOnce(new Error('db down'));
+        mockUsersService.rotateRefreshToken.mockResolvedValue(true);
+        await expect(service.refresh('old-token', '8.8.8.8', 'UA/1')).resolves.toEqual({ access_token: 'fake-jwt-token', refresh_token: 'fake-jwt-token' });
+      });
+    });
+
     it('refresh token mới có jti ngẫu nhiên (2 lần trong cùng giây không trùng nhau)', async () => {
       mockUsersService.rotateRefreshToken.mockResolvedValue(true);
       await service.refresh('old-token');
