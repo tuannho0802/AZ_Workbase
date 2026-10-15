@@ -33,3 +33,16 @@ export function getClientIp(req: ReqLike): string | null {
 export function getDirectClientIp(req: ReqLike): string | null {
     return normalizeIp(req.ip);
 }
+
+/**
+ * Mã quốc gia (ISO-3166 alpha-2, HOA) từ header `x-vercel-ip-country` do Vercel edge gắn (P3.6).
+ * Giá trị lạ ('XX', 'T1', rỗng, không đủ 2 chữ cái) hoặc không có header (chạy local) -> `null`.
+ */
+export function getClientCountry(req: ReqLike): string | null {
+    const raw = req.headers?.['x-vercel-ip-country'];
+    const v = Array.isArray(raw) ? raw[0] : raw;
+    if (typeof v !== 'string') return null;
+    const code = v.trim().toUpperCase();
+    if (!/^[A-Z]{2}$/.test(code) || code === 'XX' || code === 'T1') return null;
+    return code;
+}
