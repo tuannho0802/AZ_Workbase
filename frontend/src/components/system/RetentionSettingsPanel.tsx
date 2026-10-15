@@ -50,9 +50,16 @@ const ROWS: RowDef[] = [
     minDays: 30,
     daysReadOnly: true,
   },
+  {
+    key: 'ip_access_logs',
+    label: 'Log theo dõi IP',
+    hint: 'Chi tiết từng lượt đăng nhập theo IP (bảng tổng hợp mỗi IP được giữ lại). Số ngày giữ chỉnh ở trang "Hoạt động bảo mật". Tắt mặc định.',
+    minDays: 7,
+    daysReadOnly: true,
+  },
 ];
 
-type Draft = Pick<RetentionSettings, 'intervalDays' | 'auditLogs' | 'taskAuditLogs' | 'notifications' | 'attendanceLogs' | 'securityEvents'>;
+type Draft = Pick<RetentionSettings, 'intervalDays' | 'auditLogs' | 'taskAuditLogs' | 'notifications' | 'attendanceLogs' | 'securityEvents' | 'ipAccessLogs'>;
 
 function toDraft(s: RetentionSettings): Draft {
   return {
@@ -62,11 +69,13 @@ function toDraft(s: RetentionSettings): Draft {
     notifications: { ...s.notifications },
     attendanceLogs: { ...s.attendanceLogs },
     securityEvents: { ...s.securityEvents },
+    ipAccessLogs: { ...s.ipAccessLogs },
   };
 }
 
-function draftKey(t: RetentionTargetKey): 'auditLogs' | 'taskAuditLogs' | 'notifications' | 'attendanceLogs' | 'securityEvents' {
+function draftKey(t: RetentionTargetKey): 'auditLogs' | 'taskAuditLogs' | 'notifications' | 'attendanceLogs' | 'securityEvents' | 'ipAccessLogs' {
   if (t === 'security_events') return 'securityEvents';
+  if (t === 'ip_access_logs') return 'ipAccessLogs';
   return t === 'audit_logs' ? 'auditLogs' : t === 'task_audit_logs' ? 'taskAuditLogs' : t === 'notifications' ? 'notifications' : 'attendanceLogs';
 }
 
@@ -144,6 +153,7 @@ export function RetentionSettingsPanel() {
       notifications: draft.notifications,
       // Chỉ cờ bật/tắt: số ngày giữ của sự kiện bảo mật KHÔNG gửi (BE chặn, nằm ở security_config).
       securityEvents: { enabled: draft.securityEvents.enabled },
+      ipAccessLogs: { enabled: draft.ipAccessLogs.enabled },
       ...(isAdmin ? { attendanceLogs: draft.attendanceLogs } : {}),
     };
     saveMutation.mutate(payload);

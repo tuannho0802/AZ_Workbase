@@ -39,6 +39,8 @@ export interface RetentionSettings {
   attendanceLogs: RetentionTargetSettings;
   /** P4.2: số ngày giữ lấy từ `security_config.security_event_retention_days` (sửa ở trang Hoạt động bảo mật). */
   securityEvents: RetentionTargetSettings;
+  /** P3.6: số ngày giữ lấy từ `security_config.ip_access_log_retention_days`. */
+  ipAccessLogs: RetentionTargetSettings;
 }
 
 export interface RetentionSchedule {
@@ -158,6 +160,10 @@ export class RetentionService {
         enabled: target('security_events').enabled,
         retentionDays: secCfg.securityEventRetentionDays,
       },
+      ipAccessLogs: {
+        enabled: target('ip_access_logs').enabled,
+        retentionDays: secCfg.ipAccessLogRetentionDays,
+      },
     };
   }
 
@@ -192,6 +198,7 @@ export class RetentionService {
     pushTarget('attendance_logs', dto.attendanceLogs);
     // Chỉ lưu cờ bật/tắt; số ngày giữ KHÔNG ghi vào `settings` (nằm ở `security_config`).
     push(RETENTION_TARGET_CONFIG.security_events.enabledKey, dto.securityEvents?.enabled);
+    push(RETENTION_TARGET_CONFIG.ip_access_logs.enabledKey, dto.ipAccessLogs?.enabled);
 
     if (rows.length > 0) await this.settingRepository.save(rows);
 
@@ -324,6 +331,8 @@ export class RetentionService {
         return s.attendanceLogs;
       case 'security_events':
         return s.securityEvents;
+      case 'ip_access_logs':
+        return s.ipAccessLogs;
     }
   }
 
@@ -378,6 +387,15 @@ export class RetentionService {
           vnOffsetHours: 7,
         };
       }
+      case 'ip_access_logs':
+        // Chỉ dọn dòng CHI TIẾT; `ip_access_stats` giữ lại.
+        return {
+          table: 'ip_access_logs',
+          where: 'created_at < NOW() - INTERVAL ? DAY',
+          params: [s.ipAccessLogs.retentionDays],
+          timeExpr: 'created_at',
+          vnOffsetHours: 7,
+        };
     }
   }
 

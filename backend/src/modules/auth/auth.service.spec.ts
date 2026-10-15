@@ -10,6 +10,11 @@ import { ApprovalStatus } from '../../common/enums/approval-status.enum';
 import { SecurityConfigService, SECURITY_CONFIG_DEFAULTS } from '../../common/security/security-config.service';
 import { LoginIpBlockService } from '../../common/security/login-ip-block.service';
 import { LoginIpWhitelistService } from '../../common/security/login-ip-whitelist.service';
+import { IpGeoService } from '../../common/security/ip-geo.service';
+import { IpAccessLogService } from '../../common/security/ip-access-log.service';
+
+const mockIpGeo = { record: jest.fn().mockResolvedValue(undefined), enrich: jest.fn(async (rows: any[]) => rows) };
+const mockIpAccessLog = { record: jest.fn().mockResolvedValue(undefined) };
 
 describe('AuthService - Đăng ký công khai + chặn đăng nhập chưa duyệt', () => {
   let service: AuthService;
@@ -56,6 +61,8 @@ describe('AuthService - Đăng ký công khai + chặn đăng nhập chưa duy�
         { provide: SecurityConfigService, useValue: mockSecurityConfig },
         { provide: LoginIpBlockService, useValue: mockIpBlocks },
         { provide: LoginIpWhitelistService, useValue: mockIpWhitelist },
+        { provide: IpGeoService, useValue: mockIpGeo },
+        { provide: IpAccessLogService, useValue: mockIpAccessLog },
       ],
     }).compile();
 
@@ -577,6 +584,44 @@ describe('AuthService - Đăng ký công khai + chặn đăng nhập chưa duy�
       mockUsersService.recordFailedLogin.mockResolvedValue({ attempts: 1, lockedSeconds: 0 });
       const err = await service.login({ email: 'a@example.com', password: 'sai' }).catch((e) => e);
       expect(err.getResponse()).toMatchObject({ code: 'WRONG_PASSWORD' });
+    });
+  });
+
+  describe('theo dõi IP (P3.6)', () => {
+    const user = () => ({
+      id: 5, email: 'a@example.com', name: 'A', password: bcrypt.hashSync('MatKhau123', 10), role: 'employee',
+      isActive: true, deletedAt: null, approvalStatus: ApprovalStatus.APPROVED,
+    });
+    const last = () => mockIpAccessLog.record.mock.calls.at(-1)![0];
+
+    it('email lạ -> unknown_email + quốc gia từ header', async () => {
+      mockUsersService.findByEmailIncludingDeleted.mockResolvedValue(null);
+      await service.login({ email: 'la@example.com', password: 'x' }, '8.8.8.8', 'UA/1', 'US').catch(() => undefined);
+      expect(mockIpGeo.record).toHaveBeenCalledWith('8.8.8.8', 'US');
+      expect(last()).toMatchObject({ ip: '8.8.8.8', countryCode: 'US', endpoint: 'auth/login', outcome: 'unknown_email', ipStatus: 'normal' });
+    });
+    it('sai mật khẩu -> wrong_password; IP whitelist -> ip_status whitelisted', async () => {
+      mockUsersService.findByEmailIncludingDeleted.mockResolvedValue(user());
+      mockIpWhitelist.isWhitelisted.mockResolvedValue(true);
+      await service.login({ email: 'a@example.com', password: 'sai' }, '8.8.8.8', 'UA/1', 'VN').catch(() => undefined);
+      expect(last()).toMatchObject({ outcome: 'wrong_password', ipStatus: 'whitelisted' });
+    });
+    it('IP đang khoá -> ip_locked + blocked, không ghi audit_logs', async () => {
+      mockIpBlocks.getRemainingSeconds.mockResolvedValue(200);
+      await service.login({ email: 'a@example.com', password: 'x' }, '8.8.8.8', 'UA/1').catch(() => undefined);
+      expect(last()).toMatchObject({ outcome: 'ip_locked', ipStatus: 'blocked' });
+      expect(mockAuditService.logSecurityEventAsync).not.toHaveBeenCalled();
+    });
+    it('tài khoản chờ duyệt -> denied', async () => {
+      mockUsersService.findByEmailIncludingDeleted.mockResolvedValue({ ...user(), approvalStatus: ApprovalStatus.PENDING });
+      await service.login({ email: 'a@example.com', password: 'MatKhau123' }, '8.8.8.8', 'UA/1').catch(() => undefined);
+      expect(last()).toMatchObject({ outcome: 'denied' });
+    });
+    it('lỗi ghi log KHÔNG làm hỏng đăng nhập (vẫn trả đúng lỗi nghiệp vụ)', async () => {
+      mockIpAccessLog.record.mockRejectedValueOnce(new Error('db down'));
+      mockUsersService.findByEmailIncludingDeleted.mockResolvedValue(null);
+      const err = await service.login({ email: 'la@example.com', password: 'x' }, '8.8.8.8', 'UA/1').catch((e) => e);
+      expect(err.message).toBe('Tài khoản không tồn tại');
     });
   });
 });

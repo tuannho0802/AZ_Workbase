@@ -7891,3 +7891,20 @@ Now [deploy]
 > - `rotateRefreshToken` có thêm tham số thứ 5 (`meta`); spec cũ assert đúng 4 tham số (nếu có) cần cập nhật.
 
 ---
+
+## [2026-10-15 10:30] | geo_ip: cờ quốc gia IP + Theo dõi IP + quyền users.sessions | [Status: Success]
+
+**Actor:** Agent
+**Phát hiện:** commit `276b9d0` CHỈ có migration/entity/`ip-geo.service.ts`/`getClientCountry` — toàn bộ phần còn lại chưa được push, đã làm lại trên code thật.
+**Files Changed (BE):**
+- `common/security/ip-access-log.service.ts` (mới) — log lượt login/refresh theo IP, bộ đếm `ip_access_stats` + chi tiết có cap/giờ
+- `common/security/security.controller.ts` — `PUT/DELETE ip-geo/:ip`, `GET ip-access`, `GET ip-access/:ip`; enrich cờ cho ip-blocks/whitelist/events
+- `modules/auth/auth.service.ts` + controller — wrapper `login/refresh` ghi quốc gia + lượt IP; `USER_LOGIN` ghi kèm IP/UA; sessions kèm cờ
+- `modules/audit/audit.service.ts` — `getLogs` gắn `countryCode/ipKind` (1 query IN)
+- `modules/users/users.controller.ts` — endpoint sessions dùng `users.sessions`; `sessionCount` chỉ trả khi có quyền
+- `security-config*`, `retention*`, `security-audit.ts` — 2 cột config + target `ip_access_logs` + 2 action `IP_COUNTRY_SET/CLEARED`
+**Files Changed (FE):** `components/security/{IpWithFlag,IpTrackingTab}.tsx`, `lib/utils/country.ts`, `lib/hooks/useCanEditIpCountry.ts`, audit-logs (cột IP tab Đăng nhập + tab Theo dõi IP), security-activity, users, SessionList, RetentionSettingsPanel, `flag-icons`.
+**Notes:**
+> Quốc gia lấy từ header `x-vercel-ip-country` (không tra cứu ngoài); IP chưa qua Vercel = N/A, Admin gán tay (`source=manual` không bị ghi đè). Cần chạy migration 1786332…1786335 trước khi deploy.
+
+---

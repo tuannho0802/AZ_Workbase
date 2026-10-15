@@ -32,6 +32,8 @@ import {
   toSessionView,
 } from '../../common/utils/refresh-session-store.util';
 import { SessionRevokedException } from './session-revoked.exception';
+import { IpGeoService } from '../../common/security/ip-geo.service';
+import { IpAccessLogService, IpAccessOutcome } from '../../common/security/ip-access-log.service';
 
 // [AGENT] OLD CODE (giữ để rollback, P3.1): hằng số cứng
 //   export const LOGIN_MAX_FAILED_ATTEMPTS = 5;
@@ -50,6 +52,8 @@ export class AuthService {
     private securityConfig: SecurityConfigService,
     private loginIpBlocks: LoginIpBlockService,
     private loginIpWhitelist: LoginIpWhitelistService,
+    private ipGeo: IpGeoService,
+    private ipAccessLog: IpAccessLogService,
   ) {}
 
   // [AGENT] OLD CODE (giữ để rollback): private async generateTokens(userId, email, role) { const payload = { sub: userId, email, role };
@@ -141,7 +145,54 @@ export class AuthService {
    *           khoản vẫn hoạt động).
    * @param userAgent chỉ dùng để ghi sự kiện bảo mật (P4).
    */
-  async login(loginDto: LoginDto, ip: string | null = null, userAgent: string | null = null) {
+  /** Phân loại lỗi đăng nhập -> kết quả ghi vào log theo dõi IP (P3.6). */
+  private classifyLoginError(err: unknown): IpAccessOutcome {
+    if (err instanceof HttpException) {
+      const res = err.getResponse() as any;
+      const code = typeof res === 'object' ? res?.code : undefined;
+      if (code === 'IP_LOCKED') return 'ip_locked';
+      if (code === 'LOGIN_LOCKED') return 'account_locked';
+      if (code === 'WRONG_PASSWORD') return 'wrong_password';
+      if (err instanceof UnauthorizedException && err.message === 'Tài khoản không tồn tại') return 'unknown_email';
+    }
+    return 'denied';
+  }
+
+  /** P3.6: ghi quốc gia (header Vercel) + lượt truy cập IP. Mỗi service tự nuốt lỗi -> không bao giờ làm hỏng auth. */
+  private async trackIpAccess(args: {
+    ip: string | null; countryCode: string | null; endpoint: 'auth/login' | 'auth/refresh';
+    outcome: IpAccessOutcome; userId?: number | null; email?: string | null; userAgent?: string | null;
+  }): Promise<void> {
+    try {
+      const whitelisted = args.outcome === 'ip_locked' ? false : await this.loginIpWhitelist.isWhitelisted(args.ip);
+      await Promise.all([
+        this.ipGeo.record(args.ip, args.countryCode),
+        this.ipAccessLog.record({
+          ...args,
+          ipStatus: args.outcome === 'ip_locked' ? 'blocked' : whitelisted ? 'whitelisted' : 'normal',
+        }),
+      ]);
+    } catch (err) {
+      this.logger.warn(`Không ghi được theo dõi IP: ${err instanceof Error ? err.message : 'lỗi không rõ'}`);
+    }
+  }
+
+  async login(loginDto: LoginDto, ip: string | null = null, userAgent: string | null = null, countryCode: string | null = null) {
+    let outcome: IpAccessOutcome = 'success';
+    let userId: number | null = null;
+    try {
+      const result: any = await this.loginCore(loginDto, ip, userAgent);
+      userId = result?.user?.id ?? null;
+      return result;
+    } catch (err) {
+      outcome = this.classifyLoginError(err);
+      throw err;
+    } finally {
+      await this.trackIpAccess({ ip, countryCode, endpoint: 'auth/login', outcome, userId, email: loginDto?.email, userAgent });
+    }
+  }
+
+  private async loginCore(loginDto: LoginDto, ip: string | null = null, userAgent: string | null = null) {
     const cfg = await this.securityConfig.get();
 
     // P3.2: kiểm tra khoá IP TRƯỚC mọi thứ khác (1 query rẻ). KHÔNG ghi sự kiện cho request bị từ chối vì IP khoá:
@@ -292,6 +343,8 @@ export class AuthService {
       user.id,
       null,
       { email: user.email, role: user.role },
+      ip ?? undefined,
+      userAgent ?? undefined,
     );
 
     // Ký avatarUrl (object key -> Presigned GET URL, TTL 1h) TRƯỚC khi trả
@@ -411,7 +464,22 @@ export class AuthService {
    * @param ip IP trực tiếp (controller truyền `getDirectClientIp(req)` - KHÔNG dùng `getClientIp`: header
    *           `x-az-client-ip` do client tự gắn nên không được tin để ghi vào danh sách thiết bị, giống login()).
    */
-  async refresh(refreshTokenFromClient: string, ip: string | null = null, userAgent: string | null = null) {
+  async refresh(refreshTokenFromClient: string, ip: string | null = null, userAgent: string | null = null, countryCode: string | null = null) {
+    let outcome: IpAccessOutcome = 'refresh_ok';
+    let userId: number | null = null;
+    try {
+      const result: any = await this.refreshCore(refreshTokenFromClient, ip, userAgent);
+      userId = result?.user?.id ?? null;
+      return result;
+    } catch (err) {
+      outcome = 'refresh_failed';
+      throw err;
+    } finally {
+      await this.trackIpAccess({ ip, countryCode, endpoint: 'auth/refresh', outcome, userId, userAgent });
+    }
+  }
+
+  private async refreshCore(refreshTokenFromClient: string, ip: string | null = null, userAgent: string | null = null) {
     // 1. Verify JWT signature & expiry
     let payload: any;
     try {
@@ -481,7 +549,8 @@ export class AuthService {
   async listSessions(userId: number, currentSid?: string | null): Promise<{ sessions: SessionView[]; currentSid: string | null }> {
     const slots = await this.usersService.getRefreshSessions(userId);
     const now = Math.floor(Date.now() / 1000);
-    return { sessions: slots.map((x) => toSessionView(x, now, currentSid)), currentSid: currentSid ?? null };
+    const sessions = await this.ipGeo.enrich(slots.map((x) => toSessionView(x, now, currentSid)), 'ip');
+    return { sessions, currentSid: currentSid ?? null };
   }
 
   async revokeSession(userId: number, sid: string, currentSid?: string | null) {

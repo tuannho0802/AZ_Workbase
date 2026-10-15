@@ -8,6 +8,7 @@ import type { ColumnsType } from 'antd/es/table';
 import dayjs from 'dayjs';
 import { securityApi, type SecurityConfigValues, type SecurityEvent } from '@/lib/api/security.api';
 import { getActionMeta } from '@/lib/api/audit-meta';
+import { IpWithFlag } from '@/components/security/IpWithFlag';
 import { useMyPermissions } from '@/lib/hooks/useMyPermissions';
 import { getApiErrorMessage } from '@/lib/utils/error-message.util';
 
@@ -21,6 +22,8 @@ const CONFIG_FIELDS: Array<{ key: keyof SecurityConfigValues; label: string; uni
   { key: 'ipWindowMinutes', label: 'Cửa sổ đếm sai theo IP', unit: 'phút' },
   { key: 'ipLockMinutes', label: 'Thời gian khoá IP', unit: 'phút' },
   { key: 'securityEventRetentionDays', label: 'Giữ sự kiện bảo mật', unit: 'ngày' },
+  { key: 'ipAccessLogRetentionDays', label: 'Giữ log theo dõi IP', unit: 'ngày' },
+  { key: 'ipAccessDetailCapPerHour', label: 'Dòng chi tiết tối đa / IP / giờ', unit: 'dòng' },
 ];
 
 function SecurityConfigForm() {
@@ -108,7 +111,10 @@ export default function SecurityActivityPage() {
           </span>
         ),
     },
-    { title: 'IP', dataIndex: 'ipAddress', width: 140, render: (v: string | null) => (v ? <Text code>{v}</Text> : '-') },
+    {
+      title: 'IP', dataIndex: 'ipAddress', width: 200,
+      render: (v: string | null, r) => <IpWithFlag ip={v} countryCode={r.countryCode} ipKind={r.ipKind} geoSource={r.geoSource} onChanged={() => void events.refetch()} />,
+    },
     { title: 'Thiết bị', dataIndex: 'userAgent', ellipsis: true, render: (v: string | null) => v || '-' },
   ];
 

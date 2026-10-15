@@ -3,6 +3,11 @@ import { TypeOrmModule } from '@nestjs/typeorm';
 import { SecurityConfig } from '../../database/entities/security-config.entity';
 import { LoginIpBlock } from '../../database/entities/login-ip-block.entity';
 import { LoginIpWhitelist } from '../../database/entities/login-ip-whitelist.entity';
+import { IpGeoCache } from '../../database/entities/ip-geo-cache.entity';
+import { IpAccessLog } from '../../database/entities/ip-access-log.entity';
+import { IpAccessStats } from '../../database/entities/ip-access-stats.entity';
+import { IpGeoService } from './ip-geo.service';
+import { IpAccessLogService } from './ip-access-log.service';
 import { AuditLog } from '../../database/entities/audit-log.entity';
 import { SecurityActivityService } from './security-activity.service';
 import { SecurityConfigService } from './security-config.service';
@@ -12,9 +17,9 @@ import { SecurityController } from './security.controller';
 
 // AuditModule và PermissionsModule đều @Global() nên không cần import ở đây.
 @Module({
-    imports: [TypeOrmModule.forFeature([SecurityConfig, LoginIpBlock, LoginIpWhitelist, AuditLog])],
+    imports: [TypeOrmModule.forFeature([SecurityConfig, LoginIpBlock, LoginIpWhitelist, AuditLog, IpGeoCache, IpAccessLog, IpAccessStats])],
     controllers: [SecurityController],
-    providers: [SecurityConfigService, LoginIpBlockService, LoginIpWhitelistService, SecurityActivityService],
-    exports: [SecurityConfigService, LoginIpBlockService, LoginIpWhitelistService],
+    providers: [SecurityConfigService, LoginIpBlockService, LoginIpWhitelistService, SecurityActivityService, IpGeoService, IpAccessLogService],
+    exports: [SecurityConfigService, LoginIpBlockService, LoginIpWhitelistService, IpGeoService, IpAccessLogService],
 })
 export class SecurityModule { }

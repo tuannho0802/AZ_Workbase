@@ -20,7 +20,7 @@ describe('AuthController.login (PLAN CPU Mục 13F)', () => {
 
     expect(authService.login).toHaveBeenCalledTimes(1);
     // P3.2/P4: IP lấy từ `req.ip` (KHÔNG tin header x-az-client-ip do client tự gắn) + user-agent để ghi sự kiện bảo mật.
-    expect(authService.login).toHaveBeenCalledWith(dto, '1.2.3.4', 'jest-agent');
+    expect(authService.login).toHaveBeenCalledWith(dto, '1.2.3.4', 'jest-agent', null);
     expect(res).toEqual({ accessToken: 'a', refreshToken: 'r', user: { id: 1 } });
   });
 

@@ -28,6 +28,8 @@ export function isPrivateIp(raw: string | null | undefined): boolean {
 /** Mã ISO-3166 alpha-2 hợp lệ (dùng Intl, không thêm dependency). */
 export function isValidCountryCode(code: unknown): code is string {
     if (typeof code !== 'string' || !/^[A-Z]{2}$/.test(code)) return false;
+    // Mã ISO "user-assigned" (AA, QM–QZ, XA–XZ, ZZ) không phải quốc gia thật.
+    if (code === 'AA' || code === 'ZZ' || /^X[A-Z]$/.test(code) || /^Q[M-Z]$/.test(code)) return false;
     try {
         const name = new Intl.DisplayNames(['en'], { type: 'region' }).of(code);
         return !!name && name !== code;

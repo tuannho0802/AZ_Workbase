@@ -5,6 +5,7 @@ import { App, Button, Card, Input, Space, Table, Typography } from 'antd';
 import { DeleteOutlined, PlusOutlined, SafetyOutlined } from '@ant-design/icons';
 import type { ColumnsType } from 'antd/es/table';
 import { useState } from 'react';
+import { IpWithFlag } from '@/components/security/IpWithFlag';
 import { securityApi, type IpWhitelistItem } from '@/lib/api/security.api';
 import { getApiErrorMessage } from '@/lib/utils/error-message.util';
 import { formatAgo } from '@/lib/utils/format-ago';
@@ -72,7 +73,7 @@ export const LoginIpWhitelistSection = () => {
     };
 
     const columns: ColumnsType<IpWhitelistItem> = [
-        { title: 'IP', dataIndex: 'ip', key: 'ip', render: (v: string) => <Text code>{v}</Text> },
+        { title: 'IP', dataIndex: 'ip', key: 'ip', render: (v: string, r) => <IpWithFlag ip={v} countryCode={r.countryCode} ipKind={r.ipKind} geoSource={r.geoSource} /> },
         { title: 'Ghi chú', dataIndex: 'note', key: 'note', render: (v: string | null) => v || '—' },
         { title: 'Người thêm', dataIndex: 'createdByName', key: 'createdByName', render: (v: string | null) => v || '—' },
         { title: 'Thêm lúc', dataIndex: 'createdAgoSeconds', key: 'createdAgoSeconds', render: (s: number) => formatAgo(s) },

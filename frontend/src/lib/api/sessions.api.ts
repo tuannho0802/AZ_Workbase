@@ -2,6 +2,9 @@ import axiosInstance from './axios-instance';
 
 /** 1 thiết bị (phiên) đang đăng nhập - thời gian là SỐ GIÂY trước (BE tính, tránh lệch múi giờ); không có hash. */
 export interface SessionView {
+    countryCode?: string | null;
+    ipKind?: 'public' | 'private';
+    geoSource?: string | null;
     id: string;
     device: string;
     ip: string | null;
@@ -25,7 +28,7 @@ export const sessionsApi = {
         return res.data;
     },
 
-    // ── Admin/Manager: thiết bị của nhân viên (cần `users.manage`) ──
+    // ── Admin/Manager: thiết bị của nhân viên (cần `users.sessions`) ──
     listOfUser: async (userId: number): Promise<{ user: { id: number; name: string }; sessions: SessionView[] }> => {
         const res = await axiosInstance.get(`/users/${userId}/sessions`);
         return res.data;

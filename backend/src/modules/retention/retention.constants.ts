@@ -9,7 +9,8 @@ export type RetentionTarget =
   | 'task_audit_logs'
   | 'notifications'
   | 'attendance_logs'
-  | 'security_events';
+  | 'security_events'
+  | 'ip_access_logs';
 
 export const RETENTION_TARGETS: RetentionTarget[] = [
   'audit_logs',
@@ -17,6 +18,7 @@ export const RETENTION_TARGETS: RetentionTarget[] = [
   'notifications',
   'attendance_logs',
   'security_events',
+  'ip_access_logs',
 ];
 
 export const RETENTION_JOB = 'retention';
@@ -81,6 +83,15 @@ export const RETENTION_TARGET_CONFIG: Record<RetentionTarget, RetentionTargetCon
     defaultEnabled: false,
     defaultDays: 180,
     minDays: 30,
+  },
+  // Log lượt truy cập IP (P3.6): bật/tắt riêng ở đây; SỐ NGÀY GIỮ lấy từ `security_config.ip_access_log_retention_days`.
+  // `ip_access_stats` (1 dòng/IP) được giữ lại, không dọn.
+  ip_access_logs: {
+    enabledKey: 'ip_access_log_cleanup_enabled',
+    daysKey: 'ip_access_log_retention_days_unused',
+    defaultEnabled: false,
+    defaultDays: 90,
+    minDays: 7,
   },
 };
 

@@ -594,8 +594,8 @@ export class UsersService {
     });
   }
 
-  async findAll(userId: number, userRole: string, scope?: string | null, options: { role?: string; departmentId?: number; positionId?: number; isActive?: boolean; search?: string; page?: number; limit?: number } = {}) {
-    const { role, departmentId, positionId, isActive, search, page = 1, limit = 20 } = options;
+  async findAll(userId: number, userRole: string, scope?: string | null, options: { role?: string; departmentId?: number; positionId?: number; isActive?: boolean; search?: string; page?: number; limit?: number; includeSessionCount?: boolean } = {}) {
+    const { role, departmentId, positionId, isActive, search, page = 1, limit = 20, includeSessionCount = false } = options;
 
     const queryBuilder = this.usersRepository.createQueryBuilder('user')
       .leftJoinAndSelect('user.department', 'department')
@@ -644,13 +644,13 @@ export class UsersService {
     // P3.3: kèm IP đăng nhập thành công gần nhất cho các user ĐANG bị khoá (để Admin đối chiếu với danh sách IP bị khoá).
     const lockedIps = await this.getLastLoginIpMap([...lockMap.keys()]);
     // P5: số thiết bị đang đăng nhập (đếm ở ứng dụng, chỉ đọc đúng các user của trang hiện tại).
-    const sessionMap = await this.getSessionCountMap(data.map((u) => u.id));
+    // CHỈ khi người gọi có quyền `users.sessions` (controller truyền `includeSessionCount`).
+    const sessionMap = includeSessionCount ? await this.getSessionCountMap(data.map((u) => u.id)) : new Map<number, number>();
     const dataWithLock = data.map((u) =>
       Object.assign(u, {
         loginLockSeconds: lockMap.get(u.id) ?? 0,
         lastLoginIp: lockedIps.get(u.id) ?? null,
-        sessionCount: sessionMap.get(u.id) ?? 0,
-      }),
+      }, includeSessionCount ? { sessionCount: sessionMap.get(u.id) ?? 0 } : {}),
     );
 
     return {

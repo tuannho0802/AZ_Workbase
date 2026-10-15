@@ -10,7 +10,7 @@ import {
   SearchOutlined, ReloadOutlined, InfoCircleOutlined,
   UserOutlined, FileTextOutlined,
   DeleteOutlined, SettingOutlined, ClearOutlined,
-  ExclamationCircleOutlined
+  ExclamationCircleOutlined, GlobalOutlined
 } from '@ant-design/icons';
 import type { ColumnsType } from 'antd/es/table';
 import { useAuthStore } from '@/lib/stores/auth.store';
@@ -24,6 +24,9 @@ import dayjs from 'dayjs';
 import { LazyAuditDiff } from '@/components/audit/LazyAuditDiff';
 import { CleanupRangesModal } from '@/components/audit/CleanupRangesModal';
 import { useMyPermissions } from '@/lib/hooks/useMyPermissions';
+import { useCanEditIpCountry } from '@/lib/hooks/useCanEditIpCountry';
+import { IpWithFlag } from '@/components/security/IpWithFlag';
+import { IpTrackingTab } from '@/components/security/IpTrackingTab';
 import { useRoleColorMap } from '@/lib/hooks/useRoleColorMap';
 import { SalesUserSelect } from '@/components/customers/SalesUserSelect';
 import { WeeklyLazySection, type WeekBucketDto } from '@/components/common/WeeklyLazySection';
@@ -104,6 +107,12 @@ const AuditLogMobileCard = ({ record, onShowDetail }: { record: AuditLog; onShow
         )}
       </div>
 
+      {record.entityType === 'auth' && record.ipAddress && (
+        <div style={{ marginBottom: 6 }} onClick={(e) => e.stopPropagation()}>
+          <IpWithFlag ip={record.ipAddress} countryCode={record.countryCode} ipKind={record.ipKind} geoSource={record.geoSource} readOnly />
+        </div>
+      )}
+
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
         <div style={{ display: 'flex', flexDirection: 'column' }}>
           <Text type="secondary" style={{ fontSize: 10, textTransform: 'uppercase' }}>
@@ -166,6 +175,8 @@ export default function AuditLogsPage() {
   // sang permission ĐỘNG, tách đúng 2 quyền theo BE (`audit.view` khác
   // `audit.manage` - xem audit.controller.ts).
   const canManageAudit = can('audit.manage');
+  // P3.6: tab "Theo dõi IP" + sửa quốc gia IP cần `users.manage` phạm vi `all` (BE chặn 403 nếu thiếu - FE ẩn trước).
+  const canTrackIp = useCanEditIpCountry();
   const [cleanupOpen, setCleanupOpen] = useState(false);
   const hasAuditView = can('audit.view');
   const queryClient = useQueryClient();
@@ -633,6 +644,25 @@ export default function AuditLogsPage() {
     },
   ];
 
+  // Tab "Đăng nhập": bỏ cột Đối tượng, thêm cột IP + cờ quốc gia ngay sau "Người thực hiện" (P3.6).
+  const ipColumn: ColumnsType<AuditLog>[number] = {
+    title: 'IP',
+    key: 'ip',
+    width: 190,
+    render: (_, record) => (
+      <IpWithFlag
+        ip={record.ipAddress}
+        countryCode={record.countryCode}
+        ipKind={record.ipKind}
+        geoSource={record.geoSource}
+        onChanged={() => setLoginFetchToken((t) => t + 1)}
+      />
+    ),
+  };
+  const loginColumns: ColumnsType<AuditLog> = columns
+    .filter((c) => c.key !== 'entity')
+    .flatMap((c) => (c.key === 'user' ? [c, ipColumn] : [c]));
+
   const rowSelection = canManageAudit ? {
     selectedRowKeys,
     onChange: (keys: React.Key[]) => setSelectedRowKeys(keys),
@@ -841,7 +871,7 @@ export default function AuditLogsPage() {
                     fetchWeek={fetchWeekLoginLogs}
                     resetKey={loginFetchToken}
                     rowKey="id"
-                    columns={columns.filter(c => c.key !== 'entity')}
+                    columns={loginColumns}
                     isMobile
                     loading={loginLoading}
                     emptyText="Chưa có lượt đăng nhập nào"
@@ -866,7 +896,7 @@ export default function AuditLogsPage() {
                       fetchWeek={fetchWeekLoginLogs}
                       resetKey={loginFetchToken}
                       rowKey="id"
-                      columns={columns.filter(c => c.key !== 'entity')}
+                      columns={loginColumns}
                     loading={loginLoading}
                     size="middle"
                       emptyText="Chưa có lượt đăng nhập nào"
@@ -882,6 +912,11 @@ export default function AuditLogsPage() {
             </>
           )
         },
+        ...(canTrackIp ? [{
+          key: '4',
+          label: <span><GlobalOutlined /> Theo dõi IP</span>,
+          children: <IpTrackingTab />,
+        }] : []),
         ...(canManageAudit ? [{
           key: '3',
           label: <span><SettingOutlined /> Cài đặt dọn dẹp</span>,

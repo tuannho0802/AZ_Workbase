@@ -10,6 +10,8 @@ export interface SecurityConfigValues {
     ipWindowMinutes: number;
     ipLockMinutes: number;
     securityEventRetentionDays: number;
+    ipAccessLogRetentionDays: number;
+    ipAccessDetailCapPerHour: number;
 }
 
 /** Mặc định (khớp seed migration CreateSecurityConfig). Dùng khi DB thiếu dòng/bảng hoặc giá trị ngoài khoảng. */
@@ -20,6 +22,8 @@ export const SECURITY_CONFIG_DEFAULTS: Readonly<SecurityConfigValues> = Object.f
     ipWindowMinutes: 10,
     ipLockMinutes: 5,
     securityEventRetentionDays: 180,
+    ipAccessLogRetentionDays: 90,
+    ipAccessDetailCapPerHour: 20,
 });
 
 /** Khoảng hợp lệ [min, max] — ngoài khoảng (vd ai đó đặt 0 trong DB) thì dùng mặc định, KHÔNG để tắt mất bảo vệ. */
@@ -31,6 +35,8 @@ export const SECURITY_CONFIG_LIMITS: Readonly<Record<keyof SecurityConfigValues,
         ipWindowMinutes: [1, 1440],
         ipLockMinutes: [1, 1440],
         securityEventRetentionDays: [30, 3650],
+        ipAccessLogRetentionDays: [7, 3650],
+        ipAccessDetailCapPerHour: [1, 1000],
     });
 
 /** Whitelist tên cột (KHÔNG ghép chuỗi từ input) khi UPDATE. */
@@ -41,6 +47,8 @@ const SECURITY_CONFIG_COLUMNS: Readonly<Record<keyof SecurityConfigValues, strin
   ipWindowMinutes: 'ip_window_minutes',
   ipLockMinutes: 'ip_lock_minutes',
   securityEventRetentionDays: 'security_event_retention_days',
+  ipAccessLogRetentionDays: 'ip_access_log_retention_days',
+  ipAccessDetailCapPerHour: 'ip_access_detail_cap_per_hour',
 });
 
 export const SECURITY_CONFIG_CACHE_TTL_MS = 30_000;

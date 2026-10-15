@@ -86,6 +86,13 @@ export class UpdateRetentionSettingsDto {
   @ValidateNested()
   @Type(() => RetentionSecurityEventsSettingDto)
   securityEvents?: RetentionSecurityEventsSettingDto;
+
+  /** P3.6: chỉ bật/tắt; số ngày giữ sửa ở `security_config.ip_access_log_retention_days`. */
+  @ApiPropertyOptional({ type: RetentionSecurityEventsSettingDto })
+  @IsOptional()
+  @ValidateNested()
+  @Type(() => RetentionSecurityEventsSettingDto)
+  ipAccessLogs?: RetentionSecurityEventsSettingDto;
 }
 
 export class RetentionRunNowDto {

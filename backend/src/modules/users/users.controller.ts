@@ -1,6 +1,8 @@
 import { Controller, Get, Post, Body, Patch, Param, Delete, Query, UseGuards, Request, UseInterceptors } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiBearerAuth, ApiResponse } from '@nestjs/swagger';
 import { UsersService } from './users.service';
+import { PermissionsService } from '../permissions/permissions.service';
+import { IpGeoService } from '../../common/security/ip-geo.service';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { PermissionGuard } from '../../common/guards/permission.guard';
 import { RequirePermission } from '../../common/decorators/require-permission.decorator';
@@ -21,7 +23,12 @@ import { CacheControlInterceptor, refDataCache } from '../../common/interceptors
   @UseGuards(JwtAuthGuard, PermissionGuard)
 @Controller('users')
 export class UsersController {
-  constructor(private readonly usersService: UsersService) {}
+  constructor(
+    private readonly usersService: UsersService,
+    // PermissionsModule là @Global(). Dùng để quyết định có trả `sessionCount` hay không.
+    private readonly permissionsService: PermissionsService,
+    private readonly ipGeo: IpGeoService,
+  ) {}
 
   @Get('all')
     // KHÔNG gắn @RequirePermission - endpoint này CỐ TÌNH mở cho MỌI role đã
@@ -69,7 +76,12 @@ export class UsersController {
     // 100 mà không đổi hành vi với các giá trị limit hợp lệ (<=100).
     const safeLimit = limit ? Math.min(Math.max(+limit, 1), 100) : 20;
 
+    // `sessionCount` chỉ trả cho người có quyền `users.sessions` (Root Admin luôn có - khớp PermissionGuard).
+    const canSeeSessions =
+      (req.user.role === 'admin' && !!req.user.isRootAdmin) ||
+      (await this.permissionsService.hasPermission(req.user.role, 'users.sessions', req.user.departmentId, req.user.positionId)).allowed;
     const result = await this.usersService.findAll(req.user.id, req.user.role, scope, {
+      includeSessionCount: canSeeSessions,
       role,
       departmentId,
       // ⚠️ MỚI - đối xứng `departmentId`, đáp ứng yêu cầu thêm dropdown lọc
@@ -82,7 +94,15 @@ export class UsersController {
       page: page ? +page : 1,
       limit: safeLimit,
     });
-    return { ...result, data: await this.usersService.signAvatarUrls(result.data) };
+    const signed = await this.usersService.signAvatarUrls(result.data);
+    // P3.6: cờ cho `lastLoginIp` (chỉ có với user đang bị khoá) - 1 query cho cả trang.
+    const geo = await this.ipGeo.resolveMany(signed.map((u: any) => u.lastLoginIp));
+    const data = signed.map((u: any) => {
+      if (!u.lastLoginIp) return u;
+      const g = geo.get(u.lastLoginIp);
+      return Object.assign(u, { lastLoginIpCountryCode: g?.countryCode ?? null, lastLoginIpKind: g?.ipKind ?? 'public' });
+    });
+    return { ...result, data };
   }
 
   @Get('me')
@@ -162,23 +182,25 @@ export class UsersController {
     return this.usersService.resetPassword(+id, dto, req.user.id, req.user.role, scope);
   }
 
-  // ── P5: thiết bị đăng nhập của nhân viên (Admin/Manager) ── cùng phạm vi `users.manage` + canManageUser như "Mở khoá".
+  // ── P5: thiết bị đăng nhập của nhân viên ── permission riêng `users.sessions` (mặc định chỉ Admin; scope all/department theo
+  // ma trận Phân quyền) + canManageUser; Manager không đụng được Admin.
   @Get(':id/sessions')
-  @RequirePermission('users.manage')
+  @RequirePermission('users.sessions')
   @ApiOperation({ summary: 'Danh sách thiết bị đang đăng nhập của 1 nhân viên (không lộ hash token)' })
   async listSessions(@Param('id') id: string, @Request() req: any, @GetPermissionScope() scope?: string | null) {
-    return this.usersService.listSessionsOfUser(+id, req.user.id, req.user.role, scope);
+    const res = await this.usersService.listSessionsOfUser(+id, req.user.id, req.user.role, scope);
+    return { ...res, sessions: await this.ipGeo.enrich(res.sessions, 'ip') };
   }
 
   @Delete(':id/sessions')
-  @RequirePermission('users.manage')
+  @RequirePermission('users.sessions')
   @ApiOperation({ summary: 'Đăng xuất MỌI thiết bị của 1 nhân viên (audit FORCE_LOGOUT). Manager không áp dụng được cho Admin.' })
   async revokeAllSessions(@Param('id') id: string, @Request() req: any, @GetPermissionScope() scope?: string | null) {
     return this.usersService.revokeSessionsOfUser(+id, req.user.id, req.user.role, scope);
   }
 
   @Delete(':id/sessions/:sid')
-  @RequirePermission('users.manage')
+  @RequirePermission('users.sessions')
   @ApiOperation({ summary: 'Đăng xuất 1 thiết bị của nhân viên (audit SESSION_REVOKED)' })
   async revokeSession(
     @Param('id') id: string,
@@ -193,7 +215,9 @@ export class UsersController {
   @RequirePermission('users.manage')
   @ApiOperation({ summary: 'Mở khoá đăng nhập sớm (sau khi bị khoá do sai mật khẩu quá ngưỡng trong `security_config`) - cùng phạm vi quyền với reset-password; trả thêm `lastLoginIp`' })
   async unlockLogin(@Param('id') id: string, @Request() req: any, @GetPermissionScope() scope?: string | null) {
-    return this.usersService.unlockLogin(+id, req.user.id, req.user.role, scope);
+    const res = await this.usersService.unlockLogin(+id, req.user.id, req.user.role, scope);
+    const [geo] = await this.ipGeo.enrich([{ ip: res.lastLoginIp }], 'ip');
+    return { ...res, lastLoginIpCountryCode: geo.countryCode, lastLoginIpKind: geo.ipKind };
   }
 
   // ==========================================================================

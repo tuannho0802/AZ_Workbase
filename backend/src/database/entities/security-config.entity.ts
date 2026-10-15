@@ -27,6 +27,12 @@ export class SecurityConfig {
     @Column({ name: 'security_event_retention_days', type: 'int', default: 180 })
     securityEventRetentionDays: number;
 
+    @Column({ name: 'ip_access_log_retention_days', type: 'int', default: 90 })
+    ipAccessLogRetentionDays: number;
+
+    @Column({ name: 'ip_access_detail_cap_per_hour', type: 'int', default: 20 })
+    ipAccessDetailCapPerHour: number;
+
     @Column({ name: 'updated_by', type: 'int', nullable: true })
     updatedBy: number | null;
 

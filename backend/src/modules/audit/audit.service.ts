@@ -2,6 +2,8 @@ import { CleanupRangesDto } from './dto/audit-cleanup.dto';
 import { normalizeDateRanges } from '../../common/utils/date-ranges.util';
 import { runRangeCleanup, countActionsInRanges } from '../../common/utils/range-cleanup.util';
 import { RETENTION_PROTECTED_AUDIT_ACTIONS } from '../retention/retention.constants';
+import { isPrivateIp } from '../../common/security/ip-geo.service';
+import { normalizeIp } from '../../common/security/client-ip';
 import { Injectable, Logger } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, LessThan, In, Between } from 'typeorm';
@@ -193,7 +195,36 @@ export class AuditService {
     waitUntil(task);
   }
 
+  /** P3.6: gắn `countryCode`/`ipKind` cạnh `ipAddress` (1 query IN cho cả trang) để FE vẽ cờ ở cột IP. */
+  private async withIpGeo<T extends { data: any[] }>(res: T): Promise<T> {
+    const ips = [...new Set(res.data.map((r) => normalizeIp(r?.ipAddress)).filter((i): i is string => !!i))];
+    if (ips.length === 0) return res;
+    let rows: Array<{ ip: string; country_code: string | null; source: string }> = [];
+    try {
+      rows = (await this.auditLogRepository.query(
+        `SELECT ip, country_code, source FROM ip_geo_cache WHERE ip IN (${ips.map(() => '?').join(',')})`,
+        ips,
+      )) ?? [];
+    } catch {
+      /* chưa chạy migration ip_geo_cache: hiển thị N/A */
+    }
+    const byIp = new Map(rows.map((r) => [String(r.ip), r]));
+    for (const row of res.data) {
+      const ip = normalizeIp(row?.ipAddress);
+      if (!ip) continue;
+      const priv = isPrivateIp(ip);
+      row.ipKind = priv ? 'private' : 'public';
+      row.countryCode = priv ? null : byIp.get(ip)?.country_code ?? null;
+      row.geoSource = byIp.get(ip)?.source ?? null;
+    }
+    return res;
+  }
+
   async getLogs(filters: GetAuditLogsDto) {
+    return this.withIpGeo(await this.getLogsRaw(filters));
+  }
+
+  private async getLogsRaw(filters: GetAuditLogsDto) {
     const {
       page = 1,
       limit = 20,

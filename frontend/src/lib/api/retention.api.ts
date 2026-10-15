@@ -1,6 +1,6 @@
 import axiosInstance from './axios-instance';
 
-export type RetentionTargetKey = 'audit_logs' | 'task_audit_logs' | 'notifications' | 'attendance_logs' | 'security_events';
+export type RetentionTargetKey = 'audit_logs' | 'task_audit_logs' | 'notifications' | 'attendance_logs' | 'security_events' | 'ip_access_logs';
 
 export interface RetentionTargetSetting {
   enabled: boolean;
@@ -22,6 +22,8 @@ export interface RetentionSettings {
   attendanceLogs: RetentionTargetSetting;
   /** P4.2: `retentionDays` là SỐ NGÀY GIỮ trong `security_config` (chỉ đọc ở đây; sửa ở trang Hoạt động bảo mật). */
   securityEvents: RetentionTargetSetting;
+  /** P3.6: số ngày giữ nằm ở `security_config` (sửa ở trang Hoạt động bảo mật). */
+  ipAccessLogs: RetentionTargetSetting;
   schedule: RetentionSchedule;
 }
 
@@ -33,6 +35,7 @@ export interface UpdateRetentionSettingsPayload {
   attendanceLogs?: Partial<RetentionTargetSetting>;
   /** Chỉ gửi `enabled` — BE từ chối `retentionDays` cho đối tượng này. */
   securityEvents?: { enabled?: boolean };
+  ipAccessLogs?: { enabled?: boolean };
 }
 
 export interface RetentionRunResult {

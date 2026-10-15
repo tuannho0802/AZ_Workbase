@@ -15,6 +15,10 @@ export interface AuditLog {
   oldData: any | null;
   newData: any | null;
   ipAddress: string | null;
+  /** P3.6: cờ quốc gia do BE gắn cạnh ipAddress. */
+  countryCode?: string | null;
+  ipKind?: 'public' | 'private';
+  geoSource?: string | null;
   userAgent: string | null;
   createdAt: string;
   user: AuditUser | null;

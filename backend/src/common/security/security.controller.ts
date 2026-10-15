@@ -10,9 +10,11 @@ import { AuditService } from '../../modules/audit/audit.service';
 import { normalizeIp } from '../../common/security/client-ip';
 import { LoginIpBlockService } from './login-ip-block.service';
 import { LoginIpWhitelistService } from './login-ip-whitelist.service';
+import { IpGeoService } from './ip-geo.service';
+import { IpAccessLogService } from './ip-access-log.service';
 import { SECURITY_CONFIG_LIMITS, SecurityConfigService } from './security-config.service';
 import { SecurityActivityService } from './security-activity.service';
-import { AddIpWhitelistDto, GetSecurityEventsDto, UpdateSecurityConfigDto } from './dto/security-activity.dto';
+import { AddIpWhitelistDto, GetIpAccessDetailDto, GetIpAccessDto, GetSecurityEventsDto, SetIpCountryDto, UpdateSecurityConfigDto } from './dto/security-activity.dto';
 import { SECURITY_AUDIT_ACTIONS } from './security-audit';
 
 /**
@@ -32,6 +34,8 @@ export class SecurityController {
         private readonly config: SecurityConfigService,
         private readonly auditService: AuditService,
         private readonly activity: SecurityActivityService,
+        private readonly ipGeo: IpGeoService,
+        private readonly ipAccess: IpAccessLogService,
     ) { }
 
     private assertGlobalScope(role: string, scope?: string | null) {
@@ -44,7 +48,8 @@ export class SecurityController {
     @ApiOperation({ summary: 'Danh sách IP đang bị khoá đăng nhập + IP sai gần đây (24 giờ), kèm ngưỡng cấu hình' })
     async list(@Req() req: { user: { role: string } }, @GetPermissionScope() scope?: string | null) {
         this.assertGlobalScope(req.user.role, scope);
-        const [items, cfg] = await Promise.all([this.ipBlocks.list(), this.config.get()]);
+        const [rawItems, cfg] = await Promise.all([this.ipBlocks.list(), this.config.get()]);
+        const items = await this.ipGeo.enrich(rawItems, 'ip');
         return {
             items,
             config: {
@@ -85,7 +90,10 @@ export class SecurityController {
   @ApiOperation({ summary: 'Danh sách IP được miễn khoá theo IP, kèm IP hiện tại của người gọi (myIp)' })
   async listWhitelist(@Req() req: { user: { role: string }; ip?: string }, @GetPermissionScope() scope?: string | null) {
     this.assertGlobalScope(req.user.role, scope);
-    return { items: await this.whitelist.list(), myIp: normalizeIp(req.ip) };
+    const myIp = normalizeIp(req.ip);
+    const items = await this.ipGeo.enrich(await this.whitelist.list(), 'ip');
+    const [me] = await this.ipGeo.enrich([{ ip: myIp }], 'ip');
+    return { items, myIp, myIpCountryCode: me.countryCode, myIpKind: me.ipKind };
   }
 
   @Post('ip-whitelist')
@@ -135,13 +143,80 @@ export class SecurityController {
     return { success: true, message: 'Đã gỡ IP khỏi whitelist' };
   }
 
+  // ───────── P3.6: quốc gia của IP (sửa tay) + theo dõi lượt truy cập IP. Cùng quyền với `ip-blocks`. ─────────
+
+  @Put('ip-geo/:ip')
+  @RequirePermission('users.manage')
+  @ApiOperation({ summary: 'Admin gán quốc gia thủ công cho 1 IP (source=manual, không bị header Vercel ghi đè). Audit IP_COUNTRY_SET' })
+  async setIpCountry(
+    @Param('ip') ip: string,
+    @Body() dto: SetIpCountryDto,
+    @Req() req: { user: { id: number; role: string }; ip?: string; headers?: Record<string, unknown> },
+    @GetPermissionScope() scope?: string | null,
+  ) {
+    this.assertGlobalScope(req.user.role, scope);
+    const res = await this.ipGeo.setManual(ip, dto.countryCode, req.user.id);
+    const ua = typeof req.headers?.['user-agent'] === 'string' ? (req.headers['user-agent'] as string) : null;
+    this.auditService.logSecurityEventAsync({
+      userId: req.user.id, action: 'IP_COUNTRY_SET', ip: normalizeIp(req.ip), userAgent: ua,
+      detail: { targetIp: res.ip, before: res.before, after: res.after },
+    });
+    return { success: true, ip: res.ip, countryCode: res.after };
+  }
+
+  @Delete('ip-geo/:ip')
+  @RequirePermission('users.manage')
+  @ApiOperation({ summary: 'Xoá bản sửa tay quốc gia của IP. Audit IP_COUNTRY_CLEARED' })
+  async clearIpCountry(
+    @Param('ip') ip: string,
+    @Req() req: { user: { id: number; role: string }; ip?: string; headers?: Record<string, unknown> },
+    @GetPermissionScope() scope?: string | null,
+  ) {
+    this.assertGlobalScope(req.user.role, scope);
+    const res = await this.ipGeo.clearManual(ip);
+    if (!res) throw new NotFoundException('IP này không có bản sửa tay quốc gia.');
+    const ua = typeof req.headers?.['user-agent'] === 'string' ? (req.headers['user-agent'] as string) : null;
+    this.auditService.logSecurityEventAsync({
+      userId: req.user.id, action: 'IP_COUNTRY_CLEARED', ip: normalizeIp(req.ip), userAgent: ua,
+      detail: { targetIp: res.ip, before: res.before },
+    });
+    return { success: true };
+  }
+
+  @Get('ip-access')
+  @RequirePermission('users.manage')
+  @ApiOperation({ summary: 'Theo dõi IP: danh sách IP đã đăng nhập/làm mới phiên kèm số lần (đọc từ bảng tổng hợp)' })
+  async listIpAccess(@Query() q: GetIpAccessDto, @Req() req: { user: { role: string } }, @GetPermissionScope() scope?: string | null) {
+    this.assertGlobalScope(req.user.role, scope);
+    const res = await this.ipAccess.list({ status: q.status, search: q.search, page: q.page ?? 1, limit: q.limit ?? 20 });
+    return { ...res, items: await this.ipGeo.enrich(res.items, 'ip') };
+  }
+
+  @Get('ip-access/:ip')
+  @RequirePermission('users.manage')
+  @ApiOperation({ summary: 'Lịch sử truy cập của 1 IP: tóm tắt + log phân trang' })
+  async ipAccessDetail(
+    @Param('ip') ip: string,
+    @Query() q: GetIpAccessDetailDto,
+    @Req() req: { user: { role: string } },
+    @GetPermissionScope() scope?: string | null,
+  ) {
+    this.assertGlobalScope(req.user.role, scope);
+    if (!normalizeIp(ip)) throw new BadRequestException('Địa chỉ IP không hợp lệ');
+    const res = await this.ipAccess.detail(ip, { page: q.page ?? 1, limit: q.limit ?? 20, outcome: q.outcome, from: q.fromDate, to: q.toDate });
+    if (!res) throw new NotFoundException('Chưa có lượt truy cập nào được ghi nhận cho IP này.');
+    const [geo] = await this.ipGeo.enrich([{ ip: res.ip }], 'ip');
+    return { ...res, countryCode: geo.countryCode, ipKind: geo.ipKind, geoSource: geo.geoSource };
+  }
+
   // ───────── PLAN Phase 4.3: trang "Hoạt động bảo mật" — tái dùng `audit.manage` (không tạo key mới) ─────────
 
   @Get('events')
   @RequirePermission('audit.manage')
   @ApiOperation({ summary: 'Sự kiện bảo mật (đăng nhập sai, khoá, mở khoá...) — lọc theo loại/IP/email/ngày, phân trang' })
-  events(@Query() filters: GetSecurityEventsDto) {
-    return this.activity.listEvents(filters);
+  async events(@Query() filters: GetSecurityEventsDto) {
+    const res = await this.activity.listEvents(filters);
+    return { ...res, data: await this.ipGeo.enrich(res.data as any[], 'ipAddress') };
   }
 
   @Get('summary')

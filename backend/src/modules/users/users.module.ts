@@ -1,3 +1,4 @@
+import { SecurityModule } from '../../common/security/security.module';
 import { Module } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { UsersService } from './users.service';
@@ -23,6 +24,7 @@ import { PositionsModule } from '../positions/positions.module';
   // dependency (PositionsModule chỉ import TypeOrmModule, không import
   // ngược lại UsersModule).
   imports: [
+    SecurityModule, // IpGeoService: cờ quốc gia cạnh IP (P3.6)
     TypeOrmModule.forFeature([User, RoleEntity]),
     DepartmentsModule,
     PositionsModule,

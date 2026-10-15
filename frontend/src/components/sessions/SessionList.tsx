@@ -3,6 +3,7 @@
 import { Button, Empty, Popconfirm, Space, Spin, Tag, Typography } from 'antd';
 import { DesktopOutlined, LogoutOutlined } from '@ant-design/icons';
 import type { SessionView } from '@/lib/api/sessions.api';
+import { IpWithFlag } from '@/components/security/IpWithFlag';
 import { formatAgo } from '@/lib/utils/format-ago';
 
 const { Text } = Typography;
@@ -51,7 +52,7 @@ export function SessionList({
                                 </Space>
                                 <div>
                                     <Space size={12} wrap style={{ color: 'rgba(0,0,0,0.45)' }}>
-                                        <span>IP: {s.ip || '—'}</span>
+                                        <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>IP: <IpWithFlag ip={s.ip} countryCode={s.countryCode} ipKind={s.ipKind} geoSource={s.geoSource} readOnly /></span>
                                         <span>Hoạt động: {formatAgo(s.lastActiveAgoSeconds)}</span>
                                         <span>Đăng nhập: {formatAgo(s.createdAgoSeconds)}</span>
                                     </Space>

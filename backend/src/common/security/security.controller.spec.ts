@@ -9,6 +9,8 @@ describe('SecurityController (P3.3)', () => {
     let config: { get: jest.Mock };
     let audit: { logActionAsync: jest.Mock; logSecurityEventAsync: jest.Mock };
     let activity: { listEvents: jest.Mock; summary: jest.Mock };
+    let ipGeo: { enrich: jest.Mock; setManual: jest.Mock; clearManual: jest.Mock };
+    let ipAccess: { list: jest.Mock; detail: jest.Mock };
     let ctl: SecurityController;
     const admin = { user: { id: 1, role: Role.ADMIN } };
     const dept = { user: { id: 2, role: 'manager' } };
@@ -19,12 +21,18 @@ describe('SecurityController (P3.3)', () => {
         audit = { logActionAsync: jest.fn(), logSecurityEventAsync: jest.fn() };
         activity = { listEvents: jest.fn().mockResolvedValue({ data: [] }), summary: jest.fn().mockResolvedValue({ lockedToday: 1 }) };
         whitelist = { list: jest.fn().mockResolvedValue([{ ip: '9.9.9.9' }]), add: jest.fn(), remove: jest.fn() };
-        ctl = new SecurityController(ipBlocks as any, whitelist as any, config as any, audit as any, activity as any);
+        ipGeo = {
+            enrich: jest.fn(async (rows: any[]) => rows.map((r) => ({ ...r, countryCode: 'VN', ipKind: 'public', geoSource: 'vercel' }))),
+            setManual: jest.fn().mockResolvedValue({ ip: '1.2.3.4', before: null, after: 'VN' }),
+            clearManual: jest.fn(),
+        };
+        ipAccess = { list: jest.fn().mockResolvedValue({ total: 1, page: 1, limit: 20, items: [{ ip: '1.2.3.4' }] }), detail: jest.fn() };
+        ctl = new SecurityController(ipBlocks as any, whitelist as any, config as any, audit as any, activity as any, ipGeo as any, ipAccess as any);
     });
 
     it('list: admin xem được, kèm ngưỡng cấu hình', async () => {
         const res = await ctl.list(admin, PermissionScope.ALL);
-        expect(res.items).toEqual([{ ip: '1.2.3.4' }]);
+        expect(res.items).toEqual([{ ip: '1.2.3.4', countryCode: 'VN', ipKind: 'public', geoSource: 'vercel' }]);
         expect(res.config).toEqual({ ipMaxFailedAttempts: 10, ipWindowMinutes: 10, ipLockMinutes: 5 });
     });
 
@@ -110,7 +118,12 @@ describe('SecurityController (P3.3)', () => {
 
         it('list: trả items + myIp (đã chuẩn hoá); Manager scope department -> 403', async () => {
             const res = await ctl.listWhitelist(adminReq, PermissionScope.ALL);
-            expect(res).toEqual({ items: [{ ip: '9.9.9.9' }], myIp: '10.0.0.5' });
+            expect(res).toEqual({
+                items: [{ ip: '9.9.9.9', countryCode: 'VN', ipKind: 'public', geoSource: 'vercel' }],
+                myIp: '10.0.0.5',
+                myIpCountryCode: 'VN',
+                myIpKind: 'public',
+            });
             await expect(ctl.listWhitelist(dept, PermissionScope.DEPARTMENT)).rejects.toThrow(ForbiddenException);
         });
 
@@ -147,6 +160,43 @@ describe('SecurityController (P3.3)', () => {
 
         it('actions: có 2 action whitelist mới', () => {
             expect(ctl.actions()).toEqual(expect.arrayContaining(['IP_WHITELIST_ADDED', 'IP_WHITELIST_REMOVED']));
+        });
+    });
+
+    describe('P3.6 quốc gia IP + theo dõi IP', () => {
+        const req = { user: { id: 1, role: Role.ADMIN }, ip: '10.0.0.1', headers: { 'user-agent': 'jest' } };
+
+        it('setIpCountry: scope department -> 403, không ghi gì', async () => {
+            await expect(ctl.setIpCountry('1.2.3.4', { countryCode: 'VN' }, { ...dept, ip: '1.1.1.1' } as any, PermissionScope.DEPARTMENT)).rejects.toThrow(ForbiddenException);
+            expect(ipGeo.setManual).not.toHaveBeenCalled();
+        });
+        it('setIpCountry: ghi manual + audit IP_COUNTRY_SET', async () => {
+            const res = await ctl.setIpCountry('1.2.3.4', { countryCode: 'vn' }, req as any, PermissionScope.ALL);
+            expect(ipGeo.setManual).toHaveBeenCalledWith('1.2.3.4', 'vn', 1);
+            expect(res).toEqual({ success: true, ip: '1.2.3.4', countryCode: 'VN' });
+            expect(audit.logSecurityEventAsync).toHaveBeenCalledWith(expect.objectContaining({ action: 'IP_COUNTRY_SET', detail: { targetIp: '1.2.3.4', before: null, after: 'VN' } }));
+        });
+        it('setIpCountry: lỗi 400 từ service -> ném lên, không audit', async () => {
+            ipGeo.setManual.mockRejectedValue(new BadRequestException('x'));
+            await expect(ctl.setIpCountry('1.2.3.4', { countryCode: 'ZZ' }, req as any, PermissionScope.ALL)).rejects.toThrow(BadRequestException);
+            expect(audit.logSecurityEventAsync).not.toHaveBeenCalled();
+        });
+        it('clearIpCountry: không có bản sửa tay -> 404; có -> audit IP_COUNTRY_CLEARED', async () => {
+            ipGeo.clearManual.mockResolvedValueOnce(null);
+            await expect(ctl.clearIpCountry('1.2.3.4', req as any, PermissionScope.ALL)).rejects.toThrow(NotFoundException);
+            ipGeo.clearManual.mockResolvedValueOnce({ ip: '1.2.3.4', before: 'VN' });
+            await ctl.clearIpCountry('1.2.3.4', req as any, PermissionScope.ALL);
+            expect(audit.logSecurityEventAsync).toHaveBeenCalledWith(expect.objectContaining({ action: 'IP_COUNTRY_CLEARED' }));
+        });
+        it('listIpAccess: scope department bị chặn; admin xem được kèm countryCode', async () => {
+            await expect(ctl.listIpAccess({}, dept as any, PermissionScope.DEPARTMENT)).rejects.toThrow(ForbiddenException);
+            const res = await ctl.listIpAccess({ page: 1, limit: 20 }, admin as any, PermissionScope.ALL);
+            expect(res.items[0]).toMatchObject({ ip: '1.2.3.4', countryCode: 'VN' });
+        });
+        it('ipAccessDetail: IP sai -> 400; chưa có log -> 404', async () => {
+            await expect(ctl.ipAccessDetail('abc!', {}, admin as any, PermissionScope.ALL)).rejects.toThrow(BadRequestException);
+            ipAccess.detail.mockResolvedValue(null);
+            await expect(ctl.ipAccessDetail('1.2.3.4', {}, admin as any, PermissionScope.ALL)).rejects.toThrow(NotFoundException);
         });
     });
 });

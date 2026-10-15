@@ -1,6 +1,7 @@
 import { ConfigProvider } from 'antd';
 import viVN from 'antd/locale/vi_VN';
 import 'antd/dist/reset.css';
+import 'flag-icons/css/flag-icons.min.css';
 import './globals.css';
 import { AntdAppProvider } from '@/components/common/AntdAppProvider';
 import { BotIdClient } from 'botid/client';

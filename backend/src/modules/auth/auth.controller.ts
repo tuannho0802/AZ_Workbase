@@ -6,7 +6,7 @@ import { LoginDto } from './dto/login.dto';
 import { RegisterDto } from './dto/register.dto';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { ThrottlerBehindProxyGuard } from '../../common/guards/throttler-behind-proxy.guard';
-import { getDirectClientIp } from '../../common/security/client-ip';
+import { getClientCountry, getDirectClientIp } from '../../common/security/client-ip';
 
 @ApiTags('Auth')
 @Controller('auth')
@@ -63,7 +63,7 @@ export class AuthController {
     // và ghi email (PII) ra log mỗi lần đăng nhập. Lỗi đăng nhập vẫn do AuthService xử lý/log như cũ.
     // P3.2: IP chỉ lấy từ `req.ip` (login gọi thẳng BE từ trình duyệt; header `x-az-client-ip` do client tự gắn nên KHÔNG tin ở đây).
     const ua = typeof req?.headers?.['user-agent'] === 'string' ? req.headers['user-agent'] : null;
-    return this.authService.login(loginDto, getDirectClientIp(req), ua);
+    return this.authService.login(loginDto, getDirectClientIp(req), ua, getClientCountry(req));
   }
 
   @Post('refresh')
@@ -74,7 +74,7 @@ export class AuthController {
   async refresh(@Body('refreshToken') refreshToken: string, @Req() req: any) {
     // P5: IP lấy từ `req.ip` (KHÔNG tin header x-az-client-ip do client tự gắn) - cùng cách với login.
     const ua = typeof req?.headers?.['user-agent'] === 'string' ? req.headers['user-agent'] : null;
-    return this.authService.refresh(refreshToken, getDirectClientIp(req), ua);
+    return this.authService.refresh(refreshToken, getDirectClientIp(req), ua, getClientCountry(req));
   }
 
   // ── P5: thiết bị đăng nhập của CHÍNH MÌNH (không cần permission - ai cũng quản được phiên của mình) ──

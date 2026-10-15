@@ -16,6 +16,7 @@ describe('SecurityConfigService (P3.1)', () => {
         expect(await service.get()).toEqual({
             accountMaxFailedAttempts: 5, accountLockMinutes: 5, ipMaxFailedAttempts: 10,
             ipWindowMinutes: 10, ipLockMinutes: 5, securityEventRetentionDays: 180,
+            ipAccessLogRetentionDays: 90, ipAccessDetailCapPerHour: 20,
         });
     });
 

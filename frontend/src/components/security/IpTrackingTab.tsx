@@ -1,0 +1,162 @@
+'use client';
+
+import { useState } from 'react';
+import { useQuery } from '@tanstack/react-query';
+import { Alert, Button, Card, Descriptions, Drawer, Input, Select, Space, Table, Tag, Typography } from 'antd';
+import { ReloadOutlined } from '@ant-design/icons';
+import type { ColumnsType } from 'antd/es/table';
+import {
+    securityApi,
+    type IpAccessItem,
+    type IpAccessLogRow,
+    type IpAccessOutcome,
+    type IpCurrentStatus,
+} from '@/lib/api/security.api';
+import { formatAgo } from '@/lib/utils/format-ago';
+import { IpWithFlag } from './IpWithFlag';
+
+const { Text } = Typography;
+
+export const OUTCOME_META: Record<IpAccessOutcome, { label: string; color: string }> = {
+    success: { label: 'Đăng nhập thành công', color: 'green' },
+    wrong_password: { label: 'Sai mật khẩu', color: 'orange' },
+    unknown_email: { label: 'Email không tồn tại', color: 'volcano' },
+    account_locked: { label: 'Tài khoản đang khoá', color: 'red' },
+    ip_locked: { label: 'IP đang khoá', color: 'red' },
+    denied: { label: 'Bị từ chối (khoá/chờ duyệt)', color: 'magenta' },
+    refresh_ok: { label: 'Làm mới phiên', color: 'blue' },
+    refresh_failed: { label: 'Làm mới phiên thất bại', color: 'default' },
+};
+
+const STATUS_META: Record<IpCurrentStatus, { label: string; color: string }> = {
+    normal: { label: 'Bình thường', color: 'default' },
+    whitelisted: { label: 'Whitelist', color: 'cyan' },
+    blocked: { label: 'Đang khoá', color: 'volcano' },
+};
+
+export const OutcomeTag = ({ outcome }: { outcome: IpAccessOutcome | null }) => {
+    if (!outcome) return <>-</>;
+    const m = OUTCOME_META[outcome] ?? { label: outcome, color: 'default' };
+    return <Tag color={m.color}>{m.label}</Tag>;
+};
+
+function IpDetailDrawer({ ip, onClose }: { ip: string | null; onClose: () => void }) {
+    const [page, setPage] = useState(1);
+    const [outcome, setOutcome] = useState<IpAccessOutcome | undefined>();
+    const { data, isLoading, refetch } = useQuery({
+        queryKey: ['security-ip-access-detail', ip, page, outcome],
+        queryFn: () => securityApi.getIpAccessDetail(ip as string, { page, limit: 20, outcome }),
+        enabled: !!ip,
+    });
+
+    const columns: ColumnsType<IpAccessLogRow> = [
+        { title: 'Khi nào', dataIndex: 'agoSeconds', width: 120, render: (s: number) => formatAgo(s) },
+        { title: 'Kết quả', dataIndex: 'outcome', width: 200, render: (o: IpAccessOutcome) => <OutcomeTag outcome={o} /> },
+        {
+            title: 'Tài khoản / Email', key: 'who',
+            render: (_: unknown, r) => r.userName ? <span>{r.userName}{r.email ? <Text type="secondary"> ({r.email})</Text> : null}</span> : (r.email ? <Text code>{r.email}</Text> : '-'),
+        },
+        { title: 'Thiết bị', dataIndex: 'userAgent', ellipsis: true, render: (v: string | null) => v || '-' },
+    ];
+
+    return (
+        <Drawer
+            title={ip ? <IpWithFlag ip={ip} countryCode={data?.countryCode} ipKind={data?.ipKind} geoSource={data?.geoSource} onChanged={() => void refetch()} /> : ''}
+            open={!!ip}
+            onClose={() => { setPage(1); setOutcome(undefined); onClose(); }}
+            size="large"
+            destroyOnHidden
+        >
+            {data && (
+                <Descriptions size="small" column={2} bordered style={{ marginBottom: 16 }}>
+                    <Descriptions.Item label="Tổng lượt">{data.summary.totalHits}</Descriptions.Item>
+                    <Descriptions.Item label="Trạng thái"><Tag color={STATUS_META[data.summary.currentStatus].color}>{STATUS_META[data.summary.currentStatus].label}</Tag></Descriptions.Item>
+                    <Descriptions.Item label="Thành công">{data.summary.successHits}</Descriptions.Item>
+                    <Descriptions.Item label="Thất bại">{data.summary.failedHits}</Descriptions.Item>
+                    <Descriptions.Item label="Bị chặn (IP khoá)">{data.summary.blockedHits}</Descriptions.Item>
+                    <Descriptions.Item label="Lượt không lưu chi tiết">{data.summary.suppressedHits}</Descriptions.Item>
+                    <Descriptions.Item label="Thấy lần đầu">{formatAgo(data.summary.firstSeenAgoSeconds)}</Descriptions.Item>
+                    <Descriptions.Item label="Gần nhất">{formatAgo(data.summary.lastSeenAgoSeconds)}</Descriptions.Item>
+                </Descriptions>
+            )}
+            <Space style={{ marginBottom: 12 }}>
+                <Select
+                    allowClear placeholder="Lọc kết quả" style={{ width: 240 }} value={outcome}
+                    options={(Object.keys(OUTCOME_META) as IpAccessOutcome[]).map((k) => ({ value: k, label: OUTCOME_META[k].label }))}
+                    onChange={(v) => { setOutcome(v); setPage(1); }}
+                />
+                <Button icon={<ReloadOutlined />} onClick={() => void refetch()} />
+            </Space>
+            <Table<IpAccessLogRow>
+                rowKey="id" size="small" columns={columns} dataSource={data?.logs ?? []} loading={isLoading}
+                scroll={{ x: 'max-content' }}
+                pagination={{ current: page, pageSize: 20, total: data?.total ?? 0, showSizeChanger: false, onChange: setPage, showTotal: (t) => `${t} dòng chi tiết` }}
+            />
+        </Drawer>
+    );
+}
+
+/**
+ * Tab "Theo dõi IP" (P3.6) trong Nhật ký hệ thống: mỗi IP đã đăng nhập/làm mới phiên + số lần (đọc từ bảng tổng hợp
+ * `ip_access_stats`, không đếm trên bảng log). Chỉ render khi có `users.manage` phạm vi `all` (BE trả 403 nếu thiếu).
+ */
+export function IpTrackingTab() {
+    const [page, setPage] = useState(1);
+    const [pageSize, setPageSize] = useState(20);
+    const [status, setStatus] = useState<'all' | 'blocked' | 'whitelisted'>('all');
+    const [search, setSearch] = useState('');
+    const [detailIp, setDetailIp] = useState<string | null>(null);
+
+    const { data, isLoading, isFetching, refetch } = useQuery({
+        queryKey: ['security-ip-access', page, pageSize, status, search],
+        queryFn: () => securityApi.getIpAccess({ page, limit: pageSize, status, search: search || undefined }),
+        staleTime: 15_000,
+    });
+
+    const columns: ColumnsType<IpAccessItem> = [
+        {
+            title: 'IP', key: 'ip',
+            render: (_: unknown, r) => <IpWithFlag ip={r.ip} countryCode={r.countryCode ?? r.lastCountryCode} ipKind={r.ipKind} geoSource={r.geoSource} onChanged={() => void refetch()} />,
+        },
+        { title: 'Tổng lượt', dataIndex: 'totalHits', sorter: (a, b) => a.totalHits - b.totalHits, width: 100 },
+        { title: 'Thành công', dataIndex: 'successHits', width: 110, render: (n: number) => <Text type="success">{n}</Text> },
+        { title: 'Thất bại', dataIndex: 'failedHits', width: 100, render: (n: number) => (n > 0 ? <Text type="danger">{n}</Text> : n) },
+        { title: 'Bị chặn', dataIndex: 'blockedHits', width: 90 },
+        { title: 'Kết quả gần nhất', dataIndex: 'lastOutcome', render: (o: IpAccessOutcome | null) => <OutcomeTag outcome={o} /> },
+        { title: 'Trạng thái', dataIndex: 'currentStatus', width: 120, render: (s: IpCurrentStatus) => <Tag color={STATUS_META[s].color}>{STATUS_META[s].label}</Tag> },
+        { title: 'Lần đầu', dataIndex: 'firstSeenAgoSeconds', width: 120, render: (s: number) => formatAgo(s) },
+        { title: 'Gần nhất', dataIndex: 'lastSeenAgoSeconds', width: 120, render: (s: number) => formatAgo(s) },
+        { title: '', key: 'a', width: 90, render: (_: unknown, r) => <Button size="small" onClick={() => setDetailIp(r.ip)}>Chi tiết</Button> },
+    ];
+
+    return (
+        <Space orientation={'vertical' as never} size="middle" style={{ width: '100%' }}>
+            <Alert
+                type="info" showIcon
+                title="Mỗi lượt đăng nhập/làm mới phiên được tính cho IP của nó. Quốc gia lấy từ Vercel; IP nội bộ hoặc chưa đi qua Vercel sẽ là Nội bộ/N/A (Admin có thể gán tay)."
+            />
+            <Card variant="outlined" styles={{ body: { padding: 12 } }}>
+                <Space wrap>
+                    <Input.Search allowClear placeholder="Tìm IP" style={{ width: 200 }} onSearch={(v) => { setSearch(v); setPage(1); }} />
+                    <Select
+                        value={status} style={{ width: 170 }}
+                        onChange={(v) => { setStatus(v); setPage(1); }}
+                        options={[{ value: 'all', label: 'Tất cả IP' }, { value: 'blocked', label: 'Đang bị khoá' }, { value: 'whitelisted', label: 'Trong whitelist' }]}
+                    />
+                    <Button icon={<ReloadOutlined />} loading={isFetching} onClick={() => void refetch()}>Làm mới</Button>
+                </Space>
+            </Card>
+            <Table<IpAccessItem>
+                rowKey="ip" columns={columns} dataSource={data?.items ?? []} loading={isLoading}
+                scroll={{ x: 'max-content' }}
+                locale={{ emptyText: 'Chưa có IP nào được ghi nhận' }}
+                pagination={{
+                    current: page, pageSize, total: data?.total ?? 0, showSizeChanger: true,
+                    showTotal: (t) => `Tổng ${t} IP`,
+                    onChange: (p, s) => { setPage(p); setPageSize(s); },
+                }}
+            />
+            <IpDetailDrawer ip={detailIp} onClose={() => setDetailIp(null)} />
+        </Space>
+    );
+}

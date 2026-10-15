@@ -104,7 +104,7 @@ function UserMobileCard({
             <Tag color="gold" icon={<CrownOutlined />}>Root Admin</Tag>
           )}
           {renderUserStatusTag(record, true)}
-          <LoginLockTag seconds={record.loginLockSeconds} onExpire={onLockExpire} lastLoginIp={record.lastLoginIp} />
+          <LoginLockTag seconds={record.loginLockSeconds} onExpire={onLockExpire} lastLoginIp={record.lastLoginIp} lastLoginIpCountryCode={record.lastLoginIpCountryCode} />
         </div>
       </div>
 
@@ -127,7 +127,7 @@ function UserMobileCard({
           </div>
         )}
         <Text style={{ fontSize: 11, color: '#bfbfbf' }}>ID: {record.id}</Text>
-        <Text style={{ fontSize: 12, color: '#595959' }}>Thiết bị đăng nhập: {record.sessionCount ?? 0}</Text>
+        {canSessions && <Text style={{ fontSize: 12, color: '#595959' }}>Thiết bị đăng nhập: {record.sessionCount ?? 0}</Text>}
       </div>
 
       {canSessions && (
@@ -307,7 +307,9 @@ export default function UsersPage() {
   // department bị BE chặn 403 nên FE ẩn hẳn tab, không lộ UI rồi báo lỗi).
   const canManageIpBlocks = canManage && (user?.role === 'admin' || scope('users.manage') === 'all');
   // P5: BE chặn Manager/role khác đăng xuất thiết bị của tài khoản role `admin` -> FE ẩn nút luôn, không để bấm rồi báo 403.
-  const canViewSessionsOf = (record: { role?: string }) => canManage && (record.role !== 'admin' || user?.role === 'admin');
+  // Quyền riêng `users.sessions` (mặc định chỉ Admin; cấp thêm ở trang Phân quyền) - thay cho `users.manage` cũ.
+  const canSessionsPerm = can('users.sessions');
+  const canViewSessionsOf = (record: { role?: string }) => canSessionsPerm && (record.role !== 'admin' || user?.role === 'admin');
   const canSeeFullList = canAccessPage;
   // ⚠️ MỚI (isRootAdmin) - toggle "Root Admin" trong Modal Thêm/Sửa CHỈ hiện
   // với người đang đăng nhập THẬT SỰ là Root Admin (khác `role === 'admin'`
@@ -551,18 +553,18 @@ export default function UsersPage() {
       render: (_: unknown, record: any) => (
         <Space size={4} wrap>
           {renderUserStatusTag(record)}
-          <LoginLockTag seconds={record.loginLockSeconds} onExpire={fetchUsers} lastLoginIp={record.lastLoginIp} />
+          <LoginLockTag seconds={record.loginLockSeconds} onExpire={fetchUsers} lastLoginIp={record.lastLoginIp} lastLoginIpCountryCode={record.lastLoginIpCountryCode} />
         </Space>
       ),
     },
-    {
+    ...(canSessionsPerm ? [{
       title: 'Số thiết bị',
       key: 'sessionCount',
       width: 100,
       align: 'center' as const,
       render: (_: unknown, record: any) =>
         record.sessionCount > 0 ? <Tag color="blue" style={{ marginInlineEnd: 0 }}>{record.sessionCount}</Tag> : <Text type="secondary">0</Text>,
-    },
+    }] : []),
     {
       title: 'Thao tác',
       key: 'action',

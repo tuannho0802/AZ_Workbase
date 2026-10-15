@@ -1,7 +1,15 @@
 import axiosInstance from './axios-instance';
 
 /** 1 dòng trong danh sách IP bị khoá/đã sai gần đây (GET /security/ip-blocks). */
-export interface IpBlockItem {
+/** Cờ quốc gia do BE gắn cạnh mỗi IP (P3.6). `private` = IP mạng nội bộ (không thuộc quốc gia nào). */
+export interface IpGeoFields {
+    countryCode?: string | null;
+    ipKind?: 'public' | 'private';
+    /** 'manual' = Admin sửa tay. */
+    geoSource?: 'vercel' | 'manual' | 'private' | 'unknown' | null;
+}
+
+export interface IpBlockItem extends IpGeoFields {
     id: number;
     ip: string;
     failedCount: number;
@@ -18,14 +26,43 @@ export interface IpBlocksResponse {
 }
 
 /** 1 dòng whitelist IP (GET /security/ip-whitelist). */
-export interface IpWhitelistItem {
+export interface IpWhitelistItem extends IpGeoFields {
     id: number;
     ip: string;
     note: string | null;
     createdByName: string | null;
     createdAgoSeconds: number;
 }
-export interface IpWhitelistResponse { items: IpWhitelistItem[]; myIp: string | null }
+export interface IpWhitelistResponse { items: IpWhitelistItem[]; myIp: string | null; myIpCountryCode?: string | null; myIpKind?: 'public' | 'private' }
+
+export type IpAccessOutcome = 'success' | 'wrong_password' | 'unknown_email' | 'account_locked' | 'ip_locked' | 'denied' | 'refresh_ok' | 'refresh_failed';
+export type IpCurrentStatus = 'normal' | 'whitelisted' | 'blocked';
+
+/** 1 dòng "Theo dõi IP" (GET /security/ip-access). Thời gian là SỐ GIÂY TRƯỚC (BE tính, tránh lệch múi giờ). */
+export interface IpAccessItem extends IpGeoFields {
+    ip: string;
+    totalHits: number;
+    successHits: number;
+    failedHits: number;
+    blockedHits: number;
+    suppressedHits: number;
+    lastOutcome: IpAccessOutcome | null;
+    lastCountryCode?: string | null;
+    firstSeenAgoSeconds: number;
+    lastSeenAgoSeconds: number;
+    currentStatus: IpCurrentStatus;
+}
+export interface IpAccessListResponse { items: IpAccessItem[]; total: number; page: number; limit: number }
+export interface IpAccessLogRow {
+    id: string; endpoint: string; outcome: IpAccessOutcome; ipStatus: IpCurrentStatus;
+    userId: number | null; userName: string | null; email: string | null; userAgent: string | null; agoSeconds: number;
+}
+export interface IpAccessDetailResponse extends IpGeoFields {
+    ip: string;
+    summary: Omit<IpAccessItem, 'ip' | 'lastOutcome' | 'lastCountryCode' | keyof IpGeoFields>;
+    total: number; page: number; limit: number;
+    logs: IpAccessLogRow[];
+}
 
 export interface SecurityEvent {
   id: number;
@@ -36,6 +73,9 @@ export interface SecurityEvent {
   newData: { email?: string; [k: string]: unknown } | null;
   createdAt: string;
   user: { id: number; name: string; email: string } | null;
+  countryCode?: string | null;
+  ipKind?: 'public' | 'private';
+  geoSource?: string | null;
 }
 export interface SecurityEventsResponse { data: SecurityEvent[]; total: number; page: number; limit: number; totalPages: number }
 export interface SecuritySummary {
@@ -45,6 +85,7 @@ export interface SecuritySummary {
 export interface SecurityConfigValues {
   accountMaxFailedAttempts: number; accountLockMinutes: number; ipMaxFailedAttempts: number;
   ipWindowMinutes: number; ipLockMinutes: number; securityEventRetentionDays: number;
+  ipAccessLogRetentionDays: number; ipAccessDetailCapPerHour: number;
 }
 export interface SecurityEventsParams {
   page?: number; limit?: number; action?: string; ip?: string; search?: string; fromDate?: string; toDate?: string;
@@ -76,6 +117,16 @@ export const securityApi = {
     getIpWhitelist: async (): Promise<IpWhitelistResponse> => (await axiosInstance.get<IpWhitelistResponse>('/security/ip-whitelist')).data,
     addIpWhitelist: async (ip: string, note?: string): Promise<{ success: boolean; ip: string; clearedBlock: boolean }> =>
         (await axiosInstance.post('/security/ip-whitelist', { ip, note: note || undefined })).data,
+    // P3.6 — quốc gia của IP (sửa tay) + theo dõi lượt truy cập IP. Cần `users.manage` phạm vi `all`.
+    setIpCountry: async (ip: string, countryCode: string): Promise<{ success: boolean; ip: string; countryCode: string }> =>
+        (await axiosInstance.put(`/security/ip-geo/${encodeURIComponent(ip)}`, { countryCode })).data,
+    clearIpCountry: async (ip: string): Promise<{ success: boolean }> =>
+        (await axiosInstance.delete(`/security/ip-geo/${encodeURIComponent(ip)}`)).data,
+    getIpAccess: async (params: { page?: number; limit?: number; status?: 'all' | 'blocked' | 'whitelisted'; search?: string }): Promise<IpAccessListResponse> =>
+        (await axiosInstance.get('/security/ip-access', { params })).data,
+    getIpAccessDetail: async (ip: string, params: { page?: number; limit?: number; outcome?: IpAccessOutcome; fromDate?: string; toDate?: string }): Promise<IpAccessDetailResponse> =>
+        (await axiosInstance.get(`/security/ip-access/${encodeURIComponent(ip)}`, { params })).data,
+
     removeIpWhitelist: async (ip: string): Promise<{ success: boolean }> =>
         (await axiosInstance.delete(`/security/ip-whitelist/${encodeURIComponent(ip)}`)).data,
 };

@@ -17,6 +17,8 @@ export const SECURITY_AUDIT_ACTIONS = [
   'UPDATE_SECURITY_CONFIG',
   'IP_WHITELIST_ADDED',
   'IP_WHITELIST_REMOVED',
+  'IP_COUNTRY_SET',
+  'IP_COUNTRY_CLEARED',
 ] as const;
 
 export type SecurityAuditAction = (typeof SECURITY_AUDIT_ACTIONS)[number];

@@ -8,6 +8,7 @@ import { securityApi, type IpBlockItem } from '@/lib/api/security.api';
 import { formatCountdown, useCountdown } from '@/lib/hooks/useCountdown';
 import { getApiErrorMessage } from '@/lib/utils/error-message.util';
 import { formatAgo } from '@/lib/utils/format-ago';
+import { IpWithFlag } from '@/components/security/IpWithFlag';
 import { LoginIpWhitelistSection, WHITELIST_QUERY_KEY } from './LoginIpWhitelistSection';
 
 const { Text } = Typography;
@@ -90,7 +91,10 @@ export const LoginIpBlocksTab = () => {
     const cfg = data?.config;
 
     const columns: ColumnsType<IpBlockItem> = [
-        { title: 'Địa chỉ IP', dataIndex: 'ip', key: 'ip', render: (ip: string) => <Text code>{ip}</Text> },
+        {
+            title: 'Địa chỉ IP', dataIndex: 'ip', key: 'ip',
+            render: (ip: string, r) => <IpWithFlag ip={ip} countryCode={r.countryCode} ipKind={r.ipKind} geoSource={r.geoSource} onChanged={() => void refetch()} />,
+        },
         {
             title: 'Trạng thái',
             key: 'status',

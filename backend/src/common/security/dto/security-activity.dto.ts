@@ -78,6 +78,14 @@ export class UpdateSecurityConfigDto {
   @ApiPropertyOptional({ description: `Hạn giữ sự kiện bảo mật (ngày) (${range('securityEventRetentionDays')})` })
   @IsOptional() @IsInt() @Min(L.securityEventRetentionDays[0]) @Max(L.securityEventRetentionDays[1])
   securityEventRetentionDays?: number;
+
+  @ApiPropertyOptional({ description: `Hạn giữ log lượt truy cập IP (ngày) (${range('ipAccessLogRetentionDays')})` })
+  @IsOptional() @IsInt() @Min(L.ipAccessLogRetentionDays[0]) @Max(L.ipAccessLogRetentionDays[1])
+  ipAccessLogRetentionDays?: number;
+
+  @ApiPropertyOptional({ description: `Số dòng chi tiết tối đa / IP / giờ (${range('ipAccessDetailCapPerHour')})` })
+  @IsOptional() @IsInt() @Min(L.ipAccessDetailCapPerHour[0]) @Max(L.ipAccessDetailCapPerHour[1])
+  ipAccessDetailCapPerHour?: number;
 }
 
 
@@ -90,4 +98,45 @@ export class AddIpWhitelistDto {
   @ApiPropertyOptional({ example: 'Văn phòng HCM' })
   @IsOptional() @IsString() @MaxLength(255)
   note?: string;
+}
+
+
+/** P3.6: Admin gán quốc gia thủ công cho 1 IP. Mã hợp lệ do `IpGeoService.setManual` kiểm (400 nếu sai). */
+export class SetIpCountryDto {
+  @ApiProperty({ example: 'VN', description: 'ISO-3166 alpha-2' })
+  @IsString() @MaxLength(2)
+  countryCode: string;
+}
+
+const OUTCOMES = ['success', 'wrong_password', 'unknown_email', 'account_locked', 'ip_locked', 'denied', 'refresh_ok', 'refresh_failed'];
+
+export class GetIpAccessDto {
+  @ApiPropertyOptional({ default: 1 }) @IsOptional() @Type(() => Number) @IsInt() @Min(1)
+  page?: number = 1;
+
+  @ApiPropertyOptional({ default: 20, description: 'Tối đa 100/trang' }) @IsOptional() @Type(() => Number) @IsInt() @Min(1) @Max(100)
+  limit?: number = 20;
+
+  @ApiPropertyOptional({ enum: ['all', 'blocked', 'whitelisted'] }) @IsOptional() @IsIn(['all', 'blocked', 'whitelisted'])
+  status?: 'all' | 'blocked' | 'whitelisted';
+
+  @ApiPropertyOptional({ description: 'Tìm theo IP (chứa)' }) @IsOptional() @IsString() @MaxLength(45)
+  search?: string;
+}
+
+export class GetIpAccessDetailDto {
+  @ApiPropertyOptional({ default: 1 }) @IsOptional() @Type(() => Number) @IsInt() @Min(1)
+  page?: number = 1;
+
+  @ApiPropertyOptional({ default: 20 }) @IsOptional() @Type(() => Number) @IsInt() @Min(1) @Max(100)
+  limit?: number = 20;
+
+  @ApiPropertyOptional({ enum: OUTCOMES }) @IsOptional() @IsIn(OUTCOMES)
+  outcome?: string;
+
+  @ApiPropertyOptional() @IsOptional() @Matches(DATE_RE, { message: 'fromDate phải dạng YYYY-MM-DD' })
+  fromDate?: string;
+
+  @ApiPropertyOptional() @IsOptional() @Matches(DATE_RE, { message: 'toDate phải dạng YYYY-MM-DD' })
+  toDate?: string;
 }
