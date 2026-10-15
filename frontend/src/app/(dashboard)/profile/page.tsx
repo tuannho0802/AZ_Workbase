@@ -30,6 +30,7 @@ import { AvatarUpload } from '@/components/common/AvatarUpload';
 import { useRoleColorMap, useRoleColors } from '@/lib/hooks/useRoleColorMap';
 import { resolveEntityColor } from '@/lib/utils/entityColor';
 import { MySessionsSection } from '@/components/sessions/MySessionsSection';
+import { UserSessionsSection } from '@/components/sessions/UserSessionsSection';
 
 const { Text, Title } = Typography;
 
@@ -454,6 +455,16 @@ function ProfilePortal({ userId, onDeleted }: { userId: number; onDeleted?: () =
             Thiết bị đang đăng nhập
           </Divider>
           <MySessionsSection />
+        </>
+      )}
+
+      {/* Xem hồ sơ NGƯỜI KHÁC: cần `users.sessions`; ẩn nếu mục tiêu là role admin mà mình không phải admin (BE sẽ 403 - cùng quy tắc nút "Thiết bị" ở trang Nhân viên). */}
+      {!isSelf && detail && can('users.sessions') && (detail.role !== 'admin' || currentUser?.role === 'admin') && (
+        <>
+          <Divider titlePlacement="left" style={{ marginTop: 32 }}>
+            Thiết bị đang đăng nhập
+          </Divider>
+          <UserSessionsSection userId={userId} userName={detail.name} />
         </>
       )}
 
