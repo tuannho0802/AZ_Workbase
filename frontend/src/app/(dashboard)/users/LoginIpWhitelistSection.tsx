@@ -93,7 +93,7 @@ export const LoginIpWhitelistSection = () => {
 
     return (
         <Card size="small" title={<Space><SafetyOutlined />IP được miễn khoá</Space>}>
-            <Space direction="vertical" size="middle" style={{ width: '100%' }}>
+            <Space orientation="vertical" size="middle" style={{ width: '100%' }}>
                 <Text type="secondary">
                     IP trong danh sách không bị khoá theo IP (vd văn phòng dùng chung 1 IP). Email/tài khoản vẫn bị khoá nếu sai mật khẩu quá ngưỡng.
                     Chỉ thêm IP bạn tin tưởng; chỉ khớp đúng 1 địa chỉ.
