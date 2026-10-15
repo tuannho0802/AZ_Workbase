@@ -34,7 +34,9 @@ const renderHarness = (p: Parameters<typeof Harness>[0]) =>
     );
 
 describe('useBulkUndoToast', () => {
-    beforeEach(() => undo.mockReset());
+    beforeEach(() => {
+        undo.mockReset();
+    });
 
     it('không có operationId -> toast thường, KHÔNG có nút Hoàn tác', async () => {
         renderHarness({ operationId: null, seconds: null });
