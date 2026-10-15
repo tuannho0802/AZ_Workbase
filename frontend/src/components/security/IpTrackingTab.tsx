@@ -1,7 +1,7 @@
 'use client';
 
 import { useState } from 'react';
-import { useQuery } from '@tanstack/react-query';
+import { keepPreviousData, useQuery } from '@tanstack/react-query';
 import { Alert, Button, Card, Descriptions, Drawer, Input, Select, Space, Table, Tag, Typography } from 'antd';
 import { ReloadOutlined } from '@ant-design/icons';
 import type { ColumnsType } from 'antd/es/table';
@@ -15,6 +15,10 @@ import {
 import { formatAgo } from '@/lib/utils/format-ago';
 import { IpWithFlag } from './IpWithFlag';
 import { formatApproxHits } from './ipAccessApiFormat';
+import { PerformanceRangeFilter, getDefaultPerformanceRange } from '@/components/periodic-tasks/PerformanceRangeFilter';
+import dayjs, { type Dayjs } from 'dayjs';
+
+const DATE_FMT = 'YYYY-MM-DD';
 
 const { Text } = Typography;
 
@@ -43,12 +47,13 @@ export const OutcomeTag = ({ outcome }: { outcome: IpAccessOutcome | null }) => 
     return <Tag color={m.color}>{m.label}</Tag>;
 };
 
-function IpDetailDrawer({ ip, onClose }: { ip: string | null; onClose: () => void }) {
+function IpDetailDrawer({ ip, fromDate, toDate, onClose }: { ip: string | null; fromDate: string; toDate: string; onClose: () => void }) {
     const [page, setPage] = useState(1);
     const [outcome, setOutcome] = useState<IpAccessOutcome | undefined>();
+    // Chi tiết CHỈ tải khi mở Drawer, và chỉ trong khoảng đang lọc ở danh sách (không tải dòng log xa hơn).
     const { data, isLoading, refetch } = useQuery({
-        queryKey: ['security-ip-access-detail', ip, page, outcome],
-        queryFn: () => securityApi.getIpAccessDetail(ip as string, { page, limit: 20, outcome }),
+        queryKey: ['security-ip-access-detail', ip, page, outcome, fromDate, toDate],
+        queryFn: () => securityApi.getIpAccessDetail(ip as string, { page, limit: 20, outcome, fromDate, toDate }),
         enabled: !!ip,
     });
 
@@ -79,7 +84,7 @@ function IpDetailDrawer({ ip, onClose }: { ip: string | null; onClose: () => voi
             destroyOnHidden
         >
             {data && (
-                <Descriptions size="small" column={2} bordered style={{ marginBottom: 16 }}>
+                <Descriptions size="small" column={2} bordered style={{ marginBottom: 16 }} title={<Text type="secondary" style={{ fontSize: 13 }}>Tổng quan toàn thời gian (bảng dưới chỉ gồm {dayjs(fromDate).format('DD/MM')} - {dayjs(toDate).format('DD/MM/YYYY')})</Text>}>
                     <Descriptions.Item label="Tổng lượt">{data.summary.totalHits}</Descriptions.Item>
                     <Descriptions.Item label="Trạng thái"><Tag color={STATUS_META[data.summary.currentStatus].color}>{STATUS_META[data.summary.currentStatus].label}</Tag></Descriptions.Item>
                     <Descriptions.Item label="Thành công">{data.summary.successHits}</Descriptions.Item>
@@ -118,11 +123,16 @@ export function IpTrackingTab() {
     const [status, setStatus] = useState<'all' | 'blocked' | 'whitelisted' | 'banned'>('all');
     const [search, setSearch] = useState('');
     const [detailIp, setDetailIp] = useState<string | null>(null);
+    // Mặc định TUẦN NÀY (khớp mặc định BE) - chỉ tải đúng khoảng đang chọn, tối đa 93 ngày (BE trả 400 nếu vượt).
+    const [range, setRange] = useState<[Dayjs, Dayjs]>(() => getDefaultPerformanceRange());
+    const fromDate = range[0].format(DATE_FMT);
+    const toDate = range[1].format(DATE_FMT);
 
     const { data, isLoading, isFetching, refetch } = useQuery({
-        queryKey: ['security-ip-access', page, pageSize, status, search],
-        queryFn: () => securityApi.getIpAccess({ page, limit: pageSize, status, search: search || undefined }),
+        queryKey: ['security-ip-access', page, pageSize, status, search, fromDate, toDate],
+        queryFn: () => securityApi.getIpAccess({ page, limit: pageSize, status, search: search || undefined, fromDate, toDate }),
         staleTime: 15_000,
+        placeholderData: keepPreviousData, // đổi khoảng/trang: giữ bảng cũ tới khi có dữ liệu mới, không nháy trắng
     });
 
     const columns: ColumnsType<IpAccessItem> = [
@@ -146,9 +156,10 @@ export function IpTrackingTab() {
         <Space orientation={'vertical' as never} size="middle" style={{ width: '100%' }}>
             <Alert
                 type="info" showIcon
-                title="Đăng nhập/làm mới phiên được đếm chính xác. Request API đã đăng nhập được gom theo thùng 1 phút nên số liệu chỉ là XẤP XỈ (có thể thấp hơn thật). Quốc gia lấy từ Vercel; IP nội bộ hoặc chưa đi qua Vercel sẽ là Nội bộ/N/A (Admin có thể gán tay)."
+                title="Chỉ hiển thị các IP có hoạt động trong khoảng thời gian đã chọn (mặc định Tuần này); số liệu tính trong khoảng đó, chỉ gồm các dòng chi tiết đã ghi nên có thể thấp hơn tổng toàn thời gian. Đăng nhập/làm mới phiên được đếm chính xác. Request API đã đăng nhập được gom theo thùng 1 phút nên số liệu chỉ là XẤP XỈ (có thể thấp hơn thật). Quốc gia lấy từ Vercel; IP nội bộ hoặc chưa đi qua Vercel sẽ là Nội bộ/N/A (Admin có thể gán tay)."
             />
             <Card variant="outlined" styles={{ body: { padding: 12 } }}>
+                <PerformanceRangeFilter value={range} onChange={(r) => { setRange(r); setPage(1); }} size="middle" />
                 <Space wrap>
                     <Input.Search allowClear placeholder="Tìm IP" style={{ width: 200 }} onSearch={(v) => { setSearch(v); setPage(1); }} />
                     <Select
@@ -162,14 +173,14 @@ export function IpTrackingTab() {
             <Table<IpAccessItem>
                 rowKey="ip" columns={columns} dataSource={data?.items ?? []} loading={isLoading}
                 scroll={{ x: 'max-content' }}
-                locale={{ emptyText: 'Chưa có IP nào được ghi nhận' }}
+                locale={{ emptyText: 'Không có IP nào hoạt động trong khoảng thời gian này' }}
                 pagination={{
                     current: page, pageSize, total: data?.total ?? 0, showSizeChanger: true,
-                    showTotal: (t) => `Tổng ${t} IP`,
+                    showTotal: (t) => `${t} IP trong ${dayjs(fromDate).format('DD/MM')} - ${dayjs(toDate).format('DD/MM/YYYY')}`,
                     onChange: (p, s) => { setPage(p); setPageSize(s); },
                 }}
             />
-            <IpDetailDrawer ip={detailIp} onClose={() => setDetailIp(null)} />
+            <IpDetailDrawer ip={detailIp} fromDate={fromDate} toDate={toDate} onClose={() => setDetailIp(null)} />
         </Space>
     );
 }

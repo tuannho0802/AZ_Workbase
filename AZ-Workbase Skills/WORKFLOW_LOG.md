@@ -7976,3 +7976,21 @@ Now [deploy]
 > Dòng cũ đã ghi trước bản sửa vẫn trống (không có dữ liệu để backfill). Lượt refresh bị chặn do IP blacklist không có danh tính vì bị chặn trước khi xác thực JWT.
 
 ---
+
+## [2026-10-15 17:30] | Theo dõi IP: lọc theo khoảng thời gian (Lọc nhanh + Custom picker, mặc định Tuần này) | [Status: Success]
+
+**Actor:** Agent
+**Files Changed:**
+- `backend/src/common/security/dto/security-activity.dto.ts` — `GetIpAccessDto` thêm `fromDate`/`toDate`
+- `backend/src/common/security/security.controller.ts` — `ip-access` + `ip-access/:ip` luôn áp `resolveListWindow()` (mặc định Tuần này, tối đa 93 ngày, 400 nếu vượt)
+- `backend/src/common/security/ip-access-log.service.ts` — `listInWindow()` (đếm từ `ip_access_logs` trong khoảng, index `created_at`), `vnDayBoundUtc()`; `detail()` sửa biên ngày VN
+- `frontend/src/components/security/IpTrackingTab.tsx` — dùng `PerformanceRangeFilter` (5 nút lọc nhanh + RangePicker), Drawer chi tiết truyền cùng khoảng
+- `frontend/src/lib/api/security.api.ts` — `getIpAccess` nhận `fromDate`/`toDate`
+- Spec: `ip-access-log.service.spec.ts`, `security.controller.spec.ts`, `IpTrackingTab.test.tsx` (mới)
+
+**Root Cause / Notes:**
+> - Trước đó danh sách đọc toàn bộ `ip_access_stats` (toàn thời gian). Nay luôn có khoảng; số liệu trong khoảng chỉ gồm dòng chi tiết đã ghi (lượt vượt cap không có dòng) nên có thể thấp hơn tổng toàn thời gian; `suppressedHits` = 0 ở chế độ khoảng.
+> - `detail()` cũ so `created_at` (UTC) với `YYYY-MM-DD 00:00:00/23:59:59` -> lệch 7h so với ngày VN; đã sửa sang mốc UTC nửa mở.
+> - Không có migration mới (đã có index `created_at` và `(ip, created_at)`). SQL đã chạy thử trên MariaDB 10.11 với dữ liệu sát biên ngày VN.
+
+---

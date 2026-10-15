@@ -136,7 +136,7 @@ export const securityApi = {
         (await axiosInstance.put(`/security/ip-geo/${encodeURIComponent(ip)}`, { countryCode })).data,
     clearIpCountry: async (ip: string): Promise<{ success: boolean }> =>
         (await axiosInstance.delete(`/security/ip-geo/${encodeURIComponent(ip)}`)).data,
-    getIpAccess: async (params: { page?: number; limit?: number; status?: 'all' | 'blocked' | 'whitelisted' | 'banned'; search?: string }): Promise<IpAccessListResponse> =>
+    getIpAccess: async (params: { page?: number; limit?: number; status?: 'all' | 'blocked' | 'whitelisted' | 'banned'; search?: string; fromDate?: string; toDate?: string }): Promise<IpAccessListResponse> =>
         (await axiosInstance.get('/security/ip-access', { params })).data,
     getIpAccessDetail: async (ip: string, params: { page?: number; limit?: number; outcome?: IpAccessOutcome; fromDate?: string; toDate?: string }): Promise<IpAccessDetailResponse> =>
         (await axiosInstance.get(`/security/ip-access/${encodeURIComponent(ip)}`, { params })).data,

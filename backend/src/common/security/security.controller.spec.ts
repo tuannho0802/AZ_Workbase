@@ -195,6 +195,16 @@ describe('SecurityController (P3.3)', () => {
             const res = await ctl.listIpAccess({ page: 1, limit: 20 }, admin as any, PermissionScope.ALL);
             expect(res.items[0]).toMatchObject({ ip: '1.2.3.4', countryCode: 'VN' });
         });
+        it('listIpAccess: không truyền ngày -> tự áp TUẦN NÀY (Thứ 2 -> CN); truyền ngày thì chuyển nguyên; quá 93 ngày -> 400', async () => {
+            await ctl.listIpAccess({}, admin as any, PermissionScope.ALL);
+            const arg = ipAccess.list.mock.calls.at(-1)[0];
+            expect(arg.from).toMatch(/^\d{4}-\d{2}-\d{2}$/);
+            expect(new Date(`${arg.from}T00:00:00Z`).getUTCDay()).toBe(1);
+            expect((new Date(`${arg.to}T00:00:00Z`).getTime() - new Date(`${arg.from}T00:00:00Z`).getTime()) / 86400000).toBe(6);
+            await ctl.listIpAccess({ fromDate: '2026-10-01', toDate: '2026-10-15' }, admin as any, PermissionScope.ALL);
+            expect(ipAccess.list.mock.calls.at(-1)[0]).toMatchObject({ from: '2026-10-01', to: '2026-10-15' });
+            await expect(ctl.listIpAccess({ fromDate: '2026-01-01', toDate: '2026-10-15' }, admin as any, PermissionScope.ALL)).rejects.toThrow(BadRequestException);
+        });
         it('ipAccessDetail: IP sai -> 400; chưa có log -> 404', async () => {
             await expect(ctl.ipAccessDetail('abc!', {}, admin as any, PermissionScope.ALL)).rejects.toThrow(BadRequestException);
             ipAccess.detail.mockResolvedValue(null);

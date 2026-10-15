@@ -142,6 +142,12 @@ export class GetIpAccessDto {
 
   @ApiPropertyOptional({ description: 'Tìm theo IP (chứa)' }) @IsOptional() @IsString() @MaxLength(45)
   search?: string;
+
+  @ApiPropertyOptional({ description: 'Từ ngày (giờ VN, YYYY-MM-DD). Không truyền cả 2 biên -> mặc định TUẦN NÀY; tối đa 93 ngày.' }) @IsOptional() @Matches(DATE_RE, { message: 'fromDate phải dạng YYYY-MM-DD' })
+  fromDate?: string;
+
+  @ApiPropertyOptional({ description: 'Đến ngày (giờ VN, YYYY-MM-DD)' }) @IsOptional() @Matches(DATE_RE, { message: 'toDate phải dạng YYYY-MM-DD' })
+  toDate?: string;
 }
 
 export class GetIpAccessDetailDto {

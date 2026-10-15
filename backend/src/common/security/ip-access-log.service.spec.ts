@@ -1,4 +1,4 @@
-import { classifyOutcome, IpAccessLogService } from './ip-access-log.service';
+import { classifyOutcome, IpAccessLogService, vnDayBoundUtc } from './ip-access-log.service';
 import { NOT_AN_EMAIL_PLACEHOLDER } from './security-audit';
 
 describe('classifyOutcome (P3.6)', () => {
@@ -110,5 +110,52 @@ describe('IpAccessLogService.list / detail (P3.6 + 3.6.2: có request API)', () 
         delete row.api_hits;
         repo.query.mockResolvedValueOnce([row]).mockResolvedValueOnce([{ total: 0 }]).mockResolvedValueOnce([]);
         expect((await svc.detail('8.8.8.8', { page: 1, limit: 20 }))!.summary.apiHits).toBe(0);
+    });
+
+    describe('lọc theo khoảng thời gian (ngày VN)', () => {
+        it('vnDayBoundUtc: ngày VN -> mốc UTC (lùi 7h), biên cuối là 00:00 ngày kế tiếp', () => {
+            expect(vnDayBoundUtc('2026-10-12', false)).toBe('2026-10-11 17:00:00');
+            expect(vnDayBoundUtc('2026-10-18', true)).toBe('2026-10-18 17:00:00');
+        });
+
+        it('list có from/to: chỉ quét ip_access_logs trong khoảng (tham số hoá), không đọc toàn bảng stats làm nguồn đếm', async () => {
+            repo.query
+                .mockResolvedValueOnce([{ total: 1 }])
+                .mockResolvedValueOnce([
+                    { ip: '8.8.8.8', totalHits: '12', successHits: '1', failedHits: '2', blockedHits: '0', apiHits: '9', lastOutcome: 'api', lastCountryCode: 'US', firstSeenAgoSeconds: 100, lastSeenAgoSeconds: 5, blocked: 0, whitelisted: 0, banned: 0 },
+                ]);
+            const res = await svc.list({ page: 2, limit: 10, from: '2026-10-12', to: '2026-10-18', search: '8.8' });
+            const [countSql, countParams] = repo.query.mock.calls[0];
+            const [listSql, listParams] = repo.query.mock.calls[1];
+            expect(String(countSql)).toContain('l.created_at >= ? AND l.created_at < ?');
+            expect(String(listSql)).toContain('FROM ip_access_logs l WHERE');
+            expect(countParams).toEqual(['2026-10-11 17:00:00', '2026-10-18 17:00:00', '%8.8%']);
+            expect(listParams).toEqual(['2026-10-11 17:00:00', '2026-10-18 17:00:00', '%8.8%', 10, 10]);
+            expect(res.total).toBe(1);
+            expect(res.items[0]).toMatchObject({ ip: '8.8.8.8', totalHits: 12, successHits: 1, failedHits: 2, apiHits: 9, suppressedHits: 0, lastOutcome: 'api', currentStatus: 'normal' });
+        });
+
+        it('list có from/to + status=banned: điều kiện trạng thái nằm ở truy vấn ngoài', async () => {
+            repo.query.mockResolvedValueOnce([{ total: 0 }]).mockResolvedValueOnce([]);
+            await svc.list({ page: 1, limit: 20, status: 'banned', from: '2026-10-12', to: '2026-10-12' });
+            expect(String(repo.query.mock.calls[0][0])).toContain('bl.id IS NOT NULL');
+        });
+
+        it('list không from/to: giữ hành vi cũ (đọc ip_access_stats)', async () => {
+            repo.query.mockResolvedValueOnce([{ total: 0 }]).mockResolvedValueOnce([]);
+            await svc.list({ page: 1, limit: 20 });
+            expect(String(repo.query.mock.calls[1][0])).toContain('FROM ip_access_stats s');
+        });
+
+        it('detail: from/to quy ngày VN sang UTC, biên cuối nửa mở', async () => {
+            repo.query
+                .mockResolvedValueOnce([statsRow()])
+                .mockResolvedValueOnce([{ total: 0 }])
+                .mockResolvedValueOnce([]);
+            await svc.detail('8.8.8.8', { page: 1, limit: 20, from: '2026-10-12', to: '2026-10-18' });
+            const params = repo.query.mock.calls[1][1];
+            expect(params).toEqual(['8.8.8.8', '2026-10-11 17:00:00', '2026-10-18 17:00:00']);
+            expect(String(repo.query.mock.calls[1][0])).toContain('l.created_at < ?');
+        });
     });
 });

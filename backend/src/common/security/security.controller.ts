@@ -17,6 +17,7 @@ import { SECURITY_CONFIG_LIMITS, SecurityConfigService } from './security-config
 import { SecurityActivityService } from './security-activity.service';
 import { AddIpBlacklistDto, AddIpWhitelistDto, GetIpAccessDetailDto, GetIpAccessDto, GetSecurityEventsDto, SetIpCountryDto, UpdateSecurityConfigDto } from './dto/security-activity.dto';
 import { SECURITY_AUDIT_ACTIONS } from './security-audit';
+import { resolveListWindow } from '../../modules/periodic-tasks/helpers/list-window.helper';
 
 /**
  * PLAN_RETENTION_SECURITY_ROADMAP P3.3 — Admin xem/mở khoá IP bị khoá đăng nhập.
@@ -253,7 +254,12 @@ export class SecurityController {
   @ApiOperation({ summary: 'Theo dõi IP: danh sách IP đã đăng nhập/làm mới phiên kèm số lần (đọc từ bảng tổng hợp)' })
   async listIpAccess(@Query() q: GetIpAccessDto, @Req() req: { user: { role: string } }, @GetPermissionScope() scope?: string | null) {
     this.assertGlobalScope(req.user.role, scope);
-    const res = await this.ipAccess.list({ status: q.status, search: q.search, page: q.page ?? 1, limit: q.limit ?? 20 });
+    // Khoảng thời gian luôn được áp (mặc định TUẦN NÀY, tối đa 93 ngày) -> không bao giờ quét xa hơn khoảng đang xem.
+    const win = resolveListWindow({ dateFrom: q.fromDate, dateTo: q.toDate });
+    const res = await this.ipAccess.list({
+      status: q.status, search: q.search, page: q.page ?? 1, limit: q.limit ?? 20,
+      from: win.dateFrom ?? undefined, to: win.dateTo ?? undefined,
+    });
     return { ...res, items: await this.ipGeo.enrich(res.items, 'ip') };
   }
 
@@ -268,7 +274,8 @@ export class SecurityController {
   ) {
     this.assertGlobalScope(req.user.role, scope);
     if (!normalizeIp(ip)) throw new BadRequestException('Địa chỉ IP không hợp lệ');
-    const res = await this.ipAccess.detail(ip, { page: q.page ?? 1, limit: q.limit ?? 20, outcome: q.outcome, from: q.fromDate, to: q.toDate });
+    const win = resolveListWindow({ dateFrom: q.fromDate, dateTo: q.toDate });
+    const res = await this.ipAccess.detail(ip, { page: q.page ?? 1, limit: q.limit ?? 20, outcome: q.outcome, from: win.dateFrom ?? undefined, to: win.dateTo ?? undefined });
     if (!res) throw new NotFoundException('Chưa có lượt truy cập nào được ghi nhận cho IP này.');
     const [geo] = await this.ipGeo.enrich([{ ip: res.ip }], 'ip');
     return { ...res, countryCode: geo.countryCode, ipKind: geo.ipKind, geoSource: geo.geoSource };
