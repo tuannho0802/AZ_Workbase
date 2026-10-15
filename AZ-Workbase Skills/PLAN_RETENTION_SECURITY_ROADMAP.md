@@ -59,6 +59,7 @@
 | P3.6 | `1786332000000-CreateIpGeoCache` | bảng `ip_geo_cache` (IP → mã quốc gia) |
 | P3.6 | `1786333000000-CreateIpAccessLogs` | bảng `ip_access_logs` (chi tiết từng lượt) + `ip_access_stats` (tổng hợp mỗi IP) |
 | P3.6 | `1786334000000-AddIpAccessConfigToSecurityConfig` | thêm cột `ip_access_log_retention_days` (90), `ip_access_detail_cap_per_hour` (20), `ip_access_log_api_enabled` (1) vào `security_config` |
+| P3.7 | `1786336000000-CreateLoginIpBlacklist` | bảng `login_ip_blacklist` (IP bị Admin chặn chủ động, có hạn hoặc vĩnh viễn) |\n| P4 | `1786330000000-AllowNullAuditUserId` |
 | P4 | `1786330000000-AllowNullAuditUserId` | `audit_logs.user_id` → `NULL` được |
 | P5 | *(không có)* | mở rộng JSON, không đổi schema |
 | P6 | `1786340000000-AddPasswordPolicyToUsers` | `must_change_password`, `password_changed_at`, `password_expires_at` |
@@ -268,6 +269,38 @@ Yêu cầu: (a) mọi chỗ hiển thị IP — đặc biệt khi Block IP / Whi
 - [ ] FE: `IpWithFlag`, thay 6 chỗ render IP, tab "Lượt truy cập IP", Drawer lịch sử, cảnh báo whitelist khác quốc gia.
 - [ ] Spec: lượt của IP **whitelist** và **bị khoá** đều được ghi đúng `ip_status`; vượt cap/giờ chỉ tăng `suppressed_hits`; lỗi ghi log không làm hỏng login; `resolveMany` 1 query/trang; IP nội bộ → `private`; header quốc gia lạ → `null`; email làm sạch; link IP ẩn khi thiếu quyền.
 - [ ] Verify thật theo mục 6.8 (BE `tsc`/`nest build`/`jest`, FE `tsc`/`vitest`/`next build`) rồi tick mục 9 + 1 dòng `WORKFLOW_LOG.md`.
+
+### 3.7 Khoá IP CHỦ ĐỘNG — blacklist (bổ sung theo yêu cầu 2026-10-15)
+**Vấn đề:** 3.2 chỉ khoá **bị động** — IP phải sai đủ `ip_max_failed_attempts` (mặc định 10) lần mới bị khoá, và khoá tự hết sau `ip_lock_minutes` (5 phút). Admin thấy 1 IP đáng ngờ (dò nhiều email, quốc gia lạ ở tab "Theo dõi IP") nhưng **không có cách chặn ngay**, và không có cách chặn **lâu dài**.
+
+**Mục tiêu:** Admin tự đưa 1 IP vào **blacklist** (chặn đăng nhập ngay, không chờ chạm ngưỡng), có thể đặt hạn (1 giờ / 24 giờ / 7 ngày / 30 ngày) hoặc **vĩnh viễn**, gỡ được bất kỳ lúc nào.
+
+**Quyết định thiết kế (theo khuôn whitelist 3.5, không đụng bộ đếm 3.2):**
+- **Dữ liệu:** migration `1786336000000-CreateLoginIpBlacklist` → bảng `login_ip_blacklist(id, ip VARCHAR(45) UNIQUE, reason VARCHAR(255) NULL, expires_at DATETIME NULL, created_by INT NULL, created_at DATETIME)`. `expires_at = NULL` = vĩnh viễn. Chỉ khớp **đúng 1 địa chỉ** (`normalizeIp`), không CIDR; tối đa 500 dòng. **Không** thêm cột/ENUM vào `login_ip_blocks`, `ip_access_logs`, `ip_access_stats`.
+- **Thứ tự ưu tiên khi đăng nhập:** `blacklist` → `whitelist` → khoá IP bị động (3.2) → khoá tài khoản. IP đang bị chặn chủ động bị từ chối **trước cả khi so mật khẩu** (rẻ hơn bcrypt), dù mật khẩu đúng.
+- **Kết quả bị chặn:** `403` + `code: 'IP_BANNED'` (không có `retryAfterSeconds` vì không tự hết theo phút), thông báo chung "Địa chỉ mạng của bạn đã bị chặn. Vui lòng liên hệ quản trị viên." — không lộ lý do/hạn. Không tăng bộ đếm, không sinh sự kiện bảo mật cho mỗi request bị từ chối (tránh phình bảng audit, như `IP_LOCKED`).
+- **Áp dụng cả `auth/refresh`:** phiên đang mở từ IP bị chặn sẽ bị đẩy ra ở lần làm mới token kế tiếp (≤ thời hạn access token); FE interceptor đã tự `logout` khi refresh lỗi. **Không** chặn toàn bộ API bằng guard ở bản này (access token còn hạn vẫn gọi được tới khi hết hạn) — ghi nhận ở "Đánh đổi" bên dưới.
+- **Ghi log theo dõi IP (3.6):** lượt bị chặn được ghi với `outcome = 'ip_locked'`, `ip_status = 'blocked'` (tái dùng giá trị ENUM sẵn có → **không ALTER bảng log lớn**). Cột "Trạng thái" ở tab Theo dõi IP hiện thêm **Bị chặn chủ động** (`currentStatus = 'banned'`, tính bằng JOIN `login_ip_blacklist`).
+- **Quan hệ với whitelist:** thêm IP vào blacklist **đồng thời gỡ** khỏi whitelist (và xoá dòng khoá bị động); thêm vào whitelist **đồng thời gỡ** khỏi blacklist. 1 IP không bao giờ ở cả hai.
+- **Hàng rào an toàn (chặn Admin tự khoá mình):** từ chối (409) nếu IP là **IP hiện tại của người thao tác**; từ chối IP **nội bộ/loopback** (`ipKind` ≠ công cộng — chặn `::1` sẽ khoá cả môi trường dev/LAN); từ chối IP không hợp lệ (400).
+- **Cache:** `LoginIpBlacklistService` giữ `Map<ip, expiresAt|null>` **15 giây**/instance (ngắn hơn whitelist 30 giây vì mục đích là chặn gấp); thêm/gỡ xoá cache instance hiện tại. Dòng hết hạn bị bỏ qua khi kiểm tra (`expires_at > NOW()`), dòng hết hạn quá 30 ngày được dọn khi `list()`. Lỗi DB (vd chưa migrate) → coi như **không có IP nào bị chặn** + `logger.error` (không để lỗi bảng phụ làm sập đăng nhập của mọi người).
+- **API** (`users.manage` scope `all` hoặc `role === admin`, như `ip-blocks`/`ip-whitelist`; **không tạo permission key mới**): `GET /security/ip-blacklist`, `POST /security/ip-blacklist {ip, reason?, durationHours?}` (`durationHours` bỏ trống/`null` = vĩnh viễn; 1–8760), `DELETE /security/ip-blacklist/:ip`.
+- **Audit:** `IP_BLACKLIST_ADDED`, `IP_BLACKLIST_REMOVED` (thêm vào `SECURITY_AUDIT_ACTIONS` → hiện ở `/security-activity` và được bảo vệ khỏi job dọn audit thường; cập nhật map nhãn FE của trang đó).
+- **FE (trang Nhân viên `/users`, tab IP):**
+  - Khối mới **"IP bị chặn chủ động"** cạnh khối whitelist: form (IP, lý do, **thời hạn** 1 giờ/24 giờ/7 ngày/30 ngày/Vĩnh viễn), bảng (IP + cờ, lý do, người chặn, còn lại/Vĩnh viễn, nút **Gỡ chặn** có xác nhận).
+  - Nút **"Chặn IP"** trên từng dòng của tab "IP bị khoá" (IP sai nhiều nhưng chưa đủ ngưỡng, hoặc đang khoá tạm muốn nâng thành chặn hẳn) → mở modal chọn thời hạn + lý do (có xác nhận).
+  - Ẩn toàn bộ khi thiếu quyền (dùng `useCanEditIpCountry` / `can('users.manage')` scope all như khối whitelist), không để bấm rồi 403.
+  - Trang login hiển thị thông báo `IP_BANNED` (không có đồng hồ đếm ngược).
+- **Rủi ro / đánh đổi:** (1) chặn nhầm IP dùng chung (văn phòng/CGNAT) chặn **mọi người** sau IP đó → luôn hiện cảnh báo trong modal xác nhận, ưu tiên đặt hạn thay vì vĩnh viễn; (2) trễ ≤ 15 giây giữa các instance serverless; (3) kẻ tấn công đổi IP thì né được (blacklist là công cụ phản ứng nhanh, không thay thế khoá bị động); (4) access token còn hạn từ IP vừa bị chặn vẫn dùng được tới khi hết hạn — muốn cắt ngay phải làm guard toàn cục hoặc kèm `FORCE_LOGOUT` các phiên của IP đó → **để sau** (xem "ĐỂ SAU" C8).
+- **Để sau:** nút "Chặn" ngay trên tab **Theo dõi IP** và trong ngăn Chi tiết IP; CIDR/dải IP; chặn theo quốc gia; chặn cả `register`/các route công khai khác.
+- [ ] Migration + entity + `LoginIpBlacklistService` (cache, list, add, remove, `isBanned`) + nối vào `AuthService.login`/`refresh`
+- [ ] `whitelist.add` gỡ blacklist; `blacklist.add` gỡ whitelist + dòng khoá bị động
+- [ ] API + audit + `SECURITY_AUDIT_ACTIONS` + hàng rào (IP hiện tại, IP nội bộ)
+- [ ] `currentStatus = 'banned'` ở `IpAccessLogService` + FE type `IpCurrentStatus`
+- [ ] FE: `LoginIpBlacklistSection`, nút "Chặn IP" ở `LoginIpBlocksTab`, thông báo `IP_BANNED` ở trang login
+- [ ] Spec: IP bị chặn bị từ chối trước bcrypt kể cả mật khẩu đúng; hết hạn thì cho qua; vĩnh viễn; whitelist/blacklist loại trừ nhau; không tự chặn IP hiện tại/IP nội bộ; lỗi DB fail-open; quyền (scope department bị 403); refresh bị chặn
+- [ ] Cập nhật guide `nhan-vien.md`, `hoat-dong-bao-mat.md`, `PERMISSIONS.md` (không có key mới), `WORKFLOW_LOG.md`
+
 
 ---
 
