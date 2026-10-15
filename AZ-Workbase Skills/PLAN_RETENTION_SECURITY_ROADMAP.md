@@ -58,7 +58,7 @@
 | P3.5 | `1786331000000-CreateLoginIpWhitelist` | bảng `login_ip_whitelist` (IP miễn khoá theo IP) |
 | P3.6 | `1786332000000-CreateIpGeoCache` | bảng `ip_geo_cache` (IP → mã quốc gia) |
 | P3.6 | `1786333000000-CreateIpAccessLogs` | bảng `ip_access_logs` (chi tiết từng lượt) + `ip_access_stats` (tổng hợp mỗi IP) |
-| P3.6 | `1786334000000-AddIpAccessConfigToSecurityConfig` | thêm cột `ip_access_log_retention_days` (90), `ip_access_detail_cap_per_hour` (20), `ip_access_log_api_enabled` (1) vào `security_config` |
+| P3.6 | `1786334000000-AddIpAccessConfigToSecurityConfig` | thêm cột `ip_access_log_retention_days` (90), `ip_access_detail_cap_per_hour` (20) vào `security_config` (cột `ip_access_log_api_enabled` chưa có — đi kèm log request API, xem 3.6.2) |
 | P3.7 | `1786336000000-CreateLoginIpBlacklist` | bảng `login_ip_blacklist` (IP bị Admin chặn chủ động, có hạn hoặc vĩnh viễn) |
 | P4 | `1786330000000-AllowNullAuditUserId` | `audit_logs.user_id` → `NULL` được |
 | P5 | *(không có)* | mở rộng JSON, không đổi schema |
@@ -255,20 +255,20 @@ Yêu cầu: (a) mọi chỗ hiển thị IP — đặc biệt khi Block IP / Whi
 
 #### 3.6.3 Việc phải làm
 
-- [ ] Xác minh `x-vercel-ip-country` tới được BE trên Preview (và không giả mạo được từ client).
-- [ ] 3 migration (số giữ chỗ ở mục 4 — **lúc làm phải `ls` thư mục `migrations` để lấy số lớn hơn mọi số hiện có, kể cả số giữ chỗ P6/P7**); `up()`/`down()` đối xứng, idempotent (`hasTable`/`hasColumn`).
-- [ ] Cài `flag-icons` ở FE (đã duyệt); component `IpWithFlag` có fallback `N/A`.
-- [ ] Sửa quốc gia thủ công: `PUT/DELETE /security/ip-geo/:ip` + audit `IP_COUNTRY_SET`/`IP_COUNTRY_CLEARED` + modal FE; spec: dòng `manual` không bị header Vercel ghi đè, mã sai → 400, IP nội bộ → 400, thiếu quyền → 403 và FE ẩn nút.
-- [ ] Entity `IpGeoCache`, `IpAccessLog`, `IpAccessStats`; `IpGeoService`, `IpAccessLogService`; helper `getClientCountry` (+ spec).
-- [ ] Nối `AuthService.login` (mọi nhánh) + refresh; `IpGeoService.record` khi có header.
-- [ ] Global interceptor/middleware log request API đã đăng nhập theo thùng 1 phút (mục 3.6.2): route mẫu, bộ loại trừ, cache khoá thùng trong instance, công tắc `ip_access_log_api_enabled`; spec: cùng thùng chỉ 1 lần ghi DB, URL thô/query không bao giờ được lưu, route loại trừ không ghi, lỗi ghi log không làm hỏng request.
-- [ ] **Setting lưu được và sửa được (đã chốt 2026-10-14):** migration seed mặc định `ip_access_log_retention_days = 90`, `ip_access_detail_cap_per_hour = 20`, `ip_access_log_api_enabled = 1`; thêm 3 trường này vào form chỉnh `security_config` ở `/security-activity` (P4.3) và `SecurityConfigService` (kẹp giá trị, cache 30 giây, audit `UPDATE_SECURITY_CONFIG` ghi giá trị cũ/mới). Đổi giá trị có hiệu lực ≤ 30 giây, không cần deploy.
-- [ ] Làm giàu DTO ở 7 endpoint nêu ở 3.6.1; cập nhật type FE (`security.api.ts`, `users.api.ts`, `sessions.api.ts`, `audit.types.ts`).
-- [ ] API `GET /security/ip-access[/:ip]` + thêm 2 cột `security_config` (kẹp giá trị, cache 30 giây như 3.1).
-- [ ] Retention `ip_access_logs` trong `RetentionService`.
-- [ ] FE: `IpWithFlag`, thay 6 chỗ render IP, tab "Lượt truy cập IP", Drawer lịch sử, cảnh báo whitelist khác quốc gia.
-- [ ] Spec: lượt của IP **whitelist** và **bị khoá** đều được ghi đúng `ip_status`; vượt cap/giờ chỉ tăng `suppressed_hits`; lỗi ghi log không làm hỏng login; `resolveMany` 1 query/trang; IP nội bộ → `private`; header quốc gia lạ → `null`; email làm sạch; link IP ẩn khi thiếu quyền.
-- [ ] Verify thật theo mục 6.8 (BE `tsc`/`nest build`/`jest`, FE `tsc`/`vitest`/`next build`) rồi tick mục 9 + 1 dòng `WORKFLOW_LOG.md`.
+- [ ] Xác minh `x-vercel-ip-country` tới được BE trên Preview (và không giả mạo được từ client). *(chưa có bằng chứng đã xác minh trên Preview)*
+- [x] 3 migration (số giữ chỗ ở mục 4 — **lúc làm phải `ls` thư mục `migrations` để lấy số lớn hơn mọi số hiện có, kể cả số giữ chỗ P6/P7**); `up()`/`down()` đối xứng, idempotent (`hasTable`/`hasColumn`).
+- [x] Cài `flag-icons` ở FE (đã duyệt); component `IpWithFlag` có fallback `N/A`.
+- [x] Sửa quốc gia thủ công: `PUT/DELETE /security/ip-geo/:ip` + audit `IP_COUNTRY_SET`/`IP_COUNTRY_CLEARED` + modal FE; spec: dòng `manual` không bị header Vercel ghi đè, mã sai → 400, IP nội bộ → 400, thiếu quyền → 403 và FE ẩn nút.
+- [x] Entity `IpGeoCache`, `IpAccessLog`, `IpAccessStats`; `IpGeoService`, `IpAccessLogService`; helper `getClientCountry` (+ spec).
+- [x] Nối `AuthService.login` (mọi nhánh) + refresh; `IpGeoService.record` khi có header.
+- [ ] Global interceptor/middleware log request API đã đăng nhập theo thùng 1 phút (mục 3.6.2): route mẫu, bộ loại trừ, cache khoá thùng trong instance, công tắc `ip_access_log_api_enabled`; spec: cùng thùng chỉ 1 lần ghi DB, URL thô/query không bao giờ được lưu, route loại trừ không ghi, lỗi ghi log không làm hỏng request. *(CHƯA làm 2026-10-15: không có `APP_INTERCEPTOR`; `IpAccessLogService` chỉ được gọi từ `auth/login` + `auth/refresh`)*
+- [ ] **Setting lưu được và sửa được (đã chốt 2026-10-14):** migration seed mặc định `ip_access_log_retention_days = 90`, `ip_access_detail_cap_per_hour = 20`, `ip_access_log_api_enabled = 1`; thêm 3 trường này vào form chỉnh `security_config` ở `/security-activity` (P4.3) và `SecurityConfigService` (kẹp giá trị, cache 30 giây, audit `UPDATE_SECURITY_CONFIG` ghi giá trị cũ/mới). Đổi giá trị có hiệu lực ≤ 30 giây, không cần deploy. *(Làm 2/3: có `ip_access_log_retention_days`, `ip_access_detail_cap_per_hour`; THIẾU `ip_access_log_api_enabled` — migration `1786334000000` chỉ thêm 2 cột)*
+- [x] Làm giàu DTO ở 7 endpoint nêu ở 3.6.1; cập nhật type FE (`security.api.ts`, `users.api.ts`, `sessions.api.ts`, `audit.types.ts`).
+- [x] API `GET /security/ip-access[/:ip]` + thêm 2 cột `security_config` (kẹp giá trị, cache 30 giây như 3.1).
+- [x] Retention `ip_access_logs` trong `RetentionService`.
+- [x] FE: `IpWithFlag`, thay 6 chỗ render IP, tab "Lượt truy cập IP", Drawer lịch sử, cảnh báo whitelist khác quốc gia.
+- [x] Spec: lượt của IP **whitelist** và **bị khoá** đều được ghi đúng `ip_status`; vượt cap/giờ chỉ tăng `suppressed_hits`; lỗi ghi log không làm hỏng login; `resolveMany` 1 query/trang; IP nội bộ → `private`; header quốc gia lạ → `null`; email làm sạch; link IP ẩn khi thiếu quyền.
+- [ ] Verify thật theo mục 6.8 (BE `tsc`/`nest build`/`jest`, FE `tsc`/`vitest`/`next build`) rồi tick mục 9 + 1 dòng `WORKFLOW_LOG.md`. *(làm sau khi xong 2 mục chưa tick ở trên)*
 
 ### 3.7 Khoá IP CHỦ ĐỘNG — blacklist (bổ sung theo yêu cầu 2026-10-15)
 **Vấn đề:** 3.2 chỉ khoá **bị động** — IP phải sai đủ `ip_max_failed_attempts` (mặc định 10) lần mới bị khoá, và khoá tự hết sau `ip_lock_minutes` (5 phút). Admin thấy 1 IP đáng ngờ (dò nhiều email, quốc gia lạ ở tab "Theo dõi IP") nhưng **không có cách chặn ngay**, và không có cách chặn **lâu dài**.
@@ -430,7 +430,7 @@ Quyết định: giữ lưu trong `users.hashed_refresh_token`, nâng định d�
 ## PHASE 10 — `loading.tsx` / skeleton & khả năng truy cập (B7)
 
 - [ ] `loading.tsx` ở `app/(dashboard)/` và route nặng: customers, audit-logs, attendance-device, reports, lich-su-cong-viec (dùng lại `LoadingSkeleton`).
-- [ ] `(dashboard)/error.tsx` nếu chưa có (đã nêu ở `PLAN_HARDENING.md` — kiểm tra file đó để khỏi làm trùng).
+- [x] `(dashboard)/error.tsx` nếu chưa có (đã nêu ở `PLAN_HARDENING.md` — kiểm tra file đó để khỏi làm trùng). *(đã có `app/error.tsx` và `(dashboard)/error.tsx`)*
 - [ ] Rà `aria-*` cho bảng lớn: `aria-label` cho nút chỉ có icon, `aria-sort`, `aria-live` cho vùng tải/lỗi, focus rõ, thứ tự Tab.
 - [ ] Phím tắt (phối hợp với "Ctrl+K" ở `PLAN_HARDENING`, không làm 2 lần): `/` focus tìm kiếm, `←/→` đổi trang bảng, `Esc` đóng modal; bảng tra phím tắt (`?`).
 - [ ] Test `vitest` + Testing Library kiểm `role`/`aria`; xem bằng mắt trên trình duyệt thật (jsdom không chạy animation).
@@ -445,8 +445,8 @@ Quyết định: giữ lưu trong `users.hashed_refresh_token`, nâng định d�
 | C4 | Giảm `any` (~372 BE, ~288 FE) | Làm dần theo file đang sửa; bật `no-explicit-any` mức `warn` rồi siết. Chưa đo lại. |
 | C5 | Spec controller: `customers`, `leave-requests`, `users`, `roles`, `reports`, `zk-device` | Ưu tiên khoá guard/route (đúng `@RequirePermission` từng endpoint) theo mẫu `periodic-tasks.controller.spec.ts`. |
 | C6 | README gốc lỗi thời (Next 14, antd 5, roadmap 4 tuần) | `README_AZWORKBASE_PROJECT.md` đã có banner "lịch sử"; cập nhật `README.md` gốc theo `package.json` thật. |
-| C8 | Cắt NGAY phiên đang mở của IP vừa bị chặn chủ động (guard toàn cục kiểm blacklist, hoặc `FORCE_LOGOUT` các phiên có `ip` đó trong JSON phiên) | Bản P3.7 chỉ chặn `login` + `refresh`; access token còn hạn dùng được tới khi hết hạn. Cùng nhóm: nút "Chặn" trên tab Theo dõi IP / ngăn Chi tiết IP, CIDR, chặn theo quốc gia, chặn `register`. |
 | C7 | (Mới) `login()` trả "Tài khoản không tồn tại" cho email lạ và "Mật khẩu sai…" cho email có thật → lộ việc email có tồn tại | Chưa sửa vì FE/UX đang dựa vào các thông báo này; cân nhắc gộp 1 thông báo chung sau khi P3–P4 xong. |
+| C8 | Cắt NGAY phiên đang mở của IP vừa bị chặn chủ động (guard toàn cục kiểm blacklist, hoặc `FORCE_LOGOUT` các phiên có `ip` đó trong JSON phiên) | Bản P3.7 chỉ chặn `login` + `refresh`; access token còn hạn dùng được tới khi hết hạn. Cùng nhóm: nút "Chặn" trên tab Theo dõi IP / ngăn Chi tiết IP, CIDR, chặn theo quốc gia, chặn `register`. |
 
 ## KHÔNG LÀM
 - **D1** `?secret=` / xoay secret / so sánh hằng thời gian cho cron **cũ**. (Endpoint cron **mới** ở P1 vẫn dùng `timingSafeEqual` + header, chi phí ~0.)
@@ -521,7 +521,7 @@ Thứ tự: **P1 → P2 → P3 → P4 → P5 → P6 → P7 → P8 → P9 → P10
 - [x] P3.2 Khoá IP (10 lần) + `login_ip_blocks` + `last_login_ip` — *đã nối 2026-10-14; còn: chạy migration `1786320000000`*
 - [x] P3.3 Admin xem/reset khoá IP — *đã nối 2026-10-14 (tab "IP bị khoá" ở /users)*
 - [x] P3.5 Whitelist IP (miễn khoá theo IP, vẫn khoá email) — *đã làm 2026-10-14; còn: chạy migration `1786331000000`*
-- [x] P3.6 Cờ quốc gia cạnh mọi IP + log lượt truy cập theo từng IP (whitelist/bị khoá đều ghi) — *thêm vào plan 2026-10-14, chưa làm; đã chốt đủ câu 5–8 ở mục 8, sẵn sàng làm; việc đầu tiên là xác minh header `x-vercel-ip-country` trên Preview*
+- [ ] P3.6 Cờ quốc gia cạnh mọi IP + log lượt truy cập theo từng IP (whitelist/bị khoá đều ghi) — *đã làm: cờ quốc gia, `IpWithFlag`, sửa tay quốc gia, log `auth/login` + `auth/refresh`, tab Theo dõi IP, retention; CHƯA làm: log request API đã đăng nhập (3.6.2: interceptor + cột `ip_access_log_api_enabled`) và xác minh header `x-vercel-ip-country` trên Preview; còn: chạy migration `1786332000000`–`1786334000000`*
 - [x] P4 Audit sự kiện bảo mật (cho phép `user_id` NULL) + dọn theo `security_event_retention_days` + trang "Hoạt động bảo mật" — *đã làm 2026-10-14; còn: chạy migration `1786330000000`; trang dùng phân trang thường thay vì `paginateByWeek`*
 - [x] P5 Thiết bị đăng nhập + đăng xuất cưỡng bức (JSON v3) — *code đã có (`/auth/sessions`, `UserSessionsModal`, quyền `users.sessions`); WORKFLOW_LOG 2026-10-15 ghi đã làm; còn: chạy migration `1786335000000`*
 - [x] P3.7 Khoá IP chủ động (blacklist, có hạn/vĩnh viễn) + UI trang Nhân viên — *đã làm 2026-10-15; còn: chạy migration `1786336000000`, `guides:sync`, deploy*
