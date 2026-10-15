@@ -16,6 +16,8 @@ import { DepositsModule } from '../deposits/deposits.module';
 import { Deposit } from '../../database/entities/deposit.entity';
 import { UiVisibilityModule } from '../ui-visibility/ui-visibility.module';
 import { UtmsModule } from '../utms/utms.module';
+import { BulkOperationsModule } from '../bulk-operations/bulk-operations.module';
+import { CustomersBulkService } from './customers-bulk.service';
 
 @Module({
   imports: [
@@ -23,9 +25,10 @@ import { UtmsModule } from '../utms/utms.module';
     DepositsModule,
     UiVisibilityModule,
     UtmsModule,
+    BulkOperationsModule,
   ],
   controllers: [CustomersController],
-  providers: [CustomersService, CustomersImportService, CustomersExportService, CustomersInvalidStatsService, CustomersPeriodStatsService],
+  providers: [CustomersService, CustomersImportService, CustomersExportService, CustomersInvalidStatsService, CustomersPeriodStatsService, CustomersBulkService],
   exports: [CustomersService],
 })
 export class CustomersModule { }

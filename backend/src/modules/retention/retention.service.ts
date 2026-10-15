@@ -302,7 +302,18 @@ export class RetentionService {
       }
     }
 
-    const affected = results.reduce((sum, r) => sum + r.count, 0);
+    // P7: bản ghi `bulk_operations` đã quá hạn hoàn tác luôn được dọn (không có công tắc, không hiện ở `results`).
+    // Chỉ khi chạy thật theo lịch/đủ mọi đối tượng; lỗi dọn không làm hỏng các đối tượng khác.
+    let bulkOpsDeleted = 0;
+    if (!dryRun && !options.target) {
+      try {
+        bulkOpsDeleted = await this.cleanupExpiredBulkOperations();
+      } catch (err) {
+        this.logger.error(`[Retention] bulk_operations thất bại: ${err instanceof Error ? err.message : String(err)}`);
+      }
+    }
+
+    const affected = results.reduce((sum, r) => sum + r.count, 0) + bulkOpsDeleted;
     const status: 'success' | 'partial' | 'failed' = results.some((r) => r.error)
       ? 'failed'
       : results.some((r) => r.partial)
@@ -317,6 +328,19 @@ export class RetentionService {
       this.logger.log(`[Retention] ${status}: đã xoá ${affected} dòng (${results.map((r) => `${r.target}=${r.count}`).join(', ')}).`);
     }
     return { dryRun, status, affected, results };
+  }
+
+  /** Xoá theo lô các thao tác hàng loạt đã quá `expires_at` (đồng hồ DB). Trả số dòng đã xoá. */
+  private async cleanupExpiredBulkOperations(): Promise<number> {
+    let total = 0;
+    for (;;) {
+      const res = await this.dataSource.query(
+        `DELETE FROM bulk_operations WHERE expires_at < NOW() LIMIT ${RETENTION_BATCH_SIZE}`,
+      );
+      const n = Number((res as { affectedRows?: number })?.affectedRows ?? 0);
+      total += n;
+      if (n < RETENTION_BATCH_SIZE) return total;
+    }
   }
 
   private settingsOf(s: RetentionSettings, t: RetentionTarget): RetentionTargetSettings {

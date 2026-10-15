@@ -15,6 +15,8 @@ import { CustomerFiltersDto } from './dto/customer-filters.dto';
 import { ImportCustomerDto } from './dto/import-customer.dto';
 import { BulkAssignDto } from './dto/bulk-assign.dto';
 import { BulkRemoveUtmDto } from './dto/bulk-remove-utm.dto';
+import { BulkStatusDto } from './dto/bulk-status.dto';
+import { CustomersBulkService } from './customers-bulk.service';
 import { UpdateAssignmentDto } from './dto/update-assignment.dto';
 import { CreateCustomerNoteDto } from './dto/create-customer-note.dto';
 import { UpdateCustomerNoteDto } from './dto/update-customer-note.dto';
@@ -38,6 +40,7 @@ export class CustomersController {
     private readonly customersExportService: CustomersExportService,
     private readonly customersInvalidStatsService: CustomersInvalidStatsService,
     private readonly customersPeriodStatsService: CustomersPeriodStatsService,
+    private readonly customersBulkService: CustomersBulkService,
   ) {}
 
   @Get('stats')
@@ -229,6 +232,21 @@ export class CustomersController {
   }
 
   // Khai TRƯỚC `@Patch(':id')` (Nest khớp theo thứ tự).
+  // Khai TRƯỚC `@Patch(':id')`. Cùng permission với sửa 1 khách (`customers.edit`).
+  @Patch('bulk-status')
+  @RequirePermission('customers.edit')
+  @ApiOperation({
+    summary:
+      'Đổi trạng thái nhiều khách hàng (≤ 500) - trả { succeeded, unchanged, failed, operationId, undoExpiresInSeconds }. Hoàn tác 5 phút qua POST /bulk-operations/:id/undo',
+  })
+  bulkStatus(
+    @Body() dto: BulkStatusDto,
+    @GetUser() user: any,
+    @GetPermissionScope() scope: string | null | undefined,
+  ) {
+    return this.customersBulkService.bulkUpdateStatus(dto.customerIds, dto.status, user, scope);
+  }
+
   @Patch('bulk-remove-utm')
   @RequirePermission('customers.edit')
   @ApiOperation({ summary: 'Gỡ UTM khỏi nhiều khách hàng - từng khách vẫn qua update() (scope + audit), trả { succeeded, failed }' })

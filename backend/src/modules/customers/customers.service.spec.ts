@@ -17,6 +17,7 @@ import { CustomerGroupMembership } from '../../database/entities/customer-group-
 import { AuditService } from '../audit/audit.service';
 import { NotificationsService } from '../notifications/notifications.service';
 import { UtmsService } from '../utms/utms.service';
+import { BulkOperationsService } from '../bulk-operations/bulk-operations.service';
 const mockUtmsService = { resolveForCustomer: jest.fn() };
 import {
   DuplicatePhoneException,
@@ -53,7 +54,20 @@ describe('CustomersService', () => {
     // customersRepository.manager.getRepository(User) được dùng trong
     // create()/updateAssignment() để validate salesUserId/assignedToId -
     // mock rỗng, gán return value cụ thể trong từng describe() cần dùng.
-    manager: { getRepository: jest.fn() },
+    // P7: `bulkAssign()` ghi trong `manager.transaction()` -> chạy callback ngay với `mockEm`.
+    manager: {
+      getRepository: jest.fn(),
+      transaction: jest.fn(async (cb: (em: unknown) => unknown) => cb(mockEm)),
+    },
+  };
+  const mockEm = {
+    getRepository: jest.fn((entity: unknown) => (entity === CustomerAssignment ? mockAssignmentRepo : mockCustomerRepo)),
+    createQueryBuilder: jest.fn((...args: unknown[]) => (mockCustomerRepo.createQueryBuilder as (...a: unknown[]) => unknown)(...args)),
+  };
+  const mockBulkOperations = {
+    record: jest.fn().mockResolvedValue({ operationId: 77, undoExpiresInSeconds: 300 }),
+    readCustomerStamps: jest.fn().mockResolvedValue(new Map<number, string>()),
+    registerHandler: jest.fn(),
   };
   const mockNoteRepo: {
     findOne?: jest.Mock;
@@ -166,6 +180,7 @@ describe('CustomersService', () => {
         { provide: UiVisibilityService, useValue: mockUiVisibilityService },
         { provide: NotificationsService, useValue: mockNotificationsService },
         { provide: UtmsService, useValue: mockUtmsService },
+        { provide: BulkOperationsService, useValue: mockBulkOperations },
       ],
     }).compile();
 
@@ -783,6 +798,72 @@ describe('CustomersService', () => {
     };
     return qb;
   }
+
+  describe('bulkAssign - ghi thao tác để Hoàn tác (P7)', () => {
+    const mockUserRepoForUndo = { find: jest.fn() };
+
+    beforeEach(() => {
+      mockCustomerRepo.manager.getRepository.mockImplementation((entity: any) => {
+        if (entity?.name === 'DepartmentManager') return { find: jest.fn().mockResolvedValue([]) };
+        return mockUserRepoForUndo;
+      });
+      mockUserRepoForUndo.find.mockResolvedValue([{ id: 5, isActive: true }]);
+      mockAssignmentRepo.find.mockResolvedValue([]);
+      (mockAssignmentRepo as any).insert = jest.fn().mockResolvedValue({});
+      mockCustomerRepo.createQueryBuilder.mockReturnValue({
+        update: jest.fn().mockReturnThis(),
+        set: jest.fn().mockReturnThis(),
+        whereInIds: jest.fn().mockReturnThis(),
+        execute: jest.fn().mockResolvedValue({}),
+      });
+      mockBulkOperations.readCustomerStamps.mockResolvedValue(new Map([[100, '1786350000.5']]));
+    });
+
+    it('ghi ảnh chụp TRƯỚC + id lượt chia vừa tạo trong cùng transaction; trả operationId', async () => {
+      mockCustomerRepo.find.mockResolvedValue([
+        { id: 100, departmentId: null, salesUserId: null, assignedDate: null, updatedById: 3, createdById: 1 },
+        { id: 101, departmentId: null, salesUserId: 9, assignedDate: '2026-05-01', updatedById: 4, createdById: 1 },
+      ]);
+      mockAssignmentRepo.find.mockResolvedValueOnce([]).mockResolvedValueOnce([
+        { id: 900, customerId: 100, assignedToId: 5 },
+        { id: 901, customerId: 101, assignedToId: 5 },
+      ]);
+
+      const result = await service.bulkAssign([100, 101], [5], 1, Role.ADMIN, undefined, PermissionScope.ALL);
+
+      expect(mockCustomerRepo.manager.transaction).toHaveBeenCalledTimes(1);
+      const [emArg, input] = mockBulkOperations.record.mock.calls[0];
+      expect(emArg).toBe(mockEm);
+      expect(input.type).toBe('customer_bulk_assign');
+      expect(input.actorId).toBe(1);
+      expect(input.affectedCount).toBe(2);
+      expect(input.payloadBefore.items).toEqual([
+        { id: 100, salesUserId: null, assignedDate: null, updatedById: 3, touched: true },
+        { id: 101, salesUserId: 9, assignedDate: '2026-05-01', updatedById: 4, touched: false },
+      ]);
+      expect(input.payloadAfter).toEqual({
+        assignments: [{ id: 900, customerId: 100 }, { id: 901, customerId: 101 }],
+        stamps: [{ id: 100, ut: '1786350000.5' }],
+      });
+      expect(result).toMatchObject({ success: 2, failed: 0, operationId: 77, undoExpiresInSeconds: 300 });
+    });
+
+    it('không khách nào được chia -> KHÔNG mở transaction, operationId = null', async () => {
+      mockCustomerRepo.find.mockResolvedValue([{ id: 100, departmentId: null, salesUserId: 9, createdById: 1 }]);
+      const result = await service.bulkAssign([100], [5], 7, Role.EMPLOYEE, undefined, PermissionScope.OWN);
+      expect(result.success).toBe(0);
+      expect(mockCustomerRepo.manager.transaction).not.toHaveBeenCalled();
+      expect(mockBulkOperations.record).not.toHaveBeenCalled();
+      expect(result.operationId).toBeNull();
+    });
+
+    it('lỗi khi ghi thao tác -> lỗi nổi lên, KHÔNG ghi audit', async () => {
+      mockCustomerRepo.find.mockResolvedValue([{ id: 100, departmentId: null, salesUserId: null, createdById: 1 }]);
+      mockBulkOperations.record.mockRejectedValueOnce(new Error('db down'));
+      await expect(service.bulkAssign([100], [5], 1, Role.ADMIN, undefined, PermissionScope.ALL)).rejects.toThrow('db down');
+      expect(mockAuditService.logActionAsync).not.toHaveBeenCalled();
+    });
+  });
 
   describe('updateNote - Sửa ghi chú khách hàng (regression bug 404 "Không tìm thấy khách hàng này")', () => {
     // ⚠️ BÁO CÁO GỐC (2026-09-08): Admin cấp `customer_notes.edit` (scope

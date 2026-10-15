@@ -254,6 +254,18 @@ export const customersApi = {
     return response.data;
   },
 
+  /** Đổi trạng thái nhiều khách (≤ 500). BE trả 200 kèm `failed`/`unchanged`; có `operationId` để Hoàn tác 5 phút. */
+  bulkStatus: async (customerIds: number[], status: string) => {
+    const response = await axiosInstance.patch<{
+      succeeded: number[];
+      unchanged: number[];
+      failed: Array<{ id: number; reason: string }>;
+      operationId: number | null;
+      undoExpiresInSeconds: number | null;
+    }>('/customers/bulk-status', { customerIds, status });
+    return response.data;
+  },
+
   /** Gỡ UTM khỏi nhiều khách (BE trả 200 kèm `failed` từng khách - không toast lỗi N lần). */
   bulkRemoveUtm: async (utmId: number, customerIds: number[]) => {
     const response = await axiosInstance.patch<{

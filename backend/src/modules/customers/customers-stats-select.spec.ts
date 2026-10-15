@@ -12,6 +12,7 @@ import { CustomerGroupMembership } from '../../database/entities/customer-group-
 import { AuditService } from '../audit/audit.service';
 import { NotificationsService } from '../notifications/notifications.service';
 import { UtmsService } from '../utms/utms.service';
+import { BulkOperationsService } from '../bulk-operations/bulk-operations.service';
 import { Role } from '../../common/enums/role.enum';
 
 /**
@@ -76,6 +77,7 @@ describe('CustomersService - cột select của 3 modal thống kê', () => {
         { provide: UiVisibilityService, useValue: {} },
         { provide: NotificationsService, useValue: {} },
         { provide: UtmsService, useValue: {} },
+        { provide: BulkOperationsService, useValue: {} },
       ],
     }).compile();
     service = moduleRef.get(CustomersService);

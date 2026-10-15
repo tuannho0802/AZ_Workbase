@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { Modal, Button, Select, Input, Typography, App, Space, Tag } from 'antd';
 import { UserAddOutlined } from '@ant-design/icons';
 import { useQuery } from '@tanstack/react-query';
+import { useBulkUndoToast } from '@/lib/hooks/useBulkUndoToast';
 import axiosInstance from '@/lib/api/axios-instance';
 import { usersApi } from '@/lib/api/users.api';
 import { getApiErrorMessage } from '@/lib/utils/error-message.util';
@@ -85,6 +86,8 @@ export const BulkAssignModal: React.FC<BulkAssignModalProps> = ({
     }
   }, [open]);
 
+  const showUndoToast = useBulkUndoToast();
+
   const handleAssign = async () => {
     if (salesUserIds.length === 0) return;
     setLoading(true);
@@ -96,10 +99,15 @@ export const BulkAssignModal: React.FC<BulkAssignModalProps> = ({
       };
       const res = await axiosInstance.patch('/customers/bulk-assign', payload);
 
-      message.success(
-        res.data?.message ||
+      // P7: có operationId -> toast kèm nút Hoàn tác 5 phút (sau hoàn tác tải lại dữ liệu trang).
+      showUndoToast({
+        operationId: res.data?.operationId,
+        undoExpiresInSeconds: res.data?.undoExpiresInSeconds,
+        text:
+          res.data?.message ||
           `✅ Đã gán ${selectedRowKeys.length} khách hàng cho ${salesUserIds.length} nhân viên`,
-      );
+        onUndone: onSuccess,
+      });
 
       onSuccess();
       onClose();

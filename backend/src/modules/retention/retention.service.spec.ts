@@ -10,6 +10,7 @@ function makeService(opts: {
   deleteResults?: number[];
   countResult?: number;
   securityDays?: number;
+  bulkOpsDeleted?: number;
 }) {
   const queries: Array<{ sql: string; params: unknown[] }> = [];
   const deletes = [...(opts.deleteResults ?? [0])];
@@ -20,6 +21,7 @@ function makeService(opts: {
       if (sql.startsWith('INSERT INTO cron_runs')) return { insertId: 7 };
       if (sql.startsWith('UPDATE cron_runs')) return { affectedRows: 1 };
       if (sql.includes('SELECT COUNT(*)')) return [{ c: opts.countResult ?? 0 }];
+      if (sql.startsWith('DELETE FROM bulk_operations')) return { affectedRows: opts.bulkOpsDeleted ?? 0 };
       if (sql.startsWith('DELETE FROM')) return { affectedRows: deletes.shift() ?? 0 };
       return [];
     }),
@@ -123,7 +125,22 @@ describe('RetentionService', () => {
       const { service, queries } = makeService({ settings: [], latestRun: null });
       const r = await service.runIfDue();
       expect(r.results!.every((x) => x.skipped === 'DISABLED')).toBe(true);
-      expect(queries.some((q) => q.sql.startsWith('DELETE'))).toBe(false);
+      expect(queries.some((q) => q.sql.startsWith('DELETE') && !q.sql.includes('bulk_operations'))).toBe(false);
+    });
+
+    it('P7: luôn dọn bulk_operations quá hạn (không công tắc), cộng vào affected, không hiện ở results', async () => {
+      const { service, queries } = makeService({ settings: [], latestRun: null, bulkOpsDeleted: 3 });
+      const r = await service.runIfDue();
+      expect(queries.some((q) => q.sql.includes('DELETE FROM bulk_operations WHERE expires_at < NOW()'))).toBe(true);
+      expect(r.affected).toBe(3);
+      expect(r.results!.some((x) => (x.target as string) === 'bulk_operations')).toBe(false);
+    });
+
+    it('P7: chạy tay 1 đối tượng hoặc dryRun -> KHÔNG đụng bulk_operations', async () => {
+      const { service, queries } = makeService({ settings: ENABLE_AUDIT, latestRun: null });
+      await service.run({ target: 'audit_logs' });
+      await service.run({ dryRun: true });
+      expect(queries.some((q) => q.sql.includes('bulk_operations'))).toBe(false);
     });
   });
 

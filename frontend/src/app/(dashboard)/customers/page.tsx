@@ -2,7 +2,7 @@
 
 import { useEffect, useState, useMemo, useRef, Suspense } from 'react';
 import { Table, Card, Tag, App, Button, Space, Typography, Tooltip, Divider, Collapse, Pagination, Grid, Popconfirm, Select } from 'antd';
-import { UploadOutlined, DownloadOutlined, UsergroupAddOutlined, ReloadOutlined, PlusOutlined, InfoCircleOutlined, DeleteOutlined } from '@ant-design/icons';
+import { UploadOutlined, DownloadOutlined, UsergroupAddOutlined, ReloadOutlined, PlusOutlined, InfoCircleOutlined, DeleteOutlined, SwapOutlined } from '@ant-design/icons';
 import type { ColumnsType, TablePaginationConfig } from 'antd/es/table';
 import type { FilterValue, SorterResult } from 'antd/es/table/interface';
 import { useSearchParams, usePathname } from 'next/navigation';
@@ -12,6 +12,7 @@ import { useAuthStore } from '@/lib/stores/auth.store';
 import { ImportExcelModal } from '@/components/customers/ImportExcelModal';
 import { ExportCustomersModal } from '@/components/customers/ExportCustomersModal';
 import { BulkAssignModal } from '@/components/customers/BulkAssignModal';
+import { BulkStatusModal } from '@/components/customers/BulkStatusModal';
 import { CustomerForm } from '@/components/customers/CustomerForm';
 import { StatsCards } from '@/components/customers/StatsCards';
 import { CustomerPeriodStats } from '@/components/customers/CustomerPeriodStats';
@@ -258,6 +259,7 @@ function CustomersPageContent() {
   // (FTD)". Cả 3 chỗ cùng hiển thị 1 loại dữ liệu (FTD) nên phải ẩn đồng bộ.
   const hideDepositsTab = hiddenKeys.includes('tab:deposits');
   const [selectedRowKeys, setSelectedRowKeys] = useState<React.Key[]>([]);
+  const [isBulkStatusOpen, setIsBulkStatusOpen] = useState(false);
   const [isImportOpen, setIsImportOpen] = useState(false);
   // ⚠️ MỚI (2026-09-23, yêu cầu tường minh): nút "Xuất Excel" trước đây bấm
   // là xuất NGAY theo đúng filter đang áp trên bảng - giờ đổi thành mở 1
@@ -990,6 +992,15 @@ function CustomersPageContent() {
           {!isMobile && !isLaptop && 'Xuất Excel'}
         </Button>
       )}
+      {canEditCustomer && selectedRowKeys.length > 0 && !isMobile && (
+        <Button
+          icon={<SwapOutlined />}
+          onClick={() => setIsBulkStatusOpen(true)}
+          size={isLaptop ? 'small' : 'middle'}
+        >
+          {isLaptop ? `Đổi status (${selectedRowKeys.length})` : `Đổi trạng thái (${selectedRowKeys.length})`}
+        </Button>
+      )}
       {canAssign && selectedRowKeys.length > 0 && !isMobile && (
         <Button 
           type="primary" 
@@ -1126,7 +1137,7 @@ function CustomersPageContent() {
               )}
         <Table
           className="customer-table"
-          rowSelection={canAssign ? rowSelection : undefined}
+          rowSelection={canAssign || canEditCustomer ? rowSelection : undefined}
               // ⚠️ FIX BUG THẬT: thiếu `scroll.x` là nguyên nhân gốc khiến bảng bị
               // crop chữ ở màn hình laptop nhỏ - table-layout:fixed (CSS
               // .customer-table) ép TẤT CẢ cột co lại vừa đúng bề rộng container
@@ -1223,6 +1234,16 @@ function CustomersPageContent() {
         hideSalesFilter={hideSalesField}
         hideMarketingFilter={hideMarketingField}
       />
+
+    <BulkStatusModal
+      open={isBulkStatusOpen}
+      selectedRowKeys={selectedRowKeys}
+      onClose={() => setIsBulkStatusOpen(false)}
+      onSuccess={() => {
+        setSelectedRowKeys([]);
+        refetchCustomers();
+      }}
+    />
 
     <BulkAssignModal
       open={isAssignOpen}

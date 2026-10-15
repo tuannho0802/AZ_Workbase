@@ -26,6 +26,7 @@ import { assignmentsApi, AssignmentHistory } from '@/lib/api/assignments.api';
 import { usersApi } from '@/lib/api/users.api';
 import { useAuthStore } from '@/lib/stores/auth.store';
 import { useMyPermissions } from '@/lib/hooks/useMyPermissions';
+import { useBulkUndoToast } from '@/lib/hooks/useBulkUndoToast';
 import axiosInstance from '@/lib/api/axios-instance';
 import { getApiErrorMessage } from '@/lib/utils/error-message.util';
 import { useRoleColorMap, useRoleColors } from '@/lib/hooks/useRoleColorMap';
@@ -210,6 +211,8 @@ export const CustomerAssignmentsTab = ({ customerId, primarySalesUserId, onUpdat
     }
   };
 
+  const showUndoToast = useBulkUndoToast();
+
   const handleAddAssignees = async () => {
     if (addSalesIds.length === 0) return;
     setAddSubmitting(true);
@@ -219,7 +222,15 @@ export const CustomerAssignmentsTab = ({ customerId, primarySalesUserId, onUpdat
         salesUserIds: addSalesIds,
         ...(addReason.trim() ? { reason: addReason.trim() } : {}),
       });
-      message.success(res.data?.message || `Đã gán thêm ${addSalesIds.length} nhân viên`);
+      showUndoToast({
+        operationId: res.data?.operationId,
+        undoExpiresInSeconds: res.data?.undoExpiresInSeconds,
+        text: res.data?.message || `Đã gán thêm ${addSalesIds.length} nhân viên`,
+        onUndone: () => {
+          fetchHistory();
+          onUpdate?.();
+        },
+      });
       setAddOpen(false);
       setAddSalesIds([]);
       setAddReason('');

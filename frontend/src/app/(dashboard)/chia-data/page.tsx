@@ -14,6 +14,7 @@ import {
 } from '@ant-design/icons';
 import { useRouter } from 'next/navigation';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { useBulkUndoToast } from '@/lib/hooks/useBulkUndoToast';
 import axiosInstance from '@/lib/api/axios-instance';
 import { useAuthStore } from '@/lib/stores/auth.store';
 import { CustomerDetailDrawer } from '@/components/customers/CustomerDetailDrawer';
@@ -489,6 +490,8 @@ export default function ChiaDataPage() {
   // nguồn "rules" thật sự, KHÔNG phải 3 dropdown lọc thủ công bên dưới.
   const { users: salesRuleUsers } = useAssignmentGroupUsers('sales');
 
+  const showUndoToast = useBulkUndoToast();
+
   // ── MUTATION: Bulk Assign ───────────────────────────────
   const { mutate: doAssign, isPending: assigning } = useMutation({
     mutationFn: () => api.bulkAssign({
@@ -497,9 +500,15 @@ export default function ChiaDataPage() {
       reason: 'Redesigned Chia Data Page Assignment',
     }).then(r => r.data),
     onSuccess: (result) => {
-      antdMessage.success(
-        `✅ Đã chia ${result.success} khách cho ${targetSalesIds.length} Sales`
-      );
+      showUndoToast({
+        operationId: result.operationId,
+        undoExpiresInSeconds: result.undoExpiresInSeconds,
+        text: `✅ Đã chia ${result.success} khách cho ${targetSalesIds.length} Sales`,
+        onUndone: () => {
+          qc.invalidateQueries({ queryKey: ['unassigned'] });
+          qc.invalidateQueries({ queryKey: ['assigned'] });
+        },
+      });
       if (result.failed > 0) {
         antdMessage.warning(`Có ${result.failed} khách không thể chia (đã có sales hoặc lỗi)`);
       }

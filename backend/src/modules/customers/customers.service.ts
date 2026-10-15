@@ -45,6 +45,9 @@ import { NotificationsService } from '../notifications/notifications.service';
 import { randomBytes } from 'crypto';
 import { UtmsService, UtmCaller } from '../utms/utms.service';
 import { waitUntil } from '@vercel/functions';
+import { BulkOperationsService } from '../bulk-operations/bulk-operations.service';
+import { BULK_TYPE_CUSTOMER_ASSIGN } from '../bulk-operations/bulk-operations.constants';
+import { toDateOnly, BulkAssignBeforeItem } from './customers-bulk.service';
 import {
   CustomerNotifySnapshot,
   diffCustomerForNotification,
@@ -122,6 +125,8 @@ export class CustomersService {
     private readonly notificationsService: NotificationsService,
     // UTM (PLAN 7.3): resolve utmId/campaign -> utm_id + snapshot campaign.
     private readonly utmsService: UtmsService,
+    // P7: ghi ảnh chụp để Hoàn tác thao tác hàng loạt trong 5 phút.
+    private readonly bulkOperations: BulkOperationsService,
   ) {}
 
   private readonly logger = new Logger(CustomersService.name);
@@ -2462,6 +2467,7 @@ export class CustomersService {
       authorizedCustomers.push(customer);
     }
 
+    let operation: { operationId: number; undoExpiresInSeconds: number } | null = null;
     if (authorizedCustomers.length > 0) {
       const authorizedIds = authorizedCustomers.map((c) => c.id);
 
@@ -2502,52 +2508,69 @@ export class CustomersService {
         }
       }
 
-      if (newAssignments.length > 0) {
-        await this.assignmentRepository.insert(newAssignments);
-      }
+      // [AGENT] OLD CODE (giữ để rollback): Bước 4-5 chạy lẻ ngoài transaction:
+      //   if (newAssignments.length > 0) { await this.assignmentRepository.insert(newAssignments); }
+      //   if (salesUserIds.length > 0) { ...2 câu createQueryBuilder().update(Customer) đặt Sales chính... }
+      // [P7] Bước 4-5 + ghi `bulk_operations` cùng 1 transaction: ảnh chụp luôn khớp thay đổi; lỗi = rollback hết.
+      const primaryUserId = salesUserIds[0];
+      const needPrimary = salesUserIds.length > 0 ? authorizedCustomers.filter((c) => !c.salesUserId) : [];
+      const idsNeedAssignedDate = needPrimary.filter((c) => !c.assignedDate).map((c) => c.id);
+      const idsKeepAssignedDate = needPrimary.filter((c) => c.assignedDate).map((c) => c.id);
+      const touchedIds = new Set(needPrimary.map((c) => c.id));
+      const beforeItems: BulkAssignBeforeItem[] = authorizedCustomers.map((c) => ({
+        id: c.id,
+        salesUserId: c.salesUserId ?? null,
+        assignedDate: toDateOnly(c.assignedDate),
+        updatedById: c.updatedById ?? null,
+        touched: touchedIds.has(c.id),
+      }));
 
-      // Bước 5: Backward compatibility - set primary owner nếu customer
-      // chưa có salesUserId. Logic y hệt bản gốc: chỉ set assignedDate nếu
-      // customer CHƯA có assignedDate. Tách thành 2 nhóm để batch UPDATE
-      // thay vì N lệnh save() riêng lẻ.
-      if (salesUserIds.length > 0) {
-        const primaryUserId = salesUserIds[0];
-        const needPrimary = authorizedCustomers.filter(
-          (c) => !c.salesUserId,
-        );
+      operation = await this.customersRepository.manager.transaction(async (em) => {
+        // Bước 4: bulk insert các assignment mới.
+        if (newAssignments.length > 0) {
+          await em.getRepository(CustomerAssignment).insert(newAssignments);
+        }
 
-        const idsNeedAssignedDate = needPrimary
-          .filter((c) => !c.assignedDate)
-          .map((c) => c.id);
-        const idsKeepAssignedDate = needPrimary
-          .filter((c) => c.assignedDate)
-          .map((c) => c.id);
-
+        // Bước 5: set Sales chính nếu khách chưa có; chỉ set assignedDate nếu CHƯA có.
         if (idsNeedAssignedDate.length > 0) {
-          await this.customersRepository
+          await em
             .createQueryBuilder()
             .update(Customer)
-            .set({
-              salesUserId: primaryUserId,
-              assignedDate: today,
-              updatedById: callerId,
-            })
+            .set({ salesUserId: primaryUserId, assignedDate: today, updatedById: callerId })
             .whereInIds(idsNeedAssignedDate)
             .execute();
         }
-
         if (idsKeepAssignedDate.length > 0) {
-          await this.customersRepository
+          await em
             .createQueryBuilder()
             .update(Customer)
-            .set({
-              salesUserId: primaryUserId,
-              updatedById: callerId,
-            })
+            .set({ salesUserId: primaryUserId, updatedById: callerId })
             .whereInIds(idsKeepAssignedDate)
             .execute();
         }
-      }
+
+        // Dấu vết SAU: id các lượt chia vừa tạo + `updated_at` của khách bị ghi vào hàng `customers`.
+        let createdAssignments: Array<{ id: number; customerId: number }> = [];
+        if (createdPairKeys.size > 0) {
+          const activeNow = await em.getRepository(CustomerAssignment).find({
+            where: { customerId: In(authorizedIds), assignedToId: In(salesUserIds), status: AssignmentStatus.ACTIVE },
+          });
+          createdAssignments = activeNow
+            .filter((a) => createdPairKeys.has(`${a.customerId}-${a.assignedToId}`))
+            .map((a) => ({ id: a.id, customerId: a.customerId }));
+        }
+        const stamps = await this.bulkOperations.readCustomerStamps(em, [...touchedIds]);
+        return this.bulkOperations.record(em, {
+          type: BULK_TYPE_CUSTOMER_ASSIGN,
+          actorId: callerId,
+          payloadBefore: { items: beforeItems },
+          payloadAfter: {
+            assignments: createdAssignments,
+            stamps: [...touchedIds].map((id) => ({ id, ut: stamps.get(id) ?? null })),
+          },
+          affectedCount: authorizedCustomers.length,
+        });
+      });
 
       // Bước 6: Ghi audit log cho từng customer thành công - vẫn 1 dòng log
       // / customer y hệt bản gốc. Dùng logActionAsync() (fire-and-forget qua
@@ -2608,6 +2631,9 @@ export class CustomersService {
     return {
       ...results,
       message: `Đã xử lý xong gán data. Thành công: ${results.success}, Thất bại: ${results.failed}`,
+      // P7: có khách được chia -> FE hiện nút Hoàn tác (5 phút).
+      operationId: operation?.operationId ?? null,
+      undoExpiresInSeconds: operation?.undoExpiresInSeconds ?? null,
     };
   }
 
