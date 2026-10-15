@@ -1,5 +1,7 @@
 'use client';
 
+import { passwordPolicyRules, PASSWORD_POLICY_HINT } from '@/lib/utils/password-policy';
+import { PasswordExpiryField } from '@/components/users/PasswordExpiryField';
 import { useState, useEffect } from 'react';
 import {
   Table, Card, Button, Space, Tag, App, Modal, Form,
@@ -435,6 +437,7 @@ export default function UsersPage() {
       } else {
         payload.email = values.email;
         payload.password = values.password;
+        payload.passwordExpiryDays = values.passwordExpiryDays ?? null;
         payload.isActive = values.isActive ?? true;
         await usersApi.createUser(payload);
         message.success('Tạo nhân viên thành công');
@@ -832,18 +835,14 @@ export default function UsersPage() {
             <Form.Item
               name="password"
               label="Mật khẩu"
-              rules={[
-                { required: true, message: 'Vui lòng nhập mật khẩu' },
-                { min: 8, message: 'Mật khẩu phải có ít nhất 8 ký tự' },
-                {
-                  pattern: /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[@$!%*?&])[A-Za-z\d@$!%*?&]/,
-                  message: 'Mật khẩu phải có chữ hoa, chữ thường, số và ký tự đặc biệt',
-                },
-              ]}
+              rules={passwordPolicyRules}
+              extra={PASSWORD_POLICY_HINT}
             >
               <Input.Password placeholder="Password@123" />
             </Form.Item>
           )}
+          {/* P6: tài khoản mới luôn bị buộc đổi mật khẩu ở lần đăng nhập đầu; chọn thêm hạn mật khẩu (mặc định vô hạn). */}
+          {!editingUser && <PasswordExpiryField />}
 
           <Form.Item
             name="role"
@@ -1074,9 +1073,11 @@ export default function UsersPage() {
         onOk={() => resetForm.submit()}
       >
         <Form form={resetForm} layout="vertical" onFinish={handleResetPassword}>
-          <Form.Item name="newPassword" label="Mật khẩu mới" rules={[{ required: true, min: 8 }]}>
+          <Form.Item name="newPassword" label="Mật khẩu mới" rules={passwordPolicyRules} extra={PASSWORD_POLICY_HINT}>
             <Input.Password placeholder="Nhập ít nhất 8 ký tự..." />
           </Form.Item>
+          {/* P6: sau khi đặt lại, nhân viên bị buộc đổi mật khẩu ở lần đăng nhập kế tiếp. */}
+          <PasswordExpiryField />
         </Form>
       </Modal>
     </Card>

@@ -27,6 +27,9 @@ describe('AuthService - Đăng ký công khai + chặn đăng nhập chưa duy�
     rotateRefreshToken: jest.fn(),
     findByIdWithRefreshToken: jest.fn(),
     updateLastLogin: jest.fn(),
+    // P6: mặc định không bị buộc đổi mật khẩu
+    getPasswordPolicyState: jest.fn().mockResolvedValue({ required: false, expired: false }),
+    changePasswordRequired: jest.fn(),
     getLoginLockRemainingSeconds: jest.fn(),
     recordFailedLogin: jest.fn(),
     clearLoginFailures: jest.fn(),
@@ -313,6 +316,28 @@ describe('AuthService - Đăng ký công khai + chặn đăng nhập chưa duy�
 
       expect(mockUsersService.signAvatarUrl).toHaveBeenCalled();
       expect(result.user.avatarUrl).toBe('https://signed.example.com/avatars/1/abc.webp');
+    });
+
+    it('P6: login trả mustChangePassword/passwordExpired theo trạng thái chính sách mật khẩu', async () => {
+      mockUsersService.findByEmailIncludingDeleted.mockResolvedValue(baseUser());
+      mockUsersService.saveRefreshToken.mockResolvedValue(undefined);
+      mockUsersService.updateLastLogin.mockResolvedValue(undefined);
+      mockUsersService.getPasswordPolicyState.mockResolvedValueOnce({ required: true, expired: false });
+
+      const result = await service.login({ email: 'a@example.com', password: 'MatKhau123' });
+
+      expect(result.user.mustChangePassword).toBe(true);
+      expect(result.user.passwordExpired).toBe(false);
+    });
+
+    it('P6: tài khoản bình thường -> mustChangePassword=false', async () => {
+      mockUsersService.findByEmailIncludingDeleted.mockResolvedValue(baseUser());
+      mockUsersService.saveRefreshToken.mockResolvedValue(undefined);
+      mockUsersService.updateLastLogin.mockResolvedValue(undefined);
+
+      const result = await service.login({ email: 'a@example.com', password: 'MatKhau123' });
+
+      expect(result.user.mustChangePassword).toBe(false);
     });
 
     it('trả về avatarUrl=null nếu user chưa từng upload avatar (KHÔNG lộ object key thô)', async () => {

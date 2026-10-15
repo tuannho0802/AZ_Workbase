@@ -1,4 +1,5 @@
-import { IsString, MinLength } from 'class-validator';
+import { IsString } from 'class-validator';
+import { IsPolicyPassword } from '../../../common/validators/password-policy';
 import { ApiProperty } from '@nestjs/swagger';
 
 /**
@@ -16,8 +17,8 @@ export class ChangePasswordDto {
   currentPassword: string;
 
   @ApiProperty({ example: 'MatKhauMoi@123' })
-  @IsString()
-  @MinLength(6, { message: 'Mật khẩu mới phải có ít nhất 6 ký tự' })
+  // [AGENT] OLD CODE: @IsString() @MinLength(6, ...) - nâng lên chính sách chung ≥ 8 ký tự (C1)
+  @IsPolicyPassword()
   newPassword: string;
 
   @ApiProperty({ example: 'MatKhauMoi@123' })

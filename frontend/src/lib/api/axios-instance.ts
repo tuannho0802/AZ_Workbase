@@ -71,6 +71,15 @@ const processQueue = (error: any, token: string | null = null) => {
   failedQueue = [];
 };
 
+/** P6: đánh dấu user "đang bị buộc đổi mật khẩu" trong store rồi chuyển sang /change-password-required (1 lần, không lặp). */
+function redirectToPasswordChange(expired: boolean) {
+  const { user, setUser } = useAuthStore.getState();
+  if (user && !user.mustChangePassword) setUser({ ...user, mustChangePassword: true, passwordExpired: expired });
+  if (typeof window !== 'undefined' && !window.location.pathname.includes('/change-password-required')) {
+    window.location.href = '/change-password-required';
+  }
+}
+
 axiosInstance.interceptors.response.use(
   (response) => {
     // Sửa danh mục thành công -> đổi khoá cache ngay, để refetch sau invalidate không trúng bản cũ trong HTTP cache.
@@ -141,6 +150,15 @@ axiosInstance.interceptors.response.use(
         }
         return Promise.reject(refreshError);
       }
+    }
+
+    // P6: BE chặn 403 PASSWORD_CHANGE_REQUIRED (mật khẩu được cấp/hết hạn) -> không toast, chuyển sang trang đổi mật khẩu.
+    if (
+      error.response?.status === 403 &&
+      (error.response.data as { code?: string } | undefined)?.code === 'PASSWORD_CHANGE_REQUIRED'
+    ) {
+      redirectToPasswordChange((error.response.data as { reason?: string }).reason === 'EXPIRED');
+      return Promise.reject(error);
     }
 
     // Handle other errors

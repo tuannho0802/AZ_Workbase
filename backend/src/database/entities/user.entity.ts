@@ -97,6 +97,22 @@ export class User {
   })
   isRootAdmin: boolean;
 
+  // P6 - buộc đổi mật khẩu / hạn mật khẩu (migration 1786340000000). Logic hạn dùng NOW() của DB (raw SQL ở UsersService),
+  // KHÔNG so sánh Date trong JS nên 2 cột DATETIME để select:false.
+  @Column({
+    name: 'must_change_password',
+    type: 'tinyint',
+    default: 0,
+    transformer: new BooleanTransformer(),
+  })
+  mustChangePassword: boolean;
+
+  @Column({ name: 'password_changed_at', type: 'datetime', nullable: true, select: false })
+  passwordChangedAt: Date | null;
+
+  @Column({ name: 'password_expires_at', type: 'datetime', nullable: true, select: false })
+  passwordExpiresAt: Date | null;
+
   // ⚠️ Lưu OBJECT KEY trên Backblaze B2 (bucket az-imgs-avatars-workbase,
   // Private), KHÔNG PHẢI URL trực tiếp - bucket Private nên không có URL
   // tĩnh dùng được. Phải qua UsersService.signAvatarUrl() để đổi thành

@@ -1,3 +1,5 @@
+import { APP_INTERCEPTOR } from '@nestjs/core';
+import { PasswordChangeRequiredInterceptor } from '../../common/interceptors/password-change-required.interceptor';
 import { Module } from '@nestjs/common';
 import { JwtModule } from '@nestjs/jwt';
 import { PassportModule } from '@nestjs/passport';
@@ -50,7 +52,12 @@ import { assertJwtSecrets, getJwtSecret } from '../../common/security/jwt-secret
     ]),
   ],
   controllers: [AuthController],
-  providers: [AuthService, JwtStrategy],
+  providers: [
+    AuthService,
+    JwtStrategy,
+    // P6: chặn 403 PASSWORD_CHANGE_REQUIRED ở BE cho mọi endpoint có đăng nhập (trừ endpoint gắn @AllowWhenPasswordChangeRequired).
+    { provide: APP_INTERCEPTOR, useClass: PasswordChangeRequiredInterceptor },
+  ],
   exports: [AuthService],
 })
 export class AuthModule { }

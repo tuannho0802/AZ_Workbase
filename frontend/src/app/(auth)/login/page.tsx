@@ -52,7 +52,8 @@ export default function LoginPage() {
       // Delay 500ms để đảm bảo cookie được ghi
       await new Promise(resolve => setTimeout(resolve, 500));
       
-      router.push('/');
+      // P6: tài khoản bị buộc đổi mật khẩu (mới tạo/bị reset/hết hạn) -> sang trang đổi, không vào dashboard.
+      router.push(response.user?.mustChangePassword ? '/change-password-required' : '/');
     } catch (error) {
       console.error('[LOGIN] Error:', error);
       const status = isAxiosError(error) ? error.response?.status : undefined;

@@ -61,6 +61,9 @@ export interface User {
   // Key thô ổn định (không đổi giữa các lần ký lại avatarUrl) - dùng làm
   // cache key cho useCachedImage(), KHÔNG dùng để hiển thị trực tiếp.
   avatarKey?: string | null;
+  // P6: tài khoản đang bị buộc đổi mật khẩu (mới tạo/bị reset) hoặc mật khẩu hết hạn -> chỉ vào được /change-password-required.
+  mustChangePassword?: boolean;
+  passwordExpired?: boolean;
 }
 
 export interface AuthResponse {

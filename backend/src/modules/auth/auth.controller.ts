@@ -4,6 +4,8 @@ import { Throttle } from '@nestjs/throttler';
 import { AuthService } from './auth.service';
 import { LoginDto } from './dto/login.dto';
 import { RegisterDto } from './dto/register.dto';
+import { ChangePasswordRequiredDto } from './dto/change-password-required.dto';
+import { AllowWhenPasswordChangeRequired } from '../../common/decorators/allow-when-password-change-required.decorator';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { ThrottlerBehindProxyGuard } from '../../common/guards/throttler-behind-proxy.guard';
 import { getClientCountry, getDirectClientIp } from '../../common/security/client-ip';
@@ -103,9 +105,24 @@ export class AuthController {
     return this.authService.revokeOtherSessions(req.user.id, req.user.sid);
   }
 
+  // ── P6: đổi mật khẩu BẮT BUỘC (đang bị buộc đổi hoặc mật khẩu hết hạn). Chỉ cần đăng nhập, KHÔNG gate permission
+  // (người dùng chưa có/chưa được cấp `profile.change_password` vẫn phải thoát được trạng thái bị khoá). ──
+  @Post('change-password-required')
+  @HttpCode(HttpStatus.OK)
+  @UseGuards(JwtAuthGuard)
+  @AllowWhenPasswordChangeRequired()
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'Đổi mật khẩu bắt buộc (mật khẩu được cấp + mật khẩu mới + nhập lại); thu hồi các phiên khác' })
+  @ApiResponse({ status: 400, description: 'Không khớp / không đạt chính sách / không bị yêu cầu đổi / trùng mật khẩu cũ.' })
+  @ApiResponse({ status: 401, description: 'Mật khẩu được cấp không đúng.' })
+  async changePasswordRequired(@Body() dto: ChangePasswordRequiredDto, @Request() req: any) {
+    return this.authService.changePasswordRequired(req.user.id, dto, req.user.sid);
+  }
+
   @Post('logout')
   @HttpCode(HttpStatus.OK)
   @UseGuards(JwtAuthGuard)
+  @AllowWhenPasswordChangeRequired()
   @ApiBearerAuth()
   @ApiOperation({ summary: 'Đăng xuất (Thu hồi Refresh Token)' })
   @ApiResponse({ status: 200, description: 'Đăng xuất thành công.' })

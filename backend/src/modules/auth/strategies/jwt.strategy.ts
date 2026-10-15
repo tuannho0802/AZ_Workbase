@@ -68,7 +68,20 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
       if (!alive) throw new SessionRevokedException();
     }
 
+    // P6: buộc/hết hạn đổi mật khẩu (cache 15s/instance, NOW() của DB). Interceptor toàn cục đọc 2 cờ này để trả 403.
+    let policy: { required: boolean; expired: boolean };
+    try {
+      policy = await withDbRetry(() => this.usersService.getPasswordPolicyState(user!.id));
+    } catch (err) {
+      if (isTransientDbError(err)) {
+        throw new ServiceUnavailableException('Hệ thống đang bận, vui lòng thử lại sau giây lát');
+      }
+      throw err;
+    }
+
     return { 
+      passwordChangeRequired: policy.required,
+      passwordExpired: policy.expired,
       id: user.id, 
       // P5: mã phiên hiện tại (null với token cũ) - dùng đánh dấu "Thiết bị này" và chặn tự đăng xuất nhầm.
       sid: typeof payload.sid === 'string' ? payload.sid : null,

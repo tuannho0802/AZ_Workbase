@@ -21,6 +21,7 @@ import { Role } from '../../common/enums/role.enum';
 import { ApprovalStatus } from '../../common/enums/approval-status.enum';
 import { addRefreshSession, parseRefreshStore } from '../../common/utils/refresh-session-store.util';
 import { clearSessionIdCache, getCachedSessionIds } from '../../common/utils/session-alive-cache.util';
+import { clearPasswordPolicyCache } from '../../common/utils/password-policy-cache.util';
 
 describe('UsersService - Approval workflow (đăng ký công khai chờ duyệt)', () => {
   let service: UsersService;
@@ -1606,6 +1607,156 @@ describe('UsersService - Approval workflow (đăng ký công khai chờ duyệt)
         mockUsersRepo.update.mockResolvedValue(undefined);
         await service.resetPassword(20, { newPassword: 'NewPass@123' } as any, 1, Role.ADMIN, 'all');
         expect(lastSet()).toBeNull();
+      });
+    });
+  });
+
+  // ==========================================================================
+  // P6 - Buộc đổi mật khẩu + hạn mật khẩu
+  // ==========================================================================
+  describe('P6 - buộc đổi mật khẩu / hạn mật khẩu', () => {
+    const policySql = () =>
+      mockUsersRepo.query.mock.calls.filter((c: any[]) => String(c[0]).includes('must_change_password'));
+
+    beforeEach(() => {
+      clearPasswordPolicyCache();
+      mockUsersRepo.query.mockReset();
+      mockUsersRepo.query.mockResolvedValue([]);
+      mockUsersRepo.update.mockReset();
+      mockUsersRepo.update.mockResolvedValue(undefined);
+    });
+
+    describe('create - tài khoản do người khác tạo', () => {
+      const dto = (extra: any = {}) =>
+        ({ email: 'new@example.com', name: 'New', password: 'Password@123', role: Role.EMPLOYEE, ...extra }) as any;
+      beforeEach(() => {
+        mockUsersRepo.findOne.mockResolvedValue(null);
+        mockQueryBuilder.getRawOne.mockResolvedValue({ maxNum: null });
+        mockUsersRepo.create.mockImplementation((input: any) => input);
+        mockUsersRepo.save.mockImplementation((entity: any) => Promise.resolve({ id: 9, ...entity }));
+      });
+
+      it('luôn đặt must_change_password = 1; không chọn hạn -> vô hạn (days = null)', async () => {
+        await service.create(dto(), 1, Role.ADMIN);
+        const calls = policySql();
+        expect(calls).toHaveLength(1);
+        expect(calls[0][1]).toEqual([1, null, null, 9]);
+      });
+
+      it('chọn hạn 90 ngày -> truyền 90 cho password_expires_at', async () => {
+        await service.create(dto({ passwordExpiryDays: 90 }), 1, Role.ADMIN);
+        expect(policySql()[0][1]).toEqual([1, 90, 90, 9]);
+      });
+
+      it('passwordExpiryDays KHÔNG bị đẩy vào entity khi lưu', async () => {
+        await service.create(dto({ passwordExpiryDays: 30 }), 1, Role.ADMIN);
+        expect(mockUsersRepo.create).toHaveBeenCalledWith(expect.not.objectContaining({ passwordExpiryDays: expect.anything() }));
+      });
+    });
+
+    describe('resetPassword', () => {
+      beforeEach(() => {
+        mockUsersRepo.findOne.mockResolvedValue({ id: 20, name: 'NV A', departmentId: 3, role: Role.EMPLOYEE });
+      });
+
+      it('reset -> buộc đổi (must=1), mặc định vô hạn', async () => {
+        await service.resetPassword(20, { newPassword: 'NewPass@123' } as any, 1, Role.ADMIN, 'all');
+        expect(policySql()[0][1]).toEqual([1, null, null, 20]);
+      });
+
+      it('reset + chọn hạn 60 ngày', async () => {
+        await service.resetPassword(20, { newPassword: 'NewPass@123', passwordExpiryDays: 60 } as any, 1, Role.ADMIN, 'all');
+        expect(policySql()[0][1]).toEqual([1, 60, 60, 20]);
+      });
+    });
+
+    describe('getPasswordPolicyState', () => {
+      it('must=1 -> required, không phải expired', async () => {
+        mockUsersRepo.query.mockResolvedValue([{ must: 1, expired: 0 }]);
+        expect(await service.getPasswordPolicyState(5)).toEqual({ required: true, expired: false });
+      });
+      it('hết hạn (DB tính NOW()) -> required + expired', async () => {
+        mockUsersRepo.query.mockResolvedValue([{ must: 0, expired: 1 }]);
+        expect(await service.getPasswordPolicyState(5)).toEqual({ required: true, expired: true });
+      });
+      it('vô hạn (expired=0, must=0) -> không bắt buộc', async () => {
+        mockUsersRepo.query.mockResolvedValue([{ must: '0', expired: '0' }]);
+        expect(await service.getPasswordPolicyState(5)).toEqual({ required: false, expired: false });
+      });
+      it('cache: lần 2 không query lại; đặt lại chính sách thì xoá cache', async () => {
+        mockUsersRepo.query.mockResolvedValue([{ must: 0, expired: 0 }]);
+        await service.getPasswordPolicyState(5);
+        await service.getPasswordPolicyState(5);
+        expect(mockUsersRepo.query).toHaveBeenCalledTimes(1);
+        await service.setPasswordPolicy(5, { mustChange: true });
+        mockUsersRepo.query.mockResolvedValue([{ must: 1, expired: 0 }]);
+        expect((await service.getPasswordPolicyState(5)).required).toBe(true);
+      });
+    });
+
+    describe('changePasswordRequired', () => {
+      const body = (extra: any = {}) => ({ currentPassword: 'MatKhauCap@1', newPassword: 'MoiA@1234', confirmNewPassword: 'MoiA@1234', ...extra });
+      const requireChange = () => mockUsersRepo.query.mockResolvedValueOnce([{ must: 1, expired: 0 }]);
+
+      it('nhập lại không khớp -> 400, không đụng DB', async () => {
+        await expect(service.changePasswordRequired(1, body({ confirmNewPassword: 'Khac@1234' }), 'sid1')).rejects.toThrow(BadRequestException);
+        expect(mockUsersRepo.query).not.toHaveBeenCalled();
+      });
+
+      it('tài khoản KHÔNG bị buộc đổi -> 400', async () => {
+        mockUsersRepo.query.mockResolvedValueOnce([{ must: 0, expired: 0 }]);
+        await expect(service.changePasswordRequired(1, body(), 'sid1')).rejects.toThrow(BadRequestException);
+        expect(mockUsersRepo.update).not.toHaveBeenCalled();
+      });
+
+      it('mật khẩu được cấp sai -> 401', async () => {
+        requireChange();
+        mockQueryBuilder.getOne.mockResolvedValue({ id: 1, name: 'A', password: await bcrypt.hash('MatKhauCap@1', 10) });
+        await expect(service.changePasswordRequired(1, body({ currentPassword: 'SAI' }), 'sid1')).rejects.toThrow(UnauthorizedException);
+        expect(mockUsersRepo.update).not.toHaveBeenCalled();
+      });
+
+      it('mật khẩu mới trùng mật khẩu được cấp -> 400', async () => {
+        requireChange();
+        mockQueryBuilder.getOne.mockResolvedValue({ id: 1, name: 'A', password: await bcrypt.hash('MatKhauCap@1', 10) });
+        await expect(
+          service.changePasswordRequired(1, body({ newPassword: 'MatKhauCap@1', confirmNewPassword: 'MatKhauCap@1' }), 'sid1'),
+        ).rejects.toThrow(BadRequestException);
+      });
+
+      it('thành công: tắt cờ, thu hồi CÁC PHIÊN KHÁC (giữ phiên hiện tại), audit PASSWORD_CHANGED', async () => {
+        requireChange();
+        mockQueryBuilder.getOne.mockResolvedValue({ id: 1, name: 'A', password: await bcrypt.hash('MatKhauCap@1', 10) });
+        const revoke = jest.spyOn(service, 'revokeRefreshSessions').mockResolvedValue(2);
+
+        const res = await service.changePasswordRequired(1, body(), 'sid-hien-tai');
+
+        expect(res.success).toBe(true);
+        expect(mockUsersRepo.update).toHaveBeenCalledWith(1, { password: expect.any(String) });
+        const clear = policySql().find((c: any[]) => String(c[0]).includes('must_change_password = 0'));
+        expect(clear).toBeDefined();
+        expect(revoke).toHaveBeenCalledWith(1, { exceptSid: 'sid-hien-tai' });
+        expect(mockAuditService.logActionAsync).toHaveBeenCalledWith(1, 'PASSWORD_CHANGED', 'user', 1, null, expect.objectContaining({ reason: 'MUST_CHANGE' }));
+        revoke.mockRestore();
+      });
+
+      it('token cũ không có sid -> thu hồi hết (saveRefreshToken null)', async () => {
+        requireChange();
+        mockQueryBuilder.getOne.mockResolvedValue({ id: 1, name: 'A', password: await bcrypt.hash('MatKhauCap@1', 10) });
+        const revoke = jest.spyOn(service, 'revokeRefreshSessions');
+        mockQueryBuilder.execute.mockClear();
+        await service.changePasswordRequired(1, body(), null);
+        expect(revoke).not.toHaveBeenCalled();
+        expect(mockQueryBuilder.execute).toHaveBeenCalled();
+        revoke.mockRestore();
+      });
+    });
+
+    describe('changeOwnPassword (đổi trong hồ sơ) cũng gỡ cờ buộc đổi', () => {
+      it('thành công -> chạy UPDATE tắt must_change_password', async () => {
+        mockQueryBuilder.getOne.mockResolvedValue({ id: 1, name: 'A', password: await bcrypt.hash('Cu@12345', 10) });
+        await service.changeOwnPassword(1, { currentPassword: 'Cu@12345', newPassword: 'Moi@12345', confirmNewPassword: 'Moi@12345' });
+        expect(policySql().some((c: any[]) => String(c[0]).includes('must_change_password = 0'))).toBe(true);
       });
     });
   });

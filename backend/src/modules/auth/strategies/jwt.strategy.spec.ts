@@ -4,12 +4,16 @@ import { clearAuthUserCache, invalidateAuthUser } from '../../../common/utils/au
 
 describe('JwtStrategy (cache user)', () => {
   const user = { id: 5, email: 'a@b.c', role: 'employee', isActive: true, name: 'A', isRootAdmin: false, departmentId: 1, positionId: null };
-  let usersService: { findById: jest.Mock };
+  let usersService: { findById: jest.Mock; getPasswordPolicyState: jest.Mock };
   let strategy: JwtStrategy;
 
   beforeEach(() => {
     clearAuthUserCache();
-    usersService = { findById: jest.fn().mockResolvedValue(user) };
+    usersService = {
+      findById: jest.fn().mockResolvedValue(user),
+      // P6: mặc định không bị buộc đổi mật khẩu
+      getPasswordPolicyState: jest.fn().mockResolvedValue({ required: false, expired: false }),
+    };
     strategy = new JwtStrategy({ get: () => 'secret' } as any, usersService as any);
   });
 
@@ -24,6 +28,17 @@ describe('JwtStrategy (cache user)', () => {
     invalidateAuthUser(5);
     await strategy.validate({ sub: 5 });
     expect(usersService.findById).toHaveBeenCalledTimes(2);
+  });
+
+  it('P6: gắn passwordChangeRequired/passwordExpired vào req.user theo trạng thái chính sách', async () => {
+    usersService.getPasswordPolicyState.mockResolvedValue({ required: true, expired: true });
+    const res = await strategy.validate({ sub: 5 });
+    expect(res).toMatchObject({ id: 5, passwordChangeRequired: true, passwordExpired: true });
+  });
+
+  it('P6: không bị buộc -> passwordChangeRequired=false', async () => {
+    const res = await strategy.validate({ sub: 5 });
+    expect(res).toMatchObject({ passwordChangeRequired: false, passwordExpired: false });
   });
 
   it('user không tồn tại/không active → 401 và KHÔNG cache kết quả null', async () => {

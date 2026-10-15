@@ -27,6 +27,13 @@ import { UpdateOwnEmailDto } from './dto/update-own-email.dto';
 import { ChangePasswordDto } from './dto/change-password.dto';
 import { ConflictException, NotFoundException, ForbiddenException, BadRequestException, UnauthorizedException } from '@nestjs/common';
 import * as bcrypt from 'bcrypt';
+import { ChangePasswordRequiredDto } from '../auth/dto/change-password-required.dto';
+import {
+  getCachedPasswordPolicy,
+  invalidatePasswordPolicy,
+  PasswordPolicyState,
+  setCachedPasswordPolicy,
+} from '../../common/utils/password-policy-cache.util';
 import { AuditService } from '../audit/audit.service';
 import { PermissionsVersionService } from '../permissions/permissions-version.service';
 import { ApprovalStatus } from '../../common/enums/approval-status.enum';
@@ -836,8 +843,10 @@ export class UsersService {
         employeeCode = await this.generateNextEmployeeCode();
       }
 
+      // P6: `passwordExpiryDays` không phải cột -> tách khỏi entity; cờ/hạn đặt bằng raw SQL (NOW() của DB) sau khi lưu.
+      const { passwordExpiryDays: _expiryDays, ...userFields } = createDto;
       const user = this.usersRepository.create({
-        ...createDto,
+        ...userFields,
         employeeCode,
         password: hashedPassword,
       });
@@ -857,6 +866,9 @@ export class UsersService {
     if (!savedUser) {
       throw lastError;
     }
+
+    // P6: mọi tài khoản do người khác tạo -> buộc đổi mật khẩu ở lần đăng nhập đầu (+ hạn tuỳ chọn; null = vô hạn).
+    await this.setPasswordPolicy(savedUser.id, { mustChange: true, expiryDays: createDto.passwordExpiryDays ?? null });
 
     // 4. Không bao giờ echo password hash ra ngoài, kể cả trong audit log
     const safeUser = omitPassword(savedUser as any);
@@ -1201,6 +1213,8 @@ export class UsersService {
 
     const hashedPassword = await bcrypt.hash(dto.newPassword, 10);
     await this.usersRepository.update(id, { password: hashedPassword });
+    // P6: Admin/người khác đặt lại -> buộc đổi ở lần đăng nhập kế tiếp (+ hạn tuỳ chọn; null = vô hạn).
+    await this.setPasswordPolicy(id, { mustChange: true, expiryDays: dto.passwordExpiryDays ?? null });
     // P5: đặt lại mật khẩu -> thu hồi MỌI phiên của người bị đặt lại (trước đây chỉ changeOwnPassword làm vậy).
     await this.saveRefreshToken(id, null);
 
@@ -1296,6 +1310,108 @@ export class UsersService {
     return safeUser as User;
   }
 
+  // ==========================================================================
+  // P6 - BUỘC ĐỔI MẬT KHẨU / HẠN MẬT KHẨU
+  // Thời gian dùng NOW() của DB (DATETIME), không so Date trong JS.
+  // ==========================================================================
+
+  /** Đặt cờ buộc đổi + hạn (expiryDays null/undefined = vô hạn). Gọi sau khi tạo user / reset mật khẩu. */
+  async setPasswordPolicy(userId: number, opts: { mustChange: boolean; expiryDays?: number | null }): Promise<void> {
+    const days = opts.expiryDays ?? null;
+    await this.usersRepository.query(
+      `UPDATE users
+          SET must_change_password = ?,
+              password_changed_at = NOW(),
+              password_expires_at = CASE WHEN ? IS NULL THEN NULL ELSE NOW() + INTERVAL ? DAY END
+        WHERE id = ?`,
+      [opts.mustChange ? 1 : 0, days, days, userId],
+    );
+    invalidatePasswordPolicy(userId);
+  }
+
+  /**
+   * Sau khi người dùng đặt mật khẩu mới: tắt cờ, hạn mới = giữ ĐỘ DÀI hạn cũ (expires - changed) hoặc vô hạn nếu trước đó vô hạn.
+   * ⚠️ MySQL đánh giá SET từ trái sang phải: `password_expires_at` PHẢI đứng TRƯỚC `password_changed_at` (cần giá trị cũ).
+   */
+  private async markPasswordChanged(userId: number): Promise<void> {
+    await this.usersRepository.query(
+      `UPDATE users
+          SET must_change_password = 0,
+              password_expires_at = CASE
+                WHEN password_expires_at IS NULL OR password_changed_at IS NULL THEN NULL
+                ELSE NOW() + INTERVAL GREATEST(1, DATEDIFF(password_expires_at, password_changed_at)) DAY
+              END,
+              password_changed_at = NOW()
+        WHERE id = ?`,
+      [userId],
+    );
+    invalidatePasswordPolicy(userId);
+  }
+
+  /** Trạng thái "phải đổi mật khẩu" (cache 15s/instance). User không tồn tại -> không bắt buộc (JwtStrategy đã chặn từ trước). */
+  async getPasswordPolicyState(userId: number): Promise<PasswordPolicyState> {
+    const cached = getCachedPasswordPolicy(userId);
+    if (cached) return cached;
+    const rows: Array<{ must: number | string | null; expired: number | string | null }> = await this.usersRepository.query(
+      `SELECT must_change_password AS must,
+              (password_expires_at IS NOT NULL AND password_expires_at <= NOW()) AS expired
+         FROM users WHERE id = ?`,
+      [userId],
+    );
+    const must = Number(rows?.[0]?.must ?? 0) === 1;
+    const expired = Number(rows?.[0]?.expired ?? 0) === 1;
+    const state: PasswordPolicyState = { required: must || expired, expired: !must && expired };
+    setCachedPasswordPolicy(userId, state);
+    return state;
+  }
+
+  /**
+   * `POST /auth/change-password-required`: đổi mật khẩu BẮT BUỘC (form 3 trường). Chỉ dùng khi đang bị buộc/hết hạn.
+   * Sau khi đổi: tắt cờ, đặt hạn mới, thu hồi CÁC PHIÊN KHÁC (giữ phiên hiện tại để người dùng vào hệ thống luôn), audit PASSWORD_CHANGED.
+   */
+  async changePasswordRequired(
+    userId: number,
+    dto: ChangePasswordRequiredDto,
+    currentSid?: string | null,
+  ): Promise<{ success: boolean; message: string }> {
+    if (dto.newPassword !== dto.confirmNewPassword) {
+      throw new BadRequestException('Mật khẩu mới nhập lại không khớp');
+    }
+    const state = await this.getPasswordPolicyState(userId);
+    if (!state.required) {
+      throw new BadRequestException('Tài khoản không bị yêu cầu đổi mật khẩu. Hãy dùng chức năng đổi mật khẩu trong hồ sơ cá nhân');
+    }
+
+    const user = await this.usersRepository
+      .createQueryBuilder('user')
+      .addSelect('user.password')
+      .where('user.id = :userId', { userId })
+      .getOne();
+    if (!user) throw new NotFoundException('Không tìm thấy tài khoản');
+
+    const ok = await bcrypt.compare(dto.currentPassword, user.password as string);
+    if (!ok) throw new UnauthorizedException('Mật khẩu được cấp không đúng');
+    if (dto.newPassword === dto.currentPassword) {
+      throw new BadRequestException('Mật khẩu mới phải khác mật khẩu được cấp');
+    }
+
+    const hashed = await bcrypt.hash(dto.newPassword, 10);
+    await this.usersRepository.update(userId, { password: hashed });
+    await this.markPasswordChanged(userId);
+
+    // P5: thu hồi các phiên khác. Token cũ (trước P5) không có sid -> không biết đâu là phiên hiện tại -> thu hồi hết (phải đăng nhập lại).
+    if (currentSid) await this.revokeRefreshSessions(userId, { exceptSid: currentSid });
+    else await this.saveRefreshToken(userId, null);
+
+    this.auditService.logActionAsync(userId, 'PASSWORD_CHANGED', 'user', userId, null, {
+      targetUser: { id: userId, name: user.name },
+      reason: state.expired ? 'EXPIRED' : 'MUST_CHANGE',
+    });
+    this.logger.log(`[Users] User ID ${userId} đổi mật khẩu bắt buộc`);
+
+    return { success: true, message: 'Đã đổi mật khẩu thành công' };
+  }
+
   /**
    * Tự đổi mật khẩu của chính mình. Khác `resetPassword()` (Admin đặt lại
    * CHO NGƯỜI KHÁC, không cần mật khẩu cũ) - ở đây bắt buộc `currentPassword`
@@ -1326,6 +1442,8 @@ export class UsersService {
 
     const hashedPassword = await bcrypt.hash(dto.newPassword, 10);
     await this.usersRepository.update(userId, { password: hashedPassword });
+    // P6: tự đổi mật khẩu hợp lệ cũng thoả yêu cầu "buộc đổi" (nếu đang bật) + giữ nguyên độ dài hạn cũ.
+    await this.markPasswordChanged(userId);
     // Thu hồi refresh token hiện tại - đồng bộ hành vi với AuthService.logout,
     // ép các phiên (thiết bị) khác đăng nhập lại sau khi đổi mật khẩu.
     await this.saveRefreshToken(userId, null);

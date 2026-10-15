@@ -1,4 +1,5 @@
 import { Controller, Get, Post, Body, Patch, Param, Delete, Query, UseGuards, Request, UseInterceptors } from '@nestjs/common';
+import { AllowWhenPasswordChangeRequired } from '../../common/decorators/allow-when-password-change-required.decorator';
 import { ApiTags, ApiOperation, ApiBearerAuth, ApiResponse } from '@nestjs/swagger';
 import { UsersService } from './users.service';
 import { PermissionsService } from '../permissions/permissions.service';
@@ -106,6 +107,7 @@ export class UsersController {
   }
 
   @Get('me')
+  @AllowWhenPasswordChangeRequired()
   @ApiOperation({ summary: 'Lấy thông tin cá nhân của người đang đăng nhập' })
   async getProfile(@Request() req: any) {
     const user = await this.usersService.findById(req.user.id, ['department', 'position']);
@@ -251,6 +253,7 @@ export class UsersController {
   }
 
   @Patch('me/password')
+  @AllowWhenPasswordChangeRequired()
   @RequirePermission('profile.change_password')
   @ApiOperation({ summary: 'Tự đổi mật khẩu (cần nhập đúng mật khẩu hiện tại)' })
   async changeOwnPassword(@Request() req: any, @Body() dto: ChangePasswordDto) {

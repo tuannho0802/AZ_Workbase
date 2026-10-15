@@ -1,4 +1,5 @@
-import { IsEmail, IsString, IsInt, IsOptional, MinLength, Matches, IsBoolean } from 'class-validator';
+import { IsEmail, IsString, IsInt, IsOptional, MinLength, Matches, IsBoolean, Max, Min } from 'class-validator';
+import { IsPolicyPassword } from '../../../common/validators/password-policy';
 import { ApiProperty } from '@nestjs/swagger';
 
 export class CreateUserDto {
@@ -22,13 +23,17 @@ export class CreateUserDto {
     example: 'Password@123',
     description: 'Mật khẩu (ít nhất 8 ký tự, có chữ hoa, chữ thường, số, ký tự đặc biệt)'
   })
-  @IsString({ message: 'Mật khẩu phải là chuỗi ký tự' })
-  @MinLength(8, { message: 'Mật khẩu phải có ít nhất 8 ký tự' })
-  @Matches(
-    /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[@$!%*?&])[A-Za-z\d@$!%*?&]/,
-    { message: 'Mật khẩu phải có chữ hoa, chữ thường, số và ký tự đặc biệt' }
-  )
+  // [AGENT] OLD CODE: @IsString() @MinLength(8) @Matches(regex) - gom về password-policy.ts (C1)
+  @IsPolicyPassword()
   password: string;
+
+  // P6: tài khoản do người khác tạo luôn bị buộc đổi mật khẩu ở lần đăng nhập đầu. Bỏ trống/null = vô hạn.
+  @ApiProperty({ example: 90, required: false, nullable: true, description: 'Hạn mật khẩu (ngày); null/bỏ trống = vô hạn' })
+  @IsOptional()
+  @IsInt({ message: 'Hạn mật khẩu phải là số nguyên (ngày)' })
+  @Min(1, { message: 'Hạn mật khẩu tối thiểu 1 ngày' })
+  @Max(365, { message: 'Hạn mật khẩu tối đa 365 ngày' })
+  passwordExpiryDays?: number | null;
 
   // ⚠️ FIX BUG THẬT (400 "role must be one of the following values" khi gán
   // role tuỳ chỉnh) - xem giải thích đầy đủ ở update-user.dto.ts. Chỉ

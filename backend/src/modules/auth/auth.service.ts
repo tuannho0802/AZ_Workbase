@@ -10,6 +10,7 @@ import {
   Logger,
 } from '@nestjs/common';
 
+import { ChangePasswordRequiredDto } from './dto/change-password-required.dto';
 import { JwtService } from '@nestjs/jwt';
 import { ConfigService } from '@nestjs/config';
 import * as bcrypt from 'bcrypt';
@@ -383,6 +384,8 @@ export class AuthService {
     // vào authStore lúc login - không phải gọi thêm GET /users/me chỉ để có
     // avatar cho header.
     const signedUser = await this.usersService.signAvatarUrl(user);
+    // P6: trạng thái buộc/hết hạn đổi mật khẩu (NOW() của DB, bỏ cache cũ của instance này vì vừa đăng nhập).
+    const passwordPolicy = await this.usersService.getPasswordPolicyState(user.id);
 
     return {
       access_token,
@@ -403,8 +406,16 @@ export class AuthService {
         isRootAdmin: user.isRootAdmin,
         avatarUrl: signedUser?.avatarUrl ?? null,
         avatarKey: signedUser?.avatarKey ?? null,
+        // P6: FE điều hướng sang /change-password-required (BE vẫn chặn 403 nếu bỏ qua).
+        mustChangePassword: passwordPolicy.required,
+        passwordExpired: passwordPolicy.expired,
       },
     };
+  }
+
+  /** P6: đổi mật khẩu bắt buộc - ủy quyền cho UsersService (cùng nơi giữ logic mật khẩu/phiên). */
+  async changePasswordRequired(userId: number, dto: ChangePasswordRequiredDto, currentSid?: string | null) {
+    return this.usersService.changePasswordRequired(userId, dto, currentSid);
   }
 
   /**

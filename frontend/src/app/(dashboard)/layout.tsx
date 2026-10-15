@@ -326,13 +326,21 @@ export default function DashboardLayout({
     }
   }, [isAuthenticated, isHydrated]);
 
+  // P6: tài khoản bị buộc đổi mật khẩu không được vào dashboard (mọi API đều bị BE chặn 403) -> sang trang đổi.
+  const mustChangePassword = !!user?.mustChangePassword;
+  useEffect(() => {
+    if (isHydrated && isAuthenticated && mustChangePassword) {
+      window.location.href = '/change-password-required';
+    }
+  }, [isAuthenticated, isHydrated, mustChangePassword]);
+
   const handleLogout = () => {
     logout();
     window.location.href = '/login';
   };
 
   // HYDRATION SHIELD: Wait for Zustand to load from cookies
-  if (!isHydrated || !isAuthenticated) {
+  if (!isHydrated || !isAuthenticated || mustChangePassword) {
     return (
       <div className="flex h-screen w-screen flex-col items-center justify-center bg-gray-50">
         <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary"></div>

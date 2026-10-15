@@ -11,6 +11,16 @@ export const authApi = {
     };
   },
 
+  // P6: đổi mật khẩu BẮT BUỘC (mật khẩu được cấp + mật khẩu mới + nhập lại).
+  changePasswordRequired: async (data: {
+    currentPassword: string;
+    newPassword: string;
+    confirmNewPassword: string;
+  }): Promise<{ success: boolean; message: string }> => {
+    const response = await axiosInstance.post('/auth/change-password-required', data);
+    return response.data;
+  },
+
   // Đăng ký công khai - gọi route nội bộ `/api/auth/register` (Next.js Route
   // Handler trên CHÍNH domain Frontend, KHÔNG phải backend NestJS trực
   // tiếp) - route đó tự forward sang backend sau khi qua Vercel BotID. Vì

@@ -1,4 +1,5 @@
 import { IsEmail, IsString, MinLength, IsOptional, IsInt, Matches, MaxLength } from 'class-validator';
+import { IsPolicyPassword } from '../../../common/validators/password-policy';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { Type } from 'class-transformer';
 
@@ -27,11 +28,8 @@ export class RegisterDto {
     example: 'Password@123',
     description: 'Mật khẩu (ít nhất 8 ký tự, có chữ hoa, chữ thường, số, ký tự đặc biệt)',
   })
-  @IsString()
-  @MinLength(8, { message: 'Mật khẩu phải có ít nhất 8 ký tự' })
-  @Matches(/^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[@$!%*?&])[A-Za-z\d@$!%*?&]/, {
-    message: 'Mật khẩu phải có chữ hoa, chữ thường, số và ký tự đặc biệt',
-  })
+  // [AGENT] OLD CODE: @IsString() @MinLength(8) @Matches(regex) - gom về password-policy.ts (C1)
+  @IsPolicyPassword()
   password: string;
 
   @ApiPropertyOptional({ example: '0912345678' })

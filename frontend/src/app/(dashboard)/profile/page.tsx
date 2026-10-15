@@ -1,5 +1,6 @@
 'use client';
 
+import { passwordPolicyRules, PASSWORD_POLICY_HINT } from '@/lib/utils/password-policy';
 import { useState, useEffect, useMemo } from 'react';
 import { useSearchParams } from 'next/navigation';
 import {
@@ -425,7 +426,7 @@ function ProfilePortal({ userId, onDeleted }: { userId: number; onDeleted?: () =
           <Form.Item name="currentPassword" label="Mật khẩu hiện tại" rules={[{ required: true, message: 'Vui lòng nhập mật khẩu hiện tại' }]}>
             <Input.Password autoFocus />
           </Form.Item>
-          <Form.Item name="newPassword" label="Mật khẩu mới" rules={[{ required: true, min: 6, message: 'Mật khẩu mới phải có ít nhất 6 ký tự' }]}>
+          <Form.Item name="newPassword" label="Mật khẩu mới" rules={passwordPolicyRules} extra={PASSWORD_POLICY_HINT}>
             <Input.Password />
           </Form.Item>
           <Form.Item

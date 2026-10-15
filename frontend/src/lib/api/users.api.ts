@@ -46,7 +46,7 @@ export const usersApi = {
     return response.data;
   },
 
-  resetPassword: async (id: number, data: { newPassword: string }) => {
+  resetPassword: async (id: number, data: { newPassword: string; passwordExpiryDays?: number | null }) => {
     const response = await axiosInstance.patch(`/users/${id}/reset-password`, data);
     return response.data;
   },
