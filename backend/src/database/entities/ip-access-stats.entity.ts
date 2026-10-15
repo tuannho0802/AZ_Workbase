@@ -38,4 +38,15 @@ export class IpAccessStats {
 
     @Column({ name: 'detail_window_count', type: 'int', default: 0 })
     detailWindowCount: number;
+
+    /** Tổng request API đã đăng nhập (XẤP XỈ — đã gồm trong `total_hits`). */
+    @Column({ name: 'api_hits', type: 'int', default: 0 })
+    apiHits: number;
+
+    /** Cửa sổ cap RIÊNG cho dòng chi tiết request API (không chiếm chỗ của dòng login/refresh). */
+    @Column({ name: 'api_window_started_at', type: 'datetime', nullable: true })
+    apiWindowStartedAt: Date | null;
+
+    @Column({ name: 'api_window_count', type: 'int', default: 0 })
+    apiWindowCount: number;
 }

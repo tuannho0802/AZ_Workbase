@@ -108,7 +108,7 @@ export class IpAccessLogService {
         const [{ total }] = (await this.repo.query(`SELECT COUNT(*) AS total ${base}`, params)) ?? [{ total: 0 }];
         const rows: any[] = (await this.repo.query(
             `SELECT s.ip, s.total_hits AS totalHits, s.success_hits AS successHits, s.failed_hits AS failedHits,
-              s.blocked_hits AS blockedHits, s.suppressed_hits AS suppressedHits, s.last_outcome AS lastOutcome,
+              s.blocked_hits AS blockedHits, s.suppressed_hits AS suppressedHits, s.api_hits AS apiHits, s.last_outcome AS lastOutcome,
               s.last_country_code AS lastCountryCode,
               TIMESTAMPDIFF(SECOND, s.first_seen_at, NOW()) AS firstSeenAgoSeconds,
               TIMESTAMPDIFF(SECOND, s.last_seen_at, NOW()) AS lastSeenAgoSeconds,
@@ -127,6 +127,7 @@ export class IpAccessLogService {
                 failedHits: Number(r.failedHits),
                 blockedHits: Number(r.blockedHits),
                 suppressedHits: Number(r.suppressedHits),
+                apiHits: Number(r.apiHits ?? 0),
                 lastOutcome: r.lastOutcome ?? null,
                 lastCountryCode: r.lastCountryCode ?? null,
                 firstSeenAgoSeconds: Number(r.firstSeenAgoSeconds),
@@ -159,7 +160,8 @@ export class IpAccessLogService {
         const whereSql = where.join(' AND ');
         const [{ total }] = (await this.repo.query(`SELECT COUNT(*) AS total FROM ip_access_logs l WHERE ${whereSql}`, params)) ?? [{ total: 0 }];
         const logs: any[] = (await this.repo.query(
-            `SELECT l.id, l.endpoint, l.outcome, l.ip_status AS ipStatus, l.user_id AS userId, l.email, l.user_agent AS userAgent,
+            `SELECT l.id, l.endpoint, l.endpoint_group AS endpointGroup, l.hit_count AS hitCount, l.last_status AS lastStatus,
+              l.outcome, l.ip_status AS ipStatus, l.user_id AS userId, l.email, l.user_agent AS userAgent,
               u.name AS userName, TIMESTAMPDIFF(SECOND, l.created_at, NOW()) AS agoSeconds
        FROM ip_access_logs l LEFT JOIN users u ON u.id = l.user_id
        WHERE ${whereSql} ORDER BY l.id DESC LIMIT ? OFFSET ?`,
@@ -173,6 +175,7 @@ export class IpAccessLogService {
                 failedHits: Number(stats.failed_hits),
                 blockedHits: Number(stats.blocked_hits),
                 suppressedHits: Number(stats.suppressed_hits),
+                apiHits: Number(stats.api_hits ?? 0),
                 firstSeenAgoSeconds: Number(stats.first_ago),
                 lastSeenAgoSeconds: Number(stats.last_ago),
                 currentStatus: Number(stats.banned) ? 'banned' : Number(stats.blocked) ? 'blocked' : Number(stats.whitelisted) ? 'whitelisted' : 'normal',
@@ -181,7 +184,9 @@ export class IpAccessLogService {
             page: opts.page,
             limit: opts.limit,
             logs: logs.map((r) => ({
-                id: String(r.id), endpoint: r.endpoint, outcome: r.outcome, ipStatus: r.ipStatus,
+                id: String(r.id), endpoint: r.endpoint, endpointGroup: r.endpointGroup ?? null,
+                hitCount: Number(r.hitCount ?? 1), lastStatus: r.lastStatus == null ? null : Number(r.lastStatus),
+                outcome: r.outcome, ipStatus: r.ipStatus,
                 userId: r.userId ?? null, userName: r.userName ?? null, email: r.email ?? null,
                 userAgent: r.userAgent ?? null, agoSeconds: Number(r.agoSeconds),
             })),

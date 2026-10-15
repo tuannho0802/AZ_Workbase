@@ -14,6 +14,7 @@ import {
 } from '@/lib/api/security.api';
 import { formatAgo } from '@/lib/utils/format-ago';
 import { IpWithFlag } from './IpWithFlag';
+import { formatApproxHits } from './ipAccessApiFormat';
 
 const { Text } = Typography;
 
@@ -26,6 +27,7 @@ export const OUTCOME_META: Record<IpAccessOutcome, { label: string; color: strin
     denied: { label: 'Bị từ chối (khoá/chờ duyệt)', color: 'magenta' },
     refresh_ok: { label: 'Làm mới phiên', color: 'blue' },
     refresh_failed: { label: 'Làm mới phiên thất bại', color: 'default' },
+    api: { label: 'Gọi API (đã đăng nhập)', color: 'geekblue' },
 };
 
 const STATUS_META: Record<IpCurrentStatus, { label: string; color: string }> = {
@@ -54,6 +56,14 @@ function IpDetailDrawer({ ip, onClose }: { ip: string | null; onClose: () => voi
         { title: 'Khi nào', dataIndex: 'agoSeconds', width: 120, render: (s: number) => formatAgo(s) },
         { title: 'Kết quả', dataIndex: 'outcome', width: 200, render: (o: IpAccessOutcome) => <OutcomeTag outcome={o} /> },
         {
+            title: 'Endpoint', dataIndex: 'endpoint', ellipsis: true,
+            render: (v: string, r) => (r.outcome === 'api' ? <Text code>{v}</Text> : v),
+        },
+        {
+            title: 'Số request', dataIndex: 'hitCount', width: 110,
+            render: (n: number, r) => (r.outcome === 'api' ? formatApproxHits(n) : '-'),
+        },
+        {
             title: 'Tài khoản / Email', key: 'who',
             render: (_: unknown, r) => r.userName ? <span>{r.userName}{r.email ? <Text type="secondary"> ({r.email})</Text> : null}</span> : (r.email ? <Text code>{r.email}</Text> : '-'),
         },
@@ -76,6 +86,7 @@ function IpDetailDrawer({ ip, onClose }: { ip: string | null; onClose: () => voi
                     <Descriptions.Item label="Thất bại">{data.summary.failedHits}</Descriptions.Item>
                     <Descriptions.Item label="Bị chặn (IP khoá)">{data.summary.blockedHits}</Descriptions.Item>
                     <Descriptions.Item label="Lượt không lưu chi tiết">{data.summary.suppressedHits}</Descriptions.Item>
+                    <Descriptions.Item label="Request API (xấp xỉ)">{formatApproxHits(data.summary.apiHits)}</Descriptions.Item>
                     <Descriptions.Item label="Thấy lần đầu">{formatAgo(data.summary.firstSeenAgoSeconds)}</Descriptions.Item>
                     <Descriptions.Item label="Gần nhất">{formatAgo(data.summary.lastSeenAgoSeconds)}</Descriptions.Item>
                 </Descriptions>
@@ -123,6 +134,7 @@ export function IpTrackingTab() {
         { title: 'Thành công', dataIndex: 'successHits', width: 110, render: (n: number) => <Text type="success">{n}</Text> },
         { title: 'Thất bại', dataIndex: 'failedHits', width: 100, render: (n: number) => (n > 0 ? <Text type="danger">{n}</Text> : n) },
         { title: 'Bị chặn', dataIndex: 'blockedHits', width: 90 },
+        { title: 'Request API (≈)', dataIndex: 'apiHits', width: 130, render: (n: number) => formatApproxHits(n) },
         { title: 'Kết quả gần nhất', dataIndex: 'lastOutcome', render: (o: IpAccessOutcome | null) => <OutcomeTag outcome={o} /> },
         { title: 'Trạng thái', dataIndex: 'currentStatus', width: 120, render: (s: IpCurrentStatus) => <Tag color={STATUS_META[s].color}>{STATUS_META[s].label}</Tag> },
         { title: 'Lần đầu', dataIndex: 'firstSeenAgoSeconds', width: 120, render: (s: number) => formatAgo(s) },
@@ -134,7 +146,7 @@ export function IpTrackingTab() {
         <Space orientation={'vertical' as never} size="middle" style={{ width: '100%' }}>
             <Alert
                 type="info" showIcon
-                title="Mỗi lượt đăng nhập/làm mới phiên được tính cho IP của nó. Quốc gia lấy từ Vercel; IP nội bộ hoặc chưa đi qua Vercel sẽ là Nội bộ/N/A (Admin có thể gán tay)."
+                title="Đăng nhập/làm mới phiên được đếm chính xác. Request API đã đăng nhập được gom theo thùng 1 phút nên số liệu chỉ là XẤP XỈ (có thể thấp hơn thật). Quốc gia lấy từ Vercel; IP nội bộ hoặc chưa đi qua Vercel sẽ là Nội bộ/N/A (Admin có thể gán tay)."
             />
             <Card variant="outlined" styles={{ body: { padding: 12 } }}>
                 <Space wrap>

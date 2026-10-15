@@ -16,7 +16,7 @@ describe('SecurityConfigService (P3.1)', () => {
         expect(await service.get()).toEqual({
             accountMaxFailedAttempts: 5, accountLockMinutes: 5, ipMaxFailedAttempts: 10,
             ipWindowMinutes: 10, ipLockMinutes: 5, securityEventRetentionDays: 180,
-            ipAccessLogRetentionDays: 90, ipAccessDetailCapPerHour: 20,
+            ipAccessLogRetentionDays: 90, ipAccessDetailCapPerHour: 20, ipAccessLogApiEnabled: 1,
         });
     });
 
@@ -77,6 +77,24 @@ describe('SecurityConfigService (P3.1)', () => {
         expect(clampSecurityValue('securityEventRetentionDays', 29).clamped).toBe(true);
     });
 
+  it('công tắc log request API: 0 hợp lệ (tắt), 2 hoặc rác -> về mặc định bật (không tắt nhầm vì dữ liệu hỏng)', async () => {
+    repo.findOne.mockResolvedValue(row({ ipAccessLogApiEnabled: 0 }));
+    expect((await service.get()).ipAccessLogApiEnabled).toBe(0);
+    service.invalidate();
+    repo.findOne.mockResolvedValue(row({ ipAccessLogApiEnabled: 2 }));
+    expect((await service.get()).ipAccessLogApiEnabled).toBe(1);
+    expect(clampSecurityValue('ipAccessLogApiEnabled', 0)).toEqual({ value: 0, clamped: false });
+    expect(clampSecurityValue('ipAccessLogApiEnabled', '1')).toEqual({ value: 1, clamped: false });
+    expect(clampSecurityValue('ipAccessLogApiEnabled', 'x')).toEqual({ value: 1, clamped: true });
+  });
+
+  it('DB cũ chưa có cột ip_access_log_api_enabled (undefined) -> mặc định bật', async () => {
+    const legacy: Record<string, unknown> = row();
+    delete legacy.ipAccessLogApiEnabled;
+    repo.findOne.mockResolvedValue(legacy);
+    expect((await service.get()).ipAccessLogApiEnabled).toBe(1);
+  });
+
   describe('update (P4.3)', () => {
     let q: jest.Mock;
     beforeEach(() => {
@@ -101,6 +119,22 @@ describe('SecurityConfigService (P3.1)', () => {
       repo.findOne.mockResolvedValue(row());
       const res = await service.update({ ipMaxFailedAttempts: 0, accountLockMinutes: 99999 }, 7);
       expect(res.changed).toEqual([]);
+      expect(q.mock.calls.some((c) => String(c[0]).startsWith('UPDATE'))).toBe(false);
+    });
+
+    it('công tắc log request API (0/1): ghi đúng cột `ip_access_log_api_enabled`; 2 bị bỏ qua', async () => {
+      repo.findOne.mockResolvedValueOnce(row()).mockResolvedValueOnce(row({ ipAccessLogApiEnabled: 0 }));
+      const res = await service.update({ ipAccessLogApiEnabled: 0 }, 9);
+      expect(res.changed).toEqual(['ipAccessLogApiEnabled']);
+      expect(res.after.ipAccessLogApiEnabled).toBe(0);
+      const upd = q.mock.calls.find((c) => String(c[0]).startsWith('UPDATE security_config'))!;
+      expect(upd[0]).toContain('`ip_access_log_api_enabled` = ?');
+      expect(upd[1]).toEqual([0, 9]);
+
+      q.mockClear();
+      repo.findOne.mockResolvedValue(row());
+      const bad = await service.update({ ipAccessLogApiEnabled: 2 }, 9);
+      expect(bad.changed).toEqual([]);
       expect(q.mock.calls.some((c) => String(c[0]).startsWith('UPDATE'))).toBe(false);
     });
 

@@ -3,7 +3,7 @@
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { App, Button, Card, Col, DatePicker, Form, Input, InputNumber, Row, Select, Space, Statistic, Table, Tag, Typography } from 'antd';
+import { App, Button, Card, Col, DatePicker, Form, Input, InputNumber, Row, Select, Space, Statistic, Switch, Table, Tag, Typography } from 'antd';
 import type { ColumnsType } from 'antd/es/table';
 import dayjs from 'dayjs';
 import { securityApi, type SecurityConfigValues, type SecurityEvent } from '@/lib/api/security.api';
@@ -25,6 +25,9 @@ const CONFIG_FIELDS: Array<{ key: keyof SecurityConfigValues; label: string; uni
   { key: 'ipAccessLogRetentionDays', label: 'Giữ log theo dõi IP', unit: 'ngày' },
   { key: 'ipAccessDetailCapPerHour', label: 'Dòng chi tiết tối đa / IP / giờ', unit: 'dòng' },
 ];
+
+/** Số trường dạng công tắc 0/1 hiển thị riêng (không phải ô số). */
+const API_LOG_SWITCH_LABEL = 'Ghi log request API đã đăng nhập';
 
 function SecurityConfigForm() {
   const { message } = App.useApp();
@@ -64,6 +67,18 @@ function SecurityConfigForm() {
               </Form.Item>
             </Col>
           ))}
+          <Col xs={24} sm={12} md={8}>
+            <Form.Item
+              name="ipAccessLogApiEnabled"
+              label={API_LOG_SWITCH_LABEL}
+              extra="Tắt khẩn cấp nếu thấy CPU/DB tăng; hiệu lực ≤ 30 giây, không cần deploy"
+              valuePropName="checked"
+              getValueProps={(v: number) => ({ checked: Number(v) === 1 })}
+              normalize={(v: boolean) => (v ? 1 : 0)}
+            >
+              <Switch checkedChildren="Bật" unCheckedChildren="Tắt" />
+            </Form.Item>
+          </Col>
         </Row>
         <Button type="primary" htmlType="submit" loading={saving} disabled={saving}>Lưu cấu hình</Button>
       </Form>

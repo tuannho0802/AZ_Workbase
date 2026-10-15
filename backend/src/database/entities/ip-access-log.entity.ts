@@ -1,6 +1,6 @@
 import { Column, Entity, PrimaryGeneratedColumn } from 'typeorm';
 
-/** Chi tiết từng lượt login/refresh theo IP (P3.6). Ghi bằng SQL thô trong IpAccessLogService. */
+/** Chi tiết lượt truy cập theo IP (P3.6): login/refresh từng dòng; request API gom theo thùng 1 phút (3.6.2). Ghi bằng SQL thô. */
 @Entity('ip_access_logs')
 export class IpAccessLog {
     @PrimaryGeneratedColumn({ type: 'bigint' })
@@ -12,8 +12,25 @@ export class IpAccessLog {
     @Column({ name: 'country_code', type: 'varchar', length: 2, nullable: true })
     countryCode: string | null;
 
-    @Column({ type: 'varchar', length: 40 })
+    /** login/refresh: `auth/login`...; request API: route MẪU `GET /customers/:id` (không bao giờ là URL thô). */
+    @Column({ type: 'varchar', length: 80 })
     endpoint: string;
+
+    /** Tên controller (vd `customers`) — chỉ có ở dòng request API. */
+    @Column({ name: 'endpoint_group', type: 'varchar', length: 60, nullable: true })
+    endpointGroup: string | null;
+
+    /** Số request trong thùng 1 phút (XẤP XỈ, có thể thấp hơn thật). Login/refresh luôn 1. */
+    @Column({ name: 'hit_count', type: 'int', default: 1 })
+    hitCount: number;
+
+    /** Đầu phút (đồng hồ DB) của thùng; NULL cho dòng login/refresh. */
+    @Column({ name: 'bucket_minute', type: 'datetime', nullable: true })
+    bucketMinute: Date | null;
+
+    /** Mã HTTP của request gần nhất trong thùng. */
+    @Column({ name: 'last_status', type: 'int', nullable: true })
+    lastStatus: number | null;
 
     @Column({ type: 'varchar', length: 20 })
     outcome: string;

@@ -43,3 +43,72 @@ describe('IpAccessLogService.record (P3.6)', () => {
         await expect(svc.record(base)).resolves.toBeUndefined();
     });
 });
+
+describe('IpAccessLogService.list / detail (P3.6 + 3.6.2: có request API)', () => {
+    let repo: { query: jest.Mock };
+    let svc: IpAccessLogService;
+    beforeEach(() => {
+        repo = { query: jest.fn() };
+        svc = new IpAccessLogService(repo as any, { get: jest.fn().mockResolvedValue({ ipAccessDetailCapPerHour: 20 }) } as any);
+    });
+
+    const statsRow = (over: Record<string, unknown> = {}) => ({
+        total_hits: 120, success_hits: 2, failed_hits: 3, blocked_hits: 0, suppressed_hits: 4, api_hits: 115,
+        first_ago: 3600, last_ago: 5, blocked: 0, whitelisted: 0, banned: 0, ...over,
+    });
+
+    it('list: SELECT có api_hits và trả apiHits (số), mặc định 0 khi DB trả null', async () => {
+        repo.query
+            .mockResolvedValueOnce([{ total: 2 }])
+            .mockResolvedValueOnce([
+                { ip: '8.8.8.8', totalHits: 120, successHits: 2, failedHits: 3, blockedHits: 0, suppressedHits: 4, apiHits: '115', lastOutcome: 'api', lastCountryCode: 'US', firstSeenAgoSeconds: 10, lastSeenAgoSeconds: 1, blocked: 0, whitelisted: 0, banned: 0 },
+                { ip: '1.1.1.1', totalHits: 1, successHits: 0, failedHits: 1, blockedHits: 0, suppressedHits: 0, apiHits: null, lastOutcome: 'wrong_password', lastCountryCode: null, firstSeenAgoSeconds: 10, lastSeenAgoSeconds: 1, blocked: 0, whitelisted: 0, banned: 0 },
+            ]);
+        const res = await svc.list({ page: 1, limit: 20 });
+        expect(String(repo.query.mock.calls[1][0])).toContain('s.api_hits AS apiHits');
+        expect(res.items[0].apiHits).toBe(115);
+        expect(res.items[0].lastOutcome).toBe('api');
+        expect(res.items[1].apiHits).toBe(0);
+    });
+
+    it('detail: trả apiHits ở summary; mỗi dòng log có endpointGroup / hitCount / lastStatus (dòng login: nhóm null, hitCount 1)', async () => {
+        repo.query
+            .mockResolvedValueOnce([statsRow()])
+            .mockResolvedValueOnce([{ total: 2 }])
+            .mockResolvedValueOnce([
+                { id: '9', endpoint: 'GET /customers/:id', endpointGroup: 'customers', hitCount: '42', lastStatus: '200', outcome: 'api', ipStatus: 'normal', userId: 7, userName: 'Sales A', email: null, userAgent: 'ua', agoSeconds: 30 },
+                { id: '8', endpoint: 'auth/login', endpointGroup: null, hitCount: null, lastStatus: null, outcome: 'wrong_password', ipStatus: 'normal', userId: null, userName: null, email: 'a@b.c', userAgent: null, agoSeconds: 90 },
+            ]);
+        const res = await svc.detail('8.8.8.8', { page: 1, limit: 20 });
+        expect(res!.summary.apiHits).toBe(115);
+        expect(String(repo.query.mock.calls[2][0])).toContain('l.endpoint_group AS endpointGroup');
+        expect(String(repo.query.mock.calls[2][0])).toContain('l.hit_count AS hitCount');
+        expect(res!.logs[0]).toMatchObject({ id: '9', endpointGroup: 'customers', hitCount: 42, lastStatus: 200, outcome: 'api' });
+        expect(res!.logs[1]).toMatchObject({ endpointGroup: null, hitCount: 1, lastStatus: null, outcome: 'wrong_password' });
+    });
+
+    it('detail: lọc outcome=api đi vào câu WHERE bằng tham số (không ghép chuỗi)', async () => {
+        repo.query.mockResolvedValueOnce([statsRow()]).mockResolvedValueOnce([{ total: 0 }]).mockResolvedValueOnce([]);
+        await svc.detail('8.8.8.8', { page: 2, limit: 10, outcome: 'api' });
+        const countCall = repo.query.mock.calls[1];
+        expect(String(countCall[0])).toContain('l.outcome = ?');
+        expect(String(countCall[0])).not.toContain("'api'");
+        expect(countCall[1]).toEqual(['8.8.8.8', 'api']);
+        expect(repo.query.mock.calls[2][1].slice(-2)).toEqual([10, 10]); // limit, offset (trang 2)
+    });
+
+    it('detail: IP chưa từng thấy -> null; IP không hợp lệ -> null (không query)', async () => {
+        repo.query.mockResolvedValueOnce([]);
+        expect(await svc.detail('9.9.9.9', { page: 1, limit: 20 })).toBeNull();
+        repo.query.mockClear();
+        expect(await svc.detail('không-phải-ip', { page: 1, limit: 20 })).toBeNull();
+        expect(repo.query).not.toHaveBeenCalled();
+    });
+
+    it('detail: summary DB cũ chưa có api_hits (undefined) -> 0', async () => {
+        const row: Record<string, unknown> = statsRow();
+        delete row.api_hits;
+        repo.query.mockResolvedValueOnce([row]).mockResolvedValueOnce([{ total: 0 }]).mockResolvedValueOnce([]);
+        expect((await svc.detail('8.8.8.8', { page: 1, limit: 20 }))!.summary.apiHits).toBe(0);
+    });
+});

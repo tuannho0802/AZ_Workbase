@@ -35,7 +35,7 @@ export interface IpWhitelistItem extends IpGeoFields {
 }
 export interface IpWhitelistResponse { items: IpWhitelistItem[]; myIp: string | null; myIpCountryCode?: string | null; myIpKind?: 'public' | 'private' }
 
-export type IpAccessOutcome = 'success' | 'wrong_password' | 'unknown_email' | 'account_locked' | 'ip_locked' | 'denied' | 'refresh_ok' | 'refresh_failed';
+export type IpAccessOutcome = 'success' | 'wrong_password' | 'unknown_email' | 'account_locked' | 'ip_locked' | 'denied' | 'refresh_ok' | 'refresh_failed' | 'api';
 export type IpCurrentStatus = 'normal' | 'whitelisted' | 'blocked' | 'banned';
 
 /** 1 dòng blacklist IP (GET /security/ip-blacklist) — khoá CHỦ ĐỘNG (P3.7). `remainingSeconds = null` = vĩnh viễn. */
@@ -57,6 +57,8 @@ export interface IpAccessItem extends IpGeoFields {
     failedHits: number;
     blockedHits: number;
     suppressedHits: number;
+    /** Request API đã đăng nhập (XẤP XỈ, gom thùng 1 phút) — đã gồm trong totalHits. */
+    apiHits: number;
     lastOutcome: IpAccessOutcome | null;
     lastCountryCode?: string | null;
     firstSeenAgoSeconds: number;
@@ -65,7 +67,8 @@ export interface IpAccessItem extends IpGeoFields {
 }
 export interface IpAccessListResponse { items: IpAccessItem[]; total: number; page: number; limit: number }
 export interface IpAccessLogRow {
-    id: string; endpoint: string; outcome: IpAccessOutcome; ipStatus: IpCurrentStatus;
+    id: string; endpoint: string; endpointGroup: string | null; hitCount: number; lastStatus: number | null;
+    outcome: IpAccessOutcome; ipStatus: IpCurrentStatus;
     userId: number | null; userName: string | null; email: string | null; userAgent: string | null; agoSeconds: number;
 }
 export interface IpAccessDetailResponse extends IpGeoFields {
@@ -96,7 +99,7 @@ export interface SecuritySummary {
 export interface SecurityConfigValues {
   accountMaxFailedAttempts: number; accountLockMinutes: number; ipMaxFailedAttempts: number;
   ipWindowMinutes: number; ipLockMinutes: number; securityEventRetentionDays: number;
-  ipAccessLogRetentionDays: number; ipAccessDetailCapPerHour: number;
+  ipAccessLogRetentionDays: number; ipAccessDetailCapPerHour: number; ipAccessLogApiEnabled: number;
 }
 export interface SecurityEventsParams {
   page?: number; limit?: number; action?: string; ip?: string; search?: string; fromDate?: string; toDate?: string;

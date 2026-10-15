@@ -1,8 +1,9 @@
 import { CallHandler, ExecutionContext, HttpException, Injectable, NestInterceptor } from '@nestjs/common';
+import { HTTP_CODE_METADATA } from '@nestjs/common/constants';
 import { Observable, from, throwError } from 'rxjs';
 import { catchError, mergeMap } from 'rxjs/operators';
 import { getClientCountry, getDirectClientIp } from './client-ip';
-import { IpAccessApiLogService } from './ip-access-api-log.service';
+import { ApiHitInput, IpAccessApiLogService } from './ip-access-api-log.service';
 
 type ReqLike = {
     method?: string;
@@ -20,8 +21,8 @@ export function isExcludedApiPath(method: string | undefined, rawPath: string | 
     // Chỉ dùng để LOẠI TRỪ — phần query bị cắt và KHÔNG bao giờ được lưu.
     const path = (rawPath ?? '').split('?')[0].toLowerCase();
     if (!path) return true;
-    if (/^\/(api\/)?docs(\/|$)/.test(path)) return true;
-    if (/^\/(api\/)?health(\/|$)/.test(path)) return true;
+    if (/^\/(api\/)?docs(-json|-yaml)?(\/|$)/.test(path)) return true;
+    if (/^\/(api\/)?(health|keep-alive)(\/|$)/.test(path)) return true;
     if (path.includes('-cron/') || path.endsWith('-cron')) return true;
     if (/^\/(api\/)?auth\/(login|refresh)\/?$/.test(path)) return true;
     return false;
@@ -41,6 +42,15 @@ export function toRouteTemplate(method: string, routePath: unknown, group: strin
     let pattern = typeof routePath === 'string' && routePath.startsWith('/') ? routePath : `/${group}`;
     pattern = pattern.replace(/^\/api(?=\/|$)/, '') || '/';
     return `${method.toUpperCase()} ${pattern}`.slice(0, 80);
+}
+
+/**
+ * Mã HTTP khi handler thành công. Nest chỉ gán mã (201 cho POST, hoặc `@HttpCode`) SAU khi interceptor chạy xong,
+ * nên `res.statusCode` lúc này còn là mặc định 200 — tự suy ra để `last_status` đúng.
+ */
+export function successStatus(method: string | undefined, httpCode: unknown): number {
+    if (typeof httpCode === 'number' && Number.isInteger(httpCode)) return httpCode;
+    return (method ?? '').toUpperCase() === 'POST' ? 201 : 200;
 }
 
 /**
@@ -70,17 +80,26 @@ export class IpAccessApiLogInterceptor implements NestInterceptor {
             endpoint: toRouteTemplate(req.method as string, req.route?.path, group),
             userAgent: typeof ua === 'string' ? ua : null,
         };
-        const res = http.getResponse<{ statusCode?: number }>();
+        const okStatus = successStatus(req.method, Reflect.getMetadata(HTTP_CODE_METADATA, context.getHandler()));
 
         return next.handle().pipe(
             mergeMap(async (value) => {
-                await this.apiLog.record({ ...base, status: res?.statusCode ?? null });
+                await this.safeRecord({ ...base, status: okStatus });
                 return value;
             }),
             catchError((err) => {
                 const status = err instanceof HttpException ? err.getStatus() : 500;
-                return from(this.apiLog.record({ ...base, status })).pipe(mergeMap(() => throwError(() => err)));
+                return from(this.safeRecord({ ...base, status })).pipe(mergeMap(() => throwError(() => err)));
             }),
         );
+    }
+
+    /** `record()` đã tự nuốt lỗi; bọc thêm lần nữa vì log KHÔNG BAO GIỜ được làm hỏng (hay đổi mã lỗi của) request thật. */
+    private async safeRecord(input: ApiHitInput): Promise<void> {
+        try {
+            await this.apiLog.record(input);
+        } catch {
+            // nuốt: xem comment trên
+        }
     }
 }

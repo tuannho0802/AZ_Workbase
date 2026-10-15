@@ -33,6 +33,10 @@ export class SecurityConfig {
     @Column({ name: 'ip_access_detail_cap_per_hour', type: 'int', default: 20 })
     ipAccessDetailCapPerHour: number;
 
+    /** 1 = bật log request API đã đăng nhập (3.6.2), 0 = tắt khẩn cấp (không cần deploy). */
+    @Column({ name: 'ip_access_log_api_enabled', type: 'int', default: 1 })
+    ipAccessLogApiEnabled: number;
+
     @Column({ name: 'updated_by', type: 'int', nullable: true })
     updatedBy: number | null;
 

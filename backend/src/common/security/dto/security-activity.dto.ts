@@ -86,6 +86,10 @@ export class UpdateSecurityConfigDto {
   @ApiPropertyOptional({ description: `Số dòng chi tiết tối đa / IP / giờ (${range('ipAccessDetailCapPerHour')})` })
   @IsOptional() @IsInt() @Min(L.ipAccessDetailCapPerHour[0]) @Max(L.ipAccessDetailCapPerHour[1])
   ipAccessDetailCapPerHour?: number;
+
+  @ApiPropertyOptional({ description: `Bật log request API đã đăng nhập: 1 = bật, 0 = tắt (${range('ipAccessLogApiEnabled')})` })
+  @IsOptional() @IsInt() @Min(L.ipAccessLogApiEnabled[0]) @Max(L.ipAccessLogApiEnabled[1])
+  ipAccessLogApiEnabled?: number;
 }
 
 
@@ -124,7 +128,7 @@ export class SetIpCountryDto {
   countryCode: string;
 }
 
-const OUTCOMES = ['success', 'wrong_password', 'unknown_email', 'account_locked', 'ip_locked', 'denied', 'refresh_ok', 'refresh_failed'];
+const OUTCOMES = ['success', 'wrong_password', 'unknown_email', 'account_locked', 'ip_locked', 'denied', 'refresh_ok', 'refresh_failed', 'api'];
 
 export class GetIpAccessDto {
   @ApiPropertyOptional({ default: 1 }) @IsOptional() @Type(() => Number) @IsInt() @Min(1)

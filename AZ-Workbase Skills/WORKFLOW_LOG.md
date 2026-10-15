@@ -7945,3 +7945,19 @@ Now [deploy]
 > - Access token còn hạn từ IP vừa bị chặn vẫn dùng được tới khi hết hạn -> ĐỂ SAU C8.
 
 ---
+
+
+## [2026-10-15 14:30] | P3.6 mục 3.6.2 — log request API đã đăng nhập theo thùng 1 phút | [Status: Success]
+
+**Actor:** Agent
+**Files Changed:**
+- `backend/src/database/migrations/1786337000000-AddApiHitLoggingToIpAccess.ts` — cột mới + ENUM `api` + khoá duy nhất thùng (đã chạy up/down/up thử trên MariaDB, chưa chạy lên DB thật)
+- `backend/src/common/security/ip-access-api-log.{service,interceptor}.ts` — gom thùng, cache RAM, cap riêng cho API, công tắc khẩn cấp
+- `security.module.ts` (APP_INTERCEPTOR), entity, `SecurityConfigService`, DTO, `IpAccessLogService` list/detail
+- FE: `security.api.ts`, `IpTrackingTab.tsx`, `/security-activity` (công tắc), `ipAccessApiFormat.ts`
+- Spec: service, interceptor, integration (Nest thật), DTO, config, list/detail, FE format
+
+**Notes:**
+> `hit_count`/`api_hits` là số XẤP XỈ. Chỉ request đã qua guard mới được ghi. Cần chạy migration 1786337000000 trước khi deploy BE.
+
+---
