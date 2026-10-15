@@ -63,9 +63,12 @@ describe('LoginIpWhitelistService (P3.5)', () => {
             repo.query
                 .mockResolvedValueOnce([{ c: 0 }])
                 .mockResolvedValueOnce({ insertId: 11 })
+                .mockResolvedValueOnce({ affectedRows: 1 })
                 .mockResolvedValueOnce({ affectedRows: 1 });
             const res = await service.add('1.2.3.4', '  VP  ', 7);
-            expect(res).toEqual({ id: 11, ip: '1.2.3.4', clearedBlock: true });
+            expect(res).toEqual({ id: 11, ip: '1.2.3.4', clearedBlock: true, removedBlacklist: true });
+            // P3.7: thêm whitelist đồng thời gỡ blacklist (loại trừ nhau)
+            expect(repo.query.mock.calls[3][0]).toContain('DELETE FROM login_ip_blacklist');
             expect(repo.query.mock.calls[1][1]).toEqual(['1.2.3.4', 'VP', 7]);
             expect(repo.query.mock.calls[2][0]).toContain('DELETE FROM login_ip_blocks');
         });
@@ -99,6 +102,7 @@ describe('LoginIpWhitelistService (P3.5)', () => {
             repo.query
                 .mockResolvedValueOnce([{ c: 0 }])
                 .mockResolvedValueOnce({ insertId: 1 })
+                .mockResolvedValueOnce({ affectedRows: 0 })
                 .mockResolvedValueOnce({ affectedRows: 0 })
                 .mockResolvedValueOnce([{ ip: '1.2.3.4' }]);
             await service.add('1.2.3.4', null, 1);

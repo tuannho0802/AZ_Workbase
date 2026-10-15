@@ -102,6 +102,17 @@ user-form mode=edit viewer=root
 
 Xoá mềm không mất dữ liệu: người đó **không đăng nhập được ngay lập tức**, dữ liệu vẫn giữ nguyên, và có thể khôi phục ở tab **Đã xoá**.
 
+## Chặn IP chủ động (tab IP bị khoá)
+
+Chỉ hiện khi bạn có quyền quản lý nhân viên **phạm vi toàn hệ thống** (Admin mặc định có).
+
+- Thấy một IP đáng ngờ (dò nhiều email, quốc gia lạ)? Ở tab **IP bị khoá**, bấm **Chặn IP** ngay trên dòng của IP đó, hoặc **Chặn IP mới** ở khối **IP bị chặn chủ động** để nhập IP tay.
+- Chọn **thời hạn** (1 giờ, 24 giờ, 7 ngày, 30 ngày, vĩnh viễn) và ghi **lý do**. Nên đặt hạn thay vì vĩnh viễn.
+- IP bị chặn **không đăng nhập và không làm mới phiên được ngay**, kể cả khi mật khẩu đúng. Người bị chặn chỉ thấy thông báo chung, không biết lý do hay thời hạn.
+- **Gỡ chặn** bất kỳ lúc nào ở cùng khối. Một IP không thể vừa bị chặn vừa nằm trong whitelist: chặn sẽ tự gỡ whitelist, thêm whitelist sẽ tự gỡ chặn.
+- Hệ thống **không cho** chặn IP hiện tại của chính bạn hoặc IP nội bộ (để không tự khoá mình).
+- Lưu ý: nếu IP là mạng dùng chung (văn phòng, 4G), **mọi người** sau IP đó đều bị chặn. Phiên đang mở bị đẩy ra ở lần làm mới phiên kế tiếp, không phải tức thì.
+
 ## Duyệt đăng ký mới
 
 Người tự đăng ký ở trang đăng nhập **luôn** vào trạng thái **Đang chờ duyệt** với vai trò Employee, và chưa đăng nhập được. Tab **Chờ duyệt đăng ký** liệt kê họ, kèm **Mã NV**, **Liên hệ**, **Phòng ban đăng ký**, **Vị trí đăng ký** và **Ngày đăng ký**; chữ **Chưa chọn** nghĩa là người đó bỏ trống ô đó. Số trên tab cho biết còn bao nhiêu người đang chờ.

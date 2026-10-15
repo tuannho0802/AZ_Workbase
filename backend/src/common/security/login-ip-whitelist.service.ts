@@ -88,7 +88,7 @@ export class LoginIpWhitelistService {
      * Thêm IP. `normalizeIp` là hàng rào định dạng. Đồng thời XOÁ dòng đếm/khoá hiện có của IP đó trong
      * `login_ip_blocks` (đang bị khoá thì được mở ngay). Trả `{ id, ip, clearedBlock }` để caller ghi audit.
      */
-    async add(rawIp: string, note: string | null, actorId: number): Promise<{ id: number; ip: string; clearedBlock: boolean }> {
+    async add(rawIp: string, note: string | null, actorId: number): Promise<{ id: number; ip: string; clearedBlock: boolean; removedBlacklist: boolean }> {
         const ip = normalizeIp(rawIp);
         if (!ip) throw new ConflictException('Địa chỉ IP không hợp lệ');
         const cnt: Array<{ c: string | number }> = await this.repo.query(`SELECT COUNT(*) AS c FROM login_ip_whitelist`);
@@ -103,11 +103,14 @@ export class LoginIpWhitelistService {
                 actorId,
             ]);
             const cleared = await this.repo.query(`DELETE FROM login_ip_blocks WHERE ip = ?`, [ip]).catch(() => null);
+            // P3.7: 1 IP không bao giờ ở cả whitelist lẫn blacklist -> thêm vào whitelist thì gỡ khỏi blacklist.
+            const unbanned = await this.repo.query(`DELETE FROM login_ip_blacklist WHERE ip = ?`, [ip]).catch(() => null);
             this.invalidate();
             return {
                 id: Number((res as { insertId?: number })?.insertId ?? 0),
                 ip,
                 clearedBlock: Number((cleared as { affectedRows?: number } | null)?.affectedRows ?? 0) > 0,
+                removedBlacklist: Number((unbanned as { affectedRows?: number } | null)?.affectedRows ?? 0) > 0,
             };
         } catch (err) {
             if ((err as { code?: string })?.code === 'ER_DUP_ENTRY') throw new ConflictException('IP này đã có trong whitelist');

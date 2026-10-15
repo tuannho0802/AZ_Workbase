@@ -24,6 +24,7 @@ import { getJwtRefreshSecret } from '../../common/security/jwt-secrets';
 import { SecurityConfigService } from '../../common/security/security-config.service';
 import { LoginIpBlockService } from '../../common/security/login-ip-block.service';
 import { LoginIpWhitelistService } from '../../common/security/login-ip-whitelist.service';
+import { LoginIpBlacklistService } from '../../common/security/login-ip-blacklist.service';
 import {
   hasRefreshSession,
   hashRefreshToken,
@@ -52,6 +53,7 @@ export class AuthService {
     private securityConfig: SecurityConfigService,
     private loginIpBlocks: LoginIpBlockService,
     private loginIpWhitelist: LoginIpWhitelistService,
+    private loginIpBlacklist: LoginIpBlacklistService,
     private ipGeo: IpGeoService,
     private ipAccessLog: IpAccessLogService,
   ) {}
@@ -141,6 +143,27 @@ export class AuthService {
   }
 
   /**
+   * 403 `IP_BANNED` (P3.7): IP bị Admin chặn chủ động. KHÔNG có `retryAfterSeconds` (không tự hết theo phút) và
+   * KHÔNG lộ lý do/hạn chặn.
+   */
+  private buildIpBannedException(): HttpException {
+    return new HttpException(
+      {
+        statusCode: HttpStatus.FORBIDDEN,
+        code: 'IP_BANNED',
+        message: 'Địa chỉ mạng của bạn đã bị chặn. Vui lòng liên hệ quản trị viên.',
+      },
+      HttpStatus.FORBIDDEN,
+    );
+  }
+
+  private isIpBannedError(err: unknown): boolean {
+    if (!(err instanceof HttpException)) return false;
+    const res = err.getResponse() as any;
+    return typeof res === 'object' && res?.code === 'IP_BANNED';
+  }
+
+  /**
    * @param ip IP client thật (controller truyền `getDirectClientIp(req)`); `null` -> bỏ qua khoá IP (khoá theo tài
    *           khoản vẫn hoạt động).
    * @param userAgent chỉ dùng để ghi sự kiện bảo mật (P4).
@@ -150,7 +173,7 @@ export class AuthService {
     if (err instanceof HttpException) {
       const res = err.getResponse() as any;
       const code = typeof res === 'object' ? res?.code : undefined;
-      if (code === 'IP_LOCKED') return 'ip_locked';
+      if (code === 'IP_LOCKED' || code === 'IP_BANNED') return 'ip_locked';
       if (code === 'LOGIN_LOCKED') return 'account_locked';
       if (code === 'WRONG_PASSWORD') return 'wrong_password';
       if (err instanceof UnauthorizedException && err.message === 'Tài khoản không tồn tại') return 'unknown_email';
@@ -198,6 +221,11 @@ export class AuthService {
     // P3.2: kiểm tra khoá IP TRƯỚC mọi thứ khác (1 query rẻ). KHÔNG ghi sự kiện cho request bị từ chối vì IP khoá:
     // chỉ có 1 dòng LOGIN_IP_BLOCKED lúc bắt đầu khoá (P4.1) nên bảng audit không phình theo kẻ tấn công.
     // P3.5: IP trong whitelist -> bỏ qua CẢ kiểm tra khoá IP lẫn bộ đếm sai theo IP. Khoá theo TÀI KHOẢN giữ nguyên.
+    // P3.7: blacklist (khoá CHỦ ĐỘNG) kiểm TRƯỚC whitelist/khoá bị động và trước bcrypt: bị chặn là chặn, dù mật khẩu
+    // đúng. Không tăng bộ đếm, không ghi sự kiện bảo mật cho mỗi lượt bị từ chối (tránh phình audit).
+    if (await this.loginIpBlacklist.isBanned(ip)) {
+      throw this.buildIpBannedException();
+    }
     const ipWhitelisted = await this.loginIpWhitelist.isWhitelisted(ip);
     const ipLockedSeconds = ipWhitelisted ? 0 : await this.loginIpBlocks.getRemainingSeconds(ip);
     if (ipLockedSeconds > 0) {
@@ -472,7 +500,8 @@ export class AuthService {
       userId = result?.user?.id ?? null;
       return result;
     } catch (err) {
-      outcome = 'refresh_failed';
+      // P3.7: lượt bị blacklist chặn ghi như lượt bị khoá IP (ip_status = 'blocked'), tái dùng ENUM sẵn có.
+      outcome = this.isIpBannedError(err) ? 'ip_locked' : 'refresh_failed';
       throw err;
     } finally {
       await this.trackIpAccess({ ip, countryCode, endpoint: 'auth/refresh', outcome, userId, userAgent });
@@ -480,6 +509,10 @@ export class AuthService {
   }
 
   private async refreshCore(refreshTokenFromClient: string, ip: string | null = null, userAgent: string | null = null) {
+    // P3.7: phiên đang mở từ IP bị chặn bị đẩy ra ở lần làm mới token kế tiếp (FE interceptor tự logout khi refresh lỗi).
+    if (await this.loginIpBlacklist.isBanned(ip)) {
+      throw this.buildIpBannedException();
+    }
     // 1. Verify JWT signature & expiry
     let payload: any;
     try {

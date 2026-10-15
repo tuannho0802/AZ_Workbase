@@ -31,7 +31,7 @@ export function classifyOutcome(outcome: IpAccessOutcome): { success: 0 | 1; fai
 }
 
 export interface IpAccessListFilters {
-    status?: 'all' | 'blocked' | 'whitelisted';
+    status?: 'all' | 'blocked' | 'whitelisted' | 'banned';
     search?: string;
     page: number;
     limit: number;
@@ -96,12 +96,15 @@ export class IpAccessLogService {
         }
         const isBlocked = `(b.blocked_until IS NOT NULL AND b.blocked_until > NOW())`;
         const isWl = `(w.id IS NOT NULL)`;
+        const isBanned = `(bl.id IS NOT NULL AND (bl.expires_at IS NULL OR bl.expires_at > NOW()))`;
+        if (f.status === 'banned') where.push(isBanned);
         if (f.status === 'blocked') where.push(isBlocked);
         if (f.status === 'whitelisted') where.push(isWl);
         const whereSql = where.length ? `WHERE ${where.join(' AND ')}` : '';
         const base = `FROM ip_access_stats s
       LEFT JOIN login_ip_blocks b ON b.ip = s.ip
-      LEFT JOIN login_ip_whitelist w ON w.ip = s.ip ${whereSql}`;
+      LEFT JOIN login_ip_whitelist w ON w.ip = s.ip
+      LEFT JOIN login_ip_blacklist bl ON bl.ip = s.ip ${whereSql}`;
         const [{ total }] = (await this.repo.query(`SELECT COUNT(*) AS total ${base}`, params)) ?? [{ total: 0 }];
         const rows: any[] = (await this.repo.query(
             `SELECT s.ip, s.total_hits AS totalHits, s.success_hits AS successHits, s.failed_hits AS failedHits,
@@ -109,7 +112,7 @@ export class IpAccessLogService {
               s.last_country_code AS lastCountryCode,
               TIMESTAMPDIFF(SECOND, s.first_seen_at, NOW()) AS firstSeenAgoSeconds,
               TIMESTAMPDIFF(SECOND, s.last_seen_at, NOW()) AS lastSeenAgoSeconds,
-              ${isBlocked} AS blocked, ${isWl} AS whitelisted
+              ${isBlocked} AS blocked, ${isWl} AS whitelisted, ${isBanned} AS banned
        ${base} ORDER BY s.last_seen_at DESC LIMIT ? OFFSET ?`,
             [...params, f.limit, (f.page - 1) * f.limit],
         )) ?? [];
@@ -128,7 +131,7 @@ export class IpAccessLogService {
                 lastCountryCode: r.lastCountryCode ?? null,
                 firstSeenAgoSeconds: Number(r.firstSeenAgoSeconds),
                 lastSeenAgoSeconds: Number(r.lastSeenAgoSeconds),
-                currentStatus: Number(r.blocked) ? 'blocked' : Number(r.whitelisted) ? 'whitelisted' : 'normal',
+                currentStatus: Number(r.banned) ? 'banned' : Number(r.blocked) ? 'blocked' : Number(r.whitelisted) ? 'whitelisted' : 'normal',
             })),
         };
     }
@@ -139,10 +142,12 @@ export class IpAccessLogService {
         if (!ip) return null;
         const [stats] = (await this.repo.query(
             `SELECT s.*, TIMESTAMPDIFF(SECOND, s.first_seen_at, NOW()) AS first_ago, TIMESTAMPDIFF(SECOND, s.last_seen_at, NOW()) AS last_ago,
-              (b.blocked_until IS NOT NULL AND b.blocked_until > NOW()) AS blocked, (w.id IS NOT NULL) AS whitelisted
+              (b.blocked_until IS NOT NULL AND b.blocked_until > NOW()) AS blocked, (w.id IS NOT NULL) AS whitelisted,
+              (bl.id IS NOT NULL AND (bl.expires_at IS NULL OR bl.expires_at > NOW())) AS banned
        FROM ip_access_stats s
        LEFT JOIN login_ip_blocks b ON b.ip = s.ip
-       LEFT JOIN login_ip_whitelist w ON w.ip = s.ip WHERE s.ip = ?`,
+       LEFT JOIN login_ip_whitelist w ON w.ip = s.ip
+       LEFT JOIN login_ip_blacklist bl ON bl.ip = s.ip WHERE s.ip = ?`,
             [ip],
         )) ?? [];
         if (!stats) return null;
@@ -170,7 +175,7 @@ export class IpAccessLogService {
                 suppressedHits: Number(stats.suppressed_hits),
                 firstSeenAgoSeconds: Number(stats.first_ago),
                 lastSeenAgoSeconds: Number(stats.last_ago),
-                currentStatus: Number(stats.blocked) ? 'blocked' : Number(stats.whitelisted) ? 'whitelisted' : 'normal',
+                currentStatus: Number(stats.banned) ? 'banned' : Number(stats.blocked) ? 'blocked' : Number(stats.whitelisted) ? 'whitelisted' : 'normal',
             },
             total: Number(total) || 0,
             page: opts.page,

@@ -1,4 +1,4 @@
-import { BadRequestException, Body, Controller, Delete, ForbiddenException, Get, NotFoundException, Param, Post, Put, Query, Req, UseGuards } from '@nestjs/common';
+import { BadRequestException, Body, ConflictException, Controller, Delete, ForbiddenException, Get, NotFoundException, Param, Post, Put, Query, Req, UseGuards } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { PermissionGuard } from '../../common/guards/permission.guard';
@@ -10,11 +10,12 @@ import { AuditService } from '../../modules/audit/audit.service';
 import { normalizeIp } from '../../common/security/client-ip';
 import { LoginIpBlockService } from './login-ip-block.service';
 import { LoginIpWhitelistService } from './login-ip-whitelist.service';
-import { IpGeoService } from './ip-geo.service';
+import { LoginIpBlacklistService } from './login-ip-blacklist.service';
+import { IpGeoService, isPrivateIp } from './ip-geo.service';
 import { IpAccessLogService } from './ip-access-log.service';
 import { SECURITY_CONFIG_LIMITS, SecurityConfigService } from './security-config.service';
 import { SecurityActivityService } from './security-activity.service';
-import { AddIpWhitelistDto, GetIpAccessDetailDto, GetIpAccessDto, GetSecurityEventsDto, SetIpCountryDto, UpdateSecurityConfigDto } from './dto/security-activity.dto';
+import { AddIpBlacklistDto, AddIpWhitelistDto, GetIpAccessDetailDto, GetIpAccessDto, GetSecurityEventsDto, SetIpCountryDto, UpdateSecurityConfigDto } from './dto/security-activity.dto';
 import { SECURITY_AUDIT_ACTIONS } from './security-audit';
 
 /**
@@ -31,6 +32,7 @@ export class SecurityController {
     constructor(
         private readonly ipBlocks: LoginIpBlockService,
         private readonly whitelist: LoginIpWhitelistService,
+        private readonly blacklist: LoginIpBlacklistService,
         private readonly config: SecurityConfigService,
         private readonly auditService: AuditService,
         private readonly activity: SecurityActivityService,
@@ -114,9 +116,9 @@ export class SecurityController {
       entityId: added.id || undefined,
       ip: normalizeIp(req.ip),
       userAgent: ua,
-      detail: { whitelistedIp: added.ip, note: dto.note ?? null, clearedBlock: added.clearedBlock },
+      detail: { whitelistedIp: added.ip, note: dto.note ?? null, clearedBlock: added.clearedBlock, removedBlacklist: added.removedBlacklist },
     });
-    return { success: true, message: 'Đã thêm IP vào whitelist', ip: added.ip, clearedBlock: added.clearedBlock };
+    return { success: true, message: 'Đã thêm IP vào whitelist', ip: added.ip, clearedBlock: added.clearedBlock, removedBlacklist: added.removedBlacklist };
   }
 
   @Delete('ip-whitelist/:ip')
@@ -141,6 +143,69 @@ export class SecurityController {
       detail: { whitelistedIp: removed.ip },
     });
     return { success: true, message: 'Đã gỡ IP khỏi whitelist' };
+  }
+
+  // ───────── P3.7: blacklist IP (khoá CHỦ ĐỘNG, có hạn hoặc vĩnh viễn). Cùng quyền với `ip-blocks`. ─────────
+
+  @Get('ip-blacklist')
+  @RequirePermission('users.manage')
+  @ApiOperation({ summary: 'Danh sách IP đang bị Admin chặn chủ động (còn hiệu lực), kèm IP hiện tại của người gọi (myIp)' })
+  async listBlacklist(@Req() req: { user: { role: string }; ip?: string }, @GetPermissionScope() scope?: string | null) {
+    this.assertGlobalScope(req.user.role, scope);
+    const myIp = normalizeIp(req.ip);
+    const items = await this.ipGeo.enrich(await this.blacklist.list(), 'ip');
+    return { items, myIp };
+  }
+
+  @Post('ip-blacklist')
+  @RequirePermission('users.manage')
+  @ApiOperation({ summary: 'Chặn IP đăng nhập chủ động (đồng thời gỡ whitelist + khoá bị động của IP đó). Ghi audit IP_BLACKLIST_ADDED' })
+  async addBlacklist(
+    @Body() dto: AddIpBlacklistDto,
+    @Req() req: { user: { id: number; role: string }; ip?: string; headers?: Record<string, unknown> },
+    @GetPermissionScope() scope?: string | null,
+  ) {
+    this.assertGlobalScope(req.user.role, scope);
+    const ip = normalizeIp(dto.ip);
+    if (!ip) throw new BadRequestException('Địa chỉ IP không hợp lệ');
+    // Hàng rào an toàn: không cho Admin tự khoá mình, không chặn IP nội bộ (::1/LAN sẽ khoá cả dev/văn phòng).
+    if (ip === normalizeIp(req.ip)) throw new ConflictException('Không thể chặn IP hiện tại của chính bạn.');
+    if (isPrivateIp(ip)) throw new ConflictException('Không thể chặn IP nội bộ/loopback (sẽ chặn cả mạng nội bộ).');
+    const added = await this.blacklist.add(ip, dto.reason ?? null, dto.durationHours ?? null, req.user.id);
+    const ua = typeof req.headers?.['user-agent'] === 'string' ? (req.headers['user-agent'] as string) : null;
+    this.auditService.logSecurityEventAsync({
+      userId: req.user.id,
+      action: 'IP_BLACKLIST_ADDED',
+      entityId: added.id || undefined,
+      ip: normalizeIp(req.ip),
+      userAgent: ua,
+      detail: { bannedIp: added.ip, reason: dto.reason ?? null, durationHours: added.durationHours, removedWhitelist: added.removedWhitelist },
+    });
+    return { success: true, message: 'Đã chặn IP', ip: added.ip, durationHours: added.durationHours, removedWhitelist: added.removedWhitelist };
+  }
+
+  @Delete('ip-blacklist/:ip')
+  @RequirePermission('users.manage')
+  @ApiOperation({ summary: 'Gỡ chặn IP. Ghi audit IP_BLACKLIST_REMOVED' })
+  async removeBlacklist(
+    @Param('ip') ip: string,
+    @Req() req: { user: { id: number; role: string }; ip?: string; headers?: Record<string, unknown> },
+    @GetPermissionScope() scope?: string | null,
+  ) {
+    this.assertGlobalScope(req.user.role, scope);
+    if (!normalizeIp(ip)) throw new BadRequestException('Địa chỉ IP không hợp lệ');
+    const removed = await this.blacklist.remove(ip);
+    if (!removed) throw new NotFoundException('IP này không có trong blacklist.');
+    const ua = typeof req.headers?.['user-agent'] === 'string' ? (req.headers['user-agent'] as string) : null;
+    this.auditService.logSecurityEventAsync({
+      userId: req.user.id,
+      action: 'IP_BLACKLIST_REMOVED',
+      entityId: removed.id,
+      ip: normalizeIp(req.ip),
+      userAgent: ua,
+      detail: { bannedIp: removed.ip },
+    });
+    return { success: true, message: 'Đã gỡ chặn IP' };
   }
 
   // ───────── P3.6: quốc gia của IP (sửa tay) + theo dõi lượt truy cập IP. Cùng quyền với `ip-blocks`. ─────────

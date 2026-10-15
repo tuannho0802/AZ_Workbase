@@ -7925,3 +7925,23 @@ Now [deploy]
 > - Cần chạy migration 1786332…1786335 trước khi deploy.
 
 ---
+
+## [2026-10-15 14:00] | P3.7 khoá IP CHỦ ĐỘNG (blacklist) + UI trang Nhân viên | [Status: Success]
+
+**Actor:** Agent
+**Files Changed (BE):**
+- `database/migrations/1786336000000-CreateLoginIpBlacklist.ts` + `entities/login-ip-blacklist.entity.ts` — bảng `login_ip_blacklist` (`expires_at NULL` = vĩnh viễn)
+- `common/security/login-ip-blacklist.service.ts` (mới) — cache 15s, fail-open khi lỗi DB, `add` gỡ whitelist + khoá bị động, `list` dọn dòng hết hạn >30 ngày
+- `common/security/login-ip-whitelist.service.ts` — `add` gỡ blacklist (loại trừ nhau)
+- `common/security/security.controller.ts` + DTO — `GET/POST/DELETE /security/ip-blacklist` (`users.manage` scope all/admin); chặn tự khoá IP hiện tại + IP nội bộ (409)
+- `modules/auth/auth.service.ts` — `login`/`refresh` kiểm blacklist TRƯỚC whitelist/khoá IP/bcrypt -> 403 `IP_BANNED`; ghi theo dõi IP `ip_locked`/`blocked` (không ALTER ENUM)
+- `ip-access-log.service.ts` — `currentStatus = 'banned'` + bộ lọc `status=banned`; `security-audit.ts` — `IP_BLACKLIST_ADDED/REMOVED`
+**Files Changed (FE):** `security.api.ts`, `audit-meta.ts`, `IpTrackingTab.tsx`, `components/security/{IpBanModal,ipBanDurations}`, `users/LoginIpBlacklistSection.tsx`, nút "Chặn IP" ở `LoginIpBlocksTab.tsx`, banner `IP_BANNED` ở `(auth)/login/page.tsx`
+**Docs:** `guides-content/{nhan-vien,hoat-dong-bao-mat}.md`, `PERMISSIONS.md` (không có key mới), `PLAN_RETENTION_SECURITY_ROADMAP.md`
+**Notes:**
+> - Verify thật: BE `tsc` sạch, `nest build` OK, `jest` 145 suite / 2255 test pass; FE `tsc` chỉ còn lỗi `logo.png` có sẵn.
+> - Cần chạy migration `1786336000000` trước khi deploy (chưa chạy thì blacklist fail-open: không chặn ai, không sập login).
+> - Sau khi sửa guides-content cần `npm run guides:sync` (dry-run rồi `--apply`).
+> - Access token còn hạn từ IP vừa bị chặn vẫn dùng được tới khi hết hạn -> ĐỂ SAU C8.
+
+---

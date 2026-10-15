@@ -32,6 +32,7 @@ const STATUS_META: Record<IpCurrentStatus, { label: string; color: string }> = {
     normal: { label: 'Bình thường', color: 'default' },
     whitelisted: { label: 'Whitelist', color: 'cyan' },
     blocked: { label: 'Đang khoá', color: 'volcano' },
+    banned: { label: 'Bị chặn chủ động', color: 'red' },
 };
 
 export const OutcomeTag = ({ outcome }: { outcome: IpAccessOutcome | null }) => {
@@ -103,7 +104,7 @@ function IpDetailDrawer({ ip, onClose }: { ip: string | null; onClose: () => voi
 export function IpTrackingTab() {
     const [page, setPage] = useState(1);
     const [pageSize, setPageSize] = useState(20);
-    const [status, setStatus] = useState<'all' | 'blocked' | 'whitelisted'>('all');
+    const [status, setStatus] = useState<'all' | 'blocked' | 'whitelisted' | 'banned'>('all');
     const [search, setSearch] = useState('');
     const [detailIp, setDetailIp] = useState<string | null>(null);
 
@@ -141,7 +142,7 @@ export function IpTrackingTab() {
                     <Select
                         value={status} style={{ width: 170 }}
                         onChange={(v) => { setStatus(v); setPage(1); }}
-                        options={[{ value: 'all', label: 'Tất cả IP' }, { value: 'blocked', label: 'Đang bị khoá' }, { value: 'whitelisted', label: 'Trong whitelist' }]}
+                        options={[{ value: 'all', label: 'Tất cả IP' }, { value: 'blocked', label: 'Đang bị khoá' }, { value: 'banned', label: 'Bị chặn chủ động' }, { value: 'whitelisted', label: 'Trong whitelist' }]}
                     />
                     <Button icon={<ReloadOutlined />} loading={isFetching} onClick={() => void refetch()}>Làm mới</Button>
                 </Space>

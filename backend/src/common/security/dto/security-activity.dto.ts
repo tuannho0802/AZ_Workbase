@@ -101,6 +101,22 @@ export class AddIpWhitelistDto {
 }
 
 
+/** P3.7: chặn IP chủ động. `durationHours` bỏ trống/null = vĩnh viễn. Định dạng IP do `normalizeIp` kiểm ở controller. */
+export class AddIpBlacklistDto {
+  @ApiProperty({ example: '203.0.113.10', description: 'IPv4/IPv6 (đúng 1 địa chỉ, không CIDR)' })
+  @IsString() @MaxLength(45)
+  ip: string;
+
+  @ApiPropertyOptional({ example: 'Dò mật khẩu nhiều email' })
+  @IsOptional() @IsString() @MaxLength(255)
+  reason?: string;
+
+  @ApiPropertyOptional({ example: 24, nullable: true, description: 'Số giờ chặn (1–8760). Bỏ trống/null = vĩnh viễn' })
+  @IsOptional() @Type(() => Number) @IsInt() @Min(1) @Max(8760)
+  durationHours?: number | null;
+}
+
+
 /** P3.6: Admin gán quốc gia thủ công cho 1 IP. Mã hợp lệ do `IpGeoService.setManual` kiểm (400 nếu sai). */
 export class SetIpCountryDto {
   @ApiProperty({ example: 'VN', description: 'ISO-3166 alpha-2' })
@@ -117,8 +133,8 @@ export class GetIpAccessDto {
   @ApiPropertyOptional({ default: 20, description: 'Tối đa 100/trang' }) @IsOptional() @Type(() => Number) @IsInt() @Min(1) @Max(100)
   limit?: number = 20;
 
-  @ApiPropertyOptional({ enum: ['all', 'blocked', 'whitelisted'] }) @IsOptional() @IsIn(['all', 'blocked', 'whitelisted'])
-  status?: 'all' | 'blocked' | 'whitelisted';
+  @ApiPropertyOptional({ enum: ['all', 'blocked', 'whitelisted', 'banned'] }) @IsOptional() @IsIn(['all', 'blocked', 'whitelisted', 'banned'])
+  status?: 'all' | 'blocked' | 'whitelisted' | 'banned';
 
   @ApiPropertyOptional({ description: 'Tìm theo IP (chứa)' }) @IsOptional() @IsString() @MaxLength(45)
   search?: string;

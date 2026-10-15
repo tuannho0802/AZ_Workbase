@@ -59,7 +59,7 @@
 | P3.6 | `1786332000000-CreateIpGeoCache` | bảng `ip_geo_cache` (IP → mã quốc gia) |
 | P3.6 | `1786333000000-CreateIpAccessLogs` | bảng `ip_access_logs` (chi tiết từng lượt) + `ip_access_stats` (tổng hợp mỗi IP) |
 | P3.6 | `1786334000000-AddIpAccessConfigToSecurityConfig` | thêm cột `ip_access_log_retention_days` (90), `ip_access_detail_cap_per_hour` (20), `ip_access_log_api_enabled` (1) vào `security_config` |
-| P3.7 | `1786336000000-CreateLoginIpBlacklist` | bảng `login_ip_blacklist` (IP bị Admin chặn chủ động, có hạn hoặc vĩnh viễn) |\n| P4 | `1786330000000-AllowNullAuditUserId` |
+| P3.7 | `1786336000000-CreateLoginIpBlacklist` | bảng `login_ip_blacklist` (IP bị Admin chặn chủ động, có hạn hoặc vĩnh viễn) |
 | P4 | `1786330000000-AllowNullAuditUserId` | `audit_logs.user_id` → `NULL` được |
 | P5 | *(không có)* | mở rộng JSON, không đổi schema |
 | P6 | `1786340000000-AddPasswordPolicyToUsers` | `must_change_password`, `password_changed_at`, `password_expires_at` |
@@ -293,13 +293,15 @@ Yêu cầu: (a) mọi chỗ hiển thị IP — đặc biệt khi Block IP / Whi
   - Trang login hiển thị thông báo `IP_BANNED` (không có đồng hồ đếm ngược).
 - **Rủi ro / đánh đổi:** (1) chặn nhầm IP dùng chung (văn phòng/CGNAT) chặn **mọi người** sau IP đó → luôn hiện cảnh báo trong modal xác nhận, ưu tiên đặt hạn thay vì vĩnh viễn; (2) trễ ≤ 15 giây giữa các instance serverless; (3) kẻ tấn công đổi IP thì né được (blacklist là công cụ phản ứng nhanh, không thay thế khoá bị động); (4) access token còn hạn từ IP vừa bị chặn vẫn dùng được tới khi hết hạn — muốn cắt ngay phải làm guard toàn cục hoặc kèm `FORCE_LOGOUT` các phiên của IP đó → **để sau** (xem "ĐỂ SAU" C8).
 - **Để sau:** nút "Chặn" ngay trên tab **Theo dõi IP** và trong ngăn Chi tiết IP; CIDR/dải IP; chặn theo quốc gia; chặn cả `register`/các route công khai khác.
-- [ ] Migration + entity + `LoginIpBlacklistService` (cache, list, add, remove, `isBanned`) + nối vào `AuthService.login`/`refresh`
-- [ ] `whitelist.add` gỡ blacklist; `blacklist.add` gỡ whitelist + dòng khoá bị động
-- [ ] API + audit + `SECURITY_AUDIT_ACTIONS` + hàng rào (IP hiện tại, IP nội bộ)
-- [ ] `currentStatus = 'banned'` ở `IpAccessLogService` + FE type `IpCurrentStatus`
-- [ ] FE: `LoginIpBlacklistSection`, nút "Chặn IP" ở `LoginIpBlocksTab`, thông báo `IP_BANNED` ở trang login
-- [ ] Spec: IP bị chặn bị từ chối trước bcrypt kể cả mật khẩu đúng; hết hạn thì cho qua; vĩnh viễn; whitelist/blacklist loại trừ nhau; không tự chặn IP hiện tại/IP nội bộ; lỗi DB fail-open; quyền (scope department bị 403); refresh bị chặn
-- [ ] Cập nhật guide `nhan-vien.md`, `hoat-dong-bao-mat.md`, `PERMISSIONS.md` (không có key mới), `WORKFLOW_LOG.md`
+- [x] Migration + entity + `LoginIpBlacklistService` (cache, list, add, remove, `isBanned`) + nối vào `AuthService.login`/`refresh`
+- [x] `whitelist.add` gỡ blacklist; `blacklist.add` gỡ whitelist + dòng khoá bị động
+- [x] API + audit + `SECURITY_AUDIT_ACTIONS` + hàng rào (IP hiện tại, IP nội bộ)
+- [x] `currentStatus = 'banned'` ở `IpAccessLogService` + FE type `IpCurrentStatus`
+- [x] FE: `LoginIpBlacklistSection`, nút "Chặn IP" ở `LoginIpBlocksTab`, thông báo `IP_BANNED` ở trang login
+- [x] Spec: IP bị chặn bị từ chối trước bcrypt kể cả mật khẩu đúng; hết hạn thì cho qua; vĩnh viễn; whitelist/blacklist loại trừ nhau; không tự chặn IP hiện tại/IP nội bộ; lỗi DB fail-open; quyền (scope department bị 403); refresh bị chặn
+- [x] Cập nhật guide `nhan-vien.md`, `hoat-dong-bao-mat.md`, `PERMISSIONS.md` (không có key mới), `WORKFLOW_LOG.md`
+- **Trạng thái 3.7 (2026-10-15): ĐÃ LÀM xong code + spec + docs.** Verify: BE `tsc` sạch, `nest build`, `jest` 145 suite/2255 test pass; FE `tsc` chỉ còn lỗi `logo.png` có sẵn. **Còn:** chạy migration `1786336000000` trên DB, `npm run guides:sync`, deploy. Chưa kiểm tay trên trình duyệt (chặn thử 1 IP công cộng khác IP của mình rồi đăng nhập từ IP đó).
+- **Đã chốt khi làm (lệch/bổ sung so với bản plan đầu):** blacklist đọc `expires_at` bằng đồng hồ DB (`TIMESTAMPDIFF`) rồi quy ra epoch instance (không lệch múi giờ); `add` trên IP đã có dòng = **gia hạn/ghi đè** (ON DUPLICATE KEY UPDATE) thay vì lỗi trùng; trần 500 chỉ đếm dòng **còn hiệu lực**; lượt `refresh` bị chặn ghi `outcome = 'ip_locked'` (ENUM sẵn có); trang login giữ nguyên ở /login với Alert cố định (không chuyển sang `/account-status` như các 403 khác).
 
 
 ---
@@ -443,6 +445,7 @@ Quyết định: giữ lưu trong `users.hashed_refresh_token`, nâng định d�
 | C4 | Giảm `any` (~372 BE, ~288 FE) | Làm dần theo file đang sửa; bật `no-explicit-any` mức `warn` rồi siết. Chưa đo lại. |
 | C5 | Spec controller: `customers`, `leave-requests`, `users`, `roles`, `reports`, `zk-device` | Ưu tiên khoá guard/route (đúng `@RequirePermission` từng endpoint) theo mẫu `periodic-tasks.controller.spec.ts`. |
 | C6 | README gốc lỗi thời (Next 14, antd 5, roadmap 4 tuần) | `README_AZWORKBASE_PROJECT.md` đã có banner "lịch sử"; cập nhật `README.md` gốc theo `package.json` thật. |
+| C8 | Cắt NGAY phiên đang mở của IP vừa bị chặn chủ động (guard toàn cục kiểm blacklist, hoặc `FORCE_LOGOUT` các phiên có `ip` đó trong JSON phiên) | Bản P3.7 chỉ chặn `login` + `refresh`; access token còn hạn dùng được tới khi hết hạn. Cùng nhóm: nút "Chặn" trên tab Theo dõi IP / ngăn Chi tiết IP, CIDR, chặn theo quốc gia, chặn `register`. |
 | C7 | (Mới) `login()` trả "Tài khoản không tồn tại" cho email lạ và "Mật khẩu sai…" cho email có thật → lộ việc email có tồn tại | Chưa sửa vì FE/UX đang dựa vào các thông báo này; cân nhắc gộp 1 thông báo chung sau khi P3–P4 xong. |
 
 ## KHÔNG LÀM
@@ -518,9 +521,10 @@ Thứ tự: **P1 → P2 → P3 → P4 → P5 → P6 → P7 → P8 → P9 → P10
 - [x] P3.2 Khoá IP (10 lần) + `login_ip_blocks` + `last_login_ip` — *đã nối 2026-10-14; còn: chạy migration `1786320000000`*
 - [x] P3.3 Admin xem/reset khoá IP — *đã nối 2026-10-14 (tab "IP bị khoá" ở /users)*
 - [x] P3.5 Whitelist IP (miễn khoá theo IP, vẫn khoá email) — *đã làm 2026-10-14; còn: chạy migration `1786331000000`*
-- [ ] P3.6 Cờ quốc gia cạnh mọi IP + log lượt truy cập theo từng IP (whitelist/bị khoá đều ghi) — *thêm vào plan 2026-10-14, chưa làm; đã chốt đủ câu 5–8 ở mục 8, sẵn sàng làm; việc đầu tiên là xác minh header `x-vercel-ip-country` trên Preview*
+- [x] P3.6 Cờ quốc gia cạnh mọi IP + log lượt truy cập theo từng IP (whitelist/bị khoá đều ghi) — *thêm vào plan 2026-10-14, chưa làm; đã chốt đủ câu 5–8 ở mục 8, sẵn sàng làm; việc đầu tiên là xác minh header `x-vercel-ip-country` trên Preview*
 - [x] P4 Audit sự kiện bảo mật (cho phép `user_id` NULL) + dọn theo `security_event_retention_days` + trang "Hoạt động bảo mật" — *đã làm 2026-10-14; còn: chạy migration `1786330000000`; trang dùng phân trang thường thay vì `paginateByWeek`*
-- [ ] P5 Thiết bị đăng nhập + đăng xuất cưỡng bức (JSON v3)
+- [x] P5 Thiết bị đăng nhập + đăng xuất cưỡng bức (JSON v3) — *code đã có (`/auth/sessions`, `UserSessionsModal`, quyền `users.sessions`); WORKFLOW_LOG 2026-10-15 ghi đã làm; còn: chạy migration `1786335000000`*
+- [x] P3.7 Khoá IP chủ động (blacklist, có hạn/vĩnh viễn) + UI trang Nhân viên — *đã làm 2026-10-15; còn: chạy migration `1786336000000`, `guides:sync`, deploy*
 - [ ] P6 Buộc đổi mật khẩu + hạn mật khẩu + C1 (≥ 8 ký tự mọi nơi)
 - [ ] P7 Thao tác hàng loạt có Hoàn tác (5 phút)
 - [ ] P8 Trang Sức khoẻ hệ thống

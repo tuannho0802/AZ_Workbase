@@ -36,7 +36,18 @@ export interface IpWhitelistItem extends IpGeoFields {
 export interface IpWhitelistResponse { items: IpWhitelistItem[]; myIp: string | null; myIpCountryCode?: string | null; myIpKind?: 'public' | 'private' }
 
 export type IpAccessOutcome = 'success' | 'wrong_password' | 'unknown_email' | 'account_locked' | 'ip_locked' | 'denied' | 'refresh_ok' | 'refresh_failed';
-export type IpCurrentStatus = 'normal' | 'whitelisted' | 'blocked';
+export type IpCurrentStatus = 'normal' | 'whitelisted' | 'blocked' | 'banned';
+
+/** 1 dòng blacklist IP (GET /security/ip-blacklist) — khoá CHỦ ĐỘNG (P3.7). `remainingSeconds = null` = vĩnh viễn. */
+export interface IpBlacklistItem extends IpGeoFields {
+    id: number;
+    ip: string;
+    reason: string | null;
+    createdByName: string | null;
+    remainingSeconds: number | null;
+    createdAgoSeconds: number;
+}
+export interface IpBlacklistResponse { items: IpBlacklistItem[]; myIp: string | null }
 
 /** 1 dòng "Theo dõi IP" (GET /security/ip-access). Thời gian là SỐ GIÂY TRƯỚC (BE tính, tránh lệch múi giờ). */
 export interface IpAccessItem extends IpGeoFields {
@@ -115,17 +126,24 @@ export const securityApi = {
 
     // P3.5 — whitelist IP: miễn khoá theo IP (khoá email/tài khoản vẫn như thường).
     getIpWhitelist: async (): Promise<IpWhitelistResponse> => (await axiosInstance.get<IpWhitelistResponse>('/security/ip-whitelist')).data,
-    addIpWhitelist: async (ip: string, note?: string): Promise<{ success: boolean; ip: string; clearedBlock: boolean }> =>
+    addIpWhitelist: async (ip: string, note?: string): Promise<{ success: boolean; ip: string; clearedBlock: boolean; removedBlacklist?: boolean }> =>
         (await axiosInstance.post('/security/ip-whitelist', { ip, note: note || undefined })).data,
     // P3.6 — quốc gia của IP (sửa tay) + theo dõi lượt truy cập IP. Cần `users.manage` phạm vi `all`.
     setIpCountry: async (ip: string, countryCode: string): Promise<{ success: boolean; ip: string; countryCode: string }> =>
         (await axiosInstance.put(`/security/ip-geo/${encodeURIComponent(ip)}`, { countryCode })).data,
     clearIpCountry: async (ip: string): Promise<{ success: boolean }> =>
         (await axiosInstance.delete(`/security/ip-geo/${encodeURIComponent(ip)}`)).data,
-    getIpAccess: async (params: { page?: number; limit?: number; status?: 'all' | 'blocked' | 'whitelisted'; search?: string }): Promise<IpAccessListResponse> =>
+    getIpAccess: async (params: { page?: number; limit?: number; status?: 'all' | 'blocked' | 'whitelisted' | 'banned'; search?: string }): Promise<IpAccessListResponse> =>
         (await axiosInstance.get('/security/ip-access', { params })).data,
     getIpAccessDetail: async (ip: string, params: { page?: number; limit?: number; outcome?: IpAccessOutcome; fromDate?: string; toDate?: string }): Promise<IpAccessDetailResponse> =>
         (await axiosInstance.get(`/security/ip-access/${encodeURIComponent(ip)}`, { params })).data,
+
+    // P3.7 — blacklist IP: chặn CHỦ ĐỘNG (có hạn hoặc vĩnh viễn). `durationHours` null/bỏ trống = vĩnh viễn.
+    getIpBlacklist: async (): Promise<IpBlacklistResponse> => (await axiosInstance.get<IpBlacklistResponse>('/security/ip-blacklist')).data,
+    addIpBlacklist: async (ip: string, reason?: string, durationHours?: number | null): Promise<{ success: boolean; ip: string; durationHours: number | null; removedWhitelist: boolean }> =>
+        (await axiosInstance.post('/security/ip-blacklist', { ip, reason: reason || undefined, durationHours: durationHours ?? undefined })).data,
+    removeIpBlacklist: async (ip: string): Promise<{ success: boolean }> =>
+        (await axiosInstance.delete(`/security/ip-blacklist/${encodeURIComponent(ip)}`)).data,
 
     removeIpWhitelist: async (ip: string): Promise<{ success: boolean }> =>
         (await axiosInstance.delete(`/security/ip-whitelist/${encodeURIComponent(ip)}`)).data,

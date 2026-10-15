@@ -10,6 +10,7 @@ import { ApprovalStatus } from '../../common/enums/approval-status.enum';
 import { SecurityConfigService, SECURITY_CONFIG_DEFAULTS } from '../../common/security/security-config.service';
 import { LoginIpBlockService } from '../../common/security/login-ip-block.service';
 import { LoginIpWhitelistService } from '../../common/security/login-ip-whitelist.service';
+import { LoginIpBlacklistService } from '../../common/security/login-ip-blacklist.service';
 import { IpGeoService } from '../../common/security/ip-geo.service';
 import { IpAccessLogService } from '../../common/security/ip-access-log.service';
 
@@ -40,6 +41,7 @@ describe('AuthService - Đăng ký công khai + chặn đăng nhập chưa duy�
   const mockSecurityConfig = { get: jest.fn() };
   const mockIpBlocks = { getRemainingSeconds: jest.fn(), recordFailure: jest.fn() };
   const mockIpWhitelist = { isWhitelisted: jest.fn() };
+  const mockIpBlacklist = { isBanned: jest.fn() };
 
   beforeEach(async () => {
     jest.clearAllMocks();
@@ -50,6 +52,7 @@ describe('AuthService - Đăng ký công khai + chặn đăng nhập chưa duy�
     mockIpBlocks.getRemainingSeconds.mockResolvedValue(0);
     mockIpBlocks.recordFailure.mockResolvedValue({ attempts: 1, lockedSeconds: 0 });
     mockIpWhitelist.isWhitelisted.mockResolvedValue(false);
+    mockIpBlacklist.isBanned.mockResolvedValue(false);
 
     const module: TestingModule = await Test.createTestingModule({
       providers: [
@@ -61,6 +64,7 @@ describe('AuthService - Đăng ký công khai + chặn đăng nhập chưa duy�
         { provide: SecurityConfigService, useValue: mockSecurityConfig },
         { provide: LoginIpBlockService, useValue: mockIpBlocks },
         { provide: LoginIpWhitelistService, useValue: mockIpWhitelist },
+        { provide: LoginIpBlacklistService, useValue: mockIpBlacklist },
         { provide: IpGeoService, useValue: mockIpGeo },
         { provide: IpAccessLogService, useValue: mockIpAccessLog },
       ],
@@ -534,6 +538,44 @@ describe('AuthService - Đăng ký công khai + chặn đăng nhập chưa duy�
       expect(mockUsersService.updateLastLogin).toHaveBeenCalledWith(9, '1.2.3.4');
       expect(mockIpBlocks.recordFailure).not.toHaveBeenCalled();
       expect(mockAuditService.logSecurityEventAsync).not.toHaveBeenCalled();
+    });
+
+    describe('IP blacklist - khoá chủ động (P3.7)', () => {
+      beforeEach(() => mockIpBlacklist.isBanned.mockResolvedValue(true));
+
+      it('IP bị chặn -> 403 IP_BANNED NGAY dù mật khẩu đúng: không tra user, không bcrypt, không đếm IP, không audit', async () => {
+        mockUsersService.findByEmailIncludingDeleted.mockResolvedValue(user());
+        const err = await login('Correct@123');
+        expect(err.getStatus()).toBe(403);
+        expect(err.getResponse()).toMatchObject({ code: 'IP_BANNED' });
+        expect(err.getResponse()).not.toHaveProperty('retryAfterSeconds');
+        expect(mockUsersService.findByEmailIncludingDeleted).not.toHaveBeenCalled();
+        expect(mockIpWhitelist.isWhitelisted).not.toHaveBeenCalled();
+        expect(mockIpBlocks.getRemainingSeconds).not.toHaveBeenCalled();
+        expect(mockIpBlocks.recordFailure).not.toHaveBeenCalled();
+        expect(mockAuditService.logSecurityEventAsync).not.toHaveBeenCalled();
+      });
+
+      it('lượt bị chặn được ghi vào theo dõi IP với ip_status = blocked', async () => {
+        await login('x');
+        expect(mockIpAccessLog.record).toHaveBeenCalledWith(expect.objectContaining({ outcome: 'ip_locked', ipStatus: 'blocked' }));
+      });
+
+      it('hết hạn/không còn bị chặn -> đăng nhập bình thường', async () => {
+        mockIpBlacklist.isBanned.mockResolvedValue(false);
+        mockUsersService.findByEmailIncludingDeleted.mockResolvedValue(user());
+        mockUsersService.saveRefreshToken.mockResolvedValue(undefined);
+        mockUsersService.updateLastLogin.mockResolvedValue(undefined);
+        await expect(service.login({ email: 'a@example.com', password: 'Correct@123' }, '1.2.3.4', 'UA/1')).resolves.toBeDefined();
+        expect(mockIpBlacklist.isBanned).toHaveBeenCalledWith('1.2.3.4');
+      });
+
+      it('refresh từ IP bị chặn -> 403 IP_BANNED trước khi verify token, ghi ip_locked/blocked', async () => {
+        const err: any = await service.refresh('tok', '1.2.3.4', 'UA/1').catch((e) => e);
+        expect(err.getResponse()).toMatchObject({ code: 'IP_BANNED' });
+        expect(mockJwtService.verify).not.toHaveBeenCalled();
+        expect(mockIpAccessLog.record).toHaveBeenCalledWith(expect.objectContaining({ endpoint: 'auth/refresh', outcome: 'ip_locked', ipStatus: 'blocked' }));
+      });
     });
 
     describe('IP whitelist (P3.5)', () => {

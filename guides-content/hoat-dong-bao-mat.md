@@ -61,7 +61,8 @@ Giá trị mặc định lúc cài là 5 lần / 5 phút cho tài khoản, 10 l�
 - Việc lưu cấu hình được ghi lại trong **Nhật ký hệ thống** (giá trị cũ và mới).
 - Đăng nhập thành công **không** xoá bộ đếm sai của IP đang chạy.
 - Sự kiện bảo mật được giữ riêng theo số ngày ở ô **Giữ sự kiện bảo mật**, không bị dọn cùng đợt với nhật ký thường.
-- Mở khoá thủ công: **tài khoản** ở trang [Nhân viên](/huong-dan/nhan-vien), **IP** ở tab **IP bị khoá** cũng trong trang Nhân viên. Tab đó và khối **IP được miễn khoá** (whitelist) cần thêm quyền quản lý nhân viên phạm vi toàn hệ thống.
+- Mở khoá thủ công: **tài khoản** ở trang [Nhân viên](/huong-dan/nhan-vien), **IP** ở tab **IP bị khoá** cũng trong trang Nhân viên. Tab đó cùng hai khối **IP bị chặn chủ động** (blacklist) và **IP được miễn khoá** (whitelist) cần thêm quyền quản lý nhân viên phạm vi toàn hệ thống.
+- **Chặn chủ động** khác khoá tự động: khoá tự động chỉ xảy ra khi IP sai đủ số lần và tự hết sau vài phút; chặn chủ động do Admin bấm, có hiệu lực ngay, đặt hạn 1 giờ / 24 giờ / 7 ngày / 30 ngày hoặc vĩnh viễn. Mỗi lần chặn/gỡ chặn đều hiện ở trang này (loại sự kiện **Chặn IP đăng nhập chủ động** / **Gỡ chặn IP đăng nhập**).
 
 ## Vì sao tôi không thấy …?
 

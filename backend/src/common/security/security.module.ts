@@ -3,6 +3,7 @@ import { TypeOrmModule } from '@nestjs/typeorm';
 import { SecurityConfig } from '../../database/entities/security-config.entity';
 import { LoginIpBlock } from '../../database/entities/login-ip-block.entity';
 import { LoginIpWhitelist } from '../../database/entities/login-ip-whitelist.entity';
+import { LoginIpBlacklist } from '../../database/entities/login-ip-blacklist.entity';
 import { IpGeoCache } from '../../database/entities/ip-geo-cache.entity';
 import { IpAccessLog } from '../../database/entities/ip-access-log.entity';
 import { IpAccessStats } from '../../database/entities/ip-access-stats.entity';
@@ -13,13 +14,14 @@ import { SecurityActivityService } from './security-activity.service';
 import { SecurityConfigService } from './security-config.service';
 import { LoginIpBlockService } from './login-ip-block.service';
 import { LoginIpWhitelistService } from './login-ip-whitelist.service';
+import { LoginIpBlacklistService } from './login-ip-blacklist.service';
 import { SecurityController } from './security.controller';
 
 // AuditModule và PermissionsModule đều @Global() nên không cần import ở đây.
 @Module({
-    imports: [TypeOrmModule.forFeature([SecurityConfig, LoginIpBlock, LoginIpWhitelist, AuditLog, IpGeoCache, IpAccessLog, IpAccessStats])],
+    imports: [TypeOrmModule.forFeature([SecurityConfig, LoginIpBlock, LoginIpWhitelist, LoginIpBlacklist, AuditLog, IpGeoCache, IpAccessLog, IpAccessStats])],
     controllers: [SecurityController],
-    providers: [SecurityConfigService, LoginIpBlockService, LoginIpWhitelistService, SecurityActivityService, IpGeoService, IpAccessLogService],
-    exports: [SecurityConfigService, LoginIpBlockService, LoginIpWhitelistService, IpGeoService, IpAccessLogService],
+    providers: [SecurityConfigService, LoginIpBlockService, LoginIpWhitelistService, LoginIpBlacklistService, SecurityActivityService, IpGeoService, IpAccessLogService],
+    exports: [SecurityConfigService, LoginIpBlockService, LoginIpWhitelistService, LoginIpBlacklistService, IpGeoService, IpAccessLogService],
 })
 export class SecurityModule { }

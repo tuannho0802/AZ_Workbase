@@ -15,6 +15,7 @@ export default function LoginPage() {
   const [loading, setLoading] = useState(false);
   // Giây còn bị khoá đăng nhập (từ 429 `retryAfterSeconds`) - đồng hồ đếm ngược + khoá nút Đăng nhập tới khi hết.
   const [lockSeconds, setLockSeconds] = useState(0);
+  const [ipBanned, setIpBanned] = useState(false);
   const lockRemaining = useCountdown(lockSeconds, () => setLockSeconds(0));
   const router = useRouter();
   const { setUser, setTokens } = useAuthStore();
@@ -22,6 +23,7 @@ export default function LoginPage() {
 
   const onFinish = async (values: { email: string; password: string }) => {
     setLoading(true);
+    setIpBanned(false);
     try {
       console.log('[LOGIN] Attempting login...');
       const response = await authApi.login(values);
@@ -58,7 +60,11 @@ export default function LoginPage() {
       // duyệt (self-register), hoặc bị từ chối - xem AuthService.login() BE.
       // Thay vì chỉ hiện toast chung chung, điều hướng sang trang trạng thái
       // riêng, hiển thị ĐÚNG NGUYÊN VĂN message thật từ backend cho từng case.
-      if (status === 403) {
+      const bannedData = isAxiosError(error) ? (error.response?.data as { code?: string } | undefined) : undefined;
+      if (status === 403 && bannedData?.code === 'IP_BANNED') {
+        // P3.7: IP bị Admin chặn chủ động — ở lại trang đăng nhập, hiện Alert cố định (không có đồng hồ đếm ngược).
+        setIpBanned(true);
+      } else if (status === 403) {
         const backendMessage = getApiErrorMessage(error, 'Tài khoản của bạn hiện chưa thể đăng nhập.');
         router.push(`/account-status?message=${encodeURIComponent(backendMessage)}`);
       } else if (status === 429) {
@@ -90,6 +96,15 @@ export default function LoginPage() {
           <h1 className="text-2xl font-bold">AZWorkbase</h1>
           <p className="text-gray-500">Đăng nhập vào hệ thống</p>
         </div>
+
+        {ipBanned && (
+          <Alert
+            type="error"
+            showIcon
+            className="mb-4"
+            title="Địa chỉ mạng của bạn đã bị chặn. Vui lòng liên hệ quản trị viên."
+          />
+        )}
 
         {lockRemaining > 0 && (
           <Alert

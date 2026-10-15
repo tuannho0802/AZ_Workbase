@@ -1,14 +1,17 @@
 'use client';
 
+import { useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Alert, App, Button, Space, Table, Tag, Typography } from 'antd';
-import { LockOutlined, ReloadOutlined, SafetyOutlined, UnlockOutlined } from '@ant-design/icons';
+import { LockOutlined, ReloadOutlined, SafetyOutlined, StopOutlined, UnlockOutlined } from '@ant-design/icons';
 import type { ColumnsType } from 'antd/es/table';
 import { securityApi, type IpBlockItem } from '@/lib/api/security.api';
 import { formatCountdown, useCountdown } from '@/lib/hooks/useCountdown';
 import { getApiErrorMessage } from '@/lib/utils/error-message.util';
 import { formatAgo } from '@/lib/utils/format-ago';
 import { IpWithFlag } from '@/components/security/IpWithFlag';
+import { IpBanModal } from '@/components/security/IpBanModal';
+import { LoginIpBlacklistSection, BLACKLIST_QUERY_KEY } from './LoginIpBlacklistSection';
 import { LoginIpWhitelistSection, WHITELIST_QUERY_KEY } from './LoginIpWhitelistSection';
 
 const { Text } = Typography;
@@ -40,6 +43,14 @@ export const LoginIpBlocksTab = () => {
     const { data, isLoading, isFetching, refetch } = useQuery({
         queryKey: QUERY_KEY,
         queryFn: () => securityApi.getIpBlocks(),
+        staleTime: 15_000,
+    });
+
+    // P3.7: chặn chủ động ngay từ dòng này. `myIp` lấy chung query với khối blacklist (react-query gộp request).
+    const [banTarget, setBanTarget] = useState<IpBlockItem | null>(null);
+    const { data: blacklistData } = useQuery({
+        queryKey: BLACKLIST_QUERY_KEY,
+        queryFn: () => securityApi.getIpBlacklist(),
         staleTime: 15_000,
     });
 
@@ -134,6 +145,15 @@ export const LoginIpBlocksTab = () => {
                 <Button icon={<SafetyOutlined />} onClick={() => handleWhitelist(r)}>
                     Miễn khoá
                 </Button>
+                <Button
+                    danger
+                    icon={<StopOutlined />}
+                    disabled={r.ipKind === 'private' || r.ip === blacklistData?.myIp}
+                    title={r.ipKind === 'private' ? 'Không chặn IP nội bộ' : r.ip === blacklistData?.myIp ? 'IP hiện tại của bạn' : undefined}
+                    onClick={() => setBanTarget(r)}
+                >
+                    Chặn IP
+                </Button>
                 </Space>
             ),
         },
@@ -164,7 +184,20 @@ export const LoginIpBlocksTab = () => {
                 locale={{ emptyText: 'Không có IP nào bị khoá hoặc sai gần đây' }}
                 scroll={{ x: 'max-content' }}
             />
+            <LoginIpBlacklistSection />
             <LoginIpWhitelistSection />
+            <IpBanModal
+                open={!!banTarget}
+                ip={banTarget?.ip ?? null}
+                defaultReason={banTarget?.lastEmail ? `Từ tab IP bị khoá (email thử: ${banTarget.lastEmail})` : 'Từ tab IP bị khoá'}
+                myIp={blacklistData?.myIp}
+                onClose={() => setBanTarget(null)}
+                onDone={async () => {
+                    await queryClient.invalidateQueries({ queryKey: QUERY_KEY });
+                    await queryClient.invalidateQueries({ queryKey: BLACKLIST_QUERY_KEY });
+                    await queryClient.invalidateQueries({ queryKey: WHITELIST_QUERY_KEY });
+                }}
+            />
         </Space>
     );
 };

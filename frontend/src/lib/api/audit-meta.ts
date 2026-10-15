@@ -106,6 +106,8 @@ export const ACTION_META: Record<string, ActionMeta> = {
   UPDATE_SECURITY_CONFIG: m('Cập nhật cấu hình bảo mật', 'purple', 'user'),
   IP_WHITELIST_ADDED: m('Thêm IP vào whitelist đăng nhập', 'cyan', 'user'),
   IP_WHITELIST_REMOVED: m('Gỡ IP khỏi whitelist đăng nhập', 'geekblue', 'user'),
+  IP_BLACKLIST_ADDED: m('Chặn IP đăng nhập chủ động', 'red', 'user'),
+  IP_BLACKLIST_REMOVED: m('Gỡ chặn IP đăng nhập', 'lime', 'user'),
   IP_COUNTRY_SET: m('Gán quốc gia thủ công cho IP', 'gold', 'user'),
   IP_COUNTRY_CLEARED: m('Xoá quốc gia gán tay của IP', 'gold', 'user'),
   CHANGE_OWN_PASSWORD: m('Tự đổi mật khẩu', 'orange', 'user'),

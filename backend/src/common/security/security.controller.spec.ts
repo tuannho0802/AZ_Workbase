@@ -1,4 +1,4 @@
-import { BadRequestException, ForbiddenException, NotFoundException } from '@nestjs/common';
+import { BadRequestException, ConflictException, ForbiddenException, NotFoundException } from '@nestjs/common';
 import { SecurityController } from './security.controller';
 import { Role } from '../../common/enums/role.enum';
 import { PermissionScope } from '../../database/entities/role-permission.entity';
@@ -6,6 +6,7 @@ import { PermissionScope } from '../../database/entities/role-permission.entity'
 describe('SecurityController (P3.3)', () => {
     let ipBlocks: { list: jest.Mock; unblock: jest.Mock };
     let whitelist: { list: jest.Mock; add: jest.Mock; remove: jest.Mock };
+    let blacklist: { list: jest.Mock; add: jest.Mock; remove: jest.Mock };
     let config: { get: jest.Mock };
     let audit: { logActionAsync: jest.Mock; logSecurityEventAsync: jest.Mock };
     let activity: { listEvents: jest.Mock; summary: jest.Mock };
@@ -27,7 +28,8 @@ describe('SecurityController (P3.3)', () => {
             clearManual: jest.fn(),
         };
         ipAccess = { list: jest.fn().mockResolvedValue({ total: 1, page: 1, limit: 20, items: [{ ip: '1.2.3.4' }] }), detail: jest.fn() };
-        ctl = new SecurityController(ipBlocks as any, whitelist as any, config as any, audit as any, activity as any, ipGeo as any, ipAccess as any);
+        blacklist = { list: jest.fn().mockResolvedValue([{ ip: '6.6.6.6' }]), add: jest.fn(), remove: jest.fn() };
+        ctl = new SecurityController(ipBlocks as any, whitelist as any, blacklist as any, config as any, audit as any, activity as any, ipGeo as any, ipAccess as any);
     });
 
     it('list: admin xem được, kèm ngưỡng cấu hình', async () => {
@@ -197,6 +199,60 @@ describe('SecurityController (P3.3)', () => {
             await expect(ctl.ipAccessDetail('abc!', {}, admin as any, PermissionScope.ALL)).rejects.toThrow(BadRequestException);
             ipAccess.detail.mockResolvedValue(null);
             await expect(ctl.ipAccessDetail('1.2.3.4', {}, admin as any, PermissionScope.ALL)).rejects.toThrow(NotFoundException);
+        });
+    });
+    describe('blacklist - khoá chủ động (P3.7)', () => {
+        const adminReq = { user: { id: 1, role: Role.ADMIN }, ip: '9.9.9.1', headers: { 'user-agent': 'UA' } };
+
+        it('list: kèm cờ quốc gia + myIp', async () => {
+            const res = await ctl.listBlacklist(adminReq, PermissionScope.ALL);
+            expect(res.items[0]).toMatchObject({ ip: '6.6.6.6', countryCode: 'VN' });
+            expect(res.myIp).toBe('9.9.9.1');
+        });
+
+        it('scope department (Manager) -> 403 ở cả 3 endpoint, không đụng service', async () => {
+            await expect(ctl.listBlacklist(dept, PermissionScope.DEPARTMENT)).rejects.toThrow(ForbiddenException);
+            await expect(ctl.addBlacklist({ ip: '6.6.6.6' }, dept, PermissionScope.DEPARTMENT)).rejects.toThrow(ForbiddenException);
+            await expect(ctl.removeBlacklist('6.6.6.6', dept, PermissionScope.DEPARTMENT)).rejects.toThrow(ForbiddenException);
+            expect(blacklist.add).not.toHaveBeenCalled();
+            expect(blacklist.remove).not.toHaveBeenCalled();
+        });
+
+        it('add: IP sai định dạng -> 400', async () => {
+            await expect(ctl.addBlacklist({ ip: 'abc def' }, adminReq, PermissionScope.ALL)).rejects.toThrow(BadRequestException);
+        });
+
+        it('add: không tự chặn IP hiện tại của chính mình -> 409', async () => {
+            await expect(ctl.addBlacklist({ ip: '9.9.9.1' }, adminReq, PermissionScope.ALL)).rejects.toThrow(/IP hiện tại/);
+            expect(blacklist.add).not.toHaveBeenCalled();
+        });
+
+        it('add: không chặn IP nội bộ/loopback -> 409', async () => {
+            for (const ip of ['::1', '127.0.0.1', '192.168.1.5', '10.0.0.8']) {
+                await expect(ctl.addBlacklist({ ip }, adminReq, PermissionScope.ALL)).rejects.toThrow(ConflictException);
+            }
+            expect(blacklist.add).not.toHaveBeenCalled();
+        });
+
+        it('add OK: gọi service (null = vĩnh viễn) + audit IP_BLACKLIST_ADDED', async () => {
+            blacklist.add.mockResolvedValue({ id: 4, ip: '6.6.6.6', durationHours: 24, removedWhitelist: true });
+            const res = await ctl.addBlacklist({ ip: '6.6.6.6', reason: 'dò', durationHours: 24 }, adminReq, PermissionScope.ALL);
+            expect(res).toMatchObject({ success: true, ip: '6.6.6.6', durationHours: 24, removedWhitelist: true });
+            expect(blacklist.add).toHaveBeenCalledWith('6.6.6.6', 'dò', 24, 1);
+            expect(audit.logSecurityEventAsync).toHaveBeenCalledWith(expect.objectContaining({
+                userId: 1, action: 'IP_BLACKLIST_ADDED', entityId: 4,
+                detail: { bannedIp: '6.6.6.6', reason: 'dò', durationHours: 24, removedWhitelist: true },
+            }));
+            await ctl.addBlacklist({ ip: '6.6.6.6' }, adminReq, PermissionScope.ALL);
+            expect(blacklist.add).toHaveBeenLastCalledWith('6.6.6.6', null, null, 1);
+        });
+
+        it('remove: không có dòng -> 404; có -> audit IP_BLACKLIST_REMOVED', async () => {
+            blacklist.remove.mockResolvedValueOnce(null);
+            await expect(ctl.removeBlacklist('6.6.6.6', adminReq, PermissionScope.ALL)).rejects.toThrow(NotFoundException);
+            blacklist.remove.mockResolvedValueOnce({ id: 4, ip: '6.6.6.6' });
+            await ctl.removeBlacklist('6.6.6.6', adminReq, PermissionScope.ALL);
+            expect(audit.logSecurityEventAsync).toHaveBeenCalledWith(expect.objectContaining({ action: 'IP_BLACKLIST_REMOVED', entityId: 4, detail: { bannedIp: '6.6.6.6' } }));
         });
     });
 });

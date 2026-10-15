@@ -42,10 +42,13 @@ export const LoginIpWhitelistSection = () => {
         setAdding(true);
         try {
             const res = await securityApi.addIpWhitelist(value, note.trim());
-            message.success(res.clearedBlock ? `Đã thêm ${res.ip} và gỡ khoá hiện có` : `Đã thêm ${res.ip} vào whitelist`);
+            message.success(
+                res.removedBlacklist ? `Đã thêm ${res.ip} vào whitelist và gỡ chặn chủ động` : res.clearedBlock ? `Đã thêm ${res.ip} và gỡ khoá hiện có` : `Đã thêm ${res.ip} vào whitelist`,
+            );
             setIp('');
             setNote('');
             await refreshAll();
+            await queryClient.invalidateQueries({ queryKey: ['security-ip-blacklist'] });
         } catch (err) {
             message.error(getApiErrorMessage(err, 'Thêm vào whitelist thất bại'));
         } finally {
