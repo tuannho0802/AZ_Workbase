@@ -47,8 +47,8 @@ Dữ liệu trong mẫu là giả định. Ở bản Manager, bảng chỉ có n
 **Thêm một nhân viên**
 
 1. Ở tab **Danh sách nhân viên**, bấm **Thêm nhân viên**.
-2. Nhập **Email**, **Họ và tên**, **Mật khẩu**, chọn **Vai trò** (và **Phòng ban**, **Vị trí** nếu cần).
-3. Bấm **OK**. Nhân viên đăng nhập được ngay bằng email và mật khẩu bạn vừa đặt.
+2. Nhập **Email**, **Họ và tên**, **Mật khẩu**, chọn **Hạn mật khẩu** (**Vô hạn** hoặc **Có hạn** + số ngày), chọn **Vai trò** (và **Phòng ban**, **Vị trí** nếu cần).
+3. Bấm **OK**. Nhân viên đăng nhập bằng email và mật khẩu bạn vừa đặt, nhưng sẽ **bị yêu cầu đổi mật khẩu ngay lần đăng nhập đầu tiên** (xem mục *Mật khẩu được cấp & hạn mật khẩu*).
 
 **Sửa một nhân viên**: bấm **Sửa** ở dòng đó, đổi thông tin rồi bấm **OK**.
 
@@ -71,6 +71,7 @@ user-form mode=edit viewer=manager
 | **Họ và tên** | Bắt buộc, ít nhất 2 ký tự. |
 | **Số điện thoại** | Không bắt buộc. Nếu nhập phải là số Việt Nam hợp lệ (bắt đầu 09, 08, 07, 03 hoặc 05, đủ 10 số). |
 | **Mật khẩu** | Chỉ có khi **Thêm mới**. Tối thiểu 8 ký tự, có chữ hoa, chữ thường, số và ký tự đặc biệt. Muốn đổi mật khẩu người đã có tài khoản, dùng nút **Reset Pass**. |
+| **Hạn mật khẩu** | Chỉ có khi **Thêm mới**. **Vô hạn** (mặc định) hoặc **Có hạn** với số ngày từ 1 đến 365 (khi chọn **Có hạn** ô số ngày mặc định là 90). Dù chọn gì, nhân viên vẫn phải đổi mật khẩu ở lần đăng nhập đầu tiên. |
 | **Vai trò** | Bắt buộc. Danh sách lấy từ các vai trò đang có (kể cả vai trò Admin đã tạo thêm). **Chỉ Admin mới thấy và gán được vai trò Admin**; Assistant và Manager không có lựa chọn này. |
 | **Phòng ban** | Phòng ban nhân viên thuộc về. Với Manager (phạm vi Phòng ban) khi **Thêm mới** thì **bắt buộc chọn** một phòng ban mình quản lý. |
 | **Vị trí** | Không bắt buộc, không cần cùng phòng ban đã chọn. Xoá lựa chọn rồi lưu để gỡ vị trí cũ. |
@@ -97,10 +98,20 @@ user-form mode=edit viewer=root
 | Nút | Ai thấy | Việc làm |
 |---|---|---|
 | **Sửa** | Có `users.manage`, và nhân viên đó nằm trong phạm vi của bạn | Mở cửa sổ **Sửa thông tin nhân viên**. |
-| **Reset Pass** | Như **Sửa** | Mở **Đặt lại mật khẩu cho: ...**, nhập **Mật khẩu mới** (ít nhất 8 ký tự) và xác nhận. Người đó dùng mật khẩu mới ở lần đăng nhập kế tiếp. |
+| **Reset Pass** | Như **Sửa** | Mở **Đặt lại mật khẩu cho: ...**, nhập **Mật khẩu mới** (ít nhất 8 ký tự), chọn **Hạn mật khẩu** (**Vô hạn** hoặc **Có hạn** + số ngày) và xác nhận. Người đó dùng mật khẩu mới ở lần đăng nhập kế tiếp và **bị yêu cầu đổi lại ngay** lúc đó. |
 | **Xoá** | Có `users.delete` (mặc định chỉ Admin) | Chuyển tài khoản vào **thùng rác** (xoá mềm). **Không hiện** với chính bạn và với Root Admin. |
 
 Xoá mềm không mất dữ liệu: người đó **không đăng nhập được ngay lập tức**, dữ liệu vẫn giữ nguyên, và có thể khôi phục ở tab **Đã xoá**.
+
+## Mật khẩu được cấp & hạn mật khẩu
+
+- **Tài khoản bạn tạo** (nút **Thêm nhân viên**) và tài khoản vừa được **Reset Pass** đều bị buộc đổi mật khẩu ở lần đăng nhập kế tiếp: người đó bị đưa sang trang **Đổi mật khẩu để tiếp tục**, nhập **Mật khẩu được cấp** (mật khẩu bạn đặt), **Mật khẩu mới** và nhập lại.
+- Máy chủ **chặn cả các thao tác khác** cho tới khi họ đổi xong, không chỉ ẩn trang trên giao diện. Họ vẫn đăng xuất và xem hồ sơ của mình được.
+- **Hạn mật khẩu**: chọn **Có hạn** thì sau số ngày đã chọn kể từ lần đổi mật khẩu gần nhất, người đó bị buộc đổi lại. Mỗi lần đổi xong, hạn mới được tính lại với **cùng số ngày**. Chọn **Vô hạn** thì mật khẩu không bao giờ hết hạn.
+- **Tự đăng ký** (rồi được duyệt) không bị buộc đổi mật khẩu và không có hạn.
+- Tài khoản có từ **trước** khi có tính năng này không bị ép đổi mật khẩu.
+- Mọi mật khẩu mới (tạo, đặt lại, tự đổi, đăng ký) đều phải **ít nhất 8 ký tự** có chữ hoa, chữ thường, số và ký tự đặc biệt. Người đang dùng mật khẩu ngắn hơn không bị ép đổi, quy tắc chỉ áp khi họ đặt mật khẩu mới.
+- Đổi mật khẩu bắt buộc xong, các thiết bị khác của người đó phải đăng nhập lại, và việc đổi được ghi vào **Nhật ký hệ thống**.
 
 ## Chặn IP chủ động (tab IP bị khoá)
 
@@ -158,6 +169,7 @@ Chỉ người có `users.delete` thấy tab này. Mỗi dòng cho biết **Đã
 - **Manager không thấy một nhân viên**: người đó không thuộc phòng ban bạn **quản lý** (kể cả khi bạn cùng thuộc phòng ban đó nhưng không được gán làm Quản lý). Nhờ Admin kiểm tra ở trang **Phòng ban**.
 - **Không thấy người vừa đăng ký trong Danh sách nhân viên**: họ đang ở tab **Chờ duyệt đăng ký**, hoặc đã bị từ chối nên nằm ở **Đã xoá**.
 - **Không chọn được vai trò Admin**: chỉ Admin được gán vai trò này.
+- **Nhân viên báo bị bắt đổi mật khẩu khi vừa đăng nhập**: đúng thiết kế, vì tài khoản mới tạo, vừa Reset Pass hoặc mật khẩu đã hết hạn. Bảo họ nhập mật khẩu bạn cấp ở ô **Mật khẩu được cấp**.
 - **Không sửa được Email**: Email là tên đăng nhập, bị khoá khi Sửa. Người dùng tự đổi email ở trang **Profile** nếu được cấp quyền.
 
 ## Xem thêm

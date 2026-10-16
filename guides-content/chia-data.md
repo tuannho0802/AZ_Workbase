@@ -61,6 +61,7 @@ Cần nhớ:
 - Người **đã được gán sẵn** cho khách đó thì không bị gán trùng.
 - Mỗi lần chia tối đa **500 khách** và **50 Sales**.
 - Người nhận được **thông báo**, gộp theo người (không phải 1 thông báo cho mỗi khách).
+- Chia nhầm thì bấm **Hoàn tác** ngay trong thông báo *Đã chia ... khách cho ... Sales* (còn hiệu lực **5 phút**, xem mục bên dưới).
 - Chức năng chọn và chia dùng trên **máy tính**; trên điện thoại bạn chỉ xem danh sách.
 
 ### Ô "Chọn Sales nhận data" hiện những ai?
@@ -99,6 +100,16 @@ Sau khi sửa/thu hồi, khách có thể chuyển giữa hai tab, nên cả hai
 
 Bộ lọc **Data Owner** (tab Có thể chia), **Người phụ trách chính** và **Sales được chia** (tab Đã assign) chỉ hiện khi phạm vi xem của bạn rộng hơn "của tôi". **Người phụ trách chính** khớp cả Sales lẫn Marketing phụ trách.
 
+## Hoàn tác việc chia (trong 5 phút)
+
+Thông báo sau khi chia có nút **Hoàn tác** và đồng hồ đếm ngược. Bấm để trả các khách về Sales chính / Sales phụ như trước khi chia.
+
+- Chỉ **người vừa chia** (hoặc Admin) hoàn tác được, và chỉ trong **5 phút**. Tải lại trang thì nút biến mất.
+- Khách đã được sửa sau lúc chia, đã vào Thùng rác hoặc không còn tồn tại sẽ **bị bỏ qua** và được báo trong kết quả; các khách còn lại vẫn được khôi phục.
+- Một lần chia chỉ hoàn tác **một lần**.
+
+Chi tiết cách đọc kết quả hoàn tác xem bài [Khách hàng](/huong-dan/khach-hang).
+
 ## Vì sao tôi không thấy / không chia được …?
 
 - **Không thấy trang Chia Data**: bạn chưa được cấp quyền **Chia data**. Liên hệ Admin.
@@ -106,6 +117,7 @@ Bộ lọc **Data Owner** (tab Có thể chia), **Người phụ trách chính**
 - **Bấm Chia báo "không có quyền chia khách hàng không thuộc quản lý của bạn"**: khách đó ngoài phạm vi quyền Chia data của bạn.
 - **Ô chọn Sales thiếu người**: người đó chưa thuộc nhóm **Sales phụ trách**, đang bị khoá hoặc chưa được duyệt tài khoản.
 - **Không thấy nút Xoá**: bạn không có quyền Xoá khách hàng.
+- **Không thấy nút Hoàn tác**: đã quá 5 phút, bạn đã tải lại trang, hoặc thao tác không phải của bạn (chỉ người chia hoặc Admin hoàn tác được).
 
 ## Xem thêm
 

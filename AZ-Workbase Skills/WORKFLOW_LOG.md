@@ -8036,3 +8036,23 @@ Now [deploy]
 
 ---
 
+## [2026-10-16 13:00] | Vá P6 `changeOwnPassword` + viết guide P6/P7 | [Status: Success]
+
+**Actor:** Agent
+**Files Changed:**
+- `backend/src/modules/users/users.service.ts` — `changeOwnPassword()` từ chối mật khẩu mới TRÙNG mật khẩu hiện tại (400), kiểm tra trước khi đụng DB
+- `backend/src/modules/users/users.service.spec.ts` — +2 spec (trùng mật khẩu bị từ chối; người bị buộc đổi không gỡ được cờ `must_change_password` bằng mật khẩu cũ)
+- `guides-content/profile.md` — sửa "tối thiểu 6 ký tự" (lỗi thời sau C1) thành quy tắc 8 ký tự; thêm mục "Khi hệ thống yêu cầu đổi mật khẩu"
+- `guides-content/nhan-vien.md` — "Hạn mật khẩu" ở Thêm nhân viên / Reset Pass; mục "Mật khẩu được cấp & hạn mật khẩu"
+- `guides-content/khach-hang.md` (mục 9), `guides-content/chia-data.md` — Hoàn tác thao tác hàng loạt (5 phút)
+
+**Root Cause:**
+> `PATCH users/me/password` được `@AllowWhenPasswordChangeRequired` nhưng không kiểm tra mật khẩu mới ≠ mật khẩu hiện tại, nên người bị buộc đổi có thể "đổi" sang đúng mật khẩu được cấp để gỡ cờ.
+
+**Notes:**
+> - Hành vi mới áp dụng cho MỌI lần tự đổi mật khẩu (không chỉ khi bị buộc đổi).
+> - Verify: BE `tsc` sạch; jest `modules/users` 140 test pass (gồm 2 spec mới); FE vitest `src/lib/guides` 27 file / 555 test pass.
+> - Guide: `khach-hang`, `chia-data` đang `published: true` -> `guides:sync` (dry-run trước) sẽ báo XUNG ĐỘT nếu DB đã bị sửa tay trên UI; `nhan-vien` vẫn `published: false`.
+
+---
+

@@ -898,6 +898,18 @@ describe('UsersService - Approval workflow (đăng ký công khai chờ duyệt)
       expect(mockUsersRepo.createQueryBuilder).not.toHaveBeenCalled();
     });
 
+    it('ném BadRequestException nếu mật khẩu mới TRÙNG mật khẩu hiện tại (không đụng DB)', async () => {
+      await expect(
+        service.changeOwnPassword(1, {
+          currentPassword: 'Cu@12345',
+          newPassword: 'Cu@12345',
+          confirmNewPassword: 'Cu@12345',
+        }),
+      ).rejects.toThrow('Mật khẩu mới phải khác mật khẩu hiện tại');
+      expect(mockUsersRepo.createQueryBuilder).not.toHaveBeenCalled();
+      expect(mockUsersRepo.update).not.toHaveBeenCalled();
+    });
+
     it('ném NotFoundException nếu không tìm thấy user', async () => {
       mockQueryBuilder.getOne.mockResolvedValue(null);
 
@@ -1753,6 +1765,16 @@ describe('UsersService - Approval workflow (đăng ký công khai chờ duyệt)
     });
 
     describe('changeOwnPassword (đổi trong hồ sơ) cũng gỡ cờ buộc đổi', () => {
+      it('mật khẩu mới trùng mật khẩu được cấp -> bị từ chối, KHÔNG gỡ cờ must_change_password', async () => {
+        mockQueryBuilder.getOne.mockResolvedValue({ id: 1, name: 'A', password: await bcrypt.hash('Cu@12345', 10) });
+        const before = policySql().length;
+        await expect(
+          service.changeOwnPassword(1, { currentPassword: 'Cu@12345', newPassword: 'Cu@12345', confirmNewPassword: 'Cu@12345' }),
+        ).rejects.toThrow(BadRequestException);
+        expect(policySql().length).toBe(before);
+        expect(policySql().some((c: any[]) => String(c[0]).includes('must_change_password = 0'))).toBe(false);
+      });
+
       it('thành công -> chạy UPDATE tắt must_change_password', async () => {
         mockQueryBuilder.getOne.mockResolvedValue({ id: 1, name: 'A', password: await bcrypt.hash('Cu@12345', 10) });
         await service.changeOwnPassword(1, { currentPassword: 'Cu@12345', newPassword: 'Moi@12345', confirmNewPassword: 'Moi@12345' });

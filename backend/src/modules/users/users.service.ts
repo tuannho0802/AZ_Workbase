@@ -1428,6 +1428,12 @@ export class UsersService {
     if (dto.newPassword !== dto.confirmNewPassword) {
       throw new BadRequestException('Mật khẩu mới nhập lại không khớp');
     }
+    // P6: endpoint này được `@AllowWhenPasswordChangeRequired` nên PHẢI chặn mật khẩu mới trùng mật khẩu hiện tại - nếu không,
+    // người bị buộc đổi chỉ cần "đổi" sang đúng mật khẩu được cấp là gỡ được cờ (giống quy tắc ở `changePasswordRequired`).
+    // So 2 chuỗi người dùng vừa gửi -> không cần đụng DB, không lộ thông tin gì về mật khẩu thật.
+    if (dto.newPassword === dto.currentPassword) {
+      throw new BadRequestException('Mật khẩu mới phải khác mật khẩu hiện tại');
+    }
 
     const user = await this.usersRepository
       .createQueryBuilder('user')

@@ -83,6 +83,8 @@ Bấm vào dòng khách. Khung chi tiết có các tab:
 
 Cột **Trạng thái** là ô chọn: **bấm đổi ngay trên bảng**, không cần mở form.
 
+Đổi cho nhiều khách cùng lúc: tick chọn các dòng rồi bấm **Đổi trạng thái (số dòng)** (trên màn hình nhỏ hơn nút ghi **Đổi status**), chọn trạng thái và bấm **Đổi trạng thái**. Làm xong có thể **Hoàn tác** trong 5 phút, xem mục 9.
+
 ### 5. Chia data cho Sales
 
 1. Tick chọn các dòng khách trong bảng (chức năng này dùng trên máy tính).
@@ -98,6 +100,7 @@ Cần nhớ:
   - *Phòng ban*: khách thuộc phòng ban bạn quản lý.
   - *Của tôi*: khách bạn là Sales chính, hoặc khách bạn tạo mà chưa ai nhận.
 - Khách nằm ngoài phạm vi sẽ báo lỗi riêng cho từng khách; các khách hợp lệ vẫn được gán.
+- Gán nhầm thì bấm **Hoàn tác** trong thông báo vừa hiện, trong vòng 5 phút (xem mục 9).
 
 Ngoài ra có trang riêng cho việc chia data: **Chia Data** ở menu.
 
@@ -128,6 +131,17 @@ Người có quyền **Xoá khách hàng** (mặc định là Admin) có cột *
 ```az-demo
 row-actions
 ```
+
+### 9. Hoàn tác thao tác hàng loạt (trong 5 phút)
+
+Sau khi **Đổi trạng thái** hoặc **Gán cho Sales** cho nhiều khách, thông báo thành công có nút **Hoàn tác** kèm đồng hồ đếm ngược, ví dụ *Đã cập nhật 12 khách hàng — Hoàn tác (còn 4:58)*.
+
+- Bấm **Hoàn tác** thì các khách được trả về đúng như **trước** thao tác: trạng thái cũ, hoặc Sales chính và Sales phụ cũ.
+- Chỉ **người vừa làm thao tác** (hoặc Admin) hoàn tác được. Nút chỉ nằm trong thông báo này nên nếu tải lại trang hoặc hết 5 phút thì không còn cách hoàn tác.
+- Khách **bị bỏ qua** nếu đã được sửa sau thao tác (để không ghi đè thay đổi của người khác), đã vào **Thùng rác** hoặc không còn tồn tại. Kết quả hiện dạng *Đã hoàn tác X khách hàng; bỏ qua Y ...* kèm lý do của khách đầu tiên bị bỏ qua.
+- Một thao tác chỉ hoàn tác **một lần**. Bấm lại sẽ báo thao tác đã được hoàn tác.
+- Việc hoàn tác được ghi vào **Nhật ký hệ thống**.
+- Chỉ áp dụng cho **đổi trạng thái hàng loạt** và **gán Sales** (kể cả gán thêm Sales trong tab **Chia data** của chi tiết khách). Xoá khách, nhập Excel và gỡ UTM hàng loạt **không** có hoàn tác.
 
 ## Giải thích các cột của bảng
 

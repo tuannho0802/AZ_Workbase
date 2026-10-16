@@ -66,10 +66,27 @@ profile-edit viewer=admin
 ## Đổi mật khẩu
 
 1. Bấm **Đổi mật khẩu**.
-2. Nhập **Mật khẩu hiện tại**, **Mật khẩu mới** (tối thiểu 6 ký tự) và **Nhập lại mật khẩu mới** (phải khớp).
+2. Nhập **Mật khẩu hiện tại**, **Mật khẩu mới** (tối thiểu 8 ký tự, có chữ hoa, chữ thường, số và ký tự đặc biệt; **phải khác** mật khẩu hiện tại) và **Nhập lại mật khẩu mới** (phải khớp).
 3. Bấm **Đổi mật khẩu** ở cuối cửa sổ.
 
 Sau khi đổi, hệ thống thu hồi phiên đăng nhập đã lưu, nên các thiết bị khác sẽ phải **đăng nhập lại bằng mật khẩu mới**. Nếu quên mật khẩu hiện tại, nhờ Admin đặt lại mật khẩu cho bạn.
+
+## Khi hệ thống yêu cầu đổi mật khẩu
+
+Có hai trường hợp bạn bị đưa thẳng sang trang **Đổi mật khẩu để tiếp tục** ngay sau khi đăng nhập, và chưa vào được các trang khác:
+
+- Tài khoản do Admin (hoặc người khác) **tạo**, hoặc mật khẩu vừa được **đặt lại** cho bạn: thông báo là **Bạn cần đổi mật khẩu được cấp**.
+- Mật khẩu của bạn **hết hạn** (nếu Admin đặt hạn cho mật khẩu): thông báo là **Mật khẩu của bạn đã hết hạn**.
+
+Cách làm:
+
+1. Nhập **Mật khẩu được cấp** (mật khẩu Admin đưa cho bạn hoặc mật khẩu hiện tại).
+2. Nhập **Mật khẩu mới** và **Nhập lại mật khẩu mới** (phải khớp). Mật khẩu mới theo cùng quy tắc ở mục trên và **phải khác** mật khẩu được cấp.
+3. Bấm **Đổi mật khẩu**. Đổi xong, bạn vào hệ thống bình thường; các thiết bị khác phải đăng nhập lại.
+
+Chưa muốn đổi lúc này thì bấm **Đăng xuất**. Nếu mật khẩu có hạn, đến hạn bạn sẽ bị yêu cầu đổi lại, và hạn mới được tính lại với **cùng số ngày** như lúc Admin đặt.
+
+Tài khoản **tự đăng ký** không bị buộc đổi mật khẩu và mật khẩu không hết hạn.
 
 ## Ảnh đại diện
 
@@ -101,6 +118,8 @@ Mục này **tự động** liệt kê các nhóm mà bạn là **Quản lý ch�
 - **Không có nút Chỉnh sửa**: tài khoản của bạn chưa có quyền sửa thông tin cá nhân (`profile.edit_info`) hoặc Email (`profile.edit_email`).
 - **Ô Email bị khoá**: chỉ Admin (mặc định) được đổi Email, nhờ Admin đổi hoặc mở quyền.
 - **Không có nút Đổi mật khẩu**: thiếu quyền `profile.change_password`.
+- **Đăng nhập xong bị đưa sang trang "Đổi mật khẩu để tiếp tục"**: tài khoản của bạn mới được tạo, vừa bị đặt lại mật khẩu, hoặc mật khẩu đã hết hạn. Đổi mật khẩu theo mục **Khi hệ thống yêu cầu đổi mật khẩu**.
+- **Báo "Mật khẩu mới phải khác mật khẩu hiện tại"**: bạn nhập mật khẩu mới trùng mật khẩu đang dùng, hãy chọn mật khẩu khác.
 - **Không đổi được ảnh đại diện**: thiếu quyền `profile.edit_avatar`, hoặc ảnh sai định dạng / quá dung lượng.
 - **Không thấy danh sách nhân viên**: thiếu quyền Xem nhân viên (`users.view`), trang chỉ hiện Profile của bạn.
 - **Mục Fanpage / Group trống**: bạn chưa được gán làm Quản lý chính/phụ của nhóm nào.
