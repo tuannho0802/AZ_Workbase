@@ -11,6 +11,7 @@ import { UiVisibilityScopeQueryDto } from './dto/ui-visibility-scope-query.dto';
 import { getElementKeysForResource, isValidResource } from './ui-visibility.constants';
 import { PermissionsVersionService } from '../permissions/permissions-version.service';
 import { AuditService } from '../audit/audit.service';
+import { registerCacheProbe } from '../../common/utils/cache-probe-registry';
 
 /**
  * ⚠️ Đọc PLAN_POSITION_FIELD_VISIBILITY_ASSIGNMENT_GROUPS.md mục 2.1/2.2/3.4
@@ -40,6 +41,7 @@ interface CacheEntry {
 export class UiVisibilityService {
   // key = `${roleCode}:${resource}:${departmentId ?? 'global'}:${positionId ?? 'nopos'}`
   private cache = new Map<string, CacheEntry>();
+  private readonly cacheProbeKey = registerCacheProbe({ key: 'ui_visibility', label: 'Ẩn/hiện giao diện theo vai trò', ttlSeconds: CACHE_TTL_MS / 1000, size: () => this.cache.size });
 
   constructor(
     @InjectRepository(UiVisibilityRule)

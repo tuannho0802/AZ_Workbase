@@ -44,6 +44,7 @@ export default function CommandPalette({ open, onClose }: CommandPaletteProps) {
 function CommandPaletteBody({ onClose }: { onClose: () => void }) {
   const router = useRouter();
   const role = useAuthStore((s) => s.user?.role);
+  const isRootAdmin = useAuthStore((s) => s.user?.isRootAdmin);
   const { can } = useMyPermissions();
   const { token } = theme.useToken();
 
@@ -52,7 +53,7 @@ function CommandPaletteBody({ onClose }: { onClose: () => void }) {
   const inputRef = useRef<InputRef>(null);
   const listRef = useRef<HTMLDivElement>(null);
 
-  const allItems = useMemo(() => buildPaletteItems(role, can), [role, can]);
+  const allItems = useMemo(() => buildPaletteItems(role, can, isRootAdmin), [role, can, isRootAdmin]);
   const results = useMemo(() => filterPaletteItems(allItems, query), [allItems, query]);
   const safeIndex = results.length === 0 ? -1 : Math.min(activeIndex, results.length - 1);
   const activeItem = safeIndex >= 0 ? results[safeIndex] : undefined;

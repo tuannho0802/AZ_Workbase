@@ -241,6 +241,8 @@ export default function DashboardLayout({
       // Thiếu nhánh này thì /security-activity rơi về default 'customers' -> Header hiện
       // "Khách hàng" và sidebar sáng nhầm mục Khách hàng (key khớp nav-config.tsx).
       newKey = 'security-activity';
+    } else if (pathname.includes('/system-health')) {
+      newKey = 'system-health';
     } else if (pathname.includes('/chia-data')) {
       newKey = 'chia-data';
     } else if (pathname.includes('/customers/reports/invalid-data')) {
@@ -389,7 +391,7 @@ export default function DashboardLayout({
             // Toàn bộ mục còn lại lấy từ nav-config.tsx - CÙNG 1 nguồn với
             // trang chủ (/) - sửa role-gate hay thêm/bớt mục chỉ cần sửa 1
             // chỗ duy nhất, không lệch giữa sidebar và trang chủ.
-            ...getVisibleNavItems(user?.role, can).map((item) => ({
+            ...getVisibleNavItems(user?.role, can, user?.isRootAdmin).map((item) => ({
               key: item.key,
               icon: item.icon,
               label: (

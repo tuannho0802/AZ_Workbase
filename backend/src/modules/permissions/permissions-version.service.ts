@@ -3,6 +3,7 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { In, Repository } from 'typeorm';
 import { waitUntil } from '@vercel/functions';
 import { Setting } from '../../database/entities/setting.entity';
+import { registerCacheProbe } from '../../common/utils/cache-probe-registry';
 
 export const PERMISSIONS_VERSION_KEY = 'permissions_version';
 /**
@@ -68,6 +69,7 @@ export class PermissionsVersionService {
   // [AGENT] OLD CODE (giữ lại để rollback): private cached: { value: number; expiresAt: number } | null = null;
   // [AGENT] NEW CODE (9D): 1 bản chụp chung cho permissions_version + refdata_version:* -> `permSig` và `refSig` dùng CHUNG 1 query.
   private cached: { snapshot: VersionSnapshot; expiresAt: number } | null = null;
+  private readonly cacheProbeKey = registerCacheProbe({ key: 'permissions_version', label: 'Phiên bản quyền / epoch hệ thống', ttlSeconds: PERMISSIONS_VERSION_CACHE_TTL_MS / 1000, size: () => (this.cached ? 1 : 0) });
 
   // [PERF] Single-flight: `poll` gọi get/getRefSig/getEpoch + mỗi lần kiểm quyền đều gọi `getEpoch()` song song -> khi cache hết hạn
   // TRƯỚC ĐÂY mỗi lời gọi tự query `settings` (cache chỉ ghi SAU khi query xong) = nhiều query y hệt cùng lúc trên pool 3 kết nối.

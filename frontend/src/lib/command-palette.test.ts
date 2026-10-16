@@ -151,3 +151,14 @@ describe('isPaletteHotkey - key không hợp lệ', () => {
     expect(isPaletteHotkey(evt)).toBe(false);
   });
 });
+
+describe('buildPaletteItems - mục Root Admin', () => {
+  it('chỉ hiện Sức khoẻ hệ thống cho Root Admin', () => {
+    const keys = (root?: boolean, role = 'admin') => buildPaletteItems(role, () => true, root).map((i) => i.key);
+    expect(keys(true)).toContain('system-health');
+    expect(keys(false)).not.toContain('system-health');
+    expect(keys(undefined)).not.toContain('system-health');
+    expect(keys(true, 'manager')).not.toContain('system-health');
+  });
+});
+

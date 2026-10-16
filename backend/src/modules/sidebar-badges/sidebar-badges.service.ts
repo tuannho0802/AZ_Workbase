@@ -7,6 +7,7 @@ import { PeriodicTasksService } from '../periodic-tasks/periodic-tasks.service';
 import { PermissionsVersionService } from '../permissions/permissions-version.service';
 import { PermissionScope } from '../../database/entities/role-permission.entity';
 import { Role } from '../../common/enums/role.enum';
+import { registerCacheProbe } from '../../common/utils/cache-probe-registry';
 
 /**
  * Số đếm cho badge sidebar - MỖI field CHỈ có mặt khi người gọi có permission
@@ -65,6 +66,10 @@ export class SidebarBadgesService {
   private readonly invalidDataCache = new Map<string, { value: number; expiresAt: number }>();
   // [Giảm tải poll] cache kết quả getBadges theo user + single-flight (xem SIDEBAR_BADGES_CACHE_DEFAULT_TTL_MS).
   private readonly badgesCache = new Map<string, { value: SidebarBadges; expiresAt: number }>();
+  private readonly cacheProbeKeys = [
+    registerCacheProbe({ key: 'sidebar_invalid_data', label: 'Badge dữ liệu lỗi (sidebar)', ttlSeconds: INVALID_DATA_CACHE_TTL_MS / 1000, size: () => this.invalidDataCache.size }),
+    registerCacheProbe({ key: 'sidebar_badges', label: 'Badge sidebar theo người dùng', ttlSeconds: sidebarBadgesCacheTtlMs() / 1000, size: () => this.badgesCache.size }),
+  ];
   private readonly badgesInflight = new Map<string, Promise<{ out: SidebarBadges; failed: boolean }>>();
   /** Tăng mỗi lần xoá cache: kết quả của lượt tính BẮT ĐẦU TRƯỚC khi có ghi sẽ không được ghi vào cache. */
   private badgesCacheGen = 0;

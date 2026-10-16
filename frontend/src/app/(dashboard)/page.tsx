@@ -40,7 +40,7 @@ export default function HomePage() {
 
   // Cùng 1 danh sách + role-gate với Sidebar (lib/nav-config.tsx) - "sidebar
   // có gì thì trang chủ có đó" theo đúng yêu cầu, không định nghĩa lại.
-  const items = getVisibleNavItems(user?.role, can);
+  const items = getVisibleNavItems(user?.role, can, user?.isRootAdmin);
 
   // ── Trang trí lại khối chào mừng: Tag màu Vai trò/Phòng ban/Vị trí ──
   // Trước đây chỉ có 1 dòng text xám ("Employee") lấy tên role từ map

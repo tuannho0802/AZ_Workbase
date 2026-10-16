@@ -49,10 +49,11 @@ export function normalizeVietnamese(text: string): string {
 export function buildPaletteItems(
   role: string | undefined,
   can?: (permissionKey: string) => boolean,
+  isRootAdmin?: boolean,
 ): PaletteItem[] {
   return [
     HOME_PALETTE_ITEM,
-    ...getVisibleNavItems(role, can).map((item) => ({
+    ...getVisibleNavItems(role, can, isRootAdmin).map((item) => ({
       key: item.key,
       label: item.label,
       description: item.description,

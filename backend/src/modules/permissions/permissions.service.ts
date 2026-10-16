@@ -3,6 +3,7 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, IsNull } from 'typeorm';
 import { RolePermission, PermissionScope } from '../../database/entities/role-permission.entity';
 import { PermissionsVersionService } from './permissions-version.service';
+import { registerCacheProbe } from '../../common/utils/cache-probe-registry';
 
 /**
  * ⚠️ Đọc PLAN_POSITION_FIELD_VISIBILITY_ASSIGNMENT_GROUPS.md mục 2.2/3.3
@@ -33,6 +34,7 @@ interface CacheEntry {
 export class PermissionsService {
   // key = `${roleCode}:${departmentId ?? 'global'}`
   private cache = new Map<string, CacheEntry>();
+  private readonly cacheProbeKey = registerCacheProbe({ key: 'permissions', label: 'Ma trận quyền', ttlSeconds: CACHE_TTL_MS / 1000, size: () => this.cache.size });
   // [PERF] Single-flight: SidebarBadges kiểm 6 quyền song song cùng cacheKey; cache chỉ ghi SAU khi query xong nên TRƯỚC ĐÂY
   // mỗi lần cache hết hạn (TTL 30s < chu kỳ poll) bắn 6 query JOIN y hệt cùng lúc. Giờ dùng chung 1 query đang chạy.
   // `gen` tăng ở invalidate() để query cũ đang bay không ghi đè cache vừa xoá.

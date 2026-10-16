@@ -1,3 +1,4 @@
+import { registerCacheProbe } from './cache-probe-registry';
 /**
  * Cache ngắn hạn (theo TỪNG instance serverless) tập `sid` (mã phiên) còn hiệu lực của mỗi user - PLAN P5.
  * `JwtStrategy.validate()` dùng nó để biết access token có `sid` đã bị thu hồi chưa mà KHÔNG thêm 1 query/request.
@@ -11,6 +12,7 @@ const TTL_MS = 15_000;
 const MAX_ENTRIES = 500;
 
 const store = new Map<number, { sids: Set<string>; expiresAt: number }>();
+registerCacheProbe({ key: 'session_alive', label: 'Phiên còn hiệu lực (sid)', ttlSeconds: TTL_MS / 1000, size: () => store.size });
 
 export function getCachedSessionIds(userId: number): Set<string> | undefined {
     const hit = store.get(userId);

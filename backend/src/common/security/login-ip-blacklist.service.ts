@@ -3,6 +3,7 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { LoginIpBlacklist } from '../../database/entities/login-ip-blacklist.entity';
 import { normalizeIp } from './client-ip';
+import { registerCacheProbe } from '../utils/cache-probe-registry';
 
 export interface BlacklistRow {
     id: number;
@@ -33,6 +34,7 @@ export const IP_BLACKLIST_PURGE_AFTER_DAYS = 30;
 export class LoginIpBlacklistService {
     private readonly logger = new Logger(LoginIpBlacklistService.name);
     private cache: { map: Map<string, number | null>; expiresAt: number } | null = null;
+    private readonly cacheProbeKey = registerCacheProbe({ key: 'ip_blacklist', label: 'Blacklist IP chủ động', ttlSeconds: IP_BLACKLIST_CACHE_TTL_MS / 1000, size: () => this.cache?.map.size ?? 0 });
     private inflight: Promise<Map<string, number | null>> | null = null;
 
     constructor(@InjectRepository(LoginIpBlacklist) private readonly repo: Repository<LoginIpBlacklist>) { }

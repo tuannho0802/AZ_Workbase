@@ -3,6 +3,7 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { LoginIpWhitelist } from '../../database/entities/login-ip-whitelist.entity';
 import { normalizeIp } from './client-ip';
+import { registerCacheProbe } from '../utils/cache-probe-registry';
 
 export interface WhitelistRow {
     id: number;
@@ -27,6 +28,7 @@ export const IP_WHITELIST_MAX_ENTRIES = 200;
 export class LoginIpWhitelistService {
     private readonly logger = new Logger(LoginIpWhitelistService.name);
     private cache: { ips: Set<string>; expiresAt: number } | null = null;
+    private readonly cacheProbeKey = registerCacheProbe({ key: 'ip_whitelist', label: 'Whitelist IP đăng nhập', ttlSeconds: IP_WHITELIST_CACHE_TTL_MS / 1000, size: () => this.cache?.ips.size ?? 0 });
     private inflight: Promise<Set<string>> | null = null;
 
     constructor(@InjectRepository(LoginIpWhitelist) private readonly repo: Repository<LoginIpWhitelist>) { }

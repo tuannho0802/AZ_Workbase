@@ -1,3 +1,4 @@
+import { registerCacheProbe } from './cache-probe-registry';
 /**
  * Cache ngắn hạn (theo từng instance serverless) cho trạng thái "phải đổi mật khẩu" mà JwtStrategy tra mỗi request.
  * Giống auth-user-cache.util.ts: TTL ngắn, xoá ngay ở instance hiện tại khi đổi/reset (instance khác trễ tối đa TTL).
@@ -13,6 +14,7 @@ export interface PasswordPolicyState {
 const TTL_MS = 15_000;
 const MAX_ENTRIES = 500;
 const store = new Map<number, { state: PasswordPolicyState; expiresAt: number }>();
+registerCacheProbe({ key: 'password_policy', label: 'Trạng thái mật khẩu (buộc đổi/hết hạn)', ttlSeconds: TTL_MS / 1000, size: () => store.size });
 
 export function getCachedPasswordPolicy(id: number): PasswordPolicyState | undefined {
   const hit = store.get(id);

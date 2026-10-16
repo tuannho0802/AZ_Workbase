@@ -111,3 +111,36 @@ describe('nav-config: getVisibleNavItems', () => {
     expect(getVisibleNavItems('employee', can).some((i) => i.key === 'quan-ly-utm')).toBe(true);
   });
 });
+
+describe('nav-config: mục chỉ-Root-Admin (P8 Sức khoẻ hệ thống)', () => {
+  const allow = () => true; // dù can() cho phép MỌI permission, mục này vẫn không phụ thuộc can()
+  const has = (items: ReturnType<typeof getVisibleNavItems>) => items.some((i) => i.key === 'system-health');
+
+  it('Root Admin (role admin + isRootAdmin) thấy', () => {
+    expect(has(getVisibleNavItems('admin', allow, true))).toBe(true);
+  });
+
+  it('Admin thường (không root) KHÔNG thấy', () => {
+    expect(has(getVisibleNavItems('admin', allow, false))).toBe(false);
+  });
+
+  it('không truyền isRootAdmin -> ẩn (an toàn mặc định)', () => {
+    expect(has(getVisibleNavItems('admin', allow))).toBe(false);
+  });
+
+  it('role khác admin KHÔNG thấy dù cờ isRootAdmin = true (lệch dữ liệu)', () => {
+    expect(has(getVisibleNavItems('manager', allow, true))).toBe(false);
+    expect(has(getVisibleNavItems('employee', allow, true))).toBe(false);
+  });
+
+  it('không dựa vào permission động: can() từ chối hết vẫn thấy khi là Root Admin', () => {
+    expect(has(getVisibleNavItems('admin', () => false, true))).toBe(true);
+  });
+
+  it('khai báo đúng: rootAdminOnly + trỏ /system-health, không có permission key (tránh khoá nhầm)', () => {
+    const item = NAV_ITEMS.find((i) => i.key === 'system-health');
+    expect(item).toMatchObject({ rootAdminOnly: true, path: '/system-health' });
+    expect(item?.permission).toBeUndefined();
+  });
+});
+

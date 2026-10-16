@@ -1,3 +1,4 @@
+import { registerCacheProbe } from './cache-probe-registry';
 /**
  * Cache ngắn hạn (theo TỪNG instance serverless) cho user mà JwtStrategy tra mỗi request.
  * Poll/badge/list chạy liên tục nên tra DB mỗi request tốn Active CPU + 1 lượt DB.
@@ -10,6 +11,7 @@ const TTL_MS = 10_000;
 const MAX_ENTRIES = 500;
 
 const store = new Map<number, { user: unknown; expiresAt: number }>();
+registerCacheProbe({ key: 'auth_user', label: 'Người dùng đăng nhập (JwtStrategy)', ttlSeconds: TTL_MS / 1000, size: () => store.size });
 
 export function getCachedAuthUser<T>(id: number): T | undefined {
   const hit = store.get(id);

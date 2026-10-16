@@ -9,6 +9,7 @@ import { LoginIpBlockService } from './login-ip-block.service';
 import { LoginIpWhitelistService } from './login-ip-whitelist.service';
 import { SecurityConfigService } from './security-config.service';
 import type { IpAccessStatus } from './ip-access-log.service';
+import { registerCacheProbe } from '../utils/cache-probe-registry';
 
 export interface ApiHitInput {
     ip: string | null;
@@ -52,6 +53,7 @@ export class IpAccessApiLogService {
     private readonly logger = new Logger(IpAccessApiLogService.name);
     private readonly buckets = new Map<string, BucketState>();
     private readonly ipStatusCache = new Map<string, { status: IpAccessStatus; expiresAt: number }>();
+    private readonly cacheProbeKey = registerCacheProbe({ key: 'ip_access_status', label: 'Trạng thái IP (log request API)', ttlSeconds: API_IP_STATUS_TTL_MS / 1000, size: () => this.ipStatusCache.size });
     private readonly geoRecorded = new Map<string, number>();
 
     constructor(

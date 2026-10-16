@@ -29,6 +29,7 @@ export const GUIDE_SLUG_BY_NAV_KEY: Readonly<Record<string, string>> = {
   'duyet-phep': 'duyet-phep',
   'audit-logs': 'nhat-ky-he-thong',
   'security-activity': 'hoat-dong-bao-mat',
+  'system-health': 'suc-khoe-he-thong',
   users: 'nhan-vien',
   'phong-ban': 'phong-ban',
   'vi-tri': 'vi-tri',

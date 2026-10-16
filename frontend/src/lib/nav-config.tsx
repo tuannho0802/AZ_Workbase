@@ -29,6 +29,7 @@ import {
   LineChartOutlined,
   LinkOutlined,
   ReadOutlined,
+  HeartOutlined,
 } from '@ant-design/icons';
 
 export interface NavItem {
@@ -72,6 +73,11 @@ export interface NavItem {
    * Cũng phải tự chặn tương ứng ở route guard của trang (chống mở bằng URL).
    */
   requireAll?: string[];
+  /**
+   * P8: mục CHỈ dành cho Root Admin (role `admin` VÀ `isRootAdmin`), HARDCODE - không qua bảng quyền (cùng điều kiện
+   * `RootAdminGuard` ở BE). Mặc định ẨN nếu chỗ gọi không truyền `isRootAdmin` (an toàn: không biết thì không hiện).
+   */
+  rootAdminOnly?: boolean;
 }
 
 /**
@@ -289,6 +295,16 @@ export const NAV_ITEMS: NavItem[] = [
     permission: 'audit.manage',
   },
   {
+    key: 'system-health',
+    label: 'Sức khoẻ hệ thống',
+    description: 'Dung lượng bảng, cron dọn dữ liệu, cache, phiên đăng nhập (chỉ Root Admin)',
+    icon: <HeartOutlined />,
+    path: '/system-health',
+    // Khớp RootAdminGuard ở GET /system/health - KHÔNG dùng permission động (không cấp được qua trang Phân quyền).
+    roles: ['admin'],
+    rootAdminOnly: true,
+  },
+  {
     key: 'users',
     label: 'Nhân viên',
     description: 'Quản lý tài khoản, duyệt đăng ký mới',
@@ -473,8 +489,11 @@ export const NAV_ITEMS: NavItem[] = [
 export const getVisibleNavItems = (
   role: string | undefined,
   can?: (permissionKey: string) => boolean,
+  isRootAdmin?: boolean,
 ) =>
   NAV_ITEMS.filter((item) => {
+    // P8: mục chỉ-Root-Admin - hardcode role + cờ, bỏ qua mọi logic permission bên dưới.
+    if (item.rootAdminOnly) return role === 'admin' && isRootAdmin === true;
     // Guard AND bổ sung: thiếu bất kỳ key nào (hoặc không có can()) -> ẩn.
     if (item.requireAll && !item.requireAll.every((key) => !!can?.(key))) return false;
     if (!item.permission) return !item.roles || item.roles.includes(role || '');

@@ -2,6 +2,7 @@ import { Injectable, Logger } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { SecurityConfig } from '../../database/entities/security-config.entity';
+import { registerCacheProbe } from '../utils/cache-probe-registry';
 
 export interface SecurityConfigValues {
     accountMaxFailedAttempts: number;
@@ -75,6 +76,7 @@ export function clampSecurityValue(
 export class SecurityConfigService {
     private readonly logger = new Logger(SecurityConfigService.name);
     private cache: { values: SecurityConfigValues; expiresAt: number } | null = null;
+    private readonly cacheProbeKey = registerCacheProbe({ key: 'security_config', label: 'Cấu hình bảo mật (security_config)', ttlSeconds: SECURITY_CONFIG_CACHE_TTL_MS / 1000, size: () => (this.cache ? 1 : 0) });
     private inflight: Promise<SecurityConfigValues> | null = null;
 
     constructor(@InjectRepository(SecurityConfig) private readonly repo: Repository<SecurityConfig>) { }
