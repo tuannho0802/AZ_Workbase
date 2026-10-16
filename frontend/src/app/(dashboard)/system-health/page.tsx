@@ -19,7 +19,7 @@ const { Text } = Typography;
 function SectionError({ title }: { title: string }) {
   return (
     <Card title={title}>
-      <Alert type="warning" showIcon message="Không đọc được phần này" description="Các phần khác vẫn có số liệu. Bấm “Làm mới” để thử lại." />
+      <Alert type="warning" showIcon title="Không đọc được phần này" description="Các phần khác vẫn có số liệu. Bấm “Làm mới” để thử lại." />
     </Card>
   );
 }
@@ -90,7 +90,7 @@ export default function SystemHealthPage() {
         </Button>
       </Space>
 
-      {isError && <Alert type="error" showIcon message="Không tải được dữ liệu sức khoẻ hệ thống" />}
+      {isError && <Alert type="error" showIcon title="Không tải được dữ liệu sức khoẻ hệ thống" />}
       {isLoading && <Card loading />}
 
       {data && (
@@ -120,7 +120,7 @@ export default function SystemHealthPage() {
                       <Statistic title="Phản hồi" value={data.database.pingMs} suffix="ms" />
                     </Col>
                     <Col span={12}>
-                      <Statistic title="Máy chủ" value={data.database.serverVersion ?? '—'} valueStyle={{ fontSize: 18 }} />
+                      <Statistic title="Máy chủ" value={data.database.serverVersion ?? '—'} styles={{ content: { fontSize: 18 } }} />
                     </Col>
                   </Row>
                 </Card>
@@ -160,7 +160,7 @@ export default function SystemHealthPage() {
           ) : (
             <Card title="Cron dọn dữ liệu (retention)">
               {data.cron.warn && data.cron.warnReason && (
-                <Alert type="warning" showIcon style={{ marginBottom: 12 }} message={CRON_WARN_LABEL[data.cron.warnReason]} />
+                <Alert type="warning" showIcon style={{ marginBottom: 12 }} title={CRON_WARN_LABEL[data.cron.warnReason]} />
               )}
               <Descriptions size="small" column={{ xs: 1, md: 2 }}>
                 <Descriptions.Item label="Chu kỳ đang cài">{data.cron.intervalDays} ngày</Descriptions.Item>

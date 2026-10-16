@@ -7994,3 +7994,25 @@ Now [deploy]
 > - Không có migration mới (đã có index `created_at` và `(ip, created_at)`). SQL đã chạy thử trên MariaDB 10.11 với dữ liệu sát biên ngày VN.
 
 ---
+
+---
+
+## [2026-10-16 11:00] | P8 — Trang "Sức khoẻ hệ thống" (chỉ Root Admin) + hoàn tất tài liệu | [Status: Success]
+
+**Actor:** Agent
+**Files Changed (BE):**
+- `modules/system/system-health.service.ts` — mỗi phần (app, DB, bảng, cron, cache, phiên, bảo mật) chạy độc lập, lỗi 1 phần chỉ trả `{ error: true }`; cache bảng 5 phút, `fresh` tối thiểu cách 30 giây
+- `modules/system/system.controller.ts` — `GET /system/health` sau `JwtAuthGuard` + `RootAdminGuard` (không `@RequirePermission`)
+- `common/utils/cache-probe-registry.ts` — registry probe; 12 cache đăng ký (permissions, sidebar, auth_user, session_alive, password_policy, security_config, ip_*...)
+**Files Changed (FE):**
+- `app/(dashboard)/system-health/page.tsx` (+ test), `lib/api/system.api.ts`, `lib/nav-config.tsx` (`rootAdminOnly`), `layout.tsx`, `CommandPalette`, `guide-slugs.ts`, `utils/system-health-format.ts`
+- `page.tsx` sửa cảnh báo antd deprecated (`Alert message` -> `title`, `Statistic valueStyle` -> `styles.content`)
+**Docs:** `guides-content/suc-khoe-he-thong.md`, tick P8 trong `PLAN_RETENTION_SECURITY_ROADMAP.md`
+
+**Notes:**
+> - Verify thật: BE `tsc` sạch, jest `modules/system` + `common/utils` 17 suite / 146 test pass; FE vitest 4 file / 48 test pass; FE `tsc` chỉ còn lỗi `logo.png` có sẵn.
+> - Không migration mới. Thẻ Cron cần migration `1786300000000`; log IP cần `1786337000000`.
+> - Guide còn `published: false`: chạy `npm run guides:sync` (dry-run rồi `--apply`), đổi `true` khi đã đối chiếu.
+> - Số liệu phiên/cache là theo instance serverless đang trả lời.
+
+---

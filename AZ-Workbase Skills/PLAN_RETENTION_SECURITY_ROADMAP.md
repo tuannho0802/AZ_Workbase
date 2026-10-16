@@ -528,7 +528,7 @@ Thứ tự: **P1 → P2 → P3 → P4 → P5 → P6 → P7 → P8 → P9 → P10
 - [x] P3.7 Khoá IP chủ động (blacklist, có hạn/vĩnh viễn) + UI trang Nhân viên — *đã làm 2026-10-15; còn: chạy migration `1786336000000`, `guides:sync`, deploy*
 - [ ] P6 Buộc đổi mật khẩu + hạn mật khẩu + C1 (≥ 8 ký tự mọi nơi)
 - [ ] P7 Thao tác hàng loạt có Hoàn tác (5 phút)
-- [ ] P8 Trang Sức khoẻ hệ thống
+- [x] P8 Trang Sức khoẻ hệ thống — *đã làm 2026-10-16; không migration. `GET /system/health` + `/system-health` (chỉ Root Admin qua `RootAdminGuard`, không dùng permission động). Cache "ref-data" của plan = probe `permissions_version`. Còn: phụ thuộc migration `1786300000000` (cron_runs) và `1786337000000`; guide `suc-khoe-he-thong` đang `published: false` -> `guides:sync` rồi đổi `true` sau khi đối chiếu*
 - [ ] P9 Xuất/nhập cấu hình JSON
 - [ ] P10 `loading.tsx` + aria/phím tắt
 - [ ] (Để sau) C3 tách service · C4 giảm `any` · C5 spec controller · C6 README gốc · C7 thông báo đăng nhập
