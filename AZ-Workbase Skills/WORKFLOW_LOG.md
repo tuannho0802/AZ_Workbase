@@ -8056,3 +8056,27 @@ Now [deploy]
 
 ---
 
+
+## [2026-10-16 14:00] | Rà soát & cập nhật docs lỗi thời (README gốc/BE/FE, PERMISSIONS, SKILL_*) | [Status: Success]
+
+**Actor:** Agent
+**Files Changed:**
+- `README.md` — cây thư mục, Security Features, mục Phân quyền (RBAC động), bảng Module & API đầy đủ; `middleware.ts` -> `proxy.ts`
+- `backend/README.md` — cấu trúc `common/`, bảng module đầy đủ, script/cron, quy ước mật khẩu/hoàn tác/Root Admin
+- `frontend/README.md` — cây route/components/lib thật, `proxy.ts`, đã có test Vitest (bản cũ ghi "chưa có test FE")
+- `AZ-Workbase Skills/PERMISSIONS.md` — header, §2.15 (+ `GET /system/health`), thêm §2.16–§2.19, sửa chú thích đầu §2 (không còn `@Roles()` tĩnh), §4
+- `AZ-Workbase Skills/SKILL_NESTJS_BACKEND.md` — thay `RolesGuard`/`@Roles()` bằng `PermissionGuard`/`@RequirePermission()`; `console.*` -> `Logger`
+- `AZ-Workbase Skills/SKILL_NEXTJS_FRONTEND.md`, `SKILL_FILE_MANAGEMENT.md`, `SKILL_DATABASE_MANAGEMENT.md` — `proxy.ts`, cây thư mục, mốc migration mới nhất
+
+**Root Cause:**
+> Docs viết từ giai đoạn có ~10 module; sau đó thêm ~20 module (periodic-tasks, notifications, utms, guides, security/IP, bulk-operations, retention, system health...) mà README/skill không được cập nhật. Mẫu code trong SKILL_NESTJS vẫn dạy `@Roles()` dù code thật đã bỏ.
+
+**Solution:**
+> Đối chiếu trực tiếp controller/entity/package.json/vercel.json của repo vừa pull rồi sửa docs. Chỉ ghi điều đã đọc trong code; tránh lặp danh sách dễ lỗi thời (dùng lệnh `ls`).
+
+**Notes:**
+> - Chỉ sửa file .md, chưa chạy build/test (không đụng code). Chưa commit.
+> - Còn lại: §2.1–§2.9 của PERMISSIONS.md vẫn kể lại bằng `@Roles(...)` (đã thêm cảnh báo đầu §2, chưa viết lại từng mục); vài code mẫu trong SKILL_NEXTJS còn `console.*`.
+> - `README_AZWORKBASE_PROJECT.md` giữ nguyên (đã có banner "tài liệu lịch sử").
+
+---

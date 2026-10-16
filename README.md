@@ -21,89 +21,51 @@
 
 ## 📁 Cấu trúc thư mục
 
+> Cây dưới đây chỉ nêu các cấp quan trọng — danh sách đầy đủ đã nhiều lần lỗi thời, luôn lấy bằng lệnh:
+> `ls backend/src/modules`, `ls backend/src/database/entities`, `ls backend/src/database/migrations | sort | tail`,
+> `ls "frontend/src/app/(dashboard)"`.
+
 ```
 AZ-Workbase/
-│
-├── backend/                        # NestJS API Server (deploy: Vercel Serverless Function)
+├── backend/                        # NestJS API Server (deploy: Vercel Serverless Function, cron khai trong vercel.json)
 │   ├── src/
 │   │   ├── common/
-│   │   │   ├── decorators/         # @Roles(), @GetUser()
-│   │   │   ├── enums/              # Role enum
-│   │   │   ├── filters/            # Global exception filter
-│   │   │   └── guards/             # JwtAuthGuard, RolesGuard
-│   │   ├── config/
-│   │   │   └── database.config.ts  # TypeORM configuration
+│   │   │   ├── decorators/         # @RequirePermission(), @GetPermissionScope(), @GetUser(), @AllowWhenPasswordChangeRequired()
+│   │   │   ├── guards/             # JwtAuthGuard, PermissionGuard (RBAC động), RootAdminGuard, ThrottlerBehindProxyGuard
+│   │   │   ├── interceptors/       # CacheControl (ETag), PasswordChangeRequired
+│   │   │   ├── security/           # IP access log / whitelist / blacklist / block, IP geo, Swagger Basic auth, SecurityController
+│   │   │   ├── observability/      # Sentry (lọc PII), boot/DB timing
+│   │   │   ├── validators/         # password-policy (dùng chung cho 5 DTO mật khẩu)
+│   │   │   └── enums/, filters/, logger/, middleware/, utils/
+│   │   ├── config/                 # Cấu hình TypeORM
 │   │   ├── database/
 │   │   │   ├── entities/           # ⭐ Luôn đọc trước khi sửa Frontend
-│   │   │   │   ├── user.entity.ts
-│   │   │   │   ├── customer.entity.ts, customer-assignment.entity.ts, customer-note.entity.ts, customer-group-membership.entity.ts
-│   │   │   │   ├── department.entity.ts
-│   │   │   │   ├── deposit.entity.ts
-│   │   │   │   ├── leave-request.entity.ts
-│   │   │   │   ├── link-category.entity.ts, link-group.entity.ts, link-group-secondary-manager.entity.ts
-│   │   │   │   ├── media-source.entity.ts
-│   │   │   │   ├── attendance-log.entity.ts, zk-device-user-cache.entity.ts
-│   │   │   │   ├── audit-log.entity.ts
-│   │   │   │   └── setting.entity.ts
-│   │   │   ├── migrations/         # Schema migrations (bắt buộc, không sửa DB thủ công)
-│   │   │   └── seeds/              # Dữ liệu mẫu / import script
-│   │   ├── integrations/
-│   │   │   └── zk-device/          # Kết nối trực tiếp máy chấm công ZKTeco (giao thức TCP thô)
-│   │   ├── modules/
-│   │   │   ├── auth/               # Login, JWT, Refresh Token rotation
-│   │   │   ├── users/              # CRUD nhân viên, Profile cá nhân (RBAC — xem PERMISSIONS.md §2.2)
-│   │   │   ├── customers/          # CRUD khách hàng, Chia Data, Gán/Thu hồi (RBAC — xem PERMISSIONS.md §2.1, ĐÃ CHUẨN)
-│   │   │   ├── departments/        # Quản lý phòng ban (manager_user_id dùng cho scope RBAC)
-│   │   │   ├── deposits/           # Quản lý nạp tiền (FTD) của khách
-│   │   │   ├── leave-requests/     # Xin nghỉ phép + duyệt theo cấp bậc
-│   │   │   ├── link-groups/        # Category/Group liên kết (Zalo/FB/Threads...) + checklist đã-join
-│   │   │   ├── media-sources/      # Danh mục "Nguồn" (Facebook/TikTok/Google...) cho form khách hàng
-│   │   │   ├── permissions/        # RBAC động — danh mục permission
-│   │   │   ├── roles/              # RBAC động — role + role_permissions + department override
-│   │   │   ├── reports/            # Báo cáo tổng hợp
-│   │   │   ├── attendance-export/  # Xuất báo cáo chấm công
-│   │   │   ├── zk-device/          # Đồng bộ chấm công từ máy ZKTeco (pull + ADMS push)
-│   │   │   └── audit/              # Nhật ký audit log (ai làm gì, khi nào)
-│   │   ├── app.controller.ts       # Landing page tại "/"
+│   │   │   ├── migrations/         # Bắt buộc, không sửa DB thủ công
+│   │   │   └── seeds/, import/     # Seed / backfill / import Excel
+│   │   ├── integrations/zk-device/ # Kết nối trực tiếp máy chấm công ZKTeco (TCP thô)
+│   │   ├── modules/                # 1 module = 1 domain — bảng đầy đủ ở mục "Module & API chính" bên dưới
 │   │   └── main.ts                 # Bootstrap (CORS, Swagger, Pipes) + Vercel serverless handler
-│   ├── scripts/                    # Script test/tiện ích độc lập, KHÔNG phải code sản phẩm
-│   │   └── test-b2-presign.ts      # Test presigned URL Backblaze B2 (npm run b2:test-presign)
+│   ├── scripts/                    # guides-sync, generate-import-templates, sentry-smoke, test-b2-presign... (KHÔNG phải code sản phẩm)
 │   └── .env.development            # ⚠️ Không commit
 │
 ├── frontend/                       # Next.js 16 App
 │   ├── src/
-│   │   ├── app/
-│   │   │   ├── (auth)/login/       # Trang đăng nhập, đăng ký (register/), trạng thái chờ duyệt (account-status/)
-│   │   │   └── (dashboard)/        # Các trang sau login
-│   │   │       ├── layout.tsx      # Sidebar + Auth guard
-│   │   │       ├── customers/, chia-data/, trash-can/   # Khách hàng, chia data, thùng rác
-│   │   │       ├── users/          # Quản lý nhân viên + duyệt tài khoản đăng ký mới
-│   │   │       ├── profile/, nghi-phep/, duyet-phep/     # Profile, xin/duyệt nghỉ phép
-│   │   │       ├── nguon-media/, nhom-lien-ket/, nhom-toi-quan-ly/  # Nguồn, Category/Group liên kết, nhóm mình quản lý
-│   │   │       ├── attendance-device/   # Máy chấm công
-│   │   │       └── audit-logs/          # Nhật ký audit log
-│   │   ├── components/
-│   │   │   ├── common/             # Shared components (AntdAppProvider, SimpleList...)
-│   │   │   ├── customers/          # Customer-specific components
-│   │   │   └── link-groups/        # GroupManagersModal...
-│   │   ├── lib/
-│   │   │   ├── api/                # Axios instance + API methods (1 file / module BE)
-│   │   │   │   ├── axios-instance.ts   # ⭐ Interceptors, token attaching
-│   │   │   │   ├── auth.api.ts, users.api.ts, customers.api.ts, link-groups.api.ts, media-sources.api.ts...
-│   │   │   ├── hooks/              # React Query hooks (useUsers, useCustomers, useLinkGroups...)
-│   │   │   ├── stores/             # Zustand stores
-│   │   │   │   └── auth.store.ts   # ⭐ JWT token + Cookie persistence
-│   │   │   └── types/              # TypeScript interfaces
-│   │   └── middleware.ts           # ⭐ Route protection (Next.js Middleware)
+│   │   ├── app/(auth)/             # login, register, account-status, change-password-required
+│   │   ├── app/(dashboard)/        # Các trang sau login, route đặt tên tiếng Việt (danh sách: frontend/README.md)
+│   │   ├── components/             # common, customers, guides, leave-requests, link-groups, notifications, periodic-tasks, security, sessions, system, users, utms, audit
+│   │   ├── lib/                    # api (1 file / module BE), hooks, stores, types, permissions, guides, observability, utils
+│   │   ├── lib/nav-config.tsx      # ⭐ Sidebar/menu + gate quyền theo permission
+│   │   └── proxy.ts                # ⭐ Route protection (Next.js 16 đổi tên từ middleware.ts)
 │   └── .env.local                  # ⚠️ Không commit (NEXT_PUBLIC_API_URL...)
 │
-└── AZ-Workbase Skills/             # 🤖 Hệ thống hướng dẫn cho AI Agent
-    ├── SKILL_FILE_MANAGEMENT.md    # Giao thức thao tác của Agent
-    ├── SKILL_DATABASE_MANAGEMENT.md# Hướng dẫn quản lý Schema DB
-    ├── SKILL_NESTJS_BACKEND.md     # Patterns NestJS chuẩn cho dự án
-    ├── SKILL_NEXTJS_FRONTEND.md    # Patterns Next.js chuẩn cho dự án
-    ├── README_AZWORKBASE_PROJECT.md# Tài liệu dự án chi tiết
-    └── WORKFLOW_LOG.md             # Nhật ký tư duy & hành động chi tiết
+├── guides-content/                 # Nội dung Markdown cho trang "Hướng dẫn sử dụng" — đồng bộ lên DB bằng `npm run guides:sync` (backend/; dry-run trước, rồi `--apply`)
+│
+└── AZ-Workbase Skills/             # 🤖 Tài liệu cho AI Agent
+    ├── PERMISSIONS.md              # ⭐ Nguồn chân lý phân quyền (RBAC)
+    ├── SKILL_FILE_MANAGEMENT.md, SKILL_DATABASE_MANAGEMENT.md, SKILL_NESTJS_BACKEND.md, SKILL_NEXTJS_FRONTEND.md
+    ├── PLAN_*.md                   # Kế hoạch theo từng tính năng — trạng thái ghi ở đầu mỗi file
+    ├── README_AZWORKBASE_PROJECT.md# ⚠️ Roadmap gốc (lịch sử), không phản ánh tiến độ thật
+    └── WORKFLOW_LOG.md             # Nhật ký thay đổi (chỉ APPEND, không sửa entry cũ)
 ```
 
 ---
@@ -141,7 +103,12 @@ npm run dev             # Chạy trên http://localhost:3000
 - **Refresh Token Rotation**: Mỗi khi refresh token được sử dụng, một cặp token mới sẽ được phát và token cũ bị thu hồi.
 - **Reuse Detection**: Nếu một Refresh Token cũ được sử dụng lại (nghi ngờ bị đánh cắp), hệ thống sẽ ngay lập tức thu hồi TOÀN BỘ các phiên đăng nhập của người dùng đó (Single-session enforcement).
 - **Password Hashing**: Sử dụng Bcrypt (10 rounds).
-- **RBAC**: Phân quyền chặt chẽ dựa trên Role và Department.
+- **RBAC động**: quyền tra từ bảng `role_permissions` qua `@RequirePermission()` + `PermissionGuard` (xem mục Phân quyền bên dưới).
+- **Chính sách mật khẩu thống nhất** (`common/validators/password-policy.ts`, tối thiểu 8 ký tự) cho đăng ký / tạo / reset / đổi mật khẩu; có hạn mật khẩu và **buộc đổi mật khẩu** (`PasswordChangeRequiredInterceptor`, trang `/change-password-required`).
+- **Phiên đăng nhập**: xem thiết bị & đăng xuất cưỡng bức nhân viên (permission `users.sessions`).
+- **Theo dõi IP**: log IP đăng nhập/gọi API, whitelist / blacklist / khoá IP (`/api/security/*`, trang `/security-activity`).
+- **Swagger** `/api/docs` nằm sau Basic auth (chỉ `role = admin`); đặt `SWAGGER_ENABLED=false` để tắt hẳn. **Sentry** gom lỗi 5xx (lọc PII) ở cả BE và FE.
+- **Hoàn tác thao tác hàng loạt** trong 5 phút (`modules/bulk-operations`); **Retention** tự động dọn dữ liệu cũ (`modules/retention`); trang **Sức khoẻ hệ thống** chỉ Root Admin.
 
 ### Environment Variables cần thiết (Backend):
 ```env
@@ -166,7 +133,7 @@ B2_SECRET_ACCESS_KEY=your_application_key
 B2_BUCKET_AVATARS=az-imgs-avatars-workbase
 B2_BUCKET_LEAVE_ATTACHMENTS=az-imgs-leave-request-workbase
 ```
-> Danh sách đầy đủ (bao gồm cả `ZK_DEVICE_*`, `CRON_SECRET`) luôn xem `backend/.env.development.example` — bảng trên chỉ liệt kê phần cốt lõi để chạy được app.
+> Danh sách đầy đủ (bao gồm `ZK_DEVICE_*`, `CRON_SECRET`, `SENTRY_DSN`, `SWAGGER_ENABLED`...) luôn xem `backend/.env.development.example` — bảng trên chỉ liệt kê phần cốt lõi để chạy được app.
 
 ---
 
@@ -174,6 +141,14 @@ B2_BUCKET_LEAVE_ATTACHMENTS=az-imgs-leave-request-workbase
 
 > **Nguồn chân lý đầy đủ:** [`AZ-Workbase Skills/PERMISSIONS.md`](<./AZ-Workbase%20Skills/PERMISSIONS.md>)
 > — bảng dưới đây chỉ là tóm tắt nhanh, có thay đổi rule luôn sửa ở file PERMISSIONS.md trước.
+
+**Cơ chế hiện tại là RBAC động** — không còn `@Roles()` tĩnh ở controller:
+- `role` cố định (`admin`, `assistant`, `manager`, `employee`) cùng role tuỳ chỉnh; quyền nằm ở bảng `permissions` / `role_permissions`, route khai bằng `@RequirePermission('resource.action')`.
+- Ma trận nhiều tầng: **Toàn cục** → override theo **phòng ban** → override theo **vị trí** (ưu tiên cao nhất) — PERMISSIONS.md §1.7, §1.8. Mỗi permission có scope dữ liệu (vd `all`, `department`) lấy qua `@GetPermissionScope()`.
+- `role = admin` luôn có lối thoát hiểm; route hardcode Root Admin (`RootAdminGuard`: reset hệ thống, sức khoẻ hệ thống) không nằm trong ma trận.
+- FE ẩn/hiện UI bằng `can('permission.key')` (hook `useMyPermissions`), KHÔNG hardcode `role === 'admin'`. BE luôn là nơi chặn thật.
+
+Bảng dưới là **rule scope dữ liệu gốc** (PERMISSIONS.md §1); ma trận thật có thể đã được chỉnh ở trang Phân quyền.
 
 | Role | Xem (View) | Sửa (Create/Update) | Xoá |
 |---|---|---|---|
@@ -214,20 +189,35 @@ Agent đã được trang bị bộ Skills tại thư mục `AZ-Workbase Skills/
 
 ## 📌 Module & API chính
 
-> Danh sách đầy đủ + chi tiết request/response: Swagger tại `http://localhost:3001/api/docs` (local)
+> Danh sách đầy đủ + chi tiết request/response: Swagger tại `http://localhost:3001/api/docs` (local, cần đăng nhập admin)
 > hoặc domain backend + `/api/docs` (production). Bảng dưới đây chỉ liệt kê nhóm endpoint chính.
 
 | Module | Base path | Mô tả ngắn |
 |---|---|---|
-| Auth | `/api/auth/*` | `login`, `register`, `refresh` — JWT access + refresh token rotation |
-| Users | `/api/users/*` | CRUD nhân viên, profile, duyệt/từ chối tài khoản đăng ký mới |
-| Customers | `/api/customers/*` | CRUD khách hàng, chia data, gán/thu hồi, ghi chú, deposit, import Excel |
-| Departments | `/api/departments/*` | Quản lý phòng ban |
-| Leave Requests | `/api/leave-requests/*` | Xin nghỉ phép, duyệt đơn |
-| Link Groups | `/api/link-categories/*`, `/api/link-groups/*` | Category/Group liên kết, checklist đã-join, quản lý chính/phụ theo group |
+| Auth | `/api/auth/*` | `login`, `register`, `refresh`, `change-password-required` — JWT access + refresh token rotation |
+| Users | `/api/users/*` | CRUD nhân viên, profile, duyệt/từ chối tài khoản đăng ký, phiên đăng nhập (`:id/sessions`) |
+| Customers | `/api/customers/*` | CRUD khách hàng, chia data, gán/thu hồi, ghi chú, deposit, import/export Excel |
+| Customer Statuses | `/api/customer-statuses/*` | Danh mục status khách |
+| Assignment Groups | `/api/assignment-groups/*` | Nhóm phân công (cấu hình theo phòng ban / vị trí) |
+| Bulk Operations | `/api/bulk-operations/:id/undo` | Hoàn tác thao tác hàng loạt (≤ 5 phút) |
+| Departments / Positions | `/api/departments/*`, `/api/positions/*` | Phòng ban, vị trí |
+| Roles & UI Visibility | `/api/roles/*`, `/api/ui-visibility/*` | RBAC động: role, ma trận permission, override phòng ban/vị trí, ẩn UI theo role |
+| Leave Requests / Types | `/api/leave-requests/*`, `/api/leave-types/*` | Xin nghỉ phép, duyệt đơn, loại phép |
+| Link Groups | `/api/link-categories/*`, `/api/link-groups/*` | Category/Group liên kết, checklist đã-join, quản lý chính/phụ |
 | Media Sources | `/api/media-sources/*` | Danh mục "Nguồn" khách hàng |
-| ZK Device | `/api/zk-device/*`, `/iclock/*` | Đồng bộ chấm công (kéo chủ động + nhận đẩy tự động ADMS) |
+| UTMs | `/api/utms/*` | Quản lý UTM, quản lý chính/phụ, tích hợp khách hàng |
+| Periodic Tasks | `/api/periodic-tasks/*`, `/api/periodic-task-statuses/*`, `/api/periodic-tasks-performance/*` | Công việc định kỳ, trạng thái, hiệu suất; cron `/api/periodic-tasks-cron/auto-overdue` |
+| Notifications | `/api/notifications/*`, `/api/notification-broadcasts/*` | Hộp thư cá nhân + thông báo thủ công |
+| Guides | `/api/guides/*` | Hướng dẫn sử dụng (lọc theo role / vị trí / phòng ban / permission) |
+| Reports | `/api/reports/*` | Báo cáo tổng hợp (doanh số, chất lượng data, marketing) |
+| Storage / Uploads | `/api/storage/*`, `/api/uploads/*` | Dung lượng + thư viện media (Backblaze B2), presigned upload |
+| Sidebar | `/api/sidebar/poll`, `/api/sidebar/badges` | Badge/poll gộp cho sidebar |
+| Security | `/api/security/*` | IP whitelist / blacklist / block / geo / access log |
+| System | `/api/system/health`, `/api/system/reset`, `/api/system/retention-settings` | Sức khoẻ hệ thống, reset (Root Admin), cấu hình Retention; cron `/api/system-cron/retention` |
+| ZK Device | `/api/zk-device/*`, `/iclock/*`, `/api/zk-device-cron/*` | Đồng bộ chấm công (kéo chủ động + ADMS push + cron) |
+| Attendance Export | `/api/attendance-export/*` | Xuất báo cáo chấm công |
 | Audit | `/api/audit-logs/*` | Nhật ký audit log |
+| Hạ tầng | `/api/ping`, `/api/keep-alive`, `/api/public/*` | Endpoint nhẹ cho health-check / keep-alive (xem controller tương ứng) |
 
 Xem chi tiết cấu trúc từng module tại [`backend/README.md`](./backend/README.md) và
 [`frontend/README.md`](./frontend/README.md).

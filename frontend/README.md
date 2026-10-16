@@ -26,39 +26,36 @@ npm run build && npm run start   # build production để kiểm tra trước kh
 
 ## 2. Cấu trúc thư mục
 
+> Chỉ nêu các cấp quan trọng — danh sách route đầy đủ: `ls "src/app/(dashboard)"`.
+
 ```
 frontend/src/
 ├── app/
-│   ├── (auth)/                # Layout riêng, KHÔNG có sidebar
-│   │   ├── login/              # Đăng nhập
-│   │   ├── register/           # Tự đăng ký tài khoản (trạng thái pending chờ duyệt)
-│   │   └── account-status/     # Trang chờ khi tài khoản chưa được duyệt/bị từ chối
-│   └── (dashboard)/            # Layout có sidebar, bắt buộc đăng nhập (xem middleware.ts)
-│       ├── layout.tsx           # Sidebar + Auth guard
-│       ├── customers/           # Quản lý khách hàng (bảng chính, modal thêm/sửa, chi tiết)
-│       ├── chia-data/            # Chia/gán data cho Sales
-│       ├── trash-can/             # Khách hàng đã xoá mềm
-│       ├── users/                  # Quản lý nhân viên + tab duyệt tài khoản đăng ký mới
-│       ├── profile/                 # Trang profile cá nhân
-│       ├── nghi-phep/, duyet-phep/   # Xin nghỉ phép / Duyệt đơn nghỉ phép
-│       ├── nguon-media/               # Quản lý danh mục "Nguồn" khách hàng
-│       ├── nhom-lien-ket/              # Quản lý Category/Group liên kết (Zalo/FB/Threads...)
-│       ├── nhom-toi-quan-ly/            # Nhóm mà user hiện tại là Quản lý chính/phụ (xem PERMISSIONS.md §2.4)
-│       ├── attendance-device/            # Máy chấm công: trạng thái, map user, đồng bộ, bảng công
-│       └── audit-logs/                    # Nhật ký audit log
-├── components/
-│   ├── common/                  # Component dùng chung (AntdAppProvider, SimpleList...)
-│   ├── customers/                 # Component riêng cho module khách hàng (Form, các Tab trong Drawer chi tiết...)
-│   ├── link-groups/                # GroupManagersModal (quản lý chính/phụ theo group)
-│   └── audit/                       # Component hiển thị audit log
+│   ├── (auth)/                # Layout riêng, KHÔNG có sidebar: login, register, account-status, change-password-required
+│   └── (dashboard)/            # Layout có sidebar, bắt buộc đăng nhập (xem proxy.ts)
+│       ├── layout.tsx           # Sidebar + Auth guard (dùng lib/nav-config.tsx)
+│       ├── customers/, chia-data/, trash-can/, quan-ly-status-khach/   # Khách hàng, chia data, thùng rác, status khách
+│       ├── users/, profile/, phong-ban/, vi-tri/, phan-quyen/            # Nhân viên, profile, phòng ban, vị trí, phân quyền (RBAC)
+│       ├── nghi-phep/, duyet-phep/, quan-ly-loai-phep/                    # Nghỉ phép
+│       ├── nguon-media/, nhom-lien-ket/, nhom-toi-quan-ly/, quan-ly-utm/, quan-ly-phu-trach/
+│       ├── cong-viec-dinh-ky/, hieu-suat-cong-viec/, lich-su-cong-viec/, quan-ly-trang-thai-cong-viec/   # Công việc định kỳ
+│       ├── reports/, thong-bao/, huong-dan/                               # Báo cáo, thông báo, hướng dẫn sử dụng
+│       ├── attendance-device/                                              # Máy chấm công
+│       ├── audit-logs/, security-activity/, storage-img/, system-health/   # Audit, IP/phiên, lưu trữ ảnh, sức khoẻ hệ thống (Root Admin)
+│       └── error.tsx            # Error boundary theo vùng nội dung
+├── components/                # common, customers, guides, leave-requests, link-groups, notifications, periodic-tasks,
+│                                security, sessions, system, users, utms, audit
 ├── lib/
-│   ├── api/                     # 1 file `*.api.ts` / module BE, dùng chung `axios-instance.ts` (interceptor gắn token)
-│   ├── hooks/                     # React Query hooks (`use<Resource>`), quy ước fallback mảng rỗng phải dùng
-│   │                                hằng số module-level (`EMPTY_ARRAY`), KHÔNG dùng literal `[]` trực tiếp — xem mục 4
-│   ├── stores/                      # Zustand store (`auth.store.ts` — JWT token + cookie persistence)
-│   ├── types/                        # TypeScript interface khớp 1-1 với response BE
-│   └── utils/                         # Helper thuần (error-message.util.ts...)
-└── middleware.ts                # Next.js Middleware — chặn truy cập (dashboard) khi chưa đăng nhập, chặn (auth) khi đã đăng nhập
+│   ├── api/                    # 1 file `*.api.ts` / module BE, dùng chung `axios-instance.ts` (interceptor gắn token)
+│   ├── hooks/                   # React Query hooks (`use<Resource>`), quy ước fallback mảng rỗng phải dùng
+│   │                              hằng số module-level (`EMPTY_ARRAY`), KHÔNG dùng literal `[]` trực tiếp — xem mục 4
+│   ├── stores/                   # Zustand (auth.store.ts — JWT + cookie persistence, command-palette, notification-ui)
+│   ├── permissions/, nav-config.tsx   # Gate quyền: `can('permission.key')` qua `useMyPermissions`; mục nav khai `permission`/`rootAdminOnly`
+│   ├── guides/                   # Nội dung/slug hướng dẫn phía FE (guide-slugs.ts)
+│   ├── observability/            # Sentry options + lọc PII
+│   ├── types/, utils/            # Interface khớp 1-1 response BE; helper thuần
+│   └── query-*.ts, poll-schedule.ts   # Cấu hình React Query (persist/retry/stale) và lịch poll
+└── proxy.ts                    # Next.js 16 (đổi tên từ middleware.ts) — chặn (dashboard) khi chưa đăng nhập, chặn (auth) khi đã đăng nhập
 ```
 
 ---
@@ -79,8 +76,15 @@ npx tsc --noEmit    # Bắt buộc chạy sạch trước khi coi 1 thay đổi 
 npm run build        # next build — bắt lỗi mà tsc đơn thuần có thể bỏ sót (ESLint, RSC boundary...)
 ```
 
-Dự án hiện chưa có bộ test tự động cho Frontend (khác Backend đã có Jest) — mọi thay đổi UI/logic quan
-trọng cần built + click-through thủ công trước khi bàn giao.
+Test tự động dùng **Vitest** (file `*.test.ts(x)` cạnh code):
+
+```bash
+npm test             # vitest run — chạy toàn bộ
+npm run test:watch
+npx vitest run <đường-dẫn>   # chạy riêng 1 nhóm, vd src/lib/guides
+```
+
+Thay đổi UI/logic quan trọng vẫn cần build + click-through thủ công trước khi bàn giao.
 
 ---
 

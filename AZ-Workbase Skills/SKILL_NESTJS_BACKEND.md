@@ -388,13 +388,13 @@ import { ApiBearerAuth, ApiTags, ApiOperation, ApiResponse } from '@nestjs/swagg
 import { CustomersService } from './customers.service';
 import { CreateCustomerDto } from './dto/create-customer.dto';
 import { UpdateCustomerDto } from './dto/update-customer.dto';
-import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
-import { RolesGuard } from '../auth/guards/roles.guard';
-import { Roles } from '../auth/decorators/roles.decorator';
+import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
+import { PermissionGuard } from '../../common/guards/permission.guard';
+import { RequirePermission } from '../../common/decorators/require-permission.decorator';
 
 @ApiTags('customers')
 @ApiBearerAuth()
-@UseGuards(JwtAuthGuard, RolesGuard)
+@UseGuards(JwtAuthGuard, PermissionGuard)
 @Controller('customers')
 export class CustomersController {
   constructor(private readonly customersService: CustomersService) {}
@@ -446,7 +446,7 @@ export class CustomersController {
   @Delete(':id')
   @ApiOperation({ summary: 'Delete customer (soft delete)' })
   @ApiResponse({ status: 200, description: 'Customer deleted' })
-  @Roles('admin', 'manager')
+  @RequirePermission('customers.delete') // key PHẢI đã seed trong bảng `permissions`
   remove(@Param('id') id: string, @Request() req) {
     return this.customersService.remove(+id, req.user.id, req.user.role);
   }
@@ -503,37 +503,28 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
 }
 ```
 
-**Role Guard:**
+> Lưu ý: `validate()` ở trên là bản rút gọn — `req.user` thật còn mang thêm `departmentId`, `positionId`, `isRootAdmin`
+> (`PermissionGuard`/`RootAdminGuard` cần). Đọc code thật trong `modules/auth/strategies/`.
+
+**Permission Guard (RBAC động — thay cho `RolesGuard` / `@Roles()` cũ, đã bị xoá khỏi dự án):**
 
 ```typescript
-// common/guards/roles.guard.ts
-import { Injectable, CanActivate, ExecutionContext } from '@nestjs/common';
-import { Reflector } from '@nestjs/core';
-
-@Injectable()
-export class RolesGuard implements CanActivate {
-  constructor(private reflector: Reflector) {}
-
-  canActivate(context: ExecutionContext): boolean {
-    const requiredRoles = this.reflector.getAllAndOverride<string[]>('roles', [
-      context.getHandler(),
-      context.getClass(),
-    ]);
-
-    if (!requiredRoles) {
-      return true;
-    }
-
-    const { user } = context.switchToHttp().getRequest();
-    return requiredRoles.includes(user.role);
-  }
+// common/decorators/require-permission.decorator.ts, common/guards/permission.guard.ts
+@UseGuards(JwtAuthGuard, PermissionGuard)
+@Controller('customers')
+export class CustomersController {
+  @Delete(':id')
+  @RequirePermission('customers.delete')   // đúng 1 key "resource.action" mỗi route
+  remove(@Param('id') id: string, @GetUser() user) { /* ... */ }
 }
-
-// common/decorators/roles.decorator.ts
-import { SetMetadata } from '@nestjs/common';
-
-export const Roles = (...roles: string[]) => SetMetadata('roles', roles);
 ```
+
+- Key trong `@RequirePermission()` PHẢI đã được seed bằng migration vào bảng `permissions`. Key không tồn tại = khoá vĩnh viễn route
+  cho MỌI role trừ `admin`.
+- `role = admin` luôn có bypass (giữ ở `PermissionGuard`, `RolesService.getMyPermissions()` và mọi helper tự check quyền).
+- Scope dữ liệu (`all`/`department`...) lấy qua `@GetPermissionScope()`; route chỉ Root Admin dùng `RootAdminGuard` (không có key).
+- Route cố ý chỉ cần đăng nhập (vd `GET /sidebar/badges`, `GET /customer-statuses`) phải có comment giải thích lý do.
+- Chi tiết + ma trận 3 tầng (Toàn cục → phòng ban → vị trí): `PERMISSIONS.md` §1.7, §1.8.
 
 ### 4. Error Handling (MANDATORY)
 
@@ -547,11 +538,14 @@ import {
   ArgumentsHost,
   HttpException,
   HttpStatus,
+  Logger,
 } from '@nestjs/common';
 import { Request, Response } from 'express';
 
 @Catch()
 export class AllExceptionsFilter implements ExceptionFilter {
+  private readonly logger = new Logger(AllExceptionsFilter.name);
+
   catch(exception: unknown, host: ArgumentsHost) {
     const ctx = host.switchToHttp();
     const response = ctx.getResponse<Response>();
@@ -575,11 +569,11 @@ export class AllExceptionsFilter implements ExceptionFilter {
       message: message,
     };
 
-    // Log error for debugging
-    console.error('Exception caught:', {
-      ...errorResponse,
-      stack: exception instanceof Error ? exception.stack : null,
-    });
+    // Log bằng Logger (KHÔNG console.*), không log token/mật khẩu
+    this.logger.error(
+      `${request.method} ${request.url} -> ${status}`,
+      exception instanceof Error ? exception.stack : undefined,
+    );
 
     response.status(status).json(errorResponse);
   }
@@ -591,7 +585,7 @@ export class AllExceptionsFilter implements ExceptionFilter {
 ```typescript
 // main.ts
 import { NestFactory } from '@nestjs/core';
-import { ValidationPipe } from '@nestjs/common';
+import { Logger, ValidationPipe } from '@nestjs/common';
 import { SwaggerModule, DocumentBuilder } from '@nestjs/swagger';
 import { AppModule } from './app.module';
 import { AllExceptionsFilter } from './common/filters/http-exception.filter';
@@ -631,7 +625,7 @@ async function bootstrap() {
   SwaggerModule.setup('api/docs', app, document);
 
   await app.listen(process.env.PORT || 3001);
-  console.log(`🚀 Server running on port ${process.env.PORT || 3001}`);
+  new Logger('Bootstrap').log(`Server running on port ${process.env.PORT || 3001}`);
 }
 bootstrap();
 ```
@@ -1035,7 +1029,7 @@ async function bootstrap() {
 
   if (publicPath) {
     app.useStaticAssets(publicPath); // Register BEFORE setGlobalPrefix
-    console.log(`[Static] Serving from: ${publicPath}`);
+    new Logger('Static').log(`Serving from: ${publicPath}`);
   }
 
   app.setGlobalPrefix('api');

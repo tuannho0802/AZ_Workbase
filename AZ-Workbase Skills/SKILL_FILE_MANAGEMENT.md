@@ -84,27 +84,15 @@ const isActive = Number(record.isActive) === 1;
 AZ-Workbase/
 ├── backend/                        # NestJS API Server (Port 3001)
 │   ├── src/
-│   │   ├── common/                 # Guards, Filters, Decorators, Enums
+│   │   ├── common/                 # Guards (JwtAuth/Permission/RootAdmin), Filters, Decorators, Interceptors, security/ (IP), validators/, observability/
 │   │   ├── config/                 # TypeORM config
 │   │   ├── database/
 │   │   │   ├── entities/           # ⭐ NGUỒN SỰ THẬT - Luôn đọc trước
 │   │   │   ├── migrations/         # Schema version history
 │   │   │   └── seeds/              # Dữ liệu mẫu
-│   │   ├── modules/                 # ⚠️ Danh sách thật (ls backend/src/modules), KHÔNG chỉ 5 module dưới:
-│   │   │   ├── attendance-export/
-│   │   │   ├── audit/
-│   │   │   ├── auth/                # JWT Login/Refresh
-│   │   │   ├── customers/           # CRUD khách hàng + assignment (chia data) + deposit + import Excel
-│   │   │   ├── departments/         # Quản lý phòng ban
-│   │   │   ├── deposits/            # Quản lý nạp tiền
-│   │   │   ├── leave-requests/      # Nghỉ phép
-│   │   │   ├── link-groups/         # Category/Group liên kết + Quản lý chính/phụ
-│   │   │   ├── media-sources/       # Danh mục "Nguồn" (Facebook/TikTok/Google...)
-│   │   │   ├── permissions/         # RBAC động
-│   │   │   ├── reports/
-│   │   │   ├── roles/               # RBAC động
-│   │   │   ├── users/               # CRUD nhân viên
-│   │   │   └── zk-device/           # Máy chấm công
+│   │   ├── modules/                 # ⚠️ ~30 module — luôn `ls backend/src/modules`. Nhóm chính: customers, users, auth,
+│   │   │                            #    RBAC (roles, permissions, positions, ui-visibility), periodic-tasks, notifications, utms,
+│   │   │                            #    guides, reports, storage/uploads, retention/system/sidebar-badges, zk-device, audit...
 │   │   └── integrations/zk-device/  # Giao thức TCP thô, chạy ĐỘC LẬP không qua NestJS DI
 │   ├── scripts/                     # ⚠️ Nằm ở backend/scripts (NGANG HÀNG src/, KHÔNG lồng trong src/)
 │   │                                 #    Script test/tiện ích độc lập (vd test-b2-presign.ts)
@@ -114,17 +102,14 @@ AZ-Workbase/
 │   ├── src/
 │   │   ├── app/
 │   │   │   ├── (auth)/login/       # Trang đăng nhập
-│   │   │   └── (dashboard)/        # Các trang chính sau login — route thật dùng tên tiếng Việt:
-│   │   │       # customers, chia-data, phong-ban, nghi-phep, duyet-phep, nguon-media,
-│   │   │       # nhom-lien-ket, nhom-toi-quan-ly, phan-quyen, profile, reports, users,
-│   │   │       # audit-logs, attendance-device, trash-can
+│   │   │   └── (dashboard)/        # Các trang chính sau login — route tên tiếng Việt, luôn `ls "frontend/src/app/(dashboard)"`
 │   │   ├── components/             # Shared UI components
 │   │   └── lib/
 │   │       ├── api/                # Axios instance + API methods
 │   │       ├── hooks/              # React Query hooks
 │   │       ├── stores/             # Zustand state stores
 │   │       └── types/              # TypeScript interfaces
-│   └── src/middleware.ts           # Route protection (JWT check)
+│   └── src/proxy.ts                # Route protection (Next.js 16 đổi tên từ middleware.ts)
 │
 └── AZ-Workbase Skills/             # 🤖 Tài liệu hướng dẫn cho Agent
     ├── SKILL_FILE_MANAGEMENT.md    # (file này) — Giao thức thao tác
@@ -132,14 +117,14 @@ AZ-Workbase/
     ├── SKILL_NESTJS_BACKEND.md
     ├── SKILL_NEXTJS_FRONTEND.md
     ├── PERMISSIONS.md               # Nguồn chân lý RBAC — cập nhật liên tục
-    ├── PLAN_AVATAR_LEAVE_ATTACHMENT_BACKBLAZE_B2.md  # Plan đang triển khai (xem trạng thái ở đầu file)
+    ├── PLAN_*.md                    # Kế hoạch theo từng tính năng (xem trạng thái ở đầu mỗi file)
     ├── README_AZWORKBASE_PROJECT.md # ⚠️ Lịch sử/roadmap gốc, KHÔNG phản ánh tiến độ thật
     └── WORKFLOW_LOG.md             # Nhật ký tư duy & hành động
 ```
 
 > Cây thư mục trên chỉ minh hoạ các cấp quan trọng — không liệt kê hết mọi file. Khi cần danh sách đầy
 > đủ, luôn `ls`/`find` trực tiếp thay vì tin cây này (đã từng lỗi thời khi mới có 5 module, thực tế đã
-> lên 14 module tính tới lần rà soát 2026-09-08).
+> lên ~30 module tính tới lần rà soát 2026-10-16).
 
 ---
 

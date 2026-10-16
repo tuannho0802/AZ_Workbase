@@ -5,7 +5,8 @@
 > Nếu code hiện tại (BE hoặc FE) khác với tài liệu này → **tài liệu này đúng, code là bug cần sửa**,
 > trừ khi tài liệu chưa được cập nhật theo quyết định nghiệp vụ mới nhất (luôn hỏi lại nếu nghi ngờ).
 >
-> **Cập nhật lần cuối:** 2026-09-08 (sửa bug 403 thật: 2 route sub-resource của Customer -
+> **Cập nhật lần cuối:** 2026-10-16 (rà soát lại sau các phase Security/Retention P3–P8: thêm §2.16–§2.19, cập nhật §2.15 và §4,
+> đối chiếu trực tiếp controller). Trước đó 2026-09-08 (sửa bug 403 thật: 2 route sub-resource của Customer -
 > `group-memberships` PATCH và `deposits` POST - còn sót permission key cũ `customers.manage` sau cú tách
 > `customers.create`/`customers.edit`; cập nhật lại bảng permission catalogue mục 1.7 cho khớp. Trước đó,
 > 2026-09-04: migrate TOÀN BỘ 9+1 module sang `PermissionGuard`/`@RequirePermission()` — không còn module
@@ -314,9 +315,10 @@ truyền, bỏ qua dimension còn lại — có test khoá hành vi ở `permiss
 > xem mục 1.7). ⚠️ = chưa rà soát/chưa khớp — cần 1 phiên riêng để sửa. 🟦 = có mô hình quyền riêng theo
 > chủ đích (xem mục 1.6), không thuộc thang ✅/⚠️ thông thường.
 >
-> **9 module 2.1→2.9 dùng `@Roles()` tĩnh (enum `Role` cũ) — mục 2.10 (`roles`/`permissions`) là module
-> DUY NHẤT dùng cơ chế Permission tuỳ chỉnh động (mục 1.7). 2 cơ chế này SONG SONG, module nào dùng cơ
-> chế nào đã ghi rõ trong tiêu đề từng mục con — đừng nhầm lẫn khi đọc.**
+> **⚠️ Cập nhật 2026-10-16:** các đoạn nhắc `@Roles(...)` ở §2.1→§2.9 bên dưới là **lịch sử đối chiếu** (lúc rà soát 2026-08/09). Từ
+> 2026-09-04 toàn bộ module đã chuyển sang `@RequirePermission()` + `PermissionGuard` (xem mục 1.7); `@Roles()`/`RolesGuard` không còn
+> trong code. Phần BỀN VỮNG của mỗi mục con là **rule nghiệp vụ** (ai được làm gì); decorator cụ thể luôn kiểm tra lại bằng
+> `grep -n RequirePermission backend/src/modules/<module>/*.controller.ts` trước khi dựa vào.
 
 ### 2.1. Khách hàng / Chia Data (`modules/customers`) — ✅ ĐÃ KHỚP (6 sub-resource đã vá xong)
 
@@ -777,12 +779,46 @@ người chưa đọc") — xem `PLAN_NOTIFICATION_SYSTEM.md` mục 10.
 - **LOẠI TRỪ Role / Vị trí / Phòng ban (PLAN_GUIDES_CONTENT P6, migration `1786000000000-AddGuideExclusions`):** thêm cột `is_excluded TINYINT(1) NOT NULL DEFAULT 0` vào `guide_roles` / `guide_positions` / `guide_departments` (khoá chính `guide_id + <x>_id` giữ nguyên nên 1 mục chỉ ở 1 trạng thái). `0` = "được xem" (dữ liệu cũ giữ nguyên nghĩa), `1` = loại trừ. `GuideAccessHelper.canView`: sau `isPublished` + bypass `guides.manage`, nếu người xem thuộc BẤT KỲ danh sách loại trừ nào (role/vị trí/phòng ban) → **không xem được, loại trừ THẮNG "được xem"**; người xem không có giá trị ở chiều đó (vd chưa có vị trí) không bị loại trừ theo chiều đó. Vẫn trả **404**. Người có `guides.manage` vẫn xem được (xem trước) — trình soạn/trang chi tiết hiện tag đỏ "Loại trừ: <tên>". Ghi (`POST`/`PATCH`) nhận `excludedRoleIds/excludedPositionIds/excludedDepartmentIds`; cùng 1 mục vừa được xem vừa loại trừ (cùng chiều) → **400**; `PATCH` kiểm tra trùng trên danh sách CUỐI CÙNG (phía không gửi lấy từ DB), không gửi = giữ nguyên, `[]` = bỏ loại trừ, đổi 1 phía KHÔNG xoá phía kia. Response quản trị thêm `excluded*Ids` + `excluded*` (kèm màu). Audit create/update/delete ghi cả loại trừ. `guides:sync`: frontmatter `excludeRoles/excludePositions/excludeDepartments` (đưa vào hash CHỈ khi có dữ liệu → bài cũ giữ nguyên hash, không bị coi là sửa tay). Entity đọc qua `find()` (có `BooleanTransformer`); không đọc cột này bằng QueryBuilder.
 - Root Admin bypass: `GuidesService.canManage()` (cùng `PermissionGuard`).
 
-### 2.15. Reset hệ thống (`modules/system`) — ✅ HARDCODE Root Admin (không qua `role_permissions`)
+### 2.15. Reset + Sức khoẻ hệ thống (`modules/system`) — ✅ HARDCODE Root Admin (không qua `role_permissions`)
 
 - `POST /system/reset` gắn `JwtAuthGuard` + `RootAdminGuard` (role `admin` VÀ `isRootAdmin === true`), KHÔNG dùng `@RequirePermission` →
   không có key trong bảng `permissions`, không cấp được qua trang Phân quyền. Admin thường (`isRootAdmin=false`) bị 403.
 - FE: `SystemResetButton` ở Trang chủ tự ẩn nếu không phải Root Admin (`canSeeSystemReset`) — chỉ là lớp ẩn nút, chặn thật ở BE.
 - Cooldown 30 giây giữa 2 lần Reset (đọc từ `settings.updated_at`); mỗi lần Reset ghi audit `SYSTEM_RESET`.
+- **Sức khoẻ hệ thống (P8):** `GET /system/health` cùng `@Controller('system')` nên cùng `JwtAuthGuard` + `RootAdminGuard`, KHÔNG `@RequirePermission` →
+  chỉ Root Admin. FE trang `/system-health` khai `rootAdminOnly` ở `nav-config.tsx` (chỉ ẩn menu; chặn thật ở BE). Mỗi phần số liệu chạy độc lập,
+  lỗi 1 phần chỉ trả `{ error: true }`.
+
+### 2.16. Bảo mật: IP & phiên đăng nhập (`common/security`, `modules/users`) — ✅ (đối chiếu code 2026-10-16)
+
+- `SecurityController` (`/security/*`) gắn `JwtAuthGuard` + `PermissionGuard`; các route `ip-blocks`, `ip-whitelist`, `ip-blacklist`, `ip-geo/:ip`, `ip-access`
+  đều `@RequirePermission('users.manage')`. `GET /security/ip-access` còn gọi `assertGlobalScope()` (không cho scope hẹp).
+- Phiên đăng nhập: `GET/DELETE /users/:id/sessions` và `DELETE /users/:id/sessions/:sid` dùng permission riêng `users.sessions` (migration
+  `1786335000000-AddUsersSessionsPermission`, seed mặc định chỉ role `admin`; scope all/department). Field `sessionCount` ở danh sách chỉ trả cho người có `users.sessions`.
+- Swagger `/api/docs`: Basic auth, chỉ `role = admin` (xem `backend/README.md`) — không đi qua ma trận permission.
+- FE: trang `/security-activity` (ẩn/hiện chỉ để gọn mắt, BE mới là nơi chặn).
+
+### 2.17. Hoàn tác thao tác hàng loạt (`modules/bulk-operations`) — ✅
+
+- `POST /bulk-operations/:id/undo` có `JwtAuthGuard` + `PermissionGuard` nhưng **CỐ Ý không `@RequirePermission`**: người thực hiện đã qua permission của thao tác gốc;
+  service tự kiểm tra — chỉ **người thực hiện hoặc Admin**, trong **5 phút**. Mã lỗi: 403 (không phải người thực hiện/Admin), 404, 409 (đã hoàn tác), 410 (quá hạn). Trả `{ restored, skipped }`.
+- Handler đăng ký hiện có: `CUSTOMER_STATUS`, `CUSTOMER_ASSIGN` (dùng ở `/customers`, `/chia-data`, tab phân công). Retention dọn bản ghi quá hạn.
+
+### 2.18. Retention (`modules/retention`) — ✅
+
+- `GET /system/retention-settings`: `audit.view`. `PUT /system/retention-settings` và `POST /system/retention/run-now`: `audit.manage`.
+- Cron `GET /system-cron/retention`: KHÔNG qua JWT/permission; bắt buộc `CRON_SECRET` (header `x-cron-secret` hoặc `Authorization: Bearer`), sai secret → 401.
+  Chỉ chạy khi đến hạn theo chu kỳ cài (`retention_cron_interval_days`, mặc định 30, giới hạn 7–90 ngày).
+
+### 2.19. Các module phụ khác (đối chiếu controller 2026-10-16)
+
+| Module | Quy tắc hiện tại |
+|---|---|
+| `storage` | `storage.view`: xem dung lượng + thư viện media. `storage.manage`: refresh/đổi giới hạn dung lượng, presign upload, xoá / xoá hàng loạt media |
+| `ui-visibility` | `GET /ui-visibility/my-hidden` chỉ cần đăng nhập. `GET/PUT/DELETE /roles/:id/ui-visibility-rules`: `roles.manage` |
+| `sidebar-badges` | `GET /sidebar/poll`, `/sidebar/badges` chỉ `JwtAuthGuard`, KHÔNG `@RequirePermission` — quyền được kiểm TỪNG badge trong service |
+| `customer-statuses` | GET (danh sách/chi tiết) chỉ cần đăng nhập — cố ý, xem comment ở controller. POST/PATCH: `customer_statuses.manage`; DELETE: `customer_statuses.delete` |
+| `assignment-groups` | GET (danh sách/chi tiết/`:key/users`) chỉ cần đăng nhập — cố ý, xem comment ở controller. POST `assignment_groups.create`, PATCH `.update`, DELETE `.delete` |
 
 ## 3. Lịch sử quyết định & rà soát
 
@@ -807,22 +843,22 @@ người chưa đọc") — xem `PLAN_NOTIFICATION_SYSTEM.md` mục 10.
 | 2026-09-22 (Thông báo — Fix migration + Phase 2 Task + M2 FE) | (1) Sửa migration `1783400000000`: `ADD COLUMN IF NOT EXISTS` gộp nhiều cột gây lỗi cú pháp trên MySQL thật của chủ dự án (`ER_PARSE_ERROR`) — đổi sang pattern `queryRunner.getTable()`/`findColumnByName()` đã dùng ở `AddIsRootAdminToUsers`. (2) Hoàn thiện nốt Phase 2 (móc `emit()` cho Task, đã code từ lượt trước nhưng 3 spec phụ còn thiếu mock `notifyTaskSafely`/`emitTaskNotification`/`getSecondaryAssigneeIds` trong `mockTasksService`) — bổ sung xong cả 3 (`periodic-task-secondary-assignees/checklist-items/customers.service.spec.ts`). (3) Code xong Phase M2 (FE Thông báo thủ công): `notification-broadcasts.api.ts`, `useNotificationBroadcasts.ts`, `SendBroadcastModal.tsx` (Modal soạn & gửi — theo yêu cầu bổ sung của chủ dự án, dùng chung cho cả `/thong-bao/gui` lẫn nút "Soạn thông báo mới" ở `/thong-bao/da-gui`), 2 trang `/thong-bao/gui` + `/thong-bao/da-gui`, 2 mục nav mới (`nav-config.tsx`, permission động). ⚠️ **CHƯA chạy `tsc --noEmit`/`nest build`/`next build`/`jest` cho các thay đổi (2)+(3)** — chủ dự án yêu cầu tạm dừng chạy test trong phiên này, cần chạy đầy đủ ở lượt kế tiếp trước khi coi là "đã verify" | Xem mục 2.12 (cập nhật), `PLAN_NOTIFICATION_SYSTEM.md` mục 10, `SendBroadcastModal.tsx`, `1783400000000-AddEditDeleteToNotificationBroadcasts.ts` |
 
 ---
+| 2026-10-16 | Rà soát lại docs sau Security/Retention P3–P8: đọc trực tiếp controller của `security`, `bulk-operations`, `retention`, `system`, `storage`, `ui-visibility`, `sidebar-badges`, `customer-statuses`, `assignment-groups` | Thêm §2.16–§2.19, bổ sung `GET /system/health` vào §2.15, đổi mục 4 (2 việc nice-to-have đã xong) | Xem từng mục tương ứng; migration `1786335000000`, `1786340000000`, `1786350000000` |
 
 ## 4. Việc cần làm tiếp theo
 
-**✅ Toàn bộ rule Backend ở mục 1 đã được áp dụng đầy đủ cho 9/9 module (§2.1 → §2.9) — không còn mục nào
+**✅ Toàn bộ rule Backend ở mục 1 đã được áp dụng cho các module ở §2.1 → §2.19 — không còn mục nào
 ⚠️ hoặc blocker treo.** Danh sách 7 việc từng liệt kê ở các phiên trước (users.controller/service theo
 `UsersAccessHelper`, `leave-requests.service.ts` theo bảng role-cặp, `audit.controller.ts` đồng nhất
 `ADMIN, ASSISTANT`, `zk-device.controller.ts`, `link-groups`/`link-categories`/`media-sources`,
 `departments.controller.ts`, cập nhật lại mục 2) **đều đã hoàn tất** — xem changelog ở mục 3 để tra lại
 từng mục đã sửa ở phiên nào.
 
-Chỉ còn 2 việc dạng **nice-to-have** (không phải bug, không phải rule còn thiếu):
+Hai việc nice-to-have từng liệt kê ở đây **đã xong** (xác minh 2026-10-16): `modules/zk-device/zk-device.service.spec.ts` đã tồn tại,
+và trang `/phong-ban` (FE) đã có thao tác gán `managerUserId` cho phòng ban.
 
-1. **Spec test cho `zk-device.service.ts`** — code đã đúng rule (Manager lọc theo phòng ban qua
-   `matchedUser.departmentId IN (:...deptIds)`, xem §2.3) nhưng module này hiện chưa có file spec nào cả
-   (không phải riêng phần phân quyền — toàn bộ service chưa được test). Ưu tiên thấp hơn 3 file spec vừa
-   thêm vì đây là module duy nhất còn thiếu test tổng thể, không riêng nhánh Manager.
-2. **UI chọn Manager cho phòng ban ở Frontend** (xem §2.9) — hiện chưa có trang quản lý Department nói
-   chung, Admin/Assistant phải gọi thẳng `PATCH /departments/:id` (qua Swagger) để gán `managerUserId`.
-   Chủ dự án đã xác nhận **để tính sau**, không phải blocker cho rule Backend (API đã hoạt động đầy đủ).
+Việc còn mở theo `WORKFLOW_LOG.md` (2026-10-16):
+
+1. **P3.6** — xác minh header `x-vercel-ip-country` trên môi trường Preview của Vercel.
+2. Migration P3–P8 do người dùng tự chạy (`1786340000000`, `1786350000000`...) — kiểm tra `npm run migration:show` trước khi dựa vào tính năng liên quan.
+3. Guide mới (`guides-content/`) còn `published: false` thì cần `npm run guides:sync` (dry-run trước, rồi `--apply`).

@@ -82,21 +82,27 @@ Quy ước: mỗi service quan trọng có file `*.service.spec.ts` cạnh nó (
 
 ## 2. Cấu trúc thư mục
 
+> Cây chỉ nêu các cấp quan trọng; danh sách đầy đủ luôn lấy bằng `ls` (đã nhiều lần lỗi thời).
+
 ```
 backend/src/
 ├── common/
-│   ├── decorators/      # @Roles(), @GetUser()
-│   ├── enums/            # Role, AssignmentStatus, ApprovalStatus, AttendanceSource...
-│   ├── filters/           # Global exception filter (chuẩn hoá response lỗi)
-│   ├── guards/            # JwtAuthGuard, RolesGuard
-│   ├── interceptors/       # CacheControlInterceptor (revalidate qua ETag, KHÔNG cache mù cho resource hay đổi)
-│   └── utils/              # date-vn.util.ts (giờ Việt Nam, xem lưu ý §4)
+│   ├── decorators/      # @RequirePermission(), @GetPermissionScope(), @GetUser(), @AllowWhenPasswordChangeRequired()
+│   ├── enums/            # Role, AssignmentStatus, ApprovalStatus, AttendanceSource, PeriodType...
+│   ├── filters/           # Global exception filter (chuẩn hoá response lỗi; gửi 5xx lên Sentry)
+│   ├── guards/            # JwtAuthGuard, PermissionGuard (RBAC động), RootAdminGuard, ThrottlerBehindProxyGuard
+│   ├── interceptors/       # CacheControlInterceptor (revalidate qua ETag), PasswordChangeRequiredInterceptor
+│   ├── logger/, middleware/ # QuietBootLogger, cpu-timing
+│   ├── observability/      # Sentry (instrument + lọc PII), boot/DB-connection timing
+│   ├── security/           # IP access log / whitelist / blacklist / block, IP geo, security headers, Swagger Basic auth, SecurityController
+│   ├── validators/          # password-policy (chính sách mật khẩu dùng chung)
+│   └── utils/               # date-vn, auth-user-cache, cache-probe-registry, keepalive-gate, ...
 ├── config/
 │   └── database.config.ts  # Cấu hình TypeORM (đọc từ biến môi trường)
 ├── database/
 │   ├── entities/            # ⭐ ĐỌC TRƯỚC khi sửa bất kỳ field nào ở Frontend
 │   ├── migrations/          # Toàn bộ thay đổi schema — xem mục 1
-│   └── seeds/, import/       # Script seed dữ liệu mẫu, import Excel/CSV marketing data
+│   └── seeds/, import/       # Script seed dữ liệu mẫu, backfill, import Excel/CSV marketing data
 ├── integrations/
 │   └── zk-device/            # Giao thức TCP thô của máy chấm công ZKTeco (KHÔNG qua NestJS DI, chạy độc lập)
 ├── modules/                  # 1 module = 1 domain nghiệp vụ, xem bảng mục 3
@@ -104,22 +110,56 @@ backend/src/
 └── main.ts                    # Bootstrap: CORS, Swagger, ValidationPipe, cache Express app cho Vercel serverless
 ```
 
+### Script tiện ích & cron
+
+```bash
+npm run guides:sync          # Đồng bộ guides-content/*.md -> DB (dry-run trước, rồi thêm --apply; báo XUNG ĐỘT nếu DB đã sửa tay trên UI)
+npm run templates:generate    # Sinh file mẫu import Excel
+npm run seed | seed:customers | seed:backfill | seed:users | utm:backfill | audit:redact-secrets
+npm run import:data | import:clear | import:full
+npm run zk:test | b2:test-presign | sentry:smoke
+```
+
+Cron (Vercel, khai trong `vercel.json`): `/api/zk-device-cron/sync-today` (T2–T6 10:00) và
+`/api/periodic-tasks-cron/auto-overdue` (T2–T6 02:00). Endpoint `/api/system-cron/retention` (Retention) KHÔNG nằm trong
+`vercel.json` — gọi từ ngoài, bắt buộc secret `CRON_SECRET` qua header `x-cron-secret` hoặc `Authorization: Bearer`.
+
 ---
 
 ## 3. Danh sách module (`src/modules/`)
 
-| Module | Mô tả | Trạng thái RBAC (xem PERMISSIONS.md) |
-|---|---|---|
-| `auth/` | Đăng nhập, đăng ký (`register`), JWT access + refresh token rotation, reuse detection | ✅ |
-| `users/` | CRUD nhân viên, Profile cá nhân, duyệt/từ chối tài khoản đăng ký mới | ⚠️ §2.2 — hiện `ADMIN`-only cho phần lớn endpoint, cần mở cho Assistant/Manager |
-| `customers/` | CRUD khách hàng, Chia Data, Gán/Thu hồi (assignment), ghi chú, Deposit (nạp tiền), import Excel | ✅ §2.1 — đã chuẩn, dùng làm pattern mẫu cho các module khác |
-| `departments/` | Quản lý phòng ban — `manager_user_id` dùng làm mốc scope RBAC cho Manager ở mọi module khác | ⚠️🚨 §2.9 — CRUD đang `ADMIN`-only (cần mở `ASSISTANT`); **blocker**: không có endpoint nào để set `manager_user_id`, chỉ sửa được qua DB thủ công |
-| `deposits/` | Chỉ có `deposits.module.ts` — logic nạp tiền thực tế nằm trong `customers/` (deposit gắn với 1 customer cụ thể) | — |
-| `leave-requests/` | Xin nghỉ phép, duyệt chéo phòng ban theo `RolePriority` (không dùng `@Roles`) | ⚠️ §2.6 — cần xác nhận lại rule duyệt |
-| `link-groups/` | Category/Group liên kết (Zalo/FB/Threads...), checklist khách hàng đã-join, **Quản lý chính/phụ theo từng Group** (mô hình quyền riêng) | 🟦 §2.4 — phần CRUD chung ⚠️, phần Quản lý chính/phụ đã đúng thiết kế |
-| `media-sources/` | Danh mục "Nguồn" (Facebook/TikTok/Google...) cho form khách hàng | ⚠️ §2.5 |
-| `zk-device/` | Đồng bộ chấm công: kéo chủ động qua TCP (`zk-device.controller.ts`), nhận đẩy tự động từ máy (`adms.controller.ts`, giao thức ADMS Push — máy gọi thẳng, KHÔNG qua JWT), cron đồng bộ định kỳ (`zk-device-cron.controller.ts`) | ⚠️ §2.3 |
-| `audit/` | Nhật ký audit log (ai làm gì, khi nào) | ⚠️ §2.7 — cần xác nhận Assistant có nên xem được không |
+> Trạng thái/quy tắc phân quyền của từng module: xem [`PERMISSIONS.md`](../AZ-Workbase%20Skills/PERMISSIONS.md) mục 2
+> (nguồn sự thật duy nhất — không lặp lại ở đây để khỏi lệch).
+
+| Module | Mô tả |
+|---|---|
+| `auth/` | Đăng nhập, đăng ký, JWT access + refresh token rotation, reuse detection, buộc đổi mật khẩu |
+| `users/` | CRUD nhân viên, profile cá nhân, duyệt/từ chối tài khoản đăng ký, phiên đăng nhập (`:id/sessions`) |
+| `customers/` | CRUD khách hàng, chia data, gán/thu hồi, ghi chú, deposit, import/export Excel — pattern mẫu cho module khác |
+| `customer-statuses/` | Danh mục status khách |
+| `assignment-groups/` | Nhóm phân công (cấu hình theo phòng ban / vị trí) |
+| `bulk-operations/` | Ghi nhận thao tác hàng loạt + hoàn tác ≤ 5 phút (handler: `CUSTOMER_STATUS`, `CUSTOMER_ASSIGN`) |
+| `departments/`, `positions/` | Phòng ban (`manager_user_id` làm mốc scope Manager), vị trí (tầng override quyền thứ 3) |
+| `roles/`, `permissions/`, `ui-visibility/` | RBAC động: role, `role_permissions`, override phòng ban/vị trí, cache phiên bản permission, ẩn UI theo role |
+| `leave-requests/`, `leave-types/` | Xin nghỉ phép, duyệt chéo phòng ban theo `RolePriority`, loại phép |
+| `link-groups/` | Category/Group liên kết, checklist đã-join, Quản lý chính/phụ theo Group |
+| `media-sources/` | Danh mục "Nguồn" cho form khách hàng |
+| `utms/` | Quản lý UTM, quản lý chính/phụ, thống kê, tích hợp khách hàng |
+| `periodic-tasks/`, `periodic-task-statuses/` | Công việc định kỳ (checklist, người phụ, audit, auto-overdue), trạng thái, hiệu suất |
+| `notifications/` | Hộp thư cá nhân, catalog thông báo, thông báo thủ công (broadcasts) |
+| `guides/` | Hướng dẫn sử dụng (Markdown trong DB; phạm vi xem theo role/vị trí/phòng ban/permission; sync từ `guides-content/`) |
+| `reports/` | Báo cáo doanh số, chất lượng data, marketing, drill-down chi tiết |
+| `storage/`, `uploads/` | Dung lượng + thư viện media, presigned upload Backblaze B2 (avatar, file đính kèm nghỉ phép) |
+| `sidebar-badges/` | Poll/badge gộp cho sidebar (giảm số request) |
+| `retention/` | Dọn dữ liệu cũ tự động (`audit_logs`, `task_audit_logs`, `notifications`, `attendance_logs`, `security_events`, `ip_access_logs`; luôn dọn thêm `bulk_operations` quá hạn hoàn tác), cấu hình chu kỳ |
+| `system/` | Sức khoẻ hệ thống (`GET /system/health`) và Reset hệ thống — chỉ Root Admin (`RootAdminGuard`) |
+| `zk-device/` | Chấm công: kéo chủ động qua TCP, nhận đẩy ADMS (`adms.controller.ts`, KHÔNG qua JWT), cron đồng bộ |
+| `attendance-export/` | Xuất báo cáo chấm công |
+| `audit/` | Nhật ký audit log |
+| `deposits/` | Chỉ có `deposits.module.ts` — logic nạp tiền thực tế nằm trong `customers/` |
+
+Ngoài `modules/`, phần bảo mật dùng chung nằm ở `common/security/` (IP access, whitelist/blacklist, `SecurityController`
+tại `/api/security/*`).
 
 ---
 
@@ -147,6 +187,13 @@ backend/src/
   `zk-device.service.ts` (`syncNow()`, `ingestPushAttendance()`) làm ví dụ.
 - **RBAC**: đọc `AZ-Workbase Skills/PERMISSIONS.md` TRƯỚC khi thêm bất kỳ `@Roles()` mới nào — không tự
   suy đoán rule, không copy decorator từ module khác nếu chưa xác nhận module đó đã khớp rule hiện hành.
+
+- **Chính sách mật khẩu** nằm MỘT chỗ: `common/validators/password-policy.ts` (dùng ở 5 DTO). Đừng tự thêm regex mật khẩu riêng
+  vào DTO mới. Hạn mật khẩu tính theo `NOW()` của DB; người bị buộc đổi (`must_change_password`) chỉ gọi được route gắn
+  `@AllowWhenPasswordChangeRequired()`.
+- **Hoàn tác hàng loạt**: thao tác mới muốn hỗ trợ undo phải ghi bản ghi `bulk_operations` TRONG CÙNG transaction và đăng ký
+  handler (xem `modules/bulk-operations`); `undo()` khoá hàng bằng `FOR UPDATE`, hạn `expires_at` theo giờ DB.
+- **Route hardcode Root Admin** (`/system/health`, `/system/reset`) dùng `RootAdminGuard`, không dùng `@RequirePermission`.
 
 ---
 

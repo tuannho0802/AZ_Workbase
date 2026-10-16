@@ -76,7 +76,7 @@ frontend/
 │   │   │                           # roles.types.ts, zk-device.types.ts — KHÔNG có file riêng cho mọi
 │   │   │                           # module (vd departments/media-sources dùng type khai inline/từ customer.types.ts)
 │   │   └── utils/                  # formatters, validators dùng chung
-│   └── middleware.ts               # Route protection (JWT check qua cookie)
+│   └── proxy.ts                    # Route protection (JWT check qua cookie) — Next.js 16 đổi tên từ middleware.ts
 ├── .env.local
 ├── .env.production
 ├── next.config.js
@@ -1080,14 +1080,16 @@ export const CustomerFilters: React.FC<CustomerFiltersProps> = ({
 };
 ```
 
-### 7. Middleware for Route Protection
+### 7. Route Protection (`proxy.ts` — Next.js 16 đổi tên từ `middleware.ts`)
+
+> Code mẫu dưới đây là bản rút gọn. File thật `frontend/src/proxy.ts` còn xử lý thêm (vd loại trừ route công khai/BotID) — LUÔN đọc file thật trước khi sửa.
 
 ```typescript
-// middleware.ts
+// proxy.ts
 import { NextResponse } from 'next/server';
 import type { NextRequest } from 'next/server';
 
-export function middleware(request: NextRequest) {
+export function proxy(request: NextRequest) {
   const authStorage = request.cookies.get('auth-storage')?.value;
   
   let isAuthenticated = false;
