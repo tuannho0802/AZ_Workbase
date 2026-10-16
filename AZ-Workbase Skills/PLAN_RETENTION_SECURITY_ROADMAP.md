@@ -377,17 +377,17 @@ Quyết định: giữ lưu trong `users.hashed_refresh_token`, nâng định d�
 `users`: `must_change_password TINYINT(1) NOT NULL DEFAULT 0` (`BooleanTransformer`), `password_changed_at DATETIME NULL`, `password_expires_at DATETIME NULL` (NULL = vô hạn). Người dùng hiện tại: `must_change = 0`, `expires = NULL` (không ép người cũ).
 
 ### 6.3 Việc phải làm
-- [ ] BE: tạo user / reset-password nhận `passwordExpiryDays?: number | null` (trống/null = vô hạn); đặt cờ + tính `password_expires_at`.
-- [ ] Đăng nhập trả `mustChangePassword` (cờ bật **hoặc** `password_expires_at <= NOW()` theo đồng hồ DB).
-- [ ] **Chặn ở BE, không chỉ FE:** guard toàn cục chỉ cho `change-password`, `logout`, `me`, `refresh` khi cờ bật; endpoint khác → `403 PASSWORD_CHANGE_REQUIRED`. FE chỉ điều hướng sang trang đổi.
-- [ ] `POST /auth/change-password-required`: xác thực mật khẩu được cấp; mật khẩu mới ≠ cũ; áp chính sách (6.4); thành công → tắt cờ, đặt `password_changed_at`, tính hạn mới theo lựa chọn đã chọn, thu hồi các phiên khác (P5), audit `PASSWORD_CHANGED`.
-- [ ] FE: trang `/change-password-required` (3 trường) + route guard; dialog tạo/reset người dùng thêm lựa chọn "Hạn mật khẩu: Vô hạn / N ngày".
+- [x] BE: tạo user / reset-password nhận `passwordExpiryDays?: number | null` (trống/null = vô hạn); đặt cờ + tính `password_expires_at`.
+- [x] Đăng nhập trả `mustChangePassword` (cờ bật **hoặc** `password_expires_at <= NOW()` theo đồng hồ DB).
+- [x] **Chặn ở BE, không chỉ FE:** guard toàn cục chỉ cho `change-password`, `logout`, `me`, `refresh` khi cờ bật; endpoint khác → `403 PASSWORD_CHANGE_REQUIRED`. FE chỉ điều hướng sang trang đổi.
+- [x] `POST /auth/change-password-required`: xác thực mật khẩu được cấp; mật khẩu mới ≠ cũ; áp chính sách (6.4); thành công → tắt cờ, đặt `password_changed_at`, tính hạn mới theo lựa chọn đã chọn, thu hồi các phiên khác (P5), audit `PASSWORD_CHANGED`.
+- [x] FE: trang `/change-password-required` (3 trường) + route guard; dialog tạo/reset người dùng thêm lựa chọn "Hạn mật khẩu: Vô hạn / N ngày".
 
 ### 6.4 C1 — chính sách mật khẩu thống nhất (đã chốt làm kèm)
 - Tạo **1 hằng số/decorator chung** (`common/validators/password-policy.ts`: ≥ 8 ký tự + regex đang dùng ở `reset-password.dto.ts`) và dùng cho **4 nơi**: `register.dto.ts`, `reset-password.dto.ts`, `change-password.dto.ts` (hiện chỉ `MinLength` 6) và DTO mới ở 6.3.
 - Rà các form FE đang validate 6 ký tự để đồng bộ thông báo lỗi.
 - Không ép người dùng đang có mật khẩu ngắn đổi lại (chỉ áp khi họ đổi lần sau).
-- [ ] Spec: 7 ký tự bị từ chối ở cả 4 nơi; tự đăng ký không bị buộc; tạo bởi admin bị buộc; reset bị buộc; hết hạn bị buộc; vô hạn không bao giờ hết; endpoint khác trả 403.
+- [x] Spec: 7 ký tự bị từ chối ở cả 4 nơi; tự đăng ký không bị buộc; tạo bởi admin bị buộc; reset bị buộc; hết hạn bị buộc; vô hạn không bao giờ hết; endpoint khác trả 403.
 
 ---
 
@@ -526,8 +526,8 @@ Thứ tự: **P1 → P2 → P3 → P4 → P5 → P6 → P7 → P8 → P9 → P10
 - [x] P4 Audit sự kiện bảo mật (cho phép `user_id` NULL) + dọn theo `security_event_retention_days` + trang "Hoạt động bảo mật" — *đã làm 2026-10-14; còn: chạy migration `1786330000000`; trang dùng phân trang thường thay vì `paginateByWeek`*
 - [x] P5 Thiết bị đăng nhập + đăng xuất cưỡng bức (JSON v3) — *code đã có (`/auth/sessions`, `UserSessionsModal`, quyền `users.sessions`); WORKFLOW_LOG 2026-10-15 ghi đã làm; còn: chạy migration `1786335000000`*
 - [x] P3.7 Khoá IP chủ động (blacklist, có hạn/vĩnh viễn) + UI trang Nhân viên — *đã làm 2026-10-15; còn: chạy migration `1786336000000`, `guides:sync`, deploy*
-- [ ] P6 Buộc đổi mật khẩu + hạn mật khẩu + C1 (≥ 8 ký tự mọi nơi)
-- [ ] P7 Thao tác hàng loạt có Hoàn tác (5 phút)
+- [x] P6 Buộc đổi mật khẩu + hạn mật khẩu + C1 (≥ 8 ký tự mọi nơi) — *đã làm (commit "P6 force password change"); ghi nhận 2026-10-16 sau khi đối chiếu code + test. Chặn 403 `PASSWORD_CHANGE_REQUIRED` bằng `APP_INTERCEPTOR` (không phải guard — guard toàn cục chạy trước JwtAuthGuard nên chưa có `req.user`); endpoint cho qua: `change-password-required`, `logout`, `GET users/me`, `PATCH users/me/password`. Còn: chạy migration `1786340000000`; chưa có guide người dùng; `PATCH users/me/password` chưa chặn mật khẩu mới trùng mật khẩu hiện tại (xem WORKFLOW_LOG)*
+- [x] P7 Thao tác hàng loạt có Hoàn tác (5 phút) — *đã làm (commit "Complete Phase 7"); ghi nhận 2026-10-16 sau khi đối chiếu code + test. `POST /bulk-operations/:id/undo` (chỉ người thực hiện/Admin; 404/403/409/410), ghi ảnh chụp trong cùng transaction, hạn theo đồng hồ DB, kiểm tra xung đột bằng `UNIX_TIMESTAMP(updated_at)`, retention dọn bản ghi quá hạn. Phạm vi: đổi trạng thái hàng loạt + chia data hàng loạt (FE: `/customers`, `/chia-data`, tab phân công); `bulk-remove-utm` CHƯA có hoàn tác (ngoài phạm vi đầu). Còn: chạy migration `1786350000000`; chưa có guide người dùng*
 - [x] P8 Trang Sức khoẻ hệ thống — *đã làm 2026-10-16; không migration. `GET /system/health` + `/system-health` (chỉ Root Admin qua `RootAdminGuard`, không dùng permission động). Cache "ref-data" của plan = probe `permissions_version`. Còn: phụ thuộc migration `1786300000000` (cron_runs) và `1786337000000`; guide `suc-khoe-he-thong` đang `published: false` -> `guides:sync` rồi đổi `true` sau khi đối chiếu*
 - [ ] P9 Xuất/nhập cấu hình JSON
 - [ ] P10 `loading.tsx` + aria/phím tắt

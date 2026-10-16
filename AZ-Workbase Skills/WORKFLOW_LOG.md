@@ -8016,3 +8016,23 @@ Now [deploy]
 > - Số liệu phiên/cache là theo instance serverless đang trả lời.
 
 ---
+
+## [2026-10-16 12:00] | Ghi nhận P6 (Buộc đổi mật khẩu + C1) và P7 (Hoàn tác thao tác hàng loạt) vào roadmap | [Status: Success]
+
+**Actor:** Agent
+**Files Changed:**
+- `PLAN_RETENTION_SECURITY_ROADMAP.md` — tick `[x]` P6 (kèm mục 6.3/6.4) và P7, ghi phạm vi + việc còn lại
+
+**Verify (đọc code thật, không suy diễn):**
+> - P6: `common/validators/password-policy.ts` (+spec) dùng ở 5 DTO (register, create-user, reset-password, change-password, change-password-required); `PasswordChangeRequiredInterceptor` (APP_INTERCEPTOR ở `auth.module.ts`); `POST /auth/change-password-required` (xác thực mật khẩu được cấp, mới ≠ cũ, thu hồi phiên khác, audit `PASSWORD_CHANGED`); hạn tính theo `NOW()` của DB; FE `/change-password-required` + `PasswordExpiryField` ở dialog tạo/reset.
+> - P7: `modules/bulk-operations` (record trong cùng transaction, `undo()` có `FOR UPDATE`, hạn `expires_at` theo DB); handler đăng ký cho `CUSTOMER_STATUS` và `CUSTOMER_ASSIGN`; retention dọn bản ghi quá hạn; FE `useBulkUndoToast` dùng ở `/customers`, `/chia-data`, tab phân công.
+> - BE `tsc` sạch; jest `bulk-operations|customers|users|auth|retention|common` 68 suite / 986 test pass. FE `tsc` chỉ còn lỗi `logo.png` có sẵn; vitest (useBulkUndoToast, components/customers, (auth)) 6 file / 30 test pass. Chưa chạy `nest build`/`next build` và chưa chạy toàn bộ suite.
+
+**Còn lại / thiếu sót phát hiện:**
+> - Migration chưa chạy (người dùng tự chạy): `1786340000000`, `1786350000000` (và các migration P3-P5 đã liệt kê trong roadmap).
+> - `PATCH users/me/password` (`changeOwnPassword`) không chặn mật khẩu mới TRÙNG mật khẩu hiện tại; vì endpoint này được `@AllowWhenPasswordChangeRequired`, người bị buộc đổi có thể "đổi" sang đúng mật khẩu được cấp để gỡ cờ. Cần thêm kiểm tra giống `changePasswordRequired` (kèm spec).
+> - Chưa có guide (`guides-content/`) cho P6, P7.
+> - P3.6 vẫn mở: xác minh header `x-vercel-ip-country` trên Preview.
+
+---
+
