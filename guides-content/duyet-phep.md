@@ -104,6 +104,15 @@ Chỉ người có quyền `leave_requests.delete` (mặc định là Admin) là
 
 Cột **Trước khi xoá** ở Thùng rác cho biết đơn đến từ đâu: *Đã duyệt*, *Từ chối*, hoặc *Chờ duyệt (chủ đơn huỷ)* (nhân viên tự huỷ khi chưa được duyệt). Thùng rác dùng chung quyền Xem với Lịch sử.
 
+## Tab Lịch tháng
+
+Hiện các đơn nghỉ của **người khác trong phạm vi bạn được xem** (cùng phạm vi với tab Lịch sử) trải trên lịch 1 tháng, để biết ngày nào ai vắng.
+
+- Nhãn là **tên người nghỉ**, màu là **Loại phép**; "(S)" / "(C)" là nửa ngày Sáng / Chiều. Phía trên lịch có tổng số đơn và số người nghỉ trong tháng.
+- Lọc theo **Phòng ban**, **Loại phép** và **Trạng thái** (Chờ duyệt / Đã duyệt / Từ chối). Mặc định hiện Chờ duyệt + Đã duyệt.
+- Đơn **Chờ duyệt** chỉ hiện nếu bạn có thêm quyền duyệt đơn; chỉ có quyền xem lịch sử thì lịch chỉ có Đã duyệt / Từ chối.
+- Bấm vào 1 ngày để xem đầy đủ danh sách ngày đó. Tab này cần quyền xem lịch sử nghỉ phép.
+
 ## Tab Thống kê
 
 Cùng quyền Xem (`leave_requests.view`). Chọn kỳ, rồi lọc theo **phòng ban** và **loại phép**. Trang hiển thị các chỉ số như *Tổng đơn nghỉ*, *Ngày nghỉ đã duyệt*, *Nhân sự xin nghỉ*, *Tỷ lệ duyệt*, *Tỷ lệ từ chối*, *Đơn bổ sung*, cùng biểu đồ theo thời gian, theo phòng ban và bảng xếp hạng nhân viên. **Số liệu chỉ tính trong phạm vi bạn xem**, nên Manager chỉ thấy phòng mình.

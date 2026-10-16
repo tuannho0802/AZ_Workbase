@@ -8080,3 +8080,23 @@ Now [deploy]
 > - `README_AZWORKBASE_PROJECT.md` giữ nguyên (đã có banner "tài liệu lịch sử").
 
 ---
+
+## [2026-10-16 15:00] | Lịch tháng cho Nghỉ phép (/nghi-phep) và Duyệt phép (/duyet-phep) | [Status: Success]
+
+**Actor:** Agent
+**Files Changed (BE):**
+- `modules/leave-requests/dto/query-leave-calendar.dto.ts` (mới) — fromDate/toDate bắt buộc, departmentId/leaveType tuỳ chọn
+- `modules/leave-requests/leave-requests.service.ts` — `findMineCalendar()`, `findScopedCalendar()` (dùng `applyApproverScope`, trần 45 ngày / 1500 đơn, map bản nhẹ không lộ email)
+- `modules/leave-requests/leave-requests.controller.ts` — `GET mine/calendar` (`leave_requests.request`), `GET calendar` (`leave_requests.view`; pending chỉ khi Admin hoặc có `leave_requests.approve`); inject `PermissionsService` (module @Global)
+- `leave-requests.service.spec.ts` — +6 spec nhóm "Lich thang"
+**Files Changed (FE):**
+- `components/leave-requests/LeaveCalendarView.tsx` (mới, dùng `Calendar` antd như `PeriodicTasksCalendarView`), `lib/hooks/useLeaveCalendar.ts`, `lib/utils/leaveCalendar.ts` (+ test), `lib/api/leave-requests.api.ts`
+- `nghi-phep/page.tsx` — `Segmented` Danh sách | Lịch tháng (mode `mine`); `duyet-phep/page.tsx` — tab "Lịch tháng" (mode `scoped`, gate `leave_requests.view`)
+**Docs:** `PERMISSIONS.md` §2.6, `guides-content/nghi-phep.md`, `guides-content/duyet-phep.md`
+
+**Notes:**
+> - Không migration mới, không permission key mới. queryKey lịch bắt đầu bằng `LEAVE_WEEK_LIST_KEY` nên mọi nơi invalidate danh sách nghỉ phép tự làm tươi lịch.
+> - Verify thật: BE `tsc` sạch, jest `modules/leave-requests` 3 suite / 105 test pass; FE `tsc` chỉ còn lỗi `logo.png` có sẵn, vitest `leaveCalendar` + `src/lib/guides` + antd-deprecations pass. Chưa chạy `nest build`/`next build`, chưa click-through trên trình duyệt.
+> - Guide `nghi-phep`/`duyet-phep` đang `published: false` -> chạy `npm run guides:sync` (dry-run trước) khi cần.
+
+---

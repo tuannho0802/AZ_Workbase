@@ -433,6 +433,12 @@ với Media Source, chủ dự án chốt hướng an toàn thay vì để treo.
 
 ### 2.6. Nghỉ phép (`modules/leave-requests`) — ✅ ĐÃ KHỚP
 
+> **Lịch tháng (2026-10-16):** `GET /leave-requests/mine/calendar` (`leave_requests.request`, chỉ đơn của chính mình) và
+> `GET /leave-requests/calendar` (`leave_requests.view`, scope + rule `applyApproverScope` y hệt tab Lịch sử). Đơn **pending** CHỈ trả
+> khi người gọi là Admin hoặc có thêm `leave_requests.approve` (controller tra `PermissionsService`); người chỉ có `view` chỉ thấy
+> approved/rejected. Cả hai bỏ đơn đã huỷ/thùng rác (`cancelled_at IS NOT NULL`), chặn khoảng xem > 45 ngày, trả bản nhẹ (không email).
+> Khác `GET /approved-range` (không lọc theo người xem, chỉ phục vụ bảng chấm công) — KHÔNG dùng route đó cho lịch.
+
 **Đối chiếu trực tiếp `leave-requests.service.ts` (2026-08-28) — xác nhận cơ chế `RolePriority` chéo
 phòng ban cũ đã bị THAY THẾ HOÀN TOÀN** bằng 2 bảng tra cứu cố định đúng rule đã chốt, không còn tồn tại
 bất kỳ tham chiếu `RolePriority` nào ngoài comment giải thích lịch sử:

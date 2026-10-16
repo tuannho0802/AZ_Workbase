@@ -3,14 +3,14 @@
 import { useState, useEffect, useRef, useMemo } from 'react';
 import { useRouter } from 'next/navigation';
 import {
-  Button, Modal, Form, Select, DatePicker, TimePicker, Input, Tag, App, Card, Divider, Typography, Row, Col, Tooltip
-} from 'antd';
+  Button, Modal, Form, Select, DatePicker, TimePicker, Input, Tag, App, Card, Divider, Typography, Row, Col, Tooltip, Segmented } from 'antd';
 import { PlusOutlined, CloseCircleOutlined, CalendarOutlined, ClockCircleOutlined, FileTextOutlined, UserOutlined, SearchOutlined } from '@ant-design/icons';
 import { leaveRequestsApi, LeaveRequest } from '@/lib/api/leave-requests.api';
 import { useMyPermissions } from '@/lib/hooks/useMyPermissions';
 import { useLeaveTypes } from '@/lib/hooks/useLeaveTypes';
 import { AttachmentUploader, AttachmentUploaderHandle } from '@/components/leave-requests/AttachmentUploader';
 import { AttachmentsViewerButton } from '@/components/leave-requests/AttachmentsViewerButton';
+import { LeaveCalendarView } from '@/components/leave-requests/LeaveCalendarView';
 import { WeeklyLazySection } from '@/components/common/WeeklyLazySection';
 import { useLeaveWeekList, useInvalidateLeaveLists } from '@/lib/hooks/useLeaveWeekList';
 import { useDebounce } from '@/lib/hooks/useDebounce';
@@ -141,6 +141,8 @@ export default function LeaveRequestsPage() {
   // week-mode) - client chỉ giữ 1 tuần/lần (lazy-load khi mở panel) nên không
   // còn lọc client-side trên toàn bộ dữ liệu được nữa. Trường ít vì đây là dữ
   // liệu CỦA CHÍNH mình (không cần lọc theo người/phòng ban).
+  // Danh sách (week-mode) hoặc Lịch tháng (đơn của mình theo tháng).
+  const [viewMode, setViewMode] = useState<'list' | 'calendar'>('list');
   const [searchText, setSearchText] = useState('');
   const [filterLeaveType, setFilterLeaveType] = useState<string | null>(null);
   const [filterStatus, setFilterStatus] = useState<string | null>(null);
@@ -473,6 +475,20 @@ export default function LeaveRequestsPage() {
         </Button>
       </div>
 
+      <Segmented
+        style={{ marginBottom: 16 }}
+        value={viewMode}
+        onChange={(v) => setViewMode(v as 'list' | 'calendar')}
+        options={[
+          { label: 'Danh sách', value: 'list', icon: <FileTextOutlined /> },
+          { label: 'Lịch tháng', value: 'calendar', icon: <CalendarOutlined /> },
+        ]}
+      />
+
+      {viewMode === 'calendar' ? (
+        <LeaveCalendarView mode="mine" />
+      ) : (
+      <>
       <Row gutter={[12, 12]} style={{ marginBottom: 16 }}>
         <Col xs={24} sm={12} md={6}>
           <Input
@@ -548,6 +564,8 @@ export default function LeaveRequestsPage() {
           },
         }}
       />
+      </>
+      )}
 
       {/* Create Modal */}
       <Modal

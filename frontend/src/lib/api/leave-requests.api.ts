@@ -78,6 +78,33 @@ export interface LeaveWeekModeResponse<T> {
   weekTotal?: number;
 }
 
+/** 1 đơn trên Lịch tháng nghỉ phép - bản NHẸ (BE `toCalendarItem`), không có email/đính kèm. */
+export interface LeaveCalendarItem {
+  id: number;
+  leaveType: string;
+  status: 'pending' | 'approved' | 'rejected';
+  startDate: string; // YYYY-MM-DD
+  endDate: string;   // YYYY-MM-DD
+  duration: 'full_day' | 'half_day_am' | 'half_day_pm';
+  totalDays: number;
+  periodStartTime: string | null;
+  periodEndTime: string | null;
+  reason: string;
+  isSupplementary: boolean;
+  requester: {
+    id: number;
+    name: string;
+    department: { id: number; name: string; color?: string } | null;
+  } | null;
+}
+
+export interface LeaveCalendarQuery {
+  fromDate: string; // YYYY-MM-DD
+  toDate: string;   // YYYY-MM-DD (tối đa 45 ngày sau fromDate)
+  departmentId?: number; // chỉ /calendar
+  leaveType?: string;
+}
+
 /** Kết quả thao tác hàng loạt - từng đơn độc lập (partial success). */
 export interface BulkLeaveResult {
   succeeded: number[];
@@ -182,6 +209,19 @@ export const leaveRequestsApi = {
   // ── WEEK-MODE: phân trang theo TUẦN + lazy-load từng tuần (xem BE
   // LeaveRequestsService.findMinePaged/findPendingPaged/findHistoryPaged).
   // KHÔNG gửi `_t` - DTO BE bật forbidNonWhitelisted (từng gây 400 ở /history).
+  // `leave_requests.request` - Lịch tháng đơn CỦA MÌNH (trang /nghi-phep). Không phân trang.
+  async getMineCalendar(query: LeaveCalendarQuery): Promise<LeaveCalendarItem[]> {
+    const res = await axiosInstance.get('/leave-requests/mine/calendar', { params: query });
+    return res.data;
+  },
+
+  // `leave_requests.view` - Lịch tháng đơn người khác trong phạm vi xem (trang /duyet-phep).
+  // Đơn chờ duyệt chỉ có khi người gọi còn có `leave_requests.approve` (BE quyết định).
+  async getCalendar(query: LeaveCalendarQuery): Promise<LeaveCalendarItem[]> {
+    const res = await axiosInstance.get('/leave-requests/calendar', { params: query });
+    return res.data;
+  },
+
   async getMinePaged(filters: LeaveListFilters): Promise<LeaveWeekModeResponse<LeaveRequest>> {
     const res = await axiosInstance.get('/leave-requests/mine/paged', { params: cleanParams(filters) });
     return res.data;

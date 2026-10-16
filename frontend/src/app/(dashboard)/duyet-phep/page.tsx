@@ -17,6 +17,7 @@ import {
 import { leaveRequestsApi, LeaveRequest, BulkLeaveResult } from '@/lib/api/leave-requests.api';
 import { useIdSelection } from '@/lib/hooks/useIdSelection';
 import { useMyPermissions } from '@/lib/hooks/useMyPermissions';
+import { LeaveCalendarView } from '@/components/leave-requests/LeaveCalendarView';
 import { useLeaveTypes } from '@/lib/hooks/useLeaveTypes';
 // [AGENT] OLD CODE (giữ để rollback): import LeaveStatsTab from './LeaveStatsTab';
 const LeaveStatsTab = dynamic(() => import('./LeaveStatsTab'), { ssr: false, loading: () => <ChartSkeleton height={400} /> });
@@ -1400,6 +1401,17 @@ export default function ApprovalPage() {
           />
         </>
       )
+    } : null,
+    // Lịch tháng - cùng quyền `leave_requests.view` + scope với Lịch sử; đơn CHỜ DUYỆT chỉ hiện nếu có thêm
+    // `leave_requests.approve` (BE `GET /leave-requests/calendar` quyết định, FE không cần tự lọc).
+    canView ? {
+      key: 'calendar',
+      label: (
+        <span>
+          <CalendarOutlined /> Lịch tháng
+        </span>
+      ),
+      children: <LeaveCalendarView mode="scoped" />
     } : null,
     // Thống kê nghỉ phép - cùng quyền `leave_requests.view` với Lịch sử/Thùng rác (BE tự khoanh phạm vi theo scope).
     canView ? {

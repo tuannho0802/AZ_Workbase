@@ -79,6 +79,15 @@ leave-my-requests
 - Cột **Người duyệt** có tên khi đơn đã được xử lý; cột **Lý do từ chối** chỉ hiện nội dung với đơn **Từ chối**.
 - Trên điện thoại, mỗi đơn là một thẻ với cùng thông tin.
 
+## Lịch tháng
+
+Ở đầu trang, chuyển từ **Danh sách** sang **Lịch tháng** để xem các đơn của chính bạn trải ra trên lịch của 1 tháng.
+
+- Mỗi đơn hiện ở **mọi ngày** nó phủ; màu của nhãn là màu **Loại phép**. Nhãn có "(S)" / "(C)" là nghỉ nửa ngày Sáng / Chiều.
+- **Viền nét đứt** = đang chờ duyệt, **gạch ngang** = bị từ chối. Mặc định lịch chỉ hiện *Chờ duyệt* và *Đã duyệt*; tick thêm *Từ chối* nếu muốn xem.
+- Rê chuột vào nhãn để xem chi tiết (thời gian, số ngày, lý do). Bấm vào 1 ngày để mở danh sách đầy đủ của ngày đó.
+- Dùng mũi tên trên lịch để đổi tháng. Đơn đã hủy (vào Thùng rác) không hiện trên lịch.
+
 ## Hủy đơn
 
 Chỉ đơn **Chờ duyệt** mới có nút **Hủy**. Bấm nút, xác nhận ở hộp thoại *"Hủy đơn nghỉ phép?"*; đơn chuyển sang **Đã hủy** và **ảnh đính kèm của đơn bị xoá**. Việc này không hoàn tác được.

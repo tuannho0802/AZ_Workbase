@@ -26,6 +26,7 @@ import { LeaveTypesService } from '../leave-types/leave-types.service';
 import { AuditService } from '../audit/audit.service';
 import { paginateByWeek } from '../../common/utils/week-window.util';
 import { QueryLeaveRequestsDto } from './dto/query-leave-requests.dto';
+import { QueryLeaveCalendarDto } from './dto/query-leave-calendar.dto';
 
 /**
  * PERMISSIONS.md mục 2.6 - ĐÃ ĐƯỢC GENERALIZE sang scope-based:
@@ -815,6 +816,113 @@ export class LeaveRequestsService {
       .where('leave.requesterId = :userId', { userId });
     this.applyListFilters(query, q, { includeRequester: false });
     return this.runWeekMode(query, q);
+  }
+
+  // ── LỊCH THÁNG (không phân trang, 1 khoảng ngày của lưới lịch) ─────────────
+  /** Tối đa số ngày 1 lần xem lịch (lưới 6 tuần = 42 ngày + dư). */
+  private static readonly CALENDAR_MAX_DAYS = 45;
+  /** Chốt chặn số đơn trả về 1 lần (1 tháng của cả công ty vẫn nhỏ hơn nhiều). */
+  private static readonly CALENDAR_MAX_ROWS = 1500;
+
+  private assertCalendarRange(q: QueryLeaveCalendarDto): void {
+    const from = Date.parse(`${q.fromDate}T00:00:00Z`);
+    const to = Date.parse(`${q.toDate}T00:00:00Z`);
+    if (Number.isNaN(from) || Number.isNaN(to) || to < from) {
+      throw new BadRequestException('Khoảng ngày không hợp lệ (toDate phải >= fromDate).');
+    }
+    const days = Math.round((to - from) / 86_400_000) + 1;
+    if (days > LeaveRequestsService.CALENDAR_MAX_DAYS) {
+      throw new BadRequestException(`Khoảng xem tối đa ${LeaveRequestsService.CALENDAR_MAX_DAYS} ngày.`);
+    }
+  }
+
+  /** Chỉ trả field cần cho lịch - KHÔNG trả nguyên entity User (email, v.v.). */
+  private toCalendarItem(l: LeaveRequest) {
+    const r = l.requester;
+    return {
+      id: l.id,
+      leaveType: l.leaveType,
+      status: l.status,
+      startDate: l.startDate,
+      endDate: l.endDate,
+      duration: l.duration,
+      totalDays: l.totalDays,
+      periodStartTime: l.periodStartTime,
+      periodEndTime: l.periodEndTime,
+      reason: l.reason,
+      isSupplementary: l.isSupplementary,
+      requester: r
+        ? {
+            id: r.id,
+            name: r.name,
+            department: r.department
+              ? { id: r.department.id, name: r.department.name, color: r.department.color }
+              : null,
+          }
+        : null,
+    };
+  }
+
+  /** Lịch tháng "đơn của tôi" - mọi trạng thái trừ đã huỷ/vào thùng rác. */
+  async findMineCalendar(userId: number, q: QueryLeaveCalendarDto) {
+    this.assertCalendarRange(q);
+    const rows = await this.leaveRequestRepo
+      .createQueryBuilder('leave')
+      .leftJoinAndSelect('leave.requester', 'requester')
+      .leftJoinAndSelect('requester.department', 'department')
+      .where('leave.requesterId = :userId', { userId })
+      .andWhere('leave.cancelledAt IS NULL')
+      .andWhere('leave.status IN (:...statuses)', {
+        statuses: [LeaveStatus.PENDING, LeaveStatus.APPROVED, LeaveStatus.REJECTED],
+      })
+      .andWhere('leave.startDate <= :calTo', { calTo: q.toDate })
+      .andWhere('leave.endDate >= :calFrom', { calFrom: q.fromDate })
+      .orderBy('leave.startDate', 'ASC')
+      .addOrderBy('leave.id', 'ASC')
+      .take(LeaveRequestsService.CALENDAR_MAX_ROWS)
+      .getMany();
+    return rows.map((l) => this.toCalendarItem(l));
+  }
+
+  /**
+   * Lịch tháng của người KHÁC trong phạm vi người xem (cùng scope + rule với
+   * Lịch sử duyệt - `applyApproverScope`). `includePending`: chỉ true khi người
+   * xem cũng có `leave_requests.approve` (controller quyết định) - người chỉ có
+   * `view` không được thấy đơn đang chờ duyệt, giống tab Lịch sử.
+   */
+  async findScopedCalendar(
+    viewerId: number,
+    viewerRole: string,
+    scope: string | null | undefined,
+    q: QueryLeaveCalendarDto,
+    includePending: boolean,
+  ) {
+    this.assertCalendarRange(q);
+    if (!this.hasApproverScope(viewerRole, scope)) return [];
+    const statuses = includePending
+      ? [LeaveStatus.PENDING, LeaveStatus.APPROVED, LeaveStatus.REJECTED]
+      : [LeaveStatus.APPROVED, LeaveStatus.REJECTED];
+    const query = this.leaveRequestRepo
+      .createQueryBuilder('leave')
+      .leftJoinAndSelect('leave.requester', 'requester')
+      .leftJoinAndSelect('requester.department', 'department')
+      .where('leave.status IN (:...statuses)', { statuses })
+      .andWhere('leave.cancelledAt IS NULL')
+      .andWhere('leave.startDate <= :calTo', { calTo: q.toDate })
+      .andWhere('leave.endDate >= :calFrom', { calFrom: q.fromDate });
+    await this.applyApproverScope(query, viewerId, viewerRole, scope);
+    if (q.departmentId) {
+      query.andWhere('requester.departmentId = :calDeptId', { calDeptId: q.departmentId });
+    }
+    if (q.leaveType) {
+      query.andWhere('leave.leaveType = :calLeaveType', { calLeaveType: q.leaveType });
+    }
+    const rows = await query
+      .orderBy('leave.startDate', 'ASC')
+      .addOrderBy('leave.id', 'ASC')
+      .take(LeaveRequestsService.CALENDAR_MAX_ROWS)
+      .getMany();
+    return rows.map((l) => this.toCalendarItem(l));
   }
 
   /** Chờ duyệt trong phạm vi người xem - week-mode (thay findPending() cho /duyet-phep). */

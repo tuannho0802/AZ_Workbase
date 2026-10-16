@@ -818,6 +818,77 @@ describe('LeaveRequestsService - Phan quyen duyet (PERMISSIONS.md muc 2.6)', () 
     });
   });
 
+  describe('Lich thang: findMineCalendar/findScopedCalendar', () => {
+    const range = { fromDate: '2026-09-27', toDate: '2026-11-07' };
+    const row = (over: any = {}) => ({
+      id: 1, leaveType: 'annual', status: LeaveStatus.APPROVED, startDate: '2026-10-05', endDate: '2026-10-06',
+      duration: 'full_day', totalDays: 2, periodStartTime: null, periodEndTime: null, reason: 'x', isSupplementary: false,
+      requester: { id: 9, name: 'A', email: 'secret@x.com', department: { id: 2, name: 'Sales', color: '#fff', extra: 1 } },
+      ...over,
+    });
+    const buildCalQb = (rows: any[]) => {
+      const qb: any = {
+        leftJoinAndSelect: jest.fn().mockReturnThis(),
+        where: jest.fn().mockReturnThis(),
+        andWhere: jest.fn().mockReturnThis(),
+        orderBy: jest.fn().mockReturnThis(),
+        addOrderBy: jest.fn().mockReturnThis(),
+        take: jest.fn().mockReturnThis(),
+        getMany: jest.fn().mockResolvedValue(rows),
+      };
+      mockLeaveRepo.createQueryBuilder.mockReturnValue(qb);
+      return qb;
+    };
+
+    it('khoang ngay dao nguoc hoac > 45 ngay -> BadRequest, khong query DB', async () => {
+      await expect(service.findMineCalendar(1, { fromDate: '2026-10-10', toDate: '2026-10-01' })).rejects.toThrow(BadRequestException);
+      await expect(service.findMineCalendar(1, { fromDate: '2026-01-01', toDate: '2026-03-01' })).rejects.toThrow(BadRequestException);
+      expect(mockLeaveRepo.createQueryBuilder).not.toHaveBeenCalled();
+    });
+
+    it('findMineCalendar: chi don cua minh, bo don da huy, giao khoang ngay, KHONG ro ri email', async () => {
+      const qb = buildCalQb([row()]);
+      const r: any = await service.findMineCalendar(9, range);
+      expect(qb.where).toHaveBeenCalledWith('leave.requesterId = :userId', { userId: 9 });
+      expect(qb.andWhere).toHaveBeenCalledWith('leave.cancelledAt IS NULL');
+      expect(qb.andWhere).toHaveBeenCalledWith('leave.startDate <= :calTo', { calTo: range.toDate });
+      expect(qb.andWhere).toHaveBeenCalledWith('leave.endDate >= :calFrom', { calFrom: range.fromDate });
+      expect(r[0].requester).toEqual({ id: 9, name: 'A', department: { id: 2, name: 'Sales', color: '#fff' } });
+      expect(JSON.stringify(r)).not.toContain('secret@x.com');
+    });
+
+    it('findScopedCalendar: role KHONG co scope -> [] ngay, khong query DB', async () => {
+      const r = await service.findScopedCalendar(5, Role.EMPLOYEE, null, range, true);
+      expect(r).toEqual([]);
+      expect(mockLeaveRepo.createQueryBuilder).not.toHaveBeenCalled();
+    });
+
+    it('findScopedCalendar: includePending=false -> chi approved + rejected (khong lo don cho duyet)', async () => {
+      const qb = buildCalQb([]);
+      await service.findScopedCalendar(1, Role.ADMIN, 'all', range, false);
+      expect(qb.where).toHaveBeenCalledWith('leave.status IN (:...statuses)', {
+        statuses: [LeaveStatus.APPROVED, LeaveStatus.REJECTED],
+      });
+    });
+
+    it('findScopedCalendar: includePending=true + loc phong ban/loai phep', async () => {
+      const qb = buildCalQb([]);
+      await service.findScopedCalendar(1, Role.ADMIN, 'all', { ...range, departmentId: 3, leaveType: 'sick' }, true);
+      expect(qb.where).toHaveBeenCalledWith('leave.status IN (:...statuses)', {
+        statuses: [LeaveStatus.PENDING, LeaveStatus.APPROVED, LeaveStatus.REJECTED],
+      });
+      expect(qb.andWhere).toHaveBeenCalledWith('requester.departmentId = :calDeptId', { calDeptId: 3 });
+      expect(qb.andWhere).toHaveBeenCalledWith('leave.leaveType = :calLeaveType', { calLeaveType: 'sick' });
+    });
+
+    it('findScopedCalendar: MANAGER scope department -> ap scope phong ban dang quan ly', async () => {
+      const qb = buildCalQb([]);
+      mockDepartmentManagerRepo.find.mockResolvedValue([{ departmentId: 3 }]);
+      await service.findScopedCalendar(7, Role.MANAGER, 'department', range, true);
+      expect(qb.andWhere.mock.calls.some((c: any[]) => c[0] instanceof Brackets)).toBe(true);
+    });
+  });
+
   describe('Week-mode: findMinePaged/findPendingPaged/findHistoryPaged/count*', () => {
     const weekResult = {
       data: [{ id: 1 }],

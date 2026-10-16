@@ -12,6 +12,9 @@ import { BulkLeaveIdsDto } from './dto/bulk-leave-ids.dto';
 import { QueryLeaveStatsDto } from './dto/query-leave-stats.dto';
 import { QueryLeaveStatsRequestsDto } from './dto/query-leave-stats-requests.dto';
 import { LeaveRequestsStatsService } from './leave-requests-stats.service';
+import { QueryLeaveCalendarDto } from './dto/query-leave-calendar.dto';
+import { PermissionsService } from '../permissions/permissions.service';
+import { Role } from '../../common/enums/role.enum';
 
 @Controller('leave-requests')
 @UseGuards(JwtAuthGuard, PermissionGuard)
@@ -20,6 +23,7 @@ export class LeaveRequestsController {
     private leaveRequestsService: LeaveRequestsService,
     private uploadsService: UploadsService,
     private leaveRequestsStatsService: LeaveRequestsStatsService,
+    private permissionsService: PermissionsService,
   ) { }
 
   // Presign đặt ở đây (không phải UploadsController chung) vì gắn đúng
@@ -89,6 +93,33 @@ export class LeaveRequestsController {
   @RequirePermission('leave_requests.request')
   async countMyPending(@Request() req) {
     return this.leaveRequestsService.countMyPending(req.user.id);
+  }
+
+  // ── LỊCH THÁNG ──────────────────────────────────────────────────────────────
+  // /mine/calendar: đơn CỦA MÌNH (trang /nghi-phep). /calendar: đơn người khác trong
+  // phạm vi `leave_requests.view` (trang /duyet-phep); đơn đang CHỜ DUYỆT chỉ trả cho
+  // người có thêm `leave_requests.approve` (giống tách tab Chờ duyệt / Lịch sử).
+  @Get('mine/calendar')
+  @RequirePermission('leave_requests.request')
+  async findMineCalendar(@Request() req, @Query() query: QueryLeaveCalendarDto) {
+    return this.leaveRequestsService.findMineCalendar(req.user.id, query);
+  }
+
+  @Get('calendar')
+  @RequirePermission('leave_requests.view')
+  async findCalendar(
+    @Request() req,
+    @Query() query: QueryLeaveCalendarDto,
+    @GetPermissionScope() scope?: string | null,
+  ) {
+    const approve = await this.permissionsService.hasPermission(
+      req.user.role,
+      'leave_requests.approve',
+      req.user.departmentId,
+      req.user.positionId,
+    );
+    const includePending = req.user.role === Role.ADMIN || approve.allowed;
+    return this.leaveRequestsService.findScopedCalendar(req.user.id, req.user.role, scope, query, includePending);
   }
 
   @Get('pending/paged')
