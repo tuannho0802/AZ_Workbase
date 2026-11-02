@@ -1,4 +1,5 @@
-import { Controller, Get, Post, Patch, Delete, Body, Param, UseGuards, Request, Query, BadRequestException } from '@nestjs/common';
+import { Controller, Get, Post, Patch, Delete, Body, Param, UseGuards, Request, Query, Res, BadRequestException } from '@nestjs/common';
+import type { Response } from 'express';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { PermissionGuard } from '../../common/guards/permission.guard';
 import { RequirePermission } from '../../common/decorators/require-permission.decorator';
@@ -12,6 +13,9 @@ import { BulkLeaveIdsDto } from './dto/bulk-leave-ids.dto';
 import { QueryLeaveStatsDto } from './dto/query-leave-stats.dto';
 import { QueryLeaveStatsRequestsDto } from './dto/query-leave-stats-requests.dto';
 import { LeaveRequestsStatsService } from './leave-requests-stats.service';
+import { LeaveRequestsExportService } from './leave-requests-export.service';
+import { ExportLeaveRequestsDto } from './dto/export-leave-requests.dto';
+import { getClientIp } from '../../common/security/client-ip';
 import { QueryLeaveCalendarDto } from './dto/query-leave-calendar.dto';
 import { PermissionsService } from '../permissions/permissions.service';
 import { Role } from '../../common/enums/role.enum';
@@ -23,6 +27,7 @@ export class LeaveRequestsController {
     private leaveRequestsService: LeaveRequestsService,
     private uploadsService: UploadsService,
     private leaveRequestsStatsService: LeaveRequestsStatsService,
+    private leaveRequestsExportService: LeaveRequestsExportService,
     private permissionsService: PermissionsService,
   ) { }
 
@@ -169,6 +174,46 @@ export class LeaveRequestsController {
     @GetPermissionScope() scope?: string | null,
   ) {
     return this.leaveRequestsStatsService.getRequests(query, req.user.id, req.user.role, scope);
+  }
+
+  // ── XUẤT EXCEL THỐNG KÊ NGHỈ PHÉP (PLAN_WITHDRAWAL_LEAVE_EXPORT L3) ─────────────────────
+  // Gate `leave_requests.approve` + scope CỦA CHÍNH KEY NÀY (xem LeaveRequestsExportService.resolveScope).
+  // Route tĩnh 'export'/'export/preview' (POST) không đụng ':id/...' (khác số segment).
+  @Post('export/preview')
+  @RequirePermission('leave_requests.approve')
+  async previewExport(
+    @Request() req,
+    @Body() dto: ExportLeaveRequestsDto,
+    @GetPermissionScope() scope?: string | null,
+  ) {
+    return this.leaveRequestsExportService.preview(dto, {
+      id: req.user.id,
+      role: req.user.role,
+      name: req.user.name,
+      approveScope: scope,
+    });
+  }
+
+  @Post('export')
+  @RequirePermission('leave_requests.approve')
+  async exportExcel(
+    @Request() req,
+    @Body() dto: ExportLeaveRequestsDto,
+    @Res() res: Response,
+    @GetPermissionScope() scope?: string | null,
+  ) {
+    const { buffer, filename } = await this.leaveRequestsExportService.export(
+      dto,
+      { id: req.user.id, role: req.user.role, name: req.user.name, approveScope: scope },
+      getClientIp(req) ?? req.ip,
+      req.headers?.['user-agent'],
+    );
+    res.set({
+      'Content-Type': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+      // filename* (RFC 5987) để tên file có dấu/khoảng trắng tải đúng tên trên mọi trình duyệt.
+      'Content-Disposition': `attachment; filename*=UTF-8''${encodeURIComponent(filename)}`,
+    });
+    res.send(buffer);
   }
 
   // ── THÙNG RÁC + XOÁ (xem LeaveRequestsService.trash/hardDelete) ─────────────

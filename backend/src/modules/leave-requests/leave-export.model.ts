@@ -11,7 +11,7 @@ import { toYmd, trendBucketOf } from './leave-stats.util';
  * Chart (form E/F) thuộc L5: `charts` luôn là [] ở đây.
  */
 
-export type LeaveExportForm = 'A' | 'B' | 'C' | 'D';
+export type LeaveExportForm = 'A' | 'B' | 'C' | 'D' | 'F';
 
 export const DETAIL_ROW_CAP = 5000;
 export const PREVIEW_ROW_LIMIT = 20;
@@ -100,6 +100,7 @@ const FORM_TITLE: Record<LeaveExportForm, string> = {
   B: 'Chi tiết từng đơn',
   C: 'Theo phòng ban & loại phép',
   D: 'Ma trận Nhân viên × Thời gian',
+  F: 'Gói đầy đủ (A-D)',
 };
 
 const round1 = (n: number) => Math.round(n * 10) / 10;
@@ -388,26 +389,26 @@ export function buildLeaveExportModel(input: BuildLeaveExportInput): ExportModel
   const used = new Set<string>();
   const isEmpty = stats.summary.requests === 0;
 
+  const sheetsOf = (f: Exclude<LeaveExportForm, 'F'>): ExportSheet[] => {
+    switch (f) {
+      case 'A':
+        return [{ name: safeSheetName('Theo nhân viên', used), tables: [buildFormA(stats)], charts: [] }];
+      case 'B':
+        return [{ name: safeSheetName('Chi tiết đơn', used), tables: [buildFormB(requests, names, cap)], charts: [] }];
+      case 'C':
+        return buildFormCSheets(stats, names, used);
+      case 'D':
+        return [{ name: safeSheetName('Ma trận', used), tables: [buildFormD(stats, requests)], charts: [] }];
+    }
+  };
   let sheets: ExportSheet[];
-  switch (form) {
-    case 'A':
-      sheets = [{ name: safeSheetName('Theo nhân viên', used), tables: [buildFormA(stats)], charts: [] }];
-      break;
-    case 'B':
-      sheets = [
-        { name: safeSheetName('Chi tiết đơn', used), tables: [buildFormB(requests, names, cap)], charts: [] },
-      ];
-      break;
-    case 'C':
-      sheets = buildFormCSheets(stats, names, used);
-      break;
-    case 'D':
-      sheets = [
-        { name: safeSheetName('Ma trận', used), tables: [buildFormD(stats, requests)], charts: [] },
-      ];
-      break;
-    default:
-      throw new Error(`Unsupported leave export form: ${String(form)}`);
+  if (form === 'F') {
+    // Gói đầy đủ: A + B + C + D (chart của E thêm ở L5). Dùng chung `used` để tên sheet không trùng.
+    sheets = (['A', 'B', 'C', 'D'] as const).flatMap(sheetsOf);
+  } else if (['A', 'B', 'C', 'D'].includes(form)) {
+    sheets = sheetsOf(form);
+  } else {
+    throw new Error(`Unsupported leave export form: ${String(form)}`);
   }
 
   return {

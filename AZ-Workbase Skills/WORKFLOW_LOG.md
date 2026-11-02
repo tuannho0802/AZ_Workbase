@@ -8207,3 +8207,21 @@ Now [deploy]
 
 ---
 
+## [2026-11-02 23:30] | Xuất Excel phép - Phase L3 + L4: endpoint preview/export + Modal 2 bước FE | [Status: Success]
+
+**Actor:** Agent
+**Files Changed:**
+- `backend/src/modules/leave-requests/leave-requests-stats.service.ts` — tách `buildRowsQuery()` dùng chung (`loadRows` giữ nguyên hành vi); thêm `getExportRequests()` (đủ cột form B/D: approver, lý do từ chối, createdAt)
+- `backend/src/modules/leave-requests/leave-requests-export.service.ts` (mới) — `preview()`/`export()`, `resolveScope()`, chặn 403 qua `hasApproverScope()`, nạp tên loại phép, audit `EXPORT_LEAVE_REQUESTS`, tên file `NghiPhep_<Form>_<from>_<to>_ExportBy-<Tên>.xlsx`
+- `backend/src/modules/leave-requests/leave-export.excel.ts` (mới) — ghi `ExportModel` ra xlsx bằng exceljs (nạp lười)
+- `backend/src/modules/leave-requests/dto/export-leave-requests.dto.ts` (mới), `leave-requests.controller.ts`, `leave-requests.module.ts`
+- `backend/src/modules/leave-requests/leave-export.model.ts` — thêm form `F` (A+B+C+D); spec bổ sung
+- `frontend/src/components/leave-requests/LeaveExportModal.tsx` (mới), `app/(dashboard)/duyet-phep/LeaveStatsTab.tsx` + `page.tsx` (prop `canExport`), `lib/api/leave-export.api.ts`, `lib/utils/leaveExport.ts`, `lib/types/leave-export.types.ts`, `lib/api/audit-meta.ts`, `lib/api/attendance-export.api.ts` (export 2 helper dùng chung)
+- `AZ-Workbase Skills/PLAN_WITHDRAWAL_LEAVE_EXPORT.md`, `PERMISSIONS.md` — tick L3/L4 + ghi rule scope export
+
+**Notes:**
+> - Scope: dùng scope của `leave_requests.approve` (đúng plan). Assistant (view=department, approve=all) xuất rộng hơn tab Thống kê — CHƯA được chốt; đổi chỉ cần sửa `resolveScope()`.
+> - Verify thật: BE `tsc --noEmit` sạch, `nest build` OK, jest toàn bộ 161 suite / 2585 test pass (spec mới đọc lại file xlsx, kiểm tra chống formula injection, scope, 403, audit). FE vitest 45 file / 297 test pass, eslint sạch trên file mới, `next build` OK; `tsc` chỉ còn lỗi `logo.png` có sẵn.
+> - CHƯA làm: click-through trình duyệt, mở file bằng Microsoft Excel thật, migration (không cần — `approve` đã có scope). Chart (form E) để L5.
+
+---

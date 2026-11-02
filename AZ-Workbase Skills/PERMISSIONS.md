@@ -454,6 +454,15 @@ với Media Source, chủ dự án chốt hướng an toàn thay vì để treo.
 > approved/rejected. Cả hai bỏ đơn đã huỷ/thùng rác (`cancelled_at IS NOT NULL`), chặn khoảng xem > 45 ngày, trả bản nhẹ (không email).
 > Khác `GET /approved-range` (không lọc theo người xem, chỉ phục vụ bảng chấm công) — KHÔNG dùng route đó cho lịch.
 
+> **Xuất Excel thống kê (2026-11-02, PLAN_WITHDRAWAL_LEAVE_EXPORT L3):** `POST /leave-requests/export/preview` và
+> `POST /leave-requests/export` gate `leave_requests.approve` và dùng **scope của chính key `approve`** (KHÔNG phải `view`).
+> Chọn đơn bằng cùng `buildRowsQuery()` của `GET /stats` (cùng kỳ/bộ lọc/loại Thùng rác) nên tổng đơn khớp tab Thống kê.
+> `LeaveRequestsExportService.assertCanExport()` chặn 403 khi không phải Admin và `hasApproverScope()` = false (scope `own`/null
+> sẽ KHÔNG bị `applyApproverScope` lọc nên bắt buộc chặn trước). ⚠️ Hệ quả đã biết: assistant mặc định `view`=department nhưng
+> `approve`=all ⇒ xuất được phạm vi RỘNG hơn tab Thống kê họ đang xem. Muốn thu hẹp (min của view/approve) chỉ cần sửa
+> `LeaveRequestsExportService.resolveScope()` — nguồn duy nhất. Audit `EXPORT_LEAVE_REQUESTS` (form, kỳ, bộ lọc, scope, số dòng).
+> FE: nút "Xuất Excel" ở tab Thống kê hiện khi `can('leave_requests.approve')`.
+
 **Đối chiếu trực tiếp `leave-requests.service.ts` (2026-08-28) — xác nhận cơ chế `RolePriority` chéo
 phòng ban cũ đã bị THAY THẾ HOÀN TOÀN** bằng 2 bảng tra cứu cố định đúng rule đã chốt, không còn tồn tại
 bất kỳ tham chiếu `RolePriority` nào ngoài comment giải thích lịch sử:

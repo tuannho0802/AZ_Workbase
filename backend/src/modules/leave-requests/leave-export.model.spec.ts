@@ -383,3 +383,19 @@ describe('leave-export.model', () => {
     expect(() => buildLeaveExportModel({ form: 'Z' as any, stats: makeStats([], []) })).toThrow();
   });
 });
+
+describe('buildLeaveExportModel - form F (gói đầy đủ A-D)', () => {
+  it('gộp sheet của A, B, C, D, tên sheet không trùng, charts rỗng', () => {
+    const stats: any = {
+      period: { type: 'month', from: '2026-09-01 00:00:00', to: '2026-09-30 23:59:59', granularity: 'day', spanDays: 30 },
+      summary: { requests: 0, approved: 0, rejected: 0, pending: 0, supplementary: 0, approvalRate: null, employees: 0 },
+      byEmployee: [], byDepartment: [], byType: [], trend: [], byWeekday: [], frequency: [],
+    };
+    const m = buildLeaveExportModel({ form: 'F', stats, requests: [] });
+    const names = m.sheets.map((s) => s.name);
+    expect(m.form).toBe('F');
+    expect(names.length).toBe(5); // A, B, C(2 sheet), D
+    expect(new Set(names).size).toBe(names.length);
+    expect(m.sheets.every((s) => s.charts.length === 0)).toBe(true);
+  });
+});

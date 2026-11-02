@@ -175,4 +175,31 @@ describe('LeaveRequestsStatsService', () => {
       expect(r.data.map((d) => d.id)).toEqual([1]);
     });
   });
+
+  describe('getExportRequests (L3)', () => {
+    it('không có phạm vi xem -> [] và KHÔNG query DB', async () => {
+      leaveSvc.hasApproverScope.mockReturnValue(false);
+      expect(await service.getExportRequests(query, 5, 'employee', 'own')).toEqual([]);
+      expect(leaveRepo.createQueryBuilder).not.toHaveBeenCalled();
+    });
+
+    it('dùng CÙNG scope/bộ lọc với getStats, thêm cột approver/lý do/createdAt và map đủ trường', async () => {
+      const qb = qbMock([
+        leave({
+          id: 9, approverId: 3, rejectionReason: 'Bận', createdAt: new Date('2026-09-01T00:00:00Z'),
+          approver: { id: 3, name: 'Sếp' }, status: LeaveStatus.REJECTED, totalDays: '2.0',
+        }),
+      ]);
+      qb.addSelect = jest.fn().mockReturnThis();
+      leaveRepo.createQueryBuilder.mockReturnValue(qb);
+      const r = await service.getExportRequests({ ...query, departmentId: 2 }, 5, 'manager', 'department');
+      expect(leaveSvc.applyApproverScope).toHaveBeenCalledWith(qb, 5, 'manager', 'department');
+      expect(qb.andWhere).toHaveBeenCalledWith('requester.departmentId = :statsDeptId', { statsDeptId: 2 });
+      expect(qb.leftJoin).toHaveBeenCalledWith('leave.approver', 'approver');
+      expect(r[0]).toMatchObject({
+        id: 9, requesterId: 1, requesterName: 'An', departmentName: 'Sales', approverName: 'Sếp',
+        rejectionReason: 'Bận', totalDays: 2,
+      });
+    });
+  });
 });

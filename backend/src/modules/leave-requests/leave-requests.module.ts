@@ -7,6 +7,7 @@ import { Department } from '../../database/entities/department.entity';
 import { LeaveRequestsService } from './leave-requests.service';
 import { LeaveRequestsController } from './leave-requests.controller';
 import { LeaveRequestsStatsService } from './leave-requests-stats.service';
+import { LeaveRequestsExportService } from './leave-requests-export.service';
 import { LeaveTypesModule } from '../leave-types/leave-types.module';
 
 @Module({
@@ -18,7 +19,7 @@ import { LeaveTypesModule } from '../leave-types/leave-types.module';
     LeaveTypesModule,
   ],
   controllers: [LeaveRequestsController],
-  providers: [LeaveRequestsService, LeaveRequestsStatsService],
+  providers: [LeaveRequestsService, LeaveRequestsStatsService, LeaveRequestsExportService],
   exports: [LeaveRequestsService]
 })
 export class LeaveRequestsModule { }

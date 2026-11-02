@@ -11,6 +11,7 @@ import {
   ResolvedReportRange,
 } from '../reports/report-range.util';
 import { LeaveRequestsService } from './leave-requests.service';
+import type { LeaveExportRequestRow } from './leave-export.model';
 import { QueryLeaveStatsDto } from './dto/query-leave-stats.dto';
 import { QueryLeaveStatsRequestsDto } from './dto/query-leave-stats-requests.dto';
 import {
@@ -135,13 +136,58 @@ export class LeaveRequestsStatsService {
     return { data, total, totalDays, page, limit, totalPages: Math.ceil(total / limit), period };
   }
 
-  private async loadRows(
+  /**
+   * [PLAN_WITHDRAWAL_LEAVE_EXPORT - L3] TOÀN BỘ đơn của kỳ (KHÔNG phân trang) cho form B/D của Xuất Excel.
+   * Chọn đơn bằng ĐÚNG `buildRowsQuery()` của getStats() (cùng kỳ/scope/bộ lọc/loại Thùng rác) nên tổng
+   * số đơn luôn khớp tab Thống kê; chỉ thêm các cột form B cần (người duyệt, lý do từ chối, ngày tạo).
+   * Không có phạm vi hợp lệ (scope own/null) -> trả rỗng (applyApproverScope sẽ KHÔNG lọc gì với scope đó).
+   * Không giới hạn ở DB: form B tự cap/sắp xếp trong model, form D cần ĐỦ đơn để tổng cột khớp biểu đồ.
+   */
+  async getExportRequests(
+    q: QueryLeaveStatsDto,
+    viewerId: number,
+    viewerRole: string,
+    scope?: string | null,
+  ): Promise<LeaveExportRequestRow[]> {
+    if (!this.leaveRequestsService.hasApproverScope(viewerRole, scope)) return [];
+    const range = resolveReportRange(q);
+    const qb = await this.buildRowsQuery(range, q, viewerId, viewerRole, scope);
+    qb.leftJoin('leave.approver', 'approver').addSelect([
+      'leave.approverId',
+      'leave.rejectionReason',
+      'leave.createdAt',
+      'approver.id',
+      'approver.name',
+    ]);
+    const entities = await qb.getMany();
+    return entities.map((l) => ({
+      id: l.id,
+      requesterId: l.requesterId,
+      requesterName: l.requester?.name ?? `#${l.requesterId}`,
+      departmentName: l.requester?.department?.name ?? null,
+      leaveType: l.leaveType,
+      status: l.status,
+      startDate: l.startDate,
+      endDate: l.endDate,
+      totalDays: Number(l.totalDays) || 0,
+      isSupplementary: !!l.isSupplementary,
+      approverName: l.approver?.name ?? null,
+      rejectionReason: l.rejectionReason ?? null,
+      createdAt: l.createdAt,
+    }));
+  }
+
+  /**
+   * Query CHỌN ĐƠN dùng chung cho getStats()/getExportRequests(): cùng kỳ, scope, bộ lọc, loại Thùng rác
+   * => mọi nơi luôn ra CÙNG tập đơn. Chưa getMany() để nơi gọi có thể addSelect thêm cột.
+   */
+  private async buildRowsQuery(
     range: ResolvedReportRange,
     q: QueryLeaveStatsDto,
     viewerId: number,
     viewerRole: string,
     scope?: string | null,
-  ): Promise<LeaveStatRow[]> {
+  ) {
     const from = range.from.slice(0, 10);
     const to = range.to.slice(0, 10);
     const qb = this.leaveRepo
@@ -175,7 +221,17 @@ export class LeaveRequestsStatsService {
     if (q.departmentId) qb.andWhere('requester.departmentId = :statsDeptId', { statsDeptId: q.departmentId });
     if (q.leaveType) qb.andWhere('leave.leaveType = :statsLeaveType', { statsLeaveType: q.leaveType });
     if (q.requesterId) qb.andWhere('leave.requesterId = :statsRequesterId', { statsRequesterId: q.requesterId });
+    return qb;
+  }
 
+  private async loadRows(
+    range: ResolvedReportRange,
+    q: QueryLeaveStatsDto,
+    viewerId: number,
+    viewerRole: string,
+    scope?: string | null,
+  ): Promise<LeaveStatRow[]> {
+    const qb = await this.buildRowsQuery(range, q, viewerId, viewerRole, scope);
     const entities = await qb.getMany();
     return entities.map((l) => ({
       id: l.id,

@@ -4,7 +4,7 @@ import axiosInstance from './axios-instance';
  * Kích hoạt tải file xuống trình duyệt từ 1 Blob - dùng chung cho cả 3 API
  * export bên dưới.
  */
-function triggerBrowserDownload(blob: Blob, filename: string) {
+export function triggerBrowserDownload(blob: Blob, filename: string) {
   const url = window.URL.createObjectURL(blob);
   const a = document.createElement('a');
   a.href = url;
@@ -70,7 +70,7 @@ export interface ExportMonthlyRow {
  * thành JSON thật rồi gán ngược vào `error.response.data` trước khi ném lại,
  * để interceptor chung xử lý đúng như mọi lỗi API khác.
  */
-async function rethrowWithParsedBlobError(error: any): Promise<never> {
+export async function rethrowWithParsedBlobError(error: any): Promise<never> {
   const data = error?.response?.data;
   if (data instanceof Blob && data.type.includes('json')) {
     try {

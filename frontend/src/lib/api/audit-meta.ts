@@ -203,6 +203,8 @@ export const ACTION_META: Record<string, ActionMeta> = {
   // viễn đơn trong thùng rác (LeaveRequestsService.hardDelete).
   TRASH_LEAVE_REQUEST: m('Chuyển đơn nghỉ phép vào thùng rác', 'orange', 'leave'),
   DELETE_LEAVE_REQUEST: m('Xóa vĩnh viễn đơn nghỉ phép', 'red', 'leave'),
+  // Xuất Excel thống kê nghỉ phép (LeaveRequestsExportService.export) - ghi form, kỳ, bộ lọc, số dòng.
+  EXPORT_LEAVE_REQUESTS: m('Xuất Excel thống kê nghỉ phép', 'cyan', 'leave'),
   // "Sửa hộ" ngày/loại phép/lý do của 1 đơn PENDING/APPROVED - action mới
   // ghi bởi LeaveRequestsService.update() (PATCH /leave-requests/:id,
   // permission leave_requests.edit). Mirror màu 'blue' như các action

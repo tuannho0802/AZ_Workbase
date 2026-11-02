@@ -1421,7 +1421,7 @@ export default function ApprovalPage() {
           <BarChartOutlined /> Thống kê
         </span>
       ),
-      children: <LeaveStatsTab allowed={canView} />
+      children: <LeaveStatsTab allowed={canView} canExport={canApprove} />
     } : null,
   ].filter(Boolean) as any[];
 

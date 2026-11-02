@@ -3,7 +3,7 @@
 import { useCallback, useMemo, useState } from 'react';
 import { Alert, Button, Card, Col, Empty, Progress, Row, Segmented, Select, Space, Spin, Table, Tag, Tooltip, Typography } from 'antd';
 import type { ColumnsType } from 'antd/es/table';
-import { ClearOutlined, ReloadOutlined } from '@ant-design/icons';
+import { ClearOutlined, DownloadOutlined, ReloadOutlined } from '@ant-design/icons';
 import {
   Bar,
   BarChart,
@@ -45,6 +45,7 @@ import {
 } from '@/lib/utils/leaveStats';
 import { resolveEntityColor } from '@/lib/utils/entityColor';
 import LeaveRequestsMiniModal from './LeaveRequestsMiniModal';
+import LeaveExportModal from '@/components/leave-requests/LeaveExportModal';
 import PeriodSelector from '../reports/PeriodSelector';
 import ReportKpiCard, { REPORT_COLORS } from '../reports/ReportKpiCard';
 import ReportNameFilter from '../reports/ReportNameFilter';
@@ -68,6 +69,8 @@ const payloadOf = <T,>(d: unknown): T => ((d as { payload?: T } | null)?.payload
 interface Props {
   /** false -> không gọi API (người dùng không có `leave_requests.view`). */
   allowed: boolean;
+  /** `leave_requests.approve` - nút "Xuất Excel" (BE gate đúng key này). Mặc định ẩn. */
+  canExport?: boolean;
 }
 
 /**
@@ -77,7 +80,7 @@ interface Props {
  *
  * Recharts: luôn `isAnimationActive={false}` (bật animation thì Bar/Pie có thể render rỗng khi mount trong ResponsiveContainer).
  */
-export default function LeaveStatsTab({ allowed }: Props) {
+export default function LeaveStatsTab({ allowed, canExport = false }: Props) {
   const [query, setQuery] = useState<ReportQuery>(DEFAULT_QUERY);
   const [filters, setFilters] = useState<LeaveStatsFilters>({});
   // Tên nhân viên đang lọc - lưu lúc bấm "Lọc" vì khi đã lọc, dropdown/bảng chỉ còn đúng 1 người.
@@ -87,6 +90,7 @@ export default function LeaveStatsTab({ allowed }: Props) {
   const [search, setSearch] = useState('');
   // Mini Table đơn nghỉ mở khi bấm Card / cột Chart / số đơn trong bảng.
   const [drill, setDrill] = useState<LeaveDrill | null>(null);
+  const [exportOpen, setExportOpen] = useState(false);
   const openDrill = (title: string, preset?: LeaveDrillPreset, label?: string) => setDrill({ title, preset, label });
 
   const { leaveTypes } = useLeaveTypes();
@@ -317,6 +321,15 @@ export default function LeaveStatsTab({ allowed }: Props) {
           <Space>
             {activeFilters > 0 && <Button icon={<ClearOutlined />} onClick={clearFilters}>Xoá lọc ({activeFilters})</Button>}
             <Button icon={<ReloadOutlined />} loading={isFetching && !isLoading} onClick={() => refetch()}>Làm mới</Button>
+            {canExport && (
+              <Button
+                icon={<DownloadOutlined />}
+                disabled={isLoading || (query.period === 'custom' && !(query.customFrom && query.customTo))}
+                onClick={() => setExportOpen(true)}
+              >
+                Xuất Excel
+              </Button>
+            )}
           </Space>
         </div>
         <Row gutter={[12, 12]} style={{ marginTop: 12 }}>
@@ -599,6 +612,7 @@ export default function LeaveStatsTab({ allowed }: Props) {
         </div>
       </Spin>
       <LeaveRequestsMiniModal drill={drill} onClose={() => setDrill(null)} query={query} baseFilters={filters} allowed={allowed} />
+      {canExport && <LeaveExportModal open={exportOpen} onClose={() => setExportOpen(false)} query={query} filters={filters} />}
     </div>
   );
 }
