@@ -2,18 +2,41 @@
 
 import { useMemo, useRef, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { Alert, App, Button, Empty, Modal, Radio, Skeleton, Space, Table, Tabs, Typography } from 'antd';
+import { Alert, App, Button, Col, Empty, Modal, Radio, Row, Skeleton, Space, Table, Tabs, Typography } from 'antd';
 import type { ColumnsType } from 'antd/es/table';
 import { ArrowLeftOutlined, DownloadOutlined } from '@ant-design/icons';
+import {
+  Bar,
+  BarChart,
+  CartesianGrid,
+  Cell,
+  Legend,
+  Line,
+  LineChart,
+  Pie,
+  PieChart,
+  ResponsiveContainer,
+  Tooltip as ChartTooltip,
+  XAxis,
+  YAxis,
+} from 'recharts';
 import { leaveExportApi } from '@/lib/api/leave-export.api';
-import type { LeaveExportForm, LeaveExportModel, LeaveExportTable } from '@/lib/types/leave-export.types';
+import type {
+  LeaveExportChart,
+  LeaveExportForm,
+  LeaveExportModel,
+  LeaveExportSheet,
+  LeaveExportTable,
+} from '@/lib/types/leave-export.types';
 import type { LeaveStatsFilters } from '@/lib/types/leave-stats.types';
 import type { ReportQuery } from '@/lib/types/reports.types';
 import { getApiErrorMessage, hasGlobalErrorToast } from '@/lib/utils/error-message.util';
 import {
   LEAVE_EXPORT_FORM_OPTIONS,
   buildLeaveExportRequest,
+  chartRows,
   formatExportCell,
+  hexColor,
   ymdToDmy,
 } from '@/lib/utils/leaveExport';
 
@@ -82,11 +105,101 @@ function PreviewTable({ table }: { table: LeaveExportTable }) {
   );
 }
 
+/**
+ * Demo của 1 chart: vẽ đúng loại/series/màu mà file Excel sẽ có (cùng `ExportChartModel`).
+ * `isAnimationActive={false}`: bật animation thì Bar/Pie có thể render rỗng khi mount trong ResponsiveContainer.
+ */
+function PreviewChart({ chart }: { chart: LeaveExportChart }) {
+  const data = chartRows(chart);
+  return (
+    <div data-testid={`preview-chart-${chart.id}`} style={{ marginBottom: 16 }}>
+      <Text strong>{chart.title}</Text>
+      <ResponsiveContainer width="100%" height={260}>
+        {chart.type === 'doughnut' ? (
+          <PieChart>
+            <Pie
+              data={data.map((d) => ({ name: String(d.name), value: Number(d[chart.series[0]?.key]) || 0 }))}
+              dataKey="value"
+              nameKey="name"
+              innerRadius="50%"
+              outerRadius="80%"
+              paddingAngle={2}
+              isAnimationActive={false}
+            >
+              {data.map((_, i) => (
+                <Cell key={i} fill={hexColor(chart.pointColors?.[i] ?? chart.series[0]?.color ?? '1677FF')} />
+              ))}
+            </Pie>
+            <ChartTooltip />
+            <Legend wrapperStyle={{ fontSize: 12 }} />
+          </PieChart>
+        ) : chart.type === 'line' ? (
+          <LineChart data={data} margin={{ top: 12, right: 8, left: 0, bottom: 0 }}>
+            <CartesianGrid strokeDasharray="3 3" vertical={false} />
+            <XAxis dataKey="name" tick={{ fontSize: 12 }} interval="preserveStartEnd" minTickGap={24} />
+            <YAxis allowDecimals={false} tick={{ fontSize: 12 }} />
+            <ChartTooltip />
+            <Legend />
+            {chart.series.map((s) => (
+              <Line
+                key={s.key}
+                type="monotone"
+                dataKey={s.key}
+                name={s.name}
+                stroke={hexColor(s.color)}
+                strokeWidth={2}
+                dot={chart.categories.length <= 31}
+                connectNulls={false}
+                isAnimationActive={false}
+              />
+            ))}
+          </LineChart>
+        ) : (
+          <BarChart data={data} margin={{ top: 12, right: 8, left: 0, bottom: 0 }}>
+            <CartesianGrid strokeDasharray="3 3" vertical={false} />
+            <XAxis dataKey="name" tick={{ fontSize: 12 }} interval={0} />
+            <YAxis allowDecimals={false} tick={{ fontSize: 12 }} />
+            <ChartTooltip />
+            <Legend />
+            {chart.series.map((s) => (
+              <Bar key={s.key} dataKey={s.key} name={s.name} stackId="st" fill={hexColor(s.color)} maxBarSize={32} isAnimationActive={false} />
+            ))}
+          </BarChart>
+        )}
+      </ResponsiveContainer>
+    </div>
+  );
+}
+
+function SheetPreview({ sheet }: { sheet: LeaveExportSheet }) {
+  return (
+    <>
+      {sheet.charts.length > 0 && (
+        <>
+          <Text type="secondary" style={{ display: 'block', marginBottom: 8 }}>
+            Trong file Excel các biểu đồ nằm bên phải bảng và là biểu đồ gốc - sửa số trong ô thì biểu đồ đổi theo.
+          </Text>
+          <Row gutter={16}>
+            {sheet.charts.map((c) => (
+              <Col key={c.id} xs={24} lg={c.type === 'doughnut' ? 10 : 14}>
+                <PreviewChart chart={c} />
+              </Col>
+            ))}
+          </Row>
+        </>
+      )}
+      {sheet.tables.map((t) => (
+        <PreviewTable key={t.id} table={t} />
+      ))}
+    </>
+  );
+}
+
 function PreviewBody({ model }: { model: LeaveExportModel }) {
   const sheetViews = model.sheets.map((s) => ({
     key: s.name,
     label: s.name,
-    children: s.tables.map((t) => <PreviewTable key={t.id} table={t} />),
+    children: <SheetPreview sheet={s} />,
   }));
   return (
     <>
@@ -100,7 +213,7 @@ function PreviewBody({ model }: { model: LeaveExportModel }) {
 }
 
 /**
- * Xuất Excel thống kê nghỉ phép - 2 bước: (1) chọn form A-D/F -> (2) Demo (đọc cùng `ExportModel` mà file Excel sẽ ghi,
+ * Xuất Excel thống kê nghỉ phép - 2 bước: (1) chọn form A-F -> (2) Demo (đọc cùng `ExportModel` mà file Excel sẽ ghi,
  * nên xem gì xuất nấy) -> bấm "Xuất Excel" mới tải file. Chặn bấm đúp bằng ref (state async không kịp chặn click thứ 2).
  */
 export default function LeaveExportModal({ open, onClose, query, filters }: Props) {

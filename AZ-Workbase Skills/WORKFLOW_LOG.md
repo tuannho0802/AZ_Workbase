@@ -8225,3 +8225,20 @@ Now [deploy]
 > - CHƯA làm: click-through trình duyệt, mở file bằng Microsoft Excel thật, migration (không cần — `approve` đã có scope). Chart (form E) để L5.
 
 ---
+## [2026-11-02 23:59] | Xuất Excel phép - Phase L5: form E (biểu đồ gốc) + form F = A–E | [Status: Success]
+
+**Actor:** Agent
+**Files Changed:**
+- `backend/src/modules/leave-requests/leave-export.model.ts` — thêm form `E`; `ExportChartModel` có kiểu thật (`tableId` + `key` cột, `pointColors`); `buildFormESheet()` (KPI + top 10 nhân viên + loại phép + xu hướng + bảng A đầy đủ ở cuối; 3 chart `employeeStacked`/`typeDonut`/`trendLine`); form F = A+B+C+D+E; kỳ rỗng → không chart
+- `backend/src/modules/leave-requests/leave-export.excel.ts` — ghi lại vị trí bảng, `toChartSpec()` quy chart ra vùng ô thật, `injectCharts()` sau khi exceljs ghi; chart từ cột F, bảng rộng bị đẩy xuống dưới vùng chart; sheet có chart in ngang vừa 1 trang
+- `backend/src/modules/leave-requests/dto/export-leave-requests.dto.ts` — nhận `E`
+- `backend/src/modules/leave-requests/leave-export.excel.spec.ts` (mới), `leave-export.model.spec.ts`, `leave-requests-export.service.spec.ts` — test chart
+- `frontend/src/lib/types/leave-export.types.ts`, `lib/utils/leaveExport.ts` (+ test), `components/leave-requests/LeaveExportModal.tsx` (+ test) — form E, `PreviewChart` (recharts) vẽ cùng model với file
+- `AZ-Workbase Skills/PLAN_WITHDRAWAL_LEAVE_EXPORT.md` — tick L5
+
+**Notes:**
+> - Không thêm permission/migration; scope vẫn `resolveScope()` (assistant: approve=all rộng hơn view=department — CHƯA được chốt).
+> - Verify thật: BE `tsc --noEmit` sạch, `nest build` OK, jest 162 suite / 2605 test pass. FE `tsc` sạch (trừ logo.png có sẵn), eslint sạch trên file mới, vitest 140 file / 1339 test pass, `next build` OK. LibreOffice render form F: 3 chart đúng loại, không đè bảng; test đối chiếu từng ô được chart tham chiếu với cache.
+> - CHƯA làm: mở bằng Microsoft Excel thật, click-through trình duyệt. L6 (docs `guides-content/duyet-phep.md`, `PERMISSIONS.md` §2.6) còn lại.
+
+---

@@ -1,8 +1,11 @@
 import { describe, expect, it } from 'vitest';
 import {
   buildLeaveExportRequest,
+  chartRows,
   filenameFromContentDisposition,
   formatExportCell,
+  hexColor,
+  LEAVE_EXPORT_FORM_OPTIONS,
   ymdToDmy,
 } from './leaveExport';
 
@@ -34,5 +37,22 @@ describe('leaveExport utils', () => {
     ).toBe('NghiPhep_A_2026-09-01.xlsx');
     expect(filenameFromContentDisposition(undefined, 'x.xlsx')).toBe('x.xlsx');
     expect(filenameFromContentDisposition("attachment; filename*=UTF-8''%E0%A4%A", 'x.xlsx')).toBe('x.xlsx');
+  });
+
+  it('chartRows gộp categories + series; null giữ nguyên (không ép 0); hexColor thêm # khi thiếu', () => {
+    const rows = chartRows({
+      id: 'c', type: 'line', title: 't', tableId: 'x', categoryKey: 'k',
+      categories: ['a', 'b'],
+      series: [{ key: 'v', name: 'V', color: '1677FF', values: [3, null] }],
+    });
+    expect(rows).toEqual([{ name: 'a', v: 3 }, { name: 'b', v: null }]);
+    expect(hexColor('1677FF')).toBe('#1677FF');
+    expect(hexColor('#fff')).toBe('#fff');
+  });
+
+  it('danh sách form có E (biểu đồ) và F mô tả gói A–E', () => {
+    const vals = LEAVE_EXPORT_FORM_OPTIONS.map((o) => o.value);
+    expect(vals).toEqual(['A', 'B', 'C', 'D', 'E', 'F']);
+    expect(LEAVE_EXPORT_FORM_OPTIONS.find((o) => o.value === 'F')?.title).toContain('A–E');
   });
 });

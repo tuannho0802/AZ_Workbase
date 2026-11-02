@@ -3,6 +3,7 @@ import type { LeaveStatsResponse } from './leave-requests-stats.service';
 import {
   buildLeaveExportModel,
   bucketLabel,
+  CHART_TOP_EMPLOYEES,
   DETAIL_ROW_CAP,
   EMPTY_NOTICE,
   guardFormula,
@@ -384,8 +385,8 @@ describe('leave-export.model', () => {
   });
 });
 
-describe('buildLeaveExportModel - form F (gói đầy đủ A-D)', () => {
-  it('gộp sheet của A, B, C, D, tên sheet không trùng, charts rỗng', () => {
+describe('buildLeaveExportModel - form F (gói đầy đủ A-E)', () => {
+  it('gộp sheet của A, B, C, D, E; tên sheet không trùng; chỉ sheet E có chart khi có dữ liệu', () => {
     const stats: any = {
       period: { type: 'month', from: '2026-09-01 00:00:00', to: '2026-09-30 23:59:59', granularity: 'day', spanDays: 30 },
       summary: { requests: 0, approved: 0, rejected: 0, pending: 0, supplementary: 0, approvalRate: null, employees: 0 },
@@ -394,8 +395,92 @@ describe('buildLeaveExportModel - form F (gói đầy đủ A-D)', () => {
     const m = buildLeaveExportModel({ form: 'F', stats, requests: [] });
     const names = m.sheets.map((s) => s.name);
     expect(m.form).toBe('F');
-    expect(names.length).toBe(5); // A, B, C(2 sheet), D
+    expect(names.length).toBe(6); // A, B, C(2 sheet), D, E
     expect(new Set(names).size).toBe(names.length);
-    expect(m.sheets.every((s) => s.charts.length === 0)).toBe(true);
+    expect(m.sheets.every((s) => s.charts.length === 0)).toBe(true); // kỳ rỗng => không chart
+  });
+});
+
+describe('buildLeaveExportModel - form E (chart)', () => {
+  const rows = [
+    statRow({ id: 1, requesterId: 1, status: LeaveStatus.APPROVED, startDate: '2026-09-02' }),
+    statRow({ id: 2, requesterId: 1, status: LeaveStatus.REJECTED, startDate: '2026-09-03' }),
+    statRow({ id: 3, requesterId: 2, status: LeaveStatus.PENDING, startDate: '2026-09-04', leaveType: 'sick' }),
+    statRow({ id: 4, requesterId: 3, status: LeaveStatus.APPROVED, startDate: '2026-09-05' }),
+  ];
+  const stats = makeStats(rows, [hc(1), hc(2), hc(3)]);
+  const m = buildLeaveExportModel({ form: 'E', stats, leaveTypeNames: { annual: 'Phép năm', sick: 'Phép ốm' } });
+  const sheet = m.sheets[0];
+
+  it('1 sheet, 3 chart đúng loại; bảng nguồn tồn tại trên cùng sheet; bảng A đầy đủ ở cuối', () => {
+    expect(m.sheets).toHaveLength(1);
+    expect(sheet.charts.map((c) => [c.id, c.type])).toEqual([
+      ['employeeStacked', 'barStacked'],
+      ['typeDonut', 'doughnut'],
+      ['trendLine', 'line'],
+    ]);
+    const ids = sheet.tables.map((t) => t.id);
+    for (const c of sheet.charts) expect(ids).toContain(c.tableId);
+    expect(ids[ids.length - 1]).toBe('byEmployee');
+  });
+
+  it('mỗi chart: số hạng mục = số dòng bảng nguồn, giá trị = ô trong bảng; tên series = header cột', () => {
+    for (const c of sheet.charts) {
+      const t = sheet.tables.find((x) => x.id === c.tableId)!;
+      expect(c.categories).toHaveLength(t.rows.length);
+      const catIdx = t.columns.findIndex((x) => x.key === c.categoryKey);
+      expect(t.rows.map((r) => r[catIdx])).toEqual(c.categories);
+      for (const s of c.series) {
+        const i = t.columns.findIndex((x) => x.key === s.key);
+        expect(t.columns[i].header).toBe(s.name);
+        expect(t.rows.map((r) => r[i])).toEqual(s.values);
+        expect(s.color).toMatch(/^[0-9A-F]{6}$/);
+      }
+    }
+  });
+
+  it('donut hiện tên loại phép (không phải mã) + đủ màu từng lát; tổng đơn khớp summary', () => {
+    const d = sheet.charts.find((c) => c.id === 'typeDonut')!;
+    expect(d.categories.sort()).toEqual(['Phép năm', 'Phép ốm']);
+    expect(d.pointColors).toHaveLength(d.categories.length);
+    expect(d.series[0].values.reduce((a, b) => (a ?? 0) + (b ?? 0), 0)).toBe(stats.summary.requests);
+  });
+
+  it('đường xu hướng khớp trend (cùng số bucket, tổng = tổng đơn)', () => {
+    const l = sheet.charts.find((c) => c.id === 'trendLine')!;
+    expect(l.categories).toHaveLength(stats.trend.length);
+    expect(l.series[0].values.reduce((a, b) => (a ?? 0) + (b ?? 0), 0)).toBe(stats.summary.requests);
+  });
+
+  it('cột chồng: top N theo số đơn giảm dần, tối đa CHART_TOP_EMPLOYEES', () => {
+    const many = Array.from({ length: 15 }, (_, i) => statRow({ id: 100 + i, requesterId: 10 + i }));
+    const st = makeStats(many, many.map((r) => hc(r.requesterId)));
+    const e = buildLeaveExportModel({ form: 'E', stats: st }).sheets[0].charts[0];
+    expect(e.categories).toHaveLength(CHART_TOP_EMPLOYEES);
+  });
+
+  it('kỳ rỗng: không chart nhưng vẫn có bảng + thông báo', () => {
+    const empty = buildLeaveExportModel({ form: 'E', stats: makeStats([], [hc(1)]) });
+    expect(empty.isEmpty).toBe(true);
+    expect(empty.notice).toBe(EMPTY_NOTICE);
+    expect(empty.sheets[0].charts).toEqual([]);
+    expect(empty.sheets[0].tables.length).toBeGreaterThan(0);
+  });
+
+  it('KPI: tỷ lệ chưa có kết quả giữ null (không ép 0)', () => {
+    const only = makeStats([statRow({ id: 9, requesterId: 1, status: LeaveStatus.PENDING })], [hc(1)]);
+    const k = buildLeaveExportModel({ form: 'E', stats: only }).sheets[0].tables[0];
+    expect(k.rows.find((r) => r[0] === 'Tỷ lệ duyệt (%)')![1]).toBeNull();
+  });
+
+  it('preview giữ nguyên chart (chỉ cắt dòng bảng)', () => {
+    const p = toPreviewModel(m);
+    expect(p.sheets[0].charts).toEqual(sheet.charts);
+  });
+
+  it('tên nhân viên bắt đầu bằng "=" được chống formula injection ở cả bảng lẫn nhãn chart', () => {
+    const evil = [statRow({ id: 1, requesterId: 1, requesterName: '=HYPERLINK("x")' })];
+    const e = buildLeaveExportModel({ form: 'E', stats: makeStats(evil, [hc(1)]) }).sheets[0].charts[0];
+    expect(e.categories[0].startsWith("'=")).toBe(true);
   });
 });

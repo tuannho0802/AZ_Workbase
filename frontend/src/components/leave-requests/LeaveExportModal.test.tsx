@@ -89,4 +89,52 @@ describe('LeaveExportModal', () => {
     await screen.findByText('Bạn không có phạm vi dữ liệu');
     expect(screen.getByRole('button', { name: /Xuất Excel/ })).toBeDisabled();
   });
+
+  const charts = [
+    { id: 'employeeStacked', type: 'barStacked', title: 'Đơn theo nhân viên (top 2)', tableId: 'employees', categoryKey: 'name', categories: ['An', 'Bình'], series: [{ key: 'rate', name: 'Tỷ lệ', color: '2E7D32', values: [1, 2] }] },
+    { id: 'typeDonut', type: 'doughnut', title: 'Cơ cấu loại phép (số đơn)', tableId: 'employees', categoryKey: 'name', categories: ['An', 'Bình'], series: [{ key: 'rate', name: 'Tỷ lệ', color: '1677FF', values: [1, 2] }], pointColors: ['1677FF', '52C41A'] },
+    { id: 'trendLine', type: 'line', title: 'Xu hướng số đơn theo thời gian', tableId: 'employees', categoryKey: 'name', categories: ['An', 'Bình'], series: [{ key: 'rate', name: 'Tỷ lệ', color: 'D32F2F', values: [1, null] }] },
+  ];
+
+  it('form E: chọn E gửi form=E; Demo hiện đủ 3 chart của model cạnh bảng', async () => {
+    preview.mockResolvedValue({ ...model, form: 'E', sheets: [{ ...model.sheets[0], charts }] });
+    renderModal();
+    fireEvent.click(screen.getByText(/E\. Báo cáo kèm biểu đồ/));
+    fireEvent.click(screen.getByText('Xem trước'));
+    await screen.findByTestId('preview-chart-employeeStacked');
+    expect(screen.getByTestId('preview-chart-typeDonut')).toBeInTheDocument();
+    expect(screen.getByTestId('preview-chart-trendLine')).toBeInTheDocument();
+    expect(screen.getByText('Cơ cấu loại phép (số đơn)')).toBeInTheDocument();
+    expect(screen.getByText('Bình')).toBeInTheDocument(); // bảng vẫn hiện cạnh chart
+    expect(preview).toHaveBeenCalledWith(expect.objectContaining({ form: 'E' }));
+  });
+
+  it('form A (không chart) không render khung chart nào', async () => {
+    renderModal();
+    fireEvent.click(screen.getByText('Xem trước'));
+    await screen.findByText('Bình');
+    expect(screen.queryByTestId(/^preview-chart-/)).not.toBeInTheDocument();
+  });
+
+  it('kỳ rỗng form E: hiện thông báo, không chart, không lỗi', async () => {
+    preview.mockResolvedValue({ ...model, form: 'E', isEmpty: true, notice: 'Không có dữ liệu trong kỳ đã chọn', sheets: [{ ...model.sheets[0], charts: [], tables: [{ ...model.sheets[0].tables[0], rows: [], totalRows: 0, truncated: false }] }] });
+    renderModal();
+    fireEvent.click(screen.getByText(/E\. Báo cáo kèm biểu đồ/));
+    fireEvent.click(screen.getByText('Xem trước'));
+    await screen.findByText('Không có dữ liệu trong kỳ đã chọn');
+    expect(screen.queryByTestId(/^preview-chart-/)).not.toBeInTheDocument();
+  });
+
+  it('form F: nhiều sheet -> chart nằm ở tab Báo cáo', async () => {
+    preview.mockResolvedValue({
+      ...model,
+      form: 'F',
+      sheets: [model.sheets[0], { ...model.sheets[0], name: 'Báo cáo', charts }],
+    });
+    renderModal();
+    fireEvent.click(screen.getByText(/F\. Gói đầy đủ/));
+    fireEvent.click(screen.getByText('Xem trước'));
+    fireEvent.click(await screen.findByRole('tab', { name: 'Báo cáo' }));
+    expect(await screen.findByTestId('preview-chart-trendLine')).toBeInTheDocument();
+  });
 });

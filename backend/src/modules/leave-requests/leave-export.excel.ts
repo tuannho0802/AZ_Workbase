@@ -1,11 +1,20 @@
 import type * as ExcelJS from 'exceljs';
 import { loadExcelJS } from '../../common/utils/exceljs-loader';
-import type { ExportCell, ExportColumn, ExportModel, ExportTable } from './leave-export.model';
+import { ChartSpec, injectCharts } from '../../common/utils/xlsx-chart-injector';
+import type {
+  ExportCell,
+  ExportChartModel,
+  ExportColumn,
+  ExportModel,
+  ExportSheet,
+  ExportTable,
+} from './leave-export.model';
 
 /**
  * [PLAN_WITHDRAWAL_LEAVE_EXPORT - L3] Ghi `ExportModel` ra file .xlsx bằng exceljs. Preview (FE) và file
  * này cùng đọc 1 model => xem gì xuất nấy. Chỉ lo ĐỊNH DẠNG; mọi con số/chuỗi (đã chống formula
- * injection) do `buildLeaveExportModel` quyết định. Chart (form E/F) thêm ở L5 qua xlsx-chart-injector.
+ * injection) do `buildLeaveExportModel` quyết định. Chart (form E/F, L5): chèn bằng xlsx-chart-injector sau khi
+ * exceljs ghi xong; chart tham chiếu THẲNG vùng ô của bảng (sửa số trong Excel thì chart đổi theo).
  */
 
 const HEADER_FILL: ExcelJS.Fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF1677FF' } };
@@ -33,7 +42,35 @@ function toExcelValue(cell: ExportCell, col: ExportColumn): ExcelJS.CellValue {
   return cell;
 }
 
-function writeTable(ws: ExcelJS.Worksheet, table: ExportTable, startRow: number, showTitle: boolean): number {
+/** Vị trí thật của 1 bảng trên sheet (1-based) - để quy chart ra vùng ô. */
+interface TablePlacement {
+  headerRow: number;
+  firstDataRow: number;
+  rowCount: number;
+}
+
+/** 1 -> A, 26 -> Z, 27 -> AA. */
+export function colLetter(n: number): string {
+  let s = '';
+  for (let x = n; x > 0; x = Math.floor((x - 1) / 26)) s = String.fromCharCode(65 + ((x - 1) % 26)) + s;
+  return s;
+}
+
+/** Chart đặt ở cột F (0-based 5) trở đi; bảng rộng hơn mốc này phải nằm DƯỚI vùng chart để không đè nhau. */
+export const CHART_FROM_COL = 5;
+export const CHART_COLS = 9;
+export const CHART_ROWS = 16;
+export const CHART_GAP_ROWS = 1;
+const CHART_FIRST_ROW = 3; // 0-based => dòng 4 của sheet
+
+function writeTable(
+  ws: ExcelJS.Worksheet,
+  table: ExportTable,
+  startRow: number,
+  showTitle: boolean,
+  placements: Map<string, TablePlacement>,
+  applyFilter: boolean,
+): number {
   let r = startRow;
   if (showTitle) {
     const t = ws.getRow(r++);
@@ -41,6 +78,7 @@ function writeTable(ws: ExcelJS.Worksheet, table: ExportTable, startRow: number,
     t.getCell(1).font = { bold: true, size: 12 };
   }
   const headerRowNo = r;
+  placements.set(table.id, { headerRow: headerRowNo, firstDataRow: headerRowNo + 1, rowCount: table.rows.length });
   const header = ws.getRow(r++);
   table.columns.forEach((c, i) => {
     const cell = header.getCell(i + 1);
@@ -67,7 +105,7 @@ function writeTable(ws: ExcelJS.Worksheet, table: ExportTable, startRow: number,
     });
   }
 
-  if (table.rows.length > 0) {
+  if (applyFilter && table.rows.length > 0) {
     ws.autoFilter = {
       from: { row: headerRowNo, column: 1 },
       to: { row: headerRowNo + table.rows.length, column: table.columns.length },
@@ -94,6 +132,47 @@ function writeTable(ws: ExcelJS.Worksheet, table: ExportTable, startRow: number,
   return r;
 }
 
+/** Quy `ExportChartModel` (theo tableId/key cột) ra `ChartSpec` (vùng ô A1) của injector. */
+export function toChartSpec(
+  chart: ExportChartModel,
+  sheet: ExportSheet,
+  sheetName: string,
+  placements: Map<string, TablePlacement>,
+  index: number,
+): ChartSpec {
+  const t = sheet.tables.find((x) => x.id === chart.tableId);
+  const pos = placements.get(chart.tableId);
+  if (!t || !pos) throw new Error(`Chart "${chart.id}": không thấy bảng "${chart.tableId}" trên sheet "${sheet.name}"`);
+  if (pos.rowCount !== chart.categories.length) {
+    throw new Error(`Chart "${chart.id}": ${chart.categories.length} hạng mục nhưng bảng có ${pos.rowCount} dòng`);
+  }
+  const colOf = (key: string) => {
+    const i = t.columns.findIndex((c) => c.key === key);
+    if (i < 0) throw new Error(`Chart "${chart.id}": bảng "${t.id}" không có cột "${key}"`);
+    return colLetter(i + 1);
+  };
+  const first = pos.firstDataRow;
+  const last = pos.firstDataRow + pos.rowCount - 1;
+  const range = (key: string) => `${colOf(key)}${first}:${colOf(key)}${last}`;
+  const fromRow = CHART_FIRST_ROW + index * (CHART_ROWS + CHART_GAP_ROWS);
+  return {
+    type: chart.type,
+    title: chart.title,
+    sheetName,
+    categoriesRef: range(chart.categoryKey),
+    categories: chart.categories,
+    series: chart.series.map((s) => ({
+      name: s.name,
+      nameRef: `${colOf(s.key)}${pos.headerRow}`,
+      valuesRef: range(s.key),
+      values: s.values,
+      color: s.color,
+    })),
+    pointColors: chart.pointColors,
+    anchor: { fromCol: CHART_FROM_COL, fromRow, toCol: CHART_FROM_COL + CHART_COLS, toRow: fromRow + CHART_ROWS },
+  };
+}
+
 export interface LeaveExcelMeta {
   exportedByName?: string;
   generatedAtText?: string;
@@ -105,8 +184,11 @@ export async function buildLeaveExportBuffer(model: ExportModel, meta: LeaveExce
   wb.creator = 'AZ Workbase';
   wb.created = new Date();
 
+  const chartSpecs: ChartSpec[] = [];
+
   for (const sheet of model.sheets) {
     const ws = wb.addWorksheet(sheet.name);
+    const placements = new Map<string, TablePlacement>();
     const title = ws.getRow(1);
     title.getCell(1).value = `Báo cáo nghỉ phép - ${model.title}`;
     title.getCell(1).font = { bold: true, size: 14 };
@@ -133,14 +215,29 @@ export async function buildLeaveExportBuffer(model: ExportModel, meta: LeaveExce
     }
     widths.forEach((w, i) => (ws.getColumn(i + 1).width = w));
 
+    // Vùng chart nằm bên phải (từ cột F); bảng nào rộng hơn mốc đó phải bắt đầu sau khi hết vùng chart.
+    const chartBottomRow = sheet.charts.length
+      ? CHART_FIRST_ROW + sheet.charts.length * (CHART_ROWS + CHART_GAP_ROWS) + 1 // 1-based, chừa 1 dòng trống
+      : 0;
+
+    // Sheet có chart: in ngang, vừa 1 trang rộng để chart không bị cắt đôi khi in/xuất PDF.
+    if (sheet.charts.length > 0) {
+      ws.pageSetup = { orientation: 'landscape', fitToPage: true, fitToWidth: 1, fitToHeight: 0 };
+    }
+
     const multi = sheet.tables.length > 1;
     sheet.tables.forEach((t, i) => {
+      if (t.columns.length > CHART_FROM_COL) r = Math.max(r, chartBottomRow);
       const firstHeaderRow = r + (multi ? 1 : 0);
-      r = writeTable(ws, t, r, multi) + 1;
+      // 1 sheet chỉ có 1 autoFilter => gán cho bảng CUỐI (form E đặt bảng A đầy đủ ở cuối).
+      r = writeTable(ws, t, r, multi, placements, i === sheet.tables.length - 1) + 1;
       if (i === 0 && !multi) ws.views = [{ state: 'frozen', ySplit: firstHeaderRow, xSplit: 0 }];
     });
+
+    sheet.charts.forEach((c, idx) => chartSpecs.push(toChartSpec(c, sheet, ws.name, placements, idx)));
   }
 
   const ab = await wb.xlsx.writeBuffer();
-  return Buffer.from(ab);
+  // Không có chart (form A-D, hoặc kỳ rỗng) -> injectCharts trả nguyên buffer.
+  return injectCharts(Buffer.from(ab), chartSpecs);
 }

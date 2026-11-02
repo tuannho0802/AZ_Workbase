@@ -1,3 +1,4 @@
+import { loadJSZip } from '../../common/utils/xlsx-chart-injector';
 import { ForbiddenException } from '@nestjs/common';
 import { LeaveRequestsExportService } from './leave-requests-export.service';
 
@@ -43,6 +44,29 @@ describe('LeaveRequestsExportService', () => {
   it('form A chỉ gọi getStats, KHÔNG kéo danh sách đơn', async () => {
     await svc.preview(dto, viewer);
     expect(statsSvc.getExportRequests).not.toHaveBeenCalled();
+  });
+
+  it('form E (chart) chỉ cần getStats, KHÔNG kéo danh sách đơn; preview trả đủ chart', async () => {
+    const m = await svc.preview({ ...dto, form: 'E' }, viewer);
+    expect(statsSvc.getExportRequests).not.toHaveBeenCalled();
+    expect(m.form).toBe('E');
+    expect(Array.isArray(m.sheets[0].charts)).toBe(true);
+  });
+
+  it('export form E: file chứa chart gốc (xl/charts) khi kỳ có dữ liệu', async () => {
+    statsSvc.getStats.mockResolvedValue({
+      ...stats,
+      summary: { ...stats.summary, requests: 2, approved: 1, rejected: 1 },
+      byEmployee: [
+        { userId: 1, userName: 'An', departmentName: 'Sales', requests: 2, requestedDays: 2, approvedDays: 1, pending: 0, approved: 1, rejected: 1, supplementary: 0, approvalRate: 50 },
+      ],
+      byType: [{ code: 'sick', requests: 2, requestedDays: 2, approvedDays: 1, employees: 1 }],
+      trend: [{ bucket: '2026-09-02', requests: 2, approvedDays: 1, pending: 0, approved: 1, rejected: 1 }],
+    });
+    const r = await svc.export({ ...dto, form: 'E' }, viewer);
+    const zip = await loadJSZip().loadAsync(r.buffer);
+    expect(Object.keys(zip.files).filter((f) => /^xl\/charts\/chart\d+\.xml$/.test(f))).toHaveLength(3);
+    expect(r.filename).toContain('BaoCaoKemBieuDo');
   });
 
   it.each(['B', 'D', 'F'])('form %s kéo danh sách đơn cùng scope', async (form) => {

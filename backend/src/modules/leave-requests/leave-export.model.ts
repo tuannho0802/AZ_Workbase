@@ -8,14 +8,17 @@ import { toYmd, trendBucketOf } from './leave-stats.util';
  * HÀM THUẦN: không đụng DB/exceljs - Preview và Excel cùng đọc `ExportModel` => xem gì xuất nấy.
  * Mọi con số lấy từ `LeaveStatsResponse` (cùng `getStats()` của tab Thống kê) nên khớp 100% UI;
  * form B (chi tiết từng đơn) nhận danh sách đơn đã được service lọc cùng kỳ/scope/bộ lọc.
- * Chart (form E/F) thuộc L5: `charts` luôn là [] ở đây.
+ * Chart (form E/F, L5): `charts` mô tả chart theo `tableId` + `key` cột của bảng trên CÙNG sheet; writer Excel
+ * tự quy ra vùng ô thật (sửa số trong Excel thì chart đổi theo), preview FE vẽ lại bằng recharts từ chính mô tả này.
  */
 
-export type LeaveExportForm = 'A' | 'B' | 'C' | 'D' | 'F';
+export type LeaveExportForm = 'A' | 'B' | 'C' | 'D' | 'E' | 'F';
 
 export const DETAIL_ROW_CAP = 5000;
 export const PREVIEW_ROW_LIMIT = 20;
 export const EMPTY_NOTICE = 'Không có dữ liệu trong kỳ đã chọn';
+/** Số nhân viên tối đa trong chart cột chồng của form E (xếp theo số đơn giảm dần). */
+export const CHART_TOP_EMPLOYEES = 10;
 
 export type ExportCell = string | number | null;
 
@@ -41,8 +44,33 @@ export interface ExportTable {
   note?: string;
 }
 
-/** Chỗ giữ cho L5; cấu trúc chốt khi làm form E/F. */
-export type ExportChartModel = Record<string, unknown>;
+export type ExportChartType = 'barStacked' | 'doughnut' | 'line';
+
+export interface ExportChartSeries {
+  /** Key cột (trong bảng `tableId`) chứa giá trị của series này. */
+  key: string;
+  /** Tên series = header của cột đó (Excel lấy từ ô header nên legend đổi theo khi sửa tên). */
+  name: string;
+  /** Hex 6 ký tự, không có `#`. */
+  color: string;
+  /** Giá trị hiện tại; `null` = ô trống (KHÔNG ép về 0). */
+  values: Array<number | null>;
+}
+
+/** Chart chỉ MÔ TẢ dữ liệu; vị trí/vùng ô do writer Excel quyết định, preview FE vẽ bằng recharts. */
+export interface ExportChartModel {
+  id: string;
+  type: ExportChartType;
+  title: string;
+  /** Bảng (cùng sheet) làm nguồn dữ liệu. */
+  tableId: string;
+  /** Key cột chứa nhãn hạng mục. */
+  categoryKey: string;
+  categories: string[];
+  series: ExportChartSeries[];
+  /** Donut: màu từng lát. */
+  pointColors?: string[];
+}
 
 export interface ExportSheet {
   name: string;
@@ -100,7 +128,8 @@ const FORM_TITLE: Record<LeaveExportForm, string> = {
   B: 'Chi tiết từng đơn',
   C: 'Theo phòng ban & loại phép',
   D: 'Ma trận Nhân viên × Thời gian',
-  F: 'Gói đầy đủ (A-D)',
+  E: 'Báo cáo kèm biểu đồ',
+  F: 'Gói đầy đủ (A-E)',
 };
 
 const round1 = (n: number) => Math.round(n * 10) / 10;
@@ -380,6 +409,123 @@ function buildFormD(stats: LeaveStatsResponse, requests: LeaveExportRequestRow[]
   return table('matrix', FORM_TITLE.D, cols, rows, { totalsRow });
 }
 
+// ───────── Form E: KPI + bảng + biểu đồ gốc ─────────
+export const CHART_COLORS = {
+  approved: '2E7D32',
+  rejected: 'D32F2F',
+  pending: 'FAAD14',
+  line: '1677FF',
+};
+const DONUT_PALETTE = ['1677FF', '52C41A', 'FAAD14', 'F5222D', '722ED1', '13C2C2', 'EB2F96', 'FA8C16', '2F54EB', 'A0D911'];
+
+function buildFormESheet(
+  stats: LeaveStatsResponse,
+  leaveTypeNames: Record<string, string>,
+  used: Set<string>,
+): ExportSheet {
+  const s = stats.summary;
+  const hasData = s.requests > 0;
+
+  const kpiRows: ExportCell[][] = [
+    ['Tổng số đơn', s.requests],
+    ['Đã duyệt', s.approved],
+    ['Từ chối', s.rejected],
+    ['Chờ duyệt', s.pending],
+    ['Số nhân sự xin nghỉ', s.employees],
+    ['Tổng ngày xin', s.requestedDays],
+    ['Ngày đã duyệt', s.approvedDays],
+    ['Tỷ lệ duyệt (%)', s.approvalRate], // null = chưa có đơn nào được xử lý
+    ['Tỷ lệ tham gia (%)', s.participationRate],
+  ];
+  const kpi = table(
+    'kpi',
+    'Chỉ số tổng quan',
+    [
+      { key: 'metric', header: 'Chỉ số', type: 'text', width: 26 },
+      { key: 'value', header: 'Giá trị', type: 'number', width: 22 },
+    ],
+    kpiRows,
+  );
+
+  const top = [...stats.byEmployee]
+    .sort((a, b) => b.requests - a.requests || a.userName.localeCompare(b.userName))
+    .slice(0, CHART_TOP_EMPLOYEES);
+  const topCols: ExportColumn[] = [
+    { key: 'name', header: 'Nhân viên', type: 'text', width: 26 },
+    { key: 'approved', header: 'Đã duyệt', type: 'number', width: 11 },
+    { key: 'rejected', header: 'Từ chối', type: 'number', width: 10 },
+    { key: 'pending', header: 'Chờ duyệt', type: 'number', width: 11 },
+  ];
+  const topRows: ExportCell[][] = top.map((e) => [guardFormula(e.userName), e.approved, e.rejected, e.pending]);
+  const topTable = table('topEmployees', `Theo nhân viên (top ${CHART_TOP_EMPLOYEES}) - dữ liệu biểu đồ`, topCols, topRows);
+
+  const typeCols: ExportColumn[] = [
+    { key: 'type', header: 'Loại phép', type: 'text', width: 26 },
+    { key: 'requests', header: 'Số đơn', type: 'number', width: 11 },
+  ];
+  const typeRows: ExportCell[][] = stats.byType.map((t) => [guardFormula(leaveTypeNames[t.code] ?? t.code), t.requests]);
+  const typeTable = table('types', 'Cơ cấu loại phép - dữ liệu biểu đồ', typeCols, typeRows);
+
+  const trendCols: ExportColumn[] = [
+    { key: 'bucket', header: 'Thời gian', type: 'text', width: 26 },
+    { key: 'requests', header: 'Số đơn', type: 'number', width: 11 },
+  ];
+  const trendRows: ExportCell[][] = stats.trend.map((t) => [bucketLabel(t.bucket), t.requests]);
+  const trendTable = table('trend', 'Xu hướng theo thời gian - dữ liệu biểu đồ', trendCols, trendRows);
+
+  const column = (rows: ExportCell[][], i: number) => rows.map((r) => r[i] as string);
+  const numbers = (rows: ExportCell[][], i: number) => rows.map((r) => (r[i] as number | null) ?? null);
+
+  const charts: ExportChartModel[] = [];
+  // Kỳ rỗng: file vẫn có bảng + thông báo nhưng KHÔNG chèn chart (tránh chart trống/lỗi).
+  if (hasData && topRows.length > 0) {
+    charts.push({
+      id: 'employeeStacked',
+      type: 'barStacked',
+      title: `Đơn theo nhân viên (top ${topRows.length})`,
+      tableId: topTable.id,
+      categoryKey: 'name',
+      categories: column(topRows, 0),
+      series: (['approved', 'rejected', 'pending'] as const).map((key, i) => ({
+        key,
+        name: topCols[i + 1].header,
+        color: CHART_COLORS[key],
+        values: numbers(topRows, i + 1),
+      })),
+    });
+  }
+  if (hasData && typeRows.length > 0) {
+    charts.push({
+      id: 'typeDonut',
+      type: 'doughnut',
+      title: 'Cơ cấu loại phép (số đơn)',
+      tableId: typeTable.id,
+      categoryKey: 'type',
+      categories: column(typeRows, 0),
+      series: [{ key: 'requests', name: typeCols[1].header, color: DONUT_PALETTE[0], values: numbers(typeRows, 1) }],
+      pointColors: typeRows.map((_, i) => DONUT_PALETTE[i % DONUT_PALETTE.length]),
+    });
+  }
+  if (hasData && trendRows.length > 0) {
+    charts.push({
+      id: 'trendLine',
+      type: 'line',
+      title: 'Xu hướng số đơn theo thời gian',
+      tableId: trendTable.id,
+      categoryKey: 'bucket',
+      categories: column(trendRows, 0),
+      series: [{ key: 'requests', name: trendCols[1].header, color: CHART_COLORS.line, values: numbers(trendRows, 1) }],
+    });
+  }
+
+  // Bảng A (đầy đủ) đặt CUỐI: rộng nhất, và autoFilter của sheet thuộc về bảng cuối.
+  return {
+    name: safeSheetName('Báo cáo', used),
+    tables: [kpi, topTable, typeTable, trendTable, buildFormA(stats)],
+    charts,
+  };
+}
+
 // ───────── Entry point ─────────
 export function buildLeaveExportModel(input: BuildLeaveExportInput): ExportModel {
   const { form, stats } = input;
@@ -399,13 +545,15 @@ export function buildLeaveExportModel(input: BuildLeaveExportInput): ExportModel
         return buildFormCSheets(stats, names, used);
       case 'D':
         return [{ name: safeSheetName('Ma trận', used), tables: [buildFormD(stats, requests)], charts: [] }];
+      case 'E':
+        return [buildFormESheet(stats, names, used)];
     }
   };
   let sheets: ExportSheet[];
   if (form === 'F') {
-    // Gói đầy đủ: A + B + C + D (chart của E thêm ở L5). Dùng chung `used` để tên sheet không trùng.
-    sheets = (['A', 'B', 'C', 'D'] as const).flatMap(sheetsOf);
-  } else if (['A', 'B', 'C', 'D'].includes(form)) {
+    // Gói đầy đủ: A + B + C + D + E (E có chart). Dùng chung `used` để tên sheet không trùng.
+    sheets = (['A', 'B', 'C', 'D', 'E'] as const).flatMap(sheetsOf);
+  } else if (['A', 'B', 'C', 'D', 'E'].includes(form)) {
     sheets = sheetsOf(form);
   } else {
     throw new Error(`Unsupported leave export form: ${String(form)}`);
