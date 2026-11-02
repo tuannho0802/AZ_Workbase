@@ -8100,3 +8100,20 @@ Now [deploy]
 > - Guide `nghi-phep`/`duyet-phep` đang `published: false` -> chạy `npm run guides:sync` (dry-run trước) khi cần.
 
 ---
+
+## [2026-11-02 14:20] | Rút tiền - Phase W1: entity `Withdrawal` + migration tạo bảng `withdrawals` | [Status: Success]
+
+**Actor:** Agent
+**Files Changed:**
+- `backend/src/database/entities/withdrawal.entity.ts` (mới) — `amount` DECIMAL + `DecimalTransformer`, `withdrawal_date`, `broker`, `note`, `created_by_id` (SET NULL)
+- `backend/src/database/migrations/1786360000000-CreateWithdrawals.ts` (mới) — chỉ tạo bảng (+ `down()` DROP), KHÔNG seed permission (dùng lại `customers.edit/view/delete`)
+- `backend/src/database/entities/customer.entity.ts` — thêm quan hệ `withdrawals` (OneToMany)
+- `backend/src/modules/deposits/deposits.module.ts` — `forFeature([Deposit, Withdrawal])`
+- `AZ-Workbase Skills/PLAN_WITHDRAWAL_LEAVE_EXPORT.md` (mới) — tick W0, W1
+
+**Notes:**
+> - Verify thật: BE `tsc --noEmit` sạch, `nest build` OK, jest `src/modules/customers` + `src/config` 14 suite / 237 test pass.
+> - Migration chạy thử `up → up(idempotent) → down → up` trên MariaDB tạm (bảng `users`/`customers` giả) OK; FK `customer_id` CASCADE xoá phiếu khi xoá khách; chưa chạy trên MySQL 8 thật / DB của dự án.
+> - Cột thời gian DATETIME(6) khớp mặc định @CreateDateColumn. Chưa có service/controller (Phase W2).
+
+---

@@ -2,6 +2,7 @@ import { Entity, Column, PrimaryGeneratedColumn, CreateDateColumn, UpdateDateCol
 import { User } from './user.entity';
 import { Department } from './department.entity';
 import { Deposit } from './deposit.entity';
+import { Withdrawal } from './withdrawal.entity';
 import { CustomerNote } from './customer-note.entity';
 import { Utm } from './utm.entity';
 
@@ -143,6 +144,9 @@ export class Customer {
 
   @OneToMany(() => Deposit, deposit => deposit.customer)
   deposits: Deposit[];
+
+  @OneToMany(() => Withdrawal, withdrawal => withdrawal.customer)
+  withdrawals: Withdrawal[];
 
   @OneToMany(() => CustomerNote, note => note.customer)
   notes: CustomerNote[];
