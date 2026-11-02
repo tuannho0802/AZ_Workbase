@@ -8192,3 +8192,18 @@ Now [deploy]
 > - Cổng quyết định L1: ĐẠT → tiếp tục L2. Không cần phương án dự phòng PNG.
 
 ---
+## [2026-11-02 21:30] | Xuất Excel phép - Phase L2: `buildLeaveExportModel` (form A-D) + `toPreviewModel` | [Status: Success]
+
+**Actor:** Agent
+**Files Changed:**
+- `backend/src/modules/leave-requests/leave-export.model.ts` (mới) — hàm thuần `buildLeaveExportModel({form, stats, requests, leaveTypeNames, detailRowCap})` → `ExportModel` (sheets/tables/charts[] rỗng, chart để L5); `toPreviewModel()` (≤20 dòng/bảng + `totalRows` + `truncated`); `guardFormula`, `safeSheetName`, `bucketLabel`
+- `backend/src/modules/leave-requests/leave-export.model.spec.ts` (mới) — 32 test: kỳ rỗng (A-D), nhân viên 0 đơn, tỷ lệ `null` (không ép 0), cap dòng form B, 2 người trùng tên ở form D, đơn vắt kỳ kẹp về đầu kỳ, tổng cột D khớp `trend`, formula injection, múi giờ `createdAt` (VN)
+- `AZ-Workbase Skills/PLAN_WITHDRAWAL_LEAVE_EXPORT.md` — tick L2 + việc còn lại cho L3
+
+**Notes:**
+> - Không sửa `LeaveRequestsStatsService`/controller/DTO/migration (thuộc L3). Chưa phụ thuộc quyết định scope assistant.
+> - Form A/C lấy số trực tiếp từ `getStats()` ⇒ khớp UI. Form C dòng "Tổng": số người = `summary.employees` (không cộng dồn theo phòng vì 1 người chỉ thuộc 1 phòng nhưng giữ đúng định nghĩa UI).
+> - Verify thật: `tsc --noEmit` sạch, `nest build` OK, jest `common/utils` + `modules/leave-requests` 19 suite / 275 test pass.
+
+---
+
