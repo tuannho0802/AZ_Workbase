@@ -12,6 +12,7 @@ import { Customer } from '../../database/entities/customer.entity';
 import { CustomerNote } from '../../database/entities/customer-note.entity';
 import { CustomerStatus } from '../../database/entities/customer-status.entity';
 import { Deposit } from '../../database/entities/deposit.entity';
+import { Withdrawal } from '../../database/entities/withdrawal.entity';
 import { CustomerAssignment, AssignmentStatus } from '../../database/entities/customer-assignment.entity';
 import { CustomerGroupMembership } from '../../database/entities/customer-group-membership.entity';
 import { AuditService } from '../audit/audit.service';
@@ -76,6 +77,7 @@ describe('CustomersService', () => {
     save?: jest.Mock;
   } = {};
   const mockDepositRepo: { createQueryBuilder?: jest.Mock; findOne?: jest.Mock; save?: jest.Mock } = {};
+  const mockWithdrawalRepo: { createQueryBuilder?: jest.Mock } = {};
   const mockAssignmentRepo = {
     findOne: jest.fn(),
     find: jest.fn(),
@@ -166,6 +168,7 @@ describe('CustomersService', () => {
         { provide: getRepositoryToken(Customer), useValue: mockCustomerRepo },
         { provide: getRepositoryToken(CustomerNote), useValue: mockNoteRepo },
         { provide: getRepositoryToken(Deposit), useValue: mockDepositRepo },
+        { provide: getRepositoryToken(Withdrawal), useValue: mockWithdrawalRepo },
         {
           provide: getRepositoryToken(CustomerAssignment),
           useValue: mockAssignmentRepo,
@@ -1198,6 +1201,25 @@ describe('CustomersService', () => {
   });
 
   describe('getStats - Thống kê Dashboard', () => {
+    // [W3] QB tổng "Đã rút": mặc định = 0 để các test cũ (chỉ quan tâm Tổng nạp) không phải khai báo.
+    function makeSumQb(total: string | null, calls?: { sql: string; params?: any }[]) {
+      const qb: any = {
+        leftJoin: jest.fn().mockReturnThis(),
+        innerJoin: jest.fn().mockReturnThis(),
+        where: jest.fn().mockReturnThis(),
+        andWhere: jest.fn((sql: string, params?: any) => {
+          calls?.push({ sql, params });
+          return qb;
+        }),
+        select: jest.fn().mockReturnThis(),
+        getRawOne: jest.fn().mockResolvedValue({ total }),
+      };
+      return qb;
+    }
+    beforeEach(() => {
+      mockWithdrawalRepo.createQueryBuilder = jest.fn().mockReturnValue(makeSumQb(null));
+    });
+
     function makeCountQb() {
       const qb: any = {
         where: jest.fn().mockReturnThis(),
@@ -1219,6 +1241,7 @@ describe('CustomersService', () => {
       mockCustomerRepo.createQueryBuilder.mockReturnValue(countQb);
       const depositQb: any = {
         leftJoin: jest.fn().mockReturnThis(),
+        innerJoin: jest.fn().mockReturnThis(),
         where: jest.fn().mockReturnThis(),
         andWhere: jest.fn().mockReturnThis(),
         select: jest.fn().mockReturnThis(),
@@ -1245,6 +1268,7 @@ describe('CustomersService', () => {
       const depositAndWhereCalls: { sql: string; params?: any }[] = [];
       const depositQb: any = {
         leftJoin: jest.fn().mockReturnThis(),
+        innerJoin: jest.fn().mockReturnThis(),
         where: jest.fn().mockReturnThis(),
         andWhere: jest.fn((sql: string, params?: any) => {
           depositAndWhereCalls.push({ sql, params });
@@ -1274,6 +1298,7 @@ describe('CustomersService', () => {
       const calls: { sql: string; params?: any }[] = [];
       const depositQb: any = {
         leftJoin: jest.fn().mockReturnThis(),
+        innerJoin: jest.fn().mockReturnThis(),
         where: jest.fn().mockReturnThis(),
         andWhere: jest.fn((sql: string, params?: any) => {
           calls.push({ sql, params });
@@ -1296,6 +1321,70 @@ describe('CustomersService', () => {
       // Có dateFrom/dateTo thì KHÔNG được fallback 30 ngày
       expect(calls.some((c) => c.params && 'thirtyDaysAgo' in c.params)).toBe(false);
       expect(result.totalDepositAmount).toBe(500);
+    });
+
+    it('[W3] 3 chỉ số: Tổng nạp giữ nguyên; Đã rút = SUM(withdrawal); Nạp thực = nạp - rút (làm tròn 2 số lẻ)', async () => {
+      mockCustomerRepo.createQueryBuilder.mockReturnValue(makeCountQb());
+      mockDepositRepo.createQueryBuilder = jest.fn().mockReturnValue(makeSumQb('1000.10'));
+      mockWithdrawalRepo.createQueryBuilder = jest.fn().mockReturnValue(makeSumQb('300.05'));
+
+      const result = await service.getStats(1, Role.ADMIN);
+
+      expect(result.totalDepositAmount).toBe(1000.1);
+      expect(result.totalWithdrawalAmount).toBe(300.05);
+      expect(result.netDepositAmount).toBe(700.05);
+    });
+
+    it('[W3] Không có phiếu rút -> Đã rút = 0, Nạp thực = Tổng nạp; rút nhiều hơn nạp -> Nạp thực ÂM', async () => {
+      mockCustomerRepo.createQueryBuilder.mockReturnValue(makeCountQb());
+      mockDepositRepo.createQueryBuilder = jest.fn().mockReturnValue(makeSumQb('50'));
+      const none = await service.getStats(1, Role.ADMIN);
+      expect(none).toMatchObject({ totalDepositAmount: 50, totalWithdrawalAmount: 0, netDepositAmount: 50 });
+
+      mockWithdrawalRepo.createQueryBuilder = jest.fn().mockReturnValue(makeSumQb('80'));
+      const negative = await service.getStats(1, Role.ADMIN);
+      expect(negative.netDepositAmount).toBe(-30);
+    });
+
+    it('[W3] Đã rút áp CÙNG bộ lọc khách + CÙNG khung ngày với Tổng nạp (chỉ khác cột ngày withdrawal.withdrawalDate), không fallback 30 ngày khi có dateFrom/dateTo', async () => {
+      mockCustomerRepo.createQueryBuilder.mockReturnValue(makeCountQb());
+      mockDepositRepo.createQueryBuilder = jest.fn().mockReturnValue(makeSumQb('0'));
+      const calls: { sql: string; params?: any }[] = [];
+      mockWithdrawalRepo.createQueryBuilder = jest.fn().mockReturnValue(makeSumQb('0', calls));
+
+      await service.getStats(1, Role.ADMIN, undefined, { status: 'closed', dateFrom: '2026-09-01', dateTo: '2026-09-21' } as any);
+
+      expect(calls.some((c) => c.sql.includes('customer.status = :status') && c.params?.status === 'closed')).toBe(true);
+      expect(calls.some((c) => c.sql.includes('withdrawal.withdrawalDate >= :dateFrom'))).toBe(true);
+      expect(calls.some((c) => c.sql.includes('withdrawal.withdrawalDate <= :dateTo'))).toBe(true);
+      expect(calls.some((c) => c.params && 'thirtyDaysAgo' in c.params)).toBe(false);
+    });
+
+    it('[W3] FIX BUG: Tổng nạp & Đã rút join customer bằng innerJoin (leftJoin làm phiếu của khách ĐÃ XOÁ MỀM vẫn bị cộng khi không có filter)', async () => {
+      mockCustomerRepo.createQueryBuilder.mockReturnValue(makeCountQb());
+      const depQb = makeSumQb('0');
+      const wdQb = makeSumQb('0');
+      mockDepositRepo.createQueryBuilder = jest.fn().mockReturnValue(depQb);
+      mockWithdrawalRepo.createQueryBuilder = jest.fn().mockReturnValue(wdQb);
+
+      await service.getStats(1, Role.ADMIN);
+
+      expect(depQb.innerJoin).toHaveBeenCalledWith('deposit.customer', 'customer');
+      expect(depQb.leftJoin).not.toHaveBeenCalled();
+      expect(wdQb.innerJoin).toHaveBeenCalledWith('withdrawal.customer', 'customer');
+      expect(wdQb.leftJoin).not.toHaveBeenCalled();
+    });
+
+    it('[W3] Không có filter -> Đã rút mặc định 30 ngày gần đây (giống Tổng nạp)', async () => {
+      mockCustomerRepo.createQueryBuilder.mockReturnValue(makeCountQb());
+      mockDepositRepo.createQueryBuilder = jest.fn().mockReturnValue(makeSumQb('0'));
+      const calls: { sql: string; params?: any }[] = [];
+      mockWithdrawalRepo.createQueryBuilder = jest.fn().mockReturnValue(makeSumQb('0', calls));
+
+      await service.getStats(1, Role.ADMIN);
+
+      const cond = calls.find((c) => c.sql.includes('withdrawal.withdrawalDate >='));
+      expect(cond?.params).toHaveProperty('thirtyDaysAgo');
     });
   });
   // ═══════════════════ Thông báo tự động (Notification Phase 3) ═══════════════════

@@ -7,6 +7,7 @@ describe('CustomersWithdrawalsService', () => {
   let service: CustomersWithdrawalsService;
   let wRepo: any;
   let cRepo: any;
+  let dRepo: any;
   let audit: { logActionAsync: jest.Mock };
   let customerQb: any;
   let applySpy: jest.SpyInstance;
@@ -30,8 +31,9 @@ describe('CustomersWithdrawalsService', () => {
       createQueryBuilder: jest.fn(),
     };
     audit = { logActionAsync: jest.fn() };
+    dRepo = { createQueryBuilder: jest.fn() };
     applySpy = jest.spyOn(CustomerAccessHelper, 'applyViewFilter').mockImplementation(() => undefined as any);
-    service = new CustomersWithdrawalsService(wRepo, cRepo, audit as any);
+    service = new CustomersWithdrawalsService(wRepo, cRepo, audit as any, dRepo);
   });
   afterEach(() => applySpy.mockRestore());
 
@@ -108,6 +110,36 @@ describe('CustomersWithdrawalsService', () => {
       await service.remove(9, 7, 'admin', 'all');
       expect(wRepo.remove).toHaveBeenCalled();
       expect(audit.logActionAsync).toHaveBeenCalledWith(7, 'DELETE_WITHDRAWAL', 'withdrawal', 9, { amount: 10, withdrawalDate: '2026-11-01', broker: null, note: 'n' }, null);
+    });
+  });
+
+  describe('getFinanceSummary', () => {
+    const rawQb = (row: any) => {
+      const qb: any = {};
+      for (const m of ['select', 'addSelect', 'where']) qb[m] = jest.fn().mockReturnValue(qb);
+      qb.getRawOne = jest.fn().mockResolvedValue(row);
+      return qb;
+    };
+    it('trả Tổng nạp / Đã rút / Nạp thực (làm tròn) + số phiếu, SUM trong DB (không cộng từ danh sách 50)', async () => {
+      dRepo.createQueryBuilder.mockReturnValue(rawQb({ total: '1000.10', cnt: '3' }));
+      wRepo.createQueryBuilder.mockReturnValue(rawQb({ total: '300.05', cnt: '60' }));
+      await expect(service.getFinanceSummary(5, 7, 'admin', 'all')).resolves.toEqual({
+        totalDeposit: 1000.1, totalWithdrawal: 300.05, netDeposit: 700.05, depositCount: 3, withdrawalCount: 60,
+      });
+    });
+    it('chưa có phiếu nào -> toàn 0; rút > nạp -> Nạp thực ÂM', async () => {
+      dRepo.createQueryBuilder.mockReturnValue(rawQb({ total: '0', cnt: '0' }));
+      wRepo.createQueryBuilder.mockReturnValue(rawQb({ total: '0', cnt: '0' }));
+      await expect(service.getFinanceSummary(5, 7, 'admin', 'all')).resolves.toMatchObject({ netDeposit: 0 });
+      dRepo.createQueryBuilder.mockReturnValue(rawQb({ total: '20', cnt: '1' }));
+      wRepo.createQueryBuilder.mockReturnValue(rawQb({ total: '50', cnt: '1' }));
+      await expect(service.getFinanceSummary(5, 7, 'admin', 'all')).resolves.toMatchObject({ netDeposit: -30 });
+    });
+    it('khách ngoài phạm vi -> 404, không đọc số tiền', async () => {
+      customerQb.getOne.mockResolvedValue(null);
+      await expect(service.getFinanceSummary(5, 7, 'employee', 'own')).rejects.toBeInstanceOf(CustomerNotFoundException);
+      expect(dRepo.createQueryBuilder).not.toHaveBeenCalled();
+      expect(wRepo.createQueryBuilder).not.toHaveBeenCalled();
     });
   });
 });

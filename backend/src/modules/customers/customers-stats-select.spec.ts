@@ -7,6 +7,7 @@ import { Customer } from '../../database/entities/customer.entity';
 import { CustomerNote } from '../../database/entities/customer-note.entity';
 import { CustomerStatus } from '../../database/entities/customer-status.entity';
 import { Deposit } from '../../database/entities/deposit.entity';
+import { Withdrawal } from '../../database/entities/withdrawal.entity';
 import { CustomerAssignment } from '../../database/entities/customer-assignment.entity';
 import { CustomerGroupMembership } from '../../database/entities/customer-group-membership.entity';
 import { AuditService } from '../audit/audit.service';
@@ -69,6 +70,7 @@ describe('CustomersService - cột select của 3 modal thống kê', () => {
         { provide: getRepositoryToken(Customer), useValue: customerRepo },
         { provide: getRepositoryToken(CustomerNote), useValue: {} },
         { provide: getRepositoryToken(Deposit), useValue: depositRepo },
+        { provide: getRepositoryToken(Withdrawal), useValue: { createQueryBuilder: jest.fn() } },
         { provide: getRepositoryToken(CustomerAssignment), useValue: {} },
         { provide: getRepositoryToken(CustomerGroupMembership), useValue: {} },
         { provide: getRepositoryToken(CustomerStatus), useValue: {} },

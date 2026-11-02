@@ -552,6 +552,17 @@ export class CustomersController {
     return this.customersWithdrawalsService.list(+id, user.id, user.role, scope);
   }
 
+  @Get(':id/finance-summary')
+  @RequirePermission('customers.view')
+  @ApiOperation({ summary: '3 chỉ số toàn thời gian của 1 khách: Tổng nạp / Đã rút / Nạp thực (nạp - rút)' })
+  async getFinanceSummary(
+    @Param('id') id: string,
+    @GetUser() user: any,
+    @GetPermissionScope() scope: string | null | undefined,
+  ) {
+    return this.customersWithdrawalsService.getFinanceSummary(+id, user.id, user.role, scope);
+  }
+
   @Patch('withdrawals/:id')
   @RequirePermission('customers.edit')
   @ApiOperation({ summary: 'Sửa ghi chú phiếu rút tiền (không sửa được số tiền)' })

@@ -21,6 +21,7 @@ import {
 } from './exceptions/customer.exceptions';
 import { CustomerNote } from '../../database/entities/customer-note.entity';
 import { Deposit } from '../../database/entities/deposit.entity';
+import { Withdrawal } from '../../database/entities/withdrawal.entity';
 import {
   CustomerAssignment,
   AssignmentStatus,
@@ -103,6 +104,9 @@ export class CustomersService {
     private readonly notesRepository: Repository<CustomerNote>,
     @InjectRepository(Deposit)
     private readonly depositsRepository: Repository<Deposit>,
+    // PLAN_WITHDRAWAL_LEAVE_EXPORT W3: chỉ dùng cho SUM "Đã rút" ở getStats() (CRUD rút tiền ở CustomersWithdrawalsService).
+    @InjectRepository(Withdrawal)
+    private readonly withdrawalsRepository: Repository<Withdrawal>,
     @InjectRepository(CustomerAssignment)
     private readonly assignmentRepository: Repository<CustomerAssignment>,
     @InjectRepository(CustomerGroupMembership)
@@ -683,17 +687,20 @@ export class CustomersService {
     qb: { andWhere: (cond: string, params?: Record<string, any>) => any },
     dateFrom?: string,
     dateTo?: string,
+    // [W3] Cột ngày cần lọc. Mặc định = cột ngày nạp (hành vi cũ KHÔNG đổi); "Đã rút" truyền
+    // 'withdrawal.withdrawalDate' để dùng CHUNG đúng 1 quy tắc khung ngày với "Tổng nạp".
+    dateColumn: string = 'deposit.depositDate',
   ) {
     if (dateFrom) {
-      qb.andWhere('deposit.depositDate >= :dateFrom', { dateFrom });
+      qb.andWhere(`${dateColumn} >= :dateFrom`, { dateFrom });
     }
     if (dateTo) {
-      qb.andWhere('deposit.depositDate <= :dateTo', { dateTo });
+      qb.andWhere(`${dateColumn} <= :dateTo`, { dateTo });
     } else if (!dateFrom) {
       const thirtyDays = new Date();
       thirtyDays.setDate(thirtyDays.getDate() - 30);
       const thirtyDaysAgo = thirtyDays.toISOString().split('T')[0];
-      qb.andWhere('deposit.depositDate >= :thirtyDaysAgo', { thirtyDaysAgo });
+      qb.andWhere(`${dateColumn} >= :thirtyDaysAgo`, { thirtyDaysAgo });
     }
   }
 
@@ -1393,9 +1400,14 @@ export class CustomersService {
     const pendingTotal = Number(statsRaw?.pendingTotal ?? 0);
     const potentialTotal = Number(statsRaw?.potentialTotal ?? 0);
 
+    // [W3] FIX BUG THẬT: trước đây `.leftJoin(...)` + `.where('customer.deletedAt IS NULL')`. TypeORM tự thêm
+    // `AND customer.deleted_at IS NULL` vào ĐIỀU KIỆN JOIN nên với khách đã xoá mềm, LEFT JOIN trả customer = NULL
+    // và `customer.deleted_at IS NULL` ở WHERE lại ĐÚNG -> phiếu nạp của khách đã xoá VẪN bị cộng vào "Tổng nạp"
+    // (chỉ bị che khi có filter khác trên customer như status). innerJoin loại hẳn các dòng đó.
+    // [AGENT] OLD CODE: .leftJoin('deposit.customer', 'customer')
     const depositsQuery = this.depositsRepository
       .createQueryBuilder('deposit')
-      .leftJoin('deposit.customer', 'customer')
+      .innerJoin('deposit.customer', 'customer')
       .where('customer.deletedAt IS NULL');
 
     CustomerAccessHelper.applyViewFilter(
@@ -1428,9 +1440,24 @@ export class CustomersService {
     }
     this.applyDepositDateRange(depositsQuery, filters?.dateFrom, filters?.dateTo);
 
-    const totalDepositRaw = await depositsQuery
-      .select('SUM(deposit.amount)', 'total')
-      .getRawOne();
+    // [W3] "Đã rút": CÙNG phạm vi xem + CÙNG bộ lọc khách + CÙNG khung ngày với "Tổng nạp" (chỉ khác bảng/cột ngày)
+    // -> "Nạp thực" = Tổng nạp - Đã rút luôn cùng 1 khung. Hai SUM độc lập nên chạy song song.
+    const withdrawalsQuery = this.withdrawalsRepository
+      .createQueryBuilder('withdrawal')
+      .innerJoin('withdrawal.customer', 'customer') // innerJoin (không leftJoin): xem chú thích FIX BUG ở depositsQuery
+      .where('customer.deletedAt IS NULL');
+    CustomerAccessHelper.applyViewFilter(withdrawalsQuery, userId, userRole, scope);
+    if (filters) {
+      this.applyCustomerListFilters(withdrawalsQuery as any, filters);
+    }
+    this.applyDepositDateRange(withdrawalsQuery, filters?.dateFrom, filters?.dateTo, 'withdrawal.withdrawalDate');
+
+    const [totalDepositRaw, totalWithdrawalRaw] = await Promise.all([
+      depositsQuery.select('SUM(deposit.amount)', 'total').getRawOne(),
+      withdrawalsQuery.select('SUM(withdrawal.amount)', 'total').getRawOne(),
+    ]);
+    const totalDepositAmount = parseFloat(totalDepositRaw?.total || '0');
+    const totalWithdrawalAmount = parseFloat(totalWithdrawalRaw?.total || '0');
 
     return {
       totalCustomers: total,
@@ -1438,7 +1465,11 @@ export class CustomersService {
       closedTotal: closedTotal,
       pendingTotal,
       potentialTotal,
-      totalDepositAmount: parseFloat(totalDepositRaw?.total || '0'),
+      // "Tổng nạp" (KHÔNG tính rút) - giá trị & ý nghĩa giữ nguyên như trước.
+      totalDepositAmount,
+      // "Đã rút" (chỉ tính rút) và "Nạp thực" (= nạp - rút, có thể ÂM). Làm tròn 2 số lẻ tránh lỗi dấu phẩy động.
+      totalWithdrawalAmount,
+      netDepositAmount: Math.round((totalDepositAmount - totalWithdrawalAmount) * 100) / 100,
     };
   }
 

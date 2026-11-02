@@ -8135,3 +8135,24 @@ Now [deploy]
 > - Chưa làm: 3 chỉ số (W3), FE (W4), nhãn audit FE `lib/api/audit-meta.ts` (W5).
 
 ---
+
+## [2026-11-02 16:20] | Rút tiền - Phase W3: 3 chỉ số Tổng nạp / Đã rút / Nạp thực + finance-summary | [Status: Success]
+
+**Actor:** Agent
+**Files Changed:**
+- `backend/src/modules/customers/customers.service.ts` — `getStats()` trả thêm `totalWithdrawalAmount` (SUM rút, CÙNG phạm vi xem + bộ lọc khách + khung ngày với Tổng nạp) và `netDepositAmount` (= nạp - rút, làm tròn 2 số lẻ, có thể ÂM); `applyDepositDateRange()` thêm tham số cột ngày (mặc định giữ hành vi cũ); inject `Withdrawal` repo
+- `backend/src/modules/customers/customers-withdrawals.service.ts` + `customers.controller.ts` — `GET customers/:id/finance-summary` (`customers.view`): Tổng nạp/Đã rút/Nạp thực + số phiếu TOÀN THỜI GIAN của 1 khách (SUM trong DB, không cộng từ danh sách 50)
+- `customers.service.spec.ts`, `customers-stats-select.spec.ts`, `customers-withdrawals.*.spec.ts` — provider/test mới
+
+**Root Cause (bug có sẵn, đã sửa trong getStats):**
+> `deposits` `.leftJoin('deposit.customer','customer')` + `.where('customer.deletedAt IS NULL')`: TypeORM tự thêm `deleted_at IS NULL` vào ON của join nên với khách đã xoá mềm, customer = NULL và điều kiện WHERE vẫn ĐÚNG -> phiếu nạp của khách đã xoá vẫn bị cộng vào "Tổng nạp" khi KHÔNG có filter khác trên customer (có filter như status thì bị che).
+
+**Solution:**
+> Đổi sang `innerJoin` cho cả nạp và rút trong `getStats()`. Test hồi quy khoá innerJoin.
+
+**Notes:**
+> - Verify thật: BE `tsc` sạch, `nest build` OK, toàn bộ jest 158 suite / 2523 test pass. Chạy THẬT `getStats()` + `getFinanceSummary()` trên MariaDB tạm (schema sinh từ entity): admin không filter / employee scope own / status=closed / khung ngày / khách đã xoá mềm đều ra đúng số kỳ vọng.
+> - CHƯA sửa: `getAllDepositsStats()` (`customers.service.ts`, modal "Tổng nạp" ở Dashboard) vẫn dùng `leftJoin('deposit.customer')` + `deletedAt IS NULL` -> cùng lỗi, có thể liệt kê phiếu của khách đã xoá. Cần xác nhận rồi sửa riêng.
+> - Chưa làm FE (W4), nhãn audit FE (W5).
+
+---

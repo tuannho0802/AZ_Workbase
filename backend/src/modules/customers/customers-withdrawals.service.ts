@@ -3,6 +3,7 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { Customer } from '../../database/entities/customer.entity';
 import { Withdrawal } from '../../database/entities/withdrawal.entity';
+import { Deposit } from '../../database/entities/deposit.entity';
 import { AuditService } from '../audit/audit.service';
 import { CustomerNotFoundException } from './exceptions/customer.exceptions';
 import { CustomerAccessHelper } from './helpers/customer-access.helper';
@@ -25,6 +26,8 @@ export class CustomersWithdrawalsService {
     @InjectRepository(Customer)
     private readonly customersRepository: Repository<Customer>,
     private readonly auditService: AuditService,
+    @InjectRepository(Deposit)
+    private readonly depositsRepository: Repository<Deposit>,
   ) {}
 
   private async assertCustomerAccessible(
@@ -135,5 +138,37 @@ export class CustomersWithdrawalsService {
 
     this.auditService.logActionAsync(userId, 'DELETE_WITHDRAWAL', 'withdrawal', withdrawalId, snapshot, null);
     return { message: 'Đã xoá bản ghi rút tiền' };
+  }
+
+  /**
+   * 3 chỉ số TOÀN THỜI GIAN của 1 khách (Drawer chi tiết): Tổng nạp (không tính rút) · Đã rút (chỉ tính rút) ·
+   * Nạp thực (= nạp - rút, có thể ÂM). Khác thẻ ở danh sách (theo khung ngày) - đây là tổng đời khách.
+   * Không dùng danh sách tối đa 50 phiếu để cộng (sẽ sai khi >50 phiếu): SUM thẳng trong DB.
+   */
+  async getFinanceSummary(customerId: number, userId: number, userRole: string, scope?: string | null) {
+    await this.assertCustomerAccessible(customerId, userId, userRole, scope);
+    const [dep, wd] = await Promise.all([
+      this.depositsRepository
+        .createQueryBuilder('deposit')
+        .select('COALESCE(SUM(deposit.amount), 0)', 'total')
+        .addSelect('COUNT(*)', 'cnt')
+        .where('deposit.customerId = :customerId', { customerId })
+        .getRawOne(),
+      this.withdrawalsRepository
+        .createQueryBuilder('withdrawal')
+        .select('COALESCE(SUM(withdrawal.amount), 0)', 'total')
+        .addSelect('COUNT(*)', 'cnt')
+        .where('withdrawal.customerId = :customerId', { customerId })
+        .getRawOne(),
+    ]);
+    const totalDeposit = parseFloat(dep?.total || '0');
+    const totalWithdrawal = parseFloat(wd?.total || '0');
+    return {
+      totalDeposit,
+      totalWithdrawal,
+      netDeposit: Math.round((totalDeposit - totalWithdrawal) * 100) / 100,
+      depositCount: Number(dep?.cnt ?? 0),
+      withdrawalCount: Number(wd?.cnt ?? 0),
+    };
   }
 }

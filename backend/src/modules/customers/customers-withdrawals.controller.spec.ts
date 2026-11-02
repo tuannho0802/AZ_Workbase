@@ -25,6 +25,7 @@ describe('CustomersController - routes rút tiền', () => {
     list: jest.fn().mockResolvedValue([]),
     updateNote: jest.fn().mockResolvedValue({ id: 1 }),
     remove: jest.fn().mockResolvedValue({ message: 'ok' }),
+    getFinanceSummary: jest.fn().mockResolvedValue({}),
   };
 
   beforeAll(async () => {
@@ -78,6 +79,11 @@ describe('CustomersController - routes rút tiền', () => {
     expect(customers.remove).not.toHaveBeenCalled();
   });
 
+  it('GET :id/finance-summary -> service.getFinanceSummary (không bị GET :id nuốt)', async () => {
+    await request(app.getHttpServer()).get('/customers/5/finance-summary').expect(200);
+    expect(withdrawals.getFinanceSummary).toHaveBeenCalledWith(5, 7, 'employee', 'own');
+  });
+
   it('quyền dùng lại key có sẵn: edit / view / edit / delete (không key mới)', () => {
     const proto = CustomersController.prototype as any;
     const key = (fn: string) => Reflect.getMetadata(PERMISSION_KEY, proto[fn]);
@@ -85,5 +91,6 @@ describe('CustomersController - routes rút tiền', () => {
     expect(key('getWithdrawals')).toBe('customers.view');
     expect(key('updateWithdrawalNote')).toBe('customers.edit');
     expect(key('deleteWithdrawal')).toBe('customers.delete');
+    expect(key('getFinanceSummary')).toBe('customers.view');
   });
 });
