@@ -8176,3 +8176,19 @@ Now [deploy]
 > - CHƯA sửa (từ W3): `getAllDepositsStats()` vẫn dùng `leftJoin` + `deletedAt IS NULL`.
 
 ---
+
+## [2026-11-02 19:10] | Xuất Excel phép - Phase L0 + L1: rà soát scope `approve` + spike chart gốc (xlsx-chart-injector) | [Status: Success]
+
+**Actor:** Agent
+**Files Changed:**
+- `backend/src/common/utils/xlsx-chart-injector.ts` (mới) — `injectCharts(buffer, ChartSpec[])`: chèn chart OOXML gốc (cột chồng / donut / đường) vào file `exceljs` bằng `jszip`; tham chiếu thẳng vùng ô + cache; nạp lười `jszip`
+- `backend/src/common/utils/xlsx-chart-injector.spec.ts` (mới) — 16 test (helper, XML từng loại chart, escape, thứ tự `<drawing>` trước `<tableParts>`, giữ rels cũ, nhiều sheet/chart, parse XML bằng `saxes`, exceljs đọc lại, lỗi đầu vào)
+- `backend/package.json`, `package-lock.json` — khai báo `jszip ^3.10.1` (trước chỉ là dependency gián tiếp của exceljs, cùng version đã resolve)
+- `AZ-Workbase Skills/PLAN_WITHDRAWAL_LEAVE_EXPORT.md` — tick L0, L1 + ghi kết quả rà soát
+
+**Notes:**
+> - L0: `getRequests` có phân trang, `loadRows` private và thiếu approver/lý do từ chối/createdAt → L2/L3 cần hàm mới. `approve` có scope; `hasApproverScope()` bắt buộc gọi trước. Assistant: `view`=department nhưng `approve`=all → export rộng hơn tab Thống kê (chờ xác nhận).
+> - L1 verify thật: BE `tsc --noEmit` sạch, `nest build` OK, jest `common/utils` + `modules/leave-requests` 18 suite / 243 test pass. LibreOffice (headless → PDF) render đúng 3 loại chart; sửa ô B2 5→12 thì cột chart đổi theo; openpyxl đọc lại đủ chart; thứ tự phần tử khớp `xlsxwriter`. CHƯA mở bằng Excel thật.
+> - Cổng quyết định L1: ĐẠT → tiếp tục L2. Không cần phương án dự phòng PNG.
+
+---

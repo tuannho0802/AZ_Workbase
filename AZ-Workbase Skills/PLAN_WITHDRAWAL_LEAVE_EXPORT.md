@@ -115,8 +115,12 @@ Còn 2 điểm nhỏ mình đặt mặc định (bạn sửa nếu muốn khác)
 - Tách module `common/utils/xlsx-chart-injector.ts` + unit test cho từng loại chart; nạp lười như `exceljs-loader`.
 
 ### Phases
-- [ ] **L0** `git pull`; xác nhận chữ ký `getStats/getRequests`; kiểm tra rủi ro scope `approve` (mục 3.2).
-- [ ] **L1** **Spike chart gốc**: injector 3 loại chart + kiểm tra Excel/LibreOffice (cổng quyết định).
+- [x] **L0** `git pull`; xác nhận chữ ký `getStats/getRequests`; kiểm tra rủi ro scope `approve` (mục 3.2). *(Kết quả đọc code 2026-11-02:*
+  - *`getStats(q: QueryLeaveStatsDto, viewerId, viewerRole, scope?)` → `LeaveStatsResponse`; `getRequests(q: QueryLeaveStatsRequestsDto, …)` CÓ PHÂN TRANG (mặc định 10/trang) nên KHÔNG dùng được cho form B (cần toàn bộ đơn) → L2/L3 phải thêm hàm công khai mới trong `LeaveRequestsStatsService` (bọc `loadRows()` đang `private`).*
+  - *`loadRows()` chỉ SELECT id/requester/loại/trạng thái/ngày/số ngày/bổ sung — THIẾU `approver`, lý do từ chối, `createdAt` mà form B cần → L2 phải mở rộng select (không đổi hành vi `getStats`). Đơn `cancelled` (Thùng rác) đã bị loại sẵn (checklist 3 đạt).*
+  - *(a) `leave_requests.approve` có `supports_scope = TRUE` (migration `1778400000000`); mặc định admin=all, manager=department, assistant=all, employee không có. (b) `applyApproverScope()`/`applyApproverScopeToUsers()` chỉ đọc giá trị `scope` truyền vào (không gắn cứng với key `view`) nên dùng được với scope của `approve`. (c) `hasApproverScope()` phải được gọi trước (scope `own`/null → trả rỗng; nếu bỏ qua, `applyApproverScope` sẽ KHÔNG lọc gì) — endpoint export bắt buộc đi qua cổng này.*
+  - *⚠️ Lưu ý nghiệp vụ cần bạn xác nhận: seed mặc định `leave_requests.view` của assistant = `department` nhưng `approve` = `all` ⇒ export gate bằng `approve` cho assistant xuất được phạm vi RỘNG hơn tab Thống kê họ đang xem. Đúng theo thiết kế "scope của approve", nhưng nếu muốn export không rộng hơn `view` thì cần lấy min(scope view, scope approve).)*
+- [x] **L1** **Spike chart gốc**: injector 3 loại chart + kiểm tra Excel/LibreOffice (cổng quyết định). *(✅ ĐẠT — `backend/src/common/utils/xlsx-chart-injector.ts`: cột chồng / donut / đường, nhiều chart cùng 1 sheet, nhiều sheet, tên sheet tiếng Việt + dấu nháy. Bằng chứng: LibreOffice render đúng cả 3 loại; sửa số ô trong sheet XML → chart đổi theo (đọc từ ô, không phải cache); `openpyxl` parse lại đủ chart + tham chiếu; mọi part XML well-formed; thứ tự phần tử so với chart `xlsxwriter` (đã được Excel kiểm chứng) 0 lệch; `exceljs` đọc lại file được. CHƯA mở bằng Microsoft Excel thật (sandbox không có) — cần bạn mở file mẫu 1 lần trước khi làm L5. Khai báo `jszip` trực tiếp trong `package.json`.)*
 - [ ] **L2** `buildLeaveExportModel` (A, B, C, D) + unit test (kỳ rỗng, nhân viên 0 đơn, tỷ lệ `null`, cap dòng).
 - [ ] **L3** Endpoint `preview` + `export` (form A–D, F không chart) + audit + DTO.
 - [ ] **L4** FE Modal 2 bước (chọn form → Demo → Xuất) cho form A–D.
