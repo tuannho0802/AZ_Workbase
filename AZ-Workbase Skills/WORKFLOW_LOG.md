@@ -8117,3 +8117,21 @@ Now [deploy]
 > - Cột thời gian DATETIME(6) khớp mặc định @CreateDateColumn. Chưa có service/controller (Phase W2).
 
 ---
+
+## [2026-11-02 15:10] | Rút tiền - Phase W2: DTO + service + 4 endpoint + audit | [Status: Success]
+
+**Actor:** Agent
+**Files Changed:**
+- `backend/src/modules/customers/customers-withdrawals.service.ts` (mới) — create/list/updateNote/remove; cổng phạm vi dùng `CustomerAccessHelper.applyViewFilter()` (ngoài phạm vi -> 404); audit `CREATE_WITHDRAWAL` / `UPDATE_WITHDRAWAL_NOTE` / `DELETE_WITHDRAWAL` (xoá lưu snapshot)
+- `backend/src/modules/customers/dto/create-withdrawal.dto.ts`, `update-withdrawal-note.dto.ts` (mới) — amount 0.01–999,999,999.99 (tối đa 2 số lẻ), broker ≤100, note ≤1000; sửa chỉ cho ghi chú
+- `backend/src/modules/customers/customers.controller.ts` — `POST/GET :id/withdrawals` (`customers.edit`/`customers.view`), `PATCH/DELETE withdrawals/:id` (`customers.edit`/`customers.delete`), khai TRƯỚC `@Patch(':id')`
+- `backend/src/modules/customers/customers.module.ts` — đăng ký `Withdrawal` + `CustomersWithdrawalsService`
+- `backend/src/database/entities/withdrawal.entity.ts` — `withdrawalDate` đổi kiểu `string` (cột `date` của mysql2 trả chuỗi)
+- Spec mới: service, DTO, controller (khoá thứ tự route + key quyền)
+
+**Notes:**
+> - KHÔNG permission/migration mới. Danh sách trả tối đa 50 phiếu mới nhất. Xoá phiếu cũng kiểm tra phạm vi khách (khác `deleteDeposit` chỉ gate theo key).
+> - Verify thật: BE `tsc --noEmit` sạch, `nest build` OK, toàn bộ jest 158 suite / 2514 test pass.
+> - Chưa làm: 3 chỉ số (W3), FE (W4), nhãn audit FE `lib/api/audit-meta.ts` (W5).
+
+---

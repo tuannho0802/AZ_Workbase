@@ -14,6 +14,8 @@ import { CustomerGroupMembership } from '../../database/entities/customer-group-
 import { User } from '../../database/entities/user.entity';
 import { DepositsModule } from '../deposits/deposits.module';
 import { Deposit } from '../../database/entities/deposit.entity';
+import { Withdrawal } from '../../database/entities/withdrawal.entity';
+import { CustomersWithdrawalsService } from './customers-withdrawals.service';
 import { UiVisibilityModule } from '../ui-visibility/ui-visibility.module';
 import { UtmsModule } from '../utms/utms.module';
 import { BulkOperationsModule } from '../bulk-operations/bulk-operations.module';
@@ -21,14 +23,14 @@ import { CustomersBulkService } from './customers-bulk.service';
 
 @Module({
   imports: [
-    TypeOrmModule.forFeature([Customer, User, CustomerNote, CustomerAssignment, CustomerGroupMembership, Deposit, CustomerStatus]),
+    TypeOrmModule.forFeature([Customer, User, CustomerNote, CustomerAssignment, CustomerGroupMembership, Deposit, Withdrawal, CustomerStatus]),
     DepositsModule,
     UiVisibilityModule,
     UtmsModule,
     BulkOperationsModule,
   ],
   controllers: [CustomersController],
-  providers: [CustomersService, CustomersImportService, CustomersExportService, CustomersInvalidStatsService, CustomersPeriodStatsService, CustomersBulkService],
+  providers: [CustomersService, CustomersImportService, CustomersExportService, CustomersInvalidStatsService, CustomersPeriodStatsService, CustomersBulkService, CustomersWithdrawalsService],
   exports: [CustomersService],
 })
 export class CustomersModule { }

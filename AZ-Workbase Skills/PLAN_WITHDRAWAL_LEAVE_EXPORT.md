@@ -57,9 +57,9 @@ Còn 2 điểm nhỏ mình đặt mặc định (bạn sửa nếu muốn khác)
 - FE: tab "Rút tiền" cạnh "Nạp tiền" (`CustomerDetailDrawer`), `WithdrawalForm`, `CustomerWithdrawalTable`; `StatsCards` thêm 2 thẻ (Nạp thực, Đã rút) cạnh "Tổng nạp"; nút gate `can('customers.edit')`/`can('customers.delete')`; thêm `tab:withdrawals` vào `ui-visibility.constants.ts` và **ẩn 2 thẻ mới cùng cờ ẩn với "Tổng nạp"** (không để lộ số tiền khi Admin đã ẩn tab nạp).
 
 ### Phases
-- [ ] **W0** `git pull`, lấy timestamp migration thật (> `1786350000000`).
-- [ ] **W1** Entity + đăng ký + migration tạo bảng (`up`/`down`).
-- [ ] **W2** DTO + service + controller + audit.
+- [x] **W0** `git pull`, lấy timestamp migration thật (> `1786350000000`).
+- [x] **W1** Entity + đăng ký + migration tạo bảng (`up`/`down`).
+- [x] **W2** DTO + service + controller + audit. *(Đã làm: danh sách trả tối đa 50 phiếu mới nhất; xoá cũng kiểm tra phạm vi khách; nhãn audit FE để W5.)*
 - [ ] **W3** Mở rộng stats BE: `totalWithdrawal`, `netDeposit` (cùng khung ngày/scope) + test.
 - [ ] **W4** FE: tab Rút tiền, form, bảng, 3 chỉ số (StatsCards + đầu tab), ui-visibility.
 - [ ] **W5** Audit log FE (nhãn action mới), kiểm tra xoá khách/thùng rác, docs (`PERMISSIONS.md` §2.1, `WORKFLOW_LOG.md`, guide khách hàng).

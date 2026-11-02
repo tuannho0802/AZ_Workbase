@@ -22,6 +22,9 @@ import { CreateCustomerNoteDto } from './dto/create-customer-note.dto';
 import { UpdateCustomerNoteDto } from './dto/update-customer-note.dto';
 import { CreateDepositDto } from './dto/create-deposit.dto';
 import { UpdateDepositNoteDto } from './dto/update-deposit-note.dto';
+import { CreateWithdrawalDto } from './dto/create-withdrawal.dto';
+import { UpdateWithdrawalNoteDto } from './dto/update-withdrawal-note.dto';
+import { CustomersWithdrawalsService } from './customers-withdrawals.service';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { PermissionGuard } from '../../common/guards/permission.guard';
 import { RequirePermission } from '../../common/decorators/require-permission.decorator';
@@ -41,6 +44,7 @@ export class CustomersController {
     private readonly customersInvalidStatsService: CustomersInvalidStatsService,
     private readonly customersPeriodStatsService: CustomersPeriodStatsService,
     private readonly customersBulkService: CustomersBulkService,
+    private readonly customersWithdrawalsService: CustomersWithdrawalsService,
   ) {}
 
   @Get('stats')
@@ -519,6 +523,56 @@ export class CustomersController {
     @GetPermissionScope() scope: string | null | undefined,
   ) {
     return this.customersService.getDeposits(+id, user.id, user.role, scope);
+  }
+
+  // ── RÚT TIỀN (PLAN_WITHDRAWAL_LEAVE_EXPORT W2) - dùng lại permission có sẵn, KHÔNG key mới:
+  // tạo/sửa ghi chú = `customers.edit` (cùng key nạp tiền), xem = `customers.view`, xoá = `customers.delete`.
+  // Phạm vi khách kiểm tra trong service (ngoài phạm vi -> 404). Route 2 đoạn `withdrawals/:id` khai báo
+  // trước `@Patch(':id')`/`@Delete(':id')` nên không bị route 1 đoạn nuốt.
+  @Post(':id/withdrawals')
+  @RequirePermission('customers.edit')
+  @ApiOperation({ summary: 'Thêm phiếu rút tiền cho khách hàng - phạm vi kiểm tra trong service' })
+  async createWithdrawal(
+    @Param('id') id: string,
+    @Body() dto: CreateWithdrawalDto,
+    @GetUser() user: any,
+    @GetPermissionScope() scope: string | null | undefined,
+  ) {
+    return this.customersWithdrawalsService.create(+id, dto, user.id, user.role, scope);
+  }
+
+  @Get(':id/withdrawals')
+  @RequirePermission('customers.view')
+  @ApiOperation({ summary: 'Danh sách phiếu rút tiền của khách (mới nhất trước, tối đa 50)' })
+  async getWithdrawals(
+    @Param('id') id: string,
+    @GetUser() user: any,
+    @GetPermissionScope() scope: string | null | undefined,
+  ) {
+    return this.customersWithdrawalsService.list(+id, user.id, user.role, scope);
+  }
+
+  @Patch('withdrawals/:id')
+  @RequirePermission('customers.edit')
+  @ApiOperation({ summary: 'Sửa ghi chú phiếu rút tiền (không sửa được số tiền)' })
+  async updateWithdrawalNote(
+    @Param('id') id: string,
+    @Body() dto: UpdateWithdrawalNoteDto,
+    @GetUser() user: any,
+    @GetPermissionScope() scope: string | null | undefined,
+  ) {
+    return this.customersWithdrawalsService.updateNote(+id, dto, user.id, user.role, scope);
+  }
+
+  @Delete('withdrawals/:id')
+  @RequirePermission('customers.delete')
+  @ApiOperation({ summary: 'Xoá phiếu rút tiền - cùng key `customers.delete` với xoá phiếu nạp' })
+  async deleteWithdrawal(
+    @Param('id') id: string,
+    @GetUser() user: any,
+    @GetPermissionScope() scope: string | null | undefined,
+  ) {
+    return this.customersWithdrawalsService.remove(+id, user.id, user.role, scope);
   }
 
   @Get(':id/assignment-history')

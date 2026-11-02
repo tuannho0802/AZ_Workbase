@@ -27,7 +27,7 @@ export class Withdrawal {
   amount: number;
 
   @Column({ name: 'withdrawal_date', type: 'date' })
-  withdrawalDate: Date;
+  withdrawalDate: string;
 
   @Column({ type: 'varchar', length: 100, nullable: true })
   broker: string | null;
