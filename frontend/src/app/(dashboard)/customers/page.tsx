@@ -258,6 +258,8 @@ function CustomersPageContent() {
   // dụng gì ở đây, dù CustomerDetailDrawer đã ẩn đúng tab "Lịch sử nạp tiền
   // (FTD)". Cả 3 chỗ cùng hiển thị 1 loại dữ liệu (FTD) nên phải ẩn đồng bộ.
   const hideDepositsTab = hiddenKeys.includes('tab:deposits');
+  // [W4] 2 thẻ "Đã rút"/"Nạp thực" ẩn khi tab:withdrawals bị ẩn (hoặc tab:deposits - xem StatsCards.hideFinance).
+  const hideWithdrawalsTab = hiddenKeys.includes('tab:withdrawals');
   const [selectedRowKeys, setSelectedRowKeys] = useState<React.Key[]>([]);
   const [isBulkStatusOpen, setIsBulkStatusOpen] = useState(false);
   const [isImportOpen, setIsImportOpen] = useState(false);
@@ -1021,6 +1023,7 @@ function CustomersPageContent() {
       loading={statsLoading} 
       onCardClick={(type) => setModalType(type)}
         hideDeposit={hideDepositsTab}
+        hideFinance={hideWithdrawalsTab}
         depositLabel={dateFrom || dateTo ? 'Tổng nạp (theo ngày lọc, USD)' : undefined}
     />
 

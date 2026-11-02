@@ -23,7 +23,7 @@ export type UiVisibilityResource = (typeof UI_VISIBILITY_RESOURCES)[number];
  * cho cả `findAll()` lẫn `findOne()`.
  *
  * `tab:*` - KHÔNG có field tương ứng trên object `Customer` (data nằm ở API
- * con riêng: `/customers/:id/deposits`, `/customers/:id/assignments`,
+ * con riêng: `/customers/:id/deposits`, `/customers/:id/withdrawals` (gate `customers.edit/view/delete`), `/customers/:id/assignments`,
  * `/customers/:id/group-memberships`) - ẩn THUẦN Ở FE (không render tab),
  * các API con đó đã tự gate đúng theo action permission hiện có
  * (`customers.edit` cho deposits POST, `customer_group_memberships.set` cho
@@ -36,6 +36,7 @@ export const CUSTOMER_ELEMENT_KEYS = [
   'field:assigned_date',
   'field:closed_date',
   'tab:deposits',
+  'tab:withdrawals',
   'tab:assignments',
   'tab:groups',
 ] as const;

@@ -1,5 +1,5 @@
 import axiosInstance from './axios-instance';
-import { Customer, PaginatedResponse, CustomerStats, Deposit, CustomerStatsPeriod, CustomerPeriodStats } from '../types/customer.types';
+import { Customer, PaginatedResponse, CustomerStats, Deposit, Withdrawal, CustomerFinanceSummary, CustomerStatsPeriod, CustomerPeriodStats } from '../types/customer.types';
 
 /** Chi tiết thống kê 1 loại trùng lặp TRONG KỲ - khớp `DuplicateStatsDetail` ở BE `customers-invalid-stats.service.ts`. */
 export interface DuplicateStatsDetail {
@@ -312,6 +312,33 @@ export const customersApi = {
 
   deleteDeposit: async (id: number) => {
     const response = await axiosInstance.delete(`/customers/deposits/${id}`);
+    return response.data;
+  },
+
+  // ── Rút tiền (W4) - route BE: POST/GET :id/withdrawals, PATCH/DELETE withdrawals/:id, GET :id/finance-summary ──
+  createWithdrawal: async (id: number, data: { amount: number; withdrawalDate: string; broker?: string; note?: string }): Promise<Withdrawal> => {
+    const response = await axiosInstance.post<Withdrawal>(`/customers/${id}/withdrawals`, data);
+    return response.data;
+  },
+
+  getCustomerWithdrawals: async (id: number): Promise<Withdrawal[]> => {
+    const response = await axiosInstance.get<Withdrawal[]>(`/customers/${id}/withdrawals`);
+    return response.data;
+  },
+
+  // Chỉ sửa GHI CHÚ phiếu rút (số tiền cố định - sai thì Xoá). note='' = xoá ghi chú.
+  updateWithdrawalNote: async (id: number, note: string): Promise<Withdrawal> => {
+    const response = await axiosInstance.patch<Withdrawal>(`/customers/withdrawals/${id}`, { note });
+    return response.data;
+  },
+
+  deleteWithdrawal: async (id: number) => {
+    const response = await axiosInstance.delete(`/customers/withdrawals/${id}`);
+    return response.data;
+  },
+
+  getCustomerFinanceSummary: async (id: number): Promise<CustomerFinanceSummary> => {
+    const response = await axiosInstance.get<CustomerFinanceSummary>(`/customers/${id}/finance-summary`);
     return response.data;
   },
 

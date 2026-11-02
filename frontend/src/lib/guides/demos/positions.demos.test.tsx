@@ -57,12 +57,12 @@ describe('mẫu Vị trí: đăng ký + render', () => {
     it('position-visibility: inherit không có Gỡ override; override có thanh thông báo + Gỡ override', () => {
         const i = render(<>{demo('position-visibility').render({ state: 'inherit' })}</>);
         expect(buttons(i.container, 'Gỡ override')).toHaveLength(0);
-        expect(i.container.querySelectorAll('.ant-switch')).toHaveLength(7);
-        expect(i.container.querySelectorAll('.ant-switch-checked')).toHaveLength(7);
+        expect(i.container.querySelectorAll('.ant-switch')).toHaveLength(8);
+        expect(i.container.querySelectorAll('.ant-switch-checked')).toHaveLength(8);
         i.unmount();
         const o = render(<>{demo('position-visibility').render({ state: 'override' })}</>);
         expect(buttons(o.container, 'Gỡ override')).toHaveLength(1);
         expect(o.container.textContent).toContain('Vị trí này đang có cấu hình riêng');
-        expect(o.container.querySelectorAll('.ant-switch-checked')).toHaveLength(4);
+        expect(o.container.querySelectorAll('.ant-switch-checked')).toHaveLength(5);
     });
 });

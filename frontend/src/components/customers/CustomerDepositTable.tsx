@@ -17,9 +17,11 @@ const NOTE_MAX_LENGTH = 1000;
 interface Props {
   customerId: number;
   refreshTrigger?: number;
+  /** [W4] Gọi sau khi XOÁ phiếu nạp thành công để cha cập nhật 3 chỉ số tài chính. */
+  onChanged?: () => void;
 }
 
-export const CustomerDepositTable = ({ customerId, refreshTrigger }: Props) => {
+export const CustomerDepositTable = ({ customerId, refreshTrigger, onChanged }: Props) => {
   const [loading, setLoading] = useState(false);
   const [deposits, setDeposits] = useState<Deposit[]>([]);
   const { message } = App.useApp();
@@ -89,6 +91,7 @@ export const CustomerDepositTable = ({ customerId, refreshTrigger }: Props) => {
       await customersApi.deleteDeposit(id);
       message.success('Đã xóa bản ghi nạp tiền');
       fetchDeposits();
+      onChanged?.();
     } catch (error: any) {
       message.error('Lỗi khi xóa bản ghi');
     }

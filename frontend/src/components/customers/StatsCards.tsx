@@ -3,7 +3,9 @@ import {
   UserOutlined, 
   UserAddOutlined, 
   CheckCircleOutlined, 
-  DollarOutlined 
+  DollarOutlined,
+  MinusCircleOutlined,
+  WalletOutlined,
 } from '@ant-design/icons';
 import { CustomerStats } from '@/lib/types/customer.types';
 
@@ -18,9 +20,22 @@ interface StatsCardsProps {
   hideDeposit?: boolean;
   /** Nhãn thẻ Tổng nạp - đổi khi người dùng lọc theo khoảng ngày (không còn là 30 ngày). */
   depositLabel?: string;
+  /** [W4] Ẩn 2 thẻ mới "Đã rút" + "Nạp thực": true khi Admin ẩn `tab:withdrawals` HOẶC `tab:deposits`
+   * (Nạp thực = nạp - rút nên để lộ sẽ suy ra được số đã ẩn). */
+  hideFinance?: boolean;
 }
 
-export const StatsCards = ({ stats, loading, onCardClick, hideDeposit, depositLabel }: StatsCardsProps) => {
+const formatUsd = (value: number): string =>
+  new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(value);
+
+// Nhãn 2 thẻ mới đồng bộ khung thời gian với nhãn "Tổng nạp" (30 ngày mặc định / theo ngày lọc).
+const isFiltered = (depositLabel?: string): boolean => !!depositLabel;
+const withdrawalLabel = (depositLabel?: string): string =>
+  isFiltered(depositLabel) ? 'Đã rút (theo ngày lọc, USD)' : 'Đã rút (30 ngày, USD)';
+const netLabel = (depositLabel?: string): string =>
+  isFiltered(depositLabel) ? 'Nạp thực (theo ngày lọc, USD)' : 'Nạp thực (30 ngày, USD)';
+
+export const StatsCards = ({ stats, loading, onCardClick, hideDeposit, depositLabel, hideFinance }: StatsCardsProps) => {
   const cardStyle: React.CSSProperties = {
     cursor: 'pointer',
     transition: 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
@@ -106,6 +121,32 @@ export const StatsCards = ({ stats, loading, onCardClick, hideDeposit, depositLa
             />
           </Card>
         </Col>
+      )}
+      {!hideFinance && !hideDeposit && (
+        <>
+          <Col xs={24} sm={12} md={6}>
+            <Card loading={loading} variant="borderless" className="stat-card" data-testid="stat-withdrawal">
+              <Statistic
+                title={withdrawalLabel(depositLabel)}
+                value={stats?.totalWithdrawalAmount || 0}
+                styles={{ content: { color: '#d46b08' } }}
+                formatter={(value) => formatUsd(Number(value))}
+                prefix={<MinusCircleOutlined />}
+              />
+            </Card>
+          </Col>
+          <Col xs={24} sm={12} md={6}>
+            <Card loading={loading} variant="borderless" className="stat-card" data-testid="stat-net-deposit">
+              <Statistic
+                title={netLabel(depositLabel)}
+                value={stats?.netDepositAmount || 0}
+                styles={{ content: { color: (stats?.netDepositAmount ?? 0) < 0 ? '#cf1322' : '#389e0d' } }}
+                formatter={(value) => formatUsd(Number(value))}
+                prefix={<WalletOutlined />}
+              />
+            </Card>
+          </Col>
+        </>
       )}
     </Row>
   );

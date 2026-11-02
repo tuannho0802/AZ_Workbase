@@ -58,7 +58,7 @@ describe('computeCustomerTableView - cột & nút', () => {
     expect(view('content').canEditStatus).toBe(false);
   });
   it('mọi persona dùng key permission/hidden hợp lệ (field:*/tab:* thuộc CUSTOMER_ELEMENT_KEYS)', () => {
-    const allowed = ['field:sales_assignment', 'field:marketing_assignment', 'field:assigned_date', 'field:closed_date', 'tab:deposits', 'tab:assignments', 'tab:groups'];
+    const allowed = ['field:sales_assignment', 'field:marketing_assignment', 'field:assigned_date', 'field:closed_date', 'tab:deposits', 'tab:withdrawals', 'tab:assignments', 'tab:groups'];
     for (const p of DEMO_PERSONAS) {
       for (const k of p.hiddenKeys) expect(allowed).toContain(k);
       for (const k of p.permissions) expect(k).toMatch(/^customers\.[a-z_]+$/);

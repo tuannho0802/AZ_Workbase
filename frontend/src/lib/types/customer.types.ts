@@ -70,6 +70,27 @@ export interface Deposit {
   };
 }
 
+export interface Withdrawal {
+  id: number;
+  customerId: number;
+  amount: number;
+  withdrawalDate: string;
+  broker?: string | null;
+  note?: string | null;
+  createdBy?: { id: number; name: string } | null;
+  createdAt: string;
+}
+
+/** GET /customers/:id/finance-summary - TOÀN THỜI GIAN của 1 khách (SUM trong DB, không cộng từ danh sách 50 phiếu). */
+export interface CustomerFinanceSummary {
+  totalDeposit: number;
+  totalWithdrawal: number;
+  /** = nạp - rút, làm tròn 2 số lẻ, CÓ THỂ ÂM. */
+  netDeposit: number;
+  depositCount: number;
+  withdrawalCount: number;
+}
+
 export interface CustomerStats {
   totalCustomers: number;
   newToday: number;
@@ -77,6 +98,10 @@ export interface CustomerStats {
   pendingTotal: number;
   potentialTotal: number;
   totalDepositAmount: number;
+  /** [W3] Đã rút - cùng phạm vi/bộ lọc/khung ngày với totalDepositAmount. Optional: BE cũ chưa trả. */
+  totalWithdrawalAmount?: number;
+  /** [W3] Nạp thực = nạp - rút (có thể âm). */
+  netDepositAmount?: number;
 }
 
 // ── Thống kê khách theo giai đoạn (GET /customers/stats/period) ──

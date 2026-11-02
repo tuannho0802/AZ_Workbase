@@ -16,6 +16,7 @@ import {
   InfoCircleOutlined,
   FileTextOutlined,
   DollarOutlined,
+  MinusCircleOutlined,
   UsergroupAddOutlined,
   ApartmentOutlined
 } from '@ant-design/icons';
@@ -23,12 +24,16 @@ import { Customer, CustomerNote } from '@/lib/types/customer.types';
 import { useAuthStore } from '@/lib/stores/auth.store';
 import { customersApi } from '@/lib/api/customers.api';
 import { useMyHiddenElements } from '@/lib/hooks/useUiVisibility';
+import { useMyPermissions } from '@/lib/hooks/useMyPermissions';
 import { CustomerDepositTable } from './CustomerDepositTable';
 import { CustomerInfoTab } from './CustomerInfoTab';
 import { CustomerNotesTab } from './CustomerNotesTab';
 import { CustomerAssignmentsTab } from './CustomerAssignmentsTab';
 import { CustomerGroupMembershipsTab } from './CustomerGroupMembershipsTab';
 import { DepositForm } from './DepositForm';
+import { WithdrawalForm } from './WithdrawalForm';
+import { CustomerWithdrawalTable } from './CustomerWithdrawalTable';
+import { CustomerFinanceSummary } from './CustomerFinanceSummary';
 import { CustomerForm } from './CustomerForm';
 
 // const { TabPane } = Tabs; // Removed for antd 5.x items prop
@@ -48,6 +53,10 @@ export const CustomerDetailDrawer = ({ open, customerId, onClose, onUpdate }: Cu
   const [isModalOpen, setIsModalOpen] = useState(false);
   const { message } = App.useApp();
   const [depositRefreshTrigger, setDepositRefreshTrigger] = useState(0);
+  // [W4] Rút tiền: trigger riêng cho bảng phiếu rút + trigger chung cho 3 chỉ số (đổi khi thêm/xoá phiếu NẠP hoặc RÚT).
+  const [withdrawalRefreshTrigger, setWithdrawalRefreshTrigger] = useState(0);
+  const [financeRefreshTrigger, setFinanceRefreshTrigger] = useState(0);
+  const { can } = useMyPermissions();
 
   // ⚠️ FIX BUG THẬT: các tab "Nạp tiền"/"Gán data"/"Nhóm" trước đây LUÔN
   // render cứng trong mảng `items` bên dưới - component này CHƯA BAO GIỜ
@@ -60,6 +69,8 @@ export const CustomerDetailDrawer = ({ open, customerId, onClose, onUpdate }: Cu
   // rõ là "ẩn THUẦN Ở FE" (xem CUSTOMER_ELEMENT_KEYS) - phần FE đó bị bỏ sót.
   const { hiddenKeys } = useMyHiddenElements('customers');
   const isTabHidden = (elementKey: string) => hiddenKeys.includes(elementKey);
+  // [W4] 3 chỉ số đầu Drawer lộ số tiền NẠP + RÚT -> chỉ hiện khi Admin KHÔNG ẩn tab:deposits lẫn tab:withdrawals.
+  const hideFinanceSummary = isTabHidden('tab:deposits') || isTabHidden('tab:withdrawals');
 
   // [AGENT] FIX đồng bộ ghi chú: đếm thứ tự request để CHỈ áp dụng response của
   // lần fetch MỚI NHẤT. Trước đây fetch chậm (vd lúc mở drawer) về SAU fetch
@@ -131,8 +142,19 @@ export const CustomerDetailDrawer = ({ open, customerId, onClose, onUpdate }: Cu
 
   const handleDepositSuccess = () => {
     setDepositRefreshTrigger(prev => prev + 1);
+    setFinanceRefreshTrigger(prev => prev + 1);
     fetchDetail();
     onUpdate?.();
+  };
+
+  const handleWithdrawalChanged = () => {
+    setFinanceRefreshTrigger(prev => prev + 1);
+    onUpdate?.(); // cập nhật thẻ thống kê (Đã rút / Nạp thực) ở trang danh sách
+  };
+
+  const handleWithdrawalSuccess = () => {
+    setWithdrawalRefreshTrigger(prev => prev + 1);
+    handleWithdrawalChanged();
   };
 
   return (
@@ -154,6 +176,9 @@ export const CustomerDetailDrawer = ({ open, customerId, onClose, onUpdate }: Cu
         </Space>
       }
     >
+      {customerId && !hideFinanceSummary && (
+        <CustomerFinanceSummary customerId={customerId} refreshTrigger={financeRefreshTrigger} />
+      )}
       {loading && !customer ? (
         <div style={{ textAlign: 'center', padding: '50px' }}>
           <Spin size="large" />
@@ -196,6 +221,23 @@ export const CustomerDetailDrawer = ({ open, customerId, onClose, onUpdate }: Cu
                   <CustomerDepositTable 
                     customerId={customerId} 
                     refreshTrigger={depositRefreshTrigger} 
+                    onChanged={() => setFinanceRefreshTrigger(prev => prev + 1)}
+                  />
+                </>
+              ) : null
+            },
+            !isTabHidden('tab:withdrawals') && {
+              key: 'withdrawals',
+              label: (<span><MinusCircleOutlined />Rút tiền</span>),
+              children: customerId ? (
+                <>
+                  {can('customers.edit') && (
+                    <WithdrawalForm customerId={customerId} onSuccess={handleWithdrawalSuccess} />
+                  )}
+                  <CustomerWithdrawalTable
+                    customerId={customerId}
+                    refreshTrigger={withdrawalRefreshTrigger}
+                    onChanged={handleWithdrawalChanged}
                   />
                 </>
               ) : null

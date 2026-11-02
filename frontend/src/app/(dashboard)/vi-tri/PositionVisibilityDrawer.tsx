@@ -42,6 +42,11 @@ const ELEMENT_KEY_LABELS: Record<string, { label: string; group: 'field' | 'tab'
     group: 'tab',
     hint: 'Trong màn Chi tiết khách hàng',
   },
+  'tab:withdrawals': {
+    label: 'Tab "Rút tiền" + thẻ Đã rút / Nạp thực',
+    group: 'tab',
+    hint: 'Trong màn Chi tiết khách hàng và thẻ thống kê danh sách khách',
+  },
   'tab:assignments': {
     label: 'Tab "Phân công"',
     group: 'tab',

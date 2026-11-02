@@ -203,6 +203,7 @@ const VISIBILITY_ROWS: { key: string; label: string; hint?: string }[] = [
     { key: 'field:assigned_date', label: 'Ngày nhận khách' },
     { key: 'field:closed_date', label: 'Ngày chốt khách' },
     { key: 'tab:deposits', label: 'Tab "Lịch sử nạp tiền (FTD)"', hint: 'Trong màn Chi tiết khách hàng' },
+    { key: 'tab:withdrawals', label: 'Tab "Rút tiền" + thẻ Đã rút / Nạp thực', hint: 'Trong màn Chi tiết khách hàng và thẻ thống kê danh sách khách' },
     { key: 'tab:assignments', label: 'Tab "Phân công"', hint: 'Trong màn Chi tiết khách hàng' },
     { key: 'tab:groups', label: 'Tab "Nhóm khách hàng"', hint: 'Trong màn Chi tiết khách hàng' },
 ];
