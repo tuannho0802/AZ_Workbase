@@ -69,7 +69,7 @@ Trên điện thoại (màn hình hẹp), bảng đổi thành từng thẻ khá
 
 ## Khôi phục làm gì
 
-- Khách quay lại trang Khách hàng **y như trước khi xóa**: thông tin, ghi chú, nạp tiền, lượt chia Sales, nhóm đã tham gia đều còn nguyên vì khi xóa mềm không có gì bị xóa đi.
+- Khách quay lại trang Khách hàng **y như trước khi xóa**: thông tin, ghi chú, nạp tiền, rút tiền, lượt chia Sales, nhóm đã tham gia đều còn nguyên vì khi xóa mềm không có gì bị xóa đi.
 - Cột **Người xóa** được xóa trắng; lần xóa sau sẽ ghi lại người xóa mới.
 - Khôi phục được ghi vào **Nhật ký hệ thống** (hành động khôi phục khách hàng).
 - Khách chỉ khôi phục được khi **đang ở trong Thùng rác**.
@@ -77,7 +77,7 @@ Trên điện thoại (màn hình hẹp), bảng đổi thành từng thẻ khá
 ## Xóa vĩnh viễn làm gì
 
 - Chỉ xóa được khách **đã nằm trong Thùng rác** (phải xóa mềm trước).
-- Khách bị xóa **hẳn khỏi cơ sở dữ liệu** cùng với dữ liệu gắn theo khách: **ghi chú, các khoản nạp tiền, lượt chia Sales, trạng thái tham gia nhóm và liên kết với công việc định kỳ**. Không có cách lấy lại.
+- Khách bị xóa **hẳn khỏi cơ sở dữ liệu** cùng với dữ liệu gắn theo khách: **ghi chú, các khoản nạp tiền và rút tiền, lượt chia Sales, trạng thái tham gia nhóm và liên kết với công việc định kỳ**. Không có cách lấy lại.
 - Hệ thống vẫn ghi vào **Nhật ký hệ thống** một dòng kèm bản chụp thông tin khách lúc bị xóa, để sau này còn biết khách nào đã bị xóa và ai làm.
 - Hệ thống **không tự dọn** Thùng rác theo thời gian: khách nằm đó đến khi có người khôi phục hoặc xóa vĩnh viễn.
 

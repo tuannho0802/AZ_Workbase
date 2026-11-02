@@ -62,7 +62,7 @@ Còn 2 điểm nhỏ mình đặt mặc định (bạn sửa nếu muốn khác)
 - [x] **W2** DTO + service + controller + audit. *(Đã làm: danh sách trả tối đa 50 phiếu mới nhất; xoá cũng kiểm tra phạm vi khách; nhãn audit FE để W5.)*
 - [x] **W3** Mở rộng stats BE: `totalWithdrawalAmount`, `netDepositAmount` (cùng khung ngày/scope) + test. *(Đã làm thêm: `GET customers/:id/finance-summary` — tổng nạp/rút/nạp thực toàn thời gian của 1 khách cho Drawer; sửa bug `leftJoin` làm "Tổng nạp" cộng cả phiếu của khách đã xoá mềm.)*
 - [ ] **W4** FE: tab Rút tiền, form, bảng, 3 chỉ số (StatsCards + đầu tab), ui-visibility.
-- [ ] **W5** Audit log FE (nhãn action mới), kiểm tra xoá khách/thùng rác, docs (`PERMISSIONS.md` §2.1, `WORKFLOW_LOG.md`, guide khách hàng).
+- [x] **W5** Audit log FE (nhãn action mới), kiểm tra xoá khách/thùng rác, docs (`PERMISSIONS.md` §2.1, `WORKFLOW_LOG.md`, guide khách hàng). *(Đã làm: nhãn `audit-meta.ts`; xoá mềm giữ phiếu rút, xoá vĩnh viễn CASCADE; docs + guide `khach-hang`/`thung-rac`.)*
 
 ### ✅ Checklist sau MỖI lần handle — Rút tiền
 1. Migration: timestamp > số lớn nhất hiện có; không sửa migration cũ; chạy thử `up → down → up` trên DB trống.

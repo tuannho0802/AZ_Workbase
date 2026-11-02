@@ -76,6 +76,7 @@ Bấm vào dòng khách. Khung chi tiết có các tab:
 | **Chi tiết** | Xem toàn bộ thông tin. Bấm **Chỉnh sửa** rồi **Lưu thay đổi**. |
 | **Ghi chú** | Thêm ghi chú mới (chọn loại, bật 🔥 nếu quan trọng), sửa hoặc xoá ghi chú. |
 | **Nạp tiền** | Xem lịch sử nạp tiền của khách. |
+| **Rút tiền** | Xem, thêm phiếu rút tiền của khách (số tiền, ngày rút, sàn, ghi chú). Phiếu đã tạo chỉ sửa được **ghi chú**; muốn đổi số tiền thì xoá rồi tạo lại. Nút Thêm/Xoá hiện theo quyền của bạn. |
 | **Chia data** | Xem ai đang được chia khách này; gán thêm, sửa hoặc **Thu hồi** lượt gán. |
 | **Nhóm** | Bật/tắt khách đã tham gia nhóm nào. |
 
@@ -200,6 +201,8 @@ source-tags
 
 - **Tổng khách hàng**, **Khách mới hôm nay**, **Chốt thành công**: bấm vào thẻ để xem danh sách tương ứng.
 - **Tổng nạp (30 ngày, USD)**: bấm để xem chi tiết. Khi bạn lọc theo ngày, tên thẻ đổi thành **Tổng nạp (theo ngày lọc, USD)**.
+- **Đã rút** và **Nạp thực** (= Tổng nạp − Đã rút): tính cùng phạm vi khách và cùng khung ngày với Tổng nạp. **Nạp thực có thể âm** (rút nhiều hơn nạp) và hiện màu đỏ. Hai thẻ này tự ẩn khi quản trị viên ẩn phần Nạp/Rút tiền với bạn.
+- Đầu khung chi tiết của từng khách cũng có 3 chỉ số **Tổng nạp / Đã rút / Nạp thực** tính trên **toàn bộ thời gian**.
 - Số liệu luôn tính theo phạm vi khách của bạn và bộ lọc đang chọn, nên mỗi người có thể thấy con số khác nhau.
 
 ## Trên điện thoại

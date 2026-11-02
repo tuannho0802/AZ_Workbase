@@ -343,6 +343,21 @@ sub-resource phát hiện thiếu filter ở lần rà soát trước đã đư�
 | `GET /customers/:id/assignment-history` | `getAssignmentHistory()` | Gọi `assertCustomerAccessible()` |
 | `GET/PATCH /customers/:id/group-memberships*` | `customer-group-memberships.service.ts` | Thêm `assertCustomerAccessible()` riêng (dùng `customerRepo.createQueryBuilder()` + `CustomerAccessHelper.applyViewFilter()`) — có spec test riêng khoá hành vi (`customer-group-memberships.service.spec.ts`). **Cập nhật 2026-09-08:** `PATCH` đổi permission key sang `customer_group_memberships.set` (tách riêng khỏi `customers.edit`) — xem mục 1.7 và mục 3 |
 
+**Rút tiền (PLAN_WITHDRAWAL_LEAVE_EXPORT, W1–W5) — sub-resource mới, KHÔNG thêm permission key/migration seed nào** (dùng lại `customers.view/edit/delete`; `customers-withdrawals.service.ts`):
+
+| Endpoint | Permission | Ghi chú |
+|---|---|---|
+| `POST /customers/:id/withdrawals` | `customers.edit` | Qua `assertCustomerAccessible()` (ngoài phạm vi → 404). Audit `CREATE_WITHDRAWAL` |
+| `GET /customers/:id/withdrawals` | `customers.view` | Tối đa 50 phiếu mới nhất; cùng cổng phạm vi |
+| `GET /customers/:id/finance-summary` | `customers.view` | Tổng nạp / Đã rút / Nạp thực TOÀN THỜI GIAN (SUM trong DB) |
+| `PATCH /customers/withdrawals/:id` | `customers.edit` | Chỉ sửa ghi chú. Audit `UPDATE_WITHDRAWAL_NOTE` |
+| `DELETE /customers/withdrawals/:id` | `customers.delete` | Cũng kiểm tra phạm vi khách (khác `deleteDeposit` chỉ gate theo key). Audit `DELETE_WITHDRAWAL` (lưu snapshot) |
+
+- Route 2 đoạn `withdrawals/:id` khai TRƯỚC `@Patch(':id')`/`@Delete(':id')` (có spec khoá thứ tự + key quyền).
+- `GET /customers/stats` trả thêm `totalWithdrawalAmount`, `netDepositAmount` (cùng phạm vi xem + bộ lọc + khung ngày với Tổng nạp; Nạp thực có thể ÂM).
+- UI visibility: key `tab:withdrawals` (`ui-visibility.constants.ts`). FE ẩn 2 thẻ Đã rút/Nạp thực và khối 3 chỉ số ở Drawer khi Admin ẩn `tab:withdrawals` **hoặc** `tab:deposits` (Nạp thực = nạp − rút, để lộ sẽ suy ra được số đã ẩn).
+- Xoá khách: xoá mềm giữ nguyên phiếu rút (thẻ thống kê dùng `innerJoin` nên không cộng phiếu của khách đã xoá mềm); xoá vĩnh viễn → FK `ON DELETE CASCADE` xoá phiếu rút cùng khách (giống phiếu nạp). Audit FE: nhãn `CREATE/UPDATE_WITHDRAWAL_NOTE/DELETE_WITHDRAWAL` + entity `withdrawal` ở `audit-meta.ts` (có test lưới an toàn đối chiếu BE).
+
 Toàn bộ 6 điểm trên giờ đi qua đúng "1 nguồn áp filter duy nhất" (`assertCustomerAccessible`/
 `applyViewFilter`), không còn endpoint nào bỏ sót.
 

@@ -8156,3 +8156,23 @@ Now [deploy]
 > - Chưa làm FE (W4), nhãn audit FE (W5).
 
 ---
+
+## [2026-11-02 17:30] | Rút tiền - Phase W5: nhãn audit FE + rà xoá khách/thùng rác + docs | [Status: Success]
+
+**Actor:** Agent
+**Files Changed:**
+- `frontend/src/lib/api/audit-meta.ts` — thêm nhãn `CREATE_WITHDRAWAL` / `UPDATE_WITHDRAWAL_NOTE` / `DELETE_WITHDRAWAL` (nhóm Khách hàng & Data) + entity `withdrawal` = "Phiếu rút tiền"
+- `AZ-Workbase Skills/PERMISSIONS.md` — §2.1: bảng 5 endpoint rút tiền (key dùng lại, không seed mới), 3 chỉ số, `tab:withdrawals`, hành vi xoá khách
+- `guides-content/khach-hang.md` (tab Rút tiền, thẻ Đã rút/Nạp thực, 3 chỉ số Drawer), `guides-content/thung-rac.md` (xoá mềm/vĩnh viễn gồm rút tiền)
+- `AZ-Workbase Skills/PLAN_WITHDRAWAL_LEAVE_EXPORT.md` — tick W5
+
+**Root Cause (kiểm tra xoá khách/thùng rác):**
+> Không có bug. Xoá mềm giữ nguyên phiếu rút; `getStats()` dùng `innerJoin` nên không cộng phiếu của khách đã xoá mềm. Xoá vĩnh viễn: FK `FK_withdrawals_customer ON DELETE CASCADE` xoá phiếu rút cùng khách (giống deposits). `SYSTEM_RESET` chỉ tăng epoch, không xoá dữ liệu.
+
+**Notes:**
+> - Verify thật: `audit-meta.test.ts` ĐỎ trước khi thêm nhãn (báo đúng 3 action + entity `withdrawal`), XANH sau khi thêm. FE vitest `components/customers` + `lib/guides` + `lib/api` 41 file / 617 test pass; `tsc --noEmit` chỉ còn lỗi `logo.png` có sẵn. BE không đổi code.
+> - W4 (FE) đã có trong commit `cf187a2` nhưng plan/log chưa tick/ghi — chưa click-through trên trình duyệt.
+> - Guide `khach-hang`/`thung-rac`: chạy `npm run guides:sync` (dry-run trước) để đồng bộ lên DB.
+> - CHƯA sửa (từ W3): `getAllDepositsStats()` vẫn dùng `leftJoin` + `deletedAt IS NULL`.
+
+---
