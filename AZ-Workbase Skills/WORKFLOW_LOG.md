@@ -8242,3 +8242,16 @@ Now [deploy]
 > - CHƯA làm: mở bằng Microsoft Excel thật, click-through trình duyệt. L6 (docs `guides-content/duyet-phep.md`, `PERMISSIONS.md` §2.6) còn lại.
 
 ---
+## [2026-11-03 00:20] | Xuất Excel phép - Phase L6: docs | [Status: Success]
+
+**Actor:** Agent
+**Files Changed:**
+- `AZ-Workbase Skills/PERMISSIONS.md` — §2.6: form E/F + chart không đổi quyền/scope
+- `guides-content/duyet-phep.md` — mục "Xuất Excel" + dòng "Không thấy nút Xuất Excel" (vẫn `published: false`)
+- `AZ-Workbase Skills/PLAN_WITHDRAWAL_LEAVE_EXPORT.md` — tick L6
+
+**Notes:**
+> - Chỉ sửa tài liệu, không đổi code nên không chạy lại build/test (kết quả L5 còn nguyên). `git fetch` không có commit mới trên origin.
+> - Còn treo: mở `mau_FormF_L5.xlsx` bằng Excel thật; chốt scope assistant (`resolveScope()`).
+
+---

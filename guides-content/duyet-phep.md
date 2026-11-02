@@ -117,6 +117,16 @@ Hiện các đơn nghỉ của **người khác trong phạm vi bạn được x
 
 Cùng quyền Xem (`leave_requests.view`). Chọn kỳ, rồi lọc theo **phòng ban** và **loại phép**. Trang hiển thị các chỉ số như *Tổng đơn nghỉ*, *Ngày nghỉ đã duyệt*, *Nhân sự xin nghỉ*, *Tỷ lệ duyệt*, *Tỷ lệ từ chối*, *Đơn bổ sung*, cùng biểu đồ theo thời gian, theo phòng ban và bảng xếp hạng nhân viên. **Số liệu chỉ tính trong phạm vi bạn xem**, nên Manager chỉ thấy phòng mình.
 
+### Xuất Excel
+
+Nút **Xuất Excel** ở tab Thống kê chỉ hiện khi bạn có quyền **Duyệt/từ chối đơn nghỉ phép** (`leave_requests.approve`). Chỉ có quyền Xem thì không thấy nút. Số liệu xuất theo đúng **kỳ và bộ lọc** đang chọn, và theo **phạm vi duyệt** của bạn (Manager chỉ thấy phòng mình).
+
+1. Chọn một mẫu: **A** Tổng hợp theo nhân viên, **B** Chi tiết từng đơn (tối đa 5.000 đơn mới nhất), **C** Theo phòng ban & loại phép, **D** Ma trận nhân viên × thời gian, **E** Báo cáo kèm biểu đồ, **F** Gói đầy đủ (A–E).
+2. Bấm **Xem trước**: bảng hiện tối đa 20 dòng đầu (có ghi *còn N dòng nữa*), mẫu E/F hiện cả biểu đồ. File Excel có đúng nội dung này. Tỷ lệ chưa có kết quả hiện **—**, không phải 0.
+3. Bấm **Xuất Excel** để tải file `NghiPhep_<Mẫu>_<từ>_<đến>_ExportBy-<Tên>.xlsx`.
+
+Mẫu E/F có 3 **biểu đồ gốc của Excel** (cột chồng Đã duyệt/Từ chối/Chờ duyệt theo nhân viên top 10, donut cơ cấu loại phép, đường xu hướng) nằm ở sheet *Báo cáo*, bên phải bảng. Sửa số trong ô thì biểu đồ đổi theo. Kỳ không có đơn thì file vẫn mở được, có thông báo và không có biểu đồ.
+
 ## Quy tắc & lưu ý nghiệp vụ
 
 - **Thao tác bị kiểm tra ở máy chủ**: dù một nút hiện ra, máy chủ vẫn từ chối nếu đơn nằm ngoài phạm vi của bạn (báo *"Bạn không có quyền phê duyệt đơn của người này"*).
@@ -130,6 +140,7 @@ Cùng quyền Xem (`leave_requests.view`). Chọn kỳ, rồi lọc theo **phòn
 - **Không vào được trang, bị đưa về Khách hàng**: bạn không có cả `leave_requests.approve` lẫn `leave_requests.view`. Liên hệ Admin.
 - **Không thấy tab Chờ phê duyệt**: thiếu quyền Duyệt/từ chối đơn nghỉ phép. Chỉ có quyền Xem thì bạn thấy Lịch sử, Thùng rác, Thống kê.
 - **Không thấy đơn của một nhân viên**: phạm vi của bạn là **Phòng ban** và nhân viên đó không thuộc phòng bạn quản lý (hoặc bạn chưa được gán làm người duyệt riêng của họ).
+- **Không thấy nút Xuất Excel ở tab Thống kê**: thiếu quyền Duyệt/từ chối đơn nghỉ phép (chỉ có quyền Xem là chưa đủ).
 - **Không thấy nút Sửa**: thiếu quyền Sửa đơn nghỉ phép, hoặc đơn đã **Từ chối** / **Đã hủy**.
 - **Không thấy nút Huỷ hay ô chọn nhiều dòng**: thiếu quyền Xoá đơn nghỉ phép.
 - **Bấm Huỷ ở đơn Chờ duyệt không được**: đơn chờ chỉ chủ đơn huỷ được. Hãy duyệt hoặc từ chối trước.

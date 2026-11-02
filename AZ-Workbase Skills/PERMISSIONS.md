@@ -462,6 +462,11 @@ với Media Source, chủ dự án chốt hướng an toàn thay vì để treo.
 > `approve`=all ⇒ xuất được phạm vi RỘNG hơn tab Thống kê họ đang xem. Muốn thu hẹp (min của view/approve) chỉ cần sửa
 > `LeaveRequestsExportService.resolveScope()` — nguồn duy nhất. Audit `EXPORT_LEAVE_REQUESTS` (form, kỳ, bộ lọc, scope, số dòng).
 > FE: nút "Xuất Excel" ở tab Thống kê hiện khi `can('leave_requests.approve')`.
+>
+> **Form E/F + biểu đồ (2026-11-02, L5):** body nhận `form` ∈ A–F (`E` = KPI + bảng + 3 chart gốc; `F` = A–E). Chart KHÔNG thêm
+> quyền/endpoint/migration: dùng đúng số liệu `getStats()` đã qua scope của `approve`, chỉ khác cách ghi file
+> (`leave-export.excel.ts` → `injectCharts`). Form E không kéo danh sách đơn (chỉ B/D/F kéo `getExportRequests`). Kỳ rỗng → không chart.
+> Mọi ô/nhãn chart là text người dùng nhập đều qua `guardFormula` (chống formula injection). Người chỉ có `view` vẫn 403 ở cả 2 route.
 
 **Đối chiếu trực tiếp `leave-requests.service.ts` (2026-08-28) — xác nhận cơ chế `RolePriority` chéo
 phòng ban cũ đã bị THAY THẾ HOÀN TOÀN** bằng 2 bảng tra cứu cố định đúng rule đã chốt, không còn tồn tại
