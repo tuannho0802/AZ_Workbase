@@ -19,6 +19,7 @@ import { getClientIp } from '../../common/security/client-ip';
 import { QueryLeaveCalendarDto } from './dto/query-leave-calendar.dto';
 import { PermissionsService } from '../permissions/permissions.service';
 import { Role } from '../../common/enums/role.enum';
+import { PermissionScope } from '../../database/entities/role-permission.entity';
 
 @Controller('leave-requests')
 @UseGuards(JwtAuthGuard, PermissionGuard)
@@ -49,10 +50,29 @@ export class LeaveRequestsController {
     return this.leaveRequestsService.discardOrphanAttachments(req.user.id, dto.keys);
   }
 
+  // [FIX] Trước đây gắn @RequirePermission('leave_requests.request') nên
+  // `scope` luôn là scope của quyền "tạo đơn" (supports_scope=FALSE → NULL) →
+  // isEligibleApprover() luôn false với Manager/Assistant/role tuỳ chỉnh → 403
+  // (FE nuốt lỗi, hiện "Đơn này không có ảnh đính kèm"). Giờ KHÔNG gate bằng
+  // `request` nữa: tự tra scope rộng nhất của `approve`/`view` (cùng cách
+  // GET calendar). Chủ đơn vẫn xem được qua nhánh isOwner trong service.
   @Get(':id/attachment-urls')
-  @RequirePermission('leave_requests.request')
-  async getAttachmentUrls(@Param('id') id: string, @Request() req, @GetPermissionScope() scope?: string | null) {
-    return this.leaveRequestsService.getAttachmentViewUrls(+id, req.user.id, req.user.role, scope);
+  async getAttachmentUrls(@Param('id') id: string, @Request() req) {
+    const { id: userId, role, departmentId, positionId } = req.user;
+    let scope: string | null = null;
+    if (role !== Role.ADMIN) {
+      const [approve, view] = await Promise.all([
+        this.permissionsService.hasPermission(role, 'leave_requests.approve', departmentId, positionId),
+        this.permissionsService.hasPermission(role, 'leave_requests.view', departmentId, positionId),
+      ]);
+      const scopes = [approve, view].filter((p) => p.allowed).map((p) => p.scope);
+      scope = scopes.includes(PermissionScope.ALL)
+        ? PermissionScope.ALL
+        : scopes.includes(PermissionScope.DEPARTMENT)
+          ? PermissionScope.DEPARTMENT
+          : null;
+    }
+    return this.leaveRequestsService.getAttachmentViewUrls(+id, userId, role, scope);
   }
 
   @Post()

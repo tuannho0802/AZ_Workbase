@@ -709,6 +709,49 @@ describe('LeaveRequestsService - Phan quyen duyet (PERMISSIONS.md muc 2.6)', () 
     });
   });
 
+  describe('getAttachmentViewUrls() - ai duoc xem anh dinh kem', () => {
+    const withAttachments = () => ({
+      ...pendingRequest(Role.EMPLOYEE, 3),
+      attachments: [{ id: 11, objectKey: 'leave-attachments/100/a.jpg' }],
+    });
+
+    it('chu don xem duoc du scope null', async () => {
+      mockLeaveRepo.findOne.mockResolvedValue(withAttachments());
+      const res = await service.getAttachmentViewUrls(1, 100, Role.EMPLOYEE, null);
+      expect(res).toEqual([
+        { id: 11, key: 'leave-attachments/100/a.jpg', url: 'https://signed.example/att' },
+      ]);
+    });
+
+    it('manager DUNG phong ban (scope=department) xem duoc', async () => {
+      mockLeaveRepo.findOne.mockResolvedValue(withAttachments());
+      mockDepartmentManagerRepo.findOne.mockResolvedValue({ departmentId: 3, userId: 7 });
+      const res = await service.getAttachmentViewUrls(1, 7, Role.MANAGER, PermissionScope.DEPARTMENT);
+      expect(res).toHaveLength(1);
+    });
+
+    it('manager KHAC phong ban -> ForbiddenException', async () => {
+      mockLeaveRepo.findOne.mockResolvedValue(withAttachments());
+      mockDepartmentManagerRepo.findOne.mockResolvedValue(null);
+      await expect(
+        service.getAttachmentViewUrls(1, 7, Role.MANAGER, PermissionScope.DEPARTMENT),
+      ).rejects.toThrow(ForbiddenException);
+    });
+
+    it('scope=null (nguyen nhan bug cu: scope cua quyen request) -> nguoi khong phai chu bi chan', async () => {
+      mockLeaveRepo.findOne.mockResolvedValue(withAttachments());
+      await expect(
+        service.getAttachmentViewUrls(1, 7, Role.MANAGER, null),
+      ).rejects.toThrow(ForbiddenException);
+    });
+
+    it('scope=all xem duoc moi don', async () => {
+      mockLeaveRepo.findOne.mockResolvedValue(withAttachments());
+      const res = await service.getAttachmentViewUrls(1, 7, Role.ASSISTANT, PermissionScope.ALL);
+      expect(res).toHaveLength(1);
+    });
+  });
+
   describe('cancel() - huy don TU DONG don anh dinh kem (theo yeu cau moi)', () => {
     it('nem NotFoundException neu khong tim thay don cua chinh requester', async () => {
       mockLeaveRepo.findOne.mockResolvedValue(null);

@@ -51,7 +51,7 @@ function AttachmentImage({ objectKey, url }: { objectKey: string; url: string })
  */
 export function AttachmentsViewerButton({ requestId, size = 'small', count }: AttachmentsViewerButtonProps) {
   const [open, setOpen] = useState(false);
-  const { attachments, isLoading } = useAttachmentUrls(requestId, open);
+  const { attachments, isLoading, isError } = useAttachmentUrls(requestId, open);
 
   const hasCount = typeof count === 'number';
 
@@ -83,6 +83,8 @@ export function AttachmentsViewerButton({ requestId, size = 'small', count }: At
           <div style={{ textAlign: 'center', padding: 24 }}>
             <Spin />
           </div>
+        ) : isError ? (
+          <Empty description="Không tải được ảnh đính kèm (có thể bạn không có quyền xem đơn này)" />
         ) : attachments.length === 0 ? (
           <Empty description="Đơn này không có ảnh đính kèm" />
         ) : (
