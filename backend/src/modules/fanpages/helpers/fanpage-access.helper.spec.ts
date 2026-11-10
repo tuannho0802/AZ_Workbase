@@ -2,8 +2,8 @@ import { FanpageAccessHelper, FanpageAccessContext } from './fanpage-access.help
 
 const ctx = (over: Partial<FanpageAccessContext> = {}): FanpageAccessContext => ({
     userId: 10,
-    ownerId: 1,
-    ownerDepartmentId: 5,
+    ownerIds: [1],
+    ownerDepartmentIds: [5],
     managedDepartmentIds: [],
     ...over,
 });
@@ -15,7 +15,7 @@ describe('FanpageAccessHelper.allows', () => {
         }
     });
     it('scope all -> true kể cả Page chưa có chủ', () => {
-        expect(FanpageAccessHelper.allows('all', ctx({ ownerId: null, ownerDepartmentId: null }))).toBe(true);
+        expect(FanpageAccessHelper.allows('all', ctx({ ownerIds: [], ownerDepartmentIds: [] }))).toBe(true);
     });
     it('scope own: chỉ chủ', () => {
         expect(FanpageAccessHelper.allows('own', ctx({ userId: 1 }))).toBe(true);
@@ -30,11 +30,23 @@ describe('FanpageAccessHelper.allows', () => {
     });
     it('scope department: Page chưa có chủ -> false', () => {
         expect(
-            FanpageAccessHelper.allows('department', ctx({ ownerId: null, ownerDepartmentId: null, managedDepartmentIds: [5] })),
+            FanpageAccessHelper.allows('department', ctx({ ownerIds: [], ownerDepartmentIds: [], managedDepartmentIds: [5] })),
         ).toBe(false);
     });
     it('scope department: vẫn thao tác được Page mình là chủ dù khác phòng ban', () => {
         expect(FanpageAccessHelper.allows('department', ctx({ userId: 1, managedDepartmentIds: [9] }))).toBe(true);
+    });
+});
+
+describe('FanpageAccessHelper nhiều người phụ trách', () => {
+    it('scope own: là 1 trong nhiều người phụ trách -> true', () => {
+        expect(FanpageAccessHelper.allows('own', ctx({ userId: 2, ownerIds: [1, 2, 3] }))).toBe(true);
+        expect(FanpageAccessHelper.allows('own', ctx({ userId: 9, ownerIds: [1, 2, 3] }))).toBe(false);
+    });
+    it('scope department: BẤT KỲ người phụ trách nào thuộc phòng ban quản lý -> true', () => {
+        const c = ctx({ ownerIds: [1, 2], ownerDepartmentIds: [7, 5], managedDepartmentIds: [5] });
+        expect(FanpageAccessHelper.allows('department', c)).toBe(true);
+        expect(FanpageAccessHelper.allows('department', { ...c, managedDepartmentIds: [8] })).toBe(false);
     });
 });
 

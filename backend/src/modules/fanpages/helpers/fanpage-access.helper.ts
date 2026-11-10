@@ -1,16 +1,17 @@
 /**
  * Quyền trên 1 Fanpage cụ thể - hàm THUẦN (không phụ thuộc DB), mirror `UtmAccessHelper`.
- * Scope so với NGƯỜI PHỤ TRÁCH (`owner`) của Page:
+ * Scope so với DANH SÁCH NGƯỜI PHỤ TRÁCH (`owners`, nhiều người) của Page:
  *   all        : mọi Page
- *   own        : Page mình phụ trách
- *   department : Page mình phụ trách + Page có người phụ trách thuộc phòng ban mình được gán quản lý
+ *   own        : Page mình là 1 trong những người phụ trách
+ *   department : Page mình phụ trách + Page có BẤT KỲ người phụ trách nào thuộc phòng ban mình được gán quản lý
  * Scope null/'none'/không hợp lệ -> fail-closed (false). Page chưa có người phụ trách chỉ scope 'all' mới chạm được.
  */
 export interface FanpageAccessContext {
     userId: number;
-    ownerId: number | null;
-    /** Phòng ban của người phụ trách (null nếu không có chủ / chủ không thuộc phòng ban nào). */
-    ownerDepartmentId: number | null;
+    /** ID của TẤT CẢ người phụ trách (rỗng nếu Page chưa có chủ). */
+    ownerIds: number[];
+    /** Phòng ban của các người phụ trách (bỏ qua người không thuộc phòng ban nào). */
+    ownerDepartmentIds: number[];
     /** Các phòng ban người gọi được gán quản lý (bảng department_managers). */
     managedDepartmentIds: number[];
 }
@@ -19,12 +20,8 @@ export class FanpageAccessHelper {
     static allows(scope: string | null | undefined, ctx: FanpageAccessContext): boolean {
         if (scope === 'all') return true;
         if (scope !== 'own' && scope !== 'department') return false;
-        if (ctx.ownerId != null && ctx.ownerId === ctx.userId) return true;
-        return (
-            scope === 'department' &&
-            ctx.ownerDepartmentId != null &&
-            ctx.managedDepartmentIds.includes(ctx.ownerDepartmentId)
-        );
+        if (ctx.ownerIds.includes(ctx.userId)) return true;
+        return scope === 'department' && ctx.ownerDepartmentIds.some((d) => ctx.managedDepartmentIds.includes(d));
     }
 
     /** Có thể GIAO Page cho người khác không: chỉ scope rộng (all/department) của `fanpages.edit`. */

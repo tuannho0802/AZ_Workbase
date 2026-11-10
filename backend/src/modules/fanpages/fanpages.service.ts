@@ -30,6 +30,7 @@ const snapshot = (p: Fanpage) => ({
     name: p.name,
     url: p.url,
     ownerId: p.ownerId,
+    ownerIds: (p.owners ?? []).map((o) => o.id),
     isActive: p.isActive,
 });
 
@@ -60,30 +61,41 @@ export class FanpagesService {
             .leftJoinAndSelect('f.platform', 'platform')
             .leftJoin('f.owner', 'owner')
             .addSelect(['owner.id', 'owner.name', 'owner.employeeCode', 'owner.departmentId'])
+            .leftJoin('f.owners', 'owners')
+            .addSelect(['owners.id', 'owners.name', 'owners.employeeCode', 'owners.departmentId'])
             .loadRelationCountAndMap('f.postCount', 'f.posts')
             .loadRelationCountAndMap('f.noteCount', 'f.notes');
 
         // 1 nguồn áp scope duy nhất cho danh sách (cùng quy tắc với FanpageAccessHelper.allows).
+        // Nhiều người phụ trách: lọc bằng subquery trên bảng nối (KHÔNG lọc theo alias `owners` đã join để
+        // danh sách người phụ trách trả về vẫn đủ, không bị cắt chỉ còn người khớp điều kiện).
         if (view === 'own') {
-            qb.andWhere('f.ownerId = :uid', { uid: user.id });
+            qb.andWhere('f.id IN (SELECT fo.fanpage_id FROM fanpage_owners fo WHERE fo.user_id = :uid)', { uid: user.id });
         } else if (view === 'department') {
             qb.andWhere(
                 new Brackets((b) => {
-                    b.where('f.ownerId = :uid', { uid: user.id });
-                    if (scopes.managed.length) b.orWhere('owner.departmentId IN (:...managed)', { managed: scopes.managed });
+                    b.where('f.id IN (SELECT fo.fanpage_id FROM fanpage_owners fo WHERE fo.user_id = :uid)', { uid: user.id });
+                    if (scopes.managed.length) {
+                        b.orWhere(
+                            'f.id IN (SELECT fo2.fanpage_id FROM fanpage_owners fo2 INNER JOIN users ou ON ou.id = fo2.user_id WHERE ou.department_id IN (:...managed))',
+                            { managed: scopes.managed },
+                        );
+                    }
                 }),
             );
         }
 
         if (q.platformId != null) qb.andWhere('f.platformId = :platformId', { platformId: q.platformId });
-        if (q.ownerId != null) qb.andWhere('f.ownerId = :ownerId', { ownerId: q.ownerId });
+        if (q.ownerId != null) {
+            qb.andWhere('f.id IN (SELECT fo3.fanpage_id FROM fanpage_owners fo3 WHERE fo3.user_id = :ownerId)', { ownerId: q.ownerId });
+        }
         // BooleanTransformer KHÔNG chạy trong QueryBuilder.where -> truyền thẳng 1/0 (SKILL_NESTJS_BACKEND mục 10).
         if (q.isActive) qb.andWhere('f.isActive = :act', { act: q.isActive === 'true' ? 1 : 0 });
         if (q.search?.trim()) {
             qb.andWhere('(f.name LIKE :s OR f.url LIKE :s)', { s: `%${escapeLike(q.search.trim())}%` });
         }
 
-        qb.orderBy('f.isActive', 'DESC').addOrderBy('f.updatedAt', 'DESC').addOrderBy('f.id', 'DESC');
+        qb.orderBy('f.isActive', 'DESC').addOrderBy('f.updatedAt', 'DESC').addOrderBy('f.id', 'DESC').addOrderBy('owners.name', 'ASC');
         const rows = await qb.getMany();
 
         return {
@@ -109,7 +121,7 @@ export class FanpagesService {
 
     async create(dto: CreateFanpageDto, user: FanpageCaller) {
         await this.assertPlatformUsable(dto.platformId);
-        const ownerId = await this.resolveOwnerForCreate(dto.ownerId, user);
+        const ownerIds = await this.resolveOwnersForCreate(dto.ownerIds, user);
         const url = normalizeFanpageUrl(dto.url);
         await this.assertUrlFree(url);
 
@@ -120,7 +132,8 @@ export class FanpagesService {
                     platformId: dto.platformId,
                     name: dto.name.trim(),
                     url,
-                    ownerId,
+                    ownerId: ownerIds[0],
+                    owners: ownerIds.map((id) => ({ id }) as User),
                     isActive: true,
                     createdById: user.id,
                 }),
@@ -129,10 +142,11 @@ export class FanpagesService {
             if (isDuplicateKey(err)) throw new ConflictException('Link Page này đã tồn tại trong hệ thống');
             throw err;
         }
-        this.auditService.logActionAsync(user.id, 'CREATE_FANPAGE', 'fanpage', saved.id, null, snapshot(saved));
+        const fresh = await this.access.loadPage(saved.id);
+        this.auditService.logActionAsync(user.id, 'CREATE_FANPAGE', 'fanpage', saved.id, null, snapshot(fresh));
 
         // Trả kèm cờ quyền, KHÔNG đòi người tạo có fanpages.view (đã có fanpages.create là đủ để nhận kết quả).
-        return this.present(await this.access.loadPage(saved.id), user, await this.access.resolveScopes(user));
+        return this.present(fresh, user, await this.access.resolveScopes(user));
     }
 
     async update(id: number, dto: UpdateFanpageDto, user: FanpageCaller) {
@@ -162,12 +176,29 @@ export class FanpagesService {
             }
         }
 
-        if (dto.ownerId !== undefined && dto.ownerId !== page.ownerId) {
-            if (!FanpageAccessHelper.canAssignOwner(editScope)) {
-                throw new ForbiddenException('Bạn không có quyền đổi người phụ trách Page');
+        // Đổi danh sách người phụ trách (nhiều người): so theo TẬP ID, thứ tự chỉ quyết định người chính.
+        let ownerChange: { added: number[]; removed: number[] } | null = null;
+        if (dto.ownerIds !== undefined) {
+            const current = (page.owners ?? []).map((o) => o.id);
+            const next = dto.ownerIds;
+            const added = next.filter((id) => !current.includes(id));
+            const removed = current.filter((id) => !next.includes(id));
+            const primaryChanged = next[0] !== page.ownerId;
+            if (added.length || removed.length || primaryChanged) {
+                if (!FanpageAccessHelper.canAssignOwner(editScope)) {
+                    throw new ForbiddenException('Bạn không có quyền đổi người phụ trách Page');
+                }
+                for (const id of added) await this.assertAssignable(id, editScope, user);
+                // Gỡ người thuộc phòng ban ngoài phạm vi quản lý cũng bị chặn (tránh scope department "gỡ sạch" người khác để chiếm Page).
+                const managed = editScope === 'department' ? await this.access.managedDepartmentIds(user.id) : [];
+                for (const o of page.owners ?? []) {
+                    if (removed.includes(o.id) && !FanpageAccessHelper.canAssignTo(editScope, o.departmentId ?? null, managed)) {
+                        throw new ForbiddenException('Bạn không được gỡ người phụ trách ngoài phòng ban mình quản lý');
+                    }
+                }
+                patch.ownerId = next[0];
+                ownerChange = { added, removed };
             }
-            await this.assertAssignable(dto.ownerId, editScope, user);
-            patch.ownerId = dto.ownerId;
         }
 
         if (Object.keys(patch).length === 0) return this.present(page, user, scopes);
@@ -175,7 +206,14 @@ export class FanpagesService {
         // repo.update (không save) để KHÔNG dính bẫy "relation đã nạp đè lên cột ID" của TypeORM
         // (SKILL_NESTJS_BACKEND mục 13) - `platform`/`owner` đang được nạp sẵn trong `page`.
         try {
-            await this.repo.update(id, patch);
+            await this.repo.manager.transaction(async (tx) => {
+                const fanpageRepo = tx.getRepository(Fanpage);
+                // patch luôn có ownerId khi đổi người phụ trách -> @UpdateDateColumn tự bump updated_at.
+                await fanpageRepo.update(id, patch);
+                if (ownerChange && (ownerChange.added.length || ownerChange.removed.length)) {
+                    await fanpageRepo.createQueryBuilder().relation(Fanpage, 'owners').of(id).addAndRemove(ownerChange.added, ownerChange.removed);
+                }
+            });
         } catch (err) {
             if (isDuplicateKey(err)) throw new ConflictException('Link Page này đã tồn tại trong hệ thống');
             throw err;
@@ -225,14 +263,17 @@ export class FanpagesService {
         }));
     }
 
-    private async resolveOwnerForCreate(targetId: number | undefined, user: FanpageCaller): Promise<number> {
-        if (targetId == null || targetId === user.id) return user.id;
+    /** Mặc định [người tạo]. Giao cho người khác (hoặc nhiều người) cần scope rộng của fanpages.edit + từng người phải trong phạm vi giao. */
+    private async resolveOwnersForCreate(targetIds: number[] | undefined, user: FanpageCaller): Promise<number[]> {
+        if (!targetIds?.length) return [user.id];
+        const others = targetIds.filter((id) => id !== user.id);
+        if (others.length === 0) return targetIds;
         const editScope = await this.access.scopeOf(user, 'fanpages.edit');
         if (!FanpageAccessHelper.canAssignOwner(editScope)) {
             throw new ForbiddenException('Bạn chỉ được tạo Page do chính mình phụ trách');
         }
-        await this.assertAssignable(targetId, editScope, user);
-        return targetId;
+        for (const id of others) await this.assertAssignable(id, editScope, user);
+        return targetIds;
     }
 
     private async assertAssignable(targetId: number, editScope: string | null, user: FanpageCaller): Promise<void> {

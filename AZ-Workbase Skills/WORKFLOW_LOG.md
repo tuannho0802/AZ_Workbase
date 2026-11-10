@@ -8271,3 +8271,19 @@ Now [deploy]
 > - CHƯA làm: chạy migration trên DB thật, click-through trình duyệt, `nest build`/`next build` đầy đủ.
 
 ---
+
+## [2026-11-10 17:00] | Fanpage: Color Tag ở bộ lọc + nhiều người phụ trách | [Status: Success]
+
+**Actor:** Agent
+**Files Changed:**
+- `backend/src/database/migrations/1786380000000-CreateFanpageOwners.ts` (mới) — bảng nối `fanpage_owners` + backfill từ `owner_id`
+- `backend/src/database/entities/fanpage.entity.ts`, `dto/fanpage.dto.ts` — `owners` (N-N), `ownerIds[]` thay `ownerId`
+- `backend/src/modules/fanpages/{fanpages.service,fanpage-access.service}.ts`, `helpers/fanpage-access.helper.ts` + 2 spec — scope own/department theo TẬP người phụ trách
+- `frontend/src/components/fanpage/{OwnerTag,FanpageFormModal,FanpageDetailDrawer}.tsx`, `app/(dashboard)/fanpage/page.tsx`, `lib/api/fanpages.api.ts`, `lib/utils/fanpageColors.ts(+test)` — Tag màu ở dropdown Nền tảng/Người phụ trách/Trạng thái, chọn nhiều người phụ trách
+- `AZ-Workbase Skills/PERMISSIONS.md` — §2.20
+
+**Notes:**
+> - Verify thật: BE `tsc` sạch, `nest build` sạch, jest 164 suite / 2634 test pass; FE `tsc` sạch (trừ logo.png có sẵn), eslint file đổi sạch, vitest 579 pass.
+> - CHƯA làm: chạy migration trên DB thật, click-through trình duyệt (SQL subquery `fanpage_owners` chưa chạy trên MySQL thật).
+
+---

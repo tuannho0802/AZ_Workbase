@@ -17,12 +17,22 @@ import {
 import type { Fanpage, FanpageFilters } from '@/lib/api/fanpages.api';
 import { ListFilterBar } from '@/components/common/ListFilterBar';
 import { PlatformTag } from '@/components/fanpage/PlatformTag';
+import { OwnerTag } from '@/components/fanpage/OwnerTag';
+import { sortOwnersPrimaryFirst } from '@/lib/utils/fanpageColors';
 import { FanpageFormModal } from '@/components/fanpage/FanpageFormModal';
 import { FanpageDetailDrawer } from '@/components/fanpage/FanpageDetailDrawer';
 import { FanpagePlatformsModal } from '@/components/fanpage/FanpagePlatformsModal';
 import { toastApiError } from '@/lib/utils/error-message.util';
 
 const { Title, Text } = Typography;
+
+/** Trạng thái Page - 1 nguồn cho cả cột bảng, dropdown lọc (cùng màu Tag). */
+const STATUS_TAG: Record<'true' | 'false', { color?: string; label: string }> = {
+    true: { color: 'green', label: 'Đang theo dõi' },
+    false: { label: 'Ngừng theo dõi' },
+};
+
+const MAX_OWNER_TAGS = 2;
 
 export default function FanpagePage() {
     const router = useRouter();
@@ -93,14 +103,39 @@ export default function FanpagePage() {
                 </Space>
             ),
         },
-        { title: 'Người phụ trách', key: 'owner', width: 170, render: (_: unknown, p) => p.owner?.name ?? <Text type="secondary">Chưa có</Text> },
+        {
+            title: 'Người phụ trách',
+            key: 'owner',
+            width: 220,
+            render: (_: unknown, p) => {
+                const owners = sortOwnersPrimaryFirst(p.owners, p.ownerId);
+                if (owners.length === 0) return <Text type="secondary">Chưa có</Text>;
+                const shown = owners.slice(0, MAX_OWNER_TAGS);
+                const hidden = owners.slice(MAX_OWNER_TAGS);
+                return (
+                    <span>
+                        {shown.map((o) => (
+                            <OwnerTag key={o.id} user={o} primary={o.id === p.ownerId && owners.length > 1} />
+                        ))}
+                        {hidden.length > 0 && (
+                            <Tooltip title={hidden.map((o) => o.name).join(', ')}>
+                                <Tag>+{hidden.length}</Tag>
+                            </Tooltip>
+                        )}
+                    </span>
+                );
+            },
+        },
         { title: 'Bài đăng', dataIndex: 'postCount', width: 90, align: 'right', render: (n?: number) => n ?? 0 },
         { title: 'Ghi chú', dataIndex: 'noteCount', width: 90, align: 'right', render: (n?: number) => n ?? 0 },
         {
             title: 'Trạng thái',
             dataIndex: 'isActive',
             width: 130,
-            render: (active: boolean) => (active ? <Tag color="green">Đang theo dõi</Tag> : <Tag>Ngừng theo dõi</Tag>),
+            render: (active: boolean) => {
+                const st = STATUS_TAG[active ? 'true' : 'false'];
+                return <Tag color={st.color}>{st.label}</Tag>;
+            },
         },
         {
             title: 'Cập nhật',
@@ -171,7 +206,8 @@ export default function FanpagePage() {
                         placeholder: 'Nền tảng',
                         value: platformId,
                         onChange: setPlatformId,
-                        options: platforms.map((p) => ({ value: p.id, label: p.name })),
+                        searchable: true,
+                        options: platforms.map((p) => ({ value: p.id, label: <PlatformTag platform={p} />, searchText: p.name })),
                     },
                     ...(showOwnerFilter
                         ? [
@@ -181,7 +217,11 @@ export default function FanpagePage() {
                                 value: ownerId,
                                 onChange: setOwnerId,
                                 searchable: true,
-                                options: owners.map((u) => ({ value: u.id, label: u.name })),
+                                options: owners.map((u) => ({
+                                    value: u.id,
+                                    label: <OwnerTag user={u} />,
+                                    searchText: `${u.name} ${u.employeeCode ?? ''}`,
+                                })),
                             },
                         ]
                         : []),
@@ -190,10 +230,10 @@ export default function FanpagePage() {
                         placeholder: 'Trạng thái',
                         value: status,
                         onChange: setStatus,
-                        options: [
-                            { value: 'true', label: 'Đang theo dõi' },
-                            { value: 'false', label: 'Ngừng theo dõi' },
-                        ],
+                        options: (['true', 'false'] as const).map((v) => ({
+                            value: v,
+                            label: <Tag color={STATUS_TAG[v].color}>{STATUS_TAG[v].label}</Tag>,
+                        })),
                     },
                 ]}
             />

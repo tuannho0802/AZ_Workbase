@@ -5,6 +5,8 @@ import { EditOutlined, LinkOutlined } from '@ant-design/icons';
 import dayjs from 'dayjs';
 import type { Fanpage } from '@/lib/api/fanpages.api';
 import { useFanpage } from '@/lib/hooks/useFanpages';
+import { OwnerTag } from './OwnerTag';
+import { sortOwnersPrimaryFirst } from '@/lib/utils/fanpageColors';
 import { PlatformTag } from './PlatformTag';
 import { FanpagePostsTab } from './FanpagePostsTab';
 import { FanpageNotesTab } from './FanpageNotesTab';
@@ -59,7 +61,17 @@ export function FanpageDetailDrawer({ fanpageId, onClose, onEdit }: Props) {
                                                 </a>
                                             ),
                                         },
-                                        { key: 'owner', label: 'Người phụ trách', children: fanpage.owner?.name ?? 'Chưa có' },
+                                        {
+                                            key: 'owner',
+                                            label: 'Người phụ trách',
+                                            children: fanpage.owners?.length ? (
+                                                sortOwnersPrimaryFirst(fanpage.owners, fanpage.ownerId).map((o) => (
+                                                    <OwnerTag key={o.id} user={o} primary={o.id === fanpage.ownerId && fanpage.owners.length > 1} />
+                                                ))
+                                            ) : (
+                                                'Chưa có'
+                                            ),
+                                        },
                                         {
                                             key: 'status',
                                             label: 'Trạng thái',

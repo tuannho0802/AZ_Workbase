@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect } from 'react';
+import { useEffect, useMemo } from 'react';
 import { App, Form, Input, Modal, Select, Switch } from 'antd';
 import {
   useCreateFanpage,
@@ -8,14 +8,18 @@ import {
   useFanpagePlatforms,
   useUpdateFanpage,
 } from '@/lib/hooks/useFanpages';
-import type { Fanpage } from '@/lib/api/fanpages.api';
+import type { Fanpage, FanpageUserBrief } from '@/lib/api/fanpages.api';
+import { OwnerTag } from './OwnerTag';
+import { PlatformTag } from './PlatformTag';
+import { sortOwnersPrimaryFirst } from '@/lib/utils/fanpageColors';
 import { toastApiError } from '@/lib/utils/error-message.util';
 
 interface FormValues {
   platformId: number;
   name: string;
   url: string;
-  ownerId?: number;
+  /** Phần tử đầu = người phụ trách chính. */
+  ownerIds?: number[];
   isActive?: boolean;
 }
 
@@ -39,6 +43,18 @@ export function FanpageFormModal({ open, fanpage, canAssignOwner, onClose }: Pro
   const createMut = useCreateFanpage();
   const updateMut = useUpdateFanpage();
   const saving = createMut.isPending || updateMut.isPending;
+  const watchedOwnerIds = Form.useWatch('ownerIds', form);
+
+  // Gộp người phụ trách hiện tại của Page vào danh sách chọn: scope hẹp (department) không thấy người ngoài phòng ban
+  // trong owner-options, nhưng Page đang có họ thì vẫn phải hiện đúng tên (không hiện ID trần).
+  const ownerPool = useMemo<FanpageUserBrief[]>(() => {
+    const map = new Map<number, FanpageUserBrief>();
+    owners.forEach((u) => map.set(u.id, u));
+    fanpage?.owners?.forEach((u) => {
+      if (!map.has(u.id)) map.set(u.id, u);
+    });
+    return [...map.values()];
+  }, [owners, fanpage]);
 
   useEffect(() => {
     if (!open) return;
@@ -47,7 +63,7 @@ export function FanpageFormModal({ open, fanpage, canAssignOwner, onClose }: Pro
         platformId: fanpage.platformId,
         name: fanpage.name,
         url: fanpage.url,
-        ownerId: fanpage.ownerId ?? undefined,
+        ownerIds: sortOwnersPrimaryFirst(fanpage.owners, fanpage.ownerId).map((o) => o.id),
         isActive: fanpage.isActive,
       });
     } else {
@@ -64,7 +80,7 @@ export function FanpageFormModal({ open, fanpage, canAssignOwner, onClose }: Pro
             platformId: values.platformId,
             name: values.name.trim(),
             url: values.url.trim(),
-            ...(canAssignOwner && values.ownerId != null ? { ownerId: values.ownerId } : {}),
+            ...(canAssignOwner && values.ownerIds?.length ? { ownerIds: values.ownerIds } : {}),
             isActive: values.isActive,
           },
         });
@@ -74,7 +90,7 @@ export function FanpageFormModal({ open, fanpage, canAssignOwner, onClose }: Pro
           platformId: values.platformId,
           name: values.name.trim(),
           url: values.url.trim(),
-          ...(canAssignOwner && values.ownerId != null ? { ownerId: values.ownerId } : {}),
+          ...(canAssignOwner && values.ownerIds?.length ? { ownerIds: values.ownerIds } : {}),
         });
         message.success('Đã thêm Page');
       }
@@ -99,9 +115,12 @@ export function FanpageFormModal({ open, fanpage, canAssignOwner, onClose }: Pro
         <Form.Item name="platformId" label="Nền tảng" rules={[{ required: true, message: 'Chọn nền tảng' }]}>
           <Select
             placeholder="Chọn nền tảng"
+            optionFilterProp="searchText"
+            showSearch
             options={platforms.map((p) => ({
               value: p.id,
-              label: p.isActive ? p.name : `${p.name} (đã khoá)`,
+              label: <PlatformTag platform={p} />,
+              searchText: p.name,
               disabled: !p.isActive && p.id !== fanpage?.platformId,
             }))}
           />
@@ -128,13 +147,39 @@ export function FanpageFormModal({ open, fanpage, canAssignOwner, onClose }: Pro
           <Input placeholder="https://facebook.com/ten-page" />
         </Form.Item>
         {canAssignOwner && (
-          <Form.Item name="ownerId" label="Người phụ trách" extra={isEdit ? undefined : 'Bỏ trống = chính bạn.'}>
-            <Select
+          <Form.Item
+            name="ownerIds"
+            label="Người phụ trách"
+            extra="Chọn được nhiều người. Người chọn đầu tiên là người phụ trách chính (tô đậm)."
+            rules={isEdit ? [{ required: true, type: 'array', min: 1, message: 'Cần ít nhất 1 người phụ trách' }] : undefined}
+          >
+            <Select<number[]>
+              mode="multiple"
               showSearch
               allowClear={!isEdit}
-              placeholder="Chọn nhân viên"
-              optionFilterProp="label"
-              options={owners.map((u) => ({ value: u.id, label: u.employeeCode ? `${u.name} (${u.employeeCode})` : u.name }))}
+              placeholder={isEdit ? 'Chọn nhân viên' : 'Chọn nhân viên (bỏ trống = chính bạn)'}
+              optionFilterProp="searchText"
+              maxTagCount="responsive"
+              options={ownerPool.map((u) => ({
+                value: u.id,
+                label: <OwnerTag user={u} />,
+                searchText: `${u.name} ${u.employeeCode ?? ''}`,
+              }))}
+              tagRender={({ value, closable, onClose }) => {
+                const u = ownerPool.find((o) => o.id === value);
+                return (
+                  <OwnerTag
+                    user={u ?? { id: Number(value), name: String(value) }}
+                    primary={watchedOwnerIds?.[0] === value && (watchedOwnerIds?.length ?? 0) > 1}
+                    closable={closable}
+                    onClose={onClose}
+                    onMouseDown={(e) => {
+                      e.preventDefault();
+                      e.stopPropagation();
+                    }}
+                  />
+                );
+              }}
             />
           </Form.Item>
         )}

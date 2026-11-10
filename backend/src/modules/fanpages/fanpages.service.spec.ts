@@ -4,6 +4,13 @@ import { FanpageCaller } from './fanpage-access.service';
 
 const user: FanpageCaller = { id: 7, role: 'employee', departmentId: 3 };
 
+const relationOps = { addAndRemove: jest.fn() };
+const txRepo = {
+  update: jest.fn(),
+  createQueryBuilder: jest.fn(() => ({ relation: () => ({ of: () => relationOps }) })),
+};
+const txManager = { getRepository: jest.fn(() => txRepo) };
+
 function build(over: { scopes?: Record<string, string | null>; binary?: boolean } = {}) {
   const repo = {
     findOne: jest.fn(),
@@ -11,7 +18,10 @@ function build(over: { scopes?: Record<string, string | null>; binary?: boolean 
     save: jest.fn(async (x) => ({ id: 99, ...x })),
     update: jest.fn(),
     delete: jest.fn(),
-    manager: { count: jest.fn().mockResolvedValue(0) },
+    manager: {
+      count: jest.fn().mockResolvedValue(0),
+      transaction: jest.fn(async (cb: (tx: unknown) => Promise<void>) => cb(txManager)),
+    },
   };
   const platformRepo = { findOne: jest.fn().mockResolvedValue({ id: 1, name: 'Facebook', isActive: true }) };
   const userRepo = { findOne: jest.fn(), find: jest.fn() };
@@ -21,8 +31,8 @@ function build(over: { scopes?: Record<string, string | null>; binary?: boolean 
     hasBinary: jest.fn(async () => over.binary ?? true),
     managedDepartmentIds: jest.fn().mockResolvedValue([]),
     resolveScopes: jest.fn().mockResolvedValue({ view: 'own', flagScopes, managed: [] }),
-    loadPage: jest.fn(async (id: number) => ({ id, name: 'P', url: 'https://x.com/p', platformId: 1, ownerId: 7, isActive: true, owner: { departmentId: 3 } })),
-    buildContext: jest.fn((p, uid) => ({ userId: uid, ownerId: p.ownerId, ownerDepartmentId: 3, managedDepartmentIds: [] })),
+    loadPage: jest.fn(async (id: number): Promise<Record<string, unknown>> => ({ id, name: 'P', url: 'https://x.com/p', platformId: 1, ownerId: 7, isActive: true, owner: { departmentId: 3 }, owners: [{ id: 7, departmentId: 3 }] })),
+    buildContext: jest.fn((p, uid) => ({ userId: uid, ownerIds: (p.owners ?? []).map((o: { id: number }) => o.id), ownerDepartmentIds: [3], managedDepartmentIds: [] })),
     flagsFor: jest.fn().mockReturnValue({}),
     assertPageAccess: jest.fn(),
   };
@@ -42,7 +52,7 @@ describe('FanpagesService.create', () => {
     const { svc, repo, audit } = build();
     repo.findOne.mockResolvedValue(null);
     await svc.create({ platformId: 1, name: ' Page A ', url: 'https://fb.com/a/' }, user);
-    expect(repo.create).toHaveBeenCalledWith(expect.objectContaining({ name: 'Page A', url: 'https://fb.com/a', ownerId: 7, createdById: 7 }));
+    expect(repo.create).toHaveBeenCalledWith(expect.objectContaining({ name: 'Page A', url: 'https://fb.com/a', ownerId: 7, owners: [{ id: 7 }], createdById: 7 }));
     expect(audit.logActionAsync).toHaveBeenCalledWith(7, 'CREATE_FANPAGE', 'fanpage', 99, null, expect.any(Object));
   });
 
@@ -61,29 +71,44 @@ describe('FanpagesService.create', () => {
   it('giao cho người khác khi scope edit = own -> 403', async () => {
     const { svc, repo } = build({ scopes: { 'fanpages.edit': 'own' } });
     repo.findOne.mockResolvedValue(null);
-    await expect(svc.create({ platformId: 1, name: 'A', url: 'https://fb.com/a', ownerId: 8 }, user)).rejects.toBeInstanceOf(ForbiddenException);
+    await expect(svc.create({ platformId: 1, name: 'A', url: 'https://fb.com/a', ownerIds: [8] }, user)).rejects.toBeInstanceOf(ForbiddenException);
   });
 
   it('giao cho người khác khi scope edit = all -> được', async () => {
     const { svc, repo, userRepo } = build({ scopes: { 'fanpages.edit': 'all' } });
     repo.findOne.mockResolvedValue(null);
     userRepo.findOne.mockResolvedValue({ id: 8, departmentId: 9 });
-    await svc.create({ platformId: 1, name: 'A', url: 'https://fb.com/a', ownerId: 8 }, user);
-    expect(repo.create).toHaveBeenCalledWith(expect.objectContaining({ ownerId: 8, createdById: 7 }));
+    await svc.create({ platformId: 1, name: 'A', url: 'https://fb.com/a', ownerIds: [8] }, user);
+    expect(repo.create).toHaveBeenCalledWith(expect.objectContaining({ ownerId: 8, owners: [{ id: 8 }], createdById: 7 }));
+  });
+
+  it('nhiều người phụ trách: người đầu = chính, lưu đủ danh sách', async () => {
+    const { svc, repo, userRepo } = build({ scopes: { 'fanpages.edit': 'all' } });
+    repo.findOne.mockResolvedValue(null);
+    userRepo.findOne.mockImplementation(async ({ where }: { where: { id: number } }) => ({ id: where.id, departmentId: 9 }));
+    await svc.create({ platformId: 1, name: 'A', url: 'https://fb.com/a', ownerIds: [8, 7, 9] }, user);
+    expect(repo.create).toHaveBeenCalledWith(expect.objectContaining({ ownerId: 8, owners: [{ id: 8 }, { id: 7 }, { id: 9 }] }));
+  });
+
+  it('chỉ chọn chính mình trong danh sách -> không cần scope giao Page', async () => {
+    const { svc, repo } = build();
+    repo.findOne.mockResolvedValue(null);
+    await svc.create({ platformId: 1, name: 'A', url: 'https://fb.com/a', ownerIds: [7] }, user);
+    expect(repo.create).toHaveBeenCalledWith(expect.objectContaining({ ownerId: 7, owners: [{ id: 7 }] }));
   });
 });
 
 describe('FanpagesService.update', () => {
   it('scope edit không phủ tới Page -> 403', async () => {
     const { svc, access } = build();
-    access.loadPage.mockResolvedValue({ id: 1, ownerId: 99, url: 'u', name: 'n', platformId: 1, isActive: true, owner: { departmentId: 3 } });
+    access.loadPage.mockResolvedValue({ id: 1, ownerId: 99, url: 'u', name: 'n', platformId: 1, isActive: true, owner: { departmentId: 3 }, owners: [{ id: 99, departmentId: 3 }] });
     await expect(svc.update(1, { name: 'X' }, user)).rejects.toBeInstanceOf(ForbiddenException);
   });
 
   it('đổi người phụ trách khi chỉ có scope own -> 403', async () => {
     const { svc, access, flagScopes } = build();
     (flagScopes as Record<string, string | null>).canEdit = 'own';
-    await expect(svc.update(1, { ownerId: 8 }, user)).rejects.toBeInstanceOf(ForbiddenException);
+    await expect(svc.update(1, { ownerIds: [8] }, user)).rejects.toBeInstanceOf(ForbiddenException);
     expect(access.loadPage).toHaveBeenCalled();
   });
 
@@ -91,7 +116,27 @@ describe('FanpagesService.update', () => {
     const { svc, repo, audit, flagScopes } = build();
     (flagScopes as Record<string, string | null>).canEdit = 'own';
     await svc.update(1, { name: 'Tên mới' }, user);
-    expect(repo.update).toHaveBeenCalledWith(1, { name: 'Tên mới' });
+    expect(txRepo.update).toHaveBeenCalledWith(1, { name: 'Tên mới' });
     expect(audit.logActionAsync).toHaveBeenCalledWith(7, 'UPDATE_FANPAGE', 'fanpage', 1, expect.any(Object), expect.any(Object));
+  });
+
+  it('thêm/gỡ người phụ trách (scope all) -> addAndRemove đúng tập + ownerId = người đầu', async () => {
+    const { svc, access, userRepo, flagScopes } = build({ scopes: { 'fanpages.edit': 'all' } });
+    (flagScopes as Record<string, string | null>).canEdit = 'all';
+    access.loadPage.mockResolvedValue({ id: 1, ownerId: 7, url: 'u', name: 'n', platformId: 1, isActive: true, owner: { id: 7 }, owners: [{ id: 7, departmentId: 3 }, { id: 5, departmentId: 3 }] });
+    userRepo.findOne.mockResolvedValue({ id: 8, departmentId: 9 });
+    txRepo.update.mockClear();
+    relationOps.addAndRemove.mockClear();
+    await svc.update(1, { ownerIds: [8, 7] }, user);
+    expect(txRepo.update).toHaveBeenCalledWith(1, { ownerId: 8 });
+    expect(relationOps.addAndRemove).toHaveBeenCalledWith([8], [5]);
+  });
+
+  it('scope department: gỡ người ngoài phòng ban quản lý -> 403', async () => {
+    const { svc, access, flagScopes } = build({ scopes: { 'fanpages.edit': 'department' } });
+    (flagScopes as Record<string, string | null>).canEdit = 'department';
+    access.managedDepartmentIds.mockResolvedValue([3]);
+    access.loadPage.mockResolvedValue({ id: 1, ownerId: 7, url: 'u', name: 'n', platformId: 1, isActive: true, owner: { id: 7 }, owners: [{ id: 7, departmentId: 3 }, { id: 5, departmentId: 99 }] });
+    await expect(svc.update(1, { ownerIds: [7] }, user)).rejects.toBeInstanceOf(ForbiddenException);
   });
 });

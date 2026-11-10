@@ -7,6 +7,8 @@ import {
     Index,
     ManyToOne,
     OneToMany,
+    ManyToMany,
+    JoinTable,
     JoinColumn,
 } from 'typeorm';
 import { BooleanTransformer } from '../transformers/boolean.transformer';
@@ -17,7 +19,8 @@ import { FanpageNote } from './fanpage-note.entity';
 
 /**
  * 1 Page/kênh của nhân viên (1 link = 1 Page). Mỗi nhân viên có nhiều Page, mỗi Page thuộc 1 nền tảng.
- * `ownerId` = người phụ trách (scope `own` của fanpages.* so với cột này). `url` UNIQUE (đã chuẩn hoá ở service).
+ * `owners` (bảng nối `fanpage_owners`) = TẤT CẢ người phụ trách - nguồn sự thật cho scope `own`/`department` của fanpages.*.
+ * `ownerId`/`owner` = người phụ trách CHÍNH (phần tử đầu của `owners`), giữ để tương thích ngược. `url` UNIQUE (đã chuẩn hoá ở service).
  */
 @Entity('fanpages')
 @Index('UQ_fanpages_url', ['url'], { unique: true })
@@ -46,6 +49,14 @@ export class Fanpage {
     @ManyToOne(() => User, { nullable: true, onDelete: 'SET NULL' })
     @JoinColumn({ name: 'owner_id' })
     owner: User | null;
+
+    @ManyToMany(() => User)
+    @JoinTable({
+        name: 'fanpage_owners',
+        joinColumn: { name: 'fanpage_id', referencedColumnName: 'id' },
+        inverseJoinColumn: { name: 'user_id', referencedColumnName: 'id' },
+    })
+    owners: User[];
 
     // false = ngừng theo dõi (vẫn giữ lịch sử bài đăng/ghi chú).
     @Column({ name: 'is_active', type: 'tinyint', default: 1, transformer: new BooleanTransformer() })

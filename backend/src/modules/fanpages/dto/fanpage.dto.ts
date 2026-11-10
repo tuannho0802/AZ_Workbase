@@ -1,7 +1,8 @@
-import { IsString, IsNotEmpty, Length, IsOptional, IsInt, IsBoolean, IsUrl, IsIn } from 'class-validator';
+import { IsString, IsNotEmpty, Length, IsOptional, IsInt, IsBoolean, IsUrl, IsIn, IsArray, ArrayMinSize, ArrayMaxSize, ArrayUnique } from 'class-validator';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { Type } from 'class-transformer';
 
+const MAX_OWNERS = 20;
 const URL_OPTS = { require_protocol: true, protocols: ['http', 'https'], require_tld: true };
 
 export class CreateFanpageDto {
@@ -22,11 +23,15 @@ export class CreateFanpageDto {
     @Length(1, 500, { message: 'Link Page tối đa 500 ký tự' })
     url: string;
 
-    @ApiPropertyOptional({ description: 'Người phụ trách - bỏ trống = chính người tạo' })
+    @ApiPropertyOptional({ type: [Number], description: 'Danh sách người phụ trách (phần tử đầu = người phụ trách chính) - bỏ trống = chính người tạo' })
     @IsOptional()
+    @IsArray()
+    @ArrayMinSize(1, { message: 'Cần ít nhất 1 người phụ trách' })
+    @ArrayMaxSize(MAX_OWNERS, { message: `Tối đa ${MAX_OWNERS} người phụ trách` })
+    @ArrayUnique({ message: 'Người phụ trách bị trùng' })
     @Type(() => Number)
-    @IsInt()
-    ownerId?: number;
+    @IsInt({ each: true, message: 'Người phụ trách không hợp lệ' })
+    ownerIds?: number[];
 }
 
 export class UpdateFanpageDto {
@@ -50,11 +55,15 @@ export class UpdateFanpageDto {
     @Length(1, 500, { message: 'Link Page tối đa 500 ký tự' })
     url?: string;
 
-    @ApiPropertyOptional()
+    @ApiPropertyOptional({ type: [Number], description: 'Thay toàn bộ danh sách người phụ trách (phần tử đầu = chính)' })
     @IsOptional()
+    @IsArray()
+    @ArrayMinSize(1, { message: 'Cần ít nhất 1 người phụ trách' })
+    @ArrayMaxSize(MAX_OWNERS, { message: `Tối đa ${MAX_OWNERS} người phụ trách` })
+    @ArrayUnique({ message: 'Người phụ trách bị trùng' })
     @Type(() => Number)
-    @IsInt()
-    ownerId?: number;
+    @IsInt({ each: true, message: 'Người phụ trách không hợp lệ' })
+    ownerIds?: number[];
 
     @ApiPropertyOptional({ description: 'false = ngừng theo dõi' })
     @IsOptional()

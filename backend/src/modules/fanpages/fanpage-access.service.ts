@@ -93,10 +93,14 @@ export class FanpageAccessService {
   }
 
   buildContext(page: Fanpage, userId: number, managedDepartmentIds: number[]): FanpageAccessContext {
+    // `owners` là nguồn sự thật; Page nạp thiếu `owners` (hiếm) thì lùi về người phụ trách chính để fail-closed đúng.
+    const owners = page.owners ?? (page.owner ? [page.owner] : []);
+    const ownerIds = owners.map((o) => o.id);
+    if (!page.owners && page.ownerId != null && !ownerIds.includes(page.ownerId)) ownerIds.push(page.ownerId);
     return {
       userId,
-      ownerId: page.ownerId,
-      ownerDepartmentId: page.owner?.departmentId ?? null,
+      ownerIds,
+      ownerDepartmentIds: owners.map((o) => o.departmentId).filter((d): d is number => d != null),
       managedDepartmentIds,
     };
   }
@@ -115,9 +119,12 @@ export class FanpageAccessService {
       .leftJoinAndSelect('f.platform', 'platform')
       .leftJoin('f.owner', 'owner')
       .addSelect(['owner.id', 'owner.name', 'owner.employeeCode', 'owner.departmentId'])
+      .leftJoin('f.owners', 'owners')
+      .addSelect(['owners.id', 'owners.name', 'owners.employeeCode', 'owners.departmentId'])
       .leftJoin('f.createdBy', 'createdBy')
       .addSelect(['createdBy.id', 'createdBy.name'])
       .where('f.id = :id', { id })
+      .orderBy('owners.name', 'ASC')
       .getOne();
     if (!page) throw new NotFoundException('Không tìm thấy Page này');
     return page;

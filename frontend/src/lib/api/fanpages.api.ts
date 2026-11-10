@@ -33,8 +33,11 @@ export interface Fanpage {
     platform: FanpagePlatform;
     name: string;
     url: string;
+    /** Người phụ trách CHÍNH (tương thích ngược). */
     ownerId: number | null;
     owner: FanpageUserBrief | null;
+    /** TẤT CẢ người phụ trách (gồm cả người chính). */
+    owners: FanpageUserBrief[];
     isActive: boolean;
     createdBy?: { id: number; name: string } | null;
     createdAt: string;
@@ -91,7 +94,8 @@ export interface CreateFanpagePayload {
     platformId: number;
     name: string;
     url: string;
-    ownerId?: number;
+    /** Phần tử đầu = người phụ trách chính. Bỏ trống khi tạo = chính người tạo. */
+    ownerIds?: number[];
 }
 
 export type UpdateFanpagePayload = Partial<CreateFanpagePayload> & { isActive?: boolean };
