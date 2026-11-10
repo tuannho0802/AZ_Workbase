@@ -41,6 +41,7 @@ export const GUIDE_SLUG_BY_NAV_KEY: Readonly<Record<string, string>> = {
   'nguon-media': 'nguon-media',
   'nhom-lien-ket': 'nhom-lien-ket',
   'quan-ly-utm': 'quan-ly-utm',
+  fanpage: 'fanpage',
   'attendance-device': 'may-cham-cong',
   'invalid-data-report': 'bao-cao-data-loi',
   'phan-quyen': 'phan-quyen',

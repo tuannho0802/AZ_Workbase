@@ -8255,3 +8255,19 @@ Now [deploy]
 > - Còn treo: mở `mau_FormF_L5.xlsx` bằng Excel thật; chốt scope assistant (`resolveScope()`).
 
 ---
+
+## [2026-11-10 15:00] | Module Fanpage (Page nhân viên tự quản lý) - hoàn thiện | [Status: Success]
+
+**Actor:** Agent
+**Files Changed:**
+- `backend/src/modules/fanpages/fanpages.controller.ts`, `fanpages.module.ts` (mới) + `app.module.ts` — controller 4 nhóm route + đăng ký module (commit trước thiếu)
+- `backend/src/modules/fanpages/fanpages.service.spec.ts` (mới) — test create/update/giao Page/link trùng
+- `frontend/src/lib/nav-config.tsx`, `app/(dashboard)/layout.tsx`, `lib/permissions/resource-labels.ts`, `lib/api/audit-meta.ts` — menu, key sidebar, nhãn quyền, nhãn audit
+- `frontend/src/lib/guides/guide-slugs.ts`, `guides-content/fanpage.md` (mới, `published: false`) — bắt buộc bởi `nav-guide-coverage.test`
+- `AZ-Workbase Skills/PERMISSIONS.md` — 9 key `fanpages.*` + §2.20
+
+**Notes:**
+> - Verify thật: BE `tsc --noEmit` sạch, jest fanpages/audit/permissions pass (fanpages: 18 test). FE `tsc` sạch (trừ logo.png có sẵn), vitest `src/lib` (guides, audit-meta, nav-config, command-palette) 601 test pass.
+> - CHƯA làm: chạy migration trên DB thật, click-through trình duyệt, `nest build`/`next build` đầy đủ.
+
+---

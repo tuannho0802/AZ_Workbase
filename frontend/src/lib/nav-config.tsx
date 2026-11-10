@@ -30,6 +30,7 @@ import {
   LinkOutlined,
   ReadOutlined,
   HeartOutlined,
+  GlobalOutlined,
 } from '@ant-design/icons';
 
 export interface NavItem {
@@ -429,6 +430,16 @@ export const NAV_ITEMS: NavItem[] = [
     // UTM gắn với khách hàng: role không xem được khách hàng thì KHÔNG hiện mục UTM.
     // Khớp route guard ở quan-ly-utm/page.tsx (cùng đòi customers.view).
     requireAll: ['customers.view'],
+  },
+  {
+    key: 'fanpage',
+    label: 'Quản lý Fanpage',
+    description: 'Page của bạn, bài đăng và ghi chú tiến trình',
+    icon: <GlobalOutlined />,
+    path: '/fanpage',
+    // Khớp @RequirePermission('fanpages.view') ở fanpages.controller.ts + route guard ở fanpage/page.tsx.
+    roles: null,
+    permission: 'fanpages.view',
   },
   {
     key: 'attendance-device',

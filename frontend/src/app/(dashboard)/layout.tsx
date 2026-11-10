@@ -314,6 +314,9 @@ export default function DashboardLayout({
       // Thiếu nhánh này thì /quan-ly-utm rơi về default 'customers' -> Header hiện
       // "Khách hàng" và sidebar sáng nhầm mục Khách hàng (key khớp nav-config.tsx).
       newKey = 'quan-ly-utm';
+    } else if (pathname.includes('/fanpage')) {
+      // Thiếu nhánh này thì /fanpage rơi về default 'customers' -> Header/sidebar sáng nhầm mục Khách hàng.
+      newKey = 'fanpage';
     } else if (pathname.includes('/huong-dan')) {
       newKey = 'huong-dan';
     }

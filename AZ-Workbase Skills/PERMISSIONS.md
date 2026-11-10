@@ -148,6 +148,13 @@ dùng `@Roles()` enum tĩnh. Danh mục permission đầy đủ trong DB (sau 2 
 | `utms.assign` | utms | Thêm/gỡ Quản lý phụ (assignee) + chuyển chính. Có scope, chỉ chính hoặc scope rộng. Seed như `utms.view`. **Bổ sung (2026-09-29):** người có `utms.edit` với scope RỘNG (`all`/`department` phủ tới UTM) cũng sửa lại được Quản lý chính/phụ dù không có `utms.assign` (đặt nhầm thì đặt lại được); `utms.edit` scope `own` KHÔNG đủ. Logic ở `UtmManagersService.canManageManagers()` |
 | `utms.delete` | utms | Xoá UTM khi 0 KH tham chiếu (tính cả Thùng rác). Có scope. Seed: CHỈ Admin=`all` (Employee Marketing KHÔNG có) |
 | `utms.my_managed` | utms | Vào trang "Quản lý UTM" (tab "UTM tôi quản lý"). **FE còn đòi thêm `customers.view`** (guard AND: `requireAll` ở `nav-config.tsx` + route guard ở `quan-ly-utm/page.tsx`) — role không xem được khách hàng thì không thấy/không vào được trang UTM; BE `GET /utms/managed-by-me` vẫn cố ý không gate. Nhị phân. Seed: Admin/Assistant/Manager; Employee chỉ override Marketing |
+| `fanpages.view` | fanpages | **MỚI (2026-11-10).** Xem danh sách/chi tiết Fanpage (`GET /fanpages`, `/:id`, bài đăng, ghi chú, nền tảng). **Có scope theo NGƯỜI PHỤ TRÁCH Page** (`fanpages.owner_id`): own = Page mình phụ trách, department = + Page của người thuộc phòng ban mình quản lý, all = tất cả. Seed: Admin/Assistant=`all`, Manager=`department`, Employee=`own` |
+| `fanpages.create` | fanpages | Thêm Page (người tạo mặc định là người phụ trách). Nhị phân. Seed: cả 4 role |
+| `fanpages.edit` | fanpages | Sửa Page (tên/link/nền tảng/trạng thái). Có scope. **Đổi/giao người phụ trách chỉ khi scope RỘNG** (`all`/`department`; department chỉ giao trong phòng ban mình quản lý). Seed như `fanpages.view` |
+| `fanpages.delete` | fanpages | Xoá Page (kèm bài đăng + ghi chú, FK CASCADE). Có scope. Seed: CHỈ Admin=`all` |
+| `fanpage_posts.manage` / `fanpage_posts.delete` | fanpage_posts | Thêm-sửa / xoá bài đăng của Page. Có scope (so với người phụ trách Page). Seed: manage như `fanpages.view`; delete CHỈ Admin |
+| `fanpage_notes.manage` / `fanpage_notes.delete` | fanpage_notes | Thêm-sửa / xoá ghi chú tiến trình. Có scope. Seed: manage như `fanpages.view`; delete CHỈ Admin |
+| `fanpage_platforms.manage` | fanpage_platforms | Thêm/sửa/khoá-mở nền tảng (KHÔNG xoá). Nhị phân. Seed: Admin, Assistant |
 | `guides.manage` | guides | **MỚI (PLAN_HARDENING P7).** Quản lý Hướng dẫn sử dụng: tạo/sửa/xoá/xuất bản + chọn role được xem + thứ tự. Nhị phân, KHÔNG scope. Seed Toàn cục: CHỈ role `admin` (Root Admin luôn bypass ở `PermissionGuard`). Cấp cho người khác qua ma trận quyền (Toàn cục hoặc override phòng ban). **Xem guide KHÔNG cần permission**: `GET /guides`, `GET /guides/:slug` cố ý không gác, tự lọc ở service |
 | `media_sources.view` | media_sources | Xem nguồn media |
 | `media_sources.manage` | media_sources | Tạo/sửa nguồn media |
@@ -854,6 +861,14 @@ người chưa đọc") — xem `PLAN_NOTIFICATION_SYSTEM.md` mục 10.
 | `sidebar-badges` | `GET /sidebar/poll`, `/sidebar/badges` chỉ `JwtAuthGuard`, KHÔNG `@RequirePermission` — quyền được kiểm TỪNG badge trong service |
 | `customer-statuses` | GET (danh sách/chi tiết) chỉ cần đăng nhập — cố ý, xem comment ở controller. POST/PATCH: `customer_statuses.manage`; DELETE: `customer_statuses.delete` |
 | `assignment-groups` | GET (danh sách/chi tiết/`:key/users`) chỉ cần đăng nhập — cố ý, xem comment ở controller. POST `assignment_groups.create`, PATCH `.update`, DELETE `.delete` |
+
+### 2.20. Fanpage (`modules/fanpages`) — ✅ BE + FE xong (2026-11-10)
+
+- Bảng `fanpage_platforms`, `fanpages`, `fanpage_posts`, `fanpage_notes` (migration `1786370000000-CreateFanpages`), seed permission `1786371000000-SeedFanpagePermissions`.
+- **MỌI route đều có `@RequirePermission`** (khác `link-groups`/`utms`): Page là dữ liệu theo người phụ trách, không phải danh mục công khai. Dữ liệu lọc ở service theo scope; quan hệ người gọi ↔ Page tính ở hàm thuần `FanpageAccessHelper.allows()`. Root Admin luôn `all` (bypass cứng ở `FanpageAccessService.scopeOf()`).
+- `GET /fanpages` trả kèm `flags` theo từng Page (`canEdit`, `canDelete`, `canManagePosts`...) — FE ẩn nút theo đây, không đoán theo role. Bài đăng/ghi chú PHẢI thuộc đúng `fanpageId` trên URL (chặn sửa/xoá chéo Page).
+- Link Page UNIQUE (chuẩn hoá: trim + bỏ `/` cuối). Nền tảng khoá: không chọn cho Page mới, Page cũ vẫn giữ.
+- Ghi chú: `edit_count` tăng mỗi lần sửa (UI "Đã sửa N lần"). Audit: `*_FANPAGE`, `*_FANPAGE_POST`, `*_FANPAGE_NOTE`, `*_FANPAGE_PLATFORM`.
 
 ## 3. Lịch sử quyết định & rà soát
 

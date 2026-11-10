@@ -37,6 +37,11 @@ export const RESOURCE_LABEL: Record<string, string> = {
   // 6 key utms.* (migration SeedUtmPermissions) - tránh rơi vào fallback `?? resource`.
   utms: 'UTM',
   media_sources: 'Nguồn Media',
+  // 9 key fanpages/fanpage_* (migration SeedFanpagePermissions) - tránh rơi vào fallback `?? resource`.
+  fanpages: 'Fanpage',
+  fanpage_posts: 'Bài đăng Fanpage',
+  fanpage_notes: 'Ghi chú Fanpage',
+  fanpage_platforms: 'Nền tảng Fanpage',
   audit: 'Nhật ký hệ thống',
   // ⚠️ BỔ SUNG (2026-09-10, cùng lúc tách `assignment_groups.manage` thành
   // view/create/update/delete): resource này trước đó rơi vào fallback

@@ -19,6 +19,7 @@ export type ActionGroupKey =
   | 'org'
   | 'catalog'
   | 'link_group'
+  | 'fanpage'
   | 'leave'
   | 'storage'
   | 'attendance'
@@ -32,6 +33,7 @@ export const ACTION_GROUP_LABELS: Record<ActionGroupKey, string> = {
   org: 'Phòng ban, Vị trí, Quản lý phụ trách',
   catalog: 'Danh mục cấu hình (Trạng thái, Nguồn, Loại nghỉ phép)',
   link_group: 'Nhóm liên kết (Zalo/FB...)',
+  fanpage: 'Fanpage',
   leave: 'Nghỉ phép',
   storage: 'Lưu trữ & Tải lên',
   attendance: 'Chấm công',
@@ -46,6 +48,7 @@ export const ACTION_GROUP_ORDER: ActionGroupKey[] = [
   'org',
   'catalog',
   'link_group',
+  'fanpage',
   'leave',
   'storage',
   'attendance',
@@ -179,6 +182,21 @@ export const ACTION_META: Record<string, ActionMeta> = {
   ADD_LINK_GROUP_CONTENT_STAFF: m('Thêm Nhân viên Content của nhóm', 'green', 'link_group'),
   REMOVE_LINK_GROUP_CONTENT_STAFF: m('Gỡ Nhân viên Content của nhóm', 'orange', 'link_group'),
 
+  // ── Fanpage ──────────────────────────────────────────────────────────────
+  CREATE_FANPAGE: m('Thêm Fanpage', 'green', 'fanpage'),
+  UPDATE_FANPAGE: m('Sửa Fanpage', 'blue', 'fanpage'),
+  DELETE_FANPAGE: m('Xóa Fanpage', 'red', 'fanpage'),
+  CREATE_FANPAGE_POST: m('Thêm bài đăng Fanpage', 'green', 'fanpage'),
+  UPDATE_FANPAGE_POST: m('Sửa bài đăng Fanpage', 'blue', 'fanpage'),
+  DELETE_FANPAGE_POST: m('Xóa bài đăng Fanpage', 'red', 'fanpage'),
+  CREATE_FANPAGE_NOTE: m('Thêm ghi chú Fanpage', 'green', 'fanpage'),
+  UPDATE_FANPAGE_NOTE: m('Sửa ghi chú Fanpage', 'blue', 'fanpage'),
+  DELETE_FANPAGE_NOTE: m('Xóa ghi chú Fanpage', 'red', 'fanpage'),
+  CREATE_FANPAGE_PLATFORM: m('Thêm nền tảng Fanpage', 'green', 'fanpage'),
+  UPDATE_FANPAGE_PLATFORM: m('Sửa nền tảng Fanpage', 'blue', 'fanpage'),
+  LOCK_FANPAGE_PLATFORM: m('Khóa nền tảng Fanpage', 'orange', 'fanpage'),
+  UNLOCK_FANPAGE_PLATFORM: m('Mở khóa nền tảng Fanpage', 'lime', 'fanpage'),
+
   // ── UTM (dùng chung nhóm "Nhóm liên kết" cho gọn bộ lọc) ─────────────
   CREATE_UTM: m('Tạo UTM', 'green', 'link_group'),
   UPDATE_UTM: m('Sửa UTM', 'blue', 'link_group'),
@@ -295,6 +313,10 @@ export const ENTITY_TYPE_LABELS: Record<string, string> = {
   link_category: 'Category nhóm liên kết',
   link_group: 'Nhóm liên kết',
   utm: 'UTM',
+  fanpage: 'Fanpage',
+  fanpage_post: 'Bài đăng Fanpage',
+  fanpage_note: 'Ghi chú Fanpage',
+  fanpage_platform: 'Nền tảng Fanpage',
   guide: 'Hướng dẫn sử dụng',
   storage_media: 'File lưu trữ',
   attendance_log: 'Log chấm công',
