@@ -12,6 +12,8 @@ export interface SidebarBadgesResponse {
   myPendingLeave?: number;
   taskTodo?: number;
   taskInProgress?: number;
+  /** Số Page cần đăng bài hôm nay (tab "Hôm nay" của Quản lý Fanpage) - chỉ có khi có `fanpages.view`. */
+  fanpageToDo?: number;
 }
 
 export const sidebarApi = {

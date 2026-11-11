@@ -6,8 +6,41 @@ export interface FanpagePlatform {
     color: string;
     isActive: boolean;
     sortOrder: number;
+    /** Domain phân tách bằng dấu phẩy ("facebook.com,fb.com") - dùng tự nhận nền tảng khi dán link. */
+    urlDomains?: string | null;
     /** Số Page đang dùng nền tảng này (chỉ có ở GET /fanpage-platforms). */
     fanpageCount?: number;
+}
+
+/** 5 trạng thái nhịp đăng - DO BE TÍNH (FE chỉ hiển thị, không tự tính lại). */
+export type FanpageCadenceState = 'paused' | 'new' | 'silent' | 'at_risk' | 'ok';
+
+export interface FanpageCadence {
+    state: FanpageCadenceState;
+    daysSinceLastPost: number | null;
+    weekCount: number;
+    target: number | null;
+    /** Số ngày liên tiếp có bài (BE chặn trần 30). */
+    streak: number;
+    postedToday: boolean;
+}
+
+export interface FanpageHealthBrief {
+    id: number;
+    name: string;
+    color: string;
+    isBlocking?: boolean;
+}
+
+/** Danh mục "Tình trạng Page" (động, chỉ khoá - không xoá). */
+export interface FanpageHealthStatus {
+    id: number;
+    name: string;
+    color: string;
+    isBlocking: boolean;
+    isDefault: boolean;
+    isLocked: boolean;
+    sortOrder: number;
 }
 
 export interface FanpageUserBrief {
@@ -25,6 +58,9 @@ export interface FanpageFlags {
     canDeletePosts: boolean;
     canManageNotes: boolean;
     canDeleteNotes: boolean;
+    canManageMetrics?: boolean;
+    canDeleteMetrics?: boolean;
+    canExport?: boolean;
 }
 
 export interface Fanpage {
@@ -42,10 +78,78 @@ export interface Fanpage {
     createdBy?: { id: number; name: string } | null;
     createdAt: string;
     updatedAt: string;
-    /** Chỉ có ở danh sách. */
+    /** Tổng bài (kể cả bài chưa có ngày). */
     postCount?: number;
     noteCount?: number;
+    /** Ngày đăng gần nhất (YYYY-MM-DD). */
+    lastPostDate?: string | null;
+    /** Bài trong 30 ngày gần nhất / trong tuần Thứ Hai-CN hiện tại. */
+    posts30d?: number;
+    weekCount?: number;
+    /** isTracked = đang theo dõi + chưa lưu trữ + tình trạng không "ngưng hoạt động". */
+    isTracked?: boolean;
+    /** Không còn người phụ trách đang hoạt động. */
+    isOrphan?: boolean;
+    cadence?: FanpageCadence;
+    health?: FanpageHealthBrief | null;
+    healthStatusId?: number | null;
+    healthNote?: string | null;
+    targetPostsPerWeek?: number | null;
+    archivedAt?: string | null;
     flags: FanpageFlags;
+}
+
+/** `GET /fanpages/overview` - cùng scope/nguồn nhịp đăng với danh sách. */
+export interface FanpageOverview {
+    totalPages: number;
+    trackedPages: number;
+    pausedPages: number;
+    newPages: number;
+    okPages: number;
+    atRiskPages: number;
+    silentPages: number;
+    postedTodayPages: number;
+    orphanPages: number;
+    archivedPages: number;
+    postsThisWeek: number;
+    posts30d: number;
+}
+
+/** 1 dòng của tab "Hôm nay". */
+export interface FanpageTodayItem {
+    id: number;
+    name: string;
+    url: string;
+    platform: { id: number; name: string; color: string; isActive: boolean };
+    ownerId: number | null;
+    owners: Array<{ id: number; name: string }>;
+    health: FanpageHealthBrief | null;
+    lastPostDate: string | null;
+    posts30d: number;
+    cadence: FanpageCadence;
+    isTracked: boolean;
+    canManagePosts: boolean;
+}
+
+export interface FanpageTodayResponse {
+    /** Hôm nay theo giờ VN (YYYY-MM-DD). */
+    today: string;
+    daysLeftInWeek: number;
+    needAction: FanpageTodayItem[];
+    postedToday: FanpageTodayItem[];
+    ok: FanpageTodayItem[];
+    counts: { needAction: number; postedToday: number; ok: number };
+}
+
+export type FanpageHistoryType = 'created' | 'owners' | 'health' | 'tracking' | 'archive';
+
+export interface FanpageHistoryEvent {
+    id: string;
+    type: FanpageHistoryType;
+    at: string;
+    actor: { id: number; name: string } | null;
+    before: unknown;
+    after: unknown;
 }
 
 export interface FanpageListResponse {
@@ -58,6 +162,11 @@ export interface FanpageFilters {
     ownerId?: number;
     isActive?: 'true' | 'false';
     search?: string;
+    healthStatusId?: number;
+    cadence?: FanpageCadenceState;
+    /** Mặc định BE = 'false' (ẩn Page đã lưu trữ). */
+    archived?: 'false' | 'true' | 'all';
+    orphan?: 'true';
 }
 
 export interface FanpageUserRef {
@@ -96,6 +205,10 @@ export interface CreateFanpagePayload {
     url: string;
     /** Phần tử đầu = người phụ trách chính. Bỏ trống khi tạo = chính người tạo. */
     ownerIds?: number[];
+    healthStatusId?: number;
+    healthNote?: string | null;
+    /** 1-35; null = bỏ mục tiêu. */
+    targetPostsPerWeek?: number | null;
 }
 
 export type UpdateFanpagePayload = Partial<CreateFanpagePayload> & { isActive?: boolean };
@@ -111,6 +224,15 @@ export interface FanpagePlatformPayload {
     name?: string;
     color?: string;
     sortOrder?: number;
+    /** "" = xoá. */
+    urlDomains?: string | null;
+}
+
+export interface FanpageHealthStatusPayload {
+    name?: string;
+    color?: string;
+    isBlocking?: boolean;
+    sortOrder?: number;
 }
 
 export const fanpagesApi = {
@@ -118,6 +240,17 @@ export const fanpagesApi = {
         (await axiosInstance.get<FanpageListResponse>('/fanpages', { params: filters })).data,
 
     get: async (id: number): Promise<Fanpage> => (await axiosInstance.get<Fanpage>(`/fanpages/${id}`)).data,
+
+    overview: async (): Promise<FanpageOverview> => (await axiosInstance.get<FanpageOverview>('/fanpages/overview')).data,
+
+    today: async (): Promise<FanpageTodayResponse> => (await axiosInstance.get<FanpageTodayResponse>('/fanpages/today')).data,
+
+    history: async (id: number): Promise<FanpageHistoryEvent[]> =>
+        (await axiosInstance.get<FanpageHistoryEvent[]>(`/fanpages/${id}/history`)).data,
+
+    archive: async (id: number): Promise<Fanpage> => (await axiosInstance.patch<Fanpage>(`/fanpages/${id}/archive`)).data,
+
+    unarchive: async (id: number): Promise<Fanpage> => (await axiosInstance.patch<Fanpage>(`/fanpages/${id}/unarchive`)).data,
 
     ownerOptions: async (): Promise<FanpageUserBrief[]> =>
         (await axiosInstance.get<FanpageUserBrief[]>('/fanpages/owner-options')).data,
@@ -175,4 +308,24 @@ export const fanpagesApi = {
 
     unlockPlatform: async (id: number): Promise<FanpagePlatform> =>
         (await axiosInstance.patch<FanpagePlatform>(`/fanpage-platforms/${id}/unlock`)).data,
+
+    // ── Tình trạng Page ──
+    listHealthStatuses: async (activeOnly = false): Promise<FanpageHealthStatus[]> =>
+        (
+            await axiosInstance.get<FanpageHealthStatus[]>('/fanpage-health-statuses', {
+                params: activeOnly ? { activeOnly: true } : undefined,
+            })
+        ).data,
+
+    createHealthStatus: async (data: FanpageHealthStatusPayload & { name: string }): Promise<FanpageHealthStatus> =>
+        (await axiosInstance.post<FanpageHealthStatus>('/fanpage-health-statuses', data)).data,
+
+    updateHealthStatus: async (id: number, data: FanpageHealthStatusPayload): Promise<FanpageHealthStatus> =>
+        (await axiosInstance.patch<FanpageHealthStatus>(`/fanpage-health-statuses/${id}`, data)).data,
+
+    lockHealthStatus: async (id: number): Promise<FanpageHealthStatus> =>
+        (await axiosInstance.patch<FanpageHealthStatus>(`/fanpage-health-statuses/${id}/lock`)).data,
+
+    unlockHealthStatus: async (id: number): Promise<FanpageHealthStatus> =>
+        (await axiosInstance.patch<FanpageHealthStatus>(`/fanpage-health-statuses/${id}/unlock`)).data,
 };

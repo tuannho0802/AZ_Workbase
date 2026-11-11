@@ -25,9 +25,10 @@ describe('useSidebarBadgeCounts (10C - badges nằm trong poll chung)', () => {
     });
 
     it('1 request poll cho cả badge thông báo lẫn badge sidebar; KHÔNG gọi /sidebar/badges riêng', async () => {
-        poll.mockResolvedValue({ unread: 2, version: 1, badges: { taskTodo: 4, taskInProgress: 1, trash: 0 } });
+        poll.mockResolvedValue({ unread: 2, version: 1, badges: { taskTodo: 4, taskInProgress: 1, trash: 0, fanpageToDo: 3 } });
         const { result } = renderHook(() => useSidebarBadgeCounts(), { wrapper });
         await waitFor(() => expect(result.current['thong-bao']).toBe(2));
+        expect(result.current['fanpage']).toBe(3);
         expect(result.current['cong-viec-dinh-ky']).toBe(4);
         expect(result.current[TASK_IN_PROGRESS_COUNT_KEY]).toBe(1);
         expect(result.current['trash-can']).toBe(0);

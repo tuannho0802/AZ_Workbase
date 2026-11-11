@@ -40,7 +40,7 @@ export function FanpagePlatformsModal({ open, onClose }: Props) {
         }
     };
 
-    const update = async (id: number, data: { name?: string; color?: string }) => {
+    const update = async (id: number, data: { name?: string; color?: string; urlDomains?: string | null }) => {
         try {
             await updateMut.mutateAsync({ id, data });
         } catch (err) {
@@ -84,6 +84,24 @@ export function FanpagePlatformsModal({ open, onClose }: Props) {
                 />
             ),
         },
+        {
+            title: 'Domain tự nhận',
+            dataIndex: 'urlDomains',
+            width: 190,
+            render: (domains: string | null | undefined, p) => (
+                <Text
+                    type={domains ? undefined : 'secondary'}
+                    editable={{
+                        text: domains ?? '',
+                        tooltip: 'Domain cách nhau bằng dấu phẩy, VD: facebook.com,fb.com',
+                        maxLength: 255,
+                        onChange: (v) => (v.trim() !== (domains ?? '') ? update(p.id, { urlDomains: v.trim() }) : undefined),
+                    }}
+                >
+                    {domains || 'Chưa khai báo'}
+                </Text>
+            ),
+        },
         { title: 'Số Page', dataIndex: 'fanpageCount', width: 90, align: 'right', render: (n?: number) => n ?? 0 },
         {
             title: 'Đang dùng',
@@ -96,7 +114,7 @@ export function FanpagePlatformsModal({ open, onClose }: Props) {
     ];
 
     return (
-        <Modal title="Quản lý nền tảng Fanpage" open={open} onCancel={onClose} footer={null} width={640} destroyOnHidden>
+        <Modal title="Quản lý nền tảng Fanpage" open={open} onCancel={onClose} footer={null} width={820} destroyOnHidden>
             <Space orientation="vertical" style={{ width: '100%' }}>
                 <Form form={form} layout="inline" onFinish={handleAdd}>
                     <Form.Item name="name" rules={[{ required: true, whitespace: true, message: 'Nhập tên nền tảng' }, { max: 50 }]}>
@@ -107,7 +125,10 @@ export function FanpagePlatformsModal({ open, onClose }: Props) {
                     </Button>
                 </Form>
                 <Table<FanpagePlatform> rowKey="id" size="small" loading={isLoading} columns={columns} dataSource={platforms} pagination={false} />
-                <Text type="secondary">Khoá nền tảng = không chọn được cho Page mới; Page cũ vẫn giữ nguyên.</Text>
+                <Text type="secondary">
+                    Khoá nền tảng = không chọn được cho Page mới; Page cũ vẫn giữ nguyên. Khai báo domain để form Page tự chọn nền tảng khi dán link
+                    (domain trùng nhiều nền tảng thì không tự chọn).
+                </Text>
             </Space>
         </Modal>
     );

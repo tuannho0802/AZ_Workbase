@@ -5,7 +5,6 @@ import { App, Button, Card, Collapse, DatePicker, Empty, Form, Input, Modal, Res
 import { LinkOutlined, PlusOutlined } from '@ant-design/icons';
 import dayjs, { type Dayjs } from 'dayjs';
 import type { FanpageTodayItem } from '@/lib/api/fanpages.api';
-import { fanpagesApi } from '@/lib/api/fanpages.api';
 import { useCreateFanpagePost, useFanpageToday, useDeleteFanpagePost } from '@/lib/hooks/useFanpages';
 import { toastApiError } from '@/lib/utils/error-message.util';
 import { formatSinceLastPost, formatWeekProgress, postsNeeded } from '@/lib/utils/fanpageCadence';
@@ -112,7 +111,7 @@ function TodayCard({ item, onAdd, onOpen }: { item: FanpageTodayItem; onAdd: (i:
             <Space style={{ width: '100%', justifyContent: 'space-between' }} align="start" wrap>
                 <Space orientation="vertical" size={2}>
                     <Space wrap>
-                        <PlatformTag platform={{ ...item.platform, sortOrder: 0 }} />
+                        <PlatformTag platform={item.platform} />
                         <Button type="link" style={{ padding: 0, height: 'auto', fontWeight: 600 }} onClick={() => onOpen(item.id)}>
                             {item.name}
                         </Button>
@@ -196,6 +195,3 @@ export function FanpageTodayTab({ enabled, onOpenDetail }: Props) {
         </div>
     );
 }
-
-// Giữ import `fanpagesApi` cho test mock đường dẫn; không dùng trực tiếp ở UI.
-void fanpagesApi;

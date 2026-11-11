@@ -15,6 +15,7 @@ export const NAV_BADGE_TITLES: Record<string, string> = {
   'nghi-phep': 'Số đơn nghỉ phép của bạn đang chờ duyệt',
   'thong-bao': 'Số thông báo chưa đọc',
   'cong-viec-dinh-ky': 'Việc của tôi đang To-Do (chưa bắt đầu)',
+  fanpage: 'Số Page cần đăng bài hôm nay',
 };
 
 export function getNavBadgeProps(

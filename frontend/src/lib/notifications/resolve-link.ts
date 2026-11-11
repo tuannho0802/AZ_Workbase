@@ -41,5 +41,10 @@ export function resolveNotificationTarget(n: LinkInput): NotificationTarget {
     return { kind: 'navigate', href: `/cong-viec-dinh-ky?focus=${n.entityId}&nid=${n.id}` };
   }
 
+  // Nhắc việc Fanpage (im lặng / nguy cơ trễ tuần): mở Drawer của Page (`/fanpage?id=`, trang tự bỏ `id` khỏi URL sau khi mở).
+  if (n.entityType === 'fanpage' && typeof n.entityId === 'number') {
+    return { kind: 'navigate', href: `/fanpage?id=${n.entityId}` };
+  }
+
   return { kind: 'none' };
 }

@@ -1,6 +1,7 @@
 'use client';
 
-import { Button, Descriptions, Drawer, Spin, Tabs, Tag } from 'antd';
+import { useState } from 'react';
+import { Alert, Button, Descriptions, Drawer, Spin, Tabs, Tag } from 'antd';
 import { EditOutlined, LinkOutlined } from '@ant-design/icons';
 import dayjs from 'dayjs';
 import type { Fanpage } from '@/lib/api/fanpages.api';
@@ -10,6 +11,9 @@ import { sortOwnersPrimaryFirst } from '@/lib/utils/fanpageColors';
 import { PlatformTag } from './PlatformTag';
 import { FanpagePostsTab } from './FanpagePostsTab';
 import { FanpageNotesTab } from './FanpageNotesTab';
+import { FanpageOverviewTab } from './FanpageOverviewTab';
+import { FanpageHistoryTab } from './FanpageHistoryTab';
+import { HealthTag } from './HealthTag';
 
 interface Props {
     fanpageId: number | null;
@@ -21,6 +25,10 @@ const fmt = (iso: string) => dayjs(iso).format('HH:mm DD/MM/YYYY');
 
 export function FanpageDetailDrawer({ fanpageId, onClose, onEdit }: Props) {
     const { fanpage, isLoading } = useFanpage(fanpageId);
+    // Tab gắn với id Page: mở Page khác tự về "Tổng quan" mà không cần setState trong effect.
+    const [tabState, setTabState] = useState<{ id: number | null; key: string }>({ id: null, key: 'overview' });
+    const activeKey = tabState.id === fanpageId ? tabState.key : 'overview';
+    const setActiveKey = (key: string) => setTabState({ id: fanpageId, key });
 
     return (
         <Drawer
@@ -30,7 +38,7 @@ export function FanpageDetailDrawer({ fanpageId, onClose, onEdit }: Props) {
             destroyOnHidden
             title={fanpage?.name ?? 'Chi tiết Page'}
             extra={
-                fanpage?.flags.canEdit ? (
+                fanpage?.flags.canEdit && !fanpage.archivedAt ? (
                     <Button icon={<EditOutlined />} onClick={() => onEdit(fanpage)}>
                         Sửa
                     </Button>
@@ -40,8 +48,24 @@ export function FanpageDetailDrawer({ fanpageId, onClose, onEdit }: Props) {
             {isLoading || !fanpage ? (
                 <Spin />
             ) : (
+                <>
+                {fanpage.archivedAt && (
+                    <Alert
+                        type="info"
+                        showIcon
+                        style={{ marginBottom: 12 }}
+                        title={`Page đã lưu trữ lúc ${fmt(fanpage.archivedAt)} — bỏ lưu trữ ở danh sách để chỉnh sửa lại.`}
+                    />
+                )}
                 <Tabs
+                    activeKey={activeKey}
+                    onChange={setActiveKey}
                     items={[
+                        {
+                            key: 'overview',
+                            label: 'Tổng quan',
+                            children: <FanpageOverviewTab fanpage={fanpage} onOpenPosts={() => setActiveKey('posts')} />,
+                        },
                         {
                             key: 'info',
                             label: 'Thông tin',
@@ -74,8 +98,13 @@ export function FanpageDetailDrawer({ fanpageId, onClose, onEdit }: Props) {
                                         },
                                         {
                                             key: 'status',
-                                            label: 'Trạng thái',
-                                            children: fanpage.isActive ? <Tag color="green">Đang theo dõi</Tag> : <Tag>Ngừng theo dõi</Tag>,
+                                            label: 'Theo dõi',
+                                            children: fanpage.isActive ? <Tag color="green">Đang theo dõi</Tag> : <Tag>Tạm ngừng</Tag>,
+                                        },
+                                        {
+                                            key: 'health',
+                                            label: 'Tình trạng Page',
+                                            children: <HealthTag health={fanpage.health} note={fanpage.healthNote} />,
                                         },
                                         { key: 'createdBy', label: 'Tạo bởi', children: `${fanpage.createdBy?.name ?? 'Không xác định'} · ${fmt(fanpage.createdAt)}` },
                                         { key: 'updatedAt', label: 'Cập nhật lần cuối', children: fmt(fanpage.updatedAt) },
@@ -85,8 +114,10 @@ export function FanpageDetailDrawer({ fanpageId, onClose, onEdit }: Props) {
                         },
                         { key: 'posts', label: 'Bài đăng', children: <FanpagePostsTab fanpageId={fanpage.id} flags={fanpage.flags} /> },
                         { key: 'notes', label: 'Ghi chú tiến trình', children: <FanpageNotesTab fanpageId={fanpage.id} flags={fanpage.flags} /> },
+                        { key: 'history', label: 'Lịch sử', children: <FanpageHistoryTab fanpageId={fanpage.id} /> },
                     ]}
                 />
+                </>
             )}
         </Drawer>
     );

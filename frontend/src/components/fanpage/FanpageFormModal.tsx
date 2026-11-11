@@ -1,9 +1,10 @@
 'use client';
 
 import { useEffect, useMemo } from 'react';
-import { App, Form, Input, Modal, Select, Switch } from 'antd';
+import { App, Form, Input, InputNumber, Modal, Select, Switch, Tag } from 'antd';
 import {
   useCreateFanpage,
+  useFanpageHealthStatuses,
   useFanpageOwnerOptions,
   useFanpagePlatforms,
   useUpdateFanpage,
@@ -13,6 +14,7 @@ import { OwnerTag } from './OwnerTag';
 import { PlatformTag } from './PlatformTag';
 import { sortOwnersPrimaryFirst } from '@/lib/utils/fanpageColors';
 import { toastApiError } from '@/lib/utils/error-message.util';
+import { detectPlatformByUrl } from '@/lib/utils/fanpageUrl';
 
 interface FormValues {
   platformId: number;
@@ -21,6 +23,9 @@ interface FormValues {
   /** Phần tử đầu = người phụ trách chính. */
   ownerIds?: number[];
   isActive?: boolean;
+  healthStatusId?: number;
+  healthNote?: string;
+  targetPostsPerWeek?: number | null;
 }
 
 interface Props {
@@ -39,6 +44,7 @@ export function FanpageFormModal({ open, fanpage, canAssignOwner, onClose }: Pro
 
   // Khi sửa: lấy cả nền tảng đã khoá để Page cũ vẫn hiện đúng tên, nhưng disable lựa chọn khoá (trừ nền tảng hiện tại).
   const { platforms } = useFanpagePlatforms(false, open);
+  const { statuses } = useFanpageHealthStatuses(false, open);
   const { owners } = useFanpageOwnerOptions(open && canAssignOwner);
   const createMut = useCreateFanpage();
   const updateMut = useUpdateFanpage();
@@ -65,11 +71,29 @@ export function FanpageFormModal({ open, fanpage, canAssignOwner, onClose }: Pro
         url: fanpage.url,
         ownerIds: sortOwnersPrimaryFirst(fanpage.owners, fanpage.ownerId).map((o) => o.id),
         isActive: fanpage.isActive,
+        healthStatusId: fanpage.healthStatusId ?? fanpage.health?.id,
+        healthNote: fanpage.healthNote ?? undefined,
+        targetPostsPerWeek: fanpage.targetPostsPerWeek ?? null,
       });
     } else {
       form.resetFields();
     }
   }, [open, fanpage, form]);
+
+  // Tạo mới: chọn sẵn tình trạng mặc định khi danh mục đã tải (không đè nếu người dùng đã chọn).
+  useEffect(() => {
+    if (!open || fanpage) return;
+    const def = statuses.find((h) => h.isDefault);
+    if (def && form.getFieldValue('healthStatusId') == null) form.setFieldValue('healthStatusId', def.id);
+  }, [open, fanpage, statuses, form]);
+
+  // Dán link -> tự chọn nền tảng nếu khớp DUY NHẤT 1 nền tảng đang dùng và người dùng chưa tự chọn.
+  const handleUrlChange = (url: string) => {
+    if (form.isFieldTouched('platformId') || form.getFieldValue('platformId') != null) return;
+    const id = detectPlatformByUrl(url, platforms);
+    const target = platforms.find((p) => p.id === id);
+    if (target?.isActive) form.setFieldValue('platformId', target.id);
+  };
 
   const handleFinish = async (values: FormValues) => {
     try {
@@ -82,6 +106,10 @@ export function FanpageFormModal({ open, fanpage, canAssignOwner, onClose }: Pro
             url: values.url.trim(),
             ...(canAssignOwner && values.ownerIds?.length ? { ownerIds: values.ownerIds } : {}),
             isActive: values.isActive,
+            ...(values.healthStatusId != null ? { healthStatusId: values.healthStatusId } : {}),
+            // Ghi chú trống = xoá ghi chú (null); mục tiêu trống = bỏ mục tiêu.
+            healthNote: values.healthNote?.trim() ? values.healthNote.trim() : null,
+            targetPostsPerWeek: values.targetPostsPerWeek ?? null,
           },
         });
         message.success('Đã cập nhật Page');
@@ -91,6 +119,9 @@ export function FanpageFormModal({ open, fanpage, canAssignOwner, onClose }: Pro
           name: values.name.trim(),
           url: values.url.trim(),
           ...(canAssignOwner && values.ownerIds?.length ? { ownerIds: values.ownerIds } : {}),
+          ...(values.healthStatusId != null ? { healthStatusId: values.healthStatusId } : {}),
+          ...(values.healthNote?.trim() ? { healthNote: values.healthNote.trim() } : {}),
+          ...(values.targetPostsPerWeek != null ? { targetPostsPerWeek: values.targetPostsPerWeek } : {}),
         });
         message.success('Đã thêm Page');
       }
@@ -144,7 +175,31 @@ export function FanpageFormModal({ open, fanpage, canAssignOwner, onClose }: Pro
             { max: 500, message: 'Tối đa 500 ký tự' },
           ]}
         >
-          <Input placeholder="https://facebook.com/ten-page" />
+          <Input placeholder="https://facebook.com/ten-page" onChange={(e) => handleUrlChange(e.target.value)} />
+        </Form.Item>
+        <Form.Item
+          name="healthStatusId"
+          label="Tình trạng Page"
+          extra="Page ngoài đời đang thế nào. Tình trạng “ngưng hoạt động” (VD: Bị khoá) sẽ không bị nhắc đăng bài."
+        >
+          <Select
+            placeholder="Chọn tình trạng"
+            options={statuses.map((h) => ({
+              value: h.id,
+              label: <Tag color={h.color}>{h.name}</Tag>,
+              disabled: h.isLocked && h.id !== (fanpage?.healthStatusId ?? fanpage?.health?.id),
+            }))}
+          />
+        </Form.Item>
+        <Form.Item name="healthNote" label="Ghi chú tình trạng" rules={[{ max: 255, message: 'Tối đa 255 ký tự' }]}>
+          <Input placeholder="VD: Bị hạn chế quảng cáo, chờ xác minh" maxLength={255} />
+        </Form.Item>
+        <Form.Item
+          name="targetPostsPerWeek"
+          label="Mục tiêu đăng bài / tuần"
+          extra="Tuần tính từ Thứ Hai đến Chủ Nhật. Để trống = không đặt mục tiêu, không nhắc."
+        >
+          <InputNumber min={1} max={35} precision={0} placeholder="Chưa đặt" style={{ width: 160 }} />
         </Form.Item>
         {canAssignOwner && (
           <Form.Item
@@ -184,7 +239,7 @@ export function FanpageFormModal({ open, fanpage, canAssignOwner, onClose }: Pro
           </Form.Item>
         )}
         {isEdit && (
-          <Form.Item name="isActive" label="Đang theo dõi" valuePropName="checked" extra="Tắt = ngừng theo dõi (vẫn giữ lịch sử bài đăng/ghi chú).">
+          <Form.Item name="isActive" label="Đang theo dõi" valuePropName="checked" extra="Tắt = tạm ngừng: Page mờ đi, không tính KPI và không nhắc đăng bài (vẫn giữ lịch sử bài đăng/ghi chú).">
             <Switch />
           </Form.Item>
         )}

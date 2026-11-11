@@ -58,6 +58,7 @@ export function useSidebarBadgeCounts(): Record<string, number> {
     if (d.myPendingLeave !== undefined) counts['nghi-phep'] = d.myPendingLeave;
     if (d.taskTodo !== undefined) counts['cong-viec-dinh-ky'] = d.taskTodo;
     if (d.taskInProgress !== undefined) counts[TASK_IN_PROGRESS_COUNT_KEY] = d.taskInProgress;
+    if (d.fanpageToDo !== undefined) counts['fanpage'] = d.fanpageToDo;
   }
   if (isAuthenticated && notificationsPoll.data !== undefined) {
     counts['thong-bao'] = notificationsPoll.data.unread;
