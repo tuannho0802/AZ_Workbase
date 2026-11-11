@@ -8304,3 +8304,25 @@ Now [deploy]
 > - CHƯA làm: GĐ2+ (FE), chạy migration lên DB production (để người dùng tự chạy `migration:run`), cập nhật `PERMISSIONS.md` cho 8 key mới.
 
 ---
+
+---
+
+## [2026-11-11 20:00] | PLAN_FANPAGE_ANALYTICS GĐ2–3 (FE + nhắc việc + badge) & rà soát GĐ0–3 | [Status: Success]
+
+**Actor:** Agent
+**Files Changed:**
+- `frontend/src/app/(dashboard)/fanpage/page.tsx`, `components/fanpage/*`, `lib/api/fanpages.api.ts`, `lib/hooks/useFanpages.ts`, `lib/utils/fanpage{Cadence,Url}.ts(+test)` — Tabs Hôm nay/Danh sách/Đã lưu trữ, KPI bấm-để-lọc, nhịp đăng, tình trạng, lưu trữ, tự nhận nền tảng, `fanpageKeys`
+- `frontend/src/lib/{api/sidebar.api,hooks/useSidebarBadgeCounts,nav-badge,notifications/resolve-link}.ts(+test)` — badge `fanpage`, link thông báo `/fanpage?id=`
+- `frontend/src/lib/api/audit-meta.ts` — nhãn `ARCHIVE/UNARCHIVE_FANPAGE`, `*_FANPAGE_HEALTH_STATUS`, entity `fanpage_health_status` (trước đó test lưới an toàn `audit-meta.test.ts` ĐỎ)
+- `frontend/src/lib/permissions/resource-labels.ts` — 6 resource Fanpage mới
+- `backend/src/modules/sidebar-badges/badge-cache-invalidation.middleware.spec.ts` — ca đường ghi Fanpage
+- `AZ-Workbase Skills/PERMISSIONS.md` — 8 key mới + §2.20 (GĐ1–3)
+
+**Root Cause (bug rà soát):**
+> GĐ1 thêm audit action mới ở BE nhưng chưa thêm nhãn FE → 2 test `audit-meta vs Backend thật` đỏ; PERMISSIONS.md/resource-labels chưa cập nhật cho 8 key.
+
+**Notes:**
+> - CÒN TREO (ngoài GĐ0–3): GĐ4+ (số liệu/thống kê/UTM/export/xếp hạng), `guides-content/fanpage.md` (GĐ7, còn `published: false`), UI sửa `fanpage.silent_days`.
+> - Người dùng cần làm: chạy migration (M1 → M4), đặt `CRON_SECRET`, thêm monitor Uptime gọi `/api/fanpages-cron/reminders` (thử `dryRun=true` trước).
+
+---

@@ -7,6 +7,13 @@ describe('shouldInvalidateBadges', () => {
     }
     expect(shouldInvalidateBadges('POST', '/api/leave-requests?x=1', 201)).toBe(true);
   });
+  it('đường ghi của Fanpage (bài đăng, lưu trữ, tình trạng) -> xoá cache để badge "Page cần đăng" cập nhật ngay', () => {
+    expect(shouldInvalidateBadges('POST', '/api/fanpages/5/posts', 201)).toBe(true);
+    expect(shouldInvalidateBadges('PATCH', '/api/fanpages/5/archive', 200)).toBe(true);
+    expect(shouldInvalidateBadges('PATCH', '/api/fanpage-health-statuses/2/lock', 200)).toBe(true);
+    // Cron nhắc việc là GET -> không xoá cache (không ghi dữ liệu ảnh hưởng số đếm)
+    expect(shouldInvalidateBadges('GET', '/api/fanpages-cron/reminders', 200)).toBe(false);
+  });
   it('GET/HEAD/OPTIONS -> không', () => {
     for (const m of ['GET', 'HEAD', 'OPTIONS', undefined]) {
       expect(shouldInvalidateBadges(m as any, '/api/customers', 200)).toBe(false);

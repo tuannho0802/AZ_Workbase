@@ -196,6 +196,12 @@ export const ACTION_META: Record<string, ActionMeta> = {
   UPDATE_FANPAGE_PLATFORM: m('Sửa nền tảng Fanpage', 'blue', 'fanpage'),
   LOCK_FANPAGE_PLATFORM: m('Khóa nền tảng Fanpage', 'orange', 'fanpage'),
   UNLOCK_FANPAGE_PLATFORM: m('Mở khóa nền tảng Fanpage', 'lime', 'fanpage'),
+  ARCHIVE_FANPAGE: m('Lưu trữ Fanpage', 'orange', 'fanpage'),
+  UNARCHIVE_FANPAGE: m('Bỏ lưu trữ Fanpage', 'lime', 'fanpage'),
+  CREATE_FANPAGE_HEALTH_STATUS: m('Thêm tình trạng Page Fanpage', 'green', 'fanpage'),
+  UPDATE_FANPAGE_HEALTH_STATUS: m('Sửa tình trạng Page Fanpage', 'blue', 'fanpage'),
+  LOCK_FANPAGE_HEALTH_STATUS: m('Khóa tình trạng Page Fanpage', 'orange', 'fanpage'),
+  UNLOCK_FANPAGE_HEALTH_STATUS: m('Mở khóa tình trạng Page Fanpage', 'lime', 'fanpage'),
 
   // ── UTM (dùng chung nhóm "Nhóm liên kết" cho gọn bộ lọc) ─────────────
   CREATE_UTM: m('Tạo UTM', 'green', 'link_group'),
@@ -317,6 +323,7 @@ export const ENTITY_TYPE_LABELS: Record<string, string> = {
   fanpage_post: 'Bài đăng Fanpage',
   fanpage_note: 'Ghi chú Fanpage',
   fanpage_platform: 'Nền tảng Fanpage',
+  fanpage_health_status: 'Tình trạng Page Fanpage',
   guide: 'Hướng dẫn sử dụng',
   storage_media: 'File lưu trữ',
   attendance_log: 'Log chấm công',

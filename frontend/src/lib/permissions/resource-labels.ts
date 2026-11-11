@@ -42,6 +42,13 @@ export const RESOURCE_LABEL: Record<string, string> = {
   fanpage_posts: 'Bài đăng Fanpage',
   fanpage_notes: 'Ghi chú Fanpage',
   fanpage_platforms: 'Nền tảng Fanpage',
+  // 6 resource mới của PLAN_FANPAGE_ANALYTICS (migration SeedFanpageAnalyticsPermissions) - tránh rơi vào fallback `?? resource`.
+  fanpage_metrics: 'Số liệu Fanpage',
+  fanpage_stats: 'Thống kê Fanpage',
+  fanpage_rankings: 'Xếp hạng Fanpage',
+  fanpage_revenue: 'Tiền nạp theo Page',
+  fanpage_statuses: 'Tình trạng Page',
+  fanpage_post_types: 'Loại bài đăng Fanpage',
   audit: 'Nhật ký hệ thống',
   // ⚠️ BỔ SUNG (2026-09-10, cùng lúc tách `assignment_groups.manage` thành
   // view/create/update/delete): resource này trước đó rơi vào fallback
