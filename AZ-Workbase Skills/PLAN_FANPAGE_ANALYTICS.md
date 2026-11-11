@@ -5,7 +5,8 @@
 > **Cơ sở:** đọc trực tiếp code `origin/main` HEAD `cde9954` (2026-11-10, "Add Multi owner and color Tag"). Mọi đường dẫn bên dưới là file thật tại thời điểm đó.
 > **Trạng thái:** ĐỀ XUẤT **v1.1 (2026-11-11)** — đã chốt Q1, Q6, Q7 (xem mục 2 và 3.7–3.8); các câu còn lại dùng mặc định. Chưa chạy build/test, chưa đụng DB.
 > **Thay đổi v1.1:** (1) 1 UTM gắn được nhiều Page + quy tắc quy kết khách/tiền chặt chẽ (3.7); (2) xếp hạng chỉ tính người phụ trách có đóng góp dữ liệu, có phân quyền xem (3.8); (3) hiện tiền nạp trong báo cáo Page, có phân quyền riêng + tôn trọng ẩn UI `tab:deposits`; (4) thêm 3 permission key, bỏ setting bật/tắt xếp hạng.
-> **Ràng buộc đã chốt:** KHÔNG dùng API Meta/nền tảng khác, KHÔNG có tính năng auto lead. Mọi số liệu = **nhập tay** hoặc **dữ liệu nội bộ sẵn có** (bài đăng, khách hàng/UTM).
+> **Thay đổi v1.2 (2026-11-11, Q10/Q11 đã chốt theo đề xuất):** thêm **Lead (khách hàng) nhập thủ công + tạo từ Ghi chú tiến trình** (mục 15, GĐ5b, Q10–Q11, X28–X32). Đụng tới quy tắc quy kết 3.7 (R2/R5) → đọc mục 15.3 trước khi làm GĐ5.
+> **Ràng buộc đã chốt:** KHÔNG dùng API Meta/nền tảng khác, KHÔNG có tính năng auto lead *(nghĩa là không tự kéo lead từ Meta/nền tảng; Lead mục 15 do **người dùng chủ động** nhập hoặc tick trong ghi chú, không vi phạm ràng buộc này)*. Mọi số liệu = **nhập tay** hoặc **dữ liệu nội bộ sẵn có** (bài đăng, khách hàng/UTM).
 
 ---
 
@@ -63,6 +64,8 @@
 | Q5 | Gọi cron nhắc việc bằng cách nào? | **Endpoint mới `fanpages-cron/reminders` + thêm 1 monitor Uptime** (giống nhắc deadline) | Phương án B: gắn chung vào handler `deadline-reminders` (không cần cấu hình mới nhưng 1 lỗi có thể ảnh hưởng nhắc deadline — phải bọc try/catch) |
 | Q6 ✅ | Xếp hạng nhân viên (B5)? | **ĐÃ CHỐT:** chỉ xếp hạng nhân viên **là người phụ trách Page VÀ có đóng góp dữ liệu** cho Page đó (bài đăng, số liệu); xem được qua **permission riêng có scope** (giống thống kê). Bỏ setting bật/tắt, quyền thay thế | Xem 3.8 cho định nghĩa chính xác |
 | Q7 ✅ | Số tiền nạp có hiện trong báo cáo Page (D3)? | **ĐÃ CHỐT: CÓ**, gắn permission riêng `fanpage_revenue.view` (scope) + phạm vi khách + tôn trọng ẩn UI `tab:deposits`. Chỉ hiện **Tổng nạp**, KHÔNG hiện rút/nạp thực (xem 3.7) | Mở thêm rút/nạp thực là việc riêng, phải tuân rule "không để suy ra số đã ẩn" |
+| Q10 ✅ | Khách có `fanpage_id` (Lead nhập tay) và khách quy qua UTM: ghi công thế nào? | **ĐÃ CHỐT (2026-11-11): `fanpage_id` ưu tiên hơn UTM** (mỗi khách vẫn ≤ 1 Page ghi công, Σ chính == Tổng giữ nguyên) — chi tiết 15.3 | Giữ "UTM là nguồn duy nhất" thì Lead nhập tay hiện trong tab Drawer nhưng **không** vào thống kê Page → hai con số khác nhau, dễ bị hỏi |
+| Q11 ✅ | Lead tạo từ Page mặc định gán ai? | **ĐÃ CHỐT: không gán Sales** (khách vào luồng chia data sẵn có), `created_by` = người tạo, `source` = tên nền tảng của Page nếu khớp 1 nguồn đang mở ở `media_sources`, nếu không thì bắt chọn; **không** tự set `marketingUserId` (tránh bắn thông báo `customer.created` ngoài ý muốn); **SĐT bắt buộc** khi tạo Lead từ Page (khoá chống trùng, xem 15.8) | Auto set Marketing = người tạo sẽ bắn thông báo `customer.created` tới chính họ/nhóm khác — cần bạn xác nhận |
 | Q8 | Bài "lên kế hoạch" (E5b)? | **Không làm ở v1** (chỉ gắn loại nội dung E5a) | Làm thì `posts.url` phải nullable + mọi phép đếm phải lọc `status = posted` (mục 4, X4) |
 | Q9 | Ai được export (A4)? | Mặc định **giống `fanpages.view`** (có scope) | Hạn chế hơn: chỉ Admin/Assistant/Manager |
 
@@ -204,6 +207,11 @@ Page không có snapshot đúng ngày → dùng **giá trị gần nhất trư�
 | X25 | Đổi **Page chính** của UTM ↔ số liệu lịch sử | Số kỳ cũ "nhảy" giữa 2 Page, hai người xem số khác nhau | R9–R10: modal cảnh báo, cần quyền trên cả 2 Page, chặn gỡ Page chính khi còn Page khác, ghi audit |
 | X26 | Xếp hạng ↔ nhập hộ / Page nhiều người phụ trách | Admin nhập hộ được lên hạng; điểm nhân đôi | 3.8: chỉ người phụ trách có đóng góp của chính mình; bài trùng URL không tính; sửa số liệu không tính thêm; không có điểm tổng hợp ẩn |
 | X27 | Xếp hạng/Thống kê ↔ phạm vi xem | Người scope `own` thấy hạng so với người ngoài phạm vi | Hạng tính trong tập người xem được phép thấy; `own` chỉ thấy dòng mình |
+| X28 | Lead nhập tay (`customers.fanpage_id`) ↔ quy kết UTM (3.7) | Cùng 1 khách bị ghi công cho 2 Page (1 theo UTM, 1 theo `fanpage_id`) → Σ vượt Tổng | Q10: `fanpage_id` ưu tiên; hàm quy kết 1 chỗ (`fanpage-outcomes`); test bất biến `Σ chính == Tổng` có thêm ca khách có cả `fanpage_id` lẫn UTM khác Page |
+| X29 | Tạo khách từ Ghi chú ↔ `CustomersService.create` (không nhận `EntityManager`, tự `save` bằng repo riêng) | Không thể đặt 'tạo khách + lưu ghi chú' vào 1 transaction nếu không sửa hàm lõi của Customers | Thứ tự **tạo khách → lưu ghi chú**; khách lỗi (trùng SĐT, validate) → trả 4xx, **chưa lưu ghi chú**; ghi chú lỗi sau khi khách đã tạo (hiếm) → xoá mềm khách vừa tạo + audit. **Không sửa chữ ký `create()`** |
+| X30 | SĐT trùng: `customers.phone` có **UNIQUE toàn cục** (kể cả bản ghi xoá mềm, index `IDX_88acd889…`) | Lead nhập từ Page trùng khách của người khác ngoài phạm vi xem → lỗi `DuplicatePhoneException` | Gọi `checkDuplicateContact` trước (cùng modal cảnh báo như trang Khách hàng); **không** 'gắn lại khách cũ vào Page' vì sẽ lộ/đổi khách ngoài phạm vi; thông báo chỉ nêu tối thiểu như hàm đó đang làm |
+| X31 | Quyền ghi chú Page ≠ quyền tạo khách | Người có `fanpage_notes.manage` nhưng không có `customers.create` tạo khách ké qua ghi chú | BE kiểm **cả hai** (endpoint ghi chú có `lead` ⇒ thêm `scopeOf(user,'customers.create')`); FE ẩn mục 'Thêm khách' theo `can('customers.create')` |
+| X32 | Tab Data khách hàng ↔ scope `customers.view` | Người xem Page thấy số khách ≠ người khác (scope own/department) | Luôn `CustomerAccessHelper.applyViewFilter`; nhãn *"theo phạm vi dữ liệu của bạn"*; số trên badge tab = số trong bảng (cùng 1 query) |
 
 ---
 
@@ -549,6 +557,13 @@ Mỗi giai đoạn **độc lập deploy được** và có giá trị riêng; k
   - UTM `restricted` + người xem không `canUse` → tên bị che, số vẫn đúng phạm vi.
   - Gỡ Page chính khi còn Page khác → 409; gộp UTM không tạo dòng trùng, giữ Page chính đích.
 
+### GĐ5b — Lead (khách hàng) thủ công + Ghi chú tiến trình (mục 15) — *làm SAU M3/GĐ5 hoặc cùng lúc, vì đụng quy tắc quy kết*
+- [ ] Chốt Q10, Q11. `git pull`, `ls` migrations lấy timestamp thật (hiện lớn nhất `1786391000000`).
+- [ ] M5 `AddFanpageLeadLinks`; entity `customer.entity.ts` + `fanpage-note.entity.ts`.
+- [ ] BE: `GET/POST /fanpages/:id/customers`; `FanpageNoteDto.lead?`; `fanpage-leads.service` (gọi `CustomersService.create`, KHÔNG viết lại luật tạo khách); sửa `fanpage-outcomes` theo 15.3 (nếu GĐ5 đã làm).
+- [ ] FE: tab Drawer **Data khách hàng** + mục "Thêm khách" trong form ghi chú, gate `can('customers.view'|'customers.create')`.
+- **Hoàn thành khi:** các test ở 15.6 xanh; `tsc --noEmit`, `nest build`, jest, vitest pass.
+
 ### GĐ6 — Hoàn thiện: B4, B5, A4, E5a, C3
 - [ ] Dán nhiều link (BE bulk + FE xem trước).
 - [ ] Export Excel (sheet Page / Bài đăng / Số liệu; sheet Số liệu chỉ khi có quyền xem; sheet Khách chỉ khi qua phạm vi khách; **cột tiền chỉ khi qua cổng 4 lớp 3.7**; mirror `leave-export` tách model thuần + test).
@@ -616,3 +631,89 @@ Quy tắc báo cáo: chỉ báo "xong" sau khi chạy thật và dán kết qu�
 - [ ] `guides-content/fanpage.md` + `guide-slugs.ts` (không thêm slug mới vì không thêm menu)
 - [ ] `sidebar-badges` + `badge-cache-invalidation.middleware` (GĐ3)
 - [ ] `WORKFLOW_LOG.md` (append, khi bạn ra lệnh)
+- [ ] (v1.2) `PERMISSIONS.md`: ghi rõ Lead dùng lại `customers.*`, không key mới; thêm `GET/POST /fanpages/:id/customers` + `lead` của ghi chú; `guides-content/fanpage.md` mục Data khách hàng
+
+---
+
+## 15. Lead (khách hàng) thủ công + tích hợp Ghi chú tiến trình (v1.2)
+
+### 15.1. Mục tiêu
+- Nhập khách hàng (Lead) **thủ công** ngay trong Drawer Page, tab **Data khách hàng**.
+- Khi **Ghi chú tiến trình** có tick "Thêm khách hàng", hệ thống tạo khách và khách xuất hiện ở tab Data khách hàng của Page đó.
+- Không có quyền khách hàng thì **không render** tab/nút (không render rồi báo 403).
+- Dùng lại `customers` + `CustomersService.create`; **không** tạo bảng Lead riêng, **không** nhân đôi luật tạo khách (chống trùng, validate nguồn/trạng thái, UTM, audit `CREATE_CUSTOMER`, thông báo `customer.created`).
+
+### 15.2. Dữ liệu (migration M5 `AddFanpageLeadLinks`, timestamp > `1786391000000`, lấy lại bằng `ls`)
+| Bảng | Thay đổi | Lý do |
+|---|---|---|
+| `customers` | `fanpage_id INT NULL`, FK → `fanpages(id)` **ON DELETE SET NULL**, **INDEX gộp** `IDX_customers_fanpage_input (fanpage_id, input_date, deleted_at)` — phục vụ tab Lead và thống kê khi dữ liệu lớn | Page xoá cứng (cascade bài/ghi chú) **không được** kéo theo mất khách |
+| `fanpage_notes` | `lead_customer_id INT NULL`, FK → `customers(id)` **ON DELETE SET NULL**, **UNIQUE** `UQ_fanpage_notes_lead_customer` (MySQL cho nhiều NULL) | Truy vết ghi chú nào sinh ra khách; đặt ở bảng ghi chú để **không thêm cột thứ 2 vào bảng `customers`** vốn đã rộng và nóng |
+
+- Entity: cột `int | null` khai `type: 'int'` tường minh; `IF NOT EXISTS`; `up()/down()` đối xứng; không sửa migration cũ; không tự chạy lên DB thật.
+- Không đổi nghĩa dữ liệu cũ: khách cũ `fanpage_id = NULL`.
+
+### 15.3. Quy kết khách theo Page — sửa 3.7 (Q10)
+Mỗi khách ghi công cho **tối đa 1 Page**, theo thứ tự ưu tiên:
+1. `customers.fanpage_id` khác NULL → Page đó (Lead nhập tay là ý định rõ ràng của người dùng).
+2. Ngược lại → Page chính của `utm_id` (R1–R4 như cũ).
+3. Không có cả hai → "Chưa quy về Page" (R5).
+
+Hệ quả: R2/R4/R5 và X9 áp dụng trên hàm quy kết **một chỗ** (`fanpage-outcomes`); bất biến `Σ chính == Tổng DISTINCT` giữ nguyên. Nếu Q10 chọn phương án "UTM là nguồn duy nhất" thì bỏ bước 1, tab Drawer vẫn dùng `fanpage_id` để liệt kê nhưng ghi rõ *"Lead nhập tay — chưa tính vào thống kê Page"*.
+
+### 15.4. Backend
+| Endpoint | Permission | Ghi chú |
+|---|---|---|
+| `GET /fanpages/:id/customers` *(khai trước `:id`-động theo X18 nếu trùng pattern)* | `customers.view` **và** thấy được Page (`fanpages.view` scope) | Lọc `CustomerAccessHelper.applyViewFilter`, bỏ xoá mềm, phân trang BE (khác danh sách Page), cùng 1 query cho bảng và số đếm badge (X32) |
+| `POST /fanpages/:id/customers` | `customers.create` **và** thấy được Page | Gọi `CustomersService.create({... , fanpageId})` kèm `caller` để UTM/nguồn được validate; `source` mặc định theo Q11; **`phone` bắt buộc** (validate riêng ở DTO Lead, không đổi `CreateCustomerDto` chung); gọi `checkDuplicateContact` ở bước xem trước (FE) và bắt `DuplicatePhoneException` ở BE |
+| `POST /fanpages/:id/notes` *(mở rộng)* | `fanpage_notes.manage` (giữ nguyên) **+ `customers.create` khi có `lead`** | `FanpageNoteDto.lead?: {name, phone, email?, source?, note?}` (`phone` bắt buộc); luồng theo X29 |
+| Sửa/xoá Lead | `PATCH/DELETE /customers/:id` có sẵn | **Không thêm endpoint**; tab Drawer chỉ gọi lại endpoint Khách hàng (giữ nguyên `customers.edit/delete` + scope + audit) |
+
+- Cột `fanpage_id` chỉ được set ở 2 đường trên; `UpdateCustomerDto` **không** nhận `fanpageId` ở v1 (tránh đổi Page ngầm, làm nhảy số liệu — cùng tinh thần R9).
+- Page lưu trữ (E4): vẫn cho thêm Lead? **Mặc định chặn khi Page đã lưu trữ** (409, nhãn "Bỏ lưu trữ Page trước") — hỏi lại nếu bạn muốn khác.
+- Sửa/xoá ghi chú gốc **không** sửa/xoá khách đã sinh ra (khách là dữ liệu độc lập); xoá ghi chú → `lead_customer_id` giữ nguyên trong audit snapshot.
+- Audit: dùng `CREATE_CUSTOMER` sẵn có; ghi chú có `lead` thêm `leadCustomerId` vào snapshot `CREATE_FANPAGE_NOTE`. Không cần action mới ⇒ không cần nhãn `audit-meta.ts` mới (vẫn chạy `audit-meta.test.ts`).
+- Invalidate sidebar badge nếu có: đường ghi `POST /fanpages/:id/customers` thêm vào `BadgeCacheInvalidationMiddleware`.
+
+### 15.5. Phân quyền & UI
+- **Không thêm permission key mới** (giảm tải ma trận; X20 không phát sinh). Dùng `customers.view/create/edit/delete`.
+- Tab **Data khách hàng** chỉ render khi `can('customers.view')`; nút "Thêm khách" khi `can('customers.create')`; sửa/xoá từng dòng khi `can('customers.edit'|'customers.delete')` **và** theo cờ quyền từng khách nếu API Khách hàng trả (không tự đoán). Mục "Thêm khách hàng" trong form ghi chú: `can('fanpage_notes.manage') && can('customers.create')`. **Cấm** `role === 'admin'` (X19). BE vẫn là nguồn quyết định cuối.
+- Giữ lối thoát hiểm admin ở cả 3 lớp: dùng `scopeOf`/`PermissionGuard` sẵn có, không viết helper kiểm quyền mới.
+- Tôn trọng UI Visibility của resource `customers` (cột/tab Admin đã ẩn không được lộ lại ở tab này: không hiện tiền nạp/rút trong bảng Lead).
+- Cột: Tên · SĐT · Trạng thái (tag theo `customer_statuses` động) · Sales · Ngày nhập · Nguồn ghi chú (liên kết "từ ghi chú" nếu có `lead_customer_id`) · audit tooltip chuẩn.
+- Form ghi chú: textarea ghi chú + collapse "＋ Thêm khách hàng từ ghi chú này"; nếu trùng SĐT hiện đúng modal cảnh báo của trang Khách hàng, **không lưu ghi chú** cho tới khi người dùng sửa/bỏ tick.
+- `fanpageKeys` thêm `customers(id)`. Bảng invalidate (8.7): thêm/sửa/xoá Lead → `customers(id)`, `detail(id)`, `stats('outcomes')`, badge; ghi chú có `lead` → `notes(id)` **và** `customers(id)`.
+- Nhãn UI gọi rõ "Page"; không dùng chữ "Group" (xem cảnh báo mục 1). Không thêm mục menu (nguyên tắc 5).
+
+### 15.6. Kiểm thử bắt buộc
+- Bộ test **chống đếm trùng ở 15.8** là điều kiện bắt buộc, chạy cùng bộ dưới đây.
+- BE: tạo Lead thủ công (có `fanpage_id`, audit, thông báo); ghi chú+`lead` thành công; **SĐT trùng ⇒ 4xx và KHÔNG có ghi chú mới**; ghi chú lỗi sau khi tạo khách ⇒ khách bị xoá mềm; thiếu `customers.create` ⇒ 403 dù có `fanpage_notes.manage`; Page lưu trữ ⇒ 409; `GET` chỉ trả khách trong `customers.view` scope của **từng role** (4 role) và bỏ xoá mềm; số đếm == số dòng; khách có `fanpage_id` + UTM Page khác ⇒ chỉ ghi công 1 Page (bất biến Σ).
+- FE (vitest): ẩn/hiện tab, nút, mục ghi chú theo `can()` với role tuỳ chỉnh (không phải 'admin'); mất quyền giữa chừng ⇒ tab biến mất, không render 403.
+- Chạy thật `tsc --noEmit`, `nest build`, `next build`/`tsc`, jest, vitest; dán kết quả thật. Ghi 1 dòng `WORKFLOW_LOG.md` khi bạn ra lệnh.
+
+### 15.8. Chống đếm trùng từ Fanpage (bắt buộc — đã chốt)
+
+**Nguyên tắc:** trùng với dữ liệu khách **sẵn có** là chấp nhận được (không phải lỗi của Fanpage, vẫn do luật trùng SĐT hiện hành xử lý). Nhưng **mọi con số của Fanpage không bao giờ được đếm 1 khách hai lần**. Chặn ở 4 tầng, tầng nào cũng đủ để tự nó ngăn lỗi:
+
+| Tầng | Cơ chế | Chống được |
+|---|---|---|
+| 1. Cấu trúc dữ liệu | Quan hệ khách→Page là **1 cột** `customers.fanpage_id` (không có bảng N-N) ⇒ 1 khách tối đa 1 Page | Khách thuộc 2 Page |
+| 2. Ràng buộc DB | `UNIQUE fanpage_notes.lead_customer_id` ⇒ 1 khách chỉ được 1 ghi chú sinh ra; `customers.phone` UNIQUE sẵn có | 2 ghi chú cùng sinh 1 khách; 2 khách cùng SĐT |
+| 3. Luật tạo | **SĐT bắt buộc** cho Lead từ Page (khoá chống trùng; khách không SĐT thì bấm đúp/gõ lại sẽ nhân đôi vì không có khoá nào chặn). Có `checkDuplicateContact` trước khi tạo; nút gửi có `loading` + khoá chống bấm đúp (FE) và `Idempotency` theo (Page, SĐT) ở BE bằng chính UNIQUE phone | Bấm đúp, retry mạng, 2 người nhập cùng SĐT |
+| 4. Truy vấn | Mọi số đếm/bảng Lead chỉ `COUNT(DISTINCT customers.id)` trên **bảng `customers`**, lọc `fanpage_id` rồi mới (nếu cần) tra UTM; **cấm JOIN `fanpage_notes`/`deposits`/bảng N-N vào truy vấn đếm** (JOIN làm nhân dòng, giống X17). Tên "từ ghi chú" lấy bằng truy vấn phụ `IN (...)` sau đó | Nhân dòng do JOIN |
+
+**Xử lý khi SĐT trùng khách sẵn có (không phải lỗi đếm):** chặn tạo, hiện modal cảnh báo như trang Khách hàng (chỉ nêu người tạo/sales/nhóm, không lộ `id`/SĐT đầy đủ). **Không** tự gắn khách cũ vào Page (tránh lộ/đổi khách ngoài phạm vi và tránh số Page nhảy). Muốn quy khách cũ về Page: người có `customers.edit` đổi qua luồng riêng (ngoài v1, đã có R9 khi làm).
+
+**Thứ tự quy kết một chỗ** (15.3) dùng đúng một hàm `resolveCreditedPage(customer)` ở `fanpage-outcomes`; tab Lead, thẻ KPI, báo cáo Page → Khách, export **đều gọi hàm/truy vấn này**, không tự viết lại.
+
+**Test bất biến (phải xanh trước khi hoàn thành GĐ5b):**
+- Dữ liệu mẫu: khách chỉ có UTM (Page A chính), khách chỉ có `fanpage_id` (Page B), khách có cả hai khác Page (`fanpage_id`=B, UTM→A), khách không có cả hai, khách xoá mềm. Kỳ vọng: Σ cột "chính" của mọi Page + "Chưa quy" = Tổng DISTINCT trong phạm vi; khách có cả hai chỉ xuất hiện ở B.
+- Tạo Lead 2 lần cùng SĐT (tuần tự và song song 2 request) ⇒ đúng 1 khách, request còn lại nhận lỗi trùng.
+- Ghi chú sinh khách, sau đó cố gắn thêm ghi chú thứ 2 vào cùng khách ⇒ bị UNIQUE chặn.
+- Số trên badge tab == số dòng bảng == số trong thống kê Page (cùng phạm vi người xem).
+
+### 15.7. Rủi ro riêng
+| Rủi ro | Mức | Giảm thiểu |
+|---|---|---|
+| Người dùng tưởng Lead nhập tay luôn hiện với mọi người xem Page | Trung bình | Nhãn "theo phạm vi dữ liệu của bạn" (X32) |
+| Số thống kê Page đổi sau khi có Lead nhập tay | Trung bình | Q10 + hộp giải thích R-ưu-tiên; test bất biến Σ |
+| `phone` UNIQUE cả bản ghi xoá mềm → "compensating delete" ở X29 làm kẹt SĐT | Trung bình | Dùng đường xoá mềm sẵn có của khách; nếu lỗi ghi chú thật sự xảy ra, SĐT giữ ở thùng rác (Admin khôi phục/xoá cứng) — nêu rõ trong thông báo lỗi |
