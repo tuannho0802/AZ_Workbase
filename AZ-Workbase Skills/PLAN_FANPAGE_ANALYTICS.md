@@ -1,6 +1,7 @@
 # PLAN — Nâng cấp module Fanpage: theo dõi nhịp đăng, thống kê, liên kết UTM, vận hành (Nhóm A–E)
 
 > **Đặt file tại:** `AZ-Workbase Skills/PLAN_FANPAGE_ANALYTICS.md`
+> **Đối chiếu lại code (2026-11-11):** đã kiểm tra `origin/main` HEAD `e2ff1aa` — `UiVisibilityService.getHiddenElementKeys`, key `tab:deposits`, `CustomerAccessHelper.applyViewFilter`, `UtmAccessHelper.canUse` đều tồn tại đúng như mô tả; migration lớn nhất vẫn là `1786380000000`.
 > **Cơ sở:** đọc trực tiếp code `origin/main` HEAD `cde9954` (2026-11-10, "Add Multi owner and color Tag"). Mọi đường dẫn bên dưới là file thật tại thời điểm đó.
 > **Trạng thái:** ĐỀ XUẤT **v1.1 (2026-11-11)** — đã chốt Q1, Q6, Q7 (xem mục 2 và 3.7–3.8); các câu còn lại dùng mặc định. Chưa chạy build/test, chưa đụng DB.
 > **Thay đổi v1.1:** (1) 1 UTM gắn được nhiều Page + quy tắc quy kết khách/tiền chặt chẽ (3.7); (2) xếp hạng chỉ tính người phụ trách có đóng góp dữ liệu, có phân quyền xem (3.8); (3) hiện tiền nạp trong báo cáo Page, có phân quyền riêng + tôn trọng ẩn UI `tab:deposits`; (4) thêm 3 permission key, bỏ setting bật/tắt xếp hạng.
@@ -157,7 +158,7 @@ Page không có snapshot đúng ngày → dùng **giá trị gần nhất trư�
 **Tiền nạp (D3) — cổng kiểm soát 4 lớp, thiếu lớp nào là **không trả** trường tiền:**
 1. Người gọi có `fanpage_revenue.view` (scope own/department/all quyết định **Page nào** được hiện tiền).
 2. Phiếu nạp chỉ tính cho khách trong phạm vi `customers.view` của người gọi (R6), `innerJoin customers` để loại khách xoá mềm (giống thống kê rút tiền hiện có).
-3. Không bị Admin ẩn bằng UI Visibility: `UiVisibilityService.getHiddenElementKeys(...)` chứa `tab:deposits` → BE **bỏ hẳn** trường tiền khỏi response (không trả `null`, không trả 0), FE ẩn cột.
+3. Không bị Admin ẩn bằng UI Visibility: gọi `UiVisibilityService.getHiddenElementKeys(role, 'customers', departmentId, positionId, isRootAdmin)` — **resource luôn là `'customers'`** (key `tab:deposits` chỉ tồn tại ở resource này), truyền đủ phòng ban/chức vụ/cờ root admin của người gọi (cùng cách `customers-export.service.ts` đang làm; root admin được bỏ qua ẩn). Nếu tập trả về chứa `tab:deposits` → BE **bỏ hẳn** trường tiền khỏi response (không trả `null`, không trả 0), FE ẩn cột. Lưu ý: hiện `tab:deposits` mới được áp ở FE và export khách; đây là lần đầu một báo cáo thống kê tự enforce ở BE nên phải có test riêng. `tab:withdrawals` không ảnh hưởng vì báo cáo Page chỉ hiện Tổng nạp.
 4. **Chỉ hiện Tổng nạp.** KHÔNG hiện "đã rút"/"nạp thực": quy ước sẵn có là lộ "nạp thực" cho phép suy ra số rút đã ẩn (`PERMISSIONS.md`, mục Rút tiền).
 - Số tiền trả về dạng số (đã chuyển từ chuỗi DECIMAL), đơn vị theo phiếu nạp hiện có; xếp hạng nhân viên **không bao giờ** chứa tiền hay khách (3.8).
 
@@ -216,7 +217,7 @@ Quy ước: `IF NOT EXISTS`, `up()`/`down()` đối xứng, cột `string | null
 |---|---|---|
 | M1 | `AddFanpageCadenceHealthArchive` | `fanpages`: `target_posts_per_week TINYINT UNSIGNED NULL`, `health_status_id INT NULL` (FK), `health_note VARCHAR(255) NULL`, `health_changed_at` (kiểu như `utms.locked_at`), `archived_at` (cùng kiểu). Bảng mới `fanpage_health_statuses` (`id, name, color, is_blocking, is_default, is_locked, sort_order`) + **seed 5 dòng** (Bình thường [default], Bị hạn chế, Checkpoint, Bị khoá [blocking], Đã bỏ [blocking]) + **backfill** mọi Page cũ → "Bình thường". Index `IDX_fanpages_health`, `IDX_fanpages_archived`. `fanpage_platforms.url_domains VARCHAR(255) NULL` (+ seed domain cho nền tảng trùng tên Facebook/TikTok/Instagram/YouTube nếu có; **chỉ UPDATE dòng đang rỗng**) |
 | M2 | `CreateFanpageMetrics` | `fanpage_metric_snapshots` (`id, fanpage_id FK CASCADE, snapshot_date DATE, followers/reach/engagement/views INT UNSIGNED NULL, note VARCHAR(255) NULL, created_by_id, updated_by_id, created_at, updated_at`; **UNIQUE** `(fanpage_id, snapshot_date)`; INDEX `snapshot_date`). `fanpage_targets` (`id, fanpage_id FK CASCADE, month CHAR(7) 'YYYY-MM', target_follower_gain INT UNSIGNED NULL`; UNIQUE `(fanpage_id, month)`). `fanpage_posts` thêm `views/likes/comments/shares INT UNSIGNED NULL`, `metrics_updated_at`, `post_type_id INT NULL`. Bảng `fanpage_post_types` (`id, name, color, is_locked, sort_order`) |
-| M3 | `CreateFanpageUtms` | `fanpage_utms` (`id, fanpage_id FK CASCADE, utm_id FK CASCADE, primary_utm_id INT NULL, created_by_id, created_at`). **UNIQUE `(fanpage_id, utm_id)`** (không gắn trùng cặp); **UNIQUE `primary_utm_id`** + `CHECK (primary_utm_id IS NULL OR primary_utm_id = utm_id)` ⇒ `primary_utm_id = utm_id` nghĩa là Page này là **Page chính**, `NULL` là "tham gia"; MySQL cho nhiều NULL nên DB tự đảm bảo mỗi UTM ≤ 1 Page chính. INDEX `utm_id`. Không cần cột `is_primary` riêng (tránh hai nguồn sự thật) |
+| M3 | `CreateFanpageUtms` | `fanpage_utms` (`id, fanpage_id FK CASCADE, utm_id FK CASCADE, primary_utm_id INT NULL, created_by_id, created_at`). **UNIQUE `(fanpage_id, utm_id)`** (không gắn trùng cặp); **UNIQUE `primary_utm_id`** + `CHECK (primary_utm_id IS NULL OR primary_utm_id = utm_id)` ⇒ `primary_utm_id = utm_id` nghĩa là Page này là **Page chính**, `NULL` là "tham gia"; MySQL cho nhiều NULL nên DB tự đảm bảo mỗi UTM ≤ 1 Page chính. INDEX `utm_id`. Không cần cột `is_primary` riêng (tránh hai nguồn sự thật). `CHECK` cần MySQL ≥ 8.0.16 (README dự án nêu MySQL 8.0+): kiểm tra phiên bản DB thật trước khi chạy M3; nếu thấp hơn, bỏ `CHECK` và chặn bằng service + test |
 | M4 | `SeedFanpageAnalyticsPermissions` | **8 key** mới (mục 7), seed theo bảng mặc định ở mục 7 (khai rõ `department_id` NULL hay cụ thể) + 1 setting |
 
 Không có migration nào xoá/đổi kiểu cột cũ. Không thêm UNIQUE lên `fanpage_posts.url` (dữ liệu cũ có thể trùng → migration sẽ lỗi); chống trùng làm ở service (mục 6.4).
@@ -500,7 +501,7 @@ Việc phải sửa cùng một lúc (X21):
 Mỗi giai đoạn **độc lập deploy được** và có giá trị riêng; không giai đoạn nào sửa đổi hành vi cũ.
 
 ### GĐ0 — Chốt quyết định (0,5 ngày)
-- [ ] Trả lời Q1–Q9 (hoặc xác nhận dùng mặc định).
+- [x] Q1, Q6, Q7 đã chốt (2026-11-11). Còn lại Q2–Q5, Q8, Q9: xác nhận dùng mặc định hoặc đổi.
 - [ ] `git pull`, `ls` thư mục migrations để lấy timestamp thật (X23).
 
 ### GĐ1 — Nền tảng dữ liệu & luật tính toán (BE) — *chưa có thay đổi nhìn thấy*
