@@ -11,7 +11,7 @@ describe('FanpagesController - thứ tự route (X18)', () => {
     it('mọi route GET tĩnh khai TRƯỚC GET :id (tránh ParseIntPipe bắt chữ "overview")', () => {
         const getIdx = order.findIndex((n) => method(n) === 0 && path(n) === ':id');
         expect(getIdx).toBeGreaterThan(-1);
-        for (const staticPath of ['overview', 'owner-options']) {
+        for (const staticPath of ['overview', 'today', 'owner-options']) {
             const i = order.findIndex((n) => method(n) === 0 && path(n) === staticPath);
             expect(i).toBeGreaterThan(-1);
             expect(i).toBeLessThan(getIdx);
@@ -35,6 +35,7 @@ describe('Quyền khai báo trên route (mọi route phải có @RequirePermissi
     it('key mới đúng như migration seed', () => {
         const key = (C: { prototype: object }, n: string) => Reflect.getMetadata(PERMISSION_KEY, (C.prototype as Record<string, object>)[n]);
         expect(key(FanpagesController, 'overview')).toBe('fanpages.view');
+        expect(key(FanpagesController, 'today')).toBe('fanpages.view');
         expect(key(FanpagesController, 'history')).toBe('fanpages.view');
         expect(key(FanpagesController, 'archive')).toBe('fanpages.edit');
         expect(key(FanpagesController, 'unarchive')).toBe('fanpages.edit');

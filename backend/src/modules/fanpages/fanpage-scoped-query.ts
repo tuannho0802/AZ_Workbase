@@ -102,6 +102,26 @@ export class FanpageScopedQuery {
         return qb.getMany();
     }
 
+    /**
+     * Page "đang theo dõi" TOÀN HỆ THỐNG (không áp scope người dùng) cho cron nhắc việc: đang bật theo dõi, chưa lưu trữ, tình trạng
+     * KHÔNG chặn. Khớp ĐÚNG `isTrackedPage` (helper thuần) - nếu đổi định nghĩa "theo dõi" phải đổi cả 2 nơi.
+     * `BooleanTransformer` không chạy trong QueryBuilder -> truyền thẳng 1/0.
+     */
+    async loadTrackable(): Promise<Fanpage[]> {
+        return this.repo
+            .createQueryBuilder('f')
+            .leftJoinAndSelect('f.platform', 'platform')
+            .leftJoin('f.healthStatus', 'health')
+            .addSelect(['health.id', 'health.name', 'health.color', 'health.isBlocking'])
+            .leftJoin('f.owners', 'owners')
+            .addSelect(['owners.id', 'owners.name', 'owners.isActive'])
+            .where('f.archivedAt IS NULL')
+            .andWhere('f.isActive = :act', { act: 1 })
+            .andWhere('(health.id IS NULL OR health.isBlocking = :blk)', { blk: 0 })
+            .orderBy('f.id', 'ASC')
+            .getMany();
+    }
+
     /** Đếm Page đã lưu trữ trong phạm vi (badge tab "Đã lưu trữ") - không JOIN. */
     async countArchived(user: FanpageCaller, scopes: FanpageScopes): Promise<number> {
         const qb = this.repo.createQueryBuilder('f');

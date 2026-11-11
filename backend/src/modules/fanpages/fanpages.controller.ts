@@ -11,6 +11,7 @@ import { FanpagePlatformsService } from './fanpage-platforms.service';
 import { FanpageHealthStatusesService } from './fanpage-health-statuses.service';
 import { FanpageOverviewService } from './fanpage-overview.service';
 import { FanpageHistoryService } from './fanpage-history.service';
+import { FanpageTodayService } from './fanpage-today.service';
 import { CreateFanpageDto, UpdateFanpageDto, FanpageQueryDto } from './dto/fanpage.dto';
 import { CreateFanpagePostDto, UpdateFanpagePostDto, FanpageNoteDto } from './dto/fanpage-post.dto';
 import { CreateFanpagePlatformDto, UpdateFanpagePlatformDto } from './dto/fanpage-platform.dto';
@@ -19,7 +20,7 @@ import type { FanpageCaller } from './fanpage-access.service';
 
 /**
  * Fanpage (nhân viên tự quản lý Page). MỌI route đều có @RequirePermission; dữ liệu lọc theo scope người phụ trách
- * (own/department/all) ở service. Route tĩnh (`owner-options`, `overview`) khai TRƯỚC `:id` (Nest khớp theo thứ tự;
+ * (own/department/all) ở service. Route tĩnh (`owner-options`, `overview`, `today`) khai TRƯỚC `:id` (Nest khớp theo thứ tự;
  * ngược lại `ParseIntPipe` bắt chữ "overview" -> 400 - PLAN X18, có spec khoá thứ tự).
  */
 @ApiTags('Fanpages (Page của nhân viên)')
@@ -31,6 +32,7 @@ export class FanpagesController {
     private readonly service: FanpagesService,
     private readonly overviewService: FanpageOverviewService,
     private readonly historyService: FanpageHistoryService,
+    private readonly todayService: FanpageTodayService,
   ) {}
 
   @Get()
@@ -52,6 +54,13 @@ export class FanpagesController {
   @ApiOperation({ summary: 'Số cho thẻ KPI (cùng scope + cùng nguồn nhịp đăng với danh sách)' })
   overview(@GetUser() user: FanpageCaller) {
     return this.overviewService.overview(user);
+  }
+
+  @Get('today')
+  @RequirePermission('fanpages.view')
+  @ApiOperation({ summary: 'Tab "Hôm nay": Page cần đăng bài / đã đăng hôm nay / đang ổn (cùng scope + nguồn nhịp đăng với danh sách)' })
+  today(@GetUser() user: FanpageCaller) {
+    return this.todayService.today(user);
   }
 
   @Post()

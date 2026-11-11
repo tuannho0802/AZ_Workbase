@@ -5,6 +5,7 @@ import { UsersService } from '../users/users.service';
 import { LeaveRequestsService } from '../leave-requests/leave-requests.service';
 import { PeriodicTasksService } from '../periodic-tasks/periodic-tasks.service';
 import { PermissionsVersionService } from '../permissions/permissions-version.service';
+import { FanpageTodayService } from '../fanpages/fanpage-today.service';
 import { PermissionScope } from '../../database/entities/role-permission.entity';
 import { Role } from '../../common/enums/role.enum';
 import { registerCacheProbe } from '../../common/utils/cache-probe-registry';
@@ -26,6 +27,8 @@ export interface SidebarBadges {
   myPendingLeave?: number;
   taskTodo?: number;
   taskInProgress?: number;
+  /** Số Page cần đăng bài hôm nay (nhóm `needAction` tab "Hôm nay") - chỉ có khi có `fanpages.view`. */
+  fanpageToDo?: number;
 }
 
 export interface SidebarBadgeUser {
@@ -82,6 +85,8 @@ export class SidebarBadgesService {
     private readonly periodicTasksService: PeriodicTasksService,
     // [Reset hệ thống] Optional để spec cũ (không truyền) vẫn chạy; Nest luôn inject vì PermissionsModule là @Global().
     private readonly versionService?: PermissionsVersionService,
+    // Optional để spec cũ vẫn chạy; Nest luôn inject vì SidebarBadgesModule import FanpagesModule.
+    private readonly fanpageTodayService?: FanpageTodayService,
   ) {}
 
   /**
@@ -176,13 +181,14 @@ export class SidebarBadgesService {
     let failed = false;
     const ms: Record<string, number> | undefined = process.env.CPU_TIMING === 'true' ? {} : undefined;
     const tStart = ms ? Date.now() : 0;
-    const [invalid, trash, usersManage, leaveApprove, leaveRequest, taskView] = await Promise.all([
+    const [invalid, trash, usersManage, leaveApprove, leaveRequest, taskView, fanpageView] = await Promise.all([
       this.resolve(user, 'customers.invalid_report'),
       this.resolve(user, 'customers.trash_manage'),
       this.resolve(user, 'users.manage'),
       this.resolve(user, 'leave_requests.approve'),
       this.resolve(user, 'leave_requests.request'),
       this.resolve(user, 'periodic_tasks.view'),
+      this.resolve(user, 'fanpages.view'),
     ]);
 
     const tPerm = ms ? Date.now() - tStart : 0;
@@ -235,6 +241,12 @@ export class SidebarBadgesService {
           out.taskInProgress = v['in_progress'] ?? 0;
         },
       );
+    }
+
+    // 1 truy vấn gộp theo lô Page, dùng chung cache 60s/user; middleware xoá cache sau mọi request ghi (gồm POST/PATCH Fanpage).
+    if (fanpageView.allowed && this.fanpageTodayService) {
+      const fanpageToday = this.fanpageTodayService;
+      run('fanpageToDo', () => fanpageToday.countNeedAction(user), (v) => (out.fanpageToDo = v));
     }
 
     await Promise.all(jobs);

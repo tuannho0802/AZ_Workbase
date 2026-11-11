@@ -181,3 +181,41 @@ describe('event-catalog', () => {
     expect(truncate('abcdef', 5)).toBe('abcd…');
   });
 });
+
+describe('event-catalog - Fanpage (GĐ3)', () => {
+  it('2 event nhắc việc: emit được, không bắt buộc, không gộp, gửi cho người phụ trách Page', () => {
+    for (const type of ['fanpage.silent', 'fanpage.weekly_at_risk'] as const) {
+      const def = EVENT_CATALOG[type];
+      expect(def.entityType).toBe('fanpage');
+      expect(def.emittable).toBe(true);
+      expect(def.mandatory).toBe(false);
+      expect(def.coalesce).toBe(false);
+      expect(def.defaultEnabled).toBe(true);
+      expect(def.relations).toEqual([RecipientRelation.FANPAGE_OWNER]);
+    }
+  });
+
+  it('fanpage.silent: có tên Page + số ngày; thiếu số ngày vẫn hợp lệ', () => {
+    const def = EVENT_CATALOG['fanpage.silent'];
+    const base = { actorName: 'Hệ thống', entityName: 'Tin Gold', count: 1 };
+    const a = renderNotification(def, RecipientRelation.FANPAGE_OWNER, { ...base, params: { days: 5 } });
+    expect(a.title).toContain('Tin Gold');
+    expect(a.title).toContain('5 ngày');
+    const b = renderNotification(def, RecipientRelation.FANPAGE_OWNER, { ...base, params: {} });
+    expect(b.title).toContain('Tin Gold');
+    expect(b.title).not.toContain('undefined');
+  });
+
+  it('fanpage.weekly_at_risk: hiện tiến độ x/y khi đủ số; thiếu mục tiêu vẫn hợp lệ', () => {
+    const def = EVENT_CATALOG['fanpage.weekly_at_risk'];
+    const base = { actorName: 'Hệ thống', entityName: 'Review Sàn A', count: 1 };
+    expect(renderNotification(def, RecipientRelation.FANPAGE_OWNER, { ...base, params: { weekCount: 2, target: 5 } }).title).toContain('2/5');
+    const none = renderNotification(def, RecipientRelation.FANPAGE_OWNER, { ...base, params: { weekCount: 2 } }).title;
+    expect(none).not.toContain('undefined');
+    expect(none).not.toContain('NaN');
+  });
+
+  it('sanitizeParams giữ days/weekCount/target và vẫn vứt key lạ (PII)', () => {
+    expect(sanitizeParams({ days: 7, weekCount: 2, target: 5, phone: '0901234567' })).toEqual({ days: 7, weekCount: 2, target: 5 });
+  });
+});

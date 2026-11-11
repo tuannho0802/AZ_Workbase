@@ -324,6 +324,7 @@ describe('SidebarBadgesService', () => {
     });
 
     it('Root Admin: bypass bảng permission', async () => {
+      jest.spyOn((service as any).logger, 'warn').mockImplementation(); // service khác là {} nên job của chúng lỗi - không liên quan
       grant({});
       const out = await service.getBadges({ id: 1, role: 'admin', isRootAdmin: true });
       expect(out.fanpageToDo).toBe(4);

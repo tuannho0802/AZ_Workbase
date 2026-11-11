@@ -22,6 +22,10 @@ export interface RecipientContext {
     secondaryAssigneeIds?: number[];
     createdById?: number | null;
   };
+  fanpage?: {
+    /** TẤT CẢ người phụ trách Page (không chỉ người chính). */
+    ownerIds?: number[];
+  };
   /** Người được gán / phụ trách MỚI (customer.* và task.*) */
   newUserIds?: number[];
   /** Người bị thay / bị gỡ / bị thu hồi */
@@ -52,6 +56,8 @@ function idsFor(relation: RecipientRelation, ctx: RecipientContext): number[] {
       return ctx.task?.secondaryAssigneeIds ?? [];
     case RecipientRelation.TASK_CREATOR:
       return single(ctx.task?.createdById);
+    case RecipientRelation.FANPAGE_OWNER:
+      return ctx.fanpage?.ownerIds ?? [];
     case RecipientRelation.ASSIGNEE_NEW:
     case RecipientRelation.TASK_ASSIGNEE_NEW:
       return ctx.newUserIds ?? [];

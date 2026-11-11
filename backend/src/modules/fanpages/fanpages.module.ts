@@ -19,6 +19,9 @@ import { FanpageInsightsService } from './fanpage-insights.service';
 import { FanpageScopedQuery } from './fanpage-scoped-query';
 import { FanpageOverviewService } from './fanpage-overview.service';
 import { FanpageHistoryService } from './fanpage-history.service';
+import { FanpageTodayService } from './fanpage-today.service';
+import { FanpageRemindersService } from './fanpage-reminders.service';
+import { FanpagesCronController } from './fanpages-cron.controller';
 import {
   FanpagesController,
   FanpagePostsController,
@@ -36,6 +39,7 @@ import {
     FanpageNotesController,
     FanpagePlatformsController,
     FanpageHealthStatusesController,
+    FanpagesCronController,
   ],
   providers: [
     FanpageAccessService,
@@ -49,6 +53,10 @@ import {
     FanpageScopedQuery,
     FanpageOverviewService,
     FanpageHistoryService,
+    FanpageTodayService,
+    FanpageRemindersService,
   ],
+  // SidebarBadgesService đếm badge "cần đăng bài" bằng đúng nguồn của tab Hôm nay (X2/X16).
+  exports: [FanpageTodayService],
 })
 export class FanpagesModule {}

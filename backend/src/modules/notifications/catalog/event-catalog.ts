@@ -32,11 +32,13 @@ export enum RecipientRelation {
   TASK_CREATOR = 'TASK_CREATOR',
   TASK_ASSIGNEE_NEW = 'TASK_ASSIGNEE_NEW',
   TASK_ASSIGNEE_PREVIOUS = 'TASK_ASSIGNEE_PREVIOUS',
+  // Fanpage (nhắc việc tự động - GĐ3): TẤT CẢ người phụ trách Page
+  FANPAGE_OWNER = 'FANPAGE_OWNER',
   // Manual (Phase M1)
   MANUAL_RECIPIENT = 'MANUAL_RECIPIENT',
 }
 
-export type NotificationEntityType = 'customer' | 'periodic_task';
+export type NotificationEntityType = 'customer' | 'periodic_task' | 'fanpage';
 
 export const NOTIFICATION_EVENT_TYPES = [
   // Customer
@@ -62,6 +64,9 @@ export const NOTIFICATION_EVENT_TYPES = [
   'task.unlocked',
   'task.deleted',
   'task.deadline_reminder',
+  // Fanpage (nhắc việc do cron Uptime gọi, actor = Hệ thống)
+  'fanpage.silent',
+  'fanpage.weekly_at_risk',
   // Manual (không đi qua emit(); do notification-broadcasts ghi ở Phase M1)
   'manual.broadcast',
 ] as const;
@@ -119,6 +124,10 @@ const TASK_STAKEHOLDERS: RecipientRelation[] = [
   R.TASK_PRIMARY_ASSIGNEE,
   R.TASK_SECONDARY_ASSIGNEE,
 ];
+
+/** Số hữu hạn từ `params` (an toàn khi thiếu/kiểu lạ) - template KHÔNG bao giờ in "undefined". */
+const numParam = (v: unknown): number | null =>
+  typeof v === 'number' && Number.isFinite(v) ? v : null;
 
 const t =
   (title: (i: TemplateInput) => string): Template =>
@@ -492,6 +501,54 @@ export const EVENT_CATALOG: Record<NotificationEventType, EventDefinition> = {
     },
   },
 
+  // ─────────────────────────── FANPAGE ───────────────────────────
+  // Nhắc việc tự động (FanpageRemindersService). Dùng category TASK (nhóm "Công việc" ở FE) để KHÔNG phải thêm
+  // category/migration mới. Không bắt buộc, không gộp: mỗi mốc/tuần là 1 thông báo riêng (dedupe bằng dedupeSuffix).
+  'fanpage.silent': {
+    type: 'fanpage.silent',
+    category: NotificationCategory.TASK,
+    entityType: 'fanpage',
+    mandatory: false,
+    coalesce: false,
+    defaultEnabled: true,
+    emittable: true,
+    relations: [R.FANPAGE_OWNER],
+    templates: {
+      default: (i) => {
+        const days = numParam(i.params.days);
+        return {
+          title:
+            days != null
+              ? `Page ${i.entityName} đã ${days} ngày chưa có bài đăng mới, vào đăng bài nhé.`
+              : `Page ${i.entityName} đang im lặng, chưa có bài đăng mới - vào đăng bài nhé.`,
+        };
+      },
+    },
+  },
+
+  'fanpage.weekly_at_risk': {
+    type: 'fanpage.weekly_at_risk',
+    category: NotificationCategory.TASK,
+    entityType: 'fanpage',
+    mandatory: false,
+    coalesce: false,
+    defaultEnabled: true,
+    emittable: true,
+    relations: [R.FANPAGE_OWNER],
+    templates: {
+      default: (i) => {
+        const done = numParam(i.params.weekCount);
+        const target = numParam(i.params.target);
+        return {
+          title:
+            done != null && target != null
+              ? `Page ${i.entityName} mới đăng ${done}/${target} bài tuần này, cần đăng đều mỗi ngày còn lại để kịp mục tiêu.`
+              : `Page ${i.entityName} có nguy cơ không đạt mục tiêu đăng bài tuần này.`,
+        };
+      },
+    },
+  },
+
   // ──────────────────────────── MANUAL ────────────────────────────
   // Không đi qua emit(): dòng được ghi trực tiếp bởi notification-broadcasts
   // (Phase M1, đồng bộ trong transaction). Khai ở đây để: (1) trang Tuỳ chọn
@@ -553,6 +610,10 @@ const PARAM_ALLOWLIST = new Set([
   'senderName',
   'actorName',
   'entityName',
+  // Fanpage nhắc việc: số ngày im lặng / tiến độ tuần (chỉ số, không PII)
+  'days',
+  'weekCount',
+  'target',
 ]);
 
 export function sanitizeParams(

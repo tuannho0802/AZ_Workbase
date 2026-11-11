@@ -166,3 +166,18 @@ describe('resolveRecipients', () => {
     }
   });
 });
+
+describe('resolveRecipients - Fanpage (GĐ3)', () => {
+  it('fanpage.silent / weekly_at_risk: TẤT CẢ người phụ trách, khử trùng', () => {
+    for (const type of ['fanpage.silent', 'fanpage.weekly_at_risk'] as const) {
+      expect(resolveRecipients(type, { fanpage: { ownerIds: [3, 5, 3] } })).toEqual([
+        { userId: 3, relation: R.FANPAGE_OWNER },
+        { userId: 5, relation: R.FANPAGE_OWNER },
+      ]);
+    }
+  });
+  it('Page chưa có người phụ trách -> không ai nhận', () => {
+    expect(resolveRecipients('fanpage.silent', { fanpage: { ownerIds: [] } })).toEqual([]);
+    expect(resolveRecipients('fanpage.silent', {})).toEqual([]);
+  });
+});

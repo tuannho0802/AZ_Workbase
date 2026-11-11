@@ -111,18 +111,24 @@ export class FanpageInsightsService {
         private readonly settings: FanpageSettingsService,
     ) { }
 
-    async forPages(pages: ReadonlyArray<PageForInsights & { id: number }>, today: string = todayVnStr()): Promise<Map<number, PageInsights>> {
+    /** `withNotes=false` (tab Hôm nay, badge, nhắc việc không cần số ghi chú) -> mỗi lô chỉ 1 SQL thay vì 2. */
+    async forPages(
+        pages: ReadonlyArray<PageForInsights & { id: number }>,
+        today: string = todayVnStr(),
+        opts: { withNotes?: boolean } = {},
+    ): Promise<Map<number, PageInsights>> {
         const silentDays = await this.settings.getSilentDays();
         const aggregates = await this.aggregate(
             pages.map((p) => p.id),
             today,
+            opts.withNotes !== false,
         );
         const out = new Map<number, PageInsights>();
         for (const p of pages) out.set(p.id, buildInsights(p, aggregates.get(p.id) ?? EMPTY_AGGREGATE, { today, silentDays }));
         return out;
     }
 
-    async aggregate(ids: number[], today: string): Promise<Map<number, RawPostAggregate>> {
+    async aggregate(ids: number[], today: string, withNotes = true): Promise<Map<number, RawPostAggregate>> {
         const result = new Map<number, RawPostAggregate>();
         if (ids.length === 0) return result;
 
@@ -150,13 +156,15 @@ export class FanpageInsightsService {
                     .setParameters(params)
                     .groupBy('p.fanpage_id')
                     .getRawMany<RawPostRow>(),
-                this.noteRepo
-                    .createQueryBuilder('n')
-                    .select('n.fanpageId', 'fanpageId')
-                    .addSelect('COUNT(*)', 'noteCount')
-                    .where('n.fanpage_id IN (:...ids)', { ids: batch })
-                    .groupBy('n.fanpage_id')
-                    .getRawMany<{ fanpageId: number | string; noteCount: string | number }>(),
+                withNotes
+                    ? this.noteRepo
+                          .createQueryBuilder('n')
+                          .select('n.fanpageId', 'fanpageId')
+                          .addSelect('COUNT(*)', 'noteCount')
+                          .where('n.fanpage_id IN (:...ids)', { ids: batch })
+                          .groupBy('n.fanpage_id')
+                          .getRawMany<{ fanpageId: number | string; noteCount: string | number }>()
+                    : Promise.resolve([] as Array<{ fanpageId: number | string; noteCount: string | number }>),
             ]);
 
             for (const r of postRows) {
