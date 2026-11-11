@@ -278,4 +278,69 @@ describe('SidebarBadgesService', () => {
       for (const l of lines) expect(l.match(/trash=/g)).toHaveLength(1);
     });
   });
+
+  describe('SidebarBadgesService - badge Fanpage (GĐ3)', () => {
+    const employee = { id: 9, role: 'employee', isRootAdmin: false, departmentId: 1, positionId: null };
+    let perms: { hasPermission: jest.Mock };
+    let fanpageToday: { countNeedAction: jest.Mock };
+    let service: SidebarBadgesService;
+
+    const grant = (map: Record<string, PermissionScope | null>) =>
+      perms.hasPermission.mockImplementation(async (_role: string, key: string) =>
+        key in map ? { allowed: true, scope: map[key] } : { allowed: false, scope: null },
+      );
+
+    beforeEach(() => {
+      process.env.SIDEBAR_BADGES_CACHE_TTL_MS = '0';
+      perms = { hasPermission: jest.fn() };
+      fanpageToday = { countNeedAction: jest.fn().mockResolvedValue(4) };
+      const none = {} as any;
+      service = new SidebarBadgesService(
+        perms as any,
+        none,
+        none,
+        none,
+        none,
+        { getEpoch: jest.fn().mockResolvedValue(0), get: jest.fn().mockResolvedValue(0) } as any,
+        fanpageToday as any,
+      );
+    });
+
+    afterEach(() => {
+      delete process.env.SIDEBAR_BADGES_CACHE_TTL_MS;
+      jest.restoreAllMocks();
+    });
+
+    it('có fanpages.view -> trả fanpageToDo và truyền đúng người gọi', async () => {
+      grant({ 'fanpages.view': PermissionScope.OWN });
+      expect(await service.getBadges(employee)).toEqual({ fanpageToDo: 4 });
+      expect(fanpageToday.countNeedAction).toHaveBeenCalledWith(employee);
+    });
+
+    it('thiếu fanpages.view -> field vắng mặt và KHÔNG chạy truy vấn đếm', async () => {
+      grant({});
+      expect(await service.getBadges(employee)).toEqual({});
+      expect(fanpageToday.countNeedAction).not.toHaveBeenCalled();
+    });
+
+    it('Root Admin: bypass bảng permission', async () => {
+      grant({});
+      const out = await service.getBadges({ id: 1, role: 'admin', isRootAdmin: true });
+      expect(out.fanpageToDo).toBe(4);
+      expect(perms.hasPermission).not.toHaveBeenCalled();
+    });
+
+    it('đếm lỗi -> không làm hỏng badge khác (field vắng mặt)', async () => {
+      jest.spyOn((service as any).logger, 'warn').mockImplementation();
+      grant({ 'fanpages.view': PermissionScope.ALL });
+      fanpageToday.countNeedAction.mockRejectedValue(new Error('db down'));
+      expect(await service.getBadges(employee)).toEqual({});
+    });
+
+    it('badge = 0 vẫn trả về 0 (FE tự ẩn chấm khi 0)', async () => {
+      grant({ 'fanpages.view': PermissionScope.ALL });
+      fanpageToday.countNeedAction.mockResolvedValue(0);
+      expect(await service.getBadges(employee)).toEqual({ fanpageToDo: 0 });
+    });
+  });
 });
