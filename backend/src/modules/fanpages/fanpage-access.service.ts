@@ -24,6 +24,12 @@ export interface FanpageFlags {
   canDeletePosts: boolean;
   canManageNotes: boolean;
   canDeleteNotes: boolean;
+  /** Nhập/sửa số liệu định kỳ (GĐ4) - key `fanpage_metrics.manage`. */
+  canManageMetrics: boolean;
+  /** Xoá số liệu định kỳ (GĐ4) - key `fanpage_metrics.delete`. */
+  canDeleteMetrics: boolean;
+  /** Xuất Excel (GĐ6) - key `fanpages.export`. */
+  canExport: boolean;
 }
 
 export const FANPAGE_FLAG_KEYS: Array<[keyof FanpageFlags, string]> = [
@@ -33,6 +39,9 @@ export const FANPAGE_FLAG_KEYS: Array<[keyof FanpageFlags, string]> = [
   ['canDeletePosts', 'fanpage_posts.delete'],
   ['canManageNotes', 'fanpage_notes.manage'],
   ['canDeleteNotes', 'fanpage_notes.delete'],
+  ['canManageMetrics', 'fanpage_metrics.manage'],
+  ['canDeleteMetrics', 'fanpage_metrics.delete'],
+  ['canExport', 'fanpages.export'],
 ];
 
 export interface FanpageScopes {
@@ -78,7 +87,7 @@ export class FanpageAccessService {
     return DepartmentManagerHelper.getManagedDepartmentIds(this.fanpageRepo.manager.getRepository(DepartmentManager), userId);
   }
 
-  /** Tra scope của `fanpages.view` + 6 permission hành động 1 LẦN cho cả request (không tra lại theo từng Page). */
+  /** Tra scope của `fanpages.view` + 9 permission hành động 1 LẦN cho cả request (không tra lại theo từng Page). */
   async resolveScopes(user: FanpageCaller): Promise<FanpageScopes> {
     const [view, ...rest] = await Promise.all([
       this.scopeOf(user, 'fanpages.view'),
@@ -117,10 +126,12 @@ export class FanpageAccessService {
     const page = await this.fanpageRepo
       .createQueryBuilder('f')
       .leftJoinAndSelect('f.platform', 'platform')
+      .leftJoin('f.healthStatus', 'health')
+      .addSelect(['health.id', 'health.name', 'health.color', 'health.isBlocking'])
       .leftJoin('f.owner', 'owner')
       .addSelect(['owner.id', 'owner.name', 'owner.employeeCode', 'owner.departmentId'])
       .leftJoin('f.owners', 'owners')
-      .addSelect(['owners.id', 'owners.name', 'owners.employeeCode', 'owners.departmentId'])
+      .addSelect(['owners.id', 'owners.name', 'owners.employeeCode', 'owners.departmentId', 'owners.isActive'])
       .leftJoin('f.createdBy', 'createdBy')
       .addSelect(['createdBy.id', 'createdBy.name'])
       .where('f.id = :id', { id })

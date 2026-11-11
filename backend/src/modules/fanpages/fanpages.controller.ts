@@ -8,21 +8,30 @@ import { FanpagesService } from './fanpages.service';
 import { FanpagePostsService } from './fanpage-posts.service';
 import { FanpageNotesService } from './fanpage-notes.service';
 import { FanpagePlatformsService } from './fanpage-platforms.service';
+import { FanpageHealthStatusesService } from './fanpage-health-statuses.service';
+import { FanpageOverviewService } from './fanpage-overview.service';
+import { FanpageHistoryService } from './fanpage-history.service';
 import { CreateFanpageDto, UpdateFanpageDto, FanpageQueryDto } from './dto/fanpage.dto';
 import { CreateFanpagePostDto, UpdateFanpagePostDto, FanpageNoteDto } from './dto/fanpage-post.dto';
 import { CreateFanpagePlatformDto, UpdateFanpagePlatformDto } from './dto/fanpage-platform.dto';
+import { CreateFanpageHealthStatusDto, UpdateFanpageHealthStatusDto } from './dto/fanpage-health-status.dto';
 import type { FanpageCaller } from './fanpage-access.service';
 
 /**
  * Fanpage (nhân viên tự quản lý Page). MỌI route đều có @RequirePermission; dữ liệu lọc theo scope người phụ trách
- * (own/department/all) ở service. Route tĩnh (`owner-options`) khai TRƯỚC `:id` (Nest khớp theo thứ tự).
+ * (own/department/all) ở service. Route tĩnh (`owner-options`, `overview`) khai TRƯỚC `:id` (Nest khớp theo thứ tự;
+ * ngược lại `ParseIntPipe` bắt chữ "overview" -> 400 - PLAN X18, có spec khoá thứ tự).
  */
 @ApiTags('Fanpages (Page của nhân viên)')
 @ApiBearerAuth()
 @UseGuards(JwtAuthGuard, PermissionGuard)
 @Controller('fanpages')
 export class FanpagesController {
-  constructor(private readonly service: FanpagesService) {}
+  constructor(
+    private readonly service: FanpagesService,
+    private readonly overviewService: FanpageOverviewService,
+    private readonly historyService: FanpageHistoryService,
+  ) {}
 
   @Get()
   @RequirePermission('fanpages.view')
@@ -36,6 +45,13 @@ export class FanpagesController {
   @ApiOperation({ summary: 'Nhân viên có thể được giao Page (theo scope fanpages.edit)' })
   ownerOptions(@GetUser() user: FanpageCaller) {
     return this.service.ownerOptions(user);
+  }
+
+  @Get('overview')
+  @RequirePermission('fanpages.view')
+  @ApiOperation({ summary: 'Số cho thẻ KPI (cùng scope + cùng nguồn nhịp đăng với danh sách)' })
+  overview(@GetUser() user: FanpageCaller) {
+    return this.overviewService.overview(user);
   }
 
   @Post()
@@ -52,9 +68,30 @@ export class FanpagesController {
     return this.service.findOne(id, user);
   }
 
+  @Get(':id/history')
+  @RequirePermission('fanpages.view')
+  @ApiOperation({ summary: 'Lịch sử đổi người phụ trách / tình trạng / theo dõi / lưu trữ của Page' })
+  history(@Param('id', ParseIntPipe) id: number, @GetUser() user: FanpageCaller) {
+    return this.historyService.list(id, user);
+  }
+
+  @Patch(':id/archive')
+  @RequirePermission('fanpages.edit')
+  @ApiOperation({ summary: 'Lưu trữ Page (ẩn khỏi danh sách, ngầm tắt theo dõi, giữ lịch sử)' })
+  archive(@Param('id', ParseIntPipe) id: number, @GetUser() user: FanpageCaller) {
+    return this.service.archive(id, user);
+  }
+
+  @Patch(':id/unarchive')
+  @RequirePermission('fanpages.edit')
+  @ApiOperation({ summary: 'Bỏ lưu trữ Page' })
+  unarchive(@Param('id', ParseIntPipe) id: number, @GetUser() user: FanpageCaller) {
+    return this.service.unarchive(id, user);
+  }
+
   @Patch(':id')
   @RequirePermission('fanpages.edit')
-  @ApiOperation({ summary: 'Sửa Page (tên/link/nền tảng/trạng thái/người phụ trách)' })
+  @ApiOperation({ summary: 'Sửa Page (tên/link/nền tảng/theo dõi/tình trạng/mục tiêu tuần/người phụ trách)' })
   update(@Param('id', ParseIntPipe) id: number, @Body() dto: UpdateFanpageDto, @GetUser() user: FanpageCaller) {
     return this.service.update(id, dto, user);
   }
@@ -187,6 +224,49 @@ export class FanpagePlatformsController {
   @Patch(':id/unlock')
   @RequirePermission('fanpage_platforms.manage')
   @ApiOperation({ summary: 'Mở khoá nền tảng' })
+  unlock(@Param('id', ParseIntPipe) id: number, @GetUser() user: FanpageCaller) {
+    return this.service.unlock(id, user.id);
+  }
+}
+
+@ApiTags('Fanpage - Tình trạng Page')
+@ApiBearerAuth()
+@UseGuards(JwtAuthGuard, PermissionGuard)
+@Controller('fanpage-health-statuses')
+export class FanpageHealthStatusesController {
+  constructor(private readonly service: FanpageHealthStatusesService) {}
+
+  @Get()
+  @RequirePermission('fanpages.view')
+  @ApiOperation({ summary: 'Danh sách tình trạng Page (activeOnly=true -> chỉ tình trạng chưa khoá)' })
+  findAll(@Query('activeOnly') activeOnly?: string) {
+    return this.service.findAll(activeOnly === 'true');
+  }
+
+  @Post()
+  @RequirePermission('fanpage_statuses.manage')
+  @ApiOperation({ summary: 'Thêm tình trạng Page' })
+  create(@Body() dto: CreateFanpageHealthStatusDto, @GetUser() user: FanpageCaller) {
+    return this.service.create(dto, user.id);
+  }
+
+  @Patch(':id')
+  @RequirePermission('fanpage_statuses.manage')
+  @ApiOperation({ summary: 'Sửa tên/màu/thứ tự/cờ ngưng hoạt động của tình trạng' })
+  update(@Param('id', ParseIntPipe) id: number, @Body() dto: UpdateFanpageHealthStatusDto, @GetUser() user: FanpageCaller) {
+    return this.service.update(id, dto, user.id);
+  }
+
+  @Patch(':id/lock')
+  @RequirePermission('fanpage_statuses.manage')
+  @ApiOperation({ summary: 'Khoá tình trạng (không chọn được cho Page; không khoá được dòng mặc định)' })
+  lock(@Param('id', ParseIntPipe) id: number, @GetUser() user: FanpageCaller) {
+    return this.service.lock(id, user.id);
+  }
+
+  @Patch(':id/unlock')
+  @RequirePermission('fanpage_statuses.manage')
+  @ApiOperation({ summary: 'Mở khoá tình trạng' })
   unlock(@Param('id', ParseIntPipe) id: number, @GetUser() user: FanpageCaller) {
     return this.service.unlock(id, user.id);
   }

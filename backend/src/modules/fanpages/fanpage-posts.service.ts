@@ -1,4 +1,4 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { ConflictException, Injectable, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { FanpagePost } from '../../database/entities/fanpage-post.entity';
@@ -6,8 +6,12 @@ import { AuditService } from '../audit/audit.service';
 import { CreateFanpagePostDto, UpdateFanpagePostDto } from './dto/fanpage-post.dto';
 import { FanpageAccessService, FanpageCaller } from './fanpage-access.service';
 import { normalizeFanpageUrl } from './fanpages.service';
+import { postUrlKey } from './helpers/fanpage-url.helper';
 
 const blankToNull = (v: string | null | undefined): string | null => (v == null || v.trim() === '' ? null : v.trim());
+
+/** 'YYYY-MM-DD' -> 'DD/MM/YYYY' cho thông báo lỗi (không đi qua Date -> không dính múi giờ). */
+const fmtVnDate = (d: string): string => d.split('-').reverse().join('/');
 
 @Injectable()
 export class FanpagePostsService {
@@ -40,6 +44,7 @@ export class FanpagePostsService {
 
     async create(fanpageId: number, dto: CreateFanpagePostDto, user: FanpageCaller): Promise<FanpagePost> {
         await this.access.assertPageAccess(user, 'fanpage_posts.manage', fanpageId, 'Bạn không có quyền thêm bài đăng cho Page này');
+        await this.assertPostUrlFree(fanpageId, dto.url);
         const saved = await this.repo.save(
             this.repo.create({
                 fanpageId,
@@ -66,7 +71,11 @@ export class FanpagePostsService {
         const before = { url: post.url, title: post.title, postedDate: post.postedDate, note: post.note };
 
         const patch: Partial<FanpagePost> = {};
-        if (dto.url !== undefined) patch.url = normalizeFanpageUrl(dto.url);
+        if (dto.url !== undefined) {
+            // Chỉ kiểm tra trùng khi link THỰC SỰ đổi (so theo khoá chuẩn hoá) - sửa ngày/ghi chú không bị chặn bởi dữ liệu cũ trùng sẵn.
+            if (postUrlKey(dto.url) !== postUrlKey(post.url)) await this.assertPostUrlFree(fanpageId, dto.url, postId);
+            patch.url = normalizeFanpageUrl(dto.url);
+        }
         if (dto.title !== undefined) patch.title = blankToNull(dto.title);
         if (dto.postedDate !== undefined) patch.postedDate = dto.postedDate;
         if (dto.note !== undefined) patch.note = blankToNull(dto.note);
@@ -85,6 +94,26 @@ export class FanpagePostsService {
         await this.repo.delete(postId);
         this.auditService.logActionAsync(user.id, 'DELETE_FANPAGE_POST', 'fanpage_post', postId, snap, null);
         return { deleted: true };
+    }
+
+    /**
+     * Chống trùng URL bài trong CÙNG Page (PLAN 6.4, A5): so theo khoá đã chuẩn hoá (bỏ #fragment, tham số theo dõi,
+     * www/m., http/https, `/` cuối). Chỉ chặn ở service - KHÔNG thêm UNIQUE DB vì dữ liệu cũ có thể đã trùng.
+     * 409 kèm `code` + `existingPostId` + `existingPostedDate` để FE hỏi "mở bài đó?".
+     */
+    private async assertPostUrlFree(fanpageId: number, url: string, exceptPostId?: number): Promise<void> {
+        const key = postUrlKey(url);
+        const rows = await this.repo.find({ where: { fanpageId }, select: ['id', 'url', 'postedDate'] });
+        const dup = rows.find((r) => r.id !== exceptPostId && postUrlKey(r.url) === key);
+        if (!dup) return;
+        throw new ConflictException({
+            code: 'FANPAGE_POST_DUPLICATE',
+            message: dup.postedDate
+                ? `Link này đã có ở bài ngày ${fmtVnDate(dup.postedDate)}`
+                : 'Link này đã có ở một bài khác của Page (bài chưa có ngày đăng)',
+            existingPostId: dup.id,
+            existingPostedDate: dup.postedDate ?? null,
+        });
     }
 
     /** Bài đăng PHẢI thuộc đúng Page trên URL - chặn sửa/xoá chéo Page qua ID đoán mò. */

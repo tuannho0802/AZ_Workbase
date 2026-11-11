@@ -1,8 +1,12 @@
-import { IsString, IsNotEmpty, Length, IsOptional, IsInt, IsBoolean, IsUrl, IsIn, IsArray, ArrayMinSize, ArrayMaxSize, ArrayUnique } from 'class-validator';
+import { IsString, IsNotEmpty, Length, IsOptional, IsInt, IsBoolean, IsUrl, IsIn, IsArray, ArrayMinSize, ArrayMaxSize, ArrayUnique, Min, Max } from 'class-validator';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { Type } from 'class-transformer';
+import { Type, Transform } from 'class-transformer';
 
 const MAX_OWNERS = 20;
+export const MAX_TARGET_POSTS_PER_WEEK = 35;
+
+/** ''/null -> null (xoá mục tiêu), còn lại ép số; để @IsInt/@Min/@Max bắt giá trị sai. */
+const toNullableNumber = ({ value }: { value: unknown }) => (value === null || value === '' ? null : Number(value));
 const URL_OPTS = { require_protocol: true, protocols: ['http', 'https'], require_tld: true };
 
 export class CreateFanpageDto {
@@ -32,6 +36,26 @@ export class CreateFanpageDto {
     @Type(() => Number)
     @IsInt({ each: true, message: 'Người phụ trách không hợp lệ' })
     ownerIds?: number[];
+
+    @ApiPropertyOptional({ description: 'Tình trạng Page (danh mục fanpage-health-statuses). Bỏ trống khi tạo = tình trạng mặc định' })
+    @IsOptional()
+    @Type(() => Number)
+    @IsInt({ message: 'Tình trạng Page không hợp lệ' })
+    healthStatusId?: number;
+
+    @ApiPropertyOptional({ description: 'Ghi chú ngắn về tình trạng (lý do bị hạn chế/khoá...). null/"" = xoá ghi chú' })
+    @IsOptional()
+    @IsString()
+    @Length(0, 255, { message: 'Ghi chú tình trạng tối đa 255 ký tự' })
+    healthNote?: string | null;
+
+    @ApiPropertyOptional({ description: `Mục tiêu số bài/tuần (1-${MAX_TARGET_POSTS_PER_WEEK}); null = không đặt mục tiêu` })
+    @IsOptional()
+    @Transform(toNullableNumber)
+    @IsInt({ message: 'Mục tiêu bài/tuần phải là số nguyên' })
+    @Min(1, { message: 'Mục tiêu bài/tuần tối thiểu là 1' })
+    @Max(MAX_TARGET_POSTS_PER_WEEK, { message: `Mục tiêu bài/tuần tối đa là ${MAX_TARGET_POSTS_PER_WEEK}` })
+    targetPostsPerWeek?: number | null;
 }
 
 export class UpdateFanpageDto {
@@ -65,6 +89,26 @@ export class UpdateFanpageDto {
     @IsInt({ each: true, message: 'Người phụ trách không hợp lệ' })
     ownerIds?: number[];
 
+    @ApiPropertyOptional({ description: 'Tình trạng Page (danh mục fanpage-health-statuses). Bỏ trống khi tạo = tình trạng mặc định' })
+    @IsOptional()
+    @Type(() => Number)
+    @IsInt({ message: 'Tình trạng Page không hợp lệ' })
+    healthStatusId?: number;
+
+    @ApiPropertyOptional({ description: 'Ghi chú ngắn về tình trạng (lý do bị hạn chế/khoá...). null/"" = xoá ghi chú' })
+    @IsOptional()
+    @IsString()
+    @Length(0, 255, { message: 'Ghi chú tình trạng tối đa 255 ký tự' })
+    healthNote?: string | null;
+
+    @ApiPropertyOptional({ description: `Mục tiêu số bài/tuần (1-${MAX_TARGET_POSTS_PER_WEEK}); null = không đặt mục tiêu` })
+    @IsOptional()
+    @Transform(toNullableNumber)
+    @IsInt({ message: 'Mục tiêu bài/tuần phải là số nguyên' })
+    @Min(1, { message: 'Mục tiêu bài/tuần tối thiểu là 1' })
+    @Max(MAX_TARGET_POSTS_PER_WEEK, { message: `Mục tiêu bài/tuần tối đa là ${MAX_TARGET_POSTS_PER_WEEK}` })
+    targetPostsPerWeek?: number | null;
+
     @ApiPropertyOptional({ description: 'false = ngừng theo dõi' })
     @IsOptional()
     @IsBoolean()
@@ -94,4 +138,25 @@ export class FanpageQueryDto {
     @IsString()
     @Length(0, 100)
     search?: string;
+
+    @ApiPropertyOptional({ description: 'Lọc theo Tình trạng Page' })
+    @IsOptional()
+    @Type(() => Number)
+    @IsInt()
+    healthStatusId?: number;
+
+    @ApiPropertyOptional({ enum: ['paused', 'new', 'silent', 'at_risk', 'ok'], description: 'Lọc theo trạng thái nhịp đăng' })
+    @IsOptional()
+    @IsIn(['paused', 'new', 'silent', 'at_risk', 'ok'])
+    cadence?: 'paused' | 'new' | 'silent' | 'at_risk' | 'ok';
+
+    @ApiPropertyOptional({ enum: ['false', 'true', 'all'], description: 'Page đã lưu trữ: false (mặc định) = ẩn, true = chỉ đã lưu trữ, all = cả hai' })
+    @IsOptional()
+    @IsIn(['false', 'true', 'all'])
+    archived?: 'false' | 'true' | 'all';
+
+    @ApiPropertyOptional({ enum: ['true'], description: 'true = chỉ Page "mồ côi" (không còn người phụ trách đang hoạt động)' })
+    @IsOptional()
+    @IsIn(['true'])
+    orphan?: 'true';
 }

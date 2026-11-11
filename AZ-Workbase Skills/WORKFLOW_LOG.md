@@ -8287,3 +8287,20 @@ Now [deploy]
 > - CHƯA làm: chạy migration trên DB thật, click-through trình duyệt (SQL subquery `fanpage_owners` chưa chạy trên MySQL thật).
 
 ---
+
+## [2026-11-11 16:00] | PLAN_FANPAGE_ANALYTICS GĐ0–1 (BE nền tảng + luật nhịp đăng) | [Status: Success]
+
+**Actor:** Agent
+**Files Changed:**
+- `backend/src/database/migrations/1786390000000-AddFanpageCadenceHealthArchive.ts`, `1786391000000-SeedFanpageAnalyticsPermissions.ts` (mới) — cột nhịp đăng/tình trạng/lưu trữ, bảng `fanpage_health_statuses` (+seed/backfill), 8 permission + setting `fanpage.silent_days`
+- `database/entities/{fanpage,fanpage-platform,fanpage-health-status}.entity.ts` — cột mới + FK `FK_fanpages_health_status` đặt tên tường minh
+- `modules/fanpages/helpers/{fanpage-cadence,fanpage-url}.helper.ts` (+spec) — luật 5 trạng thái, tuần T2–CN, streak, chuẩn hoá URL/nhận nền tảng
+- `modules/fanpages/{fanpage-insights,fanpage-scoped-query,fanpage-overview,fanpage-history,fanpage-health-statuses,fanpage-settings}.service|ts` (+spec) — truy vấn gộp 2 SQL/lô 500 Page, 1 nguồn scope/lọc, `GET /fanpages/overview`, `/:id/history`, `PATCH /:id/archive|unarchive`, CRUD `fanpage-health-statuses`
+- `fanpages.service|controller|module`, `fanpage-posts.service` (409 trùng URL bài), `fanpage-access.service` (3 flag mới), DTO
+
+**Notes:**
+> - Verify thật: `tsc` sạch, `nest build` OK, jest 174 suite / 2800 test pass. Migration 2 file chạy trên MariaDB 10.11 thật: up → idempotent → down → up OK. SQL gộp (insights/scope/orphan/archived/LIKE-escape) chạy trên DB thật với dữ liệu mẫu, khớp kỳ vọng.
+> - Lưu ý: chuỗi migration cũ KHÔNG chạy được trên DB trống (`DROP INDEX IDX_88acd889...` ở migration lịch sử) — có sẵn từ trước, không thuộc GĐ này.
+> - CHƯA làm: GĐ2+ (FE), chạy migration lên DB production (để người dùng tự chạy `migration:run`), cập nhật `PERMISSIONS.md` cho 8 key mới.
+
+---

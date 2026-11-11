@@ -1,13 +1,16 @@
 import { Injectable, BadRequestException, ConflictException, ForbiddenException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Brackets, In, Repository } from 'typeorm';
+import { In, Repository } from 'typeorm';
 import { Fanpage } from '../../database/entities/fanpage.entity';
 import { FanpagePlatform } from '../../database/entities/fanpage-platform.entity';
+import { FanpageHealthStatus } from '../../database/entities/fanpage-health-status.entity';
 import { User } from '../../database/entities/user.entity';
 import { AuditService } from '../audit/audit.service';
 import { CreateFanpageDto, UpdateFanpageDto, FanpageQueryDto } from './dto/fanpage.dto';
 import { FanpageAccessHelper } from './helpers/fanpage-access.helper';
 import { FanpageAccessService, FanpageCaller, FanpageFlags, FanpageScopes } from './fanpage-access.service';
+import { FanpageScopedQuery, requireViewScope } from './fanpage-scoped-query';
+import { FanpageInsightsService, PageInsights } from './fanpage-insights.service';
 
 export interface OwnerOption {
     id: number;
@@ -19,7 +22,14 @@ export interface OwnerOption {
 /** Chuẩn hoá link để chống trùng "có/không dấu / cuối": cắt khoảng trắng + bỏ dấu / ở cuối. */
 export const normalizeFanpageUrl = (raw: string): string => raw.trim().replace(/\/+$/, '');
 
-const escapeLike = (s: string): string => s.replace(/[\\%_]/g, '\\$&');
+const blankToNull = (v: string | null | undefined): string | null => (v == null || v.trim() === '' ? null : v.trim());
+
+/** Trường Page trả về FE: cột gốc (trừ quan hệ `healthStatus`, đổi tên thành `health`) + cờ quyền + nhịp đăng/đếm bài. */
+export type FanpageView = Omit<Fanpage, 'healthStatus'> &
+    PageInsights & {
+        flags: FanpageFlags;
+        health: { id: number; name: string; color: string; isBlocking: boolean } | null;
+    };
 
 const isDuplicateKey = (err: unknown): boolean =>
     typeof err === 'object' && err !== null && ((err as { code?: string }).code === 'ER_DUP_ENTRY' || (err as { errno?: number }).errno === 1062);
@@ -32,6 +42,10 @@ const snapshot = (p: Fanpage) => ({
     ownerId: p.ownerId,
     ownerIds: (p.owners ?? []).map((o) => o.id),
     isActive: p.isActive,
+    healthStatusId: p.healthStatusId ?? null,
+    healthNote: p.healthNote ?? null,
+    targetPostsPerWeek: p.targetPostsPerWeek ?? null,
+    isArchived: p.archivedAt != null,
 });
 
 @Injectable()
@@ -41,65 +55,33 @@ export class FanpagesService {
         private readonly repo: Repository<Fanpage>,
         @InjectRepository(FanpagePlatform)
         private readonly platformRepo: Repository<FanpagePlatform>,
+        @InjectRepository(FanpageHealthStatus)
+        private readonly healthRepo: Repository<FanpageHealthStatus>,
         @InjectRepository(User)
         private readonly userRepo: Repository<User>,
         private readonly access: FanpageAccessService,
         private readonly auditService: AuditService,
+        private readonly scoped: FanpageScopedQuery,
+        private readonly insights: FanpageInsightsService,
     ) { }
 
     // ───────────── Danh sách / chi tiết ─────────────
 
     async list(user: FanpageCaller, q: FanpageQueryDto) {
         const scopes = await this.access.resolveScopes(user);
-        const view = scopes.view;
-        if (view !== 'own' && view !== 'department' && view !== 'all') {
-            throw new ForbiddenException('Bạn không có quyền xem Fanpage');
-        }
+        requireViewScope(scopes);
 
-        const qb = this.repo
-            .createQueryBuilder('f')
-            .leftJoinAndSelect('f.platform', 'platform')
-            .leftJoin('f.owner', 'owner')
-            .addSelect(['owner.id', 'owner.name', 'owner.employeeCode', 'owner.departmentId'])
-            .leftJoin('f.owners', 'owners')
-            .addSelect(['owners.id', 'owners.name', 'owners.employeeCode', 'owners.departmentId'])
-            .loadRelationCountAndMap('f.postCount', 'f.posts')
-            .loadRelationCountAndMap('f.noteCount', 'f.notes');
+        // 1 nguồn scope + lọc SQL dùng chung với overview/today/stats/export (FanpageScopedQuery - PLAN 6.2, X3).
+        // `cadence` cần số liệu bài nên lọc SAU khi tính insights (cùng nguồn `cadence.state` với thẻ KPI - X2).
+        const { cadence, ...sqlFilters } = q;
+        const pages = await this.scoped.load(user, scopes, sqlFilters);
+        const insights = await this.insights.forPages(pages);
 
-        // 1 nguồn áp scope duy nhất cho danh sách (cùng quy tắc với FanpageAccessHelper.allows).
-        // Nhiều người phụ trách: lọc bằng subquery trên bảng nối (KHÔNG lọc theo alias `owners` đã join để
-        // danh sách người phụ trách trả về vẫn đủ, không bị cắt chỉ còn người khớp điều kiện).
-        if (view === 'own') {
-            qb.andWhere('f.id IN (SELECT fo.fanpage_id FROM fanpage_owners fo WHERE fo.user_id = :uid)', { uid: user.id });
-        } else if (view === 'department') {
-            qb.andWhere(
-                new Brackets((b) => {
-                    b.where('f.id IN (SELECT fo.fanpage_id FROM fanpage_owners fo WHERE fo.user_id = :uid)', { uid: user.id });
-                    if (scopes.managed.length) {
-                        b.orWhere(
-                            'f.id IN (SELECT fo2.fanpage_id FROM fanpage_owners fo2 INNER JOIN users ou ON ou.id = fo2.user_id WHERE ou.department_id IN (:...managed))',
-                            { managed: scopes.managed },
-                        );
-                    }
-                }),
-            );
-        }
-
-        if (q.platformId != null) qb.andWhere('f.platformId = :platformId', { platformId: q.platformId });
-        if (q.ownerId != null) {
-            qb.andWhere('f.id IN (SELECT fo3.fanpage_id FROM fanpage_owners fo3 WHERE fo3.user_id = :ownerId)', { ownerId: q.ownerId });
-        }
-        // BooleanTransformer KHÔNG chạy trong QueryBuilder.where -> truyền thẳng 1/0 (SKILL_NESTJS_BACKEND mục 10).
-        if (q.isActive) qb.andWhere('f.isActive = :act', { act: q.isActive === 'true' ? 1 : 0 });
-        if (q.search?.trim()) {
-            qb.andWhere('(f.name LIKE :s OR f.url LIKE :s)', { s: `%${escapeLike(q.search.trim())}%` });
-        }
-
-        qb.orderBy('f.isActive', 'DESC').addOrderBy('f.updatedAt', 'DESC').addOrderBy('f.id', 'DESC').addOrderBy('owners.name', 'ASC');
-        const rows = await qb.getMany();
+        let rows = pages.map((p) => this.present(p, user, scopes, insights.get(p.id) as PageInsights));
+        if (cadence) rows = rows.filter((r) => r.cadence.state === cadence);
 
         return {
-            data: rows.map((p) => this.present(p, user, scopes)),
+            data: rows,
             capabilities: {
                 canCreate: await this.access.hasBinary(user, 'fanpages.create'),
                 canAssignOwner: FanpageAccessHelper.canAssignOwner(scopes.flagScopes.canEdit),
@@ -109,12 +91,22 @@ export class FanpagesService {
 
     async findOne(id: number, user: FanpageCaller) {
         const page = await this.access.assertPageAccess(user, 'fanpages.view', id, 'Bạn không có quyền xem Page này');
-        return this.present(page, user, await this.access.resolveScopes(user));
+        return this.presentOne(page, user, await this.access.resolveScopes(user));
     }
 
-    /** Gắn cờ quyền theo Page. Không lộ trường nhạy cảm của User (đã giới hạn cột ở loadPage/list). */
-    private present(page: Fanpage, user: FanpageCaller, scopes: FanpageScopes): Fanpage & { flags: FanpageFlags } {
-        return Object.assign(page, { flags: this.access.flagsFor(page, user.id, scopes) });
+    /** Gắn cờ quyền + nhịp đăng theo Page. Không lộ trường nhạy cảm của User (đã giới hạn cột ở loadPage/list). */
+    private present(page: Fanpage, user: FanpageCaller, scopes: FanpageScopes, insights: PageInsights): FanpageView {
+        const { healthStatus, ...rest } = page;
+        const health = healthStatus
+            ? { id: healthStatus.id, name: healthStatus.name, color: healthStatus.color, isBlocking: healthStatus.isBlocking }
+            : null;
+        return { ...rest, ...insights, health, flags: this.access.flagsFor(page, user.id, scopes) };
+    }
+
+    /** Như `present` nhưng tự tính insights cho 1 Page (tạo/sửa/chi tiết/lưu trữ). */
+    private async presentOne(page: Fanpage, user: FanpageCaller, scopes: FanpageScopes): Promise<FanpageView> {
+        const insights = (await this.insights.forPages([page])).get(page.id) as PageInsights;
+        return this.present(page, user, scopes, insights);
     }
 
     // ───────────── Tạo / sửa / xoá ─────────────
@@ -124,6 +116,14 @@ export class FanpagesService {
         const ownerIds = await this.resolveOwnersForCreate(dto.ownerIds, user);
         const url = normalizeFanpageUrl(dto.url);
         await this.assertUrlFree(url);
+        // Tình trạng: chọn rõ thì phải dùng được; bỏ trống = dòng mặc định (nếu đã seed).
+        let healthStatusId: number | null;
+        if (dto.healthStatusId != null) {
+            await this.assertHealthUsable(dto.healthStatusId);
+            healthStatusId = dto.healthStatusId;
+        } else {
+            healthStatusId = (await this.healthRepo.findOne({ where: { isDefault: true }, select: ['id'], order: { id: 'ASC' } }))?.id ?? null;
+        }
 
         let saved: Fanpage;
         try {
@@ -135,6 +135,9 @@ export class FanpagesService {
                     ownerId: ownerIds[0],
                     owners: ownerIds.map((id) => ({ id }) as User),
                     isActive: true,
+                    healthStatusId,
+                    healthNote: blankToNull(dto.healthNote),
+                    targetPostsPerWeek: dto.targetPostsPerWeek ?? null,
                     createdById: user.id,
                 }),
             );
@@ -146,7 +149,7 @@ export class FanpagesService {
         this.auditService.logActionAsync(user.id, 'CREATE_FANPAGE', 'fanpage', saved.id, null, snapshot(fresh));
 
         // Trả kèm cờ quyền, KHÔNG đòi người tạo có fanpages.view (đã có fanpages.create là đủ để nhận kết quả).
-        return this.present(fresh, user, await this.access.resolveScopes(user));
+        return this.presentOne(fresh, user, await this.access.resolveScopes(user));
     }
 
     async update(id: number, dto: UpdateFanpageDto, user: FanpageCaller) {
@@ -156,12 +159,29 @@ export class FanpagesService {
         if (!FanpageAccessHelper.allows(editScope, this.access.buildContext(page, user.id, scopes.managed))) {
             throw new ForbiddenException('Bạn không có quyền sửa Page này');
         }
+        // Page đã lưu trữ là bản ghi đóng: phải bỏ lưu trữ trước khi sửa (tránh sửa nhầm trên Page ẩn khỏi danh sách).
+        if (page.archivedAt != null) throw new ConflictException('Page này đã được lưu trữ - hãy bỏ lưu trữ trước khi chỉnh sửa');
 
         const before = snapshot(page);
-        const patch: Partial<Pick<Fanpage, 'platformId' | 'name' | 'url' | 'ownerId' | 'isActive'>> = {};
+        const patch: Partial<
+            Pick<Fanpage, 'platformId' | 'name' | 'url' | 'ownerId' | 'isActive' | 'healthStatusId' | 'healthNote' | 'healthChangedAt' | 'targetPostsPerWeek'>
+        > = {};
 
         if (dto.name !== undefined && dto.name.trim() !== page.name) patch.name = dto.name.trim();
         if (dto.isActive !== undefined && dto.isActive !== page.isActive) patch.isActive = dto.isActive;
+
+        if (dto.healthStatusId !== undefined && dto.healthStatusId !== page.healthStatusId) {
+            await this.assertHealthUsable(dto.healthStatusId);
+            patch.healthStatusId = dto.healthStatusId;
+            patch.healthChangedAt = new Date();
+        }
+        if (dto.healthNote !== undefined) {
+            const note = blankToNull(dto.healthNote);
+            if (note !== (page.healthNote ?? null)) patch.healthNote = note;
+        }
+        if (dto.targetPostsPerWeek !== undefined && dto.targetPostsPerWeek !== (page.targetPostsPerWeek ?? null)) {
+            patch.targetPostsPerWeek = dto.targetPostsPerWeek;
+        }
 
         if (dto.platformId !== undefined && dto.platformId !== page.platformId) {
             await this.assertPlatformUsable(dto.platformId);
@@ -201,7 +221,7 @@ export class FanpagesService {
             }
         }
 
-        if (Object.keys(patch).length === 0) return this.present(page, user, scopes);
+        if (Object.keys(patch).length === 0) return this.presentOne(page, user, scopes);
 
         // repo.update (không save) để KHÔNG dính bẫy "relation đã nạp đè lên cột ID" của TypeORM
         // (SKILL_NESTJS_BACKEND mục 13) - `platform`/`owner` đang được nạp sẵn trong `page`.
@@ -220,7 +240,34 @@ export class FanpagesService {
         }
         const fresh = await this.access.loadPage(id);
         this.auditService.logActionAsync(user.id, 'UPDATE_FANPAGE', 'fanpage', id, before, snapshot(fresh));
-        return this.present(fresh, user, scopes);
+        return this.presentOne(fresh, user, scopes);
+    }
+
+    // ───────────── Lưu trữ / bỏ lưu trữ ─────────────
+
+    /**
+     * Lưu trữ = đóng hẳn Page: ẩn khỏi danh sách mặc định, NGẦM đặt `is_active = false`, giữ nguyên toàn bộ lịch sử.
+     * Quyền = `fanpages.edit` phủ tới Page (không tạo key riêng - PLAN mục 7). Ghi audit để timeline đọc được.
+     */
+    async archive(id: number, user: FanpageCaller) {
+        const page = await this.access.assertPageAccess(user, 'fanpages.edit', id, 'Bạn không có quyền lưu trữ Page này');
+        if (page.archivedAt != null) throw new ConflictException('Page này đã được lưu trữ');
+        const before = snapshot(page);
+        await this.repo.update(id, { archivedAt: new Date(), isActive: false });
+        const fresh = await this.access.loadPage(id);
+        this.auditService.logActionAsync(user.id, 'ARCHIVE_FANPAGE', 'fanpage', id, before, snapshot(fresh));
+        return this.presentOne(fresh, user, await this.access.resolveScopes(user));
+    }
+
+    /** Bỏ lưu trữ: Page quay lại danh sách và được theo dõi lại (`is_active = true`); người dùng có thể tắt theo dõi sau. */
+    async unarchive(id: number, user: FanpageCaller) {
+        const page = await this.access.assertPageAccess(user, 'fanpages.edit', id, 'Bạn không có quyền bỏ lưu trữ Page này');
+        if (page.archivedAt == null) throw new ConflictException('Page này chưa được lưu trữ');
+        const before = snapshot(page);
+        await this.repo.update(id, { archivedAt: null, isActive: true });
+        const fresh = await this.access.loadPage(id);
+        this.auditService.logActionAsync(user.id, 'UNARCHIVE_FANPAGE', 'fanpage', id, before, snapshot(fresh));
+        return this.presentOne(fresh, user, await this.access.resolveScopes(user));
     }
 
     async remove(id: number, user: FanpageCaller): Promise<{ deleted: true }> {
@@ -291,6 +338,13 @@ export class FanpagesService {
         const platform = await this.platformRepo.findOne({ where: { id: platformId } });
         if (!platform) throw new BadRequestException('Nền tảng không tồn tại');
         if (!platform.isActive) throw new BadRequestException(`Nền tảng "${platform.name}" đã bị khoá, hãy chọn nền tảng khác`);
+    }
+
+    /** Tình trạng phải tồn tại và chưa khoá (đổi sang chính tình trạng đang dùng thì không đi qua đây). */
+    private async assertHealthUsable(healthStatusId: number): Promise<void> {
+        const status = await this.healthRepo.findOne({ where: { id: healthStatusId } });
+        if (!status) throw new BadRequestException('Tình trạng Page không tồn tại');
+        if (status.isLocked) throw new BadRequestException(`Tình trạng "${status.name}" đã bị khoá, hãy chọn tình trạng khác`);
     }
 
     private async assertUrlFree(url: string, exceptId?: number): Promise<void> {

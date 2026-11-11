@@ -16,6 +16,7 @@ import { User } from './user.entity';
 import { FanpagePlatform } from './fanpage-platform.entity';
 import { FanpagePost } from './fanpage-post.entity';
 import { FanpageNote } from './fanpage-note.entity';
+import { FanpageHealthStatus } from './fanpage-health-status.entity';
 
 /**
  * 1 Page/kênh của nhân viên (1 link = 1 Page). Mỗi nhân viên có nhiều Page, mỗi Page thuộc 1 nền tảng.
@@ -26,6 +27,8 @@ import { FanpageNote } from './fanpage-note.entity';
 @Index('UQ_fanpages_url', ['url'], { unique: true })
 @Index('IDX_fanpages_owner', ['ownerId'])
 @Index('IDX_fanpages_platform', ['platformId'])
+@Index('IDX_fanpages_health', ['healthStatusId'])
+@Index('IDX_fanpages_archived', ['archivedAt'])
 export class Fanpage {
     @PrimaryGeneratedColumn()
     id: number;
@@ -61,6 +64,28 @@ export class Fanpage {
     // false = ngừng theo dõi (vẫn giữ lịch sử bài đăng/ghi chú).
     @Column({ name: 'is_active', type: 'tinyint', default: 1, transformer: new BooleanTransformer() })
     isActive: boolean;
+
+    // Mục tiêu số bài/tuần (1-35); null = không đặt mục tiêu -> không có trạng thái `at_risk` (PLAN 3.2).
+    @Column({ name: 'target_posts_per_week', type: 'tinyint', unsigned: true, nullable: true, default: null })
+    targetPostsPerWeek: number | null;
+
+    // Tình trạng thực của Page (danh mục động). null = chưa có (coi như không chặn).
+    @Column({ name: 'health_status_id', type: 'int', nullable: true, default: null })
+    healthStatusId: number | null;
+
+    @ManyToOne(() => FanpageHealthStatus, (h) => h.fanpages, { nullable: true, onDelete: 'SET NULL' })
+    @JoinColumn({ name: 'health_status_id', foreignKeyConstraintName: 'FK_fanpages_health_status' })
+    healthStatus: FanpageHealthStatus | null;
+
+    @Column({ name: 'health_note', type: 'varchar', length: 255, nullable: true, default: null })
+    healthNote: string | null;
+
+    @Column({ name: 'health_changed_at', type: 'timestamp', nullable: true, default: null })
+    healthChangedAt: Date | null;
+
+    // Đã lưu trữ (ẩn khỏi danh sách mặc định, ngầm is_active = false, giữ nguyên lịch sử). null = chưa lưu trữ.
+    @Column({ name: 'archived_at', type: 'timestamp', nullable: true, default: null })
+    archivedAt: Date | null;
 
     @Column({ name: 'created_by_id', type: 'int', nullable: true, default: null })
     createdById: number | null;

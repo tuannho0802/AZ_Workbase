@@ -18,6 +18,10 @@ export class FanpagePlatform {
     @Column({ type: 'varchar', length: 20, default: '#1677ff' })
     color: string;
 
+    // Danh sách domain phân tách bằng dấu phẩy (vd 'facebook.com,fb.com') - dùng tự nhận nền tảng từ link. null = không nhận.
+    @Column({ name: 'url_domains', type: 'varchar', length: 255, nullable: true, default: null })
+    urlDomains: string | null;
+
     @Column({ name: 'is_active', type: 'tinyint', default: 1, transformer: new BooleanTransformer() })
     isActive: boolean;
 

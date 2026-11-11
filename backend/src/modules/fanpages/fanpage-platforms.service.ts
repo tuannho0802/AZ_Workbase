@@ -4,6 +4,7 @@ import { Repository } from 'typeorm';
 import { FanpagePlatform } from '../../database/entities/fanpage-platform.entity';
 import { AuditService } from '../audit/audit.service';
 import { CreateFanpagePlatformDto, UpdateFanpagePlatformDto } from './dto/fanpage-platform.dto';
+import { normalizeUrlDomains } from './helpers/fanpage-url.helper';
 
 @Injectable()
 export class FanpagePlatformsService {
@@ -28,7 +29,12 @@ export class FanpagePlatformsService {
     async create(dto: CreateFanpagePlatformDto, callerId: number): Promise<FanpagePlatform> {
         await this.assertNameFree(dto.name.trim());
         const saved = await this.repo.save(
-            this.repo.create({ name: dto.name.trim(), color: dto.color ?? '#1677ff', sortOrder: dto.sortOrder ?? 0 }),
+            this.repo.create({
+                name: dto.name.trim(),
+                color: dto.color ?? '#1677ff',
+                sortOrder: dto.sortOrder ?? 0,
+                urlDomains: normalizeUrlDomains(dto.urlDomains),
+            }),
         );
         this.auditService.logActionAsync(callerId, 'CREATE_FANPAGE_PLATFORM', 'fanpage_platform', saved.id, null, saved);
         return saved;
@@ -43,6 +49,7 @@ export class FanpagePlatformsService {
         }
         if (dto.color !== undefined) platform.color = dto.color;
         if (dto.sortOrder !== undefined) platform.sortOrder = dto.sortOrder;
+        if (dto.urlDomains !== undefined) platform.urlDomains = normalizeUrlDomains(dto.urlDomains);
         const saved = await this.repo.save(platform);
         this.auditService.logActionAsync(callerId, 'UPDATE_FANPAGE_PLATFORM', 'fanpage_platform', id, before, saved);
         return saved;

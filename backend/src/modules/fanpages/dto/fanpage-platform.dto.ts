@@ -19,6 +19,12 @@ export class CreateFanpagePlatformDto {
     @Type(() => Number)
     @IsInt()
     sortOrder?: number;
+
+    @ApiPropertyOptional({ example: 'facebook.com,fb.com', description: 'Domain phân tách bằng dấu phẩy - dùng tự nhận nền tảng khi dán link; "" = xoá' })
+    @IsOptional()
+    @IsString()
+    @Length(0, 255, { message: 'Danh sách domain tối đa 255 ký tự' })
+    urlDomains?: string | null;
 }
 
 export class UpdateFanpagePlatformDto {
@@ -39,4 +45,10 @@ export class UpdateFanpagePlatformDto {
     @Type(() => Number)
     @IsInt()
     sortOrder?: number;
+
+    @ApiPropertyOptional({ example: 'facebook.com,fb.com', description: 'Domain phân tách bằng dấu phẩy - dùng tự nhận nền tảng khi dán link; "" = xoá' })
+    @IsOptional()
+    @IsString()
+    @Length(0, 255, { message: 'Danh sách domain tối đa 255 ký tự' })
+    urlDomains?: string | null;
 }
