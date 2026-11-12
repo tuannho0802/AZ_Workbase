@@ -10,6 +10,7 @@ import {
 } from 'typeorm';
 import { User } from './user.entity';
 import { Fanpage } from './fanpage.entity';
+import { FanpagePostType } from './fanpage-post-type.entity';
 
 /** Bài đăng của 1 Page - nhân viên tự ghi tay (title tuỳ chọn, URL bài đăng bắt buộc, note tuỳ chọn). */
 @Entity('fanpage_posts')
@@ -53,6 +54,14 @@ export class FanpagePost {
 
     @Column({ name: 'metrics_updated_at', type: 'datetime', precision: 6, nullable: true, default: null })
     metricsUpdatedAt: Date | null;
+
+    // Loại bài (E5a) - NULL = chưa phân loại. Loại không bị xoá (chỉ khoá); FK SET NULL phòng hờ (đã có ở migration M2).
+    @Column({ name: 'post_type_id', type: 'int', nullable: true, default: null })
+    postTypeId: number | null;
+
+    @ManyToOne(() => FanpagePostType, (t) => t.posts, { nullable: true, onDelete: 'SET NULL' })
+    @JoinColumn({ name: 'post_type_id' })
+    postType: FanpagePostType | null;
 
     @Column({ name: 'created_by_id', type: 'int', nullable: true, default: null })
     createdById: number | null;

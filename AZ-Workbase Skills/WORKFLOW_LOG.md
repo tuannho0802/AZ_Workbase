@@ -8377,3 +8377,18 @@ Now [deploy]
 > - CHƯA chạy jest/vitest. Người dùng cần: backup DB → chạy migration `1786394000000` → deploy BE trước, FE sau.
 
 ---
+
+## [2026-11-12 22:00] | GĐ6 - Dán nhiều link, Xuất Excel, Loại bài, Xếp hạng (B4, A4, E5a, B5) | [Status: Success (chưa chạy test theo yêu cầu - tsc BE sạch, FE chỉ còn 4 lỗi logo.png có sẵn)]
+
+**Actor:** Agent
+**Files Changed:**
+- `backend/src/database/entities/fanpage-post.entity.ts` (`postTypeId`/`postType`), `fanpage-post-type.entity.ts` — Loại bài
+- `backend/src/modules/fanpages/`: `fanpage-posts.service.ts` (loại bài + `bulkCreate`), `fanpage-post-types.service.ts`, `fanpage-rankings.service.ts`, `fanpage-export.{service,model,excel}.ts`, `helpers/fanpage-{bulk-posts,rankings}.helper.ts`, `dto/*`, `fanpages.controller.ts` (route `export`, `stats/rankings`, `posts/bulk`, `FanpagePostTypesController`), `fanpages.module.ts`
+- `frontend`: `FanpageBulkPostsModal`, `FanpagePostTypesModal`, `FanpageRankingsCard`, `PostTypeTag`, `FanpagePostsTab`, `FanpageStatsTab`, `fanpage/page.tsx` (nút Loại bài + Xuất Excel), `lib/api/fanpages.api.ts`, `lib/api/fanpage-export.api.ts`, `lib/hooks/useFanpages.ts`, `lib/utils/fanpageBulk.ts(+test)`, `lib/api/audit-meta.ts`
+- `PERMISSIONS.md` §2.20, `PLAN_FANPAGE_ANALYTICS.md` (tick GĐ6)
+
+**Notes:**
+> - KHÔNG migration mới, KHÔNG permission key mới. C3 (ảnh Insights) chưa làm - tách plan riêng.
+> - CHƯA chạy jest/vitest/nest build/next build. Cần chạy trước khi merge.
+
+---

@@ -565,12 +565,13 @@ Mỗi giai đoạn **độc lập deploy được** và có giá trị riêng; k
 - **Hoàn thành khi:** các test ở 15.6 xanh; `tsc --noEmit`, `nest build`, jest, vitest pass. *(2026-11-12: code + spec đã viết; `tsc --noEmit` BE/FE + `nest build` sạch; jest/vitest CHƯA chạy theo yêu cầu.)*
 
 ### GĐ6 — Hoàn thiện: B4, B5, A4, E5a, C3
-- [ ] Dán nhiều link (BE bulk + FE xem trước).
-- [ ] Export Excel (sheet Page / Bài đăng / Số liệu; sheet Số liệu chỉ khi có quyền xem; sheet Khách chỉ khi qua phạm vi khách; **cột tiền chỉ khi qua cổng 4 lớp 3.7**; mirror `leave-export` tách model thuần + test).
-- [ ] Danh mục Loại bài + cột/tag.
-- [ ] **Xếp hạng (B5)** theo 3.8: `fanpage-rankings.service` + endpoint `stats/rankings` (gate `fanpage_rankings.view`, scope own/department/all); test: người nhập hộ không lên hạng, bài trùng URL không tính, sửa snapshot không tính thêm, thứ hạng tính trong tập người xem được thấy, `own` chỉ thấy dòng mình.
-- [ ] C3 ảnh Insights: **chỉ làm nếu** cơ chế upload hiện có dùng lại được (đối chiếu `PLAN_AVATAR_LEAVE_ATTACHMENT_BACKBLAZE_B2.md` và `leave-request-attachment`); nếu không, tách thành plan riêng, không chặn các mục khác.
+- [x] Dán nhiều link (BE bulk + FE xem trước).
+- [x] Export Excel (sheet Page / Bài đăng / Số liệu; sheet Số liệu chỉ khi có quyền xem; sheet Khách chỉ khi qua phạm vi khách; **cột tiền chỉ khi qua cổng 4 lớp 3.7**; mirror `leave-export` tách model thuần + test).
+- [x] Danh mục Loại bài + cột/tag.
+- [x] **Xếp hạng (B5)** theo 3.8: `fanpage-rankings.service` + endpoint `stats/rankings` (gate `fanpage_rankings.view`, scope own/department/all); test: người nhập hộ không lên hạng, bài trùng URL không tính, sửa snapshot không tính thêm, thứ hạng tính trong tập người xem được thấy, `own` chỉ thấy dòng mình.
+- [ ] C3 ảnh Insights *(2026-11-12: CHƯA làm — tách plan riêng, không chặn GĐ6)*: **chỉ làm nếu** cơ chế upload hiện có dùng lại được (đối chiếu `PLAN_AVATAR_LEAVE_ATTACHMENT_BACKBLAZE_B2.md` và `leave-request-attachment`); nếu không, tách thành plan riêng, không chặn các mục khác.
 - [ ] (Không làm ở v1: E5b bài lên kế hoạch — Q8.)
+- **Trạng thái GĐ6 (2026-11-12):** code + spec đã viết; `tsc --noEmit` BE sạch, FE chỉ còn 4 lỗi `logo.png` có sẵn từ trước; jest/vitest **CHƯA chạy** theo yêu cầu.
 
 ### GĐ7 — QA, tài liệu, rollout
 - [ ] Viết `guides-content/fanpage.md` (đặt `published: true`); cập nhật `PERMISSIONS.md` §2.20, `resource-labels.ts`, `audit-meta.ts`; `nav-guide-coverage.test` vẫn xanh (không thêm mục menu).

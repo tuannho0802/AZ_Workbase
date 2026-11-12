@@ -1,4 +1,5 @@
-import { Controller, Get, Post, Patch, Put, Delete, Body, Param, ParseIntPipe, Query, UseGuards } from '@nestjs/common';
+import { Controller, Get, Post, Patch, Put, Delete, Body, Param, ParseIntPipe, Query, UseGuards, Req, Res } from '@nestjs/common';
+import type { Response } from 'express';
 import { ApiTags, ApiOperation, ApiBearerAuth } from '@nestjs/swagger';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { PermissionGuard } from '../../common/guards/permission.guard';
@@ -6,6 +7,12 @@ import { RequirePermission } from '../../common/decorators/require-permission.de
 import { GetUser } from '../../common/decorators/get-user.decorator';
 import { FanpagesService } from './fanpages.service';
 import { FanpagePostsService } from './fanpage-posts.service';
+import { FanpagePostTypesService } from './fanpage-post-types.service';
+import { FanpageRankingsService } from './fanpage-rankings.service';
+import { FanpageExportService } from './fanpage-export.service';
+import { FanpageExportQueryDto } from './dto/fanpage-export.dto';
+import { CreateFanpagePostTypeDto, UpdateFanpagePostTypeDto } from './dto/fanpage-post-type.dto';
+import { getClientIp } from '../../common/security/client-ip';
 import { FanpageNotesService } from './fanpage-notes.service';
 import { FanpagePlatformsService } from './fanpage-platforms.service';
 import { FanpageHealthStatusesService } from './fanpage-health-statuses.service';
@@ -13,7 +20,7 @@ import { FanpageOverviewService } from './fanpage-overview.service';
 import { FanpageHistoryService } from './fanpage-history.service';
 import { FanpageTodayService } from './fanpage-today.service';
 import { CreateFanpageDto, UpdateFanpageDto, FanpageQueryDto } from './dto/fanpage.dto';
-import { CreateFanpagePostDto, UpdateFanpagePostDto, FanpageNoteDto, FanpageLeadDto, FanpageLeadsQueryDto } from './dto/fanpage-post.dto';
+import { BulkCreateFanpagePostsDto, CreateFanpagePostDto, UpdateFanpagePostDto, FanpageNoteDto, FanpageLeadDto, FanpageLeadsQueryDto } from './dto/fanpage-post.dto';
 import { FanpageLeadsService } from './fanpage-leads.service';
 import { CreateFanpagePlatformDto, UpdateFanpagePlatformDto } from './dto/fanpage-platform.dto';
 import { CreateFanpageHealthStatusDto, UpdateFanpageHealthStatusDto } from './dto/fanpage-health-status.dto';
@@ -51,6 +58,7 @@ export class FanpagesController {
     private readonly historyService: FanpageHistoryService,
     private readonly todayService: FanpageTodayService,
     private readonly utmLinks: FanpageUtmsService,
+    private readonly exportService: FanpageExportService,
   ) {}
 
   @Get()
@@ -65,6 +73,18 @@ export class FanpagesController {
   @ApiOperation({ summary: 'Nhân viên có thể được giao Page (theo scope fanpages.edit)' })
   ownerOptions(@GetUser() user: FanpageCaller) {
     return this.service.ownerOptions(user);
+  }
+
+  @Get('export')
+  @RequirePermission('fanpages.export')
+  @ApiOperation({ summary: 'Xuất Excel Fanpage (sheet Page/Bài đăng/Số liệu/Khách & Tiền nạp; trần 20.000 dòng/sheet)' })
+  async exportExcel(@Query() query: FanpageExportQueryDto, @GetUser() user: FanpageCaller, @Req() req: any, @Res() res: Response) {
+    const { buffer, filename } = await this.exportService.export(user as FanpageCaller & { name?: string }, query, getClientIp(req) ?? req.ip, req.headers?.['user-agent']);
+    res.set({
+      'Content-Type': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+      'Content-Disposition': `attachment; filename*=UTF-8''${encodeURIComponent(filename)}`,
+    });
+    res.send(buffer);
   }
 
   @Get('overview')
@@ -157,7 +177,15 @@ export class FanpageStatsController {
   constructor(
     private readonly service: FanpageStatsService,
     private readonly outcomes: FanpageOutcomesService,
+    private readonly rankings: FanpageRankingsService,
   ) {}
+
+  @Get('rankings')
+  @RequirePermission('fanpage_rankings.view')
+  @ApiOperation({ summary: 'Xếp hạng đóng góp (B5, PLAN 3.8): chỉ người phụ trách Page có đóng góp dữ liệu; hạng tính trong tập người xem được thấy' })
+  rankingsReport(@Query() query: StatsRangeQueryDto, @GetUser() user: FanpageCaller) {
+    return this.rankings.rankings(user, query);
+  }
 
   @Get('growth')
   @RequirePermission('fanpage_stats.view')
@@ -299,6 +327,13 @@ export class FanpagePostsController {
   @ApiOperation({ summary: 'Thêm bài đăng (ghi tay)' })
   create(@Param('fanpageId', ParseIntPipe) fanpageId: number, @Body() dto: CreateFanpagePostDto, @GetUser() user: FanpageCaller) {
     return this.service.create(fanpageId, dto, user);
+  }
+
+  @Post('bulk')
+  @RequirePermission('fanpage_posts.manage')
+  @ApiOperation({ summary: 'Dán nhiều link bài (tối đa 50): phần hợp lệ tạo 1 transaction, link sai/trùng trả theo từng dòng' })
+  bulkCreate(@Param('fanpageId', ParseIntPipe) fanpageId: number, @Body() dto: BulkCreateFanpagePostsDto, @GetUser() user: FanpageCaller) {
+    return this.service.bulkCreate(fanpageId, dto, user);
   }
 
   @Patch(':postId')
@@ -466,6 +501,49 @@ export class FanpageHealthStatusesController {
   @Patch(':id/unlock')
   @RequirePermission('fanpage_statuses.manage')
   @ApiOperation({ summary: 'Mở khoá tình trạng' })
+  unlock(@Param('id', ParseIntPipe) id: number, @GetUser() user: FanpageCaller) {
+    return this.service.unlock(id, user.id);
+  }
+}
+
+@ApiTags('Fanpage - Loại bài')
+@ApiBearerAuth()
+@UseGuards(JwtAuthGuard, PermissionGuard)
+@Controller('fanpage-post-types')
+export class FanpagePostTypesController {
+  constructor(private readonly service: FanpagePostTypesService) {}
+
+  @Get()
+  @RequirePermission('fanpages.view')
+  @ApiOperation({ summary: 'Danh sách Loại bài (activeOnly=true -> chỉ loại chưa khoá)' })
+  findAll(@Query('activeOnly') activeOnly?: string) {
+    return this.service.findAll(activeOnly === 'true');
+  }
+
+  @Post()
+  @RequirePermission('fanpage_post_types.manage')
+  @ApiOperation({ summary: 'Thêm Loại bài' })
+  create(@Body() dto: CreateFanpagePostTypeDto, @GetUser() user: FanpageCaller) {
+    return this.service.create(dto, user.id);
+  }
+
+  @Patch(':id')
+  @RequirePermission('fanpage_post_types.manage')
+  @ApiOperation({ summary: 'Sửa tên/màu/thứ tự Loại bài' })
+  update(@Param('id', ParseIntPipe) id: number, @Body() dto: UpdateFanpagePostTypeDto, @GetUser() user: FanpageCaller) {
+    return this.service.update(id, dto, user.id);
+  }
+
+  @Patch(':id/lock')
+  @RequirePermission('fanpage_post_types.manage')
+  @ApiOperation({ summary: 'Khoá Loại bài (không chọn được cho bài mới; bài cũ vẫn hiện tên). Không có DELETE' })
+  lock(@Param('id', ParseIntPipe) id: number, @GetUser() user: FanpageCaller) {
+    return this.service.lock(id, user.id);
+  }
+
+  @Patch(':id/unlock')
+  @RequirePermission('fanpage_post_types.manage')
+  @ApiOperation({ summary: 'Mở khoá Loại bài' })
   unlock(@Param('id', ParseIntPipe) id: number, @GetUser() user: FanpageCaller) {
     return this.service.unlock(id, user.id);
   }

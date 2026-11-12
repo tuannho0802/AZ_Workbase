@@ -1,11 +1,13 @@
-import { ConflictException, Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, ConflictException, Injectable, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { FanpagePost } from '../../database/entities/fanpage-post.entity';
+import { FanpagePostType } from '../../database/entities/fanpage-post-type.entity';
 import { AuditService } from '../audit/audit.service';
-import { CreateFanpagePostDto, UpdateFanpagePostDto } from './dto/fanpage-post.dto';
+import { BulkCreateFanpagePostsDto, CreateFanpagePostDto, UpdateFanpagePostDto } from './dto/fanpage-post.dto';
 import { FanpageAccessService, FanpageCaller } from './fanpage-access.service';
 import { normalizeFanpageUrl } from './fanpages.service';
+import { BulkPlanSkipped, planBulkPosts } from './helpers/fanpage-bulk-posts.helper';
 import { postUrlKey } from './helpers/fanpage-url.helper';
 
 const blankToNull = (v: string | null | undefined): string | null => (v == null || v.trim() === '' ? null : v.trim());
@@ -30,6 +32,8 @@ export class FanpagePostsService {
         private readonly repo: Repository<FanpagePost>,
         private readonly access: FanpageAccessService,
         private readonly auditService: AuditService,
+        @InjectRepository(FanpagePostType)
+        private readonly typeRepo: Repository<FanpagePostType>,
     ) { }
 
     private withUsers(id?: number) {
@@ -38,7 +42,9 @@ export class FanpagePostsService {
             .leftJoin('p.createdBy', 'createdBy')
             .addSelect(['createdBy.id', 'createdBy.name'])
             .leftJoin('p.updatedBy', 'updatedBy')
-            .addSelect(['updatedBy.id', 'updatedBy.name']);
+            .addSelect(['updatedBy.id', 'updatedBy.name'])
+            .leftJoin('p.postType', 'postType')
+            .addSelect(['postType.id', 'postType.name', 'postType.color', 'postType.isLocked']);
         if (id != null) qb.where('p.id = :id', { id });
         return qb;
     }
@@ -55,6 +61,7 @@ export class FanpagePostsService {
     async create(fanpageId: number, dto: CreateFanpagePostDto, user: FanpageCaller): Promise<FanpagePost> {
         await this.access.assertPageAccess(user, 'fanpage_posts.manage', fanpageId, 'Bạn không có quyền thêm bài đăng cho Page này');
         await this.assertPostUrlFree(fanpageId, dto.url);
+        if (dto.postTypeId != null) await this.assertPostTypeUsable(dto.postTypeId);
         const metrics = pickMetrics(dto);
         const saved = await this.repo.save(
             this.repo.create({
@@ -62,6 +69,7 @@ export class FanpagePostsService {
                 url: normalizeFanpageUrl(dto.url),
                 title: blankToNull(dto.title),
                 postedDate: dto.postedDate ?? null,
+                postTypeId: dto.postTypeId ?? null,
                 note: blankToNull(dto.note),
                 createdById: user.id,
                 ...metrics,
@@ -74,6 +82,7 @@ export class FanpagePostsService {
             url: saved.url,
             title: saved.title,
             postedDate: saved.postedDate,
+            postTypeId: saved.postTypeId ?? null,
             ...metrics,
         });
         return this.withUsers(saved.id).getOneOrFail();
@@ -86,6 +95,7 @@ export class FanpagePostsService {
             url: post.url,
             title: post.title,
             postedDate: post.postedDate,
+            postTypeId: post.postTypeId ?? null,
             note: post.note,
             views: post.views,
             likes: post.likes,
@@ -101,6 +111,11 @@ export class FanpagePostsService {
         }
         if (dto.title !== undefined) patch.title = blankToNull(dto.title);
         if (dto.postedDate !== undefined) patch.postedDate = dto.postedDate;
+        if (dto.postTypeId !== undefined) {
+            // Chỉ kiểm tra khi loại bài THỰC SỰ đổi - bài đang dùng loại đã khoá vẫn sửa các trường khác được.
+            if (dto.postTypeId !== null && dto.postTypeId !== post.postTypeId) await this.assertPostTypeUsable(dto.postTypeId);
+            patch.postTypeId = dto.postTypeId;
+        }
         if (dto.note !== undefined) patch.note = blankToNull(dto.note);
         // Số liệu bài (C4): chỉ ghi số có gửi; chạm số nào thì ghi lại `metricsUpdatedAt`.
         const metrics = pickMetrics(dto);
@@ -113,6 +128,44 @@ export class FanpagePostsService {
         return this.withUsers(postId).getOneOrFail();
     }
 
+    /**
+     * B4 - dán nhiều link (tối đa 50). Kế hoạch tạo/bỏ qua do HÀM THUẦN `planBulkPosts` quyết định (cùng chuẩn trùng URL với tạo 1 bài);
+     * phần hợp lệ ghi trong 1 transaction, phần sai/trùng trả theo từng dòng ở `skipped[]`.
+     */
+    async bulkCreate(fanpageId: number, dto: BulkCreateFanpagePostsDto, user: FanpageCaller) {
+        await this.access.assertPageAccess(user, 'fanpage_posts.manage', fanpageId, 'Bạn không có quyền thêm bài đăng cho Page này');
+        if (dto.postTypeId != null) await this.assertPostTypeUsable(dto.postTypeId);
+
+        const existing = await this.repo.find({ where: { fanpageId }, select: ['id', 'url', 'postedDate'] });
+        const plan = planBulkPosts(dto.urls, existing);
+
+        let created: Array<Pick<FanpagePost, 'id' | 'url' | 'postedDate'>> = [];
+        if (plan.valid.length > 0) {
+            const entities = plan.valid.map((v) =>
+                this.repo.create({
+                    fanpageId,
+                    url: normalizeFanpageUrl(v.url),
+                    title: null,
+                    postedDate: dto.postedDate ?? null,
+                    postTypeId: dto.postTypeId ?? null,
+                    note: null,
+                    createdById: user.id,
+                }),
+            );
+            const saved = await this.repo.manager.transaction((em) => em.getRepository(FanpagePost).save(entities));
+            created = saved.map((p) => ({ id: p.id, url: p.url, postedDate: p.postedDate ?? null }));
+            this.auditService.logActionAsync(user.id, 'BULK_CREATE_FANPAGE_POSTS', 'fanpage', fanpageId, null, {
+                fanpageId,
+                created: created.length,
+                skipped: plan.skipped.length,
+                postedDate: dto.postedDate ?? null,
+                postTypeId: dto.postTypeId ?? null,
+                postIds: created.map((c) => c.id),
+            });
+        }
+        return { requested: dto.urls.length, created, skipped: plan.skipped as BulkPlanSkipped[] };
+    }
+
     async remove(fanpageId: number, postId: number, user: FanpageCaller): Promise<{ deleted: true }> {
         await this.access.assertPageAccess(user, 'fanpage_posts.delete', fanpageId, 'Bạn không có quyền xoá bài đăng của Page này');
         const post = await this.findInPage(fanpageId, postId);
@@ -120,6 +173,13 @@ export class FanpagePostsService {
         await this.repo.delete(postId);
         this.auditService.logActionAsync(user.id, 'DELETE_FANPAGE_POST', 'fanpage_post', postId, snap, null);
         return { deleted: true };
+    }
+
+    /** Loại bài phải tồn tại và chưa bị khoá (khoá = không chọn được cho bài mới / bài đổi sang loại này). */
+    private async assertPostTypeUsable(postTypeId: number): Promise<void> {
+        const type = await this.typeRepo.findOne({ where: { id: postTypeId }, select: ['id', 'name', 'isLocked'] });
+        if (!type) throw new BadRequestException('Loại bài không tồn tại');
+        if (type.isLocked) throw new BadRequestException(`Loại bài "${type.name}" đã bị khoá`);
     }
 
     /**

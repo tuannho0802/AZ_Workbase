@@ -9,6 +9,8 @@ import type { GrowthResponse, TopPostRow } from '@/lib/api/fanpages.api';
 import { useFanpageStatsGrowth, useFanpageStatsPosts, useFanpageStatsTopPosts } from '@/lib/hooks/useFanpages';
 import { fmtNum } from '@/lib/utils/fanpageMetrics';
 import { FanpageOutcomesCard } from './FanpageOutcomesCard';
+import { FanpageRankingsCard } from './FanpageRankingsCard';
+import { useMyPermissions } from '@/lib/hooks/useMyPermissions';
 
 const { Text } = Typography;
 const FMT = 'YYYY-MM-DD';
@@ -36,6 +38,8 @@ interface Props {
 
 /** Tab "Thống kê": tăng trưởng follower (tổng + so sánh tối đa 5 Page), số bài theo tuần, top bài. Mọi số = nhập tay/dữ liệu nội bộ. */
 export function FanpageStatsTab({ enabled, onOpenDetail }: Props) {
+    const { can } = useMyPermissions();
+    const canRankings = can('fanpage_rankings.view');
     const [range, setRange] = useState<RangeKey>('30');
     const [compare, setCompare] = useState<number[]>([]);
     const params = useMemo(() => {
@@ -165,6 +169,8 @@ export function FanpageStatsTab({ enabled, onOpenDetail }: Props) {
             </Card>
 
             <FanpageOutcomesCard params={params} enabled={enabled} onOpenDetail={onOpenDetail} />
+
+            {canRankings && <FanpageRankingsCard params={params} enabled={enabled} />}
 
             <Card size="small" title="Số bài theo tuần">
                 {postsQ.isLoading || !postsQ.data ? (

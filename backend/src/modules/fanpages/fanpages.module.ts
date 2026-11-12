@@ -6,6 +6,7 @@ import { FanpagePost } from '../../database/entities/fanpage-post.entity';
 import { FanpageNote } from '../../database/entities/fanpage-note.entity';
 import { FanpageHealthStatus } from '../../database/entities/fanpage-health-status.entity';
 import { FanpageMetricSnapshot } from '../../database/entities/fanpage-metric-snapshot.entity';
+import { FanpagePostType } from '../../database/entities/fanpage-post-type.entity';
 import { FanpageTarget } from '../../database/entities/fanpage-target.entity';
 import { FanpageUtm } from '../../database/entities/fanpage-utm.entity';
 import { Customer } from '../../database/entities/customer.entity';
@@ -35,6 +36,9 @@ import { FanpageStatsService } from './fanpage-stats.service';
 import { FanpageUtmsService } from './fanpage-utms.service';
 import { FanpageOutcomesService } from './fanpage-outcomes.service';
 import { FanpageRemindersService } from './fanpage-reminders.service';
+import { FanpagePostTypesService } from './fanpage-post-types.service';
+import { FanpageRankingsService } from './fanpage-rankings.service';
+import { FanpageExportService } from './fanpage-export.service';
 import { FanpagesCronController } from './fanpages-cron.controller';
 import {
   FanpagesController,
@@ -46,12 +50,13 @@ import {
   FanpageLeadsController,
   FanpagePlatformsController,
   FanpageHealthStatusesController,
+  FanpagePostTypesController,
 } from './fanpages.controller';
 
 // PermissionsModule (@Global) và AuditModule cung cấp PermissionsService/AuditService như ở UtmsModule.
 @Module({
   imports: [
-    TypeOrmModule.forFeature([Fanpage, FanpagePlatform, FanpagePost, FanpageNote, FanpageHealthStatus, FanpageMetricSnapshot, FanpageTarget, FanpageUtm, Customer, Deposit, MediaSource, Setting, AuditLog, User]),
+    TypeOrmModule.forFeature([Fanpage, FanpagePlatform, FanpagePost, FanpageNote, FanpageHealthStatus, FanpagePostType, FanpageMetricSnapshot, FanpageTarget, FanpageUtm, Customer, Deposit, MediaSource, Setting, AuditLog, User]),
     UtmsModule, // UtmsService.usabilityFor + UtmCustomersService (không vòng: UtmsService chỉ import HÀM thuần của fanpages/helpers)
     UiVisibilityModule,
     CustomersModule, // GĐ5b: tạo Lead qua CustomersService.create (không nhân đôi luật tạo khách)
@@ -67,6 +72,7 @@ import {
     FanpageLeadsController, // sau FanpagesController (xem chú thích ở controller)
     FanpagePlatformsController,
     FanpageHealthStatusesController,
+    FanpagePostTypesController,
     FanpagesCronController,
   ],
   providers: [
@@ -88,6 +94,9 @@ import {
     FanpageUtmsService,
     FanpageOutcomesService,
     FanpageLeadsService,
+    FanpagePostTypesService,
+    FanpageRankingsService,
+    FanpageExportService,
   ],
   // SidebarBadgesService đếm badge "cần đăng bài" bằng đúng nguồn của tab Hôm nay (X2/X16).
   exports: [FanpageTodayService],

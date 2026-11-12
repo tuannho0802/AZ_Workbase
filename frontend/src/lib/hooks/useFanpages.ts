@@ -15,6 +15,9 @@ import {
     FanpagePlatformPayload,
     FanpagePost,
     FanpagePostPayload,
+    FanpagePostType,
+    FanpagePostTypePayload,
+    BulkPostsPayload,
     FanpageUserBrief,
     OutcomeCustomersParams,
     BulkSnapshotRow,
@@ -29,6 +32,7 @@ import {
 const KEY = ['fanpages'] as const;
 const PLATFORM_KEY = ['fanpage-platforms'] as const;
 const HEALTH_KEY = ['fanpage-health-statuses'] as const;
+const POST_TYPE_KEY = ['fanpage-post-types'] as const;
 
 /** Factory queryKey. Mọi key nằm dưới `KEY` nên invalidate `KEY` làm mới cả list/overview/today/detail. */
 export const fanpageKeys = {
@@ -55,6 +59,7 @@ const EMPTY_OWNERS: FanpageUserBrief[] = [];
 const EMPTY_POSTS: FanpagePost[] = [];
 const EMPTY_NOTES: FanpageNote[] = [];
 const EMPTY_HEALTH: FanpageHealthStatus[] = [];
+const EMPTY_POST_TYPES: FanpagePostType[] = [];
 const EMPTY_HISTORY: FanpageHistoryEvent[] = [];
 const EMPTY_SNAPSHOTS: FanpageSnapshot[] = [];
 const EMPTY_TARGETS: FanpageTarget[] = [];
@@ -126,6 +131,16 @@ export const useFanpageHealthStatuses = (activeOnly = false, enabled = true) => 
         staleTime: 60 * 1000,
     });
     return { statuses: data ?? EMPTY_HEALTH, isLoading };
+};
+
+export const useFanpagePostTypes = (activeOnly = false, enabled = true) => {
+    const { data, isLoading } = useQuery({
+        queryKey: [...POST_TYPE_KEY, activeOnly],
+        queryFn: () => fanpagesApi.listPostTypes(activeOnly),
+        enabled,
+        staleTime: 60 * 1000,
+    });
+    return { postTypes: data ?? EMPTY_POST_TYPES, isLoading };
 };
 
 export const useFanpageOwnerOptions = (enabled = true) => {
@@ -200,6 +215,11 @@ export const useFanpagePosts = (fanpageId: number | null) => {
 export const useCreateFanpagePost = (fanpageId: number) => {
     const invalidate = useInvalidateFanpagesAndBadge();
     return useMutation({ mutationFn: (data: FanpagePostPayload) => fanpagesApi.createPost(fanpageId, data), onSuccess: invalidate });
+};
+
+export const useBulkCreateFanpagePosts = (fanpageId: number) => {
+    const invalidate = useInvalidateFanpagesAndBadge();
+    return useMutation({ mutationFn: (data: BulkPostsPayload) => fanpagesApi.bulkCreatePosts(fanpageId, data), onSuccess: invalidate });
 };
 
 export const useUpdateFanpagePost = (fanpageId: number) => {
@@ -347,6 +367,34 @@ export const useSetFanpageHealthStatusActive = () => {
     });
 };
 
+// ── Loại bài (E5a) ──
+function useInvalidatePostTypes() {
+    const qc = useQueryClient();
+    // Đổi tên/màu/khoá ảnh hưởng cột "Loại bài" trong danh sách bài đăng của mọi Page.
+    return () => Promise.all([qc.invalidateQueries({ queryKey: POST_TYPE_KEY }), qc.invalidateQueries({ queryKey: KEY })]);
+}
+
+export const useCreateFanpagePostType = () => {
+    const invalidate = useInvalidatePostTypes();
+    return useMutation({ mutationFn: (data: FanpagePostTypePayload & { name: string }) => fanpagesApi.createPostType(data), onSuccess: invalidate });
+};
+
+export const useUpdateFanpagePostType = () => {
+    const invalidate = useInvalidatePostTypes();
+    return useMutation({
+        mutationFn: ({ id, data }: { id: number; data: FanpagePostTypePayload }) => fanpagesApi.updatePostType(id, data),
+        onSuccess: invalidate,
+    });
+};
+
+export const useSetFanpagePostTypeActive = () => {
+    const invalidate = useInvalidatePostTypes();
+    return useMutation({
+        mutationFn: ({ id, active }: { id: number; active: boolean }) => (active ? fanpagesApi.unlockPostType(id) : fanpagesApi.lockPostType(id)),
+        onSuccess: invalidate,
+    });
+};
+
 // ── Số liệu định kỳ / thống kê (GĐ4) ──
 export const useFanpageSnapshots = (fanpageId: number | null) => {
     const { data, isLoading } = useQuery({
@@ -410,6 +458,15 @@ export const useFanpageStatsTopPosts = (params: StatsRange & { limit?: number },
     useQuery({
         queryKey: fanpageKeys.stats('top-posts', params),
         queryFn: () => fanpagesApi.statsTopPosts(params),
+        enabled,
+        staleTime: 60 * 1000,
+        placeholderData: keepPreviousData,
+    });
+
+export const useFanpageStatsRankings = (params: StatsRange, enabled = true) =>
+    useQuery({
+        queryKey: fanpageKeys.stats('rankings', params),
+        queryFn: () => fanpagesApi.statsRankings(params),
         enabled,
         staleTime: 60 * 1000,
         placeholderData: keepPreviousData,

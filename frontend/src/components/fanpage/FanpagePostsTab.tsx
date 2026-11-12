@@ -1,8 +1,8 @@
 'use client';
 
 import { useState } from 'react';
-import { Alert, App, Button, DatePicker, Empty, Form, Input, InputNumber, Modal, Popconfirm, Popover, Space, Table, Tooltip, Typography } from 'antd';
-import { DeleteOutlined, EditOutlined, LinkOutlined, PlusOutlined } from '@ant-design/icons';
+import { Alert, App, Button, DatePicker, Empty, Form, Input, InputNumber, Modal, Popconfirm, Popover, Select, Space, Table, Tooltip, Typography } from 'antd';
+import { DeleteOutlined, EditOutlined, LinkOutlined, PlusOutlined, UnorderedListOutlined } from '@ant-design/icons';
 import type { ColumnsType } from 'antd/es/table';
 import type { Dayjs } from 'dayjs';
 import dayjs from 'dayjs';
@@ -12,9 +12,12 @@ import {
     useCreateFanpagePost,
     useDeleteFanpagePost,
     useFanpagePosts,
+    useFanpagePostTypes,
     useUpdateFanpagePost,
 } from '@/lib/hooks/useFanpages';
 import { toastApiError } from '@/lib/utils/error-message.util';
+import { FanpageBulkPostsModal } from './FanpageBulkPostsModal';
+import { PostTypeTag } from './PostTypeTag';
 
 const { Text } = Typography;
 
@@ -22,6 +25,7 @@ interface PostFormValues {
     url: string;
     title?: string;
     postedDate?: Dayjs | null;
+    postTypeId?: number | null;
     note?: string;
 }
 
@@ -83,6 +87,8 @@ export function FanpagePostsTab({ fanpageId, flags, dateFilter, onClearDateFilte
     const updateMut = useUpdateFanpagePost(fanpageId);
     const deleteMut = useDeleteFanpagePost(fanpageId);
     const [form] = Form.useForm<PostFormValues>();
+    const [bulkOpen, setBulkOpen] = useState(false);
+    const { postTypes } = useFanpagePostTypes(false, true);
     // null = đóng; 'new' = thêm mới; FanpagePost = đang sửa.
     const [editing, setEditing] = useState<FanpagePost | 'new' | null>(null);
     const saving = createMut.isPending || updateMut.isPending;
@@ -98,6 +104,7 @@ export function FanpagePostsTab({ fanpageId, flags, dateFilter, onClearDateFilte
             url: post.url,
             title: post.title ?? undefined,
             postedDate: post.postedDate ? dayjs(post.postedDate) : null,
+            postTypeId: post.postTypeId ?? null,
             note: post.note ?? undefined,
         });
         setEditing(post);
@@ -108,6 +115,7 @@ export function FanpagePostsTab({ fanpageId, flags, dateFilter, onClearDateFilte
             url: values.url.trim(),
             title: values.title?.trim() || null,
             postedDate: values.postedDate ? values.postedDate.format('YYYY-MM-DD') : null,
+            postTypeId: values.postTypeId ?? null,
             note: values.note?.trim() || null,
         };
         try {
@@ -159,6 +167,12 @@ export function FanpagePostsTab({ fanpageId, flags, dateFilter, onClearDateFilte
                     </a>
                 </Space>
             ),
+        },
+        {
+            title: 'Loại bài',
+            key: 'postType',
+            width: 110,
+            render: (_: unknown, p: FanpagePost) => <PostTypeTag type={p.postType} />,
         },
         ...POST_METRIC_COLS.map((c) => ({
             title: c.title,
@@ -212,9 +226,14 @@ export function FanpagePostsTab({ fanpageId, flags, dateFilter, onClearDateFilte
     return (
         <Space orientation="vertical" style={{ width: '100%' }}>
             {flags.canManagePosts && (
-                <Button type="primary" icon={<PlusOutlined />} onClick={openNew}>
-                    Thêm bài đăng
-                </Button>
+                <Space wrap>
+                    <Button type="primary" icon={<PlusOutlined />} onClick={openNew}>
+                        Thêm bài đăng
+                    </Button>
+                    <Button icon={<UnorderedListOutlined />} onClick={() => setBulkOpen(true)}>
+                        Dán nhiều link
+                    </Button>
+                </Space>
             )}
             {dateFilter && (
                 <Alert
@@ -266,11 +285,24 @@ export function FanpagePostsTab({ fanpageId, flags, dateFilter, onClearDateFilte
                     <Form.Item name="postedDate" label="Ngày đăng">
                         <DatePicker format="DD/MM/YYYY" style={{ width: '100%' }} />
                     </Form.Item>
+                    <Form.Item name="postTypeId" label="Loại bài (tuỳ chọn)">
+                        <Select
+                            allowClear
+                            placeholder="Chưa phân loại"
+                            options={postTypes.map((t) => ({
+                                value: t.id,
+                                label: t.isLocked ? `${t.name} (đã khoá)` : t.name,
+                                // Loại đã khoá chỉ giữ được cho bài đang dùng nó, không chọn mới.
+                                disabled: t.isLocked && !(editing && editing !== 'new' && editing.postTypeId === t.id),
+                            }))}
+                        />
+                    </Form.Item>
                     <Form.Item name="note" label="Ghi chú bài đăng (nếu có)" rules={[{ max: 5000, message: 'Tối đa 5000 ký tự' }]}>
                         <Input.TextArea rows={3} />
                     </Form.Item>
                 </Form>
             </Modal>
+            <FanpageBulkPostsModal open={bulkOpen} fanpageId={fanpageId} existingPosts={allPosts} onClose={() => setBulkOpen(false)} />
         </Space>
     );
 }

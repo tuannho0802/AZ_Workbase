@@ -195,9 +195,28 @@ export interface FanpageUserRef {
     name: string;
 }
 
+/** Danh mục "Loại bài" (E5a; động, chỉ khoá - không xoá). */
+export interface FanpagePostType {
+    id: number;
+    name: string;
+    color: string;
+    isLocked: boolean;
+    sortOrder: number;
+    /** Số bài đang dùng (chỉ có ở GET /fanpage-post-types). */
+    postCount?: number;
+}
+
+export interface FanpagePostTypePayload {
+    name?: string;
+    color?: string;
+    sortOrder?: number;
+}
+
 export interface FanpagePost {
     id: number;
     fanpageId: number;
+    postTypeId?: number | null;
+    postType?: Pick<FanpagePostType, 'id' | 'name' | 'color' | 'isLocked'> | null;
     title: string | null;
     url: string;
     /** YYYY-MM-DD */
@@ -289,7 +308,47 @@ export interface CreateFanpagePayload {
 
 export type UpdateFanpagePayload = Partial<CreateFanpagePayload> & { isActive?: boolean };
 
+export type BulkSkipReason = 'invalid_url' | 'too_long' | 'duplicate_in_batch' | 'duplicate_existing';
+
+/** `POST /fanpages/:id/posts/bulk` (B4). */
+export interface BulkPostsPayload {
+    urls: string[];
+    postedDate?: string | null;
+    postTypeId?: number | null;
+}
+
+export interface BulkPostsResponse {
+    requested: number;
+    created: Array<{ id: number; url: string; postedDate: string | null }>;
+    skipped: Array<{ url: string; reason: BulkSkipReason; existingPostId?: number; existingPostedDate?: string | null }>;
+}
+
+/** `GET /fanpages/stats/rankings` (B5, PLAN 3.8) - chỉ cột đóng góp dữ liệu, không khách/tiền. */
+export interface RankingRow {
+    userId: number;
+    name: string;
+    employeeCode: string | null;
+    posts: number;
+    snapshots: number;
+    pages: number;
+    weeksTracked: number;
+    weeksOnTarget: number;
+    /** 0-100; null = chưa có tuần nào để xét. */
+    targetRate: number | null;
+    rank: number;
+    isMe: boolean;
+}
+
+export interface RankingsResponse {
+    from: string;
+    to: string;
+    scope: 'own' | 'department' | 'all';
+    rows: RankingRow[];
+    nonOwnerPosts: number;
+}
+
 export interface FanpagePostPayload {
+    postTypeId?: number | null;
     url: string;
     title?: string | null;
     postedDate?: string | null;
@@ -569,6 +628,9 @@ export const fanpagesApi = {
     updatePost: async (fanpageId: number, postId: number, data: Partial<FanpagePostPayload>): Promise<FanpagePost> =>
         (await axiosInstance.patch<FanpagePost>(`/fanpages/${fanpageId}/posts/${postId}`, data)).data,
 
+    bulkCreatePosts: async (fanpageId: number, data: BulkPostsPayload): Promise<BulkPostsResponse> =>
+        (await axiosInstance.post<BulkPostsResponse>(`/fanpages/${fanpageId}/posts/bulk`, data)).data,
+
     removePost: async (fanpageId: number, postId: number): Promise<void> => {
         await axiosInstance.delete(`/fanpages/${fanpageId}/posts/${postId}`);
     },
@@ -631,6 +693,20 @@ export const fanpagesApi = {
     unlockHealthStatus: async (id: number): Promise<FanpageHealthStatus> =>
         (await axiosInstance.patch<FanpageHealthStatus>(`/fanpage-health-statuses/${id}/unlock`)).data,
 
+    // ── Loại bài (E5a) ──
+    listPostTypes: async (activeOnly = false): Promise<FanpagePostType[]> =>
+        (await axiosInstance.get<FanpagePostType[]>('/fanpage-post-types', { params: activeOnly ? { activeOnly: true } : undefined })).data,
+
+    createPostType: async (data: FanpagePostTypePayload & { name: string }): Promise<FanpagePostType> =>
+        (await axiosInstance.post<FanpagePostType>('/fanpage-post-types', data)).data,
+
+    updatePostType: async (id: number, data: FanpagePostTypePayload): Promise<FanpagePostType> =>
+        (await axiosInstance.patch<FanpagePostType>(`/fanpage-post-types/${id}`, data)).data,
+
+    lockPostType: async (id: number): Promise<FanpagePostType> => (await axiosInstance.patch<FanpagePostType>(`/fanpage-post-types/${id}/lock`)).data,
+
+    unlockPostType: async (id: number): Promise<FanpagePostType> => (await axiosInstance.patch<FanpagePostType>(`/fanpage-post-types/${id}/unlock`)).data,
+
     // ── Số liệu định kỳ / thống kê (GĐ4) ──
     listSnapshots: async (fanpageId: number): Promise<FanpageSnapshot[]> =>
         (await axiosInstance.get<FanpageSnapshot[]>(`/fanpages/${fanpageId}/snapshots`)).data,
@@ -679,6 +755,9 @@ export const fanpagesApi = {
 
     statsOutcomeCustomers: async (params: OutcomeCustomersParams): Promise<OutcomeCustomersResponse> =>
         (await axiosInstance.get<OutcomeCustomersResponse>('/fanpages/stats/outcomes/customers', { params })).data,
+
+    statsRankings: async (params: StatsRange): Promise<RankingsResponse> =>
+        (await axiosInstance.get<RankingsResponse>('/fanpages/stats/rankings', { params })).data,
 
     statsTopPosts: async (params: StatsRange & { limit?: number }): Promise<TopPostsResponse> =>
         (await axiosInstance.get<TopPostsResponse>('/fanpages/stats/top-posts', { params })).data,

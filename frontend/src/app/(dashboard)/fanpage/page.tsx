@@ -5,7 +5,7 @@ import { usePathname, useRouter, useSearchParams } from 'next/navigation';
 import { App, Badge, Button, Card, Dropdown, Empty, Grid, Space, Table, Tabs, Tag, Tooltip, Typography } from 'antd';
 import type { MenuProps } from 'antd';
 import type { ColumnsType } from 'antd/es/table';
-import { DeleteOutlined, EditOutlined, EyeOutlined, InboxOutlined, LinkOutlined, MoreOutlined, PlusOutlined, SettingOutlined, UndoOutlined } from '@ant-design/icons';
+import { DeleteOutlined, DownloadOutlined, EditOutlined, EyeOutlined, InboxOutlined, LinkOutlined, MoreOutlined, PlusOutlined, SettingOutlined, UndoOutlined } from '@ant-design/icons';
 import { useMyPermissions } from '@/lib/hooks/useMyPermissions';
 import { useDebounce } from '@/lib/hooks/useDebounce';
 import { useUsableUtms } from '@/lib/hooks/useUtms';
@@ -32,6 +32,8 @@ import { FanpageFormModal } from '@/components/fanpage/FanpageFormModal';
 import { FanpageDetailDrawer } from '@/components/fanpage/FanpageDetailDrawer';
 import { FanpagePlatformsModal } from '@/components/fanpage/FanpagePlatformsModal';
 import { FanpageHealthModal } from '@/components/fanpage/FanpageHealthModal';
+import { FanpagePostTypesModal } from '@/components/fanpage/FanpagePostTypesModal';
+import { fanpageExportApi } from '@/lib/api/fanpage-export.api';
 import { sortOwnersPrimaryFirst } from '@/lib/utils/fanpageColors';
 import { formatSinceLastPost, formatWeekProgress } from '@/lib/utils/fanpageCadence';
 import { toastApiError } from '@/lib/utils/error-message.util';
@@ -128,6 +130,19 @@ function FanpagePageContent() {
     );
 
     const listEnabled = canView && (tab === 'list' || tab === 'archived');
+
+    // A4 - Xuất Excel theo ĐÚNG bộ lọc đang áp dụng (gate `fanpages.export` ở BE; scope Page do BE tự áp).
+    const handleExport = async () => {
+        setExporting(true);
+        try {
+            const filename = await fanpageExportApi.exportExcel(filters);
+            message.success(`Đã xuất ${filename}`);
+        } catch (err) {
+            toastApiError(message, err, 'Không thể xuất Excel');
+        } finally {
+            setExporting(false);
+        }
+    };
     const { utms: utmOptions } = useUsableUtms(undefined, listEnabled, false);
     const { fanpages, capabilities, isLoading, isFetching } = useFanpages(filters, listEnabled);
     const { overview, isLoading: overviewLoading } = useFanpageOverview(canView && tab !== 'archived');
@@ -143,6 +158,8 @@ function FanpagePageContent() {
     const [detailId, setDetailId] = useState<number | null>(null);
     const [platformsOpen, setPlatformsOpen] = useState(false);
     const [healthOpen, setHealthOpen] = useState(false);
+    const [postTypesOpen, setPostTypesOpen] = useState(false);
+    const [exporting, setExporting] = useState(false);
     // Lưới nhập còn thay đổi chưa lưu -> hỏi trước khi rời tab.
     const [metricsDirty, setMetricsDirty] = useState(false);
 
@@ -418,6 +435,16 @@ function FanpagePageContent() {
                             Tình trạng
                         </Button>
                     )}
+                    {can('fanpage_post_types.manage') && (
+                        <Button icon={<SettingOutlined />} onClick={() => setPostTypesOpen(true)}>
+                            Loại bài
+                        </Button>
+                    )}
+                    {can('fanpages.export') && (
+                        <Button icon={<DownloadOutlined />} loading={exporting} onClick={handleExport}>
+                            Xuất Excel
+                        </Button>
+                    )}
                     {capabilities.canCreate && (
                         <Button type="primary" icon={<PlusOutlined />} onClick={() => setFormState({ open: true })}>
                             Thêm Page
@@ -506,6 +533,7 @@ function FanpagePageContent() {
             <FanpageDetailDrawer fanpageId={detailId} onClose={() => setDetailId(null)} onEdit={(page) => setFormState({ open: true, page })} />
             <FanpagePlatformsModal open={platformsOpen} onClose={() => setPlatformsOpen(false)} />
             <FanpageHealthModal open={healthOpen} onClose={() => setHealthOpen(false)} />
+            <FanpagePostTypesModal open={postTypesOpen} onClose={() => setPostTypesOpen(false)} />
         </div>
     );
 }

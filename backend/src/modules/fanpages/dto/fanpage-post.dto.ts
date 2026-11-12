@@ -1,4 +1,4 @@
-import { IsString, IsNotEmpty, IsInt, Length, IsOptional, IsUrl, Matches, Max, Min, ValidateIf, IsEmail, ValidateNested } from 'class-validator';
+import { IsString, IsNotEmpty, IsInt, Length, IsOptional, IsUrl, Matches, Max, Min, ValidateIf, IsEmail, ValidateNested, IsArray, ArrayMinSize, ArrayMaxSize } from 'class-validator';
 import { Type } from 'class-transformer';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { METRIC_MAX_VALUE } from '../helpers/fanpage-metrics.helper';
@@ -40,7 +40,18 @@ class PostMetricsDto {
     shares?: number | null;
 }
 
-export class CreateFanpagePostDto extends PostMetricsDto {
+/** Loại bài (E5a): id của `fanpage_post_types`; null = bỏ phân loại. Service kiểm tra tồn tại + chưa khoá. */
+class PostTypeDto extends PostMetricsDto {
+    @ApiPropertyOptional({ description: 'Loại bài (danh mục Loại bài). null = chưa phân loại.' })
+    @IsOptional()
+    @ValidateIf((_o, v) => v !== null)
+    @Type(() => Number)
+    @IsInt({ message: 'Loại bài không hợp lệ' })
+    @Min(1, { message: 'Loại bài không hợp lệ' })
+    postTypeId?: number | null;
+}
+
+export class CreateFanpagePostDto extends PostTypeDto {
     @ApiProperty({ example: 'https://facebook.com/ten-page/posts/123', description: 'URL bài đăng (nhập tay)' })
     @IsString()
     @IsUrl(URL_OPTS, { message: 'URL bài đăng phải hợp lệ (bắt đầu bằng http:// hoặc https://)' })
@@ -66,7 +77,7 @@ export class CreateFanpagePostDto extends PostMetricsDto {
     note?: string | null;
 }
 
-export class UpdateFanpagePostDto extends PostMetricsDto {
+export class UpdateFanpagePostDto extends PostTypeDto {
     @ApiPropertyOptional()
     @IsOptional()
     @IsString()
@@ -94,6 +105,36 @@ export class UpdateFanpagePostDto extends PostMetricsDto {
 }
 
 /** GĐ5b - Lead nhập từ Page. SĐT BẮT BUỘC và phải là SĐT thật (không nhận `MISSING_*`) - khoá chống trùng (PLAN 15.8). */
+/** Tối đa số link dán 1 lần (PLAN 6.3 - B4). */
+export const MAX_BULK_POST_URLS = 50;
+
+/**
+ * `POST /fanpages/:fanpageId/posts/bulk` (B4 - dán nhiều link). Ngày đăng + loại bài dùng CHUNG cho cả lô.
+ * Link sai/trùng KHÔNG làm hỏng cả lô: trả theo từng dòng ở `skipped[]`, phần hợp lệ vẫn tạo (1 transaction).
+ */
+export class BulkCreateFanpagePostsDto {
+    @ApiProperty({ type: [String], description: 'Danh sách URL bài đăng (tối đa 50)' })
+    @IsArray()
+    @ArrayMinSize(1, { message: 'Cần ít nhất 1 link' })
+    @ArrayMaxSize(MAX_BULK_POST_URLS, { message: `Tối đa ${MAX_BULK_POST_URLS} link mỗi lần` })
+    @IsString({ each: true, message: 'Link không hợp lệ' })
+    urls: string[];
+
+    @ApiPropertyOptional({ example: '2026-11-10', description: 'Ngày đăng chung cho cả lô (YYYY-MM-DD)' })
+    @IsOptional()
+    @ValidateIf((_o, v) => v !== null)
+    @Matches(DATE_RE, { message: 'Ngày đăng phải có dạng YYYY-MM-DD' })
+    postedDate?: string | null;
+
+    @ApiPropertyOptional({ description: 'Loại bài chung cho cả lô' })
+    @IsOptional()
+    @ValidateIf((_o, v) => v !== null)
+    @Type(() => Number)
+    @IsInt({ message: 'Loại bài không hợp lệ' })
+    @Min(1, { message: 'Loại bài không hợp lệ' })
+    postTypeId?: number | null;
+}
+
 export class FanpageLeadDto {
     @ApiProperty({ example: 'Nguyễn Văn A' })
     @IsString()
