@@ -8326,3 +8326,22 @@ Now [deploy]
 > - Người dùng cần làm: chạy migration (M1 → M4), đặt `CRON_SECRET`, thêm monitor Uptime gọi `/api/fanpages-cron/reminders` (thử `dryRun=true` trước).
 
 ---
+
+## [2026-11-12 16:00] | Fanpage GĐ4 — Số liệu & Thống kê (hoàn thiện nửa còn thiếu) | In-Progress
+
+**Actor:** Agent
+**Files Changed:**
+- `backend/src/modules/fanpages/fanpage-metrics.service.ts` — MỚI: upsert snapshot (X24 stale, cảnh báo giảm >50%), lưới + bulk theo từng dòng, mục tiêu tháng, followerSeries/latestFollowers
+- `backend/src/modules/fanpages/fanpage-access.service.ts` — thêm `scopesForKey` (scope của permission bất kỳ, dùng lại FanpageScopedQuery)
+- `backend/src/modules/fanpages/fanpages.controller.ts` + `fanpages.module.ts` — thêm FanpageStats/Snapshots/Metrics controller (Stats đứng TRƯỚC Posts)
+- `backend/src/modules/fanpages/fanpages.service.ts`, `fanpage-overview.service.ts` — `latestMetrics`, `followerGain30d`, `pagesWithoutMetrics`
+- `backend/src/database/entities/fanpage-post.entity.ts`, `dto/fanpage-post.dto.ts`, `fanpage-posts.service.ts` — số liệu từng bài (views/likes/comments/shares)
+- `backend/src/modules/fanpages/dto/fanpage-metrics.dto.ts` — thêm `confirmDrop`
+- `frontend/src/lib/api/fanpages.api.ts`, `lib/hooks/useFanpages.ts`, `lib/utils/fanpageMetrics.ts`, `lib/api/audit-meta.ts`
+- `frontend/src/components/fanpage/` — MỚI: FanpageHeatmap, FanpageSnapshotsTab, FanpageStatsTab; SỬA: PostsTab, OverviewTab, DetailDrawer, KpiCards; page.tsx thêm tab "Nhập số liệu" + "Thống kê" (gate theo `can()`)
+
+**Notes:**
+> - CHƯA chạy build/test (theo yêu cầu người dùng). Cần chạy `tsc --noEmit`, `npx jest src/modules/fanpages`, `npx vitest run`, `next build` trước khi merge.
+> - Migration `1786392000000-CreateFanpageMetrics` đã có sẵn trên repo (gồm cột bài). Chưa tạo migration mới.
+
+---

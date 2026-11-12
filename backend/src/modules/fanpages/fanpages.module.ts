@@ -5,6 +5,8 @@ import { FanpagePlatform } from '../../database/entities/fanpage-platform.entity
 import { FanpagePost } from '../../database/entities/fanpage-post.entity';
 import { FanpageNote } from '../../database/entities/fanpage-note.entity';
 import { FanpageHealthStatus } from '../../database/entities/fanpage-health-status.entity';
+import { FanpageMetricSnapshot } from '../../database/entities/fanpage-metric-snapshot.entity';
+import { FanpageTarget } from '../../database/entities/fanpage-target.entity';
 import { Setting } from '../../database/entities/setting.entity';
 import { AuditLog } from '../../database/entities/audit-log.entity';
 import { User } from '../../database/entities/user.entity';
@@ -20,10 +22,15 @@ import { FanpageScopedQuery } from './fanpage-scoped-query';
 import { FanpageOverviewService } from './fanpage-overview.service';
 import { FanpageHistoryService } from './fanpage-history.service';
 import { FanpageTodayService } from './fanpage-today.service';
+import { FanpageMetricsService } from './fanpage-metrics.service';
+import { FanpageStatsService } from './fanpage-stats.service';
 import { FanpageRemindersService } from './fanpage-reminders.service';
 import { FanpagesCronController } from './fanpages-cron.controller';
 import {
   FanpagesController,
+  FanpageStatsController,
+  FanpageSnapshotsController,
+  FanpageMetricsController,
   FanpagePostsController,
   FanpageNotesController,
   FanpagePlatformsController,
@@ -32,9 +39,13 @@ import {
 
 // PermissionsModule (@Global) và AuditModule cung cấp PermissionsService/AuditService như ở UtmsModule.
 @Module({
-  imports: [TypeOrmModule.forFeature([Fanpage, FanpagePlatform, FanpagePost, FanpageNote, FanpageHealthStatus, Setting, AuditLog, User])],
+  imports: [TypeOrmModule.forFeature([Fanpage, FanpagePlatform, FanpagePost, FanpageNote, FanpageHealthStatus, FanpageMetricSnapshot, FanpageTarget, Setting, AuditLog, User])],
+  // THỨ TỰ có nghĩa: FanpageStatsController (`fanpages/stats/posts`) phải đứng TRƯỚC FanpagePostsController (`fanpages/:fanpageId/posts`).
   controllers: [
     FanpagesController,
+    FanpageStatsController,
+    FanpageSnapshotsController,
+    FanpageMetricsController,
     FanpagePostsController,
     FanpageNotesController,
     FanpagePlatformsController,
@@ -55,6 +66,8 @@ import {
     FanpageHistoryService,
     FanpageTodayService,
     FanpageRemindersService,
+    FanpageMetricsService,
+    FanpageStatsService,
   ],
   // SidebarBadgesService đếm badge "cần đăng bài" bằng đúng nguồn của tab Hôm nay (X2/X16).
   exports: [FanpageTodayService],

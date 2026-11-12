@@ -1,12 +1,13 @@
 'use client';
 
 import { useState } from 'react';
-import { App, Button, DatePicker, Empty, Form, Input, Modal, Popconfirm, Space, Table, Tooltip, Typography } from 'antd';
+import { Alert, App, Button, DatePicker, Empty, Form, Input, InputNumber, Modal, Popconfirm, Popover, Space, Table, Tooltip, Typography } from 'antd';
 import { DeleteOutlined, EditOutlined, LinkOutlined, PlusOutlined } from '@ant-design/icons';
 import type { ColumnsType } from 'antd/es/table';
 import type { Dayjs } from 'dayjs';
 import dayjs from 'dayjs';
-import type { FanpageFlags, FanpagePost } from '@/lib/api/fanpages.api';
+import type { FanpageFlags, FanpagePost, PostMetricKey } from '@/lib/api/fanpages.api';
+import { fmtNum } from '@/lib/utils/fanpageMetrics';
 import {
     useCreateFanpagePost,
     useDeleteFanpagePost,
@@ -27,11 +28,57 @@ interface PostFormValues {
 interface Props {
     fanpageId: number;
     flags: FanpageFlags;
+    /** Lọc theo 1 ngày đăng (từ bấm ô heatmap). */
+    dateFilter?: string | null;
+    onClearDateFilter?: () => void;
 }
 
-export function FanpagePostsTab({ fanpageId, flags }: Props) {
+const POST_METRIC_COLS: Array<{ key: PostMetricKey; title: string }> = [
+    { key: 'views', title: 'Xem' },
+    { key: 'likes', title: 'Thích' },
+    { key: 'comments', title: 'Bình luận' },
+    { key: 'shares', title: 'Chia sẻ' },
+];
+
+/** Ô số liệu bài sửa tại chỗ: có số -> hiện số; trống -> `＋` (nếu được sửa) hoặc `—`. Bấm mở ô nhập nhỏ. */
+function InlineMetric({ value, editable, saving, onSave }: { value: number | null; editable: boolean; saving: boolean; onSave: (v: number | null) => Promise<void> }) {
+    const [open, setOpen] = useState(false);
+    const [draft, setDraft] = useState<number | null>(value);
+    const text = value == null ? (editable ? '＋' : '—') : fmtNum(value);
+    if (!editable) return <span>{text}</span>;
+    const commit = async () => {
+        if (draft === value) return setOpen(false);
+        await onSave(draft);
+        setOpen(false);
+    };
+    return (
+        <Popover
+            open={open}
+            onOpenChange={(o) => {
+                if (o) setDraft(value);
+                setOpen(o);
+            }}
+            trigger="click"
+            content={
+                <Space>
+                    <InputNumber autoFocus min={0} precision={0} controls={false} value={draft} onChange={(v) => setDraft(v == null ? null : Number(v))} onPressEnter={commit} style={{ width: 110 }} />
+                    <Button type="primary" size="small" loading={saving} onClick={commit}>
+                        Lưu
+                    </Button>
+                </Space>
+            }
+        >
+            <Button type="text" size="small" style={{ minWidth: 48, opacity: value == null ? 0.55 : 1 }}>
+                {text}
+            </Button>
+        </Popover>
+    );
+}
+
+export function FanpagePostsTab({ fanpageId, flags, dateFilter, onClearDateFilter }: Props) {
     const { message } = App.useApp();
-    const { posts, isLoading } = useFanpagePosts(fanpageId);
+    const { posts: allPosts, isLoading } = useFanpagePosts(fanpageId);
+    const posts = dateFilter ? allPosts.filter((p) => p.postedDate === dateFilter) : allPosts;
     const createMut = useCreateFanpagePost(fanpageId);
     const updateMut = useUpdateFanpagePost(fanpageId);
     const deleteMut = useDeleteFanpagePost(fanpageId);
@@ -77,6 +124,14 @@ export function FanpagePostsTab({ fanpageId, flags }: Props) {
         }
     };
 
+    const saveMetric = async (post: FanpagePost, key: PostMetricKey, value: number | null) => {
+        try {
+            await updateMut.mutateAsync({ postId: post.id, data: { [key]: value } });
+        } catch (err) {
+            toastApiError(message, err, 'Không thể lưu số liệu bài');
+        }
+    };
+
     const handleDelete = async (post: FanpagePost) => {
         try {
             await deleteMut.mutateAsync(post.id);
@@ -105,6 +160,15 @@ export function FanpagePostsTab({ fanpageId, flags }: Props) {
                 </Space>
             ),
         },
+        ...POST_METRIC_COLS.map((c) => ({
+            title: c.title,
+            dataIndex: c.key,
+            width: 84,
+            align: 'right' as const,
+            render: (v: number | null, p: FanpagePost) => (
+                <InlineMetric value={v} editable={flags.canManagePosts} saving={updateMut.isPending} onSave={(val) => saveMetric(p, c.key, val)} />
+            ),
+        })),
         {
             title: 'Ghi chú',
             dataIndex: 'note',
@@ -152,6 +216,18 @@ export function FanpagePostsTab({ fanpageId, flags }: Props) {
                     Thêm bài đăng
                 </Button>
             )}
+            {dateFilter && (
+                <Alert
+                    type="info"
+                    showIcon
+                    title={`Đang xem bài đăng ngày ${dayjs(dateFilter).format('DD/MM/YYYY')} (${posts.length} bài)`}
+                    action={
+                        <Button size="small" onClick={onClearDateFilter}>
+                            Bỏ lọc
+                        </Button>
+                    }
+                />
+            )}
             <Table<FanpagePost>
                 rowKey="id"
                 size="small"
@@ -159,7 +235,7 @@ export function FanpagePostsTab({ fanpageId, flags }: Props) {
                 columns={columns}
                 dataSource={posts}
                 pagination={{ pageSize: 10, hideOnSinglePage: true }}
-                locale={{ emptyText: <Empty description="Chưa có bài đăng nào" /> }}
+                locale={{ emptyText: <Empty description={dateFilter ? 'Không có bài nào ngày này' : 'Chưa có bài đăng nào'} /> }}
                 scroll={{ x: 'max-content' }}
             />
             <Modal

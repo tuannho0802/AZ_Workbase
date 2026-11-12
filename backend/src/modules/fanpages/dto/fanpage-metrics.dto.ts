@@ -1,4 +1,4 @@
-import { ArrayMaxSize, ArrayMinSize, IsArray, IsInt, IsOptional, IsString, Length, Matches, Max, Min, ValidateIf, ValidateNested } from 'class-validator';
+import { ArrayMaxSize, ArrayMinSize, IsArray, IsBoolean, IsInt, IsOptional, IsString, Length, Matches, Max, Min, ValidateIf, ValidateNested } from 'class-validator';
 import { Transform, Type } from 'class-transformer';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { FANPAGE_HEATMAP_MAX_WEEKS, FANPAGE_STATS_MAX_COMPARE, METRIC_MAX_VALUE } from '../helpers/fanpage-metrics.helper';
@@ -65,6 +65,11 @@ export class UpsertSnapshotDto extends MetricValuesDto {
     @ValidateIf((_o, v) => v !== null)
     @IsString()
     expectedUpdatedAt?: string | null;
+
+    @ApiPropertyOptional({ description: 'true = vẫn lưu dù followers giảm >50% so với lần nhập trước (đã xác nhận không gõ nhầm)' })
+    @IsOptional()
+    @IsBoolean()
+    confirmDrop?: boolean;
 }
 
 export class BulkSnapshotRowDto extends UpsertSnapshotDto {

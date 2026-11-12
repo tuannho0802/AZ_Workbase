@@ -202,6 +202,9 @@ export const ACTION_META: Record<string, ActionMeta> = {
   UPDATE_FANPAGE_HEALTH_STATUS: m('Sửa tình trạng Page Fanpage', 'blue', 'fanpage'),
   LOCK_FANPAGE_HEALTH_STATUS: m('Khóa tình trạng Page Fanpage', 'orange', 'fanpage'),
   UNLOCK_FANPAGE_HEALTH_STATUS: m('Mở khóa tình trạng Page Fanpage', 'lime', 'fanpage'),
+  UPSERT_FANPAGE_SNAPSHOT: m('Nhập số liệu Fanpage', 'blue', 'fanpage'),
+  DELETE_FANPAGE_SNAPSHOT: m('Xóa số liệu Fanpage', 'red', 'fanpage'),
+  SET_FANPAGE_TARGET: m('Đặt mục tiêu follower Fanpage', 'geekblue', 'fanpage'),
 
   // ── UTM (dùng chung nhóm "Nhóm liên kết" cho gọn bộ lọc) ─────────────
   CREATE_UTM: m('Tạo UTM', 'green', 'link_group'),
@@ -324,6 +327,8 @@ export const ENTITY_TYPE_LABELS: Record<string, string> = {
   fanpage_note: 'Ghi chú Fanpage',
   fanpage_platform: 'Nền tảng Fanpage',
   fanpage_health_status: 'Tình trạng Page Fanpage',
+  fanpage_snapshot: 'Số liệu Fanpage',
+  fanpage_target: 'Mục tiêu Fanpage',
   guide: 'Hướng dẫn sử dụng',
   storage_media: 'File lưu trữ',
   attendance_log: 'Log chấm công',

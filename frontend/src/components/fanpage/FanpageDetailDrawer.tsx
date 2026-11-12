@@ -13,6 +13,7 @@ import { FanpagePostsTab } from './FanpagePostsTab';
 import { FanpageNotesTab } from './FanpageNotesTab';
 import { FanpageOverviewTab } from './FanpageOverviewTab';
 import { FanpageHistoryTab } from './FanpageHistoryTab';
+import { FanpageSnapshotsTab } from './FanpageSnapshotsTab';
 import { HealthTag } from './HealthTag';
 
 interface Props {
@@ -29,6 +30,13 @@ export function FanpageDetailDrawer({ fanpageId, onClose, onEdit }: Props) {
     const [tabState, setTabState] = useState<{ id: number | null; key: string }>({ id: null, key: 'overview' });
     const activeKey = tabState.id === fanpageId ? tabState.key : 'overview';
     const setActiveKey = (key: string) => setTabState({ id: fanpageId, key });
+    // Lọc bài theo ngày khi bấm ô heatmap; gắn với id Page để mở Page khác tự reset.
+    const [dateState, setDateState] = useState<{ id: number | null; date: string | null }>({ id: null, date: null });
+    const postDate = dateState.id === fanpageId ? dateState.date : null;
+    const openPosts = (date?: string) => {
+        setDateState({ id: fanpageId, date: date ?? null });
+        setActiveKey('posts');
+    };
 
     return (
         <Drawer
@@ -64,7 +72,7 @@ export function FanpageDetailDrawer({ fanpageId, onClose, onEdit }: Props) {
                         {
                             key: 'overview',
                             label: 'Tổng quan',
-                            children: <FanpageOverviewTab fanpage={fanpage} onOpenPosts={() => setActiveKey('posts')} />,
+                            children: <FanpageOverviewTab fanpage={fanpage} onOpenPosts={openPosts} />,
                         },
                         {
                             key: 'info',
@@ -112,7 +120,23 @@ export function FanpageDetailDrawer({ fanpageId, onClose, onEdit }: Props) {
                                 />
                             ),
                         },
-                        { key: 'posts', label: 'Bài đăng', children: <FanpagePostsTab fanpageId={fanpage.id} flags={fanpage.flags} /> },
+                        {
+                            key: 'posts',
+                            label: 'Bài đăng',
+                            children: (
+                                <FanpagePostsTab
+                                    fanpageId={fanpage.id}
+                                    flags={fanpage.flags}
+                                    dateFilter={postDate}
+                                    onClearDateFilter={() => setDateState({ id: fanpageId, date: null })}
+                                />
+                            ),
+                        },
+                        {
+                            key: 'metrics',
+                            label: 'Số liệu',
+                            children: <FanpageSnapshotsTab fanpageId={fanpage.id} flags={fanpage.flags} archived={!!fanpage.archivedAt} />,
+                        },
                         { key: 'notes', label: 'Ghi chú tiến trình', children: <FanpageNotesTab fanpageId={fanpage.id} flags={fanpage.flags} /> },
                         { key: 'history', label: 'Lịch sử', children: <FanpageHistoryTab fanpageId={fanpage.id} /> },
                     ]}

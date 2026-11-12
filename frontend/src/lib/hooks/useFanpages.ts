@@ -13,6 +13,12 @@ import {
     FanpagePost,
     FanpagePostPayload,
     FanpageUserBrief,
+    BulkSnapshotRow,
+    FanpageGridResponse,
+    FanpageSnapshot,
+    FanpageTarget,
+    SnapshotPayload,
+    StatsRange,
     UpdateFanpagePayload,
 } from '../api/fanpages.api';
 
@@ -31,6 +37,11 @@ export const fanpageKeys = {
     notes: (id: number | null) => [...KEY, 'notes', id] as const,
     history: (id: number | null) => [...KEY, 'history', id] as const,
     ownerOptions: () => [...KEY, 'owner-options'] as const,
+    snapshots: (id: number | null) => [...KEY, 'snapshots', id] as const,
+    targets: (id: number | null) => [...KEY, 'targets', id] as const,
+    heatmap: (id: number | null, weeks: number) => [...KEY, 'heatmap', id, weeks] as const,
+    grid: (date: string) => [...KEY, 'grid', date] as const,
+    stats: (kind: string, params: unknown) => [...KEY, 'stats', kind, params] as const,
 };
 
 // Hằng số DÙNG CHUNG - KHÔNG tạo `[]` mới mỗi render (tránh vòng lặp vô hạn ở effect phụ thuộc mảng).
@@ -40,6 +51,8 @@ const EMPTY_POSTS: FanpagePost[] = [];
 const EMPTY_NOTES: FanpageNote[] = [];
 const EMPTY_HEALTH: FanpageHealthStatus[] = [];
 const EMPTY_HISTORY: FanpageHistoryEvent[] = [];
+const EMPTY_SNAPSHOTS: FanpageSnapshot[] = [];
+const EMPTY_TARGETS: FanpageTarget[] = [];
 
 /** `enabled=false` khi user không có `fanpages.view` - tránh bắn request rồi dính 403. */
 export const useFanpages = (filters: FanpageFilters, enabled = true) => {
@@ -292,6 +305,100 @@ export const useSetFanpageHealthStatusActive = () => {
     return useMutation({
         mutationFn: ({ id, active }: { id: number; active: boolean }) =>
             active ? fanpagesApi.unlockHealthStatus(id) : fanpagesApi.lockHealthStatus(id),
+        onSuccess: invalidate,
+    });
+};
+
+// ── Số liệu định kỳ / thống kê (GĐ4) ──
+export const useFanpageSnapshots = (fanpageId: number | null) => {
+    const { data, isLoading } = useQuery({
+        queryKey: fanpageKeys.snapshots(fanpageId),
+        queryFn: () => fanpagesApi.listSnapshots(fanpageId as number),
+        enabled: fanpageId != null,
+        staleTime: 30 * 1000,
+    });
+    return { snapshots: data ?? EMPTY_SNAPSHOTS, isLoading };
+};
+
+export const useFanpageTargets = (fanpageId: number | null) => {
+    const { data } = useQuery({
+        queryKey: fanpageKeys.targets(fanpageId),
+        queryFn: () => fanpagesApi.listTargets(fanpageId as number),
+        enabled: fanpageId != null,
+        staleTime: 30 * 1000,
+    });
+    return { targets: data ?? EMPTY_TARGETS };
+};
+
+export const useFanpageHeatmap = (fanpageId: number | null, weeks = 12) =>
+    useQuery({
+        queryKey: fanpageKeys.heatmap(fanpageId, weeks),
+        queryFn: () => fanpagesApi.heatmap(fanpageId as number, weeks),
+        enabled: fanpageId != null,
+        staleTime: 30 * 1000,
+    });
+
+/** Lưới nhập: staleTime 0 để mở lại luôn thấy số mới nhất của đồng nghiệp (X24). */
+export const useFanpageGrid = (date: string, enabled = true) => {
+    const { data, isLoading, isFetching } = useQuery<FanpageGridResponse>({
+        queryKey: fanpageKeys.grid(date),
+        queryFn: () => fanpagesApi.grid(date),
+        enabled,
+        staleTime: 0,
+        placeholderData: keepPreviousData,
+    });
+    return { grid: data, isLoading, isFetching };
+};
+
+export const useFanpageStatsGrowth = (params: StatsRange & { groupBy?: 'week' | 'month'; pageIds?: number[] }, enabled = true) =>
+    useQuery({
+        queryKey: fanpageKeys.stats('growth', params),
+        queryFn: () => fanpagesApi.statsGrowth(params),
+        enabled,
+        staleTime: 60 * 1000,
+        placeholderData: keepPreviousData,
+    });
+
+export const useFanpageStatsPosts = (params: StatsRange, enabled = true) =>
+    useQuery({
+        queryKey: fanpageKeys.stats('posts', params),
+        queryFn: () => fanpagesApi.statsPosts(params),
+        enabled,
+        staleTime: 60 * 1000,
+        placeholderData: keepPreviousData,
+    });
+
+export const useFanpageStatsTopPosts = (params: StatsRange & { limit?: number }, enabled = true) =>
+    useQuery({
+        queryKey: fanpageKeys.stats('top-posts', params),
+        queryFn: () => fanpagesApi.statsTopPosts(params),
+        enabled,
+        staleTime: 60 * 1000,
+        placeholderData: keepPreviousData,
+    });
+
+export const useBulkSaveSnapshots = () => {
+    const invalidate = useInvalidateFanpages();
+    return useMutation({ mutationFn: (data: { date: string; rows: BulkSnapshotRow[] }) => fanpagesApi.bulkSave(data), onSuccess: invalidate });
+};
+
+export const useUpsertFanpageSnapshot = (fanpageId: number) => {
+    const invalidate = useInvalidateFanpages();
+    return useMutation({
+        mutationFn: ({ date, data }: { date: string; data: SnapshotPayload }) => fanpagesApi.upsertSnapshot(fanpageId, date, data),
+        onSuccess: invalidate,
+    });
+};
+
+export const useDeleteFanpageSnapshot = (fanpageId: number) => {
+    const invalidate = useInvalidateFanpages();
+    return useMutation({ mutationFn: (date: string) => fanpagesApi.removeSnapshot(fanpageId, date), onSuccess: invalidate });
+};
+
+export const useSetFanpageTarget = (fanpageId: number) => {
+    const invalidate = useInvalidateFanpages();
+    return useMutation({
+        mutationFn: ({ month, target }: { month: string; target: number | null }) => fanpagesApi.setTarget(fanpageId, month, target),
         onSuccess: invalidate,
     });
 };

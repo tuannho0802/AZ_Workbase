@@ -10,6 +10,16 @@ import { postUrlKey } from './helpers/fanpage-url.helper';
 
 const blankToNull = (v: string | null | undefined): string | null => (v == null || v.trim() === '' ? null : v.trim());
 
+const POST_METRIC_KEYS = ['views', 'likes', 'comments', 'shares'] as const;
+type PostMetricPatch = Partial<Record<(typeof POST_METRIC_KEYS)[number], number | null>>;
+
+/** Chỉ lấy các số liệu bài CÓ gửi lên (undefined = giữ nguyên; null = xoá số đã nhập). */
+const pickMetrics = (dto: PostMetricPatch): PostMetricPatch => {
+    const out: PostMetricPatch = {};
+    for (const k of POST_METRIC_KEYS) if (dto[k] !== undefined) out[k] = dto[k];
+    return out;
+};
+
 /** 'YYYY-MM-DD' -> 'DD/MM/YYYY' cho thông báo lỗi (không đi qua Date -> không dính múi giờ). */
 const fmtVnDate = (d: string): string => d.split('-').reverse().join('/');
 
@@ -45,6 +55,7 @@ export class FanpagePostsService {
     async create(fanpageId: number, dto: CreateFanpagePostDto, user: FanpageCaller): Promise<FanpagePost> {
         await this.access.assertPageAccess(user, 'fanpage_posts.manage', fanpageId, 'Bạn không có quyền thêm bài đăng cho Page này');
         await this.assertPostUrlFree(fanpageId, dto.url);
+        const metrics = pickMetrics(dto);
         const saved = await this.repo.save(
             this.repo.create({
                 fanpageId,
@@ -53,6 +64,8 @@ export class FanpagePostsService {
                 postedDate: dto.postedDate ?? null,
                 note: blankToNull(dto.note),
                 createdById: user.id,
+                ...metrics,
+                ...(Object.keys(metrics).length > 0 ? { metricsUpdatedAt: new Date() } : {}),
             }),
         );
         this.auditService.logActionAsync(user.id, 'CREATE_FANPAGE_POST', 'fanpage_post', saved.id, null, {
@@ -61,6 +74,7 @@ export class FanpagePostsService {
             url: saved.url,
             title: saved.title,
             postedDate: saved.postedDate,
+            ...metrics,
         });
         return this.withUsers(saved.id).getOneOrFail();
     }
@@ -68,7 +82,16 @@ export class FanpagePostsService {
     async update(fanpageId: number, postId: number, dto: UpdateFanpagePostDto, user: FanpageCaller): Promise<FanpagePost> {
         await this.access.assertPageAccess(user, 'fanpage_posts.manage', fanpageId, 'Bạn không có quyền sửa bài đăng của Page này');
         const post = await this.findInPage(fanpageId, postId);
-        const before = { url: post.url, title: post.title, postedDate: post.postedDate, note: post.note };
+        const before = {
+            url: post.url,
+            title: post.title,
+            postedDate: post.postedDate,
+            note: post.note,
+            views: post.views,
+            likes: post.likes,
+            comments: post.comments,
+            shares: post.shares,
+        };
 
         const patch: Partial<FanpagePost> = {};
         if (dto.url !== undefined) {
@@ -79,6 +102,9 @@ export class FanpagePostsService {
         if (dto.title !== undefined) patch.title = blankToNull(dto.title);
         if (dto.postedDate !== undefined) patch.postedDate = dto.postedDate;
         if (dto.note !== undefined) patch.note = blankToNull(dto.note);
+        // Số liệu bài (C4): chỉ ghi số có gửi; chạm số nào thì ghi lại `metricsUpdatedAt`.
+        const metrics = pickMetrics(dto);
+        if (Object.keys(metrics).length > 0) Object.assign(patch, metrics, { metricsUpdatedAt: new Date() });
 
         if (Object.keys(patch).length > 0) {
             await this.repo.update(postId, { ...patch, updatedById: user.id });

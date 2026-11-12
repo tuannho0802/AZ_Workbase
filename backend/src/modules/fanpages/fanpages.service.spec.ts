@@ -63,6 +63,7 @@ function build(over: { scopes?: Record<string, string | null>; binary?: boolean 
   const insights = {
     forPages: jest.fn(async (pages: Array<{ id: number }>) => new Map(pages.map((p) => [p.id, DEFAULT_INSIGHTS]))),
   };
+  const metrics = { latestFollowers: jest.fn().mockResolvedValue(new Map()) };
   const svc = new FanpagesService(
     repo as never,
     platformRepo as never,
@@ -72,6 +73,7 @@ function build(over: { scopes?: Record<string, string | null>; binary?: boolean 
     audit as never,
     scoped as never,
     insights as never,
+    metrics as never,
   );
   return { svc, repo, platformRepo, healthRepo, userRepo, access, audit, flagScopes, scoped, insights };
 }

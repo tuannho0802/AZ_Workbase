@@ -50,7 +50,8 @@ describe('FanpageOverviewService.overview', () => {
         const access = { resolveScopes: jest.fn().mockResolvedValue({ view: 'all', flagScopes: {}, managed: [] }) };
         const scoped = { load: jest.fn().mockResolvedValue([{ id: 1 }, { id: 2 }]), countArchived: jest.fn().mockResolvedValue(4) };
         const insights = { forPages: jest.fn().mockResolvedValue(new Map([[1, ins().insights], [2, ins({ state: 'silent' }).insights]])) };
-        const svc = new FanpageOverviewService(access as never, scoped as never, insights as never);
+        const metrics = { followerSeries: jest.fn().mockResolvedValue(new Map()) };
+        const svc = new FanpageOverviewService(access as never, scoped as never, insights as never, metrics as never);
         const r = await svc.overview({ id: 1, role: 'admin', departmentId: null } as never);
         expect(scoped.load).toHaveBeenCalledWith(expect.anything(), expect.anything(), { archived: 'false' });
         expect(r).toEqual(expect.objectContaining({ totalPages: 2, okPages: 1, silentPages: 1, archivedPages: 4 }));

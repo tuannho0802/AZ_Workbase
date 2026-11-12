@@ -8,16 +8,18 @@ import { toastApiError } from '@/lib/utils/error-message.util';
 import { formatSinceLastPost, formatWeekProgress, postsNeeded } from '@/lib/utils/fanpageCadence';
 import { CadenceBadge } from './CadenceBadge';
 import { HealthTag } from './HealthTag';
+import { FanpageHeatmap } from './FanpageHeatmap';
+import { fmtNum, formatDelta } from '@/lib/utils/fanpageMetrics';
 
 const { Text } = Typography;
 
 interface Props {
     fanpage: Fanpage;
-    /** Chuyển sang tab "Bài đăng" (để sửa bài chưa có ngày). */
-    onOpenPosts: () => void;
+    /** Chuyển sang tab "Bài đăng" (sửa bài chưa có ngày, hoặc xem bài của 1 ngày khi bấm ô heatmap). */
+    onOpenPosts: (date?: string) => void;
 }
 
-/** Tab "Tổng quan" của Drawer (chưa có heatmap - GĐ4). Mọi số lấy từ `fanpage.cadence` (BE tính), không tự tính lại. */
+/** Tab "Tổng quan" của Drawer (4 chỉ số + heatmap 12 tuần). Mọi số lấy từ `fanpage.cadence` (BE tính), không tự tính lại. */
 export function FanpageOverviewTab({ fanpage, onOpenPosts }: Props) {
     const { message } = App.useApp();
     const { posts } = useFanpagePosts(fanpage.id);
@@ -60,15 +62,24 @@ export function FanpageOverviewTab({ fanpage, onOpenPosts }: Props) {
                 </Col>
                 <Col xs={12} md={6}>
                     <Card size="small">
-                        <Statistic title="Bài 30 ngày" value={fanpage.posts30d ?? 0} />
+                        <Statistic title="Followers" value={fanpage.latestMetrics ? fmtNum(fanpage.latestMetrics.followers) : '—'} />
+                        <Text type="secondary" style={{ fontSize: 12 }}>
+                            {fanpage.latestMetrics
+                                ? (formatDelta(fanpage.latestMetrics.delta, fanpage.latestMetrics.deltaDays) || 'Mới có 1 lần nhập')
+                                : 'Chưa có số liệu'}
+                        </Text>
                     </Card>
                 </Col>
                 <Col xs={12} md={6}>
                     <Card size="small">
                         <Statistic title="Bài gần nhất" value={formatSinceLastPost(cadence)} styles={{ content: { fontSize: 18 } }} />
+                        <Text type="secondary" style={{ fontSize: 12 }}>{fanpage.posts30d ?? 0} bài / 30 ngày</Text>
                     </Card>
                 </Col>
             </Row>
+            <Card size="small" title="Nhịp đăng 12 tuần">
+                <FanpageHeatmap fanpageId={fanpage.id} weeks={12} onPickDate={(d) => onOpenPosts(d)} />
+            </Card>
             {fanpage.flags.canEdit && (
                 <Card size="small" title="Mục tiêu đăng bài / tuần">
                     <Space wrap>
@@ -86,7 +97,7 @@ export function FanpageOverviewTab({ fanpage, onOpenPosts }: Props) {
                     showIcon
                     title={`${undated} bài chưa có ngày đăng — không được tính vào nhịp đăng.`}
                     action={
-                        <Button size="small" onClick={onOpenPosts}>
+                        <Button size="small" onClick={() => onOpenPosts()}>
                             Sửa ngày
                         </Button>
                     }

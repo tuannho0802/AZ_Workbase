@@ -25,6 +25,8 @@ import { HealthTag } from '@/components/fanpage/HealthTag';
 import { CadenceBadge } from '@/components/fanpage/CadenceBadge';
 import { FanpageKpiCards, type KpiFilter } from '@/components/fanpage/FanpageKpiCards';
 import { FanpageTodayTab } from '@/components/fanpage/FanpageTodayTab';
+import { FanpageMetricsGridTab } from '@/components/fanpage/FanpageMetricsGridTab';
+import { FanpageStatsTab } from '@/components/fanpage/FanpageStatsTab';
 import { FanpageFormModal } from '@/components/fanpage/FanpageFormModal';
 import { FanpageDetailDrawer } from '@/components/fanpage/FanpageDetailDrawer';
 import { FanpagePlatformsModal } from '@/components/fanpage/FanpagePlatformsModal';
@@ -36,8 +38,8 @@ import { toastApiError } from '@/lib/utils/error-message.util';
 const { Title, Text } = Typography;
 const { useBreakpoint } = Grid;
 
-type TabKey = 'today' | 'list' | 'archived';
-const TAB_KEYS: TabKey[] = ['today', 'list', 'archived'];
+type TabKey = 'today' | 'list' | 'metrics' | 'stats' | 'archived';
+const TAB_KEYS: TabKey[] = ['today', 'list', 'metrics', 'stats', 'archived'];
 const KPI_KEYS: KpiFilter[] = ['all', 'silent', 'at_risk', 'orphan'];
 
 /** Trạng thái "Theo dõi" - 1 nguồn cho cột bảng và dropdown lọc (cùng màu Tag). */
@@ -76,7 +78,12 @@ function FanpagePageContent() {
     // Người chỉ thấy Page của mình vào thẳng "Hôm nay"; Manager/Admin vào "Danh sách" (có thẻ KPI).
     const defaultTab: TabKey = viewScope === 'own' ? 'today' : 'list';
     const tabParam = searchParams.get('tab');
-    const tab: TabKey = TAB_KEYS.includes(tabParam as TabKey) ? (tabParam as TabKey) : defaultTab;
+    // Tab nhập số liệu / thống kê chỉ hiện khi có quyền BE tương ứng (cùng key với @RequirePermission) - không để lộ rồi báo 403.
+    const canMetrics = can('fanpage_metrics.manage');
+    const canStats = can('fanpage_stats.view');
+    const tabAllowed = (k: string | null): k is TabKey =>
+        TAB_KEYS.includes(k as TabKey) && (k !== 'metrics' || canMetrics) && (k !== 'stats' || canStats);
+    const tab: TabKey = tabAllowed(tabParam) ? tabParam : defaultTab;
     const kpiParam = searchParams.get('kpi');
     const kpi: KpiFilter = KPI_KEYS.includes(kpiParam as KpiFilter) ? (kpiParam as KpiFilter) : 'all';
     const platformId = asInt(searchParams.get('platform'));
@@ -117,7 +124,7 @@ function FanpagePageContent() {
         [debouncedSearch, platformId, ownerId, healthStatusId, status, kpi, tab],
     );
 
-    const listEnabled = canView && tab !== 'today';
+    const listEnabled = canView && (tab === 'list' || tab === 'archived');
     const { fanpages, capabilities, isLoading, isFetching } = useFanpages(filters, listEnabled);
     const { overview, isLoading: overviewLoading } = useFanpageOverview(canView && tab !== 'archived');
     const { platforms } = useFanpagePlatforms(false, canView);
@@ -132,6 +139,8 @@ function FanpagePageContent() {
     const [detailId, setDetailId] = useState<number | null>(null);
     const [platformsOpen, setPlatformsOpen] = useState(false);
     const [healthOpen, setHealthOpen] = useState(false);
+    // Lưới nhập còn thay đổi chưa lưu -> hỏi trước khi rời tab.
+    const [metricsDirty, setMetricsDirty] = useState(false);
 
     // Link từ thông báo nhắc việc: /fanpage?id=<id> -> mở Drawer. Đặt state ngay lúc render (derived, không qua effect),
     // rồi effect chỉ bỏ `id` khỏi URL để đóng Drawer + Back không mở lại.
@@ -407,7 +416,22 @@ function FanpagePageContent() {
 
             <Tabs
                 activeKey={tab}
-                onChange={(k) => setParams({ tab: k === defaultTab ? undefined : k, kpi: undefined })}
+                onChange={(k) => {
+                    const go = () => {
+                        setMetricsDirty(false);
+                        setParams({ tab: k === defaultTab ? undefined : k, kpi: undefined });
+                    };
+                    if (tab === 'metrics' && metricsDirty && k !== 'metrics') {
+                        modal.confirm({
+                            title: 'Rời tab sẽ bỏ các số liệu chưa lưu',
+                            okText: 'Rời tab',
+                            cancelText: 'Ở lại',
+                            onOk: go,
+                        });
+                        return;
+                    }
+                    go();
+                }}
                 destroyOnHidden
                 items={[
                     {
@@ -426,6 +450,24 @@ function FanpagePageContent() {
                             </>
                         ),
                     },
+                    ...(canMetrics
+                        ? [
+                            {
+                                key: 'metrics',
+                                label: 'Nhập số liệu',
+                                children: <FanpageMetricsGridTab enabled={canView && tab === 'metrics'} onDirtyChange={setMetricsDirty} />,
+                            },
+                        ]
+                        : []),
+                    ...(canStats
+                        ? [
+                            {
+                                key: 'stats',
+                                label: 'Thống kê',
+                                children: <FanpageStatsTab enabled={canView && tab === 'stats'} onOpenDetail={setDetailId} />,
+                            },
+                        ]
+                        : []),
                     {
                         key: 'archived',
                         label: (

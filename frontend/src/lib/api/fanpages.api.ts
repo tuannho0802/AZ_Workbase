@@ -63,6 +63,18 @@ export interface FanpageFlags {
     canExport?: boolean;
 }
 
+export const METRIC_KEYS = ['followers', 'reach', 'engagement', 'views'] as const;
+export type MetricKey = (typeof METRIC_KEYS)[number];
+export type PostMetricKey = 'views' | 'likes' | 'comments' | 'shares';
+
+/** Follower nhập tay mới nhất + chênh lệch so với lần nhập trước (kèm số ngày cách nhau). */
+export interface LatestMetric {
+    date: string;
+    followers: number;
+    delta: number | null;
+    deltaDays: number | null;
+}
+
 export interface Fanpage {
     id: number;
     platformId: number;
@@ -91,6 +103,8 @@ export interface Fanpage {
     /** Không còn người phụ trách đang hoạt động. */
     isOrphan?: boolean;
     cadence?: FanpageCadence;
+    /** null = chưa có số liệu follower nào. */
+    latestMetrics?: LatestMetric | null;
     health?: FanpageHealthBrief | null;
     healthStatusId?: number | null;
     healthNote?: string | null;
@@ -113,6 +127,9 @@ export interface FanpageOverview {
     archivedPages: number;
     postsThisWeek: number;
     posts30d: number;
+    /** Follower tăng/giảm 30 ngày (nhập tay); null = chưa Page nào đủ ≥ 2 mốc. */
+    followerGain30d: number | null;
+    pagesWithoutMetrics: number;
 }
 
 /** 1 dòng của tab "Hôm nay". */
@@ -182,6 +199,10 @@ export interface FanpagePost {
     /** YYYY-MM-DD */
     postedDate: string | null;
     note: string | null;
+    views: number | null;
+    likes: number | null;
+    comments: number | null;
+    shares: number | null;
     createdBy: FanpageUserRef | null;
     updatedBy: FanpageUserRef | null;
     createdAt: string;
@@ -218,6 +239,131 @@ export interface FanpagePostPayload {
     title?: string | null;
     postedDate?: string | null;
     note?: string | null;
+    views?: number | null;
+    likes?: number | null;
+    comments?: number | null;
+    shares?: number | null;
+}
+
+// ── Số liệu định kỳ / thống kê (GĐ4) ──
+export interface FanpageSnapshot {
+    id: number;
+    fanpageId: number;
+    /** YYYY-MM-DD */
+    snapshotDate: string;
+    followers: number | null;
+    reach: number | null;
+    engagement: number | null;
+    views: number | null;
+    note: string | null;
+    createdBy: FanpageUserRef | null;
+    updatedBy: FanpageUserRef | null;
+    createdAt: string;
+    /** Gửi lại làm `expectedUpdatedAt` khi sửa (X24). */
+    updatedAt: string;
+}
+
+/** `undefined` = giữ nguyên, `null` = xoá giá trị đó. */
+export interface SnapshotPayload {
+    followers?: number | null;
+    reach?: number | null;
+    engagement?: number | null;
+    views?: number | null;
+    note?: string | null;
+    expectedUpdatedAt?: string | null;
+    confirmDrop?: boolean;
+}
+
+export interface BulkSnapshotRow extends SnapshotPayload {
+    fanpageId: number;
+}
+
+export interface BulkRowError {
+    fanpageId: number;
+    code: 'NO_ACCESS' | 'INVALID' | 'STALE' | 'SUSPICIOUS_DROP';
+    message: string;
+    currentUpdatedAt?: string | null;
+}
+
+export interface BulkSaveResponse {
+    date: string;
+    saved: Array<{ fanpageId: number; updatedAt: string }>;
+    errors: BulkRowError[];
+}
+
+export interface FanpageGridRow {
+    fanpageId: number;
+    name: string;
+    url: string;
+    platform: { id: number; name: string; color: string };
+    current: (Pick<FanpageSnapshot, 'followers' | 'reach' | 'engagement' | 'views' | 'note'> & { updatedAt: string }) | null;
+    previous: (Pick<FanpageSnapshot, 'followers' | 'reach' | 'engagement' | 'views'> & { date: string }) | null;
+}
+
+export interface FanpageGridResponse {
+    date: string;
+    rows: FanpageGridRow[];
+}
+
+export interface FanpageTarget {
+    /** YYYY-MM */
+    month: string;
+    targetFollowerGain: number | null;
+    actualGain: number | null;
+}
+
+export interface StatsRange {
+    from?: string;
+    to?: string;
+}
+
+export interface GrowthResponse {
+    from: string;
+    to: string;
+    groupBy: 'week' | 'month';
+    points: Array<{ key: string; total: number; pagesWithData: number }>;
+    perPage: Array<{ id: number; name: string; values: Array<number | null> }>;
+    pagesWithoutMetrics: number;
+    totalPages: number;
+    gain: { total: number; pagesWithGain: number };
+    pageRows: Array<{ id: number; name: string; followers: number; latestDate: string; gain: number; baselineDate: string }>;
+    pages: Array<{ id: number; name: string }>;
+}
+
+export interface PostsStatsResponse {
+    from: string;
+    to: string;
+    weeks: Array<{ weekStart: string; weekEnd: string; count: number }>;
+    totalPosts: number;
+    weeklyTarget: number;
+}
+
+export interface TopPostRow {
+    id: number;
+    fanpageId: number;
+    fanpageName: string;
+    title: string | null;
+    url: string;
+    postedDate: string | null;
+    views: number | null;
+    likes: number | null;
+    comments: number | null;
+    shares: number | null;
+    interactions: number;
+}
+
+export interface TopPostsResponse {
+    from: string;
+    to: string;
+    posts: TopPostRow[];
+    postsWithoutMetrics: number;
+}
+
+export interface HeatmapResponse {
+    from: string;
+    to: string;
+    weeks: number;
+    cells: Array<{ date: string; count: number; future: boolean }>;
 }
 
 export interface FanpagePlatformPayload {
@@ -328,4 +474,44 @@ export const fanpagesApi = {
 
     unlockHealthStatus: async (id: number): Promise<FanpageHealthStatus> =>
         (await axiosInstance.patch<FanpageHealthStatus>(`/fanpage-health-statuses/${id}/unlock`)).data,
+
+    // ── Số liệu định kỳ / thống kê (GĐ4) ──
+    listSnapshots: async (fanpageId: number): Promise<FanpageSnapshot[]> =>
+        (await axiosInstance.get<FanpageSnapshot[]>(`/fanpages/${fanpageId}/snapshots`)).data,
+
+    upsertSnapshot: async (fanpageId: number, date: string, data: SnapshotPayload): Promise<FanpageSnapshot> =>
+        (await axiosInstance.put<FanpageSnapshot>(`/fanpages/${fanpageId}/snapshots/${date}`, data)).data,
+
+    removeSnapshot: async (fanpageId: number, date: string): Promise<void> => {
+        await axiosInstance.delete(`/fanpages/${fanpageId}/snapshots/${date}`);
+    },
+
+    listTargets: async (fanpageId: number): Promise<FanpageTarget[]> =>
+        (await axiosInstance.get<FanpageTarget[]>(`/fanpages/${fanpageId}/targets`)).data,
+
+    setTarget: async (fanpageId: number, month: string, target: number | null): Promise<void> => {
+        await axiosInstance.put(`/fanpages/${fanpageId}/targets/${month}`, { targetFollowerGain: target });
+    },
+
+    heatmap: async (fanpageId: number, weeks = 12): Promise<HeatmapResponse> =>
+        (await axiosInstance.get<HeatmapResponse>(`/fanpages/${fanpageId}/heatmap`, { params: { weeks } })).data,
+
+    grid: async (date: string): Promise<FanpageGridResponse> =>
+        (await axiosInstance.get<FanpageGridResponse>('/fanpage-metrics/grid', { params: { date } })).data,
+
+    bulkSave: async (data: { date: string; rows: BulkSnapshotRow[] }): Promise<BulkSaveResponse> =>
+        (await axiosInstance.put<BulkSaveResponse>('/fanpage-metrics/bulk', data)).data,
+
+    statsGrowth: async (params: StatsRange & { groupBy?: 'week' | 'month'; pageIds?: number[] }): Promise<GrowthResponse> =>
+        (
+            await axiosInstance.get<GrowthResponse>('/fanpages/stats/growth', {
+                params: { ...params, pageIds: params.pageIds?.length ? params.pageIds.join(',') : undefined },
+            })
+        ).data,
+
+    statsPosts: async (params: StatsRange): Promise<PostsStatsResponse> =>
+        (await axiosInstance.get<PostsStatsResponse>('/fanpages/stats/posts', { params })).data,
+
+    statsTopPosts: async (params: StatsRange & { limit?: number }): Promise<TopPostsResponse> =>
+        (await axiosInstance.get<TopPostsResponse>('/fanpages/stats/top-posts', { params })).data,
 };

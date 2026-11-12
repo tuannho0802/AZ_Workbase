@@ -1,4 +1,4 @@
-import { Controller, Get, Post, Patch, Delete, Body, Param, ParseIntPipe, Query, UseGuards } from '@nestjs/common';
+import { Controller, Get, Post, Patch, Put, Delete, Body, Param, ParseIntPipe, Query, UseGuards } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiBearerAuth } from '@nestjs/swagger';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { PermissionGuard } from '../../common/guards/permission.guard';
@@ -16,6 +16,19 @@ import { CreateFanpageDto, UpdateFanpageDto, FanpageQueryDto } from './dto/fanpa
 import { CreateFanpagePostDto, UpdateFanpagePostDto, FanpageNoteDto } from './dto/fanpage-post.dto';
 import { CreateFanpagePlatformDto, UpdateFanpagePlatformDto } from './dto/fanpage-platform.dto';
 import { CreateFanpageHealthStatusDto, UpdateFanpageHealthStatusDto } from './dto/fanpage-health-status.dto';
+import { FanpageMetricsService } from './fanpage-metrics.service';
+import { FanpageStatsService } from './fanpage-stats.service';
+import {
+  BulkSnapshotDto,
+  GridQueryDto,
+  GrowthQueryDto,
+  HeatmapQueryDto,
+  SetTargetDto,
+  SnapshotListQueryDto,
+  StatsRangeQueryDto,
+  TopPostsQueryDto,
+  UpsertSnapshotDto,
+} from './dto/fanpage-metrics.dto';
 import type { FanpageCaller } from './fanpage-access.service';
 
 /**
@@ -110,6 +123,124 @@ export class FanpagesController {
   @ApiOperation({ summary: 'Xoá Page kèm bài đăng + ghi chú (mặc định chỉ Admin)' })
   remove(@Param('id', ParseIntPipe) id: number, @GetUser() user: FanpageCaller) {
     return this.service.remove(id, user);
+  }
+}
+
+/**
+ * Thống kê (tab "Thống kê"). Controller này PHẢI đăng ký TRƯỚC `FanpagePostsController` trong module:
+ * `GET /fanpages/stats/posts` sẽ bị route `fanpages/:fanpageId/posts` bắt (ParseIntPipe -> 400) nếu đứng sau (PLAN X18, có spec khoá thứ tự).
+ */
+@ApiTags('Fanpage - Thống kê')
+@ApiBearerAuth()
+@UseGuards(JwtAuthGuard, PermissionGuard)
+@Controller('fanpages/stats')
+export class FanpageStatsController {
+  constructor(private readonly service: FanpageStatsService) {}
+
+  @Get('growth')
+  @RequirePermission('fanpage_stats.view')
+  @ApiOperation({ summary: 'Chuỗi follower tổng (+ Page so sánh) theo tuần/tháng - số liệu nhập tay, carry-forward' })
+  growth(@Query() query: GrowthQueryDto, @GetUser() user: FanpageCaller) {
+    return this.service.growth(user, query);
+  }
+
+  @Get('posts')
+  @RequirePermission('fanpage_stats.view')
+  @ApiOperation({ summary: 'Số bài theo tuần Thứ Hai-CN + tổng mục tiêu bài/tuần của Page đang theo dõi' })
+  posts(@Query() query: StatsRangeQueryDto, @GetUser() user: FanpageCaller) {
+    return this.service.posts(user, query);
+  }
+
+  @Get('top-posts')
+  @RequirePermission('fanpage_stats.view')
+  @ApiOperation({ summary: 'Top bài theo like + comment + share (chỉ bài đã nhập số liệu)' })
+  topPosts(@Query() query: TopPostsQueryDto, @GetUser() user: FanpageCaller) {
+    return this.service.topPosts(user, query);
+  }
+}
+
+@ApiTags('Fanpage - Số liệu định kỳ')
+@ApiBearerAuth()
+@UseGuards(JwtAuthGuard, PermissionGuard)
+@Controller('fanpages/:fanpageId')
+export class FanpageSnapshotsController {
+  constructor(
+    private readonly metrics: FanpageMetricsService,
+    private readonly stats: FanpageStatsService,
+  ) {}
+
+  @Get('snapshots')
+  @RequirePermission('fanpages.view')
+  @ApiOperation({ summary: 'Số liệu định kỳ của Page (mới nhất trước, tối đa 400 dòng)' })
+  list(@Param('fanpageId', ParseIntPipe) fanpageId: number, @Query() query: SnapshotListQueryDto, @GetUser() user: FanpageCaller) {
+    return this.metrics.list(fanpageId, user, query);
+  }
+
+  @Put('snapshots/:date')
+  @RequirePermission('fanpage_metrics.manage')
+  @ApiOperation({ summary: 'Nhập/sửa số liệu 1 ngày (upsert; trường bỏ trống giữ nguyên, null = xoá)' })
+  upsert(
+    @Param('fanpageId', ParseIntPipe) fanpageId: number,
+    @Param('date') date: string,
+    @Body() dto: UpsertSnapshotDto,
+    @GetUser() user: FanpageCaller,
+  ) {
+    return this.metrics.upsert(fanpageId, date, dto, user);
+  }
+
+  @Delete('snapshots/:date')
+  @RequirePermission('fanpage_metrics.delete')
+  @ApiOperation({ summary: 'Xoá số liệu 1 ngày (mặc định chỉ Admin)' })
+  removeSnapshot(@Param('fanpageId', ParseIntPipe) fanpageId: number, @Param('date') date: string, @GetUser() user: FanpageCaller) {
+    return this.metrics.remove(fanpageId, date, user);
+  }
+
+  @Get('targets')
+  @RequirePermission('fanpages.view')
+  @ApiOperation({ summary: 'Mục tiêu follower tăng thêm theo tháng kèm số đã tăng thực tế (chỉ để báo cáo)' })
+  targets(@Param('fanpageId', ParseIntPipe) fanpageId: number, @GetUser() user: FanpageCaller) {
+    return this.metrics.listTargets(fanpageId, user);
+  }
+
+  @Put('targets/:month')
+  @RequirePermission('fanpage_metrics.manage')
+  @ApiOperation({ summary: 'Đặt/đổi/bỏ (null) mục tiêu follower của 1 tháng (YYYY-MM)' })
+  setTarget(
+    @Param('fanpageId', ParseIntPipe) fanpageId: number,
+    @Param('month') month: string,
+    @Body() dto: SetTargetDto,
+    @GetUser() user: FanpageCaller,
+  ) {
+    return this.metrics.setTarget(fanpageId, month, dto, user);
+  }
+
+  @Get('heatmap')
+  @RequirePermission('fanpages.view')
+  @ApiOperation({ summary: 'Lưới số bài theo ngày (mặc định 12 tuần) để vẽ heatmap' })
+  heatmap(@Param('fanpageId', ParseIntPipe) fanpageId: number, @Query() query: HeatmapQueryDto, @GetUser() user: FanpageCaller) {
+    return this.stats.heatmap(fanpageId, query.weeks, user);
+  }
+}
+
+@ApiTags('Fanpage - Lưới nhập số liệu')
+@ApiBearerAuth()
+@UseGuards(JwtAuthGuard, PermissionGuard)
+@Controller('fanpage-metrics')
+export class FanpageMetricsController {
+  constructor(private readonly service: FanpageMetricsService) {}
+
+  @Get('grid')
+  @RequirePermission('fanpage_metrics.manage')
+  @ApiOperation({ summary: 'Lưới nhập nhanh: Page đang theo dõi người gọi được nhập, kèm số đã nhập hôm đó + lần trước' })
+  grid(@Query() query: GridQueryDto, @GetUser() user: FanpageCaller) {
+    return this.service.grid(user, query.date);
+  }
+
+  @Put('bulk')
+  @RequirePermission('fanpage_metrics.manage')
+  @ApiOperation({ summary: 'Lưu nhiều dòng số liệu cùng ngày; lỗi trả theo TỪNG dòng, dòng hợp lệ vẫn lưu' })
+  bulk(@Body() dto: BulkSnapshotDto, @GetUser() user: FanpageCaller) {
+    return this.service.bulk(dto, user);
   }
 }
 

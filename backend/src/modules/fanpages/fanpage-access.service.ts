@@ -101,6 +101,17 @@ export class FanpageAccessService {
     return { view, flagScopes, managed };
   }
 
+  /**
+   * Scope của MỘT permission bất kỳ (vd `fanpage_stats.view`, `fanpage_metrics.manage`) dưới dạng `FanpageScopes` để dùng lại
+   * `FanpageScopedQuery` (chỉ đọc `view` + `managed`). Thiếu quyền -> `view = null` (fail-closed -> `requireViewScope` ném 403).
+   * Root Admin đã được `scopeOf` cho 'all' (lối thoát hiểm giữ nguyên, không viết bypass mới).
+   */
+  async scopesForKey(user: FanpageCaller, key: string): Promise<FanpageScopes> {
+    const view = await this.scopeOf(user, key);
+    const managed = view === 'department' ? await this.managedDepartmentIds(user.id) : [];
+    return { view, flagScopes: {} as Record<keyof FanpageFlags, string | null>, managed };
+  }
+
   buildContext(page: Fanpage, userId: number, managedDepartmentIds: number[]): FanpageAccessContext {
     // `owners` là nguồn sự thật; Page nạp thiếu `owners` (hiếm) thì lùi về người phụ trách chính để fail-closed đúng.
     const owners = page.owners ?? (page.owner ? [page.owner] : []);
