@@ -155,6 +155,12 @@ export class FanpageQueryDto {
     @IsIn(['false', 'true', 'all'])
     archived?: 'false' | 'true' | 'all';
 
+    @ApiPropertyOptional({ description: 'Chỉ Page đang gắn UTM này (GĐ5)' })
+    @IsOptional()
+    @Type(() => Number)
+    @IsInt()
+    utmId?: number;
+
     @ApiPropertyOptional({ enum: ['true'], description: 'true = chỉ Page "mồ côi" (không còn người phụ trách đang hoạt động)' })
     @IsOptional()
     @IsIn(['true'])

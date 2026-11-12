@@ -19,6 +19,11 @@ function fakeQb(h: { many?: Raw[]; one?: (sel: string) => Raw | undefined; entit
     qb.getRawMany = jest.fn(async () => h.many ?? []);
     qb.getRawOne = jest.fn(async () => h.one?.(sel));
     qb.getMany = jest.fn(async () => h.entities ?? []);
+    // Ghi lại tham số `ids` của where() để mock getMany lọc theo fanpageId như truy vấn thật.
+    qb.where = jest.fn((a: unknown, params?: { ids?: number[] }) => {
+        if (params?.ids) qb.getMany = jest.fn(async () => (h.entities ?? []).filter((e) => params.ids?.includes((e as { fanpageId: number }).fanpageId)));
+        return qb;
+    });
     return qb;
 }
 
@@ -254,7 +259,7 @@ describe('FanpageOutcomesService.listCustomers', () => {
             page: 1,
             limit: 10,
             totalPages: 1,
-        });
+        } as never);
         t.utmsService.usabilityFor.mockResolvedValueOnce(new Map([[10, { id: 10, restricted: true, canUse: false }]]) as never);
         const r = await t.svc.listCustomers(user, q);
         expect((r.data[0].utm as { name: string }).name).toBe(RESTRICTED_UTM_LABEL);

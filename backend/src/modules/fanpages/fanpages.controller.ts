@@ -18,6 +18,9 @@ import { CreateFanpagePlatformDto, UpdateFanpagePlatformDto } from './dto/fanpag
 import { CreateFanpageHealthStatusDto, UpdateFanpageHealthStatusDto } from './dto/fanpage-health-status.dto';
 import { FanpageMetricsService } from './fanpage-metrics.service';
 import { FanpageStatsService } from './fanpage-stats.service';
+import { FanpageUtmsService } from './fanpage-utms.service';
+import { FanpageOutcomesService } from './fanpage-outcomes.service';
+import { OutcomeCustomersQueryDto, OutcomesQueryDto, SetFanpageUtmsDto } from './dto/fanpage-utm.dto';
 import {
   BulkSnapshotDto,
   GridQueryDto,
@@ -46,6 +49,7 @@ export class FanpagesController {
     private readonly overviewService: FanpageOverviewService,
     private readonly historyService: FanpageHistoryService,
     private readonly todayService: FanpageTodayService,
+    private readonly utmLinks: FanpageUtmsService,
   ) {}
 
   @Get()
@@ -111,6 +115,20 @@ export class FanpagesController {
     return this.service.unarchive(id, user);
   }
 
+  @Put(':id/utms')
+  @RequirePermission('fanpages.edit')
+  @ApiOperation({ summary: 'Thay toàn bộ UTM gắn cho Page (Page đầu tiên gắn UTM tự thành Page chính; gỡ Page chính khi còn Page khác → 409)' })
+  setUtms(@Param('id', ParseIntPipe) id: number, @Body() dto: SetFanpageUtmsDto, @GetUser() user: FanpageCaller) {
+    return this.utmLinks.setUtms(id, dto.utmIds, user);
+  }
+
+  @Patch(':id/utms/:utmId/primary')
+  @RequirePermission('fanpages.edit')
+  @ApiOperation({ summary: 'Đặt Page này làm Page chính (ghi công) của UTM - cần quyền sửa cả Page chính hiện tại' })
+  setPrimaryUtm(@Param('id', ParseIntPipe) id: number, @Param('utmId', ParseIntPipe) utmId: number, @GetUser() user: FanpageCaller) {
+    return this.utmLinks.setPrimary(id, utmId, user);
+  }
+
   @Patch(':id')
   @RequirePermission('fanpages.edit')
   @ApiOperation({ summary: 'Sửa Page (tên/link/nền tảng/theo dõi/tình trạng/mục tiêu tuần/người phụ trách)' })
@@ -135,7 +153,10 @@ export class FanpagesController {
 @UseGuards(JwtAuthGuard, PermissionGuard)
 @Controller('fanpages/stats')
 export class FanpageStatsController {
-  constructor(private readonly service: FanpageStatsService) {}
+  constructor(
+    private readonly service: FanpageStatsService,
+    private readonly outcomes: FanpageOutcomesService,
+  ) {}
 
   @Get('growth')
   @RequirePermission('fanpage_stats.view')
@@ -156,6 +177,20 @@ export class FanpageStatsController {
   @ApiOperation({ summary: 'Top bài theo like + comment + share (chỉ bài đã nhập số liệu)' })
   topPosts(@Query() query: TopPostsQueryDto, @GetUser() user: FanpageCaller) {
     return this.service.topPosts(user, query);
+  }
+
+  @Get('outcomes')
+  @RequirePermission('fanpage_stats.view')
+  @ApiOperation({ summary: 'Page → Khách & Tiền nạp (PLAN 3.7): Page chính ghi công, Page tham gia, Tổng DISTINCT, Chưa quy về Page. Tiền chỉ khi qua cổng 4 lớp' })
+  outcomesReport(@Query() query: OutcomesQueryDto, @GetUser() user: FanpageCaller) {
+    return this.outcomes.getOutcomes(user, query);
+  }
+
+  @Get('outcomes/customers')
+  @RequirePermission('fanpage_stats.view')
+  @ApiOperation({ summary: 'Danh sách khách của 1 Page (ghi công / tham gia) - đúng phạm vi customers.view của người xem' })
+  outcomeCustomers(@Query() query: OutcomeCustomersQueryDto, @GetUser() user: FanpageCaller) {
+    return this.outcomes.listCustomers(user, query);
   }
 }
 

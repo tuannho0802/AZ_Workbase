@@ -13,6 +13,7 @@ import {
     FanpagePost,
     FanpagePostPayload,
     FanpageUserBrief,
+    OutcomeCustomersParams,
     BulkSnapshotRow,
     FanpageGridResponse,
     FanpageSnapshot,
@@ -376,6 +377,35 @@ export const useFanpageStatsTopPosts = (params: StatsRange & { limit?: number },
         staleTime: 60 * 1000,
         placeholderData: keepPreviousData,
     });
+
+export const useFanpageStatsOutcomes = (params: StatsRange, enabled = true) =>
+    useQuery({
+        queryKey: fanpageKeys.stats('outcomes', params),
+        queryFn: () => fanpagesApi.statsOutcomes(params),
+        enabled,
+        staleTime: 60 * 1000,
+        placeholderData: keepPreviousData,
+    });
+
+/** Mini Table khách khi bấm số khách ở bảng Page → Khách. `params=null` = modal đóng, không bắn request. */
+export const useFanpageOutcomeCustomers = (params: OutcomeCustomersParams | null) =>
+    useQuery({
+        queryKey: fanpageKeys.stats('outcome-customers', params),
+        queryFn: () => fanpagesApi.statsOutcomeCustomers(params as OutcomeCustomersParams),
+        enabled: params != null,
+        placeholderData: keepPreviousData,
+    });
+
+/** Gắn/gỡ UTM + đổi Page chính ảnh hưởng cả danh sách Page, chi tiết lẫn khối Thống kê -> làm mới toàn bộ `fanpages`. */
+export const useSetFanpageUtms = () => {
+    const invalidate = useInvalidateFanpagesAndBadge();
+    return useMutation({ mutationFn: ({ id, utmIds }: { id: number; utmIds: number[] }) => fanpagesApi.setUtms(id, utmIds), onSuccess: invalidate });
+};
+
+export const useSetFanpagePrimaryUtm = () => {
+    const invalidate = useInvalidateFanpagesAndBadge();
+    return useMutation({ mutationFn: ({ id, utmId }: { id: number; utmId: number }) => fanpagesApi.setPrimaryUtm(id, utmId), onSuccess: invalidate });
+};
 
 export const useBulkSaveSnapshots = () => {
     const invalidate = useInvalidateFanpages();

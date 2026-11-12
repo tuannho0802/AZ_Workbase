@@ -105,6 +105,8 @@ export interface Fanpage {
     cadence?: FanpageCadence;
     /** null = chưa có số liệu follower nào. */
     latestMetrics?: LatestMetric | null;
+    /** UTM đang gắn (GĐ5) - BE đã che tên UTM hạn chế người xem không được dùng. */
+    utms?: FanpageUtmChip[];
     health?: FanpageHealthBrief | null;
     healthStatusId?: number | null;
     healthNote?: string | null;
@@ -180,6 +182,8 @@ export interface FanpageFilters {
     isActive?: 'true' | 'false';
     search?: string;
     healthStatusId?: number;
+    /** Chỉ Page đang gắn UTM này (GĐ5). */
+    utmId?: number;
     cadence?: FanpageCadenceState;
     /** Mặc định BE = 'false' (ẩn Page đã lưu trữ). */
     archived?: 'false' | 'true' | 'all';
@@ -310,6 +314,100 @@ export interface FanpageTarget {
     month: string;
     targetFollowerGain: number | null;
     actualGain: number | null;
+}
+
+/** Chip UTM của 1 Page (GĐ5). `locked` = UTM hạn chế người xem không được dùng: tên đã bị che, không gỡ/đổi chính được. */
+export interface FanpageUtmChip {
+    utmId: number;
+    name: string;
+    color: string | null;
+    isActive: boolean;
+    restricted: boolean;
+    locked: boolean;
+    /** true = Page này là Page CHÍNH (ghi công) của UTM. */
+    isPrimary: boolean;
+    primaryFanpage: { id: number; name: string } | null;
+    sharedWith: Array<{ id: number; name: string }>;
+}
+
+/** Body 409 khi gỡ Page chính còn Page khác dùng chung (R10). */
+export interface FanpageUtmBlocked {
+    utmId: number;
+    utmName: string;
+    otherPages: Array<{ id: number; name: string }>;
+}
+
+/** Chỉ số 1 nhóm (ghi công / tham gia). `deposit` CHỈ có khi qua cổng tiền 4 lớp - không có = không hiển thị. */
+export interface OutcomeBucket {
+    customers: number;
+    closed: number;
+    closeRate: number | null;
+    utmCount: number;
+    deposit?: number;
+}
+
+export interface OutcomeUtmRow {
+    utmId: number;
+    name: string;
+    locked: boolean;
+    isPrimary: boolean;
+    primaryFanpage: { id: number; name: string } | null;
+    customers: number;
+    deposit?: number;
+}
+
+export interface PageOutcomeRow {
+    fanpageId: number;
+    name: string;
+    archived: boolean;
+    posts: number;
+    customersPerPost: number | null;
+    primary: OutcomeBucket;
+    participating: OutcomeBucket;
+    utms: OutcomeUtmRow[];
+}
+
+/** `GET /fanpages/stats/outcomes`. */
+export interface OutcomesResponse {
+    from: string;
+    to: string;
+    statsScope: string;
+    /** null = người xem không có `customers.view` -> mọi số = 0. */
+    customerScope: string | null;
+    hasRevenue: boolean;
+    pages: PageOutcomeRow[];
+    total: { customers: number; closed: number; closeRate: number | null; deposit?: number };
+    /** null = không hiển thị (chỉ scope rộng mới có). */
+    unassigned: { customers: number; closed: number } | null;
+}
+
+export interface OutcomeCustomersParams extends StatsRange {
+    kind: 'primary' | 'participating';
+    fanpageId: number;
+    status?: string;
+    search?: string;
+    page?: number;
+    limit?: number;
+}
+
+export interface OutcomeCustomerRow {
+    id: number;
+    name: string;
+    phone?: string;
+    status: string;
+    inputDate: string | null;
+    utm: { id: number; name: string; color: string | null; isActive: boolean } | null;
+    salesUser?: { id: number; name: string } | null;
+    marketingUser?: { id: number; name: string } | null;
+    [key: string]: unknown;
+}
+
+export interface OutcomeCustomersResponse {
+    data: OutcomeCustomerRow[];
+    total: number;
+    page: number;
+    limit: number;
+    totalPages: number;
 }
 
 export interface StatsRange {
@@ -511,6 +609,18 @@ export const fanpagesApi = {
 
     statsPosts: async (params: StatsRange): Promise<PostsStatsResponse> =>
         (await axiosInstance.get<PostsStatsResponse>('/fanpages/stats/posts', { params })).data,
+
+    setUtms: async (fanpageId: number, utmIds: number[]): Promise<FanpageUtmChip[]> =>
+        (await axiosInstance.put<FanpageUtmChip[]>(`/fanpages/${fanpageId}/utms`, { utmIds })).data,
+
+    setPrimaryUtm: async (fanpageId: number, utmId: number): Promise<FanpageUtmChip[]> =>
+        (await axiosInstance.patch<FanpageUtmChip[]>(`/fanpages/${fanpageId}/utms/${utmId}/primary`)).data,
+
+    statsOutcomes: async (params: StatsRange): Promise<OutcomesResponse> =>
+        (await axiosInstance.get<OutcomesResponse>('/fanpages/stats/outcomes', { params })).data,
+
+    statsOutcomeCustomers: async (params: OutcomeCustomersParams): Promise<OutcomeCustomersResponse> =>
+        (await axiosInstance.get<OutcomeCustomersResponse>('/fanpages/stats/outcomes/customers', { params })).data,
 
     statsTopPosts: async (params: StatsRange & { limit?: number }): Promise<TopPostsResponse> =>
         (await axiosInstance.get<TopPostsResponse>('/fanpages/stats/top-posts', { params })).data,

@@ -8,6 +8,7 @@ import { Bar, BarChart, CartesianGrid, Legend, Line, LineChart, ReferenceLine, R
 import type { GrowthResponse, TopPostRow } from '@/lib/api/fanpages.api';
 import { useFanpageStatsGrowth, useFanpageStatsPosts, useFanpageStatsTopPosts } from '@/lib/hooks/useFanpages';
 import { fmtNum } from '@/lib/utils/fanpageMetrics';
+import { FanpageOutcomesCard } from './FanpageOutcomesCard';
 
 const { Text } = Typography;
 const FMT = 'YYYY-MM-DD';
@@ -162,6 +163,8 @@ export function FanpageStatsTab({ enabled, onOpenDetail }: Props) {
                     </Space>
                 )}
             </Card>
+
+            <FanpageOutcomesCard params={params} enabled={enabled} onOpenDetail={onOpenDetail} />
 
             <Card size="small" title="Số bài theo tuần">
                 {postsQ.isLoading || !postsQ.data ? (

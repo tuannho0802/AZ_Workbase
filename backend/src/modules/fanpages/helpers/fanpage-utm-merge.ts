@@ -19,7 +19,7 @@ export async function remapFanpageUtmsOnMerge(manager: EntityManager, sourceId: 
         'SELECT fanpage_id, utm_id, primary_utm_id FROM fanpage_utms WHERE utm_id IN (?, ?)',
         [sourceId, targetId],
     );
-    const rows: UtmLinkRow[] = raw.map((r) => ({ fanpageId: Number(r.fanpage_id), utmId: Number(r.utm_id), isPrimary: r.primary_utm_id != null }));
+    const rows: UtmLinkRow[] = (Array.isArray(raw) ? raw : []).map((r) => ({ fanpageId: Number(r.fanpage_id), utmId: Number(r.utm_id), isPrimary: r.primary_utm_id != null }));
     const plan = planMergeRemap(
         rows.filter((r) => r.utmId === sourceId),
         rows.filter((r) => r.utmId === targetId),

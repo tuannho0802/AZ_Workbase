@@ -11,6 +11,7 @@ import { FanpageAccessHelper } from './helpers/fanpage-access.helper';
 import { FanpageAccessService, FanpageCaller, FanpageFlags, FanpageScopes } from './fanpage-access.service';
 import { FanpageScopedQuery, requireViewScope } from './fanpage-scoped-query';
 import { FanpageInsightsService, PageInsights } from './fanpage-insights.service';
+import { FanpageUtmChip, FanpageUtmsService } from './fanpage-utms.service';
 import { FanpageMetricsService } from './fanpage-metrics.service';
 import { LatestMetric } from './helpers/fanpage-metrics.helper';
 
@@ -33,6 +34,8 @@ export type FanpageView = Omit<Fanpage, 'healthStatus'> &
         health: { id: number; name: string; color: string; isBlocking: boolean } | null;
         /** Follower nhập tay mới nhất + chênh lệch so với lần nhập trước (null = chưa có số liệu nào). */
         latestMetrics: LatestMetric | null;
+        /** UTM đang gắn cho Page (GĐ5): chip Page chính / dùng chung; tên UTM hạn chế đã che nếu người xem không được dùng. */
+        utms: FanpageUtmChip[];
     };
 
 const isDuplicateKey = (err: unknown): boolean =>
@@ -68,6 +71,7 @@ export class FanpagesService {
         private readonly scoped: FanpageScopedQuery,
         private readonly insights: FanpageInsightsService,
         private readonly metrics: FanpageMetricsService,
+        private readonly utmLinks: FanpageUtmsService,
     ) { }
 
     // ───────────── Danh sách / chi tiết ─────────────
@@ -80,9 +84,13 @@ export class FanpagesService {
         // `cadence` cần số liệu bài nên lọc SAU khi tính insights (cùng nguồn `cadence.state` với thẻ KPI - X2).
         const { cadence, ...sqlFilters } = q;
         const pages = await this.scoped.load(user, scopes, sqlFilters);
-        const [insights, latest] = await Promise.all([this.insights.forPages(pages), this.metrics.latestFollowers(pages.map((p) => p.id))]);
+        const [insights, latest, utms] = await Promise.all([
+            this.insights.forPages(pages),
+            this.metrics.latestFollowers(pages.map((p) => p.id)),
+            this.utmLinks.chipsForPages(pages.map((p) => p.id), user),
+        ]);
 
-        let rows = pages.map((p) => this.present(p, user, scopes, insights.get(p.id) as PageInsights, latest.get(p.id) ?? null));
+        let rows = pages.map((p) => this.present(p, user, scopes, insights.get(p.id) as PageInsights, latest.get(p.id) ?? null, utms.get(p.id) ?? []));
         if (cadence) rows = rows.filter((r) => r.cadence.state === cadence);
 
         return {
@@ -100,18 +108,29 @@ export class FanpagesService {
     }
 
     /** Gắn cờ quyền + nhịp đăng theo Page. Không lộ trường nhạy cảm của User (đã giới hạn cột ở loadPage/list). */
-    private present(page: Fanpage, user: FanpageCaller, scopes: FanpageScopes, insights: PageInsights, latestMetrics: LatestMetric | null): FanpageView {
+    private present(
+        page: Fanpage,
+        user: FanpageCaller,
+        scopes: FanpageScopes,
+        insights: PageInsights,
+        latestMetrics: LatestMetric | null,
+        utms: FanpageUtmChip[],
+    ): FanpageView {
         const { healthStatus, ...rest } = page;
         const health = healthStatus
             ? { id: healthStatus.id, name: healthStatus.name, color: healthStatus.color, isBlocking: healthStatus.isBlocking }
             : null;
-        return { ...rest, ...insights, health, latestMetrics, flags: this.access.flagsFor(page, user.id, scopes) };
+        return { ...rest, ...insights, health, latestMetrics, utms, flags: this.access.flagsFor(page, user.id, scopes) };
     }
 
     /** Như `present` nhưng tự tính insights cho 1 Page (tạo/sửa/chi tiết/lưu trữ). */
     private async presentOne(page: Fanpage, user: FanpageCaller, scopes: FanpageScopes): Promise<FanpageView> {
-        const [insightMap, latest] = await Promise.all([this.insights.forPages([page]), this.metrics.latestFollowers([page.id])]);
-        return this.present(page, user, scopes, insightMap.get(page.id) as PageInsights, latest.get(page.id) ?? null);
+        const [insightMap, latest, utms] = await Promise.all([
+            this.insights.forPages([page]),
+            this.metrics.latestFollowers([page.id]),
+            this.utmLinks.chipsForPage(page.id, user),
+        ]);
+        return this.present(page, user, scopes, insightMap.get(page.id) as PageInsights, latest.get(page.id) ?? null, utms);
     }
 
     // ───────────── Tạo / sửa / xoá ─────────────

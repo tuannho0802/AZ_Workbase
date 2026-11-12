@@ -15,6 +15,7 @@ import { FanpageOverviewTab } from './FanpageOverviewTab';
 import { FanpageHistoryTab } from './FanpageHistoryTab';
 import { FanpageSnapshotsTab } from './FanpageSnapshotsTab';
 import { HealthTag } from './HealthTag';
+import { FanpageUtmsTab } from './FanpageUtmsTab';
 
 interface Props {
     fanpageId: number | null;
@@ -137,6 +138,7 @@ export function FanpageDetailDrawer({ fanpageId, onClose, onEdit }: Props) {
                             label: 'Số liệu',
                             children: <FanpageSnapshotsTab fanpageId={fanpage.id} flags={fanpage.flags} archived={!!fanpage.archivedAt} />,
                         },
+                        { key: 'utms', label: `UTM${fanpage.utms?.length ? ` (${fanpage.utms.length})` : ''}`, children: <FanpageUtmsTab fanpage={fanpage} /> },
                         { key: 'notes', label: 'Ghi chú tiến trình', children: <FanpageNotesTab fanpageId={fanpage.id} flags={fanpage.flags} /> },
                         { key: 'history', label: 'Lịch sử', children: <FanpageHistoryTab fanpageId={fanpage.id} /> },
                     ]}

@@ -8345,3 +8345,19 @@ Now [deploy]
 > - Migration `1786392000000-CreateFanpageMetrics` đã có sẵn trên repo (gồm cột bài). Chưa tạo migration mới.
 
 ---
+
+
+## [2026-11-12 17:00] | GĐ5 - Liên kết Page ↔ UTM, quy kết Khách/Tiền nạp | [Status: Success (chưa chạy test theo yêu cầu - tsc BE sạch)]
+
+**Actor:** Agent
+**Files Changed:**
+- `backend/src/database/migrations/1786393000000-CreateFanpageUtms.ts`, `entities/fanpage-utm.entity.ts` — bảng `fanpage_utms` (UNIQUE primary_utm_id)
+- `backend/src/modules/fanpages/fanpage-utms.service.ts`, `fanpage-outcomes.service.ts`, `dto/fanpage-utm.dto.ts`, `helpers/fanpage-utm*.ts` — gắn/gỡ/đổi Page chính, quy kết khách/tiền, cổng tiền 4 lớp
+- `backend/src/modules/utms/utms.service.ts` — `usabilityFor()` + remap `fanpage_utms` khi gộp UTM (X12); `utms.module.ts` export `UtmCustomersService`
+- `backend/src/modules/fanpages/fanpages.{controller,service,module}.ts`, `fanpage-scoped-query.ts`, `dto/fanpage.dto.ts` — route PUT `:id/utms`, PATCH `:id/utms/:utmId/primary`, GET `stats/outcomes(/customers)`, lọc `utmId`, `utms` trong view
+- `frontend/src/components/fanpage/FanpageUtmsTab.tsx`, `FanpageOutcomesCard.tsx` (+ Drawer, StatsTab, page.tsx lọc UTM), `lib/api/fanpages.api.ts`, `lib/hooks/useFanpages.ts`, `lib/api/audit-meta.ts` (3 nhãn)
+
+**Notes:**
+> Không tạo CHECK `primary_utm_id = utm_id` (MySQL 3823 với FK CASCADE) - bất biến giữ ở service. Không có permission key mới. Cần chạy migration 1786393000000 thủ công. Test spec đã viết nhưng CHƯA chạy lần cuối; 1 mock trong outcomes spec đã sửa.
+
+---

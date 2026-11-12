@@ -17,6 +17,7 @@ import { normalizeSearchableText } from '../../common/utils/text-normalize.util'
 import { PermissionsService } from '../permissions/permissions.service';
 import { AuditService } from '../audit/audit.service';
 import { DepartmentManagerHelper } from '../departments/helpers/department-manager.helper';
+import { remapFanpageUtmsOnMerge, FanpageUtmMergeResult } from '../fanpages/helpers/fanpage-utm-merge';
 import { UtmAccessHelper, UtmRelation, UtmRelationContext } from './helpers/utm-access.helper';
 import { CreateUtmDto } from './dto/create-utm.dto';
 import { UpdateUtmDto } from './dto/update-utm.dto';
@@ -432,6 +433,39 @@ export class UtmsService {
     }
   }
 
+  /**
+   * Thông tin gọn + "người gọi có được DÙNG UTM này không" cho 1 lô UTM (Fanpage gắn UTM - PLAN 3.7).
+   * Cùng quy tắc `assertUsableForCustomer`/`findUsable`. UTM không tồn tại -> không có trong Map. 1 truy vấn, không N+1.
+   */
+  async usabilityFor(
+    user: UtmCaller,
+    utmIds: number[],
+  ): Promise<Map<number, { id: number; name: string; color: string; isActive: boolean; restricted: boolean; canUse: boolean }>> {
+    const out = new Map<number, { id: number; name: string; color: string; isActive: boolean; restricted: boolean; canUse: boolean }>();
+    const ids = [...new Set(utmIds)];
+    if (ids.length === 0) return out;
+    const viewScope = await this.scopeOf(user, 'utms.view');
+    const managed = viewScope === 'department' ? await this.managedDepartmentIds(user.id) : [];
+    const utms = await this.utmRepo.find({
+      where: ids.map((id) => ({ id })),
+      relations: ['primaryManager', 'secondaryManagers'],
+    });
+    for (const u of utms) {
+      const ctx = this.buildContext(u, user.id, managed);
+      const isMember = ctx.primaryManagerId === user.id || ctx.secondaryManagerUserIds.includes(user.id);
+      const viewRel = UtmAccessHelper.relation(viewScope, ctx);
+      out.set(u.id, {
+        id: u.id,
+        name: u.name,
+        color: u.color,
+        isActive: !!u.isActive,
+        restricted: u.visibility === 'restricted',
+        canUse: UtmAccessHelper.canUse(u.visibility, isMember, viewRel),
+      });
+    }
+    return out;
+  }
+
   /** `POST /utms` (@RequirePermission utms.create). Người tạo = Quản lý chính. */
   async create(dto: CreateUtmDto, user: UtmCaller): Promise<UtmView> {
     const name = this.normalizeName(dto.name);
@@ -713,6 +747,7 @@ export class UtmsService {
     if (!target.isActive) throw new BadRequestException(`UTM đích "${target.name}" đang bị khoá`);
 
     let moved = 0;
+    let fanpageRemap: FanpageUtmMergeResult = { deleted: 0, moved: 0, promoted: false };
     await this.dataSource.transaction(async (manager) => {
       for (;;) {
         const res = await manager.query(
@@ -723,6 +758,8 @@ export class UtmsService {
         moved += affected;
         if (affected < CASCADE_BATCH) break;
       }
+      // X12: remap liên kết Page ↔ UTM TRƯỚC khi xoá nguồn (nếu không FK CASCADE xoá mất liên kết của Page).
+      fanpageRemap = await remapFanpageUtmsOnMerge(manager, source.id, target.id);
       // [AGENT] OLD CODE: await manager.query('DELETE FROM utms WHERE id = ?', [source.id]); (SQL thô không phát sự kiện -> không bump cache `utms`)
       await manager.delete(Utm, { id: source.id }); // QueryBuilder delete phát sự kiện -> RefDataChangeSubscriber bump domain `utms` sau commit
     });
@@ -733,7 +770,7 @@ export class UtmsService {
       'utm',
       target.id,
       { sourceUtmId: source.id, sourceUtmName: source.name },
-      { targetUtmId: target.id, targetUtmName: target.name, movedCustomers: moved },
+      { targetUtmId: target.id, targetUtmName: target.name, movedCustomers: moved, fanpageLinks: fanpageRemap },
     );
     return { success: true, movedCustomers: moved, target: await this.detail(target.id, user) };
   }

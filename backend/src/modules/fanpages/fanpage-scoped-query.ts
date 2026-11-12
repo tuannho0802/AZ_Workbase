@@ -11,6 +11,8 @@ export interface FanpageSqlFilters {
     isActive?: 'true' | 'false';
     search?: string;
     healthStatusId?: number;
+    /** Chỉ Page đang gắn UTM này (liên kết Page ↔ UTM, GĐ5). */
+    utmId?: number;
     /** false (mặc định) = ẩn Page đã lưu trữ · true = chỉ đã lưu trữ · all = cả hai. */
     archived?: 'false' | 'true' | 'all';
     orphan?: 'true';
@@ -62,6 +64,7 @@ export function applyFanpageFilters(qb: WhereQb, q: FanpageSqlFilters): void {
     }
     if (q.isActive) qb.andWhere('f.isActive = :act', { act: q.isActive === 'true' ? 1 : 0 });
     if (q.healthStatusId != null) qb.andWhere('f.healthStatusId = :healthStatusId', { healthStatusId: q.healthStatusId });
+    if (q.utmId != null) qb.andWhere('f.id IN (SELECT fu5.fanpage_id FROM fanpage_utms fu5 WHERE fu5.utm_id = :utmId)', { utmId: q.utmId });
     if (q.search?.trim()) qb.andWhere('(f.name LIKE :s OR f.url LIKE :s)', { s: `%${escapeLike(q.search.trim())}%` });
 
     const archived = q.archived ?? 'false';

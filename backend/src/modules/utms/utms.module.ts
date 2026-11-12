@@ -17,6 +17,6 @@ import { UiVisibilityModule } from '../ui-visibility/ui-visibility.module';
   imports: [TypeOrmModule.forFeature([Utm, UtmSecondaryManager, User, Customer, CustomerStatus]), UiVisibilityModule],
   controllers: [UtmsController],
   providers: [UtmsService, UtmManagersService, UtmCustomersService, UtmStatsService],
-  exports: [UtmsService, UtmManagersService],
+  exports: [UtmsService, UtmManagersService, UtmCustomersService],
 })
 export class UtmsModule {}

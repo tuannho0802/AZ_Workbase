@@ -8,6 +8,7 @@ import type { ColumnsType } from 'antd/es/table';
 import { DeleteOutlined, EditOutlined, EyeOutlined, InboxOutlined, LinkOutlined, MoreOutlined, PlusOutlined, SettingOutlined, UndoOutlined } from '@ant-design/icons';
 import { useMyPermissions } from '@/lib/hooks/useMyPermissions';
 import { useDebounce } from '@/lib/hooks/useDebounce';
+import { useUsableUtms } from '@/lib/hooks/useUtms';
 import {
     useArchiveFanpage,
     useDeleteFanpage,
@@ -89,6 +90,7 @@ function FanpagePageContent() {
     const platformId = asInt(searchParams.get('platform'));
     const ownerId = asInt(searchParams.get('owner'));
     const healthStatusId = asInt(searchParams.get('health'));
+    const utmId = asInt(searchParams.get('utm'));
     const statusParam = searchParams.get('status');
     const status: 'true' | 'false' | undefined = statusParam === 'true' || statusParam === 'false' ? statusParam : undefined;
 
@@ -115,16 +117,18 @@ function FanpagePageContent() {
             ...(platformId != null ? { platformId } : {}),
             ...(ownerId != null ? { ownerId } : {}),
             ...(healthStatusId != null ? { healthStatusId } : {}),
+            ...(utmId != null ? { utmId } : {}),
             ...(status ? { isActive: status } : {}),
             ...(kpi === 'silent' || kpi === 'at_risk' ? { cadence: kpi } : {}),
             ...(kpi === 'orphan' ? { orphan: 'true' as const } : {}),
             // Mặc định BE ẩn Page đã lưu trữ; tab "Đã lưu trữ" chỉ xem Page đã lưu trữ.
             ...(tab === 'archived' ? { archived: 'true' as const } : {}),
         }),
-        [debouncedSearch, platformId, ownerId, healthStatusId, status, kpi, tab],
+        [debouncedSearch, platformId, ownerId, healthStatusId, utmId, status, kpi, tab],
     );
 
     const listEnabled = canView && (tab === 'list' || tab === 'archived');
+    const { utms: utmOptions } = useUsableUtms(undefined, listEnabled, false);
     const { fanpages, capabilities, isLoading, isFetching } = useFanpages(filters, listEnabled);
     const { overview, isLoading: overviewLoading } = useFanpageOverview(canView && tab !== 'archived');
     const { platforms } = useFanpagePlatforms(false, canView);
@@ -377,6 +381,14 @@ function FanpagePageContent() {
                     value: healthStatusId,
                     onChange: (v) => setParams({ health: v }),
                     options: healthStatuses.map((h) => ({ value: h.id, label: <Tag color={h.color}>{h.name}</Tag>, searchText: h.name })),
+                },
+                {
+                    key: 'utm',
+                    placeholder: 'UTM',
+                    value: utmId,
+                    onChange: (v: number | undefined) => setParams({ utm: v }),
+                    searchable: true,
+                    options: utmOptions.map((u) => ({ value: u.id, label: <Tag color={u.color}>{u.name}</Tag>, searchText: u.name })),
                 },
                 {
                     key: 'status',

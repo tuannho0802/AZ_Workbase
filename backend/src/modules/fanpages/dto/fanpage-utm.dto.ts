@@ -1,6 +1,6 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { Type } from 'class-transformer';
-import { ArrayMaxSize, ArrayUnique, IsArray, IsInt, IsOptional, IsString, Length, Matches, Min } from 'class-validator';
+import { ArrayMaxSize, ArrayUnique, IsArray, IsIn, IsInt, IsOptional, IsString, Length, Matches, Min } from 'class-validator';
 
 export const MAX_UTMS_PER_PAGE = 30;
 const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
@@ -31,16 +31,14 @@ export class OutcomesQueryDto {
 
 /** `GET /fanpages/stats/outcomes/customers` - danh sách khách khi bấm số khách ở bảng Page → Khách. */
 export class OutcomeCustomersQueryDto extends OutcomesQueryDto {
-    @ApiProperty({ enum: ['primary', 'participating', 'unassigned'], description: 'primary = ghi công · participating = Page tham gia · unassigned = Chưa quy về Page' })
-    @IsString()
-    @Length(1, 20)
-    kind: 'primary' | 'participating' | 'unassigned';
+    @ApiProperty({ enum: ['primary', 'participating'], description: 'primary = ghi công · participating = Page tham gia (dùng chung)' })
+    @IsIn(['primary', 'participating'])
+    kind: 'primary' | 'participating';
 
-    @ApiPropertyOptional({ description: 'Bắt buộc với primary/participating' })
-    @IsOptional()
+    @ApiProperty()
     @Type(() => Number)
     @IsInt()
-    fanpageId?: number;
+    fanpageId: number;
 
     @ApiPropertyOptional()
     @IsOptional()
