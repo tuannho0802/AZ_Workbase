@@ -64,6 +64,7 @@ export function FanpageSnapshotsTab({ fanpageId, flags, archived }: Props) {
         setEditing('new');
     };
     const openEdit = (s: FanpageSnapshot) => {
+        form.resetFields();
         form.setFieldsValue({ date: dayjs(s.snapshotDate), followers: s.followers, reach: s.reach, engagement: s.engagement, views: s.views, note: s.note ?? undefined });
         setEditing(s);
     };
@@ -241,7 +242,7 @@ export function FanpageSnapshotsTab({ fanpageId, flags, archived }: Props) {
                 okText="Lưu"
                 cancelText="Huỷ"
                 confirmLoading={upsertMut.isPending}
-                destroyOnHidden
+                forceRender // giữ <Form> luôn được mount: openNew/openEdit gọi form.* TRƯỚC khi modal mở
             >
                 <Form form={form} layout="vertical" onFinish={(v) => submit(v)}>
                     <Form.Item name="date" label="Ngày số liệu" rules={[{ required: true, message: 'Chọn ngày' }]}>

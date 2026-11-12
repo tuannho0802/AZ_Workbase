@@ -169,7 +169,7 @@ export function FanpageLeadsTab({ fanpage }: Props) {
                 cancelText="Huỷ"
                 confirmLoading={createMut.isPending}
                 destroyOnHidden
-                maskClosable={false}
+                mask={{ closable: false }}
             >
                 <Form form={form} layout="vertical" preserve={false}>
                     <FanpageLeadFields platformName={fanpage.platform?.name} />

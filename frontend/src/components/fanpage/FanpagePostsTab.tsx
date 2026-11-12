@@ -100,6 +100,7 @@ export function FanpagePostsTab({ fanpageId, flags, dateFilter, onClearDateFilte
     };
 
     const openEdit = (post: FanpagePost) => {
+        form.resetFields();
         form.setFieldsValue({
             url: post.url,
             title: post.title ?? undefined,
@@ -265,7 +266,7 @@ export function FanpagePostsTab({ fanpageId, flags, dateFilter, onClearDateFilte
                 okText="Lưu"
                 cancelText="Huỷ"
                 confirmLoading={saving}
-                destroyOnHidden
+                forceRender // giữ <Form> luôn được mount: openNew/openEdit gọi form.* TRƯỚC khi modal mở
             >
                 <Form form={form} layout="vertical" onFinish={handleFinish}>
                     <Form.Item

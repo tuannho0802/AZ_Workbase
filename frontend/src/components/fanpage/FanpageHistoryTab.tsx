@@ -55,7 +55,7 @@ export function FanpageHistoryTab({ fanpageId }: { fanpageId: number }) {
         <Timeline
             items={events.map((e) => ({
                 key: e.id,
-                children: (
+                content: (
                     <div>
                         <div>{describeHistoryEvent(e)}</div>
                         <Text type="secondary" style={{ fontSize: 12 }}>
