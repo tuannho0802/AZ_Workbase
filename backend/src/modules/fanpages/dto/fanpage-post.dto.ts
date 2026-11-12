@@ -1,4 +1,4 @@
-import { IsString, IsInt, Length, IsOptional, IsUrl, Matches, Max, Min, ValidateIf } from 'class-validator';
+import { IsString, IsNotEmpty, IsInt, Length, IsOptional, IsUrl, Matches, Max, Min, ValidateIf } from 'class-validator';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { METRIC_MAX_VALUE } from '../helpers/fanpage-metrics.helper';
 
