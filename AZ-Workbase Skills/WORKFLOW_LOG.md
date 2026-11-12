@@ -8362,7 +8362,7 @@ Now [deploy]
 
 ---
 
-## [2026-11-12 19:00] | GĐ5b - Lead (khách hàng) từ Page + Ghi chú tiến trình | [Status: Success (chưa chạy test theo yêu cầu - tsc BE/FE sạch, nest build OK)]
+## [2026-11-12 19:00] | GĐ5b - Lead (khách hàng) từ Page + Ghi chú tiến trình | [Status: Success (tsc BE/FE sạch, nest build OK; jest fanpages+utms 533 pass, jest customers+audit+sidebar-badges 327 pass, vitest utils+components/fanpage 241 pass; CHƯA chạy migration trên MySQL thật, CHƯA chạy toàn bộ jest/vitest)]
 
 **Actor:** Agent
 **Files Changed:**
