@@ -1,7 +1,7 @@
 'use client';
 
 import { useState } from 'react';
-import { Alert, Button, Descriptions, Drawer, Spin, Tabs, Tag } from 'antd';
+import { Alert, Button, Descriptions, Drawer, Result, Spin, Tabs, Tag } from 'antd';
 import { EditOutlined, LinkOutlined } from '@ant-design/icons';
 import dayjs from 'dayjs';
 import type { Fanpage } from '@/lib/api/fanpages.api';
@@ -28,7 +28,7 @@ interface Props {
 const fmt = (iso: string) => dayjs(iso).format('HH:mm DD/MM/YYYY');
 
 export function FanpageDetailDrawer({ fanpageId, onClose, onEdit }: Props) {
-    const { fanpage, isLoading } = useFanpage(fanpageId);
+    const { fanpage, isLoading, isError } = useFanpage(fanpageId);
     // GĐ5b: tab Data khách hàng chỉ render khi có `customers.view` (không render rồi báo 403); mất quyền giữa chừng -> tab biến mất.
     const { can } = useMyPermissions();
     const canViewCustomers = can('customers.view');
@@ -62,7 +62,18 @@ export function FanpageDetailDrawer({ fanpageId, onClose, onEdit }: Props) {
                 ) : null
             }
         >
-            {isLoading || !fanpage ? (
+            {isError && !fanpage ? (
+                <Result
+                    status="warning"
+                    title="Không mở được Page này"
+                    subTitle="Page không còn tồn tại hoặc bạn không còn quyền xem."
+                    extra={
+                        <Button type="primary" onClick={onClose}>
+                            Đóng
+                        </Button>
+                    }
+                />
+            ) : isLoading || !fanpage ? (
                 <Spin />
             ) : (
                 <>

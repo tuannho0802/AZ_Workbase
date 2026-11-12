@@ -82,13 +82,14 @@ export const useFanpages = (filters: FanpageFilters, enabled = true) => {
 };
 
 export const useFanpage = (id: number | null) => {
-    const { data, isLoading } = useQuery({
+    const { data, isLoading, isError } = useQuery({
         queryKey: fanpageKeys.detail(id),
         queryFn: () => fanpagesApi.get(id as number),
         enabled: id != null,
         staleTime: 30 * 1000,
     });
-    return { fanpage: data, isLoading };
+    // `isError`: Page không tồn tại / không còn quyền xem (vd link thông báo cũ) - Drawer phải báo rõ, KHÔNG quay Spin mãi.
+    return { fanpage: data, isLoading, isError };
 };
 
 /** Số cho thẻ KPI - cùng scope/nguồn với danh sách. */

@@ -23,8 +23,10 @@ let globalMessage: MessageInstance | undefined;
 
 export const showMessage = {
   success: (msg: string) => globalMessage?.success(msg),
-  error: (msg: string) => globalMessage?.error(msg),
-  warning: (msg: string) => globalMessage?.warning(msg),
+  // Chống "mưa toast": nhiều request song song cùng dính 1 lỗi (vd 5 query cùng 403) dùng CHUNG key theo nội dung ->
+  // antd cập nhật toast đang hiện thay vì chồng thêm N toast giống hệt nhau.
+  error: (msg: string) => globalMessage?.error({ content: msg, key: `error:${msg}` }),
+  warning: (msg: string) => globalMessage?.warning({ content: msg, key: `warning:${msg}` }),
   info: (msg: string) => globalMessage?.info(msg),
 };
 
